@@ -89,17 +89,8 @@ bool IRGenerator::memberStructLiteralAssign(AssignmentExpr* node, MemberExpr* me
         StructInitExpr* init = static_cast<StructInitExpr*>(node->value.get());
         // 对象所属结构体（memberObjStructType 递归+指针解引用剥离）-> 字段类型
         const std::string ownerStruct = memberObjStructType(member);
-        const StructDecl* ownerDecl =
-            semantic_->findStruct(types::canonical(ownerStruct));
-        std::string fieldStruct;
-        if (ownerDecl != nullptr) {
-            for (const auto& f : ownerDecl->fields) {
-                if (f.name == member->memberName) {
-                    fieldStruct = types::canonical(f.type);
-                    break;
-                }
-            }
-        }
+        const std::string fieldStruct =
+            structOrClassFieldType(ownerStruct, member->memberName);  // 973（104）统一查询
         if (!fieldStruct.empty() && semantic_->isStructType(fieldStruct)) {
             ir::IRValue fieldAddr = lvalueAddress(node->target.get());
             emitStructInitTo(init, fieldAddr, node->location);
@@ -123,17 +114,8 @@ bool IRGenerator::memberClassFieldAssign(AssignmentExpr* node, MemberExpr* membe
     //   双删——形四 0xC0000374 实证）。
     if (semantic_ != nullptr && !isCompoundAssignOp(node->op)) {
         const std::string ownerStructC = memberObjStructType(member);
-        const StructDecl* ownerDeclC =
-            semantic_->findStruct(types::canonical(ownerStructC));
-        std::string fieldCanonC;
-        if (ownerDeclC != nullptr) {
-            for (const auto& fc : ownerDeclC->fields) {
-                if (fc.name == member->memberName) {
-                    fieldCanonC = types::canonical(fc.type);
-                    break;
-                }
-            }
-        }
+        const std::string fieldCanonC =
+            structOrClassFieldType(ownerStructC, member->memberName);  // 973（104）统一查询
         // 142-a（泛化尝试→回退）：用户类场景实测 0xC0000374（用户类拷贝构造的
         //   this 字段初值/类析构字段级联与新设施交互未明）——按纪律回退，保留
         //   四族收窄；**泛化=专项**（plans/020 第五十四节）。
@@ -220,17 +202,8 @@ bool IRGenerator::memberWholeStructAssign(AssignmentExpr* node, MemberExpr* memb
     //   （lvalueAddress 有发射副作用，落回即双发）。
     if (semantic_ != nullptr && !isCompoundAssignOp(node->op)) {
         const std::string ownerStructW = memberObjStructType(member);
-        const StructDecl* ownerDeclW =
-            semantic_->findStruct(types::canonical(ownerStructW));
-        std::string fieldStructW;
-        if (ownerDeclW != nullptr) {
-            for (const auto& f : ownerDeclW->fields) {
-                if (f.name == member->memberName) {
-                    fieldStructW = types::canonical(f.type);
-                    break;
-                }
-            }
-        }
+        const std::string fieldStructW =
+            structOrClassFieldType(ownerStructW, member->memberName);  // 973（104）统一查询
         if (!fieldStructW.empty() &&
             (semantic_->isStructType(fieldStructW) ||
              semantic_->isClassType(fieldStructW))) {

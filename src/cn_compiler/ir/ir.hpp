@@ -372,6 +372,8 @@ public:
     bool genShortCircuitBinary(BinaryExpr* node);
     // 族②③：字符串连接（Task 2.5 ptr+ptr）+ 字符串+数值隐式拼接（Task 2.9）
     //   + 字符串+整128/正128（双槽 ptr 形态）。true = 已处理。
+    std::string structOrClassFieldType(const std::string& ownerType,
+                                     const std::string& fieldName) const;  // 973（104）：结构体 miss→类表沿链回退
     bool genStringCompareBinary(BinaryExpr* node, const ir::IRValue& left,
                                 const ir::IRValue& right);  // 962（166 立法）：字符串六比较符
     bool genStringConcatBinary(BinaryExpr* node, const ir::IRValue& left,

@@ -570,6 +570,36 @@ std::string IRGenerator::pointerPointeeSrcType(Expr* node) const {
     }
     return "";
 }
+// 973（104 根治·读/写/下标消费点统一）：按宿主类型查字段类型——结构体表
+//   findStruct 命中走原路；miss（宿主为**类**）沿继承链查 ClassInfo::fields。
+//   原各消费点「findStruct+字段循环」对类宿主恒 miss（类不入结构体表）——
+//   类.聚合字段.成员 三层链的读降级 0/写内层偏移丢（956 命中一·三坏法）
+//   均源于此。字段类型文本原样返回（消费点自行 canonical）。
+std::string IRGenerator::structOrClassFieldType(const std::string& ownerType,
+                                                const std::string& fieldName) const {
+    if (semantic_ == nullptr) return "";
+    const StructDecl* decl =
+        semantic_->findStruct(types::canonical(ownerType));
+    if (decl != nullptr) {
+        for (const auto& f : decl->fields) {
+            if (f.name == fieldName) return f.type;
+        }
+        return "";
+    }
+    // 类表回退：沿继承链（父类在前——对齐 classFieldOffset 链遍历）
+    const ClassInfo* ci =
+        semantic_->findClass(types::canonical(ownerType));
+    while (ci != nullptr) {
+        auto it = ci->fields.find(fieldName);
+        if (it != ci->fields.end() && !it->second.isStatic) {
+            return it->second.type;
+        }
+        ci = ci->baseName.empty() ? nullptr
+                                  : semantic_->findClass(ci->baseName);
+    }
+    return "";
+}
+
 std::string IRGenerator::memberObjStructType(MemberExpr* node) const {
     if (semantic_ == nullptr) return "";
     std::string objType = "";
@@ -597,15 +627,8 @@ std::string IRGenerator::memberObjStructType(MemberExpr* node) const {
     } else if (node->object->getType() == NodeType::MemberExpr) {
         MemberExpr* inner = static_cast<MemberExpr*>(node->object.get());
         const std::string innerType = memberObjStructType(inner);
-        const StructDecl* innerDecl = semantic_->findStruct(types::canonical(innerType));
-        if (innerDecl != nullptr) {
-            for (const auto& f : innerDecl->fields) {
-                if (f.name == inner->memberName) {
-                    objType = f.type;
-                    break;
-                }
-            }
-        }
+        // 973（104）：结构体/类统一字段类型查询（类宿主原恒 miss→读降级 0）
+        objType = structOrClassFieldType(innerType, inner->memberName);
         // 宿主缺陷根治（2026-08-25）：结果/可选 .值/.错误 不是合成结构体直接字段
         //   （在联合体内）——嵌套成员（查.值.类型ID）须按结果/可选成员映射推导，
         //   否则 lvalueAddress 找不到对象类型而不加外层字段偏移（类型ID 在偏移8
@@ -640,15 +663,10 @@ std::string IRGenerator::memberObjStructType(MemberExpr* node) const {
             // 方形.顶点[0] / 方形指针->顶点[0]：内层成员字段（数组）-> 元素类型
             MemberExpr* inner = static_cast<MemberExpr*>(idx->object.get());
             const std::string innerType = memberObjStructType(inner);
-            const StructDecl* innerDecl = semantic_->findStruct(types::canonical(innerType));
-            if (innerDecl != nullptr) {
-                for (const auto& f : innerDecl->fields) {
-                    if (f.name == inner->memberName) {
-                        objType = types::isArray(f.type) ? types::arrayElemOf(f.type)
-                                                         : f.type;
-                        break;
-                    }
-                }
+            // 973（104）：同款统一查询（数组元素类型分支保留）
+            const std::string ftype = structOrClassFieldType(innerType, inner->memberName);
+            if (!ftype.empty()) {
+                objType = types::isArray(ftype) ? types::arrayElemOf(ftype) : ftype;
             }
         }
     }
