@@ -410,6 +410,72 @@ bool IRGenerator::memberStringFieldAssign(AssignmentExpr* node, MemberExpr* memb
 // 下标/解引用目标：污染标记 → 元素类型推导 → Cast → 地址 → 结构体整体赋值
 //   → 构造字面量 → 复合赋值 → StorePtr。true = 已处理。
 bool IRGenerator::assignToIndexTarget(AssignmentExpr* node) {
+    // 959（008 总攻·转移位余二①）：目标=数组元素（类容器内联体）且值=转移(标识符)
+    //   → **整块搬迁**（096 同模型）：CopyStruct 类大小到元素地址 + 源槽清零
+    //   （析构跳过=所有权交接）。原路径 StorePtr 8B 句柄直存内联体首字段——
+    //   数据指针对但长度/容量字段垃圾（p2b 实证 大小()=0）。诚实边界：元素
+    //   已有值时旧对象不释放（数组声明零初始化=转移通常首写；重赋值旧值
+    //   随宿主 095 边界同登记）。
+    if (semantic_ != nullptr && !isCompoundAssignOp(node->op) &&
+        node->value->getType() == NodeType::CallExpr &&
+        SemanticAnalyzer::isTransferCall(
+            static_cast<CallExpr*>(node->value.get())) &&
+        node->target->getType() == NodeType::IndexExpr) {
+        IndexExpr* tgt959 = static_cast<IndexExpr*>(node->target.get());
+        if (tgt959->object->getType() == NodeType::IdentifierExpr) {
+            const std::string arrName959 =
+                static_cast<IdentifierExpr*>(tgt959->object.get())->name;
+            const std::string arrSrc959 = lookupSrcType(arrName959);
+            const CallExpr* tr959 =
+                static_cast<CallExpr*>(node->value.get());
+            const bool srcIsIdent959 =
+                !tr959->arguments.empty() &&
+                tr959->arguments[0]->getType() == NodeType::IdentifierExpr;
+            if (srcIsIdent959 && types::isArray(arrSrc959)) {
+                const std::string srcName959 =
+                    static_cast<IdentifierExpr*>(tr959->arguments[0].get())
+                        ->name;
+                const std::string srcSrc959 = lookupSrcType(srcName959);
+                const std::string elemCanon959 =
+                    types::canonical(types::arrayElemOf(arrSrc959));
+                if (semantic_->isClassType(elemCanon959) &&
+                    types::canonical(srcSrc959) == elemCanon959) {
+                    const std::string srcUnique959 =
+                        lookupVarName(srcName959);
+                    if (!srcUnique959.empty()) {
+                        const int bytes959 =
+                            semantic_->typeSizeOf(elemCanon959);
+                        if (bytes959 > 0) {
+                            ir::IRValue addr959 =
+                                lvalueAddress(node->target.get());
+                            // 源=**堆对象本体**（源槽存句柄——Load 得句柄 r·
+                            //   以 r 为源地址整块拷 bytes 到元素内联体）
+                            ir::IRValue handle959 = emitResult(
+                                ir::Opcode::Load,
+                                {ir::IRValue::var(srcUnique959, "ptr")},
+                                "ptr", srcUnique959, node->location);
+                            emit(ir::Opcode::CopyStruct,
+                                 {addr959, handle959}, ir::IRValue(),
+                                 std::to_string(bytes959), "void",
+                                 node->location);
+                            // 原**对象壳**裸释放（内容已拷进元素体——直调
+                            //   __cn_object_delete 只 free 不析构：析构会释放
+                            //   内部数据指针→元素内副本悬垂；nullptr 安全）
+                            emit(ir::Opcode::Call, {handle959}, ir::IRValue(),
+                                 "__cn_object_delete", "void",
+                                 node->location);
+                            emit(ir::Opcode::Store,
+                                 {ir::IRValue::constant("0", "i64")},
+                                 ir::IRValue(), srcUnique959, "i64",
+                                 node->location);
+                            lastExpr_ = addr959;
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+    }
     ir::IRValue value = genExpr(node->value.get());
     // plans/019 阶段4' 方案A：下标目标为字符串元素（字符串数组/字符串* 元素）
     //   且右值为字符串变量标识符 -> 值被外部槽持有（指针逃逸模型，38_tool

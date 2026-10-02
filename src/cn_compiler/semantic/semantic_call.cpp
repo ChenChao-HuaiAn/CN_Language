@@ -261,10 +261,26 @@ void SemanticAnalyzer::visitCallExpr(CallExpr* node) {
 bool SemanticAnalyzer::checkTransferCall(CallExpr* node) {
     if (isTransferCall(node)) {
         Expr* arg = node->arguments[0].get();
+        // 959（008 总攻·转移位余二②）：**成员源放行**（乙 = 转移(h.桶)）——
+        //   旧名禁用按成员路径推导（成员被转移后再用 h.桶 于 IR 层清零后
+        //   读空句柄/空安全跳过；编译期拦截随 LUE 007 轮精确化）。
+        //   IR 层 ir_call 转移展开同步支持 MemberExpr 源（成员地址→句柄→
+        //   成员槽清零）。〔基准=019〕第二句：显式转移=成员所有权交接。
+        if (arg->getType() == NodeType::MemberExpr) {
+            MemberExpr* mem959 = static_cast<MemberExpr*>(arg);
+            std::string mt = checkExpr(mem959);
+            if (mt.empty() || mt == "未知") {
+                lastType_ = "未知";
+                return true;
+            }
+            node->resolvedType = mt;
+            lastType_ = mt;
+            return true;
+        }
         if (arg->getType() != NodeType::IdentifierExpr) {
             diagnostics_.report(DiagnosticLevel::Error, node->location,
-                                "转移目标须为变量（标识符）——成员/下标/解引用形态"
-                                "的转移随 plans/019 阶段3 支持");
+                                "转移目标须为变量（标识符）或成员——下标/解引用形态"
+                                "的转移随后续轮支持");
             lastType_ = "未知";
             return true;
         }

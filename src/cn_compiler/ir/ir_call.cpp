@@ -41,6 +41,22 @@ void IRGenerator::visitCallExpr(CallExpr* node) {
         //   幂等模型」同构（74-a 纪律 7·与声明初始化位 ir_stmt_decl 浅交接分派
         //   同构）。原实现缺此步：实参位转移后源槽仍持句柄，双 free 靠
         //   cn_free_tracked 注册表兜底侥幸安全（结构性正确升级）。
+        // 959（008 总攻·转移位余二②）：**成员源**（乙 = 转移(h.桶)）——句柄
+        //   加载（成员地址→LoadPtr）+**成员槽清零**（成员地址 StorePtr 0——
+        //   宿主所有者出口对清零成员空安全跳过=所有权交接）。成员地址=
+        //   lvalueAddress（标识符/成员链基座通用）。
+        if (node->arguments[0]->getType() == NodeType::MemberExpr) {
+            ir::IRValue memAddr959 = lvalueAddress(
+                node->arguments[0].get());
+            if (memAddr959.id >= 0 || memAddr959.isConstant) {
+                lastExpr_ = emitResult(ir::Opcode::LoadPtr, {memAddr959},
+                                       "ptr", "", node->location);
+                emit(ir::Opcode::StorePtr,
+                     {memAddr959, ir::IRValue::constant("0", "i64")},
+                     ir::IRValue(), "", "ptr", node->location);
+            }
+            return;
+        }
         if (node->arguments[0]->getType() == NodeType::IdentifierExpr) {
             const std::string srcName =
                 static_cast<IdentifierExpr*>(node->arguments[0].get())->name;
