@@ -365,6 +365,16 @@ void IRGenerator::visitCallExpr(CallExpr* node) {
         else if (calleeName == "文件::文件大小" || calleeName == "文件.文件大小") calleeName = "__cn_file_size";
         else if (calleeName == "文件::关闭文件" || calleeName == "文件.关闭文件") calleeName = "__cn_file_close";
         else if (calleeName == "文件::文件存在" || calleeName == "文件.文件存在") calleeName = "__cn_file_exists";
+
+        // 996（027 波 1·线程库）：线程::新 -> __cn_thread_new、线程::并入 ->
+        //   __cn_thread_join、线程::互斥锁新建/上锁/解锁/释放 -> __cn_mutex_*
+        //   （thread_api.cpp；linux=pthread 真实现·win=错误码 9 桩随波 3）
+        else if (calleeName == "线程::新" || calleeName == "线程.新") calleeName = "__cn_thread_new";
+        else if (calleeName == "线程::并入" || calleeName == "线程.并入") calleeName = "__cn_thread_join";
+        else if (calleeName == "线程::互斥锁新建" || calleeName == "线程.互斥锁新建") calleeName = "__cn_mutex_new";
+        else if (calleeName == "线程::上锁" || calleeName == "线程.上锁") calleeName = "__cn_mutex_lock";
+        else if (calleeName == "线程::解锁" || calleeName == "线程.解锁") calleeName = "__cn_mutex_unlock";
+        else if (calleeName == "线程::互斥锁释放" || calleeName == "线程.互斥锁释放") calleeName = "__cn_mutex_free";
         // Task 6.5 字符串扩展库（stdlib/字符串扩展.cn 包装的内置，语义层注册为
         //   解析:: 限定名——"字符串" 是类型关键字不能作限定名前缀）：
         //   解析::转整数 -> __cn_str_to_int、解析::转浮点 -> __cn_str_to_double、

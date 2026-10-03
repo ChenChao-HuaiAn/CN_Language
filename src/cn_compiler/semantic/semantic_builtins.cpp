@@ -219,6 +219,25 @@ void SemanticAnalyzer::registerBuiltins() {
     regFileFn("文件::关闭文件", "空类型", {"空类型*"});
     regFileFn("文件::文件存在", "布尔", {"字符串"});
 
+    // 996（027 波 1·线程库）：线程:: 限定名注册（stdlib/线程.cn 包装的内置，
+    //   对应运行时 thread_api.cpp）：线程::新/并入 -> __cn_thread_new/join、
+    //   线程::互斥锁新建/上锁/解锁/释放 -> __cn_mutex_new/lock/unlock/free
+    //   （IR 层 ir_call 映射同批）。入口=函数指针 整64(空类型*)（040 C 风格）。
+    const auto regThreadFn = [this](const std::string& name, const std::string& retType,
+                                    const std::vector<std::string>& paramTypes) {
+        FunctionInfo info;
+        info.returnType = retType;
+        info.paramTypes = paramTypes;
+        info.hasBody = true;
+        functions_[name] = info;
+    };
+    regThreadFn("线程::新", "空类型*", {"整64(空类型*)", "空类型*"});
+    regThreadFn("线程::并入", "整64", {"空类型*"});
+    regThreadFn("线程::互斥锁新建", "空类型*", {});
+    regThreadFn("线程::上锁", "空类型", {"空类型*"});
+    regThreadFn("线程::解锁", "空类型", {"空类型*"});
+    regThreadFn("线程::互斥锁释放", "空类型", {"空类型*"});
+
     // ---- 字符串扩展库（Task 6.5，对标 C++ string 解析；对应运行时 string_api.cpp）----
     // 中文名带 "解析." 前缀（形如 模块.函数 限定名），与 stdlib/字符串扩展.cn
     // 模块公开函数（纯名 字符串转整数 等）不冲突——内置走"限定名直调"（IO 库同模式）。
