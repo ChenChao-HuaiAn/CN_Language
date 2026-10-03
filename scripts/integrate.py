@@ -68,6 +68,18 @@ from pathlib import Path
 全量门禁触发模式 = ("src/", "tests/", "CN语言编译器v2/", "stdlib/",
                    "CMakeLists.txt", "build.ps1", "scripts/ci.ps1")
 
+# ── 云端预验门禁（1008·用户裁决 2026-10-03 方案甲·test-then-commit）──────────────────
+# 触及全量面的集成：链顶（=合并结果）推 TX_02 预验分支跑 linux-x86_64 全量，绿才 push
+# develop——红根本进不来（红灯窗口期结构性消除）。旧模式（941 fast-lane·commit-then-test）
+# 保留为事后兜底：预验跳过面（纯文档轮）与 --no-cloud-gate 逃生门走云端每推送自动验。
+# **默认关**：待 develop 回绿（171 根治销账·家机 1002/1003 链）后翻默认开——翻默认=改下方
+# 一处常量+AGENTS §5/§8.2/028 同步（启用轮承载）。红轮实测数据（TX_02 ci-logs 107 轮）：
+# 绿轮 13~16min·红轮带串行复验 33~40min——等待期可做六件套文档。
+云端预验默认开 = False
+预验远程分支前缀 = "ci/预验-"
+预验轮询间隔秒 = 60
+预验总超时分钟 = 75    # 含锁等待（TX_02 正跑 develop 轮时预验排队）+全量跑轮·留余量
+
 
 def 运行(命令: list[str], **kwargs) -> subprocess.CompletedProcess:
     """执行子进程（打印命令行；默认继承 stdout/stderr）。"""
@@ -154,6 +166,22 @@ def 分类写集(文件们: list[str]) -> bool:
     return any(文件.startswith(全量门禁触发模式) for 文件 in 文件们)
 
 
+def 临时用例检查(文件们: list[str]) -> str | None:
+    """纪律 2（1008·用户裁决 2026-10-03）：临时/探针用例禁入 develop。
+
+    tests/e2e/ 下用例目录名（路径第三段）含 tmp（大小写不敏感）即拦——1005 清 7 例存量
+    （990/991/993/995/998/1002/1003tmp）后的增量防线；临时探针留在任务分支用后删，
+    转正须按用例目录约定命名（<纯数字编号>_<名称>）。
+    """
+    违规 = sorted({f.split("/")[2] for f in 文件们
+                   if f.startswith("tests/e2e/") and len(f.split("/")) > 2
+                   and "tmp" in f.split("/")[2].lower()})
+    if 违规:
+        return ("tests/e2e/ 临时用例 " + "、".join(违规)
+                + " 禁止入 develop（用后删或按 <编号>_<名称> 转正命名后重报——1008 纪律 2）")
+    return None
+
+
 def 冲突标记检查(文件们: list[str]) -> str | None:
     """改动文件中的 git 冲突标记成对检查（233-a 事故铁律：禁止冲突标记入 develop）。"""
     for 文件 in 文件们:
@@ -170,8 +198,11 @@ def 冲突标记检查(文件们: list[str]) -> str | None:
 
 
 def 快速门禁(文件们: list[str]) -> str | None:
-    """快速门禁：冲突标记 + 三文档结构门禁（纯文档/脚本写集的完整门禁）。"""
+    """快速门禁：冲突标记 + 临时用例拦截 + 三文档结构门禁（纯文档/脚本写集的完整门禁）。"""
     问题 = 冲突标记检查(文件们)
+    if 问题:
+        return 问题
+    问题 = 临时用例检查(文件们)
     if 问题:
         return 问题
     # check_language_philosophy 补挂（920·阶段4 漂移修复）：AGENTS §3.1 门禁条声称
@@ -305,6 +336,96 @@ def 全量门禁(平台: str, 已知红们: list[str] | None = None, 快速通�
     print("  [复验] 并行红+串行绿=runner 产物互踩嫌疑（274-a 隔离键欠账·非代码红）"
           "——放行；须在看板通告段披露。")
     return None
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 云端预验门禁（1008·方案甲 test-then-commit）——链顶推 TX_02 预验分支跑全量，绿才进 develop
+# ═══════════════════════════════════════════════════════════════════════════
+
+def 读CI配置() -> dict:
+    """TX_02 连接参数——scripts/ci_client.json（gitignore·形如 {"ssh":"TX_02","目录":"/home/ubuntu/cn-ci"}）
+    可选覆盖，缺省内置默认（三机 ssh config 均配 TX_02 别名·028 §二）。"""
+    配置 = {"ssh": "TX_02", "目录": "/home/ubuntu/cn-ci"}
+    文件 = 仓库根 / "scripts/ci_client.json"
+    if 文件.exists():
+        try:
+            配置.update(json.loads(文件.read_text(encoding="utf-8")))
+        except Exception as e:
+            print(f"  [警告] ci_client.json 解析失败（用默认 {配置}）：{e}")
+    return 配置
+
+
+def 解析预验结果(文本: str) -> tuple[bool, str]:
+    """预验结果 JSON →（绿与否, 摘要）。纯函数（selftest 面）。"""
+    try:
+        d = json.loads(文本)
+    except Exception:
+        return False, "预验结果 JSON 解析失败：" + 文本[:120].replace("\n", " ")
+    摘要 = "总秒=%s·日志=%s" % (d.get("总秒"), d.get("日志"))
+    红步骤 = [k for k, s in (d.get("步骤") or {}).items() if s.get("rc", 0) != 0]
+    if 红步骤:
+        摘要 += "·红步骤=" + "、".join(红步骤)
+    尾部 = (d.get("日志尾部") or [])[-6:]
+    if 尾部:
+        摘要 += "\n  尾部：" + " | ".join(x.strip() for x in 尾部 if x.strip())[:400]
+    return bool(d.get("绿")), 摘要
+
+
+def 云端预验门禁(链顶: str, 参数: argparse.Namespace) -> str | None:
+    """链顶（=合并结果）推 TX_02 预验分支触发全量（linux-x86_64 面·后台 nohup），
+    轮询 预验_<sha10>.json（daemon 红绿都写·1008 改造）——绿放行 push develop
+    （daemon 已写 latest：push 后 develop 轮询轮按「已跑过」跳过=云端零重复算力）；
+    红/超时/ssh 不可达=拦截（develop 未收到红提交）。返回 None=放行；str=拦截原因。
+
+    降级不失效（028 §六哲学）：--no-cloud-gate 逃生门=显式回退 941 fast-lane 事后兜底。
+    """
+    import time as _time
+    if 参数.dry_run:
+        print("  [预验·演练] 跳过云端真跑（--dry-run）——正式集成对链顶真跑全量预验")
+        return None
+    配置 = 读CI配置()
+    预验分支 = 预验远程分支前缀 + 链顶[:10]
+    sha10 = 链顶[:10]
+    推 = 运行(["git", "push", 参数.remote, f"{链顶}:refs/heads/{预验分支}"])
+    if 推.returncode != 0:
+        return f"预验分支推送失败（{预验分支}）——检查远程权限后重试。"
+    try:
+        # rm 旧预验结果（同 sha 二次预验=CAS 竞争重试路径·旧文件不可当本轮结果）
+        触发 = subprocess.run(
+            ["ssh", "-o", "ConnectTimeout=15", 配置["ssh"],
+             "cd %s && rm -f ci-logs/预验_%s.json && nohup env CN_CI_BRANCH=%s "
+             "python3 scripts/ci_daemon.py --once --force --wait-lock "
+             "> ci-logs/预验启动_%s.log 2>&1 & echo 触发成功"
+             % (配置["目录"], sha10, 预验分支, sha10)],
+            capture_output=True, text=True, timeout=30)
+        if 触发.returncode != 0 or "触发成功" not in (触发.stdout or ""):
+            return ("云端预验触发失败（ssh %s）：%s——TX_02 不可达或目录异常（028 §四）。"
+                    "逃生门：--no-cloud-gate 显式回退事后兜底（941）。"
+                    % (配置["ssh"], (触发.stderr or 触发.stdout or "").strip()[:200]))
+        print(f"  [预验] TX_02 已触发（{预验分支}·全量 linux-x86_64 面"
+              f"·绿轮实测 13~16min/红轮 33~40min·含锁排队）")
+        截止 = _time.time() + 预验总超时分钟 * 60
+        while _time.time() < 截止:
+            _time.sleep(预验轮询间隔秒)
+            取 = subprocess.run(
+                ["ssh", "-o", "ConnectTimeout=15", 配置["ssh"],
+                 "cat %s/ci-logs/预验_%s.json 2>/dev/null" % (配置["目录"], sha10)],
+                capture_output=True, text=True, timeout=30)
+            if 取.returncode == 0 and 取.stdout.strip():
+                绿, 摘要 = 解析预验结果(取.stdout)
+                if 绿:
+                    print(f"  [预验] ✓ 绿（{摘要}）——放行 push develop（daemon 已写 latest·轮询轮免重跑）")
+                    return None
+                return (f"云端预验红（链顶 {sha10}·develop 未收到该提交）——{摘要}\n"
+                        "  修复走任务分支（修复中间态禁推 develop·1008 纪律 1），绿后重新集成。")
+            余分 = int((截止 - _time.time()) // 60)
+            print(f"  [预验] 等待云端结果（余约 {余分} 分钟）……")
+        return (f"云端预验超时（{预验总超时分钟} 分钟——TX_02 忙/挂死·028 §四处置）。"
+                "逃生门：--no-cloud-gate 显式回退事后兜底（941）。")
+    finally:
+        清理 = 运行(["git", "push", 参数.remote, "--delete", 预验分支])
+        if 清理.returncode != 0:
+            print(f"  [警告] 预验分支 {预验分支} 删除失败——branch_cleanup.py 兜底。")
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -688,6 +809,31 @@ def 自测() -> int:
          f"选批：上限截断（{批上限} 个·超出者等下批）且批主=最早报名者")
     成员5, 提示5 = 选批成员([], 解析时刻("09-30 14:00"))
     断言(成员5 == [] and 提示5 is not None, "选批：空队列给提示")
+
+    # ④ 临时用例拦截（1008 纪律 2）
+    断言(临时用例检查(["src/a.cpp", "tests/e2e/501_正常用例/x.cn"]) is None,
+         "tmp 拦截：正常用例名与非 e2e 路径放行")
+    断言(临时用例检查(["tests/e2e/990tmp_128最小/x.cn"]) is not None,
+         "tmp 拦截：tmp 目录名拒绝")
+    断言(临时用例检查(["tests/e2e/990Tmp_测试/x.cn"]) is not None,
+         "tmp 拦截：大小写不敏感（Tmp）")
+    断言(临时用例检查(["tests/e2e/501_x/TMP说明.md"]) is None,
+         "tmp 拦截：tmp 仅判用例目录名（路径第三段）——用例内文件名放行")
+    断言(临时用例检查(["docs/tmp笔记.md", "src/tmp.cpp"]) is None,
+         "tmp 拦截：e2e 外路径放行")
+
+    # ⑤ 预验结果解析（1008）
+    绿, 摘 = 解析预验结果('{"绿": true, "总秒": 800, "日志": "run_x.log",'
+                          '"步骤": {"构建": {"rc": 0}}, "日志尾部": []}')
+    断言(绿 and "run_x.log" in 摘, "预验解析：绿 JSON 判绿+日志名入摘要")
+    红, 摘2 = 解析预验结果('{"绿": false, "总秒": 2000, "日志": "run_y.log",'
+                           '"步骤": {"构建": {"rc": 0}, "e2e": {"rc": 1}},'
+                           '"日志尾部": ["✗ 524_条件编译双编译: x"]}')
+    断言(not 红 and "e2e" in 摘2 and "524" in 摘2, "预验解析：红 JSON 判红+红步骤与尾部入摘要")
+    断言(not 解析预验结果("非JSON文本")[0], "预验解析：坏 JSON 判红不炸")
+    断言(临时用例检查(批写集([{"分支": "任务/家机-9-x"}], "aaaa")) is None,
+         "tmp 拦截：批写集空路径不越界")
+
     print(f"\n[selftest] {案例数} 例全过 ✓")
     return 0
 
@@ -726,6 +872,11 @@ def 单次集成尝试(平台: str, 上次已验基准: str | None, 参数: argp
         问题 = 全量门禁(平台, 参数.allow_known_red, 参数.fast_lane)
         if 问题:
             return False, 问题, None
+        if 参数.cloud_gate:
+            print("[4.5] 云端预验门禁（1008·链顶=合并结果·绿才 push develop）")
+            问题 = 云端预验门禁(输出(["git", "rev-parse", "HEAD"]), 参数)
+            if 问题:
+                return False, 问题, None
     elif 须全量:
         print("[4] 全量门禁跳过（develop 增量纯文档·已验部分仍有效）")
 
@@ -944,6 +1095,11 @@ def 批流程(参数: argparse.Namespace) -> int:
                         成员写集 = 两点间改动(最新, 行["分支"])
                         print(f"    - {行['分支']}：{成员写集}")
                     return 失败(问题 + "（批门禁红——归因后 --drop <分支> 重组链重验）")
+                if 参数.cloud_gate:
+                    print(f"[5.5] 云端预验门禁（1008·链顶 {链顶[:8]}·绿才整批 push develop）")
+                    问题 = 云端预验门禁(链顶, 参数)
+                    if 问题:
+                        return 失败(问题 + "（批预验红——整批留在分支·修复后重报）")
             elif 须全量 and not 等价免验:
                 print("[5] 全量门禁跳过（develop 增量纯文档·已验部分仍有效）")
             已验基准 = 最新
@@ -1023,6 +1179,13 @@ def 主流程() -> int:
                         help="快速通道（保持兼容·941 起默认开）：本机仅 L1（gate_quick·分钟级）"
                              "即集成——全量由 TX_02 云端对 develop 事后自动跑+红灯治理兜底"
                              "（Chromium CQ/rustc bors 同构）")
+    解析器.add_argument("--cloud-gate", action="store_true",
+                        help="云端预验门禁显式开（1008·方案甲 test-then-commit·当前默认关）："
+                             "触及全量面的集成把链顶推 TX_02 预验分支跑 linux 全量，"
+                             "绿才 push develop——红根本进不来。默认开时此参数=显式确认（幂等）")
+    解析器.add_argument("--no-cloud-gate", action="store_true",
+                        help="云端预验门禁显式关（逃生门）：回退 941 fast-lane 事后兜底"
+                             "（TX_02 不可达/挂死时·028 §四处置后恢复）")
     解析器.add_argument("--solo", action="store_true",
                         help="旧单分支路径逃生门（不经队列直集成——队列机制异常时用）")
     解析器.add_argument("--selftest", action="store_true", help="正反例自测（纯函数面·CI 式）")
@@ -1055,6 +1218,12 @@ def 主流程() -> int:
     参数 = 解析器.parse_args()
     # 941（用户裁决 2026-10-02）：快速通道默认开——--no-fast-lane 显式回退本机全量
     参数.fast_lane = not 参数.no_fast_lane
+    # 1008（用户裁决 2026-10-03·方案甲）：云端预验门禁默认关——develop 回绿（171 销账）后
+    #   翻默认开（改常量 云端预验默认开 一处+AGENTS/028 同步）；显式旗优先于默认。
+    参数.cloud_gate = (not 参数.no_cloud_gate) and (云端预验默认开 or 参数.cloud_gate)
+    if 参数.no_cloud_gate:
+        print("[1008] --no-cloud-gate：云端预验门禁显式关闭——回退 941 fast-lane 事后兜底"
+              "（TX_02 异常时的逃生门·028 §四）。")
     if 参数.try_build_done or 参数.win_verified:
         print("[v3] --try-build-done/--win-verified 已随协议 v3 废除（接受即忽略）——"
               "本机门禁绿即集成，跨平台由集成后异步验收保障（AGENTS.md §8.3）。")

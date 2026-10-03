@@ -121,7 +121,7 @@ def 跑一轮(sha: str) -> dict:
     # 日志尾部摘录进结果（供 TX_01 结果页直显；完整日志在 run_*.log）
     with 轮日志路径.open("r", encoding="utf-8", errors="replace") as f:
         尾部 = f.readlines()[-40:]
-    结果 = {"sha": sha, "平台": "linux-x86_64", "步骤": 步骤们,
+    结果 = {"sha": sha, "分支": 分支, "平台": "linux-x86_64", "步骤": 步骤们,
             "绿": all(s.get("rc") == 0 for k, s in 步骤们.items() if k in ("同步", "配置", "构建", "单测", "e2e")),
             "总秒": round(time.time() - 开始), "时刻": datetime.now().isoformat(timespec="seconds"),
             "日志": 轮日志路径.name, "日志尾部": "".join(尾部).splitlines()[-20:]}
@@ -129,11 +129,35 @@ def 跑一轮(sha: str) -> dict:
 
 
 def 落盘(结果: dict) -> None:
-    (日志目录 / "latest.json").write_text(json.dumps(结果, ensure_ascii=False, indent=1),
-                                           encoding="utf-8")
-    (日志目录 / ("result_%s_%s.json" % (结果["sha"][:10],
+    """结果落盘+可选上报（1008·预验模式规则）：
+    - develop 常规轮：latest.json + result_*.json + 上报（既有行为）。
+    - 非 develop 分支（CN_CI_BRANCH 预验）：
+      · 恒写 预验_<sha10>.json（integrate.py 轮询取回的契约文件）+ result_*.json（历史档）；
+      · ci/预验-* 且绿 → 额外写 latest.json+上报：链顶即将成为 develop 头，develop 轮询轮
+        按「已跑过(sha)」跳过=云端零重复算力（1008 方案甲核心联动）；
+      · ci/预验-* 且红 → 不写 latest 不上报（develop 未收到该提交——latest 必须保持 develop 语义）；
+      · 任务分支预验（028 §三·PR CI 同款）→ 上报（带 分支 字段·结果页可区分），不写 latest。
+    """
+    文本 = json.dumps(结果, ensure_ascii=False, indent=1)
+    sha10 = 结果["sha"][:10]
+    当前分支 = 结果.get("分支", "develop")
+    if 当前分支 == "develop":
+        (日志目录 / "latest.json").write_text(文本, encoding="utf-8")
+        (日志目录 / ("result_%s_%s.json" % (sha10,
+                      datetime.now().strftime("%m%d_%H%M%S")))).write_text(
+            文本, encoding="utf-8")
+        上报(结果)
+        return
+    (日志目录 / ("预验_%s.json" % sha10)).write_text(文本, encoding="utf-8")
+    (日志目录 / ("result_%s_%s.json" % (sha10,
                   datetime.now().strftime("%m%d_%H%M%S")))).write_text(
-        json.dumps(结果, ensure_ascii=False, indent=1), encoding="utf-8")
+        文本, encoding="utf-8")
+    if 当前分支.startswith("ci/预验-"):
+        if 结果["绿"]:
+            (日志目录 / "latest.json").write_text(文本, encoding="utf-8")
+            上报(结果)
+    else:
+        上报(结果)
 
 
 def 上报(结果: dict) -> None:
@@ -159,23 +183,32 @@ def 上报(结果: dict) -> None:
 
 
 def 已跑过(sha: str) -> bool:
-    最近 = 日志目录 / "latest.json"
-    if not 最近.exists():
-        return False
-    try:
-        return json.loads(最近.read_text(encoding="utf-8")).get("sha") == sha
-    except Exception:
-        return False
+    """该 SHA 是否已有**绿**的 result_*.json（1008 修正：预验绿会覆盖 latest.json〔链顶=未来
+    develop 头〕，单看 latest 会把刚验过的 develop 头误判未跑→重复全量；按 result 历史档的
+    绿记录判定——预验绿的链顶 push 后 develop 轮据此跳过=云端零重复算力。红 result 不算数：
+    红 sha 若经 --no-cloud-gate 逃生门上了 develop，仍须 develop 轮真验）。"""
+    for 文件 in 日志目录.glob("result_%s_*.json" % sha[:10]):
+        try:
+            if json.loads(文件.read_text(encoding="utf-8")).get("绿"):
+                return True
+        except Exception:
+            continue
+    return False
 
 
-def 主(常驻: bool, 强制: bool) -> int:
+def 主(常驻: bool, 强制: bool, 等锁: bool = False) -> int:
     日志目录.mkdir(exist_ok=True)
     锁 = (锁文件.open("a+"))
     try:                                    # 非阻塞锁：cron 兜底撞上常驻跑轮=静默让路
         fcntl.flock(锁, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except OSError:
-        print("[锁] 已有轮在跑——退出。", flush=True)
-        return 0
+        if not 等锁:
+            print("[锁] 已有轮在跑——退出。", flush=True)
+            return 0
+        # --wait-lock（1008·ci/预验 触发用）：排队等现有轮（develop 常驻轮/其他预验）完成——
+        # 3.6G 内存双全量并发=923 OOM 铁律，预验必须串行排队而非并发抢跑
+        print("[锁] 已有轮在跑——等待（--wait-lock·预验排队）……", flush=True)
+        fcntl.flock(锁, fcntl.LOCK_EX)
     while True:
         sha = 取远端SHA()
         if sha is None:
@@ -183,10 +216,11 @@ def 主(常驻: bool, 强制: bool) -> int:
         elif 已跑过(sha) and not 强制:
             print("[跳过] %s 已跑过" % sha[:10], flush=True)
         else:
-            print("[开跑] %s @ %s" % (sha[:10], datetime.now().strftime("%H:%M:%S")), flush=True)
+            print("[开跑] %s @ %s（分支=%s%s）" % (sha[:10],
+                  datetime.now().strftime("%H:%M:%S"), 分支,
+                  "·预验" if 分支 != "develop" else ""), flush=True)
             结果 = 跑一轮(sha)
             落盘(结果)
-            上报(结果)
             print("[完成] 绿=%s 总秒=%s 详情=%s" % (结果["绿"], 结果["总秒"], 结果["日志"]), flush=True)
         if not 常驻:
             return 0
@@ -196,6 +230,7 @@ def 主(常驻: bool, 强制: bool) -> int:
 if __name__ == "__main__":
     常 = "--loop" in sys.argv
     强 = "--force" in sys.argv
+    等锁 = "--wait-lock" in sys.argv
     if "--once" not in sys.argv and not 常:
-        print("用法: ci_daemon.py --loop | --once [--force]；无参默认 --once")
-    raise SystemExit(主(常, 强))
+        print("用法: ci_daemon.py --loop | --once [--force] [--wait-lock]；无参默认 --once")
+    raise SystemExit(主(常, 强, 等锁))
