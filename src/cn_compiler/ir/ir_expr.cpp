@@ -749,7 +749,7 @@ void IRGenerator::visitLambdaExpr(LambdaExpr* node) {
     //     体内读取解引用（读最新值）、赋值经指针（写外部变量）。
     //   [=]/[]/[变量] 值捕获：参数槽存定义处值快照（值语义，后续外部修改不影响）。
     const bool allByRef = (node->captureKind == LambdaCaptureKind::ByRef);
-    std::vector<bool> captureRefs(capturedNames.size(), allByRef);
+    std::vector<char> captureRefs(capturedNames.size(), allByRef ? 1 : 0);
     // 保存外层生成状态（lambda 内嵌在表达式中，生成匿名函数后须恢复主函数状态）
     ir::IRFunction* outerFunction = function_;
     ir::IRBlock* outerBlock = currentBlock_;
@@ -761,7 +761,7 @@ void IRGenerator::visitLambdaExpr(LambdaExpr* node) {
     //   [&] 引用捕获参数类型为 ptr（存被捕获变量地址），体内 byRef 标记驱动解引用
     for (std::size_t ci = 0; ci < capturedNames.size(); ++ci) {
         const std::string& cap = capturedNames[ci];
-        const bool byRef = captureRefs[ci];
+        const bool byRef = captureRefs[ci] != 0;
         const std::string capType = lookupVarType(cap);
         const std::string capSrc = lookupSrcType(cap);
         // 缺陷修复（[=] 结构体值捕获）：结构体值捕获实参是"定义处深拷贝临时

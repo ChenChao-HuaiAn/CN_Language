@@ -639,7 +639,10 @@ private:
     std::vector<std::string> lastLambdaParamTypes_;
     // 最近 lambda 各捕获是否引用捕获（缺陷修复：决定定义处捕获实参是
     //   值快照（[=]/[变量]）还是变量地址指针（[&]），genVarDecl 登记闭包时使用）
-    std::vector<bool> lastLambdaCaptureRefs_;
+    //   用 char 不用 bool：vector<bool> 位压缩特化在 GCC 12 触发 -Warray-bounds
+    //   误报（memmove offset 越界·ir_oop_field.cpp push_back 点·GCC 15 云端绿
+    //   982 轮实证）——非真正容器，char 存 0/1 语义等价且跨编译器干净
+    std::vector<char> lastLambdaCaptureRefs_;
     // 查询变量是否为"引用捕获参数"（lambda 匿名函数内 [&] 捕获的参数槽存
     //   被捕获变量地址，读取须解引用、赋值须经指针——规格书04-一D 引用语义）
     bool isByRefCapture(const std::string& name) const;

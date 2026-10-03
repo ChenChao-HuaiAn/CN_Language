@@ -36,9 +36,10 @@
 #define TEST_CLOSE(fd) _close(fd)
 #else
 #define TEST_FOPEN(path, mode, f) ((f) = std::fopen((path), (mode))) != nullptr
+// 失败分支不得 fclose(f)：freopen 失败时 (f) 恒为 null 且原流已被 freopen 自身
+//   关闭（C11 7.21.5.4）——旧写法 fclose(null)=UB（GCC 12 -Wnonnull 拦截·982 轮）
 #define TEST_FREOPEN(path, mode, stream, f) \
-    (((f) = std::freopen((path), (mode), (stream))) != nullptr \
-     ? true : (std::fclose(f), false))
+    (((f) = std::freopen((path), (mode), (stream))) != nullptr)
 #define TEST_DUP(fd) dup(fd)
 #define TEST_DUP2(oldfd, newfd) dup2((oldfd), (newfd))
 #define TEST_FILENO(stream) fileno(stream)
@@ -77,9 +78,11 @@ void setStdinText(const std::string& text, const std::string& path) {
 void restoreStdin(const std::string& path) {
     FILE* fp = nullptr;
 #ifdef _WIN32
-    TEST_FREOPEN("NUL", "r", stdin, fp);
+    EXPECT_TRUE(TEST_FREOPEN("NUL", "r", stdin, fp))
+        << "恢复 stdin 失败（后续清理可能受影响）";
 #else
-    TEST_FREOPEN("/dev/null", "r", stdin, fp);
+    EXPECT_TRUE(TEST_FREOPEN("/dev/null", "r", stdin, fp))
+        << "恢复 stdin 失败（后续清理可能受影响）";
 #endif
     errno = 0;
     const int rmRet = std::remove(path.c_str());

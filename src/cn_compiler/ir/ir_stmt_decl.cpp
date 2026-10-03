@@ -547,7 +547,7 @@ void IRGenerator::genVarDecl(VarDecl* node) {
             const std::size_t refCount = lastLambdaCaptureRefs_.size();
             for (std::size_t ci = 0; ci < capCount; ++ci) {
                 const std::string& cap = lastLambdaCaptures_[ci];
-                const bool byRef = (ci < refCount) && lastLambdaCaptureRefs_[ci];
+                const bool byRef = (ci < refCount) && lastLambdaCaptureRefs_[ci] != 0;
                 if (byRef) {
                     // 引用捕获：&变量（AddrOf 取变量槽地址）
                     const std::string capUnique = lookupVarName(cap);
