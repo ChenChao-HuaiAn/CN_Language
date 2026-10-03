@@ -62,9 +62,15 @@ if "--l2" in sys.argv:
     import subprocess as _sp
     基准 = _sp.run(["git", "merge-base", "HEAD", "gitcode/develop"], cwd=仓库根,
                    capture_output=True, text=True).stdout.strip()
-    改动 = (_sp.run(["git", "diff", "--name-only", 基准], cwd=仓库根,
-                    capture_output=True, text=True).stdout or "").split()
-    用例集 = sorted({p.split("/")[1] for p in 改动
+    # 979 修复（586 轮教训同族再犯）：core.quotepath 默认把中文用例目录名转义成
+    #   "\346\227\..." 八进制串 → 子串 filter 永不匹配 → L2 子集空转 rc=1。
+    #   显式关 quotepath 保证中文路径原样输出（filter 匹配靠它）。
+    改动 = (_sp.run(["git", "-c", "core.quotepath=false", "diff", "--name-only", 基准],
+                    cwd=仓库根, capture_output=True, text=True).stdout or "").split()
+    # 979 修复②：split 索引 [1]=「e2e」段，用例目录名在 [2]——原 [1] 使任何含
+    #   用例改动的写集 filter 恒为「e2e」（零匹配 rc=1·--l2 首战 924 起潜伏，
+    #   979 首个触用例写集实锤）。
+    用例集 = sorted({p.split("/")[2] for p in 改动
                      if p.startswith("tests/e2e/") and len(p.split("/")) > 2})
     滤们 = 用例集 + (["_v2", "自举"] if any(p.startswith("CN语言编译器v2/") for p in 改动) else [])
     if not 滤们:
