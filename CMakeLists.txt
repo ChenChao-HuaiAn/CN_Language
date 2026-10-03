@@ -327,6 +327,7 @@ add_library(cn_runtime STATIC
     src/runtime/io_api.cpp
     src/runtime/intern_api.cpp
     src/runtime/runtime.cpp
+    src/runtime/thread_api.cpp
     src/runtime/string_api.cpp
     src/runtime/i128_api.cpp
     src/runtime/math_api.cpp
@@ -349,7 +350,7 @@ endif()
 #   /MT（静态 CRT）运行时 obj 到 target/，消除陈旧产物与运行时漂移。
 if(MSVC)
     set(CNRT_79_SRCS
-        io_api intern_api runtime string_api i128_api math_api input_api file_api time_api system_api)
+        io_api intern_api runtime string_api i128_api math_api input_api file_api time_api system_api thread_api)
     set(CNRT_79_OBJS "")
     foreach(_s ${CNRT_79_SRCS})
         set(_obj ${CMAKE_SOURCE_DIR}/target/${_s}.obj)
