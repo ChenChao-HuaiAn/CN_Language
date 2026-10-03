@@ -62,3 +62,4 @@ build_phase4/
 ci_config.json
 ci-logs/
 scripts/queue_client.json
+core
