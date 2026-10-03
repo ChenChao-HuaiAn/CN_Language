@@ -1177,6 +1177,8 @@ void X64CodeGenerator::emitInstruction(AsmWriter& writer, const ir::IRInstructio
             return;
         case ir::Opcode::FieldAddr:
             emitFieldAddr(writer, inst);
+        case ir::Opcode::StrFieldAddr:
+            emitStrFieldAddr(writer, inst);
             return;
         case ir::Opcode::LoadPtr:
         case ir::Opcode::StorePtr:

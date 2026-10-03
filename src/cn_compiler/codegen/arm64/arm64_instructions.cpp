@@ -956,6 +956,22 @@ void Arm64CodeGenerator::emitFieldAddr(Arm64AsmWriter& writer,
     }
 }
 
+// 991（008 挂账②·094 空安全）：串字段地址=FieldAddr 判空豁免形态——
+//   串句柄 0=空串（运行时串函数已容错），不触发错误码 3。
+void Arm64CodeGenerator::emitStrFieldAddr(Arm64AsmWriter& writer,
+                                          const ir::IRInstruction& inst) {
+    const std::string res = resultTargetReg(inst.result.id, "x9");
+    const std::string base = operandSourceReg(writer, inst.operands[0], res);
+    const long long fieldOffset = std::stoll(inst.extra);
+    if (fieldOffset != 0) {
+        emitMovImm(writer, "x10", static_cast<std::uint64_t>(fieldOffset));
+        writer.line("add " + res + ", " + base + ", x10");
+        storeVirtualResult(writer, inst.result.id, res, "ptr");
+    } else {
+        storeVirtualResult(writer, inst.result.id, base, "ptr");
+    }
+}
+
 // 指针加载/存储（LoadPtr/StorePtr）：经指针值地址访存（含空指针检查错误码3）
 void Arm64CodeGenerator::emitPtrLoadStore(Arm64AsmWriter& writer,
                                           const ir::IRInstruction& inst) {

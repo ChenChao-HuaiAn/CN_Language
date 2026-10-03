@@ -211,6 +211,8 @@ private:
 
     // 生成结构体字段地址（FieldAddr：基址+偏移，含空指针检查错误码3）
     void emitFieldAddr(LinuxX64AsmWriter& writer, const ir::IRInstruction& inst);
+    // 991（008 挂账②·094 空安全）：串字段地址=FieldAddr 判空豁免形态
+    void emitStrFieldAddr(LinuxX64AsmWriter& writer, const ir::IRInstruction& inst);
 
     // 生成指针加载/存储（LoadPtr/StorePtr：经指针值地址访存，空指针检查错误码3）
     void emitPtrLoadStore(LinuxX64AsmWriter& writer, const ir::IRInstruction& inst);

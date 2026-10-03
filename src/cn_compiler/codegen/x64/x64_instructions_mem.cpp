@@ -215,6 +215,20 @@ void X64CodeGenerator::emitFieldAddr(AsmWriter& writer, const ir::IRInstruction&
     }
 }
 
+// 991（008 挂账②·094 空安全）：串字段地址=FieldAddr 判空豁免形态——
+//   串句柄 0=空串（运行时串函数已容错），不触发错误码 3。
+//   仅限字符串类型字段（生成层类型知情专发）。
+void X64CodeGenerator::emitStrFieldAddr(AsmWriter& writer, const ir::IRInstruction& inst) {
+    const std::string base = operandText(inst.operands[0]);
+    const std::string dst = resultText(inst.result);
+    const long long fieldOffset = std::stoll(inst.extra);
+    writer.line("mov rax, " + base);
+    if (fieldOffset != 0) {
+        writer.line("add rax, " + std::to_string(fieldOffset));
+    }
+    writer.line("mov " + dst + ", rax");
+}
+
 // 指针加载/存储（LoadPtr/StorePtr）：经指针值地址访存
 // LoadPtr：addr=operand[0]（指针值）-> 按 inst.type 宽度加载到结果槽
 // StorePtr：addr=operand[0]（指针值），value=operand[1] -> 写入

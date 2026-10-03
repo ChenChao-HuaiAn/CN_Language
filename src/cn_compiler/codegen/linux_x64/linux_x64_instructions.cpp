@@ -799,6 +799,18 @@ void LinuxX64CodeGenerator::emitFieldAddr(LinuxX64AsmWriter& writer,
     emitStackStore(writer, regSlotOffset(inst.result.id), "r10", "ptr");
 }
 
+// 991（008 挂账②·094 空安全）：串字段地址=FieldAddr 判空豁免形态——
+//   串句柄 0=空串（运行时串函数已容错），不触发错误码 3。
+void LinuxX64CodeGenerator::emitStrFieldAddr(LinuxX64AsmWriter& writer,
+                                             const ir::IRInstruction& inst) {
+    loadOperandToX(writer, inst.operands[0], "r10");
+    const long long fieldOffset = std::stoll(inst.extra);
+    if (fieldOffset != 0) {
+        writer.line("add r10, " + std::to_string(fieldOffset));
+    }
+    emitStackStore(writer, regSlotOffset(inst.result.id), "r10", "ptr");
+}
+
 // 指针加载/存储（LoadPtr/StorePtr）：经指针值地址访存（含空指针检查错误码3）
 void LinuxX64CodeGenerator::emitPtrLoadStore(LinuxX64AsmWriter& writer,
                                              const ir::IRInstruction& inst) {

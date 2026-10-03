@@ -185,6 +185,9 @@ void LinuxX64CodeGenerator::emitInstruction(LinuxX64AsmWriter& writer,
         case ir::Opcode::FieldAddr:
             emitFieldAddr(writer, inst);
             return;
+        case ir::Opcode::StrFieldAddr:
+            emitStrFieldAddr(writer, inst);
+            return;
         case ir::Opcode::LoadPtr:
         case ir::Opcode::StorePtr:
             emitPtrLoadStore(writer, inst);
