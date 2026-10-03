@@ -248,7 +248,7 @@ bool isKnownOpcode(Opcode op) {
         case Opcode::Cast: case Opcode::Copy:
         case Opcode::Load: case Opcode::Store: case Opcode::Alloca:
         case Opcode::AddrOf: case Opcode::LoadPtr: case Opcode::StorePtr:
-        case Opcode::FieldAddr: case Opcode::CopyStruct:
+        case Opcode::FieldAddr: case Opcode::StrFieldAddr: case Opcode::CopyStruct:
         case Opcode::Jump: case Opcode::Branch:
         case Opcode::Call: case Opcode::CallIndirect: case Opcode::Return:
         case Opcode::NewObject: case Opcode::DeleteObject:

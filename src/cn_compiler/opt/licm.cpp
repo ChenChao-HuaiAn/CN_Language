@@ -129,6 +129,7 @@ bool LICMPass::runFunction(ir::IRFunction& fn) {
                     if (inst.opcode == ir::Opcode::Load ||
                         inst.opcode == ir::Opcode::LoadPtr ||
                         inst.opcode == ir::Opcode::FieldAddr ||
+                        inst.opcode == ir::Opcode::StrFieldAddr ||
                         inst.opcode == ir::Opcode::Call ||
                         inst.opcode == ir::Opcode::CallIndirect ||
                         inst.opcode == ir::Opcode::Alloca) {

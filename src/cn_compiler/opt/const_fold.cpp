@@ -635,6 +635,7 @@ bool ConstFoldPass::run(ir::IRModule& module) {
                     inst.opcode == ir::Opcode::StorePtr || inst.opcode == ir::Opcode::Call ||
                     inst.opcode == ir::Opcode::CallIndirect ||
                     inst.opcode == ir::Opcode::FieldAddr ||
+                    inst.opcode == ir::Opcode::StrFieldAddr ||
                     inst.opcode == ir::Opcode::AddrOf;
                 // 注意7：Branch 条件（尾部操作数）必须传播——条件跳转块的
                 //        最后一条指令被折叠为 ConstBool 后，尾部条件寄存器若不替换，

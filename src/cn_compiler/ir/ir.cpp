@@ -53,6 +53,7 @@ const char* opcodeToString(Opcode opcode) {
         case Opcode::LoadPtr: return "指针加载";
         case Opcode::StorePtr: return "指针存储";
         case Opcode::FieldAddr: return "字段地址";
+        case Opcode::StrFieldAddr: return "串字段地址";
         case Opcode::CopyStruct: return "结构体拷贝";
         case Opcode::Jump: return "跳转";
         case Opcode::Branch: return "条件跳转";
