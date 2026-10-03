@@ -173,7 +173,9 @@ def 拷贝用例树干净(源目录, 目标目录, ignore=None):
     #   三平台支持：win ml64/link；linux as/g++）——跳过项随 v1 用例一并摘除。
     "linux-x86_64": [],
     "win-x64": [
-        # win-x64 暂无非平台限制用例
+        # 996（027 波 1·线程 E2E）：win=运行时桩（运行时错误9）·linux 云端=真线程
+        #   （__cn_thread_*/__cn_mutex_* pthread）——win 本地跳过·linux 全量真跑
+        "586_线程互斥锁",
     ],
 }
 

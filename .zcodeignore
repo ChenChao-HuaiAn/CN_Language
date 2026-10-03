@@ -1,0 +1,90 @@
+# 构建产物
+build/
+target/
+out/
+
+# MSVC 编译中间产物（cl/ml64/link 直接调用产生的杂散文件）
+*.obj
+*.exe
+*.asm
+*.lib
+*.pdb
+*.ilk
+*.exp
+*.res
+
+# 单测临时文件（test_input_api 等运行时测试产生的 stdin 重定向文件）
+test_input_api_*.txt
+*.tmp
+
+# Python 缓存
+__pycache__/
+*.pyc
+
+# AI记忆库（不随git传递，新机器从零积累）
+.ai-coder/memory/
+.ai-coder/tasks/
+
+# DSH技能发现链接（junction，指向 .ai-coder/skills 与设计系统）
+.agents/
+.ai-coder/
+design-system/
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+CTestTestfile.cmake
+*.vcxproj
+*.vcxproj.filters
+*.vcxproj.user
+*.sln
+*.suo
+
+# IDE
+.vscode/
+.idea/
+*.user
+
+# 系统文件
+Thumbs.db
+.DS_Store
+build_phase4/  
+
+# DSH 会话回滚记录与 Mnemon 本地记忆库（本机 AI 工作数据，不入库）
+.dsh/
+.mnemon/
+
+# ZCode 本地会话计划缓存（本机 AI 工作数据，不入库；.zcode/skills/ 为项目技能集仍入库）
+.zcode/plans/
+
+# ===== ↑ 以上同步自 .gitignore（「从 .gitignore 同步」只重写以上部分）=====
+.git/
+.hg/
+.svn/
+node_modules/
+bower_components/
+jspm_packages/
+site-packages/
+venv/
+coverage/
+htmlcov/
+lcov-report/
+cmakefiles/
+cmake-build-*/
+bazel-*/
+pods/
+deriveddata/
+storybook-static/
+playwright-report/
+test-results/
+allure-results/
+allure-report/
+cdk.out/
+*.egg-info/
+*.dist-info/
+eggs/
+pip-wheel-metadata/
+wheels/
+# ----- ↑ 以上为 ZCode 默认排除规则（自定义规则请写在本行下方，不会被同步/恢复改动）-----
+# 自定义规则写在下方（本行提示可删除）
