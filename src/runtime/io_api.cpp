@@ -1048,6 +1048,26 @@ static LONG WINAPI cn_veh_filter(EXCEPTION_POINTERS* info) {
                               (void*)info->ContextRecord->Rdx, (void*)info->ContextRecord->R8,
                               (void*)info->ContextRecord->R9);
         if (n > 0) { DWORD written; WriteFile(GetStdHandle(STD_ERROR_HANDLE), buf, (DWORD)n, &written, nullptr); }
+        // 990（171 深水·栈顶转储）：RSP 起 16 个四字——崩点 rdi/rsi=-1 且
+        //   返回地址可能被写坏跳入随机符号时 rbp 链不可靠；栈顶原始数据供
+        //   对位 map 手工解析真调用链。
+        {
+            uintptr_t rsp = info->ContextRecord ? info->ContextRecord->Rsp : 0;
+            HMODULE mod3 = nullptr;
+            GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+                                   GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                               (LPCWSTR)(info->ContextRecord ? info->ContextRecord->Rip : 0), &mod3);
+            uintptr_t base3 = mod3 ? (uintptr_t)mod3 : 0;
+            for (int q = 0; q < 16 && rsp; q++) {
+                uintptr_t v = 0;
+                SIZE_T rd = 0;
+                if (!ReadProcessMemory(GetCurrentProcess(), (LPCVOID)(rsp + q * 8), &v, 8, &rd) || rd != 8) break;
+                char b3[96];
+                int n3 = std::snprintf(b3, sizeof(b3), "[veh] stk%02d %p%s", q, (void*)v,
+                                       (v > base3 && v < base3 + 0x400000) ? " [mod]" : "");
+                if (n3 > 0) { DWORD w; WriteFile(GetStdHandle(STD_ERROR_HANDLE), b3, (DWORD)n3, &w, nullptr); }
+            }
+        }
     }
     // 721：rbp 链回溯（CN 生成代码 push rbp/mov rbp,rsp 帧链）——打印各层返回地址 RVA
     {
