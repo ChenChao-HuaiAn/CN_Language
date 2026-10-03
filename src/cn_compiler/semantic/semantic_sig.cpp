@@ -132,8 +132,28 @@ std::string SemanticAnalyzer::funcFirstSigKey(const std::string& name) const {
     std::string best;
     for (const auto& kv : functions_) {
         const std::size_t hashPos = kv.first.find('#');
-        const std::string base = (hashPos == std::string::npos) ? kv.first
-                                                                : kv.first.substr(0, hashPos);
+        const std::size_t dollarPos = kv.first.find('$');
+        // 997 案丁：与 hasFunctionName 同一套跨模块 base 剥离（52_library 第 8 层键
+        //   形态=模块$名#参数 / 模块$名）——原版仅剥 '#' 前缀，crate 合并态（导入
+        //   任意模块时当前模块函数键也写 crate 名）base 匹配恒失败=函数名衰减全断
+        //   （打印(函数名)/初始化位/赋值位三态挂·a27/a25/a23 探针·无导入态单文件
+        //   singleModule 纯名键掩盖至今）。泛型实例键（排序$整32·name 含 '$'）
+        //   不剥离，与 hasFunctionName 判据一致。
+        const bool crossModuleNoHash =
+            (hashPos == std::string::npos && dollarPos != std::string::npos &&
+             name.find('$') == std::string::npos);
+        const bool crossModuleWithHash =
+            (hashPos != std::string::npos && dollarPos != std::string::npos &&
+             dollarPos < hashPos);
+        std::string base;
+        if (crossModuleNoHash) {
+            base = kv.first.substr(dollarPos + 1);
+        } else if (crossModuleWithHash) {
+            base = kv.first.substr(dollarPos + 1, hashPos - dollarPos - 1);
+        } else {
+            base = (hashPos == std::string::npos) ? kv.first
+                                                  : kv.first.substr(0, hashPos);
+        }
         if (base != name) continue;
         if (best.empty() || kv.first < best) best = kv.first;
     }
