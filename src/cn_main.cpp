@@ -613,6 +613,7 @@ static bool compileRuntime(const std::string& target, const std::string& vcvarsB
         "src/runtime/intern_api.cpp",  // 2026-08-25 自举重建 P1：字符串驻留（Symbol ID）
         "src/runtime/runtime.cpp",
         "src/runtime/string_api.cpp",
+        "src/runtime/thread_api.cpp",  // 996 (027 wave1)
         "src/runtime/i128_api.cpp",
         "src/runtime/math_api.cpp",  // Task 6.3 数学库（__cn_sqrt 等）
         "src/runtime/input_api.cpp", // Task 6.2 输入 API（__cn_read_* / __cn_print_err）
@@ -669,7 +670,7 @@ static bool linkExe(const std::string& target, const std::string& vcvarsBat,
             "/DEFAULTLIB:shell32.lib "  // Task 6.5 系统库：CommandLineToArgvW（Unicode 命令行解析）
             "/OUT:\"" + exePath + "\" \"" + userObj + "\" \"" +
             runtimeObjDir + "\\io_api.obj\" \"" + runtimeObjDir + "\\intern_api.obj\" \"" +
-            runtimeObjDir + "\\runtime.obj\" \"" + runtimeObjDir + "\\string_api.obj\" \"" + runtimeObjDir + "\\i128_api.obj\" \"" +
+            runtimeObjDir + "\\runtime.obj\" \"" + runtimeObjDir + "\\thread_api.obj\" \"" + runtimeObjDir + "\\string_api.obj\" \"" + runtimeObjDir + "\\i128_api.obj\" \"" +
             runtimeObjDir + "\\math_api.obj\" \"" + runtimeObjDir + "\\input_api.obj\" \"" +
             runtimeObjDir + "\\file_api.obj\" \"" + runtimeObjDir + "\\time_api.obj\" \"" +
             runtimeObjDir + "\\system_api.obj\"";
@@ -681,7 +682,7 @@ static bool linkExe(const std::string& target, const std::string& vcvarsBat,
         cmdLine =
             linuxCxxTool() + " -no-pie -o \"" + exePath + "\" \"" + userObj + "\" \"" +
             runtimeObjDir + "/io_api.o\" \"" + runtimeObjDir + "/intern_api.o\" \"" +
-            runtimeObjDir + "/runtime.o\" \"" + runtimeObjDir + "/string_api.o\" \"" + runtimeObjDir + "/i128_api.o\" \"" +
+            runtimeObjDir + "/runtime.o\" \"" + runtimeObjDir + "/thread_api.o\" \"" + runtimeObjDir + "/string_api.o\" \"" + runtimeObjDir + "/i128_api.o\" \"" +
             runtimeObjDir + "/math_api.o\" \"" + runtimeObjDir + "/input_api.o\" \"" +
             runtimeObjDir + "/file_api.o\" \"" + runtimeObjDir + "/time_api.o\" \"" +
             runtimeObjDir + "/system_api.o\"";

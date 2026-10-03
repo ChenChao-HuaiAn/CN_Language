@@ -231,7 +231,7 @@ void SemanticAnalyzer::registerBuiltins() {
         info.hasBody = true;
         functions_[name] = info;
     };
-    regThreadFn("线程::新", "空类型*", {"整64(空类型*)", "空类型*"});
+    regThreadFn("线程::新", "空类型*", {"函数指针<整64>(空类型*)", "空类型*"});
     regThreadFn("线程::并入", "整64", {"空类型*"});
     regThreadFn("线程::互斥锁新建", "空类型*", {});
     regThreadFn("线程::上锁", "空类型", {"空类型*"});
