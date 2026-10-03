@@ -613,7 +613,7 @@ static bool compileRuntime(const std::string& target, const std::string& vcvarsB
         "src/runtime/intern_api.cpp",  // 2026-08-25 自举重建 P1：字符串驻留（Symbol ID）
         "src/runtime/runtime.cpp",
         "src/runtime/string_api.cpp",
-        "src/runtime/thread_api.cpp",  // 996 (027 wave1)
+        "src/runtime/thread_api.cpp",  // 996（027 波 1·线程库 __cn_thread_*/__cn_mutex_*）
         "src/runtime/i128_api.cpp",
         "src/runtime/math_api.cpp",  // Task 6.3 数学库（__cn_sqrt 等）
         "src/runtime/input_api.cpp", // Task 6.2 输入 API（__cn_read_* / __cn_print_err）
