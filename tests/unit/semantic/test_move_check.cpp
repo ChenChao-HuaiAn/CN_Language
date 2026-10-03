@@ -61,17 +61,19 @@ TEST(MoveCheckTest, RejectReadAfterTransfer) {
     EXPECT_NE(r.messages.find("已转移，不能继续使用"), std::string::npos);
 }
 
-// 转移后赋值目标
+// 981 甲裁决（001 条文⑥赋值复活·2026-10-03 用户批准）：转移后**纯赋值**
+//   目标=复活（合法·errorCount==0），复活后再读也合法——原「拒绝」断言
+//   随条文修正升级；右值读仍拦由既有用例承载。
 TEST(MoveCheckTest, RejectAssignTargetAfterTransfer) {
     auto r = analyzeSource(R"CN(不安全 函数 坏() -> 整32 {
     整64 基 = 5;
     整64* q = &基;
     整64* r = 转移(q);
     q = r;
+    整64* s = q;
     返回 0;
 })CN");
-    EXPECT_GE(r.errorCount, 1);
-    EXPECT_NE(r.messages.find("已转移，不能继续使用"), std::string::npos);
+    EXPECT_EQ(r.errorCount, 0);
 }
 
 // 转移后传参

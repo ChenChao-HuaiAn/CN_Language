@@ -198,6 +198,18 @@ bool SemanticAnalyzer::lookupMoved(const std::string& name, int& outLine) const 
     return false;
 }
 
+// 981 赋值复活（001 条文⑥·用户裁决甲）：清除 name 声明层的已转移标记——
+//   纯赋值（v = x）写不读旧值=重新初始化（Rust assign-to-move 同款）。
+//   与 markMovedVar 同序（从内到外第一层含该名者）；无标记=幂等无操作。
+void SemanticAnalyzer::reviveMovedVar(const std::string& name) {
+    for (std::size_t i = scopes_.size(); i-- > 0;) {
+        if (scopes_[i].count(name) > 0) {
+            if (i < scopeMoved_.size()) scopeMoved_[i].erase(name);
+            return;
+        }
+    }
+}
+
 // ==================== 980 波7（任务 007 NLL）：已转移集分支合流设施 ====================
 // 886 词法假阳性根治——机制与用法规格见 semantic.hpp 设施注释块。
 

@@ -76,7 +76,18 @@ void lueWalkExpr(Expr* e, LueScanState& st) {
             break;
         case NodeType::AssignmentExpr: {
             auto* a = static_cast<AssignmentExpr*>(e);
-            lueWalkExpr(a->target.get(), st);
+            // 981 赋值复活（001 条文⑥·LUE 条文②活性化）：**纯赋值**目标=写
+            //   不读旧值——不计入「读出现」（复活点·旧值无人再读可消除）；
+            //   复合赋值（+= 等）与成员/下标/解引用目标（需读旧值）照算。
+            //   闭包内纯赋值目标仍保守计 closureHit（防逃逸捕获·④不放宽）。
+            if (SemanticAnalyzer::isCompoundAssign(a->op) ||
+                a->target->getType() != NodeType::IdentifierExpr) {
+                lueWalkExpr(a->target.get(), st);
+            } else if (static_cast<IdentifierExpr*>(a->target.get())->name ==
+                           st.name &&
+                       st.inClosure) {
+                st.closureHit = true;
+            }
             lueWalkExpr(a->value.get(), st);
             break;
         }

@@ -490,6 +490,9 @@ private:
     bool lookupMoved(const std::string& name, int& outLine) const;
     // 已转移变量使用拒绝（读值/左值共用）——命中即报 E0382 对标诊断并返回 true
     bool reportMovedUse(const std::string& name, const SourceLocation& loc);
+    // 981 赋值复活（001 条文⑥·用户裁决甲）：清除 name 的已转移标记（纯赋值
+    //   写点=复活点·Rust assign-to-move 同款）——与 markMovedVar 同序找声明层。
+    void reviveMovedVar(const std::string& name);
     // ==================== 980 波7（任务 007 NLL）：已转移集分支合流设施 ====================
     // 背景：markMovedVar 词法标记跨互斥分支残留（886 轮 货舱解析.cn 115/117 假阳性
     //   实锤——「分支互斥+循环跨迭代复用」被迫显式复制化解）。根治=分支体遍历按
@@ -511,6 +514,9 @@ private:
     void movedCheckBranches(const std::function<void()>& thenWalk,
                             const std::function<void()>& elseWalk,
                             bool thenExits, bool elseExits);
+    // 是否复合赋值运算符（+= -= *= /= %= 等）——981 起 LUE 扫描（semantic_lue.cpp
+    //   匿名命名空间）亦需判定「纯赋值=写不读」，提为 public。
+    static bool isCompoundAssign(Operator op);
    private:
     // ==================== 任务 094：字符串借用污染名单（语义层等价实现） ====================
     // 登记（当前层；与 IR markStringTainted 五登记点判据逐条对齐·注释互指）；
@@ -787,9 +793,6 @@ private:
     static std::string commonNumericType(const std::string& a, const std::string& b) {
         return types::commonNumericType(a, b);
     }
-    // 是否复合赋值运算符（+= -= *= /= %= 等）
-    static bool isCompoundAssign(Operator op);
-
     // ==================== 检查辅助 ====================
     std::string checkExpr(Expr* node);             // 检查表达式，返回推断类型
     void checkStmt(Stmt* node);                    // 检查语句（分发到visit）

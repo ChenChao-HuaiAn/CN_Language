@@ -621,6 +621,13 @@ void SemanticAnalyzer::visitAssignmentExpr(AssignmentExpr* node) {
     if (lvalueOk) {
         defInitMarkAssignTarget(node->target.get());
     }
+    // 981 赋值复活（001 条文⑥·用户裁决甲）：**纯赋值**成功路径尾部对标识符
+    //   目标清除已转移标记=复活点（写不读旧值·Rust assign-to-move 同款）。
+    //   成员/下标目标不复活（需读旧值·仍拦）；复合赋值已在左值检查拦。
+    if (lvalueOk && !isCompoundAssign(node->op) &&
+        node->target->getType() == NodeType::IdentifierExpr) {
+        reviveMovedVar(static_cast<const IdentifierExpr*>(node->target.get())->name);
+    }
 }
 
 // ==================== 175-a 族子方法（原 visitAssignmentExpr 541~886 段） ====================
@@ -733,9 +740,12 @@ void SemanticAnalyzer::checkIdentifierAssignTarget(AssignmentExpr* node,
                     "' 是只读借用，不能赋值");
             lvalueOk = false;
         }
-        // plans/019 阶段1（2026-09-10）：已转移变量不可作赋值目标
-        //   （赋值=使用；转移后获得新值请使用新变量名）
-        else if (reportMovedUse(ident->name, ident->location)) {
+        // plans/019 阶段1（2026-09-10）立→981 甲裁决修正（001 条文⑥赋值复活）：
+        //   **纯赋值**（v = x）目标不再因已转移拒绝——写不读旧值=复活点
+        //   （Rust assign-to-move 同款·写点清标记见 visitAssignmentExpr 尾部）；
+        //   **复合赋值**（+= 等）读旧值照拦（条文③读性使用）。
+        else if (isCompoundAssign(node->op) &&
+                 reportMovedUse(ident->name, ident->location)) {
             lvalueOk = false;
         }
     } else {
