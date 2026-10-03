@@ -24,6 +24,29 @@
 
 namespace cn_compiler {
 
+// 980 波7（任务 007 NLL）：trackIfCheck 各形态共用的 moved 分支遍历 RAII——
+//   构造=快照入口态；thenEnd()=快照真支终态并恢复入口态（标记不泄漏给 else）；
+//   elseEnd()=终止支口径+may 合流（Rust E0382 同款·规格见 semantic.hpp 设施注释）。
+namespace {
+struct MovedBranchScope {
+    SemanticAnalyzer& sa;
+    SemanticAnalyzer::MovedSet base;
+    SemanticAnalyzer::MovedSet afterThen;
+    explicit MovedBranchScope(SemanticAnalyzer& s)
+        : sa(s), base(s.snapshotMoved()) {}
+    void thenEnd() {
+        afterThen = sa.snapshotMoved();
+        sa.restoreMoved(base);
+    }
+    void elseEnd(bool thenExits, bool elseExits) {
+        SemanticAnalyzer::MovedSet afterElse = sa.snapshotMoved();
+        if (thenExits) { sa.restoreMoved(afterElse); return; }
+        if (elseExits) { sa.restoreMoved(afterThen); return; }
+        sa.mergeMovedOr(afterThen);
+    }
+};
+} // namespace
+
 // ==================== 结果/可选模板类型解析（Task 3.5） ====================
 
 // 是否 结果<T,E> 模板类型（形如 "结果<整32,整32>"）
@@ -669,18 +692,26 @@ void SemanticAnalyzer::trackIfCheck(IfStmt* node) {
     const std::string memberName = cond->memberName;
     // 条件对象类型（结果<T,E> 或 可选<T>；已由 visitIfStmt 前置判断）
     const std::string condType = checkExpr(cond->object.get());
+    // 980 波7（任务 007 NLL）：终止支口径（各形态 moved 合流共用）
+    const bool mvThenExits = node->thenBranch != nullptr &&
+                             stmtGuaranteesReturn(node->thenBranch.get());
+    const bool mvElseExits = node->elseBranch != nullptr &&
+                             stmtGuaranteesReturn(node->elseBranch.get());
 
     if (isResultType(condType) && memberName == "正常") {
         // 标记语义：真分支可访问 .值；否则分支可访问 .错误；取反时两支互换。
+        MovedBranchScope mv(*this);
         if (!negated) {
             markChecked(varName, "正常");
             checkBlock(node->thenBranch.get());
+            mv.thenEnd();
             if (node->elseBranch == nullptr) {
                 diagnostics_.report(DiagnosticLevel::Warning, node->location,
                                     "检查 结果.正常 后未处理错误分支（缺少 否则 { 处理 结果.错误 }）");
             } else {
                 markChecked(varName, "错误");
                 checkStmt(node->elseBranch.get());
+                mv.elseEnd(mvThenExits, mvElseExits);
                 unmarkChecked(varName);
             }
             unmarkChecked(varName);
@@ -688,37 +719,49 @@ void SemanticAnalyzer::trackIfCheck(IfStmt* node) {
             // 取反：真分支=错误分支（可访问 .错误）；否则分支=值分支（可访问 .值）
             markChecked(varName, "错误");
             checkBlock(node->thenBranch.get());
+            mv.thenEnd();
             unmarkChecked(varName);
             if (node->elseBranch != nullptr) {
                 markChecked(varName, "正常");
                 checkStmt(node->elseBranch.get());
+                mv.elseEnd(mvThenExits, mvElseExits);
                 unmarkChecked(varName);
             }
         }
         return;
     }
     if (isOptionalType(condType) && memberName == "有值") {
+        MovedBranchScope mv(*this);
         if (!negated) {
             markChecked(varName, "有值");
             checkBlock(node->thenBranch.get());
+            mv.thenEnd();
             if (node->elseBranch != nullptr) {
                 checkStmt(node->elseBranch.get());
+                mv.elseEnd(mvThenExits, mvElseExits);
             }
             unmarkChecked(varName);
         } else {
             // 取反：真分支=无值分支（无成员可访问）；否则分支=有值分支
             checkBlock(node->thenBranch.get());
+            mv.thenEnd();
             if (node->elseBranch != nullptr) {
                 markChecked(varName, "有值");
                 checkStmt(node->elseBranch.get());
+                mv.elseEnd(mvThenExits, mvElseExits);
                 unmarkChecked(varName);
             }
         }
         return;
     }
     // 普通条件：按常规检查
+    MovedBranchScope mv(*this);
     checkBlock(node->thenBranch.get());
-    if (node->elseBranch != nullptr) checkStmt(node->elseBranch.get());
+    mv.thenEnd();
+    if (node->elseBranch != nullptr) {
+        checkStmt(node->elseBranch.get());
+        mv.elseEnd(mvThenExits, mvElseExits);
+    }
 }
 
 } // namespace cn_compiler

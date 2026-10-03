@@ -192,26 +192,42 @@ void SemanticAnalyzer::defInitCheckReadAssignTarget(Expr* target, const SourceLo
 
 void SemanticAnalyzer::defInitCheckIf(IfStmt* node) {
     const std::unordered_set<std::string> base = uninitPlaces_;
+    // 980 波7（任务 007 NLL）：moved 集随同一次遍历快照-恢复-合流（886 假阳性
+    //   根治——标记不得跨互斥分支泄漏；口径与 movedCheckBranches 一致）。
+    const MovedSet movedBase = snapshotMoved();
     if (node->thenBranch != nullptr) checkBlock(node->thenBranch.get());
     std::unordered_set<std::string> afterThen = uninitPlaces_;
+    const MovedSet movedAfterThen = snapshotMoved();
     const bool thenExits = node->thenBranch != nullptr &&
                            stmtGuaranteesReturn(node->thenBranch.get());
     if (node->elseBranch == nullptr) {
         // 无否则：真支可能不执行——汇合=进入态（真支置位不外溢）
         uninitPlaces_ = base;
+        restoreMoved(movedBase);
         (void)afterThen;
         return;
     }
     uninitPlaces_ = base;
+    restoreMoved(movedBase);
     checkStmt(node->elseBranch.get());
     std::unordered_set<std::string> afterElse = uninitPlaces_;
+    const MovedSet movedAfterElse = snapshotMoved();
     const bool elseExits = stmtGuaranteesReturn(node->elseBranch.get());
     if (thenExits && elseExits) {
         uninitPlaces_ = base;  // 后续不可达，状态取任意一致视图
+        restoreMoved(movedBase);
         return;
     }
-    if (thenExits) { uninitPlaces_ = std::move(afterElse); return; }
-    if (elseExits) { uninitPlaces_ = std::move(afterThen); return; }
+    if (thenExits) {
+        uninitPlaces_ = std::move(afterElse);
+        restoreMoved(movedAfterElse);
+        return;
+    }
+    if (elseExits) {
+        uninitPlaces_ = std::move(afterThen);
+        restoreMoved(movedAfterThen);
+        return;
+    }
     // 并集归并（def-init=must analysis）：已初始化须「所有路径都初始化」——
     //   未初始化集汇合=并集（真支赋值+否则未赋→否则路径仍未初始化=保持未初始化）
     std::unordered_set<std::string> merged = afterElse;
@@ -219,6 +235,9 @@ void SemanticAnalyzer::defInitCheckIf(IfStmt* node) {
         merged.insert(k);
     }
     uninitPlaces_ = std::move(merged);
+    // moved=may analysis：任一路径转移即 moved（Rust E0382 同款·保守不放宽）
+    restoreMoved(movedAfterElse);
+    mergeMovedOr(movedAfterThen);
 }
 
 void SemanticAnalyzer::defInitCheckLoopBody(BlockStmt* body) {

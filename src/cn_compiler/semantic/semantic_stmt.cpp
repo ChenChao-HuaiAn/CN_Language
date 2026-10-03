@@ -415,15 +415,15 @@ void SemanticAnalyzer::visitExprStmt(ExprStmt* node) {
 }
 void SemanticAnalyzer::visitIfStmt(IfStmt* node) {
     // 结果/可选 检查跟踪（条件为 结果.正常 / 可选.有值 时专用处理）
-    // 067-002 同族（p0927_05 24 行）：取反形态 `如果 (!x.正常)` 先解包
-    //   `!`——原判定只认裸 MemberExpr → 取反走普通路径 → 真分支访问
-    //   .错误 误报「须在 否则 分支内访问」。
-    Expr* condTop = node->condition.get();
-    if (condTop != nullptr && condTop->getType() == NodeType::UnaryExpr) {
-        auto* u0 = static_cast<UnaryExpr*>(condTop);
-        if (u0->op == Operator::Bang) { condTop = u0->operand.get(); }
-    }
-    if (condTop != nullptr && condTop->getType() == NodeType::MemberExpr) {
+    // 067-002 同族（p0927_05 24 行）：取反形态 `如果 (!x.正常)` 先解包
+    //   `!`——原判定只认裸 MemberExpr → 取反走普通路径 → 真分支访问
+    //   .错误 误报「须在 否则 分支内访问」。
+    Expr* condTop = node->condition.get();
+    if (condTop != nullptr && condTop->getType() == NodeType::UnaryExpr) {
+        auto* u0 = static_cast<UnaryExpr*>(condTop);
+        if (u0->op == Operator::Bang) { condTop = u0->operand.get(); }
+    }
+    if (condTop != nullptr && condTop->getType() == NodeType::MemberExpr) {
         MemberExpr* cond = static_cast<MemberExpr*>(condTop);
         const std::string condObjType = checkExpr(cond->object.get());
         const bool isResultCheck =
@@ -469,23 +469,30 @@ void SemanticAnalyzer::visitIfStmt(IfStmt* node) {
                         // 010（def-init）：then/else 状态传播（手动归并——本路径
                         //   markChecked 配对顺序特殊，不走 defInitCheckIf 整体包装）
                         const std::unordered_set<std::string> diBase = uninitPlaces_;
+                        // 980 波7（任务 007 NLL）：moved 集同趟快照-恢复-合流
+                        const MovedSet mvBase = snapshotMoved();
                         if (node->thenBranch != nullptr) {
                             checkBlock(node->thenBranch.get());
                         }
                         std::unordered_set<std::string> diAfterThen = uninitPlaces_;
+                        const MovedSet mvAfterThen = snapshotMoved();
                         const bool diThenExits = node->thenBranch != nullptr &&
                             stmtGuaranteesReturn(node->thenBranch.get());
                         uninitPlaces_ = diBase;
+                        restoreMoved(mvBase);
                         unmarkChecked(varName);
                         if (node->elseBranch != nullptr) {
                             checkStmt(node->elseBranch.get());
                             std::unordered_set<std::string> diAfterElse = uninitPlaces_;
+                            const MovedSet mvAfterElse = snapshotMoved();
                             const bool diElseExits =
                                 stmtGuaranteesReturn(node->elseBranch.get());
                             if (diThenExits && !diElseExits) {
                                 uninitPlaces_ = diAfterElse;
+                                restoreMoved(mvAfterElse);
                             } else if (diElseExits && !diThenExits) {
                                 uninitPlaces_ = std::move(diAfterThen);
+                                restoreMoved(mvAfterThen);
                             } else if (!diThenExits && !diElseExits) {
                                 // 010：并集归并（must analysis——未初始化汇合=并集）
                                 std::unordered_set<std::string> diMerged = diAfterElse;
@@ -493,7 +500,13 @@ void SemanticAnalyzer::visitIfStmt(IfStmt* node) {
                                     diMerged.insert(k);
                                 }
                                 uninitPlaces_ = std::move(diMerged);
+                                // moved=may 合流（Rust E0382 同款）
+                                restoreMoved(mvAfterElse);
+                                mergeMovedOr(mvAfterThen);
                             }
+                        } else {
+                            // 无否则：真支可能不执行——置位不外溢
+                            restoreMoved(mvBase);
                         }
                         return;
                     }
@@ -869,6 +882,11 @@ void SemanticAnalyzer::visitSwitchStmt(SwitchStmt* node) {
     std::unordered_set<std::int64_t> seenValues;
     std::unordered_set<std::string> seenStrings;
     switchDepth_++;
+    // 980 波7（任务 007 NLL）：情况 支互斥——各支从入口态出发（标记不跨支泄漏）
+    //   终态 may 并集；有 默认 支=必走恰好一支→合流=支终态并集；无 默认 支=
+    //   可能零支执行→入口态∪支终态（Rust 非穷尽 match 同款保守）。
+    const MovedSet swBase = snapshotMoved();
+    MovedSet swMerged;
     for (auto& caseNode : node->cases) {
         // C-4：字符串情况值——条件须为字符串；解码回填 strValue 用于去重
         if (caseNode->isString) {
@@ -885,7 +903,9 @@ void SemanticAnalyzer::visitSwitchStmt(SwitchStmt* node) {
                                         "' 重复");
                 }
             }
+            restoreMoved(swBase);
             checkStmt(caseNode.get());
+            for (const auto& kv : snapshotMoved()) swMerged[kv.first] = kv.second;
             continue;
         }
         if (condIsString) {
@@ -928,10 +948,18 @@ void SemanticAnalyzer::visitSwitchStmt(SwitchStmt* node) {
                                 "选择语句中情况值 '" + caseNode->rawValue +
                                 "' 重复");
         }
+        restoreMoved(swBase);
         checkStmt(caseNode.get());
+        for (const auto& kv : snapshotMoved()) swMerged[kv.first] = kv.second;
     }
     if (node->defaultCase != nullptr) {
+        restoreMoved(swBase);
         checkStmt(node->defaultCase.get());
+        for (const auto& kv : snapshotMoved()) swMerged[kv.first] = kv.second;
+        restoreMoved(swMerged);  // 必走恰好一支=合流取支终态并集
+    } else {
+        restoreMoved(swBase);
+        mergeMovedOr(swMerged);  // 可能零支执行=入口态∪支终态（保守 may）
     }
     switchDepth_--;
 }

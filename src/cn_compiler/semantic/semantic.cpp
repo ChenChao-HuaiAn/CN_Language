@@ -198,6 +198,61 @@ bool SemanticAnalyzer::lookupMoved(const std::string& name, int& outLine) const 
     return false;
 }
 
+// ==================== 980 波7（任务 007 NLL）：已转移集分支合流设施 ====================
+// 886 词法假阳性根治——机制与用法规格见 semantic.hpp 设施注释块。
+
+SemanticAnalyzer::MovedSet SemanticAnalyzer::snapshotMoved() const {
+    MovedSet out;
+    const std::size_t n = std::min(scopes_.size(), scopeMoved_.size());
+    for (std::size_t i = 0; i < n; ++i) {
+        for (const auto& kv : scopeMoved_[i]) out[kv.first] = kv.second;
+    }
+    return out;
+}
+
+void SemanticAnalyzer::restoreMoved(const MovedSet& snap) {
+    for (auto& layer : scopeMoved_) layer.clear();
+    for (const auto& kv : snap) {
+        // 按声明层写回（与 markMovedVar 同序）；快照中变量若声明层已随块
+        //   弹出（分支内新声明的临时）则找不到层=自然丢弃（遮蔽语义正确）。
+        for (std::size_t i = scopes_.size(); i-- > 0;) {
+            if (scopes_[i].count(kv.first) > 0) {
+                if (i < scopeMoved_.size()) scopeMoved_[i][kv.first] = kv.second;
+                break;
+            }
+        }
+    }
+}
+
+void SemanticAnalyzer::mergeMovedOr(const MovedSet& extra) {
+    for (const auto& kv : extra) {
+        for (std::size_t i = scopes_.size(); i-- > 0;) {
+            if (scopes_[i].count(kv.first) > 0) {
+                if (i < scopeMoved_.size()) scopeMoved_[i][kv.first] = kv.second;
+                break;
+            }
+        }
+    }
+}
+
+void SemanticAnalyzer::movedCheckBranches(const std::function<void()>& thenWalk,
+                                          const std::function<void()>& elseWalk,
+                                          bool thenExits, bool elseExits) {
+    const MovedSet base = snapshotMoved();
+    thenWalk();
+    const MovedSet afterThen = snapshotMoved();
+    restoreMoved(base);  // else 从入口态出发——真支标记不泄漏（886 假阳性根治点）
+    if (!elseWalk) {
+        // 无否则：真支可能不执行——置位不外溢（与 010 def-init 无否则口径一致）
+        return;
+    }
+    elseWalk();
+    const MovedSet afterElse = snapshotMoved();
+    if (thenExits) { restoreMoved(afterElse); return; }   // 真支恒返回=后续只达否则路径
+    if (elseExits) { restoreMoved(afterThen); return; }   // 否则恒返回=后续只达真支路径
+    mergeMovedOr(afterThen);  // may-moved：任一路径转移即 moved（当前态=afterElse）
+}
+
 // plans/019 阶段4（2026-09-10 立）/ plans/023 §6.5（2026-09-17 157-a 收口）：
 // 安全区边界硬错误——安全（非 不安全）函数体内出现越界操作=编译错误
 // （观察期结束；Rust E0133 同构：非 unsafe 上下文做 unsafe 操作=编译期拒绝；

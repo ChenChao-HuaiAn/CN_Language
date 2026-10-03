@@ -12,6 +12,7 @@
 //   6. 英文API命名（GCC 7 不支持中文标识符），中文仅用于注释/字符串/输出
 #pragma once
 #include <cstdint>
+#include <functional>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -489,6 +490,28 @@ private:
     bool lookupMoved(const std::string& name, int& outLine) const;
     // 已转移变量使用拒绝（读值/左值共用）——命中即报 E0382 对标诊断并返回 true
     bool reportMovedUse(const std::string& name, const SourceLocation& loc);
+    // ==================== 980 波7（任务 007 NLL）：已转移集分支合流设施 ====================
+    // 背景：markMovedVar 词法标记跨互斥分支残留（886 轮 货舱解析.cn 115/117 假阳性
+    //   实锤——「分支互斥+循环跨迭代复用」被迫显式复制化解）。根治=分支体遍历按
+    //   「入口快照 -> then 终态 -> 恢复入口 -> else 终态 -> may 合流」传播（Rust NLL
+    //   flow 同款）：合流=任一路径 moved 即 moved（保守不放宽）；无否则=入口态
+    //   （真支可能不执行）；终止支（恒返回）口径与 010 def-init 归并一致。
+    // 快照=全层 scopeMoved_ 并集（按名唯一·内层遮蔽值覆盖外层）。
+    // 对外可见性=error_analysis.cpp 的 MovedBranchScope RAII 包装访问。
+   public:
+    using MovedSet = std::unordered_map<std::string, int>;
+    MovedSet snapshotMoved() const;
+    // 全层恢复到快照（clear+按声明层写回——快照中变量若声明层已弹出则丢弃）
+    void restoreMoved(const MovedSet& snap);
+    // 当前态 ∪= extra（may-moved 合流写回——extra 中变量按声明层写入）
+    void mergeMovedOr(const MovedSet& extra);
+    // 分支体遍历包装（then/else 遍历点分散时复用——trackIfCheck 各形态）：
+    //   thenWalk 执行后快照终态并恢复入口态，elseWalk（可空）执行后合流。
+    //   thenExits/elseExits=stmtGuaranteesReturn 口径（终止支单侧取对侧终态）。
+    void movedCheckBranches(const std::function<void()>& thenWalk,
+                            const std::function<void()>& elseWalk,
+                            bool thenExits, bool elseExits);
+   private:
     // ==================== 任务 094：字符串借用污染名单（语义层等价实现） ====================
     // 登记（当前层；与 IR markStringTainted 五登记点判据逐条对齐·注释互指）；
     //   查询（从内到外第一层含该名者——遮蔽语义与 lookupMoved 同构）。
