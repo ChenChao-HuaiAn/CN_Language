@@ -756,9 +756,14 @@ static int buildExe(const CliOptions& options, const std::string& file,
     if (dot != std::string::npos) midStem = midStem.substr(0, dot);
     if (midStem.empty()) midStem = stem;
     // 统一中间文件路径分隔符（ml64/link 用反斜杠；as/g++ 用正斜杠）
+    // 999 案乙：仅真 win 宿主才替换分隔符——linux 交叉生成 win asm 时写盘走
+    //   POSIX 文件系统，"target\" 会让 mkdir -p 的双引号命令行引号不闭合，
+    //   写盘目录创建直接失败（交叉出 asm 文本这一门禁路径全断）。
+#ifdef _WIN32
     if (isWinX64(options.target)) {
         for (char& ch : exeDir) if (ch == '/') ch = '\\';
     }
+#endif
     if (!ensureDirExists(exeDir)) {
         error = "无法创建输出目录 " + exeDir;
         return 1;
