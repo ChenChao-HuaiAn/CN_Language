@@ -466,6 +466,14 @@ std::string IRGenerator::resolveNestedMemberObjSrcType(MemberExpr* inner) {
             if (types::isPointer(innerObjType)) {
                 innerObjType = types::pointeeOf(innerObjType);
             }
+        } else if (inner->object->getType() == NodeType::CallExpr) {
+            // 1014（链式访问根治）：嵌套链内层为调用（造壳().芯.数 的 .芯——
+            //   对象=CallExpr）——原只认 IdentifierExpr，innerObjType 空 ->
+            //   findStruct("") 恒 null -> objSrcType 空 -> 第二层字段偏移缺失
+            //   -> IR 静默丢字段访问（rc=0 坏产物·与 86-a「类型推导失败→静默
+            //   降级」同族第四次复发）。经 exprSrcType（CallExpr 分支 2026-08-25
+            //   已支持）解析调用返回类型。
+            innerObjType = exprSrcType(inner->object.get());
         }
         const StructDecl* innerDecl = semantic_->findStruct(types::canonical(innerObjType));
         if (innerDecl != nullptr) {

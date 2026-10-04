@@ -1,0 +1,8 @@
+# 双编译对照配置（1014·链式访问根治转正）：后缀链临时值成员访问双端闭环——
+#   ①v2 族①调用分支回填 成员对象类型ID（结果/可选合成布局兜底接管）
+#   ②宿主 resolveNestedMemberObjSrcType/memberObjStructType 补 CallExpr 分支。
+#   容器方法返回链（映射.获取(k).normal）需借链 v2p.obj（容器符号供给）。
+退出码=0
+源文件=主.cn
+借链=是
+供给=

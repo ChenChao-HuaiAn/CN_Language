@@ -625,6 +625,12 @@ std::string IRGenerator::memberObjStructType(MemberExpr* node) const {
         if (objType.empty() && isInstanceField(objName)) {
             objType = classFieldType(currentClass_, objName);
         }
+    } else if (node->object->getType() == NodeType::CallExpr) {
+        // 1014（链式访问根治）：对象为函数/方法调用（lvalueAddress/取宽度消费面
+        //   的 memberObjStructType 路径）——原无 CallExpr 分支，两层链
+        //   （造壳().芯.数）递归至此断链 → innerType 空 → 字段偏移缺失。
+        //   经 exprSrcType（CallExpr 分支已支持）解析调用返回类型。
+        objType = exprSrcType(node->object.get());
     } else if (node->object->getType() == NodeType::MemberExpr) {
         MemberExpr* inner = static_cast<MemberExpr*>(node->object.get());
         const std::string innerType = memberObjStructType(inner);
