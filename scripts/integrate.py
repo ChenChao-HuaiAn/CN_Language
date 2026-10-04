@@ -490,6 +490,13 @@ def 云端预验门禁(链顶: str, 参数: argparse.Namespace) -> str | None:
         清理 = 运行(["git", "push", 参数.remote, "--delete", 预验分支])
         if 清理.returncode != 0:
             print(f"  [警告] 预验分支 {预验分支} 删除失败——branch_cleanup.py 兜底。")
+        # 1020（#180）：杀 TX_02 上本 sha 的 wait-lock 残留 daemon（按 sha 分拣·
+        #   1017 实录：绿轮放行/超时后 daemon 仍排队占队=挡他批）——pkill 无命中
+        #   无害（绿轮正常路径 daemon 已退出）。
+        subprocess.run(
+            ["ssh", "-o", "ConnectTimeout=15", 配置["ssh"],
+             "pkill -f '预验_%s' 2>/dev/null; exit 0" % sha10],
+            capture_output=True, text=True, timeout=30)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -1028,6 +1035,19 @@ def 批流程(参数: argparse.Namespace) -> int:
     else:
         # 920·边界双写：服务端（权威·实时）+看板段（兼容未升级 920 版的他机）
         服务成 = 队列写("join", {"分支": 当前分支, "基线": 新行["基线"], "写集摘要": 摘要})
+        # 1020（#180·方案乙）：报名后自检——join ok≠态正确（旧版幂等吞重报：
+        #   已踢出态停留→排队们无我→批主选不出→全员死等 1017 实录）。服务端
+        #   可达时核「自己行=排队」，异常态 touch 重置再核，仍异常报错不进死等。
+        if 服务成 and not 参数.dry_run:
+            自检 = next((行 for 行 in (队列读(参数.remote) or [])
+                         if 行["分支"] == 当前分支), None)
+            if 自检 is None or 自检["状态"] != "排队":
+                队列写("touch", {"分支": 当前分支})
+                自检 = next((行 for 行 in (队列读(参数.remote) or [])
+                             if 行["分支"] == 当前分支), None)
+                if 自检 is None or 自检["状态"] != "排队":
+                    return 失败(f"报名自检失败：队列行态={自检['状态'] if 自检 else '无行'}"
+                                "（touch 后仍未排队）——检查服务端 join 语义。")
         问题 = 直推看板提交(报名变换, f"集成队列：{当前分支} 报名（911 批量集成·{摘要}）", 参数.remote)
         if 问题 and not 服务成:
             return 失败(问题)
@@ -1053,9 +1073,22 @@ def 批流程(参数: argparse.Namespace) -> int:
         活跃集成中 = [行 for 行 in 集成中们 if 行["分支"] not in 失联们]
         if not 我在排队 and not any(行["分支"] == 当前分支 for 行 in 队列):
             return 失败("本分支不在集成队列（可能已被他批集成销账）——若分支仍未入 develop 请重报。")
+        if not 我在排队 and 参数.wait and not 参数.dry_run:
+            # 1020（#180）：在队列但非排队（残留 异常态）——touch 自愈重报继续等，
+            #   不再死等（1017 实录：异常态下提示恒 None=[等待] None 假挂）。
+            if 队列写("touch", {"分支": 当前分支}):
+                print(f"  [自愈] 本分支队列态异常（非排队）——touch 重置回排队继续")
+                我在排队 = True
         if 活跃集成中:
             提示 = (f"批集成进行中（{'、'.join(行['分支'] for 行 in 活跃集成中)}）——"
                     f"等待其完成（失联超 {批主失联接管分钟} 分钟可 --takeover 接管）")
+            if 参数.wait and 失联们 and not 参数.takeover:
+                # 1020（#180）：--wait 模式失联自动接管——旧语义只提示等人工
+                #   --takeover，批主真失联时全员干等 30 分钟（「拼车」卡壳场景）。
+                print(f"  [自动接管] 批主失联超 {批主失联接管分钟} 分钟：{'、'.join(失联们)}"
+                      "——本分支接管组批（--wait 自动化）")
+                参数.takeover = True
+                continue
         else:
             批主 = min(排队们, key=lambda 行: 行["时刻"]) if 排队们 else None
             if 批主 and (批主["分支"] == 当前分支 or 参数.takeover):
