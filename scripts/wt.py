@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""wt.py —— 本机多开 worktree 任务池管理（449-a·AGENTS.md §8.8）。
+"""wt.py —— 本机多开 worktree 任务池管理（449-a·AGENTS.md §7）。
 
 同机并行开发互踩的根因=多会话共享一个工作树与 target/（429-a/431-a 实录：
 checkout 带走未提交内容 / E2E 中途 expected 消失 / cn.exe 占用 LNK1104）。
@@ -167,8 +167,8 @@ def 建树(轮次: str, 标识: str, 基准: str | None, 无ninja: bool) -> int:
 
     print(f"""
 [完成] {树路径}（分支 {分支}）
-  下一步（AGENTS.md §8.1/§8.8）：①看板本机行直推（含分支名）②plans/025 六要素落盘
-  ③push 分支到 gitcode=认领生效 ④门禁照旧 VS 口径（ci.ps1/build.ps1，已含 gate_lock 串行锁）""")
+  下一步（AGENTS.md §2/§7）：①plans/021 加行 ⬜→🏃+备注带分支名 ②push 分支到 gitcode=认领生效
+  ③提交前 L1 门禁 gate_quick.py（win 全量=ci.ps1）④收工 integrate.py（自动 021 收口）""")
     return 0
 
 
@@ -235,7 +235,7 @@ def 缓存(动作: str) -> int:
 
 
 def 主流程() -> int:
-    解析器 = argparse.ArgumentParser(description="本机多开 worktree 任务池管理（AGENTS.md §8.8）")
+    解析器 = argparse.ArgumentParser(description="本机多开 worktree 任务池管理（AGENTS.md §7）")
     子 = 解析器.add_subparsers(dest="命令", required=True)
     p建 = 子.add_parser("create", help="建树+任务分支（含 Ninja+sccache 开发树）")
     p建.add_argument("轮次")

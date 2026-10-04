@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""合并队列脚本（三机并行协同协议 v3·AGENTS.md §8.2——develop 唯一入关口）。
+"""合并队列脚本（AGENTS.md §5/§7——develop 唯一入关口）。
 
 职责：把当前任务分支安全集成回 develop——
   前置自检 → fetch → rebase（冲突自己解·禁止 develop 手解）→ 写集分类（仅门禁深度）
   → 门禁（跑在合并结果上：快速门禁恒跑；写集触及 src/tests 时全量门禁）
   → push gitcode develop（ff-only·CAS 竞争输家自动 rebase 重试 ≤3 次）→ 补推 github 镜像。
 v3（581-a·2026-09-21 用户裁决）：**无任何集成前置的他机回签/批准面**——跨平台正确性由
-集成后异步验收+修复义务保障（AGENTS.md §8.3；plans/027 §八 v3 裁决记录）。
+集成后异步验收+修复义务保障（AGENTS.md §7·异步验收不需他机回签）。
 业界对照=rustc/bors 合并队列、GitHub merge queue 的脚本化实现。
 
 批量集成（911 立·用户批准方案甲·bors 式）：根治 872 式「竞争→rebase→全量重跑」循环——
@@ -53,7 +53,7 @@ from pathlib import Path
 分支名模式 = re.compile(r"^任务/(家机|单位机|深度机)-\d+-\S+$")
 最大重试 = 3
 
-# ── 批量集成参数（911·可调常量——跑一周看实态再调·AGENTS.md §8.2-B）──────────────────
+# ── 批量集成参数（911·可调常量——跑一周看实态再调·AGENTS.md §5）──────────────────
 批收拢期分钟 = 10    # 批主报名后的收拢窗口（后到者在此窗口内报名即入批）
 批上限 = 5           # 单批成员上限（含批主·红批二分成本随批增大）
 批等待轮询秒 = 60    # --wait 等待批主的轮询间隔
@@ -64,7 +64,7 @@ from pathlib import Path
 # v2 的 try_build_触发模式 随 581-a 废除，写集分类仅区分门禁深度）
 # 077（852 立·857 补）：v2 自举编译器源码/stdlib（行为面·Lang 侧）触发全量门禁；
 # 876（用户裁决按甲办·0928 审计第 4 条收口）：构建编排三件补回——581-a 收窄时误失触发，
-#   构建/门禁编排改动不跑全量=验证者免检自相矛盾，补回消除免检面（AGENTS §8.3 同步）
+#   构建/门禁编排改动不跑全量=验证者免检自相矛盾，补回消除免检面（AGENTS §4 同步）
 全量门禁触发模式 = ("src/", "tests/", "CN语言编译器v2/", "stdlib/",
                    "CMakeLists.txt", "build.ps1", "scripts/ci.ps1")
 
@@ -130,7 +130,7 @@ def 前置自检(远程: str = 主远程) -> str | None:
     if not 当前分支:
         return "不在任何分支上（detached HEAD？）——请在任务分支上运行本脚本。"
     if not 分支名模式.match(当前分支):
-        return f"分支名「{当前分支}」不合法——须形如 任务/<机>-<轮次>-<标识>（AGENTS.md §8.1）。"
+        return f"分支名「{当前分支}」不合法——须形如 任务/<机>-<轮次>-<标识>（AGENTS.md §7）。"
     状态 = 输出(["git", "status", "--porcelain"])
     未跟踪 = [行[3:] for 行 in 状态.splitlines() if 行.startswith("?? ")]
     已跟踪改动 = [行 for 行 in 状态.splitlines() if not 行.startswith("?? ")]
@@ -140,7 +140,7 @@ def 前置自检(远程: str = 主远程) -> str | None:
         print(f"  [警告] 未跟踪文件不阻塞集成（不入提交）：{未跟踪}")
     远端分支 = f"{远程}/{当前分支}"
     if 输出(["git", "rev-parse", "--verify", f"refs/remotes/{远端分支}"]) == "":
-        return f"分支未推远端（{远端分支} 不存在）——推分支=认领（AGENTS.md §8.1），先 git push。"
+        return f"分支未推远端（{远端分支} 不存在）——推分支=认领（AGENTS.md §7），先 git push。"
     本地 = 输出(["git", "rev-parse", "HEAD"])
     远端 = 输出(["git", "rev-parse", 远端分支])
     if 本地 != 远端:
@@ -163,7 +163,7 @@ def 改动文件清单(基准: str) -> list[str]:
 
 
 def 分类写集(文件们: list[str]) -> bool:
-    """返回 须全量门禁与否。v3：写集分类仅区分门禁深度，不存在集成前置的他机批准面（§8.3）。"""
+    """返回 须全量门禁与否。v3：写集分类仅区分门禁深度，不存在集成前置的他机批准面（AGENTS §7 异步验收）。"""
     return any(文件.startswith(全量门禁触发模式) for 文件 in 文件们)
 
 
@@ -280,7 +280,7 @@ def 全量门禁(平台: str, 已知红们: list[str] | None = None, 快速通�
     快速通道（920·用户裁决 2026-10-01「快速集即集成·全量云端事后兜底」）：
     快速通道=True 时本机仅跑 L1（gate_quick.py=静态三检查+增量构建+全量单测·分钟级），
     全量门禁由 TX_02 云 CI 对 develop 每推送自动跑（红灯治理兜底：引入者优先修·
-    超 48h 可 revert·不冻结其他集成——Chromium CQ/rustc bors 同构·AGENTS §5/§8 v4）。
+    超 48h 可 revert·不冻结其他集成——Chromium CQ/rustc bors 同构·AGENTS §5/§7）。
 
     并行红串行复验（447-a·机制级工具改进）：runner 隔离键欠账已随 329-D12/T55 根治
     （557 轮集成·隔离键=编号+完整名 md5——558 轮实测 210_v2/457/458/459 互踩假红全消）。
@@ -321,10 +321,10 @@ def 全量门禁(平台: str, 已知红们: list[str] | None = None, 快速通�
                 return "E2E 串行复验仍未全绿（非并行互踩——真红，禁止集成）。"
             print(f"  [复验] 串行红 {失败们} 全部命中 --allow-known-red 点名清单——披露放行。")
         print("  [复验] 并行红+串行绿=并行环境因素嫌疑（隔离键已根治 557 轮·新形态须披露定位）"
-              "——放行；须在看板通告段披露。")
+              "——放行；须在后续提交信息以〔通告〕前缀披露。")
         return None
     # Linux：分步（单位机 linux-arm64 / 深度机 linux-x64；E2E 须显式 --target——默认 win-x64 会报错）
-    # 449-a：构建/单测/E2E 三段经 gate_lock 串行锁（同机多 worktree 并行防互抢·AGENTS.md §8.8）。
+    # 449-a：构建/单测/E2E 三段经 gate_lock 串行锁（同机多 worktree 并行防互抢·AGENTS.md §7）。
     配置 = 运行(["cmake", "-S", ".", "-B", "target/build"])
     if 配置.returncode != 0:
         return "cmake 配置失败。"
@@ -386,14 +386,14 @@ def 全量门禁(平台: str, 已知红们: list[str] | None = None, 快速通�
         if 已知红们 and not 未点名:
             print(f"  [复验] 串行红 {失败们} 全部命中 --allow-known-red 点名清单"
                   f"（fdef8ae9 P1 批次抽签/三平台已定性已知红）——披露放行；"
-                  f"须在看板通告段完整披露点名依据。")
+                  f"须在后续提交信息以〔通告〕前缀完整披露点名依据。")
             return None
         if 未点名:
             return (f"E2E 串行复验存在未点名真红 {未点名}（--target {目标}"
                     f"·点名清单外——禁止集成）。")
         return f"E2E 串行复验仍未全绿（--target {目标}·非并行互踩——真红，禁止集成）。"
     print("  [复验] 并行红+串行绿=runner 产物互踩嫌疑（274-a 隔离键欠账·非代码红）"
-          "——放行；须在看板通告段披露。")
+          "——放行；须在后续提交信息以〔通告〕前缀披露。")
     return None
 
 
@@ -913,7 +913,7 @@ def 单次集成尝试(平台: str, 上次已验基准: str | None, 参数: argp
         rebase = 运行(["git", "rebase", 最新])
         if rebase.returncode != 0:
             运行(["git", "rebase", "--abort"])
-            return False, "rebase 冲突——请在任务分支上自行解决后重新集成（AGENTS.md §8.2 步骤 3）。", None
+            return False, "rebase 冲突——请在任务分支上自行解决后重新集成（AGENTS.md §5）。", None
 
     文件们 = 改动文件清单(最新)
     if not 文件们:
@@ -954,7 +954,7 @@ def 单次集成尝试(平台: str, 上次已验基准: str | None, 参数: argp
 
 
 def solo流程(平台: str, 参数: argparse.Namespace) -> int:
-    """旧单分支集成路径（--solo 逃生门·AGENTS.md §8.2 原流程——队列机制异常时不经队列直集成）。"""
+    """旧单分支集成路径（--solo 逃生门·AGENTS.md §5 原流程——队列机制异常时不经队列直集成）。"""
     print(f"== 合并队列（solo 逃生门）｜平台={平台}｜模式={'演练' if 参数.dry_run else '集成'} ==")
     问题 = 前置自检(参数.remote)
     if 问题:
@@ -974,13 +974,13 @@ def solo流程(平台: str, 参数: argparse.Namespace) -> int:
             if 分支.startswith("任务/") and not 参数.dry_run:
                 清理 = 运行(["git", "push", 参数.remote, "--delete", 分支])
                 if 清理.returncode == 0:
-                    print(f"  [清理] 远程任务分支 {分支} 已删（内容已入 {集成分支}·AGENTS.md §8.1 集成即删）。")
+                    print(f"  [清理] 远程任务分支 {分支} 已删（内容已入 {集成分支}·AGENTS.md §7 集成即删）。")
                     总账收口021([分支], 输出(["git", "rev-parse", "HEAD"]), 参数.remote)
                 else:
                     print("  [警告] 远程任务分支删除失败（不影响集成有效性）"
                           "——稍后 python scripts/branch_cleanup.py 兜底。")
             print(f"\n[集成成功·solo] {分支} → {集成分支}（{输出(['git', 'rev-parse', 'HEAD'])[:8]}）"
-                  "——请在看板通告段发验收请求（集成基线 commit+变更要点+影响面·AGENTS.md §8.3 异步验收）。")
+                  "——在后续提交信息以〔通告〕前缀广播验收请求（集成基线 commit+变更要点+影响面·AGENTS.md §7 异步验收）。")
             return 0
         if 信息 is None:
             print(f"  [竞争] push 被拒（他人刚集成）——第 {尝试}/{最大重试} 次 rebase 重试")
@@ -990,7 +990,7 @@ def solo流程(平台: str, 参数: argparse.Namespace) -> int:
 
 
 def 批流程(参数: argparse.Namespace) -> int:
-    """批量集成主路径（911·AGENTS.md §8.2-B）：报名→（等待）→组批→组链→门禁→整批 push→销账。"""
+    """批量集成主路径（911·AGENTS.md §5）：报名→（等待）→组批→组链→门禁→整批 push→销账。"""
     import time as _time
 
     平台 = 探测平台()
@@ -1197,7 +1197,7 @@ def 批流程(参数: argparse.Namespace) -> int:
         for 行 in 实际成员:
             清理 = 运行(["git", "push", 参数.remote, "--delete", 行["分支"]])
             if 清理.returncode == 0:
-                print(f"  [清理] 远程任务分支 {行['分支']} 已删（内容已随批入 {集成分支}·AGENTS.md §8.1）。")
+                print(f"  [清理] 远程任务分支 {行['分支']} 已删（内容已随批入 {集成分支}·AGENTS.md §7）。")
             else:
                 print(f"  [警告] 远程任务分支 {行['分支']} 删除失败——稍后 branch_cleanup.py 兜底。")
 
@@ -1223,14 +1223,14 @@ def 批流程(参数: argparse.Namespace) -> int:
         print("  踢出（出批·解完冲突/修复后重新报名）："
               + "、".join(f"{b}[{'归因' if 因 == '归因' else '冲突'}]" for b, 因 in 踢出们))
     print(f"  develop 新基线：{新tip[:8]}"
-          "——请批主在看板通告段发**验收请求**（基线+成员清单+影响面·AGENTS.md §8.3），"
+          "——请批主在提交信息以〔通告〕前缀广播**验收请求**（基线+成员清单+影响面·AGENTS.md §7），"
           "各成员看板本机小节照常清行销账。")
     return 0
 
 
 def 主流程() -> int:
     解析器 = argparse.ArgumentParser(
-        description="三机并行协同协议 v3·合并队列（AGENTS.md §8.2·bors 批量集成·911）")
+        description="三机并行协同协议 v3·合并队列（AGENTS.md §5·bors 批量集成·911）")
     解析器.add_argument("--dry-run", action="store_true", help="演练模式：不真推 develop")
     解析器.add_argument("--join", action="store_true",
                         help="仅报名进看板集成队列（不组批——报名后可先做别的·稍后重跑组批）")
@@ -1262,7 +1262,7 @@ def 主流程() -> int:
     解析器.add_argument("--remote", default=主远程, metavar="远程",
                         help=f"远程名（默认 {主远程}·自测模拟远端用）")
     解析器.add_argument("--verified-same-content", action="store_true",
-                        help="§8.2 6.5 批形态：声明本机已对当前分支树完整跑过全量门禁且全绿——"
+                        help="批形态（--batch·AGENTS §5）：声明本机已对当前分支树完整跑过全量门禁且全绿——"
                              "单飞批+链顶树与本分支 diff 为空时免重跑全量（快速门禁恒跑；"
                              "提交/看板通告须披露「直推·复用已验门禁」；diff 非空自动回落全量）")
     解析器.add_argument("--allow-known-red", action="append", default=[],
@@ -1288,7 +1288,7 @@ def 主流程() -> int:
               "（TX_02 异常时的逃生门·028 §四）。")
     if 参数.try_build_done or 参数.win_verified:
         print("[v3] --try-build-done/--win-verified 已随协议 v3 废除（接受即忽略）——"
-              "本机门禁绿即集成，跨平台由集成后异步验收保障（AGENTS.md §8.3）。")
+              "本机门禁绿即集成，跨平台由集成后异步验收保障（AGENTS.md §7）。")
 
     if 参数.selftest:
         return 自测()
@@ -1297,9 +1297,9 @@ def 主流程() -> int:
         if 队列 is None:
             队列 = 解析队列(远端看板文本(参数.remote))
         if not 队列:
-            print("[集成队列] 空（无人排队——bors 批组建·AGENTS.md §8.2-B）")
+            print("[集成队列] 空（无人排队——bors 批组建·AGENTS.md §5）")
             return 0
-        print("[集成队列]（bors 批组建·AGENTS.md §8.2-B）")
+        print("[集成队列]（bors 批组建·AGENTS.md §5）")
         for 行 in sorted(队列, key=lambda r: r["时刻"]):
             print(f"  {行['状态']}｜{行['时刻']}｜{行['分支']}｜{行['摘要']}（基线 {行['基线']}）")
         return 0
