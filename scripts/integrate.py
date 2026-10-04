@@ -430,14 +430,59 @@ def 解析预验结果(文本: str) -> tuple[bool, str]:
     return bool(d.get("绿")), 摘要
 
 
-def 云端预验门禁(链顶: str, 参数: argparse.Namespace) -> str | None:
-    """链顶（=合并结果）推 TX_02 预验分支触发全量（linux-x86_64 面·后台 nohup），
-    轮询 预验_<sha10>.json（daemon 红绿都写·1008 改造）——绿放行 push develop
-    （daemon 已写 latest：push 后 develop 轮询轮按「已跑过」跳过=云端零重复算力）；
-    红/超时/ssh 不可达=拦截（develop 未收到红提交）。返回 None=放行；str=拦截原因。
+def 池轮询预验(预验分支: str, 链顶: str) -> tuple[bool, str | None]:
+    """1021 池路径轮询：TX_01 预验任务表 → 认领者（TX_02/家机实例）跑完→取详情判绿红。
+    返回 (是否拿到结论, 拦截原因)：绿=(True,None)·红=(True,原因)；
+    TX_01 连续 3 轮不可达、任务持续排队超 池空降级秒（=池空·无 runner 在）或总超时
+    =(False,None)——调用方降级 ssh 直发。"""
+    import time as _time
+    截止 = _time.time() + 预验总超时分钟 * 60
+    连续失败 = 0
+    排队起始: float | None = None
+    池空降级秒 = 300    # 排队 5 分钟无人认领=池空信号（TX_02 池化后 90s 内必认领；过渡期池空快速降级）
+    while _time.time() < 截止:
+        _time.sleep(预验轮询间隔秒)
+        状态 = 服务调用("/api/state")
+        if 状态 is None:
+            连续失败 += 1
+            print(f"  [预验] TX_01 池查询失败（连续 {连续失败}/3）……")
+            if 连续失败 >= 3:
+                return False, None
+            continue
+        连续失败 = 0
+        行 = next((t for t in (状态.get("预验任务") or []) if t.get("分支") == 预验分支), None)
+        if 行 is None:
+            # 任务行不在（服务重启丢表/异常裁剪）——重新入队防御
+            服务调用("/api/task_enqueue", {"分支": 预验分支, "sha": 链顶})
+            continue
+        if 行.get("状态") != "完成":
+            if 行.get("状态") == "排队":
+                if 排队起始 is None:
+                    排队起始 = _time.time()
+                elif _time.time() - 排队起始 > 池空降级秒:
+                    print("  [预验] 池内持续 5 分钟无人认领（池空·runner 未部署/全忙外溢）——降级 ssh 直发 TX_02")
+                    return False, None
+            else:
+                排队起始 = None     # 已被认领（执行中）——重置池空计时
+            余分 = int((截止 - _time.time()) // 60)
+            print(f"  [预验] 池任务 {行.get('状态')}（认领者={行.get('认领者') or '待派'}·余约 {余分} 分钟）……")
+            continue
+        详情回 = 服务调用("/api/task_result?sha=" + 链顶[:10])
+        文本 = json.dumps(详情回.get("详情"), ensure_ascii=False) if (详情回 and 详情回.get("详情")) else ""
+        绿, 摘要 = 解析预验结果(文本)
+        if 绿:
+            print(f"  [预验] ✓ 池绿（{摘要}）——放行 push develop（develop 轮按池绿/本地档跳过·零重复算力）")
+            return True, None
+        return True, (f"云端预验红（链顶 {链顶[:10]}·develop 未收到该提交）——{摘要}\n"
+                      "  修复走任务分支（修复中间态禁推 develop·1008 纪律 1），绿后重新集成。")
+    return False, None
 
-    降级不失效（028 §六哲学）：--no-cloud-gate 逃生门=显式回退 941 fast-lane 事后兜底。
-    """
+
+def 云端预验门禁(链顶: str, 参数: argparse.Namespace) -> str | None:
+    """链顶（=合并结果）推预验分支触发全量（linux-x86_64 面），绿放行 push develop、红拦截。
+    1021 执行器池化三层降级：①TX_01 任务池（多 runner 认领——TX_02+家机 WSL2 实例谁空闲
+    谁跑·免串行排队）→ ②池不可达/超时=ssh 直发 TX_02（1008 原路径保留）→
+    ③--no-cloud-gate 逃生门（941 事后兜底）。返回 None=放行；str=拦截原因。"""
     import time as _time
     if 参数.dry_run:
         print("  [预验·演练] 跳过云端真跑（--dry-run）——正式集成对链顶真跑全量预验")
@@ -449,6 +494,17 @@ def 云端预验门禁(链顶: str, 参数: argparse.Namespace) -> str | None:
     if 推.returncode != 0:
         return f"预验分支推送失败（{预验分支}）——检查远程权限后重试。"
     try:
+        # ── ① 池路径：入队（幂等·已完成绿直接复用不重跑）+轮询认领结果
+        入队 = 服务调用("/api/task_enqueue", {"分支": 预验分支, "sha": 链顶})
+        if 入队 is not None and 入队.get("ok"):
+            print(f"  [预验] 已入 TX_01 任务池（{预验分支}·多 runner 认领：谁空闲谁跑）")
+            拿到, 原因 = 池轮询预验(预验分支, 链顶)
+            if 拿到:
+                return 原因
+            print("  [预验] 池路径超时/不可达——降级 ssh 直发 TX_02（028 §四）……")
+        else:
+            print("  [预验] TX_01 池不可用——降级 ssh 直发 TX_02（028 §四）……")
+        # ── ② ssh 直发降级（1008 原路径原样保留）
         # rm 旧预验结果（同 sha 二次预验=CAS 竞争重试路径·旧文件不可当本轮结果）
         # 1019 缺陷修复（两轮实验定音）：真根因=链尾 `&` 使整条 `cd && rm && nohup` 链异步化，
         #   bash fork subshell 执行链并**持有 ssh 会话管道**直到链内命令（daemon wait-lock 数十

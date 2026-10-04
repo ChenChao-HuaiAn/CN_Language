@@ -3,14 +3,23 @@
 #   治「git 被当状态数据库用」——看板集成队列/门禁结果的机器状态迁到本服务（SQLite 承载），
 #   三机 integrate.py 的队列操作改走 HTTP（不可达自动回退看板直推旧路径=降级不失效）；
 #   状态转移零 git 提交（治 920 诊断的 56% 单文件看板提交污染）。
+# 1021 预验执行器池化：新增「预验任务表」=多 runner 认领池（TX_02 与家机 WSL2 实例谁空闲
+#   谁认领·治单 TX_02 串行排队）——task_enqueue/task_claim/task_heartbeat/task_complete；
+#   心跳断 CN_TASK_STALE_SEC（默认 300s）服务端回收重派（家机睡眠/关机不黑洞）；
+#   心跳时戳=服务端收到时刻（免疫 WSL 时钟漂移）；认领原子性靠 写锁+单线程写保证。
 # API（POST 须 Bearer 令牌·GET 只读放行）：
-#   GET  /            人类可读结果页（最新门禁+历史+队列）
-#   GET  /api/state   {队列:[…], 门禁最近:[…]}
+#   GET  /            人类可读结果页（最新门禁+历史+队列+预验任务池）
+#   GET  /api/state   {队列:[…], 门禁最近:[…], 预验任务:[…]}
+#   GET  /api/task_result?分支=…   单个预验任务 {状态,绿,详情}（详情=daemon 结果 JSON）
 #   POST /api/join    {分支,基线,写集摘要}      报名（幂等）
 #   POST /api/update  {分支,状态}               改状态（排队/集成中/已踢出/已完成）
 #   POST /api/touch   {分支}                    重报时刻（失败恢复重排队·保序不刷=幂等）
 #   POST /api/clear   {分支们:[…]}              集成销账清行
 #   POST /api/report  {ci_daemon 结果 JSON}     门禁结果上报
+#   POST /api/task_enqueue  {分支,sha}           预验任务入队（幂等·已完成绿=直接复用·已完成红=重置重跑）
+#   POST /api/task_claim    {runner}             认领最旧排队任务（含回收心跳超时任务·原子）
+#   POST /api/task_heartbeat {runner,分支}        心跳续约
+#   POST /api/task_complete {runner,分支,绿,结果}  完成上报（校验认领者·防回收后旧 runner 复活覆盖）
 # 部署：/etc/systemd/system/cn-queue.service（Environment= 端口/令牌/DB 路径）。
 
 import json
@@ -30,6 +39,8 @@ from urllib.parse import urlparse
 db路径 = os.environ.get("CN_QUEUE_DB",
                         str(Path(__file__).resolve().parent / "queue_state.db"))
 门禁历史保留 = 200
+任务历史保留 = 200          # 预验任务完成行裁剪（同门禁口径）
+心跳超时秒 = int(os.environ.get("CN_TASK_STALE_SEC", "300"))   # 心跳断此秒数=回收重派（家机睡眠不黑洞）
 
 写锁 = threading.Lock()          # SQLite 写串行化（读靠 WAL 并发）
 时区时刻 = lambda: datetime.now().strftime("%m-%d %H:%M:%S")   # 911 教训：秒级戳
@@ -44,6 +55,13 @@ def 建库() -> sqlite3.Connection:
     con.execute("""CREATE TABLE IF NOT EXISTS 门禁(
         sha TEXT, 平台 TEXT, 绿 INTEGER, 总秒 INTEGER, 时刻 TEXT, 详情 TEXT,
         PRIMARY KEY(sha, 平台))""")
+    con.execute("""CREATE TABLE IF NOT EXISTS 预验任务(
+        序号 INTEGER PRIMARY KEY AUTOINCREMENT,
+        分支 TEXT UNIQUE, sha TEXT,
+        状态 TEXT DEFAULT '排队',      -- 排队/执行中/完成
+        认领者 TEXT, 心跳时戳 INTEGER,  -- 心跳=服务端收到时刻（免疫客户端时钟漂移）
+        绿 INTEGER, 详情 TEXT,          -- 详情=ci_daemon 结果 JSON 原样
+        入队时刻 TEXT, 更新时刻 TEXT)""")
     con.commit()
     return con
 
@@ -61,6 +79,14 @@ def 门禁快照(限: int = 20) -> list[dict]:
     行们 = con.execute("SELECT sha,平台,绿,总秒,时刻 FROM 门禁 "
                        "ORDER BY 时刻 DESC LIMIT ?", (限,)).fetchall()
     return [dict(zip(("sha", "平台", "绿", "总秒", "时刻"), r)) for r in 行们]
+
+
+def 预验任务快照() -> list[dict]:
+    """预验任务池快照（不含 详情 大字段——integrate 取详情走 /api/task_result）。"""
+    行们 = con.execute("SELECT 序号,分支,sha,状态,认领者,绿,入队时刻,更新时刻 "
+                       "FROM 预验任务 ORDER BY 序号 DESC LIMIT 50").fetchall()
+    return [dict(zip(("序号", "分支", "sha", "状态", "认领者", "绿", "入队时刻", "更新时刻"), r))
+            for r in 行们]
 
 
 def 处理写(名: str, 数据: dict) -> dict:
@@ -121,6 +147,57 @@ def 处理写(名: str, 数据: dict) -> dict:
             con.execute("DELETE FROM 门禁 WHERE (sha,平台) NOT IN "
                         "(SELECT sha,平台 FROM 门禁 ORDER BY 时刻 DESC LIMIT ?)",
                         (门禁历史保留,))
+        elif 名 == "task_enqueue":
+            # 预验任务入队（幂等）：新分支→排队；已完成绿→原样保留（integrate 直接取结果·省一次全量）；
+            # 已完成红→重置排队（同 sha CAS 重试路径·对齐 ssh 直发 rm 旧文件重跑语义·也给 flaky 一次机会）；
+            # 排队/执行中→不动。
+            分支, sha = str(数据.get("分支", "")), str(数据.get("sha", ""))
+            if not 分支.startswith("ci/预验-") or len(sha) < 7:
+                return {"ok": False, "说明": "分支须 ci/预验- 开头且 sha 缺失"}
+            已有 = con.execute("SELECT 状态,绿 FROM 预验任务 WHERE 分支=?", (分支,)).fetchone()
+            if 已有 is None:
+                con.execute("INSERT INTO 预验任务(分支,sha,状态,入队时刻,更新时刻) "
+                            "VALUES(?,?,'排队',?,?)", (分支, sha, 时区时刻(), 时区时刻()))
+            elif 已有[0] == "完成" and not 已有[1]:
+                con.execute("UPDATE 预验任务 SET 状态='排队',认领者=NULL,心跳时戳=NULL,"
+                            "绿=NULL,详情=NULL,更新时刻=? WHERE 分支=?", (时区时刻(), 分支))
+        elif 名 == "task_claim":
+            # 认领（写锁内原子）：①回收心跳超时的执行中任务→重置排队；②取最旧排队任务置执行中。
+            runner = str(数据.get("runner", ""))
+            if not runner:
+                return {"ok": False, "说明": "runner 标识缺失"}
+            现在 = int(time.time())
+            con.execute("UPDATE 预验任务 SET 状态='排队',认领者=NULL,心跳时戳=NULL,更新时刻=? "
+                        "WHERE 状态='执行中' AND 心跳时戳 IS NOT NULL AND 心跳时戳<?",
+                        (时区时刻(), 现在 - 心跳超时秒))
+            行 = con.execute("SELECT 分支,sha FROM 预验任务 WHERE 状态='排队' "
+                             "ORDER BY 序号 LIMIT 1").fetchone()
+            if 行 is None:
+                return {"ok": True, "任务": None}
+            con.execute("UPDATE 预验任务 SET 状态='执行中',认领者=?,心跳时戳=?,更新时刻=? "
+                        "WHERE 分支=?", (runner, 现在, 时区时刻(), 行[0]))
+            return {"ok": True, "任务": {"分支": 行[0], "sha": 行[1]}}
+        elif 名 == "task_heartbeat":
+            runner, 分支 = str(数据.get("runner", "")), str(数据.get("分支", ""))
+            cur = con.execute("UPDATE 预验任务 SET 心跳时戳=?,更新时刻=? "
+                              "WHERE 分支=? AND 认领者=? AND 状态='执行中'",
+                              (int(time.time()), 时区时刻(), 分支, runner))
+            if cur.rowcount == 0:
+                return {"ok": False, "说明": "任务不在执行中或认领者不匹配 " + 分支}
+        elif 名 == "task_complete":
+            # 完成上报：校验认领者（回收重派后旧 runner 复活=拒绝·重派者重新跑出的结果为准）
+            runner, 分支 = str(数据.get("runner", "")), str(数据.get("分支", ""))
+            结果 = 数据.get("结果")
+            绿 = 1 if 数据.get("绿") else 0
+            cur = con.execute("UPDATE 预验任务 SET 状态='完成',绿=?,详情=?,心跳时戳=NULL,更新时刻=? "
+                              "WHERE 分支=? AND 认领者=? AND 状态='执行中'",
+                              (绿, json.dumps(结果, ensure_ascii=False)[:20000],
+                               时区时刻(), 分支, runner))
+            if cur.rowcount == 0:
+                return {"ok": False, "说明": "任务不在执行中或认领者不匹配（可能已被回收重派）" + 分支}
+            con.execute("DELETE FROM 预验任务 WHERE 状态='完成' AND 序号 NOT IN "
+                        "(SELECT 序号 FROM 预验任务 WHERE 状态='完成' ORDER BY 序号 DESC LIMIT ?)",
+                        (任务历史保留,))
         else:
             return {"ok": False, "说明": "未知操作 " + 名}
         con.commit()
@@ -132,6 +209,7 @@ HTML页 = """<!doctype html><html><head><meta charset="utf-8"><title>CN 队列/�
 table{border-collapse:collapse;background:#fff}td,th{border:1px solid #d0d7de;padding:5px 10px;
 font-size:14px}.绿{color:#1a7f37;font-weight:600}.红{color:#cf222e;font-weight:600}</style></head>
 <body><h2>最新门禁（develop 每推送自动跑·TX_02 云 CI）</h2>__门禁表__
+<h2>预验任务池（多 runner 认领·1021）</h2>__任务表__
 <h2>集成队列（服务端·零 git 提交）</h2>__队列表__<p>生成于 __时刻__</p></body></html>"""
 
 
@@ -151,9 +229,20 @@ class 处理器(BaseHTTPRequestHandler):
         return 令牌 == "" or self.headers.get("Authorization", "") == "Bearer " + 令牌
 
     def do_GET(self):
+        from urllib.parse import parse_qs
         路径 = urlparse(self.path).path
         if 路径 == "/api/state":
-            return self.回JSON({"队列": 队列快照(), "门禁最近": 门禁快照()})
+            return self.回JSON({"队列": 队列快照(), "门禁最近": 门禁快照(),
+                                "预验任务": 预验任务快照()})
+        if 路径 == "/api/task_result":
+            # 按 sha10 查（分支=ci/预验-<sha10>·URL 保持纯 ASCII 免编码坑）
+            sha10 = (parse_qs(urlparse(self.path).query).get("sha") or [""])[0]
+            行 = con.execute("SELECT 状态,绿,详情 FROM 预验任务 WHERE 分支=?",
+                             ("ci/预验-" + sha10,)).fetchone()
+            if 行 is None:
+                return self.回JSON({"ok": False, "说明": "无此任务 ci/预验-" + sha10}, 404)
+            return self.回JSON({"状态": 行[0], "绿": bool(行[1]) if 行[1] is not None else None,
+                                "详情": json.loads(行[2]) if 行[2] else None})
         if 路径 == "/":
             门禁行 = "".join("<tr><td>%s</td><td>%s</td><td class='%s'>%s</td><td>%ss</td><td>%s</td></tr>"
                              % (r["sha"][:10], r["平台"], "绿" if r["绿"] else "红",
@@ -162,8 +251,17 @@ class 处理器(BaseHTTPRequestHandler):
             队列行 = "".join("<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>"
                             % (r["分支"], r["基线"][:10], r["报名时刻"], r["状态"], r["写集摘要"][:60])
                             for r in 队列快照()) or "<tr><td colspan=5>空</td></tr>"
+            任务行 = "".join(
+                "<tr><td>%s</td><td>%s</td><td>%s</td><td class='%s'>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>"
+                % (r["分支"], r["sha"][:10], r["状态"],
+                   ("绿" if r["绿"] else "红") if r["状态"] == "完成" and r["绿"] is not None else "",
+                   ("绿" if r["绿"] else "红") if r["状态"] == "完成" and r["绿"] is not None else "—",
+                   r["认领者"] or "—", r["入队时刻"], r["更新时刻"])
+                for r in 预验任务快照()) or "<tr><td colspan=7>空</td></tr>"
             页 = (HTML页.replace("__门禁表__", "<table><tr><th>SHA</th><th>平台</th><th>结果</th>"
                   "<th>耗时</th><th>时刻</th></tr>" + 门禁行 + "</table>")
+                  .replace("__任务表__", "<table><tr><th>分支</th><th>SHA</th><th>状态</th><th>结果</th>"
+                           "<th>认领者</th><th>入队</th><th>更新</th></tr>" + 任务行 + "</table>")
                   .replace("__队列表__", "<table><tr><th>分支</th><th>基线</th><th>报名时刻</th>"
                            "<th>状态</th><th>写集</th></tr>" + 队列行 + "</table>")
                   .replace("__时刻__", 时区时刻()))
@@ -198,8 +296,6 @@ if __name__ == "__main__":
         import tempfile
         db路径 = os.path.join(tempfile.mkdtemp(), "selftest.db")
         con = 建库()   # 模块级重绑（__main__ 同作用域·内存态覆盖·服务启动路径不受影响）
-        n = 0
-
         n绑定 = [0]
 
         def 断言(条件, 说明):
@@ -232,6 +328,7 @@ if __name__ == "__main__":
         print("selftest %d 项全过" % n绑定[0])
         raise SystemExit(0)
 
-    print("[启动] 端口=%d db=%s 令牌=%s" % (端口, db路径, "已设" if 令牌 else "未设（不鉴权·仅内网用）"),
+    print("[启动] 端口=%d db=%s 令牌=%s 任务池心跳超时=%ds"
+          % (端口, db路径, "已设" if 令牌 else "未设（不鉴权·仅内网用）", 心跳超时秒),
           flush=True)
     ThreadingHTTPServer(("0.0.0.0", 端口), 处理器).serve_forever()

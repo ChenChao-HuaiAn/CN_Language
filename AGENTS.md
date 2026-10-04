@@ -57,8 +57,10 @@
 
 1. **L1 本地快速**（每次提交前）：`python scripts/gate_quick.py`（静态+增量构建+全量单测·分钟级）。
 2. **云端 test-then-commit**（触及全量面时·1015 起默认开）：`python scripts/integrate.py`
-   自动把链顶推 TX_02 预验分支跑 linux 全量，**绿才 push develop**（红进不来；
-   `--no-cloud-gate` 逃生门=941 事后兜底；纯文档/脚本轮不预验）。全量由云端对 develop 兜底。
+   自动把链顶推预验分支跑 linux 全量，**绿才 push develop**（红进不来；
+   `--no-cloud-gate` 逃生门=941 事后兜底；纯文档/脚本轮不预验）。
+   预验执行=TX_01 任务池多 runner 认领（TX_02+家机 WSL2 谁空闲谁跑·1021；
+   池不可达自动降级 ssh 直发 TX_02）。全量由云端对 develop 兜底。
 3. **021 账实检查**（integrate 自动挂）：`python scripts/task_board.py --check`
    （🏃⇔分支存在防漏销账/✅⇔sha/依赖环/抢跑依赖）。
 - 两纪律维持：修复中间态禁推 develop（只留任务分支+预验）；临时用例（*tmp*）禁入 develop。

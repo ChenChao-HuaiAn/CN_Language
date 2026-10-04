@@ -63,3 +63,4 @@ ci_config.json
 ci-logs/
 scripts/queue_client.json
 core
+scripts/queue_state.db
