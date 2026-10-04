@@ -603,6 +603,9 @@ void IRGenerator::finishFunctionEmit(ir::IRFunction& func) {
     // 100（939）：盒内类值副本函数尾兜底（返回/跳出路径未达块出口的存量
     //   登记——幂等：块出口已释放的条目值字段=0 空安全跳过）
     emitPendingBoxCopiesRelease(0);
+    // 182（1019）：结果/可选<析构类> 变量盒亡函数尾兜底（返回/跳出路径未达块
+    //   出口的存量登记——runtime 摘取幂等·已释放条目句柄=0 空安全跳过）
+    emitPendingBoxVarsRelease(0);
     stringTainted_.clear();
     // 72-a（2026-09-11 第七十二轮）：块级作用域名单复位（函数级状态——下一函数干净）
     ownedStringOrder_.clear();
@@ -610,6 +613,8 @@ void IRGenerator::finishFunctionEmit(ir::IRFunction& func) {
     ownedFieldOrder_.clear();
     pendingBoxCopies_.clear();
     scopeBoxCopiesBase_.clear();
+    pendingBoxVars_.clear();
+    scopeBoxVarsBase_.clear();
     scopeStringBase_.clear();
     scopeClassBase_.clear();
     scopeFieldBase_.clear();

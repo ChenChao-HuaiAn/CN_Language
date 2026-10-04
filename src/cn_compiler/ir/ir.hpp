@@ -14,6 +14,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
+#include <tuple>
 #include <vector>
 
 #include "cn_compiler/common/diagnostics.hpp"
@@ -765,6 +766,11 @@ private:
     std::vector<std::size_t> scopeBoxCopiesBase_;
     bool inReturnExpr_ = false;   // 100（939）：返回表达式求值期（盒副本登记豁免）
     std::vector<std::pair<ir::IRValue, std::string>> pendingBoxCopies_;
+    // 182（1019·008 树）：结果/可选<析构类> 局部变量盒亡名单（变量级·对齐 v2
+    //   946 变量模型）——{tagAddr, fieldAddr, clsCanon}（栈槽地址·跨块恒定）。
+    //   889 表达式面双登记=幂等无害（表达式面清值字段后本面摘句柄=0 空安全）。
+    std::vector<std::tuple<ir::IRValue, ir::IRValue, std::string>> pendingBoxVars_;
+    std::vector<std::size_t> scopeBoxVarsBase_;
     // 本函数拥有串名单（genVarDecl 登记：源码类型=字符串 且未被 stringTainted_ 污染）
     std::vector<std::string> ownedStringOrder_;
     // 本函数类对象名单（genVarDecl 登记：类类型局部——沿用 oopVarSrcTypes_ 判定）
@@ -864,6 +870,10 @@ private:
     // 98-a（C9）：字符串元素数组逐元素释放发射（编译期展开 N 次；元素槽清槽幂等）
     void emitStrArrayElemFreesFor(const std::string& unique);
     void emitPendingBoxCopiesRelease(std::size_t fromIndex);
+    // 182（1019·008 树）：结果/可选<析构类> 局部变量盒亡条件析构（变量级·
+    //   v2 946 发射盒类值载荷摘删 同构）——Call __cn_box_class_delete（tag 假=
+    //   错误态免疫·摘句柄+清槽幂等·946 runtime 双端共享）+DeleteObject 空安全。
+    void emitPendingBoxVarsRelease(std::size_t fromIndex);
     void emitOwnedFieldFreesFor(const std::string& unique, const std::string& canon,
                                 const SourceLocation& loc);
     // 深拷两阶段：preFree=释放目标旧字段值（须在 memcpy 之前；无条件句柄空安全）

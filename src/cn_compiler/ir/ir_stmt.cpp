@@ -562,6 +562,7 @@ void IRGenerator::genBlock(BlockStmt* node) {
     scopeClassBase_.push_back(ownedClassOrder_.size());
     scopeFieldBase_.push_back(ownedFieldOrder_.size());
     scopeBoxCopiesBase_.push_back(pendingBoxCopies_.size());   // 100（939）
+    scopeBoxVarsBase_.push_back(pendingBoxVars_.size());       // 182（1019）
     scopeStrArrayBase_.push_back(ownedStrArrayOrder_.size());   // 98-a（C9）
     for (auto& stmt : node->statements) {
         genStmt(stmt.get());
@@ -603,6 +604,11 @@ void IRGenerator::genBlock(BlockStmt* node) {
     emitPendingBoxCopiesRelease(scopeBoxCopiesBase_.back());
     pendingBoxCopies_.resize(scopeBoxCopiesBase_.back());
     scopeBoxCopiesBase_.pop_back();
+    // 182（1019）：本块登记的结果/可选<析构类> 变量盒亡出口释放（晚于盒副本=
+    //   作用域逆序·runtime 摘取幂等）+名单回卷
+    emitPendingBoxVarsRelease(scopeBoxVarsBase_.back());
+    pendingBoxVars_.resize(scopeBoxVarsBase_.back());
+    scopeBoxVarsBase_.pop_back();
     varStack_.pop_back();  // 退出子作用域
 }
 } // namespace cn_compiler

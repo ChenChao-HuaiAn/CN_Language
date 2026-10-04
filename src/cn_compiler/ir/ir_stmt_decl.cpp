@@ -693,6 +693,82 @@ void IRGenerator::genVarDecl(VarDecl* node) {
                                    node->initializer->getType() == NodeType::CallExpr;
             emitStructCopyWithFields(dstAddr, value, declCanon, node->location,
                                      /*preFree=*/false, /*deepCopy=*/!srcIsCall);
+            // 182（1019·008 树）：结果/可选<析构类> 局部变量盒亡登记（变量级·
+            //   v2 946 变量模型同构）——调用返回接收盒（装盒() 形态）889 表达式面
+            //   不盖（pendingBoxCopies 仅 正常(类值) 字面量位·返回位豁免）=盒亡
+            //   无析构面泄漏（551 r 盒 asm 实证）。登记 {tagAddr, fieldAddr, 载荷}
+            //   ——释放面（块出口+函数尾）Call __cn_box_class_delete（tag 假=错误
+            //   态垃圾句柄免疫·摘取清槽幂等）+DeleteObject 空安全。889 表达式面
+            //   双登记=幂等无害（其清值字段后本面摘句柄=0）。
+            {
+                const bool declIsBox =
+                    SemanticAnalyzer::isResultType(declCanon) ||
+                    SemanticAnalyzer::isOptionalType(declCanon);
+                // 双登记防护（577 崩实录·全量 1019 捕获）：初值=内置构造器调用
+                //   （正常/某些/错误）时 889 表达式面已登记同一盒值字段——两面
+                //   逆序释放后跑面 emitContainerElemFreeFor 读空对象解引用崩
+                //   （C0000374）——跳过（表达式面管辖）；其余初值（调用返回
+                //   装盒() 形态等）无表达式面=本面登记。
+                bool ctorInitCovered = false;
+                if (node->initializer->getType() == NodeType::CallExpr) {
+                    const CallExpr* ice = static_cast<const CallExpr*>(
+                        node->initializer.get());
+                    if (ice->callee != nullptr &&
+                        ice->callee->getType() == NodeType::IdentifierExpr) {
+                        const std::string& cn =
+                            static_cast<const IdentifierExpr*>(ice->callee.get())
+                                ->name;
+                        ctorInitCovered = cn == "正常" || cn == "某些" ||
+                                          cn == "错误";
+                    }
+                }
+                if (declIsBox && node->initializer != nullptr &&
+                    !ctorInitCovered) {
+                    std::string payload;
+                    if (SemanticAnalyzer::isResultType(declCanon)) {
+                        const std::vector<std::string> rargs =
+                            SemanticAnalyzer::resultTypeArgs(declCanon);
+                        if (rargs.size() == 2)
+                            payload = types::canonical(rargs[0]);
+                    } else {
+                        payload = types::canonical(
+                            SemanticAnalyzer::optionalTypeArg(declCanon));
+                    }
+                    const ClassInfo* pci =
+                        payload.empty() ? nullptr : semantic_->findClass(payload);
+                    bool pDtor = false;
+                    if (pci != nullptr) {
+                        for (const auto& mk : pci->methods) {
+                            if (mk.second.isDestructor) { pDtor = true; break; }
+                        }
+                    }
+                    if (pDtor && semantic_->findCopyConstructor(payload) != nullptr) {
+                        const StructDecl* sd = semantic_->findStruct(declCanon);
+                        const int vo =
+                            sd ? semantic_->fieldOffsetOf(sd, "值") : -1;
+                        const int co =
+                            sd ? semantic_->fieldOffsetOf(
+                                     sd, SemanticAnalyzer::isResultType(declCanon)
+                                     ? "正常" : "有值") : -1;
+                        if (vo >= 0 && co >= 0) {
+                            ir::IRValue tagAddr =
+                                co == 0 ? dstAddr
+                                        : emitResult(ir::Opcode::FieldAddr,
+                                                     {dstAddr}, "ptr",
+                                                     std::to_string(co),
+                                                     node->location);
+                            ir::IRValue fieldAddr =
+                                vo == 0 ? dstAddr
+                                        : emitResult(ir::Opcode::FieldAddr,
+                                                     {dstAddr}, "ptr",
+                                                     std::to_string(vo),
+                                                     node->location);
+                            pendingBoxVars_.emplace_back(tagAddr, fieldAddr,
+                                                         payload);
+                        }
+                    }
+                }
+            }
             lastExpr_ = value;
             return;
         }

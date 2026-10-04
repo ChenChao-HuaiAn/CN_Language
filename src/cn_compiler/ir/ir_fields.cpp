@@ -20,6 +20,7 @@
 #define _CRT_SECURE_NO_WARNINGS
 #include <algorithm>
 #include <string>
+#include <tuple>
 #include <vector>
 
 #include "cn_compiler/ir/ir.hpp"
@@ -454,6 +455,24 @@ void IRGenerator::emitPendingBoxCopiesRelease(std::size_t fromIndex) {
         ir::IRValue zero = emitResult(ir::Opcode::ConstInt, {}, "i64", "0", loc);
         emit(ir::Opcode::StorePtr, {ent.first, zero}, ir::IRValue(), "", "ptr",
              loc);
+    }
+}
+
+// 182（1019·008 树）：结果/可选<析构类> 局部变量盒亡条件析构（变量级·v2 946
+//   发射盒类值载荷摘删 同构）——Call __cn_box_class_delete(tagAddr, fieldAddr)
+//   （tag 假=错误态垃圾句柄免疫；真→摘句柄+值字段清槽幂等·946 runtime 双端共享）
+//   → DeleteObject（含类析构+free·空句柄空安全）→ 字段级释放先行（副本 tracked
+//   拥有字段·939 同款纪律）。889 表达式面（pendingBoxCopies_）双登记=幂等无害。
+void IRGenerator::emitPendingBoxVarsRelease(std::size_t fromIndex) {
+    const SourceLocation loc;
+    for (std::size_t i = pendingBoxVars_.size(); i > fromIndex; --i) {
+        const auto& ent = pendingBoxVars_[i - 1];
+        ir::IRValue objPtr = emitResult(
+            ir::Opcode::Call, {std::get<0>(ent), std::get<1>(ent)}, "ptr",
+            "__cn_box_class_delete", loc);
+        emitContainerElemFreeFor(std::get<2>(ent), objPtr, loc);
+        emit(ir::Opcode::DeleteObject, {objPtr}, ir::IRValue(),
+             std::get<2>(ent), "void", loc);
     }
 }
 
