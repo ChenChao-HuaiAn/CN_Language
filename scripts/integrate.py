@@ -198,21 +198,75 @@ def 冲突标记检查(文件们: list[str]) -> str | None:
     return None
 
 
+def 总账收口021(分支们: list, 新tip: str, remote: str) -> None:
+    """v5（1016）：集成成功后 021 任务总账自动收口——成员分支匹配 🏃 行改 ✅+sha10
+    （commit+push develop·CAS 失败重试一次·再败警告由 task_board --check 下轮兜底抓漏），
+    随后跑 task_board --ready 播报本轮解锁（就绪队列前 3）。取代 v4 看板销账直推。"""
+    路径 = 仓库根 / "plans" / "021-任务进度观察表.md"
+    if not 路径.exists() or not 分支们:
+        return
+    原文 = 路径.read_text(encoding="utf-8", newline="")
+    行们 = 原文.splitlines(keepends=True)
+    改动 = []
+    for i, 行 in enumerate(行们):
+        st = 行.strip()
+        if not st.startswith("|") or "🏃" not in st:
+            continue
+        for 分支 in 分支们:
+            if 分支 in 行:
+                段 = [c.strip() for c in st.strip("|").split("|")]
+                if len(段) >= 3:
+                    段[2] = "✅ " + 新tip[:10]
+                    前缀 = 行[:len(行) - len(行.lstrip())]
+                    行尾 = "\r\n" if 行.endswith("\r\n") else "\n"
+                    行们[i] = 前缀 + "| " + " | ".join(段) + " |" + 行尾
+                    改动.append((分支, 段[0]))
+                break
+    if not 改动:
+        return
+    路径.write_text("".join(行们), encoding="utf-8", newline="")
+    分支0, 号0 = 改动[0]
+    ok = False
+    for _ in range(2):
+        运行(["git", "add", str(路径)])
+        运行(["git", "commit", "-m", "021 总账收口：任务#" + 号0 + " ✅ " + 新tip[:10] + "（集成自动·v5）"])
+        推 = 运行(["git", "push", remote, "HEAD:develop"])
+        if 推.returncode == 0:
+            ok = True
+            break
+        运行(["git", "pull", "--rebase", remote, "develop"])
+    if ok:
+        print("  [021] 任务总账自动收口：" + str(改动) + "（✅ " + 新tip[:10] + "）")
+        r = subprocess.run([sys.executable, "scripts/task_board.py", "--ready"],
+                           capture_output=True, text=True, cwd=仓库根)
+        就绪 = [l for l in (r.stdout or "").splitlines() if l.strip().startswith("#")]
+        if 就绪:
+            print("  [021] 本轮解锁（就绪队列前 3）：")
+            for l in 就绪[:3]:
+                print("      " + l.strip())
+    else:
+        print("  [警告] 021 总账收口 push 竞争失败——请手动改 ✅ 并 push"
+              "（漏收口会被 task_board --check 抓住）。")
+
+
 def 快速门禁(文件们: list[str]) -> str | None:
-    """快速门禁：冲突标记 + 临时用例拦截 + 三文档结构门禁（纯文档/脚本写集的完整门禁）。"""
+    """快速门禁（v5·1016）：冲突标记 + 临时用例拦截 + 021 任务总账账实检查。
+
+    v4 的 check_handoff/check_progress_sync/check_language_philosophy 三挂点废除
+    （文档结构检查=误报折腾税·详=AGENTS v5）——025/更新日志/看板废档后无检查面；
+    check_language_philosophy 收窄为「语义变更轮手跑」（AGENTS §3.1 维持）。
+    021 账实检查（task_board.py --check：🏃⇔分支存在防漏销账/✅⇔sha/依赖环/抢跑）
+    = v5 唯一文档门禁——真防任务丢失，零形态误报。
+    """
     问题 = 冲突标记检查(文件们)
     if 问题:
         return 问题
     问题 = 临时用例检查(文件们)
     if 问题:
         return 问题
-    # check_language_philosophy 补挂（920·阶段4 漂移修复）：AGENTS §3.1 门禁条声称
-    #   「integrate.py 快速门禁同挂」但实际从未调用——920 诊断实锤的文档/代码漂移点。
-    for 脚本 in ("scripts/check_handoff.py", "scripts/check_progress_sync.py",
-                 "scripts/check_language_philosophy.py"):
-        结果 = 运行([sys.executable, 脚本])
-        if 结果.returncode != 0:
-            return f"{脚本} 未过——修复后重试。"
+    结果 = 运行([sys.executable, "scripts/task_board.py", "--check"])
+    if 结果.returncode != 0:
+        return "task_board 账实检查未过——修复后重试（021 任务总账）。"
     return None
 
 
@@ -913,6 +967,7 @@ def solo流程(平台: str, 参数: argparse.Namespace) -> int:
                 清理 = 运行(["git", "push", 参数.remote, "--delete", 分支])
                 if 清理.returncode == 0:
                     print(f"  [清理] 远程任务分支 {分支} 已删（内容已入 {集成分支}·AGENTS.md §8.1 集成即删）。")
+                    总账收口021([分支], 输出(["git", "rev-parse", "HEAD"]), 参数.remote)
                 else:
                     print("  [警告] 远程任务分支删除失败（不影响集成有效性）"
                           "——稍后 python scripts/branch_cleanup.py 兜底。")
@@ -1148,10 +1203,8 @@ def 批流程(参数: argparse.Namespace) -> int:
         队列写("clear", {"分支们": [行["分支"] for 行 in 实际成员]})
         for 分支, _原因 in 踢出们:
             队列写("update", {"分支": 分支, "状态": "已踢出"})
-        问题 = 直推看板提交(销账变换, f"集成队列：批集成销账（{当前分支} 批·{新tip[:8]}·"
-                                      f"成员 {len(实际成员)} 清行）", 参数.remote)
-        if 问题:
-            print(f"  [警告] 队列销账直推失败（{问题}）——请手动清理队列行。")
+        # v5（1016）：看板销账直推废除——021 总账自动收口（含解锁播报）
+        总账收口021([行["分支"] for 行 in 实际成员], 新tip, 参数.remote)
         镜像 = 运行(["git", "push", 镜像远程, f"{集成分支}"])
         if 镜像.returncode != 0:
             print("  [警告] github 镜像补推失败——按惯例下次提交补推（不影响集成有效性）。")
