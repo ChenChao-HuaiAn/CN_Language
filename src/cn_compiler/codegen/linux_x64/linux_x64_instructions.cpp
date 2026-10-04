@@ -851,7 +851,14 @@ void LinuxX64CodeGenerator::emitPtrLoadStore(LinuxX64AsmWriter& writer,
             emitStackStore(writer, regSlotOffset(inst.result.id), "r9", "i64");
             return;
         }
-        if (type == "i32" || type == "u32" || type == "i1") {
+        if (type == "i1") {
+            // i1（布尔）1 字节访存（#176）：布局层 类型大小=1——原归 32 位组
+            //   读 4 字节吃相邻字段（窗口窄于 win 的 8 字节但同族缺陷）
+            writer.line("movzx r9, byte ptr [r10]");
+            emitStackStore(writer, regSlotOffset(inst.result.id), "r9", "i64");
+            return;
+        }
+        if (type == "i32" || type == "u32") {
             writer.line("mov r9d, dword ptr [r10]");
             // 32位装载清高32位（零扩展），用64位存储
             emitStackStore(writer, regSlotOffset(inst.result.id), "r9", "i64");
@@ -906,12 +913,19 @@ void LinuxX64CodeGenerator::emitPtrLoadStore(LinuxX64AsmWriter& writer,
         writer.line("mov byte ptr [r10], r9b");
         return;
     }
+    if (type == "i1") {
+        // i1（布尔）1 字节存储（#176）：与 i8/u8 同款 byte 写——原归 32 位组
+        //   4 字节写破坏相邻字段
+        loadOperandToX(writer, inst.operands[1], "r9");
+        writer.line("mov byte ptr [r10], r9b");
+        return;
+    }
     if (type == "i16" || type == "u16") {
         loadOperandToX(writer, inst.operands[1], "r9");
         writer.line("mov word ptr [r10], r9w");
         return;
     }
-    if (type == "i32" || type == "u32" || type == "i1") {
+    if (type == "i32" || type == "u32") {
         loadOperandToX(writer, inst.operands[1], "r9");
         writer.line("mov dword ptr [r10], r9d");
         return;

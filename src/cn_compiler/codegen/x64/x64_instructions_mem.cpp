@@ -282,6 +282,14 @@ void X64CodeGenerator::emitPtrLoadStore(AsmWriter& writer, const ir::IRInstructi
             writer.line("mov " + shrunkOperand("i32", dst) + ", eax");
             return;
         }
+        if (inst.type == "i1") {
+            // i1（布尔）指针访存按 1 字节（布局层 类型大小=1·结构体拷贝 rep movsb 同源）：
+            //   原落 i64 兜底=8 字节读吃相邻字段与栈垃圾、8 字节写破坏相邻字段
+            //   （#176：v2 条件帧 分支已取 误读致 #否则 翻转）
+            writer.line("movzx eax, byte ptr [" + addrReg + "]");
+            writer.line("mov " + shrunkOperand("i32", dst) + ", eax");
+            return;
+        }
         if (inst.type == "u32") {
             // 修复5（无符号LoadPtr）：mov eax 读取后高32位已清零（写eax清高32位），
             //   无需 movsxd（原实现符号扩展，0xFFFFFFFF 读成 -1）
@@ -374,6 +382,17 @@ void X64CodeGenerator::emitPtrLoadStore(AsmWriter& writer, const ir::IRInstructi
         }
         const std::string sub = (inst.type == "u8") ? "cl" : "cx";
         writer.line("mov " + memSizePtr(inst.type) + "[" + addrReg + "], " + sub);
+        return;
+    }
+    if (inst.type == "i1") {
+        // i1（布尔）1 字节存储（#176）：movzx 取单字节零扩展清除值槽高位残留——
+        //   原 i64 兜底 8 字节写会把值槽残留带进相邻字段
+        if (inst.operands[1].isConstant) {
+            writer.line("mov rcx, " + value);
+        } else {
+            writer.line("movzx rcx, byte ptr " + value);
+        }
+        writer.line("mov byte ptr [" + addrReg + "], cl");
         return;
     }
     // i64/ptr：64位存储

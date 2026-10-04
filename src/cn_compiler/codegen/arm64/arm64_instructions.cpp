@@ -1007,7 +1007,13 @@ void Arm64CodeGenerator::emitPtrLoadStore(Arm64AsmWriter& writer,
             // 写入w10自动清零高32位（零扩展），用64位存储避免strb/strh截断
             storeVirtualResult(writer, inst.result.id, "x10", "i64");
             return;
-        } else if (type == "i32" || type == "u32" || type == "i1") {
+        } else if (type == "i1") {
+            // i1（布尔）1 字节访存（#176）：布局层 类型大小=1——原归 32 位组
+            //   ldr w 读 4 字节吃相邻字段（与 win/linux-x64 同族缺陷）
+            writer.line("ldrb w10, [" + addr + "]");
+            storeVirtualResult(writer, inst.result.id, "x10", "i64");
+            return;
+        } else if (type == "i32" || type == "u32") {
             writer.line("ldr w10, [" + addr + "]");
             // ldr w10 零扩展到64位x10（AArch64 ldr wN 自动清高32位），用64位存储
             storeVirtualResult(writer, inst.result.id, "x10", "i64");
@@ -1070,7 +1076,13 @@ void Arm64CodeGenerator::emitPtrLoadStore(Arm64AsmWriter& writer,
         writer.line("strh " + spSrc + ", [" + addr + "]");
         return;
     }
-    if (type == "i32" || type == "u32" || type == "i1") {
+    if (type == "i1") {
+        // i1（布尔）1 字节存储（#176）：与 i8/u8 同款 strb——原归 32 位组
+        //   4 字节写破坏相邻字段
+        writer.line("strb " + spSrc + ", [" + addr + "]");
+        return;
+    }
+    if (type == "i32" || type == "u32") {
         writer.line("str " + spSrc + ", [" + addr + "]");
         return;
     }
