@@ -205,7 +205,11 @@ def 总账收口021(分支们: list, 新tip: str, remote: str) -> None:
     路径 = 仓库根 / "plans" / "021-任务进度观察表.md"
     if not 路径.exists() or not 分支们:
         return
-    原文 = 路径.read_text(encoding="utf-8", newline="")
+    # 1017 修复（Python 3.12 兼容）：pathlib.Path.read_text 的 newline 参数为
+    #   3.13 新增——本机 3.12 直炸 TypeError（集成 push 已成·收口步崩=021 漏销账）。
+    #   改 open(..., newline="") 等价语义（保 CRLF 原样·3.8+ 全版本可用）。
+    with open(路径, "r", encoding="utf-8", newline="") as f:
+        原文 = f.read()
     行们 = 原文.splitlines(keepends=True)
     改动 = []
     for i, 行 in enumerate(行们):
