@@ -72,10 +72,11 @@ from pathlib import Path
 # 触及全量面的集成：链顶（=合并结果）推 TX_02 预验分支跑 linux-x86_64 全量，绿才 push
 # develop——红根本进不来（红灯窗口期结构性消除）。旧模式（941 fast-lane·commit-then-test）
 # 保留为事后兜底：预验跳过面（纯文档轮）与 --no-cloud-gate 逃生门走云端每推送自动验。
-# **默认关**：待 develop 回绿（171 根治销账·家机 1002/1003 链）后翻默认开——翻默认=改下方
-# 一处常量+AGENTS §5/§8.2/028 同步（启用轮承载）。红轮实测数据（TX_02 ci-logs 107 轮）：
-# 绿轮 13~16min·红轮带串行复验 33~40min——等待期可做六件套文档。
-云端预验默认开 = False
+# **默认开**（1015 翻开·2026-10-04）：1008 立的启用条件「develop 回绿」已达成（1013 批八
+# 终验云端 c4c28311 轮绿·linux 红=0）——触及全量面的集成默认走 test-then-commit。
+# 红轮实测数据（TX_02 ci-logs 107 轮）：绿轮 13~16min·红轮带串行复验 33~40min——等待期
+云端预验默认开 = True
+# 可做六件套文档；TX_02 异常时 --no-cloud-gate 逃生门回退 941 事后兜底。
 预验远程分支前缀 = "ci/预验-"
 预验轮询间隔秒 = 60
 预验总超时分钟 = 75    # 含锁等待（TX_02 正跑 develop 轮时预验排队）+全量跑轮·留余量
@@ -1180,7 +1181,7 @@ def 主流程() -> int:
                              "即集成——全量由 TX_02 云端对 develop 事后自动跑+红灯治理兜底"
                              "（Chromium CQ/rustc bors 同构）")
     解析器.add_argument("--cloud-gate", action="store_true",
-                        help="云端预验门禁显式开（1008·方案甲 test-then-commit·当前默认关）："
+                        help="云端预验门禁显式开（1008·方案甲 test-then-commit·1015 起默认开）："
                              "触及全量面的集成把链顶推 TX_02 预验分支跑 linux 全量，"
                              "绿才 push develop——红根本进不来。默认开时此参数=显式确认（幂等）")
     解析器.add_argument("--no-cloud-gate", action="store_true",
@@ -1218,8 +1219,8 @@ def 主流程() -> int:
     参数 = 解析器.parse_args()
     # 941（用户裁决 2026-10-02）：快速通道默认开——--no-fast-lane 显式回退本机全量
     参数.fast_lane = not 参数.no_fast_lane
-    # 1008（用户裁决 2026-10-03·方案甲）：云端预验门禁默认关——develop 回绿（171 销账）后
-    #   翻默认开（改常量 云端预验默认开 一处+AGENTS/028 同步）；显式旗优先于默认。
+    # 1008（用户裁决 2026-10-03·方案甲）：云端预验门禁——1015 起**默认开**（develop 回绿
+    #   达成·1013 终验）；显式旗优先于默认（--no-cloud-gate 逃生门）。
     参数.cloud_gate = (not 参数.no_cloud_gate) and (云端预验默认开 or 参数.cloud_gate)
     if 参数.no_cloud_gate:
         print("[1008] --no-cloud-gate：云端预验门禁显式关闭——回退 941 fast-lane 事后兜底"
