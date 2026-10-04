@@ -450,14 +450,16 @@ def 云端预验门禁(链顶: str, 参数: argparse.Namespace) -> str | None:
         return f"预验分支推送失败（{预验分支}）——检查远程权限后重试。"
     try:
         # rm 旧预验结果（同 sha 二次预验=CAS 竞争重试路径·旧文件不可当本轮结果）
-        # 1019 缺陷修复：后台 daemon 须 < /dev/null 切断 stdin——否则 python3 继承 ssh 会话
-        #   管道，sshd 等 EOF 至 daemon 退出（wait-lock 排队=数十分钟），subprocess 30s 必超时
-        #   （TX_02 空闲时 daemon 快速跑完掩盖·忙时必现——1019 轮两连崩实录）。
+        # 1019 缺陷修复（两轮实验定音）：真根因=链尾 `&` 使整条 `cd && rm && nohup` 链异步化，
+        #   bash fork subshell 执行链并**持有 ssh 会话管道**直到链内命令（daemon wait-lock 数十
+        #   分钟）结束——sshd 不出 EOF→ssh 挂→subprocess timeout=30 必崩（< /dev/null 只切
+        #   nohup 自身 stdin 救不了·变体矩阵实证：链尾 & 必挂 10s/组内 & 0.4s）。故 & 收进
+        #   { } 组内+组级三管道切断，前置 cd/rm 保持前台（失败即停不误触发）。
         触发 = subprocess.run(
             ["ssh", "-o", "ConnectTimeout=15", 配置["ssh"],
-             "cd %s && rm -f ci-logs/预验_%s.json && nohup env CN_CI_BRANCH=%s "
+             "cd %s && rm -f ci-logs/预验_%s.json && { nohup env CN_CI_BRANCH=%s "
              "python3 scripts/ci_daemon.py --once --force --wait-lock "
-             "> ci-logs/预验启动_%s.log 2>&1 < /dev/null & echo 触发成功"
+             "> ci-logs/预验启动_%s.log 2>&1 </dev/null & } >/dev/null 2>&1 </dev/null; echo 触发成功"
              % (配置["目录"], sha10, 预验分支, sha10)],
             capture_output=True, text=True, timeout=30)
         if 触发.returncode != 0 or "触发成功" not in (触发.stdout or ""):
