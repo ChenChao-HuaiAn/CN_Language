@@ -329,32 +329,38 @@ def 池跑任务(任务: dict) -> None:
 def 主(常驻: bool, 强制: bool, 等锁: bool = False) -> int:
     日志目录.mkdir(exist_ok=True)
     锁 = (锁文件.open("a+"))
-    try:                                    # 非阻塞锁：cron 兜底撞上常驻跑轮=静默让路
+    # 184 锁模型治本（1021 饿死实录）：锁从「进程生命周期级」改「轮次级」——常驻每轮
+    #   跑完释放（LOCK_UN）、下轮重抢；ssh 点名 --wait-lock 的等待=至多**当前轮完成**
+    #   （而非等常驻进程退出）即可插队。923 OOM 铁律不变：锁窗内同机只跑一个全量。
+    try:                                    # 非阻塞抢锁：cron 兜底撞上在跑轮=静默让路
         fcntl.flock(锁, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except OSError:
         if not 等锁:
             print("[锁] 已有轮在跑——退出。", flush=True)
             return 0
-        # --wait-lock（1008·ci/预验 触发用）：排队等现有轮（develop 常驻轮/其他预验）完成——
-        # 3.6G 内存双全量并发=923 OOM 铁律，预验必须串行排队而非并发抢跑
-        print("[锁] 已有轮在跑——等待（--wait-lock·预验排队）……", flush=True)
+        # --wait-lock（1008·ci/预验 触发用）：等现有轮完成（184 前语义=等持锁进程退出·饿死）
+        print("[锁] 已有轮在跑——等待（--wait-lock·至多当前轮）……", flush=True)
         fcntl.flock(锁, fcntl.LOCK_EX)
     while True:
         # ── 1021 池优先段：只在本职分支 develop 时进池（CN_CI_BRANCH 点名模式=ssh 直发
-        #    降级路径·被点名跑指定预验分支，不抢池内别的任务）；flock 在手=同机单任务
-        #    （923 OOM 铁律在池化下的保持形态——家机 7 实例各持各的锁文件）。
+        #    降级路径·被点名跑指定预验分支，不抢池内别的任务）；锁在手=同机单任务
+        #    （923 OOM 铁律——家机 7 实例各持各的锁文件）。
         if 分支 == "develop":
             任务 = 池认领任务()
             if 任务:
                 池跑任务(任务)
                 if not 常驻:
                     return 0
+                fcntl.flock(锁, fcntl.LOCK_UN)      # 184：轮间释放·点名可插队
                 time.sleep(轮询间隔秒)
+                重抢锁(锁)
                 continue
             if 角色 == "pool":      # 纯池角色（家机实例）无任务→空闲休眠
                 if not 常驻:
                     return 0
+                fcntl.flock(锁, fcntl.LOCK_UN)
                 time.sleep(轮询间隔秒)
+                重抢锁(锁)
                 continue
         # ── 原有轮询（TX_02 develop 本职 / CN_CI_BRANCH 点名预验）
         sha = 取远端SHA()
@@ -371,7 +377,21 @@ def 主(常驻: bool, 强制: bool, 等锁: bool = False) -> int:
             print("[完成] 绿=%s 总秒=%s 详情=%s" % (结果["绿"], 结果["总秒"], 结果["日志"]), flush=True)
         if not 常驻:
             return 0
+        fcntl.flock(锁, fcntl.LOCK_UN)              # 184：轮间释放·点名可插队
         time.sleep(轮询间隔秒)
+        重抢锁(锁)                                   # 184：非阻塞重抢（抢不到=他轮在跑·等它完成）
+
+
+def 重抢锁(锁) -> None:
+    """184：常驻轮间非阻塞重抢——抢不到=点名预验/兜底在跑，等它完成（90s 步进）。
+    轮次级锁核心：ssh 点名 --wait-lock 至多等到当前轮完成即可插队（923 铁律由锁窗保持）。"""
+    while True:
+        try:
+            fcntl.flock(锁, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return
+        except OSError:
+            print("[锁] 他轮在跑（点名预验/兜底）——%ds 后再试。" % 轮询间隔秒, flush=True)
+            time.sleep(轮询间隔秒)
 
 
 if __name__ == "__main__":
