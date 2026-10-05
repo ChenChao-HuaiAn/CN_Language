@@ -129,7 +129,8 @@ def 前置自检(远程: str = 主远程) -> str | None:
     当前分支 = 输出(["git", "branch", "--show-current"])
     if not 当前分支:
         return "不在任何分支上（detached HEAD？）——请在任务分支上运行本脚本。"
-    if not 分支名模式.match(当前分支):
+    # develop=主集成分支白名单（账目轮/立法轮直接在 develop 提交后跑本脚本=历史惯例·196 轮收紧时误拦）
+    if 当前分支 != "develop" and not 分支名模式.match(当前分支):
         return f"分支名「{当前分支}」不合法——须形如 任务/<021任务号>（如 任务/087·196 立规）；旧格式 任务/<机>-<轮>-<标识> 仅存量在飞过渡（AGENTS.md §2/§7）。"
     状态 = 输出(["git", "status", "--porcelain"])
     未跟踪 = [行[3:] for 行 in 状态.splitlines() if 行.startswith("?? ")]
