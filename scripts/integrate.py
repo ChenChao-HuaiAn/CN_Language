@@ -437,6 +437,12 @@ def 池轮询预验(预验分支: str, 链顶: str) -> tuple[bool, str | None]:
     返回 (是否拿到结论, 拦截原因)：绿=(True,None)·红=(True,原因)；
     TX_01 连续 3 轮不可达、任务持续排队超 池空降级秒（=池空·无 runner 在）或总超时
     =(False,None)——调用方降级 ssh 直发。"""
+def 解析预验红用例们(结果文本):
+    """216：从 runner 结果 JSON 文本提取 失败用例名集合（✗ 用例名: 形态行）。"""
+    import re as _re
+    return _re.findall(r"✗\s+(\S+?):", 结果文本 or "")
+
+
     import time as _time
     截止 = _time.time() + 预验总超时分钟 * 60
     连续失败 = 0
@@ -478,6 +484,18 @@ def 池轮询预验(预验分支: str, 链顶: str) -> tuple[bool, str | None]:
         if 绿:
             print(f"  [预验] ✓ 池绿（{摘要}）——放行 push develop（develop 轮按池绿/本地档跳过·零重复算力）")
             return True, None
+        # 216：批预验已知红点名放行——红用例**全部**命中 --allow-pool-red 清单=披露放行
+        #   （使用责任=发起机：点名依据+集成广播披露·不实可 revert；未点名红仍硬拦）
+        红用例们216 = 解析预验红用例们(文本)
+        未点名216 = [u for u in 红用例们216 if u not in 参数.allow_pool_red]
+        if 红用例们216 and not 未点名216:
+            print(f"  [预验] 红 {len(红用例们216)} 例全部命中 --allow-pool-red 点名清单"
+                  f"（{'、'.join(红用例们216)}）——披露放行 push develop"
+                  "（使用责任=发起机·广播披露·不实可 revert）")
+            return True, None
+        if 未点名216:
+            print(f"  [预验] 红 {len(红用例们216)} 例·未点名红（{'、'.join(未点名216)}）"
+                  "——硬拦（--allow-pool-red 点名可放行）")
         return True, (f"云端预验红（链顶 {链顶[:10]}·develop 未收到该提交）——{摘要}\n"
                       "  修复走任务分支（修复中间态禁推 develop·1008 纪律 1），绿后重新集成。")
     return False, None
@@ -540,6 +558,14 @@ def 云端预验门禁(链顶: str, 参数: argparse.Namespace) -> str | None:
                 绿, 摘要 = 解析预验结果(取.stdout)
                 if 绿:
                     print(f"  [预验] ✓ 绿（{摘要}）——放行 push develop（daemon 已写 latest·轮询轮免重跑）")
+                    return None
+                # 216：ssh 降级路径同款已知红点名放行（与池路径同判据同责任）
+                红用例们216b = 解析预验红用例们(取.stdout)
+                未点名216b = [u for u in 红用例们216b if u not in 参数.allow_pool_red]
+                if 红用例们216b and not 未点名216b:
+                    print(f"  [预验] 红 {len(红用例们216b)} 例全部命中 --allow-pool-red 点名清单"
+                          f"（{'、'.join(红用例们216b)}）——披露放行 push develop"
+                          "（使用责任=发起机·广播披露·不实可 revert）")
                     return None
                 return (f"云端预验红（链顶 {sha10}·develop 未收到该提交）——{摘要}\n"
                         "  修复走任务分支（修复中间态禁推 develop·1008 纪律 1），绿后重新集成。")
@@ -1370,6 +1396,12 @@ def 主流程() -> int:
                              "串行复验红若全部命中点名清单=三平台已定性已知红披露放行；"
                              "未点名红仍硬拦。使用责任=发起机（点名依据+集成广播披露不实=违规可 revert）。"
                              "fdef8ae9 P1 根治后本参数应移除。可多次传入点名多个用例。")
+    解析器.add_argument("--allow-pool-red", action="append", default=[],
+                        metavar="用例名",
+                        help="216 批预验已知红点名：云端预验（池/ssh 路径）红若**全部**命中点名清单="
+                             "披露放行（使用责任=发起机：点名依据+集成广播披露·不实可 revert）；"
+                             "未点名红仍硬拦。场景=环境敏感用例（606 判零防线 WSL 池红 vs TX_02 门禁绿）"
+                             "锁死集成链。可多次传入点名多个用例。")
     # v2 遗留旗标（581-a 废除·接受即忽略——v3 下「本机门禁绿即集成」本就是默认行为，
     # 保留解析仅为不炸他机旧命令行习惯）
     解析器.add_argument("--try-build-done", action="store_true",
