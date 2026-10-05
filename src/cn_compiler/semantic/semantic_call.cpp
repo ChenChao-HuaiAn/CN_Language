@@ -1216,6 +1216,26 @@ bool SemanticAnalyzer::checkDirectCall(CallExpr* node, const std::string& callee
                     "实例方法作值不能直接作为函数指针实参传递（绑定 this 须先赋值给变量：变量 cb = 对象.方法）");
             }
         }
+        // 217（027 波2a·001 §5.8a）：新线程 实参位可搬运检查——按值拷贝进新线程的
+        //   值须可搬运（§1.1a① 编译期硬错误·Rust Send 对照）。置于重载决议之前：
+        //   可搬运诊断是实参槽语义（先于形参签名不匹配诊断·双侧诊断面同构）。
+        //   用户面=stdlib 包装 新线程；模块体内直调=内置 线程::新（旧点号 线程.新）。
+        //   实参2 形态：顶层 空类型*/空类型/未知=内置豁免窗口放行（sunset=218）。
+        if ((calleeName == "新线程" || calleeName == "线程::新" ||
+             calleeName == "线程.新") &&
+            argTypes.size() >= 2) {
+            const std::string& argTy = argTypes[1];
+            if (!argTy.empty() && argTy != "未知" && argTy != "空类型" &&
+                argTy != "空类型*") {
+                std::string offender;
+                if (!isPortableType(argTy, offender)) {
+                    diagnostics_.report(
+                        DiagnosticLevel::Error, node->arguments[1]->location,
+                        "类型 '" + argTy + "' 含裸指针字段 '" + offender +
+                            "'，不可跨线程搬运（001 §5.8a；如确需跨线程请声明 不安全 可搬运）");
+                }
+            }
+        }
         // 第 4 层（crate 隔离）：限定调用按模块过滤（数学::双倍 只解析数学.cn 的）
         // 55-c 方案A：实参字面量标志供决议豁免（`读值(100)` 传 正32 形参保留）
         std::vector<bool> argLitFlags;

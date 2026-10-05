@@ -788,6 +788,35 @@ std::unique_ptr<Program> Parser::parse(const std::vector<Token>& tokens) {
             }
             continue;
         }
+        // 217（027 波2a·001 §5.8a）：不安全 可搬运 结构体/联合体/类 —— 便携豁免声明
+        //   （对标 Rust unsafe impl Send：含指针字段类型显式声明可跨线程搬运，
+        //   声明人自担责任）。「可搬运」为声明位上下文词非保留字（关键字最小化）：
+        //   仅「不安全+可搬运+类型声明字」三词组合触发，其余语境照常标识符。
+        if (check(TokenType::Kw_Unsafe) &&
+            peek(1).getType() == TokenType::Identifier &&
+            peek(1).getValue() == "可搬运" &&
+            (peek(2).getType() == TokenType::Kw_Struct ||
+             peek(2).getType() == TokenType::Kw_Union ||
+             peek(2).getType() == TokenType::Kw_Class)) {
+            advance();  // 消费 不安全
+            advance();  // 消费 可搬运
+            if (check(TokenType::Kw_Class)) {
+                auto cls = parseClassDecl();
+                if (!cls->name.empty()) {
+                    cls->explicitPortable = true;
+                    cls->access = moduleAccess;
+                    program->classes.push_back(std::move(cls));
+                }
+            } else {
+                auto decl = parseStructDecl(check(TokenType::Kw_Union));
+                if (!decl->name.empty()) {
+                    decl->explicitPortable = true;
+                    decl->access = moduleAccess;
+                    program->structs.push_back(std::move(decl));
+                }
+            }
+            continue;
+        }
         // plans/019 阶段4（2026-09-10）：不安全 函数 名(...) —— 安全区边界
         //   修饰（不安全 为真关键字 Kw_Unsafe）：体内方可指针算术/指针下标写/
         //   联合体访问/外部函数调用/裸释放（观察期=警告）。

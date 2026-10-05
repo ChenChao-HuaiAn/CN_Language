@@ -202,6 +202,110 @@ bool SemanticAnalyzer::isTriviallyCopyable(const std::string& type,
     return false;   // 字符串/容器/未识别类型：默认拒绝（方案A 方向）
 }
 
+// 217（027 波2a·001 §5.8a）：类型可搬运判定（对标 Rust Send·新线程 实参位检查用）。
+//   与 isTriviallyCopyable 的关键差异：指针在 Copy 判定中可平凡复制，但裸指针
+//   无所有权语义=跨线程数据竞争温床 → 含指针字段默认不可搬运（条文④）；
+//   字符串拥有型深拷安全 → 恒可搬运（Copy 判定中默认拒绝）。豁免窗口：
+//   未知类型保守放行（sunset=218 集成即撤·001 §5.8a sunset 立法）。
+bool SemanticAnalyzer::isPortableType(const std::string& type, std::string& offender,
+                                      int depth) const {
+    if (depth > 12) return true;   // 环防护：超深递归保守放行（CN 无自引用值语义）
+    const std::string canon = types::canonical(type);
+    if (canon.empty()) return true;   // 未知 → 保守放行（内置豁免窗口·sunset=218）
+    // 条文①：标量/字符串/函数指针恒可搬运（字符串=拥有型整块深拷·值语义安全）
+    if (canon == "布尔" || canon == "字符" || canon == "空类型" || canon == "字符串") {
+        return true;
+    }
+    if (types::isNumeric(canon)) return true;
+    if (types::isFuncPtr(canon)) return true;
+    // 条文④：裸指针（T*/空类型*）默认不可搬运——无所有权语义·数据竞争温床
+    if (types::isPointer(canon)) {
+        if (offender.empty()) offender = canon;
+        return false;
+    }
+    // 数组：随元素类型（条文②）
+    if (types::isArray(canon)) {
+        return isPortableType(types::arrayElemOf(canon), offender, depth + 1);
+    }
+    // 条文②：结果<T,E>/可选<T> 随载荷（$ 合成形态由谓词识别）
+    if (isResultType(canon)) {
+        const std::vector<std::string> args = resultTypeArgs(canon);
+        for (const auto& a : args) {
+            if (!a.empty() && !isPortableType(a, offender, depth + 1)) return false;
+        }
+        return true;
+    }
+    if (isOptionalType(canon)) {
+        const std::string arg = optionalTypeArg(canon);
+        return arg.empty() ? true : isPortableType(arg, offender, depth + 1);
+    }
+    // 容器实例（$ 形态：向量$X/映射$K$V/集合$X…）：随全部实参（条文②）
+    if (canon.find('$') != std::string::npos) {
+        static const char* containerNames[] = {"向量", "映射", "集合", "链表", "栈", "队列"};
+        const std::string base = canon.substr(0, canon.find('$'));
+        for (const char* name : containerNames) {
+            if (base == name) {
+                std::string rest = canon.substr(canon.find('$') + 1);
+                while (!rest.empty()) {
+                    const std::string arg =
+                        (rest.find('$') != std::string::npos)
+                            ? rest.substr(0, rest.find('$'))
+                            : rest;
+                    if (!arg.empty() && !isPortableType(arg, offender, depth + 1)) {
+                        return false;
+                    }
+                    rest = (rest.find('$') != std::string::npos)
+                               ? rest.substr(rest.find('$') + 1)
+                               : "";
+                }
+                return true;
+            }
+        }
+        // 非容器 $ 实例 → 落到类查找兜底（下方）
+    }
+    // 条文③④：结构体/联合体=全字段递归（显式「不安全 可搬运」豁免放行）
+    if (isStructType(canon)) {
+        const StructDecl* decl = findStruct(canon);
+        if (decl == nullptr) return true;   // 未识别 → 保守放行（豁免窗口）
+        if (decl->explicitPortable) return true;
+        for (const auto& f : decl->fields) {
+            std::string sub;
+            if (!isPortableType(f.type, sub, depth + 1)) {
+                if (offender.empty()) {
+                    // sub 无 '.'=指针类型名（非更深字段链）→ 链只记字段名
+                    offender = f.name +
+                               ((sub.empty() || sub.find('.') == std::string::npos)
+                                    ? ""
+                                    : ("." + sub));
+                }
+                return false;
+            }
+        }
+        return true;
+    }
+    // 条文③④：类=全字段递归（含继承并入字段·ClassInfo.fields；豁免读声明 AST）
+    if (isClassType(canon)) {
+        const ClassInfo* ci = findClass(canon);
+        if (ci == nullptr) return true;   // 未识别 → 保守放行（豁免窗口）
+        if (ci->ast != nullptr && ci->ast->explicitPortable) return true;
+        for (const auto& f : ci->fieldOrder) {
+            const auto it = ci->fields.find(f);
+            if (it == ci->fields.end()) continue;
+            std::string sub;
+            if (!isPortableType(it->second.type, sub, depth + 1)) {
+                if (offender.empty()) {
+                    offender = f + ((sub.empty() || sub.find('.') == std::string::npos)
+                                        ? ""
+                                        : ("." + sub));
+                }
+                return false;
+            }
+        }
+        return true;
+    }
+    return true;   // 未识别类型（接口/外部等）→ 保守放行（内置豁免窗口）
+}
+
 bool SemanticAnalyzer::isStructType(const std::string& type) const {
     if (type.empty() || program_ == nullptr) return false;
     // A-2：限定键（甲::记录）按模块精确匹配；裸名匹配任一模块（既有行为）

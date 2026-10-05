@@ -202,6 +202,8 @@ public:
     std::string baseName;                          // 父类名（可为空 = 无继承）
     std::vector<std::string> interfaces;           // 实现的接口名列表
     std::vector<std::unique_ptr<ClassMember>> members; // 类成员列表
+    // 217（027 波2a·001 §5.8a）：「不安全 可搬运」声明位豁免（可搬运上下文词·同 StructDecl）
+    bool explicitPortable = false;
     // 模块级可见性（Task 3.6，v2.0）：公开: -> Public / 私有: -> Private（默认 Private）
     AccessSpecifier access = AccessSpecifier::Private;
     // ---- crate 模型（第 4 层，v2.0 决策4）----

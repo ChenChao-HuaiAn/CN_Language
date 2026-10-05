@@ -62,6 +62,10 @@ public:
 
     std::string name;                        // 类型名（结构体名/联合体名）
     bool isUnion = false;                    // true 表示联合体（共享内存布局）
+    // 217（027 波2a·001 §5.8a）：「不安全 可搬运」声明位豁免——含指针字段类型
+    //   显式声明可跨线程搬运（对标 Rust unsafe impl Send·声明人自担责任；
+    //   「可搬运」为声明位上下文词非保留字，仅 不安全+可搬运+类型声明字 组合触发）
+    bool explicitPortable = false;
     std::vector<StructField> fields;         // 字段列表（含布局偏移回填）
     int totalSize = 0;                       // 总大小（字节，语义层计算回填）
     int align = 1;                           // 对齐（字节，语义层计算回填）

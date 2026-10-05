@@ -240,6 +240,13 @@ public:
     //   visiting=环防护（递归类型引用时按可平凡复制放行）。
     bool isTriviallyCopyable(const std::string& type,
                              std::vector<std::string>& visiting) const;
+    // 217（027 波2a·001 §5.8a）：类型可搬运判定（对标 Rust Send）——可安全按值
+    //   拷贝进入另一线程（新线程 实参位）。标量/字符串/函数指针恒可；结果/可选/
+    //   容器随元素；结构体/类=全字段递归；含裸指针字段默认不可（offender=最近
+    //   违规字段链）；「不安全 可搬运」显式豁免放行。未知类型保守放行（内置
+    //   豁免窗口 sunset=218）。depth=环防护。
+    bool isPortableType(const std::string& type, std::string& offender,
+                        int depth = 0) const;
     // 查找枚举定义（未找到返回nullptr）
     const EnumDecl* findEnum(const std::string& name) const;
     // 计算类型大小（字节）：基本类型/指针/数组/结构体/枚举/结果/可选/类
