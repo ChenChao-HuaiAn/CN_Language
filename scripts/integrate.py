@@ -438,7 +438,7 @@ def 解析预验红用例们(结果文本):
     return _re.findall(r"✗\s+(\S+?):", 结果文本 or "")
 
 
-def 池轮询预验(预验分支: str, 链顶: str) -> tuple[bool, str | None]:
+def 池轮询预验(预验分支: str, 链顶: str, 点名清单: list) -> tuple[bool, str | None]:
     """1021 池路径轮询：TX_01 预验任务表 → 认领者（TX_02/家机实例）跑完→取详情判绿红。
     返回 (是否拿到结论, 拦截原因)：绿=(True,None)·红=(True,原因)；
     TX_01 连续 3 轮不可达、任务持续排队超 池空降级秒（=池空·无 runner 在）或总超时
@@ -487,7 +487,7 @@ def 池轮询预验(预验分支: str, 链顶: str) -> tuple[bool, str | None]:
         # 216：批预验已知红点名放行——红用例**全部**命中 --allow-pool-red 清单=披露放行
         #   （使用责任=发起机：点名依据+集成广播披露·不实可 revert；未点名红仍硬拦）
         红用例们216 = 解析预验红用例们(文本)
-        未点名216 = [u for u in 红用例们216 if u not in 参数.allow_pool_red]
+        未点名216 = [u for u in 红用例们216 if u not in 点名清单]
         if 红用例们216 and not 未点名216:
             print(f"  [预验] 红 {len(红用例们216)} 例全部命中 --allow-pool-red 点名清单"
                   f"（{'、'.join(红用例们216)}）——披露放行 push develop"
@@ -521,7 +521,7 @@ def 云端预验门禁(链顶: str, 参数: argparse.Namespace) -> str | None:
         入队 = 服务调用("/api/task_enqueue", {"分支": 预验分支, "sha": 链顶})
         if 入队 is not None and 入队.get("ok"):
             print(f"  [预验] 已入 TX_01 任务池（{预验分支}·多 runner 认领：谁空闲谁跑）")
-            拿到, 原因 = 池轮询预验(预验分支, 链顶)
+            拿到, 原因 = 池轮询预验(预验分支, 链顶, 参数.allow_pool_red)
             if 拿到:
                 return 原因
             print("  [预验] 池路径超时/不可达——降级 ssh 直发 TX_02（028 §四）……")
