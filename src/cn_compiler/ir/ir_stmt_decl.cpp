@@ -654,6 +654,26 @@ void IRGenerator::genVarDecl(VarDecl* node) {
             lastExpr_ = value;
             return;
         }
+        // 087（m85 返回面）：数组变量初始化值为"调用返回的 retbuf 基址（ptr）"——
+        //   整块 CopyStruct（bytes=typeSizeOf(数组)）到本地多槽。原通用 Store=
+        //   w 槽存指针值（8B 句柄≠数组内容·w[i] 读垃圾——p1004_02 w=垃圾实录）。
+        if (semantic_ != nullptr && value.type == "ptr" &&
+            node->initializer != nullptr &&
+            node->initializer->getType() == NodeType::CallExpr &&
+            types::isArray(types::canonical(node->typeName))) {
+            ir::IRValue dstAddr = emitResult(
+                ir::Opcode::AddrOf, {ir::IRValue::var(unique, "i64")}, "ptr",
+                unique, node->location);
+            const int bytes087 =
+                semantic_->typeSizeOf(types::canonical(node->typeName));
+            if (bytes087 > 0) {
+                emit(ir::Opcode::CopyStruct, {dstAddr, value},
+                     ir::IRValue(), std::to_string(bytes087), "void",
+                     node->location);
+            }
+            lastExpr_ = dstAddr;
+            return;
+        }
         if (semantic_ != nullptr && value.type == "ptr" &&
             semantic_->isStructType(types::canonical(node->typeName))) {
             const std::string declCanon = types::canonical(node->typeName);

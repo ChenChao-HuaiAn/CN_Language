@@ -584,9 +584,20 @@ void IRGenerator::visitCallExpr(CallExpr* node) {
         // 结构体返回值函数（Task 完善A）：调用方分配返回缓冲区（结构体临时变量），
         //   以隐藏指针（rcx，Win x64 ABI）传给被调方；被调方写入缓冲区。
         //   结果 = 缓冲区地址（ptr），供调用方 CopyStruct 到目标。
+        //   087（m85 返回面）：定长数组返回（整32[3]）同通道——被调 ir_decl 已置
+        //   structReturn（隐藏指针+epilogue 按 structReturnSize 拷贝）·调用点
+        //   原 isStructType 判定不含数组=retbuf 不预插→被调读空 retbuf 段错误
+        //   （m85c 实录 RAX=0）。resultType 显式升 ptr（mapType 数组塌缩 i32·
+        //   不动 mapType 本体——数组名退化=元素指针模型全树依赖元素类型）。
+        const std::string retSrc087 = semantic_ != nullptr
+                                          ? semantic_->funcReturnTypeOf(calleeName)
+                                          : std::string();
+        const bool isArrayRet087 = semantic_ != nullptr && types::isArray(retSrc087);
+        if (isArrayRet087) resultType = "ptr";
         if (resultType == "ptr" && semantic_ != nullptr &&
-            semantic_->isStructType(types::canonical(
-                semantic_->funcReturnTypeOf(calleeName)))) {
+            (semantic_->isStructType(types::canonical(
+                 semantic_->funcReturnTypeOf(calleeName))) ||
+             isArrayRet087)) {
             const std::string retType = semantic_->funcReturnTypeOf(calleeName);
             const std::string temp = "__retbuf" + std::to_string(varCounter_++);
             emit(ir::Opcode::Alloca, {}, ir::IRValue::reg(regCounter_++, "ptr"),

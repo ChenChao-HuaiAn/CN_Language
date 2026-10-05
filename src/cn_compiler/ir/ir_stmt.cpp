@@ -193,8 +193,15 @@ void IRGenerator::visitReturnStmt(ReturnStmt* node) {
         }
         if (function_ != nullptr) {
             const std::string retType = function_->returnType;
-            if (value.type != retType && !retType.empty() && retType != "void" &&
-                value.type != "void") {
+            // 087（m85 返回面）：**数组 sret** 的返回值=源基址（64 位指针）——
+            //   retType 塌缩类型（整32[3]→i32）时的窄化 Cast（ptr→i32·32 位
+            //   Store 截断基址·m85g asm 铁证）必须跳过。**仅数组**：结构体 sret
+            //   的 retType=ptr（mapType 非塌缩）原 Cast 判定不动（432 回归实录：
+            //   全 structReturn 跳过 Cast 破坏 v2 树结构体返回的合法宽化）。
+            if (function_->structReturn && types::isArray(function_->returnTypeSrc)) {
+                if (value.type != "ptr") { value.type = "ptr"; }
+            } else if (value.type != retType && !retType.empty() &&
+                       retType != "void" && value.type != "void") {
                 value = emitResult(ir::Opcode::Cast, {value}, retType, "", node->location);
             }
         }

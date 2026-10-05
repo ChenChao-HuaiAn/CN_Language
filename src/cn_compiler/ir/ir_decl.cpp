@@ -427,7 +427,8 @@ void IRGenerator::visitFunctionDecl(FunctionDecl* node) {
     // Task 完善A：结构体返回值标记（返回类型为自定义结构体时走隐藏返回指针）
     // 修复（2026-08 自举检查发现）：结果/可选 返回同样走隐藏返回指针协议
     if (semantic_ != nullptr && !node->returnType.empty() &&
-        semantic_->isStructType(types::canonical(node->returnType))) {
+        (semantic_->isStructType(types::canonical(node->returnType)) ||
+         types::isArray(node->returnType))) {
         // 结果/可选 返回同样走隐藏返回指针协议（Win x64 ABI）——IR 层对结构体
         //   返回调用预插 retbuf 地址为 operands[0]（形态A契约，见 ir_call.cpp），
         //   各后端原样传递自然落隐藏指针位（win=rcx / SysV=rdi / arm64=x0）；
@@ -436,6 +437,10 @@ void IRGenerator::visitFunctionDecl(FunctionDecl* node) {
         //   result.type=void 使仅按 result.type 的判定失效，2026-08 自举检查发现；
         //   2026-09-05 家机复核归真：win 第4路被调查询因 activeModule_ 恒 null
         //   从未生效，真正生效的一直是本处形态A预插，plans/016）
+        //   087（m85 返回面）：定长数组返回（整32[3]）同通道——原 mapType 塌缩
+        //   i32（8B 返回槽装 12B 数组=静默截断垃圾）·sret 隐藏指针+被调 epilogue
+        //   按 structReturnSize 拷贝（001 §3.5 数组值语义·Rust [T;N] 返回
+        //   memcpy 同构）
         func.structReturn = true;
         // 记录精确大小（字节）：epilogue 按此拷贝到隐藏返回缓冲区（避免 64 字节
         //   硬编码越界写破坏相邻栈变量——班级 16 字节被写 64 字节越界 48 字节）
@@ -533,17 +538,28 @@ void IRGenerator::registerFunctionParams(FunctionDecl* node, ir::IRFunction& fun
         //   [&] 捕获的成熟路径：读 LoadPtr、写 StorePtr、取地址 Load 槽）
         const bool isRefParam = !param->funcPtr.isFunctionPtr() &&
                                 types::isReference(param->typeName);
+        // 087（m85 族·数组值语义 ABI）：定长数组形参（整32[4] a）=按值聚合——
+        //   复用 056 结构体按值通道（调用点传源数组地址·被调 emitParamSetup 从
+        //   指针 rep movsb 拷贝 varSlots*8 字节到本地多槽·体内 a[i] 按本地数组
+        //   模型读本地拷贝）。原 mapType 塌缩 i32（签名登记 4B 槽）+调用点退化
+        //   传指针+被调按本地数组无解引用=三处错位读栈垃圾（p1004_02 sum=
+        //   13237248 应 10 实录·O0=O3 同错）。001 §3.5 数组=值聚合（赋值拷贝
+        //   语义）·Rust [T;N] 按值=memcpy 同构。
+        const bool isArrayParam = !param->funcPtr.isFunctionPtr() &&
+                                  types::isArray(param->typeName);
         // Task 2.2：函数指针参数（整32(*func)(整32, 整32)）类型为 ptr
         std::string paramIrType = param->funcPtr.isFunctionPtr()
                                       ? "ptr" : mapType(param->typeName);
-        if (isRefParam) paramIrType = "ptr";  // 引用参数按地址传递（槽存地址）
+        if (isRefParam || isArrayParam) paramIrType = "ptr";  // 引用/数组按值参数按地址传递（槽存地址）
         // Task 2.4：数组参数按多槽登记（varSlots）；引用参数仅 1 槽（存地址）
         registerVarSlots(unique, isRefParam ? ""
                             : (param->funcPtr.isFunctionPtr() ? "" : param->typeName));
         // Task 完善A：结构体按值参数标记（语义层查询——结构体源码类型）；
         //   引用参数（账户&）按地址传递（非按值结构体拷贝），须排除
+        //   087：数组按值参数同通道标记（emitParamSetup 拷贝判定同款）
         if (!isRefParam && semantic_ != nullptr && !param->funcPtr.isFunctionPtr() &&
-            semantic_->isStructType(types::canonical(param->typeName))) {
+            (semantic_->isStructType(types::canonical(param->typeName)) ||
+             isArrayParam)) {
             func.structParamIndexes.insert(static_cast<int>(pi));
         }
         func.params.emplace_back(param->name, paramIrType);
