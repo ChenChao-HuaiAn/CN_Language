@@ -316,7 +316,15 @@ void IRGenerator::genClassDestructorCalls() {
             returnedVars.insert(rv);  // 防御：返回值为变量名直传
         }
         setCurrentBlock(block.get());
-        for (const auto& ov : objVars) {
+        // 197（#197·承接 #105 甲案已裁决）：发射序改声明逆序（LIFO）——规格 06
+        //   「与C++同名构造/析构语义一致」＝构造逆序析构（栈式 RAII），与块出口
+        //   genBlockExitDestruct（back() 逆序）同构。修前正序发射=声明序 FIFO：
+        //   被返回 终止的块不走块出口析构（ir_stmt.cpp 出口守卫），函数层对象析构
+        //   全落本兜底——598 形态甲/丁实锤 D1D2D3；后声明对象依赖先声明对象
+        //   资源时（borrow/池句柄），FIFO 先亡被依赖者=悬垂析构。多返回块逐块
+        //   逆序+清零幂等模型（入口零初始化+空安全跳过）不变。
+        for (auto ovIt = objVars.rbegin(); ovIt != objVars.rend(); ++ovIt) {
+            const ObjVar& ov = *ovIt;
             if (returnedVars.count(ov.unique) > 0) continue;  // 所有权转移：跳过析构
             // 变量槽地址 -> Load 对象指针
             ir::IRValue objPtr = emitResult(
