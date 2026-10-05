@@ -2179,6 +2179,18 @@ def 主程序() -> int:
     #   明令场景带 --full-reason 放行，理由记入运行头行供事后审计。--filter/
     #   --shard 子集跑法（79_v2 锚定链、G-N 探针族、三机分片等）完全不受影响。
     全量理由 = (参数.full_reason or "").strip()
+    # 215（021 任务 215）：CI 预验环境识别放行——ci_daemon 常驻进程（TX_02/家机
+    #   WSL 池 runner·systemd Environment CN_CI_BRANCH=028 部署模板）发起的
+    #   全量 e2e=合法调用方（199 清单的环境识别补齐）。runner 机器部署的
+    #   ci_daemon 版本未同步 develop 时（旧版 run_e2e 调用不带 --full-reason），
+    #   354 护栏误拦 takeover 恢复批预验（run_1183f1db22_1006_042841 实锤）——
+    #   预验分支随集成自愈：本修复入 develop 后，预验分支的 run_e2e 即含放行，
+    #   零 runner 部署改动。AI 会话无 CN_CI_BRANCH 环境变量·护栏语义不削弱。
+    if not 全量理由:
+        ci环境分支 = (os.environ.get("CN_CI_BRANCH") or "").strip()
+        if ci环境分支:
+            全量理由 = ("ci_daemon 预验池 runner 自动全量（CN_CI_BRANCH=%s·"
+                        "215 环境识别放行）" % ci环境分支)
     有效滤 = (参数.filter or "").strip()
     if not 全量理由 and not (参数.shard or "").strip() and len(有效滤) < 2:
         print(红色("拦：本地裸全量 E2E（约 600 例·本机 30~90 分钟）被 354 护栏拦截——"
