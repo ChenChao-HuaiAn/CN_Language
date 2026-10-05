@@ -187,7 +187,12 @@ std::unique_ptr<Stmt> Parser::parseRangeForStmt() {
 }
 
 // 解析如果语句：如果 (条件) { } [否则 如果 ...] [否则 { }]
-// 兼容无括号形式（规格书06/07 示例）：如果 条件 { }（条件表达式自然解析停止于 '{'）
+// 兼容无括号形式（001 §5.5 示例形态）：如果 条件 { }
+// 任务 177（甲案·2026-10-05 用户裁决）：**无括号条件**的表达式解析期间抑制
+//   结构体初始化探测（C-2 遍历同款）——否则条件尾标识符+{ 被盲吃为 类型名{ 字段表 }，
+//   合法程序被拒；消歧条文：裸条件位 类型名{...} 裸字面量须括号包裹（Rust 同款）。
+//   带括号分支不置位：() 已显式限界，{ 无歧义——括号内实参位结构体字面量照常合法
+//   （84-a 面·存量 235/238/240/241 依赖，全量门禁实测兜住）。
 std::unique_ptr<Stmt> Parser::parseIfStmt() {
     auto stmt = std::make_unique<IfStmt>();
     stmt->location = current().getLocation();
@@ -197,14 +202,17 @@ std::unique_ptr<Stmt> Parser::parseIfStmt() {
         stmt->condition = parseExpr();
         consume(TokenType::RightParen, "')'");
     } else {
-        stmt->condition = parseExpr();  // 无括号：表达式自然解析停止于 '{'
+        const bool savedSuppressIf = suppressStructInit_;
+        suppressStructInit_ = true;
+        stmt->condition = parseExpr();  // 无括号：{ 属条件后的语句块
+        suppressStructInit_ = savedSuppressIf;
     }
     stmt->thenBranch = parseBlockStmt();
     // 否则分支（否则如果 或 否则）
     if (check(TokenType::Kw_Else)) {
         advance();
         if (check(TokenType::Kw_If)) {
-            stmt->elseBranch = parseIfStmt();  // 否则 如果 链
+            stmt->elseBranch = parseIfStmt();  // 否则 如果 链（递归自带旗标）
         } else {
             stmt->elseBranch = parseBlockStmt();  // 否则
         }
@@ -213,7 +221,8 @@ std::unique_ptr<Stmt> Parser::parseIfStmt() {
 }
 
 // 解析当循环：当 (条件) { 循环体 }
-// 兼容无括号形式（与 如果 一致）：当 条件 { }（条件表达式自然解析停止于 '{'）
+// 兼容无括号形式（与 如果 一致）：当 条件 { }
+// 任务 177：仅无括号条件解析期间抑制 结构体初始化探测（与 parseIfStmt 同款·见彼注释）
 std::unique_ptr<Stmt> Parser::parseWhileStmt() {
     auto stmt = std::make_unique<WhileStmt>();
     stmt->location = current().getLocation();
@@ -223,7 +232,10 @@ std::unique_ptr<Stmt> Parser::parseWhileStmt() {
         stmt->condition = parseExpr();
         consume(TokenType::RightParen, "')'");
     } else {
+        const bool savedSuppressWhile = suppressStructInit_;
+        suppressStructInit_ = true;
         stmt->condition = parseExpr();
+        suppressStructInit_ = savedSuppressWhile;
     }
     stmt->body = parseBlockStmt();
     return stmt;
