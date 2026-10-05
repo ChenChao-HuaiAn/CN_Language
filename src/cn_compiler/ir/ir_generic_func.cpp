@@ -141,8 +141,13 @@ void IRGenerator::emitGenericFuncInstance(const GenericFuncInstance& gfi) {
     // 结构体返回值标记（隐藏返回指针）
     // 修复（2026-08）：结果/可选 返回同样走隐藏返回指针协议（与 ir_decl/ir_oop
     //   一致）——调用方 emitCall 按被调 structReturn 标志传返回缓冲
+    //   087b 捎带（泛型实例面·ir_decl 087 sret isArray 同构）：数组返回同通道
     if (semantic_ != nullptr && !retSrc.empty() &&
         semantic_->isStructType(types::canonical(retSrc))) {
+        func.structReturn = true;
+        func.structReturnSize = semantic_->typeSizeOf(retSrc);
+    }
+    if (semantic_ != nullptr && !retSrc.empty() && types::isArray(retSrc)) {
         func.structReturn = true;
         func.structReturnSize = semantic_->typeSizeOf(retSrc);
     }
@@ -169,10 +174,17 @@ void IRGenerator::emitGenericFuncInstance(const GenericFuncInstance& gfi) {
         std::string paramIrType = param->funcPtr.isFunctionPtr()
                                       ? "ptr" : mapType(paramSrc);
         if (isRefParam) paramIrType = "ptr";
+        // 087b 捎带（泛型实例面·ir_decl 087 isArrayParam 同构）：数组形参=ptr+
+        //   structParamIndexes（056 通道 prologue rep movsb 拷贝）
+        const bool isArrayParam087b = !isRefParam &&
+                                      !param->funcPtr.isFunctionPtr() &&
+                                      types::isArray(paramSrc);
+        if (isArrayParam087b) paramIrType = "ptr";
         registerVarSlots(unique, isRefParam ? ""
                             : (param->funcPtr.isFunctionPtr() ? "" : paramSrc));
         if (!isRefParam && semantic_ != nullptr && !param->funcPtr.isFunctionPtr() &&
-            semantic_->isStructType(types::canonical(paramSrc))) {
+            (semantic_->isStructType(types::canonical(paramSrc)) ||
+             isArrayParam087b)) {
             func.structParamIndexes.insert(static_cast<int>(pi));
         }
         func.params.emplace_back(param->name, paramIrType);

@@ -900,8 +900,12 @@ void IRGenerator::emitDirectMethodCall(CallExpr* node, const ClassMemberInfo* m,
     //   指针（prologue mov r12,rcx）-> 返回 rep movsb 从错误地址拷贝 -> 崩溃。
     // 118（929）：引用返回豁免 structReturn——8B 地址直传 rax（零 sret·被调方
     //   emitClassMethod 同款豁免）；否则结构体元素 元素引用 误走 retbuf 双装载错位
+    //   087b 捎带（宿主方法调用面·ir_call isArrayRet087 同构）：方法数组返回同
+    //   通道——被调 ir_oop 已置 structReturn（隐藏指针+epilogue 按字节数拷贝）；
+    //   调用点原 isStructType 判定不含数组=retbuf 不预插
     if (semantic_ != nullptr && !m->type.empty() && !m->isRefReturn &&
-        semantic_->isStructType(types::canonical(m->type))) {
+        (semantic_->isStructType(types::canonical(m->type)) ||
+         types::isArray(m->type))) {
         const std::string temp = "__retbuf" + std::to_string(varCounter_++);
         emit(ir::Opcode::Alloca, {}, ir::IRValue::reg(regCounter_++, "ptr"),
              temp, "ptr", node->location);

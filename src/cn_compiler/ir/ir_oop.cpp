@@ -146,6 +146,12 @@ void IRGenerator::emitClassMethod(const std::string& className, const ClassMembe
             func.structReturn = true;
             func.structReturnSize = semantic_->typeSizeOf(canon);
         }
+        // 087b 捎带（宿主方法返回面·ir_decl 087 sret isArray 同构）：方法数组
+        //   返回=隐藏指针协议（structReturnSize=数组字节数·typeSizeOf 数组折叠）
+        if (!mi.isRefReturn && types::isArray(canon)) {
+            func.structReturn = true;
+            func.structReturnSize = semantic_->typeSizeOf(canon);
+        }
     }
     function_ = &func;
     // 上下文：方法所属类 + 静态/常量 修饰（方法体内 自身/父类/字段 解析用）
@@ -678,12 +684,21 @@ void IRGenerator::setupMethodParams(ir::IRFunction& func, const ClassMemberInfo&
         std::string paramIrType = param->funcPtr.isFunctionPtr()
                                       ? "ptr" : mapType(paramType);
         if (isRefParam) paramIrType = "ptr";  // 引用参数按地址传递（槽存地址）
+        // 087b 捎带（宿主方法面·ir_decl 087 isArrayParam 同构）：数组形参=按值
+        //   聚合——paramIrType=ptr+structParamIndexes（056 通道 prologue rep
+        //   movsb 拷贝）；原 mapType 塌缩元素类型 i32（597 方法面 法=垃圾值实录）
+        const bool isArrayParam087b = !isRefParam &&
+                                      !param->funcPtr.isFunctionPtr() &&
+                                      types::isArray(paramType);
+        if (isArrayParam087b) paramIrType = "ptr";
         registerVarSlots(unique, isRefParam ? ""
                             : (param->funcPtr.isFunctionPtr() ? "" : paramType));
         // 结构体按值参数标记：引用参数（账户&）按地址传递（非按值结构体拷贝），
         //   须排除（与 ir_decl.cpp 同规则）
+        //   087b：数组按值参数同通道标记（emitParamSetup 拷贝判定同款）
         if (!isRefParam && semantic_ != nullptr && !param->funcPtr.isFunctionPtr() &&
-            semantic_->isStructType(types::canonical(paramType))) {
+            (semantic_->isStructType(types::canonical(paramType)) ||
+             isArrayParam087b)) {
             func.structParamIndexes.insert(static_cast<int>(pi) + (mi.isStatic ? 0 : 1));
         }
         func.params.emplace_back(param->name, paramIrType);
