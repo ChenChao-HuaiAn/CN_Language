@@ -128,10 +128,22 @@ def 建树(任务号: str, 无ninja: bool) -> int:
     if not re.fullmatch(r"\d+[a-z]?", 任务号):
         print(f"[失败] 任务号「{任务号}」不合法——须为 021 总账行号形态（如 087、178a）")
         return 1
+    # 编号规则（2026-10-05 用户令·021 头部立法同源）：禁用号 353/354 永久拒建+按序取号不跳号
+    禁用号 = {"353", "354"}
+    if 任务号 in 禁用号:
+        print(f"[失败] 任务号 {任务号} 为禁用号（2026-10-05 用户令已改 198/199·永久禁用）——新号取当前最大有效号+1")
+        return 1
     号集 = 读021行号()
     if 号集 is not None and 任务号 not in 号集:
         print(f"[失败] 021 总账无任务 {任务号}——先在 plans/021 加行立项（提及即立项）再建树")
         return 1
+    if 号集 is not None and 任务号.isdigit():
+        其余序列 = [int(n) for n in 号集
+                    if n.isdigit() and n not in 禁用号 and int(n) != int(任务号)]
+        if 其余序列 and int(任务号) > max(其余序列) + 1:
+            print(f"[失败] 任务号 {任务号} 跳号——除本行外最大有效号 {max(其余序列)}，"
+                  f"用户令 2026-10-05：按顺序取号（max+1·禁用号 353/354 跳过·历史补记账须用户特批）")
+            return 1
     运行(["git", "fetch", "gitcode"])
     分支 = f"任务/{任务号}"
     树路径 = 主树根().parent / f"wt{任务号}"
