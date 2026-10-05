@@ -306,7 +306,8 @@ def 全量门禁(平台: str, 已知红们: list[str] | None = None, 快速通�
         if 单测.returncode != 0:
             return "单元测试未全过。"
         串行 = 运行捕获([sys.executable, "tests/e2e/run_e2e.py",
-                     "--cn", str(仓库根 / "target/Debug/cn.exe"), "--jobs", "1"])
+                     "--cn", str(仓库根 / "target/Debug/cn.exe"), "--jobs", "1",
+                     "--full-reason", "integrate win 分步串行复验（447-a）"])
         if 串行.returncode != 0:
             # 591-a（T100·170 集成实测）：win 分支补接 --allow-known-red 点名消费
             #   （与锁内版 190-215 段同逻辑——原 win ci.ps1 路径漏接·参数已有实现
@@ -363,7 +364,7 @@ def 全量门禁(平台: str, 已知红们: list[str] | None = None, 快速通�
                  "exec " + sys.executable + " " +
                  str(仓库根 / "scripts/gate_lock.py") + " run -- " + sys.executable +
                  " tests/e2e/run_e2e.py --target " + 目标 + " --cn " + str(cn路径) +
-                 " --jobs 8"])
+                 " --jobs 8 --full-reason 'integrate linux 分步全量门禁（gate_lock 锁内）'"])
     if e2e.returncode == 0:
         return None
     print("  [复验] E2E 并行未全绿——串行复验区分真红与并行互踩（447-a 机制·gate_lock 锁内）")
@@ -371,7 +372,7 @@ def 全量门禁(平台: str, 已知红们: list[str] | None = None, 快速通�
                   "exec " + sys.executable + " " +
                   str(仓库根 / "scripts/gate_lock.py") + " run -- " + sys.executable +
                   " tests/e2e/run_e2e.py --target " + 目标 + " --cn " + str(cn路径) +
-                  " --jobs 1"])
+                  " --jobs 1 --full-reason 'integrate linux 串行复验（447-a·gate_lock 锁内）'"])
     if 串行.returncode != 0:
         # 564-a（过渡机制·fdef8ae9 P1「v2p 构建确定性缺失」根治前）：--allow-known-red
         #   显式点名机制——串行红若【全部】命中点名清单=「三平台已定性已知红」披露放行；

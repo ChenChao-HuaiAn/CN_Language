@@ -71,19 +71,24 @@ tests/e2e/
 
 ## 三、如何运行测试
 
-### 直接运行（自动探测编译器）
+### 运行子集（日常开发·354 护栏推荐路径）
 
 ```bash
-python3 tests/e2e/run_e2e.py
+python3 tests/e2e/run_e2e.py --filter <用例编号|名称>   # 定向族（秒~分钟级）
+python scripts/gate_quick.py --l2                       # 按写集自动推导影响面子集
 ```
 
-自动按顺序探测：`target/Debug/cn.exe` → `target/Release/cn.exe` → `target/cn.exe`
-
-### 指定编译器路径
+### 全量（本地须给理由·CI 脚本自动带）
 
 ```bash
-python3 tests/e2e/run_e2e.py --cn target/Debug/cn.exe
+python3 tests/e2e/run_e2e.py --full-reason "<任务号+理由>"
 ```
+
+编译器路径自动按序探测：`target/Debug/cn.exe` → `target/Release/cn.exe` → `target/cn.exe`
+（或显式 `--cn <路径>` 指定）。
+
+裸全量（约 600 例·本机 30~90 分钟）无理由会被护栏拒绝（exit 2）——全量默认交云端
+（`python scripts/integrate.py` 预验·池并行 8~16 分钟·AGENTS §4 三档阶梯）。
 
 ### 常用参数
 

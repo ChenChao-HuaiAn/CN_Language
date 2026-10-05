@@ -2,6 +2,8 @@
 # -*- coding: utf-8 -*-
 # CN语言E2E测试运行器：遍历用例目录，编译->运行->比对输出
 # 用法: python3 run_e2e.py [--cn <编译器路径>] [--verbose] [--filter <模式>]
+#      （裸全量须 --full-reason "<任务号+理由>"——354 护栏：本地全量 30~90 分钟，
+#        任务中途验证请走 --filter 定向 / gate_quick.py --l2 / integrate.py 云端全量）
 #
 # 用例目录结构约定：
 #   tests/e2e/<编号>_<名称>/<用例>.cn        # CN语言源文件
@@ -2163,7 +2165,31 @@ def 主程序() -> int:
                              "用例完成=停摆判定→终止池+未完成用例诚实红+停摆诊断"
                              "（默认 1800s；0=禁用）。arm64 慢机 79_v2 尾部合法静默"
                              "最长 ~20 分钟——勿低于 1800（误触发=整轮门禁作废）")
+    解析器.add_argument("--full-reason", default=None, metavar="文本",
+                        help="本地裸全量放行理由（021 任务 354 护栏）：无 --filter 且无 --shard"
+                             " 的全量跑法必须显式给理由才放行（CI 门禁脚本自动携带）；"
+                             "任务中途验证请改走三档阶梯（--filter 定向 / gate_quick.py --l2 /"
+                             " integrate.py 云端全量·AGENTS §4）")
     参数 = 解析器.parse_args()
+
+    # —— 本地裸全量护栏（021 任务 354·AGENTS §4「验证三档阶梯」执行面）——
+    #   病根：任务中途习惯性本机全量（约 600 例·30~90 分钟），而云端池全量预验
+    #   仅 8~16 分钟（plans/028 L3）——集成时云端还会再跑一遍=双倍浪费。本护栏
+    #   拦「无滤无片的裸全量」：无理由 exit 2（秒级返回）；CI 门禁脚本与用户
+    #   明令场景带 --full-reason 放行，理由记入运行头行供事后审计。--filter/
+    #   --shard 子集跑法（79_v2 锚定链、G-N 探针族、三机分片等）完全不受影响。
+    全量理由 = (参数.full_reason or "").strip()
+    有效滤 = (参数.filter or "").strip()
+    if not 全量理由 and not (参数.shard or "").strip() and len(有效滤) < 2:
+        print(红色("拦：本地裸全量 E2E（约 600 例·本机 30~90 分钟）被 354 护栏拦截——"
+                   "云端池全量预验仅 8~16 分钟，本地全量属双倍浪费（AGENTS §4）"))
+        print("  任务中途验证请走三档阶梯：")
+        print("    ① 定向族: run_e2e.py --filter <用例编号|名称>      （秒~分钟级）")
+        print("    ② 影响面: python scripts/gate_quick.py --l2       （按写集自动推导子集）")
+        print("    ③ 全 量: python scripts/integrate.py             （云端预验·绿才入 develop）")
+        print("  本地全量仅限 CI 门禁脚本与用户明令——确须跑请带：")
+        print(青色('    --full-reason "<任务号+理由>"') + "（记入运行头行·事后可审计）")
+        return 2
 
     # 覆盖模块级默认（超限自动终止的防护阈值）
     if 参数.max_mem_mb is not None and 参数.max_mem_mb >= 0:
@@ -2193,6 +2219,8 @@ def 主程序() -> int:
     print(f"  编译器: {青色(str(编译器路径))}")
     print(f"  目标平台: {青色(目标平台)}")
     print(f"  输出目录: {输出目录}")
+    if 全量理由:
+        print(f"  全量理由: {青色(全量理由)}（354 护栏放行·记入日志供审计）")
 
     # 门禁自身自检（探测器也是被测对象——110-a 教训）：asm size 说明符扫描器
     #   正/负样本内联自检——扫描器失效时先于被测物报错，防"门禁恒绿"假象

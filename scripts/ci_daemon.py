@@ -125,7 +125,8 @@ def 跑一轮(sha: str, 轮分支: str = "") -> dict:
                 保内存 = min(4096, int(物理内存MB() * 0.8))
                 e2e基 = ["nice", "-n", "10", sys.executable, "tests/e2e/run_e2e.py",
                          "--target", "linux-x86_64", "--cn", str(cn),
-                         "--max-mem-mb", str(保内存)]
+                         "--max-mem-mb", str(保内存),
+                         "--full-reason", "ci_daemon 云端全量门禁（TX_02/池 runner）"]
                 if 步骤("e2e并行", e2e基 + ["--jobs", str(e2e并行)], 单轮总超时秒):
                     步骤们["e2e"] = {"rc": 0}
                 else:

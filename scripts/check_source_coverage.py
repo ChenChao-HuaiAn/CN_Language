@@ -120,7 +120,8 @@ def 步骤e2e(e2e_target, jobs):
         p.unlink()
         print(f"  清缓存 {p.name}", flush=True)
     rc, _ = 运行(["python3", "tests/e2e/run_e2e.py", "--cn", 产物目录 / "cn",
-                  "--target", e2e_target, "--jobs", jobs])
+                  "--target", e2e_target, "--jobs", jobs,
+                  "--full-reason", "check_source_coverage 源码覆盖率全量（CI -Coverage 专用）"])
     if rc != 0:
         sys.exit(f"[覆盖] E2E 失败（rc={rc}）")
 

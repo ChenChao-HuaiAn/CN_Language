@@ -70,8 +70,12 @@ if "--l2" in sys.argv:
     # 979 修复②：split 索引 [1]=「e2e」段，用例目录名在 [2]——原 [1] 使任何含
     #   用例改动的写集 filter 恒为「e2e」（零匹配 rc=1·--l2 首战 924 起潜伏，
     #   979 首个触用例写集实锤）。
+    # 354 修复③：tests/e2e/ 根级文件（README.md/run_e2e.py/coverage_map.md）的
+    #   [2] 段=文件名非用例目录名（354 轮写集实锤：--filter README.md 零匹配
+    #   rc=1）——is_dir 判据根治：只有真实用例目录才进滤集。
     用例集 = sorted({p.split("/")[2] for p in 改动
-                     if p.startswith("tests/e2e/") and len(p.split("/")) > 2})
+                     if p.startswith("tests/e2e/") and len(p.split("/")) > 2
+                     and (仓库根 / "tests" / "e2e" / p.split("/")[2]).is_dir()})
     滤们 = 用例集 + (["_v2", "自举"] if any(p.startswith("CN语言编译器v2/") for p in 改动) else [])
     if not 滤们:
         print("[L2] 写集无新增/改动用例且未触 v2 树——无需子集（L3 云端全量兜底）")
