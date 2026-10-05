@@ -139,10 +139,18 @@ def 处理写(名: str, 数据: dict) -> dict:
             sha, 平台 = str(数据.get("sha", "")), str(数据.get("平台", ""))
             if len(sha) < 7:
                 return {"ok": False, "说明": "sha 缺失"}
+            # 190（1035 轮）：状态=执行中（daemon 开跑即上报·绿=None）→门禁表
+            #   实时显示在跑轮（1030 误判「漏跑」根因=执行中不可见）；完成轮
+            #   （无 状态 字段·绿 布尔）照常覆盖同 sha 行。僵死执行中行由
+            #   完成行覆盖或被 时刻 DESC 淘汰（不单设超时——daemon 存活属
+            #   另一监控域）。
+            是执行中 = str(数据.get("状态", "完成")) == "执行中"
             con.execute("INSERT OR REPLACE INTO 门禁(sha,平台,绿,总秒,时刻,详情) "
                         "VALUES(?,?,?,?,?,?)",
-                        (sha, 平台, 1 if 数据.get("绿") else 0,
-                         int(数据.get("总秒", 0)), 时区时刻(),
+                        (sha, 平台,
+                         None if 是执行中 else (1 if 数据.get("绿") else 0),
+                         None if 是执行中 else int(数据.get("总秒", 0)),
+                         时区时刻(),
                          json.dumps(数据, ensure_ascii=False)[:20000]))
             con.execute("DELETE FROM 门禁 WHERE (sha,平台) NOT IN "
                         "(SELECT sha,平台 FROM 门禁 ORDER BY 时刻 DESC LIMIT ?)",
@@ -214,7 +222,8 @@ def 处理写(名: str, 数据: dict) -> dict:
 HTML页 = """<!doctype html><html><head><meta charset="utf-8"><title>CN 队列/门禁状态</title>
 <style>body{font-family:system-ui;margin:24px;background:#f6f8fa}h2{margin:18px 0 6px}
 table{border-collapse:collapse;background:#fff}td,th{border:1px solid #d0d7de;padding:5px 10px;
-font-size:14px}.绿{color:#1a7f37;font-weight:600}.红{color:#cf222e;font-weight:600}</style></head>
+font-size:14px}.绿{color:#1a7f37;font-weight:600}.红{color:#cf222e;font-weight:600}
+.执行中{color:#9a6700;font-weight:600}</style></head>
 <body><h2>最新门禁（develop 每推送自动跑·TX_02 云 CI）</h2>__门禁表__
 <h2>预验任务池（多 runner 认领·1021）</h2>__任务表__
 <h2>集成队列（服务端·零 git 提交）</h2>__队列表__<p>生成于 __时刻__</p></body></html>"""
@@ -251,10 +260,17 @@ class 处理器(BaseHTTPRequestHandler):
             return self.回JSON({"状态": 行[0], "绿": bool(行[1]) if 行[1] is not None else None,
                                 "详情": json.loads(行[2]) if 行[2] else None})
         if 路径 == "/":
-            门禁行 = "".join("<tr><td>%s</td><td>%s</td><td class='%s'>%s</td><td>%ss</td><td>%s</td></tr>"
-                             % (r["sha"][:10], r["平台"], "绿" if r["绿"] else "红",
-                                "绿" if r["绿"] else "红", r["总秒"], r["时刻"])
-                             for r in 门禁快照()) or "<tr><td colspan=5>暂无</td></tr>"
+            # 190（1035 轮）：执行中行（绿 IS NULL）显示黄色「执行中」——1030 误判
+            #   「六次推送漏跑」根因修除（daemon 在跑但状态页不可见）。
+            def 门禁单元格(r):
+                if r["绿"] is None:
+                    return "执行中", "执行中", "—"
+                return (("绿" if r["绿"] else "红"),) * 2 + ("%ss" % r["总秒"],)
+            门禁行 = "".join(
+                "<tr><td>%s</td><td>%s</td><td class='%s'>%s</td><td>%s</td><td>%s</td></tr>"
+                % (r["sha"][:10], r["平台"], 格[0], 格[1], 格[2], r["时刻"])
+                for r, 格 in ((r, 门禁单元格(r)) for r in 门禁快照())
+            ) or "<tr><td colspan=5>暂无</td></tr>"
             队列行 = "".join("<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>"
                             % (r["分支"], r["基线"][:10], r["报名时刻"], r["状态"], r["写集摘要"][:60])
                             for r in 队列快照()) or "<tr><td colspan=5>空</td></tr>"

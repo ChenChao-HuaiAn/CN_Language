@@ -134,6 +134,16 @@ def main() -> int:
         断言(any(q["分支"] == "任务/家机-1021-预验池化" for q in 状态["队列"]), "join 旧路径正常")
         断言(any(g["sha"] == "c" * 40 for g in 状态["门禁最近"]), "report 旧路径正常")
         断言("预验任务" in 状态, "state 含预验任务快照")
+        # 190（1035 轮）：执行中上报——绿=None 存门禁表·完成上报覆盖同 sha 行
+        调("report", {"sha": "d" * 40, "平台": "linux-x86_64", "绿": None,
+                      "总秒": None, "状态": "执行中"})
+        状态 = 取("/api/state")
+        执行中行 = next(g for g in 状态["门禁最近"] if g["sha"] == "d" * 40)
+        断言(执行中行["绿"] is None, "执行中上报 绿=None")
+        调("report", {"sha": "d" * 40, "平台": "linux-x86_64", "绿": False, "总秒": 900})
+        状态 = 取("/api/state")
+        完成行 = next(g for g in 状态["门禁最近"] if g["sha"] == "d" * 40)
+        断言(完成行["绿"] == 0 and 完成行["总秒"] == 900, "完成上报覆盖执行中行")
         print("\n[全部通过] %d 项断言·临时 DB=%s" % (通过, db文件))
         return 0
     finally:
