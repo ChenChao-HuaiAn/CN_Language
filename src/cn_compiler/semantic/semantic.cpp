@@ -841,9 +841,16 @@ void SemanticAnalyzer::registerGlobalConstsAndStatics(Program* node) {
             //   resolveGenericTypeName（容器<整64> -> 容器$整64），否则成员访问
             //   findClass("容器<整64>") 失败报「不是类类型」（局部变量 visitVarDecl
             //   已归一，全局静态此前漏接）。
+            // 040（001 §5.8 甲案·2026-10-05）：函数指针静态槽=funcPtr 承载
+            //   （无 typeName）——登记规范化文本（数组位=函数指针<...>[N]），
+            //   原落「typeName 空→自动」= 静态 fnptr 类型失明（probe603 实证
+            //   「无法调用非函数类型 '自动'」）。
             const std::string stType =
-                g->typeName.empty() ? "自动"
-                                    : resolveGenericTypeName(g->typeName, g->location);
+                g->funcPtr.isFunctionPtr()
+                    ? g->funcPtr.toSymbolType()
+                    : (g->typeName.empty()
+                           ? "自动"
+                           : resolveGenericTypeName(g->typeName, g->location));
             // 061-c（2026-09-27 804 轮）：结果/可选 静态的合成结构体注册——
             //   局部变量 visitVarDecl 有 ensureLoweredType，顶层静态此前漏接：
             //   合成结构体未注册 → isStructType(静态类型)=false → IR 入口注入

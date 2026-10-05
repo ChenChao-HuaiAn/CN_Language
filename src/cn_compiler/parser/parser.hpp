@@ -145,6 +145,10 @@ private:
     std::unique_ptr<Expr> parseInitList();
     // 解析函数指针类型：整32(*名)(整32, 整32)（规格书5.8 C风格），成功返回true并填充out
     bool parseFuncPtrType(FuncPtrTypeInfo& out);
+    // 函数指针声明前瞻（040·001 §5.8 甲案）：当前位是否为 fnptr 声明形态起点（纯读零消费）
+    //   named=要求内嵌变量名（变量/参数/字段位）；allowArray=允许 名[长度]（数组元素位）；
+    //   anonymous=允许匿名（返回类型位 `-> 整32(*)(整32)`）
+    bool funcPtrDeclAhead(bool named, bool allowArray, bool anonymous) const;
     std::unique_ptr<Stmt> parseVarDecl();               // 变量/常量/静态 声明
     std::unique_ptr<Stmt> parseVarDeclAfterKeyword(bool isConst); // 已消费 变量/常量 关键字后的声明体
     std::unique_ptr<Stmt> parseStaticVarDecl();         // 静态 [变量] 类型 名称 [= 初始值]

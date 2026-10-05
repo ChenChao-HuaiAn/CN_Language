@@ -19,6 +19,14 @@ std::string FuncPtrTypeInfo::toString() const {
     return result;
 }
 
+// 符号登记类型文本（040·001 §5.8 甲案数组元素位）：标量=toString()；
+// 数组=函数指针<...>[N]（后缀走既有数组通道：isArray/arrayElemOf/typeSizeOf）
+std::string FuncPtrTypeInfo::toSymbolType() const {
+    std::string result = toString();
+    if (arrayLen > 0) result += "[" + std::to_string(arrayLen) + "]";
+    return result;
+}
+
 // ==================== AstVisitor 阶段3 新节点默认实现 ====================
 // 说明：阶段2 的语义/IR 访问者未声明这些方法（不重写），默认空实现保证：
 //   1. AstVisitor 不再是抽象类缺口（纯虚函数全部有实现）

@@ -975,6 +975,20 @@ void X64CodeGenerator::emitCall(AsmWriter& writer, const ir::IRInstruction& inst
         // 间接调用：指针值先入 r11（call 不破坏 rcx/rdx/r8/r9 已占用的参数寄存器）
         const std::string& ptrOp = operandText(inst.operands[0]);
         writer.line("mov r11, " + ptrOp);
+        // 040（001 §5.8 子案 A·2026-10-05 用户裁决）：空调用判零——零值 →
+        //   运行时错误(3) 空指针解引用（093 判空家族同码同文案·§1.1a② 确定性
+        //   失败非脏崩溃；test/jne 只碰 r11 不碰参数寄存器；错误块不返回，
+        //   与 FieldAddr/LoadPtr 判空同款）
+        const int fnptrNullId = ptrCheckCounter_++;
+        const std::string fnptrOk = "@fnptr_ok" + std::to_string(fnptrNullId);
+        writer.line("test r11, r11");
+        writer.line("jne " + fnptrOk);
+        writer.line("mov rcx, 3");
+        writer.line("sub rsp, 32");
+        writer.line("call __cn_runtime_error");
+        writer.line("add rsp, 32");
+        writer.line("ret");
+        writer.raw(fnptrOk + ":");
         writer.line("call r11");
     } else {
         // 阶段一C链接：CN内置函数（打印行等）与 主 映射到运行时符号，其余走名称修饰

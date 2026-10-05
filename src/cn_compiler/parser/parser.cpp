@@ -249,31 +249,65 @@ std::unique_ptr<Expr> Parser::parseInitList() {
     return list;
 }
 
+// 函数指针声明前瞻（040·001 §5.8 甲案）：纯读零消费——识别三种形态起点
+//   命名标量 `T ( * 名 ) (`、命名数组 `T ( * 名 [ 整数 ] ) (`（allowArray）、
+//   匿名 `T ( * ) (`（anonymous·返回类型位）。参数位沿用 named+标量（数组形参
+//   不在本批·001 条文明示）；变量/字段位 named+allowArray。
+bool Parser::funcPtrDeclAhead(bool named, bool allowArray, bool anonymous) const {
+    if (peek(1).getType() != TokenType::LeftParen) return false;
+    if (peek(2).getType() != TokenType::Star) return false;
+    const bool hasName = peek(3).getType() == TokenType::Identifier;
+    if (named && !hasName) return false;
+    int after = 3;
+    if (hasName) {
+        after = 4;  // 越过 名
+        if (peek(after).getType() == TokenType::LeftBracket) {
+            if (!allowArray) return false;
+            if (peek(after + 1).getType() != TokenType::IntegerLiteral) return false;
+            if (peek(after + 2).getType() != TokenType::RightBracket) return false;
+            after += 3;
+        }
+    } else if (!anonymous) {
+        return false;
+    }
+    return peek(after).getType() == TokenType::RightParen &&
+           peek(after + 1).getType() == TokenType::LeftParen;
+}
+
 // 解析函数指针类型：整32(*名)(整32, 整32)（规格书5.8 C风格，Task 2.2）
 // 前置条件：current 指向返回类型（如 整32）。成功时消费完整类型并填充 out（含变量名）。
-// 识别模式：<类型> ( * <标识符> ) ( <参数类型列表> )
-//   变量名存于 out.paramTypes 前特殊标记？—— 不行，C风格函数指针的变量名不属类型本身。
-//   因此本函数仅填充 返回类型+参数类型；变量名由调用方（parseTypePrefixVarDecl/parseParamDecl）
-//   从 `( * <名> )` 中捕获后填入声明的 name 字段。
+// 识别模式：<类型> ( * <标识符>? [ 长度? ]? ) ( <参数类型列表> )
+//   040（2026-10-05 甲案·001 §5.8）：名可匿名（返回类型位 `-> 整32(*)(整32)` 无名字）；
+//   名后可跟 `[ 整数字面量 ]`（数组元素位/回调表 `整32(*表[2])(整32)`，长度记
+//   out.arrayLen，符号类型文本=函数指针<...>[N] 走既有数组通道）。
+//   变量名由调用方（parseTypePrefixVarDecl/parseParamDecl/结构体字段位）从 `( * <名> )` 捕获。
 bool Parser::parseFuncPtrType(FuncPtrTypeInfo& out) {
     // current 应为返回类型关键字/标识符
     if (!isTypeKeyword(currentType()) && !check(TokenType::Identifier)) return false;
     // 返回类型
     out.returnType = current().getValue();
     advance();
-    // 必须紧跟 ( * 名 )
+    // 必须紧跟 ( * 名? )
     if (!check(TokenType::LeftParen)) return false;
-    // 提前记录函数指针语法完整消费后的变量名（调用方通过 out.name 读取）
-    // 解析 ( * 名 )
+    // 解析 ( * 名? [长度]? )
     advance();  // 消费 (
     if (!check(TokenType::Star)) return false;  // 必须是 *（取指针）
     advance();  // 消费 *
-    if (!check(TokenType::Identifier)) {
-        reportErrorHere("函数指针声明预期变量名");
-        return false;
+    if (check(TokenType::Identifier)) {
+        out.name = current().getValue();  // 记录变量名（匿名形态=空·返回类型位）
+        advance();                        // 消费 名
     }
-    out.name = current().getValue();  // 记录变量名
-    advance();                        // 消费 名
+    // 040 甲案：数组元素位 `名 [ 长度 ]`（整数字面量长度·回调表）
+    if (check(TokenType::LeftBracket)) {
+        advance();
+        if (!check(TokenType::IntegerLiteral)) {
+            reportErrorHere("函数指针数组预期整数字面量长度");
+            return false;
+        }
+        out.arrayLen = std::stoi(current().getValue());
+        advance();
+        consume(TokenType::RightBracket, "']'");
+    }
     if (!check(TokenType::RightParen)) {
         reportErrorHere("函数指针声明预期 ')'");
         return false;
@@ -405,7 +439,16 @@ std::unique_ptr<FunctionDecl> Parser::parseFunctionDecl() {
     // 返回类型（-> 类型，可省略表示无返回值；Task 2.4 支持指针返回类型）
     if (check(TokenType::Arrow)) {
         advance();
-        func->returnType = parseTypeNameEx();
+        // 040 甲案（082③·001 §5.8）：函数指针返回类型位 `-> 整32(*)(整32)`（匿名）
+        //   ——规范化文本入 returnType，签名/返回检查/IR 全链按 8 字节标量指针族
+        if (funcPtrDeclAhead(false, false, true)) {
+            FuncPtrTypeInfo retFp;
+            if (parseFuncPtrType(retFp)) {
+                func->returnType = retFp.toString();
+            }
+        } else {
+            func->returnType = parseTypeNameEx();
+        }
     }
     // 函数体（可为空 = 函数原型声明）
     if (check(TokenType::LeftBrace)) {
@@ -446,20 +489,35 @@ std::unique_ptr<StructDecl> Parser::parseStructDecl(bool isUnion) {
             advance();
         }
         // 字段类型：类型关键字/自定义类型名（含指针/数组后缀）
+        bool fnptrField = false;
         if (isTypeKeyword(currentType()) || check(TokenType::Identifier)) {
-            field.type = parseTypeNameEx();
+            // 040 甲案（082①②·001 §5.8）：函数指针字段位 `整32(*回调)(整32);`——
+            //   规范化文本（标量）或 函数指针<...>[N]（数组元素字段）入 field.type，
+            //   走既有布局/拷贝通道（指针槽 8/8·非资源·001 §5.8 布局与拷贝语义条文）
+            //   注意：fnptr 形态的名字已在 `(*名)` 内消费——须跳过下方名字消费块
+            FuncPtrTypeInfo fieldFp;
+            if (funcPtrDeclAhead(true, true, false) && parseFuncPtrType(fieldFp) &&
+                !fieldFp.name.empty()) {
+                field.name = fieldFp.name;
+                field.type = fieldFp.toSymbolType();
+                fnptrField = true;
+            } else {
+                field.type = parseTypeNameEx();
+            }
         } else {
             reportErrorHere("结构体字段预期类型");
             synchronize();
             break;
         }
-        if (check(TokenType::Identifier)) {
-            field.name = current().getValue();
-            advance();
-        } else {
-            reportErrorHere("结构体字段预期名称");
-            synchronize();
-            break;
+        if (!fnptrField) {
+            if (check(TokenType::Identifier)) {
+                field.name = current().getValue();
+                advance();
+            } else {
+                reportErrorHere("结构体字段预期名称");
+                synchronize();
+                break;
+            }
         }
         decl->fields.push_back(std::move(field));
         match(TokenType::Semicolon);  // 字段分隔（声明体成员分隔：可选，plans/015 语义区分）
@@ -655,12 +713,9 @@ std::unique_ptr<Stmt> Parser::parseStaticVarDecl() {
 std::unique_ptr<Stmt> Parser::parseTypePrefixVarDecl() {
     auto decl = std::make_unique<VarDecl>();
     decl->location = current().getLocation();
-    // 探测函数指针变量声明：<类型> ( * 名 ) ( 参数列表 )
-    if (peek(1).getType() == TokenType::LeftParen &&
-        peek(2).getType() == TokenType::Star &&
-        peek(3).getType() == TokenType::Identifier &&
-        peek(4).getType() == TokenType::RightParen &&
-        peek(5).getType() == TokenType::LeftParen) {
+    // 探测函数指针变量声明：<类型> ( * 名 [长度]? ) ( 参数列表 )
+    //   040 甲案：allowArray=数组元素位（回调表 整32(*表[2])(整32)·toSymbolType 后缀）
+    if (funcPtrDeclAhead(true, true, false)) {
         if (parseFuncPtrType(decl->funcPtr)) {
             decl->name = decl->funcPtr.name;
             if (check(TokenType::Equal)) {
@@ -864,6 +919,25 @@ std::unique_ptr<Program> Parser::parse(const std::vector<Token>& tokens) {
             advance();  // 消费 静态
             // 兼容"静态 变量 名称"（parseStaticVarDecl 同款）
             if (check(TokenType::Kw_Var)) advance();
+            // 040 甲案（082⑥·001 §5.8）：函数指针静态槽位 `静态 整32(*回调)(整32) = 函数名;`
+            //   funcPtr 承载（无 typeName）·初值=函数地址经 87-a 顶层静态初始化
+            //   入口注入（ir_decl 静态槽标量族路由·emitStaticInitsAtEntry）
+            if ((isTypeKeyword(currentType()) || check(TokenType::Identifier)) &&
+                funcPtrDeclAhead(true, true, false)) {
+                FuncPtrTypeInfo staticFp;
+                if (parseFuncPtrType(staticFp) && !staticFp.name.empty()) {
+                    decl->funcPtr = staticFp;
+                    decl->name = staticFp.name;
+                    if (check(TokenType::Equal)) {
+                        advance();
+                        decl->initializer = parseExpr();
+                    }
+                    decl->access = moduleAccess;  // 记录模块级可见性（Task 3.6）
+                    program->globals.push_back(std::move(decl));
+                    consumeSemicolon();  // plans/015 裁决：顶层静态声明须 ';' 终结
+                    continue;
+                }
+            }
             // 2026-08-30 根治（P3-8 补全）：parseTypeNameEx 支持泛型/指针/数组类型
             //   （静态 向量<整64> 全局表——原 parseTypeName 只吃标识符，遇 '<' 报
             //   「预期变量名，实际为 '<'」，顶层容器变量无法声明）

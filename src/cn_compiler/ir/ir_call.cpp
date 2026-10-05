@@ -180,7 +180,17 @@ void IRGenerator::visitCallExpr(CallExpr* node) {
                                    closureIt->second.lambdaName, node->location);
             return;
         }
-        if (lookupVar(calleeName).id < 0) isDirect = true;  // 不在变量表 -> 函数名
+        if (lookupVar(calleeName).id < 0) {
+            isDirect = true;  // 不在变量表 -> 函数名
+            // 040（001 §5.8 甲案·2026-10-05）：静态槽函数指针调用——lookupVar 只查
+            //   函数局部表，静态槽 miss 曾误判直调（LNK2019 静态回调 实证）；静态
+            //   类型为 fnptr 时保持间接（genExpr 标识符=静态槽 LoadPtr→CallIndirect
+            //   与局部 fnptr 同链）
+            if (semantic_ != nullptr && semantic_->isGlobalStatic(calleeName) &&
+                semantic_->globalStaticType(calleeName).rfind("函数指针<", 0) == 0) {
+                isDirect = false;
+            }
+        }
         // Task 2.10 重载：语义层决议结果（签名 key 名#参数串）优先作为符号名——
         //   定义/调用三处一致（codegen 按此生成 mangled 符号）。
         //   内置函数（打印/字符串API）无重载，resolvedSignature 为空，保持原名映射。

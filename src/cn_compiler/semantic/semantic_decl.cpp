@@ -21,8 +21,9 @@ namespace cn_compiler {
 void SemanticAnalyzer::visitVarDecl(VarDecl* node) {
     std::string varType = node->typeName;
     // Task 2.2：函数指针变量声明（整32(*回调)(整32, 整32) 无typeName，funcPtr非空）
+    // 040（001 §5.8 甲案）：数组元素位=函数指针<...>[N]（toSymbolType·数组通道兼容）
     if (node->funcPtr.isFunctionPtr()) {
-        varType = node->funcPtr.toString();
+        varType = node->funcPtr.toSymbolType();
     }
     // 阶段3（Task 3.8，E2E 26 修复）：泛型实例化类型替换提前——
     //   名<实参> -> 实例化类名（容器<整32> -> 容器$整32）。必须在初始值检查

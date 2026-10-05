@@ -1072,6 +1072,17 @@ void LinuxX64CodeGenerator::emitCall(LinuxX64AsmWriter& writer,
     // ---- 调用（间接：函数指针经 r11——SysV 惯例 call-clobbered 非传参寄存器） ----
     if (isIndirect) {
         loadOperandToX(writer, inst.operands[0], "r11");
+        // 040（001 §5.8 子案 A·2026-10-05 用户裁决）：空调用判零——零值 →
+        //   运行时错误(3) 空指针解引用（093 判空家族同码同文案·GAS L 标签·
+        //   SysV 错误码走 rdi·错误块不返回与 FieldAddr 判空同款）
+        const int fnptrNullId = ptrCheckCounter_++;
+        const std::string fnptrOk = "Lfnptr_ok" + std::to_string(fnptrNullId);
+        writer.line("test r11, r11");
+        writer.line("jnz " + fnptrOk);
+        writer.line("mov rdi, 3");
+        writer.line("call __cn_runtime_error");
+        writer.line("ret");
+        writer.raw(fnptrOk + ":");
         writer.line("call r11");
     } else {
         writer.line("call " + symbolName(callee));

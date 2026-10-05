@@ -11,6 +11,7 @@
 
 #include "cn_compiler/ir/ir.hpp"
 #include "cn_compiler/semantic/semantic.hpp"
+#include "cn_compiler/semantic/semantic_internal.hpp"
 #include "cn_compiler/semantic/type_system.hpp"
 
 namespace cn_compiler {
@@ -287,10 +288,14 @@ void IRGenerator::emitStaticInitsAtEntry() {
         }
         // ④ 类/容器与标量静态（P3-8 指针槽模型 + 标量初值直存）
         ir::IRValue obj;
+        // 040（001 §5.8 甲案·2026-10-05）：函数指针静态槽=标量族（8 字节指针槽，
+        //   初值=函数地址入口注入 StorePtr——原落「其他聚合保持 .data 零」分支
+        //   =初值静默丢失·probe082/g2 实证面）
         const bool isScalarStatic =
             types::isInteger(canonStatic) || types::isFloat(canonStatic) ||
             canonStatic == "布尔" || canonStatic == "字符" ||
-            types::isPointer(canonStatic) || semantic_->isEnumType(canonStatic);
+            types::isPointer(canonStatic) || semantic_->isEnumType(canonStatic) ||
+            isFuncPtrTypeStr(canonStatic);
         if (initExpr != nullptr) {
             // 有构造初始化表达式：genExpr(映射<...>()) -> NewObject + 构造调用
             obj = genExpr(initExpr);

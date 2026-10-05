@@ -1228,6 +1228,17 @@ void Arm64CodeGenerator::emitCall(Arm64AsmWriter& writer,
     // 间接调用：函数指针先入 x16（被调用者保存，bl 不会破坏 x16）
     if (isIndirect) {
         loadOperandToX(writer, inst.operands[0], "x16");
+        // 040（001 §5.8 子案 A·2026-10-05 用户裁决）：空调用判零——零值 →
+        //   运行时错误(3) 空指针解引用（093 判空家族同码同文案·GAS L 标签·
+        //   错误码走 x0·错误块不返回与 FieldAddr 判空同款）
+        const int fnptrNullId = ptrCheckCounter_++;
+        const std::string fnptrOk = "Lfnptr_ok" + std::to_string(fnptrNullId);
+        writer.line("cmp x16, #0");
+        writer.line("b.ne " + fnptrOk);
+        emitMovImm(writer, "x0", 3);
+        writer.line("bl __cn_runtime_error");
+        writer.line("ret");
+        writer.raw(fnptrOk + ":");
         writer.line("blr x16");
     } else {
         writer.line("bl " + symbolName(callee));

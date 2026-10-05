@@ -31,10 +31,14 @@ struct FuncPtrTypeInfo {
     std::string returnType;                    // 返回类型（如 整32）
     std::vector<std::string> paramTypes;       // 参数类型列表（如 [整32, 整32]）
     std::string name;                          // 函数指针变量名（C风格声明内嵌：整32(*名)(...)）
+    int arrayLen = 0;                          // 数组元素位长度（0=标量·001 §5.8 甲案：整32(*表[2])(整32)）
 
     bool isFunctionPtr() const { return !returnType.empty(); }  // 是否为函数指针类型
     // 生成规范化类型字符串：函数指针<返回>(参数1,参数2,...)（语义层类型比较用）
     std::string toString() const;
+    // 生成符号登记类型文本：标量=toString()；数组元素位=函数指针<...>[N]
+    // （后缀进既有数组通道：isArray/arrayElemOf/typeSizeOf 全兼容）
+    std::string toSymbolType() const;
 };
 
 // 结构体字段：字段名 + 类型 + 对齐/偏移（语义层布局计算回填，Task 2.7）

@@ -303,6 +303,9 @@ int SemanticAnalyzer::typeSizeOf(const std::string& typeRaw) const {
     const std::string type = canonicalType(typeRaw);
     if (isEnumType(type)) return 4;  // 枚举按整32存储
     if (types::isPointer(type)) return 8;
+    // 040（001 §5.8 甲案）：函数指针=8 字节指针槽（显式分支——原靠未知类型
+    //   防御返回 8 侥幸成立；显式化=语义自证·数组元素位经 isArray 递归同受益）
+    if (isFuncPtrType(type)) return 8;
     if (types::isArray(type)) {
         return typeSizeOf(types::arrayElemOf(type)) * types::arrayLenOf(type);
     }
@@ -351,6 +354,7 @@ int SemanticAnalyzer::typeAlignOf(const std::string& typeRaw) const {
     const std::string type = canonicalType(typeRaw);
     if (isEnumType(type)) return 4;
     if (types::isPointer(type)) return 8;
+    if (isFuncPtrType(type)) return 8;  // 040：函数指针=指针族对齐 8（与 typeSizeOf 同步）
     if (types::isArray(type)) return typeAlignOf(types::arrayElemOf(type));
     // 阶段3（Task 3.5/3.1）：结果/可选 合成结构体、类类型
     if (isResultType(type) || isOptionalType(type)) {

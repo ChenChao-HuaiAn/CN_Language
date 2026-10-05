@@ -43,9 +43,14 @@ std::string methodSymbolKey(const std::string& className, const std::string& sig
 //   指针 ABI 解引用 SIGSEGV（探针 p_fnptr/a_var/b_param/f_closure/n_generic_fnptr）。
 //   全部参数登记点共用本函数：普通函数（ir_decl）/泛型实例（ir_generic_func）/
 //   类方法（ir_oop）/lambda（ir_expr）/局部变量声明（ir_stmt_decl）。
+// 040（001 §5.8 甲案·2026-10-05）：toSymbolType——数组元素位（arrayLen>0）时
+//   返回 函数指针<...>[N]（registerVarSlots isArray 通道按 N*8 槽分配；形参位
+//   arrayLen 恒 0=零影响，解析器不允许 fnptr 数组形参·001 条文明示）。
+//   原 toString 标量文本致 fnptr 数组仅 1 槽分配（probe603/arr 实证：元素写
+//   越槽、读出垃圾→判空防线错误码3 假阳性）。
 inline std::string funcPtrAwareSrcType(const FuncPtrTypeInfo& funcPtr,
                                        const std::string& typeName) {
-    return funcPtr.isFunctionPtr() ? funcPtr.toString() : typeName;
+    return funcPtr.isFunctionPtr() ? funcPtr.toSymbolType() : typeName;
 }
 inline std::string paramSrcTypeOf(const ParamDecl* param) {
     if (param == nullptr) return "";
