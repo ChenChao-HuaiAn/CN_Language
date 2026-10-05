@@ -184,6 +184,13 @@ def 处理写(名: str, 数据: dict) -> dict:
                               (int(time.time()), 时区时刻(), 分支, runner))
             if cur.rowcount == 0:
                 return {"ok": False, "说明": "任务不在执行中或认领者不匹配 " + 分支}
+        elif 名 == "task_cancel":
+            # 1026 降级竞态治理：integrate 池空 300s 降级 ssh 前调用——删「排队」行，
+            #   防止后来 runner 认领到已被降级路径接手的任务=双跑浪费+池红记录误挂。
+            #   「执行中」不删（runner 在真跑·让它跑完留档）；「完成」幂等无操作。
+            分支 = str(数据.get("分支", ""))
+            cur = con.execute("DELETE FROM 预验任务 WHERE 分支=? AND 状态='排队'", (分支,))
+            return {"ok": True, "取消": cur.rowcount}
         elif 名 == "task_complete":
             # 完成上报：校验认领者（回收重派后旧 runner 复活=拒绝·重派者重新跑出的结果为准）
             runner, 分支 = str(数据.get("runner", "")), str(数据.get("分支", ""))

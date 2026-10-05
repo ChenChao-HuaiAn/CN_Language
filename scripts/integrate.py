@@ -460,7 +460,10 @@ def 池轮询预验(预验分支: str, 链顶: str) -> tuple[bool, str | None]:
                 if 排队起始 is None:
                     排队起始 = _time.time()
                 elif _time.time() - 排队起始 > 池空降级秒:
-                    print("  [预验] 池内持续 5 分钟无人认领（池空·runner 未部署/全忙外溢）——降级 ssh 直发 TX_02")
+                    # 1026 降级竞态治理：取消池内排队行再降级——防后来 runner 认领到
+                    #   已被 ssh 直发接手的任务（双跑浪费+池红记录误挂·d48b5c5f91 实录）
+                    服务调用("/api/task_cancel", {"分支": 预验分支})
+                    print("  [预验] 池内持续 5 分钟无人认领（池空·runner 未部署/全忙外溢）——已取消池任务·降级 ssh 直发 TX_02")
                     return False, None
             else:
                 排队起始 = None     # 已被认领（执行中）——重置池空计时
