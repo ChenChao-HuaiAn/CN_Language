@@ -432,17 +432,17 @@ def 解析预验结果(文本: str) -> tuple[bool, str]:
     return bool(d.get("绿")), 摘要
 
 
-def 池轮询预验(预验分支: str, 链顶: str) -> tuple[bool, str | None]:
-    """1021 池路径轮询：TX_01 预验任务表 → 认领者（TX_02/家机实例）跑完→取详情判绿红。
-    返回 (是否拿到结论, 拦截原因)：绿=(True,None)·红=(True,原因)；
-    TX_01 连续 3 轮不可达、任务持续排队超 池空降级秒（=池空·无 runner 在）或总超时
-    =(False,None)——调用方降级 ssh 直发。"""
 def 解析预验红用例们(结果文本):
     """216：从 runner 结果 JSON 文本提取 失败用例名集合（✗ 用例名: 形态行）。"""
     import re as _re
     return _re.findall(r"✗\s+(\S+?):", 结果文本 or "")
 
 
+def 池轮询预验(预验分支: str, 链顶: str) -> tuple[bool, str | None]:
+    """1021 池路径轮询：TX_01 预验任务表 → 认领者（TX_02/家机实例）跑完→取详情判绿红。
+    返回 (是否拿到结论, 拦截原因)：绿=(True,None)·红=(True,原因)；
+    TX_01 连续 3 轮不可达、任务持续排队超 池空降级秒（=池空·无 runner 在）或总超时
+    =(False,None)——调用方降级 ssh 直发。"""
     import time as _time
     截止 = _time.time() + 预验总超时分钟 * 60
     连续失败 = 0
