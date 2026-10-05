@@ -6,10 +6,15 @@
 checkout 带走未提交内容 / E2E 中途 expected 消失 / cn.exe 占用 LNK1104）。
 本脚本把「每任务一个 worktree」制度化：
 
-  create <轮次> <标识>   建树+任务分支（fetch→develop 基准→gtest 两级深度校验→Ninja+sccache 开发树配置）
+  create <任务号>        建树+任务分支 任务/<任务号>（021 无此行号拒建；远端分支已存在=接棒
+                         同分支续做——机器停摆他机无缝接力·196 轮立规；新开则基于 develop；
+                         gtest 两级深度校验→Ninja+sccache 开发树配置）
   list                   列出全部 worktree（分支/干净度/target 占用）
-  remove <轮次>          删树（分支保留；--delete-branch 仅当已并入 develop 才删分支）
+  remove <任务号>        删树（分支保留；--delete-branch 仅当已并入 develop 才删分支）
   cache [stats|start|stop|clear]   sccache 缓存服务快捷操作
+
+命名沿革：196 轮前为 任务/<机>-<轮>-<标识>（轮次号系 AI 会话编号·用户不可读）——
+分支生命周期自 194 轮起=任务生命周期：任务号即分支名，收工集成删分支，重开重建。
 
 实测口径（449-a·win/MSVC）：
   - VS 生成器（vcxproj ClCompile 原生任务）忽略 CMAKE_CXX_COMPILER_LAUNCHER——sccache 只能走 Ninja；
@@ -23,12 +28,30 @@ from __future__ import annotations
 import argparse
 import os
 import platform
+import re
 import shutil
 import subprocess
 import sys
 from pathlib import Path
 
 本树根 = Path(__file__).resolve().parent.parent
+
+
+def 读021行号() -> set[str] | None:
+    """解析 021 总账任务号集合（纯任务号分支名的行号校验源·196 轮立规）。
+
+    返回 None=找不到 021 文件（放行建树·树内脚本自举场景不硬拦）。
+    """
+    账本们 = sorted((本树根 / "plans").glob("021*.md"))
+    if not 账本们:
+        return None
+    号集: set[str] = set()
+    for 账本 in 账本们:
+        for 行 in 账本.read_text(encoding="utf-8").splitlines():
+            m = re.match(r"^\|\s*(\d+[a-z]?)\s*\|", 行)
+            if m:
+                号集.add(m.group(1))
+    return 号集
 
 
 def 运行(命令: list[str], **kwargs) -> subprocess.CompletedProcess:
@@ -45,14 +68,6 @@ def 主树根() -> Path:
     共同目录 = 输出(["git", "rev-parse", "--git-common-dir"])
     路径 = Path(共同目录) if Path(共同目录).is_absolute() else (本树根 / 共同目录)
     return 路径.resolve().parent
-
-
-def 机器名() -> str:
-    系统 = platform.system()
-    if 系统 == "Windows":
-        return "家机"
-    架构 = platform.machine().lower()
-    return "单位机" if 架构 in ("aarch64", "arm64") else "深度机"
 
 
 def 找sccache() -> Path | None:
@@ -109,19 +124,29 @@ echo [OK] ninja build done
 """
 
 
-def 建树(轮次: str, 标识: str, 基准: str | None, 无ninja: bool) -> int:
-    远程 = 基准 or "gitcode/develop"
+def 建树(任务号: str, 无ninja: bool) -> int:
+    if not re.fullmatch(r"\d+[a-z]?", 任务号):
+        print(f"[失败] 任务号「{任务号}」不合法——须为 021 总账行号形态（如 087、178a）")
+        return 1
+    号集 = 读021行号()
+    if 号集 is not None and 任务号 not in 号集:
+        print(f"[失败] 021 总账无任务 {任务号}——先在 plans/021 加行立项（提及即立项）再建树")
+        return 1
     运行(["git", "fetch", "gitcode"])
-    分支 = f"任务/{机器名()}-{轮次}-{标识}"
-    树路径 = 主树根().parent / f"wt{轮次}"
+    分支 = f"任务/{任务号}"
+    树路径 = 主树根().parent / f"wt{任务号}"
     if 树路径.exists():
-        print(f"[失败] {树路径} 已存在——同名 worktree 或残留，先 wt.py remove {轮次}")
+        print(f"[失败] {树路径} 已存在——同名 worktree 或残留，先 wt.py remove {任务号}")
         return 1
     if 输出(["git", "rev-parse", "--verify", f"refs/heads/{分支}"]):
-        print(f"[失败] 本地分支 {分支} 已存在")
+        print(f"[失败] 本地分支 {分支} 已存在——若为接棒残留，先 git branch -D {分支}（远端为准）再建树")
         return 1
-    print(f"[1] git worktree add {树路径.name} -b {分支} {远程}")
-    结果 = 运行(["git", "worktree", "add", str(树路径), "-b", 分支, 远程])
+    if 输出(["git", "rev-parse", "--verify", f"refs/remotes/gitcode/{分支}"]):
+        基准, 模式 = f"gitcode/{分支}", "接棒（远端分支已存在·同分支续做——机器停摆他机无缝接力）"
+    else:
+        基准, 模式 = "gitcode/develop", "新开（基于 develop）"
+    print(f"[1] git worktree add {树路径.name} -b {分支} {基准}（{模式}）")
+    结果 = 运行(["git", "worktree", "add", str(树路径), "-b", 分支, 基准])
     if 结果.returncode != 0:
         print(f"[失败] {结果.stderr}")
         return 1
@@ -166,8 +191,8 @@ def 建树(轮次: str, 标识: str, 基准: str | None, 无ninja: bool) -> int:
             print(f"[3] Ninja+sccache 开发树配置{状态}")
 
     print(f"""
-[完成] {树路径}（分支 {分支}）
-  下一步（AGENTS.md §2/§7）：①plans/021 加行 ⬜→🏃+备注带分支名 ②push 分支到 gitcode=认领生效
+[完成] {树路径}（分支 {分支}·{模式}）
+  下一步（AGENTS.md §2/§7）：①plans/021 改行 ⬜→🏃+备注分支=任务/{任务号} ②push 分支到 gitcode=认领生效
   ③提交前 L1 门禁 gate_quick.py（win 全量=ci.ps1）④收工 integrate.py（自动 021 收口）""")
     return 0
 
@@ -193,8 +218,8 @@ def 列树() -> int:
     return 0
 
 
-def 删树(轮次: str, 删分支: bool) -> int:
-    树路径 = 主树根().parent / f"wt{轮次}"
+def 删树(任务号: str, 删分支: bool) -> int:
+    树路径 = 主树根().parent / f"wt{任务号}"
     if not 树路径.exists():
         print(f"[失败] {树路径} 不存在")
         return 1
@@ -237,24 +262,22 @@ def 缓存(动作: str) -> int:
 def 主流程() -> int:
     解析器 = argparse.ArgumentParser(description="本机多开 worktree 任务池管理（AGENTS.md §7）")
     子 = 解析器.add_subparsers(dest="命令", required=True)
-    p建 = 子.add_parser("create", help="建树+任务分支（含 Ninja+sccache 开发树）")
-    p建.add_argument("轮次")
-    p建.add_argument("标识")
-    p建.add_argument("--base", default=None, help="基准 ref（默认 gitcode/develop）")
+    p建 = 子.add_parser("create", help="建树+任务分支 任务/<任务号>（含 Ninja+sccache 开发树）")
+    p建.add_argument("任务号", help="021 总账行号（如 087、178a；远端分支已存在=接棒续做）")
     p建.add_argument("--no-ninja", action="store_true", help="跳过 Ninja 开发树配置")
     p列 = 子.add_parser("list", help="列出全部 worktree")
     p删 = 子.add_parser("remove", help="删树（win 下 rm -rf+prune）")
-    p删.add_argument("轮次")
+    p删.add_argument("任务号")
     p删.add_argument("--delete-branch", action="store_true", help="分支已并入 develop 时一并删分支")
     p缓 = 子.add_parser("cache", help="sccache 缓存服务")
     p缓.add_argument("动作", choices=["stats", "start", "stop", "clear"], nargs="?", default="stats")
     参数 = 解析器.parse_args()
     if 参数.命令 == "create":
-        return 建树(参数.轮次, 参数.标识, 参数.base, 参数.no_ninja)
+        return 建树(参数.任务号, 参数.no_ninja)
     if 参数.命令 == "list":
         return 列树()
     if 参数.命令 == "remove":
-        return 删树(参数.轮次, 参数.delete_branch)
+        return 删树(参数.任务号, 参数.delete_branch)
     return 缓存(参数.动作)
 
 

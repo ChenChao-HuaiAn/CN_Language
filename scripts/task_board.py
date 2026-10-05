@@ -6,14 +6,15 @@
 #
 # 任务行格式（v5 总账·每任务一行走完全生命周期）：
 #   | # | 任务 | 状态 | 前置 | 优先级 | 备注/下一棒 |
-#   状态：⬜ 待办 / 🏃 在飞（备注含分支名 任务/<机>-<轮>-<标识>）/
+#   状态：⬜ 待办 / 🏃 在飞（备注含分支名 任务/<本行任务号>·196 轮立规）/
 #         ⏸ 挂起（含「待用户批」）/ ✅ 完成（状态列含集成 sha10）
 #   前置：依赖任务号列表（逗号分隔）或 — ；父子任务同款（父前置=子任务号列表）。
-#   号比对统一按 int（前导零 007/008 语义号等价），展示补零三位。
+#   号支持字母后缀子任务（178a）；比对键=去前导零+后缀（087≡87），展示补零三位。
 #
 # 设计纪律（v5）：不检查行数/戳/文档形态（v4 教训：机械检查误报=折腾税）；
-#   --check 只做真防遗漏：账实相符（🏃⇔分支存在/✅⇔sha/⬜⇔带优先级）、
-#   依赖就绪（抢跑拦截）、依赖环检测。
+#   --check 只做真防遗漏：账实相符（🏃⇔分支存在且号段=本行/✅⇔sha/⬜⇔带优先级/
+#   任务号重号——分支名=任务号要求全表唯一）、依赖就绪（抢跑拦截）、依赖环检测。
+#   旧格式分支 任务/<机>-<轮>-<标识>（196 轮前）过渡兼容：只提示不算红·收工即删。
 #
 # 用法：
 #   python scripts/task_board.py --ready          # 开工前看一眼：该做什么
@@ -25,6 +26,7 @@ import json
 import re
 import subprocess
 import sys
+from collections import Counter
 from pathlib import Path
 
 仓库根 = Path(__file__).resolve().parent.parent
@@ -34,8 +36,18 @@ from pathlib import Path
 状态_待办, 状态_在飞, 状态_挂起, 状态_完成 = "⬜", "🏃", "⏸", "✅"
 
 
-def 展示号(k: int) -> str:
-    return f"{k:03d}" if k < 1000 else str(k)
+def 键化(号: str) -> str:
+    """号规范化键：087→87（前导零等价）·178a→178a（字母后缀子任务原样保留）。"""
+    m = re.fullmatch(r"(\d+)([a-z]?)", 号)
+    return f"{int(m.group(1))}{m.group(2)}" if m else 号
+
+
+def 展示号(k: str) -> str:
+    m = re.fullmatch(r"(\d+)([a-z]?)", str(k))
+    if not m:
+        return str(k)
+    n, 后缀 = int(m.group(1)), m.group(2)
+    return f"{n:03d}{后缀}" if n < 1000 else f"{n}{后缀}"
 
 
 def 解析任务行(行: str):
@@ -44,9 +56,9 @@ def 解析任务行(行: str):
     if not s.startswith("|") or s.startswith("| #") or set(s) <= set("|- "):
         return None
     段 = [c.strip() for c in s.strip("|").split("|")]
-    if len(段) < 6 or not re.fullmatch(r"\d+", 段[0]):
+    if len(段) < 6 or not re.fullmatch(r"\d+[a-z]?", 段[0]):
         return None
-    号 = int(段[0])
+    号 = 键化(段[0])
     任务 = 段[1]
     状态列 = 段[2]
     if 状态_完成 in 状态列:
@@ -62,8 +74,8 @@ def 解析任务行(行: str):
     前置 = []
     for tok in re.split(r"[，,;/ ]+", 段[3]):
         tok = tok.strip()
-        if re.fullmatch(r"\d+", tok):
-            前置.append(int(tok))
+        if re.fullmatch(r"\d+[a-z]?", tok):
+            前置.append(键化(tok))
     优先级 = 段[4] if 段[4] in 优先级序 else "P2"
     备注 = 段[5]
     分支 = None
@@ -205,29 +217,31 @@ def cmd_check(as_json: bool = False) -> int:
     任务们 = 读总账()
     表, 缺号 = 依赖图(任务们)
     问题 = []
-    # 021 撞号 #188 实录（2026-10-05 家机 1027 池化候选撞存量 B10 静态写旁路·
-    #   两行并存入 develop）——依赖图 dict 静默覆盖后写行，--check 零感知。
-    #   补 #列重号机械检查（单点·引用比对统一按 int 语义号）。
-    已见号 = {}
-    for t in 任务们:
-        if t["号"] in 已见号:
-            问题.append(f"任务号重复：#{展示号(t['号'])}（行「{已见号[t['号']]['任务'][:30]}…」"
-                        f"与「{t['任务'][:30]}…」并存——立号前先 grep 总账，后立者改号＋注原号）")
-        else:
-            已见号[t["号"]] = t
+    提示 = []
     for d in 缺号:
         问题.append(f"前置引用未知任务号：{展示号(d)}")
     for 环 in 找环(表):
         问题.append(f"依赖环：{' → '.join(展示号(x) for x in 环)}")
+    重号们 = {k: c for k, c in Counter(t["号"] for t in 任务们).items() if c > 1}
+    for k in sorted(重号们):
+        问题.append(f"任务号重号：{展示号(k)} ×{重号们[k]}"
+                    f"（分支名=任务/<任务号> 要求全表唯一·后立行改号·196 立规）")
     分支们 = 远端分支表()
     for t in 任务们:
         号 = t["号"]
         if t["状态"] == 状态_在飞:
             if not t["分支"]:
-                问题.append(f"#{展示号(号)} 🏃 未记分支名（备注列须含 任务/<机>-<轮>-<标识>）")
+                问题.append(f"#{展示号(号)} 🏃 未记分支名（备注列须含 分支=任务/{展示号(号)}）")
             elif t["分支"] not in 分支们:
                 问题.append(f"#{展示号(号)} 🏃 分支 {t['分支']} 远端不存在（已删=漏销账，改 ✅+sha；"
                             f"本地未推=推分支）")
+            else:
+                m = re.fullmatch(r"任务/(\d+[a-z]?)", t["分支"])
+                if m and 键化(m.group(1)) != 号:
+                    问题.append(f"#{展示号(号)} 🏃 分支 {t['分支']} 号段与本行不符"
+                                f"（分支名=任务/<本行任务号>·196 立规）")
+                elif not m:
+                    提示.append(f"#{展示号(号)} 🏃 旧格式分支 {t['分支']}（过渡兼容·收工即删·新任务禁用）")
             未绿 = [d for d in t["前置"] if d in 表 and 表[d]["状态"] != 状态_完成]
             if 未绿:
                 问题.append(f"#{展示号(号)} 🏃 前置未全绿：{前置状态摘要(表, t)}（抢跑依赖）")
@@ -240,6 +254,8 @@ def cmd_check(as_json: bool = False) -> int:
     if as_json:
         print(json.dumps({"ok": not 问题, "问题": 问题}, ensure_ascii=False))
     else:
+        for p in 提示:
+            print(f"  [～] {p}")
         if 问题:
             print(f"[task_board] 账实不符 {len(问题)} 项：")
             for p in 问题:
