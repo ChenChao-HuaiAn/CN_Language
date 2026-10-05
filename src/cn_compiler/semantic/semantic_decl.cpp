@@ -75,6 +75,16 @@ void SemanticAnalyzer::visitVarDecl(VarDecl* node) {
     if (SemanticAnalyzer::isResultType(varType) ||
         SemanticAnalyzer::isOptionalType(varType)) {
         ensureLoweredType(varType);
+        // 060（p0927_02·检查标记作用域泄漏根治）：同名遮蔽声明 kill 检查标记
+        //   ——errorCheckState_ 以裸变量名为键无作用域维度，外层 结果 r 已检查
+        //   .正常 的标记泄漏给内层遮蔽同名新变量（未检查），内层 r.值 被放行=
+        //   静默错值（运行读出错误值当正常值·宁严勿松违背）。Rust 遮蔽声明
+        //   同构语义：`let r = ...` 后裸名指向新变量，外层流事实对新名必然
+        //   失效——遮蔽声明即 kill（O(1) 哈希删·零额外开销）。标记生命周期
+        //   本就=分支内（visitIfStmt 进打离清），kill 只影响遮蔽后同分支访问
+        //   ——该访问目标必为新变量，拦=正确；嵌套块访问外层已检查变量不受
+        //   影响（无遮蔽声明不触发 kill）。
+        errorCheckState_.erase(node->name);
     }
     if (!varSuffix.empty()) {
         varType += varSuffix;  // 合成体后缀接回（数组维度/指针形态保全）
