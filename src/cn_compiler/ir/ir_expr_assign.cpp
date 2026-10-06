@@ -308,6 +308,17 @@ std::string IRGenerator::memberAssignObjSrcType(MemberExpr* member) {
         //   → StorePtr 覆盖相邻字段（x 写对 y 清零·实测）。与 handleClassMemberAssign
         //   的 exprSrcType 消费同构。
         objSrcType = exprSrcType(member->object.get());
+    } else if (member->object->getType() == NodeType::UnaryExpr) {
+        // 208 病面②（2026-10-06·614 实证）：对象=显式解引用表达式（(*结构体指针).字段 = 值）
+        //   ——原缺此分支 → objSrcType 空 → targetType 落默认 i64 → StorePtr
+        //   恒 8 字节写覆盖相邻字段（甲 写对 乙 清零·样本 p1005_01b）。
+        //   目标结构体=指针元素类型（spec 04 解引用=左值·语义层 isDerefAccess
+        //   对 UnaryExpr 对象不写回——对象类型已是元素类型非指针，唯 IR 层自剥）。
+        const UnaryExpr* derefObj = static_cast<UnaryExpr*>(member->object.get());
+        if (derefObj->op == Operator::Deref) {
+            objSrcType = exprSrcType(derefObj->operand.get());
+            if (types::isPointer(objSrcType)) objSrcType = types::pointeeOf(objSrcType);
+        }
     }
     if (member->isDerefAccess && types::isPointer(objSrcType)) {
         objSrcType = types::pointeeOf(objSrcType);
@@ -581,6 +592,16 @@ std::string IRGenerator::indexAssignElemType(AssignmentExpr* node) {
 //   indexStructElemAssign 首段机械搬移，供「源优先序」挂点在 addr 计算前判型。
 std::string IRGenerator::indexTargetElemSrcType(AssignmentExpr* node) {
     if (semantic_ == nullptr || node == nullptr) return "";
+    // 208 病面③（2026-10-06·615 实证）：解引用目标（*结构体指针 = 结构体值）
+    //   与下标目标同构——目标元素源码类型=指针元素类型。原仅认 IndexExpr，
+    //   UnaryExpr 目标两守卫（structWholeAssignSrcFirst/indexStructElemAssign）
+    //   全弹 → 兜底 StorePtr 只写 8 字节（12 字节结构体 静默垃圾·样本 p1005_01c）。
+    if (node->target->getType() == NodeType::UnaryExpr) {
+        const UnaryExpr* derefTgt = static_cast<UnaryExpr*>(node->target.get());
+        if (derefTgt->op != Operator::Deref) return "";
+        const std::string pt = exprSrcType(derefTgt->operand.get());
+        return types::isPointer(pt) ? types::pointeeOf(pt) : "";
+    }
     if (node->target->getType() != NodeType::IndexExpr) return "";
     IndexExpr* tIdx = static_cast<IndexExpr*>(node->target.get());
     if (tIdx->object->getType() != NodeType::IdentifierExpr) return "";
@@ -606,7 +627,11 @@ bool IRGenerator::indexStructElemAssign(AssignmentExpr* node, const ir::IRValue&
     //   原实现走 StorePtr 只存 8 字节 -> 结构体数据破坏。
     //   目标元素类型为结构体、右值为结构体值（IndexExpr/标识符）时生成 CopyStruct。
     if (semantic_ != nullptr &&
-        node->target->getType() == NodeType::IndexExpr) {
+        (node->target->getType() == NodeType::IndexExpr ||
+         node->target->getType() == NodeType::UnaryExpr)) {
+        // 208 病面③：守卫放宽认解引用目标（*指针 = 结构体值 走 CopyStruct
+        //   整体赋值·indexTargetElemSrcType 已补 UnaryExpr 分支）——原仅认
+        //   IndexExpr，解引用目标落兜底 StorePtr 8 字节静默垃圾。
         // 348-a：类型推导提取至 indexTargetElemSrcType（纯提取·行为等价）
         const std::string tElemSrc = indexTargetElemSrcType(node);
         const std::string tElemCanon = types::canonical(tElemSrc);
