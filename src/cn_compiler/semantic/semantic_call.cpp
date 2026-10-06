@@ -1225,8 +1225,11 @@ bool SemanticAnalyzer::checkDirectCall(CallExpr* node, const std::string& callee
              calleeName == "线程.新") &&
             argTypes.size() >= 2) {
             const std::string& argTy = argTypes[1];
+            // 218 sunset 收窄（001 §5.8b）：顶层 空类型* 豁免仅限 不安全 函数体内
+            //   （§1.1a④·安全区传裸指针值=同拦）
+            const bool exemptWindow218 = (argTy == "空类型*") && currentFnUnsafe_;
             if (!argTy.empty() && argTy != "未知" && argTy != "空类型" &&
-                argTy != "空类型*") {
+                !exemptWindow218) {
                 std::string offender;
                 if (!isPortableType(argTy, offender)) {
                     diagnostics_.report(

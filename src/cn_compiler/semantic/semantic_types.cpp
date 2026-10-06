@@ -241,7 +241,8 @@ bool SemanticAnalyzer::isPortableType(const std::string& type, std::string& offe
     }
     // 容器实例（$ 形态：向量$X/映射$K$V/集合$X…）：随全部实参（条文②）
     if (canon.find('$') != std::string::npos) {
-        static const char* containerNames[] = {"向量", "映射", "集合", "链表", "栈", "队列"};
+        // 218：互斥锁<T> 可搬运 ⇔ T 可搬运（Rust Mutex<T>: Send ⇔ T: Send 同构）
+        static const char* containerNames[] = {"向量", "映射", "集合", "链表", "栈", "队列", "互斥锁"};
         const std::string base = canon.substr(0, canon.find('$'));
         for (const char* name : containerNames) {
             if (base == name) {
