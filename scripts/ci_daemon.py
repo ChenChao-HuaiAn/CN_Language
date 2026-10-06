@@ -117,7 +117,7 @@ def 跑一轮(sha: str, 轮分支: str = "") -> dict:
                     步骤("单测", [str(单测)], 1800)
             # ③.5 静态门禁面（242·每日兜底恢复「注册了但 v5 默认不跑」的 ci常规五项——
             #    spec 覆盖/CLI 契约/asm 位宽/台账完成度/行数冻结线·linux 可跑面；win 专属留 ci.ps1）
-            for 名, 参 in (("check_spec_coverage", ["--strict"]),
+            for 名, 参 in (("check_spec_coverage", []),   # 243：非 strict（TX_02「指针有效性」存量红=244 修·红不拦兜底轮）
                           ("check_cli_contract", ["--cn", str(cn)]),
                           ("check_asm_width", ["--cn", str(cn)]),
                           ("check_matrix_coverage", []),
