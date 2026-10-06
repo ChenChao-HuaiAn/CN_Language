@@ -392,7 +392,13 @@ extern "C" void* cn_alloc(std::size_t size) {
         cnBinAdd(size);   // 829 侦查直方图
     }
     // 221：双释放侦查对位（CN_RT_DOUBLE_FREE=1 时 alloc/free 全序列打印）
+    //   r32b：_dupenv_s=MSVC 专有（linux g++ 编译失败·批预验红实录）——
+    //   平台门控对齐 891 cnMemStatsEnabled 先例（GCC/Clang 用 getenv）
+#if defined(_MSC_VER)
     static const int dfProbeA = []{ char* v = nullptr; std::size_t len = 0; return _dupenv_s(&v, &len, "CN_RT_DOUBLE_FREE") == 0 && v != nullptr; }();
+#else
+    static const int dfProbeA = std::getenv("CN_RT_DOUBLE_FREE") != nullptr;
+#endif
     if (dfProbeA) {
         std::fprintf(stderr, "[dblalloc] alloc ptr=%p size=%zu\n", p, size);
     }
@@ -406,7 +412,11 @@ extern "C" void cn_free(void* ptr) {
     if (ptr == nullptr) return;
     // 221：双释放可观测（CN_RT_DOUBLE_FREE=1 启用·堆损坏 C374/C5 的
     //   第一现场定位——双 free 时 stderr 打印指针+调用不拦截继续走堆检测）
+#if defined(_MSC_VER)
     static const int dfProbe = []{ char* v = nullptr; std::size_t len = 0; return _dupenv_s(&v, &len, "CN_RT_DOUBLE_FREE") == 0 && v != nullptr; }();
+#else
+    static const int dfProbe = std::getenv("CN_RT_DOUBLE_FREE") != nullptr;
+#endif
     if (dfProbe) {
         std::fprintf(stderr, "[dblfree?] free ptr=%p\n", (void*)ptr);
     }
