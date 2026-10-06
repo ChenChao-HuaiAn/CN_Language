@@ -174,10 +174,22 @@ def 临时用例检查(文件们: list[str]) -> str | None:
     tests/e2e/ 下用例目录名（路径第三段）含 tmp（大小写不敏感）即拦——1005 清 7 例存量
     （990/991/993/995/998/1002/1003tmp）后的增量防线；临时探针留在任务分支用后删，
     转正须按用例目录约定命名（<纯数字编号>_<名称>）。
+
+    228 轮（2026-10-06）：净新增判据——批结果树（HEAD，快速门禁恒在组链 checkout
+    后执行）中存在、且 develop tip 中不存在 的 tmp 路径才拦。两个死锁面实证：
+    ①清污提交（删 90_tmp221*）被纯名字匹配误拦——毒文件既进不来也出不去；
+    ②tmp 已被直推进 develop 时（221 r31 实录），任何批的组链树都继承它们，
+    「HEAD 存在即拦」=全队列永久死锁。判据改查两棵树（git cat-file -e·不依赖
+    工作区）：净新增拦（防线保持）·历史遗留放行（解死锁）·删除态放行（清污通）。
     """
-    违规 = sorted({f.split("/")[2] for f in 文件们
+    疑似 = sorted({f for f in 文件们
                    if f.startswith("tests/e2e/") and len(f.split("/")) > 2
                    and "tmp" in f.split("/")[2].lower()})
+    def 树中存在(修订: str, 路径: str) -> bool:
+        return 运行捕获(["git", "cat-file", "-e", f"{修订}:{路径}"]).returncode == 0
+    违规 = sorted({f.split("/")[2] for f in 疑似
+                   if 树中存在("HEAD", f)
+                   and not 树中存在(f"{主远程}/{集成分支}", f)})
     if 违规:
         return ("tests/e2e/ 临时用例 " + "、".join(违规)
                 + " 禁止入 develop（用后删或按 <编号>_<名称> 转正命名后重报——1008 纪律 2）")
