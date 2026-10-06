@@ -438,11 +438,11 @@ def 解析预验红用例们(结果文本):
     return _re.findall(r"✗\s+(\S+?):", 结果文本 or "")
 
 
-def 池轮询预验(预验分支: str, 链顶: str, 点名清单: list) -> tuple[bool, str | None]:
+def 池轮询预验(预验分支: str, 链顶: str, 点名清单: list, 源分支: str = "") -> tuple[bool, str | None]:
     """1021 池路径轮询：TX_01 预验任务表 → 认领者（TX_02/家机实例）跑完→取详情判绿红。
     返回 (是否拿到结论, 拦截原因)：绿=(True,None)·红=(True,原因)；
     TX_01 连续 3 轮不可达、任务持续排队超 池空降级秒（=池空·无 runner 在）或总超时
-    =(False,None)——调用方降级 ssh 直发。"""
+    =(False,None)——调用方降级 ssh 直发。源分支=222 防御性重入队时补带（网页分支列显示）。"""
     import time as _time
     截止 = _time.time() + 预验总超时分钟 * 60
     连续失败 = 0
@@ -461,7 +461,7 @@ def 池轮询预验(预验分支: str, 链顶: str, 点名清单: list) -> tuple
         行 = next((t for t in (状态.get("预验任务") or []) if t.get("分支") == 预验分支), None)
         if 行 is None:
             # 任务行不在（服务重启丢表/异常裁剪）——重新入队防御
-            服务调用("/api/task_enqueue", {"分支": 预验分支, "sha": 链顶})
+            服务调用("/api/task_enqueue", {"分支": 预验分支, "sha": 链顶, "源分支": 源分支})
             continue
         if 行.get("状态") != "完成":
             if 行.get("状态") == "排队":
@@ -518,10 +518,12 @@ def 云端预验门禁(链顶: str, 参数: argparse.Namespace) -> str | None:
         return f"预验分支推送失败（{预验分支}）——检查远程权限后重试。"
     try:
         # ── ① 池路径：入队（幂等·已完成绿直接复用不重跑）+轮询认领结果
-        入队 = 服务调用("/api/task_enqueue", {"分支": 预验分支, "sha": 链顶})
+        # 222：附带源分支（=本集成的任务分支）——TX_01 网页预验池「分支」列直接显示归属任务
+        源分支 = 输出(["git", "branch", "--show-current"]) or "未知"
+        入队 = 服务调用("/api/task_enqueue", {"分支": 预验分支, "sha": 链顶, "源分支": 源分支})
         if 入队 is not None and 入队.get("ok"):
-            print(f"  [预验] 已入 TX_01 任务池（{预验分支}·多 runner 认领：谁空闲谁跑）")
-            拿到, 原因 = 池轮询预验(预验分支, 链顶, 参数.allow_pool_red)
+            print(f"  [预验] 已入 TX_01 任务池（{预验分支}·源 {源分支}·多 runner 认领：谁空闲谁跑）")
+            拿到, 原因 = 池轮询预验(预验分支, 链顶, 参数.allow_pool_red, 源分支)
             if 拿到:
                 return 原因
             print("  [预验] 池路径超时/不可达——降级 ssh 直发 TX_02（028 §四）……")

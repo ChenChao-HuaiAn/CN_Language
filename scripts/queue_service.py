@@ -16,7 +16,8 @@
 #   POST /api/touch   {分支}                    重报时刻（失败恢复重排队·保序不刷=幂等）
 #   POST /api/clear   {分支们:[…]}              集成销账清行
 #   POST /api/report  {ci_daemon 结果 JSON}     门禁结果上报
-#   POST /api/task_enqueue  {分支,sha}           预验任务入队（幂等·已完成绿=直接复用·已完成红=重置重跑）
+#   POST /api/task_enqueue  {分支,sha,源分支?}    预验任务入队（幂等·已完成绿=直接复用·已完成红=重置重跑；
+#                                                 源分支=发起预验的任务分支·222 网页分支列显示用·缺省兼容旧客户端）
 #   POST /api/task_claim    {runner}             认领最旧排队任务（含回收心跳超时任务·原子）
 #   POST /api/task_heartbeat {runner,分支}        心跳续约
 #   POST /api/task_complete {runner,分支,绿,结果}  完成上报（校验认领者·防回收后旧 runner 复活覆盖）
@@ -58,10 +59,15 @@ def 建库() -> sqlite3.Connection:
     con.execute("""CREATE TABLE IF NOT EXISTS 预验任务(
         序号 INTEGER PRIMARY KEY AUTOINCREMENT,
         分支 TEXT UNIQUE, sha TEXT,
+        源分支 TEXT,                    -- 222：发起预验的任务分支（如 任务/217）·旧行 NULL→网页回退显示预验分支名
         状态 TEXT DEFAULT '排队',      -- 排队/执行中/完成
         认领者 TEXT, 心跳时戳 INTEGER,  -- 心跳=服务端收到时刻（免疫客户端时钟漂移）
         绿 INTEGER, 详情 TEXT,          -- 详情=ci_daemon 结果 JSON 原样
         入队时刻 TEXT, 更新时刻 TEXT)""")
+    try:   # 222 旧库兼容：表已存在时 CREATE IF NOT EXISTS 不加列·ALTER 补（列已在=重复列错吞掉）
+        con.execute("ALTER TABLE 预验任务 ADD COLUMN 源分支 TEXT")
+    except sqlite3.OperationalError:
+        pass
     con.commit()
     return con
 
@@ -83,9 +89,9 @@ def 门禁快照(限: int = 20) -> list[dict]:
 
 def 预验任务快照() -> list[dict]:
     """预验任务池快照（不含 详情 大字段——integrate 取详情走 /api/task_result）。"""
-    行们 = con.execute("SELECT 序号,分支,sha,状态,认领者,绿,入队时刻,更新时刻 "
+    行们 = con.execute("SELECT 序号,分支,sha,源分支,状态,认领者,绿,入队时刻,更新时刻 "
                        "FROM 预验任务 ORDER BY 序号 DESC LIMIT 50").fetchall()
-    return [dict(zip(("序号", "分支", "sha", "状态", "认领者", "绿", "入队时刻", "更新时刻"), r))
+    return [dict(zip(("序号", "分支", "sha", "源分支", "状态", "认领者", "绿", "入队时刻", "更新时刻"), r))
             for r in 行们]
 
 
@@ -160,15 +166,17 @@ def 处理写(名: str, 数据: dict) -> dict:
             # 已完成红→重置排队（同 sha CAS 重试路径·对齐 ssh 直发 rm 旧文件重跑语义·也给 flaky 一次机会）；
             # 排队/执行中→不动。
             分支, sha = str(数据.get("分支", "")), str(数据.get("sha", ""))
+            源分支 = str(数据.get("源分支", "")) or None   # 222：发起预验的任务分支（旧客户端不带=NULL）
             if not 分支.startswith("ci/预验-") or len(sha) < 7:
                 return {"ok": False, "说明": "分支须 ci/预验- 开头且 sha 缺失"}
             已有 = con.execute("SELECT 状态,绿 FROM 预验任务 WHERE 分支=?", (分支,)).fetchone()
             if 已有 is None:
-                con.execute("INSERT INTO 预验任务(分支,sha,状态,入队时刻,更新时刻) "
-                            "VALUES(?,?,'排队',?,?)", (分支, sha, 时区时刻(), 时区时刻()))
+                con.execute("INSERT INTO 预验任务(分支,sha,源分支,状态,入队时刻,更新时刻) "
+                            "VALUES(?,?,?,'排队',?,?)", (分支, sha, 源分支, 时区时刻(), 时区时刻()))
             elif 已有[0] == "完成" and not 已有[1]:
                 con.execute("UPDATE 预验任务 SET 状态='排队',认领者=NULL,心跳时戳=NULL,"
-                            "绿=NULL,详情=NULL,更新时刻=? WHERE 分支=?", (时区时刻(), 分支))
+                            "绿=NULL,详情=NULL,源分支=COALESCE(?,源分支),更新时刻=? WHERE 分支=?",
+                            (源分支, 时区时刻(), 分支))
         elif 名 == "task_claim":
             # 认领（写锁内原子）：①回收心跳超时的执行中任务→重置排队；②取最旧排队任务置执行中。
             runner = str(数据.get("runner", ""))
@@ -276,7 +284,7 @@ class 处理器(BaseHTTPRequestHandler):
                             for r in 队列快照()) or "<tr><td colspan=5>空</td></tr>"
             任务行 = "".join(
                 "<tr><td>%s</td><td>%s</td><td>%s</td><td class='%s'>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>"
-                % (r["分支"], r["sha"][:10], r["状态"],
+                % (r["源分支"] or r["分支"], r["sha"][:10], r["状态"],
                    ("绿" if r["绿"] else "红") if r["状态"] == "完成" and r["绿"] is not None else "",
                    ("绿" if r["绿"] else "红") if r["状态"] == "完成" and r["绿"] is not None else "—",
                    r["认领者"] or "—", r["入队时刻"], r["更新时刻"])

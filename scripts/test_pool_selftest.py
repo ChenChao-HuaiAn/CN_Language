@@ -63,6 +63,7 @@ def main() -> int:
         调("task_enqueue", {"分支": "ci/预验-aaaaaaaaaa", "sha": "a" * 40})   # 幂等
         状态 = 取("/api/state")
         断言(len(状态["预验任务"]) == 1, "幂等入队不重复")
+        断言(状态["预验任务"][0]["源分支"] is None, "不带源分支入队=NULL（旧行回退语义·222）")
         回 = 调("task_enqueue", {"分支": "任务/坏分支", "sha": "b" * 40}, 期望ok=False)
         断言("ci/预验-" in 回["说明"], "非 ci/预验- 分支被拒")
 
@@ -113,9 +114,12 @@ def main() -> int:
         断言(回["任务"] and 回["任务"]["分支"] == "ci/预验-bbbbbbbbbb", "新任务可认领")
         调("task_complete", {"runner": "runner-D", "分支": "ci/预验-bbbbbbbbbb", "绿": False,
                              "结果": {"sha": "b" * 40, "绿": False}})
-        调("task_enqueue", {"分支": "ci/预验-bbbbbbbbbb", "sha": "b" * 40})   # 红结果→重置重跑
+        调("task_enqueue", {"分支": "ci/预验-bbbbbbbbbb", "sha": "b" * 40,
+                            "源分支": "任务/333"})   # 红结果→重置重跑（222：重置时刷新源分支）
         单 = 取("/api/task_result?sha=bbbbbbbbbb")
         断言(单["状态"] == "排队", "红结果重置为排队（CAS 重试语义）")
+        行 = next(t for t in 取("/api/state")["预验任务"] if t["分支"] == "ci/预验-bbbbbbbbbb")
+        断言(行["源分支"] == "任务/333", "红重置重入队刷新源分支（COALESCE 覆盖）")
         回 = 调("task_claim", {"runner": "runner-E"})
         断言(回["任务"] and 回["任务"]["分支"] == "ci/预验-bbbbbbbbbb", "重置后可再次认领")
         print("== ⑥task_cancel（1026 降级竞态治理） ==")
@@ -127,7 +131,12 @@ def main() -> int:
         状态 = 取("/api/state")
         断言(not any(t["分支"] == "ci/预验-cccccccccc" for t in 状态["预验任务"]), "取消后 state 无此任务")
 
-        print("== ⑦旧 API 回归（join/report/state 兼容） ==")
+        print("== ⑦源分支存取（222 网页分支列显示） ==")
+        调("task_enqueue", {"分支": "ci/预验-eeeeeeeeee", "sha": "e" * 40, "源分支": "任务/222"})
+        行 = next(t for t in 取("/api/state")["预验任务"] if t["分支"] == "ci/预验-eeeeeeeeee")
+        断言(行["源分支"] == "任务/222", "入队附带源分支已存（222 网页分支列显示）")
+
+        print("== ⑧旧 API 回归（join/report/state 兼容） ==")
         调("join", {"分支": "任务/家机-1021-预验池化", "基线": "9d6d2bbc", "写集摘要": "自测"})
         调("report", {"sha": "c" * 40, "平台": "linux-x86_64", "绿": True, "总秒": 883})
         状态 = 取("/api/state")
