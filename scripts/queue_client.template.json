@@ -1,0 +1,4 @@
+{
+  "url": "http://<TX_01公网IP>:8300",
+  "令牌": "<在 TX_01 的 /etc/systemd/system/cn-queue.service Environment=CN_QUEUE_TOKEN= 查看>"
+}
