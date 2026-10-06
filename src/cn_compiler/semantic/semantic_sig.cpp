@@ -506,6 +506,22 @@ bool SemanticAnalyzer::reportSliceReject(const std::string& fromRaw,
                             "请用基类指针 '" + to + "*' 或引用同地址持有");
     return true;
 }
+// 231（2026-10-06·91313 采样实锤）：无后缀整数字面量实参超 整32 正域 → 改判
+//   整64（值保真·决议选宽重载）——窄化赋值面（整32 x=超域字面量）不受扰：
+//   intLiteralFitsType 值域门槛照拒。负形（一元负号）为 UnaryExpr 不触发=维持
+//   原行为（负超域字面量挂账）。
+void SemanticAnalyzer::adjustLiteralArgTypes(std::vector<std::string>& argTypes,
+                                             const std::vector<std::unique_ptr<Expr>>& args) {
+    for (std::size_t i = 0; i < args.size() && i < argTypes.size(); ++i) {
+        const auto* lit = dynamic_cast<const IntegerLiteral*>(args[i].get());
+        if (lit != nullptr && argTypes[i] == "整32" &&
+            types::literalTypeOf(lit->raw, false) == "整32" &&
+            !intLiteralFitsType(args[i].get(), "整32")) {
+            argTypes[i] = "整64";
+        }
+    }
+}
+
 // 55-c 方案A（2026-09-10 用户裁决，Rust E0308 对齐）：canConvertType 拒绝时的
 //   整数字面量豁免——源/目标均为整数族且值表达式为整数字面量形态（含 -1）
 //   时放行。赋值初始化（visitVarDecl）/传参（visitCallExpr 逐参）/返回

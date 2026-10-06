@@ -652,6 +652,11 @@ private:
     }
     // 扩展隐式转换（Task 2.7 + 阶段3）：在 types::canConvert 基础上增加 枚举↔整数、
     //   结构体须同名、结果/可选 模板兼容、空类型* -> 可选<T>（空可选值）
+    // 231（2026-10-06·91313）：无后缀整数字面量实参超 整32 正域 → argTypes 改判
+    //   整64（重载决议值保真·Rust 字面量推断惯例）——原恒整32 折叠使超域字面量
+    //   精确匹配窄重载（0 级胜出）→按值传参静默截断
+    void adjustLiteralArgTypes(std::vector<std::string>& argTypes,
+                               const std::vector<std::unique_ptr<Expr>>& args);
     bool canConvertType(const std::string& from, const std::string& to) const;
     // 55-c 方案A（2026-09-10 用户裁决，Rust E0308 对齐）：canConvertType 拒绝时的
     //   整数字面量豁免——源/目标均为整数族且值表达式为整数字面量形态（含一元

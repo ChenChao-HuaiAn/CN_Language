@@ -888,6 +888,7 @@ bool SemanticAnalyzer::checkInterfaceMethodCall(CallExpr* node, MemberExpr* mem,
                             "实例方法作值不能直接作为函数指针实参传递（绑定 this 须先赋值给变量：变量 cb = 对象.方法）");
                     }
                 }
+                adjustLiteralArgTypes(argTypes, node->arguments);
                 if (argTypes.size() != imit->second.paramTypes.size()) {
                     diagnostics_.report(
                         DiagnosticLevel::Error, node->location,
@@ -1048,6 +1049,7 @@ bool SemanticAnalyzer::checkInstanceMethodCall(CallExpr* node, MemberExpr* mem,
                         "实例方法作值不能直接作为函数指针实参传递（绑定 this 须先赋值给变量：变量 cb = 对象.方法）");
                 }
             }
+            adjustLiteralArgTypes(argTypes, node->arguments);
             if (argTypes.size() != method->paramTypes.size()) {
                 diagnostics_.report(DiagnosticLevel::Error, node->location,
                                     "方法 '" + methodName + "' 期望 " +
@@ -1123,6 +1125,8 @@ bool SemanticAnalyzer::checkStaticMethodCall(CallExpr* node, const std::string& 
                         "实例方法作值不能直接作为函数指针实参传递（绑定 this 须先赋值给变量：变量 cb = 对象.方法）");
                 }
             }
+            adjustLiteralArgTypes(argTypes, node->arguments);
+            adjustLiteralArgTypes(argTypes, node->arguments);
             if (argTypes.size() != method->paramTypes.size()) {
                 diagnostics_.report(DiagnosticLevel::Error, node->location,
                                     "静态方法 '" + methodName + "' 期望 " +
@@ -1246,6 +1250,7 @@ bool SemanticAnalyzer::checkDirectCall(CallExpr* node, const std::string& callee
         for (const auto& a : node->arguments) {
             argLitFlags.push_back(isIntLiteralExpr(a.get()));
         }
+        adjustLiteralArgTypes(argTypes, node->arguments);
         std::string sigKey = resolveOverload(calleeName, argTypes, node->location,
                                              node->moduleFilter, argLitFlags);
     if (checkDirectCallFallback(node, calleeName, sigKey)) return true;
