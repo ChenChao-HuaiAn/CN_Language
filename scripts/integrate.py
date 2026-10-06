@@ -1180,7 +1180,10 @@ def 批流程(参数: argparse.Namespace) -> int:
                                 "（touch 后仍未排队）——检查服务端 join 语义。")
         问题 = 直推看板提交(报名变换, f"集成队列：{当前分支} 报名（911 批量集成·{摘要}）", 参数.remote)
         if 问题 and not 服务成:
-            return 失败(问题)
+            return 失败("TX_01 队列服务不可达（join 失败）——三选一：①稍后重试本命令"
+                        "（服务恢复即批路径）②python scripts/integrate.py --solo"
+                        "（立即单机集成·全门禁）③python scripts/integrate.py --solo-if-unreachable"
+                        "（探测降级：可达走批/不可达自动 solo）")
         print(f"[2] 报名入队：{当前分支} @ {新行['时刻']}（{摘要}）"
               + ("｜服务端✓" if 服务成 else "｜服务端不可达·看板单写（回退）"))
 
@@ -1418,6 +1421,8 @@ def 主流程() -> int:
                              "（TX_02 不可达/挂死时·028 §四处置后恢复）")
     解析器.add_argument("--solo", action="store_true",
                         help="旧单分支路径逃生门（不经队列直集成——队列机制异常时用）")
+    解析器.add_argument("--solo-if-unreachable", action="store_true",
+                        help="240：报名前探测 TX_01——不可达自动转 solo（可达=正常批·默认关保批串行化）")
     解析器.add_argument("--selftest", action="store_true", help="正反例自测（纯函数面·CI 式）")
     解析器.add_argument("--wait", action="store_true",
                         help=f"等待成为批主（轮询 {批等待轮询秒}s·上限 {批等待上限分钟} 分钟）")
@@ -1479,6 +1484,13 @@ def 主流程() -> int:
         return 0
 
     平台 = 探测平台()
+    if 参数.solo_if_unreachable and not 参数.solo:
+        if 队列读(参数.remote) is None:
+            print("[240] TX_01 队列不可达——自动降级 solo 全门禁路径（--solo-if-unreachable）")
+            print("      （恢复后建议回归批路径：批=多机串行化+拼车省预验）")
+            参数.solo = True
+        else:
+            print("[240] TX_01 可达——走正常批路径（--solo-if-unreachable 未触发）")
     if 参数.solo:
         return solo流程(平台, 参数)
     if 参数.join:
