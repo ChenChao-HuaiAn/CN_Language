@@ -1515,4 +1515,5 @@ def 批流程_join_only(参数: argparse.Namespace) -> int:
 
 
 if __name__ == "__main__":
+    os.environ["CN_INTEGRATE"] = "1"   # 238：本进程一切 push 均为集成合法面（githooks pre-push 白名单）
     sys.exit(主流程())

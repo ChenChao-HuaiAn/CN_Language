@@ -22,12 +22,13 @@
 
 1. `git fetch` → 读 **交接.md**（本机节）→ **plans/021 任务总账**：
    `python scripts/task_board.py --ready`（就绪队列/最紧迫/在飞/卡点）。
-2. 选定任务 → 021 改行 `⬜→🏃`+备注`分支=任务/<本行号>` → `python scripts/wt.py create <任务号>`
-   建树（**名=任务/<021任务号>**·196 轮立规：分支生命周期=任务生命周期——任何机器/会话
-   在同一分支接棒续做〔wt.py 远端已存在即接棒〕；收工集成删分支·重开重建）→ push 分支
-   （**分支存在=认领**；021 无此行号 wt.py 拒建——提及即立项）。
-   **★立项行（含 ⬜→🏃 改行）必须随任务分支 push 走·禁主树直推——否则任务分支树无此行，
-   integrate 收口扫不到=静默漏销账（226 实录 2026-10-06）**。
+2. 新任务一条命令立项建树（238 起）：`python scripts/wt.py create <新号> --行 "一句话描述"
+   [--前置 <号,号>] [--优先级 P1]`——自动校验编号规则（禁用号/跳号）+021 升序位立行（🏃+分支备注）
+   +**立项行随任务分支首提交**（226 立规机械化·主树零接触）；已存在行号=接棒（远端分支续做·196 轮立规：
+   分支生命周期=任务生命周期·收工集成删分支重开重建）→ push 分支（**分支存在=认领**；无 `--行` 且无此行号
+   拒建——提及即立项）。
+   **★021 行禁主树直改**（githooks pre-commit 拦·任务/batch 分支豁免·CN_ALLOW_021_DIRECT 逃生门
+   须提交信息写明缘由）——否则任务分支树无此行，integrate 收口扫不到=静默漏销账（226 实录 2026-10-06）。
 3. CN 语言相关任务先查 `cn-language-spec` skill 或 plans/001，不得凭记忆编造；
    `项目记忆/教训.md` 高权重区任务前必读。
 
@@ -62,8 +63,13 @@
 - **防虚假验收**：走真实生产链路（编译→链接→运行→比对）；产物只放 target/（gitignore）；
   中间探针任务完成即删（转正进 tests/e2e）；验证前删 v2p 缓存防假绿。
 
-## 5. 门禁与集成（v5·共两道自动+一道账实）
+## 5. 门禁与集成（v5·两道自动+一道账实+一组 git hook）
 
+0. **githooks 三拦**（238 起·每机一次性安装 `git config core.hooksPath scripts/githooks`）：
+   ①pre-push 拦**直推 develop**（develop 唯一入口=integrate·CN_INTEGRATE=1 白名单·禁删 develop）；
+   ②commit-msg 拦**纯外文提交信息**（唯一过程记录须中文·Merge/Revert/fixup! 豁免）；
+   ③pre-commit 拦**主树直改 plans/021**（226 立规机械面·任务/batch 分支豁免）。
+   hook 本体=scripts/githooks/（入库·他机 fetch 后 config 一次即生效）。
 1. **L1 本地快速**（每次提交前）：`python scripts/gate_quick.py`（静态+增量构建+全量单测·
    分钟级）；**L2 影响面子集**=同命令加 `--l2`（按写集自动推导 E2E 子集·收工验证面）。
 2. **云端 test-then-commit**（触及全量面时·1015 起默认开）：`python scripts/integrate.py`

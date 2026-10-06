@@ -1,0 +1,21 @@
+#!/bin/bash
+# 238 立规（2026-10-07）：021 总账行（立项/认领/销账）只随任务分支走（226 立规·防漏销账）——
+# develop/main 上直改 plans/021 一律拦截；任务/* 与 batch/*（integrate 组链）分支豁免。
+# 逃生门：CN_ALLOW_021_DIRECT=1（撞车清理等特殊账目面·提交信息须写明缘由）。
+# ★bash 变量名一律 ASCII（bash 不认中文变量名·238 实测教训·commit-msg 同修）。
+# 安装：git config core.hooksPath scripts/githooks（每机一次·AGENTS.md §5）
+branch=$(git rev-parse --abbrev-ref HEAD)
+case "$branch" in
+    任务/*|batch/*) exit 0 ;;
+esac
+if [ "$CN_ALLOW_021_DIRECT" = "1" ]; then
+    exit 0
+fi
+if git diff --cached --name-only --diff-filter=ACMR | grep -q '^plans/021'; then
+    echo "〔githooks·拦截〕分支 $branch 禁直改 plans/021（226 立规：立项/认领行必须随任务分支——" >&2
+    echo "  主树直推=integrate 收口扫不到=静默漏销账·226 实录）。" >&2
+    echo "  正确姿势：wt.py create <号> --行 \"描述\"（自动立项）；账目修正走任务分支提交；" >&2
+    echo "  确需直改（撞车清理等）用 CN_ALLOW_021_DIRECT=1 并在提交信息写明缘由。" >&2
+    exit 1
+fi
+exit 0

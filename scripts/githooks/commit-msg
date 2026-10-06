@@ -1,0 +1,20 @@
+#!/bin/bash
+# 238 立规（2026-10-07）：提交信息=唯一过程记录（AGENTS §6）——须中文详述，纯外文信息拦截。
+# 豁免：以 Merge/Revert 开头的 git 自动提交；fixup!（后续 squash 时中文信息覆盖）。
+# ★bash 变量名一律 ASCII（bash 不认中文变量名·238 实测教训·pre-commit 同修）。
+# 安装：git config core.hooksPath scripts/githooks（每机一次·AGENTS.md §5）
+msg_file="$1"
+first_line=$(head -n 1 "$msg_file")
+case "$first_line" in
+    Merge*|Revert*|fixup!*) exit 0 ;;
+esac
+if python3 -c "
+import sys, re
+text = open(sys.argv[1], encoding='utf-8', errors='replace').read()
+sys.exit(0 if re.search(r'[\u4e00-\u9fff]', text) else 1)
+" "$msg_file"; then
+    exit 0
+fi
+echo "〔githooks·拦截〕提交信息不含中文——「提交信息=唯一过程记录」须中文详述" >&2
+echo "  （做了什么/为什么/验证·AGENTS §6）。git 自动提交（Merge/Revert/fixup!）豁免。" >&2
+exit 1

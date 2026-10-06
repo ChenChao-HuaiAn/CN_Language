@@ -1,0 +1,22 @@
+#!/bin/bash
+# 238 立规（2026-10-07）：develop 唯一入口=integrate.py——直推 develop 一律拦截。
+# 白名单：环境变量 CN_INTEGRATE=1（integrate.py 推送时自带）；分支删除（develop 不可删）。
+# 安装：git config core.hooksPath scripts/githooks（每机一次·AGENTS.md §5）
+zero="0000000000000000000000000000000000000000"
+while read -r _local_ref _local_sha remote_ref remote_sha; do
+    if [ "$remote_ref" != "refs/heads/develop" ]; then
+        continue
+    fi
+    if [ "$remote_sha" = "$zero" ] && [ "$_local_sha" = "$zero" ]; then
+        echo "〔githooks·拦截〕develop 禁止删除（远程分支保护）。" >&2
+        exit 1
+    fi
+    if [ "$CN_INTEGRATE" = "1" ]; then
+        continue
+    fi
+    echo "〔githooks·拦截〕禁直推 develop（AGENTS §7：一切入 develop 经 integrate.py 批量集成）——" >&2
+    echo "  正确姿势：python scripts/integrate.py（云端预验绿才入·自动销账收口）。" >&2
+    echo "  若确为门禁设施故障的应急面，用 --solo 逃生门（仍走全部门禁），勿绕 hook。" >&2
+    exit 1
+done
+exit 0

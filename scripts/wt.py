@@ -137,7 +137,47 @@ echo [OK] ninja build done
 """
 
 
-def 建树(任务号: str, 无ninja: bool) -> int:
+def 净化行文(文: str) -> str:
+    """立行描述去表格破坏符（| 换全角／·断行并空格·限 300 字符防备注膨胀）。"""
+    文 = 文.replace("|", "／").replace("\n", " ").strip()
+    return 文[:300]
+
+
+def 立行于树(树路径: Path, 任务号: str, 描述: str, 前置: str, 优先级: str) -> bool:
+    """在任务分支 worktree 的 021 主表升序位插立项行并首提交（238 立项命令化）。
+
+    行只落任务分支（226 立规：立项行随任务分支 push·主树零接触）——集成时随批入 develop。
+    """
+    账本们 = sorted((树路径 / "plans").glob("021*.md"))
+    if not 账本们:
+        print("[警告] 树内无 021 总账——跳过自动立行（行须手工补）")
+        return False
+    描述, 前置, 优先级 = 净化行文(描述), 净化行文(前置) or "—", 净化行文(优先级)
+    新行 = (f"| {任务号} | {描述} | 🏃 | {前置} | {优先级} "
+            f"| 分支=任务/{任务号}（{任务号} 立项建树即认领） |")
+    for 账本 in 账本们:
+        行们 = 账本.read_text(encoding="utf-8").splitlines(keepends=True)
+        本号键 = int(任务号) if 任务号.isdigit() else float("inf")
+        升序位 = len(行们)
+        for i, 行 in enumerate(行们):
+            m = re.match(r"^\|\s*(\d+)\s*\|", 行)
+            if m and int(m.group(1)) > 本号键:
+                升序位 = i
+                break
+        行们.insert(升序位, 新行 + "\n")
+        账本.write_text("".join(行们), encoding="utf-8")
+    提交 = 运行(["git", "-C", str(树路径), "add", str(账本们[0].relative_to(树路径))])
+    提交 = 运行(["git", "-C", str(树路径), "commit", "-m",
+                 f"{任务号} 立项：{描述}（create --行 自动立项·行随任务分支首提交·226 立规机械化）"])
+    if 提交.returncode != 0:
+        print(f"[警告] 立项行提交失败：{提交.stderr}——行已写入树，须手工 commit")
+        return False
+    print(f"[4] 021 立项行已随分支首提交（{任务号} 行·升序位）——集成时随批入 develop")
+    return True
+
+
+def 建树(任务号: str, 无ninja: bool, 立行: str | None = None,
+         前置: str = "—", 优先级: str = "P1") -> int:
     if not re.fullmatch(r"\d+[a-z]?", 任务号):
         print(f"[失败] 任务号「{任务号}」不合法——须为 021 总账行号形态（如 087、178a）")
         return 1
@@ -147,9 +187,16 @@ def 建树(任务号: str, 无ninja: bool) -> int:
         print(f"[失败] 任务号 {任务号} 为禁用号（2026-10-05 用户令已改 198/199·永久禁用）——新号取当前最大有效号+1")
         return 1
     号集 = 读021行号()
+    自动立项 = False
     if 号集 is not None and 任务号 not in 号集:
-        print(f"[失败] 021 总账无任务 {任务号}——先在 plans/021 加行立项（提及即立项）再建树")
-        return 1
+        if 立行:
+            # 238 立项命令化（2026-10-07）：021 无此行+create --行 → 建树后自动立行于
+            # 任务分支首提交（226 立规「立项行随任务分支 push」机械化——主树零接触）
+            自动立项 = True
+        else:
+            print(f"[失败] 021 总账无任务 {任务号}——用 create {任务号} --行 \"一句话描述\" "
+                  f"一条命令立项建树（238 起），或先在 plans/021 加行再建树")
+            return 1
     if 号集 is not None and 任务号.isdigit():
         # 跳号基准含已归档号（226 收口归档制）：主表最大号回退后仍按全局历史最大取号，防号复用
         全号集 = 号集 | 读归档行号()
@@ -218,9 +265,20 @@ def 建树(任务号: str, 无ninja: bool) -> int:
                 else f"失败——{配置.stdout and 配置.stdout.splitlines()[-1]}"
             print(f"[3] Ninja+sccache 开发树配置{状态}")
 
+    if 自动立项:
+        立行于树(树路径, 任务号, 立行 or "", 前置, 优先级)
+
+    # 238：不入库运维凭据同步进新树（worktree 里跑 integrate 读 scripts/queue_client.json——
+    # gitignore 文件新树天然缺失，此前靠手工 export CN_QUEUE_*，忘装即「看板已废档」失败）
+    凭据 = 本树根 / "scripts" / "queue_client.json"
+    if 凭据.exists():
+        (树路径 / "scripts").mkdir(exist_ok=True)
+        shutil.copy(凭据, 树路径 / "scripts" / "queue_client.json")
+        print("[5] queue_client.json 已同步进新树（gitignore 运维面·不入库）")
+
     print(f"""
 [完成] {树路径}（分支 {分支}·{模式}）
-  下一步（AGENTS.md §2/§7）：①plans/021 改行 ⬜→🏃+备注分支=任务/{任务号} ②push 分支到 gitcode=认领生效
+  下一步（AGENTS.md §2/§7）：{'①021 立项行已自动随分支（--行 模式）' if 自动立项 else '①plans/021 改行 ⬜→🏃+备注分支=任务/'+任务号} ②push 分支到 gitcode=认领生效
   ③提交前 L1 门禁 gate_quick.py（win 全量=ci.ps1）④收工 integrate.py（自动 021 收口）""")
     return 0
 
@@ -292,6 +350,9 @@ def 主流程() -> int:
     子 = 解析器.add_subparsers(dest="命令", required=True)
     p建 = 子.add_parser("create", help="建树+任务分支 任务/<任务号>（含 Ninja+sccache 开发树）")
     p建.add_argument("任务号", help="021 总账行号（如 087、178a；远端分支已存在=接棒续做）")
+    p建.add_argument("--行", help="一句话任务描述——021 无此行时自动立项建行（238 立项命令化·行随分支首提交）")
+    p建.add_argument("--前置", default="—", help="前置任务号（逗号分隔·默认 —=无）")
+    p建.add_argument("--优先级", default="P1", choices=["P0", "P1", "P2", "P3"], help="默认 P1")
     p建.add_argument("--no-ninja", action="store_true", help="跳过 Ninja 开发树配置")
     p列 = 子.add_parser("list", help="列出全部 worktree")
     p删 = 子.add_parser("remove", help="删树（win 下 rm -rf+prune）")
@@ -301,7 +362,8 @@ def 主流程() -> int:
     p缓.add_argument("动作", choices=["stats", "start", "stop", "clear"], nargs="?", default="stats")
     参数 = 解析器.parse_args()
     if 参数.命令 == "create":
-        return 建树(参数.任务号, 参数.no_ninja)
+        return 建树(参数.任务号, 参数.no_ninja, getattr(参数, "行", None),
+                    getattr(参数, "前置", "—"), getattr(参数, "优先级", "P1"))
     if 参数.命令 == "list":
         return 列树()
     if 参数.命令 == "remove":
