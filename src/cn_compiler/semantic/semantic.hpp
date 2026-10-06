@@ -216,7 +216,6 @@ public:
     //   链接键 模块$名 误判为泛型产物，令拥有型字符串契约跨模块整体失效）。
     bool isGenericFuncInstanceName(const std::string& sigKey) const;
 
-
     // plans/019 阶段3b（2026-09-10）：IR 层查询——声明是否转移初始化（浅交接
     //   分派用：跳过深拷贝改槽位交接）；命中返回 true 并回填源变量名。
     bool isTransferDecl(const void* varDeclNode, std::string& outSrcName) const {
@@ -652,11 +651,7 @@ private:
     }
     // 扩展隐式转换（Task 2.7 + 阶段3）：在 types::canConvert 基础上增加 枚举↔整数、
     //   结构体须同名、结果/可选 模板兼容、空类型* -> 可选<T>（空可选值）
-    // 231（2026-10-06·91313）：无后缀整数字面量实参超 整32 正域 → argTypes 改判
-    //   整64（重载决议值保真·Rust 字面量推断惯例）——原恒整32 折叠使超域字面量
-    //   精确匹配窄重载（0 级胜出）→按值传参静默截断
-    void adjustLiteralArgTypes(std::vector<std::string>& argTypes,
-                               const std::vector<std::unique_ptr<Expr>>& args);
+    std::vector<std::string> collectCallArgTypes(const std::vector<std::unique_ptr<Expr>>& args, const SourceLocation& loc); void adjustLiteralArgTypes(std::vector<std::string>& argTypes, const std::vector<std::unique_ptr<Expr>>& args);  // 231·实现见 expr.cpp（冻结线承载·语义=checkExpr 收集+fnptr 诊断+超域字面量改判整64）
     bool canConvertType(const std::string& from, const std::string& to) const;
     // 55-c 方案A（2026-09-10 用户裁决，Rust E0308 对齐）：canConvertType 拒绝时的
     //   整数字面量豁免——源/目标均为整数族且值表达式为整数字面量形态（含一元
@@ -790,7 +785,6 @@ private:
     bool checkGenericInstantiation(IdentifierExpr* node);
     // 族④：函数名作值——构造函数指针类型（funcFirstSigKey 确定性选择）。true = 已处理
     bool checkFunctionNameValue(IdentifierExpr* node);
-
 
 
     bool canConvertWithLiteral(const Expr* value, const std::string& from,

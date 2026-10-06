@@ -108,3 +108,4 @@ inline std::string canonicalType(const std::string& type) {
 }
 
 } // namespace cn_compiler
+

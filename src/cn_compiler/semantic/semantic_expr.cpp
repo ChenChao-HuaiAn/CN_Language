@@ -20,6 +20,44 @@ namespace cn_compiler {
 
 // 8. D1 行数整改 116-a：按族拆出 semantic_expr_op.cpp（运算符/赋值）/semantic_expr_access.cpp（成员/下标）（纯重构零行为变更）
 
+// 231（2026-10-06·91313）：调用实参类型收集（checkExpr 全量）+ P3-23 fnptr 裸实参
+//   诊断（五族循环体单点收编——242 冻结线承载：semantic_call.cpp 超限禁净增长）
+//   + 无后缀整数字面量超 整32 正域改判 整64（值保真·重载决议选宽重载·Rust 字面量
+//   推断惯例）——原恒整32 折叠使超域字面量精确匹配窄重载（0 级胜出）→按值传参
+//   静默截断（-1454759936 铁证·样本 p1006_01a）。负形（一元负号）不触发=原行为。
+std::vector<std::string> SemanticAnalyzer::collectCallArgTypes(
+    const std::vector<std::unique_ptr<Expr>>& args, const SourceLocation& loc) {
+    (void)loc;
+    std::vector<std::string> argTypes;
+    argTypes.reserve(args.size());
+    for (const auto& a : args) {
+        argTypes.push_back(checkExpr(a.get()));
+        if (argIsBoundMethodValue(a.get())) {
+            diagnostics_.report(
+                DiagnosticLevel::Error, a->location,
+                "实例方法作值不能直接作为函数指针实参传递（绑定 this 须先赋值给变量：变量 cb = 对象.方法）");
+        }
+    }
+    adjustLiteralArgTypes(argTypes, args);
+    return argTypes;
+}
+
+void SemanticAnalyzer::adjustLiteralArgTypes(
+    std::vector<std::string>& argTypes,
+    const std::vector<std::unique_ptr<Expr>>& args) {
+    for (std::size_t i = 0; i < args.size() && i < argTypes.size(); ++i) {
+        const auto* lit = dynamic_cast<const IntegerLiteral*>(args[i].get());
+        if (lit != nullptr && argTypes[i] == "整32" &&
+            types::literalTypeOf(lit->raw, false) == "整32" &&
+            !intLiteralFitsType(args[i].get(), "整32")) {
+            argTypes[i] = "整64";
+        }
+    }
+}
+
+
+
+
 
 void SemanticAnalyzer::visitIntegerLiteral(IntegerLiteral* node) {
     lastType_ = types::literalTypeOf(node->raw, false);

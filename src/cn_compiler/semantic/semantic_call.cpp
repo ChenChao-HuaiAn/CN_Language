@@ -723,10 +723,8 @@ bool SemanticAnalyzer::checkCtorCall(CallExpr* node, const std::string& classNam
             // 查找构造函数（函数名 == 类名）。Debug 子任务修复（构造函数重载）：
             //   methods 表构造条目 key=sigKey（名#参数串），遍历按 isConstructor +
             //   ownerClass（排除父类构造，阶段A-3）+ 实参个数 + 类型可转换 匹配最优。
-            std::vector<std::string> argTypes;
-            for (auto& arg : node->arguments) {
-                argTypes.push_back(checkExpr(arg.get()));
-            }
+            std::vector<std::string> argTypes =
+                collectCallArgTypes(node->arguments, node->location);
             const ClassMemberInfo* ctor = nullptr;
             const ClassMemberInfo* ctorExact = nullptr;
             for (const auto& mk : ctorCls->methods) {
@@ -878,17 +876,8 @@ bool SemanticAnalyzer::checkInterfaceMethodCall(CallExpr* node, MemberExpr* mem,
                     lastType_ = "未知";
                     return true;
                 }
-                std::vector<std::string> argTypes;
-                for (auto& arg : node->arguments) {
-                    argTypes.push_back(checkExpr(arg.get()));
-                    // P3-23 补完（D2）：绑定方法值不可作裸 fnptr 实参
-                    if (argIsBoundMethodValue(arg.get())) {
-                        diagnostics_.report(
-                            DiagnosticLevel::Error, arg->location,
-                            "实例方法作值不能直接作为函数指针实参传递（绑定 this 须先赋值给变量：变量 cb = 对象.方法）");
-                    }
-                }
-                adjustLiteralArgTypes(argTypes, node->arguments);
+                std::vector<std::string> argTypes =
+                    collectCallArgTypes(node->arguments, node->location);
                 if (argTypes.size() != imit->second.paramTypes.size()) {
                     diagnostics_.report(
                         DiagnosticLevel::Error, node->location,
@@ -1049,8 +1038,7 @@ bool SemanticAnalyzer::checkInstanceMethodCall(CallExpr* node, MemberExpr* mem,
                         "实例方法作值不能直接作为函数指针实参传递（绑定 this 须先赋值给变量：变量 cb = 对象.方法）");
                 }
             }
-            adjustLiteralArgTypes(argTypes, node->arguments);
-            if (argTypes.size() != method->paramTypes.size()) {
+            adjustLiteralArgTypes(argTypes, node->arguments);            if (argTypes.size() != method->paramTypes.size()) {
                 diagnostics_.report(DiagnosticLevel::Error, node->location,
                                     "方法 '" + methodName + "' 期望 " +
                                         std::to_string(method->paramTypes.size()) +
@@ -1115,18 +1103,8 @@ bool SemanticAnalyzer::checkStaticMethodCall(CallExpr* node, const std::string& 
                                             const ClassMemberInfo* method) {
         if (method != nullptr && method->isStatic) {
             // 静态方法调用（类名.静态方法(...)）
-            std::vector<std::string> argTypes;
-            for (auto& arg : node->arguments) {
-                argTypes.push_back(checkExpr(arg.get()));
-                // P3-23 补完（D2）：绑定方法值不可作裸 fnptr 实参
-                if (argIsBoundMethodValue(arg.get())) {
-                    diagnostics_.report(
-                        DiagnosticLevel::Error, arg->location,
-                        "实例方法作值不能直接作为函数指针实参传递（绑定 this 须先赋值给变量：变量 cb = 对象.方法）");
-                }
-            }
-            adjustLiteralArgTypes(argTypes, node->arguments);
-            adjustLiteralArgTypes(argTypes, node->arguments);
+            std::vector<std::string> argTypes =
+                collectCallArgTypes(node->arguments, node->location);
             if (argTypes.size() != method->paramTypes.size()) {
                 diagnostics_.report(DiagnosticLevel::Error, node->location,
                                     "静态方法 '" + methodName + "' 期望 " +
@@ -1209,17 +1187,8 @@ bool SemanticAnalyzer::checkDirectCallFallback(CallExpr* node, const std::string
 bool SemanticAnalyzer::checkDirectCall(CallExpr* node, const std::string& calleeName) {
     if (checkVariadicBuiltinCall(node, calleeName)) return true;
         // 非变参直接调用：重载决议（先检查实参类型）
-        std::vector<std::string> argTypes;
-        argTypes.reserve(node->arguments.size());
-        for (auto& arg : node->arguments) {
-            argTypes.push_back(checkExpr(arg.get()));
-            // P3-23 补完（D2）：绑定方法值不可作裸 fnptr 实参
-            if (argIsBoundMethodValue(arg.get())) {
-                diagnostics_.report(
-                    DiagnosticLevel::Error, arg->location,
-                    "实例方法作值不能直接作为函数指针实参传递（绑定 this 须先赋值给变量：变量 cb = 对象.方法）");
-            }
-        }
+        std::vector<std::string> argTypes =
+            collectCallArgTypes(node->arguments, node->location);
         // 217（027 波2a·001 §5.8a）：新线程 实参位可搬运检查——按值拷贝进新线程的
         //   值须可搬运（§1.1a① 编译期硬错误·Rust Send 对照）。置于重载决议之前：
         //   可搬运诊断是实参槽语义（先于形参签名不匹配诊断·双侧诊断面同构）。
@@ -1250,7 +1219,6 @@ bool SemanticAnalyzer::checkDirectCall(CallExpr* node, const std::string& callee
         for (const auto& a : node->arguments) {
             argLitFlags.push_back(isIntLiteralExpr(a.get()));
         }
-        adjustLiteralArgTypes(argTypes, node->arguments);
         std::string sigKey = resolveOverload(calleeName, argTypes, node->location,
                                              node->moduleFilter, argLitFlags);
     if (checkDirectCallFallback(node, calleeName, sigKey)) return true;
