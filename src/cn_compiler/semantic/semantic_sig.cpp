@@ -175,6 +175,15 @@ int SemanticAnalyzer::conversionLevel(const std::string& argTypeRaw,
         if (argIsLiteral && types::isInteger(arg) && types::isInteger(param)) {
             return 1;
         }
+        // 234（2026-10-06·91303）：类 → 基类链·仅引用形参的决议形状放行——
+        //   决议层按 A-1 已剥 & 比较形状，此处放行须原形参为引用（绑定=同地址
+        //   零拷贝·与接口 A1 对仗）；值形参不放行=按值拷贝即切片（切片拒绝由
+        //   reportSliceReject 在赋值/传参层执行·立法 234）
+        if (types::isReference(paramTypeRaw) &&
+            isClassType(arg) && isClassType(param) && !isInterfaceType(param) &&
+            isDerivedFrom(arg, param)) {
+            return 1;
+        }
         return -1;
     }
     // 枚举 -> 整数：按宽化处理（枚举本质为整32，值域不损失）
@@ -453,7 +462,49 @@ bool SemanticAnalyzer::canConvertType(const std::string& fromRaw,
             }
         }
     }
+    // 234（2026-10-06·用户批准甲案·91303 采样实锤）：类 → 基类链 隐式转换
+    //   （指针/引用形态·同地址语义=接口 A1 扩展）——装的是原对象零拷贝；
+    //   经基类指针/引用的虚拟调用按动态类型虚表分派（365 三级链实证）；
+    //   访问控制按静态类型视角（既有 lookupClassMember ownerClass 体系）。
+    //   值形态不在此放行=切片拒绝（专用诊断 reportSliceReject·立法 234）。
+    {
+        // 形态判定用原始文本（canonical 会剥 &——引用后缀到此处已丢失）；
+        // 指针星号 canonical 保留、判定可用规范化形态。
+        const bool toIsPtr = types::isPointer(toRaw);
+        const bool toIsRef = types::isReference(toRaw);
+        if (toIsPtr || toIsRef) {
+            std::string toBase = canonicalType(toIsPtr ? types::pointeeOf(toRaw)
+                                                       : types::stripRef(toRaw));
+            if (isClassType(toBase) && !isInterfaceType(toBase)) {
+                std::string fromBase = types::isPointer(from)
+                                           ? types::pointeeOf(from)
+                                           : canonicalType(types::stripRef(fromRaw));
+                if (isClassType(fromBase) && isDerivedFrom(fromBase, toBase)) {
+                    return true;
+                }
+            }
+        }
+    }
     return types::canConvert(from, to);
+}
+
+// 234：类→基类值形态切片拒绝专用诊断（立法 234·防 C++ 经典事故源——值形态
+//   截掉派生类字段）。from 为派生类值、to 为其基类值类型时报专用消息并返回
+//   true；否则返回 false 交由调用方走通用诊断。
+bool SemanticAnalyzer::reportSliceReject(const std::string& fromRaw,
+                                         const std::string& toRaw,
+                                         const SourceLocation& loc) {
+    const std::string from = canonicalType(fromRaw);
+    const std::string to = canonicalType(toRaw);
+    if (types::isPointer(to) || types::isReference(to)) return false;
+    if (!isClassType(to) || isInterfaceType(to)) return false;
+    if (!isClassType(from)) return false;
+    if (!isDerivedFrom(from, to) || from == to) return false;
+    diagnostics_.report(DiagnosticLevel::Error, loc,
+                        "禁止类切片：'" + from + "' 不能隐式转换为基类值 '" + to +
+                            "'——值形态会截掉派生类字段（立法 234·防切片）；"
+                            "请用基类指针 '" + to + "*' 或引用同地址持有");
+    return true;
 }
 // 55-c 方案A（2026-09-10 用户裁决，Rust E0308 对齐）：canConvertType 拒绝时的
 //   整数字面量豁免——源/目标均为整数族且值表达式为整数字面量形态（含 -1）

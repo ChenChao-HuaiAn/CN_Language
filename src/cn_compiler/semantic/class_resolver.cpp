@@ -82,6 +82,20 @@ bool SemanticAnalyzer::classImplementsInterface(const std::string& className,
     return false;
 }
 
+// 234（2026-10-06·91303）：sub 是否为 base 的派生类——沿 baseName 链上溯，
+//   与 classImplementsInterface 同款遍历；同类返回真（调用方按需排除）。
+bool SemanticAnalyzer::isDerivedFrom(const std::string& sub,
+                                     const std::string& base) const {
+    const std::string s = types::canonical(sub);
+    const std::string b = types::canonical(base);
+    const ClassInfo* cur = findClass(s);
+    while (cur != nullptr) {
+        if (cur->name == b) return true;
+        cur = cur->baseName.empty() ? nullptr : findClass(cur->baseName);
+    }
+    return false;
+}
+
 // P3-19：接口成员全局槽位（未登记返回 -1）
 int SemanticAnalyzer::interfaceSlot(const std::string& ifaceName,
                                     const std::string& methodName) const {

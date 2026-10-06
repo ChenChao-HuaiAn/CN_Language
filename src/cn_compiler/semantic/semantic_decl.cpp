@@ -309,6 +309,11 @@ void SemanticAnalyzer::visitVarDecl(VarDecl* node) {
                 return;
             }
             if (!canConvertType(initType, varType)) {
+                // 234（2026-10-06·91303）：类→基类值形态=切片拒绝专用诊断
+                //   （立法 234·防切片；指针/引用形态已在 canConvertType 放行）
+                if (reportSliceReject(initType, varType, node->location)) {
+                    return;
+                }
                 // Task 2.3：字面量常量窄化（整8 a = 10：10 默认整32，但值是编译期
                 // 常量且适配目标位宽）——无后缀整数字面量允许窄化到目标整数类型；
                 // 非字面量（变量/表达式）仍按严格隐式转换规则拒绝窄化。

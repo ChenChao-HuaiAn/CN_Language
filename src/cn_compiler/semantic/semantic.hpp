@@ -313,6 +313,12 @@ public:
     // P3-19：类（含继承链）是否实现指定接口
     bool classImplementsInterface(const std::string& className,
                                   const std::string& ifaceName) const;
+    // 234（2026-10-06·91303）：sub 是否为 base 的派生类（沿 baseName 链上溯·
+    //   同类也算真=调用方按需排除）
+    bool isDerivedFrom(const std::string& sub, const std::string& base) const;
+    // 234：类→基类值形态切片拒绝专用诊断（报了返回 true·立法 234 防切片）
+    bool reportSliceReject(const std::string& from, const std::string& to,
+                           const SourceLocation& loc);
     // 沿继承链查找类成员（含父类；未找到返回nullptr）
     const ClassMemberInfo* lookupClassMember(const std::string& className,
                                              const std::string& memberName,
