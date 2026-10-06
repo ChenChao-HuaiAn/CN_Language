@@ -391,6 +391,11 @@ extern "C" void* cn_alloc(std::size_t size) {
         ++g_cn_alloc_live;
         cnBinAdd(size);   // 829 侦查直方图
     }
+    // 221：双释放侦查对位（CN_RT_DOUBLE_FREE=1 时 alloc/free 全序列打印）
+    static const int dfProbeA = []{ char* v = nullptr; std::size_t len = 0; return _dupenv_s(&v, &len, "CN_RT_DOUBLE_FREE") == 0 && v != nullptr; }();
+    if (dfProbeA) {
+        std::fprintf(stderr, "[dblalloc] alloc ptr=%p size=%zu\n", p, size);
+    }
     return p;
 }
 
@@ -399,6 +404,12 @@ extern "C" void cn_free(void* ptr) {
     // 074 波3：池化后 defensive 分流——池内指针按池归还（池块非 CRT 块，
     //   直接 std::free 会破坏堆）；其余走原路径。
     if (ptr == nullptr) return;
+    // 221：双释放可观测（CN_RT_DOUBLE_FREE=1 启用·堆损坏 C374/C5 的
+    //   第一现场定位——双 free 时 stderr 打印指针+调用不拦截继续走堆检测）
+    static const int dfProbe = []{ char* v = nullptr; std::size_t len = 0; return _dupenv_s(&v, &len, "CN_RT_DOUBLE_FREE") == 0 && v != nullptr; }();
+    if (dfProbe) {
+        std::fprintf(stderr, "[dblfree?] free ptr=%p\n", (void*)ptr);
+    }
     const int cls = poolFindClass(ptr);
     if (cls >= 0) {
         if (poolFree(ptr, cls)) --g_cn_alloc_live;
