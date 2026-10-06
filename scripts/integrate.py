@@ -199,8 +199,26 @@ def 冲突标记检查(文件们: list[str]) -> str | None:
     return None
 
 
+def 归档路径021() -> Path:
+    """收口归档制（226 轮·2026-10-06 用户令「归档后的任务从任务栏删除·记录放 项目记忆/归档」）：
+    已完成任务归档切片——按年月分文件，与 项目记忆/归档/ 现有滚转命名惯例一致。"""
+    return 仓库根 / "项目记忆" / "归档" / datetime.now().strftime("plans021-已完成任务归档-%Y-%m.md")
+
+
+归档头注 = """# 021 已完成任务归档（收口归档制·226 轮·2026-10-06 用户令）
+
+> integrate.py 集成收口时自动剪切 ✅ 行至此（纯搬运零改写·状态列 sha=集成提交）。
+> 任务号全局唯一含归档——新任务取全局最大有效号+1（task_board --check 与 wt.py create 拦截复用）。
+> 前置引用归档号=已完成（task_board 读本文件合并依赖图）。本文件=封存档案·人工勿改（考古=git 历史）。
+
+| # | 任务 | 状态 | 前置 | 优先级 | 备注/下一棒 |
+|---|------|------|------|--------|------------|
+"""
+
+
 def 总账收口021(分支们: list, 新tip: str, remote: str) -> None:
-    """v5（1016）：集成成功后 021 任务总账自动收口——成员分支匹配 🏃 行改 ✅+sha10
+    """v5（1016）：集成成功后 021 任务总账自动收口——成员分支匹配 🏃 行改 ✅+sha10，
+    随即按收口归档制（226 轮）将该行从主表剪切追加至 项目记忆/归档/ 归档切片
     （commit+push develop·CAS 失败重试一次·再败警告由 task_board --check 下轮兜底抓漏），
     随后跑 task_board --ready 播报本轮解锁（就绪队列前 3）。取代 v4 看板销账直推。"""
     路径 = 仓库根 / "plans" / "021-任务进度观察表.md"
@@ -213,6 +231,7 @@ def 总账收口021(分支们: list, 新tip: str, remote: str) -> None:
         原文 = f.read()
     行们 = 原文.splitlines(keepends=True)
     改动 = []
+    归档行们: list[str] = []
     for i, 行 in enumerate(行们):
         st = 行.strip()
         if not st.startswith("|") or "🏃" not in st:
@@ -224,24 +243,34 @@ def 总账收口021(分支们: list, 新tip: str, remote: str) -> None:
                     段[2] = "✅ " + 新tip[:10]
                     前缀 = 行[:len(行) - len(行.lstrip())]
                     行尾 = "\r\n" if 行.endswith("\r\n") else "\n"
-                    行们[i] = 前缀 + "| " + " | ".join(段) + " |" + 行尾
+                    收口行 = 前缀 + "| " + " | ".join(段) + " |" + 行尾
+                    归档行们.append(收口行)
+                    行们[i] = None  # 收口即归档：主表删除该行（226 轮·用户新令取代「完成行不删」）
                     改动.append((分支, 段[0]))
                 break
     if not 改动:
         return
-    路径.write_text("".join(行们), encoding="utf-8", newline="")
+    路径.write_text("".join(行 for 行 in 行们 if 行 is not None), encoding="utf-8", newline="")
+    归档 = 归档路径021()
+    需头注 = not 归档.exists() or 归档.stat().st_size == 0
+    with open(归档, "a", encoding="utf-8", newline="") as f:
+        if 需头注:
+            f.write(归档头注)
+        f.write("".join(归档行们))
+    运行(["git", "add", str(路径), str(归档)])
     分支0, 号0 = 改动[0]
     ok = False
     for _ in range(2):
-        运行(["git", "add", str(路径)])
-        运行(["git", "commit", "-m", "021 总账收口：任务#" + 号0 + " ✅ " + 新tip[:10] + "（集成自动·v5）"])
+        运行(["git", "commit", "-m", "021 总账收口+归档：任务#" + 号0 + " ✅ " + 新tip[:10]
+              + "（集成自动·v5·226 收口归档制）"])
         推 = 运行(["git", "push", remote, "HEAD:develop"])
         if 推.returncode == 0:
             ok = True
             break
         运行(["git", "pull", "--rebase", remote, "develop"])
     if ok:
-        print("  [021] 任务总账自动收口：" + str(改动) + "（✅ " + 新tip[:10] + "）")
+        print("  [021] 任务总账自动收口+归档：" + str(改动) + "（✅ " + 新tip[:10]
+              + "→" + 归档.name + "）")
         r = subprocess.run([sys.executable, "scripts/task_board.py", "--ready"],
                            capture_output=True, text=True, cwd=仓库根)
         就绪 = [l for l in (r.stdout or "").splitlines() if l.strip().startswith("#")]

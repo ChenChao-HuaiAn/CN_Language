@@ -38,7 +38,7 @@ from pathlib import Path
 
 
 def 读021行号() -> set[str] | None:
-    """解析 021 总账任务号集合（纯任务号分支名的行号校验源·196 轮立规）。
+    """解析 021 总账主表任务号集合（纯任务号分支名的行号校验源·196 轮立规）。
 
     返回 None=找不到 021 文件（放行建树·树内脚本自举场景不硬拦）。
     """
@@ -47,6 +47,19 @@ def 读021行号() -> set[str] | None:
         return None
     号集: set[str] = set()
     for 账本 in 账本们:
+        for 行 in 账本.read_text(encoding="utf-8").splitlines():
+            m = re.match(r"^\|\s*(\d+[a-z]?)\s*\|", 行)
+            if m:
+                号集.add(m.group(1))
+    return 号集
+
+
+def 读归档行号() -> set[str]:
+    """解析 021 已归档任务号集合（收口归档制·226 轮立法）——仅用于跳号基准与禁建校验，
+    不参与「021 无此行拒建」存在性校验（归档号不在主表·重立须用新号）。
+    """
+    号集: set[str] = set()
+    for 账本 in sorted((本树根 / "项目记忆" / "归档").glob("plans021-已完成任务归档-*.md")):
         for 行 in 账本.read_text(encoding="utf-8").splitlines():
             m = re.match(r"^\|\s*(\d+[a-z]?)\s*\|", 行)
             if m:
@@ -138,10 +151,13 @@ def 建树(任务号: str, 无ninja: bool) -> int:
         print(f"[失败] 021 总账无任务 {任务号}——先在 plans/021 加行立项（提及即立项）再建树")
         return 1
     if 号集 is not None and 任务号.isdigit():
-        其余序列 = [int(n) for n in 号集
+        # 跳号基准含已归档号（226 收口归档制）：主表最大号回退后仍按全局历史最大取号，防号复用
+        全号集 = 号集 | 读归档行号()
+        其余序列 = [int(n) for n in 全号集
                     if n.isdigit() and n not in 禁用号 and int(n) != int(任务号)]
         if 其余序列 and int(任务号) > max(其余序列) + 1:
-            print(f"[失败] 任务号 {任务号} 跳号——除本行外最大有效号 {max(其余序列)}，"
+            print(f"[失败] 任务号 {任务号} 跳号——除本行外最大有效号 {max(其余序列)}"
+                  f"（含已归档 {len(读归档行号())} 号），"
                   f"用户令 2026-10-05：按顺序取号（max+1·禁用号 353/354 跳过·历史补记账须用户特批）")
             return 1
     运行(["git", "fetch", "gitcode"])
