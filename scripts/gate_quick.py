@@ -27,10 +27,12 @@ def 步(名: str, 命令: list[str], **kw) -> bool:
 
 print("== L1 快速门禁（920·提交前）==", flush=True)
 
-# ① 静态三检查（与 ci.ps1 第 0~0.5 步同源·不依赖构建产物）
+# ① 静态四检查（与 ci.ps1 第 0~0.5 步同源·不依赖构建产物；242 增 file_length 冻结线）
 for 名 in ("check_ascii_idents", "check_keywords_sync", "check_registry_audit"):
     if not 步(名, [sys.executable, f"scripts/{名}.py"]):
         raise SystemExit(1)
+if not 步("file_length 冻结线", [sys.executable, "scripts/check_file_length.py", "--freeze"]):
+    raise SystemExit(1)
 
 # ② 增量构建（win=Ninja+sccache〔ninja_build.cmd=vcvars+cache 一体〕；linux=Make 增量）
 if 是win:

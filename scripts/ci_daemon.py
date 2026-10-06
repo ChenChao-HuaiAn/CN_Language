@@ -115,6 +115,15 @@ def 跑一轮(sha: str, 轮分支: str = "") -> dict:
                     步骤们["单测"] = {"rc": -1, "说明": "未找到单测产物"}
                 else:
                     步骤("单测", [str(单测)], 1800)
+            # ③.5 静态门禁面（242·每日兜底恢复「注册了但 v5 默认不跑」的 ci常规五项——
+            #    spec 覆盖/CLI 契约/asm 位宽/台账完成度/行数冻结线·linux 可跑面；win 专属留 ci.ps1）
+            for 名, 参 in (("check_spec_coverage", ["--strict"]),
+                          ("check_cli_contract", ["--cn", str(cn)]),
+                          ("check_asm_width", ["--cn", str(cn)]),
+                          ("check_matrix_coverage", []),
+                          ("check_file_length", ["--freeze"])):
+                if 步骤(名, [sys.executable, f"scripts/{名}.py"] + 参, 900):
+                    pass
             # ④ E2E（linux-x86_64 面；红后串行复验=447-a 口径）
             cn = next((p for p in [仓库根 / "target/build/cn", 仓库根 / "target/cn"] if p.exists()), None)
             if cn is None:
