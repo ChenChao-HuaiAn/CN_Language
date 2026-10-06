@@ -18,6 +18,7 @@ import pathlib
 import re
 import signal
 import subprocess
+import time
 import platform
 import sys
 import threading
@@ -1160,8 +1161,22 @@ def 执行v2锚定链(编译器路径: pathlib.Path, 用例目录: pathlib.Path,
     内容p = fixp.read_text(encoding="utf-8", errors="replace").splitlines()
     内容s = fixs.read_text(encoding="utf-8", errors="replace").splitlines()
     差异行 = [i for i, (x, y) in enumerate(zip(内容p, 内容s)) if x != y]
+    # 255（2026-10-07）：固定点不一致≠必然代码生成分叉——v2p.exe/v2p.obj 混合态
+    #   （cn_self 链接借链 v2p.obj·两者不同批=fix_s 为混合体产物·236 轮假红 12K 行差
+    #   实录）与编译器版本错位同征。失败信息附产物时间线+差异样本，三类根因
+    #   （混合态/版本错位/真分叉）一眼可辨。
+    def _mt(p):
+        try:
+            return time.strftime("%H:%M:%S", time.localtime(p.stat().st_mtime))
+        except OSError:
+            return "缺失"
+    样本 = "; ".join(f"L{i}: P={内容p[i].strip()[:60]!r} S={内容s[i].strip()[:60]!r}"
+                    for i in 差异行[:3] if i < len(内容p) and i < len(内容s))
+    诊断 = (f"产物时间线 v2p.exe={_mt(v2p)} v2p.obj={_mt(v2pobj)} "
+            f"cn_self={_mt(cn_self_exe)}（exe/obj 时差大=混合态嫌疑·应删 "
+            f"{v2p.name}+{v2pobj.name}+缓存键重建）；差异样本 {样本}")
     return "失败", (f"{编号}-7 固定点不一致！fix_p={len(内容p)} 行 fix_s={len(内容s)} 行，"
-                    f"首个差异行号={差异行[:5]}（v2 编译确定性/代码生成分叉）")
+                    f"首个差异行号={差异行[:5]}（v2 编译确定性/代码生成分叉或环境混合态）。{诊断}")
 
 
 # v2 闭环用例配置解析（数据驱动，2026-09-11 用户裁决去硬编码）：用例目录的
@@ -1386,7 +1401,12 @@ def 确保v2p就绪win(编译器路径: pathlib.Path, 详细: bool, 编号: str 
     # v2p 构建缓存（同 Linux 分支——输入未变不重建）
     缓存键路径 = 审计目录 / "v2p_build_key_win.txt"
     本次指纹 = 计算v2构建指纹(编译器路径)
-    if (v2p.exists() and v2pobj.exists() and 缓存键路径.exists()
+    # 255（2026-10-07）：exe/obj 同批校验——cn_self 链接借链 v2p.obj，两者不同批
+    #   （历史中断残留/外部触碰）=fix_s 混合体产物→固定点假红（236 轮 12K 行差实录）。
+    #   指纹命中但 mtime 差超阈值（5 分钟·同批构建秒级完成）→视为混合态强制重建。
+    同批 = (v2p.exists() and v2pobj.exists()
+            and abs(v2p.stat().st_mtime - v2pobj.stat().st_mtime) <= 300)
+    if (同批 and 缓存键路径.exists()
             and 缓存键路径.read_text(encoding="utf-8") == 本次指纹):
         if 详细:
             print(f"    [{编号}-1] v2p 构建缓存命中（v2 源码与编译器未变），复用 {v2p.name}")
