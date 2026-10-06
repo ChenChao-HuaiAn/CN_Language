@@ -321,6 +321,8 @@
     如果 (码 == T_浮32 || 码 == T_浮64) { 返回 "__cn_str_from_float"; }
     如果 (码 == T_布尔) { 返回 "__cn_str_from_bool"; }
     如果 (码 == T_字符) { 返回 "__cn_str_from_char"; }
+    // 232（91311 同族）：正64 拼接走无符号转换（from_int 有符号=2^63 以上印负）
+    如果 (码 == T_正64) { 返回 "__cn_str_from_uint"; }
     返回 "__cn_str_from_int";
 }
 
