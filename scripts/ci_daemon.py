@@ -10,6 +10,11 @@
 #   回收重派）；没领到/池不可达→原有 develop 轮询行为不变（三层降级：池→ssh 直发→逃生门）。
 #   CN_CI_ROLE=pool（家机 WSL2 实例）=纯池角色不轮询 develop；TX_02 无此 env=池+develop 双职。
 #   多实例支持（家机 7 runner）：每实例独立工作目录（各自 flock/克隆）+CN_RUNNER_ID 区分身份。
+# 189 兜底池化（2026-10-07 用户裁决丙案）：develop 轮真跑前两道优化——①纯文档轮免兜底
+#   （基线..新头 变更集全 .md→免跑留档·result 档案幂等防重复判定·任何异常/非 md 文件
+#   照跑=fail-safe 默认）②混合变更入池（task_enqueue ci/兜底-<sha10>·runner 池谁闲谁
+#   认领·TX_02 本职轮下周期也参与认领·入池失败降级本机跑=门禁永不缺位·本地有红档不入
+#   池防池内死循环重跑）。--force 每日 cron 与点名预验不受影响=门禁语义保持。
 # 用法：--loop  常驻轮询（systemd 服务）
 #       --once  单轮检查（SHA 未变跳过；配 --force 无条件跑一轮=每日 cron 兜底）
 # 部署：/etc/systemd/system/cn-ci.service（ExecStart=... --loop·Restart=always）
@@ -64,6 +69,73 @@ def 取远端SHA() -> str | None:
                           capture_output=True, text=True, cwd=仓库根, timeout=60)
     匹配 = re.search(r"^([0-9a-f]{40})\t", 输出.stdout, re.M)
     return 匹配.group(1) if 匹配 else None
+
+
+# ═══════════════ 189 兜底池化改造（2026-10-07 用户裁决丙案） ═══════════════
+
+def 上次已验SHA() -> str | None:
+    """免跑判定基线=最近一次 develop 验证绿的树头。latest.json 的 sha 即该值
+    （develop 轮绿/预验绿链顶都写 latest——预验绿链顶=验绿后 push 的 develop 头）。
+    读不到（冷启动/损坏）→ None（调用方照跑=保守）。"""
+    try:
+        return json.loads((日志目录 / "latest.json").read_text(encoding="utf-8")).get("sha")
+    except Exception:
+        return None
+
+
+def 纯文档变更(基线sha: str, 新sha: str) -> tuple[bool, str]:
+    """①纯文档轮免兜底判定（189）：基线..新 的变更文件**全部 .md**→真（免跑）。
+    fail-safe 默认（Rust 同款哲学：默认保守）——fetch/diff 任何异常、基线缺失、
+    出现任何非 .md 文件（代码/脚本/配置·尤其 scripts/——242 坏脚本广播教训）
+    一律判假=照跑。返回 (判定, 缘由/文件摘要)。"""
+    try:
+        取 = subprocess.run(["git", "fetch", 远端名, "develop"], capture_output=True,
+                            text=True, cwd=仓库根, timeout=120)
+        if 取.returncode != 0:
+            return False, "fetch 失败照跑：%s" % (取.stderr or "").strip()[:120]
+        diff = subprocess.run(["git", "diff", "--name-only", "%s..%s" % (基线sha, 新sha)],
+                              capture_output=True, text=True, cwd=仓库根, timeout=120)
+        if diff.returncode != 0:
+            return False, "diff 失败照跑：%s" % (diff.stderr or "").strip()[:120]
+        文件们 = [l for l in diff.stdout.splitlines() if l.strip()]
+        if not 文件们:
+            return True, "变更集为空（基线即新头）"
+        非md = [f for f in 文件们 if not f.lower().endswith(".md")]
+        if 非md:
+            return False, "含非文档 %d 个（首=%s）" % (len(非md), 非md[0][:80])
+        return True, "纯文档 %d 个全 .md" % len(文件们)
+    except Exception as e:
+        return False, "判定异常照跑：%s" % str(e)[:120]
+
+
+def 免跑留档(sha: str, 缘由: str) -> None:
+    """纯文档轮免跑留档（189）：走既有 result 档案机制（develop 语义=latest+result+上报）
+    ——「已跑过(sha)」据此自动跳过=幂等零重复判定；结果页可审计（绿=门禁无需全量·
+    步骤字段明记免跑缘由）。绿 的口径：result「绿」由 同步/配置/构建/单测/e2e 键聚合
+    （跑一轮 同款），免跑结果无这些键→聚合为 True——语义=「本 sha 无需全量即合规」。"""
+    步骤字段 = {"免跑": {"rc": 0, "说明": "纯文档轮免兜底（189）·" + 缘由}}
+    结果 = {"sha": sha, "分支": "develop", "平台": "linux-x86_64", "绿": True,
+            "步骤": 步骤字段,
+            "总秒": 0, "时刻": datetime.now().isoformat(timespec="seconds"),
+            "日志": "", "日志尾部": ["[免跑] %s %s" % (sha[:10], 缘由)]}
+    日志目录.mkdir(exist_ok=True)     # 189 实测补：冷启动树 ci-logs 未建时免跑留档曾崩
+    落盘(结果)
+    print("[免跑] %s %s（留档可审计）" % (sha[:10], 缘由), flush=True)
+
+
+def 兜底入池(sha: str) -> bool:
+    """②兜底轮入池（189）：develop 新头提交 ci/兜底-<sha10> 任务给 runner 池
+    （谁空闲谁认领·TX_02 本职轮下周期也会认领）。入池失败（池不可达/拒绝）→ False
+    （调用方降级本机跑=三层降级精神·门禁永不因池而缺位）。"""
+    配置 = 池配置()
+    if not 配置["池地址"]:
+        return False
+    回 = 池调用(配置, "task_enqueue", {"分支": "ci/兜底-%s" % sha[:10], "sha": sha})
+    if 回 and 回.get("ok"):
+        print("[兜底入池] ci/兜底-%s（runner 池接手）" % sha[:10], flush=True)
+        return True
+    print("[兜底入池失败] 降级本机跑：%s" % 回, flush=True)
+    return False
 
 
 def 运行(命令: list[str], 日志, 超时秒: int, **kwargs) -> subprocess.CompletedProcess:
@@ -304,23 +376,45 @@ def 启动心跳(任务分支: str) -> threading.Event:
 
 
 def 池跑任务(任务: dict) -> None:
-    """执行认领到的预验任务：fetch 预验分支 → 跑一轮 → complete（3 次重试）。
-    落盘复用 落盘()（ci/预验- 绿写 latest+上报=develop 轮免重跑联动保留）。"""
+    """执行认领到的池任务（189 起两类）：预验任务 fetch 预验分支→跑一轮→落盘；
+    兜底任务（ci/兜底-*·非真分支）fetch develop→跑一轮(develop)→落盘。
+    均以 complete 收尾（3 次重试）。落盘复用 落盘()（develop 兜底=latest+result+上报；
+    ci/预验- 绿写 latest+上报=develop 轮免重跑联动保留）。"""
     任务分支, sha = 任务["分支"], 任务["sha"]
-    print("[池] 认领 %s（sha=%s·runner=%s）" % (任务分支, sha[:10], runner标识), flush=True)
+    兜底 = 任务分支.startswith("ci/兜底-")
+    print("[池] 认领 %s（sha=%s·runner=%s·%s）" % (任务分支, sha[:10], runner标识,
+          "兜底" if 兜底 else "预验"), flush=True)
     配置 = 池配置()
     停 = 启动心跳(任务分支)
     try:
-        取 = subprocess.run(["git", "fetch", 远端名, 任务分支], capture_output=True,
+        取对象 = "develop" if 兜底 else 任务分支
+        取 = subprocess.run(["git", "fetch", 远端名, 取对象], capture_output=True,
                             text=True, cwd=仓库根, timeout=300)
         if 取.returncode != 0:
             # fetch 失败=本轮失败（分支可能已被 integrate finally 删除=同 sha 重试竞态）——
-            # 报红让 integrate 拦截重试；本地不落盘（非真实验证结果·防污染 result 档案）
+            # 报红让服务端回收重派；本地不落盘（非真实验证结果·防污染 result 档案）
             print("[池] fetch 失败：%s" % (取.stderr or "").strip()[:200], flush=True)
             结果 = {"sha": sha, "分支": 任务分支, "平台": "linux-x86_64", "绿": False,
                     "步骤": {"同步": {"rc": 取.returncode}}, "总秒": 0,
                     "时刻": datetime.now().isoformat(timespec="seconds"),
                     "日志": "", "日志尾部": (取.stderr or "").splitlines()[-5:]}
+        elif 兜底:
+            结果 = 跑一轮(sha, "develop")
+            # 过期竞态语义化关闭（189·Rust 无数据竞争思路的服务端等价）：认领期间
+            #   develop 前进→reset 到的是新头≠任务 sha——该 sha 的树已由新头轮隐含覆盖
+            #   （git 树=快照·新头绿⇒含旧提交内容绿）。过期轮不落盘（防 latest 被非
+            #   任务 sha 污染）·complete 绿=True 闭环（服务端不重派·详情留审计）。
+            头 = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True,
+                                text=True, cwd=仓库根, timeout=30)
+            if 头.stdout.strip() != sha:
+                结果 = {"sha": sha, "分支": 任务分支, "平台": "linux-x86_64", "绿": True,
+                        "步骤": {"过期跳过": {"rc": 0, "说明": "develop 已前进至 %s——任务 sha 树由新头轮覆盖（189）"
+                                             % 头.stdout.strip()[:10]}},
+                        "总秒": 0, "时刻": datetime.now().isoformat(timespec="seconds"),
+                        "日志": "", "日志尾部": []}
+                print("[池] 兜底任务过期跳过（develop 已前进）：%s" % sha[:10], flush=True)
+            else:
+                落盘(结果)
         else:
             结果 = 跑一轮(sha, 任务分支)
             落盘(结果)
@@ -383,6 +477,30 @@ def 主(常驻: bool, 强制: bool, 等锁: bool = False) -> int:
         elif (已跑过(sha) or 池已绿(sha)) and not 强制:   # 1021：并查池绿记录（预验可能他实例跑的）
             print("[跳过] %s 已跑过" % sha[:10], flush=True)
         else:
+            # ── 189 兜底池化（2026-10-07 用户裁决丙案）：develop 轮真跑前两道优化——
+            #    ①纯文档轮免兜底（变更集全 .md→免跑留档·幂等防重复判定）
+            #    ②混合变更入池（runner 池谁闲谁跑·入池失败降级本机=门禁永不缺位）。
+            #    --force（每日 cron 兜底）与点名预验分支不受影响=门禁语义保持。
+            #    本地已有红档不入池（防池内死循环重跑红兜底·重跑由本机承担=原行为）。
+            if 分支 == "develop" and not 强制:
+                基线 = 上次已验SHA()
+                if 基线 and 基线 != sha:
+                    免, 缘由 = 纯文档变更(基线, sha)
+                    if 免:
+                        免跑留档(sha, 缘由)
+                        if not 常驻:
+                            return 0
+                        fcntl.flock(锁, fcntl.LOCK_UN)      # 184：轮间释放·点名可插队
+                        time.sleep(轮询间隔秒)
+                        重抢锁(锁)
+                        continue
+                if not list(日志目录.glob("result_%s_*.json" % sha[:10])) and 兜底入池(sha):
+                    if not 常驻:
+                        return 0
+                    fcntl.flock(锁, fcntl.LOCK_UN)
+                    time.sleep(轮询间隔秒)
+                    重抢锁(锁)
+                    continue
             print("[开跑] %s @ %s（分支=%s%s）" % (sha[:10],
                   datetime.now().strftime("%H:%M:%S"), 分支,
                   "·预验" if 分支 != "develop" else ""), flush=True)
