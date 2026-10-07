@@ -167,13 +167,17 @@ def 处理写(名: str, 数据: dict) -> dict:
             # 排队/执行中→不动。
             分支, sha = str(数据.get("分支", "")), str(数据.get("sha", ""))
             源分支 = str(数据.get("源分支", "")) or None   # 222：发起预验的任务分支（旧客户端不带=NULL）
-            if not 分支.startswith("ci/预验-") or len(sha) < 7:
-                return {"ok": False, "说明": "分支须 ci/预验- 开头且 sha 缺失"}
+            # 189 兜底入池：放宽 ci/兜底- 前缀（develop 兜底任务经池派发·非真 git 分支）
+            if not (分支.startswith("ci/预验-") or 分支.startswith("ci/兜底-")) or len(sha) < 7:
+                return {"ok": False, "说明": "分支须 ci/预验-/ci/兜底- 开头且 sha 合法"}
             已有 = con.execute("SELECT 状态,绿 FROM 预验任务 WHERE 分支=?", (分支,)).fetchone()
             if 已有 is None:
                 con.execute("INSERT INTO 预验任务(分支,sha,源分支,状态,入队时刻,更新时刻) "
                             "VALUES(?,?,?,'排队',?,?)", (分支, sha, 源分支, 时区时刻(), 时区时刻()))
-            elif 已有[0] == "完成" and not 已有[1]:
+            elif 已有[0] == "完成" and not 已有[1] and not 分支.startswith("ci/兜底-"):
+                # 189：兜底任务完成红=终态（红结果已上门禁表·不重置）——防池内死循环重跑
+                #   （TX_02 下一周期 enqueue 幂等直达、runner 不再被派）；预验维持红=重置重跑
+                #   （同 sha CAS 重试路径·给 flaky 一次机会）。
                 con.execute("UPDATE 预验任务 SET 状态='排队',认领者=NULL,心跳时戳=NULL,"
                             "绿=NULL,详情=NULL,源分支=COALESCE(?,源分支),更新时刻=? WHERE 分支=?",
                             (源分支, 时区时刻(), 分支))
@@ -186,8 +190,14 @@ def 处理写(名: str, 数据: dict) -> dict:
             con.execute("UPDATE 预验任务 SET 状态='排队',认领者=NULL,心跳时戳=NULL,更新时刻=? "
                         "WHERE 状态='执行中' AND 心跳时戳 IS NOT NULL AND 心跳时戳<?",
                         (时区时刻(), 现在 - 心跳超时秒))
-            行 = con.execute("SELECT 分支,sha FROM 预验任务 WHERE 状态='排队' "
+            # 189 兜底池化：预验任务优先认领（集成吞吐保序）——池内同存 ci/预验-* 与
+            #   ci/兜底-* 时先派预验（兜底=develop 已入库的稳态验证·晚跑无损）；无预验排队
+            #   才派兜底。零 schema 变更=按分支前缀两级查询。
+            行 = con.execute("SELECT 分支,sha FROM 预验任务 WHERE 状态='排队' AND 分支 LIKE 'ci/预验-%' "
                              "ORDER BY 序号 LIMIT 1").fetchone()
+            if 行 is None:
+                行 = con.execute("SELECT 分支,sha FROM 预验任务 WHERE 状态='排队' "
+                                 "ORDER BY 序号 LIMIT 1").fetchone()
             if 行 is None:
                 return {"ok": True, "任务": None}
             con.execute("UPDATE 预验任务 SET 状态='执行中',认领者=?,心跳时戳=?,更新时刻=? "
