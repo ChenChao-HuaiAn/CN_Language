@@ -25,6 +25,17 @@
 
 namespace cn_compiler {
 
+// 262（628/586 win 目标实证 A2070）：纯数字常量文本判定——指针常量实参发射
+//   lea/mov 分派用。@strN 标签/函数名=符号地址须 lea 取地址；空指针字面量
+//   "0" 等纯数值=立即数须 mov（lea reg, 0 = A2070 非法指令·win 跳过表掩盖）
+inline bool isPureNumericText(const std::string& t) {
+    if (t.empty()) return false;
+    for (size_t i = (t[0] == '-') ? 1 : 0; i < t.size(); ++i) {
+        if (t[i] < '0' || t[i] > '9') return false;
+    }
+    return t[0] != '-' || t.size() > 1;
+}
+
 // 语义分析器前向声明（阶段3：类布局/虚表槽位/静态字段查询，供 codegen OOP 展开）
 class SemanticAnalyzer;
 

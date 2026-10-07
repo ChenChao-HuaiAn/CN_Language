@@ -570,6 +570,17 @@ void IRGenerator::visitCallExpr(CallExpr* node) {
             resultType = "ptr";       // 竞技场分配 -> 空类型*（失败 nullptr）
         } else if (calleeName == "__cn_arena_reset" || calleeName == "__cn_alloc_reset") {
             // 竞技场重置/释放全部：空类型返回（与 __cn_str_free 同惯例）
+        } else if (calleeName == "__cn_thread_new" || calleeName == "__cn_mutex_new") {
+            resultType = "ptr";       // 996/027 线程库：线程句柄/互斥锁句柄 -> 空类型*——262 根治：
+                                      //   本链缺线程系=默认 i32 读回截断 32 位（mov %eax）：主堆
+                                      //   低位地址侥幸存活、glibc 线程独立 arena 高位必炸
+                                      //   （0x7ffff0000880→0xf0000880 SIGSEGV 实证·586/610 同mask）
+                                      //   v2 侧 IR布局 1364 本就正确=宿主单侧缺漏
+        } else if (calleeName == "__cn_thread_join") {
+            resultType = "i64";       // 并入 -> 线程返回值整64（同缺位截断面）
+        } else if (calleeName == "__cn_mutex_lock" || calleeName == "__cn_mutex_unlock" ||
+                   calleeName == "__cn_mutex_free") {
+            // 上锁/解锁/毁锁：空类型返回（结果无人消费·与 __cn_str_free 同惯例保持 i32）
         } else if (calleeName == "__cn_strbuf_new") {
             resultType = "i64";       // 波2（074·872）：构建器句柄 -> 整64
         } else if (calleeName == "__cn_strbuf_finish") {

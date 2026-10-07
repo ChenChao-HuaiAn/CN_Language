@@ -862,9 +862,9 @@ void X64CodeGenerator::emitCall(AsmWriter& writer, const ir::IRInstruction& inst
                 writer.line("mov eax, " + shrunkOperand("i32", op));
                 writer.line("mov [rsp+" + std::to_string(32 + (i + argOffset - 4) * 8) + "], rax");
             } else {
-                // Task 2.10：指针常量参数（@strN 标签/函数名）lea 取地址
+                // Task 2.10：指针常量参数（@strN 标签/函数名）lea 取地址；262 收窄：纯数值常量（空指针字面量 "0"）=立即数须 mov（lea rax, 0=A2070·586/628 win 实证）
                 const ir::IRValue& av = inst.operands[argBase + i];
-                if (av.isConstant && argType == "ptr") {
+                if (av.isConstant && argType == "ptr" && !isPureNumericText(op)) {
                     writer.line("lea rax, " + op);
                 } else {
                     writer.line("mov rax, " + op);
@@ -962,9 +962,9 @@ void X64CodeGenerator::emitCall(AsmWriter& writer, const ir::IRInstruction& inst
             // i64/指针：64 位直接 mov
             // Task 2.10 修复：指针常量参数（@strN 字符串池标签 / 函数名）是地址，
             //   mov rcx, @str0 把字节数组当 64 位值装入 -> A2022 大小不匹配；
-            //   须用 lea 取标签地址（与 ConstString 加载一致）
+            //   须用 lea 取标签地址（与 ConstString 加载一致）；262 收窄：纯数值常量（空指针字面量 "0"）=立即数须 mov（lea r8, 0=A2070·586/628 win 实证）
             const ir::IRValue& av = inst.operands[argBase + i];
-            if (av.isConstant && argType == "ptr") {
+            if (av.isConstant && argType == "ptr" && !isPureNumericText(op)) {
                 writer.line("lea " + parameterRegister(regIdx) + ", " + op);
             } else {
                 writer.line("mov " + parameterRegister(regIdx) + ", " + op);
