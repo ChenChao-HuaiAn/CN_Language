@@ -167,8 +167,13 @@ void X64CodeGenerator::emitDataSection(AsmWriter& writer, const ir::IRModule& mo
         //   （字符串常量池 .byte 长度任意，静态槽前须 8 对齐）+ canonical 判定 +
         //   字符串初值文本（含引号）恒零（不可作 .data 初始值；运行期入口注入）。
         const std::string canonStatic = types::canonical(stType);
+        // 259（2026-10-07·#259 静态数组）：数组按元素大小×长度分配值本体
+        //   （原恒 1 quad 装 12B 数组=写越界邻槽·与读侧基址语义配套）
         int qwords = 1;
-        if (semantic_ != nullptr &&
+        if (semantic_ != nullptr && types::isArray(canonStatic)) {
+            const int sz = semantic_->typeSizeOf(stType);
+            if (sz > 8) qwords = (sz + 7) / 8;
+        } else if (semantic_ != nullptr &&
             semantic_->isStructType(canonStatic) && !types::isPointer(canonStatic)) {
             const int sz = semantic_->typeSizeOf(stType);
             if (sz > 8) qwords = (sz + 7) / 8;

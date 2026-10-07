@@ -391,8 +391,12 @@ void Arm64CodeGenerator::emitDataSection(Arm64AsmWriter& writer,
         if (initIt != module.globalStaticInits.end()) initText = initIt->second;
         const std::string canonStatic = types::canonical(stType);
         // 槽尺寸（字节）：结构体按类型大小（取整到 8 的倍数）
+        // 259（2026-10-07·#259 静态数组）：数组按元素大小×长度分配值本体
         std::size_t bytes = 8;
-        if (semantic_ != nullptr && !types::isPointer(canonStatic) &&
+        if (semantic_ != nullptr && types::isArray(canonStatic)) {
+            const int sz = semantic_->typeSizeOf(stType);
+            if (sz > 8) bytes = static_cast<std::size_t>((sz + 7) / 8) * 8;
+        } else if (semantic_ != nullptr && !types::isPointer(canonStatic) &&
             semantic_->isStructType(canonStatic)) {
             const int sz = semantic_->typeSizeOf(stType);
             if (sz > 8) bytes = static_cast<std::size_t>((sz + 7) / 8) * 8;

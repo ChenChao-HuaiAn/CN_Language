@@ -141,6 +141,34 @@ bool IRGenerator::assignToGlobalStatic(AssignmentExpr* node, IdentifierExpr* ide
         //   字段构造；调用返回=浅拷接管；标识符/成员/下标/三元=深拷归一化），
         //   唯一差别=目标地址为 ?gstatic_ 符号地址、preFree 恒真（静态槽长期
         //   存活，重复赋值须释放旧字段串——与局部块出口释放等效的 drop glue）。
+        // 259（2026-10-07·#259 静态数组）：数组目标同通道——无字段表→纯
+        //   CopyStruct typeSizeOf 整块拷（252 修复 identifierStructWholeAssign
+        //   同口径）；原落 8 字节 StorePtr 把源基址写乙[0]（探针 A5 实录
+        //   2609075480=截断地址）。字面量=数组初始化列表→emitStructInitTo
+        //   原地逐元素写（Task 2.7 同款）。
+        if (!isCompoundAssignOp(node->op) && types::isArray(canonStatic)) {
+            ir::IRValue dstAddr = emitResult(ir::Opcode::ConstString, {}, "ptr",
+                                             "?gstatic_" + ident->name,
+                                             node->location);
+            if (node->value->getType() == NodeType::StructInitExpr) {
+                emitStructInitTo(static_cast<StructInitExpr*>(node->value.get()),
+                                 dstAddr, node->location);
+                lastExpr_ = dstAddr;
+                return true;
+            }
+            if (node->value->getType() == NodeType::CallExpr) {
+                ir::IRValue src = genExpr(node->value.get());
+                emitStructCopyWithFields(dstAddr, src, canonStatic, node->location,
+                                         /*preFree=*/false, /*deepCopy=*/false);
+                lastExpr_ = dstAddr;
+                return true;
+            }
+            if (emitStructWholeAssign(dstAddr, node->value.get(), canonStatic,
+                                      node->location, /*preFree=*/false)) {
+                lastExpr_ = dstAddr;
+                return true;
+            }
+        }
         if (!isCompoundAssignOp(node->op) && semantic_->isStructType(canonStatic)) {
             ir::IRValue dstAddr = emitResult(ir::Opcode::ConstString, {}, "ptr",
                                              "?gstatic_" + ident->name,

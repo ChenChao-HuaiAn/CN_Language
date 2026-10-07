@@ -80,7 +80,10 @@ bool IRGenerator::emitStructWholeAssign(const ir::IRValue& dstAddr,
                                         const SourceLocation& loc,
                                         bool preFree) {
     if (semantic_ == nullptr) return false;
-    if (!(semantic_->isStructType(dstElemCanon) ||
+    // 259（2026-10-07·#259 静态数组）：数组目标放行（#259 静态数组赋值通道
+    //   调用面·局部数组标识符位=identifierStructWholeAssign 252 修复承担）。
+    if (!types::isArray(dstElemCanon) &&
+        !(semantic_->isStructType(dstElemCanon) ||
           semantic_->isClassType(dstElemCanon))) {
         return false;
     }

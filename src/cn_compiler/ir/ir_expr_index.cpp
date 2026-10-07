@@ -20,13 +20,23 @@ void IRGenerator::visitIndexExpr(IndexExpr* node) {
         IdentifierExpr* ident = static_cast<IdentifierExpr*>(node->object.get());
         const std::string unique = lookupVarName(ident->name);
         const std::string srcType = lookupSrcType(ident->name);
-        if (!unique.empty() && types::isArray(srcType)) {
+        // 259（2026-10-07·#259 静态数组）：顶层/静态局部数组标识符（unique 空·
+        //   lookupSrcType 兜底命中数组类型）同走数组路径——原落兜底分支按
+        //   stride=8/i64 宽读（乙[2] 错位+打包宽读=大数错值·探针 A5 实录）。
+        //   基址=genExpr(静态名)=静态分支返回的符号地址（ir_expr 259/87-a 同款）。
+        const bool isArrayObject = types::isArray(srcType);
+        if (isArrayObject) {
             // 数组对象：基址 = AddrOf(数组槽0)；元素类型来自数组元素类型
             const std::string elemSrc = types::arrayElemOf(srcType);
             const std::string elemIrType = mapType(elemSrc);
-            ir::IRValue base = emitResult(ir::Opcode::AddrOf,
-                                          {ir::IRValue::var(unique, elemIrType)},
-                                          "ptr", unique, node->location);
+            ir::IRValue base;
+            if (!unique.empty()) {
+                base = emitResult(ir::Opcode::AddrOf,
+                                  {ir::IRValue::var(unique, elemIrType)},
+                                  "ptr", unique, node->location);
+            } else {
+                base = genExpr(node->object.get());
+            }
             ir::IRValue index = genExpr(node->index.get());
             // 越界检查插桩：index < 0 || index >= 数组长度 -> 运行时错误(2)
             // （IR 层仅生成比较 + 条件跳转到错误块，codegen 处理）
@@ -345,4 +355,112 @@ void IRGenerator::visitIndexExpr(IndexExpr* node) {
     }
     lastExpr_ = emitResult(ir::Opcode::LoadPtr, {addr}, elemIrType, "", node->location);
 }
+// 259（2026-10-07·#259 静态数组·冻结线 242 迁移）：族③ 通用下标地址自 ir.cpp 机械搬移
+//   （纯搬运零行为变更·下标族归属 ir_expr_index；ir.cpp 冻结线禁净增）。
+// 族③：通用下标地址（原 725~805 段）——其他对象（指针 p[i] / 数组字段
+//   方形.顶点[i]）：地址 = 基址 + index*元素大小（结构体指针/数组字段按
+//   元素大小，普通指针8字节；Task 2.7/修复10）。
+ir::IRValue IRGenerator::genGenericIndexAddress(IndexExpr* idx) {
+        // 其他对象（指针 p[i] / 数组字段 方形.顶点[i]）：地址 = 基址 + index*元素大小
+        // （结构体指针/数组字段按元素大小，普通指针8字节；Task 2.7/修复10）
+        ir::IRValue index = genExpr(idx->index.get());
+        ir::IRValue obj = genExpr(idx->object.get());
+        if (index.type != "i64") {
+            index = emitResult(ir::Opcode::Cast, {index}, "i64", "", idx->location);
+        }
+        // 元素步进：数组字段（方形.顶点 / 方形指针->顶点，坐标[4]）按字段数组元素
+        //   类型大小；普通指针按 ptrElemStride（结构体指针按总大小）
+        std::int64_t stride = 8;
+        if (idx->object->getType() == NodeType::IdentifierExpr) {
+            std::string st = lookupSrcType(
+                static_cast<IdentifierExpr*>(idx->object.get())->name);
+            // A-3（2026-08）：隐式类字段对象（方法体内 数据[位置] = 值 赋值目标，
+            //   lookupSrcType 为空）——按字段源码类型推导步进（向量 数据 T* 的
+            //   结构体元素 24 字节，此前固定 8 导致元素错位/越界）
+            if (st.empty() && isInstanceField(
+                    static_cast<IdentifierExpr*>(idx->object.get())->name)) {
+                st = classFieldType(currentClass_,
+                                    static_cast<IdentifierExpr*>(idx->object.get())->name);
+                if (types::isArray(st)) {
+                    // 数组字段：按 C 布局元素大小（与成员数组字段同规则）
+                    const std::string elemSrc = types::arrayElemOf(st);
+                    // H4 根治（99-a, 2026-09-13 第九十九轮）：元素大小统一走
+                    //   semantic typeSizeOf（原 非结构体走 types::typeSize——该表
+                    //   **无「字符串」**（指针类）返回 0 -> 步进 0 -> 字段数组元素
+                    //   下标不缩放（`r.名[1]` 读写落元素 0，探针 fldmem2「再读0=乙」
+                    //   实证；局部数组路径本就用 typeSizeOf=正确，v2 侧同源正确=
+                    //   宿主单侧分叉）。typeSizeOf 对 字符串=8/结构体=总大小/
+                    //   标量=自然大小全正确。
+                    stride = (semantic_ != nullptr)
+                                 ? semantic_->typeSizeOf(elemSrc) : 8;
+                    if (stride <= 0) stride = 8;
+                    emitBoundsCheck(index, types::arrayLenOf(st), idx->location);
+                } else {
+                    stride = ptrElemStride(st);
+                }
+            } else {
+                // 259（2026-10-07·#259 静态数组）：顶层/静态局部数组标识符
+                //   （lookupSrcType 兜底命中数组类型·unique 空）——按元素大小
+                //   步进+越界检查（原落 ptrElemStride 兜底 8：乙[2] 写基址+16
+                //   越界槽·探针 A3 实录）。基址=genExpr(静态名)=符号地址。
+                if (types::isArray(st)) {
+                    const std::string elemSrc259 = types::arrayElemOf(st);
+                    stride = (semantic_ != nullptr)
+                                 ? semantic_->typeSizeOf(elemSrc259) : 8;
+                    if (stride <= 0) stride = 8;
+                    emitBoundsCheck(index, types::arrayLenOf(st), idx->location);
+                } else {
+                    stride = ptrElemStride(st);
+                    // 908（任务 092·读侧 306-a emitStrBoundsCheck 对称）：字符串下标
+                    //   **写**路径检查（s[i]='x' 形态经此族——读侧 visitIndexExpr 字符串
+                    //   分支已有、写侧缺失=防线不对称：w2 探针 s[9]='x' 静默越界堆写
+                    //   实证；错误码 2 与读侧/数组防线同码）。
+                    if (types::canonical(st) == "字符串") {
+                        emitStrBoundsCheck(index, obj, idx->location);
+                    }
+                }
+            }
+        } else if (idx->object->getType() == NodeType::MemberExpr) {
+            // 修复10/10b/10c：方形.顶点[0] / 方形指针->顶点[0] — object 为数组字段成员，
+            //   元素步进 = 字段数组元素类型大小（memberObjStructType 递归处理 arrow）；
+            //   越界检查 = 字段数组长度（错误码2，修复10c）
+            MemberExpr* inner = static_cast<MemberExpr*>(idx->object.get());
+            const std::string innerType = memberObjStructType(inner);
+            const StructDecl* innerDecl = semantic_->findStruct(types::canonical(innerType));
+            if (innerDecl != nullptr) {
+                for (const auto& f : innerDecl->fields) {
+                    if (f.name == inner->memberName && types::isArray(f.type)) {
+                        const std::string elemSrc = types::arrayElemOf(f.type);
+                        // H4 根治（99-a）：同 ①——统一 typeSizeOf（字符串元素=8；
+                        //   原 types::typeSize 对字符串=0 -> 步进 0）
+                        stride = semantic_->typeSizeOf(elemSrc);
+                        if (stride <= 0) stride = 8;
+                        emitBoundsCheck(index, types::arrayLenOf(f.type), idx->location);
+                        break;
+                    }
+                }
+            }
+            // 宿主缺陷1'根治（2026-09-02）：类对象/结构体的指针与数组字段下标
+            //   （拷贝构造 其他.数据[索引] 写侧；其他 为类对象非 StructDecl，
+            //   原兜底 8 -> T*>8字节元素错位）。按字段源码类型推导：
+            //   指针字段 ptrElemStride（结构体/类元素按总大小）、数组字段按元素大小。
+            if (stride == 8) {
+                const std::string ftype = memberFieldSrcType(inner);
+                if (types::isPointer(ftype)) {
+                    stride = ptrElemStride(ftype);
+                } else if (types::isArray(ftype)) {
+                    const std::string elemSrc = types::arrayElemOf(ftype);
+                    // H4 根治（99-a）：同 ①/②——统一 typeSizeOf
+                    stride = semantic_->typeSizeOf(elemSrc);
+                    if (stride <= 0) stride = 8;
+                    emitBoundsCheck(index, types::arrayLenOf(ftype), idx->location);
+                }
+            }
+        }
+        ir::IRValue scaled = emitResult(
+            ir::Opcode::Mul, {index, ir::IRValue::constant(std::to_string(stride), "i64")},
+            "i64", "", idx->location);
+        return emitResult(ir::Opcode::Add, {obj, scaled}, "ptr", "", idx->location);
+}
+
 } // namespace cn_compiler

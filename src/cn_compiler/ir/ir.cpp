@@ -495,6 +495,18 @@ std::string IRGenerator::lookupSrcType(const std::string& name) const {
         auto found = it->find(name);
         if (found != it->end()) return found->second.srcType;
     }
+    // 259（2026-10-07·#259 静态数组）：顶层静态**数组**名兜底——下标读写/
+    //   元素类型推导（indexTargetElemSrcType/genGenericIndexAddress 步进）
+    //   查局部源码类型 miss 后拿不到静态数组类型 → 步进/元素判定回退 8 字节
+    //   错位（探针 A3 实录）。**仅数组形态返回**（整32[3]）：向量/映射等容器
+    //   静态与标量/结构体静态不经过本兜底（容器静态下标=指针语义走 ptrElem
+    //   通道·全局面行为零变化——v2p 全树编译回归实证缩窄必要性）。
+    if (semantic_ != nullptr && semantic_->isGlobalStatic(name)) {
+        const std::string stType = semantic_->globalStaticType(name);
+        if (!stType.empty() && types::isArray(types::canonical(stType))) {
+            return stType;
+        }
+    }
     return "";
 }
 std::vector<std::string> IRGenerator::funcPtrParamsOfCallee(Expr* callee) const {
@@ -885,99 +897,6 @@ bool IRGenerator::genArrayVarElemAddress(IndexExpr* idx, ir::IRValue& result) {
         }    return false;
 }
 
-// 族③：通用下标地址（原 725~805 段）——其他对象（指针 p[i] / 数组字段
-//   方形.顶点[i]）：地址 = 基址 + index*元素大小（结构体指针/数组字段按
-//   元素大小，普通指针8字节；Task 2.7/修复10）。
-ir::IRValue IRGenerator::genGenericIndexAddress(IndexExpr* idx) {
-        // 其他对象（指针 p[i] / 数组字段 方形.顶点[i]）：地址 = 基址 + index*元素大小
-        // （结构体指针/数组字段按元素大小，普通指针8字节；Task 2.7/修复10）
-        ir::IRValue index = genExpr(idx->index.get());
-        ir::IRValue obj = genExpr(idx->object.get());
-        if (index.type != "i64") {
-            index = emitResult(ir::Opcode::Cast, {index}, "i64", "", idx->location);
-        }
-        // 元素步进：数组字段（方形.顶点 / 方形指针->顶点，坐标[4]）按字段数组元素
-        //   类型大小；普通指针按 ptrElemStride（结构体指针按总大小）
-        std::int64_t stride = 8;
-        if (idx->object->getType() == NodeType::IdentifierExpr) {
-            std::string st = lookupSrcType(
-                static_cast<IdentifierExpr*>(idx->object.get())->name);
-            // A-3（2026-08）：隐式类字段对象（方法体内 数据[位置] = 值 赋值目标，
-            //   lookupSrcType 为空）——按字段源码类型推导步进（向量 数据 T* 的
-            //   结构体元素 24 字节，此前固定 8 导致元素错位/越界）
-            if (st.empty() && isInstanceField(
-                    static_cast<IdentifierExpr*>(idx->object.get())->name)) {
-                st = classFieldType(currentClass_,
-                                    static_cast<IdentifierExpr*>(idx->object.get())->name);
-                if (types::isArray(st)) {
-                    // 数组字段：按 C 布局元素大小（与成员数组字段同规则）
-                    const std::string elemSrc = types::arrayElemOf(st);
-                    // H4 根治（99-a, 2026-09-13 第九十九轮）：元素大小统一走
-                    //   semantic typeSizeOf（原 非结构体走 types::typeSize——该表
-                    //   **无「字符串」**（指针类）返回 0 -> 步进 0 -> 字段数组元素
-                    //   下标不缩放（`r.名[1]` 读写落元素 0，探针 fldmem2「再读0=乙」
-                    //   实证；局部数组路径本就用 typeSizeOf=正确，v2 侧同源正确=
-                    //   宿主单侧分叉）。typeSizeOf 对 字符串=8/结构体=总大小/
-                    //   标量=自然大小全正确。
-                    stride = (semantic_ != nullptr)
-                                 ? semantic_->typeSizeOf(elemSrc) : 8;
-                    if (stride <= 0) stride = 8;
-                    emitBoundsCheck(index, types::arrayLenOf(st), idx->location);
-                } else {
-                    stride = ptrElemStride(st);
-                }
-            } else {
-                stride = ptrElemStride(st);
-                // 908（任务 092·读侧 306-a emitStrBoundsCheck 对称）：字符串下标
-                //   **写**路径检查（s[i]='x' 形态经此族——读侧 visitIndexExpr 字符串
-                //   分支已有、写侧缺失=防线不对称：w2 探针 s[9]='x' 静默越界堆写
-                //   实证；错误码 2 与读侧/数组防线同码）。
-                if (types::canonical(st) == "字符串") {
-                    emitStrBoundsCheck(index, obj, idx->location);
-                }
-            }
-        } else if (idx->object->getType() == NodeType::MemberExpr) {
-            // 修复10/10b/10c：方形.顶点[0] / 方形指针->顶点[0] — object 为数组字段成员，
-            //   元素步进 = 字段数组元素类型大小（memberObjStructType 递归处理 arrow）；
-            //   越界检查 = 字段数组长度（错误码2，修复10c）
-            MemberExpr* inner = static_cast<MemberExpr*>(idx->object.get());
-            const std::string innerType = memberObjStructType(inner);
-            const StructDecl* innerDecl = semantic_->findStruct(types::canonical(innerType));
-            if (innerDecl != nullptr) {
-                for (const auto& f : innerDecl->fields) {
-                    if (f.name == inner->memberName && types::isArray(f.type)) {
-                        const std::string elemSrc = types::arrayElemOf(f.type);
-                        // H4 根治（99-a）：同 ①——统一 typeSizeOf（字符串元素=8；
-                        //   原 types::typeSize 对字符串=0 -> 步进 0）
-                        stride = semantic_->typeSizeOf(elemSrc);
-                        if (stride <= 0) stride = 8;
-                        emitBoundsCheck(index, types::arrayLenOf(f.type), idx->location);
-                        break;
-                    }
-                }
-            }
-            // 宿主缺陷1'根治（2026-09-02）：类对象/结构体的指针与数组字段下标
-            //   （拷贝构造 其他.数据[索引] 写侧；其他 为类对象非 StructDecl，
-            //   原兜底 8 -> T*>8字节元素错位）。按字段源码类型推导：
-            //   指针字段 ptrElemStride（结构体/类元素按总大小）、数组字段按元素大小。
-            if (stride == 8) {
-                const std::string ftype = memberFieldSrcType(inner);
-                if (types::isPointer(ftype)) {
-                    stride = ptrElemStride(ftype);
-                } else if (types::isArray(ftype)) {
-                    const std::string elemSrc = types::arrayElemOf(ftype);
-                    // H4 根治（99-a）：同 ①/②——统一 typeSizeOf
-                    stride = semantic_->typeSizeOf(elemSrc);
-                    if (stride <= 0) stride = 8;
-                    emitBoundsCheck(index, types::arrayLenOf(ftype), idx->location);
-                }
-            }
-        }
-        ir::IRValue scaled = emitResult(
-            ir::Opcode::Mul, {index, ir::IRValue::constant(std::to_string(stride), "i64")},
-            "i64", "", idx->location);
-        return emitResult(ir::Opcode::Add, {obj, scaled}, "ptr", "", idx->location);
-}
 
 // 族④：成员左值地址（原 812~871 段）——p.x / 指针->x（Task 2.7）。
 //   字段地址 = 基址 + 偏移（FieldAddr；-> 隐含空指针检查错误码3）。

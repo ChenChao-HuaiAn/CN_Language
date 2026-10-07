@@ -224,6 +224,17 @@ void IRGenerator::visitIdentifierExpr(IdentifierExpr* node) {
                 lastExpr_ = addr;
                 return;
             }
+            // 259（2026-10-07·#259·静态数组全链分叉根治）：数组静态——值语义=
+            //   **基址**（与局部数组「数组名退化为元素指针」94-a 同构·87-a 结构体
+            //   静态地址约定同款）。原无条件 LoadPtr 读 8 字节：读出 .data 首槽值
+            //   当基址（零初始化=0）→ 下标读写「空指针解引用」崩溃（探针 A3 实录
+            //   ·v2 侧=语义拒绝「下标对象须为字符串或指针」同病异形=分叉缺陷）。
+            //   下标路径（genGenericIndexAddress genExpr(对象)=基址）与整体赋值
+            //   源基址随本分支同愈。
+            if (types::isArray(canonStatic)) {
+                lastExpr_ = addr;
+                return;
+            }
             const std::string irT = mapType(stType.empty() ? "整64" : stType);
             lastExpr_ = emitResult(ir::Opcode::LoadPtr, {addr}, irT, "", node->location);
             return;
