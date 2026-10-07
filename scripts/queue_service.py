@@ -366,6 +366,28 @@ if __name__ == "__main__":
         断言(队列快照()[0]["状态"] == "排队", "冲突出批重报=回排队")
         r = 处理写("join", {"分支": "错误名", "基线": "x", "写集摘要": ""})
         断言(not r["ok"], "非任务/ 分支拒绝")
+
+        # ── 189 兜底池化：任务池场景矩阵（enqueue 放宽/claim 预验优先/兜底红终态） ──
+        r = 处理写("task_enqueue", {"分支": "ci/兜底-aaaa000001", "sha": "a" * 40})
+        断言(r["ok"], "189 兜底任务入队放宽（ci/兜底- 前缀）")
+        处理写("task_enqueue", {"分支": "ci/预验-aaaa000002", "sha": "b" * 40})
+        r = 处理写("task_enqueue", {"分支": "develop", "sha": "c" * 40})
+        断言(not r["ok"], "189 非法前缀仍拒（develop 裸名不入池）")
+        t = 处理写("task_claim", {"runner": "r1"})["任务"]
+        断言(t and t["分支"] == "ci/预验-aaaa000002", "189 claim 预验优先（集成吞吐保序）")
+        t = 处理写("task_claim", {"runner": "r2"})["任务"]
+        断言(t and t["分支"] == "ci/兜底-aaaa000001", "189 预验空后派兜底")
+        断言(处理写("task_claim", {"runner": "r3"})["任务"] is None, "189 池空")
+        处理写("task_complete", {"runner": "r2", "分支": "ci/兜底-aaaa000001", "绿": False,
+                                 "结果": {"绿": False}})
+        处理写("task_enqueue", {"分支": "ci/兜底-aaaa000001", "sha": "a" * 40})
+        断言(处理写("task_claim", {"runner": "r4"})["任务"] is None,
+             "189 兜底完成红=终态不重置（防池内死循环重跑）")
+        处理写("task_complete", {"runner": "r1", "分支": "ci/预验-aaaa000002", "绿": False,
+                                 "结果": {"绿": False}})
+        处理写("task_enqueue", {"分支": "ci/预验-aaaa000002", "sha": "b" * 40})
+        t = 处理写("task_claim", {"runner": "r5"})["任务"]
+        断言(t and t["分支"] == "ci/预验-aaaa000002", "189 预验完成红维持重置重跑（flaky 机会·原语义）")
         print("selftest %d 项全过" % n绑定[0])
         raise SystemExit(0)
 
