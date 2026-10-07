@@ -542,8 +542,19 @@ bool IRGenerator::identifierStructWholeAssign(AssignmentExpr* node, IdentifierEx
     bool isStructReturnCall = false;
     const std::string valueSrcType = assignValueSrcType(
         node, targetSrcType, isChainedAssign, isStructReturnCall);
-    if (semantic_->isStructType(types::canonical(targetSrcType)) &&
-        semantic_->isStructType(types::canonical(valueSrcType))) {
+    // 252（2026-10-07·p1006_02 实录）：数组整体赋值（乙 = 甲·整32[3]）同走本
+    //   分支——原判定仅 isStructType，数组落通用 Store 把退化基址写槽[0]（asm
+    //   直证 mov eax 低32截断+movsxd·乙[1]/乙[2] 保持初值）。001 §3.5 数组=值
+    //   聚合（赋值拷贝语义·087 形参同口径）：无字段表 → emitStructCopyWithFields
+    //   纯 CopyStruct typeSizeOf 精确整块拷（含结构体元素=位拷·与 087 形参
+    //   rep movsb 同浅拷位语义——资源字段数组的深拷责任=001 另立）。
+    //   数组位加同型守卫（规范名相等）防数组↔结构体混合误入本分支。
+    const std::string targetCanon = types::canonical(targetSrcType);
+    const std::string valueCanon = types::canonical(valueSrcType);
+    const bool targetAgg = semantic_->isStructType(targetCanon) ||
+                           (types::isArray(targetCanon) && targetCanon == valueCanon);
+    if (targetAgg && (semantic_->isStructType(valueCanon) ||
+                      types::isArray(valueCanon))) {
         // 79-a：目标聚合规范名（emitStructCopyWithFields 内部按类型定尺寸）
         const std::string assignCanonTop = types::canonical(targetSrcType);
         // A-1（引用参数）：目标为引用参数时目标地址 = Load 槽（槽内存被引用对象地址）
