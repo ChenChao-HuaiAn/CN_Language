@@ -131,6 +131,12 @@ where cl >nul 2>&1 || (echo [FAIL] cl not found after vcvars & exit /b 1)
 cd /d {树}
 set SCCACHE_DIR={缓存目录}
 set SCCACHE_CACHE_SIZE={缓存上限}
+rem 088 root-fix: drop stale .ninja_deps so every build re-scans all headers.
+rem MSVC+Ninja records header deps from /showIncludes stdout, which sccache
+rem (CMAKE_CXX_COMPILER_LAUNCHER) may swallow -> stale deps -> ODR mixed
+rem objects -> silent crash. Deleting .ninja_deps forces a full re-scan
+rem (cost absorbed by sccache hit; measured cold full build ~23s).
+if exist target\\build-ninja\\.ninja_deps del /q target\\build-ninja\\.ninja_deps
 cmake --build target\\build-ninja --parallel
 if errorlevel 1 (echo [FAIL] build & exit /b 1)
 echo [OK] ninja build done
