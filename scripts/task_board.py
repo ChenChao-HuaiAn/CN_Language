@@ -134,6 +134,23 @@ def 远端分支表() -> set:
             if "refs/heads/" in l}
 
 
+def 在飞分支号集() -> set:
+    """本地 remote-tracking+本地 heads 的 任务/<号>/batch/<号> 纯数字号集
+    （269 补·230 修法①同族第四源）：在飞行号住未合分支树（226 立规），
+    主表+归档看不见——本地并行会话 create 后未 push 的号同样占用号段
+    （268 官网案实录：wt268 已立未推 → --check 误报 269 跳号）。已集成号必已入
+    主表/归档（集成即删分支·立项行随批收口），并集无增量。零网络（只读本地引用）。
+    """
+    号集 = set()
+    r = subprocess.run(["git", "for-each-ref", "--format=%(refname)", "refs/"],
+                       capture_output=True, text=True, cwd=仓库根, timeout=30)
+    for l in r.stdout.splitlines():
+        m = re.search(r"(?:任务|batch)/(\d+)$", l.strip())
+        if m:
+            号集.add(m.group(1))
+    return 号集
+
+
 def 分支树含行(分支: str, 号: str) -> bool:
     """远端分支树内的 021 总账是否含本号行（230 修法②·核实 226 立规「立项行随分支」在飞形态）。
 
@@ -298,7 +315,9 @@ def cmd_check(as_json: bool = False) -> int:
             问题.append(f"禁用号在用：#{展示号(t['号'])}"
                         f"（2026-10-05 用户令已改 198/199·永久禁用·原行应挂「原号 353/354」链）")
     数字任务号 = sorted({int(t["号"]) for t in 表.values()
-                        if t["号"].isdigit() and t["号"] not in 禁用号})
+                        if t["号"].isdigit() and t["号"] not in 禁用号}
+                       | {int(n) for n in 在飞分支号集()
+                          if n.isdigit() and n not in 禁用号})
     for v in 数字任务号:
         其余 = [x for x in 数字任务号 if x != v]
         if 其余 and v > max(其余) + 1:
