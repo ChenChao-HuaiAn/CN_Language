@@ -407,13 +407,21 @@ bool SemanticAnalyzer::enumValueOf(const std::string& enumName, const std::strin
 int SemanticAnalyzer::typeSizeOf(const std::string& typeRaw) const {
     const std::string type = canonicalType(typeRaw);
     if (isEnumType(type)) return 4;  // 枚举按整32存储
+    // 任务#249 分支序根治（2026-10-07）：数组展开必须先于一切元素类型特判——
+    //   原序 isFuncPtrType（前缀判定）排在 isArray 之前，函数指针数组
+    //   函数指针<整32>(整32)[3] 整串命中前缀分支提前返回 8，数组展开
+    //   （元素大小×长度）不可达 -> registerVarSlots 按 1 槽登记 -> codegen
+    //   元素寻址越过预留槽区 -> 与 O3 高位寄存器槽物理重叠 -> 间接调用跳伪
+    //   地址 C0000005（p1006_01a/b 实锤·教训「分支判据不看完整形态」同族）。
+    //   数组是容器后缀：凡带 [N] 后缀先按元素递归展开（isPointer 尾字符判定
+    //   与 ']' 无交集，顺序无涉；枚举/结构体/类名带后缀本就走不到，行为不变）。
+    if (types::isArray(type)) {
+        return typeSizeOf(types::arrayElemOf(type)) * types::arrayLenOf(type);
+    }
     if (types::isPointer(type)) return 8;
     // 040（001 §5.8 甲案）：函数指针=8 字节指针槽（显式分支——原靠未知类型
     //   防御返回 8 侥幸成立；显式化=语义自证·数组元素位经 isArray 递归同受益）
     if (isFuncPtrType(type)) return 8;
-    if (types::isArray(type)) {
-        return typeSizeOf(types::arrayElemOf(type)) * types::arrayLenOf(type);
-    }
     // 阶段3（Task 3.5）：结果<T,E>/可选<T> 已降级为合成结构体，按结构体布局
     if (isResultType(type) || isOptionalType(type)) {
         const StructDecl* lowered = findStruct(type);
@@ -458,9 +466,11 @@ int SemanticAnalyzer::typeSizeOf(const std::string& typeRaw) const {
 int SemanticAnalyzer::typeAlignOf(const std::string& typeRaw) const {
     const std::string type = canonicalType(typeRaw);
     if (isEnumType(type)) return 4;
+    // 任务#249 同分支序根治：数组先展开取元素对齐（原 isFuncPtrType 前缀判定
+    //   截胡函数指针数组——对齐侥幸等价 8 未爆，与 typeSizeOf 同步修正防复发）
+    if (types::isArray(type)) return typeAlignOf(types::arrayElemOf(type));
     if (types::isPointer(type)) return 8;
     if (isFuncPtrType(type)) return 8;  // 040：函数指针=指针族对齐 8（与 typeSizeOf 同步）
-    if (types::isArray(type)) return typeAlignOf(types::arrayElemOf(type));
     // 阶段3（Task 3.5/3.1）：结果/可选 合成结构体、类类型
     if (isResultType(type) || isOptionalType(type)) {
         const StructDecl* lowered = findStruct(type);
