@@ -45,8 +45,14 @@ void SemanticAnalyzer::visitMemberExpr(MemberExpr* node) {
     }
     // 150-a（plans/023 B9 实施）：指针成员访问（p.字段 自动解引用一级）观察期
     //   警告（排除字符串语义=字符串视图；赋值场景的写面由 B7/A2 族承担）。
+    // #282（2026-10-08）：方法体内 自身.字段=this->字段 豁免——001 §6 立法明文
+    //   （v14 采样轮 p1007_01 实锤：B9 把 this 判 p.字段 误拦·读面 Error·
+    //   v2 放行=分叉；静态面已在 visitSelfExpr 精确拒绝，此处豁免安全）。
+    const bool thisMemberAccess =
+        node->object->getType() == NodeType::SelfExpr &&
+        currentContextClass() != nullptr;
     if (node->isDerefAccess && assignmentTargetDepth_ == 0 &&
-        !isStringSemanticType(objectType)) {
+        !isStringSemanticType(objectType) && !thisMemberAccess) {
         reportUnsafeBoundary(node->location, "指针成员访问", "指针成员访问（p.字段）");
     }
     // plans/019 阶段4（2026-09-10）：安全区边界观察期——联合体字段访问（共享
@@ -118,6 +124,17 @@ void SemanticAnalyzer::visitMemberExpr(MemberExpr* node) {
     if (node->object->getType() == NodeType::IdentifierExpr) {
         const std::string enumName = objectType;
         std::int64_t enumValue = 0;
+        // #284④（2026-10-08 甲案）：`枚举名::成员` 编译期拒绝——枚举成员访问
+        //   点号唯一合法（001 §3.5 条文），`::` 保留给模块/包路径限定（08 章）。
+        //   原实现经限定名折叠与 `.` 同通道放行（越立法·v14 采样轮 p1007 双侧
+        //   甄别实锤：v2 拒宿主放）。
+        if (isEnumType(enumName) && node->viaColonColon) {
+            diagnostics_.report(DiagnosticLevel::Error, node->location,
+                                "枚举成员访问须用 点号（'" + enumName + "." +
+                                    memberName + "'）——'::' 保留给模块路径限定");
+            lastType_ = "未知";
+            return;
+        }
         if (isEnumType(enumName) && enumValueOf(enumName, memberName, enumValue)) {
             lastType_ = enumName;  // 枚举值类型为枚举类型名（可与整型互转）
             return;

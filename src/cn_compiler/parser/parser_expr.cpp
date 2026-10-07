@@ -469,6 +469,7 @@ std::unique_ptr<Expr> Parser::parseCallOrMember(std::unique_ptr<Expr> expr) {
     }
     // 成员访问（.）或 v2.0 路径限定（::）
     const SourceLocation loc = expr->location;
+    const bool viaCC = check(TokenType::ColonColon);  // #284④：源码分隔符形态
     advance();
     std::string memberName = current().getValue();
     advance();
@@ -479,6 +480,7 @@ std::unique_ptr<Expr> Parser::parseCallOrMember(std::unique_ptr<Expr> expr) {
     //   解析层恒 false——语法上只剩 . 一种成员访问形式（-> 已废除）。
     auto mem = std::make_unique<MemberExpr>(std::move(expr), memberName);
     mem->location = loc;
+    mem->viaColonColon = viaCC;
     return mem;
 }
 

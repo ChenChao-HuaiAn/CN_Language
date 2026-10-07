@@ -761,6 +761,13 @@ private:
     void checkUnionsAndEnums(Program* node);
     // 族⑤：第 4 层顶层常量/静态注册（P1-4/P3-8·原 591~651 段）
     void registerGlobalConstsAndStatics(Program* node);
+    // #286（2026-10-08 甲案）：顶层常量值注册（quiet=布局前早期趟·失败静默）——
+    //   字段数组长度折叠须先于布局趟拿到常量值（原注册在布局后=时序不够）
+    void registerConstValues(Program* node, bool quiet);
+    // #286：类型串中 [长度] 非纯数字的常量折叠（常量名/常量算术→数字文本）
+    std::string foldArrayLengths(const std::string& type, const SourceLocation& loc);
+    // #286：长度文本求值（单常量名/整型常量算术·递归下降）；失败时 err 带因
+    long long evalConstLengthText(const std::string& text, std::string& err) const;
     // 族⑥：第二趟a/b/c——类方法体/函数体检查 + 实例化泛型类补查（原 652~683 段）
     void checkClassAndFunctionBodies(Program* node);
 
@@ -1203,6 +1210,9 @@ private:
     std::vector<std::string> contextClassStack_;
     // 当前方法是否常量成员函数（常量 修饰，Task 3.9 修改成员检查）
     bool constMethodContext_ = false;
+    // #282（2026-10-08）：当前方法是否静态成员函数——静态方法体无 this，
+    //   自身 表达式在 visitSelfExpr 精确拒绝；B9 安全区豁免据此不误放静态面。
+    bool currentMethodIsStatic_ = false;
     // 错误码传播分析：变量名 -> 已检查标记（正常/有值/错误）
     ErrorCheckState errorCheckState_;
     // 结果/可选合成结构体名集合（已生成，避免重复）

@@ -205,6 +205,10 @@ void SemanticAnalyzer::checkSingleMethodBody(ClassInfo& info, ClassMemberInfo& m
         contextClassStack_.push_back(info.name);
         const bool savedConst = constMethodContext_;
         constMethodContext_ = mi.isConstMethod;
+        // #282（2026-10-08）：静态标志随方法体进出——visitSelfExpr 据此拒绝
+        //   静态方法体内的 自身（无 this·此前靠 B9 误拦·诊断错位）。
+        const bool savedStatic = currentMethodIsStatic_;
+        currentMethodIsStatic_ = mi.isStatic;
         // plans/019 阶段4 第二层第一批：不安全方法体内豁免安全区边界观察期警告
         const bool savedUnsafe = currentFnUnsafe_;
         currentFnUnsafe_ = mi.isUnsafe;
@@ -385,6 +389,7 @@ void SemanticAnalyzer::checkSingleMethodBody(ClassInfo& info, ClassMemberInfo& m
         constMethodContext_ = savedConst;
         currentFnUnsafe_ = savedUnsafe;  // plans/019 阶段4
         genericTypeParams_ = savedTypeParams;
+        currentMethodIsStatic_ = savedStatic;
         contextClassStack_.pop_back();
 }
 

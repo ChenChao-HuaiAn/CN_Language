@@ -577,6 +577,14 @@ void SemanticAnalyzer::visitSelfExpr(SelfExpr* node) {
         lastType_ = "未知";
         return;
     }
+    // #282（2026-10-08）：静态成员函数无 this——自身 精确拒绝（原缺检查·
+    //   v14 采样轮 a1 探针实锤静态方法内 自身.v 靠 B9 安全区误拦·诊断错位）。
+    if (currentMethodIsStatic_) {
+        diagnostics_.report(DiagnosticLevel::Error, node->location,
+                            "静态成员函数没有 '自身'（无 this·用类名或参数访问）");
+        lastType_ = "未知";
+        return;
+    }
     lastType_ = cls->name + "*";
 }
 void SemanticAnalyzer::visitSuperExpr(SuperExpr* node) {

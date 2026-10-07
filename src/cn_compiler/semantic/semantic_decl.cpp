@@ -20,6 +20,12 @@ namespace cn_compiler {
 
 void SemanticAnalyzer::visitVarDecl(VarDecl* node) {
     std::string varType = node->typeName;
+    // #286（2026-10-08 甲案）：数组长度位常量折叠（[尺寸]/[2+2]→[4]）——
+    //   类型串进泛型归一/布局前纯数字化（001 §3.5 数组长度=编译期常量表达式）
+    if (!varType.empty() && varType.find('[') != std::string::npos) {
+        varType = foldArrayLengths(varType, node->location);
+        if (!node->typeName.empty()) node->typeName = varType;
+    }
     // Task 2.2：函数指针变量声明（整32(*回调)(整32, 整32) 无typeName，funcPtr非空）
     // 040（001 §5.8 甲案）：数组元素位=函数指针<...>[N]（toSymbolType·数组通道兼容）
     if (node->funcPtr.isFunctionPtr()) {

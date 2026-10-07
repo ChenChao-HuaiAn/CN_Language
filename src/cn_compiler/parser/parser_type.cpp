@@ -178,16 +178,25 @@ std::string Parser::parseTypeNameEx() {
             // 数组后缀：类型[长度]
             advance();
             std::string lenText;
-            if (check(TokenType::IntegerLiteral)) {
+            // #286（2026-10-08 甲案）：长度位统一收集——整数字面量（剥后缀）/
+            //   常量名/常量算术（[2+2]/[尺寸*2]）逐 token 拼接文本到 ']'，
+            //   语义层按编译期常量折叠求值（001 §3.5 数组长度域）；解析层不判值
+            if (check(TokenType::IntegerLiteral) || check(TokenType::Identifier)) {
                 lenText = current().getValue();
-                // 剥离字面量后缀（数组长度必须是纯数字）
-                std::string s = lenText;
-                while (!s.empty() && (s.back() == 'L' || s.back() == 'l' ||
-                                      s.back() == 'U' || s.back() == 'u')) s.pop_back();
-                lenText = s;
+                if (check(TokenType::IntegerLiteral)) {
+                    std::string s = lenText;
+                    while (!s.empty() && (s.back() == 'L' || s.back() == 'l' ||
+                                          s.back() == 'U' || s.back() == 'u')) s.pop_back();
+                    lenText = s;
+                }
                 advance();
-            } else {
-                reportErrorHere("预期数组长度（整数字面量）");
+            }
+            while (!check(TokenType::RightBracket) && !check(TokenType::EndOfFile)) {
+                lenText += current().getValue();
+                advance();
+            }
+            if (lenText.empty()) {
+                reportErrorHere("预期数组长度（整数字面量/编译期常量表达式）");
             }
             consume(TokenType::RightBracket, "']'");
             suffixes += "[" + lenText + "]";

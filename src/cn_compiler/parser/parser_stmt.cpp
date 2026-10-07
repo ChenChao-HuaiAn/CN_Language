@@ -83,10 +83,23 @@ std::unique_ptr<Stmt> Parser::parseStmt() {
                                  peek(2).getType() == TokenType::Identifier);
         const bool typeRefVar = (peek(1).getType() == TokenType::Amp &&
                                  peek(2).getType() == TokenType::Identifier);
-        const bool typeArrayVar = (peek(1).getType() == TokenType::LeftBracket &&
-                                   peek(2).getType() == TokenType::IntegerLiteral &&
-                                   peek(3).getType() == TokenType::RightBracket &&
-                                   peek(4).getType() == TokenType::Identifier);
+        // #286（2026-10-08 甲案）：数组声明探测放宽——[ 到配对 ] 间为长度
+        //   token 串（字面量/常量名/常量算术）即认定类型前缀声明；长度文本由
+        //   parseTypeNameEx 收集（语义层编译期常量折叠）。
+        bool typeArrayVar = false;
+        if (peek(1).getType() == TokenType::LeftBracket) {
+            std::size_t bi = 2;
+            int bracketDepth = 1;
+            while (bracketDepth > 0) {
+                const TokenType bt = peek(static_cast<int>(bi)).getType();
+                if (bt == TokenType::LeftBracket) { bracketDepth++; bi++; continue; }
+                if (bt == TokenType::RightBracket) { bracketDepth--; bi++; continue; }
+                if (bt == TokenType::EndOfFile) break;
+                bi++;
+            }
+            typeArrayVar = (bracketDepth == 0 &&
+                            peek(static_cast<int>(bi)).getType() == TokenType::Identifier);
+        }
         // Task 3.8 泛型实例化变量声明：类型名<实参> 变量名（向量<整32> 整数列表）
         // 探测形式4：标识符 + < 且为模板形态 + 后续 类型...> 后跟变量名
         //   判据：标识符(类型名) < 类型关键字/标识符 ... > 标识符(变量名)
