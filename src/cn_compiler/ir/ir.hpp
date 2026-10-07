@@ -772,9 +772,12 @@ private:
     bool inReturnExpr_ = false;   // 100（939）：返回表达式求值期（盒副本登记豁免）
     std::vector<std::pair<ir::IRValue, std::string>> pendingBoxCopies_;
     // 182（1019·008 树）：结果/可选<析构类> 局部变量盒亡名单（变量级·对齐 v2
-    //   946 变量模型）——{tagAddr, fieldAddr, clsCanon}（栈槽地址·跨块恒定）。
+    //   946 变量模型）——{tagAddr, fieldAddr, clsCanon, varUnique, transferred}
+    //   （栈槽地址·跨块恒定；varUnique=盒变量唯一名·273 返回位移交识别键；
+    //   transferred=类载荷析构责任已随返回值移交调用方·273——置位后块出口/
+    //   函数尾兜底跳过，防「源盒析构+调用方析构」双放/retbuf 残骸）。
     //   889 表达式面双登记=幂等无害（表达式面清值字段后本面摘句柄=0 空安全）。
-    std::vector<std::tuple<ir::IRValue, ir::IRValue, std::string>> pendingBoxVars_;
+    std::vector<std::tuple<ir::IRValue, ir::IRValue, std::string, std::string, bool>> pendingBoxVars_;
     std::vector<std::size_t> scopeBoxVarsBase_;
     // 本函数拥有串名单（genVarDecl 登记：源码类型=字符串 且未被 stringTainted_ 污染）
     std::vector<std::string> ownedStringOrder_;

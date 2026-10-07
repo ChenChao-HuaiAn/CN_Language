@@ -742,6 +742,83 @@ void IRGenerator::genVarDecl(VarDecl* node) {
                                           cn == "错误";
                     }
                 }
+                // 273（021 任务 273·#211 宿主镜像面）：ctorInitCovered（正常/某些/
+                //   错误 构造盒）补变量面登记+源槽清零——表达式面登记在**构造临时
+                //   槽**（__rctor·ir_error_ctor），emitStructCopyWithFields 浅拷
+                //   （srcIsCall=true）后盒槽与源槽共享同一载荷句柄：函数尾表达式面
+                //   析构源槽=句柄失效，「返回 盒」的 retbuf 副本/调用方析构=双放
+                //   （探针 p273a 宿主 C0000374·v2 946 变量模型绿 dual 实证；老
+                //   「返回 正常(甲)」直构造形态由 inReturnExpr_ 豁免不受影响）。
+                //   治=①源槽值字段清零（表达式面条目析构时 LoadPtr=0 空安全跳过·
+                //   79/078 转移同款幂等模型）②变量面登记盒槽（单一权威·返回位
+                //   移交豁免=pendingBoxVars_ 第 4/5 元·273 已修同键）——非返回
+                //   形态块出口析构盒槽一次（原=源槽一次+盒槽泄漏），返回形态
+                //   调用方唯一析构（原=双放）。
+                if (declIsBox && node->initializer != nullptr && ctorInitCovered) {
+                    std::string payloadX;
+                    if (SemanticAnalyzer::isResultType(declCanon)) {
+                        const std::vector<std::string> rargsX =
+                            SemanticAnalyzer::resultTypeArgs(declCanon);
+                        if (rargsX.size() == 2)
+                            payloadX = types::canonical(rargsX[0]);
+                    } else {
+                        payloadX = types::canonical(
+                            SemanticAnalyzer::optionalTypeArg(declCanon));
+                    }
+                    const ClassInfo* pciX =
+                        payloadX.empty() ? nullptr : semantic_->findClass(payloadX);
+                    bool pDtorX = false;
+                    if (pciX != nullptr) {
+                        for (const auto& mk : pciX->methods) {
+                            if (mk.second.isDestructor) { pDtorX = true; break; }
+                        }
+                    }
+                    if (pDtorX && semantic_->findCopyConstructor(payloadX) != nullptr) {
+                        const StructDecl* sdX = semantic_->findStruct(declCanon);
+                        const int voX =
+                            sdX ? semantic_->fieldOffsetOf(sdX, "值") : -1;
+                        if (voX >= 0) {
+                            // ①源槽（__rctor）值字段清零——表达式面条目幂等跳过
+                            ir::IRValue srcField273 = emitResult(
+                                ir::Opcode::FieldAddr, {value}, "ptr",
+                                std::to_string(voX), node->location);
+                            ir::IRValue zero273 = emitResult(
+                                ir::Opcode::ConstInt, {}, "i64", "0",
+                                node->location);
+                            emit(ir::Opcode::StorePtr,
+                                 {srcField273, zero273}, ir::IRValue(), "",
+                                 "ptr", node->location);
+                            // ②变量面登记盒槽（单一权威·与下方 !ctorInitCovered
+                            //   分支同键；返回位移交豁免按第 4 元命中）
+                            const int coX =
+                                sdX ? semantic_->fieldOffsetOf(
+                                          sdX, SemanticAnalyzer::isResultType(
+                                                   declCanon)
+                                                   ? "正常"
+                                                   : "有值")
+                                    : -1;
+                            if (coX >= 0) {
+                                ir::IRValue tagAddr273 =
+                                    coX == 0 ? dstAddr
+                                             : emitResult(
+                                                   ir::Opcode::FieldAddr,
+                                                   {dstAddr}, "ptr",
+                                                   std::to_string(coX),
+                                                   node->location);
+                                ir::IRValue fieldAddr273 =
+                                    voX == 0 ? dstAddr
+                                             : emitResult(
+                                                   ir::Opcode::FieldAddr,
+                                                   {dstAddr}, "ptr",
+                                                   std::to_string(voX),
+                                                   node->location);
+                                pendingBoxVars_.emplace_back(
+                                    tagAddr273, fieldAddr273, payloadX, unique,
+                                    false);
+                            }
+                        }
+                    }
+                }
                 if (declIsBox && node->initializer != nullptr &&
                     !ctorInitCovered) {
                     std::string payload;
@@ -783,8 +860,10 @@ void IRGenerator::genVarDecl(VarDecl* node) {
                                                      {dstAddr}, "ptr",
                                                      std::to_string(vo),
                                                      node->location);
+                            // 273：第 4 元=盒变量唯一名（返回位移交识别键）·
+                            //   第 5 元=移交标志（visitReturnStmt 置位→兜底跳过）
                             pendingBoxVars_.emplace_back(tagAddr, fieldAddr,
-                                                         payload);
+                                                         payload, unique, false);
                         }
                     }
                 }

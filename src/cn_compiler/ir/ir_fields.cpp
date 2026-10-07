@@ -467,6 +467,10 @@ void IRGenerator::emitPendingBoxVarsRelease(std::size_t fromIndex) {
     const SourceLocation loc;
     for (std::size_t i = pendingBoxVars_.size(); i > fromIndex; --i) {
         const auto& ent = pendingBoxVars_[i - 1];
+        // 273：移交标志置位（返回位 局部盒 移交调用方）→ 跳过——源盒类载荷
+        //   析构责任已随返回值转移，兜底再析构=双放（C0000374）/retbuf 残骸
+        //   （析构+清槽先于返回拷贝·探针 p273 asm 铁证·v2 946 移出同构）。
+        if (std::get<4>(ent)) continue;
         ir::IRValue objPtr = emitResult(
             ir::Opcode::Call, {std::get<0>(ent), std::get<1>(ent)}, "ptr",
             "__cn_box_class_delete", loc);
