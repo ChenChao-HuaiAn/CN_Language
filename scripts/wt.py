@@ -84,6 +84,22 @@ def 读远端在飞行号() -> set[str]:
     return 号集
 
 
+def 读本地在飞行号() -> set[str]:
+    """扫本地 refs/heads 任务/<号>/batch/<号> 纯数字分支号（269 补·230 修法①同族第四源）。
+
+    本地并行会话 create 后未 push 的在飞行（268 官网案实录：wt268 worktree+分支已立
+    未推，三源只见 max=267 → create 269 被误拦跳号）。已集成分支号必已入主表/归档
+    （集成即删分支·立项行随批收口），并集无增量——本源只增不漏。
+    """
+    号集: set[str] = set()
+    for 引用 in 输出(["git", "for-each-ref", "--format=%(refname:short)",
+                      "refs/heads"]).splitlines():
+        m = re.fullmatch(r"(?:任务|batch)/(\d+)", 引用.strip())
+        if m:
+            号集.add(m.group(1))
+    return 号集
+
+
 def 运行(命令: list[str], **kwargs) -> subprocess.CompletedProcess:
     return subprocess.run(命令, capture_output=True, text=True, encoding="utf-8", errors="replace", **kwargs)
 
@@ -238,9 +254,10 @@ def 建树(任务号: str, 无ninja: bool, 立行: str | None = None,
                   f"一条命令立项建树（238 起），或先在 plans/021 加行再建树")
             return 1
     if 号集 is not None and 任务号.isdigit() and not 接棒:
-        # 跳号基准（230 修法①）：主表+归档+远端在飞三源取 max——在飞行号住未合分支树
-        # （226 立规），只看主表+归档则 max 偏小、真序号被误拦（229 轮实录）
-        在飞号集 = 读远端在飞行号()
+        # 跳号基准（230 修法①+269 补）：主表+归档+远端在飞+本地在飞四源取 max——
+        # 在飞行号住未合分支树（226 立规），只看主表+归档则 max 偏小、真序号被误拦
+        # （229 轮实录）；268 案补本地源：本地并行会话已建未推分支同样占用号段
+        在飞号集 = 读远端在飞行号() | 读本地在飞行号()
         全号集 = 号集 | 读归档行号() | 在飞号集
         其余序列 = [int(n) for n in 全号集
                     if n.isdigit() and n not in 禁用号 and int(n) != int(任务号)]
