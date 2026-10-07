@@ -21,6 +21,9 @@
 #   --check 只做真防遗漏：账实相符（🏃⇔分支存在且号段=本行/✅⇔sha/⬜⇔带优先级/
 #   任务号重号——分支名=任务号要求全表唯一/任务号乱序——总账须按号升序排列
 #   （2026-10-06 用户令·字母子号随父号））、依赖就绪（抢跑拦截）、依赖环检测。
+#   230 修法①②（2026-10-07）：跳号基准并入远端 任务/<号>/batch/<号> 在飞纯数字号集
+#   （在飞行号住未合分支树·226 立规）+幽灵分支检查（远端任务分支在主表/归档/分支树
+#   均无行=红·分支树有行=在飞未合提示）。
 #   旧格式分支 任务/<机>-<轮>-<标识>（196 轮前）过渡兼容：只提示不算红·收工即删。
 #
 # 用法：
@@ -129,6 +132,27 @@ def 远端分支表() -> set:
                        capture_output=True, text=True, cwd=仓库根, timeout=60)
     return {l.split("refs/heads/")[1].strip() for l in r.stdout.splitlines()
             if "refs/heads/" in l}
+
+
+def 分支树含行(分支: str, 号: str) -> bool:
+    """远端分支树内的 021 总账是否含本号行（230 修法②·核实 226 立规「立项行随分支」在飞形态）。
+
+    主表无行的远端任务分支：分支树有本号行=在飞未合正常形态；也无=幽灵分支。
+    只读本地 remote-tracking 引用（零网络）。
+    """
+    引用 = 分支 if 分支.startswith("gitcode/") else f"gitcode/{分支}"
+    r = subprocess.run(["git", "ls-tree", "--name-only", 引用, "plans/"],
+                       capture_output=True, text=True, cwd=仓库根, timeout=30)
+    for 名 in r.stdout.splitlines():
+        名 = 名.strip()
+        if re.search(r"plans/021.*\.md$", 名):
+            r2 = subprocess.run(["git", "show", f"{引用}:{名}"],
+                                capture_output=True, text=True, cwd=仓库根, timeout=30)
+            for 行 in r2.stdout.splitlines():
+                m = re.match(r"^\|\s*(\d+[a-z]?)\s*\|", 行)
+                if m and 键化(m.group(1)) == 号:
+                    return True
+    return False
 
 
 def 找环(表):
@@ -305,6 +329,22 @@ def cmd_check(as_json: bool = False) -> int:
         elif t["状态"] == 状态_待办:
             if t["分支"] and t["分支"] in 分支们:
                 问题.append(f"#{展示号(号)} ⬜ 但分支 {t['分支']} 在远端存在（实际在飞？改 🏃）")
+    # 230 修法②检查面（2026-10-07·与 wt.py create 侧同轮）：远端 任务/<号> 分支在主表+归档
+    #   均无行——分支树有本号行=在飞未合正常形态（226 立规行随分支·提示留痕·集成随批入账）；
+    #   分支树也无行=幽灵分支（红：已收口漏删=删分支；在飞漏立=分支树补立项行）
+    有账号集 = {t["号"] for t in 表.values()}
+    for b in sorted(分支们):
+        m = re.fullmatch(r"任务/(\d+)", b)
+        if not m or m.group(1) in 禁用号:
+            continue
+        幽灵号 = 键化(m.group(1))
+        if 幽灵号 in 有账号集:
+            continue
+        if 分支树含行(b, 幽灵号):
+            提示.append(f"远端分支 {b} 在飞未合（立项行随分支·226 新规·主表无行=正常形态）")
+        else:
+            问题.append(f"幽灵分支：远端 {b} 存在但主表/归档/分支树均无此号行"
+                        f"（已收口漏删=删分支；在飞漏立=分支树补立项行）")
     # 241（2026-10-07）：备注列限长警告（AGENTS 单行 ≤400 字符旧规机械化·报告不拦——
     # 现存超长行系活任务的战报上下文，留给各任务认领/收口时自然重写，不搞运动式整改）
     for 件 in 表.values():

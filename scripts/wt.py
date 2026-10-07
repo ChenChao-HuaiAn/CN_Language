@@ -6,8 +6,9 @@
 checkout 带走未提交内容 / E2E 中途 expected 消失 / cn.exe 占用 LNK1104）。
 本脚本把「每任务一个 worktree」制度化：
 
-  create <任务号>        建树+任务分支 任务/<任务号>（021 无此行号拒建；远端分支已存在=接棒
-                         同分支续做——机器停摆他机无缝接力·196 轮立规；新开则基于 develop；
+  create <任务号>        建树+任务分支 任务/<任务号>（021 无此行且远端无此分支拒建；远端分支已存在=
+                         接棒同分支续做——机器停摆他机无缝接力·196 轮立规·不重立行；新开则基于 develop；
+                         跳号基准=主表+归档+远端在飞三源（230 修法①·在飞行号住未合分支树）；
                          gtest 两级深度校验→Ninja+sccache 开发树配置）
   list                   列出全部 worktree（分支/干净度/target 占用）
   remove <任务号>        删树（分支保留；--delete-branch 仅当已并入 develop 才删分支）
@@ -37,16 +38,10 @@ from pathlib import Path
 本树根 = Path(__file__).resolve().parent.parent
 
 
-def 读021行号() -> set[str] | None:
-    """解析 021 总账主表任务号集合（纯任务号分支名的行号校验源·196 轮立规）。
-
-    返回 None=找不到 021 文件（放行建树·树内脚本自举场景不硬拦）。
-    """
-    账本们 = sorted((本树根 / "plans").glob("021*.md"))
-    if not 账本们:
-        return None
+def 扫行号(目录: Path, 模式: str) -> set[str]:
+    """扫目录下匹配模式的 021 账本，解析行首任务号集合（主表/归档/接棒树三处共用）。"""
     号集: set[str] = set()
-    for 账本 in 账本们:
+    for 账本 in sorted(目录.glob(模式)):
         for 行 in 账本.read_text(encoding="utf-8").splitlines():
             m = re.match(r"^\|\s*(\d+[a-z]?)\s*\|", 行)
             if m:
@@ -54,16 +49,38 @@ def 读021行号() -> set[str] | None:
     return 号集
 
 
+def 读021行号() -> set[str] | None:
+    """解析 021 总账主表任务号集合（纯任务号分支名的行号校验源·196 轮立规）。
+
+    返回 None=找不到 021 文件（放行建树·树内脚本自举场景不硬拦）。
+    230 修法①注：本函数只看本地工作树的主表+归档——226 立规「立项行随任务分支走」后
+    在飞行号住在未合分支树，主表 max 偏小；跳号/接棒判定须叠加 读远端在飞行号()。
+    """
+    if not sorted((本树根 / "plans").glob("021*.md")):
+        return None
+    return 扫行号(本树根 / "plans", "021*.md")
+
+
 def 读归档行号() -> set[str]:
     """解析 021 已归档任务号集合（收口归档制·226 轮立法）——仅用于跳号基准与禁建校验，
     不参与「021 无此行拒建」存在性校验（归档号不在主表·重立须用新号）。
     """
+    return 扫行号(本树根 / "项目记忆" / "归档", "plans021-已完成任务归档-*.md")
+
+
+def 读远端在飞行号() -> set[str]:
+    """fetch 后扫远端 任务/<号>/batch/<号> 纯数字分支号集合（230 修法①·2026-10-07）。
+
+    在飞行号只存在于未合分支树（226 立规），本地主表+归档看不见——不并入基准则
+    轻则误拦真序号（229 轮 create 被误判跳号·须主表临时登记在飞行过检再还原）、
+    重则两会话先后取同一号=重号撞车。与 task_board --check 修法①（99f21e53）同口径。
+    """
     号集: set[str] = set()
-    for 账本 in sorted((本树根 / "项目记忆" / "归档").glob("plans021-已完成任务归档-*.md")):
-        for 行 in 账本.read_text(encoding="utf-8").splitlines():
-            m = re.match(r"^\|\s*(\d+[a-z]?)\s*\|", 行)
-            if m:
-                号集.add(m.group(1))
+    for 引用 in 输出(["git", "for-each-ref", "--format=%(refname:short)",
+                      "refs/remotes/gitcode"]).splitlines():
+        m = re.fullmatch(r"gitcode/(?:任务|batch)/(\d+)", 引用.strip())
+        if m:
+            号集.add(m.group(1))
     return 号集
 
 
@@ -192,29 +209,46 @@ def 建树(任务号: str, 无ninja: bool, 立行: str | None = None,
     if 任务号 in 禁用号:
         print(f"[失败] 任务号 {任务号} 为禁用号（2026-10-05 用户令已改 198/199·永久禁用）——新号取当前最大有效号+1")
         return 1
+    # fetch 提前+prune（230 修法②）：接棒判定/跳号基准全用 fetch 后的最新账实——旧序校验在前
+    # fetch 在后=校验的是过期账；无 --prune 则已删远端分支的陈旧引用残留（集成即删分支纪律下
+    # 收口分支的本地引用滞留）→接棒判定接上远端已不存在的死分支（2026-10-07 实测 branch -r
+    # 20+ 支中仅 10 支真实存在）
+    运行(["git", "fetch", "--prune", "gitcode"])
+    分支 = f"任务/{任务号}"
+    远端分支在 = bool(输出(["git", "rev-parse", "--verify", f"refs/remotes/gitcode/{分支}"]))
     号集 = 读021行号()
     自动立项 = False
-    if 号集 is not None and 任务号 not in 号集:
+    接棒 = 远端分支在
+    if 接棒:
+        # 230 修法②（2026-10-07）：远端分支已存在=号已被认领（跨机重号拦截面）——一律接棒
+        # 同分支续做，不新开不重立行；021 主表无此行不再拦（行住分支树·226 立规——
+        # create 233 接棒者被「无此行」误拦实录）。--行 在接棒态忽略（重立行=集成时主表重号）。
+        if 立行:
+            print(f"[提示] 远端 {分支} 已存在（在飞认领）——接棒续做·--行 忽略（行住分支树·重立=重号）")
+    elif 号集 is not None and 任务号 not in 号集:
         if 立行:
             # 238 立项命令化（2026-10-07）：021 无此行+create --行 → 建树后自动立行于
             # 任务分支首提交（226 立规「立项行随任务分支 push」机械化——主树零接触）
             自动立项 = True
         else:
-            print(f"[失败] 021 总账无任务 {任务号}——用 create {任务号} --行 \"一句话描述\" "
+            归档提示 = "（此号已收口归档·号全局唯一防复用——重立须用新号=全局最大+1）" \
+                if 任务号 in 读归档行号() else ""
+            print(f"[失败] 021 总账无任务 {任务号} 且远端无 {分支}{归档提示}"
+                  f"——用 create {任务号} --行 \"一句话描述\" "
                   f"一条命令立项建树（238 起），或先在 plans/021 加行再建树")
             return 1
-    if 号集 is not None and 任务号.isdigit():
-        # 跳号基准含已归档号（226 收口归档制）：主表最大号回退后仍按全局历史最大取号，防号复用
-        全号集 = 号集 | 读归档行号()
+    if 号集 is not None and 任务号.isdigit() and not 接棒:
+        # 跳号基准（230 修法①）：主表+归档+远端在飞三源取 max——在飞行号住未合分支树
+        # （226 立规），只看主表+归档则 max 偏小、真序号被误拦（229 轮实录）
+        在飞号集 = 读远端在飞行号()
+        全号集 = 号集 | 读归档行号() | 在飞号集
         其余序列 = [int(n) for n in 全号集
                     if n.isdigit() and n not in 禁用号 and int(n) != int(任务号)]
         if 其余序列 and int(任务号) > max(其余序列) + 1:
-            print(f"[失败] 任务号 {任务号} 跳号——除本行外最大有效号 {max(其余序列)}"
-                  f"（含已归档 {len(读归档行号())} 号），"
+            print(f"[失败] 任务号 {任务号} 跳号——除本号外最大有效号 {max(其余序列)}"
+                  f"（主表+归档+远端在飞共 {len(全号集)} 号·含未合分支在飞行号），"
                   f"用户令 2026-10-05：按顺序取号（max+1·禁用号 353/354 跳过·历史补记账须用户特批）")
             return 1
-    运行(["git", "fetch", "gitcode"])
-    分支 = f"任务/{任务号}"
     树路径 = 主树根().parent / f"wt{任务号}"
     if 树路径.exists():
         print(f"[失败] {树路径} 已存在——同名 worktree 或残留，先 wt.py remove {任务号}")
@@ -222,7 +256,7 @@ def 建树(任务号: str, 无ninja: bool, 立行: str | None = None,
     if 输出(["git", "rev-parse", "--verify", f"refs/heads/{分支}"]):
         print(f"[失败] 本地分支 {分支} 已存在——若为接棒残留，先 git branch -D {分支}（远端为准）再建树")
         return 1
-    if 输出(["git", "rev-parse", "--verify", f"refs/remotes/gitcode/{分支}"]):
+    if 接棒:
         基准, 模式 = f"gitcode/{分支}", "接棒（远端分支已存在·同分支续做——机器停摆他机无缝接力）"
     else:
         基准, 模式 = "gitcode/develop", "新开（基于 develop）"
@@ -273,6 +307,10 @@ def 建树(任务号: str, 无ninja: bool, 立行: str | None = None,
 
     if 自动立项:
         立行于树(树路径, 任务号, 立行 or "", 前置, 优先级)
+    elif 接棒 and 任务号 not in 扫行号(树路径 / "plans", "021*.md"):
+        # 230 修法②配套：接棒树须含本号立项行（226 立规）——旧分支缺行=集成收口扫不到=静默漏销账
+        print(f"[警告] 分支 {分支} 树内 021 无本号立项行——须手工补行"
+              f"（集成收口扫工作树总账·缺行=静默漏销账·226 实录）")
 
     # 238：不入库运维凭据同步进新树（worktree 里跑 integrate 读 scripts/queue_client.json——
     # gitignore 文件新树天然缺失，此前靠手工 export CN_QUEUE_*，忘装即「看板已废档」失败）
@@ -326,7 +364,7 @@ def 删树(任务号: str, 删分支: bool) -> int:
         if 并入.returncode != 0:
             print(f"[3] [拒绝] 分支 {分支} 未并入 develop——保留分支（确认后手动 git branch -D）")
         else:
-            独有提交 = 输出(["git", "rev-list", "--count", "gitcode/develop..{分支}"])
+            独有提交 = 输出(["git", "rev-list", "--count", f"gitcode/develop..{分支}"])
             运行(["git", "branch", "-d", 分支])
             说明 = "已并入 develop（含独有提交）" if int(独有提交 or 0) > 0 else "空分支（无独有提交·刚建即删无损失）"
             print(f"[3] 分支 {分支} {说明}，本地分支已删")
