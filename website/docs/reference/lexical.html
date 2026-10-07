@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>词法结构 · CN 语言</title>
+<meta name="description" content="CN 语言词法结构：源文件、注释、字面量、运算符优先级、分号规则、条件编译。">
+<script>
+  (function () {
+    try {
+      var t = localStorage.getItem("cn-theme");
+      if (t === "dark" || t === "light") document.documentElement.setAttribute("data-theme", t);
+    } catch (e) {}
+  })()
+</script>
+<link rel="stylesheet" href="../../assets/tokens.css?v=2">
+<link rel="stylesheet" href="../../assets/site.css?v=3">
+</head>
+<body>
+
+<header class="顶栏">
+  <div class="容器 顶栏-内">
+    <a class="标识" href="../../">CN<span class="标识-点">·</span>语言</a>
+    <button class="导航-开关" data-导航钮 aria-expanded="false">菜单</button>
+    <nav class="导航" aria-label="站点导航">
+      <a href="../../">首页</a>
+      <a href=".././">文档</a>
+      <a href="../getting-started.html">快速开始</a>
+      <a href="../reference/" aria-current="page">语言参考</a>
+      <a href="../../os/">CN-OS</a>
+      <a href="https://gitcode.com/ChenChao_GitCode/CN_Language" target="_blank" rel="noopener">源码 ↗</a>
+      <button class="主题钮" data-主题钮 aria-label="切换主题">月</button>
+    </nav>
+  </div>
+</header>
+
+<main class="容器">
+  <div class="文档骨架">
+    <aside class="侧栏" aria-label="文档导航">
+      <div class="侧栏-组">
+        <p class="侧栏-组题">入门</p>
+        <a href=".././">文档总览</a>
+        <a href="../getting-started.html">快速开始</a>
+      </div>
+      <div class="侧栏-组">
+        <p class="侧栏-组题">教程</p>
+        <a href="../tutorial-syntax.html">语法基础</a>
+        <a href="../tutorial-oop.html">类与泛型</a>
+        <a href="../tutorial-safety.html">安全与并发</a>
+      </div>
+      <div class="侧栏-组">
+        <p class="侧栏-组题">语言参考</p>
+        <a href="../reference/">参考总览</a>
+        <a href="../reference/lexical.html" aria-current="page">词法结构</a>
+        <a href="../reference/types.html">类型系统</a>
+        <a href="../reference/control-flow.html">控制流</a>
+        <a href="../reference/functions.html">函数</a>
+        <a href="../reference/oop.html">类与对象</a>
+        <a href="../reference/errors.html">错误处理</a>
+        <a href="../reference/concurrency.html">并发</a>
+        <a href="../reference/modules.html">模块系统</a>
+      </div>
+      <div class="侧栏-组">
+        <p class="侧栏-组题">资源</p>
+        <a href="../stdlib.html">标准库</a>
+        <a href="../cli.html">命令行参考</a>
+      </div>
+    </aside>
+    <article class="正文">
+      <nav class="面包屑" aria-label="面包屑"><a href="./">文档</a> / <a href="./">语言参考</a> / 词法结构</nav>
+      
+<h1>词法结构</h1>
+<p style="color: var(--color-fg-muted); font-size: var(--text-lg); line-height: 2;">
+源文件、注释、字面量、运算符与优先级、分号规则——语言的原子层。</p>
+
+<h2 id="源文件">源文件</h2>
+<ul>
+<li>扩展名 <code>.cn</code>，编码必须为 UTF-8。</li>
+<li>入口约定：程序入口是 <code>主</code> 函数（入口文件命名 <code>主.cn</code> 仅为约定）。</li>
+</ul>
+
+<h2 id="注释">注释</h2>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">注释.cn</span><span class="码窗-徽">CN</span></p>
+<pre><code class="language-cn">// 单行注释
+/* 块注释，
+   支持嵌套 */</code></pre></div>
+
+<h2 id="字面量">字面量</h2>
+<table class="表">
+<thead><tr><th>类别</th><th>形式</th><th>示例</th></tr></thead>
+<tbody>
+<tr><td>整数</td><td>十进制 / 十六进制 / 二进制 / 八进制</td><td><code>42</code> <code>0xFF</code> <code>0b1010</code> <code>0o777</code></td></tr>
+<tr><td>类型后缀</td><td><code>f</code>=浮32、<code>L</code>=整64、<code>LL</code>=整128、<code>U</code>=正32、<code>UL</code>=正64、<code>ULL</code>=正128</td><td><code>100L</code> <code>3.14f</code></td></tr>
+<tr><td>浮点</td><td>小数 / 科学计数法</td><td><code>3.14</code> <code>1.5e10</code></td></tr>
+<tr><td>字符</td><td>单引号，支持转义与 Unicode</td><td><code>'中'</code> <code>'\n'</code> <code>'\u{4E2D}'</code></td></tr>
+<tr><td>字符串</td><td>双引号；<code>原始</code> 前缀不转义；<code>多行</code> 前缀跨行</td><td><code>"你好"</code> <code>原始"^\d+$"</code> <code>多行"""…"""</code></td></tr>
+</tbody>
+</table>
+<p>多行字符串内部仍处理转义；要完全原始可组合：<code>原始多行"""…"""</code>。</p>
+
+<h2 id="运算符">运算符</h2>
+<p>算术 <code>+ - * / %</code>；比较 <code>== != &lt; &gt; &lt;= &gt;=</code>；逻辑 <code>&amp;&amp; || !</code>；
+位 <code>&amp; | ^ ~ &lt;&lt; &gt;&gt;</code>（仅整型）；赋值 <code>= += -= *= /= %= &amp;= |= ^= &lt;&lt;= &gt;&gt;=</code>；
+指针 <code>&amp;</code>（取地址）<code>*</code>（解引用）；成员 <code>.</code>；下标 <code>[]</code>；三元 <code>? :</code>。</p>
+<div class="批注"><span class="批注-题">两条重要语义</span>
+①成员访问统一用 <code>.</code>：<code>-&gt;</code> 不是成员运算符（它只用于函数返回类型标注）；
+指针左侧的 <code>.</code> 自动解引用一级（<code>p.x</code> 等价 <code>(*p).x</code>）。
+②字符串下标 <code>s[i]</code> 按 UTF-8 字节索引读（返回整8），<strong>写是编译期拒绝</strong>——
+字符串是不可变拥有型。</div>
+
+<h2 id="优先级">优先级（13 级·从高到低）</h2>
+<table class="表">
+<thead><tr><th>级</th><th>运算符</th><th>说明</th></tr></thead>
+<tbody>
+<tr><td>13</td><td><code>() [] .</code> 后缀 <code>++ --</code>、后缀 <code>?</code>（错误传播）</td><td>后缀</td></tr>
+<tr><td>12</td><td><code>! ~ -</code> 前缀 <code>++ --</code> <code>*</code>（解引用）<code>&amp;</code>（取地址）</td><td>一元</td></tr>
+<tr><td>11</td><td><code>* / %</code></td><td>乘除</td></tr>
+<tr><td>10</td><td><code>+ -</code></td><td>加减</td></tr>
+<tr><td>9</td><td><code>&lt;&lt; &gt;&gt;</code></td><td>移位</td></tr>
+<tr><td>8</td><td><code>&lt; &lt;= &gt; &gt;=</code></td><td>比较</td></tr>
+<tr><td>7</td><td><code>== !=</code></td><td>相等</td></tr>
+<tr><td>6</td><td><code>&amp;</code></td><td>按位与</td></tr>
+<tr><td>5</td><td><code>^</code></td><td>按位异或</td></tr>
+<tr><td>4</td><td><code>|</code></td><td>按位或</td></tr>
+<tr><td>3</td><td><code>&amp;&amp;</code></td><td>逻辑与</td></tr>
+<tr><td>2</td><td><code>||</code></td><td>逻辑或</td></tr>
+<tr><td>1.5</td><td><code>? :</code></td><td>三元（右结合）</td></tr>
+<tr><td>1</td><td><code>= += -= …</code></td><td>赋值</td></tr>
+</tbody>
+</table>
+
+<h2 id="分号规则">分号规则</h2>
+<p>语句<strong>必须</strong>以分号 <code>;</code> 终结（Rust/C++ 同款）；换行只是空白，
+不是语句边界。块结构（<code>}</code>）自终结——块、函数体、类体之后<strong>不写</strong>分号：</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">分号.cn</span><span class="码窗-徽">CN</span></p>
+<pre><code class="language-cn">函数 主() -&gt; 整32 {
+    整32 a = 1;        // ✓ 语句有分号
+    如果 a &gt; 0 {       // 控制流头不需要分号
+        a = a + 1;     // ✓
+    }                  // ✓ 块后不加分号
+    返回 a;
+}                      // ✓ 函数体后不加分号</code></pre></div>
+
+<h2 id="条件编译">条件编译</h2>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">条件编译.cn</span><span class="码窗-徽">CN</span></p>
+<pre><code class="language-cn">#定义 发布模式
+
+函数 主() -&gt; 整32 {
+    #如果定义 发布模式
+    打印("发布模式: 开启");
+    #否则
+    打印("发布模式: 关闭");
+    #结束如果
+    返回 0;
+}</code></pre></div>
+
+      <nav class="页脚导航"><a href="../reference/"><span class="向">← 上一页</span><span class="题">参考总览</span></a><a class="下一" href="../reference/types.html"><span class="向">下一页 →</span><span class="题">类型系统</span></a></nav>
+    </article>
+    <aside class="目录" aria-label="本页目录">
+      <p class="目录-题">本页目录</p>
+      
+<a href="#源文件">源文件</a>
+<a href="#注释">注释</a>
+<a href="#字面量">字面量</a>
+<a href="#运算符">运算符</a>
+<a href="#优先级">优先级</a>
+<a href="#分号规则">分号规则</a>
+<a href="#条件编译">条件编译</a>
+
+    </aside>
+  </div>
+</main>
+
+<footer class="页脚">
+  <div class="容器">
+    <div class="页脚-排">
+      <div>
+        <p class="页脚-标语">CN<span style="color: var(--color-accent);">·</span>语言</p>
+        <p class="页脚-述">全中文语法的系统级编程语言。以母语的直觉，驾驭机器的全部性能。</p>
+      </div>
+      <div>
+        <h4>语言</h4>
+        <ul>
+          <li><a href=".././">官方文档</a></li>
+          <li><a href="../getting-started.html">快速开始</a></li>
+          <li><a href="../reference/">语言参考</a></li>
+          <li><a href="../stdlib.html">标准库</a></li>
+        </ul>
+      </div>
+      <div>
+        <h4>项目</h4>
+        <ul>
+          <li><a href="https://gitcode.com/ChenChao_GitCode/CN_Language" target="_blank" rel="noopener">源码仓库 ↗</a></li>
+          <li><a href="../../os/">CN-OS 蓝图</a></li>
+          <li><a href="../cli.html">命令行参考</a></li>
+        </ul>
+      </div>
+      <div>
+        <h4>状态</h4>
+        <ul>
+          <li>自举固定点已达成</li>
+          <li>v2 自举重建进行中</li>
+          <li>license：见仓库</li>
+        </ul>
+      </div>
+    </div>
+    <div class="页脚-底">
+      <span>© 2026 CN 语言项目</span>
+      <span>京ICP备00000000号（备案办理中·占位）</span>
+    </div>
+  </div>
+</footer>
+
+<script src="../../assets/cn-highlight.js?v=1"></script>
+<script src="../../assets/site.js?v=2"></script>
+</body>
+</html>

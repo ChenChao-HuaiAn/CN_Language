@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>命令行参考 · CN 语言</title>
+<meta name="description" content="cn 编译器命令行参考：全部命令与选项。">
+<script>
+  (function () {
+    try {
+      var t = localStorage.getItem("cn-theme");
+      if (t === "dark" || t === "light") document.documentElement.setAttribute("data-theme", t);
+    } catch (e) {}
+  })()
+</script>
+<link rel="stylesheet" href="../assets/tokens.css?v=2">
+<link rel="stylesheet" href="../assets/site.css?v=3">
+</head>
+<body>
+
+<header class="顶栏">
+  <div class="容器 顶栏-内">
+    <a class="标识" href="./">CN<span class="标识-点">·</span>语言</a>
+    <button class="导航-开关" data-导航钮 aria-expanded="false">菜单</button>
+    <nav class="导航" aria-label="站点导航">
+      <a href="./">首页</a>
+      <a href=".././" aria-current="page">文档</a>
+      <a href="getting-started.html">快速开始</a>
+      <a href="reference/">语言参考</a>
+      <a href="../os/">CN-OS</a>
+      <a href="https://gitcode.com/ChenChao_GitCode/CN_Language" target="_blank" rel="noopener">源码 ↗</a>
+      <button class="主题钮" data-主题钮 aria-label="切换主题">月</button>
+    </nav>
+  </div>
+</header>
+
+<main class="容器">
+  <div class="文档骨架">
+    <aside class="侧栏" aria-label="文档导航">
+      <div class="侧栏-组">
+        <p class="侧栏-组题">入门</p>
+        <a href=".././">文档总览</a>
+        <a href="getting-started.html">快速开始</a>
+      </div>
+      <div class="侧栏-组">
+        <p class="侧栏-组题">教程</p>
+        <a href="tutorial-syntax.html">语法基础</a>
+        <a href="tutorial-oop.html">类与泛型</a>
+        <a href="tutorial-safety.html">安全与并发</a>
+      </div>
+      <div class="侧栏-组">
+        <p class="侧栏-组题">语言参考</p>
+        <a href="reference/">参考总览</a>
+        <a href="reference/lexical.html">词法结构</a>
+        <a href="reference/types.html">类型系统</a>
+        <a href="reference/control-flow.html">控制流</a>
+        <a href="reference/functions.html">函数</a>
+        <a href="reference/oop.html">类与对象</a>
+        <a href="reference/errors.html">错误处理</a>
+        <a href="reference/concurrency.html">并发</a>
+        <a href="reference/modules.html">模块系统</a>
+      </div>
+      <div class="侧栏-组">
+        <p class="侧栏-组题">资源</p>
+        <a href="stdlib.html">标准库</a>
+        <a href="cli.html" aria-current="page">命令行参考</a>
+      </div>
+    </aside>
+    <article class="正文">
+      <nav class="面包屑" aria-label="面包屑"><a href="./">文档</a> / 命令行参考</nav>
+      
+<h1>命令行参考</h1>
+<p style="color: var(--color-fg-muted); font-size: var(--text-lg); line-height: 2;">
+<code>cn</code> 编译器全量命令与选项。</p>
+
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">用法</span><span class="码窗-徽">CLI</span></p>
+<pre><code class="language-sh">cn &lt;命令&gt; [选项] &lt;文件&gt;</code></pre></div>
+
+<h2 id="命令">命令</h2>
+<table class="表">
+<thead><tr><th>命令</th><th>作用</th></tr></thead>
+<tbody>
+<tr><td><code>build</code></td><td>编译 + 链接，产出可执行文件</td></tr>
+<tr><td><code>compile</code></td><td>仅编译（汇编产物）</td></tr>
+<tr><td><code>run</code></td><td>编译后直接运行</td></tr>
+<tr><td><code>check</code></td><td>只做语法/语义检查，不生成代码</td></tr>
+<tr><td><code>ir</code></td><td>输出中间表示（IR）</td></tr>
+<tr><td><code>ast</code></td><td>输出语法树</td></tr>
+<tr><td><code>token</code></td><td>输出词元流</td></tr>
+</tbody>
+</table>
+
+<h2 id="选项">选项</h2>
+<table class="表">
+<thead><tr><th>选项</th><th>作用</th></tr></thead>
+<tbody>
+<tr><td><code>--target win-x64|linux-x86_64|linux-arm64</code></td><td>目标平台（Linux 上 build 必须显式指定）</td></tr>
+<tr><td><code>-O0</code> ~ <code>-O3</code>（<code>--opt &lt;N&gt;</code> 等价）</td><td>优化级别（SSA/内联/DCE/CSE/LICM/强度削减/尾调用/寄存器分配）</td></tr>
+<tr><td><code>--debug</code> / <code>--发布</code>（<code>--release</code>）</td><td>构建模式</td></tr>
+<tr><td><code>--验证-ir</code></td><td>IR 结构不变量校验（SSA/CFG/def-use）</td></tr>
+<tr><td><code>--cfi</code></td><td>控制流完整性：接口间接调用校验（默认关）</td></tr>
+<tr><td><code>--output &lt;路径&gt;</code></td><td>产物路径（深层目录自动创建）</td></tr>
+<tr><td><code>--货舱</code> / <code>--stdlib</code></td><td>包清单与标准库路径</td></tr>
+<tr><td><code>--verbose</code> / <code>--version</code> / <code>--help</code></td><td>常规</td></tr>
+</tbody>
+</table>
+
+<h2 id="优化级别">优化级别说明</h2>
+<p>优化器为全链路 SSA 形式：常量折叠、死代码消除（DCE）、公共子表达式消除（CSE）、
+循环不变量外提（LICM）、强度削减、内联、尾调用、线性扫描寄存器分配。
+运行时安全检查（越界/空指针）在 <code>-O2</code> 亦默认生效——优化不牺牲安全防线。</p>
+
+      <nav class="页脚导航"><a href="stdlib.html"><span class="向">← 上一页</span><span class="题">标准库</span></a><span></span></nav>
+    </article>
+    <aside class="目录" aria-label="本页目录">
+      <p class="目录-题">本页目录</p>
+      
+<a href="#命令">命令</a>
+<a href="#选项">选项</a>
+<a href="#优化级别">优化级别说明</a>
+
+    </aside>
+  </div>
+</main>
+
+<footer class="页脚">
+  <div class="容器">
+    <div class="页脚-排">
+      <div>
+        <p class="页脚-标语">CN<span style="color: var(--color-accent);">·</span>语言</p>
+        <p class="页脚-述">全中文语法的系统级编程语言。以母语的直觉，驾驭机器的全部性能。</p>
+      </div>
+      <div>
+        <h4>语言</h4>
+        <ul>
+          <li><a href=".././">官方文档</a></li>
+          <li><a href="getting-started.html">快速开始</a></li>
+          <li><a href="reference/">语言参考</a></li>
+          <li><a href="stdlib.html">标准库</a></li>
+        </ul>
+      </div>
+      <div>
+        <h4>项目</h4>
+        <ul>
+          <li><a href="https://gitcode.com/ChenChao_GitCode/CN_Language" target="_blank" rel="noopener">源码仓库 ↗</a></li>
+          <li><a href="../os/">CN-OS 蓝图</a></li>
+          <li><a href="cli.html">命令行参考</a></li>
+        </ul>
+      </div>
+      <div>
+        <h4>状态</h4>
+        <ul>
+          <li>自举固定点已达成</li>
+          <li>v2 自举重建进行中</li>
+          <li>license：见仓库</li>
+        </ul>
+      </div>
+    </div>
+    <div class="页脚-底">
+      <span>© 2026 CN 语言项目</span>
+      <span>京ICP备00000000号（备案办理中·占位）</span>
+    </div>
+  </div>
+</footer>
+
+<script src="../assets/cn-highlight.js?v=1"></script>
+<script src="../assets/site.js?v=2"></script>
+</body>
+</html>

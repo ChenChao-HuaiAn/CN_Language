@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>快速开始 · CN 语言</title>
+<meta name="description" content="五分钟上手 CN 语言：获取源码、构建编译器、运行你的第一个中文程序。">
+<script>
+  (function () {
+    try {
+      var t = localStorage.getItem("cn-theme");
+      if (t === "dark" || t === "light") document.documentElement.setAttribute("data-theme", t);
+    } catch (e) {}
+  })();
+</script>
+<link rel="stylesheet" href="../assets/tokens.css?v=2">
+<link rel="stylesheet" href="../assets/site.css?v=3">
+</head>
+<body>
+
+<header class="顶栏">
+  <div class="容器 顶栏-内">
+    <a class="标识" href="../">CN<span class="标识-点">·</span>语言</a>
+    <button class="导航-开关" data-导航钮 aria-expanded="false">菜单</button>
+    <nav class="导航" aria-label="站点导航">
+      <a href="../">首页</a>
+      <a href="./" aria-current="page">文档</a>
+      <a href="./getting-started.html" aria-current="page">快速开始</a>
+      <a href="./reference/">语言参考</a>
+      <a href="../os/">CN-OS</a>
+      <a href="https://gitcode.com/ChenChao_GitCode/CN_Language" target="_blank" rel="noopener">源码 ↗</a>
+      <button class="主题钮" data-主题钮 aria-label="切换主题">月</button>
+    </nav>
+  </div>
+</header>
+
+<main class="容器">
+  <div class="文档骨架">
+    <aside class="侧栏" aria-label="文档导航">
+      <div class="侧栏-组">
+        <p class="侧栏-组题">入门</p>
+        <a href="./">文档总览</a>
+        <a href="./getting-started.html" aria-current="page">快速开始</a>
+      </div>
+      <div class="侧栏-组">
+        <p class="侧栏-组题">教程</p>
+        <a href="./tutorial-syntax.html">语法基础</a>
+        <a href="./tutorial-oop.html">类与泛型</a>
+        <a href="./tutorial-safety.html">安全与并发</a>
+      </div>
+      <div class="侧栏-组">
+        <p class="侧栏-组题">语言参考</p>
+        <a href="./reference/">参考总览</a>
+        <a href="./reference/lexical.html">词法结构</a>
+        <a href="./reference/types.html">类型系统</a>
+        <a href="./reference/control-flow.html">控制流</a>
+        <a href="./reference/functions.html">函数</a>
+        <a href="./reference/oop.html">类与对象</a>
+        <a href="./reference/errors.html">错误处理</a>
+        <a href="./reference/concurrency.html">并发</a>
+        <a href="./reference/modules.html">模块系统</a>
+      </div>
+      <div class="侧栏-组">
+        <p class="侧栏-组题">资源</p>
+        <a href="./stdlib.html">标准库</a>
+        <a href="./cli.html">命令行参考</a>
+      </div>
+    </aside>
+
+    <article class="正文">
+      <nav class="面包屑" aria-label="面包屑"><a href="./">文档</a> / 快速开始</nav>
+      <h1>快速开始</h1>
+      <p style="color: var(--color-fg-muted); font-size: var(--text-lg); line-height: 2;">
+        五分钟内：拿到编译器、写出并运行你的第一个 CN 程序。</p>
+
+      <div class="批注 批注-赭">
+        <span class="批注-题">前置要求</span>
+        Windows 需 VS2022（MSVC 工具链）；Linux x86_64 / ARM64 需 CMake ≥ 3.20 与
+        C++17 编译器（GCC/Clang）。CN 编译器本身用 C++ 写成——这是自举前的宿主，
+        CN 版编译器 v2 已能编译自己。</div>
+
+      <h2 id="获取源码">第一步 · 获取源码</h2>
+      <div class="码窗">
+        <p class="码窗-顶"><span class="码窗-名">shell</span><span class="码窗-徽">SH</span></p>
+        <pre><code class="language-sh">git clone https://gitcode.com/ChenChao_GitCode/CN_Language.git
+cd CN_Language</code></pre>
+      </div>
+
+      <h2 id="构建编译器">第二步 · 构建编译器</h2>
+      <p>Windows（PowerShell）：</p>
+      <div class="码窗">
+        <p class="码窗-顶"><span class="码窗-名">powershell</span><span class="码窗-徽">SH</span></p>
+        <pre><code class="language-sh"># 一键构建（-Test 追加全量测试门禁）
+.\build.ps1
+
+# 或手动
+cmake -S . -B target/build
+cmake --build target/build --config Debug</code></pre>
+      </div>
+      <p>Linux（x86_64 / ARM64）：</p>
+      <div class="码窗">
+        <p class="码窗-顶"><span class="码窗-名">bash</span><span class="码窗-徽">SH</span></p>
+        <pre><code class="language-sh">cmake -S . -B target/build
+cmake --build target/build -j"$(nproc)"</code></pre>
+      </div>
+
+      <h2 id="第一个程序">第三步 · 你的第一个程序</h2>
+      <p>新建 <code>你好.cn</code>：</p>
+      <div class="码窗">
+        <p class="码窗-顶"><span class="码窗-名">你好.cn</span><span class="码窗-徽">CN</span></p>
+        <pre><code class="language-cn">// 入口函数 主 返回 整32，返回 0 表示成功
+函数 主() -&gt; 整32 {
+    打印("你好，世界");
+    返回 0;
+}</code></pre>
+      </div>
+      <p>编译并运行：</p>
+      <div class="码窗">
+        <p class="码窗-顶"><span class="码窗-名">shell</span><span class="码窗-徽">SH</span></p>
+        <pre><code class="language-sh"># Windows
+target\Debug\cn.exe build 你好.cn --output target\你好.exe
+target\你好.exe
+# 输出：你好，世界
+
+# Linux（build 必须显式指定目标平台）
+./target/cn build 你好.cn --target linux-x86_64 --output target/你好
+./target/你好</code></pre>
+      </div>
+      <div class="批注">
+        <span class="批注-题">Linux 平台提示</span>
+        <code>build</code> 不指定 <code>--target</code> 时按缺省目标 win-x64 处理会失败——
+        Linux 上务必显式 <code>--target linux-x86_64</code> 或 <code>linux-arm64</code>。</div>
+
+      <h2 id="常用命令">第四步 · 记住这几条命令</h2>
+      <table class="表">
+        <thead><tr><th>命令</th><th>作用</th></tr></thead>
+        <tbody>
+          <tr><td><code>cn build 文件.cn</code></td><td>编译 + 链接，产出可执行文件</td></tr>
+          <tr><td><code>cn run 文件.cn</code></td><td>编译后直接运行</td></tr>
+          <tr><td><code>cn check 文件.cn</code></td><td>只做语法/语义检查，不生成代码</td></tr>
+          <tr><td><code>cn ir 文件.cn</code></td><td>查看中间表示（IR）</td></tr>
+          <tr><td><code>cn ast 文件.cn</code></td><td>查看语法树</td></tr>
+          <tr><td><code>-O0 ~ -O3</code></td><td>优化级别（SSA / 内联 / DCE 等）</td></tr>
+        </tbody>
+      </table>
+      <p>完整选项见<a href="./cli.html">命令行参考</a>。</p>
+
+      <h2 id="下一步">下一步</h2>
+      <ul>
+        <li>系统学语法：<a href="./tutorial-syntax.html">语法基础</a></li>
+        <li>看更多能跑的例子：仓库 <code>tests/e2e/</code> 下有 600+ 个真实用例</li>
+        <li>了解这门语言的终局：<a href="../os/">CN-OS 蓝图</a></li>
+      </ul>
+
+      <nav class="页脚导航">
+        <a href="./">
+          <span class="向">← 上一页</span>
+          <span class="题">文档总览</span>
+        </a>
+        <a class="下一" href="./tutorial-syntax.html">
+          <span class="向">下一页 →</span>
+          <span class="题">语法基础</span>
+        </a>
+      </nav>
+    </article>
+
+    <aside class="目录" aria-label="本页目录">
+      <p class="目录-题">本页目录</p>
+      <a href="#获取源码">获取源码</a>
+      <a href="#构建编译器">构建编译器</a>
+      <a href="#第一个程序">第一个程序</a>
+      <a href="#常用命令">常用命令</a>
+      <a href="#下一步">下一步</a>
+    </aside>
+  </div>
+</main>
+
+<footer class="页脚">
+  <div class="容器">
+    <div class="页脚-排">
+      <div>
+        <p class="页脚-标语">CN<span style="color: var(--color-accent);">·</span>语言</p>
+        <p class="页脚-述">全中文语法的系统级编程语言。以母语的直觉，驾驭机器的全部性能。</p>
+      </div>
+      <div>
+        <h4>语言</h4>
+        <ul>
+          <li><a href="./">官方文档</a></li>
+          <li><a href="./getting-started.html">快速开始</a></li>
+          <li><a href="./reference/">语言参考</a></li>
+          <li><a href="./stdlib.html">标准库</a></li>
+        </ul>
+      </div>
+      <div>
+        <h4>项目</h4>
+        <ul>
+          <li><a href="https://gitcode.com/ChenChao_GitCode/CN_Language" target="_blank" rel="noopener">源码仓库 ↗</a></li>
+          <li><a href="../os/">CN-OS 蓝图</a></li>
+          <li><a href="./cli.html">命令行参考</a></li>
+        </ul>
+      </div>
+      <div>
+        <h4>状态</h4>
+        <ul>
+          <li>自举固定点已达成</li>
+          <li>v2 自举重建进行中</li>
+          <li>license：见仓库</li>
+        </ul>
+      </div>
+    </div>
+    <div class="页脚-底">
+      <span>© 2026 CN 语言项目</span>
+      <span>京ICP备00000000号（备案办理中·占位）</span>
+    </div>
+  </div>
+</footer>
+
+<script src="../assets/cn-highlight.js?v=1"></script>
+<script src="../assets/site.js?v=2"></script>
+</body>
+</html>

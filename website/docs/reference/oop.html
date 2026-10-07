@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>类与对象 · CN 语言</title>
+<meta name="description" content="CN 语言类与对象：类、继承、接口、静态成员、常量成员、友元、运算符重载、泛型类。">
+<script>
+  (function () {
+    try {
+      var t = localStorage.getItem("cn-theme");
+      if (t === "dark" || t === "light") document.documentElement.setAttribute("data-theme", t);
+    } catch (e) {}
+  })()
+</script>
+<link rel="stylesheet" href="../../assets/tokens.css?v=2">
+<link rel="stylesheet" href="../../assets/site.css?v=3">
+</head>
+<body>
+
+<header class="顶栏">
+  <div class="容器 顶栏-内">
+    <a class="标识" href="../../">CN<span class="标识-点">·</span>语言</a>
+    <button class="导航-开关" data-导航钮 aria-expanded="false">菜单</button>
+    <nav class="导航" aria-label="站点导航">
+      <a href="../../">首页</a>
+      <a href=".././">文档</a>
+      <a href="../getting-started.html">快速开始</a>
+      <a href="../reference/" aria-current="page">语言参考</a>
+      <a href="../../os/">CN-OS</a>
+      <a href="https://gitcode.com/ChenChao_GitCode/CN_Language" target="_blank" rel="noopener">源码 ↗</a>
+      <button class="主题钮" data-主题钮 aria-label="切换主题">月</button>
+    </nav>
+  </div>
+</header>
+
+<main class="容器">
+  <div class="文档骨架">
+    <aside class="侧栏" aria-label="文档导航">
+      <div class="侧栏-组">
+        <p class="侧栏-组题">入门</p>
+        <a href=".././">文档总览</a>
+        <a href="../getting-started.html">快速开始</a>
+      </div>
+      <div class="侧栏-组">
+        <p class="侧栏-组题">教程</p>
+        <a href="../tutorial-syntax.html">语法基础</a>
+        <a href="../tutorial-oop.html">类与泛型</a>
+        <a href="../tutorial-safety.html">安全与并发</a>
+      </div>
+      <div class="侧栏-组">
+        <p class="侧栏-组题">语言参考</p>
+        <a href="../reference/">参考总览</a>
+        <a href="../reference/lexical.html">词法结构</a>
+        <a href="../reference/types.html">类型系统</a>
+        <a href="../reference/control-flow.html">控制流</a>
+        <a href="../reference/functions.html">函数</a>
+        <a href="../reference/oop.html" aria-current="page">类与对象</a>
+        <a href="../reference/errors.html">错误处理</a>
+        <a href="../reference/concurrency.html">并发</a>
+        <a href="../reference/modules.html">模块系统</a>
+      </div>
+      <div class="侧栏-组">
+        <p class="侧栏-组题">资源</p>
+        <a href="../stdlib.html">标准库</a>
+        <a href="../cli.html">命令行参考</a>
+      </div>
+    </aside>
+    <article class="正文">
+      <nav class="面包屑" aria-label="面包屑"><a href="./">文档</a> / <a href="./">语言参考</a> / 类与对象</nav>
+      
+<h1>类与对象</h1>
+<p style="color: var(--color-fg-muted); font-size: var(--text-lg); line-height: 2;">
+类、继承、接口、静态成员、常量成员、友元、运算符重载。</p>
+
+<h2 id="类定义">类定义与访问控制</h2>
+<p>访问控制为标签式：<code>公开:</code> / <code>私有:</code> / <code>保护:</code>，默认私有。
+与类同名的函数是构造函数，<code>~类名</code> 是析构函数（RAII）：</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">类.cn</span><span class="码窗-徽">CN</span></p>
+<pre><code class="language-cn">类 动物 {
+公开:
+    字符串 名称;
+    虚拟 函数 叫声() -&gt; 字符串 {
+        返回 "...";
+    }
+保护:
+    整32 年龄;
+私有:
+    整32 内部ID;
+}</code></pre></div>
+
+<h2 id="继承与重写">继承与重写</h2>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">继承.cn</span><span class="码窗-徽">CN</span></p>
+<pre><code class="language-cn">类 狗 : 动物 {
+公开:
+    重写 函数 叫声() -&gt; 字符串 {
+        返回 "汪汪";
+    }
+    函数 狗(字符串 名) { 名称 = 名; }
+    函数 ~狗() { /* 析构 */ }
+}
+
+类 子类 : 父类 {
+公开:
+    重写 函数 方法() -&gt; 空类型 {
+        自身.字段 = 10;    // 访问自身成员
+        父类.方法();       // 调用父类方法
+    }
+}</code></pre></div>
+<p>接口实现语法为 <code>类 名 : 接口名</code>；单一实现的接口调用会去虚拟化直连，
+多实现走运行时虚表分派。</p>
+
+<h2 id="静态成员与常量成员">静态成员与常量成员</h2>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">静态.cn</span><span class="码窗-徽">CN</span></p>
+<pre><code class="language-cn">类 计数器 {
+公开:
+    静态 整32 总数 = 0;
+    函数 计数器() { 总数++; }
+    静态 函数 获取总数() -&gt; 整32 { 返回 总数; }
+}
+// 类外访问：计数器.总数 / 计数器.获取总数()
+
+类 只读包装 {
+    整32 值;
+公开:
+    常量 函数 获取() -&gt; 整32 {   // 承诺不修改成员
+        返回 值;
+    }
+}</code></pre></div>
+
+<h2 id="友元">友元</h2>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">友元.cn</span><span class="码窗-徽">CN</span></p>
+<pre><code class="language-cn">类 账户 {
+私有:
+    整64 余额;
+公开:
+    友元 函数 审计(账户&amp; 账);
+}
+
+函数 审计(账户&amp; 账) -&gt; 整64 {
+    返回 账.余额;    // 友元可访问私有（最小授权，谨慎使用）
+}</code></pre></div>
+
+<h2 id="运算符重载">运算符重载</h2>
+<p>仅限成员函数；左操作数必须是本类实例。可重载集合：
+<code>+ - * / % == != &lt; &gt; &lt;= &gt;= &amp;&amp; || ! &amp; | ^ ~ &lt;&lt; &gt;&gt; [] ()</code>。
+单目无参数、双目单参数：</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">运算符.cn</span><span class="码窗-徽">CN</span></p>
+<pre><code class="language-cn">类 复数 {
+公开:
+    浮64 实部; 浮64 虚部;
+    函数 运算符+(复数 右) -&gt; 复数 {
+        返回 复数{实部 + 右.实部, 虚部 + 右.虚部};
+    }
+}
+复数 c = a + b;    // 调用 运算符+</code></pre></div>
+
+<h2 id="泛型类">泛型类</h2>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">泛型类.cn</span><span class="码窗-徽">CN</span></p>
+<pre><code class="language-cn">泛型 &lt;类型 T&gt;
+类 向量 {
+私有:
+    T* 数据;
+    整64 长度;
+公开:
+    函数 推入(T 值) { /* … */ }
+    函数 获取(整64 索引) -&gt; T { 返回 数据[索引]; }
+}
+向量&lt;整32&gt; 列表 = 向量&lt;整32&gt;();
+// 类型参数可约束为接口：泛型 &lt;类型 T : 接口名&gt;</code></pre></div>
+
+      <nav class="页脚导航"><a href="functions.html"><span class="向">← 上一页</span><span class="题">函数</span></a><a class="下一" href="errors.html"><span class="向">下一页 →</span><span class="题">错误处理</span></a></nav>
+    </article>
+    <aside class="目录" aria-label="本页目录">
+      <p class="目录-题">本页目录</p>
+      
+<a href="#类定义">类定义与访问控制</a>
+<a href="#继承与重写">继承与重写</a>
+<a href="#静态成员与常量成员">静态成员与常量成员</a>
+<a href="#友元">友元</a>
+<a href="#运算符重载">运算符重载</a>
+<a href="#泛型类">泛型类</a>
+
+    </aside>
+  </div>
+</main>
+
+<footer class="页脚">
+  <div class="容器">
+    <div class="页脚-排">
+      <div>
+        <p class="页脚-标语">CN<span style="color: var(--color-accent);">·</span>语言</p>
+        <p class="页脚-述">全中文语法的系统级编程语言。以母语的直觉，驾驭机器的全部性能。</p>
+      </div>
+      <div>
+        <h4>语言</h4>
+        <ul>
+          <li><a href=".././">官方文档</a></li>
+          <li><a href="../getting-started.html">快速开始</a></li>
+          <li><a href="../reference/">语言参考</a></li>
+          <li><a href="../stdlib.html">标准库</a></li>
+        </ul>
+      </div>
+      <div>
+        <h4>项目</h4>
+        <ul>
+          <li><a href="https://gitcode.com/ChenChao_GitCode/CN_Language" target="_blank" rel="noopener">源码仓库 ↗</a></li>
+          <li><a href="../../os/">CN-OS 蓝图</a></li>
+          <li><a href="../cli.html">命令行参考</a></li>
+        </ul>
+      </div>
+      <div>
+        <h4>状态</h4>
+        <ul>
+          <li>自举固定点已达成</li>
+          <li>v2 自举重建进行中</li>
+          <li>license：见仓库</li>
+        </ul>
+      </div>
+    </div>
+    <div class="页脚-底">
+      <span>© 2026 CN 语言项目</span>
+      <span>京ICP备00000000号（备案办理中·占位）</span>
+    </div>
+  </div>
+</footer>
+
+<script src="../../assets/cn-highlight.js?v=1"></script>
+<script src="../../assets/site.js?v=2"></script>
+</body>
+</html>

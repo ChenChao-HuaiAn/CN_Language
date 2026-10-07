@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>语法基础 · CN 语言</title>
+<meta name="description" content="CN 语言语法基础教程：变量、类型、函数、控制流、结构体与枚举。">
+<script>
+  (function () {
+    try {
+      var t = localStorage.getItem("cn-theme");
+      if (t === "dark" || t === "light") document.documentElement.setAttribute("data-theme", t);
+    } catch (e) {}
+  })();
+</script>
+<link rel="stylesheet" href="../assets/tokens.css?v=2">
+<link rel="stylesheet" href="../assets/site.css?v=3">
+</head>
+<body>
+
+<header class="顶栏">
+  <div class="容器 顶栏-内">
+    <a class="标识" href="../">CN<span class="标识-点">·</span>语言</a>
+    <button class="导航-开关" data-导航钮 aria-expanded="false">菜单</button>
+    <nav class="导航" aria-label="站点导航">
+      <a href="../">首页</a>
+      <a href="./" aria-current="page">文档</a>
+      <a href="./getting-started.html">快速开始</a>
+      <a href="./reference/">语言参考</a>
+      <a href="../os/">CN-OS</a>
+      <a href="https://gitcode.com/ChenChao_GitCode/CN_Language" target="_blank" rel="noopener">源码 ↗</a>
+      <button class="主题钮" data-主题钮 aria-label="切换主题">月</button>
+    </nav>
+  </div>
+</header>
+
+<main class="容器">
+  <div class="文档骨架">
+    <aside class="侧栏" aria-label="文档导航">
+      <div class="侧栏-组">
+        <p class="侧栏-组题">入门</p>
+        <a href="./">文档总览</a>
+        <a href="./getting-started.html">快速开始</a>
+      </div>
+      <div class="侧栏-组">
+        <p class="侧栏-组题">教程</p>
+        <a href="./tutorial-syntax.html" aria-current="page">语法基础</a>
+        <a href="./tutorial-oop.html">类与泛型</a>
+        <a href="./tutorial-safety.html">安全与并发</a>
+      </div>
+      <div class="侧栏-组">
+        <p class="侧栏-组题">语言参考</p>
+        <a href="./reference/">参考总览</a>
+        <a href="./reference/lexical.html">词法结构</a>
+        <a href="./reference/types.html">类型系统</a>
+        <a href="./reference/control-flow.html">控制流</a>
+        <a href="./reference/functions.html">函数</a>
+        <a href="./reference/oop.html">类与对象</a>
+        <a href="./reference/errors.html">错误处理</a>
+        <a href="./reference/concurrency.html">并发</a>
+        <a href="./reference/modules.html">模块系统</a>
+      </div>
+      <div class="侧栏-组">
+        <p class="侧栏-组题">资源</p>
+        <a href="./stdlib.html">标准库</a>
+        <a href="./cli.html">命令行参考</a>
+      </div>
+    </aside>
+
+    <article class="正文">
+      <nav class="面包屑" aria-label="面包屑"><a href="./">文档</a> / 教程 / 语法基础</nav>
+      <h1>语法基础</h1>
+      <p style="color: var(--color-fg-muted); font-size: var(--text-lg); line-height: 2;">
+        这一章带你走完 CN 的地基：变量、类型、函数、控制流和结构体。
+        会中文就会读 CN 代码——这门语言的关键字只有 46 个。</p>
+
+      <h2 id="程序结构">程序结构</h2>
+      <p>一个 CN 程序由顶层声明组成（函数、结构体、枚举、类、导入等），
+      入口是 <code>主</code> 函数：</p>
+      <div class="码窗">
+        <p class="码窗-顶"><span class="码窗-名">程序结构.cn</span><span class="码窗-徽">CN</span></p>
+        <pre><code class="language-cn">// 顶层声明……
+导入 容器::向量;          // 导入标准库容器
+
+函数 主() -&gt; 整32 {       // 入口函数
+    打印("你好");         // 语句以分号结尾
+    返回 0;               // 返回 0 表示成功
+}</code></pre>
+      </div>
+      <p>注释与 C 家族一致：<code>//</code> 行注释、<code>/* */</code> 块注释。
+      每条语句以分号 <code>;</code> 结束。</p>
+
+      <h2 id="变量与常量">变量与常量</h2>
+      <p>用 <code>变量</code> 声明变量。类型可推断，也可显式标注；
+      <code>常量</code> 声明不可变绑定；<code>静态</code> 声明静态变量：</p>
+      <div class="码窗">
+        <p class="码窗-顶"><span class="码窗-名">变量.cn</span><span class="码窗-徽">CN</span></p>
+        <pre><code class="language-cn">函数 主() -&gt; 整32 {
+    变量 x = 10;          // 类型推断：整32
+    整数 y = 20;          // 显式类型（整数 = 整32 的别名）
+    整32 z = 30;          // 位宽类型
+    浮64 比例 = 0.5;      // 64 位浮点
+    布尔 开关 = 真;        // 布尔：真 / 假
+    常量 PI = 3.14;       // 常量：不可重新赋值
+    静态 整32 计数 = 0;   // 静态变量
+
+    字符串 名字 = "小明";  // 字符串
+    字符 首字 = '小';      // 字符（Unicode，4 字节）
+
+    打印(x, y, z, 比例, 开关, PI, 名字, 首字);
+    返回 0;
+}</code></pre>
+      </div>
+
+      <h2 id="基本类型">基本类型</h2>
+      <p>CN 的整数类型精确到位宽，命名即文档：</p>
+      <table class="表">
+        <thead><tr><th>类别</th><th>类型</th><th>说明</th></tr></thead>
+        <tbody>
+          <tr><td>默认别名</td><td><code>整数</code>（=整32）、<code>小数</code>（=浮64）</td><td>日常使用</td></tr>
+          <tr><td>有符号整数</td><td><code>整8</code> <code>整16</code> <code>整32</code> <code>整64</code> <code>整128</code></td><td>1~16 字节</td></tr>
+          <tr><td>无符号整数</td><td><code>正8</code> <code>正16</code> <code>正32</code> <code>正64</code> <code>正128</code></td><td>非负整数</td></tr>
+          <tr><td>浮点</td><td><code>浮32</code> <code>浮64</code></td><td>IEEE 754</td></tr>
+          <tr><td>其他</td><td><code>布尔</code> <code>字符</code> <code>字符串</code> <code>空类型</code></td><td>字符为 Unicode 标量</td></tr>
+        </tbody>
+      </table>
+      <p>还有复合类型：指针 <code>类型*</code>、数组、结构体、枚举、联合体、
+      函数指针，以及错误处理专用的 <code>结果&lt;T, E&gt;</code> 与 <code>可选&lt;T&gt;</code>
+      （见<a href="./tutorial-safety.html">安全与并发</a>）。</p>
+
+      <h2 id="函数">函数</h2>
+      <p><code>函数</code> 声明函数，参数写「类型 名字」，返回类型跟在 <code>-&gt;</code> 后：</p>
+      <div class="码窗">
+        <p class="码窗-顶"><span class="码窗-名">函数.cn</span><span class="码窗-徽">CN</span></p>
+        <pre><code class="language-cn">函数 加(整32 a, 整32 b) -&gt; 整32 {
+    返回 a + b;
+}
+
+// 无返回值可省略 -> 类型
+函数 打印问候() {
+    打印行("你好");
+}
+
+// 默认参数
+函数 问候(字符串 名字 = "世界") {
+    打印行("你好，" + 名字);
+}
+
+// 引用参数：T& 写穿到调用方
+函数 交换(整32&amp; a, 整32&amp; b) -&gt; 空类型 {
+    整32 临时 = a;
+    a = b;
+    b = 临时;
+}
+
+// 重载：同名函数按参数类型与个数区分
+函数 最大值(整32 a, 整32 b) -&gt; 整32 { 如果 a &gt; b { 返回 a; } 返回 b; }
+函数 最大值(浮64 a, 浮64 b) -&gt; 浮64 { 如果 a &gt; b { 返回 a; } 返回 b; }
+
+函数 主() -&gt; 整32 {
+    问候();           // 你好，世界
+    问候("张三");     // 你好，张三
+    整32 x = 1;
+    整32 y = 2;
+    交换(x, y);       // x=2, y=1
+    打印(加(1, 2), 最大值(x, y));
+    返回 0;
+}</code></pre>
+      </div>
+      <p>还有 lambda（匿名函数）：</p>
+      <div class="码窗">
+        <p class="码窗-顶"><span class="码窗-名">lambda.cn</span><span class="码窗-徽">CN</span></p>
+        <pre><code class="language-cn">函数 主() -&gt; 整32 {
+    变量 加倍 = [](整32 v) -&gt; 整32 { 返回 v * 2; };
+    打印(加倍(21));   // 42
+    返回 0;
+}</code></pre>
+      </div>
+
+      <h2 id="控制流">控制流</h2>
+      <p>五大控制流，全部中文关键字。条件的括号可写可不写：</p>
+      <div class="码窗">
+        <p class="码窗-顶"><span class="码窗-名">控制流.cn</span><span class="码窗-徽">CN</span></p>
+        <pre><code class="language-cn">函数 主() -&gt; 整32 {
+    // 如果 / 否则
+    整32 x = -5;
+    如果 x &gt; 0 {
+        打印行("正数");
+    } 否则 如果 x &lt; 0 {
+        打印行("负数");
+    } 否则 {
+        打印行("零");
+    }
+
+    // 当循环
+    整数 i = 0;
+    当 i &lt; 3 {
+        打印行(i);    // 0 1 2
+        i++;
+    }
+
+    // 循环（C 的 for 风格）
+    循环 (整32 j = 0; j &lt; 3; j++) {
+        打印行(j);    // 0 1 2
+    }
+
+    // 选择（switch 风格，支持字符串与多值分组）
+    字符串 命令 = "开始";
+    选择 (命令) {
+        情况 "开始", "继续":
+            打印行("执行");
+            中断
+        默认:
+            打印行("未知");
+    }
+
+    // 遍历……中每个（range-for）
+    循环 (整32 k = 0; k &lt; 5; k++) {
+        如果 k % 2 == 0 { 继续; }   // 跳过偶数
+        如果 k &gt; 3 { 中断; }        // 提前退出
+        打印行(k);    // 1 3
+    }
+    返回 0;
+}</code></pre>
+      </div>
+
+      <h2 id="结构体与枚举">结构体与枚举</h2>
+      <p>结构体把数据打包；构造字面量用 <code>类型{ 字段 = 值 }</code>（字段穷举）：</p>
+      <div class="码窗">
+        <p class="码窗-顶"><span class="码窗-名">结构体.cn</span><span class="码窗-徽">CN</span></p>
+        <pre><code class="language-cn">结构体 点 {
+    浮64 x;
+    浮64 y;
+}
+
+枚举 颜色 {
+    红,
+    绿,
+    蓝,
+    自定义 = 100   // 可指定底层值
+}
+
+函数 主() -&gt; 整32 {
+    点 原点 = 点{ x = 0.0, y = 0.0 };
+    点 目标 = 点{ x = 3.0, y = 4.0 };
+    浮64 距离平方 = (目标.x - 原点.x) * (目标.x - 原点.x)
+                 + (目标.y - 原点.y) * (目标.y - 原点.y);
+    打印("距离平方: ", 距离平方);   // 25
+
+    颜色 c = 颜色.蓝;
+    选择 (c) {
+        情况 红:   { 打印行("红色"); }
+        情况 蓝:   { 打印行("蓝色"); }
+        默认:      { 打印行("其他色"); }
+    }
+    返回 0;
+}</code></pre>
+      </div>
+
+      <h2 id="练一练">练一练</h2>
+      <p>写一个程序：声明一个 <code>整32[5]</code> 数组，用 <code>循环</code> 填入 1~5 的平方，
+      再用 <code>遍历</code> 求和打印。写完用 <code>cn check 练习.cn</code> 检查，再
+      <code>cn run</code> 运行。</p>
+
+      <div class="批注">
+        <span class="批注-题">下一章预告</span>
+        数据有了形状，接下来给它行为：<a href="./tutorial-oop.html">类与泛型</a>——
+        面向对象、接口多态，以及编译期单态化的泛型容器。</div>
+
+      <nav class="页脚导航">
+        <a href="./getting-started.html">
+          <span class="向">← 上一页</span>
+          <span class="题">快速开始</span>
+        </a>
+        <a class="下一" href="./tutorial-oop.html">
+          <span class="向">下一页 →</span>
+          <span class="题">类与泛型</span>
+        </a>
+      </nav>
+    </article>
+
+    <aside class="目录" aria-label="本页目录">
+      <p class="目录-题">本页目录</p>
+      <a href="#程序结构">程序结构</a>
+      <a href="#变量与常量">变量与常量</a>
+      <a href="#基本类型">基本类型</a>
+      <a href="#函数">函数</a>
+      <a href="#控制流">控制流</a>
+      <a href="#结构体与枚举">结构体与枚举</a>
+      <a href="#练一练">练一练</a>
+    </aside>
+  </div>
+</main>
+
+<footer class="页脚">
+  <div class="容器">
+    <div class="页脚-排">
+      <div>
+        <p class="页脚-标语">CN<span style="color: var(--color-accent);">·</span>语言</p>
+        <p class="页脚-述">全中文语法的系统级编程语言。以母语的直觉，驾驭机器的全部性能。</p>
+      </div>
+      <div>
+        <h4>语言</h4>
+        <ul>
+          <li><a href="./">官方文档</a></li>
+          <li><a href="./getting-started.html">快速开始</a></li>
+          <li><a href="./reference/">语言参考</a></li>
+          <li><a href="./stdlib.html">标准库</a></li>
+        </ul>
+      </div>
+      <div>
+        <h4>项目</h4>
+        <ul>
+          <li><a href="https://gitcode.com/ChenChao_GitCode/CN_Language" target="_blank" rel="noopener">源码仓库 ↗</a></li>
+          <li><a href="../os/">CN-OS 蓝图</a></li>
+          <li><a href="./cli.html">命令行参考</a></li>
+        </ul>
+      </div>
+      <div>
+        <h4>状态</h4>
+        <ul>
+          <li>自举固定点已达成</li>
+          <li>v2 自举重建进行中</li>
+          <li>license：见仓库</li>
+        </ul>
+      </div>
+    </div>
+    <div class="页脚-底">
+      <span>© 2026 CN 语言项目</span>
+      <span>京ICP备00000000号（备案办理中·占位）</span>
+    </div>
+  </div>
+</footer>
+
+<script src="../assets/cn-highlight.js?v=1"></script>
+<script src="../assets/site.js?v=2"></script>
+</body>
+</html>

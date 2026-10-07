@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CN-OS · 以一门语言，写一台操作系统</title>
+<meta name="description" content="CN-OS：以 CN 语言全栈实现的语言级内存安全混合内核操作系统。混合内核、RISC-V 64 首发、POSIX 源级兼容、执行域静态检查。">
+<script>
+  (function () {
+    try {
+      var t = localStorage.getItem("cn-theme");
+      if (t === "dark" || t === "light") document.documentElement.setAttribute("data-theme", t);
+    } catch (e) {}
+  })();
+</script>
+<link rel="stylesheet" href="../assets/tokens.css?v=2">
+<link rel="stylesheet" href="../assets/site.css?v=3">
+</head>
+<body>
+
+<header class="顶栏">
+  <div class="容器 顶栏-内">
+    <a class="标识" href="../">CN<span class="标识-点">·</span>语言</a>
+    <button class="导航-开关" data-导航钮 aria-expanded="false">菜单</button>
+    <nav class="导航" aria-label="站点导航">
+      <a href="../">首页</a>
+      <a href="../docs/">文档</a>
+      <a href="../docs/getting-started.html">快速开始</a>
+      <a href="../docs/reference/">语言参考</a>
+      <a href="./" aria-current="page">CN-OS</a>
+      <a href="https://gitcode.com/ChenChao_GitCode/CN_Language" target="_blank" rel="noopener">源码 ↗</a>
+      <button class="主题钮" data-主题钮 aria-label="切换主题">月</button>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <!-- 英雄 -->
+  <section class="英雄">
+    <p class="竖排" aria-hidden="true">是目标亦是验收</p>
+    <div class="容器">
+      <div class="英雄-网格 入场">
+        <div>
+          <p class="眉题">操作系统总蓝图 · 立卷于 2026-10</p>
+          <h1 class="英雄-题">CN-OS：<br>以一门语言，<br>写一台操作系统。</h1>
+          <p class="英雄-副">「CN-OS 是目标，CN 语言是手段。」
+          以 CN 语言全栈实现——内核、系统服务、运行时、应用框架，
+          零 C/C++ 代码——的语言级内存安全、高性能混合内核操作系统。</p>
+          <div class="行动排">
+            <a class="钮 钮-主" href="../docs/getting-started.html">先学会这门语言</a>
+            <a class="钮 钮-次" href="#路线图">看九阶段路线图</a>
+          </div>
+        </div>
+        <div>
+          <div class="批注" style="margin-block: 0 var(--space-6);">
+            <span class="批注-题">为什么需要一门新语言？</span>
+            用 C 写内核，内存安全靠纪律；用 Rust 写内核，要和借用检查器搏斗。
+            CN 的答案：安全不必以妥协表达力为代价——语言为操作系统而生，
+            操作系统为语言验收。</div>
+          <div class="码窗">
+            <p class="码窗-顶"><span class="码窗-名">四句话哲学</span><span class="码窗-徽">CN</span></p>
+            <pre><code class="language-cn">① 默认路径零规则——正常写代码，无需标注
+② 显式 转移() ——想要性能，显式交接
+③ 危险面收口 不安全 ——底层操作有边界
+④ 拷贝消除是编译器义务——抽象零成本</code></pre>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 四裁决 -->
+  <section class="节">
+    <div class="容器">
+      <header class="节-头">
+        <span class="节-号">壹</span>
+        <h2 class="节-题">四项裁决</h2>
+        <p class="节-述">蓝图立卷时一锤定音的四个根本决定。</p>
+      </header>
+      <div class="性格">
+        <div class="性格-格">
+          <span class="性格-号">壹</span>
+          <h3 class="性格-题">混合内核</h3>
+          <p class="性格-述">内核态性能与用户态弹性之间取平衡：核心服务内核态常驻，
+          其余以系统服务进程运行——崩溃隔离，不连坐。</p>
+        </div>
+        <div class="性格-格">
+          <span class="性格-号">贰</span>
+          <h3 class="性格-题">RISC-V 64 首发</h3>
+          <p class="性格-述">开放指令集无历史包袱，QEMU 即可全系统仿真起步；
+          多 ISA 支持在阶段 8 展开。</p>
+        </div>
+        <div class="性格-格">
+          <span class="性格-号">叁</span>
+          <h3 class="性格-题">POSIX 源级兼容</h3>
+          <p class="性格-述">既有 Unix 软件经源级适配即可迁移——生态不是从零开始，
+          而是站在四十年积累之上。</p>
+        </div>
+        <div class="性格-格">
+          <span class="性格-号">肆</span>
+          <h3 class="性格-题">执行域静态检查</h3>
+          <p class="性格-述">「在中断上下文调用睡眠函数」= 编译错误。
+          操作系统语义进入类型检查——超越常规语言的编译器-OS 协同点。</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 路线图 -->
+  <section class="节" id="路线图">
+    <div class="容器">
+      <header class="节-头">
+        <span class="节-号">贰</span>
+        <h2 class="节-题">九阶段路线图</h2>
+        <p class="节-述">从编译器到全场景操作系统——阶段 0 正在进行。</p>
+      </header>
+      <table class="表">
+        <thead><tr><th>阶段</th><th>目标</th><th>状态</th></tr></thead>
+        <tbody>
+          <tr><td>0</td><td>编译器自举双目标（性能超 C++ · 安全近 Rust）</td><td><span class="签">进行中</span></td></tr>
+          <tr><td>1</td><td>裸机语言基建（无运行时、内联汇编、启动契约）</td><td class="表-待">待启动</td></tr>
+          <tr><td>2</td><td>最小内核（CN-Kernel：启动、中断、串口）</td><td class="表-待">待启动</td></tr>
+          <tr><td>3</td><td>调度与内存管理</td><td class="表-待">待启动</td></tr>
+          <tr><td>4</td><td>IPC 与 capability</td><td class="表-待">待启动</td></tr>
+          <tr><td>5</td><td>VFS 与 CNFS 文件系统</td><td class="表-待">待启动</td></tr>
+          <tr><td>6</td><td>网络栈与 POSIX 兼容层</td><td class="表-待">待启动</td></tr>
+          <tr><td>7</td><td>应用框架</td><td class="表-待">待启动</td></tr>
+          <tr><td>8</td><td>分布式、图形、多 ISA</td><td class="表-待">待启动</td></tr>
+        </tbody>
+      </table>
+      <div class="批注 批注-赭">
+        <span class="批注-题">提案声明</span>
+        蓝图中的设计示例均标注「提案示意·未立法」——在语言规范（唯一权威）吸收之前，
+        它们不具有语法效力。本页只呈现已裁决的愿景与路线，不呈现未立法代码。</div>
+    </div>
+  </section>
+
+  <!-- CTA -->
+  <section class="节">
+    <div class="容器" style="text-align: start;">
+      <div class="英雄-网格" style="align-items: center;">
+        <div>
+          <span class="节-号">叁</span>
+          <h2 class="节-题" style="margin-block-end: var(--space-4);">操作系统从一行 Hello World 开始</h2>
+          <p style="color: var(--color-fg-muted); line-height: 1.95;">
+          CN-OS 的每一步都踩在 CN 语言的能力上。今天先在用户态把语言学会——
+          明天我们一起写内核。</p>
+        </div>
+        <div class="行动排">
+          <a class="钮 钮-主" href="../docs/getting-started.html">五分钟上手 CN</a>
+          <a class="钮 钮-次" href="../">回到语言主页</a>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="页脚">
+  <div class="容器">
+    <div class="页脚-排">
+      <div>
+        <p class="页脚-标语">CN-OS</p>
+        <p class="页脚-述">以 CN 语言全栈实现的、语言级内存安全的高性能混合内核操作系统。</p>
+      </div>
+      <div>
+        <h4>语言</h4>
+        <ul>
+          <li><a href="../docs/">官方文档</a></li>
+          <li><a href="../docs/getting-started.html">快速开始</a></li>
+          <li><a href="../docs/reference/">语言参考</a></li>
+          <li><a href="../docs/stdlib.html">标准库</a></li>
+        </ul>
+      </div>
+      <div>
+        <h4>项目</h4>
+        <ul>
+          <li><a href="https://gitcode.com/ChenChao_GitCode/CN_Language" target="_blank" rel="noopener">源码仓库 ↗</a></li>
+          <li><a href="../">CN 语言主页</a></li>
+          <li><a href="../docs/cli.html">命令行参考</a></li>
+        </ul>
+      </div>
+      <div>
+        <h4>状态</h4>
+        <ul>
+          <li>阶段 0 · 自举进行中</li>
+          <li>蓝图已立卷</li>
+          <li>四裁决已定</li>
+        </ul>
+      </div>
+    </div>
+    <div class="页脚-底">
+      <span>© 2026 CN 语言项目</span>
+      <span>京ICP备00000000号（备案办理中·占位）</span>
+    </div>
+  </div>
+</footer>
+
+<style>
+.表-待 { color: var(--color-fg-subtle); }
+</style>
+<script src="../assets/cn-highlight.js?v=1"></script>
+<script src="../assets/site.js?v=2"></script>
+</body>
+</html>

@@ -1,0 +1,172 @@
+/* ============================================================
+   CN 语言官网 · 设计 token（墨韵双主题）
+   语义层契约：组件只读语义名（--color-、--space-、--text-、
+   --radius- 等系列），禁止硬编码。暗色只重绑语义名（调 L/C，非反转）。
+   ============================================================ */
+
+:root {
+  color-scheme: light;
+
+  /* ── 墨韵·浅色（宣纸）────────────────────────────── */
+  --color-bg:           oklch(0.975 0.006 85);   /* 宣纸白（微暖） */
+  --color-bg-subtle:    oklch(0.952 0.008 85);   /* 沉井（代码块底） */
+  --color-surface:      oklch(0.990 0.004 85);   /* 卡面 */
+  --color-surface-2:    oklch(0.952 0.008 85);   /* 浮起面（菜单） */
+  --color-fg:           oklch(0.24  0.014 85);   /* 墨黑 */
+  --color-fg-muted:     oklch(0.42  0.014 85);   /* 次级墨 */
+  --color-fg-subtle:    oklch(0.56  0.012 85);   /* 淡墨（注释/提示） */
+  --color-border:        oklch(0.885 0.012 85);
+  --color-border-subtle: oklch(0.930 0.008 85);
+
+  --color-accent:       oklch(0.50  0.165 30);   /* 朱砂 */
+  --color-accent-fg:    oklch(0.985 0.006 85);
+  --color-accent-hover: oklch(0.42  0.170 30);
+  --color-accent-soft:  oklch(0.94  0.030 30);   /* 朱砂淡底（标签/批注底） */
+
+  --color-success:      oklch(0.52  0.105 155);  /* 竹绿 */
+  --color-warning:      oklch(0.55  0.115 70);   /* 赭石 */
+  --color-danger:       oklch(0.46  0.185 25);   /* 绯红 */
+  --color-ring:         var(--color-accent);
+
+  /* ── 代码高亮（纸面批注色）───────────────────────── */
+  --code-kw:   oklch(0.50 0.165 30);    /* 关键字=朱砂 */
+  --code-typ:  oklch(0.48 0.105 70);    /* 类型=赭石 */
+  --code-str:  oklch(0.46 0.095 155);   /* 字符串=竹绿 */
+  --code-num:  oklch(0.46 0.085 262);   /* 数字=青墨 */
+  --code-fn:   oklch(0.30 0.050 262);   /* 函数=墨青 */
+  --code-cmt:  oklch(0.52 0.010 85);    /* 注释=淡墨 */
+  --code-punc: oklch(0.40 0.012 85);
+
+  /* ── 空间（8pt 系）──────────────────────────────── */
+  --space-1: 0.25rem;  --space-2: 0.5rem;   --space-3: 0.75rem;
+  --space-4: 1rem;     --space-5: 1.25rem;  --space-6: 1.5rem;
+  --space-8: 2rem;     --space-10: 2.5rem;  --space-12: 3rem;
+  --space-16: 4rem;    --space-20: 5rem;    --space-24: 6rem;
+
+  /* ── 圆角（刻意层级，非处处 16px）────────────────── */
+  --radius-sm: 0.25rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+
+  /* ── 字体（三轨系统栈·CJK 零外链策略）────────────── */
+  --font-display: "Source Han Serif SC", "Noto Serif CJK SC", "Songti SC",
+                  "STSong", "SimSun", "Noto Serif SC", serif;
+  --font-body: "Source Han Sans SC", "Noto Sans CJK SC", "PingFang SC",
+               "Microsoft YaHei", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "Cascadia Code", "JetBrains Mono", "Sarasa Mono SC",
+               Consolas, "Courier New", "Microsoft YaHei", monospace;
+
+  /* ── 字号（流式 clamp·rem 项保缩放可达性）────────── */
+  --text-xs:   clamp(0.75rem,  0.72rem + 0.15vw, 0.83rem);
+  --text-sm:   clamp(0.875rem, 0.84rem + 0.18vw, 0.95rem);
+  --text-base: clamp(1rem,     0.93rem + 0.30vw, 1.125rem);
+  --text-lg:   clamp(1.125rem, 1.02rem + 0.52vw, 1.35rem);
+  --text-xl:   clamp(1.35rem,  1.20rem + 0.75vw, 1.62rem);
+  --text-2xl:  clamp(1.62rem,  1.40rem + 1.10vw, 2.05rem);
+  --text-3xl:  clamp(1.95rem,  1.64rem + 1.55vw, 2.60rem);
+  --text-4xl:  clamp(2.34rem,  1.90rem + 2.20vw, 3.30rem);
+  --text-5xl:  clamp(2.80rem,  2.18rem + 3.10vw, 4.20rem);
+
+  /* ── 行高/字距（随字号收紧）──────────────────────── */
+  --leading-none: 1;
+  --leading-tight: 1.18;
+  --leading-snug: 1.35;
+  --leading-body: 1.85;          /* 中文正文 1.6~1.9 */
+  --tracking-tight: -0.01em;
+  --tracking-normal: 0;
+  --tracking-wide: 0.05em;       /* 眉题/标签 */
+
+  /* ── 阴影（细线为主·层叠低透明辅之）──────────────── */
+  --shadow-sm: 0 1px 2px -1px oklch(0.24 0.014 85 / 0.08),
+               0 1px 1px oklch(0.24 0.014 85 / 0.04);
+  --shadow-md: 0 2px 4px -2px oklch(0.24 0.014 85 / 0.10),
+               0 6px 16px -4px oklch(0.24 0.014 85 / 0.08);
+  --shadow-lg: 0 4px 8px -3px oklch(0.24 0.014 85 / 0.10),
+               0 16px 32px -8px oklch(0.24 0.014 85 / 0.10);
+
+  /* ── 动效（选定缓动+时长）───────────────────────── */
+  --ease-out: cubic-bezier(0.2, 0, 0, 1);
+  --ease-spring: linear(0, 0.006, 0.025, 0.101, 0.539, 0.802, 0.954, 1.041,
+                1.078, 1.085, 1.072, 1.054, 1.034, 1.018, 1.006, 0.999, 1);
+  --dur-fast: 150ms;
+  --dur-base: 250ms;
+  --dur-slow: 400ms;
+
+  --z-nav: 1100;
+}
+
+/* ── 墨玉·暗色（只重绑语义名·朱砂提亮）──────────────── */
+[data-theme="dark"] {
+  color-scheme: dark;
+  --color-bg:           oklch(0.185 0.008 85);
+  --color-bg-subtle:    oklch(0.155 0.008 85);
+  --color-surface:      oklch(0.220 0.009 85);
+  --color-surface-2:    oklch(0.262 0.010 85);
+  --color-fg:           oklch(0.925 0.008 85);
+  --color-fg-muted:     oklch(0.730 0.010 85);
+  --color-fg-subtle:    oklch(0.565 0.010 85);
+  --color-border:        oklch(0.320 0.012 85);
+  --color-border-subtle: oklch(0.262 0.010 85);
+
+  --color-accent:       oklch(0.695 0.150 32);
+  --color-accent-fg:    oklch(0.150 0.008 85);
+  --color-accent-hover: oklch(0.760 0.140 32);
+  --color-accent-soft:  oklch(0.290 0.050 30);
+
+  --color-success:      oklch(0.720 0.120 155);
+  --color-warning:      oklch(0.760 0.130 75);
+  --color-danger:       oklch(0.680 0.170 27);
+
+  --code-kw:   oklch(0.720 0.145 32);
+  --code-typ:  oklch(0.760 0.115 78);
+  --code-str:  oklch(0.720 0.110 155);
+  --code-num:  oklch(0.720 0.095 262);
+  --code-fn:   oklch(0.800 0.060 262);
+  --code-cmt:  oklch(0.565 0.010 85);
+  --code-punc: oklch(0.640 0.012 85);
+
+  --shadow-sm: 0 1px 2px -1px oklch(0 0 0 / 0.40);
+  --shadow-md: 0 2px 4px -2px oklch(0 0 0 / 0.45), 0 6px 16px -4px oklch(0 0 0 / 0.30);
+  --shadow-lg: 0 4px 8px -3px oklch(0 0 0 / 0.50), 0 16px 32px -8px oklch(0 0 0 / 0.35);
+}
+
+/* 尊重系统偏好为默认（无显式 [data-theme] 时） */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]):not([data-theme="dark"]) {
+    color-scheme: dark;
+    --color-bg:           oklch(0.185 0.008 85);
+    --color-bg-subtle:    oklch(0.155 0.008 85);
+    --color-surface:      oklch(0.220 0.009 85);
+    --color-surface-2:    oklch(0.262 0.010 85);
+    --color-fg:           oklch(0.925 0.008 85);
+    --color-fg-muted:     oklch(0.730 0.010 85);
+    --color-fg-subtle:    oklch(0.565 0.010 85);
+    --color-border:        oklch(0.320 0.012 85);
+    --color-border-subtle: oklch(0.262 0.010 85);
+    --color-accent:       oklch(0.695 0.150 32);
+    --color-accent-fg:    oklch(0.150 0.008 85);
+    --color-accent-hover: oklch(0.760 0.140 32);
+    --color-accent-soft:  oklch(0.290 0.050 30);
+    --color-success:      oklch(0.720 0.120 155);
+    --color-warning:      oklch(0.760 0.130 75);
+    --color-danger:       oklch(0.680 0.170 27);
+    --code-kw:   oklch(0.720 0.145 32);
+    --code-typ:  oklch(0.760 0.115 78);
+    --code-str:  oklch(0.720 0.110 155);
+    --code-num:  oklch(0.720 0.095 262);
+    --code-fn:   oklch(0.800 0.060 262);
+    --code-cmt:  oklch(0.565 0.010 85);
+    --code-punc: oklch(0.640 0.012 85);
+  }
+}
+
+/* 全局 reduced-motion 护栏 */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

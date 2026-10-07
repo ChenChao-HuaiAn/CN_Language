@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CN 语言 · 以中文，写系统</title>
+<meta name="description" content="CN 是一门全中文语法的系统级编程语言：性能对齐 C++、安全对标 Rust，三后端代码生成（Win x64 / Linux x86_64 / ARM64），编译器已达自举固定点。">
+<script>
+  (function () {
+    try {
+      var t = localStorage.getItem("cn-theme");
+      if (t === "dark" || t === "light") document.documentElement.setAttribute("data-theme", t);
+    } catch (e) {}
+  })();
+</script>
+<link rel="stylesheet" href="assets/tokens.css?v=1">
+<link rel="stylesheet" href="assets/site.css?v=3">
+</head>
+<body>
+
+<header class="顶栏">
+  <div class="容器 顶栏-内">
+    <a class="标识" href="./">CN<span class="标识-点">·</span>语言</a>
+    <button class="导航-开关" data-导航钮 aria-expanded="false">菜单</button>
+    <nav class="导航" aria-label="站点导航">
+      <a href="./" aria-current="page">首页</a>
+      <a href="docs/">文档</a>
+      <a href="docs/getting-started.html">快速开始</a>
+      <a href="docs/reference/">语言参考</a>
+      <a href="os/">CN-OS</a>
+      <a href="https://gitcode.com/ChenChao_GitCode/CN_Language" target="_blank" rel="noopener">源码 ↗</a>
+      <button class="主题钮" data-主题钮 aria-label="切换主题">月</button>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <!-- 英雄区：不对称双栏，代码即主角 -->
+  <section class="英雄">
+    <p class="竖排" aria-hidden="true">以中文写系统</p>
+    <div class="容器">
+      <div class="英雄-网格 入场">
+        <div>
+          <p class="眉题">系统级编程语言 · 自举进行中</p>
+          <h1 class="英雄-题">以中文，<br>写系统。</h1>
+          <p class="英雄-副">CN 是一门全中文语法的系统级编程语言：性能对齐 C++，
+          安全对标 Rust——悬垂、越界、泄漏零容忍。编译器从零实现，
+          已达成自编译固定点。</p>
+          <div class="行动排">
+            <a class="钮 钮-主" href="docs/getting-started.html">五分钟上手</a>
+            <a class="钮 钮-次" href="docs/">阅读文档</a>
+            <a href="https://gitcode.com/ChenChao_GitCode/CN_Language" target="_blank" rel="noopener">源码仓库 →</a>
+          </div>
+        </div>
+        <figure class="码窗">
+          <figcaption class="码窗-顶">
+            <span class="码窗-名">交换.cn</span>
+            <span class="码窗-徽">CN</span>
+          </figcaption>
+          <pre><code class="language-cn">// 引用参数实现交换
+函数 交换(整32&amp; a, 整32&amp; b) -&gt; 空类型 {
+    整32 临时 = a;
+    a = b;
+    b = 临时;
+}
+
+函数 主() -&gt; 整32 {
+    整32 x = 1;
+    整32 y = 2;
+    交换(x, y);
+    打印("交换后: ", x, " ", y);  // 2 1
+    返回 0;
+}</code></pre>
+        </figure>
+      </div>
+    </div>
+  </section>
+
+  <!-- 数据条 -->
+  <section class="容器" aria-label="项目数据">
+    <div class="数据条">
+      <div class="数据">
+        <div class="数据-值">1414</div>
+        <div class="数据-名">单元测试 · 全绿</div>
+      </div>
+      <div class="数据">
+        <div class="数据-值">590<span class="单位">+</span></div>
+        <div class="数据-名">E2E 用例 · 双编译对照</div>
+      </div>
+      <div class="数据">
+        <div class="数据-值">3</div>
+        <div class="数据-名">代码生成后端</div>
+      </div>
+      <div class="数据">
+        <div class="数据-值">0</div>
+        <div class="数据-名">构建警告（-Werror）</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 特性 -->
+  <section class="节">
+    <div class="容器">
+      <header class="节-头">
+        <span class="节-号">壹</span>
+        <h2 class="节-题">系统级的能力，母语的表达</h2>
+        <p class="节-述">CN 不是玩具语：它是完整的编译器链路——词法、语法、语义、IR、优化、
+        代码生成，全部从零实现。用你从小写到大的语言，编写真正的系统软件。</p>
+      </header>
+      <div class="性格">
+        <div class="性格-格">
+          <span class="性格-号">壹</span>
+          <h3 class="性格-题">全中文关键字</h3>
+          <p class="性格-述">46 个保留字全部中文：<code>函数</code>、<code>如果</code>、<code>返回</code>。
+          类型精确到位宽——<code>整32</code>、<code>正8</code>、<code>浮64</code>，代码即文档。</p>
+        </div>
+        <div class="性格-格">
+          <span class="性格-号">贰</span>
+          <h3 class="性格-题">三后端代码生成</h3>
+          <p class="性格-述">Win x64（MASM）、Linux x86_64（SysV GAS）、Linux ARM64（GAS）。
+          一份源码，跨平台编译为原生机器码，无解释器、无虚拟机。</p>
+        </div>
+        <div class="性格-格">
+          <span class="性格-号">叁</span>
+          <h3 class="性格-题">编译期安全</h3>
+          <p class="性格-述">显式<code>转移()</code>交接所有权、引用逃逸检查、<code>不安全</code> 区收口——
+          悬垂与越界在编译期拦截，安全纪律对标 Rust 借用检查器。</p>
+        </div>
+        <div class="性格-格">
+          <span class="性格-号">肆</span>
+          <h3 class="性格-题">零成本抽象</h3>
+          <p class="性格-述">最后使用消除（LUE）：拷贝后不再使用的副本自动降级为转移，零拷贝。
+          抽象不付运行时代价，优化器（SSA/内联/DCE）默认开启。</p>
+        </div>
+        <div class="性格-格">
+          <span class="性格-号">伍</span>
+          <h3 class="性格-题">现代类型系统</h3>
+          <p class="性格-述"><code>结果&lt;T, E&gt;</code> 与 <code>可选&lt;T&gt;</code> 强制检查错误，
+          泛型编译期单态化，函数指针、运算符重载、接口多态一应俱全。</p>
+        </div>
+        <div class="性格-格">
+          <span class="性格-号">陆</span>
+          <h3 class="性格-题">并发安全</h3>
+          <p class="性格-述"><code>互斥锁&lt;T&gt;</code> 把锁与受护数据类型化绑定，
+          <code>新线程()</code> 实参须「可搬运」——数据竞争在类型层面设防。</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 语言速览 -->
+  <section class="节">
+    <div class="容器">
+      <header class="节-头">
+        <span class="节-号">贰</span>
+        <h2 class="节-题">三十秒读完一门语言</h2>
+        <p class="节-述">容器、遍历、错误盒——这是 CN 日常样貌（示例取自真实 E2E 测试，
+        编译即所得）。</p>
+      </header>
+      <div class="英雄-网格">
+        <figure class="码窗">
+          <figcaption class="码窗-顶">
+            <span class="码窗-名">速览.cn</span>
+            <span class="码窗-徽">CN</span>
+          </figcaption>
+          <pre><code class="language-cn">导入 容器::向量;
+
+函数 造数据() -&gt; 向量&lt;整32&gt; {
+    向量&lt;整32&gt; 数据 = 向量&lt;整32&gt;();
+    数据.追加(10);
+    数据.追加(20);
+    数据.追加(30);
+    返回 数据;
+}
+
+函数 主() -&gt; 整32 {
+    整32 总和 = 0;
+    遍历 造数据() 中 每个 x {
+        打印("x: ", x);     // x: 10 / 20 / 30
+        总和 = 总和 + x;
+    }
+    打印("总和: ", 总和);   // 总和: 60
+    返回 0;
+}</code></pre>
+        </figure>
+        <div>
+          <h3>看到喜欢的地方了？</h3>
+          <p style="color: var(--color-fg-muted); margin-block: var(--space-4) var(--space-6);">
+          这只是冰山一角。结构体、枚举、类与接口、泛型容器、错误处理
+          <code>?</code> 传播、函数指针、模块系统——文档站带你逐一过一遍，
+          每个示例都能编译运行。</p>
+          <div class="行动排">
+            <a class="钮 钮-主" href="docs/tutorial-syntax.html">从语法基础读起</a>
+            <a class="钮 钮-次" href="docs/reference/">直接看语言参考</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CN-OS 预告 -->
+  <section class="节">
+    <div class="容器">
+      <div class="英雄-网格" style="align-items: start;">
+        <div>
+          <span class="节-号">叁</span>
+          <h2 class="节-题" style="margin-block-end: var(--space-5);">CN-OS：这门语言的终点，是一台操作系统</h2>
+          <p style="color: var(--color-fg-muted); line-height: 1.95;">
+          「CN-OS 是目标，CN 语言是手段。」以 CN 全栈实现（内核、系统服务、运行时、
+          应用框架，零 C/C++ 代码）的语言级内存安全混合内核操作系统。
+          混合内核、RISC-V 64 首发、POSIX 源级兼容、执行域静态检查——
+          四项裁决已定，蓝图九章已绘。</p>
+          <div class="行动排" style="margin-block-start: var(--space-6);">
+            <a class="钮 钮-次" href="os/">读 CN-OS 蓝图 →</a>
+          </div>
+        </div>
+        <div class="批注" style="margin-block: 0;">
+          <span class="批注-题">为什么是一门新语言？</span>
+          用 C 写内核，内存安全靠纪律；用 Rust 写内核，要和借用检查器搏斗。
+          CN 的答案：默认路径零规则、显式 <code>转移()</code> 换性能、
+          危险面收口 <code>不安全</code>、拷贝消除是编译器义务——
+          安全不必以妥协表达力为代价。</div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="页脚">
+  <div class="容器">
+    <div class="页脚-排">
+      <div>
+        <p class="页脚-标语">CN<span style="color: var(--color-accent);">·</span>语言</p>
+        <p class="页脚-述">全中文语法的系统级编程语言。以母语的直觉，驾驭机器的全部性能。</p>
+      </div>
+      <div>
+        <h4>语言</h4>
+        <ul>
+          <li><a href="docs/">官方文档</a></li>
+          <li><a href="docs/getting-started.html">快速开始</a></li>
+          <li><a href="docs/reference/">语言参考</a></li>
+          <li><a href="docs/stdlib.html">标准库</a></li>
+        </ul>
+      </div>
+      <div>
+        <h4>项目</h4>
+        <ul>
+          <li><a href="https://gitcode.com/ChenChao_GitCode/CN_Language" target="_blank" rel="noopener">源码仓库 ↗</a></li>
+          <li><a href="os/">CN-OS 蓝图</a></li>
+          <li><a href="docs/cli.html">命令行参考</a></li>
+        </ul>
+      </div>
+      <div>
+        <h4>状态</h4>
+        <ul>
+          <li>自举固定点已达成</li>
+          <li>v2 自举重建进行中</li>
+          <li>license：见仓库</li>
+        </ul>
+      </div>
+    </div>
+    <div class="页脚-底">
+      <span>© 2026 CN 语言项目</span>
+      <span>京ICP备00000000号（备案办理中·占位）</span>
+    </div>
+  </div>
+</footer>
+
+<script src="assets/cn-highlight.js?v=1"></script>
+<script src="assets/site.js?v=2"></script>
+</body>
+</html>

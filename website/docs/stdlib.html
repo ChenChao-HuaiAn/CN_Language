@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>标准库 · CN 语言</title>
+<meta name="description" content="CN 语言标准库：13 个模块，向量/映射/线程/互斥锁/IO。">
+<script>
+  (function () {
+    try {
+      var t = localStorage.getItem("cn-theme");
+      if (t === "dark" || t === "light") document.documentElement.setAttribute("data-theme", t);
+    } catch (e) {}
+  })()
+</script>
+<link rel="stylesheet" href="../assets/tokens.css?v=2">
+<link rel="stylesheet" href="../assets/site.css?v=3">
+</head>
+<body>
+
+<header class="顶栏">
+  <div class="容器 顶栏-内">
+    <a class="标识" href="./">CN<span class="标识-点">·</span>语言</a>
+    <button class="导航-开关" data-导航钮 aria-expanded="false">菜单</button>
+    <nav class="导航" aria-label="站点导航">
+      <a href="./">首页</a>
+      <a href=".././" aria-current="page">文档</a>
+      <a href="getting-started.html">快速开始</a>
+      <a href="reference/">语言参考</a>
+      <a href="../os/">CN-OS</a>
+      <a href="https://gitcode.com/ChenChao_GitCode/CN_Language" target="_blank" rel="noopener">源码 ↗</a>
+      <button class="主题钮" data-主题钮 aria-label="切换主题">月</button>
+    </nav>
+  </div>
+</header>
+
+<main class="容器">
+  <div class="文档骨架">
+    <aside class="侧栏" aria-label="文档导航">
+      <div class="侧栏-组">
+        <p class="侧栏-组题">入门</p>
+        <a href=".././">文档总览</a>
+        <a href="getting-started.html">快速开始</a>
+      </div>
+      <div class="侧栏-组">
+        <p class="侧栏-组题">教程</p>
+        <a href="tutorial-syntax.html">语法基础</a>
+        <a href="tutorial-oop.html">类与泛型</a>
+        <a href="tutorial-safety.html">安全与并发</a>
+      </div>
+      <div class="侧栏-组">
+        <p class="侧栏-组题">语言参考</p>
+        <a href="reference/">参考总览</a>
+        <a href="reference/lexical.html">词法结构</a>
+        <a href="reference/types.html">类型系统</a>
+        <a href="reference/control-flow.html">控制流</a>
+        <a href="reference/functions.html">函数</a>
+        <a href="reference/oop.html">类与对象</a>
+        <a href="reference/errors.html">错误处理</a>
+        <a href="reference/concurrency.html">并发</a>
+        <a href="reference/modules.html">模块系统</a>
+      </div>
+      <div class="侧栏-组">
+        <p class="侧栏-组题">资源</p>
+        <a href="stdlib.html" aria-current="page">标准库</a>
+        <a href="cli.html">命令行参考</a>
+      </div>
+    </aside>
+    <article class="正文">
+      <nav class="面包屑" aria-label="面包屑"><a href="./">文档</a> / 标准库</nav>
+      
+<h1>标准库</h1>
+<p style="color: var(--color-fg-muted); font-size: var(--text-lg); line-height: 2;">
+13 个模块、全部 CN 语言实现——读标准库源码就是最好的进阶教程。</p>
+
+<table class="表">
+<thead><tr><th>模块</th><th>内容</th></tr></thead>
+<tbody>
+<tr><td><code>核心</code></td><td>错误码枚举、<code>交换</code> / <code>最小</code> / <code>最大</code>（泛型）、断言</td></tr>
+<tr><td><code>容器</code></td><td><code>向量&lt;T&gt;</code> / 链表 / 栈 / 队列（RAII 自动释放）</td></tr>
+<tr><td><code>映射集合</code></td><td><code>映射&lt;K, V&gt;</code> / <code>集合&lt;T&gt;</code></td></tr>
+<tr><td><code>字符串扩展</code></td><td>字符串处理扩展</td></tr>
+<tr><td><code>算法</code></td><td>常用算法</td></tr>
+<tr><td><code>正则</code></td><td>正则表达式（子集实现）</td></tr>
+<tr><td><code>IO</code></td><td><code>读取行</code> / <code>读取整数</code> / <code>读取浮点</code> / 打印到错误</td></tr>
+<tr><td><code>文件</code></td><td>文件读写</td></tr>
+<tr><td><code>线程</code></td><td><code>新线程</code> / <code>并入线程</code> / <code>互斥锁&lt;T&gt;</code></td></tr>
+<tr><td><code>时间</code> / <code>数学</code> / <code>随机数</code></td><td>时间、数学函数、xoshiro256++ 随机数</td></tr>
+<tr><td><code>系统</code></td><td>系统信息</td></tr>
+</tbody>
+</table>
+
+<h2 id="向量">向量&lt;T&gt;：最常用的容器</h2>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">向量.cn</span><span class="码窗-徽">CN</span></p>
+<pre><code class="language-cn">导入 容器::向量;
+
+函数 主() -&gt; 整32 {
+    向量&lt;整64&gt; 表 = 向量&lt;整64&gt;();
+    表.追加(10);                 // 尾部追加（结果&lt;空类型, 整32&gt;）
+    表.追加(32);
+    整64 首 = 表.元素(0);        // 副本读取（快照语义）
+    整64 n = 表.大小();
+
+    // 引用写穿（Rust &amp;v[i] 同款·不安全函数内）
+    // 表.元素引用(0) = 99;
+
+    遍历 表 中 每个 x { 打印(x); }
+    返回 0;
+}</code></pre></div>
+<p>容器访问三形态：<code>元素(i)</code> 副本读取、<code>设置(i, v)</code> 写回、
+<code>元素引用(i)</code> 引用写穿（不安全）。扩容翻倍策略（0→4→×2），析构自动释放底层数组。</p>
+
+<h2 id="映射">映射&lt;K, V&gt;</h2>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">映射.cn</span><span class="码窗-徽">CN</span></p>
+<pre><code class="language-cn">导入 映射集合::映射;
+
+函数 主() -&gt; 整32 {
+    映射&lt;整64, 整64&gt; 字典 = 映射&lt;整64, 整64&gt;();
+    字典.设置(3, 300);
+    结果&lt;整64, 整32&gt; 取 = 字典.获取(3);
+    如果 (取.正常) {
+        打印("字典[3] = ", 取.值);    // 300
+    }
+    返回 0;
+}</code></pre></div>
+
+<h2 id="线程模块">线程模块</h2>
+<p><code>新线程(入口, 实参)</code> / <code>并入线程</code> / <code>互斥锁&lt;T&gt;</code>——
+用法见<a href="reference/concurrency.html">并发参考</a>。</p>
+
+      <nav class="页脚导航"><a href="reference/modules.html"><span class="向">← 上一页</span><span class="题">模块系统</span></a><a class="下一" href="cli.html"><span class="向">下一页 →</span><span class="题">命令行参考</span></a></nav>
+    </article>
+    <aside class="目录" aria-label="本页目录">
+      <p class="目录-题">本页目录</p>
+      
+<a href="#向量">向量&lt;T&gt;</a>
+<a href="#映射">映射&lt;K, V&gt;</a>
+<a href="#线程模块">线程模块</a>
+
+    </aside>
+  </div>
+</main>
+
+<footer class="页脚">
+  <div class="容器">
+    <div class="页脚-排">
+      <div>
+        <p class="页脚-标语">CN<span style="color: var(--color-accent);">·</span>语言</p>
+        <p class="页脚-述">全中文语法的系统级编程语言。以母语的直觉，驾驭机器的全部性能。</p>
+      </div>
+      <div>
+        <h4>语言</h4>
+        <ul>
+          <li><a href=".././">官方文档</a></li>
+          <li><a href="getting-started.html">快速开始</a></li>
+          <li><a href="reference/">语言参考</a></li>
+          <li><a href="stdlib.html">标准库</a></li>
+        </ul>
+      </div>
+      <div>
+        <h4>项目</h4>
+        <ul>
+          <li><a href="https://gitcode.com/ChenChao_GitCode/CN_Language" target="_blank" rel="noopener">源码仓库 ↗</a></li>
+          <li><a href="../os/">CN-OS 蓝图</a></li>
+          <li><a href="cli.html">命令行参考</a></li>
+        </ul>
+      </div>
+      <div>
+        <h4>状态</h4>
+        <ul>
+          <li>自举固定点已达成</li>
+          <li>v2 自举重建进行中</li>
+          <li>license：见仓库</li>
+        </ul>
+      </div>
+    </div>
+    <div class="页脚-底">
+      <span>© 2026 CN 语言项目</span>
+      <span>京ICP备00000000号（备案办理中·占位）</span>
+    </div>
+  </div>
+</footer>
+
+<script src="../assets/cn-highlight.js?v=1"></script>
+<script src="../assets/site.js?v=2"></script>
+</body>
+</html>
