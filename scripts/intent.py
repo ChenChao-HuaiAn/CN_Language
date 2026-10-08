@@ -84,7 +84,10 @@ def 调服务(方法: str, 路径: str, 体=None, 超时=8):
 
 def 上报在飞分支() -> None:
     """把本机看到的远端在飞任务分支上报给看板（尽力而为·失败静默——
-    服务端不持 git 凭据不依赖外网，三机任一活着看板即有在飞数据）。"""
+    服务端不持 git 凭据不依赖外网，三机任一活着看板即有在飞数据）。
+    308e：逐支带「已并入」判定（头提交是 develop 祖先=任务已收口·僵尸分支面；
+    本地 develop 引用过旧只可能误判「未并入」=保守方向安全）；并上报任务字典
+    （号→标题/状态·021 主表+归档全量·看板分支行直接显示任务内容）。"""
     try:
         r = subprocess.run(["git", "ls-remote", "--heads", "gitcode"],
                            capture_output=True, text=True, cwd=仓库根, timeout=30)
@@ -92,7 +95,12 @@ def 上报在飞分支() -> None:
         for 行 in r.stdout.splitlines():
             m = re.match(r"^([0-9a-f]+)\s+refs/heads/(任务/.+)$", 行.strip())
             if m:
-                分支们.append({"分支": m.group(2), "提交": m.group(1)[:10], "时刻": ""})
+                sha = m.group(1)[:10]
+                并入 = subprocess.run(
+                    ["git", "merge-base", "--is-ancestor", sha, "gitcode/develop"],
+                    cwd=仓库根, timeout=15).returncode == 0
+                分支们.append({"分支": m.group(2), "提交": sha, "时刻": "",
+                               "已并入": 并入})
         if 分支们:
             调服务("POST", "/api/report_flights",
                    {"上报者": 机器名(), "分支们": 分支们}, 超时=5)
@@ -104,9 +112,18 @@ def 上报在飞分支() -> None:
                             "--ready", "--json"],
                            capture_output=True, text=True, cwd=仓库根, timeout=60)
         行们 = json.loads(r.stdout).get("就绪们", [])
-        if 行们:
-            调服务("POST", "/api/report_021", {"行们": 行们}, 超时=5)
-    except (OSError, ValueError, subprocess.SubprocessError):
+        # 308e：任务字典（号→标题/状态/优先级·主表+归档全量·看板分支行显示任务内容）
+        import task_board
+        任务们, _表 = task_board.读全表()
+        字典 = {t["号"]: {"标题": t["任务"][:80], "状态": t["状态"],
+                          "优先级": t["优先级"]} for t in 任务们}
+        for t in task_board.读归档任务():
+            字典.setdefault(t["号"], {"标题": t["任务"][:80], "状态": "✅",
+                                      "优先级": t["优先级"]})
+        if 行们 or 字典:
+            调服务("POST", "/api/report_021",
+                   {"行们": 行们, "任务字典": 字典}, 超时=8)
+    except (OSError, ValueError, subprocess.SubprocessError, KeyError):
         pass
 
 

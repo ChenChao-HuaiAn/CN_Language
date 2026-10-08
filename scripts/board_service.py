@@ -59,7 +59,7 @@ def 建库(路径: str = db路径) -> sqlite3.Connection:
     con.execute("""CREATE TABLE IF NOT EXISTS 在飞分支(
         分支 TEXT PRIMARY KEY,
         提交 TEXT, 提交题 TEXT DEFAULT '', 时刻 TEXT,
-        上报者 TEXT, 上报时戳 REAL)""")
+        上报者 TEXT, 上报时戳 REAL, 已并入 INTEGER DEFAULT 0)""")
     con.execute("""CREATE TABLE IF NOT EXISTS 快照(
         键 TEXT PRIMARY KEY,
         内容 TEXT,
@@ -129,10 +129,10 @@ def 交集标注(意图们: list, 在飞们: list) -> None:
 def 全部在飞() -> list:
     门槛 = time.time() - 快照保留秒
     行们 = 连接.execute(
-        "SELECT 分支,提交,提交题,时刻,上报者,上报时戳 FROM 在飞分支 "
+        "SELECT 分支,提交,提交题,时刻,上报者,上报时戳,已并入 FROM 在飞分支 "
         "WHERE 上报时戳>? ORDER BY 分支", (门槛,)).fetchall()
     return [{"分支": r[0], "提交": r[1], "提交题": r[2], "时刻": r[3],
-             "上报者": r[4], "上报时戳": r[5]} for r in 行们]
+             "上报者": r[4], "上报时戳": r[5], "已并入": bool(r[6])} for r in 行们]
 
 
 def 取快照(键: str):
@@ -158,7 +158,8 @@ def 聚合视图() -> dict:
         for 行 in 快照:
             行["疑似认领"] = str(行.get("号", "")) in 在飞号
     return {"意图们": 意图们, "在飞分支们": 在飞们,
-            "快照021": 快照, "冲突们": 冲突检测(意图们),
+            "快照021": 快照, "任务字典": 取快照("任务字典"),
+            "冲突们": 冲突检测(意图们),
             "失联秒": 失联秒, "时刻": 时刻()}
 
 
@@ -261,14 +262,15 @@ class 处理器(BaseHTTPRequestHandler):
                 if not 名.startswith("任务/"):
                     continue
                 连接.execute(
-                    """INSERT INTO 在飞分支(分支,提交,提交题,时刻,上报者,上报时戳)
-                       VALUES(?,?,?,?,?,?)
+                    """INSERT INTO 在飞分支(分支,提交,提交题,时刻,上报者,上报时戳,已并入)
+                       VALUES(?,?,?,?,?,?,?)
                        ON CONFLICT(分支) DO UPDATE SET 提交=excluded.提交,
                        提交题=excluded.提交题, 时刻=excluded.时刻,
-                       上报者=excluded.上报者, 上报时戳=excluded.上报时戳""",
+                       上报者=excluded.上报者, 上报时戳=excluded.上报时戳,
+                       已并入=excluded.已并入""",
                     (名[:120], str(项.get("提交", ""))[:12],
                      str(项.get("提交题", ""))[:160], str(项.get("时刻", ""))[:20],
-                     上报者, 现))
+                     上报者, 现, 1 if 项.get("已并入") else 0))
             连接.execute("DELETE FROM 在飞分支 WHERE 上报时戳<?", (现 - 快照保留秒,))
             连接.commit()
         return self._回JSON(200, {"好": True})
@@ -277,11 +279,20 @@ class 处理器(BaseHTTPRequestHandler):
         行们 = 体.get("行们")
         if not isinstance(行们, list) or len(行们) > 400:
             return self._回JSON(400, {"错误": "行们 须为列表（≤400）"})
+        任务字典 = 体.get("任务字典")
+        if 任务字典 is not None and (not isinstance(任务字典, dict)
+                                     or len(任务字典) > 1000):
+            return self._回JSON(400, {"错误": "任务字典 须为对象（≤1000 号）"})
         with 写锁:
             连接.execute(
                 """INSERT INTO 快照(键,内容,上报时戳) VALUES('021',?,?)
                    ON CONFLICT(键) DO UPDATE SET 内容=excluded.内容, 上报时戳=excluded.上报时戳""",
                 (json.dumps(行们, ensure_ascii=False), time.time()))
+            if 任务字典 is not None:
+                连接.execute(
+                    """INSERT INTO 快照(键,内容,上报时戳) VALUES('任务字典',?,?)
+                       ON CONFLICT(键) DO UPDATE SET 内容=excluded.内容, 上报时戳=excluded.上报时戳""",
+                    (json.dumps(任务字典, ensure_ascii=False), time.time()))
             连接.commit()
         return self._回JSON(200, {"好": True})
 
@@ -372,14 +383,18 @@ h2{font-size:12px;font-weight:600;color:var(--dim);letter-spacing:.14em;margin:0
 .面板{background:var(--surface);border:1px solid var(--border);
  border-radius:var(--radius);box-shadow:var(--shadow);
  padding:var(--space3);margin-bottom:var(--space4)}
-.飞行{display:flex;align-items:baseline;gap:var(--space2);padding:var(--space1) 0;
+.飞行{display:flex;align-items:center;gap:var(--space2);padding:var(--space2) 0;
  border-bottom:1px solid var(--border);font-size:13px}
 .飞行:last-child{border-bottom:0}
+.飞行.僵尸{opacity:.55}
 .飞行 .分支名{font-family:var(--mono);color:var(--fg)}
 .飞行 .题{color:var(--dim);font-size:12px;overflow:hidden;text-overflow:ellipsis;
- white-space:nowrap;flex:1}
-.黄标{font-size:11px;color:var(--warn);white-space:nowrap}
-.绿标{font-size:11px;color:var(--ok);white-space:nowrap}
+ margin-top:1px}
+.黄标{font-size:11px;color:var(--warn);white-space:nowrap;align-self:center}
+.绿标{font-size:11px;color:var(--ok);white-space:nowrap;align-self:center}
+.灰标{font-size:11px;color:var(--dim);white-space:nowrap;align-self:center}
+.状态徽{font-size:10px;border:1px solid;border-radius:4px;padding:0 5px;
+ margin-left:6px;vertical-align:1px;white-space:nowrap}
 .队列行{display:flex;gap:var(--space2);align-items:baseline;padding:3px 0;font-size:13px}
 .队号{font-family:var(--mono);color:var(--accent);min-width:44px}
 .P0{color:var(--danger)} .P1{color:var(--warn)} .P2{color:var(--plan)} .P3{color:var(--dim)}
@@ -414,7 +429,7 @@ const 拉取=async()=>{try{
   document.getElementById('状态灯').classList.remove('断');
   document.getElementById('错误条').style.display='none';
   document.getElementById('元信息').textContent='数据时刻 '+d.时刻+' · 每 8s 自动刷新';
-  渲染冲突(d.冲突们||[]);渲染意图(d.意图们||[]);渲染在飞(d.在飞分支们||[]);渲染队列(d.快照021);
+  渲染冲突(d.冲突们||[]);渲染意图(d.意图们||[]);渲染在飞(d.在飞分支们||[], d.任务字典||{});渲染队列(d.快照021);
 }catch(e){
   document.getElementById('状态灯').classList.add('断');
   document.getElementById('错误条').style.display='block';
@@ -449,13 +464,21 @@ function 渲染意图(意图们){
         (计划?'<div style="margin-top:4px">'+计划+'</div>':'')+
         (i.备注?'<div class="备注行">'+转义(i.备注)+'</div>':'')+
        '</div>';}).join('')+'</div>';}).join('');}
-function 渲染在飞(们){
+function 渲染在飞(们, 字典){
  const 区=document.getElementById('在飞区');
  if(!们.length){区.innerHTML='<div class="空态">暂无在飞数据——intent.py claim 时自动上报</div>';return;}
- 区.innerHTML=们.map(f=>'<div class="飞行"><span class="分支名">'+转义(f.分支)+'</span>'+
-   '<span class="题">'+转义(f.提交题||f.提交)+'</span>'+
-   (f.已登记意图?'<span class="绿标">意图已登记</span>':'<span class="黄标">未登记意图</span>')+
-   '</div>').join('');}
+ const 状态徽={'⬜':['待办','#93a1b0'],'🏃':['在飞','#3fb950'],'⏸':['挂起','#d9a53a'],'✅':['已完成','#79c0ff']};
+ 区.innerHTML=们.map(f=>{
+   const 号=f.号||''; const t=字典[号];
+   const 标 = f.已并入 ? '<span class="灰标">已并入 develop · 待删</span>'
+            : (f.已登记意图 ? '<span class="绿标">意图已登记</span>'
+                           : '<span class="黄标">未登记意图</span>');
+   const 徽 = t&&状态徽[t.状态] ? '<span class="状态徽" style="color:'+状态徽[t.状态][1]+
+                ';border-color:'+状态徽[t.状态][1]+'">'+状态徽[t.状态][0]+'</span>' : '';
+   const 题 = t ? 转义(t.标题) : '<span style="opacity:.6">'+转义(f.提交题||f.提交)+'</span>';
+   return '<div class="飞行'+(f.已并入?' 僵尸':'')+'"><div style="min-width:0;flex:1">'+
+     '<div><span class="分支名">'+转义(f.分支)+'</span> '+徽+'</div>'+
+     '<div class="题" style="white-space:normal">'+题+'</div></div>'+标+'</div>';}).join('');}
 function 渲染队列(快照){
  const 区=document.getElementById('队列区');
  if(!快照||!快照.length){区.innerHTML='<div class="空态">暂无 021 快照上报</div>';return;}
@@ -528,7 +551,20 @@ def 自检() -> int:
         签("注销后冲突消除", not any(c["号"] == "308a" for c in r.get("冲突们", [])))
         码, r = 调("POST", "/api/report_021", {"行们": [
             {"号": "002", "标题": "甲", "优先级": "P0"},
-            {"号": "110", "标题": "乙", "优先级": "P1"}]})
+            {"号": "110", "标题": "乙", "优先级": "P1"}],
+            "任务字典": {"110": {"标题": "整64 FFI arm64", "状态": "⬜", "优先级": "P1"},
+                         "211": {"标题": "v2 返回局部结果变量双放", "状态": "✅", "优先级": "P1"}}})
+        调("POST", "/api/report_flights", {"上报者": "深度机", "分支们": [
+            {"分支": "任务/110", "提交": "abc123", "时刻": "", "已并入": False},
+            {"分支": "任务/211", "提交": "def456", "时刻": "", "已并入": True}]})
+        码, r = 调("GET", "/api/board")
+        飞 = {f["分支"]: f for f in r["在飞分支们"]}
+        签("308e 已并入字段透传", 飞["任务/211"]["已并入"] is True
+           and 飞["任务/110"]["已并入"] is False)
+        字 = r.get("任务字典") or {}
+        签("308e 任务字典上板（标题/状态）",
+           字.get("110", {}).get("标题") == "整64 FFI arm64"
+           and 字.get("211", {}).get("状态") == "✅")
         调("POST", "/api/report_flights", {"上报者": "深度机", "分支们": [
             {"分支": "任务/110", "提交": "abc123", "时刻": ""}]})
         码, r = 调("GET", "/api/board")
