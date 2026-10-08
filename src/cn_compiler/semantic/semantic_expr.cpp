@@ -736,6 +736,22 @@ void SemanticAnalyzer::collectLambdaCaptures(
     }
 }
 void SemanticAnalyzer::visitSizeofExpr(SizeofExpr* node) {
+    // 305（变量形态）：实参=局部变量/参数标识符时按其声明类型求值
+    //   （C++ sizeof(表达式) 对照·编译期零运行时成本——303 呈报#3 裁决落地）。
+    //   变量名优先于类型名（同名场景局部变量遮蔽类型名——与作用域规则一致）；
+    //   查无变量再走下方类型名解析（原路径零变化）。
+    if (node->typeName.find('<') == std::string::npos &&
+        node->typeName.find('*') == std::string::npos &&
+        node->typeName.find('[') == std::string::npos &&
+        node->typeName.find(' ') == std::string::npos) {
+        std::string varType;
+        if (lookupVar(node->typeName, varType)) {
+            node->size = typeSizeOf(types::canonical(varType));
+            node->isVarForm = true;   // 305：IR 层直用 size（跳过类型名重解析）
+            lastType_ = "整64";
+            return;
+        }
+    }
     // H8 补完（2026-08-25）：SizeofExpr AST 节点被泛型多实例共享——不可改写
     //   node->typeName（最后一次检查的实例特定值污染所有实例，IR 取同一值）。
     //   类型解析移交 IR 层：按各自 genericTypeParams_ 用 substGenericType +

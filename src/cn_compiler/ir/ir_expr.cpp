@@ -709,6 +709,13 @@ void IRGenerator::visitType(Type* node) {
     (void)node;
 }
 void IRGenerator::visitSizeofExpr(SizeofExpr* node) {
+    // 305（变量形态）：实参=局部变量标识符——语义层已按变量声明类型回填 size
+    //   （isVarForm 置位），typeName 是变量名按类型名重解析无意义 → 直用 size
+    if (node->isVarForm) {
+        lastExpr_ = emitResult(ir::Opcode::ConstInt, {}, "i64",
+                               std::to_string(node->size), node->location);
+        return;
+    }
     // H8 补完（2026-08-25）：SizeofExpr AST 节点被泛型多实例共享，node->size
     //   是某次语义检查写入的实例特定值（多实例取同一值错）。IR 生成按当前
     //   genericTypeParams_（emitClassMethod 按 typeArgs 设置）重新解析：

@@ -321,5 +321,8 @@ public:
 
     std::string typeName;  // 目标类型名（解析后）
     int size = 0;          // 字节大小（语义层回填）
+    // 305（变量形态）：实参=局部变量标识符时语义层按变量声明类型回填 size 并
+    //   置位——IR 层直用 size（typeName 是变量名，按类型名重解析无意义）
+    bool isVarForm = false;
 };
 } // namespace cn_compiler
