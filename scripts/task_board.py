@@ -151,6 +151,28 @@ def 在飞分支号集() -> set:
     return 号集
 
 
+def 在飞树内号集() -> set:
+    """远端 任务/<纯数字号> 分支**树内** 021 行号集（313 补·第五源收口）：
+    任务分支内新立的后续号行（wt308 树内立 309~312 实录）分支名看不见——
+    跳号基准不含则后集成方被 308 旧基准误拦（313 立行实录）/先集成方撞号无人拦。
+    每支一次 git show（只读本地 remote-tracking·在飞 <25 支秒级）。"""
+    号集 = set()
+    r = subprocess.run(["git", "for-each-ref", "--format=%(refname:short)",
+                        "refs/remotes/"], capture_output=True, text=True,
+                       cwd=仓库根, timeout=30)
+    for l in r.stdout.splitlines():
+        ref = l.strip()
+        if not re.fullmatch(r"[\w-]+/(?:任务|batch)/\d+", ref):
+            continue
+        t = subprocess.run(["git", "show", f"{ref}:plans/021-任务进度观察表.md"],
+                           capture_output=True, text=True, cwd=仓库根, timeout=15)
+        for 行 in (t.stdout or "").splitlines():
+            m = re.match(r"^\|\s*(\d+[a-z]?)\s*\|", 行)
+            if m:
+                号集.add(m.group(1))
+    return 号集
+
+
 def 分支树含行(分支: str, 号: str) -> bool:
     """远端分支树内的 021 总账是否含本号行（230 修法②·核实 226 立规「立项行随分支」在飞形态）。
 
@@ -337,6 +359,8 @@ def cmd_check(as_json: bool = False) -> int:
     数字任务号 = sorted({int(t["号"]) for t in 表.values()
                         if t["号"].isdigit() and t["号"] not in 禁用号}
                        | {int(n) for n in 在飞分支号集()
+                          if n.isdigit() and n not in 禁用号}
+                       | {int(n) for n in 在飞树内号集()
                           if n.isdigit() and n not in 禁用号})
     for v in 数字任务号:
         其余 = [x for x in 数字任务号 if x != v]
