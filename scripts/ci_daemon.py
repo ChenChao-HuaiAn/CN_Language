@@ -332,9 +332,11 @@ def 跑一轮(sha: str, 轮分支: str = "") -> dict:
                     步骤们["单测"] = {"rc": -1, "说明": "未找到单测产物"}
                 else:
                     步骤("单测", [str(单测)], 1800)
-            # ③.5 静态门禁面（242·每日兜底恢复「注册了但 v5 默认不跑」的 ci常规五项——
-            #    spec 覆盖/CLI 契约/asm 位宽/台账完成度/行数冻结线·linux 可跑面；win 专属留 ci.ps1）
-            #    cn 产物定位必须先于本段（原赋值在 ④ 段晚于引用=UnboundLocalError 必崩·259 修）
+        # ③.5 静态门禁面（242·ci常规五项：spec 覆盖/CLI 契约/asm 位宽/台账完成度/行数冻结线
+        #    ——两平台公共段·win 静态检查全可跑〔ci.ps1 实证三项〕；291 从 else 体内提出=
+        #    elif 是win 分支同样必经——曾因缩进挂在 else 内被 win 分支整体跳过〔绿=缺键误判〕）
+        #    cn 产物定位必须先于本段（原赋值在 ④ 段晚于引用=UnboundLocalError 必崩·259 修）
+        if 同步rc == 0:
             cn = next((p for p in ([仓库根 / "target/cn.exe", 仓库根 / "target/cn"] if 是win
                                    else [仓库根 / "target/build/cn", 仓库根 / "target/cn"])
                        if p.exists()), None)
@@ -348,7 +350,7 @@ def 跑一轮(sha: str, 轮分支: str = "") -> dict:
                     continue
                 if 步骤(名, [sys.executable, f"scripts/{名}.py"] + 参, 900):
                     pass
-            # ④ E2E（linux-x86_64 面；红后串行复验=447-a 口径；cn 复用上文定位）
+            # ④ E2E（探测平台面；红后串行复验=447-a 口径；cn 复用上文定位）
             if cn is None:
                 步骤们["e2e"] = {"rc": -1, "说明": "未找到 cn 产物"}
             elif 步骤们.get("构建", {}).get("rc") == 0:
