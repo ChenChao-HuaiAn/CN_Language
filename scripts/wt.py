@@ -33,6 +33,7 @@ import re
 import shutil
 import subprocess
 import sys
+from datetime import datetime
 from pathlib import Path
 
 本树根 = Path(__file__).resolve().parent.parent
@@ -216,7 +217,7 @@ def 立行于树(树路径: Path, 任务号: str, 描述: str, 前置: str, 优�
 
 
 def 建树(任务号: str, 无ninja: bool, 立行: str | None = None,
-         前置: str = "—", 优先级: str = "P1") -> int:
+         前置: str = "—", 优先级: str = "P1", 接管: bool = False) -> int:
     if not re.fullmatch(r"\d+[a-z]?", 任务号):
         print(f"[失败] 任务号「{任务号}」不合法——须为 021 总账行号形态（如 087、178a）")
         return 1
@@ -241,6 +242,32 @@ def 建树(任务号: str, 无ninja: bool, 立行: str | None = None,
         # create 233 接棒者被「无此行」误拦实录）。--行 在接棒态忽略（重立行=集成时主表重号）。
         if 立行:
             print(f"[提示] 远端 {分支} 已存在（在飞认领）——接棒续做·--行 忽略（行住分支树·重立=重号）")
+        # 308a 丙案（285 撞车实录根治）：接棒前强制「对方活跃度」知情——fetch 已最新，
+        # 展示远端分支头提交时刻/作者/题；48h 内有提交=他机活跃中，无 --takeover 显式
+        # 确认则拒（两机同推一分支=push 竞争互踩）；陈旧分支黄字提示后放行（停摆接力不变）。
+        头 = 输出(["git", "log", "-1", "--format=%ci%x09%an%x09%s", f"gitcode/{分支}"])
+        头段们 = 头.split("\t", 2) if 头 else []
+        头时刻文本 = 头段们[0].strip() if len(头段们) > 0 else ""
+        作者 = 头段们[1].strip() if len(头段们) > 1 else "?"
+        题 = 头段们[2].strip() if len(头段们) > 2 else "?"
+        活跃中 = True
+        try:
+            头时刻 = datetime.fromisoformat(头时刻文本)
+            if 头时刻.tzinfo is None:
+                头时刻 = 头时刻.astimezone()
+            活跃中 = abs((datetime.now(头时刻.tzinfo) - 头时刻).total_seconds()) < 48 * 3600
+        except ValueError:
+            pass    # 时刻解析失败=从严按活跃处理
+        print(f"[接棒知情] {分支} 头提交：{头时刻文本[:16]} · {作者} · {题[:70]}")
+        if 活跃中 and not 接管:
+            print(f"[失败] 该分支近 48h 有提交（他机可能活跃中）——盲接棒会与对方 push 竞争"
+                  f"（285 撞车实录根治·308a）。确认对方已停工后显式："
+                  f"wt.py create {任务号} --takeover")
+            return 1
+        if 活跃中:
+            print("[接管] --takeover 显式确认——同分支续做（请在提交信息/交接注明接管缘由）")
+        else:
+            print("[提示] 陈旧分支（48h 无提交）——正常接棒（停摆接力语义）")
     elif 号集 is not None and 任务号 not in 号集:
         if 立行:
             # 238 立项命令化（2026-10-07）：021 无此行+create --行 → 建树后自动立行于
@@ -415,6 +442,8 @@ def 主流程() -> int:
     p建.add_argument("--前置", default="—", help="前置任务号（逗号分隔·默认 —=无）")
     p建.add_argument("--优先级", default="P1", choices=["P0", "P1", "P2", "P3"], help="默认 P1")
     p建.add_argument("--no-ninja", action="store_true", help="跳过 Ninja 开发树配置")
+    p建.add_argument("--takeover", action="store_true",
+                     help="接管他机 48h 内仍活跃的任务分支（285 撞车根治显式确认面·308a）")
     p列 = 子.add_parser("list", help="列出全部 worktree")
     p删 = 子.add_parser("remove", help="删树（win 下 rm -rf+prune）")
     p删.add_argument("任务号")
@@ -424,7 +453,8 @@ def 主流程() -> int:
     参数 = 解析器.parse_args()
     if 参数.命令 == "create":
         return 建树(参数.任务号, 参数.no_ninja, getattr(参数, "行", None),
-                    getattr(参数, "前置", "—"), getattr(参数, "优先级", "P1"))
+                    getattr(参数, "前置", "—"), getattr(参数, "优先级", "P1"),
+                    getattr(参数, "takeover", False))
     if 参数.命令 == "list":
         return 列树()
     if 参数.命令 == "remove":
