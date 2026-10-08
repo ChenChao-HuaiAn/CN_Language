@@ -217,9 +217,7 @@ void LinuxX64CodeGenerator::emitIntBinary(LinuxX64AsmWriter& writer,
     loadOperandToX(writer, inst.operands[0], "r10");
     if (inst.operands[1].isConstant) {
         std::string text = inst.operands[1].extra;
-        if (inst.operands[1].type == "i1") {
-            text = (text == "真") ? "1" : "0";
-        }
+        if (inst.operands[1].type == "i1") { text = (text == "真" || text == "1") ? "1" : "0"; } // 322 补修
         // 立即数在 simm32 内直接双操作数（add/sub/and/or/xor/imul 均支持）；
         // 超出 simm32（如 u64 大常量）经 r9 装载——**x86 无 imul r64,r64,r64
         // 三寄存器形式**（仅立即数三操作数），乘法一律双操作数 imul r10, r9

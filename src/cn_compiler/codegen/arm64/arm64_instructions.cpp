@@ -350,9 +350,7 @@ void Arm64CodeGenerator::emitIntBinary(Arm64AsmWriter& writer,
         //   and/orr/eor 要求 bitmask 编码（不能用 12 位判定直发——
         //   #425/#0 等会被 as 以「立即数越界」拒绝）
         std::string text = inst.operands[1].extra;
-        if (inst.operands[1].type == "i1") {
-            text = (text == "真") ? "1" : "0";
-        }
+        if (inst.operands[1].type == "i1") { text = (text == "真" || text == "1") ? "1" : "0"; } // 322 补修
         try {
             const long long v = std::stoll(text);
             const bool logical =

@@ -269,7 +269,8 @@ std::string Arm64CodeGenerator::loadOperandToX(Arm64AsmWriter& writer,
         }
         std::string text = operand.extra;
         if (operand.type == "i1") {
-            text = (text == "真") ? "1" : "0";
+            // 322 补修（v16·同 linux loadOperandToX 盲区）：兼容「真|1」两形态
+            text = (text == "真" || text == "1") ? "1" : "0";
         }
         if (!text.empty() && text[0] == '0' && text.size() > 1 &&
             (text[1] == 'x' || text[1] == 'X' || text[1] == 'b' ||
