@@ -307,6 +307,18 @@ std::unique_ptr<Expr> Parser::parseUnary() {
         else op = Operator::Decrement;
         advance();
         auto operand = parseUnaryRec();  // 一元嵌套：- -x（受控递归·T6）
+        // 323（v16 命中C）：一元负+整字面量 → 折叠为负文本字面量（v2 解析期
+        //   折叠同构·96 负号折叠器同族）。否则 -2^127（整128 最小界·合法值）
+        //   因字面量单独按正值域检查（2^127 > 2^127-1）被误拒——负号与字面量
+        //   是一个代数实体，范围检查须见完整符号文本（i128TextInRange 分正负界）。
+        if (op == Operator::Subtract &&
+            operand->getType() == NodeType::IntegerLiteral) {
+            auto* lit = static_cast<IntegerLiteral*>(operand.get());
+            auto neg = std::make_unique<IntegerLiteral>(
+                static_cast<std::int64_t>(0) - lit->value, "-" + lit->raw);
+            neg->location = loc;
+            return neg;
+        }
         auto expr = std::make_unique<UnaryExpr>(op, std::move(operand), false);
         expr->location = loc;
         return expr;

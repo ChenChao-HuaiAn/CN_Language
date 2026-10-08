@@ -63,19 +63,15 @@ void SemanticAnalyzer::visitIntegerLiteral(IntegerLiteral* node) {
     lastType_ = types::literalTypeOf(node->raw, false);
     if (lastType_.empty()) lastType_ = "整32";  // 非法后缀防御性回退
     // Task 完善A：i128/正128 字面量越界检查（规格书4.3 字面量范围）——
-    //   整128（有符号）上限 2^127-1、正128（无符号）上限 2^128-1。
-    //   超限立即报错（IR 层同样防御性检查，语义层先拦截供诊断）。
-    //   注意：无后缀超 int64 的字面量（如 2^127）IR 层会提升为整128，
-    //   此处同样按整128 上限检查（2^127 超出 2^127-1 报错）。
+    //   整128（有符号）合法域 [-2^127, 2^127-1]（负界 2^127 允许）、
+    //   正128（无符号）上限 2^128-1。超限立即报错（IR 层同样防御性检查，
+    //   语义层先拦截供诊断）。323 修正：范围判定收口 types::i128TextInRange
+    //   （剥符号分界比较——原带符号原文长度比较把负边界误判超范围）。
     const std::string stripped = types::stripLiteralSuffix(node->raw);
     if (lastType_ == "整128" || lastType_ == "正128" ||
         (lastType_ == "整32" && types::textExceedsInt64(stripped))) {
         const bool isSigned = (lastType_ != "正128");
-        const std::string limit = isSigned
-                                      ? "170141183460469231731687303715884105727"  // 2^127-1
-                                      : "340282366920938463463374607431768211455";  // 2^128-1
-        if (stripped.size() > limit.size() ||
-            (stripped.size() == limit.size() && stripped > limit)) {
+        if (!types::i128TextInRange(stripped, isSigned)) {
             diagnostics_.report(DiagnosticLevel::Error, node->location,
                                 "整数字面量超出" +
                                     std::string(isSigned ? "整128（2^127-1）"

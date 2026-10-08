@@ -413,6 +413,39 @@ bool isI128(const std::string& typeRaw) {
     return t == "整128" || t == "正128";
 }
 
+// 128 位整数字面量范围检查（323 v16 命中C：负边界误报根治）。
+// 原两处（semantic/ir）直接对带符号原文做「长度+字典序」比较：负边界
+// -170141183460469231731687303715884105728（恰为整128 最小界·合法）因负号
+// 占一字符被误判超范围；且负号参与字典序对任意负值比较语义均错。
+bool i128TextInRange(const std::string& text, bool isSigned) {
+    std::string digits = text;
+    bool negative = false;
+    if (!digits.empty() && (digits[0] == '-' || digits[0] == '+')) {
+        negative = (digits[0] == '-');
+        digits.erase(digits.begin());
+    }
+    // 前导零归一（如 0077）——全零直接合法
+    const std::size_t nz = digits.find_first_not_of('0');
+    if (nz == std::string::npos) return true;
+    digits.erase(0, nz);
+    if (isSigned && negative) {
+        // 负值下界：|-2^127| = 170141183460469231731687303715884105728
+        static const std::string kNegLimit = "170141183460469231731687303715884105728";
+        return digits.size() < kNegLimit.size() ||
+               (digits.size() == kNegLimit.size() && digits <= kNegLimit);
+    }
+    if (isSigned) {
+        // 正值上界：2^127-1 = 170141183460469231731687303715884105727
+        static const std::string kPosLimit = "170141183460469231731687303715884105727";
+        return digits.size() < kPosLimit.size() ||
+               (digits.size() == kPosLimit.size() && digits <= kPosLimit);
+    }
+    // 正128 上界：2^128-1 = 340282366920938463463374607431768211455
+    static const std::string kULimit = "340282366920938463463374607431768211455";
+    return digits.size() < kULimit.size() ||
+           (digits.size() == kULimit.size() && digits <= kULimit);
+}
+
 // 十进制文本是否超出 int64 范围（正值 > 9223372036854775807）
 bool textExceedsInt64(const std::string& text) {
     // 字符串比较：长度大于19必超；长度等于19按字典序比较
@@ -438,15 +471,23 @@ bool textExceedsU64(const std::string& text) {
 // 将 128 位字面量文本拆为 低64位:高64位（十六进制）
 // 返回 "低十六进制:高十六进制"（如 "0:8AC7230489E80000"）；非法返回空串
 std::string splitI128Text(const std::string& raw) {
+    // 323：负文本支持（parse 层一元负折叠后 raw 可带负号）——按绝对值拆半，
+    //   16 字节整体二补码取负（全取反+1）得内存表示
+    bool negative = false;
+    std::string body = raw;
+    if (!body.empty() && (body[0] == '-' || body[0] == '+')) {
+        negative = (body[0] == '-');
+        body.erase(body.begin());
+    }
     // 识别进制前缀
     int base = 10;
     std::size_t start = 0;
-    if (raw.size() > 2 && raw[0] == '0') {
-        if (raw[1] == 'x' || raw[1] == 'X') { base = 16; start = 2; }
-        else if (raw[1] == 'b' || raw[1] == 'B') { base = 2; start = 2; }
-        else if (raw[1] == 'o' || raw[1] == 'O') { base = 8; start = 2; }
+    if (body.size() > 2 && body[0] == '0') {
+        if (body[1] == 'x' || body[1] == 'X') { base = 16; start = 2; }
+        else if (body[1] == 'b' || body[1] == 'B') { base = 2; start = 2; }
+        else if (body[1] == 'o' || body[1] == 'O') { base = 8; start = 2; }
     }
-    std::string digits = raw.substr(start);
+    std::string digits = body.substr(start);
     if (digits.empty()) return "";
     // 128位字节数组（16字节，低位在前）。逐位乘 base 加 digit（128 位乘加）：
     //   每轮对全部 16 字节执行 bytes[i]*base+carry，carry 逐字节右移
@@ -472,6 +513,13 @@ std::string splitI128Text(const std::string& raw) {
     std::uint64_t hi = 0;
     for (int i = 7; i >= 0; --i) lo = (lo << 8) | bytes[i];
     for (int i = 15; i >= 8; --i) hi = (hi << 8) | bytes[i];
+    if (negative) {
+        // 二补码取负：16 字节全取反 +1（跨半借位经两次 64 位加法处理）
+        lo = ~lo;
+        hi = ~hi;
+        if (lo == 0xFFFFFFFFFFFFFFFFULL) { lo = 0; hi += 1; }
+        else { lo += 1; }
+    }
     char buf[48];
     std::snprintf(buf, sizeof(buf), "%llX:%llX",
                   static_cast<unsigned long long>(lo),

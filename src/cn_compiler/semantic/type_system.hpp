@@ -156,6 +156,12 @@ bool isStringValuedMap(const std::string& canonClass);
 // 是否 128 位整数类型（整128/正128）
 bool isI128(const std::string& type);
 
+// 128 位整数字面量范围检查（323 v16 命中C：负边界误报根治）。
+// text 为剥后缀文本（可带正负号）：整128 合法域 [-2^127, 2^127-1]——负值
+// 允许到 2^127（最小界），正值只到 2^127-1；正128 合法域 [0, 2^128-1]。
+// 不得用带符号原文字符串比较（负号参与长度/字典序会误判）。
+bool i128TextInRange(const std::string& text, bool isSigned);
+
 // 十进制文本是否超出 int64 范围（正值 > 9223372036854775807；用于无后缀自动提升 i128）
 // text 应为已剥后缀的纯数字文本（仅十进制）
 bool textExceedsInt64(const std::string& text);

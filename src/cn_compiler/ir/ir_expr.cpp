@@ -45,13 +45,11 @@ void IRGenerator::visitIntegerLiteral(IntegerLiteral* node) {
     const std::string stripped = types::stripLiteralSuffix(node->raw);
     if (types::isI128(type)) {
         // Task 完善A：i128（有符号）越界检查——正128 上限 2^128-1（无符号），
-        //   整128 上限 2^127-1（有符号）。超限报错（规格书4.3 字面量范围）。
+        //   整128 合法域 [-2^127, 2^127-1]（负界 2^127 允许）。超限报错
+        //   （规格书4.3 字面量范围）。323 修正：判定收口 types::i128TextInRange
+        //   （剥符号分界比较——原带符号原文长度比较把负边界误判超范围）。
         const bool isSigned = (type == "整128");
-        const std::string limit = isSigned
-                                      ? "170141183460469231731687303715884105727"  // 2^127-1
-                                      : "340282366920938463463374607431768211455";  // 2^128-1
-        if (stripped.size() > limit.size() ||
-            (stripped.size() == limit.size() && stripped > limit)) {
+        if (!types::i128TextInRange(stripped, isSigned)) {
             diagnostics_.report(DiagnosticLevel::Error, node->location,
                                 "整数字面量超出" +
                                     std::string(isSigned ? "整128（2^127-1）" : "正128（2^128-1）") +

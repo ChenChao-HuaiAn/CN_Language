@@ -113,9 +113,8 @@ std::string Arm64CodeGenerator::condBranchCondition(ir::Opcode opcode, bool isUn
 //   实际装载由 loadOperandToX/loadOperandToV 统一处理（发射完整指令序列）
 std::string Arm64CodeGenerator::operandText(const ir::IRValue& operand) {
     if (operand.isConstant) {
-        if (operand.type == "i1") {
-            return (operand.extra == "真") ? "1" : "0";
-        }
+        // 322：兼容「真|1」两形态 i1 文本（guard 写"1"曾被折算 0=守卫恒失效）三后端同构
+        if (operand.type == "i1") { return (operand.extra == "真" || operand.extra == "1") ? "1" : "0"; }
         return operand.extra;
     }
     if (operand.id >= 0) {

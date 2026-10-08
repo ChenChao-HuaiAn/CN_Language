@@ -143,9 +143,8 @@ std::string X64CodeGenerator::setccMnemonic(ir::Opcode opcode) {
 std::string X64CodeGenerator::operandText(const ir::IRValue& operand) {
     if (operand.isConstant) {
         // 常量：布尔 -> 0/1；字符串 -> 常量池标签；其余 -> 文本原样
-        if (operand.type == "i1") {
-            return (operand.extra == "真") ? "1" : "0";
-        }
+        // 322：兼容「真|1」两形态 i1 文本（guard 写"1"曾被折算 0=守卫恒失效）三后端同构
+        if (operand.type == "i1") { return (operand.extra == "真" || operand.extra == "1") ? "1" : "0"; }
         return operand.extra;
     }
     if (operand.id >= 0) {

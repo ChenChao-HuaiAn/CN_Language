@@ -79,9 +79,8 @@ std::string LinuxX64CodeGenerator::setccFor(ir::Opcode opcode, bool isUnsigned,
 // 注：本函数返回"内存操作数文本"，实际装载由 loadOperandToX/loadOperandToV 统一处理
 std::string LinuxX64CodeGenerator::operandText(const ir::IRValue& operand) {
     if (operand.isConstant) {
-        if (operand.type == "i1") {
-            return (operand.extra == "真") ? "1" : "0";
-        }
+        // 322：兼容「真|1」两形态 i1 文本（guard 写"1"曾被折算 0=守卫恒失效）三后端同构
+        if (operand.type == "i1") { return (operand.extra == "真" || operand.extra == "1") ? "1" : "0"; }
         return operand.extra;
     }
     if (operand.id >= 0) {
