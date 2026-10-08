@@ -22,13 +22,19 @@
 # 口径差异说明：三段不套 gate_lock（其存在理由=同机多 worktree 防互抢·AGENTS §8.8；
 #   TX_02 独占 CI 无此场景）；E2E --jobs 3（4C3.6G 校准起点·家机实例 CN_E2E_JOBS=4）。
 
+# 291 win 池实例（2026-10-08 用户裁决·混合随机平台池）：win 实例与 linux 实例同池认领
+#   同一任务集（任务不带平台标签·谁空闲谁认领）——任一平台红灯=平台差异缺陷暴露
+#   （预验位红=develop 进不去·拦截前移）；门禁表 PK=(sha,平台) 天然分平台显示，池协议零改动。
+#   win 侧差异全部收敛在平台分支内：msvcrt 锁/GlobalMemoryStatusEx/vcvars+Ninja 构建链/
+#   E2E --target win-x64；三段外套 gate_lock（家机同机有人工开发·与 TX_02 独占场景不同）。
+#   平台身份一律运行时探测（sys.platform），不依赖任何静态配置——共享文档不指定本机类型。
 # 兼容 python3.8：注解泛型下标/联合字符串化（287·同 gate_quick 修复缘由）。
 from __future__ import annotations
 
-import fcntl
 import json
 import os
 import re
+import shutil
 import socket
 import subprocess
 import sys
@@ -39,9 +45,19 @@ import urllib.request
 from datetime import datetime
 from pathlib import Path
 
+是win = sys.platform.startswith("win")          # 仓库惯例（gate_quick/gate_lock 同款）
+平台 = "win-x64" if 是win else "linux-x86_64"   # run_e2e --target 与结果上报共用
+if 是win:
+    import msvcrt
+else:
+    import fcntl
+import gate_lock        # win 三段互斥用（linux 零调用·TX_02 行为不变）
+
 # ===== 可调常量（集中区·911 先例） =====
 轮询间隔秒 = 90            # git ls-remote 周期
-e2e并行 = int(os.environ.get("CN_E2E_JOBS", "3"))      # TX_02 4C3.6G=3；家机 WSL2 实例 env=4
+e2e并行 = int(os.environ.get("CN_E2E_JOBS", "6" if 是win else "3"))
+                                                        # TX_02 4C3.6G=3；家机 WSL2 实例 env=4；
+                                                        # win 4 实例峰值 4×6=24 jobs+构建<28 线程（291）
 构建并行 = int(os.environ.get("CN_BUILD_JOBS", "2"))    # 首验实锤：全核 Make 编译 cc1plus 叠加 OOM
                                                         # （9daba·10-01）——TX_02 限 2；家机 8G/实例=4
 单轮总超时秒 = 3 * 3600    # 防挂死（构建+单测+E2E+串行复验的理论上界）
@@ -55,8 +71,58 @@ runner标识 = os.environ.get("CN_RUNNER_ID", socket.gethostname())   # 池内�
 锁文件 = 仓库根 / "ci-logs" / "daemon.lock"
 
 
+def 抢锁(锁, 阻塞: bool = False) -> bool:
+    """跨平台劝告锁（291）：posix=flock；win=msvcrt.locking——区域锁从文件指针起算，
+    统一 seek(0) 保证各进程锁同一字节；LK_LOCK 仅约 10s 重试，阻塞等待自行轮询。"""
+    锁.seek(0)
+    if 是win:
+        try:
+            msvcrt.locking(锁.fileno(), msvcrt.LK_LOCK if 阻塞 else msvcrt.LK_NBLCK, 1)
+            return True
+        except OSError:
+            if not 阻塞:
+                return False
+            while True:
+                time.sleep(轮询间隔秒)
+                锁.seek(0)
+                try:
+                    msvcrt.locking(锁.fileno(), msvcrt.LK_NBLCK, 1)
+                    return True
+                except OSError:
+                    continue
+    try:
+        fcntl.flock(锁, fcntl.LOCK_EX | (0 if 阻塞 else fcntl.LOCK_NB))
+        return True
+    except OSError:
+        return False
+
+
+def 放锁(锁) -> None:
+    if 是win:
+        锁.seek(0)
+        try:
+            msvcrt.locking(锁.fileno(), msvcrt.LK_UNLCK, 1)
+        except OSError:
+            pass
+    else:
+        fcntl.flock(锁, fcntl.LOCK_UN)
+
+
 def 物理内存MB() -> int:
-    """读 /proc/meminfo——max-mem 保险丝按物理内存适配用（924）。"""
+    """max-mem 保险丝按物理内存适配用（924）——posix 读 /proc/meminfo；win=GlobalMemoryStatusEx。"""
+    if 是win:
+        import ctypes
+
+        class 内存状态(ctypes.Structure):
+            _fields_ = [("长度", ctypes.c_ulong), ("负载", ctypes.c_ulong),
+                        ("总物理", ctypes.c_ulonglong), ("可用物理", ctypes.c_ulonglong),
+                        ("总页文件", ctypes.c_ulonglong), ("可用页文件", ctypes.c_ulonglong),
+                        ("总虚拟", ctypes.c_ulonglong), ("可用虚拟", ctypes.c_ulonglong),
+                        ("可用扩展虚拟", ctypes.c_ulonglong)]
+        状态 = 内存状态(长度=ctypes.sizeof(内存状态))
+        if ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(状态)):
+            return int(状态.总物理 // (1024 * 1024))
+        return 4096
     try:
         for 行 in open("/proc/meminfo"):
             if 行.startswith("MemTotal:"):
@@ -117,7 +183,7 @@ def 免跑留档(sha: str, 缘由: str) -> None:
     步骤字段明记免跑缘由）。绿 的口径：result「绿」由 同步/配置/构建/单测/e2e 键聚合
     （跑一轮 同款），免跑结果无这些键→聚合为 True——语义=「本 sha 无需全量即合规」。"""
     步骤字段 = {"免跑": {"rc": 0, "说明": "纯文档轮免兜底（189）·" + 缘由}}
-    结果 = {"sha": sha, "分支": "develop", "平台": "linux-x86_64", "绿": True,
+    结果 = {"sha": sha, "分支": "develop", "平台": 平台, "绿": True,
             "步骤": 步骤字段,
             "总秒": 0, "时刻": datetime.now().isoformat(timespec="seconds"),
             "日志": "", "日志尾部": ["[免跑] %s %s" % (sha[:10], 缘由)]}
@@ -148,6 +214,32 @@ def 运行(命令: list[str], 日志, 超时秒: int, **kwargs) -> subprocess.Co
                           cwd=仓库根, timeout=超时秒, **kwargs)
 
 
+def 找vcvars() -> Path | None:
+    """vcvars64.bat 探测（291·复刻 wt.py 同款四版本候选）。"""
+    for 版本 in ("Community", "Professional", "Enterprise", "BuildTools"):
+        候选 = Path("C:/Program Files/Microsoft Visual Studio/2022/%s/VC/Auxiliary/Build/vcvars64.bat" % 版本)
+        if 候选.exists():
+            return 候选
+    return None
+
+
+def 带门禁锁跑(sha: str, 轮分支: str = "") -> dict | None:
+    """291 win 三段外套 gate_lock：家机同机有人工开发全量门禁（与 TX_02 独占 CI 场景
+    不同）——win 池实例三段与主树门禁全机互斥（AGENTS §7 本机全量每机 ≤1；池树经
+    CN_GATE_LOCK_DIR 指向主树锁目录·跨树共享）。30 分钟未获得=让出（返回 None）：
+    调用方不落盘不 complete——心跳停由服务端 300s 回收重派（本机忙让给别人=随机池本义）。
+    linux 零开销直通（TX_02/WSL 行为不变·原注释口径「独占 CI 不套锁」保持）。"""
+    门禁锁 = gate_lock.获取(1800, 形态="acquire", owner_pid=os.getpid()) if 是win else None
+    if 是win and 门禁锁 is None:
+        print("[让出] gate_lock 30 分钟未获得（本机门禁互忙）——本轮放弃，任务由服务端回收重派", flush=True)
+        return None
+    try:
+        return 跑一轮(sha, 轮分支)
+    finally:
+        if 是win:
+            gate_lock.释放(门禁锁, 静默=True)
+
+
 def 跑一轮(sha: str, 轮分支: str = "") -> dict:
     """对给定 SHA 跑全量门禁三段，返回结构化结果（口径=integrate.py Linux 分支）。
     轮分支空=全局 分支（develop 轮询/点名分支）；池任务传认领的预验分支（1021）。"""
@@ -169,13 +261,48 @@ def 跑一轮(sha: str, 轮分支: str = "") -> dict:
             return 步骤们[名]["rc"] == 0
 
         # ① 同步代码到该 SHA（reset 保干净树；git clean 不带 -x=保留 ignored 的 target/ 增量）
-        同步 = subprocess.run(["bash", "-c",
-                               "git fetch %s %s && git reset --hard -q FETCH_HEAD && git clean -fdq" %
-                               (远端名, 轮分支)], capture_output=True, text=True,
-                              cwd=仓库根, timeout=300)
-        步骤们["同步"] = {"rc": 同步.returncode}
-        if 同步.returncode != 0:
-            print(同步.stdout + 同步.stderr, file=日志, flush=True)
+        #    291：bash -c 复合命令拆三条裸 git 子进程——跨平台（win 不依赖 bash 在 PATH）
+        同步rc, 同步输出 = 0, ""
+        for 同步命令 in (["git", "fetch", 远端名, 轮分支],
+                         ["git", "reset", "--hard", "-q", "FETCH_HEAD"],
+                         ["git", "clean", "-fdq"]):
+            同步 = subprocess.run(同步命令, capture_output=True, text=True,
+                                  cwd=仓库根, timeout=300)
+            同步输出 += (同步.stdout or "") + (同步.stderr or "")
+            if 同步.returncode != 0:
+                同步rc = 同步.returncode
+                break
+        步骤们["同步"] = {"rc": 同步rc}
+        if 同步rc != 0:
+            print(同步输出, file=日志, flush=True)
+        elif 是win:
+            # ② 291 win 构建链=vcvars64+Ninja+sccache（wt.py 开发树同口径）；首配仅
+            #    build.ninja 缺失时做（每轮 reset/clean 不动 target/=增量天然保留）
+            vcvars = 找vcvars()
+            if vcvars is None:
+                步骤们["配置"] = {"rc": -1, "说明": "未找到 vcvars64.bat（VS2022 安装不全）"}
+            else:
+                环境前缀 = 'call "%s" >nul 2>&1 && ' % vcvars
+                if not (仓库根 / "target/build-ninja/build.ninja").exists():
+                    launcher = ""
+                    sccache = shutil.which("sccache")
+                    if sccache:
+                        launcher = ' -DCMAKE_CXX_COMPILER_LAUNCHER:FILEPATH="%s"' % sccache
+                    步骤("配置", ["cmd", "/c", 环境前缀 +
+                          'cmake -G Ninja -S . -B target/build-ninja -DCMAKE_BUILD_TYPE=Debug' + launcher], 900)
+                else:
+                    步骤们["配置"] = {"rc": 0, "说明": "build-ninja 已配置（增量）"}
+                if 步骤们["配置"]["rc"] == 0:
+                    步骤("构建", ["cmd", "/c", 环境前缀 +
+                          "cmake --build target/build-ninja --parallel"], 单轮总超时秒)
+                    # ③ 单测（产物落 target/ 根=CMAKE_RUNTIME_OUTPUT_DIRECTORY·exe 后缀）
+                    单测 = next((p for p in [仓库根 / "target/cn_unit_tests.exe",
+                                             仓库根 / "target/build/cn_unit_tests.exe",
+                                             仓库根 / "target/cn_unit_tests"] if p.exists()), None)
+                    if 单测 is None:
+                        步骤们["单测"] = {"rc": -1, "说明": "未找到单测产物"}
+                    else:
+                        步骤("单测", [str(单测)], 1800)
         else:
             # ② 配置（默认生成器 Make·与 integrate 同口径；产物落 target/ 根=CMakeLists 16 行）
             if not 步骤("配置", ["cmake", "-S", ".", "-B", "target/build"], 600):
@@ -193,7 +320,9 @@ def 跑一轮(sha: str, 轮分支: str = "") -> dict:
             # ③.5 静态门禁面（242·每日兜底恢复「注册了但 v5 默认不跑」的 ci常规五项——
             #    spec 覆盖/CLI 契约/asm 位宽/台账完成度/行数冻结线·linux 可跑面；win 专属留 ci.ps1）
             #    cn 产物定位必须先于本段（原赋值在 ④ 段晚于引用=UnboundLocalError 必崩·259 修）
-            cn = next((p for p in [仓库根 / "target/build/cn", 仓库根 / "target/cn"] if p.exists()), None)
+            cn = next((p for p in ([仓库根 / "target/cn.exe", 仓库根 / "target/cn"] if 是win
+                                   else [仓库根 / "target/build/cn", 仓库根 / "target/cn"])
+                       if p.exists()), None)
             for 名, 参 in (("check_spec_coverage", []),   # 243：非 strict（TX_02「指针有效性」存量红=244 修·红不拦兜底轮）
                           ("check_cli_contract", ["--cn", str(cn)]),
                           ("check_asm_width", ["--cn", str(cn)]),
@@ -210,11 +339,14 @@ def 跑一轮(sha: str, 轮分支: str = "") -> dict:
             elif 步骤们.get("构建", {}).get("rc") == 0:
                 # 924·运维小件：max-mem 按物理内存适配（4096 默认>3.6G 物理=形同虚设——920 预判）；
                 #   E2E 全程 nice -n 10 降优先级（CI 高负载 sshd 饿死 banner 超时实锤·运维手册④）
+                #   291：nice 为 posix 专属——win 无此前缀（同机互斥已由 gate_lock 承担）；
+                #   --target 用运行时探测平台（win-x64 / linux-x86_64）
                 保内存 = min(4096, int(物理内存MB() * 0.8))
-                e2e基 = ["nice", "-n", "10", sys.executable, "tests/e2e/run_e2e.py",
-                         "--target", "linux-x86_64", "--cn", str(cn),
-                         "--max-mem-mb", str(保内存),
-                         "--full-reason", "ci_daemon 云端全量门禁（TX_02/池 runner）"]
+                e2e基 = ([] if 是win else ["nice", "-n", "10"]) + [
+                    sys.executable, "tests/e2e/run_e2e.py",
+                    "--target", 平台, "--cn", str(cn),
+                    "--max-mem-mb", str(保内存),
+                    "--full-reason", "ci_daemon 云端全量门禁（TX_02/池 runner）"]
                 if 步骤("e2e并行", e2e基 + ["--jobs", str(e2e并行)], 单轮总超时秒):
                     步骤们["e2e"] = {"rc": 0}
                 else:
@@ -225,7 +357,7 @@ def 跑一轮(sha: str, 轮分支: str = "") -> dict:
     # 日志尾部摘录进结果（供 TX_01 结果页直显；完整日志在 run_*.log）
     with 轮日志路径.open("r", encoding="utf-8", errors="replace") as f:
         尾部 = f.readlines()[-40:]
-    结果 = {"sha": sha, "分支": 轮分支, "平台": "linux-x86_64", "步骤": 步骤们,
+    结果 = {"sha": sha, "分支": 轮分支, "平台": 平台, "步骤": 步骤们,
             "绿": all(s.get("rc") == 0 for k, s in 步骤们.items() if k in ("同步", "配置", "构建", "单测", "e2e")),
             "总秒": round(time.time() - 开始), "时刻": datetime.now().isoformat(timespec="seconds"),
             "日志": 轮日志路径.name, "日志尾部": "".join(尾部).splitlines()[-20:]}
@@ -397,12 +529,15 @@ def 池跑任务(任务: dict) -> None:
             # fetch 失败=本轮失败（分支可能已被 integrate finally 删除=同 sha 重试竞态）——
             # 报红让服务端回收重派；本地不落盘（非真实验证结果·防污染 result 档案）
             print("[池] fetch 失败：%s" % (取.stderr or "").strip()[:200], flush=True)
-            结果 = {"sha": sha, "分支": 任务分支, "平台": "linux-x86_64", "绿": False,
+            结果 = {"sha": sha, "分支": 任务分支, "平台": 平台, "绿": False,
                     "步骤": {"同步": {"rc": 取.returncode}}, "总秒": 0,
                     "时刻": datetime.now().isoformat(timespec="seconds"),
                     "日志": "", "日志尾部": (取.stderr or "").splitlines()[-5:]}
         elif 兜底:
-            结果 = 跑一轮(sha, "develop")
+            结果 = 带门禁锁跑(sha, "develop")
+            if 结果 is None:      # 291 让出（gate_lock 互忙）——不 complete·心跳停由服务端回收重派
+                print("[池] 本轮让出（gate_lock）——任务将被回收重派", flush=True)
+                return
             # 过期竞态语义化关闭（189·Rust 无数据竞争思路的服务端等价）：认领期间
             #   develop 前进→reset 到的是新头≠任务 sha——该 sha 的树已由新头轮隐含覆盖
             #   （git 树=快照·新头绿⇒含旧提交内容绿）。过期轮不落盘（防 latest 被非
@@ -410,7 +545,7 @@ def 池跑任务(任务: dict) -> None:
             头 = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True,
                                 text=True, cwd=仓库根, timeout=30)
             if 头.stdout.strip() != sha:
-                结果 = {"sha": sha, "分支": 任务分支, "平台": "linux-x86_64", "绿": True,
+                结果 = {"sha": sha, "分支": 任务分支, "平台": 平台, "绿": True,
                         "步骤": {"过期跳过": {"rc": 0, "说明": "develop 已前进至 %s——任务 sha 树由新头轮覆盖（189）"
                                              % 头.stdout.strip()[:10]}},
                         "总秒": 0, "时刻": datetime.now().isoformat(timespec="seconds"),
@@ -419,7 +554,10 @@ def 池跑任务(任务: dict) -> None:
             else:
                 落盘(结果)
         else:
-            结果 = 跑一轮(sha, 任务分支)
+            结果 = 带门禁锁跑(sha, 任务分支)
+            if 结果 is None:      # 291 让出（gate_lock 互忙）——不 complete·心跳停由服务端回收重派
+                print("[池] 本轮让出（gate_lock）——任务将被回收重派", flush=True)
+                return
             落盘(结果)
         for 试 in range(3):     # complete 重试（TX_01 短暂抖动不触发回收重派的重复全量）
             回 = 池调用(配置, "task_complete",
@@ -444,14 +582,16 @@ def 主(常驻: bool, 强制: bool, 等锁: bool = False) -> int:
     #   跑完释放（LOCK_UN）、下轮重抢；ssh 点名 --wait-lock 的等待=至多**当前轮完成**
     #   （而非等常驻进程退出）即可插队。923 OOM 铁律不变：锁窗内同机只跑一个全量。
     try:                                    # 非阻塞抢锁：cron 兜底撞上在跑轮=静默让路
-        fcntl.flock(锁, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        已获 = 抢锁(锁)
     except OSError:
+        已获 = False
+    if not 已获:
         if not 等锁:
             print("[锁] 已有轮在跑——退出。", flush=True)
             return 0
         # --wait-lock（1008·ci/预验 触发用）：等现有轮完成（184 前语义=等持锁进程退出·饿死）
         print("[锁] 已有轮在跑——等待（--wait-lock·至多当前轮）……", flush=True)
-        fcntl.flock(锁, fcntl.LOCK_EX)
+        抢锁(锁, 阻塞=True)
     while True:
         # ── 1021 池优先段：只在本职分支 develop 时进池（CN_CI_BRANCH 点名模式=ssh 直发
         #    降级路径·被点名跑指定预验分支，不抢池内别的任务）；锁在手=同机单任务
@@ -462,14 +602,14 @@ def 主(常驻: bool, 强制: bool, 等锁: bool = False) -> int:
                 池跑任务(任务)
                 if not 常驻:
                     return 0
-                fcntl.flock(锁, fcntl.LOCK_UN)      # 184：轮间释放·点名可插队
+                放锁(锁)      # 184：轮间释放·点名可插队
                 time.sleep(轮询间隔秒)
                 重抢锁(锁)
                 continue
             if 角色 == "pool":      # 纯池角色（家机实例）无任务→空闲休眠
                 if not 常驻:
                     return 0
-                fcntl.flock(锁, fcntl.LOCK_UN)
+                放锁(锁)
                 time.sleep(轮询间隔秒)
                 重抢锁(锁)
                 continue
@@ -493,14 +633,14 @@ def 主(常驻: bool, 强制: bool, 等锁: bool = False) -> int:
                         免跑留档(sha, 缘由)
                         if not 常驻:
                             return 0
-                        fcntl.flock(锁, fcntl.LOCK_UN)      # 184：轮间释放·点名可插队
+                        放锁(锁)      # 184：轮间释放·点名可插队
                         time.sleep(轮询间隔秒)
                         重抢锁(锁)
                         continue
                 if not list(日志目录.glob("result_%s_*.json" % sha[:10])) and 兜底入池(sha):
                     if not 常驻:
                         return 0
-                    fcntl.flock(锁, fcntl.LOCK_UN)
+                    放锁(锁)
                     time.sleep(轮询间隔秒)
                     重抢锁(锁)
                     continue
@@ -512,14 +652,15 @@ def 主(常驻: bool, 强制: bool, 等锁: bool = False) -> int:
             #   运营者 16:2x 查状态页只见完成轮（执行中不可见）→误立 190。
             #   完成轮由 落盘 上报覆盖同 sha 行（INSERT OR REPLACE·绿/红/耗时齐）。
             if 分支 == "develop":
-                上报({"sha": sha, "分支": 分支, "平台": "linux-x86_64",
+                上报({"sha": sha, "分支": 分支, "平台": 平台,
                       "绿": None, "总秒": None, "状态": "执行中"})
-            结果 = 跑一轮(sha)
-            落盘(结果)
-            print("[完成] 绿=%s 总秒=%s 详情=%s" % (结果["绿"], 结果["总秒"], 结果["日志"]), flush=True)
+            结果 = 带门禁锁跑(sha)
+            if 结果 is not None:     # None=291 让出（gate_lock 互忙）——不落盘·下轮再战
+                落盘(结果)
+                print("[完成] 绿=%s 总秒=%s 详情=%s" % (结果["绿"], 结果["总秒"], 结果["日志"]), flush=True)
         if not 常驻:
             return 0
-        fcntl.flock(锁, fcntl.LOCK_UN)              # 184：轮间释放·点名可插队
+        放锁(锁)                                      # 184：轮间释放·点名可插队
         time.sleep(轮询间隔秒)
         重抢锁(锁)                                   # 184：非阻塞重抢（抢不到=他轮在跑·等它完成）
 
@@ -527,13 +668,9 @@ def 主(常驻: bool, 强制: bool, 等锁: bool = False) -> int:
 def 重抢锁(锁) -> None:
     """184：常驻轮间非阻塞重抢——抢不到=点名预验/兜底在跑，等它完成（90s 步进）。
     轮次级锁核心：ssh 点名 --wait-lock 至多等到当前轮完成即可插队（923 铁律由锁窗保持）。"""
-    while True:
-        try:
-            fcntl.flock(锁, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            return
-        except OSError:
-            print("[锁] 他轮在跑（点名预验/兜底）——%ds 后再试。" % 轮询间隔秒, flush=True)
-            time.sleep(轮询间隔秒)
+    while not 抢锁(锁):
+        print("[锁] 他轮在跑（点名预验/兜底）——%ds 后再试。" % 轮询间隔秒, flush=True)
+        time.sleep(轮询间隔秒)
 
 
 if __name__ == "__main__":

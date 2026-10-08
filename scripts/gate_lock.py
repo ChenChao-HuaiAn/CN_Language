@@ -32,6 +32,9 @@ from pathlib import Path
 
 
 def 主树锁目录() -> Path:
+    覆盖 = os.environ.get("CN_GATE_LOCK_DIR")   # 291：win CI 池树（独立克隆）跨树指向
+    if 覆盖:                                    # 主开发树锁目录——与人工门禁全机互斥
+        return Path(覆盖)
     结果 = subprocess.run(["git", "rev-parse", "--git-common-dir"],
                           capture_output=True, text=True, encoding="utf-8", cwd=本树根)
     共同 = (结果.stdout or "").strip()
