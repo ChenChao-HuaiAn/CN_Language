@@ -81,8 +81,8 @@
 2. **云端 test-then-commit**（触及全量面时·1015 起默认开）：`python scripts/integrate.py`
    自动把链顶推预验分支跑 linux 全量，**绿才 push develop**（红进不来；
    `--no-cloud-gate` 逃生门=941 事后兜底；纯文档/脚本轮不预验）。
-   预验执行=TX_01 任务池多 runner 认领（TX_02+家机 WSL2 谁空闲谁跑·1021；
-   池不可达自动降级 ssh 直发 TX_02）。全量由云端对 develop 兜底。
+   预验执行=TX_01 任务池多 runner 认领（TX_02+家机 WSL2+单位机 arm64 2 实例〔294·
+   工作日 9-17〕谁空闲谁跑·1021；池不可达自动降级 ssh 直发 TX_02）。全量由云端对 develop 兜底。
 3. **021 账实检查**（integrate 自动挂）：`python scripts/task_board.py --check`
    （🏃⇔分支存在防漏销账/✅⇔sha/依赖环/抢跑依赖/任务号唯一+升序+不复用已归档号——重号乱序均拦·2026-10-06 用户令）。
 - 两纪律维持：修复中间态禁推 develop（只留任务分支+预验）；临时用例（*tmp*）禁入 develop。

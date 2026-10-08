@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import json
 import os
+import platform
 import re
 import shutil
 import socket
@@ -46,7 +47,12 @@ from datetime import datetime
 from pathlib import Path
 
 是win = sys.platform.startswith("win")          # 仓库惯例（gate_quick/gate_lock 同款）
-平台 = "win-x64" if 是win else "linux-x86_64"   # run_e2e --target 与结果上报共用
+# 294：平台三分——linux 再按机架分 arm64/x86_64（291 两分把 aarch64 误标 linux-x86_64，
+#   E2E 会跑错 --target·门禁表平台列错行）；单位机（麒麟 arm64）池实例依赖本探测。
+机架 = platform.machine().lower()
+平台 = ("win-x64" if 是win
+        else "linux-arm64" if 机架 in ("aarch64", "arm64")
+        else "linux-x86_64")                    # run_e2e --target 与结果上报共用
 if 是win:
     import msvcrt
 else:
@@ -134,8 +140,8 @@ def 物理内存MB() -> int:
 
 def 取远端SHA() -> str | None:
     """git ls-remote 只查 develop 头——零流量无副作用。"""
-    输出 = subprocess.run(["git", "ls-remote", 远端名, "refs/heads/" + 分支],
-                          capture_output=True, text=True, cwd=仓库根, timeout=60)
+    输出 = 运行限时(["git", "ls-remote", 远端名, "refs/heads/" + 分支],
+                    60, capture_output=True, text=True, cwd=仓库根)
     匹配 = re.search(r"^([0-9a-f]{40})\t", 输出.stdout, re.M)
     return 匹配.group(1) if 匹配 else None
 
@@ -207,6 +213,18 @@ def 兜底入池(sha: str) -> bool:
     return False
 
 
+def 运行限时(命令: list[str], 超时秒: int, **kwargs) -> subprocess.CompletedProcess:
+    """subprocess.run 的超时安全壳（294）：超时返回伪 CompletedProcess（rc=-99·与 步骤()
+    超时标记同口径）而非抛 TimeoutExpired 炸进程——单位机实例实况：网络抖动 git fetch
+    300s 超时未捕获，systemd restart 循环 12 次（轮结果与审计全丢）。"""
+    try:
+        return subprocess.run(命令, timeout=超时秒, **kwargs)
+    except subprocess.TimeoutExpired as e:
+        出 = e.stdout if isinstance(e.stdout, str) else (e.stdout or b"").decode("utf-8", "replace")
+        return subprocess.CompletedProcess(命令, -99,
+                                           stdout=出[-400:], stderr="超时 %ds" % 超时秒)
+
+
 def 运行(命令: list[str], 日志, 超时秒: int, **kwargs) -> subprocess.CompletedProcess:
     """流式写日志（不落内存大块）+总超时看护。"""
     print("  $", " ".join(命令[:6]), ("..." if len(命令) > 6 else ""), file=日志, flush=True)
@@ -266,8 +284,7 @@ def 跑一轮(sha: str, 轮分支: str = "") -> dict:
         for 同步命令 in (["git", "fetch", 远端名, 轮分支],
                          ["git", "reset", "--hard", "-q", "FETCH_HEAD"],
                          ["git", "clean", "-fdq"]):
-            同步 = subprocess.run(同步命令, capture_output=True, text=True,
-                                  cwd=仓库根, timeout=300)
+            同步 = 运行限时(同步命令, 300, capture_output=True, text=True, cwd=仓库根)
             同步输出 += (同步.stdout or "") + (同步.stderr or "")
             if 同步.returncode != 0:
                 同步rc = 同步.returncode
@@ -540,8 +557,8 @@ def 池跑任务(任务: dict) -> None:
     停 = 启动心跳(任务分支)
     try:
         取对象 = "develop" if 兜底 else 任务分支
-        取 = subprocess.run(["git", "fetch", 远端名, 取对象], capture_output=True,
-                            text=True, cwd=仓库根, timeout=300)
+        取 = 运行限时(["git", "fetch", 远端名, 取对象], 300,
+                      capture_output=True, text=True, cwd=仓库根)
         if 取.returncode != 0:
             # fetch 失败=本轮失败（分支可能已被 integrate finally 删除=同 sha 重试竞态）——
             # 报红让服务端回收重派；本地不落盘（非真实验证结果·防污染 result 档案）
@@ -559,8 +576,8 @@ def 池跑任务(任务: dict) -> None:
             #   develop 前进→reset 到的是新头≠任务 sha——该 sha 的树已由新头轮隐含覆盖
             #   （git 树=快照·新头绿⇒含旧提交内容绿）。过期轮不落盘（防 latest 被非
             #   任务 sha 污染）·complete 绿=True 闭环（服务端不重派·详情留审计）。
-            头 = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True,
-                                text=True, cwd=仓库根, timeout=30)
+            头 = 运行限时(["git", "rev-parse", "HEAD"], 30,
+                          capture_output=True, text=True, cwd=仓库根)
             if 头.stdout.strip() != sha:
                 结果 = {"sha": sha, "分支": 任务分支, "平台": 平台, "绿": True,
                         "步骤": {"过期跳过": {"rc": 0, "说明": "develop 已前进至 %s——任务 sha 树由新头轮覆盖（189）"
