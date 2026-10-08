@@ -29,6 +29,7 @@ import os
 import re
 import subprocess
 import sys
+import threading
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -146,6 +147,20 @@ def 落登记(在做: str, 计划: str, 备注: str) -> int:
     print(f"[好] 意图已上板：{机器名()}-{会话id()} 在做#{在做 or '—'}"
           f" 计划[{计划 or '—'}]（心跳 30min 内 refresh 或重跑 claim 续约）")
     return 0
+
+
+def 路过续约() -> None:
+    """有本会话历史登记则后台线程续约（308k·路过即心跳——task_board 每次被跑时
+    挂此函数：活会话自动续约在线·真停工/被杀不跑脚本→自然失联灰显）。静默失败。"""
+    if not 登记缓存.exists():
+        return
+    def _发():
+        try:
+            旧 = json.loads(登记缓存.read_text(encoding="utf-8"))
+            调服务("POST", "/api/intent", 旧, 超时=4)
+        except (urllib.error.URLError, OSError, ValueError):
+            pass
+    threading.Thread(target=_发, daemon=True).start()
 
 
 def 命令认领(参数) -> int:

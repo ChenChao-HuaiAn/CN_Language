@@ -418,12 +418,32 @@ def main():
     ap.add_argument("--check", action="store_true", help="账实相符+依赖环检查")
     ap.add_argument("--json", action="store_true", help="--check/--ready 机读输出")
     参数 = ap.parse_args()
+    路过续约()    # 308k：路过即心跳（活会话跑账目脚本=自动续约·失败静默）
     if 参数.ready:
         return cmd_ready(参数.json)
     if 参数.check:
         return cmd_check(参数.json)
     ap.print_help()
     return 0
+
+
+def 路过续约():
+    """308k：会话只要在干活必跑 task_board（开工 --ready/提交前 --check/集成收口）——
+    此处后台线程代发一次看板心跳续约（治「登记后忘 refresh=失联误报」·用户质询 2026-10-09）。
+    intent 缺席/无历史登记/服务不可达一律静默——降级不阻断主流程。"""
+    try:
+        import importlib.util as _ilu
+        from pathlib import Path as _Path
+        _p = _Path(__file__).resolve().parent / "intent.py"
+        if not _p.exists():
+            return
+        _spec = _ilu.spec_from_file_location("cn_board_intent", _p)
+        _mod = _ilu.module_from_spec(_spec)
+        _spec.loader.exec_module(_mod)
+        import threading as _th
+        _th.Thread(target=_mod.路过续约, daemon=True).start()
+    except Exception:
+        pass
 
 
 if __name__ == "__main__":

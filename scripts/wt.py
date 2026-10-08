@@ -168,11 +168,15 @@ def 自动claim意图(任务号: str) -> None:
     if not intent.exists():
         return
     try:
+        # 308k：会话键=新树名（CN_BOARD_SESSION）——claim 若从别的树发起（常见：
+        # create 命令在主树/他树跑），键错记发起树=登记缓存错位→路过续约找不到缓存
+        # 失效（实测 313 意图挂 wt308j 键实录）。
+        env = dict(os.environ, CN_BOARD_SESSION=f"wt{任务号}")
         r = 运行([sys.executable, str(intent), "claim", 任务号,
-                  "--备注", "wt.py create 自动登记"])
+                  "--备注", "wt.py create 自动登记"], env=env)
         if "已上板" in (r.stdout or ""):
             print(f"[看板] 意图已自动登记（{任务号}·30min 心跳·收口自动注销·"
-                  f"会话中途 refresh 续约）")
+                  f"会话中途 refresh 续约·路过即心跳）")
     except OSError:
         pass
 
