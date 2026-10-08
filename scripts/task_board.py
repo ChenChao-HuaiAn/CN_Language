@@ -158,7 +158,10 @@ def 分支树含行(分支: str, 号: str) -> bool:
     只读本地 remote-tracking 引用（零网络）。
     """
     引用 = 分支 if 分支.startswith("gitcode/") else f"gitcode/{分支}"
-    r = subprocess.run(["git", "ls-tree", "--name-only", 引用, "plans/"],
+    # -c core.quotepath=false：中文路径默认被 C-quote（"plans/021-\344..."）——
+    # 引尾成 .md" 致下方 \.md$ 正则永不命中=在飞分支全误报幽灵（287 根治·
+    # quotepath 同族第三犯：979 gate_quick --l2 同病）。
+    r = subprocess.run(["git", "-c", "core.quotepath=false", "ls-tree", "--name-only", 引用, "plans/"],
                        capture_output=True, text=True, cwd=仓库根, timeout=30)
     for 名 in r.stdout.splitlines():
         名 = 名.strip()
