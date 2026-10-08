@@ -161,7 +161,7 @@ def 服务发号(描述: str, 请求号: str = "") -> dict | None:
         return None
 
 
-def 自动claim意图(任务号: str) -> None:
+def 自动claim意图(任务号: str, 描述: str = "") -> None:
     """create 成功后自动登记看板意图（308j 生命周期机械化·开工即上板零自觉依赖；
     intent.py 缺席或服务不可达均静默——降级不阻断）。"""
     intent = 本树根 / "scripts" / "intent.py"
@@ -172,8 +172,9 @@ def 自动claim意图(任务号: str) -> None:
         # create 命令在主树/他树跑），键错记发起树=登记缓存错位→路过续约找不到缓存
         # 失效（实测 313 意图挂 wt308j 键实录）。
         env = dict(os.environ, CN_BOARD_SESSION=f"wt{任务号}")
+        备注 = (描述 or "").strip()[:180] or "wt.py create 自动登记"
         r = 运行([sys.executable, str(intent), "claim", 任务号,
-                  "--备注", "wt.py create 自动登记"], env=env)
+                  "--备注", 备注], env=env)
         if "已上板" in (r.stdout or ""):
             print(f"[看板] 意图已自动登记（{任务号}·30min 心跳·收口自动注销·"
                   f"会话中途 refresh 续约·路过即心跳）")
@@ -297,7 +298,8 @@ def 立行于树(树路径: Path, 任务号: str, 描述: str, 前置: str, 优�
 
 
 def 建树(任务号: str = "", 无ninja: bool = False, 立行: str | None = None,
-         前置: str = "—", 优先级: str = "P1", 接管: bool = False) -> int:
+         前置: str = "—", 优先级: str = "P1", 接管: bool = False,
+         不推分支: bool = False) -> int:
     # 308j 乙+：create 不带号=服务器权威发号（台账∪各机视野并集 max+1·原子无撞）；
     # 服务不可达降级四源+树内视野本地取号黄字不停摆——权威可降级，开发永不停。
     if 任务号 and not re.fullmatch(r"\d+[a-z]?", 任务号):
@@ -475,12 +477,25 @@ def 建树(任务号: str = "", 无ninja: bool = False, 立行: str | None = Non
         shutil.copy(凭据, 树路径 / "scripts" / "queue_client.json")
         print("[5] queue_client.json 已同步进新树（gitignore 运维面·不入库）")
 
+    # 329：create 即推分支——push=认领（196 立规）·治「意图已上板而在飞区无此分支」
+    # 窗口（create 只建本地分支·用户忘 push 则看板两区不一致·用户报 BUG 2026-10-09）。
+    # 失败仅警告不阻断（离线/权限面·--no-push 逃生门保留旧节奏）。
+    if 不推分支:
+        print("[6] 跳过自动推分支（--no-push）——认领待手动 push 生效")
+    else:
+        推 = 运行(["git", "push", "-u", "gitcode", 分支])
+        if 推.returncode == 0:
+            print(f"[6] 分支已自动推送（push=认领·看板在飞区 8s 内可见）")
+        else:
+            print(f"[黄] 自动推分支失败：{(推.stderr or '').strip().splitlines()[-1] if (推.stderr or '').strip() else '?'}"
+                  f"——手动 git push -u gitcode {分支}（认领待生效）")
+
     print(f"""
 [完成] {树路径}（分支 {分支}·{模式}）
-  下一步（AGENTS.md §2/§7）：{'①021 立项行已自动随分支（--行 模式）' if 自动立项 else '①plans/021 改行 ⬜→🏃+备注分支=任务/'+任务号} ②push 分支到 gitcode=认领生效
+  下一步（AGENTS.md §2/§7）：{'①021 立项行已自动随分支（--行 模式）' if 自动立项 else '①plans/021 改行 ⬜→🏃+备注分支=任务/'+任务号} ②（分支已自动推送·如 --no-push 则手动 push 认领）
   ③提交前 L1 门禁 gate_quick.py（win 全量=ci.ps1）④收工 integrate.py（自动 021 收口）""")
     if not 接棒:
-        自动claim意图(任务号)
+        自动claim意图(任务号, 立行 or "")
     return 0
 
 
@@ -557,6 +572,8 @@ def 主流程() -> int:
     p建.add_argument("--前置", default="—", help="前置任务号（逗号分隔·默认 —=无）")
     p建.add_argument("--优先级", default="P1", choices=["P0", "P1", "P2", "P3"], help="默认 P1")
     p建.add_argument("--no-ninja", action="store_true", help="跳过 Ninja 开发树配置")
+    p建.add_argument("--no-push", action="store_true",
+                     help="跳过 create 后的自动推分支（旧节奏：手动 push 认领）")
     p建.add_argument("--takeover", action="store_true",
                      help="接管他机 48h 内仍活跃的任务分支（285 撞车根治显式确认面·308a）")
     p列 = 子.add_parser("list", help="列出全部 worktree")
@@ -569,7 +586,8 @@ def 主流程() -> int:
     if 参数.命令 == "create":
         return 建树(参数.任务号, 参数.no_ninja, getattr(参数, "行", None),
                     getattr(参数, "前置", "—"), getattr(参数, "优先级", "P1"),
-                    getattr(参数, "takeover", False))
+                    getattr(参数, "takeover", False),
+                    getattr(参数, "no_push", False))
     if 参数.命令 == "list":
         return 列树()
     if 参数.命令 == "remove":

@@ -401,10 +401,16 @@ class 处理器(BaseHTTPRequestHandler):
                    ON CONFLICT(键) DO UPDATE SET 内容=excluded.内容, 上报时戳=excluded.上报时戳""",
                 (json.dumps(行们, ensure_ascii=False), time.time()))
             if 任务字典 is not None:
+                # 329：字典合并（并集·同键取本次上报）而非全量覆盖——各机 021 新旧不一，
+                # 旧视野覆盖会把新标题抹掉（290/309 标题消失实证·用户报 BUG）。过期惰性清：
+                # 快照保留秒 到期整体失效（取快照 已管），合并只影响存活窗口内的多机并集。
+                旧字典 = 取快照("任务字典") or {}
+                合并 = dict(旧字典)
+                合并.update(任务字典)
                 连接.execute(
                     """INSERT INTO 快照(键,内容,上报时戳) VALUES('任务字典',?,?)
                        ON CONFLICT(键) DO UPDATE SET 内容=excluded.内容, 上报时戳=excluded.上报时戳""",
-                    (json.dumps(任务字典, ensure_ascii=False), time.time()))
+                    (json.dumps(合并, ensure_ascii=False), time.time()))
             连接.commit()
         return self._回JSON(200, {"好": True})
 
@@ -806,6 +812,14 @@ def 自检() -> int:
         码, r = 调("GET", "/api/board")
         签("318 服务端收口惰性清：在做#110 字典✅→行删",
            all(i["在做"] != "110" for i in r["意图们"]))
+        调("POST", "/api/report_021", {"行们": [], "任务字典": {
+            "314": {"标题": "甲", "状态": "⬜", "优先级": "P1"}}})
+        调("POST", "/api/report_021", {"行们": [], "任务字典": {
+            "110": {"标题": "乙", "状态": "⬜", "优先级": "P1"}}})
+        码, r = 调("GET", "/api/board")
+        字 = r.get("任务字典") or {}
+        签("329 字典合并：后报不抹先报（110 与 314 并存）",
+           字.get("110", {}).get("标题") == "乙" and 字.get("314", {}).get("标题") == "甲")
     finally:
         实例.shutdown()
         globals()["连接"] = 全局连接
