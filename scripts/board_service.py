@@ -570,7 +570,7 @@ const 拉取=async()=>{try{
   document.getElementById('状态灯').classList.remove('断');
   document.getElementById('错误条').style.display='none';
   document.getElementById('元信息').textContent='数据时刻 '+d.时刻+' · 每 8s 自动刷新';
-  渲染冲突(d.冲突们||[]);渲染意图(d.意图们||[]);渲染在飞(d.在飞分支们||[], d.任务字典||{});渲染队列(d.快照021);
+  渲染冲突(d.冲突们||[]);渲染意图(d.意图们||[], d.任务字典||{});渲染在飞(d.在飞分支们||[], d.任务字典||{});渲染队列(d.快照021);
 }catch(e){
   document.getElementById('状态灯').classList.add('断');
   document.getElementById('错误条').style.display='block';
@@ -586,7 +586,7 @@ function 渲染冲突(冲突们){
    '</b> 被 '+c.会话们.map(转义).join(' 与 ')+
    ' 同时声明——开工前先核对对方状态，避免两机同做一号</div>').join('');
  带.style.display=冲突们.length?'block':'none';}
-function 渲染意图(意图们){
+function 渲染意图(意图们, 字典){
  const 区=document.getElementById('意图区');
  if(!意图们.length){区.innerHTML='<div class="空态">暂无会话登记<br><br>'+
    '<code>python scripts/intent.py claim &lt;任务号&gt; --planned &lt;后续号们&gt;</code><br>登记后 8 秒内全网可见</div>';return;}
@@ -597,11 +597,13 @@ function 渲染意图(意图们){
      转义(机)+'<span class="副">'+们.length+' 个会话</span></div>'+
      们.map(i=>{
        const 计划=(i.计划||'').split(',').filter(Boolean).map(p=>'<span class="标签">#'+转义(p)+'</span>').join('');
+       const t=i.在做?字典[i.在做]:null;   // 313a：意图行显示任务内容（对齐在飞区信息密度）
        return '<div class="会话'+(i.失联?' 失联卡':'')+'"><div class="行1">'+
         '<span class="对话">'+转义(i.对话id)+'</span>'+
         (i.在做?'<span class="号牌">#'+转义(i.在做)+'</span>':'<span class="对话">未挂任务</span>')+
         (i.失联?'<span class="失联徽">失联</span>':'')+
         '<span class="心跳行">'+相对时(i.时戳)+'</span></div>'+
+        (t?'<div class="题" style="white-space:normal;opacity:.88">'+转义(t.标题)+'</div>':'')+
         (计划?'<div style="margin-top:4px">'+计划+'</div>':'')+
         (i.备注?'<div class="备注行">'+转义(i.备注)+'</div>':'')+
        '</div>';}).join('')+'</div>';}).join('');}
@@ -749,6 +751,8 @@ def 自检() -> int:
         with urllib.request.urlopen(基址 + "/", timeout=5) as resp:
             页 = resp.read().decode("utf-8")
         签("看板页 200 且含看板字样", resp.status == 200 and "任务看板" in 页)
+        签("313a 意图行接任务字典渲染", "渲染意图(意图们, 字典)" in 页
+           and "字典[i.在做]" in 页)
         # 308j 发号权威五用例（乙+：原子递增/视野并集/禁用号跳/核对 409/占号冲突）
         码, r = 调("POST", "/api/claim_number", {"机器": "甲机", "对话id": "n1",
                   "上报者": "甲机-主树", "视野号们": ["300", "307", "308i"], "描述": "首号"})
