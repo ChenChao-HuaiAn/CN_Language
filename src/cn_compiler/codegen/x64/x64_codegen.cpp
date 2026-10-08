@@ -918,6 +918,17 @@ std::string X64CodeGenerator::generateAssembly(const ir::IRModule& module) {
                 if (inst.opcode == ir::Opcode::ConstFloat) {
                     registerFloatConstant(inst.extra, inst.type == "f64");
                 }
+                // 302（A2050 根治）：调用实参中的浮点常量同入常量池——默认参数
+                //   展开的缺省实参=IRValue::constant 浮点文本（非 ConstFloat 指令），
+                //   漏注册则发射器指令期注册的标签无 .data 段定义（链接期缺符号）
+                if (inst.opcode == ir::Opcode::Call ||
+                    inst.opcode == ir::Opcode::CallIndirect) {
+                    for (auto& op : inst.operands) {
+                        if (op.isConstant && isFloatType(op.type)) {
+                            registerFloatConstant(op.extra, op.type == "f64");
+                        }
+                    }
+                }
             }
         }
     }

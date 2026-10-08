@@ -273,6 +273,9 @@ private:
     static std::string floatBitsHex(const std::string& text, bool isDouble);
     // 在 .data 段登记浮点常量（@fpN），返回标签；重复文本复用同一标签
     std::string registerFloatConstant(const std::string& text, bool isDouble);
+    // 302：调用实参操作数文本（浮点常量实参→常量池标签 @fpN·MASM 禁 real 立即数）
+    std::string floatArgText(const ir::IRValue& av, const std::string& argType,
+                             const std::string& rawOp);
 
     // 选择整型寄存器宽度（i32->eax / i64->rax）
     static std::string widthFor(const std::string& type, const std::string& reg);

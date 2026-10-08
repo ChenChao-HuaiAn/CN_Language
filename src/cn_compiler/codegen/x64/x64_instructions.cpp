@@ -846,10 +846,11 @@ void X64CodeGenerator::emitCall(AsmWriter& writer, const ir::IRInstruction& inst
                 }
                 writer.line("mov [rsp+" + std::to_string(32 + (i + argOffset - 4) * 8) + "], " + addr);
             } else if (isFloatType(argType)) {
-                // 浮点栈参数：movsd/movss 存入栈槽（内存目标需显式大小前缀）
+                // 浮点栈参数：movsd/movss 存入栈槽；302 常量实参走常量池（A2050）
                 const std::string store = (argType == "f64") ? "movsd" : "movss";
                 const std::string mp = (argType == "f64") ? "qword ptr " : "dword ptr ";
-                writer.line(store + " xmm0, " + mp + op);
+                const ir::IRValue& av = inst.operands[argBase + i];
+                writer.line(store + " xmm0, " + mp + floatArgText(av, argType, op));
                 writer.line(store + " " + mp + "[rsp+" + std::to_string(32 + (i + argOffset - 4) * 8) + "], xmm0");
             } else if (argType == "i32" || argType == "i1") {
                 // 32位值：eax 读 + 符号扩展 rax（C ABI int->long long 提升）
@@ -924,21 +925,18 @@ void X64CodeGenerator::emitCall(AsmWriter& writer, const ir::IRInstruction& inst
             //   - 变参函数只把 rcx/rdx/r8/r9 保存到 shadow space，va_arg 从保存槽读
             //   - 故浮点位模式必须用 movq 复制到同参数位整型寄存器（movq rdx, xmm1）
             //     ——否则 va_arg(double) 读到未初始化槽 -> %f 输出 0.000000（Task 2.9 修复）
+            // 302：常量实参走常量池 @fpN（A2050）；浮点位 movq 复制到同位整型寄存器（变参）
+            const ir::IRValue& av = inst.operands[argBase + i];
             const std::string load = (argType == "f64") ? "movsd" : "movss";
             const std::string mp = (argType == "f64") ? "qword ptr " : "dword ptr ";
             const std::string xmm = "xmm" + std::to_string(regIdx);
-            writer.line(load + " " + xmm + ", " + mp + op);
+            writer.line(load + " " + xmm + ", " + mp + floatArgText(av, argType, op));
             // 浮点位模式复制到同参数位整型寄存器（变参 va_arg 读取路径，MSVC 惯例）
             // 437-a（A2070 根治）：参数位 ≥4 = 栈传——parameterRegister 返回 [rbp+N]
             //   内存槽：movq 内存目标须带 qword ptr（缺=A2070·431 用例 win 专属红实证）
-            {
-                const std::string reg = parameterRegister(regIdx);
-                if (!reg.empty() && reg[0] == '[') {
-                    writer.line("movq qword ptr " + reg + ", " + xmm);
-                } else {
-                    writer.line("movq " + reg + ", " + xmm);
-                }
-            }
+            const std::string reg = parameterRegister(regIdx);
+            writer.line((!reg.empty() && reg[0] == '[') ? "movq qword ptr " + reg + ", " + xmm
+                                                        : "movq " + reg + ", " + xmm);
         } else if (argType == "i32" || argType == "i1") {
             std::string reg = parameterRegister(regIdx);
             // movsxd 需要先装入 eax：mov eax, op; movsxd rcx, eax

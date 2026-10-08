@@ -223,4 +223,16 @@ void X64CodeGenerator::emitDataSection(AsmWriter& writer, const ir::IRModule& mo
     if (!hasAny) writer.comment("（无常量）");
 }
 
+// 302（A2050 根治）：调用实参操作数文本——浮点常量实参（默认参数展开的
+//   IRValue::constant 文本如 "2.0"）→ 浮点常量池标签 @fpN（MASM 禁 real
+//   立即数内联·ml64 A2050）；其余实参原文本透传。幂等：池注册重复文本复用。
+std::string X64CodeGenerator::floatArgText(const ir::IRValue& av,
+                                           const std::string& argType,
+                                           const std::string& rawOp) {
+    if (av.isConstant && isFloatType(argType)) {
+        return registerFloatConstant(av.extra, argType == "f64");
+    }
+    return rawOp;
+}
+
 } // namespace cn_compiler
