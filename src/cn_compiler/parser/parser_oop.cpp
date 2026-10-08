@@ -24,6 +24,9 @@ namespace cn_compiler {
 namespace {
 
 // 判断当前 token 是否为可重载运算符符号（Task 3.7）
+// 304（收窄立法·2026-10-08 用户批「照办」）：可重载集合移除 [] 与 ()——
+//   两者实现从未可用（类体内 运算符[]/运算符() 解析崩溃=类体中断实测），
+//   functor 生态位由 lambda+函数指针覆盖；001 §4.6 条文同步收窄。
 bool isOverloadableOperator(TokenType t) {
     switch (t) {
         case TokenType::Plus: case TokenType::Minus: case TokenType::Star:
@@ -34,8 +37,8 @@ bool isOverloadableOperator(TokenType t) {
         case TokenType::AndAnd: case TokenType::OrOr: case TokenType::Bang:
         case TokenType::Amp: case TokenType::Pipe: case TokenType::Caret:
         case TokenType::Tilde: case TokenType::LessLess: case TokenType::GreaterGreater:
-        case TokenType::LeftBracket: case TokenType::LeftParen:
             // v2.1：可重载集合删 ->（成员访问统一 .，该运算符已废除）
+            // 304：可重载集合删 [] ()（实现缺·lambda+函数指针覆盖·立法对齐）
             return true;
         default:
             return false;
@@ -508,6 +511,16 @@ bool Parser::parseFunctionMember(ClassMember& out) {
         advance();  // 消费"函数"
         // 运算符重载（Task 3.7）：函数 运算符X(...)（运算符 为上下文关键字，Identifier）
         if (checkText("运算符")) {
+            // 304（收窄立法）：[] / () 显式拒绝（实现从未可用·立法对齐·
+            //   functor 用例改 lambda/函数指针）——替代原「类体解析中断」崩溃
+            if (peek(1).getType() == TokenType::LeftBracket ||
+                peek(1).getType() == TokenType::LeftParen) {
+                reportErrorHere(
+                    "运算符 \"" +
+                    std::string(peek(1).getType() == TokenType::LeftBracket ? "[]" : "()") +
+                    "\" 不支持重载（001 §4.6 收窄——请改用 lambda 或函数指针）");
+                return false;
+            }
             // 后随运算符符号才识别为运算符重载（否则为普通函数名"运算符"）
             if (isOverloadableOperator(peek(1).getType())) {
                 out.kind = ClassMemberKind::Operator;
