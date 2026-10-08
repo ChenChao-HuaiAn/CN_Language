@@ -17,15 +17,16 @@ board_service（TX_01:8301），网页看板实时可见+同号双声明冲突�
 refresh 黄字提示后 exit 0（不阻断开发工作——分支存在=认领仍是有效兜底）；
 show 无法取数 exit 1。令牌复用 scripts/queue_client.json 的「令牌」字段
 （同一把锁守同一栋楼·零新增配置）；URL 可用环境变量 CN_BOARD_URL 覆盖。
-会话 id 首次自动生成持久于 ~/.cache/cn_board_session_id；机器名取 CN_MACHINE_NAME
-环境变量（优先）或主机名。
+会话 id 按 worktree 粒度（308i：仓库根目录名·持久于 ~/.cache/cn_board_session_id_<树名>；
+同机多 worktree 并行互不覆盖，CN_BOARD_SESSION 环境变量可显式覆盖·特殊场景用）；
+机器名取 CN_MACHINE_NAME 环境变量（优先）或 ~/.cache/cn_board_machine 或主机名。
 """
 from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
-import secrets
 import subprocess
 import sys
 import urllib.error
@@ -35,9 +36,13 @@ from pathlib import Path
 脚本目录 = Path(__file__).resolve().parent
 仓库根 = 脚本目录.parent
 缓存目录 = Path.home() / ".cache"
-会话文件 = 缓存目录 / "cn_board_session_id"
+# 308i：会话按 worktree 粒度（仓库根目录名即会话名）——治全机单文件多会话互覆
+# （同机多 worktree 并行是本项目常态·一会话一树纪律下 worktree 粒度=会话粒度；
+#   同树多会话等特殊场景用 CN_BOARD_SESSION 环境变量显式命名）
+会话键 = os.environ.get("CN_BOARD_SESSION", "").strip() or 仓库根.name
+会话文件 = 缓存目录 / f"cn_board_session_id_{会话键}"
 机器文件 = 缓存目录 / "cn_board_machine"
-登记缓存 = 缓存目录 / "cn_board_intent_last.json"
+登记缓存 = 缓存目录 / f"cn_board_intent_last_{会话键}.json"
 默认地址 = "http://124.222.106.84:8301"
 
 
@@ -57,8 +62,8 @@ def 令牌() -> str:
 def 会话id() -> str:
     if not 会话文件.exists():
         会话文件.parent.mkdir(parents=True, exist_ok=True)
-        会话文件.write_text(secrets.token_hex(2), encoding="utf-8")   # 4 位短 id·够三机区分
-    return 会话文件.read_text(encoding="utf-8").strip()
+        会话文件.write_text(会话键, encoding="utf-8")   # worktree 名即 id·看板行「机器-树名」直读
+    return 会话文件.read_text(encoding="utf-8").strip() or 会话键
 
 
 def 机器名() -> str:
