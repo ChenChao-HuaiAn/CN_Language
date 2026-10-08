@@ -338,13 +338,12 @@ h1 .dim{font-weight:400}
 @keyframes 呼吸{0%,100%{opacity:1}50%{opacity:.35}}
 #元信息{margin-left:auto;color:var(--dim);font-size:12px;font-variant-numeric:tabular-nums}
 /* —— 主区 —— */
-main{max-width:1280px;margin:0 auto;padding:var(--space4) var(--space5) var(--space5);
- display:grid;grid-template-columns:minmax(340px,1fr) minmax(380px,1.15fr);
- gap:var(--space4);align-items:start}
-@media(max-width:900px){main{grid-template-columns:1fr;padding:var(--space3)}}
+main{margin:0 auto;padding:var(--space4) var(--space5) var(--space5);
+ display:flex;flex-direction:column;gap:var(--space5)}
+@media(max-width:900px){main{padding:var(--space3)}}
 h2{font-size:12px;font-weight:600;color:var(--dim);letter-spacing:.14em;margin:0 0 var(--space2)}
 /* —— 冲突横幅 —— */
-#冲突带{display:none;max-width:1280px;margin:var(--space3) auto 0;padding:0 var(--space5)}
+#冲突带{display:none;margin:var(--space3) auto 0;padding:0 var(--space5)}
 @media(max-width:900px){#冲突带{padding:0 var(--space3)}}
 .冲突条{border:1px solid var(--danger);border-left:4px solid var(--danger);
  background:color-mix(in srgb,var(--danger) 10%,var(--surface));
@@ -391,8 +390,6 @@ h2{font-size:12px;font-weight:600;color:var(--dim);letter-spacing:.14em;margin:0
 .飞行 .题{color:var(--dim);font-size:12px;overflow:hidden;text-overflow:ellipsis;
  margin-top:1px}
 .黄标{font-size:11px;color:var(--warn);white-space:nowrap;align-self:center}
-.绿标{font-size:11px;color:var(--ok);white-space:nowrap;align-self:center}
-.灰标{font-size:11px;color:var(--dim);white-space:nowrap;align-self:center}
 .状态徽{font-size:10px;border:1px solid;border-radius:4px;padding:0 5px;
  margin-left:6px;vertical-align:1px;white-space:nowrap}
 .队列行{display:flex;gap:var(--space2);align-items:baseline;padding:3px 0;font-size:13px}
@@ -470,15 +467,12 @@ function 渲染在飞(们, 字典){
  const 状态徽={'⬜':['待办','#93a1b0'],'🏃':['在飞','#3fb950'],'⏸':['挂起','#d9a53a'],'✅':['已完成','#79c0ff']};
  区.innerHTML=们.map(f=>{
    const 号=f.号||''; const t=字典[号];
-   const 标 = f.已并入 ? '<span class="灰标">已并入 develop · 待删</span>'
-            : (f.已登记意图 ? '<span class="绿标">意图已登记</span>'
-                           : '<span class="黄标">未登记意图</span>');
    const 徽 = t&&状态徽[t.状态] ? '<span class="状态徽" style="color:'+状态徽[t.状态][1]+
                 ';border-color:'+状态徽[t.状态][1]+'">'+状态徽[t.状态][0]+'</span>' : '';
    const 题 = t ? 转义(t.标题) : '<span style="opacity:.6">'+转义(f.提交题||f.提交)+'</span>';
    return '<div class="飞行'+(f.已并入?' 僵尸':'')+'"><div style="min-width:0;flex:1">'+
      '<div><span class="分支名">'+转义(f.分支)+'</span> '+徽+'</div>'+
-     '<div class="题" style="white-space:normal">'+题+'</div></div>'+标+'</div>';}).join('');}
+     '<div class="题" style="white-space:normal">'+题+'</div></div></div>';}).join('');}
 function 渲染队列(快照){
  const 区=document.getElementById('队列区');
  if(!快照||!快照.length){区.innerHTML='<div class="空态">暂无 021 快照上报</div>';return;}
