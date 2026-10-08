@@ -22,6 +22,9 @@
 # 口径差异说明：三段不套 gate_lock（其存在理由=同机多 worktree 防互抢·AGENTS §8.8；
 #   TX_02 独占 CI 无此场景）；E2E --jobs 3（4C3.6G 校准起点·家机实例 CN_E2E_JOBS=4）。
 
+# 兼容 python3.8：注解泛型下标/联合字符串化（287·同 gate_quick 修复缘由）。
+from __future__ import annotations
+
 import fcntl
 import json
 import os

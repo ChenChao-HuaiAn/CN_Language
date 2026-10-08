@@ -7,6 +7,9 @@
 # 用法：python scripts/render_status.py [--machine 家机] [--write] [--dry-git]
 # 渲染区豁免 check_handoff 的深度校验前提：写入后必跑 check_handoff 复核（本脚本不自检）。
 
+# 兼容 python3.8：注解泛型下标/联合字符串化（287·同 gate_quick 修复缘由）。
+from __future__ import annotations
+
 import re
 import subprocess
 import sys

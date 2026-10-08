@@ -6,6 +6,10 @@
 # 不含 E2E：L2=影响面子集（任务分支收工）、L3=云端全量（TX_02 每推送+每日兜底·AGENTS v4）。
 # 用法：python scripts/gate_quick.py   （rc=0=可提交；任何一步红=修复后再跑）
 
+# 兼容 python3.8（深度机/单位机系统 python）：注解里的 list[str] 等泛型下标与
+# X | None 联合在 3.8 会 TypeError——future import 使注解字符串化（242 轮 13b0e034 后断线·287 修复）。
+from __future__ import annotations
+
 import subprocess
 import sys
 from pathlib import Path
