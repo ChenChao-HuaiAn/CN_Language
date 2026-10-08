@@ -91,7 +91,13 @@ def 意图行转字典(行) -> dict:
             "失联秒": int(陈旧秒), "登记时刻": 登记时刻}
 
 
+自动清秒 = int(os.environ.get("CN_INTENT_PURGE_SEC", "7200"))   # 失联超此秒数=自动注销（会话被杀无 release 兜底）
+
+
 def 全部意图() -> list:
+    # 308h：失联超自动清秒的意图行惰性注销（30min 失联灰显→2h 清除）
+    连接.execute("DELETE FROM 意图 WHERE 心跳时戳<?", (time.time() - 自动清秒,))
+    连接.commit()
     行们 = 连接.execute("SELECT * FROM 意图 ORDER BY 机器, 对话id").fetchall()
     return [意图行转字典(r) for r in 行们]
 
@@ -239,12 +245,18 @@ class 处理器(BaseHTTPRequestHandler):
         return self._回JSON(200, {"好": True, "会话键": f"{机器}-{对话id}"})
 
     def _注销意图(self, 体: dict):
-        机器 = str(体.get("机器", "")).strip()
-        对话id = str(体.get("对话id", "")).strip()
-        if not 机器 or not 对话id:
-            return self._回JSON(400, {"错误": "机器与对话id 必填"})
+        # 308h：两种注销口径——按会话（机器+对话id·会话收工）或按在做任务号
+        # （任务收口联动·integrate 调用——挂在该任务上的全部会话意图清除）
+        任务号 = str(体.get("在做", "")).strip()
         with 写锁:
-            连接.execute("DELETE FROM 意图 WHERE 对话id=?", (对话id,))
+            if 任务号:
+                连接.execute("DELETE FROM 意图 WHERE 在做=?", (任务号,))
+            else:
+                机器 = str(体.get("机器", "")).strip()
+                对话id = str(体.get("对话id", "")).strip()
+                if not 机器 or not 对话id:
+                    return self._回JSON(400, {"错误": "须 机器+对话id 或 在做 任务号"})
+                连接.execute("DELETE FROM 意图 WHERE 对话id=?", (对话id,))
             连接.commit()
         return self._回JSON(200, {"好": True})
 
@@ -255,6 +267,9 @@ class 处理器(BaseHTTPRequestHandler):
         上报者 = str(体.get("上报者", "")).strip()[:60]
         现 = time.time()
         with 写锁:
+            # 308h：全量替换——上报者视图=远端实时真相，本次没报的旧行=远端已删
+            # （原 upsert 只增不删·已收口分支残影挂满 1h 才过期=用户质询面）
+            连接.execute("DELETE FROM 在飞分支")
             for 项 in 分支们:
                 if not isinstance(项, dict):
                     continue
@@ -570,6 +585,26 @@ def 自检() -> int:
            > [行["号"] for 行 in r["快照021"]].index("002"))
         码, r = 调("POST", "/api/intent", {"对话id": "无机器"})
         签("缺机器参数 400", 码 == 400)
+        # 308h 生命周期三用例
+        调("POST", "/api/report_flights", {"上报者": "甲", "分支们": [
+            {"分支": "任务/999", "提交": "old0001", "时刻": ""}]})
+        调("POST", "/api/report_flights", {"上报者": "乙", "分支们": [
+            {"分支": "任务/888", "提交": "new0001", "时刻": ""}]})
+        码, r = 调("GET", "/api/board")
+        签("308h 在飞上报全量替换（旧 999 消失）",
+           all(f["分支"] != "任务/999" for f in r["在飞分支们"]))
+        调("POST", "/api/intent", {"机器": "测机", "对话id": "h1", "在做": "777"})
+        码, r = 调("POST", "/api/intent_release", {"在做": "777"})
+        码, r = 调("GET", "/api/board")
+        签("308h 按在做任务号批量注销",
+           all(i["在做"] != "777" for i in r["意图们"]))
+        连接3 = globals()["连接"]
+        连接3.execute("INSERT INTO 意图(对话id,机器,在做,计划,备注,心跳时刻,心跳时戳,登记时刻) "
+                      "VALUES('old','古机','x','','','old',?,'old')", (time.time() - 99999,))
+        连接3.commit()
+        码, r = 调("GET", "/api/board")
+        签("308h 失联超 2h 惰性自动注销",
+           all(i["对话id"] != "old" for i in r["意图们"]))
         码, r = 调("POST", "/api/intent", {"机器": "旧机名", "对话id": "c9",
                   "在做": "110"})
         码, r = 调("POST", "/api/intent", {"机器": "新机名", "对话id": "c9",

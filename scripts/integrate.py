@@ -893,6 +893,23 @@ def 队列读(远程: str = 主远程) -> list[dict] | None:
     return 行们
 
 
+板服务URL = os.environ.get("CN_BOARD_URL", "http://124.222.106.84:8301")
+
+
+def 板调用(路径: str, 数据: dict) -> bool:
+    """看板服务写操作（308h·意图生命周期联动）——失败仅返回 False 不阻断集成。"""
+    import urllib.request
+    try:
+        请求 = urllib.request.Request(板服务URL.rstrip("/") + 路径,
+                                     data=json.dumps(数据, ensure_ascii=False).encode("utf-8"),
+                                     headers={"Content-Type": "application/json",
+                                              "Authorization": "Bearer " + 队列服务令牌})
+        with urllib.request.urlopen(请求, timeout=4) as 响应:
+            return bool(json.loads(响应.read().decode("utf-8")).get("好"))
+    except Exception:
+        return False
+
+
 def 队列写(操作: str, 数据: dict) -> bool:
     """写操作（join/update/touch/clear）——服务不可用/未配置返回 False（回退看板直推）。"""
     结果 = 服务调用("/api/" + 操作, 数据)
@@ -1372,6 +1389,13 @@ def 批流程(参数: argparse.Namespace) -> int:
                 print(f"  [清理] 远程任务分支 {行['分支']} 已删（内容已随批入 {集成分支}·AGENTS.md §7）。")
             else:
                 print(f"  [警告] 远程任务分支 {行['分支']} 删除失败——稍后 branch_cleanup.py 兜底。")
+            # 308h：意图生命周期联动——任务收口=挂在该任务上的会话意图自动注销
+            # （治「会话收工不 release」残留·失败仅警告不阻断集成有效性）
+            号0 = 行["分支"].split("/", 1)[-1]
+            if 板调用("/api/intent_release", {"在做": 号0}):
+                print(f"  [清理] 看板意图（在做#{号0}）已随收口注销。")
+            else:
+                print(f"  [提示] 看板服务不可达——意图#{号0} 等失联自动清（降级不阻断）。")
 
         def 销账变换(文: str):
             新 = 队列清行们(文, [行["分支"] for 行 in 实际成员])
