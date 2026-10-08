@@ -401,7 +401,7 @@ h2{font-size:12px;font-weight:600;color:var(--dim);letter-spacing:.14em;margin:0
 <div id="错误条">服务连接中断，正在重试…</div>
 <script>
 const 拉取=async()=>{try{
-  const r=await fetch('/api/board');if(!r.ok)throw new Error('HTTP '+r.status);
+  const r=await fetch('api/board');if(!r.ok)throw new Error('HTTP '+r.status);
   const d=await r.json();
   document.getElementById('状态灯').classList.remove('断');
   document.getElementById('错误条').style.display='none';
