@@ -1,15 +1,5 @@
 // 语义分析器：遍历AST进行符号收集与类型检查（Task 1.5 + 阶段3 OOP/错误处理）
 // 设计要点：
-//   1. 继承 AstVisitor 访问者模式遍历AST（与语法分析器解耦）
-//   2. 两趟处理：先注册全部函数符号（支持前向调用），再逐个检查函数体
-//   3. 变量作用域栈：支持嵌套作用域（代码块/循环体）与同名遮蔽
-//   4. 类型系统：CN语言基本类型（整8~整128/正8~正128/浮32/浮64/字符/布尔/字符串/空类型）
-//   5. 阶段3（Task 3.1~3.5, 3.7~3.9）：类符号表/继承/虚表/接口/访问控制/错误码传播/
-//      运算符重载/泛型单态化/静态成员/常量成员/友元；按职责拆分子模块：
-//        - class_resolver.cpp ：类/接口解析（符号表/继承/虚表/接口验证/访问控制/静态/常量/友元/运算符）
-//        - error_analysis.cpp  ：结果/可选降级 + 内置构造器 + 3条强制检查规则
-//        - generics.cpp        ：泛型注册 + 单态化 + 接口约束
-//   6. 英文API命名（GCC 7 不支持中文标识符），中文仅用于注释/字符串/输出
 #pragma once
 #include <cstdint>
 #include <functional>
@@ -45,8 +35,6 @@ struct FunctionInfo {
     int defaultCount = 0;                  // 尾部默认参数个数（从右向左连续声明）
     // ---- crate 模型（第 4 层，v2.0 决策4）----
     // 所属模块（crate 域）名：registerFunction 写入（FunctionDecl::moduleName）。
-    // 重复定义检测按模块分桶：跨模块同名同签名函数允许（crate 隔离），
-    // 仅同模块内重名报错。空 = 单文件/内置函数（prelude，无 crate 域）。
     std::string moduleName;
     // P3-18 补完（2026-08）：函数返回类型为 T&（引用返回，返回被引用左值地址）。
     // 不参与重载签名（返回类型不构成重载）；isRefReturn 供 IR（返回类型映射 ptr）
@@ -88,9 +76,6 @@ struct ClassMemberInfo {
     bool isUnsafe = false;
     // 118（929·2026-10-01）：引用返回方法（-> T&·如 向量.元素引用）——按 AST
     //   返回类型原文判定（type 字段经 canonical 剥 & 不可判）；供语义层左值
-    //   放行（lastExprIsRefReturn_）与 IR 层（returnType 映射 ptr/returnTypeSrc
-    //   带 &/调用方读值 lvalue-to-rvalue）识别——与 FunctionInfo.isRefReturn
-    //   同构（P3-18 函数形态的方法面补完·829 立法写通道）。
     bool isRefReturn = false;
 };
 
@@ -125,8 +110,6 @@ struct ClassInfo {
     const ClassDecl* ast = nullptr;            // AST 节点指针
     // H8 根治（2026-08-25）：泛型类实例化实参列表（instantiateGeneric 存储）。
     //   方法体 genericTypeParams_ 解析用——嵌套实参（向量$映射$整64$整64 的
-    //   映射$整64$整64）内含 $，无法从实例化名朴素反解（原实现截成模板名 映射，
-    //   类型大小(T) 兜底 8）。仿照 genericFuncInstances_（泛型函数已存 args）。
     std::vector<std::string> typeArgs;
 };
 
@@ -172,12 +155,6 @@ public:
 
     // plans/018 呈报二 A′（2026-09-07 用户裁决）：函数链接键——全编译器唯一公式。
     //   链接键(模块名, 函数名, 签名键) = (模块名空 或 =="主" 或 函数名=="主"
-    //   或模块名以 __cn_ 开头) ? 签名键 : 模块名$签名键。
-    //   注册侧（registerFunction）、定义侧（ir_decl mangledName）共同调用本函数，
-    //   消灭「注册键归属顺序依赖 vs 定义侧恒公式」不对称（同名同签名 + 入口纯名
-    //   调用 → 链接 undefined reference 主$X 的错编缺陷根治）。Rust 对照：
-    //   rustc 符号=f(def-id 规范路径) 定义时即定、公式全编译器唯一。
-    //   public：IR 层（ir_decl.cpp）跨层调用（frontend→ir 单向依赖合法）。
     static std::string functionLinkKey(const std::string& moduleName,
                                        const std::string& funcName,
                                        const std::string& sigKey);
@@ -199,16 +176,10 @@ public:
 
     // 874（任务 083）：LUE（最后使用消除）判定——与 v2 判据同构（plans/001
     //   §5.3·〔基准=019〕）：纯局部标识符＋文本后向无同名＋循环跨迭代保守
-    //   （调用点被循环包围时源须在同一最内层循环体内声明）＋闭包保守。
-    //   通过 → 置 CallExpr::lueMove（IR 层 move 发射消费）。
     bool lueEligible(class CallExpr* call, class Expr* arg);
 
     // 85-a（2026-09-12 第八十五轮）：借出方法名判定**上提 public**——IR 侧聚合
     //   返回位所有权保证（ir_fields.cpp isBorrowedAggregateSource）须按被调方
-    //   方法名豁免：容器元素读出接口（元素/读取/栈顶/队首/头部元素/读取头部/
-    //   读取尾部/获取）**设计上**返回借出视图（调用方不登记释放；生命周期由
-    //   77-a 检查器保证），返回值不得拥有化（Rust `Vec::get -> &T` 同款）。
-    //   单一事实源：语义层 77-a 与 IR 侧 85-a 共用同一清单。
     static bool isBorrowViewMethod(const std::string& methodName);
 
     // plans/019 阶段4' A2（2026-09-11 第七十二轮 72-a 根治）：签名键是否为泛型
@@ -235,15 +206,10 @@ public:
 
     // 164-a（A4 方案A·plans/023 §十二）：可平凡复制判定（对标 Rust Copy）——
     //   标量/指针/枚举/函数指针；递归聚合（结构体/联合体/数组/结果/可选实参）
-    //   全部成员可平凡复制。拥有型（字符串/容器类/类对象/含拥有型聚合）→ false。
-    //   visiting=环防护（递归类型引用时按可平凡复制放行）。
     bool isTriviallyCopyable(const std::string& type,
                              std::vector<std::string>& visiting) const;
     // 217（027 波2a·001 §5.8a）：类型可搬运判定（对标 Rust Send）——可安全按值
     //   拷贝进入另一线程（新线程 实参位）。标量/字符串/函数指针恒可；结果/可选/
-    //   容器随元素；结构体/类=全字段递归；含裸指针字段默认不可（offender=最近
-    //   违规字段链）；「不安全 可搬运」显式豁免放行。未知类型保守放行（内置
-    //   豁免窗口 sunset=218）。depth=环防护。
     bool isPortableType(const std::string& type, std::string& offender,
                         int depth = 0) const;
     // 查找枚举定义（未找到返回nullptr）
@@ -341,23 +307,10 @@ public:
     const GenericInfo* findGeneric(const std::string& name) const;
     // 234-a（A7 根治·plans/020 第七十五节）：IR 生成泛型实例方法体前的重检查。
     //   缺陷：实例化类方法体 AST 为全实例共享（mi.ast 指向模板成员），语义检查
-    //   的「写回型注记」（CallExpr::resolvedType/resolvedSignature、retOwnedString、
-    //   node->size 等）写在共享节点上——第二趟c 逐实例检查互相覆盖，检查毕残留
-    //   「最后检查实例」的值；IR 层逐实例生成时全部读到残留值（A7 实证：
-    //   复制(下标链) resolvedType 残留 IR指令 -> 全实例误走结构体深拷分派④
-    //   CopyStruct 56B + 写回槽地址）。本入口按本实例 typeArgs 重走方法体检查
-    //   （与 checkClassMethods 单体检查同一段），注记刷新为本实例正确值；
-    //   重放期诊断经快照回滚（语义阶段已定案，不重复输出）。
-    //   注意：member 必须属于 instanceName 的类成员；非泛型实例（名无 $）空操作。
     void recheckGenericMethodBody(const std::string& instanceName,
                                   const ClassMember* member);
     // 317-a（T19/T20 波次4·D10 面汇合）：泛型函数实例体生成前的重放检查——
     //   原泛型函数体从未被语义检查（26_generics 遗留）：体内泛型类实例化触发
-    //   （类型注册/构造符号）、方法调用解析、嵌套泛型调用单态化全部缺失
-    //   （T19①②链接爆/T20①「间接调用 0」崩溃实锤）。生成前按本实例类型实参
-    //   绑定 genericTypeParams_ 重走 checkFunctionBody（A7 recheckGenericMethodBody
-    //   同构：诊断快照回滚+注记刷新为本实例值）；体内推断式泛型调用经
-    //   rewriteGenericFuncCall 的推断段（317-a）触发嵌套实例化注册。
     void recheckGenericFuncBody(const GenericFuncInstance& gfi);
     // 317-a：泛型函数实例化记录登记（去重）——显式 <> 调用段与推断段共用
     void registerGenericFuncInstance(const std::string& instName,
@@ -365,8 +318,6 @@ public:
                                      const std::vector<std::string>& args);
     // 泛型实例化类型名替换（Task 3.8）：名<实参> -> 实例化类名（容器$整32）；
     //   非泛型类型原样返回。H8 补完（2026-08-25）：公开供 IR 层 类型大小(T)
-    //   按各实例 genericTypeParams_ 重算时实例化具体泛型源形式（映射<整64,整64>
-    //   -> 映射$整64$整64）——共享 AST 的 node->size 被最后一次检查污染。
     std::string resolveGenericTypeName(const std::string& typeName,
                                        const SourceLocation& loc);
     // ---- 第 4 层（v2.0 决策9，P1-4）：顶层常量查询（IR 层编译期折叠）----
@@ -507,12 +458,6 @@ private:
     void reviveMovedVar(const std::string& name);
     // ==================== 980 波7（任务 007 NLL）：已转移集分支合流设施 ====================
     // 背景：markMovedVar 词法标记跨互斥分支残留（886 轮 货舱解析.cn 115/117 假阳性
-    //   实锤——「分支互斥+循环跨迭代复用」被迫显式复制化解）。根治=分支体遍历按
-    //   「入口快照 -> then 终态 -> 恢复入口 -> else 终态 -> may 合流」传播（Rust NLL
-    //   flow 同款）：合流=任一路径 moved 即 moved（保守不放宽）；无否则=入口态
-    //   （真支可能不执行）；终止支（恒返回）口径与 010 def-init 归并一致。
-    // 快照=全层 scopeMoved_ 并集（按名唯一·内层遮蔽值覆盖外层）。
-    // 对外可见性=error_analysis.cpp 的 MovedBranchScope RAII 包装访问。
    public:
     using MovedSet = std::unordered_map<std::string, int>;
     MovedSet snapshotMoved() const;
@@ -545,18 +490,6 @@ private:
     bool isCurrentClassFieldName(const std::string& name) const;
     // ==================== plans/019 阶段3 扩展：A21 借出视图生命周期检查 ====================
     // （第七十七轮；plans/020 矩阵 A21 格靶子：借出视图 × 容器移除=UAF）
-    // 借出视图 = 容器内元素句柄的浅拷（字符串元素容器的 元素/读取/栈顶/队首/
-    //   头部元素/读取头部/读取尾部/获取 返回值）——容器释放该元素（失效方法）
-    //   或容器作用域结束（析构释放元素）后，借出视图即悬垂。
-    // 判据 = NLL 顺序近似（Rust 非词法生命周期：引用活跃区间=绑定→最后一次使用），
-    //   零运行时开销（纯编译期，与 Rust 借用检查器 E0502 同构）。
-    // 两个子形态（探针 77/77-2 实证，宿主侧内容损坏）：
-    //   ①同作用域失效：容器失效方法调用落在（绑定行, 最后使用行）之间；
-    //   ②跨作用域逃逸：借出视图在容器声明作用域之外仍被使用（容器先亡）。
-    // 容器引用键（container 字段）：标识符接收者=变量名（如 `表`）；成员链接收者=
-    //   规范化路径文本（如 `架.表`——基础名 + 成员路径，下标统一记 `[]`、解引用记 `*`）；
-    //   containerVarId=接收者基础名的变量身份 ID（0=成员链基础名不可解析/全局）。
-    //   同名遮蔽防护：键相同且（ID 相同或任一为 0）视为同一容器。
     struct BorrowViewInfo {
         std::string viewVar;        // 借出视图变量名
         std::string container;      // 来源容器引用键（标识符=名/成员链=路径文本）
@@ -576,8 +509,6 @@ private:
     };
     // 借出方法名判定（元素/读取/栈顶/队首/头部元素/读取头部/读取尾部/获取）
     //   ——85-a：声明上提 public（IR 侧同用，见 public 段同名声明的注释）
-    // 容器失效方法判定（按实例化头分派——名称相同语义不同的 清空 在此区分：
-    //   链表/队列/映射 清空=全量释放；向量 清空=仅计数归零不释放，不入面）
     static bool isContainerInvalidateCall(const std::string& containerCanon,
                                           const std::string& methodName);
     // 字符串元素容器/字符串值映射统一判定（types:: 共享，与 IR 释放面同口径）
@@ -611,22 +542,15 @@ private:
     void clearBorrowViewState();
     // plans/019 阶段3（2026-09-10）：常量引用借用纪律——①实参为当前函数
     //   常量引用参数而形参为可变引用（只读借用不能借出可变）；②同一调用中
-    //   可变引用位与常量引用位实参解析到同一基础变量（借用互斥第一版：
-    //   语句级保守，跨语句活跃区间随阶段3b）。普通函数调用面接入
-    //   （构造/方法/函数指针随 3b——plans/019 跟踪表注记）。
     void checkConstRefBorrowDiscipline(class CallExpr* node,
                                        const std::vector<std::string>& paramTypes,
                                        const std::vector<bool>& constParams);
     // plans/019 阶段4（2026-09-10 立）/ plans/023 §6.5（2026-09-17 157-a 收口）：
     //   安全区边界硬错误——安全函数（非 不安全）内出现越界操作=编译错误
-    //   （Rust E0133 同构；观察期结束）。kind：指针算术/指针下标写/联合体访问/
-    //   外部函数调用/裸释放。
     void reportUnsafeBoundary(const SourceLocation& loc, const std::string& kind,
                             const std::string& detail);
     // plans/019 阶段2（2026-09-10）：表达式是否求值为「当前函数局部的地址」——
     //   ①取地址 &局部（AddressOf 一元，基础名经 refReturnLvalueBase 解剖）
-    //   ②引用局部标识符（登记于 refLocalBases_ 且绑定基础名为当前函数局部）。
-    //   命中返回 true 并回填 baseName（逃逸检查与指针返回检查共用）。
     bool isLocalAddressValue(const Expr* e, std::string& baseName) const;
     // plans/019 阶段1：转移实参类型放行判定（资源语义类型白名单）——
     //   返回 0=放行（指针/字符串，任意表达式位=值交接）；1=标量（复制语义拒绝）；
@@ -655,11 +579,6 @@ private:
     bool canConvertType(const std::string& from, const std::string& to) const;
     // 55-c 方案A（2026-09-10 用户裁决，Rust E0308 对齐）：canConvertType 拒绝时的
     //   整数字面量豁免——源/目标均为整数族且值表达式为整数字面量形态（含一元
-    //   负号字面量 -1）时放行（字面量按目标类型解释，Rust 字面量推断惯例；
-    //   `正64 b = 5`、`readU(100)` 等初始化/传参惯用形态保留）。
-    //   赋值初始化/传参/返回面的混合符号检查统一走本函数。
-    // ---- visitCallExpr 族子方法（167-a 逐族提取；行为等价于原 886 行函数）----
-    // 族1：显式转移 转移(变量) 表达式位特判（原 semantic_call.cpp 115~161 段）
     bool checkTransferCall(CallExpr* node);
     // 族2：内置构造器 正常/错误/某些（原 433~490 段）
     bool checkBuiltinCtorCall(CallExpr* node);
@@ -698,9 +617,6 @@ private:
 
     // ---- visitCallExpr 族A（170-a struct 化提取·收尾该函数 ≤100 行）----
     // 模块限定调用上下文（169-a 判定「12 个跨段共享局部变量需变量重组」——
-    //   struct 化为收集/重写两段共享的信息载体）：收集面在重写销毁旧 MemberExpr
-    //   （callee 整体替换致 mem 悬垂）之前，把全部所需名称值拷贝进本结构并算齐
-    //   判定布尔；重写面只消费本结构，不再触碰原表达式树。
     struct QualifiedCallInfo {
         std::string pathPrefix;    // 嵌套路径前缀（包::模块；单段为空）
         std::string moduleName;    // 首段模块名（别名映射后）
@@ -884,8 +800,6 @@ private:
     bool hasFunctionName(const std::string& name) const;
     // 重载决议：实参类型列表 -> 匹配的签名（精确>宽化>隐式转换；默认参数补全参与）。
     // 返回匹配的签名 key（未匹配返回空串；歧义时报告错误）
-    // 第 4 层（crate 隔离）：moduleFilter 非空时仅匹配该模块的签名（限定调用
-    //   module::函数 按模块过滤，跨模块同名函数不歧义）；空=不限制（纯名调用）。
     std::string resolveOverload(const std::string& name,
                                 const std::vector<std::string>& argTypes,
                                 const SourceLocation& loc,
@@ -900,8 +814,6 @@ private:
                             bool currentHasName);
     // 实参类型到参数类型的转换等级：0=精确 1=宽化 2=隐式转换 -1=不可转
     //（非静态：需调用 canConvertType/isEnumType 等成员，Task 2.10）
-    // argIsLiteral（55-c 方案A）：整数字面量实参豁免——源/目标均整数族时按
-    //   宽化级参与决议（字面量按目标类型解释，Rust 字面量推断惯例）
     int conversionLevel(const std::string& argType, const std::string& paramType,
                         bool argIsLiteral = false);
     // 判断类型字符串是否为函数指针类型（函数指针<返回>(参数,...)）
@@ -1013,15 +925,11 @@ private:
     std::unordered_map<std::string, std::string> moduleAliases_;
     // A-5（花括号项别名跨模块同名）：花括号导入项（含重命名）-> 来源模块
     //   完整路径（导入 工具库::格式化::{价格 作为 格式价格} -> 格式价格 属
-    //   工具库::格式化）——纯名调用重写回原符号名时按完整路径过滤（首段
-    //   过滤在跨 crate 场景会漏掉 格式化 模块条目）
     std::unordered_map<std::string, std::string> itemAliasModules_;
     // 模块公开符号表：模块名 -> 公开符号名集合（crate 分桶 + 限定调用验证 + 交集检查）
     std::unordered_map<std::string, std::unordered_set<std::string>> modulePublicSymbols_;
     // plans/018 呈报一B（2026-09-07 用户终裁）：已加载模块名集合（合并声明 moduleName
     //   全集 + driver 注入的 Program::loadedModules [图内模块名 + 货舱依赖包名]）。
-    //   P1-1 废止后限定调用 校验「模块已加载」而非「已导入」——导入只影响
-    //   不带前缀的名字（② 具名绑定），模块只要被加载（含 crate/包名）即可限定调用。
     std::unordered_set<std::string> knownModules_;
     // 模块公开类名集合：模块名 -> 公开类名（可见性交集检查：跨模块类成员访问须类公开）
     std::unordered_map<std::string, std::unordered_set<std::string>> modulePublicClasses_;
@@ -1031,9 +939,6 @@ private:
     std::unordered_map<std::string, std::unordered_set<std::string>> moduleAllSymbols_;
     // ---- 第 4 层（v2.0 决策8/9，P1-4/P3-8）：顶层常量/静态 ----
     // crate 级常量符号表：常量名 -> 常量值（整型文本/浮点文本/字符串文本）。
-    //   visitProgram 注册顶层 常量/静态 声明；visitIdentifierExpr 把常量名
-    //   引用替换为字面量（编译期常量替换）。静态变量暂以全局变量语义注册
-    //   （IR 层生成全局存储，见 F 步；本层先支持常量折叠 + 静态符号声明）。
     std::unordered_map<std::string, std::string> globalConstValues_;  // 常量名 -> 值文本（唯一名）
     // 顶层静态变量名 -> 源码类型（第 9 层 Debug：IR 层生成 .data 全局存储）
     std::unordered_map<std::string, std::string> globalStatics_;      // 静态变量名 -> 源码类型
@@ -1056,25 +961,12 @@ private:
     std::vector<std::unordered_set<std::string>> scopeConsts_;
     // plans/019 阶段1（2026-09-10）：各作用域已转移变量表（名 -> 转移点行号；
     //   与 scopes_ 平行，push/popScope 同步）。转移(变量) 后源变量禁用（E0382 对标）。
-    //   与 lookupVar 同序解析（内层遮蔽正确：内层同名新声明在新作用域层，查不到
-    //   外层转移标记）。
     std::vector<std::unordered_map<std::string, int>> scopeMoved_;
     // 任务 094（2026-09-29·008 树波 4）：字符串借用污染名单（与 scopes_ 平行，
     //   push/popScope 同步）。语义层等价实现——判据与 IR 层 stringTainted_
-    //   （ir.hpp markStringTainted 唯一入口）逐条对齐：①声明初始化非拥有
-    //   （ir_stmt_decl.cpp 调用返回非白名单）②赋值非拥有（ir_expr_assign_ident
-    //   identifierStringOwnAssign else 分支）③下标元素写浅存（ir_expr_assign
-    //   markIndexStringElemTainted）④转移污染传播（identifierStringTransferAssign
-    //   源污染→目标污染）。消费点=装箱构造实参「是否真 move」判定（094：
-    //   checkBuiltinCtorCall——IR 层 emitResultCtorValue 对非污染字符串局部
-    //   真 move 清源槽，语义层须同判据 markMovedVar 挂已转移拦截，根除
-    //   「装箱后旧名静默读空串」）。探针 p5/p5b/p5c/q1/q3（target/p886）锚定。
     std::vector<std::unordered_set<std::string>> strTaintedScopes_;
     // plans/019 阶段3 扩展（第七十七轮 A21 借出视图生命周期检查）：
     //   borrowViews_ = 全部借出绑定（函数级结算用）；borrowViewScopes_ 与 scopes_
-    //   平行（层 -> 变量名 -> borrowViews_ 下标；内层遮蔽/块出口清理）；
-    //   containerMutations_ = 容器失效方法调用点；scopeVarIds_ 与 scopes_ 平行
-    //   （变量身份 ID，防同名遮蔽误配容器）。
     std::vector<BorrowViewInfo> borrowViews_;
     std::vector<ContainerMutationInfo> containerMutations_;
     std::vector<std::unordered_map<std::string, std::size_t>> borrowViewScopes_;
@@ -1082,11 +974,6 @@ private:
     int nextVarId_ = 1;
     // 010（2026-09-23·任务 plans/021 010）：局部值类型变量初始化状态表（def-init，
     //   Rust E0381 对标·零运行时成本）——place 规范键集合=「尚未初始化」面。键=
-    //   "<声明作用域深度>:<名>[i] / .<字段链>"（深度前缀防同名遮蔽串扰；块出口按
-    //   层清理）。函数级扁平表：控制流传播由语句级 clone/merge 显式管理（如果=
-    //   两支交集归并·循环体不外溢·return 终止支不参与归并）。登记面=局部纯值类型
-    //   （标量/数组/结构体叶子）；拥有型（类/容器/字符串/结果/可选=既有入口零初
-    //   始化或默认构造防御）、指针/引用、静态（零初始化语义）、函数参数不登记。
     std::unordered_set<std::string> uninitPlaces_;
     // def-init 语境豁免标志：成员/下标表达式的对象侧（s.横 的 s）是地址基非
     //   整体值读（后续字段/元素读判定自行精确处理）。写目标语境复用既有的
@@ -1110,13 +997,9 @@ private:
     std::string lastBorrowContainerType_;
     // plans/019 阶段1：转移改写豁免窗口——visitVarDecl 把 initializer 改写为
     //   实参标识符后、常规初始化检查（checkExpr 实参）期间置 true，
-    //   visitIdentifierExpr 的已转移检查在此窗口内跳过（该"使用"是改写产物
-    //   而非用户代码）；窗口在 visitVarDecl 收尾关闭并真正标记源变量。
     bool inTransferRewrite_ = false;
     // plans/019 阶段2（2026-09-10）：引用局部绑定表（引用局部名 -> 绑定基础名，
     //   visitVarDecl 登记 / checkFunctionBody 入口清空）与局部指针指向表
-    //   （局部指针名 -> 直接 &局部 赋值的指向基础名；指针间传递不跟踪=诚实
-    //   边界）——isLocalAddressValue / 返回与赋值逃逸检查共用。
     std::unordered_map<std::string, std::string> refLocalBases_;
     std::unordered_map<std::string, std::string> ptrLocalPointees_;
     std::string lastType_;                         // 最近一次表达式推断的类型
@@ -1138,8 +1021,6 @@ private:
     std::unordered_set<std::string> currentFnParamNames_;
     // 102 甲案（2026-09-29 用户裁决·〔基准=019〕）：当前函数的字符串值形参
     //   （名 -> ParamDecl*）——体内赋值/转移()/字符串释放() 命中即置
-    //   ownedConsumed（checkFunctionBody 收集/复位；markStringParamConsumed 标记）。
-    //   IR 层据此对消耗形参 prologue 深拷（090 丙案「默认=值副本」兑现）。
     std::vector<std::pair<std::string, class ParamDecl*>> curStringParamDecls_;
     void markStringParamConsumed(const std::string& name);
     // plans/019 阶段4：当前函数是否 不安全 函数（checkFunctionBody 设定/复位）
@@ -1160,13 +1041,6 @@ private:
     int switchDepth_ = 0;                          // 选择嵌套深度（中断跳出选择合法性）
     // ---- 188-a（D6·plans/023 B11 变量常量传播）：函数级「恒空指针」判定表 ----
     //   背景：B11 原判据=操作数为 `无` 字面量；plans/023 §九 已批准定义含
-    //   「编译期常量」形态（`整64* p = 无; *p`）——本表把它落实。
-    //   判定（保守·零假阳性）：变量 v 判「恒空」⇔ ① 至少一次以 `无` 字面量
-    //   初始化/赋值（nullSeeded_，含经赋值/初始化传播自另一恒空变量——
-    //   nullAssignEdges_ 不动点）∧ ② 全函数内无任何其他写入（nullDisqualified_：
-    //   非 `无` 赋值/复合赋值/自增自减/取地址/引用参数实参）。使用点在
-    //   nullUseSites_ 延迟登记，函数体检查收尾统一判定并报硬错误（Rust
-    //   deref_nullptr lint 同构：编译期零运行期开销）。
     struct NullUseSite {
         std::string name;          // 使用点操作数（标识符名）
         SourceLocation location;   // 报错行

@@ -1,20 +1,5 @@
 // CN-IR生成器——阶段3 OOP 调用/删除 指令发射（Task 3.1/3.2，串联集成子任务）
 // 职责：
-//   1. handleClassCallExpr（visitCallExpr 钩子）：
-//       - 构造调用 类名(实参) -> NewObject（extra="类名|大小字节"）+ 构造体 Call
-//       - 虚函数调用 对象.方法() -> VirtualCall（extra="类名.虚方法名"，operand[0]=this）
-//       - 非虚实例方法 -> 直接 Call（符号 类名$sigKey，this 为第一个实参）
-//       - 类名.静态方法 -> 直接 Call（无 this）
-//       - 父类.方法() -> 直接调用父类方法符号（非虚分派）
-//   2. handleOperatorOverload（visitBinaryExpr 钩子）：左操作数为类实例且类有
-//      运算符X 成员 -> 降级为成员方法调用（this=左操作数指针，实参=右操作数）
-//   3. genClassDestructor（visitFunctionDecl 收尾钩子）：类类型局部变量离开作用域
-//      且有析构函数 -> DeleteObject（RAII 风格；类对象是堆对象，须显式管理）
-// 契约（与 x64_codegen_oop.cpp 完全一致）：
-// 8. D1 行数整改 114-a：按族拆出 ir_oop_call_release.cpp（纯重构零行为变更，声明仍在 ir.hpp）
-//   NewObject.extra = "类名|大小字节"；VirtualCall.extra = "类名.虚方法名"；
-//   DeleteObject.extra = "类名"
-// 规范：英文API命名，中文仅注释；函数<=100行
 #include <algorithm>
 #include <cstdint>
 #include <cstdio>
@@ -31,16 +16,6 @@ namespace cn_compiler {
 
 // ==================== 74-a：容器元素所有权（入容器位归一化） ====================
 // 语义依据（plans/019 §2 设计哲学 + Rust Vec<String> 对照）：
-//   · 默认路径零规则（CN 值语义深拷贝）——标识符入容器由编译器代写深拷贝
-//     （等价 Rust push(s.clone())），源变量不受影响、可继续使用；
-//   · 显式放弃拷贝换性能——转移(x) 入容器=真 move（等价 Rust push(s)），
-//     零拷贝且源变量自调用点起「已转移」（语义层已禁用后续使用）；
-//   · 编译器不产生悬垂——借用来源（形参/借出视图/字面量）不能把所有权交给
-//     容器（源的生命周期不归本函数），一律复制或驻留借用。
-// 不变量（plans/020 移植纪律 7「机制主体+依赖不变量」）：
-//   主体 = 入容器位按来源分级归一化；不变量 = ①容器元素串恒为堆串或驻留常量
-//   （释放侧 __cn_*_free_strings 对驻留常量 cn_free_tracked 空安全）；②真 move
-//   分支源槽必须清零（否则源 RAII 释放已移交句柄 = 元素悬垂，幂等模型前提）。
 
 // 入容器位方法名（stdlib/容器.cn 中「把值交给容器」的全部入口）
 bool IRGenerator::isContainerInsertMethod(const std::string& name) {
@@ -66,9 +41,6 @@ bool IRGenerator::isStringElemContainer(const std::string& canonClass) {
 
 // 76-a：字符串值映射判定（映射$K$字符串）——入容器位归一化用（映射值在实参下标1）。
 //   释放面由 ir_oop.cpp 的映射分支处理（__cn_map_free_strings/_slot——键/值两数组
-//   非单元素数组模型），不经 containerElemFreeFn（故不进 isStringElemContainer）。
-//   背景（探针 76-F 实证）：映射析构/清空会释放值槽句柄——不归一化=借用来源
-//   （形参/局部）句柄浅存 → 容器析构释放调用方串（UAF，74-a 缺陷①在映射上的重演）。
 bool IRGenerator::isStringValuedMap(const std::string& canonClass) {
     // 77-a：同 上提 types::（原实现与沿革注释见 semantic/type_system.cpp）。
     return types::isStringValuedMap(canonClass);
@@ -96,9 +68,6 @@ std::string IRGenerator::containerElemFreeFn(const std::string& canonClass) cons
 
 // 发射容器元素串释放（三处释放路径共用单点事实源）
 //   平铺模型（向量/栈）：__cn_vector_free_strings(obj, 数据偏移, 元素数量偏移)
-//   链式模型（链表/队列）：__cn_chain_free_strings(obj, 值表, 下一索引, 头索引,
-//     元素数量)——须按链游释放：出队/删除头部 已把元素所有权转移给调用方，
-//     槽序号可能 < 元素数量，平铺释放会误释放已移交的串（UAF）。
 void IRGenerator::emitContainerElemFreeFor(const std::string& canonClass,
                                           const ir::IRValue& objPtr,
                                           const SourceLocation& loc) {
@@ -138,17 +107,6 @@ bool IRGenerator::isOwnedStringSlot(const std::string& unique,
 
 // 入容器位实参所有权归一化（方案A 核心）——按来源分级：
 //   ① 字面量               → 驻留借用（只读段常量，释放侧空安全，零复制开销）
-//   ② 调用返回（拥有契约） → 直接接管（运行时已落堆，零拷贝）
-//   ③ 转移(拥有局部)       → 真 move（句柄直存 + 源槽清零，零拷贝）
-//   ④ 转移(借用来源)       → 复制（所有权无法自借用移交；源="已转移"仍成立）
-//   ⑤ 其余（标识符/成员/下标/借出/解引用/借用返回）→ __cn_str_copy 落堆
-// 79-a：已求值字符串值的来源分级归一化（value 已由调用方求值——避免二次求值：
-//   二次求值=多余分配泄漏，P6/P7 探针实证）
-//   ① 字面量               → 驻留借用（只读段常量，释放侧空安全，零复制开销）
-//   ② 调用返回（拥有契约） → 直接接管（运行时已落堆，零拷贝）
-//   ③ 转移(拥有局部)       → 真 move（源槽清零，零拷贝）
-//   ④ 转移(借用来源)       → 复制（所有权无法自借用移交）
-//   ⑤ 其余（标识符/成员/下标/借出/解引用/借用返回）→ __cn_str_copy 落堆
 ir::IRValue IRGenerator::normalizeStringValueSource(Expr* arg,
                                                     const ir::IRValue& value,
                                                     const SourceLocation& loc) {
@@ -205,8 +163,6 @@ ir::IRValue IRGenerator::normalizeContainerInsertArg(Expr* arg,
 
 // 方法调用实参构建：入容器位（对象类型=字符串元素容器 或 字符串值映射 且 方法∈
 //   入容器位）时对值实参做所有权归一化，其余实参/其余调用等价 buildCallArgsOop。
-//   76-a：映射纳入——释放侧（__cn_map_free_strings/_slot）假定值槽句柄恒为
-//   「容器独有或驻留常量」（不变量①），不归一化=容器析构释放他人串（UAF，探针 76-F）。
 std::vector<ir::IRValue> IRGenerator::buildCallArgsForMethod(
     CallExpr* node, const std::string& canonObj, const std::string& methodName) {
     std::vector<ir::IRValue> out;
@@ -220,13 +176,6 @@ std::vector<ir::IRValue> IRGenerator::buildCallArgsForMethod(
     const std::size_t vi = static_cast<std::size_t>(valueIdx);
     // 81-a：结构体元素容器（含拥有型串字段的结构体）**不在此归一化**——元素槽
     //   字段串的独立性由 stdlib 容器方法体的 `数据[n] = 值` 结构体写入深拷（79-a
-    //   emitStructCopyWithFields，宿主编译 stdlib 时生成）保证：每槽独立拥有其
-    //   字段串，源结构体照常拥有并释放（探针 P3 实证：追加产生元素副本分配；
-    //   源块出口正常释放字段串）。79-a 的「入容器位标记源为字段污染」是**双重
-    //   死代码**（①写入点在 valueIdx<0 提前返回之后——结构体元素容器 valueIdx
-    //   恒 -1，标记不可达；②读取点仅跳过释放、集合恒空=恒假）——81-a 整链删除
-    //   （成员 + 3 处读取点 + 复位），语义与实测一致：元素独立拥有；容器消亡/
-    //   移除路径的释放面见 injectContainerElemDestroy 的含串结构体元素分支。
     for (std::size_t i = 0; i < node->arguments.size(); ++i) {
         if (i == vi) {
             out.push_back(normalizeContainerInsertArg(node->arguments[i].get(),
@@ -243,11 +192,6 @@ std::vector<ir::IRValue> IRGenerator::buildCallArgsForMethod(
 
 // 生成调用实参（与 visitCallExpr 的整参扩展逻辑一致：<64位整型 Cast i64、
 // f32 -> f64、i128/u128 实参传给 i128 参数不截断）。
-// 实现为 IRGenerator 成员（public 声明，ir.hpp），OOP 调用展开复用。
-// 81-a：结构体字面量实参物化（materializeStructInitArg）——原方法调用路径缺失
-//   该处理，字面量实参寄存器为空值（汇编 mov rdx, 0），被调方按值拷贝即解引用
-//   空指针段错误（探针 P3 形态六：向量<盒子>.追加(盒子{...}) rc=139）；与普通
-//   调用路径（ir_call.cpp D3 根治）同款，共享助手单一事实源。
 std::vector<ir::IRValue> IRGenerator::buildCallArgsOop(
     const std::vector<std::unique_ptr<Expr>>& args, const SourceLocation& loc) {
     (void)loc;  // loc 保留给后续实参类型扩展（与 visitCallExpr 整参提升对齐）
@@ -304,9 +248,6 @@ static const ClassMemberInfo* findClassMethod(
 
 // 类调用处理（visitCallExpr 钩子）：
 //   返回 true 表示已处理（lastExpr_ 已设置），false 表示非类调用（交回原路径）
-// （D1 拆分 456-a：原 421 行单体收敛为分派器——接口/构造/静态/实例四族各成成员函数，
-//   控制流语义逐点保持：接口段未命中 fall-through；静态段三态〔已处理/交回原路径/
-//   非静态形态 fall-through 实例段〕；构造与实例段的 return false=交回原路径）
 bool IRGenerator::handleClassCallExpr(CallExpr* node) {
     if (semantic_ == nullptr) return false;
     if (node->callee->getType() != NodeType::MemberExpr &&
@@ -328,8 +269,6 @@ bool IRGenerator::handleClassCallExpr(CallExpr* node) {
 
 // P3-19 接口对象方法调用族（原 handleClassCallExpr 接口段整体迁移）：
 //   返回 true=已处理；false=非接口方法形态（fall-through 构造/成员路径，与原
-//   控制流一致——原接口段未命中时不 return，继续走情形A/B）。
-// （D1 拆分 456-a：本函数自 handleClassCallExpr 整段迁移，逻辑逐字保留·零行为变更）
 bool IRGenerator::tryInterfaceMethodCall(CallExpr* node) {
     // ---- P3-19：接口对象方法调用（图形.方法(实参)）——B1 全局槽位运行时分派 ----
     // 接口分派区在对象首固定偏差（首个 8 字节为强制虚表指针，region 紧随其后）：
@@ -407,8 +346,6 @@ bool IRGenerator::tryInterfaceMethodCall(CallExpr* node) {
 
 // 情形A 构造调用族（原 handleClassCallExpr 情形A 段迁移）：
 //   泛型实例名解析 -> findClass -> NewObject -> 构造查找 -> 构造 Call 发射。
-//   返回 false=交回原路径（查无此类/抽象类——原语义不变）。
-// （D1 拆分 456-a：本函数自 handleClassCallExpr 整段迁移，逻辑逐字保留·零行为变更）
 bool IRGenerator::emitConstructorCall(CallExpr* node) {
     std::string className =
         static_cast<IdentifierExpr*>(node->callee.get())->name;
@@ -432,6 +369,10 @@ bool IRGenerator::emitConstructorCall(CallExpr* node) {
         //   （C++ 隐式默认构造语义；B1 形态：子类不写构造时基类构造原被整跳）。
         //   有自有构造的类走 emitClassMethod 序言注入，不经此分支。
         emitBaseCtorChain(className, obj, node->location);
+        // #283 甲案（2026-10-08）：无构造类实例化点字段级联——「仅分配」路径
+        //   自此对类类型字段级联默认构造（001 §3.9 条文·p1007_02 容器字段
+        //   悬空空指针根治；与 860-a 用户构造序言共用单字段发射）
+        cascadeConstructFields(className, obj, node->location);
     }
     lastExpr_ = obj;
     return true;
@@ -439,8 +380,6 @@ bool IRGenerator::emitConstructorCall(CallExpr* node) {
 
 // 泛型实例化构造 盒子<整32>(42) 的实例名映射（原情形A 内联段迁移）：
 //   名<实参> -> 类名$实参1$实参2（语义层 instantiateGeneric mangling 对齐）；
-//   无泛型形态/查无实例化类时原文返回（调用方 findClass 走普通构造路径）。
-// （D1 拆分 456-a：本函数自 handleClassCallExpr 整段迁移，逻辑逐字保留·零行为变更）
 std::string IRGenerator::resolveGenericCtorInstanceName(std::string className) {
     // 阶段3（Task 3.8，E2E 26 修复）：泛型实例化构造 盒子<整32>(42)——callee
     //   为 名<实参>（IdentifierExpr 名字含 <），语义层已单态化注册实例化类
@@ -476,9 +415,6 @@ std::string IRGenerator::resolveGenericCtorInstanceName(std::string className) {
                 std::string seg = inner.substr(segStart, pos - segStart);
                 // 318-a（T19①）：泛型函数体内构造 向量<T>()——callee AST 保留
                 //   <T> 原文（语义 recheck 的重写只改 className 引用不改
-                //   node->callee），类型参数按当前实例映射替换（原裸拼
-                //   向量$T 查不到类 -> 回退普通 Call = NewObject 丢失 ->
-                //   构造错误码 i32 被当对象指针 -> 解引用段错误）。
                 seg = substGenericType(seg);
                 args.push_back(seg);
                 segStart = pos + 1;
@@ -511,8 +447,6 @@ std::string IRGenerator::resolveGenericCtorInstanceName(std::string className) {
             }
             // 061-d（2026-09-27 804 轮）：合成模板实参（结果<T,E>/可选<T>）统一
             //   合成体名 $ 形态（与语义层 instantiateGeneric 注册名一致——原裸拼
-            //   保留尖括号原文，与 IR 层 $ 形态查询永不相等 → findClass miss →
-            //   构造回退普通调用（无 this）段错误 z2b 实测）；非合成实参原样。
             a = SemanticAnalyzer::canonicalizeSyntheticArgText(a);
         }
                     std::string inst = head;
@@ -527,15 +461,6 @@ std::string IRGenerator::resolveGenericCtorInstanceName(std::string className) {
 
 // 构造函数查找（原情形A 内联段迁移）——以下策略注释为原文：
         // 查找构造函数（isConstructor 成员）；无构造函数 -> 默认构造（仅分配）。
-        // 缺陷3 修复：泛型实例化类（盒子$整32）的构造方法名 = 原始泛型类名（盒子），
-        //   不能用 className（盒子$整32）作 key find——改为遍历 methods 找 isConstructor。
-        //   普通类的构造方法名 == 类名，遍历同样命中。
-        // 缺陷修复（阶段A-3）：继承场景下父类构造函数（如 动物 的 ownerClass="动物"）
-        //   会随继承并入子类 methods 表（name="动物"），若仅按 isConstructor 遍历首个
-        //   命中，会因 unordered_map 遍历顺序（GCC/MSVC 不同）误选父类构造（2 参），
-        //   忽略子类自身构造（3 参）导致自身字段未初始化。必须限定 ownerClass == className，
-        //   只匹配"本类自己声明"的构造函数（泛型实例化类 ownerClass=实例化名，同样成立）。
-// （D1 拆分 456-a：本函数自 handleClassCallExpr 整段迁移，逻辑逐字保留·零行为变更）
 const ClassMemberInfo* IRGenerator::findCtorMember(const ClassInfo* ci,
                                                    const std::string& className,
                                                    CallExpr* node) {
@@ -559,10 +484,6 @@ const ClassMemberInfo* IRGenerator::findCtorMember(const ClassInfo* ci,
     if (ctor == nullptr) {
         // 兜底：按 实参个数 匹配本类构造（与语义层一致的 ownerClass 限定）
         //   933 防御纵深：跳过「引用形参 × 实参不可寻址」组合——语义层未记录
-        //   resolvedSignature 的场景（如顶层静态初值历史上不 visit 初值·933
-        //   语义层已根治），同参个数重载按遍历序误选拷贝构造（字符串字面量被
-        //   按 货物& 地址契约传入 → 被调方两跳错位 SIGSEGV·探针 p8 实锤）。
-        //   可寻址=标识符/成员链/下标（wrapRefArgs 左值口径）。
         const std::size_t givenArgs = node->arguments.size();
         const ClassMemberInfo* fallback = nullptr;
         for (const auto& mk : ci->methods) {
@@ -611,9 +532,6 @@ void IRGenerator::emitCtorInvoke(CallExpr* node, const std::string& className,
             buildCallArgsOop(node->arguments, node->location);
         // 316-a（C23/T45 甲）：i128/u128 构造形参的窄整实参定标——与
         //   ir_call 直调路径同款（类构造字面实参 ABI 契约分叉 m45_03：
-        //   buildCallArgsOop 原只做结构体物化，窄整实参原样 i64 值直传，
-        //   被调方按 i128 指针解引用 SIGSEGV）。宽化 Cast 后走 emitCall
-        //   i128 分支（lea 取地址 = 与变量实参同 ABI）。
         for (std::size_t ai = 0;
              ai < userArgs.size() && ai < ctor->paramTypes.size(); ++ai) {
             const std::string canon = types::canonical(ctor->paramTypes[ai]);
@@ -629,8 +547,6 @@ void IRGenerator::emitCtorInvoke(CallExpr* node, const std::string& className,
         for (auto& a : userArgs) args.push_back(a);
         // D23 根治（248-a）：构造缺省实参补全——构造调用经 handleClassCallExpr
         //   提前展开（visitCallExpr 通用补缺段不可达），此处按语义层选中的
-        //   resolvedSignature 查 funcDefaultArgs_/funcDefaultTotal_（visitProgram
-        //   预收集）把缺省实参精确展开；显式传满参不补。
         if (!node->resolvedSignature.empty()) {
             auto defIt = funcDefaultArgs_.find(node->resolvedSignature);
             if (defIt != funcDefaultArgs_.end()) {
@@ -671,8 +587,6 @@ bool IRGenerator::emitMemberMethodCall(CallExpr* node) {
 
 // 类名.静态方法族（原情形B 静态段迁移）：
 //   返回 1=已处理；0=交回原路径（非方法/非静态——原 return false 语义不变）；
-//   -1=非静态形态（staticClassName 空——原 fall-through 实例段语义不变）。
-// （D1 拆分 456-a：本函数自 handleClassCallExpr 整段迁移，逻辑逐字保留·零行为变更）
 int IRGenerator::emitStaticMethodCall(CallExpr* node, MemberExpr* mem,
                                       const std::string& methodName) {
     // 类名.静态方法：对象标识符本身是类类型名
@@ -708,11 +622,6 @@ int IRGenerator::emitStaticMethodCall(CallExpr* node, MemberExpr* mem,
                                    methodSymbolKey(owner, m->sigKey), node->location);
             // 118（929）：引用返回读值默认 lvalue-to-rvalue（与直接函数调用
             //   ir_call P3-18 同构）；赋值目标/复合赋值/引用绑定语境经
-            //   suppressRefDeref_ 抑制（取地址语义）。
-            //   分叉（v2p 实证）：聚合 T（结构体/类）容器元素=内联实宽存储
-            //   （typeSizeOf=实宽·非句柄槽），元素地址即对象本体——直传不得
-            //   LoadPtr（否则双重解引用=错值崩溃）；标量/字符串（槽存值/句柄）
-            //   须 LoadPtr 读值。
             if (m->isRefReturn && !suppressRefDeref_ && !refReturnAggInline(semantic_, m)) {
                 lastExpr_ = emitResult(ir::Opcode::LoadPtr, {lastExpr_},
                                        mapType(m->type.empty() ? "空类型" : m->type),
@@ -732,11 +641,6 @@ bool IRGenerator::emitInstanceMethodCall(CallExpr* node, MemberExpr* mem,
                                          const std::string& canonObj) {
     // 实例方法调用：对象为类实例（源码类型是类）。
     // v2.1 统一 .：对象源码类型为 类名*（指针）时剥指针取类名（与语义层
-    //   clsName 类型驱动剥法一致）。注意方法调用路径不经过 visitMemberExpr
-    //   （被调 MemberExpr 只检查 object），不能依赖 isDerefAccess——纯类型驱动。
-    // 簇⑥根治（2026-09-04，与语义层同款）：泛型实例名可含实参星号
-    //   （盒子$整64*——合成名保留尾 *），尾 * 非对象指针语义——原名已是
-    //   类类型时直接用（真指针 盒子$整64** 非类类型，自然落入剥分支）。
     std::string canonObjForMethod = canonObj;
     if (!semantic_->isClassType(canonObjForMethod) &&
         types::isPointer(canonObjForMethod)) {
@@ -753,14 +657,6 @@ bool IRGenerator::emitInstanceMethodCall(CallExpr* node, MemberExpr* mem,
 
     // this 实参：自身/父类 -> this 指针；类变量 -> 变量值（对象指针）
     // 宿主根治（2026-09-01）：顶层静态对象方法调用（全局表.大小()）不再特判——
-    //   类静态统一「指针槽模型」（.data 槽存对象指针，主 入口 NewObject 入槽），
-    //   genExpr(静态标识符) = 符号地址 + LoadPtr = 对象指针，与局部类变量
-    //   读取完全一致。原特判传 .data 符号地址（对象内联模型）已随模型统一废弃。
-    // 793/794-a（055 波2a·元素可变方法接收者=元素本体地址直发·p55 面②）：
-    // 「容器.元素(i).可变方法(...)」——746-a 副本化使 设置 写在副本上丢弃
-    //   （p55 面② rc=4 实锤）→ this 改=元素本体地址（容器数据基址+i×元素
-    //   大小·数据区=内联元素·步进=typeSizeOf）→可变方法写穿原容器（Swift
-    //   下标 set 同构·与 v2 790-a 同构）。非可变方法保持 genExpr（副本语义）。
     ir::IRValue thisArg;
     bool elemMutable794 = false;
     if (mem->object->getType() == NodeType::CallExpr) {
@@ -793,10 +689,6 @@ bool IRGenerator::emitInstanceMethodCall(CallExpr* node, MemberExpr* mem,
                     elemSize794 > 0 ? elemSize794 : 8;
                 // 任务 119（927）：ConstInt 值文本必须走 extra（与全库其他发射点
                 //   同构的规范形态）。原写法把值放 operands[0]（IRValue::constant）
-                //   而 extra 为空——win -O0 发射空立即数（ml64 A2008 静默坏产物）、
-                //   linux/arm64 -O0 走 catch 兜底发射 0（stride 错 0 → 偏移恒 0 →
-                //   写错元素·静默内存错写）；仅 -O3 被 const_fold 的 normalize 回填
-                //   掩盖。ir_verify 新增常开检查（常量文本空=硬错误）拦截此形态。
                 ir::IRValue strideConst794 = emitResult(
                     ir::Opcode::ConstInt, {}, "i64",
                     std::to_string(stride794), node->location);
@@ -817,10 +709,6 @@ bool IRGenerator::emitInstanceMethodCall(CallExpr* node, MemberExpr* mem,
 
     // ---- 虚调用：方法在虚表中有槽位（虚拟 或 重写，vtableIndex>=0）且非 父类. 限定调用 ----
     // 重写方法 isVirtual=false 但 vtableIndex>=0（覆盖父类槽位），同样须虚分派。
-    // 判定统一走 semantic_->classVtableIndex（槽位 >= 0 即虚表方法）。
-    // 虚调用契约：VirtualCall.extra = "类名.虚方法名"（类名=声明类，codegen 经
-    //   classVtableIndex(类名, 方法名) 查槽位，运行时按对象实际虚表分派）。
-    // 父类.方法() 为静态限定调用（非虚分派），走下方直接 Call。
     const bool isSuperCall = (mem->object->getType() == NodeType::SuperExpr);
     const int vtableSlot = isSuperCall
         ? -1 : semantic_->classVtableIndex(canonObjForMethod, methodName);
@@ -860,8 +748,6 @@ void IRGenerator::emitVirtualMethodCall(CallExpr* node, const ClassMemberInfo* m
                                extra, node->location);
         // 118（929）：引用返回读值默认 lvalue-to-rvalue（suppressRefDeref_
         //   抑制=赋值目标/绑定语境取地址——与直接函数调用同构）。
-        //   聚合 T（结构体/类）内联实宽存储=地址即对象本体直传（分叉判据
-        //   详见静态方法路径注释）
         if (m->isRefReturn && !suppressRefDeref_ && !refReturnAggInline(semantic_, m)) {
             lastExpr_ = emitResult(ir::Opcode::LoadPtr, {lastExpr_},
                                    mapType(m->type.empty() ? "空类型" : m->type),
@@ -895,14 +781,6 @@ void IRGenerator::emitDirectMethodCall(CallExpr* node, const ClassMemberInfo* m,
                                        : mapType(m->type.empty() ? "空类型" : m->type);
     // Task 6.1（容器库 追加/读取 返回 结果<空类型,整32> 合成结构体）：方法返回
     //   结构体时须走隐藏返回指针（与 visitCallExpr 普通函数 structReturn 一致）——
-    //   调用方分配返回缓冲区（隐藏指针 rcx），被调方写入后返回缓冲区地址（rax）。
-    //   原实现缺此处理：调用方传 this=rcx、实参=rdx，被调方把 this 当隐藏返回
-    //   指针（prologue mov r12,rcx）-> 返回 rep movsb 从错误地址拷贝 -> 崩溃。
-    // 118（929）：引用返回豁免 structReturn——8B 地址直传 rax（零 sret·被调方
-    //   emitClassMethod 同款豁免）；否则结构体元素 元素引用 误走 retbuf 双装载错位
-    //   087b 捎带（宿主方法调用面·ir_call isArrayRet087 同构）：方法数组返回同
-    //   通道——被调 ir_oop 已置 structReturn（隐藏指针+epilogue 按字节数拷贝）；
-    //   调用点原 isStructType 判定不含数组=retbuf 不预插
     if (semantic_ != nullptr && !m->type.empty() && !m->isRefReturn &&
         (semantic_->isStructType(types::canonical(m->type)) ||
          types::isArray(m->type))) {
@@ -938,8 +816,6 @@ void IRGenerator::emitDirectMethodCall(CallExpr* node, const ClassMemberInfo* m,
                                methodSymbolKey(owner, m->sigKey), node->location);
         // 118（929）：引用返回读值默认 lvalue-to-rvalue（suppressRefDeref_
         //   抑制=赋值目标/绑定语境取地址——与直接函数调用同构）。
-        //   聚合 T（结构体/类）内联实宽存储=地址即对象本体直传（分叉判据
-        //   详见静态方法路径注释）
         if (m->isRefReturn && !suppressRefDeref_ && !refReturnAggInline(semantic_, m)) {
             lastExpr_ = emitResult(ir::Opcode::LoadPtr, {lastExpr_},
                                    mapType(m->type.empty() ? "空类型" : m->type),

@@ -520,14 +520,34 @@ void IRGenerator::injectFieldCascadeConstruct(const ClassMember* member) {
     if (ci == nullptr) return;
     const std::string thisUnique = lookupVarName("自身");
     if (thisUnique.empty()) return;
+    // #283（2026-10-08 甲案）：单字段发射抽至 cascadeConstructFields（与无构造
+    //   类实例化点共用）——本函数保序行为逐指令不变（this 槽 Load 一次在外）
+    ir::IRValue thisPtr = emitResult(
+        ir::Opcode::Load, {ir::IRValue::var(thisUnique, "ptr")},
+        "ptr", thisUnique, member->body->location);
+    cascadeConstructFields(currentClass_, thisPtr, member->body->location);
+}
+
+// #283 甲案（2026-10-08）：类类型字段默认构造级联——遍历本类声明字段
+//   （ownerClass 限定·静态跳过），有严格无参构造的类字段逐个：
+//   FieldAddr(obj,偏移) → NewObject → Call 字段默认构造(this=obj) → StorePtr 槽。
+//   调用面=①构造函数序言（injectFieldCascadeConstruct·860-a 既有）
+//        ②无构造类实例化点（ir_oop_call handleClassCallExpr else 支·本批接入）
+//   ——「仅分配」路径自此也级联（001 §3.9 类类型字段级联默认构造条文）。
+void IRGenerator::cascadeConstructFields(const std::string& className,
+                                         const ir::IRValue& obj,
+                                         const SourceLocation& loc) {
+    if (semantic_ == nullptr) return;
+    const ClassInfo* ci = semantic_->findClass(className);
+    if (ci == nullptr) return;
     for (const auto& fname : ci->fieldOrder) {
         const auto f = ci->fields.find(fname);
         if (f == ci->fields.end() || f->second.isStatic) continue;
         // 只级联本类声明字段（ownerClass 判据·对齐 findClassMember 回退式）
         const std::string fOwner =
-            f->second.ownerClass.empty() ? currentClass_ : f->second.ownerClass;
-        if (fOwner != currentClass_) continue;
-        const std::string ftype = classFieldType(currentClass_, fname);
+            f->second.ownerClass.empty() ? className : f->second.ownerClass;
+        if (fOwner != className) continue;
+        const std::string ftype = classFieldType(className, fname);
         const std::string fcanon = types::canonical(ftype);
         if (ftype.empty() || !semantic_->isClassType(fcanon)) continue;
         const ClassInfo* fci = semantic_->findClass(fcanon);
@@ -543,30 +563,24 @@ void IRGenerator::injectFieldCascadeConstruct(const ClassMember* member) {
             }
         }
         if (defCtor == nullptr) continue;  // 无默认构造：字段=空句柄（现状语义）
-        const int offset = semantic_->classFieldOffset(currentClass_, fname);
+        const int offset = semantic_->classFieldOffset(className, fname);
         if (offset < 0) continue;
-        ir::IRValue thisPtr = emitResult(
-            ir::Opcode::Load, {ir::IRValue::var(thisUnique, "ptr")},
-            "ptr", thisUnique, member->body->location);
-        ir::IRValue addr = emitResult(ir::Opcode::FieldAddr, {thisPtr}, "ptr",
-                                      std::to_string(offset),
-                                      member->body->location);
+        ir::IRValue addr = emitResult(ir::Opcode::FieldAddr, {obj}, "ptr",
+                                      std::to_string(offset), loc);
         // NewObject：extra = "类名|大小字节"（与 genVarDecl H7 链一致）
         const std::string extra =
             fcanon + "|" + std::to_string(fci->totalSize);
-        ir::IRValue obj = emitResult(
+        ir::IRValue newObj = emitResult(
             ir::Opcode::NewObject,
             {ir::IRValue::constant(fcanon, "ptr")},
-            "ptr", extra, member->body->location);
+            "ptr", extra, loc);
         // 字段默认构造调用（this=对象指针；ownerClass 限定同 ir_oop_call 路径）
         std::vector<ir::IRValue> args;
-        args.push_back(obj);
+        args.push_back(newObj);
         emit(ir::Opcode::Call, args, ir::IRValue(),
-             methodSymbolKey(fcanon, defCtor->sigKey), "void",
-             member->body->location);
+             methodSymbolKey(fcanon, defCtor->sigKey), "void", loc);
         // 对象指针写入字段槽（StorePtr 操作数序={地址, 值}）
-        emit(ir::Opcode::StorePtr, {addr, obj}, ir::IRValue(), "", "ptr",
-             member->body->location);
+        emit(ir::Opcode::StorePtr, {addr, newObj}, ir::IRValue(), "", "ptr", loc);
     }
 }
 

@@ -14,6 +14,35 @@
 
 namespace cn_compiler {
 
+// ===== P3-22 常量求值助手（#286 起 semantic_constlen.cpp 共用·自 semantic.cpp
+//   匿名 ns 提升 inline——多 TU 安全 ODR 齐一，D1 收敛头同纪律）=====
+// 剥离数值字面量后缀（U/LL 等）
+[[maybe_unused]] inline std::string cnStripLiteralSuffix(const std::string& s) {
+    std::string r = s;
+    while (!r.empty() && (r.back() == 'U' || r.back() == 'u' ||
+                          r.back() == 'L' || r.back() == 'l')) r.pop_back();
+    return r;
+}
+
+[[maybe_unused]] inline bool cnParseInt(const std::string& t, long long& v) {
+    const std::string s = cnStripLiteralSuffix(t);
+    if (s.empty()) return false;
+    try {
+        if (s.size() > 2 && s[0] == '0' && (s[1] == 'x' || s[1] == 'X'))
+            v = std::stoll(s.substr(2), nullptr, 16);
+        else
+            v = std::stoll(s, nullptr, 10);
+        return true;
+    } catch (...) { return false; }
+}
+
+[[maybe_unused]] inline bool cnIsFloatText(const std::string& t) {
+    const std::string s = cnStripLiteralSuffix(t);
+    return s.find('.') != std::string::npos || s.find('e') != std::string::npos ||
+           s.find('E') != std::string::npos;
+}
+
+
 // 比较运算符（== != < > <= >=）
 [[maybe_unused]] inline bool isComparisonOp(Operator op) {
     switch (op) {
@@ -105,6 +134,105 @@ inline std::string canonicalType(const std::string& type) {
 //   为语义层内部名（调用点零改动），与 IR 层间接调用点共用同一份解析逻辑。
 [[maybe_unused]] inline std::vector<std::string> funcPtrParams(const std::string& type) {
     return types::funcPtrParamsOf(type);
+}
+
+// ===== P3-22 常量求值助手族（#286 起 semantic_constlen.cpp 共用·自 semantic.cpp
+//   匿名 ns 整段提升 inline——多 TU 安全 ODR 齐一，D1 收敛头同纪律）=====
+// 剥离数值字面量后缀（U/LL 等）
+[[maybe_unused]] inline std::string cnFormatDouble(double d) {
+    char buf[64];
+    std::snprintf(buf, sizeof buf, "%g", d);
+    return buf;
+}
+
+// 折叠二元常量：整数/浮点算术 + 字符串字面量拼接
+[[maybe_unused]] inline std::string cnFoldConstBinary(Operator op, const std::string& l, const std::string& r) {
+    if (cnIsFloatText(l) || cnIsFloatText(r)) {
+        const double a = std::atof(cnStripLiteralSuffix(l).c_str());
+        const double b = std::atof(cnStripLiteralSuffix(r).c_str());
+        double c = 0;
+        switch (op) {
+            case Operator::Add: c = a + b; break;
+            case Operator::Subtract: c = a - b; break;
+            case Operator::Multiply: c = a * b; break;
+            case Operator::Divide: if (b == 0) return ""; c = a / b; break;
+            case Operator::Modulo: return "";
+            default: return "";
+        }
+        return cnFormatDouble(c);
+    }
+    long long a, b;
+    if (!cnParseInt(l, a) || !cnParseInt(r, b)) {
+        // 字符串字面量拼接（"a" + "b" -> "ab"）
+        if (!l.empty() && !r.empty() && l.front() == '"' && r.front() == '"') {
+            return l.substr(0, l.size() - 1) + r.substr(1);
+        }
+        return "";
+    }
+    long long c = 0;
+    switch (op) {
+        case Operator::Add: c = a + b; break;
+        case Operator::Subtract: c = a - b; break;
+        case Operator::Multiply: c = a * b; break;
+        case Operator::Divide: if (b == 0) return ""; c = a / b; break;
+        case Operator::Modulo: if (b == 0) return ""; c = a % b; break;
+        default: return "";
+    }
+    return std::to_string(c);
+}
+
+// 递归求值顶层常量表达式；成功返回 true 并输出值文本（供引用处重写）
+[[maybe_unused]] inline bool cnEvalConstExpr(const std::unordered_map<std::string, std::string>& vals,
+                     const std::string& curMod, Expr* e, std::string& out) {
+    if (e == nullptr) return false;
+    switch (e->getType()) {
+        case NodeType::IntegerLiteral: out = static_cast<IntegerLiteral*>(e)->raw; return true;
+        case NodeType::FloatLiteral: out = static_cast<FloatLiteral*>(e)->raw; return true;
+        case NodeType::StringLiteral: out = static_cast<StringLiteral*>(e)->raw; return true;
+        case NodeType::BoolLiteral:
+            // 241-a（D14 根治）：布尔字面量常量表达式——值文本与 IR 布尔常量同口径（真/假）
+            out = static_cast<BoolLiteral*>(e)->raw;
+            return true;
+        case NodeType::IdentifierExpr: {
+            const std::string n = static_cast<IdentifierExpr*>(e)->name;
+            auto it = vals.find(n);
+            if (it != vals.end()) { out = it->second; return true; }
+            if (!curMod.empty()) {
+                auto itq = vals.find(curMod + "$" + n);
+                if (itq != vals.end()) { out = itq->second; return true; }
+            }
+            return false;
+        }
+        case NodeType::UnaryExpr: {
+            UnaryExpr* u = static_cast<UnaryExpr*>(e);
+            if (u->postfix) return false;
+            if (u->op == Operator::Subtract) {
+                std::string v;
+                if (!cnEvalConstExpr(vals, curMod, u->operand.get(), v)) return false;
+                if (cnIsFloatText(v)) {
+                    out = cnFormatDouble(-std::atof(cnStripLiteralSuffix(v).c_str()));
+                } else {
+                    long long iv;
+                    if (!cnParseInt(v, iv)) return false;
+                    out = std::to_string(-iv);
+                }
+                return true;
+            }
+            if (u->op == Operator::Add)
+                return cnEvalConstExpr(vals, curMod, u->operand.get(), out);
+            return false;
+        }
+        case NodeType::BinaryExpr: {
+            BinaryExpr* b = static_cast<BinaryExpr*>(e);
+            std::string l, r;
+            if (!cnEvalConstExpr(vals, curMod, b->left.get(), l)) return false;
+            if (!cnEvalConstExpr(vals, curMod, b->right.get(), r)) return false;
+            out = cnFoldConstBinary(b->op, l, r);
+            return !out.empty();
+        }
+        default:
+            return false;
+    }
 }
 
 } // namespace cn_compiler
