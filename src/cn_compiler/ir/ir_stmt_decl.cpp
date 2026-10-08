@@ -783,8 +783,8 @@ void IRGenerator::genVarDecl(VarDecl* node) {
                                                      {dstAddr}, "ptr",
                                                      std::to_string(vo),
                                                      node->location);
-                            pendingBoxVars_.emplace_back(tagAddr, fieldAddr,
-                                                         payload);
+                            // 273：第 4 元=变量唯一名（返回位移交识别键）·第 5 元=移交标志（兜底跳过）
+                            pendingBoxVars_.emplace_back(tagAddr, fieldAddr, payload, unique, false);
                         }
                     }
                 }

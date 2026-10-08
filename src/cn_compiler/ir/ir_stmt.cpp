@@ -191,6 +191,33 @@ void IRGenerator::visitReturnStmt(ReturnStmt* node) {
             value = emitResult(ir::Opcode::Call, {value}, "ptr",
                                "__cn_str_copy", node->location);
         }
+        // 273（021 任务 273·#211 宿主镜像面）：返回位 结果/可选<析构类> 局部盒
+        //   移交——返回表达式=局部盒标识符时，盒的类载荷析构责任随返回值移交
+        //   调用方（v2 946 变量移出同构·85-a「拥有局部移出零拷贝」的析构配套）。
+        //   原缺口：盒亡登记（182·pendingBoxVars_）无返回位豁免——「盒=正常(甲);
+        //   返回 盒;」形态源盒被返回块兜底析构+清槽（先于 retbuf 拷贝→拷残骸），
+        //   调用方副本再析构=双放（探针 p273 双形态宿主 C0000374/空指针错误码3·
+        //   v2 绿 dual 实证；inReturnExpr_ 豁免只覆盖「返回 正常(甲)」直构造面）。
+        //   置移交标志→块出口/函数尾兜底跳过该盒（时序自然正确：不析构→拷活盒
+        //   →ret）。条件=载荷有析构类（无登记条目=遍历零命中自然无操作）。
+        if (function_ != nullptr &&
+            node->value->getType() == NodeType::IdentifierExpr) {
+            const std::string retCanon273 =
+                types::canonical(function_->returnTypeSrc);
+            if (SemanticAnalyzer::isResultType(retCanon273) ||
+                SemanticAnalyzer::isOptionalType(retCanon273)) {
+                if (const VarEntry* ve273 =
+                        findVarEntry(static_cast<IdentifierExpr*>(
+                                         node->value.get())
+                                         ->name)) {
+                    for (auto& ent273 : pendingBoxVars_) {
+                        if (std::get<3>(ent273) == ve273->uniqueName) {
+                            std::get<4>(ent273) = true;
+                        }
+                    }
+                }
+            }
+        }
         if (function_ != nullptr) {
             const std::string retType = function_->returnType;
             // 087（m85 返回面）：**数组 sret** 的返回值=源基址（64 位指针）——
