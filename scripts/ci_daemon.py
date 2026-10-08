@@ -298,8 +298,8 @@ def 跑一轮(sha: str, 轮分支: str = "") -> dict:
                     # 在 --parallel 下多 cl.exe 并写同 .pdb 必撞 C1041（实测）
                     配置脚本.write_text("\r\n".join(头行 + [
                         'cmake -G Ninja -S . -B target/build-ninja '
-                        '-DCMAKE_BUILD_TYPE=Debug'
-                        '-DCMAKE_CXX_FLAGS_DEBUG:STRING="/Z7 /Ob0 /Od /RTC1"' + launcher])
+                        '-DCMAKE_BUILD_TYPE=Debug '
+                        '-DCMAKE_CXX_FLAGS_DEBUG:STRING="/Z7 /Ob0 /Od /RTC1" ' + launcher])
                         + "\r\n", encoding="ascii")
                     步骤("配置", ["cmd", "/c", str(配置脚本)], 900)
                 else:
