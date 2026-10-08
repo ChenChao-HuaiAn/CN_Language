@@ -262,7 +262,8 @@ def 总账收口021(分支们: list, 新tip: str, remote: str) -> None:
                 break
     if not 改动:
         return
-    路径.write_text("".join(行 for 行 in 行们 if 行 is not None), encoding="utf-8", newline="")
+    with 路径.open("w", encoding="utf-8", newline="") as f:   # 295：write_text(newline=)为 py3.10+ 参数——本机 3.8 TypeError（收口断真凶·287 同族穷尽漏网）
+        f.write("".join(行 for 行 in 行们 if 行 is not None))
     归档 = 归档路径021()
     需头注 = not 归档.exists() or 归档.stat().st_size == 0
     with open(归档, "a", encoding="utf-8", newline="") as f:

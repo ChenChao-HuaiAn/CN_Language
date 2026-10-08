@@ -90,7 +90,8 @@ def 写入(机: str, 日志条: str, 交接节: str) -> None:
         体 = 新体.rstrip()
         if 体.startswith(节头):        # 交接草稿自带节头——剥掉统一由此拼
             体 = 体[len(节头):].lstrip("\n")
-        p.write_text(t[:i] + 节头 + "\n\n" + 体 + "\n\n" + t[j:].lstrip("\n"), encoding="utf-8", newline="")
+        with p.open("w", encoding="utf-8", newline="") as f:   # 295：同 integrate 收口——write_text(newline=) py3.10+ 本机 3.8 崩
+            f.write(t[:i] + 节头 + "\n\n" + 体 + "\n\n" + t[j:].lstrip("\n"))
         print(f"[写入] {文件} {节头}（整节替换）")
 
 
