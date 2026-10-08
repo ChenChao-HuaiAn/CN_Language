@@ -728,6 +728,11 @@ private:
     static std::string commonNumericType(const std::string& a, const std::string& b) {
         return types::commonNumericType(a, b);
     }
+    // 285（001 §3.7a 窄算术回绕·甲案）：实参位窄字面量回绕放行——T36 传参
+    //   值域检查被 §3.7a 容器元素窄域口径显式覆盖（p1007_05 验收基线五值含
+    //   追加(200) 读回 -56·v2 零改动锚）。仅实参面；声明/赋值/返回面维持 T36。
+    bool canConvertArgNarrow(const Expr* value, const std::string& fromRaw,
+                             const std::string& toRaw) const;
     // ==================== 检查辅助 ====================
     std::string checkExpr(Expr* node);             // 检查表达式，返回推断类型
     void checkStmt(Stmt* node);                    // 检查语句（分发到visit）

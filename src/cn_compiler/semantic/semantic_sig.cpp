@@ -522,6 +522,21 @@ bool SemanticAnalyzer::canConvertWithLiteral(const Expr* value,
     //（整16 甲=40000 超域拒绝，域内 整8 a=10 保留豁免；表达式面口径统一）
     return isIntLiteralExpr(value) && intLiteralFitsType(value, toRaw);
 }
+// 285（001 §3.7a 窄算术回绕·甲案 2026-10-08）：实参位窄字面量回绕放行——
+//   T36 的传参值域检查被 §3.7a 容器元素窄域口径显式覆盖（p1007_05 验收基线
+//   五值含 向量<整8> 追加(200) 读回 -56·v2 零改动锚=放行回绕；发射层窄槽
+//   存回截断天然承载回绕）。仅实参面：字面量→窄整数目标放行；声明/赋值/
+//   返回面维持 T36 值域检查不变（整16 甲=40000 拒仍在）。
+bool SemanticAnalyzer::canConvertArgNarrow(const Expr* value,
+                                           const std::string& fromRaw,
+                                           const std::string& toRaw) const {
+    if (canConvertWithLiteral(value, fromRaw, toRaw)) return true;
+    if (!types::isInteger(fromRaw) || !types::isInteger(toRaw)) return false;
+    if (!isIntLiteralExpr(value)) return false;
+    const std::string to = types::canonical(toRaw);
+    return to == "整8" || to == "整16" || to == "正8" || to == "正16";
+}
+
 // 混合符号赋值专用诊断（55-c 方案A，2026-09-10 用户裁决·Rust E0308 对齐）——
 //   消息风格与二元面「混合符号二元运算禁止」对仗；主三面（声明初始化/赋值/
 //   返回）接入，函数指针/构造/接口/方法等次要面维持通用消息（拒绝语义已生效）

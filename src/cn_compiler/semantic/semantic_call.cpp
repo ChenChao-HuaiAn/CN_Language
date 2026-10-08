@@ -479,7 +479,8 @@ bool SemanticAnalyzer::checkFuncPtrCall(CallExpr* node, const std::string& calle
         for (std::size_t i = 0; i < node->arguments.size(); i++) {
             std::string argType = checkExpr(node->arguments[i].get());
             const std::string& paramType = paramTypes[i];
-            if (!canConvertWithLiteral(node->arguments[i].get(), argType, paramType)) {
+            if (!canConvertWithLiteral(node->arguments[i].get(), argType, paramType) &&
+                !canConvertArgNarrow(node->arguments[i].get(), argType, paramType)) {
                 diagnostics_.report(DiagnosticLevel::Error, node->arguments[i]->location,
                                     "函数指针第 " + std::to_string(i + 1) +
                                     " 个参数无法将 '" + argType + "' 隐式转换为 '" +
@@ -745,7 +746,8 @@ bool SemanticAnalyzer::checkCtorCall(CallExpr* node, const std::string& classNam
                                             std::to_string(argTypes.size()) + " 个");
                 } else {
                     for (std::size_t i = 0; i < argTypes.size(); ++i) {
-                        if (!canConvertWithLiteral(node->arguments[i].get(), argTypes[i], ctor->paramTypes[i])) {
+                        if (!canConvertWithLiteral(node->arguments[i].get(), argTypes[i], ctor->paramTypes[i]) &&
+                            !canConvertArgNarrow(node->arguments[i].get(), argTypes[i], ctor->paramTypes[i])) {
                             diagnostics_.report(
                                 DiagnosticLevel::Error, node->arguments[i]->location,
                                 "构造函数 '" + className + "' 第 " + std::to_string(i + 1) +
@@ -797,6 +799,8 @@ bool SemanticAnalyzer::checkCtorCall(CallExpr* node, const std::string& classNam
                         } else {
                             for (std::size_t i = 0; i < argTypes.size(); ++i) {
                                 if (!canConvertWithLiteral(node->arguments[i].get(),
+                                                           argTypes[i], diag->paramTypes[i]) &&
+                                    !canConvertArgNarrow(node->arguments[i].get(),
                                                            argTypes[i], diag->paramTypes[i])) {
                                     diagnostics_.report(
                                         DiagnosticLevel::Error,
@@ -865,7 +869,8 @@ bool SemanticAnalyzer::checkInterfaceMethodCall(CallExpr* node, MemberExpr* mem,
                             " 个实参，实际提供 " + std::to_string(argTypes.size()) + " 个");
                 } else {
                     for (std::size_t i = 0; i < argTypes.size(); ++i) {
-                        if (!canConvertWithLiteral(node->arguments[i].get(), argTypes[i], imit->second.paramTypes[i])) {
+                        if (!canConvertWithLiteral(node->arguments[i].get(), argTypes[i], imit->second.paramTypes[i]) &&
+                            !canConvertArgNarrow(node->arguments[i].get(), argTypes[i], imit->second.paramTypes[i])) {
                             diagnostics_.report(
                                 DiagnosticLevel::Error, node->arguments[i]->location,
                                 "接口方法 '" + methodName + "' 第 " +
@@ -1034,7 +1039,8 @@ bool SemanticAnalyzer::checkInstanceMethodCall(CallExpr* node, MemberExpr* mem,
                         static_cast<UnaryExpr*>(node->arguments[i].get())->op ==
                             Operator::AddressOf;
                     if (!refAlready &&
-                        !canConvertWithLiteral(node->arguments[i].get(), argTypes[i], method->paramTypes[i])) {
+                        !canConvertWithLiteral(node->arguments[i].get(), argTypes[i], method->paramTypes[i]) &&
+                        !canConvertArgNarrow(node->arguments[i].get(), argTypes[i], method->paramTypes[i])) {
                         diagnostics_.report(
                             DiagnosticLevel::Error, node->arguments[i]->location,
                             "方法 '" + methodName + "' 第 " + std::to_string(i + 1) +
@@ -1229,7 +1235,8 @@ bool SemanticAnalyzer::checkDirectCall(CallExpr* node, const std::string& callee
         //   决议按宽化级放行的字面量形态此处不再误报
         for (std::size_t i = 0; i < node->arguments.size(); i++) {
             const std::string& paramType = info.paramTypes[i];
-            if (!canConvertWithLiteral(node->arguments[i].get(), argTypes[i], paramType)) {
+            if (!canConvertWithLiteral(node->arguments[i].get(), argTypes[i], paramType) &&
+                !canConvertArgNarrow(node->arguments[i].get(), argTypes[i], paramType)) {
                 diagnostics_.report(DiagnosticLevel::Error, node->arguments[i]->location,
                                     "函数 '" + calleeName + "' 第 " + std::to_string(i + 1) +
                                     " 个参数无法将 '" + argTypes[i] + "' 隐式转换为 '" +

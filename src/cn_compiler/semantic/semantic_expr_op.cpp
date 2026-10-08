@@ -37,21 +37,15 @@ void SemanticAnalyzer::visitBinaryExpr(BinaryExpr* node) {
         return;
     }
 
-    // 混合符号二元运算拒绝（2026-09-10 方案A 用户裁决，Rust 对齐）：
-    //   有符号（整N）与无符号（正M）的「变量间」比较/算术/位运算编译期拒绝——
-    //   隐式宽化在混合符号下静默改变值语义（探针实证 target/p50x64l/mixed_cmp：
-    //   正64(2^63) vs 整64(-1) 比较值域反转；正32 vs 整64 负值形态宿主 rc=9 /
-    //   v2 rc=11 / 数学真值 13 双侧分叉）。须显式 类型名(表达式) 构造转换。
-    //   字面量豁免：一侧为整数字面量（含一元负号字面量）按另一侧类型参与
-    //   （Rust 字面量推断同款惯例，E2E 191「大 > 100」锚保留）；同符号混合
-    //   宽度（正32 vs 正64）维持既有宽化。规范 plans/001 §3.7。
-    // plans/019 阶段4（2026-09-10）：安全区边界观察期——指针算术（指针 +/- 整数
-    //   产生新指针=可越出对象边界）应在 不安全 函数 内
-    // plans/022 波 1（2026-09-13 用户裁决）：字符串拼接不是指针算术——+ 涉及
-    //   字符串语义类型（字符串/字符*）时下方算术分支按拼接分派（字符* 是字符串
-    //   视图，IR 层同为 ptr）；原按类型文本 '*' 后缀判指针对该形态误报（宿主
-    //   check v2 树 75 处实证全部为 驻留文本(...)/字符串变量 拼接）。字符* 的
-    //   -（指针步进，语义层按指针算术分派）与真指针（整N*/类*）的 +/- 保持原判。
+    // 混合符号二元运算拒绝（2026-09-10 方案A·Rust 对齐）：有符号与无符号的
+    //   「变量间」比较/算术/位运算编译期拒绝——隐式宽化静默改变值语义（mixed_cmp
+    //   探针：正64(2^63) vs 整64(-1) 值域反转·双侧分叉）。须显式 类型名(表达式)
+    //   构造转换。字面量豁免：一侧为整数字面量按另一侧类型参与（E2E 191 锚）；
+    //   同符号混合宽度维持既有宽化。规范 plans/001 §3.7。
+    // plans/019 阶段4：安全区边界——指针算术（± 整数产生新指针=可越界）应在 不安全 函数 内
+    // plans/022 波 1：字符串拼接不是指针算术——+ 涉及字符串语义类型（字符串/
+    //   字符*·IR 层同为 ptr）时算术分支按拼接分派；原按 '*' 后缀判指针误报
+    //   （v2 树 75 处实证全为拼接）。字符* 的 -（步进）与真指针 +/- 保持原判。
     const bool concatAdd =
         node->op == Operator::Add &&
         (isStringSemanticType(leftType) || isStringSemanticType(rightType));
@@ -208,13 +202,11 @@ void SemanticAnalyzer::visitBinaryExpr(BinaryExpr* node) {
             lastType_ = "布尔";
             return;
         }
-        // 962（166 立法·用户裁决 2026-10-02）：字符串×字符串 的比较运算符
-        //   放行为内容/字典序比较（==/!= 等价 字符串比较·四序等价 字符串字典序
-        //   与 0 比较——Rust/Go/Python/C++std::string 主流对齐·001 §比较语义修订版）。
-        //   旧「显式拒绝」（灰色点②方案A）废止——「字符串不能用 ==」本身是一条
-        //   必学规则，与 019 第一句「默认路径零规则」冲突。IR 层按操作数类型分派
-        //   helper 调用（见 ir_expr 系）。字符*×字符* 维持真指针拒绝（地址语义
-        //   留 不安全 域）；字符串/字符* 与 空类型*（无）的判空比较保留（Task 6.2）。
+        // 962（166 立法·2026-10-02 用户裁）：字符串×字符串 比较放行为内容/
+        //   字典序比较（Rust/Go/Python/C++ 主流对齐·001 §比较语义修订版）——
+        //   旧「显式拒绝」废止（与 019「默认路径零规则」冲突）。IR 层按操作数
+        //   类型分派 helper。字符*×字符* 维持真指针拒绝（地址语义留 不安全 域）；
+        //   与 空类型* 判空比较保留（Task 6.2）。
         if (leftType == "字符串" && rightType == "字符串") {
             lastType_ = "布尔";
             return;
@@ -360,6 +352,22 @@ void SemanticAnalyzer::visitBinaryExpr(BinaryExpr* node) {
         if (node->op == Operator::Modulo && (!isInteger(leftType) || !isInteger(rightType))) {
             diagnostics_.report(DiagnosticLevel::Error, node->location,
                                 "'%'取余运算要求整数操作数");
+        }
+        // 285（001 §3.7a 窄算术保持窄域·甲案·p1007_05）：字面量按另一侧窄类型
+        //   参与（§3.7 推导面落实·v2 零改动锚）——原 a+1 字面量按整32 参与→提升
+        //   整32→赋回整8 拒；现另一侧窄整数时结果保持窄域（回绕由发射层窄槽存回
+        //   截断承载·227→-29 实证）·宽侧参与/混宽宽化维持既有链零改动。
+        if (isInteger(leftType) && isInteger(rightType)) {
+            const auto isNarrow280 = [](const std::string& t) {
+                return t == "整8" || t == "整16" || t == "正8" || t == "正16";
+            };
+            if (isNarrow280(rightType) && !isNarrow280(leftType) &&
+                isIntLiteralExpr(node->left.get())) {
+                leftType = rightType;
+            } else if (isNarrow280(leftType) && !isNarrow280(rightType) &&
+                       isIntLiteralExpr(node->right.get())) {
+                rightType = leftType;
+            }
         }
         lastType_ = commonNumericType(leftType, rightType);
         return;
@@ -524,12 +532,10 @@ void SemanticAnalyzer::visitAssignmentExpr(AssignmentExpr* node) {
         checkCopyRequiresCtor(types::canonical(targetType), node->location);
     }
     lastType_ = targetType == "未知" ? valueType : targetType;
-    // 任务 094（2026-09-29·008 树波 4）：赋值位污染登记＋出参移交源禁用——
-    //   与 IR 层字符串赋值三路径＋下标污染逐形态同构（注释互指）：
-    //   identifierStringByRefAssign / identifierStringTransferAssign /
-    //   identifierStringOwnAssign（ir_expr_assign_ident.cpp）+
-    //   markIndexStringElemTainted（ir_expr_assign.cpp）。消费点=装箱 move
-    //   判定（污染源=借用装箱 IR 不清零→语义不 markMovedVar·q1/q3 实证）。
+    // 任务 094（008 波 4）：赋值位污染登记＋出参移交源禁用——与 IR 层字符串
+    //   赋值三路径＋下标污染逐形态同构（identifierString{ByRef,Transfer,Own}
+    //   Assign+markIndexStringElemTainted·注释互指）。消费点=装箱 move 判定
+    //   （污染源=借用装箱 IR 不清零→语义不 markMovedVar·q1/q3 实证）。
     if (!isCompoundAssign(node->op)) {
         // ①出参移交（IR byRef 路径·72-a）：目标=字符串引用（T&）·右值=标识符
         //   →IR 句柄直写调用方槽＋清零源槽（真 move）——语义层 markMovedVar
@@ -772,12 +778,10 @@ void SemanticAnalyzer::checkIndexMemberAssignTarget(AssignmentExpr* node,
                 reportUnsafeBoundary(node->location, "指针下标写",
                     static_cast<const IdentifierExpr*>(iobj)->name + "[i] = ...");
             }
-            // 910（任务 112 甲·用户裁决 2026-09-30·分层安全立法①编译期拦）：
-            //   字符串下标写=编译期拒绝——字符串为不可变拥有型（修改走拼接/
-            //   字符串子串 重建；原地字节操作用 字符 数组或不安全区指针——
-            //   与 069「字符* 视图下标拒绝」同一语义家族）。原实现静默无效写
-            //   （实测 s[1]='x' 后读回原值·rc=0 零诊断）——v2 侧「字符串下标
-            //   只读」拒绝既有（174_v2 锚定）·本补丁=宿主对齐双侧同拒。
+            // 910（112 甲·分层安全①编译期拦）：字符串下标写=编译期拒绝——
+            //   字符串不可变拥有型（修改走拼接/字符串子串 重建·原地字节操作用
+            //   字符 数组或不安全区指针·069 同语义家族）。原静默无效写（s[1]='x'
+            //   读回原值·rc=0）——v2 拒绝既有（174_v2 锚）·本补丁宿主对齐同拒。
             if (lookupVar(static_cast<const IdentifierExpr*>(iobj)->name, iot) &&
                 types::canonical(iot) == "字符串") {
                 diagnostics_.report(
@@ -882,15 +886,12 @@ bool SemanticAnalyzer::checkBorrowViewAssign(AssignmentExpr* node,
         return true;
     }
 
-    // plans/019 阶段4' A2 补全：赋值位借出装入拒绝（A1 同款收紧到赋值位）——
-    //   「字符串 变量=恒拥有槽」不变量（Rust String 槽恒拥有/&str 承担借用）。
-    //   原赋值位借出靠 IR 污染（不 free 保安全）——但污染变量可经 返回 位
-    //   移出（语义层无污染状态）→调用方按返回类型登记 free 借用指针=悬垂
-    //   （v2p 全解析瘫痪实测：free 损坏驻留/静态区）。收紧后赋值位借出
-    //   一律显式拥有化，污染路径成为不可达防御。**泛型单态化体内豁免**：
-    //   实例化类方法体（genericTypeParams_ 非空）的 T 元素搬移（容器拷贝/
-    //   移位的 数据[i]=其他.数据[i]）=容器内部存储管理（析构元素 特判
-    //   释放），Rust Vec 内部 ptr::write 同类。
+    // plans/019 阶段4' A2：赋值位借出装入拒绝（A1 收紧到赋值位）——「字符串
+    //   变量=恒拥有槽」不变量。原靠 IR 污染（不 free），但污染变量经 返回 位
+    //   移出→调用方按返回类型登记 free 借用指针=悬垂（v2p 全解析瘫痪实测）。
+    //   收紧后赋值位借出一律显式拥有化。**泛型单态化体内豁免**：实例化类方法
+    //   体（genericTypeParams_ 非空）的 T 元素搬移=容器内部存储管理（析构元素
+    //   特判释放·Rust Vec 内部 ptr::write 同类）。
     if (targetType == "字符串" && genericTypeParams_.empty()) {
         const NodeType valKindA2 = node->value->getType();
         bool borrowAssignA2 = valKindA2 == NodeType::IndexExpr ||
@@ -943,11 +944,10 @@ bool SemanticAnalyzer::checkCompoundAssign(AssignmentExpr* node,
 }
 
 // ==================== 族⑧：局部地址逃逸检查 + 指向登记（原 806~886 段） ====================
-// plans/019 阶段2（2026-09-10）：局部地址逃逸检查——右值求值为当前函数
-//   局部的地址（&局部 / 引用局部绑局部）而赋值目标是比其寿命长的存储
-//   （静态/全局变量、静态/全局对象的字段或元素）时编译期拒绝（悬垂防线
-//   前移）。局部指针/局部对象字段/局部数组元素接收局部地址合法（随所在
-//   作用域消亡）；局部指针指向登记供返回检查（直接 &局部 形态）。
+// plans/019 阶段2（2026-09-10）：局部地址逃逸检查——右值为当前函数局部的
+//   地址而赋值目标是比其寿命长的存储（静态/全局变量·对象字段/元素）时编译期
+//   拒绝（悬垂防线前移）。局部指针/局部对象字段/局部数组元素接收局部地址合法
+//   （随作用域消亡）；局部指针指向登记供返回检查（直接 &局部 形态）。
 void SemanticAnalyzer::checkLocalAddressEscapeAssign(AssignmentExpr* node) {
     {
         std::string escBase;
