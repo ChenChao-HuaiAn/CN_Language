@@ -255,7 +255,7 @@ def cmd_ready(as_json: bool = False):
     挂起 = [t for t in 任务们 if t["状态"] == 状态_挂起]
     if as_json:
         # 308b：机读输出（intent.py 看板快照上报消费·与 --check --json 同款先例）
-        print(json.dumps({"就绪们": [{"号": 展示号(t["号"]), "标题": t["任务"][:80],
+        print(json.dumps({"就绪们": [{"号": 展示号(t["号"]), "标题": t["任务"][:400],
                                      "优先级": t["优先级"]} for t in 就绪[:20]],
                           "在飞们": [{"号": 展示号(t["号"]),
                                      "分支": t["分支"] or ""} for t in 在飞]},

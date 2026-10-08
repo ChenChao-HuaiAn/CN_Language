@@ -395,7 +395,7 @@ h2{font-size:12px;font-weight:600;color:var(--dim);letter-spacing:.14em;margin:0
 .队列行{display:flex;gap:var(--space2);align-items:baseline;padding:3px 0;font-size:13px}
 .队号{font-family:var(--mono);color:var(--accent);min-width:44px}
 .P0{color:var(--danger)} .P1{color:var(--warn)} .P2{color:var(--plan)} .P3{color:var(--dim)}
-.队题{color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+.队题{color:var(--dim);white-space:normal;flex:1}
 #错误条{display:none;position:fixed;bottom:var(--space4);left:50%;transform:translateX(-50%);
  background:var(--danger);color:#fff;border-radius:var(--radius);
  padding:var(--space2) var(--space4);font-size:13px;box-shadow:var(--shadow)}
