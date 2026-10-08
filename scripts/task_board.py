@@ -243,7 +243,7 @@ def 前置状态摘要(表, t):
     return "、".join(段)
 
 
-def cmd_ready():
+def cmd_ready(as_json: bool = False):
     任务们, 表 = 读全表()
     归档们 = 读归档任务()
     缺号 = sorted({d for t in 任务们 for d in t["前置"] if d not in 表})
@@ -253,6 +253,14 @@ def cmd_ready():
     就绪.sort(key=lambda t: (优先级序[t["优先级"]], -传递解锁数(表, t["号"])))
     在飞 = [t for t in 任务们 if t["状态"] == 状态_在飞]
     挂起 = [t for t in 任务们 if t["状态"] == 状态_挂起]
+    if as_json:
+        # 308b：机读输出（intent.py 看板快照上报消费·与 --check --json 同款先例）
+        print(json.dumps({"就绪们": [{"号": 展示号(t["号"]), "标题": t["任务"][:80],
+                                     "优先级": t["优先级"]} for t in 就绪[:20]],
+                          "在飞们": [{"号": 展示号(t["号"]),
+                                     "分支": t["分支"] or ""} for t in 在飞]},
+                         ensure_ascii=False))
+        return 0
     # 308a 丙案（285 撞车知情面）：就绪号若远端已有 任务/<号> 分支=疑似他机认领中
     # （行状态滞后是 226 立规设计内窗口）——就绪队列标注，认领核对先 ls-remote。
     try:
@@ -408,10 +416,10 @@ def main():
     ap = argparse.ArgumentParser(description="021 任务总账：图谱与账实检查（v5）")
     ap.add_argument("--ready", action="store_true", help="就绪队列/最紧迫/阻塞视图")
     ap.add_argument("--check", action="store_true", help="账实相符+依赖环检查")
-    ap.add_argument("--json", action="store_true", help="--check 机读输出")
+    ap.add_argument("--json", action="store_true", help="--check/--ready 机读输出")
     参数 = ap.parse_args()
     if 参数.ready:
-        return cmd_ready()
+        return cmd_ready(参数.json)
     if 参数.check:
         return cmd_check(参数.json)
     ap.print_help()

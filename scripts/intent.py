@@ -98,6 +98,16 @@ def 上报在飞分支() -> None:
                    {"上报者": 机器名(), "分支们": 分支们}, 超时=5)
     except (OSError, ValueError, subprocess.SubprocessError):
         pass    # 尽力而为：上报失败不影响登记主流程
+    try:
+        # 308b：021 就绪队列快照（task_board --ready --json 机读·治看板空面板）
+        r = subprocess.run([sys.executable, str(脚本目录 / "task_board.py"),
+                            "--ready", "--json"],
+                           capture_output=True, text=True, cwd=仓库根, timeout=60)
+        行们 = json.loads(r.stdout).get("就绪们", [])
+        if 行们:
+            调服务("POST", "/api/report_021", {"行们": 行们}, 超时=5)
+    except (OSError, ValueError, subprocess.SubprocessError):
+        pass
 
 
 def 落登记(在做: str, 计划: str, 备注: str) -> int:

@@ -48,8 +48,8 @@ def 建库(路径: str = db路径) -> sqlite3.Connection:
     con = sqlite3.connect(路径, check_same_thread=False)
     con.execute("PRAGMA journal_mode=WAL")
     con.execute("""CREATE TABLE IF NOT EXISTS 意图(
-        会话键 TEXT PRIMARY KEY,
-        机器 TEXT, 对话id TEXT,
+        对话id TEXT PRIMARY KEY,
+        机器 TEXT,
         在做 TEXT DEFAULT '',
         计划 TEXT DEFAULT '',
         备注 TEXT DEFAULT '',
@@ -83,9 +83,9 @@ def 解析任务号们(文本: str) -> list:
 
 
 def 意图行转字典(行) -> dict:
-    (会话键, 机器, 对话id, 在做, 计划, 备注, 心跳时刻, 心跳时戳, 登记时刻) = 行
+    (对话id, 机器, 在做, 计划, 备注, 心跳时刻, 心跳时戳, 登记时刻) = 行
     陈旧秒 = time.time() - 心跳时戳
-    return {"会话键": 会话键, "机器": 机器, "对话id": 对话id,
+    return {"会话键": f"{机器}-{对话id}", "机器": 机器, "对话id": 对话id,
             "在做": 在做, "计划": 计划, "备注": 备注,
             "心跳时刻": 心跳时刻, "时戳": 心跳时戳, "失联": 陈旧秒 > 失联秒,
             "失联秒": int(陈旧秒), "登记时刻": 登记时刻}
@@ -218,16 +218,16 @@ class 处理器(BaseHTTPRequestHandler):
         在做 = str(体.get("在做", "")).strip()
         计划 = ",".join(解析任务号们(str(体.get("计划", ""))))
         备注 = str(体.get("备注", "")).strip()[:200]
-        会话键 = f"{机器}-{对话id}"
         with 写锁:
             连接.execute(
-                """INSERT INTO 意图(会话键,机器,对话id,在做,计划,备注,心跳时刻,心跳时戳,登记时刻)
-                   VALUES(?,?,?,?,?,?,?,?,?)
-                   ON CONFLICT(会话键) DO UPDATE SET 在做=excluded.在做, 计划=excluded.计划,
-                   备注=excluded.备注, 心跳时刻=excluded.心跳时刻, 心跳时戳=excluded.心跳时戳""",
-                (会话键, 机器, 对话id, 在做, 计划, 备注, 时刻(), time.time(), 时刻()))
+                """INSERT INTO 意图(对话id,机器,在做,计划,备注,心跳时刻,心跳时戳,登记时刻)
+                   VALUES(?,?,?,?,?,?,?,?)
+                   ON CONFLICT(对话id) DO UPDATE SET 机器=excluded.机器, 在做=excluded.在做,
+                   计划=excluded.计划, 备注=excluded.备注, 心跳时刻=excluded.心跳时刻,
+                   心跳时戳=excluded.心跳时戳""",
+                (对话id, 机器, 在做, 计划, 备注, 时刻(), time.time(), 时刻()))
             连接.commit()
-        return self._回JSON(200, {"好": True, "会话键": 会话键})
+        return self._回JSON(200, {"好": True, "会话键": f"{机器}-{对话id}"})
 
     def _注销意图(self, 体: dict):
         机器 = str(体.get("机器", "")).strip()
@@ -235,7 +235,7 @@ class 处理器(BaseHTTPRequestHandler):
         if not 机器 or not 对话id:
             return self._回JSON(400, {"错误": "机器与对话id 必填"})
         with 写锁:
-            连接.execute("DELETE FROM 意图 WHERE 会话键=?", (f"{机器}-{对话id}",))
+            连接.execute("DELETE FROM 意图 WHERE 对话id=?", (对话id,))
             连接.commit()
         return self._回JSON(200, {"好": True})
 
@@ -508,10 +508,10 @@ def 自检() -> int:
         f = r["在飞分支们"][0]
         签("交集标注：308a 在飞=已登记意图", f["已登记意图"] is True)
         连接2 = globals()["连接"]
-        连接2.execute("UPDATE 意图 SET 心跳时戳=? WHERE 会话键='深度机-a1'", (time.time() - 999,))
+        连接2.execute("UPDATE 意图 SET 心跳时戳=? WHERE 对话id='a1'", (time.time() - 999,))
         连接2.commit()
         码, r = 调("GET", "/api/board")
-        深度行 = next(i for i in r["意图们"] if i["会话键"] == "深度机-a1")
+        深度行 = next(i for i in r["意图们"] if i["对话id"] == "a1")
         签("心跳超时→失联态", 深度行["失联"] is True)
         码, r = 调("POST", "/api/intent_release", {"机器": "家机", "对话id": "b3"})
         码, r = 调("GET", "/api/board")
@@ -521,6 +521,15 @@ def 自检() -> int:
         签("021 快照上报可读", r.get("快照021") is not None)
         码, r = 调("POST", "/api/intent", {"对话id": "无机器"})
         签("缺机器参数 400", 码 == 400)
+        码, r = 调("POST", "/api/intent", {"机器": "旧机名", "对话id": "c9",
+                  "在做": "110"})
+        码, r = 调("POST", "/api/intent", {"机器": "新机名", "对话id": "c9",
+                  "在做": "110", "计划": "276"})
+        码, r = 调("GET", "/api/board")
+        同话 = [i for i in r["意图们"] if i["对话id"] == "c9"]
+        签("同对话id 改机名=单行搬家（308b 根治面）",
+           len(同话) == 1 and 同话[0]["机器"] == "新机名"
+           and 同话[0]["会话键"] == "新机名-c9")
         with urllib.request.urlopen(基址 + "/", timeout=5) as resp:
             页 = resp.read().decode("utf-8")
         签("看板页 200 且含看板字样", resp.status == 200 and "任务看板" in 页)
