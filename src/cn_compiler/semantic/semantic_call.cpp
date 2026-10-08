@@ -128,6 +128,40 @@ void SemanticAnalyzer::visitCallExpr(CallExpr* node) {
     //   决议到返回 字符串 的被调者时置 true（IR 初始化位/赋值位消费——登记
     //   RAII 依据；驻留文本 已改 字符* 返回=自动不置位）
     node->retOwnedString = false;
+    // 306（字符形态打印·293 呈报#4 裁决·用户批「照办」）：打印/打印行 的字符
+    //   类型实参改写为 字符转字符串(实参)——字符按 UTF-8 编码输出字符形态
+    //   （'甲' → 甲；含 '\u{4E2D}' 转义与字符变量两形态）；码点数值形态改由
+    //   显式 整32(c) 表达（显式优于隐式）。改写后实参类型=字符串，IR 打印
+    //   展开按 ptr → __cn_print_str 分派（IR 零改动）。
+    if (node->callee->getType() == NodeType::IdentifierExpr) {
+        const std::string& calleeText =
+            static_cast<IdentifierExpr*>(node->callee.get())->name;
+        if (calleeText == "打印" || calleeText == "打印行") {
+            for (auto& a : node->arguments) {
+                // 字符形态判定（轻量·不 checkExpr——checkExpr 非幂等，打印实参
+                //   主流程还会整查一次，改写块二次求值对部分调用形态=编译错误
+                //   （打印(求和(x,y)) 实测））：①CharLiteral 直判；②标识符查
+                //   变量表==字符（字符变量）。表达式形态（返回字符的调用）保守
+                //   不改写——可显式 打印(字符转字符串(f()))。
+                bool isChar = false;
+                if (a->getType() == NodeType::CharLiteral) {
+                    isChar = true;
+                } else if (a->getType() == NodeType::IdentifierExpr) {
+                    std::string vt;
+                    if (lookupVar(static_cast<IdentifierExpr*>(a.get())->name, vt) &&
+                        vt == "字符") {
+                        isChar = true;
+                    }
+                }
+                if (!isChar) continue;
+                auto wrap = std::make_unique<CallExpr>("字符转字符串");
+                wrap->location = node->location;
+                wrap->arguments.push_back(std::move(a));
+                a = std::move(wrap);
+                checkExpr(a.get());   // 字符转字符串(字符) → 字符串（内层首次检查）
+            }
+        }
+    }
     if (checkTransferCall(node)) return;   // 族1：显式转移表达式位特判
     if (checkCopyBuiltinCall(node)) return;  // 族1.5：复制 泛型克隆内置（206-a 波 4）
     if (checkWrapBuiltinCall(node)) return;  // 族1.6：回绕算术内置（任务 474·错误码 8 豁免面）
