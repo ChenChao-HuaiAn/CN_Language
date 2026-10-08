@@ -415,8 +415,13 @@ class 处理器(BaseHTTPRequestHandler):
             if isinstance(原始视野, list) else []
         描述 = str(体.get("描述", "")).strip()[:200]
         请求号 = str(体.get("请求号", "")).strip()
+        仅视野 = bool(体.get("only_view"))
         with 写锁:
             基准 = 收视野并取基准(上报者, 视野号们)
+            if 仅视野:
+                # 316：intent.py claim/show 的视野上报通道——只记账不发号
+                # （双机视野齐→号占冲突自动亮·治「撞号看板不拦」第一洞）
+                return self._回JSON(200, {"好": True, "仅视野": True})
             if 请求号:
                 行 = 连接.execute("SELECT 机器,对话id,时刻 FROM 发号台账 WHERE 号=?",
                                   (请求号,)).fetchone()
@@ -777,6 +782,15 @@ def 自检() -> int:
         码, r = 调("POST", "/api/claim_number", {"机器": "庚机", "上报者": "庚机-主树",
                   "请求号": "400"})
         签("核对：全新号放行", 码 == 200 and r.get("已发") is False)
+        台账前 = 调("GET", "/api/numbers")[1]["台账"]
+        调("POST", "/api/claim_number", {"机器": "辛机", "上报者": "辛机-主树",
+           "视野号们": ["309"], "only_view": True})
+        台账后 = 调("GET", "/api/numbers")[1]["台账"]
+        签("316 only_view：只记视野不发号", len(台账后) == len(台账前))
+        视野撞 = 调("POST", "/api/claim_number", {"机器": "壬机", "上报者": "壬机-主树",
+                    "请求号": "309"})
+        签("316：辛机视野上报后 309 核对 409（撞号拦截链实锤）",
+           视野撞[0] == 409 and 视野撞[1].get("已发") is True)
     finally:
         实例.shutdown()
         globals()["连接"] = 全局连接

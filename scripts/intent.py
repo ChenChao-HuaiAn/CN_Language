@@ -88,6 +88,46 @@ def 调服务(方法: str, 路径: str, 体=None, 超时=8):
         return json.loads(r.read().decode("utf-8"))
 
 
+def 收视野号集() -> list:
+    """本机视野内全部在飞行号（316·与 wt.py 收集视野号集 同构：主表+归档+分支名+
+    远端任务分支树内 021 行号）——claim/show 时随板上报，双机视野齐=号占冲突自动亮。"""
+    try:
+        import wt as _wt
+        return sorted(_wt.收集视野号集())
+    except Exception:
+        return []
+
+
+def 核对号(号: str):
+    """316：claim 前向服务端核对（台账已发/他机视野占用→409）——撞号预警链。
+    返回 None=服务不可达（跳过）·True=放行·False=疑撞号（黄字预警不阻断）。"""
+    try:
+        调服务("POST", "/api/claim_number",
+               {"机器": 机器名(), "上报者": f"{机器名()}-{仓库根.name}",
+                "视野号们": 收视野号集(), "请求号": str(号)})
+        return True
+    except urllib.error.HTTPError as e:
+        try:
+            体 = json.loads(e.read().decode("utf-8"))
+            print(f"[黄] ⚠ 撞号预警：{体.get('错误', f'号 {号} 已被占')}——"
+                  f"若为接棒/让号请 --备注 注明缘由后继续（预警不阻断）")
+        except (ValueError, UnicodeDecodeError):
+            print(f"[黄] ⚠ 号 {号} 服务端核对未过（HTTP {e.code}）——请核对后再做")
+        return False
+    except (urllib.error.URLError, OSError, ValueError):
+        return None
+
+
+def 上报视野() -> None:
+    """316：把本机视野号集上报服务端（only_view 只记账不发号）——尽力而为静默。"""
+    try:
+        调服务("POST", "/api/claim_number",
+               {"机器": 机器名(), "上报者": f"{机器名()}-{仓库根.name}",
+                "视野号们": 收视野号集(), "only_view": True}, 超时=10)
+    except (urllib.error.URLError, OSError, ValueError):
+        pass
+
+
 def 上报在飞分支() -> None:
     """把本机看到的远端在飞任务分支上报给看板（尽力而为·失败静默——
     服务端不持 git 凭据不依赖外网，三机任一活着看板即有在飞数据）。
@@ -131,6 +171,7 @@ def 上报在飞分支() -> None:
                    {"行们": 行们, "任务字典": 字典}, 超时=8)
     except (OSError, ValueError, subprocess.SubprocessError, KeyError):
         pass
+    上报视野()    # 316：视野号集随每次 claim/show 上报（双机视野齐=号占冲突亮）
 
 
 def 落登记(在做: str, 计划: str, 备注: str) -> int:
@@ -149,12 +190,41 @@ def 落登记(在做: str, 计划: str, 备注: str) -> int:
     return 0
 
 
+def 已收口(号: str) -> bool:
+    """316：在做任务是否已收口（主表 ✅ 行或已入归档）——收口即下板·兜窄通道
+    手工收口不走 integrate 注销的残留（308 手工补账板上残留实录）。"""
+    if not 号:
+        return False
+    try:
+        主表 = (仓库根 / "plans" / "021-任务进度观察表.md").read_text(encoding="utf-8")
+        for 行 in 主表.splitlines():
+            m = re.match(rf"^\|\s*{re.escape(号)}\s*\|", 行)
+            if m:
+                return "| ✅ |" in 行
+        import glob
+        for 归档 in glob.glob(str(仓库根 / "项目记忆" / "归档" / "plans021-*归档*.md")):
+            with open(归档, encoding="utf-8") as f:
+                if re.search(rf"^\|\s*{re.escape(号)}\s*\|", f.read(), re.M):
+                    return True
+    except OSError:
+        pass
+    return False
+
+
 def 路过续约() -> None:
     """有本会话历史登记则后台线程续约（308k·路过即心跳——task_board 每次被跑时
     挂此函数：活会话自动续约在线·真停工/被杀不跑脚本→自然失联灰显）。静默失败。"""
     if not 登记缓存.exists():
         return
     def _发():
+        try:
+            旧体 = json.loads(登记缓存.read_text(encoding="utf-8"))
+            if 已收口(str(旧体.get("在做", ""))):
+                登记缓存.unlink()    # 316：任务已收口→下板（防复活·窄通道收口兜底）
+                return
+            调服务("POST", "/api/intent", 旧体, 超时=4)
+        except (urllib.error.URLError, OSError, ValueError):
+            pass
         try:
             旧 = json.loads(登记缓存.read_text(encoding="utf-8"))
             调服务("POST", "/api/intent", 旧, 超时=4)
@@ -164,6 +234,7 @@ def 路过续约() -> None:
 
 
 def 命令认领(参数) -> int:
+    核对号(参数.任务号)    # 316：撞号预警链（409=号在台账/他机视野·黄字不阻断）
     return 落登记(参数.任务号, 参数.计划, 参数.备注)
 
 
@@ -181,6 +252,8 @@ def 命令注销(_参数) -> int:
     except (urllib.error.URLError, OSError, ValueError) as e:
         print(f"[黄] 看板服务不可达：{e}——本地缓存已清，服务端行等心跳超时自然失联灰显")
         return 0
+    if 登记缓存.exists():
+        登记缓存.unlink()    # 316：清缓存防路过续约复活已注销意图
     print(f"[好] 已注销：{机器名()}-{会话id()}")
     return 0
 

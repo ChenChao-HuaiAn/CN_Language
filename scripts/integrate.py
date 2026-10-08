@@ -1396,6 +1396,14 @@ def 批流程(参数: argparse.Namespace) -> int:
                 print(f"  [清理] 看板意图（在做#{号0}）已随收口注销。")
             else:
                 print(f"  [提示] 看板服务不可达——意图#{号0} 等失联自动清（降级不阻断）。")
+            # 316：同步清本机该会话登记缓存——否则收尾 021 播报跑 task_board --ready
+            # 触发路过续约读缓存重发=把刚注销的意图复活（实测 313 收口后心跳复活实录）
+            for _c in Path.home().joinpath(".cache").glob(
+                    f"cn_board_intent_last_*{号0}*.json"):
+                try:
+                    _c.unlink()
+                except OSError:
+                    pass
 
         def 销账变换(文: str):
             新 = 队列清行们(文, [行["分支"] for 行 in 实际成员])
