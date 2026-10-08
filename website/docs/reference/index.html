@@ -3,15 +3,15 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>语言参考总览 · CN 语言</title>
-<meta name="description" content="CN 语言参考：词法、类型、控制流、函数、类与对象、错误处理、并发、模块系统。">
+<title>语言参考总览 · CN 语言 · CN 语言</title>
+<meta name="description" content="九篇参考的导航与语言全貌——写给自己查，也写给评审你的人看。">
 <script>
   (function () {
     try {
       var t = localStorage.getItem("cn-theme");
       if (t === "dark" || t === "light") document.documentElement.setAttribute("data-theme", t);
     } catch (e) {}
-  })();
+  })()
 </script>
 <link rel="stylesheet" href="../../assets/tokens.css?v=2">
 <link rel="stylesheet" href="../../assets/site.css?v=4">
@@ -26,7 +26,8 @@
       <a href="../../">首页</a>
       <a href="../" aria-current="page">文档</a>
       <a href="../getting-started.html">快速开始</a>
-      <a href="./" aria-current="page">语言参考</a>
+      <a href="../reference/">语言参考</a>
+      <a href="../stdlib.html">标准库</a>
       <a href="../../os/">CN-OS</a>
       <a href="https://gitcode.com/ChenChao_GitCode/CN_Language" target="_blank" rel="noopener">源码 ↗</a>
       <button class="主题钮" data-主题钮 aria-label="切换主题">月</button>
@@ -36,95 +37,48 @@
 
 <main class="容器">
   <div class="文档骨架">
-    <aside class="侧栏" aria-label="文档导航">
-      <div class="侧栏-组">
-        <p class="侧栏-组题">入门</p>
-        <a href="../">文档总览</a>
-        <a href="../getting-started.html">快速开始</a>
-      </div>
-      <div class="侧栏-组">
-        <p class="侧栏-组题">教程</p>
-        <a href="../tutorial-syntax.html">语法基础</a>
-        <a href="../tutorial-oop.html">类与泛型</a>
-        <a href="../tutorial-safety.html">安全与并发</a>
-      </div>
-      <div class="侧栏-组">
-        <p class="侧栏-组题">语言参考</p>
-        <a href="./" aria-current="page">参考总览</a>
-        <a href="./lexical.html">词法结构</a>
-        <a href="./types.html">类型系统</a>
-        <a href="./control-flow.html">控制流</a>
-        <a href="./functions.html">函数</a>
-        <a href="./oop.html">类与对象</a>
-        <a href="./errors.html">错误处理</a>
-        <a href="./concurrency.html">并发</a>
-        <a href="./modules.html">模块系统</a>
-      </div>
-      <div class="侧栏-组">
-        <p class="侧栏-组题">资源</p>
-        <a href="../stdlib.html">标准库</a>
-        <a href="../cli.html">命令行参考</a>
-      </div>
-    </aside>
+    <aside class="侧栏" aria-label="文档导航"><div class="侧栏-组"><p class="侧栏-组题">入门</p><a href="../index.html">文档总览</a><a href="../getting-started.html">快速开始</a></div><div class="侧栏-组"><p class="侧栏-组题">教程</p><a href="../tutorial-syntax.html">语法基础</a><a href="../tutorial-oop.html">类与泛型</a><a href="../tutorial-safety.html">安全与并发</a><a href="../tutorial-advanced.html">进阶篇</a></div><div class="侧栏-组"><p class="侧栏-组题">语言参考</p><a href="../reference/index.html" aria-current="page">参考总览</a><a href="../reference/lexical.html">词法结构</a><a href="../reference/types.html">类型系统</a><a href="../reference/control-flow.html">控制流</a><a href="../reference/functions.html">函数</a><a href="../reference/oop.html">类与对象</a><a href="../reference/errors.html">错误处理</a><a href="../reference/concurrency.html">并发</a><a href="../reference/modules.html">模块系统</a></div><div class="侧栏-组"><p class="侧栏-组题">标准库</p><a href="../stdlib.html">标准库总览</a><a href="../stdlib/core.html">核心</a><a href="../stdlib/container.html">容器</a><a href="../stdlib/mapset.html">映射集合</a><a href="../stdlib/string.html">字符串扩展</a><a href="../stdlib/algorithm.html">算法</a><a href="../stdlib/regex.html">正则</a><a href="../stdlib/system.html">系统</a><a href="../stdlib/io.html">IO</a><a href="../stdlib/file.html">文件</a><a href="../stdlib/time.html">时间</a><a href="../stdlib/math.html">数学</a><a href="../stdlib/random.html">随机数</a><a href="../stdlib/thread.html">线程</a><a href="../stdlib/builtin.html">内置函数</a></div><div class="侧栏-组"><p class="侧栏-组题">资源</p><a href="../cli.html">命令行参考</a></div><div class="侧栏-组"><p class="侧栏-组题">资源</p><a href="https://gitcode.com/ChenChao_GitCode/CN_Language" target="_blank" rel="noopener">源码仓库 ↗</a></div></aside>
+    <article class="正文"><nav class="面包屑" aria-label="面包屑"><a href="./">文档</a> / 语言参考</nav>
+<h1>语言参考总览</h1>
+<p style="color: var(--color-fg-muted); font-size: var(--text-lg); line-height: 2;">九篇参考的导航与语言全貌——写给自己查，也写给评审你的人看。</p>
+<h2 id="导航">九篇导航</h2>
+<table class="表"><thead><tr><th>篇</th><th>回答的问题</th></tr></thead><tbody><tr><td><a href="lexical.html">词法结构</a></td><td>46 个保留字是哪些？运算符优先级怎么排？原始/多行字符串怎么写？</td></tr><tr><td><a href="types.html">类型系统</a></td><td>整8 和 正8 差在哪？转换的位模式语义？未初始化检查的豁免面？联合体为什么禁字符串成员？</td></tr><tr><td><a href="control-flow.html">控制流</a></td><td>条件括号什么时候可省？选择怎么贯穿？中断 绑定谁？</td></tr><tr><td><a href="functions.html">函数</a></td><td>四种传参语义？泛型为什么要 显式&lt;类型&gt;？函数指针与 lambda？</td></tr><tr><td><a href="oop.html">类与对象</a></td><td>句柄模型下赋值意味着什么？构造级联与析构链？运算符重载集合？</td></tr><tr><td><a href="errors.html">错误处理</a></td><td>三条强制检查规则？后缀 ? 的词法消歧？错误码全表？</td></tr><tr><td><a href="concurrency.html">并发</a></td><td>线程必须并入？什么类型可跨线程？互斥锁&lt;T&gt; 怎么用？</td></tr><tr><td><a href="modules.html">模块系统</a></td><td>导入的五种形态？名字解析三级优先级？货舱.toml？</td></tr><tr><td><a href="../stdlib.html">标准库</a></td><td>13 模块 187 条目逐函数文档</td></tr></tbody></table>
+<h2 id="全貌">语言全貌（一页速览）</h2>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">一页看全.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">导入 容器::向量;
+导入 核心::{最大};
 
-    <article class="正文">
-      <nav class="面包屑" aria-label="面包屑"><a href="../">文档</a> / 语言参考</nav>
-      <h1>语言参考总览</h1>
-      <p style="color: var(--color-fg-muted); font-size: var(--text-lg); line-height: 2;">
-        按主题组织的语言规则速查。内容摘编自语言规格书（唯一权威），
-        每个主题页含规则与示例。</p>
+枚举 状态 { 空, 就绪, 完成 = 100 }
 
-      <table class="表">
-        <thead><tr><th>主题</th><th>内容</th></tr></thead>
-        <tbody>
-          <tr><td><a href="./lexical.html">词法结构</a></td><td>源文件、注释、字面量（原始/多行字符串）、运算符与 13 级优先级、分号规则、条件编译</td></tr>
-          <tr><td><a href="./types.html">类型系统</a></td><td>位宽整数、浮点、字符/字符串、复合类型、隐式转换、确定初始化</td></tr>
-          <tr><td><a href="./control-flow.html">控制流</a></td><td>如果/否则、当、循环、选择（字符串与多值分组）、遍历、中断/继续绑定</td></tr>
-          <tr><td><a href="./functions.html">函数</a></td><td>定义与重载、默认参数、引用参数、lambda、类型转换、函数指针、参数传递语义</td></tr>
-          <tr><td><a href="./oop.html">类与对象</a></td><td>类、继承、虚拟/重写、接口、静态成员、常量成员、友元、运算符重载</td></tr>
-          <tr><td><a href="./errors.html">错误处理</a></td><td>结果/可选、强制检查三规则、<code>?</code> 传播</td></tr>
-          <tr><td><a href="./concurrency.html">并发</a></td><td>可搬运标记（对标 Send）、互斥锁&lt;T&gt; 类型化句柄</td></tr>
-          <tr><td><a href="./modules.html">模块系统</a></td><td>文件即模块、导入全形式、默认私有、包与货舱</td></tr>
-        </tbody>
-      </table>
+结构体 任务 {
+    字符串 名;
+    整64 工时;
+    状态 态;
+}
 
-      <h2 id="保留字与上下文关键字">保留字与上下文关键字</h2>
-      <p>CN 只有 <strong>46 个保留字</strong>，常用词不占命名空间——
-      以下 17 个词仅在固定语法位置按上下文识别（你的变量可以叫「常量」以外的任何保留字以外名字……
-      准确地说：下面这些词可以用作标识符）：</p>
-      <table class="表">
-        <thead><tr><th>类别</th><th>保留字</th></tr></thead>
-        <tbody>
-          <tr><td>控制流（10）</td><td><code>如果</code> <code>否则</code> <code>当</code> <code>循环</code> <code>返回</code> <code>中断</code> <code>继续</code> <code>选择</code> <code>情况</code> <code>默认</code></td></tr>
-          <tr><td>类型（21）</td><td><code>整数</code> <code>小数</code> <code>整8</code>~<code>整128</code> <code>正8</code>~<code>正128</code> <code>浮32</code> <code>浮64</code> <code>布尔</code> <code>字符</code> <code>字符串</code> <code>空类型</code> <code>结构体</code> <code>联合体</code> <code>枚举</code></td></tr>
-          <tr><td>声明（3）</td><td><code>函数</code> <code>变量</code> <code>导入</code></td></tr>
-          <tr><td>常量（3）</td><td><code>真</code> <code>假</code> <code>无</code></td></tr>
-          <tr><td>OOP（5）</td><td><code>类</code> <code>接口</code> <code>自身</code> <code>父类</code> <code>友元</code></td></tr>
-          <tr><td>错误处理（2）</td><td><code>结果</code> <code>可选</code></td></tr>
-          <tr><td>泛型（1）</td><td><code>泛型</code></td></tr>
-          <tr><td>安全（1）</td><td><code>不安全</code></td></tr>
-        </tbody>
-      </table>
-      <p>上下文关键字（17 个·不占命名空间）：<code>公开</code> <code>私有</code> <code>保护</code>
-      <code>静态</code> <code>常量</code> <code>虚拟</code> <code>重写</code> <code>抽象</code>
-      <code>作为</code> <code>模块</code> <code>运算符</code> <code>遍历</code> <code>每个</code>
-      <code>属于</code> <code>对</code> <code>原始</code> <code>多行</code>。</p>
+泛型 &lt;类型 T&gt;
+函数 总工时(向量&lt;T&gt;&amp; 表) -&gt; 整64 { 返回 表.大小(); }
 
-      <nav class="页脚导航">
-        <a href="../tutorial-safety.html">
-          <span class="向">← 上一页</span>
-          <span class="题">安全与并发</span>
-        </a>
-        <a class="下一" href="./lexical.html">
-          <span class="向">下一页 →</span>
-          <span class="题">词法结构</span>
-        </a>
-      </nav>
-    </article>
+类 工程师 {
+私有:
+    字符串 名字;
+公开:
+    函数 工程师(字符串 名) { 名字 = 名; }
+    函数 报告(整64 完成数) -&gt; 空类型 {
+        打印(名字 + " 完成 " + 整数转字符串(完成数) + " 项");
+    }
+}
 
+函数 主() -&gt; 整32 {
+    向量&lt;任务&gt; 板 = 向量&lt;任务&gt;();
+    结果&lt;空类型, 整32&gt; 加 = 板.追加(任务{名 = "文档", 工时 = 8, 态 = 状态.完成});
+    工程师 张三 = 工程师("张三");
+    张三.报告(最大&lt;整64&gt;(板.大小(), 1));
+    返回 0;
+}</code></pre></div>
+<ul><li>全部示例经双编译对照实测；语义以 <a href="https://gitcode.com/ChenChao_GitCode/CN_Language" target="_blank" rel="noopener">plans/001 规格书</a> 为唯一权威。</li><li>发现文档与实现不一致？那是缺陷——欢迎在仓库提单（提及即立项）。</li></ul><nav class="页脚导航"><a class="" href="../reference/errors.html"><span class="向">← 上一页</span><span class="题">错误处理</span></a><a class="下一" href="../reference/concurrency.html"><span class="向">下一页 →</span><span class="题">并发</span></a></nav></article>
     <aside class="目录" aria-label="本页目录">
       <p class="目录-题">本页目录</p>
-      <a href="#保留字与上下文关键字">保留字与上下文关键字</a>
+<a href="#导航">九篇导航</a><a href="#全貌">语言全貌（一页速览）</a>
     </aside>
   </div>
 </main>
@@ -139,9 +93,9 @@
       <div>
         <h4>语言</h4>
         <ul>
-          <li><a href="../">官方文档</a></li>
+          <li><a href="../.././">官方文档</a></li>
           <li><a href="../getting-started.html">快速开始</a></li>
-          <li><a href="./">语言参考</a></li>
+          <li><a href="../reference/">语言参考</a></li>
           <li><a href="../stdlib.html">标准库</a></li>
         </ul>
       </div>
@@ -170,6 +124,6 @@
 </footer>
 
 <script src="../../assets/cn-highlight.js?v=1"></script>
-<script src="../../assets/site.js?v=2"></script>
+<script src="../site.js?v=2"></script>
 </body>
 </html>

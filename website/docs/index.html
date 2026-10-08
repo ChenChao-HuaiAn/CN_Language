@@ -3,15 +3,15 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>官方文档 · CN 语言</title>
-<meta name="description" content="CN 语言官方文档：从五分钟上手到语言参考。教程面向新手，参考面向开发者。">
+<title>官方文档 · CN 语言 · CN 语言</title>
+<meta name="description" content="从零基础到系统级开发者的完整学习路径——全部示例经编译器实测。">
 <script>
   (function () {
     try {
       var t = localStorage.getItem("cn-theme");
       if (t === "dark" || t === "light") document.documentElement.setAttribute("data-theme", t);
     } catch (e) {}
-  })();
+  })()
 </script>
 <link rel="stylesheet" href="../assets/tokens.css?v=2">
 <link rel="stylesheet" href="../assets/site.css?v=4">
@@ -24,9 +24,10 @@
     <button class="导航-开关" data-导航钮 aria-expanded="false">菜单</button>
     <nav class="导航" aria-label="站点导航">
       <a href="../">首页</a>
-      <a href="./" aria-current="page">文档</a>
-      <a href="./getting-started.html">快速开始</a>
-      <a href="./reference/">语言参考</a>
+      <a href="" aria-current="page">文档</a>
+      <a href="getting-started.html">快速开始</a>
+      <a href="reference/">语言参考</a>
+      <a href="stdlib.html">标准库</a>
       <a href="../os/">CN-OS</a>
       <a href="https://gitcode.com/ChenChao_GitCode/CN_Language" target="_blank" rel="noopener">源码 ↗</a>
       <button class="主题钮" data-主题钮 aria-label="切换主题">月</button>
@@ -36,136 +37,43 @@
 
 <main class="容器">
   <div class="文档骨架">
-    <aside class="侧栏" aria-label="文档导航">
-      <div class="侧栏-组">
-        <p class="侧栏-组题">入门</p>
-        <a href="./" aria-current="page">文档总览</a>
-        <a href="./getting-started.html">快速开始</a>
-      </div>
-      <div class="侧栏-组">
-        <p class="侧栏-组题">教程</p>
-        <a href="./tutorial-syntax.html">语法基础</a>
-        <a href="./tutorial-oop.html">类与泛型</a>
-        <a href="./tutorial-safety.html">安全与并发</a>
-      </div>
-      <div class="侧栏-组">
-        <p class="侧栏-组题">语言参考</p>
-        <a href="./reference/">参考总览</a>
-        <a href="./reference/lexical.html">词法结构</a>
-        <a href="./reference/types.html">类型系统</a>
-        <a href="./reference/control-flow.html">控制流</a>
-        <a href="./reference/functions.html">函数</a>
-        <a href="./reference/oop.html">类与对象</a>
-        <a href="./reference/errors.html">错误处理</a>
-        <a href="./reference/concurrency.html">并发</a>
-        <a href="./reference/modules.html">模块系统</a>
-      </div>
-      <div class="侧栏-组">
-        <p class="侧栏-组题">资源</p>
-        <a href="./stdlib.html">标准库</a>
-        <a href="./cli.html">命令行参考</a>
-      </div>
-    </aside>
+    <aside class="侧栏" aria-label="文档导航"><div class="侧栏-组"><p class="侧栏-组题">入门</p><a href="index.html" aria-current="page">文档总览</a><a href="getting-started.html">快速开始</a></div><div class="侧栏-组"><p class="侧栏-组题">教程</p><a href="tutorial-syntax.html">语法基础</a><a href="tutorial-oop.html">类与泛型</a><a href="tutorial-safety.html">安全与并发</a><a href="tutorial-advanced.html">进阶篇</a></div><div class="侧栏-组"><p class="侧栏-组题">语言参考</p><a href="reference/index.html">参考总览</a><a href="reference/lexical.html">词法结构</a><a href="reference/types.html">类型系统</a><a href="reference/control-flow.html">控制流</a><a href="reference/functions.html">函数</a><a href="reference/oop.html">类与对象</a><a href="reference/errors.html">错误处理</a><a href="reference/concurrency.html">并发</a><a href="reference/modules.html">模块系统</a></div><div class="侧栏-组"><p class="侧栏-组题">标准库</p><a href="stdlib.html">标准库总览</a><a href="stdlib/core.html">核心</a><a href="stdlib/container.html">容器</a><a href="stdlib/mapset.html">映射集合</a><a href="stdlib/string.html">字符串扩展</a><a href="stdlib/algorithm.html">算法</a><a href="stdlib/regex.html">正则</a><a href="stdlib/system.html">系统</a><a href="stdlib/io.html">IO</a><a href="stdlib/file.html">文件</a><a href="stdlib/time.html">时间</a><a href="stdlib/math.html">数学</a><a href="stdlib/random.html">随机数</a><a href="stdlib/thread.html">线程</a><a href="stdlib/builtin.html">内置函数</a></div><div class="侧栏-组"><p class="侧栏-组题">资源</p><a href="cli.html">命令行参考</a></div><div class="侧栏-组"><p class="侧栏-组题">资源</p><a href="https://gitcode.com/ChenChao_GitCode/CN_Language" target="_blank" rel="noopener">源码仓库 ↗</a></div></aside>
+    <article class="正文"><nav class="面包屑" aria-label="面包屑">文档</nav>
+<h1>官方文档</h1>
+<p style="color: var(--color-fg-muted); font-size: var(--text-lg); line-height: 2;">从零基础到系统级开发者的完整学习路径——全部示例经编译器实测。</p>
+<h2 id="路径">学习路径：三个阶段</h2>
+<p>CN 是一门全中文语法的系统级编程语言（C++ 风格），目标是<strong>性能对标 C++、安全对标 Rust</strong>。按下面的路径学习，每个阶段都有可运行的代码伴随。</p>
+<table class="表"><thead><tr><th>阶段</th><th>你将学会</th><th>文档</th></tr></thead><tbody><tr><td><strong>① 入门</strong>（半天）</td><td>安装工具链、写出并运行第一个程序、掌握变量/控制流/函数/数组/字符串</td><td><a href="getting-started.html">快速开始</a> → <a href="tutorial-syntax.html">语法基础</a></td></tr><tr><td><strong>② 进阶</strong>（两三天）</td><td>类与泛型、错误处理、所有权与转移、线程与互斥锁、内存模型与 FFI</td><td><a href="tutorial-oop.html">类与泛型</a> → <a href="tutorial-safety.html">安全与并发</a> → <a href="tutorial-advanced.html">进阶篇</a></td></tr><tr><td><strong>③ 资深</strong>（随用随查）</td><td>词法/类型/控制流/函数/OOP/错误/并发/模块 全语法细节，标准库全部 API，命令行全参数</td><td><a href="reference/index.html">语言参考九篇</a> → <a href="stdlib.html">标准库</a> → <a href="cli.html">命令行参考</a></td></tr></tbody></table>
+<div class="批注 批注-绿"><span class="批注-题">示例的可信度</span>本站全部 CN 代码示例<strong>逐个经过编译器编译+运行+输出比对</strong>（与开发者在真实链路上验证同款流程），示例下方标注的「输出」即真实运行结果，非手写。</div>
+<h2 id="语言速览">一分钟看懂 CN 长什么样</h2>
+<p>一个摸底示例：变量、函数、容器、遍历、结果检查、字符串拼接各一遭。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">速览.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">导入 容器::向量;
 
-    <article class="正文">
-      <nav class="面包屑" aria-label="面包屑"><a href="./">文档</a> / 文档总览</nav>
-      <h1>CN 语言官方文档</h1>
-      <p style="color: var(--color-fg-muted); font-size: var(--text-lg); line-height: 2;">
-        欢迎来到 CN 语言的官方文档。无论你是第一次接触编程，还是从 C++/Rust
-        转来的系统级工程师，这里都有为你准备的路径。</p>
-
-      <div class="批注">
-        <span class="批注-题">语言现状（诚实声明）</span>
-        CN 语言处于 v2 自举重建阶段：编译器已达自编译固定点（自己编译自己，两代产物逐字节一致），
-        三后端可用，但仍在快速演进中。文档描述的是当前已实现并经 E2E
-        验证的行为；未实现特性会在相应位置明确标注。</div>
-
-      <h2 id="学习路径">学习路径</h2>
-      <table class="表">
-        <thead>
-          <tr><th>你是什么人</th><th>推荐路径</th><th>预计用时</th></tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td>第一次编程</td>
-            <td><a href="./getting-started.html">快速开始</a> → <a href="./tutorial-syntax.html">语法基础</a> → <a href="./tutorial-oop.html">类与泛型</a></td>
-            <td>一个下午</td>
-          </tr>
-          <tr>
-            <td>会 C/C++/Java</td>
-            <td><a href="./getting-started.html">快速开始</a> → <a href="./tutorial-safety.html">安全与并发</a> → <a href="./reference/">语言参考</a> 随用随查</td>
-            <td>一小时</td>
-          </tr>
-          <tr>
-            <td>会 Rust</td>
-            <td><a href="./tutorial-safety.html">安全与并发</a>（重点看 <code>转移()</code> 与 Rust <code>move</code> 的异同）→ <a href="./reference/">参考</a></td>
-            <td>半小时</td>
-          </tr>
-          <tr>
-            <td>想写操作系统</td>
-            <td><a href="../os/">CN-OS 蓝图</a> → <a href="./reference/">语言参考</a>（不安全区、指针）</td>
-            <td>蓝图十章先读</td>
-          </tr>
-        </tbody>
-      </table>
-
-      <h2 id="三十秒速览">三十秒速览</h2>
-      <p>CN 是全中文语法的系统级编程语言。这段代码涵盖了变量、函数、容器、遍历与打印——
-      每一行都是合法的 CN 源码：</p>
-      <div class="码窗">
-        <p class="码窗-顶"><span class="码窗-名">速览.cn</span><span class="码窗-徽">CN</span></p>
-        <pre><code class="language-cn">导入 容器::向量;
-
-// 定义一个函数：构造整32向量并返回
-函数 造数据() -&gt; 向量&lt;整32&gt; {
-    向量&lt;整32&gt; 数据 = 向量&lt;整32&gt;();
-    数据.追加(10);
-    数据.追加(20);
-    数据.追加(30);
-    返回 数据;
+// 求平方和：函数、循环、容器一次看完
+函数 平方和(整64 上限) -&gt; 整64 {
+    向量&lt;整64&gt; 表 = 向量&lt;整64&gt;();
+    循环 (整64 i = 1; i &lt;= 上限; i++) {
+        结果&lt;空类型, 整32&gt; 加 = 表.追加(i * i);   // 返回值必须接收
+    }
+    整64 总 = 0;
+    遍历 表 中 每个 x { 总 = 总 + x; }
+    返回 总;
 }
 
 函数 主() -&gt; 整32 {
-    整32 总和 = 0;
-    遍历 造数据() 中 每个 x {   // 遍历容器中每个元素
-        总和 = 总和 + x;
-    }
-    打印("总和: ", 总和);        // 总和: 60
+    打印("1~10 平方和 = ", 平方和(10));
     返回 0;
-}</code></pre>
-      </div>
-
-      <h2 id="文档结构">文档结构</h2>
-      <dl style="line-height: 2;">
-        <dt><strong>教程（三篇）</strong></dt>
-        <dd style="color: var(--color-fg-muted); margin-block-end: var(--space-4);">
-          <a href="./tutorial-syntax.html">语法基础</a>——变量、类型、函数、控制流、结构体；
-          <a href="./tutorial-oop.html">类与泛型</a>——面向对象与编译期单态化泛型；
-          <a href="./tutorial-safety.html">安全与并发</a>——所有权转移、错误处理、线程与互斥锁。</dd>
-        <dt><strong>语言参考（九篇）</strong></dt>
-        <dd style="color: var(--color-fg-muted); margin-block-end: var(--space-4);">
-          按 <a href="./reference/">主题划分</a>：词法、类型、控制流、函数、类与对象、错误处理、并发、模块系统。
-          每页含完整规则与示例，适合随用随查。</dd>
-        <dt><strong>资源</strong></dt>
-        <dd style="color: var(--color-fg-muted);">
-          <a href="./stdlib.html">标准库</a>——13 个模块的常用 API；
-          <a href="./cli.html">命令行参考</a>——<code>cn</code> 编译器全量选项。</dd>
-      </dl>
-
-      <nav class="页脚导航">
-        <span></span>
-        <a class="下一" href="./getting-started.html">
-          <span class="向">下一页 →</span>
-          <span class="题">快速开始</span>
-        </a>
-      </nav>
-    </article>
-
+}</code></pre></div>
+<p class="输出行">输出：1~10 平方和 = 385
+</p>
+<p>看懂了多少就算多少——接下来每个语法点都会在<a href="tutorial-syntax.html">语法基础</a>里展开。</p>
+<h2 id="地图">全站地图</h2>
+<table class="表"><thead><tr><th>分类</th><th>页面</th><th>内容</th></tr></thead><tbody><tr><td>入门</td><td><a href="getting-started.html">快速开始</a></td><td>安装、Hello World、编译运行工作流、常见问题</td></tr><tr><td>教程</td><td><a href="tutorial-syntax.html">语法基础</a></td><td>变量与类型、运算符、控制流、函数、数组与字符串、结构体、枚举</td></tr><tr><td>教程</td><td><a href="tutorial-oop.html">类与泛型</a></td><td>类、构造与析构、继承与接口、泛型类与泛型函数、运算符重载</td></tr><tr><td>教程</td><td><a href="tutorial-safety.html">安全与并发</a></td><td>结果与可选、所有权与转移、线程、互斥锁、安全区边界</td></tr><tr><td>教程</td><td><a href="tutorial-advanced.html">进阶篇</a></td><td>内存模型、拥有型字符串、指针与不安全域、FFI、优化与调试、自举</td></tr><tr><td>参考</td><td><a href="reference/index.html">语言参考（九篇）</a></td><td>词法结构、类型系统、控制流、函数、类与对象、错误处理、并发、模块系统——逐条语法语义</td></tr><tr><td>标准库</td><td><a href="stdlib.html">标准库</a></td><td>13 个模块 187 个条目逐函数文档（定义/用法/示例）</td></tr><tr><td>工具</td><td><a href="cli.html">命令行参考</a></td><td>cn 全部子命令与选项、优化级别、目标平台、调试手段</td></tr></tbody></table>
+<h2 id="哲学">两句话理解语言设计</h2>
+<ul><li><strong>默认安全</strong>：变量必须初始化才能读；<code>结果&lt;T, E&gt;</code> 必须显式检查（丢弃即编译错误）；资源随作用域自动释放（RAII）；裸指针/手动内存收进 <code>不安全</code> 域。</li><li><strong>性能不妥协</strong>：零成本抽象（检查全部在编译期）、C 风格内存布局、可下探到汇编级的手动控制（<code>分配/释放/复制内存</code>）、三后端（win-x64 / linux-x86_64 / linux-arm64）。</li></ul><nav class="页脚导航"><a href="stdlib.html"><span class="向">← 上一页</span><span class="题">标准库总览</span></a><a class="下一" href="getting-started.html"><span class="向">下一页 →</span><span class="题">快速开始</span></a></nav></article>
     <aside class="目录" aria-label="本页目录">
       <p class="目录-题">本页目录</p>
-      <a href="#学习路径">学习路径</a>
-      <a href="#三十秒速览">三十秒速览</a>
-      <a href="#文档结构">文档结构</a>
+<a href="#路径">学习路径：三个阶段</a><a href="#语言速览">一分钟看懂 CN 长什么样</a><a href="#地图">全站地图</a><a href="#哲学">两句话理解语言设计</a>
     </aside>
   </div>
 </main>
@@ -181,9 +89,9 @@
         <h4>语言</h4>
         <ul>
           <li><a href="./">官方文档</a></li>
-          <li><a href="./getting-started.html">快速开始</a></li>
-          <li><a href="./reference/">语言参考</a></li>
-          <li><a href="./stdlib.html">标准库</a></li>
+          <li><a href="getting-started.html">快速开始</a></li>
+          <li><a href="reference/">语言参考</a></li>
+          <li><a href="stdlib.html">标准库</a></li>
         </ul>
       </div>
       <div>
@@ -191,7 +99,7 @@
         <ul>
           <li><a href="https://gitcode.com/ChenChao_GitCode/CN_Language" target="_blank" rel="noopener">源码仓库 ↗</a></li>
           <li><a href="../os/">CN-OS 蓝图</a></li>
-          <li><a href="./cli.html">命令行参考</a></li>
+          <li><a href="cli.html">命令行参考</a></li>
         </ul>
       </div>
       <div>
@@ -211,6 +119,6 @@
 </footer>
 
 <script src="../assets/cn-highlight.js?v=1"></script>
-<script src="../assets/site.js?v=2"></script>
+<script src="site.js?v=2"></script>
 </body>
 </html>

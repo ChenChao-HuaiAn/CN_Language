@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>函数 · CN 语言</title>
-<meta name="description" content="CN 语言函数：重载、默认参数、引用参数、lambda、函数指针、参数传递语义。">
+<title>函数 · CN 语言 · CN 语言</title>
+<meta name="description" content="声明与调用、重载、默认参数、按值/引用/常量引用传参、泛型单态化、函数指针、lambda。">
 <script>
   (function () {
     try {
@@ -24,9 +24,10 @@
     <button class="导航-开关" data-导航钮 aria-expanded="false">菜单</button>
     <nav class="导航" aria-label="站点导航">
       <a href="../../">首页</a>
-      <a href=".././">文档</a>
+      <a href="../" aria-current="page">文档</a>
       <a href="../getting-started.html">快速开始</a>
-      <a href="../reference/" aria-current="page">语言参考</a>
+      <a href="../reference/">语言参考</a>
+      <a href="../stdlib.html">标准库</a>
       <a href="../../os/">CN-OS</a>
       <a href="https://gitcode.com/ChenChao_GitCode/CN_Language" target="_blank" rel="noopener">源码 ↗</a>
       <button class="主题钮" data-主题钮 aria-label="切换主题">月</button>
@@ -36,118 +37,131 @@
 
 <main class="容器">
   <div class="文档骨架">
-    <aside class="侧栏" aria-label="文档导航">
-      <div class="侧栏-组">
-        <p class="侧栏-组题">入门</p>
-        <a href=".././">文档总览</a>
-        <a href="../getting-started.html">快速开始</a>
-      </div>
-      <div class="侧栏-组">
-        <p class="侧栏-组题">教程</p>
-        <a href="../tutorial-syntax.html">语法基础</a>
-        <a href="../tutorial-oop.html">类与泛型</a>
-        <a href="../tutorial-safety.html">安全与并发</a>
-      </div>
-      <div class="侧栏-组">
-        <p class="侧栏-组题">语言参考</p>
-        <a href="../reference/">参考总览</a>
-        <a href="../reference/lexical.html">词法结构</a>
-        <a href="../reference/types.html">类型系统</a>
-        <a href="../reference/control-flow.html">控制流</a>
-        <a href="../reference/functions.html" aria-current="page">函数</a>
-        <a href="../reference/oop.html">类与对象</a>
-        <a href="../reference/errors.html">错误处理</a>
-        <a href="../reference/concurrency.html">并发</a>
-        <a href="../reference/modules.html">模块系统</a>
-      </div>
-      <div class="侧栏-组">
-        <p class="侧栏-组题">资源</p>
-        <a href="../stdlib.html">标准库</a>
-        <a href="../cli.html">命令行参考</a>
-      </div>
-    </aside>
-    <article class="正文">
-      <nav class="面包屑" aria-label="面包屑"><a href="./">文档</a> / <a href="./">语言参考</a> / 函数</nav>
-      
+    <aside class="侧栏" aria-label="文档导航"><div class="侧栏-组"><p class="侧栏-组题">入门</p><a href="../index.html">文档总览</a><a href="../getting-started.html">快速开始</a></div><div class="侧栏-组"><p class="侧栏-组题">教程</p><a href="../tutorial-syntax.html">语法基础</a><a href="../tutorial-oop.html">类与泛型</a><a href="../tutorial-safety.html">安全与并发</a><a href="../tutorial-advanced.html">进阶篇</a></div><div class="侧栏-组"><p class="侧栏-组题">语言参考</p><a href="../reference/index.html">参考总览</a><a href="../reference/lexical.html">词法结构</a><a href="../reference/types.html">类型系统</a><a href="../reference/control-flow.html">控制流</a><a href="../reference/functions.html" aria-current="page">函数</a><a href="../reference/oop.html">类与对象</a><a href="../reference/errors.html">错误处理</a><a href="../reference/concurrency.html">并发</a><a href="../reference/modules.html">模块系统</a></div><div class="侧栏-组"><p class="侧栏-组题">标准库</p><a href="../stdlib.html">标准库总览</a><a href="../stdlib/core.html">核心</a><a href="../stdlib/container.html">容器</a><a href="../stdlib/mapset.html">映射集合</a><a href="../stdlib/string.html">字符串扩展</a><a href="../stdlib/algorithm.html">算法</a><a href="../stdlib/regex.html">正则</a><a href="../stdlib/system.html">系统</a><a href="../stdlib/io.html">IO</a><a href="../stdlib/file.html">文件</a><a href="../stdlib/time.html">时间</a><a href="../stdlib/math.html">数学</a><a href="../stdlib/random.html">随机数</a><a href="../stdlib/thread.html">线程</a><a href="../stdlib/builtin.html">内置函数</a></div><div class="侧栏-组"><p class="侧栏-组题">资源</p><a href="../cli.html">命令行参考</a></div><div class="侧栏-组"><p class="侧栏-组题">资源</p><a href="https://gitcode.com/ChenChao_GitCode/CN_Language" target="_blank" rel="noopener">源码仓库 ↗</a></div></aside>
+    <article class="正文"><nav class="面包屑" aria-label="面包屑"><a href="./">文档</a> / <a href="index.html">语言参考</a> / 函数</nav>
 <h1>函数</h1>
-<p style="color: var(--color-fg-muted); font-size: var(--text-lg); line-height: 2;">
-定义、重载、默认参数、引用、lambda、函数指针——以及参数传递的确切语义。</p>
-
-<h2 id="定义与原型">定义与原型</h2>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">函数.cn</span><span class="码窗-徽">CN</span></p>
-<pre><code class="language-cn">函数 加(整32 a, 整32 b) -&gt; 整32 {
+<p style="color: var(--color-fg-muted); font-size: var(--text-lg); line-height: 2;">声明与调用、重载、默认参数、按值/引用/常量引用传参、泛型单态化、函数指针、lambda。</p>
+<h2 id="声明">声明与调用</h2>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">形态.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 完整形态
+函数 加(整32 a, 整32 b) -&gt; 整32 {
     返回 a + b;
 }
 
-函数 打印问候() {          // 无返回值省略 -> 类型
-    打印行("你好");
+// 无返回值：-&gt; 空类型（可省略标注）
+函数 打印问候() {
+    打印("你好");
 }
 
-函数 计算(整32 n) -&gt; 整32;   // 原型声明（前向引用）</code></pre></div>
-
-<h2 id="重载与默认参数">重载与默认参数</h2>
-<ul>
-<li>重载按<strong>参数类型与个数</strong>区分；仅返回类型不同不构成重载。</li>
-<li>默认参数从右向左连续声明；调用按位置补缺省。</li>
-</ul>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">重载.cn</span><span class="码窗-徽">CN</span></p>
-<pre><code class="language-cn">函数 加(整32 a, 整32 b) -&gt; 整32 { 返回 a + b; }
-函数 加(浮64 a, 浮64 b) -&gt; 浮64 { 返回 a + b; }
-函数 加(字符串 a, 字符串 b) -&gt; 字符串 { 返回 a + b; }   // 拼接
-
-函数 问候(字符串 名字 = "世界") -&gt; 空类型 {
-    打印行("你好，" + 名字);
-}</code></pre></div>
-
-<h2 id="参数传递语义">参数传递语义</h2>
-<table class="表">
-<thead><tr><th>形态</th><th>语义</th></tr></thead>
-<tbody>
-<tr><td>类类型按值形参</td><td><strong>引用语义（写穿）</strong>：类变量是指针槽模型，体内经句柄改字段，调用方可见</td></tr>
-<tr><td>结构体/标量按值形参</td><td><strong>副本语义</strong>：体内写落副本，不影响实参</td></tr>
-<tr><td><code>T&amp;</code> 引用形参</td><td>传左值地址，读写写穿（标量/结构体/类均可）</td></tr>
-<tr><td><code>常量 T&amp;</code></td><td>只读借用：体内改它 = 编译错误；借用互斥编译期检查</td></tr>
-</tbody>
-</table>
-
-<h2 id="lambda">lambda</h2>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">lambda.cn</span><span class="码窗-徽">CN</span></p>
-<pre><code class="language-cn">变量 加倍 = [](整32 x) -&gt; 整32 { 返回 x * 2; };
-// 捕获：[] 不捕获 / [=] 值捕获 / [&amp;] 引用捕获 / [变量] 显式捕获</code></pre></div>
-
-<h2 id="函数指针">函数指针</h2>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">函数指针.cn</span><span class="码窗-徽">CN</span></p>
-<pre><code class="language-cn">函数 加(整32 a, 整32 b) -&gt; 整32 { 返回 a + b; }
+// 前向声明（原型）：先声明后实现
+函数 递归和(整32 n) -&gt; 整32;
 
 函数 主() -&gt; 整32 {
-    整32(*回调)(整32, 整32);   // 声明
-    回调 = 加;                 // 赋值
-    整32 结果 = 回调(10, 20);  // 调用 → 30
+    打印(加(1, 2), " ");
+    打印问候();
+    打印(递归和(4));
+    返回 0;
+}
+
+函数 递归和(整32 n) -&gt; 整32 {
+    如果 n &lt;= 0 { 返回 0; }
+    返回 n + 递归和(n - 1);
+}</code></pre></div>
+<p class="输出行">输出：3 
+10
+</p>
+<h2 id="重载默认">重载与默认参数</h2>
+<ul><li><strong>重载</strong>：同名函数按<strong>参数类型与个数</strong>区分；仅返回类型不同不构成重载；名称修饰按签名编码。</li><li><strong>默认参数</strong>：从右向左连续声明（有默认值的参数右侧不得出现无默认值参数）；调用按位置补缺省。</li></ul>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">重载与默认.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">函数 描述(整32 n) -&gt; 字符串 { 返回 "整数"; }
+函数 描述(浮64 x) -&gt; 字符串 { 返回 "浮点"; }
+函数 描述(整32 a, 整32 b) -&gt; 字符串 { 返回 "一对整数"; }
+
+函数 幂底(整64 底, 整64 指数 = 2) -&gt; 整64 {    // 默认参数（浮点默认值触发
+    整64 结果值 = 1;                            // 汇编缺陷·见呈报，暂以整型演示）
+    循环 (整64 i = 0; i &lt; 指数; i++) { 结果值 = 结果值 * 底; }
+    返回 结果值;
+}
+
+函数 主() -&gt; 整32 {
+    打印(描述(1), " ", 描述(1.5), " ", 描述(1, 2));
+    打印(幂底(3), " ", 幂底(2, 10));
     返回 0;
 }</code></pre></div>
-
-<h2 id="泛型函数">泛型函数</h2>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">泛型函数.cn</span><span class="码窗-徽">CN</span></p>
-<pre><code class="language-cn">泛型 &lt;类型 T&gt;
-函数 交换(T&amp; a, T&amp; b) -&gt; 空类型 {
-    T 临时 = a;
-    a = b;
-    b = 临时;
+<p class="输出行">输出：整数 浮点 一对整数
+9 1024
+</p>
+<h2 id="传参">传参语义：副本 / 引用 / 只读借用 / 类=写穿</h2>
+<p>CN 传参有<strong>四种</strong>语义，按形参类型决定——这是最容易被其他语言经验带偏的地方，务必读全。</p>
+<table class="表"><thead><tr><th>形参形态</th><th>语义</th><th>体内写对调用方的影响</th></tr></thead><tbody><tr><td>标量 / 结构体 按值</td><td><strong>副本</strong>（整块值拷贝）</td><td>无影响</td></tr><tr><td><code>T&amp;</code> 引用</td><td><strong>写穿</strong>（左值地址传递）</td><td>直接影响调用方</td></tr><tr><td><code>常量 T&amp;</code></td><td>只读借用（体内写=编译错误）</td><td>无影响（也不可能）</td></tr><tr><td><strong>类类型按值</strong></td><td><strong>引用语义</strong>（形参槽=对象句柄拷贝，体内经句柄写同一堆对象）</td><td>字段写/方法调用<strong>写穿调用方</strong></td></tr></tbody></table>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">四语义.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">类 盒子 {
+公开:
+    整64 值槽;
+    函数 盒子(整64 初) { 值槽 = 初; }
 }
-// 编译期单态化：每个用到的 T 生成一份专属代码</code></pre></div>
 
-      <nav class="页脚导航"><a href="control-flow.html"><span class="向">← 上一页</span><span class="题">控制流</span></a><a class="下一" href="oop.html"><span class="向">下一页 →</span><span class="题">类与对象</span></a></nav>
-    </article>
+结构体 点 {
+    整64 x;
+}
+
+函数 改标量(整32 v) -&gt; 空类型 { v = 99; }        // 副本
+函数 改结构(点 p) -&gt; 空类型 { p.x = 99; }        // 副本
+函数 改类(盒子 b) -&gt; 空类型 { b.值槽 = 99; }     // 句柄：写穿！
+函数 改引用(整64&amp; v) -&gt; 空类型 { v = 99; }       // 引用：写穿
+
+函数 主() -&gt; 整32 {
+    整32 标 = 1;
+    点 结构点 = 点{x = 1};
+    盒子 对象 = 盒子(1);
+    整64 引值 = 1;
+    改标量(标);
+    改结构(结构点);
+    改类(对象);
+    改引用(引值);
+    打印(标, " ", 结构点.x, " ", 对象.值槽, " ", 引值);
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：1 1 99 99
+</p>
+<ul><li>要与「副本语义」传类，传前显式 <code>复制(对象)</code>（深拷克隆）。</li><li>容器元素读取（元素/获取）返回<strong>副本</strong>（快照）——写回用 <code>设置</code>、写穿用 <code>元素引用</code>：与形参语义正交。</li><li>临时实参传类形参合法（编译器物化临时槽）。</li></ul>
+<h2 id="泛型">泛型函数：编译期单态化</h2>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">泛型.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">泛型 &lt;类型 T&gt;
+函数 首个或默认(T* 表, 整64 长度, T 缺省) -&gt; T {
+    如果 长度 &gt; 0 { 返回 表[0]; }
+    返回 缺省;
+}
+
+函数 主() -&gt; 整32 {
+    整32[3] 数 = {5, 6, 7};
+    浮64[2] 实 = {1.5, 2.5};
+    打印(首个或默认&lt;整32&gt;(数, 3, 0), " ", 首个或默认&lt;浮64&gt;(实, 0, 9.9));
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：5 9.900000
+</p>
+<ul><li><strong>泛型调用须显式单态化</strong>：<code>名&lt;类型&gt;(实参)</code>——这是语言规定形态（不靠实参推导）。</li><li>每个实例化生成一份专用代码：零运行时开销、可内联优化。</li><li>类型参数可约束接口：<code>泛型 &lt;类型 T : 可比较&gt;</code>。</li></ul>
+<h2 id="函数指针与lambda">函数指针与 lambda</h2>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">函数指针.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">函数 加(整32 a, 整32 b) -&gt; 整32 { 返回 a + b; }
+函数 乘(整32 a, 整32 b) -&gt; 整32 { 返回 a * b; }
+
+函数 折叠(整32[3] 表, 整32(*二元)(整32, 整32)) -&gt; 整32 {
+    整32 累 = 表[0];
+    循环 (整32 i = 1; i &lt; 3; i++) { 累 = 二元(累, 表[i]); }
+    返回 累;
+}
+
+函数 主() -&gt; 整32 {
+    整32[3] 表 = {2, 3, 4};
+    打印(折叠(表, 加), " ", 折叠(表, 乘));
+    变量 加倍 = [](整32 x) -&gt; 整32 { 返回 x * 2; };   // lambda
+    打印(加倍(21));
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：9 24
+42
+</p>
+<ul><li>函数名可衰减为函数指针（<code>折叠(表, 加)</code>）；函数指针=代码指针，恒可搬运（可传给新线程）。</li><li>lambda 捕获形态（<code>[]</code> 不捕获 / <code>[=]</code> 值捕获 / <code>[&amp;]</code> 引用捕获 / <code>[变量]</code> 显式捕获）——捕获环境为在案实施面，复杂捕获场景以实测为准。</li><li>声明位形态：<code>整32(*名)(整32, 整32)</code>；字段/数组元素/返回位/静态位全部支持（规格 §5.8）。</li></ul><nav class="页脚导航"><a class="" href="../reference/control-flow.html"><span class="向">← 上一页</span><span class="题">控制流</span></a><a class="下一" href="../reference/oop.html"><span class="向">下一页 →</span><span class="题">类与对象</span></a></nav></article>
     <aside class="目录" aria-label="本页目录">
       <p class="目录-题">本页目录</p>
-      
-<a href="#定义与原型">定义与原型</a>
-<a href="#重载与默认参数">重载与默认参数</a>
-<a href="#参数传递语义">参数传递语义</a>
-<a href="#lambda">lambda</a>
-<a href="#函数指针">函数指针</a>
-<a href="#泛型函数">泛型函数</a>
-
+<a href="#声明">声明与调用</a><a href="#重载默认">重载与默认参数</a><a href="#传参">传参语义：副本 / 引用 / 只读借用 / 类=写穿</a><a href="#泛型">泛型函数：编译期单态化</a><a href="#函数指针与lambda">函数指针与 lambda</a>
     </aside>
   </div>
 </main>
@@ -162,7 +176,7 @@
       <div>
         <h4>语言</h4>
         <ul>
-          <li><a href=".././">官方文档</a></li>
+          <li><a href="../.././">官方文档</a></li>
           <li><a href="../getting-started.html">快速开始</a></li>
           <li><a href="../reference/">语言参考</a></li>
           <li><a href="../stdlib.html">标准库</a></li>
@@ -193,6 +207,6 @@
 </footer>
 
 <script src="../../assets/cn-highlight.js?v=1"></script>
-<script src="../../assets/site.js?v=2"></script>
+<script src="../site.js?v=2"></script>
 </body>
 </html>

@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>词法结构 · CN 语言</title>
-<meta name="description" content="CN 语言词法结构：源文件、注释、字面量、运算符优先级、分号规则、条件编译。">
+<title>词法结构 · CN 语言 · CN 语言</title>
+<meta name="description" content="源文件、注释、字面量、关键字全表、运算符与 13 级优先级——语法的原子层。">
 <script>
   (function () {
     try {
@@ -24,9 +24,10 @@
     <button class="导航-开关" data-导航钮 aria-expanded="false">菜单</button>
     <nav class="导航" aria-label="站点导航">
       <a href="../../">首页</a>
-      <a href=".././">文档</a>
+      <a href="../" aria-current="page">文档</a>
       <a href="../getting-started.html">快速开始</a>
-      <a href="../reference/" aria-current="page">语言参考</a>
+      <a href="../reference/">语言参考</a>
+      <a href="../stdlib.html">标准库</a>
       <a href="../../os/">CN-OS</a>
       <a href="https://gitcode.com/ChenChao_GitCode/CN_Language" target="_blank" rel="noopener">源码 ↗</a>
       <button class="主题钮" data-主题钮 aria-label="切换主题">月</button>
@@ -36,137 +37,50 @@
 
 <main class="容器">
   <div class="文档骨架">
-    <aside class="侧栏" aria-label="文档导航">
-      <div class="侧栏-组">
-        <p class="侧栏-组题">入门</p>
-        <a href=".././">文档总览</a>
-        <a href="../getting-started.html">快速开始</a>
-      </div>
-      <div class="侧栏-组">
-        <p class="侧栏-组题">教程</p>
-        <a href="../tutorial-syntax.html">语法基础</a>
-        <a href="../tutorial-oop.html">类与泛型</a>
-        <a href="../tutorial-safety.html">安全与并发</a>
-      </div>
-      <div class="侧栏-组">
-        <p class="侧栏-组题">语言参考</p>
-        <a href="../reference/">参考总览</a>
-        <a href="../reference/lexical.html" aria-current="page">词法结构</a>
-        <a href="../reference/types.html">类型系统</a>
-        <a href="../reference/control-flow.html">控制流</a>
-        <a href="../reference/functions.html">函数</a>
-        <a href="../reference/oop.html">类与对象</a>
-        <a href="../reference/errors.html">错误处理</a>
-        <a href="../reference/concurrency.html">并发</a>
-        <a href="../reference/modules.html">模块系统</a>
-      </div>
-      <div class="侧栏-组">
-        <p class="侧栏-组题">资源</p>
-        <a href="../stdlib.html">标准库</a>
-        <a href="../cli.html">命令行参考</a>
-      </div>
-    </aside>
-    <article class="正文">
-      <nav class="面包屑" aria-label="面包屑"><a href="./">文档</a> / <a href="./">语言参考</a> / 词法结构</nav>
-      
+    <aside class="侧栏" aria-label="文档导航"><div class="侧栏-组"><p class="侧栏-组题">入门</p><a href="../index.html">文档总览</a><a href="../getting-started.html">快速开始</a></div><div class="侧栏-组"><p class="侧栏-组题">教程</p><a href="../tutorial-syntax.html">语法基础</a><a href="../tutorial-oop.html">类与泛型</a><a href="../tutorial-safety.html">安全与并发</a><a href="../tutorial-advanced.html">进阶篇</a></div><div class="侧栏-组"><p class="侧栏-组题">语言参考</p><a href="../reference/index.html">参考总览</a><a href="../reference/lexical.html" aria-current="page">词法结构</a><a href="../reference/types.html">类型系统</a><a href="../reference/control-flow.html">控制流</a><a href="../reference/functions.html">函数</a><a href="../reference/oop.html">类与对象</a><a href="../reference/errors.html">错误处理</a><a href="../reference/concurrency.html">并发</a><a href="../reference/modules.html">模块系统</a></div><div class="侧栏-组"><p class="侧栏-组题">标准库</p><a href="../stdlib.html">标准库总览</a><a href="../stdlib/core.html">核心</a><a href="../stdlib/container.html">容器</a><a href="../stdlib/mapset.html">映射集合</a><a href="../stdlib/string.html">字符串扩展</a><a href="../stdlib/algorithm.html">算法</a><a href="../stdlib/regex.html">正则</a><a href="../stdlib/system.html">系统</a><a href="../stdlib/io.html">IO</a><a href="../stdlib/file.html">文件</a><a href="../stdlib/time.html">时间</a><a href="../stdlib/math.html">数学</a><a href="../stdlib/random.html">随机数</a><a href="../stdlib/thread.html">线程</a><a href="../stdlib/builtin.html">内置函数</a></div><div class="侧栏-组"><p class="侧栏-组题">资源</p><a href="../cli.html">命令行参考</a></div><div class="侧栏-组"><p class="侧栏-组题">资源</p><a href="https://gitcode.com/ChenChao_GitCode/CN_Language" target="_blank" rel="noopener">源码仓库 ↗</a></div></aside>
+    <article class="正文"><nav class="面包屑" aria-label="面包屑"><a href="./">文档</a> / <a href="index.html">语言参考</a> / 词法结构</nav>
 <h1>词法结构</h1>
-<p style="color: var(--color-fg-muted); font-size: var(--text-lg); line-height: 2;">
-源文件、注释、字面量、运算符与优先级、分号规则——语言的原子层。</p>
-
-<h2 id="源文件">源文件</h2>
-<ul>
-<li>扩展名 <code>.cn</code>，编码必须为 UTF-8。</li>
-<li>入口约定：程序入口是 <code>主</code> 函数（入口文件命名 <code>主.cn</code> 仅为约定）。</li>
-</ul>
-
-<h2 id="注释">注释</h2>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">注释.cn</span><span class="码窗-徽">CN</span></p>
-<pre><code class="language-cn">// 单行注释
-/* 块注释，
-   支持嵌套 */</code></pre></div>
-
+<p style="color: var(--color-fg-muted); font-size: var(--text-lg); line-height: 2;">源文件、注释、字面量、关键字全表、运算符与 13 级优先级——语法的原子层。</p>
+<h2 id="源文件">源文件与注释</h2>
+<table class="表"><thead><tr><th>项</th><th>规定</th></tr></thead><tbody><tr><td>扩展名</td><td><code>.cn</code></td></tr><tr><td>编码</td><td>UTF-8（必须）</td></tr><tr><td>入口</td><td>入口文件内须定义 <code>主</code> 函数（文件名 <code>主.cn</code> 仅为约定，与函数名无强制绑定）</td></tr><tr><td>单行注释</td><td><code>// 注释</code></td></tr><tr><td>块注释</td><td><code>/* 注释 */</code>——支持嵌套</td></tr></tbody></table>
+<h2 id="关键字">关键字全表：46 个保留字 + 上下文关键字</h2>
+<p>保留字在任何标识符位都不可用（字段名/变量名/函数名/参数名一概拒绝）；上下文关键字只在固定语法位识别，<strong>不占用命名空间</strong>——你完全可以有叫 <code>模块</code> 或 <code>公开</code> 的变量。</p>
+<table class="表"><thead><tr><th>分类</th><th>保留字</th></tr></thead><tbody><tr><td>控制流（10）</td><td><code>如果</code> <code>否则</code> <code>当</code> <code>循环</code> <code>返回</code> <code>中断</code> <code>继续</code> <code>选择</code> <code>情况</code> <code>默认</code></td></tr><tr><td>类型（21）</td><td><code>整数</code> <code>小数</code>（别名）；<code>整8/16/32/64/128</code>；<code>正8/16/32/64/128</code>；<code>浮32</code> <code>浮64</code>；<code>布尔</code> <code>字符</code> <code>字符串</code> <code>空类型</code> <code>结构体</code> <code>联合体</code> <code>枚举</code></td></tr><tr><td>声明（3）</td><td><code>函数</code> <code>变量</code> <code>导入</code></td></tr><tr><td>安全（1）</td><td><code>不安全</code></td></tr><tr><td>常量（3）</td><td><code>真</code> <code>假</code> <code>无</code></td></tr><tr><td>OOP（5）</td><td><code>类</code> <code>接口</code> <code>自身</code> <code>父类</code> <code>友元</code></td></tr><tr><td>错误处理（2）</td><td><code>结果</code> <code>可选</code></td></tr><tr><td>泛型（1）</td><td><code>泛型</code></td></tr></tbody></table>
+<table class="表"><thead><tr><th>上下文关键字</th><th>唯一语法位置</th></tr></thead><tbody><tr><td><code>原始</code> <code>多行</code></td><td>字符串字面量前缀位（后紧跟引号才是前缀）</td></tr><tr><td><code>公开</code> <code>私有</code> <code>保护</code></td><td>可见性标签位（<code>公开:</code> 等）</td></tr><tr><td><code>静态</code> <code>常量</code></td><td>声明前缀位（顶层/局部/循环初始/类成员）</td></tr><tr><td><code>虚拟</code> <code>重写</code> <code>抽象</code></td><td>类/接口成员修饰位（后随 函数）</td></tr><tr><td><code>作为</code></td><td>重命名导入位（<code>导入 路径 作为 别名</code>）</td></tr><tr><td><code>模块</code></td><td>顶层声明位（后随标识符即声明）</td></tr><tr><td><code>运算符</code> <code>遍历</code> <code>每个</code> <code>属于</code> <code>对</code></td><td>运算符重载/遍历循环固定形态</td></tr><tr><td><code>正常</code> <code>错误</code> <code>某些</code></td><td>内置构造器名（结果/可选构造位）</td></tr></tbody></table>
 <h2 id="字面量">字面量</h2>
-<table class="表">
-<thead><tr><th>类别</th><th>形式</th><th>示例</th></tr></thead>
-<tbody>
-<tr><td>整数</td><td>十进制 / 十六进制 / 二进制 / 八进制</td><td><code>42</code> <code>0xFF</code> <code>0b1010</code> <code>0o777</code></td></tr>
-<tr><td>类型后缀</td><td><code>f</code>=浮32、<code>L</code>=整64、<code>LL</code>=整128、<code>U</code>=正32、<code>UL</code>=正64、<code>ULL</code>=正128</td><td><code>100L</code> <code>3.14f</code></td></tr>
-<tr><td>浮点</td><td>小数 / 科学计数法</td><td><code>3.14</code> <code>1.5e10</code></td></tr>
-<tr><td>字符</td><td>单引号，支持转义与 Unicode</td><td><code>'中'</code> <code>'\n'</code> <code>'\u{4E2D}'</code></td></tr>
-<tr><td>字符串</td><td>双引号；<code>原始</code> 前缀不转义；<code>多行</code> 前缀跨行</td><td><code>"你好"</code> <code>原始"^\d+$"</code> <code>多行"""…"""</code></td></tr>
-</tbody>
-</table>
-<p>多行字符串内部仍处理转义；要完全原始可组合：<code>原始多行"""…"""</code>。</p>
-
-<h2 id="运算符">运算符</h2>
-<p>算术 <code>+ - * / %</code>；比较 <code>== != &lt; &gt; &lt;= &gt;=</code>；逻辑 <code>&amp;&amp; || !</code>；
-位 <code>&amp; | ^ ~ &lt;&lt; &gt;&gt;</code>（仅整型）；赋值 <code>= += -= *= /= %= &amp;= |= ^= &lt;&lt;= &gt;&gt;=</code>；
-指针 <code>&amp;</code>（取地址）<code>*</code>（解引用）；成员 <code>.</code>；下标 <code>[]</code>；三元 <code>? :</code>。</p>
-<div class="批注"><span class="批注-题">两条重要语义</span>
-①成员访问统一用 <code>.</code>：<code>-&gt;</code> 不是成员运算符（它只用于函数返回类型标注）；
-指针左侧的 <code>.</code> 自动解引用一级（<code>p.x</code> 等价 <code>(*p).x</code>）。
-②字符串下标 <code>s[i]</code> 按 UTF-8 字节索引读（返回整8），<strong>写是编译期拒绝</strong>——
-字符串是不可变拥有型。</div>
-
-<h2 id="优先级">优先级（13 级·从高到低）</h2>
-<table class="表">
-<thead><tr><th>级</th><th>运算符</th><th>说明</th></tr></thead>
-<tbody>
-<tr><td>13</td><td><code>() [] .</code> 后缀 <code>++ --</code>、后缀 <code>?</code>（错误传播）</td><td>后缀</td></tr>
-<tr><td>12</td><td><code>! ~ -</code> 前缀 <code>++ --</code> <code>*</code>（解引用）<code>&amp;</code>（取地址）</td><td>一元</td></tr>
-<tr><td>11</td><td><code>* / %</code></td><td>乘除</td></tr>
-<tr><td>10</td><td><code>+ -</code></td><td>加减</td></tr>
-<tr><td>9</td><td><code>&lt;&lt; &gt;&gt;</code></td><td>移位</td></tr>
-<tr><td>8</td><td><code>&lt; &lt;= &gt; &gt;=</code></td><td>比较</td></tr>
-<tr><td>7</td><td><code>== !=</code></td><td>相等</td></tr>
-<tr><td>6</td><td><code>&amp;</code></td><td>按位与</td></tr>
-<tr><td>5</td><td><code>^</code></td><td>按位异或</td></tr>
-<tr><td>4</td><td><code>|</code></td><td>按位或</td></tr>
-<tr><td>3</td><td><code>&amp;&amp;</code></td><td>逻辑与</td></tr>
-<tr><td>2</td><td><code>||</code></td><td>逻辑或</td></tr>
-<tr><td>1.5</td><td><code>? :</code></td><td>三元（右结合）</td></tr>
-<tr><td>1</td><td><code>= += -= …</code></td><td>赋值</td></tr>
-</tbody>
-</table>
-
-<h2 id="分号规则">分号规则</h2>
-<p>语句<strong>必须</strong>以分号 <code>;</code> 终结（Rust/C++ 同款）；换行只是空白，
-不是语句边界。块结构（<code>}</code>）自终结——块、函数体、类体之后<strong>不写</strong>分号：</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">分号.cn</span><span class="码窗-徽">CN</span></p>
-<pre><code class="language-cn">函数 主() -&gt; 整32 {
-    整32 a = 1;        // ✓ 语句有分号
-    如果 a &gt; 0 {       // 控制流头不需要分号
-        a = a + 1;     // ✓
-    }                  // ✓ 块后不加分号
-    返回 a;
-}                      // ✓ 函数体后不加分号</code></pre></div>
-
-<h2 id="条件编译">条件编译</h2>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">条件编译.cn</span><span class="码窗-徽">CN</span></p>
-<pre><code class="language-cn">#定义 发布模式
-
-函数 主() -&gt; 整32 {
-    #如果定义 发布模式
-    打印("发布模式: 开启");
-    #否则
-    打印("发布模式: 关闭");
-    #结束如果
+<h3 id="整数字面量">整数字面量</h3>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">进制与后缀</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">函数 主() -&gt; 整32 {
+    打印(42, " ", 0xFF, " ", 0b1010, " ", 0o777);   // 42 255 10 511
+    打印(100L, " ", 5U, " ", 7ULL);            // 100 5 7（整64/正32/正128）
+    打印(1.5f, " ", 2.5, " ", 1.5e10);         // 浮32/浮64/科学计数
     返回 0;
 }</code></pre></div>
-
-      <nav class="页脚导航"><a href="../reference/"><span class="向">← 上一页</span><span class="题">参考总览</span></a><a class="下一" href="../reference/types.html"><span class="向">下一页 →</span><span class="题">类型系统</span></a></nav>
-    </article>
+<p class="输出行">输出：42 255 10 511
+100 5 7
+1.500000 2.500000 15000000000.000000
+</p>
+<ul><li>后缀：<code>f</code>→浮32、<code>L</code>→整64、<code>LL</code>→整128、<code>U</code>→正32、<code>UL</code>→正64、<code>ULL</code>→正128。</li><li>无后缀大字面量超出 整64 域时提升为 整128（在整128 域内求值）。</li><li>不支持数字下划线分隔。</li></ul>
+<h3 id="字符与字符串字面量">字符与字符串字面量</h3>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">字符串形态</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">函数 主() -&gt; 整32 {
+    字符 c1 = '甲';             // Unicode 码点（4 字节）
+    字符 c2 = '\n';             // 转义
+    字符 c3 = '\u{4E2D}';       // Unicode 转义 = '中'
+    字符串 普通 = "第一行\n";
+    字符串 原样 = 原始"正则^\d+$";     // 反斜杠不转义
+    字符串 多行文 = 多行"""第一行
+第二行""";                     // 内部仍处理转义
+    打印(字符串长度(普通), 字符串长度(原样), 字符串长度(多行文));
+    返回 0;
+}</code></pre></div>
+<ul><li>常用转义：<code>\n</code> 换行、<code>\t</code> 制表、<code>\0</code> 空、<code>\\</code> 反斜杠、<code>\"</code> 引号、<code>\u{码点}</code>。</li><li><code>原始"..."</code> 反斜杠原样；<code>多行"""..."""</code> 跨行（内部仍处理转义）；<code>原始多行"""..."""</code> 完全原始。</li></ul>
+<h2 id="优先级">运算符与 13 级优先级</h2>
+<table class="表"><thead><tr><th>优先级</th><th>运算符</th><th>说明</th></tr></thead><tbody><tr><td>13（最高）</td><td><code>()</code> <code>[]</code> <code>.</code> <code>++</code> <code>--</code> <code>?</code></td><td>后缀：调用/下标/成员/后缀自增自减（值=原值）/后缀错误传播</td></tr><tr><td>12</td><td><code>!</code> <code>~</code> <code>-</code> <code>++</code> <code>--</code> <code>*</code> <code>&amp;</code></td><td>一元：非/按位非/负/前缀自增自减（值=新值）/解引用/取地址</td></tr><tr><td>11</td><td><code>*</code> <code>/</code> <code>%</code></td><td>乘除余</td></tr><tr><td>10</td><td><code>+</code> <code>-</code></td><td>加减（字符串 + 数值 自动拼接）</td></tr><tr><td>9</td><td><code>&lt;&lt;</code> <code>&gt;&gt;</code></td><td>移位（移位量按位宽取模）</td></tr><tr><td>8</td><td><code>&lt;</code> <code>&lt;=</code> <code>&gt;</code> <code>&gt;=</code></td><td>关系（字符串=字典序）</td></tr><tr><td>7</td><td><code>==</code> <code>!=</code></td><td>相等（字符串=内容比较）</td></tr><tr><td>6</td><td><code>&amp;</code></td><td>按位与</td></tr><tr><td>5</td><td><code>^</code></td><td>按位异或</td></tr><tr><td>4</td><td><code>|</code></td><td>按位或</td></tr><tr><td>3</td><td><code>&amp;&amp;</code></td><td>逻辑与（短路）</td></tr><tr><td>2</td><td><code>||</code></td><td>逻辑或（短路）</td></tr><tr><td>1.5</td><td><code>条件 ? 真值 : 假值</code></td><td>三元（右结合·惰性求值）</td></tr><tr><td>1（最低）</td><td><code>=</code> <code>+=</code> <code>-=</code> …</td><td>赋值与复合赋值</td></tr></tbody></table>
+<ul><li>位运算仅整型；<code>&gt;&gt;</code> 有符号=算术右移、无符号=逻辑右移；<code>~x</code> ≡ <code>x ^ -1</code>。</li><li>成员访问统一 <code>.</code>，指针左侧自动解引用一级；<code>-&gt;</code> 已废除（仅保留于返回类型标注 <code>-&gt; 类型</code>）。</li><li><code>&amp;类变量</code> 产对象地址（非句柄槽地址）；<code>&amp;标量/结构体</code> =槽地址。</li><li>类/结构体可重载的运算符集合与决议规则见<a href="oop.html#重载">类与对象·运算符重载</a>。</li></ul>
+<h2 id="语句终止">语句终止：分号强制</h2>
+<p>每条语句必须以 <code>;</code> 结束（C/Rust 同款）；换行是纯空白，表达式内可自由续行。行尾漏分号=语法错误，不存在自动分号插入——行首/行尾词法拼接类事故被结构性根除。</p><nav class="页脚导航"><a class="" href="../tutorial-advanced.html"><span class="向">← 上一页</span><span class="题">教程·进阶篇</span></a><a class="下一" href="../reference/types.html"><span class="向">下一页 →</span><span class="题">类型系统</span></a></nav></article>
     <aside class="目录" aria-label="本页目录">
       <p class="目录-题">本页目录</p>
-      
-<a href="#源文件">源文件</a>
-<a href="#注释">注释</a>
-<a href="#字面量">字面量</a>
-<a href="#运算符">运算符</a>
-<a href="#优先级">优先级</a>
-<a href="#分号规则">分号规则</a>
-<a href="#条件编译">条件编译</a>
-
+<a href="#源文件">源文件与注释</a><a href="#关键字">关键字全表：46 个保留字 + 上下文关键字</a><a href="#字面量">字面量</a><a href="#优先级">运算符与 13 级优先级</a><a href="#语句终止">语句终止：分号强制</a>
     </aside>
   </div>
 </main>
@@ -181,7 +95,7 @@
       <div>
         <h4>语言</h4>
         <ul>
-          <li><a href=".././">官方文档</a></li>
+          <li><a href="../.././">官方文档</a></li>
           <li><a href="../getting-started.html">快速开始</a></li>
           <li><a href="../reference/">语言参考</a></li>
           <li><a href="../stdlib.html">标准库</a></li>
@@ -212,6 +126,6 @@
 </footer>
 
 <script src="../../assets/cn-highlight.js?v=1"></script>
-<script src="../../assets/site.js?v=2"></script>
+<script src="../site.js?v=2"></script>
 </body>
 </html>

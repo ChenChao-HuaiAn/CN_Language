@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>并发 · CN 语言</title>
-<meta name="description" content="CN 语言并发：可搬运标记、互斥锁<T> 类型化句柄。">
+<title>并发 · CN 语言 · CN 语言</title>
+<meta name="description" content="线程生命周期、实参语义、可搬运法则、互斥锁&amp;lt;T&amp;gt; 的类型化守护——宁严勿松的并发模型。">
 <script>
   (function () {
     try {
@@ -24,9 +24,10 @@
     <button class="导航-开关" data-导航钮 aria-expanded="false">菜单</button>
     <nav class="导航" aria-label="站点导航">
       <a href="../../">首页</a>
-      <a href=".././">文档</a>
+      <a href="../" aria-current="page">文档</a>
       <a href="../getting-started.html">快速开始</a>
-      <a href="../reference/" aria-current="page">语言参考</a>
+      <a href="../reference/">语言参考</a>
+      <a href="../stdlib.html">标准库</a>
       <a href="../../os/">CN-OS</a>
       <a href="https://gitcode.com/ChenChao_GitCode/CN_Language" target="_blank" rel="noopener">源码 ↗</a>
       <button class="主题钮" data-主题钮 aria-label="切换主题">月</button>
@@ -36,94 +37,52 @@
 
 <main class="容器">
   <div class="文档骨架">
-    <aside class="侧栏" aria-label="文档导航">
-      <div class="侧栏-组">
-        <p class="侧栏-组题">入门</p>
-        <a href=".././">文档总览</a>
-        <a href="../getting-started.html">快速开始</a>
-      </div>
-      <div class="侧栏-组">
-        <p class="侧栏-组题">教程</p>
-        <a href="../tutorial-syntax.html">语法基础</a>
-        <a href="../tutorial-oop.html">类与泛型</a>
-        <a href="../tutorial-safety.html">安全与并发</a>
-      </div>
-      <div class="侧栏-组">
-        <p class="侧栏-组题">语言参考</p>
-        <a href="../reference/">参考总览</a>
-        <a href="../reference/lexical.html">词法结构</a>
-        <a href="../reference/types.html">类型系统</a>
-        <a href="../reference/control-flow.html">控制流</a>
-        <a href="../reference/functions.html">函数</a>
-        <a href="../reference/oop.html">类与对象</a>
-        <a href="../reference/errors.html">错误处理</a>
-        <a href="../reference/concurrency.html" aria-current="page">并发</a>
-        <a href="../reference/modules.html">模块系统</a>
-      </div>
-      <div class="侧栏-组">
-        <p class="侧栏-组题">资源</p>
-        <a href="../stdlib.html">标准库</a>
-        <a href="../cli.html">命令行参考</a>
-      </div>
-    </aside>
-    <article class="正文">
-      <nav class="面包屑" aria-label="面包屑"><a href="./">文档</a> / <a href="./">语言参考</a> / 并发</nav>
-      
+    <aside class="侧栏" aria-label="文档导航"><div class="侧栏-组"><p class="侧栏-组题">入门</p><a href="../index.html">文档总览</a><a href="../getting-started.html">快速开始</a></div><div class="侧栏-组"><p class="侧栏-组题">教程</p><a href="../tutorial-syntax.html">语法基础</a><a href="../tutorial-oop.html">类与泛型</a><a href="../tutorial-safety.html">安全与并发</a><a href="../tutorial-advanced.html">进阶篇</a></div><div class="侧栏-组"><p class="侧栏-组题">语言参考</p><a href="../reference/index.html">参考总览</a><a href="../reference/lexical.html">词法结构</a><a href="../reference/types.html">类型系统</a><a href="../reference/control-flow.html">控制流</a><a href="../reference/functions.html">函数</a><a href="../reference/oop.html">类与对象</a><a href="../reference/errors.html">错误处理</a><a href="../reference/concurrency.html" aria-current="page">并发</a><a href="../reference/modules.html">模块系统</a></div><div class="侧栏-组"><p class="侧栏-组题">标准库</p><a href="../stdlib.html">标准库总览</a><a href="../stdlib/core.html">核心</a><a href="../stdlib/container.html">容器</a><a href="../stdlib/mapset.html">映射集合</a><a href="../stdlib/string.html">字符串扩展</a><a href="../stdlib/algorithm.html">算法</a><a href="../stdlib/regex.html">正则</a><a href="../stdlib/system.html">系统</a><a href="../stdlib/io.html">IO</a><a href="../stdlib/file.html">文件</a><a href="../stdlib/time.html">时间</a><a href="../stdlib/math.html">数学</a><a href="../stdlib/random.html">随机数</a><a href="../stdlib/thread.html">线程</a><a href="../stdlib/builtin.html">内置函数</a></div><div class="侧栏-组"><p class="侧栏-组题">资源</p><a href="../cli.html">命令行参考</a></div><div class="侧栏-组"><p class="侧栏-组题">资源</p><a href="https://gitcode.com/ChenChao_GitCode/CN_Language" target="_blank" rel="noopener">源码仓库 ↗</a></div></aside>
+    <article class="正文"><nav class="面包屑" aria-label="面包屑"><a href="./">文档</a> / <a href="index.html">语言参考</a> / 并发</nav>
 <h1>并发</h1>
-<p style="color: var(--color-fg-muted); font-size: var(--text-lg); line-height: 2;">
-可搬运标记（对标 Send）+ 互斥锁&lt;T&gt; 类型化句柄——数据竞争在类型层面设防。</p>
+<p style="color: var(--color-fg-muted); font-size: var(--text-lg); line-height: 2;">线程生命周期、实参语义、可搬运法则、互斥锁&lt;T&gt; 的类型化守护——宁严勿松的并发模型。</p>
+<h2 id="线程">新线程 / 并入线程</h2>
+<table class="表"><thead><tr><th>函数</th><th>签名</th><th>语义</th></tr></thead><tbody><tr><td><code>新线程</code></td><td><code>不安全 函数 新线程(整64(*入口)(空类型*), 空类型* 实参) -&gt; 结果&lt;空类型*, 整32&gt;</code></td><td>启动线程；入口=函数指针（可由函数名衰减）；实参<strong>按值拷贝</strong>进新线程（无别名）</td></tr><tr><td><code>并入线程</code></td><td><code>不安全 函数 并入线程(空类型* 句柄) -&gt; 整64</code></td><td>等待结束并取回入口返回值；同步点=顺序一致；每句柄恰好并入一次</td></tr></tbody></table>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">生命周期.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">导入 线程::{新线程, 并入线程};
 
-<h2 id="新线程">新线程</h2>
-<p>标准库 <code>线程</code> 模块：<code>新线程(入口, 实参)</code> 启动线程，
-<code>并入线程</code> 等待汇合（对标 join）。Linux x64 为真 pthread 实现。</p>
+不安全 函数 作业(空类型* 未用) -&gt; 整64 {
+    整64 计数 = 0;
+    循环 (整64 i = 0; i &lt; 5000; i++) { 计数 = 计数 + 1; }
+    返回 计数;
+}
 
-<h2 id="可搬运">可搬运（对标 Rust Send）</h2>
-<p><strong>可搬运</strong> = 该类型的值可安全按值拷贝进另一线程。自动推导，用户零负担：</p>
-<table class="表">
-<thead><tr><th>类型</th><th>可搬运性</th></tr></thead>
-<tbody>
-<tr><td>标量、字符串、函数指针</td><td>恒可搬运</td></tr>
-<tr><td><code>结果&lt;T&gt;</code> / <code>可选&lt;T&gt;</code></td><td>⇔ T 可搬运</td></tr>
-<tr><td>容器 / 数组</td><td>⇔ 元素类型可搬运</td></tr>
-<tr><td>结构体 / 类</td><td>⇔ 全部字段可搬运（递归，含继承）</td></tr>
-<tr><td>含裸指针字段（<code>T*</code>）</td><td><strong>默认不可搬运</strong>——数据竞争温床</td></tr>
-</tbody>
-</table>
-<p><code>新线程</code> 实参位的每个值都须可搬运，违例 = 编译错误
-（诊断含类型名与字段链）。确需跨线程的含指针类型可显式声明
-<code>不安全 可搬运</code>——声明人自担安全责任（对标 <code>unsafe impl Send</code>）。</p>
-
-<h2 id="互斥锁">互斥锁&lt;T&gt;（对标 Rust Mutex&lt;T&gt;）</h2>
-<p>标准库泛型类，<strong>锁与受护数据类型化绑定</strong>——「拿 A 锁护 B 数据」在类型检查下不可表达：</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">互斥锁.cn</span><span class="码窗-徽">CN</span></p>
-<pre><code class="language-cn">导入 线程::互斥锁;
-
-函数 主() -&gt; 整32 {
-    互斥锁&lt;整32&gt; 计数 = 互斥锁(0);   // 带初值构造
-
-    计数.上锁();
-    计数.值 = 计数.值 + 1;           // 受护值经 .值 访问
-    计数.解锁();
-
+不安全 函数 主() -&gt; 整32 {
+    结果&lt;空类型*, 整32&gt; 建一 = 新线程(作业, 无);   // 形态①：函数名衰减
+    如果 (建一.正常) {
+        打印(并入线程(建一.值) == 5000);
+    } 否则 { 返回 1; }
+    整64(*入口)(空类型*) = 作业;                    // 形态②：函数指针变量
+    结果&lt;空类型*, 整32&gt; 建二 = 新线程(入口, 无);
+    如果 (建二.正常) {
+        打印(并入线程(建二.值) == 5000);
+    } 否则 { 返回 1; }
     返回 0;
 }</code></pre></div>
-<ul>
-<li>API：互斥锁(初值) / <code>上锁()</code> / <code>解锁()</code> 显式对；析构自动释放句柄。</li>
-<li>可搬运联动：<code>互斥锁&lt;T&gt;</code> 可搬运 ⇔ T 可搬运。</li>
-</ul>
-<div class="批注 批注-赭"><span class="批注-题">诚实边界</span>
-第一版为显式 上锁/解锁 对（RAII 锁守卫随析构链成熟另立）；未锁直访 <code>.值</code>
-暂不拦截（收紧为编译期拒绝在计划内）。原子库与跨线程共享语法另立任务。</div>
+<div class="批注 批注-赭"><span class="批注-题">宁严勿松</span><strong>未并入的线程在 主 返回时=运行时错误</strong>（运行时层退出链）——忘记 并入 不是静默泄漏而是立刻报错。linux=pthread 真实现；win 后端为运行时错误桩（路线图波次内）。</div>
+<h2 id="可搬运">可搬运（Send）法则</h2>
+<p>跨线程传递的值必须<strong>可搬运</strong>——含裸指针字段（空类型*/字符串/容器句柄等）的类型默认不可搬运，编译期拦截；豁免窗口=顶层 <code>空类型*</code> 实参位（<code>新线程(f, 无)</code>）。Rust <code>Send</code> 同位。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">不可搬运.cn（负例·编译拒绝）</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">导入 线程::{新线程, 并入线程};
 
-      <nav class="页脚导航"><a href="errors.html"><span class="向">← 上一页</span><span class="题">错误处理</span></a><a class="下一" href="modules.html"><span class="向">下一页 →</span><span class="题">模块系统</span></a></nav>
-    </article>
+不安全 函数 作业(空类型* 盒) -&gt; 整64 { 返回 0; }
+
+不安全 函数 主() -&gt; 整32 {
+    整64 局部 = 5;
+    整64* 指向局部 = &amp;局部;
+    结果&lt;空类型*, 整32&gt; 建 = 新线程(作业, 指向局部);   // ✗ 裸指针不可跨线程
+    返回 0;
+}</code></pre></div>
+<ul><li>互斥锁&lt;T&gt; 可搬运 ⇔ T 可搬运（容器名单基名判定）。</li><li>函数指针=代码指针，恒可搬运。</li><li>确需跨线程传裸指针：以「所有权移交设计」重构（由目标线程独占）或等待后续显式豁免立法——默认路径零豁免。</li></ul>
+<h2 id="互斥锁">互斥锁&lt;T&gt; 与过渡 API</h2>
+<table class="表"><thead><tr><th>形态</th><th>形态成员</th><th>定位</th></tr></thead><tbody><tr><td><code>互斥锁&lt;T&gt;</code>（推荐）</td><td><code>互斥锁(T 初值)</code> / <code>上锁()</code> / <code>解锁()</code> / 公开字段 <code>值</code></td><td>锁与数据类型化绑定；可搬运联动；实例=对象句柄（跨线程共享实例=共用锁）</td></tr><tr><td>过渡函数（不推荐）</td><td><code>互斥锁新建/互斥锁上锁/互斥锁解锁/互斥锁释放</code></td><td>裸句柄无类型=可锁错对象；立法前过渡，新代码禁用</td></tr></tbody></table>
+<ul><li>上锁/解锁 显式配对（RAII 锁守卫在路线图）；必须由加锁者解锁。</li><li>裸句柄互斥锁释放须未加锁态。</li><li>线程六个包装函数全部 <code>不安全</code>（001 §5.8b sunset 收窄）。</li></ul><nav class="页脚导航"><a class="" href="../reference/index.html"><span class="向">← 上一页</span><span class="题">参考总览</span></a><a class="下一" href="../reference/modules.html"><span class="向">下一页 →</span><span class="题">模块系统</span></a></nav></article>
     <aside class="目录" aria-label="本页目录">
       <p class="目录-题">本页目录</p>
-      
-<a href="#新线程">新线程</a>
-<a href="#可搬运">可搬运</a>
-<a href="#互斥锁">互斥锁&lt;T&gt;</a>
-
+<a href="#线程">新线程 / 并入线程</a><a href="#可搬运">可搬运（Send）法则</a><a href="#互斥锁">互斥锁&lt;T&gt; 与过渡 API</a>
     </aside>
   </div>
 </main>
@@ -138,7 +97,7 @@
       <div>
         <h4>语言</h4>
         <ul>
-          <li><a href=".././">官方文档</a></li>
+          <li><a href="../.././">官方文档</a></li>
           <li><a href="../getting-started.html">快速开始</a></li>
           <li><a href="../reference/">语言参考</a></li>
           <li><a href="../stdlib.html">标准库</a></li>
@@ -169,6 +128,6 @@
 </footer>
 
 <script src="../../assets/cn-highlight.js?v=1"></script>
-<script src="../../assets/site.js?v=2"></script>
+<script src="../site.js?v=2"></script>
 </body>
 </html>

@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>控制流 · CN 语言</title>
-<meta name="description" content="CN 语言控制流：如果/当/循环/选择/遍历、中断与继续。">
+<title>控制流 · CN 语言 · CN 语言</title>
+<meta name="description" content="如果/当/循环/选择/遍历 的精确语义：括号可选、贯穿规则、中断绑定、确定初始化交互。">
 <script>
   (function () {
     try {
@@ -24,9 +24,10 @@
     <button class="导航-开关" data-导航钮 aria-expanded="false">菜单</button>
     <nav class="导航" aria-label="站点导航">
       <a href="../../">首页</a>
-      <a href=".././">文档</a>
+      <a href="../" aria-current="page">文档</a>
       <a href="../getting-started.html">快速开始</a>
-      <a href="../reference/" aria-current="page">语言参考</a>
+      <a href="../reference/">语言参考</a>
+      <a href="../stdlib.html">标准库</a>
       <a href="../../os/">CN-OS</a>
       <a href="https://gitcode.com/ChenChao_GitCode/CN_Language" target="_blank" rel="noopener">源码 ↗</a>
       <button class="主题钮" data-主题钮 aria-label="切换主题">月</button>
@@ -36,117 +37,85 @@
 
 <main class="容器">
   <div class="文档骨架">
-    <aside class="侧栏" aria-label="文档导航">
-      <div class="侧栏-组">
-        <p class="侧栏-组题">入门</p>
-        <a href=".././">文档总览</a>
-        <a href="../getting-started.html">快速开始</a>
-      </div>
-      <div class="侧栏-组">
-        <p class="侧栏-组题">教程</p>
-        <a href="../tutorial-syntax.html">语法基础</a>
-        <a href="../tutorial-oop.html">类与泛型</a>
-        <a href="../tutorial-safety.html">安全与并发</a>
-      </div>
-      <div class="侧栏-组">
-        <p class="侧栏-组题">语言参考</p>
-        <a href="../reference/">参考总览</a>
-        <a href="../reference/lexical.html">词法结构</a>
-        <a href="../reference/types.html">类型系统</a>
-        <a href="../reference/control-flow.html" aria-current="page">控制流</a>
-        <a href="../reference/functions.html">函数</a>
-        <a href="../reference/oop.html">类与对象</a>
-        <a href="../reference/errors.html">错误处理</a>
-        <a href="../reference/concurrency.html">并发</a>
-        <a href="../reference/modules.html">模块系统</a>
-      </div>
-      <div class="侧栏-组">
-        <p class="侧栏-组题">资源</p>
-        <a href="../stdlib.html">标准库</a>
-        <a href="../cli.html">命令行参考</a>
-      </div>
-    </aside>
-    <article class="正文">
-      <nav class="面包屑" aria-label="面包屑"><a href="./">文档</a> / <a href="./">语言参考</a> / 控制流</nav>
-      
+    <aside class="侧栏" aria-label="文档导航"><div class="侧栏-组"><p class="侧栏-组题">入门</p><a href="../index.html">文档总览</a><a href="../getting-started.html">快速开始</a></div><div class="侧栏-组"><p class="侧栏-组题">教程</p><a href="../tutorial-syntax.html">语法基础</a><a href="../tutorial-oop.html">类与泛型</a><a href="../tutorial-safety.html">安全与并发</a><a href="../tutorial-advanced.html">进阶篇</a></div><div class="侧栏-组"><p class="侧栏-组题">语言参考</p><a href="../reference/index.html">参考总览</a><a href="../reference/lexical.html">词法结构</a><a href="../reference/types.html">类型系统</a><a href="../reference/control-flow.html" aria-current="page">控制流</a><a href="../reference/functions.html">函数</a><a href="../reference/oop.html">类与对象</a><a href="../reference/errors.html">错误处理</a><a href="../reference/concurrency.html">并发</a><a href="../reference/modules.html">模块系统</a></div><div class="侧栏-组"><p class="侧栏-组题">标准库</p><a href="../stdlib.html">标准库总览</a><a href="../stdlib/core.html">核心</a><a href="../stdlib/container.html">容器</a><a href="../stdlib/mapset.html">映射集合</a><a href="../stdlib/string.html">字符串扩展</a><a href="../stdlib/algorithm.html">算法</a><a href="../stdlib/regex.html">正则</a><a href="../stdlib/system.html">系统</a><a href="../stdlib/io.html">IO</a><a href="../stdlib/file.html">文件</a><a href="../stdlib/time.html">时间</a><a href="../stdlib/math.html">数学</a><a href="../stdlib/random.html">随机数</a><a href="../stdlib/thread.html">线程</a><a href="../stdlib/builtin.html">内置函数</a></div><div class="侧栏-组"><p class="侧栏-组题">资源</p><a href="../cli.html">命令行参考</a></div><div class="侧栏-组"><p class="侧栏-组题">资源</p><a href="https://gitcode.com/ChenChao_GitCode/CN_Language" target="_blank" rel="noopener">源码仓库 ↗</a></div></aside>
+    <article class="正文"><nav class="面包屑" aria-label="面包屑"><a href="./">文档</a> / <a href="index.html">语言参考</a> / 控制流</nav>
 <h1>控制流</h1>
-<p style="color: var(--color-fg-muted); font-size: var(--text-lg); line-height: 2;">
-如果、当、循环、选择、遍历——全部中文关键字，条件的括号可写可不写。</p>
-
-<h2 id="如果与否则">如果与否则</h2>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">如果.cn</span><span class="码窗-徽">CN</span></p>
-<pre><code class="language-cn">如果 x &gt; 0 {
-    打印行("正数");
-} 否则 如果 x &lt; 0 {
-    打印行("负数");
-} 否则 {
-    打印行("零");
-}</code></pre></div>
-<div class="批注"><span class="批注-题">裸条件消歧</span>
-条件的括号可选；但裸条件的表达式里写「结构体字面量 <code>类型{"..."}</code>」会被拒绝——
-须用括号包裹条件（<code>{</code> 在裸条件尾部会和语句块产生歧义）。带括号条件不受影响。</div>
-
-<h2 id="当与循环">当与循环</h2>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">循环.cn</span><span class="码窗-徽">CN</span></p>
-<pre><code class="language-cn">整数 i = 0;
-当 i &lt; 10 {          // while
-    打印行(i);
-    i++;
+<p style="color: var(--color-fg-muted); font-size: var(--text-lg); line-height: 2;">如果/当/循环/选择/遍历 的精确语义：括号可选、贯穿规则、中断绑定、确定初始化交互。</p>
+<h2 id="条件">如果 / 否则：括号可选</h2>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">双形态.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">函数 分级(整32 分) -&gt; 字符串 {
+    如果 分 &gt;= 90 { 返回 "优"; }          // 裸条件（括号可选）
+    如果 (分 &gt;= 60) { 返回 "及格"; }      // 带括号（同合法）
+    返回 "不及格";
 }
 
-循环 (整32 j = 0; j &lt; 10; j++) {   // for
-    打印行(j);
+函数 主() -&gt; 整32 {
+    打印(分级(95), " ", 分级(70), " ", 分级(30));
+    返回 0;
 }</code></pre></div>
-
-<h2 id="选择">选择</h2>
-<p><code>选择</code>（switch 风格）支持整数、枚举与字符串；多值分组用逗号；
-分支不写 <code>中断</code> 会贯穿到下一分支（与 C 一致）：</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">选择.cn</span><span class="码窗-徽">CN</span></p>
-<pre><code class="language-cn">字符串 命令 = "开始";
-选择 (命令) {
-    情况 "开始", "继续":    // 字符串 + 多值分组
-        打印行("执行");
-        中断
-    默认:
-        打印行("未知");
+<p class="输出行">输出：优 及格 不及格
+</p>
+<div class="批注 批注-赭"><span class="批注-题">裸条件消歧条文</span>裸条件（无括号）的条件表达式内，<code>类型名{...}</code> 裸结构体初始化字面量=编译期拒绝（<code>{</code> 归条件后的语句块）；带括号条件不在此限。Rust 同款。</div>
+<h2 id="循环">当 / 循环：两种循环</h2>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">循环.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">函数 主() -&gt; 整32 {
+    整32 i = 0;
+    当 i &lt; 3 {                   // 当：前测循环
+        打印行(i, " ");
+        i++;
+    }
+    打印("");
+    循环 (整32 j = 10; j &gt; 0; j -= 4) {   // 初始;条件;更新
+        打印行(j, " ");
+    }
+    打印("");
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：0 1 2 
+10 6 2 
+</p>
+<h2 id="选择">选择：贯穿语义与三种增强</h2>
+<p>分支体不写 <code>中断/返回</code> 自动<strong>贯穿</strong>下一分支（C 语义）；支持多值分组、字符串情况、裸枚举成员。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">贯穿与多值.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">函数 分类(整32 n) -&gt; 字符串 {
+    字符串 结果文 = "";
+    选择 (n) {
+        情况 0:
+            结果文 = "零";
+        情况 1, 2, 3:            // 多值分组
+            结果文 = "小";
+            中断;
+        默认:
+            结果文 = "大";
+    }
+    返回 结果文;
 }
 
-枚举 颜色 { 红, 绿, 蓝 }
-颜色 c = 颜色.蓝;
-选择 (c) {
-    情况 红: { 打印行("红色"); 中断 }
-    情况 蓝: { 打印行("蓝色"); 中断 }
-    默认:    { 打印行("其他"); }
+函数 主() -&gt; 整32 {
+    打印(分类(0), " ", 分类(2), " ", 分类(9));
+    返回 0;
 }</code></pre></div>
+<p class="输出行">输出：小 小 大
+</p>
+<ul><li>上例 <code>情况 0:</code> 无 中断 → 贯穿进 <code>情况 1,2,3</code> 体（n=0 时 结果文 被覆盖为「小」）——C 贯穿语义原样。</li><li><code>中断</code> 绑定最近进入的 选择 或 循环；选择体内的 <code>继续</code> 绑定最近循环。</li><li>字符串情况可多值分组 <code>情况 "开始", "继续":</code>；枚举条件可裸写成员名（按条件类型定向解析）。</li><li><code>枚举名::成员</code> 非法（<code>::</code> 保留给模块路径）。</li></ul>
+<h2 id="遍历">遍历…中每个：迭代协议</h2>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">遍历.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">导入 容器::向量;
 
-<h2 id="遍历">遍历……中每个</h2>
-<p>对数组与容器迭代（对标 range-for）。类容器通过 <code>大小()</code> + <code>元素()</code> 支撑：</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">遍历.cn</span><span class="码窗-徽">CN</span></p>
-<pre><code class="language-cn">整32[5] 数据 = { 10, 20, 30, 40, 50 };
-遍历 数据 中 每个 x {
-    打印行(x);           // 10 20 30 40 50
-}
-
-向量&lt;整32&gt; 数表 = 向量&lt;整32&gt;();
-遍历 数表 中 每个 v { 打印行(v); }</code></pre></div>
-
-<h2 id="中断与继续">中断与继续</h2>
-<ul>
-<li><code>中断</code> 跳出<strong>最近进入</strong>的一层 <code>选择</code> 或 <code>循环</code>（谁近绑谁，与 C 的 break 一致）。</li>
-<li><code>继续</code> 进入最近循环的下一轮（仅对循环有意义）。</li>
-</ul>
-
-      <nav class="页脚导航"><a href="types.html"><span class="向">← 上一页</span><span class="题">类型系统</span></a><a class="下一" href="functions.html"><span class="向">下一页 →</span><span class="题">函数</span></a></nav>
-    </article>
+函数 主() -&gt; 整32 {
+    整32[3] 数组 = {7, 8, 9};
+    遍历 数组 中 每个 x { 打印行(x, " "); }     // 数组：元素副本
+    打印("");
+    向量&lt;字符串&gt; 表 = 向量&lt;字符串&gt;();
+    结果&lt;空类型, 整32&gt; 加 = 表.追加("甲");
+    加 = 表.追加("乙");
+    遍历 表 中 每个 s { 打印行(s, " "); }        // 类容器：大小()+元素(i)
+    打印("");
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：7 8 9 
+甲 乙 
+</p>
+<ul><li>迭代变量=元素<strong>副本</strong>（快照语义）——要写穿用 <code>元素引用(i)</code>（不安全域）。</li><li>标准库全部容器（向量/链表/栈/队列）均支持遍历。</li></ul><nav class="页脚导航"><a class="" href="../reference/types.html"><span class="向">← 上一页</span><span class="题">类型系统</span></a><a class="下一" href="../reference/functions.html"><span class="向">下一页 →</span><span class="题">函数</span></a></nav></article>
     <aside class="目录" aria-label="本页目录">
       <p class="目录-题">本页目录</p>
-      
-<a href="#如果与否则">如果与否则</a>
-<a href="#当与循环">当与循环</a>
-<a href="#选择">选择</a>
-<a href="#遍历">遍历……中每个</a>
-<a href="#中断与继续">中断与继续</a>
-
+<a href="#条件">如果 / 否则：括号可选</a><a href="#循环">当 / 循环：两种循环</a><a href="#选择">选择：贯穿语义与三种增强</a><a href="#遍历">遍历…中每个：迭代协议</a>
     </aside>
   </div>
 </main>
@@ -161,7 +130,7 @@
       <div>
         <h4>语言</h4>
         <ul>
-          <li><a href=".././">官方文档</a></li>
+          <li><a href="../.././">官方文档</a></li>
           <li><a href="../getting-started.html">快速开始</a></li>
           <li><a href="../reference/">语言参考</a></li>
           <li><a href="../stdlib.html">标准库</a></li>
@@ -192,6 +161,6 @@
 </footer>
 
 <script src="../../assets/cn-highlight.js?v=1"></script>
-<script src="../../assets/site.js?v=2"></script>
+<script src="../site.js?v=2"></script>
 </body>
 </html>

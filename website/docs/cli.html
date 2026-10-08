@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>命令行参考 · CN 语言</title>
-<meta name="description" content="cn 编译器命令行参考：全部命令与选项。">
+<title>命令行参考 · CN 语言 · CN 语言</title>
+<meta name="description" content="cn 编译器的全部子命令、选项与调试手段——单命令工具链。">
 <script>
   (function () {
     try {
@@ -20,13 +20,14 @@
 
 <header class="顶栏">
   <div class="容器 顶栏-内">
-    <a class="标识" href="./">CN<span class="标识-点">·</span>语言</a>
+    <a class="标识" href="../">CN<span class="标识-点">·</span>语言</a>
     <button class="导航-开关" data-导航钮 aria-expanded="false">菜单</button>
     <nav class="导航" aria-label="站点导航">
-      <a href="./">首页</a>
-      <a href=".././" aria-current="page">文档</a>
+      <a href="../">首页</a>
+      <a href="" aria-current="page">文档</a>
       <a href="getting-started.html">快速开始</a>
       <a href="reference/">语言参考</a>
+      <a href="stdlib.html">标准库</a>
       <a href="../os/">CN-OS</a>
       <a href="https://gitcode.com/ChenChao_GitCode/CN_Language" target="_blank" rel="noopener">源码 ↗</a>
       <button class="主题钮" data-主题钮 aria-label="切换主题">月</button>
@@ -36,89 +37,23 @@
 
 <main class="容器">
   <div class="文档骨架">
-    <aside class="侧栏" aria-label="文档导航">
-      <div class="侧栏-组">
-        <p class="侧栏-组题">入门</p>
-        <a href=".././">文档总览</a>
-        <a href="getting-started.html">快速开始</a>
-      </div>
-      <div class="侧栏-组">
-        <p class="侧栏-组题">教程</p>
-        <a href="tutorial-syntax.html">语法基础</a>
-        <a href="tutorial-oop.html">类与泛型</a>
-        <a href="tutorial-safety.html">安全与并发</a>
-      </div>
-      <div class="侧栏-组">
-        <p class="侧栏-组题">语言参考</p>
-        <a href="reference/">参考总览</a>
-        <a href="reference/lexical.html">词法结构</a>
-        <a href="reference/types.html">类型系统</a>
-        <a href="reference/control-flow.html">控制流</a>
-        <a href="reference/functions.html">函数</a>
-        <a href="reference/oop.html">类与对象</a>
-        <a href="reference/errors.html">错误处理</a>
-        <a href="reference/concurrency.html">并发</a>
-        <a href="reference/modules.html">模块系统</a>
-      </div>
-      <div class="侧栏-组">
-        <p class="侧栏-组题">资源</p>
-        <a href="stdlib.html">标准库</a>
-        <a href="cli.html" aria-current="page">命令行参考</a>
-      </div>
-    </aside>
-    <article class="正文">
-      <nav class="面包屑" aria-label="面包屑"><a href="./">文档</a> / 命令行参考</nav>
-      
+    <aside class="侧栏" aria-label="文档导航"><div class="侧栏-组"><p class="侧栏-组题">入门</p><a href="index.html">文档总览</a><a href="getting-started.html">快速开始</a></div><div class="侧栏-组"><p class="侧栏-组题">教程</p><a href="tutorial-syntax.html">语法基础</a><a href="tutorial-oop.html">类与泛型</a><a href="tutorial-safety.html">安全与并发</a><a href="tutorial-advanced.html">进阶篇</a></div><div class="侧栏-组"><p class="侧栏-组题">语言参考</p><a href="reference/index.html">参考总览</a><a href="reference/lexical.html">词法结构</a><a href="reference/types.html">类型系统</a><a href="reference/control-flow.html">控制流</a><a href="reference/functions.html">函数</a><a href="reference/oop.html">类与对象</a><a href="reference/errors.html">错误处理</a><a href="reference/concurrency.html">并发</a><a href="reference/modules.html">模块系统</a></div><div class="侧栏-组"><p class="侧栏-组题">标准库</p><a href="stdlib.html">标准库总览</a><a href="stdlib/core.html">核心</a><a href="stdlib/container.html">容器</a><a href="stdlib/mapset.html">映射集合</a><a href="stdlib/string.html">字符串扩展</a><a href="stdlib/algorithm.html">算法</a><a href="stdlib/regex.html">正则</a><a href="stdlib/system.html">系统</a><a href="stdlib/io.html">IO</a><a href="stdlib/file.html">文件</a><a href="stdlib/time.html">时间</a><a href="stdlib/math.html">数学</a><a href="stdlib/random.html">随机数</a><a href="stdlib/thread.html">线程</a><a href="stdlib/builtin.html">内置函数</a></div><div class="侧栏-组"><p class="侧栏-组题">资源</p><a href="cli.html" aria-current="page">命令行参考</a></div><div class="侧栏-组"><p class="侧栏-组题">资源</p><a href="https://gitcode.com/ChenChao_GitCode/CN_Language" target="_blank" rel="noopener">源码仓库 ↗</a></div></aside>
+    <article class="正文"><nav class="面包屑" aria-label="面包屑"><a href="./">文档</a> / 命令行参考</nav>
 <h1>命令行参考</h1>
-<p style="color: var(--color-fg-muted); font-size: var(--text-lg); line-height: 2;">
-<code>cn</code> 编译器全量命令与选项。</p>
-
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">用法</span><span class="码窗-徽">CLI</span></p>
-<pre><code class="language-sh">cn &lt;命令&gt; [选项] &lt;文件&gt;</code></pre></div>
-
-<h2 id="命令">命令</h2>
-<table class="表">
-<thead><tr><th>命令</th><th>作用</th></tr></thead>
-<tbody>
-<tr><td><code>build</code></td><td>编译 + 链接，产出可执行文件</td></tr>
-<tr><td><code>compile</code></td><td>仅编译（汇编产物）</td></tr>
-<tr><td><code>run</code></td><td>编译后直接运行</td></tr>
-<tr><td><code>check</code></td><td>只做语法/语义检查，不生成代码</td></tr>
-<tr><td><code>ir</code></td><td>输出中间表示（IR）</td></tr>
-<tr><td><code>ast</code></td><td>输出语法树</td></tr>
-<tr><td><code>token</code></td><td>输出词元流</td></tr>
-</tbody>
-</table>
-
-<h2 id="选项">选项</h2>
-<table class="表">
-<thead><tr><th>选项</th><th>作用</th></tr></thead>
-<tbody>
-<tr><td><code>--target win-x64|linux-x86_64|linux-arm64</code></td><td>目标平台（Linux 上 build 必须显式指定）</td></tr>
-<tr><td><code>-O0</code> ~ <code>-O3</code>（<code>--opt &lt;N&gt;</code> 等价）</td><td>优化级别（SSA/内联/DCE/CSE/LICM/强度削减/尾调用/寄存器分配）</td></tr>
-<tr><td><code>--debug</code> / <code>--发布</code>（<code>--release</code>）</td><td>构建模式</td></tr>
-<tr><td><code>--验证-ir</code></td><td>IR 结构不变量校验（SSA/CFG/def-use）</td></tr>
-<tr><td><code>--cfi</code></td><td>控制流完整性：接口间接调用校验（默认关）</td></tr>
-<tr><td><code>--output &lt;路径&gt;</code></td><td>产物路径（深层目录自动创建）</td></tr>
-<tr><td><code>--货舱</code> / <code>--stdlib</code></td><td>包清单与标准库路径</td></tr>
-<tr><td><code>--verbose</code> / <code>--version</code> / <code>--help</code></td><td>常规</td></tr>
-</tbody>
-</table>
-
-<h2 id="优化级别">优化级别说明</h2>
-<p>优化器为全链路 SSA 形式：常量折叠、死代码消除（DCE）、公共子表达式消除（CSE）、
-循环不变量外提（LICM）、强度削减、内联、尾调用、线性扫描寄存器分配。
-运行时安全检查（越界/空指针）在 <code>-O2</code> 亦默认生效——优化不牺牲安全防线。</p>
-
-      <nav class="页脚导航"><a href="stdlib.html"><span class="向">← 上一页</span><span class="题">标准库</span></a><span></span></nav>
-    </article>
+<p style="color: var(--color-fg-muted); font-size: var(--text-lg); line-height: 2;">cn 编译器的全部子命令、选项与调试手段——单命令工具链。</p>
+<h2 id="子命令">七个子命令</h2>
+<table class="表"><thead><tr><th>命令</th><th>作用</th><th>产物</th></tr></thead><tbody><tr><td><code>cn build 文.cn</code></td><td>编译并链接</td><td>可执行文件（<code>--output</code> 可改名）</td></tr><tr><td><code>cn run 文.cn</code></td><td>编译+运行一步到位</td><td>（临时产物）</td></tr><tr><td><code>cn compile 文.cn</code></td><td>仅编译到汇编</td><td><code>.asm</code>（win）/ <code>.s</code>（linux）</td></tr><tr><td><code>cn check 文.cn</code></td><td>仅语法+类型检查</td><td>无（秒级反馈）</td></tr><tr><td><code>cn ir 文.cn</code></td><td>输出中间表示</td><td>IR 文本（调试用）</td></tr><tr><td><code>cn ast 文.cn</code></td><td>输出语法树</td><td>AST 文本（调试用）</td></tr><tr><td><code>cn token 文.cn</code></td><td>输出词元流</td><td>Token 列表（调试用）</td></tr></tbody></table>
+<h2 id="选项">全部选项</h2>
+<table class="表"><thead><tr><th>选项</th><th>作用</th></tr></thead><tbody><tr><td><code>--target &lt;平台&gt;</code></td><td>目标平台：<code>win-x64</code> | <code>linux-x86_64</code> | <code>linux-arm64</code></td></tr><tr><td><code>-O0 ~ -O3</code> / <code>--opt &lt;级&gt;</code></td><td>优化级别（见下表）</td></tr><tr><td><code>--output &lt;路径&gt;</code></td><td>输出文件路径</td></tr><tr><td><code>--发布</code> / <code>--release</code></td><td>发布构建：内建常量 <code>调试模式=假</code></td></tr><tr><td><code>--debug</code></td><td>汇编中嵌入源码位置注释</td></tr><tr><td><code>--no-regalloc</code></td><td>关闭寄存器分配（保持全栈帧·阶段C 调试用）</td></tr><tr><td><code>--verbose</code></td><td>详细输出</td></tr><tr><td><code>--stdlib &lt;路径&gt;</code></td><td>指定内置 stdlib 目录（默认相对可执行文件探测）</td></tr><tr><td><code>--货舱 &lt;路径&gt;</code></td><td>指定 货舱.toml（默认入口同目录自动发现）</td></tr><tr><td><code>--链接 &lt;库&gt;</code></td><td>附加链接库（FFI；可多次；别名 <code>--link-lib</code>）</td></tr><tr><td><code>--version</code> / <code>-v</code> · <code>--help</code> / <code>-h</code></td><td>版本与帮助</td></tr></tbody></table>
+<h3 id="优化级别">优化级别</h3>
+<table class="表"><thead><tr><th>级别</th><th>内容</th></tr></thead><tbody><tr><td><code>-O0</code></td><td>无优化（默认）</td></tr><tr><td><code>-O1</code></td><td>常量折叠+死代码消除+代数简化+复写传播</td></tr><tr><td><code>-O2</code></td><td>+ 公共子表达式消除+跨块死代码消除+寄存器分配</td></tr><tr><td><code>-O3</code></td><td>+ 全局值传播</td></tr></tbody></table>
+<h2 id="环境">运行时环境变量与诊断通道</h2>
+<table class="表"><thead><tr><th>变量/通道</th><th>作用</th></tr></thead><tbody><tr><td><code>CN_RT_MEM_STATS=1</code></td><td>进程退出时 stderr 打印 8 档分配直方图（内存观测·默认关闭）</td></tr><tr><td><code>运行时错误(错误码N): 消息</code></td><td>stdout·运行时错误诊断行，打印后终止（退出码 1）</td></tr><tr><td><code>[cnrt] cn_realloc 拒绝异常尺寸 N</code></td><td>stderr·重新分配 &gt;2GiB 拒绝（返回 无 不终止）</td></tr><tr><td><code>[crash]/[veh]</code> 系列</td><td>stderr·仅未处理异常时输出（寄存器+回溯 RVA）；正常启动零输出</td></tr></tbody></table>
+<ul><li>E2E 只比对 stdout——诊断走 stderr 不进比对面，但都是用户可观察行为契约。</li><li>交叉编译示例：<code>cn build 主.cn --target linux-arm64 -O2</code>（在本机产出 ARM64 汇编，链接与运行在对应目标机）。</li></ul>
+<p>语言本身的问题去 <a href="reference/index.html">语言参考</a>；标准库 API 去 <a href="stdlib.html">标准库</a>。</p><nav class="页脚导航"><a class="" href="reference/modules.html"><span class="向">← 上一页</span><span class="题">模块系统</span></a><a href="stdlib.html"><span class="向">← 上一页</span><span class="题">标准库总览</span></a></nav></article>
     <aside class="目录" aria-label="本页目录">
       <p class="目录-题">本页目录</p>
-      
-<a href="#命令">命令</a>
-<a href="#选项">选项</a>
-<a href="#优化级别">优化级别说明</a>
-
+<a href="#子命令">七个子命令</a><a href="#选项">全部选项</a><a href="#环境">运行时环境变量与诊断通道</a>
     </aside>
   </div>
 </main>
@@ -133,7 +68,7 @@
       <div>
         <h4>语言</h4>
         <ul>
-          <li><a href=".././">官方文档</a></li>
+          <li><a href="./">官方文档</a></li>
           <li><a href="getting-started.html">快速开始</a></li>
           <li><a href="reference/">语言参考</a></li>
           <li><a href="stdlib.html">标准库</a></li>
@@ -164,6 +99,6 @@
 </footer>
 
 <script src="../assets/cn-highlight.js?v=1"></script>
-<script src="../assets/site.js?v=2"></script>
+<script src="site.js?v=2"></script>
 </body>
 </html>

@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>教程·进阶篇 · CN 语言 · CN 语言</title>
+<meta name="description" content="内存模型、指针与不安全域、手动内存、FFI、优化与调试——写给要压榨机器的开发者。">
+<script>
+  (function () {
+    try {
+      var t = localStorage.getItem("cn-theme");
+      if (t === "dark" || t === "light") document.documentElement.setAttribute("data-theme", t);
+    } catch (e) {}
+  })()
+</script>
+<link rel="stylesheet" href="../assets/tokens.css?v=2">
+<link rel="stylesheet" href="../assets/site.css?v=4">
+</head>
+<body>
+
+<header class="顶栏">
+  <div class="容器 顶栏-内">
+    <a class="标识" href="../">CN<span class="标识-点">·</span>语言</a>
+    <button class="导航-开关" data-导航钮 aria-expanded="false">菜单</button>
+    <nav class="导航" aria-label="站点导航">
+      <a href="../">首页</a>
+      <a href="" aria-current="page">文档</a>
+      <a href="getting-started.html">快速开始</a>
+      <a href="reference/">语言参考</a>
+      <a href="stdlib.html">标准库</a>
+      <a href="../os/">CN-OS</a>
+      <a href="https://gitcode.com/ChenChao_GitCode/CN_Language" target="_blank" rel="noopener">源码 ↗</a>
+      <button class="主题钮" data-主题钮 aria-label="切换主题">月</button>
+    </nav>
+  </div>
+</header>
+
+<main class="容器">
+  <div class="文档骨架">
+    <aside class="侧栏" aria-label="文档导航"><div class="侧栏-组"><p class="侧栏-组题">入门</p><a href="index.html">文档总览</a><a href="getting-started.html">快速开始</a></div><div class="侧栏-组"><p class="侧栏-组题">教程</p><a href="tutorial-syntax.html">语法基础</a><a href="tutorial-oop.html">类与泛型</a><a href="tutorial-safety.html">安全与并发</a><a href="tutorial-advanced.html" aria-current="page">进阶篇</a></div><div class="侧栏-组"><p class="侧栏-组题">语言参考</p><a href="reference/index.html">参考总览</a><a href="reference/lexical.html">词法结构</a><a href="reference/types.html">类型系统</a><a href="reference/control-flow.html">控制流</a><a href="reference/functions.html">函数</a><a href="reference/oop.html">类与对象</a><a href="reference/errors.html">错误处理</a><a href="reference/concurrency.html">并发</a><a href="reference/modules.html">模块系统</a></div><div class="侧栏-组"><p class="侧栏-组题">标准库</p><a href="stdlib.html">标准库总览</a><a href="stdlib/core.html">核心</a><a href="stdlib/container.html">容器</a><a href="stdlib/mapset.html">映射集合</a><a href="stdlib/string.html">字符串扩展</a><a href="stdlib/algorithm.html">算法</a><a href="stdlib/regex.html">正则</a><a href="stdlib/system.html">系统</a><a href="stdlib/io.html">IO</a><a href="stdlib/file.html">文件</a><a href="stdlib/time.html">时间</a><a href="stdlib/math.html">数学</a><a href="stdlib/random.html">随机数</a><a href="stdlib/thread.html">线程</a><a href="stdlib/builtin.html">内置函数</a></div><div class="侧栏-组"><p class="侧栏-组题">资源</p><a href="cli.html">命令行参考</a></div><div class="侧栏-组"><p class="侧栏-组题">资源</p><a href="https://gitcode.com/ChenChao_GitCode/CN_Language" target="_blank" rel="noopener">源码仓库 ↗</a></div></aside>
+    <article class="正文"><nav class="面包屑" aria-label="面包屑"><a href="./">文档</a> / 教程·进阶篇</nav>
+<h1>教程·进阶篇</h1>
+<p style="color: var(--color-fg-muted); font-size: var(--text-lg); line-height: 2;">内存模型、指针与不安全域、手动内存、FFI、优化与调试——写给要压榨机器的开发者。</p>
+<h2 id="内存模型">内存模型：三种生存期</h2>
+<p>CN 只有三种内存生存期，每种都有明确的所有者——理解了这张表，内存安全就不用背规则。</p>
+<table class="表"><thead><tr><th>生存期</th><th>谁分配/谁释放</th><th>例子</th></tr></thead><tbody><tr><td>栈（自动）</td><td>编译器：进入作用域分配、退出释放（含类字段/容器元素级联）</td><td>局部标量/结构体/类实例/容器</td></tr><tr><td>堆（拥有）</td><td>拥有者变量：字符串/容器在声明处分配、<strong>作用域结束自动释放</strong>（RAII）</td><td><code>字符串</code> 变量、<code>向量&lt;T&gt;</code> 底层数组</td></tr><tr><td>堆（手动）</td><td><strong>你</strong>：<code>分配</code> 拿、<code>释放</code> 还——须在 <code>不安全</code> 域内</td><td><code>分配(n)</code> 返回的 <code>空类型*</code></td></tr></tbody></table>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">RAII 展示.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">导入 容器::向量;
+
+函数 主() -&gt; 整32 {
+    字符串 s = "堆上";            // 拥有型：分配落堆
+    向量&lt;字符串&gt; 表 = 向量&lt;字符串&gt;();
+    结果&lt;空类型, 整32&gt; 加 = 表.追加("元素一");
+    加 = 表.追加("元素二");
+    返回 0;                        // s、表、表内元素全部自动释放
+}</code></pre></div>
+<div class="批注 批注-绿"><span class="批注-题">泄漏统计随手可查</span><code>内存::活动分配数()</code> 返回当前未释放块数——程序收尾处断言它为 0，泄漏当场现形（见 <a href="stdlib/builtin.html#内存">内置函数·内存</a>）。</div>
+<h2 id="不安全">安全区边界：不安全 域</h2>
+<p>CN 的安全默认不靠运行时罚站——危险操作（裸指针解引用/下标、手动分配释放、联合体字段访问）在<strong>编译期就要求位于 <code>不安全 函数</code> 内</strong>，把审计责任显式化。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">边界外.cn（负例·编译拒绝）</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">函数 主() -&gt; 整32 {
+    整32 值 = 41;
+    整32* p = &amp;值;        // 取地址：安全（出参惯用法通道）
+    打印(p[0]);           // ✗ 编译错误：[安全区边界] 指针下标读应在 不安全 函数 内
+    返回 0;
+}</code></pre></div>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">正确形态.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">不安全 函数 经指针改(整32* p, 整32 新值) -&gt; 空类型 {
+    p[0] = 新值;          // 下标写=解引用（p[0] 等价 *p，规避行首歧义）
+}
+
+函数 主() -&gt; 整32 {
+    整32 值 = 41;
+    经指针改(&amp;值, 42);
+    打印(值);
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：42
+</p>
+<ul><li><code>不安全 函数</code> 整体放行危险面；<code>不安全</code> 块/表达式形态随语言演进以源码实测为准。</li><li>标准库容器内部全是不安全域，但<strong>使用容器不需要不安全</strong>——危险面被库收口，这正是安全区的意义。</li><li><code>不安全</code> 是保留字（46 个保留字之一）。</li></ul>
+<h2 id="手动内存">手动内存：分配/释放/重新分配</h2>
+<p>逃生舱四件套对标 C（malloc/free/realloc/memcpy）；另有统计族（泄漏检测）与竞技场族（进程级一次性分配）。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">动态数组.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">不安全 函数 主() -&gt; 整32 {   // 手动内存=不安全域
+    整64* 表 = 分配(4 * 类型大小(整64));   // 4 个整64 槽
+    循环 (整64 i = 0; i &lt; 4; i++) { 表[i] = (i + 1) * 100; }
+    空类型* 更大块 = 重新分配(表, 8 * 类型大小(整64));
+    整64* 大表 = 更大块;                     // 旧值保留
+    打印(大表[0], " ", 大表[3]);
+    释放(大表);
+    返回 0;
+}</code></pre></div>
+<ul><li>企业级建议：动态容器直接用标准库 <a href="stdlib/container.html">向量</a>——扩容翻倍+RAII+元素析构全替你管好；手动内存留给 FFI 边界与极致优化点。</li><li><code>重新分配</code> 对 &gt;2GiB 请求拒绝（stderr 诊断+返回 无）——垃圾尺寸静默失败会在解引用时崩，可观测拒绝前置。</li><li>竞技场族（<code>内存::竞技场分配</code>）适合编译器式「长生命周期+一次分配」负载：只进不出，<code>内存::竞技场重置</code> 一次全清。</li></ul>
+<h2 id="FFI">FFI：与 C 互操作</h2>
+<p>CN 与 C 的 ABI 天然互通：外部函数声明+<code>--链接 库名</code>；字符串边界遵守「借用/拥有」契约（<code>字符*</code> 借用视图 vs <code>字符串</code> 拥有串）。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">FFI.cn（C 运行时函数直调·三平台默认链接 libc/ucrt）</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">外部 函数 strlen(字符串 s) -&gt; 整64
+
+不安全 函数 主() -&gt; 整32 {
+    打印(strlen("中文"));     // 6（UTF-8 两汉字 3+3 字节）
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：6
+</p>
+<ul><li>链接：<code>cn build 程序.cn --链接 库名</code>（可多次）；库搜索遵循平台惯例。</li><li>字符串契约：<code>字符*</code>=借用（C 层持有的视图，不释放）；<code>字符串</code>=拥有（RAII）。借用转拥有用 <code>字符串复制</code>，反之直接传。</li><li>整64 标量 FFI 形参的 arm64 传参 ABI 有在案限制（大值塌缩），跨平台 FFI 密集场景关注 <a href="https://gitcode.com/ChenChao_GitCode/CN_Language" target="_blank" rel="noopener">仓库</a> 021 总账 #110。</li></ul>
+<h2 id="字符串性能">字符串与容器的性能面</h2>
+<p>拥有型字符串的每一次 <code>+</code> 都是分配+拷贝。高频拼接用<strong>字符串构建器</strong>（摊销 O(n)），高频读取用引用访问。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">构建器.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">函数 主() -&gt; 整32 {
+    整64 建 = 字符串构建器::新建();
+    循环 (整32 i = 0; i &lt; 1000; i++) {
+        字符串构建器::追加(建, "行" + 整数转字符串(i) + "\n");
+    }
+    字符串 全文 = 字符串构建器::完成(建);
+    打印(字符串长度(全文));
+    返回 0;
+}</code></pre></div>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">引用读取避深拷.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">导入 容器::向量;
+
+函数 主() -&gt; 整32 {
+    向量&lt;整64&gt; 表 = 向量&lt;整64&gt;();
+    循环 (整64 i = 0; i &lt; 100; i++) { 结果&lt;空类型, 整32&gt; 加 = 表.追加(i); }
+    整64 和 = 0;
+    循环 (整64 i = 0; i &lt; 100; i++) {
+        和 = 和 + 表.元素(i);          // 副本读取（标量无拷贝负担）
+    }
+    表.元素引用(0) = 999;              // 引用写穿（不安全域·零拷贝）
+    打印(和, " ", 表.元素(0));
+    返回 0;
+}</code></pre></div>
+<h2 id="优化调试">优化级别与调试</h2>
+<p>四级优化 <code>-O0 ~ -O3</code>；<code>--debug</code> 在汇编中嵌入源码位置注释；<code>调试模式</code> 编译期常量做发布/调试分支（死分支零开销消除）。</p>
+<table class="表"><thead><tr><th>级别</th><th>内容</th></tr></thead><tbody><tr><td><code>-O0</code></td><td>不做优化（默认）——编译最快，逐语句直译</td></tr><tr><td><code>-O1</code></td><td>常量折叠+死代码消除+代数简化+复写传播</td></tr><tr><td><code>-O2</code></td><td>增加 公共子表达式消除（CSE）+跨块死代码消除+寄存器分配启用</td></tr><tr><td><code>-O3</code></td><td>增加 全局值传播</td></tr></tbody></table>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">调试模式.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">函数 主() -&gt; 整32 {
+    如果 (调试模式) {
+        打印("[调试构建]");      // --发布 构建时整支直取消除
+    }
+    打印("核心逻辑");
+    返回 0;
+}</code></pre></div>
+<ul><li><code>调试模式</code> 两个分支<strong>都做完整语义检查</strong>（区别于条件编译——不存在裁剪盲区）；未选中分支零运行时开销。</li><li>调试实战：<code>cn build 程序.cn --debug -O0</code> 产出的汇编带源码行注记，配合 <code>cn ir 程序.cn</code> / <code>cn ast 程序.cn</code> 可逐层下探（详见 <a href="cli.html">命令行参考</a>）。</li></ul>
+<h2 id="自举">自举与双编译对照（项目故事）</h2>
+<p>CN 的终极目标是<strong>用 CN 编译器自己编译 CN 编译器</strong>。项目保持「宿主 C++ 实现」与「v2 CN 自举实现」两套功能完全一致的编译器，全部测试双跑对照（dual）——这也是文档示例可信的根基。</p>
+<ul><li><strong>自举固定点</strong>：v2 编译出的编译器再编译自己，产物逐字节一致（fix_p ≡ fix_s）——语言已完备到能承载自身工具链。</li><li><strong>双编译对照</strong>：每个用例同时跑宿主与 v2 两侧，任何行为分叉=缺陷（零分叉红线）。你看到的文档输出都经此流程。</li><li>性能双目标：①编译速度对标 C++ 编译器；②内存安全对标 Rust（悬垂/越界/泄漏零容忍）——冲突时提交用户裁决。</li><li>想参与？<a href="https://gitcode.com/ChenChao_GitCode/CN_Language" target="_blank" rel="noopener">源码仓库</a> 的 021 总账列着全部在办任务。</li></ul>
+<p>文档全景回到 <a href="./">文档总览</a>；语法细节进 <a href="reference/index.html">语言参考</a>。</p><nav class="页脚导航"><a class="" href="tutorial-safety.html"><span class="向">← 上一页</span><span class="题">教程·安全与并发</span></a><a class="下一" href="reference/lexical.html"><span class="向">下一页 →</span><span class="题">词法结构</span></a></nav></article>
+    <aside class="目录" aria-label="本页目录">
+      <p class="目录-题">本页目录</p>
+<a href="#内存模型">内存模型：三种生存期</a><a href="#不安全">安全区边界：不安全 域</a><a href="#手动内存">手动内存：分配/释放/重新分配</a><a href="#FFI">FFI：与 C 互操作</a><a href="#字符串性能">字符串与容器的性能面</a><a href="#优化调试">优化级别与调试</a><a href="#自举">自举与双编译对照（项目故事）</a>
+    </aside>
+  </div>
+</main>
+
+<footer class="页脚">
+  <div class="容器">
+    <div class="页脚-排">
+      <div>
+        <p class="页脚-标语">CN<span style="color: var(--color-accent);">·</span>语言</p>
+        <p class="页脚-述">全中文语法的系统级编程语言。以母语的直觉，驾驭机器的全部性能。</p>
+      </div>
+      <div>
+        <h4>语言</h4>
+        <ul>
+          <li><a href="./">官方文档</a></li>
+          <li><a href="getting-started.html">快速开始</a></li>
+          <li><a href="reference/">语言参考</a></li>
+          <li><a href="stdlib.html">标准库</a></li>
+        </ul>
+      </div>
+      <div>
+        <h4>项目</h4>
+        <ul>
+          <li><a href="https://gitcode.com/ChenChao_GitCode/CN_Language" target="_blank" rel="noopener">源码仓库 ↗</a></li>
+          <li><a href="../os/">CN-OS 蓝图</a></li>
+          <li><a href="cli.html">命令行参考</a></li>
+        </ul>
+      </div>
+      <div>
+        <h4>状态</h4>
+        <ul>
+          <li>自举固定点已达成</li>
+          <li>v2 自举重建进行中</li>
+          <li>license：见仓库</li>
+        </ul>
+      </div>
+    </div>
+    <div class="页脚-底">
+      <span>© 2026 CN 语言项目</span>
+      <span>京ICP备00000000号（备案办理中·占位）</span>
+    </div>
+  </div>
+</footer>
+
+<script src="../assets/cn-highlight.js?v=1"></script>
+<script src="site.js?v=2"></script>
+</body>
+</html>

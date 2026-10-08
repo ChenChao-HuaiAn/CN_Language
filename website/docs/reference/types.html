@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>类型系统 · CN 语言</title>
-<meta name="description" content="CN 语言类型系统：位宽整数、浮点、字符字符串、复合类型、确定初始化、类型转换。">
+<title>类型系统 · CN 语言 · CN 语言</title>
+<meta name="description" content="全部类型、宽度与值域、类型转换的位模式语义、确定初始化、复合类型细则。">
 <script>
   (function () {
     try {
@@ -24,9 +24,10 @@
     <button class="导航-开关" data-导航钮 aria-expanded="false">菜单</button>
     <nav class="导航" aria-label="站点导航">
       <a href="../../">首页</a>
-      <a href=".././">文档</a>
+      <a href="../" aria-current="page">文档</a>
       <a href="../getting-started.html">快速开始</a>
-      <a href="../reference/" aria-current="page">语言参考</a>
+      <a href="../reference/">语言参考</a>
+      <a href="../stdlib.html">标准库</a>
       <a href="../../os/">CN-OS</a>
       <a href="https://gitcode.com/ChenChao_GitCode/CN_Language" target="_blank" rel="noopener">源码 ↗</a>
       <button class="主题钮" data-主题钮 aria-label="切换主题">月</button>
@@ -36,103 +37,66 @@
 
 <main class="容器">
   <div class="文档骨架">
-    <aside class="侧栏" aria-label="文档导航">
-      <div class="侧栏-组">
-        <p class="侧栏-组题">入门</p>
-        <a href=".././">文档总览</a>
-        <a href="../getting-started.html">快速开始</a>
-      </div>
-      <div class="侧栏-组">
-        <p class="侧栏-组题">教程</p>
-        <a href="../tutorial-syntax.html">语法基础</a>
-        <a href="../tutorial-oop.html">类与泛型</a>
-        <a href="../tutorial-safety.html">安全与并发</a>
-      </div>
-      <div class="侧栏-组">
-        <p class="侧栏-组题">语言参考</p>
-        <a href="../reference/">参考总览</a>
-        <a href="../reference/lexical.html">词法结构</a>
-        <a href="../reference/types.html" aria-current="page">类型系统</a>
-        <a href="../reference/control-flow.html">控制流</a>
-        <a href="../reference/functions.html">函数</a>
-        <a href="../reference/oop.html">类与对象</a>
-        <a href="../reference/errors.html">错误处理</a>
-        <a href="../reference/concurrency.html">并发</a>
-        <a href="../reference/modules.html">模块系统</a>
-      </div>
-      <div class="侧栏-组">
-        <p class="侧栏-组题">资源</p>
-        <a href="../stdlib.html">标准库</a>
-        <a href="../cli.html">命令行参考</a>
-      </div>
-    </aside>
-    <article class="正文">
-      <nav class="面包屑" aria-label="面包屑"><a href="./">文档</a> / <a href="./">语言参考</a> / 类型系统</nav>
-      
+    <aside class="侧栏" aria-label="文档导航"><div class="侧栏-组"><p class="侧栏-组题">入门</p><a href="../index.html">文档总览</a><a href="../getting-started.html">快速开始</a></div><div class="侧栏-组"><p class="侧栏-组题">教程</p><a href="../tutorial-syntax.html">语法基础</a><a href="../tutorial-oop.html">类与泛型</a><a href="../tutorial-safety.html">安全与并发</a><a href="../tutorial-advanced.html">进阶篇</a></div><div class="侧栏-组"><p class="侧栏-组题">语言参考</p><a href="../reference/index.html">参考总览</a><a href="../reference/lexical.html">词法结构</a><a href="../reference/types.html" aria-current="page">类型系统</a><a href="../reference/control-flow.html">控制流</a><a href="../reference/functions.html">函数</a><a href="../reference/oop.html">类与对象</a><a href="../reference/errors.html">错误处理</a><a href="../reference/concurrency.html">并发</a><a href="../reference/modules.html">模块系统</a></div><div class="侧栏-组"><p class="侧栏-组题">标准库</p><a href="../stdlib.html">标准库总览</a><a href="../stdlib/core.html">核心</a><a href="../stdlib/container.html">容器</a><a href="../stdlib/mapset.html">映射集合</a><a href="../stdlib/string.html">字符串扩展</a><a href="../stdlib/algorithm.html">算法</a><a href="../stdlib/regex.html">正则</a><a href="../stdlib/system.html">系统</a><a href="../stdlib/io.html">IO</a><a href="../stdlib/file.html">文件</a><a href="../stdlib/time.html">时间</a><a href="../stdlib/math.html">数学</a><a href="../stdlib/random.html">随机数</a><a href="../stdlib/thread.html">线程</a><a href="../stdlib/builtin.html">内置函数</a></div><div class="侧栏-组"><p class="侧栏-组题">资源</p><a href="../cli.html">命令行参考</a></div><div class="侧栏-组"><p class="侧栏-组题">资源</p><a href="https://gitcode.com/ChenChao_GitCode/CN_Language" target="_blank" rel="noopener">源码仓库 ↗</a></div></aside>
+    <article class="正文"><nav class="面包屑" aria-label="面包屑"><a href="./">文档</a> / <a href="index.html">语言参考</a> / 类型系统</nav>
 <h1>类型系统</h1>
-<p style="color: var(--color-fg-muted); font-size: var(--text-lg); line-height: 2;">
-精确到位宽的整数、Unicode 字符、结构化复合类型——类型即文档。</p>
+<p style="color: var(--color-fg-muted); font-size: var(--text-lg); line-height: 2;">全部类型、宽度与值域、类型转换的位模式语义、确定初始化、复合类型细则。</p>
+<h2 id="整数">整数类型（10 种 + 2 别名）</h2>
+<table class="表"><thead><tr><th>类型</th><th>大小</th><th>范围</th></tr></thead><tbody><tr><td><code>整8</code></td><td>1B</td><td>-128 ~ 127</td></tr><tr><td><code>整16</code></td><td>2B</td><td>-32768 ~ 32767</td></tr><tr><td><code>整32</code>（别名 <code>整数</code>）</td><td>4B</td><td>-2^31 ~ 2^31-1</td></tr><tr><td><code>整64</code></td><td>8B</td><td>-2^63 ~ 2^63-1</td></tr><tr><td><code>整128</code></td><td>16B</td><td>-2^127 ~ 2^127-1</td></tr><tr><td><code>正8</code></td><td>1B</td><td>0 ~ 255</td></tr><tr><td><code>正16</code></td><td>2B</td><td>0 ~ 65535</td></tr><tr><td><code>正32</code></td><td>4B</td><td>0 ~ 2^32-1</td></tr><tr><td><code>正64</code></td><td>8B</td><td>0 ~ 2^64-1</td></tr><tr><td><code>正128</code></td><td>16B</td><td>0 ~ 2^128-1</td></tr></tbody></table>
+<h3 id="整数运算语义（四条法规）">整数运算语义（四条法规）</h3>
+<ul><li><strong>常量溢出/除零=编译错误</strong>：两侧均为字面量的常量表达式编译期预演（<code>2147483647 + 1</code>、<code>10 / 0</code> 直接拒绝）。</li><li><strong>变量面两补码回绕</strong>：<code>INT_MIN / -1 ≡ INT_MIN</code>、<code>INT_MIN % -1 ≡ 0</code>——全位宽一致，优化级别间行为一致（O0=O3）。</li><li><strong>窄类型保持窄域</strong>：整8/整16/正8/正16 的二元算术结果保持操作数宽度（<code>整8 + 整8 = 整8</code>），溢出回绕（127+1≡-128）；与更宽操作数混算按宽化规则提升。</li><li><strong>字面量窄化值域检查</strong>：<code>整16 甲 = 40000;</code> 编译拒绝（域内字面量豁免：<code>整8 a = 10</code> 合法）。</li></ul>
+<h2 id="浮点其他">浮点、布尔、字符、字符串、空类型</h2>
+<table class="表"><thead><tr><th>类型</th><th>大小</th><th>说明</th></tr></thead><tbody><tr><td><code>浮32</code></td><td>4B</td><td>IEEE 754 单精度；字面量后缀 <code>f</code></td></tr><tr><td><code>浮64</code>（别名 <code>小数</code>）</td><td>8B</td><td>IEEE 754 双精度；<code>整数</code> 别名=整32</td></tr><tr><td><code>布尔</code></td><td>1B</td><td><code>真</code> / <code>假</code></td></tr><tr><td><code>字符</code></td><td>4B</td><td>Unicode 标量值（一个中文字=一个字符）</td></tr><tr><td><code>字符串</code></td><td>-</td><td>UTF-8 拥有型（\0 结尾·堆上·RAII）；<code>字符*</code> 为借用视图</td></tr><tr><td><code>空类型</code></td><td>-</td><td>void：函数无返回值/空指针基类型</td></tr></tbody></table>
+<h2 id="转换">类型转换：显式位模式语义</h2>
+<p><code>类型名(表达式)</code> 构造转换覆盖宽化/窄化/浮整/指针↔整数；规则与 Rust <code>as</code> 逐条同款。</p>
+<table class="表"><thead><tr><th>方向</th><th>语义</th><th>例</th></tr></thead><tbody><tr><td>宽化（隐式放行）</td><td>有符号源=符号扩展；无符号源=零扩展</td><td><code>整64 大 = 整32值;</code></td></tr><tr><td>同宽跨符号（显式）</td><td>位模式重解释</td><td><code>整64(正64(2^63))</code> = -2^63</td></tr><tr><td>降宽（显式）</td><td>低位截断</td><td><code>整32(大值)</code> 取低 32 位</td></tr><tr><td>浮→整（显式）</td><td>截断（向零取整）</td><td><code>整32(3.99)</code> = 3</td></tr><tr><td>整→浮（显式）</td><td>精确转换</td><td><code>浮64(3) / 4</code> = 0.75</td></tr><tr><td>指针↔整数（显式）</td><td>位模式往返</td><td><code>整64(指针)</code> / <code>指针(地址)</code></td></tr></tbody></table>
+<div class="批注 批注-赭"><span class="批注-题">混合符号禁隐式</span>有符号（整N）×无符号（正M）的<strong>变量间</strong>二元运算/赋值/传参一律编译期拒绝（隐式宽化会静默反转值语义）；<strong>字面量豁免</strong>——一侧为字面量时按另一侧类型参与（<code>正64 b = 5</code>、<code>大 &gt; 100</code> 照常）。同符号混合宽度维持宽化放行。</div>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">转换实证.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">函数 主() -&gt; 整32 {
+    正64 位模式 = 正64(整32(-1));     // 符号扩展 → 2^64-1
+    整64 重解释 = 整64(位模式);       // 位模式重解释（全 1 位模式）
+    整32 截断 = 整32(3.99);
+    打印(位模式 == 18446744073709551615, " ", 截断);
+    打印(重解释 == 0 - 1);            // 全 1 位模式 = -1
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：真 3
+真
+</p>
+<h2 id="确定初始化">确定初始化（def-init）</h2>
+<p>未初始化的局部值类型变量<strong>不得读取</strong>——编译期数据流拒绝（Rust E0381 对照），零运行时成本。</p>
+<table class="表"><thead><tr><th>面</th><th>内容</th></tr></thead><tbody><tr><td>登记</td><td>无初始化器的纯值类型声明：标量、数组（元素级跟踪）、结构体（叶子字段级）</td></tr><tr><td>置位</td><td>赋值（含下标/字段左值）、复合赋值、自增自减（先读后写·读面拒绝）</td></tr><tr><td>豁免</td><td>拥有型（类/容器/字符串/结果/可选——默认构造兜底）、指针/引用、<code>静态</code>（零初始化）、函数参数</td></tr><tr><td>控制流敏感</td><td>如果=两支汇合取并集；返回终止的分支不参与；当/循环体内赋值不外溢（可能 0 次执行）</td></tr><tr><td>取地址=初始化通道</td><td><code>&amp;x</code> 视为「可能被写」（出参惯用法）——取地址后读取放行</td></tr></tbody></table>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">def-init.cn（负例·编译拒绝）</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">函数 主() -&gt; 整32 {
+    整32 x;
+    打印(x);              // ✗ 编译错误：读取未初始化变量
+    返回 0;
+}</code></pre></div>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">控制流敏感.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">函数 主() -&gt; 整32 {
+    整32 x;
+    如果 真 {
+        x = 1;
+    } 否则 {
+        x = 2;
+    }
+    打印(x);              // 两支都赋值 → 汇合后已初始化 ✓
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：1
+</p>
+<h2 id="复合类型">复合类型细则</h2>
+<table class="表"><thead><tr><th>类型</th><th>语法</th><th>要点</th></tr></thead><tbody><tr><td>指针</td><td><code>类型*</code></td><td>不安全域解引用；<code>空类型*</code> 与任意指针互转</td></tr><tr><td>数组</td><td><code>类型[长度]</code></td><td>长度=编译期常量表达式（字面量/常量名/常量算术）；整体赋值=整块值拷贝（元素为字符串/类对象时句柄共享）</td></tr><tr><td>结构体</td><td><code>结构体 名 {...}</code></td><td>值聚合；指定初始化器穷举纪律</td></tr><tr><td>联合体</td><td><code>联合体 名 {...}</code></td><td>成员限可平凡复制类型（Rust union 成员须 Copy 同款）；拥有型成员编译硬错误，逃生舱=<code>手动释放</code> 标注+不安全域自行管理；字段访问=不安全操作</td></tr><tr><td>枚举</td><td><code>枚举 名 {...}</code></td><td>成员可显式赋值（含负数）；引用=<code>枚举名.成员</code></td></tr><tr><td>函数指针</td><td><code>返回(*名)(参数)</code></td><td>代码指针恒可搬运；见函数参考</td></tr><tr><td>结果/可选</td><td><code>结果&lt;T,E&gt;</code> / <code>可选&lt;T&gt;</code></td><td>错误处理类型，见错误处理参考</td></tr></tbody></table>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">数组长度常量表达式.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">常量 基数 = 4;
 
-<h2 id="整数与浮点">整数与浮点</h2>
-<table class="表">
-<thead><tr><th>类型</th><th>大小</th><th>范围</th></tr></thead>
-<tbody>
-<tr><td><code>整8</code></td><td>1 字节</td><td>-128 ~ 127</td></tr>
-<tr><td><code>整16</code></td><td>2 字节</td><td>-32768 ~ 32767</td></tr>
-<tr><td><code>整32</code>（别名 <code>整数</code>）</td><td>4 字节</td><td>-2^31 ~ 2^31-1</td></tr>
-<tr><td><code>整64</code></td><td>8 字节</td><td>-2^63 ~ 2^63-1</td></tr>
-<tr><td><code>整128</code></td><td>16 字节</td><td>-2^127 ~ 2^127-1</td></tr>
-<tr><td><code>正8</code> ~ <code>正128</code></td><td>1~16 字节</td><td>0 ~ 2^位-1（无符号）</td></tr>
-<tr><td><code>浮32</code></td><td>4 字节</td><td>IEEE 754 单精度</td></tr>
-<tr><td><code>浮64</code>（别名 <code>小数</code>）</td><td>8 字节</td><td>IEEE 754 双精度</td></tr>
-</tbody>
-</table>
-
-<h2 id="字符与字符串">字符与字符串</h2>
-<ul>
-<li><code>字符</code>：Unicode 标量值，4 字节（<code>'中'</code> 是一个字符）。</li>
-<li><code>字符串</code>：拥有型 UTF-8 字符串（\0 结尾），<strong>不可变</strong>——修改走拼接重建。
-下标读按字节（返回整8），下标写编译期拒绝。</li>
-</ul>
-
-<h2 id="复合类型">复合类型</h2>
-<table class="表">
-<thead><tr><th>类型</th><th>语法</th><th>说明</th></tr></thead>
-<tbody>
-<tr><td>指针</td><td><code>类型*</code></td><td>指向类型的指针（底层操作限不安全区）</td></tr>
-<tr><td>数组</td><td><code>整32[5]</code></td><td>定长数组，越界运行时检查</td></tr>
-<tr><td>结构体</td><td><code>结构体 名 {…}</code></td><td>值语义；构造字面量 <code>类型{字段=值}</code>（字段穷举）</td></tr>
-<tr><td>枚举</td><td><code>枚举 名 {…}</code></td><td>可指定底层值 <code>自定义 = 100</code></td></tr>
-<tr><td>联合体</td><td><code>联合体 名 {…}</code></td><td>拥有型成员编译期限定；<code>手动释放</code> 逃生舱</td></tr>
-<tr><td>引用</td><td><code>类型&amp;</code></td><td>参数/变量/返回位的左值别名</td></tr>
-<tr><td>结果</td><td><code>结果&lt;T, E&gt;</code></td><td>成功或失败（见错误处理）</td></tr>
-<tr><td>可选</td><td><code>可选&lt;T&gt;</code></td><td>有值或无（见错误处理）</td></tr>
-<tr><td>函数指针</td><td><code>整32(*)(整32, 整32)</code></td><td>C 风格函数指针</td></tr>
-</tbody>
-</table>
-
-<h2 id="确定初始化">确定初始化</h2>
-<p>局部变量必须先初始化再使用——编译器做数据流分析，未初始化使用 = 编译错误，
-「未初始化读」这类 C 语言经典深渊在 CN 不存在。</p>
-
-<h2 id="类型转换">类型转换</h2>
-<p>宽化/窄化/浮整/指针↔整数一律显式触发，C 风格构造转换语法：</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">转换.cn</span><span class="码窗-徽">CN</span></p>
-<pre><code class="language-cn">浮64 比例 = 浮64(3) / 4;     // 显式转浮点
-整32 截断 = 整32(3.99);      // 浮点转整（截断）
-整64 地址 = 整64(指针值);     // 指针转整数（不安全域语义）</code></pre></div>
-
-      <nav class="页脚导航"><a href="lexical.html"><span class="向">← 上一页</span><span class="题">词法结构</span></a><a class="下一" href="control-flow.html"><span class="向">下一页 →</span><span class="题">控制流</span></a></nav>
-    </article>
+函数 主() -&gt; 整32 {
+    整32[基数 * 2] 表;          // 长度=常量算术 → 8
+    表[7] = 8;
+    打印(表[7]);
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：8
+</p><nav class="页脚导航"><a class="" href="../reference/lexical.html"><span class="向">← 上一页</span><span class="题">词法结构</span></a><a class="下一" href="../reference/control-flow.html"><span class="向">下一页 →</span><span class="题">控制流</span></a></nav></article>
     <aside class="目录" aria-label="本页目录">
       <p class="目录-题">本页目录</p>
-      
-<a href="#整数与浮点">整数与浮点</a>
-<a href="#字符与字符串">字符与字符串</a>
-<a href="#复合类型">复合类型</a>
-<a href="#确定初始化">确定初始化</a>
-<a href="#类型转换">类型转换</a>
-
+<a href="#整数">整数类型（10 种 + 2 别名）</a><a href="#浮点其他">浮点、布尔、字符、字符串、空类型</a><a href="#转换">类型转换：显式位模式语义</a><a href="#确定初始化">确定初始化（def-init）</a><a href="#复合类型">复合类型细则</a>
     </aside>
   </div>
 </main>
@@ -147,7 +111,7 @@
       <div>
         <h4>语言</h4>
         <ul>
-          <li><a href=".././">官方文档</a></li>
+          <li><a href="../.././">官方文档</a></li>
           <li><a href="../getting-started.html">快速开始</a></li>
           <li><a href="../reference/">语言参考</a></li>
           <li><a href="../stdlib.html">标准库</a></li>
@@ -178,6 +142,6 @@
 </footer>
 
 <script src="../../assets/cn-highlight.js?v=1"></script>
-<script src="../../assets/site.js?v=2"></script>
+<script src="../site.js?v=2"></script>
 </body>
 </html>

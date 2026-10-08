@@ -3,15 +3,15 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>安全与并发 · CN 语言</title>
-<meta name="description" content="CN 语言安全模型教程：所有权转移、最后使用消除、结果与可选错误处理、线程与互斥锁。">
+<title>教程·安全与并发 · CN 语言 · CN 语言</title>
+<meta name="description" content="结果与可选、所有权与转移、线程、互斥锁——CN 的安全模型不靠运行时罚站，靠编译器拦截。">
 <script>
   (function () {
     try {
       var t = localStorage.getItem("cn-theme");
       if (t === "dark" || t === "light") document.documentElement.setAttribute("data-theme", t);
     } catch (e) {}
-  })();
+  })()
 </script>
 <link rel="stylesheet" href="../assets/tokens.css?v=2">
 <link rel="stylesheet" href="../assets/site.css?v=4">
@@ -24,9 +24,10 @@
     <button class="导航-开关" data-导航钮 aria-expanded="false">菜单</button>
     <nav class="导航" aria-label="站点导航">
       <a href="../">首页</a>
-      <a href="./" aria-current="page">文档</a>
-      <a href="./getting-started.html">快速开始</a>
-      <a href="./reference/">语言参考</a>
+      <a href="" aria-current="page">文档</a>
+      <a href="getting-started.html">快速开始</a>
+      <a href="reference/">语言参考</a>
+      <a href="stdlib.html">标准库</a>
       <a href="../os/">CN-OS</a>
       <a href="https://gitcode.com/ChenChao_GitCode/CN_Language" target="_blank" rel="noopener">源码 ↗</a>
       <button class="主题钮" data-主题钮 aria-label="切换主题">月</button>
@@ -36,200 +37,108 @@
 
 <main class="容器">
   <div class="文档骨架">
-    <aside class="侧栏" aria-label="文档导航">
-      <div class="侧栏-组">
-        <p class="侧栏-组题">入门</p>
-        <a href="./">文档总览</a>
-        <a href="./getting-started.html">快速开始</a>
-      </div>
-      <div class="侧栏-组">
-        <p class="侧栏-组题">教程</p>
-        <a href="./tutorial-syntax.html">语法基础</a>
-        <a href="./tutorial-oop.html">类与泛型</a>
-        <a href="./tutorial-safety.html" aria-current="page">安全与并发</a>
-      </div>
-      <div class="侧栏-组">
-        <p class="侧栏-组题">语言参考</p>
-        <a href="./reference/">参考总览</a>
-        <a href="./reference/lexical.html">词法结构</a>
-        <a href="./reference/types.html">类型系统</a>
-        <a href="./reference/control-flow.html">控制流</a>
-        <a href="./reference/functions.html">函数</a>
-        <a href="./reference/oop.html">类与对象</a>
-        <a href="./reference/errors.html">错误处理</a>
-        <a href="./reference/concurrency.html">并发</a>
-        <a href="./reference/modules.html">模块系统</a>
-      </div>
-      <div class="侧栏-组">
-        <p class="侧栏-组题">资源</p>
-        <a href="./stdlib.html">标准库</a>
-        <a href="./cli.html">命令行参考</a>
-      </div>
-    </aside>
+    <aside class="侧栏" aria-label="文档导航"><div class="侧栏-组"><p class="侧栏-组题">入门</p><a href="index.html">文档总览</a><a href="getting-started.html">快速开始</a></div><div class="侧栏-组"><p class="侧栏-组题">教程</p><a href="tutorial-syntax.html">语法基础</a><a href="tutorial-oop.html">类与泛型</a><a href="tutorial-safety.html" aria-current="page">安全与并发</a><a href="tutorial-advanced.html">进阶篇</a></div><div class="侧栏-组"><p class="侧栏-组题">语言参考</p><a href="reference/index.html">参考总览</a><a href="reference/lexical.html">词法结构</a><a href="reference/types.html">类型系统</a><a href="reference/control-flow.html">控制流</a><a href="reference/functions.html">函数</a><a href="reference/oop.html">类与对象</a><a href="reference/errors.html">错误处理</a><a href="reference/concurrency.html">并发</a><a href="reference/modules.html">模块系统</a></div><div class="侧栏-组"><p class="侧栏-组题">标准库</p><a href="stdlib.html">标准库总览</a><a href="stdlib/core.html">核心</a><a href="stdlib/container.html">容器</a><a href="stdlib/mapset.html">映射集合</a><a href="stdlib/string.html">字符串扩展</a><a href="stdlib/algorithm.html">算法</a><a href="stdlib/regex.html">正则</a><a href="stdlib/system.html">系统</a><a href="stdlib/io.html">IO</a><a href="stdlib/file.html">文件</a><a href="stdlib/time.html">时间</a><a href="stdlib/math.html">数学</a><a href="stdlib/random.html">随机数</a><a href="stdlib/thread.html">线程</a><a href="stdlib/builtin.html">内置函数</a></div><div class="侧栏-组"><p class="侧栏-组题">资源</p><a href="cli.html">命令行参考</a></div><div class="侧栏-组"><p class="侧栏-组题">资源</p><a href="https://gitcode.com/ChenChao_GitCode/CN_Language" target="_blank" rel="noopener">源码仓库 ↗</a></div></aside>
+    <article class="正文"><nav class="面包屑" aria-label="面包屑"><a href="./">文档</a> / 教程·安全与并发</nav>
+<h1>教程·安全与并发</h1>
+<p style="color: var(--color-fg-muted); font-size: var(--text-lg); line-height: 2;">结果与可选、所有权与转移、线程、互斥锁——CN 的安全模型不靠运行时罚站，靠编译器拦截。</p>
+<h2 id="结果">结果&lt;T, E&gt;：失败是类型的一部分</h2>
+<p>可能失败的函数返回 <code>结果&lt;T, 整32&gt;</code>；成功=<code>正常(值)</code>，失败=<code>错误(错误码)</code>。<strong>丢弃返回值不检查=编译错误</strong>——这是 CN 最重要的一条纪律。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">结果.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">导入 核心::错误码;
 
-    <article class="正文">
-      <nav class="面包屑" aria-label="面包屑"><a href="./">文档</a> / 教程 / 安全与并发</nav>
-      <h1>安全与并发</h1>
-      <p style="color: var(--color-fg-muted); font-size: var(--text-lg); line-height: 2;">
-        CN 的两条最高准绳：性能超过 C++ 编译器，安全接近 Rust——悬垂、越界、泄漏零容忍。
-        这一章讲它如何做到。</p>
-
-      <h2 id="所有权与转移">所有权与转移</h2>
-      <p>字符串、容器、类对象这类「资源类型」有唯一的拥有者。
-      用内置函数 <code>转移()</code> 显式交接所有权（对标 C++ <code>std::move</code>），
-      被转移的变量从此禁用——编译器替你盯着：</p>
-      <div class="码窗">
-        <p class="码窗-顶"><span class="码窗-名">转移.cn</span><span class="码窗-徽">CN</span></p>
-        <pre><code class="language-cn">函数 主() -&gt; 整32 {
-    变量 v = 向量&lt;整64&gt;();
-    变量 u = 转移(v);       // u 接管 v 的值
-    // 打印行(v.大小());    // ✗ 编译错误：'v' 已转移，不能继续使用
-
-    变量 w = 向量&lt;整64&gt;();
-    w = u;                  // ✗ 纯赋值可以复活 v？不——这是 u 到 w 的拷贝
-    返回 0;
-}</code></pre>
-      </div>
-      <p>两条贴心规则：</p>
-      <ul>
-        <li><strong>赋值复活</strong>：转移后对源变量<em>纯赋值</em>（<code>v = 表达式;</code>）
-        视为重新初始化，之后可以继续用——不需要新的声明。</li>
-        <li><strong>最后使用消除（LUE）</strong>：如果拷贝之后源变量再也不用，
-        编译器<em>自动</em>把拷贝降级为转移（零拷贝）——多数时候你不需要手写 <code>转移()</code>。</li>
-      </ul>
-      <div class="码窗">
-        <p class="码窗-顶"><span class="码窗-名">lue.cn</span><span class="码窗-徽">CN</span></p>
-        <pre><code class="language-cn">函数 消费(字符串 s) -&gt; 空类型 {
-    打印行(s);
-}
-
-函数 主() -&gt; 整32 {
-    变量 名 = 字符串复制("甲");
-    消费(名);        // 名 在此之后不再出现 → 编译器自动转移，零拷贝
-    返回 0;
-}</code></pre>
-      </div>
-
-      <h2 id="只读借用">只读借用</h2>
-      <p><code>常量 类型&amp;</code> 参数是只读借用（对标 Rust <code>&amp;T</code>）：
-      函数体内不许改它，也不能把它再借给可变引用——借用互斥在编译期检查：</p>
-      <div class="码窗">
-        <p class="码窗-顶"><span class="码窗-名">借用.cn</span><span class="码窗-徽">CN</span></p>
-        <pre><code class="language-cn">函数 求和(常量 向量&lt;整64&gt;&amp; 数据) -&gt; 整64 {
-    整64 合 = 0;
-    遍历 数据 中 每个 x { 合 = 合 + x; }
-    返回 合;      // 数据只读：改动它 = 编译错误
-}</code></pre>
-      </div>
-
-      <h2 id="不安全函数">不安全函数</h2>
-      <p>底层指针操作（指针算术、裸下标写、联合体访问等）只允许出现在
-      <code>不安全 函数</code> 体内；安全代码里调用它是允许的——责任上移到标注处，
-      审计有明确的边界：</p>
-      <div class="码窗">
-        <p class="码窗-顶"><span class="码窗-名">不安全.cn</span><span class="码窗-徽">CN</span></p>
-        <pre><code class="language-cn">不安全 函数 裸改(整64* p) -&gt; 整64 {
-    整64* q = p + 1;   // 指针算术：仅不安全函数内合法
-    q[0] = 7;          // 指针下标写：同上
-    返回 q[0];
-}</code></pre>
-      </div>
-      <p>同时，数组越界与空指针解引用在<em>安全代码</em>里默认有运行时检查
-      （<code>-O2</code> 亦生效），常量下标越界/除零则直接是编译期硬错误。</p>
-
-      <h2 id="结果与可选">结果与可选：没有空指针异常的错误处理</h2>
-      <p>可能失败的函数返回 <code>结果&lt;T, E&gt;</code>（成功=正常值，失败=错误码），
-      可能缺席的值用 <code>可选&lt;T&gt;</code>。<strong>编译器强制你检查</strong>：
-      不检查就使用 = 编译错误（对标 Rust <code>must_use</code>）：</p>
-      <div class="码窗">
-        <p class="码窗-顶"><span class="码窗-名">错误处理.cn</span><span class="码窗-徽">CN</span></p>
-        <pre><code class="language-cn">函数 除法(整32 a, 整32 b) -&gt; 结果&lt;整32, 整32&gt; {
-    如果 b == 0 {
-        返回 错误(1);     // 错误码 1：除零
+函数 安全除法(整64 a, 整64 b) -&gt; 结果&lt;整64, 整32&gt; {
+    如果 (b == 0) {
+        返回 错误(错误码.除零);     // 失败路径
     }
-    返回 正常(a / b);
+    返回 正常(a / b);               // 成功路径
 }
 
 函数 主() -&gt; 整32 {
-    结果&lt;整32, 整32&gt; 商 = 除法(10, 0);
-    如果 商.正常 {
-        打印行(商.值);
+    结果&lt;整64, 整32&gt; 好 = 安全除法(10, 2);
+    如果 (好.正常) {
+        打印(好.值);                 // 5（仅正常分支可取 .值）
+    }
+    结果&lt;整64, 整32&gt; 坏 = 安全除法(10, 0);
+    如果 (!坏.正常) {
+        打印("失败，错误码 ", 坏.错误);
+    }
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：5
+失败，错误码 1
+</p>
+<ul><li><code>.值</code> 只能在「该分支已检查 <code>.正常</code>」的前提下访问——编译器跟踪检查状态（NLL 同款数据流）。</li><li>错误码用 <a href="stdlib/core.html#错误码">核心.错误码</a> 枚举（除零1/越界2/空指针3/内存4/文件5/参数6/未初始化7/溢出8）。</li><li>多级失败传播可用后缀 <code>?</code>（见<a href="reference/errors.html">错误处理参考</a>）。</li></ul>
+<div class="批注 批注-绿"><span class="批注-题">可选&lt;T&gt;：可能没有值</span>没有自然错误码的「可能缺失」用 <code>可选&lt;T&gt;</code>：<code>某些(值)</code> / <code>无值()</code>，检查 <code>.有值</code> 后取 <code>.值</code>。语义=结果但错误侧无载荷。</div>
+<h2 id="所有权">所有权与转移：默认安全的核心</h2>
+<p>资源类型（字符串/容器/类对象）变量拥有其资源；<code>转移(x)</code> 把所有权显式交接给另一个变量——<strong>源变量从此禁止读用（编译错误）</strong>；对源变量重新赋值=复活。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">转移.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">函数 主() -&gt; 整32 {
+    字符串 甲 = "贵重数据";
+    字符串 乙 = 转移(甲);      // 零拷贝交接
+    打印(乙);
+    // 打印(甲);               // ✗ 编译错误：甲 已转移，不能继续使用
+    甲 = "新值";               // 纯赋值 = 复活，合法
+    打印(甲);
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：贵重数据
+新值
+</p>
+<ul><li>标量（整数/浮点/布尔/字符）是复制语义，<code>转移</code> 对它们拒绝（无意义）。</li><li><code>复制(x)</code> 是显式深拷贝克隆（与 转移 构成复制/移动双内置）。</li><li>编译器还有<strong>最后使用消除</strong>：源变量在拷贝后不再使用时，自动降级为转移（零拷贝）——多数时候你不用手写 转移。</li></ul>
+<h2 id="借用">借用：引用参数与只读借用</h2>
+<p>不想转移也不想拷贝？<code>T&amp;</code> 可变借用（直写调用方）、<code>常量 T&amp;</code> 只读借用（体内禁止写）。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">借用.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 可变借用：直写调用方
+函数 翻倍(整64&amp; x) -&gt; 空类型 { x = x * 2; }
+
+// 只读借用：体内赋值=编译错误
+函数 报告(字符串 名, 整64 v) -&gt; 空类型 {   // 字符串按值=不可变读取
+    打印(名 + " = ", v);
+}
+
+函数 主() -&gt; 整32 {
+    整64 值 = 21;
+    翻倍(值);              // 引用实参：直传左值
+    报告("翻倍后", 值);
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：翻倍后 = 42
+</p>
+<div class="批注 批注-绿"><span class="批注-题">标准库的通道选择</span>容器读取三形态正交并存：<code>元素(i)</code> 副本读取、<code>设置(i, v)</code> 写回、<code>元素引用(i)</code> 引用写穿（不安全域）——大对象高频读用 引用 避免 131072 字节/次级别的深拷。见 <a href="stdlib/container.html#向量-元素引用">向量.元素引用</a>。</div>
+<h2 id="线程">线程：新线程 与 并入线程</h2>
+<p><code>新线程(入口函数, 实参)</code> 启动线程（实参按值拷贝、无别名），<code>并入线程(句柄)</code> 等待结束并取回返回值——<strong>每个线程必须被并入</strong>（未并入=运行时错误，宁严勿松）。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">线程.cn（linux 真线程·win 为运行时桩）</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">导入 线程::{新线程, 并入线程};
+
+不安全 函数 作业(空类型* 未用) -&gt; 整64 {
+    整64 和 = 0;
+    循环 (整64 i = 1; i &lt;= 1000000; i++) { 和 = 和 + i; }
+    返回 和;
+}
+
+不安全 函数 主() -&gt; 整32 {
+    结果&lt;空类型*, 整32&gt; 建 = 新线程(作业, 无);
+    如果 (建.正常) {
+        打印(并入线程(建.值));    // 500000500000
     } 否则 {
-        打印行("除零错误: ", 商.错误);
+        返回 1;
     }
     返回 0;
-}</code></pre>
-      </div>
-      <p>后缀 <code>?</code> 一键传播：正常取值继续，失败沿调用链上抛（Rust <code>?</code> 同语义）：</p>
-      <div class="码窗">
-        <p class="码窗-顶"><span class="码窗-名">传播.cn</span><span class="码窗-徽">CN</span></p>
-        <pre><code class="language-cn">函数 除法传播(整32 a, 整32 b) -&gt; 结果&lt;整32, 整32&gt; {
-    整32 结果值 = 除法(a, b)?;   // 失败则本函数立即返回该错误
-    返回 正常(结果值);
-}</code></pre>
-      </div>
+}</code></pre></div>
+<ul><li>入口签名固定：<code>整64(空类型*)</code> 函数；实参按值拷贝进新线程。</li><li><code>不安全 函数 主()</code>：线程句柄是裸指针形态，线程域整体属不安全面（见<a href="tutorial-advanced.html#不安全">进阶篇</a>）。</li></ul>
+<h2 id="互斥锁">互斥锁&lt;T&gt;：锁与数据绑死</h2>
+<p>类型化互斥锁把「锁」和「被护数据」绑在一个类型里——拿 A 锁护 B 数据的锁错对象错误在类型检查下不可表达（Rust Mutex&lt;T&gt; 同位）。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">互斥锁.cn（win 为运行时桩·linux 真锁）</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">导入 线程::互斥锁;
 
-      <h2 id="线程与互斥锁">线程与互斥锁</h2>
-      <p>标准库 <code>线程</code> 模块提供 <code>新线程(入口, 实参)</code>。
-      进入新线程的值必须是「可搬运」的——编译器自动推导（对标 Rust <code>Send</code>）：
-      标量、字符串、函数指针恒可搬运；含裸指针字段的类型默认<em>不可</em>搬运，
-      跨线程传递 = 编译错误。数据竞争的温床在类型层面被拆除。</p>
-      <p>共享可变数据用 <code>互斥锁&lt;T&gt;</code>：锁与受护数据类型化绑定
-      （拿 A 锁护 B 数据的错误在类型检查下不可表达）：</p>
-      <div class="码窗">
-        <p class="码窗-顶"><span class="码窗-名">互斥锁.cn</span><span class="码窗-徽">CN</span></p>
-        <pre><code class="language-cn">导入 线程::互斥锁;
-
-函数 主() -&gt; 整32 {
-    互斥锁&lt;整32&gt; 计数 = 互斥锁(0);
-
-    // 受护数据经 .值 字段访问，上锁/解锁 显式成对
-    计数.上锁();
-    计数.值 = 计数.值 + 1;
-    计数.解锁();
-
-    打印行(计数.值);   // 1
+不安全 函数 主() -&gt; 整32 {
+    互斥锁&lt;整64&gt; 计数器 = 互斥锁&lt;整64&gt;(0);
+    计数器.上锁();
+    计数器.值 = 计数器.值 + 1;   // 受护区间内访问公开字段 值
+    计数器.解锁();
+    打印(计数器.值);
     返回 0;
-}</code></pre>
-      </div>
-      <div class="批注 批注-赭">
-        <span class="批注-题">诚实边界（当前实现状态）</span>
-        ①互斥锁第一版为显式 <code>上锁()</code>/<code>解锁()</code> 对，RAII
-        锁守卫随析构链成熟另立；②未上锁直接访问 <code>.值</code> 目前不拦（文档如实标注，
-        收紧为编译期拒绝已在计划内）；③Windows 后端的线程功能在推进中（Linux x64 为真 pthread 实现）。
-        语言仍在快速演进，以仓库最新公告为准。</div>
-
-      <h2 id="安全哲学小结">安全哲学小结</h2>
-      <table class="表">
-        <thead><tr><th>原则</th><th>含义</th></tr></thead>
-        <tbody>
-          <tr><td>默认路径零规则</td><td>正常写代码不需要标注或注解</td></tr>
-          <tr><td>显式 <code>转移()</code></td><td>想要性能时，显式交接所有权</td></tr>
-          <tr><td>危险面收口 <code>不安全</code></td><td>底层操作限定在显式标注的函数内</td></tr>
-          <tr><td>拷贝消除是编译器义务</td><td>LUE 自动降级拷贝为转移，不牺牲表达力</td></tr>
-        </tbody>
-      </table>
-
-      <nav class="页脚导航">
-        <a href="./tutorial-oop.html">
-          <span class="向">← 上一页</span>
-          <span class="题">类与泛型</span>
-        </a>
-        <a class="下一" href="./reference/">
-          <span class="向">下一页 →</span>
-          <span class="题">语言参考总览</span>
-        </a>
-      </nav>
-    </article>
-
+}</code></pre></div>
+<ul><li>受护数据在公开字段 <code>值</code> 中——纪律是「上锁/解锁 之间访问」，RAII 锁守卫在路线图中。</li><li>实例=对象句柄语义：跨线程共享同一实例=共用同一把锁（正确形态）。</li><li>互斥锁 可搬运 ⇔ T 可搬运——不可搬运类型（如裸指针）进不了跨线程通道。</li></ul>
+<p>继续：<a href="tutorial-advanced.html">进阶篇</a>——内存模型、FFI、优化与调试。</p><nav class="页脚导航"><a class="" href="tutorial-oop.html"><span class="向">← 上一页</span><span class="题">教程·类与泛型</span></a><a class="下一" href="tutorial-advanced.html"><span class="向">下一页 →</span><span class="题">教程·进阶篇</span></a></nav></article>
     <aside class="目录" aria-label="本页目录">
       <p class="目录-题">本页目录</p>
-      <a href="#所有权与转移">所有权与转移</a>
-      <a href="#只读借用">只读借用</a>
-      <a href="#不安全函数">不安全函数</a>
-      <a href="#结果与可选">结果与可选</a>
-      <a href="#线程与互斥锁">线程与互斥锁</a>
-      <a href="#安全哲学小结">安全哲学小结</a>
+<a href="#结果">结果&lt;T, E&gt;：失败是类型的一部分</a><a href="#所有权">所有权与转移：默认安全的核心</a><a href="#借用">借用：引用参数与只读借用</a><a href="#线程">线程：新线程 与 并入线程</a><a href="#互斥锁">互斥锁&lt;T&gt;：锁与数据绑死</a>
     </aside>
   </div>
 </main>
@@ -245,9 +154,9 @@
         <h4>语言</h4>
         <ul>
           <li><a href="./">官方文档</a></li>
-          <li><a href="./getting-started.html">快速开始</a></li>
-          <li><a href="./reference/">语言参考</a></li>
-          <li><a href="./stdlib.html">标准库</a></li>
+          <li><a href="getting-started.html">快速开始</a></li>
+          <li><a href="reference/">语言参考</a></li>
+          <li><a href="stdlib.html">标准库</a></li>
         </ul>
       </div>
       <div>
@@ -255,7 +164,7 @@
         <ul>
           <li><a href="https://gitcode.com/ChenChao_GitCode/CN_Language" target="_blank" rel="noopener">源码仓库 ↗</a></li>
           <li><a href="../os/">CN-OS 蓝图</a></li>
-          <li><a href="./cli.html">命令行参考</a></li>
+          <li><a href="cli.html">命令行参考</a></li>
         </ul>
       </div>
       <div>
@@ -275,6 +184,6 @@
 </footer>
 
 <script src="../assets/cn-highlight.js?v=1"></script>
-<script src="../assets/site.js?v=2"></script>
+<script src="site.js?v=2"></script>
 </body>
 </html>

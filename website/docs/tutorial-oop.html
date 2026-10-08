@@ -3,15 +3,15 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>类与泛型 · CN 语言</title>
-<meta name="description" content="CN 语言面向对象教程：类、继承、接口多态、运算符重载与编译期单态化泛型。">
+<title>教程·类与泛型 · CN 语言 · CN 语言</title>
+<meta name="description" content="类、构造与析构、可见性、继承与接口、泛型类与泛型函数、运算符重载——面向对象与泛型编程全套。">
 <script>
   (function () {
     try {
       var t = localStorage.getItem("cn-theme");
       if (t === "dark" || t === "light") document.documentElement.setAttribute("data-theme", t);
     } catch (e) {}
-  })();
+  })()
 </script>
 <link rel="stylesheet" href="../assets/tokens.css?v=2">
 <link rel="stylesheet" href="../assets/site.css?v=4">
@@ -24,9 +24,10 @@
     <button class="导航-开关" data-导航钮 aria-expanded="false">菜单</button>
     <nav class="导航" aria-label="站点导航">
       <a href="../">首页</a>
-      <a href="./" aria-current="page">文档</a>
-      <a href="./getting-started.html">快速开始</a>
-      <a href="./reference/">语言参考</a>
+      <a href="" aria-current="page">文档</a>
+      <a href="getting-started.html">快速开始</a>
+      <a href="reference/">语言参考</a>
+      <a href="stdlib.html">标准库</a>
       <a href="../os/">CN-OS</a>
       <a href="https://gitcode.com/ChenChao_GitCode/CN_Language" target="_blank" rel="noopener">源码 ↗</a>
       <button class="主题钮" data-主题钮 aria-label="切换主题">月</button>
@@ -36,91 +37,92 @@
 
 <main class="容器">
   <div class="文档骨架">
-    <aside class="侧栏" aria-label="文档导航">
-      <div class="侧栏-组">
-        <p class="侧栏-组题">入门</p>
-        <a href="./">文档总览</a>
-        <a href="./getting-started.html">快速开始</a>
-      </div>
-      <div class="侧栏-组">
-        <p class="侧栏-组题">教程</p>
-        <a href="./tutorial-syntax.html">语法基础</a>
-        <a href="./tutorial-oop.html" aria-current="page">类与泛型</a>
-        <a href="./tutorial-safety.html">安全与并发</a>
-      </div>
-      <div class="侧栏-组">
-        <p class="侧栏-组题">语言参考</p>
-        <a href="./reference/">参考总览</a>
-        <a href="./reference/lexical.html">词法结构</a>
-        <a href="./reference/types.html">类型系统</a>
-        <a href="./reference/control-flow.html">控制流</a>
-        <a href="./reference/functions.html">函数</a>
-        <a href="./reference/oop.html">类与对象</a>
-        <a href="./reference/errors.html">错误处理</a>
-        <a href="./reference/concurrency.html">并发</a>
-        <a href="./reference/modules.html">模块系统</a>
-      </div>
-      <div class="侧栏-组">
-        <p class="侧栏-组题">资源</p>
-        <a href="./stdlib.html">标准库</a>
-        <a href="./cli.html">命令行参考</a>
-      </div>
-    </aside>
-
-    <article class="正文">
-      <nav class="面包屑" aria-label="面包屑"><a href="./">文档</a> / 教程 / 类与泛型</nav>
-      <h1>类与泛型</h1>
-      <p style="color: var(--color-fg-muted); font-size: var(--text-lg); line-height: 2;">
-        给数据以行为：类、继承、接口多态、运算符重载，以及跑在编译期的泛型。</p>
-
-      <h2 id="类与访问控制">类与访问控制</h2>
-      <p><code>类</code> 把数据与方法绑在一起。访问控制用标签式写法——
-      <code>公开:</code> / <code>私有:</code> / <code>保护:</code>，默认私有。
-      与类同名的函数是构造函数，<code>~类名</code> 是析构函数（RAII，离开作用域自动调用）：</p>
-      <div class="码窗">
-        <p class="码窗-顶"><span class="码窗-名">栈.cn</span><span class="码窗-徽">CN</span></p>
-        <pre><code class="language-cn">导入 容器::向量;
-
-类 栈 {
+    <aside class="侧栏" aria-label="文档导航"><div class="侧栏-组"><p class="侧栏-组题">入门</p><a href="index.html">文档总览</a><a href="getting-started.html">快速开始</a></div><div class="侧栏-组"><p class="侧栏-组题">教程</p><a href="tutorial-syntax.html">语法基础</a><a href="tutorial-oop.html" aria-current="page">类与泛型</a><a href="tutorial-safety.html">安全与并发</a><a href="tutorial-advanced.html">进阶篇</a></div><div class="侧栏-组"><p class="侧栏-组题">语言参考</p><a href="reference/index.html">参考总览</a><a href="reference/lexical.html">词法结构</a><a href="reference/types.html">类型系统</a><a href="reference/control-flow.html">控制流</a><a href="reference/functions.html">函数</a><a href="reference/oop.html">类与对象</a><a href="reference/errors.html">错误处理</a><a href="reference/concurrency.html">并发</a><a href="reference/modules.html">模块系统</a></div><div class="侧栏-组"><p class="侧栏-组题">标准库</p><a href="stdlib.html">标准库总览</a><a href="stdlib/core.html">核心</a><a href="stdlib/container.html">容器</a><a href="stdlib/mapset.html">映射集合</a><a href="stdlib/string.html">字符串扩展</a><a href="stdlib/algorithm.html">算法</a><a href="stdlib/regex.html">正则</a><a href="stdlib/system.html">系统</a><a href="stdlib/io.html">IO</a><a href="stdlib/file.html">文件</a><a href="stdlib/time.html">时间</a><a href="stdlib/math.html">数学</a><a href="stdlib/random.html">随机数</a><a href="stdlib/thread.html">线程</a><a href="stdlib/builtin.html">内置函数</a></div><div class="侧栏-组"><p class="侧栏-组题">资源</p><a href="cli.html">命令行参考</a></div><div class="侧栏-组"><p class="侧栏-组题">资源</p><a href="https://gitcode.com/ChenChao_GitCode/CN_Language" target="_blank" rel="noopener">源码仓库 ↗</a></div></aside>
+    <article class="正文"><nav class="面包屑" aria-label="面包屑"><a href="./">文档</a> / 教程·类与泛型</nav>
+<h1>教程·类与泛型</h1>
+<p style="color: var(--color-fg-muted); font-size: var(--text-lg); line-height: 2;">类、构造与析构、可见性、继承与接口、泛型类与泛型函数、运算符重载——面向对象与泛型编程全套。</p>
+<h2 id="第一个类">第一个类：字段、方法、可见性</h2>
+<p>类=字段+方法的蓝图；<code>公开:/保护:/私有:</code> 标签分段控制可见性（默认私有）；实例化即 <code>类名()</code> 表达式，方法用 <code>.</code> 调用。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">栈.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">类 计数器 {
 私有:
-    向量&lt;整32&gt; 数据;
+    整64 值槽;              // 私有字段：类外不可访问
 公开:
-    函数 压入(整32 值) {
-        数据.追加(值);
+    函数 计数器() {         // 构造函数：与类同名
+        值槽 = 0;
     }
-    函数 弹出() -&gt; 整32 {
-        整32 顶 = 数据.元素(数据.大小() - 1);
-        数据.弹出尾();
-        返回 顶;
+
+    函数 自增() -&gt; 空类型 {
+        值槽 = 值槽 + 1;
     }
-    常量 函数 大小() -&gt; 整64 {
-        返回 数据.大小();
+
+    函数 读值() -&gt; 整64 {
+        返回 值槽;
     }
 }
 
 函数 主() -&gt; 整32 {
-    栈 s = 栈();
-    s.压入(10);
-    s.压入(20);
-    打印(s.弹出(), s.大小());   // 20 1
-    返回 0;   // s 离开作用域，自动析构
-}</code></pre>
-      </div>
-
-      <h2 id="继承与虚函数">继承与虚函数</h2>
-      <p>用 <code>类 子 : 父</code> 继承。<code>虚拟</code> 声明可被重写的函数，
-      <code>重写</code> 在子类中实现它：</p>
-      <div class="码窗">
-        <p class="码窗-顶"><span class="码窗-名">动物.cn</span><span class="码窗-徽">CN</span></p>
-        <pre><code class="language-cn">类 动物 {
+    计数器 c = 计数器();
+    c.自增();
+    c.自增();
+    c.自增();
+    打印(c.读值());       // 3
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：3
+</p>
+<ul><li><code>公开:</code>（类外可访问）/ <code>保护:</code>（子类可访问）/ <code>私有:</code>（仅本类）——标签分段，影响其后所有成员直到下一标签。</li><li>构造函数与类同名、无返回类型；可有多个重载（按实参区分）。</li><li>类实例赋值/传参=句柄（引用语义，见<a href="#构造析构">构造析构</a>与<a href="reference/oop.html">类参考</a>）。</li></ul>
+<h2 id="构造析构">构造与析构：RAII 的根基</h2>
+<p>构造函数=与类同名的函数（可重载）；析构函数=<code>~类名</code>，作用域结束自动调用——资源获取即初始化（RAII），忘记释放不可能。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">RAII.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">类 日志 {
+私有:
+    字符串 名字;
 公开:
+    函数 日志(字符串 名) {
+        名字 = 名;
+        打印("[开] ", 名字);
+    }
+
+    函数 ~日志() {          // 析构：作用域结束自动调用
+        打印("[关] ", 名字);
+    }
+
+    函数 写(字符串 消息) {
+        打印("[写] ", 消息);
+    }
+}
+
+函数 主() -&gt; 整32 {
+    日志 l = 日志("主日志");
+    l.写("程序运行中");
+    返回 0;                 // l 的析构在这里自动触发
+}</code></pre></div>
+<p class="输出行">输出：[开] 主日志
+[写] 程序运行中
+[关] 主日志
+</p>
+<ul><li>拷贝构造=<code>函数 类名(类名&amp; 其他)</code>——定义了它，容器元素、按值传参等拷贝场合都会深拷（标准库容器全部定义了拷贝构造）。</li><li>析构顺序与构造相反；成员对象、容器元素、字符串全部自动级联释放。</li><li>构造函数重载已支持：无参构造+带参构造可共存。</li></ul>
+<h2 id="继承">继承与多态：虚拟/重写/自身/父类</h2>
+<p>单继承 <code>类 子 : 父</code>；父类方法标 <code>虚拟</code>，子类 <code>重写</code>；<code>自身</code> 指本实例（this），<code>父类.方法()</code> 调父类实现。经父类引用/指针调用=动态分派。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">多态.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">类 动物 {
+公开:
+    字符串 名称;
+
+    函数 动物(字符串 名) { 名称 = 名; }
+
     虚拟 函数 叫声() -&gt; 字符串 {
-        返回 "...";
+        返回 "…";
+    }
+
+    函数 自我介绍() -&gt; 空类型 {
+        打印(名称 + " 说：" + 自身.叫声());   // 动态分派到重写
     }
 }
 
 类 狗 : 动物 {
 公开:
+    函数 狗(字符串 名) : 动物(名) {   // 父类构造：初始化列表形态
+    }
+
     重写 函数 叫声() -&gt; 字符串 {
         返回 "汪汪";
     }
@@ -128,152 +130,133 @@
 
 类 猫 : 动物 {
 公开:
+    函数 猫(字符串 名) : 动物(名) {
+    }
+
     重写 函数 叫声() -&gt; 字符串 {
-        返回 "喵喵";
+        返回 "喵";
     }
 }
 
 函数 主() -&gt; 整32 {
-    狗 旺财 = 狗();
-    猫 咪咪 = 猫();
-    动物* a = &amp;旺财;
-    动物* b = &amp;咪咪;
-    打印行(a.叫声());   // 汪汪（运行时分派）
-    打印行(b.叫声());   // 喵喵
+    狗 d = 狗("阿黄");
+    猫 m = 猫("咪咪");
+    d.自我介绍();
+    m.自我介绍();
     返回 0;
-}</code></pre>
-      </div>
-
-      <h2 id="接口多态">接口多态</h2>
-      <p>接口是一组纯虚约定。类实现接口后，接口类型的变量/参数/返回值都能以运行时多态持有它——
-      这是 CN 表达「能做什么」的方式：</p>
-      <div class="码窗">
-        <p class="码窗-顶"><span class="码窗-名">形状.cn</span><span class="码窗-徽">CN</span></p>
-        <pre><code class="language-cn">接口 形状 {
-    虚拟 函数 面积() -&gt; 整32
+}</code></pre></div>
+<p class="输出行">输出：阿黄 说：汪汪
+咪咪 说：喵
+</p>
+<div class="批注 批注-赭"><span class="批注-题">自身 是保留字</span><code>自身</code>（this）在任何标识符位（字段名/变量名/参数名）都不可用——Rust <code>self</code> 同款硬保留。</div>
+<h2 id="接口">接口：行为契约</h2>
+<p>接口=纯虚拟方法集合；<code>类 实现类 : 接口</code> 实现全部方法；接口引用可指向任何实现类实例（鸭子类型的静态版）。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">接口.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">接口 可发声 {
+    虚拟 函数 发声() -&gt; 字符串
 }
 
-类 圆 : 形状 {
+类 警报 : 可发声 {
 公开:
-    整32 半径;
-    函数 圆(整32 r) { 半径 = r; }
-    重写 函数 面积() -&gt; 整32 { 返回 半径 * 半径 * 3; }
+    重写 函数 发声() -&gt; 字符串 { 返回 "呜哇呜哇"; }
 }
 
-类 矩形 : 形状 {
+类 门铃 : 可发声 {
 公开:
-    整32 宽;
-    整32 高;
-    函数 矩形(整32 w, 整32 h) { 宽 = w; 高 = h; }
-    重写 函数 面积() -&gt; 整32 { 返回 宽 * 高; }
+    重写 函数 发声() -&gt; 字符串 { 返回 "叮咚"; }
+}
+
+函数 触发(可发声 设备) -&gt; 空类型 {   // 接口形参：任何实现类都收
+    打印(设备.发声());
 }
 
 函数 主() -&gt; 整32 {
-    形状 图1 = 圆(5);
-    打印行(图1.面积());     // 75
-
-    形状 图2 = 矩形(4, 6);
-    打印行(图2.面积());     // 24
+    触发(警报());
+    触发(门铃());
     返回 0;
-}</code></pre>
-      </div>
-
-      <h2 id="运算符重载与静态成员">运算符重载与静态成员</h2>
-      <div class="码窗">
-        <p class="码窗-顶"><span class="码窗-名">复数.cn</span><span class="码窗-徽">CN</span></p>
-        <pre><code class="language-cn">类 复数 {
-公开:
-    浮64 实部;
-    浮64 虚部;
-
-    函数 运算符+(复数 右) -&gt; 复数 {
-        返回 复数{实部 + 右.实部, 虚部 + 右.虚部};
-    }
-    函数 运算符==(复数 右) -&gt; 布尔 {
-        返回 实部 == 右.实部 且 虚部 == 右.虚部;
-    }
-}
-
-类 计数器 {
-公开:
-    静态 整32 总数 = 0;      // 全类共享
-    函数 计数器() { 总数++; }
-    静态 函数 获取总数() -&gt; 整32 { 返回 总数; }
-}
-
-函数 主() -&gt; 整32 {
-    复数 a = 复数{1.0, 2.0};
-    复数 b = 复数{3.0, 4.0};
-    复数 c = a + b;          // 调用 运算符+
-
-    计数器 x = 计数器();
-    计数器 y = 计数器();
-    打印(计数器.获取总数());  // 2
-    返回 0;
-}</code></pre>
-      </div>
-
-      <h2 id="泛型">泛型</h2>
-      <p><code>泛型 &lt;类型 T&gt;</code> 声明类型参数，编译期单态化——每个用到的具体类型
-      都生成一份专属代码，零运行时开销。类型参数还能用接口约束（对标 trait bound）：</p>
-      <div class="码窗">
-        <p class="码窗-顶"><span class="码窗-名">泛型.cn</span><span class="码窗-徽">CN</span></p>
-        <pre><code class="language-cn">// 泛型函数
-泛型 &lt;类型 T&gt;
-函数 交换(T&amp; a, T&amp; b) -&gt; 空类型 {
-    T 临时 = a;
-    a = b;
-    b = 临时;
-}
-
-// 泛型类
-泛型 &lt;类型 T&gt;
+}</code></pre></div>
+<p class="输出行">输出：呜哇呜哇
+叮咚
+</p>
+<h2 id="泛型类">泛型类：向量 的原理</h2>
+<p><code>泛型 &lt;类型 T&gt;</code> 声明类型参数；使用处 <code>类名&lt;实参&gt;</code> 实例化——编译期单态化（每个实例化生成一份专用代码，零运行时开销）。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">盒子.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">泛型 &lt;类型 T&gt;
 类 盒子 {
 私有:
-    T 值;
+    T 内容;
+    布尔 有货;
 公开:
-    函数 装入(T v) { 值 = v; }
-    函数 取出() -&gt; T { 返回 值; }
+    函数 盒子(T 初值) {
+        内容 = 初值;
+        有货 = 真;
+    }
+
+    函数 取出() -&gt; T { 返回 内容; }
+    函数 空否() -&gt; 布尔 { 返回 !有货; }
 }
 
 函数 主() -&gt; 整32 {
-    整32 m = 1;
-    整32 n = 2;
-    交换(m, n);              // T = 整32
-
-    盒子&lt;字符串&gt; 盒 = 盒子&lt;字符串&gt;();
-    盒.装入("中文泛型");
-    打印行(盒.取出());
+    盒子&lt;整64&gt; 数盒 = 盒子&lt;整64&gt;(42);
+    盒子&lt;字符串&gt; 文盒 = 盒子&lt;字符串&gt;("礼物");
+    打印(数盒.取出(), " ", 文盒.取出());
     返回 0;
-}</code></pre>
-      </div>
-      <p>标准库的 <code>向量&lt;T&gt;</code>、<code>映射&lt;K, V&gt;</code>、<code>互斥锁&lt;T&gt;</code>
-      都是泛型类——日常开发直接用它们，见<a href="./stdlib.html">标准库</a>。</p>
+}</code></pre></div>
+<p class="输出行">输出：42 礼物
+</p>
+<ul><li>实际工程不重复造轮子：标准库有现成的 <a href="stdlib/container.html">向量/链表/栈/队列</a>、<a href="stdlib/mapset.html">映射/集合</a>。</li><li>泛型类型参数可约束为接口（<code>泛型 &lt;类型 T : 可比较&gt;</code>）。</li></ul>
+<h2 id="静态成员">静态成员与常量成员函数</h2>
+<p><code>静态</code> 字段全类共享（<code>类名.字段</code> 访问）；<code>常量 函数</code> 承诺不改对象状态——可在常量上下文调用。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">静态.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">类 实例计数器 {
+公开:
+    静态 整64 总数 = 0;      // 全类共享一份
 
-      <div class="批注">
-        <span class="批注-题">下一章预告</span>
-        会写类还不够，系统级语言要回答「谁负责释放」：<a href="./tutorial-safety.html">安全与并发</a>——
-        所有权转移、结果与可选、线程与互斥锁。</div>
+    函数 实例计数器() {
+        总数 = 总数 + 1;
+    }
 
-      <nav class="页脚导航">
-        <a href="./tutorial-syntax.html">
-          <span class="向">← 上一页</span>
-          <span class="题">语法基础</span>
-        </a>
-        <a class="下一" href="./tutorial-safety.html">
-          <span class="向">下一页 →</span>
-          <span class="题">安全与并发</span>
-        </a>
-      </nav>
-    </article>
+    常量 函数 编号() -&gt; 整64 { 返回 1; }   // 常量成员函数
+}
 
+函数 主() -&gt; 整32 {
+    实例计数器 a = 实例计数器();
+    实例计数器 b = 实例计数器();
+    打印(实例计数器.总数);     // 2（经类名访问）
+    打印(a.编号());
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：2
+1
+</p>
+<h2 id="运算符重载">运算符重载</h2>
+<p>成员函数 <code>函数 运算符X(参数)</code> 自定义运算符语义；仅限成员（左操作数必须本类实例）；双目单参数、单目无参数。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">复数.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">类 复数 {
+公开:
+    浮64 实;
+    浮64 虚;
+
+    函数 复数(浮64 r, 浮64 i) { 实 = r; 虚 = i; }
+
+    函数 运算符+(复数 右) -&gt; 复数 {
+        返回 复数(实 + 右.实, 虚 + 右.虚);
+    }
+
+    函数 运算符==(复数 右) -&gt; 布尔 {
+        返回 实 == 右.实 &amp;&amp; 虚 == 右.虚;
+    }
+}
+
+函数 主() -&gt; 整32 {
+    复数 a = 复数(1.0, 2.0);
+    复数 b = 复数(3.0, 4.0);
+    复数 c = a + b;          // 调用 运算符+
+    打印(c.实, " ", c.虚, " ", a == b, " ", a + b == c);
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：4.000000 6.000000 假 真
+</p>
+<ul><li>可重载集合：<code>+ - * / % == != &lt; &gt; &lt;= &gt;= &amp;&amp; || ! &amp; | ^ ~ &lt;&lt; &gt;&gt; [] ()</code>。</li><li>决议：先精确匹配内置运算符，无匹配才查左操作数类型的成员 <code>运算符X</code>。</li><li>字符串 <code>+</code> 数值 拼接是语言内置（自动转字符串），无需重载。</li></ul><nav class="页脚导航"><a class="" href="tutorial-syntax.html"><span class="向">← 上一页</span><span class="题">教程·语法基础</span></a><a class="下一" href="tutorial-safety.html"><span class="向">下一页 →</span><span class="题">教程·安全与并发</span></a></nav></article>
     <aside class="目录" aria-label="本页目录">
       <p class="目录-题">本页目录</p>
-      <a href="#类与访问控制">类与访问控制</a>
-      <a href="#继承与虚函数">继承与虚函数</a>
-      <a href="#接口多态">接口多态</a>
-      <a href="#运算符重载与静态成员">运算符重载与静态成员</a>
-      <a href="#泛型">泛型</a>
+<a href="#第一个类">第一个类：字段、方法、可见性</a><a href="#构造析构">构造与析构：RAII 的根基</a><a href="#继承">继承与多态：虚拟/重写/自身/父类</a><a href="#接口">接口：行为契约</a><a href="#泛型类">泛型类：向量 的原理</a><a href="#静态成员">静态成员与常量成员函数</a><a href="#运算符重载">运算符重载</a>
     </aside>
   </div>
 </main>
@@ -289,9 +272,9 @@
         <h4>语言</h4>
         <ul>
           <li><a href="./">官方文档</a></li>
-          <li><a href="./getting-started.html">快速开始</a></li>
-          <li><a href="./reference/">语言参考</a></li>
-          <li><a href="./stdlib.html">标准库</a></li>
+          <li><a href="getting-started.html">快速开始</a></li>
+          <li><a href="reference/">语言参考</a></li>
+          <li><a href="stdlib.html">标准库</a></li>
         </ul>
       </div>
       <div>
@@ -299,7 +282,7 @@
         <ul>
           <li><a href="https://gitcode.com/ChenChao_GitCode/CN_Language" target="_blank" rel="noopener">源码仓库 ↗</a></li>
           <li><a href="../os/">CN-OS 蓝图</a></li>
-          <li><a href="./cli.html">命令行参考</a></li>
+          <li><a href="cli.html">命令行参考</a></li>
         </ul>
       </div>
       <div>
@@ -319,6 +302,6 @@
 </footer>
 
 <script src="../assets/cn-highlight.js?v=1"></script>
-<script src="../assets/site.js?v=2"></script>
+<script src="site.js?v=2"></script>
 </body>
 </html>

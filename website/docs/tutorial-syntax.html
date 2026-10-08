@@ -3,15 +3,15 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>语法基础 · CN 语言</title>
-<meta name="description" content="CN 语言语法基础教程：变量、类型、函数、控制流、结构体与枚举。">
+<title>教程·语法基础 · CN 语言 · CN 语言</title>
+<meta name="description" content="变量、类型、运算符、控制流、函数、数组、字符串、结构体、枚举——写过程式 CN 的全部基础。">
 <script>
   (function () {
     try {
       var t = localStorage.getItem("cn-theme");
       if (t === "dark" || t === "light") document.documentElement.setAttribute("data-theme", t);
     } catch (e) {}
-  })();
+  })()
 </script>
 <link rel="stylesheet" href="../assets/tokens.css?v=2">
 <link rel="stylesheet" href="../assets/site.css?v=4">
@@ -24,9 +24,10 @@
     <button class="导航-开关" data-导航钮 aria-expanded="false">菜单</button>
     <nav class="导航" aria-label="站点导航">
       <a href="../">首页</a>
-      <a href="./" aria-current="page">文档</a>
-      <a href="./getting-started.html">快速开始</a>
-      <a href="./reference/">语言参考</a>
+      <a href="" aria-current="page">文档</a>
+      <a href="getting-started.html">快速开始</a>
+      <a href="reference/">语言参考</a>
+      <a href="stdlib.html">标准库</a>
       <a href="../os/">CN-OS</a>
       <a href="https://gitcode.com/ChenChao_GitCode/CN_Language" target="_blank" rel="noopener">源码 ↗</a>
       <button class="主题钮" data-主题钮 aria-label="切换主题">月</button>
@@ -36,258 +37,349 @@
 
 <main class="容器">
   <div class="文档骨架">
-    <aside class="侧栏" aria-label="文档导航">
-      <div class="侧栏-组">
-        <p class="侧栏-组题">入门</p>
-        <a href="./">文档总览</a>
-        <a href="./getting-started.html">快速开始</a>
-      </div>
-      <div class="侧栏-组">
-        <p class="侧栏-组题">教程</p>
-        <a href="./tutorial-syntax.html" aria-current="page">语法基础</a>
-        <a href="./tutorial-oop.html">类与泛型</a>
-        <a href="./tutorial-safety.html">安全与并发</a>
-      </div>
-      <div class="侧栏-组">
-        <p class="侧栏-组题">语言参考</p>
-        <a href="./reference/">参考总览</a>
-        <a href="./reference/lexical.html">词法结构</a>
-        <a href="./reference/types.html">类型系统</a>
-        <a href="./reference/control-flow.html">控制流</a>
-        <a href="./reference/functions.html">函数</a>
-        <a href="./reference/oop.html">类与对象</a>
-        <a href="./reference/errors.html">错误处理</a>
-        <a href="./reference/concurrency.html">并发</a>
-        <a href="./reference/modules.html">模块系统</a>
-      </div>
-      <div class="侧栏-组">
-        <p class="侧栏-组题">资源</p>
-        <a href="./stdlib.html">标准库</a>
-        <a href="./cli.html">命令行参考</a>
-      </div>
-    </aside>
+    <aside class="侧栏" aria-label="文档导航"><div class="侧栏-组"><p class="侧栏-组题">入门</p><a href="index.html">文档总览</a><a href="getting-started.html">快速开始</a></div><div class="侧栏-组"><p class="侧栏-组题">教程</p><a href="tutorial-syntax.html" aria-current="page">语法基础</a><a href="tutorial-oop.html">类与泛型</a><a href="tutorial-safety.html">安全与并发</a><a href="tutorial-advanced.html">进阶篇</a></div><div class="侧栏-组"><p class="侧栏-组题">语言参考</p><a href="reference/index.html">参考总览</a><a href="reference/lexical.html">词法结构</a><a href="reference/types.html">类型系统</a><a href="reference/control-flow.html">控制流</a><a href="reference/functions.html">函数</a><a href="reference/oop.html">类与对象</a><a href="reference/errors.html">错误处理</a><a href="reference/concurrency.html">并发</a><a href="reference/modules.html">模块系统</a></div><div class="侧栏-组"><p class="侧栏-组题">标准库</p><a href="stdlib.html">标准库总览</a><a href="stdlib/core.html">核心</a><a href="stdlib/container.html">容器</a><a href="stdlib/mapset.html">映射集合</a><a href="stdlib/string.html">字符串扩展</a><a href="stdlib/algorithm.html">算法</a><a href="stdlib/regex.html">正则</a><a href="stdlib/system.html">系统</a><a href="stdlib/io.html">IO</a><a href="stdlib/file.html">文件</a><a href="stdlib/time.html">时间</a><a href="stdlib/math.html">数学</a><a href="stdlib/random.html">随机数</a><a href="stdlib/thread.html">线程</a><a href="stdlib/builtin.html">内置函数</a></div><div class="侧栏-组"><p class="侧栏-组题">资源</p><a href="cli.html">命令行参考</a></div><div class="侧栏-组"><p class="侧栏-组题">资源</p><a href="https://gitcode.com/ChenChao_GitCode/CN_Language" target="_blank" rel="noopener">源码仓库 ↗</a></div></aside>
+    <article class="正文"><nav class="面包屑" aria-label="面包屑"><a href="./">文档</a> / 教程·语法基础</nav>
+<h1>教程·语法基础</h1>
+<p style="color: var(--color-fg-muted); font-size: var(--text-lg); line-height: 2;">变量、类型、运算符、控制流、函数、数组、字符串、结构体、枚举——写过程式 CN 的全部基础。</p>
+<h2 id="程序骨架">程序骨架与语句</h2>
+<p>CN 源文件 UTF-8 编码、<code>.cn</code> 扩展名；顶层由函数/结构体/枚举/类/接口/导入/全局变量声明组成；入口=名为 <code>主</code> 的函数。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">骨架.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 单行注释
+/* 块注释，支持嵌套 /* 像这样 */ */
 
-    <article class="正文">
-      <nav class="面包屑" aria-label="面包屑"><a href="./">文档</a> / 教程 / 语法基础</nav>
-      <h1>语法基础</h1>
-      <p style="color: var(--color-fg-muted); font-size: var(--text-lg); line-height: 2;">
-        这一章带你走完 CN 的地基：变量、类型、函数、控制流和结构体。
-        会中文就会读 CN 代码——这门语言的关键字只有 46 个。</p>
+静态 整32 全局计数 = 0;      // 全局静态变量（零初始化）
 
-      <h2 id="程序结构">程序结构</h2>
-      <p>一个 CN 程序由顶层声明组成（函数、结构体、枚举、类、导入等），
-      入口是 <code>主</code> 函数：</p>
-      <div class="码窗">
-        <p class="码窗-顶"><span class="码窗-名">程序结构.cn</span><span class="码窗-徽">CN</span></p>
-        <pre><code class="language-cn">// 顶层声明……
-导入 容器::向量;          // 导入标准库容器
-
-函数 主() -&gt; 整32 {       // 入口函数
-    打印("你好");         // 语句以分号结尾
-    返回 0;               // 返回 0 表示成功
-}</code></pre>
-      </div>
-      <p>注释与 C 家族一致：<code>//</code> 行注释、<code>/* */</code> 块注释。
-      每条语句以分号 <code>;</code> 结束。</p>
-
-      <h2 id="变量与常量">变量与常量</h2>
-      <p>用 <code>变量</code> 声明变量。类型可推断，也可显式标注；
-      <code>常量</code> 声明不可变绑定；<code>静态</code> 声明静态变量：</p>
-      <div class="码窗">
-        <p class="码窗-顶"><span class="码窗-名">变量.cn</span><span class="码窗-徽">CN</span></p>
-        <pre><code class="language-cn">函数 主() -&gt; 整32 {
-    变量 x = 10;          // 类型推断：整32
-    整数 y = 20;          // 显式类型（整数 = 整32 的别名）
-    整32 z = 30;          // 位宽类型
-    浮64 比例 = 0.5;      // 64 位浮点
-    布尔 开关 = 真;        // 布尔：真 / 假
-    常量 PI = 3.14;       // 常量：不可重新赋值
-    静态 整32 计数 = 0;   // 静态变量
-
-    字符串 名字 = "小明";  // 字符串
-    字符 首字 = '小';      // 字符（Unicode，4 字节）
-
-    打印(x, y, z, 比例, 开关, PI, 名字, 首字);
+不安全 函数 主() -&gt; 整32 {    // 静态变量写=不安全操作（进阶篇·安全区边界）
+    全局计数 = 全局计数 + 1;
+    打印("计数：", 全局计数);
+    返回 0;                   // 0 = 成功
+}</code></pre></div>
+<p class="输出行">输出：计数：1
+</p>
+<div class="批注 "><span class="批注-题">分号是语句边界的唯一标记</span>与 C/Rust 同款：<strong>每条语句必须以分号 <code>;</code> 结束</strong>。换行在词法层只是空白——表达式可以任意换行续写，但行尾漏分号不会被「自动补分号」救回来，而是直接报语法错误。这避免了行尾/行首词法拼接类的事故。</div>
+<h2 id="变量">变量与常量</h2>
+<p>声明即初始化是 CN 的默认姿势——<strong>未初始化的局部值类型变量读取是编译错误</strong>（编译期数据流检查，零运行时成本）。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">变量.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">函数 主() -&gt; 整32 {
+    整32 甲 = 10;            // 显式类型
+    变量 乙 = 20;            // 类型推断（= 整32）
+    浮64 单价 = 9.5;
+    布尔 通过 = 真;
+    字符 等级 = '甲';        // Unicode 字符（4 字节码点）
+    甲 = 甲 + 乙;            // 赋值
+    打印(甲, " ", 单价, " ", 通过, " ", 整32(等级));  // 字符打印=码点
     返回 0;
-}</code></pre>
-      </div>
+}</code></pre></div>
+<p class="输出行">输出：30 9.500000 真 30002
+</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">常量与静态</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">常量 尺寸 = 4;              // 编译期常量：引用处直接替换
+静态 整32 访问次数 = 0;     // 全局/类内静态：零初始化，进程生存期
 
-      <h2 id="基本类型">基本类型</h2>
-      <p>CN 的整数类型精确到位宽，命名即文档：</p>
-      <table class="表">
-        <thead><tr><th>类别</th><th>类型</th><th>说明</th></tr></thead>
-        <tbody>
-          <tr><td>默认别名</td><td><code>整数</code>（=整32）、<code>小数</code>（=浮64）</td><td>日常使用</td></tr>
-          <tr><td>有符号整数</td><td><code>整8</code> <code>整16</code> <code>整32</code> <code>整64</code> <code>整128</code></td><td>1~16 字节</td></tr>
-          <tr><td>无符号整数</td><td><code>正8</code> <code>正16</code> <code>正32</code> <code>正64</code> <code>正128</code></td><td>非负整数</td></tr>
-          <tr><td>浮点</td><td><code>浮32</code> <code>浮64</code></td><td>IEEE 754</td></tr>
-          <tr><td>其他</td><td><code>布尔</code> <code>字符</code> <code>字符串</code> <code>空类型</code></td><td>字符为 Unicode 标量</td></tr>
-        </tbody>
-      </table>
-      <p>还有复合类型：指针 <code>类型*</code>、数组、结构体、枚举、联合体、
-      函数指针，以及错误处理专用的 <code>结果&lt;T, E&gt;</code> 与 <code>可选&lt;T&gt;</code>
-      （见<a href="./tutorial-safety.html">安全与并发</a>）。</p>
+不安全 函数 主() -&gt; 整32 {  // 静态写在不安全域（读取任意处安全）
+    整32[尺寸] 表;           // 数组长度=编译期常量表达式
+    访问次数 = 访问次数 + 1;
+    打印(尺寸, " ", 访问次数);
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：4 1
+</p>
+<ul><li><code>常量</code> 值在编译期折叠进引用处，可为算术表达式（<code>常量 尺寸2 = 尺寸 * 2;</code>）。</li><li><code>静态</code> 变量有零初始化保证，生存期=整个进程；函数内声明同样合法。</li><li>未初始化读取（<code>整32 x; 打印(x);</code>）是编译错误——不会读到垃圾值。</li></ul>
+<h2 id="基本类型">基本类型全景</h2>
+<p>整型 10 种（有符号/无符号 × 5 位宽）、浮点 2 种、布尔/字符/字符串，以及别名 <code>整数</code>=整32、<code>小数</code>=浮64。</p>
+<table class="表"><thead><tr><th>类别</th><th>类型</th><th>大小</th><th>范围/说明</th></tr></thead><tbody><tr><td>默认别名</td><td><code>整数</code> / <code>小数</code></td><td>4B / 8B</td><td>= 整32 / = 浮64（保留中文习惯的别名）</td></tr><tr><td>有符号整数</td><td><code>整8</code> <code>整16</code> <code>整32</code> <code>整64</code> <code>整128</code></td><td>1~16B</td><td>整8：-128~127 …… 整128：±2^127</td></tr><tr><td>无符号整数</td><td><code>正8</code> <code>正16</code> <code>正32</code> <code>正64</code> <code>正128</code></td><td>1~16B</td><td>正8：0~255 …… 正128：0~2^128-1</td></tr><tr><td>浮点</td><td><code>浮32</code> <code>浮64</code></td><td>4B / 8B</td><td>IEEE 754 单/双精度</td></tr><tr><td>其他</td><td><code>布尔</code> <code>字符</code> <code>字符串</code> <code>空类型</code></td><td>1B / 4B / - / -</td><td>真/假；Unicode 码点；UTF-8 拥有串；void</td></tr></tbody></table>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">字面量.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">函数 主() -&gt; 整32 {
+    整32 十进制 = 42;
+    整32 十六进制 = 0xFF;       // 255
+    整32 二进制 = 0b1010;       // 10
+    整32 八进制 = 0o777;        // 511
+    整64 长值 = 100L;           // L 后缀 → 整64
+    浮32 单精度 = 1.5f;         // f 后缀 → 浮32
+    浮64 科学 = 1.5e10;
+    打印(十进制, " ", 十六进制, " ", 二进制, " ", 八进制);
+    打印(长值, " ", 单精度, " ", 科学);
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：42 255 10 511
+100 1.500000 15000000000.000000
+</p>
+<div class="批注 批注-赭"><span class="批注-题">窄类型的算术语义（资深提示）</span>同宽窄整数算术<strong>保持窄域</strong>（<code>整8 + 整8 = 整8</code>），溢出按两补码回绕（127+1≡-128）；字面量向窄类型赋值做编译期值域检查（<code>整16 甲 = 40000;</code> 拒绝）。混合符号（整N × 正M）变量运算编译期拒绝、字面量豁免——详见<a href="reference/types.html">类型参考</a>。</div>
+<h2 id="类型转换">类型转换</h2>
+<p>宽化隐式进行；窄化/跨符号/浮整/指针↔整数一律显式 <code>类型名(表达式)</code>，语义=位模式变换（Rust <code>as</code> 同款）。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">转换.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">函数 主() -&gt; 整32 {
+    整32 小 = 7;
+    整64 大 = 小;                // 宽化：隐式放行
+    浮64 比例 = 浮64(小) / 4;    // 显式转浮点 → 1.75
+    整32 截断 = 整32(3.99);      // 浮转整：截断 → 3
+    正64 位模式 = 正64(整32(-1)); // 升宽：符号扩展 → 2^64-1
+    打印(大, " ", 比例, " ", 截断, " ", 位模式 == 18446744073709551615);
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：7 1.750000 3 真
+</p>
+<ul><li>升宽：有符号源符号扩展、无符号源零扩展。</li><li>同宽跨符号：位模式重解释（<code>整64(正64(2^63))</code> = -2^63）。</li><li>降宽：低位截断。</li><li>字符串拼接语境例外：<code>"编号-" + 7</code> 自动把数值转字符串（布尔转「真/假」），见<a href="#字符串">字符串</a>节。</li></ul>
+<h2 id="运算符">运算符与优先级</h2>
+<p>全套 C 风格运算符，13 级优先级；这里只讲 CN 有立法规矩的部分，完整优先级表见<a href="reference/lexical.html#优先级">词法参考</a>。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">运算符.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">函数 正数(整32 x) -&gt; 布尔 { 返回 x &gt; 0; }
 
-      <h2 id="函数">函数</h2>
-      <p><code>函数</code> 声明函数，参数写「类型 名字」，返回类型跟在 <code>-&gt;</code> 后：</p>
-      <div class="码窗">
-        <p class="码窗-顶"><span class="码窗-名">函数.cn</span><span class="码窗-徽">CN</span></p>
-        <pre><code class="language-cn">函数 加(整32 a, 整32 b) -&gt; 整32 {
-    返回 a + b;
+函数 主() -&gt; 整32 {
+    整32 a = 7;
+    整32 b = 2;
+    打印(a + b, a - b, a * b, a / b, a % b);   // 9 5 14 3 1
+    打印(a &lt;&lt; 1, a &gt;&gt; 1, a &amp; 3, a | 8, a ^ 1); // 14 3 3 15 6
+    打印(a &gt; b, a == 7, a != 7, !正数(-1));    // 布尔族
+    整32 c = a &gt; b ? a : b;                     // 三元（右结合）
+    a += 10;                                    // 复合赋值族 += -= *= /= %=
+    a++;                                        // 后缀自增：表达式值=原值
+    打印(c, a);
+    返回 0;
+}</code></pre></div>
+<ul><li><code>/</code> 对整数=截断除；<code>%</code> 取余（除零=运行时错误码 1，常量除零=编译错误）。</li><li>逻辑 <code>&amp;&amp;</code> <code>||</code> 短路；位运算只适用整型（浮点位运算编译拒绝）；<code>&gt;&gt;</code> 有符号=算术右移（符号扩展），无符号=逻辑右移；移位量按位宽取模（<code>x &lt;&lt; 64</code> ≡ <code>x</code>）。</li><li>后缀 <code>++/--</code> 表达式值=自增<strong>前</strong>原值；前缀=自增后新值。</li><li>三元 <code>条件 ? 真值 : 假值</code> 右结合、惰性求值。</li></ul>
+<h2 id="控制流">控制流：如果/当/循环/选择/遍历</h2>
+<p>条件括号可选（裸条件与带括号均合法）；<code>中断</code> 绑定最近的循环或选择；<code>选择</code> 默认贯穿（fall-through）、显式 <code>中断</code> 停住。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">条件与循环.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">函数 分级(整32 分) -&gt; 字符串 {
+    如果 分 &gt;= 90 {
+        返回 "优";
+    } 否则 如果 分 &gt;= 60 {
+        返回 "及格";
+    } 否则 {
+        返回 "不及格";
+    }
 }
 
-// 无返回值可省略 -> 类型
-函数 打印问候() {
-    打印行("你好");
+函数 主() -&gt; 整32 {
+    打印(分级(95), " ", 分级(70), " ", 分级(30));
+
+    整32 i = 0;
+    当 i &lt; 3 {                 // 当循环（前测）
+        打印行(i, " ");
+        i++;
+    }
+    打印("");
+
+    循环 (整32 j = 10; j &gt;= 0; j -= 5) {   // for 风格
+        打印行(j, " ");
+    }
+    打印("");
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：优 及格 不及格
+0 1 2 
+10 5 0 
+</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">选择.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">枚举 命令 { 启动, 停止, 查询 }
+
+函数 主() -&gt; 整32 {
+    整32 键 = 2;
+    选择 (键) {
+        情况 0:
+            打印("零");
+            中断;
+        情况 1, 2:            // 多值分组
+            打印("一或二");
+            中断;
+        默认:
+            打印("其他");     // 不写 中断 会贯穿下一分支（C 语义）
+    }
+
+    字符串 指令 = "开始";
+    选择 (指令) {             // 字符串选择
+        情况 "开始", "继续":
+            打印("执行");
+            中断;
+        默认:
+            打印("未知");
+    }
+
+    命令 c = 命令.查询;
+    选择 (c) {                // 裸枚举成员（按条件类型定向解析）
+        情况 启动:
+            打印("启动中");
+            中断;
+        情况 查询:
+            打印("查询中");
+            中断;
+        默认:
+            打印("…");
+    }
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：一或二
+执行
+查询中
+</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">遍历与中断继续.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">函数 主() -&gt; 整32 {
+    整32[5] 数据 = {10, 20, 30, 40, 50};
+    遍历 数据 中 每个 x {        // 数组遍历：x=元素副本
+        打印行(x, " ");
+    }
+    打印("");
+
+    循环 (整32 k = 0; k &lt; 100; k++) {
+        如果 k % 2 == 0 { 继续; }   // 跳过偶数
+        如果 k &gt; 10 { 中断; }        // 终止循环
+        打印行(k, " ");
+    }
+    打印("");
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：10 20 30 40 50 
+1 3 5 7 9 
+</p>
+<div class="批注 批注-赭"><span class="批注-题">中断 的绑定规则</span><code>中断</code> 跳出<strong>最近进入</strong>的一层 选择 或 循环（谁近绑谁，与 C 的 break 一致）：循环内选择体写 <code>中断</code> 只跳出该选择，循环继续；从选择内直接跳出外层循环无直接语法。<code>继续</code> 仅对循环有意义。</div>
+<h2 id="函数">函数：重载、默认参数、引用参数</h2>
+<p>函数是first-class公民：同名重载按参数类型区分、默认参数从右向左连续、<code>T&amp;</code> 引用参数直写调用方、泛型函数编译期单态化。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">函数.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 重载：同名按参数类型与个数区分（仅返回类型不同不构成重载）
+函数 最大(整32 a, 整32 b) -&gt; 整32 { 如果 a &gt; b { 返回 a; } 返回 b; }
+函数 最大(浮64 a, 浮64 b) -&gt; 浮64 { 如果 a &gt; b { 返回 a; } 返回 b; }
+
+// 默认参数：从右向左连续声明
+函数 问候(字符串 名字 = "世界") -&gt; 空类型 {
+    打印("你好，" + 名字);
 }
 
-// 默认参数
-函数 问候(字符串 名字 = "世界") {
-    打印行("你好，" + 名字);
-}
-
-// 引用参数：T& 写穿到调用方
+// 引用参数：直写调用方（左值地址传递）
 函数 交换(整32&amp; a, 整32&amp; b) -&gt; 空类型 {
     整32 临时 = a;
     a = b;
     b = 临时;
 }
 
-// 重载：同名函数按参数类型与个数区分
-函数 最大值(整32 a, 整32 b) -&gt; 整32 { 如果 a &gt; b { 返回 a; } 返回 b; }
-函数 最大值(浮64 a, 浮64 b) -&gt; 浮64 { 如果 a &gt; b { 返回 a; } 返回 b; }
+// 常量引用参数：只读借用（体内赋值=编译错误）
+函数 求和(常量 整64&amp; x, 常量 整64&amp; y) -&gt; 整64 { 返回 x + y; }
 
 函数 主() -&gt; 整32 {
-    问候();           // 你好，世界
-    问候("张三");     // 你好，张三
-    整32 x = 1;
-    整32 y = 2;
-    交换(x, y);       // x=2, y=1
-    打印(加(1, 2), 最大值(x, y));
+    打印(最大(3, 9), " ", 最大(2.5, 1.8));
+    问候();
+    问候("张三");
+    整32 p = 1;
+    整32 q = 2;
+    交换(p, q);            // 引用实参：直传左值（不加 &amp;）
+    打印(p, q);
+    整64 x = 100;
+    整64 y = 23;
+    打印(求和(x, y));      // 常量引用实参须左值变量
     返回 0;
-}</code></pre>
-      </div>
-      <p>还有 lambda（匿名函数）：</p>
-      <div class="码窗">
-        <p class="码窗-顶"><span class="码窗-名">lambda.cn</span><span class="码窗-徽">CN</span></p>
-        <pre><code class="language-cn">函数 主() -&gt; 整32 {
-    变量 加倍 = [](整32 v) -&gt; 整32 { 返回 v * 2; };
-    打印(加倍(21));   // 42
+}</code></pre></div>
+<p class="输出行">输出：9 2.500000
+你好，世界
+你好，张三
+21
+123
+</p>
+<div class="批注 批注-赭"><span class="批注-题">按值传参的两种语义（资深提示）</span>标量/结构体按值形参=<strong>副本语义</strong>（体内写不影响实参）；<strong>类类型按值形参=引用语义</strong>（形参槽存对象句柄，体内经句柄写穿调用方同一堆对象——类变量即指针槽模型）。要与「副本语义」写类，传前显式 <code>复制(对象)</code>。详见<a href="reference/functions.html#传参">函数参考</a>。</div>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">泛型函数.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">泛型 &lt;类型 T&gt;
+函数 交换泛型(T&amp; a, T&amp; b) -&gt; 空类型 {
+    T 临时 = a;
+    a = b;
+    b = 临时;
+}
+
+函数 主() -&gt; 整32 {
+    整32 甲 = 1;
+    整32 乙 = 2;
+    交换泛型&lt;整32&gt;(甲, 乙);      // 显式单态化&amp;lt;类型&amp;gt;；引用实参直传
+    打印(甲, 乙);
     返回 0;
-}</code></pre>
-      </div>
+}</code></pre></div>
+<p class="输出行">输出：21
+</p>
+<h2 id="数组">数组：定长、值语义、编译期长度</h2>
+<p>数组=<code>类型[长度]</code>，长度可为编译期常量表达式；整体赋值=整块值拷贝（两态独立）；越界=运行时错误（错误码 2）。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">数组.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">常量 行数 = 3;
 
-      <h2 id="控制流">控制流</h2>
-      <p>五大控制流，全部中文关键字。条件的括号可写可不写：</p>
-      <div class="码窗">
-        <p class="码窗-顶"><span class="码窗-名">控制流.cn</span><span class="码窗-徽">CN</span></p>
-        <pre><code class="language-cn">函数 主() -&gt; 整32 {
-    // 如果 / 否则
-    整32 x = -5;
-    如果 x &gt; 0 {
-        打印行("正数");
-    } 否则 如果 x &lt; 0 {
-        打印行("负数");
-    } 否则 {
-        打印行("零");
-    }
+函数 主() -&gt; 整32 {
+    整32[5] 表 = {10, 20, 30, 40, 50};   // 聚合初始化
+    整32[行数] 零表;                      // 长度=常量表达式
+    零表[0] = 7;
+    打印(表[0], " ", 表[4], " ", 零表[0]);
 
-    // 当循环
-    整数 i = 0;
-    当 i &lt; 3 {
-        打印行(i);    // 0 1 2
-        i++;
-    }
+    整32[3] 甲 = {1, 2, 3};
+    整32[3] 乙 = 甲;                      // 整块值拷贝
+    乙[0] = 99;
+    打印(甲[0], " ", 乙[0]);              // 1 99（两态独立）
 
-    // 循环（C 的 for 风格）
-    循环 (整32 j = 0; j &lt; 3; j++) {
-        打印行(j);    // 0 1 2
-    }
-
-    // 选择（switch 风格，支持字符串与多值分组）
-    字符串 命令 = "开始";
-    选择 (命令) {
-        情况 "开始", "继续":
-            打印行("执行");
-            中断
-        默认:
-            打印行("未知");
-    }
-
-    // 遍历……中每个（range-for）
-    循环 (整32 k = 0; k &lt; 5; k++) {
-        如果 k % 2 == 0 { 继续; }   // 跳过偶数
-        如果 k &gt; 3 { 中断; }        // 提前退出
-        打印行(k);    // 1 3
-    }
+    整32 和 = 0;
+    遍历 表 中 每个 x { 和 = 和 + x; }
+    打印(和);
     返回 0;
-}</code></pre>
-      </div>
-
-      <h2 id="结构体与枚举">结构体与枚举</h2>
-      <p>结构体把数据打包；构造字面量用 <code>类型{ 字段 = 值 }</code>（字段穷举）：</p>
-      <div class="码窗">
-        <p class="码窗-顶"><span class="码窗-名">结构体.cn</span><span class="码窗-徽">CN</span></p>
-        <pre><code class="language-cn">结构体 点 {
+}</code></pre></div>
+<p class="输出行">输出：10 50 7
+1 99
+150
+</p>
+<ul><li>下标从 0 起；越界读/写=运行时错误 <code>错误码2 越界</code> 终止。</li><li>数组作为实参传给函数=按值整块拷贝（形参内改不影响实参）；要原地改用 <code>T*</code> 或 <code>T&amp;</code> 形参。</li><li>定长数组之外，动态容器用标准库 <a href="stdlib/container.html">向量&lt;T&gt;</a>。</li></ul>
+<h2 id="字符串">字符串：拥有型 UTF-8</h2>
+<p>字符串变量=<strong>拥有型</strong>（堆上 UTF-8，作用域结束自动释放）；<code>+</code> 拼接（右侧数值自动转字符串）；<code>s[i]</code> 按<strong>字节</strong>读（UTF-8）；写入不可（不可变类型）。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">字符串.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">函数 主() -&gt; 整32 {
+    字符串 名 = "CN 语言";
+    打印(字符串长度(名));            // 9（UTF-8 字节：CN=2+空格1+语言=6）
+    字符串 拼接 = "你好, " + 名 + "!" + 1;
+    打印(拼接);                       // 你好, CN 语言!1
+    打印(字符串包含(名, "语言"));     // 真
+    打印(字符串子串(名, 3, 6));       // 语言（字节切片）
+    打印(名[0]);                      // 67（'C' 的 UTF-8 首字节）
+    打印(字符串大写("cn"));           // CN
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：9
+你好, CN 语言!1
+真
+语言
+67
+CN
+</p>
+<ul><li>长度/查找/子串/下标全部按 <strong>UTF-8 字节</strong> 口径（一个汉字 3 字节）——<code>字符串长度("中")</code> = 3。</li><li><code>s[i]</code> 返回 <code>整8</code>（带符号字节）；字符串<strong>不可原地下标写</strong>（编译拒绝）——修改=用内置函数重建新串。</li><li>完整的字符串函数族（20 个内置）见<a href="stdlib/builtin.html#字符串内置">内置函数·字符串族</a>。</li></ul>
+<h2 id="结构体">结构体：值聚合与指定初始化器</h2>
+<p>结构体是纯值聚合（无方法）；用 <code>类型{字段=值}</code> 指定初始化器构造——<strong>穷举纪律</strong>：缺字段/未知字段/重复字段=编译错误。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">结构体.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">结构体 点 {
     浮64 x;
     浮64 y;
 }
 
-枚举 颜色 {
-    红,
-    绿,
-    蓝,
-    自定义 = 100   // 可指定底层值
+结构体 线段 {
+    点 起;      // 嵌套结构体字段
+    点 止;
 }
 
 函数 主() -&gt; 整32 {
-    点 原点 = 点{ x = 0.0, y = 0.0 };
-    点 目标 = 点{ x = 3.0, y = 4.0 };
-    浮64 距离平方 = (目标.x - 原点.x) * (目标.x - 原点.x)
-                 + (目标.y - 原点.y) * (目标.y - 原点.y);
-    打印("距离平方: ", 距离平方);   // 25
+    点 a = 点{x = 1.0, y = 2.0};
+    点 b = a;               // 整体值拷贝
+    b.x = 9.0;
+    打印(a.x, " ", b.x);    // 1 9（两态独立）
 
+    线段 线 = 线段{起 = 点{x = 0.0, y = 0.0}, 止 = 点{x = 3.0, y = 4.0}};
+    浮64 dx = 线.止.x - 线.起.x;
+    浮64 dy = 线.止.y - 线.起.y;
+    打印(dx * dx + dy * dy);   // 25（3-4-5 直角三角形）
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：1.000000 9.000000
+25.000000
+</p>
+<ul><li>成员访问统一 <code>.</code>；指针左侧<strong>自动解引用一级</strong>（<code>p.x</code> 等价 <code>(*p).x</code>）——<code>-&gt;</code> 已废除。</li><li>缺字段/多写字段/重复字段全部编译期拒绝（静默零填禁入安全域）。</li><li>拥有型字段（字符串/容器）的释放随结构体变量作用域自动级联（RAII）。</li></ul>
+<h2 id="枚举">枚举：命名常量族</h2>
+<p>枚举成员=命名整数常量，可显式赋值（含负数）；引用形态=<code>枚举名.成员</code>（点号）；<code>选择</code> 内可裸写成员名。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">枚举.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">枚举 颜色 { 红, 绿, 蓝, 自定义 = 100 }
+枚举 方向 { 上 = -1, 中 = 0, 下 = 1 }
+
+函数 主() -&gt; 整32 {
     颜色 c = 颜色.蓝;
+    方向 d = 方向.上;
+    打印(c == 颜色.蓝, " ", 整32(d));   // 真 -1
     选择 (c) {
-        情况 红:   { 打印行("红色"); }
-        情况 蓝:   { 打印行("蓝色"); }
-        默认:      { 打印行("其他色"); }
+        情况 红: 打印("红"); 中断;
+        情况 蓝: 打印("蓝"); 中断;   // 裸成员名
+        默认: 打印("…");
     }
     返回 0;
-}</code></pre>
-      </div>
-
-      <h2 id="练一练">练一练</h2>
-      <p>写一个程序：声明一个 <code>整32[5]</code> 数组，用 <code>循环</code> 填入 1~5 的平方，
-      再用 <code>遍历</code> 求和打印。写完用 <code>cn check 练习.cn</code> 检查，再
-      <code>cn run</code> 运行。</p>
-
-      <div class="批注">
-        <span class="批注-题">下一章预告</span>
-        数据有了形状，接下来给它行为：<a href="./tutorial-oop.html">类与泛型</a>——
-        面向对象、接口多态，以及编译期单态化的泛型容器。</div>
-
-      <nav class="页脚导航">
-        <a href="./getting-started.html">
-          <span class="向">← 上一页</span>
-          <span class="题">快速开始</span>
-        </a>
-        <a class="下一" href="./tutorial-oop.html">
-          <span class="向">下一页 →</span>
-          <span class="题">类与泛型</span>
-        </a>
-      </nav>
-    </article>
-
+}</code></pre></div>
+<p class="输出行">输出：真 -1
+蓝
+</p>
+<div class="批注 批注-赭"><span class="批注-题">枚举成员引用形态</span>成员引用=<code>枚举名.成员</code> 或 选择条件位裸成员名；<code>枚举名::成员</code> 非法（<code>::</code> 保留给模块路径限定）。</div>
+<h2 id="下一步">下一步</h2>
+<ul><li><a href="tutorial-oop.html">教程·类与泛型</a>——类、构造析构、继承接口、泛型类、运算符重载。</li><li>语法细节疑虑随查：<a href="reference/index.html">语言参考九篇</a>。</li><li>想知道每个函数能干什么：<a href="stdlib.html">标准库</a>。</li></ul><nav class="页脚导航"><a class="" href="getting-started.html"><span class="向">← 上一页</span><span class="题">快速开始</span></a><a class="下一" href="tutorial-oop.html"><span class="向">下一页 →</span><span class="题">教程·类与泛型</span></a></nav></article>
     <aside class="目录" aria-label="本页目录">
       <p class="目录-题">本页目录</p>
-      <a href="#程序结构">程序结构</a>
-      <a href="#变量与常量">变量与常量</a>
-      <a href="#基本类型">基本类型</a>
-      <a href="#函数">函数</a>
-      <a href="#控制流">控制流</a>
-      <a href="#结构体与枚举">结构体与枚举</a>
-      <a href="#练一练">练一练</a>
+<a href="#程序骨架">程序骨架与语句</a><a href="#变量">变量与常量</a><a href="#基本类型">基本类型全景</a><a href="#类型转换">类型转换</a><a href="#运算符">运算符与优先级</a><a href="#控制流">控制流：如果/当/循环/选择/遍历</a><a href="#函数">函数：重载、默认参数、引用参数</a><a href="#数组">数组：定长、值语义、编译期长度</a><a href="#字符串">字符串：拥有型 UTF-8</a><a href="#结构体">结构体：值聚合与指定初始化器</a><a href="#枚举">枚举：命名常量族</a><a href="#下一步">下一步</a>
     </aside>
   </div>
 </main>
@@ -303,9 +395,9 @@
         <h4>语言</h4>
         <ul>
           <li><a href="./">官方文档</a></li>
-          <li><a href="./getting-started.html">快速开始</a></li>
-          <li><a href="./reference/">语言参考</a></li>
-          <li><a href="./stdlib.html">标准库</a></li>
+          <li><a href="getting-started.html">快速开始</a></li>
+          <li><a href="reference/">语言参考</a></li>
+          <li><a href="stdlib.html">标准库</a></li>
         </ul>
       </div>
       <div>
@@ -313,7 +405,7 @@
         <ul>
           <li><a href="https://gitcode.com/ChenChao_GitCode/CN_Language" target="_blank" rel="noopener">源码仓库 ↗</a></li>
           <li><a href="../os/">CN-OS 蓝图</a></li>
-          <li><a href="./cli.html">命令行参考</a></li>
+          <li><a href="cli.html">命令行参考</a></li>
         </ul>
       </div>
       <div>
@@ -333,6 +425,6 @@
 </footer>
 
 <script src="../assets/cn-highlight.js?v=1"></script>
-<script src="../assets/site.js?v=2"></script>
+<script src="site.js?v=2"></script>
 </body>
 </html>

@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>模块系统 · CN 语言</title>
-<meta name="description" content="CN 语言模块系统 v2.0：文件即模块、导入全形式、默认私有、包与货舱。">
+<title>模块系统 · CN 语言 · CN 语言</title>
+<meta name="description" content="导入形态、公开面、内置命名空间、标准库组织——CN 的代码组织单位。">
 <script>
   (function () {
     try {
@@ -24,9 +24,10 @@
     <button class="导航-开关" data-导航钮 aria-expanded="false">菜单</button>
     <nav class="导航" aria-label="站点导航">
       <a href="../../">首页</a>
-      <a href=".././">文档</a>
+      <a href="../" aria-current="page">文档</a>
       <a href="../getting-started.html">快速开始</a>
-      <a href="../reference/" aria-current="page">语言参考</a>
+      <a href="../reference/">语言参考</a>
+      <a href="../stdlib.html">标准库</a>
       <a href="../../os/">CN-OS</a>
       <a href="https://gitcode.com/ChenChao_GitCode/CN_Language" target="_blank" rel="noopener">源码 ↗</a>
       <button class="主题钮" data-主题钮 aria-label="切换主题">月</button>
@@ -36,86 +37,33 @@
 
 <main class="容器">
   <div class="文档骨架">
-    <aside class="侧栏" aria-label="文档导航">
-      <div class="侧栏-组">
-        <p class="侧栏-组题">入门</p>
-        <a href=".././">文档总览</a>
-        <a href="../getting-started.html">快速开始</a>
-      </div>
-      <div class="侧栏-组">
-        <p class="侧栏-组题">教程</p>
-        <a href="../tutorial-syntax.html">语法基础</a>
-        <a href="../tutorial-oop.html">类与泛型</a>
-        <a href="../tutorial-safety.html">安全与并发</a>
-      </div>
-      <div class="侧栏-组">
-        <p class="侧栏-组题">语言参考</p>
-        <a href="../reference/">参考总览</a>
-        <a href="../reference/lexical.html">词法结构</a>
-        <a href="../reference/types.html">类型系统</a>
-        <a href="../reference/control-flow.html">控制流</a>
-        <a href="../reference/functions.html">函数</a>
-        <a href="../reference/oop.html">类与对象</a>
-        <a href="../reference/errors.html">错误处理</a>
-        <a href="../reference/concurrency.html">并发</a>
-        <a href="../reference/modules.html" aria-current="page">模块系统</a>
-      </div>
-      <div class="侧栏-组">
-        <p class="侧栏-组题">资源</p>
-        <a href="../stdlib.html">标准库</a>
-        <a href="../cli.html">命令行参考</a>
-      </div>
-    </aside>
-    <article class="正文">
-      <nav class="面包屑" aria-label="面包屑"><a href="./">文档</a> / <a href="./">语言参考</a> / 模块系统</nav>
-      
-<h1>模块系统 v2.0</h1>
-<p style="color: var(--color-fg-muted); font-size: var(--text-lg); line-height: 2;">
-文件即模块、路径 <code>::</code>、默认私有、包=crate、货舱.toml 依赖。</p>
+    <aside class="侧栏" aria-label="文档导航"><div class="侧栏-组"><p class="侧栏-组题">入门</p><a href="../index.html">文档总览</a><a href="../getting-started.html">快速开始</a></div><div class="侧栏-组"><p class="侧栏-组题">教程</p><a href="../tutorial-syntax.html">语法基础</a><a href="../tutorial-oop.html">类与泛型</a><a href="../tutorial-safety.html">安全与并发</a><a href="../tutorial-advanced.html">进阶篇</a></div><div class="侧栏-组"><p class="侧栏-组题">语言参考</p><a href="../reference/index.html">参考总览</a><a href="../reference/lexical.html">词法结构</a><a href="../reference/types.html">类型系统</a><a href="../reference/control-flow.html">控制流</a><a href="../reference/functions.html">函数</a><a href="../reference/oop.html">类与对象</a><a href="../reference/errors.html">错误处理</a><a href="../reference/concurrency.html">并发</a><a href="../reference/modules.html" aria-current="page">模块系统</a></div><div class="侧栏-组"><p class="侧栏-组题">标准库</p><a href="../stdlib.html">标准库总览</a><a href="../stdlib/core.html">核心</a><a href="../stdlib/container.html">容器</a><a href="../stdlib/mapset.html">映射集合</a><a href="../stdlib/string.html">字符串扩展</a><a href="../stdlib/algorithm.html">算法</a><a href="../stdlib/regex.html">正则</a><a href="../stdlib/system.html">系统</a><a href="../stdlib/io.html">IO</a><a href="../stdlib/file.html">文件</a><a href="../stdlib/time.html">时间</a><a href="../stdlib/math.html">数学</a><a href="../stdlib/random.html">随机数</a><a href="../stdlib/thread.html">线程</a><a href="../stdlib/builtin.html">内置函数</a></div><div class="侧栏-组"><p class="侧栏-组题">资源</p><a href="../cli.html">命令行参考</a></div><div class="侧栏-组"><p class="侧栏-组题">资源</p><a href="https://gitcode.com/ChenChao_GitCode/CN_Language" target="_blank" rel="noopener">源码仓库 ↗</a></div></aside>
+    <article class="正文"><nav class="面包屑" aria-label="面包屑"><a href="./">文档</a> / <a href="index.html">语言参考</a> / 模块系统</nav>
+<h1>模块系统</h1>
+<p style="color: var(--color-fg-muted); font-size: var(--text-lg); line-height: 2;">导入形态、公开面、内置命名空间、标准库组织——CN 的代码组织单位。</p>
+<h2 id="导入">导入形态</h2>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">导入.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">导入 容器::向量;                    // 单符号（公开符号合并→纯名直用）
+导入 容器::{链表, 栈, 队列};        // 多符号花括号
+导入 数学::平方根;                  // 限定名亦可省（纯名直用）
 
-<h2 id="文件即模块">文件即模块</h2>
-<p>每个 <code>.cn</code> 文件天然是一个模块，模块路径由文件名+目录层级决定：
-<code>网络/传输控制.cn</code> 即 <code>网络::传输控制</code>，无需声明。
-<code>模块 名</code> 声明仅用于两种树结构位置：包根聚合（<code>包.cn</code>）
-与父模块挂子模块。</p>
-
-<h2 id="导入语法">导入语法（全形式）</h2>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">导入.cn</span><span class="码窗-徽">CN</span></p>
-<pre><code class="language-cn">导入 核心::可选::{某些, 无};        // 导入多项
-导入 核心::集合;                   // 导入模块
-导入 核心::列表 作为 动态数组;      // 重命名
-导入 核心::集合::*;                // 通配
-导入 包::网络::连接;               // 从包导入
-公开 导入 网络::连接;              // 再导出（包.cn 聚合 API）</code></pre></div>
-
-<h2 id="可见性">可见性</h2>
-<p><strong>默认私有</strong>（模块级与类内）。公共 API 须显式 <code>公开:</code>。
-跨模块可见性按「交集规则」合成——一个符号要被外部看到，路径上每层都得公开。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">可见性.cn</span><span class="码窗-徽">CN</span></p>
-<pre><code class="language-cn">公开:
-    函数 公开函数() { }
-私有:
-    函数 内部函数() { }
-
-函数 默认私有() { }      // 无标签 → 默认私有</code></pre></div>
-
-<h2 id="包与货舱">包与货舱</h2>
-<ul>
-<li>包（crate）= 分发单元，根为 <code>包.cn</code>（聚合 <code>公开 导入</code> 形成包 API）。</li>
-<li>依赖声明在 <code>货舱.toml</code>；编译用 <code>--货舱</code> 选项指定清单。</li>
-<li>核心包提供 prelude 常用符号。</li>
-</ul>
-
-      <nav class="页脚导航"><a href="concurrency.html"><span class="向">← 上一页</span><span class="题">并发</span></a><a class="下一" href="../stdlib.html"><span class="向">下一页 →</span><span class="题">标准库</span></a></nav>
-    </article>
+函数 主() -&gt; 整32 {
+    向量&lt;整64&gt; 表 = 向量&lt;整64&gt;();
+    结果&lt;空类型, 整32&gt; 加 = 表.追加(9);
+    打印(表.大小(), " ", 平方根(4.0));
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：1 2.000000
+</p>
+<ul><li><code>导入 模块::符号</code> 后<strong>纯名直用</strong>（公开符号合并机制）；多符号 <code>导入 模块::{a, b, c}</code>；重命名 <code>导入 路径 作为 别名</code>。</li><li>限定名直调形态始终可用：<code>数学::平方根(2.0)</code>（无需导入）。</li><li>顶层 <code>模块 名</code> 声明本模块名（分号可选）；文件顶层 <code>公开:</code> 标签控制导出面（v2.0 默认私有、显式 <code>公开:</code> 导出）。</li></ul>
+<h2 id="内置命名空间">内置命名空间与三层名字解析</h2>
+<p>运行时内置按域分组（<code>IO::</code> <code>数学::</code> <code>文件::</code> <code>时间::</code> <code>系统::</code> <code>线程::</code> <code>解析::</code> <code>内存::</code> <code>字符串构建器::</code>）；标准库模块把它们包装成<code>结果</code> 风格公开函数。纯名引用按三级优先级解析。</p>
+<table class="表"><thead><tr><th>优先级</th><th>名字来源</th><th>说明</th></tr></thead><tbody><tr><td>1</td><td>本地作用域</td><td>局部变量/参数</td></tr><tr><td>2</td><td>当前模块符号</td><td>本文件顶层声明+已导入符号（公开符号合并）</td></tr><tr><td>3</td><td>内置函数/构造器</td><td>打印/字符串长度/分配…与 正常/错误/某些/转移/复制 等</td></tr></tbody></table>
+<div class="批注 批注-绿"><span class="批注-题">stdlib 与内置的名字分工</span>标准库模块公开函数与内置<strong>纯名不冲突</strong>：如 stdlib IO 模块的 <code>读取行()</code>（返回 结果）与内置 <code>IO::读取行()</code>（返回裸串）以限定名区分。业务代码用 stdlib 包装版（显式错误处理），内置为底层。</div>
+<h2 id="货舱">工程组织：货舱.toml</h2>
+<ul><li>多文件工程由 <code>货舱.toml</code> 声明模块依赖；编译器默认按入口文件同目录自动发现（<code>--货舱 路径</code> 显式指定）。</li><li>标准库随编译器分发（<code>--stdlib 路径</code> 可指定）；<code>stdlib/*.cn</code> 本身就是「模块=文件」的活样板。</li><li>跨模块链接符号冲突（同名公开函数）在导入解析期诊断。</li></ul><nav class="页脚导航"><a class="" href="../reference/concurrency.html"><span class="向">← 上一页</span><span class="题">并发</span></a><a class="下一" href="../cli.html"><span class="向">下一页 →</span><span class="题">命令行参考</span></a></nav></article>
     <aside class="目录" aria-label="本页目录">
       <p class="目录-题">本页目录</p>
-      
-<a href="#文件即模块">文件即模块</a>
-<a href="#导入语法">导入语法</a>
-<a href="#可见性">可见性</a>
-<a href="#包与货舱">包与货舱</a>
-
+<a href="#导入">导入形态</a><a href="#内置命名空间">内置命名空间与三层名字解析</a><a href="#货舱">工程组织：货舱.toml</a>
     </aside>
   </div>
 </main>
@@ -130,7 +78,7 @@
       <div>
         <h4>语言</h4>
         <ul>
-          <li><a href=".././">官方文档</a></li>
+          <li><a href="../.././">官方文档</a></li>
           <li><a href="../getting-started.html">快速开始</a></li>
           <li><a href="../reference/">语言参考</a></li>
           <li><a href="../stdlib.html">标准库</a></li>
@@ -161,6 +109,6 @@
 </footer>
 
 <script src="../../assets/cn-highlight.js?v=1"></script>
-<script src="../../assets/site.js?v=2"></script>
+<script src="../site.js?v=2"></script>
 </body>
 </html>

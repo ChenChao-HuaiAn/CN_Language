@@ -36,6 +36,13 @@ import docs_data_mapset    # noqa: E402
 import docs_data_text      # noqa: E402
 import docs_data_io        # noqa: E402
 import docs_data_builtin   # noqa: E402
+import docs_data_start     # noqa: E402
+import docs_data_tut       # noqa: E402
+import docs_data_tut2      # noqa: E402
+import docs_data_adv       # noqa: E402
+import docs_data_ref1      # noqa: E402
+import docs_data_ref2      # noqa: E402
+import docs_data_ref3      # noqa: E402
 
 MODULES = (
     docs_data_core.PAGES
@@ -43,6 +50,17 @@ MODULES = (
     + docs_data_text.PAGES
     + docs_data_io.PAGES
     + docs_data_builtin.PAGES
+)
+
+# 通用叙述页（快速开始/教程/进阶/语言参考/CLI）：文件路径（相对 docs/）→ 页定义
+GEN_PAGES = (
+    docs_data_start.PAGES
+    + docs_data_tut.PAGES
+    + docs_data_tut2.PAGES
+    + docs_data_adv.PAGES
+    + docs_data_ref1.PAGES
+    + docs_data_ref2.PAGES
+    + docs_data_ref3.PAGES
 )
 
 # 模块页顺序链（页脚导航 + 索引页排序）：内置 → 各模块 → CLI（站内已有页）
@@ -57,8 +75,50 @@ def esc(s):
 
 
 # ---------------------------------------------------------------- 页面骨架
-def 骨架(题名, 描述, 正文html, 目录项, 当前路径, 页脚导航, 侧栏当前):
-    """文档页骨架：顶栏+侧栏+正文+目录+页脚（与手写页同构）。"""
+# 全站线性阅读链（页脚导航+侧栏高亮的唯一依据）：文件相对 docs/ 路径 → 显示题名
+READ_CHAIN = [
+    ("index.html", "文档总览"),
+    ("getting-started.html", "快速开始"),
+    ("tutorial-syntax.html", "教程·语法基础"),
+    ("tutorial-oop.html", "教程·类与泛型"),
+    ("tutorial-safety.html", "教程·安全与并发"),
+    ("tutorial-advanced.html", "教程·进阶篇"),
+    ("reference/index.html", "参考总览"),
+    ("reference/lexical.html", "词法结构"),
+    ("reference/types.html", "类型系统"),
+    ("reference/control-flow.html", "控制流"),
+    ("reference/functions.html", "函数"),
+    ("reference/oop.html", "类与对象"),
+    ("reference/errors.html", "错误处理"),
+    ("reference/concurrency.html", "并发"),
+    ("reference/modules.html", "模块系统"),
+    ("stdlib.html", "标准库总览"),
+    ("cli.html", "命令行参考"),
+]
+
+SIDE_GROUPS = [
+    ("入门", [("index.html", "文档总览"), ("getting-started.html", "快速开始")]),
+    ("教程", [("tutorial-syntax.html", "语法基础"),
+              ("tutorial-oop.html", "类与泛型"),
+              ("tutorial-safety.html", "安全与并发"),
+              ("tutorial-advanced.html", "进阶篇")]),
+    ("语言参考", [("reference/index.html", "参考总览"),
+                 ("reference/lexical.html", "词法结构"),
+                 ("reference/types.html", "类型系统"),
+                 ("reference/control-flow.html", "控制流"),
+                 ("reference/functions.html", "函数"),
+                 ("reference/oop.html", "类与对象"),
+                 ("reference/errors.html", "错误处理"),
+                 ("reference/concurrency.html", "并发"),
+                 ("reference/modules.html", "模块系统")]),
+    ("标准库", [("stdlib.html", "标准库总览")] + [
+        ("stdlib/" + m["文件"], m["题名"]) for m in MODULES]),
+    ("资源", [("cli.html", "命令行参考")]),
+]
+
+
+def 骨架(题名, 描述, 正文html, 目录项, 当前路径, 页脚导航, 侧栏当前=None):
+    """文档页骨架：顶栏+侧栏+正文+目录+页脚（数据驱动·当前路径=相对 docs/ 路径）。"""
     rel = os.path.relpath(DOCS, os.path.dirname(os.path.join(DOCS, 当前路径)))
     rel = rel.replace("\\", "/")
     if not rel.endswith("/"):
@@ -67,35 +127,16 @@ def 骨架(题名, 描述, 正文html, 目录项, 当前路径, 页脚导航, �
         rel = ""
     a = lambda href: href if href.startswith("http") else (rel + href)  # noqa: E731
     侧栏 = []
-    侧栏.append('<div class="侧栏-组"><p class="侧栏-组题">入门</p>'
-                '<a href="%s">文档总览</a><a href="%s">快速开始</a></div>'
-                % (a(".././" if rel else "./"), a("getting-started.html")))
-    侧栏.append('<div class="侧栏-组"><p class="侧栏-组题">教程</p>'
-                '<a href="%s">语法基础</a><a href="%s">类与泛型</a>'
-                '<a href="%s">安全与并发</a></div>'
-                % (a("tutorial-syntax.html"), a("tutorial-oop.html"),
-                   a("tutorial-safety.html")))
-    侧栏.append('<div class="侧栏-组"><p class="侧栏-组题">语言参考</p>'
-                '<a href="%s">参考总览</a><a href="%s">词法结构</a>'
-                '<a href="%s">类型系统</a><a href="%s">控制流</a>'
-                '<a href="%s">函数</a><a href="%s">类与对象</a>'
-                '<a href="%s">错误处理</a><a href="%s">并发</a>'
-                '<a href="%s">模块系统</a></div>'
-                % (a("reference/"), a("reference/lexical.html"),
-                   a("reference/types.html"), a("reference/control-flow.html"),
-                   a("reference/functions.html"), a("reference/oop.html"),
-                   a("reference/errors.html"), a("reference/concurrency.html"),
-                   a("reference/modules.html")))
-    库链 = ['<a href="%s"%s>标准库总览</a>' % (a("stdlib.html"),
-                                   " aria-current=\"page\"" if 当前路径 == "stdlib.html" else "")]
-    for m in MODULES:
-        cur = ' aria-current="page"' if m["文件"] == 当前路径 else ""
-        库链.append('<a href="%s"%s>%s</a>' % (a("stdlib/" + m["文件"]), cur, m["题名"]))
-    侧栏.append('<div class="侧栏-组"><p class="侧栏-组题">标准库</p>%s</div>'
-                % "".join(库链))
+    for 组题, 链接们 in SIDE_GROUPS:
+        项 = []
+        for 路径, 文本 in 链接们:
+            cur = ' aria-current="page"' if 路径 == 当前路径 else ""
+            项.append('<a href="%s"%s>%s</a>' % (a(路径), cur, 文本))
+        侧栏.append('<div class="侧栏-组"><p class="侧栏-组题">%s</p>%s</div>'
+                    % (组题, "".join(项)))
     侧栏.append('<div class="侧栏-组"><p class="侧栏-组题">资源</p>'
-                '<a href="%s">命令行参考</a><a href="%s" target="_blank" rel="noopener">源码仓库 ↗</a></div>'
-                % (a("cli.html"), "https://gitcode.com/ChenChao_GitCode/CN_Language"))
+                '<a href="%s" target="_blank" rel="noopener">源码仓库 ↗</a></div>'
+                % "https://gitcode.com/ChenChao_GitCode/CN_Language")
 
     toc = "".join('<a href="#%s">%s</a>' % (i, t) for i, t in 目录项)
     上面, 下面 = 页脚导航
@@ -116,6 +157,13 @@ def 骨架(题名, 描述, 正文html, 目录项, 当前路径, 页脚导航, �
                 return ('<a class="%s" href="%s"><span class="向">%s</span>'
                         '<span class="题">%s</span></a>'
                         % (cls, a("stdlib/" + m["文件"]), 向, m["题名"]))
+        # 通用页（READ_CHAIN）
+        for 路径, 文本 in READ_CHAIN:
+            if 路径 == 目标:
+                cls = "" if 方向 == "上" else "下一"
+                向 = "← 上一页" if 方向 == "上" else "下一页 →"
+                return ('<a class="%s" href="%s"><span class="向">%s</span>'
+                        '<span class="题">%s</span></a>' % (cls, a(路径), 向, 文本))
         return ""
 
     nav = ""
@@ -342,6 +390,72 @@ def 统计():
     return sum(len(ch["条目"]) for m in MODULES for ch in m["章节"])
 
 
+# ---------------------------------------------------------------- 通用叙述页
+def 块html(块):
+    """叙述块节点 → HTML。tuple 形态按首元素分派；dict 形态=码块（可带 编译足矣）。"""
+    if isinstance(块, dict):
+        return 码窗(块["名"], 块["代码"], 块.get("输出"))
+    t = 块[0]
+    if t == "p":
+        return "<p>%s</p>" % 块[1]
+    if t == "h3":
+        return '<h3 id="%s">%s</h3>' % (块[1], 块[1])
+    if t == "码文":
+        # 非 CN 代码窗（shell/命令行）：只展示，不进示例验证
+        return ('<div class="码窗"><p class="码窗-顶"><span class="码窗-名">%s</span>'
+                '<span class="码窗-徽">SHELL</span></p>'
+                '<pre><code>%s</code></pre></div>' % (esc(块[1]), esc(块[2].strip("\n"))))
+    if t == "码":
+        名, 代码, 输出 = 块[1], 块[2], 块[3] if len(块) > 3 else None
+        return 码窗(名, 代码, 输出)
+    if t == "表":
+        表头, 行们 = 块[1], 块[2]
+        rows = "".join("<tr>%s</tr>" % "".join("<td>%s</td>" % c for c in r)
+                       for r in 行们)
+        head = "".join("<th>%s</th>" % h for h in 表头)
+        return ('<table class="表"><thead><tr>%s</tr></thead>'
+                '<tbody>%s</tbody></table>' % (head, rows))
+    if t == "批注":
+        题, 内容 = 块[1], 块[2]
+        变体 = 块[3] if len(块) > 3 else ""
+        题行 = '<span class="批注-题">%s</span>' % 题 if 题 else ""
+        return '<div class="批注 %s">%s%s</div>' % (变体, 题行, 内容)
+    if t == "ul":
+        return "<ul>%s</ul>" % "".join("<li>%s</li>" % x for x in 块[1])
+    if t == "ol":
+        return "<ol>%s</ol>" % "".join("<li>%s</li>" % x for x in 块[1])
+    raise ValueError("未知块类型: %r" % (t,))
+
+
+def 通用页html(页, 上一, 下一):
+    正 = []
+    # 面包屑：[(相对href|"" 表示纯文本, 文本), ...] 最后一项为当前页（纯文本）
+    面 = []
+    for h, t in 页["面包屑"]:
+        if h:
+            面.append('<a href="%s">%s</a>' % (h, t))
+        else:
+            面.append(t)
+    正.append('<nav class="面包屑" aria-label="面包屑">%s</nav>' % " / ".join(面))
+    正.append("<h1>%s</h1>" % 页["题名"])
+    正.append('<p style="color: var(--color-fg-muted); font-size: var(--text-lg); line-height: 2;">%s</p>'
+              % 页["副题"])
+    if 页.get("头注"):
+        正.append(页["头注"])
+    toc = []
+    for ch in 页["章节"]:
+        toc.append((ch["id"], ch["题名"]))
+        正.append('<h2 id="%s">%s</h2>' % (ch["id"], ch["题名"]))
+        if ch.get("述"):
+            正.append("<p>%s</p>" % ch["述"])
+        for 块 in ch.get("块", []):
+            正.append(块html(块))
+        for 条 in ch.get("条目", []):
+            正.append(条目html(条, 页.get("导入头")))
+    return 骨架("%s · CN 语言" % 页["题名"], 页["副题"].replace("&", "&amp;"),
+                "\n".join(正), toc, 页["文件"], (上一, 下一))
+
+
 # ---------------------------------------------------------------- 生成
 def generate():
     os.makedirs(os.path.join(DOCS, "stdlib"), exist_ok=True)
@@ -354,7 +468,15 @@ def generate():
         p = os.path.join(DOCS, "stdlib", m["文件"])
         with io.open(p, "w", encoding="utf-8", newline="\n") as f:
             f.write(模块页html(m, 上一, 下一))
-    print("生成：stdlib.html + stdlib/ × %d（%d 个条目）" % (len(MODULES), 统计()))
+    for i, 页 in enumerate(GEN_PAGES):
+        上一 = "stdlib.html" if i == 0 else GEN_PAGES[i - 1]["文件"]
+        下一 = "stdlib.html" if i == len(GEN_PAGES) - 1 else GEN_PAGES[i + 1]["文件"]
+        p = os.path.join(DOCS, 页["文件"])
+        os.makedirs(os.path.dirname(p), exist_ok=True)
+        with io.open(p, "w", encoding="utf-8", newline="\n") as f:
+            f.write(通用页html(页, 上一, 下一))
+    print("生成：stdlib.html + stdlib/ × %d（%d 条目）+ 通用页 × %d"
+          % (len(MODULES), 统计(), len(GEN_PAGES)))
 
 
 # ---------------------------------------------------------------- 验证
@@ -370,10 +492,11 @@ def 条目程序(m, 条):
 
 
 def 找编译器():
-    """优先最新主树构建（本文档描述当前语言行为），回退本树。"""
+    """优先本树构建（=当前 develop 源码·含最新语言特性），回退主树。"""
+    本树 = os.path.join(REPO, "target", "cn.exe")
     主树 = os.path.normpath(os.path.join(REPO, "..", "CN_Language_C",
                                           "target", "cn.exe"))
-    for c in (os.environ.get("CN_EXE"), 主树, os.path.join(REPO, "target", "cn.exe")):
+    for c in (os.environ.get("CN_EXE"), 本树, 主树):
         if c and os.path.exists(c):
             return c
     return None
@@ -387,6 +510,59 @@ def verify(cn_exe=None, 仅失败=False):
     tmp = tempfile.mkdtemp(prefix="cndocs_")
     总数 = 通过 = 0
     fails = []
+
+    def 跑一个(页标识, 条, 导入头):
+        nonlocal 总数, 通过
+        示 = 条.get("示例") or 条.get("原始") or 条.get("代码")
+        if not 示:
+            return
+        总数 += 1
+        src = os.path.join(tmp, "t%d.cn" % 总数)
+        exe = os.path.join(tmp, "t%d.exe" % 总数)
+        if 条.get("原始"):
+            程序 = 条["原始"]
+        else:
+            body = 示.rstrip()
+            if "函数 主(" in body:
+                程序 = body
+            else:
+                导入s = "\n".join(导入头 or [])
+                程序 = "%s\n\n函数 主() -> 整32 {\n%s\n    返回 0;\n}\n" % (导入s, body)
+        with io.open(src, "w", encoding="utf-8", newline="\n") as f:
+            f.write(程序)
+        r = subprocess.run([cn, "build", src, "--output", exe],
+                           capture_output=True, text=True,
+                           cwd=REPO, errors="replace")
+        if 条.get("预期失败"):
+            # 负例块：必须编译失败（且诊断含 预期诊断 关键词——给了才比对）
+            if r.returncode == 0:
+                fails.append((页标识, 条.get("id", "?"), "负例未拦截",
+                              "预期编译失败却成功了"))
+            elif (条.get("预期诊断") and 条["预期诊断"] not in (r.stdout + r.stderr)):
+                fails.append((页标识, 条.get("id", "?"), "负例诊断不符",
+                              "缺关键词 %r" % 条["预期诊断"]))
+            else:
+                通过 += 1
+            return
+        if r.returncode != 0:
+            fails.append((页标识, 条.get("id", "?"), "编译失败", (r.stdout + r.stderr)[-400:]))
+            return
+        if 条.get("编译足矣"):
+            通过 += 1
+            return
+        run = subprocess.run([exe], capture_output=True, text=True,
+                             errors="replace", timeout=30, stdin=subprocess.DEVNULL)
+        out = run.stdout.replace("\r\n", "\n")
+        期望 = 条.get("输出") if "输出" in 条 else 条.get("综合输出")
+        if 期望 is not None and out != 期望:
+            fails.append((页标识, 条.get("id", "?"), "输出不符",
+                          "期望=%r 实际=%r" % (期望, out)))
+            return
+        if run.returncode != 0:
+            fails.append((页标识, 条.get("id", "?"), "运行退出码 %d" % run.returncode, out[-200:]))
+            return
+        通过 += 1
+
     for m in MODULES:
         for ch in m["章节"]:
             验证对象 = []
@@ -397,35 +573,25 @@ def verify(cn_exe=None, 仅失败=False):
                                      编译足矣=ch.get("综合编译足矣")))
             验证对象 += [条 for 条 in ch["条目"]]
             for 条 in 验证对象:
-                示 = 条.get("示例") or 条.get("原始")
-                if not 示:
-                    continue
-                总数 += 1
-                src = os.path.join(tmp, "t%d.cn" % 总数)
-                exe = os.path.join(tmp, "t%d.exe" % 总数)
-                with io.open(src, "w", encoding="utf-8", newline="\n") as f:
-                    f.write(条目程序(m, 条))
-                r = subprocess.run([cn, "build", src, "--output", exe],
-                                   capture_output=True, text=True,
-                                   cwd=REPO, errors="replace")
-                if r.returncode != 0:
-                    fails.append((m["文件"], 条["id"], "编译失败", (r.stdout + r.stderr)[-400:]))
-                    continue
-                if 条.get("编译足矣"):
-                    通过 += 1
-                    continue
-                run = subprocess.run([exe], capture_output=True, text=True,
-                                     errors="replace", timeout=30)
-                out = run.stdout.replace("\nr\nn", "\n")
-                期望 = 条.get("输出")
-                if 期望 is not None and out != 期望:
-                    fails.append((m["文件"], 条["id"], "输出不符",
-                                  "期望=%r 实际=%r" % (期望, out)))
-                    continue
-                if run.returncode != 0:
-                    fails.append((m["文件"], 条["id"], "运行退出码 %d" % run.returncode, out[-200:]))
-                    continue
-                通过 += 1
+                跑一个(m["文件"], 条, m.get("导入头"))
+    for 页 in GEN_PAGES:
+        for ch in 页["章节"]:
+            if ch.get("综合"):
+                跑一个(页["文件"], dict(id=ch["id"] + "·综合", 示例=ch["综合"],
+                                   输出=ch.get("综合输出"),
+                                   原始=ch.get("综合原始"),
+                                   编译足矣=ch.get("综合编译足矣")),
+                     页.get("导入头"))
+            for 块 in ch.get("块", []):
+                if isinstance(块, dict) and 块.get("代码"):
+                    跑一个(页["文件"], dict(块, id=块.get("名", "码")), 页.get("导入头"))
+                elif isinstance(块, tuple) and 块[0] == "码" and 块[2]:
+                    跑一个(页["文件"], dict(id=块[1], 示例=块[2],
+                                       输出=块[3] if len(块) > 3 else None,
+                                       编译足矣=块[4] if len(块) > 4 else False),
+                         页.get("导入头"))
+            for 条 in ch.get("条目", []):
+                跑一个(页["文件"], 条, 页.get("导入头"))
     print("示例验证：%d/%d 通过（编译+运行+输出比对）" % (通过, 总数))
     for f in fails:
         print("  [失败] %s :: %s — %s\n    %s" % f)
