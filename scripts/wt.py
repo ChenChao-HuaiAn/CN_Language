@@ -27,12 +27,16 @@ checkout 带走未提交内容 / E2E 中途 expected 消失 / cn.exe 占用 LNK1
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import platform
 import re
 import shutil
+import socket
 import subprocess
 import sys
+import urllib.error
+import urllib.request
 from datetime import datetime
 from pathlib import Path
 
@@ -99,6 +103,78 @@ def 读本地在飞行号() -> set[str]:
         if m:
             号集.add(m.group(1))
     return 号集
+
+
+def 收集视野号集() -> set[str]:
+    """本机视野内全部在飞行号（308j 乙+）——主表+归档+远端/本地分支名四源并集，
+    再叠加**远端任务分支树内 021 行号**（309 双占型：号住在 任务/308 分支树内·
+    分支名正则看不见；每支一次 git show·在飞 <25 支秒级。树内立项行随分支首提交
+    push（226 立规）——push 后即入本视野·上报服务端后全机可见）。"""
+    号集 = (读021行号() or set()) | 读归档行号() | 读远端在飞行号() | 读本地在飞行号()
+    for 引用 in 输出(["git", "for-each-ref", "--format=%(refname:short)",
+                      "refs/remotes/gitcode"]).splitlines():
+        引用 = 引用.strip()
+        if not re.fullmatch(r"gitcode/(?:任务|batch)/[0-9]+[a-z]?", 引用):
+            continue
+        内容 = 输出(["git", "show", f"{引用}:plans/021-任务进度观察表.md"])
+        for 行 in 内容.splitlines():
+            m = re.match(r"^\|\s*([0-9]+[a-z]?)\s*\|", 行)
+            if m:
+                号集.add(m.group(1))
+    return 号集
+
+
+def 板服务地址() -> str:
+    return os.environ.get("CN_BOARD_URL", "http://124.222.106.84:8301").rstrip("/")
+
+
+def 机名() -> str:
+    return os.environ.get("CN_MACHINE_NAME", "").strip() or socket.gethostname()
+
+
+def 服务发号(描述: str, 请求号: str = "") -> dict | None:
+    """308j 乙+：服务器发号权威。请求号空=要新号（返回含「号」）；非空=核对（返回含
+    「已发」True=被占 409·False=放行）。服务不可达返回 None（调用方降级不停摆）。"""
+    令牌文 = ""
+    try:
+        令牌文 = json.loads((本树根 / "scripts" / "queue_client.json")
+                            .read_text(encoding="utf-8")).get("令牌", "")
+    except (OSError, ValueError):
+        pass
+    体 = {"机器": 机名(), "上报者": f"{机名()}-{本树根.name}",
+          "视野号们": sorted(收集视野号集()), "描述": (描述 or "")[:200]}
+    if 请求号:
+        体["请求号"] = 请求号
+    请求 = urllib.request.Request(板服务地址() + "/api/claim_number", method="POST",
+        data=json.dumps(体, ensure_ascii=False).encode("utf-8"))
+    if 令牌文:
+        请求.add_header("Authorization", f"Bearer {令牌文}")
+    try:
+        with urllib.request.urlopen(请求, timeout=10) as r:
+            return json.loads(r.read().decode("utf-8"))
+    except urllib.error.HTTPError as e:
+        try:
+            return {"HTTP错误": e.code, **json.loads(e.read().decode("utf-8"))}
+        except (ValueError, UnicodeDecodeError):
+            return {"HTTP错误": e.code}
+    except (urllib.error.URLError, OSError, ValueError):
+        return None
+
+
+def 自动claim意图(任务号: str) -> None:
+    """create 成功后自动登记看板意图（308j 生命周期机械化·开工即上板零自觉依赖；
+    intent.py 缺席或服务不可达均静默——降级不阻断）。"""
+    intent = 本树根 / "scripts" / "intent.py"
+    if not intent.exists():
+        return
+    try:
+        r = 运行([sys.executable, str(intent), "claim", 任务号,
+                  "--备注", "wt.py create 自动登记"])
+        if "已上板" in (r.stdout or ""):
+            print(f"[看板] 意图已自动登记（{任务号}·30min 心跳·收口自动注销·"
+                  f"会话中途 refresh 续约）")
+    except OSError:
+        pass
 
 
 def 运行(命令: list[str], **kwargs) -> subprocess.CompletedProcess:
@@ -216,11 +292,29 @@ def 立行于树(树路径: Path, 任务号: str, 描述: str, 前置: str, 优�
     return True
 
 
-def 建树(任务号: str, 无ninja: bool, 立行: str | None = None,
+def 建树(任务号: str = "", 无ninja: bool = False, 立行: str | None = None,
          前置: str = "—", 优先级: str = "P1", 接管: bool = False) -> int:
-    if not re.fullmatch(r"\d+[a-z]?", 任务号):
+    # 308j 乙+：create 不带号=服务器权威发号（台账∪各机视野并集 max+1·原子无撞）；
+    # 服务不可达降级四源+树内视野本地取号黄字不停摆——权威可降级，开发永不停。
+    if 任务号 and not re.fullmatch(r"\d+[a-z]?", 任务号):
         print(f"[失败] 任务号「{任务号}」不合法——须为 021 总账行号形态（如 087、178a）")
         return 1
+    自动发号 = not 任务号
+    if 自动发号:
+        发号 = 服务发号(立行 or "")
+        if 发号 and 发号.get("号"):
+            任务号 = str(发号["号"])
+            print(f"[发号] 服务器权威发号：{任务号}（台账∪全机视野并集 max+1·原子无撞）")
+        else:
+            有效 = sorted(int(n) for n in 收集视野号集()
+                          if n.isdigit() and n not in {"353", "354"})
+            候选 = (有效[-1] + 1) if 有效 else 1
+            while str(候选) in {"353", "354"}:
+                候选 += 1
+            任务号 = str(候选)
+            print(f"[黄] 看板服务不可达——离线取号 {任务号}（四源+树内视野本地基准·"
+                  f"恢复后建议 intent.py show 对账）")
+        print(f"[提示] 后续步骤按任务号 {任务号} 继续")
     # 编号规则（2026-10-05 用户令·021 头部立法同源）：禁用号 353/354 永久拒建+按序取号不跳号
     禁用号 = {"353", "354"}
     if 任务号 in 禁用号:
@@ -280,10 +374,12 @@ def 建树(任务号: str, 无ninja: bool, 立行: str | None = None,
                   f"——用 create {任务号} --行 \"一句话描述\" "
                   f"一条命令立项建树（238 起），或先在 plans/021 加行再建树")
             return 1
-    if 号集 is not None and 任务号.isdigit() and not 接棒:
+    if 号集 is not None and 任务号.isdigit() and not 接棒 and not 自动发号:
         # 跳号基准（230 修法①+269 补）：主表+归档+远端在飞+本地在飞四源取 max——
         # 在飞行号住未合分支树（226 立规），只看主表+归档则 max 偏小、真序号被误拦
-        # （229 轮实录）；268 案补本地源：本地并行会话已建未推分支同样占用号段
+        # （229 轮实录）；268 案补本地源：本地并行会话已建未推分支同样占用号段。
+        # 308j：自动发号的号免本校验——服务端按台账∪全机视野（含树内号）取的 max+1，
+        # 本地四源基准反而更窄（314 被 308 旧基准误拦实录·信任链=服务器权威）。
         在飞号集 = 读远端在飞行号() | 读本地在飞行号()
         全号集 = 号集 | 读归档行号() | 在飞号集
         其余序列 = [int(n) for n in 全号集
@@ -292,6 +388,17 @@ def 建树(任务号: str, 无ninja: bool, 立行: str | None = None,
             print(f"[失败] 任务号 {任务号} 跳号——除本号外最大有效号 {max(其余序列)}"
                   f"（主表+归档+远端在飞共 {len(全号集)} 号·含未合分支在飞行号），"
                   f"用户令 2026-10-05：按顺序取号（max+1·禁用号 353/354 跳过·历史补记账须用户特批）")
+            return 1
+    if not 接棒 and 任务号 and not 自动发号:
+        # 308j 乙+：带号新建走服务端台账核对（台账已发/他机视野占用→409 拒——
+        # 309 双占型在取号瞬间死掉；服务不可达黄字跳过·本地四源校验已兜底）。
+        # 自动发号免核对——号是刚从这台账里领的，再核对=自己拦自己（实测实录）。
+        核对 = 服务发号(立行 or "", 请求号=任务号)
+        if 核对 is None:
+            print("[黄] 看板服务不可达——跳过服务端台账核对（本地四源校验已过·"
+                  "撞号风险自担）")
+        elif 核对.get("已发"):
+            print(f"[失败] {核对.get('错误', f'服务端台账此号已发出')}（乙+ 发号权威）")
             return 1
     树路径 = 主树根().parent / f"wt{任务号}"
     if 树路径.exists():
@@ -368,6 +475,8 @@ def 建树(任务号: str, 无ninja: bool, 立行: str | None = None,
 [完成] {树路径}（分支 {分支}·{模式}）
   下一步（AGENTS.md §2/§7）：{'①021 立项行已自动随分支（--行 模式）' if 自动立项 else '①plans/021 改行 ⬜→🏃+备注分支=任务/'+任务号} ②push 分支到 gitcode=认领生效
   ③提交前 L1 门禁 gate_quick.py（win 全量=ci.ps1）④收工 integrate.py（自动 021 收口）""")
+    if not 接棒:
+        自动claim意图(任务号)
     return 0
 
 
@@ -437,7 +546,9 @@ def 主流程() -> int:
     解析器 = argparse.ArgumentParser(description="本机多开 worktree 任务池管理（AGENTS.md §7）")
     子 = 解析器.add_subparsers(dest="命令", required=True)
     p建 = 子.add_parser("create", help="建树+任务分支 任务/<任务号>（含 Ninja+sccache 开发树）")
-    p建.add_argument("任务号", help="021 总账行号（如 087、178a；远端分支已存在=接棒续做）")
+    p建.add_argument("任务号", nargs="?", default="",
+                     help="021 总账行号（如 087、178a；远端分支已存在=接棒续做·"
+                          "省略=服务器权威自动发号 308j·服务不可达降级本地取号）")
     p建.add_argument("--行", help="一句话任务描述——021 无此行时自动立项建行（238 立项命令化·行随分支首提交）")
     p建.add_argument("--前置", default="—", help="前置任务号（逗号分隔·默认 —=无）")
     p建.add_argument("--优先级", default="P1", choices=["P0", "P1", "P2", "P3"], help="默认 P1")

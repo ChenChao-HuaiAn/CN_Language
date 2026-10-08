@@ -85,6 +85,19 @@ def 看板与裁决() -> list[str]:
     return 行们
 
 
+def 看板自动claim() -> str:
+    """308j：开工自动登记看板意图（生命周期机械化之一）——当前树在任务分支
+    （分支名=任务/<号>）时向看板 claim 该号；主树/服务不可达均静默零打扰。"""
+    import re
+    分支 = 跑(["git", "branch", "--show-current"]).strip()
+    m = re.fullmatch(r"任务/([0-9]+[a-z]?)", 分支)
+    if not m:
+        return ""
+    r = 跑([sys.executable, "scripts/intent.py", "claim", m.group(1),
+            "--备注", "standup 开工自动登记"])
+    return r.strip().splitlines()[0] if r.strip() else ""
+
+
 def 主流程() -> int:
     解析 = argparse.ArgumentParser(description="开机一条命令（241）")
     解析.add_argument("--机", default=None, help="本机名（缺省按 hostname 推测）")
@@ -93,6 +106,9 @@ def 主流程() -> int:
                           if socket.gethostname().lower().startswith(k.lower())), "深度机")
     输出 = ["═" * 46, f" 开工简报·{机}·{socket.gethostname()}", "═" * 46]
     输出 += 落后提示()
+    claim行 = 看板自动claim()
+    if claim行:
+        输出.append(claim行)
     输出 += 看板与裁决()
     输出 += 本机节(机)
     输出 += 教训高权重()

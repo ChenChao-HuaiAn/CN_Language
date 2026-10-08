@@ -64,6 +64,16 @@ def 建库(路径: str = db路径) -> sqlite3.Connection:
         键 TEXT PRIMARY KEY,
         内容 TEXT,
         上报时戳 REAL)""")
+    # 308j（用户裁决乙+·服务器发号权威）：发号台账=append-only 流水（号唯一·原子取 max+1）；
+    # 视野快照=各客户端「本机全部在飞行号」（含分支树内号）最近一次上报——发号基准=台账∪视野
+    # ∪021 快照并集，服务端无 git 也拥有最全视野；同号出现在 ≥2 上报者视野=占号冲突。
+    con.execute("""CREATE TABLE IF NOT EXISTS 发号台账(
+        号 TEXT PRIMARY KEY,
+        机器 TEXT, 对话id TEXT DEFAULT '', 描述 TEXT DEFAULT '',
+        时刻 TEXT, 时戳 REAL)""")
+    con.execute("""CREATE TABLE IF NOT EXISTS 视野快照(
+        上报者 TEXT PRIMARY KEY,
+        号们 TEXT, 时戳 REAL, 时刻 TEXT)""")
     return con
 
 
@@ -123,6 +133,75 @@ def 冲突检测(意图们: list) -> list:
     return 出
 
 
+# ===== 308j 发号权威（用户裁决乙+·服务可用=强权威·不可达=客户端降级四源不停摆）=====
+
+禁用号 = {"353", "354"}   # 2026-10-05 用户令永久禁用（与 wt.py 同源）
+
+
+def 号排序键(号: str):
+    """「308j」→ (308, 'j')·「309」→ (309, '')——纯数字在主号序·字母后缀随主号微序。"""
+    m = re.fullmatch(r"([0-9]+)([a-z]?)", str(号))
+    if not m:
+        return (0, str(号))
+    return (int(m.group(1)), m.group(2))
+
+
+def 下一个号(已占号们) -> str:
+    """已占并集取最大·返回其下一号（字母后缀进位·纯数字遇禁用号继续跳）。"""
+    有效 = [号排序键(n) for n in 已占号们
+            if re.fullmatch(r"[0-9]+[a-z]?", str(n)) and str(n) not in 禁用号]
+    if not 有效:
+        return "1"
+    主, 后缀 = max(有效)
+    if 后缀:
+        if 后缀 == "z":     # 字母序尽→进位主号
+            主 += 1
+            后缀 = ""
+        else:
+            return f"{主}{chr(ord(后缀) + 1)}"
+    候选 = 主 + 1
+    while str(候选) in 禁用号:
+        候选 += 1
+    return str(候选)
+
+
+def 收视野并取基准(上报者: str, 视野号们: list) -> set:
+    """记视野快照·返回 发号基准并集=台账∪视野∪021 快照行号。"""
+    亡秒 = 6 * 3600     # 视野快照保留 6h（陈旧视野不进基准防幽灵占号）
+    连接.execute("DELETE FROM 视野快照 WHERE 时戳<?", (time.time() - 亡秒,))
+    连接.execute(
+        """INSERT INTO 视野快照(上报者,号们,时戳,时刻) VALUES(?,?,?,?)
+           ON CONFLICT(上报者) DO UPDATE SET 号们=excluded.号们,
+           时戳=excluded.时戳, 时刻=excluded.时刻""",
+        (上报者, json.dumps(视野号们, ensure_ascii=False), time.time(), 时刻()))
+    连接.commit()
+    基准 = {r[0] for r in 连接.execute("SELECT 号 FROM 发号台账").fetchall()}
+    for 行们 in 连接.execute("SELECT 号们 FROM 视野快照").fetchall():
+        try:
+            基准 |= set(json.loads(行们[0]))
+        except (ValueError, TypeError):
+            pass
+    快照 = 取快照("021")
+    if 快照:
+        基准 |= {str(行.get("号", "")) for 行 in 快照 if 行.get("号")}
+    return 基准
+
+
+def 号占冲突们() -> list:
+    """同号出现在 ≥2 上报者视野 → 占号冲突（309 双占型·客户端各自树内立项互相不可见）。"""
+    视野 = 连接.execute("SELECT 上报者,号们 FROM 视野快照 WHERE 时戳>?",
+                       (time.time() - 6 * 3600,)).fetchall()
+    号主 = {}
+    for 上报者, 号们文本 in 视野:
+        try:
+            for 号 in json.loads(号们文本):
+                号主.setdefault(str(号), []).append(上报者)
+        except (ValueError, TypeError):
+            pass
+    return [{"号": 号, "上报者们": 主们} for 号, 主们 in sorted(号主.items(), key=号排序键)
+            if len(主们) > 1]
+
+
 def 交集标注(意图们: list, 在飞们: list) -> None:
     """就地补每意图/每分支的交叉标注：在飞分支 任务/号 vs 意图声明号 对账。"""
     声明号 = set(任务号声明图(意图们).keys())
@@ -166,6 +245,7 @@ def 聚合视图() -> dict:
     return {"意图们": 意图们, "在飞分支们": 在飞们,
             "快照021": 快照, "任务字典": 取快照("任务字典"),
             "冲突们": 冲突检测(意图们),
+            "号占冲突们": 号占冲突们(),
             "失联秒": 失联秒, "时刻": 时刻()}
 
 
@@ -208,6 +288,13 @@ class 处理器(BaseHTTPRequestHandler):
         if 路径 == "/api/board":
             with 写锁:
                 return self._回JSON(200, 聚合视图())
+        if 路径 == "/api/numbers":
+            with 写锁:
+                台账 = [{"号": r[0], "机器": r[1], "对话id": r[2], "描述": r[3], "时刻": r[4]}
+                        for r in 连接.execute(
+                            "SELECT 号,机器,对话id,描述,时刻 FROM 发号台账 ORDER BY 时戳").fetchall()]
+                return self._回JSON(200, {"台账": 台账, "下一个": 下一个号(
+                    {t["号"] for t in 台账}), "号占冲突们": 号占冲突们(), "时刻": 时刻()})
         return self._回JSON(404, {"错误": "未知路径"})
 
     def do_POST(self):
@@ -223,6 +310,8 @@ class 处理器(BaseHTTPRequestHandler):
             return self._收在飞上报(体)
         if 路径 == "/api/report_021":
             return self._收快照上报(体)
+        if 路径 == "/api/claim_number":
+            return self._收发号(体)
         return self._回JSON(404, {"错误": "未知路径"})
 
     def _登记意图(self, 体: dict):
@@ -310,6 +399,46 @@ class 处理器(BaseHTTPRequestHandler):
                     (json.dumps(任务字典, ensure_ascii=False), time.time()))
             连接.commit()
         return self._回JSON(200, {"好": True})
+
+    def _收发号(self, 体: dict):
+        """308j 发号权威（乙+）——{机器, 对话id?, 上报者?, 视野号们, 描述?, 请求号?}
+        请求号空=发新号：基准并集（台账∪各机视野∪021 快照）取 max+1·写台账·原子无竞态；
+        请求号非空=核对模式：台账已发或其他机视野占用（309 双占型）→409 拒·否则放行。"""
+        机器 = str(体.get("机器", "")).strip()[:60]
+        if not 机器:
+            return self._回JSON(400, {"错误": "机器 必填"})
+        对话id = str(体.get("对话id", "")).strip()[:40]
+        上报者 = (str(体.get("上报者", "")).strip() or 机器)[:60]
+        原始视野 = 体.get("视野号们")
+        视野号们 = [str(n) for n in 原始视野
+                    if isinstance(n, (str, int)) and re.fullmatch(r"[0-9]+[a-z]?", str(n))] \
+            if isinstance(原始视野, list) else []
+        描述 = str(体.get("描述", "")).strip()[:200]
+        请求号 = str(体.get("请求号", "")).strip()
+        with 写锁:
+            基准 = 收视野并取基准(上报者, 视野号们)
+            if 请求号:
+                行 = 连接.execute("SELECT 机器,对话id,时刻 FROM 发号台账 WHERE 号=?",
+                                  (请求号,)).fetchone()
+                if 行:
+                    return self._回JSON(409, {
+                        "错误": f"号 {请求号} 已由服务端发给 {行[0]}-{行[1]}（{行[2]}）"
+                                f"——接棒用远端已存在分支·新事用新号", "已发": True})
+                撞视野 = [r[0] for r in 连接.execute(
+                    "SELECT 上报者 FROM 视野快照 WHERE 时戳>? AND 号们 LIKE ?",
+                    (time.time() - 6 * 3600, f'%"{请求号}"%')).fetchall() if r[0] != 上报者]
+                if 撞视野:
+                    return self._回JSON(409, {
+                        "错误": f"号 {请求号} 出现在他机视野（{', '.join(撞视野)}）"
+                                f"——树内占号冲突·先与对方/主表核对再取号", "已发": True,
+                        "撞视野": 撞视野})
+                return self._回JSON(200, {"好": True, "已发": False})
+            号 = 下一个号(基准)
+            连接.execute(
+                "INSERT INTO 发号台账(号,机器,对话id,描述,时刻,时戳) VALUES(?,?,?,?,?,?)",
+                (号, 机器, 对话id, 描述, 时刻(), time.time()))
+            连接.commit()
+        return self._回JSON(200, {"好": True, "号": 号})
 
     def _回页面(self):
         体 = 看板页面().encode("utf-8")
@@ -528,7 +657,10 @@ def 自检() -> int:
             with urllib.request.urlopen(请求, timeout=5) as r:
                 return r.status, json.loads(r.read().decode("utf-8"))
         except urllib.error.HTTPError as e:
-            return e.code, {}
+            try:    # 409 等错误态的 body 也带断言字段（已发/撞视野）——不能丢
+                return e.code, json.loads(e.read().decode("utf-8"))
+            except (ValueError, UnicodeDecodeError):
+                return e.code, {}
 
     try:
         码, _ = 调("POST", "/api/intent", {"机器": "测机"}, 带令牌=False)
@@ -617,6 +749,30 @@ def 自检() -> int:
         with urllib.request.urlopen(基址 + "/", timeout=5) as resp:
             页 = resp.read().decode("utf-8")
         签("看板页 200 且含看板字样", resp.status == 200 and "任务看板" in 页)
+        # 308j 发号权威五用例（乙+：原子递增/视野并集/禁用号跳/核对 409/占号冲突）
+        码, r = 调("POST", "/api/claim_number", {"机器": "甲机", "对话id": "n1",
+                  "上报者": "甲机-主树", "视野号们": ["300", "307", "308i"], "描述": "首号"})
+        签("发号：视野并集 max(308i)→发 308j", 码 == 200 and r.get("号") == "308j")
+        码, r = 调("POST", "/api/claim_number", {"机器": "乙机", "对话id": "n2",
+                  "上报者": "乙机-主树", "视野号们": []})
+        签("发号：台账连续递增 308j→308k", 码 == 200 and r.get("号") == "308k")
+        码, r = 调("POST", "/api/claim_number", {"机器": "丙机", "上报者": "丙机-主树",
+                  "视野号们": ["352"]})
+        签("发号：禁用号 353/354 跳过→355", 码 == 200 and r.get("号") == "355")
+        码, r = 调("POST", "/api/claim_number", {"机器": "丁机", "上报者": "丁机-主树",
+                  "请求号": "308j"})
+        签("核对：台账已发号拒 409", 码 == 409 and r.get("已发") is True)
+        调("POST", "/api/claim_number", {"机器": "戊机", "上报者": "戊机-主树",
+           "视野号们": ["309"]})
+        码, r = 调("POST", "/api/claim_number", {"机器": "己机", "上报者": "己机-主树",
+                  "请求号": "309", "视野号们": ["309"]})
+        签("核对：他机视野占号拒 409（309 双占型）",
+           码 == 409 and any("戊机" in x for x in (r.get("撞视野") or [])))
+        码, r = 调("GET", "/api/board")
+        签("号占冲突上板：309 双视野", any(c["号"] == "309" for c in r.get("号占冲突们", [])))
+        码, r = 调("POST", "/api/claim_number", {"机器": "庚机", "上报者": "庚机-主树",
+                  "请求号": "400"})
+        签("核对：全新号放行", 码 == 200 and r.get("已发") is False)
     finally:
         实例.shutdown()
         globals()["连接"] = 全局连接
