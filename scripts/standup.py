@@ -16,7 +16,7 @@ import sys
 from pathlib import Path
 
 本树根 = Path(__file__).resolve().parent.parent
-主机别名 = {"deepin": "深度机", "CHENCHAO-W": "家机", "arm64": "单位机"}  # hostname 前缀→交接节关键词
+主机别名 = {"deepin": "深度机", "CHENCHAO-W": "家机", "arm64": "单位机", "user-pc": "单位机"}  # hostname 前缀→交接节关键词（296：user-pc=单位机实机·原兜底误标深度机）
 
 
 def 跑(命令: list[str], cwd: Path | None = None) -> str:
