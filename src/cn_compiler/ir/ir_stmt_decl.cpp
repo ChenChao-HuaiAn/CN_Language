@@ -15,19 +15,13 @@
 namespace cn_compiler {
 
 void IRGenerator::genVarDecl(VarDecl* node) {
-    // 320-a（T41·方案甲·C static local 同款）：函数内静态局部——静态全局化。
-    //   原实现按普通局部（栈帧 Alloca+每次调用重 Store 初值=跨调用状态丢失，
-    //   步进计数 2_2_2 应 2_4_6 实锤）；静态全局通道复用（87-a/P3-8 机制）：
-    //   .data 槽 ?gstatic_$静态$函数名$名 + 字面量初值直存（一次性初始化）。
-    // 061-b（2026-09-27 804 轮）：值语义静态局部扩面——原口径仅标量整数+字面量
-    //   初值（合成体 `静态 结果<...> 槽 = 正常(...)` 解析修通后落此报「仅支持
-    //   标量整数」P3-b 实测）。扩面=**guard 首次执行初始化通道**（C++ static
-    //   local guard variable 同款：初始化时机=首次执行到声明处，而非入口注入
-    //   ——初值含构造调用副作用时时机可观察，入口注入=语义妥协不做）：浮点/
-    //   布尔/字符/字符串/结构体（用户+合成体）+ 标量整数运行期初值。主槽+guard
-    //   布尔槽双 .data 符号；读/写/左值走既有 320-a isStaticLocal 通道。类/容器
-    //   （指针槽+NewObject 构造链）与数组（聚合槽）维持诊断拒绝（87-a 立账面，
-    //   非 061 范围）。
+    // 320-a（T41 甲·C static local 同款）：函数内静态局部=静态全局化（.data 槽
+    //   ?gstatic_$静态$函数名$名·87-a/P3-8 通道复用）——原按普通局部每次调用重
+    //   Store 初值=跨调用状态丢失（步进 2_2_2 应 2_4_6 实锤）。
+    // 061-b（804 轮）值语义扩面=guard 首次执行初始化（C++ static guard 同款·时机
+    //   =首次执行到声明处·入口注入=语义妥协不做）：浮点/布尔/字符/字符串/结构体
+    //   （用户+合成体）+标量运行期初值·主槽+guard 布尔槽双 .data 符号·读写左值走
+    //   既有 320-a isStaticLocal 通道；类/容器/数组维持诊断拒绝（87-a 立账面）。
     if (node->isStatic && function_ != nullptr && !function_->name.empty() &&
         !node->funcPtr.isFunctionPtr() && !node->name.empty()) {
         const std::string key = "$静态$" + function_->name + "$" + node->name;
@@ -742,14 +736,11 @@ void IRGenerator::genVarDecl(VarDecl* node) {
                                           cn == "错误";
                     }
                 }
-                // 280（021 任务 280）：两面统一本变量面登记（单一权威·返回位
-                //   移交豁免=273 刀②同键）——原 !ctorInitCovered 防护（577）令
-                //   正常() 构造盒只登记表达式面（__rctor 构造临时槽）：浅拷后盒槽
-                //   与源槽共享句柄→函数尾表达式面析构源槽=「返回 盒」retbuf 副本
-                //   死句柄双放（p273a C0000374）。_ctorInitCovered 时先清源槽值
-                //   字段（表达式面条目 LoadPtr=0 幂等跳过·79/078 同款）——布局
-                //   归一（本任务 computeLayout 8+max）后值槽 @8·16B 槽内·i64 写
-                //   不再越界（273 轮 v1 回归=12B 布局下清零踩界的根因已消）。
+                // 280：两面统一本变量面登记（单一权威·返回位移交豁免=273 刀②同键）
+                //   ——原 !ctorInitCovered 防护（577）令 正常() 构造盒只登记表达式面：
+                //   浅拷后盒槽与源槽共享句柄→函数尾表达式面析构源槽=「返回 盒」retbuf
+                //   副本死句柄双放（p273a C0000374）。ctorInitCovered 时先清源槽值字段
+                //   （表达式面 LoadPtr=0 幂等跳过）——布局归一后值槽 @8·273 v1 回归根因已消。
                 if (declIsBox && node->initializer != nullptr) {
                     if (ctorInitCovered) {
                         const StructDecl* sdZ = semantic_->findStruct(declCanon);
@@ -759,8 +750,7 @@ void IRGenerator::genVarDecl(VarDecl* node) {
                                 ir::Opcode::FieldAddr, {value}, "ptr",
                                 std::to_string(voZ), node->location);
                             ir::IRValue zero280 = emitResult(
-                                ir::Opcode::ConstInt, {}, "i64", "0",
-                                node->location);
+                                ir::Opcode::ConstInt, {}, "i64", "0", node->location);
                             emit(ir::Opcode::StorePtr, {srcField280, zero280},
                                  ir::IRValue(), "", "i64", node->location);
                         }
@@ -776,8 +766,8 @@ void IRGenerator::genVarDecl(VarDecl* node) {
                             payload280 = types::canonical(
                                 SemanticAnalyzer::optionalTypeArg(declCanon));
                         }
-                        const ClassInfo* pci280 =
-                            payload280.empty() ? nullptr : semantic_->findClass(payload280);
+                        const ClassInfo* pci280 = payload280.empty()
+                            ? nullptr : semantic_->findClass(payload280);
                         bool pDtor280 = false;
                         if (pci280 != nullptr) {
                             for (const auto& mk : pci280->methods) {
@@ -795,20 +785,16 @@ void IRGenerator::genVarDecl(VarDecl* node) {
                             if (vo280 >= 0 && co280 >= 0) {
                                 ir::IRValue tagAddr280 =
                                     co280 == 0 ? dstAddr
-                                        : emitResult(ir::Opcode::FieldAddr,
-                                                     {dstAddr}, "ptr",
-                                                     std::to_string(co280),
+                                        : emitResult(ir::Opcode::FieldAddr, {dstAddr},
+                                                     "ptr", std::to_string(co280),
                                                      node->location);
                                 ir::IRValue fieldAddr280 =
                                     vo280 == 0 ? dstAddr
-                                        : emitResult(ir::Opcode::FieldAddr,
-                                                     {dstAddr}, "ptr",
-                                                     std::to_string(vo280),
+                                        : emitResult(ir::Opcode::FieldAddr, {dstAddr},
+                                                     "ptr", std::to_string(vo280),
                                                      node->location);
-                                pendingBoxVars_.emplace_back(tagAddr280,
-                                                             fieldAddr280,
-                                                             payload280, unique,
-                                                             false);
+                                pendingBoxVars_.emplace_back(tagAddr280, fieldAddr280,
+                                                             payload280, unique, false);
                             }
                         }
                     }
@@ -910,18 +896,13 @@ void IRGenerator::genVarDecl(VarDecl* node) {
                 }
             }
         }
-        // 058-ⅡB（甲案·拆包绑定位值语义深拷〔基准=019〕·2026-09-26 795 轮）：
-        //   `类 b = r.值`（源=结果/可选 的 值 字段拆包）此前落入通用路径=句柄
-        //   浅拷 + b 拥有式 RAII 登记 → b 与来源（容器/结果）双主，b 析构释放
-        //   来源对象 → 双释放（p0926_03 映射获取拆包 rc=134 实锤，元素直连
-        //   豁免与借出顶层登记双防线均不达 MemberExpr 拆包形态）。
-        //   修=对「结果/可选 的 值 拆包」源同套上一分支的深拷语义：NewObject +
-        //   拷贝构造（无拷贝构造则 CopyStruct 独立壳），byRef ABI 传成员链左值
-        //   地址（&r.值=字段地址·内容=句柄，与 &甲 槽地址体内解引同构）。
-        //   **范围=结果/可选 拆包本面**（首版泛化到一切 MemberExpr 源曾把 v2 树
-        //   存量「结构体.类字段 句柄共享」语义大面积改变→v2p 行为分叉失控
-        //   （91/94 回归+OOM 14.6GB 实证）——已收窄；结构体字段链的值语义
-        //   随 793 偏移双表归一后的全局口径统一接力·021 058 行登记）。
+        // 058-ⅡB（甲案·拆包绑定位值语义深拷〔基准=019〕·795 轮）：`类 b = r.值`
+        //   （源=结果/可选 值字段拆包）原落通用路径=句柄浅拷+b 拥有式 RAII 登记→
+        //   b 与来源双主双释放（p0926_03 映射获取拆包 rc=134·双防线均不达拆包形态）。
+        //   修=同套上一分支深拷语义：NewObject+拷贝构造（无则 CopyStruct 壳）·byRef
+        //   ABI 传成员链左值地址（&r.值=字段地址）。**范围=拆包本面**（泛化一切
+        //   MemberExpr 曾改写 v2 树「结构体.类字段 句柄共享」存量语义→91/94 回归
+        //   +OOM 14.6GB 已收窄·字段链值语义随 793 归一接力·021 058 行登记）。
         const MemberExpr* unwrapSrc = node->initializer->getType() == NodeType::MemberExpr
                                       ? static_cast<const MemberExpr*>(
                                             node->initializer.get())
@@ -1003,15 +984,11 @@ void IRGenerator::genVarDecl(VarDecl* node) {
         emit(ir::Opcode::Store, {value}, ir::IRValue(),
              unique, irType, node->location);
     }
-    // H7 根治（2026-08-25，宿主缺陷）：类类型栈变量无初始化器声明（类名 变量）——
-    //   此前缺 NewObject + 默认构造调用，变量槽存未初始化地址 -> 空指针解引用
-    //   （0xC0000409 / 运行时错误3「空指针解引用」）。泛型实例化（盒子$整64）与
-    //   非泛型类（简单盒）同样受影响（H7 记录：genVarDecl 对泛型类栈变量缺失
-    //   NewObject+构造+析构生成）。语义与 `类名 变量 = 类名()` 一致：
-    //   NewObject 分配 + 本类自身声明的无参构造调用（有则调，ownerClass 限定同
-    //   ir_oop_call.cpp 构造调用路径）；无构造 -> 默认构造仅分配。
-    //   RAII 析构由上方 oopVarSrcTypes_ 登记 + genClassDestructorCalls 统一收尾
-    //   （有析构函数类函数返回前 DeleteObject，与既有类变量一致）。
+    // H7 根治（2026-08-25 宿主缺陷）：类类型栈变量无初始化器声明（类名 变量）——
+    //   原缺 NewObject+默认构造调用·变量槽存未初始化地址=空指针解引用（0xC0000409/
+    //   运行时错误3）。泛型实例与非泛型类同面。语义同 `类名 变量 = 类名()`：NewObject
+    //   +本类无参构造调用（无构造=仅分配）·RAII 析构由 oopVarSrcTypes_ 登记+
+    //   genClassDestructorCalls 统一收尾（与既有类变量一致）。
     if (node->initializer == nullptr && !node->funcPtr.isFunctionPtr() &&
         semantic_ != nullptr) {
         const std::string canonSrc = types::canonical(srcType);
@@ -1057,14 +1034,12 @@ void IRGenerator::genVarDecl(VarDecl* node) {
                  {ir::IRValue::constant("0", "i64")}, ir::IRValue(),
                  slotName, "i64", node->location);
         }
-        // 860-a（058 挂账②·结构体面）：结构体类字段级联构造——只对
-        //   「hasDtor ∧ 有拷贝构造 ∧ 有默认构造」闭合域字段注入
-        //   NewObject+默认构造+StorePtr（=ir_fields 资源字段收集域：该域的
-        //   结构体拷贝=postCopy 指针槽深拷、释放=preFree+DeleteObject——
-        //   构造/拷贝/释放三链闭合，活句柄全程无共享）。域外类字段（无析构/
-        //   无拷贝构造）维持上方零初始化的确定性空句柄（拷贝=memcpy 共享空
-        //   句柄无害；级联活句柄+浅拷共享=双主，142-a 两次泛化回退教训——
-        //   不越域）。构造字面量初始化（S{...} 字段穷举）不走本分支。
+        // 860-a（058 挂账②·结构体面）：结构体类字段级联构造——只对「hasDtor ∧
+        //   有拷贝构造 ∧ 有默认构造」闭合域字段注入 NewObject+默认构造+StorePtr
+        //   （=ir_fields 资源字段收集域：拷贝=postCopy 指针槽深拷·释放=preFree+
+        //   DeleteObject·三链闭合活句柄无共享）。域外类字段维持零初始化空句柄
+        //   （拷贝=memcpy 共享空句柄无害·级联活句柄+浅拷共享=双主·142-a 两次泛化
+        //   回退教训——不越域）。构造字面量初始化（S{...}）不走本分支。
         const std::string structCanon = types::canonical(srcType);
         const StructDecl* sdecl = semantic_->findStruct(structCanon);
         if (sdecl != nullptr && !unique.empty()) {

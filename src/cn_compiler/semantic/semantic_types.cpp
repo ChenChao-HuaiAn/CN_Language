@@ -1,7 +1,6 @@
 // CN 语义分析器实现（D1 行数整改 117-a：自 semantic.cpp 按族拆出）
 //   族 = 类型系统（类型名解析/结构体·枚举查找 declareTypeName→enumValueOf + 静态成员 findTopLevelComma + 布局计算 typeSizeOf→computeEnumValues）；纯重构零行为变更（成员函数实现搬迁——声明仍在 semantic.hpp；
 //   共享 helper 已由 115-a 头化在 semantic_internal.hpp）。
-#include <fstream>
 #include <algorithm>
 #include <cstdint>
 #include <cstdio>
@@ -551,18 +550,54 @@ void SemanticAnalyzer::computeLayout(StructDecl* decl) {
     //   058-ⅡA 缩面纪律：仅特判 合成体名前缀（结果$/结果联合$/可选$），
     //   通用结构体/联合体布局零改动。
     const std::string& nm280 = decl->name;
-    bool off280 = false;
-    { std::ifstream f280("cn280.off"); off280 = f280.good(); }
-    const bool synth280 = !off280 && (nm280.rfind("结果$", 0) == 0 ||
+    // 280 开关撤除（2026-10-08 适配轮收官）：cn280.off 兼容开关（工作目录文件=
+    //   特判禁）随载荷真值守卫根治撤除——布局归一后自举全绿（78 链 fix_p+79_v2
+    //   固定点），特判恒开=单点事实源；开关仅为适配期二分利器，不留保守分支面。
+    const bool synth280 = (nm280.rfind("结果$", 0) == 0 ||
                           nm280.rfind("可选$", 0) == 0 ||
                           nm280.rfind("结果联合$", 0) == 0);
     if (synth280) {
+        // 280 布局时机守卫（载荷真值守卫）：预降级趟（第一趟f·lowerResultOptionalTypes
+        //   的 ensureLoweredType 即时布局）先于统一布局趟（第一趟b）——此刻普通
+        //   结构体已注册未布局（totalSize=0），载荷 typeSizeOf 走「未知防御 8」
+        //   →totalSize 固化 8+8=16（探针 t2 铁证：结果<40B 结构体,整32> 固化 16
+        //   →CopyStruct 截断、f2+ 读栈垃圾；v2p 自举全域「已转移/未声明类型」
+        //   误报同根——符号表 结果<符号,整32> 盒写读错位）。幂等守卫
+        //   （layoutComputed）会拦死后续重算=错值终身。治=载荷含「已注册未
+        //   布局」结构体/合成体时不固化（totalSize 留 0、layoutComputed 回滚）
+        //   ——交第一趟b 统一布局按注册序（载荷先于依赖者）重算真值；泛型
+        //   实例化路径（语义检查中后期·载荷已布局）即时布局照常。067-001
+        //   「时机无关化」的载荷面补全（彼时只保证嵌套合成体递归先降级）。
+        bool ready280 = true;
+        for (const auto& f : decl->fields) {
+            std::string t280 = types::canonical(f.type);
+            while (types::isArray(t280)) t280 = types::arrayElemOf(t280);
+            if (t280.empty() || types::isPointer(t280) || isFuncPtrType(t280)) {
+                continue;  // 指针/函数指针/空类型：typeSizeOf 恒真值
+            }
+            if (isEnumType(t280)) continue;  // 枚举恒 4
+            const StructDecl* sd280 = findStruct(t280);
+            if (sd280 != nullptr && !sd280->layoutComputed) {
+                ready280 = false;  // 已注册未布局（普通结构体或嵌套合成体）
+                break;
+            }
+        }
+        if (!ready280) {
+            decl->layoutComputed = false;  // 回滚置位：交第一趟b 重算
+            layoutVisiting_.erase(decl->name);
+            return;  // totalSize 留 0（此窗口内无消费点·第一趟b 紧随）
+        }
         if (decl->isUnion) {
             // 结果联合$T$E：值/错误值 @0·total=载荷圆整 8（v2 载荷圆整口径）·align=8
             int wide280 = 0;
             for (auto& f : decl->fields) {
                 f.offset = 0;
-                const int fs280 = typeSizeOf(f.type);
+                // 280 载荷口径（v2 IR容器判定 结果载荷字节 同规·零分叉红线）：
+                //   类载荷=句柄 8（277 注释「盒内副本=句柄槽」）——typeSizeOf(类)
+                //   实宽口径不适用于盒内联合槽
+                const std::string fc280 = types::canonical(f.type);
+                const int fs280 = findClass(fc280) != nullptr
+                                      ? 8 : typeSizeOf(f.type);
                 const int rounded280 = (fs280 + 7) / 8 * 8;
                 if (rounded280 > wide280) wide280 = rounded280;
             }
@@ -579,7 +614,9 @@ void SemanticAnalyzer::computeLayout(StructDecl* decl) {
                 f.offset = 0;
             } else {
                 f.offset = 8;
-                const int fs280 = typeSizeOf(f.type);
+                const std::string fc280 = types::canonical(f.type);
+                const int fs280 = findClass(fc280) != nullptr
+                                      ? 8 : typeSizeOf(f.type);
                 const int rounded280 = (fs280 + 7) / 8 * 8;
                 if (rounded280 > payload280) payload280 = rounded280;
             }
