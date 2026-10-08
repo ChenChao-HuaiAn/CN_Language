@@ -876,6 +876,10 @@ private:
                            const SourceLocation& loc, const std::string& objectName);
     // 检查 如果 条件（结果.正常 / 可选.有值 检查跟踪，规则2）
     void trackIfCheck(IfStmt* node);
+    // 301 守卫传导：识别条件子表达式为 结果.正常/可选.有值 形态（可含 ! 前缀）并
+    //   markChecked 对应检查类型（取反翻转 正常↔错误）；命中记入 marked 供成对
+    //   unmark。&& 复合条件左右两侧递归收集（右侧在左侧为真下短路求值，状态传导）。
+    void collectGuardMarks(Expr* cond, std::vector<std::string>& marked);
     // 变量名提取（成员访问对象为标识符时返回变量名；否则空串）
     static std::string objectVarName(Expr* object);
     // 将变量标记为已检查（进入 if 真分支时）

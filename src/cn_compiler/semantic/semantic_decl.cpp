@@ -717,6 +717,10 @@ void SemanticAnalyzer::checkFunctionBody(FunctionDecl* node) {
     uninitPlaces_.clear();
     inAddrBaseCtx_ = false;
     inAggregateReadCtx_ = false;
+    // 301（守卫增强·规则②延续标记的函数边界兜底）：「如果 (!x.正常) { 返回; }」
+    //   之后的延续守卫标记存活到块尾——同名变量跨函数零串扰（markChecked 以裸
+    //   变量名为键无作用域维度，同 94 行 声明位 erase 同理）
+    errorCheckState_.clear();
 
     // 317-a：FunctionInfo 值拷贝——体内检查可触发泛型实例化注册（recheck 场景
     //   的推断段 insert functions_），unordered_map 扩容使迭代器失效；后续对

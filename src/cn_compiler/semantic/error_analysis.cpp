@@ -726,6 +726,13 @@ void SemanticAnalyzer::trackIfCheck(IfStmt* node) {
                 checkStmt(node->elseBranch.get());
                 mv.elseEnd(mvThenExits, mvElseExits);
                 unmarkChecked(varName);
+            } else if (mvThenExits) {
+                // 301 守卫增强规则②：`如果 (!x.正常) { 返回 err; }`（无否则+真分支
+                //   恒返回）——if 之后的全部可达路径等价于「x.正常 已检查」：延续正向
+                //   守卫供同块后续语句使用（Rust let-else 同款高频形态·此前被规则3
+                //   误拒）。延续标记不清除：重新赋值走既有赋值守卫失效；函数边界由
+                //   checkFunctionBody 的 errorCheckState_.clear() 兜底（跨函数零串扰）。
+                markChecked(varName, "正常");
             }
         }
         return;
@@ -750,6 +757,9 @@ void SemanticAnalyzer::trackIfCheck(IfStmt* node) {
                 checkStmt(node->elseBranch.get());
                 mv.elseEnd(mvThenExits, mvElseExits);
                 unmarkChecked(varName);
+            } else if (mvThenExits) {
+                // 301 规则②同款（可选形态）：无值分支恒返回 → 后续=有值已检查
+                markChecked(varName, "有值");
             }
         }
         return;
@@ -761,6 +771,48 @@ void SemanticAnalyzer::trackIfCheck(IfStmt* node) {
     if (node->elseBranch != nullptr) {
         checkStmt(node->elseBranch.get());
         mv.elseEnd(mvThenExits, mvElseExits);
+    }
+}
+
+// 301 守卫增强：条件子表达式的守卫识别与状态传导（&& 复合条件左右两侧递归）。
+//   命中「[!]结果.正常 / 可选.有值」形态 → markChecked 对应检查类型（取反翻转
+//   正常↔错误）并记入 marked（供调用方成对 unmark）；短路语义下 && 右侧在左侧
+//   为真时求值，左侧守卫状态对右侧与 then 块均成立（574-a 左侧传导的对称补全：
+//   此前仅左侧传导，右侧守卫变量在 then 块被规则3 误拒）。
+void SemanticAnalyzer::collectGuardMarks(Expr* cond, std::vector<std::string>& marked) {
+    if (cond == nullptr) return;
+    if (cond->getType() == NodeType::BinaryExpr) {
+        auto* bin = static_cast<BinaryExpr*>(cond);
+        if (bin->op == Operator::AndAnd) {
+            collectGuardMarks(bin->left.get(), marked);
+            collectGuardMarks(bin->right.get(), marked);
+            return;
+        }
+        return;
+    }
+    bool negated = false;
+    if (cond->getType() == NodeType::UnaryExpr) {
+        auto* u = static_cast<UnaryExpr*>(cond);
+        if (u->op == Operator::Bang) {
+            negated = true;
+            cond = u->operand.get();
+        }
+    }
+    if (cond->getType() != NodeType::MemberExpr) return;
+    auto* m = static_cast<MemberExpr*>(cond);
+    const std::string varName = objectVarName(m->object.get());
+    if (varName.empty()) return;
+    // 已标记则不重复（a.正常 && a.正常 幂等）
+    for (const auto& v : marked) {
+        if (v == varName) return;
+    }
+    const std::string objType = checkExpr(m->object.get());
+    if (isResultType(objType) && m->memberName == "正常") {
+        markChecked(varName, negated ? "错误" : "正常");
+        marked.push_back(varName);
+    } else if (isOptionalType(objType) && m->memberName == "有值" && !negated) {
+        markChecked(varName, "有值");
+        marked.push_back(varName);
     }
 }
 

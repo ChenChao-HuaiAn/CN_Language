@@ -412,6 +412,13 @@ void SemanticAnalyzer::visitExprStmt(ExprStmt* node) {
     if (node->expr->getType() == NodeType::CallExpr) {
         checkResultDiscard(exprType, node->expr->location);
     }
+    // 301 守卫配套：赋值清除左值守卫标记（重赋值后旧「已检查」失效——规则②
+    //   延续标记存活到块尾，无此清除=延续守卫误留漏报·p301c 实测；复合赋值
+    //   同此口径——需读旧值即依赖检查，一并失效）
+    if (node->expr->getType() == NodeType::AssignmentExpr) {
+        unmarkChecked(objectVarName(
+            static_cast<AssignmentExpr*>(node->expr.get())->target.get()));
+    }
 }
 void SemanticAnalyzer::visitIfStmt(IfStmt* node) {
     // 结果/可选 检查跟踪（条件为 结果.正常 / 可选.有值 时专用处理）
@@ -441,76 +448,59 @@ void SemanticAnalyzer::visitIfStmt(IfStmt* node) {
     if (node->condition->getType() == NodeType::BinaryExpr) {
         auto* bin = static_cast<BinaryExpr*>(node->condition.get());
         if (bin->op == Operator::AndAnd) {
-            Expr* lhs = bin->left.get();
-            bool negated = false;
-            if (lhs->getType() == NodeType::UnaryExpr) {
-                auto* u = static_cast<UnaryExpr*>(lhs);
-                if (u->op == Operator::Bang) {
-                    negated = true;
-                    lhs = u->operand.get();
+            // 301 守卫增强：传导面从「仅左侧」扩为「左右两侧递归收集」——右侧同为
+            //   守卫形态（`a.正常 && b.正常` / 右结合三连）时右侧变量同样 markChecked
+            //   （此前 then 块内访问 b.值 被规则3 误拒）；marked 记录全部命中变量，
+            //   分支收尾成对 unmark。
+            std::vector<std::string> marked;
+            collectGuardMarks(bin->left.get(), marked);
+            if (!marked.empty()) {
+                collectGuardMarks(bin->right.get(), marked);
+                const std::string rhsType = checkExpr(bin->right.get());
+                checkCondition(rhsType, bin->right->location, "'如果'");
+                // 010（def-init）：then/else 状态传播（手动归并——本路径
+                //   markChecked 配对顺序特殊，不走 defInitCheckIf 整体包装）
+                const std::unordered_set<std::string> diBase = uninitPlaces_;
+                // 980 波7（任务 007 NLL）：moved 集同趟快照-恢复-合流
+                const MovedSet mvBase = snapshotMoved();
+                if (node->thenBranch != nullptr) {
+                    checkBlock(node->thenBranch.get());
                 }
-            }
-            if (lhs->getType() == NodeType::MemberExpr) {
-                auto* m = static_cast<MemberExpr*>(lhs);
-                const std::string varName = objectVarName(m->object.get());
-                if (!varName.empty()) {
-                    const std::string objType = checkExpr(m->object.get());
-                    std::string kind;
-                    if (isResultType(objType) && m->memberName == "正常") {
-                        kind = negated ? "错误" : "正常";
-                    } else if (isOptionalType(objType) && m->memberName == "有值" &&
-                               !negated) {
-                        kind = "有值";
-                    }
-                    if (!kind.empty()) {
-                        markChecked(varName, kind);
-                        const std::string rhsType = checkExpr(bin->right.get());
-                        checkCondition(rhsType, bin->right->location, "'如果'");
-                        // 010（def-init）：then/else 状态传播（手动归并——本路径
-                        //   markChecked 配对顺序特殊，不走 defInitCheckIf 整体包装）
-                        const std::unordered_set<std::string> diBase = uninitPlaces_;
-                        // 980 波7（任务 007 NLL）：moved 集同趟快照-恢复-合流
-                        const MovedSet mvBase = snapshotMoved();
-                        if (node->thenBranch != nullptr) {
-                            checkBlock(node->thenBranch.get());
+                std::unordered_set<std::string> diAfterThen = uninitPlaces_;
+                const MovedSet mvAfterThen = snapshotMoved();
+                const bool diThenExits = node->thenBranch != nullptr &&
+                    stmtGuaranteesReturn(node->thenBranch.get());
+                uninitPlaces_ = diBase;
+                restoreMoved(mvBase);
+                for (const auto& v : marked) { unmarkChecked(v); }
+                if (node->elseBranch != nullptr) {
+                    checkStmt(node->elseBranch.get());
+                    std::unordered_set<std::string> diAfterElse = uninitPlaces_;
+                    const MovedSet mvAfterElse = snapshotMoved();
+                    const bool diElseExits =
+                        stmtGuaranteesReturn(node->elseBranch.get());
+                    if (diThenExits && !diElseExits) {
+                        uninitPlaces_ = diAfterElse;
+                        restoreMoved(mvAfterElse);
+                    } else if (diElseExits && !diThenExits) {
+                        uninitPlaces_ = std::move(diAfterThen);
+                        restoreMoved(mvAfterThen);
+                    } else if (!diThenExits && !diElseExits) {
+                        // 010：并集归并（must analysis——未初始化汇合=并集）
+                        std::unordered_set<std::string> diMerged = diAfterElse;
+                        for (const auto& k : diAfterThen) {
+                            diMerged.insert(k);
                         }
-                        std::unordered_set<std::string> diAfterThen = uninitPlaces_;
-                        const MovedSet mvAfterThen = snapshotMoved();
-                        const bool diThenExits = node->thenBranch != nullptr &&
-                            stmtGuaranteesReturn(node->thenBranch.get());
-                        uninitPlaces_ = diBase;
-                        restoreMoved(mvBase);
-                        unmarkChecked(varName);
-                        if (node->elseBranch != nullptr) {
-                            checkStmt(node->elseBranch.get());
-                            std::unordered_set<std::string> diAfterElse = uninitPlaces_;
-                            const MovedSet mvAfterElse = snapshotMoved();
-                            const bool diElseExits =
-                                stmtGuaranteesReturn(node->elseBranch.get());
-                            if (diThenExits && !diElseExits) {
-                                uninitPlaces_ = diAfterElse;
-                                restoreMoved(mvAfterElse);
-                            } else if (diElseExits && !diThenExits) {
-                                uninitPlaces_ = std::move(diAfterThen);
-                                restoreMoved(mvAfterThen);
-                            } else if (!diThenExits && !diElseExits) {
-                                // 010：并集归并（must analysis——未初始化汇合=并集）
-                                std::unordered_set<std::string> diMerged = diAfterElse;
-                                for (const auto& k : diAfterThen) {
-                                    diMerged.insert(k);
-                                }
-                                uninitPlaces_ = std::move(diMerged);
-                                // moved=may 合流（Rust E0382 同款）
-                                restoreMoved(mvAfterElse);
-                                mergeMovedOr(mvAfterThen);
-                            }
-                        } else {
-                            // 无否则：真支可能不执行——置位不外溢
-                            restoreMoved(mvBase);
-                        }
-                        return;
+                        uninitPlaces_ = std::move(diMerged);
+                        // moved=may 合流（Rust E0382 同款）
+                        restoreMoved(mvAfterElse);
+                        mergeMovedOr(mvAfterThen);
                     }
+                } else {
+                    // 无否则：真支可能不执行——置位不外溢
+                    restoreMoved(mvBase);
                 }
+                return;
             }
         }
     }
