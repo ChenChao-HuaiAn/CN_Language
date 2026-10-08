@@ -23,6 +23,7 @@
 #include <tuple>
 #include <vector>
 
+#include <cstdio>
 #include "cn_compiler/ir/ir.hpp"
 #include "cn_compiler/semantic/semantic.hpp"
 #include "cn_compiler/semantic/type_system.hpp"
@@ -444,6 +445,7 @@ void IRGenerator::emitPendingBoxCopiesRelease(std::size_t fromIndex) {
     const SourceLocation loc;
     for (std::size_t i = pendingBoxCopies_.size(); i > fromIndex; --i) {
         const auto& ent = pendingBoxCopies_[i - 1];
+
         ir::IRValue objPtr = emitResult(ir::Opcode::LoadPtr, {ent.first}, "ptr",
                                         "", loc);
         // 字段级释放先行（副本含 tracked 拥有字段〔串/容器〕——

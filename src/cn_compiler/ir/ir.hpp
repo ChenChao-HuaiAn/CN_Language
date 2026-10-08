@@ -765,18 +765,13 @@ private:
     std::vector<std::size_t> scopeClassBase_;    // genBlock 进入时 类对象名单 基线
     // 79-a（2026-09-12 第七十九轮）：genBlock 进入时 含串字段聚合名单 基线
     std::vector<std::size_t> scopeFieldBase_;
-    // 100（939·008 收官总攻）：盒内类值独立副本名单（发射期实例级登记——
-    //   889 装箱深拷分叉的 newObj 所在盒值字段地址 + 类规范名；块出口条件
-    //   DeleteObject。绕开收集面（116 双删回退史·898 浅拷分叉不登记）。
+    // 100（939·008 收官总攻）：盒内类值独立副本名单（889 装箱深拷分叉的
+    //   newObj 盒值字段地址+类规范名·块出口条件 DeleteObject·绕开收集面）。
     std::vector<std::size_t> scopeBoxCopiesBase_;
     bool inReturnExpr_ = false;   // 100（939）：返回表达式求值期（盒副本登记豁免）
     std::vector<std::pair<ir::IRValue, std::string>> pendingBoxCopies_;
-    // 182（1019·008 树）：结果/可选<析构类> 局部变量盒亡名单（变量级·对齐 v2
-    //   946 变量模型）——{tagAddr, fieldAddr, clsCanon, varUnique, transferred}
-    //   （栈槽地址·跨块恒定；varUnique=盒变量唯一名·273 返回位移交识别键；
-    //   transferred=类载荷析构责任已随返回值移交调用方·273——置位后块出口/
-    //   函数尾兜底跳过，防「源盒析构+调用方析构」双放/retbuf 残骸）。
-    //   889 表达式面双登记=幂等无害（表达式面清值字段后本面摘句柄=0 空安全）。
+    // 182（1019·008）：结果/可选<析构类> 盒亡名单——{tagAddr, fieldAddr,
+    //   clsCanon, 变量名(273 移交键), 移交标志(273 兜底跳过防双放)}。
     std::vector<std::tuple<ir::IRValue, ir::IRValue, std::string, std::string, bool>> pendingBoxVars_;
     std::vector<std::size_t> scopeBoxVarsBase_;
     // 本函数拥有串名单（genVarDecl 登记：源码类型=字符串 且未被 stringTainted_ 污染）
