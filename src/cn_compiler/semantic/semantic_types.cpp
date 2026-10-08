@@ -1,6 +1,7 @@
 // CN 语义分析器实现（D1 行数整改 117-a：自 semantic.cpp 按族拆出）
 //   族 = 类型系统（类型名解析/结构体·枚举查找 declareTypeName→enumValueOf + 静态成员 findTopLevelComma + 布局计算 typeSizeOf→computeEnumValues）；纯重构零行为变更（成员函数实现搬迁——声明仍在 semantic.hpp；
 //   共享 helper 已由 115-a 头化在 semantic_internal.hpp）。
+#include <fstream>
 #include <algorithm>
 #include <cstdint>
 #include <cstdio>
@@ -540,6 +541,54 @@ void SemanticAnalyzer::computeLayout(StructDecl* decl) {
         return;  // totalSize 保持 0：错误已报，防连锁误报
     }
     decl->layoutComputed = true;
+    // 280（021 任务 280）：结果/可选 合成体布局=v2 8+max 模型单点归一——
+    //   「是否正常/是否某些」布尔 tag 占 8B 域、联合/值载荷 @8、total=8+max(载荷)
+    //   （v2 结果大小 268-a 同规：tag 8+宽·错误槽发射偏移=8 asm 铁证）。
+    //   旧路径（通用 C 布局）在合成体降级时机早于类注册时 typeAlignOf/isClassType
+    //   对类载荷 miss（fieldAlign=1）→联合 align 被整32 等标量拉低到 4→total=12
+    //   ——tag@0+联合@4 旧模型（v2 已废）→「盒=正常(类); 返回 盒;」直装形态
+    //   retbuf/盒亡/读链错位（探针 p273a 双放 C0000374·273 轮权料）。
+    //   058-ⅡA 缩面纪律：仅特判 合成体名前缀（结果$/结果联合$/可选$），
+    //   通用结构体/联合体布局零改动。
+    const std::string& nm280 = decl->name;
+    bool off280 = false;
+    { std::ifstream f280("cn280.off"); off280 = f280.good(); }
+    const bool synth280 = !off280 && (nm280.rfind("结果$", 0) == 0 ||
+                          nm280.rfind("可选$", 0) == 0 ||
+                          nm280.rfind("结果联合$", 0) == 0);
+    if (synth280) {
+        if (decl->isUnion) {
+            // 结果联合$T$E：值/错误值 @0·total=载荷圆整 8（v2 载荷圆整口径）·align=8
+            int wide280 = 0;
+            for (auto& f : decl->fields) {
+                f.offset = 0;
+                const int fs280 = typeSizeOf(f.type);
+                const int rounded280 = (fs280 + 7) / 8 * 8;
+                if (rounded280 > wide280) wide280 = rounded280;
+            }
+            decl->totalSize = wide280;
+            decl->align = 8;
+            layoutVisiting_.erase(decl->name);
+            return;
+        }
+        // 外层（结果$T$E / 可选$T）：tag@0（8B 域）+载荷 @8（载荷圆整 8——
+        //   v2 268-a：整32 载荷面 12→16 铁证）
+        int payload280 = 0;
+        for (auto& f : decl->fields) {
+            if (f.name == "是否正常" || f.name == "是否某些") {
+                f.offset = 0;
+            } else {
+                f.offset = 8;
+                const int fs280 = typeSizeOf(f.type);
+                const int rounded280 = (fs280 + 7) / 8 * 8;
+                if (rounded280 > payload280) payload280 = rounded280;
+            }
+        }
+        decl->totalSize = 8 + payload280;
+        decl->align = 8;
+        layoutVisiting_.erase(decl->name);
+        return;
+    }
     decl->totalSize = 0;
     decl->align = 1;
     int maxAlign = 1;

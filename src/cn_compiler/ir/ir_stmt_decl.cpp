@@ -742,49 +742,74 @@ void IRGenerator::genVarDecl(VarDecl* node) {
                                           cn == "错误";
                     }
                 }
-                if (declIsBox && node->initializer != nullptr &&
-                    !ctorInitCovered) {
-                    std::string payload;
-                    if (SemanticAnalyzer::isResultType(declCanon)) {
-                        const std::vector<std::string> rargs =
-                            SemanticAnalyzer::resultTypeArgs(declCanon);
-                        if (rargs.size() == 2)
-                            payload = types::canonical(rargs[0]);
-                    } else {
-                        payload = types::canonical(
-                            SemanticAnalyzer::optionalTypeArg(declCanon));
-                    }
-                    const ClassInfo* pci =
-                        payload.empty() ? nullptr : semantic_->findClass(payload);
-                    bool pDtor = false;
-                    if (pci != nullptr) {
-                        for (const auto& mk : pci->methods) {
-                            if (mk.second.isDestructor) { pDtor = true; break; }
+                // 280（021 任务 280）：两面统一本变量面登记（单一权威·返回位
+                //   移交豁免=273 刀②同键）——原 !ctorInitCovered 防护（577）令
+                //   正常() 构造盒只登记表达式面（__rctor 构造临时槽）：浅拷后盒槽
+                //   与源槽共享句柄→函数尾表达式面析构源槽=「返回 盒」retbuf 副本
+                //   死句柄双放（p273a C0000374）。_ctorInitCovered 时先清源槽值
+                //   字段（表达式面条目 LoadPtr=0 幂等跳过·79/078 同款）——布局
+                //   归一（本任务 computeLayout 8+max）后值槽 @8·16B 槽内·i64 写
+                //   不再越界（273 轮 v1 回归=12B 布局下清零踩界的根因已消）。
+                if (declIsBox && node->initializer != nullptr) {
+                    if (ctorInitCovered) {
+                        const StructDecl* sdZ = semantic_->findStruct(declCanon);
+                        const int voZ = sdZ ? semantic_->fieldOffsetOf(sdZ, "值") : -1;
+                        if (voZ >= 0) {
+                            ir::IRValue srcField280 = emitResult(
+                                ir::Opcode::FieldAddr, {value}, "ptr",
+                                std::to_string(voZ), node->location);
+                            ir::IRValue zero280 = emitResult(
+                                ir::Opcode::ConstInt, {}, "i64", "0",
+                                node->location);
+                            emit(ir::Opcode::StorePtr, {srcField280, zero280},
+                                 ir::IRValue(), "", "i64", node->location);
                         }
                     }
-                    if (pDtor && semantic_->findCopyConstructor(payload) != nullptr) {
-                        const StructDecl* sd = semantic_->findStruct(declCanon);
-                        const int vo =
-                            sd ? semantic_->fieldOffsetOf(sd, "值") : -1;
-                        const int co =
-                            sd ? semantic_->fieldOffsetOf(
-                                     sd, SemanticAnalyzer::isResultType(declCanon)
-                                     ? "正常" : "有值") : -1;
-                        if (vo >= 0 && co >= 0) {
-                            ir::IRValue tagAddr =
-                                co == 0 ? dstAddr
+                    {
+                        std::string payload280;
+                        if (SemanticAnalyzer::isResultType(declCanon)) {
+                            const std::vector<std::string> rargs280 =
+                                SemanticAnalyzer::resultTypeArgs(declCanon);
+                            if (rargs280.size() == 2)
+                                payload280 = types::canonical(rargs280[0]);
+                        } else {
+                            payload280 = types::canonical(
+                                SemanticAnalyzer::optionalTypeArg(declCanon));
+                        }
+                        const ClassInfo* pci280 =
+                            payload280.empty() ? nullptr : semantic_->findClass(payload280);
+                        bool pDtor280 = false;
+                        if (pci280 != nullptr) {
+                            for (const auto& mk : pci280->methods) {
+                                if (mk.second.isDestructor) { pDtor280 = true; break; }
+                            }
+                        }
+                        if (pDtor280 && semantic_->findCopyConstructor(payload280) != nullptr) {
+                            const StructDecl* sd280 = semantic_->findStruct(declCanon);
+                            const int vo280 =
+                                sd280 ? semantic_->fieldOffsetOf(sd280, "值") : -1;
+                            const int co280 =
+                                sd280 ? semantic_->fieldOffsetOf(
+                                         sd280, SemanticAnalyzer::isResultType(declCanon)
+                                         ? "正常" : "有值") : -1;
+                            if (vo280 >= 0 && co280 >= 0) {
+                                ir::IRValue tagAddr280 =
+                                    co280 == 0 ? dstAddr
                                         : emitResult(ir::Opcode::FieldAddr,
                                                      {dstAddr}, "ptr",
-                                                     std::to_string(co),
+                                                     std::to_string(co280),
                                                      node->location);
-                            ir::IRValue fieldAddr =
-                                vo == 0 ? dstAddr
+                                ir::IRValue fieldAddr280 =
+                                    vo280 == 0 ? dstAddr
                                         : emitResult(ir::Opcode::FieldAddr,
                                                      {dstAddr}, "ptr",
-                                                     std::to_string(vo),
+                                                     std::to_string(vo280),
                                                      node->location);
-                            // 273：第 4 元=变量唯一名（返回位移交识别键）·第 5 元=移交标志（兜底跳过）
-                            pendingBoxVars_.emplace_back(tagAddr, fieldAddr, payload, unique, false);
+                                pendingBoxVars_.emplace_back(tagAddr280,
+                                                             fieldAddr280,
+                                                             payload280, unique,
+                                                             false);
+                            }
                         }
                     }
                 }
