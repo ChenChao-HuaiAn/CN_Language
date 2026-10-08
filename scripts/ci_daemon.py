@@ -226,10 +226,16 @@ def 运行限时(命令: list[str], 超时秒: int, **kwargs) -> subprocess.Comp
 
 
 def 运行(命令: list[str], 日志, 超时秒: int, **kwargs) -> subprocess.CompletedProcess:
-    """流式写日志（不落内存大块）+总超时看护。"""
+    """流式写日志（不落内存大块）+总超时看护；可执行不存在（FileNotFoundError·如服务
+    环境 PATH 缺用户级 cmake——单位机实例实录崩循环）记 rc=127 轮红而非炸进程（297·
+    与 294 运行限时同族：环境面异常一律步骤红·不进程崩）。"""
     print("  $", " ".join(命令[:6]), ("..." if len(命令) > 6 else ""), file=日志, flush=True)
-    return subprocess.run(命令, stdout=日志, stderr=subprocess.STDOUT,
-                          cwd=仓库根, timeout=超时秒, **kwargs)
+    try:
+        return subprocess.run(命令, stdout=日志, stderr=subprocess.STDOUT,
+                              cwd=仓库根, timeout=超时秒, **kwargs)
+    except FileNotFoundError as e:
+        print("  [FAIL] 可执行不存在：%s" % e, file=日志, flush=True)
+        return subprocess.CompletedProcess(命令, 127)
 
 
 def 找vcvars() -> Path | None:
