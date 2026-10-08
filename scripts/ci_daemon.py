@@ -294,9 +294,13 @@ def 跑一轮(sha: str, 轮分支: str = "") -> dict:
                     if sccache:
                         launcher = ' -DCMAKE_CXX_COMPILER_LAUNCHER:FILEPATH="%s"' % sccache
                     配置脚本 = 日志目录 / "win_configure.cmd"
+                    # CXX_FLAGS_DEBUG 必须显式 /Z7（wt.py 开发树同口径）——默认 /ZI 集中 PDB
+                    # 在 --parallel 下多 cl.exe 并写同 .pdb 必撞 C1041（实测）
                     配置脚本.write_text("\r\n".join(头行 + [
                         'cmake -G Ninja -S . -B target/build-ninja '
-                        '-DCMAKE_BUILD_TYPE=Debug' + launcher]) + "\r\n", encoding="ascii")
+                        '-DCMAKE_BUILD_TYPE=Debug'
+                        '-DCMAKE_CXX_FLAGS_DEBUG:STRING="/Z7 /Ob0 /Od /RTC1"' + launcher])
+                        + "\r\n", encoding="ascii")
                     步骤("配置", ["cmd", "/c", str(配置脚本)], 900)
                 else:
                     步骤们["配置"] = {"rc": 0, "说明": "build-ninja 已配置（增量）"}
