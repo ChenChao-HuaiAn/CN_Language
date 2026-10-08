@@ -277,24 +277,35 @@ def 跑一轮(sha: str, 轮分支: str = "") -> dict:
             print(同步输出, file=日志, flush=True)
         elif 是win:
             # ② 291 win 构建链=vcvars64+Ninja+sccache（wt.py 开发树同口径）；首配仅
-            #    build.ninja 缺失时做（每轮 reset/clean 不动 target/=增量天然保留）
+            #    build.ninja 缺失时做（每轮 reset/clean 不动 target/=增量天然保留）。
+            #    cmd /c 复合命令串内嵌引号经 subprocess 列表参数转义必坏（实测 rc=1
+            #    零输出）——生成 ASCII 临时脚本跑（wt.py 生成 ninja_build.cmd 同款手法；
+            #    固定名覆盖写=无垃圾积累；cd /d %~dp0.. 自定位树根=四 worktree 各自独立）
             vcvars = 找vcvars()
             if vcvars is None:
                 步骤们["配置"] = {"rc": -1, "说明": "未找到 vcvars64.bat（VS2022 安装不全）"}
             else:
-                环境前缀 = 'call "%s" >nul 2>&1 && ' % vcvars
+                头行 = ["@echo off", 'cd /d "%~dp0.."',
+                        'call "%s" >nul 2>&1' % vcvars,
+                        'where cl >nul 2>&1 || (echo [FAIL] cl not found & exit /b 1)']
                 if not (仓库根 / "target/build-ninja/build.ninja").exists():
                     launcher = ""
                     sccache = shutil.which("sccache")
                     if sccache:
                         launcher = ' -DCMAKE_CXX_COMPILER_LAUNCHER:FILEPATH="%s"' % sccache
-                    步骤("配置", ["cmd", "/c", 环境前缀 +
-                          'cmake -G Ninja -S . -B target/build-ninja -DCMAKE_BUILD_TYPE=Debug' + launcher], 900)
+                    配置脚本 = 日志目录 / "win_configure.cmd"
+                    配置脚本.write_text("\r\n".join(头行 + [
+                        'cmake -G Ninja -S . -B target/build-ninja '
+                        '-DCMAKE_BUILD_TYPE=Debug' + launcher]) + "\r\n", encoding="ascii")
+                    步骤("配置", ["cmd", "/c", str(配置脚本)], 900)
                 else:
                     步骤们["配置"] = {"rc": 0, "说明": "build-ninja 已配置（增量）"}
                 if 步骤们["配置"]["rc"] == 0:
-                    步骤("构建", ["cmd", "/c", 环境前缀 +
-                          "cmake --build target/build-ninja --parallel"], 单轮总超时秒)
+                    构建脚本 = 日志目录 / "win_build.cmd"
+                    构建脚本.write_text("\r\n".join(头行 + [
+                        "cmake --build target/build-ninja --parallel"]) + "\r\n",
+                        encoding="ascii")
+                    步骤("构建", ["cmd", "/c", str(构建脚本)], 单轮总超时秒)
                     # ③ 单测（产物落 target/ 根=CMAKE_RUNTIME_OUTPUT_DIRECTORY·exe 后缀）
                     单测 = next((p for p in [仓库根 / "target/cn_unit_tests.exe",
                                              仓库根 / "target/build/cn_unit_tests.exe",
