@@ -1,0 +1,602 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>容器 · 标准库 · CN 语言</title>
+<meta name="description" content="向量 / 链表 / 栈 / 队列——RAII 自动释放，元素按真实类型大小紧凑存储。">
+<script>
+  (function () {
+    try {
+      var t = localStorage.getItem("cn-theme");
+      if (t === "dark" || t === "light") document.documentElement.setAttribute("data-theme", t);
+    } catch (e) {}
+  })()
+</script>
+<link rel="stylesheet" href="../../assets/tokens.css?v=2">
+<link rel="stylesheet" href="../../assets/site.css?v=4">
+</head>
+<body>
+
+<header class="顶栏">
+  <div class="容器 顶栏-内">
+    <a class="标识" href="../../">CN<span class="标识-点">·</span>语言</a>
+    <button class="导航-开关" data-导航钮 aria-expanded="false">菜单</button>
+    <nav class="导航" aria-label="站点导航">
+      <a href="../../">首页</a>
+      <a href="../" aria-current="page">文档</a>
+      <a href="../getting-started.html">快速开始</a>
+      <a href="../reference/">语言参考</a>
+      <a href="../stdlib.html">标准库</a>
+      <a href="../../os/">CN-OS</a>
+      <a href="https://gitcode.com/ChenChao_GitCode/CN_Language" target="_blank" rel="noopener">源码 ↗</a>
+      <button class="主题钮" data-主题钮 aria-label="切换主题">月</button>
+    </nav>
+  </div>
+</header>
+
+<main class="容器">
+  <div class="文档骨架">
+    <aside class="侧栏" aria-label="文档导航"><div class="侧栏-组"><p class="侧栏-组题">入门</p><a href="../.././">文档总览</a><a href="../getting-started.html">快速开始</a></div><div class="侧栏-组"><p class="侧栏-组题">教程</p><a href="../tutorial-syntax.html">语法基础</a><a href="../tutorial-oop.html">类与泛型</a><a href="../tutorial-safety.html">安全与并发</a></div><div class="侧栏-组"><p class="侧栏-组题">语言参考</p><a href="../reference/">参考总览</a><a href="../reference/lexical.html">词法结构</a><a href="../reference/types.html">类型系统</a><a href="../reference/control-flow.html">控制流</a><a href="../reference/functions.html">函数</a><a href="../reference/oop.html">类与对象</a><a href="../reference/errors.html">错误处理</a><a href="../reference/concurrency.html">并发</a><a href="../reference/modules.html">模块系统</a></div><div class="侧栏-组"><p class="侧栏-组题">标准库</p><a href="../stdlib.html">标准库总览</a><a href="../stdlib/core.html">核心</a><a href="../stdlib/container.html">容器</a><a href="../stdlib/mapset.html">映射集合</a><a href="../stdlib/string.html">字符串扩展</a><a href="../stdlib/algorithm.html">算法</a><a href="../stdlib/regex.html">正则</a><a href="../stdlib/system.html">系统</a><a href="../stdlib/io.html">IO</a><a href="../stdlib/file.html">文件</a><a href="../stdlib/time.html">时间</a><a href="../stdlib/math.html">数学</a><a href="../stdlib/random.html">随机数</a><a href="../stdlib/thread.html">线程</a><a href="../stdlib/builtin.html">内置函数</a></div><div class="侧栏-组"><p class="侧栏-组题">资源</p><a href="../cli.html">命令行参考</a><a href="https://gitcode.com/ChenChao_GitCode/CN_Language" target="_blank" rel="noopener">源码仓库 ↗</a></div></aside>
+    <article class="正文"><nav class="面包屑" aria-label="面包屑"><a href="../">文档</a> / <a href="../stdlib.html">标准库</a> / 容器</nav>
+<h1>容器</h1>
+<p style="color: var(--color-fg-muted); font-size: var(--text-lg); line-height: 2;">向量 / 链表 / 栈 / 队列——RAII 自动释放，元素按真实类型大小紧凑存储。</p>
+
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">导入写法</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">导入 容器::向量;
+导入 容器::{链表, 栈, 队列};</code></pre></div>
+<h2 id="总览">使用总览</h2>
+<p>四个容器全部<strong>深拷语义 + RAII 自动释放</strong>：作用域结束自动释放底层内存，元素为字符串/类对象时自动逐元素析构。扩容策略统一为「0 → 4，之后每次翻倍」。返回 <code>结果</code> 的方法返回值不可丢弃（编译错误），须按本文示例接收检查。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">总览.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">导入 容器::向量;
+
+函数 主() -&gt; 整32 {
+    向量&lt;整64&gt; 表 = 向量&lt;整64&gt;();
+    结果&lt;空类型, 整32&gt; 加 = 表.追加(10);
+    加 = 表.追加(32);
+    整64 首 = 表.元素(0);        // 副本读取（快照语义）
+    遍历 表 中 每个 x {           // 遍历循环逐元素只读访问
+        打印行(x, " ");
+    }
+    打印("");
+    打印(首 + 表.大小());        // 12
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：10 32 
+12
+</p>
+<h2 id="向量">向量&lt;T&gt;（动态数组）</h2>
+<p>对标 C++ <code>std::vector</code>。底层一块连续内存，支持下标随机访问；元素按 <code>类型大小(T)</code> 字节紧凑存储（与数组 C 布局、指针步进统一）。拷贝构造为深拷贝（逐元素按 T 的拷贝语义）。</p>
+<section class="函数条" id="向量-向量">
+<h3><code>向量()</code> <span class="签 签-赭">不安全</span></h3>
+<p class="函数定义"><code>不安全 函数 向量()</code></p>
+<p>构造空向量（容量 0，不分配内存）。首次 追加/插入 时分配。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">向量-向量.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">向量&lt;整64&gt; 表 = 向量&lt;整64&gt;();
+打印(表.为空());</code></pre></div>
+<p class="输出行">输出：真
+</p>
+</section>
+<section class="函数条" id="向量-向量拷贝">
+<h3><code>向量(其他)</code> <span class="签 签-赭">不安全</span></h3>
+<p class="函数定义"><code>不安全 函数 向量(向量& 其他)</code></p>
+<p>拷贝构造：深拷贝数据数组，逐元素按 T 的拷贝语义复制（元素为类对象时调用其拷贝构造），两容器析构互不影响。</p>
+<table class="表 参数表"><thead><tr><th>参数</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>其他</code></td><td><code>向量&amp;</code></td><td>被拷贝的向量</td></tr></tbody></table>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">向量-向量拷贝.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">向量&lt;整64&gt; 甲 = 向量&lt;整64&gt;();
+结果&lt;空类型, 整32&gt; 加 = 甲.追加(5);
+向量&lt;整64&gt; 乙 = 甲;      // 深拷贝
+加 = 乙.追加(6);         // 只影响 乙
+打印(甲.大小(), " ", 乙.大小());</code></pre></div>
+<p class="输出行">输出：1 2
+</p>
+</section>
+<section class="函数条" id="向量-大小">
+<h3><code>大小</code> <span class="签 签-绿">常量</span></h3>
+<p class="函数定义"><code>常量 函数 大小() -> 整64</code></p>
+<p>当前元素个数。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">向量-大小.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">向量&lt;整64&gt; 表 = 向量&lt;整64&gt;();
+结果&lt;空类型, 整32&gt; 加 = 表.追加(1);
+加 = 表.追加(2);
+打印(表.大小());</code></pre></div>
+<p class="输出行">输出：2
+</p>
+</section>
+<section class="函数条" id="向量-容量">
+<h3><code>容量</code> <span class="签 签-绿">常量</span></h3>
+<p class="函数定义"><code>常量 函数 容量() -> 整64</code></p>
+<p>底层已分配的槽位数（≥ 大小()）。扩容翻倍策略：0 → 4 → ×2。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">向量-容量.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">向量&lt;整64&gt; 表 = 向量&lt;整64&gt;();
+打印(表.容量());
+结果&lt;空类型, 整32&gt; 加 = 表.追加(1);
+打印(表.容量());</code></pre></div>
+<p class="输出行">输出：0
+4
+</p>
+</section>
+<section class="函数条" id="向量-为空">
+<h3><code>为空</code> <span class="签 签-绿">常量</span></h3>
+<p class="函数定义"><code>常量 函数 为空() -> 布尔</code></p>
+<p>元素个数是否为 0。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">向量-为空.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">向量&lt;整64&gt; 表 = 向量&lt;整64&gt;();
+打印(表.为空());</code></pre></div>
+<p class="输出行">输出：真
+</p>
+</section>
+<section class="函数条" id="向量-追加">
+<h3><code>追加</code> <span class="签 签-赭">不安全</span></h3>
+<p class="函数定义"><code>不安全 函数 追加(T 值) -> 结果&lt;空类型, 整32&gt;</code></p>
+<p>尾部追加一个元素（按值拷入）。容量不足时自动翻倍扩容。<strong>返回值不可丢弃</strong>——须接收并检查。</p>
+<table class="表 参数表"><thead><tr><th>参数</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>值</code></td><td><code>T</code></td><td>要追加的元素</td></tr></tbody></table>
+<p><strong>返回</strong>　<code>正常()</code>；重分配失败 → <code>错误(错误码.内存)</code>。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">向量-追加.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">向量&lt;整64&gt; 表 = 向量&lt;整64&gt;();
+结果&lt;空类型, 整32&gt; 加 = 表.追加(10);
+如果 (!加.正常) { 返回 1; }
+打印(表.元素(0));</code></pre></div>
+<p class="输出行">输出：10
+</p>
+</section>
+<section class="函数条" id="向量-插入">
+<h3><code>插入</code> <span class="签 签-赭">不安全</span></h3>
+<p class="函数定义"><code>不安全 函数 插入(整64 位置, T 值) -> 结果&lt;空类型, 整32&gt;</code></p>
+<p>在指定位置插入元素，原位置及其后元素整体后移。允许 位置 == 大小() （等价尾部追加）；负值或超出尾部 → 越界错误。</p>
+<table class="表 参数表"><thead><tr><th>参数</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>位置</code></td><td><code>整64</code></td><td>插入点（0 = 头部，大小() = 尾部）</td></tr><tr><td><code>值</code></td><td><code>T</code></td><td>要插入的元素</td></tr></tbody></table>
+<p><strong>返回</strong>　<code>正常()</code>；位置非法 → <code>错误(错误码.越界)</code>；重分配失败 → <code>错误(错误码.内存)</code>。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">向量-插入.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">向量&lt;整64&gt; 表 = 向量&lt;整64&gt;();
+结果&lt;空类型, 整32&gt; 加 = 表.追加(1);
+加 = 表.追加(3);
+加 = 表.插入(1, 2);      // 在 1 和 3 之间插入 2
+遍历 表 中 每个 x { 打印行(x, " "); }
+打印("");</code></pre></div>
+<p class="输出行">输出：1 2 3 
+</p>
+</section>
+<section class="函数条" id="向量-读取">
+<h3><code>读取</code> <span class="签 签-赭">不安全</span></h3>
+<p class="函数定义"><code>不安全 函数 读取(整64 位置) -> 结果&lt;T, 整32&gt;</code></p>
+<p>带检查的下标读取：越界（含负值）返回错误而非中止，适合无法确信下标合法的场合。</p>
+<table class="表 参数表"><thead><tr><th>参数</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>位置</code></td><td><code>整64</code></td><td>下标</td></tr></tbody></table>
+<p><strong>返回</strong>　<code>正常(元素副本)</code>；越界 → <code>错误(错误码.越界)</code>。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">向量-读取.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">向量&lt;整64&gt; 表 = 向量&lt;整64&gt;();
+结果&lt;空类型, 整32&gt; 加 = 表.追加(42);
+结果&lt;整64, 整32&gt; 读 = 表.读取(0);
+如果 (读.正常) { 打印(读.值); }
+结果&lt;整64, 整32&gt; 坏 = 表.读取(99);
+如果 (!坏.正常) { 打印("越界被拦下"); }</code></pre></div>
+<p class="输出行">输出：42
+越界被拦下
+</p>
+</section>
+<section class="函数条" id="向量-元素">
+<h3><code>元素</code> <span class="签 签-赭">不安全</span></h3>
+<p class="函数定义"><code>不安全 函数 元素(整64 位置) -> T</code></p>
+<p>直读下标：返回元素<strong>副本</strong>（快照语义，对副本的修改不影响容器）。越界时直接运行时中止（<code>错误码.越界</code>），适合调用方已保证下标合法的热路径。</p>
+<table class="表 参数表"><thead><tr><th>参数</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>位置</code></td><td><code>整64</code></td><td>下标</td></tr></tbody></table>
+<p><strong>返回</strong>　元素副本（T）。越界 → 运行时错误终止。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">向量-元素.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">向量&lt;字符串&gt; 名单 = 向量&lt;字符串&gt;();
+结果&lt;空类型, 整32&gt; 加 = 名单.追加("张三");
+字符串 首 = 名单.元素(0);
+打印(首);</code></pre></div>
+<p class="输出行">输出：张三
+</p>
+</section>
+<section class="函数条" id="向量-元素引用">
+<h3><code>元素引用</code> <span class="签 签-赭">不安全</span></h3>
+<p class="函数定义"><code>不安全 函数 元素引用(整64 位置) -> T&amp;</code></p>
+<p>引用访问：返回元素的<strong>左值引用</strong>（零拷贝），可读可写——写穿容器内的真实槽位（Rust <code>&amp;v[i]</code> 同款）。大对象只读消费或原地修改时用它避开元素(i) 的整份拷贝。</p>
+<table class="表 参数表"><thead><tr><th>参数</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>位置</code></td><td><code>整64</code></td><td>下标</td></tr></tbody></table>
+<p><strong>返回</strong>　元素引用（T&amp;）。越界 → 运行时错误终止。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">向量-元素引用.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">向量&lt;整64&gt; 表 = 向量&lt;整64&gt;();
+结果&lt;空类型, 整32&gt; 加 = 表.追加(1);
+表.元素引用(0) = 99;     // 引用写穿
+打印(表.元素(0));</code></pre></div>
+<p class="输出行">输出：99
+</p>
+</section>
+<section class="函数条" id="向量-设置">
+<h3><code>设置</code> <span class="签 签-赭">不安全</span></h3>
+<p class="函数定义"><code>不安全 函数 设置(整64 位置, T 值) -> 结果&lt;空类型, 整32&gt;</code></p>
+<p>覆盖指定位置的元素。元素为字符串时旧值先释放（唯一持有者语义），不泄漏。越界返回错误。</p>
+<table class="表 参数表"><thead><tr><th>参数</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>位置</code></td><td><code>整64</code></td><td>下标</td></tr><tr><td><code>值</code></td><td><code>T</code></td><td>新值</td></tr></tbody></table>
+<p><strong>返回</strong>　<code>正常()</code>；越界 → <code>错误(错误码.越界)</code>。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">向量-设置.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">向量&lt;整64&gt; 表 = 向量&lt;整64&gt;();
+结果&lt;空类型, 整32&gt; 加 = 表.追加(1);
+加 = 表.设置(0, 77);
+打印(表.元素(0));</code></pre></div>
+<p class="输出行">输出：77
+</p>
+</section>
+<section class="函数条" id="向量-删除">
+<h3><code>删除</code> <span class="签 签-赭">不安全</span></h3>
+<p class="函数定义"><code>不安全 函数 删除(整64 位置) -> 结果&lt;空类型, 整32&gt;</code></p>
+<p>删除指定位置的元素，其后元素整体前移；被移除元素正确析构（字符串释放/类对象析构），不泄漏不双释放。</p>
+<table class="表 参数表"><thead><tr><th>参数</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>位置</code></td><td><code>整64</code></td><td>要删除的下标</td></tr></tbody></table>
+<p><strong>返回</strong>　<code>正常()</code>；越界 → <code>错误(错误码.越界)</code>。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">向量-删除.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">向量&lt;整64&gt; 表 = 向量&lt;整64&gt;();
+结果&lt;空类型, 整32&gt; 加 = 表.追加(1);
+加 = 表.追加(2);
+加 = 表.追加(3);
+加 = 表.删除(1);         // 删掉 2
+遍历 表 中 每个 x { 打印行(x, " "); }
+打印("");</code></pre></div>
+<p class="输出行">输出：1 3 
+</p>
+</section>
+<section class="函数条" id="向量-预留">
+<h3><code>预留</code></h3>
+<p class="函数定义"><code>函数 预留(整64 容量) -> 结果&lt;空类型, 整32&gt;</code></p>
+<p>预分配至少 容量 个槽位，之后的 追加 在容量内不再触发重分配。已知规模的批量装载前调用可显著减少分配次数。容量参数不大于当前容量时什么都不做。</p>
+<table class="表 参数表"><thead><tr><th>参数</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>容量</code></td><td><code>整64</code></td><td>目标槽位数</td></tr></tbody></table>
+<p><strong>返回</strong>　<code>正常()</code>；重分配失败 → <code>错误(错误码.内存)</code>。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">向量-预留.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">向量&lt;整64&gt; 表 = 向量&lt;整64&gt;();
+结果&lt;空类型, 整32&gt; 预 = 表.预留(1000);
+打印(表.容量());</code></pre></div>
+<p class="输出行">输出：1000
+</p>
+</section>
+<section class="函数条" id="向量-清空">
+<h3><code>清空</code></h3>
+<p class="函数定义"><code>函数 清空()</code></p>
+<p>元素个数清零（容量保留，底层内存不释放）。字符串/类元素为空时会走编译器注入的全量析构面；之后容器可继续使用。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">向量-清空.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">向量&lt;整64&gt; 表 = 向量&lt;整64&gt;();
+结果&lt;空类型, 整32&gt; 加 = 表.追加(1);
+表.清空();
+打印(表.大小(), " ", 表.为空());</code></pre></div>
+<p class="输出行">输出：0 真
+</p>
+</section>
+<section class="函数条" id="向量-析构元素">
+<h3><code>析构元素</code> <span class="签 签-灰">内部</span></h3>
+<p class="函数定义"><code>函数 析构元素(整64 索引)</code></p>
+<p>编译器注入挂点（源码空体）：T 为有析构类时，发射层在此注入单元素析构调用。仅 删除 的移位循环使用，业务代码不要调用。</p>
+</section>
+<section class="函数条" id="向量-析构被移除">
+<h3><code>析构被移除</code> <span class="签 签-灰">内部</span></h3>
+<p class="函数定义"><code>函数 析构被移除(整64 索引)</code></p>
+<p>编译器注入挂点：T=字符串 时释放被移除/被覆盖槽的字符串并清零（唯一持有者），有析构类零注入（其析构由 析构元素 链负责）。删除/设置 内部使用。</p>
+</section>
+<section class="函数条" id="向量-移动元素">
+<h3><code>移动元素</code> <span class="签 签-灰">内部</span> <span class="签 签-赭">不安全</span></h3>
+<p class="函数定义"><code>不安全 函数 移动元素(整64 目标, 整64 源)</code></p>
+<p>编译器注入挂点：按元素类型发射 memcpy + 源槽资源清零（Rust <code>ptr::copy</code> + 源失效同款，零拷贝）。插入/删除 的移位循环使用。</p>
+</section>
+<h2 id="链表">链表&lt;T&gt;（索引链表）</h2>
+<p>对标 C++ <code>std::list</code>。实现为数组索引模拟链（<code>T*</code> 值表 + <code>整64*</code> 下一索引，-1 表链尾），删除后的槽位经空闲链 O(1) 复用。头尾插删均为 O(1)；删除尾部需链游 O(n)。</p>
+<section class="函数条" id="链表-链表">
+<h3><code>链表()</code></h3>
+<p class="函数定义"><code>函数 链表()</code></p>
+<p>构造空链表。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">链表-链表.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">链表&lt;整64&gt; 列 = 链表&lt;整64&gt;();
+打印(列.为空());</code></pre></div>
+<p class="输出行">输出：真
+</p>
+</section>
+<section class="函数条" id="链表-链表拷贝">
+<h3><code>链表(其他)</code> <span class="签 签-赭">不安全</span></h3>
+<p class="函数定义"><code>不安全 函数 链表(链表& 其他)</code></p>
+<p>拷贝构造：链游复制——链上有效元素逐元素深拷；空闲槽不复值。</p>
+<table class="表 参数表"><thead><tr><th>参数</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>其他</code></td><td><code>链表&amp;</code></td><td>被拷贝的链表</td></tr></tbody></table>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">链表-链表拷贝.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">链表&lt;整64&gt; 甲 = 链表&lt;整64&gt;();
+结果&lt;空类型, 整32&gt; 加 = 甲.追加(5);
+链表&lt;整64&gt; 乙 = 甲;
+加 = 乙.追加(6);
+打印(甲.大小(), " ", 乙.大小());</code></pre></div>
+<p class="输出行">输出：1 2
+</p>
+</section>
+<section class="函数条" id="链表-大小">
+<h3><code>大小</code> <span class="签 签-绿">常量</span></h3>
+<p class="函数定义"><code>常量 函数 大小() -> 整64</code></p>
+<p>当前元素个数。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">链表-大小.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">链表&lt;整64&gt; 列 = 链表&lt;整64&gt;();
+结果&lt;空类型, 整32&gt; 加 = 列.追加(1);
+打印(列.大小());</code></pre></div>
+<p class="输出行">输出：1
+</p>
+</section>
+<section class="函数条" id="链表-为空">
+<h3><code>为空</code> <span class="签 签-绿">常量</span></h3>
+<p class="函数定义"><code>常量 函数 为空() -> 布尔</code></p>
+<p>元素个数是否为 0。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">链表-为空.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">链表&lt;整64&gt; 列 = 链表&lt;整64&gt;();
+打印(列.为空());</code></pre></div>
+<p class="输出行">输出：真
+</p>
+</section>
+<section class="函数条" id="链表-追加">
+<h3><code>追加</code> <span class="签 签-赭">不安全</span></h3>
+<p class="函数定义"><code>不安全 函数 追加(T 值) -> 结果&lt;空类型, 整32&gt;</code></p>
+<p>尾部追加（尾插 O(1)）。</p>
+<table class="表 参数表"><thead><tr><th>参数</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>值</code></td><td><code>T</code></td><td>要追加的元素</td></tr></tbody></table>
+<p><strong>返回</strong>　<code>正常()</code>；扩容失败 → <code>错误(错误码.内存)</code>。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">链表-追加.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">链表&lt;整64&gt; 列 = 链表&lt;整64&gt;();
+结果&lt;空类型, 整32&gt; 加 = 列.追加(11);
+加 = 列.追加(22);
+结果&lt;整64, 整32&gt; 头 = 列.读取头部();
+如果 (头.正常) { 打印(头.值); }
+结果&lt;整64, 整32&gt; 尾 = 列.读取尾部();
+如果 (尾.正常) { 打印(尾.值); }</code></pre></div>
+<p class="输出行">输出：11
+22
+</p>
+</section>
+<section class="函数条" id="链表-头部追加">
+<h3><code>头部追加</code> <span class="签 签-赭">不安全</span></h3>
+<p class="函数定义"><code>不安全 函数 头部追加(T 值) -> 结果&lt;空类型, 整32&gt;</code></p>
+<p>头部插入（头插 O(1)）。</p>
+<table class="表 参数表"><thead><tr><th>参数</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>值</code></td><td><code>T</code></td><td>要插入的元素</td></tr></tbody></table>
+<p><strong>返回</strong>　<code>正常()</code>；扩容失败 → <code>错误(错误码.内存)</code>。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">链表-头部追加.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">链表&lt;整64&gt; 列 = 链表&lt;整64&gt;();
+结果&lt;空类型, 整32&gt; 加 = 列.追加(22);
+加 = 列.头部追加(11);
+打印(列.头部元素());</code></pre></div>
+<p class="输出行">输出：11
+</p>
+</section>
+<section class="函数条" id="链表-删除头部">
+<h3><code>删除头部</code> <span class="签 签-赭">不安全</span></h3>
+<p class="函数定义"><code>不安全 函数 删除头部() -> 结果&lt;空类型, 整32&gt;</code></p>
+<p>摘除头元素（O(1)）；空表 → 错误。被摘槽归还空闲链供复用。</p>
+<p><strong>返回</strong>　<code>正常()</code>；空表 → <code>错误(错误码.未初始化)</code>。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">链表-删除头部.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">链表&lt;整64&gt; 列 = 链表&lt;整64&gt;();
+结果&lt;空类型, 整32&gt; 加 = 列.追加(1);
+加 = 列.追加(2);
+加 = 列.删除头部();
+打印(列.头部元素());</code></pre></div>
+<p class="输出行">输出：2
+</p>
+</section>
+<section class="函数条" id="链表-删除尾部">
+<h3><code>删除尾部</code> <span class="签 签-赭">不安全</span></h3>
+<p class="函数定义"><code>不安全 函数 删除尾部() -> 结果&lt;空类型, 整32&gt;</code></p>
+<p>摘除尾元素；除单元素表外需从头部链游到倒数第二节点（O(n)）。</p>
+<p><strong>返回</strong>　<code>正常()</code>；空表 → <code>错误(错误码.未初始化)</code>。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">链表-删除尾部.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">链表&lt;整64&gt; 列 = 链表&lt;整64&gt;();
+结果&lt;空类型, 整32&gt; 加 = 列.追加(1);
+加 = 列.追加(2);
+加 = 列.删除尾部();
+打印(列.大小());</code></pre></div>
+<p class="输出行">输出：1
+</p>
+</section>
+<section class="函数条" id="链表-头部元素">
+<h3><code>头部元素</code> <span class="签 签-赭">不安全</span></h3>
+<p class="函数定义"><code>不安全 函数 头部元素() -> T</code></p>
+<p>直读头元素（副本）；空表 → 运行时中止。</p>
+<p><strong>返回</strong>　头元素副本。空表 → 运行时错误终止。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">链表-头部元素.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">链表&lt;整64&gt; 列 = 链表&lt;整64&gt;();
+结果&lt;空类型, 整32&gt; 加 = 列.追加(7);
+打印(列.头部元素());</code></pre></div>
+<p class="输出行">输出：7
+</p>
+</section>
+<section class="函数条" id="链表-读取头部">
+<h3><code>读取头部</code> <span class="签 签-赭">不安全</span></h3>
+<p class="函数定义"><code>不安全 函数 读取头部() -> 结果&lt;T, 整32&gt;</code></p>
+<p>带检查读头元素：空表返回错误而非中止。</p>
+<p><strong>返回</strong>　<code>正常(头元素)</code>；空表 → <code>错误(错误码.未初始化)</code>。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">链表-读取头部.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">链表&lt;整64&gt; 列 = 链表&lt;整64&gt;();
+结果&lt;整64, 整32&gt; 读 = 列.读取头部();
+如果 (!读.正常) { 打印("空表"); }</code></pre></div>
+<p class="输出行">输出：空表
+</p>
+</section>
+<section class="函数条" id="链表-读取尾部">
+<h3><code>读取尾部</code> <span class="签 签-赭">不安全</span></h3>
+<p class="函数定义"><code>不安全 函数 读取尾部() -> 结果&lt;T, 整32&gt;</code></p>
+<p>带检查读尾元素：空表返回错误而非中止。</p>
+<p><strong>返回</strong>　<code>正常(尾元素)</code>；空表 → <code>错误(错误码.未初始化)</code>。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">链表-读取尾部.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">链表&lt;整64&gt; 列 = 链表&lt;整64&gt;();
+结果&lt;空类型, 整32&gt; 加 = 列.追加(9);
+结果&lt;整64, 整32&gt; 读 = 列.读取尾部();
+如果 (读.正常) { 打印(读.值); }</code></pre></div>
+<p class="输出行">输出：9
+</p>
+</section>
+<section class="函数条" id="链表-清空">
+<h3><code>清空</code></h3>
+<p class="函数定义"><code>函数 清空()</code></p>
+<p>链上元素全量析构（编译器注入链游释放）后链端点复位，槽位状态作废（下次分配从 0 重用）。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">链表-清空.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">链表&lt;整64&gt; 列 = 链表&lt;整64&gt;();
+结果&lt;空类型, 整32&gt; 加 = 列.追加(1);
+列.清空();
+打印(列.大小(), " ", 列.为空());</code></pre></div>
+<p class="输出行">输出：0 真
+</p>
+</section>
+<section class="函数条" id="链表-取空闲槽">
+<h3><code>取空闲槽</code> <span class="签 签-灰">内部</span> <span class="签 签-赭">不安全</span></h3>
+<p class="函数定义"><code>不安全 函数 取空闲槽() -> 整64</code></p>
+<p>槽分配内部辅助：空闲链优先 O(1) 复用，否则取高水位新槽。</p>
+</section>
+<section class="函数条" id="链表-归还槽">
+<h3><code>归还槽</code> <span class="签 签-灰">内部</span> <span class="签 签-赭">不安全</span></h3>
+<p class="函数定义"><code>不安全 函数 归还槽(整64 槽) -> 空类型</code></p>
+<p>槽回收内部辅助：把槽挂入空闲链。删除头部/尾部 内部使用。</p>
+</section>
+<h2 id="栈">栈&lt;T&gt;（后进先出）</h2>
+<p>对标 C++ <code>std::stack</code>。独立动态数组实现（压入=尾追加，弹出=尾移除），拷贝构造深拷。</p>
+<section class="函数条" id="栈-压入">
+<h3><code>压入</code> <span class="签 签-赭">不安全</span></h3>
+<p class="函数定义"><code>不安全 函数 压入(T 值) -> 结果&lt;空类型, 整32&gt;</code></p>
+<p>元素压栈（无参构造 栈() 先建实例）。</p>
+<table class="表 参数表"><thead><tr><th>参数</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>值</code></td><td><code>T</code></td><td>要压入的元素</td></tr></tbody></table>
+<p><strong>返回</strong>　<code>正常()</code>；扩容失败 → <code>错误(错误码.内存)</code>。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">栈-压入.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">栈&lt;整64&gt; 池 = 栈&lt;整64&gt;();
+结果&lt;空类型, 整32&gt; 压 = 池.压入(1);
+压 = 池.压入(2);
+压 = 池.压入(3);
+打印(池.大小());</code></pre></div>
+<p class="输出行">输出：3
+</p>
+</section>
+<section class="函数条" id="栈-弹出">
+<h3><code>弹出</code> <span class="签 签-赭">不安全</span></h3>
+<p class="函数定义"><code>不安全 函数 弹出() -> 结果&lt;T, 整32&gt;</code></p>
+<p>弹出栈顶元素并返回副本；空栈返回错误。</p>
+<p><strong>返回</strong>　<code>正常(栈顶值)</code>；空栈 → <code>错误(错误码.未初始化)</code>。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">栈-弹出.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">栈&lt;整64&gt; 池 = 栈&lt;整64&gt;();
+结果&lt;空类型, 整32&gt; 压 = 池.压入(7);
+结果&lt;整64, 整32&gt; 弹 = 池.弹出();
+如果 (弹.正常) { 打印(弹.值); }</code></pre></div>
+<p class="输出行">输出：7
+</p>
+</section>
+<section class="函数条" id="栈-栈顶">
+<h3><code>栈顶</code> <span class="签 签-赭">不安全</span></h3>
+<p class="函数定义"><code>不安全 函数 栈顶() -> 结果&lt;T, 整32&gt;</code></p>
+<p>只读窥视栈顶（不弹出）；空栈返回错误。</p>
+<p><strong>返回</strong>　<code>正常(栈顶值)</code>；空栈 → <code>错误(错误码.未初始化)</code>。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">栈-栈顶.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">栈&lt;整64&gt; 池 = 栈&lt;整64&gt;();
+结果&lt;空类型, 整32&gt; 压 = 池.压入(7);
+结果&lt;整64, 整32&gt; 看 = 池.栈顶();
+如果 (看.正常) { 打印(看.值, " ", 池.大小()); }</code></pre></div>
+<p class="输出行">输出：7 1
+</p>
+</section>
+<section class="函数条" id="栈-为空">
+<h3><code>为空</code> <span class="签 签-绿">常量</span></h3>
+<p class="函数定义"><code>常量 函数 为空() -> 布尔</code></p>
+<p>栈是否为空。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">栈-为空.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">栈&lt;整64&gt; 池 = 栈&lt;整64&gt;();
+打印(池.为空());</code></pre></div>
+<p class="输出行">输出：真
+</p>
+</section>
+<section class="函数条" id="栈-大小">
+<h3><code>大小</code> <span class="签 签-绿">常量</span></h3>
+<p class="函数定义"><code>常量 函数 大小() -> 整64</code></p>
+<p>栈内元素个数。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">栈-大小.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">栈&lt;整64&gt; 池 = 栈&lt;整64&gt;();
+结果&lt;空类型, 整32&gt; 压 = 池.压入(1);
+打印(池.大小());</code></pre></div>
+<p class="输出行">输出：1
+</p>
+</section>
+<h2 id="队列">队列&lt;T&gt;（先进先出）</h2>
+<p>对标 C++ <code>std::queue</code>。独立索引链表实现（入队=尾追加，出队=头摘除），空闲链槽复用。</p>
+<section class="函数条" id="队列-入队">
+<h3><code>入队</code> <span class="签 签-赭">不安全</span></h3>
+<p class="函数定义"><code>不安全 函数 入队(T 值) -> 结果&lt;空类型, 整32&gt;</code></p>
+<p>元素入队尾（无参构造 队列() 先建实例）。</p>
+<table class="表 参数表"><thead><tr><th>参数</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>值</code></td><td><code>T</code></td><td>要入队的元素</td></tr></tbody></table>
+<p><strong>返回</strong>　<code>正常()</code>；扩容失败 → <code>错误(错误码.内存)</code>。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">队列-入队.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">队列&lt;整64&gt; 窗 = 队列&lt;整64&gt;();
+结果&lt;空类型, 整32&gt; 入 = 窗.入队(11);
+入 = 窗.入队(22);
+打印(窗.大小());</code></pre></div>
+<p class="输出行">输出：2
+</p>
+</section>
+<section class="函数条" id="队列-出队">
+<h3><code>出队</code> <span class="签 签-赭">不安全</span></h3>
+<p class="函数定义"><code>不安全 函数 出队() -> 结果&lt;T, 整32&gt;</code></p>
+<p>队首出队并返回副本；空队返回错误。被摘槽归还空闲链。</p>
+<p><strong>返回</strong>　<code>正常(队首值)</code>；空队 → <code>错误(错误码.未初始化)</code>。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">队列-出队.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">队列&lt;整64&gt; 窗 = 队列&lt;整64&gt;();
+结果&lt;空类型, 整32&gt; 入 = 窗.入队(11);
+入 = 窗.入队(22);
+结果&lt;整64, 整32&gt; 出 = 窗.出队();
+如果 (出.正常) { 打印(出.值, " ", 窗.大小()); }</code></pre></div>
+<p class="输出行">输出：11 1
+</p>
+</section>
+<section class="函数条" id="队列-队首">
+<h3><code>队首</code> <span class="签 签-赭">不安全</span></h3>
+<p class="函数定义"><code>不安全 函数 队首() -> 结果&lt;T, 整32&gt;</code></p>
+<p>只读窥视队首（不出队）；空队返回错误。</p>
+<p><strong>返回</strong>　<code>正常(队首值)</code>；空队 → <code>错误(错误码.未初始化)</code>。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">队列-队首.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">队列&lt;整64&gt; 窗 = 队列&lt;整64&gt;();
+结果&lt;空类型, 整32&gt; 入 = 窗.入队(11);
+结果&lt;整64, 整32&gt; 看 = 窗.队首();
+如果 (看.正常) { 打印(看.值, " ", 窗.大小()); }</code></pre></div>
+<p class="输出行">输出：11 1
+</p>
+</section>
+<section class="函数条" id="队列-为空">
+<h3><code>为空</code> <span class="签 签-绿">常量</span></h3>
+<p class="函数定义"><code>常量 函数 为空() -> 布尔</code></p>
+<p>队列是否为空。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">队列-为空.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">队列&lt;整64&gt; 窗 = 队列&lt;整64&gt;();
+打印(窗.为空());</code></pre></div>
+<p class="输出行">输出：真
+</p>
+</section>
+<section class="函数条" id="队列-大小">
+<h3><code>大小</code> <span class="签 签-绿">常量</span></h3>
+<p class="函数定义"><code>常量 函数 大小() -> 整64</code></p>
+<p>队列内元素个数。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">队列-大小.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">队列&lt;整64&gt; 窗 = 队列&lt;整64&gt;();
+结果&lt;空类型, 整32&gt; 入 = 窗.入队(1);
+打印(窗.大小());</code></pre></div>
+<p class="输出行">输出：1
+</p>
+</section>
+<section class="函数条" id="队列-清空">
+<h3><code>清空</code></h3>
+<p class="函数定义"><code>函数 清空()</code></p>
+<p>链上元素全量析构后复位（同 链表.清空）。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">队列-清空.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">队列&lt;整64&gt; 窗 = 队列&lt;整64&gt;();
+结果&lt;空类型, 整32&gt; 入 = 窗.入队(1);
+窗.清空();
+打印(窗.为空());</code></pre></div>
+<p class="输出行">输出：真
+</p>
+</section>
+<section class="函数条" id="队列-取空闲槽">
+<h3><code>取空闲槽</code> <span class="签 签-灰">内部</span> <span class="签 签-赭">不安全</span></h3>
+<p class="函数定义"><code>不安全 函数 取空闲槽() -> 整64</code></p>
+<p>内部辅助：同 链表.取空闲槽（空闲链 O(1) 复用）。</p>
+</section>
+<section class="函数条" id="队列-归还槽">
+<h3><code>归还槽</code> <span class="签 签-灰">内部</span> <span class="签 签-赭">不安全</span></h3>
+<p class="函数定义"><code>不安全 函数 归还槽(整64 槽) -> 空类型</code></p>
+<p>内部辅助：同 链表.归还槽。</p>
+</section><nav class="页脚导航"><a class="" href="../stdlib/core.html"><span class="向">← 上一页</span><span class="题">核心</span></a><a class="下一" href="../stdlib/mapset.html"><span class="向">下一页 →</span><span class="题">映射集合</span></a></nav></article>
+    <aside class="目录" aria-label="本页目录">
+      <p class="目录-题">本页目录</p>
+<a href="#总览">使用总览</a><a href="#向量">向量&lt;T&gt;（动态数组）</a><a href="#链表">链表&lt;T&gt;（索引链表）</a><a href="#栈">栈&lt;T&gt;（后进先出）</a><a href="#队列">队列&lt;T&gt;（先进先出）</a>
+    </aside>
+  </div>
+</main>
+
+<footer class="页脚">
+  <div class="容器">
+    <div class="页脚-排">
+      <div>
+        <p class="页脚-标语">CN<span style="color: var(--color-accent);">·</span>语言</p>
+        <p class="页脚-述">全中文语法的系统级编程语言。以母语的直觉，驾驭机器的全部性能。</p>
+      </div>
+      <div>
+        <h4>语言</h4>
+        <ul>
+          <li><a href="../.././">官方文档</a></li>
+          <li><a href="../getting-started.html">快速开始</a></li>
+          <li><a href="../reference/">语言参考</a></li>
+          <li><a href="../stdlib.html">标准库</a></li>
+        </ul>
+      </div>
+      <div>
+        <h4>项目</h4>
+        <ul>
+          <li><a href="https://gitcode.com/ChenChao_GitCode/CN_Language" target="_blank" rel="noopener">源码仓库 ↗</a></li>
+          <li><a href="../../os/">CN-OS 蓝图</a></li>
+          <li><a href="../cli.html">命令行参考</a></li>
+        </ul>
+      </div>
+      <div>
+        <h4>状态</h4>
+        <ul>
+          <li>自举固定点已达成</li>
+          <li>v2 自举重建进行中</li>
+          <li>license：见仓库</li>
+        </ul>
+      </div>
+    </div>
+    <div class="页脚-底">
+      <span>© 2026 CN 语言项目</span>
+      <span>京ICP备00000000号（备案办理中·占位）</span>
+    </div>
+  </div>
+</footer>
+
+<script src="../../assets/cn-highlight.js?v=1"></script>
+<script src="../site.js?v=2"></script>
+</body>
+</html>

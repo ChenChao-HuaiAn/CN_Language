@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>标准库 · CN 语言</title>
-<meta name="description" content="CN 语言标准库：13 个模块，向量/映射/线程/互斥锁/IO。">
+<title>标准库 · CN 语言 · CN 语言</title>
+<meta name="description" content="CN 语言标准库：13 个模块逐函数文档——定义、用法、可运行示例。">
 <script>
   (function () {
     try {
@@ -14,19 +14,20 @@
   })()
 </script>
 <link rel="stylesheet" href="../assets/tokens.css?v=2">
-<link rel="stylesheet" href="../assets/site.css?v=3">
+<link rel="stylesheet" href="../assets/site.css?v=4">
 </head>
 <body>
 
 <header class="顶栏">
   <div class="容器 顶栏-内">
-    <a class="标识" href="./">CN<span class="标识-点">·</span>语言</a>
+    <a class="标识" href="../">CN<span class="标识-点">·</span>语言</a>
     <button class="导航-开关" data-导航钮 aria-expanded="false">菜单</button>
     <nav class="导航" aria-label="站点导航">
-      <a href="./">首页</a>
-      <a href=".././" aria-current="page">文档</a>
+      <a href="../">首页</a>
+      <a href="" aria-current="page">文档</a>
       <a href="getting-started.html">快速开始</a>
       <a href="reference/">语言参考</a>
+      <a href="stdlib.html">标准库</a>
       <a href="../os/">CN-OS</a>
       <a href="https://gitcode.com/ChenChao_GitCode/CN_Language" target="_blank" rel="noopener">源码 ↗</a>
       <button class="主题钮" data-主题钮 aria-label="切换主题">月</button>
@@ -36,107 +37,216 @@
 
 <main class="容器">
   <div class="文档骨架">
-    <aside class="侧栏" aria-label="文档导航">
-      <div class="侧栏-组">
-        <p class="侧栏-组题">入门</p>
-        <a href=".././">文档总览</a>
-        <a href="getting-started.html">快速开始</a>
-      </div>
-      <div class="侧栏-组">
-        <p class="侧栏-组题">教程</p>
-        <a href="tutorial-syntax.html">语法基础</a>
-        <a href="tutorial-oop.html">类与泛型</a>
-        <a href="tutorial-safety.html">安全与并发</a>
-      </div>
-      <div class="侧栏-组">
-        <p class="侧栏-组题">语言参考</p>
-        <a href="reference/">参考总览</a>
-        <a href="reference/lexical.html">词法结构</a>
-        <a href="reference/types.html">类型系统</a>
-        <a href="reference/control-flow.html">控制流</a>
-        <a href="reference/functions.html">函数</a>
-        <a href="reference/oop.html">类与对象</a>
-        <a href="reference/errors.html">错误处理</a>
-        <a href="reference/concurrency.html">并发</a>
-        <a href="reference/modules.html">模块系统</a>
-      </div>
-      <div class="侧栏-组">
-        <p class="侧栏-组题">资源</p>
-        <a href="stdlib.html" aria-current="page">标准库</a>
-        <a href="cli.html">命令行参考</a>
-      </div>
-    </aside>
-    <article class="正文">
-      <nav class="面包屑" aria-label="面包屑"><a href="./">文档</a> / 标准库</nav>
-      
+    <aside class="侧栏" aria-label="文档导航"><div class="侧栏-组"><p class="侧栏-组题">入门</p><a href="./">文档总览</a><a href="getting-started.html">快速开始</a></div><div class="侧栏-组"><p class="侧栏-组题">教程</p><a href="tutorial-syntax.html">语法基础</a><a href="tutorial-oop.html">类与泛型</a><a href="tutorial-safety.html">安全与并发</a></div><div class="侧栏-组"><p class="侧栏-组题">语言参考</p><a href="reference/">参考总览</a><a href="reference/lexical.html">词法结构</a><a href="reference/types.html">类型系统</a><a href="reference/control-flow.html">控制流</a><a href="reference/functions.html">函数</a><a href="reference/oop.html">类与对象</a><a href="reference/errors.html">错误处理</a><a href="reference/concurrency.html">并发</a><a href="reference/modules.html">模块系统</a></div><div class="侧栏-组"><p class="侧栏-组题">标准库</p><a href="stdlib.html" aria-current="page">标准库总览</a><a href="stdlib/core.html">核心</a><a href="stdlib/container.html">容器</a><a href="stdlib/mapset.html">映射集合</a><a href="stdlib/string.html">字符串扩展</a><a href="stdlib/algorithm.html">算法</a><a href="stdlib/regex.html">正则</a><a href="stdlib/system.html">系统</a><a href="stdlib/io.html">IO</a><a href="stdlib/file.html">文件</a><a href="stdlib/time.html">时间</a><a href="stdlib/math.html">数学</a><a href="stdlib/random.html">随机数</a><a href="stdlib/thread.html">线程</a><a href="stdlib/builtin.html">内置函数</a></div><div class="侧栏-组"><p class="侧栏-组题">资源</p><a href="cli.html">命令行参考</a><a href="https://gitcode.com/ChenChao_GitCode/CN_Language" target="_blank" rel="noopener">源码仓库 ↗</a></div></aside>
+    <article class="正文"><nav class="面包屑" aria-label="面包屑"><a href="./">文档</a> / 标准库</nav>
 <h1>标准库</h1>
-<p style="color: var(--color-fg-muted); font-size: var(--text-lg); line-height: 2;">
-13 个模块、全部 CN 语言实现——读标准库源码就是最好的进阶教程。</p>
-
-<table class="表">
-<thead><tr><th>模块</th><th>内容</th></tr></thead>
-<tbody>
-<tr><td><code>核心</code></td><td>错误码枚举、<code>交换</code> / <code>最小</code> / <code>最大</code>（泛型）、断言</td></tr>
-<tr><td><code>容器</code></td><td><code>向量&lt;T&gt;</code> / 链表 / 栈 / 队列（RAII 自动释放）</td></tr>
-<tr><td><code>映射集合</code></td><td><code>映射&lt;K, V&gt;</code> / <code>集合&lt;T&gt;</code></td></tr>
-<tr><td><code>字符串扩展</code></td><td>字符串处理扩展</td></tr>
-<tr><td><code>算法</code></td><td>常用算法</td></tr>
-<tr><td><code>正则</code></td><td>正则表达式（子集实现）</td></tr>
-<tr><td><code>IO</code></td><td><code>读取行</code> / <code>读取整数</code> / <code>读取浮点</code> / 打印到错误</td></tr>
-<tr><td><code>文件</code></td><td>文件读写</td></tr>
-<tr><td><code>线程</code></td><td><code>新线程</code> / <code>并入线程</code> / <code>互斥锁&lt;T&gt;</code></td></tr>
-<tr><td><code>时间</code> / <code>数学</code> / <code>随机数</code></td><td>时间、数学函数、xoshiro256++ 随机数</td></tr>
-<tr><td><code>系统</code></td><td>系统信息</td></tr>
-</tbody>
-</table>
-
-<h2 id="向量">向量&lt;T&gt;：最常用的容器</h2>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">向量.cn</span><span class="码窗-徽">CN</span></p>
-<pre><code class="language-cn">导入 容器::向量;
-
-函数 主() -&gt; 整32 {
-    向量&lt;整64&gt; 表 = 向量&lt;整64&gt;();
-    表.追加(10);                 // 尾部追加（结果&lt;空类型, 整32&gt;）
-    表.追加(32);
-    整64 首 = 表.元素(0);        // 副本读取（快照语义）
-    整64 n = 表.大小();
-
-    // 引用写穿（Rust &amp;v[i] 同款·不安全函数内）
-    // 表.元素引用(0) = 99;
-
-    遍历 表 中 每个 x { 打印(x); }
-    返回 0;
-}</code></pre></div>
-<p>容器访问三形态：<code>元素(i)</code> 副本读取、<code>设置(i, v)</code> 写回、
-<code>元素引用(i)</code> 引用写穿（不安全）。扩容翻倍策略（0→4→×2），析构自动释放底层数组。</p>
-
-<h2 id="映射">映射&lt;K, V&gt;</h2>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">映射.cn</span><span class="码窗-徽">CN</span></p>
-<pre><code class="language-cn">导入 映射集合::映射;
-
-函数 主() -&gt; 整32 {
-    映射&lt;整64, 整64&gt; 字典 = 映射&lt;整64, 整64&gt;();
-    字典.设置(3, 300);
-    结果&lt;整64, 整32&gt; 取 = 字典.获取(3);
-    如果 (取.正常) {
-        打印("字典[3] = ", 取.值);    // 300
-    }
-    返回 0;
-}</code></pre></div>
-
-<h2 id="线程模块">线程模块</h2>
-<p><code>新线程(入口, 实参)</code> / <code>并入线程</code> / <code>互斥锁&lt;T&gt;</code>——
-用法见<a href="reference/concurrency.html">并发参考</a>。</p>
-
-      <nav class="页脚导航"><a href="reference/modules.html"><span class="向">← 上一页</span><span class="题">模块系统</span></a><a class="下一" href="cli.html"><span class="向">下一页 →</span><span class="题">命令行参考</span></a></nav>
-    </article>
+<p style="color: var(--color-fg-muted); font-size: var(--text-lg); line-height: 2;">13 个模块、187 个函数与类方法，全部用 CN 语言写成——每个函数都有定义、用法与可运行的示例。标准库自身就是最好的进阶教程。</p>
+<div class="库卡排"><a class="库卡" href="stdlib/core.html"><span class="库卡-题">核心</span><span class="库卡-述">错误码枚举 + 交换/最小/最大/断言（泛型）</span><span class="库卡-数">5 个条目</span></a><a class="库卡" href="stdlib/container.html"><span class="库卡-题">容器</span><span class="库卡-述">向量&lt;T&gt; / 链表&lt;T&gt; / 栈&lt;T&gt; / 队列&lt;T&gt;（RAII 自动释放）</span><span class="库卡-数">44 个条目</span></a><a class="库卡" href="stdlib/mapset.html"><span class="库卡-题">映射集合</span><span class="库卡-述">映射&lt;K,V&gt;（哈希）/ 字符串映射&lt;V&gt; / 集合&lt;T&gt;</span><span class="库卡-数">30 个条目</span></a><a class="库卡" href="stdlib/string.html"><span class="库卡-题">字符串扩展</span><span class="库卡-述">字符串转整数/浮点/布尔 + 替换/填充左/填充右/分割</span><span class="库卡-数">7 个条目</span></a><a class="库卡" href="stdlib/algorithm.html"><span class="库卡-题">算法</span><span class="库卡-述">排序/线性查找/二分查找/逆序/变换/计数/最大元素</span><span class="库卡-数">10 个条目</span></a><a class="库卡" href="stdlib/regex.html"><span class="库卡-题">正则</span><span class="库卡-述">正则引擎类：字面量/./字符类/锚定/量词/分组/或/转义</span><span class="库卡-数">4 个条目</span></a><a class="库卡" href="stdlib/system.html"><span class="库卡-题">系统</span><span class="库卡-述">参数个数() / 参数(索引)</span><span class="库卡-数">2 个条目</span></a><a class="库卡" href="stdlib/io.html"><span class="库卡-题">IO</span><span class="库卡-述">读取行/读取整数/读取浮点/打印到错误</span><span class="库卡-数">4 个条目</span></a><a class="库卡" href="stdlib/file.html"><span class="库卡-题">文件</span><span class="库卡-述">打开/读取/写入/读取行/大小/关闭/存在</span><span class="库卡-数">7 个条目</span></a><a class="库卡" href="stdlib/time.html"><span class="库卡-题">时间</span><span class="库卡-述">当前时间戳/单调时钟毫秒/格式化时间</span><span class="库卡-数">3 个条目</span></a><a class="库卡" href="stdlib/math.html"><span class="库卡-题">数学</span><span class="库卡-述">平方根/幂/正弦/余弦/正切/绝对值/向上取整/向下取整</span><span class="库卡-数">8 个条目</span></a><a class="库卡" href="stdlib/random.html"><span class="库卡-题">随机数</span><span class="库卡-述">随机数生成器类（xoshiro256++）+ 播种扩散</span><span class="库卡-数">7 个条目</span></a><a class="库卡" href="stdlib/thread.html"><span class="库卡-题">线程</span><span class="库卡-述">新线程/并入线程 + 互斥锁&lt;T&gt;（类型化句柄）+ 六个过渡函数</span><span class="库卡-数">9 个条目</span></a><a class="库卡" href="stdlib/builtin.html"><span class="库卡-题">内置函数</span><span class="库卡-述">打印族/字符串族/内存族/驻留/类型大小/复制/转移（无需导入）</span><span class="库卡-数">47 个条目</span></a></div>
+<h2 id="速查">全部函数速查</h2>
+<p>按模块列出全部公开 API（内部辅助以「内部」徽章标注）。点击函数名跳转到逐函数文档。</p>
+<table class="表"><thead><tr><th>模块</th><th>条目</th><th>一句话</th></tr></thead><tbody>
+<tr><td><a href="stdlib/core.html#错误码">核心</a></td><td><a href="stdlib/core.html#错误码-值域"><code>错误码</code></a></td><td>全库统一错误码：除零/越界/空指针/内存/文件/参数/未初始化/溢出</td></tr>
+<tr><td></td><td><a href="stdlib/core.html#交换"><code>交换</code></a></td><td>泛型交换两个变量的值</td></tr>
+<tr><td></td><td><a href="stdlib/core.html#最小"><code>最小</code></a></td><td>泛型取较小值</td></tr>
+<tr><td></td><td><a href="stdlib/core.html#最大"><code>最大</code></a></td><td>泛型取较大值</td></tr>
+<tr><td></td><td><a href="stdlib/core.html#断言"><code>断言</code></a></td><td>运行期断言：条件为假即终止进程</td></tr>
+<tr><td><a href="stdlib/container.html#向量">容器</a></td><td><a href="stdlib/container.html#向量-向量"><code>向量()</code></a></td><td>构造空向量</td></tr>
+<tr><td></td><td><a href="stdlib/container.html#向量-向量拷贝"><code>向量(其他)</code></a></td><td>拷贝构造（深拷贝）</td></tr>
+<tr><td></td><td><a href="stdlib/container.html#向量-大小"><code>大小</code></a></td><td>元素个数</td></tr>
+<tr><td></td><td><a href="stdlib/container.html#向量-容量"><code>容量</code></a></td><td>已分配容量（不等于元素数）</td></tr>
+<tr><td></td><td><a href="stdlib/container.html#向量-为空"><code>为空</code></a></td><td>是否为空</td></tr>
+<tr><td></td><td><a href="stdlib/container.html#向量-追加"><code>追加</code></a></td><td>尾部追加元素</td></tr>
+<tr><td></td><td><a href="stdlib/container.html#向量-插入"><code>插入</code></a></td><td>在指定位置插入元素</td></tr>
+<tr><td></td><td><a href="stdlib/container.html#向量-读取"><code>读取</code></a></td><td>带检查下标读取（越界返回错误）</td></tr>
+<tr><td></td><td><a href="stdlib/container.html#向量-元素"><code>元素</code></a></td><td>下标直读（副本；越界即中止）</td></tr>
+<tr><td></td><td><a href="stdlib/container.html#向量-元素引用"><code>元素引用</code></a></td><td>零拷贝引用读写（Rust &v[i] 同款）</td></tr>
+<tr><td></td><td><a href="stdlib/container.html#向量-设置"><code>设置</code></a></td><td>覆盖指定位置元素</td></tr>
+<tr><td></td><td><a href="stdlib/container.html#向量-删除"><code>删除</code></a></td><td>删除指定位置元素（前移补位）</td></tr>
+<tr><td></td><td><a href="stdlib/container.html#向量-预留"><code>预留</code></a></td><td>预分配容量</td></tr>
+<tr><td></td><td><a href="stdlib/container.html#向量-清空"><code>清空</code></a></td><td>清空元素（容量保留）</td></tr>
+<tr><td></td><td><a href="stdlib/container.html#向量-析构元素"><code>析构元素</code></a> <span class="签 签-灰">内部</span></td><td>编译器注入的元素析构挂点（勿调用）</td></tr>
+<tr><td></td><td><a href="stdlib/container.html#向量-析构被移除"><code>析构被移除</code></a> <span class="签 签-灰">内部</span></td><td>字符串槽释放挂点（勿调用）</td></tr>
+<tr><td></td><td><a href="stdlib/container.html#向量-移动元素"><code>移动元素</code></a> <span class="签 签-灰">内部</span></td><td>元素移动挂点：memcpy + 源清零（勿调用）</td></tr>
+<tr><td></td><td><a href="stdlib/container.html#链表-链表"><code>链表()</code></a></td><td>构造空链表</td></tr>
+<tr><td></td><td><a href="stdlib/container.html#链表-链表拷贝"><code>链表(其他)</code></a></td><td>拷贝构造（链游深拷）</td></tr>
+<tr><td></td><td><a href="stdlib/container.html#链表-大小"><code>大小</code></a></td><td>元素个数</td></tr>
+<tr><td></td><td><a href="stdlib/container.html#链表-为空"><code>为空</code></a></td><td>是否为空</td></tr>
+<tr><td></td><td><a href="stdlib/container.html#链表-追加"><code>追加</code></a></td><td>尾部追加</td></tr>
+<tr><td></td><td><a href="stdlib/container.html#链表-头部追加"><code>头部追加</code></a></td><td>头部插入</td></tr>
+<tr><td></td><td><a href="stdlib/container.html#链表-删除头部"><code>删除头部</code></a></td><td>摘除头元素</td></tr>
+<tr><td></td><td><a href="stdlib/container.html#链表-删除尾部"><code>删除尾部</code></a></td><td>摘除尾元素</td></tr>
+<tr><td></td><td><a href="stdlib/container.html#链表-头部元素"><code>头部元素</code></a></td><td>直读头元素（空表即中止）</td></tr>
+<tr><td></td><td><a href="stdlib/container.html#链表-读取头部"><code>读取头部</code></a></td><td>带检查读头元素</td></tr>
+<tr><td></td><td><a href="stdlib/container.html#链表-读取尾部"><code>读取尾部</code></a></td><td>带检查读尾元素</td></tr>
+<tr><td></td><td><a href="stdlib/container.html#链表-清空"><code>清空</code></a></td><td>清空链上全部元素</td></tr>
+<tr><td></td><td><a href="stdlib/container.html#链表-取空闲槽"><code>取空闲槽</code></a> <span class="签 签-灰">内部</span></td><td>内部：空闲链槽分配（勿调用）</td></tr>
+<tr><td></td><td><a href="stdlib/container.html#链表-归还槽"><code>归还槽</code></a> <span class="签 签-灰">内部</span></td><td>内部：槽归还空闲链（勿调用）</td></tr>
+<tr><td></td><td><a href="stdlib/container.html#栈-压入"><code>压入</code></a></td><td>元素压栈</td></tr>
+<tr><td></td><td><a href="stdlib/container.html#栈-弹出"><code>弹出</code></a></td><td>弹出并返回栈顶</td></tr>
+<tr><td></td><td><a href="stdlib/container.html#栈-栈顶"><code>栈顶</code></a></td><td>窥视栈顶（不弹出）</td></tr>
+<tr><td></td><td><a href="stdlib/container.html#栈-为空"><code>为空</code></a></td><td>是否为空栈</td></tr>
+<tr><td></td><td><a href="stdlib/container.html#栈-大小"><code>大小</code></a></td><td>元素个数</td></tr>
+<tr><td></td><td><a href="stdlib/container.html#队列-入队"><code>入队</code></a></td><td>元素入队尾</td></tr>
+<tr><td></td><td><a href="stdlib/container.html#队列-出队"><code>出队</code></a></td><td>队首出队</td></tr>
+<tr><td></td><td><a href="stdlib/container.html#队列-队首"><code>队首</code></a></td><td>窥视队首（不出队）</td></tr>
+<tr><td></td><td><a href="stdlib/container.html#队列-为空"><code>为空</code></a></td><td>是否为空队</td></tr>
+<tr><td></td><td><a href="stdlib/container.html#队列-大小"><code>大小</code></a></td><td>元素个数</td></tr>
+<tr><td></td><td><a href="stdlib/container.html#队列-清空"><code>清空</code></a></td><td>清空队列</td></tr>
+<tr><td></td><td><a href="stdlib/container.html#队列-取空闲槽"><code>取空闲槽</code></a> <span class="签 签-灰">内部</span></td><td>内部：空闲链槽分配（勿调用）</td></tr>
+<tr><td></td><td><a href="stdlib/container.html#队列-归还槽"><code>归还槽</code></a> <span class="签 签-灰">内部</span></td><td>内部：槽归还空闲链（勿调用）</td></tr>
+<tr><td><a href="stdlib/mapset.html#映射">映射集合</a></td><td><a href="stdlib/mapset.html#映射-映射"><code>映射()</code></a></td><td>构造空映射</td></tr>
+<tr><td></td><td><a href="stdlib/mapset.html#映射-映射拷贝"><code>映射(其他)</code></a></td><td>拷贝构造（深拷）</td></tr>
+<tr><td></td><td><a href="stdlib/mapset.html#映射-大小"><code>大小</code></a></td><td>键值对个数</td></tr>
+<tr><td></td><td><a href="stdlib/mapset.html#映射-为空"><code>为空</code></a></td><td>是否为空</td></tr>
+<tr><td></td><td><a href="stdlib/mapset.html#映射-设置"><code>设置</code></a></td><td>写入键值（存在即覆盖）</td></tr>
+<tr><td></td><td><a href="stdlib/mapset.html#映射-获取"><code>获取</code></a></td><td>按键取值（未命中=错误）</td></tr>
+<tr><td></td><td><a href="stdlib/mapset.html#映射-包含"><code>包含</code></a></td><td>键是否存在</td></tr>
+<tr><td></td><td><a href="stdlib/mapset.html#映射-删除"><code>删除</code></a></td><td>删除键值对</td></tr>
+<tr><td></td><td><a href="stdlib/mapset.html#映射-清空"><code>清空</code></a></td><td>清空全部键值</td></tr>
+<tr><td></td><td><a href="stdlib/mapset.html#映射-释放内部数组"><code>释放内部数组</code></a> <span class="签 签-灰">内部</span></td><td>内部：显式销毁数组（勿调用）</td></tr>
+<tr><td></td><td><a href="stdlib/mapset.html#映射-桶索引"><code>桶索引</code></a> <span class="签 签-灰">内部</span></td><td>内部：散列函数（勿调用）</td></tr>
+<tr><td></td><td><a href="stdlib/mapset.html#映射-链查找"><code>链查找</code></a> <span class="签 签-灰">内部</span></td><td>内部：桶链查找（勿调用）</td></tr>
+<tr><td></td><td><a href="stdlib/mapset.html#映射-析构键值"><code>析构键值 / 析构值</code></a> <span class="签 签-灰">内部</span></td><td>内部：字符串槽释放挂点（勿调用）</td></tr>
+<tr><td></td><td><a href="stdlib/mapset.html#字符串映射-构造"><code>字符串映射()</code></a></td><td>构造空字符串键映射</td></tr>
+<tr><td></td><td><a href="stdlib/mapset.html#字符串映射-设置"><code>设置</code></a></td><td>写入字符串键值</td></tr>
+<tr><td></td><td><a href="stdlib/mapset.html#字符串映射-获取"><code>获取</code></a></td><td>按键取值</td></tr>
+<tr><td></td><td><a href="stdlib/mapset.html#字符串映射-包含"><code>包含</code></a></td><td>键是否存在</td></tr>
+<tr><td></td><td><a href="stdlib/mapset.html#字符串映射-删除"><code>删除</code></a></td><td>删除字符串键值</td></tr>
+<tr><td></td><td><a href="stdlib/mapset.html#字符串映射-清空拷贝"><code>清空 / 拷贝构造</code></a></td><td>清空与深拷构造（暂无 大小/为空 成员）</td></tr>
+<tr><td></td><td><a href="stdlib/mapset.html#字符串映射-内部"><code>析构键值 / 析构值 / 桶索引 / 链查找 / 释放内部数组</code></a> <span class="签 签-灰">内部</span></td><td>内部：挂点与散列辅助（勿调用）</td></tr>
+<tr><td></td><td><a href="stdlib/mapset.html#集合-构造"><code>集合()</code></a></td><td>构造空集合</td></tr>
+<tr><td></td><td><a href="stdlib/mapset.html#集合-添加"><code>添加</code></a></td><td>添加元素（幂等）</td></tr>
+<tr><td></td><td><a href="stdlib/mapset.html#集合-包含"><code>包含</code></a></td><td>是否包含值</td></tr>
+<tr><td></td><td><a href="stdlib/mapset.html#集合-删除"><code>删除</code></a></td><td>按值删除</td></tr>
+<tr><td></td><td><a href="stdlib/mapset.html#集合-大小"><code>大小</code></a></td><td>元素个数</td></tr>
+<tr><td></td><td><a href="stdlib/mapset.html#集合-为空"><code>为空</code></a></td><td>是否为空</td></tr>
+<tr><td></td><td><a href="stdlib/mapset.html#集合-清空"><code>清空</code></a></td><td>清空集合</td></tr>
+<tr><td></td><td><a href="stdlib/mapset.html#集合-内部"><code>析构被移除 / 移动元素 / 数组前移</code></a> <span class="签 签-灰">内部</span></td><td>内部：挂点与前移辅助（勿调用）</td></tr>
+<tr><td></td><td><a href="stdlib/mapset.html#查找键位置"><code>查找键位置</code></a></td><td>键数组线性查找</td></tr>
+<tr><td></td><td><a href="stdlib/mapset.html#查找值位置"><code>查找值位置</code></a></td><td>数据数组线性查找</td></tr>
+<tr><td><a href="stdlib/string.html#解析">字符串扩展</a></td><td><a href="stdlib/string.html#字符串转整数"><code>字符串转整数</code></a></td><td>字符串 → 整64（失败返回错误）</td></tr>
+<tr><td></td><td><a href="stdlib/string.html#字符串转浮点"><code>字符串转浮点</code></a></td><td>字符串 → 浮64</td></tr>
+<tr><td></td><td><a href="stdlib/string.html#字符串转布尔"><code>字符串转布尔</code></a></td><td>字符串 → 布尔</td></tr>
+<tr><td></td><td><a href="stdlib/string.html#替换"><code>替换</code></a></td><td>全量子串替换</td></tr>
+<tr><td></td><td><a href="stdlib/string.html#填充左"><code>填充左</code></a></td><td>左侧补字符至目标长度</td></tr>
+<tr><td></td><td><a href="stdlib/string.html#填充右"><code>填充右</code></a></td><td>右侧补字符至目标长度</td></tr>
+<tr><td></td><td><a href="stdlib/string.html#分割"><code>分割</code></a></td><td>按分隔符切分到调用方数组</td></tr>
+<tr><td><a href="stdlib/algorithm.html#数组算法">算法</a></td><td><a href="stdlib/algorithm.html#排序整32"><code>排序整32</code></a></td><td>整32 数组冒泡升序</td></tr>
+<tr><td></td><td><a href="stdlib/algorithm.html#排序整64"><code>排序整64</code></a></td><td>整64 数组冒泡升序</td></tr>
+<tr><td></td><td><a href="stdlib/algorithm.html#线性查找"><code>线性查找</code></a></td><td>泛型线性查找（未找到 -1）</td></tr>
+<tr><td></td><td><a href="stdlib/algorithm.html#二分查找整32"><code>二分查找整32</code></a></td><td>整32 二分查找（须已升序）</td></tr>
+<tr><td></td><td><a href="stdlib/algorithm.html#二分查找整64"><code>二分查找整64</code></a></td><td>整64 二分查找（须已升序）</td></tr>
+<tr><td></td><td><a href="stdlib/algorithm.html#逆序"><code>逆序</code></a></td><td>原地反转数组</td></tr>
+<tr><td></td><td><a href="stdlib/algorithm.html#变换整32"><code>变换整32</code></a></td><td>整32 数组逐元素翻倍</td></tr>
+<tr><td></td><td><a href="stdlib/algorithm.html#变换整64"><code>变换整64</code></a></td><td>整64 数组逐元素翻倍</td></tr>
+<tr><td></td><td><a href="stdlib/algorithm.html#计数"><code>计数</code></a></td><td>统计目标值出现次数</td></tr>
+<tr><td></td><td><a href="stdlib/algorithm.html#最大元素"><code>最大元素</code></a></td><td>泛型取数组最大值</td></tr>
+<tr><td><a href="stdlib/regex.html#语法子集">正则</a></td><td><a href="stdlib/regex.html#正则引擎-构造"><code>正则引擎(模式串)</code></a></td><td>构造正则引擎</td></tr>
+<tr><td></td><td><a href="stdlib/regex.html#正则引擎-搜索"><code>搜索</code></a></td><td>找首个匹配起点（无匹配 -1）</td></tr>
+<tr><td></td><td><a href="stdlib/regex.html#正则引擎-完全匹配"><code>完全匹配</code></a></td><td>整串是否被模式完整覆盖</td></tr>
+<tr><td></td><td><a href="stdlib/regex.html#正则引擎-内部"><code>匹配或 / 匹配序列 / 贪婪循环 / 匹配原子 / 类含</code></a> <span class="签 签-灰">内部</span></td><td>内部：递归匹配器五个方法（勿调用）</td></tr>
+<tr><td><a href="stdlib/system.html#命令行参数">系统</a></td><td><a href="stdlib/system.html#参数个数"><code>参数个数</code></a></td><td>参数个数（含程序名，≥1）</td></tr>
+<tr><td></td><td><a href="stdlib/system.html#参数"><code>参数</code></a></td><td>按下标取命令行参数</td></tr>
+<tr><td><a href="stdlib/io.html#标准输入">IO</a></td><td><a href="stdlib/io.html#读取行"><code>读取行</code></a></td><td>读一行输入（返回拥有型字符串）</td></tr>
+<tr><td></td><td><a href="stdlib/io.html#读取整数"><code>读取整数</code></a></td><td>读一个整数</td></tr>
+<tr><td></td><td><a href="stdlib/io.html#读取浮点"><code>读取浮点</code></a></td><td>读一个浮点数</td></tr>
+<tr><td></td><td><a href="stdlib/io.html#打印到错误"><code>打印到错误</code></a></td><td>写标准错误流（不换行）</td></tr>
+<tr><td><a href="stdlib/file.html#文件句柄">文件</a></td><td><a href="stdlib/file.html#打开文件"><code>打开文件</code></a></td><td>打开文件拿句柄</td></tr>
+<tr><td></td><td><a href="stdlib/file.html#写入文件"><code>写入文件</code></a></td><td>写字符串到文件（返回字节数）</td></tr>
+<tr><td></td><td><a href="stdlib/file.html#读取文件"><code>读取文件</code></a></td><td>按字节块读取</td></tr>
+<tr><td></td><td><a href="stdlib/file.html#读取文件行"><code>读取文件行</code></a></td><td>按行读取</td></tr>
+<tr><td></td><td><a href="stdlib/file.html#文件大小"><code>文件大小</code></a></td><td>查询文件字节数</td></tr>
+<tr><td></td><td><a href="stdlib/file.html#关闭文件"><code>关闭文件</code></a></td><td>关闭句柄</td></tr>
+<tr><td></td><td><a href="stdlib/file.html#文件存在"><code>文件存在</code></a></td><td>文件是否存在</td></tr>
+<tr><td><a href="stdlib/time.html#时间函数">时间</a></td><td><a href="stdlib/time.html#当前时间戳"><code>当前时间戳</code></a></td><td>Unix 纪元秒</td></tr>
+<tr><td></td><td><a href="stdlib/time.html#单调时钟毫秒"><code>单调时钟毫秒</code></a></td><td>单调毫秒时钟（测耗时用）</td></tr>
+<tr><td></td><td><a href="stdlib/time.html#格式化时间"><code>格式化时间</code></a></td><td>strftime 风格格式化（本地时区）</td></tr>
+<tr><td><a href="stdlib/math.html#浮点函数">数学</a></td><td><a href="stdlib/math.html#平方根"><code>平方根</code></a></td><td>平方根</td></tr>
+<tr><td></td><td><a href="stdlib/math.html#幂"><code>幂</code></a></td><td>乘方</td></tr>
+<tr><td></td><td><a href="stdlib/math.html#正弦"><code>正弦</code></a></td><td>正弦（弧度）</td></tr>
+<tr><td></td><td><a href="stdlib/math.html#余弦"><code>余弦</code></a></td><td>余弦（弧度）</td></tr>
+<tr><td></td><td><a href="stdlib/math.html#正切"><code>正切</code></a></td><td>正切（弧度）</td></tr>
+<tr><td></td><td><a href="stdlib/math.html#绝对值"><code>绝对值</code></a></td><td>浮点绝对值</td></tr>
+<tr><td></td><td><a href="stdlib/math.html#向上取整"><code>向上取整</code></a></td><td>向上取整</td></tr>
+<tr><td></td><td><a href="stdlib/math.html#向下取整"><code>向下取整</code></a></td><td>向下取整</td></tr>
+<tr><td><a href="stdlib/random.html#随机数生成器">随机数</a></td><td><a href="stdlib/random.html#随机数生成器-构造"><code>随机数生成器(种子)</code></a></td><td>以种子构造（同种子同序列）</td></tr>
+<tr><td></td><td><a href="stdlib/random.html#随机数生成器-播种"><code>播种</code></a></td><td>运行中重播种</td></tr>
+<tr><td></td><td><a href="stdlib/random.html#随机数生成器-下一个"><code>下一个</code></a></td><td>整64 全域随机值</td></tr>
+<tr><td></td><td><a href="stdlib/random.html#随机数生成器-下一个范围"><code>下一个范围</code></a></td><td>[0, 上限) 均匀整数</td></tr>
+<tr><td></td><td><a href="stdlib/random.html#随机数生成器-下一个浮点"><code>下一个浮点</code></a></td><td>[0.0, 1.0) 均匀浮点</td></tr>
+<tr><td></td><td><a href="stdlib/random.html#随机数生成器-内部"><code>旋转左 / 扩散混合</code></a> <span class="签 签-灰">内部</span></td><td>内部：位运算辅助（勿调用）</td></tr>
+<tr><td></td><td><a href="stdlib/random.html#播种扩散-函数"><code>播种扩散</code></a></td><td>熵源混合成优质种子</td></tr>
+<tr><td><a href="stdlib/thread.html#线程基础">线程</a></td><td><a href="stdlib/thread.html#新线程"><code>新线程</code></a></td><td>启动新线程</td></tr>
+<tr><td></td><td><a href="stdlib/thread.html#并入线程"><code>并入线程</code></a></td><td>等待线程并取返回值</td></tr>
+<tr><td></td><td><a href="stdlib/thread.html#互斥锁-构造"><code>互斥锁(初值)</code></a></td><td>创建类型化互斥锁</td></tr>
+<tr><td></td><td><a href="stdlib/thread.html#互斥锁-上锁"><code>上锁</code></a></td><td>加锁（阻塞）</td></tr>
+<tr><td></td><td><a href="stdlib/thread.html#互斥锁-解锁"><code>解锁</code></a></td><td>解锁</td></tr>
+<tr><td></td><td><a href="stdlib/thread.html#互斥锁新建"><code>互斥锁新建</code></a></td><td>过渡 API：裸锁句柄</td></tr>
+<tr><td></td><td><a href="stdlib/thread.html#互斥锁上锁"><code>互斥锁上锁</code></a></td><td>过渡 API：裸锁加锁</td></tr>
+<tr><td></td><td><a href="stdlib/thread.html#互斥锁解锁"><code>互斥锁解锁</code></a></td><td>过渡 API：裸锁解锁</td></tr>
+<tr><td></td><td><a href="stdlib/thread.html#互斥锁释放"><code>互斥锁释放</code></a></td><td>过渡 API：销毁裸锁</td></tr>
+<tr><td><a href="stdlib/builtin.html#输出">内置函数</a></td><td><a href="stdlib/builtin.html#打印"><code>打印</code></a></td><td>变参打印（末尾自动换行）</td></tr>
+<tr><td></td><td><a href="stdlib/builtin.html#打印行"><code>打印行</code></a></td><td>变参打印（不换行）</td></tr>
+<tr><td></td><td><a href="stdlib/builtin.html#格式化"><code>格式化</code></a></td><td>sprintf 风格格式化为新字符串</td></tr>
+<tr><td></td><td><a href="stdlib/builtin.html#读取行内置"><code>IO::读取行</code></a></td><td>输入内置：读一行（见 IO 模块包装）</td></tr>
+<tr><td></td><td><a href="stdlib/builtin.html#字符串长度"><code>字符串长度</code></a></td><td>字节长度</td></tr>
+<tr><td></td><td><a href="stdlib/builtin.html#字符串比较"><code>字符串比较</code></a></td><td>内容相等（== 同义）</td></tr>
+<tr><td></td><td><a href="stdlib/builtin.html#字符串字典序"><code>字符串字典序</code></a></td><td>字典序（负/0/正）</td></tr>
+<tr><td></td><td><a href="stdlib/builtin.html#字符串连接"><code>字符串连接</code></a></td><td>拼接（+ 同义，可接数值）</td></tr>
+<tr><td></td><td><a href="stdlib/builtin.html#字符串复制"><code>字符串复制</code></a></td><td>复制为拥有型新串</td></tr>
+<tr><td></td><td><a href="stdlib/builtin.html#字符串查找"><code>字符串查找</code></a></td><td>找子串下标（未找到 -1）</td></tr>
+<tr><td></td><td><a href="stdlib/builtin.html#字符串子串"><code>字符串子串</code></a></td><td>字节切片</td></tr>
+<tr><td></td><td><a href="stdlib/builtin.html#字符串大写"><code>字符串大写</code></a></td><td>转大写</td></tr>
+<tr><td></td><td><a href="stdlib/builtin.html#字符串小写"><code>字符串小写</code></a></td><td>转小写</td></tr>
+<tr><td></td><td><a href="stdlib/builtin.html#字符串修剪"><code>字符串修剪</code></a></td><td>去两端空白</td></tr>
+<tr><td></td><td><a href="stdlib/builtin.html#字符串反转"><code>字符串反转</code></a></td><td>字节序反转</td></tr>
+<tr><td></td><td><a href="stdlib/builtin.html#字符串包含"><code>字符串包含</code></a></td><td>是否含子串</td></tr>
+<tr><td></td><td><a href="stdlib/builtin.html#字符串前缀"><code>字符串前缀</code></a></td><td>是否以指定前缀开头</td></tr>
+<tr><td></td><td><a href="stdlib/builtin.html#字符串后缀"><code>字符串后缀</code></a></td><td>是否以指定后缀结尾</td></tr>
+<tr><td></td><td><a href="stdlib/builtin.html#整数转字符串"><code>整数转字符串</code></a></td><td>整64 → 字符串</td></tr>
+<tr><td></td><td><a href="stdlib/builtin.html#浮点转字符串"><code>浮点转字符串</code></a></td><td>浮64 → 字符串</td></tr>
+<tr><td></td><td><a href="stdlib/builtin.html#字符转字符串"><code>字符转字符串</code></a></td><td>字符 → 字符串</td></tr>
+<tr><td></td><td><a href="stdlib/builtin.html#布尔转字符串"><code>布尔转字符串</code></a></td><td>布尔 → "真"/"假"</td></tr>
+<tr><td></td><td><a href="stdlib/builtin.html#正数转字符串"><code>正数转字符串</code></a></td><td>正64 → 字符串</td></tr>
+<tr><td></td><td><a href="stdlib/builtin.html#字符串释放"><code>字符串释放</code></a></td><td>手动释放（一般用不到）</td></tr>
+<tr><td></td><td><a href="stdlib/builtin.html#构建器-新建"><code>字符串构建器::新建</code></a></td><td>创建构建器句柄</td></tr>
+<tr><td></td><td><a href="stdlib/builtin.html#构建器-追加"><code>字符串构建器::追加</code></a></td><td>追加字符串段</td></tr>
+<tr><td></td><td><a href="stdlib/builtin.html#构建器-追加字节"><code>字符串构建器::追加字节</code></a></td><td>追加单字节</td></tr>
+<tr><td></td><td><a href="stdlib/builtin.html#构建器-完成"><code>字符串构建器::完成</code></a></td><td>收尾取字符串</td></tr>
+<tr><td></td><td><a href="stdlib/builtin.html#分配"><code>分配</code></a></td><td>malloc</td></tr>
+<tr><td></td><td><a href="stdlib/builtin.html#重新分配"><code>重新分配</code></a></td><td>realloc（>2GiB 拒绝）</td></tr>
+<tr><td></td><td><a href="stdlib/builtin.html#释放"><code>释放</code></a></td><td>free</td></tr>
+<tr><td></td><td><a href="stdlib/builtin.html#复制内存"><code>复制内存</code></a></td><td>memcpy</td></tr>
+<tr><td></td><td><a href="stdlib/builtin.html#置零内存"><code>置零内存</code></a></td><td>memset 0</td></tr>
+<tr><td></td><td><a href="stdlib/builtin.html#内存-活动分配数"><code>内存::活动分配数</code></a></td><td>未释放块数（泄漏检测）</td></tr>
+<tr><td></td><td><a href="stdlib/builtin.html#内存-总分配次数"><code>内存::总分配次数</code></a></td><td>累计分配次数</td></tr>
+<tr><td></td><td><a href="stdlib/builtin.html#内存-总分配字节"><code>内存::总分配字节</code></a></td><td>累计分配字节</td></tr>
+<tr><td></td><td><a href="stdlib/builtin.html#内存-竞技场分配"><code>内存::竞技场分配</code></a></td><td>竞技场 bump 分配</td></tr>
+<tr><td></td><td><a href="stdlib/builtin.html#内存-竞技场重置"><code>内存::竞技场重置</code></a></td><td>整场释放</td></tr>
+<tr><td></td><td><a href="stdlib/builtin.html#内存-竞技场活动字节"><code>内存::竞技场活动字节</code></a></td><td>竞技场用量</td></tr>
+<tr><td></td><td><a href="stdlib/builtin.html#内存-释放全部"><code>内存::释放全部</code></a></td><td>全堆释放（收尾用）</td></tr>
+<tr><td></td><td><a href="stdlib/builtin.html#类型大小"><code>类型大小</code></a></td><td>类型字节宽度</td></tr>
+<tr><td></td><td><a href="stdlib/builtin.html#复制"><code>复制</code></a></td><td>泛型深拷贝克隆</td></tr>
+<tr><td></td><td><a href="stdlib/builtin.html#转移"><code>转移</code></a></td><td>所有权移交（转移后禁读）</td></tr>
+<tr><td></td><td><a href="stdlib/builtin.html#运行时错误"><code>运行时错误</code></a></td><td>带码终止进程</td></tr>
+<tr><td></td><td><a href="stdlib/builtin.html#驻留"><code>驻留</code></a></td><td>字符串 → 唯一 ID</td></tr>
+<tr><td></td><td><a href="stdlib/builtin.html#驻留文本"><code>驻留文本</code></a></td><td>ID → 文本（借用）</td></tr>
+<tr><td></td><td><a href="stdlib/builtin.html#驻留计数"><code>驻留计数</code></a></td><td>唯一内容数</td></tr>
+</tbody></table>
+<h2 id="约定">阅读约定</h2>
+<ul>
+<li><strong>结果&lt;T, 整32&gt; 必须检查</strong>——把返回值直接当语句丢弃是编译错误
+（「返回值被丢弃未检查」）。本文全部示例遵守此规则。</li>
+<li><span class="签 签-赭">不安全</span> = 手动内存/裸指针域函数，须在
+<code>不安全</code> 函数或块内调用；标准库容器类方法多为不安全（容器内部管理堆内存），
+但<strong>使用容器本身不需要不安全块</strong>——析构自动释放（RAII）。</li>
+<li><span class="签 签-灰">内部</span> = 实现细节条目（编译器注入挂点/散列辅助），
+供读源码者对照，不建议业务代码直接调用。</li>
+<li>示例输出经本地编译器实际运行验证（<code>cn build</code> + 比对 stdout）。</li>
+</ul><nav class="页脚导航"><a class="下一" href="stdlib/builtin.html"><span class="向">下一页 →</span><span class="题">内置函数</span></a></nav></article>
     <aside class="目录" aria-label="本页目录">
       <p class="目录-题">本页目录</p>
-      
-<a href="#向量">向量&lt;T&gt;</a>
-<a href="#映射">映射&lt;K, V&gt;</a>
-<a href="#线程模块">线程模块</a>
-
+<a href="#速查">全部函数速查</a><a href="#约定">阅读约定</a>
     </aside>
   </div>
 </main>
@@ -151,7 +261,7 @@
       <div>
         <h4>语言</h4>
         <ul>
-          <li><a href=".././">官方文档</a></li>
+          <li><a href="./">官方文档</a></li>
           <li><a href="getting-started.html">快速开始</a></li>
           <li><a href="reference/">语言参考</a></li>
           <li><a href="stdlib.html">标准库</a></li>
@@ -182,6 +292,6 @@
 </footer>
 
 <script src="../assets/cn-highlight.js?v=1"></script>
-<script src="../assets/site.js?v=2"></script>
+<script src="site.js?v=2"></script>
 </body>
 </html>

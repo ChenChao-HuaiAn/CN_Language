@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>字符串扩展 · 标准库 · CN 语言</title>
+<meta name="description" content="数值解析、替换、填充、分割——对标 C++ std::string 的解析能力。">
+<script>
+  (function () {
+    try {
+      var t = localStorage.getItem("cn-theme");
+      if (t === "dark" || t === "light") document.documentElement.setAttribute("data-theme", t);
+    } catch (e) {}
+  })()
+</script>
+<link rel="stylesheet" href="../../assets/tokens.css?v=2">
+<link rel="stylesheet" href="../../assets/site.css?v=4">
+</head>
+<body>
+
+<header class="顶栏">
+  <div class="容器 顶栏-内">
+    <a class="标识" href="../../">CN<span class="标识-点">·</span>语言</a>
+    <button class="导航-开关" data-导航钮 aria-expanded="false">菜单</button>
+    <nav class="导航" aria-label="站点导航">
+      <a href="../../">首页</a>
+      <a href="../" aria-current="page">文档</a>
+      <a href="../getting-started.html">快速开始</a>
+      <a href="../reference/">语言参考</a>
+      <a href="../stdlib.html">标准库</a>
+      <a href="../../os/">CN-OS</a>
+      <a href="https://gitcode.com/ChenChao_GitCode/CN_Language" target="_blank" rel="noopener">源码 ↗</a>
+      <button class="主题钮" data-主题钮 aria-label="切换主题">月</button>
+    </nav>
+  </div>
+</header>
+
+<main class="容器">
+  <div class="文档骨架">
+    <aside class="侧栏" aria-label="文档导航"><div class="侧栏-组"><p class="侧栏-组题">入门</p><a href="../.././">文档总览</a><a href="../getting-started.html">快速开始</a></div><div class="侧栏-组"><p class="侧栏-组题">教程</p><a href="../tutorial-syntax.html">语法基础</a><a href="../tutorial-oop.html">类与泛型</a><a href="../tutorial-safety.html">安全与并发</a></div><div class="侧栏-组"><p class="侧栏-组题">语言参考</p><a href="../reference/">参考总览</a><a href="../reference/lexical.html">词法结构</a><a href="../reference/types.html">类型系统</a><a href="../reference/control-flow.html">控制流</a><a href="../reference/functions.html">函数</a><a href="../reference/oop.html">类与对象</a><a href="../reference/errors.html">错误处理</a><a href="../reference/concurrency.html">并发</a><a href="../reference/modules.html">模块系统</a></div><div class="侧栏-组"><p class="侧栏-组题">标准库</p><a href="../stdlib.html">标准库总览</a><a href="../stdlib/core.html">核心</a><a href="../stdlib/container.html">容器</a><a href="../stdlib/mapset.html">映射集合</a><a href="../stdlib/string.html">字符串扩展</a><a href="../stdlib/algorithm.html">算法</a><a href="../stdlib/regex.html">正则</a><a href="../stdlib/system.html">系统</a><a href="../stdlib/io.html">IO</a><a href="../stdlib/file.html">文件</a><a href="../stdlib/time.html">时间</a><a href="../stdlib/math.html">数学</a><a href="../stdlib/random.html">随机数</a><a href="../stdlib/thread.html">线程</a><a href="../stdlib/builtin.html">内置函数</a></div><div class="侧栏-组"><p class="侧栏-组题">资源</p><a href="../cli.html">命令行参考</a><a href="https://gitcode.com/ChenChao_GitCode/CN_Language" target="_blank" rel="noopener">源码仓库 ↗</a></div></aside>
+    <article class="正文"><nav class="面包屑" aria-label="面包屑"><a href="../">文档</a> / <a href="../stdlib.html">标准库</a> / 字符串扩展</nav>
+<h1>字符串扩展</h1>
+<p style="color: var(--color-fg-muted); font-size: var(--text-lg); line-height: 2;">数值解析、替换、填充、分割——对标 C++ std::string 的解析能力。</p>
+
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">导入写法</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">导入 字符串扩展::{字符串转整数, 替换, 分割};</code></pre></div>
+<h2 id="解析">数值解析</h2>
+<p>三个解析函数把字符串转为数值，失败（空串/非法字符）返回 <code>错误(6)</code>（无效参数）。解析按 UTF-8 字节进行。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">解析.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">导入 字符串扩展::{字符串转整数, 字符串转浮点, 字符串转布尔};
+
+函数 主() -&gt; 整32 {
+    结果&lt;整64, 整32&gt; 整值 = 字符串转整数("12345");
+    如果 (整值.正常) { 打印(整值.值); }        // 12345
+    结果&lt;浮64, 整32&gt; 浮值 = 字符串转浮点("3.5");
+    如果 (浮值.正常) { 打印(浮值.值); }        // 3.5
+    结果&lt;布尔, 整32&gt; 布值 = 字符串转布尔("真");
+    如果 (布值.正常) { 打印(布值.值); }        // 真
+    结果&lt;整64, 整32&gt; 坏 = 字符串转整数("12甲");
+    如果 (!坏.正常) { 打印("解析失败"); }
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：12345
+3.500000
+真
+解析失败
+</p>
+<section class="函数条" id="字符串转整数">
+<h3><code>字符串转整数</code></h3>
+<p class="函数定义"><code>函数 字符串转整数(字符串 输入) -> 结果&lt;整64, 整32&gt;</code></p>
+<p>把字符串解析为 64 位整数。允许前后空白与前导正负号；遇到非法字符即失败。</p>
+<table class="表 参数表"><thead><tr><th>参数</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>输入</code></td><td><code>字符串</code></td><td>待解析的字符串</td></tr></tbody></table>
+<p><strong>返回</strong>　<code>正常(值)</code>；非法/空串 → <code>错误(6)</code>。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">字符串转整数.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">结果&lt;整64, 整32&gt; 值 = 字符串转整数("  -42");
+如果 (值.正常) { 打印(值.值); }</code></pre></div>
+<p class="输出行">输出：-42
+</p>
+</section>
+<section class="函数条" id="字符串转浮点">
+<h3><code>字符串转浮点</code></h3>
+<p class="函数定义"><code>函数 字符串转浮点(字符串 输入) -> 结果&lt;浮64, 整32&gt;</code></p>
+<p>把字符串解析为 64 位浮点数（支持小数点形式）。</p>
+<table class="表 参数表"><thead><tr><th>参数</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>输入</code></td><td><code>字符串</code></td><td>待解析的字符串</td></tr></tbody></table>
+<p><strong>返回</strong>　<code>正常(值)</code>；非法 → <code>错误(6)</code>。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">字符串转浮点.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">结果&lt;浮64, 整32&gt; 值 = 字符串转浮点("2.75");
+如果 (值.正常) { 打印(值.值); }</code></pre></div>
+<p class="输出行">输出：2.750000
+</p>
+</section>
+<section class="函数条" id="字符串转布尔">
+<h3><code>字符串转布尔</code></h3>
+<p class="函数定义"><code>函数 字符串转布尔(字符串 输入) -> 结果&lt;布尔, 整32&gt;</code></p>
+<p>识别「真/假」（以及数值 0/非 0）。</p>
+<table class="表 参数表"><thead><tr><th>参数</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>输入</code></td><td><code>字符串</code></td><td>待解析的字符串</td></tr></tbody></table>
+<p><strong>返回</strong>　<code>正常(布尔值)</code>；无法识别 → <code>错误(6)</code>。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">字符串转布尔.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">结果&lt;布尔, 整32&gt; 值 = 字符串转布尔("假");
+如果 (值.正常) { 打印(值.值); }</code></pre></div>
+<p class="输出行">输出：假
+</p>
+</section>
+<h2 id="加工">替换与填充</h2>
+<p>返回值均为<strong>拥有型字符串</strong>（调用方 RAII 自动释放）。替换按字节偏移处理；目标为空串时原样返回。</p>
+<section class="函数条" id="替换">
+<h3><code>替换</code></h3>
+<p class="函数定义"><code>函数 替换(字符串 输入, 字符串 目标, 字符串 替换为) -> 字符串</code></p>
+<p>把 输入 中<strong>所有</strong>出现的 目标 替换为 替换为，返回新串（输入不变）。内置安全计数器（上限 100 次）防自包含死循环；目标不存在时返回原样副本。</p>
+<table class="表 参数表"><thead><tr><th>参数</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>输入</code></td><td><code>字符串</code></td><td>原始字符串</td></tr><tr><td><code>目标</code></td><td><code>字符串</code></td><td>被替换的子串（空串=原样返回）</td></tr><tr><td><code>替换为</code></td><td><code>字符串</code></td><td>替换成的子串</td></tr></tbody></table>
+<p><strong>返回</strong>　替换后的新字符串。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">替换.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">字符串 新 = 替换("甲乙甲", "甲", "丙");
+打印(新);</code></pre></div>
+<p class="输出行">输出：丙乙丙
+</p>
+</section>
+<section class="函数条" id="填充左">
+<h3><code>填充左</code></h3>
+<p class="函数定义"><code>函数 填充左(字符串 输入, 整64 目标长度, 字符 填充) -> 字符串</code></p>
+<p>长度不足 目标长度 时在左侧补 填充 字符（右对齐排版）；已达标原样返回。</p>
+<table class="表 参数表"><thead><tr><th>参数</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>输入</code></td><td><code>字符串</code></td><td>原始字符串</td></tr><tr><td><code>目标长度</code></td><td><code>整64</code></td><td>目标总长度</td></tr><tr><td><code>填充</code></td><td><code>字符</code></td><td>填充用的字符</td></tr></tbody></table>
+<p><strong>返回</strong>　填充后的新字符串。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">填充左.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">字符串 对齐 = 填充左("42", 5, '0');
+打印(对齐);</code></pre></div>
+<p class="输出行">输出：00042
+</p>
+</section>
+<section class="函数条" id="填充右">
+<h3><code>填充右</code></h3>
+<p class="函数定义"><code>函数 填充右(字符串 输入, 整64 目标长度, 字符 填充) -> 字符串</code></p>
+<p>长度不足时在右侧补 填充 字符（左对齐排版）。</p>
+<table class="表 参数表"><thead><tr><th>参数</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>输入</code></td><td><code>字符串</code></td><td>原始字符串</td></tr><tr><td><code>目标长度</code></td><td><code>整64</code></td><td>目标总长度</td></tr><tr><td><code>填充</code></td><td><code>字符</code></td><td>填充用的字符</td></tr></tbody></table>
+<p><strong>返回</strong>　填充后的新字符串。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">填充右.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">字符串 对齐 = 填充右("42", 5, '.');
+打印(对齐);</code></pre></div>
+<p class="输出行">输出：42...
+</p>
+</section>
+<h2 id="分割">分割</h2>
+<p>C 风格输出参数边界：结果写入调用方准备的 <code>字符串*</code> 数组。数组长度须为编译期常量（数组声明限制），故以「数组+长度」传参。<strong>切分出的每个元素是动态分配串</strong>，用完须逐一 <code>字符串释放</code>。</p>
+<section class="函数条" id="分割">
+<h3><code>分割</code> <span class="签 签-赭">不安全</span></h3>
+<p class="函数定义"><code>不安全 函数 分割(字符串 输入, 字符串 分隔符, 字符串* 结果数组, 整64 数组长度) -> 结果&lt;整64, 整32&gt;</code></p>
+<p>按 分隔符 把 输入 切成若干段写入 结果数组，返回实际段数。数组装不下剩余内容 → <code>错误(6)</code>（已填元素由调用方释放）；分隔符为空串 → <code>错误(6)</code>。</p>
+<table class="表 参数表"><thead><tr><th>参数</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>输入</code></td><td><code>字符串</code></td><td>原始字符串</td></tr><tr><td><code>分隔符</code></td><td><code>字符串</code></td><td>切分用分隔串（不可为空）</td></tr><tr><td><code>结果数组</code></td><td><code>字符串*</code></td><td>调用方准备的输出数组</td></tr><tr><td><code>数组长度</code></td><td><code>整64</code></td><td>输出数组容量</td></tr></tbody></table>
+<p><strong>返回</strong>　<code>正常(实际段数)</code>；数组不足/分隔符空 → <code>错误(6)</code>。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">分割.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">字符串[8] 段;
+结果&lt;整64, 整32&gt; 数量 = 分割("甲,乙,丙", ",", 段, 8);
+如果 (数量.正常) {
+    整64 i = 0;
+    当 (i &lt; 数量.值) {
+        打印行(段[i], "|");
+        字符串释放(段[i]);      // 逐元素释放
+        i++;
+    }
+    打印("");
+}</code></pre></div>
+<p class="输出行">输出：甲|乙|丙|
+</p>
+</section><nav class="页脚导航"><a class="" href="../stdlib/mapset.html"><span class="向">← 上一页</span><span class="题">映射集合</span></a><a class="下一" href="../stdlib/algorithm.html"><span class="向">下一页 →</span><span class="题">算法</span></a></nav></article>
+    <aside class="目录" aria-label="本页目录">
+      <p class="目录-题">本页目录</p>
+<a href="#解析">数值解析</a><a href="#加工">替换与填充</a><a href="#分割">分割</a>
+    </aside>
+  </div>
+</main>
+
+<footer class="页脚">
+  <div class="容器">
+    <div class="页脚-排">
+      <div>
+        <p class="页脚-标语">CN<span style="color: var(--color-accent);">·</span>语言</p>
+        <p class="页脚-述">全中文语法的系统级编程语言。以母语的直觉，驾驭机器的全部性能。</p>
+      </div>
+      <div>
+        <h4>语言</h4>
+        <ul>
+          <li><a href="../.././">官方文档</a></li>
+          <li><a href="../getting-started.html">快速开始</a></li>
+          <li><a href="../reference/">语言参考</a></li>
+          <li><a href="../stdlib.html">标准库</a></li>
+        </ul>
+      </div>
+      <div>
+        <h4>项目</h4>
+        <ul>
+          <li><a href="https://gitcode.com/ChenChao_GitCode/CN_Language" target="_blank" rel="noopener">源码仓库 ↗</a></li>
+          <li><a href="../../os/">CN-OS 蓝图</a></li>
+          <li><a href="../cli.html">命令行参考</a></li>
+        </ul>
+      </div>
+      <div>
+        <h4>状态</h4>
+        <ul>
+          <li>自举固定点已达成</li>
+          <li>v2 自举重建进行中</li>
+          <li>license：见仓库</li>
+        </ul>
+      </div>
+    </div>
+    <div class="页脚-底">
+      <span>© 2026 CN 语言项目</span>
+      <span>京ICP备00000000号（备案办理中·占位）</span>
+    </div>
+  </div>
+</footer>
+
+<script src="../../assets/cn-highlight.js?v=1"></script>
+<script src="../site.js?v=2"></script>
+</body>
+</html>

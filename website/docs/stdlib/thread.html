@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>线程 · 标准库 · CN 语言</title>
+<meta name="description" content="新线程/并入线程 + 类型化互斥锁&amp;lt;T&amp;gt;——默认安全，宁严勿松。">
+<script>
+  (function () {
+    try {
+      var t = localStorage.getItem("cn-theme");
+      if (t === "dark" || t === "light") document.documentElement.setAttribute("data-theme", t);
+    } catch (e) {}
+  })()
+</script>
+<link rel="stylesheet" href="../../assets/tokens.css?v=2">
+<link rel="stylesheet" href="../../assets/site.css?v=4">
+</head>
+<body>
+
+<header class="顶栏">
+  <div class="容器 顶栏-内">
+    <a class="标识" href="../../">CN<span class="标识-点">·</span>语言</a>
+    <button class="导航-开关" data-导航钮 aria-expanded="false">菜单</button>
+    <nav class="导航" aria-label="站点导航">
+      <a href="../../">首页</a>
+      <a href="../" aria-current="page">文档</a>
+      <a href="../getting-started.html">快速开始</a>
+      <a href="../reference/">语言参考</a>
+      <a href="../stdlib.html">标准库</a>
+      <a href="../../os/">CN-OS</a>
+      <a href="https://gitcode.com/ChenChao_GitCode/CN_Language" target="_blank" rel="noopener">源码 ↗</a>
+      <button class="主题钮" data-主题钮 aria-label="切换主题">月</button>
+    </nav>
+  </div>
+</header>
+
+<main class="容器">
+  <div class="文档骨架">
+    <aside class="侧栏" aria-label="文档导航"><div class="侧栏-组"><p class="侧栏-组题">入门</p><a href="../.././">文档总览</a><a href="../getting-started.html">快速开始</a></div><div class="侧栏-组"><p class="侧栏-组题">教程</p><a href="../tutorial-syntax.html">语法基础</a><a href="../tutorial-oop.html">类与泛型</a><a href="../tutorial-safety.html">安全与并发</a></div><div class="侧栏-组"><p class="侧栏-组题">语言参考</p><a href="../reference/">参考总览</a><a href="../reference/lexical.html">词法结构</a><a href="../reference/types.html">类型系统</a><a href="../reference/control-flow.html">控制流</a><a href="../reference/functions.html">函数</a><a href="../reference/oop.html">类与对象</a><a href="../reference/errors.html">错误处理</a><a href="../reference/concurrency.html">并发</a><a href="../reference/modules.html">模块系统</a></div><div class="侧栏-组"><p class="侧栏-组题">标准库</p><a href="../stdlib.html">标准库总览</a><a href="../stdlib/core.html">核心</a><a href="../stdlib/container.html">容器</a><a href="../stdlib/mapset.html">映射集合</a><a href="../stdlib/string.html">字符串扩展</a><a href="../stdlib/algorithm.html">算法</a><a href="../stdlib/regex.html">正则</a><a href="../stdlib/system.html">系统</a><a href="../stdlib/io.html">IO</a><a href="../stdlib/file.html">文件</a><a href="../stdlib/time.html">时间</a><a href="../stdlib/math.html">数学</a><a href="../stdlib/random.html">随机数</a><a href="../stdlib/thread.html">线程</a><a href="../stdlib/builtin.html">内置函数</a></div><div class="侧栏-组"><p class="侧栏-组题">资源</p><a href="../cli.html">命令行参考</a><a href="https://gitcode.com/ChenChao_GitCode/CN_Language" target="_blank" rel="noopener">源码仓库 ↗</a></div></aside>
+    <article class="正文"><nav class="面包屑" aria-label="面包屑"><a href="../">文档</a> / <a href="../stdlib.html">标准库</a> / 线程</nav>
+<h1>线程</h1>
+<p style="color: var(--color-fg-muted); font-size: var(--text-lg); line-height: 2;">新线程/并入线程 + 类型化互斥锁&lt;T&gt;——默认安全，宁严勿松。</p>
+
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">导入写法</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">导入 线程::{新线程, 并入线程};
+导入 线程::互斥锁;</code></pre></div>
+<h2 id="线程基础">线程基础</h2>
+<p>入口为函数指针 <code>整64(空类型*)</code>；实参按值拷贝进新线程（安全默认，无别名）。<strong>未 并入线程 的线程在 主 返回时触发运行时错误</strong>（宁严勿松）——每个线程都必须被并入。linux 真实现（pthread）；win 后端为运行时错误桩（路线图波次内）。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">线程基础.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">导入 线程::{新线程, 并入线程};
+
+不安全 函数 作业(空类型* 未用) -&gt; 整64 {
+    静态 整64 计数 = 0;
+    循环 (整64 i = 0; i &lt; 100000; i++) {
+        计数 = 计数 + 1;
+    }
+    返回 计数;
+}
+
+不安全 函数 主() -&gt; 整32 {
+    结果&lt;空类型*, 整32&gt; 建 = 新线程(作业, 无);   // 实参=无（豁免窗口）
+    如果 (建.正常) {
+        打印(并入线程(建.值) &gt; 0);       // 等待结束并取返回值
+    } 否则 {
+        返回 1;
+    }
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：真
+</p>
+<section class="函数条" id="新线程">
+<h3><code>新线程</code> <span class="签 签-赭">不安全</span></h3>
+<p class="函数定义"><code>不安全 函数 新线程(整64(*入口)(空类型*), 空类型* 实参) -> 结果&lt;空类型*, 整32&gt;</code></p>
+<p>启动新线程。入口=函数指针（返回 整64、收一个 <code>空类型*</code>）；实参按值拷贝语义传给新线程。返回线程句柄。</p>
+<table class="表 参数表"><thead><tr><th>参数</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>入口</code></td><td><code>整64(空类型*) 函数指针</code></td><td>线程函数</td></tr><tr><td><code>实参</code></td><td><code>空类型*</code></td><td>传给线程的实参（按值拷贝）</td></tr></tbody></table>
+<p><strong>返回</strong>　<code>正常(线程句柄)</code>；创建失败 → <code>错误(错误码.参数)</code>。</p>
+</section>
+<section class="函数条" id="并入线程">
+<h3><code>并入线程</code> <span class="签 签-赭">不安全</span></h3>
+<p class="函数定义"><code>不安全 函数 并入线程(空类型* 句柄) -> 整64</code></p>
+<p>等待线程结束并取回其返回值（同步点=顺序一致）。每个线程句柄必须恰好并入一次。</p>
+<table class="表 参数表"><thead><tr><th>参数</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>句柄</code></td><td><code>空类型*</code></td><td>新线程 返回的句柄</td></tr></tbody></table>
+<p><strong>返回</strong>　线程入口函数的返回值。</p>
+</section>
+<h2 id="互斥锁类">互斥锁&lt;T&gt;（类型化句柄）</h2>
+<p>锁与受护数据类型化绑定——拿 A 锁护 B 数据的「锁错对象」错误在类型检查下不可表达（Rust <code>Mutex&lt;T&gt;</code> 字段私有同位）。受护数据在公开字段 <code>值</code> 中；<strong>上锁/解锁 显式配对</strong>（RAII 锁守卫在路线图中）。实例为对象句柄语义：跨线程共享同一实例即共用同一把锁。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">互斥锁类.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">导入 线程::互斥锁;
+
+不安全 函数 主() -&gt; 整32 {
+    互斥锁&lt;整64&gt; 计数器 = 互斥锁&lt;整64&gt;(0);
+    计数器.上锁();
+    计数器.值 = 计数器.值 + 1;      // 受护区间内访问 值
+    计数器.解锁();
+    打印(计数器.值);
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：1
+</p>
+<section class="函数条" id="互斥锁-构造">
+<h3><code>互斥锁(初值)</code> <span class="签 签-赭">不安全</span></h3>
+<p class="函数定义"><code>不安全 函数 互斥锁(T 初值)</code></p>
+<p>创建互斥锁并以 初值 初始化受护数据。</p>
+<table class="表 参数表"><thead><tr><th>参数</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>初值</code></td><td><code>T</code></td><td>受护数据初始值</td></tr></tbody></table>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">互斥锁-构造.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">互斥锁&lt;整64&gt; 锁 = 互斥锁&lt;整64&gt;(100);
+打印(锁.值);</code></pre></div>
+</section>
+<section class="函数条" id="互斥锁-上锁">
+<h3><code>上锁</code> <span class="签 签-赭">不安全</span></h3>
+<p class="函数定义"><code>不安全 函数 上锁() -> 空类型</code></p>
+<p>加锁；已被他线程持有时阻塞等待。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">互斥锁-上锁.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">互斥锁&lt;整64&gt; 锁 = 互斥锁&lt;整64&gt;(0);
+锁.上锁();
+锁.值 = 锁.值 + 1;
+锁.解锁();
+打印(锁.值);</code></pre></div>
+</section>
+<section class="函数条" id="互斥锁-解锁">
+<h3><code>解锁</code> <span class="签 签-赭">不安全</span></h3>
+<p class="函数定义"><code>不安全 函数 解锁() -> 空类型</code></p>
+<p>解锁。必须由加锁者调用，且 上锁/解锁 严格配对。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">互斥锁-解锁.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">互斥锁&lt;整64&gt; 锁 = 互斥锁&lt;整64&gt;(5);
+锁.上锁();
+锁.值 = 0;
+锁.解锁();
+打印(锁.值);</code></pre></div>
+</section>
+<h2 id="过渡函数">原始句柄过渡函数（不推荐新代码使用）</h2>
+<p>四个裸句柄函数是 <code>互斥锁&lt;T&gt;</code> 立法前的过渡 API（句柄无类型=可锁错对象）。新代码一律用 互斥锁&lt;T&gt;。</p>
+<section class="函数条" id="互斥锁新建">
+<h3><code>互斥锁新建</code> <span class="签 签-赭">不安全</span></h3>
+<p class="函数定义"><code>不安全 函数 互斥锁新建() -> 空类型*</code></p>
+<p>创建裸互斥锁句柄。</p>
+</section>
+<section class="函数条" id="互斥锁上锁">
+<h3><code>互斥锁上锁</code> <span class="签 签-赭">不安全</span></h3>
+<p class="函数定义"><code>不安全 函数 互斥锁上锁(空类型* 句柄) -> 空类型</code></p>
+<p>裸句柄加锁（阻塞）。</p>
+</section>
+<section class="函数条" id="互斥锁解锁">
+<h3><code>互斥锁解锁</code> <span class="签 签-赭">不安全</span></h3>
+<p class="函数定义"><code>不安全 函数 互斥锁解锁(空类型* 句柄) -> 空类型</code></p>
+<p>裸句柄解锁。</p>
+</section>
+<section class="函数条" id="互斥锁释放">
+<h3><code>互斥锁释放</code> <span class="签 签-赭">不安全</span></h3>
+<p class="函数定义"><code>不安全 函数 互斥锁释放(空类型* 句柄) -> 空类型</code></p>
+<p>销毁裸互斥锁（须未加锁态）。</p>
+</section><nav class="页脚导航"><a class="" href="../stdlib/random.html"><span class="向">← 上一页</span><span class="题">随机数</span></a><a class="下一" href="../stdlib/builtin.html"><span class="向">下一页 →</span><span class="题">内置函数</span></a></nav></article>
+    <aside class="目录" aria-label="本页目录">
+      <p class="目录-题">本页目录</p>
+<a href="#线程基础">线程基础</a><a href="#互斥锁类">互斥锁&lt;T&gt;（类型化句柄）</a><a href="#过渡函数">原始句柄过渡函数（不推荐新代码使用）</a>
+    </aside>
+  </div>
+</main>
+
+<footer class="页脚">
+  <div class="容器">
+    <div class="页脚-排">
+      <div>
+        <p class="页脚-标语">CN<span style="color: var(--color-accent);">·</span>语言</p>
+        <p class="页脚-述">全中文语法的系统级编程语言。以母语的直觉，驾驭机器的全部性能。</p>
+      </div>
+      <div>
+        <h4>语言</h4>
+        <ul>
+          <li><a href="../.././">官方文档</a></li>
+          <li><a href="../getting-started.html">快速开始</a></li>
+          <li><a href="../reference/">语言参考</a></li>
+          <li><a href="../stdlib.html">标准库</a></li>
+        </ul>
+      </div>
+      <div>
+        <h4>项目</h4>
+        <ul>
+          <li><a href="https://gitcode.com/ChenChao_GitCode/CN_Language" target="_blank" rel="noopener">源码仓库 ↗</a></li>
+          <li><a href="../../os/">CN-OS 蓝图</a></li>
+          <li><a href="../cli.html">命令行参考</a></li>
+        </ul>
+      </div>
+      <div>
+        <h4>状态</h4>
+        <ul>
+          <li>自举固定点已达成</li>
+          <li>v2 自举重建进行中</li>
+          <li>license：见仓库</li>
+        </ul>
+      </div>
+    </div>
+    <div class="页脚-底">
+      <span>© 2026 CN 语言项目</span>
+      <span>京ICP备00000000号（备案办理中·占位）</span>
+    </div>
+  </div>
+</footer>
+
+<script src="../../assets/cn-highlight.js?v=1"></script>
+<script src="../site.js?v=2"></script>
+</body>
+</html>

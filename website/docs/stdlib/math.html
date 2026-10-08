@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>数学 · 标准库 · CN 语言</title>
+<meta name="description" content="八个浮点数学函数——映射到硬件/运行时数学库。">
+<script>
+  (function () {
+    try {
+      var t = localStorage.getItem("cn-theme");
+      if (t === "dark" || t === "light") document.documentElement.setAttribute("data-theme", t);
+    } catch (e) {}
+  })()
+</script>
+<link rel="stylesheet" href="../../assets/tokens.css?v=2">
+<link rel="stylesheet" href="../../assets/site.css?v=4">
+</head>
+<body>
+
+<header class="顶栏">
+  <div class="容器 顶栏-内">
+    <a class="标识" href="../../">CN<span class="标识-点">·</span>语言</a>
+    <button class="导航-开关" data-导航钮 aria-expanded="false">菜单</button>
+    <nav class="导航" aria-label="站点导航">
+      <a href="../../">首页</a>
+      <a href="../" aria-current="page">文档</a>
+      <a href="../getting-started.html">快速开始</a>
+      <a href="../reference/">语言参考</a>
+      <a href="../stdlib.html">标准库</a>
+      <a href="../../os/">CN-OS</a>
+      <a href="https://gitcode.com/ChenChao_GitCode/CN_Language" target="_blank" rel="noopener">源码 ↗</a>
+      <button class="主题钮" data-主题钮 aria-label="切换主题">月</button>
+    </nav>
+  </div>
+</header>
+
+<main class="容器">
+  <div class="文档骨架">
+    <aside class="侧栏" aria-label="文档导航"><div class="侧栏-组"><p class="侧栏-组题">入门</p><a href="../.././">文档总览</a><a href="../getting-started.html">快速开始</a></div><div class="侧栏-组"><p class="侧栏-组题">教程</p><a href="../tutorial-syntax.html">语法基础</a><a href="../tutorial-oop.html">类与泛型</a><a href="../tutorial-safety.html">安全与并发</a></div><div class="侧栏-组"><p class="侧栏-组题">语言参考</p><a href="../reference/">参考总览</a><a href="../reference/lexical.html">词法结构</a><a href="../reference/types.html">类型系统</a><a href="../reference/control-flow.html">控制流</a><a href="../reference/functions.html">函数</a><a href="../reference/oop.html">类与对象</a><a href="../reference/errors.html">错误处理</a><a href="../reference/concurrency.html">并发</a><a href="../reference/modules.html">模块系统</a></div><div class="侧栏-组"><p class="侧栏-组题">标准库</p><a href="../stdlib.html">标准库总览</a><a href="../stdlib/core.html">核心</a><a href="../stdlib/container.html">容器</a><a href="../stdlib/mapset.html">映射集合</a><a href="../stdlib/string.html">字符串扩展</a><a href="../stdlib/algorithm.html">算法</a><a href="../stdlib/regex.html">正则</a><a href="../stdlib/system.html">系统</a><a href="../stdlib/io.html">IO</a><a href="../stdlib/file.html">文件</a><a href="../stdlib/time.html">时间</a><a href="../stdlib/math.html">数学</a><a href="../stdlib/random.html">随机数</a><a href="../stdlib/thread.html">线程</a><a href="../stdlib/builtin.html">内置函数</a></div><div class="侧栏-组"><p class="侧栏-组题">资源</p><a href="../cli.html">命令行参考</a><a href="https://gitcode.com/ChenChao_GitCode/CN_Language" target="_blank" rel="noopener">源码仓库 ↗</a></div></aside>
+    <article class="正文"><nav class="面包屑" aria-label="面包屑"><a href="../">文档</a> / <a href="../stdlib.html">标准库</a> / 数学</nav>
+<h1>数学</h1>
+<p style="color: var(--color-fg-muted); font-size: var(--text-lg); line-height: 2;">八个浮点数学函数——映射到硬件/运行时数学库。</p>
+
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">导入写法</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">导入 数学::{平方根, 幂, 绝对值, 向上取整, 向下取整};</code></pre></div>
+<h2 id="浮点函数">浮点函数</h2>
+<p>参数与返回值全部为 <code>浮64</code>。三角函数以<strong>弧度</strong>为单位。取整函数返回浮64（不是整数类型），需要整数值时显式转换。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">浮点函数.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">导入 数学::{平方根, 幂, 绝对值, 向上取整, 向下取整, 正弦};
+
+函数 主() -&gt; 整32 {
+    打印(平方根(2.0));          // 1.41421…
+    打印(幂(2.0, 10.0));        // 1024
+    打印(绝对值(-3.5));         // 3.5
+    打印(向上取整(1.2));        // 2
+    打印(向下取整(1.8));        // 1
+    打印(正弦(0.0));            // 0
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：1.414214
+1024.000000
+3.500000
+2.000000
+1.000000
+0.000000
+</p>
+<section class="函数条" id="平方根">
+<h3><code>平方根</code></h3>
+<p class="函数定义"><code>函数 平方根(浮64 值) -> 浮64</code></p>
+<p>算术平方根；负值返回 NaN（硬件语义）。</p>
+<table class="表 参数表"><thead><tr><th>参数</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>值</code></td><td><code>浮64</code></td><td>非负实数</td></tr></tbody></table>
+<p><strong>返回</strong>　√值。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">平方根.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">打印(平方根(16.0));</code></pre></div>
+<p class="输出行">输出：4.000000
+</p>
+</section>
+<section class="函数条" id="幂">
+<h3><code>幂</code></h3>
+<p class="函数定义"><code>函数 幂(浮64 底数, 浮64 指数) -> 浮64</code></p>
+<p>底数的指数次幂。</p>
+<table class="表 参数表"><thead><tr><th>参数</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>底数</code></td><td><code>浮64</code></td><td>底数</td></tr><tr><td><code>指数</code></td><td><code>浮64</code></td><td>指数</td></tr></tbody></table>
+<p><strong>返回</strong>　底数^指数。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">幂.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">打印(幂(2.0, 8.0));</code></pre></div>
+<p class="输出行">输出：256.000000
+</p>
+</section>
+<section class="函数条" id="正弦">
+<h3><code>正弦</code></h3>
+<p class="函数定义"><code>函数 正弦(浮64 弧度) -> 浮64</code></p>
+<p>正弦函数（弧度制）。</p>
+<table class="表 参数表"><thead><tr><th>参数</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>弧度</code></td><td><code>浮64</code></td><td>弧度值</td></tr></tbody></table>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">正弦.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">打印(正弦(0.0));</code></pre></div>
+<p class="输出行">输出：0.000000
+</p>
+</section>
+<section class="函数条" id="余弦">
+<h3><code>余弦</code></h3>
+<p class="函数定义"><code>函数 余弦(浮64 弧度) -> 浮64</code></p>
+<p>余弦函数（弧度制）。</p>
+<table class="表 参数表"><thead><tr><th>参数</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>弧度</code></td><td><code>浮64</code></td><td>弧度值</td></tr></tbody></table>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">余弦.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">打印(余弦(0.0));</code></pre></div>
+<p class="输出行">输出：1.000000
+</p>
+</section>
+<section class="函数条" id="正切">
+<h3><code>正切</code></h3>
+<p class="函数定义"><code>函数 正切(浮64 弧度) -> 浮64</code></p>
+<p>正切函数（弧度制）。</p>
+<table class="表 参数表"><thead><tr><th>参数</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>弧度</code></td><td><code>浮64</code></td><td>弧度值</td></tr></tbody></table>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">正切.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">打印(正切(0.0));</code></pre></div>
+<p class="输出行">输出：0.000000
+</p>
+</section>
+<section class="函数条" id="绝对值">
+<h3><code>绝对值</code></h3>
+<p class="函数定义"><code>函数 绝对值(浮64 值) -> 浮64</code></p>
+<p>浮点绝对值。</p>
+<table class="表 参数表"><thead><tr><th>参数</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>值</code></td><td><code>浮64</code></td><td>任意浮点</td></tr></tbody></table>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">绝对值.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">打印(绝对值(-2.5));</code></pre></div>
+<p class="输出行">输出：2.500000
+</p>
+</section>
+<section class="函数条" id="向上取整">
+<h3><code>向上取整</code></h3>
+<p class="函数定义"><code>函数 向上取整(浮64 值) -> 浮64</code></p>
+<p>向上取整（天花板）：不小于 值 的最小整数（仍为浮64 类型）。</p>
+<table class="表 参数表"><thead><tr><th>参数</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>值</code></td><td><code>浮64</code></td><td>任意浮点</td></tr></tbody></table>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">向上取整.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">打印(向上取整(2.1));</code></pre></div>
+<p class="输出行">输出：3.000000
+</p>
+</section>
+<section class="函数条" id="向下取整">
+<h3><code>向下取整</code></h3>
+<p class="函数定义"><code>函数 向下取整(浮64 值) -> 浮64</code></p>
+<p>向下取整（地板）：不大于 值 的最大整数（仍为浮64 类型）。</p>
+<table class="表 参数表"><thead><tr><th>参数</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>值</code></td><td><code>浮64</code></td><td>任意浮点</td></tr></tbody></table>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">向下取整.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">打印(向下取整(2.9));</code></pre></div>
+<p class="输出行">输出：2.000000
+</p>
+</section><nav class="页脚导航"><a class="" href="../stdlib/time.html"><span class="向">← 上一页</span><span class="题">时间</span></a><a class="下一" href="../stdlib/random.html"><span class="向">下一页 →</span><span class="题">随机数</span></a></nav></article>
+    <aside class="目录" aria-label="本页目录">
+      <p class="目录-题">本页目录</p>
+<a href="#浮点函数">浮点函数</a>
+    </aside>
+  </div>
+</main>
+
+<footer class="页脚">
+  <div class="容器">
+    <div class="页脚-排">
+      <div>
+        <p class="页脚-标语">CN<span style="color: var(--color-accent);">·</span>语言</p>
+        <p class="页脚-述">全中文语法的系统级编程语言。以母语的直觉，驾驭机器的全部性能。</p>
+      </div>
+      <div>
+        <h4>语言</h4>
+        <ul>
+          <li><a href="../.././">官方文档</a></li>
+          <li><a href="../getting-started.html">快速开始</a></li>
+          <li><a href="../reference/">语言参考</a></li>
+          <li><a href="../stdlib.html">标准库</a></li>
+        </ul>
+      </div>
+      <div>
+        <h4>项目</h4>
+        <ul>
+          <li><a href="https://gitcode.com/ChenChao_GitCode/CN_Language" target="_blank" rel="noopener">源码仓库 ↗</a></li>
+          <li><a href="../../os/">CN-OS 蓝图</a></li>
+          <li><a href="../cli.html">命令行参考</a></li>
+        </ul>
+      </div>
+      <div>
+        <h4>状态</h4>
+        <ul>
+          <li>自举固定点已达成</li>
+          <li>v2 自举重建进行中</li>
+          <li>license：见仓库</li>
+        </ul>
+      </div>
+    </div>
+    <div class="页脚-底">
+      <span>© 2026 CN 语言项目</span>
+      <span>京ICP备00000000号（备案办理中·占位）</span>
+    </div>
+  </div>
+</footer>
+
+<script src="../../assets/cn-highlight.js?v=1"></script>
+<script src="../site.js?v=2"></script>
+</body>
+</html>

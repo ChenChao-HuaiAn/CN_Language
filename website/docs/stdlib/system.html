@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>系统 · 标准库 · CN 语言</title>
+<meta name="description" content="命令行参数——对标 C 的 argv。">
+<script>
+  (function () {
+    try {
+      var t = localStorage.getItem("cn-theme");
+      if (t === "dark" || t === "light") document.documentElement.setAttribute("data-theme", t);
+    } catch (e) {}
+  })()
+</script>
+<link rel="stylesheet" href="../../assets/tokens.css?v=2">
+<link rel="stylesheet" href="../../assets/site.css?v=4">
+</head>
+<body>
+
+<header class="顶栏">
+  <div class="容器 顶栏-内">
+    <a class="标识" href="../../">CN<span class="标识-点">·</span>语言</a>
+    <button class="导航-开关" data-导航钮 aria-expanded="false">菜单</button>
+    <nav class="导航" aria-label="站点导航">
+      <a href="../../">首页</a>
+      <a href="../" aria-current="page">文档</a>
+      <a href="../getting-started.html">快速开始</a>
+      <a href="../reference/">语言参考</a>
+      <a href="../stdlib.html">标准库</a>
+      <a href="../../os/">CN-OS</a>
+      <a href="https://gitcode.com/ChenChao_GitCode/CN_Language" target="_blank" rel="noopener">源码 ↗</a>
+      <button class="主题钮" data-主题钮 aria-label="切换主题">月</button>
+    </nav>
+  </div>
+</header>
+
+<main class="容器">
+  <div class="文档骨架">
+    <aside class="侧栏" aria-label="文档导航"><div class="侧栏-组"><p class="侧栏-组题">入门</p><a href="../.././">文档总览</a><a href="../getting-started.html">快速开始</a></div><div class="侧栏-组"><p class="侧栏-组题">教程</p><a href="../tutorial-syntax.html">语法基础</a><a href="../tutorial-oop.html">类与泛型</a><a href="../tutorial-safety.html">安全与并发</a></div><div class="侧栏-组"><p class="侧栏-组题">语言参考</p><a href="../reference/">参考总览</a><a href="../reference/lexical.html">词法结构</a><a href="../reference/types.html">类型系统</a><a href="../reference/control-flow.html">控制流</a><a href="../reference/functions.html">函数</a><a href="../reference/oop.html">类与对象</a><a href="../reference/errors.html">错误处理</a><a href="../reference/concurrency.html">并发</a><a href="../reference/modules.html">模块系统</a></div><div class="侧栏-组"><p class="侧栏-组题">标准库</p><a href="../stdlib.html">标准库总览</a><a href="../stdlib/core.html">核心</a><a href="../stdlib/container.html">容器</a><a href="../stdlib/mapset.html">映射集合</a><a href="../stdlib/string.html">字符串扩展</a><a href="../stdlib/algorithm.html">算法</a><a href="../stdlib/regex.html">正则</a><a href="../stdlib/system.html">系统</a><a href="../stdlib/io.html">IO</a><a href="../stdlib/file.html">文件</a><a href="../stdlib/time.html">时间</a><a href="../stdlib/math.html">数学</a><a href="../stdlib/random.html">随机数</a><a href="../stdlib/thread.html">线程</a><a href="../stdlib/builtin.html">内置函数</a></div><div class="侧栏-组"><p class="侧栏-组题">资源</p><a href="../cli.html">命令行参考</a><a href="https://gitcode.com/ChenChao_GitCode/CN_Language" target="_blank" rel="noopener">源码仓库 ↗</a></div></aside>
+    <article class="正文"><nav class="面包屑" aria-label="面包屑"><a href="../">文档</a> / <a href="../stdlib.html">标准库</a> / 系统</nav>
+<h1>系统</h1>
+<p style="color: var(--color-fg-muted); font-size: var(--text-lg); line-height: 2;">命令行参数——对标 C 的 argv。</p>
+
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">导入写法</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">导入 系统::{参数个数, 参数};</code></pre></div>
+<h2 id="命令行参数">命令行参数</h2>
+<p>程序经 <code>cn run 程序.cn 参数…</code> 或直接运行可执行文件时，命令行参数从这里读取。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">命令行参数.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">导入 系统::{参数个数, 参数};
+
+函数 主() -&gt; 整32 {
+    整32 个数 = 参数个数();
+    打印("至少 1 个参数：", 个数 &gt;= 1);
+    结果&lt;字符串, 整32&gt; 首 = 参数(0);
+    如果 (首.正常) { 打印("程序名非空：", 字符串长度(首.值) &gt; 0); }
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：至少 1 个参数：真
+程序名非空：真
+</p>
+<section class="函数条" id="参数个数">
+<h3><code>参数个数</code></h3>
+<p class="函数定义"><code>函数 参数个数() -> 整32</code></p>
+<p>命令行参数个数，<strong>含程序名本身</strong>（对标 <code>argv[0]</code>），至少为 1。</p>
+<p><strong>返回</strong>　参数个数（整32）。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">参数个数.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">打印(参数个数());</code></pre></div>
+<p class="输出行">输出：1
+</p>
+</section>
+<section class="函数条" id="参数">
+<h3><code>参数</code></h3>
+<p class="函数定义"><code>函数 参数(整32 索引) -> 结果&lt;字符串, 整32&gt;</code></p>
+<p>按索引取参数字符串。<code>参数(0)</code> = 程序名。越界返回 <code>错误(6)</code>。返回的字符串为拥有型（内部已复制落堆，RAII 自动释放）。</p>
+<table class="表 参数表"><thead><tr><th>参数</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>索引</code></td><td><code>整32</code></td><td>参数下标（0=程序名）</td></tr></tbody></table>
+<p><strong>返回</strong>　<code>正常(参数串)</code>；越界 → <code>错误(6)</code>。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">参数.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">结果&lt;字符串, 整32&gt; 名 = 参数(0);
+如果 (名.正常) { 打印("程序名拿到了"); }
+结果&lt;字符串, 整32&gt; 越界 = 参数(99);
+如果 (!越界.正常) { 打印("无此参数"); }</code></pre></div>
+<p class="输出行">输出：程序名拿到了
+无此参数
+</p>
+</section><nav class="页脚导航"><a class="" href="../stdlib/regex.html"><span class="向">← 上一页</span><span class="题">正则</span></a><a class="下一" href="../stdlib/io.html"><span class="向">下一页 →</span><span class="题">IO</span></a></nav></article>
+    <aside class="目录" aria-label="本页目录">
+      <p class="目录-题">本页目录</p>
+<a href="#命令行参数">命令行参数</a>
+    </aside>
+  </div>
+</main>
+
+<footer class="页脚">
+  <div class="容器">
+    <div class="页脚-排">
+      <div>
+        <p class="页脚-标语">CN<span style="color: var(--color-accent);">·</span>语言</p>
+        <p class="页脚-述">全中文语法的系统级编程语言。以母语的直觉，驾驭机器的全部性能。</p>
+      </div>
+      <div>
+        <h4>语言</h4>
+        <ul>
+          <li><a href="../.././">官方文档</a></li>
+          <li><a href="../getting-started.html">快速开始</a></li>
+          <li><a href="../reference/">语言参考</a></li>
+          <li><a href="../stdlib.html">标准库</a></li>
+        </ul>
+      </div>
+      <div>
+        <h4>项目</h4>
+        <ul>
+          <li><a href="https://gitcode.com/ChenChao_GitCode/CN_Language" target="_blank" rel="noopener">源码仓库 ↗</a></li>
+          <li><a href="../../os/">CN-OS 蓝图</a></li>
+          <li><a href="../cli.html">命令行参考</a></li>
+        </ul>
+      </div>
+      <div>
+        <h4>状态</h4>
+        <ul>
+          <li>自举固定点已达成</li>
+          <li>v2 自举重建进行中</li>
+          <li>license：见仓库</li>
+        </ul>
+      </div>
+    </div>
+    <div class="页脚-底">
+      <span>© 2026 CN 语言项目</span>
+      <span>京ICP备00000000号（备案办理中·占位）</span>
+    </div>
+  </div>
+</footer>
+
+<script src="../../assets/cn-highlight.js?v=1"></script>
+<script src="../site.js?v=2"></script>
+</body>
+</html>

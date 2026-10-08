@@ -516,3 +516,51 @@ em, .强调 { font-style: normal; font-weight: 600; color: var(--color-accent); 
   body { background: #fff; color: #000; }
   .文档骨架 { grid-template-columns: 1fr; }
 }
+
+/* ── 标准库文档（函数条目·库卡片）── 268 文档补全批 ── */
+.签-灰 { color: var(--color-fg-muted); background: var(--color-bg-subtle); }
+
+.函数条 {
+  border-block-start: 1px solid var(--color-border-subtle);
+  padding-block: var(--space-6) var(--space-7);
+}
+.函数条 h3 { margin-block: 0 var(--space-4); }
+.函数条 h3 code { font-size: var(--text-lg); }
+.函数条 h3 .签 { vertical-align: 0.25em; margin-inline-start: var(--space-2); }
+.函数定义 {
+  background: var(--color-bg-subtle);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-sm);
+  padding: var(--space-3) var(--space-4);
+  overflow-x: auto;
+  font-size: var(--text-sm);
+  margin-block: 0 var(--space-5);
+}
+.函数定义 code { font-family: var(--font-mono); }
+.参数表 { margin-block: var(--space-4); font-size: var(--text-xs); }
+.参数表 th, .参数表 td { padding-block: var(--space-2); }
+.函数条 .码窗 { margin-block: var(--space-5); }
+.输出行 {
+  color: var(--color-fg-muted);
+  font-size: var(--text-xs);
+  margin-block: calc(-1 * var(--space-4)) var(--space-6);
+}
+
+.库卡排 {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+  gap: var(--space-4);
+  margin-block: var(--space-8) var(--space-10);
+}
+.库卡 {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-5);
+}
+.库卡:hover { border-color: var(--color-accent); text-decoration: none; }
+.库卡-题 { font-family: var(--font-display); font-weight: 700; font-size: var(--text-lg); }
+.库卡-述 { color: var(--color-fg-muted); font-size: var(--text-xs); line-height: 1.8; flex: 1; }
+.库卡-数 { color: var(--color-fg-subtle); font-size: var(--text-xs); letter-spacing: 0.08em; }

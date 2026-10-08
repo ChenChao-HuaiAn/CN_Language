@@ -1,0 +1,560 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>内置函数 · 标准库 · CN 语言</title>
+<meta name="description" content="随语言自带的内建函数——输出/输入/字符串/内存/驻留/类型工具，无需导入。">
+<script>
+  (function () {
+    try {
+      var t = localStorage.getItem("cn-theme");
+      if (t === "dark" || t === "light") document.documentElement.setAttribute("data-theme", t);
+    } catch (e) {}
+  })()
+</script>
+<link rel="stylesheet" href="../../assets/tokens.css?v=2">
+<link rel="stylesheet" href="../../assets/site.css?v=4">
+</head>
+<body>
+
+<header class="顶栏">
+  <div class="容器 顶栏-内">
+    <a class="标识" href="../../">CN<span class="标识-点">·</span>语言</a>
+    <button class="导航-开关" data-导航钮 aria-expanded="false">菜单</button>
+    <nav class="导航" aria-label="站点导航">
+      <a href="../../">首页</a>
+      <a href="../" aria-current="page">文档</a>
+      <a href="../getting-started.html">快速开始</a>
+      <a href="../reference/">语言参考</a>
+      <a href="../stdlib.html">标准库</a>
+      <a href="../../os/">CN-OS</a>
+      <a href="https://gitcode.com/ChenChao_GitCode/CN_Language" target="_blank" rel="noopener">源码 ↗</a>
+      <button class="主题钮" data-主题钮 aria-label="切换主题">月</button>
+    </nav>
+  </div>
+</header>
+
+<main class="容器">
+  <div class="文档骨架">
+    <aside class="侧栏" aria-label="文档导航"><div class="侧栏-组"><p class="侧栏-组题">入门</p><a href="../.././">文档总览</a><a href="../getting-started.html">快速开始</a></div><div class="侧栏-组"><p class="侧栏-组题">教程</p><a href="../tutorial-syntax.html">语法基础</a><a href="../tutorial-oop.html">类与泛型</a><a href="../tutorial-safety.html">安全与并发</a></div><div class="侧栏-组"><p class="侧栏-组题">语言参考</p><a href="../reference/">参考总览</a><a href="../reference/lexical.html">词法结构</a><a href="../reference/types.html">类型系统</a><a href="../reference/control-flow.html">控制流</a><a href="../reference/functions.html">函数</a><a href="../reference/oop.html">类与对象</a><a href="../reference/errors.html">错误处理</a><a href="../reference/concurrency.html">并发</a><a href="../reference/modules.html">模块系统</a></div><div class="侧栏-组"><p class="侧栏-组题">标准库</p><a href="../stdlib.html">标准库总览</a><a href="../stdlib/core.html">核心</a><a href="../stdlib/container.html">容器</a><a href="../stdlib/mapset.html">映射集合</a><a href="../stdlib/string.html">字符串扩展</a><a href="../stdlib/algorithm.html">算法</a><a href="../stdlib/regex.html">正则</a><a href="../stdlib/system.html">系统</a><a href="../stdlib/io.html">IO</a><a href="../stdlib/file.html">文件</a><a href="../stdlib/time.html">时间</a><a href="../stdlib/math.html">数学</a><a href="../stdlib/random.html">随机数</a><a href="../stdlib/thread.html">线程</a><a href="../stdlib/builtin.html">内置函数</a></div><div class="侧栏-组"><p class="侧栏-组题">资源</p><a href="../cli.html">命令行参考</a><a href="https://gitcode.com/ChenChao_GitCode/CN_Language" target="_blank" rel="noopener">源码仓库 ↗</a></div></aside>
+    <article class="正文"><nav class="面包屑" aria-label="面包屑"><a href="../">文档</a> / <a href="../stdlib.html">标准库</a> / 内置函数</nav>
+<h1>内置函数</h1>
+<p style="color: var(--color-fg-muted); font-size: var(--text-lg); line-height: 2;">随语言自带的内建函数——输出/输入/字符串/内存/驻留/类型工具，无需导入。</p>
+
+<h2 id="输出">格式化输出</h2>
+<p>打印函数族只有 <code>打印</code> / <code>打印行</code> 两个变参函数（外加 <code>格式化</code>）。注意命名语义：<strong>打印 = 末尾自动换行；打印行 = 不换行</strong>（「行」表示逐行连续输出）。字符串 <code>+</code> 数值 自动拼接（<code>“甲” + 1</code> → <code>“甲1”</code>）。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">输出.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">函数 主() -&gt; 整32 {
+    打印("总分：", 95, " 平均：", 95 / 3.0);
+    打印行("这一行没有换行，");
+    打印行("接着输出。");
+    打印("");                        // 补一个换行
+    字符串 报告 = 格式化("%s 得 %d 分", "张三", 95);
+    打印(报告);
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：总分：95 平均：31.666667
+这一行没有换行，接着输出。
+张三 得 95 分
+</p>
+<section class="函数条" id="打印">
+<h3><code>打印</code></h3>
+<p class="函数定义"><code>函数 打印(任意值...) -> 空类型</code></p>
+<p>变参打印，逐参输出，<strong>末尾自动换行</strong>。多参数间无分隔符（需要空格自己加：<code>打印(甲, , 乙)</code>）。整128/正128 打印完整 128 位。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">打印.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">打印("甲", 1, 2.5, 真);</code></pre></div>
+<p class="输出行">输出：甲12.500000真
+</p>
+</section>
+<section class="函数条" id="打印行">
+<h3><code>打印行</code></h3>
+<p class="函数定义"><code>函数 打印行(任意值...) -> 空类型</code></p>
+<p>同 打印 但<strong>末尾不换行</strong>——适合分段拼一行输出。（历史教训：旧版 打印行整数 语义恰好相反，已删除，勿混淆。）</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">打印行.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">打印行("A");
+打印行("B");
+打印("");
+打印("C");</code></pre></div>
+<p class="输出行">输出：AB
+C
+</p>
+</section>
+<section class="函数条" id="格式化">
+<h3><code>格式化</code></h3>
+<p class="函数定义"><code>函数 格式化(字符串 格式串, 参数...) -> 字符串</code></p>
+<p>sprintf 风格格式化，<strong>返回新字符串</strong>（拥有型）而不直接输出。占位符：<code>%d</code> 整、<code>%u</code> 无符号、<code>%f</code> 浮点、<code>%s</code> 字符串、<code>%c</code> 字符、<code>%x</code>/<code>%X</code> 十六进制、<code>%o</code> 八进制、<code>%p</code> 指针。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">格式化.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">字符串 文 = 格式化("%x %f", 255, 1.5);
+打印(文);</code></pre></div>
+<p class="输出行">输出：ff 1.500000
+</p>
+</section>
+<section class="函数条" id="读取行内置">
+<h3><code>IO::读取行</code></h3>
+<p class="函数定义"><code>内置 函数 IO::读取行() -> 字符串</code></p>
+<p>标准输入内置（stdlib IO 模块 读取行() 的底层）。业务代码用 <a href="io.html#读取行">IO::读取行</a> 包装版（返回 结果 以显式处理 EOF）。</p>
+</section>
+<h2 id="字符串内置">字符串函数族</h2>
+<p>字符串为 UTF-8 字节序列（<code>\0</code> 结尾），全部按<strong>字节偏移</strong>工作。返回字符串的函数都返回拥有型新串。比较语义：内容相等用 <code>字符串比较</code>（或 <code>==</code>），排序序用 <code>字符串字典序</code>（负/0/正）。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">字符串内置.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">函数 主() -&gt; 整32 {
+    字符串 文 = "你好, CN";
+    打印(字符串长度(文));            // 10（UTF-8 字节数：你好=6）
+    打印(字符串包含(文, "CN"));      // 真
+    打印(字符串前缀(文, "你好"));    // 真
+    打印(字符串子串(文, 0, 3));      // 你（按字节切，3=一个汉字）
+    字符串 全大写 = 字符串大写("cn lang");
+    打印(全大写);                    // CN LANG
+    打印(字符串字典序("apple", "banana") &lt; 0);   // 真（字节序）
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：10
+真
+真
+你
+CN LANG
+真
+</p>
+<section class="函数条" id="字符串长度">
+<h3><code>字符串长度</code></h3>
+<p class="函数定义"><code>函数 字符串长度(字符串 值) -> 整64</code></p>
+<p>UTF-8 <strong>字节数</strong>（非字符数）。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">字符串长度.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">打印(字符串长度("abc"));
+打印(字符串长度("中文"));</code></pre></div>
+<p class="输出行">输出：3
+6
+</p>
+</section>
+<section class="函数条" id="字符串比较">
+<h3><code>字符串比较</code></h3>
+<p class="函数定义"><code>函数 字符串比较(字符串 甲, 字符串 乙) -> 布尔</code></p>
+<p>内容相等判定（<code>==</code> 运算符同义）。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">字符串比较.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">打印(字符串比较("ab", "ab"));
+打印("ab" == "ab");</code></pre></div>
+<p class="输出行">输出：真
+真
+</p>
+</section>
+<section class="函数条" id="字符串字典序">
+<h3><code>字符串字典序</code></h3>
+<p class="函数定义"><code>函数 字符串字典序(字符串 甲, 字符串 乙) -> 整64</code></p>
+<p>字典序比较：甲&lt;乙 返回负、相等 0、甲&gt;乙 返回正。<code>&lt;</code> 等关系运算符等价于它与 0 比较。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">字符串字典序.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">打印(字符串字典序("apple", "banana"));
+打印(字符串字典序("同", "同"));</code></pre></div>
+<p class="输出行">输出：-1
+0
+</p>
+</section>
+<section class="函数条" id="字符串连接">
+<h3><code>字符串连接</code></h3>
+<p class="函数定义"><code>函数 字符串连接(字符串 甲, 字符串 乙) -> 字符串</code></p>
+<p>拼接两串返回新串（拥有型）。<code>+</code> 运算符同义，且 <code>字符串 + 数值</code> 会自动把数值转成字符串。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">字符串连接.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">字符串 文 = 字符串连接("你好", ", 世界");
+打印(文);
+打印("编号-" + 7);          // 数值自动拼接</code></pre></div>
+<p class="输出行">输出：你好, 世界
+编号-7
+</p>
+</section>
+<section class="函数条" id="字符串复制">
+<h3><code>字符串复制</code></h3>
+<p class="函数定义"><code>函数 字符串复制(字符串 值) -> 字符串</code></p>
+<p>复制为独立拥有的新堆串。借用视图（<code>字符*</code>）落堆为拥有串的显式通道。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">字符串复制.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">字符* 视图 = "借用";
+字符串 拥有 = 字符串复制(视图);
+打印(拥有);</code></pre></div>
+<p class="输出行">输出：借用
+</p>
+</section>
+<section class="函数条" id="字符串查找">
+<h3><code>字符串查找</code></h3>
+<p class="函数定义"><code>函数 字符串查找(字符串 主串, 字符串 子串) -> 整64</code></p>
+<p>返回子串首次出现的字节下标；未找到 -1。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">字符串查找.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">打印(字符串查找("hello world", "world"));
+打印(字符串查找("hello", "zz"));</code></pre></div>
+<p class="输出行">输出：6
+-1
+</p>
+</section>
+<section class="函数条" id="字符串子串">
+<h3><code>字符串子串</code></h3>
+<p class="函数定义"><code>函数 字符串子串(字符串 值, 整64 起点, 整64 长度) -> 字符串</code></p>
+<p>取 [起点, 起点+长度) 的字节切片为新串。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">字符串子串.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">打印(字符串子串("2026-10-08", 5, 2));</code></pre></div>
+<p class="输出行">输出：10
+</p>
+</section>
+<section class="函数条" id="字符串大写">
+<h3><code>字符串大写</code></h3>
+<p class="函数定义"><code>函数 字符串大写(字符串 值) -> 字符串</code></p>
+<p>ASCII 字母转大写的新串。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">字符串大写.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">打印(字符串大写("cn"));</code></pre></div>
+<p class="输出行">输出：CN
+</p>
+</section>
+<section class="函数条" id="字符串小写">
+<h3><code>字符串小写</code></h3>
+<p class="函数定义"><code>函数 字符串小写(字符串 值) -> 字符串</code></p>
+<p>ASCII 字母转小写的新串。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">字符串小写.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">打印(字符串小写("CN"));</code></pre></div>
+<p class="输出行">输出：cn
+</p>
+</section>
+<section class="函数条" id="字符串修剪">
+<h3><code>字符串修剪</code></h3>
+<p class="函数定义"><code>函数 字符串修剪(字符串 值) -> 字符串</code></p>
+<p>去除两端空白的新串。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">字符串修剪.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">打印("[" + 字符串修剪("  中  ") + "]");</code></pre></div>
+<p class="输出行">输出：[中]
+</p>
+</section>
+<section class="函数条" id="字符串反转">
+<h3><code>字符串反转</code></h3>
+<p class="函数定义"><code>函数 字符串反转(字符串 值) -> 字符串</code></p>
+<p>字节序反转的新串（ASCII 文本安全；多字节 UTF-8 会破坏字符）。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">字符串反转.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">打印(字符串反转("abc"));</code></pre></div>
+<p class="输出行">输出：cba
+</p>
+</section>
+<section class="函数条" id="字符串包含">
+<h3><code>字符串包含</code></h3>
+<p class="函数定义"><code>函数 字符串包含(字符串 主串, 字符串 子串) -> 布尔</code></p>
+<p>是否含有子串。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">字符串包含.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">打印(字符串包含("中华民族", "民族"));</code></pre></div>
+<p class="输出行">输出：真
+</p>
+</section>
+<section class="函数条" id="字符串前缀">
+<h3><code>字符串前缀</code></h3>
+<p class="函数定义"><code>函数 字符串前缀(字符串 值, 字符串 前缀) -> 布尔</code></p>
+<p>是否以前缀开头。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">字符串前缀.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">打印(字符串前缀("https://cn", "https:"));</code></pre></div>
+<p class="输出行">输出：真
+</p>
+</section>
+<section class="函数条" id="字符串后缀">
+<h3><code>字符串后缀</code></h3>
+<p class="函数定义"><code>函数 字符串后缀(字符串 值, 字符串 后缀) -> 布尔</code></p>
+<p>是否以后缀结尾。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">字符串后缀.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">打印(字符串后缀("主.cn", ".cn"));</code></pre></div>
+<p class="输出行">输出：真
+</p>
+</section>
+<section class="函数条" id="整数转字符串">
+<h3><code>整数转字符串</code></h3>
+<p class="函数定义"><code>函数 整数转字符串(整64 值) -> 字符串</code></p>
+<p>整64 转十进制字符串。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">整数转字符串.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">打印(整数转字符串(-42) + "!");</code></pre></div>
+<p class="输出行">输出：-42!
+</p>
+</section>
+<section class="函数条" id="浮点转字符串">
+<h3><code>浮点转字符串</code></h3>
+<p class="函数定义"><code>函数 浮点转字符串(浮64 值) -> 字符串</code></p>
+<p>浮64 转字符串（6 位小数格式）。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">浮点转字符串.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">打印(浮点转字符串(3.5));</code></pre></div>
+<p class="输出行">输出：3.500000
+</p>
+</section>
+<section class="函数条" id="字符转字符串">
+<h3><code>字符转字符串</code></h3>
+<p class="函数定义"><code>函数 字符转字符串(字符 值) -> 字符串</code></p>
+<p>单字符转字符串。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">字符转字符串.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">打印(字符转字符串('甲') + "乙");</code></pre></div>
+<p class="输出行">输出：甲乙
+</p>
+</section>
+<section class="函数条" id="布尔转字符串">
+<h3><code>布尔转字符串</code></h3>
+<p class="函数定义"><code>函数 布尔转字符串(布尔 值) -> 字符串</code></p>
+<p>布尔转 "真"/"假"（拼接上下文自动调用）。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">布尔转字符串.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">打印(布尔转字符串(1 &lt; 2));</code></pre></div>
+<p class="输出行">输出：真
+</p>
+</section>
+<section class="函数条" id="正数转字符串">
+<h3><code>正数转字符串</code></h3>
+<p class="函数定义"><code>函数 正数转字符串(正64 值) -> 字符串</code></p>
+<p>无符号 64 位转十进制字符串。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">正数转字符串.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">正64 大数 = 18446744073709551615;
+打印(字符串长度(正数转字符串(大数)));</code></pre></div>
+<p class="输出行">输出：20
+</p>
+</section>
+<section class="函数条" id="字符串释放">
+<h3><code>字符串释放</code></h3>
+<p class="函数定义"><code>函数 字符串释放(字符串 值) -> 空类型</code></p>
+<p>手动释放堆串。<strong>拥有型字符串变量由 RAII 自动释放，通常不需要调用</strong>——仅供 C 风格输出参数边界（如 分割 填出的数组元素）手动清理。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">字符串释放.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">字符串 临时 = 字符串复制("手动管理");
+字符串释放(临时);</code></pre></div>
+</section>
+<h2 id="字符串构建器">字符串构建器</h2>
+<p>高频拼接的缓冲区句柄四件套（Rust <code>String::push_str</code> 同款）：反复 <code>字符串连接</code> 是 O(n²)，构建器摊销 O(n)。句柄为整数 ID，完成后 必须 <code>字符串构建器::完成</code> 收尾。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">字符串构建器.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">函数 主() -&gt; 整32 {
+    整64 建 = 字符串构建器::新建();
+    整64 i = 0;
+    当 (i &lt; 3) {
+        字符串构建器::追加(建, "第" + 整数转字符串(i) + "段;");
+        i++;
+    }
+    字符串 文 = 字符串构建器::完成(建);
+    打印(文);
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：第0段;第1段;第2段;
+</p>
+<section class="函数条" id="构建器-新建">
+<h3><code>字符串构建器::新建</code></h3>
+<p class="函数定义"><code>函数 字符串构建器::新建() -> 整64</code></p>
+<p>创建空构建器，返回句柄。</p>
+</section>
+<section class="函数条" id="构建器-追加">
+<h3><code>字符串构建器::追加</code></h3>
+<p class="函数定义"><code>函数 字符串构建器::追加(整64 句柄, 字符串 段) -> 空类型</code></p>
+<p>追加一段字符串到缓冲。</p>
+</section>
+<section class="函数条" id="构建器-追加字节">
+<h3><code>字符串构建器::追加字节</code></h3>
+<p class="函数定义"><code>函数 字符串构建器::追加字节(整64 句柄, 整64 字节) -> 空类型</code></p>
+<p>追加单个字节。</p>
+</section>
+<section class="函数条" id="构建器-完成">
+<h3><code>字符串构建器::完成</code></h3>
+<p class="函数定义"><code>函数 字符串构建器::完成(整64 句柄) -> 字符串</code></p>
+<p>收尾并返回最终字符串（拥有型）。句柄此后失效。</p>
+</section>
+<h2 id="内存">内存管理</h2>
+<p>手动内存四件套对标 C 的 malloc/free/realloc/memcpy；统计族用于泄漏观测；竞技场族是「进程级一次性分配」（bump 分配，重置一次全释放）。<strong>业务代码优先容器/拥有型字符串（RAII）</strong>；手动内存是不安全域的逃生门。注意 <code>重新分配</code> 对超过 2GiB 的请求拒绝并返回 <code>无</code>（可观测拒绝前置）。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">内存.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">不安全 函数 主() -&gt; 整32 {
+    整64* 表 = 分配(2 * 类型大小(整64));   // 两个整64 槽
+    表[0] = 7;
+    表[1] = 8;
+    空类型* 更大 = 重新分配(表, 4 * 类型大小(整64));
+    整64* 新表 = 更大;
+    打印(新表[0], " ", 新表[1]);       // 扩容后旧值保留
+    整64* 目标 = 分配(2 * 类型大小(整64));
+    复制内存(目标, 新表, 2 * 类型大小(整64));
+    打印(目标[1]);                     // 8
+    置零内存(新表, 4 * 类型大小(整64));
+    打印(新表[0]);                     // 0
+    释放(新表);
+    释放(目标);
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：7 8
+8
+0
+</p>
+<section class="函数条" id="分配">
+<h3><code>分配</code></h3>
+<p class="函数定义"><code>函数 分配(整64 字节数) -> 空类型*</code></p>
+<p>分配未初始化内存块（malloc）。</p>
+</section>
+<section class="函数条" id="重新分配">
+<h3><code>重新分配</code></h3>
+<p class="函数定义"><code>函数 重新分配(空类型* 块, 整64 新字节数) -> 空类型*</code></p>
+<p>调整块大小（realloc），内容保留；可传 <code>无</code> 等价分配。新字节数 > 2GiB 时拒绝（stderr 诊断 + 返回 <code>无</code>）。</p>
+</section>
+<section class="函数条" id="释放">
+<h3><code>释放</code></h3>
+<p class="函数定义"><code>函数 释放(空类型* 块) -> 空类型</code></p>
+<p>释放内存块（free）。<code>无</code> 安全。</p>
+</section>
+<section class="函数条" id="复制内存">
+<h3><code>复制内存</code></h3>
+<p class="函数定义"><code>函数 复制内存(空类型* 目标, 空类型* 源, 整64 字节数) -> 空类型</code></p>
+<p>按字节复制（memcpy）；区间不得重叠。</p>
+</section>
+<section class="函数条" id="置零内存">
+<h3><code>置零内存</code></h3>
+<p class="函数定义"><code>函数 置零内存(空类型* 目标, 整64 字节数) -> 空类型</code></p>
+<p>按字节清零（memset 0）。</p>
+</section>
+<section class="函数条" id="内存-活动分配数">
+<h3><code>内存::活动分配数</code></h3>
+<p class="函数定义"><code>函数 内存::活动分配数() -> 整64</code></p>
+<p>当前未释放块数（原子计数）——泄漏检测基线：程序结束前应为 0。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">内存-活动分配数.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">打印(内存::活动分配数() &gt;= 0);</code></pre></div>
+<p class="输出行">输出：真
+</p>
+</section>
+<section class="函数条" id="内存-总分配次数">
+<h3><code>内存::总分配次数</code></h3>
+<p class="函数定义"><code>函数 内存::总分配次数() -> 整64</code></p>
+<p>进程启动以来累计分配次数（含字符串/容器内部分配）。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">内存-总分配次数.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">打印(内存::总分配次数() &gt; 0);</code></pre></div>
+<p class="输出行">输出：真
+</p>
+</section>
+<section class="函数条" id="内存-总分配字节">
+<h3><code>内存::总分配字节</code></h3>
+<p class="函数定义"><code>函数 内存::总分配字节() -> 整64</code></p>
+<p>累计分配字节总量（直方图和）。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">内存-总分配字节.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">打印(内存::总分配字节() &gt; 0);</code></pre></div>
+<p class="输出行">输出：真
+</p>
+</section>
+<section class="函数条" id="内存-竞技场分配">
+<h3><code>内存::竞技场分配</code></h3>
+<p class="函数定义"><code>函数 内存::竞技场分配(整64 字节数) -> 空类型*</code></p>
+<p>进程竞技场 bump 分配（8 字节对齐）——只进不出，适合编译器式「长生命周期+一次分配」负载，免去逐对象释放。</p>
+</section>
+<section class="函数条" id="内存-竞技场重置">
+<h3><code>内存::竞技场重置</code></h3>
+<p class="函数定义"><code>函数 内存::竞技场重置() -> 空类型</code></p>
+<p>一次性释放竞技场全部块。</p>
+</section>
+<section class="函数条" id="内存-竞技场活动字节">
+<h3><code>内存::竞技场活动字节</code></h3>
+<p class="函数定义"><code>函数 内存::竞技场活动字节() -> 整64</code></p>
+<p>竞技场已分配总字节（含块头）。</p>
+</section>
+<section class="函数条" id="内存-释放全部">
+<h3><code>内存::释放全部</code></h3>
+<p class="函数定义"><code>函数 内存::释放全部() -> 空类型</code></p>
+<p>释放全部堆内存（进程收尾用；驻留表不释放以防符号引用悬垂）。</p>
+</section>
+<h2 id="类型工具">类型工具与所有权</h2>
+<p><code>复制</code>/<code>转移</code> 是显式的克隆/移动双内置（C++ copy/move 对照物）；<code>类型大小</code> 参数是类型名而非表达式；<code>运行时错误</code> 立即终止进程。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">类型工具.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">类 点 {
+    整64 x;
+}
+
+函数 主() -&gt; 整32 {
+    打印(类型大小(整64));          // 8
+    打印(类型大小(点));            // 8（单字段结构）
+    字符串 甲 = "原文";
+    字符串 乙 = 复制(甲);          // 深拷：两份独立
+    乙 = 乙 + "!";
+    打印(甲, " / ", 乙);
+    字符串 丙 = 转移(甲);          // 移交：甲此后不可读
+    打印(丙);
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：8
+8
+原文 / 原文!
+原文
+</p>
+<section class="函数条" id="类型大小">
+<h3><code>类型大小</code></h3>
+<p class="函数定义"><code>函数 类型大小(类型名) -> 整64</code></p>
+<p>返回类型的字节宽度。<strong>参数是类型名</strong>（语法级内建，泛型代码里对 T 也有效），不是表达式。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">类型大小.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">打印(类型大小(整32), " ", 类型大小(浮64));</code></pre></div>
+<p class="输出行">输出：4 8
+</p>
+</section>
+<section class="函数条" id="复制">
+<h3><code>复制</code></h3>
+<p class="函数定义"><code>泛型 函数 复制(表达式) -> 实参类型</code></p>
+<p>泛型克隆：返回实参的独立副本。字符串=落堆拥有串；类实参要求该类型定义了拷贝构造（无则编译错误）；容器/结构体整体深拷。</p>
+</section>
+<section class="函数条" id="转移">
+<h3><code>转移</code></h3>
+<p class="函数定义"><code>内置 函数 转移(变量) -> 实参的值</code></p>
+<p>所有权移交（C++ <code>std::move</code> / Rust move 同构）：零拷贝交接，<strong>源变量自该点起任何读性使用均为编译错误</strong>（Rust E0382 同款）；对源变量纯赋值可复活（重新初始化）。标量（整数/浮点/布尔/字符）拒绝转移——复制语义无转移意义。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">转移.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">字符串 甲 = "贵重";
+字符串 乙 = 转移(甲);      // 交接，甲不可再用
+打印(乙);
+甲 = "新值";               // 纯赋值=复活，合法
+打印(甲);</code></pre></div>
+<p class="输出行">输出：贵重
+新值
+</p>
+</section>
+<section class="函数条" id="运行时错误">
+<h3><code>运行时错误</code></h3>
+<p class="函数定义"><code>函数 运行时错误(整64 错误码) -> 空类型</code></p>
+<p>打印 <code>运行时错误(错误码N)</code> 并终止进程（退出码 1）。错误码语义见 <a href="core.html#错误码">核心.错误码</a>。标准库容器的「直读越界即中止」就是它。</p>
+</section>
+<h2 id="驻留">字符串驻留</h2>
+<p>字符串内容加入全局驻留表，返回唯一整数 ID（Symbol）：相同内容同 ID、内容只存一份、O(1) 相等比较。编译器符号表的实现机制，也开放给业务（海量重复串的键控场景）。驻留表进程级存活，不随 释放全部 释放。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">驻留.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">函数 主() -&gt; 整32 {
+    整64 甲 = 驻留("token");
+    整64 乙 = 驻留("token");
+    打印(甲 == 乙);                 // 同内容同 ID
+    字符* 文 = 驻留文本(甲);        // ID 反查文本（借用视图）
+    打印(字符串复制(文));
+    打印(驻留计数() &gt;= 1);
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：真
+token
+真
+</p>
+<section class="函数条" id="驻留">
+<h3><code>驻留</code></h3>
+<p class="函数定义"><code>函数 驻留(字符串 值) -> 整64</code></p>
+<p>内容入驻留表并返回唯一 ID；相同内容返回同一 ID。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">驻留.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">打印(驻留("甲") == 驻留("甲"));
+打印(驻留("甲") != 驻留("乙"));</code></pre></div>
+<p class="输出行">输出：真
+真
+</p>
+</section>
+<section class="函数条" id="驻留文本">
+<h3><code>驻留文本</code></h3>
+<p class="函数定义"><code>函数 驻留文本(整64 标识) -> 字符*</code></p>
+<p>ID 反查文本（<strong>借用视图</strong>——驻留表持有；长期持有须 字符串复制 落堆）。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">驻留文本.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">字符* 文 = 驻留文本(驻留("反查"));
+打印(字符串复制(文));</code></pre></div>
+<p class="输出行">输出：反查
+</p>
+</section>
+<section class="函数条" id="驻留计数">
+<h3><code>驻留计数</code></h3>
+<p class="函数定义"><code>函数 驻留计数() -> 整64</code></p>
+<p>驻留表中唯一内容个数。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">驻留计数.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">驻留("统计一");
+驻留("统计二");
+打印(驻留计数() &gt;= 2);</code></pre></div>
+<p class="输出行">输出：真
+</p>
+</section><nav class="页脚导航"><a class="" href="../stdlib/thread.html"><span class="向">← 上一页</span><span class="题">线程</span></a><a class="下一" href="../cli.html"><span class="向">下一页 →</span><span class="题">命令行参考</span></a></nav></article>
+    <aside class="目录" aria-label="本页目录">
+      <p class="目录-题">本页目录</p>
+<a href="#输出">格式化输出</a><a href="#字符串内置">字符串函数族</a><a href="#字符串构建器">字符串构建器</a><a href="#内存">内存管理</a><a href="#类型工具">类型工具与所有权</a><a href="#驻留">字符串驻留</a>
+    </aside>
+  </div>
+</main>
+
+<footer class="页脚">
+  <div class="容器">
+    <div class="页脚-排">
+      <div>
+        <p class="页脚-标语">CN<span style="color: var(--color-accent);">·</span>语言</p>
+        <p class="页脚-述">全中文语法的系统级编程语言。以母语的直觉，驾驭机器的全部性能。</p>
+      </div>
+      <div>
+        <h4>语言</h4>
+        <ul>
+          <li><a href="../.././">官方文档</a></li>
+          <li><a href="../getting-started.html">快速开始</a></li>
+          <li><a href="../reference/">语言参考</a></li>
+          <li><a href="../stdlib.html">标准库</a></li>
+        </ul>
+      </div>
+      <div>
+        <h4>项目</h4>
+        <ul>
+          <li><a href="https://gitcode.com/ChenChao_GitCode/CN_Language" target="_blank" rel="noopener">源码仓库 ↗</a></li>
+          <li><a href="../../os/">CN-OS 蓝图</a></li>
+          <li><a href="../cli.html">命令行参考</a></li>
+        </ul>
+      </div>
+      <div>
+        <h4>状态</h4>
+        <ul>
+          <li>自举固定点已达成</li>
+          <li>v2 自举重建进行中</li>
+          <li>license：见仓库</li>
+        </ul>
+      </div>
+    </div>
+    <div class="页脚-底">
+      <span>© 2026 CN 语言项目</span>
+      <span>京ICP备00000000号（备案办理中·占位）</span>
+    </div>
+  </div>
+</footer>
+
+<script src="../../assets/cn-highlight.js?v=1"></script>
+<script src="../site.js?v=2"></script>
+</body>
+</html>

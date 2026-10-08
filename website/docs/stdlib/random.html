@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>随机数 · 标准库 · CN 语言</title>
+<meta name="description" content="xoshiro256++ 伪随机数发生器——快速、种子确定性、非加密。">
+<script>
+  (function () {
+    try {
+      var t = localStorage.getItem("cn-theme");
+      if (t === "dark" || t === "light") document.documentElement.setAttribute("data-theme", t);
+    } catch (e) {}
+  })()
+</script>
+<link rel="stylesheet" href="../../assets/tokens.css?v=2">
+<link rel="stylesheet" href="../../assets/site.css?v=4">
+</head>
+<body>
+
+<header class="顶栏">
+  <div class="容器 顶栏-内">
+    <a class="标识" href="../../">CN<span class="标识-点">·</span>语言</a>
+    <button class="导航-开关" data-导航钮 aria-expanded="false">菜单</button>
+    <nav class="导航" aria-label="站点导航">
+      <a href="../../">首页</a>
+      <a href="../" aria-current="page">文档</a>
+      <a href="../getting-started.html">快速开始</a>
+      <a href="../reference/">语言参考</a>
+      <a href="../stdlib.html">标准库</a>
+      <a href="../../os/">CN-OS</a>
+      <a href="https://gitcode.com/ChenChao_GitCode/CN_Language" target="_blank" rel="noopener">源码 ↗</a>
+      <button class="主题钮" data-主题钮 aria-label="切换主题">月</button>
+    </nav>
+  </div>
+</header>
+
+<main class="容器">
+  <div class="文档骨架">
+    <aside class="侧栏" aria-label="文档导航"><div class="侧栏-组"><p class="侧栏-组题">入门</p><a href="../.././">文档总览</a><a href="../getting-started.html">快速开始</a></div><div class="侧栏-组"><p class="侧栏-组题">教程</p><a href="../tutorial-syntax.html">语法基础</a><a href="../tutorial-oop.html">类与泛型</a><a href="../tutorial-safety.html">安全与并发</a></div><div class="侧栏-组"><p class="侧栏-组题">语言参考</p><a href="../reference/">参考总览</a><a href="../reference/lexical.html">词法结构</a><a href="../reference/types.html">类型系统</a><a href="../reference/control-flow.html">控制流</a><a href="../reference/functions.html">函数</a><a href="../reference/oop.html">类与对象</a><a href="../reference/errors.html">错误处理</a><a href="../reference/concurrency.html">并发</a><a href="../reference/modules.html">模块系统</a></div><div class="侧栏-组"><p class="侧栏-组题">标准库</p><a href="../stdlib.html">标准库总览</a><a href="../stdlib/core.html">核心</a><a href="../stdlib/container.html">容器</a><a href="../stdlib/mapset.html">映射集合</a><a href="../stdlib/string.html">字符串扩展</a><a href="../stdlib/algorithm.html">算法</a><a href="../stdlib/regex.html">正则</a><a href="../stdlib/system.html">系统</a><a href="../stdlib/io.html">IO</a><a href="../stdlib/file.html">文件</a><a href="../stdlib/time.html">时间</a><a href="../stdlib/math.html">数学</a><a href="../stdlib/random.html">随机数</a><a href="../stdlib/thread.html">线程</a><a href="../stdlib/builtin.html">内置函数</a></div><div class="侧栏-组"><p class="侧栏-组题">资源</p><a href="../cli.html">命令行参考</a><a href="https://gitcode.com/ChenChao_GitCode/CN_Language" target="_blank" rel="noopener">源码仓库 ↗</a></div></aside>
+    <article class="正文"><nav class="面包屑" aria-label="面包屑"><a href="../">文档</a> / <a href="../stdlib.html">标准库</a> / 随机数</nav>
+<h1>随机数</h1>
+<p style="color: var(--color-fg-muted); font-size: var(--text-lg); line-height: 2;">xoshiro256++ 伪随机数发生器——快速、种子确定性、非加密。</p>
+
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">导入写法</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">导入 随机数::随机数生成器;
+导入 随机数::播种扩散;</code></pre></div>
+<h2 id="随机数生成器">随机数生成器</h2>
+<p>xoshiro256++（Vigna 2019）+ splitmix64 播种扩散。<strong>固定种子 = 确定性序列</strong>（可复现测试）；需要非确定性时用 <code>播种扩散(时间戳)</code> 做熵源混合。非加密用途（统计模拟/游戏/测试数据）；密码学用途不保证。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">随机数生成器.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">导入 随机数::随机数生成器;
+
+函数 主() -&gt; 整32 {
+    随机数生成器 生成器 = 随机数生成器(42);   // 固定种子
+    打印(生成器.下一个范围(100));    // 56（种子 42 的确定序列）
+    打印(生成器.下一个范围(100));    // 95
+    打印(生成器.下一个浮点() &gt;= 0.0); // [0.0, 1.0)
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：56
+95
+真
+</p>
+<section class="函数条" id="随机数生成器-构造">
+<h3><code>随机数生成器(种子)</code></h3>
+<p class="函数定义"><code>函数 随机数生成器(整64 种子)</code></p>
+<p>以种子构造并完成 splitmix64 四轮扩散播种（近邻种子扩散远离，避免全零/近邻状态退化）。</p>
+<table class="表 参数表"><thead><tr><th>参数</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>种子</code></td><td><code>整64</code></td><td>任意 64 位种子</td></tr></tbody></table>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">随机数生成器-构造.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">随机数生成器 甲 = 随机数生成器(7);
+随机数生成器 乙 = 随机数生成器(7);
+打印(甲.下一个() == 乙.下一个());   // 同种子同序列</code></pre></div>
+<p class="输出行">输出：真
+</p>
+</section>
+<section class="函数条" id="随机数生成器-播种">
+<h3><code>播种</code></h3>
+<p class="函数定义"><code>函数 播种(整64 种子)</code></p>
+<p>重置内部状态并按新种子重新扩散播种（复用同一生成器实例）。</p>
+<table class="表 参数表"><thead><tr><th>参数</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>种子</code></td><td><code>整64</code></td><td>新种子</td></tr></tbody></table>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">随机数生成器-播种.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">随机数生成器 生 = 随机数生成器(1);
+生.播种(2);
+随机数生成器 对照 = 随机数生成器(2);
+打印(生.下一个() == 对照.下一个());</code></pre></div>
+<p class="输出行">输出：真
+</p>
+</section>
+<section class="函数条" id="随机数生成器-下一个">
+<h3><code>下一个</code></h3>
+<p class="函数定义"><code>函数 下一个() -> 整64</code></p>
+<p>输出 整64 全域随机值（含负值=两补码位模式）。</p>
+<p><strong>返回</strong>　64 位伪随机整数。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">随机数生成器-下一个.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">随机数生成器 生 = 随机数生成器(9);
+整64 甲 = 生.下一个();
+整64 乙 = 生.下一个();
+打印(甲 != 乙);                     // 连续两值几乎必不同</code></pre></div>
+<p class="输出行">输出：真
+</p>
+</section>
+<section class="函数条" id="随机数生成器-下一个范围">
+<h3><code>下一个范围</code></h3>
+<p class="函数定义"><code>函数 下一个范围(整64 上限) -> 整64</code></p>
+<p>输出 <code>[0, 上限)</code> 的非负随机整数。取模法，上限不整除 2^63 时有极轻低值偏差（非加密用途可接受）。</p>
+<table class="表 参数表"><thead><tr><th>参数</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>上限</code></td><td><code>整64</code></td><td>排他上界（须 > 0）</td></tr></tbody></table>
+<p><strong>返回</strong>　[0, 上限) 内整数。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">随机数生成器-下一个范围.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">随机数生成器 生 = 随机数生成器(3);
+整64 骰子 = 生.下一个范围(6) + 1;   // 1~6
+打印(骰子 &gt;= 1 &amp;&amp; 骰子 &lt;= 6);</code></pre></div>
+<p class="输出行">输出：真
+</p>
+</section>
+<section class="函数条" id="随机数生成器-下一个浮点">
+<h3><code>下一个浮点</code></h3>
+<p class="函数定义"><code>函数 下一个浮点() -> 浮64</code></p>
+<p>输出 <code>[0.0, 1.0)</code> 均匀浮点（高 53 位构造，IEEE 754 精确）。</p>
+<p><strong>返回</strong>　[0.0, 1.0) 浮点。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">随机数生成器-下一个浮点.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">随机数生成器 生 = 随机数生成器(5);
+浮64 概率 = 生.下一个浮点();
+打印(概率 &gt;= 0.0 &amp;&amp; 概率 &lt; 1.0);</code></pre></div>
+<p class="输出行">输出：真
+</p>
+</section>
+<section class="函数条" id="随机数生成器-内部">
+<h3><code>旋转左 / 扩散混合</code> <span class="签 签-灰">内部</span></h3>
+<p class="函数定义"><code>（内部方法 × 2）</code></p>
+<p>xoshiro 旋转左（掩码清符号扩展）与 splitmix64 终端混合。读源码对照用。</p>
+</section>
+<h2 id="播种扩散">播种扩散</h2>
+<section class="函数条" id="播种扩散-函数">
+<h3><code>播种扩散</code></h3>
+<p class="函数定义"><code>函数 播种扩散(整64 熵源) -> 整64</code></p>
+<p>熵源混合便捷函数（质数乘 + 黄金常数回绕扩散）。典型用法：<code>生成器.播种(播种扩散(当前时间戳()))</code>——时间戳近邻值经扩散后远离，Rust SeedableRng 同构。</p>
+<table class="表 参数表"><thead><tr><th>参数</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>熵源</code></td><td><code>整64</code></td><td>原始熵（如时间戳×质数+计数器）</td></tr></tbody></table>
+<p><strong>返回</strong>　扩散后的种子。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">播种扩散-函数.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">随机数生成器 生 = 随机数生成器(0);
+生.播种(播种扩散(1700000000));
+打印(生.下一个范围(10) &gt;= 0);</code></pre></div>
+<p class="输出行">输出：真
+</p>
+</section><nav class="页脚导航"><a class="" href="../stdlib/math.html"><span class="向">← 上一页</span><span class="题">数学</span></a><a class="下一" href="../stdlib/thread.html"><span class="向">下一页 →</span><span class="题">线程</span></a></nav></article>
+    <aside class="目录" aria-label="本页目录">
+      <p class="目录-题">本页目录</p>
+<a href="#随机数生成器">随机数生成器</a><a href="#播种扩散">播种扩散</a>
+    </aside>
+  </div>
+</main>
+
+<footer class="页脚">
+  <div class="容器">
+    <div class="页脚-排">
+      <div>
+        <p class="页脚-标语">CN<span style="color: var(--color-accent);">·</span>语言</p>
+        <p class="页脚-述">全中文语法的系统级编程语言。以母语的直觉，驾驭机器的全部性能。</p>
+      </div>
+      <div>
+        <h4>语言</h4>
+        <ul>
+          <li><a href="../.././">官方文档</a></li>
+          <li><a href="../getting-started.html">快速开始</a></li>
+          <li><a href="../reference/">语言参考</a></li>
+          <li><a href="../stdlib.html">标准库</a></li>
+        </ul>
+      </div>
+      <div>
+        <h4>项目</h4>
+        <ul>
+          <li><a href="https://gitcode.com/ChenChao_GitCode/CN_Language" target="_blank" rel="noopener">源码仓库 ↗</a></li>
+          <li><a href="../../os/">CN-OS 蓝图</a></li>
+          <li><a href="../cli.html">命令行参考</a></li>
+        </ul>
+      </div>
+      <div>
+        <h4>状态</h4>
+        <ul>
+          <li>自举固定点已达成</li>
+          <li>v2 自举重建进行中</li>
+          <li>license：见仓库</li>
+        </ul>
+      </div>
+    </div>
+    <div class="页脚-底">
+      <span>© 2026 CN 语言项目</span>
+      <span>京ICP备00000000号（备案办理中·占位）</span>
+    </div>
+  </div>
+</footer>
+
+<script src="../../assets/cn-highlight.js?v=1"></script>
+<script src="../site.js?v=2"></script>
+</body>
+</html>
