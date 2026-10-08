@@ -555,48 +555,27 @@ void SemanticAnalyzer::registerGenericFuncInstance(
 // 子族B：Task 6.1 泛型函数调用单态化（原 visitCallExpr 312~383 段）：识别 名<类型>(实参)，
 //   实例化（instantiateGeneric 注册 名$实参）并重写 callee；登记 genericFuncInstances_。
 void SemanticAnalyzer::rewriteGenericFuncCall(CallExpr* node, std::string& calleeName) {
-        // ---- 317-a（T19②）：推断式泛型函数调用（无显式 <类型>） ----
-        // 场景：泛型函数体内嵌套泛型调用 两倍(T 值){ 返回 恒等(值); }——callee
-        //   无 <> 形态，原只有显式段（下方）处理 -> 裸名发射链接爆 `_恒等`
-        //   （26_generics 历史边界）。推断：实参类型（checkExpr）经
-        //   genericTypeParams_ 域替换（T -> 当前实例实参）后按位置对齐。
-        //   保守判据：参数表为纯泛型参（params.size()==typeParams.size()==
-        //   实参数 且每个 param->typeName == 对应 typeParams[i]）——含固定参/
-        //   引用参/函数指针参的混合形态不推断（显式 <> 仍可用），避免错位。
+        // ---- 317-a（T19②）+ 303（混合形态放宽）：推断式泛型函数调用 ----
+        // 场景①（317-a 原）：泛型函数体内嵌套泛型调用 两倍(T 值){ 返回 恒等(值); }
+        // 场景②（303·293 呈报#5）：用户代码 线性查找(值, 4, 30)——参数表为
+        //   混合形态（T* 数组 + 整64 固定参 + T），原「纯 T 参」保守判据不推断
+        //   →裸名「未声明的标识符」（新手高频卡点）。推导逻辑见
+        //   inferGenericArgs（generics.cpp·303 逐参数对齐：类型参数位从实参
+        //   推导·固定类型位可转换即可·函数指针位不参与；全部类型参数被约束且
+        //   一致才单态化，否则放弃——显式 <> 仍可用）。
         if (calleeName.find('<') == std::string::npos && !node->arguments.empty()) {
             const GenericInfo* gi = findGeneric(calleeName);
             if (gi != nullptr && gi->ast->innerFunc != nullptr) {
                 const FunctionDecl* src = gi->ast->innerFunc.get();
-                bool pureGeneric =
-                    src->params.size() == gi->typeParams.size() &&
-                    src->params.size() == node->arguments.size();
-                if (pureGeneric) {
-                    for (std::size_t pi = 0; pi < src->params.size(); ++pi) {
-                        if (src->params[pi]->funcPtr.isFunctionPtr() ||
-                            src->params[pi]->typeName != gi->typeParams[pi]) {
-                            pureGeneric = false;
-                            break;
-                        }
-                    }
-                }
-                if (pureGeneric) {
-                    std::vector<std::string> infArgs;
-                    infArgs.reserve(node->arguments.size());
-                    bool inferOk = true;
-                    for (auto& a : node->arguments) {
-                        std::string at = checkExpr(a.get());
-                        at = resolveGenericTypeName(at, node->location);
-                        if (at.empty() || at == "未知") { inferOk = false; break; }
-                        infArgs.push_back(types::canonical(at));
-                    }
-                    if (inferOk) {
-                        const std::string instName =
-                            instantiateGeneric(calleeName, infArgs, node->location);
-                        if (!instName.empty()) {
-                            registerGenericFuncInstance(instName, gi, infArgs);
-                            node->callee = std::make_unique<IdentifierExpr>(instName);
-                            calleeName = instName;
-                        }
+                std::vector<std::string> infArgs;
+                if (src->params.size() == node->arguments.size() &&
+                    inferGenericArgs(gi, src, node, infArgs)) {
+                    const std::string instName =
+                        instantiateGeneric(calleeName, infArgs, node->location);
+                    if (!instName.empty()) {
+                        registerGenericFuncInstance(instName, gi, infArgs);
+                        node->callee = std::make_unique<IdentifierExpr>(instName);
+                        calleeName = instName;
                     }
                 }
             }

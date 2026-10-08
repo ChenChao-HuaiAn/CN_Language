@@ -67,6 +67,67 @@ const GenericInfo* SemanticAnalyzer::findGeneric(const std::string& name) const 
     return (it == generics_.end()) ? nullptr : &it->second;
 }
 
+// 303 泛型实参推导：混合形态逐参数对齐（317-a 纯 T 参判据的放宽——293 呈报#5）。
+//   参数类型文本剥 */& 后缀后恰为某类型参数（T/T*/T&）→ 该位从实参推导
+//   （实参类型剥同款后缀；同一类型参数多位置须一致）；固定类型位（整64 等）
+//   实参 checkExpr 可转换即可（不推导）；函数指针位不参与推导（保守）。
+//   全部类型参数被约束且推导一致才成功；实参类型经 resolveGenericTypeName
+//   域替换（泛型函数体内嵌套调用 T -> 当前实例实参·317-a 场景保留）。
+bool SemanticAnalyzer::inferGenericArgs(const GenericInfo* gi, const FunctionDecl* src,
+                                        CallExpr* node,
+                                        std::vector<std::string>& infArgs) {
+    infArgs.assign(gi->typeParams.size(), std::string());
+    std::vector<bool> infBound(gi->typeParams.size(), false);
+    for (std::size_t pi = 0; pi < src->params.size(); ++pi) {
+        const std::string& ptype = src->params[pi]->funcPtr.isFunctionPtr()
+            ? src->params[pi]->funcPtr.toString()
+            : src->params[pi]->typeName;
+        std::string at = checkExpr(node->arguments[pi].get());
+        at = resolveGenericTypeName(at, node->location);
+        if (at.empty() || at == "未知") return false;
+        at = types::canonical(at);
+        // 数组实参 → 指针形参退化（001 §数组名作实参=退化为 T* 传参同口径）：
+        // 类型文本 剥 [N] 尾缀 加 *（T[4] 实参对 T* 形参位 → 按 T* 匹配推导）
+        const std::size_t brk = at.find('[');
+        if (brk != std::string::npos && at.back() == ']') {
+            at = at.substr(0, brk) + "*";
+        }
+        std::string base = ptype;
+        std::string suffix;
+        while (!base.empty() && (base.back() == '*' || base.back() == '&')) {
+            suffix = base.back() + suffix;
+            base.pop_back();
+        }
+        bool boundHere = false;
+        for (std::size_t k = 0; k < gi->typeParams.size(); ++k) {
+            if (base == gi->typeParams[k]) {
+                boundHere = true;
+                if (at.size() >= suffix.size() &&
+                    at.compare(at.size() - suffix.size(), suffix.size(), suffix) == 0) {
+                    const std::string deduced = at.substr(0, at.size() - suffix.size());
+                    if (!infBound[k]) {
+                        infArgs[k] = deduced;
+                        infBound[k] = true;
+                    } else if (infArgs[k] != deduced) {
+                        return false;   // 同一类型参数多位置推导冲突
+                    }
+                } else {
+                    return false;       // 实参形态与参数位不匹配（T* 位收非指针）
+                }
+                break;
+            }
+        }
+        if (!boundHere && src->params[pi]->funcPtr.isFunctionPtr()) {
+            return false;               // 函数指针位不参与推导（保守）
+        }
+        // 固定类型位：不推导（checkExpr 已完成类型检查）
+    }
+    for (std::size_t k = 0; k < infBound.size(); ++k) {
+        if (!infBound[k]) return false; // 未被任何参数位约束的类型参数
+    }
+    return true;
+}
+
 // 泛型实例化类型名替换（Task 3.8，E2E 26 修复）：
 //   名<实参>（如 容器<整32>）-> 实例化类名（容器$整32），触发单态化注册。
 //   非泛型类型原样返回（含 结果<T,E>/可选<T> 模板——走语义层降级路径）。

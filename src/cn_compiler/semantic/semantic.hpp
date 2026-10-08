@@ -876,6 +876,11 @@ private:
                            const SourceLocation& loc, const std::string& objectName);
     // 检查 如果 条件（结果.正常 / 可选.有值 检查跟踪，规则2）
     void trackIfCheck(IfStmt* node);
+    // 303 泛型实参推导：混合形态逐参数对齐（类型参数位从实参推导·固定类型位
+    //   checkExpr 可转换即可·函数指针位不参与）。返回是否推导成功；infArgs=
+    //   推导出的类型实参（typeParams 同序）。
+    bool inferGenericArgs(const GenericInfo* gi, const FunctionDecl* src,
+                          CallExpr* node, std::vector<std::string>& infArgs);
     // 301 守卫传导：识别条件子表达式为 结果.正常/可选.有值 形态（可含 ! 前缀）并
     //   markChecked 对应检查类型（取反翻转 正常↔错误）；命中记入 marked 供成对
     //   unmark。&& 复合条件左右两侧递归收集（右侧在左侧为真下短路求值，状态传导）。
