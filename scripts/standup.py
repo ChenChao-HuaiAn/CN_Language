@@ -85,17 +85,44 @@ def 看板与裁决() -> list[str]:
     return 行们
 
 
-def 看板自动claim() -> str:
-    """308j：开工自动登记看板意图（生命周期机械化之一）——当前树在任务分支
-    （分支名=任务/<号>）时向看板 claim 该号；主树/服务不可达均静默零打扰。"""
+def 看板自动claim() -> list[str]:
+    """308j：开工自动登记看板意图（生命周期机械化之一）；371 扩接棒兜底——
+    当前分支=任务/<号> 直接 claim；否则树名 wt<号> 且远端 任务/<号> 在飞且
+    服务端无该号在做活意图 → 接棒代 claim（integrate 组链切 batch 分支、
+    detached HEAD、接棒不跑 create 的树不再漏登记——深度机 348 接棒 40h
+    看板零可见实录·本机代登记兜底）。主树/服务不可达均静默零打扰；
+    他机活意图在做=撞号保护只提示不抢。"""
     import re
+    行们: list[str] = []
+
+    def 收登记输出(文本: str) -> list[str]:
+        return [l for l in 文本.strip().splitlines() if l.startswith(("[好]", "[黄]"))]
+
+    意图脚本 = str(本树根 / "scripts" / "intent.py")
     分支 = 跑(["git", "branch", "--show-current"]).strip()
     m = re.fullmatch(r"任务/([0-9]+[a-z]?)", 分支)
-    if not m:
-        return ""
-    r = 跑([sys.executable, "scripts/intent.py", "claim", m.group(1),
-            "--备注", "standup 开工自动登记"])
-    return r.strip().splitlines()[0] if r.strip() else ""
+    if m:
+        return 收登记输出(跑([sys.executable, 意图脚本, "claim",
+                              m.group(1), "--备注", "standup 开工自动登记"]))
+    tm = re.fullmatch(r"wt([0-9]+[a-z]?)", 本树根.name)
+    if not tm:
+        return 行们
+    号 = tm.group(1)
+    r = 跑(["git", "ls-remote", "--heads", "gitcode", f"refs/heads/任务/{号}"])
+    if not r.strip():
+        return 行们
+    try:
+        sys.path.insert(0, str(本树根 / "scripts"))
+        import intent as 看板
+        数据 = 看板.调服务("GET", "/api/board")
+    except Exception:
+        return 行们                       # 服务不可达：降级不阻断（308j 口径）
+    活主们 = [i["会话键"] for i in 数据.get("意图们", [])
+              if not i.get("失联") and i.get("在做", "") == 号]
+    if 活主们:
+        return [f"[看板] #{号} 已由 {'、'.join(活主们)} 声明在做——本树接棒不代登记（撞号保护）"]
+    return 收登记输出(跑([sys.executable, 意图脚本, "claim", 号,
+                          "--备注", f"standup 接棒自动登记（树 {本树根.name}·远端 任务/{号} 在飞）"]))
 
 
 def 主流程() -> int:
@@ -106,9 +133,7 @@ def 主流程() -> int:
                           if socket.gethostname().lower().startswith(k.lower())), "深度机")
     输出 = ["═" * 46, f" 开工简报·{机}·{socket.gethostname()}", "═" * 46]
     输出 += 落后提示()
-    claim行 = 看板自动claim()
-    if claim行:
-        输出.append(claim行)
+    输出 += 看板自动claim()
     输出 += 看板与裁决()
     输出 += 本机节(机)
     输出 += 教训高权重()
