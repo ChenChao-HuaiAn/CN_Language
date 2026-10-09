@@ -67,3 +67,4 @@ scripts/queue_state.db
 
 # 298：third-party=gtest 本地资产（不入库·实例树软链指主树——git clean -fdq 不得删）
 /third-party/
+scripts/board_state.db
