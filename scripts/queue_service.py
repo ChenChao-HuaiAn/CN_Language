@@ -16,9 +16,11 @@
 #   POST /api/touch   {分支}                    重报时刻（失败恢复重排队·保序不刷=幂等）
 #   POST /api/clear   {分支们:[…]}              集成销账清行
 #   POST /api/report  {ci_daemon 结果 JSON}     门禁结果上报
-#   POST /api/task_enqueue  {分支,sha,源分支?}    预验任务入队（幂等·已完成绿=直接复用·已完成红=重置重跑；
-#                                                 源分支=发起预验的任务分支·222 网页分支列显示用·缺省兼容旧客户端）
-#   POST /api/task_claim    {runner}             认领最旧排队任务（含回收心跳超时任务·原子）
+#   POST /api/task_enqueue  {分支,sha,源分支?,认领限制?}  预验任务入队（幂等·已完成绿=直接复用·已完成红=重置重跑；
+#                                                 源分支=发起预验的任务分支·222 网页分支列显示用·缺省兼容旧客户端；
+#                                                 认领限制=平台白名单逗号串（337·如 win-x64,linux-x86_64）·缺省 NULL=不限·291 混合池默认不变）
+#   POST /api/task_claim    {runner,平台?}       认领最旧排队任务（含回收心跳超时任务·原子；337 起自报平台=只领
+#                                                 不限或白名单含本平台的任务·旧客户端不报=空串只领不限任务·不会错跑）
 #   POST /api/task_heartbeat {runner,分支}        心跳续约
 #   POST /api/task_complete {runner,分支,绿,结果}  完成上报（校验认领者·防回收后旧 runner 复活覆盖）
 # 部署：/etc/systemd/system/cn-queue.service（Environment= 端口/令牌/DB 路径）。
@@ -68,6 +70,10 @@ def 建库() -> sqlite3.Connection:
         con.execute("ALTER TABLE 预验任务 ADD COLUMN 源分支 TEXT")
     except sqlite3.OperationalError:
         pass
+    try:   # 337 认领限制：平台白名单逗号串（NULL=不限·291 混合随机池默认不变）
+        con.execute("ALTER TABLE 预验任务 ADD COLUMN 认领限制 TEXT")
+    except sqlite3.OperationalError:
+        pass
     con.commit()
     return con
 
@@ -89,9 +95,10 @@ def 门禁快照(限: int = 20) -> list[dict]:
 
 def 预验任务快照() -> list[dict]:
     """预验任务池快照（不含 详情 大字段——integrate 取详情走 /api/task_result）。"""
-    行们 = con.execute("SELECT 序号,分支,sha,源分支,状态,认领者,绿,入队时刻,更新时刻 "
+    行们 = con.execute("SELECT 序号,分支,sha,源分支,状态,认领者,绿,认领限制,入队时刻,更新时刻 "
                        "FROM 预验任务 ORDER BY 序号 DESC LIMIT 50").fetchall()
-    return [dict(zip(("序号", "分支", "sha", "源分支", "状态", "认领者", "绿", "入队时刻", "更新时刻"), r))
+    return [dict(zip(("序号", "分支", "sha", "源分支", "状态", "认领者", "绿", "认领限制",
+                      "入队时刻", "更新时刻"), r))
             for r in 行们]
 
 
@@ -167,37 +174,47 @@ def 处理写(名: str, 数据: dict) -> dict:
             # 排队/执行中→不动。
             分支, sha = str(数据.get("分支", "")), str(数据.get("sha", ""))
             源分支 = str(数据.get("源分支", "")) or None   # 222：发起预验的任务分支（旧客户端不带=NULL）
+            # 337 认领限制：平台白名单逗号串（如 win-x64,linux-x86_64）——NULL/空=不限（291 混合池默认）
+            认领限制 = str(数据.get("认领限制", "")).strip() or None
             # 189 兜底入池：放宽 ci/兜底- 前缀（develop 兜底任务经池派发·非真 git 分支）
             if not (分支.startswith("ci/预验-") or 分支.startswith("ci/兜底-")) or len(sha) < 7:
                 return {"ok": False, "说明": "分支须 ci/预验-/ci/兜底- 开头且 sha 合法"}
             已有 = con.execute("SELECT 状态,绿 FROM 预验任务 WHERE 分支=?", (分支,)).fetchone()
             if 已有 is None:
-                con.execute("INSERT INTO 预验任务(分支,sha,源分支,状态,入队时刻,更新时刻) "
-                            "VALUES(?,?,?,'排队',?,?)", (分支, sha, 源分支, 时区时刻(), 时区时刻()))
+                con.execute("INSERT INTO 预验任务(分支,sha,源分支,认领限制,状态,入队时刻,更新时刻) "
+                            "VALUES(?,?,?,?,'排队',?,?)", (分支, sha, 源分支, 认领限制, 时区时刻(), 时区时刻()))
             elif 已有[0] == "完成" and not 已有[1] and not 分支.startswith("ci/兜底-"):
                 # 189：兜底任务完成红=终态（红结果已上门禁表·不重置）——防池内死循环重跑
                 #   （TX_02 下一周期 enqueue 幂等直达、runner 不再被派）；预验维持红=重置重跑
-                #   （同 sha CAS 重试路径·给 flaky 一次机会）。
+                #   （同 sha CAS 重试路径·给 flaky 一次机会）。337：认领限制随重发刷新（发起方最新意图为准）。
                 con.execute("UPDATE 预验任务 SET 状态='排队',认领者=NULL,心跳时戳=NULL,"
-                            "绿=NULL,详情=NULL,源分支=COALESCE(?,源分支),更新时刻=? WHERE 分支=?",
-                            (源分支, 时区时刻(), 分支))
+                            "绿=NULL,详情=NULL,源分支=COALESCE(?,源分支),认领限制=?,更新时刻=? WHERE 分支=?",
+                            (源分支, 认领限制, 时区时刻(), 分支))
         elif 名 == "task_claim":
             # 认领（写锁内原子）：①回收心跳超时的执行中任务→重置排队；②取最旧排队任务置执行中。
             runner = str(数据.get("runner", ""))
             if not runner:
                 return {"ok": False, "说明": "runner 标识缺失"}
+            # 337 认领限制：runner 自报平台（win-x64/linux-x86_64/linux-arm64·294 三分）——
+            #   只领「不限」或白名单含本平台的任务；旧客户端不报=空串→只领不限任务（不会错跑限制任务）。
+            平台337 = str(数据.get("平台", ""))
             现在 = int(time.time())
             con.execute("UPDATE 预验任务 SET 状态='排队',认领者=NULL,心跳时戳=NULL,更新时刻=? "
                         "WHERE 状态='执行中' AND 心跳时戳 IS NOT NULL AND 心跳时戳<?",
                         (时区时刻(), 现在 - 心跳超时秒))
             # 189 兜底池化：预验任务优先认领（集成吞吐保序）——池内同存 ci/预验-* 与
             #   ci/兜底-* 时先派预验（兜底=develop 已入库的稳态验证·晚跑无损）；无预验排队
-            #   才派兜底。零 schema 变更=按分支前缀两级查询。
+            #   才派兜底。零 schema 变更=按分支前缀两级查询。337：两级查询同带认领限制过滤
+            #   （兜底任务恒 NULL 不限=任何 runner 可领·门禁永不缺位）。
+            认领过滤337 = ("AND (认领限制 IS NULL OR 认领限制='' "
+                           "OR ','||认领限制||',' LIKE '%,'||?||',%')")
             行 = con.execute("SELECT 分支,sha FROM 预验任务 WHERE 状态='排队' AND 分支 LIKE 'ci/预验-%' "
-                             "ORDER BY 序号 LIMIT 1").fetchone()
+                             + 认领过滤337 + " ORDER BY 序号 LIMIT 1",
+                             (平台337,)).fetchone()
             if 行 is None:
                 行 = con.execute("SELECT 分支,sha FROM 预验任务 WHERE 状态='排队' "
-                                 "ORDER BY 序号 LIMIT 1").fetchone()
+                                 + 认领过滤337 + " ORDER BY 序号 LIMIT 1",
+                                 (平台337,)).fetchone()
             if 行 is None:
                 return {"ok": True, "任务": None}
             con.execute("UPDATE 预验任务 SET 状态='执行中',认领者=?,心跳时戳=?,更新时刻=? "
@@ -293,16 +310,16 @@ class 处理器(BaseHTTPRequestHandler):
                             % (r["分支"], r["基线"][:10], r["报名时刻"], r["状态"], r["写集摘要"][:60])
                             for r in 队列快照()) or "<tr><td colspan=5>空</td></tr>"
             任务行 = "".join(
-                "<tr><td>%s</td><td>%s</td><td>%s</td><td class='%s'>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>"
+                "<tr><td>%s</td><td>%s</td><td>%s</td><td class='%s'>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>"
                 % (r["源分支"] or r["分支"], r["sha"][:10], r["状态"],
                    ("绿" if r["绿"] else "红") if r["状态"] == "完成" and r["绿"] is not None else "",
                    ("绿" if r["绿"] else "红") if r["状态"] == "完成" and r["绿"] is not None else "—",
-                   r["认领者"] or "—", r["入队时刻"], r["更新时刻"])
-                for r in 预验任务快照()) or "<tr><td colspan=7>空</td></tr>"
+                   r["认领者"] or "—", r["认领限制"] or "不限", r["入队时刻"], r["更新时刻"])
+                for r in 预验任务快照()) or "<tr><td colspan=8>空</td></tr>"
             页 = (HTML页.replace("__门禁表__", "<table><tr><th>SHA</th><th>平台</th><th>结果</th>"
                   "<th>耗时</th><th>时刻</th></tr>" + 门禁行 + "</table>")
                   .replace("__任务表__", "<table><tr><th>分支</th><th>SHA</th><th>状态</th><th>结果</th>"
-                           "<th>认领者</th><th>入队</th><th>更新</th></tr>" + 任务行 + "</table>")
+                           "<th>认领者</th><th>认领限制</th><th>入队</th><th>更新</th></tr>" + 任务行 + "</table>")
                   .replace("__队列表__", "<table><tr><th>分支</th><th>基线</th><th>报名时刻</th>"
                            "<th>状态</th><th>写集</th></tr>" + 队列行 + "</table>")
                   .replace("__时刻__", 时区时刻()))
@@ -388,6 +405,30 @@ if __name__ == "__main__":
         处理写("task_enqueue", {"分支": "ci/预验-aaaa000002", "sha": "b" * 40})
         t = 处理写("task_claim", {"runner": "r5"})["任务"]
         断言(t and t["分支"] == "ci/预验-aaaa000002", "189 预验完成红维持重置重跑（flaky 机会·原语义）")
+
+        # ── 337 认领限制：平台白名单（runner 自报平台过滤·旧客户端只领不限任务） ──
+        处理写("task_enqueue", {"分支": "ci/预验-bbbb000003", "sha": "d" * 40,
+                                "认领限制": "win-x64,linux-x86_64"})
+        行337 = next(r2 for r2 in 预验任务快照() if r2["分支"] == "ci/预验-bbbb000003")
+        断言(行337["认领限制"] == "win-x64,linux-x86_64", "337 入队白名单已存（快照可见）")
+        断言(处理写("task_claim", {"runner": "r_arm", "平台": "linux-arm64"})["任务"] is None,
+             "337 白名单不含 arm64=arm64 runner 领不到（335 环境红定向规避）")
+        断言(处理写("task_claim", {"runner": "r_old"})["任务"] is None,
+             "337 旧客户端不报平台=只领不限任务（不会错跑限制任务）")
+        t = 处理写("task_claim", {"runner": "r_win", "平台": "win-x64"})["任务"]
+        断言(t and t["分支"] == "ci/预验-bbbb000003", "337 白名单含 win-x64=win runner 领到")
+        处理写("task_complete", {"runner": "r_win", "分支": "ci/预验-bbbb000003", "绿": False,
+                                 "结果": {"绿": False}})
+        处理写("task_enqueue", {"分支": "ci/预验-bbbb000003", "sha": "d" * 40})   # 重发不带限制→刷新不限
+        t = 处理写("task_claim", {"runner": "r_arm", "平台": "linux-arm64"})["任务"]
+        断言(t and t["分支"] == "ci/预验-bbbb000003", "337 完成红重发不带限制=刷新为不限（发起方最新意图）")
+        处理写("task_enqueue", {"分支": "ci/兜底-cccc000004", "sha": "e" * 40, "认领限制": "win-x64"})
+        断言(处理写("task_claim", {"runner": "r_arm", "平台": "linux-arm64"})["任务"] is None,
+             "337 兜底带白名单 win-x64 同被过滤（统一按任务语义·非按类豁免）")
+        处理写("task_enqueue", {"分支": "ci/兜底-dddd000005", "sha": "f" * 40})   # daemon 路径=不带限制
+        t = 处理写("task_claim", {"runner": "r_arm", "平台": "linux-arm64"})["任务"]
+        断言(t and t["分支"] == "ci/兜底-dddd000005", "337 兜底默认不限=任何 runner 可领（门禁永不缺位）")
+
         print("selftest %d 项全过" % n绑定[0])
         raise SystemExit(0)
 

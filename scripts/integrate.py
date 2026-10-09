@@ -80,6 +80,7 @@ from pathlib import Path
 预验远程分支前缀 = "ci/预验-"
 预验轮询间隔秒 = 60
 预验总超时分钟 = 75    # 含锁等待（TX_02 正跑 develop 轮时预验排队）+全量跑轮·留余量
+池空降级秒 = 300       # 排队 5 分钟无人认领=池空信号（1021·337 降级守卫同源判据）
 
 
 def 运行(命令: list[str], **kwargs) -> subprocess.CompletedProcess:
@@ -480,17 +481,18 @@ def 解析预验红用例们(结果文本):
     return _re.findall(r"✗\s+(\S+?):", 结果文本 or "")
 
 
-def 池轮询预验(预验分支: str, 链顶: str, 点名清单: list, 源分支: str = "") -> tuple[bool, str | None]:
+def 池轮询预验(预验分支: str, 链顶: str, 点名清单: list, 源分支: str = "",
+               认领限制: str = "") -> tuple[bool, str | None]:
     """1021 池路径轮询：TX_01 预验任务表 → 认领者（TX_02/家机实例）跑完→取详情判绿红。
     返回 (是否拿到结论, 拦截原因)：绿=(True,None)·红=(True,原因)；
     TX_01 连续 3 轮不可达、任务持续排队超 池空降级秒（=池空·无 runner 在）或总超时
-    =(False,None)——调用方降级 ssh 直发。源分支=222 防御性重入队时补带（网页分支列显示）。"""
+    =(False,None)——调用方降级 ssh 直发。源分支=222 防御性重入队时补带（网页分支列显示）。
+    认领限制=337 平台白名单逗号串（防御性重入队时随行补带·池空降级守卫判据）。"""
     import time as _time
     截止 = _time.time() + 预验总超时分钟 * 60
     连续失败 = 0
     排队起始: float | None = None
-    池空降级秒 = 300    # 排队 5 分钟无人认领=池空信号（TX_02 池化后 90s 内必认领；过渡期池空快速降级）
-    while _time.time() < 截止:
+    while _time.time() < 截止:   # 池空降级秒=模块级常量（337 提升可注入·集中区惯例）
         _time.sleep(预验轮询间隔秒)
         状态 = 服务调用("/api/state")
         if 状态 is None:
@@ -502,14 +504,24 @@ def 池轮询预验(预验分支: str, 链顶: str, 点名清单: list, 源分�
         连续失败 = 0
         行 = next((t for t in (状态.get("预验任务") or []) if t.get("分支") == 预验分支), None)
         if 行 is None:
-            # 任务行不在（服务重启丢表/异常裁剪）——重新入队防御
-            服务调用("/api/task_enqueue", {"分支": 预验分支, "sha": 链顶, "源分支": 源分支})
+            # 任务行不在（服务重启丢表/异常裁剪）——重新入队防御（337：认领限制随行补带）
+            重入队337 = {"分支": 预验分支, "sha": 链顶, "源分支": 源分支}
+            if 认领限制:
+                重入队337["认领限制"] = 认领限制
+            服务调用("/api/task_enqueue", 重入队337)
             continue
         if 行.get("状态") != "完成":
             if 行.get("状态") == "排队":
                 if 排队起始 is None:
                     排队起始 = _time.time()
                 elif _time.time() - 排队起始 > 池空降级秒:
+                    if 认领限制 and "linux-x86_64" not in 认领限制:
+                        # 337 降级守卫：限制不含 linux-x86_64（=TX_02 平台）时 ssh 直发违背
+                        #   发起方意图——守限制继续等（runner 上线即领·总超时仍兜底不黑洞）
+                        print(f"  [预验] 池内持续 5 分钟无人认领·认领限制 [{认领限制}] 不含 linux-x86_64"
+                              "——跳过 TX_02 降级·守限制继续等待")
+                        排队起始 = _time.time()   # 重置计时·每 5 分钟提醒一次
+                        continue
                     # 1026 降级竞态治理：取消池内排队行再降级——防后来 runner 认领到
                     #   已被 ssh 直发接手的任务（双跑浪费+池红记录误挂·d48b5c5f91 实录）
                     服务调用("/api/task_cancel", {"分支": 预验分支})
@@ -562,12 +574,23 @@ def 云端预验门禁(链顶: str, 参数: argparse.Namespace) -> str | None:
         # ── ① 池路径：入队（幂等·已完成绿直接复用不重跑）+轮询认领结果
         # 222：附带源分支（=本集成的任务分支）——TX_01 网页预验池「分支」列直接显示归属任务
         源分支 = 输出(["git", "branch", "--show-current"]) or "未知"
-        入队 = 服务调用("/api/task_enqueue", {"分支": 预验分支, "sha": 链顶, "源分支": 源分支})
+        # 337 认领限制：--pool-limit 平台白名单——任务只被白名单内平台 runner 认领，
+        #   定向规避已知环境红平台（335 单位机 arm64 老工具链）；缺省不限=291 混合池默认不变
+        认领限制 = ",".join(参数.pool_limit)
+        入队337 = {"分支": 预验分支, "sha": 链顶, "源分支": 源分支}
+        if 认领限制:
+            入队337["认领限制"] = 认领限制
+        入队 = 服务调用("/api/task_enqueue", 入队337)
         if 入队 is not None and 入队.get("ok"):
-            print(f"  [预验] 已入 TX_01 任务池（{预验分支}·源 {源分支}·多 runner 认领：谁空闲谁跑）")
-            拿到, 原因 = 池轮询预验(预验分支, 链顶, 参数.allow_pool_red, 源分支)
+            print(f"  [预验] 已入 TX_01 任务池（{预验分支}·源 {源分支}·认领限制 {认领限制 or '不限'}）")
+            拿到, 原因 = 池轮询预验(预验分支, 链顶, 参数.allow_pool_red, 源分支, 认领限制)
             if 拿到:
                 return 原因
+            if 认领限制 and "linux-x86_64" not in 认领限制:
+                # 337 降级守卫：池超时/不可达且限制不含 linux-x86_64——TX_02 直发违背限制，
+                #   不静默改平台重跑（同 sha 换平台口径不一致）·显式拦截并给出路
+                return (f"池路径超时/不可达·认领限制 [{认领限制}] 不含 linux-x86_64（TX_02 ssh 直发违背限制）"
+                        "——等待限制平台 runner 上线后重试·或修正 --pool-limit·或 --no-cloud-gate 逃生门。")
             print("  [预验] 池路径超时/不可达——降级 ssh 直发 TX_02（028 §四）……")
         else:
             print("  [预验] TX_01 池不可用——降级 ssh 直发 TX_02（028 §四）……")
@@ -1483,6 +1506,13 @@ def 主流程() -> int:
                              "披露放行（使用责任=发起机：点名依据+集成广播披露·不实可 revert）；"
                              "未点名红仍硬拦。场景=环境敏感用例（606 判零防线 WSL 池红 vs TX_02 门禁绿）"
                              "锁死集成链。可多次传入点名多个用例。")
+    解析器.add_argument("--pool-limit", action="append", default=[],
+                        metavar="平台",
+                        help="337 预验池认领限制（平台白名单）：任务只被白名单内平台 runner 认领"
+                             "（win-x64/linux-x86_64/linux-arm64·runner 运行时自报）——定向规避已知"
+                             "环境红平台（如 335 单位机 arm64 老工具链缺库自动链接支持）。可多次传入"
+                             "或逗号分隔；缺省不限=291 混合随机池默认不变。白名单不含 linux-x86_64 时"
+                             "池空不降级 TX_02 直发（守限制等待·总超时兜底）。")
     # v2 遗留旗标（581-a 废除·接受即忽略——v3 下「本机门禁绿即集成」本就是默认行为，
     # 保留解析仅为不炸他机旧命令行习惯）
     解析器.add_argument("--try-build-done", action="store_true",
@@ -1490,6 +1520,8 @@ def 主流程() -> int:
     解析器.add_argument("--win-verified", action="store_true",
                         help=argparse.SUPPRESS)
     参数 = 解析器.parse_args()
+    # 337：--pool-limit 支持逗号分隔（"win-x64,linux-x86_64"）与多次传入两形态归一
+    参数.pool_limit = [p.strip() for v in 参数.pool_limit for p in v.split(",") if p.strip()]
     # 941（用户裁决 2026-10-02）：快速通道默认开——--no-fast-lane 显式回退本机全量
     参数.fast_lane = not 参数.no_fast_lane
     # 1008（用户裁决 2026-10-03·方案甲）：云端预验门禁——1015 起**默认开**（develop 回绿

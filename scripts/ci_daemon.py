@@ -510,11 +510,13 @@ def 池调用(配置: dict, 操作: str, 数据: dict, 超时秒: int = 10):
 
 
 def 池认领任务() -> dict | None:
-    """向池认领一个预验任务（服务端写锁内原子+心跳超时回收）。无任务/池不可达/未配置 → None。"""
+    """向池认领一个预验任务（服务端写锁内原子+心跳超时回收）。无任务/池不可达/未配置 → None。
+    337：自报平台（win-x64/linux-x86_64/linux-arm64·294 三分运行时探测）——服务端按任务
+    认领限制过滤，只派给白名单含本平台的任务；缺省语义（不限任务）对旧/新 runner 完全一致。"""
     配置 = 池配置()
     if not 配置["池地址"]:
         return None
-    回 = 池调用(配置, "task_claim", {"runner": runner标识})
+    回 = 池调用(配置, "task_claim", {"runner": runner标识, "平台": 平台})
     if 回 and 回.get("ok"):
         return 回.get("任务")
     return None
