@@ -21,8 +21,6 @@
  "src/cn_compiler/codegen/arm64/arm64_instructions.cpp": 1269,
  "src/cn_compiler/codegen/linux_x64/linux_x64_instructions.cpp": 1173,
  "src/cn_compiler/codegen/x64/x64_instructions.cpp": 1240,
- "src/cn_compiler/ir/ir.hpp": 1092,
- "src/cn_compiler/ir/ir_stmt_decl.cpp": 1110,
- "src/cn_compiler/semantic/semantic_call.cpp": 1265,
- "src/cn_compiler/semantic/semantic_expr_op.cpp": 1029
+ "src/cn_compiler/ir/ir.hpp": 1133,
+ "src/cn_compiler/semantic/semantic_call.cpp": 1265
 }

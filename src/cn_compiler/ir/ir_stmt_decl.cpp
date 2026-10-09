@@ -3,25 +3,50 @@
 //   genVarDecl —— AST VarDecl -> IR：泛型实例化类型名替换 / 初始化器分派
 //   （字面量/结构体构造/容器/字符串深拷）/ RAII 登记（串/类/字段/串数组）/ 静态变量 /
 //   块级作用域基线与零初始化兜底。
+// 350 重构E2（函数级拆分）：genVarDecl 原单函数约 1092 行按节拆为 IRGenerator
+//   私有方法族——函数体逐字搬移零语义变更；段间共享状态打包 DeclGenCtx 传递；
+//   方法顺序=原单函数逐节顺序（零重排）。
 #include <cstdint>
 #include <cstdio>
 #include <string>
 #include <utility>
 
 #include "cn_compiler/ir/ir.hpp"
+#include "cn_compiler/ir/ir_stmt_decl_ctx.hpp"
 #include "cn_compiler/model/semantic_view.hpp"
 #include "cn_compiler/model/type_system.hpp"
 
 namespace cn_compiler {
 
+// 变量声明（Alloca + Store）——350 拆分后为按序分发的调度器：
+//   各节通道见下方族方法（调用顺序=原单函数逐节顺序·零重排）。
 void IRGenerator::genVarDecl(VarDecl* node) {
-    // 320-a（T41 甲·C static local 同款）：函数内静态局部=静态全局化（.data 槽
-    //   ?gstatic_$静态$函数名$名·87-a/P3-8 通道复用）——原按普通局部每次调用重
-    //   Store 初值=跨调用状态丢失（步进 2_2_2 应 2_4_6 实锤）。
-    // 061-b（804 轮）值语义扩面=guard 首次执行初始化（C++ static guard 同款·时机
-    //   =首次执行到声明处·入口注入=语义妥协不做）：浮点/布尔/字符/字符串/结构体
-    //   （用户+合成体）+标量运行期初值·主槽+guard 布尔槽双 .data 符号·读写左值走
-    //   既有 320-a isStaticLocal 通道；类/容器/数组维持诊断拒绝（87-a 立账面）。
+    if (genStaticLocalDecl(node)) return;           // 320-a/061-b 静态局部通道
+    rewriteGenericInstanceTypeName(node);           // 阶段3 泛型实例化类型名替换
+    backfillCtorLiteralTypeName(node);              // D1 构造字面量类型回填
+    DeclGenCtx ctx;
+    resolveDeclTypesAndAlloc(node, ctx);            // 源码类型/IR类型推断+槽分配
+    registerOwnedArrayElems(ctx);                   // 98-a/955 数组元素 RAII 名单
+    if (tryGenReferenceBinding(node, ctx)) return;  // P3-18 引用变量绑定
+    registerOopRaii(node, ctx);                     // OOP/串/字段 RAII 名单登记
+    if (genArrayInitListDecl(node, ctx)) return;    // 数组初始化列表 { 1, 2, 3 }
+    if (genStructInitListDecl(node, ctx)) return;   // 结构体初始化 类型名{...}
+    if (genExprInitializer(node, ctx)) return;      // 普通表达式初始值
+    genClassDefaultConstruct(node, ctx);            // H7 类变量无初始化器兜底
+    genStructZeroInit(node, ctx);                   // 缺陷2 结构体零初始化兜底
+    genArrayZeroInit(node, ctx);                    // 缺陷B 数组零初始化兜底
+}
+
+// ---- 族①：函数内静态局部变量通道（320-a/061-b）----
+// 320-a（T41 甲·C static local 同款）：函数内静态局部=静态全局化（.data 槽
+//   ?gstatic_$静态$函数名$名·87-a/P3-8 通道复用）——原按普通局部每次调用重
+//   Store 初值=跨调用状态丢失（步进 2_2_2 应 2_4_6 实锤）。
+// 061-b（804 轮）值语义扩面=guard 首次执行初始化（C++ static guard 同款·时机
+//   =首次执行到声明处·入口注入=语义妥协不做）：浮点/布尔/字符/字符串/结构体
+//   （用户+合成体）+标量运行期初值·主槽+guard 布尔槽双 .data 符号·读写左值走
+//   既有 320-a isStaticLocal 通道；类/容器/数组维持诊断拒绝（87-a 立账面）。
+// true = 已处理（genVarDecl 直接返回）。
+bool IRGenerator::genStaticLocalDecl(VarDecl* node) {
     if (node->isStatic && function_ != nullptr && !function_->name.empty() &&
         !node->funcPtr.isFunctionPtr() && !node->name.empty()) {
         const std::string key = "$静态$" + function_->name + "$" + node->name;
@@ -48,40 +73,40 @@ void IRGenerator::genVarDecl(VarDecl* node) {
                 DiagnosticLevel::Error, node->location,
                 "静态局部变量暂不支持类/容器/数组类型（'" + node->name + "'：" +
                     node->typeName + "）——指针槽/聚合形态待后续支持");
-            return;
+            return true;
         }
-        // ---- 标量整数直存通道（320-a 现状：整数字面量 .data 直存零开销）----
-        // 061-b：非字面量整数初值改落 guard 通道（原诊断拒绝=运行期初值缺口）
-        if (scalarInt && (node->initializer == nullptr ||
-                          node->initializer->getType() ==
-                              NodeType::IntegerLiteral)) {
-            std::string initText = "0";
-            if (node->initializer != nullptr) {
-                initText = std::to_string(
-                    static_cast<IntegerLiteral*>(node->initializer.get())->value);
-            }
-            module_->globalStatics[key] = stType;
-            // codegen .data 初值：globalStaticInits（字面量文本）
-            //（与顶层静态字面量同通道——87-a）
-            module_->globalStaticInits[key] = initText;
-            // varStack 登记（读写路径按 isStaticLocal 走全局符号）
-            if (!varStack_.empty()) {
-                VarEntry e;
-                e.uniqueName = key;
-                e.type = stType;
-                e.srcType = srcTypeRaw;
-                e.isStaticLocal = true;
-                varStack_.back()[node->name] = e;
-            }
-            return;
+        if (genStaticLocalScalarDirect(node, key, srcTypeRaw, stType,
+                                       scalarInt)) {
+            return true;
         }
-        // ---- guard 首次执行初始化通道（061-b 值语义域）----
-        // .data：主槽=语义文本（codegen 按类型宽发射·87-a ①）+ guard 布尔槽
-        //（零占位=未初始化；globalStaticInits 不登记=运行期初始化）。
-        const SourceLocation sloc = node->location;
-        const std::string guardKey = key + "$已初始化";
-        module_->globalStatics[key] = srcTypeRaw;
-        module_->globalStatics[guardKey] = "i1";
+        genStaticLocalGuardInit(node, key, srcTypeRaw, stType, canonCore,
+                                guardStruct, guardString);
+        return true;
+    }
+    return false;
+}
+
+// 320-a 标量整数直存通道（原 genVarDecl 同名节）：
+//   整数字面量 .data 直存零开销。061-b：非字面量整数初值改落 guard 通道
+//   （原诊断拒绝=运行期初值缺口）。true = 已处理。
+bool IRGenerator::genStaticLocalScalarDirect(VarDecl* node,
+                                             const std::string& key,
+                                             const std::string& srcTypeRaw,
+                                             const std::string& stType,
+                                             bool scalarInt) {
+    if (scalarInt && (node->initializer == nullptr ||
+                      node->initializer->getType() ==
+                          NodeType::IntegerLiteral)) {
+        std::string initText = "0";
+        if (node->initializer != nullptr) {
+            initText = std::to_string(
+                static_cast<IntegerLiteral*>(node->initializer.get())->value);
+        }
+        module_->globalStatics[key] = stType;
+        // codegen .data 初值：globalStaticInits（字面量文本）
+        //（与顶层静态字面量同通道——87-a）
+        module_->globalStaticInits[key] = initText;
+        // varStack 登记（读写路径按 isStaticLocal 走全局符号）
         if (!varStack_.empty()) {
             VarEntry e;
             e.uniqueName = key;
@@ -90,77 +115,103 @@ void IRGenerator::genVarDecl(VarDecl* node) {
             e.isStaticLocal = true;
             varStack_.back()[node->name] = e;
         }
-        // if (!guard) { <初值写主槽>; guard = 1; }
-        ir::IRValue guardAddr = emitResult(ir::Opcode::ConstString, {}, "ptr",
-                                           "?gstatic_" + guardKey, sloc);
-        ir::IRValue guardVal =
-            emitResult(ir::Opcode::LoadPtr, {guardAddr}, "i1", "", sloc);
-        const std::string initLabel = "bb" + std::to_string(blockCounter_++);
-        const std::string endLabel = "bb" + std::to_string(blockCounter_++);
-        endBranch(guardVal.toString(), endLabel, initLabel);
-        setCurrentBlock(newBlock(initLabel));
-        ir::IRValue slotAddr = emitResult(ir::Opcode::ConstString, {}, "ptr",
-                                          "?gstatic_" + key, sloc);
-        if (node->initializer != nullptr) {
-            Expr* initExpr = node->initializer.get();
-            if (guardStruct) {
-                // 结构体/合成体：与顶层静态 87-a ①② 同款三分派
-                if (initExpr->getType() == NodeType::StructInitExpr) {
-                    emitStructInitTo(
-                        static_cast<StructInitExpr*>(initExpr), slotAddr, sloc);
-                } else {
-                    // 内置构造器（正常/错误/某些）上下文类型——061-c 同款
-                    //（handleResultCtor 依赖 resolvedType 脱糖）
-                    if (initExpr->getType() == NodeType::CallExpr) {
-                        CallExpr* initCall = static_cast<CallExpr*>(initExpr);
-                        if (initCall->callee->getType() ==
-                                NodeType::IdentifierExpr &&
-                            initCall->resolvedType.empty()) {
-                            const std::string calleeName =
-                                static_cast<IdentifierExpr*>(
-                                    initCall->callee.get())
-                                    ->name;
-                            if (calleeName == "正常" || calleeName == "错误" ||
-                                calleeName == "某些") {
-                                initCall->resolvedType = srcTypeRaw;
-                            }
+        return true;
+    }
+    return false;
+}
+
+// 061-b guard 首次执行初始化通道（原 genVarDecl 同名节）：
+// .data：主槽=语义文本（codegen 按类型宽发射·87-a ①）+ guard 布尔槽
+//（零占位=未初始化；globalStaticInits 不登记=运行期初始化）。
+void IRGenerator::genStaticLocalGuardInit(VarDecl* node, const std::string& key,
+                                          const std::string& srcTypeRaw,
+                                          const std::string& stType,
+                                          const std::string& canonCore,
+                                          bool guardStruct, bool guardString) {
+    const SourceLocation sloc = node->location;
+    const std::string guardKey = key + "$已初始化";
+    module_->globalStatics[key] = srcTypeRaw;
+    module_->globalStatics[guardKey] = "i1";
+    if (!varStack_.empty()) {
+        VarEntry e;
+        e.uniqueName = key;
+        e.type = stType;
+        e.srcType = srcTypeRaw;
+        e.isStaticLocal = true;
+        varStack_.back()[node->name] = e;
+    }
+    // if (!guard) { <初值写主槽>; guard = 1; }
+    ir::IRValue guardAddr = emitResult(ir::Opcode::ConstString, {}, "ptr",
+                                       "?gstatic_" + guardKey, sloc);
+    ir::IRValue guardVal =
+        emitResult(ir::Opcode::LoadPtr, {guardAddr}, "i1", "", sloc);
+    const std::string initLabel = "bb" + std::to_string(blockCounter_++);
+    const std::string endLabel = "bb" + std::to_string(blockCounter_++);
+    endBranch(guardVal.toString(), endLabel, initLabel);
+    setCurrentBlock(newBlock(initLabel));
+    ir::IRValue slotAddr = emitResult(ir::Opcode::ConstString, {}, "ptr",
+                                      "?gstatic_" + key, sloc);
+    if (node->initializer != nullptr) {
+        Expr* initExpr = node->initializer.get();
+        if (guardStruct) {
+            // 结构体/合成体：与顶层静态 87-a ①② 同款三分派
+            if (initExpr->getType() == NodeType::StructInitExpr) {
+                emitStructInitTo(
+                    static_cast<StructInitExpr*>(initExpr), slotAddr, sloc);
+            } else {
+                // 内置构造器（正常/错误/某些）上下文类型——061-c 同款
+                //（handleResultCtor 依赖 resolvedType 脱糖）
+                if (initExpr->getType() == NodeType::CallExpr) {
+                    CallExpr* initCall = static_cast<CallExpr*>(initExpr);
+                    if (initCall->callee->getType() ==
+                            NodeType::IdentifierExpr &&
+                        initCall->resolvedType.empty()) {
+                        const std::string calleeName =
+                            static_cast<IdentifierExpr*>(
+                                initCall->callee.get())
+                                ->name;
+                        if (calleeName == "正常" || calleeName == "错误" ||
+                            calleeName == "某些") {
+                            initCall->resolvedType = srcTypeRaw;
                         }
                     }
-                    ir::IRValue src = genExpr(initExpr);
-                    emitStructCopyWithFields(slotAddr, src, canonCore, sloc,
-                                             /*preFree=*/false,
-                                             /*deepCopy=*/false);
                 }
-            } else if (guardString) {
-                // 字符串：来源分级归一化（87-a ③同款：字面量=驻留零分配/
-                // 拥有返回=接管/借用来源=复制落堆）
-                ir::IRValue val = genExpr(initExpr);
-                ir::IRValue norm =
-                    normalizeStringValueSource(initExpr, val, sloc);
-                emit(ir::Opcode::StorePtr, {slotAddr, norm}, ir::IRValue(), "",
-                     "ptr", sloc);
-            } else {
-                // 标量（浮点/布尔/字符/整数运行期初值）：自然宽度 Cast+StorePtr
-                ir::IRValue val = genExpr(initExpr);
-                if (val.type != stType && !stType.empty()) {
-                    val = emitResult(ir::Opcode::Cast, {val}, stType, "", sloc);
-                }
-                emit(ir::Opcode::StorePtr, {slotAddr, val}, ir::IRValue(), "",
-                     stType, sloc);
+                ir::IRValue src = genExpr(initExpr);
+                emitStructCopyWithFields(slotAddr, src, canonCore, sloc,
+                                         /*preFree=*/false,
+                                         /*deepCopy=*/false);
             }
+        } else if (guardString) {
+            // 字符串：来源分级归一化（87-a ③同款：字面量=驻留零分配/
+            // 拥有返回=接管/借用来源=复制落堆）
+            ir::IRValue val = genExpr(initExpr);
+            ir::IRValue norm =
+                normalizeStringValueSource(initExpr, val, sloc);
+            emit(ir::Opcode::StorePtr, {slotAddr, norm}, ir::IRValue(), "",
+                 "ptr", sloc);
+        } else {
+            // 标量（浮点/布尔/字符/整数运行期初值）：自然宽度 Cast+StorePtr
+            ir::IRValue val = genExpr(initExpr);
+            if (val.type != stType && !stType.empty()) {
+                val = emitResult(ir::Opcode::Cast, {val}, stType, "", sloc);
+            }
+            emit(ir::Opcode::StorePtr, {slotAddr, val}, ir::IRValue(), "",
+                 stType, sloc);
         }
-        // guard = 1（无初值也置位：零值语义一次判定）
-        ir::IRValue one =
-            emitResult(ir::Opcode::ConstInt, {}, "i1", "1", sloc);
-        emit(ir::Opcode::StorePtr, {guardAddr, one}, ir::IRValue(), "", "i1",
-             sloc);
-        endJump(endLabel);
-        setCurrentBlock(newBlock(endLabel));
-        return;
     }
-    // 阶段3（Task 3.8，E2E 26 修复）：泛型实例化类型名替换——
-    //   盒子<整32> -> 盒子$整32（语义层已单态化注册，IR 层按实例化类符号名
-    //   （类名$实参）字符串映射，使类初始化/NewObject 存储路径命中 findClass）。
+    // guard = 1（无初值也置位：零值语义一次判定）
+    ir::IRValue one =
+        emitResult(ir::Opcode::ConstInt, {}, "i1", "1", sloc);
+    emit(ir::Opcode::StorePtr, {guardAddr, one}, ir::IRValue(), "", "i1",
+         sloc);
+    endJump(endLabel);
+    setCurrentBlock(newBlock(endLabel));
+}
+
+// ---- 族②：阶段3（Task 3.8，E2E 26 修复）泛型实例化类型名替换 ----
+//   盒子<整32> -> 盒子$整32（语义层已单态化注册，IR 层按实例化类符号名
+//   （类名$实参）字符串映射，使类初始化/NewObject 存储路径命中 findClass）。
+void IRGenerator::rewriteGenericInstanceTypeName(VarDecl* node) {
     if (semantic_ != nullptr && !node->funcPtr.isFunctionPtr() &&
         !node->typeName.empty()) {
         const std::size_t genLt = node->typeName.find('<');
@@ -193,28 +244,36 @@ void IRGenerator::genVarDecl(VarDecl* node) {
             }
         }
     }
-    // D1 根治（2026-09-09 第四十六轮）：变量 q = 点{...} 推断声明位——构造字面量
-    //   自带类型名（语义层 visitStructInitExpr 已按模块解析改写），提前回填
-    //   node->typeName 使 srcType/槽类型/结构体初始化分支/成员寻址全链取到真实
-    //   类型。原推断枚举（下方字面量分支族）无 StructInitExpr 分支：irType 兜底
-    //   i32 单槽 + srcType 空——初始化分支按空 typeName 查表失败静默零填，
-    //   成员寻址退化（读=常量0/写=丢字段偏移，E2E 183 探针实锤）。
-    //   Rust 同构：let 绑定从值表达式取类型，声明位与赋值位同一 lowering。
+}
+
+// ---- 族③：D1 根治（2026-09-09 第四十六轮）构造字面量类型回填 ----
+//   变量 q = 点{...} 推断声明位——构造字面量自带类型名（语义层
+//   visitStructInitExpr 已按模块解析改写），提前回填 node->typeName 使
+//   srcType/槽类型/结构体初始化分支/成员寻址全链取到真实类型。原推断枚举
+//   （下方字面量分支族）无 StructInitExpr 分支：irType 兜底 i32 单槽 +
+//   srcType 空——初始化分支按空 typeName 查表失败静默零填，成员寻址退化
+//   （读=常量0/写=丢字段偏移，E2E 183 探针实锤）。
+//   Rust 同构：let 绑定从值表达式取类型，声明位与赋值位同一 lowering。
+void IRGenerator::backfillCtorLiteralTypeName(VarDecl* node) {
     if (semantic_ != nullptr && node->typeName.empty() && !node->funcPtr.isFunctionPtr() &&
         node->initializer != nullptr &&
         node->initializer->getType() == NodeType::StructInitExpr) {
         node->typeName =
             static_cast<StructInitExpr*>(node->initializer.get())->typeName;
     }
-    // 源码类型（Task 2.4：整32* / 整32[5] 复合类型保留用于元素类型推断/数组槽数）
-    // Task 6.1（泛型函数实例化）：T/T*/结果<T,E> 等类型参数替换为实参类型
-    //   （交换<整32> 函数体内 `T 临时`、`数据[位置]` 的元素类型推断须用实参类型）
-    // 337-a（T53 家系）：函数指针变量的源码类型登记**完整规范串**
-    //   （`函数指针<返回>(参数,...)`，与语义层同格式）——原登记字面量
-    //   `函数指针`（丢形参列表）＝半截机制：间接调用点无法取得形参类型，
-    //   i128 形参的窄整实参宽化（widenI128Args）无从判定 → 字面量实参按
-    //   i64 直传、被调方按 i128 指针 ABI 解引用 SIGSEGV（探针 p_fnptr）。
-    //   mapType 对 `函数指针<` 前缀已归 ptr（ir.cpp 同款既有特判）＝零回归。
+}
+
+// ---- 族④：源码类型/函数指针登记 + IR 类型推断 + 变量槽分配 ----
+// 源码类型（Task 2.4：整32* / 整32[5] 复合类型保留用于元素类型推断/数组槽数）
+// Task 6.1（泛型函数实例化）：T/T*/结果<T,E> 等类型参数替换为实参类型
+//   （交换<整32> 函数体内 `T 临时`、`数据[位置]` 的元素类型推断须用实参类型）
+// 337-a（T53 家系）：函数指针变量的源码类型登记**完整规范串**
+//   （`函数指针<返回>(参数,...)`，与语义层同格式）——原登记字面量
+//   `函数指针`（丢形参列表）＝半截机制：间接调用点无法取得形参类型，
+//   i128 形参的窄整实参宽化（widenI128Args）无从判定 → 字面量实参按
+//   i64 直传、被调方按 i128 指针 ABI 解引用 SIGSEGV（探针 p_fnptr）。
+//   mapType 对 `函数指针<` 前缀已归 ptr（ir.cpp 同款既有特判）＝零回归。
+void IRGenerator::resolveDeclTypesAndAlloc(VarDecl* node, DeclGenCtx& ctx) {
     const std::string srcTypeRaw = funcPtrAwareSrcType(node->funcPtr, node->typeName);
     const std::string srcType = substGenericType(srcTypeRaw);
     // 类型推断：无显式类型时按初始值（阶段一简化）
@@ -260,38 +319,49 @@ void IRGenerator::genVarDecl(VarDecl* node) {
     }
     // 分配变量槽（数组自动多槽：registerVarSlots 按数组长度预留）
     allocVar(node->name, irType, srcType, node->location);
-    const std::string unique = lookupVarName(node->name);
+    ctx.unique = lookupVarName(node->name);
+    ctx.srcType = srcType;
+    ctx.irType = irType;
+}
+
+// ---- 族⑤：98-a/955 数组元素 RAII 名单登记 ----
+void IRGenerator::registerOwnedArrayElems(const DeclGenCtx& ctx) {
     // 98-a（C9, 2026-09-13 第九十八轮）：字符串元素数组登记——**须在数组初始化
     //   列表分支（该分支以 return 结束）之前**（首版置于函数后段=带初始化列表的
     //   数组声明不可达、产物零 __cn_str_free，asm 实证）；块出口/跳出/函数尾
     //   逐元素 __cn_str_free（元素=字符串；宿主 79-a 靶子面「数组元素残留 2」收口）
-    if (semantic_ != nullptr && types::isArray(srcType) && !unique.empty() &&
-        types::arrayElemOf(types::canonical(srcType)) == "字符串") {
-        ownedStrArrayOrder_.push_back(unique);
+    if (semantic_ != nullptr && types::isArray(ctx.srcType) && !ctx.unique.empty() &&
+        types::arrayElemOf(types::canonical(ctx.srcType)) == "字符串") {
+        ownedStrArrayOrder_.push_back(ctx.unique);
     }
     // 955（008 总攻·六位置余三）：**类容器元素数组**同名单登记——出口按元素
     //   类型分派（字符串=free；类容器=Call 元素类析构〔this=元素地址·内联体
     //   不 DeleteObject——析构释放内部数据指针〕）。p2d 实证：赋值/方法调用
     //   健康但块收尾不回基线=元素内部资源泄漏（98-a 只覆盖字符串元素）。
-    if (semantic_ != nullptr && types::isArray(srcType) && !unique.empty()) {
+    if (semantic_ != nullptr && types::isArray(ctx.srcType) && !ctx.unique.empty()) {
         const std::string elemCanon955 =
-            types::canonical(types::arrayElemOf(types::canonical(srcType)));
+            types::canonical(types::arrayElemOf(types::canonical(ctx.srcType)));
         if (semantic_->isClassType(elemCanon955)) {
             const ClassInfo* eci955 = semantic_->findClass(elemCanon955);
             if (eci955 != nullptr) {
                 for (const auto& mk : eci955->methods) {
                     if (mk.second.isDestructor) {
-                        ownedStrArrayOrder_.push_back(unique);
+                        ownedStrArrayOrder_.push_back(ctx.unique);
                         break;
                     }
                 }
             }
         }
     }
-    // P3-18：引用变量（整32& r = x）——槽存被引用左值地址，条目 byRef=true
-    //   （读/写/&r 经 Load/StorePtr 解引用；与 [&] 引用捕获同机制，codegen 已支持）
-    //   P3-18 补完：绑定目标扩充到下标/解引用/成员/引用返回调用（同样取左值地址）。
-    if (types::isReference(srcType) && node->initializer != nullptr) {
+}
+
+// ---- 族⑥：P3-18 引用变量绑定（整32& r = x）----
+//   槽存被引用左值地址，条目 byRef=true（读/写/&r 经 Load/StorePtr 解引用；
+//   与 [&] 引用捕获同机制，codegen 已支持）。P3-18 补完：绑定目标扩充到
+//   下标/解引用/成员/引用返回调用（同样取左值地址）。true = 已处理
+//  （genVarDecl 直接返回——引用变量初始化即完成，不再按值 Store 常规路径）。
+bool IRGenerator::tryGenReferenceBinding(VarDecl* node, const DeclGenCtx& ctx) {
+    if (types::isReference(ctx.srcType) && node->initializer != nullptr) {
         const NodeType it = node->initializer->getType();
         const bool callInit = (it == NodeType::CallExpr);
         const bool lvalueForm = (it == NodeType::IdentifierExpr ||
@@ -305,7 +375,7 @@ void IRGenerator::genVarDecl(VarDecl* node) {
                     found->second.byRef = true;
                     // 与引用参数（ir_decl 同规则）：体内"值类型" = 被引用基础类型
                     //   （读取 byRef 解引用 LoadPtr 返回基础类型值，非 ptr）
-                    found->second.type = mapType(types::stripRef(srcType));
+                    found->second.type = mapType(types::stripRef(ctx.srcType));
                     break;
                 }
             }
@@ -316,7 +386,7 @@ void IRGenerator::genVarDecl(VarDecl* node) {
                 const std::string initUnique = lookupVarName(initIdent->name);
                 if (initUnique.empty()) {
                     // 防御：找不到被引用变量则终止本分支（语义层已报错）
-                    return;
+                    return true;
                 }
                 targetAddr = emitResult(
                     ir::Opcode::AddrOf,
@@ -334,48 +404,57 @@ void IRGenerator::genVarDecl(VarDecl* node) {
                 targetAddr = lvalueAddress(node->initializer.get());
             }
             emit(ir::Opcode::Store, {targetAddr}, ir::IRValue(),
-                 unique, "ptr", node->location);
+                 ctx.unique, "ptr", node->location);
             // 引用变量初始化即完成（不再按值 Store 常规路径）
-            return;
+            return true;
         }
     }
+    return false;
+}
+
+// ---- 族⑦：变量源码类型登记（OOP 析构扫描用）+ 块级 RAII 名单 ----
+void IRGenerator::registerOopRaii(VarDecl* node, const DeclGenCtx& ctx) {
     // 登记变量源码类型（OOP 析构扫描用：类类型局部变量有析构函数时函数收尾 DeleteObject）
     // H8-5（容器持有类对象，2026-08-25）：类名 顶层 = 容器.元素(i) 为非拥有式
     //   视图（顶层 指向容器数组内联元素，非独立堆对象）——跳过析构登记，避免
     //   RAII DeleteObject 释放数组内指针（双重释放 0xC0000374）。容器负责元素
     //   生命周期（追加深拷贝/弹出销毁）。
-    if (!unique.empty() && !isContainerElementView(node->initializer.get())) {
-        oopVarSrcTypes_[unique] = srcType;
+    if (!ctx.unique.empty() && !isContainerElementView(node->initializer.get())) {
+        oopVarSrcTypes_[ctx.unique] = ctx.srcType;
         // 72-a（2026-09-11 第七十二轮）：块级作用域 RAII 名单登记——本块声明的
         //   拥有串/类对象在 genBlock 出口释放（此前仅函数级=循环体中间迭代泄漏）。
         //   污染名（借用视图）同样登记：名单只管作用域范围，释放侧统一按
         //   stringTainted_ 跳过污染名（登记+跳过 双保险，宁可不释放保安全），
         //   保证名单截断逻辑对污染名同样正确回卷。
-        if (srcType == "字符串") {
-            ownedStringOrder_.push_back(unique);
-        } else if (semantic_ != nullptr && !srcType.empty() &&
-                   semantic_->isClassType(types::canonical(srcType))) {
-            ownedClassOrder_.push_back(unique);
-        } else if (semantic_ != nullptr && !srcType.empty() &&
-                   !ownedStrFieldsOf(srcType).empty()) {
+        if (ctx.srcType == "字符串") {
+            ownedStringOrder_.push_back(ctx.unique);
+        } else if (semantic_ != nullptr && !ctx.srcType.empty() &&
+                   semantic_->isClassType(types::canonical(ctx.srcType))) {
+            ownedClassOrder_.push_back(ctx.unique);
+        } else if (semantic_ != nullptr && !ctx.srcType.empty() &&
+                   !ownedStrFieldsOf(ctx.srcType).empty()) {
             // 79-a（2026-09-12 第七十九轮）：含拥有型字符串字段的聚合局部
             //   （结构体/结果/可选）→ 字段级释放名单：块出口/跳出/函数尾按
             //   字段偏移 free+清槽；写入位 pre-free 判据（拥有槽才可释放旧值）。
             //   聚合整体拷贝由 emitStructCopyWithFields 深拷（源保持拥有）。
-            ownedFieldOrder_.push_back(unique);
+            ownedFieldOrder_.push_back(ctx.unique);
         }
     }
+}
 
+// ---- 族⑧：数组初始化列表 { 1, 2, 3 }（Task 2.4/2.7/975）----
+//   逐元素 Store 到数组槽[i]（部分初始化补零）。true = 已处理（genVarDecl 返回）。
+bool IRGenerator::genArrayInitListDecl(VarDecl* node, const DeclGenCtx& ctx) {
     // 初始值处理：
     //   1. 数组初始化列表 { 1, 2, 3 }：逐元素 Store 到数组槽[i]（部分初始化补零）
     //   2. 普通表达式：Store 到变量槽（Task 2.3 类型不一致先 Cast）
     if (node->initializer != nullptr &&
         node->initializer->getType() == NodeType::InitListExpr &&
-        types::isArray(srcType)) {
+        types::isArray(ctx.srcType)) {
         InitListExpr* initList = static_cast<InitListExpr*>(node->initializer.get());
-        const std::string elemSrc = types::arrayElemOf(srcType);
+        const std::string elemSrc = types::arrayElemOf(ctx.srcType);
         const std::string elemIrType = mapType(elemSrc);
-        const int arrayLen = types::arrayLenOf(srcType);
+        const int arrayLen = types::arrayLenOf(ctx.srcType);
         // 元素间距：按元素类型大小（缺陷③根治统一 C 布局——typeSizeOf 含
         //   结构体总大小（Task 2.7）/i128=16（BUG #5）/标量 4/2/1；原标量
         //   兜底 8 与数组 8 槽布局互洽，见 ir.cpp registerVarSlots 注）
@@ -384,106 +463,130 @@ void IRGenerator::genVarDecl(VarDecl* node) {
             const int size = semantic_->typeSizeOf(elemSrc);
             if (size > 0) elemStride = size;
         }
-        // 逐元素存储：目标为 数组槽[i]（地址 = 数组基址 + i*元素大小，基址槽最深）
-        for (std::size_t i = 0; i < initList->elements.size(); ++i) {
-            // 数组槽i的地址 = 数组基址 + i*元素大小
-            ir::IRValue base = emitResult(ir::Opcode::AddrOf,
-                                          {ir::IRValue::var(unique, elemIrType)},
-                                          "ptr", unique, node->location);
+        storeArrayInitElements(node, initList, elemSrc, elemIrType, elemStride,
+                               ctx.unique);
+        zeroFillArrayTail(node, initList, elemIrType, elemStride, arrayLen,
+                          ctx.unique);
+        return true;
+    }
+    return false;
+}
+
+// 族⑧ 子方法：逐元素存储（目标为 数组槽[i]，地址 = 数组基址 + i*元素大小）
+void IRGenerator::storeArrayInitElements(VarDecl* node, InitListExpr* initList,
+                                         const std::string& elemSrc,
+                                         const std::string& elemIrType,
+                                         std::int64_t elemStride,
+                                         const std::string& unique) {
+    // 逐元素存储：目标为 数组槽[i]（地址 = 数组基址 + i*元素大小，基址槽最深）
+    for (std::size_t i = 0; i < initList->elements.size(); ++i) {
+        // 数组槽i的地址 = 数组基址 + i*元素大小
+        ir::IRValue base = emitResult(ir::Opcode::AddrOf,
+                                      {ir::IRValue::var(unique, elemIrType)},
+                                      "ptr", unique, node->location);
+        ir::IRValue offset = emitResult(ir::Opcode::ConstInt, {}, "i64",
+                                        std::to_string(static_cast<long long>(i) * elemStride),
+                                        node->location);
+        ir::IRValue addr = emitResult(ir::Opcode::Add, {base, offset}, "ptr", "",
+                                      node->location);
+        // 结构体元素（学生{...}）：逐字段写入（Task 2.7 修复——此前只写占位0）
+        if (initList->elements[i]->getType() == NodeType::StructInitExpr &&
+            semantic_ != nullptr) {
+            emitStructInitTo(static_cast<StructInitExpr*>(initList->elements[i].get()),
+                             addr, node->location);
+            continue;
+        }
+        // 975（130 根治）：类元素×构造调用 → **构造到内联槽地址**
+        //   （数组元素容器=内联值语义——与追加/元素/析构的 elemStride 内联
+        //   访问模型一致·955 p2d 无初值形态同构）。原路径 genExpr(构造调用)
+        //   =NewObject 堆对象+槽存 8B 指针：与内联模型混用→槽[8..24) 未初始
+        //   化垃圾被当 size/cap → 追加概率性堆破坏（glibc old_top 断言·130
+        //   样本 3/20）+堆对象泄漏（指针被追加覆盖）。
+        if (semantic_ != nullptr &&
+            semantic_->isClassType(types::canonical(elemSrc)) &&
+            initList->elements[i]->getType() == NodeType::CallExpr) {
+            CallExpr* elemCall =
+                static_cast<CallExpr*>(initList->elements[i].get());
+            if (elemCall->callee->getType() == NodeType::IdentifierExpr) {
+                std::string ctorName = static_cast<IdentifierExpr*>(
+                    elemCall->callee.get())->name;
+                ctorName = resolveGenericCtorInstanceName(ctorName);
+                const ClassInfo* ciC = semantic_->findClass(ctorName);
+                if (ciC != nullptr && !ciC->isAbstract) {
+                    const ClassMemberInfo* ctorC =
+                        findCtorMember(ciC, ctorName, elemCall);
+                    if (ctorC != nullptr) {
+                        emitCtorInvoke(elemCall, ctorName, ctorC, addr);
+                    } else {
+                        emitBaseCtorChain(ctorName, addr, node->location);
+                    }
+                    continue;
+                }
+            }
+        }
+        // 普通元素：生成值 + Cast + StorePtr
+        ir::IRValue elem = genExpr(initList->elements[i].get());
+        if (elem.type != elemIrType) {
+            elem = emitResult(ir::Opcode::Cast, {elem}, elemIrType, "",
+                              node->location);
+        }
+        emit(ir::Opcode::StorePtr, {addr, elem}, ir::IRValue(), "", elemIrType,
+             node->location);
+    }
+}
+
+// 族⑧ 子方法：部分初始化补零（剩余元素置0，C语义；结构体数组按元素间距步进）
+void IRGenerator::zeroFillArrayTail(VarDecl* node, InitListExpr* initList,
+                                    const std::string& elemIrType,
+                                    std::int64_t elemStride, int arrayLen,
+                                    const std::string& unique) {
+    // 部分初始化补零：剩余元素置0（C语义；结构体数组按元素间距步进）。
+    //   写入宽度（缺陷③配套）：C 布局窄整型元素紧凑排布，固定 i64 8 字节写
+    //   会覆盖下一元素/末元素越界踩相邻变量——窄整型按元素宽度写；
+    //   i128（常量无双槽）/浮点（movss 不接受立即数）/指针 保持 i64 原行为
+    const std::string zeroIrType =
+        (elemIrType == "i8" || elemIrType == "i16" ||
+         elemIrType == "u8" || elemIrType == "u16" ||
+         elemIrType == "i32" || elemIrType == "u32") ? elemIrType : "i64";
+    if (arrayLen > 0 && static_cast<int>(initList->elements.size()) < arrayLen) {
+        ir::IRValue zero = emitResult(ir::Opcode::ConstInt, {}, "i64", "0",
+                                      node->location);
+        ir::IRValue base = emitResult(ir::Opcode::AddrOf,
+                                      {ir::IRValue::var(unique, elemIrType)},
+                                      "ptr", unique, node->location);
+        for (int i = static_cast<int>(initList->elements.size()); i < arrayLen; ++i) {
             ir::IRValue offset = emitResult(ir::Opcode::ConstInt, {}, "i64",
                                             std::to_string(static_cast<long long>(i) * elemStride),
                                             node->location);
             ir::IRValue addr = emitResult(ir::Opcode::Add, {base, offset}, "ptr", "",
                                           node->location);
-            // 结构体元素（学生{...}）：逐字段写入（Task 2.7 修复——此前只写占位0）
-            if (initList->elements[i]->getType() == NodeType::StructInitExpr &&
-                semantic_ != nullptr) {
-                emitStructInitTo(static_cast<StructInitExpr*>(initList->elements[i].get()),
-                                 addr, node->location);
-                continue;
-            }
-            // 975（130 根治）：类元素×构造调用 → **构造到内联槽地址**
-            //   （数组元素容器=内联值语义——与追加/元素/析构的 elemStride 内联
-            //   访问模型一致·955 p2d 无初值形态同构）。原路径 genExpr(构造调用)
-            //   =NewObject 堆对象+槽存 8B 指针：与内联模型混用→槽[8..24) 未初始
-            //   化垃圾被当 size/cap → 追加概率性堆破坏（glibc old_top 断言·130
-            //   样本 3/20）+堆对象泄漏（指针被追加覆盖）。
-            if (semantic_ != nullptr &&
-                semantic_->isClassType(types::canonical(elemSrc)) &&
-                initList->elements[i]->getType() == NodeType::CallExpr) {
-                CallExpr* elemCall =
-                    static_cast<CallExpr*>(initList->elements[i].get());
-                if (elemCall->callee->getType() == NodeType::IdentifierExpr) {
-                    std::string ctorName = static_cast<IdentifierExpr*>(
-                        elemCall->callee.get())->name;
-                    ctorName = resolveGenericCtorInstanceName(ctorName);
-                    const ClassInfo* ciC = semantic_->findClass(ctorName);
-                    if (ciC != nullptr && !ciC->isAbstract) {
-                        const ClassMemberInfo* ctorC =
-                            findCtorMember(ciC, ctorName, elemCall);
-                        if (ctorC != nullptr) {
-                            emitCtorInvoke(elemCall, ctorName, ctorC, addr);
-                        } else {
-                            emitBaseCtorChain(ctorName, addr, node->location);
-                        }
-                        continue;
-                    }
+            // 975（130 同族）：类/结构体元素槽补零=全宽（elemStride 逐 8B 槽）
+            //   ——原 zeroIrType（8B）只清首字段，内联聚合剩余字节=垃圾。
+            if (elemStride > 8) {
+                for (std::int64_t sub = 0; sub < elemStride; sub += 8) {
+                    ir::IRValue subOff = emitResult(
+                        ir::Opcode::ConstInt, {},
+                        "i64", std::to_string(
+                            static_cast<long long>(i) * elemStride + sub),
+                        node->location);
+                    ir::IRValue subAddr = emitResult(
+                        ir::Opcode::Add, {base, subOff}, "ptr", "",
+                        node->location);
+                    emit(ir::Opcode::StorePtr, {subAddr, zero},
+                         ir::IRValue(), "", "i64", node->location);
                 }
-            }
-            // 普通元素：生成值 + Cast + StorePtr
-            ir::IRValue elem = genExpr(initList->elements[i].get());
-            if (elem.type != elemIrType) {
-                elem = emitResult(ir::Opcode::Cast, {elem}, elemIrType, "",
-                                  node->location);
-            }
-            emit(ir::Opcode::StorePtr, {addr, elem}, ir::IRValue(), "", elemIrType,
-                 node->location);
-        }
-        // 部分初始化补零：剩余元素置0（C语义；结构体数组按元素间距步进）。
-        //   写入宽度（缺陷③配套）：C 布局窄整型元素紧凑排布，固定 i64 8 字节写
-        //   会覆盖下一元素/末元素越界踩相邻变量——窄整型按元素宽度写；
-        //   i128（常量无双槽）/浮点（movss 不接受立即数）/指针 保持 i64 原行为
-        const std::string zeroIrType =
-            (elemIrType == "i8" || elemIrType == "i16" ||
-             elemIrType == "u8" || elemIrType == "u16" ||
-             elemIrType == "i32" || elemIrType == "u32") ? elemIrType : "i64";
-        if (arrayLen > 0 && static_cast<int>(initList->elements.size()) < arrayLen) {
-            ir::IRValue zero = emitResult(ir::Opcode::ConstInt, {}, "i64", "0",
-                                          node->location);
-            ir::IRValue base = emitResult(ir::Opcode::AddrOf,
-                                          {ir::IRValue::var(unique, elemIrType)},
-                                          "ptr", unique, node->location);
-            for (int i = static_cast<int>(initList->elements.size()); i < arrayLen; ++i) {
-                ir::IRValue offset = emitResult(ir::Opcode::ConstInt, {}, "i64",
-                                                std::to_string(static_cast<long long>(i) * elemStride),
-                                                node->location);
-                ir::IRValue addr = emitResult(ir::Opcode::Add, {base, offset}, "ptr", "",
-                                              node->location);
-                // 975（130 同族）：类/结构体元素槽补零=全宽（elemStride 逐 8B 槽）
-                //   ——原 zeroIrType（8B）只清首字段，内联聚合剩余字节=垃圾。
-                if (elemStride > 8) {
-                    for (std::int64_t sub = 0; sub < elemStride; sub += 8) {
-                        ir::IRValue subOff = emitResult(
-                            ir::Opcode::ConstInt, {},
-                            "i64", std::to_string(
-                                static_cast<long long>(i) * elemStride + sub),
-                            node->location);
-                        ir::IRValue subAddr = emitResult(
-                            ir::Opcode::Add, {base, subOff}, "ptr", "",
-                            node->location);
-                        emit(ir::Opcode::StorePtr, {subAddr, zero},
-                             ir::IRValue(), "", "i64", node->location);
-                    }
-                } else {
-                    emit(ir::Opcode::StorePtr, {addr, zero}, ir::IRValue(), "",
-                         zeroIrType, node->location);
-                }
+            } else {
+                emit(ir::Opcode::StorePtr, {addr, zero}, ir::IRValue(), "",
+                     zeroIrType, node->location);
             }
         }
-        return;
     }
-    // 结构体/联合体初始化：类型名{ 字段 = 值, ... }（Task 2.7）
-    // 逐字段计算字段地址（FieldAddr），再 StorePtr 写入字段值（嵌套结构体递归展开）
+}
+
+// ---- 族⑨：结构体/联合体初始化 类型名{ 字段 = 值, ... }（Task 2.7）----
+//   逐字段计算字段地址（FieldAddr），再 StorePtr 写入字段值（嵌套结构体递归展开）。
+//   true = 已处理（genVarDecl 返回）。
+bool IRGenerator::genStructInitListDecl(VarDecl* node, const DeclGenCtx& ctx) {
     if (node->initializer != nullptr &&
         node->initializer->getType() == NodeType::StructInitExpr &&
         semantic_ != nullptr) {
@@ -493,505 +596,25 @@ void IRGenerator::genVarDecl(VarDecl* node) {
         if (decl != nullptr) {
             // 结构体基址 = 变量槽地址
             ir::IRValue base = emitResult(ir::Opcode::AddrOf,
-                                          {ir::IRValue::var(unique, "i64")},
-                                          "ptr", unique, node->location);
+                                          {ir::IRValue::var(ctx.unique, "i64")},
+                                          "ptr", ctx.unique, node->location);
             emitStructInitTo(init, base, node->location);
         }
-        return;
+        return true;
     }
-    // 普通表达式初始值 -> Store（目标用唯一内部名，保证遮蔽变量写入自己的槽）
-    if (node->initializer != nullptr) {
-        // Task 2.10 lambda 赋值：`自动 加倍 = [...]...`——
-        //   先 genExpr（生成匿名函数并记录 lastLambdaName_/lastLambdaCaptures_），
-        //   再登记闭包关联（调用 `加倍(...)` 时展开捕获实参）
-        ir::IRValue value = genExpr(node->initializer.get());
-        // P3-23 补完：实例方法作值（自动 cb = 对象.方法）与 lambda 同为闭包登记路径
-        const bool isMethodValueInit =
-            node->initializer->getType() == NodeType::MemberExpr &&
-            static_cast<MemberExpr*>(node->initializer.get())->isMethodValue;
-        if ((node->initializer->getType() == NodeType::LambdaExpr ||
-             isMethodValueInit) &&
-            !lastLambdaName_.empty()) {
-            ClosureInfo info;
-            info.lambdaName = lastLambdaName_;
-            info.captures = lastLambdaCaptures_;
-            info.returnIrType = lastLambdaReturnIrType_;
-            info.paramTypes = lastLambdaParamTypes_;  // 337-a：用户形参类型（ABI 定标）
-            if (isMethodValueInit) {
-                // 绑定方法：捕获实参 = 被绑定对象地址（对象指针 = Load 槽）
-                const std::string& objName =
-                    lastLambdaCaptures_.empty() ? "" : lastLambdaCaptures_[0];
-                const std::string objUnique = lookupVarName(objName);
-                if (!objUnique.empty()) {
-                    info.captureArgs.push_back(emitResult(
-                        ir::Opcode::Load,
-                        {ir::IRValue::var(objUnique, "ptr")},
-                        "ptr", objUnique, node->location));
-                }
-            } else {
-            // 缺陷修复（[=] 快照 / [&] 引用，规格书04-一D）：
-            //   捕获实参在"lambda 定义处"（即此处）求值并固化：
-            //     [=]/[变量] 值捕获：genExpr(变量) 读取当前值 -> 快照
-            //       （原实现在调用点读取，捕获变量后续被修改时闭包读到最新值——
-            //       与规格"值捕获=捕获时复制"不符，实测 lambda值快照: 1000 而非 101）
-            //     [&] 引用捕获：AddrOf(变量) 取变量地址 -> 指针，
-            //       闭包内解引用读最新值、经指针写回外部（引用语义精确）
-            //   调用 `加倍(...)` 时直接展开这些已固化的捕获实参（前置）。
-            const std::size_t capCount = lastLambdaCaptures_.size();
-            const std::size_t refCount = lastLambdaCaptureRefs_.size();
-            for (std::size_t ci = 0; ci < capCount; ++ci) {
-                const std::string& cap = lastLambdaCaptures_[ci];
-                const bool byRef = (ci < refCount) && lastLambdaCaptureRefs_[ci] != 0;
-                if (byRef) {
-                    // 引用捕获：&变量（AddrOf 取变量槽地址）
-                    const std::string capUnique = lookupVarName(cap);
-                    const std::string capIrType = lookupVarType(cap);
-                    info.captureArgs.push_back(emitResult(
-                        ir::Opcode::AddrOf,
-                        {ir::IRValue::var(capUnique, capIrType.empty() ? "i64" : capIrType)},
-                        "ptr", capUnique, node->location));
-                } else {
-                    const std::string capSrc = lookupSrcType(cap);
-                    // 缺陷修复（[=] 结构体值捕获快照）：结构体是值类型，值捕获须
-                    //   在"定义处"深拷贝快照到临时缓冲区——不能仅存 AddrOf 指针：
-                    //   指针指向原变量，定义后修改会破坏快照；且闭包参数槽被当
-                    //   结构体数据本身时，字段访问读到的是地址值字节=垃圾
-                    //   （实测 值捕获p.x: 553448424 而非 1）。
-                    if (semantic_ != nullptr &&
-                        semantic_->isStructType(types::canonical(capSrc))) {
-                        const int size = semantic_->typeSizeOf(types::canonical(capSrc));
-                        const std::string temp =
-                            "__capstruct" + std::to_string(varCounter_++);
-                        emit(ir::Opcode::Alloca, {},
-                             ir::IRValue::reg(regCounter_++, "ptr"),
-                             temp, "ptr", node->location);
-                        registerVarSlots(temp, capSrc);
-                        ir::IRValue dstAddr = emitResult(
-                            ir::Opcode::AddrOf, {ir::IRValue::var(temp, "i64")},
-                            "ptr", temp, node->location);
-                        ir::IRValue srcAddr = emitResult(
-                            ir::Opcode::AddrOf,
-                            {ir::IRValue::var(lookupVarName(cap), "i64")},
-                            "ptr", lookupVarName(cap), node->location);
-                        emit(ir::Opcode::CopyStruct, {dstAddr, srcAddr}, ir::IRValue(),
-                             std::to_string(size), "void", node->location);
-                        info.captureArgs.push_back(dstAddr);
-                    } else {
-                        // 值捕获：定义处读取变量值快照（i128 双槽 Load 生成双寄存器值）
-                        info.captureArgs.push_back(genExpr(
-                            std::make_unique<IdentifierExpr>(cap).get()));
-                    }
-                }
-            }
-            }  // else：lambda 值/引用捕获路径（绑定方法走上方 Load 分支）
-            closureInfo_[node->name] = info;
-            lastLambdaName_.clear();
-            lastLambdaCaptures_.clear();
-            lastLambdaReturnIrType_.clear();
-            lastLambdaCaptureRefs_.clear();
-        }
-        // 结构体变量初始化值为"函数返回的结构体地址（ptr）"（Task 完善A）：
-        //   学生 张三加 = 加分(张三) —— 值是指向返回临时结构体的指针，
-        //   需拷贝到本变量槽区（按值拷贝）。
-        // 79-a（2026-09-12 第七十九轮）：含串字段结构体——源为调用返回（retbuf，
-        //   被调方返回移出已跳过字段释放）=浅拷接管（零拷贝，句柄唯一持有者转为
-        //   目标）；源为标识符/成员（值语义拷贝）=深拷（字段级 __cn_str_copy 落堆，
-        //   源保持拥有）——浅拷共享 + 双端释放=悬垂，深拷是安全前提。
-        // 096（937·008 收官总攻第三轮）：转移浅交接**前置**（原位于结构体声明
-        //   分支之后——结构体源先命中 emitStructCopyWithFields 深拷〔p7 实测
-        //   声明位分配 +1 实锤〕·转移分支永不可达）。结构体源=**整块搬迁零拷贝**
-        //   （CopyStruct 位拷·拥有字段句柄直移=所有权交接——078 同款设施模型）+
-        //   **源槽全清零**（$s 槽命名·79-a/078 同款幂等模型：源 RAII 对零句柄
-        //   空安全跳过）；类/容器/字符串源=句柄直拷+单槽清零（72-a 现行）。
-        //   〔基准=019〕第二句：转移()=显式放弃拷贝换零拷贝。
-        std::string transferSrcNameIr;
-        if (semantic_ != nullptr && value.type == "ptr" &&
-            node->initializer != nullptr &&
-            node->initializer->getType() == NodeType::IdentifierExpr &&
-            semantic_->isTransferDecl(static_cast<const void*>(node),
-                                      transferSrcNameIr)) {
-            const std::string srcUnique = lookupVarName(transferSrcNameIr);
-            const std::string tgtCanon = types::canonical(node->typeName);
-            if (semantic_->isStructType(tgtCanon)) {
-                ir::IRValue dstAddr = emitResult(
-                    ir::Opcode::AddrOf, {ir::IRValue::var(unique, "i64")}, "ptr",
-                    unique, node->location);
-                ir::IRValue srcAddr = emitResult(
-                    ir::Opcode::AddrOf, {ir::IRValue::var(srcUnique, "i64")},
-                    "ptr", srcUnique, node->location);
-                const int bytes = semantic_->typeSizeOf(tgtCanon);
-                if (bytes > 0) {
-                    emit(ir::Opcode::CopyStruct, {dstAddr, srcAddr},
-                         ir::IRValue(), std::to_string(bytes), "void",
-                         node->location);
-                }
-                auto slotIt = function_->varSlots.find(srcUnique);
-                const int slots =
-                    (slotIt != function_->varSlots.end() && slotIt->second > 0)
-                        ? slotIt->second : 1;
-                for (int s = 0; s < slots; ++s) {
-                    const std::string slotName =
-                        s == 0 ? srcUnique : srcUnique + "$s" + std::to_string(s);
-                    emit(ir::Opcode::Store,
-                         {ir::IRValue::constant("0", "i64")}, ir::IRValue(),
-                         slotName, "i64", node->location);
-                }
-                lastExpr_ = dstAddr;
-                return;
-            }
-            emit(ir::Opcode::Store, {value}, ir::IRValue(), unique,
-                 "ptr", node->location);
-            ir::IRValue zero = emitResult(ir::Opcode::ConstInt, {}, "i64", "0",
-                                          node->location);
-            emit(ir::Opcode::Store, {zero}, ir::IRValue(), srcUnique,
-                 "i64", node->location);
-            lastExpr_ = value;
-            return;
-        }
-        // 087（m85 返回面）：数组变量初始化值为"调用返回的 retbuf 基址（ptr）"——
-        //   整块 CopyStruct（bytes=typeSizeOf(数组)）到本地多槽。原通用 Store=
-        //   w 槽存指针值（8B 句柄≠数组内容·w[i] 读垃圾——p1004_02 w=垃圾实录）。
-        if (semantic_ != nullptr && value.type == "ptr" &&
-            node->initializer != nullptr &&
-            node->initializer->getType() == NodeType::CallExpr &&
-            types::isArray(types::canonical(node->typeName))) {
-            ir::IRValue dstAddr = emitResult(
-                ir::Opcode::AddrOf, {ir::IRValue::var(unique, "i64")}, "ptr",
-                unique, node->location);
-            const int bytes087 =
-                semantic_->typeSizeOf(types::canonical(node->typeName));
-            if (bytes087 > 0) {
-                emit(ir::Opcode::CopyStruct, {dstAddr, value},
-                     ir::IRValue(), std::to_string(bytes087), "void",
-                     node->location);
-            }
-            lastExpr_ = dstAddr;
-            return;
-        }
-        if (semantic_ != nullptr && value.type == "ptr" &&
-            semantic_->isStructType(types::canonical(node->typeName))) {
-            const std::string declCanon = types::canonical(node->typeName);
-            // 974（104-001 同族·声明初始化位拷出）：源=成员表达式（类聚合字段
-            //   `对 复制 = h.槽`）——genExpr 对成员链的产物=字段槽**值**被再解
-            //   一层（956 铁证：指针加载 多解→StructCopy 从野地址拷=稳定段错误
-            //   ·样本 run_err/p0956_02）。源地址改走 lvalueAddress（字段左值
-            //   地址·973 统一查询后推导正确）。
-            if (node->initializer->getType() == NodeType::MemberExpr) {
-                value = lvalueAddress(node->initializer.get());
-            }
-            ir::IRValue dstAddr = emitResult(ir::Opcode::AddrOf,
-                                             {ir::IRValue::var(unique, "i64")},
-                                             "ptr", unique, node->location);
-            // 79-a 探针新证缺陷（既有，非本轮引入）：可选<T> 声明初始化为 无
-            //   （NullLiteral）——零值语义（无值），不是结构体地址。原实现按
-            //   CopyStruct 从「地址 0」拷贝 -> 段错误（可选<字符串> 空 = 无 实测
-            //   mov r9,[rbp-200(=0)] 崩）。改为逐槽零初始化：条件位=0（释放面
-            //   条件释放跳过）、值位=0（空安全）。
-            if (node->initializer != nullptr &&
-                node->initializer->getType() == NodeType::NullLiteral) {
-                auto slotIt = function_->varSlots.find(unique);
-                const int slots =
-                    (slotIt != function_->varSlots.end() && slotIt->second > 0)
-                        ? slotIt->second : 1;
-                for (int s = 0; s < slots; ++s) {
-                    const std::string slotName =
-                        s == 0 ? unique : unique + "$s" + std::to_string(s);
-                    emit(ir::Opcode::Store,
-                         {ir::IRValue::constant("0", "i64")}, ir::IRValue(),
-                         slotName, "i64", node->location);
-                }
-                lastExpr_ = dstAddr;
-                return;
-            }
-            const bool srcIsCall = node->initializer != nullptr &&
-                                   node->initializer->getType() == NodeType::CallExpr;
-            emitStructCopyWithFields(dstAddr, value, declCanon, node->location,
-                                     /*preFree=*/false, /*deepCopy=*/!srcIsCall);
-            // 182（1019·008 树）：结果/可选<析构类> 局部变量盒亡登记（变量级·
-            //   v2 946 变量模型同构）——调用返回接收盒（装盒() 形态）889 表达式面
-            //   不盖（pendingBoxCopies 仅 正常(类值) 字面量位·返回位豁免）=盒亡
-            //   无析构面泄漏（551 r 盒 asm 实证）。登记 {tagAddr, fieldAddr, 载荷}
-            //   ——释放面（块出口+函数尾）Call __cn_box_class_delete（tag 假=错误
-            //   态垃圾句柄免疫·摘取清槽幂等）+DeleteObject 空安全。889 表达式面
-            //   双登记=幂等无害（其清值字段后本面摘句柄=0）。
-            {
-                const bool declIsBox =
-                    isResultType(declCanon) ||
-                    isOptionalType(declCanon);
-                // 双登记防护（577 崩实录·全量 1019 捕获）：初值=内置构造器调用
-                //   （正常/某些/错误）时 889 表达式面已登记同一盒值字段——两面
-                //   逆序释放后跑面 emitContainerElemFreeFor 读空对象解引用崩
-                //   （C0000374）——跳过（表达式面管辖）；其余初值（调用返回
-                //   装盒() 形态等）无表达式面=本面登记。
-                bool ctorInitCovered = false;
-                if (node->initializer->getType() == NodeType::CallExpr) {
-                    const CallExpr* ice = static_cast<const CallExpr*>(
-                        node->initializer.get());
-                    if (ice->callee != nullptr &&
-                        ice->callee->getType() == NodeType::IdentifierExpr) {
-                        const std::string& cn =
-                            static_cast<const IdentifierExpr*>(ice->callee.get())
-                                ->name;
-                        ctorInitCovered = cn == "正常" || cn == "某些" ||
-                                          cn == "错误";
-                    }
-                }
-                // 280：两面统一本变量面登记（单一权威·返回位移交豁免=273 刀②同键）
-                //   ——原 !ctorInitCovered 防护（577）令 正常() 构造盒只登记表达式面：
-                //   浅拷后盒槽与源槽共享句柄→函数尾表达式面析构源槽=「返回 盒」retbuf
-                //   副本死句柄双放（p273a C0000374）。ctorInitCovered 时先清源槽值字段
-                //   （表达式面 LoadPtr=0 幂等跳过）——布局归一后值槽 @8·273 v1 回归根因已消。
-                if (declIsBox && node->initializer != nullptr) {
-                    if (ctorInitCovered) {
-                        const StructDecl* sdZ = semantic_->findStruct(declCanon);
-                        const int voZ = sdZ ? semantic_->fieldOffsetOf(sdZ, "值") : -1;
-                        if (voZ >= 0) {
-                            ir::IRValue srcField280 = emitResult(
-                                ir::Opcode::FieldAddr, {value}, "ptr",
-                                std::to_string(voZ), node->location);
-                            ir::IRValue zero280 = emitResult(
-                                ir::Opcode::ConstInt, {}, "i64", "0", node->location);
-                            emit(ir::Opcode::StorePtr, {srcField280, zero280},
-                                 ir::IRValue(), "", "i64", node->location);
-                        }
-                    }
-                    {
-                        std::string payload280;
-                        if (isResultType(declCanon)) {
-                            const std::vector<std::string> rargs280 =
-                                resultTypeArgs(declCanon);
-                            if (rargs280.size() == 2)
-                                payload280 = types::canonical(rargs280[0]);
-                        } else {
-                            payload280 = types::canonical(
-                                optionalTypeArg(declCanon));
-                        }
-                        const ClassInfo* pci280 = payload280.empty()
-                            ? nullptr : semantic_->findClass(payload280);
-                        bool pDtor280 = false;
-                        if (pci280 != nullptr) {
-                            for (const auto& mk : pci280->methods) {
-                                if (mk.second.isDestructor) { pDtor280 = true; break; }
-                            }
-                        }
-                        if (pDtor280 && semantic_->findCopyConstructor(payload280) != nullptr) {
-                            const StructDecl* sd280 = semantic_->findStruct(declCanon);
-                            const int vo280 =
-                                sd280 ? semantic_->fieldOffsetOf(sd280, "值") : -1;
-                            const int co280 =
-                                sd280 ? semantic_->fieldOffsetOf(
-                                         sd280, isResultType(declCanon)
-                                         ? "正常" : "有值") : -1;
-                            if (vo280 >= 0 && co280 >= 0) {
-                                ir::IRValue tagAddr280 =
-                                    co280 == 0 ? dstAddr
-                                        : emitResult(ir::Opcode::FieldAddr, {dstAddr},
-                                                     "ptr", std::to_string(co280),
-                                                     node->location);
-                                ir::IRValue fieldAddr280 =
-                                    vo280 == 0 ? dstAddr
-                                        : emitResult(ir::Opcode::FieldAddr, {dstAddr},
-                                                     "ptr", std::to_string(vo280),
-                                                     node->location);
-                                pendingBoxVars_.emplace_back(tagAddr280, fieldAddr280,
-                                                             payload280, unique, false);
-                            }
-                        }
-                    }
-                }
-            }
-            lastExpr_ = value;
-            return;
-        }
-        // plans/019 阶段3b（2026-09-10）：转移浅交接（性能主项）——语义层已把
-        //   转移(源) 改写为源标识符并登记节点；此处跳过 NewObject+拷贝构造深拷贝，
-        //   改为句柄直拷 + **源槽清零**：源变量 RAII 析构对零句柄走既有空安全
-        //   跳过（DeleteObject test/je），目标析构真句柄=恰好一次释放；条件分支
-        //   两路径均正确（条件假=转移未执行=句柄仍在源槽=源析构正常释放）。
-        // 缺陷1 修复：类对象初始化（资源 乙 = 甲）——类对象是堆指针语义，
-        //   直接 Store 源指针会让两个变量共享同一堆地址，RAII 重复释放堆损坏。
-        //   正确语义：新建独立堆对象 + 逐字段 CopyStruct 深拷贝。
-        if (semantic_ != nullptr && value.type == "ptr" &&
-            node->initializer->getType() == NodeType::IdentifierExpr) {
-            const std::string initName =
-                static_cast<IdentifierExpr*>(node->initializer.get())->name;
-            std::string initSrcType = lookupSrcType(initName);
-            // 宿主根治（2026-09-01）：源为顶层类静态（不在 varStack_，lookupSrcType
-            //   为空）——类型取 globalStaticType；拷贝构造 byRef 传静态槽地址
-            //   （&?gstatic_名，解引用即对象指针——指针槽模型与局部变量槽同构）。
-            //   原实现漏此分支：浅 Store 共享指针，RAII 析构双释放堆损坏（0xC0000374）。
-            const bool initIsStatic =
-                initSrcType.empty() && semantic_->isGlobalStatic(initName);
-            if (initIsStatic) {
-                initSrcType = semantic_->globalStaticType(initName);
-            }
-            const std::string canonSrc = types::canonical(initSrcType);
-            const std::string canonTgt = types::canonical(srcType);
-            if (semantic_->isClassType(canonTgt) &&
-                semantic_->isClassType(canonSrc)) {
-                const ClassInfo* ci = semantic_->findClass(canonTgt);
-                if (ci != nullptr) {
-                    // value 即源对象指针（Load 源变量槽 / LoadPtr 静态槽）
-                    const std::string extra = canonTgt + "|" +
-                                              std::to_string(ci->totalSize);
-                    ir::IRValue newObj = emitResult(
-                        ir::Opcode::NewObject,
-                        {ir::IRValue::constant(canonTgt, "ptr")},
-                        "ptr", extra, node->location);
-                    // 方案A（2026-08-25）：目标类有拷贝构造（类名(类名& 其他)）
-                    //   时，初始化拷贝改调拷贝构造（深拷贝），而非 CopyStruct 浅拷贝
-                    //   （含裸指针字段浅拷贝析构双释放 0xC0000374，映射 乙 = 甲 实测）。
-                    //   byRef ABI：拷贝构造引用参数按"被引用左值地址"传参——
-                    //   源为标识符变量时传 源变量槽地址（&甲），体内经 byRef
-                    //   解引用得源对象指针（与 ir_expr.cpp 类赋值路径一致）。
-                    const ClassMemberInfo* copyCtor =
-                        semantic_->findCopyConstructor(canonTgt);
-                    if (copyCtor != nullptr) {
-                        const std::string copyOwner =
-                            copyCtor->ownerClass.empty() ? canonTgt
-                                                         : copyCtor->ownerClass;
-                        const std::string srcUnique = lookupVarName(initName);
-                        ir::IRValue srcAddr;
-                        if (initIsStatic) {
-                            // 源为顶层类静态：槽地址 = ?gstatic_名 符号地址
-                            srcAddr = emitResult(
-                                ir::Opcode::ConstString, {}, "ptr",
-                                "?gstatic_" + initName, node->location);
-                        } else if (isByRefCapture(initName)) {
-                            // 源为引用参数：槽内存被引用对象地址（Load 槽）
-                            srcAddr = emitResult(
-                                ir::Opcode::Load,
-                                {ir::IRValue::var(srcUnique, "ptr")},
-                                "ptr", srcUnique, node->location);
-                        } else {
-                            srcAddr = emitResult(ir::Opcode::AddrOf,
-                                                 {ir::IRValue::var(srcUnique, "i64")},
-                                                 "ptr", srcUnique, node->location);
-                        }
-                        emit(ir::Opcode::Call, {newObj, srcAddr}, ir::IRValue(),
-                             methodSymbolKey(copyOwner, copyCtor->sigKey), "void",
-                             node->location);
-                        // 123（930·用户裁决甲·边界定音）：findCopyConstructor 沿链
-                        //   可返回**继承来的**祖先拷贝构造（本类无自有形态）——它
-                        //   只拷其链覆盖的基类字段，派生侧各层字段原被静默清零
-                        //   （探针 e1 b.y=0 vs C++ b.y=7）。逐层补拷「祖先构造所
-                        //   在层之下」的全部层（中间层+本类层·value=源对象指针）。
-                        if (copyOwner != canonTgt) {
-                            const ClassInfo* lvl = semantic_->findClass(canonTgt);
-                            while (lvl != nullptr && lvl->name != copyOwner) {
-                                emitOwnedFieldsCopy(newObj, value, canonTgt,
-                                                    lvl->name, node->location);
-                                lvl = lvl->baseName.empty()
-                                          ? nullptr
-                                          : semantic_->findClass(lvl->baseName);
-                            }
-                        }
-                    } else {
-                        emit(ir::Opcode::CopyStruct, {newObj, value}, ir::IRValue(),
-                             std::to_string(ci->totalSize), "void", node->location);
-                    }
-                    emit(ir::Opcode::Store, {newObj}, ir::IRValue(), unique,
-                         "ptr", node->location);
-                    return;
-                }
-            }
-        }
-        // 058-ⅡB（甲案·拆包绑定位值语义深拷〔基准=019〕·795 轮）：`类 b = r.值`
-        //   （源=结果/可选 值字段拆包）原落通用路径=句柄浅拷+b 拥有式 RAII 登记→
-        //   b 与来源双主双释放（p0926_03 映射获取拆包 rc=134·双防线均不达拆包形态）。
-        //   修=同套上一分支深拷语义：NewObject+拷贝构造（无则 CopyStruct 壳）·byRef
-        //   ABI 传成员链左值地址（&r.值=字段地址）。**范围=拆包本面**（泛化一切
-        //   MemberExpr 曾改写 v2 树「结构体.类字段 句柄共享」存量语义→91/94 回归
-        //   +OOM 14.6GB 已收窄·字段链值语义随 793 归一接力·021 058 行登记）。
-        const MemberExpr* unwrapSrc = node->initializer->getType() == NodeType::MemberExpr
-                                      ? static_cast<const MemberExpr*>(
-                                            node->initializer.get())
-                                      : nullptr;
-        if (semantic_ != nullptr && value.type == "ptr" && unwrapSrc != nullptr &&
-            unwrapSrc->memberName == "值") {
-            const std::string baseTypeSrc =
-                exprSrcType(unwrapSrc->object.get());
-            const std::string baseCanon = types::canonical(baseTypeSrc);
-            const bool isUnwrapSlot =
-                isResultType(baseCanon) || isOptionalType(baseCanon);
-            const std::string canonTgt = types::canonical(srcType);
-            if (isUnwrapSlot && semantic_->isClassType(canonTgt)) {
-                const ClassInfo* ci = semantic_->findClass(canonTgt);
-                if (ci != nullptr) {
-                    const std::string extra =
-                        canonTgt + "|" + std::to_string(ci->totalSize);
-                    ir::IRValue newObj = emitResult(
-                        ir::Opcode::NewObject,
-                        {ir::IRValue::constant(canonTgt, "ptr")},
-                        "ptr", extra, node->location);
-                    const ClassMemberInfo* copyCtor =
-                        semantic_->findCopyConstructor(canonTgt);
-                    if (copyCtor != nullptr) {
-                        const std::string copyOwner =
-                            copyCtor->ownerClass.empty() ? canonTgt
-                                                         : copyCtor->ownerClass;
-                        ir::IRValue srcAddr =
-                            lvalueAddress(node->initializer.get());
-                        emit(ir::Opcode::Call, {newObj, srcAddr}, ir::IRValue(),
-                             methodSymbolKey(copyOwner, copyCtor->sigKey),
-                             "void", node->location);
-                    } else {
-                        emit(ir::Opcode::CopyStruct, {newObj, value},
-                             ir::IRValue(), std::to_string(ci->totalSize),
-                             "void", node->location);
-                    }
-                    emit(ir::Opcode::Store, {newObj}, ir::IRValue(), unique,
-                         "ptr", node->location);
-                    return;
-                }
-            }
-        }
-        // plans/019 阶段4'（2026-09-10 方案A）：拥有型字符串初始化拥有化——
-        //   字面量（只读段标签）与标识符拷贝（浅共享指针）经 __cn_str_copy 落堆
-        //   （变量一律拥有堆串，RAII 返回块释放安全；Rust "x".to_string() 同款
-        //   代价）；调用返回形态（拼接/复制等 runtime 串）本就堆分配直存；
-        //   转移初始化已在浅交接分支（句柄直拷+源清零）先行返回，不经此处。
-        if (srcType == "字符串" && value.type == "ptr" &&
-            node->initializer != nullptr) {
-            const NodeType ownIt = node->initializer->getType();
-            if (ownIt == NodeType::StringLiteral ||
-                ownIt == NodeType::IdentifierExpr) {
-                value = emitResult(ir::Opcode::Call, {value}, "ptr",
-                                   "__cn_str_copy", node->location);
-            } else if (ownIt == NodeType::CallExpr) {
-                // 调用返回拥有判定=白名单 ∪ 返回类型契约（A2 2026-09-11 方案甲）：
-                //   白名单（内置 runtime 分配族：复制/连接/拼接/子串/大小写/修剪/
-                //   反转）之外，被调者返回类型=字符串 即拥有（语义层决议写回
-                //   retOwnedString——普通函数/类方法/接口方法/内置全路径统一；
-                //   驻留文本 已改 字符* 返回=借用不登记）。Rust 签名即契约：
-                //   fn f() -> String 拥有 / -> &str 借用。
-                const CallExpr* ice =
-                    static_cast<const CallExpr*>(node->initializer.get());
-                bool ownRet = ice->retOwnedString;
-                if (!ownRet && ice->callee->getType() == NodeType::IdentifierExpr) {
-                    const std::string& cn =
-                        static_cast<const IdentifierExpr*>(ice->callee.get())
-                            ->name;
-                    // 094 判据单点化：白名单收口 ISemanticView::isOwnedStringBuiltin
-                    ownRet = isOwnedStringBuiltin(cn);
-                }
-                if (!ownRet) markStringTainted(node->name);
-            }
-        }
-        if (value.type != irType && !irType.empty()) {
-            value = emitResult(ir::Opcode::Cast, {value}, irType, "", node->location);
-        }
-        emit(ir::Opcode::Store, {value}, ir::IRValue(),
-             unique, irType, node->location);
-    }
-    // H7 根治（2026-08-25 宿主缺陷）：类类型栈变量无初始化器声明（类名 变量）——
-    //   原缺 NewObject+默认构造调用·变量槽存未初始化地址=空指针解引用（0xC0000409/
-    //   运行时错误3）。泛型实例与非泛型类同面。语义同 `类名 变量 = 类名()`：NewObject
-    //   +本类无参构造调用（无构造=仅分配）·RAII 析构由 oopVarSrcTypes_ 登记+
-    //   genClassDestructorCalls 统一收尾（与既有类变量一致）。
+    return false;
+}
+
+// ---- 族⑪：H7 根治（2026-08-25 宿主缺陷）类类型栈变量无初始化器声明 ----
+//   （类名 变量）——原缺 NewObject+默认构造调用·变量槽存未初始化地址=空指针
+//   解引用（0xC0000409/运行时错误3）。泛型实例与非泛型类同面。语义同
+//   `类名 变量 = 类名()`：NewObject+本类无参构造调用（无构造=仅分配）·
+//   RAII 析构由 oopVarSrcTypes_ 登记+genClassDestructorCalls 统一收尾
+//  （与既有类变量一致）。
+void IRGenerator::genClassDefaultConstruct(VarDecl* node, const DeclGenCtx& ctx) {
     if (node->initializer == nullptr && !node->funcPtr.isFunctionPtr() &&
         semantic_ != nullptr) {
-        const std::string canonSrc = types::canonical(srcType);
+        const std::string canonSrc = types::canonical(ctx.srcType);
         const ClassInfo* ci = semantic_->findClass(canonSrc);
         if (ci != nullptr && !ci->isAbstract) {
             // NewObject：extra = "类名|大小字节"（与 ir_oop_call.cpp 构造调用一致）
@@ -1001,7 +624,7 @@ void IRGenerator::genVarDecl(VarDecl* node) {
                 {ir::IRValue::constant(canonSrc, "ptr")},
                 "ptr", extra, node->location);
             // 变量槽存对象指针
-            emit(ir::Opcode::Store, {obj}, ir::IRValue(), unique, "ptr",
+            emit(ir::Opcode::Store, {obj}, ir::IRValue(), ctx.unique, "ptr",
                  node->location);
             // 默认构造调用：本类自身声明的无参构造（有则调用，this = 对象指针）
             for (const auto& mk : ci->methods) {
@@ -1018,18 +641,22 @@ void IRGenerator::genVarDecl(VarDecl* node) {
             }
         }
     }
-    // 缺陷2 根治（2026-09-02）：结构体栈变量无初始化器声明（结构体名 变量）——
-    //   多槽为栈垃圾：含容器字段（v2 组件 函数IR.指令 = 向量<IR指令>）时内联容器
-    //   头为野指针，追加 段错误（p3 实证）。按总大小逐槽零初始化（对齐 v2 自举
-    //   B1 结构体局部零初始化语义：未初始化字段确定性为 0/无——Rust 级确定性）。
+}
+
+// ---- 族⑫：缺陷2 根治（2026-09-02）结构体栈变量无初始化器声明 ----
+//   （结构体名 变量）——多槽为栈垃圾：含容器字段（v2 组件 函数IR.指令 =
+//   向量<IR指令>）时内联容器头为野指针，追加 段错误（p3 实证）。按总大小
+//   逐槽零初始化（对齐 v2 自举 B1 结构体局部零初始化语义：未初始化字段
+//   确定性为 0/无——Rust 级确定性）。
+void IRGenerator::genStructZeroInit(VarDecl* node, const DeclGenCtx& ctx) {
     if (node->initializer == nullptr && !node->funcPtr.isFunctionPtr() &&
         semantic_ != nullptr &&
-        semantic_->isStructType(types::canonical(srcType))) {
-        const int size = semantic_->typeSizeOf(types::canonical(srcType));
+        semantic_->isStructType(types::canonical(ctx.srcType))) {
+        const int size = semantic_->typeSizeOf(types::canonical(ctx.srcType));
         const int slots = (size + 7) / 8;
         for (int s = 0; s < slots; ++s) {
             const std::string slotName =
-                s == 0 ? unique : unique + "$s" + std::to_string(s);
+                s == 0 ? ctx.unique : ctx.unique + "$s" + std::to_string(s);
             emit(ir::Opcode::Store,
                  {ir::IRValue::constant("0", "i64")}, ir::IRValue(),
                  slotName, "i64", node->location);
@@ -1040,13 +667,13 @@ void IRGenerator::genVarDecl(VarDecl* node) {
         //   DeleteObject·三链闭合活句柄无共享）。域外类字段维持零初始化空句柄
         //   （拷贝=memcpy 共享空句柄无害·级联活句柄+浅拷共享=双主·142-a 两次泛化
         //   回退教训——不越域）。构造字面量初始化（S{...}）不走本分支。
-        const std::string structCanon = types::canonical(srcType);
+        const std::string structCanon = types::canonical(ctx.srcType);
         const StructDecl* sdecl = semantic_->findStruct(structCanon);
-        if (sdecl != nullptr && !unique.empty()) {
+        if (sdecl != nullptr && !ctx.unique.empty()) {
             ir::IRValue base = emitResult(
                 ir::Opcode::AddrOf,
-                {ir::IRValue::var(unique, "i64")},
-                "ptr", unique, node->location);
+                {ir::IRValue::var(ctx.unique, "i64")},
+                "ptr", ctx.unique, node->location);
             for (const auto& f : sdecl->fields) {
                 const std::string fcanon = types::canonical(f.type);
                 if (!semantic_->isClassType(fcanon)) continue;
@@ -1087,18 +714,21 @@ void IRGenerator::genVarDecl(VarDecl* node) {
             }
         }
     }
-    // 缺陷B根治（2026-09-03，单位机 ARM64 探针发现、win-x64 同现=IR 公共层）：
-    //   数组栈变量无初始化器声明（整64[3] 数组）——元素槽为栈垃圾：数组[2] +=
-    //   数组[1] 读到未初始化值（每次运行不同）。缺陷2 根治漏了数组同族形态，
-    //   同款逐槽零初始化补齐（槽区间为变量自身存储，i64 整槽写零对窄元素安全——
-    //   与结构体路径同约定；槽数取 registerVarSlots 登记权威值）
+}
+
+// ---- 族⑬：缺陷B根治（2026-09-03，单位机 ARM64 探针发现、win-x64 同现=IR
+//   公共层）：数组栈变量无初始化器声明（整64[3] 数组）——元素槽为栈垃圾：
+//   数组[2] += 数组[1] 读到未初始化值（每次运行不同）。缺陷2 根治漏了数组
+//   同族形态，同款逐槽零初始化补齐（槽区间为变量自身存储，i64 整槽写零对
+//   窄元素安全——与结构体路径同约定；槽数取 registerVarSlots 登记权威值）
+void IRGenerator::genArrayZeroInit(VarDecl* node, const DeclGenCtx& ctx) {
     if (node->initializer == nullptr && !node->funcPtr.isFunctionPtr() &&
-        semantic_ != nullptr && types::isArray(srcType) && !unique.empty()) {
-        auto slotIt = function_->varSlots.find(unique);
+        semantic_ != nullptr && types::isArray(ctx.srcType) && !ctx.unique.empty()) {
+        auto slotIt = function_->varSlots.find(ctx.unique);
         if (slotIt != function_->varSlots.end() && slotIt->second > 0) {
             for (int s = 0; s < slotIt->second; ++s) {
                 const std::string slotName =
-                    s == 0 ? unique : unique + "$s" + std::to_string(s);
+                    s == 0 ? ctx.unique : ctx.unique + "$s" + std::to_string(s);
                 emit(ir::Opcode::Store,
                      {ir::IRValue::constant("0", "i64")}, ir::IRValue(),
                      slotName, "i64", node->location);

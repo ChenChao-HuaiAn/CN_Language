@@ -269,6 +269,22 @@ public:
     void visitType(Type* node) override;
 
 private:
+    // ---- visitBinaryExpr 族子方法（350 重构E2 函数级拆分·原 400 行单函数）----
+    //   逐字搬移零语义变更；返回 bool=true 已处理（visitBinaryExpr 直接返回）；
+    //   声明顺序=原单函数逐节顺序。
+    bool checkLogicalBinary(BinaryExpr* node, const std::string& leftType, const std::string& rightType);
+    void reportMixedSignAndUnsafeBoundary(BinaryExpr* node, const std::string& leftType,
+                                          const std::string& rightType);
+    bool checkVoidOperandBinary(BinaryExpr* node, const std::string& leftType, const std::string& rightType);
+    void checkConstIntExprSafety(BinaryExpr* node, const std::string& leftType, const std::string& rightType);
+    void reportConstOverflowOrDivZero(BinaryExpr* node, std::int64_t vL, std::int64_t vR,
+                                      const std::string& leftType, const std::string& rightType);
+    bool checkComparisonBinary(BinaryExpr* node, const std::string& leftType, const std::string& rightType);
+    bool checkBitwiseBinary(BinaryExpr* node, const std::string& leftType, const std::string& rightType);
+    bool checkArithmeticBinary(BinaryExpr* node, std::string& leftType, std::string& rightType);
+    bool checkStringConcatAndPtrArithmetic(BinaryExpr* node, const std::string& leftType,
+                                           const std::string& rightType);
+    bool checkClassOperatorOverload(BinaryExpr* node, const std::string& leftType, const std::string& rightType);
     // ==================== 符号表管理 ====================
     void pushScope();                              // 进入新作用域
     void popScope();                               // 退出当前作用域

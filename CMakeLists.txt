@@ -140,6 +140,7 @@ target_link_libraries(cn_compiler_lexer PUBLIC cn_compiler_common)
 add_library(cn_compiler_parser STATIC
     src/cn_compiler/parser/parser.cpp
     src/cn_compiler/parser/parser_type.cpp
+    src/cn_compiler/parser/parser_decl.cpp
     src/cn_compiler/parser/parser_oop.cpp
     src/cn_compiler/parser/parser_stmt.cpp
     src/cn_compiler/parser/parser_expr.cpp
@@ -166,6 +167,7 @@ add_library(cn_compiler_semantic STATIC
     src/cn_compiler/semantic/semantic_builtins.cpp
     src/cn_compiler/semantic/semantic_expr.cpp
     src/cn_compiler/semantic/semantic_expr_op.cpp
+    src/cn_compiler/semantic/semantic_expr_binary.cpp
     src/cn_compiler/semantic/semantic_expr_unary.cpp
     src/cn_compiler/semantic/semantic_expr_access.cpp
     src/cn_compiler/semantic/semantic_definit.cpp
@@ -173,6 +175,7 @@ add_library(cn_compiler_semantic STATIC
     src/cn_compiler/semantic/semantic_call_qualified.cpp
     src/cn_compiler/semantic/semantic_stmt.cpp
     src/cn_compiler/semantic/semantic_decl.cpp
+    src/cn_compiler/semantic/semantic_decl_import.cpp
     src/cn_compiler/semantic/class_resolver.cpp
     src/cn_compiler/semantic/class_resolver_access.cpp
     src/cn_compiler/semantic/error_analysis.cpp
@@ -211,6 +214,7 @@ target_link_libraries(cn_compiler_semantic PUBLIC cn_compiler_model cn_compiler_
 #   （纯重构零行为变更；成员函数声明仍在 semantic.hpp）
 add_library(cn_compiler_ir STATIC
     src/cn_compiler/ir/ir.cpp
+    src/cn_compiler/ir/ir_decl_extra.cpp
     src/cn_compiler/ir/ir_expr.cpp
     src/cn_compiler/ir/ir_expr_unary.cpp
     src/cn_compiler/ir/ir_expr_assign.cpp
@@ -220,6 +224,7 @@ add_library(cn_compiler_ir STATIC
     src/cn_compiler/ir/ir_call.cpp
     src/cn_compiler/ir/ir_stmt.cpp
     src/cn_compiler/ir/ir_stmt_decl.cpp
+    src/cn_compiler/ir/ir_stmt_decl_init.cpp
     src/cn_compiler/ir/ir_decl.cpp
     src/cn_compiler/ir/ir_oop.cpp
     src/cn_compiler/ir/ir_oop_container.cpp

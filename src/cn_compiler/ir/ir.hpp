@@ -20,6 +20,7 @@ class ISemanticView;  // 语义只读视图（346 重构D·model 层接口·实�
 struct ClassMemberInfo;   // 前向声明（阶段3：类方法信息，semantic.hpp 定义）
 struct ClassInfo;         // 前向声明（D1 拆分 456-a：findCtorMember 形参，semantic.hpp 定义）
 struct GenericFuncInstance;  // 前向声明（Task 6.1：泛型函数实例化记录，semantic.hpp 定义）
+struct DeclGenCtx;        // 前向声明（350 重构E2：genVarDecl 拆分段间状态包，ir_stmt_decl_ctx.hpp 定义）
 
 // 类方法符号 key：类名$sigKey（sigKey=名#参数串）。
 // codegen classMethodSymbol 生成 nameMangle(类名$名#参数串)，IR 侧 func.mangledName
@@ -421,6 +422,46 @@ private:
     void genBlock(BlockStmt* node);             // 代码块（顺序生成语句）
     ir::IRValue genExpr(Expr* node);            // 表达式生成，返回结果寄存器
     void genVarDecl(VarDecl* node);             // 变量声明（Alloca + Store）
+    // ---- genVarDecl 族子方法（350 重构E2 函数级拆分·原 1092 行单函数）----
+    //   函数体逐字搬移零语义变更；段间共享状态 DeclGenCtx（ir_stmt_decl_ctx.hpp
+    //   定义）；族序=原单函数逐节顺序；返回 bool 者 true=已处理（直接返回）。
+    bool genStaticLocalDecl(VarDecl* node);  // ①320-a/061-b 静态局部通道（含类型分派）
+    bool genStaticLocalScalarDirect(VarDecl* node, const std::string& key,
+                                    const std::string& srcTypeRaw,
+                                    const std::string& stType, bool scalarInt);
+    void genStaticLocalGuardInit(VarDecl* node, const std::string& key,
+                                 const std::string& srcTypeRaw, const std::string& stType,
+                                 const std::string& canonCore, bool guardStruct,
+                                 bool guardString);
+    void rewriteGenericInstanceTypeName(VarDecl* node);  // ②泛型实例化类型名替换
+    void backfillCtorLiteralTypeName(VarDecl* node);     // ③构造字面量类型回填
+    void resolveDeclTypesAndAlloc(VarDecl* node, DeclGenCtx& ctx);  // ④类型推断+槽分配
+    void registerOwnedArrayElems(const DeclGenCtx& ctx);  // ⑤98-a/955 数组元素 RAII 名单
+    bool tryGenReferenceBinding(VarDecl* node, const DeclGenCtx& ctx);  // ⑥P3-18 引用绑定
+    void registerOopRaii(VarDecl* node, const DeclGenCtx& ctx);  // ⑦OOP/串/字段 RAII 登记
+    bool genArrayInitListDecl(VarDecl* node, const DeclGenCtx& ctx);  // ⑧数组初始化列表
+    void storeArrayInitElements(VarDecl* node, InitListExpr* initList,
+                                const std::string& elemSrc, const std::string& elemIrType,
+                                std::int64_t elemStride, const std::string& unique);
+    void zeroFillArrayTail(VarDecl* node, InitListExpr* initList, const std::string& elemIrType,
+                           std::int64_t elemStride, int arrayLen, const std::string& unique);
+    bool genStructInitListDecl(VarDecl* node, const DeclGenCtx& ctx);  // ⑨结构体初始化列表
+    bool genExprInitializer(VarDecl* node, const DeclGenCtx& ctx);  // ⑩普通表达式初始值
+    void registerClosureIfNeeded(VarDecl* node);  // ⑩子 Task 2.10/P3-23 闭包登记
+    bool tryGenTransferInit(VarDecl* node, const ir::IRValue& value, const std::string& unique);
+    bool tryGenArrayRetbufInit(VarDecl* node, const ir::IRValue& value, const std::string& unique);
+    bool tryGenStructPtrInit(VarDecl* node, ir::IRValue value, const DeclGenCtx& ctx);
+    void registerPendingBoxVar(VarDecl* node, const std::string& declCanon,
+                               const ir::IRValue& dstAddr, const ir::IRValue& value,
+                               const std::string& unique);
+    bool tryGenClassCopyInit(VarDecl* node, const ir::IRValue& value,
+                             const std::string& srcType, const std::string& unique);
+    bool tryGenUnwrapBindInit(VarDecl* node, const ir::IRValue& value,
+                              const std::string& srcType, const std::string& unique);
+    void ownStringInitValue(VarDecl* node, const std::string& srcType, ir::IRValue& value);
+    void genClassDefaultConstruct(VarDecl* node, const DeclGenCtx& ctx);  // ⑪H7 类兜底
+    void genStructZeroInit(VarDecl* node, const DeclGenCtx& ctx);  // ⑫缺陷2 结构体兜底
+    void genArrayZeroInit(VarDecl* node, const DeclGenCtx& ctx);   // ⑬缺陷B 数组兜底
     // 数组越界检查插桩（Task 2.4）：index < 0 || index >= len 时调用运行时错误(2)
     void emitBoundsCheck(const ir::IRValue& index, int arrayLen,
                          const SourceLocation& loc);    // T4（306-a 波次2）：字符串下标越界检查（运行时长度版）——
