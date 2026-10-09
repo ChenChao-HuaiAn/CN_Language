@@ -53,8 +53,10 @@ if hasattr(sys.stderr, "reconfigure"):
 
 # 运行时 .o 名（cn build 自动编译到 target/；linux 侧现场 g++ -c 同名单，
 #   对齐 run_e2e.py 确保v2p与运行时就绪 的运行时名们——io_api 与 time/system 等
-#   560-a 实测全名单取 runner 同款，缺一链接期 undefined）
-运行时名们 = ["io_api", "intern_api", "runtime", "string_api", "i128_api",
+#   560-a 实测全名单取 runner 同款，缺一链接期 undefined；349 重构E：io_api 拆出
+#   mem_api/arena/crash_handler 三件同编同链）
+运行时名们 = ["io_api", "mem_api", "arena", "crash_handler",
+            "intern_api", "runtime", "string_api", "i128_api",
             "math_api", "input_api", "file_api", "time_api", "system_api"]
 
 # v2 产物行数下界（防「近乎空产物」假绿；对齐 run_e2e.py 锚定链下界口径）

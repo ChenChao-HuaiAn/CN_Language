@@ -1299,7 +1299,9 @@ def 确保v2p与运行时就绪(编译器路径: pathlib.Path, 目标平台: str
     #   -DCNRT_LINUX_MAIN）+ 指纹缓存（2026-09-11 68-a 方案A 根治：指纹=src/runtime
     #   全部 .cpp 路径/大小/mtime+cxx+标志串，不符整批重编——杜绝跨机 pull 后陈旧
     #   .o 参与门禁链接；整批原子重编避免半新半旧混链，与 v2p 缓存同款模式）
-    运行时名们 = ["io_api", "intern_api", "runtime", "thread_api", "string_api", "i128_api",
+    #   349 重构E：io_api.cpp 拆出 mem_api/arena/crash_handler 三件同编同链
+    运行时名们 = ["io_api", "mem_api", "arena", "crash_handler",
+                "intern_api", "runtime", "thread_api", "string_api", "i128_api",
                 "math_api", "input_api", "file_api", "time_api", "system_api"]
     rt缓存键路径 = 审计目录 / "rt_build_key.txt"
     rt指纹 = 计算运行时构建指纹(cxx工具)
@@ -1394,8 +1396,10 @@ def 确保v2p就绪win(编译器路径: pathlib.Path, 详细: bool, 编号: str 
         if not pathlib.Path(lib路径).exists():
             return None, f"LIB 路径不存在: {lib路径}"
 
-    # 运行时 .obj（C++ 版构建产物；对齐宿主链接命令 10 个）
-    运行时名们 = ["io_api", "intern_api", "runtime", "thread_api", "string_api", "i128_api",
+    # 运行时 .obj（C++ 版构建产物；对齐宿主链接命令——349 重构E 后 14 件：
+    #   io_api 拆出 mem_api/arena/crash_handler 同链）
+    运行时名们 = ["io_api", "mem_api", "arena", "crash_handler",
+                "intern_api", "runtime", "thread_api", "string_api", "i128_api",
                 "math_api", "input_api", "file_api", "time_api", "system_api"]
     运行时objs = [项目根目录 / "target" / f"{m}.obj" for m in 运行时名们]
     for obj in 运行时objs:

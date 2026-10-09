@@ -324,6 +324,9 @@ target_link_libraries(cn_compiler_driver PUBLIC cn_compiler_lexer cn_compiler_pa
 # 将来 cn 可执行文件生成的汇编链接此库（Task 1.9）
 add_library(cn_runtime STATIC
     src/runtime/io_api.cpp
+    src/runtime/mem_api.cpp
+    src/runtime/arena.cpp
+    src/runtime/crash_handler.cpp
     src/runtime/intern_api.cpp
     src/runtime/runtime.cpp
     src/runtime/thread_api.cpp
@@ -349,7 +352,7 @@ endif()
 #   /MT（静态 CRT）运行时 obj 到 target/，消除陈旧产物与运行时漂移。
 if(MSVC)
     set(CNRT_79_SRCS
-        io_api intern_api runtime string_api i128_api math_api input_api file_api time_api system_api thread_api)
+        io_api mem_api arena crash_handler intern_api runtime string_api i128_api math_api input_api file_api time_api system_api thread_api)
     set(CNRT_79_OBJS "")
     foreach(_s ${CNRT_79_SRCS})
         set(_obj ${CMAKE_SOURCE_DIR}/target/${_s}.obj)
@@ -368,6 +371,7 @@ endif()
 # 编译器可执行文件
 add_executable(cn
     src/cn_main.cpp
+    src/cn_main_toolchain.cpp
 )
 target_link_libraries(cn PRIVATE cn_compiler_common cn_compiler_lexer cn_compiler_parser cn_compiler_semantic cn_compiler_ir cn_compiler_codegen cn_compiler_model cn_compiler_driver)
 # Linux 下 cn 运行时入口 main（单元测试不需——gtest_main 提供 main，避免冲突）

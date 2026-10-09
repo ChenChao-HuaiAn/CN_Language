@@ -93,8 +93,9 @@ _IMPORT_RE = re.compile(r'^\s*导入\s+([^\s;]+)\s*;')
 def cpp_层归属(仓库根: Path, 文件: Path):
     """文件路径→层名；未知位置返回 None（打印警告放行·防新目录误杀）。"""
     相对 = 文件.relative_to(仓库根).as_posix()
-    if 相对 == "src/cn_main.cpp":
-        return "main"
+    if 相对 in ("src/cn_main.cpp", "src/cn_main_toolchain.cpp",
+                "src/cn_main_toolchain.hpp"):
+        return "main"  # 349：工具链抽取件随 cn_main 同层
     # 最长前缀匹配（防前缀串扰：codegen/x64 等子目录落 codegen）
     最佳, 层名 = "", None
     for 前缀, 层 in CPP_DIRS.items():
