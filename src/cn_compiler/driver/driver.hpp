@@ -13,7 +13,7 @@
 #include "cn_compiler/driver/cargo_parser.hpp"
 #include "cn_compiler/ir/ir.hpp"
 #include "cn_compiler/lexer/token.hpp"
-#include "cn_compiler/parser/ast.hpp"
+#include "cn_compiler/model/ast.hpp"
 
 namespace cn_compiler {
 namespace driver {

@@ -7,7 +7,7 @@
 #pragma once
 #include <iostream>
 
-#include "cn_compiler/parser/ast.hpp"
+#include "cn_compiler/model/ast.hpp"
 
 namespace cn_compiler {
 

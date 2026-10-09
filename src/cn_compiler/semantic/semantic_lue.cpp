@@ -15,7 +15,7 @@
 //   ——漏类型=少优化，不会误消除。
 #include "cn_compiler/semantic/semantic.hpp"
 
-#include "cn_compiler/parser/ast.hpp"
+#include "cn_compiler/model/ast.hpp"
 
 #include <string>
 #include <vector>

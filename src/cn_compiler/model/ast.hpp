@@ -3,7 +3,7 @@
 //   本文件保留为聚合入口（转发 include 四层；包含面零改动）。
 #pragma once
 
-#include "cn_compiler/parser/ast_base.hpp"
-#include "cn_compiler/parser/ast_expr.hpp"
-#include "cn_compiler/parser/ast_stmt.hpp"
-#include "cn_compiler/parser/ast_decl.hpp"
+#include "cn_compiler/model/ast_base.hpp"
+#include "cn_compiler/model/ast_expr.hpp"
+#include "cn_compiler/model/ast_stmt.hpp"
+#include "cn_compiler/model/ast_decl.hpp"

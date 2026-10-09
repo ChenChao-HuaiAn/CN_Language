@@ -12,7 +12,7 @@
 #include <string>
 
 #include "cn_compiler/codegen/arm64/arm64_codegen.hpp"
-#include "cn_compiler/semantic/type_system.hpp"
+#include "cn_compiler/model/type_system.hpp"
 
 namespace cn_compiler {
 

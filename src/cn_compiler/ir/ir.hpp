@@ -13,7 +13,7 @@
 
 #include "cn_compiler/common/diagnostics.hpp"
 #include "cn_compiler/common/source_location.hpp"
-#include "cn_compiler/parser/ast.hpp"
+#include "cn_compiler/model/ast.hpp"
 
 namespace cn_compiler {
 class SemanticAnalyzer;   // 前向声明（Task 2.7：IR 查询结构体布局/枚举值）

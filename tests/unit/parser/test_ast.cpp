@@ -5,7 +5,7 @@
 #include <memory>
 #include <string>
 
-#include "cn_compiler/parser/ast.hpp"
+#include "cn_compiler/model/ast.hpp"
 
 using cn_compiler::AssignmentExpr;
 using cn_compiler::AstNode;

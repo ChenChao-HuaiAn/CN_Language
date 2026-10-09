@@ -26,7 +26,7 @@
 #include <cstdio>
 #include "cn_compiler/ir/ir.hpp"
 #include "cn_compiler/semantic/semantic.hpp"
-#include "cn_compiler/semantic/type_system.hpp"
+#include "cn_compiler/model/type_system.hpp"
 
 namespace cn_compiler {
 

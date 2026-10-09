@@ -3,7 +3,7 @@
 //   1. 每行输出：缩进 + 节点类型 + 源码位置 + 关键字段（值/名/运算符）
 //   2. 递归访问子节点前 depth_ 递增，输出后递减（树形缩进）
 //   3. 运算符映射输出中文符号文本，便于阅读
-#include "cn_compiler/parser/ast_printer.hpp"
+#include "cn_compiler/model/ast_printer.hpp"
 
 #include <memory>
 #include <string>

@@ -19,7 +19,7 @@
 #include "cn_compiler/ir/ir.hpp"
 #include "cn_compiler/module/module.hpp"
 #include "cn_compiler/opt/pass_manager.hpp"
-#include "cn_compiler/parser/ast.hpp"
+#include "cn_compiler/model/ast.hpp"
 #include "cn_compiler/semantic/semantic.hpp"
 
 namespace cn_compiler {

@@ -43,12 +43,10 @@
  },
  "cpp": {
   "src/cn_compiler/codegen/arm64/arm64_codegen.cpp": [
-   "cn_compiler/semantic/semantic.hpp",
-   "cn_compiler/semantic/type_system.hpp"
+   "cn_compiler/semantic/semantic.hpp"
   ],
   "src/cn_compiler/codegen/arm64/arm64_codegen_emit.cpp": [
-   "cn_compiler/semantic/semantic.hpp",
-   "cn_compiler/semantic/type_system.hpp"
+   "cn_compiler/semantic/semantic.hpp"
   ],
   "src/cn_compiler/codegen/arm64/arm64_codegen_oop.cpp": [
    "cn_compiler/semantic/semantic.hpp"
@@ -56,16 +54,11 @@
   "src/cn_compiler/codegen/arm64/arm64_codegen_vtable.cpp": [
    "cn_compiler/semantic/semantic.hpp"
   ],
-  "src/cn_compiler/codegen/arm64/arm64_instructions.cpp": [
-   "cn_compiler/semantic/type_system.hpp"
-  ],
   "src/cn_compiler/codegen/linux_x64/linux_x64_codegen.cpp": [
-   "cn_compiler/semantic/semantic.hpp",
-   "cn_compiler/semantic/type_system.hpp"
+   "cn_compiler/semantic/semantic.hpp"
   ],
   "src/cn_compiler/codegen/linux_x64/linux_x64_codegen_emit.cpp": [
-   "cn_compiler/semantic/semantic.hpp",
-   "cn_compiler/semantic/type_system.hpp"
+   "cn_compiler/semantic/semantic.hpp"
   ],
   "src/cn_compiler/codegen/linux_x64/linux_x64_codegen_oop.cpp": [
    "cn_compiler/semantic/semantic.hpp"
@@ -73,16 +66,11 @@
   "src/cn_compiler/codegen/linux_x64/linux_x64_codegen_vtable.cpp": [
    "cn_compiler/semantic/semantic.hpp"
   ],
-  "src/cn_compiler/codegen/linux_x64/linux_x64_instructions.cpp": [
-   "cn_compiler/semantic/type_system.hpp"
-  ],
   "src/cn_compiler/codegen/x64/x64_codegen.cpp": [
-   "cn_compiler/semantic/semantic.hpp",
-   "cn_compiler/semantic/type_system.hpp"
+   "cn_compiler/semantic/semantic.hpp"
   ],
   "src/cn_compiler/codegen/x64/x64_codegen_data.cpp": [
-   "cn_compiler/semantic/semantic.hpp",
-   "cn_compiler/semantic/type_system.hpp"
+   "cn_compiler/semantic/semantic.hpp"
   ],
   "src/cn_compiler/codegen/x64/x64_codegen_oop.cpp": [
    "cn_compiler/semantic/semantic.hpp"
@@ -90,93 +78,63 @@
   "src/cn_compiler/codegen/x64/x64_codegen_vtable.cpp": [
    "cn_compiler/semantic/semantic.hpp"
   ],
-  "src/cn_compiler/codegen/x64/x64_instructions_mem.cpp": [
-   "cn_compiler/semantic/type_system.hpp"
-  ],
   "src/cn_compiler/ir/ir.cpp": [
-   "cn_compiler/semantic/semantic.hpp",
-   "cn_compiler/semantic/type_system.hpp"
-  ],
-  "src/cn_compiler/ir/ir.hpp": [
-   "cn_compiler/parser/ast.hpp"
+   "cn_compiler/semantic/semantic.hpp"
   ],
   "src/cn_compiler/ir/ir_call.cpp": [
-   "cn_compiler/semantic/semantic.hpp",
-   "cn_compiler/semantic/type_system.hpp"
+   "cn_compiler/semantic/semantic.hpp"
   ],
   "src/cn_compiler/ir/ir_decl.cpp": [
    "cn_compiler/semantic/semantic.hpp",
-   "cn_compiler/semantic/semantic_internal.hpp",
-   "cn_compiler/semantic/type_system.hpp"
+   "cn_compiler/semantic/semantic_internal.hpp"
   ],
   "src/cn_compiler/ir/ir_error_ctor.cpp": [
-   "cn_compiler/semantic/semantic.hpp",
-   "cn_compiler/semantic/type_system.hpp"
+   "cn_compiler/semantic/semantic.hpp"
   ],
   "src/cn_compiler/ir/ir_expr.cpp": [
-   "cn_compiler/semantic/semantic.hpp",
-   "cn_compiler/semantic/type_system.hpp"
+   "cn_compiler/semantic/semantic.hpp"
   ],
   "src/cn_compiler/ir/ir_expr_assign.cpp": [
-   "cn_compiler/semantic/semantic.hpp",
-   "cn_compiler/semantic/type_system.hpp"
+   "cn_compiler/semantic/semantic.hpp"
   ],
   "src/cn_compiler/ir/ir_expr_assign_ident.cpp": [
-   "cn_compiler/semantic/semantic.hpp",
-   "cn_compiler/semantic/type_system.hpp"
+   "cn_compiler/semantic/semantic.hpp"
   ],
   "src/cn_compiler/ir/ir_expr_index.cpp": [
-   "cn_compiler/semantic/semantic.hpp",
-   "cn_compiler/semantic/type_system.hpp"
+   "cn_compiler/semantic/semantic.hpp"
   ],
   "src/cn_compiler/ir/ir_expr_member.cpp": [
-   "cn_compiler/semantic/semantic.hpp",
-   "cn_compiler/semantic/type_system.hpp"
+   "cn_compiler/semantic/semantic.hpp"
   ],
   "src/cn_compiler/ir/ir_expr_unary.cpp": [
-   "cn_compiler/semantic/semantic.hpp",
-   "cn_compiler/semantic/type_system.hpp"
+   "cn_compiler/semantic/semantic.hpp"
   ],
   "src/cn_compiler/ir/ir_fields.cpp": [
-   "cn_compiler/semantic/semantic.hpp",
-   "cn_compiler/semantic/type_system.hpp"
+   "cn_compiler/semantic/semantic.hpp"
   ],
   "src/cn_compiler/ir/ir_generic_func.cpp": [
    "cn_compiler/semantic/semantic.hpp"
   ],
   "src/cn_compiler/ir/ir_oop.cpp": [
-   "cn_compiler/semantic/semantic.hpp",
-   "cn_compiler/semantic/type_system.hpp"
+   "cn_compiler/semantic/semantic.hpp"
   ],
   "src/cn_compiler/ir/ir_oop_call.cpp": [
-   "cn_compiler/semantic/semantic.hpp",
-   "cn_compiler/semantic/type_system.hpp"
+   "cn_compiler/semantic/semantic.hpp"
   ],
   "src/cn_compiler/ir/ir_oop_call_release.cpp": [
-   "cn_compiler/semantic/semantic.hpp",
-   "cn_compiler/semantic/type_system.hpp"
+   "cn_compiler/semantic/semantic.hpp"
   ],
   "src/cn_compiler/ir/ir_oop_container.cpp": [
-   "cn_compiler/semantic/semantic.hpp",
-   "cn_compiler/semantic/type_system.hpp"
+   "cn_compiler/semantic/semantic.hpp"
   ],
   "src/cn_compiler/ir/ir_oop_field.cpp": [
-   "cn_compiler/semantic/semantic.hpp",
-   "cn_compiler/semantic/type_system.hpp"
+   "cn_compiler/semantic/semantic.hpp"
   ],
   "src/cn_compiler/ir/ir_stmt.cpp": [
-   "cn_compiler/semantic/semantic.hpp",
-   "cn_compiler/semantic/type_system.hpp"
+   "cn_compiler/semantic/semantic.hpp"
   ],
   "src/cn_compiler/ir/ir_stmt_decl.cpp": [
-   "cn_compiler/semantic/semantic.hpp",
-   "cn_compiler/semantic/type_system.hpp"
-  ],
-  "src/cn_compiler/parser/parser.cpp": [
-   "cn_compiler/semantic/type_system.hpp"
-  ],
-  "src/cn_compiler/parser/parser_type.cpp": [
-   "cn_compiler/semantic/type_system.hpp"
+   "cn_compiler/semantic/semantic.hpp"
   ]
  }
 }

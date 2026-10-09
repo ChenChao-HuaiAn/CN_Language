@@ -3,7 +3,7 @@
 // Task 3.1/3.3/3.6/3.8 新增：AstVisitor 阶段3 新节点方法的默认空实现
 //   （语义/IR/codegen 的派生访问者未重写这些方法时编译不报错，
 //     待对应子任务按需重写；语法层 AstPrinter 重写为实际打印）
-#include "cn_compiler/parser/ast.hpp"
+#include "cn_compiler/model/ast.hpp"
 
 namespace cn_compiler {
 

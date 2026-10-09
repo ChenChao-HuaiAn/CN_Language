@@ -12,7 +12,7 @@
 #include <unordered_map>
 #include <unordered_set>
 
-#include "cn_compiler/semantic/type_system.hpp"
+#include "cn_compiler/model/type_system.hpp"
 
 namespace cn_compiler {
 namespace types {

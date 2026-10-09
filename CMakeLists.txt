@@ -138,7 +138,6 @@ target_link_libraries(cn_compiler_lexer PUBLIC cn_compiler_common)
 #   parser.cpp（基础辅助+类型+声明+主入口）、parser_oop.cpp（类/接口/导入/泛型）、
 #   parser_stmt.cpp（语句解析）、parser_expr.cpp（表达式解析）
 add_library(cn_compiler_parser STATIC
-    src/cn_compiler/parser/ast.cpp
     src/cn_compiler/parser/parser.cpp
     src/cn_compiler/parser/parser_type.cpp
     src/cn_compiler/parser/parser_oop.cpp
@@ -147,12 +146,15 @@ add_library(cn_compiler_parser STATIC
 )
 target_link_libraries(cn_compiler_parser PUBLIC cn_compiler_lexer cn_compiler_common)
 
-# 类型系统子模块库：类型工具（Task 2.3，供语义分析器与IR生成器共用）
-add_library(cn_compiler_type_system STATIC
-    src/cn_compiler/semantic/type_system.cpp
+# 中立数据层（338 重构C）：AST 数据结构 + ast_printer + 类型系统纯静态工具——
+#   前端产出、后端消费的中立模型（与 v2 协议常量包对称·AGENTS §3 目标态 model 层）
+add_library(cn_compiler_model STATIC
+    src/cn_compiler/model/ast.cpp
+    src/cn_compiler/model/ast_printer.cpp
+    src/cn_compiler/model/type_system.cpp
 )
-target_include_directories(cn_compiler_type_system PUBLIC ${CMAKE_SOURCE_DIR}/src)
-target_link_libraries(cn_compiler_type_system PUBLIC cn_compiler_common)
+target_include_directories(cn_compiler_model PUBLIC ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(cn_compiler_model PUBLIC cn_compiler_common)
 
 # 语义模块库：语义分析器（Task 1.5 + Task 2.3 类型系统 + 阶段3 OOP/错误处理/泛型，
 #   按职责拆分子模块：class_resolver/error_analysis/generics，供编译器与单元测试共用）
@@ -178,7 +180,7 @@ add_library(cn_compiler_semantic STATIC
     src/cn_compiler/semantic/semantic_borrowview.cpp
     src/cn_compiler/semantic/semantic_lue.cpp
 )
-target_link_libraries(cn_compiler_semantic PUBLIC cn_compiler_type_system cn_compiler_parser cn_compiler_common)
+target_link_libraries(cn_compiler_semantic PUBLIC cn_compiler_model cn_compiler_parser cn_compiler_common)
 
 # IR模块库：CN-IR结构与IR生成器（Task 1.6 + Task 2.3 类型映射/字面量后缀 + 阶段3 OOP
 #   指令发射，供编译器与单元测试共用）
@@ -229,7 +231,7 @@ add_library(cn_compiler_ir STATIC
     src/cn_compiler/ir/ir_generic_func.cpp
     src/cn_compiler/ir/ir_verify.cpp
 )
-target_link_libraries(cn_compiler_ir PUBLIC cn_compiler_type_system cn_compiler_parser cn_compiler_common)
+target_link_libraries(cn_compiler_ir PUBLIC cn_compiler_model cn_compiler_parser cn_compiler_common)
 
 # 代码生成模块库：抽象后端接口 + X64代码生成器 + ARM64代码生成器 + LinuxX64代码生成器
 # （Task 1.7 + 阶段3 OOP + 阶段5 Linux ARM64 + plans/016 linux-x86_64，供编译器与单元测试共用）
@@ -272,11 +274,7 @@ target_include_directories(cn_compiler_codegen PUBLIC ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(cn_compiler_codegen PUBLIC cn_compiler_ir cn_compiler_semantic cn_compiler_common)
 
 # AST打印器：访问者模式递归打印AST树（Task 1.10 ast 命令，供编译器与单元测试共用）
-add_library(cn_compiler_ast_printer STATIC
-    src/cn_compiler/parser/ast_printer.cpp
-)
-target_include_directories(cn_compiler_ast_printer PUBLIC ${CMAKE_SOURCE_DIR}/src)
-target_link_libraries(cn_compiler_ast_printer PUBLIC cn_compiler_parser cn_compiler_common)
+
 
 # 优化器模块库：Pass框架 + 常量折叠 + 死代码消除 + 代数简化/复写传播/CSE/
 #   跨块DCE/全局值传播 + 阶段B（SSA/Phi、LICM、强度削减、内联、尾调用）
@@ -316,7 +314,7 @@ add_library(cn_compiler_driver STATIC
     src/cn_compiler/driver/cargo_parser.cpp
 )
 target_include_directories(cn_compiler_driver PUBLIC ${CMAKE_SOURCE_DIR}/src)
-target_link_libraries(cn_compiler_driver PUBLIC cn_compiler_lexer cn_compiler_parser cn_compiler_semantic cn_compiler_ir cn_compiler_codegen cn_compiler_ast_printer cn_compiler_opt cn_compiler_module)
+target_link_libraries(cn_compiler_driver PUBLIC cn_compiler_lexer cn_compiler_parser cn_compiler_semantic cn_compiler_ir cn_compiler_codegen cn_compiler_model cn_compiler_opt cn_compiler_module)
 
 # 运行时库（cnrt）：IO + 程序入口（Task 1.8，规格书第十章）
 # 提供CN内置函数实现（打印/打印行 变参展开的 __cn_print_* 系列 + 防御保留的 printLine 系列）
@@ -371,7 +369,7 @@ endif()
 add_executable(cn
     src/cn_main.cpp
 )
-target_link_libraries(cn PRIVATE cn_compiler_common cn_compiler_lexer cn_compiler_parser cn_compiler_semantic cn_compiler_ir cn_compiler_codegen cn_compiler_ast_printer cn_compiler_driver)
+target_link_libraries(cn PRIVATE cn_compiler_common cn_compiler_lexer cn_compiler_parser cn_compiler_semantic cn_compiler_ir cn_compiler_codegen cn_compiler_model cn_compiler_driver)
 # Linux 下 cn 运行时入口 main（单元测试不需——gtest_main 提供 main，避免冲突）
 if(NOT WIN32)
     target_compile_definitions(cn PRIVATE CNRT_LINUX_MAIN)

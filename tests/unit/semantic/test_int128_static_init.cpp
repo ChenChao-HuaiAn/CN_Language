@@ -10,7 +10,7 @@
 #include <cstdio>
 #include <string>
 
-#include "cn_compiler/semantic/type_system.hpp"
+#include "cn_compiler/model/type_system.hpp"
 
 using cn_compiler::types::isInt128Signed;
 using cn_compiler::types::isInt128Type;

@@ -8,9 +8,9 @@
 
 #include "cn_compiler/common/source_location.hpp"
 
-#include "cn_compiler/parser/ast_base.hpp"
-#include "cn_compiler/parser/ast_expr.hpp"
-#include "cn_compiler/parser/ast_stmt.hpp"
+#include "cn_compiler/model/ast_base.hpp"
+#include "cn_compiler/model/ast_expr.hpp"
+#include "cn_compiler/model/ast_stmt.hpp"
 
 namespace cn_compiler {
 

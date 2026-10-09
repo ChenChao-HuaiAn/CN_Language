@@ -11,7 +11,7 @@
 #include "cn_compiler/common/diagnostics.hpp"
 #include "cn_compiler/lexer/lexer.hpp"
 #include "cn_compiler/module/module.hpp"
-#include "cn_compiler/parser/ast.hpp"
+#include "cn_compiler/model/ast.hpp"
 #include "cn_compiler/parser/parser.hpp"
 #include "cn_compiler/semantic/semantic.hpp"
 

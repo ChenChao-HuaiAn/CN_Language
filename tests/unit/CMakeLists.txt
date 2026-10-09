@@ -127,7 +127,7 @@ target_link_libraries(cn_unit_tests PRIVATE
     cn_compiler_common
     cn_compiler_lexer
     cn_compiler_parser
-    cn_compiler_type_system
+    cn_compiler_model
     cn_compiler_semantic
     cn_compiler_ir
     cn_compiler_codegen

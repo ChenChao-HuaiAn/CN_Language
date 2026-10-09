@@ -11,7 +11,7 @@
 
 #include "cn_compiler/common/diagnostics.hpp"
 #include "cn_compiler/lexer/lexer.hpp"
-#include "cn_compiler/parser/ast_printer.hpp"
+#include "cn_compiler/model/ast_printer.hpp"
 #include "cn_compiler/parser/parser.hpp"
 
 using cn_compiler::AstPrinter;

@@ -17,7 +17,7 @@
 #include "cn_compiler/lexer/lexer.hpp"
 #include "cn_compiler/lexer/token.hpp"
 #include "cn_compiler/opt/pass_manager.hpp"
-#include "cn_compiler/parser/ast_printer.hpp"
+#include "cn_compiler/model/ast_printer.hpp"
 #include "cn_compiler/parser/parser.hpp"
 #include "cn_compiler/semantic/semantic.hpp"
 

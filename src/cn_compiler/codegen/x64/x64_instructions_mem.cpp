@@ -3,7 +3,7 @@
 #include <string>
 
 #include "cn_compiler/codegen/x64/x64_codegen.hpp"
-#include "cn_compiler/semantic/type_system.hpp"
+#include "cn_compiler/model/type_system.hpp"
 
 namespace cn_compiler {
 

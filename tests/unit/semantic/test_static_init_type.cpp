@@ -7,7 +7,7 @@
 // 注意：GCC 无 UTF-8 标识符，测试名用英文（注释/字符串可中文）
 #include <gtest/gtest.h>
 
-#include "cn_compiler/semantic/type_system.hpp"
+#include "cn_compiler/model/type_system.hpp"
 
 using cn_compiler::types::isStaticScalarInitType;
 
