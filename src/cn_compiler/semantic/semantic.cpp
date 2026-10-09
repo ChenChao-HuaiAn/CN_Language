@@ -14,7 +14,7 @@
 
 #include "cn_compiler/semantic/semantic.hpp"
 #include "cn_compiler/model/type_system.hpp"
-#include "cn_compiler/semantic/semantic_internal.hpp"
+#include "cn_compiler/model/semantic_helpers.hpp"
 
 namespace cn_compiler {
 // 8. D1 行数整改 117-a：按族拆出 semantic_types.cpp（类型系统）/semantic_sig.cpp（签名重载）/semantic_builtins.cpp（内置注册）（纯重构零行为变更）
@@ -265,15 +265,6 @@ bool SemanticAnalyzer::isStrTainted(const std::string& name) const {
     return false;
 }
 
-bool SemanticAnalyzer::isOwnedStringBuiltin(const std::string& name) {
-    // 与 IR 层字符串拥有判定白名单同一集合（原 ir_expr_assign_ident.cpp
-    // identifierStringOwnAssign / ir_stmt_decl.cpp 拥有型初始化两处硬编码——
-    // 094 收口为单点，IR 层两处改调本方法，判据漂移根除）。
-    return name == "字符串复制" || name == "字符串连接" ||
-           name == "字符串拼接" || name == "字符串子串" ||
-           name == "字符串大写" || name == "字符串小写" ||
-           name == "字符串修剪" || name == "字符串反转";
-}
 
 bool SemanticAnalyzer::isOwnedStrRvalue(const Expr* rhs) const {
     if (rhs == nullptr) return false;

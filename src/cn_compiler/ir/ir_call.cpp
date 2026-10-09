@@ -11,7 +11,7 @@
 #include <utility>
 
 #include "cn_compiler/ir/ir.hpp"
-#include "cn_compiler/semantic/semantic.hpp"
+#include "cn_compiler/model/semantic_view.hpp"
 #include "cn_compiler/model/type_system.hpp"
 
 namespace cn_compiler {
@@ -32,7 +32,7 @@ void IRGenerator::visitCallExpr(CallExpr* node) {
     // 此处=表达式位指针/字符串值交接）。展开=实参标识符的值加载（转移() 零运行
     // 时指令，纯编译期标记语义）。resolvedType 非空且 callee 为 转移 双重判定，
     // 防用户经占位注册签名外的同名调用误入。
-    if (SemanticAnalyzer::isTransferCall(node) && !node->resolvedType.empty()) {
+    if (isTransferCall(node) && !node->resolvedType.empty()) {
         (void)genExpr(node->arguments[0].get());  // lastExpr_=实参求值结果（句柄直拷）
         // plans/022 波 4 首件（459-a·206-d）：源槽清零（moved-from 标记到 IR 槽位）
         //   ——所有权已移交接收位；源变量 RAII 析构对零句柄走既有空安全跳过

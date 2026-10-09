@@ -9,7 +9,7 @@
 #include <cstdlib>
 
 #include "cn_compiler/ir/ir.hpp"
-#include "cn_compiler/semantic/semantic.hpp"
+#include "cn_compiler/model/semantic_view.hpp"
 #include "cn_compiler/model/type_system.hpp"
 
 namespace cn_compiler {
@@ -492,9 +492,9 @@ std::string IRGenerator::resolveNestedMemberObjSrcType(MemberExpr* inner) {
         //   否则 objSrcType 空 -> decl==nullptr -> 返回常量 0（实测打印 0）。
         if (objSrcType.empty() && semantic_ != nullptr) {
             const std::string canonInner = types::canonical(innerObjType);
-            if (SemanticAnalyzer::isResultType(canonInner)) {
+            if (isResultType(canonInner)) {
                 const std::vector<std::string> rargs =
-                    SemanticAnalyzer::resultTypeArgs(canonInner);
+                    resultTypeArgs(canonInner);
                 if (inner->memberName == "值" && rargs.size() == 2) {
                     objSrcType = rargs[0];
                 } else if (inner->memberName == "错误" && rargs.size() == 2) {
@@ -502,9 +502,9 @@ std::string IRGenerator::resolveNestedMemberObjSrcType(MemberExpr* inner) {
                 } else if (inner->memberName == "正常") {
                     objSrcType = "布尔";
                 }
-            } else if (SemanticAnalyzer::isOptionalType(canonInner)) {
+            } else if (isOptionalType(canonInner)) {
                 if (inner->memberName == "值") {
-                    objSrcType = SemanticAnalyzer::optionalTypeArg(canonInner);
+                    objSrcType = optionalTypeArg(canonInner);
                 } else if (inner->memberName == "有值") {
                     objSrcType = "布尔";
                 }
@@ -561,8 +561,8 @@ std::string IRGenerator::resolveMemberFieldSrcType(MemberExpr* node,
     //   .值/.错误 读内层联合体，类型 = 结果<T,E> 的 T/E 参数。
     std::string fieldSrcType = "";
     const std::string& srcObjType = types::canonical(objSrcType);
-    if (SemanticAnalyzer::isResultType(srcObjType)) {
-        const std::vector<std::string> rargs = SemanticAnalyzer::resultTypeArgs(srcObjType);
+    if (isResultType(srcObjType)) {
+        const std::vector<std::string> rargs = resultTypeArgs(srcObjType);
         if (node->memberName == "正常") {
             fieldSrcType = "布尔";
         } else if (node->memberName == "值" && rargs.size() == 2) {
@@ -570,11 +570,11 @@ std::string IRGenerator::resolveMemberFieldSrcType(MemberExpr* node,
         } else if (node->memberName == "错误" && rargs.size() == 2) {
             fieldSrcType = rargs[1];
         }
-    } else if (SemanticAnalyzer::isOptionalType(srcObjType)) {
+    } else if (isOptionalType(srcObjType)) {
         if (node->memberName == "有值") {
             fieldSrcType = "布尔";
         } else if (node->memberName == "值") {
-            fieldSrcType = SemanticAnalyzer::optionalTypeArg(srcObjType);
+            fieldSrcType = optionalTypeArg(srcObjType);
         }
     }
     if (fieldSrcType.empty()) {

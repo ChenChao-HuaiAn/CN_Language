@@ -37,7 +37,7 @@ inline bool isPureNumericText(const std::string& t) {
 }
 
 // 语义分析器前向声明（阶段3：类布局/虚表槽位/静态字段查询，供 codegen OOP 展开）
-class SemanticAnalyzer;
+class ISemanticView;  // 语义只读视图（346 重构D·model 层接口·实现在 semantic.hpp）
 
 // 汇编文本行输出助手（统一缩进/对齐，提升可读性）
 class AsmWriter {
@@ -61,7 +61,7 @@ public:
     explicit X64CodeGenerator(Diagnostics& diagnostics) : diagnostics_(diagnostics) {}
     // 阶段3（Task 3.1）：绑定语义分析器（类布局/虚表槽位/静态字段查询）。
     //   可空——未绑定时 OOP 指令（NewObject 等）以注释占位输出（测试可构造无类模块）
-    explicit X64CodeGenerator(Diagnostics& diagnostics, SemanticAnalyzer* semantic)
+    explicit X64CodeGenerator(Diagnostics& diagnostics, ISemanticView* semantic)
         : diagnostics_(diagnostics), semantic_(semantic) {}
 
     // 阶段C（Task 4.3/4.4）：寄存器分配与调试信息开关（默认关闭——保持全栈帧行为）
@@ -373,7 +373,7 @@ private:
     int ptrCheckCounter_ = 0;
 
     // 语义分析器指针（阶段3：类布局/虚表槽位/静态字段查询；可空）
-    SemanticAnalyzer* semantic_ = nullptr;
+    ISemanticView* semantic_ = nullptr;
     // 已生成虚表符号集合（去重，供 .rdata 发射）
     std::unordered_set<std::string> emittedVtables_;
     // 已生成静态字段符号集合（去重，供 .data 发射）

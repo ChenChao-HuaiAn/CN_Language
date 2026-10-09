@@ -11,7 +11,7 @@
 #include <cstdlib>
 
 #include "cn_compiler/ir/ir.hpp"
-#include "cn_compiler/semantic/semantic.hpp"
+#include "cn_compiler/model/semantic_view.hpp"
 #include "cn_compiler/model/type_system.hpp"
 
 namespace cn_compiler {
@@ -402,7 +402,7 @@ bool IRGenerator::assignToIndexTarget(AssignmentExpr* node) {
     //   随宿主 095 边界同登记）。
     if (semantic_ != nullptr && !isCompoundAssignOp(node->op) &&
         node->value->getType() == NodeType::CallExpr &&
-        SemanticAnalyzer::isTransferCall(
+        isTransferCall(
             static_cast<CallExpr*>(node->value.get())) &&
         node->target->getType() == NodeType::IndexExpr) {
         IndexExpr* tgt959 = static_cast<IndexExpr*>(node->target.get());

@@ -609,8 +609,8 @@ std::string SemanticAnalyzer::instantiateGeneric(
         //   注意：必须在 std::move(info) 之前遍历（move 后 info.methods 已转移为空）。
         for (const auto& mk : info.methods) {
             if (!mk.second.type.empty() &&
-                (SemanticAnalyzer::isResultType(mk.second.type) ||
-                 SemanticAnalyzer::isOptionalType(mk.second.type))) {
+                (isResultType(mk.second.type) ||
+                 isOptionalType(mk.second.type))) {
                 ensureLoweredType(mk.second.type);
             }
         }

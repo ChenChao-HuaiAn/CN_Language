@@ -20,7 +20,7 @@
 #include <vector>
 
 #include "cn_compiler/ir/ir.hpp"
-#include "cn_compiler/semantic/semantic.hpp"
+#include "cn_compiler/model/semantic_view.hpp"
 #include "cn_compiler/model/type_system.hpp"
 
 namespace cn_compiler {
@@ -133,8 +133,8 @@ void IRGenerator::emitClassMethod(const std::string& className, const ClassMembe
         //   合成结构体 结果$整32$整32 可能未降级（ensureLoweredType 时机），
         //   此处动态补降级后再判定 structReturn——否则被调方按普通方法装载
         //   this=rcx，与调用方隐藏返回指针传参错位 -> 读取垃圾/崩溃。
-        if (SemanticAnalyzer::isResultType(canon) ||
-            SemanticAnalyzer::isOptionalType(canon)) {
+        if (isResultType(canon) ||
+            isOptionalType(canon)) {
             semantic_->ensureLoweredType(canon);
         }
         // 修复（2026-08 自举检查发现）：结果/可选 返回同样走隐藏返回指针协议
@@ -906,14 +906,14 @@ std::string IRGenerator::exprSrcType(Expr* node) const {
             //   （结果<类>.值.字段 / 结果.值.方法）的对象类型推导失败 -> 类字段
             //   访问/方法调用未识别 -> findStruct(类)=null 防御返回 0（打印 0 实测）。
             const std::string canonObj = types::canonical(objType);
-            if (SemanticAnalyzer::isResultType(canonObj)) {
+            if (isResultType(canonObj)) {
                 const std::vector<std::string> rargs =
-                    SemanticAnalyzer::resultTypeArgs(canonObj);
+                    resultTypeArgs(canonObj);
                 if (mem->memberName == "值" && rargs.size() == 2) return rargs[0];
                 if (mem->memberName == "错误" && rargs.size() == 2) return rargs[1];
                 if (mem->memberName == "正常") return "布尔";
-            } else if (SemanticAnalyzer::isOptionalType(canonObj)) {
-                if (mem->memberName == "值") return SemanticAnalyzer::optionalTypeArg(canonObj);
+            } else if (isOptionalType(canonObj)) {
+                if (mem->memberName == "值") return optionalTypeArg(canonObj);
                 if (mem->memberName == "有值") return "布尔";
             }
             const std::string fieldType = classFieldType(objType, mem->memberName);

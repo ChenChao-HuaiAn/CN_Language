@@ -16,7 +16,7 @@
 #include "cn_compiler/model/ast.hpp"
 
 namespace cn_compiler {
-class SemanticAnalyzer;   // 前向声明（Task 2.7：IR 查询结构体布局/枚举值）
+class ISemanticView;  // 语义只读视图（346 重构D·model 层接口·实现在 semantic.hpp）
 struct ClassMemberInfo;   // 前向声明（阶段3：类方法信息，semantic.hpp 定义）
 struct ClassInfo;         // 前向声明（D1 拆分 456-a：findCtorMember 形参，semantic.hpp 定义）
 struct GenericFuncInstance;  // 前向声明（Task 6.1：泛型函数实例化记录，semantic.hpp 定义）
@@ -282,7 +282,7 @@ public:
     // 构造函数：绑定诊断引擎引用
     // semantic 参数（Task 2.7）：指向已完成分析的语义分析器，
     //   供结构体布局（字段偏移/总大小）与枚举值查询（可空，缺失时布局防御性跳过）
-    explicit IRGenerator(Diagnostics& diagnostics, SemanticAnalyzer* semantic = nullptr)
+    explicit IRGenerator(Diagnostics& diagnostics, ISemanticView* semantic = nullptr)
         : diagnostics_(diagnostics), semantic_(semantic) {}
 
     // 主入口：生成IR模块
@@ -531,7 +531,7 @@ private:
 
     // ==================== 成员状态 ====================
     Diagnostics& diagnostics_;                  // 诊断引擎
-    SemanticAnalyzer* semantic_ = nullptr;      // 语义分析器（结构体布局/枚举值查询，Task 2.7）
+    ISemanticView* semantic_ = nullptr;      // 语义分析器（结构体布局/枚举值查询，Task 2.7）
 
     // ==================== 泛型函数实例化（Task 6.1） ====================
     // 当前泛型函数实例化的类型参数映射（类型参数名 -> 实参类型，如 T -> 整32）。

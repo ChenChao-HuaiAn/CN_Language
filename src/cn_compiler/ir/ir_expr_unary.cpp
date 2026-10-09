@@ -8,7 +8,7 @@
 #include <cstdlib>
 
 #include "cn_compiler/ir/ir.hpp"
-#include "cn_compiler/semantic/semantic.hpp"
+#include "cn_compiler/model/semantic_view.hpp"
 #include "cn_compiler/model/type_system.hpp"
 
 namespace cn_compiler {
@@ -63,14 +63,14 @@ void IRGenerator::visitUnaryExpr(UnaryExpr* node) {
             //   （操作数 结果<整32,整32>、函数返回 结果<整32,整64>）两者不同。
             std::string retValSrc;
             std::string retErrSrc;
-            if (SemanticAnalyzer::isResultType(ptype)) {
-                const std::vector<std::string> args = SemanticAnalyzer::resultTypeArgs(ptype);
+            if (isResultType(ptype)) {
+                const std::vector<std::string> args = resultTypeArgs(ptype);
                 if (args.size() == 2) {
                     retValSrc = args[0];
                     retErrSrc = args[1];
                 }
-            } else if (SemanticAnalyzer::isOptionalType(ptype)) {
-                retValSrc = SemanticAnalyzer::optionalTypeArg(ptype);
+            } else if (isOptionalType(ptype)) {
+                retValSrc = optionalTypeArg(ptype);
                 retErrSrc = "";  // 可选：失败 = 无值（结构体无错误字段）
             }
             if (retValSrc.empty()) {
@@ -81,20 +81,20 @@ void IRGenerator::visitUnaryExpr(UnaryExpr* node) {
             const std::string operandType = exprSrcType(node->operand.get());
             std::string valSrc = retValSrc;
             std::string errSrc = retErrSrc;
-            if (SemanticAnalyzer::isResultType(operandType)) {
+            if (isResultType(operandType)) {
                 const std::vector<std::string> oargs =
-                    SemanticAnalyzer::resultTypeArgs(operandType);
+                    resultTypeArgs(operandType);
                 if (oargs.size() == 2) { valSrc = oargs[0]; errSrc = oargs[1]; }
-            } else if (SemanticAnalyzer::isOptionalType(operandType)) {
-                valSrc = SemanticAnalyzer::optionalTypeArg(operandType);
+            } else if (isOptionalType(operandType)) {
+                valSrc = optionalTypeArg(operandType);
             }
             // 合成结构体名（结果$T$E / 可选$T，按返回类型），失败分支分配临时槽
             std::string structName;
-            if (SemanticAnalyzer::isResultType(ptype)) {
-                structName = SemanticAnalyzer::resultStructName(
+            if (isResultType(ptype)) {
+                structName = resultStructName(
                     types::canonical(retValSrc), types::canonical(retErrSrc));
             } else {
-                structName = SemanticAnalyzer::optionalStructName(
+                structName = optionalStructName(
                     types::canonical(retValSrc));
             }
             // 正常标志 @ 偏移 0；值/错误 @ 真实布局偏移（宿主缺陷根治 2026-08-25：
@@ -105,7 +105,7 @@ void IRGenerator::visitUnaryExpr(UnaryExpr* node) {
                 (semantic_ != nullptr) ? semantic_->findStruct(structName) : nullptr;
             if (pdecl != nullptr) {
                 for (const auto& pf : pdecl->fields) {
-                    const bool want = SemanticAnalyzer::isResultType(ptype)
+                    const bool want = isResultType(ptype)
                                           ? (pf.name == "错误值联合")
                                           : (pf.name == "值");
                     if (want) {
@@ -122,22 +122,22 @@ void IRGenerator::visitUnaryExpr(UnaryExpr* node) {
             int readOff = valueOff;  // 默认：传播目标偏移（操作数类型未知时回退）
             if (!operandType.empty() && semantic_ != nullptr) {
                 std::string opStruct;
-                if (SemanticAnalyzer::isResultType(operandType)) {
+                if (isResultType(operandType)) {
                     const std::vector<std::string> oargs =
-                        SemanticAnalyzer::resultTypeArgs(operandType);
+                        resultTypeArgs(operandType);
                     if (oargs.size() == 2) {
-                        opStruct = SemanticAnalyzer::resultStructName(
+                        opStruct = resultStructName(
                             types::canonical(oargs[0]), types::canonical(oargs[1]));
                     }
-                } else if (SemanticAnalyzer::isOptionalType(operandType)) {
-                    opStruct = SemanticAnalyzer::optionalStructName(
-                        types::canonical(SemanticAnalyzer::optionalTypeArg(operandType)));
+                } else if (isOptionalType(operandType)) {
+                    opStruct = optionalStructName(
+                        types::canonical(optionalTypeArg(operandType)));
                 }
                 const StructDecl* opdecl =
                     (!opStruct.empty()) ? semantic_->findStruct(opStruct) : nullptr;
                 if (opdecl != nullptr) {
                     for (const auto& pf : opdecl->fields) {
-                        const bool want = SemanticAnalyzer::isResultType(operandType)
+                        const bool want = isResultType(operandType)
                                               ? (pf.name == "错误值联合")
                                               : (pf.name == "值");
                         if (want) {
@@ -176,7 +176,7 @@ void IRGenerator::visitUnaryExpr(UnaryExpr* node) {
                                             node->location);
             emit(ir::Opcode::StorePtr, {tempAddr, falseV}, ir::IRValue(), "", "i32",
                  node->location);
-            if (SemanticAnalyzer::isResultType(ptype) && !errSrc.empty()) {
+            if (isResultType(ptype) && !errSrc.empty()) {
                 // 宿主缺陷根治（2026-08-25）：读操作数错误值按操作数错误类型宽度
                 //   （宽错误码传播 E 整32 读 i32），写返回临时按返回类型错误宽度
                 //   （E 整64 写 i64，Cast 符号扩展）——原统一返回类型导致 i32 错误

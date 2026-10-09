@@ -13,7 +13,7 @@
 namespace cn_compiler {
 
 // 语义分析器前向声明（与 codegen 构造签名一致：类布局/虚表槽位/静态字段查询）
-class SemanticAnalyzer;
+class ISemanticView;  // 语义只读视图（346 重构D·model 层接口·实现在 semantic.hpp）
 
 // 创建目标平台对应的代码生成后端
 // 参数: target 目标平台（"win-x64" / "linux-arm64"）、diag 诊断引擎、
@@ -24,7 +24,7 @@ class SemanticAnalyzer;
 // 返回: 后端实例所有权；未知平台返回 nullptr（diag 已报告错误）
 std::unique_ptr<Backend> createBackend(const std::string& target,
                                        Diagnostics& diag,
-                                       SemanticAnalyzer* sem,
+                                       ISemanticView* sem,
                                        int optLevel = 0,
                                        bool useRegAlloc = false,
                                        bool debugInfo = false);

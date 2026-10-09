@@ -12,7 +12,7 @@
 
 #include "cn_compiler/semantic/semantic.hpp"
 #include "cn_compiler/model/type_system.hpp"
-#include "cn_compiler/semantic/semantic_internal.hpp"
+#include "cn_compiler/model/semantic_helpers.hpp"
 
 namespace cn_compiler {
 
@@ -67,20 +67,20 @@ void SemanticAnalyzer::visitVarDecl(VarDecl* node) {
         types::splitTypeSuffix(varType, core, varSuffix);
         varType = core;
     }
-    if (SemanticAnalyzer::isResultType(varType)) {
+    if (isResultType(varType)) {
         const std::vector<std::string> rargs = resultTypeArgs(varType);
         if (rargs.size() == 2) {
             varType = "结果<" + resolveGenericTypeName(rargs[0], node->location) +
                       ", " + resolveGenericTypeName(rargs[1], node->location) + ">";
         }
-    } else if (SemanticAnalyzer::isOptionalType(varType)) {
+    } else if (isOptionalType(varType)) {
         const std::string oarg = optionalTypeArg(varType);
         if (!oarg.empty()) {
             varType = "可选<" + resolveGenericTypeName(oarg, node->location) + ">";
         }
     }
-    if (SemanticAnalyzer::isResultType(varType) ||
-        SemanticAnalyzer::isOptionalType(varType)) {
+    if (isResultType(varType) ||
+        isOptionalType(varType)) {
         ensureLoweredType(varType);
         // 060（p0927_02·检查标记作用域泄漏根治）：同名遮蔽声明 kill 检查标记
         //   ——errorCheckState_ 以裸变量名为键无作用域维度，外层 结果 r 已检查

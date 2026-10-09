@@ -36,7 +36,7 @@
 namespace cn_compiler {
 
 // 语义分析器前向声明（类布局/虚表槽位/静态字段查询，供 codegen OOP 展开）
-class SemanticAnalyzer;
+class ISemanticView;  // 语义只读视图（346 重构D·model 层接口·实现在 semantic.hpp）
 
 // x86_64 GAS(Intel语法) 汇编文本行输出助手
 // 注：GAS Intel 语法中 # 为行注释起始符，与 ARM64 后端统一改用 //（单行）避免歧义；
@@ -63,7 +63,7 @@ public:
         : diagnostics_(diagnostics) {}
     // 绑定语义分析器（类布局/虚表槽位/静态字段查询）。
     //   可空——未绑定时 OOP 指令（NewObject 等）以注释占位输出
-    explicit LinuxX64CodeGenerator(Diagnostics& diagnostics, SemanticAnalyzer* semantic)
+    explicit LinuxX64CodeGenerator(Diagnostics& diagnostics, ISemanticView* semantic)
         : diagnostics_(diagnostics), semantic_(semantic) {}
 
     // 寄存器分配开关（接口与 arm64 一致；linux-x86_64 沿阶段C 决策默认关闭，
@@ -361,7 +361,7 @@ private:
     int ptrCheckCounter_ = 0;
 
     // 语义分析器指针（类布局/虚表槽位/静态字段查询；可空）
-    SemanticAnalyzer* semantic_ = nullptr;
+    ISemanticView* semantic_ = nullptr;
     // 已生成虚表符号集合（去重，供 .rodata 发射）
     std::unordered_set<std::string> emittedVtables_;
     // 已生成静态字段符号集合（去重，供 .data 发射）

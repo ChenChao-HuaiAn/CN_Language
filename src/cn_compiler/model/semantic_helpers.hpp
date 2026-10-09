@@ -1,4 +1,4 @@
-// CN 语义分析层内部共享助手（D1 行数整改 115-a）
+// CN 语义层共享纯函数助手（D1 行数整改 115-a·346 重构D 挪入 model 中立层——无状态 inline 纯函数·零分析器状态依赖·semantic/ir/model 三方共用）
 //   背景：原 11 个 helper 在 semantic.cpp / semantic_call.cpp / semantic_decl.cpp /
 //   semantic_expr.cpp / semantic_stmt.cpp 各复制一份（55 处定义、~600 行重复）——
 //   本头文件收敛为单一定义（Rust 对照：rustc 的 crate 内共享工具模块）。
@@ -7,9 +7,10 @@
 #pragma once
 
 #include <string>
+#include <unordered_map>
 #include <vector>
 
-#include "cn_compiler/semantic/semantic.hpp"
+#include "cn_compiler/model/ast.hpp"
 #include "cn_compiler/model/type_system.hpp"
 
 namespace cn_compiler {
@@ -233,6 +234,149 @@ inline std::string canonicalType(const std::string& type) {
         default:
             return false;
     }
+}
+
+
+// ===== 静态类型判据/工具族（346 重构D 自 SemanticAnalyzer 静态方法转自由函数——ir/codegen/semantic 三方共用·原 78+ 处 SemanticAnalyzer:: 前缀调用点全树去前缀）=====
+[[maybe_unused]] inline bool isResultType(const std::string& type) {
+    std::string core, suffix;
+    types::splitTypeSuffix(type, core, suffix);
+    if (!suffix.empty()) return false;
+    if (core.rfind("结果<", 0) != 0) return false;
+    if (core.find('>') == std::string::npos) return false;
+    // 067-002 治本（嵌套合成体同族）：顶层逗号判据须平衡扫描（<> 深度）——
+    //   原 find(',') 见任意逗号即真，「结果<映射<整64,整64>>」（仅内层逗号）
+    //   误判为结果类型。合法结果恒含顶层逗号，本判据等价收紧。
+    int depth = 0;
+    for (char ch : core) {
+        if (ch == '<') { ++depth; }
+        else if (ch == '>') { --depth; if (depth < 0) break; }
+        else if (ch == ',' && depth == 1) { return true; }
+    }
+    return false;
+}
+
+[[maybe_unused]] inline std::vector<std::string> resultTypeArgs(const std::string& type) {
+    std::vector<std::string> result;
+    if (!isResultType(type)) return result;
+    const std::size_t lt = type.find('<');
+    const std::size_t gt = type.rfind('>');
+    if (lt == std::string::npos || gt == std::string::npos || gt <= lt) return result;
+    const std::string inner = type.substr(lt + 1, gt - lt - 1);
+    // 2026-08-30 根治：嵌套泛型实参（结果<映射<整64, 整64>, 整32>）的逗号
+    //   须平衡扫描——原 find(',') 在 映射<整64, 整64> 内部逗号处误切，
+    //   t 截断成 映射<整64（成员访问报「映射<整64 不是类类型」）。
+    std::size_t comma = std::string::npos;
+    {
+        int depth = 0;
+        for (std::size_t i = 0; i < inner.size(); ++i) {
+            if (inner[i] == '<') depth++;
+            else if (inner[i] == '>') depth--;
+            else if (inner[i] == ',' && depth == 0) { comma = i; break; }
+        }
+    }
+    if (comma == std::string::npos) return result;
+    const std::string t = inner.substr(0, comma);
+    const std::string e = inner.substr(comma + 1);
+    // 去除首尾空白
+    auto trim = [](const std::string& s) -> std::string {
+        std::size_t b = s.find_first_not_of(" \t");
+        if (b == std::string::npos) return "";
+        std::size_t en = s.find_last_not_of(" \t");
+        return s.substr(b, en - b + 1);
+    };
+    result.push_back(trim(t));
+    result.push_back(trim(e));
+    return result;
+}
+
+[[maybe_unused]] inline bool isOptionalType(const std::string& type) {
+    std::string core, suffix;
+    types::splitTypeSuffix(type, core, suffix);
+    if (!suffix.empty()) return false;
+    if (core.rfind("可选<", 0) != 0) return false;
+    if (core.find('>') == std::string::npos) return false;
+    // 067-002 治本（嵌套合成体同族·m1 最小复现）：原 find(',')==npos 见任意
+    //   逗号即假——内层实参「结果<整32,整32>」的逗号被误判为「可选有两参」，
+    //   「可选<结果<整32,整32>>」不被识别（成员访问报「不是结构体/联合体/
+    //   类类型」）。可选恒单参：顶层（深度1）不得有逗号。
+    int depth = 0;
+    for (char ch : core) {
+        if (ch == '<') { ++depth; }
+        else if (ch == '>') { --depth; if (depth < 0) break; }
+        else if (ch == ',' && depth == 1) { return false; }
+    }
+    return true;
+}
+
+[[maybe_unused]] inline std::string optionalTypeArg(const std::string& type) {
+    if (!isOptionalType(type)) return "";
+    const std::size_t lt = type.find('<');
+    const std::size_t gt = type.rfind('>');
+    if (lt == std::string::npos || gt == std::string::npos || gt <= lt) return "";
+    std::string t = type.substr(lt + 1, gt - lt - 1);
+    std::size_t b = t.find_first_not_of(" \t");
+    if (b == std::string::npos) return "";
+    std::size_t en = t.find_last_not_of(" \t");
+    return t.substr(b, en - b + 1);
+}
+
+[[maybe_unused]] inline std::string optionalStructName(const std::string& t) {
+    return "可选$" + types::canonical(t);
+}
+
+[[maybe_unused]] inline std::string resultStructName(const std::string& t, const std::string& e) {
+    return "结果$" + types::canonical(t) + "$" + types::canonical(e);
+}
+
+[[maybe_unused]] inline std::string canonicalizeSyntheticArgText(const std::string& type) {
+    std::string core, suffix;
+    types::splitTypeSuffix(type, core, suffix);
+    if (isResultType(core)) {
+        const std::vector<std::string> args = resultTypeArgs(core);
+        if (args.size() == 2) {
+            return resultStructName(types::canonical(args[0]),
+                                    types::canonical(args[1])) + suffix;
+        }
+    } else if (isOptionalType(core)) {
+        const std::string arg = optionalTypeArg(core);
+        if (!arg.empty()) {
+            return optionalStructName(types::canonical(arg)) + suffix;
+        }
+    }
+    return type;
+}
+
+[[maybe_unused]] inline bool isTransferCall(const CallExpr* node) {
+    return node != nullptr &&
+           node->callee->getType() == NodeType::IdentifierExpr &&
+           static_cast<const IdentifierExpr*>(node->callee.get())->name == "转移" &&
+           node->arguments.size() == 1;
+}
+
+[[maybe_unused]] inline bool isOwnedStringBuiltin(const std::string& name) {
+    // 与 IR 层字符串拥有判定白名单同一集合（原 ir_expr_assign_ident.cpp
+    // identifierStringOwnAssign / ir_stmt_decl.cpp 拥有型初始化两处硬编码——
+    // 094 收口为单点，IR 层两处改调本方法，判据漂移根除）。
+    return name == "字符串复制" || name == "字符串连接" ||
+           name == "字符串拼接" || name == "字符串子串" ||
+           name == "字符串大写" || name == "字符串小写" ||
+           name == "字符串修剪" || name == "字符串反转";
+}
+
+[[maybe_unused]] inline bool isBorrowViewMethod(const std::string& m) {
+    return m == "元素" || m == "读取" || m == "栈顶" || m == "队首" ||
+           m == "头部元素" || m == "读取头部" || m == "读取尾部" || m == "获取";
+}
+
+[[maybe_unused]] inline std::string functionLinkKey(const std::string& moduleName,
+                                              const std::string& funcName,
+                                              const std::string& sigKey) {
+    if (moduleName.empty() || moduleName == "主" || funcName == "主" ||
+        moduleName.rfind("__cn_", 0) == 0) {
+        return sigKey;
+    }
+    return moduleName + "$" + sigKey;
 }
 
 } // namespace cn_compiler

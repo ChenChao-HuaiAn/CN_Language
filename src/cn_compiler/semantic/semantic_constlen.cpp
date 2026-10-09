@@ -2,7 +2,8 @@
 //   常量值早期注册（registerConstValues·布局趟前时序）+类型串长度折叠
 //   （foldArrayLengths）+长度文本求值器（evalConstLengthText）。
 //   自 semantic.cpp 机械搬移（冻结线超标腾挪·逻辑逐字保留零行为变更）。
-#include "cn_compiler/semantic/semantic_internal.hpp"
+#include "cn_compiler/semantic/semantic.hpp"
+#include "cn_compiler/model/semantic_helpers.hpp"
 #include <cctype>
 #include <functional>
 

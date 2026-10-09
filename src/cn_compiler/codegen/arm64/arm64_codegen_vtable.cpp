@@ -13,7 +13,7 @@
 #include <unordered_set>
 
 #include "cn_compiler/codegen/arm64/arm64_codegen.hpp"
-#include "cn_compiler/semantic/semantic.hpp"
+#include "cn_compiler/model/semantic_view.hpp"
 
 namespace cn_compiler {
 

@@ -9,7 +9,7 @@
 
 
 #include "cn_compiler/ir/ir.hpp"
-#include "cn_compiler/semantic/semantic.hpp"
+#include "cn_compiler/model/semantic_view.hpp"
 #include "cn_compiler/model/type_system.hpp"
 
 namespace cn_compiler {
@@ -117,7 +117,7 @@ ir::IRValue IRGenerator::normalizeStringValueSource(Expr* arg,
     // ②/③/④ 调用形态：转移 特判 + 拥有契约
     if (kind == NodeType::CallExpr) {
         CallExpr* ce = static_cast<CallExpr*>(arg);
-        if (SemanticAnalyzer::isTransferCall(ce) && !ce->arguments.empty() &&
+        if (isTransferCall(ce) && !ce->arguments.empty() &&
             ce->arguments[0]->getType() == NodeType::IdentifierExpr) {
             const std::string srcName =
                 static_cast<IdentifierExpr*>(ce->arguments[0].get())->name;
@@ -228,7 +228,7 @@ void IRGenerator::widenI128Args(std::vector<ir::IRValue>& args,
 
 // 118（929）：引用返回方法的读值分叉判据（semantic 判定聚合内联）——
 //   聚合 T（结构体/类容器元素=内联实宽存储·元素地址即对象本体）直传不 LoadPtr。
-static bool refReturnAggInline(const SemanticAnalyzer* sem, const ClassMemberInfo* m) {
+static bool refReturnAggInline(const ISemanticView* sem, const ClassMemberInfo* m) {
     if (sem == nullptr || m == nullptr || m->type.empty()) return false;
     const std::string canon = types::canonical(m->type);
     if (sem->isStructType(canon) || sem->isClassType(canon)) return true;
@@ -240,7 +240,7 @@ static bool refReturnAggInline(const SemanticAnalyzer* sem, const ClassMemberInf
 // 查询类方法成员（沿继承链；返回方法信息，ownerClass 输出所属类）
 // 供 IR 层判断虚/非虚、取 sigKey 与返回类型
 static const ClassMemberInfo* findClassMethod(
-    SemanticAnalyzer* semantic, const std::string& className,
+    ISemanticView* semantic, const std::string& className,
     const std::string& methodName, std::string& ownerClass) {
     if (semantic == nullptr) return nullptr;
     return semantic->lookupClassMember(className, methodName, ownerClass);
@@ -447,7 +447,7 @@ std::string IRGenerator::resolveGenericCtorInstanceName(std::string className) {
             }
             // 061-d（2026-09-27 804 轮）：合成模板实参（结果<T,E>/可选<T>）统一
             //   合成体名 $ 形态（与语义层 instantiateGeneric 注册名一致——原裸拼
-            a = SemanticAnalyzer::canonicalizeSyntheticArgText(a);
+            a = canonicalizeSyntheticArgText(a);
         }
                     std::string inst = head;
         for (const auto& a : args) {

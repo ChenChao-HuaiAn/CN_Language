@@ -11,7 +11,7 @@
 #include <utility>
 
 #include "cn_compiler/ir/ir.hpp"
-#include "cn_compiler/semantic/semantic.hpp"
+#include "cn_compiler/model/semantic_view.hpp"
 #include "cn_compiler/model/type_system.hpp"
 
 namespace cn_compiler {
@@ -654,14 +654,14 @@ std::string IRGenerator::memberObjStructType(MemberExpr* node) const {
         //   读成 0 偏移 名ID 值 实测）。
         if (objType.empty()) {
             const std::string canonInner = types::canonical(innerType);
-            if (SemanticAnalyzer::isResultType(canonInner)) {
+            if (isResultType(canonInner)) {
                 const std::vector<std::string> rargs =
-                    SemanticAnalyzer::resultTypeArgs(canonInner);
+                    resultTypeArgs(canonInner);
                 if (inner->memberName == "值" && rargs.size() == 2) objType = rargs[0];
                 else if (inner->memberName == "错误" && rargs.size() == 2) objType = rargs[1];
                 else if (inner->memberName == "正常") objType = "布尔";
-            } else if (SemanticAnalyzer::isOptionalType(canonInner)) {
-                if (inner->memberName == "值") objType = SemanticAnalyzer::optionalTypeArg(canonInner);
+            } else if (isOptionalType(canonInner)) {
+                if (inner->memberName == "值") objType = optionalTypeArg(canonInner);
                 else if (inner->memberName == "有值") objType = "布尔";
             }
         }

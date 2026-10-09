@@ -25,7 +25,7 @@
 
 #include <cstdio>
 #include "cn_compiler/ir/ir.hpp"
-#include "cn_compiler/semantic/semantic.hpp"
+#include "cn_compiler/model/semantic_view.hpp"
 #include "cn_compiler/model/type_system.hpp"
 
 namespace cn_compiler {
@@ -57,11 +57,11 @@ void IRGenerator::collectOwnedStrFields(const std::string& canon, int base, int 
         std::string valueType;
         if (isResult) {
             const std::vector<std::string> args =
-                SemanticAnalyzer::resultTypeArgs(canon);
+                resultTypeArgs(canon);
             if (args.size() != 2) return;
             valueType = types::canonical(args[0]);
         } else {
-            valueType = types::canonical(SemanticAnalyzer::optionalTypeArg(canon));
+            valueType = types::canonical(optionalTypeArg(canon));
         }
         if (valueType != "字符串") return;
         const int vo = semantic_->fieldOffsetOf(decl, "值");
@@ -229,7 +229,7 @@ bool IRGenerator::isBorrowedAggregateSource(const Expr* e) const {
                                            : (dot > dollar ? dot : dollar));
         const std::string last =
             (sep == std::string::npos) ? fn : fn.substr(sep + 1);
-        if (SemanticAnalyzer::isBorrowViewMethod(last)) {
+        if (isBorrowViewMethod(last)) {
             // 86-a（2026-09-12 复审缺陷③）：豁免必须带**容器类型约束**——豁免依据是
             //   「stdlib 容器读出接口设计上返回借出视图」（77-a 台账），与方法名本身
             //   无关。P44 实证：用户顶层函数恰名 获取（合法标识符）+ 返回 借用形参

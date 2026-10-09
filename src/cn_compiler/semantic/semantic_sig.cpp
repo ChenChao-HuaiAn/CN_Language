@@ -11,7 +11,7 @@
 
 #include "cn_compiler/semantic/semantic.hpp"
 #include "cn_compiler/model/type_system.hpp"
-#include "cn_compiler/semantic/semantic_internal.hpp"
+#include "cn_compiler/model/semantic_helpers.hpp"
 
 namespace cn_compiler {
 
@@ -88,15 +88,7 @@ std::string SemanticAnalyzer::signatureKey(const std::string& name,
 //   ② moduleName=="主"（入口 crate 根文件——主->cn_main 映射基于纯名）；
 //   ③ funcName=="主"（入口函数本身，codegen 映射 cn_main）；
 //   ④ moduleName 以 __cn_ 开头（内置运行时符号直通）。
-std::string SemanticAnalyzer::functionLinkKey(const std::string& moduleName,
-                                              const std::string& funcName,
-                                              const std::string& sigKey) {
-    if (moduleName.empty() || moduleName == "主" || funcName == "主" ||
-        moduleName.rfind("__cn_", 0) == 0) {
-        return sigKey;
-    }
-    return moduleName + "$" + sigKey;
-}
+
 bool SemanticAnalyzer::hasFunctionName(const std::string& name) const {
     if (functions_.find(name) != functions_.end()) return true;  // 内置纯名 key
     for (const auto& kv : functions_) {

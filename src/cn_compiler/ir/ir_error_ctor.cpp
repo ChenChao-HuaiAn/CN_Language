@@ -16,7 +16,7 @@
 #include <vector>
 
 #include "cn_compiler/ir/ir.hpp"
-#include "cn_compiler/semantic/semantic.hpp"
+#include "cn_compiler/model/semantic_view.hpp"
 #include "cn_compiler/model/type_system.hpp"
 
 namespace cn_compiler {
@@ -103,7 +103,7 @@ bool IRGenerator::handleResultCtor(CallExpr* node) {
     // 可选<T>：值字段偏移 = 对齐(布尔=1)后 -> 8。
     int valueOffset = -1;
     // 209-a：值偏移段本地推导（isResult/isOptional 声明已随推导分支迁族①）
-    const bool isResult = SemanticAnalyzer::isResultType(node->resolvedType);
+    const bool isResult = isResultType(node->resolvedType);
     for (const auto& f : decl->fields) {
         if (isResult) {
             if (f.name == "错误值联合") { valueOffset = semantic_->fieldOffsetOf(decl, f.name); }
@@ -151,8 +151,8 @@ bool IRGenerator::resolveResultCtorTargetType(CallExpr* node, const std::string&
     //   行为不变——两场景互斥不冲突。
     if (function_ != nullptr && !function_->returnTypeSrc.empty()) {
         const std::string retCanon = types::canonical(function_->returnTypeSrc);
-        const bool retIsResult = SemanticAnalyzer::isResultType(retCanon);
-        const bool retIsOptional = SemanticAnalyzer::isOptionalType(retCanon);
+        const bool retIsResult = isResultType(retCanon);
+        const bool retIsOptional = isOptionalType(retCanon);
         if (retIsResult || retIsOptional) {
             const bool nameMatched = (retIsOptional && (name == "某些" || name == "无")) ||
                                 (retIsResult && (name == "正常" || name == "错误"));
@@ -161,11 +161,11 @@ bool IRGenerator::resolveResultCtorTargetType(CallExpr* node, const std::string&
                 std::string storeType;
                 if (retIsResult) {
                     const std::vector<std::string> layerArgs =
-                        SemanticAnalyzer::resultTypeArgs(retCanon);
+                        resultTypeArgs(retCanon);
                     if (layerArgs.size() == 2)
                         storeType = (name == "错误") ? layerArgs[1] : layerArgs[0];
                 } else {
-                    storeType = SemanticAnalyzer::optionalTypeArg(retCanon);
+                    storeType = optionalTypeArg(retCanon);
                 }
                 if (!storeType.empty() &&
                     semantic_->isStructType(types::canonical(storeType))) {
@@ -195,24 +195,24 @@ bool IRGenerator::resolveResultCtorTargetType(CallExpr* node, const std::string&
     }
 
     // 解析推导类型：结果<T,E> / 可选<T>
-    bool isResult = SemanticAnalyzer::isResultType(node->resolvedType);
-    bool isOptional = SemanticAnalyzer::isOptionalType(node->resolvedType);
+    bool isResult = isResultType(node->resolvedType);
+    bool isOptional = isOptionalType(node->resolvedType);
     if (isResult) {
         const std::vector<std::string> args =
-            SemanticAnalyzer::resultTypeArgs(node->resolvedType);
+            resultTypeArgs(node->resolvedType);
         if (args.size() != 2) return false;
         const std::string t = types::canonical(args[0]);
         const std::string e = types::canonical(args[1]);
-        structName = SemanticAnalyzer::resultStructName(t, e);
+        structName = resultStructName(t, e);
         // 宿主缺陷根治（2026-08-25）：错误(码) 存 E（错误值类型，如 整32），
         //   正常(值) 存 T——原恒用 T 导致 错误() 分支把 T（结构体）当存储类型，
         //   CopyStruct 从错误码值（如 7）读 32 字节 -> 访问地址 7 崩溃 0xC0000005。
         valueType = (name == "错误") ? e : t;
     } else if (isOptional) {
         const std::string t =
-            types::canonical(SemanticAnalyzer::optionalTypeArg(node->resolvedType));
+            types::canonical(optionalTypeArg(node->resolvedType));
         if (t.empty()) return false;
-        structName = SemanticAnalyzer::optionalStructName(t);
+        structName = optionalStructName(t);
         valueType = t;
     } else {
         return false;

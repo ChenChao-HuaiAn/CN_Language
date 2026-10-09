@@ -271,7 +271,7 @@ add_library(cn_compiler_codegen STATIC
     src/cn_compiler/codegen/linux_x64/linux_x64_codegen_vtable.cpp
 )
 target_include_directories(cn_compiler_codegen PUBLIC ${CMAKE_SOURCE_DIR}/src)
-target_link_libraries(cn_compiler_codegen PUBLIC cn_compiler_ir cn_compiler_semantic cn_compiler_common)
+target_link_libraries(cn_compiler_codegen PUBLIC cn_compiler_ir cn_compiler_model cn_compiler_common)
 
 # AST打印器：访问者模式递归打印AST树（Task 1.10 ast 命令，供编译器与单元测试共用）
 

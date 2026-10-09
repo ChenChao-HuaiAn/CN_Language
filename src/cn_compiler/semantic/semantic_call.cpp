@@ -14,7 +14,7 @@
 
 #include "cn_compiler/semantic/semantic.hpp"
 #include "cn_compiler/model/type_system.hpp"
-#include "cn_compiler/semantic/semantic_internal.hpp"
+#include "cn_compiler/model/semantic_helpers.hpp"
 
 namespace cn_compiler {
 
@@ -123,12 +123,6 @@ void SemanticAnalyzer::wrapRefArgs(CallExpr* node,
 }
 // ==================== plans/019 阶段1（2026-09-10）：显式转移 转移() ====================
 
-bool SemanticAnalyzer::isTransferCall(const CallExpr* node) {
-    return node != nullptr &&
-           node->callee->getType() == NodeType::IdentifierExpr &&
-           static_cast<const IdentifierExpr*>(node->callee.get())->name == "转移" &&
-           node->arguments.size() == 1;
-}
 
 // plans/019 阶段4' A2（2026-09-11 第七十二轮 72-a 根治）：签名键是否为泛型函数
 //   单态化实例（名$实参串，如 逆序$整32）。

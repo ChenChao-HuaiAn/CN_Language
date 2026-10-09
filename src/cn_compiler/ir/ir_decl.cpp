@@ -10,8 +10,8 @@
 #include <utility>
 
 #include "cn_compiler/ir/ir.hpp"
-#include "cn_compiler/semantic/semantic.hpp"
-#include "cn_compiler/semantic/semantic_internal.hpp"
+#include "cn_compiler/model/semantic_view.hpp"
+#include "cn_compiler/model/semantic_helpers.hpp"
 #include "cn_compiler/model/type_system.hpp"
 
 namespace cn_compiler {
@@ -417,7 +417,7 @@ void IRGenerator::visitFunctionDecl(FunctionDecl* node) {
     //   入口纯名调用 → 链接 undefined reference 主$版本，base3 探针实证）。
     //   公式例外（主/空模块/主 函数/__cn_ 运行时 恒裸键）与 codegen
     //   symbolName 的 主->cn_main / __cn_ 直通映射对齐，注释详见 semantic.hpp。
-    linkName = SemanticAnalyzer::functionLinkKey(node->moduleName, node->name,
+    linkName = functionLinkKey(node->moduleName, node->name,
                                                  linkName);
     func.mangledName = linkName;
     // P3-18 补完（2026-08）：引用返回（T&）——IR 返回类型映射为 指针（返回被引用

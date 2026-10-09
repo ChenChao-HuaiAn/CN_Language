@@ -11,7 +11,7 @@
 #include <utility>
 
 #include "cn_compiler/ir/ir.hpp"
-#include "cn_compiler/semantic/semantic.hpp"
+#include "cn_compiler/model/semantic_view.hpp"
 #include "cn_compiler/model/type_system.hpp"
 
 namespace cn_compiler {
@@ -27,11 +27,11 @@ void IRGenerator::visitReturnStmt(ReturnStmt* node) {
         //   epilogue 从地址 0 拷贝 -> 0xC0000005 访问冲突崩溃（E2E 24 修复）。
         if (semantic_ != nullptr && function_ != nullptr &&
             node->value->getType() == NodeType::NullLiteral &&
-            SemanticAnalyzer::isOptionalType(types::canonical(function_->returnTypeSrc))) {
+            isOptionalType(types::canonical(function_->returnTypeSrc))) {
             const std::string optSrc = types::canonical(function_->returnTypeSrc);
-            const std::string t = types::canonical(SemanticAnalyzer::optionalTypeArg(optSrc));
+            const std::string t = types::canonical(optionalTypeArg(optSrc));
             if (!t.empty()) {
-                const std::string structName = SemanticAnalyzer::optionalStructName(t);
+                const std::string structName = optionalStructName(t);
                 const StructDecl* decl = semantic_->findStruct(structName);
                 if (decl != nullptr) {
                     const std::string temp = "__rctor" + std::to_string(varCounter_++);
@@ -204,8 +204,8 @@ void IRGenerator::visitReturnStmt(ReturnStmt* node) {
             node->value->getType() == NodeType::IdentifierExpr) {
             const std::string retCanon273 =
                 types::canonical(function_->returnTypeSrc);
-            if (SemanticAnalyzer::isResultType(retCanon273) ||
-                SemanticAnalyzer::isOptionalType(retCanon273)) {
+            if (isResultType(retCanon273) ||
+                isOptionalType(retCanon273)) {
                 if (const VarEntry* ve273 =
                         findVarEntry(static_cast<IdentifierExpr*>(
                                          node->value.get())

@@ -8,7 +8,7 @@
 #include <vector>
 
 #include "cn_compiler/semantic/semantic.hpp"
-#include "cn_compiler/semantic/semantic_internal.hpp"
+#include "cn_compiler/model/semantic_helpers.hpp"
 #include "cn_compiler/model/type_system.hpp"
 
 namespace cn_compiler {

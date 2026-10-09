@@ -2,6 +2,7 @@
 // 覆盖：导入语句解析（导入/从导入/路径）、模块依赖拓扑排序、公开/私有可见性、
 //       跨模块类型重名冲突、入口识别（主.cn）、AST 合并（公开符号合并/私有过滤）
 // 测试方式：直接构造 ModuleUnit + ModuleGraph + mergeModules（全链路，无 Mock）
+#include "cn_compiler/model/semantic_helpers.hpp"
 #include <gtest/gtest.h>
 #include <iostream>
 #include <memory>
@@ -1250,17 +1251,18 @@ TEST(ModuleTest, ImportDoubleExplicitSameNameE0255) {
 // A′ 函数链接键公式：主/空模块/主 函数/__cn_ 恒裸键；普通模块 键=模块$签名键
 TEST(ModuleTest, FunctionLinkKeyFormula) {
     using cn_compiler::SemanticAnalyzer;
+    using cn_compiler::functionLinkKey;  // 346：helpers 自由函数（原静态方法）
     // 入口模块（主）与单文件（空模块名）：裸键
-    EXPECT_EQ(SemanticAnalyzer::functionLinkKey("主", "版本", "版本#"), "版本#");
-    EXPECT_EQ(SemanticAnalyzer::functionLinkKey("", "版本", "版本#"), "版本#");
+    EXPECT_EQ(functionLinkKey("主", "版本", "版本#"), "版本#");
+    EXPECT_EQ(functionLinkKey("", "版本", "版本#"), "版本#");
     // 入口函数本身（名==主）：裸键（codegen 主->cn_main 映射依赖）
-    EXPECT_EQ(SemanticAnalyzer::functionLinkKey("工具", "主", "主#整32"), "主#整32");
+    EXPECT_EQ(functionLinkKey("工具", "主", "主#整32"), "主#整32");
     // 内置运行时符号（__cn_ 前缀模块）：裸键直通
-    EXPECT_EQ(SemanticAnalyzer::functionLinkKey("__cn_rt", "辅助", "辅助#"), "辅助#");
+    EXPECT_EQ(functionLinkKey("__cn_rt", "辅助", "辅助#"), "辅助#");
     // 普通依赖模块：模块$签名键
-    EXPECT_EQ(SemanticAnalyzer::functionLinkKey("工具库", "版本", "版本#"),
+    EXPECT_EQ(functionLinkKey("工具库", "版本", "版本#"),
               "工具库$版本#");
-    EXPECT_EQ(SemanticAnalyzer::functionLinkKey("网络::传输控制", "连接", "连接#整64"),
+    EXPECT_EQ(functionLinkKey("网络::传输控制", "连接", "连接#整64"),
               "网络::传输控制$连接#整64");
 }
 

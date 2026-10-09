@@ -11,138 +11,13 @@
 #include "cn_compiler/common/diagnostics.hpp"
 #include "cn_compiler/model/ast.hpp"
 #include "cn_compiler/model/type_system.hpp"
+#include "cn_compiler/model/symbols.hpp"
+#include "cn_compiler/model/semantic_view.hpp"
 
 namespace cn_compiler {
 
-// 函数符号信息：返回类型 + 参数类型列表 + 是否有函数体
-struct FunctionInfo {
-    std::string returnType;                // 返回类型（"空类型"表示无返回值）
-    std::vector<std::string> paramTypes;   // 参数类型列表
-    bool hasBody = false;                  // 是否有函数体（函数原型声明无体）
-    bool variadic = false;                 // 是否变参函数（Task 2.5：打印行 多参数）
-    bool isExtern = false;                 // C-3：外部 函数 声明（C 链接符号=纯名）
-    // ---- Task 2.10：默认参数 ----
-    std::vector<bool> hasDefault;          // 每个参数是否有默认值（与 paramTypes 等长）
-    // plans/019 阶段4（2026-09-10）：不安全 函数 修饰——安全区边界（观察期
-    //   =警告：安全函数体内指针算术/指针下标写/联合体访问/外部函数调用/裸
-    //   释放 发警告不报错；分批收口后变错误）
-    bool isUnsafe = false;
-    // plans/019 阶段3（2026-09-10）：常量 只读引用参数位表（与 paramTypes 等长；
-    //   常量 T& 形参=只读借用——体内赋值/传可变引用/与可变借用互斥均拒绝）
-    std::vector<bool> constParams;
-    // 默认值表达式按需求值：IR 层展开；语义层仅记录个数（defaultCount 为尾部连续
-    // 带默认值的参数个数，调用时用于"实参个数 + 可补全"匹配）
-    int defaultCount = 0;                  // 尾部默认参数个数（从右向左连续声明）
-    // ---- crate 模型（第 4 层，v2.0 决策4）----
-    // 所属模块（crate 域）名：registerFunction 写入（FunctionDecl::moduleName）。
-    std::string moduleName;
-    // P3-18 补完（2026-08）：函数返回类型为 T&（引用返回，返回被引用左值地址）。
-    // 不参与重载签名（返回类型不构成重载）；isRefReturn 供 IR（返回类型映射 ptr）
-    // 与调用方（引用绑定 / 赋值写回 / 取地址）识别。
-    bool isRefReturn = false;
-};
-
-// ==================== 阶段3：类成员信息（Task 3.1） ====================
-
-// 类成员符号信息（字段/方法/构造/析构/运算符重载）
-struct ClassMemberInfo {
-    std::string name;                          // 成员名（方法名/字段名）
-    std::string type;                          // 字段类型 或 方法返回类型
-    std::vector<std::string> paramTypes;       // 方法参数类型列表（字段为空）
-    AccessSpecifier access = AccessSpecifier::Public;  // 可见性
-    bool isStatic = false;                     // 静态成员（Task 3.9）
-    bool isConstMethod = false;                // 常量成员函数（Task 3.9）
-    bool isVirtual = false;                    // 虚函数（Task 3.2）
-    bool isAbstract = false;                   // 抽象方法（纯虚）
-    bool isOverride = false;                   // 重写修饰
-    int vtableIndex = -1;                      // 虚函数表槽位（-1=非虚；Task 3.2）
-    std::string operatorSym;                   // 运算符符号（"+"；kind=Operator 时非空）
-    std::string ownerClass;                    // 所属类名（沿继承链查找时记录来源类）
-    bool isConstructor = false;                // 构造函数（函数名 == 类名）
-    bool isDestructor = false;                 // 析构函数（~类名）
-    bool isCopyConstructor = false;            // 拷贝构造（单参同类型引用：类名(类名& 其他)）
-    bool hasBody = false;                      // 是否有方法体（抽象/接口签名为空）
-    const ClassMember* ast = nullptr;          // AST 节点指针（供 IR 层生成）
-    std::string sigKey;                        // 方法签名 key（名#参数串，mangling 用）
-    // plans/019 阶段3b（2026-09-10）：常量 只读引用参数位表（构造/方法调用面
-    //   借用纪律用；与 paramTypes 等长——普通函数 FunctionInfo.constParams 同构）
-    std::vector<bool> constParams;
-    // D23 根治（248-a）：构造函数尾部默认参数个数（从右向左连续声明）——
-    //   构造调用决议按「实参个数 + 可补全」匹配（FunctionInfo.defaultCount 同构）；
-    //   缺省实参值由 IR 层 funcDefaultArgs_（emitClassMethod 收集）展开。
-    int defaultCount = 0;
-    // plans/019 阶段4 第二层第一批（2026-09-10）：不安全 方法修饰（安全区边界
-    //   ——方法体内五类越界操作豁免观察期警告）
-    bool isUnsafe = false;
-    // 118（929·2026-10-01）：引用返回方法（-> T&·如 向量.元素引用）——按 AST
-    //   返回类型原文判定（type 字段经 canonical 剥 & 不可判）；供语义层左值
-    bool isRefReturn = false;
-};
-
-// 类符号信息：成员表 + 继承 + 虚表 + 接口实现 + 布局（Task 3.1~3.3）
-struct ClassInfo {
-    std::string name;                          // 类名
-    // ---- 第 4 层（v2.0 决策11，可见性交集检查）----
-    // 所属模块（crate 域）名 + 模块级可见性：registerClassAndInterfaces 写入。
-    //   可见性交集：跨模块访问类成员须 模块公开 × 类内公开（交集最严格）。
-    std::string moduleName;                    // 所属模块名（空=单文件）
-    AccessSpecifier moduleAccess = AccessSpecifier::Public;  // 模块级可见性
-    std::string baseName;                      // 父类名（空=无继承）
-    std::vector<std::string> interfaces;       // 实现的接口名列表
-    std::unordered_map<std::string, ClassMemberInfo> fields;    // 字段表（含继承并入）
-    std::unordered_map<std::string, ClassMemberInfo> methods;   // 方法表（含继承并入）
-    std::vector<std::string> fieldOrder;       // 字段声明顺序（父类字段在前，布局用）
-    std::vector<std::string> methodOrder;      // 方法声明顺序（含继承）
-    std::vector<std::string> vtableOrder;      // 虚函数表槽位顺序（方法名列表，Task 3.2）
-    std::vector<std::string> friendFuncs;      // 友元函数名（Task 3.9）
-    std::vector<std::string> friendClasses;    // 友元类名（Task 3.9）
-    int totalSize = 0;                         // 实例大小（字节，含虚表指针）
-    int align = 8;                             // 对齐（含虚表指针后按8对齐）
-    bool hasVtable = false;                    // 是否有虚函数表
-    // P3-19：接口分派区（B1 全局槽位；对象首 8 字节虚表指针之后，槽=8+全局槽*8）
-    std::vector<std::pair<int, std::string>> ifaceDisp;  // (全局槽, 接口方法名)
-    // P3/D3A：本类实现的全部接口名（含继承链并入；来源=class_resolver ifaceDisp 收集）。
-    //   供 接口→实现类集合 统计（去虚拟化唯一实现判定 + CFI 目标表）。
-    std::vector<std::string> ifaceNames;
-    int ifaceMaxSlot = -1;                     // 本类实现的接口方法最大全局槽
-    int ifaceRegionSize = 0;                   // 接口分派区字节数 (maxSlot+1)*8
-    bool isAbstract = false;                   // 含抽象方法（不可实例化）
-    const ClassDecl* ast = nullptr;            // AST 节点指针
-    // H8 根治（2026-08-25）：泛型类实例化实参列表（instantiateGeneric 存储）。
-    //   方法体 genericTypeParams_ 解析用——嵌套实参（向量$映射$整64$整64 的
-    std::vector<std::string> typeArgs;
-};
-
-// 接口符号信息：只含虚函数签名（Task 3.3）
-struct InterfaceInfo {
-    std::string name;                          // 接口名
-    std::unordered_map<std::string, ClassMemberInfo> methods;   // 方法签名表
-    std::vector<std::string> methodOrder;      // 方法声明顺序
-    const InterfaceDecl* ast = nullptr;        // AST 节点指针
-};
-
-// 泛型声明信息（Task 3.8）：记录泛型模板供实例化
-struct GenericInfo {
-    std::vector<std::string> typeParams;       // 类型参数名（如 [T, U]）
-    std::vector<std::string> constraints;      // 接口约束（与 typeParams 一一对应，空串=无）
-    const GenericDecl* ast = nullptr;          // 泛型 AST（内嵌类/函数）
-};
-
-// 泛型函数实例化记录（Task 6.1 打通泛型函数调用）：
-//   泛型函数 名<实参>(...) 调用时单态化注册 名$实参 函数符号，此处记录
-//   实例化信息供 IR 层生成函数体（替换类型参数 T -> 实参）。
-struct GenericFuncInstance {
-    std::string instanceName;                  // 实例化函数名（名$实参串）
-    const GenericDecl* gen = nullptr;          // 原泛型声明 AST（内嵌 innerFunc）
-    std::vector<std::string> args;             // 类型实参列表（如 ["整32"]）
-};
-
-// 错误码传播分析状态（Task 3.5，规则1~3）：
-//   变量名 -> 已检查标记（"正常"=结果.正常已检查 / "有值"=可选.有值已检查）
-using ErrorCheckState = std::unordered_map<std::string, std::string>;
-
 // 语义分析器：构建符号表并做类型检查，产出诊断
-class SemanticAnalyzer : public AstVisitor {
+class SemanticAnalyzer : public AstVisitor, public ISemanticView {
 public:
     // 构造函数：绑定诊断引擎引用
     explicit SemanticAnalyzer(Diagnostics& diagnostics) : diagnostics_(diagnostics) {}
@@ -155,19 +30,14 @@ public:
 
     // plans/018 呈报二 A′（2026-09-07 用户裁决）：函数链接键——全编译器唯一公式。
     //   链接键(模块名, 函数名, 签名键) = (模块名空 或 =="主" 或 函数名=="主"
-    static std::string functionLinkKey(const std::string& moduleName,
-                                       const std::string& funcName,
-                                       const std::string& sigKey);
 
     // plans/019 阶段1（2026-09-10）：表达式是否为 转移(单实参) 内置函数调用
     //   （callee 为标识符 "转移" 且实参数==1）——public 供 IR 层（ir_call.cpp）
     //   展开判定（声明初始化位已在语义层改写为标识符，到 IR 的只剩表达式位）。
-    static bool isTransferCall(const class CallExpr* node);
 
     // 任务 094（2026-09-29·008 树波 4）判据单点化：字符串拥有判定白名单
     //   （runtime 分配族）——语义层 isOwnedStrRvalue 与 IR 层字符串赋值/
     //   初始化两处共同调用本静态方法（public 供 ir 层）。
-    static bool isOwnedStringBuiltin(const std::string& name);
 
     // 206-b（波 4·plans/022 §四.5）：复制(表达式) 泛型克隆内置——返回类型=
     //   实参类型（调用处特判：泛型内置无法用固定签名注册 functions_ 表）；
@@ -180,7 +50,6 @@ public:
 
     // 85-a（2026-09-12 第八十五轮）：借出方法名判定**上提 public**——IR 侧聚合
     //   返回位所有权保证（ir_fields.cpp isBorrowedAggregateSource）须按被调方
-    static bool isBorrowViewMethod(const std::string& methodName);
 
     // plans/019 阶段4' A2（2026-09-11 第七十二轮 72-a 根治）：签名键是否为泛型
     //   函数单态化实例（精确判定替代 sigKey.find('$') 符号名模式——后者把跨模块
@@ -189,7 +58,7 @@ public:
 
     // plans/019 阶段3b（2026-09-10）：IR 层查询——声明是否转移初始化（浅交接
     //   分派用：跳过深拷贝改槽位交接）；命中返回 true 并回填源变量名。
-    bool isTransferDecl(const void* varDeclNode, std::string& outSrcName) const {
+    bool isTransferDecl(const void* varDeclNode, std::string& outSrcName) const override {
         auto it = transferDeclSources_.find(varDeclNode);
         if (it == transferDeclSources_.end()) return false;
         outSrcName = it->second;
@@ -198,11 +67,11 @@ public:
 
     // ==================== 结构体/枚举查询（Task 2.7，供IR层复用布局） ====================
     // 是否结构体/联合体类型名
-    bool isStructType(const std::string& type) const;
+    bool isStructType(const std::string& type) const override ;
     // 是否枚举类型名
-    bool isEnumType(const std::string& type) const;
+    bool isEnumType(const std::string& type) const override ;
     // 查找结构体/联合体定义（未找到返回nullptr）
-    const StructDecl* findStruct(const std::string& name) const;
+    const StructDecl* findStruct(const std::string& name) const override ;
 
     // 164-a（A4 方案A·plans/023 §十二）：可平凡复制判定（对标 Rust Copy）——
     //   标量/指针/枚举/函数指针；递归聚合（结构体/联合体/数组/结果/可选实参）
@@ -215,66 +84,59 @@ public:
     // 查找枚举定义（未找到返回nullptr）
     const EnumDecl* findEnum(const std::string& name) const;
     // 计算类型大小（字节）：基本类型/指针/数组/结构体/枚举/结果/可选/类
-    int typeSizeOf(const std::string& type) const;
+    int typeSizeOf(const std::string& type) const override ;
     // 计算类型对齐（字节）
     int typeAlignOf(const std::string& type) const;
     // 查找结构体字段偏移（-1表示无此字段）
-    int fieldOffsetOf(const StructDecl* decl, const std::string& fieldName) const;
+    int fieldOffsetOf(const StructDecl* decl, const std::string& fieldName) const override ;
     // 查找枚举成员值（未找到返回false）
     bool enumValueOf(const std::string& enumName, const std::string& memberName,
-                     std::int64_t& outValue) const;
+                     std::int64_t& outValue) const override ;
     // 查询函数返回类型（未注册返回空串；供IR层推导调用结果类型，Task 2.7 集成修复）
-    std::string funcReturnTypeOf(const std::string& funcName) const;
+    std::string funcReturnTypeOf(const std::string& funcName) const override ;
     // P3-18 补完（2026-08）：函数返回类型是否为引用（T&）——调用点将结果当"左值地址"
-    bool funcReturnsRef(const std::string& funcName) const;
+    bool funcReturnsRef(const std::string& funcName) const override ;
     // 返回该函数名的第一个签名 key（函数名作值/取地址用，Task 2.10；无此名返回空串）
-    std::string funcFirstSigKey(const std::string& name) const;
+    std::string funcFirstSigKey(const std::string& name) const override ;
     // 查询函数参数类型列表（未注册返回空；供IR层推导结构体按值实参传递，Task 完善A）
-    std::vector<std::string> funcParamTypesOf(const std::string& funcName) const;
+    std::vector<std::string> funcParamTypesOf(const std::string& funcName) const override ;
     // C-3：是否 外部 函数（链接符号=纯名，IR 调用侧按此映射）
-    bool isExternFunc(const std::string& sigKey) const;
+    bool isExternFunc(const std::string& sigKey) const override ;
     // 程序AST（供结构体/枚举符号表查询）
     Program* program_ = nullptr;
 
     // ==================== 阶段3：类/接口/泛型查询（供IR层复用，Task 3.x） ====================
     // 是否类类型名
-    bool isClassType(const std::string& type) const;
+    bool isClassType(const std::string& type) const override ;
     // 是否接口类型名
-    bool isInterfaceType(const std::string& type) const;
+    bool isInterfaceType(const std::string& type) const override ;
     // 是否 结果<T,E> 模板类型
-    static bool isResultType(const std::string& type);
     // 是否 可选<T> 模板类型
-    static bool isOptionalType(const std::string& type);
     // 解析 结果<T,E> 参数（未匹配返回空向量）
-    static std::vector<std::string> resultTypeArgs(const std::string& type);
     // 解析 可选<T> 参数（未匹配返回空串）
-    static std::string optionalTypeArg(const std::string& type);
     // 生成 结果<T,E>/可选<T> 的合成结构体名（IR 层布局用）
-    static std::string resultStructName(const std::string& t, const std::string& e);
-    static std::string optionalStructName(const std::string& t);
     // 内置合成模板文本 → 合成结构体名统一形态（061-d：结果<T,E> -> 结果$T$E；
     //   可选<T> -> 可选$T；非合成文本原样返回）——泛型容器实例化与 IR 层
     //   名字拼装统一经此，消除 尖括号原文 vs $ 形态 两套注册/查询键
-    static std::string canonicalizeSyntheticArgText(const std::string& type);
     // 查找类符号（未找到返回nullptr）
-    const ClassInfo* findClass(const std::string& name) const;
+    const ClassInfo* findClass(const std::string& name) const override ;
     // 全部类符号表只读访问（Task 3.1，供 codegen 遍历生成虚表/静态字段/类方法符号）
-    const std::unordered_map<std::string, ClassInfo>& classes() const { return classes_; }
+    const std::unordered_map<std::string, ClassInfo>& classes() const override { return classes_; }
     // 全部泛型函数实例化记录只读访问（Task 6.1，供 IR 层生成函数体）
-    const std::vector<GenericFuncInstance>& genericFuncInstances() const {
+    const std::vector<GenericFuncInstance>& genericFuncInstances() const override {
         return genericFuncInstances_;
     }
     // 确保单个类型的结果/可选合成结构体已降级（Task 6.1 泛型类实例化后调用）
-    void ensureLoweredType(const std::string& type);
+    void ensureLoweredType(const std::string& type)override ;
     // 全部接口符号表只读访问（Task 3.3，供 codegen 预留接口信息）
     const std::unordered_map<std::string, InterfaceInfo>& interfaces() const { return interfaces_; }
     // 查找接口符号（未找到返回nullptr）
-    const InterfaceInfo* findInterface(const std::string& name) const;
+    const InterfaceInfo* findInterface(const std::string& name) const override ;
     // P3-19：接口成员全局槽位（未登记返回 -1）
-    int interfaceSlot(const std::string& ifaceName, const std::string& methodName) const;
+    int interfaceSlot(const std::string& ifaceName, const std::string& methodName) const override ;
     // P3/D3A：接口的非抽象具体实现类集合（含继承链并入；登记在 ClassInfo.ifaceNames）。
     //   去虚拟化：集合恰 1 项 → 接口调用点编译期直接调用；CFI：集合即该接口已知实现目标表。
-    std::vector<std::string> interfaceImplClasses(const std::string& ifaceName) const;
+    std::vector<std::string> interfaceImplClasses(const std::string& ifaceName) const override ;
     // P3-19：类（含继承链）是否实现指定接口
     bool classImplementsInterface(const std::string& className,
                                   const std::string& ifaceName) const;
@@ -287,31 +149,31 @@ public:
     // 沿继承链查找类成员（含父类；未找到返回nullptr）
     const ClassMemberInfo* lookupClassMember(const std::string& className,
                                              const std::string& memberName,
-                                             std::string& ownerClass) const;
+                                             std::string& ownerClass) const override ;
     // 2026-08-25 方案A：查类的拷贝构造（单参同类型引用 类名(类名& 其他)）；
     //   有则返回（按值拷贝走深拷贝），无则返回 nullptr
-    const ClassMemberInfo* findCopyConstructor(const std::string& className) const;
+    const ClassMemberInfo* findCopyConstructor(const std::string& className) const override ;
     // 2026-08-25 方案A 强制规则：有析构类按值拷贝（初始化/赋值）须有拷贝构造，
     //   否则编译报错（浅拷贝裸指针字段析构双释放 0xC0000374）。调用方仅在
     //   确认发生"类对象拷贝"时调用（无析构类保持浅拷贝，不触发）。
     void checkCopyRequiresCtor(const std::string& className,
                                const SourceLocation& loc);
     // 查询类虚函数表槽位（方法名 -> 槽位索引；非虚/未找到返回-1）
-    int classVtableIndex(const std::string& className, const std::string& methodName) const;
+    int classVtableIndex(const std::string& className, const std::string& methodName) const override ;
     // 查询类布局（实例总大小/对齐）
     int classTotalSize(const std::string& className) const;
     // 查询类字段偏移（沿继承链，-1表示无此字段；含虚表指针偏移调整）
-    int classFieldOffset(const std::string& className, const std::string& fieldName) const;
+    int classFieldOffset(const std::string& className, const std::string& fieldName) const override ;
     // 查询泛型声明（未找到返回nullptr）。Debug 子任务修复（泛型类方法体提升
     //   需解析 实例化类名$实参 的类型参数映射）——公开转发供 IR 层访问。
-    const GenericInfo* findGeneric(const std::string& name) const;
+    const GenericInfo* findGeneric(const std::string& name) const override ;
     // 234-a（A7 根治·plans/020 第七十五节）：IR 生成泛型实例方法体前的重检查。
     //   缺陷：实例化类方法体 AST 为全实例共享（mi.ast 指向模板成员），语义检查
     void recheckGenericMethodBody(const std::string& instanceName,
-                                  const ClassMember* member);
+                                  const ClassMember* member)override ;
     // 317-a（T19/T20 波次4·D10 面汇合）：泛型函数实例体生成前的重放检查——
     //   原泛型函数体从未被语义检查（26_generics 遗留）：体内泛型类实例化触发
-    void recheckGenericFuncBody(const GenericFuncInstance& gfi);
+    void recheckGenericFuncBody(const GenericFuncInstance& gfi)override ;
     // 317-a：泛型函数实例化记录登记（去重）——显式 <> 调用段与推断段共用
     void registerGenericFuncInstance(const std::string& instName,
                                      const GenericInfo* ginfo,
@@ -319,19 +181,19 @@ public:
     // 泛型实例化类型名替换（Task 3.8）：名<实参> -> 实例化类名（容器$整32）；
     //   非泛型类型原样返回。H8 补完（2026-08-25）：公开供 IR 层 类型大小(T)
     std::string resolveGenericTypeName(const std::string& typeName,
-                                       const SourceLocation& loc);
+                                       const SourceLocation& loc)override ;
     // ---- 第 4 层（v2.0 决策9，P1-4）：顶层常量查询（IR 层编译期折叠）----
     // 查询顶层常量值文本（未注册返回空串；值为字面量 raw 文本）
-    std::string globalConstValue(const std::string& name) const {
+    std::string globalConstValue(const std::string& name) const override {
         auto it = globalConstValues_.find(name);
         return (it == globalConstValues_.end()) ? "" : it->second;
     }
     // 是否顶层静态变量名（IR 层生成全局存储）
-    bool isGlobalStatic(const std::string& name) const {
+    bool isGlobalStatic(const std::string& name) const override {
         return globalStatics_.count(name) > 0;
     }
     // 查询顶层静态变量源码类型（未注册返回空串；IR 层映射全局存储类型）
-    std::string globalStaticType(const std::string& name) const {
+    std::string globalStaticType(const std::string& name) const override {
         auto it = globalStatics_.find(name);
         return (it == globalStatics_.end()) ? "" : it->second;
     }

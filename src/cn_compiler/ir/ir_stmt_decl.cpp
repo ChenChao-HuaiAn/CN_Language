@@ -9,7 +9,7 @@
 #include <utility>
 
 #include "cn_compiler/ir/ir.hpp"
-#include "cn_compiler/semantic/semantic.hpp"
+#include "cn_compiler/model/semantic_view.hpp"
 #include "cn_compiler/model/type_system.hpp"
 
 namespace cn_compiler {
@@ -184,7 +184,7 @@ void IRGenerator::genVarDecl(VarDecl* node) {
                 // 061-d：合成模板实参（结果<...>/可选<...>）统一 $ 形态
                 //（与语义层 instantiateGeneric 注册名一致·canonicalizeSyntheticArgText）
                 inst += "$" + types::canonical(
-                    SemanticAnalyzer::canonicalizeSyntheticArgText(trimmed));
+                    canonicalizeSyntheticArgText(trimmed));
                 if (comma == std::string::npos) break;
                 pos = comma + 1;
             }
@@ -716,8 +716,8 @@ void IRGenerator::genVarDecl(VarDecl* node) {
             //   双登记=幂等无害（其清值字段后本面摘句柄=0）。
             {
                 const bool declIsBox =
-                    SemanticAnalyzer::isResultType(declCanon) ||
-                    SemanticAnalyzer::isOptionalType(declCanon);
+                    isResultType(declCanon) ||
+                    isOptionalType(declCanon);
                 // 双登记防护（577 崩实录·全量 1019 捕获）：初值=内置构造器调用
                 //   （正常/某些/错误）时 889 表达式面已登记同一盒值字段——两面
                 //   逆序释放后跑面 emitContainerElemFreeFor 读空对象解引用崩
@@ -757,14 +757,14 @@ void IRGenerator::genVarDecl(VarDecl* node) {
                     }
                     {
                         std::string payload280;
-                        if (SemanticAnalyzer::isResultType(declCanon)) {
+                        if (isResultType(declCanon)) {
                             const std::vector<std::string> rargs280 =
-                                SemanticAnalyzer::resultTypeArgs(declCanon);
+                                resultTypeArgs(declCanon);
                             if (rargs280.size() == 2)
                                 payload280 = types::canonical(rargs280[0]);
                         } else {
                             payload280 = types::canonical(
-                                SemanticAnalyzer::optionalTypeArg(declCanon));
+                                optionalTypeArg(declCanon));
                         }
                         const ClassInfo* pci280 = payload280.empty()
                             ? nullptr : semantic_->findClass(payload280);
@@ -780,7 +780,7 @@ void IRGenerator::genVarDecl(VarDecl* node) {
                                 sd280 ? semantic_->fieldOffsetOf(sd280, "值") : -1;
                             const int co280 =
                                 sd280 ? semantic_->fieldOffsetOf(
-                                         sd280, SemanticAnalyzer::isResultType(declCanon)
+                                         sd280, isResultType(declCanon)
                                          ? "正常" : "有值") : -1;
                             if (vo280 >= 0 && co280 >= 0) {
                                 ir::IRValue tagAddr280 =
@@ -913,7 +913,7 @@ void IRGenerator::genVarDecl(VarDecl* node) {
                 exprSrcType(unwrapSrc->object.get());
             const std::string baseCanon = types::canonical(baseTypeSrc);
             const bool isUnwrapSlot =
-                SemanticAnalyzer::isResultType(baseCanon) || SemanticAnalyzer::isOptionalType(baseCanon);
+                isResultType(baseCanon) || isOptionalType(baseCanon);
             const std::string canonTgt = types::canonical(srcType);
             if (isUnwrapSlot && semantic_->isClassType(canonTgt)) {
                 const ClassInfo* ci = semantic_->findClass(canonTgt);
@@ -972,8 +972,8 @@ void IRGenerator::genVarDecl(VarDecl* node) {
                     const std::string& cn =
                         static_cast<const IdentifierExpr*>(ice->callee.get())
                             ->name;
-                    // 094 判据单点化：白名单收口 SemanticAnalyzer::isOwnedStringBuiltin
-                    ownRet = SemanticAnalyzer::isOwnedStringBuiltin(cn);
+                    // 094 判据单点化：白名单收口 ISemanticView::isOwnedStringBuiltin
+                    ownRet = isOwnedStringBuiltin(cn);
                 }
                 if (!ownRet) markStringTainted(node->name);
             }

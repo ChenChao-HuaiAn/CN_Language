@@ -13,7 +13,7 @@
 #include <vector>
 
 #include "cn_compiler/codegen/x64/x64_codegen.hpp"
-#include "cn_compiler/semantic/semantic.hpp"
+#include "cn_compiler/model/semantic_view.hpp"
 
 namespace cn_compiler {
 

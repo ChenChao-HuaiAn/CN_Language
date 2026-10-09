@@ -24,7 +24,7 @@ namespace cn_compiler {
 // 未知目标平台：报告诊断错误（源码位置留空）并返回 nullptr
 std::unique_ptr<Backend> createBackend(const std::string& target,
                                        Diagnostics& diag,
-                                       SemanticAnalyzer* sem,
+                                       ISemanticView* sem,
                                        int optLevel,
                                        bool useRegAlloc,
                                        bool debugInfo) {

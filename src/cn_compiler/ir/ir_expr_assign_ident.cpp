@@ -11,7 +11,7 @@
 #include <cstdlib>
 
 #include "cn_compiler/ir/ir.hpp"
-#include "cn_compiler/semantic/semantic.hpp"
+#include "cn_compiler/model/semantic_view.hpp"
 #include "cn_compiler/model/type_system.hpp"
 
 namespace cn_compiler {
@@ -346,7 +346,7 @@ bool IRGenerator::globalStaticClassTransferAssign(AssignmentExpr* node, Identifi
     if (!semantic_->isClassType(canonTarget)) return false;
     if (node->value->getType() != NodeType::CallExpr) return false;
     const CallExpr* tr = static_cast<const CallExpr*>(node->value.get());
-    if (!SemanticAnalyzer::isTransferCall(tr) || tr->arguments.empty() ||
+    if (!isTransferCall(tr) || tr->arguments.empty() ||
         tr->arguments[0]->getType() != NodeType::IdentifierExpr)
         return false;
     const std::string srcName =
@@ -789,7 +789,7 @@ bool IRGenerator::identifierStringTransferAssign(AssignmentExpr* node, Identifie
         !isCompoundAssignOp(node->op) &&
         stringTainted_.count(ident->name) == 0 &&
         node->value->getType() == NodeType::CallExpr &&
-        SemanticAnalyzer::isTransferCall(
+        isTransferCall(
             static_cast<const CallExpr*>(node->value.get()))) {
         const CallExpr* tr = static_cast<const CallExpr*>(node->value.get());
         if (!tr->arguments.empty() &&
@@ -843,7 +843,7 @@ bool IRGenerator::identifierClassTransferAssign(AssignmentExpr* node, Identifier
         return false;
     if (node->value->getType() != NodeType::CallExpr) return false;
     const CallExpr* tr = static_cast<const CallExpr*>(node->value.get());
-    if (!SemanticAnalyzer::isTransferCall(tr) || tr->arguments.empty() ||
+    if (!isTransferCall(tr) || tr->arguments.empty() ||
         tr->arguments[0]->getType() != NodeType::IdentifierExpr)
         return false;
     const std::string srcName =
@@ -899,8 +899,8 @@ bool IRGenerator::identifierStringOwnAssign(AssignmentExpr* node, IdentifierExpr
             if (!ownAssign && ace->callee->getType() == NodeType::IdentifierExpr) {
                 const std::string& cn =
                     static_cast<const IdentifierExpr*>(ace->callee.get())->name;
-                // 094 判据单点化：白名单收口 SemanticAnalyzer::isOwnedStringBuiltin
-                ownAssign = SemanticAnalyzer::isOwnedStringBuiltin(cn);
+                // 094 判据单点化：白名单收口 ISemanticView::isOwnedStringBuiltin
+                ownAssign = isOwnedStringBuiltin(cn);
             }
         }
         if (ownAssign) {
