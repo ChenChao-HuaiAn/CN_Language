@@ -362,11 +362,16 @@ def cmd_check(as_json: bool = False) -> int:
                           if n.isdigit() and n not in 禁用号}
                        | {int(n) for n in 在飞树内号集()
                           if n.isdigit() and n not in 禁用号})
+    禁用号整数 = {int(x) for x in 禁用号}
     for v in 数字任务号:
         其余 = [x for x in 数字任务号 if x != v]
         if 其余 and v > max(其余) + 1:
-            问题.append(f"任务号跳号：#{v}（除本行外最大有效号 {max(其余)}"
-                        f"·用户令 2026-10-05 按顺序取号 max+1·禁用号 353/354 跳过·历史补记账须用户特批）")
+            # 355 修复（随批·AI 裁决 P3 机制级）：取号侧 wt.py 认禁用号跳过（352→355 合法），
+            #   账实侧同步开口——(max, v) 开区间全部为禁用号时放行，否则仍拦跳号
+            区间 = set(range(max(其余) + 1, v))
+            if not 区间.issubset(禁用号整数):
+                问题.append(f"任务号跳号：#{v}（除本行外最大有效号 {max(其余)}"
+                            f"·用户令 2026-10-05 按顺序取号 max+1·禁用号 353/354 跳过·历史补记账须用户特批）")
     分支们 = 远端分支表()
     for t in 任务们:
         号 = t["号"]
