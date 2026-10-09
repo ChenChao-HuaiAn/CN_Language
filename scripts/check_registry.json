@@ -124,6 +124,14 @@
    "检查网层": 9,
    "说明": "v5（1016）：--check 账实相符（🏃⇔分支存在防漏销账/✅⇔sha/依赖环/抢跑）——integrate 快速门禁挂载·替代 check_handoff/check_progress_sync（v4 机械检查废档）",
    "v5执行面": "integrate 自动挂 --check+开工 --ready"
+  },
+  {
+   "名称": "分层依赖方向门禁",
+   "脚本": "scripts/check_layer_deps.py",
+   "组": "ci常规",
+   "检查网层": 8,
+   "说明": "AGENTS §3 单向依赖执法点（334·重构A）：宿主 C++ include 方向+v2 CN 导入方向双面白名单矩阵——存量冻结基线只减不增·新增跨层依赖零容忍（重构 B/C/D 逐批清基线后转硬门禁）",
+   "v5执行面": "L1 gate_quick（334 起·提交前）+云端兜底"
   }
  ]
 }

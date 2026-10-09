@@ -52,11 +52,14 @@ def 步(名: str, 命令: list[str], **kw) -> bool:
 
 print("== L1 快速门禁（920·提交前）==", flush=True)
 
-# ① 静态四检查（与 ci.ps1 第 0~0.5 步同源·不依赖构建产物；242 增 file_length 冻结线）
+# ① 静态五检查（与 ci.ps1 第 0~0.5 步同源·不依赖构建产物；242 增 file_length 冻结线·
+#    334 增分层依赖冻结线——AGENTS §3 单向依赖的执法点：宿主 include 方向+v2 导入方向双面）
 for 名 in ("check_ascii_idents", "check_keywords_sync", "check_registry_audit"):
     if not 步(名, [sys.executable, f"scripts/{名}.py"]):
         raise SystemExit(1)
 if not 步("file_length 冻结线", [sys.executable, "scripts/check_file_length.py", "--freeze"]):
+    raise SystemExit(1)
+if not 步("layer_deps 冻结线", [sys.executable, "scripts/check_layer_deps.py"]):
     raise SystemExit(1)
 
 # ② 增量构建（win=Ninja+sccache〔ninja_build.cmd=vcvars+cache 一体〕；linux=Make 增量）
