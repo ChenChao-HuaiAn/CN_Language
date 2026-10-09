@@ -645,7 +645,7 @@ static bool compileRuntime(const std::string& target, const std::string& vcvarsB
     return true;
 }
 
-// 链接：win-x64 -> link /ENTRY:WinMainCRTStartup；linux-arm64 -> g++ -no-pie
+// 链接：win-x64 -> link /ENTRY:WinMainCRTStartup；linux-arm64 -> g++ -no-pie（尾内联 -lpthread：thread_api 996 入链配套·glibc<2.34 缺标志必炸·>=2.34 并入 libc 静默通过=平台掩盖·336 实录）
 // win-x64 说明：
 //   1. WinMainCRTStartup（而非 WinMain）：CRT 初始化 stdout/堆后调用用户 WinMain，
 //      否则 printLine（puts）输出为空（stdout 未初始化）
@@ -685,7 +685,7 @@ static bool linkExe(const std::string& target, const std::string& vcvarsBat,
             runtimeObjDir + "/runtime.o\" \"" + runtimeObjDir + "/thread_api.o\" \"" + runtimeObjDir + "/string_api.o\" \"" + runtimeObjDir + "/i128_api.o\" \"" +
             runtimeObjDir + "/math_api.o\" \"" + runtimeObjDir + "/input_api.o\" \"" +
             runtimeObjDir + "/file_api.o\" \"" + runtimeObjDir + "/time_api.o\" \"" +
-            runtimeObjDir + "/system_api.o\"";
+            runtimeObjDir + "/system_api.o\" -lpthread";
         for (const auto& lib : extraLibs) {
             cmdLine += " " + lib;
         }

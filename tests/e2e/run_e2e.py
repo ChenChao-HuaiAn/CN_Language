@@ -1109,6 +1109,7 @@ def 执行v2锚定链(编译器路径: pathlib.Path, 用例目录: pathlib.Path,
         链接命令 = [cxx工具, "-no-pie", "-Wl,-z,muldefs", "-Wl,-Map," + str(map文件),
                     "-o", str(cn_self_exe), str(cn_self_obj), str(v2pobj)]
         链接命令 += [str(o) for o in 运行时objs]
+        链接命令.append("-lpthread")  # thread_api 996 入链配套·glibc<2.34 缺标志必炸·>=2.34 平台掩盖（336）
         if 详细:
             print(f"    [{编号}-4] g++ -no-pie -Wl,-z,muldefs -> cn_self（cn_self.obj 在前）")
         链接结果 = 运行命令(链接命令, 项目根目录, 超时秒数=编译超时秒数)
@@ -1642,6 +1643,7 @@ def 执行v2闭环Linux(编译器路径: pathlib.Path, 目标平台: str, 详细
     if 链接v2pobj:
         链接命令.append(str(v2pobj))
     链接命令 += [str(o) for o in 运行时objs]
+    链接命令.append("-lpthread")  # thread_api 996 入链配套·glibc<2.34 缺标志必炸·>=2.34 平台掩盖（336）
     if 详细:
         print(f"    [{编号}-5] g++ -no-pie -> {输出exe.name}")
     链接结果 = 运行命令(链接命令, 项目根目录, 超时秒数=编译超时秒数)
