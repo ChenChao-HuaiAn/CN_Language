@@ -1,26 +1,6 @@
 {
- "CN语言编译器v2/IR/IR容器.cn": 2459,
- "CN语言编译器v2/IR/IR布局.cn": 1646,
- "CN语言编译器v2/IR/IR生成.cn": 1082,
- "CN语言编译器v2/IR/IR类.cn": 1376,
- "CN语言编译器v2/IR/生成声明.cn": 1265,
- "CN语言编译器v2/IR/生成类.cn": 1953,
- "CN语言编译器v2/IR/生成表达式.cn": 1689,
- "CN语言编译器v2/IR/生成表达式求值.cn": 2717,
- "CN语言编译器v2/IR/生成语句.cn": 1393,
- "CN语言编译器v2/IR/生成语句赋值.cn": 1706,
- "CN语言编译器v2/代码生成/代码生成.cn": 1508,
- "CN语言编译器v2/代码生成/代码生成ARM64.cn": 1282,
- "CN语言编译器v2/代码生成/代码生成X64Linux.cn": 1324,
- "CN语言编译器v2/语义/语义分析.cn": 1277,
- "CN语言编译器v2/语义/语义检查.cn": 2257,
- "CN语言编译器v2/语义/语义检查表达式.cn": 1811,
- "CN语言编译器v2/语法/解析表达式.cn": 1422,
- "CN语言编译器v2/语法/解析语句.cn": 1240,
- "CN语言编译器v2/语法/语法分析.cn": 1135,
  "src/cn_compiler/codegen/arm64/arm64_instructions.cpp": 1269,
  "src/cn_compiler/codegen/linux_x64/linux_x64_instructions.cpp": 1173,
  "src/cn_compiler/codegen/x64/x64_instructions.cpp": 1240,
- "src/cn_compiler/ir/ir.hpp": 1133,
- "src/cn_compiler/semantic/semantic_call.cpp": 1265
+ "src/cn_compiler/ir/ir.hpp": 1035
 }

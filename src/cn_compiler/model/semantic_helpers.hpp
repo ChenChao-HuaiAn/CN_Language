@@ -379,5 +379,18 @@ inline std::string canonicalType(const std::string& type) {
     return moduleName + "$" + sigKey;
 }
 
+
+// ===== IR 层文本工具声明（357 自 ir.hpp 下沉——纯字符串/AST 工具·functionLinkKey 同族）=====
+[[maybe_unused]] inline std::string funcPtrAwareSrcType(const FuncPtrTypeInfo& funcPtr,
+                                                        const std::string& typeName) {
+    return funcPtr.isFunctionPtr() ? funcPtr.toSymbolType() : typeName;
+}
+[[maybe_unused]] inline std::string paramSrcTypeOf(const ParamDecl* param) {
+    if (param == nullptr) return "";
+    return funcPtrAwareSrcType(param->funcPtr, param->typeName);
+}
+std::string methodSymbolKey(const std::string& className, const std::string& sigKey);
+int charLiteralCodePoint(const std::string& raw);
+
 } // namespace cn_compiler
 
