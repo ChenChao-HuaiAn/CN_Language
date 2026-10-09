@@ -1,6 +1,5 @@
 {
  "src/cn_compiler/codegen/arm64/arm64_instructions.cpp": 1269,
  "src/cn_compiler/codegen/linux_x64/linux_x64_instructions.cpp": 1173,
- "src/cn_compiler/codegen/x64/x64_instructions.cpp": 1240,
- "src/cn_compiler/ir/ir.hpp": 1035
+ "src/cn_compiler/codegen/x64/x64_instructions.cpp": 1240
 }
