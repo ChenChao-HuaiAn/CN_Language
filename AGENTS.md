@@ -51,7 +51,7 @@
   `scripts/check_layer_deps.py` 双面扫描〔宿主 C++ include 方向+v2 CN 导入方向〕·每层显式白名单·
   存量冻结基线只减不增·新增跨层依赖零容忍。宿主目标态：common←model(AST/类型系统/语义只读视图)
   ←lexer→parser→semantic；ir/opt/codegen 依赖面={common,model(,ir)}；driver/cn_main 唯一组合入口；
-  runtime 独立。v2 包序：词法→语法树→IR→语法→语义→代码生成→主）；**报告类产出待用户批阅**；
+  runtime 独立。v2 包序：词法→协议常量→IR→语法→语义→代码生成→主（335：协议常量包=节点_*/IR_*/T_* 中立归属·宿主 model 对称；IR→语法 13 处=泛型实例化受控回调与宿主 recheck* 同构·基线豁免见 021 债行））；**报告类产出待用户批阅**；
   **测试文件不可擅改**（验收后改动须报备；因缺陷放宽一律禁止）。
 - **新代码归属速查**（334·防「只顾当时目的」的结构腐化）：类型/AST 数据定义→model（宿主）/语法树（v2）；
   词法规则→lexer/词法；语法规则→parser/语法；语义检查→semantic/语义；AST→IR 翻译→ir；
