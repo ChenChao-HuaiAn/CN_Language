@@ -10,6 +10,27 @@
 # X | None 联合在 3.8 会 TypeError——future import 使注解字符串化（242 轮 13b0e034 后断线·287 修复）。
 from __future__ import annotations
 
+# 332（2026-10-09 用户质询「失联是怎么回事」）：L1 每轮必跑——挂路过即心跳
+#   （同 task_board 308k：开工后写码期无 task_board 触点·L1 是唯一高频脚本·
+#   失败静默降级不阻断门禁）
+def _路过续约():
+    try:
+        import importlib.util as _ilu
+        from pathlib import Path as _Path
+        _p = _Path(__file__).resolve().parent / "intent.py"
+        if not _p.exists():
+            return
+        _spec = _ilu.spec_from_file_location("cn_board_intent", _p)
+        _mod = _ilu.module_from_spec(_spec)
+        _spec.loader.exec_module(_mod)
+        import threading as _th
+        _th.Thread(target=_mod.路过续约, daemon=True).start()
+    except Exception:
+        pass
+
+
+_路过续约()
+
 import subprocess
 import sys
 from pathlib import Path
