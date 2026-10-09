@@ -4,6 +4,7 @@
 #include <string>
 
 #include "cn_compiler/codegen/x64/x64_codegen.hpp"
+#include "cn_compiler/codegen/judgement.hpp"
 
 namespace cn_compiler {
 
@@ -28,8 +29,26 @@ void X64CodeGenerator::emitCast(AsmWriter& writer, const ir::IRInstruction& inst
     const bool fromFloat = isFloatType(from);
     const bool toFloat = isFloatType(to);
     // D1 126-a：按族拆出三个子方法（纯重构零行为变更；各段原顺序、原条件保持不变）
-    if (emitCastFloatFamily(writer, inst, dst, src, from, to, fromFloat, toFloat)) return;
-    if (emitCastPtrAndFloatPair(writer, dst, src, from, to, fromFloat, toFloat)) return;
+    // 358：主分派判定改调 judgement::classifyCast（三后端唯一份·矩阵）——桶域=各子函数
+    //   原判定域，桶内保留原 if（域内必命中·防御式兜底）；857 铁律已固化进归域。
+    switch (judgement::classifyCast(from, to)) {
+    case judgement::CastKind::FloatToI128Helper:
+    case judgement::CastKind::FloatToInt:
+    case judgement::CastKind::IntToFloatI128Helper:
+    case judgement::CastKind::IntToFloatU64Helper:
+    case judgement::CastKind::IntToFloat:
+        if (emitCastFloatFamily(writer, inst, dst, src, from, to, fromFloat, toFloat)) return;
+        break;
+    case judgement::CastKind::PtrIntReinterpret:
+    case judgement::CastKind::Int64Reinterpret:
+    case judgement::CastKind::FloatIdentity:
+    case judgement::CastKind::FloatToFloat:
+        if (emitCastPtrAndFloatPair(writer, dst, src, from, to, fromFloat, toFloat)) return;
+        break;
+    default:
+        break;
+    }
+    // 桶3（IntWidth 域+default）：i128 同类/宽化、窄源扩展、截断、i1/i32/u32/u64 逐向域
     if (emitCastIntWidth(writer, inst, dst, src, from, to)) return;
     // 32 <-> 64（同宽度：mov 传递即可，值语义一致）
     // 修复（2026-08 自举检查发现，A2022）：dst 为 64 位物理寄存器（寄存器分配）
