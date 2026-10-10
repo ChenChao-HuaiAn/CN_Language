@@ -51,13 +51,13 @@ def 服务调(路径: str):
         return None
 
 
-def 输出(命令: list[str]) -> str:
+def 输出(命令):
     结果 = subprocess.run(命令, capture_output=True, text=True, encoding="utf-8",
                           errors="replace")
     return (结果.stdout or "").strip()
 
 
-def 拉台账() -> list | None:
+def 拉台账():
     r = 服务调("/api/tasks")
     return None if r is None else r.get("任务们")
 
@@ -120,7 +120,7 @@ def cmd_check() -> int:
         if 号 not in 图:
             黄们.append(f"远端 任务/{号} 分支存在但台账无此任务——迁移窗口期旧任务（收口时服务端补账）")
     # 前置环检测（服务端立项不查环·DFS 三色标记·首环即报）
-    颜色: dict[str, int] = {}
+    颜色 = {}
 
     def 走(号: str) -> bool:
         颜色[号] = 1
