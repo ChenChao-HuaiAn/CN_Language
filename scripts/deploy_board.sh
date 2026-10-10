@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # CN 任务看板一键部署（382·照 deploy_website.sh 模式）
-# 部署面：board_service.py + board_tasks.py + board_docs.py(384) + board_www/ 静态目录 → TX_01:/home/ubuntu
+# 部署面：board_service.py + board_selftest.py(405) + board_tasks.py + board_docs.py(384)
+#         + board_adjudication.py(403) + board_www/ 静态目录 → TX_01:/home/ubuntu
 # 用法: bash scripts/deploy_board.sh [ssh别名]   默认 TX_01
 # 注意：本脚本只更代码+重启服务（SQLite 数据与 systemd 单元不动）；
 #       首次部署/021 迁移另行执行（见 plans/028 §看板）：
@@ -12,7 +13,7 @@ REMOTE_DIR="/home/ubuntu"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
-for f in board_service.py board_tasks.py board_docs.py board_adjudication.py; do
+for f in board_service.py board_tasks.py board_docs.py board_adjudication.py board_selftest.py; do
     if [ ! -f "$SCRIPT_DIR/$f" ]; then
         echo "错误: 找不到 $SCRIPT_DIR/$f" >&2
         exit 1
@@ -44,7 +45,8 @@ html = html.replace('<script src="/board.js"></script>',
 (dst / "index.html").write_text(html, encoding="utf-8")
 PY
 scp -q "$SCRIPT_DIR/board_service.py" "$SCRIPT_DIR/board_tasks.py" \
-    "$SCRIPT_DIR/board_docs.py" "$SCRIPT_DIR/board_adjudication.py" "$REMOTE:$REMOTE_DIR/"
+    "$SCRIPT_DIR/board_docs.py" "$SCRIPT_DIR/board_adjudication.py" \
+    "$SCRIPT_DIR/board_selftest.py" "$REMOTE:$REMOTE_DIR/"
 ssh "$REMOTE" "mkdir -p '$REMOTE_DIR/board_www'"
 tar czf - -C "$SCRIPT_DIR/board_www" . | ssh "$REMOTE" "tar xzf - -C '$REMOTE_DIR/board_www'"
 scp -q "$DIST_TMP/index.html" "$REMOTE:$REMOTE_DIR/board_www/index.html"

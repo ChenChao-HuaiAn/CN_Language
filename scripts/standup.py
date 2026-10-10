@@ -5,7 +5,7 @@
 → 待裁决件数。384 起 交接/教训读看板服务端（两文档已退位删除），服务不可达降级读
 board_cache.json 最后缓存（无网也能开工简报）。
 
-用法：python scripts/standup.py [--机 深度机]   # --机 缺省按 hostname 推测
+用法：python scripts/standup.py [--机 深度机]   # --机 缺省按 hostname 别名表推测·未知 hostname 落原名不猜（408）
 """
 from __future__ import annotations
 
@@ -164,9 +164,16 @@ def 主流程() -> int:
     解析 = argparse.ArgumentParser(description="开机一条命令（241）")
     解析.add_argument("--机", default=None, help="本机名（缺省按 hostname 推测）")
     参数 = 解析.parse_args()
+    主机 = socket.gethostname()
     机 = 参数.机 or next((v for k, v in 主机别名.items()
-                          if socket.gethostname().lower().startswith(k.lower())), "深度机")
-    输出 = ["═" * 46, f" 开工简报·{机}·{socket.gethostname()}", "═" * 46]
+                          if 主机.lower().startswith(k.lower())), None)
+    提示 = ""
+    if not 机:  # 408：未知 hostname 不再误标具体机名（用户令：机器身份禁 hostname 猜测）
+        机 = 主机
+        提示 = f"⚠ hostname「{主机}」不在别名表·交接节按原名查（--机 家机|深度机|单位机 可指定）"
+    输出 = ["═" * 46, f" 开工简报·{机}·{主机}", "═" * 46]
+    if 提示:
+        输出.append(提示)
     输出 += 落后提示()
     输出 += 看板自动claim()
     输出 += 看板与裁决()
