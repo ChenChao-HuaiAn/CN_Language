@@ -12,7 +12,7 @@ REMOTE_DIR="/home/ubuntu"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
-for f in board_service.py board_tasks.py board_docs.py; do
+for f in board_service.py board_tasks.py board_docs.py board_adjudication.py; do
     if [ ! -f "$SCRIPT_DIR/$f" ]; then
         echo "错误: 找不到 $SCRIPT_DIR/$f" >&2
         exit 1
@@ -43,7 +43,8 @@ html = html.replace('<script src="/board.js"></script>',
                     "<script>\n" + js + "\n</script>")
 (dst / "index.html").write_text(html, encoding="utf-8")
 PY
-scp -q "$SCRIPT_DIR/board_service.py" "$SCRIPT_DIR/board_tasks.py" "$SCRIPT_DIR/board_docs.py" "$REMOTE:$REMOTE_DIR/"
+scp -q "$SCRIPT_DIR/board_service.py" "$SCRIPT_DIR/board_tasks.py" \
+    "$SCRIPT_DIR/board_docs.py" "$SCRIPT_DIR/board_adjudication.py" "$REMOTE:$REMOTE_DIR/"
 ssh "$REMOTE" "mkdir -p '$REMOTE_DIR/board_www'"
 tar czf - -C "$SCRIPT_DIR/board_www" . | ssh "$REMOTE" "tar xzf - -C '$REMOTE_DIR/board_www'"
 scp -q "$DIST_TMP/index.html" "$REMOTE:$REMOTE_DIR/board_www/index.html"
