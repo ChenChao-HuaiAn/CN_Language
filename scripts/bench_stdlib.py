@@ -46,8 +46,11 @@ def 跑(命令: list, cwd=None) -> subprocess.CompletedProcess:
 def 确保编译器(侧: str) -> pathlib.Path:
     """宿主=target/cn；v2=v2p（无则用宿主 build v2 全树现建·bench_self_host M1 同款）"""
     if 侧 == "host":
-        exe = 项目根 / "target" / "cn"
-        if not exe.exists():
+        # 385 随批：win 产物带 .exe 后缀（ninja 链接 cn.exe）——候选探测与
+        #   bench_self_host 同构（target/cn → target/cn.exe），linux 原样。
+        exe = next((p for p in (项目根 / "target" / n for n in ("cn", "cn.exe"))
+                    if p.exists()), None)
+        if exe is None:
             print("错误: 未找到宿主编译器 target/cn（先 gate_quick 或 cmake --build）")
             sys.exit(2)
         return exe
@@ -123,10 +126,13 @@ def 编译v2用例(v2p: pathlib.Path, src: pathlib.Path, 产物: pathlib.Path) -
 
 def 一轮(exe: pathlib.Path, 用例: str, 侧: str) -> list[int]:
     """编译（缓存产物）+运行一次→解析耗时数字们（校验断言失败即炸）"""
-    产物 = 基目 / f"{用例}.{侧}"
+    产物 = 基目 / (f"{用例}.{侧}" + (".exe" if 侧 == "host" and os.name == "nt" else ""))
     src = 项目根 / "tests" / "bench" / 用例 / "主.cn"
     if 侧 == "host":
-        r = 跑([str(exe), "build", str(src), "--target", "linux-x86_64", "--output", str(产物)])
+        # 385 随批：host 产物走本机目标链（win=win-x64 自带 ml64/link·原
+        #   linux-x86_64 硬编码在 win 无 as/g++ 链必炸）；v2 侧 linux 链原样。
+        目标 = "win-x64" if os.name == "nt" else "linux-x86_64"
+        r = 跑([str(exe), "build", str(src), "--target", 目标, "--output", str(产物)])
         if r.returncode != 0:
             raise RuntimeError(f"[{用例}/{侧}] 编译失败: {(r.stderr or r.stdout).strip()[-300:]}")
     else:
@@ -169,8 +175,10 @@ def 主程序() -> int:
             return 2
 
     host = 确保编译器("host")
-    v2p = 确保编译器("v2")
-    print(f"宿主={host}\n  v2p={v2p}\n  轮数={参数.runs}\n")
+    # 385 随批：only 全为挂起用例（如 b4=#362）时 v2 侧不参与——免强制现建 v2p
+    #   （win 本机现建走 linux 目标链无 as·该缺口随 386 bench 门禁候选处理）
+    v2p = 确保编译器("v2") if any(n not in v2挂起 for n in 只跑) else None
+    print(f"宿主={host}\n  v2p={v2p or '（挂起-only·未建）'}\n  轮数={参数.runs}\n")
 
     结果 = {}   # (用例, 侧) → 数字列表们
     for 用例 in 只跑:
@@ -194,7 +202,7 @@ def 主程序() -> int:
         "",
         f"- 时间: {time.strftime('%Y-%m-%d %H:%M:%S')}（单机口径·跨机比较无意义）",
         f"- 宿主: {host}",
-        f"- v2p: {v2p}",
+        f"- v2p: {v2p or '（挂起-only·未建）'}",
         f"- 轮数: {参数.runs}（取中位）",
         "",
         "| 用例 | 指标 | 宿主(ms) | v2(ms) |",
