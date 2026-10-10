@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- CN 语言主 logo · 方案戊「怀中印」· 浅底/通用版 -->
+  <!-- C 怀抱「中」字印：C 系骨架承载中文语义 -->
+  <path d="M 232 158 H 148 Q 92 158 92 214 V 298 Q 92 354 148 354 H 232"
+        fill="none" stroke="#221F18" stroke-width="46"/>
+  <path d="M 292 354 V 158 L 420 354 V 158"
+        fill="none" stroke="#221F18" stroke-width="46" stroke-linejoin="bevel"/>
+  <g transform="translate(118.5 189.5) scale(0.26)">
+    <rect x="48" y="48" width="416" height="416" rx="56" fill="#AD2F22"/>
+    <rect x="156" y="180" width="200" height="152" fill="none" stroke="#FCFAF6" stroke-width="34"/>
+    <rect x="239" y="106" width="34" height="300" fill="#FCFAF6"/>
+  </g>
+</svg>

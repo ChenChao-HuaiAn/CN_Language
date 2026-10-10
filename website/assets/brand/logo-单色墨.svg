@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- CN 语言主 logo · 方案戊「怀中印」· 单色墨版（印章「中」镂空·单色印刷/水印用） -->
+  <defs>
+    <mask id="zhong-loukong">
+      <rect x="120" y="190" width="130" height="130" fill="#fff"/>
+      <rect x="159.06" y="236.3" width="52" height="39.52" fill="none" stroke="#000" stroke-width="8.84"/>
+      <rect x="180.64" y="217.06" width="8.84" height="78" fill="#000"/>
+    </mask>
+  </defs>
+  <path d="M 232 158 H 148 Q 92 158 92 214 V 298 Q 92 354 148 354 H 232"
+        fill="none" stroke="#221F18" stroke-width="46"/>
+  <path d="M 292 354 V 158 L 420 354 V 158"
+        fill="none" stroke="#221F18" stroke-width="46" stroke-linejoin="bevel"/>
+  <rect x="130.98" y="201.98" width="108.16" height="108.16" rx="14.56"
+        fill="#221F18" mask="url(#zhong-loukong)"/>
+</svg>
