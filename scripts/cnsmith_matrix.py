@@ -21,8 +21,16 @@ import argparse
 import os
 import subprocess
 import sys
-import resource
 import time
+
+# 312-b 同款 win 兼容（matrix 漏修·406 轮补齐）：resource 为 POSIX 专属模块，
+#   Windows 无且 subprocess preexec_fn 亦为 POSIX 专属参数——win 分支跳过内存
+#   上限防线，linux 行为逐字节不变（口径=cnsmith_diff.py 子进程防线参数）。
+try:
+    import resource
+    _HAS_RESOURCE = True
+except ImportError:
+    _HAS_RESOURCE = False
 
 # ---------------------------------------------------------------------------
 # 构件轴（第一版两轴全笛卡尔·语句位置轴挂结构位待扩）
@@ -368,13 +376,15 @@ def _(t, a, b, op, 期望):
 @注册骨架("线程波1_996域", 固定=True)
 def _(t, a, b, op, 期望):
     # 996 线程波1 全链（997 固化·a11/a30 探针转正：linux pthread 新线程+并入+函数指针实参+结果拆包·win 桩=运行时错误(9) 预期负例故本骨架仅 linux 有意义）
+    # 406 补：主函数补 不安全 修饰——218 sunset 收窄（001 §5.8a）后安全区顶层
+    #   空类型* 实参=编译期拒绝（原骨架写于立法前·compile 拒=正确执法非编译器缺陷）
     return (
         '导入 线程::新线程;\n'
         '导入 线程::并入线程;\n'
-        '函数 工作体(空类型* 盒) -> 整64 {\n'
+        '不安全 函数 工作体(空类型* 盒) -> 整64 {\n'
         '    返回 42;\n'
         '}\n'
-        '函数 主() -> 整32 {\n'
+        '不安全 函数 主() -> 整32 {\n'
         '    空类型* 无参 = 无;\n'
         '    整64(*入口)(空类型*) = 工作体;\n'
         '    结果<空类型*, 整32> 句 = 新线程(入口, 无参);\n'
@@ -415,12 +425,24 @@ def _fmt(v):
 # ---------------------------------------------------------------------------
 
 def 子进程防线():
+    if not _HAS_RESOURCE:
+        return {}
     def lim():
         resource.setrlimit(resource.RLIMIT_AS, (6 * 1024**3, 6 * 1024**3))
     return {"preexec_fn": lim}
 
+def 探测目标平台():
+    """256-a 同款跨平台探测（原硬编码 linux-x86_64=深度机口径·win 全瘫根因之二）。"""
+    if os.name == "nt":
+        return "win-x64"
+    import platform as _p
+    m = _p.machine().lower()
+    if m in ("aarch64", "arm64"):
+        return "linux-arm64"
+    return "linux-x86_64"
+
 def 跑一例(cn, 源码路径, 产物路径, 仓库根):
-    b = subprocess.run([cn, "build", 源码路径, "--target", "linux-x86_64",
+    b = subprocess.run([cn, "build", 源码路径, "--target", 探测目标平台(),
                         "-O0", "--output", 产物路径],
                        capture_output=True, text=True, encoding="utf-8",
                        errors="replace", timeout=120, cwd=仓库根, **子进程防线())
@@ -471,6 +493,8 @@ def main():
     # 固定骨架与类型轴无关——单跑一轮
     for 骨架名, (骨架, _固定) in 消费点轴.items():
         if _固定:
+            if os.name == "nt" and 骨架名 == "线程波1_996域":
+                continue  # win pthread 桩=运行时错误(9)·真跑面仅 linux（607 E2E 同口径平台跳过）
             源码, 期望序列 = 骨架("整32", 0, 0, "加", 0)
             名 = f"m_{骨架名}_固定"
             源码路径 = os.path.join(out, 名 + ".cn")
