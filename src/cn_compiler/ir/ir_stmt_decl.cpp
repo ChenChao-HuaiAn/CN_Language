@@ -35,6 +35,7 @@ void IRGenerator::genVarDecl(VarDecl* node) {
     genClassDefaultConstruct(node, ctx);            // H7 类变量无初始化器兜底
     genStructZeroInit(node, ctx);                   // 缺陷2 结构体零初始化兜底
     genArrayZeroInit(node, ctx);                    // 缺陷B 数组零初始化兜底
+    genScalarZeroInit(node, ctx);                   // 344 标量/串/函数指针零初始化兜底
 }
 
 // ---- 族①：函数内静态局部变量通道（320-a/061-b）----
@@ -734,6 +735,37 @@ void IRGenerator::genArrayZeroInit(VarDecl* node, const DeclGenCtx& ctx) {
                      slotName, "i64", node->location);
             }
         }
+    }
+}
+
+// 344（606 判零防线根治·2026-10-10 单位机）：标量/字符串/函数指针无初始化器
+//   声明零初始化兜底——与上方 结构体/数组 零初始化兜底完全对称的族收尾。
+//   病灶：裸 fnptr 声明 Alloca 后无任何写→槽=栈残留垃圾→判零防线（cmp #0）
+//   读垃圾通过→blr 垃圾地址 SIGBUS/SIGSEGV（每轮全量点名红·arm64/WSL 池双实
+//   锚；x86_64 TX_02 绿=零页运气非语义健康）。001 §5.8 子案 A（2026-10-05 用
+//   户裁决）立法「零值→运行时错误(错误码3)」的前提=未赋值槽值确定——补 Store 0：
+//   fnptr/指针 未赋值调用→判零防线正确触发错误码3（确定性失败非脏崩溃·§1.1a②）；
+//   标量未赋值读=确定 0；字符串句柄 0=空串（094 空安全语义天然兼容）。
+//   多槽形态（varSlots>1）逐槽清零（与 genArrayZeroInit 同款）。
+void IRGenerator::genScalarZeroInit(VarDecl* node, const DeclGenCtx& ctx) {
+    if (node->initializer != nullptr || ctx.unique.empty()) return;
+    std::string stCore, stSuffix;
+    types::splitTypeSuffix(ctx.srcType, stCore, stSuffix);
+    const std::string canonCore = types::canonical(stCore);
+    if (semantic_ != nullptr &&
+        (types::isArray(ctx.srcType) || semantic_->isStructType(canonCore) ||
+         semantic_->isClassType(canonCore) ||
+         types::canonical(ctx.srcType) == canonCore + "[]")) {
+        return;  // 数组/结构体/类已由上方 兜底族/构造通道 处理
+    }
+    auto slotIt = function_->varSlots.find(ctx.unique);
+    if (slotIt == function_->varSlots.end() || slotIt->second <= 0) return;
+    const std::string irType = ctx.irType.empty() ? "i64" : ctx.irType;
+    for (int s = 0; s < slotIt->second; ++s) {
+        const std::string slotName =
+            s == 0 ? ctx.unique : ctx.unique + "$s" + std::to_string(s);
+        emit(ir::Opcode::Store, {ir::IRValue::constant("0", irType)},
+             ir::IRValue(), slotName, irType, node->location);
     }
 }
 

@@ -189,6 +189,7 @@ private:
     void genClassDefaultConstruct(VarDecl* node, const DeclGenCtx& ctx);  // ⑪H7 类兜底
     void genStructZeroInit(VarDecl* node, const DeclGenCtx& ctx);  // ⑫缺陷2 结构体兜底
     void genArrayZeroInit(VarDecl* node, const DeclGenCtx& ctx);   // ⑬缺陷B 数组兜底
+    void genScalarZeroInit(VarDecl* node, const DeclGenCtx& ctx);  // ⑭344 标量/串/函数指针零初始化兜底
     // 数组越界检查插桩（Task 2.4）：index < 0 || index >= len 时调用运行时错误(2)
     void emitBoundsCheck(const ir::IRValue& index, int arrayLen,
                          const SourceLocation& loc);    // T4（306-a 波次2）：字符串下标越界检查（运行时长度版）——
