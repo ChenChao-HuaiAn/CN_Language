@@ -566,25 +566,31 @@ void X64CodeGenerator::emitParamSetup(AsmWriter& writer, const ir::IRFunction& f
             continue;
         }
         // 参数实际位号：整型/指针/i128 参数受隐藏返回指针（rcx 占位）影响，
-        //   位号 = i + paramOffset（Win x64 ABI）；浮点参数独立编址（xmm0-3），
-        //   位号 = i 不受 paramOffset 影响（修复集成审查 BUG #2：原 if (i < 4)
-        //   未加 paramOffset，i128 第4参数在隐藏返回指针共存时误走寄存器分支，
-        //   parameterRegister(4) 的 rsp 锚定读被调方栈帧垃圾 -> 崩溃）
+        //   位号 = i + paramOffset（Win x64 ABI）；浮点参数同样按「参数位」配对
+        //   xmm0-3（381 旁证根治：微软 ABI 的 xmm 与整型寄存器按位置一一配对——
+        //   隐藏返回指针占位后浮点位号同被推移；调用侧 emitCall 已按参数位
+        //   （x64_instructions_call.cpp「N=regIdx」·MSVC FormatFloat 反汇编实证），
+        //   本侧原用参数索引 i —— 无 retbuf 时 i==位号两侧一致（修复6 用例全绿），
+        //   结构体返回容器方法（结果<T,E> 走 retbuf）的浮点参数被调读 xmm(i)
+        //   调用放 xmm(i+1) 错位丢值：向量<浮64>.追加/设置 读回恒 0（669 JSON
+        //   浮点全丢探针+p3.asm 铁证：调用 movsd xmm2 / 被调读 xmm1）。
+        //   （修复集成审查 BUG #2 的 i128 位号修复不受影响——整型分支本就
+        //   用 actualIdx）
         const int actualIdx = static_cast<int>(i) + static_cast<int>(paramOffset);
         if (isFloatType(paramType)) {
-            if (i < 4) {
+            if (actualIdx < 4) {
                 // 修复6（浮点参数）：Win x64 浮点参数经 xmm0-3 传递，
                 // 原实现从 rcx/rdx/r8/r9（整型寄存器）读取——读到垃圾值。
                 // 浮点值存 8 字节槽（f32 只低 4 字节有效），movsd/movss 从 xmmN 存槽
                 // （xmm0-3 不在 __chkstk volatile 集合，大帧同样直接读）
                 const std::string store = (paramType == "f64") ? "movsd" : "movss";
                 const std::string mp = (paramType == "f64") ? "qword ptr " : "dword ptr ";
-                const std::string xmm = "xmm" + std::to_string(i);
+                const std::string xmm = "xmm" + std::to_string(actualIdx);
                 writer.line(store + " " + mp + slot + ", " + xmm);
             } else {
-                // 浮点栈参数（第5起）：[rbp+48+(i-4)*8]
+                // 浮点栈参数（第5位起）：[rbp+48+(位号-4)*8]——与整型栈参同口径
                 const std::string stackSrc =
-                    "[rbp+" + std::to_string(48 + (static_cast<int>(i) - 4) * 8) + "]";
+                    "[rbp+" + std::to_string(48 + (actualIdx - 4) * 8) + "]";
                 writer.line("mov rax, " + stackSrc);
                 writer.line("mov " + slot + ", rax");
             }
