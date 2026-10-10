@@ -37,11 +37,13 @@ def 自检() -> int:
         if not 条件:
             失败们.append(名)
 
-    def 调(方法: str, 路径: str, 体=None, 带令牌=True):
+    def 调(方法: str, 路径: str, 体=None, 带令牌=True, cookie=None):
         请求 = urllib.request.Request(基址 + 路径, method=方法,
             data=json.dumps(体, ensure_ascii=False).encode("utf-8") if 体 is not None else None)
         if 带令牌:
             请求.add_header("Authorization", "Bearer test-token-308a")
+        if cookie:
+            请求.add_header("Cookie", cookie)
         服务.令牌 = "test-token-308a"
         try:
             with urllib.request.urlopen(请求, timeout=5) as r:
@@ -55,6 +57,18 @@ def 自检() -> int:
     try:
         码, _ = 调("POST", "/api/intent", {"机器": "测机"}, 带令牌=False)
         签("无令牌 POST 被拒 401（反态）", 码 == 401)
+        # —— 430 fail-closed：令牌未配置时写操作全拒（根治旧「回环放行」：
+        #      Caddy 反代下 client_address 恒 127.0.0.1，旧逻辑=公网裸奔）——
+        服务.令牌 = ""
+        try:
+            请求 = urllib.request.Request(基址 + "/api/intent", method="POST",
+                data=json.dumps({"机器": "x"}).encode("utf-8"))
+            urllib.request.urlopen(请求, timeout=5)
+            签("430 fail-closed：令牌未配置时写操作全拒（不再回环放行）", False)
+        except urllib.error.HTTPError as e:
+            签("430 fail-closed：令牌未配置时写操作全拒（不再回环放行）", e.code == 401)
+        finally:
+            服务.令牌 = "test-token-308a"
         码, r = 调("POST", "/api/intent", {"机器": "深度机", "对话id": "a1",
                   "在做": "308a", "计划": "110, 276", "备注": "测试"})
         签("登记意图 200", 码 == 200)
@@ -145,6 +159,9 @@ def 自检() -> int:
            'id="自动刷新"' in 页 and 'id="刷新钮"' in 页)
         签("388 三板块全文直读结构齐备（交接流/教训流/覆盖表）",
            all(k in 页 for k in ('id="交接流"', 'id="教训流"', 'id="覆盖流"', 'id="豁免流"')))
+        签("430 登录 UI 齐备（登录钮+口令窗+提交）",
+           all(k in 页 for k in ('id="登录钮"', 'id="登录遮罩"', 'id="登录口令"',
+                                 'id="登录提交"', 'type="password"')))
         with urllib.request.urlopen(基址 + "/board.css", timeout=5) as resp:
             签("静态 board.css 200", resp.status == 200)
         # 308j 发号权威五用例（乙+：原子递增/视野并集/禁用号跳/核对 409/占号冲突）
@@ -357,6 +374,38 @@ def 自检() -> int:
         码, r = 调("POST", "/api/adjudication_add", {"号": "800", "标题": "再改",
                     "选项们": 裁决选项})
         签("403 已裁决项拒绝静默覆盖 409（反态）", 码 == 409)
+        # —— 430 登录鉴权：口令登录→会话 cookie→写放行→登出失效（正反两态）——
+        码, r = 调("POST", "/api/adjudicate", {"裁决们": []}, 带令牌=False)
+        签("430 裁决接口无凭证 401（裁决仅作者·用户令）", 码 == 401)
+        码, r = 调("POST", "/api/login", {"口令": "错口令"}, 带令牌=False)
+        签("430 登录：错口令 401（反态）", 码 == 401)
+        登请求 = urllib.request.Request(基址 + "/api/login", method="POST",
+            data=json.dumps({"口令": "test-token-308a"}, ensure_ascii=False).encode("utf-8"))
+        服务.令牌 = "test-token-308a"
+        with urllib.request.urlopen(登请求, timeout=5) as r:
+            蛋糕 = r.headers.get("Set-Cookie", "")
+        签("430 登录：正口令 200+HttpOnly 会话 cookie",
+           "cn_board_session=" in 蛋糕 and "HttpOnly" in 蛋糕)
+        会话id = 蛋糕.split(";")[0].split("=", 1)[1]
+        码, r = 调("POST", "/api/intent", {"机器": "网页客", "对话id": "w1"},
+                  带令牌=False, cookie=蛋糕)
+        签("430 会话 cookie 写操作放行（无 Bearer）", 码 == 200)
+        码, r = 调("GET", "/api/me", 带令牌=False, cookie=蛋糕)
+        签("430 /api/me：会话在=已登录", r.get("已登录") is True)
+        码, r = 调("GET", "/api/me", 带令牌=False)
+        签("430 /api/me：无凭证=未登录", r.get("已登录") is False)
+        服务.连接.execute("INSERT INTO 会话(会话id,时戳) VALUES('stale000',?)",
+                          (time.time() - 8 * 24 * 3600,))
+        服务.连接.commit()
+        码, r = 调("GET", "/api/me", 带令牌=False, cookie="cn_board_session=stale000")
+        签("430 过期会话=未登录（反态）", r.get("已登录") is False)
+        码, r = 调("GET", "/api/me", 带令牌=False, cookie="cn_board_session=forged999")
+        签("430 伪造会话 id=未登录（反态）", r.get("已登录") is False)
+        码, r = 调("POST", "/api/logout", 带令牌=False, cookie=蛋糕)
+        签("430 登出 200", 码 == 200)
+        码, r = 调("POST", "/api/intent", {"机器": "网页客", "对话id": "w1"},
+                  带令牌=False, cookie=蛋糕)
+        签("430 登出后会话失效 401（反态）", 码 == 401)
     finally:
         实例.shutdown()
         服务.连接 = 全局连接

@@ -18,6 +18,7 @@
     <label class="自动刷新" title="自动刷新默认关闭（388 用户令：防打断阅读）——开启后每 8 秒更新">
       <input type="checkbox" id="自动刷新"> 自动刷新
     </label>
+    <button id="登录钮" class="钮 次 钮窄" title="裁决与写操作须管理员登录">🔑 登录</button>
     <button id="刷新钮" class="钮 次 钮窄" aria-label="手动刷新">⟳ 刷新</button>
     <button id="主题钮" class="钮 次 钮窄" aria-label="切换明暗主题">◑</button>
   </div>
@@ -78,6 +79,7 @@
         <button class="筛 活" data-裁="待裁决">待裁决</button>
         <button class="筛" data-裁="全部">全部</button>
       </div>
+      <span id="裁决登录提示" class="行时刻"></span>
       <span class="弹性"></span>
       <button id="裁决批量钮" class="钮 主" disabled>⚖ 提交全部已选（0）</button>
     </div>
@@ -161,6 +163,22 @@
 
 <div id="错误条">服务连接中断，正在重试…</div>
 <div id="提示条"></div>
+
+<!-- 管理员登录弹窗（430·裁决与写操作仅作者·口令与服务端 CN_BOARD_TOKEN 同源） -->
+<div id="登录遮罩" hidden>
+  <div class="新建窗" role="dialog" aria-label="管理员登录">
+    <h2 class="窗题">管理员登录 <span class="淡">／ 裁决与写操作仅限作者</span></h2>
+    <label class="表单项">口令 <b class="必">*</b>
+      <input id="登录口令" type="password" autocomplete="current-password"
+             placeholder="看板口令（服务端 CN_BOARD_TOKEN 同源）"></label>
+    <div id="登录错" class="表单错"></div>
+    <div class="窗脚">
+      <span class="弹性"></span>
+      <button class="钮 次" id="登录取消">取消</button>
+      <button class="钮 主" id="登录提交">登录</button>
+    </div>
+  </div>
+</div>
 
 <script src="/board.js"></script>
 </body>

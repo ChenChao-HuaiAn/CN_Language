@@ -1,8 +1,9 @@
 /* ============================================================
    CN 任务看板 · 行为层（382·看板 v2）
    数据=/api/board 每 8s 轮询；tab 隔离渲染（只渲染激活页·其余标脏）；
-   详情滑出面板；网页端写操作仅「新建任务」（POST 带 Bearer 令牌——
-   令牌存浏览器 localStorage·未设置时引导输入；读操作全公开）。
+   详情滑出面板；网页端写操作（裁决/新建任务）须管理员登录（430·
+   会话 cookie HttpOnly 由服务端签发·JS 不可读——旧 localStorage
+   原始令牌方案退役）；读操作全公开。
    ============================================================ */
 "use strict";
 
@@ -52,12 +53,59 @@ const 相对时 = (s) => {
   return Math.floor(时 / 24) + " 天前";
 };
 
-const 取令牌 = () => localStorage.getItem("cn_board_token") || "";
-const 设令牌 = () => {
-  const t = prompt("看板 API 令牌（与 queue_client.json 同源·仅存本浏览器）：", 取令牌());
-  if (t !== null) localStorage.setItem("cn_board_token", t.trim());
-  return 取令牌();
-};
+/* —— 管理员登录（430·裁决与写操作仅作者）——
+   会话 cookie HttpOnly 由服务端签发，浏览器自动携带，JS 不接触原始口令令牌；
+   登录态经 /api/me 恢复（刷新不丢）。已登录再点登录钮=登出。 */
+let 已登录 = false;
+
+function 更新登录UI() {
+  const 钮 = $("登录钮");
+  钮.textContent = 已登录 ? "登出" : "🔑 登录";
+  钮.title = 已登录 ? "退出管理员登录" : "裁决与写操作须管理员登录";
+  $("裁决登录提示").textContent = 已登录 ? "" : "🔒 提交裁决须管理员登录（右上 🔑）";
+}
+
+async function 查登录态() {
+  try {
+    const r = await 调API("GET", "api/me");
+    已登录 = !!r.已登录;
+  } catch (e) { 已登录 = false; }
+  更新登录UI();
+}
+
+function 开登录() {
+  if (已登录) {                          // 已登录再点=登出
+    调API("POST", "api/logout").catch(() => {}).finally(() => {
+      已登录 = false;
+      更新登录UI();
+      提示("已登出——裁决与写操作已上锁");
+    });
+    return;
+  }
+  $("登录遮罩").hidden = false;
+  $("登录错").textContent = "";
+  $("登录口令").value = "";
+  $("登录口令").focus();
+}
+
+function 关登录() { $("登录遮罩").hidden = true; }
+
+async function 提交登录() {
+  const 口令 = $("登录口令").value;
+  if (!口令) { $("登录错").textContent = "口令必填"; return; }
+  $("登录提交").disabled = true;
+  try {
+    await 调API("POST", "api/login", { 口令 });
+    已登录 = true;
+    关登录();
+    更新登录UI();
+    提示("已登录——裁决与写操作已解锁", 3000);
+  } catch (e) {
+    $("登录错").textContent = e.码 === 401 ? "口令不符" : "登录失败：" + e.message;
+  } finally {
+    $("登录提交").disabled = false;
+  }
+}
 
 function 提示(文, 毫秒 = 2600) {
   const 条 = $("提示条");
@@ -67,11 +115,9 @@ function 提示(文, 毫秒 = 2600) {
 }
 
 async function 调API(方法, 路径, 体) {
-  const 头 = { "Content-Type": "application/json" };
-  const 令牌 = 取令牌();
-  if (令牌) 头["Authorization"] = "Bearer " + 令牌;
-  const r = await fetch(路径, { method: 方法, headers: 头,
-    body: 体 === undefined ? undefined : JSON.stringify(体) });
+  const r = await fetch(路径, { method: 方法,
+    headers: { "Content-Type": "application/json" },
+    body: 体 === undefined ? undefined : JSON.stringify(体) });   // 同源 fetch 自动携会话 cookie（430）
   const 数据体 = await r.json().catch(() => ({}));
   if (!r.ok) {
     const 错 = new Error(数据体.错误 || "HTTP " + r.status);
@@ -293,10 +339,12 @@ async function 渲染裁决() {
       : '裁决项为空——AI 呈报用 <code>board_cli 裁决 --批 件们.json</code>') + "</div>";
     $("裁决批量钮").disabled = true;
     $("裁决批量钮").textContent = "⚖ 提交全部已选（0）";
+    更新登录UI();                          // 未登录提示常显（430·提交须作者）
     return;
   }
   区.innerHTML = '<div class="面板">' + 们.map(裁决行HTML).join("") + "</div>";
   更新批量钮();
+  更新登录UI();
 }
 
 function 开裁决(号) {
@@ -355,7 +403,7 @@ async function 提交裁决(件们) {
     关详情();
     渲染激活页();
   } catch (e) {
-    if (e.码 === 401) { 提示("需要 API 令牌（写操作鉴权）——即将弹出输入框", 4000); 设令牌(); }
+    if (e.码 === 401) { 已登录 = false; 更新登录UI(); 提示("须管理员登录——请输入口令", 3000); 开登录(); }
     else 提示("裁决提交失败：" + e.message, 5000);
     if (提交钮) 提交钮.disabled = false;
     更新批量钮();
@@ -606,8 +654,9 @@ async function 提交新建() {
     开详情(r.号);
   } catch (e) {
     if (e.码 === 401) {
-      $("新建错").textContent = "需要 API 令牌（写操作鉴权）——即将弹出输入框";
-      设令牌();
+      已登录 = false; 更新登录UI();
+      $("新建错").textContent = "立项须管理员登录——请输入口令";
+      开登录();
     } else {
       $("新建错").textContent = e.message;
     }
@@ -739,6 +788,13 @@ $("裁决批量钮").addEventListener("click", () => {
 $("新建取消").addEventListener("click", 关新建);
 $("新建遮罩").addEventListener("click", (e) => { if (e.target === $("新建遮罩")) 关新建(); });
 $("新建提交").addEventListener("click", 提交新建);
+
+/* 管理员登录（430） */
+$("登录钮").addEventListener("click", 开登录);
+$("登录取消").addEventListener("click", 关登录);
+$("登录遮罩").addEventListener("click", (e) => { if (e.target === $("登录遮罩")) 关登录(); });
+$("登录提交").addEventListener("click", 提交登录);
+$("登录口令").addEventListener("keydown", (e) => { if (e.key === "Enter") 提交登录(); });
 $("详情遮罩").addEventListener("click", 关详情);
 $("主题钮").addEventListener("click", () => {
   const 现 = document.documentElement.dataset.theme ||
@@ -792,9 +848,10 @@ document.addEventListener("click", (e) => {
 });
 
 document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape") { 关详情(); 关新建(); }
+  if (e.key === "Escape") { 关详情(); 关新建(); 关登录(); }
 });
 
+查登录态();
 拉取();
 setInterval(() => { if (自动刷新开() && 激活板 === "看板") {
   脏页 = { 飞行: true, 分支: true, 认领: true, 裁决: true };   // 裁决数据自身 30s 节流·快选态存内存不丢
