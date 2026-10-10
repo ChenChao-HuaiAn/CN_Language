@@ -632,6 +632,42 @@ bool IRGenerator::genPointerArithmetic(BinaryExpr* node, const ir::IRValue& left
 // （原 516~582 段）left/right 经 Cast 后按 opcode 发射；left/right 为引用进出。
 void IRGenerator::genCommonTypeArithmetic(BinaryExpr* node, ir::IRValue& left,
                                           ir::IRValue& right, bool isFloat) {
+    // 377 乙案（001 §3.7a 全程窄域·用户批乙 2026-10-10·681 探针）：窄算术
+    //   判定须在混合提升**前**捕获原始类型（下方 left/right 引用会被 Cast
+    //   改写）——同窄双侧行、或单侧窄+对侧 i32 整字面量（285 字面量窄参与
+    //   的 IR 面同口径·语义面已同判）→算术结果 Cast 回窄（每步回绕）。
+    //   条文面=+ - * / %（位/移位/比较不涉窄域条文不动）；浮点/128/i1 不在
+    //   窄族。复用 emitCast 窄化域（358 判定层单点·三后端自动同构）。
+    const auto isNarrowIR377 = [](const std::string& t) {
+        return t == "i8" || t == "u8" || t == "i16" || t == "u16";
+    };
+    const auto isIntLit377 = [](const Expr* e) -> bool {
+        if (e == nullptr) return false;
+        if (e->getType() == NodeType::IntegerLiteral) return true;
+        if (e->getType() == NodeType::UnaryExpr) {
+            const auto* u = static_cast<const UnaryExpr*>(e);
+            return u->op == Operator::Subtract && !u->postfix &&
+                   u->operand != nullptr &&
+                   u->operand->getType() == NodeType::IntegerLiteral;
+        }
+        return false;
+    };
+    bool narrowResult377 = false;
+    std::string narrowType377;
+    if (!isFloat) {
+        if (isNarrowIR377(left.type) && isNarrowIR377(right.type)) {
+            narrowResult377 = true;
+            narrowType377 = left.type;
+        } else if (isNarrowIR377(left.type) && right.type == "i32" &&
+                   isIntLit377(node->right.get())) {
+            narrowResult377 = true;
+            narrowType377 = left.type;
+        } else if (isNarrowIR377(right.type) && left.type == "i32" &&
+                   isIntLit377(node->left.get())) {
+            narrowResult377 = true;
+            narrowType377 = right.type;
+        }
+    }
     // 公共类型（浮点优先 f64；整型取 rank 高者由语义层保证可转换）
     // 92-a：浮点算术公共类型（f32 op f32 -> f32 单精度；跨类型统一 f64）
     std::string floatCommon;
@@ -695,6 +731,16 @@ void IRGenerator::genCommonTypeArithmetic(BinaryExpr* node, ir::IRValue& left,
                 break;
         }
         lastExpr_ = emitResult(opcode, {left, right}, resultType, "", node->location);
+        // 377 乙案尾部：窄算术（+ - * / %）结果 Cast 回窄——链式中间值每步
+        //   回绕（(x*2)/2 的 400 截断为 144 再除=72·立法口径）；单步赋值锚
+        //   p1007_05 观测等价（存回槽截断点前移同值）。
+        if (narrowResult377 &&
+            (node->op == Operator::Add || node->op == Operator::Subtract ||
+             node->op == Operator::Multiply || node->op == Operator::Divide ||
+             node->op == Operator::Modulo)) {
+            lastExpr_ = emitResult(ir::Opcode::Cast, {lastExpr_}, narrowType377,
+                                   "", node->location);
+        }
     } else {
         // 不支持的操作：回退左操作数
         lastExpr_ = left;
