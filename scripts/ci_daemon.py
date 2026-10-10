@@ -49,10 +49,14 @@ from pathlib import Path
 是win = sys.platform.startswith("win")          # 仓库惯例（gate_quick/gate_lock 同款）
 # 294：平台三分——linux 再按机架分 arm64/x86_64（291 两分把 aarch64 误标 linux-x86_64，
 #   E2E 会跑错 --target·门禁表平台列错行）；单位机（麒麟 arm64）池实例依赖本探测。
+# 任务399（2026-10-10）：CN_CI_PLATFORM 显式覆盖——交叉模拟实例（x64 宿主跑
+#   linux-arm64 验证面·WSL 里 qemu-user）自报 linux-arm64；缺省仍运行时探测
+#   （291 惯例不变·覆盖变量=实例部署配置，与 CN_RUNNER_ID 同类，非共享文档写死）。
 机架 = platform.machine().lower()
-平台 = ("win-x64" if 是win
-        else "linux-arm64" if 机架 in ("aarch64", "arm64")
-        else "linux-x86_64")                    # run_e2e --target 与结果上报共用
+平台 = (os.environ.get("CN_CI_PLATFORM", "").strip()
+        or ("win-x64" if 是win
+            else "linux-arm64" if 机架 in ("aarch64", "arm64")
+            else "linux-x86_64"))               # run_e2e --target 与结果上报共用
 if 是win:
     import msvcrt
 else:
