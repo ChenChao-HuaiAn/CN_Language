@@ -1,21 +1,21 @@
 #!/bin/bash
-# 238 立规（2026-10-07）：021 总账行（立项/认领/销账）只随任务分支走（226 立规·防漏销账）——
-# develop/main 上直改 plans/021 一律拦截；任务/* 与 batch/*（integrate 组链）分支豁免。
-# 逃生门：CN_ALLOW_021_DIRECT=1（撞车清理等特殊账目面·提交信息须写明缘由）。
-# ★bash 变量名一律 ASCII（bash 不认中文变量名·238 实测教训·commit-msg 同修）。
+# 382 立规（2026-10-10 用户令「看板做立项入口·021 文档退位」）：任务台账唯一权威=
+# 看板服务端任务表（board_service:8301·立项 /api/task_create·销账 integrate 自动）——
+# plans/021 文档冻结封存，任何分支（develop/main/任务/*/batch/*）一律禁改。
+# 沿革：238 立规只拦主树（行随任务分支·226 立规）→ 382 行已不落 git（服务端记账）·
+# 任何对 021 的写入都是账目分裂源。逃生门：CN_ALLOW_021_DIRECT=1（仅限迁移期账目
+# 修正·提交信息须写明缘由）。
+# ★bash 变量名一律 ASCII（bash 不认中文变量名·238 实测教训）。
 # 安装：git config core.hooksPath scripts/githooks（每机一次·AGENTS.md §5）
-branch=$(git rev-parse --abbrev-ref HEAD)
-case "$branch" in
-    任务/*|batch/*) exit 0 ;;
-esac
 if [ "$CN_ALLOW_021_DIRECT" = "1" ]; then
     exit 0
 fi
 if git diff --cached --name-only --diff-filter=ACMR | grep -q '^plans/021'; then
-    echo "〔githooks·拦截〕分支 $branch 禁直改 plans/021（226 立规：立项/认领行必须随任务分支——" >&2
-    echo "  主树直推=integrate 收口扫不到=静默漏销账·226 实录）。" >&2
-    echo "  正确姿势：wt.py create <号> --行 \"描述\"（自动立项）；账目修正走任务分支提交；" >&2
-    echo "  确需直改（撞车清理等）用 CN_ALLOW_021_DIRECT=1 并在提交信息写明缘由。" >&2
+    echo "〔githooks·拦截〕plans/021 已退位（382 立规）：任务台账唯一权威=看板服务端，" >&2
+    echo "  立项=wt.py create <号> --行 \"描述\" 或看板网页「＋新建任务」；" >&2
+    echo "  认领/完成=服务端 API 自动记账（wt.py create / integrate.py 收口）。" >&2
+    echo "  021 文档已冻结封存（历史考古=git log plans/021）；迁移期账目修正用" >&2
+    echo "  CN_ALLOW_021_DIRECT=1 并在提交信息写明缘由。" >&2
     exit 1
 fi
 exit 0

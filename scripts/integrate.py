@@ -212,89 +212,41 @@ def 冲突标记检查(文件们: list[str]) -> str | None:
     return None
 
 
-def 归档路径021() -> Path:
-    """收口归档制（226 轮·2026-10-06 用户令「归档后的任务从任务栏删除·记录放 项目记忆/归档」）：
-    已完成任务归档切片——按年月分文件，与 项目记忆/归档/ 现有滚转命名惯例一致。"""
-    return 仓库根 / "项目记忆" / "归档" / datetime.now().strftime("plans021-已完成任务归档-%Y-%m.md")
+def 板查询(路径: str):
+    """看板服务只读查询（382）——失败返回 None 不阻断集成。"""
+    import urllib.request
+    try:
+        with urllib.request.urlopen(板服务URL.rstrip("/") + 路径, timeout=4) as 响应:
+            return json.loads(响应.read().decode("utf-8"))
+    except Exception:
+        return None
 
 
-归档头注 = """# 021 已完成任务归档（收口归档制·226 轮·2026-10-06 用户令）
-
-> integrate.py 集成收口时自动剪切 ✅ 行至此（纯搬运零改写·状态列 sha=集成提交）。
-> 任务号全局唯一含归档——新任务取全局最大有效号+1（task_board --check 与 wt.py create 拦截复用）。
-> 前置引用归档号=已完成（task_board 读本文件合并依赖图）。本文件=封存档案·人工勿改（考古=git 历史）。
-
-| # | 任务 | 状态 | 前置 | 优先级 | 备注/下一棒 |
-|---|------|------|------|--------|------------|
-"""
-
-
-def 总账收口021(分支们: list, 新tip: str, remote: str) -> None:
-    """v5（1016）：集成成功后 021 任务总账自动收口——成员分支匹配 🏃 行改 ✅+sha10，
-    随即按收口归档制（226 轮）将该行从主表剪切追加至 项目记忆/归档/ 归档切片
-    （commit+push develop·CAS 失败重试一次·再败警告由 task_board --check 下轮兜底抓漏），
-    随后跑 task_board --ready 播报本轮解锁（就绪队列前 3）。取代 v4 看板销账直推。"""
-    路径 = 仓库根 / "plans" / "021-任务进度观察表.md"
-    if not 路径.exists() or not 分支们:
+def 总账收口(分支们: list, 新tip: str, remote: str = "") -> None:
+    """382 看板 v2：集成成功后服务端任务台账自动销账——成员分支号逐个
+    /api/task_update 置 ✅+sha10（✅⇔sha 铁律服务端化·台账唯一权威在服务端）。
+    plans/021 文档已退位：不再剪切/归档/commit 021（git 面零接触）。
+    失败仅警告（task_board --check 下轮对账兜底），随后播报本轮解锁（就绪前 3）。"""
+    if not 分支们:
         return
-    # 1017 修复（Python 3.12 兼容）：pathlib.Path.read_text 的 newline 参数为
-    #   3.13 新增——本机 3.12 直炸 TypeError（集成 push 已成·收口步崩=021 漏销账）。
-    #   改 open(..., newline="") 等价语义（保 CRLF 原样·3.8+ 全版本可用）。
-    with open(路径, "r", encoding="utf-8", newline="") as f:
-        原文 = f.read()
-    行们 = 原文.splitlines(keepends=True)
-    改动 = []
-    归档行们: list[str] = []
-    for i, 行 in enumerate(行们):
-        st = 行.strip()
-        if not st.startswith("|") or "🏃" not in st:
-            continue
-        for 分支 in 分支们:
-            if 分支 in 行:
-                段 = [c.strip() for c in st.strip("|").split("|")]
-                if len(段) >= 3:
-                    段[2] = "✅ " + 新tip[:10]
-                    前缀 = 行[:len(行) - len(行.lstrip())]
-                    行尾 = "\r\n" if 行.endswith("\r\n") else "\n"
-                    收口行 = 前缀 + "| " + " | ".join(段) + " |" + 行尾
-                    归档行们.append(收口行)
-                    行们[i] = None  # 收口即归档：主表删除该行（226 轮·用户新令取代「完成行不删」）
-                    改动.append((分支, 段[0]))
-                break
-    if not 改动:
+    号们 = [m.group(1) for 分支 in 分支们
+            for m in [re.match(r"^任务/([0-9]+[a-z]?)$", 分支)] if m]
+    if not 号们:
         return
-    with 路径.open("w", encoding="utf-8", newline="") as f:   # 295：write_text(newline=)为 py3.10+ 参数——本机 3.8 TypeError（收口断真凶·287 同族穷尽漏网）
-        f.write("".join(行 for 行 in 行们 if 行 is not None))
-    归档 = 归档路径021()
-    需头注 = not 归档.exists() or 归档.stat().st_size == 0
-    with open(归档, "a", encoding="utf-8", newline="") as f:
-        if 需头注:
-            f.write(归档头注)
-        f.write("".join(归档行们))
-    运行(["git", "add", str(路径), str(归档)])
-    分支0, 号0 = 改动[0]
-    ok = False
-    for _ in range(2):
-        运行(["git", "commit", "-m", "021 总账收口+归档：任务#" + 号0 + " ✅ " + 新tip[:10]
-              + "（集成自动·v5·226 收口归档制）"])
-        推 = 运行(["git", "push", remote, "HEAD:develop"])
-        if 推.returncode == 0:
-            ok = True
-            break
-        运行(["git", "pull", "--rebase", remote, "develop"])
-    if ok:
-        print("  [021] 任务总账自动收口+归档：" + str(改动) + "（✅ " + 新tip[:10]
-              + "→" + 归档.name + "）")
-        r = subprocess.run([sys.executable, "scripts/task_board.py", "--ready"],
-                           capture_output=True, text=True, cwd=仓库根)
-        就绪 = [l for l in (r.stdout or "").splitlines() if l.strip().startswith("#")]
+    销们 = []
+    for 号 in 号们:
+        if 板调用("/api/task_update", {"号": 号, "状态": "✅", "收口sha": 新tip[:10]}):
+            销们.append(号)
+        else:
+            print(f"  [警告] 服务端台账销账失败（#{号}）——恢复后 task_board --check 兜底/手动补销。")
+    if 销们:
+        print(f"  [台账] 服务端任务台账自动销账：{['#'+n for n in 销们]}（✅ {新tip[:10]}）")
+        解锁 = 板查询("/api/tasks")
+        就绪 = [t for t in (解锁 or {}).get("任务们", []) if t.get("就绪")][:3]
         if 就绪:
-            print("  [021] 本轮解锁（就绪队列前 3）：")
-            for l in 就绪[:3]:
-                print("      " + l.strip())
-    else:
-        print("  [警告] 021 总账收口 push 竞争失败——请手动改 ✅ 并 push"
-              "（漏收口会被 task_board --check 抓住）。")
+            print("  [台账] 本轮解锁（就绪队列前 3）：")
+            for t in 就绪:
+                print(f"      #{t['号']} {t['优先级']} {t['标题'][:56]}")
 
 
 def 快速门禁(文件们: list[str]) -> str | None:
@@ -1158,7 +1110,7 @@ def solo流程(平台: str, 参数: argparse.Namespace) -> int:
                 清理 = 运行(["git", "push", 参数.remote, "--delete", 分支])
                 if 清理.returncode == 0:
                     print(f"  [清理] 远程任务分支 {分支} 已删（内容已入 {集成分支}·AGENTS.md §7 集成即删）。")
-                    总账收口021([分支], 输出(["git", "rev-parse", "HEAD"]), 参数.remote)
+                    总账收口([分支], 输出(["git", "rev-parse", "HEAD"]))
                 else:
                     print("  [警告] 远程任务分支删除失败（不影响集成有效性）"
                           "——稍后 python scripts/branch_cleanup.py 兜底。")
@@ -1439,7 +1391,7 @@ def 批流程(参数: argparse.Namespace) -> int:
         for 分支, _原因 in 踢出们:
             队列写("update", {"分支": 分支, "状态": "已踢出"})
         # v5（1016）：看板销账直推废除——021 总账自动收口（含解锁播报）
-        总账收口021([行["分支"] for 行 in 实际成员], 新tip, 参数.remote)
+        总账收口([行["分支"] for 行 in 实际成员], 新tip)
         镜像 = 运行(["git", "push", 镜像远程, f"{集成分支}"])
         if 镜像.returncode != 0:
             print("  [警告] github 镜像补推失败——按惯例下次提交补推（不影响集成有效性）。")

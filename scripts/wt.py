@@ -6,11 +6,11 @@
 checkout 带走未提交内容 / E2E 中途 expected 消失 / cn.exe 占用 LNK1104）。
 本脚本把「每任务一个 worktree」制度化：
 
-  create <任务号>        建树+任务分支 任务/<任务号>（021 无此行且远端无此分支拒建；远端分支已存在=
-                         接棒同分支续做——机器停摆他机无缝接力·196 轮立规·不重立行；新开则基于 develop；
-                         主表已有待认领行（⬜/⏸ 等非 🏃/✅）免服务端台账核对直接建树（378 修·
-                         行在主表=全机视野必含本号·核对必自拦）；新行加 --行 一条命令立项（238）；
-                         跳号基准=主表+归档+远端在飞三源（230 修法①·在飞行号住未合分支树）；
+  create <任务号>        建树+任务分支 任务/<任务号>（382 看板 v2：立项/认领走服务端
+                         任务台账 API——号唯一由服务端保证·服务不可达硬拒不再离线降级；
+                         021 文档已退位·立项行不再落树；远端分支已存在=接棒同分支续做
+                         ——机器停摆他机无缝接力·196 轮立规；台账 ⬜/⏸ 行=待认领，
+                         create 即 ⬜→🏃；台账 ✅=已收口拒复用；带 --行 一句话即立项；
                          gtest 两级深度校验→Ninja+sccache 开发树配置）
   list                   列出全部 worktree（分支/干净度/target 占用）
   remove <任务号>        删树（分支保留；--delete-branch 仅当已并入 develop 才删分支）
@@ -68,23 +68,9 @@ def 读021行号() -> set[str] | None:
     return 扫行号(本树根 / "plans", "021*.md")
 
 
-def 读主表行状态(任务号: str) -> str | None:
-    """读 021 主表本号行的状态列（⬜/⏸/🏃/✅·378 待认领行放行判据）。
-
-    返回 None=主表无此行（号住分支树或不存在）。行格式 `| 号 | 描述 | 状态 | …`
-    状态在第 3 列。"""
-    for 账本 in sorted((本树根 / "plans").glob("021*.md")):
-        for 行 in 账本.read_text(encoding="utf-8").splitlines():
-            m = re.match(rf"^\|\s*{任务号}\s*\|[^|]*\|([^|]*)\|", 行)
-            if m:
-                return m.group(1).strip()
-    return None
-
-
 def 读归档行号() -> set[str]:
-    """解析 021 已归档任务号集合（收口归档制·226 轮立法）——仅用于跳号基准与禁建校验，
-    不参与「021 无此行拒建」存在性校验（归档号不在主表·重立须用新号）。
-    """
+    """解析 021 已归档任务号集合（收口归档制·226 轮立法）——382 后仅作视野上报源
+    （服务端台账已为唯一权威·迁移窗口期保证全机视野完整）。"""
     return 扫行号(本树根 / "项目记忆" / "归档", "plans021-已完成任务归档-*.md")
 
 
@@ -147,22 +133,19 @@ def 机名() -> str:
     return os.environ.get("CN_MACHINE_NAME", "").strip() or socket.gethostname()
 
 
-def 服务发号(描述: str, 请求号: str = "") -> dict | None:
-    """308j 乙+：服务器发号权威。请求号空=要新号（返回含「号」）；非空=核对（返回含
-    「已发」True=被占 409·False=放行）。服务不可达返回 None（调用方降级不停摆）。"""
+def 服务调(方法: str, 路径: str, 体=None) -> dict | None:
+    """看板 API 统一调用（382）。GET 只读公开；POST 带 Bearer 令牌。
+    服务不可达返回 None——调用方一律硬拒（382 立规：任务台账唯一权威在服务端，
+    离线降级取号已废除，宁停不裂）。"""
     令牌文 = ""
     try:
         令牌文 = json.loads((本树根 / "scripts" / "queue_client.json")
                             .read_text(encoding="utf-8")).get("令牌", "")
     except (OSError, ValueError):
         pass
-    体 = {"机器": 机名(), "上报者": f"{机名()}-{本树根.name}",
-          "视野号们": sorted(收集视野号集()), "描述": (描述 or "")[:200]}
-    if 请求号:
-        体["请求号"] = 请求号
-    请求 = urllib.request.Request(板服务地址() + "/api/claim_number", method="POST",
-        data=json.dumps(体, ensure_ascii=False).encode("utf-8"))
-    if 令牌文:
+    请求 = urllib.request.Request(板服务地址() + 路径, method=方法,
+        data=json.dumps(体, ensure_ascii=False).encode("utf-8") if 体 is not None else None)
+    if 令牌文 and 方法 == "POST":
         请求.add_header("Authorization", f"Bearer {令牌文}")
     try:
         with urllib.request.urlopen(请求, timeout=10) as r:
@@ -174,6 +157,22 @@ def 服务发号(描述: str, 请求号: str = "") -> dict | None:
             return {"HTTP错误": e.code}
     except (urllib.error.URLError, OSError, ValueError):
         return None
+
+
+def 服务立项(描述: str, 前置: str, 优先级: str, 请求号: str = "") -> dict | None:
+    """382：立项走服务端唯一权威（号唯一=任务表主键+事务·根治撞号/跳号）。
+    请求号空=服务端发新号；非空=指定号（已占 409）。"""
+    return 服务调("POST", "/api/task_create", {
+        "标题": (描述 or "").strip() or "（待补标题）",
+        "前置": 前置, "优先级": 优先级,
+        "机器": 机名(), "对话id": 本树根.name,
+        "请求号": 请求号, "来源": "wt.py"})
+
+
+def 服务认领(任务号: str) -> dict | None:
+    """382：认领=台账状态 ⬜/⏸ → 🏃（分支名服务端自动合成 任务/<号>）。"""
+    return 服务调("POST", "/api/task_update",
+                  {"号": 任务号, "状态": "🏃", "归属": f"{机名()}-wt{任务号}"})
 
 
 def 自动claim意图(任务号: str, 描述: str = "") -> None:
@@ -273,164 +272,114 @@ echo [OK] ninja build done
 """
 
 
-def 净化行文(文: str) -> str:
-    """立行描述去表格破坏符（| 换全角／·断行并空格·限 300 字符防备注膨胀）。"""
-    文 = 文.replace("|", "／").replace("\n", " ").strip()
-    return 文[:300]
-
-
-def 立行于树(树路径: Path, 任务号: str, 描述: str, 前置: str, 优先级: str) -> bool:
-    """在任务分支 worktree 的 021 主表升序位插立项行并首提交（238 立项命令化）。
-
-    行只落任务分支（226 立规：立项行随任务分支 push·主树零接触）——集成时随批入 develop。
-    """
-    账本们 = sorted((树路径 / "plans").glob("021*.md"))
-    if not 账本们:
-        print("[警告] 树内无 021 总账——跳过自动立行（行须手工补）")
+def 接棒知情(分支: str, 接管: bool) -> bool:
+    """308a 丙案（285 撞车实录根治）保留：接棒前强制「对方活跃度」知情——
+    fetch 已最新，展示远端分支头提交时刻/作者/题；48h 内有提交=他机活跃中，
+    无 --takeover 显式确认则拒。返回 False=拒接。"""
+    头 = 输出(["git", "log", "-1", "--format=%ci%x09%an%x09%s", f"gitcode/{分支}"])
+    头段们 = 头.split("\t", 2) if 头 else []
+    头时刻文本 = 头段们[0].strip() if len(头段们) > 0 else ""
+    作者 = 头段们[1].strip() if len(头段们) > 1 else "?"
+    题 = 头段们[2].strip() if len(头段们) > 2 else "?"
+    活跃中 = True
+    try:
+        头时刻 = datetime.fromisoformat(头时刻文本)
+        if 头时刻.tzinfo is None:
+            头时刻 = 头时刻.astimezone()
+        活跃中 = abs((datetime.now(头时刻.tzinfo) - 头时刻).total_seconds()) < 48 * 3600
+    except ValueError:
+        pass    # 时刻解析失败=从严按活跃处理
+    print(f"[接棒知情] {分支} 头提交：{头时刻文本[:16]} · {作者} · {题[:70]}")
+    if 活跃中 and not 接管:
+        print(f"[失败] 该分支近 48h 有提交（他机可能活跃中）——盲接棒会与对方 push 竞争"
+              f"（285 撞车实录根治·308a）。确认对方已停工后显式："
+              f"wt.py create {分支.split('/')[1]} --takeover")
         return False
-    描述, 前置, 优先级 = 净化行文(描述), 净化行文(前置) or "—", 净化行文(优先级)
-    新行 = (f"| {任务号} | {描述} | 🏃 | {前置} | {优先级} "
-            f"| 分支=任务/{任务号}（{任务号} 立项建树即认领） |")
-    for 账本 in 账本们:
-        行们 = 账本.read_text(encoding="utf-8").splitlines(keepends=True)
-        本号键 = int(任务号) if 任务号.isdigit() else float("inf")
-        升序位 = len(行们)
-        for i, 行 in enumerate(行们):
-            m = re.match(r"^\|\s*(\d+)\s*\|", 行)
-            if m and int(m.group(1)) > 本号键:
-                升序位 = i
-                break
-        行们.insert(升序位, 新行 + "\n")
-        账本.write_text("".join(行们), encoding="utf-8")
-    提交 = 运行(["git", "-C", str(树路径), "add", str(账本们[0].relative_to(树路径))])
-    提交 = 运行(["git", "-C", str(树路径), "commit", "-m",
-                 f"{任务号} 立项：{描述}（create --行 自动立项·行随任务分支首提交·226 立规机械化）"])
-    if 提交.returncode != 0:
-        print(f"[警告] 立项行提交失败：{提交.stderr}——行已写入树，须手工 commit")
-        return False
-    print(f"[4] 021 立项行已随分支首提交（{任务号} 行·升序位）——集成时随批入 develop")
+    if 活跃中:
+        print("[接管] --takeover 显式确认——同分支续做（请在提交信息/交接注明接管缘由）")
+    else:
+        print("[提示] 陈旧分支（48h 无提交）——正常接棒（停摆接力语义）")
     return True
 
 
 def 建树(任务号: str = "", 无ninja: bool = False, 立行: str | None = None,
          前置: str = "—", 优先级: str = "P1", 接管: bool = False,
          不推分支: bool = False) -> int:
-    # 308j 乙+：create 不带号=服务器权威发号（台账∪各机视野并集 max+1·原子无撞）；
-    # 服务不可达降级四源+树内视野本地取号黄字不停摆——权威可降级，开发永不停。
-    if 任务号 and not re.fullmatch(r"\d+[a-z]?", 任务号):
-        print(f"[失败] 任务号「{任务号}」不合法——须为 021 总账行号形态（如 087、178a）")
-        return 1
-    自动发号 = not 任务号
-    if 自动发号:
-        发号 = 服务发号(立行 or "")
-        if 发号 and 发号.get("号"):
-            任务号 = str(发号["号"])
-            print(f"[发号] 服务器权威发号：{任务号}（台账∪全机视野并集 max+1·原子无撞）")
-        else:
-            有效 = sorted(int(n) for n in 收集视野号集()
-                          if n.isdigit() and n not in {"353", "354"})
-            候选 = (有效[-1] + 1) if 有效 else 1
-            while str(候选) in {"353", "354"}:
-                候选 += 1
-            任务号 = str(候选)
-            print(f"[黄] 看板服务不可达——离线取号 {任务号}（四源+树内视野本地基准·"
-                  f"恢复后建议 intent.py show 对账）")
-        print(f"[提示] 后续步骤按任务号 {任务号} 继续")
-    # 编号规则（2026-10-05 用户令·021 头部立法同源）：禁用号 353/354 永久拒建+按序取号不跳号
-    禁用号 = {"353", "354"}
-    if 任务号 in 禁用号:
-        print(f"[失败] 任务号 {任务号} 为禁用号（2026-10-05 用户令已改 198/199·永久禁用）——新号取当前最大有效号+1")
-        return 1
-    # fetch 提前+prune（230 修法②）：接棒判定/跳号基准全用 fetch 后的最新账实——旧序校验在前
-    # fetch 在后=校验的是过期账；无 --prune 则已删远端分支的陈旧引用残留（集成即删分支纪律下
-    # 收口分支的本地引用滞留）→接棒判定接上远端已不存在的死分支（2026-10-07 实测 branch -r
-    # 20+ 支中仅 10 支真实存在）
+    # 382 看板 v2：任务台账唯一权威=服务端任务表（board_service 8301）。
+    # create=「服务端立项/认领 → 建树 → push 分支」——021 文档已退位（行不再落树），
+    # 服务不可达一律硬拒（离线取号降级废除：号唯一由服务端保证·宁停不裂）。
     运行(["git", "fetch", "--prune", "gitcode"])
+    新立项 = False
+    if not 任务号:
+        # 自动发号：服务端任务表∪发号台账 max+1（全局唯一·禁用号跳过）
+        结 = 服务立项(立行 or "", 前置, 优先级)
+        if 结 is None:
+            print("[失败] 看板服务不可达——立项硬拒（382 立规：号唯一由服务端保证·"
+                  "离线取号已废除；恢复网络/核对 CN_BOARD_URL 后重试）")
+            return 1
+        if not 结.get("号"):
+            print(f"[失败] 立项被拒：{结.get('错误', 结)}")
+            return 1
+        任务号 = str(结["号"])
+        新立项 = True
+        print(f"[发号] 服务端发号：{任务号}（任务表∪台账 max+1·全局唯一）")
+    else:
+        if not re.fullmatch(r"[0-9]+[a-z]?", 任务号):
+            print(f"[失败] 任务号「{任务号}」不合法——数字+可选小写字母后缀（如 087、178a）")
+            return 1
+        if 任务号 in {"353", "354"}:
+            print(f"[失败] 任务号 {任务号} 为永久禁用号（2026-10-05 用户令·新号=全局最大+1）")
+            return 1
     分支 = f"任务/{任务号}"
     远端分支在 = bool(输出(["git", "rev-parse", "--verify", f"refs/remotes/gitcode/{分支}"]))
-    号集 = 读021行号()
-    自动立项 = False
-    接棒 = 远端分支在
-    if 接棒:
-        # 230 修法②（2026-10-07）：远端分支已存在=号已被认领（跨机重号拦截面）——一律接棒
-        # 同分支续做，不新开不重立行；021 主表无此行不再拦（行住分支树·226 立规——
-        # create 233 接棒者被「无此行」误拦实录）。--行 在接棒态忽略（重立行=集成时主表重号）。
-        if 立行:
-            print(f"[提示] 远端 {分支} 已存在（在飞认领）——接棒续做·--行 忽略（行住分支树·重立=重号）")
-        # 308a 丙案（285 撞车实录根治）：接棒前强制「对方活跃度」知情——fetch 已最新，
-        # 展示远端分支头提交时刻/作者/题；48h 内有提交=他机活跃中，无 --takeover 显式
-        # 确认则拒（两机同推一分支=push 竞争互踩）；陈旧分支黄字提示后放行（停摆接力不变）。
-        头 = 输出(["git", "log", "-1", "--format=%ci%x09%an%x09%s", f"gitcode/{分支}"])
-        头段们 = 头.split("\t", 2) if 头 else []
-        头时刻文本 = 头段们[0].strip() if len(头段们) > 0 else ""
-        作者 = 头段们[1].strip() if len(头段们) > 1 else "?"
-        题 = 头段们[2].strip() if len(头段们) > 2 else "?"
-        活跃中 = True
-        try:
-            头时刻 = datetime.fromisoformat(头时刻文本)
-            if 头时刻.tzinfo is None:
-                头时刻 = 头时刻.astimezone()
-            活跃中 = abs((datetime.now(头时刻.tzinfo) - 头时刻).total_seconds()) < 48 * 3600
-        except ValueError:
-            pass    # 时刻解析失败=从严按活跃处理
-        print(f"[接棒知情] {分支} 头提交：{头时刻文本[:16]} · {作者} · {题[:70]}")
-        if 活跃中 and not 接管:
-            print(f"[失败] 该分支近 48h 有提交（他机可能活跃中）——盲接棒会与对方 push 竞争"
-                  f"（285 撞车实录根治·308a）。确认对方已停工后显式："
-                  f"wt.py create {任务号} --takeover")
+    接棒 = False
+    if not 新立项:
+        任务 = 服务调("GET", f"/api/task/{任务号}")
+        if 任务 is None:
+            print("[失败] 看板服务不可达——无法核对台账，create 硬拒（382 立规）")
             return 1
-        if 活跃中:
-            print("[接管] --takeover 显式确认——同分支续做（请在提交信息/交接注明接管缘由）")
-        else:
-            print("[提示] 陈旧分支（48h 无提交）——正常接棒（停摆接力语义）")
-    elif 号集 is not None and 任务号 not in 号集:
-        if 立行:
-            # 238 立项命令化（2026-10-07）：021 无此行+create --行 → 建树后自动立行于
-            # 任务分支首提交（226 立规「立项行随任务分支 push」机械化——主树零接触）
-            自动立项 = True
-        else:
-            归档提示 = "（此号已收口归档·号全局唯一防复用——重立须用新号=全局最大+1）" \
-                if 任务号 in 读归档行号() else ""
-            print(f"[失败] 021 总账无任务 {任务号} 且远端无 {分支}{归档提示}"
-                  f"——用 create {任务号} --行 \"一句话描述\" "
-                  f"一条命令立项建树（238 起），或先在 plans/021 加行再建树")
-            return 1
-    if 号集 is not None and 任务号.isdigit() and not 接棒 and not 自动发号:
-        # 跳号基准（230 修法①+269 补）：主表+归档+远端在飞+本地在飞四源取 max——
-        # 在飞行号住未合分支树（226 立规），只看主表+归档则 max 偏小、真序号被误拦
-        # （229 轮实录）；268 案补本地源：本地并行会话已建未推分支同样占用号段。
-        # 308j：自动发号的号免本校验——服务端按台账∪全机视野（含树内号）取的 max+1，
-        # 本地四源基准反而更窄（314 被 308 旧基准误拦实录·信任链=服务器权威）。
-        在飞号集 = 读远端在飞行号() | 读本地在飞行号()
-        全号集 = 号集 | 读归档行号() | 在飞号集
-        其余序列 = [int(n) for n in 全号集
-                    if n.isdigit() and n not in 禁用号 and int(n) != int(任务号)]
-        if 其余序列 and int(任务号) > max(其余序列) + 1:
-            print(f"[失败] 任务号 {任务号} 跳号——除本号外最大有效号 {max(其余序列)}"
-                  f"（主表+归档+远端在飞共 {len(全号集)} 号·含未合分支在飞行号），"
-                  f"用户令 2026-10-05：按顺序取号（max+1·禁用号 353/354 跳过·历史补记账须用户特批）")
-            return 1
-    if not 接棒 and 任务号 and not 自动发号:
-        # 308j 乙+：带号新建走服务端台账核对（台账已发/他机视野占用→409 拒——
-        # 309 双占型在取号瞬间死掉；服务不可达黄字跳过·本地四源校验已兜底）。
-        # 自动发号免核对——号是刚从这台账里领的，再核对=自己拦自己（实测实录）。
-        # 378：主表已有待认领行（⬜/⏸ 等非 🏃/✅）同样免核对——行在主表=全机视野
-        # 并集必含本号，服务端必判「他机视野占用」拒（378 自身认领实录：被先前
-        # 会话扫主表上报的视野残留拒·纯自己拦自己）；「提及即立项→后认领」的
-        # 合法路径就此堵死。主表行存在性即认领凭据，放行后 push 分支=真认领
-        # （196 立规·真有认领者在线则 push 非快进/撞分支拦，正确性不损）。
-        主表状态 = 读主表行状态(任务号)
-        if 主表状态 is not None and 主表状态 not in {"🏃", "✅"}:
-            print(f"[放行] 主表已有 {任务号} 行（状态 {主表状态}）——待认领行免台账核对"
-                  f"（378 修·push 分支=真认领·撞真认领者由 push 拦）")
-        else:
-            核对 = 服务发号(立行 or "", 请求号=任务号)
-            if 核对 is None:
-                print("[黄] 看板服务不可达——跳过服务端台账核对（本地四源校验已过·"
-                      "撞号风险自担）")
-            elif 核对.get("已发"):
-                print(f"[失败] {核对.get('错误', f'服务端台账此号已发出')}（乙+ 发号权威）")
+        t = 任务.get("任务")
+        if t is None:
+            if 远端分支在:
+                # 迁移窗口期兼容：远端分支在而服务端台账无（旧制度在飞任务）
+                print(f"[黄] 服务端台账无 #{任务号} 但远端 {分支} 存在——旧制度在飞任务·"
+                      f"接棒续做（迁移窗口期兼容·收口时服务端补账）")
+                接棒 = True
+            elif 立行:
+                结 = 服务立项(立行, 前置, 优先级, 请求号=任务号)
+                if 结 is None:
+                    print("[失败] 看板服务不可达——立项硬拒")
+                    return 1
+                if not 结.get("号"):
+                    print(f"[失败] 立项被拒：{结.get('错误', 结)}")
+                    return 1
+                新立项 = True
+                print(f"[立项] 服务端已立项 #{任务号}：{立行[:60]}")
+            else:
+                print(f"[失败] 台账无任务 {任务号} 且远端无 {分支}"
+                      f"——用 wt.py create {任务号} --行 \"一句话描述\" 立项建树，"
+                      f"或看板网页「＋ 新建任务」（382 起立项入口=看板服务端）")
                 return 1
+        elif t["状态"] == "✅":
+            print(f"[失败] 任务 {任务号} 已收口完成（✅ {t.get('收口sha', '')}）——"
+                  f"号全局唯一防复用·重开场景立新号")
+            return 1
+        elif t["状态"] == "🏃":
+            接棒 = True
+            if 立行:
+                print("[提示] 任务已在飞——--行 忽略（标题以服务端台账为准）")
+        else:
+            # ⬜ 待办 / ⏸ 挂起——create 即认领（先服务端流转成功再建树）
+            认领 = 服务认领(任务号)
+            if 认领 is None:
+                print("[失败] 看板服务不可达——认领硬拒（树未建·零半成品）")
+                return 1
+            if 认领.get("HTTP错误"):
+                print(f"[失败] 认领被拒：{认领.get('错误', 认领)}")
+                return 1
+            print(f"[认领] 台账 #{任务号} {t['状态']}→🏃（归属 {机名()}-wt{任务号}）")
+    if 接棒 and not 接棒知情(分支, 接管):
+        return 1
     树路径 = 主树根().parent / f"wt{任务号}"
     if 树路径.exists():
         print(f"[失败] {树路径} 已存在——同名 worktree 或残留，先 wt.py remove {任务号}")
@@ -487,38 +436,34 @@ def 建树(任务号: str = "", 无ninja: bool = False, 立行: str | None = Non
                 else f"失败——{配置.stdout and 配置.stdout.splitlines()[-1]}"
             print(f"[3] Ninja+sccache 开发树配置{状态}")
 
-    if 自动立项:
-        立行于树(树路径, 任务号, 立行 or "", 前置, 优先级)
-    elif 接棒 and 任务号 not in 扫行号(树路径 / "plans", "021*.md"):
-        # 230 修法②配套：接棒树须含本号立项行（226 立规）——旧分支缺行=集成收口扫不到=静默漏销账
-        print(f"[警告] 分支 {分支} 树内 021 无本号立项行——须手工补行"
-              f"（集成收口扫工作树总账·缺行=静默漏销账·226 实录）")
-
-    # 238：不入库运维凭据同步进新树（worktree 里跑 integrate 读 scripts/queue_client.json——
-    # gitignore 文件新树天然缺失，此前靠手工 export CN_QUEUE_*，忘装即「看板已废档」失败）
+    # 238 沿革：不入库运维凭据同步进新树（worktree 里跑 integrate 读 scripts/queue_client.json）
     凭据 = 本树根 / "scripts" / "queue_client.json"
     if 凭据.exists():
         (树路径 / "scripts").mkdir(exist_ok=True)
         shutil.copy(凭据, 树路径 / "scripts" / "queue_client.json")
-        print("[5] queue_client.json 已同步进新树（gitignore 运维面·不入库）")
+        print("[4] queue_client.json 已同步进新树（gitignore 运维面·不入库）")
 
-    # 329：create 即推分支——push=认领（196 立规）·治「意图已上板而在飞区无此分支」
-    # 窗口（create 只建本地分支·用户忘 push 则看板两区不一致·用户报 BUG 2026-10-09）。
-    # 失败仅警告不阻断（离线/权限面·--no-push 逃生门保留旧节奏）。
+    # 329 沿革：create 即推分支——push=认领（196 立规）。
     if 不推分支:
-        print("[6] 跳过自动推分支（--no-push）——认领待手动 push 生效")
+        print("[5] 跳过自动推分支（--no-push）——认领待手动 push 生效")
     else:
         推 = 运行(["git", "push", "-u", "gitcode", 分支])
         if 推.returncode == 0:
-            print(f"[6] 分支已自动推送（push=认领·看板在飞区 8s 内可见）")
+            print("[5] 分支已自动推送（push=认领·看板在飞区 8s 内可见）")
         else:
             print(f"[黄] 自动推分支失败：{(推.stderr or '').strip().splitlines()[-1] if (推.stderr or '').strip() else '?'}"
                   f"——手动 git push -u gitcode {分支}（认领待生效）")
 
+    if not 接棒:
+        # 382：新立项/待办认领后补一笔 🏃 流转（自动发号路径立项时是 ⬜——建树即认领）
+        认领 = 服务认领(任务号)
+        if 认领 and not 认领.get("HTTP错误"):
+            print(f"[6] 台账 #{任务号} 已置 🏃（归属 {机名()}-wt{任务号}）")
     print(f"""
 [完成] {树路径}（分支 {分支}·{模式}）
-  下一步（AGENTS.md §2/§7）：{'①021 立项行已自动随分支（--行 模式）' if 自动立项 else '①plans/021 改行 ⬜→🏃+备注分支=任务/'+任务号} ②（分支已自动推送·如 --no-push 则手动 push 认领）
-  ③提交前 L1 门禁 gate_quick.py（win 全量=ci.ps1）④收工 integrate.py（自动 021 收口）""")
+  下一步（382 看板 v2）：①直接开发——任务台账已服务端记账（plans/021 已退位·勿再改它）
+  ②（分支已自动推送·如 --no-push 则手动 push 认领）③提交前 L1 门禁 gate_quick.py
+  ④收工 integrate.py（自动服务端销账 ✅+sha）""")
     if not 接棒:
         自动claim意图(任务号, 立行 or "")
     return 0
@@ -591,9 +536,8 @@ def 主流程() -> int:
     子 = 解析器.add_subparsers(dest="命令", required=True)
     p建 = 子.add_parser("create", help="建树+任务分支 任务/<任务号>（含 Ninja+sccache 开发树）")
     p建.add_argument("任务号", nargs="?", default="",
-                     help="021 总账行号（如 087、178a；远端分支已存在=接棒续做·"
-                          "省略=服务器权威自动发号 308j·服务不可达降级本地取号）")
-    p建.add_argument("--行", help="一句话任务描述——021 无此行时自动立项建行（238 立项命令化·行随分支首提交）")
+                     help="任务号（如 087、178a；台账 ⬜/⏸=认领·🏃=接棒·省略=服务端自动发号）")
+    p建.add_argument("--行", help="一句话任务描述——台账无此号时即立项（382 起立项入口=看板服务端）")
     p建.add_argument("--前置", default="—", help="前置任务号（逗号分隔·默认 —=无）")
     p建.add_argument("--优先级", default="P1", choices=["P0", "P1", "P2", "P3"], help="默认 P1")
     p建.add_argument("--no-ninja", action="store_true", help="跳过 Ninja 开发树配置")

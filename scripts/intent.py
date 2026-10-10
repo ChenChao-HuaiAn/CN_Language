@@ -99,20 +99,18 @@ def 收视野号集() -> list:
 
 
 def 核对号(号: str):
-    """316：claim 前向服务端核对（台账已发/他机视野占用→409）——撞号预警链。
-    返回 None=服务不可达（跳过）·True=放行·False=疑撞号（黄字预警不阻断）。"""
+    """382：claim 前查服务端台账（存在=黄字预警·✅=已收口勿认领）——
+    返回 None=服务不可达（跳过）·True=台账无此号（干净）·False=有占用预警。"""
     try:
-        调服务("POST", "/api/claim_number",
-               {"机器": 机器名(), "上报者": f"{机器名()}-{仓库根.name}",
-                "视野号们": 收视野号集(), "请求号": str(号)})
-        return True
-    except urllib.error.HTTPError as e:
-        try:
-            体 = json.loads(e.read().decode("utf-8"))
-            print(f"[黄] ⚠ 撞号预警：{体.get('错误', f'号 {号} 已被占')}——"
-                  f"若为接棒/让号请 --备注 注明缘由后继续（预警不阻断）")
-        except (ValueError, UnicodeDecodeError):
-            print(f"[黄] ⚠ 号 {号} 服务端核对未过（HTTP {e.code}）——请核对后再做")
+        r = 调服务("GET", f"/api/task/{号}")
+        t = (r or {}).get("任务")
+        if t is None:
+            return True
+        if t.get("状态") == "✅":
+            print(f"[黄] ⚠ #{号} 已收口完成（✅ {t.get('收口sha', '')}）——勿再认领，重开请立新号")
+        else:
+            print(f"[黄] ⚠ 台账已有 #{号}（状态 {t.get('状态')}·{t.get('标题', '')[:40]}）"
+                  f"——接棒用 wt.py create {号}（认领态以台账为准）")
         return False
     except (urllib.error.URLError, OSError, ValueError):
         return None
@@ -152,26 +150,9 @@ def 上报在飞分支() -> None:
                    {"上报者": 机器名(), "分支们": 分支们}, 超时=5)
     except (OSError, ValueError, subprocess.SubprocessError):
         pass    # 尽力而为：上报失败不影响登记主流程
-    try:
-        # 308b：021 就绪队列快照（task_board --ready --json 机读·治看板空面板）
-        r = subprocess.run([sys.executable, str(脚本目录 / "task_board.py"),
-                            "--ready", "--json"],
-                           capture_output=True, text=True, cwd=仓库根, timeout=60)
-        行们 = json.loads(r.stdout).get("就绪们", [])
-        # 308e：任务字典（号→标题/状态/优先级·主表+归档全量·看板分支行显示任务内容）
-        import task_board
-        任务们, _表 = task_board.读全表()
-        字典 = {t["号"]: {"标题": t["任务"][:400], "状态": t["状态"],
-                          "优先级": t["优先级"]} for t in 任务们}
-        for t in task_board.读归档任务():
-            字典.setdefault(t["号"], {"标题": t["任务"][:400], "状态": "✅",
-                                      "优先级": t["优先级"]})
-        if 行们 or 字典:
-            调服务("POST", "/api/report_021",
-                   {"行们": 行们, "任务字典": 字典}, 超时=8)
-    except (OSError, ValueError, subprocess.SubprocessError, KeyError):
-        pass
     上报视野()    # 316：视野号集随每次 claim/show 上报（双机视野齐=号占冲突亮）
+    # 382：021 快照上报通道已退役——任务台账唯一权威=服务端任务表（/api/task_create），
+    # 客户端不再解析本地 021 上报（快照会过期、任务表永不过期）。
 
 
 def 落登记(在做: str, 计划: str, 备注: str) -> int:
@@ -191,10 +172,16 @@ def 落登记(在做: str, 计划: str, 备注: str) -> int:
 
 
 def 已收口(号: str) -> bool:
-    """316：在做任务是否已收口（主表 ✅ 行或已入归档）——收口即下板·兜窄通道
-    手工收口不走 integrate 注销的残留（308 手工补账板上残留实录）。"""
+    """316：在做任务是否已收口——382 起以服务端台账为准（GET /api/task/<号> 状态 ✅）；
+    服务不可达降级查本地 021（迁移窗口期·本地冻结副本兜底）。"""
     if not 号:
         return False
+    try:
+        t = (调服务("GET", f"/api/task/{号}") or {}).get("任务")
+        if t is not None:
+            return t.get("状态") == "✅"
+    except (urllib.error.URLError, OSError, ValueError):
+        pass
     try:
         主表 = (仓库根 / "plans" / "021-任务进度观察表.md").read_text(encoding="utf-8")
         for 行 in 主表.splitlines():
@@ -234,7 +221,7 @@ def 路过续约() -> None:
 
 
 def 命令认领(参数) -> int:
-    核对号(参数.任务号)    # 316：撞号预警链（409=号在台账/他机视野·黄字不阻断）
+    核对号(参数.任务号)    # 382：台账核对预警链（✅/已占用黄字·不阻断意图登记）
     return 落登记(参数.任务号, 参数.计划, 参数.备注)
 
 

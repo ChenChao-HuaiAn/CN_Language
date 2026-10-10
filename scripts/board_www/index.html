@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<!-- CN 任务看板（382·看板 v2）——墨韵设计系统·tab 三页隔离渲染·详情滑出面板 -->
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CN · 任务看板</title>
+<link rel="stylesheet" href="/tokens.css">
+<link rel="stylesheet" href="/board.css">
+</head>
+<body>
+
+<header class="顶栏">
+  <span id="状态灯" class="灯 断" aria-hidden="true"></span>
+  <h1>CN · 任务看板 <span class="淡">／ 三机实时·服务端唯一台账</span></h1>
+  <div class="顶栏右">
+    <span id="元信息">连接中…</span>
+    <button id="主题钮" class="钮 次 钮窄" aria-label="切换明暗主题">◑</button>
+  </div>
+</header>
+
+<div id="冲突带"></div>
+
+<nav class="页签栏" role="tablist" aria-label="看板分区">
+  <button class="页签 活" data-tab="飞行" role="tab" aria-selected="true">🏃 当前在飞</button>
+  <button class="页签" data-tab="分支" role="tab" aria-selected="false">⟂ 远端在飞分支</button>
+  <button class="页签" data-tab="认领" role="tab" aria-selected="false">☰ 可认领任务</button>
+</nav>
+
+<main>
+  <!-- Tab A：当前在飞的机器任务（会话意图） -->
+  <section id="tab-飞行" class="页" role="tabpanel">
+    <div class="区题">当前在飞 — 谁在哪台机跑什么 <span class="淡">（会话静默 15 分钟=黄标·2 小时无续约自动清除——中断的任务去「远端在飞分支」接棒）</span></div>
+    <div id="意图区"><div class="骨架行"></div><div class="骨架行"></div></div>
+  </section>
+
+  <!-- Tab B：远端在飞分支（已认领未完成） -->
+  <section id="tab-分支" class="页" role="tabpanel" hidden>
+    <div class="区题">远端在飞分支 — 真实 git 分支·分钟级实时 <span class="淡">（点行看任务详情·接棒=wt.py create &lt;号&gt;）</span></div>
+    <div id="在飞区"><div class="骨架行"></div><div class="骨架行"></div></div>
+  </section>
+
+  <!-- Tab C：可认领任务（任务台账·AI 实时立项入口） -->
+  <section id="tab-认领" class="页" role="tabpanel" hidden>
+    <div class="区题">任务台账 — 前置全绿即可认领 <span class="淡">（号由服务端统一发放·全局唯一）</span></div>
+    <div class="工具行">
+      <div class="筛选组" id="筛选组">
+        <button class="筛 活" data-筛="就绪">就绪</button>
+        <button class="筛" data-筛="全部">全部</button>
+        <button class="筛" data-筛="挂起">挂起</button>
+        <button class="筛" data-筛="完成">已完成</button>
+      </div>
+      <input id="搜索框" class="搜索框" type="search" placeholder="搜任务号或标题…">
+      <div class="筛选组" id="视图组">
+        <button class="筛 活" data-视图="列表">列表</button>
+        <button class="筛" data-视图="泳道">泳道</button>
+      </div>
+      <button id="新建钮" class="钮 主">＋ 新建任务</button>
+    </div>
+    <div id="任务区"><div class="骨架行"></div><div class="骨架行"></div><div class="骨架行"></div></div>
+  </section>
+</main>
+
+<!-- 详情滑出面板 -->
+<div id="详情遮罩" hidden></div>
+<aside id="详情面板" hidden aria-label="任务详情"></aside>
+
+<!-- 新建任务弹窗 -->
+<div id="新建遮罩" hidden>
+  <div class="新建窗" role="dialog" aria-label="新建任务">
+    <h2 class="窗题">新建任务 <span class="淡">／ 服务端即时发号</span></h2>
+    <label class="表单项">标题 <b class="必">*</b>
+      <input id="新标题" maxlength="300" placeholder="一句话说清做什么（必填）"></label>
+    <label class="表单项">前置任务号
+      <input id="新前置" placeholder="逗号分隔，如 367,381（可空）"></label>
+    <label class="表单项">优先级
+      <select id="新优先级">
+        <option>P0</option><option>P1</option><option selected>P2</option><option>P3</option>
+      </select></label>
+    <label class="表单项">备注
+      <input id="新备注" maxlength="2000" placeholder="上下文 / 验收口径（可空）"></label>
+    <div id="新建错" class="表单错"></div>
+    <div class="窗脚">
+      <span id="下一号签" class="签">下一号…</span>
+      <span class="弹性"></span>
+      <button class="钮 次" id="新建取消">取消</button>
+      <button class="钮 主" id="新建提交">立项</button>
+    </div>
+  </div>
+</div>
+
+<div id="错误条">服务连接中断，正在重试…</div>
+<div id="提示条"></div>
+
+<script src="/board.js"></script>
+</body>
+</html>

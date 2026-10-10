@@ -1,24 +1,34 @@
 #!/usr/bin/env python3
-# 会话意图看板服务（308a·TX_01 部署·业界对照=中心化看板 SSOT+租约）：
-#   治「认领状态四处漂移」——285 撞车实录：主树 021 行滞后（226 立项行随分支·设计内窗口）
-#   +本地 refs 过期（13 在飞分支只见 1），两机各信各的账。本服务=会话意图的单一事实源：
-#   机器+对话id 登记「在做/计划任务号」，心跳租约超时失联灰显，网页看板聚合+冲突高亮。
-#   git 仍是代码与 021 归档的真相（收口照旧）；本服务只管「谁正在做/打算做什么」实时层。
-#   丙案配套：wt.py 立项前 ls-remote 硬核对 + intent.py 客户端 CLI（本服务不可达时降级不阻断）。
+# 会话意图+任务台账看板服务（308a 立·382 看板 v2·TX_01 部署）：
+#   308a：治「认领状态四处漂移」——285 撞车实录：主树 021 行滞后（226 立项行随分支·
+#   设计内窗口）+本地 refs 过期，两机各信各的账。本服务=会话意图的单一事实源。
+#   382 架构裁决（2026-10-10 用户令）：看板做立项入口，plans/021 文档退位——
+#   任务台账唯一权威=本服务 SQLite 任务表（board_tasks.py 模块）：
+#     立项 /api/task_create（服务端发号全局唯一）·流转 /api/task_update（认领/挂起/完成）
+#     查询 /api/tasks·/api/task/<号>——021 文档此后只读封存，AI 零读写。
+#   意图/在飞分支/心跳实时层照旧（三机任一活着看板即有实时数据）。
 # API（POST 须 Bearer 令牌·GET 只读放行·照 queue_service 口径）：
-#   GET  /                   网页看板（单文件内嵌·轮询 /api/board）
-#   GET  /api/intents        {意图们:[…], 失联秒}
-#   GET  /api/board          聚合 {意图们, 在飞分支们, 快照021, 冲突们, 更新时刻}
-#   POST /api/intent         {机器,对话id,在做,计划,备注}   登记/更新（即心跳·幂等）
-#   POST /api/intent_release {机器,对话id}                  注销（会话收工）
-#   POST /api/report_flights {分支们:[{分支,提交,时刻}]}     在飞分支上报（客户端 ls-remote 结果
-#                                ·服务端不持 git 凭据不依赖外网——三机任一活着看板即有数据）
-#   POST /api/report_021     {行们:[{号,标题,状态,优先级,备注}]}  021 就绪队列快照上报
-# 过期：心跳断 CN_INTENT_STALE_SEC（默认 1800s）→ 失联态（行保留·UI 灰显+失联徽章——
-#   不自动删：接管语义=人看板判断后重新 claim 覆盖，同 queue --takeover 精神）。
-# 心跳时戳=服务端收到时刻（911 教训：免疫各机时钟漂移）。
-# 部署：/etc/systemd/system/cn-board.service（Environment= CN_BOARD_PORT/CN_BOARD_TOKEN/CN_BOARD_DB）。
-# 自检：python3 board_service.py --selftest（内存 db+随机端口·登记/心跳/冲突/失联/注销全链+401 反态）。
+#   GET  /                    网页看板（board_www/ 静态三件·墨韵设计系统）
+#   GET  /api/intents         {意图们:[…], 失联秒}
+#   GET  /api/board           聚合 {意图们, 在飞分支们, 任务们, 任务字典, 快照021,
+#                                  冲突们, 号占冲突们, 失联秒, 时刻}
+#   GET  /api/tasks           任务台账全量（含就绪判定·服务端排序）
+#   GET  /api/task/<号>       单任务详情
+#   POST /api/intent          {机器,对话id,在做,计划,备注}   登记/更新（即心跳·幂等）
+#   POST /api/intent_release  {机器,对话id}                  注销（会话收工）
+#   POST /api/report_flights  {分支们:[{分支,提交,时刻}]}     在飞分支上报（客户端 ls-remote 结果
+#                                 ·服务端不持 git 凭据不依赖外网——三机任一活着看板即有数据）
+#   POST /api/report_021      旧 021 快照通道（382 退役中·仅保旧客户端兼容不炸）
+#   POST /api/task_create     {标题,请求号?,前置?,优先级?,备注?,机器?,来源?}  立项+发号（201/409）
+#   POST /api/task_update     {号,状态?,分支?,收口sha?,归属?,标题?,前置?,优先级?,备注?} 流转
+#   POST /api/claim_number    308j 发号/核对（382 后仅视野记账价值·任务表已为唯一权威）
+# 过期：心跳断 CN_INTENT_STALE_SEC（默认 1800s）→ 失联态（行保留·UI 灰显+失联徽章）。
+# 心跳时戳=服务端收到时刻（911 教训：免疫各机时钟漂移）。任务表=持久落盘永不过期。
+# 部署：/etc/systemd/system/cn-board.service（Environment= CN_BOARD_PORT/CN_BOARD_TOKEN/CN_BOARD_DB）
+#   + board_www/ 静态目录随 board_service.py 同目录部署（deploy_board.sh 一键）。
+# 自检：python3 board_service.py --selftest（内存 db+随机端口·意图/冲突/发号/任务
+#   立项流转/迁移导入全链+401 反态）。
+# 迁移：python3 board_tasks.py --db <路径> --migrate --021 <主表.md> [--归档 <归档.md>]*
 
 import json
 import os
@@ -29,14 +39,19 @@ import threading
 import time
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from urllib.parse import urlparse
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import board_tasks as 台账   # 任务台账模块（382·发号/CRUD/状态机/迁移）
 
 # ===== 可调常量 =====
 端口 = int(os.environ.get("CN_BOARD_PORT", "8301"))
 令牌 = os.environ.get("CN_BOARD_TOKEN", "")
 db路径 = os.environ.get("CN_BOARD_DB",
                         str(os.path.dirname(os.path.abspath(__file__)) + "/board_state.db"))
-失联秒 = int(os.environ.get("CN_INTENT_STALE_SEC", "1800"))   # 心跳断此秒数=失联态（行保留灰显）
+失联秒 = int(os.environ.get("CN_INTENT_STALE_SEC", "900"))    # 心跳断此秒数=会话静默（15min·AI 活跃时路过续约密·打断后及时体现；行保留·任务态不受影响）
+自动清秒 = int(os.environ.get("CN_INTENT_PURGE_SEC", "7200"))  # 静默超此秒数=自动注销（会话被杀无 release 兜底）
 快照保留秒 = 3600                                             # 在飞分支/021 快照超过此秒数不再展示（陈旧数据防误导）
 在飞保留条数 = 60                                             # 在飞分支表裁剪上限
 
@@ -74,6 +89,7 @@ def 建库(路径: str = db路径) -> sqlite3.Connection:
     con.execute("""CREATE TABLE IF NOT EXISTS 视野快照(
         上报者 TEXT PRIMARY KEY,
         号们 TEXT, 时戳 REAL, 时刻 TEXT)""")
+    台账.建任务表(con)      # 382：任务台账主表（服务端唯一权威）
     return con
 
 
@@ -81,15 +97,7 @@ def 建库(路径: str = db路径) -> sqlite3.Connection:
 
 
 def 解析任务号们(文本: str) -> list:
-    """「110, 276」/「110，276」→ ['110','276']——容错中英文逗号与空白；非法片段丢弃。"""
-    if not 文本:
-        return []
-    出 = []
-    for 片 in re.split(r"[,，\s]+", str(文本)):
-        片 = 片.strip()
-        if 片 and re.fullmatch(r"[0-9]+[a-z]?", 片):
-            出.append(片)
-    return 出
+    return 台账.解析任务号们(文本)   # 382：解析归台账模块（单一实现）
 
 
 def 意图行转字典(行) -> dict:
@@ -107,14 +115,13 @@ def 意图行转字典(行) -> dict:
 def 全部意图() -> list:
     # 308h：失联超自动清秒的意图行惰性注销（30min 失联灰显→2h 清除）
     连接.execute("DELETE FROM 意图 WHERE 心跳时戳<?", (time.time() - 自动清秒,))
-    # 318：收口惰性清——在做号在任务字典（report_021 全量上报）且状态 ✅ → 直接删行。
-    # 治「收口残留不依赖各会话 pull 新代码」：客户端已收口检测要新代码才生效
-    # （wt308 手工收口残行实录·用户令「自己截图找缺陷」自查发现）——服务端兜底无差别生效。
-    字典 = 取快照("任务字典") or {}
-    for (对话, 在做) in 连接.execute("SELECT 对话id,在做 FROM 意图 WHERE 在做<>''").fetchall():
-        t = 字典.get(在做)
-        if t and t.get("状态") == "✅":
-            连接.execute("DELETE FROM 意图 WHERE 对话id=?", (对话,))
+    # 318：收口惰性清——在做号任务表状态 ✅ → 直接删行（382 起查任务表实时真相，
+    # 不再依赖 report_021 的任务字典快照——快照会 1h 过期，任务表永不过期）。
+    完成号 = {r[0] for r in 连接.execute(
+        "SELECT 号 FROM 任务 WHERE 状态=?", (台账.状态_完成,)).fetchall()}
+    if 完成号:
+        连接.executemany("DELETE FROM 意图 WHERE 在做=?",
+                         [(号,) for 号 in 完成号])
     连接.commit()
     行们 = 连接.execute("SELECT * FROM 意图 ORDER BY 机器, 对话id").fetchall()
     return [意图行转字典(r) for r in 行们]
@@ -141,36 +148,13 @@ def 冲突检测(意图们: list) -> list:
     return 出
 
 
-# ===== 308j 发号权威（用户裁决乙+·服务可用=强权威·不可达=客户端降级四源不停摆）=====
+# ===== 308j 发号权威（382 起任务表为唯一权威·本节保留视野记账与历史流水兼容）=====
 
-禁用号 = {"353", "354"}   # 2026-10-05 用户令永久禁用（与 wt.py 同源）
+禁用号 = 台账.禁用号   # {353,354}（2026-10-05 用户令永久禁用·与台账模块同源）
 
 
 def 号排序键(号: str):
-    """「308j」→ (308, 'j')·「309」→ (309, '')——纯数字在主号序·字母后缀随主号微序。"""
-    m = re.fullmatch(r"([0-9]+)([a-z]?)", str(号))
-    if not m:
-        return (0, str(号))
-    return (int(m.group(1)), m.group(2))
-
-
-def 下一个号(已占号们) -> str:
-    """已占并集取最大·返回其下一号（字母后缀进位·纯数字遇禁用号继续跳）。"""
-    有效 = [号排序键(n) for n in 已占号们
-            if re.fullmatch(r"[0-9]+[a-z]?", str(n)) and str(n) not in 禁用号]
-    if not 有效:
-        return "1"
-    主, 后缀 = max(有效)
-    if 后缀:
-        if 后缀 == "z":     # 字母序尽→进位主号
-            主 += 1
-            后缀 = ""
-        else:
-            return f"{主}{chr(ord(后缀) + 1)}"
-    候选 = 主 + 1
-    while str(候选) in 禁用号:
-        候选 += 1
-    return str(候选)
+    return 台账.号排序键(号)
 
 
 def 收视野并取基准(上报者: str, 视野号们: list) -> set:
@@ -189,9 +173,7 @@ def 收视野并取基准(上报者: str, 视野号们: list) -> set:
             基准 |= set(json.loads(行们[0]))
         except (ValueError, TypeError):
             pass
-    快照 = 取快照("021")
-    if 快照:
-        基准 |= {str(行.get("号", "")) for 行 in 快照 if 行.get("号")}
+    基准 |= 台账.已占号集(连接)   # 382：任务表全量号进发号基准（唯一权威）
     return 基准
 
 
@@ -247,27 +229,18 @@ def 聚合视图() -> dict:
     意图们 = 全部意图()
     在飞们 = 全部在飞()
     交集标注(意图们, 在飞们)
-    # 331：在飞视图=远端分支 ∪ 意图声明在做——意图独有号（create 后分支未推）合成行
-    # 黄标呈现，治「意图区有号在飞区没有」的呈现缺口（用户三轮追问 2026-10-09）。
-    # 分支命名纪律下合成行只展示不进台账；远端分支出现后（推/自动推）自然并回真行。
-    已报分支号 = {f.get("号") for f in 在飞们 if f.get("号")}
-    for i in 意图们:
-        号 = i.get("在做", "")
-        if 号 and 号 not in 已报分支号 and not i.get("失联"):
-            在飞们.append({"分支": f"任务/{号}", "号": 号, "提交": "", "提交题": "",
-                          "时刻": i.get("心跳时刻", ""), "上报者": i.get("会话键", ""),
-                          "上报时戳": i.get("时戳", 0), "已并入": False,
-                          "未推": True, "在做主们": [i.get("会话键", "")]})
-    快照 = 取快照("021")
-    if 快照:
-        # 308d：队列×在飞对撞——021 快照是 develop 态（226 立规认领态住任务分支·
-        # 主表 ⬜ 天然滞后），在飞分支上报是实时的：号出现在在飞区=疑似他机认领中。
-        # 保持优先级原序（不沉底——沉底+UI 截前 N 条=警示被截掉·黄标原位更显眼）。
-        在飞号 = {f["号"] for f in 在飞们 if f.get("号")}
-        for 行 in 快照:
-            行["疑似认领"] = str(行.get("号", "")) in 在飞号
+    # 382.2（用户令「远端在飞分支必须实时体现真实 git 分支」）：合成行逻辑废除——
+    # 在飞分支=TX_01 gitcron 每 3 分钟 ls-remote 的真实投影（board_flights_cron.py），
+    # 分支没推就不显示（真相）；331 旧「意图独有号合成未推行」掩盖真实状态·删。
+    任务们 = 台账.全部任务(连接)   # 382：任务台账全量（服务端唯一权威·含就绪判定）
+    # 308d 兼容：队列×在飞对撞——在飞分支上报是实时的，待办号出现在在飞区=疑似他机认领中。
+    在飞号 = {f["号"] for f in 在飞们 if f.get("号")}
+    for 行 in 任务们:
+        行["疑似认领"] = 行["号"] in 在飞号
     return {"意图们": 意图们, "在飞分支们": 在飞们,
-            "快照021": 快照, "任务字典": 取快照("任务字典"),
+            "任务们": 任务们,                        # 382 新字段：全量台账（UI 主数据源）
+            "任务字典": 台账.任务字典图(连接),        # 兼容旧客户端（实时版·永不过期）
+            "快照021": [行 for 行 in 任务们 if 行["状态"] == 台账.状态_待办][:20],  # 兼容旧 UI 语义
             "冲突们": 冲突检测(意图们),
             "号占冲突们": 号占冲突们(),
             "失联秒": 失联秒, "时刻": 时刻()}
@@ -302,23 +275,53 @@ class 处理器(BaseHTTPRequestHandler):
         头 = self.headers.get("Authorization", "")
         return 头 == f"Bearer {令牌}"
 
+    静态目录 = Path(__file__).resolve().parent / "board_www"
+    静态类型 = {".html": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8",
+                ".js": "text/javascript; charset=utf-8", ".svg": "image/svg+xml"}
+
+    def _回静态(self, 文件名: str):
+        """board_www/ 静态三件（382·前端从 Python 字符串解放为独立文件）。"""
+        文件 = (self.静态目录 / 文件名).resolve()
+        if 文件.parent != self.静态目录 or not 文件.is_file():   # 防穿越+只许白名单目录
+            return self._回JSON(404, {"错误": "未知路径"})
+        体 = 文件.read_bytes()
+        self.send_response(200)
+        self.send_header("Content-Type", self.静态类型.get(文件.suffix, "application/octet-stream"))
+        self.send_header("Content-Length", str(len(体)))
+        self.send_header("Cache-Control", "no-cache")   # 看板要即改即见
+        self.end_headers()
+        self.wfile.write(体)
+
     def do_GET(self):
         路径 = urlparse(self.path).path
         if 路径 in ("/", "/board"):
-            return self._回页面()
+            return self._回静态("index.html")
+        if 路径 in ("/board.css", "/board.js", "/tokens.css"):
+            return self._回静态(路径.lstrip("/"))
         if 路径 == "/api/intents":
             with 写锁:
                 return self._回JSON(200, {"意图们": 全部意图(), "失联秒": 失联秒})
         if 路径 == "/api/board":
             with 写锁:
                 return self._回JSON(200, 聚合视图())
+        if 路径 == "/api/tasks":
+            with 写锁:
+                return self._回JSON(200, {"任务们": 台账.全部任务(连接),
+                                          "下一号": 台账.下一个号(台账.已占号集(连接)),
+                                          "时刻": 时刻()})
+        m = re.fullmatch(r"/api/task/([0-9]+[a-z]?)", 路径)
+        if m:
+            with 写锁:
+                任务 = 台账.单任务(连接, m.group(1))
+                return self._回JSON(200 if 任务 else 404,
+                                    {"任务": 任务} if 任务 else {"错误": f"任务 {m.group(1)} 不存在"})
         if 路径 == "/api/numbers":
             with 写锁:
-                台账 = [{"号": r[0], "机器": r[1], "对话id": r[2], "描述": r[3], "时刻": r[4]}
-                        for r in 连接.execute(
-                            "SELECT 号,机器,对话id,描述,时刻 FROM 发号台账 ORDER BY 时戳").fetchall()]
-                return self._回JSON(200, {"台账": 台账, "下一个": 下一个号(
-                    {t["号"] for t in 台账}), "号占冲突们": 号占冲突们(), "时刻": 时刻()})
+                流水 = [{"号": r[0], "机器": r[1], "对话id": r[2], "描述": r[3], "时刻": r[4]}
+                       for r in 连接.execute(
+                           "SELECT 号,机器,对话id,描述,时刻 FROM 发号台账 ORDER BY 时戳").fetchall()]
+                return self._回JSON(200, {"台账": 流水, "下一个": 台账.下一个号(
+                    台账.已占号集(连接)), "号占冲突们": 号占冲突们(), "时刻": 时刻()})
         return self._回JSON(404, {"错误": "未知路径"})
 
     def do_POST(self):
@@ -334,6 +337,14 @@ class 处理器(BaseHTTPRequestHandler):
             return self._收在飞上报(体)
         if 路径 == "/api/report_021":
             return self._收快照上报(体)
+        if 路径 == "/api/task_create":
+            with 写锁:
+                码, 响应 = 台账.创建任务(连接, 体)
+                return self._回JSON(码, 响应)
+        if 路径 == "/api/task_update":
+            with 写锁:
+                码, 响应 = 台账.更新任务(连接, 体)
+                return self._回JSON(码, 响应)
         if 路径 == "/api/claim_number":
             return self._收发号(体)
         return self._回JSON(404, {"错误": "未知路径"})
@@ -468,208 +479,12 @@ class 处理器(BaseHTTPRequestHandler):
                                 f"——树内占号冲突·先与对方/主表核对再取号", "已发": True,
                         "撞视野": 撞视野})
                 return self._回JSON(200, {"好": True, "已发": False})
-            号 = 下一个号(基准)
+            号 = 台账.下一个号(基准)
             连接.execute(
                 "INSERT INTO 发号台账(号,机器,对话id,描述,时刻,时戳) VALUES(?,?,?,?,?,?)",
                 (号, 机器, 对话id, 描述, 时刻(), time.time()))
             连接.commit()
         return self._回JSON(200, {"好": True, "号": 号})
-
-    def _回页面(self):
-        体 = 看板页面().encode("utf-8")
-        self.send_response(200)
-        self.send_header("Content-Type", "text/html; charset=utf-8")
-        self.send_header("Content-Length", str(len(体)))
-        self.end_headers()
-        self.wfile.write(体)
-
-
-# ===== 网页看板（308a 波3·设计方向=值班室监控台：Grafana 信息密度纪律+Linear 排版克制）
-#   拨盘：DESIGN_VARIANCE 6/10·MOTION 3/10（状态灯呼吸+刷新淡入）·DENSITY 6/10
-def 看板页面() -> str:
-    return """<!DOCTYPE html>
-<html lang="zh-CN"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>CN · 三机任务看板</title>
-<style>
-:root{
- --bg:#0b0f14; --surface:#121922; --surface2:#182130; --fg:#e6edf3; --dim:#93a1b0;
- --border:#233042; --accent:#4cc2ff; --ok:#3fb950; --warn:#d9a53a; --danger:#f85149;
- --plan:#79c0ff; --radius:8px;
- --space1:4px; --space2:8px; --space3:14px; --space4:22px; --space5:32px;
- --font:system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
- --mono:ui-monospace,"Cascadia Mono","JetBrains Mono",Consolas,monospace;
- --shadow:0 1px 3px rgba(0,0,0,.4); --dur:.18s; --ease:cubic-bezier(.3,.7,.4,1);
-}
-*{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.55 var(--font)}
-a{color:var(--accent);text-decoration:none}
-button:focus-visible,a:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-/* —— 顶栏 —— */
-header{position:sticky;top:0;z-index:5;display:flex;align-items:baseline;gap:var(--space3);
- background:color-mix(in srgb,var(--bg) 88%,transparent);backdrop-filter:blur(6px);
- border-bottom:1px solid var(--border);padding:var(--space3) var(--space5);}
-h1{font-size:15px;font-weight:650;letter-spacing:.04em;margin:0}
-h1 .dim{font-weight:400}
-#状态灯{width:8px;height:8px;border-radius:50%;background:var(--ok);
- align-self:center;animation:呼吸 2.4s var(--ease) infinite}
-#状态灯.断{background:var(--danger);animation:none}
-@keyframes 呼吸{0%,100%{opacity:1}50%{opacity:.35}}
-#元信息{margin-left:auto;color:var(--dim);font-size:12px;font-variant-numeric:tabular-nums}
-/* —— 主区 —— */
-main{margin:0 auto;padding:var(--space4) var(--space5) var(--space5);
- display:flex;flex-direction:column;gap:var(--space5)}
-@media(max-width:900px){main{padding:var(--space3)}}
-h2{font-size:12px;font-weight:600;color:var(--dim);letter-spacing:.14em;margin:0 0 var(--space2)}
-/* —— 冲突横幅 —— */
-#冲突带{display:none;margin:var(--space3) auto 0;padding:0 var(--space5)}
-@media(max-width:900px){#冲突带{padding:0 var(--space3)}}
-.冲突条{border:1px solid var(--danger);border-left:4px solid var(--danger);
- background:color-mix(in srgb,var(--danger) 10%,var(--surface));
- border-radius:var(--radius);padding:var(--space2) var(--space3);
- font-size:13px;margin-bottom:var(--space2);animation:入场 var(--dur) var(--ease)}
-.冲突条 b{font-family:var(--mono)}
-@keyframes 入场{from{opacity:0;transform:translateY(-4px)}to{opacity:1}}
-/* —— 机器卡片（会话意图） —— */
-.机卡{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
- box-shadow:var(--shadow);margin-bottom:var(--space3);overflow:hidden}
-.机头{display:flex;align-items:center;gap:var(--space2);padding:var(--space2) var(--space3);
- background:var(--surface2);border-bottom:1px solid var(--border);
- font-weight:650;font-size:13px}
-.机头 .灯{width:7px;height:7px;border-radius:50%;background:var(--ok);
- animation:呼吸 2.4s var(--ease) infinite}
-.机头.全失联 .灯{background:var(--dim);animation:none}
-.机头 .副{margin-left:auto;color:var(--dim);font-size:11px;font-weight:400}
-.会话{padding:var(--space3);border-bottom:1px solid var(--border)}
-.会话:last-child{border-bottom:0}
-.会话.失联卡{opacity:.48}
-.会话 .行1{display:flex;align-items:center;gap:var(--space2);flex-wrap:wrap}
-.会话 .对话{font-family:var(--mono);font-size:12px;color:var(--dim)}
-.号牌{font-family:var(--mono);font-weight:700;font-size:13px;color:var(--bg);
- background:var(--accent);border-radius:5px;padding:1px 8px}
-.会话.失联卡 .号牌{background:var(--dim)}
-.标签{display:inline-block;font-family:var(--mono);font-size:11px;color:var(--plan);
- border:1px solid color-mix(in srgb,var(--plan) 45%,transparent);
- border-radius:4px;padding:0 6px;margin:2px 2px 0 0}
-.失联徽{font-size:11px;color:var(--warn);border:1px solid var(--warn);
- border-radius:4px;padding:0 6px}
-.备注行{color:var(--dim);font-size:12px;margin-top:var(--space1)}
-.心跳行{margin-left:auto;font-size:11px;color:var(--dim);font-variant-numeric:tabular-nums}
-.空态{color:var(--dim);font-size:13px;padding:var(--space4);text-align:center}
-.空态 code{font-family:var(--mono);color:var(--accent)}
-/* —— 在飞分支 / 021 队列 —— */
-.面板{background:var(--surface);border:1px solid var(--border);
- border-radius:var(--radius);box-shadow:var(--shadow);
- padding:var(--space3);margin-bottom:var(--space4)}
-.飞行{display:flex;align-items:center;gap:var(--space2);padding:var(--space2) 0;
- border-bottom:1px solid var(--border);font-size:13px}
-.飞行:last-child{border-bottom:0}
-.飞行.僵尸{opacity:.55}
-.飞行 .分支名{font-family:var(--mono);color:var(--fg)}
-.飞行 .题{color:var(--dim);font-size:12px;overflow:hidden;text-overflow:ellipsis;
- margin-top:1px}
-.黄标{font-size:11px;color:var(--warn);white-space:nowrap;align-self:center}
-.状态徽{font-size:10px;border:1px solid;border-radius:4px;padding:0 5px;
- margin-left:6px;vertical-align:1px;white-space:nowrap}
-.队列行{display:flex;gap:var(--space2);align-items:baseline;padding:3px 0;font-size:13px}
-.队号{font-family:var(--mono);color:var(--accent);min-width:44px}
-.P0{color:var(--danger)} .P1{color:var(--warn)} .P2{color:var(--plan)} .P3{color:var(--dim)}
-.队题{color:var(--dim);white-space:normal;flex:1}
-#错误条{display:none;position:fixed;bottom:var(--space4);left:50%;transform:translateX(-50%);
- background:var(--danger);color:#fff;border-radius:var(--radius);
- padding:var(--space2) var(--space4);font-size:13px;box-shadow:var(--shadow)}
-</style></head><body>
-<header>
- <div id="状态灯" class="断"></div>
- <h1>CN · 三机任务看板 <span class="dim">／ 会话意图实时互通</span></h1>
- <span id="元信息">连接中…</span>
-</header>
-<div id="冲突带"></div>
-<main>
- <section>
-  <h2>会话意图 — 谁在做什么、接下来做什么</h2>
-  <div id="意图区"><div class="空态">加载中…</div></div>
- </section>
- <section>
-  <h2>远端在飞分支 — 分支存在即认领</h2>
-  <div class="面板" id="在飞区"><div class="空态">加载中…</div></div>
-  <h2>021 就绪队列 — 可认领任务</h2>
-  <div class="面板" id="队列区"><div class="空态">暂无上报</div></div>
- </section>
-</main>
-<div id="错误条">服务连接中断，正在重试…</div>
-<script>
-const 拉取=async()=>{try{
-  const r=await fetch('api/board');if(!r.ok)throw new Error('HTTP '+r.status);
-  const d=await r.json();
-  document.getElementById('状态灯').classList.remove('断');
-  document.getElementById('错误条').style.display='none';
-  document.getElementById('元信息').textContent='数据时刻 '+d.时刻+' · 每 8s 自动刷新';
-  渲染冲突(d.冲突们||[]);渲染意图(d.意图们||[], d.任务字典||{});渲染在飞(d.在飞分支们||[], d.任务字典||{});渲染队列(d.快照021);
-}catch(e){
-  document.getElementById('状态灯').classList.add('断');
-  document.getElementById('错误条').style.display='block';
-}};
-const 相对时=s=>{if(!s)return'';const 分=Math.floor((Date.now()/1000-s)/60);
- if(分<1)return'刚刚';if(分<60)return 分+' 分钟前';
- const 时=Math.floor(分/60);if(时<24)return 时+' 小时前';
- return Math.floor(时/24)+' 天前';};
-const 转义=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-function 渲染冲突(冲突们){
- const 带=document.getElementById('冲突带');
- 带.innerHTML=冲突们.map(c=>'<div class="冲突条">⚠ 任务号 <b>#'+转义(c.号)+
-   '</b> 被 '+c.会话们.map(转义).join(' 与 ')+
-   ' 同时声明——开工前先核对对方状态，避免两机同做一号</div>').join('');
- 带.style.display=冲突们.length?'block':'none';}
-function 渲染意图(意图们, 字典){
- const 区=document.getElementById('意图区');
- if(!意图们.length){区.innerHTML='<div class="空态">暂无会话登记<br><br>'+
-   '<code>python scripts/intent.py claim &lt;任务号&gt; --planned &lt;后续号们&gt;</code><br>登记后 8 秒内全网可见</div>';return;}
- const 按机={};意图们.forEach(i=>(按机[i.机器]=按机[i.机器]||[]).push(i));
- 区.innerHTML=Object.entries(按机).map(([机,们])=>{
-   const 全失联=们.every(i=>i.失联);
-   return '<div class="机卡"><div class="机头'+(全失联?' 全失联':'')+'"><span class="灯"></span>'+
-     转义(机)+'<span class="副">'+们.length+' 个会话</span></div>'+
-     们.map(i=>{
-       const 计划=(i.计划||'').split(',').filter(Boolean).map(p=>'<span class="标签">#'+转义(p)+'</span>').join('');
-       const t=i.在做?字典[i.在做]:null;   // 313a：意图行显示任务内容（对齐在飞区信息密度）
-       return '<div class="会话'+(i.失联?' 失联卡':'')+'"><div class="行1">'+
-        '<span class="对话">'+转义(i.对话id)+'</span>'+
-        (i.在做?'<span class="号牌">#'+转义(i.在做)+'</span>':'<span class="对话">未挂任务</span>')+
-        (i.失联?'<span class="失联徽">失联</span>':'')+
-        '<span class="心跳行">'+相对时(i.时戳)+'</span></div>'+
-        (t?'<div class="题" style="white-space:normal;opacity:.88">'+转义(t.标题)+'</div>':'')+
-        (计划?'<div style="margin-top:4px">'+计划+'</div>':'')+
-        (i.备注?'<div class="备注行">'+转义(i.备注)+'</div>':'')+
-       '</div>';}).join('')+'</div>';}).join('');}
-function 渲染在飞(们, 字典){
- const 区=document.getElementById('在飞区');
- if(!们.length){区.innerHTML='<div class="空态">暂无在飞数据——intent.py claim 时自动上报</div>';return;}
- const 状态徽={'⬜':['待办','#93a1b0'],'🏃':['在飞','#3fb950'],'⏸':['挂起','#d9a53a'],'✅':['已完成','#79c0ff']};
- 区.innerHTML=们.map(f=>{
-   const 号=f.号||''; const t=字典[号];
-   const 徽 = t&&状态徽[t.状态] ? '<span class="状态徽" style="color:'+状态徽[t.状态][1]+
-                ';border-color:'+状态徽[t.状态][1]+'">'+状态徽[t.状态][0]+'</span>' : '';
-   const 题 = t ? 转义(t.标题) : '<span style="opacity:.6">'+转义(f.提交题||f.提交)+'</span>';
-   const 主们 = f.在做主们||[];
-   const 主徽 = 主们.length
-     ? '<span class="状态徽" style="color:#4cc2ff;border-color:#4cc2ff">👤 '+转义(主们.join('、'))+'</span>'
-     : '<span class="状态徽" style="color:#d9a53a;border-color:#d9a53a">未登记意图</span>';
-   return '<div class="飞行'+(f.已并入?' 僵尸':'')+'"><div style="min-width:0;flex:1">'+
-     '<div><span class="分支名">'+转义(f.分支)+'</span> '+徽+' '+主徽+
-     (f.未推?'<span class="状态徽" style="color:#d9a53a;border-color:#d9a53a">⚠ 分支未推·认领未生效</span>':'')+'</div>'+
-     '<div class="题" style="white-space:normal">'+题+'</div></div></div>';}).join('');}
-function 渲染队列(快照){
- const 区=document.getElementById('队列区');
- if(!快照||!快照.length){区.innerHTML='<div class="空态">暂无 021 快照上报</div>';return;}
- 区.innerHTML=快照.slice(0,20).map(t=>'<div class="队列行"><span class="P'+
-   转义(t.优先级||'3')+'">'+转义(t.优先级||'—')+'</span><span class="队号">#'+
-   转义(t.号)+'</span><span class="队题"'+(t.疑似认领?' style="text-decoration:line-through;opacity:.55"':'')+'>'+
-   转义(t.标题||'')+'</span>'+
-   (t.疑似认领?'<span class="黄标">⚠ 疑似认领中</span>':'')+'</div>').join('');}
-拉取();setInterval(拉取,8000);
-</script></body></html>"""
-
 
 def 自检() -> int:
     """端到端正反两态（866 教训：自证必须含对目标真实拦截的正反两态）。"""
@@ -745,28 +560,13 @@ def 自检() -> int:
         码, r = 调("POST", "/api/report_021", {"行们": [
             {"号": "002", "标题": "甲", "优先级": "P0"},
             {"号": "110", "标题": "乙", "优先级": "P1"}],
-            "任务字典": {"110": {"标题": "整64 FFI arm64", "状态": "⬜", "优先级": "P1"},
-                         "211": {"标题": "v2 返回局部结果变量双放", "状态": "✅", "优先级": "P1"}}})
+            "任务字典": {"110": {"标题": "整64 FFI arm64", "状态": "⬜", "优先级": "P1"}}})
+        签("382 旧 report_021 通道兼容不炸（退役·仅收不生效）", 码 == 200)
         调("POST", "/api/report_flights", {"上报者": "深度机", "分支们": [
-            {"分支": "任务/110", "提交": "abc123", "时刻": "", "已并入": False},
             {"分支": "任务/211", "提交": "def456", "时刻": "", "已并入": True}]})
         码, r = 调("GET", "/api/board")
         飞 = {f["分支"]: f for f in r["在飞分支们"]}
-        签("308e 已并入字段透传", 飞["任务/211"]["已并入"] is True
-           and 飞["任务/110"]["已并入"] is False)
-        字 = r.get("任务字典") or {}
-        签("308e 任务字典上板（标题/状态）",
-           字.get("110", {}).get("标题") == "整64 FFI arm64"
-           and 字.get("211", {}).get("状态") == "✅")
-        调("POST", "/api/report_flights", {"上报者": "深度机", "分支们": [
-            {"分支": "任务/110", "提交": "abc123", "时刻": ""}]})
-        码, r = 调("GET", "/api/board")
-        快 = {行["号"]: 行 for 行 in r["快照021"]}
-        签("308d 队列×在飞对撞：110 在飞=疑似认领", 快["110"]["疑似认领"] is True)
-        签("308d 未在飞行保持可认领", 快["002"]["疑似认领"] is False)
-        签("308d 队列保持优先级原序（002 P0 在 110 P1 前）",
-           [行["号"] for 行 in r["快照021"]].index("110")
-           > [行["号"] for 行 in r["快照021"]].index("002"))
+        签("308e 已并入字段透传", 飞["任务/211"]["已并入"] is True)
         码, r = 调("POST", "/api/intent", {"对话id": "无机器"})
         签("缺机器参数 400", 码 == 400)
         # 308h 生命周期三用例
@@ -800,11 +600,12 @@ def 自检() -> int:
            and 同话[0]["会话键"] == "新机名-c9")
         with urllib.request.urlopen(基址 + "/", timeout=5) as resp:
             页 = resp.read().decode("utf-8")
-        签("看板页 200 且含看板字样", resp.status == 200 and "任务看板" in 页)
-        签("313a 意图行接任务字典渲染", "渲染意图(意图们, 字典)" in 页
-           and "字典[i.在做]" in 页)
-        签("371 在飞渲染含归属徽+未登记黄标",
-           "在做主们" in 页 and "未登记意图" in 页)
+        签("看板页 200 且静态服务（board_www/index.html）",
+           resp.status == 200 and "任务看板" in 页)
+        签("382 页面三 tab+详情面板+新建表单齐备",
+           all(k in 页 for k in ("当前在飞", "远端在飞分支", "可认领任务", "详情面板", "新建任务")))
+        with urllib.request.urlopen(基址 + "/board.css", timeout=5) as resp:
+            签("静态 board.css 200", resp.status == 200)
         # 308j 发号权威五用例（乙+：原子递增/视野并集/禁用号跳/核对 409/占号冲突）
         码, r = 调("POST", "/api/claim_number", {"机器": "甲机", "对话id": "n1",
                   "上报者": "甲机-主树", "视野号们": ["300", "307", "308i"], "描述": "首号"})
@@ -839,30 +640,84 @@ def 自检() -> int:
         签("316：辛机视野上报后 309 核对 409（撞号拦截链实锤）",
            视野撞[0] == 409 and 视野撞[1].get("已发") is True)
         调("POST", "/api/intent", {"机器": "测机", "对话id": "k1", "在做": "110"})
-        调("POST", "/api/report_021", {"行们": [
-            {"号": "110", "标题": "甲", "状态": "✅", "优先级": "P1"}],
-            "任务字典": {"110": {"标题": "甲", "状态": "✅", "优先级": "P1"}}})
+        码, r = 调("POST", "/api/task_create", {"标题": "清理面任务", "请求号": "110"})
+        码, r = 调("POST", "/api/task_update", {"号": "110", "状态": "✅",
+                                                "收口sha": "ab12cd34ef56"})
         码, r = 调("GET", "/api/board")
-        签("318 服务端收口惰性清：在做#110 字典✅→行删",
+        签("318 服务端收口惰性清：任务表✅→在做#110 行删",
            all(i["在做"] != "110" for i in r["意图们"]))
-        调("POST", "/api/report_021", {"行们": [], "任务字典": {
-            "314": {"标题": "甲", "状态": "⬜", "优先级": "P1"}}})
-        调("POST", "/api/report_021", {"行们": [], "任务字典": {
-            "110": {"标题": "乙", "状态": "⬜", "优先级": "P1"}}})
+        # —— 382 任务台账：立项/发号/流转/就绪（服务端唯一权威正反两态）——
+        码, r = 调("POST", "/api/task_create", {"标题": "首任务"})
+        首 = r.get("号", "")
+        签("382 立项：服务端发号 201·初态 ⬜", 码 == 201 and r["任务"]["状态"] == "⬜")
+        码, r = 调("POST", "/api/task_create", {"标题": "二任务", "前置": 首, "优先级": "P1"})
+        二 = r.get("号", "")
+        签("382 立项：号连续递增+前置登记",
+           码 == 201 and 台账.号排序键(二) > 台账.号排序键(首)
+           and r["任务"]["前置"] == 首)
+        码, r = 调("POST", "/api/task_create", {"标题": ""})
+        签("382 立项：缺标题 400（反态）", 码 == 400)
+        码, r = 调("POST", "/api/task_create", {"标题": "撞号", "请求号": 首})
+        签("382 立项：指定已占号 409", 码 == 409)
+        码, r = 调("POST", "/api/task_create", {"标题": "禁用", "请求号": "353"})
+        签("382 立项：禁用号 353 拒 403", 码 == 403)
+        码, r = 调("POST", "/api/task_create", {"标题": "坏号", "请求号": "38-坏"})
+        签("382 立项：请求号格式非法 400", 码 == 400)
+        码, r = 调("POST", "/api/task_update", {"号": 首, "状态": "🏃"})
+        签("382 认领：⬜→🏃 分支自动合成 任务/<号>",
+           码 == 200 and r["任务"]["分支"] == f"任务/{首}" and r["任务"]["状态"] == "🏃")
+        码, r = 调("POST", "/api/task_update", {"号": 二, "状态": "✅"})
+        签("382 完成：无 sha 拒 400（✅⇔sha 铁律服务端化）", 码 == 400)
+        码, r = 调("POST", "/api/task_update", {"号": 二, "状态": "✅", "收口sha": "deadbeef01"})
+        签("382 完成：带 sha 200+sha 落账", 码 == 200 and r["任务"]["收口sha"] == "deadbeef01")
+        码, r = 调("POST", "/api/task_update", {"号": 二, "状态": "⏸"})
+        签("382 终态：✅ 不可再改 400", 码 == 400)
+        码, r = 调("POST", "/api/task_update", {"号": "888888", "状态": "⏸"})
+        签("382 更新：无此号 404", 码 == 404)
+        码, r = 调("POST", "/api/task_update", {"号": 首, "状态": "✅", "收口sha": "cafebabef00d"})
+        码, r = 调("POST", "/api/task_create", {"标题": "三任务", "前置": 首})
+        三 = r.get("号", "")
+        码, r = 调("GET", "/api/tasks")
+        图 = {t["号"]: t for t in r["任务们"]}
+        签("382 就绪判定：前置✅ 后新任务就绪·未完前置不就绪",
+           图[三]["就绪"] is True and 图[首]["就绪"] is False)
+        码, r = 调("GET", f"/api/task/{三}")
+        签("382 单任务查询", 码 == 200 and r["任务"]["号"] == 三)
+        码, r = 调("GET", "/api/task/888888")
+        签("382 单任务查询：无此号 404", 码 == 404)
+        调("POST", "/api/report_flights", {"上报者": "测机", "分支们": [
+            {"分支": f"任务/{三}", "提交": "abc123", "时刻": "", "已并入": False}]})
+        码, r = 调("GET", "/api/board")
+        图 = {t["号"]: t for t in r["任务们"]}
+        签("308d 队列×在飞对撞：在飞区号=疑似认领", 图[三]["疑似认领"] is True)
         码, r = 调("GET", "/api/board")
         字 = r.get("任务字典") or {}
-        签("329 字典合并：后报不抹先报（110 与 314 并存）",
-           字.get("110", {}).get("标题") == "乙" and 字.get("314", {}).get("标题") == "甲")
+        签("382 任务字典实时生成（兼容字段·永不过期）",
+           字.get(三, {}).get("标题") == "三任务" and 字.get(二, {}).get("状态") == "✅")
+        # —— 382 迁移导入（幂等·归档强制 ✅）——
+        迁 = 台账.迁移导入(globals()["连接"],
+                           "| 901 | 迁移甲 | ⬜ | — | P1 | 普通行 |\n"
+                           "| 902 | 迁移乙 | ✅ ab12cd34 | 901 | P2 | 分支=任务/902 |\n", [])
+        签("382 迁移导入：主表 2 行入库", 迁["导入"] == 2)
+        迁 = 台账.迁移导入(globals()["连接"],
+                           "| 901 | 重复 | ⬜ | — | P1 | 跳过面 |\n",
+                           ["| 904 | 归档丁 | ✅ feed5678 | — | P3 | x |"])
+        签("382 迁移导入：幂等跳过+归档行入库", 迁["导入"] == 1 and 迁["跳过"] == 1)
+        任务904 = 台账.单任务(globals()["连接"], "904")
+        签("382 迁移导入：归档行 ✅+sha 原样",
+           任务904["状态"] == "✅" and 任务904["收口sha"] == "feed5678")
+        码, r = 调("POST", "/api/task_create", {"标题": "迁移后发号", "请求号": "902"})
+        签("382 迁移号进已占基准：指定 902 拒 409", 码 == 409)
         调("POST", "/api/intent", {"机器": "测机", "对话id": "u1", "在做": "887"})
         码, r = 调("GET", "/api/board")
         飞行 = {f["分支"]: f for f in r["在飞分支们"]}
-        签("331 在飞视图含未推分支：887 合成行未推=True",
-           飞行.get("任务/887", {}).get("未推") is True)
+        签("382.2 合成行废除：分支未推不在在飞分支区（真实分支为准）",
+           "任务/887" not in 飞行)
         调("POST", "/api/report_flights", {"上报者": "测机", "分支们": [
             {"分支": "任务/887", "提交": "abc123", "时刻": "", "已并入": False}]})
         码, r = 调("GET", "/api/board")
         飞行 = {f["分支"]: f for f in r["在飞分支们"]}
-        签("331 分支推后合成行让位真行（未推 消失）",
+        签("382.2 分支真实推后出现",
            "任务/887" in 飞行 and not 飞行["任务/887"].get("未推"))
     finally:
         实例.shutdown()
