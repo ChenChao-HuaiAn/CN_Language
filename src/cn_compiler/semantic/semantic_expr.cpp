@@ -758,6 +758,23 @@ void SemanticAnalyzer::visitSizeofExpr(SizeofExpr* node) {
     const std::string resolved = resolveTypeName(t, currentModuleName_, node->location);
     // 241-a（D15 根治）：实参类型存在性校验——未知类型编译期诊断
     //   （原实现静默 typeSizeOf 兜底，错误类型名静默通过）。
+    // 376（v17 六族对齐批·001 02§六B 参数清单）：类型大小 参数清单=基础类型/
+    //   结构体/数组/指针/限定类型/泛型实参——结果/可选 未列，前置友好拒绝
+    //   （原路径落入 typeSizeOf 结果/可选分支的「内部错误」形态=违反诊断纪律；
+    //   v2 侧同批对齐——c359 实证双侧各违一半）。泛型豁免=241-a 同款三分支
+    //   （模板体内 结果<T,E> 由 IR 层实例化后重算，不在此拒）。
+    if (genericTypeParams_.find(node->typeName) == genericTypeParams_.end() &&
+        genericTypeParams_.find(t) == genericTypeParams_.end() &&
+        genericTypeParams_.find(resolved) == genericTypeParams_.end()) {
+        const std::string canonBox = types::canonical(resolved);
+        if (canonBox.rfind("结果<", 0) == 0 || canonBox.rfind("可选<", 0) == 0) {
+            diagnostics_.report(DiagnosticLevel::Error, node->location,
+                                "类型大小: 参数类型不支持 '" + node->typeName +
+                                    "'（02 §六B 参数清单=基础类型/结构体/数组/指针/限定类型/泛型实参）");
+            lastType_ = "整64";
+            return;
+        }
+    }
     {
         // 泛型类型参数豁免：泛型模板体检查时 T 尚未实例化（实例化后由 IR 层
         //   按 genericTypeParams_ 重算——见上方 H8 注释），T 本身即合法实参。
