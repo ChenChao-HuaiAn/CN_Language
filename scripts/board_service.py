@@ -22,6 +22,15 @@
 #   POST /api/task_create     {标题,请求号?,前置?,优先级?,备注?,机器?,来源?}  立项+发号（201/409）
 #   POST /api/task_update     {号,状态?,分支?,收口sha?,归属?,标题?,前置?,优先级?,备注?} 流转
 #   POST /api/claim_number    308j 发号/核对（382 后仅视野记账价值·任务表已为唯一权威）
+# 384 文档资源（交接/教训/规范覆盖·文档上服务器二期·board_docs.py 模块）：
+#   POST /api/handoff_add     {机器,条目,来源?}              交接追加（两行制）
+#   GET  /api/handoff         ?machine=X&limit=N             交接查询（倒序·machine 空=三机混流）
+#   POST /api/lesson_add      {标题,正文?,权重?,标注?}        教训登记（同标题幂等·权重缺省从标题提取）
+#   GET  /api/lessons         ?high_weight=8 | ?index=1      高权重全文区 / 一行索引面
+#   POST /api/coverage_update {单元ID,标题?,正例?,边界例?,负例?}  覆盖单元行 upsert（整列替换）
+#   POST /api/coverage_exempt_add {用例,理由}                 豁免登记（逗号批量·理由必填）
+#   POST /api/coverage_import {单元们:[…],豁免们:[…]}          迁移批量幂等导入
+#   GET  /api/coverage        全量 {单元们,豁免们}（check_spec_coverage 门禁源·客户端落缓存降级）
 # 过期：心跳断 CN_INTENT_STALE_SEC（默认 1800s）→ 失联态（行保留·UI 灰显+失联徽章）。
 # 心跳时戳=服务端收到时刻（911 教训：免疫各机时钟漂移）。任务表=持久落盘永不过期。
 # 部署：/etc/systemd/system/cn-board.service（Environment= CN_BOARD_PORT/CN_BOARD_TOKEN/CN_BOARD_DB）
@@ -40,10 +49,11 @@ import time
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import urlparse, unquote
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import board_tasks as 台账   # 任务台账模块（382·发号/CRUD/状态机/迁移）
+import board_docs as 文档    # 交接/教训/规范覆盖模块（384·文档上服务器二期）
 
 # ===== 可调常量 =====
 端口 = int(os.environ.get("CN_BOARD_PORT", "8301"))
@@ -90,6 +100,7 @@ def 建库(路径: str = db路径) -> sqlite3.Connection:
         上报者 TEXT PRIMARY KEY,
         号们 TEXT, 时戳 REAL, 时刻 TEXT)""")
     台账.建任务表(con)      # 382：任务台账主表（服务端唯一权威）
+    文档.建表(con)          # 384：交接/教训/规范覆盖（文档上服务器二期）
     return con
 
 
@@ -322,6 +333,28 @@ class 处理器(BaseHTTPRequestHandler):
                            "SELECT 号,机器,对话id,描述,时刻 FROM 发号台账 ORDER BY 时戳").fetchall()]
                 return self._回JSON(200, {"台账": 流水, "下一个": 台账.下一个号(
                     台账.已占号集(连接)), "号占冲突们": 号占冲突们(), "时刻": 时刻()})
+        # —— 384 文档资源（交接/教训/规范覆盖·GET 只读）——
+        if 路径 == "/api/handoff":
+            q = urlparse(self.path).query
+            参数 = dict(p.split("=", 1) for p in q.split("&") if "=" in p)
+            机器 = unquote(参数.get("machine", ""))
+            上限 = 参数.get("limit", "20")
+            with 写锁:
+                return self._回JSON(200, {"条目们": 文档.交接查询(连接, 机器, 上限),
+                                          "时刻": 时刻()})
+        if 路径 == "/api/lessons":
+            q = urlparse(self.path).query
+            参数 = dict(p.split("=", 1) for p in q.split("&") if "=" in p)
+            with 写锁:
+                if 参数.get("high_weight"):
+                    return self._回JSON(200, {"条目们": 文档.教训查询(
+                        连接, 高权重=int(参数["high_weight"]))})
+                if 参数.get("index"):
+                    return self._回JSON(200, {"条目们": 文档.教训查询(连接, 索引=True)})
+                return self._回JSON(200, {"条目们": 文档.教训查询(连接)})
+        if 路径 == "/api/coverage":
+            with 写锁:
+                return self._回JSON(200, 文档.覆盖全量(连接))
         return self._回JSON(404, {"错误": "未知路径"})
 
     def do_POST(self):
@@ -347,6 +380,27 @@ class 处理器(BaseHTTPRequestHandler):
                 return self._回JSON(码, 响应)
         if 路径 == "/api/claim_number":
             return self._收发号(体)
+        # —— 384 文档资源（交接/教训/规范覆盖·POST 须令牌）——
+        if 路径 == "/api/handoff_add":
+            with 写锁:
+                码, 响应 = 文档.交接添加(连接, 体)
+                return self._回JSON(码, 响应)
+        if 路径 == "/api/lesson_add":
+            with 写锁:
+                码, 响应 = 文档.教训添加(连接, 体)
+                return self._回JSON(码, 响应)
+        if 路径 == "/api/coverage_update":
+            with 写锁:
+                码, 响应 = 文档.覆盖单元更新(连接, 体)
+                return self._回JSON(码, 响应)
+        if 路径 == "/api/coverage_exempt_add":
+            with 写锁:
+                码, 响应 = 文档.覆盖豁免添加(连接, 体)
+                return self._回JSON(码, 响应)
+        if 路径 == "/api/coverage_import":
+            with 写锁:
+                码, 响应 = 文档.覆盖批量导入(连接, 体)
+                return self._回JSON(码, 响应)
         return self._回JSON(404, {"错误": "未知路径"})
 
     def _登记意图(self, 体: dict):
@@ -602,8 +656,10 @@ def 自检() -> int:
             页 = resp.read().decode("utf-8")
         签("看板页 200 且静态服务（board_www/index.html）",
            resp.status == 200 and "任务看板" in 页)
-        签("382 页面三 tab+详情面板+新建表单齐备",
+        签("382 页面 tab+详情面板+新建表单齐备",
            all(k in 页 for k in ("当前在飞", "远端在飞分支", "可认领任务", "详情面板", "新建任务")))
+        签("384 页面文档 tab 齐备（交接/教训/覆盖三区块）",
+           all(k in 页 for k in ("交接·教训·覆盖", "交接区", "教训区", "覆盖区")))
         with urllib.request.urlopen(基址 + "/board.css", timeout=5) as resp:
             签("静态 board.css 200", resp.status == 200)
         # 308j 发号权威五用例（乙+：原子递增/视野并集/禁用号跳/核对 409/占号冲突）
@@ -719,6 +775,74 @@ def 自检() -> int:
         飞行 = {f["分支"]: f for f in r["在飞分支们"]}
         签("382.2 分支真实推后出现",
            "任务/887" in 飞行 and not 飞行["任务/887"].get("未推"))
+        # —— 384 文档资源：交接/教训/规范覆盖（正反两态）——
+        码, r = 调("POST", "/api/handoff_add", {"机器": "深度机", "条目": "384 收工行：本轮一句话。下一棒=指针。"})
+        签("384 交接添加 201·有 id", 码 == 201 and r.get("id"))
+        码, r = 调("POST", "/api/handoff_add", {"机器": "家机", "条目": "家机测试行"})
+        码, r = 调("GET", "/api/handoff?machine=%E6%B7%B1%E5%BA%A6%E6%9C%BA&limit=5")
+        签("384 交接按机器查询·倒序", 码 == 200 and len(r["条目们"]) == 1
+           and r["条目们"][0]["机器"] == "深度机")
+        码, r = 调("POST", "/api/handoff_add", {"机器": "深度机", "条目": ""})
+        签("384 交接缺条目 400（反态）", 码 == 400)
+        码, r = 调("POST", "/api/handoff_add", {"机器": "", "条目": "无机器"})
+        签("384 交接缺机器 400（反态）", 码 == 400)
+        码, r = 调("POST", "/api/lesson_add", {"标题": "测试教训（权重 9·2026-10-10）",
+                  "正文": "现象：x\n根因：y\n预防：z"})
+        签("384 教训添加 201·权重从标题提取", 码 == 201)
+        码, r = 调("POST", "/api/lesson_add", {"标题": "测试教训（权重 9·2026-10-10）", "正文": "重复"})
+        签("384 教训同标题幂等跳过", 码 == 200 and r.get("跳过") is True)
+        码, r = 调("POST", "/api/lesson_add", {"标题": "索引级教训（权重 6）"})
+        码, r = 调("GET", "/api/lessons?high_weight=8")
+        签("384 高权重筛选：只含全文≥8", 码 == 200 and len(r["条目们"]) == 1
+           and r["条目们"][0]["权重"] == 9)
+        码, r = 调("GET", "/api/lessons?index=1")
+        签("384 索引面：全量条目+有全文标记", 码 == 200 and len(r["条目们"]) == 2
+           and {t["有全文"] for t in r["条目们"]} == {True, False})
+        码, r = 调("POST", "/api/lesson_add", {"标题": "", "正文": "无标题"})
+        签("384 教训缺标题 400（反态）", 码 == 400)
+        码, r = 调("POST", "/api/coverage_update", {"单元ID": "3.7a", "标题": "整数运算语义统一",
+                  "正例": "423_整数溢出回绕统一", "边界例": "403_移位负值矩阵", "负例": "422_整数语义编译期拒绝"})
+        签("384 覆盖单元 upsert 200", 码 == 200 and r["单元"]["正例"] == "423_整数溢出回绕统一")
+        码, r = 调("POST", "/api/coverage_update", {"单元ID": "3.7a", "标题": "整数运算语义统一",
+                  "正例": "423_整数溢出回绕统一,670_正8字节读通道", "边界例": "", "负例": ""})
+        码, r = 调("GET", "/api/coverage")
+        单 = {u["单元ID"]: u for u in r["单元们"]}
+        签("384 覆盖整列替换+全量读回", 码 == 200
+           and 单["3.7a"]["正例"].count(",") == 1 and "豁免们" in r)
+        码, r = 调("POST", "/api/coverage_exempt_add", {"用例": "411_递归结构体拒绝",
+                  "理由": "T3 波次2 守护"})
+        签("384 豁免登记 200", 码 == 200 and r["登记数"] == 1)
+        码, r = 调("POST", "/api/coverage_exempt_add", {"用例": "", "理由": "无用例"})
+        签("384 豁免缺用例 400（反态）", 码 == 400)
+        码, r = 调("POST", "/api/coverage_import", {"单元们": [
+            {"单元ID": "2.1", "标题": "关键字分类表", "正例": "", "边界例": "",
+             "负例": "301_关键字作标识符拒绝"},
+            {"单元ID": "3.7a", "标题": "重复跳过", "正例": "", "边界例": "", "负例": ""}],
+            "豁免们": [{"用例": "411_递归结构体拒绝", "理由": "重复跳过"}]})
+        签("384 覆盖批量导入：新导入+已占跳过",
+           码 == 200 and r["导入"] == 1 and r["跳过"] == 1
+           and r["豁免跳过"] == 1)
+        解 = 文档.解析交接文档("# HANDOFF\n> 头注\n## 家机 win-x64 节\n- **甲**：一\n  折行\n- **乙**：二\n## 深度机 linux-x86_64 节\n- - **丙**：三\n")
+        签("384 交接解析：切节+折行并入+双横线残段容错",
+           len(解) == 3 and 解[0]["条目"].endswith("折行")
+           and 解[1]["机器"] == "家机" and 解[2]["机器"] == "深度机")
+        教 = 文档.解析教训文档(
+            "## 散排头（权重 5）\n头文\n> 读法引用块\n## 一、高权重全文区（权重 ≥8·30 条·任务开始必读）\n"
+            "## 全文条（权重 9）\n- 现象：a\n- 根因：b\n## 全文条（权重 9）\n- 现象：a\n- 根因：b\n- 预防：c（更长版）\n"
+            "## 二、全量索引区（303 条）\n- 索引行甲（权重 8） 〔活跃〕\n- 索引行乙（权重 6）\n")
+        教图 = {t["标题"]: t for t in 教}
+        签("384 教训解析：全文/索引/去重取最长/跳导航节",
+           "全文条（权重 9）" in 教图 and 教图["全文条（权重 9）"]["正文"].endswith("预防：c（更长版）")
+           and "索引行甲（权重 8） 〔活跃〕" in 教图 and 教图["索引行甲（权重 8） 〔活跃〕"]["权重"] == 8
+           and "一、高权重全文区（权重 ≥8·30 条·任务开始必读）" not in 教图
+           and 教图.get("散排头（权重 5）", {}).get("正文") == "头文")
+        覆 = 文档.解析覆盖文档(
+            "| 单元ID | 单元 | 正例 | 边界例 | 负例 |\n|---|---|---|---|---|\n"
+            "| 2.1 | 关键字分类表 |  |  | 301_拒绝 |\n## 豁免用例（不入规范矩阵）\n"
+            "| 411_递归结构体拒绝 | T3 守护 |\n")
+        签("384 覆盖解析：主矩阵+豁免区两段",
+           len(覆["单元们"]) == 1 and 覆["单元们"][0]["负例"] == "301_拒绝"
+           and len(覆["豁免们"]) == 1)
     finally:
         实例.shutdown()
         globals()["连接"] = 全局连接

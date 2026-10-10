@@ -2,7 +2,8 @@
 """standup.py——开机一条命令（241·2026-10-07·诊断轮问题⑤「AI 开机成本高」落地）。
 
 一键开工简报：fetch+落后提示 → 看板就绪摘要 → 交接本机节最近条目 → 教训高权重标题
-→ 待裁决件数。全部子进程/文本切片复用现成设施，零重写。
+→ 待裁决件数。384 起 交接/教训读看板服务端（两文档已退位删除），服务不可达降级读
+board_cache.json 最后缓存（无网也能开工简报）。
 
 用法：python scripts/standup.py [--机 深度机]   # --机 缺省按 hostname 推测
 """
@@ -13,10 +14,27 @@ import json
 import socket
 import subprocess
 import sys
+import urllib.parse
 from pathlib import Path
 
 本树根 = Path(__file__).resolve().parent.parent
 主机别名 = {"deepin": "深度机", "CHENCHAO-W": "家机", "arm64": "单位机", "user-pc": "单位机"}  # hostname 前缀→交接节关键词（296：user-pc=单位机实机·原兜底误标深度机）
+
+
+def 看板地址() -> str:
+    """384：看板服务地址（环境变量覆盖·缺省 TX_01:8301）。"""
+    import os
+    return os.environ.get("CN_BOARD_URL", "http://124.222.106.84:8301").rstrip("/")
+
+
+def _落缓存(名: str, 体) -> None:
+    缓 = 本树根 / "scripts" / "board_cache.json"
+    try:
+        数据 = json.loads(缓.read_text(encoding="utf-8")) if 缓.exists() else {}
+        数据[名] = 体
+        缓.write_text(json.dumps(数据, ensure_ascii=False, indent=1), encoding="utf-8")
+    except (OSError, ValueError):
+        pass
 
 
 def 跑(命令: list[str], cwd: Path | None = None) -> str:
@@ -43,33 +61,50 @@ def 落后提示() -> list[str]:
     return 行们
 
 
+def _读缓存(名: str):
+    """384：看板文档 GET 结果的本地最后缓存（board_cli.落缓存 落盘·gitignore）
+    ——服务不可达时降级读（无网也能开工简报）。"""
+    缓 = 本树根 / "scripts" / "board_cache.json"
+    try:
+        return json.loads(缓.read_text(encoding="utf-8")).get(名)
+    except (OSError, ValueError):
+        return None
+
+
 def 本机节(机: str) -> list[str]:
-    文 = (本树根 / "交接.md").read_text(encoding="utf-8")
-    节们: dict[str, list[str]] = {}
-    当前 = None
-    for 行 in 文.splitlines():
-        if 行.startswith("## "):
-            当前 = 行[3:].strip()
-            节们[当前] = []
-        elif 当前:
-            节们[当前].append(行)
-    目标 = next((k for k in 节们 if 机 in k), None)
-    if not 目标:
-        return [f"（交接.md 无「{机}」节）"]
-    条 = [l for l in 节们[目标] if l.strip().lstrip("- ").startswith("**")]
-    行们 = [f"## 交接·{目标}（最近 {min(2, len(条))} 条）"]
-    行们 += [l.strip() for l in 条[-2:]]
+    """384：交接本机节改读看板服务端（交接.md 已退位删除）·降级读缓存。"""
+    import urllib.request
+    try:
+        q = urllib.parse.quote(机)
+        with urllib.request.urlopen(
+                f"{看板地址()}/api/handoff?machine={q}&limit=2", timeout=8) as r:
+            条 = json.loads(r.read().decode("utf-8")).get("条目们", [])
+        _落缓存("handoff", {"机器": 机, "条目们": 条})
+    except Exception:
+        缓 = _读缓存("handoff") or {}
+        条 = 缓.get("条目们", []) if 缓.get("机器") == 机 else []
+        if not 条:
+            return [f"（交接：服务不可达且无「{机}」缓存——board_cli 交接 可写·恢复后自愈）"]
+    行们 = [f"## 交接·{机}节（最近 {len(条)} 条·服务端）"]
+    行们 += [f"- {t['条目']}" for t in 条]
     return 行们
 
 
 def 教训高权重(上限: int = 10) -> list[str]:
-    文 = (本树根 / "项目记忆" / "教训.md").read_text(encoding="utf-8")
-    起始 = 文.find("高权重全文区")
-    段 = 文[起始:] if 起始 >= 0 else 文
-    标题们 = [l.lstrip("# ").strip() for l in 段.splitlines()
-              if l.startswith("## ") and "高权重全文区" not in l]
-    行们 = [f"## 教训·高权重标题（前 {min(上限, len(标题们))} 条·全文=项目记忆/教训.md §一）"]
-    行们 += [f"- {t[:88]}{'…' if len(t) > 88 else ''}" for t in 标题们[:上限]]
+    """384：教训高权重改读看板服务端（教训.md 已退位删除）·降级读缓存。"""
+    import urllib.request
+    条 = []
+    try:
+        with urllib.request.urlopen(
+                f"{看板地址()}/api/lessons?high_weight=8", timeout=8) as r:
+            条 = json.loads(r.read().decode("utf-8")).get("条目们", [])
+        _落缓存("lessons", {"条目们": 条})
+    except Exception:
+        条 = (_读缓存("lessons") or {}).get("条目们", [])
+    if not 条:
+        return ["## 教训·高权重：服务不可达且无缓存——恢复后自愈"]
+    行们 = [f"## 教训·高权重标题（前 {min(上限, len(条))} 条·全文=board_cli 教训看 <id>）"]
+    行们 += [f"- {t['标题'][:88]}{'…' if len(t['标题']) > 88 else ''}" for t in 条[:上限]]
     return 行们
 
 

@@ -133,7 +133,7 @@ def 主() -> int:
     if not v2p.exists():
         print(f"[错误] v2p 不存在: {v2p}（先 target/cn build CN语言编译器v2/主.cn …）")
         return 2
-    if not (用例根 / "coverage_map.md").exists():
+    if not (用例根 / "run_e2e.py").exists():   # 384：coverage_map.md 已退位，探针改 run_e2e.py
         print(f"[错误] 用例根不像 tests/e2e: {用例根}")
         return 2
     工作根 = pathlib.Path(参.工作根)

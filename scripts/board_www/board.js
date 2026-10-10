@@ -84,6 +84,63 @@ function 渲染激活页() {
   if (激活页 === "飞行" && 脏页.飞行) { 渲染意图(); 脏页.飞行 = false; }
   if (激活页 === "分支" && 脏页.分支) { 渲染在飞(); 脏页.分支 = false; }
   if (激活页 === "认领" && 脏页.认领) { 渲染任务(); 脏页.认领 = false; }
+  if (激活页 === "文档") 渲染文档();   // 384：文档数据独立拉取（切页即拉·内置 30s 节流）
+}
+
+/* —— Tab D：交接/教训/规范覆盖（384·独立低频拉取·不进 8s 轮询）—— */
+
+let 文档缓存 = { 时: 0 };
+
+async function 渲染文档() {
+  if (Date.now() - 文档缓存.时 < 30000) { 画文档(); return; }
+  try {
+    const [交, 教, 覆] = await Promise.all([
+      调API("GET", "api/handoff?limit=12"),
+      调API("GET", "api/lessons?high_weight=8"),
+      调API("GET", "api/coverage"),
+    ]);
+    文档缓存 = { 时: Date.now(), 交接: 交.条目们 || [], 教训: 教.条目们 || [], 覆盖: 覆 };
+  } catch (e) {
+    $("交接区").innerHTML = '<div class="空态">文档数据拉取失败：' + 转义(e.message) + "</div>";
+    return;
+  }
+  画文档();
+}
+
+function 画文档() {
+  const 按机 = {};
+  (文档缓存.交接 || []).forEach((t) => (按机[t.机器] = 按机[t.机器] || []).push(t));
+  $("交接区").innerHTML = Object.keys(按机).length
+    ? '<div class="泳道">' + Object.entries(按机).map(([机, 条]) =>
+        '<div class="泳列"><div class="泳列头"><span>👤 ' + 转义(机) + '</span><span class="计数">' +
+        条.length + "</span></div>" +
+        条.map((t) => '<details class="交接条"><summary>' + 转义((t.条目 || "").slice(0, 76)) +
+          ((t.条目 || "").length > 76 ? "…" : "") + '<span class="行时刻">' + 转义(t.时刻 || "") + "</span></summary>" +
+          '<div class="交接全文">' + 转义(t.条目 || "") + "</div></details>").join("") +
+        "</div>").join("") + "</div>"
+    : '<div class="空态">交接流为空——收工用 <code>python scripts/board_cli.py 收工 --行 "…"</code></div>';
+  const 教 = 文档缓存.教训 || [];
+  $("教训区").innerHTML = 教.length
+    ? '<div class="面板">' + 教.map((t) =>
+        '<details class="教训条"><summary><span class="签 朱砂">权重 ' + 转义(t.权重) + "</span> " +
+        转义((t.标题 || "").slice(0, 90)) + ((t.标题 || "").length > 90 ? "…" : "") +
+        '<span class="行时刻">' + 转义(t.时刻 || "") + "</span></summary>" +
+        '<div class="交接全文 淡">全文查看：<code>python scripts/board_cli.py 教训看 ' + t.id + "</code></div></details>").join("") + "</div>"
+    : '<div class="空态">高权重教训为空——登记用 <code>board_cli 教训 --标题 "…（权重 N）"</code></div>';
+  const 覆 = 文档缓存.覆盖 || {};
+  const 单元们 = 覆.单元们 || [];
+  const 缺 = 单元们.filter((u) => !u.正例 || !u.边界例 || !u.负例);
+  $("覆盖区").innerHTML = 单元们.length
+    ? '<div class="面板"><div class="会话"><div class="行1">' +
+      '<span class="签 完成">单元 ' + 单元们.length + "</span>" +
+      '<span class="签 边框">豁免 ' + (覆.豁免们 || []).length + "</span>" +
+      '<span class="签 ' + (缺.length ? "挂起" : "完成") + '">缺口单元 ' + 缺.length + "</span>" +
+      '<span class="心跳行">三态覆盖率见 check_spec_coverage 报告模式</span></div>' +
+      (缺.length ? '<div class="备注行">缺口：' + 缺.slice(0, 12).map((u) =>
+        "#" + 转义(u.单元ID) + "（" + ["正例", "边界例", "负例"].filter((k) => !u[k]).join("/") + "）"
+      ).join(" · ") + (缺.length > 12 ? " …" : "") + "</div>" : "") +
+      "</div></div>"
+    : '<div class="空态">覆盖矩阵为空——迁移未跑？<code>migrate_board_docs.py</code></div>';
 }
 
 /* —— 冲突横幅（全局·任意 tab 可见）—— */

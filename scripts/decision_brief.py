@@ -1,14 +1,17 @@
 # -*- coding: utf-8 -*-
 """decision_brief.py——裁决一页纸生成器（239·2026-10-07·诊断轮问题③「用户=唯一决策瓶颈」落地）。
 
-扫 plans/021 全部挂起/待裁决面（⏸ 行+备注含 待裁决/待批/待用户/呈报 的活行），
+扫任务台账全部挂起/待裁决面（⏸ 任务+备注含 待裁决/待批/待用户/呈报 的活任务），
 按优先级排序输出结构化清单：stdout=人类可读一页纸；--json=AI 会话机读（消费后
 生成大白话呈报：每件=问题+选项+推荐+可照抄裁决语）。
+
+384：数据源从 plans/021 文件改为看板服务端任务表（382 起台账唯一权威在服务端，
+021 已冻结退位——本脚本当时漏切仍读冻结旧账=数据过期，本批收口）。服务不可达
+降级读 board_cache.json 最后快照（黄字提示），不静默装新。
 
 用法：
   python scripts/decision_brief.py            # 一页纸（每周或用户令「裁决会」时跑）
   python scripts/decision_brief.py --json     # 机读
-  python scripts/decision_brief.py --账本 <路径>  # 指定总账文件（测试用·默认 plans/021*）
 
 设计纪律（v5）：只读不写；零依赖纯标准库；不判断「该不该裁决」——那是 AI/用户的事。
 """
@@ -18,30 +21,47 @@ import argparse
 import json
 import re
 import sys
+import urllib.request
 from pathlib import Path
 
 本树根 = Path(__file__).resolve().parent.parent
 挂因词 = ("待裁决", "待批", "待用户", "呈报", "选择题", "观察", "挂起")
 优先级序 = {"P0": 0, "P1": 1, "P2": 2, "P3": 3}
+看板地址 = "http://124.222.106.84:8301"
 
 
-def 解析行(行: str) -> dict | None:
-    """021 任务行 → {号,标题,状态,前置,优先级,备注}；非任务行返回 None。"""
-    m = re.match(r"^\|\s*(\d+[a-z]?)\s*\|\s*(.*?)\s*\|\s*(⬜|🏃|⏸|✅)\s*\|"
-                 r"\s*(.*?)\s*\|\s*(P[0-3]?)\s*\|\s*(.*?)\s*\|\s*$", 行)
-    if not m:
-        return None
-    return {"号": m.group(1), "标题": m.group(2), "状态": m.group(3),
-            "前置": m.group(4), "优先级": m.group(5) or "P1", "备注": m.group(6)}
+def 拉任务们() -> tuple[list[dict], str]:
+    """服务端任务全量 → (任务们, 来源描述)。降级读缓存。"""
+    try:
+        with urllib.request.urlopen(f"{看板地址}/api/tasks", timeout=8) as r:
+            数据 = json.loads(r.read().decode("utf-8"))
+        任务们 = 数据.get("任务们", [])
+        缓 = 本树根 / "scripts" / "board_cache.json"
+        try:
+            已有 = json.loads(缓.read_text(encoding="utf-8")) if 缓.exists() else {}
+            已有["tasks"] = 任务们
+            缓.write_text(json.dumps(已有, ensure_ascii=False), encoding="utf-8")
+        except (OSError, ValueError):
+            pass
+        return 任务们, "服务端台账"
+    except OSError:
+        缓 = 本树根 / "scripts" / "board_cache.json"
+        try:
+            任务们 = json.loads(缓.read_text(encoding="utf-8")).get("tasks", [])
+            if 任务们:
+                return 任务们, "本地缓存（服务不可达·可能是旧快照）"
+        except (OSError, ValueError):
+            pass
+    print("[失败] 看板服务不可达且无缓存——裁决面暂不可知（恢复后重跑）", file=sys.stderr)
+    return [], ""
 
 
-def 收集待裁决(账本: Path) -> list[dict]:
-    """⏸ 行 ∪ 备注含挂因词的活行（⬜/🏃）——✅ 已收口不入。"""
+def 收集待裁决(任务们: list[dict]) -> list[dict]:
+    """⏸ 任务 ∪ 备注含挂因词的活任务（⬜/🏃）——✅ 已收口不入。"""
     件们: list[dict] = []
-    for 行 in 账本.read_text(encoding="utf-8").splitlines():
-        件 = 解析行(行)
-        if 件 is None:
-            continue
+    for t in 任务们:
+        件 = {"号": t["号"], "标题": t["标题"], "状态": t["状态"],
+              "优先级": t["优先级"], "备注": t.get("备注", "")}
         if 件["状态"] == "⏸":
             件["挂因"] = 件["备注"] or "挂起（备注未写因）"
             件们.append(件)
@@ -53,8 +73,8 @@ def 收集待裁决(账本: Path) -> list[dict]:
     return 件们
 
 
-def 一页纸(件们: list[dict], 账本名: str) -> str:
-    行们 = [f"# 裁决一页纸（{len(件们)} 件待拍板·源={账本名}）", ""]
+def 一页纸(件们: list[dict], 来源: str) -> str:
+    行们 = [f"# 裁决一页纸（{len(件们)} 件待拍板·源={来源}）", ""]
     if not 件们:
         行们 += ["（无挂起/待裁决事项——全线在跑）", ""]
         return "\n".join(行们)
@@ -73,24 +93,15 @@ def 一页纸(件们: list[dict], 账本名: str) -> str:
 def 主流程() -> int:
     解析 = argparse.ArgumentParser(description="裁决一页纸生成器（239）")
     解析.add_argument("--json", action="store_true", help="机读输出（AI 会话消费）")
-    解析.add_argument("--账本", default=None, help="指定总账路径（测试用·默认 plans/021*）")
     参数 = 解析.parse_args()
-    if 参数.账本:
-        账本 = Path(参数.账本)
-    else:
-        们 = sorted((本树根 / "plans").glob("021*.md"))
-        if not 们:
-            print("[失败] 找不到 plans/021 总账", file=sys.stderr)
-            return 1
-        账本 = 们[0]
-    if not 账本.exists():
-        print(f"[失败] 总账不存在：{账本}", file=sys.stderr)
-        return 2
-    件们 = 收集待裁决(账本)
+    任务们, 来源 = 拉任务们()
+    if not 来源:
+        return 1
+    件们 = 收集待裁决(任务们)
     if 参数.json:
         print(json.dumps(件们, ensure_ascii=False, indent=2))
     else:
-        print(一页纸(件们, 账本.name))
+        print(一页纸(件们, 来源))
     return 0
 
 

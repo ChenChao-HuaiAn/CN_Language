@@ -326,3 +326,22 @@ main { max-width: 78rem; margin: 0 auto; padding: var(--space-5) var(--space-6) 
   opacity: 0; pointer-events: none; transition: opacity var(--dur2) var(--ease);
 }
 #提示条.显 { opacity: 1; }
+
+/* —— 384 文档 tab：交接/教训 折叠条 —— */
+.交接条, .教训条 {
+  border: 1px solid var(--color-border); border-radius: var(--radius-sm);
+  margin-bottom: var(--space-2); background: var(--color-bg-elev, transparent);
+  font-size: .86rem; overflow: hidden;
+}
+.交接条 summary, .教训条 summary {
+  cursor: pointer; padding: var(--space-2) var(--space-3);
+  display: flex; align-items: center; gap: var(--space-2); list-style: none;
+}
+.交接条 summary::-webkit-details-marker, .教训条 summary::-webkit-details-marker { display: none; }
+.交接条 summary:hover, .教训条 summary:hover { background: var(--color-bg-soft, rgba(127,127,127,.08)); }
+.交接条 summary .行时刻, .教训条 summary .行时刻 { margin-left: auto; flex: none; }
+.交接全文 {
+  padding: var(--space-2) var(--space-3); border-top: 1px dashed var(--color-border);
+  color: var(--color-fg); line-height: 1.55; word-break: break-word;
+  max-height: 16em; overflow: auto;
+}

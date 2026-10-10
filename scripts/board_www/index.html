@@ -25,6 +25,7 @@
   <button class="页签 活" data-tab="飞行" role="tab" aria-selected="true">🏃 当前在飞</button>
   <button class="页签" data-tab="分支" role="tab" aria-selected="false">⟂ 远端在飞分支</button>
   <button class="页签" data-tab="认领" role="tab" aria-selected="false">☰ 可认领任务</button>
+  <button class="页签" data-tab="文档" role="tab" aria-selected="false">📖 交接·教训·覆盖</button>
 </nav>
 
 <main>
@@ -58,6 +59,16 @@
       <button id="新建钮" class="钮 主">＋ 新建任务</button>
     </div>
     <div id="任务区"><div class="骨架行"></div><div class="骨架行"></div><div class="骨架行"></div></div>
+  </section>
+
+  <!-- Tab D：交接/教训/规范覆盖（384·文档上服务器——三份共写文档的服务端权威视图） -->
+  <section id="tab-文档" class="页" role="tabpanel" hidden>
+    <div class="区题">交接流 — 三机收工两行 <span class="淡">（写入口=board_cli 收工·原 交接.md 已退位）</span></div>
+    <div id="交接区"><div class="骨架行"></div><div class="骨架行"></div></div>
+    <div class="区题">教训·高权重全文 — 任务开工必读 <span class="淡">（登记=board_cli 教训·原 教训.md 已退位）</span></div>
+    <div id="教训区"><div class="骨架行"></div></div>
+    <div class="区题">规范覆盖矩阵 — E2E 用例 × 001 可测单元 <span class="淡">（登记=board_cli 用例/豁免·check_spec_coverage 门禁源）</span></div>
+    <div id="覆盖区"><div class="骨架行"></div></div>
   </section>
 </main>
 

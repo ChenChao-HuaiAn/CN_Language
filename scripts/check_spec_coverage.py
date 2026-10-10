@@ -15,14 +15,20 @@
   python scripts/check_spec_coverage.py --strict   # 严格门禁：--ci + 三态 100%（M1 达成后切换）
 """
 import io
+import json
 import os
 import re
 import sys
+import urllib.request
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SPEC = os.path.join(ROOT, "plans", "001 CN语言编译器设计规格书.md")
-MAP = os.path.join(ROOT, "tests", "e2e", "coverage_map.md")
 E2E = os.path.join(ROOT, "tests", "e2e")
+# 384：映射数据源=看板服务端 /api/coverage（coverage_map.md 已退位删除）。
+# 拉取成功落 scripts/coverage_cache.json（gitignore）；服务不可达降级读最后缓存
+# （数据近静态，陈旧可容忍）；两者皆无=退出 2（宁缺不装）。
+SRC_API = os.environ.get("CN_BOARD_URL", "http://124.222.106.84:8301").rstrip("/") + "/api/coverage"
+CACHE = os.path.join(ROOT, "scripts", "coverage_cache.json")
 
 SPEC_CHAPTERS = ("二、", "三、", "四、", "五、", "附录")  # 语言规范面章节（## 标题前缀）
 SPEC_APPENDIX_OK = ("附录A", "附录B")  # 可测契约附录；附录C=mangling 实现细节、附录D=参考资料，不入矩阵
@@ -88,30 +94,33 @@ def parse_units():
 
 
 def parse_map():
-    """解析映射表 → (rows: ID→{三态:[用例]}, exempt: 用例→理由)。"""
-    rows, exempt, mode = {}, {}, "main"
-    if not os.path.isfile(MAP):
-        return rows, exempt
-    with io.open(MAP, encoding="utf-8") as f:
-        for line in f:
-            s = line.strip()
-            if s.startswith("## "):
-                mode = "exempt" if "豁免" in s else "main"
-                continue
-            if not s.startswith("|"):
-                continue
-            cells = [c.strip() for c in s.strip("|").split("|")]
-            if mode == "main":
-                if len(cells) < 5 or cells[0] in ("单元ID", "") or cells[0].startswith(":-") or cells[0].startswith("---"):
-                    continue
-                rows[cells[0]] = {COLS[i]: [x.strip() for x in cells[2 + i].split(",") if x.strip()] for i in range(3)}
-            else:
-                if len(cells) < 2 or cells[0] in ("用例", "") or cells[0].startswith(":-") or cells[0].startswith("---"):
-                    continue
-                for c in cells[0].split(","):  # 豁免行同样支持一格多例（逗号分隔）
-                    c = c.strip()
-                    if c:
-                        exempt[c] = cells[1]
+    """映射表 → (rows: ID→{三态:[用例]}, exempt: 用例→理由)。
+    384：数据源=看板服务端 /api/coverage（coverage_map.md 已退位）。
+    拉取成功落本地缓存；服务不可达降级读最后缓存（黄字）；两者皆无退出 2。"""
+    体 = None
+    try:
+        with urllib.request.urlopen(SRC_API, timeout=8) as r:
+            体 = json.loads(r.read().decode("utf-8"))
+        with io.open(CACHE, "w", encoding="utf-8") as f:
+            json.dump(体, f, ensure_ascii=False)
+    except OSError as e:
+        if os.path.isfile(CACHE):
+            with io.open(CACHE, encoding="utf-8") as f:
+                体 = json.load(f)
+            print("[黄] 覆盖服务不可达（%s）——降级读最后缓存（可能陈旧）" % e, file=sys.stderr)
+        else:
+            print("[FAIL] 覆盖服务不可达且无缓存：%s（先用 board_cli 覆盖 验证服务）" % e,
+                  file=sys.stderr)
+            sys.exit(2)
+    rows, exempt = {}, {}
+    for u in 体.get("单元们", []):
+        rows[u["单元ID"]] = {COLS[i]: [x.strip() for x in (u.get(COLS[i]) or "").split(",") if x.strip()]
+                             for i in range(3)}
+    for e in 体.get("豁免们", []):
+        for c in (e.get("用例") or "").split(","):  # 豁免行同样支持一格多例（逗号分隔）
+            c = c.strip()
+            if c:
+                exempt[c] = e.get("理由", "")
     return rows, exempt
 
 

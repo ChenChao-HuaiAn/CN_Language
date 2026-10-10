@@ -172,8 +172,9 @@ def 落登记(在做: str, 计划: str, 备注: str) -> int:
 
 
 def 已收口(号: str) -> bool:
-    """316：在做任务是否已收口——382 起以服务端台账为准（GET /api/task/<号> 状态 ✅）；
-    服务不可达降级查本地 021（迁移窗口期·本地冻结副本兜底）。"""
+    """316：在做任务是否已收口——382 起以服务端台账为准（GET /api/task/<号> 状态 ✅）。
+    384：本地 021 降级段删除（021 文件已终局删除·服务不可达返回 False=不下板，
+    下次路过再查——漏删后果仅意图行滞留，2h 惰性清兜底）。"""
     if not 号:
         return False
     try:
@@ -181,19 +182,6 @@ def 已收口(号: str) -> bool:
         if t is not None:
             return t.get("状态") == "✅"
     except (urllib.error.URLError, OSError, ValueError):
-        pass
-    try:
-        主表 = (仓库根 / "plans" / "021-任务进度观察表.md").read_text(encoding="utf-8")
-        for 行 in 主表.splitlines():
-            m = re.match(rf"^\|\s*{re.escape(号)}\s*\|", 行)
-            if m:
-                return "| ✅ |" in 行
-        import glob
-        for 归档 in glob.glob(str(仓库根 / "项目记忆" / "归档" / "plans021-*归档*.md")):
-            with open(归档, encoding="utf-8") as f:
-                if re.search(rf"^\|\s*{re.escape(号)}\s*\|", f.read(), re.M):
-                    return True
-    except OSError:
         pass
     return False
 
