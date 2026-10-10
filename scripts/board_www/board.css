@@ -66,6 +66,7 @@ button { font: inherit; cursor: pointer; }
 .冲突条 .mono { font-weight: 700; }
 
 /* —— 页签栏（tab 三页·官网签风格：细线底+朱砂活态）—— */
+.页签栏[hidden] { display: none; }   /* 388：display:flex 覆盖 hidden 的 UA 样式·显式补 */
 .页签栏 {
   max-width: 78rem; margin: 0 auto; padding: var(--space-4) var(--space-6) 0;
   display: flex; gap: var(--space-2); border-bottom: 1px solid var(--color-border);
