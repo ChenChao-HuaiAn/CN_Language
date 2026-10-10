@@ -38,6 +38,7 @@
   <button class="页签 活" data-tab="飞行" role="tab" aria-selected="true">🏃 当前在飞</button>
   <button class="页签" data-tab="分支" role="tab" aria-selected="false">⟂ 远端在飞分支</button>
   <button class="页签" data-tab="认领" role="tab" aria-selected="false">☰ 可认领任务</button>
+  <button class="页签" data-tab="裁决" role="tab" aria-selected="false">⚖ 待裁决</button>
 </nav>
 
 <main>
@@ -67,6 +68,20 @@
       <button id="新建钮" class="钮 主">＋ 新建任务</button>
     </div>
     <div id="任务区"><div class="骨架行"></div><div class="骨架行"></div><div class="骨架行"></div></div>
+  </section>
+
+  <!-- 子页四：待裁决（403·网页裁决——AI 讲解+选项·单项/批量提交·档案落库+台账备注联动） -->
+  <section id="tab-裁决" class="页" role="tabpanel" hidden>
+    <div class="区题">待裁决 — AI 按语言特性与安全规则呈报·用户逐件批一句话 <span class="淡">（列表行内可快选·点行看讲解详情；提交后裁决落档案+自动写任务备注）</span></div>
+    <div class="工具行">
+      <div class="筛选组" id="裁决筛">
+        <button class="筛 活" data-裁="待裁决">待裁决</button>
+        <button class="筛" data-裁="全部">全部</button>
+      </div>
+      <span class="弹性"></span>
+      <button id="裁决批量钮" class="钮 主" disabled>⚖ 提交全部已选（0）</button>
+    </div>
+    <div id="裁决区"><div class="骨架行"></div><div class="骨架行"></div></div>
   </section>
 
   <!-- 板块二：交接（388·全宽时间流·全文直显） -->

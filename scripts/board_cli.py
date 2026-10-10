@@ -11,6 +11,10 @@
   python scripts/board_cli.py 用例 <单元ID> <正例|边界例|负例> <用例名[,用例名…]>   # 归入单元格（追加）
   python scripts/board_cli.py 豁免 <用例名[,用例名…]> <理由>        # 豁免登记（理由必填）
   python scripts/board_cli.py 覆盖                                 # 覆盖矩阵摘要（缺口=空格）
+  python scripts/board_cli.py 裁决 --批 <件们.json>                 # 裁决项批量上传（403·AI 侧）
+  python scripts/board_cli.py 裁决 --号 379 --标题 "…" --讲解文件 x.md --选项文件 o.json
+  python scripts/board_cli.py 裁决看 [--全部]                       # 裁决项一览（缺省只看待裁决）
+批文件格式：[{号,标题,优先级?,讲解,选项们:[{键,描述,推荐?}]}]——讲解长文走文件不走命令行。
 机器名自动=CN_MACHINE_NAME（须为 家机/深度机/单位机）或 hostname 前缀别名；识别不出用 --机器。
 """
 from __future__ import annotations
@@ -222,6 +226,58 @@ def cmd_覆盖(a) -> int:
     return 0
 
 
+def _读文件(路径: str) -> str:
+    return Path(路径).read_text(encoding="utf-8")
+
+
+def cmd_裁决(a) -> int:
+    """裁决项上传（403）——--批 批量文件 或 单件四件套。已裁决项 409=跳过不算失败。"""
+    if a.批:
+        件们 = json.loads(_读文件(a.批))
+        if not isinstance(件们, list):
+            件们 = [件们]
+    elif a.号 and a.标题 and a.讲解文件 and a.选项文件:
+        件们 = [{"号": a.号, "标题": a.标题, "优先级": a.优先级,
+                 "讲解": _读文件(a.讲解文件),
+                 "选项们": json.loads(_读文件(a.选项文件))}]
+    else:
+        print("[失败] 须 --批 <件们.json> 或 --号/--标题/--讲解文件/--选项文件 四件套")
+        return 2
+    登记 = 跳过 = 败 = 0
+    for 件 in 件们:
+        码, r = 调服务("POST", "/api/adjudication_add", {**件, "来源": "board_cli"})
+        if 码 in (200, 201):
+            登记 += 1
+            print(f"[裁决] #{件.get('号')} {r.get('动作', '已登记')}")
+        elif 码 == 409:
+            跳过 += 1
+            print(f"[裁决] #{件.get('号')} 跳过（已裁决锁定）")
+        else:
+            败 += 1
+            print(f"[失败] #{件.get('号')} {码} {r.get('错误', r)}")
+    print(f"[裁决] 登记 {登记}·跳过 {跳过}·失败 {败}")
+    return 1 if 败 else 0
+
+
+def cmd_裁决看(a) -> int:
+    码, r = 调服务("GET", "/api/adjudications")
+    落缓存("adjudications", r)
+    if 码 != 200:
+        print(f"[失败] {码}")
+        return 1
+    们 = r["裁决项们"]
+    if not a.全部:
+        们 = [x for x in 们 if x["状态"] == "待裁决"]
+    print(f"裁决项 {len(们)} 件"
+          + ("" if a.全部 else "（待裁决·--全部 看含已决）"))
+    for x in 们:
+        推荐 = next((o["键"] for o in x["选项们"] if o.get("推荐")), "")
+        尾 = (f"→ 批{x['最新结论']}" if x["状态"] == "已裁决"
+              else f"推荐={推荐 or '—'}")
+        print(f"  #{x['号']} [{x['优先级']}] {x['状态']} {x['标题'][:40]} {尾}")
+    return 0
+
+
 def main() -> int:
     import argparse
     p = argparse.ArgumentParser(description="文档资源统一 CLI（384）")
@@ -265,6 +321,19 @@ def main() -> int:
 
     s = sub.add_parser("覆盖", help="覆盖矩阵摘要")
     s.set_defaults(f=cmd_覆盖)
+
+    s = sub.add_parser("裁决", help="裁决项上传（AI 侧·批量或单件）")
+    s.add_argument("--批", default="")
+    s.add_argument("--号", default="")
+    s.add_argument("--标题", default="")
+    s.add_argument("--优先级", default="P2")
+    s.add_argument("--讲解文件", default="")
+    s.add_argument("--选项文件", default="")
+    s.set_defaults(f=cmd_裁决)
+
+    s = sub.add_parser("裁决看", help="裁决项一览")
+    s.add_argument("--全部", action="store_true")
+    s.set_defaults(f=cmd_裁决看)
 
     a = p.parse_args()
     try:

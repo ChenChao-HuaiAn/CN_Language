@@ -9,7 +9,7 @@
 let 数据 = null;                       // 最近一次 /api/board 聚合
 let 激活板 = "看板";                    // 388：顶级板块（看板/交接/教训/覆盖）
 let 激活页 = "飞行";                    // 看板板块内子页
-let 脏页 = { 飞行: true, 分支: true, 认领: true };
+let 脏页 = { 飞行: true, 分支: true, 认领: true, 裁决: true };
 let 当前筛 = "就绪";
 let 当前视图 = "列表";
 let 当前详情 = null;
@@ -93,7 +93,7 @@ async function 拉取() {
     渲染冲突(数据.冲突们 || []);
     // 数据一到即全页标脏+渲染激活页——消除「切页早于数据到达」的竞态空白
     // （首拉/轮询更新同路：页面永远反映最新数据，不再依赖手动切页触发）
-    脏页 = { 飞行: true, 分支: true, 认领: true };
+    脏页 = { 飞行: true, 分支: true, 认领: true, 裁决: true };
     渲染激活页();
   } catch (e) {
     $("状态灯").classList.add("断");
@@ -108,6 +108,8 @@ function 渲染激活页() {
   if (激活板 === "交接") return 渲染交接();
   if (激活板 === "教训") return 渲染教训();
   if (激活板 === "覆盖") return 渲染覆盖();
+  // 待裁决子页数据独立拉（/api/adjudications）——不被 /api/board 未到挡住
+  if (激活页 === "裁决") { if (脏页.裁决) { 渲染裁决(); 脏页.裁决 = false; } return; }
   if (!数据) return;                    // 看板板块：依赖 /api/board 聚合
   if (激活页 === "飞行" && 脏页.飞行) { 渲染意图(); 脏页.飞行 = false; }
   if (激活页 === "分支" && 脏页.分支) { 渲染在飞(); 脏页.分支 = false; }
@@ -117,11 +119,14 @@ function 渲染激活页() {
 /* —— 板块：交接（388·全宽时间流·全文直显·不折叠）—— */
 
 const 文档缓存 = { 交接: { 时: 0, 条目们: [] }, 教训: { 时: 0, 条目们: [] },
-                   覆盖: { 时: 0, 体: null } };
+                   覆盖: { 时: 0, 体: null }, 裁决: { 时: 0, 项们: [] } };
 let 交接机 = "全部";
 let 教训筛态 = "高权重";
 let 覆盖筛态 = "全部";
+let 裁决筛态 = "待裁决";
+let 裁决选 = {};                        // 403：号→已选选项键（列表快选与详情面板共用）
 let 当前教训 = null;                    // 详情面板打开的教训 id
+let 当前裁决 = null;                    // 详情面板打开的裁决项号
 
 async function 拉文档(名, 路径, 存) {
   if (Date.now() - 文档缓存[名].时 < 30000) return true;   // 30s 节流
@@ -234,6 +239,127 @@ async function 渲染覆盖() {
         '<div class="交接卡"><div class="交接头"><span class="mono">' + 转义(e.用例) + "</span></div>" +
         '<div class="备注行">' + 转义(e.理由 || "") + "</div></div>").join("") + "</div>"
     : '<div class="空态">无豁免</div>';
+}
+
+/* —— 看板子页：待裁决（403·网页裁决——AI 讲解+选项·单项/批量提交）—— */
+
+async function 拉裁决() {
+  if (Date.now() - 文档缓存.裁决.时 < 30000) return true;   // 30s 节流（同文档板块）
+  try {
+    const r = await 调API("GET", "api/adjudications");
+    文档缓存.裁决.项们 = r.裁决项们 || [];
+    文档缓存.裁决.时 = Date.now();
+    return true;
+  } catch (e) {
+    $("错误条").textContent = "裁决数据拉取失败：" + e.message + "（可点 ⟳ 刷新重试）";
+    $("错误条").style.display = "block";
+    return false;
+  }
+}
+
+function 裁决行HTML(x) {
+  const 已决 = x.状态 === "已裁决";
+  const 选键 = 裁决选[x.号];
+  const 快选 = !已决
+    ? '<span class="快选组">' + (x.选项们 || []).map((o) =>
+        '<button class="快选' + (选键 === o.键 ? " 选中" : "") +
+        '" data-选键="' + 转义(x.号) + "|" + 转义(o.键) + '"' +
+        ' title="' + 转义(o.描述) + (o.推荐 ? "（推荐）" : "") + '">' +
+        (o.推荐 ? "★" : "") + 转义(o.键) + "</button>").join("") + "</span>"
+    : '<span class="签 完成">已裁决·批' + 转义(x.最新结论 || "") + "</span>";
+  return '<div class="任务行' + (已决 ? " 完" : "") + '" data-裁决="' + 转义(x.号) + '">' +
+    '<span class="优先级 ' + 转义(x.优先级 || "P2") + '">' + 转义(x.优先级 || "—") + "</span>" +
+    '<span class="任务号">#' + 转义(x.号) + "</span>" +
+    '<span class="任务题文">' + 转义(概要(x.标题)) + "</span>" +
+    '<span class="行右侧">' + 快选 +
+    '<span class="行时刻">' + 转义(x.更新时刻 || "") + "</span></span></div>";
+}
+
+function 更新批量钮() {
+  const n = Object.keys(裁决选).length;
+  const 钮 = $("裁决批量钮");
+  钮.disabled = n === 0;
+  钮.textContent = "⚖ 提交全部已选（" + n + "）";
+}
+
+async function 渲染裁决() {
+  const 好 = await 拉裁决();
+  const 区 = $("裁决区");
+  if (!好) { 区.innerHTML = '<div class="空态">服务不可达——恢复后点 ⟳ 刷新</div>'; return; }
+  const 全 = 文档缓存.裁决.项们;
+  let 们 = 裁决筛态 === "待裁决" ? 全.filter((x) => x.状态 !== "已裁决") : 全;
+  if (!们.length) {
+    区.innerHTML = '<div class="空态">' + (全.length ? "暂无待裁决项——切「全部」看已决留痕"
+      : '裁决项为空——AI 呈报用 <code>board_cli 裁决 --批 件们.json</code>') + "</div>";
+    $("裁决批量钮").disabled = true;
+    $("裁决批量钮").textContent = "⚖ 提交全部已选（0）";
+    return;
+  }
+  区.innerHTML = '<div class="面板">' + 们.map(裁决行HTML).join("") + "</div>";
+  更新批量钮();
+}
+
+function 开裁决(号) {
+  const x = 文档缓存.裁决.项们.find((v) => v.号 === String(号));
+  const 面板 = $("详情面板");
+  当前裁决 = String(号);
+  if (!x) { 提示("裁决项 #" + 号 + " 不在缓存——点 ⟳ 刷新后重试", 4000); return; }
+  if (裁决选[x.号] === undefined && x.状态 !== "已裁决") {
+    const 推 = (x.选项们 || []).find((o) => o.推荐);
+    if (推) 裁决选[x.号] = 推.键;      // 详情内默认选中推荐项（可改）
+  }
+  const 选键 = 裁决选[x.号];
+  const 选项卡 = (x.选项们 || []).map((o) =>
+    '<div class="裁决选项卡' + (选键 === o.键 ? " 选中" : "") +
+    '" data-裁键="' + 转义(o.键) + '">' +
+    '<span class="键">' + (o.推荐 ? '<span class="推荐星">★</span>' : "") +
+    转义(o.键) + "</span>" + 转义(o.描述) + "</div>").join("");
+  const 记录们 = (x.记录们 || []).map((r) =>
+    '<div class="裁决记录行"><span class="签 朱砂">批' + 转义(r.选项键) + "</span>" +
+    '<span style="flex:1">' + 转义(r.选项描述) +
+    (r.意见 ? '（' + 转义(r.意见) + "）" : "") + "</span>" +
+    '<span class="行时刻">' + 转义(r.裁决人) + "·" + 转义(r.时刻 || "") + "</span></div>").join("");
+  面板.innerHTML =
+    '<button class="关" data-关>×</button>' +
+    '<div><span class="详号">#' + 转义(x.号) + "</span> " +
+    '<span class="签 ' + (x.状态 === "已裁决" ? "完成" : "挂起") + '">' + 转义(x.状态) + "</span> " +
+    '<span class="签 边框">' + 转义(x.优先级 || "P2") + "</span></div>" +
+    '<div class="详题">' + 转义(x.标题 || "") + "</div>" +
+    '<div class="详节题">AI 讲解（按语言特性与安全规则）</div>' +
+    '<div class="裁决讲解">' + 转义(x.讲解 || "（无讲解）") + "</div>" +
+    '<div class="详节题">裁决选项' + (x.状态 !== "已裁决" ? "（点选·★=AI 推荐）" : "（如须改主意可重选提交）") + "</div>" +
+    '<div class="裁决选项组">' + 选项卡 + "</div>" +
+    '<div class="详节题">补充意见与裁决人（可空）</div>' +
+    '<input id="裁决意见" class="裁决输入" placeholder="补充意见（可空）" maxlength="500">' +
+    '<input id="裁决人" class="裁决输入" placeholder="裁决人（缺省：用户）" maxlength="40">' +
+    '<div class="详操作"><button class="钮 主" data-提交裁决="' + 转义(x.号) + '"' +
+    ' id="裁决提交钮">⚖ 提交本项裁决</button></div>' +
+    (记录们 ? '<div class="详节题">裁决历史</div>' + 记录们 : "");
+  面板.hidden = false;
+  $("详情遮罩").hidden = false;
+}
+
+async function 提交裁决(件们) {
+  if (!件们.length) return;
+  $("裁决批量钮").disabled = true;
+  const 提交钮 = $("裁决提交钮");
+  if (提交钮) 提交钮.disabled = true;
+  try {
+    const r = await 调API("POST", "api/adjudicate", { 裁决们: 件们 });
+    const 联动 = (r.结果们 || []).filter((x) => x.任务备注联动 === "已写入备注").length;
+    提示("已裁决 " + r.成功 + " 件" + (联动 ? "·" + 联动 + " 件任务备注已联动" : "") +
+         (r.失败 ? "·失败 " + r.失败 + " 件" : ""), 4000);
+    for (const 件 of 件们) delete 裁决选[件.号];
+    文档缓存.裁决.时 = 0;               // 强制重拉（提交后状态已变）
+    脏页.裁决 = true;
+    关详情();
+    渲染激活页();
+  } catch (e) {
+    if (e.码 === 401) { 提示("需要 API 令牌（写操作鉴权）——即将弹出输入框", 4000); 设令牌(); }
+    else 提示("裁决提交失败：" + e.message, 5000);
+    if (提交钮) 提交钮.disabled = false;
+    更新批量钮();
+  }
 }
 
 /* —— 冲突横幅（全局·任意 tab 可见）—— */
@@ -545,8 +671,9 @@ $("自动刷新").addEventListener("change", (e) => {
   提示(e.target.checked ? "自动刷新已开启（每 8 秒）" : "自动刷新已关闭");
 });
 $("刷新钮").addEventListener("click", async () => {
-  文档缓存.交接.时 = 0; 文档缓存.教训.时 = 0; 文档缓存.覆盖.时 = 0;   // 强制重拉
-  脏页 = { 飞行: true, 分支: true, 认领: true };
+  文档缓存.交接.时 = 0; 文档缓存.教训.时 = 0; 文档缓存.覆盖.时 = 0;
+  文档缓存.裁决.时 = 0;   // 强制重拉
+  脏页 = { 飞行: true, 分支: true, 认领: true, 裁决: true };
   await 拉取();
   渲染激活页();
   提示("已刷新");
@@ -596,6 +723,19 @@ $("覆盖筛").addEventListener("click", (e) => {
 });
 $("覆盖搜索").addEventListener("input", 渲染覆盖);
 $("新建钮").addEventListener("click", 开新建);
+
+/* 待裁决（403）：筛选/批量提交/行内快选/面板选项与提交 */
+$("裁决筛").addEventListener("click", (e) => {
+  const 钮 = e.target.closest(".筛");
+  if (!钮) return;
+  裁决筛态 = 钮.dataset.裁;
+  document.querySelectorAll("#裁决筛 .筛").forEach((b) => b.classList.toggle("活", b === 钮));
+  脏页.裁决 = true; 渲染激活页();
+});
+$("裁决批量钮").addEventListener("click", () => {
+  const 件们 = Object.entries(裁决选).map(([号, 键]) => ({ 号, 选项键: 键 }));
+  提交裁决(件们);
+});
 $("新建取消").addEventListener("click", 关新建);
 $("新建遮罩").addEventListener("click", (e) => { if (e.target === $("新建遮罩")) 关新建(); });
 $("新建提交").addEventListener("click", 提交新建);
@@ -609,8 +749,37 @@ $("主题钮").addEventListener("click", () => {
 });
 
 document.addEventListener("click", (e) => {
+  const 提交裁 = e.target.closest("[data-提交裁决]");
+  if (提交裁) {
+    const 号 = 提交裁.dataset.提交裁决;
+    const 键 = 裁决选[号];
+    if (!键) { 提示("先选择一个裁决选项", 3000); return; }
+    提交裁决([{ 号, 选项键: 键,
+      裁决人: ($("裁决人")?.value || "").trim() || "用户",
+      意见: ($("裁决意见")?.value || "").trim() }]);
+    return;
+  }
+  const 裁键 = e.target.closest("[data-裁键]");
+  if (裁键 && 当前裁决) {                 // 详情面板内选项卡——先于行快选判断
+    裁决选[当前裁决] = 裁键.dataset.裁键;
+    document.querySelectorAll("#详情面板 .裁决选项卡").forEach((c) =>
+      c.classList.toggle("选中", c.dataset.裁键 === 裁键.dataset.裁键));
+    return;
+  }
+  const 选键 = e.target.closest("[data-选键]");
+  if (选键) {                             // 列表行内快选（勿冒泡开详情）
+    const [号, 键] = 选键.dataset.选键.split("|");
+    裁决选[号] = 裁决选[号] === 键 ? undefined : 键;
+    if (!裁决选[号]) delete 裁决选[号];
+    选键.parentElement.querySelectorAll(".快选").forEach((b) =>
+      b.classList.toggle("选中", b.dataset.选键 === 号 + "|" + 裁决选[号]));
+    更新批量钮();
+    return;
+  }
   const 详 = e.target.closest("[data-详]");
   if (详) { 开详情(详.dataset.详); return; }
+  const 裁 = e.target.closest("[data-裁决]");
+  if (裁) { 开裁决(裁.dataset.裁决); return; }
   const 教 = e.target.closest("[data-教训]");
   if (教) { 开教训(Number(教.dataset.教训)); return; }
   const 复制命令 = e.target.closest("[data-复制命令]");
@@ -628,6 +797,6 @@ document.addEventListener("keydown", (e) => {
 
 拉取();
 setInterval(() => { if (自动刷新开() && 激活板 === "看板") {
-  脏页 = { 飞行: true, 分支: true, 认领: true };
+  脏页 = { 飞行: true, 分支: true, 认领: true, 裁决: true };   // 裁决数据自身 30s 节流·快选态存内存不丢
   拉取().then(渲染激活页);
 } }, 8000);

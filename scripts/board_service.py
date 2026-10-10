@@ -31,6 +31,12 @@
 #   POST /api/coverage_exempt_add {用例,理由}                 豁免登记（逗号批量·理由必填）
 #   POST /api/coverage_import {单元们:[…],豁免们:[…]}          迁移批量幂等导入
 #   GET  /api/coverage        全量 {单元们,豁免们}（check_spec_coverage 门禁源·客户端落缓存降级）
+# 403 裁决资源（网页裁决系统·board_adjudication.py 模块）：
+#   POST /api/adjudication_add {号,标题,优先级?,讲解?,选项们:[{键,描述,推荐?}],覆盖?}
+#                              裁决项上传/修订（AI 侧·已裁决项默认 409 锁定）
+#   POST /api/adjudicate      {裁决们:[{号,选项键,裁决人?,意见?,联动备注?}]}
+#                              裁决提交（单项/批量·档案落库+台账备注自动联动）
+#   GET  /api/adjudications   全量裁决项（附裁决记录·待裁决在前）
 # 过期：心跳断 CN_INTENT_STALE_SEC（默认 1800s）→ 失联态（行保留·UI 灰显+失联徽章）。
 # 心跳时戳=服务端收到时刻（911 教训：免疫各机时钟漂移）。任务表=持久落盘永不过期。
 # 部署：/etc/systemd/system/cn-board.service（Environment= CN_BOARD_PORT/CN_BOARD_TOKEN/CN_BOARD_DB）
@@ -54,6 +60,7 @@ from urllib.parse import urlparse, unquote
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import board_tasks as 台账   # 任务台账模块（382·发号/CRUD/状态机/迁移）
 import board_docs as 文档    # 交接/教训/规范覆盖模块（384·文档上服务器二期）
+import board_adjudication as 裁决  # 待裁决项模块（403·网页裁决系统）
 
 # ===== 可调常量 =====
 端口 = int(os.environ.get("CN_BOARD_PORT", "8301"))
@@ -101,6 +108,7 @@ def 建库(路径: str = db路径) -> sqlite3.Connection:
         号们 TEXT, 时戳 REAL, 时刻 TEXT)""")
     台账.建任务表(con)      # 382：任务台账主表（服务端唯一权威）
     文档.建表(con)          # 384：交接/教训/规范覆盖（文档上服务器二期）
+    裁决.建表(con)          # 403：裁决项/裁决记录（网页裁决系统）
     return con
 
 
@@ -355,6 +363,10 @@ class 处理器(BaseHTTPRequestHandler):
         if 路径 == "/api/coverage":
             with 写锁:
                 return self._回JSON(200, 文档.覆盖全量(连接))
+        if 路径 == "/api/adjudications":
+            with 写锁:
+                return self._回JSON(200, {"裁决项们": 裁决.裁决项列表(连接),
+                                          "时刻": 时刻()})
         return self._回JSON(404, {"错误": "未知路径"})
 
     def do_POST(self):
@@ -400,6 +412,15 @@ class 处理器(BaseHTTPRequestHandler):
         if 路径 == "/api/coverage_import":
             with 写锁:
                 码, 响应 = 文档.覆盖批量导入(连接, 体)
+                return self._回JSON(码, 响应)
+        # —— 403 裁决资源（网页裁决·POST 须令牌）——
+        if 路径 == "/api/adjudication_add":
+            with 写锁:
+                码, 响应 = 裁决.裁决项设置(连接, 体)
+                return self._回JSON(码, 响应)
+        if 路径 == "/api/adjudicate":
+            with 写锁:
+                码, 响应 = 裁决.批量提交(连接, 体)
                 return self._回JSON(码, 响应)
         return self._回JSON(404, {"错误": "未知路径"})
 
@@ -657,7 +678,8 @@ def 自检() -> int:
         签("看板页 200 且静态服务（board_www/index.html）",
            resp.status == 200 and "任务看板" in 页)
         签("382 页面子页签+详情面板+新建表单齐备",
-           all(k in 页 for k in ("当前在飞", "远端在飞分支", "可认领任务", "详情面板", "新建任务")))
+           all(k in 页 for k in ("当前在飞", "远端在飞分支", "可认领任务", "待裁决",
+                                 "详情面板", "新建任务")))
         签("388 四板块顶级并列（看板/交接/教训/覆盖）",
            all(k in 页 for k in ("板块签", 'data-板="看板"', 'data-板="交接"',
                                  'data-板="教训"', 'data-板="覆盖"')))
@@ -848,6 +870,35 @@ def 自检() -> int:
         签("384 覆盖解析：主矩阵+豁免区两段",
            len(覆["单元们"]) == 1 and 覆["单元们"][0]["负例"] == "301_拒绝"
            and len(覆["豁免们"]) == 1)
+        # —— 403 裁决资源：上传/提交/备注联动（正反两态）——
+        裁决选项 = [{"键": "甲", "描述": "立即实施", "推荐": True},
+                    {"键": "乙", "描述": "维持挂起"}]
+        码, r = 调("POST", "/api/adjudication_add", {"号": "800", "标题": "裁决甲",
+                    "优先级": "P1", "讲解": "讲解正文", "选项们": 裁决选项})
+        签("403 裁决项上传 201", 码 == 201)
+        码, r = 调("POST", "/api/adjudication_add", {"号": "801", "标题": "坏",
+                    "选项们": [{"键": "甲", "描述": "唯一项"}]})
+        签("403 上传：选项不足 2 个 400（反态）", 码 == 400)
+        调("POST", "/api/task_create", {"标题": "裁决联动体", "请求号": "800"})
+        码, r = 调("POST", "/api/adjudicate", {"裁决们": [
+            {"号": "800", "选项键": "甲", "裁决人": "用户", "意见": "照办"}]})
+        签("403 裁决提交：批量 1 件成功", 码 == 200 and r["成功"] == 1
+           and r["结果们"][0]["任务备注联动"] == "已写入备注")
+        任务800 = 台账.单任务(globals()["连接"], "800")
+        签("403 台账备注联动：裁决语入备注头·状态不动",
+           任务800["备注"].startswith("〔") and "网页裁决" in 任务800["备注"][:40]
+           and 任务800["状态"] == "⬜")
+        码, r = 调("GET", "/api/adjudications")
+        项800 = next((x for x in r["裁决项们"] if x["号"] == "800"), {})
+        签("403 裁决后已裁决态+记录留痕+最新结论",
+           项800.get("状态") == "已裁决" and 项800.get("记录们")
+           and 项800["最新结论"].startswith("甲："))
+        码, r = 调("POST", "/api/adjudicate", {"裁决们": [
+            {"号": "800", "选项键": "不存在的键"}]})
+        签("403 裁决：非法选项键计失败（反态）", 码 == 200 and r["失败"] == 1)
+        码, r = 调("POST", "/api/adjudication_add", {"号": "800", "标题": "再改",
+                    "选项们": 裁决选项})
+        签("403 已裁决项拒绝静默覆盖 409（反态）", 码 == 409)
     finally:
         实例.shutdown()
         globals()["连接"] = 全局连接

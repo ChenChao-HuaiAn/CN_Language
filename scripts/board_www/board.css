@@ -407,3 +407,46 @@ main { max-width: 78rem; margin: 0 auto; padding: var(--space-5) var(--space-6) 
 }
 @media (max-width: 60rem) { .覆盖行 { grid-template-columns: 6em 1fr; }
   .覆盖行 > span:nth-child(n+3) { grid-column: 1 / -1; } }
+
+/* —— 待裁决（403·网页裁决——快选/选项卡/讲解/记录）—— */
+.快选组 { display: flex; gap: 4px; }
+.快选 {
+  border: 1px solid var(--color-border); background: var(--color-surface);
+  color: var(--color-fg-muted); border-radius: var(--radius-sm);
+  font-size: .74rem; font-weight: 600; padding: .05em .6em;
+  transition: color var(--dur) var(--ease), background var(--dur) var(--ease),
+              border-color var(--dur) var(--ease);
+}
+.快选:hover { border-color: var(--color-accent); color: var(--color-accent); }
+.快选.选中 { background: var(--color-accent); color: var(--color-accent-fg);
+             border-color: var(--color-accent); }
+.裁决讲解 {
+  line-height: 1.7; word-break: break-word; font-size: .9rem;
+  white-space: pre-wrap; overflow-wrap: break-word;
+  background: var(--color-bg-subtle); border-left: 3px solid var(--color-accent);
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
+  padding: var(--space-3) var(--space-4);
+  max-height: 26em; overflow-y: auto;
+}
+.裁决选项组 { display: flex; flex-direction: column; gap: var(--space-2); }
+.裁决选项卡 {
+  border: 1px solid var(--color-border); border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-3); cursor: pointer; font-size: .88rem;
+  transition: border-color var(--dur) var(--ease), background var(--dur) var(--ease);
+}
+.裁决选项卡:hover { border-color: var(--color-accent); }
+.裁决选项卡.选中 { border-color: var(--color-accent);
+                   background: color-mix(in srgb, var(--color-accent) 8%, transparent); }
+.裁决选项卡 .键 { font-family: var(--font-mono); font-weight: 700; margin-right: .6em; }
+.推荐星 { color: var(--color-warning); margin-right: .2em; }
+.裁决输入 {
+  display: block; width: 100%; margin-bottom: var(--space-2);
+  background: var(--color-bg-subtle); color: var(--color-fg);
+  border: 1px solid var(--color-border); border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-3); font: inherit; font-size: .86rem;
+}
+.裁决输入:focus { border-color: var(--color-accent); outline: none; }
+.裁决记录行 {
+  display: flex; align-items: center; gap: var(--space-2);
+  padding: var(--space-1) 0; font-size: .84rem;
+}
