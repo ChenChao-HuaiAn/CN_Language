@@ -517,14 +517,7 @@ bool IRGenerator::handleClassMemberAssign(MemberExpr* target, Expr* valueExpr,
         objName = static_cast<IdentifierExpr*>(target->object.get())->name;
     }
     const std::string objSrcType = exprSrcType(target->object.get());
-    // 351（与上方 handleClassMemberLvalue 同款剥星）：字段类型查询经剥星后
-    //   类名——原 classFieldType("节点*") 恒 miss → targetIrType 落默认 "i64"
-    //   → 指针字段值被 Cast i64（堆链形态字段类型口径失真）。
-    std::string canonObjAssign = types::canonical(objSrcType);
-    if (!semantic_->isClassType(canonObjAssign) && types::isPointer(canonObjAssign)) {
-        canonObjAssign = types::canonical(types::pointeeOf(canonObjAssign));
-    }
-    std::string fieldType = classFieldType(canonObjAssign, target->memberName);
+    std::string fieldType = classFieldType(types::canonical(objSrcType), target->memberName);
     if (fieldType.empty() && !objName.empty()) {
         fieldType = classFieldType(objName, target->memberName);
     }
@@ -537,17 +530,14 @@ bool IRGenerator::handleClassMemberAssign(MemberExpr* target, Expr* valueExpr,
     //   （956 m9 读回地址·m8 拷出解引用段错误）。复合赋值对聚合无意义保持原路。
     //   位置在 genExpr 前（避免源表达式双发副作用）；字段类型经 973 统一查询。
     if (!isCompoundAssignOp(op)) {
-        // 351（同款剥星）：974 聚合字段查询对象类型先剥指针——类指针对象的
-        //   聚合字段赋值（p.内层结构体字段 = v）同面。
-        std::string objType974 = exprSrcType(target->object.get());
-        std::string canonObj974 = types::canonical(objType974);
-        if (!semantic_->isClassType(canonObj974) &&
-            !semantic_->isStructType(canonObj974) &&
-            types::isPointer(canonObj974)) {
-            canonObj974 = types::canonical(types::pointeeOf(canonObj974));
-        }
+        // 351 修复轮回退注记（2026-10-10）：本分支曾顺手加对象剥星（类指针.
+        //   聚合字段=v 走 974 整体赋值）——云端预验实证经 v2p 传导改变容器
+        //   实现行为（390/458 v2 面红·该面=聚合字段整体赋值路径切换·非本案
+        //   指针字段写落位最小面）——按单一职责回退，聚合指针面归 #364 独立
+        //   清偿轮（须带 v2p dual 全量验证）。
         const std::string fieldType974 =
-            structOrClassFieldType(canonObj974, target->memberName);
+            structOrClassFieldType(exprSrcType(target->object.get()),
+                                   target->memberName);
         const std::string canon974 = types::canonical(fieldType974);
         if (!canon974.empty() &&
             (semantic_->isStructType(canon974) ||
