@@ -578,6 +578,19 @@ bool IRGenerator::handleClassMemberAssign(MemberExpr* target, Expr* valueExpr,
             val = emitResult(opcode, {current, val}, targetIrType, "", loc);
         }
     }
+    // 396/398 根治（2026-10-10·gdb watch 铁证）：类字符串字段写入位借用来源
+    //   归一化——类析构级联（injectFieldCascadeDestroy）对字符串字段无条件
+    //   __cn_str_free（字段=拥有语义），借用来源（按值形参/成员链/下标/解引用/
+    //   全局）直写=句柄共享 → 析构 free 调用方缓冲（bench b4 实证：~JSON解析器
+    //   __cn_str_free(器.源) 提前释放调用方 33KB 文档串 → 第 2 轮重置复用解析
+    //   UAF 错误码=1；669 同形态字面量实参被 cn_free_tracked 池外忽略侥幸绿=
+    //   假健康）。85-a 返回位/74-a 容器位/974 聚合位同构补齐=类标量成员写位。
+    //   拥有来源（调用返回/字面量/转移/拥有局部移出）保持直写零拷贝（102 甲案
+    //   同款接管语义）。v2 两侧已深拷（win/linux asm 同证）——宿主单侧补齐。
+    if (fieldType == "字符串" && !isCompoundAssignOp(op) &&
+        isBorrowedAggregateSource(valueExpr)) {
+        val = emitResult(ir::Opcode::Call, {val}, "ptr", "__cn_str_copy", loc);
+    }
     emit(ir::Opcode::StorePtr, {addr, val}, ir::IRValue(), "", targetIrType, loc);
     lastExpr_ = val;
     return true;
