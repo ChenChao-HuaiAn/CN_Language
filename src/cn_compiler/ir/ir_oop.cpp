@@ -916,10 +916,22 @@ std::string IRGenerator::exprSrcType(Expr* node) const {
                 if (mem->memberName == "值") return optionalTypeArg(canonObj);
                 if (mem->memberName == "有值") return "布尔";
             }
-            const std::string fieldType = classFieldType(objType, mem->memberName);
+            // 363 根治（2026-10-10·与 v2 321 同构）：链上指针字段中间跳——
+            //   objType 带星（如 持有*）时 classFieldType/findStruct 恒 miss →
+            //   三级链（自身.内.表.追加 的 .表）对象类型断链 → 方法符号解析 0
+            //   （asm 铁证 mov r11,0; call r11）。. 左侧指针自动解引用一级
+            //   （001 立法）——剥星限本消费点不入公共查询入口（362 教训：
+            //   无差别剥星误伤哨兵消费）。
+            std::string lookupType363 = objType;
+            if (types::isPointer(lookupType363)) {
+                lookupType363 = types::pointeeOf(lookupType363);
+            }
+            const std::string fieldType =
+                classFieldType(lookupType363, mem->memberName);
             if (!fieldType.empty()) return fieldType;
             if (semantic_ != nullptr) {
-                const StructDecl* decl = semantic_->findStruct(types::canonical(objType));
+                const StructDecl* decl =
+                    semantic_->findStruct(types::canonical(lookupType363));
                 if (decl != nullptr) {
                     for (const auto& f : decl->fields) {
                         // 宿主缺陷根治（2026-08-25）：结构体字段为泛型容器

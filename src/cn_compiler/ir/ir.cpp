@@ -391,8 +391,18 @@ std::string IRGenerator::memberObjStructType(MemberExpr* node) const {
     } else if (node->object->getType() == NodeType::MemberExpr) {
         MemberExpr* inner = static_cast<MemberExpr*>(node->object.get());
         const std::string innerType = memberObjStructType(inner);
+        // 363 根治（2026-10-10·与 v2 321 同构）：链上指针字段中间跳——innerType
+        //   带星（如 持有*）时 structOrClassFieldType findClass 恒 miss → 三级链
+        //   （r.子.内.方法 的 .内）类型推导断链 → 方法符号解析 0（asm 铁证
+        //   mov r11,0; call r11）。. 左侧指针自动解引用一级（001 立法）——中间跳
+        //   全此语义，与末端 isDerefAccess 剥星同构；剥星限本消费点不入公共
+        //   查询入口（362 教训：无差别剥星误伤哨兵消费）。
+        std::string lookupType363 = innerType;
+        if (types::isPointer(lookupType363)) {
+            lookupType363 = types::pointeeOf(lookupType363);
+        }
         // 973（104）：结构体/类统一字段类型查询（类宿主原恒 miss→读降级 0）
-        objType = structOrClassFieldType(innerType, inner->memberName);
+        objType = structOrClassFieldType(lookupType363, inner->memberName);
         // 宿主缺陷根治（2026-08-25）：结果/可选 .值/.错误 不是合成结构体直接字段
         //   （在联合体内）——嵌套成员（查.值.类型ID）须按结果/可选成员映射推导，
         //   否则 lvalueAddress 找不到对象类型而不加外层字段偏移（类型ID 在偏移8
