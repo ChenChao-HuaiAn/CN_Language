@@ -20,6 +20,28 @@ const 转义 = (s) => String(s ?? "").replace(/[&<>"]/g,
 const 状态签 = { "⬜": "待办", "🏃": "在飞", "⏸": "挂起", "✅": "完成" };
 const 状态符 = { 待办: "⬜", 在飞: "🏃", 挂起: "⏸", 完成: "✅" };
 
+/* 标题一句话概要（391 用户令：列表/卡片标题一句话概括·全文点号牌看详情面板）：
+   ≤36 字直显；超长则取第一个「：」「——」前的分句（含分隔符·提示尚有下文），
+   分句过短（<8 字·概括失义）或不存在则截前 30 字加省略号。 */
+const 概要上限 = 30;
+const 概要 = (题) => {
+  const s = String(题 || "").replace(/\s+/g, " ").trim();
+  if (s.length <= 概要上限 + 6) return s;
+  for (const 分 of ["：", "——"]) {
+    const i = s.indexOf(分);
+    if (i >= 8 && i + 1 <= 概要上限) return s.slice(0, i + 1) + "…";
+  }
+  return s.slice(0, 概要上限) + "…";
+};
+
+/* 意图备注与台账标题同源去重（391：wt.py create 把同一句描述既写台账标题又写
+   认领备注，前端大字/小字双显重复——忽略空白差异后相同或互为前缀即判重复）。 */
+const 备注重复标题 = (备, 题) => {
+  if (!备 || !题) return false;
+  const a = String(备).replace(/\s+/g, ""), b = String(题).replace(/\s+/g, "");
+  return a === b || b.startsWith(a) || a.startsWith(b);
+};
+
 const 相对时 = (s) => {
   if (!s) return "";
   const 分 = Math.floor((Date.now() / 1000 - s) / 60);
@@ -257,9 +279,10 @@ function 渲染意图() {
             : '<span class="对话">未挂任务</span>') +
           静默签 +
           '<span class="心跳行">' + 相对时(i.时戳) + "</span></div>" +
-          (t ? '<div class="任务题">' + 转义(t.标题) + "</div>" : "") +
+          (t ? '<div class="任务题">' + 转义(概要(t.标题)) + "</div>" : "") +
           (计划 ? '<div style="margin-top:4px">' + 计划 + "</div>" : "") +
-          (i.备注 ? '<div class="备注行">' + 转义(i.备注) + "</div>" : "") +
+          (i.备注 && !(t && 备注重复标题(i.备注, t.标题))
+            ? '<div class="备注行">' + 转义(i.备注) + "</div>" : "") +
           "</div>";
       }).join("") + "</div>";
   }).join("");
@@ -290,7 +313,7 @@ function 渲染在飞() {
       '<div class="徽排"><span class="分支名">' + 转义(f.分支) + "</span>" + 徽 + 主徽 +
       (f.未推 ? '<span class="签 边框 挂起">⚠ 分支未推·认领未生效</span>' : "") +
       (f.已并入 ? '<span class="签 待办">已并入 develop</span>' : "") + "</div>" +
-      '<div class="题">' + (t ? 转义(t.标题) : 转义(f.提交题 || f.提交 || "")) + "</div>" +
+      '<div class="题">' + (t ? 转义(概要(t.标题)) : 转义(概要(f.提交题 || f.提交 || ""))) + "</div>" +
       "</div></div>";
   }).join("") + "</div>";
 }
@@ -314,7 +337,7 @@ function 任务行HTML(t, 泳道否) {
   return '<div class="任务行' + (t.状态 === "✅" ? " 完" : "") + '" data-详="' + 转义(t.号) + '">' +
     '<span class="优先级 ' + 转义(t.优先级 || "P3") + '">' + 转义(t.优先级 || "—") + "</span>" +
     '<span class="任务号">#' + 转义(t.号) + "</span>" +
-    '<span class="任务题文">' + 转义(t.标题 || "") +
+    '<span class="任务题文">' + 转义(概要(t.标题)) +
     (非就绪待办 && !泳道否 ? '<span class="前置缺">前置未完</span>' : "") + "</span>" +
     '<span class="行右侧">' +
     (t.疑似认领 ? '<span class="黄标">⚠ 疑似认领中</span>' : "") +

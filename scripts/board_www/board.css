@@ -177,7 +177,10 @@ main { max-width: 78rem; margin: 0 auto; padding: var(--space-5) var(--space-6) 
 .备注行 { color: var(--color-fg-subtle); font-size: .82rem; margin-top: var(--space-1); }
 .心跳行 { margin-left: auto; font-size: .75rem; color: var(--color-fg-subtle);
           font-variant-numeric: tabular-nums; }
-.任务题 { margin-top: 2px; font-size: .88rem; opacity: .9; }
+/* 391：标题已一句话概要，窄屏仍超行时两行封顶（全文点号牌看详情面板） */
+.任务题 { margin-top: 2px; font-size: .88rem; opacity: .9;
+          display: -webkit-box; -webkit-line-clamp: 2;
+          -webkit-box-orient: vertical; overflow: hidden; }
 
 /* —— 任务列表行（紧凑 36px·hover 4% 朱砂·官网表格手法）—— */
 .任务行 {
@@ -197,6 +200,12 @@ main { max-width: 78rem; margin: 0 auto; padding: var(--space-5) var(--space-6) 
 .任务号 { font-family: var(--font-mono); font-weight: 700; font-size: .84rem;
           color: var(--color-accent); width: 3.6em; }
 .任务题文 { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 391：窄屏行右侧（状态签+时刻）挤压题文只剩数字——题文放开两行封顶·时刻收起 */
+@media (max-width: 36rem) {
+  .任务题文 { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2;
+              -webkit-box-orient: vertical; }
+  .任务行 .行时刻 { display: none; }
+}
 .任务题文 .前置缺 { color: var(--color-warning); font-size: .78rem; margin-left: .5em; }
 .行右侧 { display: flex; align-items: center; gap: var(--space-2); }
 .行时刻 { color: var(--color-fg-subtle); font-size: .75rem; font-variant-numeric: tabular-nums; }
