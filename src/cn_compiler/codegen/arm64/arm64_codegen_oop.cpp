@@ -233,37 +233,53 @@ void Arm64CodeGenerator::emitVirtualCall(Arm64AsmWriter& writer,
     } else {
         writer.line("ldr x9, [x9]");
     }
-    // 4. 装载其余实参（参数位从 1 起：this 占第 0 位，参数位后移）
+    // 4. 装载其余实参（404：this 占 GP#0，实参走 GP/FP 独立计数落位单点）
     //    注意：x9 已保存函数指针，参数装载使用 x10 等（不破坏 x9）
+    std::vector<std::string> vcArgTypes;
+    vcArgTypes.reserve(argCount);
     for (std::size_t i = 0; i < argCount; ++i) {
+        vcArgTypes.push_back(inst.operands[1 + i].type);
+    }
+    const std::vector<Arm64ArgPlacement> placements =
+        arm64AssignParamPlacements(vcArgTypes, 1);
+    // 栈参先发射（d0/x10 中转不踩寄存器实参——431 浮九实录：单循环按序发射
+    //   时第 9 浮点栈参的 d0 中转会踩掉 FP#0 已装实参，285→293 错值）
+    for (std::size_t i = 0; i < argCount; ++i) {
+        const Arm64ArgPlacement& place = placements[i];
+        if (place.cls != 2) continue;
         const ir::IRValue& av = inst.operands[1 + i];
         const std::string& argType = av.type;
-        const std::size_t paramPos = i + 1;  // 参数位：this 占 0
-        if (paramPos >= 8) {
-            // 栈参数（第9起）：写 [sp,#(paramPos-8)*8]
-            const int memOff = static_cast<int>((paramPos - 8) * 8);
-            if (isFloatType(argType)) {
-                loadOperandToV(writer, av, (argType == "f64") ? "d0" : "s0");
-                writer.line("fmov x10, " + std::string((argType == "f64") ? "d0" : "s0"));
-                writer.line("str x10, [sp, #" + std::to_string(memOff) + "]");
-            } else {
-                // D8（525-a）：源直读写栈参（免「mov x10, x27」中转）；
-                //   未分配 -> 装载 x10 原路径逐字节不变
-                const std::string reg = operandSourceReg(writer, av, "x10");
-                writer.line("str " + reg + ", [sp, #" + std::to_string(memOff) + "]");
-            }
-            continue;
-        }
+        // 栈参数（寄存器池溢出）：写 [sp,#槽序*8]（槽序=参数序·AAPCS64）
+        const int memOff = static_cast<int>(place.num * 8);
         if (isFloatType(argType)) {
+            loadOperandToV(writer, av, (argType == "f64") ? "d0" : "s0");
+            writer.line("fmov x10, " + std::string((argType == "f64") ? "d0" : "s0"));
+            writer.line("str x10, [sp, #" + std::to_string(memOff) + "]");
+        } else {
+            // D8（525-a）：源直读写栈参（免「mov x10, x27」中转）；
+            //   未分配 -> 装载 x10 原路径逐字节不变
+            const std::string reg = operandSourceReg(writer, av, "x10");
+            writer.line("str " + reg + ", [sp, #" + std::to_string(memOff) + "]");
+        }
+    }
+    // 寄存器实参后装载（GP xN / FP dN|sN·404 独立计数）
+    for (std::size_t i = 0; i < argCount; ++i) {
+        const Arm64ArgPlacement& place = placements[i];
+        if (place.cls == 2) continue;
+        const ir::IRValue& av = inst.operands[1 + i];
+        const std::string& argType = av.type;
+        if (place.cls == 1) {
+            // 浮点实参：vN（FP 队列独立序号·404）
             const std::string vreg = (argType == "f64") ? "d" : "s";
-            loadOperandToV(writer, av, vreg + std::to_string(paramPos));
+            loadOperandToV(writer, av, vreg + std::to_string(place.num));
         } else if (argType == "i128" || argType == "u128") {
             // i128 实参：传双槽地址指针
             const int loId = av.id + 1;
-            emitStackAddr(writer, "x" + std::to_string(paramPos),
+            emitStackAddr(writer, "x" + std::to_string(place.num),
                           regSlotOffset(loId));
         } else {
-            const std::string reg = loadOperandToX(writer, av, "x" + std::to_string(paramPos));
+            // 整型/指针实参：xN（GP 队列序号·404）
+            const std::string reg = loadOperandToX(writer, av, "x" + std::to_string(place.num));
             (void)reg;
         }
     }

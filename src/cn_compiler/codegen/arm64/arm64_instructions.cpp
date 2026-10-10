@@ -826,9 +826,20 @@ void Arm64CodeGenerator::emitCall(Arm64AsmWriter& writer,
                             inst.result.type == "u128" ||
                             inst.result.type.rfind("struct", 0) == 0);
     const std::size_t argOffset = hasBigRet ? 1 : 0;
-    // 栈参数区大小（第9参数位起）
-    const std::size_t totalParams = argCount + argOffset;
-    const std::size_t stackArgs = (totalParams > 8) ? (totalParams - 8) : 0;
+    // 404：GP/FP 独立计数落位（AAPCS64 双队列·arm64AssignParamPlacements 单点，
+    //   与 emitParamSetup/emitVirtualCall 三发射点同源；对齐 v2 分配参数位置 91-a）
+    std::vector<std::string> argTypes;
+    argTypes.reserve(argCount);
+    for (std::size_t i = 0; i < argCount; ++i) {
+        argTypes.push_back(inst.operands[argBase + i].type);
+    }
+    const std::vector<Arm64ArgPlacement> placements =
+        arm64AssignParamPlacements(argTypes, static_cast<int>(argOffset));
+    // 栈参数区大小（GP/FP 寄存器池用尽后的溢出参数·槽序=参数序）
+    std::size_t stackArgs = 0;
+    for (const Arm64ArgPlacement& p : placements) {
+        if (p.cls == 2) ++stackArgs;
+    }
     // 返回缓冲区（16 字节，栈顶下方）
     const int bigRetPad = hasBigRet ? 16 : 0;
     int stackBytes = static_cast<int>(stackArgs * 8 + bigRetPad);
@@ -852,14 +863,13 @@ void Arm64CodeGenerator::emitCall(Arm64AsmWriter& writer,
             writer.line("mov x0, sp");
         }
     }
-    // 栈参数（第9起）：从 [sp] 开始
+    // 栈参数（寄存器池溢出）：从 [sp] 开始（槽序=参数序·AAPCS64 Stage D）
     for (std::size_t i = 0; i < argCount; ++i) {
-        const std::size_t paramPos = i + argOffset;  // 参数位号（含隐藏返回指针）
-        if (paramPos < 8) continue;  // 寄存器参数稍后处理
+        const Arm64ArgPlacement& place = placements[i];
+        if (place.cls != 2) continue;  // 寄存器参数稍后处理
         const ir::IRValue& av = inst.operands[argBase + i];
         const std::string& argType = av.type;
-        const std::size_t stackIdx = paramPos - 8;  // 栈参数序号
-        const int memOff = static_cast<int>(stackIdx * 8);
+        const int memOff = static_cast<int>(place.num * 8);
         if (argType == "i128" || argType == "u128") {
             // i128 栈参数：传双槽地址指针（低64位槽地址）
             std::string addrReg;
@@ -874,7 +884,7 @@ void Arm64CodeGenerator::emitCall(Arm64AsmWriter& writer,
                     try { lo = static_cast<std::uint64_t>(std::stoull(ex)); } catch (...) {}
                 }
                 // 常量：写临时区 [sp, #stackArgs*8+32]（返回缓冲区上方）
-                const int tmpOff = static_cast<int>(stackArgs * 8 + 32 + stackIdx * 16);
+                const int tmpOff = static_cast<int>(stackArgs * 8 + 32 + place.num * 16);
                 emitMovImm(writer, "x10", lo);
                 writer.line("str x10, [sp, #" + std::to_string(tmpOff) + "]");
                 emitMovImm(writer, "x10", hi);
@@ -899,13 +909,13 @@ void Arm64CodeGenerator::emitCall(Arm64AsmWriter& writer,
             writer.line("str " + reg + ", [sp, #" + std::to_string(memOff) + "]");
         }
     }
-    // 寄存器参数（参数位号 0~7）
+    // 寄存器参数（GP xN / FP dN|sN·404 独立计数）
     for (std::size_t i = 0; i < argCount; ++i) {
-        const std::size_t paramPos = i + argOffset;
-        if (paramPos >= 8) continue;
+        const Arm64ArgPlacement& place = placements[i];
+        if (place.cls == 2) continue;
         const ir::IRValue& av = inst.operands[argBase + i];
         const std::string& argType = av.type;
-        if (argType == "i128" || argType == "u128") {
+        if (place.cls == 0 && (argType == "i128" || argType == "u128")) {
             // i128 参数：传双槽地址指针
             if (av.isConstant) {
                 const std::string& ex = av.extra;
@@ -922,20 +932,20 @@ void Arm64CodeGenerator::emitCall(Arm64AsmWriter& writer,
                 writer.line("str x10, [sp, #" + std::to_string(tmpOff) + "]");
                 emitMovImm(writer, "x10", hi);
                 writer.line("str x10, [sp, #" + std::to_string(tmpOff + 8) + "]");
-                writer.line("add x" + std::to_string(paramPos) + ", sp, #" +
+                writer.line("add x" + std::to_string(place.num) + ", sp, #" +
                             std::to_string(tmpOff));
             } else {
                 const int loId = av.id + 1;
-                emitStackAddr(writer, "x" + std::to_string(paramPos),
+                emitStackAddr(writer, "x" + std::to_string(place.num),
                               regSlotOffset(loId));
             }
-        } else if (isFloatType(argType)) {
-            // 浮点参数：vN（参数位号）
+        } else if (place.cls == 1) {
+            // 浮点参数：vN（FP 队列独立序号·404）
             const std::string vreg = (argType == "f64") ? "d" : "s";
-            loadOperandToV(writer, av, vreg + std::to_string(paramPos));
+            loadOperandToV(writer, av, vreg + std::to_string(place.num));
         } else {
-            // 整型/指针参数：xN（参数位号）
-            const std::string reg = loadOperandToX(writer, av, "x" + std::to_string(paramPos));
+            // 整型/指针参数：xN（GP 队列序号·404）
+            const std::string reg = loadOperandToX(writer, av, "x" + std::to_string(place.num));
             (void)reg;
         }
     }

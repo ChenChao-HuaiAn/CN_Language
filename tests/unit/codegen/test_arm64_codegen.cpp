@@ -641,10 +641,12 @@ TEST(Arm64CodegenTest, PlainStackParamAnchorBase16) {
     EXPECT_EQ(asmText.find("ldr x10, [x29,#32]"), std::string::npos);
 }
 
-// 隐藏返回 + 浮点参数位号：被调方浮点位号 = 参数位号 paramPos（与调用方
-//   v<paramPos> 装载一致）——寄存器位 f64（paramPos=2）从 d2 装；栈位
-//   （paramPos=8/9）从 [x29,#32]/[x29,#40] 位模式读入。旧实现用源序号 i
-//   （d0 错位 + 栈锚硬编码 16 双重偏差）
+// 隐藏返回 + 浮点参数落位（404 独立计数语义·2026-10-10）：被调方与调用方同走
+//   GP/FP 独立计数（arm64AssignParamPlacements 单点）——sret retbuf 占 x0：
+//   a→x1（GP#1），f0→d0（FP 队列#1·不占 GP 位号），g0..g5→x2..x7，
+//   g6/g7 GP 池用尽入栈槽 0/1（[x29,#32]/[x29,#40] 位模式经 x10 读入）。
+//   历史锁（221 r9）的「被调方/调用方落位一致」不变量保持：旧缺陷=被调方
+//   源序号 i（d0）vs 调用方位号（d2）不一致；本锁=双侧独立计数一致（均 d0）
 TEST(Arm64CodegenTest, SretFloatParamPositionAndAnchor) {
     Diagnostics diagnostics;
     Arm64CodeGenerator generator(diagnostics);
@@ -666,11 +668,11 @@ TEST(Arm64CodegenTest, SretFloatParamPositionAndAnchor) {
 
     std::string asmText = generator.generateAssembly(module);
 
-    // f0 位于参数位 2（a 占 1）——被调方 str d2（旧缺陷为 d0）
-    EXPECT_NE(asmText.find("str d2, [x29,#"), std::string::npos);
-    EXPECT_EQ(asmText.find("str d0, [x29,#"), std::string::npos);
+    // f0 位于 FP 队列首位——被调方 str d0（404 独立计数；调用方 v0 对称）
+    EXPECT_NE(asmText.find("str d0, [x29,#"), std::string::npos);
     EXPECT_EQ(asmText.find("str d1, [x29,#"), std::string::npos);
-    // g5/g6/g7 位于参数位 8/9/10——栈位读入 [x29,#32]/[x29,#40]（位模式经 x10）
+    EXPECT_EQ(asmText.find("str d2, [x29,#"), std::string::npos);
+    // g6/g7 GP 池用尽——栈槽 0/1 读入 [x29,#32]/[x29,#40]（位模式经 x10）
     EXPECT_NE(asmText.find("ldr x10, [x29,#32]"), std::string::npos);
     EXPECT_NE(asmText.find("ldr x10, [x29,#40]"), std::string::npos);
 }

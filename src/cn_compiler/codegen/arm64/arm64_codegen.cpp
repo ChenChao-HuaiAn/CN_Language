@@ -575,20 +575,30 @@ void Arm64CodeGenerator::emitParamSetup(Arm64AsmWriter& writer,
     const std::size_t paramOffset =
         (function.structReturn || function.returnType == "i128" ||
          function.returnType == "u128") ? 1 : 0;
+    // 404：GP/FP 独立计数落位（与 emitCall/emitVirtualCall 同源单点·AAPCS64 双队列）
+    std::vector<std::string> paramTypes;
+    paramTypes.reserve(function.params.size());
+    for (const auto& p : function.params) paramTypes.push_back(p.second);
+    const std::vector<Arm64ArgPlacement> placements =
+        arm64AssignParamPlacements(paramTypes, static_cast<int>(paramOffset));
     for (std::size_t i = 0; i < function.params.size(); ++i) {
         const std::string& unique = (i < function.paramUniques.size())
                                         ? function.paramUniques[i]
                                         : function.params[i].first;
         const int slotOffset = varSlotOf(unique);
         const std::string& paramType = function.params[i].second;
-        const int actualIdx = static_cast<int>(i) + static_cast<int>(paramOffset);
+        const Arm64ArgPlacement& place = placements[i];
         // 结构体按值参数：传入指针 -> 参数槽（多槽拷贝，按值语义）
         if (isStructParam(function, i) &&
             function.varSlots.count(unique) > 0 &&
             function.varSlots.at(unique) >= 1) {
             const int bytes = function.varSlots.at(unique) * 8;
-            std::string srcReg = parameterRegister(actualIdx);
-            if (actualIdx >= 8) {
+            std::string srcReg;
+            if (place.cls == 0) {
+                srcReg = parameterRegister(place.num);
+            } else {
+                // 栈上传入指针：按栈槽序读取（404 独立计数·非位号公式）
+                srcReg = stackMemText(stackParamBase() + place.num * 8, writer);
                 writer.line("ldr x10, " + srcReg);
                 srcReg = "x10";
             }
@@ -607,26 +617,25 @@ void Arm64CodeGenerator::emitParamSetup(Arm64AsmWriter& writer,
                            " 拷贝 " + std::to_string(bytes) + " 字节");
             continue;
         }
-        // 浮点参数：sN/dN 独立编址（位号 = 参数位号 paramPos=i+paramOffset，
-        //   与调用方 v<位号> 装载一致；f32 用 s、f64 用 d）
+        // 浮点参数：sN/dN（FP 队列独立序号·404；f32 用 s、f64 用 d）
         if (isFloatType(paramType)) {
-            const std::size_t floatPos = i + paramOffset;
-            if (floatPos < 8) {
+            if (place.cls == 1) {
                 const std::string vreg = (paramType == "f64") ? "d" : "s";
-                emitStackStore(writer, slotOffset, vreg + std::to_string(floatPos), paramType);
+                emitStackStore(writer, slotOffset, vreg + std::to_string(place.num), paramType);
             } else {
+                // 栈上浮点位模式：按栈槽序读取（404 独立计数·非位号公式）
                 const std::string mem = stackMemText(
-                    stackParamBase() + (static_cast<int>(floatPos) - 8) * 8, writer);
+                    stackParamBase() + place.num * 8, writer);
                 writer.line("ldr x10, " + mem);
                 emitStackStore(writer, slotOffset, "x10", "i64");
             }
             continue;
         }
-        if (actualIdx < 8) {
-            // 前8整型/指针参数：寄存器 -> 栈槽
+        if (place.cls == 0) {
+            // GP 寄存器整型/指针参数：寄存器 -> 栈槽
             if (paramType == "i128" || paramType == "u128") {
                 // i128 参数：双槽地址指针 -> 参数双槽拷贝 16 字节
-                const std::string srcReg = parameterRegister(actualIdx);
+                const std::string srcReg = parameterRegister(place.num);
                 emitStackAddr(writer, "x12", slotOffset);
                 writer.line("ldr x10, [" + srcReg + "]");
                 writer.line("str x10, [x12]");
@@ -635,14 +644,15 @@ void Arm64CodeGenerator::emitParamSetup(Arm64AsmWriter& writer,
                 writer.comment("i128 参数 " + function.params[i].first +
                                " 拷贝 16 字节");
             } else {
-                const std::string reg = parameterRegister(actualIdx);
+                const std::string reg = parameterRegister(place.num);
                 emitStackStore(writer, slotOffset, reg, paramType);
             }
         } else {
-            // 第9参数位起：从调用者栈帧拷贝到本函数参数槽（锚定基单一归属
-            //   stackParamBase——隐藏返回时 prologue 多压 x19，真实栈参上移 16）
+            // 栈参数（寄存器池溢出·槽序=参数序）：从调用者栈帧拷贝到本函数参数槽
+            //   （锚定基单一归属 stackParamBase——隐藏返回时 prologue 多压 x19，
+            //   真实栈参上移 16）
             const std::string stackSrc = stackMemText(
-                stackParamBase() + (actualIdx - 8) * 8, writer);
+                stackParamBase() + place.num * 8, writer);
             if (paramType == "i128" || paramType == "u128") {
                 writer.line("ldr x10, " + stackSrc);  // i128 双槽地址指针
                 emitStackAddr(writer, "x12", slotOffset);

@@ -6,7 +6,8 @@
 //   3. 段声明：.text（代码）/ .data（可写数据）/ .section .rodata（只读常量）
 //   4. AAPCS64 调用约定：
 //      - 整型/指针参数 x0~x7（前8个），第9起在栈上
-//      - 浮点参数 v0~v7 独立编址（与整型参数按位对应）
+//      - 浮点参数 v0~v7 独立编址（GP/FP 两队列独立计数·404 根治，见
+//        arm64AssignParamPlacements；f32 用 s、f64 用 d）
 //      - 隐藏返回指针（结构体/i128 返回）占 x0，真实参数从 x1 起（paramOffset=1）
 //      - 返回值：整型 x0 / 浮点 d0（f64）、s0（f32）双精度寄存器
 //   5. 中文符号名：nameMangle 生成 GAS 风格 `_` 前缀 + UTF-8 十六进制编码
@@ -25,6 +26,7 @@
 
 #include "cn_compiler/codegen/codegen.hpp"
 #include "cn_compiler/codegen/debug_info.hpp"
+#include "cn_compiler/codegen/judgement.hpp"
 #include "cn_compiler/codegen/reg_alloc.hpp"
 #include "cn_compiler/common/diagnostics.hpp"
 
@@ -32,6 +34,39 @@ namespace cn_compiler {
 
 // 语义分析器前向声明（阶段3：类布局/虚表槽位/静态字段查询，供 codegen OOP 展开）
 class ISemanticView;  // 语义只读视图（346 重构D·model 层接口·实现在 semantic.hpp）
+
+// ==================== 参数落位分配（AAPCS64 GP/FP 独立计数·404 根治） ====================
+// arm64 实参/形参落位单点决策（emitCall / emitParamSetup / emitVirtualCall 三发射
+//   点共用；对齐 v2 分配参数位置 91-a 与 win/linux_x64 emitParamSetup 三计数器先例）。
+// 此前三处各自「统一位号」（参数位号即寄存器号）——内部自洽但与 AAPCS64 双队列
+//   独立排队分叉：变参浮点须落 v0 起独立排队（gcc 行为实证），整型落 x1 起不与
+//   浮点互占位号。212④ F6 变参浮点格式化位错值实录（校验和 255→247：格式化
+//   ("%s¥%.2f",串,29.50) 发 d2 而 vsnprintf 按 va_arg 从 v0 读）。
+// 落位类别：0=GP 寄存器 xN / 1=FP 寄存器 sN|dN / 2=栈槽（num=槽序，槽序=参数序）。
+struct Arm64ArgPlacement {
+    int cls;  // 0=GP寄存器 1=FP寄存器 2=栈槽
+    int num;  // 寄存器序号或栈槽序号
+};
+
+inline std::vector<Arm64ArgPlacement> arm64AssignParamPlacements(
+    const std::vector<std::string>& types, int intCursorStart) {
+    std::vector<Arm64ArgPlacement> places;
+    places.reserve(types.size());
+    int intCursor = intCursorStart;
+    int fpCursor = 0;
+    int stackCursor = 0;
+    for (const std::string& type : types) {
+        const bool isFloat = judgement::isFloatType(type);
+        if (isFloat && fpCursor < 8) {
+            places.push_back({1, fpCursor++});
+        } else if (!isFloat && intCursor < 8) {
+            places.push_back({0, intCursor++});
+        } else {
+            places.push_back({2, stackCursor++});
+        }
+    }
+    return places;
+}
 
 // ARM64 汇编文本行输出助手（GAS 风格：# 注释；标签 独立行；指令 4 空格缩进）
 // 注：GAS 中 # 与立即数前缀 #imm 冲突，注释统一用 //（单行）安全
