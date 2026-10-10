@@ -517,12 +517,24 @@ bool IRGenerator::handleClassMemberAssign(MemberExpr* target, Expr* valueExpr,
         objName = static_cast<IdentifierExpr*>(target->object.get())->name;
     }
     const std::string objSrcType = exprSrcType(target->object.get());
-    std::string fieldType = classFieldType(types::canonical(objSrcType), target->memberName);
+    // 390（win x64 指针字段写截断根治·与 handleClassMemberLvalue 351 剥星同构）：
+    //   字段类型查询须用**剥星后类名**——类指针对象（节点* 头.下个 = 甲）原查
+    //   classFieldType("节点*", …)=空 → mapType("")="void"（非空·i64 回退失效）
+    //   → 值 Cast(ptr→void) 走 emitCast 兜底 32 位转存（mov eax,r12d 截断高32）
+    //   + StorePtr(void) 64 位读槽写目标=垃圾高位进字段（链式遍历解引用崩
+    //   C0000005·681 用例 win 实证；arm64 绿=寄存器名宽度回退路径异构侥幸）。
+    //   地址面 351 已剥星（FieldAddr[8] 对）·类型面同批漏剥=写侧内部口径分叉。
+    std::string canonObjForFieldType = types::canonical(objSrcType);
+    if (!semantic_->isClassType(canonObjForFieldType) &&
+        types::isPointer(canonObjForFieldType)) {
+        canonObjForFieldType = types::canonical(types::pointeeOf(canonObjForFieldType));
+    }
+    std::string fieldType = classFieldType(canonObjForFieldType, target->memberName);
     if (fieldType.empty() && !objName.empty()) {
         fieldType = classFieldType(objName, target->memberName);
     }
     std::string targetIrType = mapType(fieldType);
-    if (targetIrType.empty()) targetIrType = "i64";
+    if (targetIrType.empty() || targetIrType == "void") targetIrType = "i64";
     // 974（104-001 根治）：字段=结构体/类（聚合值字段）→ 整体赋值单一助手
     //   （emitStructWholeAssign：源地址→CopyStruct 按字段结构体大小值拷+串字段
     //   深拷四分支+preFree 旧值释放·Rust place 拷贝语义）——原路径对聚合字段
