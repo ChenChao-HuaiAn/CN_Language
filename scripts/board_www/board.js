@@ -7,7 +7,8 @@
 "use strict";
 
 let 数据 = null;                       // 最近一次 /api/board 聚合
-let 激活页 = "飞行";
+let 激活板 = "看板";                    // 388：顶级板块（看板/交接/教训/覆盖）
+let 激活页 = "飞行";                    // 看板板块内子页
 let 脏页 = { 飞行: true, 分支: true, 认领: true };
 let 当前筛 = "就绪";
 let 当前视图 = "列表";
@@ -65,7 +66,8 @@ async function 拉取() {
     数据 = await 调API("GET", "api/board");   // 相对路径——直连 :8301 与反代 /board/ 双通
     $("状态灯").classList.remove("断");
     $("错误条").style.display = "none";
-    $("元信息").textContent = "数据时刻 " + 数据.时刻 + " · 每 8s 自动刷新";
+    $("元信息").textContent = "数据时刻 " + 数据.时刻 +
+      (自动刷新开() ? " · 每 8s 自动" : " · 手动刷新模式");
     渲染冲突(数据.冲突们 || []);
     // 数据一到即全页标脏+渲染激活页——消除「切页早于数据到达」的竞态空白
     // （首拉/轮询更新同路：页面永远反映最新数据，不再依赖手动切页触发）
@@ -73,74 +75,143 @@ async function 拉取() {
     渲染激活页();
   } catch (e) {
     $("状态灯").classList.add("断");
-    $("错误条").textContent =
-      "服务连接中断，正在重试…（网络不稳可改用 https://www.cn-language.com/board/）";
+    $("错误条").textContent = 自动刷新开()
+      ? "服务连接中断，正在重试…（网络不稳可改用 https://www.cn-language.com/board/）"
+      : "服务连接中断——检查网络后点 ⟳ 刷新";
     $("错误条").style.display = "block";
   }
 }
 
 function 渲染激活页() {
-  if (!数据) return;
+  if (激活板 === "交接") return 渲染交接();
+  if (激活板 === "教训") return 渲染教训();
+  if (激活板 === "覆盖") return 渲染覆盖();
+  if (!数据) return;                    // 看板板块：依赖 /api/board 聚合
   if (激活页 === "飞行" && 脏页.飞行) { 渲染意图(); 脏页.飞行 = false; }
   if (激活页 === "分支" && 脏页.分支) { 渲染在飞(); 脏页.分支 = false; }
   if (激活页 === "认领" && 脏页.认领) { 渲染任务(); 脏页.认领 = false; }
-  if (激活页 === "文档") 渲染文档();   // 384：文档数据独立拉取（切页即拉·内置 30s 节流）
 }
 
-/* —— Tab D：交接/教训/规范覆盖（384·独立低频拉取·不进 8s 轮询）—— */
+/* —— 板块：交接（388·全宽时间流·全文直显·不折叠）—— */
 
-let 文档缓存 = { 时: 0 };
+const 文档缓存 = { 交接: { 时: 0, 条目们: [] }, 教训: { 时: 0, 条目们: [] },
+                   覆盖: { 时: 0, 体: null } };
+let 交接机 = "全部";
+let 教训筛态 = "高权重";
+let 覆盖筛态 = "全部";
+let 当前教训 = null;                    // 详情面板打开的教训 id
 
-async function 渲染文档() {
-  if (Date.now() - 文档缓存.时 < 30000) { 画文档(); return; }
+async function 拉文档(名, 路径, 存) {
+  if (Date.now() - 文档缓存[名].时 < 30000) return true;   // 30s 节流
   try {
-    const [交, 教, 覆] = await Promise.all([
-      调API("GET", "api/handoff?limit=12"),
-      调API("GET", "api/lessons?high_weight=8"),
-      调API("GET", "api/coverage"),
-    ]);
-    文档缓存 = { 时: Date.now(), 交接: 交.条目们 || [], 教训: 教.条目们 || [], 覆盖: 覆 };
+    const r = await 调API("GET", 路径);
+    存(r);
+    文档缓存[名].时 = Date.now();
+    return true;
   } catch (e) {
-    $("交接区").innerHTML = '<div class="空态">文档数据拉取失败：' + 转义(e.message) + "</div>";
+    $("错误条").textContent = "数据拉取失败：" + e.message + "（可点 ⟳ 刷新重试）";
+    $("错误条").style.display = "block";
+    return false;
+  }
+}
+
+async function 渲染交接() {
+  const 好 = await 拉文档("交接", "api/handoff?limit=100",
+    (r) => { 文档缓存.交接.条目们 = r.条目们 || []; });
+  const 区 = $("交接流");
+  if (!好) { 区.innerHTML = '<div class="空态">服务不可达——恢复后点 ⟳ 刷新</div>'; return; }
+  const 全 = 文档缓存.交接.条目们;
+  $("交接计数").textContent = "最近 " + 全.length + " 条";
+  const 们 = 交接机 === "全部" ? 全 : 全.filter((t) => t.机器 === 交接机);
+  if (!们.length) {
+    区.innerHTML = '<div class="空态">' + (全.length ? "该机暂无条目" :
+      '交接流为空——收工用 <code>python scripts/board_cli.py 收工 --行 "…"</code>') + "</div>";
     return;
   }
-  画文档();
+  区.innerHTML = '<div class="面板">' + 们.map((t) =>
+    '<div class="交接卡"><div class="交接头">' +
+    '<span class="签 朱砂">👤 ' + 转义(t.机器) + "</span>" +
+    '<span class="行时刻">' + 转义(t.时刻 || "") + "</span></div>" +
+    '<div class="交接全文">' + 转义(t.条目 || "") + "</div></div>").join("") + "</div>";
 }
 
-function 画文档() {
-  const 按机 = {};
-  (文档缓存.交接 || []).forEach((t) => (按机[t.机器] = 按机[t.机器] || []).push(t));
-  $("交接区").innerHTML = Object.keys(按机).length
-    ? '<div class="泳道">' + Object.entries(按机).map(([机, 条]) =>
-        '<div class="泳列"><div class="泳列头"><span>👤 ' + 转义(机) + '</span><span class="计数">' +
-        条.length + "</span></div>" +
-        条.map((t) => '<details class="交接条"><summary>' + 转义((t.条目 || "").slice(0, 76)) +
-          ((t.条目 || "").length > 76 ? "…" : "") + '<span class="行时刻">' + 转义(t.时刻 || "") + "</span></summary>" +
-          '<div class="交接全文">' + 转义(t.条目 || "") + "</div></details>").join("") +
-        "</div>").join("") + "</div>"
-    : '<div class="空态">交接流为空——收工用 <code>python scripts/board_cli.py 收工 --行 "…"</code></div>';
-  const 教 = 文档缓存.教训 || [];
-  $("教训区").innerHTML = 教.length
-    ? '<div class="面板">' + 教.map((t) =>
-        '<details class="教训条"><summary><span class="签 朱砂">权重 ' + 转义(t.权重) + "</span> " +
-        转义((t.标题 || "").slice(0, 90)) + ((t.标题 || "").length > 90 ? "…" : "") +
-        '<span class="行时刻">' + 转义(t.时刻 || "") + "</span></summary>" +
-        '<div class="交接全文 淡">全文查看：<code>python scripts/board_cli.py 教训看 ' + t.id + "</code></div></details>").join("") + "</div>"
-    : '<div class="空态">高权重教训为空——登记用 <code>board_cli 教训 --标题 "…（权重 N）"</code></div>';
-  const 覆 = 文档缓存.覆盖 || {};
-  const 单元们 = 覆.单元们 || [];
-  const 缺 = 单元们.filter((u) => !u.正例 || !u.边界例 || !u.负例);
-  $("覆盖区").innerHTML = 单元们.length
-    ? '<div class="面板"><div class="会话"><div class="行1">' +
-      '<span class="签 完成">单元 ' + 单元们.length + "</span>" +
-      '<span class="签 边框">豁免 ' + (覆.豁免们 || []).length + "</span>" +
-      '<span class="签 ' + (缺.length ? "挂起" : "完成") + '">缺口单元 ' + 缺.length + "</span>" +
-      '<span class="心跳行">三态覆盖率见 check_spec_coverage 报告模式</span></div>' +
-      (缺.length ? '<div class="备注行">缺口：' + 缺.slice(0, 12).map((u) =>
-        "#" + 转义(u.单元ID) + "（" + ["正例", "边界例", "负例"].filter((k) => !u[k]).join("/") + "）"
-      ).join(" · ") + (缺.length > 12 ? " …" : "") + "</div>" : "") +
-      "</div></div>"
-    : '<div class="空态">覆盖矩阵为空——迁移未跑？<code>migrate_board_docs.py</code></div>';
+/* —— 板块：教训（388·点条目滑出全文——直接看内容·不甩命令）—— */
+
+async function 渲染教训() {
+  const 好 = await 拉文档("教训", "api/lessons",
+    (r) => { 文档缓存.教训.条目们 = r.条目们 || []; });
+  const 区 = $("教训流");
+  if (!好) { 区.innerHTML = '<div class="空态">服务不可达——恢复后点 ⟳ 刷新</div>'; return; }
+  const 全 = 文档缓存.教训.条目们;
+  const 词 = ($("教训搜索").value || "").trim().toLowerCase();
+  let 们 = 全;
+  if (教训筛态 === "高权重") 们 = 们.filter((t) => t.权重 >= 8 && t.正文);
+  if (词) 们 = 们.filter((t) => (t.标题 || "").toLowerCase().includes(词));
+  if (!们.length) {
+    区.innerHTML = '<div class="空态">' + (全.length ? "无匹配教训——试试清除搜索或切「全部索引」"
+      : '教训库为空——登记用 <code>board_cli 教训</code>') + "</div>";
+    return;
+  }
+  区.innerHTML = '<div class="面板">' + 们.map((t) =>
+    '<div class="任务行" data-教训="' + t.id + '">' +
+    '<span class="签 朱砂">权重 ' + 转义(t.权重) + "</span>" +
+    '<span class="教训题">' + 转义(t.标题 || "") + "</span>" +
+    '<span class="行右侧"><span class="行时刻">' + 转义(t.时刻 || "") + "</span></span></div>").join("") + "</div>";
+}
+
+function 开教训(id) {
+  const t = 文档缓存.教训.条目们.find((x) => x.id === id);
+  const 面板 = $("详情面板");
+  当前教训 = id;
+  if (!t) { 提示("教训 #" + id + " 不在缓存——点 ⟳ 刷新后重试", 4000); return; }
+  面板.innerHTML =
+    '<button class="关" data-关>×</button>' +
+    '<div><span class="签 朱砂">权重 ' + 转义(t.权重) + "</span> " +
+    (t.标注 && t.标注 !== "活跃" ? '<span class="签 边框 挂起">' + 转义(t.标注) + "</span> " : "") +
+    '<span class="行时刻">' + 转义(t.时刻 || "") + "</span></div>" +
+    '<div class="详题">' + 转义(t.标题 || "") + "</div>" +
+    '<div class="教训全文">' + 转义(t.正文 || "（索引条目·无全文——重登时补正文）") + "</div>";
+  面板.hidden = false;
+  $("详情遮罩").hidden = false;
+}
+
+/* —— 板块：E2E 覆盖（388·矩阵表格直读）—— */
+
+async function 渲染覆盖() {
+  const 好 = await 拉文档("覆盖", "api/coverage",
+    (r) => { 文档缓存.覆盖.体 = r; });
+  const 区 = $("覆盖流"), 豁区 = $("豁免流");
+  if (!好) { 区.innerHTML = '<div class="空态">服务不可达——恢复后点 ⟳ 刷新</div>'; 豁区.innerHTML = ""; return; }
+  const 体 = 文档缓存.覆盖.体 || {};
+  const 单元们 = 体.单元们 || [];
+  const 词 = ($("覆盖搜索").value || "").trim().toLowerCase();
+  let 们 = 单元们;
+  if (覆盖筛态 === "缺口") 们 = 们.filter((u) => !u.正例 || !u.边界例 || !u.负例);
+  if (词) 们 = 们.filter((u) => u.单元ID.toLowerCase().includes(词) ||
+                               (u.标题 || "").toLowerCase().includes(词));
+  $("覆盖计数").textContent = "单元 " + 单元们.length + "·豁免 " + (体.豁免们 || []).length;
+  if (!们.length) {
+    区.innerHTML = '<div class="空态">' + (单元们.length ? "无匹配单元" :
+      '覆盖矩阵为空——迁移未跑？<code>migrate_board_docs.py</code>') + "</div>";
+  } else {
+    区.innerHTML = '<div class="覆盖表"><div class="覆盖行 覆盖头"><span>单元ID</span><span>单元</span>' +
+      "<span>正例</span><span>边界例</span><span>负例</span></div>" +
+      们.map((u) => {
+        const 缺 = (k) => !u[k] ? '<span class="签 挂起">缺</span>' : "";
+        const 格 = (k) => (u[k] || "").split(",").filter(Boolean)
+          .map((c) => '<span class="用例名">' + 转义(c) + "</span>").join(" ") +
+          (缺(k));
+        return '<div class="覆盖行"><span class="覆盖ID">' + 转义(u.单元ID) + "</span>" +
+          '<span class="覆盖题">' + 转义(u.标题 || "") + "</span>" +
+          "<span>" + 格("正例") + "</span><span>" + 格("边界例") + "</span><span>" + 格("负例") + "</span></div>";
+      }).join("") + "</div>";
+  }
+  const 豁 = 体.豁免们 || [];
+  豁区.innerHTML = 豁.length
+    ? '<div class="面板">' + 豁.map((e) =>
+        '<div class="交接卡"><div class="交接头"><span class="mono">' + 转义(e.用例) + "</span></div>" +
+        '<div class="备注行">' + 转义(e.理由 || "") + "</div></div>").join("") + "</div>"
+    : '<div class="空态">无豁免</div>';
 }
 
 /* —— 冲突横幅（全局·任意 tab 可见）—— */
@@ -405,17 +476,58 @@ function 应用主题(名) {
 
 /* —— 事件绑定 —— */
 
-document.querySelectorAll(".页签").forEach((钮) => {
+/* 顶级板块导航（388·四板块并列） */
+document.querySelectorAll(".板块签").forEach((钮) => {
   钮.addEventListener("click", () => {
-    document.querySelectorAll(".页签").forEach((b) => {
+    document.querySelectorAll(".板块签").forEach((b) => {
+      b.classList.toggle("活", b === 钮);
+      b.setAttribute("aria-selected", b === 钮 ? "true" : "false");
+    });
+    激活板 = 钮.dataset.板;
+    切板块();
+  });
+});
+
+function 切板块() {
+  const 子页签 = $("子页签");
+  子页签.hidden = 激活板 !== "看板";
+  const 目标页 = 激活板 === "看板" ? "tab-" + 激活页 : "tab-" + 激活板;
+  document.querySelectorAll("main .页").forEach((p) => { p.hidden = p.id !== 目标页; });
+  渲染激活页();
+}
+
+/* 看板板块子页签 */
+document.querySelectorAll("#子页签 .页签").forEach((钮) => {
+  钮.addEventListener("click", () => {
+    document.querySelectorAll("#子页签 .页签").forEach((b) => {
       b.classList.toggle("活", b === 钮);
       b.setAttribute("aria-selected", b === 钮 ? "true" : "false");
     });
     激活页 = 钮.dataset.tab;
-    document.querySelectorAll("main .页").forEach((p) => { p.hidden = p.id !== "tab-" + 激活页; });
-    渲染激活页();
+    切板块();
   });
 });
+
+/* —— 自动刷新（388 用户令：默认关·手动开启——防轮询重渲染打断阅读/折叠展开态）—— */
+function 自动刷新开() { return localStorage.getItem("cn_board_autorefresh") === "1"; }
+function 应用刷新模式() {
+  const 开 = 自动刷新开();
+  $("自动刷新").checked = 开;
+  $("元信息").textContent = 开 ? "自动刷新每 8 秒" : "自动刷新已关（⟳ 手动刷新）";
+}
+$("自动刷新").addEventListener("change", (e) => {
+  localStorage.setItem("cn_board_autorefresh", e.target.checked ? "1" : "0");
+  应用刷新模式();
+  提示(e.target.checked ? "自动刷新已开启（每 8 秒）" : "自动刷新已关闭");
+});
+$("刷新钮").addEventListener("click", async () => {
+  文档缓存.交接.时 = 0; 文档缓存.教训.时 = 0; 文档缓存.覆盖.时 = 0;   // 强制重拉
+  脏页 = { 飞行: true, 分支: true, 认领: true };
+  await 拉取();
+  渲染激活页();
+  提示("已刷新");
+});
+应用刷新模式();
 
 $("筛选组").addEventListener("click", (e) => {
   const 钮 = e.target.closest(".筛");
@@ -434,6 +546,31 @@ $("视图组").addEventListener("click", (e) => {
 });
 
 $("搜索框").addEventListener("input", () => { 脏页.认领 = true; 渲染激活页(); });
+
+/* 交接/教训/覆盖 板块筛选（388） */
+$("交接机筛").addEventListener("click", (e) => {
+  const 钮 = e.target.closest(".筛");
+  if (!钮) return;
+  交接机 = 钮.dataset.机;
+  document.querySelectorAll("#交接机筛 .筛").forEach((b) => b.classList.toggle("活", b === 钮));
+  渲染交接();
+});
+$("教训筛").addEventListener("click", (e) => {
+  const 钮 = e.target.closest(".筛");
+  if (!钮) return;
+  教训筛态 = 钮.dataset.教;
+  document.querySelectorAll("#教训筛 .筛").forEach((b) => b.classList.toggle("活", b === 钮));
+  渲染教训();
+});
+$("教训搜索").addEventListener("input", 渲染教训);
+$("覆盖筛").addEventListener("click", (e) => {
+  const 钮 = e.target.closest(".筛");
+  if (!钮) return;
+  覆盖筛态 = 钮.dataset.覆;
+  document.querySelectorAll("#覆盖筛 .筛").forEach((b) => b.classList.toggle("活", b === 钮));
+  渲染覆盖();
+});
+$("覆盖搜索").addEventListener("input", 渲染覆盖);
 $("新建钮").addEventListener("click", 开新建);
 $("新建取消").addEventListener("click", 关新建);
 $("新建遮罩").addEventListener("click", (e) => { if (e.target === $("新建遮罩")) 关新建(); });
@@ -450,6 +587,8 @@ $("主题钮").addEventListener("click", () => {
 document.addEventListener("click", (e) => {
   const 详 = e.target.closest("[data-详]");
   if (详) { 开详情(详.dataset.详); return; }
+  const 教 = e.target.closest("[data-教训]");
+  if (教) { 开教训(Number(教.dataset.教训)); return; }
   const 复制命令 = e.target.closest("[data-复制命令]");
   if (复制命令) {
     复制文本("python scripts/wt.py create " + 复制命令.dataset.复制命令); return;
@@ -464,4 +603,7 @@ document.addEventListener("keydown", (e) => {
 });
 
 拉取();
-setInterval(拉取, 8000);
+setInterval(() => { if (自动刷新开() && 激活板 === "看板") {
+  脏页 = { 飞行: true, 分支: true, 认领: true };
+  拉取().then(渲染激活页);
+} }, 8000);

@@ -327,21 +327,73 @@ main { max-width: 78rem; margin: 0 auto; padding: var(--space-5) var(--space-6) 
 }
 #提示条.显 { opacity: 1; }
 
-/* —— 384 文档 tab：交接/教训 折叠条 —— */
-.交接条, .教训条 {
-  border: 1px solid var(--color-border); border-radius: var(--radius-sm);
-  margin-bottom: var(--space-2); background: var(--color-bg-elev, transparent);
-  font-size: .86rem; overflow: hidden;
+/* —— 388 顶级板块导航（四板块并列·官网签风格放大版）—— */
+.顶级导航 {
+  max-width: 78rem; margin: 0 auto; padding: var(--space-4) var(--space-6) 0;
+  display: flex; gap: var(--space-4); border-bottom: 1px solid var(--color-border);
 }
-.交接条 summary, .教训条 summary {
-  cursor: pointer; padding: var(--space-2) var(--space-3);
-  display: flex; align-items: center; gap: var(--space-2); list-style: none;
+.板块签 {
+  border: 0; background: none; color: var(--color-fg-muted);
+  padding: var(--space-2) var(--space-4); font-weight: 700; font-size: .96rem;
+  font-family: var(--font-display);
+  border-bottom: 2px solid transparent; margin-bottom: -1px;
+  transition: color var(--dur) var(--ease), border-color var(--dur) var(--ease);
 }
-.交接条 summary::-webkit-details-marker, .教训条 summary::-webkit-details-marker { display: none; }
-.交接条 summary:hover, .教训条 summary:hover { background: var(--color-bg-soft, rgba(127,127,127,.08)); }
-.交接条 summary .行时刻, .教训条 summary .行时刻 { margin-left: auto; flex: none; }
+.板块签:hover { color: var(--color-fg); }
+.板块签.活 { color: var(--color-accent); border-bottom-color: var(--color-accent); }
+
+/* —— 自动刷新开关（388·默认关）—— */
+.自动刷新 {
+  display: inline-flex; align-items: center; gap: .4em;
+  color: var(--color-fg-subtle); font-size: .8rem; cursor: pointer;
+  user-select: none; white-space: nowrap;
+}
+.自动刷新 input { accent-color: var(--color-accent); cursor: pointer; }
+
+/* —— 交接卡片（388·全宽时间流·全文直显不折叠）—— */
+.交接卡 {
+  border-bottom: 1px solid var(--color-border-subtle);
+  padding: var(--space-3) var(--space-2);
+}
+.交接卡:last-child { border-bottom: 0; }
+.交接头 { display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-1); }
+.交接头 .行时刻 { margin-left: auto; }
 .交接全文 {
-  padding: var(--space-2) var(--space-3); border-top: 1px dashed var(--color-border);
-  color: var(--color-fg); line-height: 1.55; word-break: break-word;
-  max-height: 16em; overflow: auto;
+  line-height: 1.65; word-break: break-word; color: var(--color-fg);
+  font-size: .9rem; white-space: pre-wrap;
+  max-height: 24em; overflow-y: auto;
 }
+
+/* —— 教训列表行 + 全文面板 —— */
+.教训题 { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .88rem; }
+.教训全文 {
+  line-height: 1.7; word-break: break-word; font-size: .9rem; white-space: pre-wrap;
+  border-top: 1px dashed var(--color-border); padding-top: var(--space-3);
+  margin-top: var(--space-2);
+}
+
+/* —— 覆盖矩阵表（388·五列网格直读）—— */
+.覆盖表 {
+  background: var(--color-surface); border: 1px solid var(--color-border);
+  border-radius: var(--radius-md); overflow: hidden; font-size: .82rem;
+}
+.覆盖行 {
+  display: grid; grid-template-columns: 6.5em 14em 1fr 1fr 1fr;
+  gap: var(--space-3); padding: var(--space-2) var(--space-4);
+  border-bottom: 1px solid var(--color-border-subtle); align-items: start;
+}
+.覆盖行:last-child { border-bottom: 0; }
+.覆盖头 {
+  font-weight: 700; letter-spacing: .05em; color: var(--color-fg-muted);
+  background: var(--color-bg-subtle); font-size: .76rem;
+  position: sticky; top: 0;
+}
+.覆盖ID { font-family: var(--font-mono); font-weight: 700; color: var(--color-accent); }
+.覆盖题 { color: var(--color-fg-subtle); }
+.用例名 {
+  display: inline-block; font-family: var(--font-mono); font-size: .76rem;
+  margin: 1px 4px 1px 0; padding: 0 .4em;
+  border: 1px solid var(--color-border); border-radius: var(--radius-sm);
+}
+@media (max-width: 60rem) { .覆盖行 { grid-template-columns: 6em 1fr; }
+  .覆盖行 > span:nth-child(n+3) { grid-column: 1 / -1; } }
