@@ -363,6 +363,19 @@ bool SemanticAnalyzer::checkArithmeticBinary(BinaryExpr* node, std::string& left
             diagnostics_.report(DiagnosticLevel::Error, node->location,
                                 "'%'取余运算要求整数操作数");
         }
+        // 411（406 采样轮·算术总守卫·左类已由上方重载分支管辖故排除防双报）：
+        //   拼接/指针算术/重载分支均未命中后，四则操作数必须均为数值（整数/浮点
+        //   /字符——979 字符四字节窄整语义·'a'+1=98 合法面 690 锚）。修前布尔/
+        //   字符串/枚举等非法面经 commonNumericType 兜底静默放行（布尔四则布尔化
+        //   绕过条件布尔检查/字符串减法放行产物段错误/枚举算术放行·v2 同病 411）。
+        //   一元负/比较/位运算/%/复合赋值/自增自减通道守卫本就健全——缺口唯此处。
+        if (!isClassType(canonicalType(leftType)) &&
+            ((!isNumeric(leftType) && leftType != "字符") ||
+             (!isNumeric(rightType) && rightType != "字符"))) {
+            diagnostics_.report(DiagnosticLevel::Error, node->location,
+                                "算术运算符要求数值操作数，实际为 '" + leftType + "' 与 '" +
+                                rightType + "'");
+        }
         // 285（001 §3.7a 窄算术保持窄域·甲案·p1007_05）：字面量按另一侧窄类型
         //   参与（§3.7 推导面落实·v2 零改动锚）——原 a+1 字面量按整32 参与→提升
         //   整32→赋回整8 拒；现另一侧窄整数时结果保持窄域（回绕由发射层窄槽存回
