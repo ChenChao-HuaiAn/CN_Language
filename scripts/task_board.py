@@ -107,7 +107,10 @@ def cmd_check() -> int:
         if t["状态"] == "🏃" and 号 not in 远端任务分支:
             红们.append(f"#{号} 台账在飞(🏃)但远端无 任务/{号} 分支——认领未 push 或漏销账")
         if t["状态"] == "✅" and not t.get("收口sha"):
-            红们.append(f"#{号} 台账已完成(✅)但缺收口 sha（✅⇔sha 铁律）")
+            if t.get("来源") == "迁移021":
+                黄们.append(f"#{号} 台账已完成(✅)缺收口 sha——021 迁移旧账（226 立规前旧格式✅行本无 sha·知情放行）")
+            else:
+                红们.append(f"#{号} 台账已完成(✅)但缺收口 sha（✅⇔sha 铁律）")
         if t["状态"] == "⬜" and 号 in 远端任务分支:
             黄们.append(f"#{号} 台账待办(⬜)但远端已有分支——疑似认领未流转（wt.py create {号} 补 🏃）")
         for p in t.get("前置们", []):
