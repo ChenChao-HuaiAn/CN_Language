@@ -34,6 +34,9 @@ import sys
 import urllib.request
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from board_tasks import 僵尸疑天数   # 392：僵尸疑阈值提示（与服务端同源常量）
+
 板服务地址 = os.environ.get("CN_BOARD_URL", "http://124.222.106.84:8301").rstrip("/")
 
 
@@ -77,8 +80,13 @@ def cmd_ready(机读: bool) -> int:
     就绪们 = [t for t in 任务们 if t["就绪"]]
     在飞们 = [t for t in 任务们 if t["状态"] == "🏃"]
     挂起们 = [t for t in 任务们 if t["状态"] == "⏸"]
+    僵尸们 = [t for t in 任务们 if t.get("僵尸疑")]
     print(f"# 任务台账（服务端唯一权威·共 {len(任务们)} 项：就绪 {len(就绪们)}"
           f"·在飞 {len(在飞们)}·挂起 {len(挂起们)}）")
+    if 僵尸们:
+        print(f"# ⚠ 僵尸疑 {len(僵尸们)} 行（⬜ 无分支超 {int(僵尸疑天数())} 天·疑似已修未销账"
+              f"——认领前先核实：{'、'.join('#' + t['号'] for t in 僵尸们[:8])}"
+              f"{'…' if len(僵尸们) > 8 else ''}——看板详情页人工确认置 ✅ 或重开）")
     print("# 认领：wt.py create <号>——或看板网页「＋ 新建任务」立项")
     if not 就绪们:
         print("# （暂无就绪任务——所有待办的前置尚未完成）")

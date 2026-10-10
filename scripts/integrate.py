@@ -46,6 +46,9 @@ import tempfile
 from datetime import datetime, timedelta
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import board_closeout   # 392：伞批销账号解析（登记制·提交信息 [销账:号,…] 行）
+
 仓库根 = Path(__file__).resolve().parent.parent
 主远程 = "gitcode"
 镜像远程 = "github"
@@ -222,15 +225,20 @@ def 板查询(路径: str):
         return None
 
 
-def 总账收口(分支们: list, 新tip: str, remote: str = "") -> None:
+def 总账收口(分支们: list, 新tip: str, remote: str = "", 额外号们: list | None = None) -> None:
     """382 看板 v2：集成成功后服务端任务台账自动销账——成员分支号逐个
     /api/task_update 置 ✅+sha10（✅⇔sha 铁律服务端化·台账唯一权威在服务端）。
+    392 补盲区：伞批成员号（不入分支名）经提交信息 [销账:号,…] 登记行收集，
+    经 额外号们 并入一并销账——登记制零猜测（提及≠销账·解析面见 board_closeout）。
     plans/021 文档已退位：不再剪切/归档/commit 021（git 面零接触）。
     失败仅警告（task_board --check 下轮对账兜底），随后播报本轮解锁（就绪前 3）。"""
     if not 分支们:
         return
     号们 = [m.group(1) for 分支 in 分支们
             for m in [re.match(r"^任务/([0-9]+[a-z]?)$", 分支)] if m]
+    for 号 in (额外号们 or []):
+        if 号 not in 号们:
+            号们.append(号)
     if not 号们:
         return
     销们 = []
@@ -907,14 +915,16 @@ def 批写集(成员们: list[dict], 基底: str) -> list[str]:
     return sorted(set(全))
 
 
-def 组链(成员们: list[dict], 基底: str, 参数: argparse.Namespace) -> tuple[str | None, list[str], str | None]:
+def 组链(成员们: list[dict], 基底: str, 参数: argparse.Namespace) -> tuple[str | None, list[str], str | None, dict]:
     """按报名序 cherry-pick 叠链：基底→成员1→成员2→…（链分支=当前 HEAD 检出态）。
 
     冲突=踢出该成员（cherry-pick --abort 后继续下一位·批不因成员卡死——被踢者本机解完
-    冲突报下批）；--drop 点名的成员直接不入链。返回（链顶 sha, [(分支, 原因), …], 错误）。
-    调用方须已把 HEAD 切到批分支（基底）——本函数只管叠不建。
+    冲突报下批）；--drop 点名的成员直接不入链。返回（链顶 sha, [(分支, 原因), …], 错误,
+    伞批销账映射{分支:[号,…]}——392：成员提交信息 [销账:…] 登记号·组链时分支尚在，
+    是收集唯一可靠时机）。调用方须已把 HEAD 切到批分支（基底）——本函数只管叠不建。
     """
     踢出: list[tuple[str, str]] = []   # (分支, 原因∈{归因, 冲突})——销账按原因标态
+    销账映射: dict[str, list] = {}
     点名 = set(参数.drop or [])
     for 行 in 成员们:
         分支 = 行["分支"]
@@ -932,6 +942,10 @@ def 组链(成员们: list[dict], 基底: str, 参数: argparse.Namespace) -> tu
             踢出.append((分支, "冲突"))
             print(f"  [组链] {分支} 相对基底无提交（空分支？）——踢出")
             continue
+        伞账号 = board_closeout.收集提交们销账号(提交们)
+        if 伞账号:
+            销账映射[分支] = 伞账号
+            print(f"  [组链] {分支} 伞批销账登记：{伞账号}")
         print(f"  [组链] 叠入 {分支}（{len(提交们)} 提交）")
         冲突 = False
         for 提交 in 提交们:
@@ -945,8 +959,8 @@ def 组链(成员们: list[dict], 基底: str, 参数: argparse.Namespace) -> tu
             print(f"  [组链] {分支} cherry-pick 冲突——踢出（批主本机分支可自行解冲突后重报；"
                   f"他机分支请回自己分支解完报下批）")
     if 输出(["git", "rev-parse", "HEAD"]) == 基底:
-        return None, 踢出, "批内全部成员被踢出（无一可叠）——请检查成员分支状态。"
-    return 输出(["git", "rev-parse", "HEAD"]), 踢出, None
+        return None, 踢出, "批内全部成员被踢出（无一可叠）——请检查成员分支状态。", 销账映射
+    return 输出(["git", "rev-parse", "HEAD"]), 踢出, None, 销账映射
 
 
 def 自测() -> int:
@@ -961,6 +975,14 @@ def 自测() -> int:
         print(f"  [{标记}] {说明}")
         if not 条件:
             raise AssertionError(说明)
+
+    # ⓪ 伞批销账行解析（392·board_closeout 纯函数面）
+    断言(board_closeout.解析销账号("修复x\n[销账:372,374,375,376]")
+         == ["372", "374", "375", "376"], "销账行：全角/半角逗号混合提取")
+    断言(board_closeout.解析销账号("立 379·让位改 372") == [],
+         "销账行：无登记不销（「提及≠销账」铁律）")
+    断言(board_closeout.解析销账号("[销账:308a、316]")[0] == "308a",
+         "销账行：字母后缀号+顿号分隔")
 
     # ① 时刻解析
     断言(解析时刻("09-30 14:05") is not None, "时刻解析：正常「09-30 14:05」")
@@ -1107,10 +1129,13 @@ def solo流程(平台: str, 参数: argparse.Namespace) -> int:
                     print("  [警告] github 镜像补推失败——按惯例下次提交补推（不影响集成有效性）。")
             分支 = 输出(["git", "branch", "--show-current"])
             if 分支.startswith("任务/") and not 参数.dry_run:
+                # 392：删远端分支前收伞批销账登记（引用删后提交历史不可达）
+                solo基底 = 输出(["git", "merge-base", f"{参数.remote}/{分支}", "HEAD"])
+                伞账号 = board_closeout.收集远端分支销账号(参数.remote, 分支, solo基底)
                 清理 = 运行(["git", "push", 参数.remote, "--delete", 分支])
                 if 清理.returncode == 0:
                     print(f"  [清理] 远程任务分支 {分支} 已删（内容已入 {集成分支}·AGENTS.md §7 集成即删）。")
-                    总账收口([分支], 输出(["git", "rev-parse", "HEAD"]))
+                    总账收口([分支], 输出(["git", "rev-parse", "HEAD"]), 额外号们=伞账号)
                 else:
                     print("  [警告] 远程任务分支删除失败（不影响集成有效性）"
                           "——稍后 python scripts/branch_cleanup.py 兜底。")
@@ -1278,7 +1303,7 @@ def 批流程(参数: argparse.Namespace) -> int:
             建链 = 运行(["git", "checkout", "-B", 批分支, 最新])
             if 建链.returncode != 0:
                 return 失败("批分支创建失败（工作树状态异常）——请检查 git 状态。")
-            链顶, 新踢出, 错误 = 组链(成员, 最新, 参数)
+            链顶, 新踢出, 错误, 伞批销账 = 组链(成员, 最新, 参数)
             踢出们 = 新踢出
             if 参数.dry_run:
                 踢出们 = [对 for 对 in 新踢出 if 对[0] != 当前分支]
@@ -1391,7 +1416,12 @@ def 批流程(参数: argparse.Namespace) -> int:
         for 分支, _原因 in 踢出们:
             队列写("update", {"分支": 分支, "状态": "已踢出"})
         # v5（1016）：看板销账直推废除——021 总账自动收口（含解锁播报）
-        总账收口([行["分支"] for 行 in 实际成员], 新tip)
+        # 392：伞批登记号并集（组链收集）随批销账——成员号不入分支名的漏销盲区
+        # 只取实际入链成员的登记号（被踢出者未进 develop·销其登记号=错销）
+        实际分支们 = {行["分支"] for 行 in 实际成员}
+        伞批并集 = sorted({号 for 分支, 们 in 伞批销账.items()
+                          if 分支 in 实际分支们 for 号 in 们})
+        总账收口([行["分支"] for 行 in 实际成员], 新tip, 额外号们=伞批并集)
         镜像 = 运行(["git", "push", 镜像远程, f"{集成分支}"])
         if 镜像.returncode != 0:
             print("  [警告] github 镜像补推失败——按惯例下次提交补推（不影响集成有效性）。")

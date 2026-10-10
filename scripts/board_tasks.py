@@ -114,7 +114,8 @@ def 已占号集(con: sqlite3.Connection) -> set:
 def _行转任务(行) -> dict:
     return {"号": 行[0], "标题": 行[1], "状态": 行[2], "前置": 行[3],
             "优先级": 行[4], "备注": 行[5], "分支": 行[6], "收口sha": 行[7],
-            "归属": 行[8], "创建时刻": 行[9], "更新时刻": 行[11], "来源": 行[13]}
+            "归属": 行[8], "创建时刻": 行[9], "更新时刻": 行[11],
+            "更新时戳": 行[12], "来源": 行[13]}
 
 
 任务字段 = "号,标题,状态,前置,优先级,备注,分支,收口sha,归属,创建时刻,创建时戳,更新时刻,更新时戳,来源"
@@ -125,20 +126,37 @@ def 单任务(con: sqlite3.Connection, 号: str):
     return _行转任务(行) if 行 else None
 
 
+def 僵尸疑天数() -> float:
+    """392 僵尸行侦测阈值（天）——环境变量 BOARD_ZOMBIE_DAYS 可调，缺省 7。"""
+    import os
+    try:
+        return max(1.0, float(os.environ.get("BOARD_ZOMBIE_DAYS", "7")))
+    except ValueError:
+        return 7.0
+
+
 def 全部任务(con: sqlite3.Connection) -> list:
-    """全量任务·附「就绪」判定（⬜ 且前置全部 ✅——服务端算好前端免算）。"""
+    """全量任务·附「就绪」判定（⬜ 且前置全部 ✅——服务端算好前端免算）。
+    392 僵尸疑：⬜ 且从未认领（分支空）且超期无更新 → 就绪=False+僵尸疑=True
+    （疑似已修未销/死行——修完集成却漏销的行冒充待办诱惑重复认领·373/332 五行实录；
+    挂起 ⏸ 不判——待裁决行长挂是常态）。人核实后 /api/task_update 置 ✅ 或重开。"""
     们 = [_行转任务(r) for r in con.execute(
         f"SELECT {任务字段} FROM 任务").fetchall()]
     们.sort(key=lambda t: 号排序键(t["号"]))
     状态图 = {t["号"]: t["状态"] for t in 们}
+    超期秒 = 僵尸疑天数() * 86400
+    现 = time.time()
     for t in 们:
         前置们 = 解析任务号们(t["前置"])
         t["前置们"] = 前置们
-        t["就绪"] = (t["状态"] == 状态_待办 and
+        t["僵尸疑"] = (t["状态"] == 状态_待办 and not t["分支"]
+                       and (现 - float(t["更新时戳"] or 0)) > 超期秒)
+        t["就绪"] = (t["状态"] == 状态_待办 and not t["僵尸疑"] and
                      all(状态图.get(p) == 状态_完成 for p in 前置们))
-    # 就绪优先·同级按优先级·再按号——前端列表默认序
+    # 就绪优先·同级按优先级·再按号；僵尸疑沉底——前端列表默认序
     优先序 = {p: i for i, p in enumerate(合法优先级们)}
-    们.sort(key=lambda t: (not t["就绪"], 优先序.get(t["优先级"], 9), 号排序键(t["号"])))
+    们.sort(key=lambda t: (not t["就绪"], t["僵尸疑"],
+                          优先序.get(t["优先级"], 9), 号排序键(t["号"])))
     return 们
 
 
@@ -298,8 +316,48 @@ def 迁移导入(con: sqlite3.Connection, 主表文本: str, 归档文本们: li
 
 # ===== CLI（部署/备份/概览·TX_01 上独立运行）=====
 
+def 自测() -> int:
+    """--selftest：僵尸疑判定正反例（392·sqlite 内存库·无文件副作用）。"""
+    con = sqlite3.connect(":memory:")
+    建任务表(con)
+    con.execute("""CREATE TABLE 发号台账(
+        号 TEXT PRIMARY KEY, 机器 TEXT, 对话id TEXT DEFAULT '',
+        描述 TEXT DEFAULT '', 时刻 TEXT, 时戳 REAL)""")
+    con.execute("INSERT INTO 发号台账(号,机器,对话id,描述,时刻,时戳) VALUES('900','测机','','自测','',0)")
+    新 = time.time()
+    行们 = [
+        # (号, 状态, 分支, 更新时戳, 期望僵尸疑, 期望就绪)
+        ("901", 状态_待办, "", 新 - 8 * 86400, True, False),    # ⬜ 无分支超期=僵尸疑
+        ("902", 状态_待办, "任务/902", 新 - 8 * 86400, False, True),  # 有分支在飞过=非僵尸
+        ("903", 状态_待办, "", 新 - 1 * 86400, False, True),    # 新行未超期=正常就绪
+        ("904", 状态_挂起, "", 新 - 30 * 86400, False, False),  # ⏸ 挂起行长挂是常态=不判
+        ("905", 状态_完成, "", 新 - 30 * 86400, False, False),  # ✅ 终态=不判
+    ]
+    for 号, 状态, 分支, 时戳 in [(r[0], r[1], r[2], r[3]) for r in 行们]:
+        con.execute(
+            f"INSERT INTO 任务({任务字段}) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (号, f"自测{号}", 状态, "", "P2", "", 分支, "", "",
+             时刻(), 新, 时刻(), 时戳, "selftest"))
+    图 = {t["号"]: t for t in 全部任务(con)}
+    例数 = 0
+    for 号, _状态, _分支, _时戳, 期望僵尸, 期望就绪 in 行们:
+        例数 += 1
+        好 = 图[号]["僵尸疑"] == 期望僵尸 and 图[号]["就绪"] == 期望就绪
+        print(f"  [{'✓' if 好 else '✗'}] 僵尸疑 #{号}：僵尸={图[号]['僵尸疑']}（期望 {期望僵尸}）"
+              f" 就绪={图[号]['就绪']}（期望 {期望就绪}）")
+        assert 好, f"僵尸疑判定失败：#{号}"
+    序 = [t["号"] for t in 全部任务(con) if t["僵尸疑"]]
+    assert 序 == ["901"], f"僵尸行应沉底（就绪区外）·实际排序提取={序}"
+    例数 += 1
+    print(f"  [✓] 僵尸行排序沉底（就绪区外）")
+    print(f"[selftest] {例数} 例全过 ✓")
+    return 0
+
+
 def _cli() -> int:
     参数 = sys.argv[1:]
+    if "--selftest" in 参数:
+        return 自测()
     def 值(名: str, 默认=""):
         return 参数[参数.index(名) + 1] if 名 in 参数 else 默认
     db = 值("--db")
