@@ -477,10 +477,21 @@ bool IRGenerator::handleClassMemberLvalue(MemberExpr* node, ir::IRValue& outAddr
         return true;
     }
     // 实例字段
-    if (!semantic_->isClassType(canonObj)) return false;
-    const std::string fieldType = classFieldType(canonObj, node->memberName);
+    // 351（588-a 写侧旁路·005 同族）：类指针对象（`节点* 头 = 分配(...); 头.字段 = v`）
+    //   剥指针取类名——与读侧 handleClassMemberExpr 588-a/emitInstanceMethodCall
+    //   判定口径同款。原不识别指针形态 → isClassType("节点*")=false → 落
+    //   memberGenericAssign → findStruct（只查结构体）=null → return base 丢
+    //   FieldAddr → StorePtr 直接以对象基址为目标地址 → 字段写全落 [对象+0]
+    //   首字段互相覆盖（348 轮堆链铁证：头.下个=临时 指针值落首字段类别位·
+    //   目标位恒零；读侧/栈对象路径健康=分叉仅在写侧本钩子）。
+    std::string canonObjField = canonObj;
+    if (!semantic_->isClassType(canonObjField) && types::isPointer(canonObjField)) {
+        canonObjField = types::canonical(types::pointeeOf(canonObjField));
+    }
+    if (!semantic_->isClassType(canonObjField)) return false;
+    const std::string fieldType = classFieldType(canonObjField, node->memberName);
     if (fieldType.empty()) return false;
-    const int offset = semantic_->classFieldOffset(canonObj, node->memberName);
+    const int offset = semantic_->classFieldOffset(canonObjField, node->memberName);
     if (offset < 0) return false;
     ir::IRValue base = genExpr(node->object.get());
     outAddr = emitResult(ir::Opcode::FieldAddr, {base}, "ptr",
@@ -506,7 +517,14 @@ bool IRGenerator::handleClassMemberAssign(MemberExpr* target, Expr* valueExpr,
         objName = static_cast<IdentifierExpr*>(target->object.get())->name;
     }
     const std::string objSrcType = exprSrcType(target->object.get());
-    std::string fieldType = classFieldType(types::canonical(objSrcType), target->memberName);
+    // 351（与上方 handleClassMemberLvalue 同款剥星）：字段类型查询经剥星后
+    //   类名——原 classFieldType("节点*") 恒 miss → targetIrType 落默认 "i64"
+    //   → 指针字段值被 Cast i64（堆链形态字段类型口径失真）。
+    std::string canonObjAssign = types::canonical(objSrcType);
+    if (!semantic_->isClassType(canonObjAssign) && types::isPointer(canonObjAssign)) {
+        canonObjAssign = types::canonical(types::pointeeOf(canonObjAssign));
+    }
+    std::string fieldType = classFieldType(canonObjAssign, target->memberName);
     if (fieldType.empty() && !objName.empty()) {
         fieldType = classFieldType(objName, target->memberName);
     }
@@ -519,9 +537,17 @@ bool IRGenerator::handleClassMemberAssign(MemberExpr* target, Expr* valueExpr,
     //   （956 m9 读回地址·m8 拷出解引用段错误）。复合赋值对聚合无意义保持原路。
     //   位置在 genExpr 前（避免源表达式双发副作用）；字段类型经 973 统一查询。
     if (!isCompoundAssignOp(op)) {
+        // 351（同款剥星）：974 聚合字段查询对象类型先剥指针——类指针对象的
+        //   聚合字段赋值（p.内层结构体字段 = v）同面。
+        std::string objType974 = exprSrcType(target->object.get());
+        std::string canonObj974 = types::canonical(objType974);
+        if (!semantic_->isClassType(canonObj974) &&
+            !semantic_->isStructType(canonObj974) &&
+            types::isPointer(canonObj974)) {
+            canonObj974 = types::canonical(types::pointeeOf(canonObj974));
+        }
         const std::string fieldType974 =
-            structOrClassFieldType(exprSrcType(target->object.get()),
-                                   target->memberName);
+            structOrClassFieldType(canonObj974, target->memberName);
         const std::string canon974 = types::canonical(fieldType974);
         if (!canon974.empty() &&
             (semantic_->isStructType(canon974) ||
