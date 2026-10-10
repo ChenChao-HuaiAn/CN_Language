@@ -242,6 +242,27 @@ void Arm64CodeGenerator::emitVirtualCall(Arm64AsmWriter& writer,
     }
     const std::vector<Arm64ArgPlacement> placements =
         arm64AssignParamPlacements(vcArgTypes, 1);
+    // 407：栈参区腾桌（与 emitCall 布局契约对齐——此前直接写 [sp,#..] 借用当前
+    //   帧底，踩调用者帧内深槽局部变量；431 浮九 frameSize 小侥幸绿，688 哨兵锁红。
+    //   linux_x64 331-a 已对、win x64 影子空间自带，唯 arm64 初版即漏=跨后端不对称）
+    std::size_t vcStackArgs = 0;
+    for (const Arm64ArgPlacement& p : placements) {
+        if (p.cls == 2) ++vcStackArgs;
+    }
+    const int vcStackBytes = static_cast<int>(vcStackArgs * 8);
+    const int vcAlignPad =
+        (vcStackBytes % 16 == 0) ? 0 : (16 - vcStackBytes % 16);
+    const int vcTotalAlloc = vcStackBytes + vcAlignPad;
+    if (vcTotalAlloc > 0) {
+        // AAPCS64：blr 前 sp 须 16 对齐；大偏移分段（x13 用完即弃·与
+        //   emitStackAddr 大偏移借用不冲突）
+        if (vcTotalAlloc <= 4095) {
+            writer.line("sub sp, sp, #" + std::to_string(vcTotalAlloc));
+        } else {
+            emitMovImm(writer, "x13", static_cast<std::uint64_t>(vcTotalAlloc));
+            writer.line("sub sp, sp, x13");
+        }
+    }
     // 栈参先发射（d0/x10 中转不踩寄存器实参——431 浮九实录：单循环按序发射
     //   时第 9 浮点栈参的 d0 中转会踩掉 FP#0 已装实参，285→293 错值）
     for (std::size_t i = 0; i < argCount; ++i) {
@@ -285,6 +306,15 @@ void Arm64CodeGenerator::emitVirtualCall(Arm64AsmWriter& writer,
     }
     // 5. 间接调用：blr x9（x9 保存函数指针，参数装载未破坏）
     writer.line("blr x9");
+    // 407：栈参区收桌（与腾桌对称·帧内槽全走 x29 基址不受 sp 波动影响）
+    if (vcTotalAlloc > 0) {
+        if (vcTotalAlloc <= 4095) {
+            writer.line("add sp, sp, #" + std::to_string(vcTotalAlloc));
+        } else {
+            emitMovImm(writer, "x13", static_cast<std::uint64_t>(vcTotalAlloc));
+            writer.line("add sp, sp, x13");
+        }
+    }
     // 6. 返回值 -> 结果槽（浮点 d0/s0，整型 x0）
     if (inst.result.id >= 0) {
         if (isFloatType(inst.result.type)) {
