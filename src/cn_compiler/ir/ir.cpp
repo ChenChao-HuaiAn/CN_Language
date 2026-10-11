@@ -445,21 +445,19 @@ std::string IRGenerator::memberObjStructType(MemberExpr* node) const {
         //   实证（(真 ? 甲 : 乙).号 读 0）。与 84-d「类型推导失败→静默降级」同族。
         objType = exprSrcType(node->object.get());
     } else if (node->object->getType() == NodeType::IndexExpr) {
-        IndexExpr* idx = static_cast<IndexExpr*>(node->object.get());
-        if (idx->object->getType() == NodeType::IdentifierExpr) {
-            const std::string st = lookupSrcType(
-                static_cast<IdentifierExpr*>(idx->object.get())->name);
-            if (types::isArray(st)) objType = types::arrayElemOf(st);
-            else if (types::isPointer(st)) objType = types::pointeeOf(st);
-        } else if (idx->object->getType() == NodeType::MemberExpr) {
-            // 方形.顶点[0] / 方形指针->顶点[0]：内层成员字段（数组）-> 元素类型
-            MemberExpr* inner = static_cast<MemberExpr*>(idx->object.get());
-            const std::string innerType = memberObjStructType(inner);
-            // 973（104）：同款统一查询（数组元素类型分支保留）
-            const std::string ftype = structOrClassFieldType(innerType, inner->memberName);
-            if (!ftype.empty()) {
-                objType = types::isArray(ftype) ? types::arrayElemOf(ftype) : ftype;
-            }
+        objType = memberIndexObjElemType(
+            static_cast<IndexExpr*>(node->object.get()));
+    } else if (node->object->getType() == NodeType::UnaryExpr) {
+        // 448（2026-10-11·425 遗留①同面·genMemberLvalueAddress 与直读兜底
+        //   共用本函数）：取址表达式成员 (&表[i]).x —— &表[i] 类型=下标元素
+        //   类型（visitUnaryExpr AddressOf+IndexExpr 发射元素地址，与类型层
+        //   同源）。原 miss → objType 空 → decl==null → FieldAddr 不发射
+        //   （写错址：(&表[0]).y=77 实锤写到偏移 0 覆盖 x）/直读降级常量 0。
+        UnaryExpr* u = static_cast<UnaryExpr*>(node->object.get());
+        if (u->op == Operator::AddressOf &&
+            u->operand->getType() == NodeType::IndexExpr) {
+            objType = memberIndexObjElemType(
+                static_cast<IndexExpr*>(u->operand.get()));
         }
     }
     // v2.1 经指针成员（isDerefAccess，语义层按对象类型置位）：对象是结构体指针
@@ -474,6 +472,30 @@ std::string IRGenerator::memberObjStructType(MemberExpr* node) const {
     //   语义），剥一级后按所指结构体取字段类型。
     if (!objType.empty() && types::isPointer(types::canonical(objType))) {
         objType = types::pointeeOf(types::canonical(objType));
+    }
+    return objType;
+}
+
+// 448（2026-10-11）：下标对象元素源码类型——原 memberObjStructType 的 IndexExpr
+//   分支提炼（UnaryExpr 取址形态 &表[i] 复用，防第二处复制·事不过三）。
+//   数组名[下标]→元素类型 / 指针[下标]→所指类型 / 结构体数组字段[下标]→字段
+//   元素类型（与 ir_expr_member resolveIndexObjSrcType 族③同源同语义）。
+std::string IRGenerator::memberIndexObjElemType(IndexExpr* idx) const {
+    std::string objType = "";
+    if (idx->object->getType() == NodeType::IdentifierExpr) {
+        const std::string st = lookupSrcType(
+            static_cast<IdentifierExpr*>(idx->object.get())->name);
+        if (types::isArray(st)) objType = types::arrayElemOf(st);
+        else if (types::isPointer(st)) objType = types::pointeeOf(st);
+    } else if (idx->object->getType() == NodeType::MemberExpr) {
+        // 方形.顶点[0] / 方形指针->顶点[0]：内层成员字段（数组）-> 元素类型
+        MemberExpr* inner = static_cast<MemberExpr*>(idx->object.get());
+        const std::string innerType = memberObjStructType(inner);
+        // 973（104）：同款统一查询（数组元素类型分支保留）
+        const std::string ftype = structOrClassFieldType(innerType, inner->memberName);
+        if (!ftype.empty()) {
+            objType = types::isArray(ftype) ? types::arrayElemOf(ftype) : ftype;
+        }
     }
     return objType;
 }

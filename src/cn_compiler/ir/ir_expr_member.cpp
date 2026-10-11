@@ -424,6 +424,17 @@ std::string IRGenerator::resolveMemberObjSrcType(MemberExpr* node) {
                 objSrcType = types::pointeeOf(pType);
             }
         }
+        // 448（2026-10-11·425 遗留①根治）：取址表达式成员 (&表[i]).x ——
+        //   &表[i] 的类型=下标元素类型（visitUnaryExpr AddressOf+IndexExpr
+        //   发射元素地址），经族③下标元素推导取元素类型（数组名/指针/结构体
+        //   数组字段三形态同盖）；末尾 isDerefAccess 剥指针逻辑对非指针无操作。
+        //   原 miss → objSrcType 空 → decl==null → 直读降级常量 0
+        //   （探针 (&表[1]).x 实锤 0≠21，与 425 BinaryExpr 指针算术分支同族）。
+        else if (u->op == Operator::AddressOf &&
+                 u->operand->getType() == NodeType::IndexExpr) {
+            objSrcType = resolveIndexObjSrcType(
+                static_cast<IndexExpr*>(u->operand.get()));
+        }
     } else if (node->object->getType() == NodeType::IndexExpr) {
         objSrcType = resolveIndexObjSrcType(static_cast<IndexExpr*>(node->object.get()));
     } else if (node->isDerefAccess && node->object->getType() == NodeType::BinaryExpr) {

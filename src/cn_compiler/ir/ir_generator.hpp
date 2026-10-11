@@ -390,6 +390,10 @@ private:
     //   返回 对象指向的结构体源码类型（如 方形 -> 形状；方形.顶点[0] -> 坐标）。
     //   arrow 成员（方形指针->顶点）自动剥指针；数组字段元素类型递归推导。
     std::string memberObjStructType(MemberExpr* node) const;
+    // 下标对象元素源码类型（448：memberObjStructType 的 IndexExpr 分支提炼）：
+    //   数组名[下标]/指针[下标]/结构体数组字段[下标] → 元素源码类型；取址
+    //   表达式成员（&表[i].x 的 &表[i]）与之共用。无法推导返回空串。
+    std::string memberIndexObjElemType(IndexExpr* idx) const;
     // 推导成员表达式的"字段源码类型"（宿主缺陷1'根治 2026-09-02）：
     //   对象类型经 memberObjStructType 解析后，结构体查 StructDecl 字段、
     std::string memberFieldSrcType(MemberExpr* node) const;
