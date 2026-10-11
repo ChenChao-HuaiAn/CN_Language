@@ -286,6 +286,11 @@ class 处理器(BaseHTTPRequestHandler):
     """GET 只读放行；POST 三类：login/logout 豁免鉴权，其余须 Bearer 令牌（CLI/脚本）
     或登录会话 cookie（网页·430）；令牌未配置=全拒 fail-closed（不再按来源回环放行）。"""
 
+    # 454：每请求读写超时 30s——慢客户端（网页自动刷新·网络切换 TCP 零窗口）写响应
+    # 阻塞时该线程持全局 SQLite 连接锁，无超时=全服黑洞（Send-Q 102KB 堆积实证）；
+    # 超时抛异常断开连接即释放锁，ThreadingHTTPServer 下仅损失该单连接。
+    timeout = 30
+
     def log_message(self, fmt, *args):   # 静默访问日志（systemd journal 只留业务行）
         pass
 
