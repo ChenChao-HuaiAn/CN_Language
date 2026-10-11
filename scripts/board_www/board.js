@@ -381,10 +381,31 @@ function 开裁决(号) {
     '<input id="裁决意见" class="裁决输入" placeholder="补充意见（可空）" maxlength="500">' +
     '<input id="裁决人" class="裁决输入" placeholder="裁决人（缺省：用户）" maxlength="40">' +
     '<div class="详操作"><button class="钮 主" data-提交裁决="' + 转义(x.号) + '"' +
-    ' id="裁决提交钮">⚖ 提交本项裁决</button></div>' +
+    ' id="裁决提交钮">⚖ 提交本项裁决</button>' +
+    (x.状态 !== "已裁决"
+      ? '<button class="钮 次 危险" data-删裁决="' + 转义(x.号) + '"' +
+        ' title="误登记清理——仅待裁决态可删，已裁决件终态留痕禁删">🗑 删除本件</button>'
+      : "") +
+    '</div>' +
     (记录们 ? '<div class="详节题">裁决历史</div>' + 记录们 : "");
   面板.hidden = false;
   $("详情遮罩").hidden = false;
+}
+
+async function 删除裁决(号) {
+  if (!confirm("确认删除裁决件 #" + 号 + "？——仅用于清理误登记（已裁决件终态留痕·禁删）")) return;
+  try {
+    await 调API("POST", "api/adjudication_delete", { 号 });
+    提示("裁决件 #" + 号 + " 已删除", 3000);
+    delete 裁决选[号];
+    文档缓存.裁决.时 = 0;               // 强制重拉（列表已变）
+    脏页.裁决 = true;
+    关详情();
+    渲染激活页();
+  } catch (e) {
+    if (e.码 === 401) { 已登录 = false; 更新登录UI(); 提示("须管理员登录——请输入口令", 3000); 开登录(); }
+    else 提示("删除失败：" + e.message, 5000);
+  }
 }
 
 async function 提交裁决(件们) {
@@ -815,6 +836,8 @@ document.addEventListener("click", (e) => {
       意见: ($("裁决意见")?.value || "").trim() }]);
     return;
   }
+  const 删裁 = e.target.closest("[data-删裁决]");
+  if (删裁) { 删除裁决(删裁.dataset.删裁决); return; }
   const 裁键 = e.target.closest("[data-裁键]");
   if (裁键 && 当前裁决) {                 // 详情面板内选项卡——先于行快选判断
     裁决选[当前裁决] = 裁键.dataset.裁键;

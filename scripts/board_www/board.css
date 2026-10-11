@@ -129,6 +129,9 @@ main { max-width: 78rem; margin: 0 auto; padding: var(--space-5) var(--space-6) 
 .钮.次 { background: transparent; color: var(--color-fg-muted);
          border: 1px solid var(--color-border); }
 .钮.次:hover { border-color: var(--color-accent); color: var(--color-accent); }
+.钮.次.危险 { color: var(--color-danger); }
+.钮.次.危险:hover { border-color: var(--color-danger);
+                    background: color-mix(in srgb, var(--color-danger) 10%, transparent); }
 .钮.窄 { height: 1.9rem; padding: 0 var(--space-2); }
 
 /* —— 签组件（官网签：xs·600·0.06em·14% 淡底）—— */
