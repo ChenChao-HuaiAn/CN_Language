@@ -278,6 +278,17 @@ bool IRGenerator::isByRefCapture(const std::string& name) const {
     return false;
 }
 std::int64_t IRGenerator::ptrElemStride(const std::string& srcType) const {
+    // 425 根治（2026-10-11·09_integration 实录）：数组源类型（学生[5] 等）——
+    //   数组名退化指针算术（名单 + 人数）按**元素大小**步进（001 §4.4 指针
+    //   算术·C 语义）。原实现只认 isPointer 形态，数组全文（学生[5]）miss
+    //   → fallback 8：学生[5]（元素 24 字节）名单+5 偏移 40 字节（应 120），
+    //   循环 `p < 名单 + 人数` 提前两轮退出（探针 3/4 实证：整32[5] 迭代
+    //   10 次/整8[5] 迭代 40 次=恒 8 字节步进）。
+    if (semantic_ != nullptr && types::isArray(srcType)) {
+        const std::string elem = types::arrayElemOf(srcType);
+        const int size = semantic_->typeSizeOf(elem);
+        if (size > 0) return size;
+    }
     if (semantic_ != nullptr && types::isPointer(srcType)) {
         // 331-a（T53 根治）：泛型方法内的指针源码类型是泛型名（如 `T*`）——先做
         //   单态化替换（T → 实参类型）再取元素宽度；否则 typeSizeOf("T") 兜底 8
@@ -301,6 +312,13 @@ std::string IRGenerator::pointerPointeeSrcType(Expr* node) const {
     if (node->getType() == NodeType::IdentifierExpr) {
         const std::string srcType = lookupSrcType(
             static_cast<IdentifierExpr*>(node)->name);
+        // 425 同轮补（09_integration 实录）：数组名标识符——所指元素类型=
+        //   数组元素类型（数组名退化语义·与 ptrElemStride 数组分支同源）。
+        //   原实现 isPointer(学生[5])=假 直返 ""：`(名单 + 4).分数` 括号
+        //   直读成员对象源类型空 → 字段偏移错位读垃圾（探针 5/6 实录）。
+        if (!srcType.empty() && types::isArray(srcType)) {
+            return types::arrayElemOf(srcType);
+        }
         if (!srcType.empty() && types::isPointer(srcType)) {
             return types::pointeeOf(srcType);
         }
@@ -716,11 +734,15 @@ ir::IRValue IRGenerator::genMemberLvalueAddress(Expr* node) {
         if (objSrcType.empty() && member->isDerefAccess &&
             member->object->getType() == NodeType::BinaryExpr) {
             // 指针算术结果成员：(名单 + (n-1)).分数 — 从左操作数推导元素类型
+            // 425 同轮补：左操作数=数组名（学生[5]）时元素类型=数组元素类型
+            //   （数组名退化·与 resolveMemberObjSrcType / ptrElemStride 同源）
             BinaryExpr* bin = static_cast<BinaryExpr*>(member->object.get());
             if (bin->left->getType() == NodeType::IdentifierExpr) {
                 const std::string ptrType = lookupSrcType(
                     static_cast<IdentifierExpr*>(bin->left.get())->name);
-                if (types::isPointer(ptrType)) {
+                if (types::isArray(ptrType)) {
+                    objSrcType = types::arrayElemOf(ptrType);
+                } else if (types::isPointer(ptrType)) {
                     objSrcType = types::pointeeOf(ptrType);
                 }
             }

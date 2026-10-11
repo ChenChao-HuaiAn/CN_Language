@@ -430,11 +430,17 @@ std::string IRGenerator::resolveMemberObjSrcType(MemberExpr* node) {
         // 指针算术结果成员：(名单 + (n-1)).分数 — 从左操作数（指针变量）
         // 推导元素类型（Task 2.7 集成修复：此前 decl==nullptr 返回占位0，
         // 导致结构体指针算术+成员访问组合读取恒为0）
+        // 425 同轮补（09_integration 实录）：左操作数=**数组名**（学生[5]）——
+        //   数组名退化指针算术 (名单 + 4).分数 的元素类型=数组元素类型；
+        //   原只认 isPointer（学生[5] miss）→ objSrcType 空 → 读取恒 0
+        //   （探针 5/6 实录，与 ptrElemStride 数组分支同源根治）。
         BinaryExpr* bin = static_cast<BinaryExpr*>(node->object.get());
         if (bin->left->getType() == NodeType::IdentifierExpr) {
             const std::string ptrType = lookupSrcType(
                 static_cast<IdentifierExpr*>(bin->left.get())->name);
-            if (types::isPointer(ptrType)) {
+            if (types::isArray(ptrType)) {
+                objSrcType = types::arrayElemOf(ptrType);
+            } else if (types::isPointer(ptrType)) {
                 objSrcType = types::pointeeOf(ptrType);
             }
         }
