@@ -15,6 +15,7 @@
 #include "cn_compiler/semantic/semantic.hpp"
 #include "cn_compiler/model/type_system.hpp"
 #include "cn_compiler/model/semantic_helpers.hpp"
+#include "cn_compiler/semantic/semantic_lambda_escape.hpp"
 
 namespace cn_compiler {
 // 8. D1 行数整改 117-a：按族拆出 semantic_types.cpp（类型系统）/semantic_sig.cpp（签名重载）/semantic_builtins.cpp（内置注册）（纯重构零行为变更）
@@ -836,6 +837,12 @@ std::string SemanticAnalyzer::checkExpr(Expr* node) {
     //   借出登记/容器类型均就绪，此处单点覆盖全部调用形态）
     if (node->getType() == NodeType::CallExpr) {
         checkBorrowViewCallArgs(static_cast<CallExpr*>(node));
+        // 435：lambda 引用捕获逃逸——调用实参位检查（挂 checkExpr 统一出口=
+        //   实参 checkExpr 已毕·lambda 捕获集已回填；visitCallExpr 多族早退
+        //   无法单点收尾，借本处「实参检查已毕」先例同位。被调位不扫描=
+        //   同帧调用合法面·706/707。设计见 semantic_lambda_escape.hpp）
+        lambda_escape::checkCallArgs(diagnostics_, static_cast<CallExpr*>(node),
+                                     node->location, currentFnUnsafe_);
     }
     // 559-a（T96a/T96b）：语义类型写回 AST（D1 StructInitExpr 先例同构推广）——
     //   IR 生成层的变量声明类型推断与三元物化槽分配直接读注记，根治

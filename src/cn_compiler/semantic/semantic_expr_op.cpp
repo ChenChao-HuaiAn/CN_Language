@@ -12,6 +12,7 @@
 #include "cn_compiler/semantic/semantic.hpp"
 #include "cn_compiler/model/type_system.hpp"
 #include "cn_compiler/model/semantic_helpers.hpp"
+#include "cn_compiler/semantic/semantic_lambda_escape.hpp"
 
 namespace cn_compiler {
 
@@ -104,6 +105,14 @@ void SemanticAnalyzer::visitAssignmentExpr(AssignmentExpr* node) {
     if (!targetType.empty() && targetType != "未知") {
         ctorTargetStack_.pop_back();
     }
+    // 435：lambda 引用捕获逃逸——赋值位检查（右值树含 [&] 非空捕获 lambda/
+    //   传播表变量：目标=本函数局部 → 传播入表；全局/字段/成员/下标/解引用
+    //   等长寿命或寿命不可证载体 → 逃逸编译错误。设计见
+    //   semantic_lambda_escape.hpp·v2 同构=语义检查逃逸.cn）
+    lambda_escape::checkAssign(
+        diagnostics_, node->target.get(), node->value.get(), node->location,
+        currentFnUnsafe_,
+        [this](const std::string& n) { return isCurrentFnLocal(n); });
 
     // 借出视图登记 + 字符* 借用收紧（A21/A2 族）：true = 已诊断并终止
     if (checkBorrowViewAssign(node, targetType, valueType)) return;

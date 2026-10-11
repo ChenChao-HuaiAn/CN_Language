@@ -13,6 +13,7 @@
 #include "cn_compiler/semantic/semantic.hpp"
 #include "cn_compiler/model/type_system.hpp"
 #include "cn_compiler/model/semantic_helpers.hpp"
+#include "cn_compiler/semantic/semantic_lambda_escape.hpp"
 
 namespace cn_compiler {
 
@@ -426,6 +427,12 @@ void SemanticAnalyzer::visitVarDecl(VarDecl* node) {
     if (node->initializer != nullptr && isNullConstEligibleType(varType)) {
         noteNullAssign(node->name, node->initializer.get());
     }
+    // 435：lambda 引用捕获逃逸——声明初始化位传播登记（初始化器含引用捕获
+    //   lambda → 变量名入传播表；同名再声明无 lambda → 出表·遮蔽修正。
+    //   初始化器 checkExpr 已毕=捕获集已回填，树扫描判定有效）
+    if (node->initializer != nullptr) {
+        lambda_escape::noteDeclInit(node->name, node->initializer.get());
+    }
     // plans/019 阶段3 扩展（A21 借出视图生命周期，第七十七轮）：初始化位借出
     //   绑定登记【变量 s = 表.元素(0) / 结果<…> r = 表.读取(0)——容器内句柄
     //   浅拷；登记来源容器与活跃区间起点，供「容器失效点/容器先亡 × 后续使用」
@@ -584,6 +591,9 @@ void SemanticAnalyzer::checkFunctionBody(FunctionDecl* node) {
     currentIsRefReturn_ = info.isRefReturn;
     // plans/019 阶段4：不安全 函数 上下文（安全区边界观察期检查用）
     currentFnUnsafe_ = info.isUnsafe;
+    // 435：lambda 引用捕获逃逸——当前函数传播表清空（跨函数互不污染·
+    //   与 v2 检查函数 入口清空族同位；设计见 semantic_lambda_escape.hpp）
+    lambda_escape::noteFunctionEntry();
     // 收集当前函数引用参数名：引用返回允许"返回引用参数"（指向调用方存储，
     // 悬垂只发生在返回本函数局部/按值参数时）
     currentRefParams_.clear();

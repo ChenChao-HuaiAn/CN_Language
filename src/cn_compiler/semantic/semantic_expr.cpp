@@ -15,6 +15,7 @@
 #include "cn_compiler/semantic/semantic.hpp"
 #include "cn_compiler/model/type_system.hpp"
 #include "cn_compiler/model/semantic_helpers.hpp"
+#include "cn_compiler/semantic/semantic_lambda_escape.hpp"
 
 namespace cn_compiler {
 
@@ -832,6 +833,9 @@ void SemanticAnalyzer::visitCastExpr(CastExpr* node) {
     lastType_ = target;
 }
 void SemanticAnalyzer::visitLambdaExpr(LambdaExpr* node) {
+    // 435：lambda 体上下文置位（#486 挂账·两侧一致不查面——v2 合成体结构性
+    //   跳过语句检查，宿主挂点在 lambda 体内一律跳过=零分叉；嵌套累加配对）
+    lambda_escape::enterLambdaBody();
     // Task 2.10 捕获分析：确定实际捕获变量集（回填 node->explicitCaptures）
     //   [] 不捕获；[=] 值捕获全部外层可见变量；[&] 引用捕获全部外层可见变量；
     //   [变量] 显式捕获（校验变量存在）。
@@ -916,5 +920,6 @@ void SemanticAnalyzer::visitLambdaExpr(LambdaExpr* node) {
     }
     lastType_ = "函数指针<" + (node->returnType.empty() ? "空类型" : node->returnType) +
                 ">(" + params + ")";
+    lambda_escape::exitLambdaBody();  // 435：lambda 体上下文复位（与 enter 配对）
 }
 } // namespace cn_compiler

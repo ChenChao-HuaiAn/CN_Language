@@ -13,6 +13,7 @@
 #include "cn_compiler/semantic/semantic.hpp"
 #include "cn_compiler/model/type_system.hpp"
 #include "cn_compiler/model/semantic_helpers.hpp"
+#include "cn_compiler/semantic/semantic_lambda_escape.hpp"
 
 namespace cn_compiler {
 
@@ -746,6 +747,11 @@ void SemanticAnalyzer::visitReturnStmt(ReturnStmt* node) {
         }
     }
     checkReturnAddressEscape(node);
+    // 435：lambda 引用捕获逃逸——返回位检查（值树含 [&] 非空捕获 lambda/
+    //   传播表变量 = 逃逸编译错误；不安全 函数 豁免。设计见
+    //   semantic_lambda_escape.hpp·v2 同构=语义检查逃逸.cn）
+    lambda_escape::checkReturn(diagnostics_, node->value.get(), node->location,
+                               currentFnUnsafe_);
 }
 
 // 217-a：族① A2 拥有契约检查——返回类型 字符串=拥有（调用方登记 RAII 自动 free，
