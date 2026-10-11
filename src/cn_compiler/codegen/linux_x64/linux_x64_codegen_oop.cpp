@@ -207,31 +207,54 @@ void LinuxX64CodeGenerator::emitDeleteObject(LinuxX64AsmWriter& writer,
 void LinuxX64CodeGenerator::emitVirtualCall(LinuxX64AsmWriter& writer,
                                             const ir::IRInstruction& inst) {
     if (inst.operands.empty()) return;
-    std::string className = inst.extra;
-    std::string methodName = inst.extra;
-    const std::size_t dot = inst.extra.find('.');
+    // 410（虚调用 bigRet 根治·对齐 emitDirectMethodCall/emitCall 契约）：
+    //   形态A（结构体/数组返回·IR 层预插 retbuf=operands[0]·this=operands[1]·
+    //   extra "&" 前缀）——被调方序言=rdi=retbuf、rsi=this；此前虚调用固定
+    //   rdi=this 且无 retbuf=被调方把返回值写进 this 对象内存（堆写穿·调用方
+    //   从 [rax=this] 拷回=值侥幸对）。i128/u128 返回=后端自建缓冲（result.type
+    //   判定·emitCall hasBigRet 同款——此前垃圾值铁证）。标量/void=原样。
+    const bool vcFormA = (!inst.extra.empty() && inst.extra[0] == '&');
+    const std::string vcExtra = vcFormA ? inst.extra.substr(1) : inst.extra;
+    std::string className = vcExtra;
+    std::string methodName = vcExtra;
+    const std::size_t dot = vcExtra.find('.');
     if (dot != std::string::npos) {
-        className = inst.extra.substr(0, dot);
-        methodName = inst.extra.substr(dot + 1);
+        className = vcExtra.substr(0, dot);
+        methodName = vcExtra.substr(dot + 1);
     }
     int slot = -1;
     if (semantic_ != nullptr) {
         slot = semantic_->classVtableIndex(className, methodName);
     }
-    const std::size_t argCount = inst.operands.size() - 1;
-    // 1. this 入 rdi
-    if (inst.operands[0].id >= 0) {
-        emitStackLoad(writer, regSlotOffset(inst.operands[0].id), "rdi", "ptr", __LINE__);
+    const std::size_t thisIdx = vcFormA ? 1 : 0;
+    const std::size_t argCount = inst.operands.size() - thisIdx - 1;
+    const bool vcBigRet = (!vcFormA && (inst.result.type == "i128" ||
+                                        inst.result.type == "u128"));
+    const char* thisReg = (vcFormA || vcBigRet) ? "rsi" : "rdi";
+    // 1. this 入 rdi（形态A/i128 时 rsi——retbuf 占 rdi）
+    if (inst.operands[thisIdx].id >= 0) {
+        emitStackLoad(writer, regSlotOffset(inst.operands[thisIdx].id), thisReg, "ptr", __LINE__);
     } else {
-        emitStackLoad(writer, varSlotOf(inst.operands[0].extra), "rdi", "ptr", __LINE__);
+        emitStackLoad(writer, varSlotOf(inst.operands[thisIdx].extra), thisReg, "ptr", __LINE__);
     }
-    // 2. 虚表指针：r9 = [rdi]（对象首地址存虚表指针）
-    writer.line("mov r9, qword ptr [rdi]");
+    // 2. 虚表指针：r9 = [this]（对象首地址存虚表指针）
+    writer.line(std::string("mov r9, qword ptr [") + thisReg + "]");
     // 3. 函数指针：r11 = [r9 + 槽位*8]（r11 为 SysV 间接调用惯例寄存器）
     if (slot >= 0) {
         writer.line("mov r11, qword ptr [r9+" + std::to_string(slot * 8) + "]");
     } else {
         writer.line("mov r11, qword ptr [r9]");
+    }
+    // 410：retbuf——形态A=IR 层预插地址寄存器（operands[0]）；i128=帧内固定区
+    //   （emitCall 同款·rbp 相对持久）。被调方写此缓冲，调用方接收消费。
+    if (vcFormA) {
+        if (inst.operands[0].id >= 0) {
+            emitStackLoad(writer, regSlotOffset(inst.operands[0].id), "rdi", "ptr", __LINE__);
+        } else {
+            emitStackLoad(writer, varSlotOf(inst.operands[0].extra), "rdi", "ptr", __LINE__);
+        }
+    } else if (vcBigRet) {
+        writer.line("lea rdi, " + stackMemText(retbufFrameOffset_));
     }
     // 4. 实参位置分配（第一遍）——331-a T49 根治：**栈参数区补齐**（win x64 与
     //    arm64 后端此前已实现=跨后端不对称）。布局契约与 emitCall 完全一致：
@@ -239,11 +262,11 @@ void LinuxX64CodeGenerator::emitVirtualCall(LinuxX64AsmWriter& writer,
     //    rsp 保持 16 字节对齐（alignPad），调用后恢复。
     std::vector<int> argKind(argCount, 0);   // 0=整型寄存器 1=浮点寄存器 2=栈
     std::vector<int> argPos(argCount, -1);   // 寄存器位号 或 栈序列号
-    int planIntIdx = 1;      // rdi 已被 this 占用
+    int planIntIdx = (vcFormA || vcBigRet) ? 2 : 1;   // rdi/rsi 已被 retbuf/this 占用
     int planFloatIdx = 0;
     int stackCounter = 0;
     for (std::size_t i = 0; i < argCount; ++i) {
-        const std::string& argType = inst.operands[1 + i].type;
+        const std::string& argType = inst.operands[thisIdx + 1 + i].type;
         if (isFloatType(argType)) {
             if (planFloatIdx < 8) {
                 argKind[i] = 1;
@@ -271,7 +294,7 @@ void LinuxX64CodeGenerator::emitVirtualCall(LinuxX64AsmWriter& writer,
     // 4a. 栈参数写入（先栈后寄存器：临时 r10/xmm0 中转，不破坏 r9[虚表]/r11[函数针]）
     for (std::size_t i = 0; i < argCount; ++i) {
         if (argKind[i] != 2) continue;
-        const ir::IRValue& av = inst.operands[1 + i];
+        const ir::IRValue& av = inst.operands[thisIdx + 1 + i];
         const std::string mem = "[rsp+" + std::to_string(argPos[i] * 8) + "]";
         if (isFloatType(av.type)) {
             loadOperandToV(writer, av, "xmm0");
@@ -288,7 +311,7 @@ void LinuxX64CodeGenerator::emitVirtualCall(LinuxX64AsmWriter& writer,
     // 4b. 寄存器参数装载（整型 rsi..r9 / 浮点 xmm0..xmm7；r11 保持函数指针）
     for (std::size_t i = 0; i < argCount; ++i) {
         if (argKind[i] == 2) continue;
-        const ir::IRValue& av = inst.operands[1 + i];
+        const ir::IRValue& av = inst.operands[thisIdx + 1 + i];
         if (argKind[i] == 1) {
             loadOperandToV(writer, av, "xmm" + std::to_string(argPos[i]));
         } else if (av.type == "i128" || av.type == "u128") {
@@ -303,10 +326,18 @@ void LinuxX64CodeGenerator::emitVirtualCall(LinuxX64AsmWriter& writer,
     if (totalAlloc > 0) {
         writer.line("add rsp, " + std::to_string(totalAlloc));
     }
-    // 6. 返回值 -> 结果槽（浮点 xmm0，整型 rax）
+    // 6. 返回值 -> 结果槽（浮点 xmm0，整型 rax；410：i128 经 rax=retbuf 读回双半）
     if (inst.result.id >= 0) {
         const int dstOff = regSlotOffset(inst.result.id);
-        if (isFloatType(inst.result.type)) {
+        if (inst.result.type == "i128" || inst.result.type == "u128") {
+            // 410：i128 返回——被调方写 retbuf 并经 rax 返回其指针（emitCall
+            //   接收段同构·原 emitStackStore(rax)=把缓冲地址当 i128 低半=垃圾）
+            const int vcLoId = inst.result.id + 1;
+            writer.line("mov r9, qword ptr [rax]");
+            emitStackStore(writer, regSlotOffset(vcLoId), "r9", "i64");
+            writer.line("mov r9, qword ptr [rax+8]");
+            emitStackStore(writer, dstOff, "r9", "i64");
+        } else if (isFloatType(inst.result.type)) {
             emitStackStore(writer, dstOff, "xmm0", inst.result.type);
         } else {
             emitStackStore(writer, dstOff, "rax", inst.result.type);

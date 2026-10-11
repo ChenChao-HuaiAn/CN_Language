@@ -734,6 +734,34 @@ void IRGenerator::emitVirtualMethodCall(CallExpr* node, const ClassMemberInfo* m
     //   （buildCallArgsOop 不感知形参类型；此处有 m->paramTypes）。
     widenI128Args(userArgs, m->paramTypes, node->location);
     for (auto& a : userArgs) args.push_back(a);
+    // 410（虚调用 bigRet 形态A·emitDirectMethodCall Task 6.1 同构）：结构体/
+    //   数组返回方法——IR 层预插 retbuf 地址为 operands[0]（this 退位 1），
+    //   result.type=void，extra 加 "&" 前缀供后端识别（emitCall 的 struct 面
+    //   即此形态A 契约；虚调用此前缺预插=被调方把返回值写进 this 对象内存=
+    //   堆写穿·调用方从 [rax=this] 拷回仅值侥幸对）。i128 返回不预插（后端
+    //   按 result.type 自建缓冲·emitCall hasBigRet 同款）。
+    if (semantic_ != nullptr && !m->type.empty() && !m->isRefReturn &&
+        (semantic_->isStructType(types::canonical(m->type)) ||
+         types::isArray(m->type))) {
+        const std::string temp = "__retbuf" + std::to_string(varCounter_++);
+        emit(ir::Opcode::Alloca, {}, ir::IRValue::reg(regCounter_++, "ptr"),
+             temp, "ptr", node->location);
+        function_->varSlots[temp] = 8;
+        registerVarSlots(temp, m->type);
+        const int structSize = semantic_->typeSizeOf(types::canonical(m->type));
+        if (structSize > 8) function_->varSlots[temp] = (structSize + 7) / 8;
+        ir::IRValue buf = emitResult(ir::Opcode::AddrOf,
+                                     {ir::IRValue::var(temp, "i64")},
+                                     "ptr", temp, node->location);
+        std::vector<ir::IRValue> hiddenArgs;
+        hiddenArgs.push_back(buf);      // 形态A：retbuf（位 0）
+        hiddenArgs.push_back(thisArg);  // this（位 1）
+        for (auto& a : userArgs) hiddenArgs.push_back(a);
+        emit(ir::Opcode::VirtualCall, hiddenArgs, ir::IRValue(),
+             std::string("&") + owner + "." + methodName, "void", node->location);
+        lastExpr_ = buf;
+        return;
+    }
     // 118（929）：引用返回方法（-> T&）——resultType=ptr（被引用左值地址）
     const std::string resultType = m->isRefReturn
                                        ? "ptr"

@@ -208,22 +208,31 @@ void X64CodeGenerator::emitDeleteObject(AsmWriter& writer, const ir::IRInstructi
 //   5. call r11（间接调用）
 void X64CodeGenerator::emitVirtualCall(AsmWriter& writer, const ir::IRInstruction& inst) {
     if (inst.operands.empty()) return;
-    // 解析 类名.虚方法名
-    std::string className = inst.extra;
-    std::string methodName = inst.extra;
-    const std::size_t dot = inst.extra.find('.');
+    // 410（虚调用 bigRet 根治）：形态A（结构体/数组返回·IR 层预插 retbuf=
+    //   operands[0]·this=operands[1]·extra "&" 前缀）——被调方序言=rcx=retbuf、
+    //   rdx=this；此前固定 rcx=this=被调方把返回值写进 this 对象（堆写穿）。
+    //   i128/u128=后端自建缓冲（emitCall hasBigRet 同款）。标量/void=原样。
+    const bool vcFormA = (!inst.extra.empty() && inst.extra[0] == '&');
+    const std::string vcExtra = vcFormA ? inst.extra.substr(1) : inst.extra;
+    std::string className = vcExtra;
+    std::string methodName = vcExtra;
+    const std::size_t dot = vcExtra.find('.');
     if (dot != std::string::npos) {
-        className = inst.extra.substr(0, dot);
-        methodName = inst.extra.substr(dot + 1);
+        className = vcExtra.substr(0, dot);
+        methodName = vcExtra.substr(dot + 1);
     }
     // 槽位索引（语义层 classVtableIndex；未找到 -1 时防御性直接调用）
     int slot = -1;
     if (semantic_ != nullptr) {
         slot = semantic_->classVtableIndex(className, methodName);
     }
-    // 实参个数（operand[0]=this，operand[1..]=实参）
-    const std::size_t argCount = inst.operands.size() - 1;
-    const std::string objOp = operandText(inst.operands[0]);
+    // 实参个数（形态A：operand[0]=retbuf·operand[1]=this；否则 operand[0]=this）
+    const std::size_t thisIdx = vcFormA ? 1 : 0;
+    const std::size_t argCount = inst.operands.size() - thisIdx - 1;
+    const std::string objOp = operandText(inst.operands[thisIdx]);
+    const bool vcBigRet = (!vcFormA && (inst.result.type == "i128" ||
+                                        inst.result.type == "u128"));
+    const std::string thisReg = (vcFormA || vcBigRet) ? "rdx" : "rcx";
     // 分配 32 字节影子空间 + 栈参数区（实参 + this，共 argCount+1 个参数位；
     //   this 占第 0 位，总参数位 = argCount + 1）
     const std::size_t totalParams = argCount + 1;  // 含 this
@@ -235,10 +244,10 @@ void X64CodeGenerator::emitVirtualCall(AsmWriter& writer, const ir::IRInstructio
     } else {
         writer.line("sub rsp, 32");
     }
-    // 1. 对象指针（this）入 rcx
-    writer.line("mov rcx, " + objOp);
+    // 1. 对象指针（this）入 rcx（形态A/i128 时 rdx——retbuf 占 rcx）
+    writer.line("mov " + thisReg + ", " + objOp);
     // 2. 虚表指针：rax = [对象]（对象首地址存虚表指针）
-    writer.line("mov rax, rcx");
+    writer.line("mov rax, " + thisReg);
     writer.line("mov rax, [rax]");  // rax = 虚表指针
     // 3. 函数指针：rax = [虚表 + 槽位*8]
     if (slot >= 0) {
@@ -247,12 +256,21 @@ void X64CodeGenerator::emitVirtualCall(AsmWriter& writer, const ir::IRInstructio
         // 槽位未知（语义层未找到）：防御性走 0 槽（多态错误由语义层拦截）
         writer.line("mov rax, [rax]");
     }
-    // 4. 装载其余实参（参数位从 1 起：this 占第 0 位，参数位后移）
-    //    注意：rax 已保存函数指针，参数装载使用 rdx/r8/r9（不破坏 rax）
+    // 410：retbuf——形态A=IR 层预插地址寄存器（operands[0]）；i128=帧内固定区
+    //   经 r10 中转设 rcx（r10 volatile·不碰 rax 函数指针）
+    if (vcFormA) {
+        writer.line("mov rcx, " + operandText(inst.operands[0]));
+    } else if (vcBigRet) {
+        writer.line("lea r10, [rbp" + std::to_string(retbufFrameOffset_) + "]");
+        writer.line("mov rcx, r10");
+    }
+    // 4. 装载其余实参（参数位从 1 起：this 占第 0 位·410：bigRet 再加 retbuf
+    //    占第 0 位、this 占第 1 位，实参从第 2 起）
+    //    注意：rax 已保存函数指针，参数装载使用 rdx/r8/r9/r10（不破坏 rax）
     for (std::size_t i = 0; i < argCount; ++i) {
-        const std::string& op = operandText(inst.operands[1 + i]);
-        const std::string& argType = inst.operands[1 + i].type;
-        const int regIdx = static_cast<int>(i + 1);  // 参数位：this 占 0
+        const std::string& op = operandText(inst.operands[thisIdx + 1 + i]);
+        const std::string& argType = inst.operands[thisIdx + 1 + i].type;
+        const int regIdx = static_cast<int>(i + ((vcFormA || vcBigRet) ? 2 : 1));  // 参数位
         // 437-a（win 虚调用栈参数根治）：参数位 ≥4 = 栈传——调用者写锚须 [rsp+32+…]
         //   （sub rsp 后当前 rsp 为基准；被调方入口读 [rbp+48+…]≡caller rsp+32 同址）。
         //   原 parameterRegister 的 [rbp+48] 是**被调方**锚——在调用者视角错位 96 字节
@@ -311,10 +329,19 @@ void X64CodeGenerator::emitVirtualCall(AsmWriter& writer, const ir::IRInstructio
     } else {
         writer.line("add rsp, 32");
     }
-    // 6. 返回值 -> 结果槽（浮点 xmm0，整型 rax）
+    // 6. 返回值 -> 结果槽（浮点 xmm0，整型 rax；410：i128 经 rax=retbuf 读回双半）
     if (inst.result.id >= 0) {
         std::string dst = resultText(inst.result);
-        if (isFloatType(inst.result.type)) {
+        if (inst.result.type == "i128" || inst.result.type == "u128") {
+            // 410：i128 返回——被调方写 retbuf 并经 rax 返回其指针（emitCall
+            //   接收段同构·原 mov rax→dst=把缓冲地址当 i128 低半=垃圾）
+            const int vcHiId = inst.result.id;
+            const int vcLoId = inst.result.id + 1;
+            writer.line("mov rdx, [rax]");       // 低64位
+            writer.line("mov " + regSlot(vcLoId) + ", rdx");
+            writer.line("mov rdx, [rax+8]");     // 高64位
+            writer.line("mov " + regSlot(vcHiId) + ", rdx");
+        } else if (isFloatType(inst.result.type)) {
             const std::string store = (inst.result.type == "f64") ? "movsd" : "movss";
             const std::string mp = (inst.result.type == "f64") ? "qword ptr " : "dword ptr ";
             writer.line(store + " " + mp + dst + ", xmm0");

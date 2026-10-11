@@ -207,41 +207,52 @@ void Arm64CodeGenerator::emitDeleteObject(Arm64AsmWriter& writer,
 void Arm64CodeGenerator::emitVirtualCall(Arm64AsmWriter& writer,
                                          const ir::IRInstruction& inst) {
     if (inst.operands.empty()) return;
-    std::string className = inst.extra;
-    std::string methodName = inst.extra;
-    const std::size_t dot = inst.extra.find('.');
+    // 410（虚调用 bigRet 根治·对齐 emitCall 隐藏返回指针契约）：形态A（结构体/
+    //   数组返回·IR 层预插 retbuf=operands[0]·this=operands[1]·extra "&" 前缀）
+    //   ——被调方序言=x0=retbuf、x1=this；此前虚调用固定 x0=this=被调方把
+    //   返回值写进 this 对象内存（堆写穿）。i128/u128 返回=后端自建缓冲并入
+    //   407 腾桌区（emitCall hasBigRet 同款——此前 vptr 写穿+垃圾值铁证）。
+    const bool vcFormA = (!inst.extra.empty() && inst.extra[0] == '&');
+    const std::string vcExtra = vcFormA ? inst.extra.substr(1) : inst.extra;
+    std::string className = vcExtra;
+    std::string methodName = vcExtra;
+    const std::size_t dot = vcExtra.find('.');
     if (dot != std::string::npos) {
-        className = inst.extra.substr(0, dot);
-        methodName = inst.extra.substr(dot + 1);
+        className = vcExtra.substr(0, dot);
+        methodName = vcExtra.substr(dot + 1);
     }
     int slot = -1;
     if (semantic_ != nullptr) {
         slot = semantic_->classVtableIndex(className, methodName);
     }
-    const std::size_t argCount = inst.operands.size() - 1;
-    // 1. this 入 x0
-    if (inst.operands[0].id >= 0) {
-        loadOperandToX(writer, inst.operands[0], "x0");
+    const std::size_t thisIdx = vcFormA ? 1 : 0;
+    const std::size_t argCount = inst.operands.size() - thisIdx - 1;
+    const bool vcBigRet = (!vcFormA && (inst.result.type == "i128" ||
+                                        inst.result.type == "u128"));
+    const std::string thisReg = (vcFormA || vcBigRet) ? "x1" : "x0";
+    // 1. this 入 x0（形态A/i128 时 x1——retbuf 占 x0）
+    if (inst.operands[thisIdx].id >= 0) {
+        loadOperandToX(writer, inst.operands[thisIdx], thisReg);
     } else {
-        emitStackLoad(writer, varSlotOf(inst.operands[0].extra), "x0", "ptr");
+        emitStackLoad(writer, varSlotOf(inst.operands[thisIdx].extra), thisReg, "ptr");
     }
-    // 2. 虚表指针：x9 = [x0]（对象首地址存虚表指针）
-    writer.line("ldr x9, [x0]");
+    // 2. 虚表指针：x9 = [this]（对象首地址存虚表指针）
+    writer.line("ldr x9, [" + thisReg + "]");
     // 3. 函数指针：x9 = [x9 + 槽位*8]
     if (slot >= 0) {
         writer.line("ldr x9, [x9, #" + std::to_string(slot * 8) + "]");
     } else {
         writer.line("ldr x9, [x9]");
     }
-    // 4. 装载其余实参（404：this 占 GP#0，实参走 GP/FP 独立计数落位单点）
+    // 4. 装载其余实参（404：GP/FP 独立计数落位单点）
     //    注意：x9 已保存函数指针，参数装载使用 x10 等（不破坏 x9）
     std::vector<std::string> vcArgTypes;
     vcArgTypes.reserve(argCount);
     for (std::size_t i = 0; i < argCount; ++i) {
-        vcArgTypes.push_back(inst.operands[1 + i].type);
+        vcArgTypes.push_back(inst.operands[thisIdx + 1 + i].type);
     }
     const std::vector<Arm64ArgPlacement> placements =
-        arm64AssignParamPlacements(vcArgTypes, 1);
+        arm64AssignParamPlacements(vcArgTypes, (vcFormA || vcBigRet) ? 2 : 1);
     // 407：栈参区腾桌（与 emitCall 布局契约对齐——此前直接写 [sp,#..] 借用当前
     //   帧底，踩调用者帧内深槽局部变量；431 浮九 frameSize 小侥幸绿，688 哨兵锁红。
     //   linux_x64 331-a 已对、win x64 影子空间自带，唯 arm64 初版即漏=跨后端不对称）
@@ -250,9 +261,13 @@ void Arm64CodeGenerator::emitVirtualCall(Arm64AsmWriter& writer,
         if (p.cls == 2) ++vcStackArgs;
     }
     const int vcStackBytes = static_cast<int>(vcStackArgs * 8);
+    // 410：bigRet 返回缓冲 16B 并入腾桌区（emitCall bigRetPad 同构——缓冲
+    //   位于栈参区上方 [sp, #vcStackArgs*8]，blr 前定 x0）
+    const int vcBigRetPad = vcBigRet ? 16 : 0;
+    const int vcAllocBytes = vcStackBytes + vcBigRetPad;
     const int vcAlignPad =
-        (vcStackBytes % 16 == 0) ? 0 : (16 - vcStackBytes % 16);
-    const int vcTotalAlloc = vcStackBytes + vcAlignPad;
+        (vcAllocBytes % 16 == 0) ? 0 : (16 - vcAllocBytes % 16);
+    const int vcTotalAlloc = vcAllocBytes + vcAlignPad;
     if (vcTotalAlloc > 0) {
         // AAPCS64：blr 前 sp 须 16 对齐；大偏移分段（x13 用完即弃·与
         //   emitStackAddr 大偏移借用不冲突）
@@ -263,12 +278,27 @@ void Arm64CodeGenerator::emitVirtualCall(Arm64AsmWriter& writer,
             writer.line("sub sp, sp, x13");
         }
     }
+    // 410：retbuf——形态A=IR 层预插地址寄存器（operands[0]）；i128=腾桌区
+    //   栈参区上方 [sp, #vcStackArgs*8]（emitCall 同构）。被调方写此缓冲。
+    if (vcFormA) {
+        if (inst.operands[0].id >= 0) {
+            loadOperandToX(writer, inst.operands[0], "x0");
+        } else {
+            emitStackLoad(writer, varSlotOf(inst.operands[0].extra), "x0", "ptr");
+        }
+    } else if (vcBigRet) {
+        if (vcStackArgs > 0) {
+            writer.line("add x0, sp, #" + std::to_string(vcStackArgs * 8));
+        } else {
+            writer.line("mov x0, sp");
+        }
+    }
     // 栈参先发射（d0/x10 中转不踩寄存器实参——431 浮九实录：单循环按序发射
     //   时第 9 浮点栈参的 d0 中转会踩掉 FP#0 已装实参，285→293 错值）
     for (std::size_t i = 0; i < argCount; ++i) {
         const Arm64ArgPlacement& place = placements[i];
         if (place.cls != 2) continue;
-        const ir::IRValue& av = inst.operands[1 + i];
+        const ir::IRValue& av = inst.operands[thisIdx + 1 + i];
         const std::string& argType = av.type;
         // 栈参数（寄存器池溢出）：写 [sp,#槽序*8]（槽序=参数序·AAPCS64）
         const int memOff = static_cast<int>(place.num * 8);
@@ -287,7 +317,7 @@ void Arm64CodeGenerator::emitVirtualCall(Arm64AsmWriter& writer,
     for (std::size_t i = 0; i < argCount; ++i) {
         const Arm64ArgPlacement& place = placements[i];
         if (place.cls == 2) continue;
-        const ir::IRValue& av = inst.operands[1 + i];
+        const ir::IRValue& av = inst.operands[thisIdx + 1 + i];
         const std::string& argType = av.type;
         if (place.cls == 1) {
             // 浮点实参：vN（FP 队列独立序号·404）
@@ -315,9 +345,18 @@ void Arm64CodeGenerator::emitVirtualCall(Arm64AsmWriter& writer,
             writer.line("add sp, sp, x13");
         }
     }
-    // 6. 返回值 -> 结果槽（浮点 d0/s0，整型 x0）
+    // 6. 返回值 -> 结果槽（浮点 d0/s0，整型 x0；410：i128 经 x0=retbuf 读回双半）
     if (inst.result.id >= 0) {
-        if (isFloatType(inst.result.type)) {
+        if (inst.result.type == "i128" || inst.result.type == "u128") {
+            // 410：i128 返回——被调方写 retbuf（x0），读回低/高半到双槽
+            //   （emitCall 接收段同构·原 storeVirtualResult(x0)=把缓冲地址
+            //   当 i128 值=垃圾）
+            const int vcLoId = inst.result.id + 1;
+            writer.line("ldr x9, [x0]");
+            storeVirtualResult(writer, vcLoId, "x9", "i64");
+            writer.line("ldr x9, [x0, #8]");
+            storeVirtualResult(writer, inst.result.id, "x9", "i64");
+        } else if (isFloatType(inst.result.type)) {
             storeVirtualResultFp(writer, inst.result.id, (inst.result.type == "f64") ? "d0" : "s0", inst.result.type);
         } else {
             storeVirtualResult(writer, inst.result.id, "x0", inst.result.type);
