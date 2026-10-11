@@ -433,7 +433,16 @@ bool X64CodeGenerator::emitCastIntWidth(AsmWriter& writer, const ir::IRInstructi
         // MASM 不支持 movsx rax, [mem8/16] 一步到64位——A2022 操作数大小不匹配）
         const std::string ext = (fromSigned) ? "movsx" : "movzx";
         const std::string mp = memSizePtr(from);
-        writer.line(ext + " eax, " + mp + src);
+        if (inst.operands[0].isConstant) {
+            // 077（窄↔128 通道·常量源适配）：常量传播会把窄常量直接喂进 Cast 源
+            //   （探针实测 `整32 x = 窄16常量` → movsx eax, word ptr -300 立即数
+            //   当内存地址=ml64 A2070）。常量装载即扩展语义等价：mov eax, imm
+            //   写 eax 清高 32 位——有符号窄常量的 32 位补码已含符号形态（后续
+            //   movsxd 继续扩展），无符号常量非负（清高 32=零扩展·movzx 同构）。
+            writer.line("mov eax, " + src);
+        } else {
+            writer.line(ext + " eax, " + mp + src);
+        }
         if (to == "i64" || to == "u64") {
             if (fromSigned) {
                 writer.line("movsxd rax, eax");
@@ -481,10 +490,26 @@ bool X64CodeGenerator::emitCastIntWidth(AsmWriter& writer, const ir::IRInstructi
         const bool fromIsSigned = (from == "i8" || from == "i16" ||
                                    from == "i32" || from == "i64");
         if (from == "i8" || from == "i16") {
-            writer.line("movsx eax, " + memSizePtr(from) + src);
+            if (inst.operands[0].isConstant) {
+                // 077（窄↔128 通道·常量源适配）：常量传播后窄常量直喂本分支
+                //   （探针 pj3/pr 实测 `整128 提 = 窄16变量` → movsx eax,
+                //   word ptr -300/5 立即数当内存地址=ml64 A2070 汇编失败——
+                //   本任务 728 双编译对照红面根因）。mov eax, imm 装载即
+                //   movsx 语义等价（写 eax 清高 32=32 位补码形态，cdqe 继续
+                //   符号扩展到 64 位）；对齐 linux/arm64 后端统一常量装载器。
+                writer.line("mov eax, " + src);
+            } else {
+                writer.line("movsx eax, " + memSizePtr(from) + src);
+            }
             writer.line("cdqe");
         } else if (from == "u8" || from == "u16") {
-            writer.line("movzx eax, " + memSizePtr(from) + src);
+            if (inst.operands[0].isConstant) {
+                // 077 同款常量源适配：无符号常量非负，mov eax 清高 32=零扩展
+                //   （movzx 同构）。
+                writer.line("mov eax, " + src);
+            } else {
+                writer.line("movzx eax, " + memSizePtr(from) + src);
+            }
         } else if (from == "i32") {
             writer.line("mov eax, " + shrunkOperand("i32", src));
             writer.line("cdqe");
@@ -573,10 +598,20 @@ bool X64CodeGenerator::emitCastIntWidth(AsmWriter& writer, const ir::IRInstructi
                                 from == "i32" || from == "i64");
         // 低64位：源值（<64位 先扩展为64位）
         if (from == "i8" || from == "i16") {
-            writer.line("movsx eax, " + memSizePtr(from) + src);
-            writer.line("movsxd rax, eax");
+            // 077 常量源适配（同 316-a 分支）：立即数装载=符号扩展语义等价
+            if (inst.operands[0].isConstant) {
+                writer.line("mov eax, " + src);
+                writer.line("cdqe");
+            } else {
+                writer.line("movsx eax, " + memSizePtr(from) + src);
+                writer.line("movsxd rax, eax");
+            }
         } else if (from == "u8" || from == "u16") {
-            writer.line("movzx eax, " + memSizePtr(from) + src);
+            if (inst.operands[0].isConstant) {
+                writer.line("mov eax, " + src);  // 写 eax 清高 32=零扩展
+            } else {
+                writer.line("movzx eax, " + memSizePtr(from) + src);
+            }
         } else if (from == "i32" || from == "u32") {
             writer.line("mov eax, " + shrunkOperand("i32", src));
             if (signedSrc) writer.line("movsxd rax, eax");
