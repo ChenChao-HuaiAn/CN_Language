@@ -14,6 +14,7 @@
 
 #include "cn_compiler/codegen/linux_x64/linux_x64_codegen.hpp"
 #include "cn_compiler/model/semantic_view.hpp"
+#include "cn_compiler/model/type_system.hpp"
 
 namespace cn_compiler {
 
@@ -75,11 +76,21 @@ void LinuxX64CodeGenerator::emitOopGlobals(LinuxX64AsmWriter& writer,
             writer.raw(".type " + sym + ", @object");
             writer.raw(sym + ":");
             // 按类型分配（整型/浮点/指针 8 字节；i128 16 字节双槽；f32 4 字节）
-            if (f.type == "整128" || f.type == "正128") {
-                writer.raw("    .quad 0");
-                writer.raw("    .quad 0");
+            // 468（甲案·001 §静态成员）：声明初始化器加载期直存——128 位槽
+            //   parseInt128InitText 双 quad 位模式（顶层静态 T46 同款发射）；
+            //   64 位内整数/布尔文本直存（语义注册面已折叠规范十进制）；
+            //   浮点槽无直存面（语义期拒绝·staticInitText 恒空=现状零占位）。
+            if (types::isInt128Type(f.type)) {
+                unsigned long long lo = 0, hi = 0;
+                const bool ok = !f.staticInitText.empty() &&
+                    types::parseInt128InitText(
+                        f.staticInitText, types::isInt128Signed(f.type), lo, hi);
+                writer.raw("    .quad " + (ok ? uint64HexText(lo) : "0"));
+                writer.raw("    .quad " + (ok ? uint64HexText(hi) : "0"));
             } else if (f.type == "浮32") {
                 writer.raw("    .long 0");
+            } else if (!f.staticInitText.empty()) {
+                writer.raw("    .quad " + f.staticInitText);
             } else {
                 writer.raw("    .quad 0");
             }

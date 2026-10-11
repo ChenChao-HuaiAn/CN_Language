@@ -12,6 +12,7 @@
 
 #include "cn_compiler/codegen/x64/x64_codegen.hpp"
 #include "cn_compiler/model/semantic_view.hpp"
+#include "cn_compiler/model/type_system.hpp"
 
 namespace cn_compiler {
 
@@ -75,10 +76,21 @@ void X64CodeGenerator::emitOopGlobals(AsmWriter& writer,
                 hasStatic = true;
             }
             // 按类型分配 8 字节槽（浮点/整型/指针统一 8 字节；i128 16 字节双槽）
-            if (f.type == "整128" || f.type == "正128") {
-                writer.raw(sym + " dq 0, 0");
+            // 468（甲案·001 §静态成员）：声明初始化器加载期直存——128 位槽
+            //   parseInt128InitText 双 quad 位模式（顶层静态 T46 同款发射）；
+            //   64 位内整数/布尔文本直存（语义注册面已折叠规范十进制）；
+            //   浮点槽无直存面（语义期拒绝·staticInitText 恒空=现状零占位）。
+            if (types::isInt128Type(f.type)) {
+                unsigned long long lo = 0, hi = 0;
+                const bool ok = !f.staticInitText.empty() &&
+                    types::parseInt128InitText(
+                        f.staticInitText, types::isInt128Signed(f.type), lo, hi);
+                writer.raw(sym + " dq " + (ok ? uint64HexText(lo) : "0") + ", " +
+                           (ok ? uint64HexText(hi) : "0"));
             } else if (f.type == "浮32") {
                 writer.raw(sym + " dd 0");
+            } else if (!f.staticInitText.empty()) {
+                writer.raw(sym + " dq " + f.staticInitText);
             } else {
                 writer.raw(sym + " dq 0");
             }

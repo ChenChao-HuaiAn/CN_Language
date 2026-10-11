@@ -25,6 +25,65 @@
 
 namespace cn_compiler {
 
+namespace {
+
+// 468（甲案·001 §静态成员）：类静态字段声明初始化器折叠——加载期生效。
+//   支持面与顶层静态直存通道（ir_decl.cpp visitProgram + emitDataSection）
+//   同口径：整数字面量（±一元符号链，与顶层 128 位折叠同构；64 位内=规范
+//   十进制文本，128 位=符号×raw 发射层 parseInt128InitText 解析双 quad）与
+//   布尔字面量（"1"/"0"）。其余形态（浮点/字符/字符串/调用/表达式）=编译期
+//   拒绝（errorOut 非空）——加载期直存不承载，指路构造函数/主入口赋值。
+//   纯函数无诊断副作用：拒绝细节由 errorOut 带回，调用点报诊断（有 location）。
+std::string foldClassStaticInit(const Expr* init, const std::string& fieldType,
+                                std::string& errorOut) {
+    // ±一元符号链剥离（- -x 偶数负号=正值；!x/~x/x-- 等非纯符号=不折叠）
+    const Expr* folded = init;
+    int sign = 1;
+    bool pureSignChain = true;
+    while (folded->getType() == NodeType::UnaryExpr) {
+        const auto* un = static_cast<const UnaryExpr*>(folded);
+        if (un->postfix) { pureSignChain = false; break; }
+        if (un->op == Operator::Subtract) {
+            sign = -sign;
+        } else if (un->op != Operator::Add) {
+            pureSignChain = false;
+            break;
+        }
+        folded = un->operand.get();
+    }
+    if (pureSignChain && folded->getType() == NodeType::IntegerLiteral) {
+        const auto* lit = static_cast<const IntegerLiteral*>(folded);
+        const std::string canon = types::canonical(fieldType);
+        if (types::isInt128Type(canon)) {
+            // 128 位槽：符号×raw（raw 唯一完整信息源·可能超出 int64 表示域）
+            return std::string(sign < 0 ? "-" : "") + lit->raw;
+        }
+        if (types::isStaticScalarInitType(canon)) {
+            // 64 位内整数/布尔/字符槽：规范十进制（0x/0b/0o 已由词法解析进 value）
+            const std::int64_t v = static_cast<std::int64_t>(sign) * lit->value;
+            return std::to_string(v);
+        }
+        errorOut = "整数字面量初值不适用于字段类型 '" + fieldType +
+                   "'（浮点槽不承载加载期直存）";
+        return "";
+    }
+    if (init->getType() == NodeType::BoolLiteral) {
+        if (types::isStaticScalarInitType(types::canonical(fieldType))) {
+            return static_cast<const BoolLiteral*>(init)->value ? "1" : "0";
+        }
+        errorOut = "布尔字面量初值不适用于字段类型 '" + fieldType + "'";
+        return "";
+    }
+    if (pureSignChain && folded->getType() == NodeType::FloatLiteral) {
+        errorOut = "浮点初值不属于加载期直存形态";
+        return "";
+    }
+    errorOut = "仅整数/布尔字面量可加载期直存";
+    return "";
+}
+
+}  // namespace
+
 // ==================== 类型名查询（供 IR 层复用） ====================
 
 // 是否类类型名（P2-16：模块感知，含 模块::类 限定名）
@@ -525,6 +584,24 @@ void SemanticAnalyzer::collectClassMembers(ClassDecl* node, ClassInfo& info) {
             mi.isStatic = member->isStatic;
             mi.hasBody = false;
             mi.ast = member.get();
+            // 468（甲案·001 §静态成员）：静态字段声明初始化器折叠——加载期
+            //   生效（.data 直存·三后端 emitOopGlobals 消费 staticInitText）。
+            //   支持面=整数字面量（含 ±符号链·128 位走符号×raw）与布尔字面量；
+            //   其余形态诊断拒绝（指路构造函数/主入口赋值）。非静态字段初始化器
+            //   不在此消费（实例字段初值语义现状不动）。
+            if (member->isStatic && member->initializer != nullptr) {
+                std::string foldErr;
+                mi.staticInitText = foldClassStaticInit(
+                    member->initializer.get(), mi.type, foldErr);
+                if (!foldErr.empty()) {
+                    diagnostics_.report(
+                        DiagnosticLevel::Error, member->location,
+                        "类 '" + node->name + "' 静态字段 '" + mi.name +
+                            "' 声明初始化器不支持：" + foldErr +
+                            "（加载期直存面·001 §静态成员）——请在构造函数或"
+                            "主入口赋值（运行期读写链全形态生效）");
+                }
+            }
             if (info.fields.find(mi.name) != info.fields.end()) {
                 diagnostics_.report(DiagnosticLevel::Error, member->location,
                                     "类 '" + node->name + "' 重复定义字段 '" +
