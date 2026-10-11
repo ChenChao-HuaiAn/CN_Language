@@ -31,7 +31,7 @@ import sqlite3
 import sys
 import threading
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse
@@ -44,6 +44,7 @@ db路径 = os.environ.get("CN_QUEUE_DB",
 门禁历史保留 = 200
 任务历史保留 = 200          # 预验任务完成行裁剪（同门禁口径）
 心跳超时秒 = int(os.environ.get("CN_TASK_STALE_SEC", "300"))   # 心跳断此秒数=回收重派（家机睡眠不黑洞）
+集成中超时秒 = int(os.environ.get("CN_QUEUE_INTEGRATE_STALE_SEC", "7200"))   # 集成中无更新超此秒数=降级已踢出（456·0=禁用）
 
 写锁 = threading.Lock()          # SQLite 写串行化（读靠 WAL 并发）
 时区时刻 = lambda: datetime.now().strftime("%m-%d %H:%M:%S")   # 911 教训：秒级戳
@@ -102,9 +103,36 @@ def 预验任务快照() -> list[dict]:
             for r in 行们]
 
 
+def 回收集成中死行() -> None:
+    """456：集成中态失联回收——「集成中=批主在飞不动」（1020 保护）的前提是批主活着；
+    批主死亡则永挂（实录=任务/288 于 10-08 进集成中卡死 3 天，服务轮手动收场）。
+    正常集成=预验绿后 push+销账，分钟级；超 CN_QUEUE_INTEGRATE_STALE_SEC（默认 2h）
+    无任何更新→降级「已踢出」：留审计痕迹，批主真活着可 join 重报回排队（1020 语义）。
+    调用方须持写锁。"""
+    if 集成中超时秒 <= 0:
+        return
+    现在 = datetime.now()
+    for 分支, 更新 in con.execute(
+            "SELECT 分支,更新时刻 FROM 队列 WHERE 状态='集成中'").fetchall():
+        try:
+            # 更新时刻=时区时刻() 无年份（911 秒级戳）——补当前年解析；跨年旧行得负差
+            #   →视为未知跳过（宁漏收不误收；元旦后一天的跨年行等下轮人工）
+            差 = (现在 - datetime.strptime(更新, "%m-%d %H:%M:%S").replace(year=现在.year)
+                  ).total_seconds()
+        except ValueError:
+            continue
+        if 0 <= 差 and 差 > 集成中超时秒:
+            con.execute("UPDATE 队列 SET 状态='已踢出',更新时刻=? WHERE 分支=?",
+                        (时区时刻(), 分支))
+            con.commit()   # 自提交：调用方（update 无此行等）可能提前 return
+            print("[回收] 集成中超时 %s（更新 %s·静默 %.0f 分钟）→已踢出"
+                  % (分支, 更新, 差 / 60), flush=True)
+
+
 def 处理写(名: str, 数据: dict) -> dict:
     """统一写入口（写锁内）——返回 {ok, 说明}。"""
     with 写锁:
+        回收集成中死行()   # 456：任何写活动顺手扫集成中死行（批主死亡后靠他批写活动触发）
         if 名 == "join":
             分支 = str(数据.get("分支", ""))
             if not 分支.startswith("任务/"):
@@ -283,8 +311,10 @@ class 处理器(BaseHTTPRequestHandler):
         from urllib.parse import parse_qs
         路径 = urlparse(self.path).path
         if 路径 == "/api/state":
-            return self.回JSON({"队列": 队列快照(), "门禁最近": 门禁快照(),
-                                "预验任务": 预验任务快照()})
+            with 写锁:
+                回收集成中死行()   # 456：批主死亡后无写活动，靠轮询/网页查看触发回收
+                return self.回JSON({"队列": 队列快照(), "门禁最近": 门禁快照(),
+                                    "预验任务": 预验任务快照()})
         if 路径 == "/api/task_result":
             # 按 sha10 查（分支=ci/预验-<sha10>·URL 保持纯 ASCII 免编码坑）
             sha10 = (parse_qs(urlparse(self.path).query).get("sha") or [""])[0]
@@ -378,6 +408,25 @@ if __name__ == "__main__":
         r = 处理写("join", {"分支": "任务/甲-1-x", "基线": "ddd", "写集摘要": "5 文件"})
         断言(队列快照()[0]["状态"] == "集成中" and 队列快照()[0]["基线"] == "ccc",
              "集成中重报=保护不动")
+
+        # ── 456 集成中失联回收：超时降级已踢出/未超时保护/坏串宁漏收 ──
+        处理写("join", {"分支": "任务/乙-2-y", "基线": "aaa", "写集摘要": "1 文件"})
+        处理写("update", {"分支": "任务/乙-2-y", "状态": "集成中"})
+        旧戳 = (datetime.now() - timedelta(seconds=集成中超时秒 * 2)).strftime("%m-%d %H:%M:%S")
+        con.execute("UPDATE 队列 SET 更新时刻=? WHERE 分支='任务/乙-2-y'", (旧戳,))
+        处理写("join", {"分支": "任务/丁-4-w", "基线": "a", "写集摘要": ""})   # 无关行写活动触发扫描
+        行乙 = next(r2 for r2 in 队列快照() if r2["分支"] == "任务/乙-2-y")
+        行甲 = next(r2 for r2 in 队列快照() if r2["分支"] == "任务/甲-1-x")
+        断言(行乙["状态"] == "已踢出", "456 集成中超 2 倍阈值=回收降级已踢出")
+        断言(行甲["状态"] == "集成中", "456 同扫未超时行=保护不动（不误伤在飞批主）")
+        r = 处理写("join", {"分支": "任务/乙-2-y", "基线": "bbb", "写集摘要": "2 文件"})
+        断言("原态 已踢出" in r.get("说明", ""), "456 回收行批主 join=重报回排队（1020 语义兼容）")
+        处理写("join", {"分支": "任务/丙-3-z", "基线": "a", "写集摘要": ""})
+        处理写("update", {"分支": "任务/丙-3-z", "状态": "集成中"})
+        con.execute("UPDATE 队列 SET 更新时刻='坏串' WHERE 分支='任务/丙-3-z'")
+        处理写("join", {"分支": "任务/戊-5-v", "基线": "a", "写集摘要": ""})   # 触发扫描
+        断言(next(r2 for r2 in 队列快照() if r2["分支"] == "任务/丙-3-z")["状态"] == "集成中",
+             "456 更新时刻坏串=宁漏收不误收且不炸服务")
         处理写("update", {"分支": "任务/甲-1-x", "状态": "冲突出批"})
         r = 处理写("join", {"分支": "任务/甲-1-x", "基线": "eee", "写集摘要": "6 文件"})
         断言(队列快照()[0]["状态"] == "排队", "冲突出批重报=回排队")
