@@ -355,6 +355,33 @@ private:
     // 查询变量是否为"引用捕获参数"（lambda 匿名函数内 [&] 捕获的参数槽存
     //   被捕获变量地址，读取须解引用、赋值须经指针——规格书04-一D 引用语义）
     bool isByRefCapture(const std::string& name) const;
+    // ---- 432（#276 波3·蹦床闭包模型）lambda 生成族私辅（实现在 ir_lambda.cpp）----
+    // lambda 用户参数段构建（?lambdaN 与蹦床共用——纪律二当场归纳）：参数槽/
+    //   varStack 登记，引用参数（T&）按 ptr+byRef 形态（A-1 同款）
+    void buildLambdaUserParams(
+        ir::IRFunction& func, LambdaExpr* node);
+    // 快照静态槽注册 + 定义处固化（外层块发射）：值捕获=StorePtr 定义处值；
+    //   [&]=StorePtr 变量地址；结构体值捕获=CopyStruct 槽（与 genVarDecl
+    //   captureArgs 固化同构——数据流终点不同：captureArgs=局部值列表，
+    //   本处=.data 静态槽·第 2 处重复留标记：与 ir_stmt_decl_init 固化段互为镜像）
+    void emitLambdaSnapshotStores(
+        const std::string& lambdaName,
+        const std::vector<std::string>& capturedNames,
+        const std::vector<char>& captureRefs,
+        const SourceLocation& loc);
+    // 蹦床合成函数 ?lambdaN$trap 构建（签名=用户签名）：体=LoadPtr 快照槽
+    //   还原捕获实参 + Call ?lambdaN。lambda 值=蹦床地址（可安全作 fnptr
+    //   返回/传参——值捕获快照随槽全局存活=逃逸安全；[&] 逃逸=悬垂域挂
+    //   #435/#468 逃逸检查面，本波只做值捕获高阶形态）
+    void buildLambdaTrampoline(
+        const std::string& lambdaName, const std::string& returnIrType,
+        LambdaExpr* node,
+        const std::vector<std::string>& capturedNames,
+        const std::vector<char>& captureRefs,
+        const SourceLocation& loc);
+    // lambda 快照静态槽键（?gstatic_ 前缀外的注册键；lambdaName 唯一保证不撞）
+    std::string lambdaSlotKey(const std::string& lambdaName,
+                              const std::string& cap) const;
     // 闭包关联：变量源码名 -> {匿名函数名, 捕获变量列表, 定义处捕获实参, 返回 IR 类型}。
     // 语义（规格书04-一D，缺陷修复）：
     struct ClosureInfo {

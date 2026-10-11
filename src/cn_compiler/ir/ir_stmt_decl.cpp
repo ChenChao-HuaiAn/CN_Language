@@ -304,6 +304,16 @@ void IRGenerator::resolveDeclTypesAndAlloc(VarDecl* node, DeclGenCtx& ctx) {
         } else if (node->initializer->getType() == NodeType::NullLiteral) {
             irType = "ptr";  // 空指针字面量：指针类型（无 = 0）
         } else if (!node->initializer->semanticType.empty() &&
+                   node->initializer->semanticType.rfind("函数指针<", 0) == 0) {
+            // 432（#276 波3·高阶面）：函数指针返回值的推断声明——
+            //   `变量 f = 造加倍();`（造加倍 返回 fnptr）原兜底「整32」=
+            //   ptr 地址 i32 截断（间接调用目标垃圾·731 实弹 rc=139）。
+            //   fnptr 变量 IR 层恒 8 字节指针槽（Task 2.2 同款）——与 184
+            //   布尔/浮点推断契约正交（fnptr 独立窄面·不触存量 expected）。
+            irType = "ptr";
+            // 推断结果同步回填 typeName（D1 同款全链一致：srcType/槽/成员链）
+            node->typeName = node->initializer->semanticType;
+        } else if (!node->initializer->semanticType.empty() &&
                    (mapType(node->initializer->semanticType) == "i128" ||
                     mapType(node->initializer->semanticType) == "u128")) {
             // 559-a（T96a·收窄面）：128 位初始化式取语义注记类型——原静默兜底
