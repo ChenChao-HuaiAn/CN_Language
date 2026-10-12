@@ -23,6 +23,7 @@
 
 #ifdef _WIN32
 #include <windows.h>
+#include <crtdbg.h>  // _CALL_REPORTFAULT（#513 abort 弹窗收敛）
 #else
 #include <sys/wait.h>  // WIFEXITED/WEXITSTATUS（system 返回值解包，249-a）
 #include <unistd.h>  // readlink（stdlib 目录探测）
@@ -626,6 +627,13 @@ static int runToken(const CliOptions& options, const std::string& file) {
 // 程序入口
 int main(int argc, char** argv) {
 #ifdef _WIN32
+    // 无人值守 CI 面收敛（#513）：Debug CRT 下 abort()/断言失败默认弹「Debug
+    //   Error」模态对话框（_CrtDbgReport·_CALL_REPORTFAULT），无人值守 runner
+    //   被整链卡死（wt3 实弹 10-13：坏构建产物全格崩→数十框堆叠整夜）。收敛为
+    //   stderr 报错+非零退出码——clang/rustc 无人值守构建同款做法；对正常编译
+    //   与交互式诊断零影响。
+    _set_error_mode(_OUT_TO_STDERR);
+    _set_abort_behavior(0, _CALL_REPORTFAULT);
     // 控制台 UTF-8 输出（避免中文在GBK代码页下乱码）
     SetConsoleOutputCP(CP_UTF8);
     SetConsoleCP(CP_UTF8);
