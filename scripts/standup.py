@@ -52,7 +52,10 @@ def 落后提示() -> list[str]:
     脏 = 跑(["git", "status", "--porcelain"]).strip()
     if 本地 != 远端:
         数 = len(跑(["git", "log", "--oneline", f"HEAD..gitcode/develop"]).strip().splitlines())
-        行们.append(f"📌 develop 落后远端 {数} 提交——先 git merge --ff-only gitcode/develop 对齐（fetch≠对齐）")
+        if 数:    # 509：真落后才报落后——cherry-pick 集成后常见「sha 不同但 0 行落后」，报「落后 0 提交先 merge」是噪音且误导
+            行们.append(f"📌 develop 落后远端 {数} 提交——先 git merge --ff-only gitcode/develop 对齐（fetch≠对齐）")
+        else:
+            行们.append("ℹ develop 与远端内容等价·仅 sha 差异（cherry-pick 改写）——git merge --ff-only gitcode/develop 可对齐指针")
     if 脏:
         行们.append(f"📌 工作树不干净（{len(脏.splitlines())} 项）——涉共享文档的写集请走 worktree")
     if not 行们:
