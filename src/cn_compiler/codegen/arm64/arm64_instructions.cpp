@@ -345,8 +345,15 @@ void Arm64CodeGenerator::emitIntBinary(Arm64AsmWriter& writer,
     // 任务 474：检查开关（仅 Add/Sub 且安全函数；Wrap*/位运算/ptr 指针算术/
     //   不安全 豁免）。检查面强制非分配寄存器（res=x9/w9——storeVirtualResult
     //   为正常路径尾实体指令，错误块垫底布局要求分支与 trap 间有顺序路径）。
+    //   481 修：豁免判据须含 **opcode**（WrapAdd/WrapSub 的 mnemonic 同为
+    //   "add"/"sub"——只判 mnemonic 会把显式回绕内置恒插溢出检查·474 豁免
+    //   面失效；x64 双后端判 inst.opcode==Add/Sub 为正确判据·本轮 749 锁用例
+    //   arm64 非折叠形态暴露·与 x64 对齐收口）。
     const bool isAddSubPre = (mnemonic == "add" || mnemonic == "sub");
-    const bool needOvfPre = isAddSubPre && !currentFnUnsafe474_ &&
+    const bool needOvfPre = isAddSubPre &&
+                            (inst.opcode == ir::Opcode::Add ||
+                             inst.opcode == ir::Opcode::Sub) &&
+                            !currentFnUnsafe474_ &&
                             srcType != "ptr" && !isFloatType(srcType);
     const std::string resX = needOvfPre ? "x9"
                               : resultTargetReg(inst.result.id, is64 ? "x10" : "x9");
@@ -500,9 +507,17 @@ void Arm64CodeGenerator::emitIntMul(Arm64AsmWriter& writer,
         // 反向结构：无溢出（b.eq/cbz 越过错误块）；溢出顺序落入（先检后算）
         const std::string ok = trap + "_ok";
         if (isSigned) {
-            // i64：高半==op1 的符号扩展（res 复用 op1 安全）
+            // 481 修（i64 乘法溢出判据·恒等式纠正）：域内 ⟺ 128 位积==积低
+            //   64 位的符号扩展 ⟺ 高半==**积低半** asr 63。原判据 `cmp x12,
+            //   op1, asr #63` 比的是**被乘数**的符号扩展——积 ∈[2^63,2^64)
+            //   时高半=0 且正被乘数扩展=0 恒相等 → 漏判（3037000500² 实测
+            //   静默回绕 -9223372036709301616·724 锁用例 arm64 假绿·x64
+            //   imul OF 判据为正确对照）。顺序：smulh 先取高半（op1 完好），
+            //   mul 后取低半（res 复用 op1 安全——smulh 已消费），cmp 对
+            //   积低半 asr 63（与 i32 面 `cmp x12, w12, sxtw` 同一恒等式）。
             writer.line("smulh x12, " + op1Src + ", " + op2Src);
-            writer.line("cmp x12, " + op1Src + ", asr #63");
+            writer.line("mul " + resX + ", " + op1Src + ", " + op2Src);
+            writer.line("cmp x12, " + resX + ", asr #63");
             writer.line("b.eq " + ok);
         } else {
             // u64：高半非零即溢出
@@ -530,8 +545,12 @@ void Arm64CodeGenerator::emitIntMul(Arm64AsmWriter& writer,
         emitOverflowTrap(writer, trap);
         writer.raw(ok + ":");
     }
-    // 正常路径（先检后算：检查分支跳过错误块后顺序执行乘法）
-    writer.line("mul " + res + ", " + op1Src + ", " + op2Src);
+    // 正常路径（先检后算：检查分支跳过错误块后顺序执行乘法）——481 注：
+    //   i64 有符号检查分支已随判据修正先行发射 mul（低半作比较对象），此处
+    //   跳过（res 复用 op1 时二次 mul 会用破坏后的 op1 求错值）。
+    if (!(needOvf && is64 && isSigned)) {
+        writer.line("mul " + res + ", " + op1Src + ", " + op2Src);
+    }
     storeVirtualResult(writer, inst.result.id, resX, inst.type);
 }
 

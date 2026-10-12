@@ -203,17 +203,26 @@ void X64CodeGenerator::emitIntBinary(AsmWriter& writer, const ir::IRInstruction&
     //   只发分支（trap 块由调用方垫底——正常路径存储之后）
     auto narrowGuard474 = [&](const std::string& acc) {
         if (!needOvf) return;
-        // 反向结构（除零检查同款）：域内跳过错误块；溢出顺序落入
-        const std::string ok = "@ovf_ok" + std::to_string(ptrCheckCounter_++);
+        // 481 修（窄域加/减恒窄域·与 arm64 ovfGuard474 四区间同构）：原结构
+        //   「cmp hi; jle ok; cmp lo; jge ok」第二跳只对 >hi 的值求值且恒真
+        //   （>hi 必 ≥lo）=正溢出恒漏（下溢路径 jle 已放行同样漏——≤hi 含
+        //   全部负溢值）。改正：>hi 先落错误块（err 标签）、≥lo 域内跳 ok、
+        //   <lo 负溢出顺序落入；无符号单界 jbe 全覆盖结构不变。
+        const int guardId = ptrCheckCounter_++;
+        const std::string ok = "@ovf_ok" + std::to_string(guardId);
         const long long hi = (srcType == "i8") ? 127 : (srcType == "i16") ? 32767
                              : (srcType == "u8") ? 255 : 65535;
         const bool signedDom = (srcType == "i8" || srcType == "i16");
         writer.line("cmp " + acc + ", " + std::to_string(hi));
-        writer.line((signedDom ? std::string("jle ") : std::string("jbe ")) + ok);
         if (signedDom) {
+            const std::string err = "@ovf" + std::to_string(guardId);
             const long long lo = (srcType == "i8") ? -128 : -32768;
+            writer.line("jg " + err);          // >hi 正溢出 → 错误块
             writer.line("cmp " + acc + ", " + std::to_string(lo));
-            writer.line("jge " + ok);
+            writer.line("jge " + ok);          // ≥lo 域内 → ok；<lo 顺序落入
+            writer.raw(err + ":");             // 错误块入口（jg 与顺序双落点）
+        } else {
+            writer.line("jbe " + ok);          // ≤hi 域内 → ok；>hi 顺序落入
         }
         writer.line("mov rcx, 8");
         writer.line("sub rsp, 32");
@@ -348,15 +357,19 @@ void X64CodeGenerator::emitIntMul(AsmWriter& writer, const ir::IRInstruction& in
             writer.line("imul eax, ecx");
         }
         if (needOvf) {
-            // 反向结构（双标签）：域内跳过错误块；溢出顺序落入
+            // 481 修（窄域乘法恒窄域·与 linux_x64 同构）：原结构「cmp hi;
+            //   jle ok; cmp lo; jge ok」第二跳只对 >hi 的值求值且恒真
+            //   （>hi 必 ≥lo）=上下溢双漏（30000*2 溢出整16 漏报·v2 侧
+            //   「64 位精确积回扩比较」对照分叉）。改正：>hi 先落错误块、
+            //   ≥lo 域内跳 ok、<lo 负溢出顺序落入——四区间完备。
             const std::string ok = trap + "_ok";
             if (isS) {
                 const long long hi = (ty == "i8") ? 127 : 32767;
                 const long long lo = (ty == "i8") ? -128 : -32768;
                 writer.line("cmp eax, " + std::to_string(hi));
-                writer.line("jle " + ok);
+                writer.line("jg " + trap);   // >hi 正溢出 → 错误块
                 writer.line("cmp eax, " + std::to_string(lo));
-                writer.line("jge " + ok);
+                writer.line("jge " + ok);    // ≥lo 域内 → ok；<lo 顺序落入
             } else {
                 writer.line("cmp eax, " + std::string((ty == "u8") ? "255" : "65535"));
                 writer.line("jbe " + ok);

@@ -337,14 +337,19 @@ void LinuxX64CodeGenerator::emitIntMul(LinuxX64AsmWriter& writer,
         emitOverflowErrorBody(writer);
         writer.raw(ok + ":");
     } else if (isSigned) {
-        // i8/i16：32 位积=真积 → 有符号域 cmp（反向双跳·均几乎不跳转）
+        // i8/i16：32 位积=真积 → 有符号域双界 cmp（481 修·窄域乘法恒窄域）——
+        //   原结构「cmp hi; jle ok; cmp lo; jge ok」第二跳只对 >hi 的值求值且
+        //   恒真（>hi 必 ≥lo）=上下溢双漏（30000*2 溢出整16 实测回绕 -5536
+        //   rc=0 漏报·与 v2 侧「64 位精确积回扩比较」分叉）。改正：>hi 先落
+        //   错误块、≥lo 域内跳 ok、<lo 负溢出顺序落入——四区间完备
+        //   （同 arm64 ovfGuard474/736 返工三四区间口径）。
         const long long hi = (ty == "i8") ? 127 : 32767;
         const long long lo = (ty == "i8") ? -128 : -32768;
-        writer.line("cmp r10d, " + std::to_string(hi));
         const std::string ok = trap + "_ok";
-        writer.line("jle " + ok);
+        writer.line("cmp r10d, " + std::to_string(hi));
+        writer.line("jg " + trap);              // >hi 正溢出 → 错误块
         writer.line("cmp r10d, " + std::to_string(lo));
-        writer.line("jge " + ok);
+        writer.line("jge " + ok);               // ≥lo 域内 → ok；<lo 顺序落入
         writer.raw(trap + ":");
         emitOverflowErrorBody(writer);
         writer.raw(ok + ":");
