@@ -264,6 +264,29 @@ std::vector<std::string> funcPtrParamsOf(const std::string& type) {
     return result;
 }
 
+// 函数指针类型串 -> 返回类型（485·对称 funcPtrParamsOf）：取首个 '<' 后至其
+//   配对 '>'（深度计数——返回类型可嵌套函数指针/泛型，'<' '>' 计数配对）；
+//   首尾空白剔除；无 '<' 或无配对 '>' 返回空串（非函数指针串防御）。
+std::string funcPtrReturnTypeOf(const std::string& type) {
+    const std::size_t lt = type.find('<');
+    if (lt == std::string::npos) return "";
+    int depth = 1;
+    for (std::size_t i = lt + 1; i < type.size(); ++i) {
+        if (type[i] == '<') {
+            ++depth;
+        } else if (type[i] == '>') {
+            if (--depth == 0) {
+                const std::string raw = type.substr(lt + 1, i - lt - 1);
+                const std::size_t b = raw.find_first_not_of(" \t");
+                if (b == std::string::npos) return "";
+                const std::size_t e = raw.find_last_not_of(" \t");
+                return raw.substr(b, e - b + 1);
+            }
+        }
+    }
+    return "";
+}
+
 // 能否隐式转换（规格书3.7 + 整型宽化/浮点宽化/整数->浮点）
 // 规则：
 //   1. 相同类型（别名规范化后）可转

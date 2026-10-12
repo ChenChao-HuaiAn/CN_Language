@@ -275,8 +275,9 @@ void IRGenerator::backfillCtorLiteralTypeName(VarDecl* node) {
 //   i64 直传、被调方按 i128 指针 ABI 解引用 SIGSEGV（探针 p_fnptr）。
 //   mapType 对 `函数指针<` 前缀已归 ptr（ir.cpp 同款既有特判）＝零回归。
 void IRGenerator::resolveDeclTypesAndAlloc(VarDecl* node, DeclGenCtx& ctx) {
-    const std::string srcTypeRaw = funcPtrAwareSrcType(node->funcPtr, node->typeName);
-    const std::string srcType = substGenericType(srcTypeRaw);
+    // 485：推断声明位回填面（fnptr/128 分支）须同步 srcType——去 const
+    std::string srcTypeRaw = funcPtrAwareSrcType(node->funcPtr, node->typeName);
+    std::string srcType = substGenericType(srcTypeRaw);
     // 类型推断：无显式类型时按初始值（阶段一简化）
     std::string irType = mapType(node->typeName.empty() ? "整32" : srcType);
     // Task 2.2：函数指针变量（整32(*回调)(整32, 整32)）类型为 ptr
@@ -313,6 +314,15 @@ void IRGenerator::resolveDeclTypesAndAlloc(VarDecl* node, DeclGenCtx& ctx) {
             irType = "ptr";
             // 推断结果同步回填 typeName（D1 同款全链一致：srcType/槽/成员链）
             node->typeName = node->initializer->semanticType;
+            // 485：推断声明的 srcType 同步回填——原只回填 typeName，srcType
+            //   已在函数头取值（typeName 尚空=空串），间接调用点
+            //   funcPtrTypeOfCallee 查 srcType 落空 → CallIndirect 返回类型
+            //   硬编码兜底 i32：i128 返回不传 sret=C0000005（探针 p10 实锤·
+            //   435 轮立案形态「[=] 闭包真逃逸跨函数调用」）、整64 返回 eax
+            //   截断、浮点返回 eax 垃圾、结构体返回 retbuf 缺失。731 面1
+            //   同帧 lambda 恰走 closureInfo_ 快径不经此链=假象掩盖。
+            srcType = substGenericType(node->typeName);
+            srcTypeRaw = node->typeName;
         } else if (!node->initializer->semanticType.empty() &&
                    (mapType(node->initializer->semanticType) == "i128" ||
                     mapType(node->initializer->semanticType) == "u128")) {

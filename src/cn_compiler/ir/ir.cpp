@@ -255,20 +255,30 @@ std::string IRGenerator::lookupSrcType(const std::string& name) const {
     return "";
 }
 std::vector<std::string> IRGenerator::funcPtrParamsOfCallee(Expr* callee) const {
-    if (callee == nullptr) return {};
+    const std::string substType = funcPtrTypeOfCallee(callee);
+    if (substType.empty()) return {};
+    return types::funcPtrParamsOf(substType);
+}
+// 485（间接调用返回面·337-a 同族提炼）：callee 表达式是函数指针时返回其
+//   **规范化后的源码类型串**（`函数指针<返回>(参数,...)`·泛型已单态化）；
+//   非函数指针/无法解析返回空串。funcPtrParamsOfCallee（形参列表）与
+//   ir_call 间接调用尾（返回类型·funcPtrReturnTypeOf）共用此单一入口
+//   ——原 funcPtrParamsOfCallee 内联前半提炼，消除同解析两份实现。
+std::string IRGenerator::funcPtrTypeOfCallee(Expr* callee) const {
+    if (callee == nullptr) return "";
     std::string fnPtrType;
     if (callee->getType() == NodeType::IdentifierExpr) {
         fnPtrType = lookupSrcType(static_cast<IdentifierExpr*>(callee)->name);
     } else if (callee->getType() == NodeType::MemberExpr) {
         fnPtrType = memberFieldSrcType(static_cast<MemberExpr*>(callee));
     }
-    if (fnPtrType.empty()) return {};
+    if (fnPtrType.empty()) return "";
     // 泛型实例体：形参类型串里的类型参数替换为实参类型（`函数指针<整32>(T,T)`
     //   → `...<整32>(整128,整128)`）；非泛型上下文 substGenericType 原样返回
     //   （幂等，与登记位替换双保险——登记位见 ir_decl.cpp / ir_stmt_decl.cpp）。
     const std::string substType = substGenericType(fnPtrType);
-    if (!types::isFuncPtr(types::canonical(substType))) return {};
-    return types::funcPtrParamsOf(substType);
+    if (!types::isFuncPtr(types::canonical(substType))) return "";
+    return substType;
 }
 bool IRGenerator::isByRefCapture(const std::string& name) const {
     for (auto it = varStack_.rbegin(); it != varStack_.rend(); ++it) {

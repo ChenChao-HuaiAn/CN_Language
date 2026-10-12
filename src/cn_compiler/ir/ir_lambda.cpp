@@ -131,6 +131,15 @@ void IRGenerator::buildLambdaTrampoline(
     ir::IRFunction trap;
     trap.name = lambdaName + "$trap";
     trap.returnType = returnIrType;
+    // 485：蹦床同置 structReturn（与 ?lambdaN 同协议——蹦床作 fnptr 逃逸后
+    //   经形态A retbuf 预插间接调用，被调方须按隐藏返回指针回写）。
+    //   判定在 visitLambdaExpr 与本函数各算一次（返回类型源码同源幂等）。
+    if (semantic_ != nullptr && !node->returnType.empty() &&
+        (semantic_->isStructType(types::canonical(node->returnType)) ||
+         types::isArray(node->returnType))) {
+        trap.structReturn = true;
+        trap.structReturnSize = semantic_->typeSizeOf(node->returnType);
+    }
     // 保存外层生成状态（trap 构建独立于当前生成上下文·visitLambdaExpr 同框架）
     ir::IRFunction* outerFunction = function_;
     ir::IRBlock* outerBlock = currentBlock_;
@@ -186,9 +195,31 @@ void IRGenerator::buildLambdaTrampoline(
         }
     }
     // 转发直调 ?lambdaN（返回=透传）
+    // 485（结构体/数组返回）：?lambdaN 已置 structReturn（第一参数位=sret
+    //   隐藏指针 rcx），转发调用点须预插蹦床内 retbuf 为首实参（形态A）——
+    //   i128 返回经 emitCall result.type=i128 自动走 sret（p10 链已通），
+    //   结构体返回被 mapType 塌缩 ptr 无法同判，此处显式补齐；返回透传=
+    //   epilogue 按 structReturnSize 把 retbuf 拷到蹦床自己的 sret 槽。
+    const bool fwdStructRet = semantic_ != nullptr && !node->returnType.empty() &&
+                              (semantic_->isStructType(
+                                   types::canonical(node->returnType)) ||
+                               types::isArray(node->returnType));
     if (returnIrType.empty() || returnIrType == "void") {
         emit(ir::Opcode::Call, callArgs, ir::IRValue(), lambdaName, "void", loc);
         endReturn("");
+    } else if (fwdStructRet) {
+        const std::string temp = "__retbuf" + std::to_string(varCounter_++);
+        emit(ir::Opcode::Alloca, {}, ir::IRValue::reg(regCounter_++, "ptr"),
+             temp, "ptr", loc);
+        // 返回缓冲区按 64 字节（8 槽）分配——与被调方 epilogue 拷贝上限一致
+        function_->varSlots[temp] = 8;
+        registerVarSlots(temp, node->returnType);
+        ir::IRValue buf = emitResult(ir::Opcode::AddrOf,
+                                     {ir::IRValue::var(temp, "i64")},
+                                     "ptr", temp, loc);
+        callArgs.insert(callArgs.begin(), buf);  // 隐藏返回指针=第一参数（rcx）
+        emit(ir::Opcode::Call, callArgs, ir::IRValue(), lambdaName, "void", loc);
+        endReturn(buf.toString());
     } else {
         ir::IRValue result = emitResult(ir::Opcode::Call, callArgs, returnIrType,
                                         lambdaName, loc);
@@ -204,12 +235,29 @@ void IRGenerator::buildLambdaTrampoline(
 }
 
 void IRGenerator::visitLambdaExpr(LambdaExpr* node) {
+    // 485：lambda 体=独立函数上下文——closureInfo_ 同步清空（与 visitFunctionDecl
+    //   入口同纪律·防内外同名闭包变量跨上下文误命中快径）
+    closureInfo_.clear();
     const std::string lambdaName = "?lambda" + std::to_string(lambdaCounter_++);
     const std::string returnIrType = mapType(node->returnType.empty()
                                                  ? "空类型" : node->returnType);
+    // 485（结构体/数组返回 lambda 的 sret 协议）：合成函数同普通函数声明通道
+    //   置 structReturn（被调方隐藏返回指针接收/回写·paramOffset=1·epilogue 按
+    //   structReturnSize 拷贝）——原恒按 rax 返回栈上临时地址：同帧展开通道读
+    //   被调帧悬垂垃圾、间接调用（retbuf 预插形态A）写 rcx 未接收=错值/崩溃
+    //   （探针 p15 实锤）。返回类型经 mapType 已塌缩 ptr，判定用源码类型。
+    const bool structRetLambda = semantic_ != nullptr && !node->returnType.empty() &&
+                                 (semantic_->isStructType(
+                                      types::canonical(node->returnType)) ||
+                                  types::isArray(node->returnType));
+    const int structRetSize =
+        structRetLambda && semantic_ != nullptr
+            ? semantic_->typeSizeOf(node->returnType) : 0;
     ir::IRFunction func;
     func.name = lambdaName;
     func.returnType = returnIrType;
+    func.structReturn = structRetLambda;
+    func.structReturnSize = structRetSize;
     // 捕获变量名（语义层已回填全部捕获）：匿名函数参数前置
     std::vector<std::string> capturedNames = node->explicitCaptures;
     // 缺陷修复（[=] 快照 / [&] 引用区分，规格书04-一D）：
@@ -299,6 +347,7 @@ void IRGenerator::visitLambdaExpr(LambdaExpr* node) {
     lastLambdaName_ = lambdaName;
     lastLambdaCaptures_ = capturedNames;
     lastLambdaReturnIrType_ = returnIrType;
+    lastLambdaSrcReturnType_ = node->returnType;  // 485：源返回类型（sret 判定）
     lastLambdaCaptureRefs_ = captureRefs;
     // 337-a（T53 家系）：lambda 用户形参类型列表（闭包调用展开用户实参的 ABI
     //   定标依据；函数指针形参登记规范串，与声明位同口径）。

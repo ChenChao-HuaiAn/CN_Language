@@ -399,6 +399,12 @@ ir::IRModule IRGenerator::generate(Program* program) {
 }
 void IRGenerator::visitFunctionDecl(FunctionDecl* node) {
     if (node->body == nullptr) return;  // 函数原型声明：不生成IR函数（链接期缺失检测）
+    // 485：闭包关联表按函数上下文清空——closureInfo_ 键=变量源码名（无函数
+    //   作用域），跨函数同名变量误命中快径直调 ?lambdaN（捕获实参缺失=输出
+    //   垃圾/崩溃·742a 拆面实录：造值 内「取」登记后 主 内同名「取」取()
+    //   被展开为无捕获实参的直调）。闭包变量本就是函数局部概念，入口清空
+    //   即隔离；lambda 体上下文由 visitLambdaExpr 入口同样清空。
+    closureInfo_.clear();
     ir::IRFunction func;
     // 191-a：本函数 171 行按「注册流水线」提取为 2 个族子方法（纯搬运零行为
     //   变更——多重集核验先行于构建）：参数登记+默认参数收集 / RAII 收尾+入列。

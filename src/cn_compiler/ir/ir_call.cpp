@@ -173,6 +173,32 @@ void IRGenerator::visitCallExpr(CallExpr* node) {
             }
             widenI128Args(userArgs, closureIt->second.paramTypes, node->location);
             closureArgs.insert(closureArgs.end(), userArgs.begin(), userArgs.end());
+            // 485（结构体/数组返回闭包·同帧展开通道形态A）：?lambdaN 已置
+            //   structReturn（ir_lambda 合成函数同普通函数声明通道·被调方隐藏
+            //   返回指针接收/回写），调用点须同步预插 retbuf 为首实参（rcx）——
+            //   原按 rax 取返回值=被调方栈上临时地址（同帧悬垂读·间接调用
+            //   C0000005 同族）。判定用源码返回类型（returnIrType 已塌缩 ptr）。
+            if (semantic_ != nullptr && !closureIt->second.srcReturnType.empty() &&
+                (semantic_->isStructType(
+                     types::canonical(closureIt->second.srcReturnType)) ||
+                 types::isArray(closureIt->second.srcReturnType))) {
+                const std::string temp = "__retbuf" + std::to_string(varCounter_++);
+                emit(ir::Opcode::Alloca, {}, ir::IRValue::reg(regCounter_++, "ptr"),
+                     temp, "ptr", node->location);
+                // 返回缓冲区按 64 字节（8 槽）分配——与被调方 epilogue 拷贝
+                //   上限一致（与直接调用形态A同款）
+                function_->varSlots[temp] = 8;
+                registerVarSlots(temp, closureIt->second.srcReturnType);
+                ir::IRValue buf = emitResult(ir::Opcode::AddrOf,
+                                             {ir::IRValue::var(temp, "i64")},
+                                             "ptr", temp, node->location);
+                // 隐藏返回指针作为第一个参数（rcx）
+                closureArgs.insert(closureArgs.begin(), buf);
+                emit(ir::Opcode::Call, closureArgs, ir::IRValue(),
+                     closureIt->second.lambdaName, "void", node->location);
+                lastExpr_ = buf;
+                return;
+            }
             // 结果类型：匿名函数返回 IR 类型（非空）；空（如 空类型）用 void
             const std::string retType = closureIt->second.returnIrType.empty()
                                             ? "void" : closureIt->second.returnIrType;
@@ -674,10 +700,60 @@ void IRGenerator::visitCallExpr(CallExpr* node) {
     //   登记时即写完整串（「登记字面量 `函数指针` 丢形参」=半截机制的根治）。
     //   树形态覆盖：标识符（局部变量/函数指针参数/全局）、成员访问（对象字段
     //   函数指针）；无法解析出形参列表时保守跳过（零行为变更）。
-    if (const std::vector<std::string> fnPtrParams =
-            funcPtrParamsOfCallee(node->callee.get());
-        !fnPtrParams.empty() && fnPtrParams.size() == args.size()) {
-        widenI128Args(args, fnPtrParams, node->location);
+    // 485（间接调用返回面根治·探针 p8/p10 C0000005 实锤）：callee 源码类型串
+    //   单次解析（funcPtrTypeOfCallee），形参宽化与返回类型同源消费——原返回
+    //   类型硬编码 "i32"：i128 返回=调用点不传 sret 隐藏指针且按 eax 取值，
+    //   蹦床（432 ?lambdaN$trap）按 sret 协议写 rcx 垃圾地址=访问违例 C0000005
+    //   （[=] 闭包经返回真逃逸后跨函数调用立案形态·#435 轮探针）；整64 返回=
+    //   eax 低 32 截断（10000000000→1410065408 实测）；浮点返回=eax 垃圾；
+    //   结构体/数组返回=retbuf 预插缺失。三后端 emitCall 均按 result.type
+    //   分派（i128 sret/浮点 xmm/整型位宽）——IR 层一处修三后端同受益。
+    //   解析失败保守兜底 "i32"（现状零行为变更）。
+    const std::string calleeFnPtrType = funcPtrTypeOfCallee(node->callee.get());
+    if (!calleeFnPtrType.empty()) {
+        const std::vector<std::string> fnPtrParams =
+            types::funcPtrParamsOf(calleeFnPtrType);
+        if (!fnPtrParams.empty() && fnPtrParams.size() == args.size()) {
+            widenI128Args(args, fnPtrParams, node->location);
+        }
+        // 结构体/数组返回 fnptr：形态A同构（直接调用 087 同款）——retbuf 预插，
+        //   operands=[fnptr, retbuf, 实参...]（operand[0]=call 目标·operand[1]=
+        //   隐藏返回指针落 rcx），result=void，lastExpr_=retbuf 地址（调用方
+        //   CopyStruct 消费与直接调用同链）。
+        const std::string retSrc = types::funcPtrReturnTypeOf(calleeFnPtrType);
+        if (!retSrc.empty() && semantic_ != nullptr &&
+            (semantic_->isStructType(types::canonical(retSrc)) ||
+             types::isArray(retSrc))) {
+            ir::IRValue calleeVal = genExpr(node->callee.get());
+            const std::string temp = "__retbuf" + std::to_string(varCounter_++);
+            emit(ir::Opcode::Alloca, {}, ir::IRValue::reg(regCounter_++, "ptr"),
+                 temp, "ptr", node->location);
+            // 返回缓冲区按 64 字节（8 槽）分配——与被调方 epilogue 的 64 字节
+            //   拷贝上限一致（结构体实际大小 ≤64 字节场景）
+            function_->varSlots[temp] = 8;
+            registerVarSlots(temp, retSrc);
+            ir::IRValue buf = emitResult(ir::Opcode::AddrOf,
+                                         {ir::IRValue::var(temp, "i64")},
+                                         "ptr", temp, node->location);
+            args.insert(args.begin(), buf);        // operand[1]=隐藏返回指针
+            args.insert(args.begin(), calleeVal);  // operand[0]=指针寄存器
+            emit(ir::Opcode::CallIndirect, args, ir::IRValue(), "", "void",
+                 node->location);
+            lastExpr_ = buf;
+            return;
+        }
+        // 标量返回：返回类型按 fnptr 声明映射（空类型维持 "i32" 兜底——result
+        //   无消费者·eax 装载无害·零行为变更）
+        if (!retSrc.empty()) {
+            const std::string mapped = mapType(retSrc);
+            if (mapped != "void" && mapped != "") {
+                ir::IRValue calleeVal = genExpr(node->callee.get());
+                args.insert(args.begin(), calleeVal);  // operand[0]=指针寄存器
+                lastExpr_ = emitResult(ir::Opcode::CallIndirect, args, mapped, "",
+                                       node->location);
+                return;
+            }
+        }
     }
     // 间接调用：先求被调者表达式（函数指针变量），再 CallIndirect
     ir::IRValue calleeVal = genExpr(node->callee.get());

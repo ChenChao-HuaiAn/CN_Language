@@ -58,6 +58,7 @@ void IRGenerator::registerClosureIfNeeded(VarDecl* node) {
         info.lambdaName = lastLambdaName_;
         info.captures = lastLambdaCaptures_;
         info.returnIrType = lastLambdaReturnIrType_;
+        info.srcReturnType = lastLambdaSrcReturnType_;  // 485：源返回类型（sret 判定）
         info.paramTypes = lastLambdaParamTypes_;  // 337-a：用户形参类型（ABI 定标）
         if (isMethodValueInit) {
             // 绑定方法：捕获实参 = 被绑定对象地址（对象指针 = Load 槽）
@@ -130,6 +131,7 @@ void IRGenerator::registerClosureIfNeeded(VarDecl* node) {
         lastLambdaName_.clear();
         lastLambdaCaptures_.clear();
         lastLambdaReturnIrType_.clear();
+        lastLambdaSrcReturnType_.clear();
         lastLambdaCaptureRefs_.clear();
     }
 }

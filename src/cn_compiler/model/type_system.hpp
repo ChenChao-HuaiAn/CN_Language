@@ -73,6 +73,13 @@ bool isFuncPtr(const std::string& type);
 //   IR 层间接调用点（funcPtrParamsOfCallee）均转发至此（消除同解析两份实现）。
 std::vector<std::string> funcPtrParamsOf(const std::string& type);
 
+// 从函数指针类型字符串提取返回类型（485·对称 funcPtrParamsOf）：
+//   "函数指针<整128>(整32)" -> "整128"；返回类型可嵌套函数指针/泛型
+//   （如 函数指针<函数指针<整32>(整32)>()），按 '<' '>' 深度计数取首
+//   '<' 的配对 '>'；非函数指针串/无配对返回空串。与 funcPtrParamsOf
+//   同为**唯一实现**——IR 层间接调用点 funcPtrRetTypeOfCallee 转发至此。
+std::string funcPtrReturnTypeOf(const std::string& type);
+
 // ==================== 指针/数组复合类型（Task 2.4） ====================
 
 // 是否指针类型（类型名以 * 结尾，如 整32* / 空类型*）

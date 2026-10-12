@@ -346,6 +346,7 @@ private:
     std::string lastLambdaName_;
     std::vector<std::string> lastLambdaCaptures_;
     std::string lastLambdaReturnIrType_;  // 最近 lambda 的返回 IR 类型（闭包调用结果类型）
+    std::string lastLambdaSrcReturnType_;  // 485：最近 lambda 的源码返回类型（sret 判定）
     // 337-a（T53 家系·闭包调用路径）：最近一次闭包（lambda / 方法作值）的**用户
     //   形参源码类型列表**——闭包调用 `cb(实参)` 展开为 `Call(捕获实参..., 用户实参...)`
     std::vector<std::string> lastLambdaParamTypes_;
@@ -389,6 +390,9 @@ private:
         std::vector<std::string> captures;      // 捕获变量源码名列表
         std::vector<ir::IRValue> captureArgs;   // 定义处求值的捕获实参（值快照 或 &变量 指针）
         std::string returnIrType;               // 匿名函数返回 IR 类型（结果寄存器类型）
+        // 485：lambda 源码返回类型（结构体/数组返回 sret 判定——returnIrType
+        //   经 mapType 已塌缩 ptr，无法判别；同帧展开通道形态A预插需要源类型）
+        std::string srcReturnType;
         // 337-a（T53 家系）：用户形参源码类型列表（不含捕获参数）——闭包调用展开
         //   用户实参的 ABI 定标依据（widenI128Args 形参来源，见 lastLambdaParamTypes_）。
         std::vector<std::string> paramTypes;
@@ -427,6 +431,12 @@ private:
     // 推导「callee 表达式是函数指针」时的形参类型列表（337-a·T53 家系）：
     //   被调者形态=标识符（局部变量/函数指针参数/全局）→ lookupSrcType；
     std::vector<std::string> funcPtrParamsOfCallee(Expr* callee) const;
+    // 推导「callee 表达式是函数指针」时的规范化源码类型串（485·337-a 同族
+    //   提炼）：被调者形态同 funcPtrParamsOfCallee（标识符→lookupSrcType、
+    //   成员→memberFieldSrcType）+泛型单态化+isFuncPtr 判定；非函数指针/
+    //   无法解析返回空串。形参列表与返回类型（funcPtrReturnTypeOf）两个
+    //   消费面共用此单一入口。
+    std::string funcPtrTypeOfCallee(Expr* callee) const;
     // 指针算术步进（字节）：普通指针8；结构体指针 = 结构体总大小（Task 2.7 修复）
     std::int64_t ptrElemStride(const std::string& srcType) const;
     // 推导"指针值表达式"的所指源码类型（供解引用 * 用，Task 审查修复）：
