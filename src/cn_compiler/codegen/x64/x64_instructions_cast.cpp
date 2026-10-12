@@ -526,6 +526,17 @@ bool X64CodeGenerator::emitCastIntWidth(AsmWriter& writer, const ir::IRInstructi
         }
         return true;
     }
+    // 466（wt466·u7 探针汇编实锤）：i128 <-> u128 同宽互转=双半位模式直拷
+    //   （整128/正128 仅符号性标注差异·模 2^128 位模式恒等）。原无分支落默认
+    //   32 位 mov 链=只搬**高半槽**到目标低半（`正128& v = 18446744073709551621`
+    //   的 IR 常量 i128 [5:1]→Cast u128 读出 1 实证）。
+    if ((from == "i128" && to == "u128") || (from == "u128" && to == "i128")) {
+        writer.line("mov rax, " + regSlot(inst.operands[0].id + 1));   // 低64
+        writer.line("mov " + regSlot(inst.result.id + 1) + ", rax");
+        writer.line("mov rax, " + regSlot(inst.operands[0].id));       // 高64
+        writer.line("mov " + regSlot(inst.result.id) + ", rax");
+        return true;
+    }
     // 大 -> 小（截断）：mov 低8/16/32位（写低字节，高位清零由槽位决定）
     if (to == "i8" || to == "u8") {
         writer.line("mov al, " + narrowOperand(to, src));

@@ -216,7 +216,13 @@ void IRGenerator::widenI128Args(std::vector<ir::IRValue>& args,
                                 const SourceLocation& loc) {
     for (std::size_t ai = 0; ai < args.size() && ai < paramTypes.size(); ++ai) {
         const std::string canon = types::canonical(paramTypes[ai]);
-        const bool param128 = (canon == "整128" || canon == "正128");
+        // 466（wt466·与 ir_call.cpp 实参循环同守卫）：**128 引用形参位不宽化**——
+        //   canonical 剥 '&' 后 整128& 误判按值 128：引用实参=wrapRefArgs 取好的
+        //   左值地址（ptr），Cast 成 i128 → emitCall i128 分支传「Cast 临时双槽
+        //   地址」→ 被调引用槽收临时槽地址，体内读写落临时槽（调用方变量不变）。
+        //   方法调用/函数指针/lambda 闭包三路共用本函数，此处一守卫全链收口。
+        const bool param128 = !types::isReference(paramTypes[ai]) &&
+                              (canon == "整128" || canon == "正128");
         if (param128 && args[ai].type != "i128" && args[ai].type != "u128" &&
             args[ai].type != "f32" && args[ai].type != "f64") {
             const std::string kind = (canon == "正128") ? "u128" : "i128";

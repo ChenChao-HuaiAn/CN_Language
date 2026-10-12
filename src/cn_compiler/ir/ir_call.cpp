@@ -514,7 +514,15 @@ void IRGenerator::visitCallExpr(CallExpr* node) {
             const auto paramTypes = semantic_->funcParamTypesOf(calleeName);
             if (ai < paramTypes.size()) {
                 const std::string canon = types::canonical(paramTypes[ai]);
-                if (canon == "整128" || canon == "正128") {
+                // 466（wt466·p3 探针 IR+汇编实锤）：**128 引用形参位不进按值定标
+                //   通道**——canonical 剥 '&' 后 整128& 与 整128 同判 → 引用实参
+                //   已被语义层 wrapRefArgs 取地址（ptr=调用方左值地址），此处再
+                //   Cast 成 i128 值 → emitCall i128 分支改传「Cast 临时双槽地址」
+                //   → 被调引用槽收临时槽地址，体内 16 字节读写全落在临时槽
+                //   （调用方变量不变·标量/数组元素/读侧/自增四面全红实证）。
+                //   引用位保持 ptr 原样传（rcx=左值地址=被调 A-1 契约）。
+                if (!types::isReference(paramTypes[ai]) &&
+                    (canon == "整128" || canon == "正128")) {
                     paramIs128 = true;
                     param128Kind = (canon == "正128") ? "u128" : "i128";
                 }
