@@ -574,7 +574,14 @@ class 处理器(BaseHTTPRequestHandler):
             归属 = str(体.get("归属", "")).strip()
             if not 归属:
                 return   # 三者皆无=无法归属会话·静默跳过（历史接口兼容面）
-            机器, 对话id = 归属, 归属
+            # 494 修正（用户令 2026-10-12）：归属形如「ChenChao-PC-wt488」=
+            # hostname-wt号——拆分（机器=hostname·对话id=wt号），原整串双填致
+            # 会话键「X-wtN-X-wtN」双倍复合·机器分组名被树名污染（同机拆多组）。
+            m = re.match(r"^(.+)-wt(\d+)$", 归属)
+            if m:
+                机器, 对话id = m.group(1), f"wt{m.group(2)}"
+            else:
+                机器, 对话id = 归属, 归属
         在做 = str(体.get("号", "")).strip()
         连接.execute(
             """INSERT INTO 意图(对话id,机器,在做,计划,备注,心跳时刻,心跳时戳,登记时刻)
