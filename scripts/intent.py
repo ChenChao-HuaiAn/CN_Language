@@ -19,7 +19,7 @@ show 无法取数 exit 1。令牌复用 scripts/queue_client.json 的「令牌�
 （同一把锁守同一栋楼·零新增配置）；URL 可用环境变量 CN_BOARD_URL 覆盖。
 会话 id 按 worktree 粒度（308i：仓库根目录名·持久于 ~/.cache/cn_board_session_id_<树名>；
 同机多 worktree 并行互不覆盖，CN_BOARD_SESSION 环境变量可显式覆盖·特殊场景用）；
-机器名取 CN_MACHINE_NAME 环境变量（优先）或 ~/.cache/cn_board_machine 或主机名。
+机器名取 CN_MACHINE_NAME 环境变量（优先）或主机名（494·用户令：机器显示统一按机器用户名·别名文件层已废）。
 """
 from __future__ import annotations
 
@@ -42,7 +42,6 @@ from pathlib import Path
 #   同树多会话等特殊场景用 CN_BOARD_SESSION 环境变量显式命名）
 会话键 = os.environ.get("CN_BOARD_SESSION", "").strip() or 仓库根.name
 会话文件 = 缓存目录 / f"cn_board_session_id_{会话键}"
-机器文件 = 缓存目录 / "cn_board_machine"
 登记缓存 = 缓存目录 / f"cn_board_intent_last_{会话键}.json"
 默认地址 = "http://124.222.106.84:8301"
 
@@ -70,13 +69,14 @@ def 会话id() -> str:
 def 机器名() -> str:
     import os
     import socket
+    # 494·用户令（2026-10-12）：机器显示统一按机器用户名（hostname·如家机
+    # ChenChao-PC）——废除 ~/.cache/cn_board_machine 别名文件层（「家机」别名
+    # 与 494 认领上板的 hostname-树名双轨并存曾致同机拆两组+假撞号警告）。
+    # CN_MACHINE_NAME 环境变量保留为唯一覆盖口（特殊场景手动指定）。
     环境 = os.environ.get("CN_MACHINE_NAME", "").strip()
     if 环境:
         return 环境
-    try:
-        return 机器文件.read_text(encoding="utf-8").strip() or socket.gethostname()
-    except OSError:
-        return socket.gethostname()
+    return socket.gethostname()
 
 
 def 调服务(方法: str, 路径: str, 体=None, 超时=8):
