@@ -711,6 +711,10 @@ void SemanticAnalyzer::visitReturnStmt(ReturnStmt* node) {
             } else {
                 lambdaReturnCandidate_.push_back("空类型");
             }
+            // #486：推导路径返回位逃逸检查同查（显式标注路径经 checkBlock 由
+            //   visitReturnStmt 尾挂点覆盖；v2 合成体遍全查对齐=宁严勿松）
+            lambda_escape::checkReturn(diagnostics_, node->value.get(),
+                                       node->location, currentFnUnsafe_);
             return;
         }
         diagnostics_.report(DiagnosticLevel::Error, node->location,

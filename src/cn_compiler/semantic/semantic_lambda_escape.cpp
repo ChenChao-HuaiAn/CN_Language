@@ -4,6 +4,7 @@
 #include "cn_compiler/semantic/semantic_lambda_escape.hpp"
 
 #include <unordered_set>
+#include <vector>
 
 #include "cn_compiler/model/ast.hpp"
 
@@ -94,12 +95,27 @@ void reportEscape(Diagnostics& diag, const SourceLocation& loc,
 // lambda 体上下文深度（visitLambdaExpr 进入/退出配对·嵌套累加）
 int g_lambdaDepth = 0;
 
+// #486（2026-10-13）：传播表快照栈——enterLambdaBody 压入当前表快照（含外层
+//   传播链），体内挂点照读写同一表（外层链体内可见+体内登记即时生效），
+//   exitLambdaBody 弹出恢复（体内登记丢弃=零外层污染·同名遮蔽自然复原）。
+//   435「体内上下文一律跳过」妥协面退役：001 条文无体内豁免，体内语句的
+//   返回/声明/赋值/实参位同查（宁严勿松）；v2 同构=检查合成体逃逸 体内表
+//   （主表拷贝丢弃·语义检查逃逸.cn）。嵌套 lambda 逐层压/弹。
+std::vector<std::unordered_set<std::string>> g_lambdaVarSnapshots;
+
 void enterLambdaBody() {
     g_lambdaDepth++;
+    g_lambdaVarSnapshots.push_back(g_refLambdaVars);  // 486：体内帧快照
 }
 
 void exitLambdaBody() {
-    if (g_lambdaDepth > 0) g_lambdaDepth--;
+    if (g_lambdaDepth > 0) {
+        g_lambdaDepth--;
+        if (!g_lambdaVarSnapshots.empty()) {
+            g_refLambdaVars = g_lambdaVarSnapshots.back();  // 486：体内登记丢弃
+            g_lambdaVarSnapshots.pop_back();
+        }
+    }
 }
 
 bool inLambdaBody() {
@@ -108,11 +124,12 @@ bool inLambdaBody() {
 
 void noteFunctionEntry() {
     g_refLambdaVars.clear();
+    g_lambdaVarSnapshots.clear();  // 486：函数入口全栈复位（快照栈随函数帧生命周期）
 }
 
 void noteDeclInit(const std::string& name, const Expr* init) {
-    if (inLambdaBody()) return;  // lambda 体上下文两侧一致不查（#486 挂账）
     // 遮蔽修正先行：同名新声明（初始化器无 lambda）断开旧传播链
+    //   （#486 起体内声明同查——同名登记进当前帧表，快照恢复保证不出帧）
     g_refLambdaVars.erase(name);
     if (treeContainsRefLambda(init)) {
         g_refLambdaVars.insert(name);
@@ -121,7 +138,7 @@ void noteDeclInit(const std::string& name, const Expr* init) {
 
 void checkReturn(Diagnostics& diag, const Expr* value, const SourceLocation& loc,
                  bool fnUnsafe) {
-    if (fnUnsafe || inLambdaBody()) return;  // 不安全豁免·lambda 体上下文跳过（#486）
+    if (fnUnsafe) return;  // 不安全豁免（#486：lambda 体上下文不再跳过）
     if (treeContainsRefLambda(value)) {
         reportEscape(diag, loc, "作为返回值");
     }
@@ -130,7 +147,7 @@ void checkReturn(Diagnostics& diag, const Expr* value, const SourceLocation& loc
 void checkAssign(Diagnostics& diag, const Expr* target, const Expr* value,
                  const SourceLocation& loc, bool fnUnsafe,
                  const std::function<bool(const std::string&)>& isLocalVar) {
-    if (fnUnsafe || inLambdaBody()) return;  // 同上
+    if (fnUnsafe) return;  // 同上
     if (!treeContainsRefLambda(value)) return;
     if (target != nullptr && target->getType() == NodeType::IdentifierExpr) {
         const std::string& name = static_cast<const IdentifierExpr*>(target)->name;
@@ -153,7 +170,7 @@ void checkAssign(Diagnostics& diag, const Expr* target, const Expr* value,
 
 void checkCallArgs(Diagnostics& diag, const CallExpr* node, const SourceLocation& loc,
                    bool fnUnsafe) {
-    if (fnUnsafe || inLambdaBody() || node == nullptr) return;  // 同上
+    if (fnUnsafe || node == nullptr) return;  // #486：lambda 体上下文不再跳过
     for (const auto& arg : node->arguments) {
         if (treeContainsRefLambda(arg.get())) {
             reportEscape(diag, loc, "作为函数实参传出");

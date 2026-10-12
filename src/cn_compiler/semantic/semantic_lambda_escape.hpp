@@ -20,9 +20,11 @@ class CallExpr;
 
 namespace lambda_escape {
 
-// lambda 体上下文（#486 挂账·两侧一致不查面）：v2 合成体结构性跳过语句检查
-// （688 立法），宿主对显式返回标注 lambda 体走 checkBlock 完整路径——挂点在
-// lambda 体上下文内一律跳过（零分叉优先；lambda 体内逃逸面待 #486 双侧建设）
+// lambda 体上下文（#486 同查轮·2026-10-13）：v2 合成体检查面已建设（检查合成体
+//   逃逸·语义检查逃逸.cn），宿主解除 435「体内一律跳过」——enterLambdaBody 压
+//   传播表快照（外层链体内可见）、exitLambdaBody 弹出恢复（体内登记不出帧），
+//   挂点在 lambda 体上下文照常检查（双侧同查·零分叉；688 立法「主遍历无参
+//   作用域查体」的 v2 结构性限制由合成体专属遍绕开·动机不受影响）
 void enterLambdaBody();
 void exitLambdaBody();
 bool inLambdaBody();
