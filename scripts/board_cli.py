@@ -14,6 +14,7 @@
   python scripts/board_cli.py 裁决 --批 <件们.json>                 # 裁决项批量上传（403·AI 侧）
   python scripts/board_cli.py 裁决 --号 379 --标题 "…" --讲解文件 x.md --选项文件 o.json
   python scripts/board_cli.py 裁决看 [--全部]                       # 裁决项一览（缺省只看待裁决）
+  python scripts/board_cli.py 裁决删 <号>                           # 删待裁决件（471·误登记清理·已裁决终态禁删）
 批文件格式：[{号,标题,优先级?,讲解,选项们:[{键,描述,推荐?}]}]——讲解长文走文件不走命令行。
 机器名自动=CN_MACHINE_NAME（唯一覆盖口）或 hostname·平台-架构·指纹6（508·零配置·hostname 撞名根治）；--机器 可显式指定。
 """
@@ -247,6 +248,22 @@ def cmd_裁决(a) -> int:
     return 1 if 败 else 0
 
 
+def cmd_裁决删(a) -> int:
+    """删除待裁决件（471·误登记清理通道）——走 /api/adjudication_delete 同一接口。
+    仅「待裁决」态可删：已裁决=终态留痕 409 禁删（改判走再提交翻转）、不存在 404。
+    删后落缓存（列表已变·离线降级面读到新真相）。"""
+    码, r = 调服务("POST", "/api/adjudication_delete", {"号": a.号})
+    if 码 == 200:
+        print(f"[裁决删] {r.get('动作', '已删除')}")
+        try:    # 删后刷新缓存（列表已变）——失败不掩盖删除成功
+            落缓存("adjudications", 调服务("GET", "/api/adjudications")[1])
+        except OSError:
+            pass
+        return 0
+    print(f"[失败] {码} {r.get('错误', r)}")
+    return 1
+
+
 def cmd_裁决看(a) -> int:
     码, r = 调服务("GET", "/api/adjudications")
     落缓存("adjudications", r)
@@ -328,6 +345,10 @@ def main() -> int:
     s = sub.add_parser("裁决看", help="裁决项一览")
     s.add_argument("--全部", action="store_true")
     s.set_defaults(f=cmd_裁决看)
+
+    s = sub.add_parser("裁决删", help="删除待裁决件（误登记清理·已裁决终态禁删）")
+    s.add_argument("号")
+    s.set_defaults(f=cmd_裁决删)
 
     a = p.parse_args()
     try:

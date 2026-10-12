@@ -38,7 +38,7 @@
 #   POST /api/adjudicate      {裁决们:[{号,选项键,裁决人?,意见?,联动备注?}]}
 #                              裁决提交（单项/批量·档案落库+台账备注自动联动）
 #   POST /api/adjudication_delete {号}  删除裁决项（仅待裁决态·误登记清理·471；
-#                              已裁决=终态留痕 409 禁删）
+#                              已裁决=终态留痕 409 禁删·成功打 journal 业务日志·470）
 #   GET  /api/adjudications   全量裁决项（附裁决记录·待裁决在前）
 # 430 登录鉴权（2026-10-11 用户令「必须只有作者才能裁决」·网页裁决系统安全收口）：
 #   POST /api/login   {口令}   网页管理员登录——口令与 CN_BOARD_TOKEN 同源（单一权威），
@@ -538,6 +538,12 @@ class 处理器(BaseHTTPRequestHandler):
         if 路径 == "/api/adjudication_delete":
             with 写锁:
                 码, 响应 = 裁决.裁决项删除(连接, 体)
+                if 码 == 200:
+                    # 470：删除=破坏性动作，业务日志进 journal（谁/何时/删了哪号）——
+                    # 通道判定与 _已鉴权 同口径（走到此必已过鉴权·Bearer 优先）。
+                    通道 = ("令牌" if self.headers.get("Authorization", "")
+                            == f"Bearer {令牌}" else "网页会话")
+                    print(f"[裁决删] {时刻()} {通道} {响应.get('动作', '')}", flush=True)
                 return self._回JSON(码, 响应)
         return self._回JSON(404, {"错误": "未知路径"})
 
