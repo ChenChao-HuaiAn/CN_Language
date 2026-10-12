@@ -542,6 +542,23 @@ bool SemanticAnalyzer::checkCompoundAssign(AssignmentExpr* node,
                                 "复合赋值要求数值操作数，实际为 '" + targetType +
                                 "' 与 '" + valueType + "'");
         }
+        // 488（001 §3.7 第④族·2026-10-12 用户裁决 A 案）：混合符号复合赋值
+        //   拒绝——复合赋值与对应二元运算同规则（等价展开 甲 = 甲 + 乙；w19
+        //   旧裁「复合赋值面不拦混合符号」废止）。v2 权威面执法同构（复合赋值
+        //   脱糖合成二元进 检查混合符号二元·语义检查中.cn 调用位）：目标/右值
+        //   均整数族、符号相异、右值非整数字面量形态（含 -1）时编译期拒绝；
+        //   右值字面量豁免（甲 += 1 按目标类型参与·191 锚同款）；左值=赋值
+        //   目标变量恒非字面量。诊断文案与 v2 逐字一致（指路显式转换）。
+        if (targetType != "未知" && valueType != "未知" &&
+            isInteger(targetType) && isInteger(valueType) &&
+            types::isUnsigned(targetType) != types::isUnsigned(valueType) &&
+            !isIntLiteralExpr(node->value.get())) {
+            diagnostics_.report(DiagnosticLevel::Error, node->location,
+                                "混合符号二元运算禁止：'" + targetType + "' 与 '" +
+                                valueType +
+                                "' —— 须显式转换（如 整64(表达式)/正64(表达式)）；"
+                                "字面量豁免（Rust 对齐，2026-09-10 方案A）");
+        }
         if (targetType == "未知") {
             lastType_ = valueType;
             return true;
