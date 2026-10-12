@@ -662,7 +662,20 @@ void IRGenerator::visitCallExpr(CallExpr* node) {
             if (semantic_->funcReturnsRef(calleeName)) {
                 resultType = "ptr";
             } else {
-                const std::string ret = semantic_->funcReturnTypeOf(calleeName);
+                std::string ret = semantic_->funcReturnTypeOf(calleeName);
+                // 110（外部 函数 整64 返回值塌缩根治）：外部 函数 调用符号=纯名
+                //   （C 符号无 mangling·上方 FFI 分支改写 calleeName），而语义层
+                //   functions_ 表键=签名 key（名#参数串）——纯名 miss 回退 i32，
+                //   三后端 emitCall 恒按 32 位读返回值（eax/w0+符号扩展），整64
+                //   大值（>2^32）低 32 截断（llabs(4294967297)→1 实测：arm64 与
+                //   linux x64 双后端运行级同塌·win x64 同构按 result.type 分派
+                //   同病；v2 侧双后端 str x0/mov rax 全读本即正确=宿主单侧分叉）。
+                //   miss 时回退查签名 key（funcReturnTypeOf 内置 模块$签名 剥前
+                //   缀·#435 fnptr 间接调用返回类型同族根治先例：IR 层一处修，
+                //   三后端 emitCall 按 result.type 分派同受益）。
+                if (ret.empty() && !node->resolvedSignature.empty()) {
+                    ret = semantic_->funcReturnTypeOf(node->resolvedSignature);
+                }
                 if (!ret.empty()) {
                     const std::string mapped = mapType(ret);
                     if (mapped != "void" && mapped != "") resultType = mapped;
