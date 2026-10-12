@@ -279,6 +279,12 @@ def cmd_裁决看(a) -> int:
 
 
 def main() -> int:
+    # 492 路过即心跳扩源：收工/教训/用例=AI 在干活的真实信号（daemon 线程·静默不阻断）
+    try:
+        import intent as _看板心跳
+        _看板心跳.挂载路过续约()
+    except Exception:
+        pass
     import argparse
     p = argparse.ArgumentParser(description="文档资源统一 CLI（384）")
     sub = p.add_subparsers(dest="cmd", required=True)

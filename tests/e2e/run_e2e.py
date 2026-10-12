@@ -41,6 +41,14 @@ if hasattr(sys.stderr, "reconfigure"):
 # 项目根目录（用例根目录的上两级：tests/e2e -> tests -> 项目根）
 项目根目录 = 用例根目录.parent.parent
 
+# 492 路过即心跳扩源：验证必跑脚本=AI 在干活的真实信号（daemon 线程·静默失败不阻断）
+try:
+    sys.path.insert(0, str(项目根目录 / "scripts"))
+    import intent as _看板心跳
+    _看板心跳.挂载路过续约()
+except Exception:
+    pass
+
 # 默认编译器候选路径（按优先级自动探测；Windows 下带 .exe，Linux 下无后缀）
 编译器候选 = [
     pathlib.Path("target") / "Debug" / "cn.exe",

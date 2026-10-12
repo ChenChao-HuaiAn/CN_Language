@@ -442,9 +442,10 @@ function 渲染冲突(冲突们) {
 }
 
 /* —— Tab A：当前在飞（382.2 用户令：本栏=**纯机器会话视图**——只显示几台机器
-   正在跑什么；会话静默 15 分钟黄标·2 小时自动清除=中断即从本栏消失；
-   未完成的任务在「远端在飞分支」tab 继续（真实 git 分支·TX_01 每分钟级 ls-remote），
-   新机器/新会话从那里接棒）—— */
+   正在跑什么；492 多信号活跃判定：会话心跳 ∨ 在做分支 sha 推进，任一新鲜即算
+   在飞；双断 15 分钟=黄标·24 小时=🧟 僵尸疑沉底——**永不自动清除**（治「2h 自动
+   清删掉长跑干活任务」实录），未完成任务在「远端在飞分支」tab 继续（真实 git
+   分支·TX_01 每分钟级 ls-remote），新机器/新会话从那里接棒）—— */
 
 function 渲染意图() {
   const 区 = $("意图区");
@@ -458,16 +459,24 @@ function 渲染意图() {
   const 按机 = {};
   们.forEach((i) => (按机[i.机器] = 按机[i.机器] || []).push(i));
   区.innerHTML = Object.entries(按机).map(([机, 会话组]) => {
+    const 序 = 会话组.slice().sort((a, b) => (b.僵尸疑 ? 1 : 0) - (a.僵尸疑 ? 1 : 0));
     return '<div class="机卡"><div class="机头"><span class="灯"></span>' + 转义(机) +
       '<span class="副">' + 会话组.length + " 个会话</span></div>" +
-      会话组.map((i) => {
+      序.map((i) => {
         const t = i.在做 ? 字典[i.在做] : null;
         const 计划 = (i.计划 || "").split(",").filter(Boolean)
           .map((p) => '<span class="计划签">#' + 转义(p) + "</span>").join("");
-        const 静默签 = i.失联
-          ? '<span class="签 边框 挂起">会话静默 ' + Math.round(i.失联秒 / 60) + " 分钟</span>"
-          : "";
-        return '<div class="会话"><div class="行1">' +
+        let 静默签 = "";
+        if (i.僵尸疑) {
+          静默签 = '<span class="签 边框 挂起" title="心跳与在做分支推进双静默超 24 小时——' +
+            '疑已死会话（492 治误删实录：行保留沉底不删）。人工核实后 intent.py release 清理">' +
+            "🧟 静默 " + Math.round(i.失联秒 / 3600) + " 小时</span>";
+        } else if (i.失联) {
+          静默签 = '<span class="签 边框 挂起" title="心跳与在做分支推进双静默' +
+            "（492 多信号：分支有新提交即算在飞）\">" +
+            "会话静默 " + Math.round(i.失联秒 / 60) + " 分钟</span>";
+        }
+        return '<div class="会话' + (i.僵尸疑 ? " 僵尸卡" : (i.失联 ? " 失联卡" : "")) + '"><div class="行1">' +
           '<span class="对话">' + 转义(i.对话id) + "</span>" +
           (i.在做
             ? '<button class="号牌" data-详="' + 转义(i.在做) + '">#' + 转义(i.在做) + "</button>"

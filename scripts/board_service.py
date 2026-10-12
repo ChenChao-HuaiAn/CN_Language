@@ -49,8 +49,13 @@
 #   ★令牌未配置=全部写操作拒绝（fail-closed）——根治旧「未配置则回环放行」：
 #     Caddy 反代下 client_address 恒为 127.0.0.1，来源判断在反代场景完全失真，
 #     一旦 systemd 环境丢失令牌即公网裸奔（430 立案根因）。
-# 过期：心跳断 CN_INTENT_STALE_SEC（默认 1800s）→ 失联态（行保留·UI 灰显+失联徽章）。
-# 心跳时戳=服务端收到时刻（911 教训：免疫各机时钟漂移）。任务表=持久落盘永不过期。
+# 过期（492 多信号活跃·用户裁决）：活跃信号=会话心跳 ∨ 在做分支 sha 推进（TX_01 gitcron
+#   每 3 分钟 ls-remote 实测·同分支 sha 变化=有新提交=任务在动）。活跃断 CN_INTENT_STALE_SEC
+#   （默认 900s）→ 失联态（行保留·UI 灰显+失联徽章）；超 CN_INTENT_ZOMBIE_SEC（默认 24h）
+#   → 僵尸疑（UI 沉底黄签·仍不删行）。★自动清除已废除（492 治实录：子Agent 编排长跑期
+#   主会话无看板触点→心跳断 2h→干活中任务被误删出在飞区）——行消失正路=收口惰性清
+#   （在做号 ✅）/人工 release。心跳时戳=服务端收到时刻（911 教训：免疫各机时钟漂移）。
+#   任务表=持久落盘永不过期。
 # 部署：/etc/systemd/system/cn-board.service（Environment= CN_BOARD_PORT/CN_BOARD_TOKEN/CN_BOARD_DB）
 #   + board_www/ 静态目录随 board_service.py 同目录部署（deploy_board.sh 一键）。
 # 自检：python3 board_service.py --selftest（内存 db+随机端口·意图/冲突/发号/任务
@@ -81,8 +86,8 @@ import board_adjudication as 裁决  # 待裁决项模块（403·网页裁决系
 令牌 = os.environ.get("CN_BOARD_TOKEN", "")
 db路径 = os.environ.get("CN_BOARD_DB",
                         str(os.path.dirname(os.path.abspath(__file__)) + "/board_state.db"))
-失联秒 = int(os.environ.get("CN_INTENT_STALE_SEC", "900"))    # 心跳断此秒数=会话静默（15min·AI 活跃时路过续约密·打断后及时体现；行保留·任务态不受影响）
-自动清秒 = int(os.environ.get("CN_INTENT_PURGE_SEC", "7200"))  # 静默超此秒数=自动注销（会话被杀无 release 兜底）
+失联秒 = int(os.environ.get("CN_INTENT_STALE_SEC", "900"))    # 活跃信号（心跳∨分支推进）断此秒数=会话静默（15min·行保留黄标·任务态不受影响）
+僵尸疑秒 = int(os.environ.get("CN_INTENT_ZOMBIE_SEC", str(24 * 3600)))  # 静默超此秒数=僵尸疑（UI 沉底黄签·不删行·492 照 392 降权模式）
 快照保留秒 = 3600                                             # 在飞分支/021 快照超过此秒数不再展示（陈旧数据防误导）
 在飞保留条数 = 60                                             # 在飞分支表裁剪上限
 会话秒 = 7 * 24 * 3600                                        # 登录会话有效期（430·7 天后须重登）
@@ -108,6 +113,11 @@ def 建库(路径: str = db路径) -> sqlite3.Connection:
         分支 TEXT PRIMARY KEY,
         提交 TEXT, 提交题 TEXT DEFAULT '', 时刻 TEXT,
         上报者 TEXT, 上报时戳 REAL, 已并入 INTEGER DEFAULT 0)""")
+    # 492：分支 sha 推进信号（独立表·不受在飞分支全量替换干扰）——同分支 sha 变化
+    # =有新提交=任务在动；推进时戳=当前 sha 首次被看到的时刻（同 sha 重复上报不刷新）。
+    con.execute("""CREATE TABLE IF NOT EXISTS 分支推进(
+        分支 TEXT PRIMARY KEY,
+        提交 TEXT, 推进时戳 REAL)""")
     con.execute("""CREATE TABLE IF NOT EXISTS 快照(
         键 TEXT PRIMARY KEY,
         内容 TEXT,
@@ -138,21 +148,39 @@ def 解析任务号们(文本: str) -> list:
     return 台账.解析任务号们(文本)   # 382：解析归台账模块（单一实现）
 
 
-def 意图行转字典(行) -> dict:
+def 意图行转字典(行, 推进图=None) -> dict:
+    """492 多信号活跃判定：活跃秒=min(心跳陈旧秒, 在做分支推进陈旧秒)——任一信号
+    新鲜即在飞正常（治子Agent 长跑期心跳单信号误判失联）；无在做号/无分支信号
+    回退纯心跳口径。失联/僵尸疑 都只做展示标注，不删行。"""
     (对话id, 机器, 在做, 计划, 备注, 心跳时刻, 心跳时戳, 登记时刻) = 行
-    陈旧秒 = time.time() - 心跳时戳
+    心跳陈旧 = time.time() - 心跳时戳
+    推进陈旧 = None
+    if 推进图 and 在做:
+        t = 推进图.get(在做)
+        if t is not None:
+            推进陈旧 = max(0.0, time.time() - t)
+    活跃秒 = min(s for s in (心跳陈旧, 推进陈旧) if s is not None)
     return {"会话键": f"{机器}-{对话id}", "机器": 机器, "对话id": 对话id,
             "在做": 在做, "计划": 计划, "备注": 备注,
-            "心跳时刻": 心跳时刻, "时戳": 心跳时戳, "失联": 陈旧秒 > 失联秒,
-            "失联秒": int(陈旧秒), "登记时刻": 登记时刻}
+            "心跳时刻": 心跳时刻, "时戳": 心跳时戳,
+            "失联": 活跃秒 > 失联秒, "失联秒": int(活跃秒),
+            "心跳静默秒": int(心跳陈旧),
+            "分支推进秒": int(推进陈旧) if 推进陈旧 is not None else -1,
+            "僵尸疑": 活跃秒 > 僵尸疑秒,
+            "登记时刻": 登记时刻}
 
 
-自动清秒 = int(os.environ.get("CN_INTENT_PURGE_SEC", "7200"))   # 失联超此秒数=自动注销（会话被杀无 release 兜底）
+def 分支推进时戳图() -> dict:
+    """任务号 → 分支推进时戳（492·意图活跃判定第二信号源）。"""
+    图 = {}
+    for 分支, 时戳 in 连接.execute("SELECT 分支,推进时戳 FROM 分支推进").fetchall():
+        m = re.match(r"任务/(.+)$", 分支)
+        if m:
+            图[m.group(1)] = 时戳
+    return 图
 
 
 def 全部意图() -> list:
-    # 308h：失联超自动清秒的意图行惰性注销（30min 失联灰显→2h 清除）
-    连接.execute("DELETE FROM 意图 WHERE 心跳时戳<?", (time.time() - 自动清秒,))
     # 318：收口惰性清——在做号任务表状态 ✅ → 直接删行（382 起查任务表实时真相，
     # 不再依赖 report_021 的任务字典快照——快照会 1h 过期，任务表永不过期）。
     完成号 = {r[0] for r in 连接.execute(
@@ -160,9 +188,13 @@ def 全部意图() -> list:
     if 完成号:
         连接.executemany("DELETE FROM 意图 WHERE 在做=?",
                          [(号,) for 号 in 完成号])
+    # 492（用户裁决）：撤 308h「失联超 2h 自动注销」——曾把子Agent 编排长跑中的
+    # 干活任务误删出在飞区（2026-10-12 实录）。行消失正路=上面收口惰性清/人工
+    # release；失联只黄标，超僵尸疑秒沉底（照 392 僵尸疑降权模式·不删行）。
     连接.commit()
+    推进图 = 分支推进时戳图()
     行们 = 连接.execute("SELECT * FROM 意图 ORDER BY 机器, 对话id").fetchall()
-    return [意图行转字典(r) for r in 行们]
+    return [意图行转字典(r, 推进图) for r in 行们]
 
 
 def 任务号声明图(意图们: list) -> dict:
@@ -548,6 +580,25 @@ class 处理器(BaseHTTPRequestHandler):
         上报者 = str(体.get("上报者", "")).strip()[:60]
         现 = time.time()
         with 写锁:
+            # 492：分支 sha 推进信号——同分支 sha 变化=有新提交=任务在动（活跃判定
+            # 第二信号源）；同 sha 重复上报不刷新（推进时戳=当前 sha 首见时刻·防假活）。
+            旧提交 = {r[0]: r[1] for r in 连接.execute(
+                "SELECT 分支,提交 FROM 分支推进").fetchall()}
+            for 项 in 分支们:
+                if not isinstance(项, dict):
+                    continue
+                名 = str(项.get("分支", "")).strip()
+                if not 名.startswith("任务/"):
+                    continue
+                sha = str(项.get("提交", ""))[:12]
+                if 旧提交.get(名) != sha:
+                    连接.execute(
+                        """INSERT INTO 分支推进(分支,提交,推进时戳) VALUES(?,?,?)
+                           ON CONFLICT(分支) DO UPDATE SET 提交=excluded.提交,
+                           推进时戳=excluded.推进时戳""",
+                        (名[:120], sha, 现))
+            # 推进表惰性清（14 天·防无限增长——正常行随收口失去读方，残留仅占存储）
+            连接.execute("DELETE FROM 分支推进 WHERE 推进时戳<?", (现 - 14 * 24 * 3600,))
             # 308h：全量替换——上报者视图=远端实时真相，本次没报的旧行=远端已删
             # （原 upsert 只增不删·已收口分支残影挂满 1h 才过期=用户质询面）
             连接.execute("DELETE FROM 在飞分支")

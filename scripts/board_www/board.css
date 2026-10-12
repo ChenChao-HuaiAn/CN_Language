@@ -165,6 +165,7 @@ main { max-width: 78rem; margin: 0 auto; padding: var(--space-5) var(--space-6) 
 .会话 { padding: var(--space-3) var(--space-4); border-bottom: 1px solid var(--color-border-subtle); }
 .会话:last-child { border-bottom: 0; }
 .会话.失联卡 { opacity: .5; }
+.会话.僵尸卡 { opacity: .4; }   /* 492：僵尸疑（双信号静默超 24h·沉底黄签不删行——照 392 降权模式） */
 .会话 .行1 { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
 .会话 .对话 { font-family: var(--font-mono); font-size: .78rem; color: var(--color-fg-subtle); }
 .号牌 {

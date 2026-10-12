@@ -167,14 +167,14 @@ def 落登记(在做: str, 计划: str, 备注: str) -> int:
               f"分支存在=认领仍是有效兜底（降级不阻断）")
         return 0
     print(f"[好] 意图已上板：{机器名()}-{会话id()} 在做#{在做 or '—'}"
-          f" 计划[{计划 or '—'}]（心跳 30min 内 refresh 或重跑 claim 续约）")
+          f" 计划[{计划 or '—'}]（路过即心跳·15 分钟无心跳且无分支推进=黄标·行不删）")
     return 0
 
 
 def 已收口(号: str) -> bool:
     """316：在做任务是否已收口——382 起以服务端台账为准（GET /api/task/<号> 状态 ✅）。
     384：本地 021 降级段删除（021 文件已终局删除·服务不可达返回 False=不下板，
-    下次路过再查——漏删后果仅意图行滞留，2h 惰性清兜底）。"""
+    下次路过再查——漏删后果仅意图行滞留，492 起行永不自动清·人工 release 兜底）。"""
     if not 号:
         return False
     try:
@@ -199,13 +199,19 @@ def 路过续约() -> None:
                 return
             调服务("POST", "/api/intent", 旧体, 超时=4)
         except (urllib.error.URLError, OSError, ValueError):
-            pass
-        try:
-            旧 = json.loads(登记缓存.read_text(encoding="utf-8"))
-            调服务("POST", "/api/intent", 旧, 超时=4)
-        except (urllib.error.URLError, OSError, ValueError):
-            pass
+            try:    # 492：仅失败才重试一次（原无条件二次重发=每次路过双倍 POST 冗余）
+                旧体 = json.loads(登记缓存.read_text(encoding="utf-8"))
+                调服务("POST", "/api/intent", 旧体, 超时=4)
+            except (urllib.error.URLError, OSError, ValueError):
+                pass
     threading.Thread(target=_发, daemon=True).start()
+
+
+def 挂载路过续约() -> None:
+    """492：给看板系/验证系脚本一行挂载「路过即心跳」（daemon 线程·挂载方再套
+    try/except 静默）——扩源治子Agent 编排长跑期无看板触点→心跳断→会话误判失联。
+    挂载点全景：task_board / gate_quick / wt / board_cli / run_e2e（归纳零复制）。"""
+    threading.Thread(target=路过续约, daemon=True).start()
 
 
 def 命令认领(参数) -> int:

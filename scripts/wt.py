@@ -190,8 +190,8 @@ def 自动claim意图(任务号: str, 描述: str = "") -> None:
         r = 运行([sys.executable, str(intent), "claim", 任务号,
                   "--备注", 备注], env=env)
         if "已上板" in (r.stdout or ""):
-            print(f"[看板] 意图已自动登记（{任务号}·30min 心跳·收口自动注销·"
-                  f"会话中途 refresh 续约·路过即心跳）")
+            print(f"[看板] 意图已自动登记（{任务号}·路过即心跳·收口自动注销·"
+                  f"中途重跑任一看板脚本续约）")
     except OSError:
         pass
 
@@ -565,4 +565,10 @@ def 主流程() -> int:
 
 
 if __name__ == "__main__":
+    # 492 路过即心跳扩源：跑 wt.py=AI 在干活的真实信号（daemon 线程·静默失败不阻断）
+    try:
+        import intent as _看板心跳
+        _看板心跳.挂载路过续约()
+    except Exception:
+        pass
     sys.exit(主流程())

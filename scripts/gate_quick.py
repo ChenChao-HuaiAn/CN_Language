@@ -12,7 +12,7 @@ from __future__ import annotations
 
 # 332（2026-10-09 用户质询「失联是怎么回事」）：L1 每轮必跑——挂路过即心跳
 #   （同 task_board 308k：开工后写码期无 task_board 触点·L1 是唯一高频脚本·
-#   失败静默降级不阻断门禁）
+#   失败静默降级不阻断门禁；492：起线程逻辑归纳进 intent.挂载路过续约）
 def _路过续约():
     try:
         import importlib.util as _ilu
@@ -23,8 +23,7 @@ def _路过续约():
         _spec = _ilu.spec_from_file_location("cn_board_intent", _p)
         _mod = _ilu.module_from_spec(_spec)
         _spec.loader.exec_module(_mod)
-        import threading as _th
-        _th.Thread(target=_mod.路过续约, daemon=True).start()
+        _mod.挂载路过续约()
     except Exception:
         pass
 
