@@ -377,7 +377,7 @@ void Arm64CodeGenerator::emitIntBinary(Arm64AsmWriter& writer,
             //   ②不过=>hi=正溢出直接落错误 ③cmn #-lo / b.ge 过（≥-lo 负域
             //   内精判·-32769 起落错误）——四区间逐例完备（正溢 32768 走②
             //   ·负溢 -32769 走③·两界含值走 ok）。w12 与 x9/x10/x11 无冲突。
-            const std::string ok = "Lovf_ok" + std::to_string(ptrCheckCounter_++);
+            const std::string okS = "Lovf_ok" + std::to_string(ptrCheckCounter_++);
             const std::string errL = "Lovf" + std::to_string(ptrCheckCounter_ - 1);
             const long long hi = (srcType == "i8") ? 127 : 32767;
             const long long lo = (srcType == "i8") ? -128 : -32768;
@@ -387,13 +387,13 @@ void Arm64CodeGenerator::emitIntBinary(Arm64AsmWriter& writer,
             } else {
                 writer.line("cmp " + res + ", #" + std::to_string(hi));
             }
-            writer.line("b.le " + ok);
+            writer.line("b.le " + okS);
             writer.line("b " + errL);            // >hi = 正溢出
             // cmn 负界 -lo（128/32768）：32768=8<<12 在移位窗内可直发
             writer.line("cmn " + res + ", #" + std::to_string(-lo));
-            writer.line("b.ge " + ok);           // ≥lo 域内（含 -lo 本值 Z=1）
+            writer.line("b.ge " + okS);          // ≥lo 域内（含 -lo 本值 Z=1）
             emitOverflowTrap(writer, errL);      // <lo 负溢出顺序落入
-            writer.raw(ok + ":");
+            writer.raw(okS + ":");
             return;
         } else {
             // 窄型无符号：结果域 cmp（u8: [0,255]；u16: [0,65535]）——u 结果
