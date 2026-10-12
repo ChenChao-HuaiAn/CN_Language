@@ -30,6 +30,10 @@ const char* opcodeToString(Opcode opcode) {
         case Opcode::Mul: return "乘";
         case Opcode::Div: return "除";
         case Opcode::Mod: return "取余";
+        // 任务 474：显式回绕算术（错误码 8 溢出检查豁免面）
+        case Opcode::WrapAdd: return "回绕加";
+        case Opcode::WrapSub: return "回绕减";
+        case Opcode::WrapMul: return "回绕乘";
         case Opcode::BitAnd: return "位与";
         case Opcode::BitOr: return "位或";
         case Opcode::BitXor: return "位异或";

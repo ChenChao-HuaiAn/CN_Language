@@ -20,13 +20,6 @@
 
 namespace cn_compiler {
 
-// 变参 C 库函数判定（SysV 调用点须设 AL）：__cn_format 为唯一 vdprintf 族
-//   （string_api.cpp `__cn_format(const char*, ...)`）；后续新增变参运行时符号
-//   在此追加。
-static bool isVariadicCallee(const std::string& callee) {
-    return callee == "__cn_format";
-}
-
 // ==================== 类型辅助 ====================
 
 // 类型是否浮点
@@ -209,44 +202,188 @@ void LinuxX64CodeGenerator::emitConstLoad(LinuxX64AsmWriter& writer,
 
 // ==================== 整型二元运算 ====================
 
-// 单步整型二元运算（Add/Sub/And/Or/Xor 双操作数；Mul 双操作数 imul）
-// op1 -> r10；op2 常量直接立即数（simm32 内），寄存器操作数 -> r9；
-// 统一 64 位运算，结果按 inst.type 截断存储
-// （窄型语义：装载已扩展，64 位加/减/位运算的低 N 位结果与窄宽运算一致）
+namespace {
+// 任务 474：IR 类型 -> x86_64 运算宽度后缀（""=64 位全名）
+//   i8/u8/i1 -> "b"；i16/u16 -> "w"；i32/u32 -> "d"；i64/u64 -> ""
+std::string x64WidthSuffix474(const std::string& type) {
+    if (type == "i8" || type == "u8" || type == "i1") return "b";
+    if (type == "i16" || type == "u16") return "w";
+    if (type == "i32" || type == "u32") return "d";
+    return "";
+}
+
+// 任务 474：立即数是否可在该运算宽度内直接编码（位模式自洽）
+//   "b": [-128, 255]；"w": [-32768, 65535]；"d"/"": simm32（imm32 符号扩展）
+bool immFitsWidth474(const std::string& suffix, long long v) {
+    if (suffix == "b") return v >= -128 && v <= 255;
+    if (suffix == "w") return v >= -32768 && v <= 65535;
+    return v >= -2147483648LL && v <= 2147483647LL;
+}
+} // namespace
+
+// 单步整型二元运算（Add/Sub/And/Or/Xor 双操作数；Mul 转发 emitIntMul）
+// op1 -> r10；op2 常量直接立即数（宽度内编码），寄存器操作数 -> r9；
+// 任务 474 溢出检查（错误码 8）：加/减按运算宽度发射（i8/i16 真窄位运算、
+//   i32 32 位、i64 64 位），有符号溢出=硬件 OF 单条 jo、无符号借/进位=CF jc
+//   （热路径零 cmp·错误块冷路径）；Wrap* 回绕内置/不安全 函数体内不插检查；
+//   位运算/布尔逻辑（and/or/xor）无溢出面，不插。结果按 inst.type 截断存储。
 void LinuxX64CodeGenerator::emitIntBinary(LinuxX64AsmWriter& writer,
                                           const ir::IRInstruction& inst,
                                           const std::string& mnemonic) {
+    // 乘法溢出检测面与加/减不同构（OF/CF/域检查三分）——独立成函数
+    if (mnemonic == "imul") {
+        emitIntMul(writer, inst);
+        return;
+    }
+    const std::string& ty = inst.type;
+    const std::string w = x64WidthSuffix474(ty);
+    // 检查开关：仅 Add/Sub 且安全函数（Wrap*/位运算/不安全 豁免）
+    const bool needOvf =
+        (inst.opcode == ir::Opcode::Add || inst.opcode == ir::Opcode::Sub) &&
+        !currentFnUnsafe474_;
+    const bool isSigned = (ty == "i8" || ty == "i16" || ty == "i32" || ty == "i64");
+    // 任务 474：反向结构（除零检查同款）——jno/jnc 跳过错误块（几乎不跳转），
+    //   溢出时顺序落入错误块；标签先占号
+    const std::string trap = "Lovf" + std::to_string(ptrCheckCounter_++);
     loadOperandToX(writer, inst.operands[0], "r10");
     if (inst.operands[1].isConstant) {
         std::string text = inst.operands[1].extra;
         if (inst.operands[1].type == "i1") { text = (text == "真" || text == "1") ? "1" : "0"; } // 322 补修
-        // 立即数在 simm32 内直接双操作数（add/sub/and/or/xor/imul 均支持）；
-        // 超出 simm32（如 u64 大常量）经 r9 装载——**x86 无 imul r64,r64,r64
-        // 三寄存器形式**（仅立即数三操作数），乘法一律双操作数 imul r10, r9
         try {
             const long long v = std::stoll(text);
-            if (v >= -2147483648LL && v <= 2147483647LL) {
-                writer.line(mnemonic + " r10, " + std::to_string(v));
+            if (immFitsWidth474(w, v)) {
+                writer.line(mnemonic + " r10" + w + ", " + std::to_string(v));
             } else {
                 writer.line("mov r9, " + uint64HexText(static_cast<std::uint64_t>(v)));
-                writer.line(mnemonic + " r10, r9");
+                writer.line(mnemonic + " r10" + w + ", r9" + w);
             }
         } catch (...) {
             // 有符号溢出（正64 最大值 > LLONG_MAX）：无符号解析经 r9
             try {
                 const std::uint64_t u = std::stoull(text);
                 writer.line("mov r9, " + uint64HexText(u));
-                writer.line(mnemonic + " r10, r9");
+                writer.line(mnemonic + " r10" + w + ", r9" + w);
             } catch (...) {
                 writer.line("xor r10, r10");
             }
         }
     } else {
         loadOperandToX(writer, inst.operands[1], "r9");
-        writer.line(mnemonic + " r10, r9");
+        writer.line(mnemonic + " r10" + w + ", r9" + w);
+    }
+    if (needOvf) {
+        // 反向结构（除零检查同款）：未溢出跳过错误块；溢出顺序落入（错误码 8）
+        const std::string ok = trap + "_ok";
+        writer.line(std::string(isSigned ? "jno " : "jnc ") + ok);
+        writer.raw(trap + ":");
+        emitOverflowErrorBody(writer);
+        writer.raw(ok + ":");
     }
     // 结果存回结果槽（按 inst.type 宽度截断）
     emitStackStore(writer, regSlotOffset(inst.result.id), "r10", inst.type);
+}
+
+// 整型乘法发射（任务 474 拆分：乘法溢出检测与加/减不同构）
+//   i32/i64：imul 置 OF（乘积高位≠符号扩展）→ 单条 jo（硬件标志检测）；
+//   i8/i16：x86 无 8 位双操作数 imul → 32 位 imul（movsx 装载保证符号扩展，
+//     |积|<2^31 乘积=真积）→ 结果域 cmp（热路径 2 cmp+2 jcc·均不跳转）；
+//   u8/u16：32 位 imul 乘积=真积（<2^32）→ 无符号域 cmp；
+//   u32：64 位 imul 低 64 位=真积（<2^64）→ 高 32 位非零检查（mov+shr+jnz）；
+//   u64：mul 单操作数（rax×r9→rdx:rax，CF=高半≠0）→ jc；
+//   WrapMul / 不安全 函数：纯回绕（双操作数 imul·低 N 位=回绕位模式）。
+void LinuxX64CodeGenerator::emitIntMul(LinuxX64AsmWriter& writer,
+                                       const ir::IRInstruction& inst) {
+    const std::string& ty = inst.type;
+    const bool isSigned = (ty == "i8" || ty == "i16" || ty == "i32" || ty == "i64");
+    const bool is32 = (ty == "i8" || ty == "i16" || ty == "i32" ||
+                       ty == "u8" || ty == "u16" || ty == "u32");
+    const bool needOvf = (inst.opcode == ir::Opcode::Mul) && !currentFnUnsafe474_;
+    // 任务 474：trap 标签先占号（分支前置·store 中继·错误块垫底）
+    const std::string trap = "Lovf" + std::to_string(ptrCheckCounter_++);
+    // op1 -> r10；op2 -> 常量立即数 / r9 寄存器
+    loadOperandToX(writer, inst.operands[0], "r10");
+    const bool op2Const = inst.operands[1].isConstant;
+    if (op2Const) {
+        // 超出 simm32 / 窄宽编码界的常量经 r9 全值装载（movabs 十六进制）
+        long long v = 0;
+        bool ok = false;
+        try { v = std::stoll(inst.operands[1].extra); ok = true; } catch (...) {}
+        if (ok && v >= -2147483648LL && v <= 2147483647LL) {
+            writer.line("imul r10" + std::string(is32 ? "d" : "") + ", " +
+                        std::to_string(v));
+        } else {
+            if (!ok) {
+                try { v = static_cast<long long>(std::stoull(inst.operands[1].extra)); }
+                catch (...) { v = 0; }
+            }
+            writer.line("mov r9, " + uint64HexText(static_cast<std::uint64_t>(v)));
+            writer.line("imul r10" + std::string(is32 ? "d" : "") + ", r9" +
+                        std::string(is32 ? "d" : ""));
+        }
+    } else {
+        loadOperandToX(writer, inst.operands[1], "r9");
+        writer.line("imul r10" + std::string(is32 ? "d" : "") + ", r9" +
+                    std::string(is32 ? "d" : ""));
+    }
+    if (!needOvf) {
+        emitStackStore(writer, regSlotOffset(inst.result.id), "r10", ty);
+        return;
+    }
+    if (isSigned && (ty == "i32" || ty == "i64")) {
+        // 有符号 32/64：硬件 OF（imul 乘积高位≠低半符号扩展）——反向 jno
+        const std::string ok = trap + "_ok";
+        writer.line("jno " + ok);
+        writer.raw(trap + ":");
+        emitOverflowErrorBody(writer);
+        writer.raw(ok + ":");
+    } else if (isSigned) {
+        // i8/i16：32 位积=真积 → 有符号域 cmp（反向双跳·均几乎不跳转）
+        const long long hi = (ty == "i8") ? 127 : 32767;
+        const long long lo = (ty == "i8") ? -128 : -32768;
+        writer.line("cmp r10d, " + std::to_string(hi));
+        const std::string ok = trap + "_ok";
+        writer.line("jle " + ok);
+        writer.line("cmp r10d, " + std::to_string(lo));
+        writer.line("jge " + ok);
+        writer.raw(trap + ":");
+        emitOverflowErrorBody(writer);
+        writer.raw(ok + ":");
+    } else if (ty == "u8" || ty == "u16") {
+        // u8/u16：32 位积=真积 → 无符号域 cmp（反向）
+        writer.line("cmp r10d, " + std::string((ty == "u8") ? "255" : "65535"));
+        const std::string ok = trap + "_ok";
+        writer.line("jbe " + ok);
+        writer.raw(trap + ":");
+        emitOverflowErrorBody(writer);
+        writer.raw(ok + ":");
+    } else if (ty == "u32") {
+        // u32：64 位积低 64=真积 → 高 32 位非零即溢出（反向 jz）
+        writer.line("mov r11, r10");
+        writer.line("shr r11, 32");
+        writer.line("jz " + trap);
+        writer.raw(trap + ":");
+        emitOverflowErrorBody(writer);
+    } else {
+        // u64：mul 单操作数（CF=rdx 高半≠0）——需 rax×r9 形态，重发乘法（反向 jnc）
+        writer.line("mov rax, r10");
+        if (op2Const) {
+            long long v = 0;
+            try { v = std::stoll(inst.operands[1].extra); } catch (...) {
+                try { v = static_cast<long long>(std::stoull(inst.operands[1].extra)); }
+                catch (...) { v = 0; }
+            }
+            writer.line("mov r9, " + uint64HexText(static_cast<std::uint64_t>(v)));
+        }
+        // 寄存器操作数已装载于 r9，直接 mul
+        writer.line("mul r9");
+        const std::string ok = trap + "_ok";
+        writer.line("jnc " + ok);
+        writer.raw(trap + ":");
+        emitOverflowErrorBody(writer);
+        writer.raw(ok + ":");
+        writer.line("mov r10, rax");
+    }
+    emitStackStore(writer, regSlotOffset(inst.result.id), "r10", ty);
 }
 
 // 除/余：有符号 cqo+idiv / 无符号 xor edx,edx+div（商 rax、余 rdx）
@@ -289,10 +426,13 @@ void LinuxX64CodeGenerator::emitDivMod(LinuxX64AsmWriter& writer,
     //   i32 负数经装载清高32（零扩展位模式），64 位 cqo+idiv 会按正数除
     //   （-8/2 实测商 2147483644）；对齐 ARM64 的 sdiv w9/w10 策略
     const bool is32Div = !(type == "i64" || type == "u64");
-    // 319-a（B12 甲·T27 根治）：有符号除法的 INT_MIN/-1 溢出陷阱防护——
-    //   x86 idiv 溢出抛 SIGFPE。两补码统一回绕：x/-1 ≡ -x（neg）·x%-1 ≡ 0。
-    //   ①常量 -1：编译期变换零开销；②非常量：idiv 前运行时特判（r9 与 -1 比）。
-    //   r10 此刻仍持被除数（除零检查只动 r9/rdi）。
+    // 319-a（B12 甲·T27 根治）→ 任务 474 改造：有符号除法的 INT_MIN/-1 溢出
+    //   防护从「两补码回绕」（x/-1 ≡ -x · x%-1 ≡ 0）改为**错误码 8 确定性失败**：
+    //   被除数==INT_MIN 且除数==-1 → 报『溢出错误』（neg 置 OF 当且仅当操作数
+    //   为 INT_MIN——单指令检测·x≠INT_MIN 时维持原回绕特判结果）。
+    //   ①常量 -1：编译期直入特判分支；②非常量：idiv 前运行时特判（r9 与 -1 比）。
+    //   r10 此刻仍持被除数（除零检查只动 r9/rdi）。不安全 函数体内维持回绕
+    //   （溢出检查家族豁免面·x64 idiv INT_MIN/-1 在不安全域=回绕不陷阱）。
     if (!isUnsigned) {
         bool divisorIsNegOne = false;
         if (divisorConst) {
@@ -300,23 +440,44 @@ void LinuxX64CodeGenerator::emitDivMod(LinuxX64AsmWriter& writer,
                 divisorIsNegOne = (std::stoll(inst.operands[1].extra) == -1);
             } catch (...) { divisorIsNegOne = false; }
         }
+        // INT_MIN/-1 检测（除数==-1 分支内）：neg 被除数 → OF ⇔ INT_MIN；
+        //   jno 正常（恢复被除数·neg 自逆）→ 回绕特判；jo → 错误码 8 冷路径。
+        //   474 条文口径：守卫只属除法——x % -1 ≡ 0 恒良定义（余零非溢出·
+        //   001 §3.7a 保留条文），Mod 不发守卫。
+        auto emitIntMinGuard474 = [&]() {
+            if (currentFnUnsafe474_) return;  // 不安全 域维持回绕
+            const int gid = ptrCheckCounter_++;
+            const std::string okL = "Ldmin_ok" + std::to_string(gid);
+            // neg 按类型域宽度发射（neg 置 OF 当且仅当该宽度 INT_MIN）：
+            //   i8 -> al、i16 -> ax、i32 -> eax（mov eax,eax 清高位后位模式对齐）、
+            //   i64 -> rax（全窄域除法唯一溢出形态=INT_W/-1 逐宽检测）。
+            //   反向结构：jno 跳过错误块到恢复点（溢出时顺序落入）
+            const std::string nx = (type == "i8") ? "al"
+                                 : (type == "i16") ? "ax"
+                                 : is32Div ? "eax" : "rax";
+            writer.line("neg " + nx);
+            writer.line("jno " + okL);
+            emitOverflowTrap(writer, "Lovf" + std::to_string(gid));
+            writer.raw(okL + ":");
+            writer.line("neg " + nx);  // 恢复被除数（neg 自逆）
+        };
         if (divisorIsNegOne) {
+            writer.line("mov rax, r10");
+            if (is32Div) writer.line("mov eax, eax");
             if (inst.opcode == ir::Opcode::Div) {
-                writer.line("mov rax, r10");
-                if (is32Div) writer.line("mov eax, eax");
-                writer.line("neg rax");
-                emitStackStore(writer, regSlotOffset(inst.result.id), "rax", type);
+                emitIntMinGuard474();
+                writer.line(is32Div ? "neg eax" : "neg rax");
             } else {
                 writer.line("xor eax, eax");
-                emitStackStore(writer, regSlotOffset(inst.result.id), "rax", type);
             }
+            emitStackStore(writer, regSlotOffset(inst.result.id), "rax", type);
             return;
         }
         if (!divisorConst) {
             const int negId = ptrCheckCounter_++;
             const std::string cont = "Ldiv_norm" + std::to_string(negId);
             const std::string endl = "Ldiv_end" + std::to_string(negId);
-            // 324-c（C24/T27·win 319-a 宽度感知同款）：比较宽度须对齐除数
+            // 324-c（C24/T44 甲·win 319-a 宽度感知同款）：比较宽度须对齐除数
             //   装载——32 位除数经 mov r9d 零扩展（-1 → 0x00000000FFFFFFFF），
             //   原恒 64 位 cmp r9,-1（0xFFFFFFFFFFFFFFFF）永不命中→INT_MIN/-1
             //   落 idiv 溢出 SIGFPE（m27_01/s2609179004 x64l -O0 实锤）；win
@@ -326,7 +487,8 @@ void LinuxX64CodeGenerator::emitDivMod(LinuxX64AsmWriter& writer,
             writer.line("mov rax, r10");
             if (is32Div) writer.line("mov eax, eax");
             if (inst.opcode == ir::Opcode::Div) {
-                writer.line("neg rax");
+                emitIntMinGuard474();
+                writer.line(is32Div ? "neg eax" : "neg rax");
             } else {
                 writer.line("xor eax, eax");
             }
@@ -423,10 +585,11 @@ static int shiftAmtOf(const std::string& text) {
 // 移位运算：dst = op1 << op2 / op1 >> op2
 // shl（左移）/ sar（有符号算术右移）/ shr（无符号逻辑右移）
 // x86_64 可变移位量必须经 cl：寄存器操作数先 mov ecx, r9d
-// 移位量语义（2026-09-09 规范化，Rust release 掩码同构，与 const_fold 一致）：
-//   按操作数类型位宽取模。本后端统一经 64 位寄存器运算，硬件按 64 取模——
-//   ≤32 位类型须显式 and 掩码到类型位宽（否则 mod 64 与折叠 mod 32/8/16
-//   分叉）；常量路径编译期掩码（零运行时开销）。
+// 移位量语义（任务 474 裁决·原 2026-09-09 掩码回绕废止）：
+//   运行期移位量 ∉ [0, 位宽) → 错误码 8『溢出错误』确定性失败（cmp+jae 单次
+//   比较·冷路径错误块；负移位量位模式为巨无符号数同样 jae 命中）；常量路径
+//   语义层已对字面量硬错误、折叠层超宽不折叠，此处常量掩码仅作不可达兜底。
+//   不安全 函数体内维持掩码回绕（判空豁免同源纪律）。
 void LinuxX64CodeGenerator::emitShift(LinuxX64AsmWriter& writer,
                                       const ir::IRInstruction& inst) {
     const std::string& srcType = inst.operands[0].type;
@@ -437,6 +600,7 @@ void LinuxX64CodeGenerator::emitShift(LinuxX64AsmWriter& writer,
     const int shiftMask = (srcType == "i64" || srcType == "u64") ? 63
                           : (srcType == "i32" || srcType == "u32") ? 31
                           : (srcType == "i16" || srcType == "u16") ? 15 : 7;
+    const int widthBits = shiftMask + 1;  // 任务 474：类型位宽（检查上界）
     loadOperandToX(writer, inst.operands[0], "r10");
     // 287-a（M3 采样 s2026091705·asm 三件套定案）：i32 源补 movsxd 符号扩展——
     //   同 270-a T14（emitCast 整→浮）零扩展家族：i32 槽装载（mov r10d）天然
@@ -448,407 +612,46 @@ void LinuxX64CodeGenerator::emitShift(LinuxX64AsmWriter& writer,
         writer.line("movsxd r10, r10d");
     }
     if (inst.operands[1].isConstant) {
-        const int shiftAmt = shiftAmtOf(inst.operands[1].extra) & shiftMask;
+        const int raw = shiftAmtOf(inst.operands[1].extra);
+        if (!currentFnUnsafe474_ && (raw < 0 || raw >= widthBits)) {
+            // 任务 474：常量移位量超宽——语义层字面量面已编译期硬错误；此处
+            //   承接优化器常量传播面漏入的形态（变量常量化），保留运行期错误
+            //   码 8 通路（O0 变量路径与 O2 常量路径行为一致·确定性失败）
+            const std::string trap = "Lovf" + std::to_string(ptrCheckCounter_++);
+            writer.line("mov ecx, " + std::to_string(raw));
+            writer.line("cmp ecx, " + std::to_string(widthBits));
+            const std::string ok = trap + "_ok";
+            writer.line("jb " + ok);
+            writer.raw(trap + ":");
+            emitOverflowErrorBody(writer);
+            writer.raw(ok + ":");
+            writer.line(sh + " r10, cl");
+            emitStackStore(writer, regSlotOffset(inst.result.id), "r10", inst.type);
+            return;
+        }
+        const int shiftAmt = raw & shiftMask;
         writer.line(sh + " r10, " + std::to_string(shiftAmt));
     } else {
         loadOperandToX(writer, inst.operands[1], "r9");
         writer.line("mov ecx, r9d");
-        if (shiftMask < 63) {
-            writer.line("and ecx, " + std::to_string(shiftMask));
+        if (currentFnUnsafe474_) {
+            // 不安全 函数：维持掩码回绕（溢出检查家族豁免面）
+            if (shiftMask < 63) {
+                writer.line("and ecx, " + std::to_string(shiftMask));
+            }
+        } else {
+            // 安全函数：移位量须在 [0, 位宽) 域（反向 jb·除零检查同款结构）
+            const std::string trap = "Lovf" + std::to_string(ptrCheckCounter_++);
+            writer.line("cmp ecx, " + std::to_string(widthBits));
+            const std::string ok = trap + "_ok";
+            writer.line("jb " + ok);
+            writer.raw(trap + ":");
+            emitOverflowErrorBody(writer);
+            writer.raw(ok + ":");
         }
         writer.line(sh + " r10, cl");
     }
     emitStackStore(writer, regSlotOffset(inst.result.id), "r10", inst.type);
-}
-
-
-// ==================== 变量加载/存储 ====================
-
-// Load：从变量槽读到寄存器槽；Store：从值槽写入变量槽
-void LinuxX64CodeGenerator::emitLoadStore(LinuxX64AsmWriter& writer,
-                                          const ir::IRInstruction& inst) {
-    if (inst.opcode == ir::Opcode::Load) {
-        // i128/正128 变量加载：x（低64位槽）+ x$s1（高64位槽）
-        if (inst.type == "i128" || inst.type == "u128") {
-            const int dstHiId = inst.result.id;
-            const int dstLoId = inst.result.id + 1;
-            const std::string& varName = inst.operands[0].extra;
-            emitStackLoad(writer, varSlotOf(varName), "r10", "i64", __LINE__);
-            emitStackStore(writer, regSlotOffset(dstLoId), "r10", "i64");
-            emitStackLoad(writer, varSlotOf(varName + "$s1"), "r10", "i64", __LINE__);
-            emitStackStore(writer, regSlotOffset(dstHiId), "r10", "i64");
-            return;
-        }
-        // 窄类型（i8/i16/u8/u16/i32/u32/i1）装载已扩展，用64位存储避免
-        // 高字节残留垃圾（对齐 ARM64 的 narrowType 纪律）
-        const bool narrowType = (inst.type == "i8" || inst.type == "i16" ||
-                                 inst.type == "u8" || inst.type == "u16" ||
-                                 inst.type == "i32" || inst.type == "u32" ||
-                                 inst.type == "i1");
-        if (inst.operands[0].id >= 0) {
-            // 寄存器到寄存器（复制槽）
-            emitStackLoad(writer, regSlotOffset(inst.operands[0].id), "r10", inst.type, __LINE__);
-        } else {
-            // 变量槽
-            emitStackLoad(writer, varSlotOf(inst.operands[0].extra), "r10", inst.type, __LINE__);
-        }
-        emitStackStore(writer, regSlotOffset(inst.result.id), "r10",
-                       narrowType ? "i64" : inst.type);
-    } else {
-        // Store：operands[0] 值，extra 变量名
-        if (inst.type == "i128" || inst.type == "u128") {
-            const int srcHiId = inst.operands[0].id;
-            const int srcLoId = inst.operands[0].id + 1;
-            emitStackLoad(writer, regSlotOffset(srcLoId), "r10", "i64", __LINE__);
-            emitStackStore(writer, varSlotOf(inst.extra), "r10", "i64");
-            emitStackLoad(writer, regSlotOffset(srcHiId), "r10", "i64", __LINE__);
-            emitStackStore(writer, varSlotOf(inst.extra + "$s1"), "r10", "i64");
-            return;
-        }
-        const std::string src = loadOperandToX(writer, inst.operands[0], "r10");
-        emitStackStore(writer, varSlotOf(inst.extra), src, inst.type);
-    }
-}
-
-// ==================== 指针/取地址（Task 2.4） ====================
-
-// 取地址（AddrOf）：变量槽地址 -> 结果槽（lea 直接寻址，无大偏移限制）
-void LinuxX64CodeGenerator::emitAddrOf(LinuxX64AsmWriter& writer,
-                                       const ir::IRInstruction& inst) {
-    const int off = varSlotOf(inst.extra);
-    writer.line("lea r10, " + stackMemText(off));
-    emitStackStore(writer, regSlotOffset(inst.result.id), "r10", "ptr");
-}
-
-// 结构体字段地址（FieldAddr）：基址 + 字段偏移 -> 结果槽（含空指针检查错误码3）
-void LinuxX64CodeGenerator::emitFieldAddr(LinuxX64AsmWriter& writer,
-                                          const ir::IRInstruction& inst) {
-    loadOperandToX(writer, inst.operands[0], "r10");
-    const long long fieldOffset = std::stoll(inst.extra);
-    const int checkId = ptrCheckCounter_++;
-    const std::string okLabel = "Lfield_ok" + std::to_string(checkId);
-    // 空指针检查：r10 == 0 -> 错误块
-    writer.line("test r10, r10");
-    writer.line("jnz " + okLabel);
-    writer.line("mov rdi, 3");
-    writer.line("call __cn_runtime_error");
-    writer.line("ret");
-    writer.raw(okLabel + ":");
-    // 字段地址 = 基址 + 偏移
-    if (fieldOffset != 0) {
-        writer.line("add r10, " + std::to_string(fieldOffset));
-    }
-    emitStackStore(writer, regSlotOffset(inst.result.id), "r10", "ptr");
-}
-
-// 991（008 挂账②·094 空安全）：串字段地址=FieldAddr 判空豁免形态——
-//   串句柄 0=空串（运行时串函数已容错），不触发错误码 3。
-void LinuxX64CodeGenerator::emitStrFieldAddr(LinuxX64AsmWriter& writer,
-                                             const ir::IRInstruction& inst) {
-    loadOperandToX(writer, inst.operands[0], "r10");
-    const long long fieldOffset = std::stoll(inst.extra);
-    if (fieldOffset != 0) {
-        writer.line("add r10, " + std::to_string(fieldOffset));
-    }
-    emitStackStore(writer, regSlotOffset(inst.result.id), "r10", "ptr");
-}
-
-// 指针加载/存储（LoadPtr/StorePtr）：经指针值地址访存（含空指针检查错误码3）
-void LinuxX64CodeGenerator::emitPtrLoadStore(LinuxX64AsmWriter& writer,
-                                             const ir::IRInstruction& inst) {
-    loadOperandToX(writer, inst.operands[0], "r10");  // 地址
-    const int checkId = ptrCheckCounter_++;
-    const std::string okLabel = "Lptr_ok" + std::to_string(checkId);
-    writer.line("test r10, r10");
-    writer.line("jnz " + okLabel);
-    writer.line("mov rdi, 3");
-    writer.line("call __cn_runtime_error");
-    writer.line("ret");
-    writer.raw(okLabel + ":");
-    if (inst.opcode == ir::Opcode::LoadPtr) {
-        // 加载：按 inst.type 宽度读取
-        const std::string& type = inst.type;
-        if (isFloatType(type)) {
-            const std::string vreg = "xmm0";
-            // 92-a 根治（H2）：宽度前缀必须按类型分派——原写死 qword ptr 使
-            //   f32 发射 movss + qword ptr（汇编器 operand size mismatch 直接
-            //   编译失败）；与 emitConstLoad/loadOperandToV 同规则、对齐 win-x64
-            //   后端（x64_instructions.cpp LoadPtr 早有 mp 分派）。
-            writer.line("mov" + std::string(type == "f64" ? "sd" : "ss") + " " + vreg +
-                        ", " + (type == "f64" ? "qword ptr" : "dword ptr") + " [r10]");
-            emitStackStore(writer, regSlotOffset(inst.result.id), vreg, type);
-            return;
-        }
-        if (type == "i8" || type == "i16") {
-            const std::string width = (type == "i8") ? "byte ptr" : "word ptr";
-            writer.line("movsx r9, " + width + " [r10]");
-            // movsx 已符号扩展到64位，用64位存储避免截断
-            emitStackStore(writer, regSlotOffset(inst.result.id), "r9", "i64");
-            return;
-        }
-        if (type == "u8" || type == "u16") {
-            const std::string width = (type == "u8") ? "byte ptr" : "word ptr";
-            writer.line("movzx r9, " + width + " [r10]");
-            // movzx 已零扩展到64位
-            emitStackStore(writer, regSlotOffset(inst.result.id), "r9", "i64");
-            return;
-        }
-        if (type == "i1") {
-            // i1（布尔）1 字节访存（#176）：布局层 类型大小=1——原归 32 位组
-            //   读 4 字节吃相邻字段（窗口窄于 win 的 8 字节但同族缺陷）
-            writer.line("movzx r9, byte ptr [r10]");
-            emitStackStore(writer, regSlotOffset(inst.result.id), "r9", "i64");
-            return;
-        }
-        if (type == "i32" || type == "u32") {
-            writer.line("mov r9d, dword ptr [r10]");
-            // 32位装载清高32位（零扩展），用64位存储
-            emitStackStore(writer, regSlotOffset(inst.result.id), "r9", "i64");
-            return;
-        }
-        if (type == "i128" || type == "u128") {
-            // i128 指针加载：低64位 [r10]、高64位 [r10+8]
-            writer.line("mov r9, qword ptr [r10]");
-            emitStackStore(writer, regSlotOffset(inst.result.id + 1), "r9", "i64");
-            writer.line("mov r9, qword ptr [r10+8]");
-            emitStackStore(writer, regSlotOffset(inst.result.id), "r9", "i64");
-            return;
-        }
-        writer.line("mov r9, qword ptr [r10]");
-        emitStackStore(writer, regSlotOffset(inst.result.id), "r9", type);
-        return;
-    }
-    // StorePtr：operand[1] 为值
-    const std::string& type = inst.type;
-    if (isFloatType(type)) {
-        loadOperandToV(writer, inst.operands[1], "xmm0");
-        // 92-a 根治（H2）：宽度前缀按类型分派（原写死 qword ptr — f32 的
-        //   movss 配 qword ptr 汇编失败），与 LoadPtr 分支同规则。
-        writer.line("mov" + std::string(type == "f64" ? "sd" : "ss") + " " +
-                    (type == "f64" ? "qword ptr" : "dword ptr") + " [r10], xmm0");
-        return;
-    }
-    if (type == "i128" || type == "u128") {
-        if (inst.operands[1].isConstant) {
-            // T46（467-a）：i128 常量源直写双 quad——staticCtor 注入常量
-            //   extra 可为纯十进制（含负号），64 位 stoull 视角会截断符号；
-            //   统一走 parseInt128InitText 128 位解析（范围按 type）。
-            unsigned long long lo = 0, hi = 0;
-            const bool ok = types::parseInt128InitText(
-                inst.operands[1].extra, type == "i128", lo, hi);
-            writer.line(std::string("mov r9, ") + (ok ? uint64HexText(lo) : "0"));
-            writer.line("mov qword ptr [r10], r9");
-            writer.line(std::string("mov r9, ") + (ok ? uint64HexText(hi) : "0"));
-            writer.line("mov qword ptr [r10+8], r9");
-            return;
-        }
-        const int srcHiId = inst.operands[1].id;
-        const int srcLoId = inst.operands[1].id + 1;
-        emitStackLoad(writer, regSlotOffset(srcLoId), "r9", "i64", __LINE__);
-        writer.line("mov qword ptr [r10], r9");
-        emitStackLoad(writer, regSlotOffset(srcHiId), "r9", "i64", __LINE__);
-        writer.line("mov qword ptr [r10+8], r9");
-        return;
-    }
-    if (type == "i8" || type == "u8") {
-        loadOperandToX(writer, inst.operands[1], "r9");
-        writer.line("mov byte ptr [r10], r9b");
-        return;
-    }
-    if (type == "i1") {
-        // i1（布尔）1 字节存储（#176）：与 i8/u8 同款 byte 写——原归 32 位组
-        //   4 字节写破坏相邻字段
-        loadOperandToX(writer, inst.operands[1], "r9");
-        writer.line("mov byte ptr [r10], r9b");
-        return;
-    }
-    if (type == "i16" || type == "u16") {
-        loadOperandToX(writer, inst.operands[1], "r9");
-        writer.line("mov word ptr [r10], r9w");
-        return;
-    }
-    if (type == "i32" || type == "u32") {
-        loadOperandToX(writer, inst.operands[1], "r9");
-        writer.line("mov dword ptr [r10], r9d");
-        return;
-    }
-    // i64/ptr：64 位存储
-    loadOperandToX(writer, inst.operands[1], "r9");
-    writer.line("mov qword ptr [r10], r9");
-}
-
-// ==================== 函数调用 ====================
-
-// 函数调用（SysV 核心）：整型/浮点独立计数分派寄存器，超出走统一栈序列
-//   1. 整型类（含指针/i128地址/结构体按值地址）rdi,rsi,rdx,rcx,r8,r9；浮点 xmm0~xmm7
-//   2. 隐藏返回指针（结构体/i128 返回）占 rdi（第1整型位），真实整型位号后移
-//   3. 栈参数：整型超6 / 浮点超8 的部分按声明顺序在栈上排队 [rsp+seq*8]
-//   4. 返回缓冲区（16字节）放栈参数区上方 [rsp+stackArgs*8]
-//   5. call 前 rsp 必须 16 字节对齐（alignPad 垫片）
-//   6. i128 常量实参经 .data 全局常量池（L128cN）传地址，无栈临时区布局风险
-void LinuxX64CodeGenerator::emitCall(LinuxX64AsmWriter& writer,
-                                     const ir::IRInstruction& inst) {
-    const bool isIndirect = (inst.opcode == ir::Opcode::CallIndirect);
-    const std::string callee = inst.extra;
-    const std::size_t argBase = isIndirect ? 1 : 0;
-    const std::size_t argCount = inst.operands.size() - argBase;
-    // 隐藏返回指针（i128/u128/struct* 结果类型）——三路判定，对齐 ARM64 后端。
-    //   IR 契约（ir_call.cpp「隐藏返回指针作为第一个参数」）：用户结构体返回调用
-    //   由 IR 层预插 retbuf 地址为 operands[0]、result.type=void——本后端原样
-    //   传递使其自然落位0（rdi，SysV 隐藏指针位），无需 argOffset 后移
-    //   （ARM64 单位机全量 E2E 锚定此形态；win x64 已于 2026-09-05 归真为同款
-    //   三路判定+形态A原样传递，其旧第4路被调查询系死代码已删，plans/016）
-    const bool hasBigRet = (inst.result.type == "i128" ||
-                            inst.result.type == "u128" ||
-                            inst.result.type.rfind("struct", 0) == 0);
-    // ---- 第一遍：位置分配（整型位/浮点位/栈序列号） ----
-    // argClass[i]: 0=整型寄存器 1=浮点寄存器 2=栈（stackSeq 记录序号）
-    std::vector<int> argKind(argCount, 0);
-    std::vector<int> argPos(argCount, -1);   // 寄存器位号 或 栈序列号
-    int intIdx = hasBigRet ? 1 : 0;          // rdi 被 retbuf 占用时从 rsi 起
-    int floatIdx = 0;
-    int stackCounter = 0;
-    for (std::size_t i = 0; i < argCount; ++i) {
-        const ir::IRValue& av = inst.operands[argBase + i];
-        const std::string& t = av.type;
-        if (isFloatType(t)) {
-            if (floatIdx < 8) {
-                argKind[i] = 1;
-                argPos[i] = floatIdx++;
-            } else {
-                argKind[i] = 2;
-                argPos[i] = stackCounter++;
-            }
-        } else {
-            // 整型类（i8..i64/u*/ptr/i1/布尔/i128地址/结构体地址）
-            if (intIdx < 6) {
-                argKind[i] = 0;
-                argPos[i] = intIdx++;
-            } else {
-                argKind[i] = 2;
-                argPos[i] = stackCounter++;
-            }
-        }
-    }
-    const int stackArgs = stackCounter;
-    const int stackBytes = stackArgs * 8;
-    const int alignPad = (stackBytes % 16 == 0) ? 0 : (16 - stackBytes % 16);
-    const int totalAlloc = stackBytes + alignPad;
-    if (totalAlloc > 0) {
-        writer.line("sub rsp, " + std::to_string(totalAlloc));
-    }
-    // 隐藏返回指针：retbuf = 帧内固定区 [rbp+retbufFrameOffset_]（rbp 相对持久，
-    //   对齐 win x64——rsp 临时区 add rsp 后悬垂，跨调用读 .值 读到垃圾）
-    if (hasBigRet) {
-        writer.line("lea rdi, " + stackMemText(retbufFrameOffset_));
-    }
-    // ---- 栈参数（声明顺序排队；先写栈再用临时寄存器装寄存器参数） ----
-    // i128 常量辅助：解析 "LO:HI" 十六进制 / 十进制，落 .data 全局常量池返回标签
-    auto i128ConstLabel = [this](const ir::IRValue& av) -> std::string {
-        const std::string& ex = av.extra;
-        const std::size_t colon = ex.find(':');
-        std::uint64_t lo = 0, hi = 0;
-        if (colon != std::string::npos) {
-            lo = std::stoull(ex.substr(0, colon), nullptr, 16);
-            hi = std::stoull(ex.substr(colon + 1), nullptr, 16);
-        } else {
-            try { lo = static_cast<std::uint64_t>(std::stoull(ex)); } catch (...) {}
-        }
-        return registerI128Constant(lo, hi);
-    };
-    for (std::size_t i = 0; i < argCount; ++i) {
-        if (argKind[i] != 2) continue;
-        const ir::IRValue& av = inst.operands[argBase + i];
-        const std::string& argType = av.type;
-        const std::string mem = "[rsp+" + std::to_string(argPos[i] * 8) + "]";
-        if (argType == "i128" || argType == "u128") {
-            // i128 栈参数：传双槽地址指针（常量 -> 全局池；寄存器 -> 低64位槽地址）
-            if (av.isConstant) {
-                emitLoadSymbolAddr(writer, "r10", i128ConstLabel(av));
-            } else {
-                writer.line("lea r10, " + stackMemText(regSlotOffset(av.id + 1)));
-            }
-            writer.line("mov qword ptr " + mem + ", r10");
-        } else if (isFloatType(argType)) {
-            loadOperandToV(writer, av, "xmm0");
-            writer.line("mov" + std::string(argType == "f64" ? "sd" : "ss") +
-                        " qword ptr " + mem + ", xmm0");
-        } else {
-            const std::string reg = loadOperandToX(writer, av, "r10");
-            writer.line("mov qword ptr " + mem + ", " + reg);
-        }
-    }
-    // ---- 寄存器参数（整型 rdi..r9 / 浮点 xmm0..xmm7） ----
-    for (std::size_t i = 0; i < argCount; ++i) {
-        if (argKind[i] == 2) continue;
-        const ir::IRValue& av = inst.operands[argBase + i];
-        const std::string& argType = av.type;
-        if (argKind[i] == 1) {
-            loadOperandToV(writer, av, "xmm" + std::to_string(argPos[i]));
-        } else if (argType == "i128" || argType == "u128") {
-            // i128 寄存器实参：传双槽地址指针
-            const std::string reg = intParameterRegister(argPos[i]);
-            if (av.isConstant) {
-                emitLoadSymbolAddr(writer, reg, i128ConstLabel(av));
-            } else {
-                writer.line("lea " + reg + ", " + stackMemText(regSlotOffset(av.id + 1)));
-            }
-        } else {
-            loadOperandToX(writer, av, intParameterRegister(argPos[i]));
-        }
-    }
-    // ---- 变参调用：AL = 使用的向量寄存器个数（SysV AMD64 ABI 强制契约） ----
-    //   F6（2026-09-11 第七十二轮根治）：变参函数（vdprintf 族/__cn_format）经
-    //   stdarg 读取 xmm0..xmm7 的保存区，AL 告诉被调方存了几个；不设 AL 时
-    //   glibc 的 va_arg 按 AL 值判定——rax 被前序调用/释放污染后浮点实参读到
-    //   0（探针：包装函数链下 `格式化("¥%.2f", 29.50)` 输出 ¥0.00；直连形态
-    //   靠 rax 残留侥幸正确）。Rust/C 编译器对此无条件发 mov al, N
-    //   （clang/gcc 变参调用点均有 xor eax,eax 或 mov al,imm）。
-    if (!isIndirect && isVariadicCallee(callee)) {
-        int vecUsed = 0;
-        for (std::size_t i = 0; i < argCount; ++i) {
-            if (argKind[i] == 1) ++vecUsed;
-        }
-        writer.line("mov eax, " + std::to_string(vecUsed));  // AL=变参向量寄存器个数（SysV 契约）
-    }
-    // ---- 调用（间接：函数指针经 r11——SysV 惯例 call-clobbered 非传参寄存器） ----
-    if (isIndirect) {
-        loadOperandToX(writer, inst.operands[0], "r11");
-        // 040（001 §5.8 子案 A·2026-10-05 用户裁决）：空调用判零——零值 →
-        //   运行时错误(3) 空指针解引用（093 判空家族同码同文案·GAS L 标签·
-        //   SysV 错误码走 rdi·错误块不返回与 FieldAddr 判空同款）
-        const int fnptrNullId = ptrCheckCounter_++;
-        const std::string fnptrOk = "Lfnptr_ok" + std::to_string(fnptrNullId);
-        writer.line("test r11, r11");
-        writer.line("jnz " + fnptrOk);
-        writer.line("mov rdi, 3");
-        writer.line("call __cn_runtime_error");
-        writer.line("ret");
-        writer.raw(fnptrOk + ":");
-        writer.line("call r11");
-    } else {
-        writer.line("call " + symbolName(callee));
-    }
-    // 恢复栈（与分配对称）
-    if (totalAlloc > 0) {
-        writer.line("add rsp, " + std::to_string(totalAlloc));
-    }
-    // 返回值 -> 结果槽（浮点 xmm0，整型/指针 rax；i128/结构体经 rax=retbuf 读回）
-    if (inst.result.id >= 0) {
-        const int dstOff = regSlotOffset(inst.result.id);
-        if (inst.result.type == "i128" || inst.result.type == "u128") {
-            // i128 返回：缓冲区指针在 rax，读回双槽
-            const int loId = inst.result.id + 1;
-            writer.line("mov r9, qword ptr [rax]");
-            emitStackStore(writer, regSlotOffset(loId), "r9", "i64");
-            writer.line("mov r9, qword ptr [rax+8]");
-            emitStackStore(writer, dstOff, "r9", "i64");
-        } else if (isFloatType(inst.result.type)) {
-            emitStackStore(writer, dstOff, "xmm0", inst.result.type);
-        } else {
-            emitStackStore(writer, dstOff, "rax", inst.result.type);
-        }
-    }
 }
 
 

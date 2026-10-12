@@ -271,6 +271,8 @@ add_library(cn_compiler_codegen STATIC
     src/cn_compiler/codegen/arm64/arm64_codegen_emit.cpp
     src/cn_compiler/codegen/arm64/arm64_instructions.cpp
     src/cn_compiler/codegen/arm64/arm64_instructions_cast.cpp
+    src/cn_compiler/codegen/arm64/arm64_instructions_mem.cpp
+    src/cn_compiler/codegen/arm64/arm64_instructions_call.cpp
     src/cn_compiler/codegen/arm64/arm64_codegen_dispatch.cpp
     src/cn_compiler/codegen/arm64/arm64_codegen_i128.cpp
     src/cn_compiler/codegen/arm64/arm64_codegen_oop.cpp
@@ -279,6 +281,8 @@ add_library(cn_compiler_codegen STATIC
     src/cn_compiler/codegen/linux_x64/linux_x64_codegen_emit.cpp
     src/cn_compiler/codegen/linux_x64/linux_x64_instructions.cpp
     src/cn_compiler/codegen/linux_x64/linux_x64_instructions_cast.cpp
+    src/cn_compiler/codegen/linux_x64/linux_x64_instructions_mem.cpp
+    src/cn_compiler/codegen/linux_x64/linux_x64_instructions_call.cpp
     src/cn_compiler/codegen/linux_x64/linux_x64_codegen_dispatch.cpp
     src/cn_compiler/codegen/linux_x64/linux_x64_codegen_i128.cpp
     src/cn_compiler/codegen/linux_x64/linux_x64_codegen_oop.cpp

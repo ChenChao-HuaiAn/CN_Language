@@ -372,6 +372,18 @@ private:
     // 空指针检查标签计数器（模块级递增，保证 LoadPtr/StorePtr 空指针检查标签唯一）
     int ptrCheckCounter_ = 0;
 
+    // ---- 任务 474：运行期溢出检查（错误码 8『溢出错误』）----
+    // 当前函数 不安全 修饰（generateFunctionAssembly 置位）——true=不插溢出
+    //   检查（判空/越界豁免同源纪律·plans/019 安全区边界）
+    bool currentFnUnsafe474_ = false;
+    // 溢出错误出口（冷路径错误块）：标签 + 错误码 8 入 rcx（Win64 ABI 首参）
+    //   + 影子空间 + __cn_runtime_error + ret（与除零/判空错误块同款序列）
+    void emitOverflowTrap(AsmWriter& writer, const std::string& label);
+    // 溢出错误序列（无标签版·反向结构用：jNCC ok + 本序列 + ok:）
+    void emitOverflowErrorBody(AsmWriter& writer);
+    // 整型乘法发射（任务 474 拆分：乘法溢出检测 OF/域检查/mul 高半三分·独立于加/减）
+    void emitIntMul(AsmWriter& writer, const ir::IRInstruction& inst);
+
     // 语义分析器指针（阶段3：类布局/虚表槽位/静态字段查询；可空）
     ISemanticView* semantic_ = nullptr;
     // 已生成虚表符号集合（去重，供 .rdata 发射）

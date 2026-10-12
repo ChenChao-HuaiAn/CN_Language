@@ -117,6 +117,11 @@ struct IRFunction {
     // 结构体返回值大小（字节）：被调方 epilogue 按此大小把返回结构体数据
     //   拷贝到隐藏返回缓冲区（精确大小，避免 64 字节硬编码越界写破坏相邻栈变量）
     int structReturnSize = 0;
+    // 不安全 修饰（任务 474·安全区边界 plans/019 同源）：true=函数体内发射层
+    //   不插运行期溢出检查（错误码 8 家族——判空/越界豁免同款纪律）；由
+    //   FunctionDecl.isUnsafe 经 IR 生成传入（visitFunctionDecl/emitClassMethod/
+    //   emitGenericFuncInstance），codegen 在 generateFunctionAssembly 置函数级状态。
+    bool isUnsafe = false;
     std::vector<std::unique_ptr<IRBlock>> blocks;             // 基本块列表
     int nextRegId = 0;                         // 下一个虚拟寄存器编号
     std::unordered_map<std::string, std::string> varTypes;   // 变量名 -> IR类型

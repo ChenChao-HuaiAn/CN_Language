@@ -2,6 +2,10 @@
 // 覆盖：Mul x 2^n -> Shl、Div 无符号 2^n -> Shr、
 //       有符号 Div 2^n 不削减（语义不符）、非 2 的幂不削减、
 //       浮点乘法不削减、i128 不削减、幂等
+// **#474 对齐（2026-10-11 用户裁决乙案）**：安全函数 Mul 受错误码 8 溢出检查
+//   ——Mul→Shl 削减=非等价变换（溢出报错≠移位回绕）跳过（SafeFnMulSkipped474）；
+//   WrapMul（回绕内置·本征回绕）与 不安全 函数内 Mul 削减等价照常
+//   （WrapMulByEightToShlThree474/UnsafeFnMulReduced474）。
 // 测试方式：直接构造 IRModule 调用 StrengthReducePass（opt 为纯内部模块）
 // 注意：测试名必须使用英文（GCC 7 不支持中文标识符，注释可为中文）
 #include <gtest/gtest.h>
@@ -54,28 +58,51 @@ const std::vector<IRInstruction>& runPass(std::vector<IRInstruction> insts) {
 
 } // namespace
 
-// ==================== Mul -> Shl ====================
+// ==================== Mul -> Shl（#474 分域） ====================
 
-// Mul %v1, 2 -> Shl %v1, 1（i32）
-TEST(StrengthReduceTest, MulByTwoToShl) {
+// 安全函数 Mul %v1, 2 不削减（#474 对齐·2026-10-11）：安全函数 Mul 受错误码 8
+// 溢出检查——Mul→Shl 把「溢出报错」变「回绕不报错」=非等价变换，跳过
+TEST(StrengthReduceTest, SafeFnMulSkipped474) {
     const auto& insts = runPass({
         makeInst(Opcode::Mul, {IRValue::reg(1, "i32"), IRValue::constant("2", "i32")},
                  IRValue::reg(0, "i32"), "i32"),
     });
     ASSERT_EQ(insts.size(), std::size_t(1));
-    EXPECT_EQ(insts[0].opcode, Opcode::Shl);
+    EXPECT_EQ(insts[0].opcode, Opcode::Mul);  // 保持原样（跳过削减）
     ASSERT_EQ(insts[0].operands.size(), std::size_t(2));
     EXPECT_EQ(insts[0].operands[0].id, 1);
     EXPECT_TRUE(insts[0].operands[1].isConstant);
-    EXPECT_EQ(insts[0].operands[1].extra, "1");
+    EXPECT_EQ(insts[0].operands[1].extra, "2");
 }
 
-// Mul 8 -> Shl 3（i*8 数组寻址典型场景）
-TEST(StrengthReduceTest, MulByEightToShlThree) {
+// WrapMul 8 -> Shl 3 照常削减（i*8 数组寻址典型场景·#474 对齐：回绕内置
+// 本征回绕，削减等价保留；原安全函数 MulByEightToShlThree 锚随 #474 移交）
+TEST(StrengthReduceTest, WrapMulByEightToShlThree474) {
     const auto& insts = runPass({
-        makeInst(Opcode::Mul, {IRValue::constant("8", "i64"), IRValue::reg(1, "i64")},
+        makeInst(Opcode::WrapMul, {IRValue::constant("8", "i64"), IRValue::reg(1, "i64")},
                  IRValue::reg(0, "i64"), "i64"),
     });
+    ASSERT_EQ(insts.size(), std::size_t(1));
+    EXPECT_EQ(insts[0].opcode, Opcode::Shl);
+    EXPECT_EQ(insts[0].operands[1].extra, "3");
+}
+
+// 不安全 函数内 Mul 8 -> Shl 3 照常削减（#474 对齐：不安全区不插溢出检查·
+// 削减等价恢复——§1.1a④ 真零运行期检查）
+TEST(StrengthReduceTest, UnsafeFnMulReduced474) {
+    IRModule module;
+    IRFunction fn;
+    fn.name = "主";
+    fn.returnType = "i32";
+    fn.isUnsafe = true;
+    fn.blocks.push_back(makeBlock({
+        makeInst(Opcode::Mul, {IRValue::constant("8", "i64"), IRValue::reg(1, "i64")},
+                 IRValue::reg(0, "i64"), "i64"),
+    }));
+    module.functions.push_back(std::move(fn));
+    StrengthReducePass pass;
+    EXPECT_TRUE(pass.run(module));
+    const auto& insts = module.functions[0].blocks[0]->instructions;
     ASSERT_EQ(insts.size(), std::size_t(1));
     EXPECT_EQ(insts[0].opcode, Opcode::Shl);
     EXPECT_EQ(insts[0].operands[1].extra, "3");
@@ -148,14 +175,15 @@ TEST(StrengthReduceTest, RegRegMulNotReduced) {
 
 // ==================== 幂等 ====================
 
-// 削减后为 Shl，重复运行不再匹配 Mul（无修改）
+// 削减后为 Shl，重复运行不再匹配 Mul/WrapMul（无修改）——#474 对齐：改用
+// WrapMul 构造（安全函数 Mul 已跳过削减·幂等面由可削减通道承载）
 TEST(StrengthReduceTest, Idempotent) {
     IRModule module;
     IRFunction fn;
     fn.name = "主";
     fn.returnType = "i32";
     fn.blocks.push_back(makeBlock({
-        makeInst(Opcode::Mul, {IRValue::reg(1, "i32"), IRValue::constant("2", "i32")},
+        makeInst(Opcode::WrapMul, {IRValue::reg(1, "i32"), IRValue::constant("2", "i32")},
                  IRValue::reg(0, "i32"), "i32"),
     }));
     module.functions.push_back(std::move(fn));

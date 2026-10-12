@@ -88,6 +88,20 @@ void Arm64CodeGenerator::emitInstruction(Arm64AsmWriter& writer,
             else if (isFloatType(inst.type)) emitFloatBinary(writer, inst, "fmul");
             else emitIntBinary(writer, inst, "mul");
             return;
+        // 任务 474：显式回绕算术（Wrap*）——发射同 Add/Sub/Mul（回绕位模式），
+        //   发射层不插溢出检查；i128 乘法运行时辅助本征回绕（WrapMul 同通道）
+        case ir::Opcode::WrapAdd:
+            if (inst.type == "i128" || inst.type == "u128") emitInt128Binary(writer, inst);
+            else emitIntBinary(writer, inst, "add");
+            return;
+        case ir::Opcode::WrapSub:
+            if (inst.type == "i128" || inst.type == "u128") emitInt128Binary(writer, inst);
+            else emitIntBinary(writer, inst, "sub");
+            return;
+        case ir::Opcode::WrapMul:
+            if (inst.type == "i128" || inst.type == "u128") emitInt128MulDivMod(writer, inst);
+            else emitIntBinary(writer, inst, "mul");
+            return;
         case ir::Opcode::Div:
             if (inst.type == "i128" || inst.type == "u128") emitInt128MulDivMod(writer, inst);
             else if (isFloatType(inst.type)) emitFloatBinary(writer, inst, "fdiv");

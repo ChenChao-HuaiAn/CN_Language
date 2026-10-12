@@ -244,9 +244,80 @@ extern "C" void __cn_mul_u128(const std::uint64_t* a, const std::uint64_t* b,
     __cn_mul_i128(a, b, out);
 }
 
+// 任务 474：INT128_MIN 判定（a == -(2^127)）——低 63 位全 0、高位=0x80000000_00000000
+static bool i128IsIntMin474(std::uint64_t aHi, std::uint64_t aLo) {
+    return aHi == 0x8000000000000000ULL && aLo == 0;
+}
+
+// ==================== 任务 474：带溢出检查版 i128 算术 ====================
+// 宿主↔v2 i128 检查架构协调：v2 生成层走 runtime helper 通道时的检查落点。
+// 判定=可移植 C++ 位技巧（高半符号扩展比较），不依赖 asm 标志（MSVC/GCC 通用）。
+
+// 有符号 128 位加法：r = a + b（双半），返回是否溢出（高半加法 OF 位技巧）
+static bool i128AddOvf474(std::uint64_t aHi, std::uint64_t aLo,
+                          std::uint64_t bHi, std::uint64_t bLo,
+                          std::uint64_t& rHi, std::uint64_t& rLo) {
+    rLo = aLo + bLo;
+    const std::uint64_t carry = (rLo < aLo) ? 1ULL : 0ULL;   // 低半进位
+    rHi = aHi + bHi + carry;
+    // 有符号溢出：操作数同号而结果异号（高半位技巧，与 x86 add OF 同构）
+    return ((~(aHi ^ bHi) & (aHi ^ rHi)) >> 63) & 1ULL;
+}
+
+// 有符号 128 位减法：r = a - b（双半），返回是否溢出
+static bool i128SubOvf474(std::uint64_t aHi, std::uint64_t aLo,
+                          std::uint64_t bHi, std::uint64_t bLo,
+                          std::uint64_t& rHi, std::uint64_t& rLo) {
+    rLo = aLo - bLo;
+    const std::uint64_t borrow = (aLo < bLo) ? 1ULL : 0ULL;  // 低半借位
+    rHi = aHi - bHi - borrow;
+    // 有符号溢出：操作数异号而结果与被减数异号（高半位技巧，与 x86 sub OF 同构）
+    return (((aHi ^ bHi) & (aHi ^ rHi)) >> 63) & 1ULL;
+}
+
+// 128位加法（溢出检查版）：a + b -> out，溢出 → 错误码 8 终止
+extern "C" void __cn_add_i128_chk(const std::uint64_t* a, const std::uint64_t* b,
+                                  std::uint64_t* out) {
+    std::uint64_t rHi = 0, rLo = 0;
+    if (i128AddOvf474(a[1], a[0], b[1], b[0], rHi, rLo)) {
+        __cn_runtime_error(8);  // 错误码 8：溢出错误（打印后终止进程）
+    }
+    out[0] = rLo;
+    out[1] = rHi;
+}
+
+// 128位减法（溢出检查版）：a - b -> out，溢出 → 错误码 8 终止
+extern "C" void __cn_sub_i128_chk(const std::uint64_t* a, const std::uint64_t* b,
+                                  std::uint64_t* out) {
+    std::uint64_t rHi = 0, rLo = 0;
+    if (i128SubOvf474(a[1], a[0], b[1], b[0], rHi, rLo)) {
+        __cn_runtime_error(8);
+    }
+    out[0] = rLo;
+    out[1] = rHi;
+}
+
+// 128位取负（溢出检查版）：0 - a -> out，a == INT128_MIN 时溢出 → 错误码 8
+extern "C" void __cn_neg_i128_chk(const std::uint64_t* a, std::uint64_t* out) {
+    if (i128IsIntMin474(a[1], a[0])) {
+        __cn_runtime_error(8);  // INT128_MIN 取负=唯一溢出形态
+    }
+    const std::uint64_t zero[2] = {0ULL, 0ULL};
+    std::uint64_t rHi = 0, rLo = 0;
+    (void)i128SubOvf474(zero[1], zero[0], a[1], a[0], rHi, rLo);
+    out[0] = rLo;
+    out[1] = rHi;
+}
+
 // 有符号128位除法：a / b -> out（符号处理 + 无符号长除法）
+// 任务 474：INT128_MIN / -1（除法唯一溢出形态）→ 错误码 8『溢出错误』终止
+//   （三后端共用发射层调用点；符号回绕绕过——负长除法的 |INT128_MIN| 越界面）
 extern "C" void __cn_div_i128(const std::uint64_t* a, const std::uint64_t* b,
                               std::uint64_t* out) {
+    if (b[1] == ~0ULL && b[0] == ~0ULL &&  // 除数位模式 -1
+        i128IsIntMin474(a[1], a[0])) {
+        __cn_runtime_error(8);  // 错误码 8：溢出错误（打印后终止进程）
+    }
     std::uint64_t aHi = a[1];
     std::uint64_t aLo = a[0];
     std::uint64_t bHi = b[1];
@@ -267,6 +338,8 @@ extern "C" void __cn_div_i128(const std::uint64_t* a, const std::uint64_t* b,
 }
 
 // 有符号128位取余：a % b -> out（余数符号同被除数）
+// 474 条文口径：INT128_MIN % -1 ≡ 0 恒良定义（余零非溢出·001 §3.7a 保留条文），
+//   不报错误码 8——软件长除法本无 idiv 陷阱面，余数直取。
 extern "C" void __cn_mod_i128(const std::uint64_t* a, const std::uint64_t* b,
                               std::uint64_t* out) {
     std::uint64_t aHi = a[1];
@@ -354,7 +427,29 @@ extern "C" double __cn_u64_to_f64(std::uint64_t v) {
 }
 
 // 浮点转有符号128位：__cn_f64_to_i128(value, out)（向零截断）
+// #475 饱和化（2026-10-11 用户令对齐 Rust `as`·plans/001 §3.7b）：原实现超域/NaN
+//   走 static_cast<double>->uint64_t 宿主 UB（整128(1e40)→0、整128(NaN)→随机垃圾
+//   静默错值）——改为：NaN→0、value ≥ 2^127→i128::MAX、value < -2^127→i128::MIN、
+//   域内向零截断不变。灰区判据安全性：(double)I128_MAX 舍入=2^127，value∈
+//   [2^127-2^103, 2^127) 为域内最大可表示段（截断合法），宽判据 clamp 值
+//   与截断值同值（-inf 判负超域→MIN 同理）。
 extern "C" void __cn_f64_to_i128(double value, std::uint64_t* out) {
+    if (value != value) {  // NaN → 0
+        out[0] = 0;
+        out[1] = 0;
+        return;
+    }
+    constexpr double kTwoPow127 = 170141183460469231731687303715884105728.0;  // 2^127
+    if (value >= kTwoPow127) {  // 正超域（含 +inf）→ i128::MAX
+        out[0] = 0xFFFFFFFFFFFFFFFFULL;
+        out[1] = 0x7FFFFFFFFFFFFFFFULL;
+        return;
+    }
+    if (value < -kTwoPow127) {  // 负超域（含 -inf）→ i128::MIN
+        out[0] = 0;
+        out[1] = 0x8000000000000000ULL;
+        return;
+    }
     if (value < 0) {
         const double mag = -value;
         const std::uint64_t hi = static_cast<std::uint64_t>(mag / 18446744073709551616.0);
@@ -368,6 +463,29 @@ extern "C" void __cn_f64_to_i128(double value, std::uint64_t* out) {
         out[0] = static_cast<std::uint64_t>(
             value - static_cast<double>(out[1]) * 18446744073709551616.0);
     }
+}
+
+// 浮点转无符号128位：__cn_f64_to_u128(value, out)（#475 新增·正128(浮) 专用）
+// 背景：原 正128(浮) 误走有符号 __cn_f64_to_i128——值 ≥ 2^127 位模式变负
+//   （正128(1e39) 输出负数实锚），且超域/NaN 宿主 UB。语义同 #475 立法：
+//   NaN→0、value ≤ 0→0（负饱和 0·含 -inf）、value ≥ 2^128→u128::MAX、域内截断。
+//   灰区：2^128 为 2 的幂精确可表示，value∈(2^128-2^104, 2^128) 域内最大段
+//   截断合法且宽判据 clamp 同值。
+extern "C" void __cn_f64_to_u128(double value, std::uint64_t* out) {
+    if (value != value || value <= 0.0) {  // NaN → 0；负/零 → 0
+        out[0] = 0;
+        out[1] = 0;
+        return;
+    }
+    constexpr double kTwoPow128 = 340282366920938463463374607431768211456.0;  // 2^128
+    if (value >= kTwoPow128) {  // 正超域（含 +inf）→ u128::MAX
+        out[0] = 0xFFFFFFFFFFFFFFFFULL;
+        out[1] = 0xFFFFFFFFFFFFFFFFULL;
+        return;
+    }
+    out[1] = static_cast<std::uint64_t>(value / 18446744073709551616.0);
+    out[0] = static_cast<std::uint64_t>(
+        value - static_cast<double>(out[1]) * 18446744073709551616.0);
 }
 
 // ==================== 128位打印（规格书10.1，打印 变参展开对 i128 的衔接） ====================

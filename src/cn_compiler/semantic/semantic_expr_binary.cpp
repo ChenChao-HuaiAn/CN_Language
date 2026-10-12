@@ -30,6 +30,7 @@ void SemanticAnalyzer::visitBinaryExpr(BinaryExpr* node) {
     reportMixedSignAndUnsafeBoundary(node, leftType, rightType);
     if (checkVoidOperandBinary(node, leftType, rightType)) return;
     checkConstIntExprSafety(node, leftType, rightType);
+    checkShiftConstWidth(node, leftType, rightType);  // 任务 474：常量移位量超宽编译期硬错误
     if (checkComparisonBinary(node, leftType, rightType)) return;
     if (checkBitwiseBinary(node, leftType, rightType)) return;
     if (checkArithmeticBinary(node, leftType, rightType)) return;
@@ -194,6 +195,15 @@ void SemanticAnalyzer::reportConstOverflowOrDivZero(BinaryExpr* node, std::int64
                 diagnostics_.report(DiagnosticLevel::Error, node->location,
                                     "编译期除零：常量表达式除数为零（运行期除零已有"
                                     "错误码防护，常量折叠面编译期硬错误）");
+            } else if ((node->op == Operator::Divide || node->op == Operator::Modulo) &&
+                       hasRange && vR == -1 && vL == lo) {
+                // 任务 474：INT_MIN / -1（与 INT_MIN % -1）=整数除法唯一溢出形态
+                //（x86 idiv 溢出陷阱·arm64 sdiv 回绕）——运行期改报错误码 8，
+                //   常量面同款编译期硬错误（与 +/-/* 常量溢出同面）
+                diagnostics_.report(DiagnosticLevel::Error, node->location,
+                                    "编译期整数溢出：INT_MIN / -1（或 % -1）结果超出"
+                                    "类型 '" + rt + "' 范围（除法唯一溢出形态·"
+                                    "任务 474 错误码 8 对齐）");
             } else if (hasRange && node->op != Operator::Divide &&
                        node->op != Operator::Modulo) {
                 bool overflow = false;
@@ -235,6 +245,60 @@ void SemanticAnalyzer::reportConstOverflowOrDivZero(BinaryExpr* node, std::int64
                                         "变量面回绕语义由运行时通道承载）");
                 }
             }
+}
+
+// 族④b（任务 474）：常量移位量超宽编译期硬错误——移位量（右操作数）为整数字
+//   面量且值不在 [0, 左操作数类型位宽) 域 → 编译期拒绝。原语义=按位宽取模掩码
+//   （2026-09-09 规范化·Rust release 同构）随 474 裁决废止：运行期超宽移位改报
+//   错误码 8『溢出错误』（三后端发射层），常量面在此先行硬错误（Rust debug
+//   compile_error 对齐：`1i32 << 33` 编译失败）。左操作数可为变量（x << 33）。
+void SemanticAnalyzer::checkShiftConstWidth(BinaryExpr* node,
+                                            const std::string& leftType,
+                                            const std::string& rightType) {
+    if (node->op != Operator::LessLess && node->op != Operator::GreaterGreater) {
+        return;
+    }
+    if (!isIntLiteralExpr(node->right.get())) return;
+    if (!isInteger(leftType) || !isInteger(rightType) ||
+        leftType == "未知" || rightType == "未知") {
+        return;
+    }
+    // 移位量字面量值提取（与 checkConstIntExprSafety 的 litValue 同款：
+    // 字面量/一元负号字面量）
+    bool ok = false;
+    std::int64_t sh = 0;
+    const Expr* re = node->right.get();
+    if (re->getType() == NodeType::IntegerLiteral) {
+        sh = static_cast<const IntegerLiteral*>(re)->value;
+        ok = true;
+    } else if (re->getType() == NodeType::UnaryExpr) {
+        const UnaryExpr* u = static_cast<const UnaryExpr*>(re);
+        if (u->op == Operator::Subtract && !u->postfix && u->operand != nullptr &&
+            u->operand->getType() == NodeType::IntegerLiteral) {
+            const std::int64_t v =
+                static_cast<const IntegerLiteral*>(u->operand.get())->value;
+            sh = static_cast<std::int64_t>(~static_cast<std::uint64_t>(v) + 1);
+            ok = true;
+        }
+    }
+    if (!ok) return;
+    // 左操作数类型位宽（整8/正8=8 … 整128/正128=128）
+    const std::string lt = types::canonical(leftType);
+    int width = 0;
+    if (lt == "整8" || lt == "正8") width = 8;
+    else if (lt == "整16" || lt == "正16") width = 16;
+    else if (lt == "整32" || lt == "正32" || lt == "整数") width = 32;
+    else if (lt == "整64" || lt == "正64") width = 64;
+    else if (lt == "整128" || lt == "正128") width = 128;
+    if (width == 0) return;
+    if (sh < 0 || sh >= width) {
+        diagnostics_.report(DiagnosticLevel::Error, node->location,
+                            "编译期移位量超宽：移位量 " + std::to_string(sh) +
+                            " 超出类型 '" + leftType + "' 位宽 " +
+                            std::to_string(width) + "（移位量须在 [0, " +
+                            std::to_string(width) + ") 域·任务 474 错误码 8 对齐；"
+                            "变量面运行期同域检查）");
+    }
 }
 
 // 族⑤（原 visitBinaryExpr 比较运算节）：要求可互相转换的同类操作数，结果为布尔。

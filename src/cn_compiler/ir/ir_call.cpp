@@ -132,6 +132,39 @@ void IRGenerator::visitCallExpr(CallExpr* node) {
         genCopyBuiltin(node, node->location);
         return;
     }
+    // ---- 任务 474：回绕内置 回绕加/回绕减/回绕乘（显式两补码回绕算术）----
+    // 语义层已检查放行并推导 resolvedType（=与 + - * 完全一致的类型规则，
+    // 含 285 窄域字面量豁免）。展开=两实参 Cast 对齐公共宽度 + WrapAdd/WrapSub/
+    // WrapMul 指令（发射层无溢出检查——回绕语义的显式豁免面）。
+    if (node->callee->getType() == NodeType::IdentifierExpr &&
+        !node->resolvedType.empty() && node->arguments.size() == 2) {
+        const std::string& wrapName =
+            static_cast<IdentifierExpr*>(node->callee.get())->name;
+        ir::Opcode wrapOp;
+        if (wrapName == "回绕加") wrapOp = ir::Opcode::WrapAdd;
+        else if (wrapName == "回绕减") wrapOp = ir::Opcode::WrapSub;
+        else if (wrapName == "回绕乘") wrapOp = ir::Opcode::WrapMul;
+        else wrapOp = ir::Opcode::WrapAdd;  // 不可达（ callee 名三选一）；防御占位
+        const bool isWrapBuiltin = (wrapName == "回绕加" || wrapName == "回绕减" ||
+                                    wrapName == "回绕乘");
+        if (isWrapBuiltin) {
+            ir::IRValue l = genExpr(node->arguments[0].get());
+            ir::IRValue r = genExpr(node->arguments[1].get());
+            // 结果类型：语义层 resolvedType（源码类型）-> IR 类型
+            const std::string resTy = mapType(node->resolvedType);
+            // 操作数对齐（与 visitBinaryExpr 混合宽度 Cast 同口径）：同型跳过，
+            // 异型按结果类型 Cast（宽侧窄落仅出现于 285 窄域字面量豁免形态——
+            // 字面量 Cast 回绕与现行 377 行为一致）
+            if (l.type != resTy && !l.type.empty()) {
+                l = emitResult(ir::Opcode::Cast, {l}, resTy, "", node->location);
+            }
+            if (r.type != resTy && !r.type.empty()) {
+                r = emitResult(ir::Opcode::Cast, {r}, resTy, "", node->location);
+            }
+            lastExpr_ = emitResult(wrapOp, {l, r}, resTy, "", node->location);
+            return;
+        }
+    }
     // ---- 阶段3 OOP（Task 3.1/3.2）：构造调用/成员方法调用/虚调用 ----
     // 构造调用 类名(实参)：callee 为类类型名（NewObject + 构造体 Call）；
     // 成员方法调用 对象.方法(实参)：callee 为 MemberExpr（虚 -> VirtualCall，

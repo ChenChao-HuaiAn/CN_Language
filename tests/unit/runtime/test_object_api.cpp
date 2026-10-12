@@ -87,7 +87,7 @@ TEST(ObjectApiTest, ErrorMessageCode7Uninit) {
 
 // 错误码 8：溢出
 TEST(ObjectApiTest, ErrorMessageCode8Overflow) {
-    EXPECT_STREQ(__cn_error_message(8), "溢出");
+    EXPECT_STREQ(__cn_error_message(8), "溢出错误");
 }
 
 // 未注册错误码：未知运行时错误（防御性）

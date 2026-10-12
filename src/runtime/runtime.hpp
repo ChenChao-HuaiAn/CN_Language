@@ -113,6 +113,17 @@ CNRT_EXPORT void __cn_print_bool(bool value);             // 打印布尔（不�
                                    std::uint64_t* out);            // 128位加法
     CNRT_EXPORT void __cn_sub_i128(const std::uint64_t* a, const std::uint64_t* b,
                                    std::uint64_t* out);            // 128位减法
+    // ---- 任务 474：带溢出检查版（宿主↔v2 i128 检查架构协调）----
+    // 溢出 → __cn_runtime_error(8)『溢出错误』终止（判定=宿主可移植位技巧，
+    //   不依赖 asm 标志·MSVC/GCC 通用）。签名与无检查版一致；调用方按
+    //   「当前生成函数 不安全」标志选调 chk/无 chk 版（豁免是调用方职责，
+    //   chk helper 不感知调用者）。i128 乘法两侧降级回绕（无 chk 版）。
+    CNRT_EXPORT void __cn_add_i128_chk(const std::uint64_t* a, const std::uint64_t* b,
+                                       std::uint64_t* out);         // 128位加法（溢出检查）
+    CNRT_EXPORT void __cn_sub_i128_chk(const std::uint64_t* a, const std::uint64_t* b,
+                                       std::uint64_t* out);         // 128位减法（溢出检查）
+    CNRT_EXPORT void __cn_neg_i128_chk(const std::uint64_t* a,
+                                       std::uint64_t* out);         // 128位取负（溢出检查）
     CNRT_EXPORT void __cn_mul_i128(const std::uint64_t* a, const std::uint64_t* b,
                                    std::uint64_t* out);            // 有符号128位乘法
     CNRT_EXPORT void __cn_mul_u128(const std::uint64_t* a, const std::uint64_t* b,
@@ -130,7 +141,8 @@ CNRT_EXPORT void __cn_print_bool(bool value);             // 打印布尔（不�
     CNRT_EXPORT double __cn_i128_to_f64(const std::uint64_t* a);   // 有符号128位转浮点
     CNRT_EXPORT double __cn_u128_to_f64(const std::uint64_t* a);   // 无符号128位转浮点
     CNRT_EXPORT double __cn_u64_to_f64(std::uint64_t v);           // 无符号64位转浮点（Task 2.10）
-    CNRT_EXPORT void __cn_f64_to_i128(double value, std::uint64_t* out); // 浮点转有符号128位
+    CNRT_EXPORT void __cn_f64_to_i128(double value, std::uint64_t* out); // 浮点转有符号128位（#475 饱和化：NaN→0·超域→i128 边界）
+    CNRT_EXPORT void __cn_f64_to_u128(double value, std::uint64_t* out); // 浮点转无符号128位（#475 新增：NaN→0·负→0·超域→u128::MAX）
     CNRT_EXPORT void __cn_print_i128(const std::uint64_t* v);      // 打印有符号128位（不换行）
     CNRT_EXPORT void __cn_print_u128(const std::uint64_t* v);      // 打印无符号128位（不换行）
     CNRT_EXPORT void printLineI128(const std::uint64_t* v);        // 打印有符号128位（换行）

@@ -186,6 +186,7 @@ void ConstFoldPass::updateConstTable(const ir::IRInstruction& inst, ConstTable& 
             break;
         case ir::Opcode::Add: case ir::Opcode::Sub:
         case ir::Opcode::Mul: case ir::Opcode::Div: case ir::Opcode::Mod:
+        case ir::Opcode::WrapAdd: case ir::Opcode::WrapSub: case ir::Opcode::WrapMul:
         case ir::Opcode::BitAnd: case ir::Opcode::BitOr: case ir::Opcode::BitXor:
         case ir::Opcode::Shl: case ir::Opcode::Shr:
         case ir::Opcode::Eq: case ir::Opcode::Ne:
@@ -232,6 +233,25 @@ bool ConstFoldPass::resolveOperands(const ir::IRInstruction& inst,
 
 // ==================== 整型二元运算折叠 ====================
 
+// 任务 474：Add/Sub 常量折叠溢出预演（位模式运算，不依赖 __builtin——MSVC 兼容）。
+//   a/b 为类型域内位模式；true=溢出（不折叠，保留运行期错误码 8 通路——与
+//   除零不折叠同策略：折叠产出回绕值会绕过运行期检查=改语义的优化）。
+static bool addSubOvf474(ir::Opcode op, std::uint64_t a, std::uint64_t b, int bits,
+                         bool isUnsigned) {
+    // r 必须按类型位宽截断（验收返工：a+b 在 uint64 域无截断——u8 的
+    //   200+200=400 < 200 恒假=漏检；截断后 144 < 200=进位检出）
+    const std::uint64_t mask474 = (bits >= 64) ? ~0ULL : ((1ULL << bits) - 1);
+    const std::uint64_t r =
+        ((op == ir::Opcode::Add) ? (a + b) : (a - b)) & mask474;
+    if (isUnsigned) {
+        return (op == ir::Opcode::Add) ? (r < a) : (a < b);  // 进位/借位
+    }
+    // 有符号溢出（标志位技巧，与 x86 add/sub OF 同构）
+    const std::uint64_t sameAdd = ~(a ^ b) & (a ^ r);   // add: 结果符号 ≠ 操作数公共符号
+    const std::uint64_t diffSub = (a ^ b) & (a ^ r);    // sub: 操作数异号且结果与被减数异号
+    return (((op == ir::Opcode::Add) ? sameAdd : diffSub) >> (bits - 1)) & 1;
+}
+
 bool ConstFoldPass::foldIntBinary(ir::Opcode op, const std::string& aText,
                                   const std::string& bText, const std::string& type,
                                   std::string& out) {
@@ -240,11 +260,44 @@ bool ConstFoldPass::foldIntBinary(ir::Opcode op, const std::string& aText,
     if (!parseConstInt(aText, type, a) || !parseConstInt(bText, type, b)) return false;
     const int bits = intBitWidth(type);
     const std::uint64_t mask = (bits >= 64) ? ~0ULL : ((1ULL << bits) - 1);
+    const bool isUnsignedT = (type.size() >= 2 && type[0] == 'u');
 
     switch (op) {
-        case ir::Opcode::Add: out = formatSigned((a + b) & mask, type); return true;
-        case ir::Opcode::Sub: out = formatSigned((a - b) & mask, type); return true;
-        case ir::Opcode::Mul: out = formatSigned((a * b) & mask, type); return true;
+        case ir::Opcode::Add:
+        case ir::Opcode::Sub: {
+            // 任务 474：可溢出算术常量折叠先预演——溢出不折叠（保留运行期
+            //   错误码 8 确定性失败通路；Wrap* 豁免面照常回绕折叠）
+            if (addSubOvf474(op, a, b, bits, isUnsignedT)) return false;
+            out = formatSigned(((op == ir::Opcode::Add) ? (a + b) : (a - b)) & mask,
+                               type);
+            return true;
+        }
+        case ir::Opcode::WrapAdd:  // 任务 474：回绕加=按类型位宽掩码回绕（免检面）
+            out = formatSigned((a + b) & mask, type); return true;
+        case ir::Opcode::WrapSub:
+            out = formatSigned((a - b) & mask, type); return true;
+        case ir::Opcode::WrapMul:
+            out = formatSigned((a * b) & mask, type); return true;
+        case ir::Opcode::Mul: {
+            // 任务 474：乘法溢出不折叠（同 Add/Sub 策略）。64 位乘积无法在
+            //   宿主可移植域内安全判定（__builtin_*_overflow MSVC 不可用/
+            //   __int128 MSVC x64 不可用）——i64/u64 一律不折叠（保守保留
+            //   运行期面）；窄/32 位全积在 int64/uint64 内，域预演安全。
+            if (bits >= 64) return false;
+            const std::int64_t sa = signExtend(a, bits, type);
+            const std::int64_t sb = signExtend(b, bits, type);
+            const std::int64_t product = sa * sb;   // |积| < 2^62 域内安全
+            if (isUnsignedT) {
+                const std::uint64_t maxV = mask;
+                if (static_cast<std::uint64_t>(product) > maxV) return false;
+            } else {
+                const std::int64_t lo = -(static_cast<std::int64_t>(1) << (bits - 1));
+                const std::int64_t hi = (static_cast<std::int64_t>(1) << (bits - 1)) - 1;
+                if (product < lo || product > hi) return false;
+            }
+            out = formatSigned(static_cast<std::uint64_t>(product) & mask, type);
+            return true;
+        }
         case ir::Opcode::Div: {
             // 除零不折叠（保留运行期错误语义）
             if (b == 0) return false;
@@ -257,6 +310,11 @@ bool ConstFoldPass::foldIntBinary(ir::Opcode op, const std::string& aText,
                 const std::int64_t sa = signExtend(a, bits, type);
                 const std::int64_t sb = signExtend(b, bits, type);
                 if (sb == 0) return false;
+                // 任务 474：INT_MIN/-1 除法折叠=宿主 UB 面（结果超域经位域
+                //   归一化静默回绕）——不折叠保留运行期错误码 8 通路
+                const std::int64_t lo474 =
+                    -(static_cast<std::int64_t>(1) << (bits - 1));
+                if (sb == -1 && sa == lo474) return false;
                 out = std::to_string(sa / sb);
             }
             return true;
@@ -270,6 +328,10 @@ bool ConstFoldPass::foldIntBinary(ir::Opcode op, const std::string& aText,
                 const std::int64_t sa = signExtend(a, bits, type);
                 const std::int64_t sb = signExtend(b, bits, type);
                 if (sb == 0) return false;
+                // 任务 474：INT_MIN % -1 同为除法溢出形态——不折叠
+                const std::int64_t lo474 =
+                    -(static_cast<std::int64_t>(1) << (bits - 1));
+                if (sb == -1 && sa == lo474) return false;
                 out = std::to_string(sa % sb);
             }
             return true;
@@ -278,13 +340,18 @@ bool ConstFoldPass::foldIntBinary(ir::Opcode op, const std::string& aText,
         case ir::Opcode::BitOr: out = formatSigned(a | b, type); return true;
         case ir::Opcode::BitXor: out = formatSigned(a ^ b, type); return true;
         case ir::Opcode::Shl:
-            // 移位量按位宽截断（x86 语义）
-            out = formatSigned((a << (b & (bits - 1))) & mask, type);
+            // 任务 474：移位量超宽不再折叠掩码（原 2026-09-09 规范化废止）——
+            //   b >= 位宽（或负）语义=错误码 8『溢出错误』运行期确定性失败，
+            //   此处不折叠以保留指令走运行期检查（语义层字面量面已编译期硬错误）
+            if (b >= static_cast<std::uint64_t>(bits)) return false;
+            out = formatSigned((a << b) & mask, type);
             return true;
         case ir::Opcode::Shr: {
             // 有符号算术右移（无符号逻辑右移由类型决定）
+            // 任务 474：超宽移位量同样不折叠（保留运行期错误码 8 通路）
+            if (b >= static_cast<std::uint64_t>(bits)) return false;
             const bool isUnsigned = (type.size() >= 2 && type[0] == 'u');
-            const int shift = static_cast<int>(b & (bits - 1));
+            const int shift = static_cast<int>(b);
             if (isUnsigned) {
                 out = std::to_string((a >> shift) & mask);
             } else {
@@ -474,12 +541,15 @@ bool ConstFoldPass::foldResolved(ir::IRInstruction& inst,
     const std::string resultType = inst.type;
 
     switch (inst.opcode) {
-        // ---- 算术（整型/浮点） ----
+        // ---- 算术（整型/浮点；Wrap* 回绕折叠同面·任务 474）----
         case ir::Opcode::Add:
         case ir::Opcode::Sub:
         case ir::Opcode::Mul:
         case ir::Opcode::Div:
-        case ir::Opcode::Mod: {
+        case ir::Opcode::Mod:
+        case ir::Opcode::WrapAdd:
+        case ir::Opcode::WrapSub:
+        case ir::Opcode::WrapMul: {
             std::string value;
             const bool isFloat = isFloatType(opType);
             if (isFloat) {

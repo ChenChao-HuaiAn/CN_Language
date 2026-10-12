@@ -23,6 +23,9 @@ namespace cn_compiler {
 
 // i128/u128 加法/减法：完整 128 位运算（低64位 add/sub + 高64位 adc/sbb）
 // x86_64：add 设置 CF（进位）；sub 设置 CF（借位）；adc/sbb 带进位/借位运算
+// 任务 474：高半 adc/sbb 的 OF=有符号 128 位溢出、CF=无符号 128 位进/借位出
+//   ——安全函数 jo/jc 单条检测（含取负 0-INT128_MIN 的 Sub 面），错误码 8
+//   冷路径；Wrap* 回绕内置/不安全 函数体内不插检查。
 void LinuxX64CodeGenerator::emitInt128Binary(LinuxX64AsmWriter& writer,
                                              const ir::IRInstruction& inst) {
     // 结果双槽：result.id 为高64位槽（%vN）、result.id+1 为低64位槽（%vN+1）
@@ -51,7 +54,12 @@ void LinuxX64CodeGenerator::emitInt128Binary(LinuxX64AsmWriter& writer,
         const int id = isHi ? v.id : v.id + 1;
         emitStackLoad(writer, regSlotOffset(id), reg, "i64", __LINE__);
     };
-    const bool isAdd = (inst.opcode == ir::Opcode::Add);
+    const bool isAdd = (inst.opcode == ir::Opcode::Add ||
+                        inst.opcode == ir::Opcode::WrapAdd);
+    // 任务 474：检查开关（Add/Sub 且安全函数；Wrap*/不安全 豁免）
+    const bool needOvf =
+        (inst.opcode == ir::Opcode::Add || inst.opcode == ir::Opcode::Sub) &&
+        !currentFnUnsafe474_;
     // 低64位：add/sub r10 = lo1 +/- lo2（设置标志）
     loadI128Part(inst.operands[0], false, "r10");
     loadI128Part(inst.operands[1], false, "r9");
@@ -60,7 +68,16 @@ void LinuxX64CodeGenerator::emitInt128Binary(LinuxX64AsmWriter& writer,
     // 高64位：adc/sbb r10 = hi1 +/- hi2（带进位/借位）
     loadI128Part(inst.operands[0], true, "r10");
     loadI128Part(inst.operands[1], true, "r9");
+    const std::string trap474 = "Lovf" + std::to_string(ptrCheckCounter_++);
     writer.line(std::string(isAdd ? "adc" : "sbb") + " r10, r9");
+    if (needOvf) {
+        // 反向结构（除零检查同款双标签）：未溢出跳过错误块；溢出顺序落入
+        const std::string ok = trap474 + "_ok";
+        writer.line(std::string(inst.type == "u128" ? "jnc " : "jno ") + ok);
+        writer.raw(trap474 + ":");
+        emitOverflowErrorBody(writer);
+        writer.raw(ok + ":");
+    }
     emitStackStore(writer, regSlotOffset(dstHiId), "r10", "i64");
 }
 
@@ -144,7 +161,24 @@ void LinuxX64CodeGenerator::emitInt128Shift(LinuxX64AsmWriter& writer,
     const int dstHiId = inst.result.id;
     const int dstLoId = inst.result.id + 1;
     if (inst.operands[1].isConstant) {
-        const int k = shiftAmtOf128l(inst.operands[1].extra) & 127;
+        const int rawK = shiftAmtOf128l(inst.operands[1].extra);
+        if (!currentFnUnsafe474_ && (rawK < 0 || rawK >= 128)) {
+            // 任务 474：常量移位量超宽（常量传播面漏入）——反向结构错误码 8
+            const std::string trap = "Lovf" + std::to_string(ptrCheckCounter_++);
+            writer.line("mov ecx, " + std::to_string(rawK));
+            writer.line("cmp ecx, 128");
+            const std::string ok = trap + "_ok";
+            writer.line("jb " + ok);
+            writer.raw(trap + ":");
+            emitOverflowErrorBody(writer);
+            writer.raw(ok + ":");
+            emitStackLoad(writer, regSlotOffset(hiId), "r10", "i64", __LINE__);
+            emitStackLoad(writer, regSlotOffset(loId), "r11", "i64", __LINE__);
+            emitStackStore(writer, regSlotOffset(dstHiId), "r10", "i64");
+            emitStackStore(writer, regSlotOffset(dstLoId), "r11", "i64");
+            return;
+        }
+        const int k = rawK & 127;
         if (k == 0) {
             emitStackLoad(writer, regSlotOffset(hiId), "r10", "i64", __LINE__);
             emitStackLoad(writer, regSlotOffset(loId), "r11", "i64", __LINE__);
@@ -191,6 +225,8 @@ void LinuxX64CodeGenerator::emitInt128Shift(LinuxX64AsmWriter& writer,
     }
     // ---- 变量移位量：mod 128 + 大小分路 ----
     // 移位量槽：i128/u128 双槽取低半（%vN+1）；普通整型单槽直用（id 本身）。
+    // 任务 474：安全函数先查移位量 ∈ [0,128)（cmp+jae 单次比较·负/超宽 →
+    //   错误码 8 冷路径），原 and 127 掩码（掩码回绕语义）仅不安全 函数保留。
     const ir::IRValue& shOp = inst.operands[1];
     const int shId = (shOp.type == "i128" || shOp.type == "u128") ? shOp.id + 1 : shOp.id;
     const int cid = ptrCheckCounter_++;
@@ -198,9 +234,24 @@ void LinuxX64CodeGenerator::emitInt128Shift(LinuxX64AsmWriter& writer,
     const std::string endL = "Lsh128_e" + std::to_string(cid);
     emitStackLoad(writer, regSlotOffset(shId), "r10", "i32", __LINE__);
     writer.line("mov ecx, r10d");
-    writer.line("and ecx, 127");
-    writer.line("cmp cl, 64");
-    writer.line("jae " + bigL);
+    // 任务 474：安全函数分支——域检查（cmp+jae）前置，小/大路径顺序发射，
+    //   错误块垫底（两条路径完成后，正常执行不可达）
+    if (currentFnUnsafe474_) {
+        writer.line("and ecx, 127");
+        writer.line("cmp cl, 64");
+        writer.line("jae " + bigL);
+    } else {
+        // 任务 474：域检查反向结构（jb 跳过错误块；超宽/负顺序落入）
+        const std::string trap = "Lovf" + std::to_string(ptrCheckCounter_++);
+        writer.line("cmp ecx, 128");
+        const std::string ok = trap + "_ok";
+        writer.line("jb " + ok);
+        writer.raw(trap + ":");
+        emitOverflowErrorBody(writer);
+        writer.raw(ok + ":");
+        writer.line("cmp cl, 64");
+        writer.line("jae " + bigL);
+    }
     if (isShl) {
         emitStackLoad(writer, regSlotOffset(hiId), "r10", "i64", __LINE__);
         emitStackLoad(writer, regSlotOffset(loId), "r11", "i64", __LINE__);
@@ -250,7 +301,9 @@ void LinuxX64CodeGenerator::emitInt128MulDivMod(LinuxX64AsmWriter& writer,
     const bool isUnsigned = (inst.type == "u128");
     std::string helper;
     switch (inst.opcode) {
-        case ir::Opcode::Mul: helper = isUnsigned ? "__cn_mul_u128" : "__cn_mul_i128"; break;
+        case ir::Opcode::Mul:
+        case ir::Opcode::WrapMul:  // 任务 474：回绕乘=i128 运行时辅助本征回绕
+            helper = isUnsigned ? "__cn_mul_u128" : "__cn_mul_i128"; break;
         case ir::Opcode::Div: helper = isUnsigned ? "__cn_div_u128" : "__cn_div_i128"; break;
         case ir::Opcode::Mod: helper = isUnsigned ? "__cn_mod_u128" : "__cn_mod_i128"; break;
         default: helper = "__cn_mul_i128"; break;

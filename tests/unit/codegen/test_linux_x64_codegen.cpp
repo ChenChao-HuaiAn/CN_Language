@@ -217,7 +217,9 @@ TEST(LinuxX64CodegenTest, ConstIntImmediateLoad) {
 
 // ==================== 算术与比较形态 ====================
 
-// 寄存器加法：op1 -> r10、op2 -> r9、add r10, r9（统一 64 位运算）
+// 寄存器加法：op1 -> r10、op2 -> r9、add r10d, r9d（i32 32 位运算——
+// #474 对齐：32 位形态硬件 OF 溢出检测必要〔64 位 add 会吞 i32 溢出的
+// OF 标志·错误码 8 检查依赖〕，断言随实现翻转）
 TEST(LinuxX64CodegenTest, AddRegisterForm) {
     Diagnostics diagnostics;
     LinuxX64CodeGenerator generator(diagnostics);
@@ -225,7 +227,7 @@ TEST(LinuxX64CodegenTest, AddRegisterForm) {
 
     std::string asmText = generator.generateAssembly(module);
 
-    EXPECT_NE(asmText.find("add r10, r9"), std::string::npos);
+    EXPECT_NE(asmText.find("add r10d, r9d"), std::string::npos);
 }
 
 // 除法：cqo + idiv（有符号）；商在 rax

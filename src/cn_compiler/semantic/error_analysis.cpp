@@ -119,6 +119,18 @@ void SemanticAnalyzer::registerErrorBuiltins() {
     moveInfo.paramTypes = {"自动"};
     moveInfo.hasBody = true;
     functions_["转移"] = moveInfo;
+
+    // 任务 474（2026-10-11）：显式回绕算术内置 回绕加/回绕减/回绕乘——占位
+    //   注册防用户重定义（内置独占惯例同 转移）；实际类型检查/公共类型推导在
+    //   checkWrapBuiltinCall（visitCallExpr 特判，不走路由），IR 层展开为
+    //   WrapAdd/WrapSub/WrapMul 指令（发射层无溢出检查——错误码 8 豁免面）。
+    for (const char* wn : {"回绕加", "回绕减", "回绕乘"}) {
+        FunctionInfo wrapInfo;
+        wrapInfo.returnType = "自动";   // 实际类型=公共数值类型（调用点推导）
+        wrapInfo.paramTypes = {"自动", "自动"};
+        wrapInfo.hasBody = true;
+        functions_[wn] = wrapInfo;
+    }
 }
 
 // ==================== 结果/可选类型降级（Task 3.5） ====================

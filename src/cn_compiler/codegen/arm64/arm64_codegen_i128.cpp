@@ -48,7 +48,13 @@ void Arm64CodeGenerator::emitInt128Binary(Arm64AsmWriter& writer,
         const int id = isHi ? v.id : v.id + 1;
         emitStackLoad(writer, regSlotOffset(id), reg, "i64");
     };
-    const bool isAdd = (inst.opcode == ir::Opcode::Add);
+    const bool isAdd = (inst.opcode == ir::Opcode::Add ||
+                        inst.opcode == ir::Opcode::WrapAdd);
+    // 任务 474：检查开关（Add/Sub 且安全函数；Wrap*/不安全 豁免）——高半
+    //   adcs/sbcs 的 V=有符号 128 位溢出、C=无符号 128 位进/借位出
+    const bool needOvf =
+        (inst.opcode == ir::Opcode::Add || inst.opcode == ir::Opcode::Sub) &&
+        !currentFnUnsafe474_;
     // 低64位：adds/subs x9 = lo1 +/- lo2（设置标志）
     loadI128Part(inst.operands[0], false, "x9");
     loadI128Part(inst.operands[1], false, "x10");
@@ -58,6 +64,13 @@ void Arm64CodeGenerator::emitInt128Binary(Arm64AsmWriter& writer,
     loadI128Part(inst.operands[0], true, "x9");
     loadI128Part(inst.operands[1], true, "x10");
     writer.line(std::string(isAdd ? "adc" : "sbcs") + " x9, x9, x10");
+    if (needOvf) {
+        // 反向结构：未溢出（b.cc/b.vc）越过错误块；溢出顺序落入
+        const std::string ok = "Lovf_ok" + std::to_string(ptrCheckCounter_++);
+        writer.line(std::string(inst.type == "u128" ? "b.cc " : "b.vc ") + ok);
+        emitOverflowTrap(writer, "Lovf" + std::to_string(ptrCheckCounter_ - 1));
+        writer.raw(ok + ":");
+    }
     storeVirtualResult(writer, dstHiId, "x9", "i64");
 }
 
@@ -140,7 +153,19 @@ void Arm64CodeGenerator::emitInt128Shift(Arm64AsmWriter& writer,
     const int dstHiId = inst.result.id;
     const int dstLoId = inst.result.id + 1;
     if (inst.operands[1].isConstant) {
-        const int k = shiftAmtOf128a(inst.operands[1].extra) & 127;
+        const int rawK = shiftAmtOf128a(inst.operands[1].extra);
+        if (!currentFnUnsafe474_ && (rawK < 0 || rawK >= 128)) {
+            // 任务 474：常量移位量超宽（常量传播面漏入）——反向结构错误码 8
+            const std::string trap = "Lovf" + std::to_string(ptrCheckCounter_++);
+            emitMovImm(writer, "x11", static_cast<std::uint64_t>(rawK));
+            writer.line("cmp w11, #128");
+            const std::string ok = trap + "_ok";
+            writer.line("b.lo " + ok);
+            writer.raw(trap + ":");
+            emitOverflowErrorBody(writer);
+            writer.raw(ok + ":");
+        }
+        const int k = rawK & 127;
         if (k == 0) {
             emitStackLoad(writer, regSlotOffset(hiId), "x9", "i64");
             storeVirtualResult(writer, dstHiId, "x9", "i64");
@@ -200,7 +225,18 @@ void Arm64CodeGenerator::emitInt128Shift(Arm64AsmWriter& writer,
     const std::string bigL = "Lsh128_b" + std::to_string(cid);
     const std::string endL = "Lsh128_e" + std::to_string(cid);
     emitStackLoad(writer, regSlotOffset(shId), "x11", "i64");
-    writer.line("and x11, x11, #127");
+    if (currentFnUnsafe474_) {
+        writer.line("and x11, x11, #127");
+    } else {
+        // 任务 474：安全函数移位量 ∈ [0,128) 域检查（反向 b.lo·错误块原地）
+        const std::string trap474 = "Lovf" + std::to_string(ptrCheckCounter_++);
+        writer.line("cmp x11, #128");
+        const std::string ok = trap474 + "_ok";
+        writer.line("b.lo " + ok);
+        writer.raw(trap474 + ":");
+        emitOverflowErrorBody(writer);
+        writer.raw(ok + ":");
+    }
     writer.line("cmp x11, #64");
     writer.line("b.hs " + bigL);
     // 小路径（k<64）：x12 = 64 - k
@@ -257,7 +293,9 @@ void Arm64CodeGenerator::emitInt128MulDivMod(Arm64AsmWriter& writer,
     const bool isUnsigned = (inst.type == "u128");
     std::string helper;
     switch (inst.opcode) {
-        case ir::Opcode::Mul: helper = isUnsigned ? "__cn_mul_u128" : "__cn_mul_i128"; break;
+        case ir::Opcode::Mul:
+        case ir::Opcode::WrapMul:  // 任务 474：回绕乘=i128 运行时辅助本征回绕
+            helper = isUnsigned ? "__cn_mul_u128" : "__cn_mul_i128"; break;
         case ir::Opcode::Div: helper = isUnsigned ? "__cn_div_u128" : "__cn_div_i128"; break;
         case ir::Opcode::Mod: helper = isUnsigned ? "__cn_mod_u128" : "__cn_mod_i128"; break;
         default: helper = "__cn_mul_i128"; break;

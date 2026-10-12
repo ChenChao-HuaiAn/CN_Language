@@ -46,7 +46,7 @@ public:
 
 private:
     // 削减单条 Mul/Div 指令（原地改 opcode/操作数），成功返回 true
-    static bool reduceInstruction(ir::IRInstruction& inst);
+    static bool reduceInstruction(ir::IRInstruction& inst, bool mulMayOvfl474);
 
     // F1-29（227-a）：有符号除法展开（Div x, 2^n → 4 条修正序列）——
     //   成功返回 true（out 填 4 条）；type 须为 i8/i16/i32/i64。

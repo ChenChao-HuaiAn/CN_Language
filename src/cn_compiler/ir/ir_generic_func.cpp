@@ -130,6 +130,8 @@ void IRGenerator::emitGenericFuncInstance(const GenericFuncInstance& gfi) {
     ir::IRFunction func;
     func.name = gfi.instanceName;
     func.mangledName = gfi.instanceName;
+    // 任务 474：不安全 修饰继承模板源函数（实例与源同域——发射层溢出检查豁免）
+    func.isUnsafe = node->isUnsafe;
     // 317-a（T19①/T20①）：返回类型经替换后仍是泛型源形态（向量<T> ->
     //   向量<整32>）时物化为实例类名（向量$整32）——isStructType/isClassType
     //   与方法符号解析全认 $ 实例名；retSrc 直接决定 returnTypeSrc（调用方

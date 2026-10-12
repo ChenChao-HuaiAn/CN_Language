@@ -240,6 +240,7 @@ bool isKnownOpcode(Opcode op) {
         case Opcode::ConstString: case Opcode::ConstBool:
         case Opcode::Add: case Opcode::Sub: case Opcode::Mul:
         case Opcode::Div: case Opcode::Mod:
+        case Opcode::WrapAdd: case Opcode::WrapSub: case Opcode::WrapMul:
         case Opcode::BitAnd: case Opcode::BitOr: case Opcode::BitXor:
         case Opcode::Shl: case Opcode::Shr:
         case Opcode::Eq: case Opcode::Ne: case Opcode::Lt:

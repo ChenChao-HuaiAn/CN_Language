@@ -435,6 +435,8 @@ void IRGenerator::visitFunctionDecl(FunctionDecl* node) {
                           : mapType(node->returnType.empty() ? "空类型"
                                                              : node->returnType);
     func.returnTypeSrc = node->returnType.empty() ? "空类型" : node->returnType;
+    // 任务 474：不安全 修饰传入 IR 函数（发射层溢出检查豁免判据·判空/越界同源纪律）
+    func.isUnsafe = node->isUnsafe;
     // Task 完善A：结构体返回值标记（返回类型为自定义结构体时走隐藏返回指针）
     // 修复（2026-08 自举检查发现）：结果/可选 返回同样走隐藏返回指针协议
     if (semantic_ != nullptr && !node->returnType.empty() &&

@@ -40,12 +40,16 @@ int StrengthReducePass::powerOfTwo(unsigned long long value) {
 
 // 削减单条 Mul/Div 指令（原地改 opcode/操作数），成功返回 true
 // 形式：Mul reg, const 或 Mul const, reg；Div reg, const
-bool StrengthReducePass::reduceInstruction(ir::IRInstruction& inst) {
+// mulMayOvfl474（任务 474）：true=该 Mul 可能触发错误码 8（安全函数的 Mul）——
+//   Mul→Shl 削减把「溢出报错」变「回绕不报错」=非等价变换，跳过；
+//   WrapMul（回绕内置·本征回绕）与 不安全 函数 Mul 削减等价照常。
+bool StrengthReducePass::reduceInstruction(ir::IRInstruction& inst, bool mulMayOvfl474) {
     // 仅整型可削减（浮点/i128/i1 跳过）
     if (!isIntType(inst.type)) return false;
     if (inst.operands.size() < 2) return false;
 
-    if (inst.opcode == ir::Opcode::Mul) {
+    if (inst.opcode == ir::Opcode::Mul || inst.opcode == ir::Opcode::WrapMul) {
+        if (inst.opcode == ir::Opcode::Mul && mulMayOvfl474) return false;
         // 找常量操作数与寄存器操作数
         const ir::IRValue& a = inst.operands[0];
         const ir::IRValue& b = inst.operands[1];
@@ -163,10 +167,12 @@ bool StrengthReducePass::run(ir::IRModule& module) {
     bool changed = false;
     for (auto& fn : module.functions) {
         int nextReg = maxRegIdOf(fn) + 1;
+        // 任务 474：安全函数的 Mul 受错误码 8 溢出检查——Mul→Shl 非等价跳过
+        const bool mulMayOvfl474 = !fn.isUnsafe;
         for (auto& block : fn.blocks) {
             auto& insts = block->instructions;
             for (std::size_t i = 0; i < insts.size(); ++i) {
-                if (reduceInstruction(insts[i])) { changed = true; continue; }
+                if (reduceInstruction(insts[i], mulMayOvfl474)) { changed = true; continue; }
                 // F1-29：有符号 Div x, 2^n → 4 条修正序列（1 条指令原位展开；
                 //   仅 aggressive 模式（-O3）启用——默认保守保持既有行为）
                 if (!signedDivEnabled_) continue;

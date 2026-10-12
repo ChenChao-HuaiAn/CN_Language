@@ -727,11 +727,31 @@ void X64CodeGenerator::emitEpilogue(AsmWriter& writer, const std::string& return
     writer.line("ret");
 }
 
+// 任务 474：溢出错误出口（错误码 8『溢出错误』）——冷路径错误块发射。
+//   与除零（错误码1）/判空（错误码3）同款出口序列：错误码入 rcx（Win64 ABI
+//   首参）+ 影子空间 + __cn_runtime_error + ret；热路径以几乎不跳转的
+//   条件分支（jo/jc/ja）跳入。
+void X64CodeGenerator::emitOverflowTrap(AsmWriter& writer, const std::string& label) {
+    writer.raw(label + ":");
+    emitOverflowErrorBody(writer);
+}
+
+// 溢出错误序列（无标签）：错误码 8 入 rcx（Win64 ABI 首参）+ 影子空间 + 终止
+void X64CodeGenerator::emitOverflowErrorBody(AsmWriter& writer) {
+    writer.line("mov rcx, 8");
+    writer.line("sub rsp, 32");
+    writer.line("call __cn_runtime_error");
+    writer.line("add rsp, 32");
+    writer.line("ret");
+}
+
 // 生成单个函数：登记变量槽 -> PROC头 -> prologue -> 参数 -> 基本块 -> epilogue -> ENDP
 std::string X64CodeGenerator::generateFunctionAssembly(const ir::IRFunction& function) {
     // 计算寄存器槽数量（变量槽区定位依赖）
     regSlotCount_ = maxRegIdIn(function) + 1;
     varSlots_.clear();
+    // 任务 474：函数级不安全 状态（体内算术/移位/除法不插溢出检查·判空豁免同源）
+    currentFnUnsafe474_ = function.isUnsafe;
     // ---- 阶段C：寄存器分配（Task 4.3） ----
     // 保守策略（正确性最高优先）：
     //   - 结构体返回 / i128 返回函数强制关闭寄存器分配（epilogue 有提前 return 路径，

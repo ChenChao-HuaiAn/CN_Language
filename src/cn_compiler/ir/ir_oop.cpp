@@ -111,6 +111,8 @@ void IRGenerator::emitClassMethod(const std::string& className, const ClassMembe
     ir::IRFunction func;
     func.name = className + "." + mi.name;
     func.mangledName = methodSymbolKey(className, mi.sigKey);
+    // 任务 474：不安全 修饰传入 IR 函数（发射层溢出检查豁免判据·与 ir_decl 同构）
+    func.isUnsafe = mi.isUnsafe;
     // 118（929）：引用返回方法（-> T&·如 向量.元素引用）——返回类型映射 ptr
     //   （返回被引用左值的地址·与普通函数 ir_decl isRefReturnFn 同构）
     func.returnType = mi.isRefReturn

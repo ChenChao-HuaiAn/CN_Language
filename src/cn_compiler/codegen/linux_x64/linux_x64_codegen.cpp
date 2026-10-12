@@ -713,9 +713,27 @@ void LinuxX64CodeGenerator::emitEpilogueTail(LinuxX64AsmWriter& writer) {
 }
 
 // 生成单个函数：登记变量槽 -> 函数头 -> prologue -> 参数 -> 基本块 -> .size
+// 任务 474：溢出错误出口（错误码 8『溢出错误』）——冷路径错误块发射。
+//   与除零（错误码1）/判空（错误码3）同款出口序列：错误码入 rdi（SysV 首参）
+//   + __cn_runtime_error + ret；热路径以几乎不跳转的条件分支（jo/jc）跳入。
+void LinuxX64CodeGenerator::emitOverflowTrap(LinuxX64AsmWriter& writer,
+                                             const std::string& label) {
+    writer.raw(label + ":");
+    emitOverflowErrorBody(writer);
+}
+
+// 溢出错误序列（无标签）：错误码 8 入 rdi（SysV 首参）+ 运行时报告 + 终止
+void LinuxX64CodeGenerator::emitOverflowErrorBody(LinuxX64AsmWriter& writer) {
+    writer.line("mov rdi, 8");
+    writer.line("call __cn_runtime_error");
+    writer.line("ret");
+}
+
 std::string LinuxX64CodeGenerator::generateFunctionAssembly(const ir::IRFunction& function) {
     regSlotCount_ = maxRegIdIn(function) + 1;
     varSlots_.clear();
+    // 任务 474：函数级不安全 状态（体内算术/移位/除法不插溢出检查·判空豁免同源）
+    currentFnUnsafe474_ = function.isUnsafe;
     currentNeedHiddenRet_ = (function.structReturn ||
                              function.returnType == "i128" ||
                              function.returnType == "u128");

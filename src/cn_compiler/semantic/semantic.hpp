@@ -279,6 +279,7 @@ private:
     void checkConstIntExprSafety(BinaryExpr* node, const std::string& leftType, const std::string& rightType);
     void reportConstOverflowOrDivZero(BinaryExpr* node, std::int64_t vL, std::int64_t vR,
                                       const std::string& leftType, const std::string& rightType);
+    void checkShiftConstWidth(BinaryExpr* node, const std::string& lt, const std::string& rt);  // 474: 常量移位量超宽编译期硬错误
     bool checkComparisonBinary(BinaryExpr* node, const std::string& leftType, const std::string& rightType);
     bool checkBitwiseBinary(BinaryExpr* node, const std::string& leftType, const std::string& rightType);
     bool checkArithmeticBinary(BinaryExpr* node, std::string& leftType, std::string& rightType);
@@ -455,9 +456,9 @@ private:
     //   结构体须同名、结果/可选 模板兼容、空类型* -> 可选<T>（空可选值）
     std::vector<std::string> collectCallArgTypes(const std::vector<std::unique_ptr<Expr>>& args, const SourceLocation& loc); void adjustLiteralArgTypes(std::vector<std::string>& argTypes, const std::vector<std::unique_ptr<Expr>>& args);  // 231·实现见 expr.cpp（冻结线承载·语义=checkExpr 收集+fnptr 诊断+超域字面量改判整64）
     bool canConvertType(const std::string& from, const std::string& to) const;
-    // 55-c 方案A（2026-09-10 用户裁决，Rust E0308 对齐）：canConvertType 拒绝时的
-    //   整数字面量豁免——源/目标均为整数族且值表达式为整数字面量形态（含一元
+    // 55-c 方案A（2026-09-10 用户裁决，Rust E0308 对齐）：canConvertType 拒绝时的整数字面量豁免（源/目标均整数族·值表达式为字面量形态·含一元负号）
     bool checkTransferCall(CallExpr* node);
+    bool checkWrapBuiltinCall(CallExpr* node);  // 474: 回绕内置（显式回绕·溢出检查豁免面）
     // 族2：内置构造器 正常/错误/某些（原 433~490 段）
     bool checkBuiltinCtorCall(CallExpr* node);
     // 族3：函数指针间接调用（原 949~981 段）

@@ -128,6 +128,7 @@ void SemanticAnalyzer::visitCallExpr(CallExpr* node) {
     node->retOwnedString = false;
     if (checkTransferCall(node)) return;   // 族1：显式转移表达式位特判
     if (checkCopyBuiltinCall(node)) return;  // 族1.5：复制 泛型克隆内置（206-a 波 4）
+    if (checkWrapBuiltinCall(node)) return;  // 族1.6：回绕算术内置（任务 474·错误码 8 豁免面）
     // ---- 阶段3（Task 3.6）：模块限定调用 模块.函数(实参)——族A（170-a 提取）----
     //   分派依据/识别语法/内置优先级策略详见 collectQualifiedCallInfo 与
     //   rewriteQualifiedCall 方法头注释（原 116~268 段整体搬移）。
@@ -316,6 +317,76 @@ bool SemanticAnalyzer::checkCopyBuiltinCall(CallExpr* node) {
         isStructType(types::canonical(lastType_))) {
         node->lueMove = lueEligible(node, arg);
     }
+    return true;
+}
+
+// ==================== 任务 474：回绕内置 回绕加/回绕减/回绕乘 ====================
+
+// 回绕内置识别（表达式位特判，占位注册已防重定义）：true = 本调用是回绕内置，
+//   wrapOpIdx 写 0/1/2（加/减/乘）。
+static bool wrapBuiltinIndexOf(const std::string& name, int& opIdx) {
+    if (name == "回绕加") { opIdx = 0; return true; }
+    if (name == "回绕减") { opIdx = 1; return true; }
+    if (name == "回绕乘") { opIdx = 2; return true; }
+    return false;
+}
+
+// 回绕内置（任务 474）：显式两补码回绕算术——运行期错误码 8 溢出检查的显式
+//   豁免面（Rust wrapping_add/sub/mul 对照·整16: 回绕加(32767,1)≡-32768）。
+// 类型规则与 + - * 完全一致：①公共类型提升（整型取秩高者）；②混合符号拒绝
+//   （2026-09-10 方案A·字面量豁免）；③285 窄域字面量豁免（字面量按另一侧窄
+//   类型参与→结果保持窄域）。
+// true = 已处理（含报错形态）。
+bool SemanticAnalyzer::checkWrapBuiltinCall(CallExpr* node) {
+    int opIdx = -1;
+    if (node->callee->getType() != NodeType::IdentifierExpr) return false;
+    if (!wrapBuiltinIndexOf(
+            static_cast<IdentifierExpr*>(node->callee.get())->name, opIdx)) {
+        return false;
+    }
+    if (node->arguments.size() != 2) {
+        diagnostics_.report(DiagnosticLevel::Error, node->location,
+                            "回绕内置须恰为两个整数实参：回绕加(a, b)/回绕减(a, b)/"
+                            "回绕乘(a, b)");
+        lastType_ = "未知";
+        return true;
+    }
+    std::string leftType = checkExpr(node->arguments[0].get());
+    std::string rightType = checkExpr(node->arguments[1].get());
+    if (isArrayType(leftType)) leftType = types::arrayElemOf(leftType) + "*";
+    if (isArrayType(rightType)) rightType = types::arrayElemOf(rightType) + "*";
+    // 整数操作数（浮点无回绕语义；指针/布尔/字符串均拒绝）
+    if (!isInteger(leftType) || !isInteger(rightType) ||
+        leftType == "未知" || rightType == "未知") {
+        diagnostics_.report(DiagnosticLevel::Error, node->location,
+                            "回绕内置要求整数操作数，实际为 '" + leftType +
+                            "' 与 '" + rightType + "'");
+        lastType_ = "未知";
+        return true;
+    }
+    // 混合符号拒绝对齐 + - *（2026-09-10 方案A·字面量豁免，Rust 对齐）
+    if (types::isUnsigned(leftType) != types::isUnsigned(rightType) &&
+        !isIntLiteralExpr(node->arguments[0].get()) &&
+        !isIntLiteralExpr(node->arguments[1].get())) {
+        diagnostics_.report(DiagnosticLevel::Error, node->location,
+                            "混合符号运算禁止：'" + leftType + "' 与 '" + rightType +
+                            "' —— 须显式转换（如 整64(表达式)/正64(表达式)）；"
+                            "字面量豁免（Rust 对齐，2026-09-10 方案A）");
+    }
+    // 285 窄域字面量豁免（与 checkArithmeticBinary 同款）：字面量按另一侧窄
+    //   类型参与，结果保持窄域
+    const auto isNarrow474 = [](const std::string& t) {
+        return t == "整8" || t == "整16" || t == "正8" || t == "正16";
+    };
+    if (isNarrow474(rightType) && !isNarrow474(leftType) &&
+        isIntLiteralExpr(node->arguments[0].get())) {
+        leftType = rightType;
+    } else if (isNarrow474(leftType) && !isNarrow474(rightType) &&
+               isIntLiteralExpr(node->arguments[1].get())) {
+        rightType = leftType;
+    }
+    lastType_ = commonNumericType(leftType, rightType);
+    node->resolvedType = lastType_;  // IR 层 visitCallExpr 回绕展开分派依据
     return true;
 }
 

@@ -81,6 +81,21 @@ void LinuxX64CodeGenerator::emitInstruction(LinuxX64AsmWriter& writer,
             else if (isFloatType(inst.type)) emitFloatBinary(writer, inst, "mul");
             else emitIntBinary(writer, inst, "imul");
             return;
+        // 任务 474：显式回绕算术（Wrap*）——发射同 Add/Sub/Mul（回绕位模式），
+        //   发射层不插溢出检查（emitIntBinary 按 opcode 豁免）；i128 乘法运行时
+        //   辅助本征回绕（WrapMul 同通道）
+        case ir::Opcode::WrapAdd:
+            if (inst.type == "i128" || inst.type == "u128") emitInt128Binary(writer, inst);
+            else emitIntBinary(writer, inst, "add");
+            return;
+        case ir::Opcode::WrapSub:
+            if (inst.type == "i128" || inst.type == "u128") emitInt128Binary(writer, inst);
+            else emitIntBinary(writer, inst, "sub");
+            return;
+        case ir::Opcode::WrapMul:
+            if (inst.type == "i128" || inst.type == "u128") emitInt128MulDivMod(writer, inst);
+            else emitIntBinary(writer, inst, "imul");
+            return;
         case ir::Opcode::Div:
             if (inst.type == "i128" || inst.type == "u128") emitInt128MulDivMod(writer, inst);
             else if (isFloatType(inst.type)) emitFloatBinary(writer, inst, "div");

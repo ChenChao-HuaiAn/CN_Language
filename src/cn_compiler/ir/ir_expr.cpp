@@ -671,7 +671,21 @@ void IRGenerator::genCommonTypeArithmetic(BinaryExpr* node, ir::IRValue& left,
     // 公共类型（浮点优先 f64；整型取 rank 高者由语义层保证可转换）
     // 92-a：浮点算术公共类型（f32 op f32 -> f32 单精度；跨类型统一 f64）
     std::string floatCommon;
-    if (!isFloat && left.type != right.type &&
+    if (narrowResult377) {
+        // 任务 474 改造（377 乙案升级）：窄域算术（窄+窄 / 窄+i32 字面量）——
+        //   字面量操作数 Cast 到窄域后**直接按窄域运算**（原实现 i32 域运算+
+        //   尾部 Cast 回窄：回绕位模式等价，但 474 溢出检查按指令类型发射，
+        //   i32 域运算检测不到窄域溢出——32767+1(整16) 静默回绕实锤）。
+        //   窄域运算的截断存储与回绕行为不变（位模式等价），溢出面归 474。
+        if (left.type != narrowType377) {
+            left = emitResult(ir::Opcode::Cast, {left}, narrowType377,
+                              "", node->location);
+        }
+        if (right.type != narrowType377) {
+            right = emitResult(ir::Opcode::Cast, {right}, narrowType377,
+                               "", node->location);
+        }
+    } else if (!isFloat && left.type != right.type &&
         left.type != "i1" && right.type != "i1" &&
         left.type != "ptr" && right.type != "ptr") {
         // 整型混合：按语义 rank 提升（i8/i16 -> i32；整32 + 整64 -> 整64）
@@ -734,7 +748,9 @@ void IRGenerator::genCommonTypeArithmetic(BinaryExpr* node, ir::IRValue& left,
         // 377 乙案尾部：窄算术（+ - * / %）结果 Cast 回窄——链式中间值每步
         //   回绕（(x*2)/2 的 400 截断为 144 再除=72·立法口径）；单步赋值锚
         //   p1007_05 观测等价（存回槽截断点前移同值）。
-        if (narrowResult377 &&
+        //   任务 474：窄域算术已按窄域发射（操作数预 Cast 同型）——结果类型
+        //   已窄，仅类型不一致的防御兜底形态才补 Cast。
+        if (narrowResult377 && lastExpr_.type != narrowType377 &&
             (node->op == Operator::Add || node->op == Operator::Subtract ||
              node->op == Operator::Multiply || node->op == Operator::Divide ||
              node->op == Operator::Modulo)) {

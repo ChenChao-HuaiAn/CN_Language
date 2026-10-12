@@ -47,7 +47,13 @@ void X64CodeGenerator::emitInt128Binary(AsmWriter& writer, const ir::IRInstructi
     // 302-a：splitI128 已提取为成员函数（Binary/Bitwise 共享·零行为变更）
     const auto op1 = splitI128(inst.operands[0]);
     const auto op2 = splitI128(inst.operands[1]);
-    const bool isAdd = (inst.opcode == ir::Opcode::Add);
+    const bool isAdd = (inst.opcode == ir::Opcode::Add ||
+                        inst.opcode == ir::Opcode::WrapAdd);
+    // 任务 474：检查开关（Add/Sub 且安全函数；Wrap*/不安全 豁免）——高半
+    //   adc/sbb 的 OF=有符号 128 位溢出、CF=无符号 128 位进/借位出
+    const bool needOvf =
+        (inst.opcode == ir::Opcode::Add || inst.opcode == ir::Opcode::Sub) &&
+        !currentFnUnsafe474_;
     // 低64位：mov rax, lo1 ; add/sub rax, lo2 ; mov dstLo, rax
     // 注意：add/sub 内存操作数需显式 qword ptr（MASM A2070）；常量立即数
     //       （十六进制 h 后缀）无需前缀
@@ -66,6 +72,17 @@ void X64CodeGenerator::emitInt128Binary(AsmWriter& writer, const ir::IRInstructi
         writer.line(std::string(isAdd ? "adc" : "sbb") + " rcx, qword ptr " + op2.second);
     } else {
         writer.line(std::string(isAdd ? "adc" : "sbb") + " rcx, " + op2.second);
+    }
+    if (needOvf) {
+        // 反向结构：jnc/jno 跳过错误块（除零检查同款）
+        const std::string ok = "@ovf_ok" + std::to_string(ptrCheckCounter_++);
+        writer.line(std::string(inst.type == "u128" ? "jnc " : "jno ") + ok);
+        writer.line("mov rcx, 8");
+        writer.line("sub rsp, 32");
+        writer.line("call __cn_runtime_error");
+        writer.line("add rsp, 32");
+        writer.line("ret");
+        writer.raw(ok + ":");
     }
     writer.line("mov " + dstHi + ", rcx");
 }
@@ -143,7 +160,19 @@ void X64CodeGenerator::emitInt128Shift(AsmWriter& writer, const ir::IRInstructio
     const std::string op1Hi = regSlot(inst.operands[0].id);      // %vN 高64位
     const std::string op1Lo = regSlot(inst.operands[0].id + 1);  // %vN+1 低64位
     if (inst.operands[1].isConstant) {
-        const int k = shiftAmtOf128(inst.operands[1].extra) & 127;
+        const int rawK = shiftAmtOf128(inst.operands[1].extra);
+        if (!currentFnUnsafe474_ && (rawK < 0 || rawK >= 128)) {
+            // 任务 474：常量移位量超宽（常量传播面漏入）——反向结构错误码 8
+            const std::string trap = "@ovf" + std::to_string(ptrCheckCounter_++);
+            writer.line("mov ecx, " + std::to_string(rawK));
+            writer.line("cmp ecx, 128");
+            const std::string ok = trap + "_ok";
+            writer.line("jb " + ok);
+            writer.raw(trap + ":");
+            emitOverflowErrorBody(writer);
+            writer.raw(ok + ":");
+        }
+        const int k = rawK & 127;
         if (k == 0) {  // 直通（含 k≡0 mod 128）
             writer.line("mov rax, " + op1Lo);
             writer.line("mov " + dstLo + ", rax");
@@ -196,7 +225,18 @@ void X64CodeGenerator::emitInt128Shift(AsmWriter& writer, const ir::IRInstructio
     const std::string shSrc = (shOp.type == "i128" || shOp.type == "u128")
         ? regSlot(shOp.id + 1) : operandText(shOp);
     writer.line("mov ecx, " + widthFor("i32", shSrc));
-    writer.line("and ecx, 127");  // 规范：k mod 128
+    if (currentFnUnsafe474_) {
+        writer.line("and ecx, 127");  // 规范：k mod 128（不安全 域维持掩码回绕）
+    } else {
+        // 任务 474：安全函数移位量 ∈ [0,128) 域检查（反向 jb·错误块原地）
+        const std::string trap = "@ovf" + std::to_string(ptrCheckCounter_++);
+        writer.line("cmp ecx, 128");
+        const std::string ok = trap + "_ok";
+        writer.line("jb " + ok);
+        writer.raw(trap + ":");
+        emitOverflowErrorBody(writer);
+        writer.raw(ok + ":");
+    }
     writer.line("cmp cl, 64");
     writer.line("jae " + bigL);
     // 小路径（k<64·cl 全程保留）
@@ -240,7 +280,9 @@ void X64CodeGenerator::emitInt128MulDivMod(AsmWriter& writer, const ir::IRInstru
     const bool isUnsigned = (inst.type == "u128");
     std::string helper;
     switch (inst.opcode) {
-        case ir::Opcode::Mul: helper = isUnsigned ? "__cn_mul_u128" : "__cn_mul_i128"; break;
+        case ir::Opcode::Mul:
+        case ir::Opcode::WrapMul:  // 任务 474：回绕乘=i128 运行时辅助本征回绕
+            helper = isUnsigned ? "__cn_mul_u128" : "__cn_mul_i128"; break;
         case ir::Opcode::Div: helper = isUnsigned ? "__cn_div_u128" : "__cn_div_i128"; break;
         case ir::Opcode::Mod: helper = isUnsigned ? "__cn_mod_u128" : "__cn_mod_i128"; break;
         default: helper = "__cn_mul_i128"; break;
