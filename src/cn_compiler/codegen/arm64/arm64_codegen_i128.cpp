@@ -63,7 +63,9 @@ void Arm64CodeGenerator::emitInt128Binary(Arm64AsmWriter& writer,
     // 高64位：adc/sbcs x9 = hi1 +/- hi2（带进位/借位）
     loadI128Part(inst.operands[0], true, "x9");
     loadI128Part(inst.operands[1], true, "x10");
-    writer.line(std::string(isAdd ? "adc" : "sbcs") + " x9, x9, x10");
+    // 任务 474 返工：高半必须 adcs（adc 不置标志——V 读到的是低半 adds 的溢出
+    //   → MAX128+=1 漏检实证）；adcs 的 V=高半有符号溢出=128 位溢出、C=进位出
+    writer.line(std::string(isAdd ? "adcs" : "sbcs") + " x9, x9, x10");
     if (needOvf) {
         // 反向结构：未溢出（b.cc/b.vc）越过错误块；溢出顺序落入
         const std::string ok = "Lovf_ok" + std::to_string(ptrCheckCounter_++);

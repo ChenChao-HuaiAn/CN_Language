@@ -81,6 +81,12 @@ def 主流程() -> int:
     参数 = 解析.parse_args()
     cn = 参数.cn if Path(参数.cn).is_absolute() else str(仓库根 / 参数.cn)
     target = 参数.target or 探测平台()
+    # 运行级可达（红例三返工·2026-10-12）：「交叉平台仅测 compile；运行级形态
+    #   只测本机目标」的设计此前未落实到 build/run 格——显式 --target 交叉平台
+    #   时（x86 机模拟 arm64 视角/CI 矩阵）运行级格产物无法本机执行必红（8 格
+    #   实证）。目标=本机平台才执行运行级（build/run/退出码/除零/验证ir），
+    #   交叉视角自动跳过（不计失败）。
+    运行级可达 = (target == 探测平台())
 
     探针 = 仓库根 / "target" / "cli_contract"
     探针.mkdir(parents=True, exist_ok=True)
@@ -116,6 +122,11 @@ def 主流程() -> int:
         维度["名"] = 名
         print(f"\n=== {名} ===")
 
+    def 跳过(名: str, 原因: str) -> None:
+        # 交叉视角运行级格：不计入失败（红例三返工——产物非本机可执行形态）
+        格.append((名, True, f"SKIP：{原因}"))
+        print(f"[SKIP] {名}：{原因}")
+
     # ============ ① 子命令面 ============
     换维度("① 子命令面（7 命令 × 成功/失败）")
     p = 运行(cn, ["check", str(正常), *台])
@@ -123,9 +134,12 @@ def 主流程() -> int:
     p = 运行(cn, ["check", str(非法), *台])
     断言("check 非法 rc≠0+诊断", p.returncode != 0 and "错误" in 诊断(p), f"rc={p.returncode}")
 
-    p = 运行(cn, ["build", str(正常), *台])
     产物 = 仓库根 / "target" / ("正常" + 产物后缀)
-    断言("build 合法 rc=0+产物", p.returncode == 0 and 产物.exists(), f"rc={p.returncode}")
+    if 运行级可达:
+        p = 运行(cn, ["build", str(正常), *台])
+        断言("build 合法 rc=0+产物", p.returncode == 0 and 产物.exists(), f"rc={p.returncode}")
+    else:
+        跳过("build 合法 rc=0+产物", "交叉视角产物非本机可执行形态（compile 面已测）")
     p = 运行(cn, ["build", str(非法), *台])
     断言("build 非法 rc≠0", p.returncode != 0, f"rc={p.returncode}")
 
@@ -135,10 +149,14 @@ def 主流程() -> int:
     p = 运行(cn, ["compile", str(非法), *台])
     断言("compile 非法 rc≠0", p.returncode != 0, f"rc={p.returncode}")
 
-    p = 运行(cn, ["run", str(正常), *台])
-    断言("run 合法 rc=0+程序输出", p.returncode == 0 and "7" in p.stdout, f"rc={p.returncode}")
-    p = 运行(cn, ["run", str(非法), *台])
-    断言("run 编译失败 rc≠0", p.returncode != 0, f"rc={p.returncode}")
+    if 运行级可达:
+        p = 运行(cn, ["run", str(正常), *台])
+        断言("run 合法 rc=0+程序输出", p.returncode == 0 and "7" in p.stdout, f"rc={p.returncode}")
+        p = 运行(cn, ["run", str(非法), *台])
+        断言("run 编译失败 rc≠0", p.returncode != 0, f"rc={p.returncode}")
+    else:
+        跳过("run 合法 rc=0+程序输出", "交叉视角产物非本机可执行形态")
+        跳过("run 编译失败 rc≠0", "交叉视角产物非本机可执行形态")
 
     for 命令 in ("ir", "ast", "token"):
         p = 运行(cn, [命令, str(正常), *台])
@@ -162,11 +180,16 @@ def 主流程() -> int:
 
     # ============ ② 退出码语义面 ============
     换维度("② 退出码语义面（透传/错误码/编译失败码）")
-    for n in (1, 3, 5, 255):
-        p = 运行(cn, ["run", str(返回码路径[n]), *台])
-        断言(f"run 退出码透传 rc={n}（B4 锚定）", p.returncode == n, f"rc={p.returncode}（期望 {n}）")
-    p = 运行(cn, ["run", str(除零), *台])
-    断言("run 运行期错误码→rc=1", p.returncode == 1 and "错误码1" in 诊断(p), f"rc={p.returncode}")
+    if 运行级可达:
+        for n in (1, 3, 5, 255):
+            p = 运行(cn, ["run", str(返回码路径[n]), *台])
+            断言(f"run 退出码透传 rc={n}（B4 锚定）", p.returncode == n, f"rc={p.returncode}（期望 {n}）")
+        p = 运行(cn, ["run", str(除零), *台])
+        断言("run 运行期错误码→rc=1", p.returncode == 1 and "错误码1" in 诊断(p), f"rc={p.returncode}")
+    else:
+        for n in (1, 3, 5, 255):
+            跳过(f"run 退出码透传 rc={n}（B4 锚定）", "交叉视角产物非本机可执行形态")
+        跳过("run 运行期错误码→rc=1", "交叉视角产物非本机可执行形态")
 
     # ============ ③ 选项面 ============
     换维度("③ 选项面（平台/优化/调试/输出/版本）")
@@ -181,8 +204,11 @@ def 主流程() -> int:
     # --验证-ir：build 正例（IR 生成后验证器跑优化前后两轮·253-a 自 check 格拆出——
     #   check 不触发 IR 生成，原格对验证器零触达）
     验证ir产物 = 仓库根 / "target" / "cli_contract_验证ir"
-    p = 运行(cn, ["build", str(正常), "--验证-ir", "--output", str(验证ir产物), *台])
-    断言("build --验证-ir rc=0（验证器优化前后两轮通过）", p.returncode == 0, f"rc={p.returncode}")
+    if 运行级可达:
+        p = 运行(cn, ["build", str(正常), "--验证-ir", "--output", str(验证ir产物), *台])
+        断言("build --验证-ir rc=0（验证器优化前后两轮通过）", p.returncode == 0, f"rc={p.returncode}")
+    else:
+        跳过("build --验证-ir rc=0（验证器优化前后两轮通过）", "交叉视角产物非本机可执行形态")
 
     p = 运行(cn, ["check", str(正常), "--verbose", *台])
     断言("--verbose rc=0+附加输出", p.returncode == 0 and "命令:" in 诊断(p), f"rc={p.returncode}")
@@ -245,10 +271,14 @@ def 主流程() -> int:
          诊断格式.match(首个诊断行) is not None, f"首行={首个诊断行[:60]}")
     p = 运行(cn, ["check", str(正常), *台])
     断言("check 合法 stderr 无诊断", "错误" not in p.stderr, f"{len(p.stderr)}字节")
-    p = 运行(cn, ["run", str(正常), *台])
-    断言("run 程序输出→stdout（数=7）", "7" in p.stdout and "7" not in p.stderr, "stdout/stderr 分流")
-    p = 运行(cn, ["run", str(非法), *台])
-    断言("run 编译失败 stdout 无程序输出", "7" not in p.stdout, "分流")
+    if 运行级可达:
+        p = 运行(cn, ["run", str(正常), *台])
+        断言("run 程序输出→stdout（数=7）", "7" in p.stdout and "7" not in p.stderr, "stdout/stderr 分流")
+        p = 运行(cn, ["run", str(非法), *台])
+        断言("run 编译失败 stdout 无程序输出", "7" not in p.stdout, "分流")
+    else:
+        跳过("run 程序输出→stdout（数=7）", "交叉视角产物非本机可执行形态")
+        跳过("run 编译失败 stdout 无程序输出", "交叉视角产物非本机可执行形态")
 
     失败 = [名 for 名, ok, _ in 格 if not ok]
     print(f"\nCLI 契约矩阵（检查网第 2 层·{target}）：{len(格) - len(失败)}/{len(格)} 格通过")
