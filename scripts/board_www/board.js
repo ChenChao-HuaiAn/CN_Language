@@ -452,8 +452,9 @@ function 渲染意图() {
   const 们 = 数据.意图们 || [];
   const 字典 = 数据.任务字典 || {};
   if (!们.length) {
-    区.innerHTML = '<div class="空态">当前没有任何机器在跑任务<br><br><code>' +
-      "python scripts/intent.py claim &lt;任务号&gt;</code><br>登记后 8 秒内全网可见</div>";
+    区.innerHTML = '<div class="空态">当前没有已登记的会话（认领任务即自动上板·494）' +
+      "<br><small>在飞干活的机器看「远端在飞分支」页签——真实 git 分支·与登记无关</small>" +
+      "<br><br><code>python scripts/intent.py claim &lt;任务号&gt;</code><br>登记后 8 秒内全网可见</div>";
     return;
   }
   const 按机 = {};

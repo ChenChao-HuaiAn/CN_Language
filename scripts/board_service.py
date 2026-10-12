@@ -20,7 +20,8 @@
 #                                 ·服务端不持 git 凭据不依赖外网——三机任一活着看板即有数据）
 #   POST /api/report_021      旧 021 快照通道（382 退役中·仅保旧客户端兼容不炸）
 #   POST /api/task_create     {标题,请求号?,前置?,优先级?,备注?,机器?,来源?}  立项+发号（201/409）
-#   POST /api/task_update     {号,状态?,分支?,收口sha?,归属?,标题?,前置?,优先级?,备注?} 流转
+#   POST /api/task_update     {号,状态?,分支?,收口sha?,归属?,机器?,对话id?,标题?,前置?,优先级?,备注?} 流转
+#                                 （置 🏃 时自动认领上板：机器+对话id 显式·归属串兜底·494）
 #   POST /api/claim_number    308j 发号/核对（382 后仅视野记账价值·任务表已为唯一权威）
 # 384 文档资源（交接/教训/规范覆盖·文档上服务器二期·board_docs.py 模块）：
 #   POST /api/handoff_add     {机器,条目,来源?}              交接追加（两行制）
@@ -499,6 +500,8 @@ class 处理器(BaseHTTPRequestHandler):
         if 路径 == "/api/task_update":
             with 写锁:
                 码, 响应 = 台账.更新任务(连接, 体)
+                if 码 == 200 and str(体.get("状态", "")) == 台账.状态_在飞:
+                    self._认领上板(体)   # 494：认领即上板（会话卡跟着台账权威走）
                 return self._回JSON(码, 响应)
         if 路径 == "/api/claim_number":
             return self._收发号(体)
@@ -556,6 +559,31 @@ class 处理器(BaseHTTPRequestHandler):
                 (对话id, 机器, 在做, 计划, 备注, 时刻(), time.time(), 时刻()))
             连接.commit()
         return self._回JSON(200, {"好": True, "会话键": f"{机器}-{对话id}"})
+
+    def _认领上板(self, 体: dict):
+        """494（用户批甲案）：台账置 🏃（认领）时自动 upsert 意图行——认领语义的
+        单一权威在服务端台账，会话卡跟着权威走：create/takeover/接棒/网页认领
+        哪条路径都不漏（治「意图从未登记→在飞干活但当前在飞空」缺口，实锤：
+        编排会话 #466/#475 认领后从未 claim·~/.cache 无登记缓存）。机器+对话id
+        显式优先（wt.py 认领传 wt<号>，与 create 自动 claim 会话键同键·后续
+        claim 同键覆盖成完整信息）；归属串兜底。已有行不覆盖 计划/备注/登记时刻。
+        调用方已持写锁；触发条件=更新成功且请求状态为 🏃。"""
+        机器 = str(体.get("机器", "")).strip()
+        对话id = str(体.get("对话id", "")).strip()
+        if not 机器 or not 对话id:
+            归属 = str(体.get("归属", "")).strip()
+            if not 归属:
+                return   # 三者皆无=无法归属会话·静默跳过（历史接口兼容面）
+            机器, 对话id = 归属, 归属
+        在做 = str(体.get("号", "")).strip()
+        连接.execute(
+            """INSERT INTO 意图(对话id,机器,在做,计划,备注,心跳时刻,心跳时戳,登记时刻)
+               VALUES(?,?,?,?,?,?,?,?)
+               ON CONFLICT(对话id) DO UPDATE SET 机器=excluded.机器, 在做=excluded.在做,
+               心跳时刻=excluded.心跳时刻, 心跳时戳=excluded.心跳时戳""",
+            (对话id[:40], 机器[:60], 在做, "",
+             "认领自动上板(494)·claim 后补全", 时刻(), time.time(), 时刻()))
+        连接.commit()
 
     def _注销意图(self, 体: dict):
         # 308h：两种注销口径——按会话（机器+对话id·会话收工）或按在做任务号
