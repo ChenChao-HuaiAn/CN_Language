@@ -752,7 +752,10 @@ private:
     bool tryInterfaceMethodCall(CallExpr* node);
     // 情形A 构造调用族：泛型实例名解析 -> findClass -> NewObject -> 构造查找 -> 发射
     bool emitConstructorCall(CallExpr* node);
-    std::string resolveGenericCtorInstanceName(std::string className);
+    // 465（2026-10-12）：加 const——纯字符串映射（substGenericType/findClass 只读），
+    //   exprSrcType（const）的构造调用类型推导须与 emitConstructorCall 共用本判据
+    //   （单一事实源，防两处判定漂移）
+    std::string resolveGenericCtorInstanceName(std::string className) const;
     const ClassMemberInfo* findCtorMember(const ClassInfo* ci,
                                           const std::string& className,
                                           CallExpr* node);

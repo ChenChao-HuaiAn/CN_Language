@@ -95,6 +95,10 @@ bool SemanticAnalyzer::checkUnaryOperatorOverload(UnaryExpr* node,
                 opSym, operandType, {}, node->location);
             if (mi != nullptr) {
                 lastType_ = mi->type;
+                // 465（2026-10-12）：写回重载方法返回类型（与 BinaryExpr::
+                // resolvedType 同构）——IR 层 exprSrcType 的 UnaryExpr 分支
+                // 据此推导单目表达式结果类类型（(-点(5)).x 接收者分派依据）。
+                node->resolvedType = mi->type;
                 return true;
             }
         }

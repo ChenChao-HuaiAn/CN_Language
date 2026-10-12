@@ -386,7 +386,7 @@ bool IRGenerator::emitConstructorCall(CallExpr* node) {
 
 // 泛型实例化构造 盒子<整32>(42) 的实例名映射（原情形A 内联段迁移）：
 //   名<实参> -> 类名$实参1$实参2（语义层 instantiateGeneric mangling 对齐）；
-std::string IRGenerator::resolveGenericCtorInstanceName(std::string className) {
+std::string IRGenerator::resolveGenericCtorInstanceName(std::string className) const {
     // 阶段3（Task 3.8，E2E 26 修复）：泛型实例化构造 盒子<整32>(42)——callee
     //   为 名<实参>（IdentifierExpr 名字含 <），语义层已单态化注册实例化类
     //   （盒子$整32），此处把 名<实参> 映射到实例化类符号名。

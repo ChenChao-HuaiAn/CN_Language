@@ -825,6 +825,14 @@ std::string IRGenerator::exprSrcType(Expr* node) const {
             const std::string rt = static_cast<BinaryExpr*>(node)->resolvedType;
             return rt;
         }
+        case NodeType::UnaryExpr: {
+            // 465（2026-10-12）：单目运算符重载（- ! ~）结果源码类型——语义层
+            //   visitUnaryExpr 命中重载时写回 resolvedType（与 BinaryExpr 同构）。
+            //   原缺此分支 → 接收者=单目表达式形态（(-点(5)).x）类型推导空串 →
+            //   handleClassMemberExpr 实例字段路径 isClassType 假 → return false →
+            //   结构体路径 decl 空 → 字段读降级常量 0（静默错值）。
+            return static_cast<UnaryExpr*>(node)->resolvedType;
+        }
         case NodeType::SelfExpr:
             return currentClass_;
         case NodeType::TernaryExpr: {
@@ -846,11 +854,29 @@ std::string IRGenerator::exprSrcType(Expr* node) const {
             return "";
         case NodeType::CallExpr: {
             // 宿主缺陷根治（2026-08-25）：函数/方法调用结果源码类型——优先语义层写回的
-            //   resolvedType（正常/错误 等内置），普通函数调用 resolvedType 为空时
+            // resolvedType（正常/错误 等内置），普通函数调用 resolvedType 为空时
             //   按被调函数返回类型解析（安全除法(a,b) -> 结果<整32,整32>）。原缺
             //   CallExpr 分支返回空串，? 运算符读偏移按操作数类型推导失败（默认 8 读错位）。
             const CallExpr* call = static_cast<CallExpr*>(node);
             if (!call->resolvedType.empty()) return call->resolvedType;
+            // 465 根治（2026-10-12）：构造调用 类名(实参)——callee 名经泛型实例名
+            //   映射（resolveGenericCtorInstanceName，与 emitConstructorCall 同一
+            //   判据单一事实源）后 findClass 命中即构造调用 → 返回实例化类名。
+            //   原缺此分支，构造调用临时对象的源码类型恒空串 → 单目/二元运算符
+            //   重载分派（handleUnaryOperatorOverload/handleOperatorOverload 的
+            //   isClassType 判据）全 miss 静默落内置通道：!温度(0) 对对象指针发射
+            //   逻辑非（指针非零恒得假）、点(1)+点(2) 退化为指针相加（436 同族
+            //   「表达式位类型推导缺分支→下游分派 miss」）；先存变量再运算
+            //   （标识符有 lookupSrcType 路径）不受影响=两侧分叉铁证。
+            //   判据次序对齐语义层 visitCallExpr（类名优先于普通函数名）。
+            if (call->callee->getType() == NodeType::IdentifierExpr &&
+                semantic_ != nullptr) {
+                const std::string ctorName = resolveGenericCtorInstanceName(
+                    static_cast<const IdentifierExpr*>(call->callee.get())->name);
+                if (!ctorName.empty() && semantic_->findClass(ctorName) != nullptr) {
+                    return ctorName;
+                }
+            }
             if (call->callee->getType() == NodeType::IdentifierExpr &&
                 semantic_ != nullptr) {
                 const std::string fn =
