@@ -130,7 +130,10 @@ def 板服务地址() -> str:
 
 
 def 机名() -> str:
-    return os.environ.get("CN_MACHINE_NAME", "").strip() or socket.gethostname()
+    """机器标识统一走 intent 权威实现（508·归纳零复制）：hostname·平台-架构·指纹6
+    （hostname 撞名根治·CN_MACHINE_NAME 覆盖口）。函数内 import 防模块级环。"""
+    import intent
+    return intent.机器名()
 
 
 def 服务调(方法: str, 路径: str, 体=None) -> dict | None:

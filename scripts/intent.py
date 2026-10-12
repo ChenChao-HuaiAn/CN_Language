@@ -19,7 +19,10 @@ show 无法取数 exit 1。令牌复用 scripts/queue_client.json 的「令牌�
 （同一把锁守同一栋楼·零新增配置）；URL 可用环境变量 CN_BOARD_URL 覆盖。
 会话 id 按 worktree 粒度（308i：仓库根目录名·持久于 ~/.cache/cn_board_session_id_<树名>；
 同机多 worktree 并行互不覆盖，CN_BOARD_SESSION 环境变量可显式覆盖·特殊场景用）；
-机器名取 CN_MACHINE_NAME 环境变量（优先）或主机名（494·用户令：机器显示统一按机器用户名·别名文件层已废）。
+机器标识取 CN_MACHINE_NAME 环境变量（唯一覆盖口·原样生效）或自动合成本机标识：
+hostname·平台-架构·机器指纹6（508·用户令：hostname 已撞名——家机/深度机同为
+ChenChao-PC，由运行时探测的机器指纹区分，零配置·加新机自动唯一；494「显示统一
+按机器用户名」精神保留，hostname 仍在首位）。
 """
 from __future__ import annotations
 
@@ -66,17 +69,62 @@ def 会话id() -> str:
     return 会话文件.read_text(encoding="utf-8").strip() or 会话键
 
 
+def 机器指纹() -> str:
+    """运行时探测本机唯一指纹（508·零配置·加新机自动唯一·重装系统才会变）：
+    win=注册表 MachineGuid·linux=/etc/machine-id（dbus 路径兜底）·其余=MAC
+    （uuid.getnode）。全不可得退 hostname+平台串。返回 sha256 前 6 位十六进制
+    ——hostname 撞名（家机/深度机同 ChenChao-PC）后的最后一道区分。"""
+    import hashlib
+    import uuid
+    原值 = ""
+    try:
+        if sys.platform.startswith("win"):
+            import winreg
+            with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE,
+                                r"SOFTWARE\Microsoft\Cryptography") as 键:
+                原值 = str(winreg.QueryValueEx(键, "MachineGuid")[0])
+        else:
+            for 路径 in ("/etc/machine-id", "/var/lib/dbus/machine-id"):
+                try:
+                    原值 = Path(路径).read_text(encoding="ascii", errors="ignore").strip()
+                    if 原值:
+                        break
+                except OSError:
+                    continue
+    except OSError:
+        原值 = ""
+    if not 原值:
+        try:
+            原值 = str(uuid.getnode())    # MAC 整数（拿不到网卡时 Python 自回退随机数·仍稳定于进程生命周期）
+        except Exception:
+            原值 = f"{socket.gethostname()}:{sys.platform}"
+    return hashlib.sha256(原值.encode("utf-8")).hexdigest()[:6]
+
+
+def 平台段() -> str:
+    """平台-架构短标签（508·看板一眼分辨 win/linux/arm64）。"""
+    import platform
+    系统 = {"win32": "win", "linux": "linux", "darwin": "mac"}.get(
+        sys.platform, (sys.platform or "unknown").split(".")[0])
+    架构原 = (platform.machine() or "").upper()
+    架构 = {"AMD64": "x64", "X86_64": "x64", "AARCH64": "arm64",
+            "ARM64": "arm64"}.get(架构原, 架构原.lower() or "unknown")
+    return f"{系统}-{架构}"
+
+
 def 机器名() -> str:
     import os
     import socket
-    # 494·用户令（2026-10-12）：机器显示统一按机器用户名（hostname·如家机
-    # ChenChao-PC）——废除 ~/.cache/cn_board_machine 别名文件层（「家机」别名
-    # 与 494 认领上板的 hostname-树名双轨并存曾致同机拆两组+假撞号警告）。
-    # CN_MACHINE_NAME 环境变量保留为唯一覆盖口（特殊场景手动指定）。
+    # 508·用户令（2026-10-12）：hostname 已撞名（家机/深度机同为 ChenChao-PC，
+    # 看板在飞分组混机）——机器标识=hostname·平台-架构·机器指纹6。指纹=运行时
+    # 探测 machine-id/MachineGuid，零配置·加新机自动唯一。494「显示统一按机器
+    # 用户名」精神保留：hostname 仍在首位，后缀只承担撞名区分。
+    # CN_MACHINE_NAME 环境变量=唯一覆盖口（原样生效·特殊场景手动指定）。
+    # 分隔符用「·」不与「-」混——服务端 494 归属串拆分正则 ^(.+)-wt(\d+)$ 以「-」定位树名段。
     环境 = os.environ.get("CN_MACHINE_NAME", "").strip()
     if 环境:
         return 环境
-    return socket.gethostname()
+    return f"{socket.gethostname()}·{平台段()}·{机器指纹()}"
 
 
 def 调服务(方法: str, 路径: str, 体=None, 超时=8):
@@ -197,10 +245,12 @@ def 路过续约() -> None:
             if 已收口(str(旧体.get("在做", ""))):
                 登记缓存.unlink()    # 316：任务已收口→下板（防复活·窄通道收口兜底）
                 return
+            旧体["机器"] = 机器名()   # 508：机器名升级/覆盖口变更后首次路过即迁新标识（旧行断心跳自然黄标消失）
             调服务("POST", "/api/intent", 旧体, 超时=4)
         except (urllib.error.URLError, OSError, ValueError):
             try:    # 492：仅失败才重试一次（原无条件二次重发=每次路过双倍 POST 冗余）
                 旧体 = json.loads(登记缓存.read_text(encoding="utf-8"))
+                旧体["机器"] = 机器名()
                 调服务("POST", "/api/intent", 旧体, 超时=4)
             except (urllib.error.URLError, OSError, ValueError):
                 pass

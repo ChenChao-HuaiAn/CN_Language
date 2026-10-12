@@ -15,12 +15,11 @@
   python scripts/board_cli.py 裁决 --号 379 --标题 "…" --讲解文件 x.md --选项文件 o.json
   python scripts/board_cli.py 裁决看 [--全部]                       # 裁决项一览（缺省只看待裁决）
 批文件格式：[{号,标题,优先级?,讲解,选项们:[{键,描述,推荐?}]}]——讲解长文走文件不走命令行。
-机器名自动=CN_MACHINE_NAME（须为 家机/深度机/单位机）或 hostname 前缀别名；识别不出用 --机器。
+机器名自动=CN_MACHINE_NAME（唯一覆盖口）或 hostname·平台-架构·指纹6（508·零配置·hostname 撞名根治）；--机器 可显式指定。
 """
 from __future__ import annotations
 
 import json
-import socket
 import sys
 import urllib.parse
 import urllib.request
@@ -29,9 +28,6 @@ from pathlib import Path
 脚本目录 = Path(__file__).resolve().parent
 本树根 = 脚本目录.parent
 默认地址 = "http://124.222.106.84:8301"
-三机名 = ("家机", "深度机", "单位机")
-主机别名 = {"deepin": "深度机", "CHENCHAO-W": "家机", "CHENCHAO-PC": "家机",
-            "arm64": "单位机", "user-pc": "单位机"}
 
 
 def 服务地址() -> str:
@@ -48,17 +44,14 @@ def 令牌() -> str:
 
 
 def 机器名(显式: str = "") -> str:
-    import os
+    """交接/教训归属标签（508）：显式 --机器 直通；否则统一走 intent 权威实现
+    （hostname·平台-架构·指纹6·CN_MACHINE_NAME 覆盖口）——永不返回空。
+    494 残留的三机名白名单/hostname 前缀别名猜测层废除（hostname 已撞名，猜测必错标：
+    深度机 ChenChao-PC 会被别名表错标「家机」）。"""
     if 显式:
         return 显式
-    环境 = os.environ.get("CN_MACHINE_NAME", "").strip()
-    if 环境 in 三机名:
-        return 环境
-    host = socket.gethostname()
-    for 前缀, 名 in 主机别名.items():
-        if host.upper().startswith(前缀.upper()):
-            return 名
-    return ""
+    import intent
+    return intent.机器名()
 
 
 def 调服务(方法: str, 路径: str, 体=None, 超时=15):
@@ -92,14 +85,10 @@ def 落缓存(名: str, 体) -> None:
 
 
 def cmd_收工(a) -> int:
-    机器 = 机器名(a.机器)
-    if not 机器:
-        print("[失败] 机器名识别不出——用 --机器 家机|深度机|单位机 显式指定")
-        return 2
     if not a.行:
         print("[失败] --行 必填（本轮一句话+下一棒指针·v5 两行制）")
         return 2
-    码, r = 调服务("POST", "/api/handoff_add", {"机器": 机器, "条目": a.行,
+    码, r = 调服务("POST", "/api/handoff_add", {"机器": 机器名(a.机器), "条目": a.行,
                                                 "来源": "board_cli收工"})
     if 码 not in (200, 201):
         print(f"[失败] 交接写入：{码} {r.get('错误', r)}")
@@ -118,11 +107,10 @@ def cmd_收工(a) -> int:
 
 
 def cmd_交接(a) -> int:
-    机器 = 机器名(a.机器)
-    if not 机器 or not a.行:
-        print("[失败] 须 --行 条目（机器识别不出时加 --机器）")
+    if not a.行:
+        print("[失败] 须 --行 条目")
         return 2
-    码, r = 调服务("POST", "/api/handoff_add", {"机器": 机器, "条目": a.行,
+    码, r = 调服务("POST", "/api/handoff_add", {"机器": 机器名(a.机器), "条目": a.行,
                                                 "来源": "board_cli"})
     if 码 not in (200, 201):
         print(f"[失败] {码} {r.get('错误', r)}")

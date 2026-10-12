@@ -68,7 +68,7 @@ def 建表(con: sqlite3.Connection) -> None:
 
 def 交接添加(con: sqlite3.Connection, 体: dict):
     """追加一条交接（两行制=标题+指针合一段）。返回 (HTTP码, 响应)。"""
-    机器 = 净化(体.get("机器"), 20)
+    机器 = 净化(体.get("机器"), 64)   # 508：20→64——机器标识指纹化（hostname·平台-架构·指纹6≈25 字符）防截断指纹
     条目 = str(体.get("条目", "") or "").strip()
     if not 机器 or not 条目:
         return 400, {"错误": "机器 与 条目 必填"}

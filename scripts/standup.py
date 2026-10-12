@@ -5,7 +5,7 @@
 → 待裁决件数。384 起 交接/教训读看板服务端（两文档已退位删除），服务不可达降级读
 board_cache.json 最后缓存（无网也能开工简报）。
 
-用法：python scripts/standup.py [--机 深度机]   # --机 缺省按 hostname 别名表推测·未知 hostname 落原名不猜（408）
+用法：python scripts/standup.py [--机 深度机]   # --机 缺省自动=hostname·平台-架构·指纹6（508·hostname 别名猜测表已废·408 禁猜测一脉）
 """
 from __future__ import annotations
 
@@ -18,7 +18,6 @@ import urllib.parse
 from pathlib import Path
 
 本树根 = Path(__file__).resolve().parent.parent
-主机别名 = {"deepin": "深度机", "CHENCHAO-W": "家机", "arm64": "单位机", "user-pc": "单位机"}  # hostname 前缀→交接节关键词（296：user-pc=单位机实机·原兜底误标深度机）
 
 
 def 看板地址() -> str:
@@ -71,14 +70,18 @@ def _读缓存(名: str):
         return None
 
 
-def 本机节(机: str) -> list[str]:
-    """384：交接本机节改读看板服务端（交接.md 已退位删除）·降级读缓存。"""
+def 本机节(机: str, 主机: str = "") -> list[str]:
+    """384：交接本机节改读看板服务端（交接.md 已退位删除）·降级读缓存。
+    508：机器标识已指纹化（hostname·平台-架构·指纹6），服务端 machine=? 精确
+    过滤读不到旧格式（「家机」/裸 hostname）条目——改拉混流后客户端按 hostname
+    前缀过滤（新旧机器标识都以 hostname 开头·撞名机旧条目互认属撞名本质·滚动自愈）。"""
     import urllib.request
+    前缀 = 主机 or 机.split("·")[0]
     try:
-        q = urllib.parse.quote(机)
         with urllib.request.urlopen(
-                f"{看板地址()}/api/handoff?machine={q}&limit=2", timeout=8) as r:
-            条 = json.loads(r.read().decode("utf-8")).get("条目们", [])
+                f"{看板地址()}/api/handoff?limit=50", timeout=8) as r:
+            混流 = json.loads(r.read().decode("utf-8")).get("条目们", [])
+        条 = [t for t in 混流 if str(t.get("机器", "")).startswith(前缀)][:2]
         _落缓存("handoff", {"机器": 机, "条目们": 条})
     except Exception:
         缓 = _读缓存("handoff") or {}
@@ -162,22 +165,20 @@ def 看板自动claim() -> list[str]:
 
 def 主流程() -> int:
     解析 = argparse.ArgumentParser(description="开机一条命令（241）")
-    解析.add_argument("--机", default=None, help="本机名（缺省按 hostname 推测）")
+    解析.add_argument("--机", default=None, help="本机名（缺省自动=hostname·平台-架构·指纹6）")
     参数 = 解析.parse_args()
     主机 = socket.gethostname()
-    机 = 参数.机 or next((v for k, v in 主机别名.items()
-                          if 主机.lower().startswith(k.lower())), None)
-    提示 = ""
-    if not 机:  # 408：未知 hostname 不再误标具体机名（用户令：机器身份禁 hostname 猜测）
-        机 = 主机
-        提示 = f"⚠ hostname「{主机}」不在别名表·交接节按原名查（--机 家机|深度机|单位机 可指定）"
+    # 508：机器标识统一走 intent 权威实现（hostname·平台-架构·指纹6）——
+    # hostname 前缀别名猜测表废除（408 用户令「机器身份禁 hostname 猜测」一脉；
+    # hostname 已撞名后猜测必错标：深度机 ChenChao-PC 曾被错标「家机」）。
+    sys.path.insert(0, str(本树根 / "scripts"))
+    import intent
+    机 = 参数.机 or intent.机器名()
     输出 = ["═" * 46, f" 开工简报·{机}·{主机}", "═" * 46]
-    if 提示:
-        输出.append(提示)
     输出 += 落后提示()
     输出 += 看板自动claim()
     输出 += 看板与裁决()
-    输出 += 本机节(机)
+    输出 += 本机节(机, 主机)
     输出 += 教训高权重()
     print("\n".join(输出))
     return 0

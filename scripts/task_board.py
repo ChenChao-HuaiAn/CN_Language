@@ -40,10 +40,6 @@ from board_tasks import 僵尸疑天数   # 392：僵尸疑阈值提示（与服
 板服务地址 = os.environ.get("CN_BOARD_URL", "http://124.222.106.84:8301").rstrip("/")
 
 
-def 机名() -> str:
-    return os.environ.get("CN_MACHINE_NAME", "").strip() or socket.gethostname()
-
-
 def 服务调(路径: str):
     """GET 只读查询——不可达返回 None（调用方按场景降级/报错）。"""
     try:
