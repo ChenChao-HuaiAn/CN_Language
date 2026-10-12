@@ -21,6 +21,20 @@ namespace cn_compiler {
 
 void SemanticAnalyzer::visitVarDecl(VarDecl* node) {
     std::string varType = node->typeName;
+    // 324 甲案（2026-10-09 用户批·001 豁免面条文）：函数内静态无初值声明=
+    //   登记面拒绝（Rust `static` 须显式初值同款——显式初值消除「零初始化
+    //   时机」歧义）。v2 语义检查中.cn:597 声明点同构执法（修饰=1 函数内
+    //   标记·顶层静态放行不变）；诊断文案对齐。宿主原仅 def-init 读位拒绝
+    //   （666 E0381 面）——先写后读形态漏网放行与 v2 分叉（479 伞批实测）。
+    //   funcScopeStart_>=0=函数体上下文（顶层 globals 不走本函数或
+    //   funcScopeStart_=-1，双保险）。诊断后继续走正常声明登记（单诊断
+    //   口径对齐 v2——不 return，避免后续语句连环「未声明」噪音）。
+    if (node->isStatic && node->initializer == nullptr &&
+        !node->funcPtr.isFunctionPtr() && funcScopeStart_ >= 0) {
+        diagnostics_.report(DiagnosticLevel::Error, node->location,
+                            "静态变量 '" + node->name +
+                                "' 未初始化，不能读取（无初值·#324）");
+    }
     // #286（2026-10-08 甲案）：数组长度位常量折叠（[尺寸]/[2+2]→[4]）——
     //   类型串进泛型归一/布局前纯数字化（001 §3.5 数组长度=编译期常量表达式）
     if (!varType.empty() && varType.find('[') != std::string::npos) {

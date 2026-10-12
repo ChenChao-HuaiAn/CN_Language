@@ -100,8 +100,19 @@ bool IRGenerator::genStaticLocalScalarDirect(VarDecl* node,
                           NodeType::IntegerLiteral)) {
         std::string initText = "0";
         if (node->initializer != nullptr) {
-            initText = std::to_string(
-                static_cast<IntegerLiteral*>(node->initializer.get())->value);
+            const auto* lit =
+                static_cast<IntegerLiteral*>(node->initializer.get());
+            // 478（473 采样轮）：i128/u128 目标直存文本改用 raw（剥后缀）——
+            //   原 std::to_string(value) 的 value 是 int64_t（parser parseIntValue
+            //   std::stoll 超域抛异常 catch 返回 0），超 整64 域字面量静默物化
+            //   成 0（静态 整128 甲 = i128::MAX 实测槽 .quad 0×2 读出 0·win/linux
+            //   双态同病零诊断）；顶层静态同通道用 raw（ir_decl.cpp 467-a T46）
+            //   两侧分叉。≤64 位域维持 value 十进制（零回归面）。
+            if (stType == "i128" || stType == "u128") {
+                initText = types::stripLiteralSuffix(lit->raw);
+            } else {
+                initText = std::to_string(lit->value);
+            }
         }
         module_->globalStatics[key] = stType;
         // codegen .data 初值：globalStaticInits（字面量文本）

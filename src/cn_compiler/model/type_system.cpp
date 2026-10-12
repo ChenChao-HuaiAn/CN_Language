@@ -164,7 +164,15 @@ bool parseInt128InitText(const std::string& text, bool isSigned,
     unsigned long long lo = 0, hi = 0;
     for (const char ch : s) {
         const int d = p128DigitValue(ch);
-        if (d < 0 || static_cast<unsigned long long>(d) >= base) return false;
+        // 478（473 采样轮）：类型后缀 L/l/U/u 自断（词法原样存 raw 文本，
+        //   顶层静态直存通道 initText=raw 未剥后缀——`正128 顶 = …ULL;` 实测
+        //   解析失败回退零占位读出 0）；其余非法字符仍拒绝。与 v2 拆半
+        //   解析128位初值文本 810 注释「后缀 L/l/U/u 自断」同构对齐。
+        if (d < 0) {
+            if (ch == 'L' || ch == 'l' || ch == 'U' || ch == 'u') break;
+            return false;
+        }
+        if (static_cast<unsigned long long>(d) >= base) return false;
         // (hi:lo) = (hi:lo)*base + d —— lo 半字分解乘法：
         const unsigned long long loLo = lo & 0xFFFFFFFFULL, loHi = lo >> 32;
         const unsigned long long t = loLo * base + static_cast<unsigned long long>(d);

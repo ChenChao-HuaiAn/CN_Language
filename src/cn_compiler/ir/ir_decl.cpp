@@ -64,8 +64,40 @@ void IRGenerator::visitProgram(Program* node) {
                 if (g->initializer != nullptr) {
                     const NodeType it = g->initializer->getType();
                     if (it == NodeType::IntegerLiteral) {
-                        module_->globalStaticInits[g->name] =
-                            static_cast<IntegerLiteral*>(g->initializer.get())->raw;
+                        // 478（473 采样轮）：顶层静态字面量补 128 位域检查——
+                        //   原直存通道绕过 visitIntegerLiteral 域检查，无后缀
+                        //   u128::MAX 赋 正128 漏网放行（483 实锚），与 540
+                        //   「双侧同拒」裁决（001 §4.3 后缀映射·无后缀按整128
+                        //   有符号域）矛盾。提升链/判据/文案与 visitIntegerLiteral
+                        //   同构（literalTypeOf 后缀+textExceeds 值域提升）。
+                        const auto* lit =
+                            static_cast<IntegerLiteral*>(g->initializer.get());
+                        const std::string strippedLit =
+                            types::stripLiteralSuffix(lit->raw);
+                        std::string litType =
+                            types::literalTypeOf(lit->raw, false);
+                        if ((litType == "整32" || litType == "整64") &&
+                            types::textExceedsInt64(strippedLit)) {
+                            litType = "整128";
+                        }
+                        if (litType == "正64" &&
+                            types::textExceedsU64(strippedLit)) {
+                            litType = "正128";
+                        }
+                        if (types::isI128(litType)) {
+                            const bool litSigned = (litType == "整128");
+                            if (!types::i128TextInRange(strippedLit,
+                                                        litSigned)) {
+                                diagnostics_.report(
+                                    DiagnosticLevel::Error, g->location,
+                                    "整数字面量超出" +
+                                        std::string(litSigned
+                                                        ? "整128（2^127-1）"
+                                                        : "正128（2^128-1）") +
+                                        "范围");
+                            }
+                        }
+                        module_->globalStaticInits[g->name] = lit->raw;
                     } else if (it == NodeType::UnaryExpr &&
                                types::isInt128Type(canonStatic)) {
                         // T46（467-a）缺口①（IR 侧·Rust const-eval 直存 .data
@@ -90,9 +122,27 @@ void IRGenerator::visitProgram(Program* node) {
                         }
                         if (sign != 0 &&
                             folded->getType() == NodeType::IntegerLiteral) {
-                            module_->globalStaticInits[g->name] =
+                            const std::string foldedText =
                                 std::string(sign < 0 ? "-" : "") +
                                 static_cast<const IntegerLiteral*>(folded)->raw;
+                            // 478（473 采样轮）：±字面量链同补域检查（原超域
+                            //   静默落零占位——parseInt128InitText 域判定失败
+                            //   ok=false 无诊断）。符号域按目标类型（与发射层
+                            //   判定同源 isInt128Signed）——负字面量赋 正128
+                            //   =域外拒绝；负界 −2^127 合法。
+                            const bool tgtSigned =
+                                types::isInt128Signed(canonStatic);
+                            if (!types::i128TextInRange(foldedText,
+                                                        tgtSigned)) {
+                                diagnostics_.report(
+                                    DiagnosticLevel::Error, g->location,
+                                    "整数字面量超出" +
+                                        std::string(tgtSigned
+                                                        ? "整128（2^127-1）"
+                                                        : "正128（2^128-1）") +
+                                        "范围");
+                            }
+                            module_->globalStaticInits[g->name] = foldedText;
                         } else {
                             // 非 ±字面量链（调用等运行期初值）：保持 staticCtor
                             //   入口注入通道（注入处 StorePtr 对 128 位传 IR 名）
