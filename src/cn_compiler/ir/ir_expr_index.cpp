@@ -210,7 +210,34 @@ void IRGenerator::visitIndexExpr(IndexExpr* node) {
     if (index.type != "i64") {
         index = emitResult(ir::Opcode::Cast, {index}, "i64", "", node->location);
     }
+    // 244（2026-10-12·数组返回值临时下标·1014 链式访问同族）：对象为函数/方法
+    //   调用（造表()[1]）——返回类型经 exprSrcType 解析（其 CallExpr 分支已支持）。
+    //   原无此分支：落「其他对象」兜底 stride=8/i64 宽读 → 整32[3] 临时上
+    //   [0]=打包读 10+20*2^32=85899345930、[1] 偏移 8 读 30、[2] 越界读栈垃圾
+    //   （探针实测铁证）——放行但静默错值=安全红线。001 §4.5 优先级13 后缀
+    //   `()` `[]` 同级可链（1014 同款定性）→ 临时数组下标按元素类型步进+
+    //   元素宽度加载+静态长度越界检查（与数组变量路径同防线）。
+    std::string callRetType244;
+    if (node->object->getType() == NodeType::CallExpr) {
+        callRetType244 = exprSrcType(node->object.get());
+    }
     std::int64_t stride = 8;
+    if (!callRetType244.empty() && semantic_ != nullptr) {
+        if (types::isArray(callRetType244)) {
+            // 数组返回临时：元素大小步进 + 静态长度越界检查（与数组变量同防线）
+            const std::string elemSrc244 = types::arrayElemOf(callRetType244);
+            stride = semantic_->typeSizeOf(elemSrc244);
+            if (stride <= 0) stride = 8;
+            emitBoundsCheck(index, types::arrayLenOf(callRetType244), node->location);
+        } else if (types::canonical(callRetType244) == "字符串") {
+            // 字符串返回临时（取串()[i]）：字符* 字节视图步进 1（A-1/D30 口径；
+            //   越界检查由下方 elemIrType=="i8"&&stride==1 统一面挂）
+            stride = 1;
+        } else if (types::isPointer(callRetType244)) {
+            // 指针返回临时（取p()[i]）：步进按所指元素（与指针变量 p[i] 同规则）
+            stride = ptrElemStride(callRetType244);
+        }
+    }
     // H8 补完（2026-08-25）：隐式类字段对象（向量 数据 T* 的 数据[位置] 读取）——
     //   lookupSrcType 为空（字段不在 IR varStack），按字段源码类型推导步进
     //   （ptrElemStride：类元素按类总大小，原兜底 8 -> 元素错位）。
@@ -272,7 +299,24 @@ void IRGenerator::visitIndexExpr(IndexExpr* node) {
     //   结构体元素返回地址（供按值传参），普通元素 LoadPtr 按元素类型
     std::string elemIrType = "i64";
     bool elemIsStruct = false;
-    if (node->object->getType() == NodeType::MemberExpr) {
+    // 244：调用返回的元素形态（与上方 stride 段同源——数组=元素宽度、字符串=
+    //   i8 字节视图、指针=所指宽度；结构体元素地址语义与数组变量路径全同构；
+    //   i64 兜底仅对无类型信息形态保留）
+    if (!callRetType244.empty() && types::isArray(callRetType244)) {
+        const std::string elemSrc244 = types::arrayElemOf(callRetType244);
+        elemIrType = mapType(elemSrc244);
+        if (semantic_ != nullptr &&
+            (semantic_->isStructType(types::canonical(elemSrc244)) ||
+             semantic_->isClassType(types::canonical(elemSrc244)))) {
+            elemIsStruct = true;
+        }
+    } else if (!callRetType244.empty() &&
+               types::canonical(callRetType244) == "字符串") {
+        elemIrType = "i8";
+    } else if (!callRetType244.empty() && types::isPointer(callRetType244)) {
+        elemIrType = mapType(types::pointeeOf(callRetType244));
+    }
+    else if (node->object->getType() == NodeType::MemberExpr) {
         MemberExpr* inner = static_cast<MemberExpr*>(node->object.get());
         const std::string innerType = memberObjStructType(inner);
         const StructDecl* innerDecl = semantic_->findStruct(types::canonical(innerType));
