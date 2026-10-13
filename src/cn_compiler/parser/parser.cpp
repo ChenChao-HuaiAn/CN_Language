@@ -720,6 +720,55 @@ std::unique_ptr<Program> Parser::parse(const std::vector<Token>& tokens) {
                 reportErrorHere("预期变量名，实际为 '" + current().getValue() + "'");
                 synchronize();
             }
+        } else if ((isTypeKeyword(currentType()) || check(TokenType::Identifier)) &&
+                   (peek(1).getType() == TokenType::Identifier ||
+                    funcPtrDeclAhead(true, true, false))) {
+            // 569 甲案（2026-10-14 用户裁决·001 §5.2a）：顶层裸全局变量声明
+            //   `整32 全局计数 = 5;` —— §5.1 文法「全局变量声明」实体形态
+            //   （此前落 else 报「预期顶层声明」=宿主侧分叉根因）。
+            //   解析为 VarDecl(isConst=false,isStatic=false) 存入 globals（与
+            //   常量/静态同容器·语义层三路分派）。可达性说明：外部/模块/常量/
+            //   静态 等关键字形态已被上方分支消费，至此的类型关键字/标识符
+            //   =类型名起点；guard=名位标识符（`类型 名`）或函数指针形态
+            //   （`类型(*名)(参数)`·001 §1155 ⑥全局变量位）。
+            //   初始化器常量性由语义层执法（§5.2a d 款·constinit 思路）。
+            auto decl = std::make_unique<VarDecl>();
+            decl->location = current().getLocation();
+            // 040 同款：函数指针全局槽 `整32(*回调)(整32) = 函数名;`
+            //   funcPtr 承载（无 typeName）·初值常量性=§5.2a d 款（函数地址
+            //   常量性语义层同判·非常量即拒）
+            if ((isTypeKeyword(currentType()) || check(TokenType::Identifier)) &&
+                funcPtrDeclAhead(true, true, false)) {
+                FuncPtrTypeInfo globalFp;
+                if (parseFuncPtrType(globalFp) && !globalFp.name.empty()) {
+                    decl->funcPtr = globalFp;
+                    decl->name = globalFp.name;
+                    if (check(TokenType::Equal)) {
+                        advance();
+                        decl->initializer = parseExpr();
+                    }
+                    decl->access = moduleAccess;  // 记录模块级可见性（Task 3.6）
+                    program->globals.push_back(std::move(decl));
+                    consumeSemicolon();  // plans/015+569 配套：顶层全局变量声明须 ';' 终结
+                    continue;
+                }
+            }
+            // parseTypeNameEx 支持泛型/指针/数组类型（同静态通道·P3-8 补全口径）
+            decl->typeName = parseTypeNameEx();
+            if (check(TokenType::Identifier)) {
+                decl->name = current().getValue();
+                advance();
+                if (check(TokenType::Equal)) {
+                    advance();
+                    decl->initializer = parseExpr();
+                }
+                decl->access = moduleAccess;  // 记录模块级可见性（Task 3.6）
+                program->globals.push_back(std::move(decl));
+                consumeSemicolon();  // plans/015+569 配套：顶层全局变量声明须 ';' 终结
+            } else {
+                reportErrorHere("预期变量名，实际为 '" + current().getValue() + "'");
+                synchronize();
+            }
         } else {
             reportErrorHere("预期顶层声明，实际为 '" + current().getValue() + "'");
             synchronize();  // 跳过无法识别的顶层内容

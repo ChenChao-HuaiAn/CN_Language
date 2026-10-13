@@ -709,13 +709,109 @@ void SemanticAnalyzer::checkUnionsAndEnums(Program* node) {
 void SemanticAnalyzer::registerGlobalConstsAndStatics(Program* node) {
     registerConstValues(node, false);
     for (auto& g : node->globals) {
-        // 2026-08-30 根治（P3-8 补全）：无初始值的静态变量也应登记
-        //   （静态 向量<整64> 全局表 零初始化 .data；原 continue 跳过导致
-        //   静态容器变量整个漏登记——IR 无 gstatic、函数体引用报「模块未导入」）
-        if (g->initializer == nullptr && !g->isStatic) continue;
         if (g->isConst) {
             continue;  // 常量值注册已抽至 registerConstValues（#286·early/正常两趟共用）
         }
+        // 569 甲案（2026-10-14 用户裁决·001 §5.2a）：顶层裸全局变量声明通道
+        //   （`整32 全局计数 = 5;`·§5.1 文法「全局变量声明」实体形态——此前
+        //   落解析层拒/静态通道漏登记）。登记与顶层静态同表（globalStatics_/
+        //   globalStaticsQualified_/declareVar）——IR 存储发射（.data/.bss）
+        //   与 §747 第 8 条「可变静态/全局变量写」执法全复用静态通道。
+        if (!g->isStatic) {
+            // d 款：初始化器仅限常量表达式（C++ constinit 思路·防初始化顺序
+            //   fiasco）——字面量/常量引用/常量算术；函数调用/构造调用/运行期
+            //   表达式=编译错误（001 §5.2a：运行期初始化请改用 静态 或函数内
+            //   赋值）。字符字面量单列（cnEvalConstExpr 无 CharLiteral case·
+            //   码点文本与 IR 直存口径同源 charLiteralCodePoint）。
+            if (g->initializer != nullptr) {
+                Expr* ggInit = g->initializer.get();
+                std::string constText;
+                bool constOk;
+                if (ggInit->getType() == NodeType::CharLiteral) {
+                    constText = std::to_string(
+                        charLiteralCodePoint(static_cast<CharLiteral*>(ggInit)->raw));
+                    constOk = true;
+                } else {
+                    constOk = cnEvalConstExpr(globalConstValues_, g->moduleName,
+                                              ggInit, constText);
+                }
+                if (!constOk) {
+                    diagnostics_.report(
+                        DiagnosticLevel::Error, ggInit->location,
+                        "顶层全局变量 '" + g->name +
+                            "' 初始值必须是常量表达式（字面量/常量引用/常量算术"
+                            "——001 §5.2a 防初始化顺序问题；运行期初始化请改用 "
+                            "静态 或在函数内赋值）");
+                    continue;  // 拒后不登记（引用处按未声明处理·主因诊断已报）
+                }
+                // 478 同口径：裸全局整数字面量 128 位域检查——超界发射层
+                //   parseInt128InitText 失败=静默零占位（违反「诊断即错误」），
+                //   语义层闭环拒绝（判据/文案与 IR 层 478 同构）。
+                if (ggInit->getType() == NodeType::IntegerLiteral) {
+                    const auto* glit =
+                        static_cast<IntegerLiteral*>(ggInit);
+                    const std::string gStripped =
+                        types::stripLiteralSuffix(glit->raw);
+                    std::string gLitType = types::literalTypeOf(glit->raw, false);
+                    if ((gLitType == "整32" || gLitType == "整64") &&
+                        types::textExceedsInt64(gStripped)) {
+                        gLitType = "整128";
+                    }
+                    if (gLitType == "正64" && types::textExceedsU64(gStripped)) {
+                        gLitType = "正128";
+                    }
+                    if (types::isI128(gLitType)) {
+                        const bool gSigned = (gLitType == "整128");
+                        if (!types::i128TextInRange(gStripped, gSigned)) {
+                            diagnostics_.report(
+                                DiagnosticLevel::Error, g->location,
+                                "整数字面量超出" +
+                                    std::string(gSigned ? "整128（2^127-1）"
+                                                        : "正128（2^128-1）") +
+                                    "范围");
+                        }
+                    }
+                }
+                // 布尔值文本统一发射层口径（cnEvalConstExpr 出「真/假」——
+                //   三后端标量直存须 1/0 数值文本·isStaticScalarInitType 面）
+                if (constText == "真") constText = "1";
+                else if (constText == "假") constText = "0";
+                g->constInitText = constText;  // IR 层直存 .data（569 d 款）
+                // 933 同款豁免：构造调用初值已被 d 款拒绝，无需 checkCtorCall
+            }
+            // 类型归一（泛型 容器<整64> -> 容器$整64 同静态 P3-8 口径）+
+            //   040 函数指针全局槽符号类型（无 typeName·funcPtr 承载）
+            const std::string ggType =
+                g->funcPtr.isFunctionPtr()
+                    ? g->funcPtr.toSymbolType()
+                    : (g->typeName.empty()
+                           ? "自动"
+                           : resolveGenericTypeName(g->typeName, g->location));
+            // 061-c 同款：结果/可选 裸全局的合成结构体注册（同静态缺口预防）
+            {
+                std::string ggCore, ggSuffix;
+                types::splitTypeSuffix(ggType, ggCore, ggSuffix);
+                (void)ggSuffix;
+                if (isResultType(ggCore) || isOptionalType(ggCore)) {
+                    ensureLoweredType(ggCore);
+                }
+            }
+            // A-2 同款 crate 分桶：裸名首定义+模块$名限定键（IR 查询表同登记）
+            staticModules_[g->name].insert(g->moduleName);
+            if (globalStatics_.find(g->name) == globalStatics_.end()) {
+                globalStatics_[g->name] = ggType;
+            }
+            globalStaticsQualified_[g->moduleName + "$" + g->name] = ggType;
+            globalStatics_[g->moduleName + "$" + g->name] = ggType;
+            if (staticModules_[g->name].size() == 1) {
+                declareVar(g->name, ggType, g->location);
+            }
+            continue;
+        }
+        // 2026-08-30 根治（P3-8 补全）：无初始值的静态变量也应登记
+        //   （静态 向量<整64> 全局表 零初始化 .data；原 continue 跳过导致
+        //   静态容器变量整个漏登记——IR 无 gstatic、函数体引用报「模块未导入」）
+        //   〔569 重排：原首行「无初值且非静态 continue」由上方裸全局通道吸收〕
         if (false) {
             Expr* init = g->initializer.get();
             std::string constText;

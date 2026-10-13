@@ -33,7 +33,11 @@ void IRGenerator::visitProgram(Program* node) {
     //   globalStaticInits（codegen .data 段直接写初始值）。
     if (semantic_ != nullptr) {
         for (auto& g : node->globals) {
-            if (g->isStatic && !g->name.empty()) {
+            // 569 甲案（2026-10-14 用户裁决·001 §5.2a）：条件放宽——顶层裸全局
+            //   （!isStatic 且非常量）与顶层静态同通道发射存储（.data/.bss +
+            //   初始化器）；三后端消费 module.globalStatics/globalStaticInits
+            //   零改动。语义层已同表登记（globalStaticType 可查）。
+            if (!g->isConst && !g->name.empty()) {
                 const std::string stType = semantic_->globalStaticType(g->name);
                 if (!stType.empty()) {
                     module_->globalStatics[g->name] = stType;
@@ -61,7 +65,16 @@ void IRGenerator::visitProgram(Program* node) {
                     //   句柄，释放侧空安全）——两者零运行期开销，不注入。
                     continue;
                 }
-                if (g->initializer != nullptr) {
+                if (!g->isStatic && !g->constInitText.empty()) {
+                    // 569 d 款（001 §5.2a）：裸全局常量初始化器直存——语义层
+                    //   cnEvalConstExpr 折叠文本（覆盖常量引用/常量算术等非字面量
+                    //   节点形态·否则落下方「其他表达式」分支=运行期求值，违反
+                    //   constinit 常量初始化意图；字面量节点文本同口径。布尔已转
+                    //   1/0·字符已转码点·i128 文本由发射层 parseInt128InitText
+                    //   解析。字符串/结构体形态已被上方 isStructStatic/
+                    //   isStringStatic 分支分流至入口注入，不达此处）。
+                    module_->globalStaticInits[g->name] = g->constInitText;
+                } else if (g->initializer != nullptr) {
                     const NodeType it = g->initializer->getType();
                     if (it == NodeType::IntegerLiteral) {
                         // 478（473 采样轮）：顶层静态字面量补 128 位域检查——

@@ -106,6 +106,11 @@ public:
 
     bool isConst = false;                        // 是否为常量（常量 x = 值）
     bool isStatic = false;                       // 是否为静态变量（静态 类型 x = 值）
+    // 569 甲案（2026-10-14 用户裁决·001 §5.2a）：顶层裸全局常量初始化器求值文本
+    //   ——语义层 cnEvalConstExpr 判定通过时回填（字面量/常量引用/常量算术折叠），
+    //   IR 层直存 .data（布尔已转 1/0 口径·字符已转码点文本；字符串/结构体/类
+    //   仍走入口注入通道不消费本字段）。仅顶层裸全局（!isConst && !isStatic）使用。
+    std::string constInitText;
     std::string name;                            // 变量名
     std::string typeName;                        // 类型名（为空表示类型推断：变量 x = 10）
     std::unique_ptr<Expr> initializer;           // 初始值（可为空）

@@ -497,19 +497,37 @@ bool mergeModuleDecls(ModuleUnit& unit, Program* out, bool entryModule, bool sin
             out->declarations.push_back(std::unique_ptr<FunctionDecl>(f.release()));
         }
     }
-    // ---- 顶层常量/静态（第 4 层，v2.0 决策8/9，P1-4/P3-8）----
+    // ---- 顶层常量/静态/全局变量（第 4 层，v2.0 决策8/9，P1-4/P3-8）----
     // crate 级常量/静态变量：入口模块全部合并；被导入模块仅合并公开的。
     //   模块级私有常量不跨模块（与函数/类可见性规则一致）。
+    // 569 e 款（2026-10-14 用户裁决·001 §5.2a）：顶层裸全局变量默认外部可见
+    //   （C 式）——无须 公开: 标签即跨模块并入；静态/常量保持默认私有。
     for (auto& g : unit.ast->globals) {
-        if (!visible(g->access)) {
+        const bool bareGlobal = (!g->isConst && !g->isStatic);
+        if (!bareGlobal && !visible(g->access)) {
             // 609-a（T100·170）：私有常量/静态存在性登记（同函数面）
             out->modulePrivateSymbols.emplace_back(unit.moduleName, g->name);
             continue;
         }
+        // 569 e 款查重：裸全局与其他顶层变量（裸全局/静态/常量）同名 = 重定义
+        //   编译错误（多文件平铺单 IRModule 发射·语义/IR 层同名首定义胜出=静默
+        //   覆盖，故在合并面显式拒绝；单文件重定义同经本管线覆盖）。
+        //   存量口径不动：静态/常量同名仍走 A-2 分桶静默首定义（零回归面）。
+        if (bareGlobal) {
+            for (const auto& ex : out->globals) {
+                if (ex != nullptr && ex->name == g->name) {
+                    diags.report(DiagnosticLevel::Error, g->location,
+                                 "顶层全局变量 '" + g->name + "' 重复定义（模块 '" +
+                                     unit.moduleName + "' 与既有声明冲突——001 §5.2a）");
+                    ok = false;
+                    break;
+                }
+            }
+        }
         if (entryModule) {
             g->moduleName = crateName;
             out->globals.push_back(std::unique_ptr<VarDecl>(g.release()));
-        } else if (g->access == AccessSpecifier::Public) {
+        } else if (bareGlobal || g->access == AccessSpecifier::Public) {
             g->moduleName = crateName;
             out->globals.push_back(std::unique_ptr<VarDecl>(g.release()));
         }
