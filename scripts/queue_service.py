@@ -52,7 +52,11 @@ db路径 = os.environ.get("CN_QUEUE_DB",
 集成中超时秒 = int(os.environ.get("CN_QUEUE_INTEGRATE_STALE_SEC", "7200"))   # 集成中无更新超此秒数=降级已踢出（456·0=禁用）
 排队超时秒 = int(os.environ.get("CN_QUEUE_QUEUED_STALE_SEC", "3600"))   # 562：排队行无写活动超此秒数=降级已踢出（报名会话失联孤儿·0=禁用）
 看板服务地址 = os.environ.get("CN_BOARD_URL", "http://127.0.0.1:8301")   # 562：已并入检测数据源（任务台账·同机默认）
-并入检测退避秒 = 60       # 562：看板不可达退避——窗口内不再试（防看板故障拖慢 claim 派发）
+# 562：并入检测退避窗口——覆盖「不可达」（URLError/timeout）与「HTTPError 非 404」（5xx/401
+#   等看板病态；404=任务不在台账的正常空结果免退避）。检测在 写锁 内同步调用（enqueue/claim
+#   热路径·562 修复审查 P2-2）——退避窗口内直接核不了=放行，防「端口在但持续 500」时
+#   每次写操作都同步等一次 HTTP、写锁持有期全队列写串行停顿（3s×每 60s 一次全队列卡顿）。
+并入检测退避秒 = 60
 
 写锁 = threading.Lock()          # SQLite 写串行化（读靠 WAL 并发）
 时区时刻 = lambda: datetime.now().strftime("%m-%d %H:%M:%S")   # 911 教训：秒级戳
@@ -152,7 +156,17 @@ def 回收死行() -> None:
                   % (分支, 更新, 差 / 60), flush=True)
 
 
-_并入检测上次失败 = [0.0]   # 562：看板不可达退避戳（time.time()）——退避窗口内核不了=放行
+_并入检测上次失败 = [0.0]   # 562：看板故障退避戳（time.time()）——退避窗口内核不了=放行
+
+
+def 并入检测退避否(e: Exception) -> bool:
+    """562 修复（审查 P2-2）：并入检测异常是否置退避戳——仅 404 免退避（任务不在台账=
+    服务可达的正常空结果，重试必有同解），其余全退避：URLError/timeout=不可达（既有
+    语义）·HTTPError 5xx/401 等=看板病态（562 修复点：旧路径 HTTPError 一律不退避，
+    「端口在但持续 500」时写锁内每次同步等一次 HTTP=全队列写串行停顿）。纯函数（selftest 面）。"""
+    if isinstance(e, urllib.error.HTTPError):
+        return e.code != 404
+    return True
 
 
 def 源分支已并入(源分支: str) -> bool | None:
@@ -164,15 +178,14 @@ def 源分支已并入(源分支: str) -> bool | None:
     if not m:
         return None
     if time.time() - _并入检测上次失败[0] < 并入检测退避秒:
-        return None   # 退避窗口（上一次不可达）——直接放行
+        return None   # 退避窗口（上一次故障）——直接放行
     try:
         with urllib.request.urlopen(看板服务地址.rstrip("/") + "/api/task/" + m.group(1),
                                     timeout=3) as 响应:
             任务 = json.loads(响应.read().decode("utf-8")).get("任务") or {}
-    except urllib.error.HTTPError:
-        return None   # 任务不在台账（404 等）——服务可达·核不了不退避
-    except Exception:
-        _并入检测上次失败[0] = time.time()   # 看板不可达——退避·防拖慢 claim 热路径
+    except Exception as e:
+        if 并入检测退避否(e):   # 仅 404 免退避·其余全退避（审查 P2-2·见函数注释）
+            _并入检测上次失败[0] = time.time()   # 看板故障——退避·防写锁内反复同步等 HTTP
         return None
     if not 任务:
         return None
@@ -629,6 +642,17 @@ if __name__ == "__main__":
                                     "源分支": "任务/555"})
         断言(r["ok"], "562 enqueue 见已取消行=不动不复活（幂等防重入队复活）")
         源分支已并入 = 真检测562   # 还原真实现（防泄漏影响后续段）
+
+        # ── 562 修复（审查 P2-2）：HTTPError 仅 404 免退避·其余纳入退避戳——
+        #    写锁内同步 HTTP 停顿防线（「端口在但持续 500」不再每次写操作都等一次 HTTP） ──
+        假HTTP错 = lambda 码: urllib.error.HTTPError("http://x/api/task/1", 码, "msg", None, None)
+        断言(并入检测退避否(假HTTP错(500)) is True, "562 HTTPError 5xx=置退避（写锁内不再反复同步等 HTTP）")
+        断言(并入检测退避否(假HTTP错(502)) is True and 并入检测退避否(假HTTP错(401)) is True,
+             "562 HTTPError 502/401 同=置退避（除 404 外全部病态纳入）")
+        断言(并入检测退避否(假HTTP错(404)) is False,
+             "562 HTTPError 404=免退避（任务不在台账=正常空结果·重试必有同解）")
+        断言(并入检测退避否(TimeoutError()) is True and 并入检测退避否(OSError()) is True,
+             "562 不可达/超时=置退避（既有语义保持）")
 
         print("selftest %d 项全过" % n绑定[0])
         raise SystemExit(0)
