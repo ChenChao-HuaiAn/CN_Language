@@ -165,6 +165,8 @@ def cmd_教训看(a) -> int:
 
 
 def cmd_用例(a) -> int:
+    """561：改走 /api/coverage_append 单条追加口（服务端内读改写原子）——原
+    GET→拼接→POST 两步在两会话并发登记同单元同列时丢更新（后写覆盖先写）。"""
     if a.态 not in ("正例", "边界例", "负例"):
         print("[失败] 三态须为 正例|边界例|负例")
         return 2
@@ -172,21 +174,13 @@ def cmd_用例(a) -> int:
     if not 用例们:
         print("[失败] 用例名必填（逗号分隔可批量）")
         return 2
-    码, r = 调服务("GET", "/api/coverage")
+    码, r = 调服务("POST", "/api/coverage_append",
+                  {"单元ID": a.单元ID, "态": a.态, "用例名": 用例们})
     if 码 != 200:
-        print(f"[失败] 覆盖表拉取 {码}——服务不可达时勿盲写（防覆盖他机同列）")
+        print(f"[失败] {码} {r.get('错误', r)}（服务不可达时勿盲写）")
         return 1
-    旧 = next((u for u in r["单元们"] if u["单元ID"] == a.单元ID), None)
-    现值 = 旧[a.态] if 旧 else ""
-    新列 = f"{现值},{用例们}" if 现值 else 用例们
-    体 = {"单元ID": a.单元ID, "标题": 旧["标题"] if 旧 else a.单元ID}
-    for k in ("正例", "边界例", "负例"):
-        体[k] = 新列 if k == a.态 else (旧[k] if 旧 else "")
-    码, r = 调服务("POST", "/api/coverage_update", 体)
-    if 码 != 200:
-        print(f"[失败] {码} {r.get('错误', r)}")
-        return 1
-    print(f"[用例] 单元 {a.单元ID}·{a.态} 已归入（该列现 {len(r['单元'][a.态].split(','))} 例）")
+    尾 = f"新增 {r.get('新增')}" + (f"·重复跳过 {r['重复跳过']}" if r.get("重复跳过") else "")
+    print(f"[用例] 单元 {a.单元ID}·{a.态} 已追加（{尾}·该列现 {r.get('该列数')} 例）")
     return 0
 
 

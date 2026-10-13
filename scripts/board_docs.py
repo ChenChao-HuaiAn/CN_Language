@@ -187,6 +187,35 @@ def 覆盖单元更新(con: sqlite3.Connection, 体: dict):
     return 200, {"好": True, "单元": _覆盖行转字典(行)}
 
 
+def 覆盖单元追加(con: sqlite3.Connection, 体: dict):
+    """561：单条追加口（服务端内读→拼接→写一步·写锁由调用方持有）——治客户端
+    GET→拼接→POST 两步在两会话并发登记同单元同列时丢更新（后写覆盖先写）。
+    用例名逗号分隔批量；与既有列同名自动去重（幂等重放安全）。"""
+    单元id = 净化(体.get("单元ID"), 200)
+    态 = str(体.get("态", "") or "").strip()
+    用例们 = [c.strip() for c in str(体.get("用例名", "")).split(",") if c.strip()]
+    if not 单元id or 态 not in 覆盖三态 or not 用例们:
+        return 400, {"错误": "单元ID / 态(正例|边界例|负例) / 用例名 必填"}
+    行 = con.execute("SELECT 单元ID,标题,正例,边界例,负例 FROM 覆盖单元 WHERE 单元ID=?",
+                     (单元id,)).fetchone()
+    标题 = 行[1] if 行 else 单元id
+    列 = ({k: (行[i + 2] or "") for i, k in enumerate(覆盖三态)}
+          if 行 else {k: "" for k in 覆盖三态})
+    现值 = [c.strip() for c in 列[态].split(",") if c.strip()]
+    新加 = [c for c in 用例们 if c not in 现值]
+    列[态] = ",".join(现值 + 新加)
+    con.execute(
+        """INSERT INTO 覆盖单元(单元ID,标题,正例,边界例,负例) VALUES(?,?,?,?,?)
+           ON CONFLICT(单元ID) DO UPDATE SET 正例=excluded.正例,
+           边界例=excluded.边界例, 负例=excluded.负例""",
+        (单元id, 标题, 列["正例"], 列["边界例"], 列["负例"]))
+    con.commit()
+    行2 = con.execute("SELECT 单元ID,标题,正例,边界例,负例 FROM 覆盖单元 WHERE 单元ID=?",
+                      (单元id,)).fetchone()
+    return 200, {"好": True, "新增": len(新加), "重复跳过": len(用例们) - len(新加),
+                 "该列数": len(列[态].split(",")), "单元": _覆盖行转字典(行2)}
+
+
 def 覆盖豁免添加(con: sqlite3.Connection, 体: dict):
     """豁免用例登记 upsert（用例名可逗号分隔批量）。"""
     用例们 = [c.strip() for c in str(体.get("用例", "")).split(",") if c.strip()]

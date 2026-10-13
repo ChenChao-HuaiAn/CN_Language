@@ -100,18 +100,45 @@ db路径 = os.environ.get("CN_BOARD_DB",
 时刻 = lambda: datetime.now().strftime("%m-%d %H:%M:%S")
 
 
-def 建库(路径: str = db路径) -> sqlite3.Connection:
-    con = sqlite3.connect(路径, check_same_thread=False)
-    con.execute("PRAGMA journal_mode=WAL")
+def 建意图表(con: sqlite3.Connection) -> None:
+    """561：意图表主键改 (机器,对话id)——跨机同名树（三机主树同名 CN_Language_C、
+    交接期同 wt<号>）各持各行互不覆盖（旧「对话id 单主键」=后登记者整行顶掉先登记者）。
+    旧库幂等迁移：RENAME→建新→搬（机器 NULL 归 ''）→DROP。"""
     con.execute("""CREATE TABLE IF NOT EXISTS 意图(
-        对话id TEXT PRIMARY KEY,
+        对话id TEXT,
         机器 TEXT,
         在做 TEXT DEFAULT '',
         计划 TEXT DEFAULT '',
         备注 TEXT DEFAULT '',
         心跳时刻 TEXT,
         心跳时戳 REAL,
-        登记时刻 TEXT)""")
+        登记时刻 TEXT,
+        PRIMARY KEY(机器, 对话id))""")
+    旧表 = con.execute(
+        "SELECT sql FROM sqlite_master WHERE type='table' AND name='意图'").fetchone()
+    if 旧表 and "机器, 对话id" not in (旧表[0] or ""):
+        con.execute("ALTER TABLE 意图 RENAME TO 意图_旧")
+        con.execute("""CREATE TABLE 意图(
+            对话id TEXT,
+            机器 TEXT,
+            在做 TEXT DEFAULT '',
+            计划 TEXT DEFAULT '',
+            备注 TEXT DEFAULT '',
+            心跳时刻 TEXT,
+            心跳时戳 REAL,
+            登记时刻 TEXT,
+            PRIMARY KEY(机器, 对话id))""")
+        con.execute("""INSERT OR REPLACE INTO 意图(对话id,机器,在做,计划,备注,心跳时刻,心跳时戳,登记时刻)
+            SELECT 对话id, COALESCE(机器,''), 在做, 计划, 备注, 心跳时刻, 心跳时戳, 登记时刻
+            FROM 意图_旧""")
+        con.execute("DROP TABLE 意图_旧")
+    con.commit()
+
+
+def 建库(路径: str = db路径) -> sqlite3.Connection:
+    con = sqlite3.connect(路径, check_same_thread=False)
+    con.execute("PRAGMA journal_mode=WAL")
+    建意图表(con)   # 561：意图表（主键含机器·旧库幂等迁移）
     con.execute("""CREATE TABLE IF NOT EXISTS 在飞分支(
         分支 TEXT PRIMARY KEY,
         提交 TEXT, 提交题 TEXT DEFAULT '', 时刻 TEXT,
@@ -531,6 +558,11 @@ class 处理器(BaseHTTPRequestHandler):
             with 写锁:
                 码, 响应 = 文档.覆盖单元更新(连接, 体)
                 return self._回JSON(码, 响应)
+        if 路径 == "/api/coverage_append":
+            # 561：单条追加口（服务端内读改写原子）——治客户端 GET→拼接→POST 并发丢更新
+            with 写锁:
+                码, 响应 = 文档.覆盖单元追加(连接, 体)
+                return self._回JSON(码, 响应)
         if 路径 == "/api/coverage_exempt_add":
             with 写锁:
                 码, 响应 = 文档.覆盖豁免添加(连接, 体)
@@ -590,7 +622,7 @@ class 处理器(BaseHTTPRequestHandler):
             连接.execute(
                 """INSERT INTO 意图(对话id,机器,在做,计划,备注,心跳时刻,心跳时戳,登记时刻)
                    VALUES(?,?,?,?,?,?,?,?)
-                   ON CONFLICT(对话id) DO UPDATE SET 机器=excluded.机器, 在做=excluded.在做,
+                   ON CONFLICT(机器,对话id) DO UPDATE SET 在做=excluded.在做,
                    计划=excluded.计划, 备注=excluded.备注, 心跳时刻=excluded.心跳时刻,
                    心跳时戳=excluded.心跳时戳""",
                 (对话id, 机器, 在做, 计划, 备注, 时刻(), time.time(), 时刻()))
@@ -623,7 +655,7 @@ class 处理器(BaseHTTPRequestHandler):
         连接.execute(
             """INSERT INTO 意图(对话id,机器,在做,计划,备注,心跳时刻,心跳时戳,登记时刻)
                VALUES(?,?,?,?,?,?,?,?)
-               ON CONFLICT(对话id) DO UPDATE SET 机器=excluded.机器, 在做=excluded.在做,
+               ON CONFLICT(机器,对话id) DO UPDATE SET 在做=excluded.在做,
                心跳时刻=excluded.心跳时刻, 心跳时戳=excluded.心跳时戳""",
             (对话id[:40], 机器[:60], 在做, "",
              "认领自动上板(494)·claim 后补全", 时刻(), time.time(), 时刻()))
@@ -641,7 +673,11 @@ class 处理器(BaseHTTPRequestHandler):
                 对话id = str(体.get("对话id", "")).strip()
                 if not 机器 or not 对话id:
                     return self._回JSON(400, {"错误": "须 机器+对话id 或 在做 任务号"})
-                连接.execute("DELETE FROM 意图 WHERE 对话id=?", (对话id,))
+                if 机器:
+                    # 561：精确到 (机器,对话id)——跨机同名树只销本机行
+                    连接.execute("DELETE FROM 意图 WHERE 对话id=? AND 机器=?", (对话id, 机器))
+                else:
+                    连接.execute("DELETE FROM 意图 WHERE 对话id=?", (对话id,))  # 旧口径（无机器参数）
             连接.commit()
         return self._回JSON(200, {"好": True})
 

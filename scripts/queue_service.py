@@ -305,7 +305,8 @@ class 处理器(BaseHTTPRequestHandler):
         self.wfile.write(体)
 
     def 鉴权通过(self) -> bool:
-        return 令牌 == "" or self.headers.get("Authorization", "") == "Bearer " + 令牌
+        # 561：fail-closed（对齐看板 430）——令牌未配置=写操作全拒（旧址 令牌=="" 全放行）
+        return bool(令牌) and self.headers.get("Authorization", "") == "Bearer " + 令牌
 
     def do_GET(self):
         from urllib.parse import parse_qs
@@ -482,6 +483,6 @@ if __name__ == "__main__":
         raise SystemExit(0)
 
     print("[启动] 端口=%d db=%s 令牌=%s 任务池心跳超时=%ds"
-          % (端口, db路径, "已设" if 令牌 else "未设（不鉴权·仅内网用）", 心跳超时秒),
+          % (端口, db路径, "已设" if 令牌 else "未设（写操作全拒·fail-closed 561）", 心跳超时秒),
           flush=True)
     ThreadingHTTPServer(("0.0.0.0", 端口), 处理器).serve_forever()

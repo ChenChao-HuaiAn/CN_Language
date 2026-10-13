@@ -11,6 +11,7 @@ import sys
 import tempfile
 import threading
 import time
+import urllib.error
 import urllib.request
 from pathlib import Path
 
@@ -58,6 +59,45 @@ def main() -> int:
                 break
             except Exception:
                 time.sleep(0.2)
+        print("== ⓿鉴权 fail-closed（561·对齐看板 430） ==")
+        try:
+            请求 = urllib.request.Request(
+                基址 + "/api/task_claim", data=json.dumps({"runner": "无令牌"}).encode("utf-8"),
+                headers={"Content-Type": "application/json"})
+            urllib.request.urlopen(请求, timeout=5)
+            断言(False, "无令牌 POST 应 401")
+        except urllib.error.HTTPError as e:
+            断言(e.code == 401, "无令牌 POST 被拒 401")
+        取("/api/state")
+        断言(True, "GET /api/state 无令牌仍放行（只读面不受影响）")
+        端口2 = 18301
+        环境2 = dict(os.environ, CN_QUEUE_PORT=str(端口2), CN_QUEUE_DB=db文件 + ".2")
+        环境2.pop("CN_QUEUE_TOKEN", None)
+        服务2 = subprocess.Popen([sys.executable, str(Path(__file__).parent / "queue_service.py")],
+                                env=环境2, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        try:
+            for _ in range(30):
+                try:
+                    urllib.request.urlopen("http://127.0.0.1:%d/api/state" % 端口2, timeout=2).read()
+                    break
+                except Exception:
+                    time.sleep(0.2)
+            try:
+                请求 = urllib.request.Request(
+                    "http://127.0.0.1:%d/api/task_claim" % 端口2,
+                    data=json.dumps({"runner": "x"}).encode("utf-8"),
+                    headers={"Content-Type": "application/json", "Authorization": "Bearer whatever"})
+                urllib.request.urlopen(请求, timeout=5)
+                断言(False, "未配置令牌服务 POST 应 401")
+            except urllib.error.HTTPError as e:
+                断言(e.code == 401, "令牌未配置=写操作全拒 401（fail-closed·旧址全放行）")
+        finally:
+            服务2.terminate()
+            try:
+                服务2.wait(timeout=5)
+            except Exception:
+                服务2.kill()
+
         print("== ①入队/幂等/校验 ==")
         调("task_enqueue", {"分支": "ci/预验-aaaaaaaaaa", "sha": "a" * 40})
         调("task_enqueue", {"分支": "ci/预验-aaaaaaaaaa", "sha": "a" * 40})   # 幂等
