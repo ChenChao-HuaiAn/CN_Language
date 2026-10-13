@@ -280,66 +280,17 @@ bool IRGenerator::memberGenericAssign(AssignmentExpr* node, MemberExpr* member) 
     return true;
 }
 
-// 对象结构体类型推导（成员目标；原 192~229 段）：变量 / 数组字段元素 /
-//   指针字段元素（p[0].x）递归推导。
+// 对象结构体类型推导（成员目标·写路径）：597 根治（2026-10-14）——整体委托
+//   memberObjStructType（973/1014/86-a/448/363/82-d 全形态单一实现）。
+//   原为漂移简化副本（仅 标识符/下标/调用118/解引用208 四分支）——缺
+//   MemberExpr 嵌套链递归等分支，嵌套成员链（盒.芯.里.a）objSrcType 空 →
+//   memberGenericAssign targetType 落默认 i64 → StorePtr 恒 8B 宽写覆盖
+//   相邻字段（asm 铁证 mov [rax],rcx vs 窄写 ecx·118 注释同病第三形态·
+//   类字段链/局部链/泛型实例/this 直访四路全中）。重复实现漂移=病根结构：
+//   读面 memberObjStructType 已全形态而写面副本 118/208 两轮各补一支仍
+//   追不平——归一后新对象形态只补 memberObjStructType 一处。
 std::string IRGenerator::memberAssignObjSrcType(MemberExpr* member) {
-    // 目标类型：字段IR类型
-    // 修复10：对象可为 变量（方形.x）/ 数组字段元素（方形.顶点[0].x）/
-    //   指针字段元素（p[0].x）——递归推导对象结构体类型
-    std::string objSrcType = "";
-    if (member->object->getType() == NodeType::IdentifierExpr) {
-        objSrcType = lookupSrcType(
-            static_cast<IdentifierExpr*>(member->object.get())->name);
-    } else if (member->object->getType() == NodeType::IndexExpr) {
-        IndexExpr* idx = static_cast<IndexExpr*>(member->object.get());
-        if (idx->object->getType() == NodeType::IdentifierExpr) {
-            const std::string st = lookupSrcType(
-                static_cast<IdentifierExpr*>(idx->object.get())->name);
-            if (types::isArray(st)) objSrcType = types::arrayElemOf(st);
-            else if (types::isPointer(st)) objSrcType = types::pointeeOf(st);
-        } else if (idx->object->getType() == NodeType::MemberExpr) {
-            // 方形.顶点[0].x：内层 方形.顶点 数组字段 -> 元素类型 坐标
-            MemberExpr* inner = static_cast<MemberExpr*>(idx->object.get());
-            std::string innerObj = "";
-            if (inner->object->getType() == NodeType::IdentifierExpr) {
-                innerObj = lookupSrcType(
-                    static_cast<IdentifierExpr*>(inner->object.get())->name);
-            }
-            const StructDecl* innerDecl =
-                semantic_->findStruct(types::canonical(innerObj));
-            if (innerDecl != nullptr) {
-                for (const auto& f : innerDecl->fields) {
-                    if (f.name == inner->memberName) {
-                        objSrcType = types::isArray(f.type)
-                                         ? types::arrayElemOf(f.type) : f.type;
-                        break;
-                    }
-                }
-            }
-        }
-    } else if (member->object->getType() == NodeType::CallExpr) {
-        // 118（929）：对象=引用返回方法调用（v.元素引用(0).x = 9 链式）——
-        //   源类型经 exprSrcType 解析（方法调用返回类型查表已覆盖）；原缺此
-        //   分支 → objSrcType 空 → memberGenericAssign 写宽落默认 i64（8 字节）
-        //   → StorePtr 覆盖相邻字段（x 写对 y 清零·实测）。与 handleClassMemberAssign
-        //   的 exprSrcType 消费同构。
-        objSrcType = exprSrcType(member->object.get());
-    } else if (member->object->getType() == NodeType::UnaryExpr) {
-        // 208 病面②（2026-10-06·614 实证）：对象=显式解引用表达式（(*结构体指针).字段 = 值）
-        //   ——原缺此分支 → objSrcType 空 → targetType 落默认 i64 → StorePtr
-        //   恒 8 字节写覆盖相邻字段（甲 写对 乙 清零·样本 p1005_01b）。
-        //   目标结构体=指针元素类型（spec 04 解引用=左值·语义层 isDerefAccess
-        //   对 UnaryExpr 对象不写回——对象类型已是元素类型非指针，唯 IR 层自剥）。
-        const UnaryExpr* derefObj = static_cast<UnaryExpr*>(member->object.get());
-        if (derefObj->op == Operator::Deref) {
-            objSrcType = exprSrcType(derefObj->operand.get());
-            if (types::isPointer(objSrcType)) objSrcType = types::pointeeOf(objSrcType);
-        }
-    }
-    if (member->isDerefAccess && types::isPointer(objSrcType)) {
-        objSrcType = types::pointeeOf(objSrcType);
-    }
-    return objSrcType;
+    return memberObjStructType(member);
 }
 
 // 字符串字段写入归一化（成员目标；原 247~300 段）：79-a 模型——目标字段独立拥有：

@@ -489,6 +489,13 @@ std::string IRGenerator::memberObjStructType(MemberExpr* node) const {
             u->operand->getType() == NodeType::IndexExpr) {
             objType = memberIndexObjElemType(
                 static_cast<IndexExpr*>(u->operand.get()));
+        } else if (u->op == Operator::Deref) {
+            // 597 归一（2026-10-14·208 同面自 memberAssignObjSrcType 搬入）：
+            //   对象=显式解引用表达式（(*结构体指针).字段）——operand 类型剥星。
+            //   原读/写归一面缺此支 → 委托方（写路径）原由漂移副本自带，
+            //   归一后单一实现必须自带全形态。
+            objType = exprSrcType(u->operand.get());
+            if (types::isPointer(objType)) objType = types::pointeeOf(objType);
         }
     }
     // v2.1 经指针成员（isDerefAccess，语义层按对象类型置位）：对象是结构体指针
