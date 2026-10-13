@@ -211,6 +211,11 @@ std::vector<ir::IRValue> IRGenerator::buildCallArgsOop(
 }
 
 // i128/u128 形参的窄整实参统一宽化（331-a·T53 根治）——见 ir.hpp 声明。
+// 442（判据统一·421 审查 P2-2/P2-3）：与 ir_call.cpp 实参循环同判据——按值 128
+//   形参位驱动定标、引用位不宽化、不排除浮点实参（走 Cast 浮→128 转换通道，
+//   v2 物化128位操作数 浮域分支同构·语义层本就拒绝浮→整 隐式转换=IR 层安全网）、
+//   扩展口径=实参源符号性（正系零扩展/其余符号扩展·发射层 emitCastIntWidth
+//   按源类型分派）。
 void IRGenerator::widenI128Args(std::vector<ir::IRValue>& args,
                                 const std::vector<std::string>& paramTypes,
                                 const SourceLocation& loc) {
@@ -223,8 +228,7 @@ void IRGenerator::widenI128Args(std::vector<ir::IRValue>& args,
         //   方法调用/函数指针/lambda 闭包三路共用本函数，此处一守卫全链收口。
         const bool param128 = !types::isReference(paramTypes[ai]) &&
                               (canon == "整128" || canon == "正128");
-        if (param128 && args[ai].type != "i128" && args[ai].type != "u128" &&
-            args[ai].type != "f32" && args[ai].type != "f64") {
+        if (param128 && args[ai].type != "i128" && args[ai].type != "u128") {
             const std::string kind = (canon == "正128") ? "u128" : "i128";
             args[ai] = emitResult(ir::Opcode::Cast, {args[ai]}, kind, "",
                                   loc);
@@ -460,20 +464,12 @@ void IRGenerator::emitCtorInvoke(CallExpr* node, const std::string& className,
         args.push_back(obj);  // this（对象指针）
         std::vector<ir::IRValue> userArgs =
             buildCallArgsOop(node->arguments, node->location);
-        // 316-a（C23/T45 甲）：i128/u128 构造形参的窄整实参定标——与
-        //   ir_call 直调路径同款（类构造字面实参 ABI 契约分叉 m45_03：
-        for (std::size_t ai = 0;
-             ai < userArgs.size() && ai < ctor->paramTypes.size(); ++ai) {
-            const std::string canon = types::canonical(ctor->paramTypes[ai]);
-            const bool param128 = (canon == "整128" || canon == "正128");
-            if (param128 && userArgs[ai].type != "i128" &&
-                userArgs[ai].type != "u128" && userArgs[ai].type != "f32" &&
-                userArgs[ai].type != "f64") {
-                const std::string kind = (canon == "正128") ? "u128" : "i128";
-                userArgs[ai] = emitResult(ir::Opcode::Cast, {userArgs[ai]},
-                                          kind, "", node->location);
-            }
-        }
+        // 316-a（C23/T45 甲）：i128/u128 构造形参的窄整实参定标——与 ir_call
+        //   直调路径同款（类构造字面实参 ABI 契约分叉 m45_03）。
+        // 442（判据统一·421 审查 P2-2/P2-3）：内联副本归并 单一归属
+        //   widenI128Args——原副本三微差（无 466 引用形参守卫/排除浮点实参/
+        //   判据文本与直调路径分叉）随归并消除。
+        widenI128Args(userArgs, ctor->paramTypes, node->location);
         for (auto& a : userArgs) args.push_back(a);
         // D23 根治（248-a）：构造缺省实参补全——构造调用经 handleClassCallExpr
         //   提前展开（visitCallExpr 通用补缺段不可达），此处按语义层选中的

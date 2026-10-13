@@ -479,6 +479,32 @@ void IRGenerator::visitCallExpr(CallExpr* node) {
         else if (calleeName == "字符串构建器::完成" || calleeName == "字符串构建器.完成") calleeName = "__cn_strbuf_finish";
     }
 
+    // ---- 442（判据统一·421 审查 P2-2/P2-3）：有效形参表（实参定标唯一判据源）----
+    //   直接调用=语义层形参表；间接（函数指针）调用=callee 源码类型串形参表
+    //   （funcPtrTypeOfCallee -> funcPtrParamsOf·与语义层同口径）。原间接路径
+    //   paramIs128 恒假/无 promoteF32 依据 → 两处定标判据误判：
+    //   ①已 128 位实参被 (argIs128 && !paramIs128) 误截断为 i64（高半丢失 →
+    //     再宽化按 i64 符号扩展=静默错值。探针 442pe2/442pe3 实锤：fnptr 实参
+    //     2^64+1 -> 1；v2 侧同形正确=分叉）；
+    //   ②浮32 实参对浮32 形参被无条件提升 f64（探针 442pk 实锤：指32(2.5f) ->
+    //     1.5；v2 侧 4.0 正确）。
+    //   两侧同判据（v2 回扫结构体与引用实参 / 发射间接调用480 皆签名表驱动）：
+    //   形参表逐位对号——128 按值形参位定标、引用位不宽化、浮点形参不提升。
+    //   个数不匹配（变参等）保守回落现状=无表（零行为变更）。
+    const std::string calleeFnPtrType442 = isDirect
+                                               ? std::string()
+                                               : funcPtrTypeOfCallee(node->callee.get());
+    std::vector<std::string> effectiveParamTypes;
+    if (isDirect && semantic_ != nullptr) {
+        effectiveParamTypes = semantic_->funcParamTypesOf(calleeName);
+    } else if (!calleeFnPtrType442.empty()) {
+        std::vector<std::string> fnPtrParams442 =
+            types::funcPtrParamsOf(calleeFnPtrType442);
+        if (fnPtrParams442.size() == node->arguments.size()) {
+            effectiveParamTypes = std::move(fnPtrParams442);
+        }
+    }
+
     std::vector<ir::IRValue> args;
     for (std::size_t ai = 0; ai < node->arguments.size(); ++ai) {
         // D3 根治（2026-09-09 第四十六轮）：构造字面量实参位——求和(点{x=3, y=4})：
@@ -510,22 +536,21 @@ void IRGenerator::visitCallExpr(CallExpr* node) {
         bool argIs128 = (argVal.type == "i128" || argVal.type == "u128");
         bool paramIs128 = false;
         std::string param128Kind;  // 316-a（C23/T45 甲）：形参 128 位具体类型（i128/u128）
-        if (isDirect && semantic_ != nullptr) {
-            const auto paramTypes = semantic_->funcParamTypesOf(calleeName);
-            if (ai < paramTypes.size()) {
-                const std::string canon = types::canonical(paramTypes[ai]);
-                // 466（wt466·p3 探针 IR+汇编实锤）：**128 引用形参位不进按值定标
-                //   通道**——canonical 剥 '&' 后 整128& 与 整128 同判 → 引用实参
-                //   已被语义层 wrapRefArgs 取地址（ptr=调用方左值地址），此处再
-                //   Cast 成 i128 值 → emitCall i128 分支改传「Cast 临时双槽地址」
-                //   → 被调引用槽收临时槽地址，体内 16 字节读写全落在临时槽
-                //   （调用方变量不变·标量/数组元素/读侧/自增四面全红实证）。
-                //   引用位保持 ptr 原样传（rcx=左值地址=被调 A-1 契约）。
-                if (!types::isReference(paramTypes[ai]) &&
-                    (canon == "整128" || canon == "正128")) {
-                    paramIs128 = true;
-                    param128Kind = (canon == "正128") ? "u128" : "i128";
-                }
+        // 442：形参表来源统一为 effectiveParamTypes（直调=语义层/间接=函数指针
+        //   签名——间接位原恒 miss → 已 128 位实参被误截断，见上方判据源注释）
+        if (ai < effectiveParamTypes.size()) {
+            const std::string canon = types::canonical(effectiveParamTypes[ai]);
+            // 466（wt466·p3 探针 IR+汇编实锤）：**128 引用形参位不进按值定标
+            //   通道**——canonical 剥 '&' 后 整128& 与 整128 同判 → 引用实参
+            //   已被语义层 wrapRefArgs 取地址（ptr=调用方左值地址），此处再
+            //   Cast 成 i128 值 → emitCall i128 分支改传「Cast 临时双槽地址」
+            //   → 被调引用槽收临时槽地址，体内 16 字节读写全落在临时槽
+            //   （调用方变量不变·标量/数组元素/读侧/自增四面全红实证）。
+            //   引用位保持 ptr 原样传（rcx=左值地址=被调 A-1 契约）。
+            if (!types::isReference(effectiveParamTypes[ai]) &&
+                (canon == "整128" || canon == "正128")) {
+                paramIs128 = true;
+                param128Kind = (canon == "正128") ? "u128" : "i128";
             }
         }
         // 316-a（C23/T45 甲·用户裁决）：i128/u128 形参的**窄整实参**统一定标
@@ -535,8 +560,11 @@ void IRGenerator::visitCallExpr(CallExpr* node) {
         //   m45_03 类构造字面实参·深度机 314-a 立案）。经宽化 Cast（源符号
         //   扩展/零扩展双半）定标后走 emitCall i128 分支（lea 取地址 = 与
         //   变量/表达式实参同 ABI）。
-        if (paramIs128 && !argIs128 && argVal.type != "f32" &&
-            argVal.type != "f64") {
+        // 442（判据统一）：**不再排除浮点实参**——浮点→128 同走转换通道
+        //   （Cast 浮源→128 经 __cn_f64_to_i128 全宽辅助；v2 物化128位操作数
+        //   浮域分支同构），消除「宿主排除/v2 转换」微差。语义层对 浮→整
+        //   隐式转换本就拒绝（001 §3.7），本判据=IR 层安全网（不可达面同构）。
+        if (paramIs128 && !argIs128) {
             argVal = emitResult(ir::Opcode::Cast, {argVal}, param128Kind, "",
                                 node->location);
             argIs128 = true;
@@ -555,12 +583,13 @@ void IRGenerator::visitCallExpr(CallExpr* node) {
             //   现按形参类型分派：形参 浮64 → 提升（隐式宽化，规范 §七）；
             //   形参 浮32 → 原样单精度传递；变参/未知（实参超出形参表 = 变参
             //   调用按 C 默认实参提升；内置 runtime 浮点形参为 double）→ 提升。
+            // 442：判据源统一 effectiveParamTypes——间接调用原无表 → 恒走「未知
+            //   →提升」分支，浮32 形参的 fnptr 调用被误提升 f64（探针 442pk：
+            //   指32(2.5f) -> 1.5；v2 正确 4.0=分叉）。有表（含间接签名表）时
+            //   按形参逐位判定。
             bool promoteF32 = true;
-            if (isDirect && semantic_ != nullptr) {
-                const auto paramTypes = semantic_->funcParamTypesOf(calleeName);
-                if (ai < paramTypes.size()) {
-                    promoteF32 = (types::canonical(paramTypes[ai]) == "浮64");
-                }
+            if (ai < effectiveParamTypes.size()) {
+                promoteF32 = (types::canonical(effectiveParamTypes[ai]) == "浮64");
             }
             if (promoteF32) {
                 argVal = emitResult(ir::Opcode::Cast, {argVal}, "f64", "",
@@ -768,7 +797,9 @@ void IRGenerator::visitCallExpr(CallExpr* node) {
     //   结构体/数组返回=retbuf 预插缺失。三后端 emitCall 均按 result.type
     //   分派（i128 sret/浮点 xmm/整型位宽）——IR 层一处修三后端同受益。
     //   解析失败保守兜底 "i32"（现状零行为变更）。
-    const std::string calleeFnPtrType = funcPtrTypeOfCallee(node->callee.get());
+    // 442：callee 源码类型串在循环前已单次解析（calleeFnPtrType442·实参定标
+    //   判据源同源消费）——此处直接复用，不重复解析。
+    const std::string& calleeFnPtrType = calleeFnPtrType442;
     if (!calleeFnPtrType.empty()) {
         const std::vector<std::string> fnPtrParams =
             types::funcPtrParamsOf(calleeFnPtrType);
