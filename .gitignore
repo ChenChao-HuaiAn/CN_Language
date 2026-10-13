@@ -72,3 +72,5 @@ scripts/board_state.db
 scripts/board_cache.json
 scripts/coverage_cache.json
 scripts/case_ledger_cache.json
+*.db-shm
+*.db-wal
