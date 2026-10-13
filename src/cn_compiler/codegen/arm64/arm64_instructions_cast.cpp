@@ -29,6 +29,12 @@ void Arm64CodeGenerator::emitCast(Arm64AsmWriter& writer,
     case judgement::CastKind::FloatToI128Helper: {
         const std::string vreg = (from == "f64") ? "d0" : "s0";
         loadOperandToV(writer, inst.operands[0], vreg);
+        // 550（浮32→整128 读宽根治·x86 两后端同构）：f32 源须先 fcvt 宽化 d0——
+        //   辅助 __cn_f64_to_i128 按 f64（d0）读，原 s0 仅低 32 位=f32 位模式被当
+        //   f64 解释=非规格化垃圾（3.75f 截断恒 0）；宽化无损，语义随 464/475 不变。
+        if (from == "f32") {
+            writer.line("fcvt d0, s0");
+        }
         const int loOff = regSlotOffset(inst.result.id + 1);
         emitStackAddr(writer, "x0", loOff);
         writer.line("bl __cn_f64_to_i128");

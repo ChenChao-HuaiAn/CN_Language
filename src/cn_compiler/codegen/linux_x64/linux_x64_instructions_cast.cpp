@@ -26,6 +26,12 @@ void LinuxX64CodeGenerator::emitCast(LinuxX64AsmWriter& writer,
     // SysV：out 指针 rdi（第1整型参数）、double 值 xmm0
     case judgement::CastKind::FloatToI128Helper: {
         loadOperandToV(writer, inst.operands[0], "xmm0");
+        // 550（浮32→整128 读宽根治·win 同构）：f32 源须先宽化 f64 再进辅助——
+        //   __cn_f64_to_i128 按 f64 读 xmm0（SysV），原直喂 f32 位模式=非规格化
+        //   垃圾（3.75f 截断恒 0）；f32→f64 宽化无损，截断/NaN/饱和随 464/475 不变。
+        if (from == "f32") {
+            writer.line("cvtss2sd xmm0, xmm0");
+        }
         const int loOff = regSlotOffset(inst.result.id + 1);
         writer.line("lea rdi, " + stackMemText(loOff));
         writer.line("call __cn_f64_to_i128");

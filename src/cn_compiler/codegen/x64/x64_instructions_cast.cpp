@@ -285,6 +285,13 @@ bool X64CodeGenerator::emitCastFloatFamily(AsmWriter& writer, const ir::IRInstru
         const std::string conv = (from == "f64") ? "movsd" : "movss";
         const std::string mp = (from == "f64") ? "qword ptr " : "dword ptr ";
         writer.line(conv + " xmm0, " + mp + src);
+        // 550（浮32→整128 读宽根治）：浮32 源须先按源浮宽宽化 f64 再进辅助——
+        //   辅助 __cn_f64_to_i128 按 f64 读 xmm0，原直喂 f32 位模式（低 32 位）
+        //   被当 f64 解释=非规格化垃圾（3.75f 截断恒 0·双侧同错）；与浮64 通道
+        //   对齐（f32→f64 宽化无损·域内截断/NaN/饱和口径随 464/475 不变）。
+        if (from == "f32") {
+            writer.line("cvtss2sd xmm0, xmm0");
+        }
         writer.line("lea rdx, " + regSlot(inst.result.id + 1));  // 低64位槽地址
         writer.line("sub rsp, 32");
         writer.line("call __cn_f64_to_i128");
