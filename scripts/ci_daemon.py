@@ -380,10 +380,14 @@ def 静态门禁与e2e段(步骤们: dict, 步骤, cn: Path | None) -> None:
         #   291：nice 为 posix 专属——win 无此前缀（同机互斥已由 gate_lock 承担）；
         #   --target 用运行时探测平台（win-x64 / linux-x86_64）
         保内存 = min(4096, int(物理内存MB() * 0.8))
+        # 566（2026-10-13 裁决乙案）：78/79 重负载用例本地默认跳过留云端——云端
+        #   runner 是其唯一合法执行面，显式 --allow-heavy 放行（并发/锁行为不变；
+        #   环境变量 CN_CI_BRANCH 兜底自动放行·旧版 run_e2e 未带本参数也自愈）。
         e2e基 = ([] if 是win else ["nice", "-n", "10"]) + [
             sys.executable, "tests/e2e/run_e2e.py",
             "--target", 平台, "--cn", str(cn),
             "--max-mem-mb", str(保内存),
+            "--allow-heavy",
             "--full-reason", "ci_daemon 云端全量门禁（TX_02/池 runner）"]
         if 步骤("e2e并行", e2e基 + ["--jobs", str(e2e并行)], 单轮总超时秒):
             步骤们["e2e"] = {"rc": 0}
