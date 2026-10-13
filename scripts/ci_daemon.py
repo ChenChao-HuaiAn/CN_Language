@@ -28,6 +28,14 @@
 #   win 侧差异全部收敛在平台分支内：msvcrt 锁/GlobalMemoryStatusEx/vcvars+Ninja 构建链/
 #   E2E --target win-x64；三段外套 gate_lock（家机同机有人工开发·与 TX_02 独占场景不同）。
 #   平台身份一律运行时探测（sys.platform），不依赖任何静态配置——共享文档不指定本机类型。
+# 523 win 增量构建混合态治本（2026-10-13）：池每轮 reset+clean(-fdq 不带 -x) 保留 target/
+#   增量，跨 HEAD 的对象/生成文件混合→坏 cn.exe（0xC0000005/挂死/ml64 失败·干净重建即愈
+#   ·554 实录三例）。两道修：①HEAD 指纹清建——构建前比对 ci-logs/last_build.sha 与实际
+#   HEAD，不一致/缺失→rmdir build-ninja 全量重配重编（与「干净重建即愈」同构=治本；
+#   sccache 命中兜成本·指纹一致轮零税）；构建绿且单测绿才更新指纹（可疑产物下轮必清）。
+#   ②每轮对齐 wt.py 开发树 088 修复：删 .ninja_deps（/showIncludes 被 sccache 吞→陈旧
+#   header deps→ODR 混合对象→静默崩溃）。clean -x 全清不做（每轮全量重编=过度代价·
+#   增量治理由指纹机制承担）。--selftest=生成文本+判定三态轻量自测（零真构建）。
 # 兼容 python3.8：注解泛型下标/联合字符串化（287·同 gate_quick 修复缘由）。
 from __future__ import annotations
 
@@ -251,6 +259,140 @@ def 找vcvars() -> Path | None:
     return None
 
 
+# ═══════════════ 523 win 构建链（混合态治本·指纹清建+088 对齐） ═══════════════
+
+def 需指纹清建(当前头: str, 记录路径: Path | None = None) -> tuple[bool, str]:
+    """HEAD 指纹清建判定（523·治本第一道）：比对实际 HEAD 与上次成功构建指纹
+    （ci-logs/last_build.sha·各实例独立）。不等/缺失/损坏/空头→清建（fail-safe
+    保守：宁可多清一次全编——sccache 命中约 30s·漏清=随机红重跑更贵）。
+    返回 (是否清建, 缘由)。记录路径参数供 --selftest 隔离注入，生产用缺省。"""
+    if not 当前头:
+        return True, "HEAD 不可知（rev-parse 失败/空）→保守清建"
+    记录 = 记录路径 or (日志目录 / "last_build.sha")
+    try:
+        上次 = 记录.read_text(encoding="utf-8").strip()
+    except Exception:
+        return True, "无构建指纹（冷启动/部署升级/上轮未绿）→保守清建"
+    if 上次 != 当前头:
+        return True, "HEAD 变化（上=%s→现=%s）→清建防混合态" % (上次[:10], 当前头[:10])
+    return False, "指纹一致→保留增量"
+
+
+def win头行(vcvars: Path) -> list[str]:
+    """win_configure.cmd / win_build.cmd 公共头（291 原内联段提出·523 抽函数）。"""
+    return ["@echo off", 'cd /d "%~dp0.."',
+            'call "%s" >nul 2>&1' % vcvars,
+            'where cl >nul 2>&1 || (echo [FAIL] cl not found & exit /b 1)']
+
+
+def win配置行(vcvars: Path, 清建: bool) -> list[str]:
+    """win_configure.cmd 生成（291 原内联段提出）。清建形态（523）=先 rmdir 整个
+    build-ninja——与「干净重建即愈」完全同构=治本；半清（只删 obj/.ninja_*）无法
+    论证穷尽残留面（.ninja_log 时间戳/生成文件/rsp/PDB·ILK 链接中间态均可陈旧），
+    留随机红尾巴。cmd 文本必须 ASCII（encoding="ascii"·rem 注释用英文）。"""
+    行 = win头行(vcvars)
+    if 清建:
+        行 += ["rem 523 root-fix: HEAD fingerprint changed -> full clean rebuild",
+               "rem (mirrors the known-good fix: clean rebuild; sccache absorbs cost)",
+               "if exist target\\build-ninja rmdir /s /q target\\build-ninja"]
+    launcher = ""
+    sccache = shutil.which("sccache")
+    if sccache:
+        launcher = ' -DCMAKE_CXX_COMPILER_LAUNCHER:FILEPATH="%s"' % sccache
+    # CXX_FLAGS_DEBUG 必须显式 /Z7（wt.py 开发树同口径）——默认 /ZI 集中 PDB
+    # 在 --parallel 下多 cl.exe 并写同 .pdb 必撞 C1041（实测）
+    行.append('cmake -G Ninja -S . -B target/build-ninja '
+              '-DCMAKE_BUILD_TYPE=Debug '
+              '-DCMAKE_CXX_FLAGS_DEBUG:STRING="/Z7 /Ob0 /Od /RTC1" ' + launcher)
+    return 行
+
+
+def win构建行(vcvars: Path) -> list[str]:
+    """win_build.cmd 生成（291 原内联段提出+523 对齐 wt.py 开发树 088 修复）：
+    每轮构建前删 .ninja_deps——MSVC+Ninja 的 header deps 经 /showIncludes 记录，
+    sccache（CMAKE_CXX_COMPILER_LAUNCHER）可能吞其 stdout→陈旧 deps→该重编的
+    没重编→ODR 混合对象→静默崩溃；删后强制全量重扫头（成本由 sccache 命中吸收
+    ·wt.py 实测冷全量 ~23s）。"""
+
+    return win头行(vcvars) + [
+        "rem 088 root-fix: drop stale .ninja_deps so every build re-scans all headers.",
+        "rem MSVC+Ninja records header deps from /showIncludes stdout, which sccache",
+        "rem (CMAKE_CXX_COMPILER_LAUNCHER) may swallow -> stale deps -> ODR mixed",
+        "rem objects -> silent crash. Deleting .ninja_deps forces a full re-scan",
+        "rem (cost absorbed by sccache hit; measured cold full build ~23s).",
+        "if exist target\\build-ninja\\.ninja_deps del /q target\\build-ninja\\.ninja_deps",
+        "cmake --build target/build-ninja --parallel",
+        "if errorlevel 1 (echo [FAIL] build & exit /b 1)"]
+
+
+def win构建链(步骤们: dict, 步骤, 日志, vcvars: Path, 当前头: str) -> None:
+    """win 构建链整段（291 原内联于 跑一轮·523 抽出=跑一轮 拆函数+指纹挂点）：
+    配置（指纹不一致→先 rmdir 全清再重配）→构建（每轮先删 .ninja_deps）→单测。
+    指纹写盘口径：构建 rc==0 **且单测 rc==0** 才更新 last_build.sha——构建绿但
+    单测挂死/红=产物可疑（可能混合态·554 症候）→不更新，下轮重试必清建
+    （同夜两轮均坏、第二轮即愈的对症面；真实红缺陷重试多付 ~30s 清建=可接受）。"""
+    清建, 缘由 = 需指纹清建(当前头)
+    print("  [523] %s" % 缘由, file=日志, flush=True)
+    if 清建 or not (仓库根 / "target/build-ninja/build.ninja").exists():
+        配置脚本 = 日志目录 / "win_configure.cmd"
+        配置脚本.write_text("\r\n".join(win配置行(vcvars, 清建)) + "\r\n", encoding="ascii")
+        步骤("配置", ["cmd", "/c", str(配置脚本)], 900)
+    else:
+        步骤们["配置"] = {"rc": 0, "说明": "build-ninja 已配置（增量）"}
+    if 步骤们["配置"].get("rc") != 0:
+        return
+    构建脚本 = 日志目录 / "win_build.cmd"
+    构建脚本.write_text("\r\n".join(win构建行(vcvars)) + "\r\n", encoding="ascii")
+    步骤("构建", ["cmd", "/c", str(构建脚本)], 单轮总超时秒)
+    # 单测（产物落 target/ 根=CMAKE_RUNTIME_OUTPUT_DIRECTORY·exe 后缀）
+    单测 = next((p for p in [仓库根 / "target/cn_unit_tests.exe",
+                             仓库根 / "target/build/cn_unit_tests.exe",
+                             仓库根 / "target/cn_unit_tests"] if p.exists()), None)
+    if 单测 is None:
+        步骤们["单测"] = {"rc": -1, "说明": "未找到单测产物"}
+        return
+    步骤("单测", [str(单测)], 1800)
+    if 步骤们["构建"]["rc"] == 0 and 步骤们["单测"]["rc"] == 0:
+        (日志目录 / "last_build.sha").write_text(当前头 + "\n", encoding="utf-8")
+        print("  [523] 构建指纹已更新：%s" % 当前头[:10], file=日志, flush=True)
+
+
+def 静态门禁与e2e段(步骤们: dict, 步骤, cn: Path | None) -> None:
+    """③.5 静态门禁面+④ E2E（242/447-a/924 原内联于 跑一轮·523 抽出=跑一轮
+    拆函数回 ≤100 行）——两平台公共段；cn 产物定位必须先于本段（原赋值在 ④ 段
+    晚于引用=UnboundLocalError 必崩·259 修）。逻辑逐行保持原样。"""
+    for 名, 参 in (("check_spec_coverage", []),   # 243：非 strict（TX_02「指针有效性」存量红=244 修·红不拦兜底轮）
+                  ("check_cli_contract", ["--cn", str(cn)]),
+                  ("check_asm_width", ["--cn", str(cn)]),
+                  ("check_matrix_coverage", []),
+                  ("check_file_length", ["--freeze"])):
+        if cn is None and "--cn" in 参:
+            步骤们[名] = {"rc": -1, "说明": "未找到 cn 产物·跳过"}
+            continue
+        if 步骤(名, [sys.executable, f"scripts/{名}.py"] + 参, 900):
+            pass
+    # ④ E2E（探测平台面；红后串行复验=447-a 口径）
+    if cn is None:
+        步骤们["e2e"] = {"rc": -1, "说明": "未找到 cn 产物"}
+    elif 步骤们.get("构建", {}).get("rc") == 0:
+        # 924·运维小件：max-mem 按物理内存适配（4096 默认>3.6G 物理=形同虚设——920 预判）；
+        #   E2E 全程 nice -n 10 降优先级（CI 高负载 sshd 饿死 banner 超时实锤·运维手册④）
+        #   291：nice 为 posix 专属——win 无此前缀（同机互斥已由 gate_lock 承担）；
+        #   --target 用运行时探测平台（win-x64 / linux-x86_64）
+        保内存 = min(4096, int(物理内存MB() * 0.8))
+        e2e基 = ([] if 是win else ["nice", "-n", "10"]) + [
+            sys.executable, "tests/e2e/run_e2e.py",
+            "--target", 平台, "--cn", str(cn),
+            "--max-mem-mb", str(保内存),
+            "--full-reason", "ci_daemon 云端全量门禁（TX_02/池 runner）"]
+        if 步骤("e2e并行", e2e基 + ["--jobs", str(e2e并行)], 单轮总超时秒):
+            步骤们["e2e"] = {"rc": 0}
+        else:
+            print("  [复验] 并行红——--jobs 1 串行复验（447-a 口径）", file=日志, flush=True)
+            步骤("e2e串行复验", e2e基 + ["--jobs", "1"], 单轮总超时秒)
+            步骤们["e2e"] = {"rc": 步骤们["e2e串行复验"]["rc"]}
+
+
 def 带门禁锁跑(sha: str, 轮分支: str = "") -> dict | None:
     """291 win 三段外套 gate_lock：家机同机有人工开发全量门禁（与 TX_02 独占 CI 场景
     不同）——win 池实例三段与主树门禁全机互斥（AGENTS §7 本机全量每机 ≤1；池树经
@@ -289,6 +431,9 @@ def 跑一轮(sha: str, 轮分支: str = "") -> dict:
             return 步骤们[名]["rc"] == 0
 
         # ① 同步代码到该 SHA（reset 保干净树；git clean 不带 -x=保留 ignored 的 target/ 增量）
+        #    523 口径：target/ 增量治理**不靠 clean -x 全清**（每轮全量重编=过度代价），
+        #    靠 win构建链 HEAD 指纹清建——指纹不一致才 rmdir 整目录重建，一致才吃增量；
+        #    clean 面维持 -fdq 不变（linux 侧 target/build 由 cmake 依赖图自洽·无此病史）。
         #    291：bash -c 复合命令拆三条裸 git 子进程——跨平台（win 不依赖 bash 在 PATH）
         同步rc, 同步输出 = 0, ""
         for 同步命令 in (["git", "fetch", 远端名, 轮分支],
@@ -303,48 +448,19 @@ def 跑一轮(sha: str, 轮分支: str = "") -> dict:
         if 同步rc != 0:
             print(同步输出, file=日志, flush=True)
         elif 是win:
-            # ② 291 win 构建链=vcvars64+Ninja+sccache（wt.py 开发树同口径）；首配仅
-            #    build.ninja 缺失时做（每轮 reset/clean 不动 target/=增量天然保留）。
+            # ② 291 win 构建链=vcvars64+Ninja+sccache（wt.py 开发树同口径）——
             #    cmd /c 复合命令串内嵌引号经 subprocess 列表参数转义必坏（实测 rc=1
             #    零输出）——生成 ASCII 临时脚本跑（wt.py 生成 ninja_build.cmd 同款手法；
-            #    固定名覆盖写=无垃圾积累；cd /d %~dp0.. 自定位树根=四 worktree 各自独立）
+            #    固定名覆盖写=无垃圾积累；cd /d %~dp0.. 自定位树根=四 worktree 各自独立）。
+            #    523：构建/配置/单测整段抽 win构建链（指纹清建挂点）——reset 后取实际
+            #    HEAD 做指纹（189 兜底过期竞态下 reset 到的可能非任务 sha·以实际构建树为准）。
+            头 = 运行限时(["git", "rev-parse", "HEAD"], 30,
+                          capture_output=True, text=True, cwd=仓库根)
             vcvars = 找vcvars()
             if vcvars is None:
                 步骤们["配置"] = {"rc": -1, "说明": "未找到 vcvars64.bat（VS2022 安装不全）"}
             else:
-                头行 = ["@echo off", 'cd /d "%~dp0.."',
-                        'call "%s" >nul 2>&1' % vcvars,
-                        'where cl >nul 2>&1 || (echo [FAIL] cl not found & exit /b 1)']
-                if not (仓库根 / "target/build-ninja/build.ninja").exists():
-                    launcher = ""
-                    sccache = shutil.which("sccache")
-                    if sccache:
-                        launcher = ' -DCMAKE_CXX_COMPILER_LAUNCHER:FILEPATH="%s"' % sccache
-                    配置脚本 = 日志目录 / "win_configure.cmd"
-                    # CXX_FLAGS_DEBUG 必须显式 /Z7（wt.py 开发树同口径）——默认 /ZI 集中 PDB
-                    # 在 --parallel 下多 cl.exe 并写同 .pdb 必撞 C1041（实测）
-                    配置脚本.write_text("\r\n".join(头行 + [
-                        'cmake -G Ninja -S . -B target/build-ninja '
-                        '-DCMAKE_BUILD_TYPE=Debug '
-                        '-DCMAKE_CXX_FLAGS_DEBUG:STRING="/Z7 /Ob0 /Od /RTC1" ' + launcher])
-                        + "\r\n", encoding="ascii")
-                    步骤("配置", ["cmd", "/c", str(配置脚本)], 900)
-                else:
-                    步骤们["配置"] = {"rc": 0, "说明": "build-ninja 已配置（增量）"}
-                if 步骤们["配置"]["rc"] == 0:
-                    构建脚本 = 日志目录 / "win_build.cmd"
-                    构建脚本.write_text("\r\n".join(头行 + [
-                        "cmake --build target/build-ninja --parallel"]) + "\r\n",
-                        encoding="ascii")
-                    步骤("构建", ["cmd", "/c", str(构建脚本)], 单轮总超时秒)
-                    # ③ 单测（产物落 target/ 根=CMAKE_RUNTIME_OUTPUT_DIRECTORY·exe 后缀）
-                    单测 = next((p for p in [仓库根 / "target/cn_unit_tests.exe",
-                                             仓库根 / "target/build/cn_unit_tests.exe",
-                                             仓库根 / "target/cn_unit_tests"] if p.exists()), None)
-                    if 单测 is None:
-                        步骤们["单测"] = {"rc": -1, "说明": "未找到单测产物"}
-                    else:
-                        步骤("单测", [str(单测)], 1800)
+                win构建链(步骤们, 步骤, 日志, vcvars, 头.stdout.strip())
         else:
             # ② 配置（默认生成器 Make·与 integrate 同口径；产物落 target/ 根=CMakeLists 16 行）
             if not 步骤("配置", ["cmake", "-S", ".", "-B", "target/build"], 600):
@@ -359,44 +475,13 @@ def 跑一轮(sha: str, 轮分支: str = "") -> dict:
                     步骤们["单测"] = {"rc": -1, "说明": "未找到单测产物"}
                 else:
                     步骤("单测", [str(单测)], 1800)
-        # ③.5 静态门禁面（242·ci常规五项：spec 覆盖/CLI 契约/asm 位宽/台账完成度/行数冻结线
-        #    ——两平台公共段·win 静态检查全可跑〔ci.ps1 实证三项〕；291 从 else 体内提出=
-        #    elif 是win 分支同样必经——曾因缩进挂在 else 内被 win 分支整体跳过〔绿=缺键误判〕）
-        #    cn 产物定位必须先于本段（原赋值在 ④ 段晚于引用=UnboundLocalError 必崩·259 修）
+        # ③.5 静态门禁面+④ E2E（242/447-a·两平台公共段——291 曾因缩进挂在 else 体内被
+        #    win 分支整体跳过〔绿=缺键误判〕；523 抽 静态门禁与e2e段·跑一轮 拆函数回 ≤100 行）
         if 同步rc == 0:
             cn = next((p for p in ([仓库根 / "target/cn.exe", 仓库根 / "target/cn"] if 是win
                                    else [仓库根 / "target/build/cn", 仓库根 / "target/cn"])
                        if p.exists()), None)
-            for 名, 参 in (("check_spec_coverage", []),   # 243：非 strict（TX_02「指针有效性」存量红=244 修·红不拦兜底轮）
-                          ("check_cli_contract", ["--cn", str(cn)]),
-                          ("check_asm_width", ["--cn", str(cn)]),
-                          ("check_matrix_coverage", []),
-                          ("check_file_length", ["--freeze"])):
-                if cn is None and "--cn" in 参:
-                    步骤们[名] = {"rc": -1, "说明": "未找到 cn 产物·跳过"}
-                    continue
-                if 步骤(名, [sys.executable, f"scripts/{名}.py"] + 参, 900):
-                    pass
-            # ④ E2E（探测平台面；红后串行复验=447-a 口径；cn 复用上文定位）
-            if cn is None:
-                步骤们["e2e"] = {"rc": -1, "说明": "未找到 cn 产物"}
-            elif 步骤们.get("构建", {}).get("rc") == 0:
-                # 924·运维小件：max-mem 按物理内存适配（4096 默认>3.6G 物理=形同虚设——920 预判）；
-                #   E2E 全程 nice -n 10 降优先级（CI 高负载 sshd 饿死 banner 超时实锤·运维手册④）
-                #   291：nice 为 posix 专属——win 无此前缀（同机互斥已由 gate_lock 承担）；
-                #   --target 用运行时探测平台（win-x64 / linux-x86_64）
-                保内存 = min(4096, int(物理内存MB() * 0.8))
-                e2e基 = ([] if 是win else ["nice", "-n", "10"]) + [
-                    sys.executable, "tests/e2e/run_e2e.py",
-                    "--target", 平台, "--cn", str(cn),
-                    "--max-mem-mb", str(保内存),
-                    "--full-reason", "ci_daemon 云端全量门禁（TX_02/池 runner）"]
-                if 步骤("e2e并行", e2e基 + ["--jobs", str(e2e并行)], 单轮总超时秒):
-                    步骤们["e2e"] = {"rc": 0}
-                else:
-                    print("  [复验] 并行红——--jobs 1 串行复验（447-a 口径）", file=日志, flush=True)
-                    步骤("e2e串行复验", e2e基 + ["--jobs", "1"], 单轮总超时秒)
-                    步骤们["e2e"] = {"rc": 步骤们["e2e串行复验"]["rc"]}
+            静态门禁与e2e段(步骤们, 步骤, cn)
         尾部 = []
     # 日志尾部摘录进结果（供 TX_01 结果页直显；完整日志在 run_*.log）
     with 轮日志路径.open("r", encoding="utf-8", errors="replace") as f:
@@ -719,7 +804,47 @@ def 重抢锁(锁) -> None:
         time.sleep(轮询间隔秒)
 
 
+def 自测() -> int:
+    """523 轻量自测（--selftest）：直调生成/判定函数断言，零真构建零真 git——
+    锁死 win_build.cmd 必含 088 删除行、清建形态配置必含 rmdir、指纹判定三态。"""
+    import tempfile
+    断言们: list[tuple[str, bool]] = []
+
+    def 断言(名: str, 条件: bool) -> None:
+        断言们.append((名, 条件))
+
+    构建行 = win构建行(Path("vcvars64.bat"))
+    断言("构建脚本含 088 .ninja_deps 删除行",
+         any(".ninja_deps" in l and "del /q" in l for l in 构建行))
+    断言("构建脚本含 cmake --build 行",
+         any("cmake --build target/build-ninja" in l for l in 构建行))
+    断言("构建脚本含 errorlevel 拦截行（构建红显式退 1）",
+         any("if errorlevel 1" in l for l in 构建行))
+    断言("脚本头含 cl 探测行", any("where cl" in l for l in 构建行))
+    清行 = win配置行(Path("vcvars64.bat"), True)
+    净行 = win配置行(Path("vcvars64.bat"), False)
+    断言("清建配置含 rmdir build-ninja 行",
+         any("rmdir /s /q target\\build-ninja" in l for l in 清行))
+    断言("增量配置不含 rmdir", not any("rmdir" in l for l in 净行))
+    断言("两形态配置都含 cmake 配置行",
+         all(any("cmake -G Ninja" in l for l in x) for x in (清行, 净行)))
+    with tempfile.TemporaryDirectory() as 临时:
+        记录 = Path(临时) / "last_build.sha"
+        断言("指纹缺失→清建", 需指纹清建("a" * 40, 记录)[0])
+        记录.write_text("b" * 40 + "\n", encoding="utf-8")
+        断言("指纹一致→不清建", not 需指纹清建("b" * 40, 记录)[0])
+        断言("指纹不一致→清建", 需指纹清建("c" * 40, 记录)[0])
+        断言("HEAD 空头→清建", 需指纹清建("", 记录)[0])
+    for 名, ok in 断言们:
+        print("  [%s] %s" % ("OK" if ok else "×", 名))
+    红 = sum(1 for _, ok in 断言们 if not ok)
+    print("== ci_daemon 自测（523）：%d 断言，%s ==" % (len(断言们), "全绿" if 红 == 0 else "红 %d" % 红))
+    return 0 if 红 == 0 else 1
+
+
 if __name__ == "__main__":
+    if "--selftest" in sys.argv:
+        raise SystemExit(自测())
     常 = "--loop" in sys.argv
     强 = "--force" in sys.argv
     等锁 = "--wait-lock" in sys.argv
