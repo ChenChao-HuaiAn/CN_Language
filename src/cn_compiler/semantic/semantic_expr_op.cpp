@@ -13,6 +13,7 @@
 #include "cn_compiler/model/type_system.hpp"
 #include "cn_compiler/model/semantic_helpers.hpp"
 #include "cn_compiler/semantic/semantic_lambda_escape.hpp"
+#include "cn_compiler/semantic/semantic_staticguard.hpp"
 
 namespace cn_compiler {
 
@@ -354,7 +355,11 @@ void SemanticAnalyzer::checkIdentifierAssignTarget(AssignmentExpr* node,
     IdentifierExpr* ident = static_cast<IdentifierExpr*>(node->target.get());
     // 150-a（plans/023 B10 实施）：可变静态变量写观察期警告（读安全——
     //   plans/023 §四 B10：Rust static mut 对照的 CN 裁剪）
-    if (isGlobalStatic(ident->name)) {
+    // 480（473 采样轮 p9）：函数内静态局部写同族执法——静态局部与顶层静态
+    //   同属静态存储期变量（001 §747 表第 8 行「可变静态变量写」无顶层限定；
+    //   函数内静态写原双侧均放行=整族逃逸）。判定源=staticguard 记账。
+    if (isGlobalStatic(ident->name) ||
+        staticguard::isStaticLocal(ident->name)) {
         reportUnsafeBoundary(node->location, "静态变量写", "静态变量赋值");
     }
     std::string varType;

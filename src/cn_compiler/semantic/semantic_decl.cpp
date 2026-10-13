@@ -14,6 +14,7 @@
 #include "cn_compiler/model/type_system.hpp"
 #include "cn_compiler/model/semantic_helpers.hpp"
 #include "cn_compiler/semantic/semantic_lambda_escape.hpp"
+#include "cn_compiler/semantic/semantic_staticguard.hpp"
 
 namespace cn_compiler {
 
@@ -490,6 +491,18 @@ void SemanticAnalyzer::visitVarDecl(VarDecl* node) {
         //   （赋值/自增目标拒绝用，isConstVarName）
         scopeConsts_.back().insert(node->name);
     }
+    // 480（473 采样轮 p9·001 §747 表第 8 行整族执法）：函数内静态局部名记账
+    //   ——静态声明登记（赋值/复合赋值/自增自减写位判定源），同名普通声明=
+    //   遮蔽移除（后续引用回普通变量·v2 865-a 遮蔽语义同构）。函数级表，
+    //   checkFunctionBody/checkSingleMethodBody 入口清空；顶层声明
+    //   （funcScopeStart_=-1）不入表。
+    if (funcScopeStart_ >= 0) {
+        if (node->isStatic) {
+            staticguard::recordStaticLocal(node->name);
+        } else {
+            staticguard::notePlainDecl(node->name);
+        }
+    }
     // 010（def-init）：无初始化器的局部值类型声明登记未初始化 place 键
     //   （拥有型/指针/引用/静态豁免——isDefInitTrackedType 判定；带初始化器
     //   的声明=已初始化不登记）
@@ -670,6 +683,8 @@ void SemanticAnalyzer::checkFunctionBody(FunctionDecl* node) {
     // 435：lambda 引用捕获逃逸——当前函数传播表清空（跨函数互不污染·
     //   与 v2 检查函数 入口清空族同位；设计见 semantic_lambda_escape.hpp）
     lambda_escape::noteFunctionEntry();
+    // 480：函数内静态局部名表清空（同上——跨函数互不污染）
+    staticguard::noteFunctionEntry();
     // 收集当前函数引用参数名：引用返回允许"返回引用参数"（指向调用方存储，
     // 悬垂只发生在返回本函数局部/按值参数时）
     currentRefParams_.clear();

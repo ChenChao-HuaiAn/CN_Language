@@ -17,6 +17,7 @@
 
 #include "cn_compiler/semantic/semantic.hpp"
 #include "cn_compiler/model/type_system.hpp"
+#include "cn_compiler/semantic/semantic_staticguard.hpp"
 
 namespace cn_compiler {
 
@@ -212,6 +213,8 @@ void SemanticAnalyzer::checkSingleMethodBody(ClassInfo& info, ClassMemberInfo& m
         // plans/019 阶段4 第二层第一批：不安全方法体内豁免安全区边界观察期警告
         const bool savedUnsafe = currentFnUnsafe_;
         currentFnUnsafe_ = mi.isUnsafe;
+        // 480：方法体入口清空函数内静态局部名表（函数级表·跨方法互不污染）
+        staticguard::noteFunctionEntry();
         const std::string savedFuncName = currentFunctionName_;
         currentFunctionName_ = mi.name;
         // Task 6.1（嵌套泛型 链表$整32 方法体内 节点<T>）：实例化类名含 $，

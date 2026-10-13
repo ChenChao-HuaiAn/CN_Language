@@ -10,6 +10,7 @@
 #include "cn_compiler/semantic/semantic.hpp"
 #include "cn_compiler/model/semantic_helpers.hpp"
 #include "cn_compiler/model/type_system.hpp"
+#include "cn_compiler/semantic/semantic_staticguard.hpp"
 
 namespace cn_compiler {
 
@@ -277,6 +278,14 @@ void SemanticAnalyzer::checkIncDecUnary(UnaryExpr* node,
                     static_cast<IdentifierExpr*>(node->operand.get());
                 // 188-a（D6）：自增/自减=隐式非空写入 → 恒空判定失格
                 noteNullWriteOther(ident->name);
+                // 480（473 采样轮 p9·001 §747 表第 8 行整族执法）：静态变量写
+                //   自增自减形态——顶层静态（原漏网·x 探针）与函数内静态局部
+                //   （原双侧均放行·p9）同受安全区边界约束；不安全函数内豁免。
+                if (isGlobalStatic(ident->name) ||
+                    staticguard::isStaticLocal(ident->name)) {
+                    reportUnsafeBoundary(node->location, "静态变量写",
+                                         "静态变量自增自减");
+                }
                 if (isConstVarName(ident->name)) {
                     diagnostics_.report(
                         DiagnosticLevel::Error, node->location,
