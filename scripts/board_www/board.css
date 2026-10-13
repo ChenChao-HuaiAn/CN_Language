@@ -48,8 +48,11 @@ button { font: inherit; cursor: pointer; }
   margin: 0; font: 700 1.05rem/1.2 var(--font-display);
   letter-spacing: .02em;
 }
-.顶栏右 { margin-left: auto; display: flex; align-items: center; gap: var(--space-3); }
-#元信息 { color: var(--color-fg-subtle); font-size: .8rem; font-variant-numeric: tabular-nums; }
+.顶栏右 { display: flex; align-items: center; gap: var(--space-3); }
+/* 527：元信息/自动刷新 的包裹行。桌面 display:contents 让子项直接参与顶栏
+   flex（视觉与包裹前完全一致，#元信息 照旧右推）；手机档变实体行独占第二行 */
+.顶栏元行 { display: contents; }
+#元信息 { margin-left: auto; color: var(--color-fg-subtle); font-size: .8rem; font-variant-numeric: tabular-nums; }
 .灯 { width: 8px; height: 8px; border-radius: 50%; background: var(--color-success);
       animation: 呼吸 2.4s var(--ease) infinite; }
 .灯.断 { background: var(--color-danger); animation: none; }
@@ -453,4 +456,40 @@ main { max-width: 78rem; margin: 0 auto; padding: var(--space-5) var(--space-6) 
 .裁决记录行 {
   display: flex; align-items: center; gap: var(--space-2);
   padding: var(--space-1) 0; font-size: .84rem;
+}
+
+/* —— 移动端适配（527·手机浏览器顶栏/页签不再占半屏）——
+   病根：顶栏与两排页签 flex 单行不换行，窄屏各元素被压到最小宽度、
+   CJK 逐字竖排堆叠（约 900px 高吃掉半屏）。
+   ≤60rem 平板档：隐藏标题副标题（单行放不下先从这里省）
+   ≤48rem 手机档：顶栏双行紧凑（第二行=数据时刻+自动刷新小字）
+                  ·页签单行横滑 ·主区留白收窄 ·区题说明两行封顶 ·弹窗贴机规 */
+@media (max-width: 60rem) {
+  .顶栏 h1 .淡 { display: none; }
+}
+@media (max-width: 48rem) {
+  .顶栏 { flex-wrap: wrap; row-gap: var(--space-1);
+          padding: var(--space-2) var(--space-4); }
+  .顶栏 .灯 { flex: 0 0 auto; }
+  .顶栏 h1 { flex: 1 1 0; min-width: 0; font-size: .95rem;
+             white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  /* 元信息/自动刷新 整行换到第二行小字：容器实体化独占一行（flex-basis 100%），
+     内部 自动刷新 在左、元信息吃富余在右，收缩时省略号截断 */
+  .顶栏元行 { order: 9; flex-basis: 100%; display: flex; align-items: center;
+              gap: var(--space-3); min-width: 0; }
+  #元信息 { flex: 1 1 0; min-width: 0; margin-left: 0; font-size: .72rem;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .自动刷新 { flex: 0 0 auto; }
+  .顶栏右 { gap: var(--space-2); }
+  /* 页签单行横滑：一行高放不下左右滑（隐藏滚动条·签不缩不折行） */
+  .顶级导航, .页签栏 { padding-left: var(--space-4); padding-right: var(--space-4);
+                       overflow-x: auto; scrollbar-width: none; }
+  .顶级导航::-webkit-scrollbar, .页签栏::-webkit-scrollbar { display: none; }
+  .板块签, .页签 { flex: 0 0 auto; white-space: nowrap;
+                   padding-left: var(--space-3); padding-right: var(--space-3); }
+  main, #冲突带 { padding-left: var(--space-3); padding-right: var(--space-3); }
+  .区题 .淡 { display: -webkit-box; -webkit-line-clamp: 2;
+              -webkit-box-orient: vertical; overflow: hidden; }
+  #新建遮罩 { padding-top: var(--space-8); }
+  .新建窗, #详情面板 { padding: var(--space-4); }
 }

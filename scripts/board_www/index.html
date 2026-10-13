@@ -10,17 +10,22 @@
 </head>
 <body>
 
+<!-- 527 移动端适配：元信息/自动刷新 包进 .顶栏元行——桌面 display:contents 视觉
+     不变；手机档变实体行换到第二行小字（见 board.css 尾）。
+     另修类名缺陷：钮窄 是单类名匹配不上 .钮.窄——改正为 窄，紧凑按钮样式首次真正生效 -->
 <header class="顶栏">
   <span id="状态灯" class="灯 断" aria-hidden="true"></span>
   <h1>CN · 任务看板 <span class="淡">／ 三机实时·服务端唯一台账</span></h1>
-  <div class="顶栏右">
+  <div class="顶栏元行">
     <span id="元信息">连接中…</span>
     <label class="自动刷新" title="自动刷新默认关闭（388 用户令：防打断阅读）——开启后每 8 秒更新">
       <input type="checkbox" id="自动刷新"> 自动刷新
     </label>
-    <button id="登录钮" class="钮 次 钮窄" title="裁决与写操作须管理员登录">🔑 登录</button>
-    <button id="刷新钮" class="钮 次 钮窄" aria-label="手动刷新">⟳ 刷新</button>
-    <button id="主题钮" class="钮 次 钮窄" aria-label="切换明暗主题">◑</button>
+  </div>
+  <div class="顶栏右">
+    <button id="登录钮" class="钮 次 窄" title="裁决与写操作须管理员登录">🔑 登录</button>
+    <button id="刷新钮" class="钮 次 窄" aria-label="手动刷新">⟳ 刷新</button>
+    <button id="主题钮" class="钮 次 窄" aria-label="切换明暗主题">◑</button>
   </div>
 </header>
 
