@@ -395,6 +395,33 @@ void SemanticAnalyzer::registerFunction(FunctionDecl* node) {
         diagnostics_.report(DiagnosticLevel::Error, node->location,
                             "外部 函数 声明不能有函数体（C 符号由外部库提供）");
     }
+    // 518（批丙·2026-10-13 用户裁决）：外部 函数 返回类型白名单——仅限标量
+    //   （整数族/浮点，含 字符/布尔 整数族成员与 空类型 无值返回）/指针/字符串；
+    //   聚合（类/结构体）、引用（T& 系）、数组返回=编译期拒绝。判定用原始类型
+    //   文本（resolveTypeName 后·canonical 会剥 & 后缀，isRefReturn 同款口径）。
+    //   背景（110 实录）：聚合返回曾双侧放行，宿主调用面 retbuf 不预插、类值当
+    //   指针判空解引用崩——Rust extern "C" 非 FFI-safe 边界同构；聚合 FFI 返回
+    //   待 sret 跨语言约定立法后另行放行（001 §5.3 FFI 条文升级口）。诊断文案
+    //   与 v2 解析外部函数声明检查逐字一致（零分叉口径，810 负例锁面）。
+    if (node->isExtern && !node->returnType.empty()) {
+        const std::string& ffiRet = node->returnType;
+        bool ffiRetOk = false;
+        if (!types::isReference(ffiRet) && !types::isArray(ffiRet)) {
+            // 核心判定前 canonical 归一（指针->空类型*、整数->整32、小数->浮64
+            //   别名对齐；引用/数组形态已被上方原始文本判定先行拒绝，此处无 &
+            //   与 [N] 后缀，剥 & 副作用不可达）
+            std::string ffiCore = types::canonical(ffiRet);
+            while (!ffiCore.empty() && ffiCore.back() == '*') ffiCore.pop_back();
+            ffiRetOk = types::isInteger(ffiCore) || types::isFloat(ffiCore) ||
+                       ffiCore == "字符" || ffiCore == "布尔" ||
+                       ffiCore == "字符串" || ffiCore == "空类型";
+        }
+        if (!ffiRetOk) {
+            diagnostics_.report(DiagnosticLevel::Error, node->location,
+                                "外部 函数 返回类型 '" + ffiRet +
+                                "' 不支持：仅限标量（整数族/浮点）/指针/字符串（聚合与引用返回待 sret 跨语言约定立法后放行）");
+        }
+    }
     // P3-18 补完（2026-08）：函数返回类型支持引用（T&）——返回被引用左值的地址。
     //   引用返回不参与重载签名（仅返回类型不同不构成重载）；isRefReturn 供 IR
     //   （返回类型映射 ptr）与调用方（get() = 值 写回 / 整32& r = get() 绑定 /
