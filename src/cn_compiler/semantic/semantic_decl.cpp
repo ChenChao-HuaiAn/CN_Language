@@ -321,9 +321,26 @@ void SemanticAnalyzer::visitVarDecl(VarDecl* node) {
         //   丢失）→后续 成员方法调用 在 i32 类型上走间接 fallback，callee 解析失败
         //   常量 0 兜底发射 `call 0`（asm mov r11,0/call r11·rc=139 实锤）。语义与
         //   IR 共享同一 AST——typeName 回填是两层契约（46-c 结构体先例同构）。
+        // 512（2026-10-14·464 实施轮呈报面根治）：推断声明浮点表达式面回填——
+        //   checkExpr 对浮点表达式（浮点二元 0.0-x / 一元负号+浮点字面量
+        //   -1.0e19 / 浮点调用返回 / 浮点标识符拷贝）静态类型恒浮64/浮32 正确
+        //   （显式 浮64 同值全对实证），但原回填白名单仅结构体/字符串/类
+        //   （46-c「标量回填随标量推断轮裁决」遗留），浮点标量不回填 → IR 层
+        //   resolveDeclTypesAndAlloc 对空 typeName 仅 FloatLiteral 初值有浮点
+        //   分支（ir_stmt_decl.cpp 族④），表达式形态兜底「整32」槽=浮点值截断
+        //   （y=0.0-x 出 -3、d=-1.0e19 出 -2147483648 实锤）。回填 node->typeName
+        //   与语义符号表同源——IR srcType/槽型/打印分派全链一致（46-c 结构体
+        //   回填/497 字面量定宽回填同构）。窄面触发仅浮点（types::isFloat 规范
+        //   后）：布尔推断 184 打印契约（真/假）与整型标量推断面（整64 调用
+        //   返回等·标量推断轮辖区）零波及；浮点字面量直推（变量 x=3.5）原 IR
+        //   FloatLiteral 分支同归 mapType(浮64)=double 槽，行为等价零变更。
+        //   v2 对照（885 dual 探针实锤）：v2 语义推导（检查表达式 浮点字面量恒
+        //   浮64+推导二元类型ID 取左）与 IR 推断声明类型表回填链既有正确——
+        //   本回填为宿主单侧对齐，无 v2 改动。
         if (!varType.empty() && varType != "未知" &&
             (isStructType(types::canonical(varType)) || varType == "字符串" ||
-             isClassType(types::canonical(varType)))) {
+             isClassType(types::canonical(varType)) ||
+             types::isFloat(types::canonical(varType)))) {
             node->typeName = varType;
         }
     } else if (node->initializer != nullptr && !varType.empty()) {
