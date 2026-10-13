@@ -220,6 +220,13 @@ void IRGenerator::visitIndexExpr(IndexExpr* node) {
     std::string callRetType244;
     if (node->object->getType() == NodeType::CallExpr) {
         callRetType244 = exprSrcType(node->object.get());
+    } else if (node->object->getType() == NodeType::StringLiteral) {
+        // 596（2026-10-13·859 实锤形态同族·244 接续）：对象=字符串字面量
+        //   （"ABCDE"[i] 就地链式下标）——归一字符串语义（字符* 字节视图
+        //   stride=1），与字符串变量 A-1 / 244 字符串返回口径同构。原无此
+        //   分支落「其他对象」兜底 stride=8/i64 宽读：[0]=打包宽读错值、
+        //   [2]=越界读镜像地址（864 用例修前实测铁证）——静默错值=安全红线。
+        callRetType244 = "字符串";
     }
     std::int64_t stride = 8;
     if (!callRetType244.empty() && semantic_ != nullptr) {

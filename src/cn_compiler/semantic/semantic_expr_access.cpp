@@ -456,6 +456,22 @@ void SemanticAnalyzer::visitIndexExpr(IndexExpr* node) {
     //   原「字符」标注与「字符=Unicode 标量值」定义矛盾，属规范空白）。
     //   完整字符经 字符转字符串（码点路径）/字符串子串（字节路径）按需构造。
     if (objectType == "字符串") {
+        // 596（2026-10-13·910/112 甲扩全形态）：字符串下标**写**=编译期拒绝——
+        //   字符串为不可变拥有型（001 §1.1a）。910 只在赋值 target case 拦
+        //   标识符形态（变量）；字面量（"ABC"[0]=x 写穿常量段+驻留共享跨表达
+        //   式污染·864 轮探针实测）与调用返回串临时物（写悬垂临时）静默放行
+        //   UB=安全红线。v2 侧 族②检查下标左值形态 同拒既有（双侧对齐）。
+        //   写语境=assignmentTargetDepth_>0（复合赋值同拦）；标识符形态已由
+        //   910 在 target case 拒（lvalueOk=false 提前返回，此处不重复报）。
+        if (assignmentTargetDepth_ > 0 &&
+            node->object->getType() != NodeType::IdentifierExpr) {
+            diagnostics_.report(
+                DiagnosticLevel::Error, node->location,
+                "下标左值赋值未支持（字符串下标只读）——字符串为不可变"
+                "拥有型，原地修改请用 字符 数组或不安全区指针（112 甲）");
+            lastType_ = "未知";
+            return;
+        }
         if (!isInteger(indexType)) {
             diagnostics_.report(DiagnosticLevel::Error, node->index->location,
                                 "字符串下标必须是整型，实际为 '" + indexType + "'");
