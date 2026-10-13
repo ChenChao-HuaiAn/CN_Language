@@ -17,6 +17,9 @@ import sys
 import urllib.parse
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import atomic_json
+
 本树根 = Path(__file__).resolve().parent.parent
 
 
@@ -27,13 +30,8 @@ def 看板地址() -> str:
 
 
 def _落缓存(名: str, 体) -> None:
-    缓 = 本树根 / "scripts" / "board_cache.json"
-    try:
-        数据 = json.loads(缓.read_text(encoding="utf-8")) if 缓.exists() else {}
-        数据[名] = 体
-        缓.write_text(json.dumps(数据, ensure_ascii=False, indent=1), encoding="utf-8")
-    except (OSError, ValueError):
-        pass
+    """556：写走 atomic_json.合并写（原子·治多写者并发半写损坏）·归纳零复制。"""
+    atomic_json.合并写(本树根 / "scripts" / "board_cache.json", {名: 体})
 
 
 def 跑(命令: list[str], cwd: Path | None = None) -> str:
@@ -46,7 +44,10 @@ def 落后提示() -> list[str]:
     行们: list[str] = []
     r = subprocess.run(["git", "fetch", "gitcode"], capture_output=True, text=True, cwd=本树根)
     if r.returncode != 0:
-        return ["⚠️ git fetch 失败（网络/远端异常）——先解决再开工"]
+        # 556：重试一次——多会话并发 fetch 偶发 ref 锁冲突（瞬时失败·重试即过）
+        r = subprocess.run(["git", "fetch", "gitcode"], capture_output=True, text=True, cwd=本树根)
+    if r.returncode != 0:
+        return ["⚠️ git fetch 失败（已重试一次·网络/远端异常）——先解决再开工"]
     本地 = 跑(["git", "rev-parse", "refs/heads/develop"]).strip()
     远端 = 跑(["git", "rev-parse", "gitcode/develop"]).strip()
     脏 = 跑(["git", "status", "--porcelain"]).strip()
@@ -65,12 +66,24 @@ def 落后提示() -> list[str]:
 
 def _读缓存(名: str):
     """384：看板文档 GET 结果的本地最后缓存（board_cli.落缓存 落盘·gitignore）
-    ——服务不可达时降级读（无网也能开工简报）。"""
-    缓 = 本树根 / "scripts" / "board_cache.json"
-    try:
-        return json.loads(缓.read_text(encoding="utf-8")).get(名)
-    except (OSError, ValueError):
-        return None
+    ——服务不可达时降级读（无网也能开工简报）。556：读走 atomic_json.读
+    （坏缓存返回 None+黄字·不再裸 json.loads 炸读侧）。"""
+    return (atomic_json.读(本树根 / "scripts" / "board_cache.json") or {}).get(名)
+
+
+def hooks自检() -> list[str]:
+    """556：git hooks 安装自检（三拦=pre-push 拦直推 develop/commit-msg 拦纯外文
+    提交信息/pre-commit 拦改 021——AGENTS §5.0）：core.hooksPath 空=未装·黄字+修复
+    命令；路径配置了但目录不存在=坏配置同报（相对路径相对树根解析）。"""
+    r = subprocess.run(["git", "config", "--get", "core.hooksPath"],
+                       capture_output=True, text=True, cwd=本树根)
+    路径 = r.stdout.strip()
+    if 路径 and (本树根 / 路径).exists():
+        return []
+    提示 = "⚠️ git hooks 未安装（三拦全失效：直推 develop/纯外文提交信息/改 021 均不拦）"
+    if 路径:
+        提示 = f"⚠️ core.hooksPath={路径} 目录不存在（坏配置·hooks 失效）"
+    return [提示, "   修复（每机一次性）：git config core.hooksPath scripts/githooks"]
 
 
 def 本机节(机: str, 主机: str = "") -> list[str]:
@@ -179,6 +192,7 @@ def 主流程() -> int:
     机 = 参数.机 or intent.机器名()
     输出 = ["═" * 46, f" 开工简报·{机}·{主机}", "═" * 46]
     输出 += 落后提示()
+    输出 += hooks自检()
     输出 += 看板自动claim()
     输出 += 看板与裁决()
     输出 += 本机节(机, 主机)

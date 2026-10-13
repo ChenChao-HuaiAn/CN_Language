@@ -83,7 +83,9 @@ def main() -> int:
         cfg = json.loads((Path(__file__).resolve().parent / "queue_client.json")
                          .read_text(encoding="utf-8"))
         url = cfg["url"].replace(":8300", ":8301")   # 台账/文档资源在 board 服务
-        令牌 = 令牌 or cfg.get("令牌", "")
+    if not 令牌:
+        import intent
+        令牌 = intent.读令牌()   # 556：统一兜底链（本树→主树副本→环境变量）·归纳零复制
     码, r = 调服务(url, 令牌, "GET", "/api/board")
     if 码 != 200:
         print(f"[失败] 服务不可达 {url}（码 {码}）——先部署 384 版 board_service")

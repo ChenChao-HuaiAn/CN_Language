@@ -19,39 +19,36 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import sys
 import urllib.request
 from pathlib import Path
 
+import atomic_json
+
 本树根 = Path(__file__).resolve().parent.parent
 挂因词 = ("待裁决", "待批", "待用户", "呈报", "选择题", "观察", "挂起")
 优先级序 = {"P0": 0, "P1": 1, "P2": 2, "P3": 3}
-看板地址 = "http://124.222.106.84:8301"
+# 556：认 CN_BOARD_URL（与 standup/board_cli/task_board/wt 同覆盖口·原硬编码与其不一致）
+看板地址 = os.environ.get("CN_BOARD_URL", "http://124.222.106.84:8301").rstrip("/")
 
 
 def 拉任务们() -> tuple[list[dict], str]:
-    """服务端任务全量 → (任务们, 来源描述)。降级读缓存。"""
+    """服务端任务全量 → (任务们, 来源描述)。降级读缓存。
+    556：缓存读写统一走 atomic_json（原子写·读容错——原裸 write_text/read_text
+    与 standup/board_cli 三写者并发可半写损坏·坏缓存裸 json.loads 炸读侧）。"""
+    缓 = 本树根 / "scripts" / "board_cache.json"
     try:
         with urllib.request.urlopen(f"{看板地址}/api/tasks", timeout=8) as r:
             数据 = json.loads(r.read().decode("utf-8"))
         任务们 = 数据.get("任务们", [])
-        缓 = 本树根 / "scripts" / "board_cache.json"
-        try:
-            已有 = json.loads(缓.read_text(encoding="utf-8")) if 缓.exists() else {}
-            已有["tasks"] = 任务们
-            缓.write_text(json.dumps(已有, ensure_ascii=False), encoding="utf-8")
-        except (OSError, ValueError):
-            pass
+        atomic_json.合并写(缓, {"tasks": 任务们})
         return 任务们, "服务端台账"
     except OSError:
-        缓 = 本树根 / "scripts" / "board_cache.json"
-        try:
-            任务们 = json.loads(缓.read_text(encoding="utf-8")).get("tasks", [])
-            if 任务们:
-                return 任务们, "本地缓存（服务不可达·可能是旧快照）"
-        except (OSError, ValueError):
-            pass
+        任务们 = (atomic_json.读(缓) or {}).get("tasks", [])
+        if 任务们:
+            return 任务们, "本地缓存（服务不可达·可能是旧快照）"
     print("[失败] 看板服务不可达且无缓存——裁决面暂不可知（恢复后重跑）", file=sys.stderr)
     return [], ""
 

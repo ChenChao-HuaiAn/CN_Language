@@ -820,18 +820,22 @@ def 远端看板文本(远程: str = 主远程) -> str:
 # 治「git 被当状态数据库」（920 诊断：56% 提交只改看板·917 单批 8 对起批/排队乒乓）：
 #   中间态（集成中/失败恢复/封批）只进服务端**不再写 develop**=零 git 提交；
 #   边界（报名/销账）双写（服务端为主+看板兼容未升级 920 版的他机——三机升级后看板段写入退役）。
-# 配置：环境变量 CN_QUEUE_URL / CN_QUEUE_TOKEN，或 scripts/queue_client.json（gitignore·不入库）
+# 配置：环境变量 CN_QUEUE_URL，或 scripts/queue_client.json 的 "url"（gitignore·不入库）
 #   形如 {"url": "http://<TX_01>:8300", "令牌": "..."}。无配置=纯看板路径（现状行为）。
+# 556：令牌统一走 intent.读令牌()（本树→主树副本→环境变量 CN_BOARD_TOKEN/CN_QUEUE_TOKEN
+#   ——治令牌轮换后旧 worktree 静默 401）；url 仍=CN_QUEUE_URL 或本树文件（url 不轮换）。
 队列服务URL = os.environ.get("CN_QUEUE_URL", "")
-队列服务令牌 = os.environ.get("CN_QUEUE_TOKEN", "")
 _客户端配置 = 仓库根 / "scripts" / "queue_client.json"
 if not 队列服务URL and _客户端配置.exists():
     try:
-        _cfg = json.loads(_客户端配置.read_text(encoding="utf-8"))
-        队列服务URL = str(_cfg.get("url", ""))
-        队列服务令牌 = str(_cfg.get("令牌", ""))
+        队列服务URL = str(json.loads(_客户端配置.read_text(encoding="utf-8")).get("url", ""))
     except Exception:
         pass
+try:
+    import intent
+    队列服务令牌 = intent.读令牌()
+except Exception:
+    队列服务令牌 = ""
 
 
 def 服务调用(路径: str, 数据: dict | None = None) -> dict | None:

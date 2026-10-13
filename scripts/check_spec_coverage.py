@@ -22,6 +22,8 @@ import sys
 import urllib.request
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(ROOT, "scripts"))
+import atomic_json   # 556：缓存读写统一走共享原子实现（治并发半写/坏缓存炸读侧）
 SPEC = os.path.join(ROOT, "plans", "001 CN语言编译器设计规格书.md")
 E2E = os.path.join(ROOT, "tests", "e2e")
 # 384：映射数据源=看板服务端 /api/coverage（coverage_map.md 已退位删除）。
@@ -101,12 +103,11 @@ def parse_map():
     try:
         with urllib.request.urlopen(SRC_API, timeout=8) as r:
             体 = json.loads(r.read().decode("utf-8"))
-        with io.open(CACHE, "w", encoding="utf-8") as f:
-            json.dump(体, f, ensure_ascii=False)
+        atomic_json.写(CACHE, 体)   # 556：原子写（临时文件+os.replace·治半写损坏）
     except OSError as e:
-        if os.path.isfile(CACHE):
-            with io.open(CACHE, encoding="utf-8") as f:
-                体 = json.load(f)
+        # 556：读走 atomic_json.读（坏缓存返回 None·原裸 json.load 坏缓存即炸读侧）
+        体 = atomic_json.读(CACHE)
+        if 体 is not None:
             print("[黄] 覆盖服务不可达（%s）——降级读最后缓存（可能陈旧）" % e, file=sys.stderr)
         else:
             print("[FAIL] 覆盖服务不可达且无缓存：%s（先用 board_cli 覆盖 验证服务）" % e,

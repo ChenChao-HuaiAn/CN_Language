@@ -15,8 +15,9 @@ board_service（TX_01:8301），网页看板实时可见+同号双声明冲突�
 
 降级原则（照 queue_service 不可达回退旧路径精神）：服务不可达时 claim/release/
 refresh 黄字提示后 exit 0（不阻断开发工作——分支存在=认领仍是有效兜底）；
-show 无法取数 exit 1。令牌复用 scripts/queue_client.json 的「令牌」字段
-（同一把锁守同一栋楼·零新增配置）；URL 可用环境变量 CN_BOARD_URL 覆盖。
+show 无法取数 exit 1。令牌统一走 读令牌()：本树 scripts/queue_client.json →
+主树副本（git-common-dir 反推）→ 环境变量 CN_BOARD_TOKEN/CN_QUEUE_TOKEN
+（556·治令牌轮换后旧 worktree 静默 401）；URL 可用环境变量 CN_BOARD_URL 覆盖。
 会话 id 按 worktree 粒度（308i：仓库根目录名·持久于 ~/.cache/cn_board_session_id_<树名>；
 同机多 worktree 并行互不覆盖，CN_BOARD_SESSION 环境变量可显式覆盖·特殊场景用）；
 机器标识取 CN_MACHINE_NAME 环境变量（唯一覆盖口·原样生效）或自动合成本机标识：
@@ -54,12 +55,42 @@ def 服务地址() -> str:
     return os.environ.get("CN_BOARD_URL", 默认地址).rstrip("/")
 
 
-def 令牌() -> str:
+def 主树脚本目录() -> Path | None:
+    """556：worktree 反推主树 scripts 目录（git-common-dir）——本树即主树时返回自身。"""
     try:
-        return json.loads((脚本目录 / "queue_client.json").read_text(encoding="utf-8")) \
-            .get("令牌", "")
-    except (OSError, ValueError):
-        return ""
+        r = subprocess.run(["git", "rev-parse", "--git-common-dir"], cwd=脚本目录,
+                           capture_output=True, text=True, timeout=5)
+        if r.returncode != 0:
+            return None
+        公共 = Path(r.stdout.strip())
+        if not 公共.is_absolute():
+            公共 = (脚本目录 / 公共).resolve()
+        return 公共.parent / "scripts"
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return None
+
+
+def 读令牌() -> str:
+    """556：令牌统一兜底链=本树 scripts/queue_client.json → 主树副本（git-common-dir
+    反推·治令牌轮换后旧 worktree 静默 401）→ 环境变量 CN_BOARD_TOKEN/CN_QUEUE_TOKEN。
+    全部落空返回空串——调用方「有令牌就带」语义不变。看板系读取点
+    （board_cli/wt/integrate/migrate_board_docs）统一走此实现·归纳零复制。"""
+    主 = 主树脚本目录()
+    候选们 = [脚本目录 / "queue_client.json"]
+    if 主 and 主 != 脚本目录:
+        候选们.append(主 / "queue_client.json")
+    for 候选 in 候选们:
+        try:
+            t = json.loads(候选.read_text(encoding="utf-8")).get("令牌", "")
+            if t:
+                return str(t)
+        except (OSError, ValueError):
+            continue
+    for 键 in ("CN_BOARD_TOKEN", "CN_QUEUE_TOKEN"):
+        t = os.environ.get(键, "").strip()
+        if t:
+            return t
+    return ""
 
 
 def 会话id() -> str:
@@ -130,8 +161,8 @@ def 机器名() -> str:
 def 调服务(方法: str, 路径: str, 体=None, 超时=8):
     请求 = urllib.request.Request(服务地址() + 路径, method=方法,
         data=json.dumps(体, ensure_ascii=False).encode("utf-8") if 体 is not None else None)
-    if 令牌():
-        请求.add_header("Authorization", f"Bearer {令牌()}")
+    if 读令牌():
+        请求.add_header("Authorization", f"Bearer {读令牌()}")
     with urllib.request.urlopen(请求, timeout=超时) as r:
         return json.loads(r.read().decode("utf-8"))
 
@@ -281,6 +312,10 @@ def 命令注销(_参数) -> int:
     try:
         调服务("POST", "/api/intent_release", {"机器": 机器名(), "对话id": 会话id()})
     except (urllib.error.URLError, OSError, ValueError) as e:
+        try:
+            登记缓存.unlink()    # 556：断网分支同样清缓存（原漏——文案称「已清」实未清，
+        except OSError:          #   下次路过续约复活已注销意图=注销失效）
+            pass
         print(f"[黄] 看板服务不可达：{e}——本地缓存已清，服务端行等心跳超时自然失联灰显")
         return 0
     if 登记缓存.exists():

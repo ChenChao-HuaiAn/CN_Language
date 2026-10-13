@@ -142,9 +142,9 @@ def 服务调(方法: str, 路径: str, 体=None) -> dict | None:
     离线降级取号已废除，宁停不裂）。"""
     令牌文 = ""
     try:
-        令牌文 = json.loads((本树根 / "scripts" / "queue_client.json")
-                            .read_text(encoding="utf-8")).get("令牌", "")
-    except (OSError, ValueError):
+        import intent
+        令牌文 = intent.读令牌()    # 556：统一兜底链（本树→主树副本→环境变量）·治令牌轮换旧树静默 401
+    except Exception:
         pass
     请求 = urllib.request.Request(板服务地址() + 路径, method=方法,
         data=json.dumps(体, ensure_ascii=False).encode("utf-8") if 体 is not None else None)

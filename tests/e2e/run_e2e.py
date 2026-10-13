@@ -575,19 +575,22 @@ def 扫描asm产物说明符(asm路径: pathlib.Path, 标签: str) -> str:
 
 
 def 探测编译器(显式路径: str) -> pathlib.Path:
-    """确定编译器路径：优先使用 --cn 显式参数，否则按候选路径自动探测"""
+    """确定编译器路径：优先使用 --cn 显式参数，否则收集全部存在候选取 st_mtime
+    最新者（556：原按固定顺序取第一个存在——Debug 陈旧产物排前致 E2E 测旧编译器，
+    269 轮 625 假红实录；mtime 最新=最近一次构建产物）"""
     if 显式路径:
         路径 = pathlib.Path(显式路径).resolve()
         if not 路径.exists():
             print(红色(f"错误: 编译器不存在: {路径}"))
             sys.exit(2)
         return 路径
-    for 候选 in 编译器候选:
-        路径 = (项目根目录 / 候选).resolve()
-        if 路径.exists():
-            return 路径
-    print(红色("错误: 未找到编译器，请使用 --cn 指定路径（如 target/Debug/cn.exe）"))
-    sys.exit(2)
+    存在们 = [p.resolve() for p in (项目根目录 / c for c in 编译器候选) if p.exists()]
+    if not 存在们:
+        print(红色("错误: 未找到编译器，请使用 --cn 指定路径（如 target/Debug/cn.exe）"))
+        sys.exit(2)
+    选择 = max(存在们, key=lambda p: p.stat().st_mtime)
+    print(f"选择 {选择}（mtime 最新·候选 {len(存在们)} 个）")
+    return 选择
 
 
 def 收集用例(过滤模式: str) -> list:

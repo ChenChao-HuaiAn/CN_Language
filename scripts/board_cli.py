@@ -25,9 +25,12 @@ from __future__ import annotations
 
 import json
 import sys
+import time
 import urllib.parse
 import urllib.request
 from pathlib import Path
+
+import atomic_json
 
 脚本目录 = Path(__file__).resolve().parent
 本树根 = 脚本目录.parent
@@ -40,11 +43,9 @@ def 服务地址() -> str:
 
 
 def 令牌() -> str:
-    try:
-        return json.loads((脚本目录 / "queue_client.json").read_text(encoding="utf-8")) \
-            .get("令牌", "")
-    except (OSError, ValueError):
-        return ""
+    """556：委托 intent.读令牌() 统一兜底链（本树→主树副本→环境变量）·归纳零复制。"""
+    import intent
+    return intent.读令牌()
 
 
 def 机器名(显式: str = "") -> str:
@@ -77,15 +78,10 @@ def 调服务(方法: str, 路径: str, 体=None, 超时=15):
 
 def 落缓存(名: str, 体) -> None:
     """GET 结果落本地缓存（board_cache.json·gitignore）——服务不可达时 standup/
-    check_spec_coverage 降级读最后一份，不卡本地流程。"""
-    缓 = 脚本目录 / "board_cache.json"
-    try:
-        数据 = json.loads(缓.read_text(encoding="utf-8")) if 缓.exists() else {}
-        数据[名] = 体
-        数据[f"{名}时戳"] = __import__("time").time()
-        缓.write_text(json.dumps(数据, ensure_ascii=False, indent=1), encoding="utf-8")
-    except (OSError, ValueError):
-        pass
+    check_spec_coverage 降级读最后一份，不卡本地流程。556：读写统一走 atomic_json
+    （原子写治三写者并发半写损坏·读容错治坏缓存炸读侧）。"""
+    atomic_json.合并写(脚本目录 / "board_cache.json",
+                       {名: 体, f"{名}时戳": time.time()})
 
 
 def cmd_收工(a) -> int:
@@ -145,9 +141,8 @@ def cmd_教训索引(a) -> int:
         落缓存("lessons", r)
     except OSError as e:
         print(f"[黄] 服务不可达（{e}）——读本地缓存")
-        缓 = 脚本目录 / "board_cache.json"
-        r = json.loads(缓.read_text(encoding="utf-8")).get("lessons", {}) \
-            if 缓.exists() else {}
+        # 556：读侧走 atomic_json.读（坏缓存返回 None 黄字·原裸 json.loads 坏缓存即炸）
+        r = (atomic_json.读(脚本目录 / "board_cache.json") or {}).get("lessons", {})
     for t in r.get("条目们", []):
         尾 = f"〔{t['标注']}〕" if t.get("标注", "活跃") != "活跃" else ""
         print(f"- #{t['id']} {t['标题']}（权重 {t['权重']}）{尾}")
