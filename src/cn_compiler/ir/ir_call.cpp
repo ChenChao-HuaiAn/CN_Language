@@ -477,6 +477,8 @@ void IRGenerator::visitCallExpr(CallExpr* node) {
         else if (calleeName == "字符串构建器::追加" || calleeName == "字符串构建器.追加") calleeName = "__cn_strbuf_append";
         else if (calleeName == "字符串构建器::追加字节" || calleeName == "字符串构建器.追加字节") calleeName = "__cn_strbuf_append_char";
         else if (calleeName == "字符串构建器::完成" || calleeName == "字符串构建器.完成") calleeName = "__cn_strbuf_finish";
+        // 366（2026-10-13）：第五件 弃置（错误路径中途放弃释放缓冲·防泄漏）
+        else if (calleeName == "字符串构建器::弃置" || calleeName == "字符串构建器.弃置") calleeName = "__cn_strbuf_drop";
     }
 
     // ---- 442（判据统一·421 审查 P2-2/P2-3）：有效形参表（实参定标唯一判据源）----

@@ -429,6 +429,8 @@ extern "C" long long __cn_str_to_bool(const char* str, int* ok) {
 //   用法（CN 侧）：句柄 = 字符串构建器新建(); 循环 字符串构建器追加(句柄, 段);
 //   结果 = 字符串构建器完成(句柄)。完成=新分配串（cn_alloc_tracked·与
 //   __cn_str_concat 同所有权）+ 缓冲释放；句柄一次性（完成后不可再用）。
+//   #366（2026-10-13）：补第五件 弃置（__cn_strbuf_drop）——错误路径中途放弃
+//   时释放缓冲防泄漏（有建必有弃·API 完整性；完成=出串+弃置，弃置=仅弃置）。
 struct CnStrbuf2 { char* buf; std::size_t len; std::size_t cap; };
 
 extern "C" void* __cn_strbuf_new() {
@@ -482,4 +484,13 @@ extern "C" char* __cn_strbuf_finish(void* h) {
     std::free(b->buf);
     std::free(b);
     return result;
+}
+
+// #366（2026-10-13）：弃置——不取串直接释放缓冲（错误路径中途放弃防泄漏）。
+//   与 完成 的差别仅在不出串：完成=出串+释放，弃置=仅释放；句柄一次性同契。
+extern "C" void __cn_strbuf_drop(void* h) {
+    if (h == nullptr) return;
+    CnStrbuf2* b = static_cast<CnStrbuf2*>(h);
+    std::free(b->buf);
+    std::free(b);
 }
