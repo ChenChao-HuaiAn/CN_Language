@@ -157,6 +157,20 @@ void SemanticAnalyzer::visitVarDecl(VarDecl* node) {
         varType += varSuffix;  // 合成体后缀接回（数组维度/指针形态保全）
         if (!node->typeName.empty()) node->typeName = varType;
     }
+    // 193（2026-10-13）：抽象类/接口类型变量裸声明=值形态直接实例化，语义层拒绝
+    //   （specs/06 §八「含抽象成员的类不可直接实例化」+接口同族·C++
+    //   cannot instantiate abstract class 同款）。原缺陷=semantic 注释宣称已拦
+    //   而 0 检查（防线交接断链）——纯实例化静默创建虚表残缺的空洞对象，链接器
+    //   仅兜调用形态。指针/引用/数组后缀形态不在此拦（不发生值形态实例化·
+    //   isClassType/isInterfaceType 精确名判定天然排除后缀）；有初始化器形态=
+    //   接口变量合法赋值面（413 A1）经 checkExpr→checkCtorCall 拦抽象/接口构造。
+    //   诊断后不 return（继续既有登记链·单诊断口径对齐 324 先例）。
+    if (node->initializer == nullptr && !node->funcPtr.isFunctionPtr() &&
+        !varType.empty() && isInterfaceType(varType)) {
+        diagnostics_.report(DiagnosticLevel::Error, node->location,
+                            "不能实例化接口 '" + varType + "'（接口无实现体）"
+                            "——请以实现类实例初始化接口变量");
+    }
     // H7 补完（2026-08-25）：类类型栈变量无初始化器裸声明（类名 变量）须可默认构造——
     //   类声明了构造但无 0 参构造（仅有带参构造）时无法默认构造，编译报错
     //   （与 C++ 语义一致；无构造类允许默认构造仅分配，与 类名() 语义一致）。
@@ -166,6 +180,14 @@ void SemanticAnalyzer::visitVarDecl(VarDecl* node) {
         !varType.empty() && isClassType(varType)) {
         const ClassInfo* ci = findClass(varType);
         if (ci != nullptr) {
+            // 193：抽象类（含无实现体抽象方法·class_resolver isAbstract 标记）
+            //   值形态裸声明拒绝——先于 H7 默认构造检查（抽象类构造个数恒 0
+            //   本就落空，此处给领域正确诊断而非静默放行）。
+            if (ci->isAbstract) {
+                diagnostics_.report(DiagnosticLevel::Error, node->location,
+                                    "不能实例化抽象类 '" + varType +
+                                        "'（含未实现抽象方法）——请实例化具体派生类");
+            }
             bool hasAnyCtor = false;
             bool hasDefaultCtor = false;
             for (const auto& mk : ci->methods) {

@@ -57,8 +57,27 @@ void SemanticAnalyzer::resolveGenericCtorName(CallExpr* node, std::string& class
 // 族B2：类构造调用检查（原 342~404 段）——构造函数匹配（精确优先）+ 参数检查 +
 //   借用纪律/引用实参包装 + resolvedSignature 记录。true = 已处理。
 bool SemanticAnalyzer::checkCtorCall(CallExpr* node, const std::string& className) {
+        // 193（2026-10-13）：抽象类/接口构造调用 形状() / 可叫() 语义层拒绝——
+        //   与 visitVarDecl 裸声明检查同族（specs/06 §八·C++ cannot instantiate
+        //   abstract class 同款）。原缺陷=抽象类此处静默落「无构造=默认构造」
+        //   放行（IR 层 emitConstructorCall isAbstract 防御跳过不发诊断）、
+        //   接口名落函数查找报「无法调用非函数类型」拒因不贴切——均改领域
+        //   正确诊断。返回 true=已处理（中断后续函数查找链·错误已报）。
+        if (isInterfaceType(className)) {
+            diagnostics_.report(DiagnosticLevel::Error, node->location,
+                                "不能实例化接口 '" + className + "'（接口无实现体）"
+                                "——请以实现类实例初始化接口变量");
+            return true;
+        }
         const ClassInfo* ctorCls = findClass(className);
         if (ctorCls != nullptr) {
+            // 193：抽象类（含无实现体抽象方法）构造调用拒绝
+            if (ctorCls->isAbstract) {
+                diagnostics_.report(DiagnosticLevel::Error, node->location,
+                                    "不能实例化抽象类 '" + className +
+                                        "'（含未实现抽象方法）——请实例化具体派生类");
+                return true;
+            }
             // 查找构造函数（函数名 == 类名）。Debug 子任务修复（构造函数重载）：
             //   methods 表构造条目 key=sigKey（名#参数串），遍历按 isConstructor +
             //   ownerClass（排除父类构造，阶段A-3）+ 实参个数 + 类型可转换 匹配最优。
