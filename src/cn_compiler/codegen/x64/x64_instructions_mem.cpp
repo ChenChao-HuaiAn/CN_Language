@@ -44,7 +44,16 @@ void X64CodeGenerator::emitLoadStore(AsmWriter& writer, const ir::IRInstruction&
         if (inst.type == "i8" || inst.type == "i16") {
             const std::string dw = dstPhys.empty() ? std::string("eax")
                                                    : widthFor("i32", dstPhys);
-            writer.line("movsx " + dw + ", " + memSizePtr(inst.type) + src);  // 符号扩展 8/16 -> 32
+            // 常量传播面守卫（#545·#500 修法同构）：源为立即数常量时 movsx 不接受
+            //   立即数操作数（byte ptr -128 → ml64 A2070·500 同族残面收口）——
+            //   mov 直载即符号扩展语义等价（写 32 位寄存器清高位=窄值 32 位补码
+            //   形态已含符号；当前 replaceUses 白名单不涉 Load，此处为防御未来
+            //   pass 演化的同构防线·与 500 Store 面防御同理由）。
+            if (inst.operands[0].isConstant) {
+                writer.line("mov " + dw + ", " + src);
+            } else {
+                writer.line("movsx " + dw + ", " + memSizePtr(inst.type) + src);  // 符号扩展 8/16 -> 32
+            }
             if (dstPhys.empty()) {
                 writer.line("mov " + shrunkOperand("i32", dst) + ", eax");
             }
@@ -53,7 +62,13 @@ void X64CodeGenerator::emitLoadStore(AsmWriter& writer, const ir::IRInstruction&
         if (inst.type == "u8" || inst.type == "u16") {
             const std::string dw = dstPhys.empty() ? std::string("eax")
                                                    : widthFor("i32", dstPhys);
-            writer.line("movzx " + dw + ", " + memSizePtr(inst.type) + src);  // 零扩展 8/16 -> 32
+            // 常量传播面守卫（#545·同上）：常量非负，mov 直载写 32 位寄存器清高
+            //   32 位=零扩展语义（movzx 等价）。
+            if (inst.operands[0].isConstant) {
+                writer.line("mov " + dw + ", " + src);
+            } else {
+                writer.line("movzx " + dw + ", " + memSizePtr(inst.type) + src);  // 零扩展 8/16 -> 32
+            }
             if (dstPhys.empty()) {
                 writer.line("mov " + shrunkOperand("i32", dst) + ", eax");
             }
