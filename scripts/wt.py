@@ -496,11 +496,23 @@ def 列树() -> int:
     return 0
 
 
-def 删树(任务号: str, 删分支: bool) -> int:
+def 删树(任务号: str, 删分支: bool, 强删: bool = False) -> int:
     树路径 = 主树根().parent / f"wt{任务号}"
     if not 树路径.exists():
         print(f"[失败] {树路径} 不存在")
         return 1
+    # 555：删树前查活跃树锁——同树可能有 E2E/构建在飞（rc=143 清场互杀实录），
+    #   盲删=连人带锁一起端；陈锁（持锁进程死/心跳超时·gate_lock 917 判据）放行。
+    锁路径 = 树路径 / "target" / "tree.lock"
+    if 锁路径.exists() and not 强删:
+        import gate_lock
+        if not gate_lock.是陈锁(锁路径):
+            信息 = gate_lock.读信息(锁路径)
+            print(f"[失败] {树路径} 树锁活跃中：pid={信息.get('pid')} 自 {信息.get('获取时间')} "
+                  f"命令={信息.get('命令')}——同树可能有 E2E/构建在飞，删树会杀掉它（555）。"
+                  f"确认无活跃会话后显式：wt.py remove {任务号} --force")
+            return 1
+        print("[树锁] 陈锁（持锁进程已死/心跳超时）——放行删树")
     分支 = 运行(["git", "-C", str(树路径), "branch", "--show-current"]).stdout.strip()
     print(f"[1] 删除 {树路径}" + (f"（分支 {分支}）" if 分支 else ""))
     shutil.rmtree(树路径, ignore_errors=True)
@@ -555,6 +567,8 @@ def 主流程() -> int:
     p删 = 子.add_parser("remove", help="删树（win 下 rm -rf+prune）")
     p删.add_argument("任务号")
     p删.add_argument("--delete-branch", action="store_true", help="分支已并入 develop 时一并删分支")
+    p删.add_argument("--force", action="store_true",
+                     help="跳过活跃树锁检查强制删树（555·确认无 E2E/构建在飞后用）")
     p缓 = 子.add_parser("cache", help="sccache 缓存服务")
     p缓.add_argument("动作", choices=["stats", "start", "stop", "clear"], nargs="?", default="stats")
     参数 = 解析器.parse_args()
@@ -566,7 +580,7 @@ def 主流程() -> int:
     if 参数.命令 == "list":
         return 列树()
     if 参数.命令 == "remove":
-        return 删树(参数.任务号, 参数.delete_branch)
+        return 删树(参数.任务号, 参数.delete_branch, getattr(参数, "force", False))
     return 缓存(参数.动作)
 
 

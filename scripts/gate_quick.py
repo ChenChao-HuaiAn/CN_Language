@@ -30,12 +30,34 @@ def _路过续约():
 
 _路过续约()
 
+import os
 import subprocess
 import sys
 from pathlib import Path
 
 仓库根 = Path(__file__).resolve().parent.parent
 是win = sys.platform.startswith("win")
+
+# 555 树锁：同树并发门禁串行化（多会话共用一棵树时 E2E/构建互踩——target/v2p 缓存
+#   双写·后起清场杀先起者 rc=143 实录——根治）。取放/心跳/陈锁接管全复用 gate_lock；
+#   CN_NO_TREE_LOCK=1 逃生门；CN_TREE_LOCK_HELD=1（嵌套链外层已持锁）豁免防自死锁。
+#   atexit 释放：Ctrl+C（KeyboardInterrupt 传播=解释器正常退出路径）也覆盖。
+sys.path.insert(0, str(仓库根 / "scripts"))
+import gate_lock as _树锁
+
+_gq树锁 = None
+if os.environ.get("CN_TREE_LOCK_HELD"):
+    print("[gate_lock] 继承外层树锁（CN_TREE_LOCK_HELD=1）", flush=True)
+elif os.environ.get("CN_NO_TREE_LOCK"):
+    print("[gate_lock] 树锁豁免（CN_NO_TREE_LOCK）", flush=True)
+else:
+    _gq树锁 = _树锁.获取(0, 形态="run", owner_pid=os.getpid(), 锁=_树锁.树锁目录())
+    if _gq树锁 is None:
+        raise SystemExit("[gate_lock] 树锁等待超时——同树另一 E2E/构建仍在飞"
+                         "（gate_lock status --scope tree 查看）")
+    _树锁.心跳线程(_gq树锁 / "info.json")
+    import atexit
+    atexit.register(lambda: _树锁.释放(_gq树锁))
 
 
 def 跑(命令: list[str], **kw) -> subprocess.CompletedProcess:
@@ -113,9 +135,12 @@ if "--l2" in sys.argv:
     else:
         目标 = "win-x64" if 是win else "linux-x86_64"
         for 滤 in 滤们:
+            # 555：子进程注入 CN_TREE_LOCK_HELD=1——本进程已持树锁，run_e2e 见之
+            #   即豁免跳过取锁（防 gate_quick→run_e2e 嵌套自死锁·495-a/595-a 防线）
             if not 步("L2:" + 滤, [sys.executable, "tests/e2e/run_e2e.py",
                                    "--target", 目标, "--cn", str(单测.parent / ("cn.exe" if 是win else "cn")),
-                                   "--filter", 滤]):
+                                   "--filter", 滤],
+                      env=dict(os.environ, CN_TREE_LOCK_HELD="1")):
                 raise SystemExit(1)
 
 

@@ -1,16 +1,22 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""gate_lock.py —— 全量门禁串行锁（449-a·AGENTS.md §8.8）。
+"""gate_lock.py —— 全量门禁串行锁（449-a·AGENTS.md §8.8）+ 树锁（555·一树一会话）。
 
 多任务并行时两个全量门禁同时跑会互抢 CPU/内存（78/79 OOM 前科），本锁保证
 **全机同一时刻至多一个全量门禁在飞**；锁放主树 target/（跨 worktree 共享——
 worktree 的 git-common-dir 都指回主树 .git）。
 
-  acquire [--timeout 秒] [--owner PID] 阻塞获取锁（默认等待 2h；陈锁=存活锚死秒级接管〔917〕
-                                 /心跳停 4h 兜底）
-  release                    释放锁（Ctrl+C 中断门禁后手动清锁用）
-  run -- <命令...>           获取→执行→无论成败释放（推荐用法，透传退出码）
-  status                     查看当前持锁者
+555 增树域（--scope tree，默认 machine 向后兼容）：每棵 worktree 自己一把
+`本树根/target/tree.lock`（脚本所在仓库根·不经 git-common-dir 反推主树·
+CN_TREE_LOCK_DIR 覆盖）——同树并发 E2E/构建互踩（v2p 缓存双写/清场互杀 rc=143）
+根治，跨树天然并行。环境豁免 CN_TREE_LOCK_HELD=1=嵌套链外层已持锁，acquire/run
+跳过取锁防自死锁（495-a/595-a 同族防线）；run 形态 tree 域向子进程注入该变量。
+
+  acquire [--timeout 秒] [--owner PID] [--scope machine|tree] 阻塞获取锁（默认等待 2h；
+                                 陈锁=存活锚死秒级接管〔917〕/心跳停 4h 兜底）
+  release [--scope]          释放锁（Ctrl+C 中断门禁后手动清锁用）
+  run [--scope] -- <命令...> 获取→执行→无论成败释放（推荐用法，透传退出码）
+  status [--scope]           查看当前持锁者
 
 实现：os.mkdir 原子目录锁（跨平台无 msvcrt/fcntl 差异）；持锁期间后台线程每
 60s 触碰 info 文件=心跳；Ctrl+C/命令失败均走 finally 释放。
@@ -40,6 +46,25 @@ def 主树锁目录() -> Path:
     共同 = (结果.stdout or "").strip()
     路径 = Path(共同) if Path(共同).is_absolute() else (本树根 / 共同)
     return 路径.resolve().parent / "target" / "gate.lock"
+
+
+def 树锁目录() -> Path:
+    """555：树域锁目录=脚本所在仓库根/target/tree.lock——每棵 worktree 各自一把
+    （不经 git-common-dir 反推主树·跨树天然并行）；CN_TREE_LOCK_DIR 覆盖（自测用）。"""
+    覆盖 = os.environ.get("CN_TREE_LOCK_DIR")
+    if 覆盖:
+        return Path(覆盖)
+    return 本树根 / "target" / "tree.lock"
+
+
+def 按域锁目录(域: str) -> Path:
+    return 树锁目录() if 域 == "tree" else 主树锁目录()
+
+
+def 树锁豁免() -> bool:
+    """555：CN_TREE_LOCK_HELD 真值=嵌套链外层已持树锁（gate_quick→run_e2e 注入）——
+    acquire/run 跳过取锁防「外层持锁内层再等」自死锁（495-a/595-a 树域防线）。"""
+    return bool(os.environ.get("CN_TREE_LOCK_HELD"))
 
 
 def 读信息(锁: Path) -> dict:
@@ -121,8 +146,10 @@ def 心跳线程(信息文件: Path) -> threading.Thread:
     return t
 
 
-def 获取(超时秒: int, 形态: str = "run", owner_pid: int | None = None) -> Path | None:
-    锁 = 主树锁目录()
+def 获取(超时秒: int, 形态: str = "run", owner_pid: int | None = None,
+         锁: Path | None = None) -> Path | None:
+    if 锁 is None:          # 555：锁目录参数化（树域由调用方传 树锁目录()·缺省=machine 域）
+        锁 = 主树锁目录()
     锁.parent.mkdir(parents=True, exist_ok=True)
     起始 = time.time()
     上次打印 = 0.0
@@ -174,40 +201,67 @@ def 释放(锁: Path, 静默: bool = False) -> None:
 
 
 def 主流程() -> int:
-    解析器 = argparse.ArgumentParser(description="全量门禁串行锁（跨 worktree 共享）")
+    解析器 = argparse.ArgumentParser(
+        description="全量门禁串行锁（machine=全机一把跨 worktree 共享·tree=单树一把〔555〕）")
     子 = 解析器.add_subparsers(dest="命令", required=True)
+    域帮助 = ("锁域：machine=全机一把（默认·主树 target/gate.lock 跨 worktree 共享）；"
+             "tree=本树一把（本树根 target/tree.lock·同树互斥跨树并行·555）")
     p取 = 子.add_parser("acquire", help="阻塞获取锁")
     p取.add_argument("--timeout", type=int, default=7200, help="等待上限秒（0=无限）")
     p取.add_argument("--owner", type=int, default=None, metavar="PID",
                      help="持锁存活锚 pid（917·任务 109）：acquire 分离形态传调用方 pid"
                           "（如 ci.ps1 传 $PID）——锚进程死=陈锁秒级接管；缺省=acquire 子进程"
                           "自身（返回即退·不可作锚→回退心跳 4h 判据）")
-    子.add_parser("release", help="释放锁")
+    p取.add_argument("--scope", choices=["machine", "tree"], default="machine", help=域帮助)
+    p释 = 子.add_parser("release", help="释放锁")
+    p释.add_argument("--scope", choices=["machine", "tree"], default="machine", help=域帮助)
     p跑 = 子.add_parser("run", help="获取→执行命令→释放（透传退出码）")
+    p跑.add_argument("--scope", choices=["machine", "tree"], default="machine", help=域帮助)
     p跑.add_argument("命令", nargs=argparse.REMAINDER)
-    子.add_parser("status", help="查看持锁者")
+    p态 = 子.add_parser("status", help="查看持锁者")
+    p态.add_argument("--scope", choices=["machine", "tree"], default="machine", help=域帮助)
     参数 = 解析器.parse_args()
 
+    域 = 参数.scope
+    锁目录 = 按域锁目录(域)
+
     if 参数.命令 == "status":
-        锁 = 主树锁目录()
-        if 锁.exists():
-            信息 = 读信息(锁)
+        if 锁目录.exists():
+            信息 = 读信息(锁目录)
             owner = 信息.get("owner_pid") or (信息.get("pid") if 信息.get("形态") == "run" else None)
             锚态 = (f"锚 pid={owner} {'活' if pid存活(owner) else '死'}" if owner else "无锚（回退心跳 4h）")
             print(f"被持有：pid={信息.get('pid')} 形态={信息.get('形态', '?')} {锚态} "
                   f"命令={信息.get('命令')} 自 {信息.get('获取时间')}"
-                  f"{'（陈锁）' if 是陈锁(锁) else ''}")
+                  f"{'（陈锁）' if 是陈锁(锁目录) else ''}")
         else:
             print("空闲")
         return 0
     if 参数.命令 == "release":
-        释放(主树锁目录())
+        if 域 == "tree" and 树锁豁免():
+            # 555：豁免环境（嵌套子进程）的锁归外层持有者——删了=拆外层互斥，拒绝
+            print("[gate_lock] 继承外层树锁（CN_TREE_LOCK_HELD=1）——release 跳过（锁归外层持有者）",
+                  file=sys.stderr)
+            return 0
+        释放(锁目录)
         return 0
+    # 555：树域环境豁免——外层已持锁（CN_TREE_LOCK_HELD=1），acquire/run 直接跳过取锁
+    #   （不建锁目录不等待），run 直跑透传退出码。防嵌套链自死锁（最高风险点）。
+    if 域 == "tree" and 树锁豁免():
+        print("[gate_lock] 继承外层树锁（CN_TREE_LOCK_HELD=1）", file=sys.stderr)
+        if 参数.命令 == "acquire":
+            return 0
+        命令 = 参数.命令
+        if 命令 and 命令[0] == "--":
+            命令 = 命令[1:]
+        if not 命令:
+            print("[gate_lock] run 缺少命令", file=sys.stderr)
+            return 1
+        return subprocess.run(命令).returncode
     # 595-a（方案甲①）：run 形态等待默认无限（0）——串行队列本义=排队总能轮到，
     #   2h 硬超时制造「假放弃+假退出码」；真死锁由陈锁 4h 心跳接管兜底。
     #   acquire 形态维持 7200（ci.ps1 内部用·保留快速失败语义），可 --timeout 覆盖。
     锁 = 获取(参数.timeout if 参数.命令 == "acquire" else 0,
-             形态=参数.命令, owner_pid=getattr(参数, "owner", None))
+             形态=参数.命令, owner_pid=getattr(参数, "owner", None), 锁=锁目录)
     if 锁 is None:
         print("[gate_lock] 等待超时——另一门禁仍在飞，稍后再试或 gate_lock status 查看", file=sys.stderr)
         return 2
@@ -234,9 +288,40 @@ def 主流程() -> int:
             return 1
     心跳线程(锁 / "info.json")
     try:
-        return subprocess.run(命令).returncode
+        # 555：tree 域向子进程注入 CN_TREE_LOCK_HELD=1——嵌套链（gate_quick→run_e2e→
+        #   再调 gate_lock/run_e2e）见之即豁免跳过取锁，防自死锁；machine 域不注入
+        #   （env=None=继承父环境·既有行为不变）。
+        环境 = dict(os.environ, CN_TREE_LOCK_HELD="1") if 域 == "tree" else None
+        return subprocess.run(命令, env=环境).returncode
     except KeyboardInterrupt:
         print("\n[gate_lock] 中断——释放锁", file=sys.stderr)
+        return 130
+    finally:
+        释放(锁)
+
+
+def 树锁运行入口(主体) -> int:
+    """555：树锁宿主入口包装（run_e2e.py / gate_quick.py 入口共用）——同树并发
+    E2E/构建串行化（target/v2p 缓存互踩·清场互杀 rc=143 根治），跨树不受影响。
+    CN_NO_TREE_LOCK 真值=逃生门完全跳过；CN_TREE_LOCK_HELD 真值=嵌套链外层已持锁
+    豁免直跑。取锁等待无限（同 run 形态语义·排队进度 30s 一打印），持锁期后台心跳，
+    finally 释放（异常/Ctrl+C 均覆盖）。主体=无参可调用，返回值透传为退出码。"""
+    if os.environ.get("CN_NO_TREE_LOCK"):
+        print("[gate_lock] 树锁豁免（CN_NO_TREE_LOCK）", flush=True)
+        return 主体()
+    if os.environ.get("CN_TREE_LOCK_HELD"):
+        print("[gate_lock] 继承外层树锁（CN_TREE_LOCK_HELD=1）", flush=True)
+        return 主体()
+    锁 = 获取(0, 形态="run", owner_pid=os.getpid(), 锁=树锁目录())
+    if 锁 is None:
+        print("[gate_lock] 树锁等待超时——同树另一 E2E/构建仍在飞（gate_lock status --scope tree 查看）",
+              file=sys.stderr)
+        return 2
+    心跳线程(锁 / "info.json")
+    try:
+        return 主体()
+    except KeyboardInterrupt:
+        print("\n[gate_lock] 中断——释放树锁", file=sys.stderr)
         return 130
     finally:
         释放(锁)

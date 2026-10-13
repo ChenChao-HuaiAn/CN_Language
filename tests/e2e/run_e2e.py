@@ -2241,6 +2241,9 @@ def 主程序() -> int:
                              " 的全量跑法必须显式给理由才放行（CI 门禁脚本自动携带）；"
                              "任务中途验证请改走三档阶梯（--filter 定向 / gate_quick.py --l2 /"
                              " integrate.py 云端全量·AGENTS §4）")
+    解析器.add_argument("--no-tree-lock", action="store_true",
+                        help="跳过树锁（555 逃生门·等效 CN_NO_TREE_LOCK=1）：仅确知本树"
+                             "无并发会话时用——正常情况下树锁排队是预期行为（同树串行防互踩）")
     参数 = 解析器.parse_args()
 
     # —— 本地裸全量护栏（021 任务 354·AGENTS §4「验证三档阶梯」执行面）——
@@ -2463,4 +2466,14 @@ def 主程序() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(主程序())
+    # 555 树锁薄接入（唯一入口改动·逻辑全部归纳进 scripts/gate_lock.py 树锁运行入口）：
+    #   整运行期持本树 target/tree.lock——同树并发 E2E 互踩（v2p 缓存双写/清场互杀
+    #   rc=143）根治；同树后来者排队等待（进度 30s 一打印），跨树不受影响。
+    #   CN_NO_TREE_LOCK=1 逃生门；--no-tree-lock 参数在 argparse 之前折算成同一
+    #   环境变量（取锁先于参数解析·单一豁免出口）；CN_TREE_LOCK_HELD=1（gate_quick
+    #   --l2 嵌套链注入）=继承外层树锁豁免，防自死锁（495-a/595-a 同族防线）。
+    if "--no-tree-lock" in sys.argv:
+        os.environ["CN_NO_TREE_LOCK"] = "1"
+    sys.path.insert(0, str(项目根目录 / "scripts"))
+    import gate_lock as _树锁
+    sys.exit(_树锁.树锁运行入口(主程序))

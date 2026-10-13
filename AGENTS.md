@@ -143,3 +143,13 @@
 - 并行度：活跃开发 ≤3（软预算·超限先跑撞车三查）；本机全量每机 ≤1（gate_lock 防 OOM 互抢）；
   云端预验=任务池多 runner（TX_02+家机 WSL 7 实例·1021 池化并行）；多会话各用 worktree 勿共树。
 - 三机 `~/.ssh/config` 配 TX_02 别名（预验真跑依赖·028 §二）。
+- **树锁**（555·2026-10-13「一树一会话」机械化）：同树并发跑 E2E/构建=互踩源
+  （target/v2p 缓存双写·后起清场杀先起者 rc=143 实录·LNK1168），本锁把它变机械：
+  每棵树 `target/tree.lock` 一把（run_e2e.py 与 gate_quick.py 入口自动取·同树后来者
+  排队等待·整运行期持锁·异常/Ctrl+C 均释放），跨树天然并行；锁原语全复用 gate_lock
+  （os.mkdir 原子目录锁·陈锁=持锁进程死秒级接管〔917〕/心跳停 4h 兜底·心跳 60s），
+  `gate_lock status|release --scope tree` 可查可清，自测=`python scripts/test_tree_lock.py`。
+  嵌套规则：gate_quick --l2 调 run_e2e 子进程注入 `CN_TREE_LOCK_HELD=1`，见之即跳过
+  取锁（防嵌套自死锁·495-a/595-a 同族防线）。逃生门：`CN_NO_TREE_LOCK=1` 或 run_e2e
+  `--no-tree-lock`（完全跳过）；`wt.py remove` 遇活跃树锁拒删树（--force 显式跳过）；
+  machine 域全量锁（gate.lock）语义一律不变。
