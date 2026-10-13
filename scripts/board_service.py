@@ -31,6 +31,8 @@
 #   POST /api/coverage_update {单元ID,标题?,正例?,边界例?,负例?}  覆盖单元行 upsert（整列替换）
 #   POST /api/coverage_exempt_add {用例,理由}                 豁免登记（逗号批量·理由必填）
 #   POST /api/coverage_import {单元们:[…],豁免们:[…]}          迁移批量幂等导入
+#   POST /api/coverage_delete {单元ID}                        单元行删除（误登记清洗·247·成功打 journal）
+#   POST /api/coverage_exempt_delete {用例}                   豁免行删除（逗号批量·清洗通道·247）
 #   GET  /api/coverage        全量 {单元们,豁免们}（check_spec_coverage 门禁源·客户端落缓存降级）
 # 403 裁决资源（网页裁决系统·board_adjudication.py 模块）：
 #   POST /api/adjudication_add {号,标题,优先级?,讲解?,选项们:[{键,描述,推荐?}],覆盖?}
@@ -525,6 +527,24 @@ class 处理器(BaseHTTPRequestHandler):
         if 路径 == "/api/coverage_import":
             with 写锁:
                 码, 响应 = 文档.覆盖批量导入(连接, 体)
+                return self._回JSON(码, 响应)
+        if 路径 == "/api/coverage_delete":
+            with 写锁:
+                码, 响应 = 文档.覆盖单元删除(连接, 体)
+                if 码 == 200:
+                    # 247：删除=破坏性动作，业务日志进 journal（仿裁决删 470 先例）。
+                    通道 = ("令牌" if self.headers.get("Authorization", "")
+                            == f"Bearer {令牌}" else "网页会话")
+                    print(f"[覆盖删] {时刻()} {通道} {响应.get('动作', '')}", flush=True)
+                return self._回JSON(码, 响应)
+        if 路径 == "/api/coverage_exempt_delete":
+            with 写锁:
+                码, 响应 = 文档.覆盖豁免删除(连接, 体)
+                if 码 == 200:
+                    通道 = ("令牌" if self.headers.get("Authorization", "")
+                            == f"Bearer {令牌}" else "网页会话")
+                    print(f"[覆盖删] {时刻()} {通道} 豁免删除 {响应.get('删除数')} 例："
+                          f"{','.join(响应.get('删除', []))[:200]}", flush=True)
                 return self._回JSON(码, 响应)
         # —— 403 裁决资源（网页裁决·POST 须令牌）——
         if 路径 == "/api/adjudication_add":

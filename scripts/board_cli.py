@@ -10,6 +10,8 @@
   python scripts/board_cli.py 教训看 <id>                          # 看全文
   python scripts/board_cli.py 用例 <单元ID> <正例|边界例|负例> <用例名[,用例名…]>   # 归入单元格（追加）
   python scripts/board_cli.py 豁免 <用例名[,用例名…]> <理由>        # 豁免登记（理由必填）
+  python scripts/board_cli.py 单元删 <单元ID>                      # 删除覆盖单元行（误登记清洗·247）
+  python scripts/board_cli.py 豁免删 <用例名[,用例名…]>             # 删除豁免行（撞号留痕/任务级行清洗·247）
   python scripts/board_cli.py 覆盖                                 # 覆盖矩阵摘要（缺口=空格）
   python scripts/board_cli.py 裁决 --批 <件们.json>                 # 裁决项批量上传（403·AI 侧）
   python scripts/board_cli.py 裁决 --号 379 --标题 "…" --讲解文件 x.md --选项文件 o.json
@@ -200,6 +202,38 @@ def cmd_豁免(a) -> int:
     return 0
 
 
+def cmd_单元删(a) -> int:
+    """删除覆盖单元行（误登记/脏行清洗通道·247·仿 471 裁决删先例）。
+    成功打服务端 journal（谁/何时/删了哪行·可审计）；不存在 404。"""
+    if not a.单元ID:
+        print("[失败] 单元ID 必填")
+        return 2
+    码, r = 调服务("POST", "/api/coverage_delete", {"单元ID": a.单元ID})
+    if 码 != 200:
+        print(f"[失败] {码} {r.get('错误', r)}")
+        return 1
+    行 = r.get("单元", {})
+    print(f"[单元删] {行.get('单元ID')}（{行.get('标题', '')}）已删除")
+    return 0
+
+
+def cmd_豁免删(a) -> int:
+    """删除豁免行（撞号改号留痕旧行/任务级行清洗·247/387）。
+    用例名可逗号分隔批量；未命中的名字照实报告（幂等重放安全）。"""
+    if not a.用例名:
+        print("[失败] 用例名 必填（逗号分隔可批量）")
+        return 2
+    码, r = 调服务("POST", "/api/coverage_exempt_delete", {"用例": a.用例名})
+    if 码 != 200:
+        print(f"[失败] {码} {r.get('错误', r)}"
+              + (f"（未命中：{','.join(r.get('未命中', []))}）" if r.get('未命中') else ""))
+        return 1
+    print(f"[豁免删] 已删 {r['删除数']} 行：" + ",".join(r.get("删除", [])))
+    if r.get("未命中"):
+        print(f"[豁免删] 未命中（未删）：" + ",".join(r["未命中"]))
+    return 0
+
+
 def cmd_覆盖(a) -> int:
     码, r = 调服务("GET", "/api/coverage")
     落缓存("coverage", r)
@@ -329,6 +363,14 @@ def main() -> int:
     s.add_argument("用例名")
     s.add_argument("理由")
     s.set_defaults(f=cmd_豁免)
+
+    s = sub.add_parser("单元删", help="删除覆盖单元行（误登记清洗·247）")
+    s.add_argument("单元ID")
+    s.set_defaults(f=cmd_单元删)
+
+    s = sub.add_parser("豁免删", help="删除豁免行（撞号留痕/任务级行清洗·247）")
+    s.add_argument("用例名")
+    s.set_defaults(f=cmd_豁免删)
 
     s = sub.add_parser("覆盖", help="覆盖矩阵摘要")
     s.set_defaults(f=cmd_覆盖)

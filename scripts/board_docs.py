@@ -12,6 +12,7 @@
   - 规范覆盖（原 tests/e2e/coverage_map.md·check_spec_coverage 门禁数据源）=
     GET /api/coverage + POST /api/coverage_update /api/coverage_exempt_add
     + POST /api/coverage_import（迁移批量幂等）
+    + POST /api/coverage_delete /api/coverage_exempt_delete（清洗删除通道·247）
     客户端门禁拉取后落本地缓存（gitignore）·服务不可达降级读缓存不卡门禁。
 git 历史永存可考古；四文档本体随后续提交删除（384 终局面）。
 
@@ -240,6 +241,51 @@ def 覆盖批量导入(con: sqlite3.Connection, 体: dict) -> tuple:
     con.commit()
     return 200, {"好": True, "导入": 导入, "跳过": 跳过,
                  "豁免导入": 豁导, "豁免跳过": 豁跳}
+
+
+def 覆盖单元删除(con: sqlite3.Connection, 体: dict) -> tuple:
+    """单元行删除（误登记清洗通道·247/387·仿 471 裁决删先例）。
+
+    协作背景：覆盖表历史上被写入过「任务号单元行」（如 [244]/[OOP]）与撞号改号
+    留痕行，check_spec_coverage --ci「映射指针有效性」校验会以「单元不在规范清单」
+    拦下——须有删除通道才能清洗，而非只能 upsert 空列（空行同样报错）。
+    删除=破坏性动作：返回删前行快照供调用方落 journal（谁/何时/删了哪行）。
+    不存在→404（防误报成功）。"""
+    单元id = 净化(体.get("单元ID"), 200)
+    if not 单元id:
+        return 400, {"错误": "单元ID 必填"}
+    行 = con.execute("SELECT 单元ID,标题,正例,边界例,负例 FROM 覆盖单元 WHERE 单元ID=?",
+                     (单元id,)).fetchone()
+    if not 行:
+        return 404, {"错误": f"单元不存于覆盖表：{单元id}"}
+    con.execute("DELETE FROM 覆盖单元 WHERE 单元ID=?", (单元id,))
+    con.commit()
+    return 200, {"好": True, "动作": f"已删除单元行 {单元id}",
+                 "单元": _覆盖行转字典(行)}
+
+
+def 覆盖豁免删除(con: sqlite3.Connection, 体: dict) -> tuple:
+    """豁免行删除（撞号改号留痕旧行/任务级行清洗·247/387）。
+
+    用例名可逗号分隔批量；不存在的名字计入「未命中」不报错（幂等·清洗重放安全），
+    但全部未命中且无任何命中→404（防打错名字静默成功）。返回逐名去留供 journal。"""
+    名字们 = [c.strip() for c in str(体.get("用例", "")).split(",") if c.strip()]
+    if not 名字们:
+        return 400, {"错误": "用例 必填（逗号分隔可批量）"}
+    删除 = []
+    未命中 = []
+    for 用例 in 名字们:
+        key = 用例[:120]
+        行 = con.execute("SELECT 用例,理由 FROM 覆盖豁免 WHERE 用例=?", (key,)).fetchone()
+        if not 行:
+            未命中.append(key)
+            continue
+        con.execute("DELETE FROM 覆盖豁免 WHERE 用例=?", (key,))
+        删除.append(key)
+    if not 删除:
+        return 404, {"错误": "豁免表中无任何命中（核对名字后重试）", "未命中": 未命中}
+    con.commit()
+    return 200, {"好": True, "删除数": len(删除), "删除": 删除, "未命中": 未命中}
 
 
 # ===== 文档解析（迁移源·migrate_board_docs.py 复用）=====
