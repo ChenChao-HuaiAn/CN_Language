@@ -409,7 +409,18 @@ bool SemanticAnalyzer::canConvertType(const std::string& fromRaw,
         return !fa.empty() && !ta.empty() && canConvertType(fa, ta);
     }
     // 空指针常量 -> 可选<T>：视为空可选值（无）（Task 3.5，规格书07-三）
-    if (from == "空类型*" && toOpt) return true;
+    // 106（890 残余·泛型方法实参面）：$ 合成名形态（可选$整32——泛型/容器实例
+    //   形参替换后的形态）同款豁免。原判据 isOptionalType 只认模板文本
+    //   （可选<整32>），泛型方法实参位传 无 被拒并报「无法将 '空类型*' 隐式转换
+    //   为 '可选$整32'」（探针 F1/E2 实证；v2 侧同形态放行=宿主单侧拒绝分叉，
+    //   规范 07-三 空指针常量→可选 无语境限制）。后缀（* / &）存在时不豁免
+    //   ——与 toOpt（isOptionalType 见到后缀即假）口径对齐。
+    {
+        std::string toCore, toSuffix;
+        types::splitTypeSuffix(to, toCore, toSuffix);
+        const bool toSynOpt = toSuffix.empty() && toCore.rfind("可选$", 0) == 0;
+        if (from == "空类型*" && (toOpt || toSynOpt)) return true;
+    }
     // 061-d（2026-09-27 804 轮）：合成体名 ↔ 模板文本 同一性（A-3b 泛型类实例
     //   同构）——容器克隆体签名用合成体名（结果$整32$整32，实参经
     //   canonicalizeSyntheticArgText 统一 $ 形态），用户源码用模板文本

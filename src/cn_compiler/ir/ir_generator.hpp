@@ -662,6 +662,18 @@ private:
     //   供方法调用路径复用（原方法调用路径无此物化 → 实参地址=空指针 → 段错误）。
     ir::IRValue materializeStructInitArg(StructInitExpr* init,
                                          const SourceLocation& loc);
+    // 106（890 残余·泛型方法实参面）：实参位「无」→ 可选<T> 形参空可选装箱
+    //   （canConvertType 豁免放开的 IR 配套）——Alloca 临时 + 整槽零填充
+    //   （flag=0/值=0=「无」语义）+ 传地址；形参=模板/合成名双形态可选，
+    //   其余实参/形参形态 no-op（四调用点共用：普通/静态/虚/直接方法）。
+    void boxNullOptionalArgs(CallExpr* node,
+                             const std::vector<std::string>& paramTypes,
+                             std::vector<ir::IRValue>& args);
+    // 106 组合：方法调用实参定标单一入口（331-a i128/u128 宽化 + 106
+    //   无→可选装箱）——静态/虚/直接方法三路径共用（ir_oop_call 调用点 1 行）。
+    void normalizeMethodArgs(CallExpr* node,
+                             const std::vector<std::string>& paramTypes,
+                             std::vector<ir::IRValue>& userArgs);
     // D1 128-a：injectContainerElemDestroy 子方法（映射<K,V> 字符串键/值释放注入族）
     void injectMapElemDestroy(const std::string& canonClass, const ClassMemberInfo& mi,
                              const SourceLocation& loc);

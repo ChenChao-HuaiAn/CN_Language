@@ -134,6 +134,22 @@ bool IRGenerator::handleClassFieldRead(IdentifierExpr* node) {
                                node->location);
         return true;
     }
+    // 106（890 残余·泛型方法实参面·连带根治）：**聚合字段（结构体/结果/可选）
+    //   值读 → 返回字段地址（值语义）**——方法内直访路径（`返回 值槽`/`局=值槽`）
+    //   原落行末 LoadPtr：字段内联值首 8 字节被读作「值/地址」（D9 汇编铁证
+    //   `mov r9,[r10];mov r10,r9;mov r9,[r10+0]`——返回位把它当地址再解引用，
+    //   段错误 rc=139）；与 handleClassMemberExpr / visitMemberExpr 结构体字段
+    //   分支（缺陷根治 2026-08-25 判例）同款值语义。双形态归一（模板文本
+    //   可选<整32> → $ 合成名 可选$整32·lowerResultOptionalTypes 注册形态）。
+    if (semantic_ != nullptr) {
+        const std::string canonFieldType = canonicalizeSyntheticArgText(
+            types::canonical(fieldType));
+        if (semantic_->isStructType(canonFieldType) ||
+            isResultType(canonFieldType) || isOptionalType(canonFieldType)) {
+            lastExpr_ = addr;
+            return true;
+        }
+    }
     lastExpr_ = emitResult(ir::Opcode::LoadPtr, {addr},
                            mapType(fieldType), "", node->location);
     return true;
@@ -451,6 +467,25 @@ bool IRGenerator::handleClassMemberExpr(MemberExpr* node) {
         lastExpr_ = emitResult(ir::Opcode::LoadPtr, {addr}, "ptr", "",
                                node->location);
         return true;
+    }
+    // 106（890 残余·泛型方法实参面·连带根治）：**聚合字段（结构体/结果/可选）
+    //   值读 → 返回字段地址（值语义）**——与 visitMemberExpr 结构体字段分支
+    //   （缺陷根治 2026-08-25 判例）同款。原路径落行末 LoadPtr：字段内联
+    //   值首 8 字节被读作「值/地址」（类方法「返回 值槽」/「局=值槽」→ 被调
+    //   方把字段首 8 字节当指针再解引用——D9/D1b 汇编铁证
+    //   `mov r9,[r10];mov r10,r9;mov r9,[r10+0]`，段错误 rc=139；宿主
+    //   D1/D2/D6/D9/D10 探针族实证）。值语义下调用方（返回位 CopyStruct/
+    //   声明位拷贝）均按地址源消费，与本分支返回 addr 衔接。
+    {
+        // 双形态归一：模板文本（可选<整32>）→ $ 合成名（可选$整32·lowerResult
+        //   OptionalTypes 注册形态），findStruct 单键命中；结构体名原样。
+        const std::string canonFieldType = canonicalizeSyntheticArgText(
+            types::canonical(fieldType));
+        if (semantic_->isStructType(canonFieldType) ||
+            isResultType(canonFieldType) || isOptionalType(canonFieldType)) {
+            lastExpr_ = addr;
+            return true;
+        }
     }
     lastExpr_ = emitResult(ir::Opcode::LoadPtr, {addr},
                            mapType(fieldType), "", node->location);

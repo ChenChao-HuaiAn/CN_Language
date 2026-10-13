@@ -537,7 +537,7 @@ int IRGenerator::emitStaticMethodCall(CallExpr* node, MemberExpr* mem,
         // 331-a（T53 家系·静态方法路径）：i128/u128 形参的窄整实参宽化——同族
         //   同修（实例方法/虚调用已接·静态方法原缺 → 字面量实参 i64 直传 →
         //   被调方按 i128 指针解引用 SIGSEGV·探针 p_static 实证）。
-        widenI128Args(args, m->paramTypes, node->location);
+        normalizeMethodArgs(node, m->paramTypes, args);
         // 118（929）：引用返回方法（-> T&）——resultType=ptr（被引用左值地址）
         const std::string resultType = m->isRefReturn
                                            ? "ptr"
@@ -662,7 +662,7 @@ void IRGenerator::emitVirtualMethodCall(CallExpr* node, const ClassMemberInfo* m
         buildCallArgsOop(node->arguments, node->location);
     // 331-a（T53 根治·同族同修）：虚调用路径同样须做 i128/u128 形参宽化
     //   （buildCallArgsOop 不感知形参类型；此处有 m->paramTypes）。
-    widenI128Args(userArgs, m->paramTypes, node->location);
+    normalizeMethodArgs(node, m->paramTypes, userArgs);
     for (auto& a : userArgs) args.push_back(a);
     // 410（虚调用 bigRet 形态A·emitDirectMethodCall Task 6.1 同构）：结构体/
     //   数组返回方法——IR 层预插 retbuf 地址为 operands[0]（this 退位 1），
@@ -731,7 +731,7 @@ void IRGenerator::emitDirectMethodCall(CallExpr* node, const ClassMemberInfo* m,
     // 331-a（T53 根治）：i128/u128 形参的窄整实参（字面量等）统一宽化——与构造
     //   路径同款（单一归属 widenI128Args）；原缺 → 按 i64 值直传 → 被调方按
     //   i128 指针解引用段错误（实弹 m53_01 容器 追加(100000000000)）。
-    widenI128Args(userArgs, m->paramTypes, node->location);
+    normalizeMethodArgs(node, m->paramTypes, userArgs);
     for (auto& a : userArgs) args.push_back(a);
     // 118（929）：引用返回方法（-> T&）——resultType=ptr（被引用左值地址）
     const std::string resultType = m->isRefReturn
