@@ -87,7 +87,18 @@ bool SemanticAnalyzer::checkInterfaceMethodCall(CallExpr* node, MemberExpr* mem,
                             " 个实参，实际提供 " + std::to_string(argTypes.size()) + " 个");
                 } else {
                     for (std::size_t i = 0; i < argTypes.size(); ++i) {
-                        if (!canConvertWithLiteral(node->arguments[i].get(), argTypes[i], imit->second.paramTypes[i]) &&
+                        // 568（H3 幂等同族）：形参是引用（如 整64&）且实参已是
+                        //   &x（wrapRefArgs 包装）——共享 AST（泛型实例/循环内
+                        //   重复检查）二次检查时引用已满足，跳过转换比较（与
+                        //   实例方法路径 refAlready 豁免同款；否则 &前驱=整64*
+                        //   误报"无法转 整64&"）
+                        bool refAlready =
+                            types::isReference(imit->second.paramTypes[i]) &&
+                            node->arguments[i]->getType() == NodeType::UnaryExpr &&
+                            static_cast<UnaryExpr*>(node->arguments[i].get())->op ==
+                                Operator::AddressOf;
+                        if (!refAlready &&
+                            !canConvertWithLiteral(node->arguments[i].get(), argTypes[i], imit->second.paramTypes[i]) &&
                             !canConvertArgNarrow(node->arguments[i].get(), argTypes[i], imit->second.paramTypes[i])) {
                             diagnostics_.report(
                                 DiagnosticLevel::Error, node->arguments[i]->location,
@@ -98,6 +109,14 @@ bool SemanticAnalyzer::checkInterfaceMethodCall(CallExpr* node, MemberExpr* mem,
                         }
                     }
                 }
+                // 568（接口方法 × 非128引用形参双侧同案）：接口方法引用形参
+                //   实参自动取地址——实例/静态/构造三路径均有 wrapRefArgs，
+                //   接口路径独缺 → 引用实参按值直传、被调方按地址解引用
+                //   SIGSEGV（探针 568：整64& 直调/间接双路径 rc=139 双侧同崩）。
+                //   判定归属=wrapRefArgs 单一归属（左值判定+AddressOf 包装，
+                //   与实例/静态/构造/普通函数四路径同构）；接口方法 constParams
+                //   已随签名注册（class_resolver 阶段B 填充）。
+                wrapRefArgs(node, imit->second.paramTypes);
                 lastType_ = imit->second.type;
                 node->retOwnedString = (lastType_ == "字符串");  // A2：接口方法拥有契约
                 // 118（929）：接口方法引用返回放行（-> T& 签名即 ABI·isRefReturn
