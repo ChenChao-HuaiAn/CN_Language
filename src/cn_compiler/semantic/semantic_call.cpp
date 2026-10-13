@@ -322,6 +322,40 @@ bool SemanticAnalyzer::checkCopyBuiltinCall(CallExpr* node) {
 
 // ==================== 任务 474：回绕内置 回绕加/回绕减/回绕乘 ====================
 
+// 535：整数字面量（含一元负号形态）的「参与域」——按值提升。420 立法（族④
+//   预演域 promotedType 同源）：无后缀字面量标记域恒整32、求值域按值——超
+//   int32 → 整64、数字文本超 int64 → 整128（m27 提升链）；带后缀按后缀；
+//   一元负号按负号后数字文本判定（-2147483648 参与域=整64——与 IR 层
+//   visitIntegerLiteral 装载提升、v2 字面量寄存器值域选型三方同判）。修前
+//   回绕内置实参面直接用标记域（恒整32）：回绕乘(3000000000, 1) 按整32 位域
+//   截断折叠出 -1294967296，与同型普通算术 3000000000+0=3000000000（420 面）
+//   及 v2 分叉——违 001 §3.7a「回绕与算术运算符同类型规则」。非字面量返回
+//   ""（调用方保持 checkExpr 原类型）。仅回绕实参面调用点（语义层其他面
+//   维持标记域口径·420 预演域预演体独立），故驻本文件匿名/静态域不动 .hpp。
+std::string wrapLiteralOperandType(const Expr* e) {
+    if (e == nullptr) return "";
+    const IntegerLiteral* lit = nullptr;
+    if (e->getType() == NodeType::IntegerLiteral) {
+        lit = static_cast<const IntegerLiteral*>(e);
+    } else if (e->getType() == NodeType::UnaryExpr) {
+        const UnaryExpr* u = static_cast<const UnaryExpr*>(e);
+        if (u->op == Operator::Subtract && !u->postfix &&
+            u->operand != nullptr &&
+            u->operand->getType() == NodeType::IntegerLiteral) {
+            lit = static_cast<const IntegerLiteral*>(u->operand.get());
+        }
+    }
+    if (lit == nullptr) return "";
+    const std::string lt = types::literalTypeOf(lit->raw, false);
+    if (lt != "整32") return lt;  // 带后缀/其他：按后缀类型
+    // 无后缀：按值提升（超 int32 -> 整64；数字文本超 int64 -> 整128）
+    if (types::textExceedsInt64(types::stripLiteralSuffix(lit->raw))) {
+        return "整128";
+    }
+    if (lit->value > 2147483647LL) return "整64";
+    return "整32";
+}
+
 // 回绕内置识别（表达式位特判，占位注册已防重定义）：true = 本调用是回绕内置，
 //   wrapOpIdx 写 0/1/2（加/减/乘）。
 static bool wrapBuiltinIndexOf(const std::string& name, int& opIdx) {
@@ -363,6 +397,17 @@ bool SemanticAnalyzer::checkWrapBuiltinCall(CallExpr* node) {
                             "' 与 '" + rightType + "'");
         lastType_ = "未知";
         return true;
+    }
+    // 535：字面量实参参与域按值提升（420 立法·001 §3.7a「回绕与算术运算符
+    //   同类型规则」）——修前标记域恒整32：回绕乘(3000000000, 1) 按整32 位域
+    //   截断折叠出 -1294967296，与同型普通算术 3000000000+0=3000000000（420 面）
+    //   及 v2（字面量寄存器值域选型）分叉。变量实参不受影响（wrapLiteralOperandType
+    //   非字面量返回 ""，保持 checkExpr 原类型——791 变量矩阵零变化）。
+    {
+        const std::string pL = wrapLiteralOperandType(node->arguments[0].get());
+        if (!pL.empty()) leftType = pL;
+        const std::string pR = wrapLiteralOperandType(node->arguments[1].get());
+        if (!pR.empty()) rightType = pR;
     }
     // 混合符号拒绝对齐 + - *（2026-09-10 方案A·字面量豁免，Rust 对齐）
     if (types::isUnsigned(leftType) != types::isUnsigned(rightType) &&
