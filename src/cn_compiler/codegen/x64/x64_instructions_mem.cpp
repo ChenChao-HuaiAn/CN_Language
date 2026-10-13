@@ -107,13 +107,26 @@ void X64CodeGenerator::emitLoadStore(AsmWriter& writer, const ir::IRInstruction&
             return;
         }
         if (inst.type == "i8" || inst.type == "i16") {
-            writer.line("movsx eax, " + memSizePtr(inst.type) + src);  // 符号扩展 -> eax
+            // 常量传播面守卫（#500·077 修法同构）：值为立即数常量时 movsx 不接受
+            //   立即数操作数（A2070）——mov 直载再符号扩展存满 8 字节（语义等价：
+            //   窄常量值域 ≤32767 在 imm32 内，movsxd 继续符号扩展）。
+            if (inst.operands[0].isConstant) {
+                writer.line("mov eax, " + src);
+            } else {
+                writer.line("movsx eax, " + memSizePtr(inst.type) + src);  // 符号扩展 -> eax
+            }
             writer.line("movsxd rax, eax");                             // 符号扩展 -> rax（存满8字节）
             writer.line("mov " + slot + ", rax");
             return;
         }
         if (inst.type == "u8" || inst.type == "u16") {
-            writer.line("movzx eax, " + memSizePtr(inst.type) + src);   // 零扩展 -> eax
+            // 常量传播面守卫（#500）：同上，常量 mov 直载（写 eax 清零高 32 位
+            //   =零扩展语义，与 movzx 等价）
+            if (inst.operands[0].isConstant) {
+                writer.line("mov eax, " + src);
+            } else {
+                writer.line("movzx eax, " + memSizePtr(inst.type) + src);   // 零扩展 -> eax
+            }
             writer.line("mov " + slot + ", rax");                        // eax 写入即清零高32位
             return;
         }

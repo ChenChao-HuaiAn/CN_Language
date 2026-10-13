@@ -76,7 +76,14 @@ void X64CodeGenerator::emitShift(AsmWriter& writer, const ir::IRInstruction& ins
         const std::string dstPhys = physRegOf(inst.result);
         std::string ew = "eax";
         if (!dstPhys.empty()) ew = widthFor("i32", dstPhys);
-        writer.line(ext + " " + ew + ", " + mp + op1);
+        // 常量传播面守卫（#500·077 Cast 常量源适配同构）：op1 为立即数常量时
+        //   movsx/movzx 不接受立即数操作数（word ptr 32767 → ml64 A2070）——
+        //   mov 直载（写 32 位寄存器清高位=窄值全值，值域 ≤65535 在 imm32 内）。
+        if (inst.operands[0].isConstant) {
+            writer.line("mov " + ew + ", " + op1);
+        } else {
+            writer.line(ext + " " + ew + ", " + mp + op1);
+        }
         // 移位量：常量 -> 立即数；否则 -> cl
         if (inst.operands[1].isConstant) {
             const int raw = shiftAmtOf(inst.operands[1].extra);
@@ -241,7 +248,13 @@ void X64CodeGenerator::emitIntBinary(AsmWriter& writer, const ir::IRInstruction&
         if (!dstPhys.empty()) {
             // 直写：计算寄存器=dst 的 32 位形态（ecx 是固定临时·与 dst 无冲突面）
             const std::string dw = widthFor("i32", dstPhys);
-            writer.line(ext + " " + dw + ", " + mp + op1);   // op1 扩展 -> dst
+            // 常量传播面守卫（#500·077 修法同构）：op1 常量时 mov 直载
+            //   （movsx 不接受立即数操作数·A2070）
+            if (inst.operands[0].isConstant) {
+                writer.line("mov " + dw + ", " + op1);
+            } else {
+                writer.line(ext + " " + dw + ", " + mp + op1);   // op1 扩展 -> dst
+            }
             if (inst.operands[1].isConstant) {
                 writer.line(mnemonic + " " + dw + ", " + op2);
             } else {
@@ -252,7 +265,15 @@ void X64CodeGenerator::emitIntBinary(AsmWriter& writer, const ir::IRInstruction&
             narrowGuard474(dw);
             return;
         }
-        writer.line(ext + " eax, " + mp + op1);   // op1 扩展 -> eax
+        // 常量传播面守卫（#500·077 修法同构）：op1 常量时 mov 直载（A2070 同上）
+        //   实锤触发形态：O1 复写传播 `甲=32767` 折叠进 `加 %v 32767 1 (i16)`，
+        //   窄域溢出检查面常量折叠器正确不折叠（溢出须运行期错误码8），发射层
+        //   原样拼 word ptr 32767 → ml64 拒绝（658/681/682/734/736 五族实证）。
+        if (inst.operands[0].isConstant) {
+            writer.line("mov eax, " + op1);
+        } else {
+            writer.line(ext + " eax, " + mp + op1);   // op1 扩展 -> eax
+        }
         // op2 可能是常量/槽：常量直接作为32位立即数（其值本身正确）
         if (inst.operands[1].isConstant) {
             writer.line(mnemonic + " eax, " + op2);
@@ -349,7 +370,12 @@ void X64CodeGenerator::emitIntMul(AsmWriter& writer, const ir::IRInstruction& in
         const bool isS = (ty == "i8" || ty == "i16");
         const std::string ext = isS ? "movsx" : "movzx";
         const std::string mp = memSizePtr(ty);
-        writer.line(ext + " eax, " + mp + op1);
+        // 常量传播面守卫（#500·077 修法同构）：op1 常量时 mov 直载（A2070 同上）
+        if (inst.operands[0].isConstant) {
+            writer.line("mov eax, " + op1);
+        } else {
+            writer.line(ext + " eax, " + mp + op1);
+        }
         if (inst.operands[1].isConstant) {
             writer.line("imul eax, " + op2Text);
         } else {
