@@ -42,6 +42,33 @@ EXTERN_RE = re.compile(r"^EXTERN\s+(?P<sym>.*?):PROC\s*$")
                      r"|^(?P<sym2>[?A-Za-z_][\w$@?]*):\s*$")
 LEA_RE = re.compile(r"^\s+lea rax, (?P<op>.+?)\s*$")
 
+# 判据④ 显式寄存器名表（567·526 呈报小件）：原「r/e 开头 2~4 字母数字」启发式
+#   把 62_ffi 合法 FFI 符号 `rand` 误报（526 全扫唯一告警），反向还漏
+#   xmm0/sil 等真寄存器族——改 x64 寄存器名全集显式白名单：误报零容忍 +
+#   真寄存器零漏报（判据本体不变，只是把「像寄存器」换成「是寄存器」）。
+#   集合=通用寄存器四宽度族（含 r8-r15 派生）+ 指令指针 + 段寄存器 +
+#   x87/MMX/SSE/AVX/AVX-512 向量寄存器 + 控制/调试寄存器。
+X64寄存器名 = frozenset(
+    ["rax", "rbx", "rcx", "rdx", "rsi", "rdi", "rbp", "rsp",   # 64 位通用
+     "eax", "ebx", "ecx", "edx", "esi", "edi", "ebp", "esp",   # 32 位
+     "ax", "bx", "cx", "dx", "si", "di", "bp", "sp",           # 16 位
+     "al", "bl", "cl", "dl", "ah", "bh", "ch", "dh",           # 8 位（legacy）
+     "sil", "dil", "bpl", "spl",                               # 8 位（REX）
+     "rip", "eip", "ip",                                       # 指令指针
+     "cs", "ds", "es", "fs", "gs", "ss"]                       # 段寄存器
+    + [f"r{n}" for n in range(8, 16)]                          # r8-r15
+    + [f"r{n}d" for n in range(8, 16)]                         # r8d-r15d
+    + [f"r{n}w" for n in range(8, 16)]                         # r8w-r15w
+    + [f"r{n}b" for n in range(8, 16)]                         # r8b-r15b
+    + [f"cr{n}" for n in range(16)]                            # 控制寄存器
+    + [f"dr{n}" for n in range(16)]                            # 调试寄存器
+    + [f"st{n}" for n in range(8)]                             # x87 栈
+    + [f"mm{n}" for n in range(8)]                             # MMX
+    + [f"xmm{n}" for n in range(32)]                           # SSE/AVX-512
+    + [f"ymm{n}" for n in range(32)]                           # AVX/AVX-512
+    + [f"zmm{n}" for n in range(32)]                           # AVX-512
+)
+
 
 def 扫描产物(asm路径: pathlib.Path) -> dict:
     """返回 {冲突, 非法EXTERN, 未解析引用, 本地数, EXTERN数, 引用数}"""
@@ -65,11 +92,11 @@ def 扫描产物(asm路径: pathlib.Path) -> dict:
             if 操作数 and "[" not in 操作数 and " " not in 操作数 and "\t" not in 操作数:
                 引用.append(操作数)
     未解析 = sorted({符 for 符 in 引用 if 符 not in 本地 and 符 not in 外部})
-    # 判据④（518-b·家机回签建议）：EXTERN 操作数=**寄存器名** → ml64 A2008
-    #   （T69 间接调用 `call r11` 被 EXTERN 收集器误收·七例实证）
+    # 判据④（518-b·家机回签建议·567 改显式表）：EXTERN 操作数=**寄存器名** → ml64 A2008
+    #   （T69 间接调用 `call r11` 被 EXTERN 收集器误收·七例实证）。
+    #   526 呈报：原启发式误报 62_ffi 合法 FFI 符号 `rand`——改显式寄存器名全集。
     for 符 in 外部:
-        小写 = 符.lower()
-        if 2 <= len(小写) <= 4 and 小写[0] in ("r", "e") and all(c.isalnum() and c.isascii() for c in 小写):
+        if 符.lower() in X64寄存器名:
             非法.append(符 + "（寄存器名·A2008 风险）")
     return {"冲突": sorted(外部 & 本地), "非法EXTERN": 非法, "未解析": 未解析,
             "本地数": len(本地), "EXTERN数": len(外部), "引用数": len(引用)}
