@@ -62,6 +62,7 @@ build_phase4/
 ci_config.json
 ci-logs/
 scripts/queue_client.json
+/queue_client.json
 core
 scripts/queue_state.db
 
@@ -70,3 +71,4 @@ scripts/queue_state.db
 scripts/board_state.db
 scripts/board_cache.json
 scripts/coverage_cache.json
+scripts/case_ledger_cache.json

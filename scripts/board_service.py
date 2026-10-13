@@ -167,6 +167,7 @@ def 建库(路径: str = db路径) -> sqlite3.Connection:
         时戳 REAL)""")
     台账.建任务表(con)      # 382：任务台账主表（服务端唯一权威）
     台账.建用例号台账(con)  # 554：E2E 用例号台账（用例编号权威化·发号原子递增）
+    台账.升级用例号台账(con)  # 577：旧库补「用例名」列 + 用例名唯一索引（号名配对唯一）
     文档.建表(con)          # 384：交接/教训/规范覆盖（文档上服务器二期）
     裁决.建表(con)          # 403：裁决项/裁决记录（网页裁决系统）
     return con
@@ -501,9 +502,14 @@ class 处理器(BaseHTTPRequestHandler):
                     台账.已占号集(连接)), "号占冲突们": 号占冲突们(), "时刻": 时刻()})
         if 路径 == "/api/case_numbers":                # 554：E2E 用例号台账（审计面·只读）
             with 写锁:
-                行们 = [{"号": r[0], "机器": r[1], "说明": r[2], "时刻": r[3]}
+                q = urlparse(self.path).query
+                参数 = dict(p.split("=", 1) for p in q.split("&") if "=" in p)
+                名 = unquote(参数.get("name", ""))
+                if 名:                                  # 577：按用例名查询（建目录前自检面）
+                    return self._回JSON(200, {"命中们": 台账.查用例号(连接, 名), "时刻": 时刻()})
+                行们 = [{"号": r[0], "机器": r[1], "用例名": r[2], "说明": r[3], "时刻": r[4]}
                        for r in 连接.execute(
-                           "SELECT 号,机器,说明,时刻 FROM 用例号台账 ORDER BY 时戳").fetchall()]
+                           "SELECT 号,机器,用例名,说明,时刻 FROM 用例号台账 ORDER BY 时戳").fetchall()]
                 return self._回JSON(200, {"台账": 行们, "占用数": len(行们), "时刻": 时刻()})
         # —— 384 文档资源（交接/教训/规范覆盖·GET 只读）——
         if 路径 == "/api/handoff":

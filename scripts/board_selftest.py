@@ -15,6 +15,7 @@ import json
 import threading
 import time
 import urllib.request
+import urllib.parse
 from http.server import ThreadingHTTPServer
 from pathlib import Path
 import sys
@@ -431,6 +432,29 @@ def 自检() -> int:
         签("554 用例号无凭证 401（反态）", 码 == 401)
         码, r = 调("GET", "/api/case_numbers")
         签("554 用例号台账读回（占用 3）", 码 == 200 and r.get("占用数") == 3)
+        # —— 577 号名配对唯一（领号带名·同号异名/异号同名 409·v2专用前缀名·按名查询）——
+        码, r = 调("POST", "/api/case_number", {"机器": "甲机", "用例名": "对账用例甲"})
+        签("577 带名领号（号名绑定入台账）",
+           码 == 201 and r.get("用例名") == "对账用例甲")
+        号甲 = r.get("号")
+        码, r = 调("POST", "/api/case_number", {"机器": "乙机", "用例名": "对账用例乙"})
+        签("577 并发领号不重号", 码 == 201 and r.get("号") != 号甲)
+        码, r = 调("POST", "/api/case_number", {"机器": "丙机", "用例名": "对账用例甲"})
+        签("577 同名再领 409（名占用·反态）", 码 == 409 and "已于号" in str(r.get("错误", "")))
+        码, r = 调("POST", "/api/case_number", {"机器": "丙机", "用例名": "对账用例丙",
+                                              "指定号": 号甲})
+        签("577 号已配他名 409（改配拦截·反态）", 码 == 409)
+        码, r = 调("POST", "/api/case_number", {"机器": "丁机", "用例名": "对账用例甲附加",
+                                              "指定号": 号甲})
+        签("577 号已配名不再改配（含变体名）409（反态）",
+           码 == 409 and "已配给" in str(r.get("错误", "")))
+        码, r = 调("POST", "/api/case_number", {"机器": "戊机", "用例名": "v2专用:对账用例甲",
+                                              "指定号": "9010"})
+        签("577 v2专用前缀名补录（双 v2 号撞同主题形态）",
+           码 == 201 and r.get("用例名") == "v2专用:对账用例甲")
+        码, r = 调("GET", "/api/case_numbers?name=" + urllib.parse.quote("对账用例甲"))
+        签("577 按用例名查询命中（含 v2专用 前缀名归一）",
+           码 == 200 and len(r.get("命中们", [])) == 2)
         # —— 384 文档资源：交接/教训/规范覆盖（正反两态）——
         码, r = 调("POST", "/api/handoff_add", {"机器": "深度机", "条目": "384 收工行：本轮一句话。下一棒=指针。"})
         签("384 交接添加 201·有 id", 码 == 201 and r.get("id"))

@@ -53,13 +53,28 @@ def 建任务表(con: sqlite3.Connection) -> None:
 
 
 def 建用例号台账(con: sqlite3.Connection) -> None:
-    """E2E 用例号台账（554·用例编号权威化）——与任务号空间独立（用例号 1~806+
-    历史序列）；append-only·号不复用（同任务号「号不复用」纪律）。"""
+    """E2E 用例号台账（554 建·577 升级）——与任务号空间独立（用例号 1~806+
+    历史序列）；append-only·号不复用（同任务号「号不复用」纪律）。
+    577：加「用例名」列——号名配对唯一=跨分支撞号根治（领号即锁死绑定；
+    815/816 实录病根=台账只记号不记名，两分支各自自拟同号互不可见）。"""
     con.execute("""CREATE TABLE IF NOT EXISTS 用例号台账(
         号 TEXT PRIMARY KEY,
         机器 TEXT DEFAULT '', 对话id TEXT DEFAULT '',
+        用例名 TEXT DEFAULT '',
         说明 TEXT DEFAULT '',
         时刻 TEXT, 时戳 REAL)""")
+
+
+def 升级用例号台账(con: sqlite3.Connection) -> None:
+    """577：对 554 期已部署库做列升级（CREATE IF NOT EXISTS 不动既有表）——
+    幂等（PRAGMA 表结构探测）·旧行 用例名 留空=未配名（兼容放行·补录面见
+    case_ledger.py 导入本地）。空名不建唯一索引（避免历史空串互撞）。"""
+    列名们 = {r[1] for r in con.execute("PRAGMA table_info(用例号台账)").fetchall()}
+    if "用例名" not in 列名们:
+        con.execute("ALTER TABLE 用例号台账 ADD COLUMN 用例名 TEXT DEFAULT ''")
+    con.execute("CREATE UNIQUE INDEX IF NOT EXISTS 用例名唯一 ON 用例号台账(用例名)"
+                " WHERE 用例名 != ''")
+    con.commit()
 
 
 def 号排序键(号: str):
@@ -189,32 +204,93 @@ def 已占用例号集(con: sqlite3.Connection) -> set:
     return {str(r[0]) for r in con.execute("SELECT 号 FROM 用例号台账").fetchall()}
 
 
+def 已占用例名集(con: sqlite3.Connection) -> dict:
+    """用例名 → 号（仅已配名行·旧空名行=未配名兼容放行）。577 号名配对唯一判据面。"""
+    return {r[1]: str(r[0]) for r in con.execute(
+        "SELECT 号, 用例名 FROM 用例号台账 WHERE 用例名 != ''").fetchall()}
+
+
 def 领用例号(con: sqlite3.Connection, 体: dict):
-    """E2E 用例编号发放（554）。请求号下限=调用方扫到的现存最大号（本地 tests/e2e
-    与全远端分支核验后的值·照 487/489/496 先例）——服务端取 max(台账最大, 请求下限)+1
-    发放；台账原子递增=同台账内绝不重号（多机并发安全），下限参数=对「台账启用前既有
-    历史号（1~806 等）」的兼容。返回 (HTTP码, 响应)。"""
+    """E2E 用例编号发放（554 建·577 号名配对唯一增强）。请求号下限=调用方扫到的现存
+    最大号——服务端取 max(台账最大, 请求下限)+1 发放；台账原子递增=同台账内绝不重号
+    （多机并发安全），下限参数=对「台账启用前既有历史号（1~806 等）」的兼容。
+    577 增强（根治 815/816 型跨分支互不可见撞号）：
+      - 用例名 为领号推荐要素——台账记「号↔用例名」绑定，此后号或名任一被占即 409；
+        未带名=兼容旧调用（仅占号·不配名），日志可见。
+      - 指定号：存量补录与既有号领名通道（仅数字·正式发号仍为服务端递增出口）；
+        号已配给他名=409；名已配给他号=409；号未配名=补名通过。
+    返回 (HTTP码, 响应)。"""
     机器 = 净化(体.get("机器"), 60)
     对话id = 净化(体.get("对话id"), 40)
+    用例名 = 净化(体.get("用例名"), 200)
     说明 = 净化(体.get("说明"), 200)
+    指定号 = str(体.get("指定号", "") or "").strip()
     下限请求 = str(体.get("请求号下限", "") or "").strip()
     下限 = 0
     if 下限请求:
         if not re.fullmatch(r"[0-9]+", 下限请求):
             return 400, {"错误": "请求号下限 须为纯数字（现存最大用例号）"}
         下限 = int(下限请求)
-    已占 = 已占用例号集(con)
-    台账最大 = max((int(x) for x in 已占 if re.fullmatch(r"[0-9]+", x)), default=0)
-    候选 = max(台账最大, 下限) + 1
-    while str(候选) in 已占:
-        候选 += 1
-    号 = str(候选)
-    现 = time.time()
-    con.execute(
-        "INSERT INTO 用例号台账(号,机器,对话id,说明,时刻,时戳) VALUES(?,?,?,?,?,?)",
-        (号, 机器, 对话id, 说明, 时刻(), 现))
+    号名图 = {号: 名 for 号, 名 in con.execute(
+        "SELECT 号, 用例名 FROM 用例号台账").fetchall()}
+    已占 = set(号名图)
+    占名图 = {名: 号 for 号, 名 in 号名图.items() if 名}
+    if 指定号:
+        if not re.fullmatch(r"[0-9]+", 指定号):
+            return 400, {"错误": "指定号 须为纯数字"}
+        if 用例名 and 指定号 in 号名图:
+            现名 = 号名图[指定号]
+            if 现名 and 现名 != 用例名:
+                return 409, {"错误": f"号 {指定号} 已配给用例「{现名}」——"
+                                     f"当前用例须另领新号（勿复用他人号）"}
+            if not 现名 and 用例名 in 占名图 and 占名图[用例名] != 指定号:
+                return 409, {"错误": f"用例「{用例名}」已配号 {占名图[用例名]}——"
+                                     f"号 {指定号} 不能改配"}
+        号 = 指定号
+        if 用例名 and 指定号 not in 号名图 and 用例名 in 占名图:
+            return 409, {"错误": f"用例「{用例名}」已于号 {占名图[用例名]} 登记（名字占用）——"
+                                 f"换名或复用既有号"}
+    else:
+        if 用例名 and 用例名 in 占名图:
+            return 409, {"错误": f"用例「{用例名}」已于号 {占名图[用例名]} 登记（名字占用）——"
+                                 f"换名或复用既有号"}
+        台账最大 = max((int(x) for x in 已占 if re.fullmatch(r"[0-9]+", x)), default=0)
+        候选 = max(台账最大, 下限) + 1
+        while str(候选) in 已占:
+            候选 += 1
+        号 = str(候选)
+    已存在 = con.execute("SELECT 1 FROM 用例号台账 WHERE 号=?", (号,)).fetchone()
+    if not 已存在:
+        现 = time.time()
+        try:
+            con.execute(
+                "INSERT INTO 用例号台账(号,机器,对话id,用例名,说明,时刻,时戳)"
+                " VALUES(?,?,?,?,?,?,?)",
+                (号, 机器, 对话id, 用例名, 说明, 时刻(), 现))
+        except sqlite3.IntegrityError:
+            # 号主键或用例名唯一索引撞车（双写并发防御·写锁外亦安全）
+            con.rollback()
+            return 409, {"错误": f"号 {号} 或用例名「{用例名}」已被占用——请重领"}
+    elif 用例名:
+        con.execute("UPDATE 用例号台账 SET 用例名=?, 机器=?, 对话id=? WHERE 号=?",
+                    (用例名, 机器, 对话id, 号))
     con.commit()
-    return 201, {"好": True, "号": 号, "台账最大": 台账最大, "占用数": len(已占)}
+    台账最大 = max((int(x) for x in 已占 if re.fullmatch(r"[0-9]+", x)), default=0)
+    return 201, {"好": True, "号": 号, "用例名": 用例名, "台账最大": 台账最大,
+                 "占用数": len(已占)}
+
+
+def 查用例号(con: sqlite3.Connection, 用例名: str) -> list:
+    """577：台账按用例名查询（含未配名号位·建目录前自检面）——用例名子串匹配，
+    v2专用: 前缀名亦按裸主题命中（如 266_不安全边界 命中「v2专用:不安全边界」）；
+    "查得到"与"占用判定"同源（同一台账·防两套账）。返回 [{号,用例名,机器,时刻}]。"""
+    名 = 净化(用例名, 200)
+    裸 = 名[4:] if 名.startswith("v2专用:") else 名
+    行们 = con.execute(
+        "SELECT 号,用例名,机器,时刻 FROM 用例号台账 WHERE 用例名 LIKE ?"
+        " OR (用例名 LIKE 'v2专用:%' AND 用例名 LIKE ?) ORDER BY 时戳",
+        (f"%{名}%", f"%{裸}%")).fetchall()
+    return [{"号": r[0], "用例名": r[1], "机器": r[2], "时刻": r[3]} for r in 行们]
 
 
 def 创建任务(con: sqlite3.Connection, 体: dict):
@@ -392,11 +468,14 @@ def 自测() -> int:
     assert 序 == ["901"], f"僵尸行应沉底（就绪区外）·实际排序提取={序}"
     例数 += 1
     print(f"  [✓] 僵尸行排序沉底（就绪区外）")
-    # 554：E2E 用例号发放（台账原子递增·请求下限兼容·不重号·非法下限 400）
+    # 554/577：E2E 用例号发放（台账原子递增·请求下限兼容·不重号·非法下限 400·
+    # 577 号名配对：带名发号/名字占用 409/指定号补录与改配 409）
     建用例号台账(con)
-    码, r = 领用例号(con, {"机器": "测机", "请求号下限": "806", "说明": "自测1"})
+    升级用例号台账(con)
+    码, r = 领用例号(con, {"机器": "测机", "请求号下限": "806", "说明": "自测1",
+                           "用例名": "自测甲"})
     例数 += 1
-    print(f"  [{'✓' if 码 == 201 and r.get('号') == '807' else '✗'}] 用例号首领（下限 806 → 807）")
+    print(f"  [{'✓' if 码 == 201 and r.get('号') == '807' else '✗'}] 用例号首领（下限 806 → 807·带名）")
     assert 码 == 201 and r["号"] == "807", r
     码, r = 领用例号(con, {"机器": "测机2", "请求号下限": "806"})
     例数 += 1
@@ -410,6 +489,22 @@ def 自测() -> int:
     例数 += 1
     print(f"  [{'✓' if 码 == 400 else '✗'}] 用例号非法下限拒绝（400）")
     assert 码 == 400, r
+    码, r = 领用例号(con, {"用例名": "自测甲", "请求号下限": "806", "机器": "测机4"})
+    例数 += 1
+    print(f"  [{'✓' if 码 == 409 else '✗'}] 用例名重复领号拒绝（409·名已配 807）")
+    assert 码 == 409, r
+    码, r = 领用例号(con, {"用例名": "自测乙", "指定号": "807", "机器": "测机5"})
+    例数 += 1
+    print(f"  [{'✓' if 码 == 409 else '✗'}] 指定号已配他名拒绝（409·改配拦截）")
+    assert 码 == 409, r
+    码, r = 领用例号(con, {"用例名": "自测乙", "指定号": "808", "机器": "测机5"})
+    例数 += 1
+    print(f"  [{'✓' if 码 == 201 and r.get('用例名') == '自测乙' else '✗'}] 指定号补录（已领未配名 → 补名通过）")
+    assert 码 == 201 and r["用例名"] == "自测乙", r
+    码, r = 领用例号(con, {"用例名": "自测丙", "指定号": "9000", "机器": "测机6"})
+    例数 += 1
+    print(f"  [{'✓' if 码 == 201 and r.get('号') == '9000' else '✗'}] 指定号存量补录（新号直配）")
+    assert 码 == 201 and r["号"] == "9000", r
     print(f"[selftest] {例数} 例全过 ✓")
     return 0
 
@@ -433,6 +528,8 @@ def _cli() -> int:
         号 TEXT PRIMARY KEY,
         机器 TEXT, 对话id TEXT DEFAULT '', 描述 TEXT DEFAULT '',
         时刻 TEXT, 时戳 REAL)""")
+    建用例号台账(con)      # 577：用例号台账（CLI 独立运行面·与 board_service.建库 同构）
+    升级用例号台账(con)    # 577：旧库补「用例名」列升级
     con.commit()
     if "--migrate" in 参数:
         主表 = 值("--021")

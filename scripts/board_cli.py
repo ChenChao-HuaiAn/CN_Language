@@ -13,7 +13,8 @@
   python scripts/board_cli.py 单元删 <单元ID>                      # 删除覆盖单元行（误登记清洗·247）
   python scripts/board_cli.py 豁免删 <用例名[,用例名…]>             # 删除豁免行（撞号留痕/任务级行清洗·247）
   python scripts/board_cli.py 覆盖                                 # 覆盖矩阵摘要（缺口=空格）
-  python scripts/board_cli.py 领用例号 [--说明 "..."]               # E2E 用例编号领取（554·服务端台账原子发号）
+  python scripts/board_cli.py 领用例号 <用例名> [--说明 "..."] [--号 N]   # E2E 用号领取（554·577 号名配对唯一）
+  python scripts/board_cli.py 查用例号 [用例名]                          # 台账查询（建目录前自检·577）
   python scripts/board_cli.py 裁决 --批 <件们.json>                 # 裁决项批量上传（403·AI 侧）
   python scripts/board_cli.py 裁决 --号 379 --标题 "…" --讲解文件 x.md --选项文件 o.json
   python scripts/board_cli.py 裁决看 [--全部]                       # 裁决项一览（缺省只看待裁决）
@@ -256,26 +257,73 @@ def 扫描本地用例最大号() -> int:
 
 
 def cmd_领用例号(a) -> int:
-    """E2E 用例编号领取（554·接续 487/489/496 治理链）：服务端用例号台账原子发号
-    （多机并发安全·号不复用）；请求下限=本地 tests/e2e 扫见最大号（远端核验面由
-    调用方按需自行 ls-remote，门禁 check_case_numbers 最终兜底拦重号）。
+    """E2E 用例编号领取（554 建·577 号名配对唯一）。服务端用例号台账原子发号：
+    号或用例名任一被占即 409 拒发——建用例目录前先领号（号↔用例名绑定即锁死，
+    跨分支也可见·根治 815/816 型互不可见撞号）。
+    请求下限=本地 tests/e2e 扫见最大号（台账启用前历史号兼容）。
+    --号 N 通道：存量补录/既有号领名（服务端校验占用）。
     服务不可达降级=本地 max+1（黄字预告·未过台账·集成门禁兜底核验）。"""
     下限 = 扫描本地用例最大号()
+    用例名 = (a.用例名 or "").strip()
+    if not 用例名:
+        print("[黄] 未带用例名——号将入台账但不配名（577 前旧用法）；"
+              "下次请：领用例号 <用例名>（建目录前完成，号名绑定才拦得住跨分支撞号）")
+    体 = {"机器": 机器名(), "用例名": 用例名, "说明": a.说明 or "",
+          "请求号下限": str(下限)}
+    if a.号:
+        体["指定号"] = a.号
     try:
-        码, r = 调服务("POST", "/api/case_number",
-                      {"机器": 机器名(), "说明": a.说明 or "", "请求号下限": str(下限)})
+        码, r = 调服务("POST", "/api/case_number", 体)
     except OSError as e:
         print(f"[黄] 看板服务不可达（{e}）——降级本地发号（未过台账·门禁兜底）")
         print(f"[领用例号·降级] {下限 + 1}（本地扫见 max={下限}）——"
               f"服务恢复后建议复核；撞号由 check_case_numbers 门禁硬拦")
         return 0
+    if 码 == 409:
+        print(f"[拒发] {r.get('错误', '号或用例名已被占用')}")
+        print("  处置：换用例名，或直接 `领用例号 <用例名>` 领服务端新号（勿复用他人号）")
+        return 1
     if 码 != 201:
         print(f"[失败] {码} {r.get('错误', r)}")
         return 1
     号 = r["号"]
-    print(f"[领用例号] {号}（服务端台账发放·台账最大 {r.get('台账最大')}·本地扫见 max {下限}·占用 {r.get('占用数')}）")
-    print(f"  命名：tests/e2e/{号}_<主题>；v2 面成对={号}_v2_<主题>（共号合法形态）")
+    配名 = r.get("用例名") or ""
+    print(f"[领用例号] {号}"
+          + (f" ← 「{配名}」" if 配名 else "（未配名）")
+          + f"（服务端台账发放·台账最大 {r.get('台账最大')}·本地扫见 max {下限}·占用 {r.get('占用数')}）")
+    print(f"  命名：tests/e2e/{号}_<主题>；v2 面成对={号}_v2_<主题>（共号合法形态·台账只登记宿主名）")
     print(f"  撞号处置=后入者领新号：git mv 旧目录 新目录 + 覆盖矩阵登记名同步")
+    return 0
+
+
+def cmd_查用例号(a) -> int:
+    """用例号台账查询（577）——建目录前/改号前自检：按用例名或号查占用（GET 只读）。"""
+    if a.用例名:
+        查询 = urllib.parse.urlencode({"name": a.用例名})
+        码, r = 调服务("GET", "/api/case_numbers?" + 查询)
+        if 码 != 200:
+            print(f"[失败] {码} {r.get('错误', r)}")
+            return 1
+        们 = r.get("命中们", [])
+        if not 们:
+            print(f"[查用例号] 「{a.用例名}」未登记——可领号：board_cli 领用例号 「{a.用例名}」")
+            return 0
+        print(f"[查用例号] 「{a.用例名}」已登记 {len(们)} 行：")
+        for x in 们:
+            print(f"  #{x['号']} 「{x.get('用例名') or '（未配名）'}」 {x.get('时刻', '')} {x.get('机器', '')}")
+        print("  同名字=已占用——勿重复建用例目录；改号走 git mv + 覆盖矩阵登记名同步")
+        return 0
+    码, r = 调服务("GET", "/api/case_numbers")
+    if 码 != 200:
+        print(f"[失败] {码} {r.get('错误', r)}")
+        return 1
+    们 = r.get("台账", [])
+    配名数 = sum(1 for x in 们 if x.get("用例名"))
+    print(f"[查用例号] 台账 {len(们)} 行·已配名 {配名数}·未配名 {len(们) - 配名数}（最近 15）：")
+    for x in 们[-15:]:
+        print(f"  #{x['号']} 「{x.get('用例名') or '（未配名）'}」 {x.get('时刻', '')}")
+    if len(们) > 15:
+        print(f"  …（前 {len(们) - 15} 行略·全量见 /api/case_numbers）")
     return 0
 
 
@@ -405,9 +453,16 @@ def main() -> int:
     s = sub.add_parser("覆盖", help="覆盖矩阵摘要")
     s.set_defaults(f=cmd_覆盖)
 
-    s = sub.add_parser("领用例号", help="E2E 用例编号领取（服务端台账原子发号·554）")
+    s = sub.add_parser("领用例号", help="E2E 用例编号领取（服务端台账原子发号·号名配对唯一·577）")
+    s.add_argument("用例名", nargs="?", default="",
+                   help="用例主题名（建用例目录前领号·号↔名绑定入库·勿复用他人号）")
     s.add_argument("--说明", default="")
+    s.add_argument("--号", default="", help="指定号（存量补录/既有号领名·服务端校验占用）")
     s.set_defaults(f=cmd_领用例号)
+
+    s = sub.add_parser("查用例号", help="用例号台账查询（建目录前/改号前自检·577）")
+    s.add_argument("用例名", nargs="?", default="", help="按用例名子串查；省略=看台账最近 15 行")
+    s.set_defaults(f=cmd_查用例号)
 
     s = sub.add_parser("裁决", help="裁决项上传（AI 侧·批量或单件）")
     s.add_argument("--批", default="")

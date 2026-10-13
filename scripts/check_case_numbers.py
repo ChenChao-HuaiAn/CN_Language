@@ -1,27 +1,33 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""check_case_numbers.py —— E2E 用例编号唯一性门禁（554·接续 487/489/496 治理链）。
+"""check_case_numbers.py —— E2E 用例编号唯一性门禁（554 建·577 台账核验增强）。
 
 病根（554 轮考古）：E2E 用例编号（tests/e2e/<编号>_<名称>/）无权威发号也无唯一性
 校验——487/489/496 三轮纯人工全库盘点治理存量（42 组 46 目录改号），496 落地后
 未装任何防再撞机制，10 分钟后并行任务 488 rebase 进来即再撞 752/753（存活一天
 无门禁可拦）。本门禁机械拦增量：L1（gate_quick 静态段）/ win 全量（ci.ps1）/云端。
 
-判据：同一数字编号对应多个用例目录 = 撞号。两类合法形态除外：
-  ① 宿主+v2 成对（恰两目录，其一去掉编号前缀与 "v2_" 段后与另一全等——
-     项目长期约定 NN_主题 / NN_v2_主题 共号成对）；
-  ② 显式豁免号（下表·496 口径留档：早期功能分节/宿主与 v2 合用一号）。
+判据两层（577）：
+  ① 本地目录：同一数字编号对应多个用例目录 = 撞号。两类合法形态除外：
+     宿主+v2 成对（恰两目录，其一去掉编号前缀与 "v2_" 段后与另一全等）；
+     显式豁免号（下表·496 口径留档：早期功能分节/宿主与 v2 合用一号）。
+  ② 台账核验（case_ledger.核验台账）：本地「编号_主题」× 服务端用例号台账比对，
+     同号异名/异号同名即真撞号——跨分支可见（领号即入台账·815/816 型互不可见
+     窗口根治面）；台账无此号/号未配名=黄字提示（554 前未配名存量面）。
+     服务不可达降级=本地判据照跑·台账核验黄字（集成与云端全量为硬拦截点）。
 
-处置（照 487/489/496 先例）：先入者保留·后入者领新号改号——
-  python scripts/board_cli.py 领用例号        # 服务端原子发号
+处置（487/489/496 先例）：先入者保留·后入者领新号改号——
+  python scripts/board_cli.py 领用例号 <用例名>   # 服务端原子发号（号名配对唯一）
 改号同步面：目录改名 + 主.cn 首行注释 + 服务端覆盖矩阵登记名 + 全库引用。
 
-退出码：0=通过（无真撞号）；1=发现真撞号（CI 红）。
-用法：python scripts/check_case_numbers.py
+退出码：0=通过（无真撞号）；1=发现真撞号（CI 红；--strict 下台账冲突/提示亦红）。
+用法：python scripts/check_case_numbers.py [--strict]
 """
 import os
 import re
 import sys
+
+import case_ledger
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 E2E = os.path.join(ROOT, "tests", "e2e")
@@ -42,9 +48,9 @@ def _去编号段(目录名: str) -> str:
 
 
 def 主题名(目录名: str) -> str:
-    """去掉编号前缀与 v2_ 段：83_v2_交集_全私有类 → 交集_全私有类。"""
-    无名 = _去编号段(目录名)
-    return 无名[3:] if 无名.startswith("v2_") else 无名
+    """去掉编号前缀与 v2_ 段（83_v2_交集_全私有类 → 交集_全私有类）——单一实现归
+    case_ledger（台账核验同口径·归纳零复制）。"""
+    return case_ledger.主题名(目录名)
 
 
 def 是成对(a: str, b: str) -> bool:
@@ -73,6 +79,11 @@ def 扫描分组() -> dict:
 
 
 def main() -> int:
+    import argparse
+    p = argparse.ArgumentParser(description="E2E 用例编号唯一性门禁（554·577 台账核验）")
+    p.add_argument("--strict", action="store_true",
+                   help="台账核验提示项（未配名）亦判红（CI 全量口径）")
+    a = p.parse_args()
     组 = 扫描分组()
     真撞 = []
     for 号, 们 in sorted(组.items(), key=lambda kv: int(kv[0])):
@@ -82,24 +93,45 @@ def main() -> int:
             continue
         真撞.append((号, 们))
     多号组数 = sum(1 for 们 in 组.values() if len(们) > 1)
-    print("=== E2E 用例编号唯一性门禁（554·AGENTS §4 条文执行面）===")
+    print("=== E2E 用例编号唯一性门禁（554 建·577 台账核验·AGENTS §4 条文执行面）===")
     print("目录 %d·唯一编号 %d·多目录编号 %d 组（豁免 %d 号·成对与豁免之外的组=真撞号）"
           % (sum(len(v) for v in 组.values()), len(组), 多号组数, len(豁免号)))
-    if not 真撞:
-        print("[PASS] 无真撞号——全部多目录编号组均为宿主+v2 成对或 496 口径豁免。")
-        return 0
-    print("[FAIL] 发现 %d 组真撞号（同一编号对应多个不同用例目录）：" % len(真撞))
-    for 号, 们 in 真撞:
-        print("  #%s:" % 号)
-        for 名 in 们:
-            print("      %s" % 名)
-    print("")
-    print("处置（487/489/496 先例·先入者保留·后入者改号）：")
-    print("  1) python scripts/board_cli.py 领用例号            # 领取新号（服务端原子发号）")
-    print("  2) git mv tests/e2e/<后入用例目录> tests/e2e/<新号>_<主题>")
-    print("  3) 同步：主.cn 首行注释 / 服务端覆盖矩阵登记名（board_cli 用例·豁免删）")
-    print("  4) 重跑本门禁至绿（python scripts/check_case_numbers.py）")
-    return 1
+    if 真撞:
+        print("[FAIL] 发现 %d 组真撞号（同一编号对应多个不同用例目录）：" % len(真撞))
+        for 号, 们 in 真撞:
+            print("  #%s:" % 号)
+            for 名 in 们:
+                print("      %s" % 名)
+        print("")
+        print("处置（487/489/496 先例·先入者保留·后入者改号）：")
+        print("  1) python scripts/board_cli.py 领用例号 <用例名>   # 领取新号（服务端原子发号）")
+        print("  2) git mv tests/e2e/<后入用例目录> tests/e2e/<新号>_<主题>")
+        print("  3) 同步：主.cn 首行注释 / 服务端覆盖矩阵登记名（board_cli 用例·豁免删）")
+        print("  4) 重跑本门禁至绿（python scripts/check_case_numbers.py）")
+        return 1
+    print("[PASS] 本地无真撞号（成对与豁免之外的组=0）。")
+    # 577 第二层：台账核验（同号异名/异号同名·跨分支可见面）
+    结 = case_ledger.核验台账(取消豁免=tuple(豁免号))
+    if not 结["台账可用"] and 结["本地用例数"]:
+        源 = "读本地缓存" if 结["未配名号数"] else "跳过"
+        print(f"[黄] 台账核验降级（服务不可达）——{源}；集成与云端全量为硬拦截点。")
+    for 提示 in 结["提示们"][:8]:
+        print(f"  [黄] {提示}")
+    if 结["提示们"][8:]:
+        print(f"  …（另 {len(结['提示们']) - 8} 条提示略）")
+    if 结["冲突们"]:
+        print(f"[FAIL] 台账核验冲突 {len(结['冲突们'])} 处（同号异名/异号同名）：")
+        for x in 结["冲突们"]:
+            print(f"  {x}")
+        print("处置：后入者 `board_cli 领用例号 <用例名>` 领新号后 git mv 改号"
+              "（台账已配名号=他人在用·勿复用）")
+        return 1
+    if a.strict and 结["提示们"]:
+        print(f"[FAIL] --strict：{len(结['提示们'])} 条台账未配名提示按红处理"
+              "（运行 python scripts/case_ledger.py 导入本地 补录）")
+        return 1
+    print("[PASS] 台账核验一致（或无对应行/断网降级）。")
+    return 0
 
 
 if __name__ == "__main__":
