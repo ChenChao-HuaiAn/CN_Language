@@ -5,7 +5,9 @@
 #      （裸全量须 --full-reason "<任务号+理由>"——354 护栏：本地全量 30~90 分钟，
 #        任务中途验证请走 --filter 定向 / gate_quick.py --l2 / integrate.py 云端全量）
 #      （78_v2/79_v2 重负载用例本地默认跳过留云端——566 裁决乙案 2026-10-13：
-#        本地确需跑加 --allow-heavy·强制并发=1+机器域锁；云端 CN_CI_BRANCH 自动放行）
+#        本地确需跑加 --allow-heavy·强制并发=1+机器域锁；云端 CI 通道自动放行=
+#        CI环境识别三变量（CN_RUNNER_ID/CN_CI_ROLE/CN_CI_BRANCH）或 --heavy-ci·
+#        并发/锁行为不变）
 #
 # 用例目录结构约定：
 #   tests/e2e/<编号>_<名称>/<用例>.cn        # CN语言源文件
@@ -159,7 +161,34 @@ def 拷贝用例树干净(源目录, 目标目录, ignore=None):
 #   仅保留 v2 自举链重载面（全树编译 OOM 防线·与用例共存亡）。
 内存保护用例前缀 = ("78_v2_自举链构建", "79_v2_自举闭环")
 
+# CI runner 环境识别（566 修复·审查 P0-1；215/354 识别同源统一）：三判据任一非空
+#   即认定云端 runner 环境。判据变量=现网全部 runner 部署面必然注入的组合——
+#   ① CN_RUNNER_ID：池实例身份（win 池 start-runner.cmd / 家机 WSL cn-runner@.service /
+#      交叉模拟 cn-arm64@.service / 单位机 cn-runner@.service——2026-10-13 实机
+#      `systemctl show`/启动器文件只读核验全部在设）；
+#   ② CN_CI_ROLE：池角色（同上部署面·TX_02 之外全在设）；
+#   ③ CN_CI_BRANCH：点名/本职分支（028 模板与现网多数实例在设·保留兼容 215 原判据）。
+#   旧判据仅 CN_CI_BRANCH 的病根：TX_02 cn-ci.service 实机三变量全空（ssh 只读核验
+#   2026-10-13）→ 云端放行通道在该主力 runner 上永不成立（78/79 零验证），且旧
+#   daemon 的 --allow-heavy 在 win 池触发机器锁自死锁。AI 开发会话三变量皆无·
+#   识别不误放。返回命中变量名（空串=非 CI 环境）。
+CI识别变量们 = ("CN_RUNNER_ID", "CN_CI_ROLE", "CN_CI_BRANCH")
+
+
+def CI环境识别() -> str:
+    for 变量 in CI识别变量们:
+        if (os.environ.get(变量) or "").strip():
+            return 变量
+    return ""
+
 内存轮询间隔秒 = 0.5
+
+# 本地 --allow-heavy 机器锁等待上限（566·审查 P1-2）：=gate_lock acquire 默认 7200s。
+#   不用 run 形态的无限等待（0）：本参数=开发者手工本地跑，P0-2 豁免已根治「等自己」
+#   自死锁，剩余等待=真实外部持锁（另一会话门禁/CI 在飞）——快速失败优于无限挂起
+#   （失败即提示 gate_lock status 查看·稍后重试），集成队列的排队语义由 gate_lock
+#   run 形态自己承担、与本处无关。
+机器锁等待上限秒 = 7200
 
 # ============ 子进程超时防线（021 任务 050=568-a 遗欠恢复·2026-09-23）============
 #   568-a 曾实测 73 例宿主编译无限挂死——每类子进程调用带四档闹钟：
@@ -2258,8 +2287,14 @@ def 主程序() -> int:
                              "2026-10-13 裁决乙案）：默认本地跳过留云端（云端收口全量已含）；"
                              "确需本地跑（改动触及 v2 自举链关键路径）才加本参数——放行后"
                              "强制并发=1 并取机器域门禁锁（gate_lock 全机一把·防多会话"
-                             "并行饱和；CN_GATE_LOCK_HELD=1 外层已持锁豁免）。云端 runner"
-                             "（CN_CI_BRANCH）自动放行不经本参数")
+                             "并行饱和·等待上限 7200s；CN_GATE_LOCK_HELD=1 外层已持锁豁免）。"
+                             "云端 runner（CI环境识别）或 --heavy-ci 自动放行不经本参数")
+    解析器.add_argument("--heavy-ci", action="store_true",
+                        help="CI 门禁专用放行（566 修复·审查 P0-1）：供 CI 调用面（ci_daemon/"
+                             "check_source_coverage）显式放行 78/79——行为=重型默认跳过立法前"
+                             "完全一致（--jobs/--shard/锁/内存保护全不动·仅放行）；与本参数"
+                             "等价的环境判据=CI环境识别三变量（CN_RUNNER_ID/CN_CI_ROLE/"
+                             "CN_CI_BRANCH 任一非空）。本地开发勿用（无并发收敛）")
     参数 = 解析器.parse_args()
 
     # —— 本地裸全量护栏（021 任务 354·AGENTS §4「验证三档阶梯」执行面）——
@@ -2270,17 +2305,19 @@ def 主程序() -> int:
     #   --shard 子集跑法（79_v2 锚定链、G-N 探针族、三机分片等）完全不受影响。
     全量理由 = (参数.full_reason or "").strip()
     # 215（021 任务 215）：CI 预验环境识别放行——ci_daemon 常驻进程（TX_02/家机
-    #   WSL 池 runner·systemd Environment CN_CI_BRANCH=028 部署模板）发起的
+    #   WSL 池 runner·systemd Environment=028 部署模板）发起的
     #   全量 e2e=合法调用方（199 清单的环境识别补齐）。runner 机器部署的
     #   ci_daemon 版本未同步 develop 时（旧版 run_e2e 调用不带 --full-reason），
     #   354 护栏误拦 takeover 恢复批预验（run_1183f1db22_1006_042841 实锤）——
     #   预验分支随集成自愈：本修复入 develop 后，预验分支的 run_e2e 即含放行，
-    #   零 runner 部署改动。AI 会话无 CN_CI_BRANCH 环境变量·护栏语义不削弱。
+    #   零 runner 部署改动。AI 会话无 CI 识别变量·护栏语义不削弱。
+    #   566 修复：判据改 CI环境识别() 三变量（审查 P0-1——原仅 CN_CI_BRANCH 在
+    #   TX_02 实机不存在=识别永不命中）。
     if not 全量理由:
-        ci环境分支 = (os.environ.get("CN_CI_BRANCH") or "").strip()
-        if ci环境分支:
-            全量理由 = ("ci_daemon 预验池 runner 自动全量（CN_CI_BRANCH=%s·"
-                        "215 环境识别放行）" % ci环境分支)
+        ci识别 = CI环境识别()
+        if ci识别:
+            全量理由 = ("ci_daemon 预验池 runner 自动全量（%s 在设·"
+                        "215 环境识别放行）" % ci识别)
     有效滤 = (参数.filter or "").strip()
     if not 全量理由 and not (参数.shard or "").strip() and len(有效滤) < 2:
         print(红色("拦：本地裸全量 E2E（约 600 例·本机 30~90 分钟）被 354 护栏拦截——"
@@ -2347,59 +2384,11 @@ def 主程序() -> int:
         print(黄色("未找到E2E用例目录（过滤条件无匹配或无用例）"))
         return 1
 
-    # —— 重负载用例（78_v2/79_v2）本地默认跳过（566·2026-10-13 用户裁决乙案）——
-    #   病根：10-13 多会话 CPU 饱和事件（多会话各自本地跑 79_v2 自举链全树编译·
-    #   单例 8~20 分钟·并行叠加=整机瘫痪·用户令全杀后立法）。云端收口全量
-    #   （ci_daemon 预验+develop 兜底）已含 78/79——本地默认跳过=零验证损失；
-    #   跳过非失败（计入跳过数·退出码不变）。放行双通道（fail-closed·与 354
-    #   裸全量护栏同风格：显式放行才跑）：
-    #   ① 云端 runner：CN_CI_BRANCH 环境变量（215 systemd 部署模板注入·与 354
-    #     护栏 CI 识别同源）自动放行——旧版 ci_daemon 未带 --allow-heavy 也自愈
-    #     （预验分支随集成自愈·零 runner 部署改动）；并发/锁行为保持现状
-    #     （池化并行不受损·独占机不套机器锁）。
-    #   ② 本地显式：--allow-heavy（仅改动触及 v2 自举链关键路径时用）——强制
-    #     并发=1（--jobs 覆盖为 1）+ 机器域 gate_lock（跨树全机一把·与入口层
-    #     树锁双层：树内互斥+全机互斥=「全局文件锁并发=1」防多会话并行饱和；
-    #     CN_GATE_LOCK_HELD=1 嵌套豁免——外层已持机器锁（如 gate_lock run 包裹）
-    #     时跳过取锁防自死锁；atexit/finally 释放·进程强杀由 917 陈锁秒级接管）。
-    #   注：--full-reason 裸全量（ci.ps1/integrate 本机全量门禁·用户明令）不在
-    #   豁免之列——本机全量同样默认跳过留云端，确需重型须再加 --allow-heavy。
-    ci分支 = (os.environ.get("CN_CI_BRANCH") or "").strip()
-    重型跳过们 = []
-    重型们 = [d for d in 用例目录们
-             if any(前缀 in d.name for 前缀 in 内存保护用例前缀)]
-    if 重型们:
-        if ci分支:
-            print(青色(f"重型放行: CN_CI_BRANCH={ci分支}（云端 runner 自动放行·"
-                       f"78/79 照跑·566）"))
-        elif 参数.allow_heavy:
-            参数.jobs = 1
-            print(青色("重型放行: --allow-heavy（566·2026-10-13 裁决乙案）——"
-                       "并发强制=1（--jobs 覆盖）"))
-            if os.environ.get("CN_GATE_LOCK_HELD"):
-                print("[gate_lock] 继承外层机器锁（CN_GATE_LOCK_HELD=1·不另取锁防自死锁）")
-            else:
-                import gate_lock as _机器锁
-                机器锁路径 = _机器锁.获取(0, 形态="acquire", owner_pid=os.getpid())
-                if 机器锁路径 is None:
-                    print(红色("错误: 机器域门禁锁获取失败（等待上限=无限·不应发生）"))
-                    return 2
-                _机器锁.心跳线程(机器锁路径 / "info.json")
-                atexit.register(_机器锁.释放, 机器锁路径, True)
-                print("[gate_lock] 机器域锁已持（全机一把·跨树互斥=全机并发 1·566）")
-        else:
-            重型跳过们 = 重型们
-            print(黄色(f"重型跳过: {len(重型跳过们)} 例重负载用例默认留云端"
-                       f"（566·2026-10-13 裁决乙案·云端收口全量已含）——"))
-            for _d in 重型跳过们:
-                print(f"  {青色('SKIP')} {_d.name}（云端全量照验·本地默认不跑）")
-            print("  本地确需跑（改动触及 v2 自举链关键路径）请带 "
-                  + 青色("--allow-heavy") + "（强制并发=1·机器域锁内·防多会话并行饱和）")
-            用例目录们 = [d for d in 用例目录们 if d not in 重型跳过们]
-
     # 分片（911·bors 批量集成配套·AGENTS.md §8.2-B）：--shard i/n=用例名排序后按
     #   index%n==i 选取——三机各跑一片并行、批主汇总判绿（并集=全量用例集·
     #   run_e2e --selftest 面校验守恒）。--filter 先行过滤后分片（两者可叠加）。
+    #   重型判定在分片之后（566·审查 P1-3）：各片只判/只计本片命中的重型——
+    #   原先「分片前全量剔重+各片计全部重型」=并集账目虚高 n 倍。
     if 参数.shard:
         try:
             i文本, n文本 = 参数.shard.split("/")
@@ -2412,6 +2401,67 @@ def 主程序() -> int:
         用例目录们 = [d for 序, d in enumerate(用例目录们) if 序 % 片数 == 片序]
         print(青色(f"分片: shard {片序}/{片数}（本片 {len(用例目录们)}/{全量数} 用例"
                    f"·并集守恒由 名单取模 保证——批主汇总各片退出码判绿）"))
+
+    # —— 重负载用例（78_v2/79_v2）云端照跑·本地默认跳过（566·2026-10-13 用户裁决乙案；
+    #      本段位于分片之后——重型判定只对本片·审查 P1-3）——
+    #   病根：10-13 多会话 CPU 饱和事件（多会话各自本地跑 79_v2 自举链全树编译·
+    #   单例 8~20 分钟·并行叠加=整机瘫痪·用户令全杀后立法）。云端收口全量
+    #   （ci_daemon 预验+develop 兜底）已含 78/79——本地默认跳过=零验证损失；
+    #   跳过非失败（计入跳过数·退出码不变）。放行双通道（fail-closed·与 354
+    #   裸全量护栏同风格：显式放行才跑）：
+    #   ① CI 通道（566 修复·审查 P0-1 拆分）：判据=CI环境识别() 三变量任一非空
+    #     （CN_RUNNER_ID/CN_CI_ROLE/CN_CI_BRANCH——现网 runner 部署面必然在设；
+    #     原 CN_CI_BRANCH 单判据在 TX_02 实机不存在=放行永不成立）或 CI 调用面
+    #     显式 --heavy-ci（ci_daemon/check_source_coverage 专用·TX_02 无环境变量
+    #     靠它放行）。行为=重型默认跳过立法前完全一致：--jobs/--shard/锁/内存
+    #     保护全不动（池化并行不受损·独占机不套机器锁）；旧版 ci_daemon 未带
+    #     新开关也自愈（环境判据命中即放行）。
+    #   ② 本地显式：--allow-heavy（仅改动触及 v2 自举链关键路径时用）——强制
+    #     并发=1（--jobs 覆盖为 1）+ 机器域 gate_lock（跨树全机一把·与入口层
+    #     树锁双层：树内互斥+全机互斥=「全局文件锁并发=1」防多会话并行饱和；
+    #     CN_GATE_LOCK_HELD=1 嵌套豁免——外层已持机器锁（gate_lock run 包裹/
+    #     ci_daemon 带门禁锁跑 注入）时跳过取锁防自死锁；atexit/finally 释放
+    #     （仅属主校验·审查 P1-1）·等待上限 7200s（审查 P1-2）·进程强杀由
+    #     917 陈锁秒级接管）。
+    #   注：--full-reason 裸全量（ci.ps1/integrate 本机全量门禁·用户明令）不在
+    #   豁免之列——本机全量同样默认跳过留云端，确需重型须再加 --allow-heavy。
+    ci识别 = CI环境识别()
+    重型跳过们 = []
+    重型们 = [d for d in 用例目录们
+             if any(前缀 in d.name for 前缀 in 内存保护用例前缀)]
+    if 重型们:
+        if ci识别 or 参数.heavy_ci:
+            来源 = f"CI 环境 {ci识别} 在设" if ci识别 else "--heavy-ci 显式"
+            print(青色(f"重型放行: CI 通道（{来源}·566 修复）——78/79 照跑·"
+                       f"并发/锁行为与立法前完全一致"))
+        elif 参数.allow_heavy:
+            参数.jobs = 1
+            print(青色("重型放行: --allow-heavy（566·2026-10-13 裁决乙案）——"
+                       "并发强制=1（--jobs 覆盖）"))
+            if os.environ.get("CN_GATE_LOCK_HELD"):
+                print("[gate_lock] 继承外层机器锁（CN_GATE_LOCK_HELD=1·不另取锁防自死锁）")
+            else:
+                import gate_lock as _机器锁
+                机器锁路径 = _机器锁.获取(机器锁等待上限秒, 形态="acquire", owner_pid=os.getpid())
+                if 机器锁路径 is None:
+                    print(红色(f"错误: 等待机器域门禁锁超时（{机器锁等待上限秒}s·"
+                               f"另一全量门禁在飞——gate_lock status 查看·稍后再跑）"))
+                    return 2
+                _机器锁.心跳线程(机器锁路径 / "info.json")
+                # 仅属主释放（审查 P1-1）：Linux fork 进程池 worker 继承本 atexit
+                #   闭包，worker 完成任务退出时执行——归属校验不符即跳过，
+                #   防误删主进程（真正持锁者）的锁=全机互斥静默失效。
+                atexit.register(_机器锁.释放, 机器锁路径, True, os.getpid())
+                print("[gate_lock] 机器域锁已持（全机一把·跨树互斥=全机并发 1·566）")
+        else:
+            重型跳过们 = 重型们
+            print(黄色(f"重型跳过: {len(重型跳过们)} 例重负载用例默认留云端"
+                       f"（566·2026-10-13 裁决乙案·云端收口全量已含）——"))
+            for _d in 重型跳过们:
+                print(f"  {青色('SKIP')} {_d.name}（云端全量照验·本地默认不跑）")
+            print("  本地确需跑（改动触及 v2 自举链关键路径）请带 "
+                  + 青色("--allow-heavy") + "（强制并发=1·机器域锁内·防多会话并行饱和）")
+            用例目录们 = [d for d in 用例目录们 if d not in 重型跳过们]
 
     # 逐个执行并统计（--jobs>1 并行模式，2026-09-11 用户裁决「E2E 太慢」提速：
     #   非 v2 用例并行池 + v2 用例单线程池**并发**执行——v2 用例共享 target/v2asm.s

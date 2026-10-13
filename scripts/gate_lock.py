@@ -12,6 +12,11 @@ CN_TREE_LOCK_DIR 覆盖）——同树并发 E2E/构建互踩（v2p 缓存双写
 根治，跨树天然并行。环境豁免 CN_TREE_LOCK_HELD=1=嵌套链外层已持锁，acquire/run
 跳过取锁防自死锁（495-a/595-a 同族防线）；run 形态 tree 域向子进程注入该变量。
 
+566（2026-10-13·审查 P0-2/P1-1）：machine 域同构补齐——run 形态向子进程注入
+CN_GATE_LOCK_HELD=1（run_e2e --allow-heavy 嵌套链见之跳过取机器锁·原零写点死代码
+根治）；释放(仅属主=pid) 归属校验——fork 进程池 worker 继承的 atexit 释放闭包
+只删真正属于自己进程的锁（917 陈锁接管路径不受影响）。
+
   acquire [--timeout 秒] [--owner PID] [--scope machine|tree] 阻塞获取锁（默认等待 2h；
                                  陈锁=存活锚死秒级接管〔917〕/心跳停 4h 兜底）
   release [--scope]          释放锁（Ctrl+C 中断门禁后手动清锁用）
@@ -63,8 +68,16 @@ def 按域锁目录(域: str) -> Path:
 
 def 树锁豁免() -> bool:
     """555：CN_TREE_LOCK_HELD 真值=嵌套链外层已持树锁（gate_quick→run_e2e 注入）——
-    acquire/run 跳过取锁防「外层持锁内层再等」自死锁（495-a/595-a 树域防线）。"""
+    acquire/run 跳过取锁防「外层持锁内层再等」自死锁（495-a/595-a 同族防线）。"""
     return bool(os.environ.get("CN_TREE_LOCK_HELD"))
+
+
+def 机器锁豁免() -> bool:
+    """566（审查 P0-2）：CN_GATE_LOCK_HELD 真值=嵌套链外层已持 machine 域锁——
+    gate_lock run 形态（本文件）与 ci_daemon 带门禁锁跑（win 持锁跑三段）注入，
+    run_e2e --allow-heavy 与本脚本 acquire/run 见之跳过取锁，防「外层已持机器锁
+    内层再等同一把」无限自死锁（树锁 CN_TREE_LOCK_HELD 同构防线）。"""
+    return bool(os.environ.get("CN_GATE_LOCK_HELD"))
 
 
 def 读信息(锁: Path) -> dict:
@@ -190,7 +203,13 @@ def 获取(超时秒: int, 形态: str = "run", owner_pid: int | None = None,
         return 锁
 
 
-def 释放(锁: Path, 静默: bool = False) -> None:
+def 释放(锁: Path, 静默: bool = False, 仅属主: int | None = None) -> None:
+    """仅属主（566·审查 P1-1）：非 None 时先校验 info.json 的 owner_pid==仅属主 才删——
+    Linux fork 进程池 worker 继承父进程 atexit 注册的释放闭包，worker 完成任务正常
+    退出时会执行它；无校验则 worker 误删真正持锁者（主进程）的锁=全机互斥静默失效。
+    归属不符（或锁已不在）即跳过不动。917 陈锁接管路径不传 仅属主——行为不变。"""
+    if 仅属主 is not None and 读信息(锁).get("owner_pid") != 仅属主:
+        return
     try:
         (锁 / "info.json").unlink(missing_ok=True)
         锁.rmdir()
@@ -224,6 +243,10 @@ def 主流程() -> int:
 
     域 = 参数.scope
     锁目录 = 按域锁目录(域)
+    # 555 树域 + 566 machine 域（审查 P0-2）：环境豁免=嵌套链外层已持本域锁——
+    #   release 拒删（锁归外层）·acquire/run 跳过取锁直跑（防嵌套自死锁）。
+    豁免 = 树锁豁免() if 域 == "tree" else 机器锁豁免()
+    豁免变量 = "CN_TREE_LOCK_HELD" if 域 == "tree" else "CN_GATE_LOCK_HELD"
 
     if 参数.命令 == "status":
         if 锁目录.exists():
@@ -237,17 +260,18 @@ def 主流程() -> int:
             print("空闲")
         return 0
     if 参数.命令 == "release":
-        if 域 == "tree" and 树锁豁免():
-            # 555：豁免环境（嵌套子进程）的锁归外层持有者——删了=拆外层互斥，拒绝
-            print("[gate_lock] 继承外层树锁（CN_TREE_LOCK_HELD=1）——release 跳过（锁归外层持有者）",
+        if 豁免:
+            # 555/566：豁免环境（嵌套子进程）的锁归外层持有者——删了=拆外层互斥，拒绝
+            print(f"[gate_lock] 继承外层{域}锁（{豁免变量}=1）——release 跳过（锁归外层持有者）",
                   file=sys.stderr)
             return 0
         释放(锁目录)
         return 0
     # 555：树域环境豁免——外层已持锁（CN_TREE_LOCK_HELD=1），acquire/run 直接跳过取锁
     #   （不建锁目录不等待），run 直跑透传退出码。防嵌套链自死锁（最高风险点）。
-    if 域 == "tree" and 树锁豁免():
-        print("[gate_lock] 继承外层树锁（CN_TREE_LOCK_HELD=1）", file=sys.stderr)
+    #   566：machine 域同构豁免（CN_GATE_LOCK_HELD=1·审查 P0-2 根治死代码）。
+    if 豁免:
+        print(f"[gate_lock] 继承外层{域}锁（{豁免变量}=1）", file=sys.stderr)
         if 参数.命令 == "acquire":
             return 0
         命令 = 参数.命令
@@ -289,9 +313,13 @@ def 主流程() -> int:
     心跳线程(锁 / "info.json")
     try:
         # 555：tree 域向子进程注入 CN_TREE_LOCK_HELD=1——嵌套链（gate_quick→run_e2e→
-        #   再调 gate_lock/run_e2e）见之即豁免跳过取锁，防自死锁；machine 域不注入
-        #   （env=None=继承父环境·既有行为不变）。
-        环境 = dict(os.environ, CN_TREE_LOCK_HELD="1") if 域 == "tree" else None
+        #   再调 gate_lock/run_e2e）见之即豁免跳过取锁，防自死锁。
+        # 566（审查 P0-2）：machine 域同构注入 CN_GATE_LOCK_HELD=1（原先 env=None 不
+        #   注入=豁免变量全仓零写点死代码）——嵌套链内层 run_e2e --allow-heavy 等
+        #   见之跳过取机器锁，防「外层持机器锁内层再等同一把」无限自死锁。
+        环境 = dict(os.environ,
+                    **({"CN_TREE_LOCK_HELD": "1"} if 域 == "tree"
+                       else {"CN_GATE_LOCK_HELD": "1"}))
         return subprocess.run(命令, env=环境).returncode
     except KeyboardInterrupt:
         print("\n[gate_lock] 中断——释放锁", file=sys.stderr)

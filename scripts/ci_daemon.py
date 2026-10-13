@@ -380,14 +380,19 @@ def 静态门禁与e2e段(步骤们: dict, 步骤, cn: Path | None) -> None:
         #   291：nice 为 posix 专属——win 无此前缀（同机互斥已由 gate_lock 承担）；
         #   --target 用运行时探测平台（win-x64 / linux-x86_64）
         保内存 = min(4096, int(物理内存MB() * 0.8))
-        # 566（2026-10-13 裁决乙案）：78/79 重负载用例本地默认跳过留云端——云端
-        #   runner 是其唯一合法执行面，显式 --allow-heavy 放行（并发/锁行为不变；
-        #   环境变量 CN_CI_BRANCH 兜底自动放行·旧版 run_e2e 未带本参数也自愈）。
+        # 566（2026-10-13 裁决乙案·修复审查 P0-1）：78/79 重负载用例本地默认跳过留
+        #   云端——云端 runner 是其唯一合法执行面。放行走 CI 通道显式开关 --heavy-ci
+        #   （行为=跳过立法前完全一致：--jobs/锁/内存保护全不动；不传 --allow-heavy
+        #   ——那是本地通道·强制并发=1+机器锁，与云端池化并行语义冲突）；环境判据
+        #   （CN_RUNNER_ID/CN_CI_ROLE/CN_CI_BRANCH 任一在设·028 部署模板）兜底自动
+        #   放行——旧版 ci_daemon（仍传旧名 --allow-heavy）+新 run_e2e 时经环境判据
+        #   命中 CI 通道自愈（旧 daemon 部署面池实例三变量在设；TX_02 待部署清单补
+        #   systemd Environment 后 daemon 重启生效）。
         e2e基 = ([] if 是win else ["nice", "-n", "10"]) + [
             sys.executable, "tests/e2e/run_e2e.py",
             "--target", 平台, "--cn", str(cn),
             "--max-mem-mb", str(保内存),
-            "--allow-heavy",
+            "--heavy-ci",
             "--full-reason", "ci_daemon 云端全量门禁（TX_02/池 runner）"]
         if 步骤("e2e并行", e2e基 + ["--jobs", str(e2e并行)], 单轮总超时秒):
             步骤们["e2e"] = {"rc": 0}
@@ -402,15 +407,26 @@ def 带门禁锁跑(sha: str, 轮分支: str = "") -> dict | None:
     不同）——win 池实例三段与主树门禁全机互斥（AGENTS §7 本机全量每机 ≤1；池树经
     CN_GATE_LOCK_DIR 指向主树锁目录·跨树共享）。30 分钟未获得=让出（返回 None）：
     调用方不落盘不 complete——心跳停由服务端 300s 回收重派（本机忙让给别人=随机池本义）。
-    linux 零开销直通（TX_02/WSL 行为不变·原注释口径「独占 CI 不套锁」保持）。"""
+    linux 零开销直通（TX_02/WSL 行为不变·原注释口径「独占 CI 不套锁」保持）。
+    566（审查 P0-2）：持锁期间向本进程环境注入 CN_GATE_LOCK_HELD=1——嵌套链子进程
+    （run_e2e --allow-heavy / gate_lock acquire·run 等）见之即豁免跳过取机器锁，
+    防「父进程已持锁·子进程再取同一把」无限自死锁（子进程经 os.environ 继承）；
+    finally 恢复原值（长期驻留 daemon 的环境不被污染）。"""
     门禁锁 = gate_lock.获取(1800, 形态="acquire", owner_pid=os.getpid()) if 是win else None
     if 是win and 门禁锁 is None:
         print("[让出] gate_lock 30 分钟未获得（本机门禁互忙）——本轮放弃，任务由服务端回收重派", flush=True)
         return None
+    豁免原值 = os.environ.get("CN_GATE_LOCK_HELD")
+    if 是win:
+        os.environ["CN_GATE_LOCK_HELD"] = "1"
     try:
         return 跑一轮(sha, 轮分支)
     finally:
         if 是win:
+            if 豁免原值 is None:
+                os.environ.pop("CN_GATE_LOCK_HELD", None)
+            else:
+                os.environ["CN_GATE_LOCK_HELD"] = 豁免原值
             gate_lock.释放(门禁锁, 静默=True)
 
 

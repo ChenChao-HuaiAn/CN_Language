@@ -119,8 +119,14 @@ def 步骤e2e(e2e_target, jobs):
     for p in (项目根 / "target" / "audit2").glob("v2p_*"):
         p.unlink()
         print(f"  清缓存 {p.name}", flush=True)
+    # --heavy-ci（566·审查 P1-4）：CI 门禁专用放行——覆盖率全量语料必须含 78/79
+    #   （自举链全树编译=宿主/v2 面覆盖大户，缺它=阈值账目缺口）；本调用面经
+    #   ci.ps1 -Coverage（先 acquire 机器锁）触发·非池 runner 环境，CI环境识别
+    #   不命中，须显式放行。不传 --allow-heavy（本地通道会强制 jobs=1+再取机器锁
+    #   =与外层 ci.ps1 持锁自死锁——P0-2 豁免变量经 ci.ps1 链路无注入点）。
     rc, _ = 运行(["python3", "tests/e2e/run_e2e.py", "--cn", 产物目录 / "cn",
                   "--target", e2e_target, "--jobs", jobs,
+                  "--heavy-ci",
                   "--full-reason", "check_source_coverage 源码覆盖率全量（CI -Coverage 专用）"])
     if rc != 0:
         sys.exit(f"[覆盖] E2E 失败（rc={rc}）")
