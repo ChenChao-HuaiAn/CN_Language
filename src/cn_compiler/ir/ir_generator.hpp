@@ -181,6 +181,7 @@ private:
     void registerPendingBoxVar(VarDecl* node, const std::string& declCanon,
                                const ir::IRValue& dstAddr, const ir::IRValue& value,
                                const std::string& unique);
+    bool tryGenRefReturnClassCopyInit(VarDecl* node, const DeclGenCtx& ctx);  // ⑩子 632 引用返回调用→类深拷
     bool tryGenClassCopyInit(VarDecl* node, const ir::IRValue& value,
                              const std::string& srcType, const std::string& unique);
     bool tryGenUnwrapBindInit(VarDecl* node, const ir::IRValue& value,

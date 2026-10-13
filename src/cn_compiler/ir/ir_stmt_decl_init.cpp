@@ -17,6 +17,9 @@ namespace cn_compiler {
 //   自己的槽）。true = 已处理（命中任一初始化形态并发射完毕）。 ----
 bool IRGenerator::genExprInitializer(VarDecl* node, const DeclGenCtx& ctx) {
     if (node->initializer != nullptr) {
+        // 632（引用返回接收面·宿主侧根治）：右值=引用返回调用 → 用户类深拷。
+        //   须先于下方 genExpr 求值（抑制语境取「被引用左值地址」，防双求值）。
+        if (tryGenRefReturnClassCopyInit(node, ctx)) return true;
         // Task 2.10 lambda 赋值：`自动 加倍 = [...]...`——
         //   先 genExpr（生成匿名函数并记录 lastLambdaName_/lastLambdaCaptures_），
         //   再登记闭包关联（调用 `加倍(...)` 时展开捕获实参）
@@ -540,6 +543,92 @@ bool IRGenerator::tryGenUnwrapBindInit(VarDecl* node, const ir::IRValue& value,
         }
     }
     return false;
+}
+
+// 族⑩ 子方法：632（544 呈报·声明位右值=引用返回调用的宿主侧根治）：
+//   `货架 甲 = 取货(源)`（取货 返回 货架&）原落兜底 Store——引用返回调用默认
+//   lvalue-to-rvalue 解引用产物=**源对象指针**被句柄直存进甲槽：甲与源共享
+//   同一堆对象，块出口双方析构同一句柄=双释放（探针 pA：free(): invalid
+//   pointer rc=134；成员方法形态 pC：段错误 rc=139；赋值位 pD 同根）。v2 侧
+//   该形态 rc=0（544 修复轮呈报的存量分叉）。
+//   规范语义（001 §3.2 元素引用「引用返回=零拷贝借用视图·只读消费」+ 类值
+//   语义初始化=独立副本（719① 标识符拷贝同款深拷）·C++ copy-init 对齐）=
+//   从被引用对象深拷出新对象：有拷贝构造 → NewObject+拷贝构造（byRef 传
+//   「被引用左值地址」——与 tryGenClassCopyInit/719① 同 ABI）；无拷贝构造 →
+//   NewObject+CopyStruct 浅壳（与 tryGenClassCopyInit 备选分支同语义——宿主
+//   既有「标识符拷贝」行为面，无拷构造类的克隆契约诊断面不变）。
+//   被引用左值地址 A 经 suppressRefDeref_ 抑制语境生成（与引用绑定
+//   tryGenReferenceBinding 同机制）——非抑制产物已解引用（对象指针），对类
+//   直接消费=共享句柄缺陷面；抑制语境 Call 产物=返回地址原样（ptr）。
+//   对象化守卫：仅用户类（结构体/容器/结果/可选/接口各走既有通道）；容器/
+//   映射族排除（声明位接收=容器通道既有路径，容器引用返回面另行立项）；
+//   直接调用形态要求被调返回类型剥 &/* 后严格等于声明类（构造/内置 miss
+//   自然排除）；方法调用形态（对象.取货()）由语义层 isRefReturnCall 标记
+//   担保返回类型含 &（544 同款宽松面——IR 层重解析对象类型查成员表不扩面）。
+//   true = 已处理（genVarDecl 直接返回）。
+bool IRGenerator::tryGenRefReturnClassCopyInit(VarDecl* node, const DeclGenCtx& ctx) {
+    if (semantic_ == nullptr || node->initializer == nullptr) return false;
+    if (node->initializer->getType() != NodeType::CallExpr) return false;
+    const CallExpr* call = static_cast<const CallExpr*>(node->initializer.get());
+    if (!call->isRefReturnCall) return false;
+    const std::string declCanon = types::canonical(node->typeName);
+    if (!semantic_->isClassType(declCanon)) return false;
+    // 容器/映射族排除（head 判据与 ir_expr_assign memberClassFieldAssign 同款）
+    const std::size_t dl = declCanon.find('$');
+    const std::string head =
+        dl == std::string::npos ? declCanon : declCanon.substr(0, dl);
+    if (head == "向量" || head == "栈" || head == "链表" ||
+        head == "队列" || head == "集合" || head == "映射") {
+        return false;
+    }
+    // 直接调用形态：被调返回类型（剥 &/*）须严格等于声明类
+    if (call->callee != nullptr &&
+        call->callee->getType() == NodeType::IdentifierExpr) {
+        const std::string& cname =
+            static_cast<const IdentifierExpr*>(call->callee.get())->name;
+        std::string ret = semantic_->funcReturnTypeOf(cname);
+        if (ret.empty() && !call->resolvedSignature.empty()) {
+            ret = semantic_->funcReturnTypeOf(call->resolvedSignature);
+        }
+        if (ret.empty()) return false;
+        while (!ret.empty() && (ret.back() == '&' || ret.back() == '*')) {
+            ret.pop_back();
+        }
+        if (types::canonical(ret) != declCanon) return false;
+    }
+    const ClassInfo* ci = semantic_->findClass(declCanon);
+    if (ci == nullptr || ci->totalSize <= 0) return false;
+    // 被引用左值地址 A（引用返回默认解引用抑制——取地址语义）
+    ir::IRValue addr;
+    {
+        const bool oldSuppress = suppressRefDeref_;
+        suppressRefDeref_ = true;
+        addr = genExpr(node->initializer.get());
+        suppressRefDeref_ = oldSuppress;
+    }
+    if (addr.type != "ptr" && addr.type != "i64") return false;  // 防御：异常形态回原路
+    // 深拷：NewObject 新壳 + 拷贝构造（byRef A）/ 无拷贝构造 CopyStruct 备选
+    const std::string extra = declCanon + "|" + std::to_string(ci->totalSize);
+    ir::IRValue newObj = emitResult(
+        ir::Opcode::NewObject, {ir::IRValue::constant(declCanon, "ptr")}, "ptr",
+        extra, node->location);
+    const ClassMemberInfo* copyCtor = semantic_->findCopyConstructor(declCanon);
+    if (copyCtor != nullptr) {
+        const std::string copyOwner =
+            copyCtor->ownerClass.empty() ? declCanon : copyCtor->ownerClass;
+        emit(ir::Opcode::Call, {newObj, addr}, ir::IRValue(),
+             methodSymbolKey(copyOwner, copyCtor->sigKey), "void",
+             node->location);
+    } else {
+        ir::IRValue objPtr = emitResult(ir::Opcode::LoadPtr, {addr}, "ptr", "",
+                                        node->location);
+        emit(ir::Opcode::CopyStruct, {newObj, objPtr}, ir::IRValue(),
+             std::to_string(ci->totalSize), "void", node->location);
+    }
+    emit(ir::Opcode::Store, {newObj}, ir::IRValue(), ctx.unique, "ptr",
+         node->location);
+    lastExpr_ = newObj;
+    return true;
 }
 
 // 族⑩ 子方法：plans/019 阶段4'（2026-09-10 方案A）：拥有型字符串初始化
