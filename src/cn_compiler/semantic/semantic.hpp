@@ -277,8 +277,8 @@ private:
                                           const std::string& rightType);
     bool checkVoidOperandBinary(BinaryExpr* node, const std::string& leftType, const std::string& rightType);
     void checkConstIntExprSafety(BinaryExpr* node, const std::string& leftType, const std::string& rightType);
-    void reportConstOverflowOrDivZero(BinaryExpr* node, std::int64_t vL, std::int64_t vR,
-                                      const std::string& leftType, const std::string& rightType);
+    // 503 改名（原 reportConstOverflowOrDivZero）：除零面已解绑上移至折叠面（右已知零即拦·左侧无关），本方法仅承载对称预演溢出面（含 MIN/-1）
+    void reportConstOverflow(BinaryExpr* node, std::int64_t vL, std::int64_t vR, const std::string& leftType, const std::string& rightType);
     void checkShiftConstWidth(BinaryExpr* node, const std::string& lt, const std::string& rt);  // 474: 常量移位量超宽编译期硬错误
     bool checkComparisonBinary(BinaryExpr* node, const std::string& leftType, const std::string& rightType);
     bool checkBitwiseBinary(BinaryExpr* node, const std::string& leftType, const std::string& rightType);

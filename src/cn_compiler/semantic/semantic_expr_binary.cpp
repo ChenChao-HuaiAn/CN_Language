@@ -31,6 +31,8 @@ namespace {
 //   INT_MIN÷-1 溢出/移位量超宽〕已按现状口径覆盖，折叠不与之竞争）。
 //   归纳注：本函数取代 checkConstIntExprSafety 与 checkShiftConstWidth 两处
 //   litValue 手写提取（第 2 处重复→提炼·Rule of Three）。
+//   503 rebase 归纳：编译期除零定性（除/余右操作数折叠值==0）同样复用本通道，
+//   不再另设 constIntFoldValue503（双折叠器归纳为一——零叉路口）。
 bool foldConstIntExpr505(const Expr* e, std::int64_t& out, int depth = 0) {
     if (e == nullptr || depth > 64) return false;  // 深度守卫（防病态深嵌套）
     if (e->getType() == NodeType::IntegerLiteral) {
@@ -100,7 +102,6 @@ bool foldConstIntExpr505(const Expr* e, std::int64_t& out, int depth = 0) {
         default:
             return false;  // 比较/位运算/逻辑等不进折叠闭包（预演面只管算术+移位）
     }
-}
 }  // namespace
 
 void SemanticAnalyzer::visitBinaryExpr(BinaryExpr* node) {
@@ -202,7 +203,13 @@ bool SemanticAnalyzer::checkVoidOperandBinary(BinaryExpr* node, const std::strin
 // 族④（原 319-a C18①+T8 编译期整型常量求值安全检查节·用户批量裁决方案甲）：
 //   两侧均可折叠为常量（字面量/一元负链/纯常量子树——505 折叠通道）时按结果
 //   类型域预演：
-//   ①÷/%：常量除零编译期硬错误（T8：原 10/0 编过、运行期才报）；
+//   ①÷/%：常量除零编译期硬错误（T8：原 10/0 编过、运行期才报）——503 解绑
+//     扩面：除/余右操作数为编译期可折叠表达式且值为 0 即拦，左操作数变量
+//     无关（001 §1.1a①「编译期能证明的必须在编译期拦·不得静默放行到运行
+//     期」+§3.7a「常量折叠面同样拒绝」·v2 575-a 右字面量零口径对齐·501 采
+//     样轮分叉实锤；浮点除零不拦=IEEE 语义；不安全 函数内同拦=编译期确定
+//     性错误无条件·114 同款；常量名/变量常量初值=常量传播面「随常量折叠
+//     后续波」另案立项不在本轮）；
 //   ②+/-/*：常量溢出编译期硬错误（原 2147483647+1 静默回绕——Rust debug
 //     溢出检查同款严格面；变量面回绕语义由 B12 运行时通道承载）。
 //   比较类不涉溢出；无符号/整128 结果域宽于 int64 预演承载，跳过（不误报）。
@@ -213,21 +220,36 @@ void SemanticAnalyzer::checkConstIntExprSafety(BinaryExpr* node, const std::stri
         // 505：取值通道升级——直接字面量（旧 litValue 口径）扩为递归常量折叠
         //   （嵌套形态 ((30000+30000)*30000000)/折叠零 10/(5-5) 由此进预演；
         //   折叠失败〔变量/中间溢出〕=保持现状走运行期错误码兜底）
+        // 503：编译期除零检测从对称预演前提解绑——除/余右操作数经同一折叠
+        //   通道求值==0 即编译期硬错误（与 505 共用 foldConstIntExpr505 单折
+        //   叠器·rebase 归纳零双份；除零定性后与溢出面互斥不重复预演）。
+        if (node->op == Operator::Divide || node->op == Operator::Modulo) {
+            std::int64_t foldR = 0;
+            if (foldConstIntExpr505(node->right.get(), foldR) && foldR == 0) {
+                diagnostics_.report(DiagnosticLevel::Error, node->location,
+                                    "编译期除零：常量表达式除数为零（运行期除零已有"
+                                    "错误码防护，常量折叠面编译期硬错误）");
+                return;  // 已定性除零·除零与溢出面互斥·不重复进入对称预演
+            }
+        }
+        // 319-a 对称常量预演（§3.7a）：两侧均编译期可折叠时按结果类型域预演
+        //   ——溢出面（含 474 INT_MIN/-1 除法溢出形态）。
         bool okL = false, okR = false;
         std::int64_t vL = 0, vR = 0;
         okL = foldConstIntExpr505(node->left.get(), vL);
         okR = foldConstIntExpr505(node->right.get(), vR);
         if (okL && okR) {
-            reportConstOverflowOrDivZero(node, vL, vR, leftType, rightType);
+            reportConstOverflow(node, vL, vR, leftType, rightType);
         }
     }
 }
 
-// 族④ 子方法（原 if (okL && okR) 预演体）：结果域提升 + 除零/溢出编译期硬错误。
-void SemanticAnalyzer::reportConstOverflowOrDivZero(BinaryExpr* node, std::int64_t vL,
-                                                    std::int64_t vR,
-                                                    const std::string& leftType,
-                                                    const std::string& rightType) {
+// 族④ 子方法（原 if (okL && okR) 预演体·503 改名：除零面已解绑上移，仅承载
+//   溢出面）：结果域提升 + 溢出编译期硬错误。
+void SemanticAnalyzer::reportConstOverflow(BinaryExpr* node, std::int64_t vL,
+                                           std::int64_t vR,
+                                           const std::string& leftType,
+                                           const std::string& rightType) {
             // 预演结果域：字面量操作数按后缀+值提升（对齐 visitIntegerLiteral
             // 的提升链——语义层 lastType/literalTypeOf 对无后缀字面量恒整32，
             // 若按其取域会把 int64 值字面量运算误判超整32 域〔420 用例实锤〕）；
@@ -273,12 +295,10 @@ void SemanticAnalyzer::reportConstOverflowOrDivZero(BinaryExpr* node, std::int64
             };
             std::int64_t lo = 0, hi = 0;
             const bool hasRange = rangeOf(rt, lo, hi);
+            // 503：除零分支已解绑上移至 checkConstIntExprSafety 折叠面（除/余
+            //   右折叠值==0 先行报告并 return·此处 vR==0 不可达）——本方法仅
+            //   承载溢出面（与除零互斥·防双报）。
             if ((node->op == Operator::Divide || node->op == Operator::Modulo) &&
-                vR == 0) {
-                diagnostics_.report(DiagnosticLevel::Error, node->location,
-                                    "编译期除零：常量表达式除数为零（运行期除零已有"
-                                    "错误码防护，常量折叠面编译期硬错误）");
-            } else if ((node->op == Operator::Divide || node->op == Operator::Modulo) &&
                        hasRange && vR == -1 && vL == lo) {
                 // 任务 474：INT_MIN / -1（与 INT_MIN % -1）=整数除法唯一溢出形态
                 //（x86 idiv 溢出陷阱·arm64 sdiv 回绕）——运行期改报错误码 8，
