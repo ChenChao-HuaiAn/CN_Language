@@ -488,6 +488,89 @@ extern "C" void __cn_f64_to_u128(double value, std::uint64_t* out) {
         value - static_cast<double>(out[1]) * 18446744073709551616.0);
 }
 
+// ==================== 浮→整（≤64 全宽）饱和截断族（#528·475 甲案收族） ====================
+// 475 甲案（2026-10-13 用户裁决：Rust as 全对齐）：浮点→整数族统一饱和截断+NaN→0
+//   ——464 浮→i128 专用 ABI 通道同构收族到全部整数宽。三后端发射与宿主编译期
+//   常量折叠（opt/const_fold foldCast）同语义；统一 64 位返回（窄槽写入侧按目标
+//   宽度写低 32/64 位，arm64 w0 返回高位垃圾面由此规避）。
+// 饱和语义：NaN→0；正超域（含 +inf）→MAX；负超域（含 -inf）→MIN（无符号族→0）；
+//   域内向零截断。判据边界全取浮点精确可表示值（窄宽=MIN/MAX 本身；i64/u64=±2^63/
+//   2^64 幂界），clamp 后值必然域内，static_cast 无 UB。
+namespace {
+
+// 有符号族核心：v>=hiF→hi；v<=loF→lo；域内截断（NaN 由包装先行归 0）
+inline std::int64_t f64SatI(double v, double hiF, double loF,
+                            std::int64_t hi, std::int64_t lo) {
+    if (v >= hiF) return hi;
+    if (v <= loF) return lo;
+    return static_cast<std::int64_t>(v);
+}
+
+// 无符号族核心：v<=-1.0→0；v>=hiF→hi；域内(-1,hiF) 截断（截断后 ∈[0,hiF)）
+inline std::uint64_t f64SatU(double v, double hiF, std::uint64_t hi) {
+    if (v <= -1.0) return 0;
+    if (v >= hiF) return hi;
+    return static_cast<std::uint64_t>(v);
+}
+
+} // namespace
+
+extern "C" std::int64_t __cn_f64_to_i8(double v) {
+    if (v != v) return 0;  // NaN → 0
+    return static_cast<std::int8_t>(f64SatI(v, 127.0, -128.0, 127, -128));
+}
+
+extern "C" std::int64_t __cn_f64_to_i16(double v) {
+    if (v != v) return 0;
+    return static_cast<std::int16_t>(f64SatI(v, 32767.0, -32768.0, 32767, -32768));
+}
+
+extern "C" std::int64_t __cn_f64_to_i32(double v) {
+    if (v != v) return 0;
+    return static_cast<std::int32_t>(
+        f64SatI(v, 2147483647.0, -2147483648.0, 2147483647LL,
+                (-2147483647LL - 1)));
+}
+
+extern "C" std::int64_t __cn_f64_to_i64(double v) {
+    if (v != v) return 0;
+    // INT64_MAX 不可精确表示为 double：上界判据用 2^63（最近可表示），灰区
+    //   [2^63-2^10, 2^63) 无可表示值，宽判据与截断同值（__cn_f64_to_i128 同款）
+    return f64SatI(v, 9223372036854775808.0, -9223372036854775808.0,
+                   9223372036854775807LL, (-9223372036854775807LL - 1));
+}
+
+extern "C" std::uint64_t __cn_f64_to_u8(double v) {
+    if (v != v) return 0;
+    return static_cast<std::uint8_t>(f64SatU(v, 256.0, 255));
+}
+
+extern "C" std::uint64_t __cn_f64_to_u16(double v) {
+    if (v != v) return 0;
+    return static_cast<std::uint16_t>(f64SatU(v, 65536.0, 65535));
+}
+
+extern "C" std::uint64_t __cn_f64_to_u32(double v) {
+    if (v != v) return 0;
+    return static_cast<std::uint32_t>(f64SatU(v, 4294967296.0, 4294967295ULL));
+}
+
+extern "C" std::uint64_t __cn_f64_to_u64(double v) {
+    if (v != v) return 0;
+    // UINT64_MAX 不可精确表示为 double：上界判据用 2^64（灰区无可表示值·同上）
+    return f64SatU(v, 18446744073709551616.0, 18446744073709551615ULL);
+}
+
+// f32 源变体：float→double 无损提升后共用判据（截断结果与直接 float 判据一致）
+extern "C" std::int64_t __cn_f32_to_i8(float v)  { return __cn_f64_to_i8(v); }
+extern "C" std::int64_t __cn_f32_to_i16(float v) { return __cn_f64_to_i16(v); }
+extern "C" std::int64_t __cn_f32_to_i32(float v) { return __cn_f64_to_i32(v); }
+extern "C" std::int64_t __cn_f32_to_i64(float v) { return __cn_f64_to_i64(v); }
+extern "C" std::uint64_t __cn_f32_to_u8(float v)  { return __cn_f64_to_u8(v); }
+extern "C" std::uint64_t __cn_f32_to_u16(float v) { return __cn_f64_to_u16(v); }
+extern "C" std::uint64_t __cn_f32_to_u32(float v) { return __cn_f64_to_u32(v); }
+extern "C" std::uint64_t __cn_f32_to_u64(float v) { return __cn_f64_to_u64(v); }
+
 // ==================== 128位打印（规格书10.1，打印 变参展开对 i128 的衔接） ====================
 
 namespace {

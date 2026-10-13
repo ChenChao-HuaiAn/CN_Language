@@ -57,5 +57,10 @@ enum class CastKind {
 };
 CastKind classifyCast(const std::string& from, const std::string& to);
 
+// 528（475 甲案收族）：浮→整（≤64 全宽）运行时饱和辅助符号名（__cn_f64_to_i32 等）
+//   ——runtime i128_api 饱和族同名单源；三后端 FloatToInt 发射共用（NaN→0·
+//   超域→MIN/MAX·域内向零截断，475 甲案 2026-10-13 用户裁决）。
+std::string floatToIntHelperName(const std::string& from, const std::string& to);
+
 } // namespace judgement
 } // namespace cn_compiler

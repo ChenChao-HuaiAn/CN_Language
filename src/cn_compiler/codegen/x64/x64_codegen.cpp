@@ -14,6 +14,7 @@
 #include <vector>
 
 #include "cn_compiler/codegen/x64/x64_codegen.hpp"
+#include "cn_compiler/codegen/judgement.hpp"
 #include "cn_compiler/model/semantic_view.hpp"
 #include "cn_compiler/model/type_system.hpp"
 
@@ -378,6 +379,15 @@ void X64CodeGenerator::emitCodeHeader(AsmWriter& writer, const ir::IRModule& mod
     writer.raw("EXTERN __cn_i128_to_f64:PROC");
     writer.raw("EXTERN __cn_u128_to_f64:PROC");
     writer.raw("EXTERN __cn_f64_to_i128:PROC");
+    writer.raw("EXTERN __cn_f64_to_u128:PROC");
+    // 528（475 甲案收族）：浮→整（≤64 全宽）饱和辅助族——名字单源
+    //   judgement::floatToIntHelperName（发射面同源·此处 EXTERN 全族声明）
+    for (const std::string f : {"f32", "f64"}) {
+        for (const std::string t : {"i8", "i16", "i32", "i64",
+                                    "u8", "u16", "u32", "u64"}) {
+            writer.raw("EXTERN " + judgement::floatToIntHelperName(f, t) + ":PROC");
+        }
+    }
     // Task 2.10：无符号64位转浮点（正64(x) -> 浮64 显式转换，cvtsi2sd 有符号语义修正）
     writer.raw("EXTERN __cn_u64_to_f64:PROC");
     writer.raw("EXTERN printLineI128:PROC");

@@ -86,5 +86,21 @@ CastKind classifyCast(const std::string& from, const std::string& to) {
     return CastKind::DefaultPass;
 }
 
+// 528（475 甲案收族·Rust as 饱和对齐）：浮→整（≤64 全宽）运行时饱和辅助符号名
+//   ——三后端唯一份（464 浮→i128 专用 ABI 通道同构收族；runtime __cn_fXX_to_YY
+//   族同名单源）。调用方保证 from∈{f32,f64}、to∈全窄/64 整族（classifyCast
+//   FloatToInt 归域）；未登记 to 防御式落 i64（不发射=调用方 bug，映射自身无分支歧义）。
+std::string floatToIntHelperName(const std::string& from, const std::string& to) {
+    std::string name = (from == "f64") ? "__cn_f64_to_" : "__cn_f32_to_";
+    if (to == "i8")  return name + "i8";
+    if (to == "i16") return name + "i16";
+    if (to == "i32") return name + "i32";
+    if (to == "u8")  return name + "u8";
+    if (to == "u16") return name + "u16";
+    if (to == "u32") return name + "u32";
+    if (to == "u64") return name + "u64";
+    return name + "i64";  // i64 及未登记防御兜底
+}
+
 } // namespace judgement
 } // namespace cn_compiler

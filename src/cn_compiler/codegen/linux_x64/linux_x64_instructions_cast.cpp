@@ -22,7 +22,8 @@ void LinuxX64CodeGenerator::emitCast(LinuxX64AsmWriter& writer,
     const std::string& to = inst.type;
     const int dstOff = regSlotOffset(inst.result.id);
     switch (judgement::classifyCast(from, to)) {
-    // ---- 浮 -> 整128：调用运行时辅助 __cn_f64_to_i128 ----
+    // ---- 浮 -> 整128：调用运行时辅助（528：正128 切 __cn_f64_to_u128；
+    //   f32 源先 cvtss2sd 精确提升——辅助形参 double，movss 裸载位模式误读） ----
     // SysV：out 指针 rdi（第1整型参数）、double 值 xmm0
     case judgement::CastKind::FloatToI128Helper: {
         loadOperandToV(writer, inst.operands[0], "xmm0");
@@ -34,14 +35,19 @@ void LinuxX64CodeGenerator::emitCast(LinuxX64AsmWriter& writer,
         }
         const int loOff = regSlotOffset(inst.result.id + 1);
         writer.line("lea rdi, " + stackMemText(loOff));
-        writer.line("call __cn_f64_to_i128");
+        writer.line(std::string("call ") +
+                    ((to == "u128") ? "__cn_f64_to_u128" : "__cn_f64_to_i128"));
         return;
     }
-    // ---- 浮 -> 整（截断，cvttsd2si/cvttss2si） ----
+    // ---- 浮 -> 整（≤64 全宽）：528 饱和辅助族（475 甲案·Rust as 对齐） ----
+    //   原 cvttsd2si 直转超域/NaN 落 x86 整数不定值（非饱和）·窄目标模回绕；
+    //   改走 runtime __cn_fXX_to_YY 饱和族（NaN→0·超域→MIN/MAX·域内向零截断，
+    //   464 浮→i128 通道同构收族·名字单源 judgement::floatToIntHelperName）。
+    //   返回统一 64 位 rax（emitStackStore 按目标宽度写低 8/16/32/64 位）。
     case judgement::CastKind::FloatToInt: {
         loadOperandToV(writer, inst.operands[0], "xmm0");
-        const std::string cvt = (from == "f64") ? "cvttsd2si" : "cvttss2si";
-        writer.line(cvt + " r10, xmm0");
+        writer.line("call " + judgement::floatToIntHelperName(from, to));
+        writer.line("mov r10, rax");
         emitStackStore(writer, dstOff, "r10", to);
         return;
     }

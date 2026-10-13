@@ -23,7 +23,8 @@ void Arm64CodeGenerator::emitCast(Arm64AsmWriter& writer,
     const std::string& from = inst.operands[0].type;
     const std::string& to = inst.type;
     switch (judgement::classifyCast(from, to)) {
-    // ---- 浮 -> 整128：调用运行时辅助 __cn_f64_to_i128 ----
+    // ---- 浮 -> 整128：调用运行时辅助（528：正128 切 __cn_f64_to_u128；
+    //   f32 源先 fcvt d0,s0 精确提升——辅助形参 double，s0 裸载位模式误读） ----
     // AAPCS64：double 参数占 d0（浮点寄存器），uint64_t* out 占 x0（整型寄存器）
     //   ——浮点与整型参数独立编址，out 是第 1 个整型参数 -> x0（不是 x1）
     case judgement::CastKind::FloatToI128Helper: {
@@ -37,22 +38,20 @@ void Arm64CodeGenerator::emitCast(Arm64AsmWriter& writer,
         }
         const int loOff = regSlotOffset(inst.result.id + 1);
         emitStackAddr(writer, "x0", loOff);
-        writer.line("bl __cn_f64_to_i128");
+        writer.line(std::string("bl ") +
+                    ((to == "u128") ? "__cn_f64_to_u128" : "__cn_f64_to_i128"));
         return;
     }
-    // ---- 浮 -> 整（截断，fcvtzs） ----
+    // ---- 浮 -> 整（≤64 全宽）：528 饱和辅助族（475 甲案·Rust as 对齐） ----
+    //   原 fcvtzs 有符号直转：无符号目标（正N）无 fcvtzu 分支=超 2^63 域出负值，
+    //   且三后端行为一致面由 runtime 饱和族统一（NaN→0·超域→MIN/MAX·域内向零
+    //   截断；464 浮→i128 通道同构收族·名字单源 judgement::floatToIntHelper-
+    //   Name）。返回统一 64 位 x0（x9 中转，storeVirtualResult 按目标宽存储）。
     case judgement::CastKind::FloatToInt: {
-        const std::string vreg = (from == "f64") ? "d0" : "s0";
-        loadOperandToV(writer, inst.operands[0], vreg);
-        if (to == "i64" || to == "u64") {
-            // D8（451-a）：64 位结果直写分配寄存器（免 x9 中转）
-            const std::string res = resultTargetReg(inst.result.id, "x9");
-            writer.line("fcvtzs " + res + ", " + vreg);
-            storeVirtualResult(writer, inst.result.id, res, to);
-        } else {
-            writer.line("fcvtzs w9, " + vreg);
-            storeVirtualResult(writer, inst.result.id, "x9", to);
-        }
+        loadOperandToV(writer, inst.operands[0], (from == "f64") ? "d0" : "s0");
+        writer.line("bl " + judgement::floatToIntHelperName(from, to));
+        writer.line("mov x9, x0");
+        storeVirtualResult(writer, inst.result.id, "x9", to);
         return;
     }
     // ---- 整 -> 浮（scvtf/ucvtf） ----

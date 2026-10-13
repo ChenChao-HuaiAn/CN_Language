@@ -253,8 +253,10 @@ TEST(X64TypeTest, CastIntToFloatUsesCvtsi2sd) {
     EXPECT_NE(asmText.find("cvtsi2sd xmm0, eax"), std::string::npos);
 }
 
-// 浮 -> 整 Cast：cvttsd2si（截断）
-TEST(X64TypeTest, CastFloatToIntUsesCvttsd2si) {
+// 浮 -> 整 Cast：528 饱和辅助族 __cn_fXX_to_YY（475 甲案 Rust as 对齐·plans/001
+//   §3.7b——原断言 cvttsd2si 直转超域/NaN 落 x86 整数不定值非饱和，发射随立法
+//   切换；实现面形态断言随语义变更更新·任务 528 报备）
+TEST(X64TypeTest, CastFloatToIntUsesSaturateHelper) {
     IRModule module;
     IRFunction func;
     func.name = "ftoi";
@@ -287,7 +289,7 @@ TEST(X64TypeTest, CastFloatToIntUsesCvttsd2si) {
     module.functions.push_back(std::move(func));
 
     std::string asmText = genAsm(module);
-    EXPECT_NE(asmText.find("cvttsd2si eax, qword ptr [rbp-8]"), std::string::npos);
+    EXPECT_NE(asmText.find("call __cn_f64_to_i32"), std::string::npos);
 }
 
 // ==================== 移位与位运算 ====================

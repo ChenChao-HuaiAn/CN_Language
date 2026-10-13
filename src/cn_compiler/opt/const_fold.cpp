@@ -430,15 +430,47 @@ bool ConstFoldPass::foldCast(const std::string& fromType, const std::string& fro
         isFloat = true;
         return true;
     }
-    // 浮 -> 整（截断语义，保守：仅当值在 int64 范围内）
+    // 浮 -> 整（528 饱和折叠·475 甲案 Rust as 对齐）：NaN→0·超域→MIN/MAX
+    //   （无符号负超域→0）·域内向零截断——与 runtime __cn_fXX_to_YY 饱和辅助
+    //   族/三后端运行期发射同语义（原「域内折叠+掩码截断」编译期出模回绕值，
+    //   整32(1.0e18) 折叠 -1486618624 与饱和立法分叉）。判据边界全取浮点精确
+    //   可表示值（窄宽=MIN/MAX 本身；i64/u64=±2^63/2^64 幂界·灰区无可表示值
+    //   宽判据与截断同值）。128 目标本层不折叠（isIntType 不含——保守留运行期，
+    //   运行期饱和结果一致）。
     if (isFloatType(fromType) && isIntType(toType)) {
         double d = 0.0;
         if (!parseDouble(fromText, d)) return false;
-        if (d < -9223372036854775808.0 || d > 9223372036854775807.0) return false;
-        const std::int64_t value = static_cast<std::int64_t>(d);
         const int bits = intBitWidth(toType);
-        const std::uint64_t mask = (bits >= 64) ? ~0ULL : ((1ULL << bits) - 1);
-        out = formatSigned(static_cast<std::uint64_t>(value) & mask, toType);
+        if (d != d) {  // NaN → 0
+            out = "0";
+            isFloat = false;
+            return true;
+        }
+        if (toType[0] == 'u') {  // 无符号族：负超域（含 -inf）→0
+            const std::uint64_t umax =
+                (bits >= 64) ? ~0ULL : ((1ULL << bits) - 1);
+            const double hiF = (bits >= 64)
+                ? 18446744073709551616.0                       // 2^64
+                : static_cast<double>(umax) + 1.0;             // MAX+1 可精确
+            const std::uint64_t uv = (d <= -1.0) ? 0ULL
+                : (d >= hiF) ? umax
+                : static_cast<std::uint64_t>(d);
+            out = formatSigned(uv, toType);
+            isFloat = false;
+            return true;
+        }
+        const std::int64_t lo = -(1LL << (bits - 1));
+        const std::int64_t hi = (bits >= 63)
+            ? 9223372036854775807LL
+            : ((1LL << (bits - 1)) - 1);
+        // 有符号族：hi 不可精确表示（bits=64）时上界判据用 2^63
+        const double hiF = (bits >= 63)
+            ? 9223372036854775808.0
+            : static_cast<double>(hi);
+        const std::int64_t value = (d >= hiF) ? hi
+            : (d <= static_cast<double>(lo)) ? lo
+            : static_cast<std::int64_t>(d);
+        out = std::to_string(value);
         isFloat = false;
         return true;
     }

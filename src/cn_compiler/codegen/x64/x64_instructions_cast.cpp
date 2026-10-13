@@ -278,12 +278,15 @@ bool X64CodeGenerator::emitCastFloatFamily(AsmWriter& writer, const ir::IRInstru
     const std::string& dst, const std::string& src, const std::string& from, const std::string& to,
     bool fromFloat, bool toFloat) {
     // ---- 浮 -> 整128（Task 2.10 分支）：调用运行时辅助 __cn_f64_to_i128 ----
-    //   注意：必须先于下方"浮->整（64位以内 cvttsd2si）"分支判断，否则 i128/u128
-    //   目标会被 !toFloat 条件误判为 ≤64位整数，走 cvttsd2si eax 截断成 32 位垃圾
-    //   （审查发现：整128(3.75) 输出 555584875101915752019966573213188168 错误值）。
+    //   注意：必须先于下方"浮->整（64位以内）"分支判断，否则 i128/u128
+    //   目标会被 !toFloat 条件误判为 ≤64位整数，走窄转换截断成垃圾。
+    //   528（475 甲案收族·464 轮呈报面回收）：正128 目标切 __cn_f64_to_u128
+    //   无符号专用辅助（原同调有符号辅助——值≥2^127 位模式变负、负值出补码
+    //   形态，饱和立法下应为 u128::MAX/0）；f32 源先 cvtss2sd 精确提升
+    //   （辅助形参=double，movss 裸载位模式被按 double 误读）。
     if (fromFloat && (to == "i128" || to == "u128")) {
-        const std::string conv = (from == "f64") ? "movsd" : "movss";
         const std::string mp = (from == "f64") ? "qword ptr " : "dword ptr ";
+        const std::string conv = (from == "f64") ? "movsd" : "movss";
         writer.line(conv + " xmm0, " + mp + src);
         // 550（浮32→整128 读宽根治）：浮32 源须先按源浮宽宽化 f64 再进辅助——
         //   辅助 __cn_f64_to_i128 按 f64 读 xmm0，原直喂 f32 位模式（低 32 位）
@@ -294,21 +297,26 @@ bool X64CodeGenerator::emitCastFloatFamily(AsmWriter& writer, const ir::IRInstru
         }
         writer.line("lea rdx, " + regSlot(inst.result.id + 1));  // 低64位槽地址
         writer.line("sub rsp, 32");
-        writer.line("call __cn_f64_to_i128");
+        writer.line(std::string("call ") + ((to == "u128") ? "__cn_f64_to_u128" : "__cn_f64_to_i128"));
         writer.line("add rsp, 32");
         // 双槽由辅助函数写入；结果寄存器链正常（高64在 id、低64在 id+1）
         return true;
     }
-    // ---- 浮 -> 整（截断，cvttss2si/cvttsd2si） ----
+    // ---- 浮 -> 整（≤64 全宽）：528 饱和辅助族（475 甲案·Rust as 对齐） ----
+    //   原 cvttsd2si/cvttss2si 直转：超域/NaN 落 x86「整数不定值」0x8000…（非
+    //   饱和），窄目标再 mov 截断=模回绕（整32(1.0e18) →-1486618624 C 系 UB
+    //   实锚）。改走 runtime __cn_fXX_to_YY 饱和族（NaN→0·超域→MIN/MAX·域内
+    //   向零截断；464 浮→i128 通道同构收族·名字单源 judgement::floatToInt-
+    //   HelperName·三后端+编译期折叠同语义）。返回统一 64 位 rax（窄槽按目标
+    //   宽度写低 32 位，读取侧窄读正确）。
     if (fromFloat && !toFloat) {
-        const std::string conv = (from == "f64") ? "cvttsd2si" : "cvttss2si";
         const std::string mp = (from == "f64") ? "qword ptr " : "dword ptr ";
-        if (to == "i64" || to == "u64") {
-            writer.line(conv + " rax, " + mp + src);
-        } else {
-            writer.line(conv + " eax, " + mp + src);
-        }
-        writer.line("mov " + shrunkOperand((to == "i64" || to == "u64") ? "i64" : "i32", dst) + ", " + (to == "i64" || to == "u64" ? "rax" : "eax"));
+        writer.line("mov" + std::string((from == "f64") ? "sd" : "ss") + " xmm0, " + mp + src);
+        writer.line("sub rsp, 32");
+        writer.line("call " + judgement::floatToIntHelperName(from, to));
+        writer.line("add rsp, 32");
+        const bool wide = (to == "i64" || to == "u64");
+        writer.line("mov " + shrunkOperand(wide ? "i64" : "i32", dst) + ", " + (wide ? "rax" : "eax"));
         return true;
     }
     // ---- 整 -> 浮（cvtsi2sd/cvtsi2ss） ----
