@@ -109,8 +109,42 @@ if not 步("单测", [单测]):
     raise SystemExit(1)
 
 # ④ L2 影响面子集（--l2·924 首版保守映射：写集中新增/改动的 E2E 用例目录全跑 +
-#    触 CN语言编译器v2/ 树加跑 v2 面+自举锚；src 模块→用例关键词精映射=后续演进（025 §1.99 边界）。
+#    触 CN语言编译器v2/ 树加跑 v2 面；src 模块→用例关键词精映射=后续演进（025 §1.99 边界）。
 #    映射不覆盖的改动=诚实兜底：提示走 L3 云端全量，不静默漏。）
+
+# 592（2026-10-13 用户裁决乙案·与 566 双重防线）：重负载用例 78_v2 自举链构建/
+#   79_v2 自举闭环（v2 全树自举编译·单例 8~20 分钟）默认只在云端 CI 跑——L2
+#   推导层直接不选入，558/594 实测的「触 v2 树 --l2 卷入重型误报红」在本层根治：
+#   ① 写集直接改重型用例目录 → 从用例集剔除并打印说明（本层完全防线）；
+#   ② 触 v2 树的「自举」滤词不再下发——实证命中面仅 78/79+806_arm64 溢出负测
+#      （arm64 专属）三例，本地无合法命中对象，自举锚验证责任由云端全量承担；
+#     「_v2」滤词保留（实证命中 140 轻例+2 重型），其中的重型命中由 run_e2e 566
+#      立法默认跳过（SKIP·非失败·账目守恒）兜底——两层各自独立成立·叠加即闭环。
+#   名单单点权威=run_e2e.内存保护用例前缀（模块导入·601-a 起与用例共存亡·
+#   禁双份定义漂移）。窗口期注记：run_e2e 未含 566 的旧树（历史预验分支）发
+#   _v2 滤词仍会真跑重型——566 已在飞区·与本任务改不同文件·先后集成均自愈。
+def l2推导子集(改动: list[str], 树根: Path) -> tuple[list[str], list[str]]:
+    """由写集推导 --l2 的 run_e2e --filter 子集（592 重型排除在此单点收口）。
+
+    返回 (滤们, 重型排除们)：滤们=写集改动的轻用例目录名（触 v2 树时加 _v2
+    面滤词·「自举」已废）；重型排除们=本层拦下的重负载用例名，调用方负责
+    打印说明。"""
+    名单 = run_e2e.内存保护用例前缀
+    # 979 修复②：split 索引 [1]=「e2e」段，用例目录名在 [2]——原 [1] 使任何含
+    #   用例改动的写集 filter 恒为「e2e」（零匹配 rc=1·--l2 首战 924 起潜伏，
+    #   979 首个触用例写集实锤）。
+    # 354 修复③：tests/e2e/ 根级文件（README.md/run_e2e.py 等）的 [2] 段=文件名
+    #   非用例目录名（354 轮写集实锤：--filter README.md 零匹配 rc=1）——
+    #   is_dir 判据根治：只有真实用例目录才进滤集。
+    用例集 = sorted({p.split("/")[2] for p in 改动
+                     if p.startswith("tests/e2e/") and len(p.split("/")) > 2
+                     and (树根 / "tests" / "e2e" / p.split("/")[2]).is_dir()})
+    重型排除们 = [c for c in 用例集 if any(前缀 in c for 前缀 in 名单)]
+    滤们 = [c for c in 用例集 if c not in 重型排除们]
+    滤们 += ["_v2"] if any(p.startswith("CN语言编译器v2/") for p in 改动) else []
+    return 滤们, 重型排除们
+
+
 if "--l2" in sys.argv:
     import subprocess as _sp
     基准 = _sp.run(["git", "merge-base", "HEAD", "gitcode/develop"], cwd=仓库根,
@@ -120,19 +154,21 @@ if "--l2" in sys.argv:
     #   显式关 quotepath 保证中文路径原样输出（filter 匹配靠它）。
     改动 = (_sp.run(["git", "-c", "core.quotepath=false", "diff", "--name-only", 基准],
                     cwd=仓库根, capture_output=True, text=True).stdout or "").split()
-    # 979 修复②：split 索引 [1]=「e2e」段，用例目录名在 [2]——原 [1] 使任何含
-    #   用例改动的写集 filter 恒为「e2e」（零匹配 rc=1·--l2 首战 924 起潜伏，
-    #   979 首个触用例写集实锤）。
-    # 354 修复③：tests/e2e/ 根级文件（README.md/run_e2e.py/coverage_map.md）的
-    #   [2] 段=文件名非用例目录名（354 轮写集实锤：--filter README.md 零匹配
-    #   rc=1）——is_dir 判据根治：只有真实用例目录才进滤集。
-    用例集 = sorted({p.split("/")[2] for p in 改动
-                     if p.startswith("tests/e2e/") and len(p.split("/")) > 2
-                     and (仓库根 / "tests" / "e2e" / p.split("/")[2]).is_dir()})
-    滤们 = 用例集 + (["_v2", "自举"] if any(p.startswith("CN语言编译器v2/") for p in 改动) else [])
+    # 592：导入 run_e2e 取权威名单——模块级仅常量/函数定义，入口有
+    #   __main__ 保护，导入零副作用（与 gate_quick→gate_lock 同方向：
+    #   门禁脚本依赖被测基础设施的既有先例）。
+    sys.path.insert(0, str(仓库根 / "tests" / "e2e"))
+    import run_e2e
+    滤们, 重型排除们 = l2推导子集(改动, 仓库根)
+    if 重型排除们:
+        print("[L2] 重负载用例推导层不选·留云端（592·2026-10-13 裁决乙案）: "
+              + "、".join(重型排除们))
     if not 滤们:
         print("[L2] 写集无新增/改动用例且未触 v2 树——无需子集（L3 云端全量兜底）")
     else:
+        if any(p.startswith("CN语言编译器v2/") for p in 改动):
+            print("[L2] 触 v2 树：滤词 _v2 跑轻 v2 面；自举锚（78_v2/79_v2）留云端"
+                  "（592——滤词若命中重型·run_e2e 566 默认跳过兜底）")
         目标 = "win-x64" if 是win else "linux-x86_64"
         for 滤 in 滤们:
             # 555：子进程注入 CN_TREE_LOCK_HELD=1——本进程已持树锁，run_e2e 见之
