@@ -16,6 +16,93 @@
 
 namespace cn_compiler {
 
+namespace {
+// 505（G1·501 采样轮）：小型常量折叠求值——编译期预演面专用纯函数（零副作用）。
+//   背景：checkConstIntExprSafety/checkShiftConstWidth 旧取值通道只认直接子节点
+//   字面量（litValue 两处手写提取），嵌套折叠形态 ((30000+30000)*30000000)、
+//   甲<<(700+66)、折叠零除数 10/(5-5) 双侧一致漏编译期检查（运行期错误码 8 兜底）
+//   ——预演发生在折叠之前。修法=子树先递归折叠出常量闭包再按域预演（检查提前+
+//   精确·不改变运行期兜底语义：无法折叠的形态〔含变量/中间溢出/除零〕返回 假=
+//   保持现状走运行期错误码；错误形态由该子表达式自身节点的预演报告——
+//   visitBinaryExpr 逐节点递归遍历，无遗漏面）。
+//   折叠域：int64 安全闭包——加减乘用溢出条件检测（hi-vR 技巧·同
+//   reportConstOverflowOrDivZero 家族手法），除零/INT64_MIN÷-1/移位量越 [0,63]
+//   域/负值左移 返回 假（不可折叠——这些形态各自的节点级检查〔编译期除零/
+//   INT_MIN÷-1 溢出/移位量超宽〕已按现状口径覆盖，折叠不与之竞争）。
+//   归纳注：本函数取代 checkConstIntExprSafety 与 checkShiftConstWidth 两处
+//   litValue 手写提取（第 2 处重复→提炼·Rule of Three）。
+bool foldConstIntExpr505(const Expr* e, std::int64_t& out, int depth = 0) {
+    if (e == nullptr || depth > 64) return false;  // 深度守卫（防病态深嵌套）
+    if (e->getType() == NodeType::IntegerLiteral) {
+        out = static_cast<const IntegerLiteral*>(e)->value;
+        return true;
+    }
+    if (e->getType() == NodeType::UnaryExpr) {
+        const UnaryExpr* u = static_cast<const UnaryExpr*>(e);
+        if (u->op == Operator::Subtract && !u->postfix) {
+            std::int64_t v = 0;
+            if (!foldConstIntExpr505(u->operand.get(), v, depth + 1)) return false;
+            // 取负按两补码回绕位模式（INT64_MIN 取负=自身·与旧 litValue 同口径）
+            out = static_cast<std::int64_t>(~static_cast<std::uint64_t>(v) + 1);
+            return true;
+        }
+        return false;
+    }
+    if (e->getType() != NodeType::BinaryExpr) return false;
+    const BinaryExpr* b = static_cast<const BinaryExpr*>(e);
+    std::int64_t l = 0, r = 0;
+    if (!foldConstIntExpr505(b->left.get(), l, depth + 1)) return false;
+    if (!foldConstIntExpr505(b->right.get(), r, depth + 1)) return false;
+    switch (b->op) {
+        case Operator::Add:
+            // 溢出安全加：INT64_MAX-r（r>0）/INT64_MIN-r（r<0）恒良定义
+            if ((r > 0 && l > INT64_MAX - r) || (r < 0 && l < INT64_MIN - r)) return false;
+            out = l + r;
+            return true;
+        case Operator::Subtract:
+            if ((r < 0 && l > INT64_MAX + r) || (r > 0 && l < INT64_MIN + r)) return false;
+            out = l - r;
+            return true;
+        case Operator::Multiply: {
+            const std::uint64_t magL =
+                (l < 0) ? static_cast<std::uint64_t>(~static_cast<std::uint64_t>(l)) + 1
+                        : static_cast<std::uint64_t>(l);
+            const std::uint64_t magR =
+                (r < 0) ? static_cast<std::uint64_t>(~static_cast<std::uint64_t>(r)) + 1
+                        : static_cast<std::uint64_t>(r);
+            const bool negResult = (l < 0) != (r < 0);
+            // 乘积域界：正结果=INT64_MAX；负结果=|INT64_MIN|=2^63
+            const std::uint64_t magHi =
+                negResult ? static_cast<std::uint64_t>(INT64_MAX) + 1
+                          : static_cast<std::uint64_t>(INT64_MAX);
+            if (magL != 0 && magR != 0 &&
+                (magL > magHi / magR || magL * magR > magHi)) return false;
+            out = negResult ? static_cast<std::int64_t>(~static_cast<std::uint64_t>(magL * magR) + 1)
+                            : static_cast<std::int64_t>(magL * magR);
+            return true;
+        }
+        case Operator::Divide:
+        case Operator::Modulo:
+            if (r == 0) return false;  // 除零：由该节点预演报编译期除零
+            if (l == INT64_MIN && r == -1) return false;  // 结果 2^63 超 int64：该节点预演报
+            out = (b->op == Operator::Divide) ? l / r : l % r;
+            return true;
+        case Operator::LessLess:
+            if (l < 0 || r < 0 || r > 62) return false;  // 负左移/溢出位 UB 面：不折叠
+            if (static_cast<std::uint64_t>(l) >
+                (static_cast<std::uint64_t>(INT64_MAX) >> r)) return false;
+            out = l << r;
+            return true;
+        case Operator::GreaterGreater:
+            if (r < 0 || r > 63) return false;
+            out = l >> r;  // 算术右移（与发射层面口径一致）
+            return true;
+        default:
+            return false;  // 比较/位运算/逻辑等不进折叠闭包（预演面只管算术+移位）
+    }
+}
+}  // namespace
+
 void SemanticAnalyzer::visitBinaryExpr(BinaryExpr* node) {
     std::string leftType = checkExpr(node->left.get());
     std::string rightType = checkExpr(node->right.get());
@@ -113,7 +200,8 @@ bool SemanticAnalyzer::checkVoidOperandBinary(BinaryExpr* node, const std::strin
 }
 
 // 族④（原 319-a C18①+T8 编译期整型常量求值安全检查节·用户批量裁决方案甲）：
-//   两侧均为字面量（含一元负号字面量）时按结果类型域预演：
+//   两侧均可折叠为常量（字面量/一元负链/纯常量子树——505 折叠通道）时按结果
+//   类型域预演：
 //   ①÷/%：常量除零编译期硬错误（T8：原 10/0 编过、运行期才报）；
 //   ②+/-/*：常量溢出编译期硬错误（原 2147483647+1 静默回绕——Rust debug
 //     溢出检查同款严格面；变量面回绕语义由 B12 运行时通道承载）。
@@ -121,31 +209,14 @@ bool SemanticAnalyzer::checkVoidOperandBinary(BinaryExpr* node, const std::strin
 void SemanticAnalyzer::checkConstIntExprSafety(BinaryExpr* node, const std::string& leftType,
                                                const std::string& rightType) {
     if (isArithmeticOp(node->op) && isInteger(leftType) && isInteger(rightType) &&
-        leftType != "未知" && rightType != "未知" &&
-        isIntLiteralExpr(node->left.get()) && isIntLiteralExpr(node->right.get())) {
-        auto litValue = [](const Expr* e, bool& ok) -> std::int64_t {
-            ok = true;
-            if (e->getType() == NodeType::IntegerLiteral) {
-                return static_cast<const IntegerLiteral*>(e)->value;
-            }
-            if (e->getType() == NodeType::UnaryExpr) {
-                const UnaryExpr* u = static_cast<const UnaryExpr*>(e);
-                if (u->op == Operator::Subtract && !u->postfix &&
-                    u->operand != nullptr &&
-                    u->operand->getType() == NodeType::IntegerLiteral) {
-                    const std::int64_t v =
-                        static_cast<const IntegerLiteral*>(u->operand.get())->value;
-                    // 取负按两补码回绕位模式（INT64_MIN 取负=自身）
-                    return static_cast<std::int64_t>(
-                        ~static_cast<std::uint64_t>(v) + 1);
-                }
-            }
-            ok = false;
-            return 0;
-        };
+        leftType != "未知" && rightType != "未知") {
+        // 505：取值通道升级——直接字面量（旧 litValue 口径）扩为递归常量折叠
+        //   （嵌套形态 ((30000+30000)*30000000)/折叠零 10/(5-5) 由此进预演；
+        //   折叠失败〔变量/中间溢出〕=保持现状走运行期错误码兜底）
         bool okL = false, okR = false;
-        const std::int64_t vL = litValue(node->left.get(), okL);
-        const std::int64_t vR = litValue(node->right.get(), okR);
+        std::int64_t vL = 0, vR = 0;
+        okL = foldConstIntExpr505(node->left.get(), vL);
+        okR = foldConstIntExpr505(node->right.get(), vR);
         if (okL && okR) {
             reportConstOverflowOrDivZero(node, vL, vR, leftType, rightType);
         }
@@ -161,18 +232,30 @@ void SemanticAnalyzer::reportConstOverflowOrDivZero(BinaryExpr* node, std::int64
             // 的提升链——语义层 lastType/literalTypeOf 对无后缀字面量恒整32，
             // 若按其取域会把 int64 值字面量运算误判超整32 域〔420 用例实锤〕）；
             // 提升至整128（超 int64 无后缀）时域宽于 int64 预演承载，跳过。
+            // 505：折叠子树（一元负链/嵌套常量算术）无 raw 文本——按折叠值提升
+            //   （420 按值提升链的折叠推广：|v| 超 int32 域→整64。语义类型推导
+            //   对嵌套子表达式恒窄域〔无后缀字面量整32·commonNumericType 整32〕，
+            //   按它取域会把 int64 量级折叠值误判超域——v2 自举源码
+            //   0-9223372036854775807 惯用形态 6 处实锤，修后全绿）。
             auto promotedType = [](const Expr* e) -> std::string {
-                if (e->getType() != NodeType::IntegerLiteral) return "";
-                const IntegerLiteral* lit =
-                    static_cast<const IntegerLiteral*>(e);
-                const std::string lt = types::literalTypeOf(lit->raw, false);
-                if (lt != "整32") return lt;  // 带后缀/其他：按后缀类型
-                // 无后缀：按值提升（超 int32 -> 整64；超 int64 -> 整128）
-                if (types::textExceedsInt64(types::stripLiteralSuffix(lit->raw))) {
-                    return "整128";
+                if (e->getType() == NodeType::IntegerLiteral) {
+                    const IntegerLiteral* lit =
+                        static_cast<const IntegerLiteral*>(e);
+                    const std::string lt = types::literalTypeOf(lit->raw, false);
+                    if (lt != "整32") return lt;  // 带后缀/其他：按后缀类型
+                    // 无后缀：按值提升（超 int32 -> 整64；超 int64 -> 整128）
+                    if (types::textExceedsInt64(types::stripLiteralSuffix(lit->raw))) {
+                        return "整128";
+                    }
+                    if (lit->value > 2147483647LL) return "整64";
+                    return "整32";
                 }
-                if (lit->value > 2147483647LL) return "整64";
-                return "整32";
+                std::int64_t v = 0;
+                if (foldConstIntExpr505(e, v) &&
+                    (v > 2147483647LL || v < -2147483648LL)) {
+                    return "整64";
+                }
+                return "";
             };
             const std::string pL = promotedType(node->left.get());
             const std::string pR = promotedType(node->right.get());
@@ -247,8 +330,9 @@ void SemanticAnalyzer::reportConstOverflowOrDivZero(BinaryExpr* node, std::int64
             }
 }
 
-// 族④b（任务 474）：常量移位量超宽编译期硬错误——移位量（右操作数）为整数字
-//   面量且值不在 [0, 左操作数类型位宽) 域 → 编译期拒绝。原语义=按位宽取模掩码
+// 族④b（任务 474）：常量移位量超宽编译期硬错误——移位量（右操作数）可折叠为
+//   常量（505 折叠通道：直接字面量/一元负/折叠形态如 甲<<(700+66)）且值不在
+//   [0, 左操作数类型位宽) 域 → 编译期拒绝。原语义=按位宽取模掩码
 //   （2026-09-09 规范化·Rust release 同构）随 474 裁决废止：运行期超宽移位改报
 //   错误码 8『溢出错误』（三后端发射层），常量面在此先行硬错误（Rust debug
 //   compile_error 对齐：`1i32 << 33` 编译失败）。左操作数可为变量（x << 33）。
@@ -258,30 +342,14 @@ void SemanticAnalyzer::checkShiftConstWidth(BinaryExpr* node,
     if (node->op != Operator::LessLess && node->op != Operator::GreaterGreater) {
         return;
     }
-    if (!isIntLiteralExpr(node->right.get())) return;
     if (!isInteger(leftType) || !isInteger(rightType) ||
         leftType == "未知" || rightType == "未知") {
         return;
     }
-    // 移位量字面量值提取（与 checkConstIntExprSafety 的 litValue 同款：
-    // 字面量/一元负号字面量）
-    bool ok = false;
+    // 移位量取值：505 折叠通道（递归常量闭包——取代旧 litValue 手写提取；
+    //   折叠失败=非常量移位量，保持现状走运行期同域检查）
     std::int64_t sh = 0;
-    const Expr* re = node->right.get();
-    if (re->getType() == NodeType::IntegerLiteral) {
-        sh = static_cast<const IntegerLiteral*>(re)->value;
-        ok = true;
-    } else if (re->getType() == NodeType::UnaryExpr) {
-        const UnaryExpr* u = static_cast<const UnaryExpr*>(re);
-        if (u->op == Operator::Subtract && !u->postfix && u->operand != nullptr &&
-            u->operand->getType() == NodeType::IntegerLiteral) {
-            const std::int64_t v =
-                static_cast<const IntegerLiteral*>(u->operand.get())->value;
-            sh = static_cast<std::int64_t>(~static_cast<std::uint64_t>(v) + 1);
-            ok = true;
-        }
-    }
-    if (!ok) return;
+    if (!foldConstIntExpr505(node->right.get(), sh)) return;
     // 左操作数类型位宽（整8/正8=8 … 整128/正128=128）
     const std::string lt = types::canonical(leftType);
     int width = 0;
