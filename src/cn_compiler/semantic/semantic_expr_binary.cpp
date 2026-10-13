@@ -371,6 +371,25 @@ void SemanticAnalyzer::checkShiftConstWidth(BinaryExpr* node,
     // 移位量取值：505 折叠通道（递归常量闭包——取代旧 litValue 手写提取；
     //   折叠失败=非常量移位量，保持现状走运行期同域检查）
     std::int64_t sh = 0;
+    // 裸字面量形态识别（#547 巨字面量预检面）：直接字面量/一元负号字面量
+    //   抓 raw 原始文本与负号形态，供下方 18 位预检（parser parseIntValue 对
+    //   超 int64 域字面量静默回 0 毒化 value·预检只依赖 raw 文本不依赖值）；
+    //   折叠形态无单一 raw 文本·不在 547 预检边界（547 提交声明）。
+    std::string rawText;
+    bool negForm = false;
+    const Expr* re = node->right.get();
+    if (re->getType() == NodeType::IntegerLiteral) {
+        rawText = static_cast<const IntegerLiteral*>(re)->raw;
+    } else if (re->getType() == NodeType::UnaryExpr) {
+        const UnaryExpr* u = static_cast<const UnaryExpr*>(re);
+        if (u->op == Operator::Subtract && !u->postfix && u->operand != nullptr &&
+            u->operand->getType() == NodeType::IntegerLiteral) {
+            rawText = static_cast<const IntegerLiteral*>(u->operand.get())->raw;
+            negForm = true;
+        }
+    }
+    // 取值统一走 505 折叠通道（a6526fcd 单折叠器归属·禁双通道取值分叉）：
+    //   折叠失败=非常量移位量，保持现状走运行期同域检查。
     if (!foldConstIntExpr505(node->right.get(), sh)) return;
     // 左操作数类型位宽（整8/正8=8 … 整128/正128=128）
     const std::string lt = types::canonical(leftType);
@@ -381,6 +400,29 @@ void SemanticAnalyzer::checkShiftConstWidth(BinaryExpr* node,
     else if (lt == "整64" || lt == "正64") width = 64;
     else if (lt == "整128" || lt == "正128") width = 128;
     if (width == 0) return;
+    // 巨字面量预检（#547·v2 检查常量移位超宽474 同构）：原始文本有效位 >18
+    //   （剥 0x 前缀计位）=值必超任一整型域宽——文本位 >18 的最小值=2^18
+    //   （0b 形态 1 后 18 个 0）=262144 > 128（最大整128 位宽）恒真下界；
+    //   parser parseIntValue 对超 int64 表示域的字面量 stoll 失败静默回 0
+    //   （巨移位量被毒化为 0 放行·v2 拒宿主放行分叉实锤 505 探针），故按
+    //   raw 文本先行硬错误，防毒化值流入下方域检查（18 位以内值已可安全
+    //   解析，交由下方既有域检查精确裁决）。
+    {
+        std::size_t digits = rawText.size();
+        if (digits > 2 && rawText[0] == '0' &&
+            (rawText[1] == 'x' || rawText[1] == 'X')) {
+            digits -= 2;
+        }
+        if (digits > 18) {
+            const std::string shown = negForm ? "-" + rawText : rawText;
+            diagnostics_.report(DiagnosticLevel::Error, node->location,
+                                "编译期移位量超宽：常量移位量字面量 '" + shown +
+                                "' 超任一整型域宽（类型 '" + leftType +
+                                "' 位宽 " + std::to_string(width) +
+                                "·有效数字超 18 位必超域·v2 同构预检）");
+            return;
+        }
+    }
     if (sh < 0 || sh >= width) {
         diagnostics_.report(DiagnosticLevel::Error, node->location,
                             "编译期移位量超宽：移位量 " + std::to_string(sh) +
