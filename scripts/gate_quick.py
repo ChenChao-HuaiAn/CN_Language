@@ -51,9 +51,11 @@ def 步(名: str, 命令: list[str], **kw) -> bool:
 
 print("== L1 快速门禁（920·提交前）==", flush=True)
 
-# ① 静态五检查（与 ci.ps1 第 0~0.5 步同源·不依赖构建产物；242 增 file_length 冻结线·
-#    334 增分层依赖冻结线——AGENTS §3 单向依赖的执法点：宿主 include 方向+v2 导入方向双面）
-for 名 in ("check_ascii_idents", "check_keywords_sync", "check_registry_audit"):
+# ① 静态六检查（与 ci.ps1 第 0~0.8 步同源·不依赖构建产物；242 增 file_length 冻结线·
+#    334 增分层依赖冻结线——AGENTS §3 单向依赖的执法点：宿主 include 方向+v2 导入方向双面·
+#    554 增用例编号唯一性——487/489/496 治理链的防增量机制）
+for 名 in ("check_ascii_idents", "check_keywords_sync", "check_registry_audit",
+           "check_case_numbers"):
     if not 步(名, [sys.executable, f"scripts/{名}.py"]):
         raise SystemExit(1)
 if not 步("file_length 冻结线", [sys.executable, "scripts/check_file_length.py", "--freeze"]):

@@ -13,6 +13,7 @@
   python scripts/board_cli.py 单元删 <单元ID>                      # 删除覆盖单元行（误登记清洗·247）
   python scripts/board_cli.py 豁免删 <用例名[,用例名…]>             # 删除豁免行（撞号留痕/任务级行清洗·247）
   python scripts/board_cli.py 覆盖                                 # 覆盖矩阵摘要（缺口=空格）
+  python scripts/board_cli.py 领用例号 [--说明 "..."]               # E2E 用例编号领取（554·服务端台账原子发号）
   python scripts/board_cli.py 裁决 --批 <件们.json>                 # 裁决项批量上传（403·AI 侧）
   python scripts/board_cli.py 裁决 --号 379 --标题 "…" --讲解文件 x.md --选项文件 o.json
   python scripts/board_cli.py 裁决看 [--全部]                       # 裁决项一览（缺省只看待裁决）
@@ -249,6 +250,46 @@ def cmd_覆盖(a) -> int:
     return 0
 
 
+def 扫描本地用例最大号() -> int:
+    """tests/e2e/ 现存最大数字前缀——领号请求下限（服务端取 台账最大 与 下限 的较大者+1，
+    照 487/489/496 先例：发号前核验本地与全远端无更大号）。"""
+    import re as _re
+    根 = 本树根 / "tests" / "e2e"
+    大 = 0
+    try:
+        for 项 in 根.iterdir():
+            匹配 = _re.match(r"^(\d+)_", 项.name)
+            if 匹配 and 项.is_dir():
+                大 = max(大, int(匹配.group(1)))
+    except OSError:
+        pass
+    return 大
+
+
+def cmd_领用例号(a) -> int:
+    """E2E 用例编号领取（554·接续 487/489/496 治理链）：服务端用例号台账原子发号
+    （多机并发安全·号不复用）；请求下限=本地 tests/e2e 扫见最大号（远端核验面由
+    调用方按需自行 ls-remote，门禁 check_case_numbers 最终兜底拦重号）。
+    服务不可达降级=本地 max+1（黄字预告·未过台账·集成门禁兜底核验）。"""
+    下限 = 扫描本地用例最大号()
+    try:
+        码, r = 调服务("POST", "/api/case_number",
+                      {"机器": 机器名(), "说明": a.说明 or "", "请求号下限": str(下限)})
+    except OSError as e:
+        print(f"[黄] 看板服务不可达（{e}）——降级本地发号（未过台账·门禁兜底）")
+        print(f"[领用例号·降级] {下限 + 1}（本地扫见 max={下限}）——"
+              f"服务恢复后建议复核；撞号由 check_case_numbers 门禁硬拦")
+        return 0
+    if 码 != 201:
+        print(f"[失败] {码} {r.get('错误', r)}")
+        return 1
+    号 = r["号"]
+    print(f"[领用例号] {号}（服务端台账发放·台账最大 {r.get('台账最大')}·本地扫见 max {下限}·占用 {r.get('占用数')}）")
+    print(f"  命名：tests/e2e/{号}_<主题>；v2 面成对={号}_v2_<主题>（共号合法形态）")
+    print(f"  撞号处置=后入者领新号：git mv 旧目录 新目录 + 覆盖矩阵登记名同步")
+    return 0
+
+
 def _读文件(路径: str) -> str:
     return Path(路径).read_text(encoding="utf-8")
 
@@ -374,6 +415,10 @@ def main() -> int:
 
     s = sub.add_parser("覆盖", help="覆盖矩阵摘要")
     s.set_defaults(f=cmd_覆盖)
+
+    s = sub.add_parser("领用例号", help="E2E 用例编号领取（服务端台账原子发号·554）")
+    s.add_argument("--说明", default="")
+    s.set_defaults(f=cmd_领用例号)
 
     s = sub.add_parser("裁决", help="裁决项上传（AI 侧·批量或单件）")
     s.add_argument("--批", default="")

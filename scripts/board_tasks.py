@@ -52,6 +52,16 @@ def 建任务表(con: sqlite3.Connection) -> None:
         来源 TEXT DEFAULT 'api')""")
 
 
+def 建用例号台账(con: sqlite3.Connection) -> None:
+    """E2E 用例号台账（554·用例编号权威化）——与任务号空间独立（用例号 1~806+
+    历史序列）；append-only·号不复用（同任务号「号不复用」纪律）。"""
+    con.execute("""CREATE TABLE IF NOT EXISTS 用例号台账(
+        号 TEXT PRIMARY KEY,
+        机器 TEXT DEFAULT '', 对话id TEXT DEFAULT '',
+        说明 TEXT DEFAULT '',
+        时刻 TEXT, 时戳 REAL)""")
+
+
 def 号排序键(号: str):
     """「308j」→ (308,'j')·「309」→ (309,'')——主号数值序·字母后缀随主号微序。"""
     m = re.fullmatch(r"([0-9]+)([a-z]?)", str(号))
@@ -174,6 +184,38 @@ def 待办快照们(con: sqlite3.Connection, 上限: int = 20) -> list:
 
 
 # ===== 立项 / 状态流转（写锁由调用方持有·事务在函数内提交）=====
+
+def 已占用例号集(con: sqlite3.Connection) -> set:
+    return {str(r[0]) for r in con.execute("SELECT 号 FROM 用例号台账").fetchall()}
+
+
+def 领用例号(con: sqlite3.Connection, 体: dict):
+    """E2E 用例编号发放（554）。请求号下限=调用方扫到的现存最大号（本地 tests/e2e
+    与全远端分支核验后的值·照 487/489/496 先例）——服务端取 max(台账最大, 请求下限)+1
+    发放；台账原子递增=同台账内绝不重号（多机并发安全），下限参数=对「台账启用前既有
+    历史号（1~806 等）」的兼容。返回 (HTTP码, 响应)。"""
+    机器 = 净化(体.get("机器"), 60)
+    对话id = 净化(体.get("对话id"), 40)
+    说明 = 净化(体.get("说明"), 200)
+    下限请求 = str(体.get("请求号下限", "") or "").strip()
+    下限 = 0
+    if 下限请求:
+        if not re.fullmatch(r"[0-9]+", 下限请求):
+            return 400, {"错误": "请求号下限 须为纯数字（现存最大用例号）"}
+        下限 = int(下限请求)
+    已占 = 已占用例号集(con)
+    台账最大 = max((int(x) for x in 已占 if re.fullmatch(r"[0-9]+", x)), default=0)
+    候选 = max(台账最大, 下限) + 1
+    while str(候选) in 已占:
+        候选 += 1
+    号 = str(候选)
+    现 = time.time()
+    con.execute(
+        "INSERT INTO 用例号台账(号,机器,对话id,说明,时刻,时戳) VALUES(?,?,?,?,?,?)",
+        (号, 机器, 对话id, 说明, 时刻(), 现))
+    con.commit()
+    return 201, {"好": True, "号": 号, "台账最大": 台账最大, "占用数": len(已占)}
+
 
 def 创建任务(con: sqlite3.Connection, 体: dict):
     """立项+发号。请求号空=服务端发放（max+1）·非空=指定号（已占 409·禁用号 403）。
@@ -350,6 +392,24 @@ def 自测() -> int:
     assert 序 == ["901"], f"僵尸行应沉底（就绪区外）·实际排序提取={序}"
     例数 += 1
     print(f"  [✓] 僵尸行排序沉底（就绪区外）")
+    # 554：E2E 用例号发放（台账原子递增·请求下限兼容·不重号·非法下限 400）
+    建用例号台账(con)
+    码, r = 领用例号(con, {"机器": "测机", "请求号下限": "806", "说明": "自测1"})
+    例数 += 1
+    print(f"  [{'✓' if 码 == 201 and r.get('号') == '807' else '✗'}] 用例号首领（下限 806 → 807）")
+    assert 码 == 201 and r["号"] == "807", r
+    码, r = 领用例号(con, {"机器": "测机2", "请求号下限": "806"})
+    例数 += 1
+    print(f"  [{'✓' if 码 == 201 and r.get('号') == '808' else '✗'}] 用例号台账递增（下限不倒退 → 808）")
+    assert 码 == 201 and r["号"] == "808", r
+    码, r = 领用例号(con, {"机器": "测机3", "请求号下限": "900"})
+    例数 += 1
+    print(f"  [{'✓' if 码 == 201 and r.get('号') == '901' else '✗'}] 用例号下限更大时顺延（900 → 901）")
+    assert 码 == 201 and r["号"] == "901", r
+    码, r = 领用例号(con, {"请求号下限": "abc"})
+    例数 += 1
+    print(f"  [{'✓' if 码 == 400 else '✗'}] 用例号非法下限拒绝（400）")
+    assert 码 == 400, r
     print(f"[selftest] {例数} 例全过 ✓")
     return 0
 

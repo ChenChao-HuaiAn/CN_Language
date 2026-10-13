@@ -32,6 +32,10 @@ Write-Host "[CI] 0.7/4 规范覆盖映射门禁（支柱一·plans/026 §2.1·B3
 python scripts/check_spec_coverage.py --strict
 if ($LASTEXITCODE -ne 0) { Write-Host "[CI] 规范覆盖映射门禁失败" -ForegroundColor Red; exit 1 }
 
+Write-Host "[CI] 0.8/4 E2E 用例编号唯一性门禁（554 立：同编号多目录=撞号——487/489/496 治理链补防增量机制；发号=board_cli 领用例号）..." -ForegroundColor Cyan
+python scripts/check_case_numbers.py
+if ($LASTEXITCODE -ne 0) { Write-Host "[CI] E2E 用例编号唯一性门禁失败" -ForegroundColor Red; exit 1 }
+
 Write-Host "[CI] 1/4 构建（/W4 /WX 零警告门禁）..." -ForegroundColor Cyan
 & powershell -ExecutionPolicy Bypass -File build.ps1 -Config Debug
 if ($LASTEXITCODE -ne 0) { Write-Host "[CI] 构建失败" -ForegroundColor Red; exit 1 }

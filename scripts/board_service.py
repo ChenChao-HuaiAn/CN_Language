@@ -139,6 +139,7 @@ def 建库(路径: str = db路径) -> sqlite3.Connection:
         会话id TEXT PRIMARY KEY,
         时戳 REAL)""")
     台账.建任务表(con)      # 382：任务台账主表（服务端唯一权威）
+    台账.建用例号台账(con)  # 554：E2E 用例号台账（用例编号权威化·发号原子递增）
     文档.建表(con)          # 384：交接/教训/规范覆盖（文档上服务器二期）
     裁决.建表(con)          # 403：裁决项/裁决记录（网页裁决系统）
     return con
@@ -450,6 +451,12 @@ class 处理器(BaseHTTPRequestHandler):
                            "SELECT 号,机器,对话id,描述,时刻 FROM 发号台账 ORDER BY 时戳").fetchall()]
                 return self._回JSON(200, {"台账": 流水, "下一个": 台账.下一个号(
                     台账.已占号集(连接)), "号占冲突们": 号占冲突们(), "时刻": 时刻()})
+        if 路径 == "/api/case_numbers":                # 554：E2E 用例号台账（审计面·只读）
+            with 写锁:
+                行们 = [{"号": r[0], "机器": r[1], "说明": r[2], "时刻": r[3]}
+                       for r in 连接.execute(
+                           "SELECT 号,机器,说明,时刻 FROM 用例号台账 ORDER BY 时戳").fetchall()]
+                return self._回JSON(200, {"台账": 行们, "占用数": len(行们), "时刻": 时刻()})
         # —— 384 文档资源（交接/教训/规范覆盖·GET 只读）——
         if 路径 == "/api/handoff":
             q = urlparse(self.path).query
@@ -507,6 +514,10 @@ class 处理器(BaseHTTPRequestHandler):
                 return self._回JSON(码, 响应)
         if 路径 == "/api/claim_number":
             return self._收发号(体)
+        if 路径 == "/api/case_number":                 # 554：E2E 用例号发放
+            with 写锁:
+                码, 响应 = 台账.领用例号(连接, 体)
+                return self._回JSON(码, 响应)
         # —— 384 文档资源（交接/教训/规范覆盖·POST 须令牌）——
         if 路径 == "/api/handoff_add":
             with 写锁:
