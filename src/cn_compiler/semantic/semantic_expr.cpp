@@ -430,10 +430,61 @@ bool SemanticAnalyzer::isIntLiteralExpr(const Expr* e) {
     return false;
 }
 
+namespace {
+// 558（506甲·用户裁决）：十进制数字文本提取（剥后缀·全数字才有效）——int64
+//   承载对超承载字面量已失真（parser parseIntValue stoll 超域抛异常回 0），
+//   值级判域读不到真实值；文本级长度+字典序判域（i128TextInRange 同款）不受
+//   承载限制。返回空串=非纯十进制（0x/0b/0o 前缀等）→调用方回退值级（诚实
+//   边界：超承载十六进制面随 #547 parseIntValue 轮收口）。
+std::string decimalDigitsOf(const std::string& raw) {
+    if (raw.size() > 2 && raw[0] == '0' &&
+        (raw[1] == 'x' || raw[1] == 'X' || raw[1] == 'b' || raw[1] == 'B' ||
+         raw[1] == 'o' || raw[1] == 'O')) {
+        return "";  // 进制前缀面非纯十进制
+    }
+    std::string digits = raw;
+    while (!digits.empty()) {
+        const char c = digits.back();
+        if (c == 'L' || c == 'l' || c == 'U' || c == 'u' || c == 'F' || c == 'f') {
+            digits.pop_back();  // 剥整数后缀（非十六进制面·F 可剥）
+        } else {
+            break;
+        }
+    }
+    if (digits.empty()) return "";
+    for (const char c : digits) {
+        if (c < '0' || c > '9') return "";
+    }
+    return digits;
+}
+// 去前导零（保留至少一位）
+std::string trimLeadingZeros558(std::string d) {
+    const std::size_t nz = d.find_first_not_of('0');
+    if (nz == std::string::npos) return "0";
+    d.erase(0, nz);
+    return d;
+}
+// 无符号十进制数字文本 ≤ 上界文本（长度优先·等长字典序·大数安全）
+bool decTextLe(const std::string& digits, const char* bound) {
+    const std::string a = trimLeadingZeros558(digits);
+    const std::string b = trimLeadingZeros558(bound);
+    if (a.size() != b.size()) return a.size() < b.size();
+    return a <= b;
+}
+// 有符号判域：负号形态按数学负值判（对 |下界|），正形对上界判（-0 亦域内）
+bool decTextFits(const std::string& digits, bool neg,
+                 const char* negBound, const char* posBound) {
+    return neg ? decTextLe(digits, negBound) : decTextLe(digits, posBound);
+}
+}  // namespace
+
 // 319-a（T36·方案甲·用户批量裁决）：整数字面量值域检查——窄化豁免的值域门槛
 //（整16 甲=40000 超 32767：原静默截断 -25536 与表达式面〔0+40000 拒〕口径
 // 分裂；Rust 统一严格：超域硬错误，域内保留豁免〔整8 a=10 合法〕）。
 // 非整数类型恒真（豁免面 isInteger 已前置，防御）。
+// 558（506甲）：十进制文本级判域前置——超 int64 承载字面量（19~20 位）在
+//   parser parseIntValue 已回绕/失真（stoll 失败回 0），值级判定读不到真实值；
+//   文本比较不受承载限制（整32/整64/正64 受检面·负号形态按负值判域）。
 bool SemanticAnalyzer::intLiteralFitsType(const Expr* e, const std::string& to) {
     if (e == nullptr) return true;
     // 提取裸字面量（含一元负号形态——-40000 对 整16 同超域）
@@ -451,6 +502,24 @@ bool SemanticAnalyzer::intLiteralFitsType(const Expr* e, const std::string& to) 
         }
     }
     if (lit == nullptr) return true;  // 非字面量形态（canConvert 主链判定）
+    // 558（506甲）：十进制文本级判域（超 int64 承载安全·受检矩阵与值级一致）
+    const std::string decDigits = decimalDigitsOf(lit->raw);
+    if (!decDigits.empty()) {
+        if (to == "整8") return decTextFits(decDigits, neg, "128", "127");
+        if (to == "整16") return decTextFits(decDigits, neg, "32768", "32767");
+        if (to == "整32" || to == "整数") {
+            return decTextFits(decDigits, neg, "2147483648", "2147483647");
+        }
+        if (to == "整64") {
+            return decTextFits(decDigits, neg, "9223372036854775808",
+                               "9223372036854775807");
+        }
+        if (to == "正8") return !neg && decTextLe(decDigits, "255");
+        if (to == "正16") return !neg && decTextLe(decDigits, "65535");
+        if (to == "正32") return !neg && decTextLe(decDigits, "4294967295");
+        if (to == "正64") return !neg && decTextLe(decDigits, "18446744073709551615");
+        return true;  // 整128/正128：域宽于任何 int64 承载内文本，恒适
+    }
     const std::string lt = types::literalTypeOf(lit->raw, false);
     // 与 literalTypeOf 的无符号后缀语义一致：正N 字面量按无符号域解释值
     unsigned long long uv = 0;

@@ -518,7 +518,20 @@ bool SemanticAnalyzer::reportSliceReject(const std::string& fromRaw,
 bool SemanticAnalyzer::canConvertWithLiteral(const Expr* value,
                                              const std::string& fromRaw,
                                              const std::string& toRaw) const {
-    if (canConvertType(fromRaw, toRaw)) return true;
+    if (canConvertType(fromRaw, toRaw)) {
+        // 558（506甲·用户裁决 2026-10-13）：可隐式转换面（含同型）整数字面量
+        //   值域门槛——无后缀字面量恒定级整32（literalTypeOf 与值大小无关）而
+        //   值可超域，同型转换短路原零检查放行=编译期静默回绕（c506 实锤·
+        //   Rust E0308「同型亦查域」同款）；负号形态按负值判域
+        //  （-2147483648=整32::MIN 域内合法·存量零翻转）。赋值/返回/传参/
+        //   数组元素/字段各面共用本入口·一次补检全链生效。
+        if (value != nullptr && types::isInteger(fromRaw) &&
+            types::isInteger(toRaw) && isIntLiteralExpr(value) &&
+            !intLiteralFitsType(value, toRaw)) {
+            return false;
+        }
+        return true;
+    }
     // 字面量豁免仅整数族→整数族（浮点/字符串等其它拒绝面不豁免）
     if (!types::isInteger(fromRaw) || !types::isInteger(toRaw)) return false;
     // 319-a（T36·方案甲）：值域门槛——豁免=字面量且值在目标类型域内

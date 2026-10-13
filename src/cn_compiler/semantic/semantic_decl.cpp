@@ -305,6 +305,22 @@ void SemanticAnalyzer::visitVarDecl(VarDecl* node) {
                 node->typeName = promoted;
             }
         }
+        // 558（506甲·用户裁决 2026-10-13）：推断面字面量值域兜底检查——
+        //   rebase 适配位次（558×497 同日并行同缺陷面·本解冲突裁决）：497
+        //   真值域提升在前（无后缀可提升形态改判 整64/整128 放行·813 锁面
+        //   「变量 甲 = 3000000000」→整64），本检查居后拦提升链未覆盖的残余
+        //   面——带后缀超域字面量推断（inferredLiteralWidthType 只认无后缀
+        //   不改判·值超目标域=拒防静默回绕）与提升链终态仍装不下的边角
+        //   （超整128 promoted 空·表达式面已有「超出整128范围」诊断此处
+        //   再报同型转换拒·双锚不冲突）；负号形态按负值判域
+        //  （-2147483648 域内合法）。T36 扩面条文「推断通道拒」的恒定级
+        //   前提已被 497 提升重定义，条文例子张力落台账呈报裁决。
+        if (types::isInteger(varType) && isIntLiteralExpr(node->initializer.get()) &&
+            !intLiteralFitsType(node->initializer.get(), varType)) {
+            diagnostics_.report(DiagnosticLevel::Error, node->location,
+                                "无法将 '" + varType + "' 隐式转换为 '" +
+                                    varType + "'");
+        }
         // plans/019 阶段3 扩展（A21 借出视图生命周期，第七十七轮）：捕获借出调用
         //   标记（后续检查可能触发其它 checkExpr 覆盖 lastExprIsBorrowView_）；
         //   须「顶层表达式即该借出调用」——字符串复制(表.元素(0)) 等包裹形态
@@ -421,6 +437,16 @@ void SemanticAnalyzer::visitVarDecl(VarDecl* node) {
                                             "无法将 '" + initType + "' 隐式转换为 '" + varType + "'");
                     }
                 }
+            } else if (types::isInteger(initType) && types::isInteger(varType) &&
+                       isIntLiteralExpr(node->initializer.get()) &&
+                       !intLiteralFitsType(node->initializer.get(), varType)) {
+                // 558（506甲·用户裁决 2026-10-13）：同型字面量值域门槛——
+                //   canConvertType 同型真即零检查放行=声明面短路绕过 T36
+                //  （c506 实锤：整32 甲=2147483648 静默回绕）；文案对齐既有
+                //   转换拒绝链（v2 通用链同款·双侧一致）。
+                diagnostics_.report(DiagnosticLevel::Error, node->location,
+                                    "无法将 '" + initType + "' 隐式转换为 '" +
+                                        varType + "'");
             }
         }
     }
