@@ -43,6 +43,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import threading
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -62,6 +63,9 @@ import board_closeout   # 392：伞批销账号解析（登记制·提交信息 
 批等待轮询秒 = 60    # --wait 等待批主的轮询间隔
 批等待上限分钟 = 120  # --wait 等待总上限（防挂死）
 批主失联接管分钟 = 30  # 批主报名后无进展超此时长，成员可 --takeover 接管
+心跳间隔秒 = int(os.environ.get("CN_QUEUE_HEARTBEAT_SEC", "120"))   # 562：队列行心跳周期
+# （批主集成中/成员等待期定期刷服务端行更新时刻=活会话证明——回收与失联判定以
+#  心跳新鲜度为据，治 444 实录：win 全量门禁 40+ 分钟无行更新被 --wait 误判失联）
 
 # 全量门禁触发面（触及下列任一路径 → 除快速门禁外另跑构建+单测+E2E；v3 起无 try-build 分类面——
 # v2 的 try_build_触发模式 随 581-a 废除，写集分类仅区分门禁深度）
@@ -172,7 +176,7 @@ def 分类写集(文件们: list[str]) -> bool:
     return any(文件.startswith(全量门禁触发模式) for 文件 in 文件们)
 
 
-def 临时用例检查(文件们: list[str]) -> str | None:
+def 临时用例检查(文件们: list[str], 树中存在查=None) -> str | None:
     """纪律 2（1008·用户裁决 2026-10-03）：临时/探针用例禁入 develop。
 
     tests/e2e/ 下用例目录名（路径第三段）含 tmp（大小写不敏感）即拦——1005 清 7 例存量
@@ -185,11 +189,16 @@ def 临时用例检查(文件们: list[str]) -> str | None:
     ②tmp 已被直推进 develop 时（221 r31 实录），任何批的组链树都继承它们，
     「HEAD 存在即拦」=全队列永久死锁。判据改查两棵树（git cat-file -e·不依赖
     工作区）：净新增拦（防线保持）·历史遗留放行（解死锁）·删除态放行（清污通）。
-    """
+
+    562：树中存在查=可注入树查询（selftest 纯函数面用·缺省=git cat-file 真查）——
+    修复存量红：990tmp 用例清理出 develop 后 selftest ④ 段按真树判定恒放行=断言失败
+    （develop e110257c 实测红·selftest「无 git 副作用」设计被违背）。"""
     疑似 = sorted({f for f in 文件们
                    if f.startswith("tests/e2e/") and len(f.split("/")) > 2
                    and "tmp" in f.split("/")[2].lower()})
     def 树中存在(修订: str, 路径: str) -> bool:
+        if 树中存在查 is not None:
+            return bool(树中存在查(修订, 路径))
         return 运行捕获(["git", "cat-file", "-e", f"{修订}:{路径}"]).returncode == 0
     违规 = sorted({f.split("/")[2] for f in 疑似
                    if 树中存在("HEAD", f)
@@ -553,6 +562,9 @@ def 云端预验门禁(链顶: str, 参数: argparse.Namespace) -> str | None:
                         "——等待限制平台 runner 上线后重试·或修正 --pool-limit·或 --no-cloud-gate 逃生门。")
             print("  [预验] 池路径超时/不可达——降级 ssh 直发 TX_02（028 §四）……")
         else:
+            if 入队 is not None:
+                # 562：入队被拒（如源分支已并入 develop 的 562 拒入）——说明随行打印保诊断
+                print(f"  [预验] 入队被拒：{入队.get('说明', '?')}")
             print("  [预验] TX_01 池不可用——降级 ssh 直发 TX_02（028 §四）……")
         # ── ② ssh 直发降级（1008 原路径原样保留）
         # rm 旧预验结果（同 sha 二次预验=CAS 竞争重试路径·旧文件不可当本轮结果）
@@ -634,6 +646,25 @@ def 解析时刻(文本: str) -> datetime | None:
         except ValueError:
             continue
     return None
+
+
+def 行新鲜时刻(行: dict) -> datetime | None:
+    """行的最近活动时刻（纯函数·562 失联判定基准）——服务端行=更新时刻（心跳/状态写
+    刷新·活会话证明），看板回退行/旧行=报名时刻。心跳新鲜度优于报名时刻：444 实录
+    批主 win 全量门禁 40+ 分钟无行更新，按报名时刻判=在飞批被 --wait 误判失联险接管。"""
+    return 解析时刻(行.get("更新") or 行["时刻"])
+
+
+def 失联分支们(行们: list[dict], 当前时刻: datetime,
+              阈值分钟: int = 批主失联接管分钟) -> list[str]:
+    """失联行分支列表（纯函数·562）——行活动时刻（行新鲜时刻）距今超阈值=失联。
+    --wait 自动接管判定与批主可接管提示共用此基准。"""
+    出: list[str] = []
+    for 行 in 行们:
+        起 = 行新鲜时刻(行)
+        if 起 and (当前时刻 - 起).total_seconds() > 阈值分钟 * 60:
+            出.append(行["分支"])
+    return 出
 
 
 def 解析队列(看板文本: str) -> list[dict]:
@@ -870,7 +901,7 @@ def 队列读(远程: str = 主远程) -> list[dict] | None:
         return None
     行们 = [{"分支": r.get("分支", ""), "基线": r.get("基线", ""),
              "时刻": r.get("报名时刻", ""), "摘要": r.get("写集摘要", ""),
-             "状态": r.get("状态", "")} for r in 态.get("队列", [])]
+             "状态": r.get("状态", ""), "更新": r.get("更新时刻", "")} for r in 态.get("队列", [])]
     try:
         看板行们 = 解析队列(远端看板文本(远程))
     except Exception:
@@ -905,6 +936,14 @@ def 队列写(操作: str, 数据: dict) -> bool:
     if not 结果.get("ok"):
         print(f"  [队列服务] {操作} 被拒：{结果.get('说明', '?')}——回退看板路径。")
     return bool(结果.get("ok"))
+
+
+def 队列心跳(分支: str) -> None:
+    """562：队列行心跳（完全静默）——刷服务端行更新时刻=活会话证明，服务端排队/集成中
+    回收与成员 --wait 失联判定以心跳新鲜度为据。服务不可达/旧服务端未知操作一律静默
+    （心跳是优化面：失败退化为旧阈值行为·服务端超时兜底语义不变）。"""
+    if 队列服务URL:
+        服务调用("/api/heartbeat", {"分支": 分支})
 
 
 def 报名行(分支: str, 基线: str, 摘要: str) -> dict:
@@ -1034,16 +1073,19 @@ def 自测() -> int:
     成员5, 提示5 = 选批成员([], 解析时刻("09-30 14:00"))
     断言(成员5 == [] and 提示5 is not None, "选批：空队列给提示")
 
-    # ④ 临时用例拦截（1008 纪律 2）
+    # ④ 临时用例拦截（1008 纪律 2·562 起注入树像=纯函数面·不再依赖真树状态）
     断言(临时用例检查(["src/a.cpp", "tests/e2e/501_正常用例/x.cn"]) is None,
          "tmp 拦截：正常用例名与非 e2e 路径放行")
-    断言(临时用例检查(["tests/e2e/990tmp_128最小/x.cn"]) is not None,
-         "tmp 拦截：tmp 目录名拒绝")
-    断言(临时用例检查(["tests/e2e/990Tmp_测试/x.cn"]) is not None,
-         "tmp 拦截：大小写不敏感（Tmp）")
-    断言(临时用例检查(["tests/e2e/501_x/TMP说明.md"]) is None,
+    树像562 = {"HEAD:tests/e2e/990tmp_128最小/x.cn", "HEAD:tests/e2e/990Tmp_测试/x.cn",
+               "HEAD:tests/e2e/501_x/TMP说明.md"}
+    查树562 = lambda 修订, 路径: f"{修订}:{路径}" in 树像562
+    断言(临时用例检查(["tests/e2e/990tmp_128最小/x.cn"], 查树562) is not None,
+         "tmp 拦截：tmp 目录名拒绝（注入树像）")
+    断言(临时用例检查(["tests/e2e/990Tmp_测试/x.cn"], 查树562) is not None,
+         "tmp 拦截：大小写不敏感（Tmp·注入树像）")
+    断言(临时用例检查(["tests/e2e/501_x/TMP说明.md"], 查树562) is None,
          "tmp 拦截：tmp 仅判用例目录名（路径第三段）——用例内文件名放行")
-    断言(临时用例检查(["docs/tmp笔记.md", "src/tmp.cpp"]) is None,
+    断言(临时用例检查(["docs/tmp笔记.md", "src/tmp.cpp"], 查树562) is None,
          "tmp 拦截：e2e 外路径放行")
 
     # ⑤ 预验结果解析（1008）
@@ -1057,6 +1099,19 @@ def 自测() -> int:
     断言(not 解析预验结果("非JSON文本")[0], "预验解析：坏 JSON 判红不炸")
     断言(临时用例检查(批写集([{"分支": "任务/家机-9-x"}], "aaaa")) is None,
          "tmp 拦截：批写集空路径不越界")
+
+    # ⑥ 失联判定基准（562）：心跳新鲜度（更新时刻）优先·回退报名时刻
+    行活562 = {"分支": "L", "时刻": "09-30 13:00", "更新": "09-30 14:20", "状态": "集成中"}
+    行死562 = {"分支": "D", "时刻": "09-30 13:00", "更新": "", "状态": "集成中"}
+    行看板562 = {"分支": "K", "时刻": "09-30 14:00", "状态": "集成中"}   # 看板路径行（无更新字段）
+    断言(行新鲜时刻(行活562) == 解析时刻("09-30 14:20"), "562 活批行取更新时刻（心跳新鲜度）")
+    断言(行新鲜时刻(行死562) == 解析时刻("09-30 13:00"), "562 空更新字段行回退报名时刻")
+    断言(行新鲜时刻(行看板562) == 解析时刻("09-30 14:00"), "562 看板回退行无更新键=报名时刻")
+    断言(失联分支们([行活562, 行死562, 行看板562], 解析时刻("09-30 14:35")) == ["D", "K"],
+         "562 失联判定以心跳新鲜度为据：心跳活批（14:20）不误判·静默行超 30 分钟接管"
+         "（444 根治：旧判据按报名时刻→活批 D/K 全误判）")
+    断言(失联分支们([行活562], 解析时刻("09-30 14:19")) == [],
+         "562 心跳新鲜（阈值内）=不失联")
 
     print(f"\n[selftest] {案例数} 例全过 ✓")
     return 0
@@ -1212,6 +1267,7 @@ def 批流程(参数: argparse.Namespace) -> int:
     # ── ③ 等待成为批主（--wait 轮询；非 --wait 一次性判定后退出码 2）───────────────────
     等待起 = datetime.now()
     while True:
+        队列心跳(当前分支)   # 562：等待期活会话证明（排队孤儿回收以心跳新鲜度为据·静默）
         队列 = 队列读(参数.remote) if not 参数.dry_run else None      # 920：服务端优先（实时）
         if 队列 is None:
             文 = 远端看板文本(参数.remote) if not 参数.dry_run else ""
@@ -1219,12 +1275,10 @@ def 批流程(参数: argparse.Namespace) -> int:
         排队们 = [行 for 行 in 队列 if 行["状态"] == "排队"]
         集成中们 = [行 for 行 in 队列 if 行["状态"] == "集成中"]
         我在排队 = any(行["分支"] == 当前分支 for 行 in 排队们)
-        失联们 = []
         提示: str | None = None
-        for 行 in 集成中们:
-            起 = 解析时刻(行["时刻"])
-            if 起 and (datetime.now() - 起).total_seconds() > 批主失联接管分钟 * 60:
-                失联们.append(行["分支"])
+        # 562：失联判定以行活动时刻（心跳新鲜度·行新鲜时刻）为据——不再用报名时刻
+        #   （444 实录：批主 win 全量门禁 40+ 分钟无行更新·按报名时刻判=在飞批被误判失联）
+        失联们 = 失联分支们(集成中们, datetime.now())
         活跃集成中 = [行 for 行 in 集成中们 if 行["分支"] not in 失联们]
         if not 我在排队 and not any(行["分支"] == 当前分支 for 行 in 队列):
             return 失败("本分支不在集成队列（可能已被他批集成销账）——若分支仍未入 develop 请重报。")
@@ -1253,8 +1307,8 @@ def 批流程(参数: argparse.Namespace) -> int:
                 else:
                     break   # ── 封批组链 ──
             elif 批主:
-                起 = 解析时刻(批主["时刻"])
-                可接管 = (起 and (datetime.now() - 起).total_seconds() > 批主失联接管分钟 * 60)
+                # 562：批主可接管判定同以活动时刻（心跳新鲜度）为据——批主心跳活着=正常在飞
+                可接管 = 批主["分支"] in 失联分支们([批主], datetime.now())
                 提示 = (f"批主={批主['分支']}（第 {[x['分支'] for x in sorted(排队们, key=lambda r: r['时刻'])].index(当前分支) + 1}"
                         f" 位等待中）——{'已失联可 --takeover 接管' if 可接管 else '正常在飞·等其组批'}")
         if 参数.wait:
@@ -1277,6 +1331,15 @@ def 批流程(参数: argparse.Namespace) -> int:
             print("  [队列服务] 已标集成中（服务端·零 git 提交——920 治乒乓）")
         else:
             直推看板提交(标集成中, f"集成队列：{当前分支} 批主起批（收拢期满封批）", 参数.remote)
+    # 562 批主心跳：集成中期间后台线程定期刷队列行更新时刻=活批证明——服务端回收与
+    #   成员 --wait 失联判定以心跳新鲜度为据（治 444：win 全量门禁 40+ 分钟无行更新
+    #   被误判失联险接管）。finally 停止；服务不可达静默（退化为旧阈值行为）。
+    _停心跳 = threading.Event()
+    if not 参数.dry_run:
+        def _心跳循环():
+            while not _停心跳.wait(心跳间隔秒):
+                队列心跳(当前分支)
+        threading.Thread(target=_心跳循环, daemon=True, name="批主心跳").start()
     接管标 = "·takeover" if 参数.takeover else ""
     封批标 = "·seal-now" if 参数.seal_now else ""
     print(f"[3] 封批组链（批主={当前分支}{接管标}{封批标}）")
@@ -1372,6 +1435,7 @@ def 批流程(参数: argparse.Namespace) -> int:
         if not 成功:
             return 失败(f"连续 {最大重试} 次批集成竞争失败——稍后重跑（队列报名仍在·幂等）。")
     finally:
+        _停心跳.set()   # 562：批流程结束（成功/失败）即停心跳——行交回失败恢复/销账路径
         运行(["git", "checkout", 原分支])
         运行(["git", "branch", "-D", 批分支])
         # 失败恢复：批主行回「排队」——否则「集成中」残留会让重跑等待自己（死锁）

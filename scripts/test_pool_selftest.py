@@ -2,6 +2,8 @@
 # 1021 预验池自测（本地临时端口·跑完即删临时 DB·不触真实服务）：
 #   覆盖验收判据①②③的单元面：入队幂等/双 runner 并发认领互斥/心跳续约/超时回收重派/
 #   完成校验认领者/红重置重跑/已完成绿复用/state 与 task_result 快照/旧 API 回归（join/report）。
+#   562 扩：批主心跳（heartbeat 只刷时刻不改状态）/排队行孤儿回收（超时降级已踢出·
+#   心跳保活不误收）/预验已并入检测（mock 看板台账三态：✅拒入·⬜放行·查无放行）。
 # 用法：python scripts/test_pool_selftest.py   （退出码 0=全绿）
 
 import json
@@ -13,6 +15,7 @@ import threading
 import time
 import urllib.error
 import urllib.request
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 端口 = 18300
@@ -20,6 +23,8 @@ from pathlib import Path
 令牌 = "pool-test-token"
 临时目录 = tempfile.mkdtemp(prefix="cn_pool_test_")
 db文件 = os.path.join(临时目录, "pool_test.db")
+看板端口 = 18302
+看板基址 = "http://127.0.0.1:%d" % 看板端口
 
 通过 = 0
 
@@ -29,6 +34,27 @@ def 断言(条件, 说明):
     assert 条件, "自测失败：" + 说明
     通过 += 1
     print("  ✓ %s" % 说明)
+
+
+class 假看板(BaseHTTPRequestHandler):
+    """562 已并入检测的 mock 任务台账：任务/777=✅（已并入 develop）·任务/778=⬜（未并入）·
+    其余=404（任务不在台账——核不了放行·宁漏检不误杀）。"""
+
+    def do_GET(self):
+        if self.path.endswith("/api/task/777"):
+            体, 码 = json.dumps({"任务": {"号": "777", "状态": "✅"}}).encode("utf-8"), 200
+        elif self.path.endswith("/api/task/778"):
+            体, 码 = json.dumps({"任务": {"号": "778", "状态": "⬜"}}).encode("utf-8"), 200
+        else:
+            体, 码 = json.dumps({"错误": "无此任务"}, ensure_ascii=False).encode("utf-8"), 404
+        self.send_response(码)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(体)))
+        self.end_headers()
+        self.wfile.write(体)
+
+    def log_message(self, fmt, *args):
+        pass
 
 
 def 调(操作, 数据, 期望ok=True):
@@ -49,9 +75,21 @@ def 取(路径):
 
 def main() -> int:
     环境 = dict(os.environ, CN_QUEUE_PORT=str(端口), CN_QUEUE_TOKEN=令牌,
-               CN_QUEUE_DB=db文件, CN_TASK_STALE_SEC="3")   # 心跳超时缩到 3s 便于测回收
+               CN_QUEUE_DB=db文件, CN_TASK_STALE_SEC="3",   # 心跳超时缩到 3s 便于测回收
+               CN_QUEUE_QUEUED_STALE_SEC="3",               # 562：排队回收阈值缩到 3s
+               CN_BOARD_URL=看板基址)                        # 562：已并入检测指向 mock 台账
+
+    def 排空(管道):
+        """持续消费子进程 stdout——PIPE 无人读=缓冲满后服务 print 阻塞挂死（562 实测：
+        请求日志+回收打印积累满缓冲→GET /api/state 超时）。"""
+        for _行 in iter(管道.readline, b""):
+            pass
+
+    看板服务 = ThreadingHTTPServer(("127.0.0.1", 看板端口), 假看板)
+    threading.Thread(target=看板服务.serve_forever, daemon=True).start()
     服务 = subprocess.Popen([sys.executable, str(Path(__file__).parent / "queue_service.py")],
                             env=环境, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    threading.Thread(target=排空, args=(服务.stdout,), daemon=True).start()
     try:
         for _ in range(30):
             try:
@@ -75,6 +113,7 @@ def main() -> int:
         环境2.pop("CN_QUEUE_TOKEN", None)
         服务2 = subprocess.Popen([sys.executable, str(Path(__file__).parent / "queue_service.py")],
                                 env=环境2, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        threading.Thread(target=排空, args=(服务2.stdout,), daemon=True).start()
         try:
             for _ in range(30):
                 try:
@@ -193,9 +232,54 @@ def main() -> int:
         状态 = 取("/api/state")
         完成行 = next(g for g in 状态["门禁最近"] if g["sha"] == "d" * 40)
         断言(完成行["绿"] == 0 and 完成行["总秒"] == 900, "完成上报覆盖执行中行")
+
+        print("== ⑨批主心跳与排队行孤儿回收（562） ==")
+        调("join", {"分支": "任务/562等待者", "基线": "9d6d2bbc", "写集摘要": "心跳面"})
+        断言(调("heartbeat", {"分支": "任务/562等待者"})["ok"], "heartbeat 排队行=ok")
+        行 = next(q for q in 取("/api/state")["队列"] if q["分支"] == "任务/562等待者")
+        断言(行["状态"] == "排队", "heartbeat 只刷更新时刻不改状态")
+        回 = 调("heartbeat", {"分支": "任务/无此行"}, 期望ok=False)
+        断言("无此行" in 回["说明"], "heartbeat 无此行=拒（心跳方静默忽略）")
+        time.sleep(4)   # 无写活动超 CN_QUEUE_QUEUED_STALE_SEC=3s
+        行 = next(q for q in 取("/api/state")["队列"] if q["分支"] == "任务/562等待者")
+        断言(行["状态"] == "已踢出", "排队行超时无写活动=降级已踢出（507/476 孤儿不再卡队列）")
+        调("join", {"分支": "任务/562等待者", "基线": "9d6d2bbc", "写集摘要": "重报"})
+        for _ in range(5):   # 心跳保活跨 2 倍阈值——活会话行不误回收（492 守卫）
+            time.sleep(1)
+            调("heartbeat", {"分支": "任务/562等待者"})
+        行 = next(q for q in 取("/api/state")["队列"] if q["分支"] == "任务/562等待者")
+        断言(行["状态"] == "排队", "等待者心跳保活=跨超时阈值不误回收")
+        调("join", {"分支": "任务/562批主", "基线": "9d6d2bbc", "写集摘要": "集成中心跳"})
+        调("update", {"分支": "任务/562批主", "状态": "集成中"})
+        调("heartbeat", {"分支": "任务/562批主"})
+        行 = next(q for q in 取("/api/state")["队列"] if q["分支"] == "任务/562批主")
+        断言(行["状态"] == "集成中", "集成中行心跳=状态保持（444 长门禁活批证明）")
+
+        print("== ⑩预验已并入检测（562·mock 看板台账三态） ==")
+        # 收尾前段遗留：⑤ runner-E 领走的执行中任务（久不心跳会被回收重派混入派发断言）
+        #   与 ⑦ 遗留的排队任务（序号更小会先被选出）
+        调("task_complete", {"runner": "runner-E", "分支": "ci/预验-bbbbbbbbbb", "绿": True,
+                             "结果": {"绿": True}})
+        调("task_cancel", {"分支": "ci/预验-eeeeeeeeee"})
+        回 = 调("task_enqueue", {"分支": "ci/预验-7770000001", "sha": "7" * 40,
+                                 "源分支": "任务/777"}, 期望ok=False)
+        断言("已并入" in 回["说明"], "源分支已并入 develop（台账✅）=拒入（预验无意义）")
+        调("task_enqueue", {"分支": "ci/预验-7780000002", "sha": "8" * 40,
+                            "源分支": "任务/778"})
+        回 = 调("task_claim", {"runner": "r562"})
+        断言(回["任务"] and 回["任务"]["分支"] == "ci/预验-7780000002", "台账⬜未并入=照常派发")
+        调("task_complete", {"runner": "r562", "分支": "ci/预验-7780000002", "绿": True,
+                             "结果": {"绿": True}})
+        调("task_enqueue", {"分支": "ci/预验-7790000003", "sha": "9" * 40,
+                            "源分支": "任务/779"})
+        回 = 调("task_claim", {"runner": "r562b"})
+        断言(回["任务"] and 回["任务"]["分支"] == "ci/预验-7790000003",
+             "台账查无任务（404）=核不了放行（宁漏检不误杀）")
+
         print("\n[全部通过] %d 项断言·临时 DB=%s" % (通过, db文件))
         return 0
     finally:
+        看板服务.shutdown()
         服务.terminate()
         try:
             服务.wait(timeout=5)

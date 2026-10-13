@@ -14,6 +14,8 @@
 #   POST /api/join    {分支,基线,写集摘要}      报名（幂等）
 #   POST /api/update  {分支,状态}               改状态（排队/集成中/已踢出/已完成）
 #   POST /api/touch   {分支}                    重报时刻（失败恢复重排队·保序不刷=幂等）
+#   POST /api/heartbeat {分支}                  562：只刷更新时刻（批主/等待者活会话证明·
+#                                             不改状态——回收与 --wait 接管判定以心跳新鲜度为据）
 #   POST /api/clear   {分支们:[…]}              集成销账清行
 #   POST /api/report  {ci_daemon 结果 JSON}     门禁结果上报
 #   POST /api/task_enqueue  {分支,sha,源分支?,认领限制?}  预验任务入队（幂等·已完成绿=直接复用·已完成红=重置重跑；
@@ -27,10 +29,13 @@
 
 import json
 import os
+import re
 import sqlite3
 import sys
 import threading
 import time
+import urllib.error
+import urllib.request
 from datetime import datetime, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -45,6 +50,9 @@ db路径 = os.environ.get("CN_QUEUE_DB",
 任务历史保留 = 200          # 预验任务完成行裁剪（同门禁口径）
 心跳超时秒 = int(os.environ.get("CN_TASK_STALE_SEC", "300"))   # 心跳断此秒数=回收重派（家机睡眠不黑洞）
 集成中超时秒 = int(os.environ.get("CN_QUEUE_INTEGRATE_STALE_SEC", "7200"))   # 集成中无更新超此秒数=降级已踢出（456·0=禁用）
+排队超时秒 = int(os.environ.get("CN_QUEUE_QUEUED_STALE_SEC", "3600"))   # 562：排队行无写活动超此秒数=降级已踢出（报名会话失联孤儿·0=禁用）
+看板服务地址 = os.environ.get("CN_BOARD_URL", "http://127.0.0.1:8301")   # 562：已并入检测数据源（任务台账·同机默认）
+并入检测退避秒 = 60       # 562：看板不可达退避——窗口内不再试（防看板故障拖慢 claim 派发）
 
 写锁 = threading.Lock()          # SQLite 写串行化（读靠 WAL 并发）
 时区时刻 = lambda: datetime.now().strftime("%m-%d %H:%M:%S")   # 911 教训：秒级戳
@@ -103,36 +111,78 @@ def 预验任务快照() -> list[dict]:
             for r in 行们]
 
 
-def 回收集成中死行() -> None:
-    """456：集成中态失联回收——「集成中=批主在飞不动」（1020 保护）的前提是批主活着；
-    批主死亡则永挂（实录=任务/288 于 10-08 进集成中卡死 3 天，服务轮手动收场）。
-    正常集成=预验绿后 push+销账，分钟级；超 CN_QUEUE_INTEGRATE_STALE_SEC（默认 2h）
-    无任何更新→降级「已踢出」：留审计痕迹，批主真活着可 join 重报回排队（1020 语义）。
-    调用方须持写锁。"""
-    if 集成中超时秒 <= 0:
-        return
+def 超时死行(状态: str, 阈值秒: int) -> list[tuple[str, str, float]]:
+    """取指定状态队列行中 更新时刻超阈值的（分支, 更新时刻, 静默秒）。
+    更新时刻=时区时刻() 无年份（911 秒级戳）——补当前年解析；跨年旧行得负差
+    →视为未知跳过（宁漏收不误收；元旦后一天的跨年行等下轮人工）。调用方须持写锁。"""
+    出: list[tuple[str, str, float]] = []
     现在 = datetime.now()
     for 分支, 更新 in con.execute(
-            "SELECT 分支,更新时刻 FROM 队列 WHERE 状态='集成中'").fetchall():
+            "SELECT 分支,更新时刻 FROM 队列 WHERE 状态=?", (状态,)).fetchall():
         try:
-            # 更新时刻=时区时刻() 无年份（911 秒级戳）——补当前年解析；跨年旧行得负差
-            #   →视为未知跳过（宁漏收不误收；元旦后一天的跨年行等下轮人工）
             差 = (现在 - datetime.strptime(更新, "%m-%d %H:%M:%S").replace(year=现在.year)
                   ).total_seconds()
         except ValueError:
             continue
-        if 0 <= 差 and 差 > 集成中超时秒:
+        if 0 <= 差 and 差 > 阈值秒:
+            出.append((分支, 更新, 差))
+    return 出
+
+
+def 回收死行() -> None:
+    """456+562：队列死行回收——会话死亡不能永挂队列（批主选举 min(排队) 被孤儿卡死=
+    全员死等·507/476/495 等八行报名后失联卡队列数小时实录）。
+    「集成中」超 集成中超时秒（默认 2h）→已踢出（456·批主 562 起有心跳维持新鲜，
+    活批不误收）；「排队」超 排队超时秒（默认 1h）→已踢出降权（562·心跳活着的行
+    更新时刻常新不回收=492「不误删活跃会话」守卫；误收无损——join 重报即回排队
+    （1020 语义）·--wait 等待者 touch 自愈（1020 已有））。调用方须持写锁。"""
+    if 集成中超时秒 > 0:
+        for 分支, 更新, 差 in 超时死行("集成中", 集成中超时秒):
             con.execute("UPDATE 队列 SET 状态='已踢出',更新时刻=? WHERE 分支=?",
                         (时区时刻(), 分支))
             con.commit()   # 自提交：调用方（update 无此行等）可能提前 return
             print("[回收] 集成中超时 %s（更新 %s·静默 %.0f 分钟）→已踢出"
                   % (分支, 更新, 差 / 60), flush=True)
+    if 排队超时秒 > 0:
+        for 分支, 更新, 差 in 超时死行("排队", 排队超时秒):
+            con.execute("UPDATE 队列 SET 状态='已踢出',更新时刻=? WHERE 分支=?",
+                        (时区时刻(), 分支))
+            con.commit()
+            print("[回收] 排队超时 %s（更新 %s·静默 %.0f 分钟）→已踢出降权（562 孤儿回收）"
+                  % (分支, 更新, 差 / 60), flush=True)
+
+
+_并入检测上次失败 = [0.0]   # 562：看板不可达退避戳（time.time()）——退避窗口内核不了=放行
+
+
+def 源分支已并入(源分支: str) -> bool | None:
+    """562：核预验任务源分支是否已并入 develop——数据源=看板任务台账（GET /api/task/<号>
+    只读免鉴权）：状态 ✅=integrate 成功销账（✅⇔sha 铁律）=源分支已并入 develop 的
+    服务端唯一权威信号。返回 True=已并入；False=未并入；None=核不了（源分支空/非
+    任务/<号> 格式/任务不在台账/看板不可达——宁放行不误杀，不堵队列派发）。"""
+    m = re.match(r"^任务/([0-9]+[a-z]?)$", (源分支 or "").strip())
+    if not m:
+        return None
+    if time.time() - _并入检测上次失败[0] < 并入检测退避秒:
+        return None   # 退避窗口（上一次不可达）——直接放行
+    try:
+        with urllib.request.urlopen(看板服务地址.rstrip("/") + "/api/task/" + m.group(1),
+                                    timeout=3) as 响应:
+            任务 = json.loads(响应.read().decode("utf-8")).get("任务") or {}
+    except urllib.error.HTTPError:
+        return None   # 任务不在台账（404 等）——服务可达·核不了不退避
+    except Exception:
+        _并入检测上次失败[0] = time.time()   # 看板不可达——退避·防拖慢 claim 热路径
+        return None
+    if not 任务:
+        return None
+    return 任务.get("状态") == "✅"
 
 
 def 处理写(名: str, 数据: dict) -> dict:
     """统一写入口（写锁内）——返回 {ok, 说明}。"""
     with 写锁:
-        回收集成中死行()   # 456：任何写活动顺手扫集成中死行（批主死亡后靠他批写活动触发）
+        回收死行()   # 456+562：任何写活动顺手扫集成中/排队死行（会话死亡后靠他批写活动触发）
         if 名 == "join":
             分支 = str(数据.get("分支", ""))
             if not 分支.startswith("任务/"):
@@ -167,6 +217,16 @@ def 处理写(名: str, 数据: dict) -> dict:
                 return {"ok": False, "说明": "非法状态 " + 新状态}
             cur = con.execute("UPDATE 队列 SET 状态=?,更新时刻=? WHERE 分支=?",
                               (新状态, 时区时刻(), 分支))
+            if cur.rowcount == 0:
+                return {"ok": False, "说明": "无此行 " + 分支}
+        elif 名 == "heartbeat":
+            # 562 批主/等待者心跳：只刷新更新时刻（活会话证明·不改状态不刷报名时刻=保序）
+            #   ——批主集成中/成员 --wait 等待期间定期调，服务端回收与客户端 --wait
+            #   接管判定以心跳新鲜度为据（治 444：win 全量门禁 40+ 分钟无行更新被误判失联）。
+            #   行不在=ok False（已被销账/踢出——心跳方静默忽略）。
+            分支 = str(数据.get("分支", ""))
+            cur = con.execute("UPDATE 队列 SET 更新时刻=? WHERE 分支=?",
+                              (时区时刻(), 分支))
             if cur.rowcount == 0:
                 return {"ok": False, "说明": "无此行 " + 分支}
         elif 名 == "touch":
@@ -209,6 +269,11 @@ def 处理写(名: str, 数据: dict) -> dict:
                 return {"ok": False, "说明": "分支须 ci/预验-/ci/兜底- 开头且 sha 合法"}
             已有 = con.execute("SELECT 状态,绿 FROM 预验任务 WHERE 分支=?", (分支,)).fetchone()
             if 已有 is None:
+                # 562 已并入检测：源分支已并入 develop（台账 ✅ 销账）=预验无意义——
+                #   拒绝入池（防矛盾场景与防御性重入队复活）；None/False=放行（宁漏检不误杀）。
+                if 源分支已并入(源分支) is True:
+                    return {"ok": False,
+                            "说明": "源分支 %s 已并入 develop（台账已销账）——预验无意义·拒绝入池（562）" % 源分支}
                 con.execute("INSERT INTO 预验任务(分支,sha,源分支,认领限制,状态,入队时刻,更新时刻) "
                             "VALUES(?,?,?,?,'排队',?,?)", (分支, sha, 源分支, 认领限制, 时区时刻(), 时区时刻()))
             elif 已有[0] == "完成" and not 已有[1] and not 分支.startswith("ci/兜底-"):
@@ -236,18 +301,31 @@ def 处理写(名: str, 数据: dict) -> dict:
             #   （兜底任务恒 NULL 不限=任何 runner 可领·门禁永不缺位）。
             认领过滤337 = ("AND (认领限制 IS NULL OR 认领限制='' "
                            "OR ','||认领限制||',' LIKE '%,'||?||',%')")
-            行 = con.execute("SELECT 分支,sha FROM 预验任务 WHERE 状态='排队' AND 分支 LIKE 'ci/预验-%' "
-                             + 认领过滤337 + " ORDER BY 序号 LIMIT 1",
-                             (平台337,)).fetchone()
-            if 行 is None:
-                行 = con.execute("SELECT 分支,sha FROM 预验任务 WHERE 状态='排队' "
+            # 562 已并入检测：选出任务后核源分支——已并入 develop（台账 ✅）=孤儿预验
+            #   （任务已集成销账·555/556 实录：回收后反复重派执行浪费池容量）→置「已取消」
+            #   不派发·继续选下一个；None/False=照常派发（宁漏检不误杀）。已取消行不参与
+            #   认领/不复活（enqueue 见已存在不动）·随完成行裁剪清理（防堆积）。
+            for _ in range(64):   # 防呆上限：极端全取消场景不空转
+                行 = con.execute("SELECT 分支,sha,源分支 FROM 预验任务 WHERE 状态='排队' AND 分支 LIKE 'ci/预验-%' "
                                  + 认领过滤337 + " ORDER BY 序号 LIMIT 1",
                                  (平台337,)).fetchone()
-            if 行 is None:
-                return {"ok": True, "任务": None}
-            con.execute("UPDATE 预验任务 SET 状态='执行中',认领者=?,心跳时戳=?,更新时刻=? "
-                        "WHERE 分支=?", (runner, 现在, 时区时刻(), 行[0]))
-            return {"ok": True, "任务": {"分支": 行[0], "sha": 行[1]}}
+                if 行 is None:
+                    行 = con.execute("SELECT 分支,sha,源分支 FROM 预验任务 WHERE 状态='排队' "
+                                     + 认领过滤337 + " ORDER BY 序号 LIMIT 1",
+                                     (平台337,)).fetchone()
+                if 行 is None:
+                    break
+                if 源分支已并入(行[2]) is True:
+                    con.execute("UPDATE 预验任务 SET 状态='已取消',更新时刻=? WHERE 分支=?",
+                                (时区时刻(), 行[0]))
+                    con.commit()   # 自提交：继续选下一个不受影响
+                    print("[取消] 预验 %s 源分支 %s 已并入 develop（台账销账）——任务作废不再派发（562）"
+                          % (行[0], 行[2]), flush=True)
+                    continue
+                con.execute("UPDATE 预验任务 SET 状态='执行中',认领者=?,心跳时戳=?,更新时刻=? "
+                            "WHERE 分支=?", (runner, 现在, 时区时刻(), 行[0]))
+                return {"ok": True, "任务": {"分支": 行[0], "sha": 行[1]}}
+            return {"ok": True, "任务": None}
         elif 名 == "task_heartbeat":
             runner, 分支 = str(数据.get("runner", "")), str(数据.get("分支", ""))
             cur = con.execute("UPDATE 预验任务 SET 心跳时戳=?,更新时刻=? "
@@ -273,8 +351,9 @@ def 处理写(名: str, 数据: dict) -> dict:
                                时区时刻(), 分支, runner))
             if cur.rowcount == 0:
                 return {"ok": False, "说明": "任务不在执行中或认领者不匹配（可能已被回收重派）" + 分支}
-            con.execute("DELETE FROM 预验任务 WHERE 状态='完成' AND 序号 NOT IN "
-                        "(SELECT 序号 FROM 预验任务 WHERE 状态='完成' ORDER BY 序号 DESC LIMIT ?)",
+            con.execute("DELETE FROM 预验任务 WHERE 状态 IN ('完成','已取消') AND 序号 NOT IN "
+                        "(SELECT 序号 FROM 预验任务 WHERE 状态 IN ('完成','已取消') "
+                        "ORDER BY 序号 DESC LIMIT ?)",
                         (任务历史保留,))
         else:
             return {"ok": False, "说明": "未知操作 " + 名}
@@ -313,7 +392,7 @@ class 处理器(BaseHTTPRequestHandler):
         路径 = urlparse(self.path).path
         if 路径 == "/api/state":
             with 写锁:
-                回收集成中死行()   # 456：批主死亡后无写活动，靠轮询/网页查看触发回收
+                回收死行()   # 456+562：批主/报名会话死亡后无写活动，靠轮询/网页查看触发回收
                 return self.回JSON({"队列": 队列快照(), "门禁最近": 门禁快照(),
                                     "预验任务": 预验任务快照()})
         if 路径 == "/api/task_result":
@@ -478,6 +557,78 @@ if __name__ == "__main__":
         处理写("task_enqueue", {"分支": "ci/兜底-dddd000005", "sha": "f" * 40})   # daemon 路径=不带限制
         t = 处理写("task_claim", {"runner": "r_arm", "平台": "linux-arm64"})["任务"]
         断言(t and t["分支"] == "ci/兜底-dddd000005", "337 兜底默认不限=任何 runner 可领（门禁永不缺位）")
+
+        # ── 562 批主心跳：heartbeat=只刷更新时刻·不改状态——活批不被回收误杀（444 根治） ──
+        #   （真实批主心跳 2 分钟≪集成中超时 2h·行时刻恒新鲜；此处直接断言心跳语义本身）
+        旧戳562 = (datetime.now() - timedelta(seconds=集成中超时秒 * 2)).strftime("%m-%d %H:%M:%S")
+        处理写("join", {"分支": "任务/心-6-p", "基线": "a", "写集摘要": ""})
+        处理写("update", {"分支": "任务/心-6-p", "状态": "集成中"})
+        断言(处理写("heartbeat", {"分支": "任务/心-6-p"})["ok"], "562 heartbeat 集成中行=ok")
+        _time = __import__("time")
+        _time.sleep(1.1)   # 秒级戳——跨秒才能比出刷新
+        断言(处理写("heartbeat", {"分支": "任务/心-6-p"})["ok"], "562 heartbeat 幂等可反复调")
+        行心 = next(r2 for r2 in 队列快照() if r2["分支"] == "任务/心-6-p")
+        断言(行心["状态"] == "集成中" and 行心["更新时刻"] > 旧戳562,
+             "562 心跳刷新更新时刻且不改状态（长门禁活批证明·444 根治）")
+        处理写("join", {"分支": "任务/心-6-q", "基线": "a", "写集摘要": ""})   # 无关写活动触发回收扫描
+        断言(next(r2 for r2 in 队列快照() if r2["分支"] == "任务/心-6-p")["状态"] == "集成中",
+             "562 心跳维持的活批过扫描不误收（456 回收以更新时刻为据）")
+        断言(not 处理写("heartbeat", {"分支": "任务/无此行"})["ok"],
+             "562 heartbeat 无此行=ok False（心跳方静默忽略）")
+
+        # ── 562 排队行孤儿回收：超时降级已踢出（批主选举不再被失联行卡死）·心跳保活不误收 ──
+        处理写("join", {"分支": "任务/孤-7-r", "基线": "a", "写集摘要": ""})
+        孤旧戳 = (datetime.now() - timedelta(seconds=排队超时秒 * 2)).strftime("%m-%d %H:%M:%S")
+        con.execute("UPDATE 队列 SET 更新时刻=? WHERE 分支='任务/孤-7-r'", (孤旧戳,))
+        处理写("join", {"分支": "任务/孤-7-s", "基线": "a", "写集摘要": ""})   # 活跃行+触发扫描
+        断言(next(r2 for r2 in 队列快照() if r2["分支"] == "任务/孤-7-r")["状态"] == "已踢出",
+             "562 排队行超时无写活动=降级已踢出（507/476 孤儿不再卡队列）")
+        断言(next(r2 for r2 in 队列快照() if r2["分支"] == "任务/孤-7-s")["状态"] == "排队",
+             "562 新报名行未超时=保护不动（492 不误删活跃会话守卫）")
+        处理写("join", {"分支": "任务/孤-7-t", "基线": "a", "写集摘要": ""})
+        _time.sleep(1.1)
+        处理写("heartbeat", {"分支": "任务/孤-7-t"})   # 等待者心跳保活
+        行孤 = next(r2 for r2 in 队列快照() if r2["分支"] == "任务/孤-7-t")
+        断言(行孤["状态"] == "排队" and 行孤["更新时刻"] > 孤旧戳,
+             "562 等待者心跳保活=更新时刻恒新鲜（排队回收不误收·492 守卫）")
+        处理写("join", {"分支": "任务/孤-7-u", "基线": "a", "写集摘要": ""})   # 触发扫描
+        断言(next(r2 for r2 in 队列快照() if r2["分支"] == "任务/孤-7-t")["状态"] == "排队",
+             "562 心跳保活行过回收扫描不动")
+        r = 处理写("join", {"分支": "任务/孤-7-r", "基线": "b", "写集摘要": ""})
+        断言("原态 已踢出" in r.get("说明", ""), "562 排队回收行重报=回排队（1020 语义无损）")
+        con.execute("UPDATE 队列 SET 更新时刻='坏串' WHERE 分支='任务/孤-7-s'")
+        处理写("join", {"分支": "任务/孤-7-u", "基线": "b", "写集摘要": ""})   # 触发扫描
+        断言(next(r2 for r2 in 队列快照() if r2["分支"] == "任务/孤-7-s")["状态"] == "排队",
+             "562 更新时刻坏串=宁漏收不误收且不炸服务（456 口径同构）")
+
+        # ── 562 预验已并入检测：源分支已并入 develop=孤儿预验拒入/取消不再重派（555/556） ──
+        真检测562 = 源分支已并入
+        源分支已并入 = lambda 源: True   # 模拟看板台账：核出已并入
+        r = 处理写("task_enqueue", {"分支": "ci/预验-f111111111", "sha": "1" * 40,
+                                    "源分支": "任务/555"})
+        断言(not r["ok"] and "已并入" in r.get("说明", ""),
+             "562 enqueue 核出源分支已并入=拒入")
+        源分支已并入 = lambda 源: False   # 模拟：未并入——放行入池
+        处理写("task_enqueue", {"分支": "ci/预验-f111111111", "sha": "1" * 40,
+                                "源分支": "任务/555"})
+        处理写("task_enqueue", {"分支": "ci/预验-f222222222", "sha": "2" * 40,
+                                "源分支": "任务/556"})
+        处理写("task_enqueue", {"分支": "ci/预验-f333333333", "sha": "3" * 40})   # 旧客户端无源分支
+        源分支已并入 = lambda 源: 源 == "任务/555"   # 555→True·556→False·None 源→False
+        t = 处理写("task_claim", {"runner": "r562"})["任务"]
+        断言(t and t["分支"] == "ci/预验-f222222222",
+             "562 claim 跳过已并入任务派下一个（不浪费池容量重派）")
+        断言(next(r2 for r2 in 预验任务快照()
+                  if r2["分支"] == "ci/预验-f111111111")["状态"] == "已取消",
+             "562 已并入任务=置已取消（不再参与认领·防反复重派）")
+        t = 处理写("task_claim", {"runner": "r562b"})["任务"]
+        断言(t and t["分支"] == "ci/预验-f333333333",
+             "562 无源分支任务照常派发（旧客户端兼容·宁漏检不误杀）")
+        断言(处理写("task_claim", {"runner": "r562c"})["任务"] is None, "562 取消/领完=池空")
+        r = 处理写("task_enqueue", {"分支": "ci/预验-f111111111", "sha": "1" * 40,
+                                    "源分支": "任务/555"})
+        断言(r["ok"], "562 enqueue 见已取消行=不动不复活（幂等防重入队复活）")
+        源分支已并入 = 真检测562   # 还原真实现（防泄漏影响后续段）
 
         print("selftest %d 项全过" % n绑定[0])
         raise SystemExit(0)
