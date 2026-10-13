@@ -822,6 +822,17 @@ private:
                                  const std::string& stType, const ir::IRValue& value);
     bool identifierClassCopyAssign(AssignmentExpr* node, IdentifierExpr* ident,
                                    const std::string& unique);
+    // 821（#444）：类目标 ← 运算符重载表达式产物（乙 + 丙 返回类对象）——句柄
+    //   接管 + 覆盖前旧对象释放；实现于 ir_expr_assign_ident_class.cpp 类对象族
+    bool identifierClassOverloadProductAssign(AssignmentExpr* node, IdentifierExpr* ident,
+                                              const std::string& unique);
+    // 821（#444）：重载产物右值形态判定（局部/静态共用·非引用返回白名单）
+    bool isClassOverloadProductRhs(AssignmentExpr* node,
+                                   const std::string& canonTarget) const;
+    // 821（#444）：静态类目标 ← 重载产物（句柄接管 + 旧值释放·value 已求值）
+    bool globalStaticClassOverloadProductAssign(AssignmentExpr* node, IdentifierExpr* ident,
+                                                const std::string& stType,
+                                                const ir::IRValue& value);
     bool identifierClassTransferAssign(AssignmentExpr* node, IdentifierExpr* ident,
                                        const std::string& unique,
                                        const std::string& targetType,

@@ -121,6 +121,9 @@ bool IRGenerator::assignToIdentifierTarget(AssignmentExpr* node, IdentifierExpr*
     // 目标变量唯一内部名（后续 普通赋值/类深拷贝 均需，提前计算避免重复查找）
     const std::string unique = lookupVarName(ident->name);
     if (identifierClassCopyAssign(node, ident, unique)) return true;
+    // 821（#444）：类目标 ← 运算符重载表达式产物（甲 = 乙 + 丙·重载返回类对象）——
+    //   句柄接管 + 覆盖前旧对象释放（族实现=ir_expr_assign_ident_class.cpp）
+    if (identifierClassOverloadProductAssign(node, ident, unique)) return true;
     if (identifierStructLiteralAssign(node, ident, unique)) return true;
     identifierGenericAssign(node, ident, unique);
     return true;
@@ -223,6 +226,9 @@ bool IRGenerator::assignToGlobalStatic(AssignmentExpr* node, IdentifierExpr* ide
         //   悬挂（源 RAII 析构后静态槽残留 freed 指针 -> 堆损坏）；右值为构造
         //   调用/临时对象（表 = 向量<...>()）本就是新对象，直接指针入槽。
     if (globalStaticClassAssign(node, ident, stType, value)) return true;
+        // 821（#444）：静态类目标 ← 重载产物（全局甲 = 全局乙 + 全局丙）——
+        //   句柄接管 + 旧值释放（族实现=ir_expr_assign_ident_class.cpp）
+    if (globalStaticClassOverloadProductAssign(node, ident, stType, value)) return true;
         // 933（095 静态边缘形态）：静态类/容器目标 转移赋值 乙 = 转移(甲)——
         //   原路径转移展开后 StorePtr 直接覆盖静态槽，旧静态对象（初值构造或
         //   旧值）无人释放=泄漏（静态槽无块出口 RAII，赋值点是唯一 drop 时机；
@@ -323,6 +329,15 @@ bool IRGenerator::globalStaticClassAssign(AssignmentExpr* node, IdentifierExpr* 
                 ir::IRValue slotAddr = emitResult(
                     ir::Opcode::ConstString, {}, "ptr",
                     "?gstatic_" + ident->name, node->location);
+                // 821（#444）：StorePtr 覆盖前补旧对象释放——095「覆盖前 drop 旧值」
+                //   静态面补齐（原路径直接覆盖静态槽：初值对象/上一次赋值对象连同
+                //   资源字段无人释放=泄漏；局部面 095 已修、v2 静态面（生成容器
+                //   对象整体赋值 目标是静态）已释放——探针实测 残留 1:0 分叉。
+                //   顺序=新对象（深拷）已建后释放旧（自赋值 全局甲 = 全局甲 安全）。
+                ir::IRValue oldStatic = emitResult(ir::Opcode::LoadPtr, {slotAddr},
+                                                   "ptr", "", node->location);
+                emit(ir::Opcode::DeleteObject, {oldStatic}, ir::IRValue(),
+                     canonTgt, "void", node->location);
                 emit(ir::Opcode::StorePtr, {slotAddr, newObj}, ir::IRValue(),
                      "", "ptr", node->location);
                 lastExpr_ = newObj;
@@ -363,101 +378,6 @@ bool IRGenerator::globalStaticClassTransferAssign(AssignmentExpr* node, Identifi
          "ptr", node->location);
     lastExpr_ = value;
     return true;
-}
-
-// 类对象赋值深拷贝（标识符目标；原 650~723 段）：乙 = 甲 独立新对象 + 拷贝构造
-//   （有）/ CopyStruct（无）；引用参数经指针写回。
-bool IRGenerator::identifierClassCopyAssign(AssignmentExpr* node, IdentifierExpr* ident,
-                                            const std::string& unique) {
-    // ---- 阶段3 OOP（缺陷1 修复）：类对象赋值深拷贝 ----
-    // 类对象是堆指针语义，`乙 = 甲` 若直接 Store 指针会导致两个变量槽共享
-    // 同一堆地址，RAII（函数返回 DeleteObject）对两个变量重复释放 -> 堆损坏。
-    // 正确语义：新建独立堆对象 + 逐字节拷贝字段（C++ 拷贝语义，含虚表指针，
-    //   同类虚表指针相同，覆盖后语义不变）。
-    if (semantic_ != nullptr &&
-        node->value->getType() == NodeType::IdentifierExpr) {
-        const std::string targetSrcType = lookupSrcType(ident->name);
-        const std::string canonTarget = types::canonical(targetSrcType);
-        const std::string valueSrcType = lookupSrcType(
-            static_cast<IdentifierExpr*>(node->value.get())->name);
-        const std::string canonValue = types::canonical(valueSrcType);
-        if (semantic_->isClassType(canonTarget) &&
-            semantic_->isClassType(canonValue)) {
-            const ClassInfo* ci = semantic_->findClass(canonTarget);
-            if (ci != nullptr && !isCompoundAssignOp(node->op)) {
-                // 源对象指针 = Load 源变量槽（类变量槽存对象指针）
-                ir::IRValue srcObj = genExpr(node->value.get());
-                // 新建独立对象（extra=类名|大小，codegen 初始化虚表指针）
-                const std::string extra = canonTarget + "|" +
-                                          std::to_string(ci->totalSize);
-                ir::IRValue newObj = emitResult(
-                    ir::Opcode::NewObject,
-                    {ir::IRValue::constant(canonTarget, "ptr")},
-                    "ptr", extra, node->location);
-                // 方案A（2026-08-25）：目标类有拷贝构造（类名(类名& 其他)）时，
-                //   赋值拷贝改调拷贝构造（深拷贝），而非 CopyStruct 浅拷贝
-                //   （含裸指针字段浅拷贝析构双释放 0xC0000374）。与 genVarDecl
-                //   初始化路径、结构体赋值路径一致；byRef ABI：源为标识符变量
-                //   时传 源变量槽地址（&甲），体内经 byRef 解引用得源对象指针。
-                const ClassMemberInfo* copyCtor =
-                    semantic_->findCopyConstructor(canonTarget);
-                if (copyCtor != nullptr) {
-                    const std::string copyOwner = copyCtor->ownerClass.empty()
-                                                      ? canonTarget
-                                                      : copyCtor->ownerClass;
-                    const std::string valueName =
-                        static_cast<IdentifierExpr*>(node->value.get())->name;
-                    const std::string srcUnique = lookupVarName(valueName);
-                    ir::IRValue srcAddr;
-                    if (isByRefCapture(valueName)) {
-                        // 源为引用参数：槽内存被引用对象地址（Load 槽）
-                        srcAddr = emitResult(
-                            ir::Opcode::Load,
-                            {ir::IRValue::var(srcUnique, "ptr")},
-                            "ptr", srcUnique, node->location);
-                    } else {
-                        srcAddr = emitResult(ir::Opcode::AddrOf,
-                                             {ir::IRValue::var(srcUnique, "i64")},
-                                             "ptr", srcUnique, node->location);
-                    }
-                    emit(ir::Opcode::Call, {newObj, srcAddr}, ir::IRValue(),
-                         methodSymbolKey(copyOwner, copyCtor->sigKey), "void",
-                         node->location);
-                } else {
-                    // 逐字节拷贝字段到新对象（深拷贝）
-                    emit(ir::Opcode::CopyStruct, {newObj, srcObj}, ir::IRValue(),
-                         std::to_string(ci->totalSize), "void", node->location);
-                }
-                // A-1（引用参数）：目标为引用参数时经指针写回（StorePtr 到槽内地址）
-                if (isByRefCapture(ident->name)) {
-                    ir::IRValue capAddr = emitResult(ir::Opcode::Load,
-                                                     {ir::IRValue::var(unique, "ptr")},
-                                                     "ptr", unique, node->location);
-                    emit(ir::Opcode::StorePtr, {capAddr, newObj}, ir::IRValue(), "",
-                         "ptr", node->location);
-                } else {
-                    // 任务 095（2026-09-30·008 树波 4）：Store 覆盖前补**旧对象
-                    //   释放**——原路径直接 Store 新句柄覆盖目标槽，乙 原堆对象
-                    //   无人释放=泄漏（0929 审计 p6 实测残留 1；对照字符串路径
-                    //   identifierStringTransferAssign 有 free 旧）。Rust 对照：
-                    //   `b = a` 覆盖前 drop 旧值。释放模型=genClassDestructorCalls
-                    //   同款**单发 DeleteObject**（指令内含析构调用+free·空句柄
-                    //   空安全跳过）——首版 Call 析构+DeleteObject 双调=析构
-                    //   打印两次（p1 实测 4>3 实锤）。
-                    ir::IRValue oldObj = emitResult(
-                        ir::Opcode::Load, {ir::IRValue::var(unique, "ptr")},
-                        "ptr", unique, node->location);
-                    emit(ir::Opcode::DeleteObject, {oldObj}, ir::IRValue(),
-                         canonTarget, "void", node->location);
-                    emit(ir::Opcode::Store, {newObj}, ir::IRValue(), unique, "ptr",
-                         node->location);
-                }
-                lastExpr_ = newObj;
-                return true;
-            }
-        }
-    }
-    return false;
 }
 
 // 构造字面量赋值（标识符目标；原 725~751 段）：emitStructInitTo 逐字段原地写（D2）。
