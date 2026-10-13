@@ -86,6 +86,9 @@ private:
     bool checkText(const char* text) const;           // 当前Token文本是否等于指定文本
     void reportError(const SourceLocation& loc, const std::string& message); // 报告语法错误
     void reportErrorHere(const std::string& message); // 报告当前Token位置错误
+    // 536：顶层声明体尾随分号拒绝（001 §4.6 规则1/5——体以 '}' 自终结后
+    //   不加分号；专属诊断+消费防「预期顶层声明」级联错位；v2 同款零分叉）
+    void rejectBodyTrailingSemicolon(const std::string& kind);
     void consume(TokenType type, const std::string& expected); // 匹配并前进，失败报错
     void consumeSemicolon();                          // 消费可选分号（分号可选，规范示例无分号）
     void synchronize();                               // 错误恢复：同步到下一个语句边界

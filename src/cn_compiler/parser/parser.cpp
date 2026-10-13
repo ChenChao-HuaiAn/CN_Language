@@ -335,6 +335,22 @@ bool Parser::parseFuncPtrType(FuncPtrTypeInfo& out) {
 }
 
 
+// 536（诊断质量根治·双侧对齐）：顶层声明体尾随分号拒绝——001 §4.6 规则1/5
+//   （「结构体/类/接口/枚举体后不加分号（`}` 即边界）」；规则4 裸分号非法同旨）。
+//   原行为=顶层散分号报「预期顶层声明，实际为 ';'」并级联错位——后续声明/函数体
+//   全被当顶层垃圾，末条错位到函数体闭括号报「预期顶层声明，实际为 '}'」
+//   （536 探针现场：结构体定义带 `};`（C++ 习惯）→ 成员复合赋值语句被误读为
+//   「解析失败」）。本函数报专属诊断并消费该分号，遏制级联错位（错误已记，
+//   编译仍失败）。零分叉：v2「解析程序」同款显式拒绝（顶层兜底静默吞改为
+//   语法错误——原 v2 静默接受 `};` 与宿主拒绝形成分叉）。
+void Parser::rejectBodyTrailingSemicolon(const std::string& kind) {
+    if (check(TokenType::Semicolon)) {
+        reportErrorHere(kind + "声明体以 '}' 自终结，其后不应有分号 ';'"
+                        "（请删除该分号；001 §4.6 规则1/规则5）");
+        advance();  // 消费防级联错位
+    }
+}
+
 // 解析代码块：{ 语句列表 }
 // 315-a（T6）：深度防护挂点——如果/当/循环体等块嵌套递归经此计数；
 //   超限时快速扫到匹配 '}'（不递归展开，栈深度止于首次越界处），返回空块
@@ -516,13 +532,17 @@ std::unique_ptr<Program> Parser::parse(const std::vector<Token>& tokens) {
                     cls->access = moduleAccess;
                     program->classes.push_back(std::move(cls));
                 }
+                rejectBodyTrailingSemicolon("类");  // 536：体后分号专属诊断（防级联）
             } else {
-                auto decl = parseStructDecl(check(TokenType::Kw_Union));
+                const bool portableUnion = check(TokenType::Kw_Union);
+                auto decl = parseStructDecl(portableUnion);
                 if (!decl->name.empty()) {
                     decl->explicitPortable = true;
                     decl->access = moduleAccess;
                     program->structs.push_back(std::move(decl));
                 }
+                // 536：体后分号专属诊断（防级联；联合体与结构体同解析入口，类别名按实区分）
+                rejectBodyTrailingSemicolon(portableUnion ? "联合体" : "结构体");
             }
             continue;
         }
@@ -569,6 +589,7 @@ std::unique_ptr<Program> Parser::parse(const std::vector<Token>& tokens) {
                 decl->access = moduleAccess;  // 记录模块级可见性（Task 3.6）
                 program->structs.push_back(std::move(decl));
             }
+            rejectBodyTrailingSemicolon("结构体");  // 536：体后分号专属诊断（防级联）
         } else if (check(TokenType::Kw_Union)) {
             // 联合体声明（Task 2.7）
             auto decl = parseStructDecl(true);
@@ -576,6 +597,7 @@ std::unique_ptr<Program> Parser::parse(const std::vector<Token>& tokens) {
                 decl->access = moduleAccess;  // 记录模块级可见性（Task 3.6）
                 program->structs.push_back(std::move(decl));
             }
+            rejectBodyTrailingSemicolon("联合体");  // 536：体后分号专属诊断
         } else if (check(TokenType::Kw_Enum)) {
             // 枚举声明（Task 2.7）
             auto decl = parseEnumDecl();
@@ -583,6 +605,7 @@ std::unique_ptr<Program> Parser::parse(const std::vector<Token>& tokens) {
                 decl->access = moduleAccess;  // 记录模块级可见性（Task 3.6）
                 program->enums.push_back(std::move(decl));
             }
+            rejectBodyTrailingSemicolon("枚举");  // 536：体后分号专属诊断
         } else if (check(TokenType::Kw_Class)) {
             // 类声明（Task 3.1，规格书06-一）
             auto decl = parseClassDecl();
@@ -590,6 +613,7 @@ std::unique_ptr<Program> Parser::parse(const std::vector<Token>& tokens) {
                 decl->access = moduleAccess;  // 记录模块级可见性（Task 3.6）
                 program->classes.push_back(std::move(decl));
             }
+            rejectBodyTrailingSemicolon("类");  // 536：体后分号专属诊断
         } else if (check(TokenType::Kw_Interface)) {
             // 接口声明（Task 3.3，规格书06-六）
             auto decl = parseInterfaceDecl();
@@ -597,6 +621,7 @@ std::unique_ptr<Program> Parser::parse(const std::vector<Token>& tokens) {
                 decl->access = moduleAccess;  // 记录模块级可见性（Task 3.6）
                 program->interfaces.push_back(std::move(decl));
             }
+            rejectBodyTrailingSemicolon("接口");  // 536：体后分号专属诊断
         } else if (check(TokenType::Kw_Import)) {
             // 导入声明（Task 3.6，规格书08-三，v2.0 全形式）：
             //   导入 路径[作为 别名] | 导入 路径::{项} | 导入 路径::*
@@ -625,6 +650,7 @@ std::unique_ptr<Program> Parser::parse(const std::vector<Token>& tokens) {
             if (decl->innerClass != nullptr || decl->innerFunc != nullptr) {
                 program->generics.push_back(std::move(decl));
             }
+            rejectBodyTrailingSemicolon("泛型类");  // 536：体后分号专属诊断（防级联）
         } else if (checkText("常量")) {
             // 顶层常量（第 4 层，v2.0 决策9，P1-4）：常量 名 = 值（crate 级常量）。
             // 解析为 VarDecl(isConst=true) 存入 Program::globals（模块级可见性记录）。
