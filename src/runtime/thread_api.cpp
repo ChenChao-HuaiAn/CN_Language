@@ -64,6 +64,11 @@ void __cn_mutex_free(void* handle) {
 #include <pthread.h>
 #include <vector>
 
+// 476：子线程备用栈安装（crash_handler.cpp linux 段提供）——栈溢出信号处理器
+//   须在备用栈上运行；主线程由 entry() 安装，子线程经本函数各自安装
+//   （每线程独立备用栈；安装失败=降级保持默认崩溃行为）。
+extern "C" void cn_install_thread_stack_guard();
+
 namespace {
 
 // 入口包装：CN 函数指针（返回值+实参）统一经 void* 盒传递——
@@ -76,6 +81,7 @@ struct ThreadBox {
 };
 
 void* thread_trampoline(void* raw) {
+    cn_install_thread_stack_guard();  // 476：本线程栈溢出防护
     ThreadBox* box = static_cast<ThreadBox*>(raw);
     void* result = box->entry(box->arg);
     box->result = result;

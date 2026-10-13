@@ -90,6 +90,11 @@ TEST(ObjectApiTest, ErrorMessageCode8Overflow) {
     EXPECT_STREQ(__cn_error_message(8), "溢出错误");
 }
 
+// 错误码 9：栈溢出（476：guard page 被动捕获·§1.1a② 确定性失败）
+TEST(ObjectApiTest, ErrorMessageCode9StackOverflow) {
+    EXPECT_STREQ(__cn_error_message(9), "栈溢出");
+}
+
 // 未注册错误码：未知运行时错误（防御性）
 TEST(ObjectApiTest, ErrorMessageUnknown) {
     EXPECT_STREQ(__cn_error_message(99), "未知运行时错误");

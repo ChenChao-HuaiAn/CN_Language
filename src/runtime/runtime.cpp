@@ -19,6 +19,11 @@ extern "C" int cn_main();
 extern "C" void cn_install_crash_handler();
 extern "C" void cn_install_veh();
 #endif
+// 476：栈溢出防护安装（crash_handler.cpp——linux=SIGSEGV+sigaltstack 备用栈；
+//   win=空操作，栈溢出在 entry 已装的 UEF/VEH 内按 EXCEPTION_STACK_OVERFLOW
+//   异常码拦截）。全平台统一调用：宿主与 v2 发射的程序共用本入口（零分叉）。
+//   安装动作一次·零热路径开销。
+extern "C" void cn_install_stack_guard();
 
 // 入口：调用 主 函数，将返回值传递给操作系统
 // 对应CN语言 主 函数（规格书10.4：命令行参数预留，阶段一只支持无参签名）
@@ -29,6 +34,7 @@ extern "C" int entry(int argc, char** argv) {
     cn_install_crash_handler();
     cn_install_veh();
 #endif
+    cn_install_stack_guard();
     __cn_cache_argv(argc, argv);
     return cn_main();
 }

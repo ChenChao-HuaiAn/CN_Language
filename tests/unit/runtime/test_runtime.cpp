@@ -118,3 +118,48 @@ TEST(RuntimeTest, EntryIgnoresArgs) {
     char* argv[] = {const_cast<char*>("cn_program")};
     EXPECT_EQ(entry(1, argv), 42);
 }
+
+// ==================== 476：栈溢出判定（SIGSEGV 判据纯函数·防误报矩阵） ====================
+// 判据三条件（crash_handler.cpp 节首）：①地址类故障码 ②fault 不高于 sp 一页
+//   以上 ③fault 不低于 sp 64MiB 以上——全满足才判栈溢出（错误码 9）。
+
+// 溢出正例：故障地址紧贴 sp 之下（压栈/帧内访问的典型形态）
+TEST(RuntimeTest, StackOverflowMatchJustBelowSp) {
+    const unsigned long long sp = 0x7ffd00000000ULL;
+    EXPECT_EQ(__cn_stack_overflow_match(sp - 64, sp, 1), 1);        // SEGV_MAPERR
+    EXPECT_EQ(__cn_stack_overflow_match(sp - 4096, sp, 2), 1);      // SEGV_ACCERR
+}
+
+// 溢出正例：巨型栈帧（fault 低于 sp 但有限——64MiB 容差内）
+TEST(RuntimeTest, StackOverflowMatchLargeFrame) {
+    const unsigned long long sp = 0x7ffd00000000ULL;
+    EXPECT_EQ(__cn_stack_overflow_match(sp - (32ULL << 20), sp, 1), 1);
+}
+
+// 防误报：空指针解引用（fault≈0 与 sp 相距地址空间级）——不得判溢出
+TEST(RuntimeTest, StackOverflowRejectNullPointer) {
+    const unsigned long long sp = 0x7ffd00000000ULL;
+    EXPECT_EQ(__cn_stack_overflow_match(0, sp, 1), 0);
+    EXPECT_EQ(__cn_stack_overflow_match(0x1000, sp, 1), 0);
+}
+
+// 防误报：高地址野指针（fault 高于 sp 一页以上）
+TEST(RuntimeTest, StackOverflowRejectHighWildPointer) {
+    const unsigned long long sp = 0x7ffd00000000ULL;
+    EXPECT_EQ(__cn_stack_overflow_match(0x7fff00000000ULL, sp, 1), 0);
+    EXPECT_EQ(__cn_stack_overflow_match(sp + 8192, sp, 1), 0);
+}
+
+// 防误报：低于 sp 64MiB 以上的远野指针（溢出容差下界外）
+TEST(RuntimeTest, StackOverflowRejectFarBelowPointer) {
+    const unsigned long long sp = 0x7ffd00000000ULL;
+    EXPECT_EQ(__cn_stack_overflow_match(sp - (96ULL << 20), sp, 1), 0);
+}
+
+// 防误报：非地址类故障码（如 SI_USER 异步信号）不判溢出
+TEST(RuntimeTest, StackOverflowRejectNonAddressFault) {
+    const unsigned long long sp = 0x7ffd00000000ULL;
+    EXPECT_EQ(__cn_stack_overflow_match(sp - 64, sp, 0), 0);
+    EXPECT_EQ(__cn_stack_overflow_match(sp - 64, sp, -1), 0);
+    EXPECT_EQ(__cn_stack_overflow_match(sp - 64, 0, 1), 0);  // sp 无效不判定
+}

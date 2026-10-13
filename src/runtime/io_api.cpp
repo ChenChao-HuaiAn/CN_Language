@@ -62,7 +62,7 @@ extern "C" void printLineFloat(double value) {
 // 错误码 -> 错误消息文本（不终止进程；供测试与诊断直接验证消息表）
 // 错误码（规格书附录B）：1=除零、2=数组越界、3=空指针解引用；
 //   阶段3（Task 3.5）扩展：4=内存分配失败、5=文件打开失败、6=无效参数、
-//   7=资源未初始化、8=溢出错误
+//   7=资源未初始化、8=溢出错误；476 扩展：9=栈溢出
 extern "C" const char* __cn_error_message(long long errorCode) {
     switch (errorCode) {
         case 1: return "除零错误";
@@ -73,6 +73,7 @@ extern "C" const char* __cn_error_message(long long errorCode) {
         case 6: return "无效参数";
         case 7: return "资源未初始化";
         case 8: return "溢出错误";
+        case 9: return "栈溢出";
         default: return "未知运行时错误";
     }
 }

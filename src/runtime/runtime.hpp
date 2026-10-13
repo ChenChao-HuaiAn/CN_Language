@@ -187,10 +187,17 @@ CNRT_EXPORT void __cn_print_bool(bool value);             // 打印布尔（不�
     // 错误码：1=除零、2=数组越界、3=空指针解引用（打印错误信息后终止程序）
     // 阶段3（Task 3.5）：扩展 4=内存分配失败、5=文件打开失败、6=无效参数、
     //                   7=资源未初始化、8=溢出
+    // 476：9=栈溢出（SIGSEGV/SEH 被动捕获后经 stdout 通道输出终止·见下）
     CNRT_EXPORT void __cn_runtime_error(long long errorCode);
     // 错误码 -> 错误消息文本（不终止进程；供测试与诊断直接验证消息表）
     // 未注册错误码返回 "未知运行时错误"
     CNRT_EXPORT const char* __cn_error_message(long long errorCode);
+    // 476：栈溢出判定纯函数（linux SIGSEGV 处理器判据；供单元测试直接验证
+    //   防误报面——普通空指针/野指针不得判为栈溢出）。参数：
+    //   fault=故障地址（si_addr）、sp=故障时栈指针、sig_code=si_code。
+    //   判据三条件见 crash_handler.cpp 节首注释；win 面判据走 SEH 异常码。
+    CNRT_EXPORT int __cn_stack_overflow_match(unsigned long long fault,
+                                              unsigned long long sp, long long sig_code);
 
     // 对象内存辅助（阶段3 Task 3.1，规格书06 类实例化/删除）
     // NewObject 展开调用：分配 size 字节堆内存（失败时报错误码4并终止），
