@@ -102,6 +102,8 @@ bool foldConstIntExpr505(const Expr* e, std::int64_t& out, int depth = 0) {
         default:
             return false;  // 比较/位运算/逻辑等不进折叠闭包（预演面只管算术+移位）
     }
+}
+
 }  // namespace
 
 void SemanticAnalyzer::visitBinaryExpr(BinaryExpr* node) {
