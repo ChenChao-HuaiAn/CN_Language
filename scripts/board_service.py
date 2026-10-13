@@ -259,10 +259,13 @@ def 全部意图() -> list:
     行们 = 连接.execute("SELECT * FROM 意图 ORDER BY 机器, 对话id").fetchall()
     出 = [意图行转字典(r, 推进图) for r in 行们]
     图 = 队列态图()   # 563：队列态徽标（读板一眼分辨『干完排队』vs『真僵尸待接棒』）
+    在飞号 = {r[0] for r in 连接.execute(
+        "SELECT 号 FROM 任务 WHERE 状态=?", (台账.状态_在飞,)).fetchall()}
     for 行 in 出:
         行["队列态"] = 图.get((行.get("在做") or "").strip(), "")
+        # 待接棒=巡检同口径 + 任务须在飞（🏃）——⬜ 待认领/⏸ 挂起不算"中断"
         行["待接棒"] = bool(行["失联"] and int(行.get("分支推进秒") or 0) > 5400
-                          and (行.get("在做") or "").strip() and not 行["队列态"])
+                          and (行.get("在做") or "").strip() in 在飞号 and not 行["队列态"])
     return 出
 
 
