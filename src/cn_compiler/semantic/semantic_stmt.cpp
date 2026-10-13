@@ -130,10 +130,14 @@ bool isNameLikeExpr(Expr* node) {
 //   泛型类方法体按实例重检查时以原体重建降级树——移动会丢体/多实例类型错乱）。
 // 覆盖全部表达式/语句节点（lambda/选择 等完整克隆）；节点语义回填字段
 //   （location/propagateType/resolvedSignature 等）一并复制。
-std::unique_ptr<Expr> cloneExpr(Expr* node);
-std::unique_ptr<Stmt> cloneStmt(Stmt* node);
+// 86：实现体重命名 Impl（匿名命名空间内部链接保留）——cn_compiler 命名
+//   空间公开转发（声明 semantic.hpp）供跨翻译单元消费方共用单一克隆器，
+//   防克隆逻辑双份漂移。新消费方=语义层复合赋值糖展开（checkCompoundAssign
+//   字符串拼接面：甲 += X ≡ 甲 = 甲 + X，左值副本须独立 AST）。
+std::unique_ptr<Expr> cloneExprImpl(Expr* node);
+std::unique_ptr<Stmt> cloneStmtImpl(Stmt* node);
 
-std::unique_ptr<Expr> cloneExpr(Expr* node) {
+std::unique_ptr<Expr> cloneExprImpl(Expr* node) {
     if (node == nullptr) return nullptr;
     std::unique_ptr<Expr> out;
     switch (node->getType()) {
@@ -283,7 +287,7 @@ std::unique_ptr<Expr> cloneExpr(Expr* node) {
     return out;
 }
 
-std::unique_ptr<Stmt> cloneStmt(Stmt* node) {
+std::unique_ptr<Stmt> cloneStmtImpl(Stmt* node) {
     if (node == nullptr) return nullptr;
     std::unique_ptr<Stmt> out;
     switch (node->getType()) {
@@ -398,6 +402,13 @@ std::unique_ptr<Stmt> cloneStmt(Stmt* node) {
 }
 
 } // namespace
+
+// ==================== 表达式/语句深度克隆公开入口（86 提升） ====================
+// cn_compiler 命名空间转发（声明 semantic.hpp）：降级树/泛型实例化（本文件
+//   匿名空间原消费方）与复合赋值糖展开（semantic_expr_op.cpp·字符串拼接面）
+//   共用同一克隆器实现（上方 Impl）——单一事实源，防双份漂移。
+std::unique_ptr<Expr> cloneExpr(Expr* node) { return cloneExprImpl(node); }
+std::unique_ptr<Stmt> cloneStmt(Stmt* node) { return cloneStmtImpl(node); }
 
 void SemanticAnalyzer::visitBlockStmt(BlockStmt* node) {
     pushScope();

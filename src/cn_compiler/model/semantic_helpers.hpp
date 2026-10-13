@@ -392,5 +392,11 @@ inline std::string canonicalType(const std::string& type) {
 std::string methodSymbolKey(const std::string& className, const std::string& sigKey);
 int charLiteralCodePoint(const std::string& raw);
 
+// ===== 表达式/语句深度克隆（86 提升公开·非 inline·定义 semantic_stmt.cpp）
+//   =====：降级树/泛型实例化/复合赋值糖展开（字符串拼接面 甲 += X ≡ 甲 = 甲 + X
+//   的左值副本）共用单一克隆器——防跨翻译单元双份实现漂移。
+std::unique_ptr<Expr> cloneExpr(Expr* node);
+std::unique_ptr<Stmt> cloneStmt(Stmt* node);
+
 } // namespace cn_compiler
 

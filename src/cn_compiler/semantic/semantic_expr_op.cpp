@@ -16,6 +16,40 @@
 
 namespace cn_compiler {
 
+namespace {
+// 86（001 §3.7 第④族等价展开条文 + §3.7 拼接立法 Task 2.5/2.9）：字符串拼
+//   接复合赋值糖展开——甲 += X ≡ 甲 = 甲 + X（v2 语法层回退重析同构·零分叉）。
+// 判定与二元 + 拼接面（checkStringConcatAndPtrArithmetic）同条件：目标=字符
+//   串语义类型（字符串/字符*）且右值=字符串/字符* 或 数值/布尔/字符/枚举
+//   （隐式转字符串拼接）。其余复合符（-= 等）与不可拼接右值不命中=维持
+//   「复合赋值要求数值操作数」拒绝（v2 检查复合赋值操作数同构·文案逐字）。
+// 改写：op=Assign、value=BinaryExpr(Add, clone(target), X)——与 v2 语法层回
+//   退重析（解析语句中 复合赋值合成二元+赋值节点）同构，IR 层零改动承接
+//   （普通赋值通道：拥有串三形态 free 旧+直存/深拷/静态聚合整体写）。
+// 依赖前序已完成：def-init 读旧值检查/写点置位、借出视图登记（checkCompound
+//   Assign 先行）；094 赋值位污染登记三判定均要求右值=标识符/调用节点，改写
+//   后右值=BinaryExpr 天然不命中（拼接≠移交语义·零误触）。
+// 仅本翻译单元消费（checkCompoundAssign）——匿名空间自由函数（semantic.hpp
+//   1000 行贴线·零头文件增量纪律）。true = 已改写（调用方终止复合赋值检查）。
+bool rewriteStringConcatCompoundAssign(SemanticAnalyzer& sa, AssignmentExpr* node,
+                                       const std::string& targetType,
+                                       const std::string& valueType) {
+    if (node->op != Operator::PlusAssign) return false;
+    if (!isStringSemanticType(targetType)) return false;
+    const bool rightStr = isStringSemanticType(valueType);
+    const bool rightConcatable = types::isNumeric(valueType) ||
+                                 valueType == "布尔" || valueType == "字符" ||
+                                 sa.isEnumType(valueType);
+    if (!rightStr && !rightConcatable) return false;
+    auto bin = std::make_unique<BinaryExpr>(
+        Operator::Add, cloneExpr(node->target.get()), std::move(node->value));
+    bin->location = node->location;
+    node->value = std::move(bin);
+    node->op = Operator::Assign;
+    return true;
+}
+} // namespace
+
 void SemanticAnalyzer::visitTernaryExpr(TernaryExpr* node) {
     std::string condType = checkExpr(node->condition.get());
     checkCondition(condType, node->condition->location, "三元表达式");
@@ -538,6 +572,17 @@ bool SemanticAnalyzer::checkCompoundAssign(AssignmentExpr* node,
                 node->location);
         }
         if (!isNumeric(targetType) || !isNumeric(valueType)) {
+            // 86（001 §3.7 第④族等价展开条文 + §3.7 拼接立法 Task 2.5/2.9）：
+            //   字符串拼接复合赋值糖展开放行——甲 += X ≡ 甲 = 甲 + X（v2 语法
+            //   层回退重析同构·零分叉）：二元 + 已支持的类型组合 += 必须同
+            //   支持。命中即改写 AST 为普通赋值并终止（后续检查/IR 走普通赋
+            //   值通道：拼接语义、拥有串 free 旧+直存；混合符号执法不涉字符
+            //   串·752/753 数值锁面不受影响——数值复合赋值仍走下方原路径）。
+            if (rewriteStringConcatCompoundAssign(*this, node, targetType,
+                                                  valueType)) {
+                lastType_ = targetType;
+                return true;
+            }
             diagnostics_.report(DiagnosticLevel::Error, node->location,
                                 "复合赋值要求数值操作数，实际为 '" + targetType +
                                 "' 与 '" + valueType + "'");
