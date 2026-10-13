@@ -149,6 +149,8 @@ main { max-width: 78rem; margin: 0 auto; padding: var(--space-5) var(--space-6) 
 .签.边框 { background: transparent; border: 1px solid currentColor; }
 .签.朱砂 { color: var(--color-accent); background: var(--color-accent-soft); }
 .签.失联 { color: var(--color-warning); border: 1px solid var(--color-warning); }
+.签.队列中 { color: var(--st-doing); border: 1px solid var(--st-doing); }   /* 563：已交付集成流程（排队/集成中/预验中）·会话静默属正常 */
+.签.待接棒 { color: var(--color-accent); border: 1px solid var(--color-accent); background: var(--color-accent-soft); }  /* 563：疑似真僵尸（双信号全停且非队列）·建议接棒 */
 
 /* —— 机器卡片（会话意图·细线分隔非卡片海：共享边框组）—— */
 .机卡 {

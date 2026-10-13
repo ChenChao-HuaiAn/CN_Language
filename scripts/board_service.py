@@ -212,6 +212,37 @@ def 分支推进时戳图() -> dict:
     return 图
 
 
+_队列态缓存 = {"时刻": 0.0, "图": {}}
+
+
+def 队列态图() -> dict:
+    """563：任务号 → '排队'/'集成中'/'预验中'（直读本地队列服务 :8300·2s 缓存·容错）。
+    治读板困惑：意图行"会话静默"无法区分『干完等集成（报完名退出=正常）』与
+    『真僵尸待接棒』（用户 2026-10-14 质询落地）。"""
+    import urllib.request as _ur
+    现 = time.time()
+    if 现 - _队列态缓存["时刻"] < 2.0:
+        return _队列态缓存["图"]
+    图 = {}
+    try:
+        地址 = os.environ.get("CN_QUEUE_STATUS_URL", "http://127.0.0.1:8300/api/state")
+        with _ur.urlopen(地址, timeout=2) as r:
+            态 = json.loads(r.read().decode("utf-8"))
+        for 行 in 态.get("队列", []):
+            分支, 状态 = str(行.get("分支", "")), str(行.get("状态", ""))
+            if 分支.startswith("任务/") and 状态 in ("排队", "集成中"):
+                图[分支[3:]] = 状态
+        for t in 态.get("预验任务", []):
+            if t.get("状态") == "执行中":
+                源 = str(t.get("源分支") or "")
+                if 源.startswith("任务/"):
+                    图.setdefault(源[3:], "预验中")
+    except (OSError, ValueError):
+        图 = {}
+    _队列态缓存.update(时刻=现, 图=图)
+    return 图
+
+
 def 全部意图() -> list:
     # 318：收口惰性清——在做号任务表状态 ✅ → 直接删行（382 起查任务表实时真相，
     # 不再依赖 report_021 的任务字典快照——快照会 1h 过期，任务表永不过期）。
@@ -226,7 +257,13 @@ def 全部意图() -> list:
     连接.commit()
     推进图 = 分支推进时戳图()
     行们 = 连接.execute("SELECT * FROM 意图 ORDER BY 机器, 对话id").fetchall()
-    return [意图行转字典(r, 推进图) for r in 行们]
+    出 = [意图行转字典(r, 推进图) for r in 行们]
+    图 = 队列态图()   # 563：队列态徽标（读板一眼分辨『干完排队』vs『真僵尸待接棒』）
+    for 行 in 出:
+        行["队列态"] = 图.get((行.get("在做") or "").strip(), "")
+        行["待接棒"] = bool(行["失联"] and int(行.get("分支推进秒") or 0) > 5400
+                          and (行.get("在做") or "").strip() and not 行["队列态"])
+    return 出
 
 
 def 任务号声明图(意图们: list) -> dict:
