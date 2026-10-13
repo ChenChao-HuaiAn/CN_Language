@@ -238,6 +238,7 @@ add_library(cn_compiler_ir STATIC
     src/cn_compiler/ir/ir_oop_container.cpp
     src/cn_compiler/ir/ir_oop_field.cpp
     src/cn_compiler/ir/ir_oop_call.cpp
+    src/cn_compiler/ir/ir_oop_call_iface.cpp
     src/cn_compiler/ir/ir_oop_call_release.cpp
     src/cn_compiler/ir/ir_error_ctor.cpp
     src/cn_compiler/ir/ir_fields.cpp
