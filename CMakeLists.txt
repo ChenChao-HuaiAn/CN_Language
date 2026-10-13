@@ -369,16 +369,18 @@ endif()
 # ---- E2E v2 锚定链运行时 obj（2026-08-24 补：CN 版组件链链接用；
 #   2026-09-14 78/79 迁移 v2 后沿用，v2 锚定链/闭环用例同链接此份）----
 # v2 锚定链用例（78_v2/79_v2）与 v2 闭环用例的 link 步骤（run_e2e.py）直接链接
-#   target/<名>.obj
+#   target/win-x64/<名>.obj（522：按目标架构分桶——桶名=目标平台标识，与
+#   src/cn_main_toolchain.cpp archBucketDir 同规则；旧版落 target/ 根不分架构）
 # （历史产物陈旧：MSVC 14.44 构建的 /MDd obj 与锚定链的静态 CRT 链接不匹配，
 #   且 io_api.cpp 等的 tracked 加固未同步）。此处每次构建重新编译一份
-#   /MT（静态 CRT）运行时 obj 到 target/，消除陈旧产物与运行时漂移。
+#   /MT（静态 CRT）运行时 obj 到 target/win-x64/，消除陈旧产物与运行时漂移。
 if(MSVC)
+    file(MAKE_DIRECTORY ${CMAKE_SOURCE_DIR}/target/win-x64)
     set(CNRT_79_SRCS
         io_api mem_api arena crash_handler intern_api runtime string_api i128_api math_api input_api file_api time_api system_api thread_api)
     set(CNRT_79_OBJS "")
     foreach(_s ${CNRT_79_SRCS})
-        set(_obj ${CMAKE_SOURCE_DIR}/target/${_s}.obj)
+        set(_obj ${CMAKE_SOURCE_DIR}/target/win-x64/${_s}.obj)
         list(APPEND CNRT_79_OBJS ${_obj})
         add_custom_command(
             OUTPUT ${_obj}

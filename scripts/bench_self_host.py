@@ -51,10 +51,10 @@ if hasattr(sys.stderr, "reconfigure"):
 # 平台合法集（对齐 run_e2e.py）
 平台们 = ("win-x64", "linux-arm64", "linux-x86_64")
 
-# 运行时 .o 名（cn build 自动编译到 target/；linux 侧现场 g++ -c 同名单，
+# 运行时 .o 名（cn build 自动编译到 target/<目标平台桶>/；linux 侧现场 g++ -c 同名单，
 #   对齐 run_e2e.py 确保v2p与运行时就绪 的运行时名们——io_api 与 time/system 等
 #   560-a 实测全名单取 runner 同款，缺一链接期 undefined；349 重构E：io_api 拆出
-#   mem_api/arena/crash_handler 三件同编同链）
+#   mem_api/arena/crash_handler 三件同编同链；522：win 侧消费 target/win-x64/*.obj）
 运行时名们 = ["io_api", "mem_api", "arena", "crash_handler",
             "intern_api", "runtime", "string_api", "i128_api",
             "math_api", "input_api", "file_api", "time_api", "system_api"]
@@ -170,7 +170,8 @@ def 探测win工具链() -> tuple:
 def 准备运行时objs(平台: str, cxx工具: str) -> list:
     """运行时 .o 现场编译（linux；不计时——M2/M5 只测编译器本体）。
     linux 编译命令对齐 run_e2e.py（g++ -c -std=c++17 -fno-exceptions
-    -fno-rtti -DCNRT_LINUX_MAIN）；win 侧由 cn build 自动产出 target/*.obj。"""
+    -fno-rtti -DCNRT_LINUX_MAIN）；win 侧由 cn build 自动产出
+    target/win-x64/*.obj（522：架构桶）。"""
     objs = []
     obj目录 = 基准目录 / "runtime_objs"
     obj目录.mkdir(parents=True, exist_ok=True)
@@ -321,8 +322,11 @@ def 测量M4(目标平台: str, LINK, LIB路径们, v2pobj, cn_self_obj: pathlib
         # cn_self.obj 必须在 v2p.obj 之前（防 v1 79 虚假验收教训：命令行靠前定义胜出）；
         #   637-a：win 面补运行时 objs（对齐 run_e2e 执行v2锚定链 [4] 链接清单——
         #   原只塞 cn_self.obj+v2pobj=None 缺十件运行时=LNK2019 面）
+        #   522：运行时 obj 落架构桶 target/win-x64/（与 CMakeLists MSVC 段/cmd 侧
+        #   run_e2e 消费点同规则·桶名=目标平台标识）
         rsp_lines += [str(cn_self_obj), str(v2pobj)]
-        rsp_lines += [str(项目根目录 / "target" / f"{名}.obj") for 名 in 运行时名们]
+        rsp_lines += [str(项目根目录 / "target" / "win-x64" / f"{名}.obj")
+                      for 名 in 运行时名们]
         with open(响应文件, "w", encoding="utf-8") as f:
             for 行 in rsp_lines:
                 f.write(f'"{行}"\n')
@@ -527,7 +531,8 @@ def 主程序() -> int:
     print(f"  输入规模: {sum(输入规模.values())} 行 / {len(输入规模)} 文件")
     print()
 
-    # linux 侧运行时 .o 现场准备（不计时）；win 侧由 cn build 产出 target/*.obj
+    # linux 侧运行时 .o 现场准备（不计时）；win 侧由 cn build 产出 target/win-x64/*.obj
+    #   （522：架构桶——桶名=目标平台标识）
     v2pobj = None
     if 目标平台 == "win-x64":
         # 637-a 根治：win 面借链 obj=audit2/v2p.obj（cn_self.obj 靠前定义胜出·
@@ -537,9 +542,9 @@ def 主程序() -> int:
         if not v2pobj.exists():
             print(f"错误: M4 缺少借链 obj: {v2pobj}（先跑 E2E 预热或 78/79 单跑）")
             sys.exit(1)
-        缺失运行时 = [项目根目录 / "target" / f"{名}.obj"
+        缺失运行时 = [项目根目录 / "target" / "win-x64" / f"{名}.obj"
                   for 名 in 运行时名们
-                  if not (项目根目录 / "target" / f"{名}.obj").exists()]
+                  if not (项目根目录 / "target" / "win-x64" / f"{名}.obj").exists()]
         if 缺失运行时:
             print(f"错误: M4 缺少运行时 obj（cn build 后即产出）: {缺失运行时[0].name}")
             sys.exit(1)

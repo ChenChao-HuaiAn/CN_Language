@@ -134,7 +134,9 @@ def 主流程() -> int:
     p = 运行(cn, ["check", str(非法), *台])
     断言("check 非法 rc≠0+诊断", p.returncode != 0 and "错误" in 诊断(p), f"rc={p.returncode}")
 
-    产物 = 仓库根 / "target" / ("正常" + 产物后缀)
+    # 522：默认产物路径契约=target/<目标架构桶>/<stem>（桶名=--target 值·与
+    #   src/cn_main_toolchain.cpp archBucketDir 同规则·零映射）
+    产物 = 仓库根 / "target" / target / ("正常" + 产物后缀)
     if 运行级可达:
         p = 运行(cn, ["build", str(正常), *台])
         断言("build 合法 rc=0+产物", p.returncode == 0 and 产物.exists(), f"rc={p.returncode}")
@@ -144,7 +146,7 @@ def 主流程() -> int:
     断言("build 非法 rc≠0", p.returncode != 0, f"rc={p.returncode}")
 
     p = 运行(cn, ["compile", str(正常), *台])
-    汇编 = 仓库根 / "target" / ("正常" + 汇编后缀)
+    汇编 = 仓库根 / "target" / target / ("正常" + 汇编后缀)
     断言("compile 合法 rc=0+汇编产物", p.returncode == 0 and 汇编.exists(), f"rc={p.returncode}")
     p = 运行(cn, ["compile", str(非法), *台])
     断言("compile 非法 rc≠0", p.returncode != 0, f"rc={p.returncode}")

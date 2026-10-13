@@ -47,6 +47,11 @@ int buildExe(const CliOptions& options, const std::string& file,
 bool isWinX64(const std::string& target);
 bool isGnuToolchain(const std::string& target);
 std::string asmSuffix(const std::string& target);
+// 522：产物架构桶目录名（target/<桶>/ 之「桶」）——单一架构标识来源：
+//   桶名 = 目标平台标识（win-x64 / linux-arm64 / linux-x86_64）；未知值原样返回
+//   （CLI 解析已拒非法平台，此为防御兜底）。Python 侧消费者（run_e2e/bench/
+//   check_cli_contract）按「桶名 = --target 值」同规则拼路径，零映射表。
+std::string archBucketDir(const std::string& target);
 
 // ---- cn_main.cpp 提供（原文件级 static 去 static·签名/语义零变化）----
 bool readSourceFile(const std::string& path, std::string& content, std::string& error);

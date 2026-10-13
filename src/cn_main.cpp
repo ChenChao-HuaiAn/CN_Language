@@ -263,16 +263,6 @@ int systemExitCode(int status) {
 #endif
 }
 
-// 确保输出目录存在（单层，已存在时返回失败但无害）
-static void ensureTargetDir() {
-#ifdef _WIN32
-    CreateDirectoryA("target", nullptr);  // 已存在时返回失败但无害
-#else
-    int mkdir_ret = std::system("mkdir -p target 2>/dev/null");
-    (void)mkdir_ret;  // 忽略返回值，目录已存在时返回非零但无害
-#endif
-}
-
 // 确保目录存在（支持多层路径，逐级创建；供 --output 指定深层目录时使用）
 // 例如 target/deep/a/b/c -> 逐级创建 target、target/deep、...、target/deep/a/b/c
 bool ensureDirExists(const std::string& dir) {
@@ -479,11 +469,14 @@ static int runCompile(const CliOptions& options, const std::string& file) {
     if (cn_compiler::driver::runModulePipeline(ansiToUtf8(file), dopts, output) != 0) {
         return 1;
     }
-    // 输出汇编文件（--output 指定或默认 target/<stem>.<asm|s>）
+    // 输出汇编文件（--output 指定或默认 target/<目标架构桶>/<stem>.<asm|s>）
+    // 522：默认产物根同 build 命令=target/<目标平台>/（archBucketDir·单一规则）
     std::string stem = pathStem(file);
     std::string asmPath = options.output.empty()
-        ? "target/" + stem + asmSuffix(options.target) : options.output;
-    // --output 指定深层目录时自动创建
+        ? "target/" + archBucketDir(options.target) + "/" + stem + asmSuffix(options.target)
+        : options.output;
+    // 默认桶目录与 --output 深层目录统一由本分支逐级创建（522：旧 ensureTargetDir
+    //   单层兜底退役——默认路径必含 '/'，本分支覆盖全部创建需求）
     {
         size_t slash = asmPath.find_last_of("/\\");
         if (slash != std::string::npos) {
@@ -491,7 +484,6 @@ static int runCompile(const CliOptions& options, const std::string& file) {
             ensureDirExists(dir);
         }
     }
-    ensureTargetDir();
     {
         std::ofstream out(asmPath, std::ios::binary);
         if (!out) {

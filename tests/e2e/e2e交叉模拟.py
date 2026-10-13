@@ -112,32 +112,24 @@ def 构建交叉v2p双工件(编译器路径, 主cn, 项目根, 审计目录, �
     独立键 v2p_symbol_key_linux.txt）。构建 cwd=项目根（与原生轮中间产物
     位置一致）。返回 (本体, 符号obj, 错误或None)。
 
-    构建序列（必读本体的在前·符号的收尾）：cn 的运行时 obj 缓存
-    （target/*.o）判据只有 mtime 不含架构（cn_main_toolchain compileRuntime）
-    ——双架构构建同树互踩（实测：x64 io_api.o 被 arm64 链接撞 EM:62 重定位
-    错误）。故每次构建前清 target/*.o 强制按本架构重编（14 件原生秒级），
-    且符号构建放最后——并行用例窗口（全部 arm64 目标）看到的缓存终态恒为
-    arm64。预热单线程窗口内完成，无并行污染。"""
+    522（2026-10-13）：运行时 obj 已按目标架构分桶（target/linux-x86_64/ 与
+    target/linux-arm64/，见 cn_main_toolchain archBucketDir）——双架构构建
+    互不可见。399 立轮时「target/*.o 判据只有 mtime 不含架构、双架构同树
+    互踩（x64 io_api.o 被 arm64 链接撞 EM:62 重定位错误）」的清缓存 workaround
+    就此退役（治本分桶替代症状级清场）；本函数只保留 env -u 工具链变量摘除
+    （本体必须走原生 as/g++，与分桶无关）。构建序列仍为本体在前、符号收尾。"""
     本体 = 审计目录 / "v2p_linuxx64"
     本体键 = 审计目录 / "v2p_build_key_linuxx64.txt"
     符号obj = 审计目录 / "v2p_linux.o"
     符号键 = 审计目录 / "v2p_symbol_key_linux.txt"
     本次指纹 = 指纹函数(编译器路径)
 
-    def 清运行时obj缓存():
-        n = 0
-        for o in (项目根 / "target").glob("*.o"):
-            o.unlink()
-            n += 1
-        return n
-
     # 本体（x64·与原生 linux-x86_64 轮共用既有缓存键）
     if not (本体.exists() and 本体键.exists()
             and 本体键.read_text(encoding="utf-8") == 本次指纹):
         # env -u 摘除 CN_AS/CN_CXX：本体构建是 x64 目标，cn 内部工具链必须走
         #   PATH 原生 as/g++（实测教训：交叉变量全局注入时 x64 本体被 arm64
-        #   as 汇编必败）；清 obj 缓存防他架构残留参与链接
-        清运行时obj缓存()
+        #   as 汇编必败）
         编译 = 运行命令函数(["env", "-u", "CN_AS", "-u", "CN_CXX",
                              str(编译器路径), "build", str(主cn),
                              "--target", "linux-x86_64", "--output", str(本体)],
@@ -154,9 +146,8 @@ def 构建交叉v2p双工件(编译器路径, 主cn, 项目根, 审计目录, �
     # 容器符号（arm64 .o·产物链接面；可执行副产品删除防误用）
     if not (符号obj.exists() and 符号键.exists()
             and 符号键.read_text(encoding="utf-8") == 本次指纹):
-        # 收尾构建：清缓存（此时若本体刚建过=清 x64 残留）→ 重编 arm64
-        #   运行时 obj →arm64 链接——终态缓存=arm64，正对并行用例窗口
-        清运行时obj缓存()
+        # 符号构建：--target linux-arm64 走交叉 CN_AS/CN_CXX，运行时 obj 落
+        #   target/linux-arm64/ 桶（与本体 x64 桶隔离·522 分桶）
         副产品 = 审计目录 / "v2p_linux"
         编译 = 运行命令函数([str(编译器路径), "build", str(主cn),
                              "--target", "linux-arm64", "--output", str(副产品)],

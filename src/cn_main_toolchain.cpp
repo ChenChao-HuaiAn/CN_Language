@@ -4,6 +4,10 @@
 //   汇编/运行时编译/链接 + buildExe 全链路（build 与 run 命令共用）。
 //   readSourceFile/pathStem/systemExitCode/ensureDirExists/ansiToUtf8/toDriverOptions
 //   仍由 cn_main.cpp 提供（声明见 cn_main_toolchain.hpp）。
+// 522（2026-10-13）：默认产物根=target/<目标平台>/（archBucketDir）——运行时 obj、
+//   中间 asm/obj、可执行按目标架构分桶，根治 arm64 交叉轮与 x64 构建在同 target/ 根
+//   互踩（399 残留面·cn-arm64-3 实弹「file in wrong format」连坐红）。存量（旧版
+//   target/ 根 *.o/*.obj）新版不再读取=天然免疫；一键清理：rm -f target/*.o target/*.obj
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
@@ -150,6 +154,20 @@ static std::string exeSuffix(const std::string& target) { return isWinX64(target
 std::string asmSuffix(const std::string& target) { return isWinX64(target) ? ".asm" : ".s"; }
 // 目标文件后缀：Windows .obj；Linux .o
 static std::string objSuffix(const std::string& target) { return isWinX64(target) ? ".obj" : ".o"; }
+
+// 522：产物架构桶目录名——产物统一落 target/<桶>/（运行时 obj、中间 asm/obj、可执行），
+//   桶名 = 目标平台标识本身（win-x64 / linux-arm64 / linux-x86_64）＝单一架构标识来源。
+//   根治互踩（399 残留面·10-13 cn-arm64-3 实弹）：旧版运行时 obj 落 target/ 根且缓存
+//   判据只有 mtime 不含架构——arm64 交叉轮产出的 aarch64 .o 被后续 x64 构建复用，
+//   链接报「file in wrong format」→ 整链连坐红。分桶后双架构互不可见。
+//   Python 侧消费者按「桶名 = --target 值」同规则拼路径（零映射表·见各调用点注释）。
+//   未知值原样返回=防御兜底（CLI 解析层已拒非法平台，不会到达此处）。
+std::string archBucketDir(const std::string& target) {
+    if (isWinX64(target)) return "win-x64";
+    if (isLinuxArm64(target)) return "linux-arm64";
+    if (isLinuxX64(target)) return "linux-x86_64";
+    return target;
+}
 
 // 汇编：win-x64 -> ml64 /c /Fo<obj> <asm>；linux-arm64 -> as -o <obj> <asm>
 static bool assembleAsm(const std::string& target, const std::string& vcvarsBat,
@@ -310,13 +328,16 @@ int buildExe(const CliOptions& options, const std::string& file,
     }
 
     // 3. 确定输出路径并确保输出目录存在
+    //    522：产物按目标架构分桶——默认产物根 = target/<目标平台>/（archBucketDir），
+    //    运行时 obj + 中间 asm/obj + 可执行全落本架构桶内，双架构构建互不可见。
     //    中间文件（.asm/.s + .obj/.o）放在 exe 同目录，避免不同目录同名源文件互相覆盖；
     //    --output 指定深层不存在目录时自动逐级创建（如 target/deep/a/b/c/out）
     const std::string exeSuf = exeSuffix(options.target);
+    const std::string bucketRoot = "target/" + archBucketDir(options.target);
     std::string stem = pathStem(file);
-    exePath = options.output.empty() ? "target/" + stem + exeSuf : options.output;
-    // 提取 exe 所在目录（含末尾分隔符）；无目录（纯文件名）则用 "target/"
-    std::string exeDir = "target/";
+    exePath = options.output.empty() ? bucketRoot + "/" + stem + exeSuf : options.output;
+    // 提取 exe 所在目录（含末尾分隔符）；无目录（纯文件名）则用本架构桶目录
+    std::string exeDir = bucketRoot + "/";
     std::string exeName = stem + exeSuf;
     {
         size_t slash = exePath.find_last_of("/\\");
@@ -368,11 +389,23 @@ int buildExe(const CliOptions& options, const std::string& file,
     if (!assembleAsm(options.target, vcvarsBat, asmPath, objPath,
                      options.verbose, error)) return 1;
 
-    // 7. 编译运行时库 -> .obj/.o（缓存：target/io_api.obj + target/runtime.obj）
-    if (!compileRuntime(options.target, vcvarsBat, "target", options.verbose, error)) return 1;
+    // 7. 编译运行时库 -> .obj/.o（缓存：target/<桶>/io_api.o 等 14 件）
+    //    运行时桶目录独立于 exeDir：--output 指定别处时仍复用本架构共享运行时缓存；
+    //    win 宿主统一反斜杠（与 exeDir 同款·对齐 999 案乙）
+    std::string runtimeObjDir = bucketRoot;
+#ifdef _WIN32
+    if (isWinX64(options.target)) {
+        for (char& ch : runtimeObjDir) if (ch == '/') ch = '\\';
+    }
+#endif
+    if (!ensureDirExists(runtimeObjDir)) {
+        error = "无法创建运行时产物目录 " + runtimeObjDir;
+        return 1;
+    }
+    if (!compileRuntime(options.target, vcvarsBat, runtimeObjDir, options.verbose, error)) return 1;
 
     // 8. 链接 -> 可执行文件（win-x64 .exe / linux-arm64 无后缀）
-    if (!linkExe(options.target, vcvarsBat, objPath, "target", exePath,
+    if (!linkExe(options.target, vcvarsBat, objPath, runtimeObjDir, exePath,
                  options.verbose, options.extraLibs, error)) return 1;
     return 0;
 }

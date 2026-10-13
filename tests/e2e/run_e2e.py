@@ -1437,10 +1437,13 @@ def 确保v2p就绪win(编译器路径: pathlib.Path, 详细: bool, 编号: str 
 
     # 运行时 .obj（C++ 版构建产物；对齐宿主链接命令——349 重构E 后 14 件：
     #   io_api 拆出 mem_api/arena/crash_handler 同链）
+    # 522：产物按目标架构分桶——win 侧桶名=win-x64（与 CMakeLists MSVC 段
+    #   target/win-x64/、src/cn_main_toolchain.cpp archBucketDir 同规则；
+    #   旧版落 target/ 根不分架构，双架构构建互踩）
     运行时名们 = ["io_api", "mem_api", "arena", "crash_handler",
                 "intern_api", "runtime", "thread_api", "string_api", "i128_api",
                 "math_api", "input_api", "file_api", "time_api", "system_api"]
-    运行时objs = [项目根目录 / "target" / f"{m}.obj" for m in 运行时名们]
+    运行时objs = [项目根目录 / "target" / "win-x64" / f"{m}.obj" for m in 运行时名们]
     for obj in 运行时objs:
         if not obj.exists():
             return None, f"缺少运行时 .obj: {obj.name}（请先构建 C++ 版编译器）"
