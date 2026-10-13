@@ -585,8 +585,16 @@ bool Parser::parseFunctionMember(ClassMember& out) {
             advance();
             out.returnType = parseTypeNameEx();
         }
-        // 函数体（抽象方法/接口签名无实现体）
+        // 函数体（抽象方法/接口签名无实现体）。193修复（审查 P1-1·零分叉）：
+        //   「抽象+函数体」边角形态双侧显式拒绝——specs/06 §八 抽象成员=纯虚
+        //   声明无实现体，带体即语法错误（v2 语法 解析方法体 同点同文案诊断）。
+        //   原缺陷=宿主放行（isAbstract && !hasBody 有体不算未实现·类可实例化）
+        //   /v2 拒绝且静默丢体=两向分叉。报错后照常解析块（错误恢复同步），
+        //   Error 诊断使编译中止，不会进入语义/生成层。
         if (check(TokenType::LeftBrace)) {
+            if (out.isAbstract) {
+                reportErrorHere("抽象方法不得带实现体");
+            }
             out.body = parseBlockStmt();
         }
         return true;

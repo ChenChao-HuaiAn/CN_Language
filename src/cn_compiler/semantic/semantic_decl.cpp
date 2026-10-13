@@ -161,8 +161,8 @@ void SemanticAnalyzer::visitVarDecl(VarDecl* node) {
     //   （specs/06 §八「含抽象成员的类不可直接实例化」+接口同族·C++
     //   cannot instantiate abstract class 同款）。原缺陷=semantic 注释宣称已拦
     //   而 0 检查（防线交接断链）——纯实例化静默创建虚表残缺的空洞对象，链接器
-    //   仅兜调用形态。指针/引用/数组后缀形态不在此拦（不发生值形态实例化·
-    //   isClassType/isInterfaceType 精确名判定天然排除后缀）；有初始化器形态=
+    //   仅兜调用形态。指针/引用不在此拦（不实例化）；数组为已知遗留（见
+    //   #593，另立行跟踪）；有初始化器形态=
     //   接口变量合法赋值面（413 A1）经 checkExpr→checkCtorCall 拦抽象/接口构造。
     //   诊断后不 return（继续既有登记链·单诊断口径对齐 324 先例）。
     if (node->initializer == nullptr && !node->funcPtr.isFunctionPtr() &&
