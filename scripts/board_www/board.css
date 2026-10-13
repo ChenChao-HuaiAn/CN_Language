@@ -492,4 +492,11 @@ main { max-width: 78rem; margin: 0 auto; padding: var(--space-5) var(--space-6) 
               -webkit-box-orient: vertical; overflow: hidden; }
   #新建遮罩 { padding-top: var(--space-8); }
   .新建窗, #详情面板 { padding: var(--space-4); }
+  /* 531：任务行（认领列表/裁决列表共用）允许两行——行右侧（状态签/快选组+时刻）
+     手机上折到第二行右对齐，长签放行折行。病根=「已裁决·批甲：…」长签 nowrap
+     且 .行右侧 无收缩护栏（min-width:auto 卡内容自然宽），整行 min 宽 600px+
+     横向溢出，连带手机浏览器缩放/横滚错乱（用户三截图怪象同根） */
+  .任务行 { flex-wrap: wrap; row-gap: var(--space-1); }
+  .任务行 .行右侧 { margin-left: auto; max-width: 100%; min-width: 0; }
+  .任务行 .签 { white-space: normal; }
 }
