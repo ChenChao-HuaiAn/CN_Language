@@ -356,6 +356,27 @@ class 处理器(BaseHTTPRequestHandler):
     # 超时抛异常断开连接即释放锁，ThreadingHTTPServer 下仅损失该单连接。
     timeout = 30
 
+    def handle_one_request(self):
+        """495：请求处理统一兜底——业务异常（连接仍在时）失败补发 500，
+        防客户端拿不到响应而连接层中止（WinError 10053 竞态恶化面）；连接层
+        异常（BrokenPipe/Reset/Aborted 一族·客户端已中止）静默断连，不再向
+        已废连接写响应（亦免 socketserver 打 traceback 污染 journal）。
+        正常路径零行为变化。"""
+        try:
+            super().handle_one_request()
+        except OSError:
+            self.close_connection = True      # 连接已废：写必再抛·静默
+        except Exception:
+            # 仅当本次请求尚未发出完整响应时补 500（_headers_buffer=None/未建=
+            # 从未发；非空=已备未发·丢弃防双状态行；空表=已 end_headers 发出）
+            if getattr(self, "_headers_buffer", None) != []:
+                self._headers_buffer = []
+                try:
+                    self._回JSON(500, {"错误": "服务端内部错误"})
+                except OSError:
+                    pass
+            self.close_connection = True
+
     def log_message(self, fmt, *args):   # 静默访问日志（systemd journal 只留业务行）
         pass
 

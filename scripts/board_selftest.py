@@ -4,7 +4,12 @@
 #   意图/冲突/发号/任务立项流转/文档资源/裁决资源全链 + 401 反态。
 #   内存 db + 随机端口，不触碰真实台账；对 board_service 的全局态
 #   （连接/失联秒/令牌）以 服务.属性 赋值做猴补，结束恢复原值。
-# 入口不变：python3 board_service.py --selftest（board_service 延迟导入本模块）。
+#   495（win 实锤 WinError 10053 偶发崩兜底）：全部请求经 取响应/连接层重试
+#   ——连接层异常（OSError 族·ThreadingHTTPServer+urllib 既有竞态）小退避
+#   重试一次；重试仍失败按「连接中止」计一签失败（断连哨兵响应体，调用点
+#   断言自然失败·不炸栈；无默认 next/max 与字典链取用点做了哨兵宽容）。
+# 入口：python3 board_service.py --selftest（主入口不变·延迟导入本模块）；
+#   495 起亦可直接 python3 board_selftest.py（裸跑入口·等价）。
 
 import json
 import threading
@@ -18,6 +23,58 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import board_service as 服务    # 被测对象（处理器/建库/全局态宿主）
 import board_tasks as 台账      # 发号/迁移导入/单任务直调
 import board_docs as 文档       # 交接/教训/覆盖解析器直调
+
+
+class 断连响应(dict):
+    """495：连接层异常重试仍失败时的哨兵响应体（调() 以此返回）。
+    对任意缺失键取值返回自身（dict 子类 __missing__）——调用点断言在缺字段上
+    自然判失败，而不是二次抛 KeyError/TypeError 炸栈。空 dict 形态：len()=0、
+    布尔假、迭代为空、json.dumps 成 {}（可安全充当请求体）。"""
+
+    def __missing__(self, _键):
+        return self
+
+
+断连 = 断连响应()                # 模块级单例（多默认值共用·只读语义）
+
+
+def 响应码(响应) -> int:
+    """统一取码：HTTPResponse 用 .status；HTTPError（亦响应对象·错误体可读）
+    无 .status 回退 .code——401/409 等错误态也走它。"""
+    return getattr(响应, "status", None) or 响应.code
+
+
+def 连接层重试(动作):
+    """495：连接层异常（OSError 族——URLError/ConnectionResetError/
+    ConnectionAbortedError/RemoteDisconnected/socket.timeout·win 实锤
+    WinError 10053）小退避重试一次（竞态瞬时性为主）；返回 (成功?, 结果)，
+    重试仍失败=(False, None)，由调用方按「连接中止」计签失败·不炸栈。
+    动作内部须把 HTTPError 当正常响应返回（错误码非连接异常·不得重试）。"""
+    try:
+        return True, 动作()
+    except OSError:
+        time.sleep(0.2)          # 小退避
+        try:
+            return True, 动作()
+        except OSError:
+            return False, None
+
+
+def 取响应(请求, 解析):
+    """urlopen 一次并把 HTTPError 交给解析器（各调用点读的字段不同——状态码/
+    JSON 体/Set-Cookie 头）；连接层异常由 连接层重试 统一兜底（重试一次）。"""
+    def 动作():
+        try:
+            with urllib.request.urlopen(请求, timeout=5) as r:
+                return 解析(r)
+        except urllib.error.HTTPError as e:    # 错误态=正常响应面（e 可 read/带头）
+            return 解析(e)
+    return 连接层重试(动作)
+
+
+def 深取(字典: dict, 键, 子键, 默认=None):
+    """两级安全取值（495：断连哨兵值/缺行时给默认·不炸栈）。"""
+    return (字典.get(键) or {}).get(子键, 默认)
 
 
 def 自检() -> int:
@@ -45,14 +102,23 @@ def 自检() -> int:
         if cookie:
             请求.add_header("Cookie", cookie)
         服务.令牌 = "test-token-308a"
-        try:
-            with urllib.request.urlopen(请求, timeout=5) as r:
-                return r.status, json.loads(r.read().decode("utf-8"))
-        except urllib.error.HTTPError as e:
-            try:    # 409 等错误态的 body 也带断言字段（已发/撞视野）——不能丢
-                return e.code, json.loads(e.read().decode("utf-8"))
+
+        def 解析(r):
+            """错误体也解析（409 等带断言字段「已发/撞视野」不能丢）；非 JSON
+            宽容成 {}，由断言失败显形（495·不炸栈）。"""
+            码 = 响应码(r)
+            try:
+                return 码, json.loads(r.read().decode("utf-8"))
             except (ValueError, UnicodeDecodeError):
-                return e.code, {}
+                return 码, {}
+
+        好, 结果 = 取响应(请求, 解析)
+        if 好:
+            return 结果
+        # 495：连接层重试仍失败——按「连接中止」计一签失败（哨兵体使调用点断言
+        # 自然判失败·不炸栈）；不在此打印，✗ 行由调用点签名给出。
+        失败们.append(f"连接中止（重试后仍失败）：{方法} {路径}")
+        return 0, 断连
 
     try:
         码, _ = 调("POST", "/api/intent", {"机器": "测机"}, 带令牌=False)
@@ -63,10 +129,9 @@ def 自检() -> int:
         try:
             请求 = urllib.request.Request(基址 + "/api/intent", method="POST",
                 data=json.dumps({"机器": "x"}).encode("utf-8"))
-            urllib.request.urlopen(请求, timeout=5)
-            签("430 fail-closed：令牌未配置时写操作全拒（不再回环放行）", False)
-        except urllib.error.HTTPError as e:
-            签("430 fail-closed：令牌未配置时写操作全拒（不再回环放行）", e.code == 401)
+            好, 码 = 取响应(请求, 响应码)    # 495：连接层异常重试一次（不炸栈）
+            签("430 fail-closed：令牌未配置时写操作全拒（不再回环放行）",
+               好 and 码 == 401)
         finally:
             服务.令牌 = "test-token-308a"
         码, r = 调("POST", "/api/intent", {"机器": "深度机", "对话id": "a1",
@@ -93,25 +158,25 @@ def 自检() -> int:
         连接2.execute("UPDATE 意图 SET 心跳时戳=? WHERE 对话id='a1'", (time.time() - 999,))
         连接2.commit()
         码, r = 调("GET", "/api/board")
-        深度行 = next(i for i in r["意图们"] if i["对话id"] == "a1")
+        深度行 = next((i for i in r["意图们"] if i["对话id"] == "a1"), 断连)
         签("492 心跳断但在做分支 sha 有推进→活跃（不失联）",
            深度行["失联"] is False and 深度行["分支推进秒"] >= 0)
-        f308a = next(f for f in r["在飞分支们"] if f["分支"] == "任务/308a")
+        f308a = next((f for f in r["在飞分支们"] if f["分支"] == "任务/308a"), 断连)
         签("492 分支推进救活在做主们归属（a1 留列）",
            f308a["在做主们"] == ["家机-b3", "深度机-a1"])
         连接2.execute("UPDATE 分支推进 SET 推进时戳=? WHERE 分支='任务/308a'",
                       (time.time() - 999,))
         连接2.commit()
         码, r = 调("GET", "/api/board")
-        深度行 = next(i for i in r["意图们"] if i["对话id"] == "a1")
+        深度行 = next((i for i in r["意图们"] if i["对话id"] == "a1"), 断连)
         签("492 心跳与分支推进双断→失联态（反态）", 深度行["失联"] is True)
-        f308a = next(f for f in r["在飞分支们"] if f["分支"] == "任务/308a")
+        f308a = next((f for f in r["在飞分支们"] if f["分支"] == "任务/308a"), 断连)
         签("371 失联会话剔出在做主们（活会话保留）",
            f308a["在做主们"] == ["家机-b3"])
         码, r = 调("POST", "/api/intent_release", {"机器": "家机", "对话id": "b3"})
         码, r = 调("GET", "/api/board")
         签("注销后冲突消除", not any(c["号"] == "308a" for c in r.get("冲突们", [])))
-        f308a = next(f for f in r["在飞分支们"] if f["分支"] == "任务/308a")
+        f308a = next((f for f in r["在飞分支们"] if f["分支"] == "任务/308a"), 断连)
         # 已登记意图=声明口径含失联行（308h 2h 才惰性清）——黄标归属只看在做主们
         签("371 全体失联/注销→在做主们空=未登记黄标口径",
            f308a["在做主们"] == [])
@@ -124,15 +189,17 @@ def 自检() -> int:
             {"分支": "任务/211", "提交": "def456", "时刻": "", "已并入": True}]})
         码, r = 调("GET", "/api/board")
         飞 = {f["分支"]: f for f in r["在飞分支们"]}
-        签("308e 已并入字段透传", 飞["任务/211"]["已并入"] is True)
+        签("308e 已并入字段透传", 深取(飞, "任务/211", "已并入") is True)
         # 492：同 sha 重复上报不刷新推进时戳（推进时戳=当前 sha 首见时刻·防假活）
         连接2.execute("UPDATE 分支推进 SET 推进时戳=? WHERE 分支='任务/211'",
                       (time.time() - 500,))
         连接2.commit()
         调("POST", "/api/report_flights", {"上报者": "深度机", "分支们": [
             {"分支": "任务/211", "提交": "def456", "时刻": "", "已并入": True}]})
-        推211 = 连接2.execute(
-            "SELECT 推进时戳 FROM 分支推进 WHERE 分支='任务/211'").fetchone()[0]
+        行211 = 连接2.execute(
+            "SELECT 推进时戳 FROM 分支推进 WHERE 分支='任务/211'").fetchone()
+        # 495：断连面下上报未达·该行可能不存在——以 inf 计（断言失败·不炸栈）
+        推211 = 行211[0] if 行211 else float("inf")
         签("492 同 sha 重复上报不刷新推进（防假活）", 推211 < time.time() - 499)
         码, r = 调("POST", "/api/intent", {"对话id": "无机器"})
         签("缺机器参数 400", 码 == 400)
@@ -177,10 +244,10 @@ def 自检() -> int:
         同话 = [i for i in r["意图们"] if i["对话id"] == "c9"]
         签("561 注销精确到 (机器,对话id)：只销甲机行·乙机行留存",
            len(同话) == 1 and 同话[0]["机器"] == "乙机名")
-        with urllib.request.urlopen(基址 + "/", timeout=5) as resp:
-            页 = resp.read().decode("utf-8")
+        好, 结果 = 取响应(基址 + "/", lambda r: (响应码(r), r.read().decode("utf-8")))
+        首页码, 页 = 结果 if 好 else (0, "")      # 495：断连=状态 0·签自然失败
         签("看板页 200 且静态服务（board_www/index.html）",
-           resp.status == 200 and "任务看板" in 页)
+           首页码 == 200 and "任务看板" in 页)
         签("382 页面子页签+详情面板+新建表单齐备",
            all(k in 页 for k in ("当前在飞", "远端在飞分支", "可认领任务", "待裁决",
                                  "详情面板", "新建任务")))
@@ -194,8 +261,8 @@ def 自检() -> int:
         签("430 登录 UI 齐备（登录钮+口令窗+提交）",
            all(k in 页 for k in ('id="登录钮"', 'id="登录遮罩"', 'id="登录口令"',
                                  'id="登录提交"', 'type="password"')))
-        with urllib.request.urlopen(基址 + "/board.css", timeout=5) as resp:
-            签("静态 board.css 200", resp.status == 200)
+        好, CSS码 = 取响应(基址 + "/board.css", 响应码)   # 495：连接层异常重试一次
+        签("静态 board.css 200", 好 and CSS码 == 200)
         # 308j 发号权威五用例（乙+：原子递增/视野并集/禁用号跳/核对 409/占号冲突）
         码, r = 调("POST", "/api/claim_number", {"机器": "甲机", "对话id": "n1",
                   "上报者": "甲机-主树", "视野号们": ["300", "307", "308i"], "描述": "首号"})
@@ -251,19 +318,19 @@ def 自检() -> int:
         调("POST", "/api/intent", {"机器": "甲机", "对话id": "wt" + 首,
                                    "在做": 首, "计划": "276", "备注": "真 claim 补全"})
         码, r = 调("GET", "/api/board")
-        领行 = next(i for i in r["意图们"] if i["对话id"] == "wt" + 首)
+        领行 = next((i for i in r["意图们"] if i["对话id"] == "wt" + 首), 断连)
         签("494 claim 同键覆盖：计划/备注补全·单行不重复",
            len([i for i in r["意图们"] if i["对话id"] == "wt" + 首]) == 1
            and 领行["计划"] == "276" and 领行["备注"] == "真 claim 补全")
         调("POST", "/api/task_update", {"号": 首, "状态": "🏃"})
         码, r = 调("GET", "/api/board")
-        领行 = next(i for i in r["意图们"] if i["对话id"] == "wt" + 首)
+        领行 = next((i for i in r["意图们"] if i["对话id"] == "wt" + 首), 断连)
         签("494 无机器/归属反态：不建新卡·既有行计划备注不丢",
            领行["计划"] == "276")
         调("POST", "/api/task_create", {"标题": "归属兜底件"})
         码, r = 调("GET", "/api/tasks")
         归属号 = max((t["号"] for t in r["任务们"] if t["标题"] == "归属兜底件"),
-                     key=台账.号排序键)
+                     key=台账.号排序键, default=断连)
         调("POST", "/api/task_update", {"号": 归属号, "状态": "🏃",
                                         "归属": "乙机-兜底树"})
         码, r = 调("GET", "/api/board")
@@ -274,11 +341,11 @@ def 自检() -> int:
         调("POST", "/api/task_create", {"标题": "换号件"})
         码, r = 调("GET", "/api/tasks")
         换号 = max((t["号"] for t in r["任务们"] if t["标题"] == "换号件"),
-                   key=台账.号排序键)
+                   key=台账.号排序键, default=断连)
         调("POST", "/api/task_update", {"号": 换号, "状态": "🏃",
                                         "机器": "甲机", "对话id": "wt" + 首})
         码, r = 调("GET", "/api/board")
-        领行 = next(i for i in r["意图们"] if i["对话id"] == "wt" + 首)
+        领行 = next((i for i in r["意图们"] if i["对话id"] == "wt" + 首), 断连)
         签("494 已有卡认领新号：在做切换·计划备注保留",
            领行["在做"] == 换号 and 领行["计划"] == "276"
            and 领行["备注"] == "真 claim 补全")
@@ -312,7 +379,7 @@ def 自检() -> int:
         码, r = 调("GET", "/api/tasks")
         图 = {t["号"]: t for t in r["任务们"]}
         签("382 就绪判定：前置✅ 后新任务就绪·未完前置不就绪",
-           图[三]["就绪"] is True and 图[首]["就绪"] is False)
+           深取(图, 三, "就绪") is True and 深取(图, 首, "就绪") is False)
         码, r = 调("GET", f"/api/task/{三}")
         签("382 单任务查询", 码 == 200 and r["任务"]["号"] == 三)
         码, r = 调("GET", "/api/task/888888")
@@ -321,7 +388,7 @@ def 自检() -> int:
             {"分支": f"任务/{三}", "提交": "abc123", "时刻": "", "已并入": False}]})
         码, r = 调("GET", "/api/board")
         图 = {t["号"]: t for t in r["任务们"]}
-        签("308d 队列×在飞对撞：在飞区号=疑似认领", 图[三]["疑似认领"] is True)
+        签("308d 队列×在飞对撞：在飞区号=疑似认领", 深取(图, 三, "疑似认领") is True)
         码, r = 调("GET", "/api/board")
         字 = r.get("任务字典") or {}
         签("382 任务字典实时生成（兼容字段·永不过期）",
@@ -472,10 +539,11 @@ def 自检() -> int:
             {"号": "800", "选项键": "甲", "裁决人": "用户", "意见": "照办"}]})
         签("403 裁决提交：批量 1 件成功", 码 == 200 and r["成功"] == 1
            and r["结果们"][0]["任务备注联动"] == "已写入备注")
-        任务800 = 台账.单任务(服务.连接, "800")
+        任务800 = 台账.单任务(服务.连接, "800") or {}   # 495：断连面下可能未立项
         签("403 台账备注联动：裁决语入备注头·状态不动",
-           任务800["备注"].startswith("〔") and "网页裁决" in 任务800["备注"][:40]
-           and 任务800["状态"] == "⬜")
+           任务800.get("备注", "").startswith("〔")
+           and "网页裁决" in 任务800.get("备注", "")[:40]
+           and 任务800.get("状态") == "⬜")
         码, r = 调("GET", "/api/adjudications")
         项800 = next((x for x in r["裁决项们"] if x["号"] == "800"), {})
         签("403 裁决后已裁决态+记录留痕+最新结论",
@@ -508,11 +576,11 @@ def 自检() -> int:
         登请求 = urllib.request.Request(基址 + "/api/login", method="POST",
             data=json.dumps({"口令": "test-token-308a"}, ensure_ascii=False).encode("utf-8"))
         服务.令牌 = "test-token-308a"
-        with urllib.request.urlopen(登请求, timeout=5) as r:
-            蛋糕 = r.headers.get("Set-Cookie", "")
+        好, 蛋糕 = 取响应(登请求, lambda r: r.headers.get("Set-Cookie", ""))
+        蛋糕 = 蛋糕 if 好 else ""            # 495：断连=空 cookie·签自然失败
         签("430 登录：正口令 200+HttpOnly 会话 cookie",
            "cn_board_session=" in 蛋糕 and "HttpOnly" in 蛋糕)
-        会话id = 蛋糕.split(";")[0].split("=", 1)[1]
+        会话id = 蛋糕.split(";")[0].split("=", 1)[-1]   # 495：空 cookie 兜底不索引炸
         码, r = 调("POST", "/api/intent", {"机器": "网页客", "对话id": "w1"},
                   带令牌=False, cookie=蛋糕)
         签("430 会话 cookie 写操作放行（无 Bearer）", 码 == 200)
@@ -537,3 +605,7 @@ def 自检() -> int:
         服务.连接 = 全局连接
     print(f"自检 {len(失败们)} 失败" if 失败们 else "自检全绿")
     return 1 if 失败们 else 0
+
+
+if __name__ == "__main__":       # 495：裸跑入口（等价 board_service.py --selftest）
+    sys.exit(自检())
