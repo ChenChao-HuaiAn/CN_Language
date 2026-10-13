@@ -803,6 +803,22 @@ void IRGenerator::visitCastExpr(CastExpr* node) {
         lastExpr_ = operand;
         return;
     }
+    // 533（475 批甲·2026-10-14 用户裁决）：浮→字符显式转换饱和化专用通道——
+    //   超域按 Unicode 标量有效域 [0, 0x10FFFF] 钳制、NaN→0（528 浮→整族同构·
+    //   runtime __cn_fXX_to_char 同源）。字符目标在 IR 类型层坍缩 i32
+    //   （mapType("字符")="i32"），与 整32(浮) 目标文本不可区分——若落通用
+    //   Cast 发射会按 i32 域饱和（超域→2147483647 非 0x10FFFF 域分叉）。故
+    //   此处对「字符(浮源)」直发 runtime 饱和辅助调用（结果类型 i32=字符槽
+    //   语义·win EXTERN 经 Call extra 自动收集）。整源→字符维持通用 Cast
+    //   位模式互通（§3.7 字符↔整数·本轮不扩面）。
+    if ((operand.type == "f32" || operand.type == "f64") &&
+        types::canonical(node->targetType) == "字符") {
+        lastExpr_ = emitResult(ir::Opcode::Call, {operand}, "i32",
+                               (operand.type == "f64") ? "__cn_f64_to_char"
+                                                       : "__cn_f32_to_char",
+                               node->location);
+        return;
+    }
     // 源类型为 i128/u128 且目标为浮点：Cast 指令源类型按双槽约定
     // （codegen emitCast 已按 from==i128/u128 走辅助函数 __cn_*_to_f64）。
     // 指针 -> 整数 / 整数 -> 指针：IR 层类型均为 8 字节槽（ptr/i64），

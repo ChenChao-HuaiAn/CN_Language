@@ -571,6 +571,34 @@ extern "C" std::uint64_t __cn_f32_to_u16(float v) { return __cn_f64_to_u16(v); }
 extern "C" std::uint64_t __cn_f32_to_u32(float v) { return __cn_f64_to_u32(v); }
 extern "C" std::uint64_t __cn_f32_to_u64(float v) { return __cn_f64_to_u64(v); }
 
+// ==================== 浮→字符饱和族（#533·475 批甲·528 浮→整族同构落点） ====================
+// 475 批甲（2026-10-14 用户网页裁决）：浮→字符显式转换饱和化——超域按 Unicode
+//   标量有效域 [0, 0x10FFFF] 钳制、NaN→0、双侧同构、001 补条文（「Rust as 全
+//   对齐」原则的字符域落点：饱和域=字符类型值域，非 整32 的 i32 域——原路径
+//   字符目标经 IR 类型坍缩走 i32 域饱和，0x10FFFF ~ i32MAX 之间超域面分叉）。
+// 饱和语义：NaN→0；v<=0（含 -inf）→0（域下界）；v>=2^20+2^16（=0x110000，
+//   f32/f64 均精确可表示）→0x10FFFF；域内向零截断。代理区 [0xD800,0xDFFF]
+//   处置=透传（钳制域为连续区间 [0,0x10FFFF]，代理区值在域内不作特殊映射——
+//   替换字符映射属新增语义未获授权；实施轮细化决策留痕=提交信息/交接）。
+// 返回统一 64 位（528 同款：arm64 w0 高位垃圾面规避·x64 rax 全宽；字符域值
+//   0~0x10FFFF 高位恒零，窄槽按目标宽写低 32 位读取侧正确）。
+namespace {
+
+// 字符域饱和核心：NaN/<=0 → 0；>=0x110000 → 0x10FFFF；域内向零截断
+inline std::uint64_t f64SatChar(double v) {
+    if (v != v) return 0;                // NaN → 0
+    if (v <= 0.0) return 0;              // 负域/零/负零 → 0（域下界饱和）
+    if (v >= 1114112.0) return 1114111;  // 0x110000 → 0x10FFFF（上界饱和）
+    return static_cast<std::uint64_t>(v);  // 域内 (0,0x110000) 向零截断
+}
+
+} // namespace
+
+extern "C" std::uint64_t __cn_f64_to_char(double v) { return f64SatChar(v); }
+
+// f32 源变体：float→double 无损提升后共用判据（与 __cn_f32_to_* 族同款）
+extern "C" std::uint64_t __cn_f32_to_char(float v) { return f64SatChar(v); }
+
 // ==================== 128位打印（规格书10.1，打印 变参展开对 i128 的衔接） ====================
 
 namespace {
