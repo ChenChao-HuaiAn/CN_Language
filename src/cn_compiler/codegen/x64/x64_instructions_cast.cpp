@@ -438,7 +438,16 @@ bool X64CodeGenerator::emitCastIntWidth(AsmWriter& writer, const ir::IRInstructi
         to != "i128" && to != "u128") {
         // 小 -> 大：扩展（8/16位先扩展到32位，再经 movsxd 到64位；
         // MASM 不支持 movsx rax, [mem8/16] 一步到64位——A2022 操作数大小不匹配）
-        const std::string ext = (fromSigned) ? "movsx" : "movzx";
+        // 526（670 win 面根治）：窄->窄转换的扩展模式按**目标**符号性选——
+        //   原按源符号性：正8(整8 负值) 走 movsx 存 0xFFFFFF90（u8 槽位约定
+        //   =零扩展形态），比较消费侧 32 位直读得负值与正字面量恒不等
+        //   （670-D2a win 实锤：正8(s[1])==144 判假）。宽目标（i32/i64 等）
+        //   维持按源符号性（值保持语义·零改动）；窄目标对齐 v2 权威实现
+        //   （代码生成.cn 正8 强转零扩展为全宽值）与 474 窄域值域约定。
+        const bool toNarrow = (to == "i8" || to == "i16" || to == "u8" || to == "u16");
+        const bool toSigned = (to == "i8" || to == "i16");
+        const std::string ext = toNarrow ? (toSigned ? "movsx" : "movzx")
+                                         : (fromSigned ? "movsx" : "movzx");
         const std::string mp = memSizePtr(from);
         if (inst.operands[0].isConstant) {
             // 077（窄↔128 通道·常量源适配）：常量传播会把窄常量直接喂进 Cast 源
@@ -447,6 +456,11 @@ bool X64CodeGenerator::emitCastIntWidth(AsmWriter& writer, const ir::IRInstructi
             //   写 eax 清高 32 位——有符号窄常量的 32 位补码已含符号形态（后续
             //   movsxd 继续扩展），无符号常量非负（清高 32=零扩展·movzx 同构）。
             writer.line("mov eax, " + src);
+            if (toNarrow && !toSigned) {
+                // 526：窄无符号目标的常量源——常量文本可带符号形态（如
+                //   整8(-112) -> 正8 值应为 144），截断到目标域（写 eax 清高 32）。
+                writer.line("and eax, " + std::string(to == "u8" ? "255" : "65535"));
+            }
         } else {
             writer.line(ext + " eax, " + mp + src);
         }

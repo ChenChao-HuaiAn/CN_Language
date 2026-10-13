@@ -76,10 +76,27 @@ void X64CodeGenerator::emitLoadStore(AsmWriter& writer, const ir::IRInstruction&
         // i128/正128 变量存储（Task 完善A）：双寄存器（%vN 高 + %vN+1 低）
         //   -> 变量 x（低64位槽）+ x$s1（高64位槽）
         if (inst.type == "i128" || inst.type == "u128") {
-            const int srcHiId = inst.operands[0].id;
-            const int srcLoId = inst.operands[0].id + 1;
             const std::string loSlot = "[rbp" + std::to_string(varSlotOf(inst.extra)) + "]";
             const std::string hiSlot = "[rbp" + std::to_string(varSlotOf(inst.extra + "$s1")) + "]";
+            // 526（802 win 面根治）：常量源（声明零初始化 存储 0/常量传播直喂）
+            //   拆分 LO:HI 双半直装——原实现按寄存器双槽取 regSlot(id/id+1)，
+            //   常量 id=-1 时 regSlotOffset(-1)=0 拼出 "[rbp0]"（ml64 A2006
+            //   undefined symbol·802 dual win 面 D1 汇编失败实锤），且读的是
+            //   寄存器槽 0/saved rbp 垃圾（非零初始化语义）。解析器对齐
+            //   StorePtr i128 常量源通道（467-a T46 同款 parseInt128InitText：
+            //   支持十进制±/进制前缀/"lo:hi" 常量池形态）。
+            if (inst.operands[0].isConstant) {
+                unsigned long long lo = 0, hi = 0;
+                const bool ok = types::parseInt128InitText(
+                    inst.operands[0].extra, inst.type == "i128", lo, hi);
+                writer.line("mov rax, " + (ok ? uint64HexText(lo) : "0"));
+                writer.line("mov " + loSlot + ", rax");
+                writer.line("mov rax, " + (ok ? uint64HexText(hi) : "0"));
+                writer.line("mov " + hiSlot + ", rax");
+                return;
+            }
+            const int srcHiId = inst.operands[0].id;
+            const int srcLoId = inst.operands[0].id + 1;
             writer.line("mov rax, " + regSlot(srcLoId));
             writer.line("mov " + loSlot + ", rax");
             writer.line("mov rax, " + regSlot(srcHiId));
