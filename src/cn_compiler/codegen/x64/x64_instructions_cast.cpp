@@ -43,7 +43,7 @@ void X64CodeGenerator::emitCast(AsmWriter& writer, const ir::IRInstruction& inst
     case judgement::CastKind::Int64Reinterpret:
     case judgement::CastKind::FloatIdentity:
     case judgement::CastKind::FloatToFloat:
-        if (emitCastPtrAndFloatPair(writer, dst, src, from, to, fromFloat, toFloat)) return;
+        if (emitCastPtrAndFloatPair(writer, inst, dst, src, from, to, fromFloat, toFloat)) return;
         break;
     default:
         break;
@@ -148,6 +148,14 @@ bool X64CodeGenerator::emitCompareFloat(AsmWriter& writer, const ir::IRInstructi
                 break;
         }
         writer.line("movzx eax, al");
+        // D8（369 波1·比较族直写）：结果已分配物理寄存器 -> movzx 直写分配寄存器
+        //   32 位名（免 movzx eax + mov dst, eax 中转——setcc+movzx 语义不变）；
+        //   未分配保持槽写原路径（458 红线「未分配 fallback 产物逐字节不变」）。
+        const std::string fcmpPhys = physRegOf(inst.result);
+        if (!fcmpPhys.empty()) {
+            writer.line("movzx " + widthFor("i32", fcmpPhys) + ", al");
+            return true;
+        }
         writer.line("mov " + shrunkOperand("i32", dst) + ", eax");
         return true;
     }
@@ -268,6 +276,14 @@ void X64CodeGenerator::emitCompareInt(AsmWriter& writer, const ir::IRInstruction
     } else {
         writer.line(setccMnemonic(inst.opcode) + " al");
     }
+    // D8（369 波1·比较族直写）：结果已分配物理寄存器 -> movzx 直写分配寄存器
+    //   32 位名（免 movzx eax + mov dst, eax 中转）；未分配保持槽写原路径
+    //   （458 红线「未分配 fallback 产物逐字节不变」）。
+    const std::string dstPhys = physRegOf(inst.result);
+    if (!dstPhys.empty()) {
+        writer.line("movzx " + widthFor("i32", dstPhys) + ", al");
+        return;
+    }
     writer.line("movzx eax, al");
     writer.line("mov " + shrunkOperand("i32", dst) + ", eax");
 }
@@ -316,6 +332,18 @@ bool X64CodeGenerator::emitCastFloatFamily(AsmWriter& writer, const ir::IRInstru
         writer.line("call " + judgement::floatToIntHelperName(from, to));
         writer.line("add rsp, 32");
         const bool wide = (to == "i64" || to == "u64");
+        // D8（369 波1·转换族直写，rebase 528 形态重放）：528 饱和辅助结构不变，
+        //   仅尾段中转 mov 直写——结果已分配物理寄存器 -> mov 分配寄存器, rax/eax
+        //   单条收尾（免 mov dst, rax/eax 槽写中转）。辅助统一返回 64 位 rax：
+        //   宽目标写 64 位名；窄目标写 32 位名（写 eax 清高 32=零扩展，与 528
+        //   shrunkOperand 槽写同构）。可分配集 rbx/r12~r15 均 callee-saved，饱和
+        //   辅助调用不破坏且与 xmm0/rax 工作寄存器互斥——直写安全。未分配保持
+        //   528 槽写原路径（458 红线「未分配 fallback 产物逐字节不变」）。
+        const std::string ftPhys = physRegOf(inst.result);
+        if (!ftPhys.empty()) {
+            writer.line("mov " + (wide ? ftPhys : widthFor("i32", ftPhys)) + ", " + (wide ? "rax" : "eax"));
+            return true;
+        }
         writer.line("mov " + shrunkOperand(wide ? "i64" : "i32", dst) + ", " + (wide ? "rax" : "eax"));
         return true;
     }
@@ -383,14 +411,22 @@ bool X64CodeGenerator::emitCastFloatFamily(AsmWriter& writer, const ir::IRInstru
 
 // 指针<->整数 + 同类型64直通 + 浮32<->浮64；真=已处理
 bool X64CodeGenerator::emitCastPtrAndFloatPair(AsmWriter& writer,
+    const ir::IRInstruction& inst,
     const std::string& dst, const std::string& src, const std::string& from, const std::string& to,
     bool fromFloat, bool toFloat) {
     // ---- 指针 <-> 整数（Task 2.10 显式转换，位重解释） ----
     // 指针 -> 整数：64 位 mov（整型槽 = 指针值）；整数 -> 指针：64 位 mov。
     // 指针与整数的 IR 类型均为 64 位槽，mov 传递即位重解释；需避免走
     //   下方默认 32 位 mov（读高 32 位垃圾）。
+    // D8（369 波1·转换族直写）：结果已分配 -> 单条直装（免 rax 中转）；
+    //   未分配保持两段原路径（458 红线「未分配 fallback 产物逐字节不变」）。
     if ((from == "ptr" && (to == "i64" || to == "u64")) ||
         ((from == "i64" || from == "u64") && to == "ptr")) {
+        const std::string piPhys = physRegOf(inst.result);
+        if (!piPhys.empty()) {
+            writer.line("mov " + piPhys + ", " + src);
+            return true;
+        }
         writer.line("mov rax, " + src);
         writer.line("mov " + dst + ", rax");
         return true;
@@ -400,6 +436,11 @@ bool X64CodeGenerator::emitCastPtrAndFloatPair(AsmWriter& writer,
     //   直接 64 位 mov 传递（位模式保留，正64 超 2^63 值不被截断）。
     //   原实现落默认 32 位 mov 截断 -> 高 32 位丢失（正64 打印垃圾）。
     if ((from == "i64" || from == "u64") && (to == "i64" || to == "u64")) {
+        const std::string idPhys = physRegOf(inst.result);
+        if (!idPhys.empty()) {
+            writer.line("mov " + idPhys + ", " + src);
+            return true;
+        }
         writer.line("mov rax, " + src);
         writer.line("mov " + dst + ", rax");
         return true;
@@ -473,11 +514,22 @@ bool X64CodeGenerator::emitCastIntWidth(AsmWriter& writer, const ir::IRInstructi
             writer.line(ext + " eax, " + mp + src);
         }
         if (to == "i64" || to == "u64") {
+            // D8（369 波1·转换族直写）：结果已分配 -> movsxd/搬运直落分配寄存器
+            //   （免 movsxd rax + mov dst 中转）；未分配保持 rax 原路径。
+            const std::string ewPhys = physRegOf(inst.result);
             if (fromSigned) {
-                writer.line("movsxd rax, eax");
-                writer.line("mov " + dst + ", rax");
+                if (!ewPhys.empty()) {
+                    writer.line("movsxd " + ewPhys + ", eax");
+                } else {
+                    writer.line("movsxd rax, eax");
+                    writer.line("mov " + dst + ", rax");
+                }
             } else {
-                writer.line("mov " + dst + ", rax");  // movzx 已清零高32位
+                if (!ewPhys.empty()) {
+                    writer.line("mov " + ewPhys + ", rax");  // movzx 已清零高32位
+                } else {
+                    writer.line("mov " + dst + ", rax");  // movzx 已清零高32位
+                }
             }
         } else {
             writer.line("mov " + widthFor("i32", dst) + ", eax");
@@ -581,7 +633,13 @@ bool X64CodeGenerator::emitCastIntWidth(AsmWriter& writer, const ir::IRInstructi
     //   原实现无此分支，落入默认 32 位 mov——src 槽高 32 位是垃圾
     //   （i1 结果槽仅低 32 位写入），打印行(字符串后缀(...)) 读到垃圾
     //   （如 4393751543809）。movzx 读低 32 位后零扩展到 64 位。
+    // D8（369 波1·转换族直写）：结果已分配 -> 写 32 位名清高 32=零扩展单条。
     if (from == "i1" && (to == "i64" || to == "u64")) {
+        const std::string b64Phys = physRegOf(inst.result);
+        if (!b64Phys.empty()) {
+            writer.line("mov " + widthFor("i32", b64Phys) + ", " + shrunkOperand("i32", src));
+            return true;
+        }
         writer.line("mov eax, " + shrunkOperand("i32", src));
         writer.line("mov " + dst + ", rax");  // movzx 语义：写 eax 清零高32位
         return true;
@@ -593,22 +651,41 @@ bool X64CodeGenerator::emitCastIntWidth(AsmWriter& writer, const ir::IRInstructi
         return true;
     }
     // i32 -> i64：movsxd 符号扩展（否则负数高位垃圾变巨大正数，打印(整32) 场景）
+    // D8（369 波1·转换族直写）：结果已分配 -> movsxd 直落分配寄存器（免尾部 mov）。
     if (from == "i32" && to == "i64") {
+        const std::string s64Phys = physRegOf(inst.result);
+        if (!s64Phys.empty()) {
+            writer.line("mov eax, " + shrunkOperand("i32", src));
+            writer.line("movsxd " + s64Phys + ", eax");
+            return true;
+        }
         writer.line("mov eax, " + shrunkOperand("i32", src));
         writer.line("movsxd rax, eax");
         writer.line("mov " + dst + ", rax");
         return true;
     }
     // u32 -> u64：mov 零扩展（写 eax 即清零高32位）
+    // D8（369 波1·转换族直写）：结果已分配 -> 写 32 位名清高 32 单条（零扩展同）。
     if ((from == "u32" && to == "u64") || (from == "i32" && to == "u64") ||
         (from == "u32" && to == "i64")) {
+        const std::string z64Phys = physRegOf(inst.result);
+        if (!z64Phys.empty()) {
+            writer.line("mov " + widthFor("i32", z64Phys) + ", " + shrunkOperand("i32", src));
+            return true;
+        }
         writer.line("mov eax, " + shrunkOperand("i32", src));
         writer.line("mov " + dst + ", rax");
         return true;
     }
     // u64 -> i64（审查修复）：64 位位重解释（mov rax），值域 ≤2^63 语义正确。
     //   原实现落默认 32 位 mov 截断（正64 5000000000 打印 705032704）。
+    // D8（369 波1·转换族直写）：结果已分配 -> 单条直装（免 rax 中转）。
     if (from == "u64" && to == "i64") {
+        const std::string r64Phys = physRegOf(inst.result);
+        if (!r64Phys.empty()) {
+            writer.line("mov " + r64Phys + ", " + src);
+            return true;
+        }
         writer.line("mov rax, " + src);
         writer.line("mov " + dst + ", rax");
         return true;

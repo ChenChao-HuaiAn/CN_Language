@@ -370,17 +370,23 @@ void X64CodeGenerator::emitIntMul(AsmWriter& writer, const ir::IRInstruction& in
         const bool isS = (ty == "i8" || ty == "i16");
         const std::string ext = isS ? "movsx" : "movzx";
         const std::string mp = memSizePtr(ty);
+        // D8（369 波1·乘法族直写）：结果已分配且无溢出检查面（WrapMul/不安全）
+        //   时计算落 dst 的 32 位名（emitIntBinary 458-a 直写同构·免尾部 mov
+        //   中转）；needOvf 时强制三段（481 域 cmp 错误块在中间·垫底布局）。
+        const std::string narrowPhys = needOvf ? std::string() : physRegOf(inst.result);
+        const std::string acc = narrowPhys.empty() ? std::string("eax")
+                                                   : widthFor("i32", narrowPhys);
         // 常量传播面守卫（#500·077 修法同构）：op1 常量时 mov 直载（A2070 同上）
         if (inst.operands[0].isConstant) {
-            writer.line("mov eax, " + op1);
+            writer.line("mov " + acc + ", " + op1);
         } else {
-            writer.line(ext + " eax, " + mp + op1);
+            writer.line(ext + " " + acc + ", " + mp + op1);
         }
         if (inst.operands[1].isConstant) {
-            writer.line("imul eax, " + op2Text);
+            writer.line("imul " + acc + ", " + op2Text);
         } else {
             writer.line(ext + " ecx, " + memSizePtr(inst.operands[1].type) + op2);
-            writer.line("imul eax, ecx");
+            writer.line("imul " + acc + ", ecx");
         }
         if (needOvf) {
             // 481 修（窄域乘法恒窄域·与 linux_x64 同构）：原结构「cmp hi;
@@ -403,6 +409,9 @@ void X64CodeGenerator::emitIntMul(AsmWriter& writer, const ir::IRInstruction& in
             writer.raw(trap + ":");
             emitOverflowErrorBody(writer);
             writer.raw(ok + ":");
+        }
+        if (acc != "eax") {
+            return;  // D8（369 波1）直写：乘积已落分配寄存器
         }
         writer.line("mov " + shrunkOperand("i32", dst) + ", eax");
         return;
@@ -450,6 +459,17 @@ void X64CodeGenerator::emitIntMul(AsmWriter& writer, const ir::IRInstruction& in
         return;
     }
     // i32 / i64：imul 置 OF → jo（硬件标志检测）
+    // D8（369 波1·乘法族直写）：判据同 emitIntBinary 458-a——结果已分配 且
+    //   op2 不与 dst 同物理寄存器（分配器死点复用同寄存器面：两地址 op 先覆盖
+    //   op2=错，退回三段）且无溢出检查面（needOvf 强制三段）时计算直接落 dst。
+    const std::string mulPhys = needOvf ? std::string() : physRegOf(inst.result);
+    if (!mulPhys.empty() && op2Text != mulPhys &&
+        shrunkOperand(ty, op2Text) != widthFor(ty, mulPhys)) {
+        const std::string dw = widthFor(ty, mulPhys);
+        writer.line("mov " + dw + ", " + shrunkOperand(ty, op1));
+        writer.line("imul " + dw + ", " + shrunkOperand(ty, op2Text));
+        return;
+    }
     std::string w = widthFor(ty, "rax");
     writer.line("mov " + w + ", " + shrunkOperand(ty, op1));
     writer.line("imul " + w + ", " + shrunkOperand(ty, op2Text));

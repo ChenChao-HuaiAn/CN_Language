@@ -183,7 +183,7 @@ private:
     bool emitCastFloatFamily(AsmWriter& writer, const ir::IRInstruction& inst,
         const std::string& dst, const std::string& src, const std::string& from, const std::string& to,
         bool fromFloat, bool toFloat);
-    bool emitCastPtrAndFloatPair(AsmWriter& writer,
+    bool emitCastPtrAndFloatPair(AsmWriter& writer, const ir::IRInstruction& inst,
         const std::string& dst, const std::string& src, const std::string& from, const std::string& to,
         bool fromFloat, bool toFloat);
     bool emitCastIntWidth(AsmWriter& writer, const ir::IRInstruction& inst,
