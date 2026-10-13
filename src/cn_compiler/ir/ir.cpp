@@ -494,8 +494,13 @@ std::string IRGenerator::memberObjStructType(MemberExpr* node) const {
             //   对象=显式解引用表达式（(*结构体指针).字段）——operand 类型剥星。
             //   原读/写归一面缺此支 → 委托方（写路径）原由漂移副本自带，
             //   归一后单一实现必须自带全形态。
-            objType = exprSrcType(u->operand.get());
-            if (types::isPointer(objType)) objType = types::pointeeOf(objType);
+            //   622 接棒升级（2026-10-14·rebase 合并两修·p1005 同族）：推导
+            //   走公共辅助 derefPointeeSrcType——597 版 exprSrcType 单跳对
+            //   嵌套解引用（(**pp).字段 的内层 *pp）miss 落空（882 矩阵
+            //   27:15 实证），递归剥层与宽度层/读侧同源全形态覆盖。
+            //   plans/001：`q.x ≡ (*q).x`（. 左侧指针自动解引用一级），
+            //   (*pp).字段 解一层后同此语义。
+            objType = derefPointeeSrcType(u->operand.get());
         }
     }
     // v2.1 经指针成员（isDerefAccess，语义层按对象类型置位）：对象是结构体指针
@@ -512,6 +517,40 @@ std::string IRGenerator::memberObjStructType(MemberExpr* node) const {
         objType = types::pointeeOf(types::canonical(objType));
     }
     return objType;
+}
+
+// 622（2026-10-14）：解引用操作数（*x 的 x）所指源码类型——成员访问族类型推导
+//   公共辅助（memberObjStructType / memberAssignObjSrcType / resolveMemberObjSrcType
+//   三消费点同源·第 3 处出现即提炼）。语义=操作数类型剥一层星（*x 的元素类型）；
+//   操作数形态经 exprSrcType 统一解析（变量/全局静态/类字段裸名/成员链/调用/
+//   下标），嵌套解引用（(**pp).字段 的 *pp）递归剥层。非指针/推导失败返回空串
+//   （调用方沿既有 miss 防御——修前 (*p).非零偏移字段 写落偏移 0/读降级常量 0，
+//   p1005 同族）。
+std::string IRGenerator::derefPointeeSrcType(Expr* operand) const {
+    if (operand == nullptr) return "";
+    if (operand->getType() == NodeType::UnaryExpr) {
+        UnaryExpr* u = static_cast<UnaryExpr*>(operand);
+        if (u->op == Operator::Deref) {
+            // *(*x)：内层所得（如 乙*）再剥一层 → 乙
+            const std::string inner = derefPointeeSrcType(u->operand.get());
+            return types::isPointer(inner) ? types::pointeeOf(inner) : "";
+        }
+    }
+    const std::string t = exprSrcType(operand);
+    return types::isPointer(t) ? types::pointeeOf(t) : "";
+}
+
+// 622（2026-10-14）：成员访问对象源码类型——类路径的对象类型推导入口
+//   （handleClassMemberExpr/Lvalue/Assign、emitMemberMethodCall、tryInterfaceMethodCall）。
+//   显式解引用对象（(*类指针).字段）经 derefPointeeSrcType 剥一层星；其余形态直通
+//   exprSrcType。与结构体路径共用同一 Deref 推导（防「一侧修一侧漏」分叉）；
+//   exprSrcType 本体零增量不动（ir_oop.cpp 1000 行贴红线·先拆再加纪律）。
+std::string IRGenerator::memberObjectSrcType(Expr* object) const {
+    if (object != nullptr && object->getType() == NodeType::UnaryExpr &&
+        static_cast<UnaryExpr*>(object)->op == Operator::Deref) {
+        return derefPointeeSrcType(static_cast<UnaryExpr*>(object)->operand.get());
+    }
+    return exprSrcType(object);
 }
 
 // 448（2026-10-11）：下标对象元素源码类型——原 memberObjStructType 的 IndexExpr

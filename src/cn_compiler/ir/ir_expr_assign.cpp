@@ -290,6 +290,10 @@ bool IRGenerator::memberGenericAssign(AssignmentExpr* node, MemberExpr* member) 
 //   读面 memberObjStructType 已全形态而写面副本 118/208 两轮各补一支仍
 //   追不平——归一后新对象形态只补 memberObjStructType 一处。
 std::string IRGenerator::memberAssignObjSrcType(MemberExpr* member) {
+    // 622 接棒 rebase 裁决（2026-10-14·合并两修）：保留 597 整体委托归一
+    //   （单一实现·新对象形态只补 memberObjStructType 一处），弃深度机分支
+    //   的漂移副本升级版——其 Deref 面增强（derefPointeeSrcType 递归剥层）
+    //   已传导进 memberObjStructType（597 归一面），委托链自动获得全形态。
     return memberObjStructType(member);
 }
 

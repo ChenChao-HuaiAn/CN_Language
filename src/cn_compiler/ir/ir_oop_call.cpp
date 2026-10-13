@@ -511,7 +511,7 @@ void IRGenerator::emitCtorInvoke(CallExpr* node, const std::string& className,
 bool IRGenerator::emitMemberMethodCall(CallExpr* node) {
     MemberExpr* mem = static_cast<MemberExpr*>(node->callee.get());
     const std::string methodName = mem->memberName;
-    const std::string objSrcType = exprSrcType(mem->object.get());
+    const std::string objSrcType = memberObjectSrcType(mem->object.get());  // 622：支持 (*类指针).方法()
     const std::string canonObj = types::canonical(objSrcType);
 
     const int stat = emitStaticMethodCall(node, mem, methodName);
@@ -638,7 +638,10 @@ bool IRGenerator::emitInstanceMethodCall(CallExpr* node, MemberExpr* mem,
         }
     }
     if (!elemMutable794) {
-        thisArg = genExpr(mem->object.get());
+        // 622（2026-10-14）：this 生成走 classMemberBasePtr 统一助手——显式解引用
+        //   对象（(*类指针).方法()）this=指针值本身；原 genExpr(*p) 对 Deref 多一层
+        //   LoadPtr（读对象首字段当 this）→ 被调方 this 错位段错误（m 探针 rc=139）。
+        thisArg = classMemberBasePtr(mem->object.get());
     }
 
     // ---- 虚调用：方法在虚表中有槽位（虚拟 或 重写，vtableIndex>=0）且非 父类. 限定调用 ----

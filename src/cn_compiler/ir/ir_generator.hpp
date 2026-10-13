@@ -426,6 +426,13 @@ private:
     //   数组名[下标]/指针[下标]/结构体数组字段[下标] → 元素源码类型；取址
     //   表达式成员（&表[i].x 的 &表[i]）与之共用。无法推导返回空串。
     std::string memberIndexObjElemType(IndexExpr* idx) const;
+    // 622（2026-10-14）：解引用操作数（*x 的 x）所指源码类型 = x 类型剥一层星——
+    //   成员访问族类型推导公共辅助（memberObjStructType / memberAssignObjSrcType /
+    //   resolveMemberObjSrcType 三消费点同源）；非指针/推导失败返回空串。
+    std::string derefPointeeSrcType(Expr* operand) const;
+    // 622：成员访问对象源码类型（类路径消费入口）——显式解引用 (*类指针).字段
+    //   经 derefPointeeSrcType 剥星，其余直通 exprSrcType（与结构体路径同源）。
+    std::string memberObjectSrcType(Expr* object) const;
     // 推导成员表达式的"字段源码类型"（宿主缺陷1'根治 2026-09-02）：
     //   对象类型经 memberObjStructType 解析后，结构体查 StructDecl 字段、
     std::string memberFieldSrcType(MemberExpr* node) const;
@@ -810,6 +817,10 @@ private:
                       const std::string& methodName, const SourceLocation& loc);
     // 类字段左值地址（lvalueAddress 钩子）：返回 实例字段地址（this+偏移）或静态字段符号
     bool handleClassMemberLvalue(MemberExpr* node, ir::IRValue& outAddr);
+    // 622（2026-10-14）：类成员访问对象指针生成——显式解引用对象（(*类指针).字段）
+    //   基址=指针值本身（lvalueAddress 对 *p 产指针值）；普通对象（类变量/自身）
+    //   基址=genExpr（指针槽模型读槽=对象指针）。读/左值/方法 this 三消费点共用。
+    ir::IRValue classMemberBasePtr(Expr* object);
     // 类字段赋值（visitAssignmentExpr 钩子）：对象.字段 = v / 类名.静态字段 = v
     bool handleClassMemberAssign(MemberExpr* target, Expr* valueExpr,
                                  Operator op, const SourceLocation& loc);

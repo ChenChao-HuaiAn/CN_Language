@@ -391,7 +391,7 @@ bool IRGenerator::handleClassMemberExpr(MemberExpr* node) {
     if (node->object->getType() == NodeType::IdentifierExpr) {
         objName = static_cast<IdentifierExpr*>(node->object.get())->name;
     }
-    const std::string objSrcType = exprSrcType(node->object.get());
+    const std::string objSrcType = memberObjectSrcType(node->object.get());  // 622：支持 (*类指针)
     const std::string canonObj = types::canonical(objSrcType);
 
     // P3-23：静态方法作值（类名.静态方法 用作函数指针值）→ FuncAddr 方法链接符号
@@ -467,18 +467,7 @@ bool IRGenerator::handleClassMemberExpr(MemberExpr* node) {
     if (!semantic_->isClassType(canonObjField)) return false;
     const std::string fieldType = classFieldType(canonObjField, node->memberName);
     if (fieldType.empty()) return false;
-    // 728g·776（指针下标域读通道·v2 同构·079 指针下标分支宿主侧对齐）：对象=
-    //   指针下标（名单[0]，名单:学生*）——基址=元素地址（lvalueAddress：
-    //   指针值+i*sizeof(类)·不 LoadPtr 解引用），与 v2 指针下标域读模型对齐
-    //   （p[i].字段 = 元素槽 + 字段偏移 直读·C 数组语义）。原走 genExpr（把
-    //   LoadPtr 槽值当对象指针）→ 分配零初始化槽值 0 被二次解引用 → 空指针
-    //   错误码 3（776 实录）=指针槽模型与 v2 内联域读分叉。
-    ir::IRValue base;
-    if (node->object->getType() == NodeType::IndexExpr) {
-        base = lvalueAddress(node->object.get());
-    } else {
-        base = genExpr(node->object.get());  // this / 类变量值（对象指针）
-    }
+    ir::IRValue base = classMemberBasePtr(node->object.get());  // 对象指针（622 统一助手·内含 728g 指针下标分支）
     const int offset = semantic_->classFieldOffset(canonObjField, node->memberName);
     if (offset < 0) return false;
     ir::IRValue addr = emitResult(ir::Opcode::FieldAddr, {base}, "ptr",
@@ -533,7 +522,7 @@ bool IRGenerator::handleClassMemberLvalue(MemberExpr* node, ir::IRValue& outAddr
     if (node->object->getType() == NodeType::IdentifierExpr) {
         objName = static_cast<IdentifierExpr*>(node->object.get())->name;
     }
-    const std::string objSrcType = exprSrcType(node->object.get());
+    const std::string objSrcType = memberObjectSrcType(node->object.get());  // 622：支持 (*类指针)
     const std::string canonObj = types::canonical(objSrcType);
 
     // 静态字段
@@ -559,18 +548,37 @@ bool IRGenerator::handleClassMemberLvalue(MemberExpr* node, ir::IRValue& outAddr
     if (fieldType.empty()) return false;
     const int offset = semantic_->classFieldOffset(canonObjField, node->memberName);
     if (offset < 0) return false;
-    // 728g·776 写侧对称（与读侧同判据）：对象=指针下标（名单[0].字段 = v）——
-    //   目标地址=元素地址+字段偏移（内联域写·C 数组语义），原走 genExpr 把
-    //   槽值当对象指针（写侧 351 同族分叉面·先收口防读绿写歪）。
-    ir::IRValue base;
-    if (node->object->getType() == NodeType::IndexExpr) {
-        base = lvalueAddress(node->object.get());
-    } else {
-        base = genExpr(node->object.get());
-    }
+    // 622 统一助手（622 守卫 Deref→lvalueAddress ∪ 728g 守卫 IndexExpr→
+    //   lvalueAddress 已收编于助手·教训 #164 双守卫合流）：对象=指针下标
+    //   （名单[0].字段 = v 写侧对称）目标地址=元素地址+字段偏移（内联域写·
+    //   C 数组语义），其余形态 genExpr。原冲突两侧语义等价于助手全体。
+    ir::IRValue base = classMemberBasePtr(node->object.get());
     outAddr = emitResult(ir::Opcode::FieldAddr, {base}, "ptr",
                          std::to_string(offset), node->location);
     return true;
+}
+
+// 622（2026-10-14·p6 段错误铁证）：类成员访问对象指针生成——显式解引用对象
+//   （(*类指针).字段）基址=指针值本身：lvalueAddress 对 *p 产「指针值」语义
+//   （与结构体路径 genMemberLvalueAddress 的 Deref 处理同源）；原 genExpr(*p)
+//   对 Deref 发 LoadPtr 读对象首字段（把对象当指针槽再解引用）→ 基址=垃圾指针
+//   → FieldAddr 后访存段错误（rc=139）。普通对象（类变量/自身/成员链）维持
+//   genExpr（指针槽模型读槽=对象指针）。零分叉：v2 同形态编译通过（p6 冒烟），
+//   宿主向 v2 对齐。
+ir::IRValue IRGenerator::classMemberBasePtr(Expr* object) {
+    if (object != nullptr && object->getType() == NodeType::UnaryExpr &&
+        static_cast<UnaryExpr*>(object)->op == Operator::Deref) {
+        return lvalueAddress(object);
+    }
+    // 728g·776（指针下标域读通道·融合收编·教训 #164 双守卫合流）：对象=指针
+    //   下标（名单[0]，名单:学生*）——基址=元素地址（lvalueAddress：指针值+
+    //   i*sizeof(类)·不 LoadPtr 解引用），与 v2 指针下标域读模型对齐。原走
+    //   genExpr（把 LoadPtr 槽值当对象指针）→ 分配零初始化槽值 0 被二次解
+    //   引用 → 空指针错误码 3（776 实录）。
+    if (object != nullptr && object->getType() == NodeType::IndexExpr) {
+        return lvalueAddress(object);
+    }
+    return genExpr(object);
 }
 
 // ==================== 类字段赋值（visitAssignmentExpr 钩子） ====================
@@ -590,7 +598,7 @@ bool IRGenerator::handleClassMemberAssign(MemberExpr* target, Expr* valueExpr,
     if (target->object->getType() == NodeType::IdentifierExpr) {
         objName = static_cast<IdentifierExpr*>(target->object.get())->name;
     }
-    const std::string objSrcType = exprSrcType(target->object.get());
+    const std::string objSrcType = memberObjectSrcType(target->object.get());  // 622：支持 (*类指针)
     // 390（win x64 指针字段写截断根治·与 handleClassMemberLvalue 351 剥星同构）：
     //   字段类型查询须用**剥星后类名**——类指针对象（节点* 头.下个 = 甲）原查
     //   classFieldType("节点*", …)=空 → mapType("")="void"（非空·i64 回退失效）
@@ -627,7 +635,7 @@ bool IRGenerator::handleClassMemberAssign(MemberExpr* target, Expr* valueExpr,
         //   指针字段写落位最小面）——按单一职责回退，聚合指针面归 #364 独立
         //   清偿轮（须带 v2p dual 全量验证）。
         const std::string fieldType974 =
-            structOrClassFieldType(exprSrcType(target->object.get()),
+            structOrClassFieldType(memberObjectSrcType(target->object.get()),
                                    target->memberName);
         const std::string canon974 = types::canonical(fieldType974);
         if (!canon974.empty() &&

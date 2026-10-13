@@ -450,14 +450,13 @@ std::string IRGenerator::resolveMemberObjSrcType(MemberExpr* node) {
         //   宿主缺陷根治（2026-09-03，E2E 134 第四节当场揪出）：原分支表不认
         //   UnaryExpr 对象 -> objSrcType 空 -> decl==null -> 降级常量 0（既有缺陷，
         //   v2.1 统一 . 后 p.字段 ≡ (*p).字段 两形态须等价可互换）。
+        //   622（2026-10-14）：操作数推导统一走 derefPointeeSrcType 公共辅助——
+        //   原实现仅认标识符操作数（lookupSrcType 单通道·"871-a 归一仅认标识符
+        //   操作数"同族），嵌套解引用（(**pp).字段）/成员链操作数
+        //   （(*(具.双重)).字段）miss 落空；现与地址层/宽度层同源全形态覆盖。
         UnaryExpr* u = static_cast<UnaryExpr*>(node->object.get());
-        if (u->op == Operator::Deref &&
-            u->operand->getType() == NodeType::IdentifierExpr) {
-            const std::string pType = lookupSrcType(
-                static_cast<IdentifierExpr*>(u->operand.get())->name);
-            if (types::isPointer(pType)) {
-                objSrcType = types::pointeeOf(pType);
-            }
+        if (u->op == Operator::Deref) {
+            objSrcType = derefPointeeSrcType(u->operand.get());
         }
         // 448（2026-10-11·425 遗留①根治）：取址表达式成员 (&表[i]).x ——
         //   &表[i] 的类型=下标元素类型（visitUnaryExpr AddressOf+IndexExpr

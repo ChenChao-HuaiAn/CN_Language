@@ -21,7 +21,7 @@ bool IRGenerator::tryInterfaceMethodCall(CallExpr* node) {
     //   偏移 = 8 + 全局槽*8；LoadPtr 取实现方法地址 -> CallIndirect(方法, [this, 实参])。
     if (node->callee->getType() == NodeType::MemberExpr) {
         MemberExpr* mem = static_cast<MemberExpr*>(node->callee.get());
-        std::string objSrc = exprSrcType(mem->object.get());
+        std::string objSrc = memberObjectSrcType(mem->object.get());  // 622：支持 (*接口指针).方法()
         std::string ifaceName = types::canonical(objSrc);
         if (types::isPointer(ifaceName)) {
             ifaceName = types::canonical(types::pointeeOf(ifaceName));
