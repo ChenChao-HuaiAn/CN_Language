@@ -15,6 +15,37 @@
 
 namespace cn_compiler {
 
+namespace {
+// 728w（583 扫描·519 同族）：整数文本（已剥 L/U 后缀）超整64 承载域判定——
+//   十进制 >19 位必超 / 19 位字典序超 9223372036854775807；0x 十六进制
+//   >16 位必超 / 16 位首字 ≥'8'；负形态按绝对量（≥2^63 即超承载——MIN
+//   本身作为数组下标亦恒越界）。与 v2 侧 下标字面量超整64域728 同口径
+//   （零分叉·双侧同拒）。
+bool indexTextExceedsI64(const std::string& text) {
+    std::string s = text;
+    bool neg = false;
+    if (!s.empty() && s[0] == '-') { neg = true; s = s.substr(1); }
+    if (s.size() > 2 && s[0] == '0' && (s[1] == 'x' || s[1] == 'X')) {
+        std::string h = s.substr(2);
+        std::size_t i = 0;
+        while (i + 1 < h.size() && h[i] == '0') i++;
+        h = h.substr(i);
+        if (h.size() > 16) return true;
+        if (h.size() == 16 && h[0] > '7') return true;
+        return false;
+    }
+    std::size_t i = 0;
+    while (i + 1 < s.size() && s[i] == '0') i++;
+    s = s.substr(i);
+    if (s.size() > 19) return true;
+    if (s.size() == 19) {
+        if (neg) return s >= std::string("9223372036854775808");
+        return s > std::string("9223372036854775807");
+    }
+    return false;
+}
+}  // namespace
+
 void SemanticAnalyzer::visitMemberExpr(MemberExpr* node) {
     const std::string memberName = node->memberName;
     const std::string objectVar = objectVarName(node->object.get());
@@ -387,6 +418,7 @@ void SemanticAnalyzer::visitIndexExpr(IndexExpr* node) {
         //   块内同样报。
         const int arrLen114 = types::arrayLenOf(objectType);
         if (arrLen114 > 0 && isIntLiteralExpr(node->index.get())) {
+            std::fprintf(stderr, "[dbg728w] 进 isIntLiteralExpr 分支\n");
             const Expr* idxE = node->index.get();
             std::int64_t idxVal = 0;
             if (idxE->getType() == NodeType::IntegerLiteral) {
@@ -399,7 +431,27 @@ void SemanticAnalyzer::visitIndexExpr(IndexExpr* node) {
                 idxVal = static_cast<std::int64_t>(
                     ~static_cast<std::uint64_t>(v) + 1);
             }
-            if (idxVal < 0 || idxVal >= arrLen114) {
+            // 728w（583 扫描·519 同族）：超整64 承载下标文本先拦——19 位
+            //   ≥2^63 / ≥20 位文本在 parser 解析时已回绕毒化（idxVal 读不到
+            //   真实值·实测毒化 0 放行到运行期错误码 2 才拦），文本级判域对
+            //   任意数组长度（长度 ≤ 整64 域）均可证越界；负形态绝对量
+            //   ≥2^63 恒越界同拦（v2 侧 语义检查初始化.cn 同口径·双侧同拒）。
+            const IntegerLiteral* lit728 = nullptr;
+            if (idxE->getType() == NodeType::IntegerLiteral) {
+                lit728 = static_cast<const IntegerLiteral*>(idxE);
+            } else {
+                lit728 = static_cast<const IntegerLiteral*>(
+                    static_cast<const UnaryExpr*>(idxE)->operand.get());
+            }
+            const std::string text728 = types::stripLiteralSuffix(lit728->raw);
+            if (indexTextExceedsI64(text728)) {
+                diagnostics_.report(
+                    DiagnosticLevel::Error, node->index->location,
+                    "编译期下标越界：常量下标 " + text728 +
+                    " 超出数组长度 " + std::to_string(arrLen114) +
+                    "（001 §1.1a①——编译期能证必须编译期拦；运行期越界检查"
+                    "错误码 2 保留兜底）");
+            } else if (idxVal < 0 || idxVal >= arrLen114) {
                 diagnostics_.report(
                     DiagnosticLevel::Error, node->index->location,
                     "编译期下标越界：常量下标 " + std::to_string(idxVal) +
