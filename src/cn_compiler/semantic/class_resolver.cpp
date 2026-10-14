@@ -494,6 +494,33 @@ void SemanticAnalyzer::resolveClass(ClassDecl* node) {
         }
     }
 
+    // 593（2026-10-14）：类成员「抽象类/接口元素数组」值形态拦截——字段
+    //   （实例布局逐元素默认构造实例化·静态字段同为对象存储面）与方法签名
+    //   （按值形参/返回=实例化面）。挂抽象标记后：自引用元素数组（抽象类
+    //   自身作自身成员数组元素）亦覆盖；他类元素沿声明序立法（先声明后
+    //   使用）此刻已 resolve（isAbstract 已标）。遍历 methods 用 methodOrder
+    //   （含构造/析构——其 paramTypes 抽象数组同为按值实例化面；mi.type
+    //   构造/析构=空类型自然放行）。
+    for (const auto& fname : info.fieldOrder) {
+        auto f = info.fields.find(fname);
+        if (f == info.fields.end()) continue;
+        const SourceLocation loc = f->second.ast != nullptr
+                                       ? f->second.ast->location
+                                       : node->location;
+        reportAbstractArrayValueDecl(f->second.type, loc);
+    }
+    for (const auto& mname : info.methodOrder) {
+        auto m = info.methods.find(mname);
+        if (m == info.methods.end()) continue;
+        const SourceLocation loc = m->second.ast != nullptr
+                                       ? m->second.ast->location
+                                       : node->location;
+        for (const auto& pt : m->second.paramTypes) {
+            reportAbstractArrayValueDecl(pt, loc);
+        }
+        reportAbstractArrayValueDecl(m->second.type, loc);
+    }
+
     // P3-19：接口分派区（B1 全局槽位；跨继承链收集接口方法，强制虚表指针）
     info.ifaceDisp.clear();
     info.ifaceMaxSlot = -1;

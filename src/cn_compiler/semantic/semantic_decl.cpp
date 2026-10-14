@@ -116,10 +116,20 @@ void SemanticAnalyzer::visitVarDecl(VarDecl* node) {
     //   （specs/06 §八「含抽象成员的类不可直接实例化」+接口同族·C++
     //   cannot instantiate abstract class 同款）。原缺陷=semantic 注释宣称已拦
     //   而 0 检查（防线交接断链）——纯实例化静默创建虚表残缺的空洞对象，链接器
-    //   仅兜调用形态。指针/引用不在此拦（不实例化）；数组为已知遗留（见
-    //   #593，另立行跟踪）；有初始化器形态=
+    //   仅兜调用形态。指针/引用不在此拦（不实例化）；数组形态由 593 检查
+    //   （下方·元素数组=值形态逐元素默认构造实例化·193 遗留已收口）；有初始化器形态=
     //   接口变量合法赋值面（413 A1）经 checkExpr→checkCtorCall 拦抽象/接口构造。
     //   诊断后不 return（继续既有登记链·单诊断口径对齐 324 先例）。
+    // 593（2026-10-14）：抽象类/接口「元素数组」裸声明=数组值形态逐元素默认
+    //   构造实例化，同点拒绝（193 数组形态漏网根治·注释修正兑现——「数组为
+    //   已知遗留」就此收口）。判定挂 193 裸声明守卫同源（无初始化器/非函数
+    //   指针）：带初始化器形态=初始化列表赋值面（元素来源已受既有数组元素
+    //   隐式转换检查约束，不实例化新抽象对象）。剥数组后缀判元素详见
+    //   reportAbstractArrayValueDecl。诊断后不 return（单诊断口径）。
+    if (node->initializer == nullptr && !node->funcPtr.isFunctionPtr() &&
+        !varType.empty()) {
+        reportAbstractArrayValueDecl(varType, node->location);
+    }
     if (node->initializer == nullptr && !node->funcPtr.isFunctionPtr() &&
         !varType.empty() && isInterfaceType(varType)) {
         diagnostics_.report(DiagnosticLevel::Error, node->location,
@@ -578,6 +588,39 @@ void SemanticAnalyzer::visitVarDecl(VarDecl* node) {
         if (!ownRet) markStrTainted(node->name);
     }
 }
+// ==================== 593：抽象类/接口「元素数组」值形态声明拦截 ====================
+// 数组声明（变量/形参/返回/字段）=逐元素默认构造实例化（specs/06 §八「含抽象
+//   成员的类不可直接实例化」+接口同族·193 数组形态漏网根治）。原缺口=
+//   isClassType/isInterfaceType 按精确类名查表，「图形[3]」含数组后缀恒 miss
+//   静默放行（宿主产 exe 虚表残缺/纯虚调用未定义=v2 接口数组亦静默放行=分叉
+//   双向实锤）。剥数组后缀取元素类型走同一抽象检查：嵌套数组（图形[2][3]）
+//   循环剥至元素；指针后缀形态（图形*[3] 元素=「图形*」查表自然 miss）不拦
+//   ——193 口径：指针不发生值形态实例化。文案对齐 193 注明数组形态；
+//   调用方各声明位单点调用=单诊断口径（193 先例）。
+void SemanticAnalyzer::reportAbstractArrayValueDecl(const std::string& type,
+                                                    const SourceLocation& loc) {
+    std::string elem = type;
+    bool sawArray = false;
+    while (types::isArray(elem)) {
+        elem = types::arrayElemOf(elem);
+        sawArray = true;
+    }
+    if (!sawArray || elem.empty()) return;
+    if (isInterfaceType(elem)) {
+        diagnostics_.report(DiagnosticLevel::Error, loc,
+                            "不能实例化接口 '" + elem + "'（接口无实现体·数组 '" +
+                                type + "' 元素为值形态默认构造）"
+                                "——请以实现类实例初始化");
+        return;
+    }
+    const ClassInfo* ci = findClass(elem);
+    if (ci != nullptr && ci->isAbstract) {
+        diagnostics_.report(DiagnosticLevel::Error, loc,
+                            "不能实例化抽象类 '" + elem + "'（含未实现抽象方法·数组 '" +
+                                type + "' 元素为值形态默认构造）"
+                                "——请实例化具体派生类");
+    }
+}
 // ==================== 188-a（D6·plans/023 B11 变量常量传播）登记助手 ====================
 //   判定模型见 semantic.hpp「函数级恒空指针判定表」注释。核心不变式：
 //   ① 只在「指针（尾 *）/字符串」类型变量上做（非指针变量的 `无` 初始化不参与）；
@@ -786,6 +829,18 @@ void SemanticAnalyzer::checkFunctionBody(FunctionDecl* node) {
     auto it = functions_.find(functionLinkKey(node->moduleName, node->name,
                                               node->sigKey));
     if (it == functions_.end()) return;
+    // 593（2026-10-14）：函数签名「抽象类/接口元素数组」值形态拦截（形参/
+    //   返回）——按值传参/返回=实例化面（specs/06 §八·193 数组形态漏网）。
+    //   挂 body 判定前：原型声明（无体）同样覆盖——声明面即实例化承诺面。
+    //   引用返回（图形&）非数组形态自然放行（193 口径：不实例化）。
+    for (const auto& param : node->params) {
+        if (!param->funcPtr.isFunctionPtr() && !param->typeName.empty()) {
+            reportAbstractArrayValueDecl(param->typeName, param->location);
+        }
+    }
+    if (!node->returnType.empty() && node->returnType != "空类型") {
+        reportAbstractArrayValueDecl(node->returnType, node->location);
+    }
     if (node->body == nullptr) return;  // 函数原型声明：无需检查体
 
     // 010（def-init）：函数级状态表清空（参数=已初始化不登记；函数间零串扰）

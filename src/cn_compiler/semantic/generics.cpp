@@ -784,7 +784,12 @@ void SemanticAnalyzer::recheckGenericFuncBody(const GenericFuncInstance& gfi) {
                 (msg.find("未声明") != std::string::npos ||
                  msg.find("无法将") != std::string::npos ||
                  msg.find("返回类型") != std::string::npos ||
-                 msg.find("返回值被丢弃未检查") != std::string::npos);
+                 msg.find("返回值被丢弃未检查") != std::string::npos ||
+                 // 593（193 同族·2026-10-14）：抽象类/接口实例化拒绝=实例化期
+                 //   类型误用（T 绑定抽象类实参的 T[3]/T 形参/返回面）——
+                 //   不入保留面=重放回滚吞诊断=窄放行漏拦。〔746 融合：与 738
+                 //   「返回值被丢弃未检查」面双守卫并存·教训 #164〕
+                 msg.find("不能实例化") != std::string::npos);
             if (keep) undeclared.push_back(all[di]);
         }
         diagnostics_.restoreTo(snap);
