@@ -155,8 +155,8 @@ def 建库(路径: str = db路径) -> sqlite3.Connection:
         内容 TEXT,
         上报时戳 REAL)""")
     # 308j（用户裁决乙+·服务器发号权威）：发号台账=append-only 流水（号唯一·原子取 max+1）；
-    # 视野快照=各客户端「本机全部在飞行号」（含分支树内号）最近一次上报——发号基准=台账∪视野
-    # ∪021 快照并集，服务端无 git 也拥有最全视野；同号出现在 ≥2 上报者视野=占号冲突。
+    # 视野快照=各客户端「本机全部在飞行号」（含分支树内号）最近一次上报——744 编号权威
+    # 收权后视野仅作号占冲突审计（/api/numbers），发号只走任务表+发号台账双写。
     con.execute("""CREATE TABLE IF NOT EXISTS 发号台账(
         号 TEXT PRIMARY KEY,
         机器 TEXT, 对话id TEXT DEFAULT '', 描述 TEXT DEFAULT '',
@@ -306,9 +306,10 @@ def 号排序键(号: str):
     return 台账.号排序键(号)
 
 
-def 收视野并取基准(上报者: str, 视野号们: list) -> set:
-    """记视野快照·返回 发号基准并集=台账∪视野∪021 快照行号。"""
-    亡秒 = 6 * 3600     # 视野快照保留 6h（陈旧视野不进基准防幽灵占号）
+def 记视野快照(上报者: str, 视野号们: list):
+    """记视野快照（6h TTL·各机在飞行号上报）。744 编号权威收权后视野不再参与
+    发号（客户端禁带号·服务端顺序发放）——仅作号占冲突审计面（/api/numbers）数据源。"""
+    亡秒 = 6 * 3600     # 视野快照保留 6h（陈旧视野不进审计防幽灵占号）
     连接.execute("DELETE FROM 视野快照 WHERE 时戳<?", (time.time() - 亡秒,))
     连接.execute(
         """INSERT INTO 视野快照(上报者,号们,时戳,时刻) VALUES(?,?,?,?)
@@ -316,14 +317,6 @@ def 收视野并取基准(上报者: str, 视野号们: list) -> set:
            时戳=excluded.时戳, 时刻=excluded.时刻""",
         (上报者, json.dumps(视野号们, ensure_ascii=False), time.time(), 时刻()))
     连接.commit()
-    基准 = {r[0] for r in 连接.execute("SELECT 号 FROM 发号台账").fetchall()}
-    for 行们 in 连接.execute("SELECT 号们 FROM 视野快照").fetchall():
-        try:
-            基准 |= set(json.loads(行们[0]))
-        except (ValueError, TypeError):
-            pass
-    基准 |= 台账.已占号集(连接)   # 382：任务表全量号进发号基准（唯一权威）
-    return 基准
 
 
 def 号占冲突们() -> list:
@@ -833,49 +826,32 @@ class 处理器(BaseHTTPRequestHandler):
         return self._回JSON(200, {"好": True})
 
     def _收发号(self, 体: dict):
-        """308j 发号权威（乙+）——{机器, 对话id?, 上报者?, 视野号们, 描述?, 请求号?}
-        请求号空=发新号：基准并集（台账∪各机视野∪021 快照）取 max+1·写台账·原子无竞态；
-        请求号非空=核对模式：台账已发或其他机视野占用（309 双占型）→409 拒·否则放行。"""
+        """视野记账通道（308j 遗存·744 编号权威收权）——{机器, 上报者?, 视野号们, only_view}
+        编号权威归服务器（2026-10-14 用户令）：本端点不再发号/核对——only_view=True
+        纯视野记账（intent.py 唯一生产调用方）；其余一律 400 拒（发号只走
+        task_create/case_number·服务端按顺序发放）。"""
         机器 = str(体.get("机器", "")).strip()[:60]
         if not 机器:
             return self._回JSON(400, {"错误": "机器 必填"})
-        对话id = str(体.get("对话id", "")).strip()[:40]
+        请求号 = str(体.get("请求号", "")).strip()
+        if 请求号:
+            return self._回JSON(400, {
+                "错误": f"客户端禁带编号请求（收到 请求号={请求号}）——"
+                        "编号由服务器按顺序发放（2026-10-14 用户令）·"
+                        "本端点仅视野记账"})
         上报者 = (str(体.get("上报者", "")).strip() or 机器)[:60]
         原始视野 = 体.get("视野号们")
         视野号们 = [str(n) for n in 原始视野
                     if isinstance(n, (str, int)) and re.fullmatch(r"[0-9]+[a-z]?", str(n))] \
             if isinstance(原始视野, list) else []
-        描述 = str(体.get("描述", "")).strip()[:200]
-        请求号 = str(体.get("请求号", "")).strip()
-        仅视野 = bool(体.get("only_view"))
+        if not bool(体.get("only_view")):
+            return self._回JSON(400, {
+                "错误": "本端点仅视野记账（only_view=true）——发号/核对通道已废除："
+                        "编号由服务器在 task_create/case_number 按顺序发放"
+                        "（2026-10-14 用户令）"})
         with 写锁:
-            基准 = 收视野并取基准(上报者, 视野号们)
-            if 仅视野:
-                # 316：intent.py claim/show 的视野上报通道——只记账不发号
-                # （双机视野齐→号占冲突自动亮·治「撞号看板不拦」第一洞）
-                return self._回JSON(200, {"好": True, "仅视野": True})
-            if 请求号:
-                行 = 连接.execute("SELECT 机器,对话id,时刻 FROM 发号台账 WHERE 号=?",
-                                  (请求号,)).fetchone()
-                if 行:
-                    return self._回JSON(409, {
-                        "错误": f"号 {请求号} 已由服务端发给 {行[0]}-{行[1]}（{行[2]}）"
-                                f"——接棒用远端已存在分支·新事用新号", "已发": True})
-                撞视野 = [r[0] for r in 连接.execute(
-                    "SELECT 上报者 FROM 视野快照 WHERE 时戳>? AND 号们 LIKE ?",
-                    (time.time() - 6 * 3600, f'%"{请求号}"%')).fetchall() if r[0] != 上报者]
-                if 撞视野:
-                    return self._回JSON(409, {
-                        "错误": f"号 {请求号} 出现在他机视野（{', '.join(撞视野)}）"
-                                f"——树内占号冲突·先与对方/主表核对再取号", "已发": True,
-                        "撞视野": 撞视野})
-                return self._回JSON(200, {"好": True, "已发": False})
-            号 = 台账.下一个号(基准)
-            连接.execute(
-                "INSERT INTO 发号台账(号,机器,对话id,描述,时刻,时戳) VALUES(?,?,?,?,?,?)",
-                (号, 机器, 对话id, 描述, 时刻(), time.time()))
-            连接.commit()
-        return self._回JSON(200, {"好": True, "号": 号})
+            记视野快照(上报者, 视野号们)
+        return self._回JSON(200, {"好": True, "仅视野": True})
 
 
 def main() -> int:
