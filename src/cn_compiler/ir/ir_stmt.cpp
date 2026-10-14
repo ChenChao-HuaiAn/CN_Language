@@ -17,7 +17,34 @@
 namespace cn_compiler {
 
 void IRGenerator::visitExprStmt(ExprStmt* node) {
-    genExpr(node->expr.get());
+    ir::IRValue discarded = genExpr(node->expr.get());
+    // 645（2026-10-14·任务 645）：语句位拥有串临时物析构——表达式语句的求值
+    //   结果被丢弃，若其为拥有串（A2 契约 retOwnedString ∪ 内置白名单）则该
+    //   堆串无人接管=每语句净泄 1（探针 908 实锤：`格式化(...);` 百轮泄 100）。
+    //   语句尾立即 free（Rust drop 临时同款时序：语句结束=无人引用）。
+    //   判定与声明位 ownStringInitValue/赋值位 ownAssign 同构（094 判据单点化
+    //   isOwnedStringBuiltin）；形态守卫=CallExpr 且被调为标识符：
+    //     · 字面量/标识符语句位=只读段标签/借用句柄，free=UB，禁入本通道；
+    //     · 赋值/复合赋值语句=节点类型非 CallExpr，天然不命中（所有权已交目标
+    //       变量名单，勿双释放）；
+    //     · 转移()/字符串释放 显式排除（转移=源清零句柄交接特判族
+    //       semantic_call checkTransferCall 置 retOwnedString=false 已安全，
+    //       此处再拦一手防判定面演化回归；字符串释放 返回空类型无串可释）。
+    if (node->expr->getType() != NodeType::CallExpr) return;
+    const CallExpr* call = static_cast<const CallExpr*>(node->expr.get());
+    if (discarded.type != "ptr") return;   // 串句柄寄存器形态守卫（空类型/标量直退）
+    bool ownRet = call->retOwnedString;
+    const IdentifierExpr* calleeId =
+        call->callee->getType() == NodeType::IdentifierExpr
+            ? static_cast<const IdentifierExpr*>(call->callee.get())
+            : nullptr;
+    if (calleeId != nullptr) {
+        if (calleeId->name == "转移" || calleeId->name == "字符串释放") return;
+        if (!ownRet && isOwnedStringBuiltin(calleeId->name)) ownRet = true;
+    }
+    if (!ownRet) return;
+    emit(ir::Opcode::Call, {discarded}, ir::IRValue(), "__cn_str_free", "void",
+         node->location);
 }
 void IRGenerator::visitReturnStmt(ReturnStmt* node) {
     if (node->value != nullptr) {
