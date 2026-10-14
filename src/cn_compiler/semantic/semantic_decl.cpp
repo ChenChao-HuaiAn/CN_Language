@@ -18,56 +18,6 @@
 
 namespace cn_compiler {
 
-// 497：推断声明无后缀字面量真值域定宽——无显式类型声明以**无后缀**整数
-//   字面量初始化时，按字面量文本真值域返回改判类型（空串=不改判，维持
-//   literalTypeOf 后缀定级既有契约）。立法锚=001 §5.2 类型推断 + §无后缀
-//   大字面量提升链（超出整64 域的无后缀字面量按提升链归 整128·既有行为）。
-//   原语义层恒按后缀定级（无后缀=整32），而 IR 物化面（ir_expr.cpp
-//   visitIntegerLiteral）已有提升链——推断声明落 i32 槽=静默截断残留
-//   （99999999999999999999 出 1661992959 实锤）。负形态（一元负号）按
-//   字面量本体正值域分级（本体恒正·与 IR 物化同构）；超整128 域返回空串
-//   （visitIntegerLiteral 已报「超出整128范围」编译错误，不重复诊断）。
-//   纯文本判定不涉 analyzer 状态——文件内静态函数（semantic.hpp 冻结线
-//   1000 已满·不占头文件行数）。带后缀形态（L/U=用户显式位宽意图）其超域
-//   推断定宽=001 未立法面，不改判（维持既有契约）。
-static std::string inferredLiteralWidthType(const Expr* e) {
-    if (e == nullptr) return "";
-    // 提取裸字面量（含一元负号形态——-99999999999999999999 本体定级）
-    bool neg = false;
-    const IntegerLiteral* lit = nullptr;
-    if (e->getType() == NodeType::IntegerLiteral) {
-        lit = static_cast<const IntegerLiteral*>(e);
-    } else if (e->getType() == NodeType::UnaryExpr) {
-        const UnaryExpr* u = static_cast<const UnaryExpr*>(e);
-        if (u->op == Operator::Subtract && !u->postfix &&
-            u->operand != nullptr &&
-            u->operand->getType() == NodeType::IntegerLiteral) {
-            lit = static_cast<const IntegerLiteral*>(u->operand.get());
-            neg = true;
-        }
-    }
-    if (lit == nullptr) return "";
-    if (types::literalTypeOf(lit->raw, false) != "整32") return "";
-    const std::string digits = types::stripLiteralSuffix(lit->raw);
-    std::string promoted = std::string("整32");
-    // ——以下两条与 ir_expr.cpp visitIntegerLiteral 提升链逐条同构——
-    //（超 int64 域文本的 value 已 int64 回绕：文本判定在后天兜底归 整128）
-    // 728g（#506甲·420 负号形态）：按数学值域提升——负号折叠形态（parser 323）
-    //   value 为数学负值，修前只判正域使 -3000000000 不改判 → 推断面 T36
-    //   误拒（「无法将 '整32' 隐式转换为 '整32'」·应整64 放行）；共用单点判据
-    //   types::literalValueExceedsInt32Domain（与 IR 物化/v2 负号域判定对齐）。
-    if (types::literalValueExceedsInt32Domain(lit->value)) promoted = "整64";
-    if (types::textExceedsInt64(digits)) promoted = "整128";
-    if (promoted == "整128") {
-        // 整128 域检查：负形态负界容 -2^127（拼负号走剥符号分界比较·663
-        //   同款契约），正形态上界 2^127-1。超域不改判（visitIntegerLiteral
-        //   语义层先拦截报错，推断面不重复诊断）。
-        const std::string rangeText = neg ? ("-" + digits) : digits;
-        if (!types::i128TextInRange(rangeText, true)) return "";
-    }
-    return (promoted == "整32") ? std::string() : promoted;
-}
-
 void SemanticAnalyzer::visitVarDecl(VarDecl* node) {
     std::string varType = node->typeName;
     // 324 甲案（2026-10-09 用户批·001 豁免面条文）：函数内静态无初值声明=
@@ -325,39 +275,26 @@ void SemanticAnalyzer::visitVarDecl(VarDecl* node) {
     if (varType.empty() && node->initializer != nullptr) {
         // 类型推断：无显式类型时从初始值推断
         varType = checkExpr(node->initializer.get());
-        // 497：推断声明整数字面量按真值域定宽——checkExpr 对字面量恒按后缀
-        //   定级（literalTypeOf 无后缀=整32），超域字面量推断落 i32 槽=静默
-        //   截断残留（99999999999999999999 出 1661992959 实锤）。按 IR 层
-        //   visitIntegerLiteral 提升链同构改判（整64/整128·
-        //   inferredLiteralWidthType），并回填 node->typeName——语义与 IR
-        //   共享同一 AST，IR resolveDeclTypesAndAlloc 的 srcType/槽型/打印
-        //   分派全链取真实类型（46-c 结构体回填同构）。窄面触发：仅无后缀
-        //   字面量形态（含一元负号）且真值超域才改判——域内字面量/带后缀/
-        //   表达式面/布尔浮点推断零波及（184 打印契约不触）。
-        if (!varType.empty() && varType != "未知" &&
-            isIntLiteralExpr(node->initializer.get())) {
-            const std::string promoted =
-                inferredLiteralWidthType(node->initializer.get());
-            if (!promoted.empty()) {
-                varType = promoted;
-                node->typeName = promoted;
-            }
-        }
-        // 558（506甲·用户裁决 2026-10-13）：推断面字面量值域兜底检查——
-        //   rebase 适配位次（558×497 同日并行同缺陷面·本解冲突裁决）：497
-        //   真值域提升在前（无后缀可提升形态改判 整64/整128 放行·813 锁面
-        //   「变量 甲 = 3000000000」→整64），本检查居后拦提升链未覆盖的残余
-        //   面——带后缀超域字面量推断（inferredLiteralWidthType 只认无后缀
-        //   不改判·值超目标域=拒防静默回绕）与提升链终态仍装不下的边角
-        //   （超整128 promoted 空·表达式面已有「超出整128范围」诊断此处
-        //   再报同型转换拒·双锚不冲突）；负号形态按负值判域
-        //  （-2147483648 域内合法）。T36 扩面条文「推断通道拒」的恒定级
-        //   前提已被 497 提升重定义，条文例子张力落台账呈报裁决。
+        // 638（甲案·2026-10-14 用户裁决「一种语言不该有歧义——丙的分段有
+        //   边界解释歧义」）：推断通道一律拒——无后缀字面量恒定级=整32
+        //  （T36 已批·literalTypeOf 与值大小无关），值装不下（含超 int64
+        //   巨字面量）编译期拒绝，报错引导显式写类型（整64 甲 =
+        //   2147483649;·Rust `let x = 2147483649;` E0308 同款）。原 497
+        //   真值域提升改判（推断超域→整64/整128 放行·813 旧锁面）与 T36
+        //   扩面「推断通道拒」条文互斥，随本裁决废止（inferredLiteralWidthType
+        //   撤销·813 用例翻转为拒）。负号形态按负值判域（-2147483648=
+        //   整32::MIN 域内合法·855 锚不翻转）。显式目标类型场景字面量
+        //   解析能力不动（visitIntegerLiteral/ir_expr 提升链适用面照旧·
+        //   整128 x = 巨字面量 照常）。报错后不 return：甲仍按恒定级整32
+        //   登记走正常声明流程（单诊断口径·防后续语句连环「未声明」噪音，
+        //   324 静态未初始化同款）。
         if (types::isInteger(varType) && isIntLiteralExpr(node->initializer.get()) &&
             !intLiteralFitsType(node->initializer.get(), varType)) {
             diagnostics_.report(DiagnosticLevel::Error, node->location,
                                 "无法将 '" + varType + "' 隐式转换为 '" +
-                                    varType + "'");
+                                    varType +
+                                    "'（推断声明无后缀字面量恒定级 整32·值超域）"
+                                    "——请显式写类型承接（整64/整128 甲 = 值;）");
         }
         // plans/019 阶段3 扩展（A21 借出视图生命周期，第七十七轮）：捕获借出调用
         //   标记（后续检查可能触发其它 checkExpr 覆盖 lastExprIsBorrowView_）；
