@@ -16,7 +16,14 @@
 用法：
   python3 scripts/cnsmith_daemon.py --rounds 3 --samples 200   # 3 轮·每轮 200 新样本
   python3 scripts/cnsmith_daemon.py --once                     # 单轮（=--rounds 1）
+  python3 scripts/cnsmith_daemon.py --once --轨道 随机,矩阵    # 附加矩阵轨（167 挂载）
   轮间睡 --sleep 秒（默认 600·CPU 密集型给开发轮让路）。
+
+167 挂载（964 余量·2026-10-14）：--轨道 随机,矩阵 时每轮附加运行构件组合矩阵
+（cnsmith_matrix.py·样本落 target/cnsmith/矩阵/ 子目录不参与随机差分）并把汇总
+（绿/红+红例名）记入日志；矩阵文本参与无变化汇总判定（红出现/变化即完整记录不
+被合并掩盖）。默认 --轨道 随机=行为与挂载前零变化（旧部署无感）。四轨道
+（含双侧对拍）单命令形态见 scripts/cnsmith_run.py（automation 定时调用口径）。
 
 设计要点（§2.9）：
   - 三机通用：构建目标按架构探测（cnsmith_diff 已跨平台化）
@@ -152,6 +159,24 @@ def 差分(编译器):
     return 汇总行, 分歧
 
 
+def 跑矩阵轨(编译器):
+    """矩阵轨挂载（167·964 余量）：构件组合矩阵（cnsmith_matrix.py）——返回 (汇总文本, 红数)。
+
+    失败=显式「无效」文本（miss 不静默——无汇总行绝不静默当绿）；红例名入文本供
+    日志变化判定（红数相同但红例集合变化也应显形）。样本输出落 工作/矩阵/（子目录，
+    不参与随机差分与回归轨——os.listdir(工作) 顶层 .cn 清理不触及子目录）。"""
+    r = 跑([sys.executable, "scripts/cnsmith_matrix.py", "--cn", 编译器,
+            "--out", os.path.join(工作, "矩阵")], timeout=1800)
+    m = re.search(r"构件组合矩阵：绿\s*(\d+)\s*/\s*红\s*(\d+)", r.stdout or "")
+    if not m:
+        return "无效（汇总行缺失·显形）", 0
+    红名 = re.findall(r"\[红\]\s*(\S+)", r.stdout or "")
+    文本 = "绿 %s / 红 %s" % (m.group(1), m.group(2))
+    if 红名:
+        文本 += "（红例：%s%s）" % ("、".join(红名[:6]), "…" if len(红名) > 6 else "")
+    return 文本, int(m.group(2))
+
+
 def 存档(分歧, 基线, 轮):
     """④ 命中样本存档入库（按类别·带 .meta）。返回新存档数。"""
     os.makedirs(库, exist_ok=True)
@@ -186,6 +211,7 @@ class 日志写手:
         self.当前路径 = None
         self.汇总 = None          # 无变化序列缓冲
         self.上轮命中 = None       # set((名,类别))；None=未知（重启首轮）
+        self.上轮矩阵 = None       # 矩阵轨汇总文本（167 挂载）：与上轮相同才可入汇总
         self.上轮未命中回归 = None  # set(名)——T28③根治（303-a）：回归轨中未命中的稳态全集，
         #   消失回归=本轮未命中−上轮未命中（增量）。原实现直接用「回归名单−命中名」全集，
         #   已修样本永远留库防复发→该集合恒非空→「not 消失回归」恒假→无变化判据永不成立
@@ -213,14 +239,16 @@ class 日志写手:
         m = self.汇总
         路径 = self._切日(time.localtime(m["末"]))
         with open(路径, "a", encoding="utf-8") as f:
-            f.write("## 汇总（%s ~ %s·%d 轮·seed=%d~%d）：采样 %d+回归 %d ｜ %s ｜ 命中集合不变·共 %d 项\n\n"
+            f.write("## 汇总（%s ~ %s·%d 轮·seed=%d~%d）：采样 %d+回归 %d ｜ %s ｜ 命中集合不变·共 %d 项%s\n\n"
                     % (time.strftime("%H:%M:%S", time.localtime(m["起"])),
                        time.strftime("%H:%M:%S", time.localtime(m["末"])),
                        m["轮数"], m["首种子"], m["末种子"], m["采样"], m["回归"],
-                       m["差分文本"], len(self.上轮命中 or ())))
+                       m["差分文本"], len(self.上轮命中 or ()),
+                       (" ｜ 矩阵轨 " + m["矩阵文本"]) if m.get("矩阵文本") else ""))
         self.汇总 = None
 
-    def 记轮(self, 基线, 说明, 种子, 新样本数, 回归数, 回归名单, 差分文本, 分歧, 新存, 用时):
+    def 记轮(self, 基线, 说明, 种子, 新样本数, 回归数, 回归名单, 差分文本, 分歧, 新存, 用时,
+            矩阵文本=None):
         时刻 = time.time()
         st = time.localtime(时刻)
         命中 = {(名, 类别) for 名, 类别, _ in 分歧}
@@ -234,19 +262,23 @@ class 日志写手:
         #   原判据只认「无更新」字样→拉取失败打断汇总→退化全量记录 306-a 月日志实测）
         基线未变 = 说明 == "无更新" or 说明.startswith("拉取失败")
         无变化 = (新存 == 0 and not 消失回归 and 基线未变
-                  and self.上轮命中 is not None and 命中 == self.上轮命中)
+                  and self.上轮命中 is not None and 命中 == self.上轮命中
+                  and (矩阵文本 is None or 矩阵文本 == self.上轮矩阵))
         if 无变化:
             if self.汇总 is None:
                 一, 分, 编, 运 = _解析计数(差分文本)
                 self.汇总 = dict(起=时刻, 末=时刻, 轮数=0, 采样=0, 回归=0,
-                                 差分文本=差分文本, 首种子=种子, 末种子=种子)
+                                 差分文本=差分文本, 首种子=种子, 末种子=种子,
+                                 矩阵文本=矩阵文本)
             self.汇总["末"] = 时刻
             self.汇总["轮数"] += 1
             self.汇总["采样"] += 新样本数
             self.汇总["回归"] += 回归数
             self.汇总["末种子"] = 种子
+            self.汇总["矩阵文本"] = 矩阵文本
             self.上轮命中 = 命中
             self.上轮未命中回归 = 未命中回归
+            self.上轮矩阵 = 矩阵文本
             return
         self._冲刷汇总()
         路径 = self._切日(st)
@@ -255,6 +287,8 @@ class 日志写手:
             f.write("- 基线：%s（%s）\n" % (基线[:9], 说明))
             f.write("- 采样：%d 新样本（seed=%d）+ 回归轨 %d\n" % (新样本数, 种子, 回归数))
             f.write("- 差分：%s\n" % 差分文本)
+            if 矩阵文本 is not None:
+                f.write("- 矩阵轨（167 挂载）：%s\n" % 矩阵文本)
             if 分歧:
                 f.write("- 命中归类（本轮完整列表）：\n")
                 for 名, 类别, 说明 in 分歧[:20]:
@@ -272,6 +306,7 @@ class 日志写手:
             f.write("- 存档：新存 %d·回归轨已修 %d·用时 %.1fs\n\n" % (新存, len(消失回归), 用时))
         self.上轮命中 = 命中
         self.上轮未命中回归 = 未命中回归
+        self.上轮矩阵 = 矩阵文本
 
     def 收尾(self):
         self._冲刷汇总()
@@ -283,9 +318,17 @@ def 主():
     ap.add_argument("--samples", type=int, default=200, help="每轮新样本数")
     ap.add_argument("--sleep", type=int, default=600, help="轮间睡眠秒数")
     ap.add_argument("--once", action="store_true", help="单轮（=--rounds 1）")
+    ap.add_argument("--轨道", default="随机",
+                    help="逗号分隔：随机（默认·现状不变）[,矩阵]——167 挂载：矩阵轨"
+                         "（cnsmith_matrix）每轮附加运行并记日志（结果参与无变化汇总判定）")
     a = ap.parse_args()
     if a.once:
         a.rounds = 1
+    轨道们 = [x.strip() for x in a.轨道.split(",") if x.strip()]
+    未知 = [x for x in 轨道们 if x not in ("随机", "矩阵")]
+    if 未知:
+        print("未知轨道：%s（可选：随机、矩阵）" % 未知)
+        return 2
 
     编译器 = 编译器路径()
     if not os.path.exists(编译器):
@@ -310,7 +353,13 @@ def 主():
             新样本数 = sum(1 for f in os.listdir(工作) if f.endswith(".cn")) - 回归数
             差分文本, 分歧 = 差分(编译器)                     # ③
             新存 = 存档(分歧, 基线, 轮)                      # ④
-            写手.记轮(基线, 说明, 种子, 新样本数, 回归数, 回归名单, 差分文本, 分歧, 新存, time.time() - t0)  # ⑤
+            矩阵文本 = None
+            if "矩阵" in 轨道们:                              # ④b 矩阵轨挂载（167）
+                t矩 = time.time()
+                矩阵文本, _红 = 跑矩阵轨(编译器)
+                print("  矩阵轨：%s（%.1fs）" % (矩阵文本, time.time() - t矩), flush=True)
+            写手.记轮(基线, 说明, 种子, 新样本数, 回归数, 回归名单, 差分文本, 分歧, 新存,
+                      time.time() - t0, 矩阵文本=矩阵文本)     # ⑤
             print("  " + 差分文本)
             print("  存档新 %d·日志已记（%.1fs）" % (新存, time.time() - t0))
             if a.rounds == 0 or 轮 < a.rounds:
