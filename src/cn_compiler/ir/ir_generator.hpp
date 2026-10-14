@@ -70,6 +70,7 @@ public:
     bool genShortCircuitBinary(BinaryExpr* node);
     // 族②③：字符串连接（Task 2.5 ptr+ptr）+ 字符串+数值隐式拼接（Task 2.9）
     //   + 字符串+整128/正128（双槽 ptr 形态）。true = 已处理。
+    //   实现=ir_expr_concat.cpp（728o 按族拆出——该文件同时承载连接链融合）。
     std::string structOrClassFieldType(const std::string& ownerType,
                                      const std::string& fieldName) const;  // 973（104）：结构体 miss→类表沿链回退
     bool genStringCompareBinary(BinaryExpr* node, const ir::IRValue& left,
@@ -78,6 +79,28 @@ public:
                                const ir::IRValue& right);
     bool genStringConcatI128(BinaryExpr* node, const ir::IRValue& left,
                              const ir::IRValue& right);
+    // 728o（366 遗留）：连接链融合——`甲+乙+丙+…` 一趟构建（新建缓冲 ->
+    //   逐段追加 -> 完成）。visitBinaryExpr 顶部调用（须在操作数生成前接管
+    //   整链）；true=已按融合路径发射，false=交回原逐节路径（链长不足/
+    //   非连接形态·零行为变更）。语义等价铁律见 ir_expr_concat.cpp 文件头。
+    bool genStringConcatChain(BinaryExpr* node);
+    // 728o 融合族私辅（实现=ir_expr_concat.cpp）：
+    //   数值转换器发射单点（原 genStringConcatBinary 分支②提取·两消费位共用）
+    ir::IRValue emitConcatNumToStr(Expr* operandAst, const ir::IRValue& value,
+                                   const SourceLocation& loc);
+    //   链操作数「是字符串值」判定（isStringTypedExpr 保守超集：补调用返回串）
+    bool chainStringOperand(Expr* node) const;
+    //   调用返回类型「字符串」判定（645 口径：retOwnedString∪094 白名单∪查表）
+    bool chainCallReturnsString(CallExpr* node) const;
+    //   段「拥有临时」判定（617 口径：调用返回串/连接子链结果·追加后结算释放）
+    bool chainSegOwnedTemp(Expr* segAst) const;
+    //   段值 -> 字符串转换单点（ptr 直通 / 128 位取低 64 / 数值走共享转换器）
+    ir::IRValue emitChainSegToStr(Expr* segAst, const ir::IRValue& segVal,
+                                  const SourceLocation& loc);
+    //   单段追加发射（追加 + 拥有临时结算/转换产物释放）
+    void emitChainSegAppend(const ir::IRValue& handle, Expr* segAst,
+                            const ir::IRValue& segVal,
+                            const SourceLocation& loc);
     // 族④：指针算术 ptr ± 整型 -> 指针（偏移量×元素大小）。true = 已处理。
     bool genPointerArithmetic(BinaryExpr* node, const ir::IRValue& left,
                               const ir::IRValue& right);

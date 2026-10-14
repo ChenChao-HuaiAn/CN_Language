@@ -220,10 +220,14 @@ target_link_libraries(cn_compiler_semantic PUBLIC cn_compiler_model cn_compiler_
 #   semantic_types.cpp（类型系统：类型解析+布局）、semantic_sig.cpp（函数签名/重载/隐式转换）、
 #   semantic_builtins.cpp（内置函数注册）
 #   （纯重构零行为变更；成员函数声明仍在 semantic.hpp）
+# 728o（366 遗留·>900 警戒线先拆再加）：ir_expr.cpp 按族拆出——
+#   ir_expr_concat.cpp（字符串连接族②③搬移 + 连接链融合 pass）
+#   （搬移零行为变更 + 728o 新增融合；声明仍在 ir_generator.hpp）
 add_library(cn_compiler_ir STATIC
     src/cn_compiler/ir/ir.cpp
     src/cn_compiler/ir/ir_decl_extra.cpp
     src/cn_compiler/ir/ir_expr.cpp
+    src/cn_compiler/ir/ir_expr_concat.cpp
     src/cn_compiler/ir/ir_expr_unary.cpp
     src/cn_compiler/ir/ir_expr_assign.cpp
     src/cn_compiler/ir/ir_expr_assign_ident.cpp

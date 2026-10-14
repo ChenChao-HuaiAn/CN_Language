@@ -7,6 +7,8 @@
 //   5. 函数调用 -> Call（extra=函数名，操作数=实参寄存器）
 //   6. 字符串常量 -> 模块常量池去重收集
 // 7. D1 行数整改 112-a：按族拆出 ir_expr_unary/assign/index/member.cpp（纯重构零行为变更，声明仍在 ir.hpp）
+// 8. 728o 连接链融合：族②③（字符串连接/隐式拼接/128 位段）拆出
+//    ir_expr_concat.cpp 并承载连接链融合 pass（先拆再加·>900 警戒线纪律）
 #include <cstdint>
 #include <string>
 #include <utility>
@@ -379,6 +381,10 @@ void IRGenerator::visitBinaryExpr(BinaryExpr* node) {
     //   &&/|| 在 IR 生成期脱糖为控制流（RHS 带副作用时按短路语义执行）。
     //   And/Or 指令保留：编译器内部布尔组合（空/边界检查）不受影响。
     if (genShortCircuitBinary(node)) return;
+    // ---- 728o（366 遗留·连接链融合）：整条字符串连接链一趟构建 ----
+    //   须在左右操作数生成之前接管（内层 concat 一旦发射无从回退改写）；
+    //   链长不足/非连接形态返回 false 交回原逐节路径（零行为变更）。
+    if (genStringConcatChain(node)) return;
     ir::IRValue left = genExpr(node->left.get());
     ir::IRValue right = genExpr(node->right.get());
     // ---- 阶段3 OOP（Task 3.7）：运算符重载降级为成员方法调用 ----
@@ -489,143 +495,10 @@ bool IRGenerator::genStringCompareBinary(BinaryExpr* node, const ir::IRValue& le
     return true;
 }
 
-// ==================== 族②：字符串连接（Task 2.5）+ 字符串+数值隐式拼接（Task 2.9） ====================
-// （原 381~461 段）true = 已处理。
-// 说明：字符串类型在IR层映射为 ptr；两操作数均为 ptr 且运算符为 + 时视为连接
-//       （指针+整数 仍走指针算术分支；指针+指针 由语义层保证为字符串连接）
-// 多操作数左结合："a" + 1 + 2 = ("a"+1)+2：内层结果为 ptr（连接产物），外层再拼。
-//   连接/转换产物为动态内存，调用方负责 字符串释放（与 Task 2.5 语义一致）。
-// 注意：Call 有副作用，CSE 已排除（cse.cpp isSideEffect），不会被错误合并。
-// 关键区分：ptr 左操作数可能是 字符串（拼接）或 普通指针（指针算术 q + 1）。
-//   拼接仅当 左操作数源码类型为 字符串/字符*（字面量 或 字符串变量/数组元素）；
-//   普通指针 + 整数 必须走指针算术分支（05_array_pointer 回归教训）。
-// 展开：右操作数先转字符串（__cn_str_from_int/float/char/bool），再 __cn_str_concat。
-//   整数/枚举 -> __cn_str_from_int（整32 先 Cast i64；整128 截断 i64——值域≤2^63 语义正确）
-//   浮点      -> __cn_str_from_float（f32 先 Cast f64）
-//   字符      -> __cn_str_from_char（i32 值）
-//   布尔      -> __cn_str_from_bool（i1 -> "真"/"假"）
-bool IRGenerator::genStringConcatBinary(BinaryExpr* node, const ir::IRValue& left,
-                                        const ir::IRValue& right) {
-    if (left.type == "ptr" && right.type == "ptr" && node->op == Operator::Add) {
-        lastExpr_ = emitResult(ir::Opcode::Call, {left, right}, "ptr",
-                               "__cn_str_concat", node->location);
-        // 617（2026-10-14 伞批）：concat 只读消费实参——发射完成后结算实参中
-        //   的拥有串临时（拼接链中间临时归零点：t2=连接(t1,c) 发射完释放 t1；
-        //   字面量/标识符形态由 argIsOwnedStringTemp 判据天然排除）
-        if (argIsOwnedStringTemp(node->left.get())) {
-            emit(ir::Opcode::Call, {left}, ir::IRValue(), "__cn_str_free",
-                 "void", node->location);
-        }
-        if (argIsOwnedStringTemp(node->right.get())) {
-            emit(ir::Opcode::Call, {right}, ir::IRValue(), "__cn_str_free",
-                 "void", node->location);
-        }
-        return true;
-    }
-    const bool leftIsString = isStringTypedExpr(node->left.get());
-    if (leftIsString && left.type == "ptr" && node->op == Operator::Add &&
-        right.type != "ptr" && right.type != "i128" && right.type != "u128") {
-        ir::IRValue strArg = right;
-        std::string convFn;
-        if (right.type == "f32" || right.type == "f64") {
-            if (strArg.type != "f64") {
-                strArg = emitResult(ir::Opcode::Cast, {strArg}, "f64", "",
-                                    node->location);
-            }
-            convFn = "__cn_str_from_float";
-        } else if (right.type == "i1") {
-            convFn = "__cn_str_from_bool";  // 布尔转 "真"/"假"
-        } else if (right.type == "i32" || right.type == "u32") {
-            // 字符字面量/字符变量（IR i32）走字符转换；整32/枚举 走整数转换。
-            // 区分依据：右操作数 AST 形态（CharLiteral 直判）+ 变量源码类型查表
-            bool isChar = false;
-            if (node->right->getType() == NodeType::CharLiteral) {
-                isChar = true;
-            } else if (node->right->getType() == NodeType::IdentifierExpr) {
-                const std::string st = types::canonical(lookupSrcType(
-                    static_cast<IdentifierExpr*>(node->right.get())->name));
-                isChar = (st == "字符");
-            }
-            if (isChar) {
-                convFn = "__cn_str_from_char";
-            } else {
-                if (strArg.type != "i64") {
-                    strArg = emitResult(ir::Opcode::Cast, {strArg}, "i64", "",
-                                        node->location);
-                }
-                convFn = "__cn_str_from_int";
-            }
-        } else {
-            // 整数（i64/u64/i8/i16 等）：缺陷修复——无符号（正8~正64）走
-            //   __cn_str_from_uint（%llu 语义，值超 2^63 正确显示正数），
-            //   有符号统一转 i64 走 __cn_str_from_int（%lld）
-            const bool isUnsignedNum = (strArg.type == "u8" ||
-                                        strArg.type == "u16" ||
-                                        strArg.type == "u32" ||
-                                        strArg.type == "u64");
-            if (isUnsignedNum) {
-                if (strArg.type != "u64") {
-                    strArg = emitResult(ir::Opcode::Cast, {strArg}, "u64", "",
-                                        node->location);
-                }
-                convFn = "__cn_str_from_uint";
-            } else {
-                if (strArg.type != "i64") {
-                    strArg = emitResult(ir::Opcode::Cast, {strArg}, "i64", "",
-                                        node->location);
-                }
-                convFn = "__cn_str_from_int";
-            }
-        }
-        ir::IRValue rightStr = emitResult(ir::Opcode::Call, {strArg}, "ptr",
-                                          convFn, node->location);
-        lastExpr_ = emitResult(ir::Opcode::Call, {left, rightStr}, "ptr",
-                               "__cn_str_concat", node->location);
-        // 617（2026-10-14 伞批）：转换器（from_int/float/char/bool/uint）产物
-        //   仅被本次 concat 消费——发射完成即释放；左操作数中拥有串临时
-        //   （如 整数转字符串(1) + 2 的左临时）同点结算。
-        emit(ir::Opcode::Call, {rightStr}, ir::IRValue(), "__cn_str_free",
-             "void", node->location);
-        if (argIsOwnedStringTemp(node->left.get())) {
-            emit(ir::Opcode::Call, {left}, ir::IRValue(), "__cn_str_free",
-                 "void", node->location);
-        }
-        return true;
-    }
-    return false;
-}
-
-// ==================== 族③：字符串 + 整128/正128（原 462~479 段） ====================
-// i128 值在 IR 层为"指向16字节双槽内存的 ptr"（低64位槽+高64位槽），
-// right 本身就是该地址（变量槽地址或临时双槽地址）。取低64位 LoadPtr 转整64
-//（值域≤2^63 语义正确；超范围拼接场景后续 Task 再支持全量转换）。
-// true = 已处理。
-bool IRGenerator::genStringConcatI128(BinaryExpr* node, const ir::IRValue& left,
-                                      const ir::IRValue& right) {
-    if (isStringTypedExpr(node->left.get()) && left.type == "ptr" &&
-        node->op == Operator::Add &&
-        (right.type == "i128" || right.type == "u128")) {
-        // i128 值是"双槽寄存器值"（IRValue.id=高64位槽、id+1=低64位槽），
-        // 而非指针地址——不能用 LoadPtr 解引用（会把槽值当地址访问导致
-        // 0xC0000005）。正确做法：Cast i128 -> i64 取低64位（emitCast 已有
-        // i128/u128->i64 分支，值域≤2^63 语义正确）。
-        ir::IRValue lo = emitResult(ir::Opcode::Cast, {right}, "i64", "",
-                                    node->location);
-        ir::IRValue rightStr = emitResult(ir::Opcode::Call, {lo}, "ptr",
-                                          "__cn_str_from_int", node->location);
-        lastExpr_ = emitResult(ir::Opcode::Call, {left, rightStr}, "ptr",
-                               "__cn_str_concat", node->location);
-        // 617：转换产物仅被本次 concat 消费——发射完成即释放（族②同口径）
-        emit(ir::Opcode::Call, {rightStr}, ir::IRValue(), "__cn_str_free",
-             "void", node->location);
-        if (argIsOwnedStringTemp(node->left.get())) {
-            emit(ir::Opcode::Call, {left}, ir::IRValue(), "__cn_str_free",
-                 "void", node->location);
-        }
-        return true;
-    }
-    return false;
-}
+// ==================== 族②③：字符串连接（Task 2.5/2.9/128 位段） ====================
+// 728o：族实现已拆出 src/cn_compiler/ir/ir_expr_concat.cpp（按族拆分——该文件
+//   同时承载连接链融合 pass）；调用点（visitBinaryExpr）与声明（ir_generator.hpp）
+//   不变。拆分=纯机械搬移 + 数值转换段提取共享助手，行为零变更。
 
 // ==================== 族④：指针算术（Task 2.4） ====================
 // （原 480~515 段）ptr ± 整型 -> 指针（偏移量×元素大小）。true = 已处理。
