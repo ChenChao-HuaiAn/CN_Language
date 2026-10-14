@@ -61,13 +61,10 @@ void __cn_mutex_free(void* handle) {
 
 #elif defined(__linux__)
 
+#include "runtime/runtime.hpp"  // 728k：cn_install_thread_stack_guard 公开声明单一事实源
+
 #include <pthread.h>
 #include <vector>
-
-// 476：子线程备用栈安装（crash_handler.cpp linux 段提供）——栈溢出信号处理器
-//   须在备用栈上运行；主线程由 entry() 安装，子线程经本函数各自安装
-//   （每线程独立备用栈；安装失败=降级保持默认崩溃行为）。
-extern "C" void cn_install_thread_stack_guard();
 
 namespace {
 

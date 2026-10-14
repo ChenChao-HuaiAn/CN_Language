@@ -198,6 +198,16 @@ CNRT_EXPORT void __cn_print_bool(bool value);             // 打印布尔（不�
     //   判据三条件见 crash_handler.cpp 节首注释；win 面判据走 SEH 异常码。
     CNRT_EXPORT int __cn_stack_overflow_match(unsigned long long fault,
                                               unsigned long long sp, long long sig_code);
+    // 728k：手工线程备用栈安装（公开 API·476 防护的显式线程侧入口）——
+    //   绕过运行时创建线程（如手工 pthread_create）时，在线程入口函数处显式
+    //   调用一次，为**当前线程**安装栈溢出备用栈：此后该线程栈溢出时 SIGSEGV
+    //   处理器在备用栈上判定，输出「运行时错误(错误码9): 栈溢出」确定性退出
+    //   （rc=1·§1.1a②）。经运行时创建的线程（线程::新）由运行时自动安装，
+    //   无需调用。平台行为：linux=安装本线程备用栈（每线程独立·pthread key
+    //   析构回收·重复调用=空操作·安装失败降级为默认崩溃行为）；win=空操作
+    //   （VEH/UEF 为进程级过滤器覆盖全部线程·x64 内核为栈溢出提供受控栈）。
+    //   CN 侧 FFI 形态：外部 函数 cn_install_thread_stack_guard() -> 空类型
+    CNRT_EXPORT void cn_install_thread_stack_guard();
 
     // 对象内存辅助（阶段3 Task 3.1，规格书06 类实例化/删除）
     // NewObject 展开调用：分配 size 字节堆内存（失败时报错误码4并终止），

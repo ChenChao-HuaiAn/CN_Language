@@ -101,6 +101,12 @@ extern "C" void cn_install_crash_handler() {
 // 476：Windows 栈溢出防护安装（win 无需独立动作：栈溢出在下方 UEF/VEH 过滤器
 //   按 EXCEPTION_STACK_OVERFLOW 异常码拦截；本入口供 entry() 全平台统一调用）
 extern "C" void cn_install_stack_guard() {}
+// 728k：手工线程备用栈安装——win 侧空实现（公开 API 三平台同签名可调用/可链接）。
+//   win 无「线程备用栈」缺口：VEH/UEF 过滤器为进程级（覆盖含手工线程在内的全部
+//   线程），x64 内核为栈溢出异常提供受控栈（处理器在受控栈上执行安全）——见下方
+//   cn_veh_filter 476 注释。符号存在=用户代码跨平台显式调用一次零行为（防 win
+//   链接缺失）。声明见 runtime.hpp（公开 API）。
+extern "C" void cn_install_thread_stack_guard() {}
 static LONG WINAPI cn_crash_filter(EXCEPTION_POINTERS* info) {
     // 476：栈溢出=错误码 9 确定性失败（专用异常码精确判定，无地址误报面）
     if (info && info->ExceptionRecord &&
@@ -258,9 +264,15 @@ static void cn_sigsegv_handler(int, siginfo_t* info, void* uctx) {
     (void)::raise(SIGSEGV);
 }
 
-// 子线程备用栈安装（thread_api.cpp 线程入口调用·每线程独立）：子线程无备用
-//   栈则溢出时处理器在耗尽栈上运行 → 二次故障被 SIGKILL（脏崩无输出）。
-//   pthread key 析构保证线程退出时释放（无泄漏）。
+// 子线程备用栈安装（728k 起公开为运行时 API·声明见 runtime.hpp——CN 侧经 FFI
+//   「外部 函数 cn_install_thread_stack_guard() -> 空类型」调用）：经运行时创建的
+//   线程由 thread_api.cpp trampoline 自动调用；用户绕过运行时手工 pthread_create
+//   的线程无此自动安装，须在**线程入口函数处显式调用一次**（手动管理区显式哲学：
+//   显式、可控、零魔法）。子线程无备用栈则溢出时处理器在耗尽栈上运行 → 二次故障
+//   被 SIGKILL（脏崩无输出）。pthread key 析构保证线程退出时释放（无泄漏）。
+//   幂等（728k）：重复调用=空操作（见下方 getspecific 门）——否则
+//   pthread_setspecific 替换旧值不触发析构（POSIX：仅线程退出时对当前值调
+//   析构），每次重复调用泄漏一块备用栈内存。
 static pthread_key_t cn_altstack_key;
 static pthread_once_t cn_altstack_once = PTHREAD_ONCE_INIT;
 static int cn_altstack_key_ok = 0;
@@ -273,6 +285,9 @@ static void cn_altstack_init() {
 extern "C" void cn_install_thread_stack_guard() {
     (void)pthread_once(&cn_altstack_once, cn_altstack_init);
     if (cn_altstack_key_ok == 0) return;  // 降级：key 不可用则不装（保持默认崩溃）
+    // 幂等门：本线程已装过（含 sigaltstack 失败后的降级终态）即返回——不重复
+    //   分配（重复替换=旧块泄漏·见节首注释），安装语义=「每线程一次」。
+    if (pthread_getspecific(cn_altstack_key) != nullptr) return;
     void* mem = std::malloc(CN_SIG_ALTSTACK_SIZE);
     if (mem == nullptr) return;  // 降级：不装（溢出保持默认崩溃行为）
     if (pthread_setspecific(cn_altstack_key, mem) != 0) {
