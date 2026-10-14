@@ -490,7 +490,12 @@ def 跑一轮(sha: str, 轮分支: str = "") -> dict:
             print("[637] 干净构建%s" % ("：target/（含 v2p 指纹缓存）已全清——从零构建"
                                         if 清干净 else "失败：target/ 残留（预验前置②不满足·本轮判红）"),
                   flush=True)
-        elif 是win:
+        # 648-b 结构修复（637 引入 elif 互斥吞构建段·TX_02 预验 3600854863 两轮
+        #   实锤：预验分支命中清产物分支后 elif 链终止→配置/构建/单测整段跳过→
+        #   target 刚清空 cn=None→cli_contract/asm_width/e2e 三步 rc=-1 假红·
+        #   总秒 2~5。637 自身集成时 runner 尚为旧代码故绿=首个新预验任务才踩中）。
+        #   构建段改为独立条件（同步成功即跑），预验清产物只是其前序步骤。
+        if 同步rc == 0 and 是win:
             # ② 291 win 构建链=vcvars64+Ninja+sccache（wt.py 开发树同口径）——
             #    cmd /c 复合命令串内嵌引号经 subprocess 列表参数转义必坏（实测 rc=1
             #    零输出）——生成 ASCII 临时脚本跑（wt.py 生成 ninja_build.cmd 同款手法；
@@ -504,7 +509,7 @@ def 跑一轮(sha: str, 轮分支: str = "") -> dict:
                 步骤们["配置"] = {"rc": -1, "说明": "未找到 vcvars64.bat（VS2022 安装不全）"}
             else:
                 win构建链(步骤们, 步骤, 日志, vcvars, 头.stdout.strip())
-        else:
+        elif 同步rc == 0:
             # ② 配置（默认生成器 Make·与 integrate 同口径；产物落 target/ 根=CMakeLists 16 行）
             if not 步骤("配置", ["cmake", "-S", ".", "-B", "target/build"], 600):
                 pass  # 步骤们 已记 rc——下方统一收尾
