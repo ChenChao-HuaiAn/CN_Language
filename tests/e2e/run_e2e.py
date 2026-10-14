@@ -346,7 +346,7 @@ def 终止进程树(进程: subprocess.Popen) -> None:
 
 def 运行命令(命令列表: list, 工作目录: pathlib.Path,
              标准输入: str = "", 内存上限MB: int = 0,
-             超时秒数: int = 0) -> subprocess.CompletedProcess:
+             超时秒数: int = 0, 栈上限MB: int = 0) -> subprocess.CompletedProcess:
     """执行命令并返回结果（捕获stdout/stderr，UTF-8解码容错）
 
     任务399 交叉模拟注入：交叉模拟激活时，首元素为 arm64 ELF 产物（ELF 头
@@ -359,6 +359,14 @@ def 运行命令(命令列表: list, 工作目录: pathlib.Path,
       超过上限立即 终止进程树 并以退出码 -9（returncode）标记失败，
       stderr 给出"内存超限"原因。防 v2 锚定链等大规模编译用例内存失控卡死机器
       （2026-08-24 实测：v1 时代旧组件链（79_bootstrap_closed_loop）工作集涨到 26GB+）。
+    栈上限MB（587 立）: >0 时把子进程 RLIMIT_STACK 收窄为指定 MB（软硬同值，
+      子进程不可自行抬升）——供「被测产物运行」点按用例声明传入（用例目录
+      运行栈上限.txt 经 查找运行栈上限MB 读取），承载需在有限栈内验证行为的
+      用例（818 栈溢出确定性失败：默认无限栈下深递归爆点被 runner 放大失效，
+      原靠 7.8GB 虚拟占位压地址空间提前、与平台地址布局耦合——本参数为其正解）。
+      0（默认）=不设置=保持现行「栈放大为无限」行为（v2 自举编译等大栈需求
+      不受影响）。Linux 生效（RLIMIT_STACK）；Windows 忽略（无对应运行期限制，
+      win 产物栈由 PE 链接 /STACK:8388608 决定）。
 
     797-a 内存防线（对全部调用点自动生效·见模块头注释）：
     ① 子进程注入 RLIMIT_AS=地址空间顶MB默认（8GB）——失控即分配失败快速退出，
@@ -374,14 +382,21 @@ def 运行命令(命令列表: list, 工作目录: pathlib.Path,
     #   CN语言编译器v2 树）命令行都含该路径字样；单文件编译/运行/工具链操作均不含。
     全树编译 = any("CN语言编译器v2" in str(c) for c in 命令列表)
     # Linux 下增大栈大小限制（CN自举编译器函数栈帧较大，默认8MB可能不足）；
-    # 797-a 追加地址空间硬顶（全树编译豁免——合法 16GB+）
+    # 797-a 追加地址空间硬顶（全树编译豁免——合法 16GB+）；
+    # 587 增用例级收窄通道（栈上限MB>0——被测产物运行点显式传入，见函数注释）
     preexec_fn = None
     if sys.platform != "win32":
         def _set_child_limits():
             import resource
             try:
-                resource.setrlimit(resource.RLIMIT_STACK,
-                                  (resource.RLIM_INFINITY, resource.RLIM_INFINITY))
+                if 栈上限MB > 0:
+                    # 587：有限栈验证（栈溢出等）——软硬限同值，防子进程自行抬升；
+                    #   仅由声明了 运行栈上限.txt 的「被测产物运行」点传入，默认不命中
+                    栈限字节 = 栈上限MB * 1024 * 1024
+                    resource.setrlimit(resource.RLIMIT_STACK, (栈限字节, 栈限字节))
+                else:
+                    resource.setrlimit(resource.RLIMIT_STACK,
+                                      (resource.RLIM_INFINITY, resource.RLIM_INFINITY))
             except (ValueError, OSError):
                 pass
             # 2026-09-27：全树编译不再无上限——给「物理×0.55」（超限=诚实红）
@@ -722,6 +737,38 @@ def 查找编译选项文件(用例目录: pathlib.Path) -> list:
     return flags
 
 
+def 查找运行栈上限MB(用例目录: pathlib.Path) -> int:
+    """用例级「被测程序栈上限」配置通道（587 立·任务=818 去 7.8GB 占位 hack）。
+
+    用例目录含 运行栈上限.txt 时，其 `栈上限MB=<数值>` 行作为被测产物运行时
+    子进程的 RLIMIT_STACK（Linux·软硬同值），由「被测产物运行」调用点经
+    运行命令(栈上限MB=...) 传入——承载需在**有限栈**内验证行为的用例
+    （818 栈溢出确定性失败：E2E runner 为 v2 自举编译放大栈至无限，默认 8MB
+    快速爆点失效，原技巧=先分配 7.8GB 虚拟占位压地址空间再深递归，与平台
+    地址布局耦合=测试脚手架欠账；本通道为正解）。
+    默认（无此文件）= 0 = 不设置（保持现行「栈放大为无限」行为——v2 自举
+    编译等大栈需求不受影响；本通道只对**声明了**的用例生效）。
+    作用面=仅被测产物运行点（编译/工具链等调用点不读取本配置）；Windows
+    忽略（无对应运行期限制可设，win 产物栈由 PE 链接 /STACK:8388608 决定）。
+    格式对齐 v2闭环.txt/双编译对照.txt（# 注释 + 键=值）；未知键/非正数报错，
+    不静默取默认（miss 不可静默纪律）。"""
+    标记 = 用例目录 / "运行栈上限.txt"
+    if not 标记.exists():
+        return 0
+    for 原行 in 标记.read_text(encoding="utf-8").splitlines():
+        行 = 原行.split("#", 1)[0].strip()
+        if not 行:
+            continue
+        键, 分隔符, 值 = 行.partition("=")
+        if 分隔符 != "=" or 键.strip() != "栈上限MB":
+            raise ValueError(f"运行栈上限.txt 未知配置键: {行}（{标记}）")
+        数值 = int(值.strip())
+        if 数值 <= 0:
+            raise ValueError(f"运行栈上限.txt 栈上限MB 须为正整数: {值.strip()}（{标记}）")
+        return 数值
+    return 0
+
+
 def 解码诊断(原始字节) -> str:
     """解码编译器诊断：cn.exe 的 stderr 为 UTF-16LE（FF FE BOM），stdout 为 UTF-8"""
     if not 原始字节:
@@ -984,7 +1031,8 @@ def 执行单个用例(编译器路径: pathlib.Path, 用例目录: pathlib.Path
     运行内存上限 = 内存上限MB默认 if any(
         前缀 in 名称 for 前缀 in 内存保护用例前缀) else 0
     运行结果 = 运行命令([str(输出可执行)] + 参数列表, 项目根目录, 标准输入,
-                     运行内存上限, 超时秒数=运行超时秒数)
+                     运行内存上限, 超时秒数=运行超时秒数,
+                     栈上限MB=查找运行栈上限MB(用例目录))  # 587：声明式小栈（默认0=不变）
     if 运行结果.returncode != 0:
         return "失败", f"运行失败(退出码{运行结果.returncode}): {运行结果.stderr.strip()[:200]}"
 
@@ -1746,7 +1794,8 @@ def 执行v2闭环Linux(编译器路径: pathlib.Path, 目标平台: str, 详细
     输入文本2 = 标准输入2.read_text(encoding="utf-8") if 标准输入2 is not None else ""
     参数列表2 = 查找参数文件(用例目录 / 入口名)
     运行结果2 = 运行命令([str(输出exe)] + 参数列表2, 项目根目录, 输入文本2,
-                      超时秒数=运行超时秒数)
+                      超时秒数=运行超时秒数,
+                      栈上限MB=查找运行栈上限MB(用例目录))  # 587：声明式小栈（默认0=不变）
     预期值 = 预期退出码 % 256
     if 运行结果2.returncode != 预期值:
         return "失败", (f"{编号}-6 v2 产物运行退出码={运行结果2.returncode}"
@@ -2020,7 +2069,8 @@ def 执行v2闭环(编译器路径: pathlib.Path, 用例目录: pathlib.Path,
     输入文本2 = 输入文件2.read_text(encoding="utf-8") if 输入文件2 is not None else ""
     参数列表2 = 查找参数文件(用例目录 / 入口名2)
     运行结果2 = 运行命令([str(输出exe)] + 参数列表2, 项目根目录, 输入文本2,
-                      超时秒数=运行超时秒数)
+                      超时秒数=运行超时秒数,
+                      栈上限MB=查找运行栈上限MB(用例目录))  # 587：声明式小栈（win 侧无 RLIMIT=忽略）
     if 运行结果2.returncode != 预期退出码:
         return "失败", (f"{编号}-6 v2 产物运行退出码={运行结果2.returncode}"
                         f"（期望 {预期退出码}）: {(运行结果2.stderr or '').strip()[:200]}")
@@ -2183,7 +2233,8 @@ def 执行双编译对照(编译器路径: pathlib.Path, 用例目录: pathlib.P
     宿主输入文本 = 宿主输入文件.read_text(encoding="utf-8") if 宿主输入文件 is not None else ""
     宿主参数列表 = 查找参数文件(用例目录 / 源文件名们[0])
     宿主运行 = 运行命令([str(宿主可执行)] + 宿主参数列表, 项目根目录, 宿主输入文本,
-                     超时秒数=运行超时秒数)
+                     超时秒数=运行超时秒数,
+                     栈上限MB=查找运行栈上限MB(用例目录))  # 587：声明式小栈（默认0=不变）
     宿主码 = 宿主运行.returncode
     # 609-a 机制级修复（runner 断言面）：win64 进程退出码=32 位全值——本文件
     #   1266 行注释本意即「win64 为 32 位全值」，v2闭环 win 分支（步骤6）亦为
