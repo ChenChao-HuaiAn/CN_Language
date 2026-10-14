@@ -350,7 +350,16 @@ void IRGenerator::resolveDeclTypesAndAlloc(VarDecl* node, DeclGenCtx& ctx) {
             srcTypeRaw = node->typeName;
         } else if (!node->initializer->semanticType.empty() &&
                    (mapType(node->initializer->semanticType) == "i128" ||
-                    mapType(node->initializer->semanticType) == "u128")) {
+                    mapType(node->initializer->semanticType) == "u128" ||
+                    // 728s（零分叉对齐·v2 推断通道健全面反照）：64 位同法纳入
+                    //   559-a 宽度溢出实弹族——推断声明+表达式初值
+                    //   （`变量 甲 = 乙 + 0;` 乙整64 / `3000000000L + 0;`）原
+                    //   静默兜底 i32 = i64→i32 截断（e4/r3b 探针实证
+                    //   -1294967296）；v2 表达式类型ID 通道同形态推整64 值正确
+                    //   =双侧分叉。**同收窄理由**（184 打印契约）：i1/浮点/
+                    //   窄族仍不扩（T96 收口面）。
+                    mapType(node->initializer->semanticType) == "i64" ||
+                    mapType(node->initializer->semanticType) == "u64")) {
             // 559-a（T96a·收窄面）：128 位初始化式取语义注记类型——原静默兜底
             //   「整32」= i128→i32 截断链根（m44_01 实弹·3736928711）。注记文本
             //   为源码类型名（如「整128」）→mapType 归一后判定（T96b 同法）。
