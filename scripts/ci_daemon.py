@@ -833,33 +833,55 @@ def 主(常驻: bool, 强制: bool, 等锁: bool = False) -> int:
         sha = 取远端SHA()
         if sha is None:
             print("[警告] ls-remote 失败——下轮重试", flush=True)
-        else:
-            # ── 189 纯文档免兜底（770 保留：变更集全 .md→免跑留档·编译器零变化不烧全量；
-            #    其余任何头一律入池真验——「已跑过/池已绿」跳过已废止=预验绿过的头仍复验）。
-            #    入池失败（池不可达）降级本机跑=门禁永不缺位；本地已有该 sha 红档不入池
-            #    （终态已记录·重跑同红无益，新头自然覆盖）。
-            if 分支 == "develop" and not 强制:
-                基线 = 上次已验SHA()
-                if 基线 and 基线 != sha:
-                    免, 缘由 = 纯文档变更(基线, sha)
-                    if 免:
-                        免跑留档(sha, 缘由)
-                        if not 常驻:
-                            return 0
-                        放锁(锁)      # 184：轮间释放·点名可插队
-                        time.sleep(轮询间隔秒)
-                        重抢锁(锁)
-                        continue
-                if (sha not in 已入池
-                        and not list(日志目录.glob("result_%s_*.json" % sha[:10]))
-                        and 兜底入池(sha)):
-                    已入池.add(sha)   # 入池成功即记（服务端幂等终态兜底·常驻期不重复 POST）
+        elif 分支 == "develop" and not 强制:
+            # ── 770 头派发块（轮转派发唯一入口）：新头→入池（服务端 win→linux→arm64 轮转
+            #    +平台内随机空闲+全忙放宽）；**头一旦入池=交池负责，本机不再跑**——
+            #    770 修复（2026-10-14 深夜三平台同验实录）：此前「已入池」只挡重复入池，
+            #    下一轮头未变即漏 continue 直落本机直跑=全池每实例各烧一轮同头。
+            #    本机直跑仅剩两条路：入池失败降级（池不可达=门禁永不缺位）与 --force 每日 cron。
+            基线 = 上次已验SHA()
+            if 基线 and 基线 != sha:
+                免, 缘由 = 纯文档变更(基线, sha)
+                if 免:
+                    免跑留档(sha, 缘由)
                     if not 常驻:
                         return 0
-                    放锁(锁)
+                    放锁(锁)      # 184：轮间释放·点名可插队
                     time.sleep(轮询间隔秒)
                     重抢锁(锁)
                     continue
+            if sha in 已入池 or list(日志目录.glob("result_%s_*.json" % sha[:10])):
+                # 头已交池负责（本进程入过）/本地已有该 sha 结论档（含红终态）——本机不跑，
+                # 等池派发或下一个头（新头≠sha 自然走出此分支）。
+                if not 常驻:
+                    return 0
+                放锁(锁)
+                time.sleep(轮询间隔秒)
+                重抢锁(锁)
+                continue
+            if 兜底入池(sha):
+                已入池.add(sha)   # 入池成功=池负责（服务端幂等·行已存在亦 ok）
+                if not 常驻:
+                    return 0
+                放锁(锁)
+                time.sleep(轮询间隔秒)
+                重抢锁(锁)
+                continue
+            print("[降级] 兜底入池失败——本机直跑（门禁永不缺位）：%s" % sha[:10], flush=True)
+            # ── 降级直跑落到下方开跑（develop 分支照发「执行中」上报=观察面可见） ──
+            print("[开跑] %s @ %s（分支=%s%s）" % (sha[:10],
+                  datetime.now().strftime("%H:%M:%S"), 分支,
+                  "·预验" if 分支 != "develop" else ""), flush=True)
+            # 190（1035 轮）：开跑即上报「执行中」——状态页门禁表实时可见在跑轮。
+            #   完成轮由 落盘 上报覆盖同 sha 行（INSERT OR REPLACE·绿/红/耗时齐）。
+            上报({"sha": sha, "分支": 分支, "平台": 平台,
+                  "绿": None, "总秒": None, "状态": "执行中"})
+            结果 = 带门禁锁跑(sha)
+            if 结果 is not None:     # None=291 让出（gate_lock 互忙）——不落盘·下轮再战
+                落盘(结果)
+                print("[完成] 绿=%s 总秒=%s 详情=%s" % (结果["绿"], 结果["总秒"], 结果["日志"]), flush=True)
+        else:
+            # ── CN_CI_BRANCH 点名预验 / --force 每日兜底（770：直跑仅剩的两条非轮转路径） ──
             print("[开跑] %s @ %s（分支=%s%s）" % (sha[:10],
                   datetime.now().strftime("%H:%M:%S"), 分支,
                   "·预验" if 分支 != "develop" else ""), flush=True)
