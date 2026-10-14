@@ -148,10 +148,14 @@ void SemanticAnalyzer::visitVarDecl(VarDecl* node) {
             // 193：抽象类（含无实现体抽象方法·class_resolver isAbstract 标记）
             //   值形态裸声明拒绝——先于 H7 默认构造检查（抽象类构造个数恒 0
             //   本就落空，此处给领域正确诊断而非静默放行）。
+            // 728j（2026-10-14）：诊断补未实现方法名清单（多层继承下直观看漏
+            //   实现哪个·v2 语义检查语句.cn 同文案逐字一致）。
             if (ci->isAbstract) {
                 diagnostics_.report(DiagnosticLevel::Error, node->location,
                                     "不能实例化抽象类 '" + varType +
-                                        "'（含未实现抽象方法）——请实例化具体派生类");
+                                        "'（未实现抽象方法：" +
+                                        ci->unsatisfiedAbstractText() +
+                                        "）——请实例化具体派生类");
             }
             bool hasAnyCtor = false;
             bool hasDefaultCtor = false;

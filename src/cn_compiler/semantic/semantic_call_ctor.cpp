@@ -72,10 +72,14 @@ bool SemanticAnalyzer::checkCtorCall(CallExpr* node, const std::string& classNam
         const ClassInfo* ctorCls = findClass(className);
         if (ctorCls != nullptr) {
             // 193：抽象类（含无实现体抽象方法）构造调用拒绝
+            // 728j（2026-10-14）：诊断补未实现方法名清单（多层继承指路·
+            //   v2 语义检查表达式.cn 同文案逐字一致）
             if (ctorCls->isAbstract) {
                 diagnostics_.report(DiagnosticLevel::Error, node->location,
                                     "不能实例化抽象类 '" + className +
-                                        "'（含未实现抽象方法）——请实例化具体派生类");
+                                        "'（未实现抽象方法：" +
+                                        ctorCls->unsatisfiedAbstractText() +
+                                        "）——请实例化具体派生类");
                 return true;
             }
             // 查找构造函数（函数名 == 类名）。Debug 子任务修复（构造函数重载）：

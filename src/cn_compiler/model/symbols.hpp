@@ -119,6 +119,24 @@ struct ClassInfo {
     int ifaceMaxSlot = -1;                     // 本类实现的接口方法最大全局槽
     int ifaceRegionSize = 0;                   // 接口分派区字节数 (maxSlot+1)*8
     bool isAbstract = false;                   // 含抽象方法（不可实例化）
+    // 728j（2026-10-14）：未实现抽象方法名清单（诊断「指路」——多层继承下用户
+    //   一眼看到漏实现的是哪个方法）。填充=class_resolver 抽象标记段：并入后
+    //   方法表 isAbstract && !hasBody 过滤（含父类并入条目）、按名去重（重载
+    //   同名多签名）、字典序排序（UTF-8 字节序=码点序）。**与 isAbstract 同一
+    //   循环同源产生——清单非空 ⟺ isAbstract**（v2 IR类抽象.cn 未实现抽象串
+    //   同口径·双侧诊断逐字一致）。
+    std::vector<std::string> unsatisfiedAbstractMethods;
+    // 未实现抽象方法名顿号串（诊断指路文本·v2 未实现抽象顿号串同格式）。
+    //   合法空串面=非抽象类调用（消费点 semantic_decl/semantic_call_ctor 均
+    //   先经 ci->isAbstract 判定——与上字段同源非空，故诊断名字段恒非空）。
+    std::string unsatisfiedAbstractText() const {
+        std::string out;
+        for (const auto& m : unsatisfiedAbstractMethods) {
+            if (!out.empty()) out += "、";
+            out += m;
+        }
+        return out;
+    }
     const ClassDecl* ast = nullptr;            // AST 节点指针
     // H8 根治（2026-08-25）：泛型类实例化实参列表（instantiateGeneric 存储）。
     //   方法体 genericTypeParams_ 解析用——嵌套实参（向量$映射$整64$整64 的

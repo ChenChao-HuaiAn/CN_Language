@@ -487,12 +487,26 @@ void SemanticAnalyzer::resolveClass(ClassDecl* node) {
     verifyInterfaceImpl(info);
 
     // 抽象类标记：含抽象方法（无实现体）则不可实例化
-    for (const auto& kv : info.methods) {
-        if (kv.second.isAbstract && !kv.second.hasBody) {
-            info.isAbstract = true;
-            break;
+    // 728j（2026-10-14）：未实现抽象方法名清单同步收集（诊断指路「未实现抽象
+    //   方法：叫、跑」）——过滤口径与 isAbstract 同一来源（并入后方法表
+    //   isAbstract && !hasBody·含父类并入条目）；重载同名多签名条目按名去重
+    //   （v2 IR类抽象.cn 逗号串并名去重同款）；字典序排序（v2 未实现抽象顿号串
+    //   选择排序同序——UTF-8 字节序=码点序两侧重合）。清单非空 ⟺ isAbstract
+    //   （同一循环保证·消费点先判 isAbstract 故诊断名字段恒非空）。
+    info.unsatisfiedAbstractMethods.clear();
+    {
+        std::unordered_set<std::string> seen;
+        for (const auto& kv : info.methods) {
+            if (kv.second.isAbstract && !kv.second.hasBody) {
+                info.isAbstract = true;
+                if (seen.insert(kv.second.name).second) {
+                    info.unsatisfiedAbstractMethods.push_back(kv.second.name);
+                }
+            }
         }
     }
+    std::sort(info.unsatisfiedAbstractMethods.begin(),
+              info.unsatisfiedAbstractMethods.end());
 
     // 593（2026-10-14）：类成员「抽象类/接口元素数组」值形态拦截——字段
     //   （实例布局逐元素默认构造实例化·静态字段同为对象存储面）与方法签名
