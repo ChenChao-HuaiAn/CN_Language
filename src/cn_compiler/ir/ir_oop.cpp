@@ -532,6 +532,17 @@ void IRGenerator::emitOwnedFieldsCopy(const ir::IRValue& thisPtr,
                 emit(ir::Opcode::StorePtr, {dstF, val}, ir::IRValue(), "",
                      "ptr", loc);
             }
+        } else if (semantic_->isStructType(canon)) {
+            // 571（2026-10-14·#571 根治）：**结构体/合成体字段字段级深拷**——
+            //   原落「标量字节拷」分支=整字段位拷：字段为 可选<字符串>/
+            //   结果<字符串,…>/含串结构体 时载荷句柄共享（拷贝产物与源双主：
+            //   任一侧字段写 preFree/析构=对方悬垂 UAF）。emitStructCopyWithFields
+            //   单点复用（收集器 571 归一后 可选/结果 模板文本进专用收集=**载荷
+            //   真值守卫**条件 __cn_str_copy·#280 契约；纯 POD 结构体=裸字段位拷
+            //   零开销）。preFree=false：目标=NewObject 新对象字段（未初始化无旧值
+            //   可清）；deepCopy=true：源保持拥有（与拷贝构造字段面同口径）。
+            emitStructCopyWithFields(dstF, srcF, canon, loc,
+                                     /*preFree=*/false, /*deepCopy=*/true);
         } else {
             // 标量：逐字段字节拷（地址对 + 字段宽）
             const int size = semantic_->typeSizeOf(canon);
@@ -614,74 +625,6 @@ void IRGenerator::cascadeConstructFields(const std::string& className,
     }
 }
 
-// 缺陷3 根治（2026-09-02）：类字段级联析构注入——~类名() 体生成后、默认返回前，
-//   按字段逆序对本类「有析构类」字段发射 DeleteObject（对标 C++ 成员析构语义）：
-//     this 指针 → FieldAddr(字段偏移) → LoadPtr（字段槽存堆对象指针）→ DeleteObject
-//   （空安全：未构造字段经 __cn_object_new 清零为 null，codegen test/je 跳过——
-//   原 CN 无字段析构原语，容器字段只能泄漏，stdlib 全库被迫用裸指针+分配/释放 规避）。
-//   边界：父类字段由父类析构链负责；析构体内提前 返回 不覆盖（C++ 同语义不保证）；
-//   静态字段与无析构类字段不注入。
-void IRGenerator::injectFieldCascadeDestroy(const ClassMember* member) {
-    if (semantic_ == nullptr || member == nullptr) return;
-    ir::IRFunction* fn = function_;
-    if (fn == nullptr || fn->blocks.empty()) return;
-    ir::IRBlock* last = fn->blocks.back().get();
-    if (last->terminated) return;  // 体尾已终止（提前 返回）：不注入（见上边界）
-    setCurrentBlock(last);
-    const ClassInfo* ci = semantic_->findClass(currentClass_);
-    if (ci == nullptr) return;
-    const std::string thisUnique = lookupVarName("自身");
-    if (thisUnique.empty()) return;
-    for (auto it = ci->fieldOrder.rbegin(); it != ci->fieldOrder.rend(); ++it) {
-        const auto f = ci->fields.find(*it);
-        if (f == ci->fields.end() || f->second.isStatic) continue;
-        const std::string ftype = classFieldType(currentClass_, *it);
-        const std::string fcanon = types::canonical(ftype);
-        // 100（939·008 收官总攻）：**字符串字段清理注入**——结构体串字段
-        //   三件套（79-a）对类不对称缺失（类字段串=编译器不管→tracked 串
-        //   泄漏·p104 定性：副本串差 1；驻留句柄/空句柄 free=忽略/空安全）。
-        //   纯增益：类串字段无既有自动清理路径（容器字段=级联析构在下）。
-        if (fcanon == "字符串") {
-            const int offS = semantic_->classFieldOffset(currentClass_, *it);
-            if (offS >= 0) {
-                ir::IRValue thisS = emitResult(
-                    ir::Opcode::Load, {ir::IRValue::var(thisUnique, "ptr")},
-                    "ptr", thisUnique, member->body->location);
-                ir::IRValue addrS = emitResult(
-                    ir::Opcode::FieldAddr, {thisS}, "ptr",
-                    std::to_string(offS), member->body->location);
-                ir::IRValue strPtr = emitResult(
-                    ir::Opcode::LoadPtr, {addrS}, "ptr", "",
-                    member->body->location);
-                emit(ir::Opcode::Call, {strPtr}, ir::IRValue(),
-                     "__cn_str_free", "void", member->body->location);
-                emit(ir::Opcode::StorePtr, {addrS, ir::IRValue::constant("0", "i64")},
-                     ir::IRValue(), "", "ptr", member->body->location);
-            }
-            continue;
-        }
-        if (ftype.empty() || !semantic_->isClassType(fcanon)) continue;
-        const ClassInfo* fci = semantic_->findClass(fcanon);
-        bool hasDtor = false;
-        if (fci != nullptr) {
-            for (const auto& mk : fci->methods) {
-                if (mk.second.isDestructor) { hasDtor = true; break; }
-            }
-        }
-        if (!hasDtor) continue;
-        const int offset = semantic_->classFieldOffset(currentClass_, *it);
-        if (offset < 0) continue;
-        ir::IRValue thisPtr = emitResult(
-            ir::Opcode::Load, {ir::IRValue::var(thisUnique, "ptr")},
-            "ptr", thisUnique, member->body->location);
-        ir::IRValue addr = emitResult(ir::Opcode::FieldAddr, {thisPtr}, "ptr",
-                                      std::to_string(offset), member->body->location);
-        ir::IRValue objPtr = emitResult(ir::Opcode::LoadPtr, {addr}, "ptr", "",
-                                        member->body->location);
-        emit(ir::Opcode::DeleteObject, {objPtr}, ir::IRValue(),
-             fcanon, "void", member->body->location);
-    }
-}
 
 // ==================== visitClassDecl / visitClassMember ====================
 

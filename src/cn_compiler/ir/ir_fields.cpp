@@ -33,12 +33,23 @@ namespace cn_compiler {
 // ==================== ① 判定与收集 ====================
 
 // 递归收集（base=相对聚合基址字节偏移；cond=条件字段偏移，-1=无条件）
-void IRGenerator::collectOwnedStrFields(const std::string& canon, int base, int cond,
+void IRGenerator::collectOwnedStrFields(const std::string& canonRaw, int base, int cond,
                                         std::vector<OwnedStrField>& out,
                                         std::vector<std::string>& visiting,
                                         bool viaUnion) const {
     if (semantic_ == nullptr) return;
     if (out.size() > 64) return;  // 防御：展开上限（值语义自包含=非法，环另防）
+    // 571（2026-10-14·#571 根治）：**双形态归一（单点）**——模板文本
+    //   （结果<字符串,整32>/可选<字符串>·源码/字段表原样形态）→ $ 合成名
+    //   （结果$字符串$整32/可选$字符串·lowerResultOptionalTypes 注册形态）。
+    //   字段写路径（974/512-a 等）canon 常为模板文本：原「结果$」前缀判定不命中
+    //   → findStruct(模板文本) 命中落**通用结构体分支**——值 位被收为**无条件**
+    //   字符串字段（cond=-1·#280 载荷真值守卫丢失）：preFree 无条件 free——错误态
+    //   值位=错误码整数（free(7) 段错误 C0000005·探针7 实锤）/可选 无值·未初始化态
+    //   值位=malloc 堆垃圾（乱码/崩·分配不清零禁依赖恰零）；postCopy 深拷面无条件
+    //   __cn_str_copy(整数/垃圾) 同病。归一后走下方 专用分支（cond=正常/有值 偏移）
+    //   恢复 #280 契约；$ 形态归一恒等（重复归一零变化·调用方零改动）。
+    const std::string canon = canonicalizeSyntheticArgText(canonRaw);
     if (std::find(visiting.begin(), visiting.end(), canon) != visiting.end()) return;
     // 字符串本身：值语义字段
     if (canon == "字符串") {
@@ -53,24 +64,38 @@ void IRGenerator::collectOwnedStrFields(const std::string& canon, int base, int 
     if (isResult || isOptional) {
         if (cond >= 0) return;  // 嵌套条件（外层已有条件）不展开（诚实边界，宁漏勿错）
         const StructDecl* decl = semantic_->findStruct(canon);
-        if (decl == nullptr) return;
-        std::string valueType;
-        if (isResult) {
-            const std::vector<std::string> args =
-                resultTypeArgs(canon);
-            if (args.size() != 2) return;
-            valueType = types::canonical(args[0]);
-        } else {
-            valueType = types::canonical(optionalTypeArg(canon));
+        if (decl != nullptr) {
+            std::string valueType;
+            if (isResult) {
+                // 571：参数提取用 **canonRaw（源形态）**——optionalTypeArg/
+                //   resultTypeArgs 只认模板文本（可选<X>/结果<X,Y>），对 $ 合成名
+                //   （isOptionalType 前缀判定不含尖括号）恒返回空=专用分支收集空
+                //   退化为裸位拷（571 首版实测：条件守卫未恢复）。canonRaw=模板
+                //   文本（用户代码/字段表常态）直接可解；canonRaw=$ 名（泛型实例
+                //   化克隆场）维持既有空收集边界（宁漏勿错）。
+                const std::vector<std::string> args = resultTypeArgs(canonRaw);
+                if (args.size() == 2) valueType = types::canonical(args[0]);
+            } else {
+                valueType = types::canonical(optionalTypeArg(canonRaw));
+            }
+            if (valueType == "字符串") {
+                const int vo = semantic_->fieldOffsetOf(decl, "值");
+                const int co =
+                    semantic_->fieldOffsetOf(decl, isResult ? "正常" : "有值");
+                if (vo >= 0 && co >= 0) {
+                    OwnedStrField fld{base + vo, base + co};
+                    fld.viaUnion = viaUnion;
+                    out.push_back(fld);
+                    return;
+                }
+            }
+            // 571：T≠字符串（结果<结构体,E>/可选<结构体> 等）或偏移查询失败——
+            //   **落通用结构体递归**（值位联合体内部的串字段展开：读取() 返回
+            //   结果<盒子,整32> 的 值.名 等形态·245 实证基线行为）——不 return
+            //   （首版在此 return 丢失值位展开=245 校验和 231 回归）。通用循环
+            //   对「错误值联合」字段按结构体递归（结果联合$ 豁免 viaUnion·与
+            //   修复前口径一致）。
         }
-        if (valueType != "字符串") return;
-        const int vo = semantic_->fieldOffsetOf(decl, "值");
-        const int co = semantic_->fieldOffsetOf(decl, isResult ? "正常" : "有值");
-        if (vo < 0 || co < 0) return;
-        OwnedStrField fld{base + vo, base + co};
-        fld.viaUnion = viaUnion;
-        out.push_back(fld);
-        return;
     }
     // 类类型：不展开（类对象字段归 ~类 级联/容器 RAII——本轮面外）
     if (semantic_->isClassType(canon)) return;
@@ -335,17 +360,22 @@ void IRGenerator::emitFieldStringFreeAt(const ir::IRValue& fieldAddr,
 }
 
 // 条件释放 + 清槽（联合体安全：结果/可选 非正常分支的值位是错误码整数）
+// 571（2026-10-14·#571 收口改道）：原实现=「LoadPtr tag→Branch 双块→free 块→
+//   汇合块」IR 级分支——字段写路径（974/structWholeAssignSrcFirst）的深拷链
+//   中嵌套分支块实测触发 codegen 产物段错误（探针 2b/2c/8 修复前绿·修复后
+//   100% 崩·veh 二次崩掩盖第一现场；同款 preFree 条件块在 2a 绿=块内容语义
+//   无错·嫌疑=深拷链多块与 codegen 交互，另案）。改 **runtime 单调用形态**
+//   （946 __cn_box_class_delete 同款先例·零分支）：摘句柄（tag 假→nullptr·
+//   错误态垃圾句柄免疫）+ __cn_str_free（空安全跳过）——语义与分支版逐点
+//   一致（#280 载荷真值守卫保持）。
 void IRGenerator::emitFieldStringFreeIf(const ir::IRValue& condAddr,
                                         const ir::IRValue& fieldAddr,
                                         const SourceLocation& loc) {
-    ir::IRValue cond = emitResult(ir::Opcode::LoadPtr, {condAddr}, "i1", "", loc);
-    const std::string freeLabel = "bb" + std::to_string(blockCounter_++);
-    const std::string endLabel = "bb" + std::to_string(blockCounter_++);
-    endBranch(cond.toString(), freeLabel, endLabel);
-    setCurrentBlock(newBlock(freeLabel));
-    emitFieldStringFreeAt(fieldAddr, loc);
-    endJump(endLabel);
-    setCurrentBlock(newBlock(endLabel));
+    ir::IRValue handle = emitResult(ir::Opcode::Call,
+                                    {condAddr, fieldAddr}, "ptr",
+                                    "__cn_box_class_delete", loc);
+    emit(ir::Opcode::Call, {handle}, ir::IRValue(), "__cn_str_free", "void",
+         loc);
 }
 
 void IRGenerator::emitOwnedStrFieldFreesAt(const ir::IRValue& base,
@@ -612,24 +642,18 @@ void IRGenerator::emitOwnedStrFieldPostCopy(const ir::IRValue& dstBase,
                  "ptr", loc);
         } else {
             // 条件字段：源条件为真才复制（假分支值位是错误码整数，copy 即崩）
+            // 571：同 emitFieldStringFreeIf 改道——分支块换 runtime 单调用
+            //   __cn_box_field_str_copy（tag 真→dst=copy(src)·假→dst 不动：
+            //   错误态 dst.值=错误码保留；dst 旧值=刚位拷入的共享句柄丢弃不
+            //   free——非 dst 拥有·preFree 已清自己旧值）。
             ir::IRValue condAddr = emitResult(ir::Opcode::FieldAddr, {srcBase}, "ptr",
                                               std::to_string(f.condOffset), loc);
-            ir::IRValue cond = emitResult(ir::Opcode::LoadPtr, {condAddr}, "i1", "",
-                                          loc);
-            const std::string copyLabel = "bb" + std::to_string(blockCounter_++);
-            const std::string endLabel = "bb" + std::to_string(blockCounter_++);
-            endBranch(cond.toString(), copyLabel, endLabel);
-            setCurrentBlock(newBlock(copyLabel));
             ir::IRValue sAddr = emitResult(ir::Opcode::FieldAddr, {srcBase}, "ptr",
                                            std::to_string(f.offset), loc);
             ir::IRValue dAddr = emitResult(ir::Opcode::FieldAddr, {dstBase}, "ptr",
                                            std::to_string(f.offset), loc);
-            ir::IRValue val = emitResult(ir::Opcode::LoadPtr, {sAddr}, "ptr", "", loc);
-            ir::IRValue copy = emitResult(ir::Opcode::Call, {val}, "ptr",
-                                          "__cn_str_copy", loc);
-            emit(ir::Opcode::StorePtr, {dAddr, copy}, ir::IRValue(), "", "ptr", loc);
-            endJump(endLabel);
-            setCurrentBlock(newBlock(endLabel));
+            emit(ir::Opcode::Call, {condAddr, sAddr, dAddr}, ir::IRValue(),
+                 "__cn_box_field_str_copy", "void", loc);
         }
     }
 }

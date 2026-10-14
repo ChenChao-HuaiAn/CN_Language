@@ -476,8 +476,24 @@ bool IRGenerator::tryGenClassCopyInit(VarDecl* node, const ir::IRValue& value,
                         }
                     }
                 } else {
-                    emit(ir::Opcode::CopyStruct, {newObj, value}, ir::IRValue(),
-                         std::to_string(ci->totalSize), "void", node->location);
+                    // 571（2026-10-14·#571 根治）：无拷贝构造类拷贝初始化——
+                    //   原裸 CopyStruct 整对象浅拷=拥有型字段（字符串/可选<字符串>/
+                    //   结果<字符串,…>/容器字段）句柄共享：拷贝产物与源双主，任一侧
+                    //   字段写（preFree）或析构（级联释放）=对方悬垂（探针4 实锤
+                    //   UAF：乙.名称 重写后 甲.名称.值 打印已释放内存静默崩）。修=
+                    //   **逐层字段级深拷**（emitOwnedFieldsCopy·123 基类链同款设施：
+                    //   串 __cn_str_copy 落堆·合成体/结构体字段 emitStructCopyWithFields
+                    //   载荷真值守卫条件深拷〔#280〕·类字段拷贝构造级联·标量字节拷
+                    //   ——偏移按最派生类上下文 classFieldOffset 单点），C++ 隐式
+                    //   拷贝语义+CN 拥有语义对齐；虚表指针由 NewObject 初始化不覆盖
+                    //   （同类同表）。源 value=源对象指针（Load 源槽产物）。
+                    for (const ClassInfo* lvl = ci; lvl != nullptr;
+                         lvl = lvl->baseName.empty()
+                                   ? nullptr
+                                   : semantic_->findClass(lvl->baseName)) {
+                        emitOwnedFieldsCopy(newObj, value, canonTgt, lvl->name,
+                                            node->location);
+                    }
                 }
                 emit(ir::Opcode::Store, {newObj}, ir::IRValue(), unique,
                      "ptr", node->location);

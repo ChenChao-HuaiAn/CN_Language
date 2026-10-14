@@ -71,9 +71,22 @@ bool IRGenerator::identifierClassCopyAssign(AssignmentExpr* node, IdentifierExpr
                          methodSymbolKey(copyOwner, copyCtor->sigKey), "void",
                          node->location);
                 } else {
-                    // 逐字节拷贝字段到新对象（深拷贝）
-                    emit(ir::Opcode::CopyStruct, {newObj, srcObj}, ir::IRValue(),
-                         std::to_string(ci->totalSize), "void", node->location);
+                    // 571（2026-10-14·#571 根治）：无拷贝构造类赋值——原裸
+                    //   CopyStruct 整对象浅拷=拥有型字段（字符串/可选<字符串>/
+                    //   结果<字符串,…>/容器字段）句柄共享：两对象双主，任一侧字段写
+                    //   （preFree）或析构=对方悬垂（探针4 实锤 UAF）。修=**逐层
+                    //   字段级深拷**（emitOwnedFieldsCopy·与 tryGenClassCopyInit
+                    //   声明位同款单点：串 __cn_str_copy 落堆·合成体/结构体字段
+                    //   emitStructCopyWithFields 载荷真值守卫条件深拷〔#280〕·
+                    //   类字段拷贝构造级联·标量字节拷——偏移按最派生类上下文），
+                    //   虚表指针由 NewObject 初始化不覆盖（同类同表）。
+                    for (const ClassInfo* lvl = ci; lvl != nullptr;
+                         lvl = lvl->baseName.empty()
+                                   ? nullptr
+                                   : semantic_->findClass(lvl->baseName)) {
+                        emitOwnedFieldsCopy(newObj, srcObj, canonTarget,
+                                            lvl->name, node->location);
+                    }
                 }
                 // A-1（引用参数）：目标为引用参数时经指针写回（StorePtr 到槽内地址）
                 if (isByRefCapture(ident->name)) {

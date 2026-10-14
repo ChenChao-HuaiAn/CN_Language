@@ -807,6 +807,22 @@ extern "C" void* __cn_box_class_delete(void* tagAddr, void* fieldAddr) {
     return handle;
 }
 
+// 571（2026-10-14·#571）：盒载荷条件深拷辅助——合成体字段（可选<T>/结果<T,E>
+//   T=字符串）整体写 deepCopy 面的单调用形态（946 box_class_delete 同族·「条件
+//   块切割在编译期失控」同先例）。语义：tag 假（错误/无值态）→ no-op（dst 值位
+//   =错误码整数·保留不动）；真 → dst 值位 = __cn_str_copy(src 句柄)（独立副本
+//   落堆·源保持拥有）。调用方（emitOwnedStrFieldPostCopy 条件字段分支）的 dst
+//   旧值=刚位拷入的共享句柄（非 dst 拥有）直接覆盖丢弃，无需释放。
+extern "C" void __cn_box_field_str_copy(void* tagAddr, void* srcFieldAddr,
+                                        void* dstFieldAddr) {
+    if (tagAddr == nullptr || srcFieldAddr == nullptr || dstFieldAddr == nullptr) {
+        return;
+    }
+    if (*static_cast<int*>(tagAddr) == 0) return;
+    *static_cast<void**>(dstFieldAddr) =
+        __cn_str_copy(*static_cast<char**>(srcFieldAddr));
+}
+
 extern "C" void* __cn_object_new(long long size) {
     void* ptr = std::calloc(1, static_cast<std::size_t>(size > 0 ? size : 1));
     if (ptr == nullptr) {

@@ -323,8 +323,20 @@ bool IRGenerator::globalStaticClassAssign(AssignmentExpr* node, IdentifierExpr* 
                     }
                 }
                 if (!copied) {
-                    emit(ir::Opcode::CopyStruct, {newObj, value}, ir::IRValue(),
-                         std::to_string(ci->totalSize), "void", node->location);
+                    // 571（2026-10-14·#571 根治）：无拷贝构造类静态赋值——原裸
+                    //   CopyStruct 整对象浅拷=拥有型字段（字符串/可选<字符串>/
+                    //   结果<字符串,…>/容器字段）句柄共享：静态槽与源双主，任一侧
+                    //   字段写（preFree）或析构=对方悬垂（探针4 同族）。修=**逐层
+                    //   字段级深拷**（emitOwnedFieldsCopy·与局部赋值位/声明位 571
+                    //   同款单点：串落堆·合成体/结构体字段载荷守卫条件深拷〔#280〕·
+                    //   类字段拷贝构造级联·标量字节拷）。
+                    for (const ClassInfo* lvl = ci; lvl != nullptr;
+                         lvl = lvl->baseName.empty()
+                                   ? nullptr
+                                   : semantic_->findClass(lvl->baseName)) {
+                        emitOwnedFieldsCopy(newObj, value, canonTgt, lvl->name,
+                                            node->location);
+                    }
                 }
                 ir::IRValue slotAddr = emitResult(
                     ir::Opcode::ConstString, {}, "ptr",
