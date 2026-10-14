@@ -6,6 +6,10 @@
 # 注意：本脚本只更代码+重启服务（SQLite 数据与 systemd 单元不动）；
 #       首次部署/021 迁移另行执行（见 plans/028 §看板）：
 #         python3 board_tasks.py --db ~/board_state.db --migrate --021 <主表.md> [--归档 <归档.md>]*
+# ★部署后必做（728m·教训 155「HTTP 200 ≠ 页面活着」——一次 JS 语法错误
+#   整页瘫死，回环 200 探测全过、页面停「连接中…」四小时无人察觉）：
+#   ① 本机跑 python3 scripts/infra_healthcheck.py          # 前端真 JS 冒烟（quickjs）
+#   ② 人工浏览器开一次页面确认渲染/样式/交互（人眼终审·与①互补）
 set -euo pipefail
 
 REMOTE="${1:-TX_01}"
@@ -59,7 +63,9 @@ sleep 1.5
 
 HTTP="$(ssh "$REMOTE" "curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8301/" || true)"
 if [ "$HTTP" = "200" ]; then
-    echo "✓ 已部署并验证（http://124.222.106.84:8301 → 200）"
+    echo "✓ 已部署（回环探测 200）——但 200≠页面活着（教训 155）！"
+    echo "  接着跑: python3 scripts/infra_healthcheck.py   # 前端真 JS 冒烟（语法+数据链）"
+    echo "  并人工浏览器开一次 http://124.222.106.84:8301/ 确认渲染/样式/交互。"
 else
     echo "✗ 部署后本机回环探测异常（HTTP ${HTTP:-无响应}）——ssh $REMOTE 查 journalctl -u cn-board -n 30" >&2
     exit 1
