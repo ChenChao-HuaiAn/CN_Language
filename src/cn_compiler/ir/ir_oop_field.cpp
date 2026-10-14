@@ -402,10 +402,15 @@ bool IRGenerator::handleClassFieldAssign(IdentifierExpr* ident, Expr* value,
             !classDestructorSymbolKey(fieldCanon).empty();
         if (isOwnedContainer) {
             ir::IRValue fieldAddr = genInstanceFieldAddr(ident->name, loc);
-            // 145-a 同款：构造体内 this 字段赋值=初始化语义（目标槽未初始化），
-            //   跳过 preFree（读垃圾句柄 DeleteObject=崩）；非构造内=完整
-            //   preFree（旧容器元素释放 + DeleteObject + 清槽）。
-            if (!currentMethodIsCtor_) {
+            // 145-a 跳过撤销（543 根治·2026-10-14·与 memberClassFieldAssign 同批）：
+            //   原「构造体内 this 字段赋值=初始化语义，跳过 preFree（防读垃圾句柄
+            //   崩）」的理由已被上游防线失效——①__cn_object_new 分配即清零（槽=
+            //   确定性 null）；②860-a 序言级联构造（2026-09-28）体前对有默认构造
+            //   类字段 NewObject+默认构造+StorePtr（槽=合法壳句柄）。构造内赋值
+            //   覆盖的旧值恒合法（null 或级联壳）→ preFree 空安全；跳过=级联壳
+            //   被体覆盖无人释放（每对象恒漏 1 壳·p_n6/p_n7 探针+箱丁 asm 双
+            //   NewObject 双 StorePtr 铁证·459 临时合流前壳不进检测面不可见）。
+            {
                 ir::IRValue oldObj =
                     emitResult(ir::Opcode::LoadPtr, {fieldAddr}, "ptr", "", loc);
                 emitContainerElemFreeFor(fieldCanon, oldObj, loc);
@@ -891,6 +896,37 @@ bool IRGenerator::handleClassMemberAssign(MemberExpr* target, Expr* valueExpr,
     if (fieldType == "字符串" && !isCompoundAssignOp(op) &&
         isBorrowedAggregateSource(valueExpr)) {
         val = emitResult(ir::Opcode::Call, {val}, "ptr", "__cn_str_copy", loc);
+    }
+    // 543 根治（2026-10-14·459 批甲临时合流计数实证）：有析构类字段的**通用
+    //   StorePtr 路径补 preFree 旧值释放**（095「Store 覆盖前 drop 旧值」同款·
+    //   Rust drop 语义）。漏源形态：构造函数体内 `字段 = 向量<...>()`——860-a
+    //   序言级联已 NewObject+默认构造+StorePtr 写槽（C++ 成员默认构造语义），
+    //   本路径再 NewObject+StorePtr **直写覆盖**——级联产物壳无人释放（每对象
+    //   恒漏 1 壳；p_n6/p_n7 探针矩阵+箱丁 asm 双 NewObject 双 StorePtr 铁证；
+    //   459 临时合流前壳不进计数=检测面盲区）。右值=构造调用等接管直存形态
+    //   本就走本通用路径（974/183-a 深拷通道只接 标识符/成员/下标/三元 源）。
+    //   释放模型=183-a 同款：emitContainerElemFreeFor（容器元素串）+ 单发
+    //   DeleteObject（指令内含析构调用+free·空槽 null 空安全跳过）——首次赋值
+    //   （槽=__cn_object_new 清零 null）与重复覆盖皆幂等。字符串/标量字段不受
+    //   影响（hasDtor 类判定只命中类类型字段）。
+    if (!isCompoundAssignOp(op) && semantic_->isClassType(
+        types::canonical(fieldType))) {
+        const ClassInfo* fci543 = semantic_->findClass(
+            types::canonical(fieldType));
+        bool fHasDtor543 = false;
+        if (fci543 != nullptr) {
+            for (const auto& mk543 : fci543->methods) {
+                if (mk543.second.isDestructor) { fHasDtor543 = true; break; }
+            }
+        }
+        if (fHasDtor543) {
+            ir::IRValue oldObj543 = emitResult(ir::Opcode::LoadPtr, {addr},
+                                               "ptr", "", loc);
+            emitContainerElemFreeFor(types::canonical(fieldType), oldObj543,
+                                     loc);
+            emit(ir::Opcode::DeleteObject, {oldObj543}, ir::IRValue(),
+                 types::canonical(fieldType), "void", loc);
+        }
     }
     emit(ir::Opcode::StorePtr, {addr, val}, ir::IRValue(), "", targetIrType, loc);
     lastExpr_ = val;

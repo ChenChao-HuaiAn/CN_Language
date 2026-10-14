@@ -804,13 +804,26 @@ bool IRGenerator::identifierClassTransferAssign(AssignmentExpr* node, Identifier
         return false;
     if (node->value->getType() != NodeType::CallExpr) return false;
     const CallExpr* tr = static_cast<const CallExpr*>(node->value.get());
-    if (!isTransferCall(tr) || tr->arguments.empty() ||
-        tr->arguments[0]->getType() != NodeType::IdentifierExpr)
+    if (!isTransferCall(tr) || tr->arguments.empty())
         return false;
-    const std::string srcName =
-        static_cast<const IdentifierExpr*>(tr->arguments[0].get())->name;
-    const std::string srcUnique = lookupVarName(srcName);
-    if (!srcUnique.empty() && srcUnique == unique) return false;   // 自转移=无操作
+    // 543 扩面（2026-10-14·579 形态② p_579 探针残 1 实证）：源=成员表达式
+    //   （乙 = 转移(h.桶)）——原守卫只接标识符源，成员源落通用 Store 直接
+    //   覆盖目标槽=目标旧壳无人释放（每覆盖漏 1）。句柄移交与源槽清零由
+    //   ir_call 转移展开完成（成员源同路·打印值正确实证），本函数职责=
+    //   目标旧值 drop——源形态与 drop 无关。成员源无「自转移」形态（目标槽
+    //   ≠成员槽·同名守卫仅标识符源适用）。
+    const IdentifierExpr* srcIdent543 = nullptr;
+    if (tr->arguments[0]->getType() == NodeType::IdentifierExpr) {
+        srcIdent543 =
+            static_cast<const IdentifierExpr*>(tr->arguments[0].get());
+    } else if (tr->arguments[0]->getType() != NodeType::MemberExpr) {
+        return false;
+    }
+    if (srcIdent543 != nullptr) {
+        const std::string srcName = srcIdent543->name;
+        const std::string srcUnique = lookupVarName(srcName);
+        if (!srcUnique.empty() && srcUnique == unique) return false;   // 自转移=无操作
+    }
     const std::string canonTarget = types::canonical(lookupSrcType(ident->name));
     if (!semantic_->isClassType(canonTarget)) return false;
     if (isByRefCapture(ident->name)) {

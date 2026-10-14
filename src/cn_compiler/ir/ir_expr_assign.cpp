@@ -126,32 +126,30 @@ bool IRGenerator::memberClassFieldAssign(AssignmentExpr* node, MemberExpr* membe
             (headC == "向量" || headC == "栈" || headC == "链表" ||
              headC == "队列") &&
             semantic_->isClassType(fieldCanonC)) {
-            const std::string dtorKeyC = classDestructorSymbolKey(fieldCanonC);
-            if (!dtorKeyC.empty()) {
-                ir::IRValue fieldAddrC = lvalueAddress(node->target.get());
-                // 145-a：**构造体（含拷贝构造）内对 this 字段的赋值=初始化语义**
-                //   （Rust 对照：构造即初始化）——跳过 preFree：目标字段无旧值，
-                //   NewObject 分配未初始化，原 preFree 读垃圾句柄 DeleteObject=崩
-                //   （用户类探针 0xC0000374 实证）。非 this 接收者（如 其他.表）
-                //   仍走完整 preFree。
-                bool isCtorThisField = false;
-                if (currentMethodIsCtor_ &&
-                    member->object->getType() == NodeType::IdentifierExpr) {
-                    const auto* objId =
-                        static_cast<const IdentifierExpr*>(member->object.get());
-                    if (objId->name == "自身") isCtorThisField = true;
-                }
-                if (!isCtorThisField) {
-                    ir::IRValue oldObj = emitResult(ir::Opcode::LoadPtr, {fieldAddrC},
-                                                    "ptr", "", node->location);
-                    emitContainerElemFreeFor(fieldCanonC, oldObj, node->location);
-                    emit(ir::Opcode::DeleteObject, {oldObj}, ir::IRValue(),
-                         fieldCanonC, "void", node->location);
-                    ir::IRValue zeroC = emitResult(ir::Opcode::ConstInt, {}, "i64",
-                                                   "0", node->location);
-                    emit(ir::Opcode::StorePtr, {fieldAddrC, zeroC}, ir::IRValue(),
-                         "", "ptr", node->location);
-                }
+                const std::string dtorKeyC = classDestructorSymbolKey(fieldCanonC);
+                if (!dtorKeyC.empty()) {
+                    ir::IRValue fieldAddrC = lvalueAddress(node->target.get());
+                    // 145-a 跳过撤销（543 根治·2026-10-14）：原「构造体内对 this
+                    //   字段赋值=初始化语义，跳过 preFree（防读垃圾句柄崩）」的
+                    //   跳过理由已被两道上游防线失效——①__cn_object_new 分配即
+                    //   清零（字段槽确定性 null）；②860-a 序言级联构造（2026-09-28）
+                    //   在体前对有默认构造类字段 NewObject+默认构造+StorePtr（槽=
+                    //   合法壳句柄）。构造体内赋值现覆盖的旧值恒为合法值（null 或
+                    //   级联壳）——preFree 空安全；而跳过=级联壳被体覆盖无人释放
+                    //   （每对象恒漏 1 壳·p_n6/p_n7 探针+箱丁 asm 双 NewObject 双
+                    //   StorePtr 铁证·459 临时合流计数前壳不进检测面不可见）。
+                    //   释放后补清槽（幂等模型不变）：中途异常路径再见本槽=null。
+                    {
+                        ir::IRValue oldObj = emitResult(ir::Opcode::LoadPtr, {fieldAddrC},
+                                                        "ptr", "", node->location);
+                        emitContainerElemFreeFor(fieldCanonC, oldObj, node->location);
+                        emit(ir::Opcode::DeleteObject, {oldObj}, ir::IRValue(),
+                             fieldCanonC, "void", node->location);
+                        ir::IRValue zeroC = emitResult(ir::Opcode::ConstInt, {}, "i64",
+                                                       "0", node->location);
+                        emit(ir::Opcode::StorePtr, {fieldAddrC, zeroC}, ir::IRValue(),
+                             "", "ptr", node->location);
+                    }
                 const bool srcIsCtorC =
                     node->value->getType() == NodeType::CallExpr;
                 const std::string copyKeyC = classCopyCtorSymbolKey(fieldCanonC);
