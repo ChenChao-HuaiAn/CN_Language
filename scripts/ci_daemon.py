@@ -357,6 +357,24 @@ def win构建链(步骤们: dict, 步骤, 日志, vcvars: Path, 当前头: str) 
         print("  [523] 构建指纹已更新：%s" % 当前头[:10], file=日志, flush=True)
 
 
+def linux构建链(步骤们: dict, 步骤) -> None:
+    """linux 构建段整段（657 自 跑一轮 抽出·与 win构建链 对称=跑一轮 回 ≤100 行
+    纪律）：②配置（默认生成器 Make·与 integrate 同口径；产物落 target/ 根）→构建→
+    ③单测（产物三 fallback=integrate 同款）。逻辑与抽出前逐行等价（零行为变化）。"""
+    if not 步骤("配置", ["cmake", "-S", ".", "-B", "target/build"], 600):
+        return  # 配置红——步骤们 已记 rc，构建/单测不跑（原 pass 分支语义）
+    if not 步骤("构建", ["cmake", "--build", "target/build",
+                        "--parallel", str(构建并行)], 单轮总超时秒):
+        return  # 构建红——单测不跑（原 elif 语义）
+    单测 = next((p for p in [仓库根 / "target/build/tests/unit/cn_unit_tests",
+                             仓库根 / "target/build/cn_unit_tests",
+                             仓库根 / "target/cn_unit_tests"] if p.exists()), None)
+    if 单测 is None:
+        步骤们["单测"] = {"rc": -1, "说明": "未找到单测产物"}
+    else:
+        步骤("单测", [str(单测)], 1800)
+
+
 def 静态门禁与e2e段(步骤们: dict, 步骤, cn: Path | None) -> None:
     """③.5 静态门禁面+④ E2E（242/447-a/924 原内联于 跑一轮·523 抽出=跑一轮
     拆函数回 ≤100 行）——两平台公共段；cn 产物定位必须先于本段（原赋值在 ④ 段
@@ -440,6 +458,30 @@ def 预验清产物(树根: Path) -> bool:
     return not 目标目录.exists()
 
 
+def 同步后编排(同步rc: int, 轮分支: str, 是win: bool) -> dict:
+    """657（2026-10-14）：同步完成后的步骤编排决策——纯函数（零副作用·零真构建），
+    --selftest 正反两态直调；跑一轮 消费其返回值=编排口径单一事实源（648-b 语义如实
+    镜像·复核锁定不回改）：同步失败→三段全不执行；ci/预验-* 轮→清产物（637 干净
+    构建·独立前序步骤·不再与构建段 elif 互斥）与平台构建段并存（linux=配置/构建/
+    单测；win=win构建链）；develop/兜底轮→无清产物（523 增量口径），构建段照常。
+    返回 {"清产物": bool, "构建段": "win"|"linux"|"", "静态段": bool}。"""
+    if 同步rc != 0:
+        return {"清产物": False, "构建段": "", "静态段": False}
+    return {"清产物": 轮分支.startswith("ci/预验-"),
+            "构建段": "win" if 是win else "linux",
+            "静态段": True}
+
+
+def 聚合绿(步骤们: dict) -> bool:
+    """657（2026-10-14）：轮绿聚合口径（自 跑一轮 结果尾部抽出·逐行等价）——
+    六键（同步/清产物/配置/构建/单测/e2e）中存在的键全 rc==0 才绿；缺键不计
+    （未执行段不拖红）；清产物 rc=-1（target/ 残留·预验前置②不满足）即轮必红
+    ——--selftest 锁定该口径（648-b 复核结论：清产物失败时后续段照跑，但总绿
+    必 False，integrate 只凭「绿」字段放行=无假绿面）。"""
+    return all(s.get("rc") == 0 for k, s in 步骤们.items()
+               if k in ("同步", "清产物", "配置", "构建", "单测", "e2e"))
+
+
 def 跑一轮(sha: str, 轮分支: str = "") -> dict:
     """对给定 SHA 跑全量门禁三段，返回结构化结果（口径=integrate.py Linux 分支）。
     轮分支空=全局 分支（develop 轮询/点名分支）；池任务传认领的预验分支（1021）。"""
@@ -477,7 +519,12 @@ def 跑一轮(sha: str, 轮分支: str = "") -> dict:
         步骤们["同步"] = {"rc": 同步rc}
         if 同步rc != 0:
             print(同步输出, file=日志, flush=True)
-        elif 轮分支.startswith("ci/预验-"):
+        # 657：编排决策=纯函数（--selftest 正反两态直调·单一事实源）。648-b 拆链后的
+        #   语义：ci/预验-* 轮「清产物+构建段」并存——清产物是独立前序步骤而非 elif
+        #   互斥分支（637 回归形态已由自测文本锁封死）；develop/兜底轮无清产物
+        #   （523 增量口径）；同步失败两段均不执行。
+        排 = 同步后编排(同步rc, 轮分支, 是win)
+        if 排["清产物"]:
             # 637（2026-10-14 用户立法·最高优先级）：预验前必须「干净构建」——②历史编译
             #    中间产物全部清零后从零配置构建——防脏产物假绿/增量混合态不可复现
             #    （483/551 超时作废循环诱因之一）。仅 ci/预验-* 轮执行（523 增量口径对
@@ -494,8 +541,8 @@ def 跑一轮(sha: str, 轮分支: str = "") -> dict:
         #   实锤：预验分支命中清产物分支后 elif 链终止→配置/构建/单测整段跳过→
         #   target 刚清空 cn=None→cli_contract/asm_width/e2e 三步 rc=-1 假红·
         #   总秒 2~5。637 自身集成时 runner 尚为旧代码故绿=首个新预验任务才踩中）。
-        #   构建段改为独立条件（同步成功即跑），预验清产物只是其前序步骤。
-        if 同步rc == 0 and 是win:
+        #   构建段为独立条件（同步成功即跑），预验清产物只是其前序步骤（657 自测锁）。
+        if 排["构建段"] == "win":
             # ② 291 win 构建链=vcvars64+Ninja+sccache（wt.py 开发树同口径）——
             #    cmd /c 复合命令串内嵌引号经 subprocess 列表参数转义必坏（实测 rc=1
             #    零输出）——生成 ASCII 临时脚本跑（wt.py 生成 ninja_build.cmd 同款手法；
@@ -509,23 +556,12 @@ def 跑一轮(sha: str, 轮分支: str = "") -> dict:
                 步骤们["配置"] = {"rc": -1, "说明": "未找到 vcvars64.bat（VS2022 安装不全）"}
             else:
                 win构建链(步骤们, 步骤, 日志, vcvars, 头.stdout.strip())
-        elif 同步rc == 0:
-            # ② 配置（默认生成器 Make·与 integrate 同口径；产物落 target/ 根=CMakeLists 16 行）
-            if not 步骤("配置", ["cmake", "-S", ".", "-B", "target/build"], 600):
-                pass  # 步骤们 已记 rc——下方统一收尾
-            elif 步骤("构建", ["cmake", "--build", "target/build",
-                               "--parallel", str(构建并行)], 单轮总超时秒):
-                # ③ 单测（产物三 fallback=integrate 同款）
-                单测 = next((p for p in [仓库根 / "target/build/tests/unit/cn_unit_tests",
-                                         仓库根 / "target/build/cn_unit_tests",
-                                         仓库根 / "target/cn_unit_tests"] if p.exists()), None)
-                if 单测 is None:
-                    步骤们["单测"] = {"rc": -1, "说明": "未找到单测产物"}
-                else:
-                    步骤("单测", [str(单测)], 1800)
+        elif 排["构建段"] == "linux":
+            # ② linux 构建段（与 win构建链 对称·657 抽函数=跑一轮 回 ≤100 行纪律）
+            linux构建链(步骤们, 步骤)
         # ③.5 静态门禁面+④ E2E（242/447-a·两平台公共段——291 曾因缩进挂在 else 体内被
         #    win 分支整体跳过〔绿=缺键误判〕；523 抽 静态门禁与e2e段·跑一轮 拆函数回 ≤100 行）
-        if 同步rc == 0:
+        if 排["静态段"]:
             cn = next((p for p in ([仓库根 / "target/cn.exe", 仓库根 / "target/cn"] if 是win
                                    else [仓库根 / "target/build/cn", 仓库根 / "target/cn"])
                        if p.exists()), None)
@@ -535,8 +571,7 @@ def 跑一轮(sha: str, 轮分支: str = "") -> dict:
     with 轮日志路径.open("r", encoding="utf-8", errors="replace") as f:
         尾部 = f.readlines()[-40:]
     结果 = {"sha": sha, "分支": 轮分支, "平台": 平台, "步骤": 步骤们,
-            "绿": all(s.get("rc") == 0 for k, s in 步骤们.items()
-                      if k in ("同步", "清产物", "配置", "构建", "单测", "e2e")),
+            "绿": 聚合绿(步骤们),
             "总秒": round(time.time() - 开始), "时刻": datetime.now().isoformat(timespec="seconds"),
             "日志": 轮日志路径.name, "日志尾部": "".join(尾部).splitlines()[-20:]}
     return 结果
@@ -854,9 +889,10 @@ def 重抢锁(锁) -> None:
 
 
 def 自测() -> int:
-    """523+637 轻量自测（--selftest）：直调生成/判定函数断言，零真构建零真 git——
+    """523+637+657 轻量自测（--selftest）：直调生成/判定函数断言，零真构建零真 git——
     锁死 win_build.cmd 必含 088 删除行、清建形态配置必含 rmdir、指纹判定三态、
-    预验清产物（637 干净构建·临时目录隔离）。"""
+    预验清产物（637 干净构建·临时目录隔离）、同步后编排正反两态+绿聚合口径
+    （657·648-b 拆链回归自测·AST 结构锁防 elif 互斥复活）。"""
     import tempfile
     断言们: list[tuple[str, bool]] = []
 
@@ -896,10 +932,54 @@ def 自测() -> int:
         断言("637 清产物：target/ 残留态→清干净（含 audit2 v2p 指纹缓存）", 预验清产物(树637))
         断言("637 清产物：清后 target/ 不复存在（从零构建前提）", not (树637 / "target").exists())
         断言("637 清产物：无产物态→幂等放行", 预验清产物(树637))
+    # 657（2026-10-14）：648-b 拆链修复的回归自测——编排纯函数正反两态 + 绿聚合
+    #   口径三态 + 对 跑一轮 真实消费面的文本回归锁（上游修法零自测·本件补齐防复发）
+    排 = 同步后编排(0, "ci/预验-abc123", 是win=False)
+    断言("657 正：预验 linux 轮→清产物+linux 构建链并存（配置/构建/单测不缺席）",
+         排["清产物"] and 排["构建段"] == "linux")
+    排 = 同步后编排(0, "ci/预验-abc123", 是win=True)
+    断言("657 正：预验 win 轮→清产物+win 构建链并存",
+         排["清产物"] and 排["构建段"] == "win")
+    排 = 同步后编排(0, "develop", 是win=False)
+    断言("657 反：develop 轮→有构建链无清产物（523 增量口径保持）",
+         not 排["清产物"] and 排["构建段"] == "linux")
+    排 = 同步后编排(0, "ci/兜底-abc123", 是win=True)
+    断言("657 反：兜底轮→有构建链无清产物",
+         not 排["清产物"] and 排["构建段"] == "win")
+    排 = 同步后编排(1, "ci/预验-abc123", 是win=False)
+    断言("657 反：同步失败→清产物/构建段/静态段全不执行（仅同步键）",
+         not 排["清产物"] and not 排["构建段"] and not 排["静态段"])
+    断言("657 复核锁：清产物 rc=-1 → 轮必红（绿聚合含清产物键·integrate 无假绿面）",
+         not 聚合绿({"同步": {"rc": 0}, "清产物": {"rc": -1}, "配置": {"rc": 0},
+                    "构建": {"rc": 0}, "单测": {"rc": 0}, "e2e": {"rc": 0}}))
+    断言("657 复核锁：预验全链六键全 0 → 轮绿",
+         聚合绿({k: {"rc": 0} for k in ("同步", "清产物", "配置", "构建", "单测", "e2e")}))
+    断言("657 复核锁：develop 轮无清产物键 → 不拖红",
+         聚合绿({k: {"rc": 0} for k in ("同步", "配置", "构建", "单测", "e2e")}))
+    import inspect
+    源一轮 = inspect.getsource(跑一轮)
+    断言("657 回归锁：跑一轮 真消费 同步后编排（编排单一事实源）", "同步后编排(" in 源一轮)
+    # 657 回归锁（结构级·AST）：跑一轮 内不得存在「清产物与构建动作同属一条 if/elif 链」
+    #   ——637 互斥吞构建段的结构特征（链命中=构建段被清产物分支短路·TX_02 假红病根）。
+    #   对 637 版必红、对 648-b/657 版绿：优于特征串文本锁——648-b 清产物 elif 保留
+    #   但已拆链（行为正确），按特征串会误报；按链结构判定才是真实拦截。
+    import ast as _ast
+    全部If = [n for n in _ast.walk(_ast.parse(源一轮)) if isinstance(n, _ast.If)]
+    内嵌 = {id(n.orelse[0]) for n in 全部If
+            if len(n.orelse) == 1 and isinstance(n.orelse[0], _ast.If)}
+    互斥链行 = []
+    for 链头 in (n for n in 全部If if id(n) not in 内嵌):
+        动作 = {c.func.id if isinstance(c.func, _ast.Name) else
+                getattr(c.func, "attr", "")
+                for c in _ast.walk(链头) if isinstance(c, _ast.Call)}
+        if "预验清产物" in 动作 and ({"win构建链", "linux构建链", "步骤"} & 动作):
+            互斥链行.append(链头.lineno)
+    断言("657 回归锁：跑一轮 无清产物/构建同链互斥结构（637 吞段形态·AST 级）",
+         not 互斥链行)
     for 名, ok in 断言们:
         print("  [%s] %s" % ("OK" if ok else "×", 名))
     红 = sum(1 for _, ok in 断言们 if not ok)
-    print("== ci_daemon 自测（523+637）：%d 断言，%s ==" % (len(断言们), "全绿" if 红 == 0 else "红 %d" % 红))
+    print("== ci_daemon 自测（523+637+657）：%d 断言，%s ==" % (len(断言们), "全绿" if 红 == 0 else "红 %d" % 红))
     return 0 if 红 == 0 else 1
 
 
