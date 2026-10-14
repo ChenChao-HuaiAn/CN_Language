@@ -134,6 +134,58 @@ def 已占号集(con: sqlite3.Connection) -> set:
     return 占
 
 
+# ===== 视野快照与号占冲突（308j/316·654 自 board_service 外迁+台账真值过滤）=====
+# 视野快照保留 6h（陈旧视野不进审计防幽灵占号）——记账与冲突共用同一过期口径。
+
+视野亡秒 = 6 * 3600
+
+
+def 记视野快照(con: sqlite3.Connection, 上报者: str, 视野号们: list) -> None:
+    """记视野快照（6h TTL·各机在飞行号上报·654 自 board_service 外迁）。
+
+    744 编号权威收权后视野不参与发号（客户端禁带号·服务端顺序发放），
+    仅作号占冲突审计面（/api/numbers）数据源。
+    收视野层**不过滤**：视野里的台账未登记号（树内自立项在飞）照记——654 的
+    误报根治只在 号占冲突们() 比对层按台账真值分流，不在此处删数据。
+    """
+    con.execute("DELETE FROM 视野快照 WHERE 时戳<?", (time.time() - 视野亡秒,))
+    con.execute(
+        """INSERT INTO 视野快照(上报者,号们,时戳,时刻) VALUES(?,?,?,?)
+           ON CONFLICT(上报者) DO UPDATE SET 号们=excluded.号们,
+           时戳=excluded.时戳, 时刻=excluded.时刻""",
+        (上报者, json.dumps(视野号们, ensure_ascii=False), time.time(), 时刻()))
+    con.commit()
+
+
+def 号占冲突们(con: sqlite3.Connection) -> list:
+    """同号出现在 ≥2 上报者视野 → 占号冲突（309 双占型·客户端各自树内立项互相不可见）。
+
+    654 根治（实测 404 条全误报）：客户端视野=主表/归档/树内 021 行四源并集，✅ 历史
+    号常驻每棵树快照——原「只比 ≥2 上报者」致任意两树互报。比对前按服务端台账真值
+    分流：✅ 已收口号=全机可见历史·剔除；⬜/🏃/⏸ 活跃号与台账未登记号（树内自立项
+    未登记·309 双占型主面）保留。冲突项补「未登记」标注供审计（API 只加字段不减）。"""
+    视野 = con.execute("SELECT 上报者,号们 FROM 视野快照 WHERE 时戳>?",
+                       (time.time() - 视野亡秒,)).fetchall()
+    号主 = {}
+    for 上报者, 号们文本 in 视野:
+        try:
+            for 号 in json.loads(号们文本):
+                号主.setdefault(str(号), []).append(上报者)
+        except (ValueError, TypeError):
+            pass
+    状态图 = {r[0]: r[1] for r in con.execute("SELECT 号,状态 FROM 任务").fetchall()}
+    出 = []
+    for 号, 主们 in sorted(号主.items(), key=号排序键):
+        if len(主们) < 2:
+            continue
+        状态 = 状态图.get(号)
+        if 状态 == 状态_完成:
+            continue    # 654：✅ 历史号各树全可见·非冲突（误报根治主面）
+        出.append({"号": 号, "上报者们": 主们,
+                   "未登记": 状态 is None})   # 台账无此号=树内自立项未登记（审计标注）
+    return 出
+
+
 # ===== 行转字典（API 输出面）=====
 
 def _行转任务(行) -> dict:

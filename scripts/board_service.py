@@ -18,6 +18,9 @@
 #   GET  /api/task/<号>       单任务详情
 #   GET  /api/ci_result       ?sha=<预验sha>（814·代理 8300 预检结果详情——红徽标点开看
 #                                 失败用例清单·内网回环前端免跨端口）
+#   GET  /api/numbers         发号台账+下一号+号占冲突们（审计面·654 冲突判定改台账
+#                                 真值过滤：✅ 历史号剔除·活跃/未登记号保留+「未登记」标注
+#                                 ——404 条互报误报根治·字段形态只加不减）
 #   POST /api/intent          {机器,对话id,在做,计划,备注}   登记/更新（即心跳·幂等）
 #   POST /api/intent_release  {机器,对话id}                  注销（会话收工）
 #   POST /api/report_flights  {分支们:[{分支,提交,时刻}]}     在飞分支上报（客户端 ls-remote 结果
@@ -285,47 +288,9 @@ def 冲突检测(意图们: list) -> list:
 
 禁用号 = 台账.禁用号   # {353,354}（2026-10-05 用户令永久禁用·与台账模块同源）
 
-
-def 号排序键(号: str):
-    return 台账.号排序键(号)
-
-
-def 记视野快照(上报者: str, 视野号们: list):
-    """记视野快照（6h TTL·各机在飞行号上报）。744 编号权威收权后视野不再参与
-    发号（客户端禁带号·服务端顺序发放）——仅作号占冲突审计面（/api/numbers）数据源。"""
-    亡秒 = 6 * 3600     # 视野快照保留 6h（陈旧视野不进审计防幽灵占号）
-    连接.execute("DELETE FROM 视野快照 WHERE 时戳<?", (time.time() - 亡秒,))
-    连接.execute(
-        """INSERT INTO 视野快照(上报者,号们,时戳,时刻) VALUES(?,?,?,?)
-           ON CONFLICT(上报者) DO UPDATE SET 号们=excluded.号们,
-           时戳=excluded.时戳, 时刻=excluded.时刻""",
-        (上报者, json.dumps(视野号们, ensure_ascii=False), time.time(), 时刻()))
-    连接.commit()
-
-
-def 号占冲突们() -> list:
-    """同号出现在 ≥2 上报者视野 → 占号冲突（309 双占型·客户端各自树内立项互相不可见）。
-
-    654：台账 ✅ 完成号不进冲突面——✅ 号全机视野同源（归档/老分支树内 021 全史表），
-    不剔除则任意两上报者对全史号互报（实测 398 条零真阳性）。双占只可能发生在
-    活号（⬜/🏃/⏸）；✅=已收口无人再做，即使两机快照仍残留（收口删支窗口）也非冲突。
-    发号基准面（收视野并取基准）不受本过滤影响——✅ 号照进基准防号复用。"""
-    完成号 = {r[0] for r in 连接.execute(
-        "SELECT 号 FROM 任务 WHERE 状态=?", (台账.状态_完成,)).fetchall()}
-    视野 = 连接.execute("SELECT 上报者,号们 FROM 视野快照 WHERE 时戳>?",
-                       (time.time() - 6 * 3600,)).fetchall()
-    号主 = {}
-    for 上报者, 号们文本 in 视野:
-        try:
-            for 号 in json.loads(号们文本):
-                号 = str(号)
-                if 号 in 完成号:
-                    continue
-                号主.setdefault(号, []).append(上报者)
-        except (ValueError, TypeError):
-            pass
-    return [{"号": 号, "上报者们": 主们} for 号, 主们 in sorted(号主.items(), key=号排序键)
-            if len(主们) > 1]
+# 654：号占域外迁台账模块（board_tasks·单一实现）——冲突判定按服务端台账真值过滤
+# （✅ 历史号剔除·未登记号标注），调用点：
+#   记视野快照 → _收发号；号占冲突们 → /api/numbers。
 
 
 def 交集标注(意图们: list, 在飞们: list) -> None:
@@ -554,7 +519,8 @@ class 处理器(BaseHTTPRequestHandler):
                        for r in 连接.execute(
                            "SELECT 号,机器,对话id,描述,时刻 FROM 发号台账 ORDER BY 时戳").fetchall()]
                 return self._回JSON(200, {"台账": 流水, "下一个": 台账.下一个号(
-                    台账.已占号集(连接)), "号占冲突们": 号占冲突们(), "时刻": 时刻()})
+                    台账.已占号集(连接)), "号占冲突们": 台账.号占冲突们(连接),
+                    "时刻": 时刻()})
         if 路径 == "/api/case_numbers":                # 554：E2E 用例号台账（审计面·只读）
             with 写锁:
                 q = urlparse(self.path).query
@@ -864,7 +830,7 @@ class 处理器(BaseHTTPRequestHandler):
                         "编号由服务器在 task_create/case_number 按顺序发放"
                         "（2026-10-14 用户令）"})
         with 写锁:
-            记视野快照(上报者, 视野号们)
+            台账.记视野快照(连接, 上报者, 视野号们)
         return self._回JSON(200, {"好": True, "仅视野": True})
 
 
