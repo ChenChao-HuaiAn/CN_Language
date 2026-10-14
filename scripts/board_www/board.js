@@ -21,6 +21,10 @@ const 转义 = (s) => String(s ?? "").replace(/[&<>"]/g,
 const 状态签 = { "⬜": "待办", "🏃": "在飞", "⏸": "挂起", "✅": "完成" };
 const 状态符 = { 待办: "⬜", 在飞: "🏃", 挂起: "⏸", 完成: "✅" };
 
+/* 号→任务行本地索引（653 瘦身：服务端聚合面不再下发「任务字典」投影——
+   任务们 行内已含 标题/状态/优先级 全字段，本地建索引一次替代三处旧取法）。 */
+const 任务索引 = (d) => Object.fromEntries((d.任务们 || []).map((t) => [t.号, t]));
+
 /* 标题一句话概要（391 用户令：列表/卡片标题一句话概括·全文点号牌看详情面板）：
    ≤36 字直显；超长则取第一个「：」「——」前的分句（含分隔符·提示尚有下文），
    分句过短（<8 字·概括失义）或不存在则截前 30 字加省略号。 */
@@ -114,17 +118,25 @@ function 提示(文, 毫秒 = 2600) {
   条._时 = setTimeout(() => 条.classList.remove("显"), 毫秒);
 }
 
+const 拉取超时毫秒 = 20000;   // 653：fetch 无超时=弱网下 pending 永挂「连接中…」——20s 断开走失败提示
+
 async function 调API(方法, 路径, 体) {
-  const r = await fetch(路径, { method: 方法,
-    headers: { "Content-Type": "application/json" },
-    body: 体 === undefined ? undefined : JSON.stringify(体) });   // 同源 fetch 自动携会话 cookie（430）
-  const 数据体 = await r.json().catch(() => ({}));
-  if (!r.ok) {
-    const 错 = new Error(数据体.错误 || "HTTP " + r.status);
-    错.码 = r.status; 错.体 = 数据体;
-    throw 错;
+  const 控 = new AbortController();                          // 653：超时中断——弱网可恢复重试而非永挂
+  const 计时 = setTimeout(() => 控.abort(), 拉取超时毫秒);
+  try {
+    const r = await fetch(路径, { method: 方法, signal: 控.signal,
+      headers: { "Content-Type": "application/json" },
+      body: 体 === undefined ? undefined : JSON.stringify(体) });   // 同源 fetch 自动携会话 cookie（430）
+    const 数据体 = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      const 错 = new Error(数据体.错误 || "HTTP " + r.status);
+      错.码 = r.status; 错.体 = 数据体;
+      throw 错;
+    }
+    return 数据体;
+  } finally {
+    clearTimeout(计时);
   }
-  return 数据体;
 }
 
 /* —— 数据拉取与调度 —— */
@@ -143,6 +155,10 @@ async function 拉取() {
     渲染激活页();
   } catch (e) {
     $("状态灯").classList.add("断");
+    // 653：失败面同步更新元信息——旧版停留「连接中…」假象（fetch 不 reject 不更新·
+    // 弱网超时中断后用户看不到任何「断了」的提示）
+    $("元信息").textContent = e.name === "AbortError"
+      ? "连接超时（弱网）——点 ⟳ 重试" : "服务连接中断";
     $("错误条").textContent = 自动刷新开()
       ? "服务连接中断，正在重试…（网络不稳可改用 https://www.cn-language.com/board/）"
       : "服务连接中断——检查网络后点 ⟳ 刷新";
@@ -450,7 +466,7 @@ function 渲染冲突(冲突们) {
 function 渲染意图() {
   const 区 = $("意图区");
   const 们 = 数据.意图们 || [];
-  const 字典 = 数据.任务字典 || {};
+  const 字典 = 任务索引(数据);
   if (!们.length) {
     区.innerHTML = '<div class="空态">当前没有已登记的会话（认领任务即自动上板·494）' +
       "<br><small>在飞干活的机器看「远端在飞分支」页签——真实 git 分支·与登记无关</small>" +
@@ -485,7 +501,7 @@ function 渲染意图() {
             转义(i.队列态) + "</span>";
         } else if (i.待接棒) {
           队列签 = '<span class="签 边框 待接棒" title="心跳∧分支推进双信号全停 >90 分钟·且不在集成队列/预验中——疑似真僵尸（自动巡检将派接棒 Agent）·可手动接棒：python scripts/wt.py create ' +
-            转义(i.在做) + ' --takeover">⚠ 待接棒</span>";
+            转义(i.在做) + ' --takeover">⚠ 待接棒</span>';
         }
         return '<div class="会话' + (i.僵尸疑 ? " 僵尸卡" : (i.失联 ? " 失联卡" : "")) + '"><div class="行1">' +
           '<span class="对话">' + 转义(i.对话id) + "</span>" +
@@ -508,7 +524,7 @@ function 渲染意图() {
 function 渲染在飞() {
   const 区 = $("在飞区");
   const 们 = 数据.在飞分支们 || [];
-  const 字典 = 数据.任务字典 || {};
+  const 字典 = 任务索引(数据);
   if (!们.length) {
     区.innerHTML = '<div class="空态">暂无在飞数据——<code>intent.py claim</code> 时自动上报</div>';
     return;
@@ -600,7 +616,7 @@ function 开详情(号) {
     return;
   }
   const 意图们 = (数据.意图们 || []).filter((i) => i.在做 === t.号);
-  const 字典 = 数据.任务字典 || {};
+  const 字典 = 任务索引(数据);
   const 依赖们 = (t.前置们 || []).map((p) => {
     const pt = 字典[p];
     const 完成 = pt && pt.状态 === "✅";
