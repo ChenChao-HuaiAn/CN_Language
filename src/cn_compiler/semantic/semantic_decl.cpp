@@ -621,6 +621,41 @@ void SemanticAnalyzer::reportAbstractArrayValueDecl(const std::string& type,
                                 "——请实例化具体派生类");
     }
 }
+// ==================== 746：抽象类/接口「单值」按值签名/字段/静态存储拦截 ====================
+// 单值（非数组）抽象类/接口作 按值形参/按值返回/字段/静态存储 =按值复制实例化面
+//   （specs/06 §八「含抽象成员的类不可直接实例化」+接口同族·C++ cannot declare
+//   parameter to be of abstract class 同款·593 数组形态同族收口）。原缺口=193 裸
+//   声明检查与 593 数组 helper 之间的单值签名/成员面 双侧恒静默放行（修前探针
+//   函数形参/返回/原型/类方法形参返回/类字段/类静态字段/顶层静态 rc=0 实锤）。
+//   与 593 helper 互斥分工：数组形态（isArray）归 593 报（本函数直通·防双报）；
+//   指针/引用后缀（图形*/图形&）查表自然 miss 不拦=193 口径（不发生值形态实例
+//   化·多态面合法）。文案对齐 193/593 结构注明形态面（面 由调用方注入：按值
+//   形参/按值返回/按值字段/按值静态字段/按值静态存储）；调用方各声明位单点调用
+//   =单诊断口径（193 先例）。v2 侧 报抽象单值声明诊断746 同构（文案逐字一致）。
+void SemanticAnalyzer::reportAbstractValueDecl(const std::string& type,
+                                               const SourceLocation& loc,
+                                               const std::string& facet,
+                                               bool rejectIface) {
+    if (type.empty() || types::isArray(type)) return;
+    if (isInterfaceType(type)) {
+        // 746 收窄（105 回归红实证裁定）：接口单值形参/返回=A1 同地址语义的
+        //   引用句柄传递（不实例化·specs/06 §六·plans/006 P3-19 C2 立法面
+        //   「接口类型作为函数参数/返回」105_接口参数多态 锁面）——拦接口=假
+        //   时放行。字段/静态存储无实参绑定来源=未绑定引用面（193 接口裸
+        //   声明拒同构）仍拦（调用方传 真）。
+        if (!rejectIface) return;
+        diagnostics_.report(DiagnosticLevel::Error, loc,
+                            "不能实例化接口 '" + type + "'（接口无实现体·" + facet +
+                                "为值形态复制构造）——请以实现类实例初始化");
+        return;
+    }
+    const ClassInfo* ci = findClass(type);
+    if (ci != nullptr && ci->isAbstract) {
+        diagnostics_.report(DiagnosticLevel::Error, loc,
+                            "不能实例化抽象类 '" + type + "'（含未实现抽象方法·" +
+                                facet + "为值形态复制构造）——请实例化具体派生类");
+    }
+}
 // ==================== 188-a（D6·plans/023 B11 变量常量传播）登记助手 ====================
 //   判定模型见 semantic.hpp「函数级恒空指针判定表」注释。核心不变式：
 //   ① 只在「指针（尾 *）/字符串」类型变量上做（非指针变量的 `无` 初始化不参与）；
@@ -833,13 +868,21 @@ void SemanticAnalyzer::checkFunctionBody(FunctionDecl* node) {
     //   返回）——按值传参/返回=实例化面（specs/06 §八·193 数组形态漏网）。
     //   挂 body 判定前：原型声明（无体）同样覆盖——声明面即实例化承诺面。
     //   引用返回（图形&）非数组形态自然放行（193 口径：不实例化）。
+    // 746（2026-10-14）：函数签名「抽象类/接口」单值形参/返回=按值复制实例化面
+    //   （specs/06 §八·593 数组形态同族收口·与 593 挂点并列互斥分工——数组归
+    //   上 helper·单值归下·指针/引用后缀查表自然 miss=193 口径）。挂 body 判定
+    //   前：原型声明（无体）同覆盖——声明面即实例化承诺面（593 同位）。
     for (const auto& param : node->params) {
         if (!param->funcPtr.isFunctionPtr() && !param->typeName.empty()) {
             reportAbstractArrayValueDecl(param->typeName, param->location);
+            reportAbstractValueDecl(param->typeName, param->location, "按值形参",
+                                    false);
         }
     }
     if (!node->returnType.empty() && node->returnType != "空类型") {
         reportAbstractArrayValueDecl(node->returnType, node->location);
+        reportAbstractValueDecl(node->returnType, node->location, "按值返回",
+                                false);
     }
     if (node->body == nullptr) return;  // 函数原型声明：无需检查体
 

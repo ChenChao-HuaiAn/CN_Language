@@ -501,6 +501,7 @@ void SemanticAnalyzer::resolveClass(ClassDecl* node) {
     //   使用）此刻已 resolve（isAbstract 已标）。遍历 methods 用 methodOrder
     //   （含构造/析构——其 paramTypes 抽象数组同为按值实例化面；mi.type
     //   构造/析构=空类型自然放行）。
+    // 746：类成员「抽象类/接口」单值形态并列拦截（与 593 同位互斥分工·字段含静态/方法签名按值面·细则见 semantic_decl.cpp 746 实现头注释）
     for (const auto& fname : info.fieldOrder) {
         auto f = info.fields.find(fname);
         if (f == info.fields.end()) continue;
@@ -508,6 +509,7 @@ void SemanticAnalyzer::resolveClass(ClassDecl* node) {
                                        ? f->second.ast->location
                                        : node->location;
         reportAbstractArrayValueDecl(f->second.type, loc);
+        reportAbstractValueDecl(f->second.type, loc, "按值字段", true);
     }
     for (const auto& mname : info.methodOrder) {
         auto m = info.methods.find(mname);
@@ -517,8 +519,10 @@ void SemanticAnalyzer::resolveClass(ClassDecl* node) {
                                        : node->location;
         for (const auto& pt : m->second.paramTypes) {
             reportAbstractArrayValueDecl(pt, loc);
+            reportAbstractValueDecl(pt, loc, "按值形参", false);
         }
         reportAbstractArrayValueDecl(m->second.type, loc);
+        reportAbstractValueDecl(m->second.type, loc, "按值返回", false);
     }
 
     // P3-19：接口分派区（B1 全局槽位；跨继承链收集接口方法，强制虚表指针）

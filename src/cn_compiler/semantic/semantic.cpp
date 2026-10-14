@@ -812,35 +812,7 @@ void SemanticAnalyzer::registerGlobalConstsAndStatics(Program* node) {
         //   （静态 向量<整64> 全局表 零初始化 .data；原 continue 跳过导致
         //   静态容器变量整个漏登记——IR 无 gstatic、函数体引用报「模块未导入」）
         //   〔569 重排：原首行「无初值且非静态 continue」由上方裸全局通道吸收〕
-        if (false) {
-            Expr* init = g->initializer.get();
-            std::string constText;
-            // P3-22：编译期常量表达式求值（字面量 / 引用其他常量 / 整浮算术 / 字符串拼接）
-            if (!cnEvalConstExpr(globalConstValues_, g->moduleName, init, constText)) {
-                diagnostics_.report(DiagnosticLevel::Error, init->location,
-                                    "顶层常量 '" + g->name +
-                                        "' 初始值必须是字面量或常量表达式");
-            }
-            if (!constText.empty()) {
-                // A-2（常量 crate 分桶）：多模块同名常量各自登记限定键（模块$名），
-                //   引用经语义层按当前模块解析并重写节点名；裸名仅保留首定义
-                //   （兼容单模块/唯一定义场景，IR 层裸名查询路径不变）
-                constModules_[g->name].insert(g->moduleName);
-                if (globalConstValues_.find(g->name) == globalConstValues_.end()) {
-                    globalConstValues_[g->name] = constText;
-                }
-                globalConstValuesQualified_[g->moduleName + "$" + g->name] = constText;
-                // 限定键（模块$名）同时登记到 IR 查询表：语义层把多模块同名
-                //   常量引用重写为限定键后，IR 层 globalConstValue(限定键) 命中
-                //   （IR 无模块上下文，靠重写后的名字直接查值文本）
-                globalConstValues_[g->moduleName + "$" + g->name] = constText;
-            }
-            // 跨模块同名常量：仅首个模块 declareVar（全局作用域去重——
-            //   多模块同名时按当前模块解析，见 visitIdentifierExpr 常量分支）
-            if (constModules_[g->name].size() == 1) {
-                declareVar(g->name, "自动", g->location);
-            }
-        } else if (g->isStatic) {
+        if (g->isStatic) {
             // 第 9 层 Debug：顶层静态记录源码类型（IR 层生成 .data 全局存储），
             //   此前仅登记符号名导致函数体内引用落入 FuncAddr 分支（rbp0 汇编错误）
             // 2026-08-30 根治（P3-8 补全）：泛型归一——静态容器变量须走
@@ -881,6 +853,16 @@ void SemanticAnalyzer::registerGlobalConstsAndStatics(Program* node) {
             if (staticModules_[g->name].size() == 1) {
                 declareVar(g->name, stType, g->location);
             }
+            // 746（2026-10-14）：顶层静态「抽象类/接口」值形态拦截（specs/06 §八）
+            //   ——原缺口=顶层静态不走 visitVarDecl（193/593 挂点恒 miss·探针
+            //   静态 形状 单; rc=0 实锤）；数组形态 v2 收集静态声明 593 已拦而宿主
+            //   此点无检查=930 宿主 8 诊断/v2 9 诊断分叉（593 遗留·本点对齐收口）。
+            //   挂登记处=声明面即实例化承诺面（v2 收集静态声明同位同构）；
+            //   无初始化器=零初始化值形态实例化；带初始化器=赋值面（初值构造
+            //   调用 933 checkCtorCall 已拦抽象/接口构造·不重复）；funcPtr 槽
+            //   typeName 空/归一后缀文本查表自然 miss=193 口径。
+            reportAbstractArrayValueDecl(g->typeName, g->location);
+            reportAbstractValueDecl(g->typeName, g->location, "按值静态存储", true);
             // 933（008 收官总攻·静态初值构造解析根治）：顶层静态初值为类构造
             //   调用时补 checkCtorCall——原只登记类型不 visit 初值，构造调用
             //   resolvedSignature 恒空 → IR 侧 findCtorMember 兜底「按实参个数」

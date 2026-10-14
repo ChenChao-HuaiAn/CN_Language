@@ -635,8 +635,8 @@ private:
     bool checkOverloadProtoConsistency(FunctionDecl* node, const FunctionInfo& info);     // 第一趟：注册函数符号
     void checkFunctionBody(FunctionDecl* node);    // 第二趟：检查函数体
     void reportAbstractArrayValueDecl(const std::string& type, const SourceLocation& loc);  // 593：抽象类/接口「元素数组」值形态声明拦截（数组=逐元素默认构造实例化·剥后缀判元素·指针形态不拦·细则见 semantic_decl.cpp 实现头注释）
-    // plans/018 P6b 工作流2（规格08-三 3.6）：显式导入冲突检查——①×② 与本地定义
-    //   同名=错误、②×② 同文件不同外部来源同名=错误、自导入跳过。visitProgram 调用。
+    void reportAbstractValueDecl(const std::string& type, const SourceLocation& loc, const std::string& facet, bool rejectIface);  // 746：抽象类「单值」按值签名/字段/静态存储声明拦截（非数组纯值形态·拦接口=假 时接口放行——A1 引用句柄传递不实例化·105/006 P3-19 C2 立法面·细则见 semantic_decl.cpp 实现头注释）
+    // plans/018 P6b 工作流2（规格08-三 3.6）：显式导入冲突检查——①×② 本地/②×② 异源同名=错误、自导入跳过
     void checkImportLocalConflicts(Program* node);
     // P3-18 补完（2026-08）：解析返回表达式的基础标识符（左值形态：标识符/下标/
     //   成员/解引用/引用返回调用链）；非可绑定左值返回 false。baseName 空串表示
