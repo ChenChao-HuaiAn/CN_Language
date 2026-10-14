@@ -30,6 +30,21 @@ void IRGenerator::visitExprStmt(ExprStmt* node) {
     //     · 转移()/字符串释放 显式排除（转移=源清零句柄交接特判族
     //       semantic_call checkTransferCall 置 retOwnedString=false 已安全，
     //       此处再拦一手防判定面演化回归；字符串释放 返回空类型无串可释）。
+    // 663（2026-10-14·任务 663）：语句位二元连接产物析构——645 面只覆盖调用
+    //   返回形态（CallExpr），`"a"+甲;` 二元连接产物同为堆串（连接三路径
+    //   ptr+ptr/串+标量/整128 均发射 __cn_str_concat）语句位同样零释放
+    //   （探针 923 实锤：百轮净泄 100）。判定=定义点溯源 isConcatResultReg：
+    //     · 连接产物唯一定义符号 __cn_str_concat，指针算术/标量算术/比较
+    //       产物定义非该符号=天然排除（free=UB 禁入）；
+    //     · 赋值/声明位不进本通道（表达式语句分支独占），无双重释放面。
+    if (node->expr->getType() == NodeType::BinaryExpr) {
+        const BinaryExpr* bin = static_cast<const BinaryExpr*>(node->expr.get());
+        if (bin->op == Operator::Add && discarded.type == "ptr" &&
+            isConcatResultReg(discarded)) {
+            emitRegStringFree(discarded, node->location);
+        }
+        return;
+    }
     if (node->expr->getType() != NodeType::CallExpr) return;
     const CallExpr* call = static_cast<const CallExpr*>(node->expr.get());
     if (discarded.type != "ptr") return;   // 串句柄寄存器形态守卫（空类型/标量直退）
@@ -43,8 +58,27 @@ void IRGenerator::visitExprStmt(ExprStmt* node) {
         if (!ownRet && isOwnedStringBuiltin(calleeId->name)) ownRet = true;
     }
     if (!ownRet) return;
-    emit(ir::Opcode::Call, {discarded}, ir::IRValue(), "__cn_str_free", "void",
-         node->location);
+    emitRegStringFree(discarded, node->location);
+}
+// 663（2026-10-14）：裸寄存器拥有串释放直调公共发射点（事不过三提炼·调用面
+//   见 ir_generator.hpp 注释）。
+void IRGenerator::emitRegStringFree(const ir::IRValue& v, const SourceLocation& loc) {
+    emit(ir::Opcode::Call, {v}, ir::IRValue(), "__cn_str_free", "void", loc);
+}
+// 663（2026-10-14）：定义点溯源——寄存器 SSA id 唯一（regCounter_ 单调递增），
+//   倒序首条同 id 定义即唯一写入点；id<0=变量/常量形态非寄存器直退；当前块
+//   找不到（跨块形态：语句位顶层不会经短路分块产生连接产物）=false=保守不
+//   free（漏放不误放）。
+bool IRGenerator::isConcatResultReg(const ir::IRValue& v) const {
+    if (currentBlock_ == nullptr || v.id < 0) return false;
+    const auto& insts = currentBlock_->instructions;
+    for (auto it = insts.rbegin(); it != insts.rend(); ++it) {
+        if (it->result.id == v.id) {
+            return it->opcode == ir::Opcode::Call &&
+                   it->extra == "__cn_str_concat";
+        }
+    }
+    return false;
 }
 void IRGenerator::visitReturnStmt(ReturnStmt* node) {
     if (node->value != nullptr) {
