@@ -115,6 +115,10 @@ public:
     //   临时收口族共用·事不过三提炼；字段/数组形态释放面=emitFieldStringFreeAt
     //   族不在此列）。
     void emitRegStringFree(const ir::IRValue& v, const SourceLocation& loc);
+    // 732（2026-10-14）：嵌套连接中间产物消费即释（`(甲+i)+乙` 内层产物
+    //   R1 唯一消费者=外层 concat·调用后零引用）——定义点溯源命中即 free，
+    //   守卫与 isConcatResultReg 同带（漏放不误放）。
+    void freeIfConcatTemp(const ir::IRValue& v, const SourceLocation& loc);
     // 族④：指针算术 ptr ± 整型 -> 指针（偏移量×元素大小）。true = 已处理。
     bool genPointerArithmetic(BinaryExpr* node, const ir::IRValue& left,
                               const ir::IRValue& right);

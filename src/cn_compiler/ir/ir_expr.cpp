@@ -500,6 +500,19 @@ bool IRGenerator::genStringCompareBinary(BinaryExpr* node, const ir::IRValue& le
 //   同时承载连接链融合 pass）；调用点（visitBinaryExpr）与声明（ir_generator.hpp）
 //   不变。拆分=纯机械搬移 + 数值转换段提取共享助手，行为零变更。
 
+// 732（2026-10-14）：嵌套连接中间产物消费即释判定点——寄存器定义点溯源命中
+//   __cn_str_concat（连接产物·拥有契约·消费后零引用）即语句内立即 free。
+//   形态守卫：非 ptr 寄存器（标量/布尔产物）直退；变量 load/转换临时（from_*
+//   已在 663 收口）定义符号非连接调用=天然排除（防双释放防误伤同 663 带）。
+//   跨块形态（当前块无定义）=保守不 free（漏放不误放·与 isConcatResultReg
+//   同带）。框架级评估结论见 genStringConcatBinary 732 注释（清单框架不引入
+//   ——消费者唯一确定·AI 裁决留痕）。
+void IRGenerator::freeIfConcatTemp(const ir::IRValue& v, const SourceLocation& loc) {
+    if (v.type == "ptr" && isConcatResultReg(v)) {
+        emitRegStringFree(v, loc);
+    }
+}
+
 // ==================== 族④：指针算术（Task 2.4） ====================
 // （原 480~515 段）ptr ± 整型 -> 指针（偏移量×元素大小）。true = 已处理。
 bool IRGenerator::genPointerArithmetic(BinaryExpr* node, const ir::IRValue& left,

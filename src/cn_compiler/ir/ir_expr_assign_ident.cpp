@@ -835,10 +835,28 @@ bool IRGenerator::identifierStringOwnAssign(AssignmentExpr* node, IdentifierExpr
                 ownAssign = isOwnedStringBuiltin(cn);
             }
         }
+        // 732（2026-10-14）：二元连接产物=新堆串（拥有契约·无人别名）——
+        //   接 = 甲+乙 / 接 = 甲+i+乙 形态原判定面三形态皆不命中→ownAssign=
+        //   假→markStringTainted 污染退出：产物直存槽=事实接管，但旧值既不
+        //   free 也不维护拥有链=每赋值净泄 1（探针实锤：赋值位嵌套百轮 200
+        //   中 R1 中间产物 100+旧值覆盖 100）。v2 发射拥有串赋值 右值拥有
+        //   判定已列 节点_二元运算（free 旧+直存不 copy）——本侧补齐=分叉
+        //   缺口双侧对齐（零分叉纪律·732）。判定=op 为 加 且 表达式源码
+        //   类型为字符串（isStringTypedExpr 递归·比较/指针算术产物非串天然
+        //   排除→原污染路径不变）。
+        if (ownAt == NodeType::BinaryExpr) {
+            const BinaryExpr* abe =
+                static_cast<const BinaryExpr*>(node->value.get());
+            ownAssign = abe->op == Operator::Add &&
+                        isStringTypedExpr(node->value.get());
+        }
         if (ownAssign) {
-            if (ownAt != NodeType::CallExpr) {
-                // 先 free 旧（drop 旧再 move 新——Rust/C++ 赋值语义；调用形态
-                // 的 free 由下方公共段统一发？——不：调用形态同样须 free 旧。
+            if (ownAt != NodeType::CallExpr && ownAt != NodeType::BinaryExpr) {
+                // 字面量/标识符形态：先 free 旧（drop 旧再 move 新——Rust/C++
+                //   赋值语义），源为借用/只读段须 __cn_str_copy 落堆（自赋值
+                //   s = s 安全——copy 产物独立于旧值内存后才能释放旧值）。
+                //   调用/二元连接形态走下方直存分支（产物本就新堆串·copy 纯
+                //   浪费且破坏双侧分配数对照）。
                 ir::IRValue oldPtr = emitResult(
                     ir::Opcode::Load, {ir::IRValue::var(unique, "ptr")}, "ptr",
                     unique, node->location);
@@ -847,6 +865,7 @@ bool IRGenerator::identifierStringOwnAssign(AssignmentExpr* node, IdentifierExpr
                 value = emitResult(ir::Opcode::Call, {value}, "ptr",
                                    "__cn_str_copy", node->location);
             } else {
+                // 调用返回/二元连接产物：free 旧 + 产物直存接管（move 语义）
                 ir::IRValue oldPtr = emitResult(
                     ir::Opcode::Load, {ir::IRValue::var(unique, "ptr")}, "ptr",
                     unique, node->location);
