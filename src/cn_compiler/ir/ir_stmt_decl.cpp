@@ -461,7 +461,18 @@ void IRGenerator::registerOopRaii(VarDecl* node, const DeclGenCtx& ctx) {
     //   视图（顶层 指向容器数组内联元素，非独立堆对象）——跳过析构登记，避免
     //   RAII DeleteObject 释放数组内指针（双重释放 0xC0000374）。容器负责元素
     //   生命周期（追加深拷贝/弹出销毁）。
-    if (!ctx.unique.empty() && !isContainerElementView(node->initializer.get())) {
+    // 630（544 呈报·容器接收面·宿主侧形态②泄漏根治）：豁免收窄到「非类类型接收」
+    //   ——宿主 元素(i) 现实现已为「NewObject+拷贝构造副本」（asm 权威：rdi=壳
+    //   大小 object_new + call 类$拷贝构造 → rax=新副本句柄·plans/001 §052 甲
+    //   「元素(i) 返回副本（快照语义）」），接收变量=副本唯一拥有者，须登记析构；
+    //   原 H8-5 视图模型未随副本化同步 → 副本失去释放路径（877 探针乙块出后
+    //   活性 +2 泄漏实录）。字符串/结构体等非类接收维持原豁免模型不动。
+    bool containerElemViewExempt = isContainerElementView(node->initializer.get());
+    if (containerElemViewExempt && semantic_ != nullptr && !ctx.srcType.empty() &&
+        semantic_->isClassType(types::canonical(ctx.srcType))) {
+        containerElemViewExempt = false;
+    }
+    if (!ctx.unique.empty() && !containerElemViewExempt) {
         oopVarSrcTypes_[ctx.unique] = ctx.srcType;
         // 72-a（2026-09-11 第七十二轮）：块级作用域 RAII 名单登记——本块声明的
         //   拥有串/类对象在 genBlock 出口释放（此前仅函数级=循环体中间迭代泄漏）。
