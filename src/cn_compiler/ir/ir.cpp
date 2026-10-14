@@ -272,9 +272,38 @@ std::string IRGenerator::funcPtrTypeOfCallee(Expr* callee) const {
     if (callee == nullptr) return "";
     std::string fnPtrType;
     if (callee->getType() == NodeType::IdentifierExpr) {
-        fnPtrType = lookupSrcType(static_cast<IdentifierExpr*>(callee)->name);
+        const std::string& name655 = static_cast<IdentifierExpr*>(callee)->name;
+        fnPtrType = lookupSrcType(name655);
+        // 655（648 余量②·040 静态槽 fnptr 签名解析补全）：lookupSrcType 静态
+        //   兜底仅数组形态（259 立法缩窄）——静态槽 fnptr 间接调用曾整链 miss
+        //   至调用尾 i32 兜底（形参/返回类型全按 i32 错读·探针 p655-② 实锤：
+        //   静态槽 整64(*)(整32) 返回 5000000000 截断 705032704）。此处窄放宽
+        //   仅认 函数指针< 形态（其余静态类型仍 miss=全局面零变化），形参表
+        //   （442）/返回类型/结构体 retbuf（485）三消费点同受益。
+        if (fnPtrType.empty() && semantic_ != nullptr &&
+            semantic_->isGlobalStatic(name655)) {
+            const std::string stType655 = semantic_->globalStaticType(name655);
+            if (stType655.rfind("函数指针<", 0) == 0) fnPtrType = stType655;
+        }
     } else if (callee->getType() == NodeType::MemberExpr) {
         fnPtrType = memberFieldSrcType(static_cast<MemberExpr*>(callee));
+    } else if (callee->getType() == NodeType::IndexExpr) {
+        // 655 收口随件（648 丙归档未枚举面）：回调表元素位 fnptr 调用
+        //   （整32(*表[2])(整32) 的 表[0](...)——603 ④ 合法面）。原实现只识
+        //   标识符/成员链，IndexExpr 恒 miss 落调用尾 i32 兜底（整32 返回面
+        //   恰好正确=隐性依赖）；655 收口诊断后即显形。对象=标识符数组：
+        //   数组元素类型串即 fnptr 类型（toSymbolType 规范形态）。
+        const IndexExpr* idx655 = static_cast<IndexExpr*>(callee);
+        if (idx655->object->getType() == NodeType::IdentifierExpr) {
+            const std::string arrType655 = lookupSrcType(
+                static_cast<IdentifierExpr*>(idx655->object.get())->name);
+            if (types::isArray(arrType655)) {
+                const std::string elem655 = types::arrayElemOf(arrType655);
+                if (types::isFuncPtr(types::canonical(elem655))) {
+                    fnPtrType = elem655;
+                }
+            }
+        }
     }
     if (fnPtrType.empty()) return "";
     // 泛型实例体：形参类型串里的类型参数替换为实参类型（`函数指针<整32>(T,T)`

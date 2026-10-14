@@ -299,10 +299,19 @@ void IRGenerator::visitUnaryExpr(UnaryExpr* node) {
                 // 指针步进：元素大小。IR层指针统一为ptr，元素大小通过操作数
                 // 源码类型推断（结构体指针按结构体总大小，普通指针8字节，
                 // Task 2.7 修复——此前固定8字节导致结构体指针遍历错位）
+                // 655（648 余量④-d·648 ptrElemStride 显形「待判」面清偿）：
+                //   成员链指针自增（b.游标++·探针 p655-④c 实锤=合法程序被
+                //   648 「源类型未登记」诊断误伤编译中止）——源类型解析补
+                //   MemberExpr 分支（字段指针类型=memberFieldSrcType），与
+                //   funcPtrTypeOfCallee 成员链同口径；解引用自增（*p++）走
+                //   LoadPtr 值语义不经此分支（探针 p655-④b 实证零依赖）。
                 std::string srcType = "";
                 if (node->operand->getType() == NodeType::IdentifierExpr) {
                     srcType = lookupSrcType(
                         static_cast<IdentifierExpr*>(node->operand.get())->name);
+                } else if (node->operand->getType() == NodeType::MemberExpr) {
+                    srcType = memberFieldSrcType(
+                        static_cast<MemberExpr*>(node->operand.get()));
                 }
                 deltaText = std::to_string(ptrElemStride(srcType));
             }

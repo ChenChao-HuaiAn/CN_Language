@@ -530,6 +530,17 @@ void IRGenerator::visitCallExpr(CallExpr* node) {
     std::vector<std::string> effectiveParamTypes;
     if (isDirect && semantic_ != nullptr) {
         effectiveParamTypes = semantic_->funcParamTypesOf(calleeName);
+        // 655（648 余量①·712 返回类型两级查询同构）：外部 函数（FFI）调用符号
+        //   =纯名（C 符号无 mangling），而 functions_ 表键=签名 key（名#参数串）
+        //   ——纯名 miss 曾止步于此（648 豁免④只免报不回填），128 定标/浮点
+        //   提升/引用宽化三判据全跳过=实参 ABI 静默错值（探针 p655-① 实锤：
+        //   sqrtf(浮32 2.25) 实参被恒提升 f64 传 8 字节，被调按 4 字节读=0.0；
+        //   修复后两级命中按形参表逐位判定=1.5）。miss 回退查签名 key，与
+        //   712 返回类型查询（ir_call.cpp resolvedSignature 回退）完全同构。
+        if (effectiveParamTypes.empty() && !node->resolvedSignature.empty()) {
+            effectiveParamTypes =
+                semantic_->funcParamTypesOf(node->resolvedSignature);
+        }
     } else if (!calleeFnPtrType442.empty()) {
         std::vector<std::string> fnPtrParams442 =
             types::funcPtrParamsOf(calleeFnPtrType442);
@@ -539,21 +550,19 @@ void IRGenerator::visitCallExpr(CallExpr* node) {
     }
     // 648 miss 不可静默：直接调用形参表 miss=终态（128 定标/浮点提升/引用宽化
     //   三判据全跳过·实参 ABI 错配=静默错值面）。报诊断后保留无表回落现状
-    //   （控制流零变更）。豁免四面=既有合法回落契约（495 注释）：
+    //   （控制流零变更）。豁免三面=既有合法回落契约（495 注释）：
     //   ①__cn_ 内置改写名不在 functions_（内置实参语义层已检查·定标不依赖此表）；
     //   ②含 '$' 的泛型实例/跨模块符号（funcParamTypesOf 无泛型方法回退·实例化
     //   调用为海量合法面）；③已登记无参函数（paramTypes 空表=非 miss·经
-    //   funcFirstSigKey 区分）；④签名 key 可命中（FFI 纯名 miss 而签名 hit）。
+    //   funcFirstSigKey 区分）。原豁免④（签名 key 可命中）已由上方 655 两级
+    //   回退收编——签名 hit 时 effectiveParamTypes 非空不再进入本分支。
     //   间接调用回落（类型串 miss/形参个数不匹配=变参合法）不在此报：
     //   类型串整体 miss 由 851 终态收口报告，此处不双报。
     if (isDirect && semantic_ != nullptr && effectiveParamTypes.empty() &&
         calleeName.rfind("__cn_", 0) != 0 &&
         calleeName.find('$') == std::string::npos) {
-        const bool sigKeyHit =
-            !node->resolvedSignature.empty() &&
-            !semantic_->funcParamTypesOf(node->resolvedSignature).empty();
         const bool knownFunc = !semantic_->funcFirstSigKey(calleeName).empty();
-        if (!sigKeyHit && !knownFunc) {
+        if (!knownFunc) {
             diagnostics_.report(
                 DiagnosticLevel::Error, node->location,
                 "内部错误: 函数形参表未登记 '" + calleeName + "'（#648）");
@@ -949,11 +958,18 @@ void IRGenerator::visitCallExpr(CallExpr* node) {
         }
     }
     // 间接调用：先求被调者表达式（函数指针变量），再 CallIndirect
-    // 648 归档（豁免不报）：走到此终态且 calleeFnPtrType 为空 = funcPtrTypeOfCallee
-    //   miss——含全局静态槽函数指针（lookupSrcType 的静态兜底仅数组形态·259 立法
-    //   缩窄；040 静态回调=验收合法放行面，现状 i32 兜底编译）。此路径报错会误伤
-    //   合法程序，故豁免归档；类型串已解析而返回类型未登记的 miss 已于上方收口
-    //   报错。// 648 待判：静态槽 fnptr 签名解析补全后可收口本豁免。
+    // 655（648 余量②收口·「miss 不可静默」立法）：648 丙轮归档的静态槽 fnptr
+    //   豁免已由 funcPtrTypeOfCallee 静态槽窄放宽（655）根治——040 合法面不再
+    //   落此终态。走到此处的 calleeFnPtrType 为空=funcPtrTypeOfCallee 全域 miss
+    //   （标识符既非局部/静态槽 fnptr、成员链亦未解析出类型串）=间接调用签名
+    //   终态缺失（形参/返回类型全按 i32 兜底错读=静默错值面），按立法显形报
+    //   诊断后保留 i32 兜底与控制流（driver generate() 后 hasErrors() 中止，
+    //   合法程序零诊断零行为变化）。若 L2/云端全量出现合法程序落此=新 miss
+    //   形态，须补签名解析而非回撤诊断（110/861-a 同教训）。
+    diagnostics_.report(
+        DiagnosticLevel::Error, node->location,
+        "内部错误: 间接调用被调者类型串未解析（funcPtrTypeOfCallee 全域 miss·"
+        "#655）");
     ir::IRValue calleeVal = genExpr(node->callee.get());
     args.insert(args.begin(), calleeVal);  // operand[0]=指针寄存器
     lastExpr_ = emitResult(ir::Opcode::CallIndirect, args, "i32", "", node->location);

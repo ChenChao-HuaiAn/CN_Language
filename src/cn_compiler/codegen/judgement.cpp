@@ -63,10 +63,33 @@ CastKind classifyCast(const std::string& from, const std::string& to) {
         return CastKind::OtherToI128;
     }
     if (is128Type(from) &&
-        (is64IntType(to) || to == "i32" || to == "u32" ||
+        (is64IntType(to) || to == "ptr" || to == "i32" || to == "u32" ||
          isNarrowIntType(to) || to == "i1")) {
+        // 655（648 余量③·四族可达性枚举）：to 域增 ptr——i128→ptr 显式转换
+        //   （指针(整128值)·语义层 srcNumeric&&dstPtr 放行）曾落 DefaultPass：
+        //   win 体恒 32 位 mov 传递=只搬低 32 位（探针 p655-③ 实锤：i128
+        //   0xAAAAAAAAAAAAAAAA → 指针 → 整64 回读=0，应 12297829382473034410；
+        //   arm64/linux DefaultPass 体=64 位装载+按目标宽存=正确值=三后端
+        //   分叉）。归域 I128ToNarrow（取低半槽·三后端发射体对 to=ptr 均
+        //   64 位存：win mov rax/dst·linux qword·arm64 str xN/寄存器分配面
+        //   i64/u64/ptr 同域）=与 i128→i64 位重解释同语义。
         return CastKind::I128ToNarrow;  // 302-a：须先于通用窄截断（否则读高半槽）
     }
+    // ---- 655 DefaultPass 可达性枚举归档（648 余量③·四族逐一实证）----
+    // 走到此处=（from,to）未落上方任何域。经 visitCastExpr（显式转换唯一
+    //   用户通道·语义层 visitCastExpr 准入=数值族/指针族矩阵）逐一枚举：
+    //   ①ptr→ptr：语义放行，但 IR 层 visitCastExpr 同型透传 no-op
+    //     （274-a）不发射 Cast——不可达。
+    //   ②i128→ptr：原落此（32 位 mov 截断缺陷）——已上移 I128ToNarrow 域。
+    //   ③ptr→窄整（i32/u32/i8~u16）：语义放行（srcPtr&&dstNumeric）可达；
+    //     win 体 32 位 mov 取低 32=窄整截断语义（探针 p655-③ 族3：整32(p)
+    //     ==整32(整64(p)) 恒真）；arm64/linux 体=64 装载+按目标宽存=同值
+    //     ——三后端值一致，落 DefaultPass=契约正确非巧合。
+    //   ④整→i1（布尔目标）：dstNumeric 不含 布尔（isNumeric=整数+浮点族）
+    //     ——语义层显式拒绝「无法显式转换为 布尔」，Cast 不可达（内部
+    //     发射面无 to=i1 的 Cast·50 处枚举）。
+    //   余下组合（i32→i32 同型透传等）均被前域或透传拦截——DefaultPass
+    //   现存可达域仅族③，值语义三后端一致。
     // ---- 窄源扩展域（to 非 128 已由上方保证——win W3a 的 to!=128 排除条件等价固化）----
     if (isNarrowIntType(from)) return CastKind::NarrowSourceExtend;
     // ---- 截断域（原链 10/11：from 已非窄/128，域=「to 窄且前序全不中」）----

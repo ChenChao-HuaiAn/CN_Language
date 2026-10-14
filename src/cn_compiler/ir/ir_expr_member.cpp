@@ -437,6 +437,15 @@ void IRGenerator::visitMemberExpr(MemberExpr* node) {
     //   指针槽模型，与类字段 A-4/byRef 机制一致——缺陷2 根治 2026-09-02 定案：
     //   结构体容器字段=typeSizeOf 保留区+首槽指针，构造赋值 Store 指针、
     //   读取 LoadPtr、方法 this=对象指针；结构体局部零初始化保未构造槽为 null）。
+    // 655（648 余量④-c 显形·648 立法同款）：字段源码类型串 miss（空串）时
+    //   mapType 空串→"void"——LoadPtr 以 void 宽装载=静默错型面。结构体对象
+    //   已解析而字段类型串未解析=内部缺陷，报诊断后保留原发射（控制流零
+    //   变更·driver hasErrors() 中止）。
+    if (fieldSrcType.empty()) {
+        diagnostics_.report(DiagnosticLevel::Error, node->location,
+            "内部错误: 成员 '" + node->memberName + "' 字段类型串未解析（对象类型 '" +
+                objSrcType + "'），LoadPtr void 宽兜底已不可静默（#655）");
+    }
     lastExpr_ = emitResult(ir::Opcode::LoadPtr, {fieldAddr},
                            mapType(fieldSrcType), "", node->location);
 }

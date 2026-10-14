@@ -541,11 +541,15 @@ bool X64CodeGenerator::emitCastIntWidth(AsmWriter& writer, const ir::IRInstructi
     // 302-a（T39 根治）：目标覆盖全部窄整（i64/u64/i32/u32/i16/u16/i8/u8/i1）——
     //   原仅 i64/u64，窄目标落**本段下方的通用 i8/i16 截断分支**读高半槽
     //   （`整16(整128(100))`=0 应 100 实锤）；故本分支须先于通用窄截断判定。
+    // 655（648 余量③·I128ToNarrow 归域随件）：目标域增 ptr——judgement 已把
+    //   i128→ptr 归入 I128ToNarrow（指针(整128值) 位重解释·原落 DefaultPass
+    //   32 位 mov 截断），此处 64 位搬运判定须同步认 ptr，否则仍走窄写路径。
     if ((from == "i128" || from == "u128") &&
-        (to == "i64" || to == "u64" || to == "i32" || to == "u32" ||
-         to == "i16" || to == "u16" || to == "i8" || to == "u8" || to == "i1")) {
+        (to == "i64" || to == "u64" || to == "ptr" || to == "i32" ||
+         to == "u32" || to == "i16" || to == "u16" ||
+         to == "i8" || to == "u8" || to == "i1")) {
         const int srcLoId = inst.operands[0].id + 1;
-        if (to == "i64" || to == "u64") {
+        if (to == "i64" || to == "u64" || to == "ptr") {
             writer.line("mov rax, " + regSlot(srcLoId));
             writer.line("mov " + dst + ", rax");
         } else {

@@ -173,8 +173,19 @@ void IRGenerator::visitIndexExpr(IndexExpr* node) {
                 //   semantic typeSizeOf（原 非结构体走 types::typeSize——该表
                 //   **无「字符串」**返回 0 -> 字段数组下标不缩放，探针 fldmem2
                 //   实证「再读0=乙」；同族四消费点一并核查）
+                // 655（648 余量④-a 显形·648 立法同款）：数组字段的元素宽度
+                //   typeSizeOf miss=编译器内部缺陷（字段数组已登记而元素宽度
+                //   查表 miss·静默 8 步进=错位读写面）——报诊断后保留 8 兜底
+                //   （控制流零变更·driver hasErrors() 中止）。
                 stride = (semantic_ != nullptr) ? semantic_->typeSizeOf(elemSrc) : 8;
-                if (stride <= 0) stride = 8;
+                if (stride <= 0) {
+                    if (semantic_ != nullptr) {
+                        diagnostics_.report(DiagnosticLevel::Error, node->location,
+                            "内部错误: 实例数组字段元素类型 '" + elemSrc +
+                                "' 宽度未登记，步进终态 8 兜底已不可静默（#655）");
+                    }
+                    stride = 8;
+                }
                 emitBoundsCheck(index, types::arrayLenOf(fieldType), node->location);
             } else if (types::isPointer(fieldType)) {
                 // 指针字段（T* 数据）：步进统一按所指元素 typeSizeOf（缺陷③根治
@@ -188,10 +199,22 @@ void IRGenerator::visitIndexExpr(IndexExpr* node) {
                 elemIsStruct = semantic_ != nullptr &&
                                (semantic_->isStructType(elemCanon) ||
                                 semantic_->isClassType(elemCanon));
+                // 655（648 余量④-a 显形·同上）：指针字段元素宽度 miss 静默
+                //   8 兜底显形（isI128 静态可判 16 保留·其余 miss 报诊断）。
                 const int elemSize = (semantic_ != nullptr)
                                          ? semantic_->typeSizeOf(elemSrc) : 0;
-                stride = elemSize > 0 ? elemSize
-                                      : (types::isI128(elemCanon) ? 16 : 8);
+                if (elemSize > 0) {
+                    stride = elemSize;
+                } else if (types::isI128(elemCanon)) {
+                    stride = 16;
+                } else {
+                    if (semantic_ != nullptr) {
+                        diagnostics_.report(DiagnosticLevel::Error, node->location,
+                            "内部错误: 实例指针字段元素类型 '" + elemSrc +
+                                "' 宽度未登记，步进终态 8 兜底已不可静默（#655）");
+                    }
+                    stride = 8;
+                }
             } else if (types::canonical(fieldType) == "字符串") {
                 // 自举前置 A-1：字符串字段（自身.源码[i]）——字符* 字节视图
                 // D30 根治（255-a）：加载宽=i8——原走 mapType("字符")="i32"
@@ -493,9 +516,19 @@ ir::IRValue IRGenerator::genGenericIndexAddress(IndexExpr* idx) {
                     //   实证；局部数组路径本就用 typeSizeOf=正确，v2 侧同源正确=
                     //   宿主单侧分叉）。typeSizeOf 对 字符串=8/结构体=总大小/
                     //   标量=自然大小全正确。
+                    // 655（648 余量④-b 显形·同 ④-a 写法）：实例字段数组元素
+                    //   宽度 typeSizeOf miss=内部缺陷，报诊断后保留 8 兜底。
                     stride = (semantic_ != nullptr)
                                  ? semantic_->typeSizeOf(elemSrc) : 8;
-                    if (stride <= 0) stride = 8;
+                    if (stride <= 0) {
+                        if (semantic_ != nullptr) {
+                            diagnostics_.report(DiagnosticLevel::Error,
+                                idx->location,
+                                "内部错误: 数组字段元素类型 '" + elemSrc +
+                                    "' 宽度未登记，步进终态 8 兜底已不可静默（#655）");
+                        }
+                        stride = 8;
+                    }
                     emitBoundsCheck(index, types::arrayLenOf(st), idx->location);
                 } else {
                     stride = ptrElemStride(st);
@@ -507,9 +540,18 @@ ir::IRValue IRGenerator::genGenericIndexAddress(IndexExpr* idx) {
                 //   越界槽·探针 A3 实录）。基址=genExpr(静态名)=符号地址。
                 if (types::isArray(st)) {
                     const std::string elemSrc259 = types::arrayElemOf(st);
+                    // 655（648 余量④-b 显形·同上）：静态数组元素宽度 miss 显形。
                     stride = (semantic_ != nullptr)
                                  ? semantic_->typeSizeOf(elemSrc259) : 8;
-                    if (stride <= 0) stride = 8;
+                    if (stride <= 0) {
+                        if (semantic_ != nullptr) {
+                            diagnostics_.report(DiagnosticLevel::Error,
+                                idx->location,
+                                "内部错误: 静态数组元素类型 '" + elemSrc259 +
+                                    "' 宽度未登记，步进终态 8 兜底已不可静默（#655）");
+                        }
+                        stride = 8;
+                    }
                     emitBoundsCheck(index, types::arrayLenOf(st), idx->location);
                 } else {
                     stride = ptrElemStride(st);
@@ -535,8 +577,16 @@ ir::IRValue IRGenerator::genGenericIndexAddress(IndexExpr* idx) {
                         const std::string elemSrc = types::arrayElemOf(f.type);
                         // H4 根治（99-a）：同 ①——统一 typeSizeOf（字符串元素=8；
                         //   原 types::typeSize 对字符串=0 -> 步进 0）
+                        // 655（648 余量④-b 显形·同上）：成员对象数组字段元素
+                        //   宽度 miss 显形。
                         stride = semantic_->typeSizeOf(elemSrc);
-                        if (stride <= 0) stride = 8;
+                        if (stride <= 0) {
+                            diagnostics_.report(DiagnosticLevel::Error,
+                                idx->location,
+                                "内部错误: 成员数组字段元素类型 '" + elemSrc +
+                                    "' 宽度未登记，步进终态 8 兜底已不可静默（#655）");
+                            stride = 8;
+                        }
                         emitBoundsCheck(index, types::arrayLenOf(f.type), idx->location);
                         break;
                     }
