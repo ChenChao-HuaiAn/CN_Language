@@ -193,6 +193,53 @@ bool IRGenerator::emitStructWholeAssign(const ir::IRValue& dstAddr,
         emit(ir::Opcode::StorePtr, {dstAddr, newObj}, ir::IRValue(), "", "ptr",
              loc);
         endSelfAssignGuard(skipLabelW);
+    } else if (semantic_->isClassType(dstElemCanon) && copyCtor == nullptr &&
+               (valueNode->getType() == NodeType::IdentifierExpr ||
+                valueNode->getType() == NodeType::MemberExpr ||
+                valueNode->getType() == NodeType::IndexExpr ||
+                valueNode->getType() == NodeType::TernaryExpr)) {
+        // 728x（2026-10-14·543 轮 p_field_ncopy 探针实证·对齐 v2 生成语句赋值.cn
+        //   543-d 同位修法）：**无显式拷贝构造用户类**字段赋值——类字段=句柄槽
+        //   （8 字节指针槽），原落 emitStructCopyWithFields 按结构体值语义把源
+        //   对象**内容**整体拷进槽位：句柄槽变垃圾内容值（探针 fault=
+        //   0x900000007={a=7,b=9} 内容实锤）+ 写穿后继字段（类大小>8 时）→
+        //   读回把内容当句柄解引用=空指针崩。修=「自赋值守卫 + preFree 旧壳
+        //   （有析构类·183-a 同款空安全+543 幂等清槽）+ NewObject + 源本体
+        //   解句柄 + CopyStruct 类大小 + 新壳句柄写槽」（v2 判定=查类拷贝构造
+        //   串==0 同口径；容器类恒有容器拷贝构造走上方 183-a/分支1 不受影响；
+        //   源=调用返回不进本分支——句柄接管直存走调用方原路径 843-a 口径）。
+        const std::string skipLabelX = beginSelfAssignGuard(dstAddr, srcAddr, loc);
+        const std::string dtorKeyX = classDestructorSymbolKey(dstElemCanon);
+        if (!dtorKeyX.empty()) {
+            ir::IRValue oldObjX = emitResult(ir::Opcode::LoadPtr, {dstAddr}, "ptr",
+                                             "", loc);
+            emitContainerElemFreeFor(dstElemCanon, oldObjX, loc);
+            emit(ir::Opcode::DeleteObject, {oldObjX}, ir::IRValue(), dstElemCanon,
+                 "void", loc);
+            ir::IRValue zeroX = emitResult(ir::Opcode::ConstInt, {}, "i64", "0",
+                                           loc);
+            emit(ir::Opcode::StorePtr, {dstAddr, zeroX}, ir::IRValue(), "", "ptr",
+                 loc);
+        }
+        const ClassInfo* ciX = semantic_->findClass(dstElemCanon);
+        const std::string newObjExtraX =
+            dstElemCanon + "|" +
+            std::to_string(ciX != nullptr ? ciX->totalSize : 0);
+        ir::IRValue newObjX = emitResult(
+            ir::Opcode::NewObject, {ir::IRValue::constant(dstElemCanon, "ptr")},
+            "ptr", newObjExtraX, loc);
+        // 源本体地址：标识符源 srcAddr 已=Load 槽得堆对象地址；成员/下标/三元
+        //   源 srcAddr=句柄槽地址（lvalueAddress）——LoadPtr 解一层得对象地址
+        //   （引用实参约定=槽地址 callee 内一层 Load，同构口径）。
+        ir::IRValue srcBodyX = srcAddr;
+        if (valueNode->getType() != NodeType::IdentifierExpr) {
+            srcBodyX = emitResult(ir::Opcode::LoadPtr, {srcAddr}, "ptr", "", loc);
+        }
+        emit(ir::Opcode::CopyStruct, {newObjX, srcBodyX}, ir::IRValue(),
+             std::to_string(ciX != nullptr ? ciX->totalSize : 0), "void", loc);
+        emit(ir::Opcode::StorePtr, {dstAddr, newObjX}, ir::IRValue(), "", "ptr",
+             loc);
+        endSelfAssignGuard(skipLabelX);
     } else {
         // 79-a：含串字段结构体——源为调用返回（retbuf）=浅拷接管（零拷贝）；
         //   源为标识符/成员=深拷（字段级 __cn_str_copy 落堆）。无串字段类型
