@@ -320,14 +320,24 @@ def 记视野快照(上报者: str, 视野号们: list):
 
 
 def 号占冲突们() -> list:
-    """同号出现在 ≥2 上报者视野 → 占号冲突（309 双占型·客户端各自树内立项互相不可见）。"""
+    """同号出现在 ≥2 上报者视野 → 占号冲突（309 双占型·客户端各自树内立项互相不可见）。
+
+    654：台账 ✅ 完成号不进冲突面——✅ 号全机视野同源（归档/老分支树内 021 全史表），
+    不剔除则任意两上报者对全史号互报（实测 398 条零真阳性）。双占只可能发生在
+    活号（⬜/🏃/⏸）；✅=已收口无人再做，即使两机快照仍残留（收口删支窗口）也非冲突。
+    发号基准面（收视野并取基准）不受本过滤影响——✅ 号照进基准防号复用。"""
+    完成号 = {r[0] for r in 连接.execute(
+        "SELECT 号 FROM 任务 WHERE 状态=?", (台账.状态_完成,)).fetchall()}
     视野 = 连接.execute("SELECT 上报者,号们 FROM 视野快照 WHERE 时戳>?",
                        (time.time() - 6 * 3600,)).fetchall()
     号主 = {}
     for 上报者, 号们文本 in 视野:
         try:
             for 号 in json.loads(号们文本):
-                号主.setdefault(str(号), []).append(上报者)
+                号 = str(号)
+                if 号 in 完成号:
+                    continue
+                号主.setdefault(号, []).append(上报者)
         except (ValueError, TypeError):
             pass
     return [{"号": 号, "上报者们": 主们} for 号, 主们 in sorted(号主.items(), key=号排序键)
