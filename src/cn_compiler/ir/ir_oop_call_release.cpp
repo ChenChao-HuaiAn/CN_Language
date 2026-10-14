@@ -211,6 +211,10 @@ void IRGenerator::genStringFrees() {
     //   返回形参已被语义层拒（返回位借用形态·参数直传编译错误），无「副本移出
     //   +出口释放」重叠。发射走 emitStringFreeFor（free+清零幂等——体内
     //   转移()/字符串释放() 清槽后出口空安全跳过）。
+    //   644 rebase 收口（2026-10-15）：644 分支曾在此平行实现同面释放（扫
+    //   paramUniques ∩ oopVarSrcTypes_·无清零）——与 616 名单段双注入同槽
+    //   =双重释放面，按「develop 已有等价修复以 develop 为准」弃 644 段，
+    //   ir_decl.cpp 的 oopVarSrcTypes_ 形参登记一并移除（消费面唯一=本段）。
     if (!ownedParamCopySlots_.empty()) {
         for (const auto& block : function_->blocks) {
             if (!block->terminated) continue;

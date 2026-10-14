@@ -213,6 +213,10 @@ target_link_libraries(cn_compiler_semantic PUBLIC cn_compiler_model cn_compiler_
 # D1 行数整改 114-a（单文件<=1000行约束）：ir_oop_call.cpp 1155 行按族拆分——
 #   ir_oop_call_release.cpp（类析构/拥有型字符串释放族）
 #   （纯重构零行为变更；成员函数声明仍在 ir.hpp）
+# 644（>900 警戒线先拆再加）：ir_call.cpp 1000 行触顶——ir_call_args.cpp
+#   （调用实参族：materializeStructInitArg/genArgValueWithCleanup/
+#   flushPendingArgCleanups/boxNullOptionalArgs/normalizeMethodArgs）
+#   （搬移+644 传参位串临时清理；成员声明仍在 ir_generator.hpp）
 # D1 行数整改 115-a（重复消除）：semantic_internal.hpp 共享头（11 个语义层 helper
 #   × 5 文件 55 处重复 → inline 单一定义）
 # D1 行数整改 116-a（单文件<=1000行约束）：semantic_expr.cpp 1778 行按族拆分——

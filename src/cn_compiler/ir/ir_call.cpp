@@ -666,6 +666,19 @@ void IRGenerator::visitCallExpr(CallExpr* node) {
         if (isStrConsumer617 && argVal.type == "ptr" &&
             argIsOwnedStringTemp(node->arguments[ai].get())) {
             consumedArgTemps617.push_back(argVal);
+            // 644 rebase 交叉收口（2026-10-15）：本实参若已被 81-a 纯串登记
+            //   （genArgValueWithCleanup 644 分支·同在此循环求值），从待清理
+            //   名单移交本通道——释放权单点归 617 结算（防 flushPendingArg
+            //   Cleanups 与 617 结算对同一句柄双 __cn_str_free）。实参求值期
+            //   间内层调用的 flush 已按各自 base 回卷，该登记项此刻必在名单内。
+            for (auto it = pendingArgCleanups_.begin();
+                 it != pendingArgCleanups_.end(); ++it) {
+                if (it->second == "字符串" && it->first.id == argVal.id &&
+                    !it->first.isConstant) {
+                    pendingArgCleanups_.erase(it);
+                    break;
+                }
+            }
         }
     }
     // 106：实参位「无 → 可选<T>」空可选装箱（canConvert 豁免面 IR 配套——

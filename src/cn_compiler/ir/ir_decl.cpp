@@ -565,6 +565,11 @@ void IRGenerator::visitFunctionDecl(FunctionDecl* node) {
     //   第四句拷贝消除：非消耗形参直传零拷贝（字符串无原地写·只读借用别名
     //   不可观察——语义层 checkIdentifierAssignTarget/checkTransferCall 判据）。
     //   注册 ownedStringOrder_＝出口 RAII 释放自身副本（重赋值释放旧值同理正确）。
+    //   644 rebase 收口（2026-10-15）：644 分支曾在此平行登记 oopVarSrcTypes_
+    //   （消费面=genStringFrees 形参扫描段·无清零）——develop 616 版以
+    //   ownedParamCopySlots_ 名单承担同责（free+清零幂等·普通/方法/泛型三面），
+    //   按「develop 已有等价修复以 develop 为准」弃 644 登记（其唯一消费段
+    //   已弃·模块级表留无消费死数据=账面分裂源）。
     for (std::size_t pi = 0; pi < node->params.size() && pi < func.paramUniques.size();
          ++pi) {
         const auto& param = node->params[pi];

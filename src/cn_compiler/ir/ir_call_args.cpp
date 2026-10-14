@@ -1,8 +1,13 @@
 // CN-IR生成器实现：调用实参族（648 拆分：自 ir_call.cpp 按族拆出·单文件≤1000行纪律；
-//   616+617 伞批合入同一族文件）
+//   616+617 伞批与 644 修复合入同一族文件）
 //   族 = 调用实参定标/清理：materializeStructInitArg + genArgValueWithCleanup +
 //   flushPendingArgCleanups + boxNullOptionalArgs + normalizeMethodArgs +
-//   argIsOwnedStringTemp（617 拥有型字符串临时判定·打印族/消费族实参结算共用）；
+//   argIsOwnedStringTemp（617 拥有型字符串临时判定·打印族/消费族实参结算共用）。
+// 职责：实参位物化与临时清理单一归属——
+//   materializeStructInitArg（D3 结构体字面量实参物化·81-a 共享助手）、
+//   genArgValueWithCleanup + flushPendingArgCleanups（81-a 实参求值期登记/调用
+//   发射后统一释放·644 扩展：返回字符串的调用=拥有串临时同名单收下句柄）、
+//   boxNullOptionalArgs + normalizeMethodArgs（106 无→可选装箱/方法实参定标）。
 //   成员函数声明仍在 ir_generator.hpp（648 拆分=成员实现搬移·族内无文件级
 //   static/匿名命名空间依赖）。
 #include <cstdio>
@@ -11,6 +16,7 @@
 #include <vector>
 
 #include "cn_compiler/ir/ir.hpp"
+#include "cn_compiler/ir/ir_generator.hpp"
 #include "cn_compiler/model/ast_expr.hpp"
 #include "cn_compiler/model/semantic_view.hpp"
 #include "cn_compiler/model/type_system.hpp"
@@ -83,9 +89,28 @@ ir::IRValue IRGenerator::genArgValueWithCleanup(Expr* arg,
         }
     }
     if (retCanon.empty()) return v;
+    // 644（2026-10-14·P1）：实参位「返回字符串的调用」=无主拥有串临时——调用
+    //   发射后收下句柄（__cn_str_free·空安全幂等）。此前仅含串字段聚合临时入
+    //   清理名单（81-a），纯串临时每调用净泄 1（探针⑩实锤·v2 同构缺口同修）。
+    //   与 102 甲案互洽：消耗形参已被调方入口深拷独立副本；非消耗形参=只读
+    //   借用（借用契约=调用期有效——临时生命周期至完整表达式尾，C++ 同规；
+    //   被调方外存借用句柄=借用违约，非本释放面义务）。
+    if (retCanon == "字符串") {
+        pendingArgCleanups_.emplace_back(v, retCanon);
+        return v;
+    }
     if (ownedStrFieldsOf(retCanon).empty()) return v;
     pendingArgCleanups_.emplace_back(v, retCanon);
     return v;
+}
+
+// 644：寄存器值形态拥有串释放（实参位串临时专用；__cn_str_free 空安全——
+//   与 emitStringFreeFor 槽形态同源，此处操作数=调用返回的串句柄寄存器直传；
+//   临时寄存器此后不再被读取，无需清槽）
+void IRGenerator::emitStringFreeForValue(const ir::IRValue& v) {
+    if (v.id < 0 && !v.isConstant) return;   // 防御：无有效值
+    emit(ir::Opcode::Call, {v}, ir::IRValue(), "__cn_str_free", "ptr",
+         SourceLocation());
 }
 
 // 调用发射后统一清理（只清理 base 之后新增项；释放幂等清零，嵌套调用各自持基准）
@@ -95,6 +120,12 @@ void IRGenerator::flushPendingArgCleanups(std::size_t base) {
         return;
     }
     for (std::size_t i = base; i < pendingArgCleanups_.size(); ++i) {
+        // 644：纯串临时（canon="字符串" 无字段可遍历）→ 整串句柄释放；
+        //   聚合临时维持 81-a 字段偏移逐项释放原路。
+        if (pendingArgCleanups_[i].second == "字符串") {
+            emitStringFreeForValue(pendingArgCleanups_[i].first);
+            continue;
+        }
         emitOwnedStrFieldFreesAt(pendingArgCleanups_[i].first,
                                  pendingArgCleanups_[i].second, SourceLocation());
     }
@@ -178,6 +209,10 @@ void IRGenerator::normalizeMethodArgs(CallExpr* node,
 //   字符串拼接表达式（BinaryExpr +：语义层保证 字符串+字符串/数值 走拼接通道，
 //   结果=连接产物堆串；整数加法/指针算术由调用点 argVal.type=="ptr" 前置
 //   挡外）。字符*（驻留文本 等借用视图）与标识符/字面量形态不命中。
+//   644 rebase 交叉面（2026-10-15）：本判定与 genArgValueWithCleanup 的 644
+//   纯串登记分支共享命中域（用户函数返回串实参）——内置消费族通道（本判定
+//   唯一双挂点，打印族走 genExpr 不经 81-a）收集点须把 81-a 已登记项移交
+//   （见 ir_call.cpp 收集处），保证单一释放点。
 bool IRGenerator::argIsOwnedStringTemp(const Expr* arg) const {
     if (arg == nullptr || semantic_ == nullptr) return false;
     if (arg->getType() == NodeType::BinaryExpr) {

@@ -531,6 +531,8 @@ private:
                              std::size_t fieldBase, std::size_t strArrayBase);
     // 释放单个字符串槽（Load + __cn_str_free 空安全）
     void emitStringFreeFor(const std::string& unique);
+    // 644：寄存器值形态拥有串释放（81-a 实参位串临时；调用返回句柄直传）
+    void emitStringFreeForValue(const ir::IRValue& v);
     // 释放单个类对象槽（Load + DeleteObject 空安全）
     void emitClassDeleteFor(const std::string& unique, const std::string& canon);
 
