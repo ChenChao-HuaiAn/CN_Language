@@ -152,6 +152,10 @@ private:
     //   named=要求内嵌变量名（变量/参数/字段位）；allowArray=允许 名[长度]（数组元素位）；
     //   anonymous=允许匿名（返回类型位 `-> 整32(*)(整32)`）
     bool funcPtrDeclAhead(bool named, bool allowArray, bool anonymous) const;
+    // 569（2026-10-14 甲案·001 §5.2a 形态全集）：顶层泛型/数组裸全局形态前瞻
+    //   `容器<…> 名;` / `类型[N] 名;`（纯读零消费·v2 是泛型声明/是数组声明前瞻286 同构）
+    bool genericDeclAhead() const;
+    bool arrayDeclAhead() const;
     std::unique_ptr<Stmt> parseVarDecl();               // 变量/常量/静态 声明
     std::unique_ptr<Stmt> parseVarDeclAfterKeyword(bool isConst); // 已消费 变量/常量 关键字后的声明体
     std::unique_ptr<Stmt> parseStaticVarDecl();         // 静态 [变量] 类型 名称 [= 初始值]

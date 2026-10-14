@@ -274,6 +274,55 @@ bool Parser::funcPtrDeclAhead(bool named, bool allowArray, bool anonymous) const
            peek(after + 1).getType() == TokenType::LeftParen;
 }
 
+// 569（2026-10-14 甲案·001 §5.2a 形态全集）：顶层泛型裸全局形态前瞻
+//   `容器<…> 名;`——尖括号嵌套配对扫描（纯读零消费·v2 泛型闭合位置 同构：
+//   <>/>>双闭合/标识符/逗号/星/与 白名单，白名单外 token 或未闭合=假）。
+//   闭合后须名位标识符（数组/引用后缀形态由 parseTypeNameEx 消费；主口径
+//   收窄防 比较/移位 误判——对齐 v2 是泛型声明 主干）。
+bool Parser::genericDeclAhead() const {
+    if (peek(1).getType() != TokenType::Less) return false;
+    int depth = 0;
+    int i = 1;  // peek 偏移（1='<'）
+    while (true) {
+        const TokenType tt = peek(i).getType();
+        if (tt == TokenType::Less) {
+            depth++;
+        } else if (tt == TokenType::Greater) {
+            if (--depth <= 0) return peek(i + 1).getType() == TokenType::Identifier;
+        } else if (tt == TokenType::GreaterGreater) {
+            depth -= 2;
+            if (depth <= 0) return peek(i + 1).getType() == TokenType::Identifier;
+        } else if (tt == TokenType::Identifier || isTypeKeyword(tt) ||
+                   tt == TokenType::Comma || tt == TokenType::Star ||
+                   tt == TokenType::Amp) {
+            // 类型名/类型关键字实参（宿主词法 整32 系=Kw_* 关键字·与 v2=标识
+            //   符异构，泛型闭合位置 白名单差异点）/实参分隔/指针层/引用后缀
+        } else {
+            return false;  // 白名单外（含 EndOfFile 未闭合）
+        }
+        i++;
+    }
+}
+
+// 569：顶层数组裸全局形态前瞻 `类型[N] 名;`——中括号嵌套配对扫描（纯读零
+//   消费·v2 是数组声明前瞻286 同构：配对闭合后须名位标识符；未闭合=假）。
+bool Parser::arrayDeclAhead() const {
+    if (peek(1).getType() != TokenType::LeftBracket) return false;
+    int depth = 0;
+    int i = 1;  // peek 偏移（1='['）
+    while (true) {
+        const TokenType tt = peek(i).getType();
+        if (tt == TokenType::LeftBracket) {
+            depth++;
+        } else if (tt == TokenType::RightBracket) {
+            if (--depth <= 0) return peek(i + 1).getType() == TokenType::Identifier;
+        } else if (tt == TokenType::EndOfFile) {
+            return false;
+        }
+        i++;
+    }
+}
+
 // 解析函数指针类型：整32(*名)(整32, 整32)（规格书5.8 C风格，Task 2.2）
 // 前置条件：current 指向返回类型（如 整32）。成功时消费完整类型并填充 out（含变量名）。
 // 识别模式：<类型> ( * <标识符>? [ 长度? ]? ) ( <参数类型列表> )
@@ -722,6 +771,9 @@ std::unique_ptr<Program> Parser::parse(const std::vector<Token>& tokens) {
             }
         } else if ((isTypeKeyword(currentType()) || check(TokenType::Identifier)) &&
                    (peek(1).getType() == TokenType::Identifier ||
+                    peek(1).getType() == TokenType::Star ||       // 类型* 名（569 形态全集）
+                    arrayDeclAhead() ||                            // 类型[N] 名（569 形态全集）
+                    genericDeclAhead() ||                          // 容器<…> 名（569 形态全集）
                     funcPtrDeclAhead(true, true, false))) {
             // 569 甲案（2026-10-14 用户裁决·001 §5.2a）：顶层裸全局变量声明
             //   `整32 全局计数 = 5;` —— §5.1 文法「全局变量声明」实体形态
