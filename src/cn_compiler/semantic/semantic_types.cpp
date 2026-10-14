@@ -616,9 +616,20 @@ void SemanticAnalyzer::computeLayout(StructDecl* decl) {
                 // 280 载荷口径（v2 IR容器判定 结果载荷字节 同规·零分叉红线）：
                 //   类载荷=句柄 8（277 注释「盒内副本=句柄槽」）——typeSizeOf(类)
                 //   实宽口径不适用于盒内联合槽
+                // 658 伞批（2026-10-14·774 既有红根治·648-b 显形误伤面）：预降级趟
+                //   （lowerResultOptionalTypes）先于类注册——此刻 findClass(类)=null
+                //   →原 else 落 typeSizeOf(类) → #648 显形硬错误（774_返回局部结果盒
+                //   生命周期 D1 稳定红·二分实锤 7b8c6132 即红非 571/658 引入）。
+                //   合成体载荷槽=恒 8B 圆整联合槽（8+max 模型）：结构体载荷走
+                //   findStruct 命中的 typeSizeOf 真值；**非结构体未知名=类载荷→
+                //   句柄 8**（648 立法的错布局史=通用结构体字段 24B 兜 8——本槽
+                //   无该面：>8B 载荷必经 findStruct 真值分支·兜 8 无错布局可能）。
                 const std::string fc280 = types::canonical(f.type);
-                const int fs280 = findClass(fc280) != nullptr
-                                      ? 8 : typeSizeOf(f.type);
+                int fs280 = 8;
+                if (findClass(fc280) == nullptr &&
+                    (findStruct(fc280) != nullptr || types::typeSize(fc280) > 0)) {
+                    fs280 = typeSizeOf(f.type);   // 结构体/内置标量=真值（整128 16B 面）
+                }
                 const int rounded280 = (fs280 + 7) / 8 * 8;
                 if (rounded280 > wide280) wide280 = rounded280;
             }
@@ -635,9 +646,13 @@ void SemanticAnalyzer::computeLayout(StructDecl* decl) {
                 f.offset = 0;
             } else {
                 f.offset = 8;
+                // 658 伞批：载荷槽类句柄特判的降级期豁免（同联合体分支·774 红根治）
                 const std::string fc280 = types::canonical(f.type);
-                const int fs280 = findClass(fc280) != nullptr
-                                      ? 8 : typeSizeOf(f.type);
+                int fs280 = 8;
+                if (findClass(fc280) == nullptr &&
+                    (findStruct(fc280) != nullptr || types::typeSize(fc280) > 0)) {
+                    fs280 = typeSizeOf(f.type);   // 结构体/内置标量=真值
+                }
                 const int rounded280 = (fs280 + 7) / 8 * 8;
                 if (rounded280 > payload280) payload280 = rounded280;
             }

@@ -275,11 +275,10 @@ void IRGenerator::genClassDestructorCalls() {
             const std::string canon = types::canonical(srcIt->second);
             const ClassInfo* ci = semantic_->findClass(canon);
             if (ci == nullptr) continue;
-            bool hasDtor = false;
-            for (const auto& mk : ci->methods) {
-                if (mk.second.isDestructor) { hasDtor = true; break; }
-            }
-            if (!hasDtor) continue;
+            // 658②（2026-10-14·#658）：无析构类纳入函数级兜底——原 `!hasDtor
+            //   continue` 使无析构类局部在 返回 终止块路径（块出口析构不覆盖）
+            //   连对象本体带字段全部泄漏；现统一入名单（入口零初始化同款保护），
+            //   返回块发射面按有无析构分派（下方）。
             objVars.push_back(ObjVar{unique, canon});
         }
     }
@@ -309,7 +308,13 @@ void IRGenerator::genClassDestructorCalls() {
     //   instructions 末尾追加 DeleteObject 即保证其先于 ret 执行。
     // 多返回点场景：每个返回块都会释放（重复释放同一对象——CN 类对象为显式堆管理，
     //   本子任务按"函数退出自动释放"语义实现，后续模块系统子任务可完善作用域级释放）。
-    for (const auto& block : function_->blocks) {
+    // 658②（2026-10-14·#658）：块表**先快照后遍历**——循环体内 658 判空守卫块
+    //   （newBlock push_back）会使 vector 扩容，直接遍历成员函数=迭代器失效
+    //   UB（编译器自身 0xC0000005·658 探针实证）。
+    std::vector<ir::IRBlock*> retBlocks;
+    retBlocks.reserve(function_->blocks.size());
+    for (const auto& b : function_->blocks) retBlocks.push_back(b.get());
+    for (ir::IRBlock* block : retBlocks) {
         if (!block->terminated) continue;
         if (block->termKind != "返回") continue;
         // 自举前置 A-3b（plans/004）：返回块若返回"类局部变量的对象指针"
@@ -333,7 +338,7 @@ void IRGenerator::genClassDestructorCalls() {
         } else if (!rv.empty() && rv.rfind("%v", 0) != 0) {
             returnedVars.insert(rv);  // 防御：返回值为变量名直传
         }
-        setCurrentBlock(block.get());
+        setCurrentBlock(block);
         // 197（#197·承接 #105 甲案已裁决）：发射序改声明逆序（LIFO）——规格 06
         //   「与C++同名构造/析构语义一致」＝构造逆序析构（栈式 RAII），与块出口
         //   genBlockExitDestruct（back() 逆序）同构。修前正序发射=声明序 FIFO：
@@ -341,6 +346,29 @@ void IRGenerator::genClassDestructorCalls() {
         //   全落本兜底——598 形态甲/丁实锤 D1D2D3；后声明对象依赖先声明对象
         //   资源时（borrow/池句柄），FIFO 先亡被依赖者=悬垂析构。多返回块逐块
         //   逆序+清零幂等模型（入口零初始化+空安全跳过）不变。
+        // 658②（2026-10-14·#658）：**返回块终止转移**——无析构类级联的判空守卫
+        //   需要块模型（endBranch/newBlock），而返回块已被 endReturn 终止（指令
+        //   追加可·终止信息改写不可=返回丢失）。转移=把 终止（termKind/term-
+        //   ReturnValue）整体搬到新汇合块，原返回块改发「判空分支→级联块→汇合」
+        //   链（既有指令序列原样保留在原块=先于分支执行）。仅函数含无析构类局
+        //   部时触发（全有析构=零改动零回归）。
+        const bool hasNoDtorVar = [&]() {
+            if (semantic_ == nullptr) return false;
+            for (const auto& ov : objVars) {
+                if (classDestructorSymbolKey(
+                        types::canonical(ov.srcType)).empty()) {
+                    return true;
+                }
+            }
+            return false;
+        }();
+        std::string movedRetValue;
+        if (hasNoDtorVar) {
+            movedRetValue = block->termReturnValue;
+            block->terminated = false;
+            block->termKind.clear();
+            block->termReturnValue.clear();
+        }
         for (auto ovIt = objVars.rbegin(); ovIt != objVars.rend(); ++ovIt) {
             const ObjVar& ov = *ovIt;
             if (returnedVars.count(ov.unique) > 0) continue;  // 所有权转移：跳过析构
@@ -356,9 +384,33 @@ void IRGenerator::genClassDestructorCalls() {
             //   向量 扩到 栈（平铺模型）+ 链表/队列（链式模型，探针 N 实证原三
             //   容器元素串从不释放）。
             const std::string canonSrc = types::canonical(ov.srcType);
+            // 658②：无析构类先发字段级联（C++ 隐式析构同语义·有析构类=用户
+            //   析构体内已级联不重复——勿双释放幂等判据）。判空守卫块（未执行
+            //   声明路径槽=0——级联 FieldAddr/LoadPtr 无判空，空槽直入=空指针
+            //   解引用 rc=3·探针 658 实锤）；DeleteObject 自带 codegen test/je
+            //   空安全不在此列。
+            if (semantic_ != nullptr &&
+                classDestructorSymbolKey(canonSrc).empty()) {
+                ir::IRValue nonNull = emitResult(
+                    ir::Opcode::Ne,
+                    {objPtr, ir::IRValue::constant("0", "ptr")}, "i1", "",
+                    SourceLocation());
+                const std::string cascadeLabel =
+                    "bb" + std::to_string(blockCounter_++);
+                const std::string mergeLabel =
+                    "bb" + std::to_string(blockCounter_++);
+                endBranch(nonNull.toString(), cascadeLabel, mergeLabel);
+                setCurrentBlock(newBlock(cascadeLabel));
+                emitNoDtorFieldCascade(objPtr, canonSrc, SourceLocation());
+                endJump(mergeLabel);
+                setCurrentBlock(newBlock(mergeLabel));
+            }
             emitContainerElemFreeFor(canonSrc, objPtr, SourceLocation());
             emit(ir::Opcode::DeleteObject, {objPtr}, ir::IRValue(),
                  ov.srcType, "void", SourceLocation());
+        }
+        if (hasNoDtorVar) {
+            endReturn(movedRetValue);   // 终止转移回收：汇合块补回返回终止
         }
     }
 }
@@ -396,6 +448,30 @@ void IRGenerator::emitClassDeleteFor(const std::string& unique,
     ir::IRValue objPtr = emitResult(ir::Opcode::Load,
                                     {ir::IRValue::var(unique, "ptr")},
                                     "ptr", unique, SourceLocation());
+    // 658②（2026-10-14·#658）：**无析构类**先发字段级联释放（C++ 隐式析构同
+    //   语义——无用户析构器≠字段不释放：字符串/盒载荷/类字段级联；
+    //   emitNoDtorFieldCascade 逐字段清槽幂等）。有析构类不进——用户析构体内
+    //   injectFieldCascadeDestroy 已级联，此处重复=双释放（幂等判据）。
+    //   判空守卫块（单层·beginSelfAssignGuard 183-a 同款块模型）：未构造路径
+    //   槽=零初始化空指针——级联 FieldAddr/LoadPtr 无判空（析构体内 this 恒
+    //   有效语境不同），空槽直入=空指针解引用 rc=3（探针 658 实锤）；
+    //   DeleteObject 自带 codegen test/je 空安全不在此列。
+    if (semantic_ != nullptr && classDestructorSymbolKey(
+            types::canonical(canon)).empty()) {
+        ir::IRValue nonNull = emitResult(
+            ir::Opcode::Ne,
+            {objPtr, ir::IRValue::constant("0", "ptr")}, "i1", "",
+            SourceLocation());
+        const std::string cascadeLabel =
+            "bb" + std::to_string(blockCounter_++);
+        const std::string mergeLabel =
+            "bb" + std::to_string(blockCounter_++);
+        endBranch(nonNull.toString(), cascadeLabel, mergeLabel);
+        setCurrentBlock(newBlock(cascadeLabel));
+        emitNoDtorFieldCascade(objPtr, types::canonical(canon), SourceLocation());
+        endJump(mergeLabel);
+        setCurrentBlock(newBlock(mergeLabel));
+    }
     // 容器元素串释放（方案A RAII；74-a 单点事实源——从 向量 扩到 栈/链表/队列，
     //   探针 N 实证原三容器元素串从不释放，各残留 1）
     emitContainerElemFreeFor(canon, objPtr, SourceLocation());

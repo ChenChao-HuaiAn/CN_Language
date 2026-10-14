@@ -477,7 +477,11 @@ TEST(IrOopEmitTest, DeleteObjectRaii) {
     ASSERT_FALSE(del->operands.empty());
 }
 
-// 无析构函数的类局部变量：不发射 DeleteObject（无资源需释放）
+// 无析构函数的类局部变量：仍发射 DeleteObject（658② 2026-10-14 语义变更：
+//   C++ 隐式析构同语义——无用户析构器≠不析构，出口 RAII 发 DeleteObject 释放
+//   对象本体 + 字段级联释放（emitNoDtorFieldCascade·字符串/盒载荷/类字段递归）；
+//   旧断言「零 DeleteObject」随无析构类级联注入立法废止。本例纯数据类无资源
+//   字段=恰一次 DeleteObject（本体）·无 __cn_str_free 字段释放面）
 TEST(IrOopEmitTest, NoDeleteWithoutDtor) {
     auto r = generateIr(R"CN(
 类 纯数据 {
@@ -492,7 +496,12 @@ TEST(IrOopEmitTest, NoDeleteWithoutDtor) {
     ASSERT_TRUE(r.ok) << r.messages;
     const auto* main = findFunction(r.module, "主");
     ASSERT_NE(main, nullptr);
-    EXPECT_EQ(countInst(*main, Opcode::DeleteObject), 0);
+    // 658②：本体释放 DeleteObject 恰一次（extra=类名·析构符号缺失时
+    //   codegen 只 __cn_object_delete——字段级联对本例零资源字段无发射）
+    const auto* del = findInst(*main, Opcode::DeleteObject);
+    ASSERT_NE(del, nullptr);
+    EXPECT_EQ(del->extra, "纯数据");
+    EXPECT_EQ(countInst(*main, Opcode::DeleteObject), 1);
 }
 
 // ==================== 运算符重载降级 ====================

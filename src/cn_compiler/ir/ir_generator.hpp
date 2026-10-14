@@ -784,13 +784,12 @@ private:
     void injectContainerElemDestroy(const std::string& className,
                                     const ClassMemberInfo& mi,
                                     const SourceLocation& loc);
-    // 缺陷3 根治（2026-09-02）：~类名() 体后按字段逆序级联析构「有析构类」字段
-    //   （DeleteObject 空安全；对标 C++ 成员析构语义——原 CN 无字段析构原语，
-    //   容器字段只能泄漏，stdlib 被迫用裸指针+分配/释放 规避组合字段）。
+    // 缺陷3 根治：~类名() 体后按字段逆序级联析构「有析构类」字段（详注见 ir_oop_field.cpp 实现头注）。
     void injectFieldCascadeDestroy(const ClassMember* member);
-    // 860-a（058 挂账②·H7 字段版）：构造函数序言级联构造「有默认构造」本类
-    //   类字段（NewObject+默认构造+StorePtr；与析构侧对称，C++ 成员默认构造
-    //   同构——治构造体未赋值类字段空句柄解引）。
+    // 658②：**无析构类**出口 RAII 字段级联释放（C++ 隐式析构同语义·细则见 ir_oop_field.cpp 实现头注）。
+    void emitNoDtorFieldCascade(const ir::IRValue& objPtr, const std::string& classCanon,
+                                const SourceLocation& loc, int depth = 0);
+    // 860-a：构造函数序言级联构造「有默认构造」本类类字段（与析构侧对称·详注见 ir_oop.cpp 实现头注）。
     void injectFieldCascadeConstruct(const ClassMember* member);
     // #283 甲案（2026-10-08）：类类型字段默认构造级联发射——给定已分配对象指针，
     //   对本类「有严格无参构造」的类字段逐个 NewObject+默认构造+写入字段槽

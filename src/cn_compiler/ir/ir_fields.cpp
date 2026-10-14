@@ -852,3 +852,4 @@ std::string IRGenerator::classCopyCtorSymbolKey(const std::string& canon) const 
 }
 
 }  // namespace cn_compiler
+

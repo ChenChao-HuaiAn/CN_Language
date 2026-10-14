@@ -126,7 +126,25 @@ void IRGenerator::injectFieldCascadeDestroy(const ClassMember* member) {
                 if (mk.second.isDestructor) { hasDtor = true; break; }
             }
         }
-        if (!hasDtor) continue;
+        // 658②（2026-10-14·#658）：无析构类字段不再跳过——C++ 隐式析构完整
+        // 语义（外层有无用户析构器≠字段不析构）：递归 emitNoDtorFieldCascade
+        // （字符串/盒载荷/类字段级联·v2 发射资源字段释放于地址 用户类分支
+        // 同轮同案）。原 continue=嵌套无析构类字段 tracked 泄漏面。
+        if (!hasDtor) {
+            const int offN = semantic_->classFieldOffset(currentClass_, *it);
+            if (offN >= 0) {
+                ir::IRValue thisN = emitResult(
+                    ir::Opcode::Load, {ir::IRValue::var(thisUnique, "ptr")},
+                    "ptr", thisUnique, member->body->location);
+                ir::IRValue addrN = emitResult(
+                    ir::Opcode::FieldAddr, {thisN}, "ptr",
+                    std::to_string(offN), member->body->location);
+                ir::IRValue innerN = emitResult(ir::Opcode::LoadPtr, {addrN},
+                                                "ptr", "", member->body->location);
+                emitNoDtorFieldCascade(innerN, fcanon, member->body->location, 1);
+            }
+            continue;
+        }
         const int offset = semantic_->classFieldOffset(currentClass_, *it);
         if (offset < 0) continue;
         ir::IRValue thisPtr = emitResult(
@@ -138,6 +156,70 @@ void IRGenerator::injectFieldCascadeDestroy(const ClassMember* member) {
                                         member->body->location);
         emit(ir::Opcode::DeleteObject, {objPtr}, ir::IRValue(),
              fcanon, "void", member->body->location);
+    }
+}
+
+// 658②（2026-10-14·#658）：**无析构类**出口 RAII 字段级联释放——C++ 隐式析构
+//   同语义：类无用户析构器时，其字段资源仍须出口释放（宿主同病 差=1 实证：
+//   无析构类字符串字段 函数出口 tracked 泄漏——genBlockExitDestruct/genJump
+//   共用的 emitClassDeleteFor 只 DeleteObject 释放对象本体、genClassDestructor
+//   Calls 更是对无析构类整只跳过）。发射面与 injectFieldCascadeDestroy 同域
+//   （this→FieldAddr→释放）但接收任意对象指针（出口点=变量槽 Load 出的堆指针）：
+//     · 字符串字段 → emitFieldStringFreeAt（free+清槽幂等）；
+//     · 盒载荷字段（可选/结果·T=字符串）→ emitOwnedStrFieldFreesAt（571 收集器
+//       驱动条件释放·__cn_box_class_delete 摘句柄错误态免疫+清槽幂等）；
+//     · 类字段（有析构）→ LoadPtr+DeleteObject（其析构体已含自身字段级联）
+//       +清槽；类字段（无析构）→ 递归（深度限 4 防环·对齐 v2 发射资源字段
+//       释放于地址 同款上限）。
+//   容器字段不注入（宿主有析构类的 injectFieldCascadeDestroy 同缺=既有面·
+//   两侧同病不单侧扩权，呈报台账另行清偿）。有析构类调用方不进（勿双释放）。
+void IRGenerator::emitNoDtorFieldCascade(const ir::IRValue& objPtr,
+                                         const std::string& classCanon,
+                                         const SourceLocation& loc, int depth) {
+    if (semantic_ == nullptr || depth > 4) return;
+    const ClassInfo* ci = semantic_->findClass(types::canonical(classCanon));
+    if (ci == nullptr) return;
+    for (auto it = ci->fieldOrder.rbegin(); it != ci->fieldOrder.rend(); ++it) {
+        const auto f = ci->fields.find(*it);
+        if (f == ci->fields.end() || f->second.isStatic) continue;
+        const std::string ftype = classFieldType(types::canonical(classCanon), *it);
+        if (ftype.empty()) continue;
+        const std::string fcanon = types::canonical(ftype);
+        const int offset = semantic_->classFieldOffset(
+            types::canonical(classCanon), *it);
+        if (offset < 0) continue;
+        ir::IRValue addr = emitResult(ir::Opcode::FieldAddr, {objPtr}, "ptr",
+                                      std::to_string(offset), loc);
+        // 字符串字段：free+清槽（幂等——块出口/函数级兜底多路径共享槽）
+        if (fcanon == "字符串") {
+            emitFieldStringFreeAt(addr, loc);
+            continue;
+        }
+        // 盒载荷字段（可选/结果·T=字符串）：收集器驱动条件释放（571 单点）
+        {
+            const std::string fcanonNorm = canonicalizeSyntheticArgText(fcanon);
+            if (fcanonNorm.rfind("可选$", 0) == 0 ||
+                fcanonNorm.rfind("结果$", 0) == 0) {
+                if (!ownedStrFieldsOf(ftype).empty()) {
+                    emitOwnedStrFieldFreesAt(addr, ftype, loc);
+                }
+                continue;
+            }
+        }
+        // 类字段：有析构=DeleteObject（其体内级联自含）；无析构=递归级联
+        if (ftype.empty() || !semantic_->isClassType(fcanon)) continue;
+        if (classDestructorSymbolKey(fcanon).empty()) {
+            ir::IRValue innerPtr = emitResult(ir::Opcode::LoadPtr, {addr}, "ptr",
+                                              "", loc);
+            emitNoDtorFieldCascade(innerPtr, fcanon, loc, depth + 1);
+            continue;
+        }
+        ir::IRValue objFieldPtr = emitResult(ir::Opcode::LoadPtr, {addr}, "ptr",
+                                             "", loc);
+        emit(ir::Opcode::DeleteObject, {objFieldPtr}, ir::IRValue(), fcanon,
+             "void", loc);
+        ir::IRValue zero = emitResult(ir::Opcode::ConstInt, {}, "i64", "0", loc);
+        emit(ir::Opcode::StorePtr, {addr, zero}, ir::IRValue(), "", "ptr", loc);
     }
 }
 
