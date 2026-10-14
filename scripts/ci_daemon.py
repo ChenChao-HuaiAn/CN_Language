@@ -35,7 +35,11 @@
 #   sccache 命中兜成本·指纹一致轮零税）；构建绿且单测绿才更新指纹（可疑产物下轮必清）。
 #   ②每轮对齐 wt.py 开发树 088 修复：删 .ninja_deps（/showIncludes 被 sccache 吞→陈旧
 #   header deps→ODR 混合对象→静默崩溃）。clean -x 全清不做（每轮全量重编=过度代价·
-#   增量治理由指纹机制承担）。--selftest=生成文本+判定三态轻量自测（零真构建）。
+#   增量治理由指纹机制承担）。--selftest=生成文本+判定三态轻量自测（零真构建·660 起
+#   实现体外迁 ci_daemon_selftest.py·仅 --selftest 分支惰性导入）。
+# 660 兜底跑前过期预检（2026-10-14）：兜底池任务旧序「先跑整轮再判 develop 是否前进」——
+#   被 develop 新头淘汰的陈轮每轮烧整轮算力（池内多行陈轮反复认领空跑·TX_02 OOM 实录）；
+#   修=fetch 后仅 rev-parse FETCH_HEAD 与任务 sha 比对，不等即过期跳过（零构建零副作用）。
 # 兼容 python3.8：注解泛型下标/联合字符串化（287·同 gate_quick 修复缘由）。
 from __future__ import annotations
 
@@ -725,9 +729,27 @@ def 启动心跳(任务分支: str) -> threading.Event:
     return 停
 
 
+def 兜底过期(任务sha: str, develop头sha: str) -> bool:
+    """660（2026-10-14）：兜底轮跑前预检——任务 sha ≠ develop 现头（上方 fetch 的
+    FETCH_HEAD）即过期（该 sha 树由新头轮隐含覆盖·189 语义）→跳过整轮零算力；
+    头空（rev-parse 异常）保守不跳（fail-safe·走原整轮+跑后复查双保险）。"""
+    return bool(develop头sha) and 任务sha != develop头sha
+
+
+def 过期跳过结果(sha: str, 任务分支: str, 头sha: str) -> dict:
+    """189 过期跳过结果构造（660：跑前预检与跑后复查共用=形状单一事实源）：绿=True
+    闭环防重派·不落盘防 latest 被非任务 sha 污染（详情文案两处调用完全一致）。"""
+    return {"sha": sha, "分支": 任务分支, "平台": 平台, "绿": True,
+            "步骤": {"过期跳过": {"rc": 0, "说明": "develop 已前进至 %s——任务 sha 树由新头轮覆盖（189）"
+                                 % 头sha[:10]}},
+            "总秒": 0, "时刻": datetime.now().isoformat(timespec="seconds"),
+            "日志": "", "日志尾部": []}
+
+
 def 池跑任务(任务: dict) -> None:
     """执行认领到的池任务（189 起两类）：预验任务 fetch 预验分支→跑一轮→落盘；
-    兜底任务（ci/兜底-*·非真分支）fetch develop→跑一轮(develop)→落盘。
+    兜底任务（ci/兜底-*·非真分支）fetch develop→跑一轮(develop)→落盘（660：fetch 后
+    FETCH_HEAD≠任务 sha 即跑前过期跳过=零整轮算力·跑后复查保留为双保险）。
     均以 complete 收尾（3 次重试）。落盘复用 落盘()（develop 兜底=latest+result+上报；
     ci/预验- 绿写 latest+上报=develop 轮免重跑联动保留）。"""
     任务分支, sha = 任务["分支"], 任务["sha"]
@@ -749,25 +771,32 @@ def 池跑任务(任务: dict) -> None:
                     "时刻": datetime.now().isoformat(timespec="seconds"),
                     "日志": "", "日志尾部": (取.stderr or "").splitlines()[-5:]}
         elif 兜底:
-            结果 = 带门禁锁跑(sha, "develop")
-            if 结果 is None:      # 291 让出（gate_lock 互忙）——不 complete·心跳停由服务端回收重派
-                print("[池] 本轮让出（gate_lock）——任务将被回收重派", flush=True)
-                return
-            # 过期竞态语义化关闭（189·Rust 无数据竞争思路的服务端等价）：认领期间
-            #   develop 前进→reset 到的是新头≠任务 sha——该 sha 的树已由新头轮隐含覆盖
-            #   （git 树=快照·新头绿⇒含旧提交内容绿）。过期轮不落盘（防 latest 被非
-            #   任务 sha 污染）·complete 绿=True 闭环（服务端不重派·详情留审计）。
-            头 = 运行限时(["git", "rev-parse", "HEAD"], 30,
-                          capture_output=True, text=True, cwd=仓库根)
-            if 头.stdout.strip() != sha:
-                结果 = {"sha": sha, "分支": 任务分支, "平台": 平台, "绿": True,
-                        "步骤": {"过期跳过": {"rc": 0, "说明": "develop 已前进至 %s——任务 sha 树由新头轮覆盖（189）"
-                                             % 头.stdout.strip()[:10]}},
-                        "总秒": 0, "时刻": datetime.now().isoformat(timespec="seconds"),
-                        "日志": "", "日志尾部": []}
-                print("[池] 兜底任务过期跳过（develop 已前进）：%s" % sha[:10], flush=True)
+            # 660（2026-10-14）跑前预检：陈轮（任务 sha 已被 develop 新头淘汰）在此直接
+            #   过期收场——旧序先跑整轮再判过期=陈轮烧整轮算力（池内陈轮反复认领空跑·
+            #   TX_02 OOM 实录）；fetch 已在上方完成，仅 rev-parse FETCH_HEAD 与任务 sha
+            #   比对（零构建·不动工作树·不 reset）。不等→过期跳过；相等→原整轮路径，
+            #   轮内 develop 再前进由下方跑后复查兜底（双保险保留）。
+            预检头 = 运行限时(["git", "rev-parse", "FETCH_HEAD"], 30,
+                             capture_output=True, text=True, cwd=仓库根).stdout.strip()
+            if 兜底过期(sha, 预检头):
+                结果 = 过期跳过结果(sha, 任务分支, 预检头)
+                print("[池] 兜底任务过期跳过（跑前预检·develop 已前进）：%s" % sha[:10], flush=True)
             else:
-                落盘(结果)
+                结果 = 带门禁锁跑(sha, "develop")
+                if 结果 is None:      # 291 让出（gate_lock 互忙）——不 complete·心跳停由服务端回收重派
+                    print("[池] 本轮让出（gate_lock）——任务将被回收重派", flush=True)
+                    return
+                # 过期竞态语义化关闭（189·Rust 无数据竞争思路的服务端等价）：认领期间
+                #   develop 前进→reset 到的是新头≠任务 sha——该 sha 的树已由新头轮隐含覆盖
+                #   （git 树=快照·新头绿⇒含旧提交内容绿）。过期轮不落盘（防 latest 被非
+                #   任务 sha 污染）·complete 绿=True 闭环（服务端不重派·详情留审计）。
+                头 = 运行限时(["git", "rev-parse", "HEAD"], 30,
+                              capture_output=True, text=True, cwd=仓库根).stdout.strip()
+                if 头 != sha:
+                    结果 = 过期跳过结果(sha, 任务分支, 头)
+                    print("[池] 兜底任务过期跳过（跑后复查·develop 已前进）：%s" % sha[:10], flush=True)
+                else:
+                    落盘(结果)
         else:
             结果 = 带门禁锁跑(sha, 任务分支)
             if 结果 is None:      # 291 让出（gate_lock 互忙）——不 complete·心跳停由服务端回收重派
@@ -888,104 +917,12 @@ def 重抢锁(锁) -> None:
         time.sleep(轮询间隔秒)
 
 
-def 自测() -> int:
-    """523+637+657 轻量自测（--selftest）：直调生成/判定函数断言，零真构建零真 git——
-    锁死 win_build.cmd 必含 088 删除行、清建形态配置必含 rmdir、指纹判定三态、
-    预验清产物（637 干净构建·临时目录隔离）、同步后编排正反两态+绿聚合口径
-    （657·648-b 拆链回归自测·AST 结构锁防 elif 互斥复活）。"""
-    import tempfile
-    断言们: list[tuple[str, bool]] = []
-
-    def 断言(名: str, 条件: bool) -> None:
-        断言们.append((名, 条件))
-
-    构建行 = win构建行(Path("vcvars64.bat"))
-    断言("构建脚本含 088 .ninja_deps 删除行",
-         any(".ninja_deps" in l and "del /q" in l for l in 构建行))
-    断言("构建脚本含 cmake --build 行",
-         any("cmake --build target/build-ninja" in l for l in 构建行))
-    断言("构建脚本含 errorlevel 拦截行（构建红显式退 1）",
-         any("if errorlevel 1" in l for l in 构建行))
-    断言("脚本头含 cl 探测行", any("where cl" in l for l in 构建行))
-    清行 = win配置行(Path("vcvars64.bat"), True)
-    净行 = win配置行(Path("vcvars64.bat"), False)
-    断言("清建配置含 rmdir build-ninja 行",
-         any("rmdir /s /q target\\build-ninja" in l for l in 清行))
-    断言("增量配置不含 rmdir", not any("rmdir" in l for l in 净行))
-    断言("两形态配置都含 cmake 配置行",
-         all(any("cmake -G Ninja" in l for l in x) for x in (清行, 净行)))
-    with tempfile.TemporaryDirectory() as 临时:
-        记录 = Path(临时) / "last_build.sha"
-        断言("指纹缺失→清建", 需指纹清建("a" * 40, 记录)[0])
-        记录.write_text("b" * 40 + "\n", encoding="utf-8")
-        断言("指纹一致→不清建", not 需指纹清建("b" * 40, 记录)[0])
-        断言("指纹不一致→清建", 需指纹清建("c" * 40, 记录)[0])
-        断言("HEAD 空头→清建", 需指纹清建("", 记录)[0])
-    # 637 预验前置②干净构建（2026-10-14 用户立法）：预验清产物注入临时目录隔离断言
-    with tempfile.TemporaryDirectory() as 临时:
-        树637 = Path(临时)
-        产物 = 树637 / "target" / "audit2"
-        产物.mkdir(parents=True)
-        (产物 / "v2p_linuxx64").write_text("x", encoding="utf-8")
-        (树637 / "target" / "build" / "cn").parent.mkdir(parents=True)
-        (树637 / "target" / "build" / "cn").write_text("x", encoding="utf-8")
-        断言("637 清产物：target/ 残留态→清干净（含 audit2 v2p 指纹缓存）", 预验清产物(树637))
-        断言("637 清产物：清后 target/ 不复存在（从零构建前提）", not (树637 / "target").exists())
-        断言("637 清产物：无产物态→幂等放行", 预验清产物(树637))
-    # 657（2026-10-14）：648-b 拆链修复的回归自测——编排纯函数正反两态 + 绿聚合
-    #   口径三态 + 对 跑一轮 真实消费面的文本回归锁（上游修法零自测·本件补齐防复发）
-    排 = 同步后编排(0, "ci/预验-abc123", 是win=False)
-    断言("657 正：预验 linux 轮→清产物+linux 构建链并存（配置/构建/单测不缺席）",
-         排["清产物"] and 排["构建段"] == "linux")
-    排 = 同步后编排(0, "ci/预验-abc123", 是win=True)
-    断言("657 正：预验 win 轮→清产物+win 构建链并存",
-         排["清产物"] and 排["构建段"] == "win")
-    排 = 同步后编排(0, "develop", 是win=False)
-    断言("657 反：develop 轮→有构建链无清产物（523 增量口径保持）",
-         not 排["清产物"] and 排["构建段"] == "linux")
-    排 = 同步后编排(0, "ci/兜底-abc123", 是win=True)
-    断言("657 反：兜底轮→有构建链无清产物",
-         not 排["清产物"] and 排["构建段"] == "win")
-    排 = 同步后编排(1, "ci/预验-abc123", 是win=False)
-    断言("657 反：同步失败→清产物/构建段/静态段全不执行（仅同步键）",
-         not 排["清产物"] and not 排["构建段"] and not 排["静态段"])
-    断言("657 复核锁：清产物 rc=-1 → 轮必红（绿聚合含清产物键·integrate 无假绿面）",
-         not 聚合绿({"同步": {"rc": 0}, "清产物": {"rc": -1}, "配置": {"rc": 0},
-                    "构建": {"rc": 0}, "单测": {"rc": 0}, "e2e": {"rc": 0}}))
-    断言("657 复核锁：预验全链六键全 0 → 轮绿",
-         聚合绿({k: {"rc": 0} for k in ("同步", "清产物", "配置", "构建", "单测", "e2e")}))
-    断言("657 复核锁：develop 轮无清产物键 → 不拖红",
-         聚合绿({k: {"rc": 0} for k in ("同步", "配置", "构建", "单测", "e2e")}))
-    import inspect
-    源一轮 = inspect.getsource(跑一轮)
-    断言("657 回归锁：跑一轮 真消费 同步后编排（编排单一事实源）", "同步后编排(" in 源一轮)
-    # 657 回归锁（结构级·AST）：跑一轮 内不得存在「清产物与构建动作同属一条 if/elif 链」
-    #   ——637 互斥吞构建段的结构特征（链命中=构建段被清产物分支短路·TX_02 假红病根）。
-    #   对 637 版必红、对 648-b/657 版绿：优于特征串文本锁——648-b 清产物 elif 保留
-    #   但已拆链（行为正确），按特征串会误报；按链结构判定才是真实拦截。
-    import ast as _ast
-    全部If = [n for n in _ast.walk(_ast.parse(源一轮)) if isinstance(n, _ast.If)]
-    内嵌 = {id(n.orelse[0]) for n in 全部If
-            if len(n.orelse) == 1 and isinstance(n.orelse[0], _ast.If)}
-    互斥链行 = []
-    for 链头 in (n for n in 全部If if id(n) not in 内嵌):
-        动作 = {c.func.id if isinstance(c.func, _ast.Name) else
-                getattr(c.func, "attr", "")
-                for c in _ast.walk(链头) if isinstance(c, _ast.Call)}
-        if "预验清产物" in 动作 and ({"win构建链", "linux构建链", "步骤"} & 动作):
-            互斥链行.append(链头.lineno)
-    断言("657 回归锁：跑一轮 无清产物/构建同链互斥结构（637 吞段形态·AST 级）",
-         not 互斥链行)
-    for 名, ok in 断言们:
-        print("  [%s] %s" % ("OK" if ok else "×", 名))
-    红 = sum(1 for _, ok in 断言们 if not ok)
-    print("== ci_daemon 自测（523+637+657）：%d 断言，%s ==" % (len(断言们), "全绿" if 红 == 0 else "红 %d" % 红))
-    return 0 if 红 == 0 else 1
-
-
 if __name__ == "__main__":
     if "--selftest" in sys.argv:
-        raise SystemExit(自测())
+        # 660（2026-10-14）：自测体外迁 ci_daemon_selftest.py（行数红线·单一职责）——
+        #   仅此分支惰性导入：runner 常驻进程树盘可能为旧版无此模块，顶层导入会炸启动。
+        import ci_daemon_selftest
+        raise SystemExit(ci_daemon_selftest.自测(sys.modules[__name__]))
     常 = "--loop" in sys.argv
     强 = "--force" in sys.argv
     等锁 = "--wait-lock" in sys.argv
