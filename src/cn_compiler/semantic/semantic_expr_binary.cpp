@@ -17,6 +17,14 @@
 namespace cn_compiler {
 
 namespace {
+// 582（604 并案）：编译期溢出诊断「字面量参与域」提示句——481 立法
+//   （001 §3.7/§3.7a）后字面量恒按另一侧操作数类型参与·与赋值目标域解耦
+//   （`整32 和 = 甲 + 1`/`整64 大 = 2147483647 + 1` 新手困惑「1 明明按更宽
+//   域算」而实报字面量恒定级域）。本句在 INT_MIN÷-1 与通用溢出两处消费；
+//   v2 语义检查溢出474.cn 溢出字面量参与域提示582 逐字同源（零分叉）。
+constexpr const char kLiteralDomainHint582[] =
+    "。字面量按另一侧操作数类型参与·与赋值目标域解耦（001 §3.7/§3.7a）";
+
 // 505（G1·501 采样轮）：小型常量折叠求值——编译期预演面专用纯函数（零副作用）。
 //   背景：checkConstIntExprSafety/checkShiftConstWidth 旧取值通道只认直接子节点
 //   字面量（litValue 两处手写提取），嵌套折叠形态 ((30000+30000)*30000000)、
@@ -317,7 +325,8 @@ void SemanticAnalyzer::reportConstOverflow(BinaryExpr* node, std::int64_t vL,
                 diagnostics_.report(DiagnosticLevel::Error, node->location,
                                     "编译期整数溢出：INT_MIN / -1（或 % -1）结果超出"
                                     "类型 '" + rt + "' 范围（除法唯一溢出形态·"
-                                    "任务 474 错误码 8 对齐）");
+                                    "任务 474 错误码 8 对齐）" +
+                                    kLiteralDomainHint582);
             } else if (hasRange && node->op != Operator::Divide &&
                        node->op != Operator::Modulo) {
                 bool overflow = false;
@@ -356,7 +365,8 @@ void SemanticAnalyzer::reportConstOverflow(BinaryExpr* node, std::int64_t vL,
                     diagnostics_.report(DiagnosticLevel::Error, node->location,
                                         "编译期整数溢出：常量表达式结果超出类型 '" +
                                         rt + "' 范围（Rust debug 溢出检查对齐；"
-                                        "变量面回绕语义由运行时通道承载）");
+                                        "变量面回绕语义由运行时通道承载）" +
+                                        kLiteralDomainHint582);
                 }
             }
 }
