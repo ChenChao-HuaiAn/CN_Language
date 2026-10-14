@@ -8,13 +8,16 @@
 # 1021 预验执行器池化：常驻循环加「池优先段」——先向 TX_01 认领预验任务（task_claim·写锁内
 #   原子），领到=fetch 该预验分支→跑一轮→task_complete（跑期间后台线程心跳续约·断了被服务端
 #   回收重派）；没领到/池不可达→原有 develop 轮询行为不变（三层降级：池→ssh 直发→逃生门）。
-#   CN_CI_ROLE=pool（家机 WSL2 实例）=纯池角色不轮询 develop；TX_02 无此 env=池+develop 双职。
-#   多实例支持（家机 7 runner）：每实例独立工作目录（各自 flock/克隆）+CN_RUNNER_ID 区分身份。
+#   多实例支持（家机 runner）：每实例独立工作目录（各自 flock/克隆）+CN_RUNNER_ID 区分身份。
 # 189 兜底池化（2026-10-07 用户裁决丙案）：develop 轮真跑前两道优化——①纯文档轮免兜底
 #   （基线..新头 变更集全 .md→免跑留档·result 档案幂等防重复判定·任何异常/非 md 文件
-#   照跑=fail-safe 默认）②混合变更入池（task_enqueue ci/兜底-<sha10>·runner 池谁闲谁
-#   认领·TX_02 本职轮下周期也参与认领·入池失败降级本机跑=门禁永不缺位·本地有红档不入
-#   池防池内死循环重跑）。--force 每日 cron 与点名预验不受影响=门禁语义保持。
+#   照跑=fail-safe 默认）②混合变更入池（task_enqueue ci/兜底-<sha10>·入池失败降级本机
+#   跑=门禁永不缺位）。--force 每日 cron 与点名预验不受影响=门禁语义保持。
+# 770 develop 验证重造（2026-10-14 用户三条裁决）：①头变化必验不可跳过——删「已跑过/
+#   池已绿」跳过（1008 零重复算力联动废止·预验绿过的头 develop 面仍复验），纯文档免跑保留；
+#   ②派发=服务端 win→linux→arm64 游标轮转+平台内随机空闲+该平台全忙顺序跳平台（服务端
+#   queue_service 落地·客户端零派发逻辑）；③所有实例统一「池认领+轮询发现新头入池（幂等
+#   已入池集合防重）」——CN_CI_ROLE 角色区分废止（env 保留仅供 run_e2e CI 识别与旧部署兼容）。
 # 用法：--loop  常驻轮询（systemd 服务）
 #       --once  单轮检查（SHA 未变跳过；配 --force 无条件跑一轮=每日 cron 兜底）
 # 部署：/etc/systemd/system/cn-ci.service（ExecStart=... --loop·Restart=always）
@@ -85,7 +88,7 @@ e2e并行 = int(os.environ.get("CN_E2E_JOBS", "6" if 是win else "3"))
 单轮总超时秒 = 3 * 3600    # 防挂死（构建+单测+E2E+串行复验的理论上界）
 远端名 = "origin"
 分支 = os.environ.get("CN_CI_BRANCH", "develop")   # 常规盯 develop；任务分支预验=PR CI 同款用法
-角色 = os.environ.get("CN_CI_ROLE", "")            # "pool"=纯池角色（家机实例·不轮询 develop）
+角色 = os.environ.get("CN_CI_ROLE", "")            # 770 起不再区分（统一池·env 仅供 run_e2e CI 识别与旧部署兼容）
 runner标识 = os.environ.get("CN_RUNNER_ID", socket.gethostname())   # 池内身份（认领/心跳/完成）
 心跳间隔秒 = 60            # task_heartbeat 周期（服务端 CN_TASK_STALE_SEC=300 回收阈值）
 仓库根 = Path(__file__).resolve().parent.parent
@@ -200,8 +203,8 @@ def 纯文档变更(基线sha: str, 新sha: str) -> tuple[bool, str]:
 
 
 def 免跑留档(sha: str, 缘由: str) -> None:
-    """纯文档轮免跑留档（189）：走既有 result 档案机制（develop 语义=latest+result+上报）
-    ——「已跑过(sha)」据此自动跳过=幂等零重复判定；结果页可审计（绿=门禁无需全量·
+    """纯文档轮免跑留档（189·770 保留）：走既有 result 档案机制（develop 语义=latest+result+
+    上报）——本地 result 档据此防重复入池=幂等零重复判定；结果页可审计（绿=门禁无需全量·
     步骤字段明记免跑缘由）。绿 的口径：result「绿」由 同步/配置/构建/单测/e2e 键聚合
     （跑一轮 同款），免跑结果无这些键→聚合为 True——语义=「本 sha 无需全量即合规」。"""
     步骤字段 = {"免跑": {"rc": 0, "说明": "纯文档轮免兜底（189）·" + 缘由}}
@@ -215,8 +218,9 @@ def 免跑留档(sha: str, 缘由: str) -> None:
 
 
 def 兜底入池(sha: str) -> bool:
-    """②兜底轮入池（189）：develop 新头提交 ci/兜底-<sha10> 任务给 runner 池
-    （谁空闲谁认领·TX_02 本职轮下周期也会认领）。入池失败（池不可达/拒绝）→ False
+    """develop 验证任务入池（189 引入·770 派发语义升级）：develop 新头提交 ci/兜底-<sha10>
+    任务给验证池——服务端按 win→linux→arm64 游标轮转指派平台+平台内随机空闲+全忙放宽
+    （queue_service 落地·客户端零派发逻辑）。入池失败（池不可达/拒绝）→ False
     （调用方降级本机跑=三层降级精神·门禁永不因池而缺位）。"""
     配置 = 池配置()
     if not 配置["池地址"]:
@@ -586,12 +590,12 @@ def 跑一轮(sha: str, 轮分支: str = "") -> dict:
 
 
 def 落盘(结果: dict) -> None:
-    """结果落盘+可选上报（1008·预验模式规则）：
+    """结果落盘+可选上报（1008·预验模式规则·770 修订）：
     - develop 常规轮：latest.json + result_*.json + 上报（既有行为）。
     - 非 develop 分支（CN_CI_BRANCH 预验）：
       · 恒写 预验_<sha10>.json（integrate.py 轮询取回的契约文件）+ result_*.json（历史档）；
-      · ci/预验-* 且绿 → 额外写 latest.json+上报：链顶即将成为 develop 头，develop 轮询轮
-        按「已跑过(sha)」跳过=云端零重复算力（1008 方案甲核心联动）；
+      · ci/预验-* 且绿 → 额外写 latest.json+上报：链顶即将成为 develop 头（1008 方案甲；
+        770 起 develop 面仍复验·此处 latest 语义=「最近被验证的头」供免跑判据）；
       · ci/预验-* 且红 → 不写 latest 不上报（develop 未收到该提交——latest 必须保持 develop 语义）；
       · 任务分支预验（028 §三·PR CI 同款）→ 上报（带 分支 字段·结果页可区分），不写 latest。
     """
@@ -637,21 +641,6 @@ def 上报(结果: dict) -> None:
         urllib.request.urlopen(请求, timeout=10)
     except Exception as e:
         print("[警告] 上报失败（不影响本地结果）：%s" % e, flush=True)
-
-
-def 已跑过(sha: str) -> bool:
-    """该 SHA 是否已有**绿**的 result_*.json（1008 修正：预验绿会覆盖 latest.json〔链顶=未来
-    develop 头〕，单看 latest 会把刚验过的 develop 头误判未跑→重复全量；按 result 历史档的
-    绿记录判定——预验绿的链顶 push 后 develop 轮据此跳过=云端零重复算力。红 result 不算数：
-    红 sha 若经 --no-cloud-gate 逃生门上了 develop，仍须 develop 轮真验）。
-    1021：预验可能被池内其他实例（家机 WSL2）领跑——本机无 result 文件，须并查 池已绿()。"""
-    for 文件 in 日志目录.glob("result_%s_*.json" % sha[:10]):
-        try:
-            if json.loads(文件.read_text(encoding="utf-8")).get("绿"):
-                return True
-        except Exception:
-            continue
-    return False
 
 
 # ═══════════════ 1021 预验执行器池（TX_01 认领池客户端·家机/TX_02 同构） ═══════════════
@@ -701,22 +690,6 @@ def 池认领任务() -> dict | None:
     if 回 and 回.get("ok"):
         return 回.get("任务")
     return None
-
-
-def 池已绿(sha: str) -> bool:
-    """零重复算力联动（1008 在池化下的续接）：该 sha 是否已被池内任一实例验绿——
-    预验在家机跑绿后 push develop，TX_02 develop 轮据此跳过。池不可达/未配置 → False
-    （回退本地 result 判定）。"""
-    配置 = 池配置()
-    if not 配置["池地址"]:
-        return False
-    try:
-        with urllib.request.urlopen(配置["池地址"].rstrip("/") + "/api/state", timeout=10) as r:
-            任务们 = json.loads(r.read().decode("utf-8")).get("预验任务") or []
-    except Exception:
-        return False
-    return any(t.get("sha") == sha and t.get("状态") == "完成" and t.get("绿")
-               for t in 任务们)
 
 
 def 启动心跳(任务分支: str) -> threading.Event:
@@ -826,6 +799,7 @@ def 池跑任务(任务: dict) -> None:
 def 主(常驻: bool, 强制: bool, 等锁: bool = False) -> int:
     日志目录.mkdir(exist_ok=True)
     锁 = (锁文件.open("a+"))
+    已入池: set[str] = set()   # 770：本轮常驻期已入池的头（幂等防重——服务端幂等兜底·此处省每轮空 POST）
     # 184 锁模型治本（1021 饿死实录）：锁从「进程生命周期级」改「轮次级」——常驻每轮
     #   跑完释放（LOCK_UN）、下轮重抢；ssh 点名 --wait-lock 的等待=至多**当前轮完成**
     #   （而非等常驻进程退出）即可插队。923 OOM 铁律不变：锁窗内同机只跑一个全量。
@@ -843,7 +817,8 @@ def 主(常驻: bool, 强制: bool, 等锁: bool = False) -> int:
     while True:
         # ── 1021 池优先段：只在本职分支 develop 时进池（CN_CI_BRANCH 点名模式=ssh 直发
         #    降级路径·被点名跑指定预验分支，不抢池内别的任务）；锁在手=同机单任务
-        #    （923 OOM 铁律——家机 7 实例各持各的锁文件）。
+        #    （923 OOM 铁律——家机各实例各持各的锁文件）。770：所有实例统一此路径
+        #    （角色区分废止——预验与 develop 验证同池认领，派发语义在服务端）。
         if 分支 == "develop":
             任务 = 池认领任务()
             if 任务:
@@ -854,25 +829,15 @@ def 主(常驻: bool, 强制: bool, 等锁: bool = False) -> int:
                 time.sleep(轮询间隔秒)
                 重抢锁(锁)
                 continue
-            if 角色 == "pool":      # 纯池角色（家机实例）无任务→空闲休眠
-                if not 常驻:
-                    return 0
-                放锁(锁)
-                time.sleep(轮询间隔秒)
-                重抢锁(锁)
-                continue
-        # ── 原有轮询（TX_02 develop 本职 / CN_CI_BRANCH 点名预验）
+        # ── develop 轮询（770：所有实例统一——发现新头→入池派发；头变化必验不可跳过）
         sha = 取远端SHA()
         if sha is None:
             print("[警告] ls-remote 失败——下轮重试", flush=True)
-        elif (已跑过(sha) or 池已绿(sha)) and not 强制:   # 1021：并查池绿记录（预验可能他实例跑的）
-            print("[跳过] %s 已跑过" % sha[:10], flush=True)
         else:
-            # ── 189 兜底池化（2026-10-07 用户裁决丙案）：develop 轮真跑前两道优化——
-            #    ①纯文档轮免兜底（变更集全 .md→免跑留档·幂等防重复判定）
-            #    ②混合变更入池（runner 池谁闲谁跑·入池失败降级本机=门禁永不缺位）。
-            #    --force（每日 cron 兜底）与点名预验分支不受影响=门禁语义保持。
-            #    本地已有红档不入池（防池内死循环重跑红兜底·重跑由本机承担=原行为）。
+            # ── 189 纯文档免兜底（770 保留：变更集全 .md→免跑留档·编译器零变化不烧全量；
+            #    其余任何头一律入池真验——「已跑过/池已绿」跳过已废止=预验绿过的头仍复验）。
+            #    入池失败（池不可达）降级本机跑=门禁永不缺位；本地已有该 sha 红档不入池
+            #    （终态已记录·重跑同红无益，新头自然覆盖）。
             if 分支 == "develop" and not 强制:
                 基线 = 上次已验SHA()
                 if 基线 and 基线 != sha:
@@ -885,7 +850,10 @@ def 主(常驻: bool, 强制: bool, 等锁: bool = False) -> int:
                         time.sleep(轮询间隔秒)
                         重抢锁(锁)
                         continue
-                if not list(日志目录.glob("result_%s_*.json" % sha[:10])) and 兜底入池(sha):
+                if (sha not in 已入池
+                        and not list(日志目录.glob("result_%s_*.json" % sha[:10]))
+                        and 兜底入池(sha)):
+                    已入池.add(sha)   # 入池成功即记（服务端幂等终态兜底·常驻期不重复 POST）
                     if not 常驻:
                         return 0
                     放锁(锁)

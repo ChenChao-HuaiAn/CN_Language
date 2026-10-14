@@ -7,6 +7,13 @@
 #   谁认领·治单 TX_02 串行排队）——task_enqueue/task_claim/task_heartbeat/task_complete；
 #   心跳断 CN_TASK_STALE_SEC（默认 300s）服务端回收重派（家机睡眠/关机不黑洞）；
 #   心跳时戳=服务端收到时刻（免疫 WSL 时钟漂移）；认领原子性靠 写锁+单线程写保证。
+# 770 develop 验证平台轮转（2026-10-14 用户三条裁决）：①develop 头变化必验不可跳过——
+#   ci/兜底-* 任务由服务端按 win-x64→linux-x86_64→linux-arm64 游标轮转指派平台，平台内
+#   「随机挑空闲」由认领竞争天然形成（同平台多实例谁先空闲谁领）；该平台全忙（注册实例全在
+#   执行中）→认领限制直接放宽 NULL=顺序由下一平台的空闲机器执行；行排队超
+#   CN_DEVELOP_PLAT_SWITCH_SEC 仍无人领（平台饿死兜底）→claim 时惰性放宽 NULL。
+#   ②预验全池随机空闲（现状认领模型即语义）。③/api/state 增「池忙闲」=integrate 忙时
+#   拼车组链窗口与巡检的忙闲判定源。客户端对兜底任务传的认领限制一律忽略（服务端轮转唯一权威）。
 # API（POST 须 Bearer 令牌·GET 只读放行）：
 #   GET  /            人类可读结果页（最新门禁+历史+队列+预验任务池）
 #   GET  /api/state   {队列:[…], 门禁最近:[…], 预验任务:[…]}
@@ -57,9 +64,49 @@ db路径 = os.environ.get("CN_QUEUE_DB",
 #   热路径·562 修复审查 P2-2）——退避窗口内直接核不了=放行，防「端口在但持续 500」时
 #   每次写操作都同步等一次 HTTP、写锁持有期全队列写串行停顿（3s×每 60s 一次全队列卡顿）。
 并入检测退避秒 = 60
+# 770 develop 平台轮转：游标序与跳平台阈值——轮转=跨头平台轮换（win→linux→arm64 循环）；
+#   阈值=轮转限制任务排队超此秒数无人领（该平台全忙/离线）→claim 惰性放宽不限（防平台饿死）。
+兜底轮转平台序 = ("win-x64", "linux-x86_64", "linux-arm64")
+兜底跳平台阈值秒 = int(os.environ.get("CN_DEVELOP_PLAT_SWITCH_SEC", "300"))
 
 写锁 = threading.Lock()          # SQLite 写串行化（读靠 WAL 并发）
 时区时刻 = lambda: datetime.now().strftime("%m-%d %H:%M:%S")   # 911 教训：秒级戳
+# 770：兜底轮转游标（内存态·重启从头轮起无妨）与实例注册表（runner→平台·claim 自报刷新·
+#   服务重启重建——冷启动平台有空闲保守 True 不阻塞轮转，限制领不上由阈值放宽兜底）。
+兜底轮转游标 = {"i": 0}
+实例注册: dict[str, str] = {}
+
+
+def 行龄秒(更新: str) -> float | None:
+    """更新时刻（%m-%d %H:%M:%S 秒级戳·无年份补当前年）距今秒数；坏串=None（宁窄不放）。
+    跨年旧行得负差→调用处按「>阈值」比较自然为假=不放宽（同 456 宁漏收口径）。"""
+    try:
+        return (datetime.now() -
+                datetime.strptime(更新, "%m-%d %H:%M:%S").replace(year=datetime.now().year)
+                ).total_seconds()
+    except ValueError:
+        return None
+
+
+def 平台有空闲(平台: str) -> bool:
+    """770：该平台注册实例数 > 该平台执行中行数=有空闲；注册表无该平台实例（冷启动/
+    从未 claim）→保守 True（不阻塞轮转——限制照打，领不上由阈值放宽兜底）。须持写锁。"""
+    们 = [r for r, p in 实例注册.items() if p == 平台]
+    if not 们:
+        return True
+    占用 = {行[0] for 行 in con.execute(
+        "SELECT 认领者 FROM 预验任务 WHERE 状态='执行中' AND 认领者 IS NOT NULL").fetchall()}
+    return sum(1 for r in 们 if r in 占用) < len(们)
+
+
+def 池忙闲快照() -> dict:
+    """770：池忙闲（integrate 忙时拼车窗口与巡检的判定源）——注册实例数/执行中数/池全忙。
+    全忙=有注册实例且执行中数≥注册数（每台都在跑）；无注册（冷启动）=不算全忙。须持写锁。"""
+    执行中 = con.execute(
+        "SELECT COUNT(*) FROM 预验任务 WHERE 状态='执行中'").fetchone()[0]
+    注册 = len(实例注册)
+    return {"注册实例": 注册, "执行中": 执行中,
+            "池全忙": bool(注册 and 执行中 >= 注册)}
 
 
 def 建库() -> sqlite3.Connection:
@@ -287,6 +334,17 @@ def 处理写(名: str, 数据: dict) -> dict:
                 if 源分支已并入(源分支) is True:
                     return {"ok": False,
                             "说明": "源分支 %s 已并入 develop（台账已销账）——预验无意义·拒绝入池（562）" % 源分支}
+                if 分支.startswith("ci/兜底-"):
+                    # 770 develop 平台轮转：游标 win→linux-x86_64→linux-arm64 循环指派平台——
+                    #   该平台有空闲→限制=该平台（轮转语义落位·平台内随机空闲由认领竞争天然形成）；
+                    #   该平台全忙→限制=NULL（放宽·先空闲先领=用户裁决「顺序由下一轮平台执行」）。
+                    #   客户端传的限制对兜底一律忽略（服务端轮转唯一权威）；行饿死由 claim 阈值放宽兜底。
+                    #   打标仅在新建行时（幂等重发不空推游标）。
+                    轮平台 = 兜底轮转平台序[兜底轮转游标["i"] % len(兜底轮转平台序)]
+                    兜底轮转游标["i"] += 1
+                    认领限制 = 轮平台 if 平台有空闲(轮平台) else None
+                    print("[兜底轮转] %s → %s（%s）" % (分支, 轮平台,
+                          "指派" if 认领限制 else "全忙放宽不限"), flush=True)
                 con.execute("INSERT INTO 预验任务(分支,sha,源分支,认领限制,状态,入队时刻,更新时刻) "
                             "VALUES(?,?,?,?,'排队',?,?)", (分支, sha, 源分支, 认领限制, 时区时刻(), 时区时刻()))
             elif 已有[0] == "完成" and not 已有[1] and not 分支.startswith("ci/兜底-"):
@@ -304,14 +362,28 @@ def 处理写(名: str, 数据: dict) -> dict:
             # 337 认领限制：runner 自报平台（win-x64/linux-x86_64/linux-arm64·294 三分）——
             #   只领「不限」或白名单含本平台的任务；旧客户端不报=空串→只领不限任务（不会错跑限制任务）。
             平台337 = str(数据.get("平台", ""))
+            if 平台337:
+                实例注册[runner] = 平台337   # 770：注册表刷新（平台忙闲判定与池全忙快照的数据源）
             现在 = int(time.time())
             con.execute("UPDATE 预验任务 SET 状态='排队',认领者=NULL,心跳时戳=NULL,更新时刻=? "
                         "WHERE 状态='执行中' AND 心跳时戳 IS NOT NULL AND 心跳时戳<?",
                         (时区时刻(), 现在 - 心跳超时秒))
-            # 189 兜底池化：预验任务优先认领（集成吞吐保序）——池内同存 ci/预验-* 与
+            # 770 跳平台兜底：轮转限制的兜底任务排队超阈值仍无人领（该平台全忙/离线饿死）→
+            #   限制惰性放宽 NULL——任何平台空闲实例可领（用户裁决「该平台全忙由下一轮平台执行」
+            #   的运行期兜底形态；入池时的即时放宽是快路径，此处是慢路径保险）。坏串行龄 None=不动。
+            for 分支770, 更新770 in con.execute(
+                    "SELECT 分支,更新时刻 FROM 预验任务 WHERE 状态='排队' AND 分支 LIKE 'ci/兜底-%' "
+                    "AND 认领限制 IS NOT NULL AND 认领限制!=''").fetchall():
+                龄 = 行龄秒(更新770)
+                if 龄 is not None and 龄 > 兜底跳平台阈值秒:
+                    con.execute("UPDATE 预验任务 SET 认领限制=NULL,更新时刻=? WHERE 分支=?",
+                                (时区时刻(), 分支770))
+                    print("[兜底放宽] %s 排队超 %ds 无人领——限制放宽不限（770 跳平台兜底）"
+                          % (分支770, 兜底跳平台阈值秒), flush=True)
+            # 189/770 兜底池化：预验任务优先认领（集成吞吐保序）——池内同存 ci/预验-* 与
             #   ci/兜底-* 时先派预验（兜底=develop 已入库的稳态验证·晚跑无损）；无预验排队
             #   才派兜底。零 schema 变更=按分支前缀两级查询。337：两级查询同带认领限制过滤
-            #   （兜底任务恒 NULL 不限=任何 runner 可领·门禁永不缺位）。
+            #   （兜底限制=770 服务端轮转平台·全忙/超阈值放宽 NULL）。
             认领过滤337 = ("AND (认领限制 IS NULL OR 认领限制='' "
                            "OR ','||认领限制||',' LIKE '%,'||?||',%')")
             # 562 已并入检测：选出任务后核源分支——已并入 develop（台账 ✅）=孤儿预验
@@ -379,8 +451,8 @@ HTML页 = """<!doctype html><html><head><meta charset="utf-8"><title>CN 队列/�
 table{border-collapse:collapse;background:#fff}td,th{border:1px solid #d0d7de;padding:5px 10px;
 font-size:14px}.绿{color:#1a7f37;font-weight:600}.红{color:#cf222e;font-weight:600}
 .执行中{color:#9a6700;font-weight:600}</style></head>
-<body><h2>最新门禁（develop 每推送自动跑·TX_02 云 CI）</h2>__门禁表__
-<h2>预验任务池（多 runner 认领·1021）</h2>__任务表__
+<body><h2>最新门禁（develop 每头必验·win→linux→arm64 轮转·770）</h2>__门禁表__
+<h2>验证池（预验=全池随机空闲·develop=平台轮转·1021/770）</h2>__任务表__
 <h2>集成队列（服务端·零 git 提交）</h2>__队列表__<p>生成于 __时刻__</p></body></html>"""
 
 
@@ -407,7 +479,8 @@ class 处理器(BaseHTTPRequestHandler):
             with 写锁:
                 回收死行()   # 456+562：批主/报名会话死亡后无写活动，靠轮询/网页查看触发回收
                 return self.回JSON({"队列": 队列快照(), "门禁最近": 门禁快照(),
-                                    "预验任务": 预验任务快照()})
+                                    "预验任务": 预验任务快照(),
+                                    "池忙闲": 池忙闲快照()})   # 770：integrate 拼车窗口/巡检判定源
         if 路径 == "/api/task_result":
             # 按 sha10 查（分支=ci/预验-<sha10>·URL 保持纯 ASCII 免编码坑）
             sha10 = (parse_qs(urlparse(self.path).query).get("sha") or [""])[0]
@@ -526,27 +599,32 @@ if __name__ == "__main__":
         r = 处理写("join", {"分支": "错误名", "基线": "x", "写集摘要": ""})
         断言(not r["ok"], "非任务/ 分支拒绝")
 
-        # ── 189 兜底池化：任务池场景矩阵（enqueue 放宽/claim 预验优先/兜底红终态） ──
+        # ── 189/770 兜底池化：入队放宽/claim 预验优先/兜底红终态（轮转语义见下 770 段） ──
         r = 处理写("task_enqueue", {"分支": "ci/兜底-aaaa000001", "sha": "a" * 40})
         断言(r["ok"], "189 兜底任务入队放宽（ci/兜底- 前缀）")
+        行770a = next(r2 for r2 in 预验任务快照() if r2["分支"] == "ci/兜底-aaaa000001")
+        断言(行770a["认领限制"] == "win-x64",
+             "770 轮转首棒=win-x64（注册表冷启动保守视为有空闲·限制照打）")
         处理写("task_enqueue", {"分支": "ci/预验-aaaa000002", "sha": "b" * 40})
         r = 处理写("task_enqueue", {"分支": "develop", "sha": "c" * 40})
         断言(not r["ok"], "189 非法前缀仍拒（develop 裸名不入池）")
         t = 处理写("task_claim", {"runner": "r1"})["任务"]
         断言(t and t["分支"] == "ci/预验-aaaa000002", "189 claim 预验优先（集成吞吐保序）")
-        t = 处理写("task_claim", {"runner": "r2"})["任务"]
-        断言(t and t["分支"] == "ci/兜底-aaaa000001", "189 预验空后派兜底")
+        t = 处理写("task_claim", {"runner": "r2", "平台": "win-x64"})["任务"]
+        断言(t and t["分支"] == "ci/兜底-aaaa000001", "189 预验空后派兜底（770 轮转平台实例领到）")
         断言(处理写("task_claim", {"runner": "r3"})["任务"] is None, "189 池空")
         处理写("task_complete", {"runner": "r2", "分支": "ci/兜底-aaaa000001", "绿": False,
                                  "结果": {"绿": False}})
         处理写("task_enqueue", {"分支": "ci/兜底-aaaa000001", "sha": "a" * 40})
-        断言(处理写("task_claim", {"runner": "r4"})["任务"] is None,
+        断言(处理写("task_claim", {"runner": "r4", "平台": "win-x64"})["任务"] is None,
              "189 兜底完成红=终态不重置（防池内死循环重跑）")
         处理写("task_complete", {"runner": "r1", "分支": "ci/预验-aaaa000002", "绿": False,
                                  "结果": {"绿": False}})
         处理写("task_enqueue", {"分支": "ci/预验-aaaa000002", "sha": "b" * 40})
         t = 处理写("task_claim", {"runner": "r5"})["任务"]
         断言(t and t["分支"] == "ci/预验-aaaa000002", "189 预验完成红维持重置重跑（flaky 机会·原语义）")
+        处理写("task_complete", {"runner": "r5", "分支": "ci/预验-aaaa000002", "绿": True,
+                                 "结果": {"绿": True}})
 
         # ── 337 认领限制：平台白名单（runner 自报平台过滤·旧客户端只领不限任务） ──
         处理写("task_enqueue", {"分支": "ci/预验-bbbb000003", "sha": "d" * 40,
@@ -564,12 +642,70 @@ if __name__ == "__main__":
         处理写("task_enqueue", {"分支": "ci/预验-bbbb000003", "sha": "d" * 40})   # 重发不带限制→刷新不限
         t = 处理写("task_claim", {"runner": "r_arm", "平台": "linux-arm64"})["任务"]
         断言(t and t["分支"] == "ci/预验-bbbb000003", "337 完成红重发不带限制=刷新为不限（发起方最新意图）")
+        处理写("task_complete", {"runner": "r_arm", "分支": "ci/预验-bbbb000003", "绿": True,
+                                 "结果": {"绿": True}})   # 770 清场：防占用 arm64 忙闲判定影响轮转断言
+        # ── 770 develop 平台轮转：客户端限制忽略/游标循环（win→linux→arm64）/池忙闲 ──
         处理写("task_enqueue", {"分支": "ci/兜底-cccc000004", "sha": "e" * 40, "认领限制": "win-x64"})
-        断言(处理写("task_claim", {"runner": "r_arm", "平台": "linux-arm64"})["任务"] is None,
-             "337 兜底带白名单 win-x64 同被过滤（统一按任务语义·非按类豁免）")
+        行770 = next(r2 for r2 in 预验任务快照() if r2["分支"] == "ci/兜底-cccc000004")
+        断言(行770["认领限制"] == "linux-x86_64",
+             "770 兜底客户端限制被忽略（服务端轮转唯一权威）·游标第二棒=linux-x86_64")
+        断言(处理写("task_claim", {"runner": "r_win", "平台": "win-x64"})["任务"] is None,
+             "770 非轮转平台领不到轮转限制任务（win 棒已过）")
+        t = 处理写("task_claim", {"runner": "r_linux", "平台": "linux-x86_64"})["任务"]
+        断言(t and t["分支"] == "ci/兜底-cccc000004",
+             "770 轮转平台空闲实例领到（平台内随机=认领竞争天然形成）")
+        处理写("task_complete", {"runner": "r_linux", "分支": "ci/兜底-cccc000004", "绿": True,
+                                 "结果": {"绿": True}})
         处理写("task_enqueue", {"分支": "ci/兜底-dddd000005", "sha": "f" * 40})   # daemon 路径=不带限制
+        行770b = next(r2 for r2 in 预验任务快照() if r2["分支"] == "ci/兜底-dddd000005")
+        断言(行770b["认领限制"] == "linux-arm64", "770 游标第三棒=linux-arm64（win→linux→arm64 循环）")
         t = 处理写("task_claim", {"runner": "r_arm", "平台": "linux-arm64"})["任务"]
-        断言(t and t["分支"] == "ci/兜底-dddd000005", "337 兜底默认不限=任何 runner 可领（门禁永不缺位）")
+        断言(t and t["分支"] == "ci/兜底-dddd000005", "770 arm64 轮转棒领到")
+        处理写("task_complete", {"runner": "r_arm", "分支": "ci/兜底-dddd000005", "绿": True,
+                                 "结果": {"绿": True}})
+        处理写("task_enqueue", {"分支": "ci/兜底-eeee000006", "sha": "6" * 40})
+        行770c = next(r2 for r2 in 预验任务快照() if r2["分支"] == "ci/兜底-eeee000006")
+        断言(行770c["认领限制"] == "win-x64", "770 游标循环回归=第四棒回 win-x64")
+        t = 处理写("task_claim", {"runner": "r_win2", "平台": "win-x64"})["任务"]
+        断言(t and t["分支"] == "ci/兜底-eeee000006", "770 win 棒回归后 win 实例领到")
+        处理写("task_complete", {"runner": "r_win2", "分支": "ci/兜底-eeee000006", "绿": True,
+                                 "结果": {"绿": True}})
+
+        # ── 770 平台全忙→限制放宽 NULL（顺序由下一平台执行·用户裁决） ──
+        处理写("task_enqueue", {"分支": "ci/预验-g111111111", "sha": "7" * 40})
+        处理写("task_enqueue", {"分支": "ci/预验-g222222222", "sha": "8" * 40})
+        t = 处理写("task_claim", {"runner": "w1", "平台": "win-x64"})["任务"]
+        断言(t and t["分支"] == "ci/预验-g111111111", "770 前置：w1 注册 win 并领预验（预验优先）")
+        t = 处理写("task_claim", {"runner": "w2", "平台": "win-x64"})["任务"]
+        断言(t and t["分支"] == "ci/预验-g222222222", "770 前置：w2 注册 win 并领预验")
+        兜底轮转游标["i"] = 0   # 游标重置到 win 棒（直控内存态·测全忙分支）
+        for _虚 in ("r2", "r4", "r_win", "r_win2"):   # 清前段虚构 win 实例·隔离「win 2/2 全忙」场景
+            实例注册.pop(_虚, None)
+        处理写("task_enqueue", {"分支": "ci/兜底-ffff000007", "sha": "9" * 40})
+        行770d = next(r2 for r2 in 预验任务快照() if r2["分支"] == "ci/兜底-ffff000007")
+        断言(行770d["认领限制"] is None,
+             "770 轮转平台全忙（win 2/2 执行中）→限制放宽 NULL=顺序由下一平台执行")
+        t = 处理写("task_claim", {"runner": "l1", "平台": "linux-x86_64"})["任务"]
+        断言(t and t["分支"] == "ci/兜底-ffff000007", "770 放宽后 linux 空闲实例领到 develop 验证")
+        处理写("task_complete", {"runner": "l1", "分支": "ci/兜底-ffff000007", "绿": True,
+                                 "结果": {"绿": True}})
+
+        # ── 770 轮转限制排队超阈值→claim 惰性放宽（平台饿死兜底·win 可领 linux 棒） ──
+        兜底轮转游标["i"] = 1   # 游标重置到 linux 棒
+        处理写("task_enqueue", {"分支": "ci/兜底-h111111111", "sha": "a" * 40})
+        行770e = next(r2 for r2 in 预验任务快照() if r2["分支"] == "ci/兜底-h111111111")
+        断言(行770e["认领限制"] == "linux-x86_64", "770 前置：限制=linux-x86_64（游标棒位）")
+        旧戳770 = (datetime.now() - timedelta(seconds=兜底跳平台阈值秒 * 2)).strftime("%m-%d %H:%M:%S")
+        con.execute("UPDATE 预验任务 SET 更新时刻=? WHERE 分支='ci/兜底-h111111111'", (旧戳770,))
+        t = 处理写("task_claim", {"runner": "w3", "平台": "win-x64"})["任务"]
+        断言(t and t["分支"] == "ci/兜底-h111111111",
+             "770 排队超阈值无人领→claim 惰性放宽不限（跨平台领到·坏串/未超时不动）")
+        处理写("task_complete", {"runner": "w3", "分支": "ci/兜底-h111111111", "绿": True,
+                                 "结果": {"绿": True}})
+        忙闲770 = 池忙闲快照()
+        断言(忙闲770["注册实例"] >= 5 and 忙闲770["执行中"] >= 2,
+             "770 池忙闲快照：注册实例/执行中字段可用（562 执行中行+win 预验行）")
+        断言(忙闲770["池全忙"] is False, "770 池全忙判定=执行中<注册（此景存在空闲实例）")
 
         # ── 562 批主心跳：heartbeat=只刷更新时刻·不改状态——活批不被回收误杀（444 根治） ──
         #   （真实批主心跳 2 分钟≪集成中超时 2h·行时刻恒新鲜；此处直接断言心跳语义本身）

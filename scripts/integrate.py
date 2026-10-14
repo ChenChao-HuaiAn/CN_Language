@@ -63,6 +63,10 @@ import board_closeout   # 392：伞批销账号解析（登记制·提交信息 
 # ── 批量集成参数（911·可调常量——跑一周看实态再调·AGENTS.md §5）──────────────────
 # 637（2026-10-14 用户立法）：封批默认=单人（一个任务一个实例验证·不等拼车）——
 #   下列收拢期/上限两常量仅在 --gather 显式收拢拼车时生效（默认路径零等待）。
+# 770（2026-10-14 用户裁决·忙时拼车）：池全忙→自动开「组队收拢窗口」——期间进来的任务
+#   自动并入同批组链，窗口到期**或池出现空闲实例**即一次预验验整批；池有空闲→维持单人
+#   立即封批（637 快路径默认）。窗口自动等待在 --wait 下生效。
+组队窗口分钟 = int(os.environ.get("CN_TEAMUP_WINDOW_MIN", "30"))
 批收拢期分钟 = 10    # 批主报名后的收拢窗口（后到者在此窗口内报名即入批·仅 --gather）
 批上限 = 5           # 单批成员上限（含批主·红批二分成本随批增大·仅 --gather）
 批等待轮询秒 = 60    # --wait 等待批主的轮询间隔
@@ -83,12 +87,12 @@ import board_closeout   # 392：伞批销账号解析（登记制·提交信息 
 # ── 云端预验门禁（1008·用户裁决 2026-10-03 方案甲·test-then-commit）──────────────────
 # 触及全量面的集成：链顶（=合并结果）推 TX_02 预验分支跑 linux-x86_64 全量，绿才 push
 # develop——红根本进不来（红灯窗口期结构性消除）。旧模式（941 fast-lane·commit-then-test）
-# 保留为事后兜底：预验跳过面（纯文档轮）与 --no-cloud-gate 逃生门走云端每推送自动验。
+# 纯文档轮保留预验跳过面（走云端每推送自动验）；--no-cloud-gate 逃生门已硬禁（770·2026-10-14 用户令「只有预验绿才能并入 develop」）。
 # **默认开**（1015 翻开·2026-10-04）：1008 立的启用条件「develop 回绿」已达成（1013 批八
 # 终验云端 c4c28311 轮绿·linux 红=0）——触及全量面的集成默认走 test-then-commit。
 # 红轮实测数据（TX_02 ci-logs 107 轮）：绿轮 13~16min·红轮带串行复验 33~40min——等待期
 云端预验默认开 = True
-# 可做六件套文档；TX_02 异常时 --no-cloud-gate 逃生门回退 941 事后兜底。
+# 770：--no-cloud-gate 逃生门已硬禁（parse 后即拒）——TX_02 异常时等待恢复+巡检治理。
 预验远程分支前缀 = "ci/预验-"
 预验轮询间隔秒 = 60
 预验总超时分钟 = 75    # 含锁等待（TX_02 正跑 develop 轮时预验排队）+全量跑轮·留余量
@@ -598,9 +602,9 @@ def 预验前置检查(链顶: str, 最新develop: str,
 
 def 云端预验门禁(链顶: str, 参数: argparse.Namespace) -> str | None:
     """链顶（=合并结果）推预验分支触发全量（linux-x86_64 面），绿放行 push develop、红拦截。
-    1021 执行器池化三层降级：①TX_01 任务池（多 runner 认领——TX_02+家机 WSL2 实例谁空闲
-    谁跑·免串行排队）→ ②池不可达/超时=ssh 直发 TX_02（1008 原路径保留）→
-    ③--no-cloud-gate 逃生门（941 事后兜底）。返回 None=放行；str=拦截原因。"""
+    1021 执行器池化两层降级：①TX_01 任务池（多 runner 认领·谁空闲谁跑·免串行排队）→
+    ②池不可达/超时=ssh 直发 TX_02（1008 原路径保留·仍为预验非绕过）。
+    770：--no-cloud-gate 逃生门已硬禁（parse 后即拒）——返回 None=放行；str=拦截原因。"""
     import time as _time
     if 参数.dry_run:
         print("  [预验·演练] 跳过云端真跑（--dry-run）——正式集成对链顶真跑全量预验")
@@ -639,7 +643,7 @@ def 云端预验门禁(链顶: str, 参数: argparse.Namespace) -> str | None:
                 # 337 降级守卫：池超时/不可达且限制不含 linux-x86_64——TX_02 直发违背限制，
                 #   不静默改平台重跑（同 sha 换平台口径不一致）·显式拦截并给出路
                 return (f"池路径超时/不可达·认领限制 [{认领限制}] 不含 linux-x86_64（TX_02 ssh 直发违背限制）"
-                        "——等待限制平台 runner 上线后重试·或修正 --pool-limit·或 --no-cloud-gate 逃生门。")
+                        "——等待限制平台 runner 上线后重试·或修正 --pool-limit（770：逃生门已硬禁）。")
             print("  [预验] 池路径超时/不可达——降级 ssh 直发 TX_02（028 §四）……")
         else:
             拒说明 = str((入队 or {}).get("说明", ""))
@@ -668,7 +672,7 @@ def 云端预验门禁(链顶: str, 参数: argparse.Namespace) -> str | None:
             capture_output=True, text=True, timeout=30)
         if 触发.returncode != 0 or "触发成功" not in (触发.stdout or ""):
             return ("云端预验触发失败（ssh %s）：%s——TX_02 不可达或目录异常（028 §四）。"
-                    "逃生门：--no-cloud-gate 显式回退事后兜底（941）。"
+                    "等待恢复重试（770：--no-cloud-gate 逃生门已硬禁）。"
                     % (配置["ssh"], (触发.stderr or 触发.stdout or "").strip()[:200]))
         print(f"  [预验] TX_02 已触发（{预验分支}·全量 linux-x86_64 面"
               f"·绿轮实测 13~16min/红轮 33~40min·含锁排队）")
@@ -697,7 +701,7 @@ def 云端预验门禁(链顶: str, 参数: argparse.Namespace) -> str | None:
             余分 = int((截止 - _time.time()) // 60)
             print(f"  [预验] 等待云端结果（余约 {余分} 分钟）……")
         return (f"云端预验超时（{预验总超时分钟} 分钟——TX_02 忙/挂死·028 §四处置）。"
-                "逃生门：--no-cloud-gate 显式回退事后兜底（941）。")
+                "等待恢复重试（770：--no-cloud-gate 逃生门已硬禁）。")
     finally:
         清理 = 运行(["git", "push", 参数.remote, "--delete", 预验分支])
         if 清理.returncode != 0:
@@ -851,7 +855,7 @@ def 队列改时刻(看板文本: str, 分支: str, 新时刻: str) -> str:
 
 def 选批成员(排队行们: list[dict], 当前时刻: datetime,
              收拢期分钟: int = 批收拢期分钟, 上限: int = 批上限,
-             收拢: bool = False
+             收拢: bool = False, 窗口基: datetime | None = None
              ) -> tuple[list[dict], str | None]:
     """纯函数：由「状态=排队」的行们选出本批成员（按报名时刻序）。
 
@@ -860,6 +864,9 @@ def 选批成员(排队行们: list[dict], 当前时刻: datetime,
     只含批主=最早报名者自己，立即封批不等待不收拢其他排队成员，各任务各占一个池
     实例并行验证）；原「收拢拼车」保留为显式选项（收拢=True·调用方传 --gather），
     行为=911 原样：窗口截止=批主报名时刻+收拢期，窗口内按序入选（上限截断）。
+    770 忙时拼车：调用方传 收拢=True+窗口基=发现池忙时刻——窗口从组批开始算
+    （报名已久不吞窗口），窗口内新报名任务按序入选（上限截断）；等待条件由调用方
+    控制（本函数的提示仅供 --gather 通道，忙时通道单人也等·见批主循环）。
 
     返回（成员行们, 提示）：提示非 None=暂不可封批（仅收拢模式可能返回：收拢期未满·
     附剩余分钟），成员们此时仍返回窗口内预览（供打印）。单人模式提示恒 None
@@ -872,7 +879,7 @@ def 选批成员(排队行们: list[dict], 当前时刻: datetime,
     if not 收拢:
         # 637 单人封批：一个任务一个实例验证——只封批主自己，多人排队也不串链不等拼车
         return [批主], None
-    窗口截止 = 解析时刻(批主["时刻"])  # type: ignore[arg-type]
+    窗口截止 = 窗口基 or 解析时刻(批主["时刻"])  # type: ignore[arg-type]
     if 窗口截止 is None:
         return [], f"批主报名时刻非法：「{批主['时刻']}」"
     窗口截止 = 窗口截止 + timedelta(minutes=收拢期分钟)
@@ -984,6 +991,14 @@ def 服务调用(路径: str, 数据: dict | None = None) -> dict | None:
             return json.loads(响应.read().decode("utf-8"))
     except Exception:
         return None
+
+
+def 池全忙查询() -> bool:
+    """770：读 TX_01 /api/state 的「池忙闲.池全忙」——注册实例全在执行中=池全忙（忙时拼车
+    窗口的触发条件）。服务不可达/旧服务端无此字段/无注册实例 → False（退单人立即封批=
+    637 默认快路径·降级不失效）。"""
+    态 = 服务调用("/api/state")
+    return bool((态 or {}).get("池忙闲", {}).get("池全忙"))
 
 
 def 队列读(远程: str = 主远程) -> list[dict] | None:
@@ -1267,6 +1282,7 @@ def 批流程(参数: argparse.Namespace) -> int:
         集成中们 = [行 for 行 in 队列 if 行["状态"] == "集成中"]
         我在排队 = any(行["分支"] == 当前分支 for 行 in 排队们)
         提示: str | None = None
+        拼车起: datetime | None = None   # 770：忙时拼车窗口起点（本轮 wait 循环首次发现池忙时置定）
         # 562：失联判定以行活动时刻（心跳新鲜度·行新鲜时刻）为据——不再用报名时刻
         #   （444 实录：批主 win 全量门禁 40+ 分钟无行更新·按报名时刻判=在飞批被误判失联）
         失联们 = 失联分支们(集成中们, datetime.now())
@@ -1292,12 +1308,40 @@ def 批流程(参数: argparse.Namespace) -> int:
         else:
             批主 = min(排队们, key=lambda 行: 行["时刻"]) if 排队们 else None
             if 批主 and (批主["分支"] == 当前分支 or 参数.takeover):
-                # 637：封批默认=单人（只含批主自己·立即封批不等拼车）；--gather 显式收拢拼车
-                #   （911 原行为）——收拢模式下才可能有「收拢期未满」等待提示，--seal-now 跳过。
-                成员, 收拢提示 = 选批成员(排队们, datetime.now(), 收拢=参数.gather)
-                if 参数.gather and 收拢提示 and len(排队们) > 1 and not 参数.seal_now:
-                    提示 = 收拢提示
+                # 770 三路封批（2026-10-14 用户裁决）：①默认=单人立即封批（637 快路径·
+                #   池有空闲时的语义）；②池全忙→自动「忙时拼车」收拢窗口（组队窗口分钟·
+                #   默认 30）：期间新报名任务自动入批，**窗口到期或池出现空闲实例**即一次
+                #   预验验整批（单人窗口内也等——等伙伴或等空闲，这正是忙时组队的意义）；
+                #   ③--gather 显式拼车（911 原样）；--seal-now 恒立即封批。
+                #   忙时窗口的自动等待在 --wait 下生效；无 --wait 时提示挂 --wait（退码 2）。
+                池忙 = (not 参数.gather) and (not 参数.seal_now) and 池全忙查询()
+                if 池忙 and 拼车起 is None:
+                    拼车起 = datetime.now()
+                    print(f"  [拼车] 池全忙——开 {组队窗口分钟} 分钟收拢窗口（期间新报名任务自动入批·"
+                          "池出现空闲或窗口到期即封批整批·770 忙时拼车）", flush=True)
+                if 池忙:
+                    if 参数.seal_now:
+                        break
+                    成员, _ = 选批成员(排队们, datetime.now(), 收拢期分钟=组队窗口分钟,
+                                       收拢=True, 窗口基=拼车起)
+                    if not 池全忙查询():
+                        print("  [拼车] 池出现空闲实例——立即封批组链（770）", flush=True)
+                        break
+                    剩秒 = 组队窗口分钟 * 60 - (datetime.now() - 拼车起).total_seconds()
+                    if 剩秒 <= 0:
+                        print(f"  [拼车] {组队窗口分钟} 分钟窗口到期——封批组链（成员 {len(成员)}·770）",
+                              flush=True)
+                        break
+                    提示 = (f"[拼车] 池全忙·收拢窗口中（剩约 {int(剩秒 // 60) + 1} 分钟·窗口内已见 "
+                            f"{len(成员)} 任务·池出现空闲即提前封批）")
+                elif 参数.gather:
+                    成员, 收拢提示 = 选批成员(排队们, datetime.now(), 收拢=参数.gather)
+                    if 收拢提示 and len(排队们) > 1 and not 参数.seal_now:
+                        提示 = 收拢提示
+                    else:
+                        break   # ── 封批组链 ──
                 else:
+                    成员, _ = 选批成员(排队们, datetime.now())   # 637 默认：单人立即封批
                     break   # ── 封批组链 ──
             elif 批主:
                 # 562：批主可接管判定同以活动时刻（心跳新鲜度）为据——批主心跳活着=正常在飞
@@ -1531,8 +1575,7 @@ def 主流程() -> int:
                              "触及全量面的集成把链顶推 TX_02 预验分支跑 linux 全量，"
                              "绿才 push develop——红根本进不来。默认开时此参数=显式确认（幂等）")
     解析器.add_argument("--no-cloud-gate", action="store_true",
-                        help="云端预验门禁显式关（逃生门）：回退 941 fast-lane 事后兜底"
-                             "（TX_02 不可达/挂死时·028 §四处置后恢复）")
+                        help="[770 已硬禁] 传入即拒绝（2026-10-14 用户令：只有预验绿才能并入 develop）")
     解析器.add_argument("--solo", action="store_true",
                         help="旧单分支路径逃生门（不经队列直集成——队列机制异常时用）")
     解析器.add_argument("--solo-if-unreachable", action="store_true",
@@ -1592,8 +1635,11 @@ def 主流程() -> int:
     #   达成·1013 终验）；显式旗优先于默认（--no-cloud-gate 逃生门）。
     参数.cloud_gate = (not 参数.no_cloud_gate) and (云端预验默认开 or 参数.cloud_gate)
     if 参数.no_cloud_gate:
-        print("[1008] --no-cloud-gate：云端预验门禁显式关闭——回退 941 fast-lane 事后兜底"
-              "（TX_02 异常时的逃生门·028 §四）。")
+        # 770（2026-10-14 用户令）：逃生门硬禁——「只有预验绿才能并入 develop」铁律化。
+        #   背景案=752（10-13 22:33 后零预验绿记录仍 67 提交进 develop 的验证真空）。
+        return 失败("[770] --no-cloud-gate 逃生门已硬禁（2026-10-14 用户令：只有预验绿才能并入 develop）"
+                    "——集成必须过云端预验；TX_01/池全停时等待恢复（每 2 小时 CI 巡检自动治理），"
+                    "或先把任务分支留档待集成。")
     if 参数.try_build_done or 参数.win_verified:
         print("[v3] --try-build-done/--win-verified 已随协议 v3 废除（接受即忽略）——"
               "本机门禁绿即集成，跨平台由集成后异步验收保障（AGENTS.md §7）。")
