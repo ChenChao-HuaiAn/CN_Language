@@ -467,7 +467,18 @@ bool IRGenerator::handleClassMemberExpr(MemberExpr* node) {
     if (!semantic_->isClassType(canonObjField)) return false;
     const std::string fieldType = classFieldType(canonObjField, node->memberName);
     if (fieldType.empty()) return false;
-    ir::IRValue base = genExpr(node->object.get());  // this / 类变量值（对象指针）
+    // 728g·776（指针下标域读通道·v2 同构·079 指针下标分支宿主侧对齐）：对象=
+    //   指针下标（名单[0]，名单:学生*）——基址=元素地址（lvalueAddress：
+    //   指针值+i*sizeof(类)·不 LoadPtr 解引用），与 v2 指针下标域读模型对齐
+    //   （p[i].字段 = 元素槽 + 字段偏移 直读·C 数组语义）。原走 genExpr（把
+    //   LoadPtr 槽值当对象指针）→ 分配零初始化槽值 0 被二次解引用 → 空指针
+    //   错误码 3（776 实录）=指针槽模型与 v2 内联域读分叉。
+    ir::IRValue base;
+    if (node->object->getType() == NodeType::IndexExpr) {
+        base = lvalueAddress(node->object.get());
+    } else {
+        base = genExpr(node->object.get());  // this / 类变量值（对象指针）
+    }
     const int offset = semantic_->classFieldOffset(canonObjField, node->memberName);
     if (offset < 0) return false;
     ir::IRValue addr = emitResult(ir::Opcode::FieldAddr, {base}, "ptr",
@@ -548,7 +559,15 @@ bool IRGenerator::handleClassMemberLvalue(MemberExpr* node, ir::IRValue& outAddr
     if (fieldType.empty()) return false;
     const int offset = semantic_->classFieldOffset(canonObjField, node->memberName);
     if (offset < 0) return false;
-    ir::IRValue base = genExpr(node->object.get());
+    // 728g·776 写侧对称（与读侧同判据）：对象=指针下标（名单[0].字段 = v）——
+    //   目标地址=元素地址+字段偏移（内联域写·C 数组语义），原走 genExpr 把
+    //   槽值当对象指针（写侧 351 同族分叉面·先收口防读绿写歪）。
+    ir::IRValue base;
+    if (node->object->getType() == NodeType::IndexExpr) {
+        base = lvalueAddress(node->object.get());
+    } else {
+        base = genExpr(node->object.get());
+    }
     outAddr = emitResult(ir::Opcode::FieldAddr, {base}, "ptr",
                          std::to_string(offset), node->location);
     return true;
