@@ -34,6 +34,10 @@ import time
 # ——判定/ELF 探测/前缀注入/v2p 双工件见同目录 e2e交叉模拟.py
 import e2e交叉模拟 as 交叉
 
+# 任务795（2026-10-15）：宿主编译器 exe 新鲜度机械核验（#177 消费面防线·598 假红
+# 死循环根治）——核验/陈旧自动重建/--cn 跳过语义见同目录 exe新鲜度.py
+import exe新鲜度
+
 # 强制stdout/stderr使用UTF-8输出（避免Windows管道/控制台代码页导致中文乱码）
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
@@ -621,25 +625,6 @@ def 扫描asm产物说明符(asm路径: pathlib.Path, 标签: str) -> str:
     例 = "\n".join(f"      L{行号}: {原文}" for 行号, 原文 in 违规[:5])
     return (f"{标签} 产物 asm 有 {len(违规)} 处 movsd/movss 裸内存操作数"
             f"（缺 qword/dword ptr → ml64 A2070；{asm路径.name}）:\n{例}")
-
-
-def 探测编译器(显式路径: str) -> pathlib.Path:
-    """确定编译器路径：优先使用 --cn 显式参数，否则收集全部存在候选取 st_mtime
-    最新者（556：原按固定顺序取第一个存在——Debug 陈旧产物排前致 E2E 测旧编译器，
-    269 轮 625 假红实录；mtime 最新=最近一次构建产物）"""
-    if 显式路径:
-        路径 = pathlib.Path(显式路径).resolve()
-        if not 路径.exists():
-            print(红色(f"错误: 编译器不存在: {路径}"))
-            sys.exit(2)
-        return 路径
-    存在们 = [p.resolve() for p in (项目根目录 / c for c in 编译器候选) if p.exists()]
-    if not 存在们:
-        print(红色("错误: 未找到编译器，请使用 --cn 指定路径（如 target/Debug/cn.exe）"))
-        sys.exit(2)
-    选择 = max(存在们, key=lambda p: p.stat().st_mtime)
-    print(f"选择 {选择}（mtime 最新·候选 {len(存在们)} 个）")
-    return 选择
 
 
 def 收集用例(过滤模式: str) -> list:
@@ -2437,8 +2422,14 @@ def 主程序() -> int:
         if 交叉.交叉模拟跳过:
             print(f"  [交叉模拟] 跳过登记: {', '.join(交叉.交叉模拟跳过)}（自举链模拟性能深坑·真机兜底）")
 
-    # 探测编译器与输出目录
-    编译器路径 = 探测编译器(参数.cn)
+    # 探测编译器与输出目录（795：探测→新鲜度核验→陈旧自动重建→复验一体；
+    # --cn 显式指定=跳过核验。#177 消费面防线：rebase/挂新父后树内旧 exe
+    # 静默假红（598 十五小时死循环实锤）在本入口机械拦截）
+    编译器路径, 就绪错误 = exe新鲜度.确保编译器就绪(
+        参数.cn, 编译器候选, 项目根目录, 运行命令, 构建超时秒数, 参数.verbose)
+    if 编译器路径 is None:
+        print(红色(就绪错误))
+        return 2
     输出目录 = (项目根目录 / 参数.target_dir).resolve()
     输出目录.mkdir(parents=True, exist_ok=True)
 
