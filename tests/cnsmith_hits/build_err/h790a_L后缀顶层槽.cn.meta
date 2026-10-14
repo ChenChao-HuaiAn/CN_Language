@@ -1,0 +1,4 @@
+基线: 89c656f9
+轮: 794 采样轮（家机 win·2026-10-14·569 顶层裸全局域主攻）
+类别: build_err
+说明: 最小复现=整64 大槽=111111111111L → 宿主 win MASM A2206（dq 111111111111L 透传）·v2 同款 dq 同挂·linux GAS .quad ...L 同病——根因 cnEvalConstExpr 字面量 raw 透传→constInitText（569 新通道）→.data 直存·立案 #790
