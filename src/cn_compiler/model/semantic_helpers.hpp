@@ -392,6 +392,14 @@ inline std::string canonicalType(const std::string& type) {
 std::string methodSymbolKey(const std::string& className, const std::string& sigKey);
 int charLiteralCodePoint(const std::string& raw);
 
+// ===== 728b：模块限定类键（自 class_resolver.cpp static cclassKey 提升 inline——
+//   预降级期类名注册（第一趟a）与 findClass/类成员解析（第一趟d）共用单一键规则；
+//   模块为空=裸名（单文件；模块私有类不合并进 Program，合并后类 moduleAccess
+//   恒 Public 口径见 registerClassAndInterfaces 注释）=====
+[[maybe_unused]] inline std::string classKey(const std::string& module, const std::string& name) {
+    return module.empty() ? name : module + "::" + name;
+}
+
 // ===== 表达式/语句深度克隆（86 提升公开·非 inline·定义 semantic_stmt.cpp）
 //   =====：降级树/泛型实例化/复合赋值糖展开（字符串拼接面 甲 += X ≡ 甲 = 甲 + X
 //   的左值副本）共用单一克隆器——防跨翻译单元双份实现漂移。

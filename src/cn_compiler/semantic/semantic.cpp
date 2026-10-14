@@ -451,11 +451,14 @@ void SemanticAnalyzer::visitProgram(Program* node) {
     checkImportLocalConflicts(node);
     // 第一趟a/e/f/b/b'：类型名注册 + 字段类型解析 + 泛型注册 + 全量预降级 + 布局计算
     //   （068：第一趟f 前移至 registerGenericsAndComputeLayout 内·布局计算之前）
+    //   728b（648 显形化收尾）：类名注册已并入第一趟a 尾段（registerAndResolveTypeNames）
+    //   ——须先于第一趟f 预降级（结果/可选<用户类> 合成体布局期查类信息·findClass；
+    //   118 既有红实录）。接口注册仍留第一趟d（依赖第一趟e 泛型注册·不可前移）。
     registerAndResolveTypeNames(node);
     registerGenericsAndComputeLayout(node);
     // 第一趟b'（164-a A4 联合体限定）+ 第一趟c（枚举求值）
     checkUnionsAndEnums(node);
-    // 第一趟d（类/接口注册）+ 第一趟g（函数符号注册）
+    // 第一趟d（接口注册+类成员解析/布局；类名注册已由 728b 前移）+ 第一趟g（函数符号注册）
     //   （第一趟f 原位调用已删除——068 前移后本处之后的全部趟次面对已降级+
     //   已布局类型环境；visitVarDecl/061-c/instantiateGeneric/IR 层的
     //   ensureLoweredType 调用保留为幂等防御，正确性由预降级趟+067-001
@@ -556,6 +559,7 @@ void SemanticAnalyzer::collectModulePublicSymbols(Program* node) {
 //   A-2（crate 分桶）：类型按所属模块注册（同模块重复报错，跨模块同名允许）；
 //   字段类型按所属模块解析多模块同名类型，改写字段类型为限定键
 //   （computeLayout/字段访问经 findStruct 精确命中）。
+//   728b（648 显形化收尾）：类名注册并入本趟尾段——见函数内注释。
 void SemanticAnalyzer::registerAndResolveTypeNames(Program* node) {
     // 第一趟a：注册全部结构体/联合体/枚举类型名（支持前向引用：字段可引用后定义的类型）
     // A-2（crate 分桶）：类型按所属模块注册（同模块重复报错，跨模块同名允许）
@@ -573,6 +577,40 @@ void SemanticAnalyzer::registerAndResolveTypeNames(Program* node) {
                 f.type = resolveTypeName(f.type, s->moduleName, s->location);
             }
         }
+    }
+    // 728b（648 显形化收尾·118 既有红）：类名注册——原 registerClassAndInterfaces
+    //   阶段A 首段，前移至本趟尾段。病根：第一趟f 预降级（lowerResultOptionalTypes）
+    //   布局 结果<用户类>/可选<用户类> 合成体时查类信息（载荷口径 findClass 判类
+    //   句柄 8 / isClassType）——类名注册晚于预降级（原第一趟d）＝findClass miss
+    //   → 648 报内部错误「类型 'X' 尺寸未登记」（118 实录 rc=1）。类名注册无前置
+    //   依赖（原阶段A 设计＝仅注册名字·支持前向引用），与结构体/枚举名同级放
+    //   第一趟a 使预降级/布局期类型环境完备（类型名级完备·成员/布局仍第一趟d）。
+    //   置于字段类型解析之后：保持「结构体字段类名不参与 resolveTypeName 消歧」
+    //   的既有行为；同名重复诊断归属不变（结构体/枚举先登记，类重复报错仍落类行）。
+    // 阶段A：注册类名（P2-16：map 键恒为 模块::类 供 IR 去重；符号名仅在跨模块同名冲突时带模块前缀）
+    //   预扫同名类跨模块冲突：类名 -> 出现过的模块集合
+    std::unordered_map<std::string, std::unordered_set<std::string>> clsNameMods;
+    for (auto& cls : node->classes) clsNameMods[cls->name].insert(cls->moduleName);
+    for (auto& cls : node->classes) {
+        const std::string clsMapKey = classKey(cls->moduleName, cls->name);
+        const std::string clsSymName =
+            (clsNameMods[cls->name].size() > 1) ? clsMapKey : cls->name;
+        if (classes_.count(clsMapKey) != 0) {
+            diagnostics_.report(DiagnosticLevel::Error, cls->location,
+                                "重复声明类型 '" + cls->name + "'（模块内）");
+            continue;
+        }
+        declareTypeName(cls->name, cls->moduleName, cls->location);
+        ClassInfo info;
+        info.name = clsSymName;
+        info.ast = cls.get();
+        // 第 4 层（v2.0 决策11，可见性交集检查）：记录类所属模块与模块级可见性。
+        //   mergeModules 已按模块级可见性过滤（模块私有类不合并进 Program），
+        //   故合并后的类 moduleAccess 恒为 Public（入口模块类为 Private 或 Public
+        //   但同文件可见不受影响）；moduleName 用于跨模块访问判定（见 checkAccess）。
+        info.moduleName = cls->moduleName;
+        info.moduleAccess = cls->access;
+        classes_[clsMapKey] = std::move(info);
     }
 }
 // 族③：第一趟e 泛型注册 + 字段实例化归一 + 第一趟b 布局计算（原 521~552 段）。

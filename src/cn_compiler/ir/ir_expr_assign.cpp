@@ -476,6 +476,19 @@ bool IRGenerator::assignToIndexTarget(AssignmentExpr* node) {
             }
         }
     }
+    // 结构体初始化赋值：点数组[0] = 点{ x = 5, y = 6 }（Task 2.7）
+    //   按目标地址逐字段原地构造（结构体不能作为单寄存器值）。648 显形化收尾
+    //   （既有红 07_struct_enum/10_struct_value）：本通道须先于下方 genExpr 通用
+    //   求值——原序「先 genExpr 静默常量0兜底 → 后专用通道覆盖」在 648 把
+    //   visitStructInitExpr 兜底报错化后即误报（构造字面量合法程序落入哨兵）。
+    //   产物零行为变化：原产物=本通道 emitStructInitTo 展开结果（兜底常量被覆盖）。
+    if (node->value->getType() == NodeType::StructInitExpr && semantic_ != nullptr) {
+        ir::IRValue addrInitL = lvalueAddress(node->target.get());
+        emitStructInitTo(static_cast<StructInitExpr*>(node->value.get()),
+                         addrInitL, node->location);
+        lastExpr_ = emitResult(ir::Opcode::ConstInt, {}, "i32", "0", node->location);
+        return true;
+    }
     ir::IRValue value = genExpr(node->value.get());
     // plans/019 阶段4' 方案A：下标目标为字符串元素（字符串数组/字符串* 元素）
     //   且右值为字符串变量标识符 -> 值被外部槽持有（指针逃逸模型，38_tool
@@ -503,14 +516,7 @@ bool IRGenerator::assignToIndexTarget(AssignmentExpr* node) {
     // 复合赋值（*p += 1 等）：先读当前值再运算（简化：直接读地址）
     ir::IRValue addr = lvalueAddress(node->target.get());
     if (indexStructElemAssign(node, addr)) return true;
-    // 结构体初始化赋值：点数组[0] = 点{ x = 5, y = 6 }（Task 2.7）
-    // 按目标地址逐字段写入（结构体不能作为单寄存器值）
-    if (node->value->getType() == NodeType::StructInitExpr && semantic_ != nullptr) {
-        emitStructInitTo(static_cast<StructInitExpr*>(node->value.get()),
-                         addr, node->location);
-        lastExpr_ = emitResult(ir::Opcode::ConstInt, {}, "i32", "0", node->location);
-        return true;
-    }
+    // （构造字面量通道已前移——见本函数上方 648 显形化收尾注）
     if (isCompoundAssignOp(node->op)) {
         ir::IRValue current = emitResult(ir::Opcode::LoadPtr, {addr}, targetType,
                                          "", node->location);

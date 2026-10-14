@@ -22,6 +22,7 @@
 
 #include "cn_compiler/semantic/semantic.hpp"
 #include "cn_compiler/model/type_system.hpp"
+#include "cn_compiler/model/semantic_helpers.hpp"
 
 namespace cn_compiler {
 
@@ -96,21 +97,20 @@ bool SemanticAnalyzer::isInterfaceType(const std::string& type) const {
     return interfaces_.find(type) != interfaces_.end();
 }
 
-// P2-16 模块限定类键：模块::名称（模块为空直接用名称）
-static std::string cclassKey(const std::string& module, const std::string& name) {
-    return module.empty() ? name : module + "::" + name;
-}
+// 728b：模块限定类键（P2-16）已提升为 model/semantic_helpers.hpp 的 classKey
+//   inline 共享函数（预降级期类名注册（semantic.cpp·第一趟a）与本文件共用单一
+//   键规则——原 static cclassKey 在此删除，调用点改用 classKey）。
 
 // 查找类符号（P2-16 模块感知：限定名直查；裸名先当前模块、再任意模块末段匹配）
 const ClassInfo* SemanticAnalyzer::findClass(const std::string& name) const {
     std::string mod, base;
     splitQualifiedType(name, mod, base);
     if (!mod.empty()) {
-        auto it = classes_.find(cclassKey(mod, base));
+        auto it = classes_.find(classKey(mod, base));
         return (it == classes_.end()) ? nullptr : &it->second;
     }
     if (!currentModuleName_.empty()) {
-        auto it = classes_.find(cclassKey(currentModuleName_, base));
+        auto it = classes_.find(classKey(currentModuleName_, base));
         if (it != classes_.end()) return &it->second;
     }
     for (const auto& kv : classes_) {
@@ -289,10 +289,10 @@ int SemanticAnalyzer::classFieldOffset(const std::string& className,
 
 // ==================== 类/接口注册（Task 3.1） ====================
 
-// 注册全部类/接口符号（visitProgram 第一趟调用）
-// 两阶段：
-//   阶段A：仅注册类名/接口名（支持前向引用：父类可定义在子类之后）
-//   阶段B：逐个解析成员（继承并入/虚表/接口验证/布局）
+// 注册全部接口/类符号（visitProgram 第一趟d 调用）
+//   阶段A：注册接口名+方法签名（类名注册已由 728b 前移至第一趟a·
+//     registerAndResolveTypeNames 尾段——须先于第一趟f 预降级）
+//   阶段B：逐个解析类成员（继承并入/虚表/接口验证/布局）
 void SemanticAnalyzer::registerClassAndInterfaces(Program* node) {
     // 阶段A：注册接口（先注册接口，类实现可引用）
     for (auto& iface : node->interfaces) {
@@ -341,31 +341,10 @@ void SemanticAnalyzer::registerClassAndInterfaces(Program* node) {
             }
         }
     }
-    // 阶段A：注册类名（P2-16：map 键恒为 模块::类 供 IR 去重；符号名仅在跨模块同名冲突时带模块前缀）
-    //   预扫同名类跨模块冲突：类名 -> 出现过的模块集合
-    std::unordered_map<std::string, std::unordered_set<std::string>> clsNameMods;
-    for (auto& cls : node->classes) clsNameMods[cls->name].insert(cls->moduleName);
-    for (auto& cls : node->classes) {
-        const std::string clsMapKey = cclassKey(cls->moduleName, cls->name);
-        const std::string clsSymName =
-            (clsNameMods[cls->name].size() > 1) ? clsMapKey : cls->name;
-        if (classes_.count(clsMapKey) != 0) {
-            diagnostics_.report(DiagnosticLevel::Error, cls->location,
-                                "重复声明类型 '" + cls->name + "'（模块内）");
-            continue;
-        }
-        declareTypeName(cls->name, cls->moduleName, cls->location);
-        ClassInfo info;
-        info.name = clsSymName;
-        info.ast = cls.get();
-        // 第 4 层（v2.0 决策11，可见性交集检查）：记录类所属模块与模块级可见性。
-        //   mergeModules 已按模块级可见性过滤（模块私有类不合并进 Program），
-        //   故合并后的类 moduleAccess 恒为 Public（入口模块类为 Private 或 Public
-        //   但同文件可见不受影响）；moduleName 用于跨模块访问判定（见 checkAccess）。
-        info.moduleName = cls->moduleName;
-        info.moduleAccess = cls->access;
-        classes_[clsMapKey] = std::move(info);
-    }
+    // 阶段A：类名注册已前移至第一趟a（registerAndResolveTypeNames 尾段·728b——
+    //   须先于第一趟f 预降级·合成体布局查找类信息·648 显形化收尾·118 既有红实录）。
+    //   本函数保留接口注册（依赖第一趟e 泛型注册的 resolveGenericTypeName·不可
+    //   前移）与阶段B 成员解析/布局。
     // 阶段B：逐个解析类
     for (auto& cls : node->classes) {
         resolveClass(cls.get());
@@ -374,7 +353,7 @@ void SemanticAnalyzer::registerClassAndInterfaces(Program* node) {
 
 // 解析单个类：成员收集 + 继承并入 + 虚表分配 + 接口实现验证 + 布局
 void SemanticAnalyzer::resolveClass(ClassDecl* node) {
-    auto it = classes_.find(cclassKey(node->moduleName, node->name));
+    auto it = classes_.find(classKey(node->moduleName, node->name));
     if (it == classes_.end()) return;
     ClassInfo& info = it->second;
 
