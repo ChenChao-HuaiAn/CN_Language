@@ -60,7 +60,22 @@ std::string foldClassStaticInit(const Expr* init, const std::string& fieldType,
             return std::string(sign < 0 ? "-" : "") + lit->raw;
         }
         if (types::isStaticScalarInitType(canon)) {
-            // 64 位内整数/布尔/字符槽：规范十进制（0x/0b/0o 已由词法解析进 value）
+            // 728v：十进制形态文本保真折叠——parseIntValue 走 std::stoll，对
+            //   超 INT64 承载的十进制文本抛异常 catch 回 0（19 位
+            //   -9223372036854775808 / 2^63 实锚），值级折叠输出静默错值 0；
+            //   改文本级（与顶层静态 raw 直存通道/emitOopGlobals `dq 文本`
+            //   同构·mod 2^64 位模式由汇编器解析·与 v2 位模式累加474 一致）。
+            //   0x/0b/0o 等非十进制形态维持值级规范化（726 十六进制锁面不动）。
+            std::string decText;
+            if (types::foldDecimalLiteralText(lit->raw, decText)) {
+                // 符号链叠加（parser 323 已把一元负号折叠进 raw·sign 恒 1；
+                //   残留复合符号形态按数学符号翻转·两负相消）
+                if (sign < 0) {
+                    if (decText[0] == '-') decText.erase(0, 1);
+                    else decText.insert(0, 1, '-');
+                }
+                return decText;
+            }
             const std::int64_t v = static_cast<std::int64_t>(sign) * lit->value;
             return std::to_string(v);
         }

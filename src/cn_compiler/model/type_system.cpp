@@ -408,6 +408,26 @@ std::string stripLiteralSuffix(const std::string& raw) {
     return s;
 }
 
+// 728v：十进制字面量文本保真折叠——见头文件声明注释。剥后缀复用
+//   stripLiteralSuffix（十六进制 F 不剥→0x 前缀天然不通过全数字判定）；
+//   符号仅识别前导单个 '-'/'+'；前导零去净保留一位；非数字字符=false。
+bool foldDecimalLiteralText(const std::string& raw, std::string& out) {
+    std::string s = stripLiteralSuffix(raw);
+    bool neg = false;
+    std::size_t i = 0;
+    if (i < s.size() && (s[i] == '-' || s[i] == '+')) {
+        neg = (s[i] == '-');
+        ++i;
+    }
+    if (i >= s.size()) return false;
+    for (std::size_t j = i; j < s.size(); ++j) {
+        if (s[j] < '0' || s[j] > '9') return false;
+    }
+    while (i + 1 < s.size() && s[i] == '0') ++i;  // 去前导零（保留至少一位）
+    out = (neg ? "-" : "") + s.substr(i);
+    return true;
+}
+
 // 解析字面量原始文本的后缀，返回推断的 CN 源码类型名
 std::string literalTypeOf(const std::string& raw, bool isFloat) {
     if (isFloat) {
