@@ -356,7 +356,11 @@ std::string wrapLiteralOperandType(const Expr* e) {
     if (types::textExceedsInt64(types::stripLiteralSuffix(lit->raw))) {
         return "整128";
     }
-    if (lit->value > 2147483647LL) return "整64";
+    // 728g（#506甲·420 负号形态）：数学值域判据含负号——parser 323 负号折叠
+    //   后 lit->value 即数学负值，修前只判正域使 回绕乘(-3000000000, 1) 仍按
+    //   整32 位域折叠（1294967296 错值·v2 同形出 -3000000000 分叉）；共用单点
+    //   判据（域内负号如 -2147483648 保持整32=851 锁面零翻转）。
+    if (types::literalValueExceedsInt32Domain(lit->value)) return "整64";
     return "整32";
 }
 

@@ -166,6 +166,7 @@ add_library(cn_compiler_semantic STATIC
     src/cn_compiler/semantic/semantic_sig.cpp
     src/cn_compiler/semantic/semantic_builtins.cpp
     src/cn_compiler/semantic/semantic_expr.cpp
+    src/cn_compiler/semantic/semantic_literal_domain.cpp
     src/cn_compiler/semantic/semantic_expr_op.cpp
     src/cn_compiler/semantic/semantic_expr_binary.cpp
     src/cn_compiler/semantic/semantic_expr_unary.cpp

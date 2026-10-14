@@ -271,12 +271,17 @@ void SemanticAnalyzer::reportConstOverflow(BinaryExpr* node, std::int64_t vL,
                     if (types::textExceedsInt64(types::stripLiteralSuffix(lit->raw))) {
                         return "整128";
                     }
-                    if (lit->value > 2147483647LL) return "整64";
+                    // 728g（#506甲·420 负号形态）：数学值域判据含负号——parser
+                    //   323 负号折叠后 lit->value 即数学负值，修前只判正域使
+                    //   -3000000000 仍按整32 域预演：-3000000000*2 误报「编译期
+                    //   整数溢出」（v2 同形放行·-6000000000 整64 域内合法）；
+                    //   共用单点判据（-2147483648*2 双侧仍按整32 域拒=零翻转）。
+                    if (types::literalValueExceedsInt32Domain(lit->value)) return "整64";
                     return "整32";
                 }
                 std::int64_t v = 0;
                 if (foldConstIntExpr505(e, v) &&
-                    (v > 2147483647LL || v < -2147483648LL)) {
+                    types::literalValueExceedsInt32Domain(v)) {
                     return "整64";
                 }
                 return "";

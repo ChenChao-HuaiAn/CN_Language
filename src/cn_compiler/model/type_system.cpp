@@ -485,6 +485,17 @@ bool textExceedsInt64(const std::string& text) {
     return text > "9223372036854775807";
 }
 
+// 无后缀整数字面量数学值是否超 整32 域（420 提升链·#506甲 负号形态按数学
+// 负值判）：正超 2^31-1 或负超 -2^31 → 求值域提升 整64。修前四处调用点恒
+// 只判正域（value > 2147483647）——parser 323 负号折叠形态（raw 带负号·
+// value 已为数学负值）超下界时漏提升，恒留整32 标记域：宿主 IR 物化按 i32
+// 发常量、codegen 32 位回绕（-3000000000 出 1294967296 实锤·#728g），
+// 推断面误拒/回绕实参域错位/溢出预演域误报同根。单点归属防判据四处分叉
+// （面见 type_system.hpp 声明注释）。
+bool literalValueExceedsInt32Domain(long long value) {
+    return value > 2147483647LL || value < -2147483648LL;
+}
+
 // 十进制文本是否超出 正32（无符号32位）范围（> 4294967295）
 bool textExceedsU32(const std::string& text) {
     if (text.size() < 10) return false;

@@ -173,6 +173,16 @@ bool i128TextInRange(const std::string& text, bool isSigned);
 // text 应为已剥后缀的纯数字文本（仅十进制）
 bool textExceedsInt64(const std::string& text);
 
+// 无后缀整数字面量数学值是否超 整32 域（420 提升链求值域判据·#506甲 负号
+// 形态按数学负值判）：正超上界 2^31-1 或负超下界 -2^31 → 求值域应提升 整64。
+// value=带符号承载值——parser 323 把一元负号+字面量折叠为带负号 raw/负值的
+// 单一 IntegerLiteral，负号形态在此即数学负值；超 int64 承载的十进制文本
+// 面（|值| > 2^63-1·承载已失真）不归本判据，由调用点 textExceedsInt64
+// 先行判 整128（本函数不涉）。单点归属：四处 420 提升链实现（宿主 IR 物化
+// ir_expr / 推断面 semantic_decl / 回绕实参域 semantic_call / 溢出预演域
+// semantic_expr_binary）共用，防判据分叉。
+bool literalValueExceedsInt32Domain(long long value);
+
 // 十进制文本是否超出 正32（无符号32位）范围（> 4294967295）
 // 审查修复：无符号后缀（U）字面量值超出 2^32-1 时自动提升为 正64。
 bool textExceedsU32(const std::string& text);

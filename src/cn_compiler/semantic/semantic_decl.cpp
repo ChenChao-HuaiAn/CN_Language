@@ -52,7 +52,11 @@ static std::string inferredLiteralWidthType(const Expr* e) {
     std::string promoted = std::string("整32");
     // ——以下两条与 ir_expr.cpp visitIntegerLiteral 提升链逐条同构——
     //（超 int64 域文本的 value 已 int64 回绕：文本判定在后天兜底归 整128）
-    if (lit->value > 2147483647LL) promoted = "整64";
+    // 728g（#506甲·420 负号形态）：按数学值域提升——负号折叠形态（parser 323）
+    //   value 为数学负值，修前只判正域使 -3000000000 不改判 → 推断面 T36
+    //   误拒（「无法将 '整32' 隐式转换为 '整32'」·应整64 放行）；共用单点判据
+    //   types::literalValueExceedsInt32Domain（与 IR 物化/v2 负号域判定对齐）。
+    if (types::literalValueExceedsInt32Domain(lit->value)) promoted = "整64";
     if (types::textExceedsInt64(digits)) promoted = "整128";
     if (promoted == "整128") {
         // 整128 域检查：负形态负界容 -2^127（拼负号走剥符号分界比较·663

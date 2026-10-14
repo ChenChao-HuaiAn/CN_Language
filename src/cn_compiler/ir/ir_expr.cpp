@@ -23,7 +23,12 @@ void IRGenerator::visitIntegerLiteral(IntegerLiteral* node) {
     std::string type = types::literalTypeOf(node->raw, false);
     if (type.empty()) type = "整32";
     // 无后缀（整32）但值超出 int32 范围：自动提升为整64
-    if (type == "整32" && node->value > 2147483647LL) type = "整64";
+    // 728g（#506甲/420）：判据=数学值域（负号形态按负值判）——parser 323 负号
+    //   折叠后 node->value 即数学负值，修前只判正域使 -3000000000 等负超下界
+    //   字面量恒留 int32 标记域，ConstInt i32 + codegen 32 位截断回绕（声明/
+    //   赋值/实参/返回/表达式全位置错值实锤）；共用单点判据
+    //   types::literalValueExceedsInt32Domain（正负双域·与 v2 负号域判定对齐）。
+    if (type == "整32" && types::literalValueExceedsInt32Domain(node->value)) type = "整64";
     // 无后缀但值超出 int64 范围：自动提升为整128（十进制文本比较，2^63-1 上限）
     if ((type == "整32" || type == "整64") &&
         types::textExceedsInt64(types::stripLiteralSuffix(node->raw))) {
