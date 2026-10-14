@@ -386,6 +386,12 @@ def 建树(任务号: str = "", 无ninja: bool = False, 立行: str | None = Non
                 print(f"[失败] 认领被拒：{认领.get('错误', 认领)}")
                 return 1
             print(f"[认领] 台账 #{任务号} {t['状态']}→🏃（归属 {机名()}-wt{任务号}）")
+    if 接棒 and not 远端分支在:
+        # 空壳接棒（795 轮实录）：台账 🏃 而远端分支不在（认领后未 push/被清理）——
+        # 接棒知情无从谈起（git log 空会被从严误判活跃），基准退化为不存在的
+        # gitcode/引用 也必炸 worktree add。降级新开（基于 develop·push 后认领即在案）。
+        print(f"[提示] 台账 🏃 但远端 {分支} 不在——空壳从零（基于 develop 新开·push 分支即认领在案）")
+        接棒 = False
     if 接棒 and not 接棒知情(分支, 接管):
         return 1
     树路径 = 主树根().parent / f"wt{任务号}"
