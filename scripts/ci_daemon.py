@@ -379,10 +379,14 @@ def linux构建链(步骤们: dict, 步骤) -> None:
         步骤("单测", [str(单测)], 1800)
 
 
-def 静态门禁与e2e段(步骤们: dict, 步骤, cn: Path | None) -> None:
+def 静态门禁与e2e段(步骤们: dict, 步骤, cn: Path | None, 日志) -> None:
     """③.5 静态门禁面+④ E2E（242/447-a/924 原内联于 跑一轮·523 抽出=跑一轮
     拆函数回 ≤100 行）——两平台公共段；cn 产物定位必须先于本段（原赋值在 ④ 段
-    晚于引用=UnboundLocalError 必崩·259 修）。逻辑逐行保持原样。"""
+    晚于引用=UnboundLocalError 必崩·259 修）。逻辑逐行保持原样。
+    728t（2026-10-14）：523 抽出时漏传 日志 形参——e2e 并行红打 422 行 [复验] 提示
+    行即 NameError 崩轮（wt2/wt3 双实例实录·红轮永不落盘/不上报→服务端 300s 回收
+    重派=池算力黑洞第二形态）。修=签名补 日志 + 调用点传参；selftest 加自由名锚
+    （通用·防抽函数漏参族再犯）+ 422 路径冒烟两态。"""
     for 名, 参 in (("check_spec_coverage", []),   # 243：非 strict（TX_02「指针有效性」存量红=244 修·红不拦兜底轮）
                   ("check_cli_contract", ["--cn", str(cn)]),
                   ("check_asm_width", ["--cn", str(cn)]),
@@ -569,7 +573,7 @@ def 跑一轮(sha: str, 轮分支: str = "") -> dict:
             cn = next((p for p in ([仓库根 / "target/cn.exe", 仓库根 / "target/cn"] if 是win
                                    else [仓库根 / "target/build/cn", 仓库根 / "target/cn"])
                        if p.exists()), None)
-            静态门禁与e2e段(步骤们, 步骤, cn)
+            静态门禁与e2e段(步骤们, 步骤, cn, 日志)
         尾部 = []
     # 日志尾部摘录进结果（供 TX_01 结果页直显；完整日志在 run_*.log）
     with 轮日志路径.open("r", encoding="utf-8", errors="replace") as f:

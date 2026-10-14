@@ -11,7 +11,7 @@ __main__ 副本）；行为级桩对照经猴补/还原主模块属性实现（�
 
 断言面索引：win 构建脚本文本+指纹三态（523）｜预验清产物（637）｜同步后编排正反两态
 +绿聚合三态+AST 互斥链结构锁（657）｜兜底过期纯函数三态+文本结构锁+行为级两态桩
-（660）｜ci_daemon.py 行数红线（660）。
+（660）｜ci_daemon.py 行数红线（660）｜日志 漏参族自由名锚+e2e 并行红路径冒烟（728t）。
 """
 from __future__ import annotations
 
@@ -180,6 +180,146 @@ def _660断言(主模块, 断言) -> None:
          and "develop 已前进至 %s" % ("b" * 10) in 说明)
 
 
+class _局部收集(ast.NodeVisitor):
+    """728t：函数体局部定义名收集（不下钻嵌套函数体——嵌套函数名本身计局部）。
+    覆盖 Store 目标/import 别名/异常 as/嵌套函数与类名。"""
+
+    def __init__(self):
+        self.局部: set[str] = set()
+
+    def visit_FunctionDef(self, 节点):
+        self.局部.add(节点.name)
+
+    def visit_AsyncFunctionDef(self, 节点):
+        self.局部.add(节点.name)
+
+    def visit_ClassDef(self, 节点):
+        self.局部.add(节点.name)
+
+    def visit_Lambda(self, 节点):
+        pass
+
+    def visit_Name(self, 节点):
+        if not isinstance(节点.ctx, ast.Load):
+            self.局部.add(节点.id)
+
+    def visit_alias(self, 节点):
+        self.局部.add((节点.asname or 节点.name).split(".")[0])
+
+    def visit_ExceptHandler(self, 节点):
+        if 节点.name:
+            self.局部.add(节点.name)
+        self.generic_visit(节点)
+
+
+class _引用收集(ast.NodeVisitor):
+    """728t：函数体读取名收集（不下钻嵌套函数体）。"""
+
+    def __init__(self):
+        self.自由: set[str] = set()
+
+    def visit_FunctionDef(self, 节点):
+        pass
+
+    def visit_AsyncFunctionDef(self, 节点):
+        pass
+
+    def visit_Lambda(self, 节点):
+        pass
+
+    def visit_Name(self, 节点):
+        if isinstance(节点.ctx, ast.Load):
+            self.自由.add(节点.id)
+
+
+def _文件自由名问题(文件: Path) -> list[str]:
+    """728t：单文件「模块级函数未定义自由名」扫描——自由名 ∉ 形参∪函数局部定义∪
+    模块级定义∪内置/dunder。模块级定义=模块体顶层（含模块级 if 直接子句）的赋值名/
+    函数类名/import 别名——**刻意不含函数体内 Store**（正因如此才能抓出 523 抽
+    静态门禁与e2e段 漏传 日志：日志 是 跑一轮 的局部而非模块级名，函数体内引用即
+    NameError）。返回 ["函数名(): 名1, 名2"] 问题清单（空=干净）。"""
+    import builtins
+    树 = ast.parse(文件.read_text(encoding="utf-8"))
+    模块级: set[str] = set()
+    for 语句 in 树.body:
+        候补 = list(语句.body) + list(语句.orelse) if isinstance(语句, ast.If) else [语句]
+        for 子 in 候补:
+            if isinstance(子, (ast.Assign, ast.AnnAssign)):
+                for 名节点 in ast.walk(子):
+                    if isinstance(名节点, ast.Name) and isinstance(名节点.ctx, ast.Store):
+                        模块级.add(名节点.id)
+            elif isinstance(子, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                模块级.add(子.name)
+            elif isinstance(子, (ast.Import, ast.ImportFrom)):
+                for 别名 in 子.names:
+                    模块级.add((别名.asname or 别名.name).split(".")[0])
+    白名单 = 模块级 | set(dir(builtins)) | {"__file__", "__name__", "__doc__"}
+    问题: list[str] = []
+    for 函数 in [n for n in 树.body
+                 if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]:
+        局部 = _局部收集()
+        引用 = _引用收集()
+        for 语句 in 函数.body:
+            局部.visit(语句)
+            引用.visit(语句)
+        形参 = {a.arg for a in 函数.args.args + 函数.args.kwonlyargs + 函数.args.posonlyargs}
+        if 函数.args.vararg:
+            形参.add(函数.args.vararg.arg)
+        if 函数.args.kwarg:
+            形参.add(函数.args.kwarg.arg)
+        缺 = sorted(引用.自由 - 局部.局部 - 形参 - 白名单)
+        if 缺:
+            问题.append("%s(): %s" % (函数.name, ", ".join(缺)))
+    return 问题
+
+
+def _728t断言(主模块, 断言) -> None:
+    """728t（2026-10-14）：静态门禁与e2e段 日志 漏参族——自由名锚（静态·双文件）+
+    e2e 并行红路径冒烟（行为·零真构建：假 步骤/临时 cn 直调，逼出 422 行 [复验] 行）。
+    实录（修复前两态）：自由名锚直报「静态门禁与e2e段(): 日志」；冒烟在旧签名下
+    TypeError=红。修复后两态全绿。"""
+    根 = Path(__file__).resolve().parent
+    问题: list[str] = []
+    for 文件 in ("ci_daemon.py", "ci_daemon_selftest.py"):
+        问题 += _文件自由名问题(根 / 文件)
+    断言("728t 自由名锚：模块级函数零未定义自由名（抽函数漏参族防线%s）"
+         % ("｜" + "；".join(问题) if 问题 else ""), not 问题)
+
+    import io
+    调用: list[str] = []
+    步骤们: dict = {"构建": {"rc": 0}}        # 构建绿 → 进 e2e 分支
+
+    def 假步骤(名: str, 命令, 超时秒) -> bool:
+        # 与真 步骤() 闭包同构：落键 步骤们[名] 再返回绿否（真闭包必写，冒烟缺写即
+        #   在本断言暴露=同构锁）；e2e并行 假红 → 逼出 [复验] 提示行（422 路径）。
+        调用.append(名)
+        绿 = 名 != "e2e并行"
+        步骤们[名] = {"rc": 0 if 绿 else 1}
+        return 绿
+
+    with tempfile.TemporaryDirectory() as 临时:
+        假cn = Path(临时) / "cn.exe"
+        假cn.write_text("x", encoding="utf-8")
+        假日志 = io.StringIO()
+        try:
+            主模块.静态门禁与e2e段(步骤们, 假步骤, 假cn, 假日志)
+            崩 = None
+        except TypeError:                     # 旧签名（本修复前）按 3 参调用——仍撞 422 行
+            try:                              # NameError（日志 未定义）=wt2/wt3 现场一比一
+                主模块.静态门禁与e2e段(步骤们, 假步骤, 假cn)
+                崩 = None
+            except Exception as e:
+                崩 = e
+        except Exception as e:
+            崩 = e
+    断言("728t 冒烟：e2e 并行红→串行复验路径零异常（422 行 [复验]%s）"
+         % ("" if 崩 is None else "｜异常=%r" % (崩,)), 崩 is None)
+    断言("728t 冒烟：串行复验落键且 e2e 判定取串行 rc（447-a 口径保持）",
+         "e2e串行复验" in 步骤们 and 步骤们.get("e2e", {}).get("rc") == 0)
+    断言("728t 冒烟：[复验] 提示行入日志句柄（file=日志 实连不炸）",
+         "[复验]" in 假日志.getvalue())
+
+
 def _行数断言(断言) -> None:
     """660 行数红线：ci_daemon.py（自测外迁后）<1000 行——防再回涨到硬上限。"""
     脚本 = Path(__file__).resolve().parent / "ci_daemon.py"
@@ -197,9 +337,10 @@ def 自测(主模块) -> int:
     _523_637断言(主模块, 断言)
     _657断言(主模块, 断言)
     _660断言(主模块, 断言)
+    _728t断言(主模块, 断言)
     _行数断言(断言)
     for 名, ok in 断言们:
         print("  [%s] %s" % ("OK" if ok else "×", 名))
     红 = sum(1 for _, ok in 断言们 if not ok)
-    print("== ci_daemon 自测（523+637+657+660）：%d 断言，%s ==" % (len(断言们), "全绿" if 红 == 0 else "红 %d" % 红))
+    print("== ci_daemon 自测（523+637+657+660+728t）：%d 断言，%s ==" % (len(断言们), "全绿" if 红 == 0 else "红 %d" % 红))
     return 0 if 红 == 0 else 1
