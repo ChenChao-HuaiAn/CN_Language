@@ -101,6 +101,7 @@ void IRGenerator::visitUnaryExpr(UnaryExpr* node) {
             //   整64/结构体 联合体偏移 8、整32 偏移 4——原硬编码 8 使 结果<整32,整32>
             //   的 ? 运算符读/写错位，正常传播读垃圾（-889198960 实测））
             int valueOff = 8;
+            bool valueOffFound648 = false;  // 648：偏移查表命中置真
             const StructDecl* pdecl =
                 (semantic_ != nullptr) ? semantic_->findStruct(structName) : nullptr;
             if (pdecl != nullptr) {
@@ -110,9 +111,19 @@ void IRGenerator::visitUnaryExpr(UnaryExpr* node) {
                                           : (pf.name == "值");
                     if (want) {
                         valueOff = semantic_->fieldOffsetOf(pdecl, pf.name);
+                        valueOffFound648 = valueOff >= 0;
                         break;
                     }
                 }
+            }
+            if (!valueOffFound648) {
+                // 648（miss 不可静默·110 同族）：结果/可选 合成结构体偏移查表
+                //   miss（合成体未登记/成员字段缺失）=编译器内部缺陷，显形于此；
+                //   driver 在 generate() 后 hasErrors() 统一中止，产物不落地。
+                //   原 8 字节偏移兜底保留（控制流零变更）。
+                diagnostics_.report(DiagnosticLevel::Error, node->location,
+                    "内部错误: 结果/可选 合成结构体 '" + structName +
+                        "' 值/联合体字段偏移未登记 ——静默偏移8兜底已废除（#648）");
             }
             if (valueOff < 0) valueOff = 8;
             // 宿主缺陷根治（2026-08-25）：读偏移按操作数自身类型（内层 结果<整32,整32>
@@ -120,6 +131,7 @@ void IRGenerator::visitUnaryExpr(UnaryExpr* node) {
             //   ——原统一用 ptype 偏移，宽错误码传播（E 整32->整64）读内层错位
             //   （错误码 1 读成 4294967296 实测）。operandType 已在类型解析处声明。
             int readOff = valueOff;  // 默认：传播目标偏移（操作数类型未知时回退）
+            bool readOffFound648 = false;  // 648：读偏移查表命中置真
             if (!operandType.empty() && semantic_ != nullptr) {
                 std::string opStruct;
                 if (isResultType(operandType)) {
@@ -142,10 +154,20 @@ void IRGenerator::visitUnaryExpr(UnaryExpr* node) {
                                               : (pf.name == "值");
                         if (want) {
                             readOff = semantic_->fieldOffsetOf(opdecl, pf.name);
+                            readOffFound648 = readOff >= 0;
                             break;
                         }
                     }
                 }
+            }
+            if (!operandType.empty() && semantic_ != nullptr && !readOffFound648) {
+                // 648（miss 不可静默·110 同族）：读偏移按操作数类型查表 miss
+                //   （合成体未登记/字段缺失）=编译器内部缺陷，显形于此；driver
+                //   在 generate() 后 hasErrors() 统一中止，产物不落地。原 8 字节
+                //   偏移兜底保留（控制流零变更）。操作数类型未知（operandType 空）
+                //   时回退传播目标偏移=有意设计（上方注释），不在此列。
+                diagnostics_.report(DiagnosticLevel::Error, node->location,
+                    "内部错误: 结果/可选 读侧合成结构体偏移未登记 ——静默偏移8兜底已废除（#648）");
             }
             if (readOff < 0) readOff = 8;
             ir::IRValue flagAddr = emitResult(ir::Opcode::FieldAddr, {propOperand}, "ptr",
@@ -520,6 +542,14 @@ void IRGenerator::visitUnaryExpr(UnaryExpr* node) {
             const std::string pointeeSrc = pointerPointeeSrcType(node->operand.get());
             if (!pointeeSrc.empty()) {
                 elemType = mapType(pointeeSrc);
+            } else {
+                // 648（miss 不可静默·110 同族）：解引用目标所指元素类型未解析
+                //   （复合指针表达式递归推导缺口·合法程序可走到）=编译器内部
+                //   缺陷，上游无错误短路，显形于此；driver 在 generate() 后
+                //   hasErrors() 统一中止，产物不落地。原 8 字节宽读兜底保留
+                //   （控制流零变更）。
+                diagnostics_.report(DiagnosticLevel::Error, node->location,
+                    "内部错误: 解引用目标所指元素类型未解析 ——静默8字节宽读兜底已废除（#648）");
             }
             // 空指针检查（错误码3）：codegen 在 LoadPtr/StorePtr 处插桩
             lastExpr_ = emitResult(ir::Opcode::LoadPtr, {operand}, elemType,

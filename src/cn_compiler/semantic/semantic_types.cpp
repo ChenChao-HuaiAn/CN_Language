@@ -461,6 +461,27 @@ int SemanticAnalyzer::typeSizeOf(const std::string& typeRaw) const {
     if (baseSize > 0) return baseSize;
     // 字符串 = 指针（8字节）；未知类型防御性返回8
     if (type == "字符串") return 8;
+    // 648 豁免两态（合法查询·非 miss，原 8 兜底保留）：
+    //   ①空类型：无值类型本无尺寸（结果<空类型,…> 错误载荷布局等合法形态）；
+    //   ②泛型形参：单态化前无具体尺寸（泛型类定义体检查期合法查询——
+    //     实例化期经归一/单态化后不再以形参名到达此终态）。
+    if (type == "空类型") return 8;
+    for (const auto& kv : generics_) {
+        for (const std::string& p : kv.second.typeParams) {
+            if (p == type) return 8;
+        }
+    }
+    // 648 miss 不可静默：终态 return 8 有实证错布局史（本文件上方
+    //   registerGenericsAndComputeLayout 注释·p3 段错误实录：容器类未实例化时
+    //   字段 24B 被兜底成 8B → 槽区错位）——消费面（布局/槽分配/CopyStruct）
+    //   按 8B 静默继续=错值产物面。上游已逐点根治（sizeof 241-a 存在性守卫、
+    //   布局前泛型归一+068 预降级、IR 单态化 331-a），到达此终态=归一/降级
+    //   遗漏（编译器内部缺陷）或上游已报错的恢复查询。报内部错误后仍按 8
+    //   兜底返回（上方 440 合成体未降级先例同款：错误已报编译必失败不产物，
+    //   只影响级联诊断质量）。
+    diagnostics_.report(
+        DiagnosticLevel::Error, SourceLocation(),
+        "内部错误: 类型 '" + type + "' 尺寸未登记，终态 8 兜底已不可静默（#648）");
     return 8;
 }
 int SemanticAnalyzer::typeAlignOf(const std::string& typeRaw) const {

@@ -49,9 +49,23 @@ void IRGenerator::visitIndexExpr(IndexExpr* node) {
             //   结构体总大小（Task 2.7）/i128=16（BUG #5）/标量 4/2/1；原标量
             //   兜底 8 与数组 8 槽布局互洽，见 ir.cpp registerVarSlots 注）
             std::int64_t elemStride = 8;
-            if (semantic_ != nullptr) {
-                const int size = semantic_->typeSizeOf(elemSrc);
-                if (size > 0) elemStride = size;
+            {
+                const int size =
+                    (semantic_ != nullptr) ? semantic_->typeSizeOf(elemSrc) : 0;
+                if (size > 0) {
+                    elemStride = size;
+                } else if (semantic_ == nullptr) {
+                    // 648 豁免边界声明：semantic_ 可空系构造契约（单测 harness
+                    //   合法不传），非内部缺陷——原 8 兜底静默保留。
+                } else {
+                    // 648（miss 不可静默·110 同族）：数组元素类型宽度未登记=
+                    //   编译器内部缺陷（数组对象已登记而元素宽度查表 miss），
+                    //   显形于此；driver 在 generate() 后 hasErrors() 统一中止，
+                    //   产物不落地。原 8 字节兜底保留（控制流零变更）。
+                    diagnostics_.report(DiagnosticLevel::Error, node->location,
+                        "内部错误: 数组元素类型 '" + elemSrc +
+                            "' 宽度未登记 ——静默步进8兜底已废除（#648）");
+                }
             }
             ir::IRValue scaled = emitResult(
                 ir::Opcode::Mul,
@@ -297,7 +311,16 @@ void IRGenerator::visitIndexExpr(IndexExpr* node) {
                 const std::string elemSrc = types::arrayElemOf(ftype);
                 // H4 根治（99-a）：统一 typeSizeOf（同 ②）
                 stride = semantic_->typeSizeOf(elemSrc);
-                if (stride <= 0) stride = 8;
+                if (stride <= 0) {
+                    // 648（miss 不可静默·110 同族）：字段数组元素类型宽度未登记=
+                    //   编译器内部缺陷，显形于此；driver 在 generate() 后
+                    //   hasErrors() 统一中止，产物不落地。原 8 字节兜底保留
+                    //   （控制流零变更）。
+                    diagnostics_.report(DiagnosticLevel::Error, node->location,
+                        "内部错误: 数组字段元素类型 '" + elemSrc +
+                            "' 宽度未登记 ——静默步进8兜底已废除（#648）");
+                    stride = 8;
+                }
                 emitBoundsCheck(index, types::arrayLenOf(ftype), node->location);
             }
         }
@@ -306,12 +329,14 @@ void IRGenerator::visitIndexExpr(IndexExpr* node) {
     //   结构体元素返回地址（供按值传参），普通元素 LoadPtr 按元素类型
     std::string elemIrType = "i64";
     bool elemIsStruct = false;
+    bool elemTyped648 = false;  // 648：任一形态命中元素类型推导置真
     // 244：调用返回的元素形态（与上方 stride 段同源——数组=元素宽度、字符串=
     //   i8 字节视图、指针=所指宽度；结构体元素地址语义与数组变量路径全同构；
     //   i64 兜底仅对无类型信息形态保留）
     if (!callRetType244.empty() && types::isArray(callRetType244)) {
         const std::string elemSrc244 = types::arrayElemOf(callRetType244);
         elemIrType = mapType(elemSrc244);
+        elemTyped648 = true;
         if (semantic_ != nullptr &&
             (semantic_->isStructType(types::canonical(elemSrc244)) ||
              semantic_->isClassType(types::canonical(elemSrc244)))) {
@@ -320,8 +345,10 @@ void IRGenerator::visitIndexExpr(IndexExpr* node) {
     } else if (!callRetType244.empty() &&
                types::canonical(callRetType244) == "字符串") {
         elemIrType = "i8";
+        elemTyped648 = true;
     } else if (!callRetType244.empty() && types::isPointer(callRetType244)) {
         elemIrType = mapType(types::pointeeOf(callRetType244));
+        elemTyped648 = true;
     }
     else if (node->object->getType() == NodeType::MemberExpr) {
         MemberExpr* inner = static_cast<MemberExpr*>(node->object.get());
@@ -332,6 +359,7 @@ void IRGenerator::visitIndexExpr(IndexExpr* node) {
                 if (f.name == inner->memberName && types::isArray(f.type)) {
                     const std::string elemSrc = types::arrayElemOf(f.type);
                     elemIrType = mapType(elemSrc);
+                    elemTyped648 = true;
                     if (semantic_ != nullptr &&
                         semantic_->isStructType(types::canonical(elemSrc))) {
                         elemIsStruct = true;
@@ -341,8 +369,12 @@ void IRGenerator::visitIndexExpr(IndexExpr* node) {
                 // 自举前置 A-1：字符串成员元素类型 字符（i8）
                 if (f.name == inner->memberName && types::canonical(f.type) == "字符串") {
                     elemIrType = "i8";
+                    elemTyped648 = true;
                     break;
                 }
+                // 648 归档：字段名 miss=上游语义层已报「没有成员」；字段命中但
+                //   非数组/非字符串（标量下标）=语义层拒绝形态的错误恢复——
+                //   不在此报错，交由尾段全 miss 判定统一收口。
             }
         }
         // 宿主缺陷1'根治（2026-09-02）：类对象/结构体的指针字段下标元素形态
@@ -353,6 +385,7 @@ void IRGenerator::visitIndexExpr(IndexExpr* node) {
             if (types::isPointer(ftype)) {
                 const std::string elemSrc = types::pointeeOf(ftype);
                 elemIrType = mapType(elemSrc);
+                elemTyped648 = true;
                 const std::string elemCanon = types::canonical(elemSrc);
                 if (semantic_ != nullptr &&
                     (semantic_->isStructType(elemCanon) ||
@@ -363,6 +396,7 @@ void IRGenerator::visitIndexExpr(IndexExpr* node) {
                 // D30 根治（255-a）：字符串字段元素=i8（字节视图·与字符串变量
                 //   兜底及「字符串成员 i8」分支对称；原默认 i64 -> 4/8 字节打包读）
                 elemIrType = "i8";
+                elemTyped648 = true;
             }
         }
     } else if (node->object->getType() == NodeType::IdentifierExpr) {
@@ -377,6 +411,7 @@ void IRGenerator::visitIndexExpr(IndexExpr* node) {
         if (types::isPointer(st)) {
             const std::string elemSrc = types::pointeeOf(st);
             elemIrType = mapType(elemSrc);
+            elemTyped648 = true;
             const std::string elemCanon = types::canonical(elemSrc);
             // H8 补完（2026-08-25）：类元素（向量<T> 数据 = T*，T=映射）同结构体
             //   返回元素地址（元素是内联类值，LoadPtr 只读 8 字节错误）
@@ -387,7 +422,18 @@ void IRGenerator::visitIndexExpr(IndexExpr* node) {
         } else if (types::canonical(st) == "字符串") {
             // 自举前置 A-1：字符串变量兜底（i8 字节视图）
             elemIrType = "i8";
+            elemTyped648 = true;
         }
+        // 648 归档：变量未登记（st 空）=上游语义层已报「未声明」之恢复路径；
+        //   标量变量下标=语义层拒绝形态——均不在此报错，交由尾段统一收口。
+    }
+    if (!elemTyped648) {
+        // 648 归档（豁免边界声明）：终态 8 字节宽读兜底为「单态化管线下的定义期
+        //   占位」——泛型定义期 T* 字段下标常态到达（stdlib/容器.cn:62 其他.数据[索引]
+        //   实证·首记 648 曾报错后回撤），任何对 T 的类型查询在单态化前均无果；
+        //   实例化产物经 IR 单态化（331-a）重编后走精确类型。真实 miss 形态
+        //   （矩阵[i][j]/指针算术结果下标）存量全量从未显形为错值。
+        //   原 i64 8 字节宽读兜底保留（控制流零变更）。
     }
     ir::IRValue scaled = emitResult(ir::Opcode::Mul,
                                     {index, ir::IRValue::constant(std::to_string(stride), "i64")},

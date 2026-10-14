@@ -64,6 +64,9 @@ void SemanticAnalyzer::visitTernaryExpr(TernaryExpr* node) {
         return;
     }
     // 数值类型：宽化合并（整8/整32/浮32 等按 commonNumericType 提升）
+    // 648 归档（commonNumericType 终态消费面）：isNumeric 双真守卫收窄——
+    //   浮点走浮点分支、整数走 rank 分支（isInteger → intRank>0），"未知"
+    //   已在上方早退（上游 checkExpr 已报错），"整32" miss 终态不可达。
     if (isNumeric(trueType) && isNumeric(falseType)) {
         lastType_ = commonNumericType(trueType, falseType);
         return;

@@ -205,6 +205,12 @@ bool IRGenerator::emitStructWholeAssign(const ir::IRValue& dstAddr,
 }
 
 void IRGenerator::visitInitListExpr(InitListExpr* node) {
+    // 648（miss 不可静默·110 同族）：初始化列表落入通用值发射桩=未被声明位/
+    //   赋值位/字段位专用通道展开（合法程序应不可达），显形于此；driver 在
+    //   generate() 后 hasErrors() 统一中止，产物不落地。原常量 0 兜底保留
+    //   （控制流零变更）。
+    diagnostics_.report(DiagnosticLevel::Error, node->location,
+        "内部错误: 初始化列表未被专用通道展开而落入通用值发射 ——静默常量0兜底已废除（#648）");
     (void)node;
     lastExpr_ = emitResult(ir::Opcode::ConstInt, {}, "i32", "0", node->location);
 }
@@ -238,7 +244,16 @@ void IRGenerator::emitStructInitTo(StructInitExpr* init, const ir::IRValue& targ
             const std::string elemSrc = types::arrayElemOf(fieldSrcType);
             const std::string elemIrType = mapType(elemSrc);
             std::int64_t elemStride = types::typeSize(elemSrc);
-            if (elemStride <= 0) elemStride = 8;  // 防御：未知类型按 8 字节
+            if (elemStride <= 0) {
+                // 648（miss 不可静默·110 同族）：数组字段元素类型宽度未登记=
+                //   编译器内部缺陷（语义层对非数组字段列表初始化不拦·合法程序
+                //   可走到），显形于此；driver 在 generate() 后 hasErrors() 统一
+                //   中止，产物不落地。原 8 字节兜底保留（控制流零变更）。
+                diagnostics_.report(DiagnosticLevel::Error, loc,
+                    "内部错误: 数组字段 '" + fieldName + "' 元素类型 '" + elemSrc +
+                        "' 宽度未登记 ——静默步进8兜底已废除（#648）");
+                elemStride = 8;  // 防御：未知类型按 8 字节
+            }
             if (semantic_->isStructType(types::canonical(elemSrc))) {
                 elemStride = semantic_->typeSizeOf(elemSrc);
             } else if (types::isI128(types::canonical(elemSrc))) {
@@ -277,6 +292,10 @@ void IRGenerator::emitStructInitTo(StructInitExpr* init, const ir::IRValue& targ
                 break;
             }
         }
+        // 648 归档：字段名查表 miss 时本 i32 初始值不可达——同名字段偏移已在
+        //   上方 fieldOffsetOf<0 处 continue 短路（语义层 visitStructInitExpr 已报
+        //   「结构体 'X' 没有字段 'Y'」Error），此处仅为恢复路径的防御兜底，
+        //   保留不改（非新增静默面）。
         // 86-a（2026-09-12 复审缺陷①扩展面）：字段值为**结构体类型**（标识符/
         //   成员/下标/三元/调用来源——非嵌套字面量形态）——整体拷贝写入（Rust
         //   place 拷贝语义；与声明/赋值位 emitStructCopyWithFields 同款）。
@@ -322,6 +341,12 @@ void IRGenerator::emitStructInitTo(StructInitExpr* init, const ir::IRValue& targ
     }
 }
 void IRGenerator::visitStructInitExpr(StructInitExpr* node) {
+    // 648（miss 不可静默·110 同族）：构造字面量落入通用值发射桩=未被声明位/
+    //   赋值位/字段位 emitStructInitTo 通道展开（合法程序应不可达），显形于此；
+    //   driver 在 generate() 后 hasErrors() 统一中止，产物不落地。原常量 0 兜底
+    //   保留（控制流零变更）。
+    diagnostics_.report(DiagnosticLevel::Error, node->location,
+        "内部错误: 构造字面量未被专用通道展开而落入通用值发射 ——静默常量0兜底已废除（#648）");
     lastExpr_ = emitResult(ir::Opcode::ConstInt, {}, "i32", "0", node->location);
 }
 void IRGenerator::visitMemberExpr(MemberExpr* node) {
@@ -351,6 +376,9 @@ void IRGenerator::visitMemberExpr(MemberExpr* node) {
     ir::IRValue fieldAddr = lvalueAddress(node);
     // 查询字段类型（语义层布局，递归解析对象类型）
     if (semantic_ == nullptr) {
+        // 648 豁免边界声明：semantic_ 可空系构造契约（ir_generator.hpp「可空，
+        //   缺失时布局防御性跳过」·IR 层单测 harness 即合法不传），非内部缺陷；
+        //   生产 driver 全链路恒注入。原常量 0 降级保留（中止前路径·无诊断）。
         lastExpr_ = emitResult(ir::Opcode::ConstInt, {}, "i32", "0", node->location);
         return;
     }
@@ -369,6 +397,13 @@ void IRGenerator::visitMemberExpr(MemberExpr* node) {
     }
     const StructDecl* decl = semantic_->findStruct(types::canonical(objSrcType));
     if (decl == nullptr) {
+        // 648（miss 不可静默·110 同族）：对象结构体类型推导 miss=合法程序内部
+        //   缺陷（82-d 三级链/1014 调用链等四次复发实录），上游无错误短路，
+        //   显形于此；driver 在 generate() 后 hasErrors() 统一中止，产物不落地。
+        //   原常量 0 兜底保留（控制流零变更）。
+        diagnostics_.report(DiagnosticLevel::Error, node->location,
+            "内部错误: 成员 '" + node->memberName + "' 所属结构体类型未解析（对象类型 '" +
+                objSrcType + "'）——静默常量0兜底已废除（#648）");
         lastExpr_ = emitResult(ir::Opcode::ConstInt, {}, "i32", "0", node->location);
         return;
     }

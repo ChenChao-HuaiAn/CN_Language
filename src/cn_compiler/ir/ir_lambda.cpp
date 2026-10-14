@@ -78,6 +78,15 @@ void IRGenerator::emitLambdaSnapshotStores(
         const bool byRef = captureRefs[ci] != 0;
         const std::string capSrc = lookupSrcType(cap);
         const std::string capIrType = lookupVarType(cap);
+        if (capIrType.empty()) {
+            // 648（miss 不可静默·110 同族）：捕获变量 IR 类型未登记=编译器内部
+            //   缺陷（语义层回填捕获列表必对应 varStack 已登记变量），显形于此；
+            //   driver 在 generate() 后 hasErrors() 统一中止，产物不落地。覆盖
+            //   本函数下方 byRef AddrOf 与标量快照 StorePtr 两处 i64 兜底 miss
+            //   （同变量只报一次），原兜底表达式保留（控制流零变更）。
+            diagnostics_.report(DiagnosticLevel::Error, loc,
+                "内部错误: 捕获变量 '" + cap + "' IR 类型未登记 ——静默宽度兜底已废除（#648）");
+        }
         const std::string slotSym = "?gstatic_" + lambdaSlotKey(lambdaName, cap);
         const bool isStructValCap =
             !byRef && semantic_ != nullptr &&
@@ -160,6 +169,15 @@ void IRGenerator::buildLambdaTrampoline(
         const bool byRef = captureRefs[ci] != 0;
         const std::string capSrc = lookupSrcType(cap);
         const std::string capIrType = lookupVarType(cap);
+        if (capIrType.empty()) {
+            // 648（miss 不可静默·110 同族）：捕获变量 IR 类型未登记=编译器内部
+            //   缺陷（与 emitLambdaSnapshotStores 同源 miss 的蹦床侧独立防御点），
+            //   显形于此；driver 在 generate() 后 hasErrors() 统一中止，产物不
+            //   落地。覆盖下方标量 LoadPtr 的 i64 兜底 miss，原兜底表达式保留
+            //   （控制流零变更）。
+            diagnostics_.report(DiagnosticLevel::Error, loc,
+                "内部错误: 捕获变量 '" + cap + "' IR 类型未登记 ——静默宽度兜底已废除（#648）");
+        }
         ir::IRValue slotAddr = emitResult(
             ir::Opcode::ConstString, {}, "ptr",
             "?gstatic_" + lambdaSlotKey(lambdaName, cap), loc);
@@ -280,6 +298,15 @@ void IRGenerator::visitLambdaExpr(LambdaExpr* node) {
         const bool byRef = captureRefs[ci] != 0;
         const std::string capType = lookupVarType(cap);
         const std::string capSrc = lookupSrcType(cap);
+        if (capType.empty()) {
+            // 648（miss 不可静默·110 同族）：捕获变量 IR 类型未登记=编译器内部
+            //   缺陷（语义层回填捕获列表必对应 varStack 已登记变量），显形于此；
+            //   driver 在 generate() 后 hasErrors() 统一中止，产物不落地。覆盖
+            //   本循环下方捕获参数 paramType 与 VarEntry.type 两处 i64 兜底 miss
+            //   （同源同变量只报一次），原兜底表达式保留（控制流零变更）。
+            diagnostics_.report(DiagnosticLevel::Error, node->location,
+                "内部错误: 捕获变量 '" + cap + "' IR 类型未登记 ——静默宽度兜底已废除（#648）");
+        }
         // 缺陷修复（[=] 结构体值捕获）：结构体值捕获实参是"定义处深拷贝临时
         //   缓冲区的指针"（见 genVarDecl captureArgs 固化逻辑），闭包参数须标记
         //   为按值结构体参数（structParamIndexes），emitParamSetup 才会从该指针

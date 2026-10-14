@@ -15,6 +15,9 @@
 
 namespace cn_compiler {
 
+// 648：miss 返回空串是接口信号（消费点遍布全树），禁止在本函数改报错；
+//   消费点须按「miss 不可静默」立法处置（先例=ir_call.cpp 用户函数返回类型
+//   两级查询收口·内置/泛型回退命中不涉）。
 std::string SemanticAnalyzer::funcReturnTypeOf(const std::string& funcName) const {
     // 第 4 层（P2-6）：支持 模块名$签名key（resolvedSignature 带 crate 前缀）
     auto it = functions_.find(funcName);
@@ -50,6 +53,9 @@ std::string SemanticAnalyzer::funcReturnTypeOf(const std::string& funcName) cons
     }
     return it->second.returnType;
 }
+// 648：miss 返回 false 是接口信号（非引用返回的合法缺省+查无此函数双义），
+//   禁止在本函数改报错；消费点须按「miss 不可静默」立法处置
+//   （先例=ir_call.cpp 用户函数返回类型收口）。
 bool SemanticAnalyzer::funcReturnsRef(const std::string& funcName) const {
     // P3-18 补完：函数返回类型是否为引用（T&）——调用点把结果当"被引用左值的地址"
     auto it = functions_.find(funcName);
@@ -60,6 +66,9 @@ bool SemanticAnalyzer::funcReturnsRef(const std::string& funcName) const {
     if (it == functions_.end()) return false;
     return it->second.isRefReturn;
 }
+// 648：miss 返回空表是接口信号（已登记无参函数的空形参表与未登记 miss 双义，
+//   消费点须以 funcFirstSigKey 等区分——先例=ir_call.cpp 形参表收口豁免③），
+//   禁止在本函数改报错；消费点须按「miss 不可静默」立法处置。
 std::vector<std::string> SemanticAnalyzer::funcParamTypesOf(const std::string& funcName) const {
     // 第 4 层（P2-6）：支持 模块名$签名key（resolvedSignature 带 crate 前缀）
     auto it = functions_.find(funcName);

@@ -440,9 +440,17 @@ const ClassMemberInfo* IRGenerator::findCtorMember(const ClassInfo* ci,
             }
         }
         if (fallback == nullptr) {
+            // 648 miss 不可静默：语义层选中构造（resolvedSignature 精确层）与
+            //   实参个数匹配层两级全 miss，落到「取第一个构造函数」强凑终态——
+            //   重载/缺省实参形态下可能绑错构造（静默错构造初始化）。报诊断后
+            //   保留取第一个兜底与控制流（driver generate() 后 hasErrors() 中止）；
+            //   循环无命中（类无显式构造=默认构造合法面）返回 nullptr，不报。
             for (const auto& mk : ci->methods) {
                 if (mk.second.isConstructor && mk.second.hasBody &&
                     mk.second.ownerClass == className) {
+                    diagnostics_.report(
+                        DiagnosticLevel::Error, node->location,
+                        "内部错误: 构造函数重载决议失败 '" + className + "'（#648）");
                     fallback = &mk.second;
                     break;
                 }

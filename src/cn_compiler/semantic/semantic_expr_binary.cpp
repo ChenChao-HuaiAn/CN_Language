@@ -285,6 +285,10 @@ void SemanticAnalyzer::reportConstOverflow(BinaryExpr* node, std::int64_t vL,
             const std::string pR = promotedType(node->right.get());
             const std::string effL = (!pL.empty() && pL != "整32") ? pL : types::canonical(leftType);
             const std::string effR = (!pR.empty() && pR != "整32") ? pR : types::canonical(rightType);
+            // 648 归档（commonNumericType 终态消费面）：常量溢出预演面——
+            //   effL/effR 为字面量提升类型或已守卫的操作数类型；终态 "整32"
+            //   只影响溢出域判定宽度，且方向为收窄（最坏=误报超域硬错误，
+            //   非静默放行），不加报错。
             const std::string rt = types::canonical(
                 types::commonNumericType(effL, effR));
             auto rangeOf = [](const std::string& t, std::int64_t& lo,
@@ -512,6 +516,9 @@ bool SemanticAnalyzer::checkBitwiseBinary(BinaryExpr* node, const std::string& l
                                 "位运算要求整数操作数，实际为 '" + leftType + "' 与 '" +
                                 rightType + "'");
         }
+        // 648 归档（commonNumericType 终态消费面）：上方 isInteger 守卫已对非
+        //   整数操作数报 Error（此处继续取 lastType_=错误恢复值，防下游再扩大
+        //   报错）；合法面 isInteger → intRank>0，不落 "整32" miss 终态。
         lastType_ = commonNumericType(leftType, rightType);
         if (lastType_ == "浮64" || lastType_ == "浮32") lastType_ = leftType;  // 防御：位运算结果必须整数
         return true;
@@ -588,6 +595,10 @@ bool SemanticAnalyzer::checkArithmeticBinary(BinaryExpr* node, std::string& left
                 rightType = leftType;
             }
         }
+        // 648 归档（commonNumericType 终态消费面）：合法消费面=字符参与算术
+        //   （979 字符四字节窄整语义·'a'+1=98，canonical("字符") 的 intRank=0
+        //   落 "整32" 终态=设计内回退，非 miss）；非法面（布尔/字符串/枚举等）
+        //   已由上方 411 算术总守卫报 Error，此处取值为错误恢复值。
         lastType_ = commonNumericType(leftType, rightType);
         return true;
 }

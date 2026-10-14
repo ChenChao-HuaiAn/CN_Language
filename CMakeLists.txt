@@ -230,6 +230,7 @@ add_library(cn_compiler_ir STATIC
     src/cn_compiler/ir/ir_expr_index.cpp
     src/cn_compiler/ir/ir_expr_member.cpp
     src/cn_compiler/ir/ir_call.cpp
+    src/cn_compiler/ir/ir_call_args.cpp
     src/cn_compiler/ir/ir_lambda.cpp
     src/cn_compiler/ir/ir_stmt.cpp
     src/cn_compiler/ir/ir_stmt_decl.cpp

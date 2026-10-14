@@ -234,12 +234,28 @@ bool IRGenerator::memberGenericAssign(AssignmentExpr* node, MemberExpr* member) 
                                  ? semantic_->findStruct(types::canonical(objSrcType))
                                  : nullptr;
     if (decl != nullptr) {
+        bool fieldFound648 = false;
         for (const auto& f : decl->fields) {
             if (f.name == member->memberName) {
                 targetType = mapType(f.type);
+                fieldFound648 = true;
                 break;
             }
         }
+        if (!fieldFound648) {
+            // 648 归档：错误恢复——字段名 miss 时上游语义层已报「结构体/类
+            //   'X' 没有成员 'Y'」（Error），此处 i64 兜底仅为恢复路径继续
+            //   发射，产物将被 driver 丢弃；非新增静默面。
+        }
+    } else {
+        // 648（miss 不可静默·110 同族）：对象结构体类型推导 miss（对象形态
+        //   未覆盖·如嵌套成员目标 a.b.c = v）=合法程序内部缺陷，上游无错误
+        //   短路，显形于此；driver 在 generate() 后 hasErrors() 统一中止，
+        //   产物不落地。原 i64 宽写兜底保留（控制流零变更）。
+        diagnostics_.report(DiagnosticLevel::Error, node->location,
+            "内部错误: 成员赋值目标 '" + member->memberName +
+                "' 所属结构体类型未解析（对象类型 '" + objSrcType +
+                "'）——静默按整64写兜底已废除（#648）");
     }
     if (value.type != targetType) {
         value = emitResult(ir::Opcode::Cast, {value}, targetType, "", node->location);
@@ -537,13 +553,24 @@ void IRGenerator::markIndexStringElemTainted(AssignmentExpr* node) {
 std::string IRGenerator::indexAssignElemType(AssignmentExpr* node) {
     // 目标类型：语义层已推导（整32 元素 / 解引用元素类型）
     std::string targetType = "i64";
+    bool elemResolved648 = false;  // 648：任一形态命中类型推导置真
     if (node->target->getType() == NodeType::IndexExpr) {
         IndexExpr* idx = static_cast<IndexExpr*>(node->target.get());
         if (idx->object->getType() == NodeType::IdentifierExpr) {
             const std::string st = lookupSrcType(
                 static_cast<IdentifierExpr*>(idx->object.get())->name);
-            if (types::isArray(st)) targetType = mapType(types::arrayElemOf(st));
-            else if (types::isPointer(st)) targetType = mapType(types::pointeeOf(st));
+            if (types::isArray(st)) {
+                targetType = mapType(types::arrayElemOf(st));
+                elemResolved648 = true;
+            } else if (types::isPointer(st)) {
+                targetType = mapType(types::pointeeOf(st));
+                elemResolved648 = true;
+            }
+            // 648 豁免：字符串变量下标写=内置字节视图面（genGenericIndexAddress
+            //   写路径有 emitStrBoundsCheck 防线），非静默 miss。
+            else if (types::canonical(st) == "字符串") {
+                elemResolved648 = true;
+            }
             // A-3（2026-08）：隐式类字段对象（向量 数据[位置] = 值）——
             //   目标类型按字段所指元素类型推导（此前回退 i64 只存 8 字节）
             else if (st.empty() &&
@@ -551,8 +578,13 @@ std::string IRGenerator::indexAssignElemType(AssignmentExpr* node) {
                 const std::string ft = classFieldType(
                     currentClass_,
                     static_cast<IdentifierExpr*>(idx->object.get())->name);
-                if (types::isArray(ft)) targetType = mapType(types::arrayElemOf(ft));
-                else if (types::isPointer(ft)) targetType = mapType(types::pointeeOf(ft));
+                if (types::isArray(ft)) {
+                    targetType = mapType(types::arrayElemOf(ft));
+                    elemResolved648 = true;
+                } else if (types::isPointer(ft)) {
+                    targetType = mapType(types::pointeeOf(ft));
+                    elemResolved648 = true;
+                }
             }
         } else if (idx->object->getType() == NodeType::MemberExpr) {
             // 出.分数[1] = v：对象为结构体数组字段（整32[3] 分数）——
@@ -568,9 +600,14 @@ std::string IRGenerator::indexAssignElemType(AssignmentExpr* node) {
                     if (f.name == inner->memberName) {
                         if (types::isArray(f.type)) {
                             targetType = mapType(types::arrayElemOf(f.type));
+                            elemResolved648 = true;
                         } else if (types::isPointer(f.type)) {
                             targetType = mapType(types::pointeeOf(f.type));
+                            elemResolved648 = true;
                         }
+                        // 648 归档：字段名 miss=上游语义层已报「没有成员」；
+                        //   字段命中但非数组/指针（标量下标）=语义层拒绝形态的
+                        //   错误恢复——均不报错，i64 兜底仅为恢复路径。
                         break;
                     }
                 }
@@ -581,8 +618,22 @@ std::string IRGenerator::indexAssignElemType(AssignmentExpr* node) {
         if (un->operand->getType() == NodeType::IdentifierExpr) {
             const std::string st = lookupSrcType(
                 static_cast<IdentifierExpr*>(un->operand.get())->name);
-            if (types::isPointer(st)) targetType = mapType(types::pointeeOf(st));
+            if (types::isPointer(st)) {
+                targetType = mapType(types::pointeeOf(st));
+                elemResolved648 = true;
+            }
         }
+        // 648 归档：解引用目标操作数非指针/非标识符=上游语义层已报错之恢复路径，
+        //   不报错，i64 兜底仅为恢复路径。
+    }
+    if (!elemResolved648) {
+        // 648（miss 不可静默·110 同族）：下标/解引用赋值目标元素类型全 miss
+        //   （对象形态未覆盖·如下标对象的下标 矩阵[i][j] = v、复合指针表达式
+        //   解引用目标）=合法程序内部缺陷，显形于此；driver 在 generate() 后
+        //   hasErrors() 统一中止，产物不落地。原 i64 宽写兜底保留（控制流零
+        //   变更）。
+        diagnostics_.report(DiagnosticLevel::Error, node->location,
+            "内部错误: 下标/解引用赋值目标元素类型未解析 ——静默按整64写兜底已废除（#648）");
     }
     return targetType;
 }

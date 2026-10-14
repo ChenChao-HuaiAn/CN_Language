@@ -319,6 +319,23 @@ std::int64_t IRGenerator::ptrElemStride(const std::string& srcType) const {
         const int size = semantic_->typeSizeOf(elem);
         if (size > 0) return size;
     }
+    // 648 miss 不可静默：终态 8 有实证错步进史（上方 297-300 行 425 数组案：
+    //   恒 8 字节步进·循环提前退出；316-318 行缺陷③：标量指针步进错 8）——
+    //   上游已逐点根治（数组分支/单态化 331-a/统一按元素 typeSizeOf），到达
+    //   此终态=源类型未登记（如成员指针自增等非标识符操作数·lookupSrcType
+    //   miss 传空串）或语义层缺位（防御）。8 恰好型（整64*/结构体指针）侥幸
+    //   对、其余=静默错步进——报内部错误后仍按 8 兜底（控制流零变更·
+    //   driver generate() 后 hasErrors() 中止）。
+    //   // 648 待判：非标识符指针自增的成员链源类型解析若存量用例依赖兜底 8，
+    //   本报错需随其源类型登记根治同步零误伤（见 648 汇报存疑清单）。
+    if (semantic_ == nullptr || srcType.empty() ||
+        (!types::isArray(srcType) && !types::isPointer(srcType))) {
+        diagnostics_.report(
+            DiagnosticLevel::Error, SourceLocation(),
+            "内部错误: 指针步进源类型未登记 '" +
+                (srcType.empty() ? std::string("<空>") : srcType) +
+                "'，步进终态 8 兜底已不可静默（#648）");
+    }
     return 8;  // 语义层缺位/未知类型防御
 }
 std::string IRGenerator::pointerPointeeSrcType(Expr* node) const {

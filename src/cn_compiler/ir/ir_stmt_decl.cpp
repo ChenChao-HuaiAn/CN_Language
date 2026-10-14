@@ -291,6 +291,16 @@ void IRGenerator::resolveDeclTypesAndAlloc(VarDecl* node, DeclGenCtx& ctx) {
     std::string srcType = substGenericType(srcTypeRaw);
     // 类型推断：无显式类型时按初始值（阶段一简化）
     std::string irType = mapType(node->typeName.empty() ? "整32" : srcType);
+    // 648（miss 不可静默·110 同族）：推断声明无初始化器=类型完全未知而静默按
+    //   整32 分槽（语义层 def-init 只登记空类型不拦=合法程序内部缺口），显形于
+    //   此；driver 在 generate() 后 hasErrors() 统一中止，产物不落地。有初始化器
+    //   的标量推断面不在此列（46-c/T71 有意收窄·184 打印契约既有裁决豁免）。
+    if (node->typeName.empty() && node->initializer == nullptr &&
+        !node->funcPtr.isFunctionPtr()) {
+        diagnostics_.report(DiagnosticLevel::Error, node->location,
+            "内部错误: 推断声明 '" + node->name +
+                "' 无初始化器，类型未定 ——静默整32分槽兜底已废除（#648）");
+    }
     // Task 2.2：函数指针变量（整32(*回调)(整32, 整32)）类型为 ptr
     if (node->funcPtr.isFunctionPtr()) {
         irType = "ptr";
@@ -791,6 +801,10 @@ void IRGenerator::genScalarZeroInit(VarDecl* node, const DeclGenCtx& ctx) {
     }
     auto slotIt = function_->varSlots.find(ctx.unique);
     if (slotIt == function_->varSlots.end() || slotIt->second <= 0) return;
+    // 648 归档：ctx.irType 由 resolveDeclTypesAndAlloc 唯一产出（同文件族④段
+    //   ctx.irType = irType），值为 mapType 产物（值域闭集·最差 void/ptr 恒非空）
+    //   ——empty 兜底分支不可达（死防御），保留不改（防未来新增 ctx 构造路径），
+    //   非静默 miss 面。
     const std::string irType = ctx.irType.empty() ? "i64" : ctx.irType;
     for (int s = 0; s < slotIt->second; ++s) {
         const std::string slotName =

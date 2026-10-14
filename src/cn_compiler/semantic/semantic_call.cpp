@@ -201,6 +201,10 @@ void SemanticAnalyzer::visitCallExpr(CallExpr* node) {
     // ---- 函数指针间接调用：回调(10, 20) ----
     std::string calleeType = checkExpr(node->callee.get());
     if (calleeType == "未知") {
+        // 648 归档（错误恢复：上游已报）：此分支到达面=checkExpr(callee) 已报
+        //   Error 的失败路径（未声明标识符/无此成员/嵌套调用失败等）——本处静默
+        //   吞错继续查实参=错误恢复惯例（同 checkTransferCall 的 mt=="未知"
+        //   早退先例），非查表 miss 终态，按立法不重复报错。
         for (auto& arg : node->arguments) checkExpr(arg.get());
         lastType_ = "未知";
         return;
@@ -430,6 +434,10 @@ bool SemanticAnalyzer::checkWrapBuiltinCall(CallExpr* node) {
                isIntLiteralExpr(node->arguments[1].get())) {
         rightType = leftType;
     }
+    // 648 归档（commonNumericType 终态消费面）：上方守卫（整数性检查）已把
+    //   非整数/"未知" 操作数报 Error 并早退——到此处双操作数均为已验证整数
+    //   （isInteger → intRank>0），commonNumericType 的 "整32" miss 终态在本
+    //   调用点不可达；非法值面已由守卫报错，非静默。
     lastType_ = commonNumericType(leftType, rightType);
     node->resolvedType = lastType_;  // IR 层 visitCallExpr 回绕展开分派依据
     return true;

@@ -168,7 +168,12 @@ bool IRGenerator::handleClassFieldAssign(IdentifierExpr* ident, Expr* value,
             if (f != ci->fields.end() && f->second.isStatic) {
                 const std::string fieldType = f->second.type;
                 std::string targetIrType = mapType(fieldType);
-                if (targetIrType.empty()) targetIrType = "i64";
+                if (targetIrType.empty()) {
+                    // 648（miss 不可静默·110 同族）：类字段类型未登记=内部缺陷显形；driver hasErrors 统一中止。
+                    diagnostics_.report(DiagnosticLevel::Error, loc,
+                        "内部错误: 类字段类型未登记 '" + ident->name + "' —— 静默 i64 兜底已废除（#648）");
+                    targetIrType = "i64";  // 648：保留原兜底（中止前路径）
+                }
                 ir::IRValue val = genExpr(value);
                 if (val.type != targetIrType && !targetIrType.empty()) {
                     val = emitResult(ir::Opcode::Cast, {val}, targetIrType, "", loc);
@@ -197,7 +202,12 @@ bool IRGenerator::handleClassFieldAssign(IdentifierExpr* ident, Expr* value,
     if (!isInstanceField(ident->name)) return false;
     const std::string fieldType = classFieldType(currentClass_, ident->name);
     std::string targetIrType = mapType(fieldType);
-    if (targetIrType.empty()) targetIrType = "i64";
+    if (targetIrType.empty()) {
+        // 648（miss 不可静默·110 同族）：类字段类型未登记=内部缺陷显形；driver hasErrors 统一中止。
+        diagnostics_.report(DiagnosticLevel::Error, loc,
+            "内部错误: 类字段类型未登记 '" + ident->name + "' —— 静默 i64 兜底已废除（#648）");
+        targetIrType = "i64";  // 648：保留原兜底（中止前路径）
+    }
     // 180-a（甲通道实装·对齐 memberClassFieldAssign 形态 b）：方法体内直接
     //   字段赋值（无 自身. 前缀=隐式 this）的**拥有型容器字段**深拷——
     //   149-a 定位（plans/020 第六十八节）：拷贝构造内 表 = 其他.表 原生成
@@ -325,7 +335,12 @@ bool IRGenerator::handleClassFieldIncDec(IdentifierExpr* ident, Operator op,
             if (f != ci->fields.end() && f->second.isStatic) {
                 const std::string fieldType = f->second.type;
                 std::string targetIrType = mapType(fieldType);
-                if (targetIrType.empty()) targetIrType = "i64";
+                if (targetIrType.empty()) {
+                    // 648（miss 不可静默·110 同族）：类字段类型未登记=内部缺陷显形；driver hasErrors 统一中止。
+                    diagnostics_.report(DiagnosticLevel::Error, loc,
+                        "内部错误: 类字段类型未登记 '" + ident->name + "' —— 静默 i64 兜底已废除（#648）");
+                    targetIrType = "i64";  // 648：保留原兜底（中止前路径）
+                }
                 ir::IRValue addr = genStaticFieldAddr(currentClass_, ident->name, loc);
                 ir::IRValue cur = emitResult(ir::Opcode::LoadPtr, {addr},
                                              targetIrType, "", loc);
@@ -346,7 +361,12 @@ bool IRGenerator::handleClassFieldIncDec(IdentifierExpr* ident, Operator op,
     if (!isInstanceField(ident->name)) return false;
     const std::string fieldType = classFieldType(currentClass_, ident->name);
     std::string targetIrType = mapType(fieldType);
-    if (targetIrType.empty()) targetIrType = "i64";
+    if (targetIrType.empty()) {
+        // 648（miss 不可静默·110 同族）：类字段类型未登记=内部缺陷显形；driver hasErrors 统一中止。
+        diagnostics_.report(DiagnosticLevel::Error, loc,
+            "内部错误: 类字段类型未登记 '" + ident->name + "' —— 静默 i64 兜底已废除（#648）");
+        targetIrType = "i64";  // 648：保留原兜底（中止前路径）
+    }
     ir::IRValue addr = genInstanceFieldAddr(ident->name, loc);
     ir::IRValue cur = emitResult(ir::Opcode::LoadPtr, {addr}, targetIrType, "", loc);
     ir::IRValue delta = emitResult(ir::Opcode::ConstInt, {}, targetIrType, "1", loc);
@@ -569,7 +589,12 @@ bool IRGenerator::handleClassMemberAssign(MemberExpr* target, Expr* valueExpr,
         fieldType = classFieldType(objName, target->memberName);
     }
     std::string targetIrType = mapType(fieldType);
-    if (targetIrType.empty() || targetIrType == "void") targetIrType = "i64";
+    if (targetIrType.empty() || targetIrType == "void") {
+        // 648（miss 不可静默·110 同族）：类字段类型未登记（含 mapType 落 void）=内部缺陷显形；driver hasErrors 统一中止。
+        diagnostics_.report(DiagnosticLevel::Error, loc,
+            "内部错误: 类字段类型未登记 '" + target->memberName + "' —— 静默 i64 兜底已废除（#648）");
+        targetIrType = "i64";  // 648：保留原兜底（中止前路径）
+    }
     // 974（104-001 根治）：字段=结构体/类（聚合值字段）→ 整体赋值单一助手
     //   （emitStructWholeAssign：源地址→CopyStruct 按字段结构体大小值拷+串字段
     //   深拷四分支+preFree 旧值释放·Rust place 拷贝语义）——原路径对聚合字段

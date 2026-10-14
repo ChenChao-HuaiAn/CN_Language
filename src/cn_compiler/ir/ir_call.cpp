@@ -506,6 +506,28 @@ void IRGenerator::visitCallExpr(CallExpr* node) {
             effectiveParamTypes = std::move(fnPtrParams442);
         }
     }
+    // 648 miss 不可静默：直接调用形参表 miss=终态（128 定标/浮点提升/引用宽化
+    //   三判据全跳过·实参 ABI 错配=静默错值面）。报诊断后保留无表回落现状
+    //   （控制流零变更）。豁免四面=既有合法回落契约（495 注释）：
+    //   ①__cn_ 内置改写名不在 functions_（内置实参语义层已检查·定标不依赖此表）；
+    //   ②含 '$' 的泛型实例/跨模块符号（funcParamTypesOf 无泛型方法回退·实例化
+    //   调用为海量合法面）；③已登记无参函数（paramTypes 空表=非 miss·经
+    //   funcFirstSigKey 区分）；④签名 key 可命中（FFI 纯名 miss 而签名 hit）。
+    //   间接调用回落（类型串 miss/形参个数不匹配=变参合法）不在此报：
+    //   类型串整体 miss 由 851 终态收口报告，此处不双报。
+    if (isDirect && semantic_ != nullptr && effectiveParamTypes.empty() &&
+        calleeName.rfind("__cn_", 0) != 0 &&
+        calleeName.find('$') == std::string::npos) {
+        const bool sigKeyHit =
+            !node->resolvedSignature.empty() &&
+            !semantic_->funcParamTypesOf(node->resolvedSignature).empty();
+        const bool knownFunc = !semantic_->funcFirstSigKey(calleeName).empty();
+        if (!sigKeyHit && !knownFunc) {
+            diagnostics_.report(
+                DiagnosticLevel::Error, node->location,
+                "内部错误: 函数形参表未登记 '" + calleeName + "'（#648）");
+        }
+    }
 
     std::vector<ir::IRValue> args;
     for (std::size_t ai = 0; ai < node->arguments.size(); ++ai) {
@@ -712,6 +734,18 @@ void IRGenerator::visitCallExpr(CallExpr* node) {
                 if (ret.empty() && !node->resolvedSignature.empty()) {
                     ret = semantic_->funcReturnTypeOf(node->resolvedSignature);
                 }
+                if (ret.empty() && calleeName.rfind("__cn_", 0) != 0) {
+                    // 648 miss 不可静默（2026-10-14 立法·110 同族终态）：纯名+签名
+                    //   key 两级查询均 miss=终态——原静默保持初始 "i32"（按 32 位
+                    //   读返回值=三平台错值源）。报诊断后保留 i32 兜底值与控制流
+                    //   （driver generate() 后 hasErrors() 中止）。
+                    //   豁免 "__cn_" 前缀：内置/运行时 API 已由上方内置分派覆盖
+                    //   （理论上走不到此分支，保险豁免）。
+                    diagnostics_.report(
+                        DiagnosticLevel::Error, node->location,
+                        "内部错误: 函数返回类型未登记 '" + calleeName +
+                            "' —— 静默 i32 兜底已废除（#648·110 同族终态）");
+                }
                 if (!ret.empty()) {
                     const std::string mapped = mapType(ret);
                     if (mapped != "void" && mapped != "") resultType = mapped;
@@ -813,6 +847,15 @@ void IRGenerator::visitCallExpr(CallExpr* node) {
         //   隐藏返回指针落 rcx），result=void，lastExpr_=retbuf 地址（调用方
         //   CopyStruct 消费与直接调用同链）。
         const std::string retSrc = types::funcPtrReturnTypeOf(calleeFnPtrType);
+        if (retSrc.empty()) {
+            // 648 miss 不可静默：函数指针类型串已解析但返回类型未登记——原静默
+            //   落终态 "i32"（上方 801 行注释自认保守兜底；485 修的本链已登记
+            //   面，此报错收口未登记面）。报诊断后保留 i32 兜底与控制流
+            //   （driver generate() 后 hasErrors() 中止）。
+            diagnostics_.report(
+                DiagnosticLevel::Error, node->location,
+                "内部错误: 函数指针返回类型未登记 '" + calleeFnPtrType + "'（#648）");
+        }
         if (!retSrc.empty() && semantic_ != nullptr &&
             (semantic_->isStructType(types::canonical(retSrc)) ||
              types::isArray(retSrc))) {
@@ -848,153 +891,14 @@ void IRGenerator::visitCallExpr(CallExpr* node) {
         }
     }
     // 间接调用：先求被调者表达式（函数指针变量），再 CallIndirect
+    // 648 归档（豁免不报）：走到此终态且 calleeFnPtrType 为空 = funcPtrTypeOfCallee
+    //   miss——含全局静态槽函数指针（lookupSrcType 的静态兜底仅数组形态·259 立法
+    //   缩窄；040 静态回调=验收合法放行面，现状 i32 兜底编译）。此路径报错会误伤
+    //   合法程序，故豁免归档；类型串已解析而返回类型未登记的 miss 已于上方收口
+    //   报错。// 648 待判：静态槽 fnptr 签名解析补全后可收口本豁免。
     ir::IRValue calleeVal = genExpr(node->callee.get());
     args.insert(args.begin(), calleeVal);  // operand[0]=指针寄存器
     lastExpr_ = emitResult(ir::Opcode::CallIndirect, args, "i32", "", node->location);
 }
 
-// 结构体字面量实参物化（D3 根治逻辑提取为共享助手，81-a）：按值结构体参数的 ABI
-//   为「传地址」（callee 侧 rep movsb 拷贝），故字面量须先物化到调用方临时变量再
-//   传地址——原仅普通调用路径有物化，方法调用路径（buildCallArgsOop）无此处理 →
-//   实参寄存器为空值（汇编 mov rdx, 0）→ 被调方解引用空指针段错误（探针 P3 形态六
-//   实锤：向量<盒子>.追加(盒子{...}) rc=139）。Rust 对照：值上下文临时 place 物化。
-ir::IRValue IRGenerator::materializeStructInitArg(StructInitExpr* init,
-                                                  const SourceLocation& loc) {
-    if (init == nullptr || semantic_ == nullptr || function_ == nullptr) {
-        return ir::IRValue::reg(-1, "");
-    }
-    const std::string argStruct = types::canonical(init->typeName);
-    if (!semantic_->isStructType(argStruct)) return ir::IRValue::reg(-1, "");
-    const std::string temp = "__arginit" + std::to_string(varCounter_++);
-    emit(ir::Opcode::Alloca, {}, ir::IRValue::reg(regCounter_++, "ptr"), temp, "ptr",
-         loc);
-    function_->varSlots[temp] = 8;
-    registerVarSlots(temp, argStruct);
-    // 81-a：物化临时登记为「含串字段聚合局部」→ 块出口按字段偏移释放（字面量字段
-    //   在构造时已归一化落堆或为驻留借用，释放面空安全）——原实现只物化不登记 =
-    //   含串字段的结构体字面量实参每调用泄漏其字段串（E2E 235 ②③⑦⑧ 实证：帧内
-    //   临时无人释放）；与 79-a 的聚合字段 RAII 同名单同机制（块基线 scopeFieldBase_）。
-    oopVarSrcTypes_[temp] = argStruct;
-    if (!ownedStrFieldsOf(argStruct).empty()) {
-        ownedFieldOrder_.push_back(temp);
-    }
-    ir::IRValue base = emitResult(ir::Opcode::AddrOf,
-                                  {ir::IRValue::var(temp, "i64")}, "ptr", temp, loc);
-    emitStructInitTo(init, base, loc);
-    return base;
-}
-
-// 81-a：实参求值 + 「调用返回结构体临时」清理登记（泄漏面见 ir.hpp 声明注释）
-ir::IRValue IRGenerator::genArgValueWithCleanup(Expr* arg,
-                                                const SourceLocation& loc) {
-    (void)loc;   // 位置仅用于诊断归属（清理发射用默认位置，与块出口释放同款）
-    ir::IRValue v = genExprForOop(arg);
-    if (arg == nullptr || semantic_ == nullptr) return v;
-    if (arg->getType() != NodeType::CallExpr) return v;
-    // 结构体字面量实参走 materializeStructInitArg（已物化，无临时泄漏面）
-    CallExpr* ce = static_cast<CallExpr*>(arg);
-    std::string retCanon = types::canonical(ce->resolvedType);
-    if (retCanon.empty() && ce->callee != nullptr &&
-        ce->callee->getType() == NodeType::IdentifierExpr) {
-        // 语义层 resolvedType 只对内置构造器写回——普通调用按「重载决议签名键 /
-        //   裸名」两路回退查返回类型（functions_ 键为 名#签名）
-        const std::string nm =
-            static_cast<IdentifierExpr*>(ce->callee.get())->name;
-        const std::string keys[2] = {ce->resolvedSignature, nm};
-        for (const std::string& key : keys) {
-            if (key.empty()) continue;
-            const std::string rt = types::canonical(semantic_->funcReturnTypeOf(key));
-            if (!rt.empty()) { retCanon = rt; break; }
-        }
-    }
-    if (retCanon.empty()) return v;
-    if (ownedStrFieldsOf(retCanon).empty()) return v;
-    pendingArgCleanups_.emplace_back(v, retCanon);
-    return v;
-}
-
-// 调用发射后统一清理（只清理 base 之后新增项；释放幂等清零，嵌套调用各自持基准）
-void IRGenerator::flushPendingArgCleanups(std::size_t base) {
-    if (base >= pendingArgCleanups_.size()) {
-        pendingArgCleanups_.resize(base);   // 防御：截断到基准
-        return;
-    }
-    for (std::size_t i = base; i < pendingArgCleanups_.size(); ++i) {
-        emitOwnedStrFieldFreesAt(pendingArgCleanups_[i].first,
-                                 pendingArgCleanups_[i].second, SourceLocation());
-    }
-    pendingArgCleanups_.resize(base);
-}
-
-// 106（890 残余·泛型方法实参面根治）：实参位「无」→ 可选<T> 形参空可选装箱。
-//   背景：canConvertType 原豁免只认模板文本形态（可选<整32>），$ 合成名形态
-//   （可选$整32=泛型/容器实例形参替换后的形态）被拒——探针 F1/E2 复现 106 立案
-//   报错「无法将 '空类型*' 隐式转换为 '可选$整32'」（semantic_sig.cpp 同轮修订
-//   放开）；判定放开后 IR 端原缺装箱路径：无 字面量生成 8 字节指针常量 0 直传
-//   12 字节聚合形参，被调方把 0 当可选值地址解引用（F1 `表.追加(无)` 段错误
-//   rc=139 实锤）。v2 侧同形态生成空可选栈槽传地址（F1 v2 绿=对照基准）——
-//   本助手按 v2 同构：Alloca 临时 + 整槽零填充（flag=0/值=0=「无」语义）+
-//   传地址（Rust 对照：Option::None 按值 place 装箱）。触发面仅「无」字面实参 ×
-//   可选形参（模板/合成名双形态；带指针后缀不豁免=canConvertType 同口径）；
-//   其余实参/形参形态 no-op（行为零变更）。
-void IRGenerator::boxNullOptionalArgs(CallExpr* node,
-                                      const std::vector<std::string>& paramTypes,
-                                      std::vector<ir::IRValue>& args) {
-    if (node == nullptr || semantic_ == nullptr || function_ == nullptr) return;
-    for (std::size_t ai = 0; ai < args.size() && ai < paramTypes.size() &&
-                             ai < node->arguments.size(); ++ai) {
-        Expr* argNode = node->arguments[ai].get();
-        if (argNode == nullptr || argNode->getType() != NodeType::NullLiteral) continue;
-        const std::string canonParam = types::canonical(paramTypes[ai]);
-        std::string t;
-        if (isOptionalType(canonParam)) {
-            t = types::canonical(optionalTypeArg(canonParam));
-        } else {
-            // $ 合成名形态（可选$整32·7 字节前缀「可选$」）；带后缀不豁免
-            std::string core, suffix;
-            types::splitTypeSuffix(canonParam, core, suffix);
-            if (suffix.empty() && core.rfind("可选$", 0) == 0) {
-                t = core.substr(7);
-            }
-        }
-        if (t.empty()) continue;
-        const std::string structName = optionalStructName(t);
-        if (semantic_->findStruct(structName) == nullptr) {
-            semantic_->ensureLoweredType(structName);
-            if (semantic_->findStruct(structName) == nullptr) continue;
-        }
-        const int size = semantic_->typeSizeOf(structName);
-        if (size <= 0) continue;
-        // 空可选临时槽（多槽登记）——与「返回 无」/「可选<T> o = 无」声明位同构
-        const std::string temp = "__argopt" + std::to_string(varCounter_++);
-        emit(ir::Opcode::Alloca, {}, ir::IRValue::reg(regCounter_++, "ptr"),
-             temp, "ptr", node->location);
-        registerVarSlots(temp, structName);
-        ir::IRValue base = emitResult(ir::Opcode::AddrOf,
-                                      {ir::IRValue::var(temp, "i64")}, "ptr",
-                                      temp, node->location);
-        // 整槽 8 字节零写（覆盖 标志 与 值/填充；「无」=全零语义）
-        for (int off = 0; off < size; off += 8) {
-            ir::IRValue zero = emitResult(ir::Opcode::ConstInt, {}, "i64", "0",
-                                          node->location);
-            ir::IRValue addr = base;
-            if (off > 0) {
-                addr = emitResult(ir::Opcode::FieldAddr, {base}, "ptr",
-                                  std::to_string(off), node->location);
-            }
-            emit(ir::Opcode::StorePtr, {addr, zero}, ir::IRValue(), "", "ptr",
-                 node->location);
-        }
-        args[ai] = base;
-    }
-}
-
-// 106 组合：方法调用实参定标单一入口（331-a i128/u128 形参宽化 + 106 无→可选
-//   装箱）——静态/虚/直接方法三路径共用（顺序=先宽化后装箱，两面互斥无交叉）。
-void IRGenerator::normalizeMethodArgs(CallExpr* node,
-                                      const std::vector<std::string>& paramTypes,
-                                      std::vector<ir::IRValue>& userArgs) {
-    widenI128Args(userArgs, paramTypes, node->location);
-    boxNullOptionalArgs(node, paramTypes, userArgs);
-}
 } // namespace cn_compiler

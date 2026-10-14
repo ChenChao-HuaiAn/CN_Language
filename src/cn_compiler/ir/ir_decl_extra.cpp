@@ -162,6 +162,10 @@ std::string IRGenerator::mapType(const std::string& type) {
     if (!type.empty() && type.rfind("函数指针<", 0) == 0) return "ptr";
     // Task 2.7：枚举类型按整32处理（与语义层 typeSizeOf 一致）
     if (semantic_ != nullptr && semantic_->isEnumType(type)) return "i32";
+    // 648 归档（豁免边界声明）：mapType 为宽接口纯映射函数，被全树消费
+    //   （自定义类型/类对象=指针语义是合法主路径），未知串 -> ptr 不可在此改
+    //   报错（会把海量合法「类=ptr」误伤）。真正未识别串的 miss 由各消费点
+    //   按「miss 不可静默」立法处置（先例=ir_call.cpp 返回类型/形参表收口）。
     if (!type.empty() && type != "未知") return "ptr";  // 自定义类型按指针处理
     return "void";
 }

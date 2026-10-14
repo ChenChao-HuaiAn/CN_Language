@@ -186,6 +186,15 @@ void IRGenerator::visitIdentifierExpr(IdentifierExpr* node) {
                 if (fit != it->end()) { ve = &fit->second; break; }
             }
             if (ve != nullptr && ve->isStaticLocal) {
+                if (ve->type.empty()) {
+                    // 648（miss 不可静默·110 同族）：静态局部变量 IR 类型未登记=
+                    //   编译器内部缺陷（声明位登记必填类型），显形于此；driver 在
+                    //   generate() 后 hasErrors() 统一中止，产物不落地。原 i32 兜底
+                    //   保留（控制流零变更）。
+                    diagnostics_.report(DiagnosticLevel::Error, node->location,
+                        "内部错误: 静态局部变量 '" + node->name +
+                            "' IR 类型未登记 ——静默宽度兜底已废除（#648）");
+                }
                 const std::string irT = ve->type.empty() ? "i32" : ve->type;
                 ir::IRValue addr = emitResult(
                     ir::Opcode::ConstString, {}, "ptr",

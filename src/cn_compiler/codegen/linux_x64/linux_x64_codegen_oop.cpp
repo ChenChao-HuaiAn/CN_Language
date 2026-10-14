@@ -243,6 +243,14 @@ void LinuxX64CodeGenerator::emitVirtualCall(LinuxX64AsmWriter& writer,
     if (slot >= 0) {
         writer.line("mov r11, qword ptr [r9+" + std::to_string(slot * 8) + "]");
     } else {
+        // 648（miss 不可静默·110 同族）：语义层查不到虚表槽位=内部缺陷显形，报错中止
+        //   （driver 于 generateAssembly 后 hasErrors 统一中止）；0 槽仅为中止前路径。
+        //   IR 层前置不可行：发射点（ir_oop_call.cpp emitInstanceMethodCall）已用
+        //   规范化类名查到槽位（>=0 才发 VirtualCall），miss 仅现于本处二次查询
+        //   （extra 携带 owner 名与发射点键形态不一致时）。
+        diagnostics_.report(DiagnosticLevel::Error, inst.loc,
+            "内部错误: 虚表槽位未登记 '" + className + "::" + methodName + "'（#648）");
+        // 槽位未知（语义层未找到）：防御性走 0 槽（多态错误由语义层拦截）
         writer.line("mov r11, qword ptr [r9]");
     }
     // 410：retbuf——形态A=IR 层预插地址寄存器（operands[0]）；i128=帧内固定区

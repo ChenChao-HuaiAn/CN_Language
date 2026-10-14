@@ -89,6 +89,14 @@ void IRGenerator::registerClosureIfNeeded(VarDecl* node) {
                 // 引用捕获：&变量（AddrOf 取变量槽地址）
                 const std::string capUnique = lookupVarName(cap);
                 const std::string capIrType = lookupVarType(cap);
+                if (capIrType.empty()) {
+                    // 648（miss 不可静默·110 同族）：捕获变量 IR 类型未登记=
+                    //   编译器内部缺陷（语义层回填捕获列表必对应 varStack 已登记
+                    //   变量），显形于此；driver 在 generate() 后 hasErrors() 统一
+                    //   中止，产物不落地。原 i64 兜底保留（控制流零变更）。
+                    diagnostics_.report(DiagnosticLevel::Error, node->location,
+                        "内部错误: 捕获变量 '" + cap + "' IR 类型未登记 ——静默宽度兜底已废除（#648）");
+                }
                 info.captureArgs.push_back(emitResult(
                     ir::Opcode::AddrOf,
                     {ir::IRValue::var(capUnique, capIrType.empty() ? "i64" : capIrType)},
