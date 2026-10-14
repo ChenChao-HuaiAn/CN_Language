@@ -106,9 +106,14 @@ void IRGenerator::visitIndexExpr(IndexExpr* node) {
             // 集成验证修复 Bug：结构体指针元素（如 排序(员工档案* 名单) 中
             //   名单[j]）作为"结构体值"应返回地址（供整体赋值/按值传参/字段访问），
             //   原实现统一 LoadPtr 读首 8 字节当指针 -> 排序交换读到垃圾地址崩溃
+            // 728f（648 显形化余量清偿·776 实录）：类指针元素同款地址语义——
+            //   与上方数组分支 955「类容器元素=内联元素地址」对齐（v2 279 指针
+            //   下标分支所指类型直查类/结构体同表）。原只认结构体 → 类元素落
+            //   LoadPtr 读首 8 字节当对象指针=错层解引用。
             const std::string pointee = types::pointeeOf(srcType);
             if (semantic_ != nullptr &&
-                semantic_->isStructType(types::canonical(pointee))) {
+                (semantic_->isStructType(types::canonical(pointee)) ||
+                 semantic_->isClassType(types::canonical(pointee)))) {
                 lastExpr_ = addr;
                 return;
             }
