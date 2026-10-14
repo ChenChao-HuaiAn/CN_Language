@@ -27,19 +27,21 @@ std::unique_ptr<ParamDecl> Parser::parseParamDecl() {
         param->isConstParam = true;
         advance();  // 消费 常量
     }
-    if (isTypeKeyword(currentType())) {
-        // 探测函数指针参数：<类型> ( * 名 ) ( 参数列表 )
-        if (peek(1).getType() == TokenType::LeftParen &&
-            peek(2).getType() == TokenType::Star &&
-            peek(3).getType() == TokenType::Identifier &&
-            peek(4).getType() == TokenType::RightParen &&
-            peek(5).getType() == TokenType::LeftParen) {
-            if (parseFuncPtrType(param->funcPtr)) {
-                // 函数指针参数：funcPtr 已填充，参数名在 funcPtr.name
-                param->name = param->funcPtr.name;
-                return param;
-            }
+    // 函数指针形参统一探测（560/627·001 §5.8）：命名标量形态 `T ( * 名 ) (`——
+    //   返回类型 T 可为内建类型关键字（整32(*回调)(整32)·既有）**或自定义类型名**
+    //   （点(*回调)(整32)·560/627 缺陷本面：此前仅 isTypeKeyword 分支有探测，
+    //   Identifier 分支无路径 -> 「预期参数名」+级联「预期顶层声明」）。
+    //   funcPtrDeclAhead 纯读零消费——探测成功才调 parseFuncPtrType
+    //   （其失败路径已 advance，有消费副作用）。参数位=命名标量（named+标量·
+    //   001 条文明示参数位无数组形态·与既有内建分支手写探测等价）。
+    if (funcPtrDeclAhead(true, false, false)) {
+        if (parseFuncPtrType(param->funcPtr)) {
+            // 函数指针参数：funcPtr 已填充，参数名在 funcPtr.name
+            param->name = param->funcPtr.name;
+            return param;
         }
+    }
+    if (isTypeKeyword(currentType())) {
         // 类型前置：整32 a / 整32* p / 整32[5] a（Task 2.4 复合类型参数）
         param->typeName = parseTypeNameEx();
         if (check(TokenType::Identifier)) {
