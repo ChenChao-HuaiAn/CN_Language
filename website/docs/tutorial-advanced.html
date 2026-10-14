@@ -102,7 +102,7 @@
 </p>
 <ul><li>链接：<code>cn build 程序.cn --链接 库名</code>（可多次）；库搜索遵循平台惯例。</li><li>字符串契约：<code>字符*</code>=借用（C 层持有的视图，不释放）；<code>字符串</code>=拥有（RAII）。借用转拥有用 <code>字符串复制</code>，反之直接传。</li><li>整64 标量 FFI 形参的 arm64 传参 ABI 有在案限制（大值塌缩），跨平台 FFI 密集场景关注 <a href="https://gitcode.com/ChenChao_GitCode/CN_Language" target="_blank" rel="noopener">仓库</a> 021 总账 #110。</li></ul>
 <h2 id="字符串性能">字符串与容器的性能面</h2>
-<p>拥有型字符串的每一次 <code>+</code> 都是分配+拷贝。高频拼接用<strong>字符串构建器</strong>（摊销 O(n)），高频读取用引用访问。</p>
+<p>拥有型字符串的每一次 <code>+</code> 都是分配+拷贝。高频拼接用<strong>字符串构建器</strong>（摊销 O(n)），高频读取用引用访问。加号链适合少量短拼接；循环/大段拼接（k 段累计 O(k²)）请用构建器（编译器不报提示·这条边界须自觉）。</p>
 <div class="码窗"><p class="码窗-顶"><span class="码窗-名">构建器.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">函数 主() -&gt; 整32 {
     整64 建 = 字符串构建器::新建();
     循环 (整32 i = 0; i &lt; 1000; i++) {

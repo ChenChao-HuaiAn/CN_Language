@@ -288,7 +288,7 @@ CN LANG
 字符串释放(临时);</code></pre></div>
 </section>
 <h2 id="字符串构建器">字符串构建器</h2>
-<p>高频拼接的缓冲区句柄四件套（Rust <code>String::push_str</code> 同款）：反复 <code>字符串连接</code> 是 O(n²)，构建器摊销 O(n)。句柄为整数 ID，完成后 必须 <code>字符串构建器::完成</code> 收尾。</p>
+<p>高频拼接的缓冲区句柄五件套（Rust <code>String::push_str</code> 同款）：反复 <code>字符串连接</code> 是 O(n²)，构建器摊销 O(n)。加号链仅适合少量短拼接；循环/大段拼接请用构建器（k 段累计 O(k²)·编译器不报提示）。句柄为整数 ID，完成后 必须 <code>字符串构建器::完成</code> 收尾，中途放弃用 <code>字符串构建器::弃置</code>。</p>
 <div class="码窗"><p class="码窗-顶"><span class="码窗-名">字符串构建器.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">函数 主() -&gt; 整32 {
     整64 建 = 字符串构建器::新建();
     整64 i = 0;
@@ -321,6 +321,11 @@ CN LANG
 <h3><code>字符串构建器::完成</code></h3>
 <p class="函数定义"><code>函数 字符串构建器::完成(整64 句柄) -> 字符串</code></p>
 <p>收尾并返回最终字符串（拥有型）。句柄此后失效。</p>
+</section>
+<section class="函数条" id="构建器-弃置">
+<h3><code>字符串构建器::弃置</code></h3>
+<p class="函数定义"><code>函数 字符串构建器::弃置(整64 句柄) -> 空类型</code></p>
+<p>不取串直接释放缓冲（错误路径中途放弃防泄漏）。句柄此后失效。</p>
 </section>
 <h2 id="内存">内存管理</h2>
 <p>手动内存四件套对标 C 的 malloc/free/realloc/memcpy；统计族用于泄漏观测；竞技场族是「进程级一次性分配」（bump 分配，重置一次全释放）。<strong>业务代码优先容器/拥有型字符串（RAII）</strong>；手动内存是不安全域的逃生门。注意 <code>重新分配</code> 对超过 2GiB 的请求拒绝并返回 <code>无</code>（可观测拒绝前置）。</p>
