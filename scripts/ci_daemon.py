@@ -430,6 +430,16 @@ def 带门禁锁跑(sha: str, 轮分支: str = "") -> dict | None:
             gate_lock.释放(门禁锁, 静默=True)
 
 
+def 预验清产物(树根: Path) -> bool:
+    """637（2026-10-14 用户立法）：预验前置②——历史编译中间产物全部清零。
+    rm -rf <树根>/target/（含 target/audit2 的 v2p 指纹缓存）——之后从零配置构建。
+    树根参数供 --selftest 注入临时目录隔离断言（生产传 仓库根）。返回是否清干净。"""
+    目标目录 = 树根 / "target"
+    if 目标目录.exists():
+        shutil.rmtree(目标目录, ignore_errors=True)
+    return not 目标目录.exists()
+
+
 def 跑一轮(sha: str, 轮分支: str = "") -> dict:
     """对给定 SHA 跑全量门禁三段，返回结构化结果（口径=integrate.py Linux 分支）。
     轮分支空=全局 分支（develop 轮询/点名分支）；池任务传认领的预验分支（1021）。"""
@@ -467,6 +477,19 @@ def 跑一轮(sha: str, 轮分支: str = "") -> dict:
         步骤们["同步"] = {"rc": 同步rc}
         if 同步rc != 0:
             print(同步输出, file=日志, flush=True)
+        elif 轮分支.startswith("ci/预验-"):
+            # 637（2026-10-14 用户立法·最高优先级）：预验前必须「干净构建」——②历史编译
+            #    中间产物全部清零后从零配置构建——防脏产物假绿/增量混合态不可复现
+            #    （483/551 超时作废循环诱因之一）。仅 ci/预验-* 轮执行（523 增量口径对
+            #    develop/兜底轮保持——每轮全清=过度代价·立法对象是预验可信面）；target
+            #    全清后 win 指纹清建必然触发全量重建（自动兼容）。①rebase 新鲜（链顶含
+            #    当时最新 develop）由 integrate 组链 checkout -B 批分支 <最新> 结构性
+            #    保证+预验前置检查断言（integrate.py·637）。
+            清干净 = 预验清产物(仓库根)
+            步骤们["清产物"] = {"rc": 0 if 清干净 else -1}
+            print("[637] 干净构建%s" % ("：target/（含 v2p 指纹缓存）已全清——从零构建"
+                                        if 清干净 else "失败：target/ 残留（预验前置②不满足·本轮判红）"),
+                  flush=True)
         elif 是win:
             # ② 291 win 构建链=vcvars64+Ninja+sccache（wt.py 开发树同口径）——
             #    cmd /c 复合命令串内嵌引号经 subprocess 列表参数转义必坏（实测 rc=1
@@ -507,7 +530,8 @@ def 跑一轮(sha: str, 轮分支: str = "") -> dict:
     with 轮日志路径.open("r", encoding="utf-8", errors="replace") as f:
         尾部 = f.readlines()[-40:]
     结果 = {"sha": sha, "分支": 轮分支, "平台": 平台, "步骤": 步骤们,
-            "绿": all(s.get("rc") == 0 for k, s in 步骤们.items() if k in ("同步", "配置", "构建", "单测", "e2e")),
+            "绿": all(s.get("rc") == 0 for k, s in 步骤们.items()
+                      if k in ("同步", "清产物", "配置", "构建", "单测", "e2e")),
             "总秒": round(time.time() - 开始), "时刻": datetime.now().isoformat(timespec="seconds"),
             "日志": 轮日志路径.name, "日志尾部": "".join(尾部).splitlines()[-20:]}
     return 结果
@@ -825,8 +849,9 @@ def 重抢锁(锁) -> None:
 
 
 def 自测() -> int:
-    """523 轻量自测（--selftest）：直调生成/判定函数断言，零真构建零真 git——
-    锁死 win_build.cmd 必含 088 删除行、清建形态配置必含 rmdir、指纹判定三态。"""
+    """523+637 轻量自测（--selftest）：直调生成/判定函数断言，零真构建零真 git——
+    锁死 win_build.cmd 必含 088 删除行、清建形态配置必含 rmdir、指纹判定三态、
+    预验清产物（637 干净构建·临时目录隔离）。"""
     import tempfile
     断言们: list[tuple[str, bool]] = []
 
@@ -855,10 +880,21 @@ def 自测() -> int:
         断言("指纹一致→不清建", not 需指纹清建("b" * 40, 记录)[0])
         断言("指纹不一致→清建", 需指纹清建("c" * 40, 记录)[0])
         断言("HEAD 空头→清建", 需指纹清建("", 记录)[0])
+    # 637 预验前置②干净构建（2026-10-14 用户立法）：预验清产物注入临时目录隔离断言
+    with tempfile.TemporaryDirectory() as 临时:
+        树637 = Path(临时)
+        产物 = 树637 / "target" / "audit2"
+        产物.mkdir(parents=True)
+        (产物 / "v2p_linuxx64").write_text("x", encoding="utf-8")
+        (树637 / "target" / "build" / "cn").parent.mkdir(parents=True)
+        (树637 / "target" / "build" / "cn").write_text("x", encoding="utf-8")
+        断言("637 清产物：target/ 残留态→清干净（含 audit2 v2p 指纹缓存）", 预验清产物(树637))
+        断言("637 清产物：清后 target/ 不复存在（从零构建前提）", not (树637 / "target").exists())
+        断言("637 清产物：无产物态→幂等放行", 预验清产物(树637))
     for 名, ok in 断言们:
         print("  [%s] %s" % ("OK" if ok else "×", 名))
     红 = sum(1 for _, ok in 断言们 if not ok)
-    print("== ci_daemon 自测（523）：%d 断言，%s ==" % (len(断言们), "全绿" if 红 == 0 else "红 %d" % 红))
+    print("== ci_daemon 自测（523+637）：%d 断言，%s ==" % (len(断言们), "全绿" if 红 == 0 else "红 %d" % 红))
     return 0 if 红 == 0 else 1
 
 
