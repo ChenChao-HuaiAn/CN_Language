@@ -32,10 +32,15 @@ import socket
 import subprocess
 import sys
 import urllib.request
+from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from board_tasks import 僵尸疑天数   # 392：僵尸疑阈值提示（与服务端同源常量）
+
+# 786（770 伞批·2026-10-14）：🏃 无分支×心跳在此窗内=黄放行（多会话并行「刚认领在途写码」
+#   是常态·不该硬拦全局集成队列）；超窗（心跳断）=死账红。
+在飞无分支黄窗分钟 = int(os.environ.get("CN_CLAIM_YELLOW_WINDOW_MIN", "30"))
 
 板服务地址 = os.environ.get("CN_BOARD_URL", "http://124.222.106.84:8301").rstrip("/")
 
@@ -109,7 +114,21 @@ def cmd_check() -> int:
     for t in 任务们:
         号 = t["号"]
         if t["状态"] == "🏃" and 号 not in 远端任务分支:
-            红们.append(f"#{号} 台账在飞(🏃)但远端无 任务/{号} 分支——认领未 push 或漏销账")
+            # 786 判据分级（770 伞批·2026-10-14）：🏃 无分支×心跳新鲜=黄放行（多会话并行下
+            #   「刚认领在途写码」是常态——773/784/785 连堵实录：每个新认领都硬拦全局集成
+            #   队列=门禁粒度过粗）；心跳断（更新时刻超窗）才=死账红。
+            try:
+                龄 = (datetime.now() -
+                      datetime.strptime(t.get("更新时刻", ""), "%m-%d %H:%M:%S").replace(year=datetime.now().year)
+                      ).total_seconds()
+            except ValueError:
+                龄 = None
+            if 龄 is not None and 0 <= 龄 <= 在飞无分支黄窗分钟 * 60:
+                黄们.append(f"#{号} 台账在飞(🏃)但远端无分支·心跳 {int(龄 // 60)} 分钟前仍活——"
+                            f"在途写码未 push（黄放行·超 {在飞无分支黄窗分钟} 分钟转红）")
+            else:
+                红们.append(f"#{号} 台账在飞(🏃)但远端无 任务/{号} 分支——认领未 push 或漏销账"
+                            f"（心跳已断·死账）")
         if t["状态"] == "✅" and not t.get("收口sha"):
             if t.get("来源") == "迁移021":
                 黄们.append(f"#{号} 台账已完成(✅)缺收口 sha——021 迁移旧账（226 立规前旧格式✅行本无 sha·知情放行）")
