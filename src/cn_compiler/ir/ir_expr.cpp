@@ -476,6 +476,15 @@ bool IRGenerator::genStringCompareBinary(BinaryExpr* node, const ir::IRValue& le
     if (node->op == Operator::EqualEqual || node->op == Operator::BangEqual) {
         ir::IRValue eq = emitResult(ir::Opcode::Call, {left, right}, "i1",
                                     "__cn_str_eq", node->location);
+        // 758（2026-10-15）：比较位连接产物消费即释——`甲+乙 == 丙+丁;` 两侧
+        //   连接产物为堆串（拥有契约），唯一消费者=本 __cn_str_eq（纯函数·
+        //   只读内容），调用后零引用；645/663/732 面只收语句位最终值（比较
+        //   结果=布尔不命中断否）与连接生成点内层产物，比较位两侧操作数在
+        //   三判定面之外=每语句净泄 2（百轮泄 200·758 立案实录）。消费点
+        //   单点收口（与 732 生成点收口同哲学）；定义点溯源守卫=仅拼接产物
+        //   寄存器（变量 load/转换临时/字面量天然排除防误伤）。
+        freeIfConcatTemp(left, node->location);
+        freeIfConcatTemp(right, node->location);
         if (node->op == Operator::EqualEqual) {
             lastExpr_ = eq;
         } else {
@@ -486,6 +495,9 @@ bool IRGenerator::genStringCompareBinary(BinaryExpr* node, const ir::IRValue& le
     }
     ir::IRValue ord = emitResult(ir::Opcode::Call, {left, right}, "i64",
                                  "__cn_str_cmp", node->location);
+    // 758：四序比较符（</<=/>/>=）同面收口（__cn_str_cmp 消费·同 eq 注释）
+    freeIfConcatTemp(left, node->location);
+    freeIfConcatTemp(right, node->location);
     ir::IRValue zero = ir::IRValue::constant("0", "i64");
     ir::Opcode cmpOp = (node->op == Operator::Less) ? ir::Opcode::Lt
                      : (node->op == Operator::Greater) ? ir::Opcode::Gt
