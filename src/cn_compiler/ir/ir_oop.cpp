@@ -176,6 +176,32 @@ void IRGenerator::emitClassMethod(const std::string& className, const ClassMembe
     regCounter_ = 0;
     blockCounter_ = 0;
     newBlock("bb0");  // 入口基本块
+    // 616（2026-10-14 伞批·102 甲案方法面同构）：消耗字符串形参 prologue 深拷
+    //   ——类方法原缺 102 甲案通道（ownedConsumed 形参仍直传借用）：体内重赋值/
+    //   转移/字符串释放 直接作用于调用方句柄=写穿调用方变量（探针实测 片 内容
+    //   被改写丢失）。与 visitFunctionDecl 同款：入口 __cn_str_copy 落堆独立
+    //   副本+登记名单（ownedParamCopySlots_——genStringFrees 形参段出口释放，
+    //   本函数尾部 genStringFrees 已挂）。自身 占参数位 0（非静态）。
+    if (member != nullptr && semantic_ != nullptr) {
+        const std::size_t thisOffset616 = mi.isStatic ? 0 : 1;
+        for (std::size_t pi616 = 0;
+             pi616 < member->params.size() &&
+             thisOffset616 + pi616 < func.paramUniques.size(); ++pi616) {
+            const ParamDecl* param616 = member->params[pi616].get();
+            if (param616 == nullptr || !param616->ownedConsumed) continue;
+            const std::string& unique616 = func.paramUniques[thisOffset616 + pi616];
+            ir::IRValue cur616 = emitResult(
+                ir::Opcode::Load, {ir::IRValue::var(unique616, "ptr")},
+                "ptr", unique616, member->body->location);
+            ir::IRValue cp616 = emitResult(
+                ir::Opcode::Call, {cur616}, "ptr", "__cn_str_copy",
+                member->body->location);
+            emit(ir::Opcode::Store, {cp616}, ir::IRValue(), unique616, "ptr",
+                 member->body->location);
+            ownedStringOrder_.push_back(unique616);
+            ownedParamCopySlots_.push_back(unique616);
+        }
+    }
     // P3-20：父类构造初始化列表（函数 子(...) : 父(实参)）——在构造体首部调用父构造
     //   （this=自身指针；父构造符号 = 父类名$父构造sigKey，与定义侧一致）
     if (mi.isConstructor && !member->ctorInitBase.empty() && semantic_ != nullptr) {
@@ -294,6 +320,8 @@ void IRGenerator::emitClassMethod(const std::string& className, const ClassMembe
     genStringFrees();
     stringTainted_.clear();
     ownedStringOrder_.clear();
+    // 616：prologue 副本槽名单复位（genStringFrees 正常已清·防御性再清）
+    ownedParamCopySlots_.clear();
     ownedClassOrder_.clear();
     ownedFieldOrder_.clear();
     scopeStringBase_.clear();
@@ -654,84 +682,6 @@ void IRGenerator::injectFieldCascadeDestroy(const ClassMember* member) {
              fcanon, "void", member->body->location);
     }
 }
-
-// 方法参数装载：this（自身）+ 显式参数进入 varStack_ 最外层作用域。
-// 与 visitFunctionDecl 的参数处理一致（唯一内部名 name$N、数组/结构体多槽登记）。
-void IRGenerator::setupMethodParams(ir::IRFunction& func, const ClassMemberInfo& mi) {
-    varStack_.emplace_back();
-    // this 指针（非静态方法）：参数名 自身（与语义层 declareVar("自身") 一致），
-    // IR 类型 ptr（类实例地址）。codegen emitParamSetup 按 paramUniques 登记栈槽，
-    // 参数位 0（rcx）——与 VirtualCall/构造调用 的 this 参数位契约一致。
-    if (!mi.isStatic) {
-        const std::string thisUnique = "自身$" + std::to_string(varCounter_++);
-        func.params.emplace_back("自身", "ptr");
-        func.paramUniques.push_back(thisUnique);
-        registerVarSlots(thisUnique, "");
-        ir::IRValue reg = newReg();
-        reg.type = "ptr";
-        VarEntry entry;
-        entry.regId = reg.id;
-        entry.uniqueName = thisUnique;
-        entry.type = "ptr";
-        entry.srcType = mi.ownerClass.empty() ? currentClass_ : mi.ownerClass;
-        varStack_.back()["自身"] = entry;
-    }
-    // 显式参数（AST 节点取 ParamDecl 指针）
-    const ClassMember* member = mi.ast;
-    if (member == nullptr) return;
-    for (std::size_t pi = 0; pi < member->params.size(); ++pi) {
-        const ParamDecl* param = member->params[pi].get();
-        // 缺陷3 修复（泛型单态化参数类型）：泛型方法体提升时，AST 参数的 typeName
-        //   仍是原始类型参数（T/U），未替换为实参类型（整32/浮64）。mi.paramTypes
-        //   已在 instantiateGeneric 中按实参替换（canonical 后），必须优先采用，
-        //   否则 浮64/多类型参数 被 mapType(T) 误判为 ptr -> 参数位模式错乱（读 0/垃圾）。
-        //   函数指针参数 mi.paramTypes 存 funcPtr.toString()，仍按 ptr 处理。
-        std::string paramType =
-            (pi < mi.paramTypes.size()) ? mi.paramTypes[pi] : param->typeName;
-        // H6 根治（2026-08-25）：类方法引用参数（简单盒& / 盒子$整64& 其他）——
-        //   原实现未设 byRef 标志，体内读取/成员访问把"被引用变量地址"当值用
-        //   （源.值 读到对象指针而非字段值，实测 b: 2227986720736 而非 7）。
-        //   与 visitFunctionDecl 引用参数（ir_decl.cpp）同规则：参数槽存"被引用
-        //   左值地址"（8 字节），体内读取经 byRef 机制解引用（LoadPtr 得对象
-        //   指针/基础值），类/结构体/标量引用参数统一按此语义。
-        const bool isRefParam = !param->funcPtr.isFunctionPtr() &&
-                                types::isReference(paramType);
-        std::string unique = param->name + "$" + std::to_string(varCounter_++);
-        std::string paramIrType = param->funcPtr.isFunctionPtr()
-                                      ? "ptr" : mapType(paramType);
-        if (isRefParam) paramIrType = "ptr";  // 引用参数按地址传递（槽存地址）
-        // 087b 捎带（宿主方法面·ir_decl 087 isArrayParam 同构）：数组形参=按值
-        //   聚合——paramIrType=ptr+structParamIndexes（056 通道 prologue rep
-        //   movsb 拷贝）；原 mapType 塌缩元素类型 i32（597 方法面 法=垃圾值实录）
-        const bool isArrayParam087b = !isRefParam &&
-                                      !param->funcPtr.isFunctionPtr() &&
-                                      types::isArray(paramType);
-        if (isArrayParam087b) paramIrType = "ptr";
-        registerVarSlots(unique, isRefParam ? ""
-                            : (param->funcPtr.isFunctionPtr() ? "" : paramType));
-        // 结构体按值参数标记：引用参数（账户&）按地址传递（非按值结构体拷贝），
-        //   须排除（与 ir_decl.cpp 同规则）
-        //   087b：数组按值参数同通道标记（emitParamSetup 拷贝判定同款）
-        if (!isRefParam && semantic_ != nullptr && !param->funcPtr.isFunctionPtr() &&
-            (semantic_->isStructType(types::canonical(paramType)) ||
-             isArrayParam087b)) {
-            func.structParamIndexes.insert(static_cast<int>(pi) + (mi.isStatic ? 0 : 1));
-        }
-        func.params.emplace_back(param->name, paramIrType);
-        func.paramUniques.push_back(unique);
-        ir::IRValue reg = newReg();
-        reg.type = paramIrType;
-        VarEntry entry;
-        entry.regId = reg.id;
-        entry.uniqueName = unique;
-        // 体内"值类型"仍为被引用基础类型/对象指针：读取经 byRef 解引用返回
-        entry.type = isRefParam ? mapType(types::stripRef(paramType)) : reg.type;
-        entry.srcType = paramType;
-        entry.byRef = isRefParam;  // H6：引用参数按 byRef 语义读写
-        varStack_.back()[param->name] = entry;
-    }
-}
-
 
 // ==================== visitClassDecl / visitClassMember ====================
 

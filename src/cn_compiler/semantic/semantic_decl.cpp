@@ -255,6 +255,18 @@ void SemanticAnalyzer::visitVarDecl(VarDecl* node) {
             if (reportMovedUse(srcIdent->name, initCall->location)) {
                 return;  // 再转移=使用已转移变量
             }
+            // 616（2026-10-14 伞批·102 甲案第四形态补齐）：初始化位 转移(字符串形参)
+            //   ＝消耗标记——原只覆盖表达式位（checkTransferCall），初始化位改写
+            //   浅交接绕过标记：形参槽=借用直传下句柄交接+源清零直接作用于调用方
+            //   句柄（探针转移形参形态双侧分叉实锤：v2 prologue 副本语义 0/宿主
+            //   直传 -1）。标记后 IR 层 prologue 深拷，交接只作用于自身副本。
+            {
+                std::string moveParamType616;
+                if (lookupVar(srcIdent->name, moveParamType616) &&
+                    types::canonical(moveParamType616) == "字符串") {
+                    markStringParamConsumed(srcIdent->name);
+                }
+            }
             transferSrcName = srcIdent->name;
             transferLine = initCall->location.getLine();
             inTransferRewrite_ = true;  // 豁免窗口开：改写产物的常规检查不算使用

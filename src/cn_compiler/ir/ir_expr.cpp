@@ -509,6 +509,17 @@ bool IRGenerator::genStringConcatBinary(BinaryExpr* node, const ir::IRValue& lef
     if (left.type == "ptr" && right.type == "ptr" && node->op == Operator::Add) {
         lastExpr_ = emitResult(ir::Opcode::Call, {left, right}, "ptr",
                                "__cn_str_concat", node->location);
+        // 617（2026-10-14 伞批）：concat 只读消费实参——发射完成后结算实参中
+        //   的拥有串临时（拼接链中间临时归零点：t2=连接(t1,c) 发射完释放 t1；
+        //   字面量/标识符形态由 argIsOwnedStringTemp 判据天然排除）
+        if (argIsOwnedStringTemp(node->left.get())) {
+            emit(ir::Opcode::Call, {left}, ir::IRValue(), "__cn_str_free",
+                 "void", node->location);
+        }
+        if (argIsOwnedStringTemp(node->right.get())) {
+            emit(ir::Opcode::Call, {right}, ir::IRValue(), "__cn_str_free",
+                 "void", node->location);
+        }
         return true;
     }
     const bool leftIsString = isStringTypedExpr(node->left.get());
@@ -570,6 +581,15 @@ bool IRGenerator::genStringConcatBinary(BinaryExpr* node, const ir::IRValue& lef
                                           convFn, node->location);
         lastExpr_ = emitResult(ir::Opcode::Call, {left, rightStr}, "ptr",
                                "__cn_str_concat", node->location);
+        // 617（2026-10-14 伞批）：转换器（from_int/float/char/bool/uint）产物
+        //   仅被本次 concat 消费——发射完成即释放；左操作数中拥有串临时
+        //   （如 整数转字符串(1) + 2 的左临时）同点结算。
+        emit(ir::Opcode::Call, {rightStr}, ir::IRValue(), "__cn_str_free",
+             "void", node->location);
+        if (argIsOwnedStringTemp(node->left.get())) {
+            emit(ir::Opcode::Call, {left}, ir::IRValue(), "__cn_str_free",
+                 "void", node->location);
+        }
         return true;
     }
     return false;
@@ -595,6 +615,13 @@ bool IRGenerator::genStringConcatI128(BinaryExpr* node, const ir::IRValue& left,
                                           "__cn_str_from_int", node->location);
         lastExpr_ = emitResult(ir::Opcode::Call, {left, rightStr}, "ptr",
                                "__cn_str_concat", node->location);
+        // 617：转换产物仅被本次 concat 消费——发射完成即释放（族②同口径）
+        emit(ir::Opcode::Call, {rightStr}, ir::IRValue(), "__cn_str_free",
+             "void", node->location);
+        if (argIsOwnedStringTemp(node->left.get())) {
+            emit(ir::Opcode::Call, {left}, ir::IRValue(), "__cn_str_free",
+                 "void", node->location);
+        }
         return true;
     }
     return false;

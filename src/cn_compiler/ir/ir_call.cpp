@@ -308,8 +308,18 @@ void IRGenerator::visitCallExpr(CallExpr* node) {
     bool isPrintNewline = (isDirect && calleeName == "打印");      // 打印：换行
     bool isPrintNoLine = (isDirect && calleeName == "打印行");     // 打印行：不换行
     if (isPrintNewline || isPrintNoLine) {
+        // 617（2026-10-14 伞批）：拥有串临时实参登记——打印/打印行对实参只读
+        //   消费（fputs），调用完成后调用方释放（001 §10.3 拼接语义「结果由
+        //   调用方负责字符串释放」的变参通道兑现）。判据=argIsOwnedStringTemp
+        //   （CallExpr 且返回字符串）：字面量（只读段·free 即崩）与标识符
+        //   （调用方变量自有 RAII）天然不命中——原实现 `打印("x=",
+        //   整数转字符串(42))` 的临时串每语句净漏 1。
+        std::vector<ir::IRValue> ownedStrTemps617;
         for (auto& arg : node->arguments) {
             ir::IRValue argVal = genExpr(arg.get());
+            if (argIsOwnedStringTemp(arg.get()) && argVal.type == "ptr") {
+                ownedStrTemps617.push_back(argVal);
+            }
             // 参数类型 -> 打印函数名（字符串/字符* -> 字符串；整型 -> 整数；浮点 -> 浮点）
             std::string printFn;
             if (argVal.type == "ptr") {
@@ -365,11 +375,32 @@ void IRGenerator::visitCallExpr(CallExpr* node) {
             emit(ir::Opcode::Call, {}, ir::IRValue(), "__cn_print_newline", "void",
                  node->location);
         }
+        // 617：语句尾结算——打印已完成只读消费，释放全部拥有串临时
+        //   （寄存器句柄直传 free，无槽无清零义务）
+        for (const auto& tmp617 : ownedStrTemps617) {
+            emit(ir::Opcode::Call, {tmp617}, ir::IRValue(), "__cn_str_free",
+                 "void", node->location);
+        }
         lastExpr_ = ir::IRValue();  // 无返回值（空类型）
         return;
     }
 
     // ---- 字符串API名称映射（Task 2.5 + Task 2.8）：中文函数名 -> 运行时符号 ----
+    // 617（2026-10-14 伞批）：内置字符串消费族判定（映射前中文名）——分配族
+    //   拷贝内容、谓词族只读、格式化 sprintf 拷贝，均不收下实参句柄=调用完成后
+    //   其「拥有串临时」实参（argIsOwnedStringTemp）可安全结算。拼接链中间临时
+    //   同点归零：t1=连接(a,b) 作为 连接(t1,c) 实参时在内层发射完释放。
+    //   驻留（表可能持指针视图）保守不入集合。
+    const bool isStrConsumer617 =
+        isDirect && (calleeName == "字符串长度" || calleeName == "字符串比较" ||
+                     calleeName == "字符串连接" || calleeName == "字符串复制" ||
+                     calleeName == "字符串查找" || calleeName == "字符串子串" ||
+                     calleeName == "字符串字典序" || calleeName == "字符串大写" ||
+                     calleeName == "字符串小写" || calleeName == "字符串前缀" ||
+                     calleeName == "字符串后缀" || calleeName == "字符串包含" ||
+                     calleeName == "字符串修剪" || calleeName == "字符串反转" ||
+                     calleeName == "字符串拼接" || calleeName == "格式化");
+    std::vector<ir::IRValue> consumedArgTemps617;
     if (isDirect) {
         if (calleeName == "字符串长度") calleeName = "__cn_str_len";
         else if (calleeName == "字符串比较") calleeName = "__cn_str_eq";
@@ -621,6 +652,12 @@ void IRGenerator::visitCallExpr(CallExpr* node) {
             }
         }
         args.push_back(argVal);
+        // 617：消费族拥有串临时实参收集（调用发射完成后结算）——ptr 前置挡
+        //   整数加法形态（BinaryExpr+Add 判定的类型护栏）
+        if (isStrConsumer617 && argVal.type == "ptr" &&
+            argIsOwnedStringTemp(node->arguments[ai].get())) {
+            consumedArgTemps617.push_back(argVal);
+        }
     }
     // 106：实参位「无 → 可选<T>」空可选装箱（canConvert 豁免面 IR 配套——
     //   内置名映射后 funcParamTypesOf 查无=no-op；「无→可选」仅用户函数形参面）
@@ -794,6 +831,22 @@ void IRGenerator::visitCallExpr(CallExpr* node) {
             calleeName == "__cn_alloc_reset") {
             emit(ir::Opcode::Call, args, ir::IRValue(), calleeName, "void",
                  node->location);
+            // 616（2026-10-14 伞批）：字符串释放(变量槽) 释放后清零——「释放+清零
+            //   幂等模型」（74-a 纪律·emitStringFreeFor 同款）：块出口/返回块
+            //   兜底再经过该槽时 __cn_str_free(nullptr) 空安全跳过，杜绝「显式
+            //   释放 + RAII 兜底」裸 double free（原靠 runtime cn_free_tracked
+            //   注册表兜底侥幸安全）。消耗形参体内显式释放后出口释放同理受益。
+            if (calleeName == "__cn_str_free" && !node->arguments.empty() &&
+                node->arguments[0]->getType() == NodeType::IdentifierExpr) {
+                const std::string freedUnique = lookupVarName(
+                    static_cast<IdentifierExpr*>(node->arguments[0].get())->name);
+                if (!freedUnique.empty()) {
+                    ir::IRValue zero616 = emitResult(
+                        ir::Opcode::ConstInt, {}, "i64", "0", node->location);
+                    emit(ir::Opcode::Store, {zero616}, ir::IRValue(),
+                         freedUnique, "ptr", node->location);
+                }
+            }
             lastExpr_ = ir::IRValue();
             return;
         }
@@ -814,6 +867,11 @@ void IRGenerator::visitCallExpr(CallExpr* node) {
         }
         lastExpr_ = emitResult(ir::Opcode::Call, args, resultType, calleeName,
                                node->location);
+        // 617：消费族调用发射完成——内容已拷贝/只读消费毕，结算拥有串临时实参
+        for (const auto& tmp617 : consumedArgTemps617) {
+            emit(ir::Opcode::Call, {tmp617}, ir::IRValue(), "__cn_str_free",
+                 "void", node->location);
+        }
         return;
     }
     // 337-a（T53 家系·间接调用路径）：i128/u128 形参的窄整实参宽化——函数指针

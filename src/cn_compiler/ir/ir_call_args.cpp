@@ -1,13 +1,17 @@
-// CN-IR生成器实现（648 拆分：自 ir_call.cpp 按族拆出·单文件≤1000行纪律）
+// CN-IR生成器实现：调用实参族（648 拆分：自 ir_call.cpp 按族拆出·单文件≤1000行纪律；
+//   616+617 伞批合入同一族文件）
 //   族 = 调用实参定标/清理：materializeStructInitArg + genArgValueWithCleanup +
-//   flushPendingArgCleanups + boxNullOptionalArgs + normalizeMethodArgs；
-//   纯重构零行为变更（成员函数实现搬移——声明仍在 ir_generator.hpp；族内无
-//   文件级 static/匿名命名空间依赖）。
+//   flushPendingArgCleanups + boxNullOptionalArgs + normalizeMethodArgs +
+//   argIsOwnedStringTemp（617 拥有型字符串临时判定·打印族/消费族实参结算共用）；
+//   成员函数声明仍在 ir_generator.hpp（648 拆分=成员实现搬移·族内无文件级
+//   static/匿名命名空间依赖）。
 #include <cstdio>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "cn_compiler/ir/ir.hpp"
+#include "cn_compiler/model/ast_expr.hpp"
 #include "cn_compiler/model/semantic_view.hpp"
 #include "cn_compiler/model/type_system.hpp"
 
@@ -168,4 +172,33 @@ void IRGenerator::normalizeMethodArgs(CallExpr* node,
     widenI128Args(userArgs, paramTypes, node->location);
     boxNullOptionalArgs(node, paramTypes, userArgs);
 }
+
+// 617（2026-10-14 伞批）：实参表达式「拥有型字符串临时」判定——CallExpr 且
+//   决议返回类型=字符串（回退链 resolvedType → 决议签名键 → 裸名），或
+//   字符串拼接表达式（BinaryExpr +：语义层保证 字符串+字符串/数值 走拼接通道，
+//   结果=连接产物堆串；整数加法/指针算术由调用点 argVal.type=="ptr" 前置
+//   挡外）。字符*（驻留文本 等借用视图）与标识符/字面量形态不命中。
+bool IRGenerator::argIsOwnedStringTemp(const Expr* arg) const {
+    if (arg == nullptr || semantic_ == nullptr) return false;
+    if (arg->getType() == NodeType::BinaryExpr) {
+        return static_cast<const BinaryExpr*>(arg)->op == Operator::Add;
+    }
+    if (arg->getType() != NodeType::CallExpr) return false;
+    const CallExpr* ce = static_cast<const CallExpr*>(arg);
+    std::string retCanon = types::canonical(ce->resolvedType);
+    if (retCanon.empty() && ce->callee != nullptr &&
+        ce->callee->getType() == NodeType::IdentifierExpr) {
+        const std::string nm =
+            static_cast<const IdentifierExpr*>(ce->callee.get())->name;
+        const std::string keys[2] = {ce->resolvedSignature, nm};
+        for (const std::string& key : keys) {
+            if (key.empty()) continue;
+            const std::string rt =
+                types::canonical(semantic_->funcReturnTypeOf(key));
+            if (!rt.empty()) { retCanon = rt; break; }
+        }
+    }
+    return retCanon == "字符串";
+}
+
 } // namespace cn_compiler

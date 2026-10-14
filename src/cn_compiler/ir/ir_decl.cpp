@@ -562,6 +562,11 @@ void IRGenerator::visitFunctionDecl(FunctionDecl* node) {
         emit(ir::Opcode::Store, {cp}, ir::IRValue(), unique, "ptr",
              node->location);
         ownedStringOrder_.push_back(unique);
+        // 616（2026-10-14 伞批）：同步登记 prologue 副本槽名单——genStringFrees
+        //   返回块按名单注入出口释放（free+清零幂等）。原只登记 ownedStringOrder_
+        //   而形参在函数体块基线内（块出口不管）+槽无 Alloca（函数级扫描看不到）
+        //   =副本终身无人释放（每次调用净漏 1）。
+        ownedParamCopySlots_.push_back(unique);
     }
     // P3-8 补全（2026-08-30）+ 宿主根治（2026-09-01）：顶层静态构造初始化——
     //   类/容器静态统一「指针槽模型」：.data 符号存 8 字节对象指针（与局部类
@@ -701,6 +706,8 @@ void IRGenerator::finishFunctionEmit(ir::IRFunction& func) {
     stringTainted_.clear();
     // 72-a（2026-09-11 第七十二轮）：块级作用域名单复位（函数级状态——下一函数干净）
     ownedStringOrder_.clear();
+    // 616：prologue 副本槽名单复位（正常路径 genStringFrees 已清；防御性再清）
+    ownedParamCopySlots_.clear();
     ownedClassOrder_.clear();
     ownedFieldOrder_.clear();
     pendingBoxCopies_.clear();

@@ -204,6 +204,24 @@ void IRGenerator::genStringFrees() {
             }
         }
     }
+    // 616（2026-10-14 伞批）：消耗形参 prologue 副本出口释放——102 甲案入口
+    //   __cn_str_copy 落堆的形参独立副本，原实现只登记不释放（形参槽无 Alloca
+    //   上方扫描看不到；块级 RAII 基线含形参=块出口不管）=每次调用净漏 1。
+    //   副本所有权=被调方（090 丙案「默认=值副本」），出口释放与调用方零耦合；
+    //   返回形参已被语义层拒（返回位借用形态·参数直传编译错误），无「副本移出
+    //   +出口释放」重叠。发射走 emitStringFreeFor（free+清零幂等——体内
+    //   转移()/字符串释放() 清槽后出口空安全跳过）。
+    if (!ownedParamCopySlots_.empty()) {
+        for (const auto& block : function_->blocks) {
+            if (!block->terminated) continue;
+            if (block->termKind != "返回") continue;
+            setCurrentBlock(block.get());
+            for (const auto& unique : ownedParamCopySlots_) {
+                emitStringFreeFor(unique);
+            }
+        }
+        ownedParamCopySlots_.clear();
+    }
     // 79-a（2026-09-12 第七十九轮）：聚合拥有型字符串字段函数尾兜底——
     //   含串字段的结构体/结果/可选局部，逐字段 free+清槽（单点事实源
     //   emitOwnedFieldFreesFor）。返回移出豁免：返回块返回值为 AddrOf(槽)

@@ -245,13 +245,19 @@ void SemanticAnalyzer::checkSingleMethodBody(ClassInfo& info, ClassMemberInfo& m
         pushScope();
         // 隐式 this 参数（自身 表达式类型）
         declareVar("自身", info.name + "*", member->location);
+        // 616（2026-10-14 伞批·102 甲案方法面补齐）：字符串值形参收集基线清空
+        //   （上一方法残留防串扰——正式收集在下方参数 declareVar 之后）。
+        curStringParamDecls_.clear();
         // Task 6.1（实例化泛型类方法体检查）：参数类型用 mi.paramTypes（已替换
         //   类型参数 T -> 整32），AST 参数 typeName 仍是原始 T——原实现用 AST
         //   typeName 导致 值:T 参数在 向量$整32.追加 内类型仍是 T，与 数据 字段
         //   （整32*）交互报"无法将 T 隐式转换为 整32"。
         const std::vector<std::string>& paramTypes = mi.paramTypes;
         for (std::size_t pi = 0; pi < member->params.size(); ++pi) {
-            const ParamDecl* p = member->params[pi].get();
+            // 616：非 const ParamDecl*——消耗标记（ownedConsumed）写回落 AST；
+            //   const ClassMember* 下 unique_ptr<T>::get() 仍返回 T*（const 不
+            //   传播 pointee），无需 const_cast。
+            ParamDecl* p = member->params[pi].get();
             std::string ptype;
             if (p->funcPtr.isFunctionPtr()) {
                 ptype = p->funcPtr.toString();
@@ -276,6 +282,16 @@ void SemanticAnalyzer::checkSingleMethodBody(ClassInfo& info, ClassMemberInfo& m
             }
             if (!declareVar(p->name, ptype, p->location)) {
                 // 参数重复声明（防御）
+            }
+            // 616（2026-10-14 伞批·102 甲案方法面补齐）：字符串值形参收集供消耗
+            //   标记——checkFunctionBody 同款（原方法面缺收集=ownedConsumed 恒假，
+            //   IR 层直传借用：方法体内重赋值/转移/字符串释放 直接作用于调用方
+            //   句柄=写穿调用方变量，探针实测 片 内容被改写丢失）。引用/函数
+            //   指针参数不适用（槽存地址）。
+            if (!p->funcPtr.isFunctionPtr() &&
+                types::canonical(ptype) == "字符串" &&
+                !types::isReference(ptype)) {
+                curStringParamDecls_.emplace_back(p->name, p);
             }
         }
         // 类字段并入方法作用域（直接字段访问，Task 3.1）：
@@ -386,6 +402,8 @@ void SemanticAnalyzer::checkSingleMethodBody(ClassInfo& info, ClassMemberInfo& m
         borrowViewScopes_ = std::move(savedBorrowScopes);
         currentReturnType_.clear();
         popScope();
+        // 616：字符串值形参集复位（标记已完成落 AST·与 checkFunctionBody 对称）
+        curStringParamDecls_.clear();
 
         // 恢复上下文
         currentFunctionName_ = savedFuncName;

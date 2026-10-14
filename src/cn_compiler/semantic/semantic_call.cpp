@@ -841,6 +841,23 @@ bool SemanticAnalyzer::checkDirectCall(CallExpr* node, const std::string& callee
         if (calleeName == "释放") {
             reportUnsafeBoundary(node->location, "裸释放", "释放(指针)");
         }
+        // 616（2026-10-14 伞批·102 甲案第三形态补齐）：字符串释放(字符串形参)
+        //   ＝消耗标记——102 甲案注释宣称「体内赋值/转移()/字符串释放() 命中即
+        //   置 ownedConsumed」，字符串释放 路径原缺标记：非消耗形参=借用直传
+        //   （形参槽=调用方句柄），被调 __cn_str_free 直放=释放调用方缓冲区
+        //   （违反 001 §10.3「参数=借用·被调方不释放」；探针残留 -1+调用方变量
+        //   悬垂实锤）。标记后 IR 层 prologue 深拷，释放只作用于自身副本。
+        //   markStringParamConsumed 只对形参名命中（非形参零影响）。
+        if (calleeName == "字符串释放" && !node->arguments.empty() &&
+            node->arguments[0]->getType() == NodeType::IdentifierExpr) {
+            auto* relArg =
+                static_cast<IdentifierExpr*>(node->arguments[0].get());
+            std::string relVarType;
+            if (lookupVar(relArg->name, relVarType) &&
+                types::canonical(relVarType) == "字符串") {
+                markStringParamConsumed(relArg->name);
+            }
+        }
         // plans/019 阶段3（2026-09-10）：常量引用借用纪律（只读借出可变拒 +
         //   同调用可变×只读互斥）——置于 wrapRefArgs 之前按原始实参形态判定
         checkConstRefBorrowDiscipline(node, info.paramTypes, info.constParams);

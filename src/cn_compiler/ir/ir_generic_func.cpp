@@ -208,6 +208,30 @@ void IRGenerator::emitGenericFuncInstance(const GenericFuncInstance& gfi) {
     regCounter_ = 0;
     blockCounter_ = 0;
     newBlock("bb0");
+    // 616（2026-10-14 伞批·102 甲案泛型实例面同构）：消耗字符串形参 prologue
+    //   深拷——泛型实例方法与类方法同缺 102 甲案通道（写穿调用方句柄面）。
+    //   语义标记由 checkSingleMethodBody 形参收集（recheckGenericMethodBody
+    //   共用）落 AST ownedConsumed；此处与 visitFunctionDecl 同款发射。泛型
+    //   实例无 自身 隐式参数（参数位 0 起）。
+    if (semantic_ != nullptr) {
+        for (std::size_t pi616 = 0;
+             pi616 < node->params.size() && pi616 < func.paramUniques.size();
+             ++pi616) {
+            const ParamDecl* param616 = node->params[pi616].get();
+            if (param616 == nullptr || !param616->ownedConsumed) continue;
+            const std::string& unique616 = func.paramUniques[pi616];
+            ir::IRValue cur616 = emitResult(
+                ir::Opcode::Load, {ir::IRValue::var(unique616, "ptr")},
+                "ptr", unique616, node->location);
+            ir::IRValue cp616 = emitResult(
+                ir::Opcode::Call, {cur616}, "ptr", "__cn_str_copy",
+                node->location);
+            emit(ir::Opcode::Store, {cp616}, ir::IRValue(), unique616, "ptr",
+                 node->location);
+            ownedStringOrder_.push_back(unique616);
+            ownedParamCopySlots_.push_back(unique616);
+        }
+    }
     if (node->body != nullptr) {
         genBlock(node->body.get());
     }
@@ -227,6 +251,8 @@ void IRGenerator::emitGenericFuncInstance(const GenericFuncInstance& gfi) {
     //   实例间名单/基线栈/污染集的串扰残留（行为原由 genBlock 出口截断自愈）。
     stringTainted_.clear();
     ownedStringOrder_.clear();
+    // 616：prologue 副本槽名单复位（genStringFrees 正常已清·防御性再清）
+    ownedParamCopySlots_.clear();
     ownedClassOrder_.clear();
     scopeStringBase_.clear();
     scopeClassBase_.clear();

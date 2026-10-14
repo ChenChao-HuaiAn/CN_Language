@@ -494,6 +494,12 @@ private:
     std::vector<std::size_t> scopeBoxVarsBase_;
     // 本函数拥有串名单（genVarDecl 登记：源码类型=字符串 且未被 stringTainted_ 污染）
     std::vector<std::string> ownedStringOrder_;
+    // 616（2026-10-14 伞批）：本函数「消耗形参 prologue 深拷」槽名单——ir_decl
+    //   102 甲案入口深拷时登记（ParamDecl::ownedConsumed 字符串形参的唯一副本
+    //   持有槽）。genStringFrees 返回块按名单注入释放（free+清零幂等）；原实现
+    //   只登记不释放=每次调用净漏 1（形参槽无 Alloca、块级基线含形参，两条
+    //   既有释放通道均覆盖不到——探针消耗形参形态残留 1 实锤）。finishFunctionEmit 复位。
+    std::vector<std::string> ownedParamCopySlots_;
     // 本函数类对象名单（genVarDecl 登记：类类型局部——沿用 oopVarSrcTypes_ 判定）
     std::vector<std::string> ownedClassOrder_;
     // 79-a：本函数「含拥有型字符串字段」的聚合局部名单（结构体/结果/可选——
@@ -680,6 +686,11 @@ private:
     // 81-a：实参求值 + 「调用返回结构体临时」清理登记——返回类型含拥有型串字段的
     //   调用返回实参（`表.追加(造盒子())`）：被调方返回移出（所有权移交调用方
     ir::IRValue genArgValueWithCleanup(Expr* arg, const SourceLocation& loc);
+    // 617（2026-10-14 伞批）：实参表达式是否为「拥有型字符串临时」——CallExpr
+    //   且决议返回类型=字符串（拥有契约：内置分配族/数字转换族/格式化/用户函数
+    //   返回堆串；字符* 借用视图与标识符/字面量形态不命中）。打印族与内置
+    //   字符串消费族的实参临时结算共用判据（调用完成后调用方释放）。
+    bool argIsOwnedStringTemp(const Expr* arg) const;
     // 调用发射后统一清理本次调用新增的实参临时（base=进入本次调用时的列表基准，
     //   嵌套调用各自持基准——内层清理只覆盖内层新增项）
     void flushPendingArgCleanups(std::size_t base);
