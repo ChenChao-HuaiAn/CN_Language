@@ -360,6 +360,13 @@ private:
     //   主函数生成——生成期收集会晚于调用点查表）；emitClassMethod 内同款
     //   收集保留（幂等跳过）作兜底。
     void collectCtorDefaults(const std::string& className, const ClassMemberInfo& mi);
+    // 762：visitProgram 预收集全部自由函数（顶层 FunctionDecl·有体）的尾部
+    //   默认参数值——原收集点在 visitFunctionDecl（按声明顺序单遍发射时），
+    //   调用点先于定义（同文件后置定义·001 两遍编译立法合法形态）时查
+    //   funcDefaultArgs_ miss → 缺省实参静默不补=静默错值（探针实录：
+    //   带缺省() 应 6 静默返 0）。D23 类构造预收集同款根治；visitFunctionDecl
+    //   内原收集保留（幂等覆盖同 key）作兜底。
+    void collectFreeFunctionDefaults(FunctionDecl* node);
     // D23 根治（248-a）：签名 -> 参数总数（含默认参数）——构造（emitClassMethod）
     //   不入 functions_，funcParamTypesOf 查空时补缺点以「given+defaults 数」回退
     std::unordered_map<std::string, std::size_t> funcDefaultTotal_;

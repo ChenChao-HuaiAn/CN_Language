@@ -212,6 +212,18 @@ void IRGenerator::visitProgram(Program* node) {
             }
         }
     }
+    // 762 根治：自由函数默认参数值**预收集**——原收集点在 visitFunctionDecl
+    //   （按声明顺序单遍发射时），同文件后置定义（001 两遍编译立法合法形态）
+    //   的带默认参数函数，其调用点（在先发射）查 funcDefaultArgs_ miss →
+    //   缺省实参静默不补=静默错值（探针实录：带缺省() 应 6 静默返 0·
+    //   前置定义即愈=570 轮三案实录同机制）。D23 类构造预收集同款根治：
+    //   先于全部函数生成对全部顶层有体函数预收集；visitFunctionDecl 内原
+    //   收集保留（幂等覆盖同 key）作兜底。
+    for (auto& decl : node->declarations) {
+        if (decl->getType() == NodeType::FunctionDecl) {
+            collectFreeFunctionDefaults(static_cast<FunctionDecl*>(decl.get()));
+        }
+    }
     for (auto& decl : node->declarations) {
         if (decl->getType() == NodeType::FunctionDecl) {
             visitFunctionDecl(static_cast<FunctionDecl*>(decl.get()));
@@ -686,6 +698,29 @@ void IRGenerator::registerFunctionParams(FunctionDecl* node, ir::IRFunction& fun
             funcDefaultTotal_[func.mangledName] = node->params.size();
         }
     }
+}
+
+// 762：自由函数默认参数值预收集（visitProgram 在全部函数生成前调用）——
+//   与 registerFunctionParams 尾段同款收集（默认值常量求值+参数总数登记），
+//   key=定义侧链接键（functionLinkKey 与 visitFunctionDecl 的 func.mangledName
+//   同源公式·语义层已先跑，node->sigKey 必已填充）。原型声明（body==nullptr）
+//   不收集——原型不发射 IR 函数，与 visitFunctionDecl 的跳过口径一致；有体
+//   函数无条件收集（无默认值参数时 defaults 空=不登记，零行为差异）。
+void IRGenerator::collectFreeFunctionDefaults(FunctionDecl* node) {
+    if (node->body == nullptr) return;  // 函数原型声明：不发射（同 visitFunctionDecl）
+    std::vector<ir::IRValue> defaults;
+    for (auto& param : node->params) {
+        if (param->hasDefault && param->defaultExpr != nullptr) {
+            defaults.push_back(evalDefaultExpr(param->defaultExpr.get()));
+        }
+    }
+    if (defaults.empty()) return;
+    const std::string linkName = functionLinkKey(
+        node->moduleName, node->name,
+        node->sigKey.empty() ? node->name : node->sigKey);
+    funcDefaultArgs_[linkName] = std::move(defaults);
+    // D23（248-a）同款：参数总数同步登记（补缺点精确判定缺省个数）
+    funcDefaultTotal_[linkName] = node->params.size();
 }
 
 // 族②：函数发射收尾（原 460~480 段）——类类型局部变量析构 DeleteObject

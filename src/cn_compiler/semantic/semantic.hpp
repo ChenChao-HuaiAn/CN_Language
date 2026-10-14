@@ -795,11 +795,11 @@ private:
                                 const SourceLocation& loc);
     // ==================== 成员状态 ====================
     Diagnostics& diagnostics_;
-    bool builtinReleaseMode_ = false;  // 239-a：发布构建旗标（内建常量 调试模式 取值）                     // 诊断引擎引用
+    bool builtinReleaseMode_ = false;  // 239-a：发布构建旗标（内建常量 调试模式 取值）
     std::unordered_map<std::string, FunctionInfo> functions_;   // 函数符号表
-    // ---- crate 模型（第 4 层）----
-    // 签名 key -> 已注册该签名的模块名集合（跨模块同名函数允许；限定调用验证用）
+    // ---- crate 模型（第 4 层）·签名 key -> 已注册该签名的模块名集合（跨模块同名函数允许·限定调用验证用）
     std::unordered_map<std::string, std::unordered_set<std::string>> funcSigModules_;
+    std::unordered_map<std::string, FunctionDecl*> funcProtoDecls_;  // 762：链接键->已注册原型节点（原型+定义配对时默认值合并数据源·spec 04 §一C）
     // use 导入表（P1-3）：模块名 -> 导入符号信息（符号集合/别名/通配符）
     struct UseImportInfo {
         std::unordered_set<std::string> symbols;                 // 导入的具体符号名

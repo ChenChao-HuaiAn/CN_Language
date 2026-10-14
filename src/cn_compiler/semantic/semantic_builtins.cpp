@@ -556,8 +556,39 @@ bool SemanticAnalyzer::checkDuplicateRegistration(FunctionDecl* node,
         // 同签名重名：允许"原型声明 + 定义"组合，其余为重复定义
         bool isProtoPlusDef = !it->second.hasBody && info.hasBody;
         if (isProtoPlusDef) {
-            // 签名一致性检查：原型（已注册）与定义（当前）签名必须一致
             const FunctionInfo& proto = it->second;
+            // 762：默认参数**原型侧声明合并**——spec 04 §一C 口径「默认参数在
+            //   原型声明中给出（避免重复）」：原型给默认值、定义不给=合法配对
+            //   （原实现按 defaultCount 严格相等判不一致直接拒=spec 推荐用法
+            //   编译失败）。此处把原型侧尾部参数的 defaultExpr **转移**到定义
+            //   节点（原型已注册完成且不发射 IR，节点此后无消费方；转移后
+            //   IR 收集/预收集读定义节点参数即得默认值——762 案①同链）。
+            //   反向（定义侧默认数 > 原型）不动：定义 info 覆盖注册表本就生效。
+            if (proto.defaultCount > info.defaultCount) {
+                auto protoIt = funcProtoDecls_.find(linkKey);
+                FunctionDecl* protoNode =
+                    (protoIt != funcProtoDecls_.end()) ? protoIt->second : nullptr;
+                if (protoNode != nullptr &&
+                    protoNode->params.size() == node->params.size()) {
+                    // 尾部 defaultCount-info.defaultCount 个参数按序转移
+                    const std::size_t base =
+                        proto.defaultCount - info.defaultCount;
+                    const std::size_t from = node->params.size() - proto.defaultCount;
+                    for (std::size_t pi = 0; pi < base; ++pi) {
+                        auto& dst = node->params[from + pi];
+                        auto& src = protoNode->params[from + pi];
+                        if (src->hasDefault && src->defaultExpr != nullptr &&
+                            !dst->hasDefault) {
+                            dst->hasDefault = true;
+                            dst->defaultExpr = std::move(src->defaultExpr);
+                        }
+                    }
+                    info.defaultCount = proto.defaultCount;
+                }
+            }
+            // 签名一致性检查：原型（已注册）与定义（当前）签名必须一致
+            //   （返回类型严格一致；默认参数经上方合并后应相等——不等=双侧
+            //   声明位置交错等残余形态，仍拒绝）
             bool same = (proto.returnType == info.returnType &&
                          proto.defaultCount == info.defaultCount);
             if (!same) {
@@ -570,6 +601,11 @@ bool SemanticAnalyzer::checkDuplicateRegistration(FunctionDecl* node,
                                 "'（参数类型相同；仅返回类型不同不构成重载）");
         }
         return true;
+    }
+    // 762：原型（无体）节点登记——同签名定义注册时的默认值合并数据源
+    //   （见上方配对分支；有体定义不登记，原型后置组合本就按重复定义拒绝）
+    if (node->body == nullptr) {
+        funcProtoDecls_[linkKey] = node;
     }
     return false;
 }
