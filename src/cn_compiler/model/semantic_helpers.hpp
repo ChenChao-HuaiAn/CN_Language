@@ -6,6 +6,8 @@
 //   inline：头文件多 TU 安全（ODR 齐一）；原匿名 ns 内部链接语义由 inline 等价承接。
 #pragma once
 
+#include <cstdint>
+#include <functional>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -405,6 +407,107 @@ int charLiteralCodePoint(const std::string& raw);
 //   的左值副本）共用单一克隆器——防跨翻译单元双份实现漂移。
 std::unique_ptr<Expr> cloneExpr(Expr* node);
 std::unique_ptr<Stmt> cloneStmt(Stmt* node);
+
+// ===== 548：编译期整数常量折叠器（自 semantic_expr_binary.cpp 匿名 ns 提升
+//   中立层共享——505/503/548 三消费方〔溢出预演/移位量/除零定性〕跨文件单份）=====
+// 505（G1·501 采样轮）：小型常量折叠求值——编译期预演面专用纯函数（零副作用）。
+//   背景：checkConstIntExprSafety/checkShiftConstWidth 旧取值通道只认直接子节点
+//   字面量（litValue 两处手写提取），嵌套折叠形态 ((30000+30000)*30000000)、
+//   甲<<(700+66)、折叠零除数 10/(5-5) 双侧一致漏编译期检查（运行期错误码 8 兜底）
+//   ——预演发生在折叠之前。修法=子树先递归折叠出常量闭包再按域预演（检查提前+
+//   精确·不改变运行期兜底语义：无法折叠的形态〔含变量/中间溢出/除零〕返回 假=
+//   保持现状走运行期错误码；错误形态由该子表达式自身节点的预演报告——
+//   visitBinaryExpr 逐节点递归遍历，无遗漏面）。
+//   折叠域：int64 安全闭包——加减乘用溢出条件检测（hi-vR 技巧），除零/INT64_MIN÷-1/
+//   移位量越 [0,63] 域/负值左移 返回 假（不可折叠——这些形态各自的节点级检查
+//   〔编译期除零/INT_MIN÷-1 溢出/移位量超宽〕按现状口径覆盖，折叠不与之竞争）。
+//   503 rebase 归纳：编译期除零定性（除/余右操作数折叠值==0）同样复用本通道。
+//   548：折叠通道扩常量名解析——resolveConstName 非空时 IdentifierExpr 经其
+//   查顶层常量值折叠为整值（001 §1.1a①「常量传播面随常量折叠后续波」·语义侧
+//   SemanticAnalyzer::resolveConstNameValue 提供含 584-a 遮蔽守卫的实现）；空
+//   （默认）保持旧口径=不可折叠（溢出预演/移位量通道不传——548 扩面仅限除零
+//   定性通道，防溢出/移位面超范围扩面）。
+[[maybe_unused]] inline bool cnFoldConstIntExpr505(
+    const Expr* e, std::int64_t& out, int depth = 0,
+    const std::function<bool(const std::string&, std::int64_t&)>* resolveConstName = nullptr) {
+    if (e == nullptr || depth > 64) return false;  // 深度守卫（防病态深嵌套）
+    if (e->getType() == NodeType::IntegerLiteral) {
+        out = static_cast<const IntegerLiteral*>(e)->value;
+        return true;
+    }
+    if (e->getType() == NodeType::IdentifierExpr) {
+        // 548：常量名折叠（仅除零定性通道开启·解析器内含遮蔽守卫与值文本解析）
+        if (resolveConstName != nullptr &&
+            (*resolveConstName)(static_cast<const IdentifierExpr*>(e)->name, out)) {
+            return true;
+        }
+        return false;
+    }
+    if (e->getType() == NodeType::UnaryExpr) {
+        const UnaryExpr* u = static_cast<const UnaryExpr*>(e);
+        if (u->op == Operator::Subtract && !u->postfix) {
+            std::int64_t v = 0;
+            if (!cnFoldConstIntExpr505(u->operand.get(), v, depth + 1, resolveConstName))
+                return false;
+            // 取负按两补码回绕位模式（INT64_MIN 取负=自身·与旧 litValue 同口径）
+            out = static_cast<std::int64_t>(~static_cast<std::uint64_t>(v) + 1);
+            return true;
+        }
+        return false;
+    }
+    if (e->getType() != NodeType::BinaryExpr) return false;
+    const BinaryExpr* b = static_cast<const BinaryExpr*>(e);
+    std::int64_t l = 0, r = 0;
+    if (!cnFoldConstIntExpr505(b->left.get(), l, depth + 1, resolveConstName)) return false;
+    if (!cnFoldConstIntExpr505(b->right.get(), r, depth + 1, resolveConstName)) return false;
+    switch (b->op) {
+        case Operator::Add:
+            // 溢出安全加：INT64_MAX-r（r>0）/INT64_MIN-r（r<0）恒良定义
+            if ((r > 0 && l > INT64_MAX - r) || (r < 0 && l < INT64_MIN - r)) return false;
+            out = l + r;
+            return true;
+        case Operator::Subtract:
+            if ((r < 0 && l > INT64_MAX + r) || (r > 0 && l < INT64_MIN + r)) return false;
+            out = l - r;
+            return true;
+        case Operator::Multiply: {
+            const std::uint64_t magL =
+                (l < 0) ? static_cast<std::uint64_t>(~static_cast<std::uint64_t>(l)) + 1
+                        : static_cast<std::uint64_t>(l);
+            const std::uint64_t magR =
+                (r < 0) ? static_cast<std::uint64_t>(~static_cast<std::uint64_t>(r)) + 1
+                        : static_cast<std::uint64_t>(r);
+            const bool negResult = (l < 0) != (r < 0);
+            // 乘积域界：正结果=INT64_MAX；负结果=|INT64_MIN|=2^63
+            const std::uint64_t magHi =
+                negResult ? static_cast<std::uint64_t>(INT64_MAX) + 1
+                          : static_cast<std::uint64_t>(INT64_MAX);
+            if (magL != 0 && magR != 0 &&
+                (magL > magHi / magR || magL * magR > magHi)) return false;
+            out = negResult ? static_cast<std::int64_t>(~static_cast<std::uint64_t>(magL * magR) + 1)
+                            : static_cast<std::int64_t>(magL * magR);
+            return true;
+        }
+        case Operator::Divide:
+        case Operator::Modulo:
+            if (r == 0) return false;  // 除零：由该节点预演报编译期除零
+            if (l == INT64_MIN && r == -1) return false;  // 结果 2^63 超 int64：该节点预演报
+            out = (b->op == Operator::Divide) ? l / r : l % r;
+            return true;
+        case Operator::LessLess:
+            if (l < 0 || r < 0 || r > 62) return false;  // 负左移/溢出位 UB 面：不折叠
+            if (static_cast<std::uint64_t>(l) >
+                (static_cast<std::uint64_t>(INT64_MAX) >> r)) return false;
+            out = l << r;
+            return true;
+        case Operator::GreaterGreater:
+            if (r < 0 || r > 63) return false;
+            out = l >> r;  // 算术右移（与发射层面口径一致）
+            return true;
+        default:
+            return false;  // 比较/位运算/逻辑等不进折叠闭包（预演面只管算术+移位）
+    }
+}
 
 } // namespace cn_compiler
 

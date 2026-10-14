@@ -58,12 +58,8 @@ public:
 
     // plans/019 阶段3b（2026-09-10）：IR 层查询——声明是否转移初始化（浅交接
     //   分派用：跳过深拷贝改槽位交接）；命中返回 true 并回填源变量名。
-    bool isTransferDecl(const void* varDeclNode, std::string& outSrcName) const override {
-        auto it = transferDeclSources_.find(varDeclNode);
-        if (it == transferDeclSources_.end()) return false;
-        outSrcName = it->second;
-        return true;
-    }
+    //   （548 行数门禁腾挪：原类内 inline 体机械迁移 semantic.cpp·零语义变化）
+    bool isTransferDecl(const void* varDeclNode, std::string& outSrcName) const override;
 
     // ==================== 结构体/枚举查询（Task 2.7，供IR层复用布局） ====================
     // 是否结构体/联合体类型名
@@ -123,9 +119,8 @@ public:
     // 全部类符号表只读访问（Task 3.1，供 codegen 遍历生成虚表/静态字段/类方法符号）
     const std::unordered_map<std::string, ClassInfo>& classes() const override { return classes_; }
     // 全部泛型函数实例化记录只读访问（Task 6.1，供 IR 层生成函数体）
-    const std::vector<GenericFuncInstance>& genericFuncInstances() const override {
-        return genericFuncInstances_;
-    }
+    //   （548 行数门禁腾挪：原类内 inline 体机械迁移 semantic.cpp·零语义变化）
+    const std::vector<GenericFuncInstance>& genericFuncInstances() const override;
     // 确保单个类型的结果/可选合成结构体已降级（Task 6.1 泛型类实例化后调用）
     void ensureLoweredType(const std::string& type)override ;
     // 全部接口符号表只读访问（Task 3.3，供 codegen 预留接口信息）
@@ -184,19 +179,12 @@ public:
                                        const SourceLocation& loc)override ;
     // ---- 第 4 层（v2.0 决策9，P1-4）：顶层常量查询（IR 层编译期折叠）----
     // 查询顶层常量值文本（未注册返回空串；值为字面量 raw 文本）
-    std::string globalConstValue(const std::string& name) const override {
-        auto it = globalConstValues_.find(name);
-        return (it == globalConstValues_.end()) ? "" : it->second;
-    }
-    // 是否顶层静态变量名（IR 层生成全局存储）
-    bool isGlobalStatic(const std::string& name) const override {
-        return globalStatics_.count(name) > 0;
-    }
-    // 查询顶层静态变量源码类型（未注册返回空串；IR 层映射全局存储类型）
-    std::string globalStaticType(const std::string& name) const override {
-        auto it = globalStatics_.find(name);
-        return (it == globalStatics_.end()) ? "" : it->second;
-    }
+    //   （548 行数门禁腾挪：原类内 inline 体机械迁移 semantic.cpp·零语义变化）
+    std::string globalConstValue(const std::string& name) const override;
+    // 是否顶层静态变量名（IR 层生成全局存储）；查询顶层静态变量源码类型
+    //   （未注册返回空串·IR 层映射全局存储类型）——同上腾挪 semantic.cpp
+    bool isGlobalStatic(const std::string& name) const override;
+    std::string globalStaticType(const std::string& name) const override;
 
     // ==================== AstVisitor 接口实现 ====================
     // 声明节点
@@ -449,9 +437,8 @@ private:
     static bool isInteger(const std::string& type) { return types::isInteger(type); }
     static bool isFloat(const std::string& type) { return types::isFloat(type); }
     // 能否隐式转换（规格书3.7：字符↔整数/整型宽化/浮点宽化/整数->浮点）
-    static bool canConvert(const std::string& from, const std::string& to) {
-        return types::canConvert(from, to);
-    }
+    //   （548 行数门禁腾挪：原类内 inline 体机械迁移 semantic.cpp·零语义变化）
+    static bool canConvert(const std::string& from, const std::string& to);
     // 扩展隐式转换（Task 2.7 + 阶段3）：在 types::canConvert 基础上增加 枚举↔整数、
     //   结构体须同名、结果/可选 模板兼容、空类型* -> 可选<T>（空可选值）
     std::vector<std::string> collectCallArgTypes(const std::vector<std::unique_ptr<Expr>>& args, const SourceLocation& loc); void adjustLiteralArgTypes(std::vector<std::string>& argTypes, const std::vector<std::unique_ptr<Expr>>& args);  // 231·实现见 expr.cpp（冻结线承载·语义=checkExpr 收集+fnptr 诊断+超域字面量改判整64）
@@ -603,10 +590,8 @@ private:
     // 319-a（T36·方案甲）：整数字面量值域检查——窄化豁免的值域门槛
     //（整16 甲=40000 静默截断根治；与 isIntLiteralExpr 配对使用）
     static bool intLiteralFitsType(const Expr* e, const std::string& to);
-    // 数值运算的结果类型（整型取宽、整浮混合取浮）
-    static std::string commonNumericType(const std::string& a, const std::string& b) {
-        return types::commonNumericType(a, b);
-    }
+    // 数值运算的结果类型（整型取宽、整浮混合取浮）——同上腾挪 semantic.cpp
+    static std::string commonNumericType(const std::string& a, const std::string& b);
     // 285（001 §3.7a 窄算术回绕·甲案）：实参位窄字面量回绕放行——T36 传参
     //   值域检查被 §3.7a 容器元素窄域口径显式覆盖（p1007_05 验收基线五值含
     //   追加(200) 读回 -56·v2 零改动锚）。仅实参面；声明/赋值/返回面维持 T36。
@@ -933,7 +918,7 @@ private:
     int assignmentTargetDepth_ = 0;
     int switchDepth_ = 0;                          // 选择嵌套深度（中断跳出选择合法性）
     // ---- 188-a（D6·plans/023 B11 变量常量传播）：函数级「恒空指针」判定表 ----
-    //   背景：B11 原判据=操作数为 `无` 字面量；plans/023 §九 已批准定义含
+    //   背景：B11 原判据=操作数为 `无` 字面量（plans/023 §九 已批准定义含编译期常量）
     struct NullUseSite {
         std::string name;          // 使用点操作数（标识符名）
         SourceLocation location;   // 报错行
@@ -943,13 +928,28 @@ private:
     std::unordered_set<std::string> nullDisqualified_;  // 非空写入/别名逃逸 → 失格
     std::vector<std::pair<std::string, std::string>> nullAssignEdges_;  // (目标, 源) 传播边
     std::vector<NullUseSite> nullUseSites_;             // 待判定使用点（函数收尾统一判）
-    // 登记助手（定义在 semantic_decl.cpp，与 checkFunctionBody 同址）
+    // 登记助手（定义在 semantic_decl.cpp·收尾不动点判定；face∈解引用/成员访问/下标）
     void noteNullAssign(const std::string& name, const Expr* value);
     void noteNullWriteOther(const std::string& name);   // 非 无 写入/复合/自增自减
     void noteNullEscape(const std::string& name);       // 取地址/引用实参（别名逃逸）
     void noteNullUse(const std::string& name, const SourceLocation& loc, const char* face);
-    void reportNullConstUses();                         // 函数收尾：不动点 + 判定报错
+    void reportNullConstUses();
     static bool isNullConstEligibleType(const std::string& type);  // 指针（尾 *）或 字符串
+    // ---- 548（编译期除零·常量传播·001 §1.1a①）：整数零值种子表——上方 188-a 恒空表同构 ----
+    //   （种子=常量零写入/失格=其他写入与别名逃逸/使用点=除余右裸标识符·收尾统一判定）
+    struct ZeroPropState548 {
+        struct UseSite { std::string name; SourceLocation location; const char* op; };
+        std::unordered_set<std::string> seeded, disqualified;    // 零值种子/失格
+        std::vector<std::pair<std::string, std::string>> edges;  // (目标, 源) 传播边
+        std::vector<UseSite> uses;                               // 待判定使用点
+        void clear() { seeded.clear(); disqualified.clear(); edges.clear(); uses.clear(); }
+    };
+    ZeroPropState548 zp548_;
+    void noteZeroAssign(const std::string& name, const Expr* value);  // 写位分级登记
+    void noteZeroDisqual(const std::string& name);                    // 非零值写/自增自减/逃逸失格
+    void noteZeroUse(const std::string& name, const SourceLocation& loc, const char* op);
+    void reportZeroConstUses();   // 函数收尾：传播边不动点 + 使用点判定报错
+    bool resolveConstNameValue(const std::string& name, std::int64_t& out); // 常量名→值（遮蔽守卫）
     // ---- lambda 返回类型推导（Task 2.10） ----
     bool lambdaInferMode_ = false;                 // 是否处于 lambda 无标注返回推导模式
     std::vector<std::string> lambdaReturnCandidate_; // 推导模式下的返回表达式类型候选

@@ -1,4 +1,7 @@
 // CN 语义分析器——二元运算表达式检查（350 重构E2 自 semantic_expr_op.cpp 纯机械搬移）
+// 548：原匿名 ns 折叠器 foldConstIntExpr505 整体提升 model/semantic_helpers.hpp
+//   中立层共享（cnFoldConstIntExpr505·扩常量名解析参数）——除零/溢出/移位三消费方
+//   与 548 零值种子表跨文件单份（防双实现漂移·语义_helpers inline 中立层惯例）。
 // 职责（函数体逐字搬移·零语义变化；声明仍在 semantic.hpp）：
 //   visitBinaryExpr 分发器 + 族方法（逻辑/混合符号与安全区/空类型/编译期常量除零溢出/比较/位运算/算术（含串拼接与指针算术）/运算符重载）。
 #define _CRT_SECURE_NO_WARNINGS
@@ -6,6 +9,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <functional>
 #include <string>
 #include <unordered_set>
 #include <utility>
@@ -22,95 +26,11 @@ namespace {
 //   （`整32 和 = 甲 + 1`/`整64 大 = 2147483647 + 1` 新手困惑「1 明明按更宽
 //   域算」而实报字面量恒定级域）。本句在 INT_MIN÷-1 与通用溢出两处消费；
 //   v2 语义检查溢出474.cn 溢出字面量参与域提示582 逐字同源（零分叉）。
+//   548：原同 ns 折叠器 foldConstIntExpr505 已整体提升 model/semantic_helpers.hpp
+//   中立层共享（cnFoldConstIntExpr505·扩常量名解析参数）——除零/溢出/移位
+//   三消费方跨文件单份（防双实现漂移）；本 ns 仅留 582 提示句。
 constexpr const char kLiteralDomainHint582[] =
     "。字面量按另一侧操作数类型参与·与赋值目标域解耦（001 §3.7/§3.7a）";
-
-// 505（G1·501 采样轮）：小型常量折叠求值——编译期预演面专用纯函数（零副作用）。
-//   背景：checkConstIntExprSafety/checkShiftConstWidth 旧取值通道只认直接子节点
-//   字面量（litValue 两处手写提取），嵌套折叠形态 ((30000+30000)*30000000)、
-//   甲<<(700+66)、折叠零除数 10/(5-5) 双侧一致漏编译期检查（运行期错误码 8 兜底）
-//   ——预演发生在折叠之前。修法=子树先递归折叠出常量闭包再按域预演（检查提前+
-//   精确·不改变运行期兜底语义：无法折叠的形态〔含变量/中间溢出/除零〕返回 假=
-//   保持现状走运行期错误码；错误形态由该子表达式自身节点的预演报告——
-//   visitBinaryExpr 逐节点递归遍历，无遗漏面）。
-//   折叠域：int64 安全闭包——加减乘用溢出条件检测（hi-vR 技巧·同
-//   reportConstOverflowOrDivZero 家族手法），除零/INT64_MIN÷-1/移位量越 [0,63]
-//   域/负值左移 返回 假（不可折叠——这些形态各自的节点级检查〔编译期除零/
-//   INT_MIN÷-1 溢出/移位量超宽〕已按现状口径覆盖，折叠不与之竞争）。
-//   归纳注：本函数取代 checkConstIntExprSafety 与 checkShiftConstWidth 两处
-//   litValue 手写提取（第 2 处重复→提炼·Rule of Three）。
-//   503 rebase 归纳：编译期除零定性（除/余右操作数折叠值==0）同样复用本通道，
-//   不再另设 constIntFoldValue503（双折叠器归纳为一——零叉路口）。
-bool foldConstIntExpr505(const Expr* e, std::int64_t& out, int depth = 0) {
-    if (e == nullptr || depth > 64) return false;  // 深度守卫（防病态深嵌套）
-    if (e->getType() == NodeType::IntegerLiteral) {
-        out = static_cast<const IntegerLiteral*>(e)->value;
-        return true;
-    }
-    if (e->getType() == NodeType::UnaryExpr) {
-        const UnaryExpr* u = static_cast<const UnaryExpr*>(e);
-        if (u->op == Operator::Subtract && !u->postfix) {
-            std::int64_t v = 0;
-            if (!foldConstIntExpr505(u->operand.get(), v, depth + 1)) return false;
-            // 取负按两补码回绕位模式（INT64_MIN 取负=自身·与旧 litValue 同口径）
-            out = static_cast<std::int64_t>(~static_cast<std::uint64_t>(v) + 1);
-            return true;
-        }
-        return false;
-    }
-    if (e->getType() != NodeType::BinaryExpr) return false;
-    const BinaryExpr* b = static_cast<const BinaryExpr*>(e);
-    std::int64_t l = 0, r = 0;
-    if (!foldConstIntExpr505(b->left.get(), l, depth + 1)) return false;
-    if (!foldConstIntExpr505(b->right.get(), r, depth + 1)) return false;
-    switch (b->op) {
-        case Operator::Add:
-            // 溢出安全加：INT64_MAX-r（r>0）/INT64_MIN-r（r<0）恒良定义
-            if ((r > 0 && l > INT64_MAX - r) || (r < 0 && l < INT64_MIN - r)) return false;
-            out = l + r;
-            return true;
-        case Operator::Subtract:
-            if ((r < 0 && l > INT64_MAX + r) || (r > 0 && l < INT64_MIN + r)) return false;
-            out = l - r;
-            return true;
-        case Operator::Multiply: {
-            const std::uint64_t magL =
-                (l < 0) ? static_cast<std::uint64_t>(~static_cast<std::uint64_t>(l)) + 1
-                        : static_cast<std::uint64_t>(l);
-            const std::uint64_t magR =
-                (r < 0) ? static_cast<std::uint64_t>(~static_cast<std::uint64_t>(r)) + 1
-                        : static_cast<std::uint64_t>(r);
-            const bool negResult = (l < 0) != (r < 0);
-            // 乘积域界：正结果=INT64_MAX；负结果=|INT64_MIN|=2^63
-            const std::uint64_t magHi =
-                negResult ? static_cast<std::uint64_t>(INT64_MAX) + 1
-                          : static_cast<std::uint64_t>(INT64_MAX);
-            if (magL != 0 && magR != 0 &&
-                (magL > magHi / magR || magL * magR > magHi)) return false;
-            out = negResult ? static_cast<std::int64_t>(~static_cast<std::uint64_t>(magL * magR) + 1)
-                            : static_cast<std::int64_t>(magL * magR);
-            return true;
-        }
-        case Operator::Divide:
-        case Operator::Modulo:
-            if (r == 0) return false;  // 除零：由该节点预演报编译期除零
-            if (l == INT64_MIN && r == -1) return false;  // 结果 2^63 超 int64：该节点预演报
-            out = (b->op == Operator::Divide) ? l / r : l % r;
-            return true;
-        case Operator::LessLess:
-            if (l < 0 || r < 0 || r > 62) return false;  // 负左移/溢出位 UB 面：不折叠
-            if (static_cast<std::uint64_t>(l) >
-                (static_cast<std::uint64_t>(INT64_MAX) >> r)) return false;
-            out = l << r;
-            return true;
-        case Operator::GreaterGreater:
-            if (r < 0 || r > 63) return false;
-            out = l >> r;  // 算术右移（与发射层面口径一致）
-            return true;
-        default:
-            return false;  // 比较/位运算/逻辑等不进折叠闭包（预演面只管算术+移位）
-    }
-}
 
 // 728s 对称化（2026-10-15 用户裁决批乙·#728s「宿主字面量二元算式结果类型
 //   『顺序敏感』（1+2U 拒/1U+2 放行）是否对称化」→ 批乙：对称化·Rust 真对齐）：
@@ -126,6 +46,9 @@ bool foldConstIntExpr505(const Expr* e, std::int64_t& out, int depth = 0) {
 //   「无后缀」判定=literalTypeOf 为 整32（无后缀）或空串（非法组合防御回退
 //   ——含 0xFF 十六进制尾 F 被后缀收集的既有回退形态，与语义层字面量恒定级
 //   整32 同口径；v2 字面量后缀类型ID==0 同构）。
+//   548：原同 ns 折叠器 foldConstIntExpr505 已提升 model/semantic_helpers.hpp
+//   中立层共享（cnFoldConstIntExpr505·扩常量名解析参数）——除零/溢出/移位
+//   三消费方跨文件单份（防双实现漂移）；本 ns 留 582 提示句与 728s 对称化面。
 bool isUnsuffixedIntLiteral728(const Expr* e) {
     if (e == nullptr || e->getType() != NodeType::IntegerLiteral) return false;
     const IntegerLiteral* lit = static_cast<const IntegerLiteral*>(e);
@@ -275,21 +198,39 @@ void SemanticAnalyzer::checkConstIntExprSafety(BinaryExpr* node, const std::stri
         // 503：编译期除零检测从对称预演前提解绑——除/余右操作数经同一折叠
         //   通道求值==0 即编译期硬错误（与 505 共用 foldConstIntExpr505 单折
         //   叠器·rebase 归纳零双份；除零定性后与溢出面互斥不重复预演）。
+        // 548：折叠通道开常量名解析（resolveConstNameValue：globalConstValues_
+        //   顶层常量值·584-a 遮蔽守卫同款——顶层常量名/常量名参与折叠式均进
+        //   定性面·001 §1.1a① 常量传播后续波）；右子树折叠失败且为裸标识符
+        //   变量=零初值使用点延迟登记（零值种子表收尾统一判定·zp548_）。
         if (node->op == Operator::Divide || node->op == Operator::Modulo) {
+            std::function<bool(const std::string&, std::int64_t&)> resolver =
+                [this](const std::string& n, std::int64_t& v) {
+                    return resolveConstNameValue(n, v);
+                };
             std::int64_t foldR = 0;
-            if (foldConstIntExpr505(node->right.get(), foldR) && foldR == 0) {
+            if (cnFoldConstIntExpr505(node->right.get(), foldR, 0, &resolver) && foldR == 0) {
                 diagnostics_.report(DiagnosticLevel::Error, node->location,
                                     "编译期除零：常量表达式除数为零（运行期除零已有"
                                     "错误码防护，常量折叠面编译期硬错误）");
                 return;  // 已定性除零·除零与溢出面互斥·不重复进入对称预演
+            }
+            // 548：变量零初值面——右子树裸标识符且非常量名（折叠失败）→
+            //   使用点登记（是否恒零由种子表收尾不动点统一判定·流不敏感保守）
+            const Expr* re548 = node->right.get();
+            if (re548->getType() == NodeType::IdentifierExpr) {
+                const auto* ident548 = static_cast<const IdentifierExpr*>(re548);
+                if (!isConstVarName(ident548->name)) {
+                    noteZeroUse(ident548->name, node->location,
+                                node->op == Operator::Divide ? "除" : "取余");
+                }
             }
         }
         // 319-a 对称常量预演（§3.7a）：两侧均编译期可折叠时按结果类型域预演
         //   ——溢出面（含 474 INT_MIN/-1 除法溢出形态）。
         bool okL = false, okR = false;
         std::int64_t vL = 0, vR = 0;
-        okL = foldConstIntExpr505(node->left.get(), vL);
-        okR = foldConstIntExpr505(node->right.get(), vR);
+        okL = cnFoldConstIntExpr505(node->left.get(), vL);
+        okR = cnFoldConstIntExpr505(node->right.get(), vR);
         if (okL && okR) {
             reportConstOverflow(node, vL, vR, leftType, rightType);
         }
@@ -330,7 +271,7 @@ void SemanticAnalyzer::reportConstOverflow(BinaryExpr* node, std::int64_t vL,
                     return "整32";
                 }
                 std::int64_t v = 0;
-                if (foldConstIntExpr505(e, v) &&
+                if (cnFoldConstIntExpr505(e, v) &&
                     types::literalValueExceedsInt32Domain(v)) {
                     return "整64";
                 }
@@ -458,7 +399,7 @@ void SemanticAnalyzer::checkShiftConstWidth(BinaryExpr* node,
     }
     // 取值统一走 505 折叠通道（a6526fcd 单折叠器归属·禁双通道取值分叉）：
     //   折叠失败=非常量移位量，保持现状走运行期同域检查。
-    if (!foldConstIntExpr505(node->right.get(), sh)) return;
+    if (!cnFoldConstIntExpr505(node->right.get(), sh)) return;
     // 左操作数类型位宽（整8/正8=8 … 整128/正128=128）
     const std::string lt = types::canonical(leftType);
     int width = 0;
@@ -549,6 +490,20 @@ bool SemanticAnalyzer::checkComparisonBinary(BinaryExpr* node, const std::string
         if (leftPtr && rightPtr) {
             lastType_ = "布尔";
             return true;
+        }
+        // 548（编译期除零·常量传播）：比较参与=零值判定失格——零初值变量进入
+        //   比较即进入除零防视野（短路守卫惯用形 `除数 != 0 && 10/除数`·125/137
+        //   短路语义锁形态），其除法使用点保守放行交运行期兜底（检查序=左子树
+        //   先于右：比较失格先于同表达式右侧除法的使用点登记·收尾判定正确）。
+        if (isInteger(leftType) && isInteger(rightType)) {
+            if (node->left->getType() == NodeType::IdentifierExpr) {
+                const auto* l548 = static_cast<const IdentifierExpr*>(node->left.get());
+                if (!isConstVarName(l548->name)) noteZeroDisqual(l548->name);
+            }
+            if (node->right->getType() == NodeType::IdentifierExpr) {
+                const auto* r548 = static_cast<const IdentifierExpr*>(node->right.get());
+                if (!isConstVarName(r548->name)) noteZeroDisqual(r548->name);
+            }
         }
         if (!canConvert(leftType, rightType) && !canConvert(rightType, leftType)) {
             // 55-c 方案A：混合符号+字面量豁免形态（如 大 > 100——canConvertType

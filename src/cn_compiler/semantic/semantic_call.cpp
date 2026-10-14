@@ -52,6 +52,8 @@ void SemanticAnalyzer::wrapRefArgs(CallExpr* node,
                 //   该变量）→ 恒空判定失格（保守，防假阳性）
                 if (isLvalue) {
                     noteNullEscape(static_cast<IdentifierExpr*>(arg)->name);
+                    // 548（编译期除零·常量传播）：引用实参=别名逃逸同款失格
+                    noteZeroDisqual(static_cast<IdentifierExpr*>(arg)->name);
                 }
                 break;
             }

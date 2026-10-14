@@ -380,11 +380,17 @@ void SemanticAnalyzer::checkSingleMethodBody(ClassInfo& info, ClassMemberInfo& m
         nullDisqualified_.clear();
         nullAssignEdges_.clear();
         nullUseSites_.clear();
+        // 548（编译期除零·常量传播）：零值种子表同款保存/恢复（同族嵌套安全）
+        SemanticAnalyzer::ZeroPropState548 savedZero548 = std::move(zp548_);
+        zp548_.clear();
         for (auto& stmt : member->body->statements) {
             checkStmt(stmt.get());
         }
         // 188-a 同族收尾：方法体恒空指针使用点判定（报硬错误）
         reportNullConstUses();
+        // 548 同族收尾：方法体零值种子使用点判定（报硬错误）后恢复外层登记
+        reportZeroConstUses();
+        zp548_ = std::move(savedZero548);
         nullSeeded_ = std::move(savedNullSeeded);
         nullDisqualified_ = std::move(savedNullDisq);
         nullAssignEdges_ = std::move(savedNullEdges);

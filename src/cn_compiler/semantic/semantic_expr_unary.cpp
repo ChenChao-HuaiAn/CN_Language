@@ -124,6 +124,10 @@ void SemanticAnalyzer::checkAddressOfUnary(UnaryExpr* node,
                 if (node->operand->getType() == NodeType::IdentifierExpr) {
                     noteNullEscape(
                         static_cast<IdentifierExpr*>(node->operand.get())->name);
+                    // 548（编译期除零·常量传播）：取地址=别名逃逸同款失格
+                    //   （外部可经别名改写零初值变量·保守防假阳性）
+                    noteZeroDisqual(
+                        static_cast<IdentifierExpr*>(node->operand.get())->name);
                     // 010（def-init）：取地址=初始化通道（地址逃逸=可能被写）——
                     //   保守整体置位（&签 出参惯用法·Rust &mut maybe-init 同款）
                     defInitMarkAssignTarget(node->operand.get());
@@ -278,6 +282,9 @@ void SemanticAnalyzer::checkIncDecUnary(UnaryExpr* node,
                     static_cast<IdentifierExpr*>(node->operand.get());
                 // 188-a（D6）：自增/自减=隐式非空写入 → 恒空判定失格
                 noteNullWriteOther(ident->name);
+                // 548（编译期除零·常量传播）：自增/自减=非零值写入风险 → 零值
+                //   种子判定失格（自减 零v-1=非零·保守同口径）
+                noteZeroDisqual(ident->name);
                 // 480（473 采样轮 p9·001 §747 表第 8 行整族执法）：静态变量写
                 //   自增自减形态——顶层静态（原漏网·x 探针）与函数内静态局部
                 //   （原双侧均放行·p9）同受安全区边界约束；不安全函数内豁免。

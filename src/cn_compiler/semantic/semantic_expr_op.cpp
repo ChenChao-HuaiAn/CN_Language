@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <functional>
 #include <string>
 #include <unordered_set>
 #include <utility>
@@ -381,6 +382,17 @@ void SemanticAnalyzer::checkIdentifierAssignTarget(AssignmentExpr* node,
         if (isNullConstEligibleType(varType)) {
             noteNullAssign(ident->name, node->value.get());
         }
+        // 548（编译期除零·常量传播）：赋值位登记（整数族·RHS 形态分级同 188-a——
+        //   折叠零值=种子／标识符=传播边／其余=失格；常量名右值经折叠通道解析）。
+        //   仅纯 = 按 RHS 分级——复合赋值是读旧值改写（甲 += 0 结果依赖旧值·
+        //   非纯常量零写入）→ 直接失格（保守零假阳性）。
+        if (isInteger(varType)) {
+            if (node->op == Operator::Assign) {
+                noteZeroAssign(ident->name, node->value.get());
+            } else {
+                noteZeroDisqual(ident->name);
+            }
+        }
         // 缺陷②同族：常量初始化后不可修改（局部 常量 / 顶层常量）
         if (isConstVarName(ident->name)) {
             diagnostics_.report(
@@ -572,6 +584,33 @@ bool SemanticAnalyzer::checkCompoundAssign(AssignmentExpr* node,
         // 010（def-init）：复合赋值=先读后写——左值 place 读判定+写点置位
         defInitCheckReadAssignTarget(node->target.get(), node->location);
         defInitMarkAssignTarget(node->target.get());
+        // 548（编译期除零·常量传播面·与 503 二元通道同构）：复合除/余赋值右
+        //   操作数编译期已知零（字面量/常量名/折叠式）即编译期硬错误——
+        //   甲 /= 0 ≡ 甲 = 甲 / 0（001 §3.7 第④族等价展开·v2 脱糖重析合成
+        //   二元走除零通道同拦=双侧同口径）。右子树裸标识符变量=零初值使用点
+        //   登记（zp548_ 种子表收尾统一判定）。
+        if ((node->op == Operator::SlashAssign || node->op == Operator::PercentAssign) &&
+            isInteger(targetType) && isInteger(valueType) &&
+            targetType != "未知" && valueType != "未知") {
+            std::function<bool(const std::string&, std::int64_t&)> resolver =
+                [this](const std::string& n, std::int64_t& o) {
+                    return resolveConstNameValue(n, o);
+                };
+            std::int64_t foldR548 = 0;
+            if (cnFoldConstIntExpr505(node->value.get(), foldR548, 0, &resolver) &&
+                foldR548 == 0) {
+                diagnostics_.report(DiagnosticLevel::Error, node->location,
+                                    "编译期除零：常量表达式除数为零（运行期除零已有"
+                                    "错误码防护，常量折叠面编译期硬错误）");
+            } else if (node->value->getType() == NodeType::IdentifierExpr) {
+                const auto* ident548 =
+                    static_cast<const IdentifierExpr*>(node->value.get());
+                if (!isConstVarName(ident548->name)) {
+                    noteZeroUse(ident548->name, node->location,
+                                node->op == Operator::SlashAssign ? "除" : "取余");
+                }
+            }
+        }
         // plans/019 阶段3 扩展（A21，第七十七轮）：复合赋值读旧值=使用借出视图
         //   （活跃区间右端；字符串 += 拼接重析为二元同覆盖）
         if (node->target->getType() == NodeType::IdentifierExpr) {

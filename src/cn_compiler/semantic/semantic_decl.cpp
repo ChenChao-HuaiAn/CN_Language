@@ -6,6 +6,7 @@
 //   4. 语义错误：未声明符号、重复声明、类型不匹配、非循环中中断/继续、缺返回
 #include <algorithm>
 #include <cstdio>
+#include <functional>
 #include <string>
 #include <unordered_set>
 #include <utility>
@@ -534,6 +535,12 @@ void SemanticAnalyzer::visitVarDecl(VarDecl* node) {
     if (node->initializer != nullptr && isNullConstEligibleType(varType)) {
         noteNullAssign(node->name, node->initializer.get());
     }
+    // 548（编译期除零·常量传播）：声明初始化位登记（整数族·RHS 形态分级同
+    //   188-a——折叠零值=种子／标识符=传播边／其余=失格）。局部 常量 声明同位
+    //   覆盖（初值可折叠零即种子·写被常量拦截恒不失格=安全传播面）。
+    if (node->initializer != nullptr && isInteger(varType)) {
+        noteZeroAssign(node->name, node->initializer.get());
+    }
     // 435：lambda 引用捕获逃逸——声明初始化位传播登记（初始化器含引用捕获
     //   lambda → 变量名入传播表；同名再声明无 lambda → 出表·遮蔽修正。
     //   初始化器 checkExpr 已毕=捕获集已回填，树扫描判定有效）
@@ -642,6 +649,108 @@ void SemanticAnalyzer::reportNullConstUses() {
     nullDisqualified_.clear();
     nullAssignEdges_.clear();
     nullUseSites_.clear();
+}
+
+// ==================== 548（编译期除零·常量传播面）整数零值种子表 ====================
+//   001 §1.1a①「常量传播面（变量持有常量初值作下标/除数）随常量折叠后续波」。
+//   188-a 恒空判定表（上方 noteNull* 家族）机制级同构推广到整数除零域——判定
+//   模型逐条对齐（流不敏感全函数视角·零假阳性保守口径）：
+//   种子=以编译期可折叠零写入（字面量 0/-0/常量名/折叠式——548 折叠通道含常量
+//   名解析）；失格=其他写入（非常量右值/非零常量/复合赋值/自增自减/调用）与
+//   别名逃逸（取地址/引用实参）；边=右值为标识符变量的传播（收尾不动点展开）；
+//   使用点=除/余右操作数裸标识符（semantic_expr_binary.cpp 除零定性通道登记）。
+//   收尾统一判定：名∈种子 ∧ 名∉失格 → 该名任意除/余使用点报编译期除零。
+//   保守性论证：任何非零值写入即失格（漏报不误报）；全零值写入时任意读点值
+//   恒零（含跨作用域遮蔽——遮蔽声明初值非零必失格；取地址/引用逃逸必失格）。
+//   v2 语义包零值表（语义检查.cn 登记零值种子们 族）逐条同构=双侧防分叉。
+
+// 顶层常量名→整值解析（折叠通道 548 回调）：584-a 遮蔽守卫同款——非全局层
+//   同名变量/参数遮蔽顶层常量（解析处为变量→不按常量折叠）；值文本 cnParseInt
+//   解析（浮点/布尔/超 int64 域文本解析失败=不可折叠→放行运行期兜底·与 503
+//   整数域前提同诚实边界）。多模块同名常量解析序对齐 checkConstIdentifier
+//   （A-2 分桶：多模块同名按当前模块限定键·单模块裸名）；多模块场景标识符
+//   名已被 visitIdentifierExpr 重写为限定键——裸名/限定键双查兜住两态。
+//   诚实边界：解析序与 evalConstLengthText lookupConst 同口径（已验收先例）。
+bool SemanticAnalyzer::resolveConstNameValue(const std::string& name,
+                                             std::int64_t& out) {
+    // 遮蔽守卫：scopes_[1..]（非全局层）命中同名=局部变量/参数遮蔽 → 非常量
+    for (std::size_t i = scopes_.size(); i-- > 1; ) {
+        if (scopes_[i].find(name) != scopes_[i].end()) return false;
+    }
+    auto it = globalConstValues_.find(name);
+    if (it == globalConstValues_.end() && !currentModuleName_.empty()) {
+        it = globalConstValues_.find(currentModuleName_ + "$" + name);
+    }
+    if (it == globalConstValues_.end()) return false;
+    long long v = 0;
+    if (!cnParseInt(it->second, v)) return false;
+    out = v;
+    return true;
+}
+
+// 写位分级登记（对齐 noteNullAssign 形态分级·值判定升级为 548 折叠通道）：
+//   折叠成功（含常量名解析）→ 值==0 种子／值!=0 失格；标识符变量=传播边；
+//   其余（调用/非常量运算）=失格。类型合格前提由调用方守（整数族变量）。
+void SemanticAnalyzer::noteZeroAssign(const std::string& name, const Expr* value) {
+    if (name.empty() || value == nullptr) return;
+    std::int64_t v = 0;
+    std::function<bool(const std::string&, std::int64_t&)> resolver =
+        [this](const std::string& n, std::int64_t& o) {
+            return resolveConstNameValue(n, o);
+        };
+    if (cnFoldConstIntExpr505(value, v, 0, &resolver)) {
+        if (v == 0) {
+            zp548_.seeded.insert(name);
+        } else {
+            zp548_.disqualified.insert(name);
+        }
+        return;
+    }
+    if (value->getType() == NodeType::IdentifierExpr) {
+        zp548_.edges.emplace_back(
+            name, static_cast<const IdentifierExpr*>(value)->name);
+        return;
+    }
+    zp548_.disqualified.insert(name);
+}
+
+// 非 0 值写入（复合赋值/自增自减）与别名逃逸（取地址/引用实参）：直接失格。
+void SemanticAnalyzer::noteZeroDisqual(const std::string& name) {
+    if (!name.empty()) zp548_.disqualified.insert(name);
+}
+
+// 使用点登记（除/余右操作数裸标识符）：此处不判定——写入可能出现在使用点
+//   之后（流不敏感判定须全函数视角），统一由 reportZeroConstUses 收尾判。
+void SemanticAnalyzer::noteZeroUse(const std::string& name, const SourceLocation& loc,
+                                   const char* op) {
+    if (name.empty()) return;
+    zp548_.uses.push_back(ZeroPropState548::UseSite{name, loc, op});
+}
+
+// 函数体检查收尾：传播闭包不动点（乙 = 甲 且 甲 持零 → 乙 持零）→ 判定使用点 →
+//   报编译期除零（诊断与 503 字面量形态同锚「编译期除零」子串·817 负测兼容）。
+void SemanticAnalyzer::reportZeroConstUses() {
+    bool changed = true;
+    while (changed) {
+        changed = false;
+        for (const auto& edge : zp548_.edges) {
+            const std::string& dst = edge.first;
+            const std::string& src = edge.second;
+            if (dst.empty() || src.empty()) continue;
+            if (zp548_.disqualified.count(src) != 0) continue;
+            if (zp548_.seeded.count(src) == 0) continue;
+            if (zp548_.seeded.insert(dst).second) changed = true;
+        }
+    }
+    for (const auto& site : zp548_.uses) {
+        if (zp548_.seeded.count(site.name) == 0) continue;
+        if (zp548_.disqualified.count(site.name) != 0) continue;
+        diagnostics_.report(DiagnosticLevel::Error, site.location,
+                            std::string("编译期除零：变量 '") + site.name +
+                                "' 持有常量零初值作" + site.op +
+                                "数（常量传播面·001 §1.1a①；运行期除零已有错误码防护）");
+    }
+    zp548_.clear();
 }
 
 void SemanticAnalyzer::visitClassDecl(ClassDecl* node) {
@@ -761,6 +870,9 @@ void SemanticAnalyzer::checkFunctionBody(FunctionDecl* node) {
     //   错误）——须在体语句检查之后（全函数视角的不动点判定），与其它函数级
     //   结算（借出视图等）并列
     reportNullConstUses();
+    // 548（编译期除零·常量传播）：函数体检查收尾统一判定（变量持常量零初值的
+    //   除/余使用点报硬错误）——与恒空判定同址同视角（全函数流不敏感保守）
+    reportZeroConstUses();
     // 缺少返回语句检查：有返回类型且函数体不保证返回
     if (currentReturnType_ != "空类型" && !bodyGuaranteesReturn(node->body.get())) {
         diagnostics_.report(DiagnosticLevel::Error, node->location,
