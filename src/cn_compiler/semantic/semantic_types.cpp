@@ -706,14 +706,21 @@ void SemanticAnalyzer::computeLayout(StructDecl* decl) {
     decl->totalSize = (decl->totalSize + maxAlign - 1) / maxAlign * maxAlign;
     layoutVisiting_.erase(decl->name);  // T3：计算完成出栈
 }
+// 728u：枚举自动递增 +1 按两补码回绕（对齐 v2 侧 回绕加64——MAX 之后 = MIN；
+//   原 member.value + 1 / nextValue++ 在前值 MAX 处有符号溢出 UB，且与 v2
+//   安全区「当前值+1」溢出中止（583 同族实测第二崩点）分叉）。
+static std::int64_t wrapAddOne(std::int64_t v) {
+    return static_cast<std::int64_t>(static_cast<std::uint64_t>(v) + 1ULL);
+}
+
 void SemanticAnalyzer::computeEnumValues(EnumDecl* decl) {
     std::int64_t nextValue = 0;
     for (auto& member : decl->members) {
         if (member.explicitValue) {
-            nextValue = member.value + 1;  // 显式赋值后下一个成员自动递增
+            nextValue = wrapAddOne(member.value);  // 显式赋值后下一个成员自动递增
         } else {
             member.value = nextValue;
-            nextValue++;
+            nextValue = wrapAddOne(nextValue);
         }
     }
 }

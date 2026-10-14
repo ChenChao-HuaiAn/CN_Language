@@ -224,6 +224,60 @@ std::unique_ptr<StructDecl> Parser::parseStructDecl(bool isUnion) {
 
 // 解析枚举声明：枚举 名 { 成员, 成员 = 值, ... }（Task 2.7）
 // 成员值：整数字面量（可为负数）/省略（自动递增，首个默认0）
+namespace {
+
+// 728u：枚举成员值文本 → 整64 承载值（两补码回绕口径，与 v2 侧
+//   数字文本转数值 + 位模式取负474 逐形态一致）。
+//   背景（583 扫描实证·519 同族）：parseIntValue 的 std::stoll 对
+//   |数学值| > 2^63-1 的文本抛异常 catch 回 0——负号形态
+//   `-parseIntValue("9223372036854775808")` 静默得 0（宿主对照输出 0
+//   错值）；v2 同输入经不安全回绕得 MIN 位模式 + 安全区 0-MIN 溢出
+//   （错误码 8 自举中止）。本函数以两补码回绕统一：文本数学值 mod 2^64，
+//   负号形态再取负回绕（-2^63 补码不动点 = MIN）。
+//   边界对齐 v2 数字文本转数值 的累加上界（第 20 个数字处返回 0）：
+//   纯十进制数字 ≥20 位 → 0（不崩、双侧同值）；含进制前缀（0x/0b/0o）
+//   形态回退 parseIntValue 既有通道（本任务零变化面）。
+std::int64_t parseEnumMemberValue(const std::string& text, bool negate) {
+    // 纯十进制判定：无进制前缀，剥 L/U/F 后缀后全数字
+    bool decimal = true;
+    if (text.size() > 2 && text[0] == '0' &&
+        (text[1] == 'x' || text[1] == 'X' || text[1] == 'b' ||
+         text[1] == 'B' || text[1] == 'o' || text[1] == 'O')) {
+        decimal = false;
+    }
+    if (decimal) {
+        std::string digits = text;
+        while (!digits.empty()) {
+            const char c = digits.back();
+            if (c == 'L' || c == 'l' || c == 'U' || c == 'u' || c == 'F' ||
+                c == 'f') {
+                digits.pop_back();
+            } else {
+                break;
+            }
+        }
+        bool allDigits = !digits.empty();
+        for (const char c : digits) {
+            if (c < '0' || c > '9') { allDigits = false; break; }
+        }
+        if (allDigits) {
+            // v2 数字文本转数值 同界：20 位数字起返回 0（防中间值溢出）
+            if (digits.size() >= 20) return 0;
+            const unsigned long long uv = std::stoull(digits, nullptr, 10);
+            return negate ? static_cast<std::int64_t>(0ULL - uv)
+                          : static_cast<std::int64_t>(uv);
+        }
+    }
+    // 非十进制形态（0x/0b/0o 等）：parseIntValue 既有通道 + 回绕取负
+    const std::int64_t v = parseIntValue(text);
+    return negate
+               ? static_cast<std::int64_t>(
+                     0ULL - static_cast<unsigned long long>(v))
+               : v;
+}
+
+}  // namespace
+
 std::unique_ptr<EnumDecl> Parser::parseEnumDecl() {
     auto decl = std::make_unique<EnumDecl>();
     decl->location = current().getLocation();
@@ -250,12 +304,15 @@ std::unique_ptr<EnumDecl> Parser::parseEnumDecl() {
         if (match(TokenType::Equal)) {
             member.explicitValue = true;
             if (currentType() == TokenType::IntegerLiteral) {
-                member.value = parseIntValue(current().getValue());
+                // 728u：改走 parseEnumMemberValue（两补码回绕——原 parseIntValue
+                //   stoll 超承载静默 0 与 v2 回绕口径分叉）
+                member.value = parseEnumMemberValue(current().getValue(), false);
                 advance();
             } else if (check(TokenType::Minus) &&
                        peek(1).getType() == TokenType::IntegerLiteral) {
                 advance();  // 消费负号
-                member.value = -parseIntValue(current().getValue());
+                // 728u：-9223372036854775808 得整64 最小值（原 -parseIntValue 静默 0）
+                member.value = parseEnumMemberValue(current().getValue(), true);
                 advance();
             } else {
                 reportErrorHere("枚举成员值必须是整数字面量");

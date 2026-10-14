@@ -364,7 +364,16 @@ void IRGenerator::visitMemberExpr(MemberExpr* node) {
         std::int64_t enumVal = 0;
         if (semantic_ != nullptr && semantic_->isEnumType(ident->name) &&
             semantic_->enumValueOf(ident->name, node->memberName, enumVal)) {
-            lastExpr_ = emitResult(ir::Opcode::ConstInt, {}, "i32",
+            // 728u：枚举成员常量按值域适配发射类型——成员值域=整64（
+            //   -9223372036854775808 等超 i32 域值合法·枚举按整32存储但常量
+            //   折叠值按 64 位承载）；原恒 "i32" 对超域值触发 IR 位宽不变量
+            //   违例（-O0 硬错误）或归一化截断（-O1 错值 0）。超 i32 域改
+            //   "i64" 发射（v2 侧 生成枚举成员常量 汇编 movabs 64 位同口径）；
+            //   域内维持 "i32"（既有产物零变化）。
+            const bool exceedsI32 = enumVal < -2147483648LL ||
+                                    enumVal > 2147483647LL;
+            lastExpr_ = emitResult(ir::Opcode::ConstInt, {},
+                                   exceedsI32 ? "i64" : "i32",
                                    std::to_string(enumVal), node->location);
             return;
         }
