@@ -772,11 +772,19 @@ void SemanticAnalyzer::recheckGenericFuncBody(const GenericFuncInstance& gfi) {
             // 排除 T 语境噪音：诊断含类型参数原文 'T' = 泛型函数指针等
             //   未绑定实参语境（40/99/440 实测），继续回滚待环境映射收口。
             const bool tNoise = msg.find("'T'") != std::string::npos;
+            // 738（容器模板形参·宿主侧分叉根治）：保留面扩「结果丢弃」——
+            //   规则1（Task 3.5 三条强制检查·001 §5.4 立法）诊断在实例体重放
+            //   中=真实实例化类型误用（实参已绑定，表达式类型=具体结果类型），
+            //   原回滚吞没致宿主对泛型体内 `表.追加(值);` 结果丢弃漏检（探针9
+            //   实测放行）而 v2 sem5 同形态检出=零分叉违反。诊断文案为固定
+            //   字面量不含 'T'，tNoise 缺角天然不误伤；类型参数残留的异常
+            //   缺角面两侧同报（v2 无回滚）不产生新分叉。
             const bool keep =
                 !tNoise &&
                 (msg.find("未声明") != std::string::npos ||
                  msg.find("无法将") != std::string::npos ||
-                 msg.find("返回类型") != std::string::npos);
+                 msg.find("返回类型") != std::string::npos ||
+                 msg.find("返回值被丢弃未检查") != std::string::npos);
             if (keep) undeclared.push_back(all[di]);
         }
         diagnostics_.restoreTo(snap);
