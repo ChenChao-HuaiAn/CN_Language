@@ -17,6 +17,14 @@
 
 namespace cn_compiler {
 
+// 775（762 呈报·乙案双侧对齐）：字段声明初始化器拒绝诊断统一文案——
+//   类实例字段（parser_oop parseFieldMember）与结构体/联合体字段（parser_decl）
+//   两处共用单点常量，防两处与双侧（宿主/v2 语法包）文案漂移；E2E 锚面=
+//   「字段声明初始化器未支持」核心子串（与 v2 同串逐字一致）。
+inline constexpr const char* kFieldInitRejectDiag =
+    "字段声明初始化器未支持（001 §5.6/§5.7 字段=裸声明·仅类静态字段可带初始化器）"
+    "——请在构造函数或函数体中赋值";
+
 // 判断Token是否为类型关键字（阶段一基本类型 + 阶段三 结果/可选 模板类型名）
 // 声明于此供 parser.cpp 与 parser_oop.cpp 共用（原为 parser.cpp 匿名命名空间内静态函数）
 bool isTypeKeyword(TokenType type);

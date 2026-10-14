@@ -199,6 +199,22 @@ std::unique_ptr<StructDecl> Parser::parseStructDecl(bool isUnion) {
                 break;
             }
         }
+        // 775（762 呈报同族·乙案双侧对齐）：结构体/联合体字段初始化器显式
+        //   拒绝——001 §5.7 字段=裸声明。原缺陷=无 `=` 处理，`类型 名 = 值;`
+        //   落下一轮循环在 `=` 位误报「结构体字段预期类型」（拒绝面正确但
+        //   诊断失真且 break 中断后续字段报错面）；v2 侧同形态零诊断静默
+        //   跳过=双向分叉，本轮双侧统一为单条精确诊断（文案共用
+        //   kFieldInitRejectDiag·与类实例字段面同串）。报错后照常消费初始
+        //   化器（错误恢复同步·193 抽象带体同款）——Error 诊断使编译中止。
+        if (check(TokenType::Equal)) {
+            reportErrorHere(kFieldInitRejectDiag);
+            advance();
+            if (check(TokenType::LeftBrace)) {
+                parseInitList();
+            } else {
+                parseExpr();
+            }
+        }
         decl->fields.push_back(std::move(field));
         match(TokenType::Semicolon);  // 字段分隔（声明体成员分隔：可选，plans/015 语义区分）
     }

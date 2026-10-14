@@ -604,6 +604,9 @@ bool Parser::parseFunctionMember(ClassMember& out) {
 
 // 族④：字段声明（原 550~586 段）——[静态] 类型 名称 [= 初始值]；模板类型
 //   （结果<T,E> 等与自定义类型名<）经 parseTypeNameEx 支持。
+//   775（762 呈报·乙案双侧对齐）：头注「[= 初始值]」仅 静态 字段合法（468
+//   加载期直存）——实例字段带初始化器=越权接纳面显式拒绝（001 §5.6 类文法
+//   字段=裸声明·无 `=值` 形态条文）。
 bool Parser::parseFieldMember(ClassMember& out) {
         // 模板类型探测：结果< 可选< 与自定义类型名< 形态
         if ((check(TokenType::Kw_Result) || check(TokenType::Kw_Optional)) &&
@@ -628,8 +631,16 @@ bool Parser::parseFieldMember(ClassMember& out) {
             reportErrorHere("类字段预期名称");
             return false;
         }
-        // 字段初始值（= 表达式）
+        // 字段初始值（= 表达式）。775（762 呈报·乙案双侧对齐）：实例字段
+        //   初始化器显式拒绝——原缺陷=此处无条件接受填 ClassMember.initializer
+        //   而 semantic/IR 全链零消费=静默错值（探针 `整32 基 = 100;` 实测
+        //   c.加倍() 应 200 得 0·基=0）。静态字段初始化器=468 立法面保持放行。
+        //   报错后照常解析初始化器（错误恢复同步·193 抽象带体同款）——Error
+        //   诊断使编译中止，不会进入语义/生成层。
         if (check(TokenType::Equal)) {
+            if (!out.isStatic) {
+                reportErrorHere(kFieldInitRejectDiag);
+            }
             advance();
             if (check(TokenType::LeftBrace)) {
                 out.initializer = parseInitList();
