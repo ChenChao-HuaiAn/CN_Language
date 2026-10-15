@@ -584,12 +584,18 @@ bool SemanticAnalyzer::checkBitwiseBinary(BinaryExpr* node, const std::string& l
         //   整数操作数报 Error（此处继续取 lastType_=错误恢复值，防下游再扩大
         //   报错）；合法面 isInteger → intRank>0，不落 "整32" miss 终态。
         // 728s 对称化（2026-10-15 用户裁决批乙）：无后缀字面量随另一侧——
-        //   位运算/移位与算术面同一助手同一规则（结果类型推导单点；1 | 2U 等
-        //   形态原落混合符号误拒，现双向对称）。
+        //   位运算（& | ^）与算术面同一助手同一规则（1 | 2U 等形态原落混合
+        //   符号误拒，现双向对称）。**移位（<< >>）不随侧**：右操作数不参与
+        //   结果类型（结果=左操作数参与公共类型·Rust/C 同口径）——与 v2
+        //   740 推导二元结果类型ID 移位面「字面量直译整32」及宿主实测锚
+        //   `整8 甲 = 甲8 << 2` 拒「无法将 '整32' 隐式转换为 '整8'」一致。
         std::string lT728 = leftType;
         std::string rT728 = rightType;
-        unifyUnsuffixedLiteralOperand728(node->left.get(), node->right.get(), lT728,
-                                         rT728);
+        if (node->op != Operator::LessLess &&
+            node->op != Operator::GreaterGreater) {
+            unifyUnsuffixedLiteralOperand728(node->left.get(), node->right.get(),
+                                             lT728, rT728);
+        }
         lastType_ = commonNumericType(lT728, rT728);
         if (lastType_ == "浮64" || lastType_ == "浮32") lastType_ = leftType;  // 防御：位运算结果必须整数
         return true;
