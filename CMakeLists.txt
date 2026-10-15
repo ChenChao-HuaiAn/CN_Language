@@ -162,6 +162,7 @@ target_link_libraries(cn_compiler_model PUBLIC cn_compiler_common)
 add_library(cn_compiler_semantic STATIC
     src/cn_compiler/semantic/semantic.cpp
     src/cn_compiler/semantic/semantic_constlen.cpp
+    src/cn_compiler/semantic/semantic_view_forwarders.cpp
     src/cn_compiler/semantic/semantic_types.cpp
     src/cn_compiler/semantic/semantic_sig.cpp
     src/cn_compiler/semantic/semantic_builtins.cpp
