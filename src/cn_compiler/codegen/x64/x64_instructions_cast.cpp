@@ -594,8 +594,20 @@ bool X64CodeGenerator::emitCastIntWidth(AsmWriter& writer, const ir::IRInstructi
         } else if (from == "i32") {
             writer.line("mov eax, " + shrunkOperand("i32", src));
             writer.line("cdqe");
+        } else if (from == "u32") {
+            // 780（826-D2a 根治·零分叉）：u32 源 **32 位装载**（mov eax 写 rax
+            //   清高 32=零扩展语义）——原 mov rax, src 64 位读窄槽：正32 槽仅低
+            //   32 位有效写（存储侧按声明宽度），高 32 位未初始化栈垃圾混入低 64
+            //   位（826-D2a 实锤 4000000000 读成 0x80_EE6B2800=553755813888·
+            //   甲直调/乙静态方法 IR 同构，甲绿乙红=栈残留时序侥幸·740 基线
+            //   对照同红=存量缺陷非新引入）。三后端对齐：linux_x64/arm64 经
+            //   emitStackLoad(operand.type) 按源宽度装载（mov r10d / ldr wN）
+            //   本就安全=本刀 win x64 单侧收口（728g 判例：文本拼接直读分叉）；
+            //   与本函数 710 行兜底分支 i32/u32 形态（mov eax+shrunkOperand）
+            //   及上方 i32 分支同构。
+            writer.line("mov eax, " + shrunkOperand("u32", src));
         } else {
-            writer.line("mov rax, " + src);  // i64/u64（u32 写 eax 已清高 32）
+            writer.line("mov rax, " + src);  // i64/u64：全宽槽 64 位装载
         }
         writer.line("mov " + regSlot(inst.result.id + 1) + ", rax");  // 低64
         if (fromIsSigned) {
