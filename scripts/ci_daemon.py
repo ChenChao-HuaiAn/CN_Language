@@ -395,7 +395,11 @@ def 静态门禁与e2e段(步骤们: dict, 步骤, cn: Path | None, 日志, sha:
     红行详情数据源）——sha 形参供明细文件命名；传参前探 run_e2e 源码防跨版本
     窗口（新 daemon × 旧头工作树=未知参数假红·详见 e2e支持json）。"""
     for 名, 参 in (("check_spec_coverage", []),   # 243：非 strict（TX_02「指针有效性」存量红=244 修·红不拦兜底轮）
-                  ("check_cli_contract", ["--cn", str(cn)]),
+                  # 822（2026-10-15）：显式传验证面——交叉模拟实例（CN_CI_PLATFORM=linux-arm64·
+                  # CN_AS/CN_CXX=交叉工具链）不传则脚本自探=linux-x86_64 面，运行级格把
+                  # x86_64 汇编喂给 arm64 工具链必败（42/50 恒红 12 轮兜底存量实录）；传后
+                  # target=arm64≠本机运行时平台→运行级格 SKIP（红例三返工机制生效）。
+                  ("check_cli_contract", ["--cn", str(cn), "--target", 平台]),
                   ("check_asm_width", ["--cn", str(cn)]),
                   ("check_matrix_coverage", []),
                   ("check_file_length", ["--freeze"])):

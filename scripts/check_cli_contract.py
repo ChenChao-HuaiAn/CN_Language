@@ -14,13 +14,16 @@
 
 用法：
   python3 scripts/check_cli_contract.py [--cn target/cn] [--target linux-arm64]
-  平台缺省=按本机自动探测（win-x64 / linux-arm64 / linux-x86_64）。
-  交叉平台仅测 compile（产物形态，不需本地工具链）；运行级形态只测本机目标。
+  平台缺省=CN_CI_PLATFORM 自报优先（822·与 ci_daemon/run_e2e 同判据），
+  无自报则按本机运行时探测（win-x64 / linux-arm64 / linux-x86_64）。
+  交叉平台仅测 compile（产物形态，不需本地工具链）；运行级形态只测本机
+  运行时平台（822 起可达性判据=运行时平台，与验证面缺省分离）。
   退出码：0=全格通过；1=有失败格。
 """
 from __future__ import annotations
 
 import argparse
+import os
 import platform as 平台模块
 import re
 import subprocess
@@ -55,12 +58,24 @@ def 返回码源(n: int) -> str:
     return f"函数 主() -> 整32 {{\n    返回 {n};\n}}\n"
 
 
-def 探测平台() -> str:
-    """按本机自动选 --target（cn 缺省 win-x64，linux 机必须显式指定）"""
+def 运行时平台() -> str:
+    """本机真实执行平台（只看运行时探测·不受任何自报覆盖）——运行级格可达性
+    判据用：产物要能本机执行才跑 build/run；交叉视角产物非本机形态必 SKIP。"""
     if sys.platform.startswith("win"):
         return "win-x64"
     m = 平台模块.machine().lower()
     return "linux-arm64" if ("aarch64" in m or "arm64" in m) else "linux-x86_64"
+
+
+def 缺省目标平台() -> str:
+    """验证面缺省目标：CN_CI_PLATFORM 自报优先（822·2026-10-15），缺省=运行时平台。
+
+    交叉模拟实例（399·x86_64 宿主跑 linux-arm64 验证面·CN_AS/CN_CXX=交叉工具链）
+    经 CN_CI_PLATFORM 自报身份——与 ci_daemon/run_e2e 同判据。此前本脚本不感知自报，
+    在交叉实例上把验证面误判成 linux-x86_64：运行级格（build/run）把 x86_64 汇编
+    喂给 arm64 交叉工具链必败——42/50 恒红 12 轮兜底存量实录（822 考古根治）。"""
+    自报 = os.environ.get("CN_CI_PLATFORM", "").strip()
+    return 自报 if 自报 else 运行时平台()
 
 
 def 运行(cn: str, 参数: list[str], 超时: int = 180) -> subprocess.CompletedProcess:
@@ -77,16 +92,18 @@ def 运行(cn: str, 参数: list[str], 超时: int = 180) -> subprocess.Complete
 def 主流程() -> int:
     解析 = argparse.ArgumentParser(description="CLI 契约矩阵门禁（检查网第 2 层）")
     解析.add_argument("--cn", default="target/cn", help="cn 可执行文件路径（默认 target/cn）")
-    解析.add_argument("--target", default="", help="目标平台（缺省按本机自动探测）")
+    解析.add_argument("--target", default="", help="目标平台（缺省=CN_CI_PLATFORM 自报，否则运行时探测）")
     参数 = 解析.parse_args()
     cn = 参数.cn if Path(参数.cn).is_absolute() else str(仓库根 / 参数.cn)
-    target = 参数.target or 探测平台()
-    # 运行级可达（红例三返工·2026-10-12）：「交叉平台仅测 compile；运行级形态
-    #   只测本机目标」的设计此前未落实到 build/run 格——显式 --target 交叉平台
+    target = 参数.target or 缺省目标平台()
+    # 运行级可达（红例三返工·2026-10-12；822 判据源修正）：「交叉平台仅测 compile；
+    #   运行级形态只测本机目标」此前未落实到 build/run 格——显式 --target 交叉平台
     #   时（x86 机模拟 arm64 视角/CI 矩阵）运行级格产物无法本机执行必红（8 格
-    #   实证）。目标=本机平台才执行运行级（build/run/退出码/除零/验证ir），
-    #   交叉视角自动跳过（不计失败）。
-    运行级可达 = (target == 探测平台())
+    #   实证）。目标=本机运行时平台才执行运行级（build/run/退出码/除零/验证ir），
+    #   交叉视角自动跳过（不计失败）。822 起可达性判据=运行时平台（真实执行面），
+    #   不再与「验证面缺省」混用——交叉模拟实例（CN_CI_PLATFORM 自报 arm64）的
+    #   验证面=linux-arm64≠本机 linux-x86_64，运行级照 SKIP 而 compile 面真跑。
+    运行级可达 = (target == 运行时平台())
 
     探针 = 仓库根 / "target" / "cli_contract"
     探针.mkdir(parents=True, exist_ok=True)
