@@ -56,8 +56,14 @@
   </section>
 
   <section id="页-队列" class="页" role="tabpanel" hidden>
-    <div class="区题">集成队列 — 服务端·零 git 提交 <span class="淡">（报名→排队→集成中·批主选举 562）</span></div>
-    <div class="工具行"><span class="弹性"></span><span id="队列计数" class="行时刻"></span></div>
+    <div class="区题">集成队列 — 服务端·零 git 提交 <span class="淡">（报名→排队→集成中→销账清行；562 心跳/失联回收；历史残留行可切「仅活跃」藏起）</span></div>
+    <div class="工具行">
+      <div class="筛选组" id="队列筛">
+        <button class="筛 活" data-活="全部">全部</button>
+        <button class="筛" data-活="仅活跃">仅活跃</button>
+      </div>
+      <span class="弹性"></span><span id="队列计数" class="行时刻"></span>
+    </div>
     <div id="队列区"><div class="骨架行"></div><div class="骨架行"></div></div>
   </section>
 </main>

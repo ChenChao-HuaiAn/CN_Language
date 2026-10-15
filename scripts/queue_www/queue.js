@@ -14,6 +14,7 @@ const 状态 = {
   页: "门禁",
   页码: { 门禁: 1, 池: 1, 队列: 1 },
   只看红: false,
+  仅活跃: false,
   自动刷新: localStorage.getItem("cn_queue_autorefresh") === "1",
 };
 let 快照 = null;
@@ -129,12 +130,22 @@ function 渲染池() {
 }
 
 /* —— 页签三：集成队列 —— */
+const 活跃态们 = new Set(["排队", "集成中", "冲突出批", "归因出批"]);
+
 function 渲染队列() {
   const 根 = $("队列区");
-  const 全部 = (快照.队列 || []).map((r, i) => ({ r, i }));
-  $("队列计数").textContent = `共 ${全部.length} 条`;
-  if (!全部.length) { 根.innerHTML = `<div class="空态">集成队列为空</div>`; return; }
-  const { 显示, 控件 } = 分页渲染("队列", 全部);
+  const 全部 = (快照.队列 || []).map((r, i) => ({ r, i }));   // 服务端已最新在前（848）
+  const 显 = 状态.仅活跃 ? 全部.filter((x) => 活跃态们.has(x.r["状态"])) : 全部;
+  const 活跃数 = 全部.filter((x) => 活跃态们.has(x.r["状态"])).length;
+  $("队列计数").textContent = 状态.仅活跃
+    ? `活跃 ${显.length} 条（共 ${全部.length}）`
+    : `共 ${全部.length} 条（活跃 ${活跃数}）`;
+  if (!显.length) {
+    根.innerHTML = `<div class="空态">${状态.仅活跃 ? "当前无活跃队列行（集成队列空闲）"
+                                                   : "集成队列为空"}</div>`;
+    return;
+  }
+  const { 显示, 控件 } = 分页渲染("队列", 显);
   const 行 = 显示.map(({ r }) => `
     <div class="数据行 队列行">
       <span class="mono">${转义(r["分支"])}</span>
@@ -334,6 +345,16 @@ document.addEventListener("click", (e) => {
       b.classList.toggle("活", b === 红);
     });
     渲染门禁();
+    return;
+  }
+  const 活 = e.target.closest("[data-活]");
+  if (活) {
+    状态.仅活跃 = 活.dataset.活 === "仅活跃";
+    状态.页码["队列"] = 1;
+    document.querySelectorAll("[data-活]").forEach((b) => {
+      b.classList.toggle("活", b === 活);
+    });
+    渲染队列();
     return;
   }
   const 详门 = e.target.closest("[data-详门]");

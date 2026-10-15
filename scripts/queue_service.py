@@ -154,8 +154,14 @@ con = 建库()
 
 
 def 队列快照() -> list[dict]:
+    """848（2026-10-15 用户验收反馈）：最新在前——原 ASC 与门禁/预验证 DESC 相反，
+    陈年死行（/api/clear 未清的残留）堆顶遮挡实时视图。消费方兼容已核：integrate
+    队列读 按分支 next 命中/--status 客户端自排序（且 830 批主选举退役）·board_ci
+    按分支 dict 化·test_pool_selftest 按名命中——全不依赖服务端顺序。
+    口径注：秒级戳无年份，字符串 DESC=当年内正确；跨年窗口（元旦后）与尾随旧年行
+    错位为门禁/预验快照同款存量共口径（非新引入），旧行治理走 /api/clear。"""
     行们 = con.execute("SELECT 分支,基线,报名时刻,写集摘要,状态,更新时刻 FROM 队列 "
-                       "ORDER BY 报名时刻").fetchall()
+                       "ORDER BY 报名时刻 DESC").fetchall()
     return [dict(zip(("分支", "基线", "报名时刻", "写集摘要", "状态", "更新时刻"), r)) for r in 行们]
 
 
