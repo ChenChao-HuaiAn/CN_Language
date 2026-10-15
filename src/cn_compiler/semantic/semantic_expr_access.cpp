@@ -418,7 +418,6 @@ void SemanticAnalyzer::visitIndexExpr(IndexExpr* node) {
         //   块内同样报。
         const int arrLen114 = types::arrayLenOf(objectType);
         if (arrLen114 > 0 && isIntLiteralExpr(node->index.get())) {
-            std::fprintf(stderr, "[dbg728w] 进 isIntLiteralExpr 分支\n");
             const Expr* idxE = node->index.get();
             std::int64_t idxVal = 0;
             if (idxE->getType() == NodeType::IntegerLiteral) {
