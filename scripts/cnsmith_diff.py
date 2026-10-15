@@ -126,6 +126,31 @@ def run_sample(cn, src, out_dir, target):
     return name, "ok", ""
 
 
+def 生成形态归因(out_dir, src_dir):
+    """840：差分报告形态面扩展——调 cnsmith_coverage 归因（按语法形态维度分组）。
+
+    附加报告面：任何失败仅警告，不改差分结论/退出码/清单格式（行为零回归——
+    daemon 只读 分歧清单.txt，本文件为旁路）。"""
+    脚本 = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cnsmith_coverage.py")
+    归因路径 = os.path.join(out_dir, "分歧形态归因.json")
+    try:
+        r = subprocess.run(
+            [sys.executable, 脚本,
+             "--差分清单", os.path.abspath(os.path.join(out_dir, "分歧清单.txt")),
+             "--样本目录", os.path.abspath(src_dir),
+             "--归因输出", os.path.abspath(归因路径)],
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+            timeout=300)
+        if r.returncode != 0:
+            print("  [形态归因] 生成失败（rc=%d）——不影响差分结论/退出码: %s"
+                  % (r.returncode,
+                     ((r.stderr or r.stdout or "").strip().splitlines() or ["?"])[-1][:120]))
+            return
+        print("  [形态归因] 已写入 %s（按语法形态维度分组·840）" % 归因路径)
+    except (OSError, subprocess.SubprocessError) as e:
+        print("  [形态归因] 生成失败（%s）——不影响差分结论/退出码" % e)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--dir", default="target/cnsmith")
@@ -196,6 +221,15 @@ def main():
             for name, kind, why in diffs:
                 前缀 = 前缀表.get(kind, "")
                 f.write("%s [%s]: %s%s\n" % (name, kind, 前缀, why))
+        # 840：清单落盘后追加形态归因（有分歧才有分歧清单——此处即归因触发点）
+        生成形态归因(a.out, a.dir)
+    else:
+        # 840：零分歧时清理旧归因文件（492e976 教训同族——「读清单前必删旧清单」
+        #   的写侧对偶：旧归因残留=与本轮零分歧账目不一致）；分歧清单.txt 的既有
+        #   清理语义不动（daemon 读侧兜底，本处只收口本任务引入的新产物）
+        旧归因 = os.path.join(a.out, "分歧形态归因.json")
+        if os.path.exists(旧归因):
+            os.remove(旧归因)
     sys.exit(1 if (n_diff or n_rerr or n_ccrash) else 0)
 
 

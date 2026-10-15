@@ -40,6 +40,13 @@ class Gen:
         if typ == "整32" and kind == 1:
             # 位运算/移位
             op = self.rng.choice(["&", "|", "^", "<<", ">>"])
+            if op in ("<<", ">>"):
+                # 840 轮修（生成面缺陷·任务 474 同族）：移位量须在类型位宽域内
+                #   [0,32)——原实现右操作数为任意表达式，可产 513/-415 超宽移位量
+                #   → 编译期诊断拒绝（s6/s8 实测 build_err）：「生成合法程序」承诺
+                #   被破坏，合法轨产出非法样本污染差分信噪比。右操作数=域内小字面量。
+                return "(%s %s %d)" % (self.expr(depth - 1), op,
+                                      self.rng.randint(0, 31))
             return "(%s %s %s)" % (self.expr(depth - 1), op, self.expr(depth - 1))
         if kind == 2 and depth >= 2:
             # 除法/取模（除数恒非零保护：字面量 1..9）
