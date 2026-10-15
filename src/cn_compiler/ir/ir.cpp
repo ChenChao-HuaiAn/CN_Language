@@ -369,6 +369,23 @@ std::int64_t IRGenerator::ptrElemStride(const std::string& srcType) const {
 }
 std::string IRGenerator::pointerPointeeSrcType(Expr* node) const {
     if (node == nullptr) return "";
+    if (node->getType() == NodeType::MemberExpr) {
+        // 655 复核轮（648 余量④d 同族补全·成员链指针解引用）：*b.游标 的
+        //   操作数=成员链——原实现无 MemberExpr 分支恒返 ""，648 显形诊断
+        //   误伤合法程序（探针 v2_992a 实锤：*b.游标 被拒编译中止）。所指
+        //   元素类型=字段指针类型的 pointee，与 655 ④d 自增分支（visitUnary
+        //   Expr 内联 memberFieldSrcType）同口径；字段为数组形态时=数组元素
+        //   类型（425 数组名退化同源）。
+        const std::string fieldType = memberFieldSrcType(
+            static_cast<MemberExpr*>(node));
+        if (!fieldType.empty() && types::isPointer(fieldType)) {
+            return types::pointeeOf(fieldType);
+        }
+        if (!fieldType.empty() && types::isArray(fieldType)) {
+            return types::arrayElemOf(fieldType);
+        }
+        return "";
+    }
     if (node->getType() == NodeType::IdentifierExpr) {
         const std::string srcType = lookupSrcType(
             static_cast<IdentifierExpr*>(node)->name);
