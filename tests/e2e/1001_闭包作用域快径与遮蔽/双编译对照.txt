@@ -1,0 +1,7 @@
+# 815：闭包关联登记作用域语义——宿主 closureInfo_ save/restore（visitLambdaExpr
+# +genBlock）后快径直调与 v2 恒蹦床（T69 变量槽驱动）行为等效锚。
+退出码=0
+源文件=主.cn
+断言输出=是
+借链=否
+供给=

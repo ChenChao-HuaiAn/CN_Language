@@ -253,9 +253,23 @@ void IRGenerator::buildLambdaTrampoline(
 }
 
 void IRGenerator::visitLambdaExpr(LambdaExpr* node) {
-    // 485：lambda 体=独立函数上下文——closureInfo_ 同步清空（与 visitFunctionDecl
-    //   入口同纪律·防内外同名闭包变量跨上下文误命中快径）
-    closureInfo_.clear();
+    // 815（485 clear 纪律生命周期改造·save/restore）：lambda 体=独立函数上下文，
+    //   闭包关联表须与体外隔离（485：防内外同名闭包变量跨上下文误命中快径——
+    //   键=变量源码名无函数限定）。原实现入口 clear 出口不恢复：同函数后定义的
+    //   lambda 会清掉先前全部登记（655 返工④·720 实录：每组第一个定义的 lambda
+    //   调用 miss 掉 432 蹦床通道 CallIndirect、最后一个 hit——语义等价但快径
+    //   覆盖收缩=性能缺陷，且掉穿面曾致 655 首轮全域 miss 误报连锁）。改法=
+    //   入口整表 save+清空（体内隔离纪律保持），出口整表 restore（外层先前登记
+    //   复活·先前闭包变量调用重新命中快径直调 ?lambdaN——ir_call.cpp 展开通道
+    //   与蹦床语义等价）；本 lambda 自己的登记由 genVarDecl 的
+    //   registerClosureIfNeeded 在本函数返回后落表（时序天然落在恢复后的表上）。
+    //   跨函数隔离仍由 visitFunctionDecl 入口 clear 承担（815 不动）。
+    //   v2 无此病（零分叉辨析）：v2 闭包绑定表（lambda闭包变量们）从无 clear
+    //   动作、可蹦床形态恒走 T69 间接调用（432 蹦床归一主动设计）——本修复为
+    //   宿主单侧优化通道的覆盖恢复，运行行为两侧等价不变。
+    std::unordered_map<std::string, ClosureInfo> outerClosures =
+        std::move(closureInfo_);
+    closureInfo_.clear();  // move 后显式清空：不依赖移动后源的未规定状态
     const std::string lambdaName = "?lambda" + std::to_string(lambdaCounter_++);
     const std::string returnIrType = mapType(node->returnType.empty()
                                                  ? "空类型" : node->returnType);
@@ -362,6 +376,10 @@ void IRGenerator::visitLambdaExpr(LambdaExpr* node) {
     blockCounter_ = outerBlockCounter;
     // 弹出 lambda 捕获参数作用域（仅弹出 visitLambdaExpr 自己压入的一层）
     while (varStack_.size() > outerVarDepth) varStack_.pop_back();
+    // 815：恢复外层闭包关联表（save/restore 出口·见函数头注释）——先于蹦床段
+    //   发射与 lastLambda* 收尾（蹦床段不消费闭包表，位置取语义聚合：与上方
+    //   四状态恢复同块收尾）。
+    closureInfo_ = std::move(outerClosures);
     // ---- 432 蹦床段（外层块发射）----
     // 快照静态槽注册 + 定义处固化（值捕获快照/[&] 地址——逃逸生命周期根基）
     emitLambdaSnapshotStores(lambdaName, capturedNames, captureRefs,

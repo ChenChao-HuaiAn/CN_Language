@@ -616,6 +616,13 @@ void IRGenerator::genStmt(Stmt* node) {
 }
 void IRGenerator::genBlock(BlockStmt* node) {
     varStack_.emplace_back();  // 进入子作用域
+    // 815（闭包关联表块级快照回滚）：登记生命周期=定义处作用域生命周期——块内
+    //   定义的 lambda（genVarDecl 登记）出块随变量作用域作废，防同名遮蔽覆盖污染
+    //   外层登记（探针实证：内层 取=?lambda1 覆盖登记后块外 取() 误命中内层）。
+    //   快照回滚而非整表清空：块内仍命中外层已登记闭包变量的快径直调（815 主修复
+    //   收益在块内保持）；空表拷贝零堆分配=常规块近零成本。lambda 体块在
+    //   visitLambdaExpr 已清空表（815 save/restore），此处快照回滚恒空=零影响。
+    std::unordered_map<std::string, ClosureInfo> closuresSnapshot = closureInfo_;
     // 72-a（2026-09-11 第七十二轮）：块级作用域 RAII 基线——本块声明的拥有串/
     //   类对象在出口释放（Rust 作用域 drop；函数级 genStringFrees/
     //   genClassDestructorCalls 保留为返回/跳出路径兜底）。
@@ -671,5 +678,7 @@ void IRGenerator::genBlock(BlockStmt* node) {
     pendingBoxVars_.resize(scopeBoxVarsBase_.back());
     scopeBoxVarsBase_.pop_back();
     varStack_.pop_back();  // 退出子作用域
+    // 815：闭包关联表块级回滚（终止/未终止路径都执行——与上方 pop 序列同区）
+    closureInfo_ = std::move(closuresSnapshot);
 }
 } // namespace cn_compiler
