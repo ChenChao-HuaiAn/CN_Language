@@ -677,6 +677,12 @@ def 云端预验门禁(链顶: str, 参数: argparse.Namespace,
     推 = 运行(["git", "push", 参数.remote, f"{链顶}:refs/heads/{预验分支}"])
     if 推.returncode != 0:
         return f"预验分支推送失败（{预验分支}）——检查远程权限后重试。"
+    # 863 修复：远端预验分支删除时机条件化——两条「池中任务仍活但本轮先收场」的返回路径
+    #   （非 --wait 哨兵·池守卫拦截）必须保留分支：runner 认领后首步 git fetch 该分支同步，
+    #   此时删=runner 同步 fatal: couldn't find remote ref → 预验全数同步失败被踢
+    #   （746/764/758/644/728f 五连实测·--wait 路径轮询到结果后才删故无恙——对照组实证）。
+    #   跑轮结束后的分支收口=下一轮同 sha 集成（池轮询拿到结论走 finally 删除）。
+    保留预验分支 = False
     try:
         # ── ① 池路径：入队（幂等·已完成绿直接复用不重跑）+轮询认领结果
         # 222：附带源分支（=发起集成的任务分支）——TX_01 网页预验池「分支」列显示归属任务；
@@ -695,6 +701,7 @@ def 云端预验门禁(链顶: str, 参数: argparse.Namespace,
             if not 等待:
                 print("  [预验] 非 --wait：不挂机等结果——池有空闲实例即跑（一个任务一个实例）·"
                       "绿后重跑本命令续推（或加 --wait 挂机等结果）")
+                保留预验分支 = True   # 863：入池即返——runner 尚未 fetch，删分支=预验同步必败
                 return 已入池哨兵
             拿到, 原因 = 池轮询预验(预验分支, 链顶, 参数.allow_pool_red, 源分支, 认领限制,
                                     内容键=内容键)
@@ -703,6 +710,8 @@ def 云端预验门禁(链顶: str, 参数: argparse.Namespace,
             if 认领限制 and "linux-x86_64" not in 认领限制:
                 # 337 降级守卫：池超时/不可达且限制不含 linux-x86_64——TX_02 直发违背限制，
                 #   不静默改平台重跑（同 sha 换平台口径不一致）·显式拦截并给出路
+                #   （863 同族：池行仍活——白名单 runner 上线后仍会认领 fetch，分支必须保留）
+                保留预验分支 = True
                 return (f"池路径超时/不可达·认领限制 [{认领限制}] 不含 linux-x86_64（TX_02 ssh 直发违背限制）"
                         "——等待限制平台 runner 上线后重试·或修正 --pool-limit（770：逃生门已硬禁）。")
             print("  [预验] 池路径超时/不可达——降级 ssh 直发 TX_02（028 §四）……")
@@ -764,9 +773,14 @@ def 云端预验门禁(链顶: str, 参数: argparse.Namespace,
         return (f"云端预验超时（{预验总超时分钟} 分钟——TX_02 忙/挂死·028 §四处置）。"
                 "等待恢复重试（770：--no-cloud-gate 逃生门已硬禁）。")
     finally:
-        清理 = 运行(["git", "push", 参数.remote, "--delete", 预验分支])
-        if 清理.returncode != 0:
-            print(f"  [警告] 预验分支 {预验分支} 删除失败——branch_cleanup.py 兜底。")
+        if 保留预验分支:
+            # 863：池中任务待 runner 认领消费（认领后首步 git fetch 本分支）——本轮不删；
+            #   分支收口随下一轮同 sha 集成（池轮询拿到结论走下方删除）·或 branch_cleanup 同口径兜底。
+            print(f"  [提示] 预验分支 {预验分支} 保留（池中任务待 runner 认领 fetch·非 --wait/池守卫收场）")
+        else:
+            清理 = 运行(["git", "push", 参数.remote, "--delete", 预验分支])
+            if 清理.returncode != 0:
+                print(f"  [警告] 预验分支 {预验分支} 删除失败——branch_cleanup.py 兜底。")
         # 1020（#180）：杀 TX_02 上本 sha 的 wait-lock 残留 daemon（按 sha 分拣·
         #   1017 实录：绿轮放行/超时后 daemon 仍排队占队=挡他批）——pkill 无命中
         #   无害（绿轮正常路径 daemon 已退出）。

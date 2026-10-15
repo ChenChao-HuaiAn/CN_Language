@@ -12,14 +12,18 @@
   ④ 预验结果解析（1008）+池轮询收场（562）
   ⑤ 预验前置检查（637：①rebase 新鲜 ②产物清零）
   ⑥ 预验绿复用判定（830：源分支+内容键）  ⑦ 池忙不误判降级（830）
+  ⑧ 预验分支删除时机（863：非 --wait 哨兵保留·--wait 结论后照删）
   （原「③选批成员/失联判定」两段随 830 并行化退役删除——批主/拼车/接管面已废除）
 """
 from __future__ import annotations
 
+import types
+
+import integrate
 from integrate import (board_closeout, 解析时刻, 队列加行, 队列改状态, 队列清行们,
                        解析队列, 队列段标题, 临时用例检查,
                        解析预验结果, 池轮询预验, 已并入收场, 查可复用预验绿,
-                       批写集, 预验前置检查)
+                       批写集, 预验前置检查, 云端预验门禁, 已入池哨兵)
 
 
 def 自测() -> int:
@@ -127,6 +131,50 @@ def 自测() -> int:
     断言(预验前置检查("c" * 40, "b" * 40, 祖先查询=lambda 基, 孙: True,
                       产物残留查询=lambda: []) is None,
          "637 前置②：产物已清零→放行预验")
+
+    # ⑧ 预验分支删除时机（863 修复·monkeypatch 假 git/网络面·测毕恢复·零副作用）：
+    #   非 --wait 哨兵路径=入池即返，runner 认领后首步 fetch 预验分支——删=同步 fatal 被踢
+    #   （746/764/758/644/728f 五连实录）；--wait 拿到结论后照删（收口语义不回归对照组）。
+    假sha863 = "e" * 40
+    真绑定863 = {名: getattr(integrate, 名) for 名 in
+                 ("运行", "输出", "服务调用", "读CI配置", "查可复用预验绿",
+                  "池轮询预验", "subprocess")}
+    try:
+        调用账 = []
+
+        def 假运行(命令, **_):
+            调用账.append(list(命令))
+            回 = types.SimpleNamespace(returncode=0, stdout="", stderr="")
+            return 回
+
+        integrate.运行 = 假运行
+        integrate.输出 = lambda 命令: 假sha863          # rev-parse develop/内容键 全假 sha
+        integrate.服务调用 = lambda 路径, 数据=None: (
+            {"ok": True} if "task_enqueue" in 路径 else {"预验任务": [], "池忙闲": {}})
+        integrate.读CI配置 = lambda: {"ssh": "假机", "目录": "/tmp"}
+        integrate.查可复用预验绿 = lambda 源, 键, 状态查=None: False
+        integrate.池轮询预验 = lambda *a, **kw: (True, None)   # --wait 对照：立即拿到绿结论
+        integrate.subprocess = types.SimpleNamespace(run=lambda *a, **kw: None)  # ssh pkill 假执行
+
+        def 造参数(wait: bool):
+            return types.SimpleNamespace(dry_run=False, remote="gitcode", wait=wait,
+                                         allow_pool_red=[], pool_limit=[])
+
+        回值 = 云端预验门禁(假sha863, 造参数(False), 源分支="任务/863", 等待=False)
+        断言(回值 == 已入池哨兵, "863 非 --wait：入池成功返回哨兵（不挂机·不 push）")
+        断言(not any("--delete" in c for c in 调用账),
+             "863 非 --wait 哨兵路径：不触发远端预验分支删除（runner 待 fetch 消费·五连实录回归锚）")
+        断言(any("refs/heads/ci/预验-" in " ".join(c) for c in 调用账),
+             "863 非 --wait 哨兵路径：预验分支推送照常（入池前提不变）")
+
+        调用账.clear()
+        回值 = 云端预验门禁(假sha863, 造参数(True), 源分支="任务/863", 等待=True)
+        断言(回值 is None, "863 --wait 对照：池轮询拿到绿结论放行（None）")
+        断言(any("--delete" in c for c in 调用账),
+             "863 --wait 对照：拿到结论后照删远端预验分支（收口语义不回归）")
+    finally:
+        for 名, 值 in 真绑定863.items():
+            setattr(integrate, 名, 值)
 
     print(f"\n[selftest] {案例数} 例全过 ✓")
     return 0
