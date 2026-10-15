@@ -68,6 +68,10 @@ db路径 = os.environ.get("CN_QUEUE_DB",
 #   阈值=轮转限制任务排队超此秒数无人领（该平台全忙/离线）→claim 惰性放宽不限（防平台饿死）。
 兜底轮转平台序 = ("win-x64", "linux-x86_64", "linux-arm64")
 兜底跳平台阈值秒 = int(os.environ.get("CN_DEVELOP_PLAT_SWITCH_SEC", "300"))
+# 830 兜底饥饿保底（2026-10-15 用户裁决·并行化配套）：兜底（develop 头验证）排队行
+#   年龄超此秒数 → claim 优先派兜底——防任务级预验长期占满池时 develop 平台轮转验证
+#   被无限推迟（原两级查询严格「预验优先」=兜底可被饿死·develop 权威验证名存实亡）。
+兜底饥饿秒 = int(os.environ.get("CN_FALLBACK_HUNGER_SEC", "900"))
 
 写锁 = threading.Lock()          # SQLite 写串行化（读靠 WAL 并发）
 时区时刻 = lambda: datetime.now().strftime("%m-%d %H:%M:%S")   # 911 教训：秒级戳
@@ -125,6 +129,7 @@ def 建库() -> sqlite3.Connection:
         状态 TEXT DEFAULT '排队',      -- 排队/执行中/完成
         认领者 TEXT, 心跳时戳 INTEGER,  -- 心跳=服务端收到时刻（免疫客户端时钟漂移）
         绿 INTEGER, 详情 TEXT,          -- 详情=ci_daemon 结果 JSON 原样
+        内容键 TEXT,                    -- 830：任务分支 tip sha（预验绿复用键·旧行 NULL）
         入队时刻 TEXT, 更新时刻 TEXT)""")
     try:   # 222 旧库兼容：表已存在时 CREATE IF NOT EXISTS 不加列·ALTER 补（列已在=重复列错吞掉）
         con.execute("ALTER TABLE 预验任务 ADD COLUMN 源分支 TEXT")
@@ -132,6 +137,10 @@ def 建库() -> sqlite3.Connection:
         pass
     try:   # 337 认领限制：平台白名单逗号串（NULL=不限·291 混合随机池默认不变）
         con.execute("ALTER TABLE 预验任务 ADD COLUMN 认领限制 TEXT")
+    except sqlite3.OperationalError:
+        pass
+    try:   # 830 内容键：任务分支 tip sha（预验绿复用键·integrate 传·旧行/旧客户端 NULL）
+        con.execute("ALTER TABLE 预验任务 ADD COLUMN 内容键 TEXT")
     except sqlite3.OperationalError:
         pass
     con.commit()
@@ -157,10 +166,10 @@ def 门禁快照(限: int = 200) -> list[dict]:
 
 def 预验任务快照() -> list[dict]:
     """预验任务池快照（不含 详情 大字段——integrate 取详情走 /api/task_result）。"""
-    行们 = con.execute("SELECT 序号,分支,sha,源分支,状态,认领者,绿,认领限制,入队时刻,更新时刻 "
+    行们 = con.execute("SELECT 序号,分支,sha,源分支,状态,认领者,绿,认领限制,入队时刻,更新时刻,内容键 "
                        "FROM 预验任务 ORDER BY 序号 DESC LIMIT 50").fetchall()
     return [dict(zip(("序号", "分支", "sha", "源分支", "状态", "认领者", "绿", "认领限制",
-                      "入队时刻", "更新时刻"), r))
+                      "入队时刻", "更新时刻", "内容键"), r))
             for r in 行们]
 
 
@@ -223,7 +232,8 @@ def 源分支已并入(源分支: str) -> bool | None:
     只读免鉴权）：状态 ✅=integrate 成功销账（✅⇔sha 铁律）=源分支已并入 develop 的
     服务端唯一权威信号。返回 True=已并入；False=未并入；None=核不了（源分支空/非
     任务/<号> 格式/任务不在台账/看板不可达——宁放行不误杀，不堵队列派发）。"""
-    m = re.match(r"^任务/([0-9]+[a-z]?)$", (源分支 or "").strip())
+    # 830：兼容两形态——任务/<号>（源头归一）与 batch/<号>（历史批链行·830 前客户端传批分支名）
+    m = re.match(r"^(?:任务|batch)/([0-9]+[a-z]?)$", (源分支 or "").strip())
     if not m:
         return None
     if time.time() - _并入检测上次失败[0] < 并入检测退避秒:
@@ -326,6 +336,8 @@ def 处理写(名: str, 数据: dict) -> dict:
             源分支 = str(数据.get("源分支", "")) or None   # 222：发起预验的任务分支（旧客户端不带=NULL）
             # 337 认领限制：平台白名单逗号串（如 win-x64,linux-x86_64）——NULL/空=不限（291 混合池默认）
             认领限制 = str(数据.get("认领限制", "")).strip() or None
+            # 830 内容键：任务分支 tip sha（预验绿复用键·integrate 传·旧客户端 NULL/空）
+            内容键 = str(数据.get("内容键", "")).strip() or None
             # 189 兜底入池：放宽 ci/兜底- 前缀（develop 兜底任务经池派发·非真 git 分支）
             if not (分支.startswith("ci/预验-") or 分支.startswith("ci/兜底-")) or len(sha) < 7:
                 return {"ok": False, "说明": "分支须 ci/预验-/ci/兜底- 开头且 sha 合法"}
@@ -347,15 +359,26 @@ def 处理写(名: str, 数据: dict) -> dict:
                     认领限制 = 轮平台 if 平台有空闲(轮平台) else None
                     print("[兜底轮转] %s → %s（%s）" % (分支, 轮平台,
                           "指派" if 认领限制 else "全忙放宽不限"), flush=True)
-                con.execute("INSERT INTO 预验任务(分支,sha,源分支,认领限制,状态,入队时刻,更新时刻) "
-                            "VALUES(?,?,?,?,'排队',?,?)", (分支, sha, 源分支, 认领限制, 时区时刻(), 时区时刻()))
+                    # 830 陈头去重：新头入池=更老的「排队中」兜底行直接取消——最新头内容
+                    #   包含旧头（线性历史），旧头无须再验（只在最新头的基础上验一次·用户
+                    #   裁决「在新 sha 基础上验证」）；执行中的旧头不动（让它跑完·跑前
+                    #   「过期跳过」已兜）。减少池占坑。
+                    cur = con.execute("DELETE FROM 预验任务 WHERE 状态='排队' "
+                                      "AND 分支 LIKE 'ci/兜底-%' AND 分支 != ?", (分支,))
+                    if cur.rowcount:
+                        print("[兜底去重] 新头 %s 入池——取消更老的排队兜底行 %d 条（只验最新头·830）"
+                              % (分支, cur.rowcount), flush=True)
+                con.execute("INSERT INTO 预验任务(分支,sha,源分支,认领限制,内容键,状态,入队时刻,更新时刻) "
+                            "VALUES(?,?,?,?,?,'排队',?,?)",
+                            (分支, sha, 源分支, 认领限制, 内容键, 时区时刻(), 时区时刻()))
             elif 已有[0] == "完成" and not 已有[1] and not 分支.startswith("ci/兜底-"):
                 # 189：兜底任务完成红=终态（红结果已上门禁表·不重置）——防池内死循环重跑
                 #   （TX_02 下一周期 enqueue 幂等直达、runner 不再被派）；预验维持红=重置重跑
                 #   （同 sha CAS 重试路径·给 flaky 一次机会）。337：认领限制随重发刷新（发起方最新意图为准）。
                 con.execute("UPDATE 预验任务 SET 状态='排队',认领者=NULL,心跳时戳=NULL,"
-                            "绿=NULL,详情=NULL,源分支=COALESCE(?,源分支),认领限制=?,更新时刻=? WHERE 分支=?",
-                            (源分支, 认领限制, 时区时刻(), 分支))
+                            "绿=NULL,详情=NULL,源分支=COALESCE(?,源分支),认领限制=?,"
+                            "内容键=COALESCE(?,内容键),更新时刻=? WHERE 分支=?",
+                            (源分支, 认领限制, 内容键, 时区时刻(), 分支))
         elif 名 == "task_claim":
             # 认领（写锁内原子）：①回收心跳超时的执行中任务→重置排队；②取最旧排队任务置执行中。
             runner = str(数据.get("runner", ""))
@@ -388,6 +411,32 @@ def 处理写(名: str, 数据: dict) -> dict:
             #   （兜底限制=770 服务端轮转平台·全忙/超阈值放宽 NULL）。
             认领过滤337 = ("AND (认领限制 IS NULL OR 认领限制='' "
                            "OR ','||认领限制||',' LIKE '%,'||?||',%')")
+            # 830 兜底饥饿保底（2026-10-15 用户裁决·并行化配套）：兜底排队行年龄超阈值 →
+            #   本次认领先派兜底（develop 平台轮转验证保底——防任务级预验长期占满池把
+            #   develop 权威验证无限饿死）。阈值内维持「预验优先」两级保序（189/770 语义不变）。
+            兜底饥饿行 = None
+            for 行h in con.execute(
+                    "SELECT 分支,sha,源分支,更新时刻 FROM 预验任务 WHERE 状态='排队' "
+                    "AND 分支 LIKE 'ci/兜底-%' " + 认领过滤337 + " ORDER BY 序号",
+                    (平台337,)).fetchall():
+                龄h = 行龄秒(行h[3])
+                if 龄h is not None and 龄h > 兜底饥饿秒:
+                    兜底饥饿行 = (行h[0], 行h[1], 行h[2])
+                    break
+            if 兜底饥饿行 is not None:
+                if 源分支已并入(兜底饥饿行[2]) is True:
+                    con.execute("UPDATE 预验任务 SET 状态='已取消',更新时刻=? WHERE 分支=?",
+                                (时区时刻(), 兜底饥饿行[0]))
+                    con.commit()   # 自提交：作废后落回正常两级派发
+                    print("[取消] 兜底饥饿行 %s 源分支已并入 develop——作废落回正常派发（562）"
+                          % 兜底饥饿行[0], flush=True)
+                else:
+                    con.execute("UPDATE 预验任务 SET 状态='执行中',认领者=?,心跳时戳=?,更新时刻=? "
+                                "WHERE 分支=?",
+                                (runner, 现在, 时区时刻(), 兜底饥饿行[0]))
+                    print("[兜底饥饿] 兜底排队超 %ds——优先派 %s（830 保底：develop 验证不被预验饿死）"
+                          % (兜底饥饿秒, 兜底饥饿行[0]), flush=True)
+                    return {"ok": True, "任务": {"分支": 兜底饥饿行[0], "sha": 兜底饥饿行[1]}}
             # 562 已并入检测：选出任务后核源分支——已并入 develop（台账 ✅）=孤儿预验
             #   （任务已集成销账·555/556 实录：回收后反复重派执行浪费池容量）→置「已取消」
             #   不派发·继续选下一个；None/False=照常派发（宁漏检不误杀）。已取消行不参与
@@ -708,6 +757,42 @@ if __name__ == "__main__":
         断言(忙闲770["注册实例"] >= 5 and 忙闲770["执行中"] >= 2,
              "770 池忙闲快照：注册实例/执行中字段可用（562 执行中行+win 预验行）")
         断言(忙闲770["池全忙"] is False, "770 池全忙判定=执行中<注册（此景存在空闲实例）")
+
+        # ── 830 兜底饥饿保底 + 陈头去重 + 内容键（2026-10-15 用户裁决·并行化配套）──
+        处理写("task_enqueue", {"分支": "ci/预验-8308308300", "sha": "a" * 40,
+                               "内容键": "k" * 40})
+        行830k = next(r2 for r2 in 预验任务快照() if r2["分支"] == "ci/预验-8308308300")
+        断言(行830k["内容键"] == "k" * 40, "830 内容键入队存取（预验绿复用键·快照可见）")
+        # 饥饿保底：兜底排队行年龄超阈值 → 优先于更早序号的预验排队行派发
+        处理写("task_enqueue", {"分支": "ci/兜底-830aaa0001", "sha": "b" * 40})
+        con.execute("UPDATE 预验任务 SET 认领限制=NULL, 更新时刻=? WHERE 分支='ci/兜底-830aaa0001'",
+                    ((datetime.now() - timedelta(seconds=兜底饥饿秒 * 2)).strftime("%m-%d %H:%M:%S"),))
+        处理写("task_claim", {"runner": "r830a"})   # 不带平台=只领不限行（上面已置 NULL）
+        行饿 = next((r2 for r2 in 预验任务快照()
+                    if r2["分支"] == "ci/兜底-830aaa0001"), None)
+        断言(行饿 and 行饿["状态"] == "执行中" and 行饿["认领者"] == "r830a",
+             "830 兜底饥饿保底：兜底排队超阈值优先派（压过更早序号的预验排队行）")
+        处理写("task_complete", {"runner": "r830a", "分支": "ci/兜底-830aaa0001",
+                                "绿": True, "结果": {"绿": True}})
+        # 陈头去重：新头入池取消更老的排队兜底行
+        处理写("task_enqueue", {"分支": "ci/兜底-830bbb0002", "sha": "c" * 40})
+        处理写("task_enqueue", {"分支": "ci/兜底-830ccc0003", "sha": "d" * 40})
+        旧行830 = next((r2 for r2 in 预验任务快照() if r2["分支"] == "ci/兜底-830bbb0002"), None)
+        新行830 = next((r2 for r2 in 预验任务快照() if r2["分支"] == "ci/兜底-830ccc0003"), None)
+        断言(旧行830 is None and 新行830 is not None,
+             "830 陈头去重：新头入池取消更老的排队兜底行（只验最新头·线性历史包含）")
+        # 清场：饥饿已消费 → 回归预验优先保序；两行分别领掉完成（保持池净）
+        con.execute("UPDATE 预验任务 SET 认领限制=NULL WHERE 分支 IN "
+                    "('ci/兜底-830ccc0003','ci/预验-8308308300')")
+        处理写("task_claim", {"runner": "r830b"})
+        领b = next((r2 for r2 in 预验任务快照() if r2["分支"] == "ci/预验-8308308300"), None)
+        断言(领b and 领b["状态"] == "执行中" and 领b["认领者"] == "r830b",
+             "830 清场：饥饿兜底已消费·预验优先保序回归（领到预验行）")
+        处理写("task_complete", {"runner": "r830b", "分支": "ci/预验-8308308300",
+                                "绿": True, "结果": {"绿": True}})
+        处理写("task_claim", {"runner": "r830c"})
+        处理写("task_complete", {"runner": "r830c", "分支": "ci/兜底-830ccc0003",
+                                "绿": True, "结果": {"绿": True}})
 
         # ── 562 批主心跳：heartbeat=只刷更新时刻·不改状态——活批不被回收误杀（444 根治） ──
         #   （真实批主心跳 2 分钟≪集成中超时 2h·行时刻恒新鲜；此处直接断言心跳语义本身）
