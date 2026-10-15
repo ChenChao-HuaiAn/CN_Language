@@ -112,6 +112,48 @@ bool foldConstIntExpr505(const Expr* e, std::int64_t& out, int depth = 0) {
     }
 }
 
+// 728s 对称化（2026-10-15 用户裁决批乙·#728s「宿主字面量二元算式结果类型
+//   『顺序敏感』（1+2U 拒/1U+2 放行）是否对称化」→ 批乙：对称化·Rust 真对齐）：
+//   无后缀整数字面量随另一侧定级——一侧为**无后缀非负**整数字面量、另一侧为
+//   「有定级」（非无后缀字面量）的整数族类型时，字面量侧按另一侧类型参与
+//   （Rust 字面量推断惯例：1 + 2U → 正32、2U + 1 → 正32 双向对称；另一侧为
+//   变量/成员/调用等同规则——001 §3.7「字面量按另一侧类型参与」在结果类型
+//   推导面的落实）。边界三条：①两侧均无后缀=无定级对象（各自恒定级整32·
+//   既有行为零变化、杜绝互随顺序敏感）；②负号字面量不随侧（无符号域不承载
+//   负值·Rust 同口径：-1 + 2U 维持混合符号拒绝——323 解析期把 `-1` 折叠为
+//   raw="-1" 的整数字面量，负号判定须查 raw 首字符）；③另一侧非整数族（浮点/
+//   字符等）不触发（不在本轮扩面）。
+//   「无后缀」判定=literalTypeOf 为 整32（无后缀）或空串（非法组合防御回退
+//   ——含 0xFF 十六进制尾 F 被后缀收集的既有回退形态，与语义层字面量恒定级
+//   整32 同口径；v2 字面量后缀类型ID==0 同构）。
+bool isUnsuffixedIntLiteral728(const Expr* e) {
+    if (e == nullptr || e->getType() != NodeType::IntegerLiteral) return false;
+    const IntegerLiteral* lit = static_cast<const IntegerLiteral*>(e);
+    if (!lit->raw.empty() && lit->raw[0] == '-') return false;  // 负号字面量不随侧
+    const std::string lt = types::literalTypeOf(lit->raw, false);
+    return lt == "整32" || lt.empty();
+}
+
+// 无后缀字面量随另一侧替换（左优先·单侧触发——两侧均无后缀时不替换，杜绝
+//   互随顺序敏感）。返回 真=已发生替换。结果类型推导（checkArithmeticBinary/
+//   checkBitwiseBinary）与常量溢出预演（reportConstOverflow 域计算）共用同一
+//   规则——类型推导与域预演口径必须一致，否则出现「类型正32 而域按整32 误报
+//   溢出」的内部双口径（949 q6c 形态 = 2147483647 + 1U）。
+bool unifyUnsuffixedLiteralOperand728(const Expr* leftExpr, const Expr* rightExpr,
+                                      std::string& leftType, std::string& rightType) {
+    const bool lUnsuf = isUnsuffixedIntLiteral728(leftExpr);
+    const bool rUnsuf = isUnsuffixedIntLiteral728(rightExpr);
+    if (lUnsuf && !rUnsuf && types::isInteger(rightType)) {
+        leftType = types::canonical(rightType);
+        return true;
+    }
+    if (rUnsuf && !lUnsuf && types::isInteger(leftType)) {
+        rightType = types::canonical(leftType);
+        return true;
+    }
+    return false;
+}
+
 }  // namespace
 
 void SemanticAnalyzer::visitBinaryExpr(BinaryExpr* node) {
@@ -296,8 +338,15 @@ void SemanticAnalyzer::reportConstOverflow(BinaryExpr* node, std::int64_t vL,
             };
             const std::string pL = promotedType(node->left.get());
             const std::string pR = promotedType(node->right.get());
-            const std::string effL = (!pL.empty() && pL != "整32") ? pL : types::canonical(leftType);
-            const std::string effR = (!pR.empty() && pR != "整32") ? pR : types::canonical(rightType);
+            std::string effL = (!pL.empty() && pL != "整32") ? pL : types::canonical(leftType);
+            std::string effR = (!pR.empty() && pR != "整32") ? pR : types::canonical(rightType);
+            // 728s 对称化（2026-10-15 用户裁决批乙）：域预演与结果类型推导同
+            //   规则（无后缀字面量随另一侧）——`2147483647 + 1U` 结果域=正32
+            //   （无符号域不预演·跳过）、原按整32 域误报编译期溢出（949 q6c
+            //   形态）；`4294967295 + 1U` 同域=正32（与 m2 无符号回绕口径同）；
+            //   双侧无后缀/带后缀形态不触发（420 按值提升链既有行为零变化）。
+            unifyUnsuffixedLiteralOperand728(node->left.get(), node->right.get(),
+                                             effL, effR);
             // 648 归档（commonNumericType 终态消费面）：常量溢出预演面——
             //   effL/effR 为字面量提升类型或已守卫的操作数类型；终态 "整32"
             //   只影响溢出域判定宽度，且方向为收窄（最坏=误报超域硬错误，
@@ -534,7 +583,14 @@ bool SemanticAnalyzer::checkBitwiseBinary(BinaryExpr* node, const std::string& l
         // 648 归档（commonNumericType 终态消费面）：上方 isInteger 守卫已对非
         //   整数操作数报 Error（此处继续取 lastType_=错误恢复值，防下游再扩大
         //   报错）；合法面 isInteger → intRank>0，不落 "整32" miss 终态。
-        lastType_ = commonNumericType(leftType, rightType);
+        // 728s 对称化（2026-10-15 用户裁决批乙）：无后缀字面量随另一侧——
+        //   位运算/移位与算术面同一助手同一规则（结果类型推导单点；1 | 2U 等
+        //   形态原落混合符号误拒，现双向对称）。
+        std::string lT728 = leftType;
+        std::string rT728 = rightType;
+        unifyUnsuffixedLiteralOperand728(node->left.get(), node->right.get(), lT728,
+                                         rT728);
+        lastType_ = commonNumericType(lT728, rT728);
         if (lastType_ == "浮64" || lastType_ == "浮32") lastType_ = leftType;  // 防御：位运算结果必须整数
         return true;
     }
@@ -610,6 +666,14 @@ bool SemanticAnalyzer::checkArithmeticBinary(BinaryExpr* node, std::string& left
                 rightType = leftType;
             }
         }
+        // 728s 对称化（2026-10-15 用户裁决批乙·#728s）：无后缀字面量随另一侧
+        //   定级——285 窄域适配的整数族泛化：正32 同秩场景 `1 + 2U` 原落
+        //   「同秩取左=整32」与 `2U + 1`=正32 不对称（编译期混合符号误拒
+        //   非对称），判决=双向放行（Rust 真对齐）。另一侧整数族（含变量/
+        //   带后缀字面量/成员/调用推导）时字面量侧按另一侧参与；两侧均无后缀
+        //   =无定级对象（整32 恒定级既有行为零变化）。
+        unifyUnsuffixedLiteralOperand728(node->left.get(), node->right.get(),
+                                         leftType, rightType);
         // 648 归档（commonNumericType 终态消费面）：合法消费面=字符参与算术
         //   （979 字符四字节窄整语义·'a'+1=98，canonical("字符") 的 intRank=0
         //   落 "整32" 终态=设计内回退，非 miss）；非法面（布尔/字符串/枚举等）
