@@ -69,13 +69,20 @@ void IRGenerator::emitRegStringFree(const ir::IRValue& v, const SourceLocation& 
 //   倒序首条同 id 定义即唯一写入点；id<0=变量/常量形态非寄存器直退；当前块
 //   找不到（跨块形态：语句位顶层不会经短路分块产生连接产物）=false=保守不
 //   free（漏放不误放）。
+// 758 附属（2026-10-15）：判定符号集扩 __cn_strbuf_finish——728o 连接链融合
+//   （链长≥3）把连接产物定义符号由 __cn_str_concat 改写为 __cn_strbuf_finish
+//   （唯一返回堆串的 strbuf 符号·new=句柄 i64/append=void/drop=弃置），旧单
+//   符号判定使融合产物逃逸 645/663 语句位与 758 比较面全部收口（946 缺①③
+//   rc=26·987 缺⑤ rc=15 实锤）。扩集后两符号产物同面收口，strbuf 其余符号
+//   不在集=无误伤面。
 bool IRGenerator::isConcatResultReg(const ir::IRValue& v) const {
     if (currentBlock_ == nullptr || v.id < 0) return false;
     const auto& insts = currentBlock_->instructions;
     for (auto it = insts.rbegin(); it != insts.rend(); ++it) {
         if (it->result.id == v.id) {
             return it->opcode == ir::Opcode::Call &&
-                   it->extra == "__cn_str_concat";
+                   (it->extra == "__cn_str_concat" ||
+                    it->extra == "__cn_strbuf_finish");
         }
     }
     return false;
