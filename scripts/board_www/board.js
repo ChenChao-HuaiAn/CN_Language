@@ -10,7 +10,7 @@
 let 数据 = null;                       // 最近一次 /api/board 聚合
 let 激活板 = "看板";                    // 388：顶级板块（看板/交接/教训/覆盖）
 let 激活页 = "飞行";                    // 看板板块内子页
-let 脏页 = { 飞行: true, 分支: true, 认领: true, 裁决: true };
+let 脏页 = { 飞行: true, 分支: true, 认领: true, 裁决: true, 流水线: true };
 let 当前筛 = "就绪";
 let 当前视图 = "列表";
 let 当前详情 = null;
@@ -20,6 +20,29 @@ const 转义 = (s) => String(s ?? "").replace(/[&<>"]/g,
   (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const 状态签 = { "⬜": "待办", "🏃": "在飞", "⏸": "挂起", "✅": "完成" };
 const 状态符 = { 待办: "⬜", 在飞: "🏃", 挂起: "⏸", 完成: "✅" };
+
+/* —— 814：生命周期阶段徽标（服务端 board_ci.py 派生·t.阶段/t.阶段时刻/t.runner）——
+   术语二分：待集成=预检绿后 push develop 前窗口；已集成=push 之后（验证轮挂 ✅ 行）。
+   值域与服务端 board_ci 阶段常量一一对应（错位=服务端新阶段前端未跟·显示原文本不炸）。 */
+const 阶段元 = {
+  "开发中":        { 符: "✍️", 类: "阶段开发", 题: "开发期——任务分支写码中（无 CI 信号）" },
+  "收工排队":      { 符: "⏳", 类: "阶段队",   题: "收工已报名集成队列——排队等组批/拼车" },
+  "组链与门禁中":  { 符: "⚙️", 类: "阶段跑",   题: "批已封组——cherry-pick 组链+本机全量门禁" },
+  "预检排队":      { 符: "⏳", 类: "阶段队",   题: "预检分支已推——池排队等 runner 认领" },
+  "预检中":        { 符: "🔍", 类: "阶段跑",   题: "云端预检跑全量中" },
+  "预检绿·待集成": { 符: "🟢", 类: "阶段绿",   题: "预检绿——正在并入 develop（秒~分钟级窗口）" },
+  "预检红·返工":   { 符: "🔴", 类: "阶段红",   题: "预检红——修复后重新收工集成（点徽标看失败用例）" },
+  "已集成·验证中": { 符: "🔍", 类: "阶段跑",   题: "已并入 develop——云端验证轮跑 develop 顶" },
+  "已集成·验证红": { 符: "🔴", 类: "阶段红",   题: "develop 验证红——红治理：立新号返工·48h 可 revert" },
+  "已集成·验证绿": { 符: "✅", 类: "阶段绿",   题: "develop 验证绿——本轮集成全链路收官" },
+};
+function 阶段签HTML(阶段, runner) {
+  if (!阶段) return "";
+  const 元 = 阶段元[阶段] || { 符: "•", 类: "阶段队", 题: "" };
+  const 红可点 = 阶段.indexOf("预检红") === 0 ? ' style="cursor:pointer" title="' + 元.题 +
+    '（点开失败用例）" data-红详情' : ' title="' + 元.题 + (runner ? "·认领者 " + runner : "") + '"';
+  return '<span class="签 ' + 元.类 + '"' + 红可点 + ">" + 元.符 + " " + 转义(阶段) + "</span>";
+}
 
 /* 号→任务行本地索引（653 瘦身：服务端聚合面不再下发「任务字典」投影——
    任务们 行内已含 标题/状态/优先级 全字段，本地建索引一次替代三处旧取法）。 */
@@ -151,7 +174,7 @@ async function 拉取() {
     渲染冲突(数据.冲突们 || []);
     // 数据一到即全页标脏+渲染激活页——消除「切页早于数据到达」的竞态空白
     // （首拉/轮询更新同路：页面永远反映最新数据，不再依赖手动切页触发）
-    脏页 = { 飞行: true, 分支: true, 认领: true, 裁决: true };
+    脏页 = { 飞行: true, 分支: true, 认领: true, 裁决: true, 流水线: true };
     渲染激活页();
   } catch (e) {
     $("状态灯").classList.add("断");
@@ -176,6 +199,7 @@ function 渲染激活页() {
   if (激活页 === "飞行" && 脏页.飞行) { 渲染意图(); 脏页.飞行 = false; }
   if (激活页 === "分支" && 脏页.分支) { 渲染在飞(); 脏页.分支 = false; }
   if (激活页 === "认领" && 脏页.认领) { 渲染任务(); 脏页.认领 = false; }
+  if (激活页 === "流水线" && 脏页.流水线) { 渲染流水线(); 脏页.流水线 = false; }
 }
 
 /* —— 板块：交接（388·全宽时间流·全文直显·不折叠）—— */
@@ -493,12 +517,11 @@ function 渲染意图() {
             "（492 多信号：分支有新提交即算在飞）\">" +
             "会话静默 " + Math.round(i.失联秒 / 60) + " 分钟</span>";
         }
-        // 563：队列态徽标——"会话静默"分两种：干完在排队（正常退出）vs 真僵尸（待接棒）
+        // 814：阶段徽标（563 队列态升级·全生命周期）——"会话静默"分多种：写码中/
+        // 排队/预检/待集成/已集成验证中=各流水位置（正常）vs 真僵尸（待接棒）
         let 队列签 = "";
-        if (i.队列态) {
-          队列签 = '<span class="签 边框 队列中" title="该任务已交付集成流程（' +
-            转义(i.队列态) + '）——会话静默=报完名正常退出·等批组链合入（队列页 /queue/ 看排队深度）·无需接棒">' +
-            转义(i.队列态) + "</span>";
+        if (i.阶段) {
+          队列签 = 阶段签HTML(i.阶段);
         } else if (i.待接棒) {
           队列签 = '<span class="签 边框 待接棒" title="心跳∧分支推进双信号全停 >90 分钟·且不在集成队列/预验中——疑似真僵尸（自动巡检将派接棒 Agent）·可手动接棒：python scripts/wt.py create ' +
             转义(i.在做) + ' --takeover">⚠ 待接棒</span>';
@@ -573,6 +596,7 @@ function 任务行HTML(t, 泳道否) {
     '<span class="行右侧">' +
     (t.疑似认领 ? '<span class="黄标">⚠ 疑似认领中</span>' : "") +
     (t.僵尸疑 ? '<span class="黄标" title="⬜ 无分支且超期未更新——疑似已修未销账/死行：请人工核实后置 ✅ 或重开（392）">🧟 僵尸疑</span>' : "") +
+    阶段签HTML(t.阶段, t.runner) +
     '<span class="签 ' + (状态签[t.状态] || "待办") + '">' + t.状态 + " " + (状态签[t.状态] || "") + "</span>" +
     '<span class="行时刻">' + 转义(t.更新时刻 || "") + "</span></span></div>";
 }
@@ -600,6 +624,70 @@ function 渲染任务() {
     return;
   }
   区.innerHTML = '<div class="面板">' + 们.map((t) => 任务行HTML(t, false)).join("") + "</div>";
+}
+
+/* —— 814：集成流水线泳道（列=阶段时序·卡片=在流任务号）—— */
+
+const 泳道列序 = ["收工排队", "组链与门禁中", "预检排队", "预检中",
+                  "预检绿·待集成", "预检红·返工", "已集成·验证中", "已集成·验证红", "已集成·验证绿"];
+
+function 渲染流水线() {
+  const 区 = $("流水线区");
+  if (!区) return;
+  const 在流 = (数据.任务们 || []).filter((t) => t.阶段 && t.阶段 !== "开发中");
+  const 列 = {};
+  泳道列序.forEach((s) => (列[s] = []));
+  在流.forEach((t) => (列[t.阶段] = 列[t.阶段] || []).push(t));
+  const 卡 = (t) =>
+    '<div class="任务行' + (t.状态 === "✅" ? " 完" : "") + '" data-详="' + 转义(t.号) + '">' +
+    '<span class="优先级 ' + 转义(t.优先级 || "P3") + '">' + 转义(t.优先级 || "—") + "</span>" +
+    '<span class="任务号">#' + 转义(t.号) + "</span>" +
+    '<span class="任务题文">' + 转义(概要(t.标题)) + "</span>" +
+    '<span class="行右侧"><span class="行时刻">' + 转义(t.阶段时刻 || "") +
+    (t.runner ? "·" + 转义(t.runner) : "") + "</span>" +
+    (t.阶段.indexOf("预检红") === 0 || t.阶段 === "已集成·验证红"
+      ? '<span class="签 阶段红">🔴 红</span>' : "") +
+    "</span></div>";
+  区.innerHTML = '<div class="泳道 泳道流水">' + 泳道列序.map((s) => {
+    const 元 = 阶段元[s] || {};
+    return '<div class="泳列 列流水' + (元.类 || "") + '">' +
+      '<div class="泳列头"><span>' + (元.符 || "") + " " + 转义(s) + '</span><span class="计数">' +
+      (列[s] || []).length + "</span></div>" +
+      ((列[s] || []).length ? 列[s].map(卡).join("")
+                            : '<div class="空态" style="padding:var(--space-4)">—</div>') +
+      "</div>";
+  }).join("") + "</div>" +
+  '<div class="淡" style="margin-top:var(--space-3)">列序=收工后流水时序；「✍️ 开发中」的任务不进流水线' +
+  "（在「当前在飞」页看）；卡片点开任务详情，红卡详情内可看预检失败用例。</div>";
+}
+
+/* —— 814：预检红详情（失败用例清单·代理 /api/ci_result）—— */
+
+async function 开红详情(号, sha) {
+  const 区 = $("红详情区");
+  if (!区) { 提示("请从任务详情面板查看失败用例", 3000); 开详情(号); return; }
+  if (!sha) { 区.innerHTML = '<div class="备注行">无预检 sha——预验行已清理</div>'; return; }
+  区.innerHTML = '<div class="备注行">拉取预检详情…</div>';
+  try {
+    const r = await 调API("GET", "api/ci_result?sha=" + encodeURIComponent(sha));
+    const 详 = r.结果 && r.结果.详情;
+    if (!详) { 区.innerHTML = '<div class="备注行">无详情（预验行已清理或队列服务不可达）</div>'; return; }
+    const 红步骤们 = Object.entries(详.步骤 || {})
+      .filter(([, s]) => s.rc !== 0 || s.超时)
+      .map(([名, s]) => 转义(名 + (s.超时 ? "(超时)" : "(rc=" + s.rc + ")")));
+    const 用例行们 = (详.日志尾部 || []).filter((l) => /✗/.test(l));
+    区.innerHTML = '<div class="详备注">' +
+      "<div>链顶 <span class='mono'>" + 转义(详.sha || "") + "</span>·平台 " + 转义(详.平台 || "—") +
+      "·总秒 " + 转义(详.总秒 ?? "—") + "</div>" +
+      (红步骤们.length ? "<div>红步骤：" + 红步骤们.join("、") + "</div>" : "") +
+      (用例行们.length
+        ? '<pre class="mono" style="white-space:pre-wrap;margin:.4em 0 0;max-height:14em;overflow:auto">' +
+          转义(用例行们.join("\n")) + "</pre>"
+        : '<div class="淡">日志尾部无 ✗ 用例行（红在构建/同步步骤）——完整日志看 runner 机 ci-logs/</div>') +
+      "</div>";
+  } catch (e) {
+    区.innerHTML = '<div class="备注行">拉取失败：' + 转义(e.message) + "</div>";
+  }
 }
 
 /* —— 详情滑出面板 —— */
@@ -633,6 +721,16 @@ function 开详情(号) {
         '<span class="行时刻">心跳 ' + 相对时(i.时戳) + "</span>" +
         (i.失联 ? '<span class="签 失联">失联</span>' : "") + "</div>").join("")
     : '<div class="备注行">无在做会话</div>';
+  // 814：阶段行——红阶段可展开 CI 失败用例（拉 /api/ci_result 代理）
+  const 红检 = t.阶段 && t.阶段.indexOf("预检红") === 0;
+  const 阶段行 = t.阶段
+    ? '<div class="依赖行" style="cursor:default">' + 阶段签HTML(t.阶段, t.runner) +
+      '<span class="行时刻">阶段时刻 ' + 转义(t.阶段时刻 || "—") +
+      (t.runner ? "·runner " + 转义(t.runner) : "") + "</span>" +
+      (红检 && t.sha ? '<button class="钮 次" data-红详情-sha="' + 转义(t.sha) + '">失败用例</button>' : "") +
+      "</div>" + '<div id="红详情区"></div>'
+    : '<div class="备注行">无 CI 阶段信号（' +
+      (t.状态 === "✅" ? "验证轮未入最近门禁窗口" : "⬜/⏸ 行无编排信号=正常") + "）</div>";
   面板.innerHTML =
     '<button class="关" data-关>×</button>' +
     '<div><span class="详号">#' + 转义(t.号) + "</span> " +
@@ -650,6 +748,7 @@ function 开详情(号) {
     "<dt>更新</dt><dd>" + 转义(t.更新时刻 || "—") + "</dd>" +
     "</dl>" +
     '<div class="详节题">前置依赖链</div>' + (依赖们 || '<div class="备注行">无前置</div>') +
+    '<div class="详节题">集成阶段（814·实时派生）</div>' + 阶段行 +
     '<div class="详节题">谁在做</div>' + 在做们 +
     (t.备注 ? '<div class="详节题">备注</div><div class="详备注">' + 转义(t.备注) + "</div>" : "") +
     '<div class="详操作">' +
@@ -889,6 +988,15 @@ document.addEventListener("click", (e) => {
     选键.parentElement.querySelectorAll(".快选").forEach((b) =>
       b.classList.toggle("选中", b.dataset.选键 === 号 + "|" + 裁决选[号]));
     更新批量钮();
+    return;
+  }
+  const 红钮 = e.target.closest("[data-红详情-sha]");
+  if (红钮) { 开红详情(当前详情, 红钮.dataset.红详情Sha); return; }
+  const 红签 = e.target.closest("[data-红详情]");
+  if (红签) {                                // 行内红徽标——先于任务行开详情（防 data-详 吞点击）
+    const 行 = 红签.closest("[data-详]");
+    const t = 行 && (数据.任务们 || []).find((x) => x.号 === 行.dataset.详);
+    if (t && t.sha) { 开详情(t.号); 开红详情(t.号, t.sha); }
     return;
   }
   const 详 = e.target.closest("[data-详]");

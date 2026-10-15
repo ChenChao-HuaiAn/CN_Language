@@ -42,6 +42,7 @@
 <!-- 子页签：仅任务看板板块内显示 -->
 <nav class="页签栏" id="子页签" role="tablist" aria-label="看板分区">
   <button class="页签 活" data-tab="飞行" role="tab" aria-selected="true">🏃 当前在飞</button>
+  <button class="页签" data-tab="流水线" role="tab" aria-selected="false">🔁 集成流水线</button>
   <button class="页签" data-tab="分支" role="tab" aria-selected="false">⟂ 远端在飞分支</button>
   <button class="页签" data-tab="认领" role="tab" aria-selected="false">☰ 可认领任务</button>
   <button class="页签" data-tab="裁决" role="tab" aria-selected="false">⚖ 待裁决</button>
@@ -56,6 +57,11 @@
   <section id="tab-分支" class="页" role="tabpanel" hidden>
     <div class="区题">远端在飞分支 — 真实 git 分支·分钟级实时 <span class="淡">（点行看任务详情·接棒=wt.py create &lt;号&gt;）</span></div>
     <div id="在飞区"><div class="骨架行"></div><div class="骨架行"></div></div>
+  </section>
+  <!-- 814：集成流水线泳道——收工后每号所处 CI 阶段一眼看全（服务端 board_ci 派生） -->
+  <section id="tab-流水线" class="页" role="tabpanel" hidden>
+    <div class="区题">集成流水线 — 每个收工任务正处在哪一级 <span class="淡">（收工排队→组链与门禁→预检→待集成→已集成验证；红=需返工，点开详情看失败用例）</span></div>
+    <div id="流水线区"><div class="骨架行"></div><div class="骨架行"></div></div>
   </section>
   <section id="tab-认领" class="页" role="tabpanel" hidden>
     <div class="区题">任务台账 — 前置全绿即可认领 <span class="淡">（号由服务端统一发放·全局唯一）</span></div>

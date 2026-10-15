@@ -152,6 +152,18 @@ main { max-width: 78rem; margin: 0 auto; padding: var(--space-5) var(--space-6) 
 .签.队列中 { color: var(--st-doing); border: 1px solid var(--st-doing); }   /* 563：已交付集成流程（排队/集成中/预验中）·会话静默属正常 */
 .签.待接棒 { color: var(--color-accent); border: 1px solid var(--color-accent); background: var(--color-accent-soft); }  /* 563：疑似真僵尸（双信号全停且非队列）·建议接棒 */
 
+/* —— 814：生命周期阶段徽标（红=返工面·绿=过检·蓝跑=进行中·灰=排队等待）—— */
+.签.阶段红 { color: var(--color-danger); border: 1px solid var(--color-danger); background: color-mix(in srgb, var(--color-danger) 10%, transparent); }
+.签.阶段绿 { color: var(--color-success); border: 1px solid var(--color-success); background: color-mix(in srgb, var(--color-success) 10%, transparent); }
+.签.阶段跑 { color: var(--st-doing); border: 1px solid var(--st-doing); background: color-mix(in srgb, var(--st-doing) 8%, transparent); }
+.签.阶段队 { color: var(--color-fg-muted); border: 1px dashed var(--color-border); }
+.签.阶段开发 { color: var(--color-fg-muted); background: color-mix(in srgb, var(--color-fg) 6%, transparent); }
+/* 流水线泳道列左肩条：红列绯红·绿列竹绿·跑列在飞蓝·排队列灰（一眼看堵点） */
+.列流水.阶段红 { box-shadow: inset 3px 0 0 var(--color-danger); }
+.列流水.阶段绿 { box-shadow: inset 3px 0 0 var(--color-success); }
+.列流水.阶段跑 { box-shadow: inset 3px 0 0 var(--st-doing); }
+.列流水.阶段队 { box-shadow: inset 3px 0 0 var(--color-border); }
+
 /* —— 机器卡片（会话意图·细线分隔非卡片海：共享边框组）—— */
 .机卡 {
   background: var(--color-surface); border: 1px solid var(--color-border);

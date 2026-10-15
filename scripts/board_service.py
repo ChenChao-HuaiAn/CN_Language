@@ -14,8 +14,10 @@
 #                                 （653 瘦身：任务字典/快照021（纯冗余投影）与号占冲突们
 #                                  （视野快照含 ✅ 历史号·多树互报 404 条误报）不再进聚合面
 #                                  ——网页零消费·审计面 /api/numbers 保留号占冲突们原样）
-#   GET  /api/tasks           任务台账全量（含就绪判定·服务端排序）
+#   GET  /api/tasks           任务台账全量（含就绪判定·服务端排序·814 阶段徽标派生注入）
 #   GET  /api/task/<号>       单任务详情
+#   GET  /api/ci_result       ?sha=<预验sha>（814·代理 8300 预检结果详情——红徽标点开看
+#                                 失败用例清单·内网回环前端免跨端口）
 #   POST /api/intent          {机器,对话id,在做,计划,备注}   登记/更新（即心跳·幂等）
 #   POST /api/intent_release  {机器,对话id}                  注销（会话收工）
 #   POST /api/report_flights  {分支们:[{分支,提交,时刻}]}     在飞分支上报（客户端 ls-remote 结果
@@ -83,6 +85,7 @@ from urllib.parse import urlparse, unquote
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import board_tasks as 台账   # 任务台账模块（382·发号/CRUD/状态机/迁移）
+import board_ci as 阶段      # CI 阶段推导模块（814·生命周期徽标·直读 :8300 三源派生）
 import board_docs as 文档    # 交接/教训/规范覆盖模块（384·文档上服务器二期）
 import board_adjudication as 裁决  # 待裁决项模块（403·网页裁决系统）
 
@@ -214,35 +217,12 @@ def 分支推进时戳图() -> dict:
     return 图
 
 
-_队列态缓存 = {"时刻": 0.0, "图": {}}
-
-
-def 队列态图() -> dict:
-    """563：任务号 → '排队'/'集成中'/'预验中'（直读本地队列服务 :8300·2s 缓存·容错）。
-    治读板困惑：意图行"会话静默"无法区分『干完等集成（报完名退出=正常）』与
-    『真僵尸待接棒』（用户 2026-10-14 质询落地）。"""
-    import urllib.request as _ur
-    现 = time.time()
-    if 现 - _队列态缓存["时刻"] < 2.0:
-        return _队列态缓存["图"]
-    图 = {}
-    try:
-        地址 = os.environ.get("CN_QUEUE_STATUS_URL", "http://127.0.0.1:8300/api/state")
-        with _ur.urlopen(地址, timeout=2) as r:
-            态 = json.loads(r.read().decode("utf-8"))
-        for 行 in 态.get("队列", []):
-            分支, 状态 = str(行.get("分支", "")), str(行.get("状态", ""))
-            if 分支.startswith("任务/") and 状态 in ("排队", "集成中"):
-                图[分支[3:]] = 状态
-        for t in 态.get("预验任务", []):
-            if t.get("状态") == "执行中":
-                源 = str(t.get("源分支") or "")
-                if 源.startswith("任务/"):
-                    图.setdefault(源[3:], "预验中")
-    except (OSError, ValueError):
-        图 = {}
-    _队列态缓存.update(时刻=现, 图=图)
-    return 图
+def 阶段注入(任务们: list) -> None:
+    """814：就地给任务行注入生命周期阶段徽标（派生字段·不入库·台账四态不变）。
+    阶段图 2s 缓存共享——/api/tasks 与 /api/board 同窗返回一致。"""
+    图 = 阶段.阶段图(任务们)
+    for 行 in 任务们:
+        行.update(图.get(行["号"], {}))
 
 
 def 全部意图() -> list:
@@ -260,19 +240,23 @@ def 全部意图() -> list:
     推进图 = 分支推进时戳图()
     行们 = 连接.execute("SELECT * FROM 意图 ORDER BY 机器, 对话id").fetchall()
     出 = [意图行转字典(r, 推进图) for r in 行们]
-    图 = 队列态图()   # 563：队列态徽标（读板一眼分辨『干完排队』vs『真僵尸待接棒』）
+    轻任务们 = [{"号": r[0], "状态": r[2], "收口sha": r[7], "更新时刻": r[11]}
+               for r in 连接.execute(f"SELECT {台账.任务字段} FROM 任务").fetchall()]
+    图 = 阶段.阶段图(轻任务们)   # 814：阶段徽标（563 队列态升级·读板一眼分辨流水位置）
     在飞号 = {r[0] for r in 连接.execute(
         "SELECT 号 FROM 任务 WHERE 状态=?", (台账.状态_在飞,)).fetchall()}
     for 行 in 出:
-        行["队列态"] = 图.get((行.get("在做") or "").strip(), "")
+        行["阶段"] = (图.get((行.get("在做") or "").strip()) or {}).get("阶段", "")
         # 待接棒=巡检同口径 + 任务须在飞（🏃）——⬜ 待认领/⏸ 挂起不算"中断"
         # 757：幽灵认领（认领后从未推分支·推进=-1）无推进信号——旧式仅判 >5400
         # 推进秒漏出捕获面（#740 卡队列 80min 巡检零命中实锤）；<0 回退心跳静默秒同阈。
+        # 814：开发中/无信号都与旧「队列态空」同义=待接棒候选面不变。
         静默秒 = int(行.get("分支推进秒") or 0)
         if 静默秒 < 0:
             静默秒 = int(行.get("心跳静默秒") or 0)
         行["待接棒"] = bool(行["失联"] and 静默秒 > 5400
-                          and (行.get("在做") or "").strip() in 在飞号 and not 行["队列态"])
+                          and (行.get("在做") or "").strip() in 在飞号
+                          and 行["阶段"] in ("", 阶段.阶段_开发中))
     return 出
 
 
@@ -385,6 +369,7 @@ def 聚合视图() -> dict:
     # 在飞分支=TX_01 gitcron 每 3 分钟 ls-remote 的真实投影（board_flights_cron.py），
     # 分支没推就不显示（真相）；331 旧「意图独有号合成未推行」掩盖真实状态·删。
     任务们 = 台账.全部任务(连接)   # 382：任务台账全量（服务端唯一权威·含就绪判定）
+    阶段注入(任务们)   # 814：生命周期阶段徽标（派生·不入库）
     # 308d 兼容：队列×在飞对撞——在飞分支上报是实时的，待办号出现在在飞区=疑似他机认领中。
     在飞号 = {f["号"] for f in 在飞们 if f.get("号")}
     for 行 in 任务们:
@@ -535,7 +520,9 @@ class 处理器(BaseHTTPRequestHandler):
                 return self._回JSON(200, 聚合视图())
         if 路径 == "/api/tasks":
             with 写锁:
-                return self._回JSON(200, {"任务们": 台账.全部任务(连接),
+                任务们 = 台账.全部任务(连接)
+                阶段注入(任务们)   # 814：生命周期阶段徽标（派生·不入库）
+                return self._回JSON(200, {"任务们": 任务们,
                                           "下一号": 台账.下一个号(台账.已占号集(连接)),
                                           "时刻": 时刻()})
         m = re.fullmatch(r"/api/task/([0-9]+[a-z]?)", 路径)
@@ -544,6 +531,13 @@ class 处理器(BaseHTTPRequestHandler):
                 任务 = 台账.单任务(连接, m.group(1))
                 return self._回JSON(200 if 任务 else 404,
                                     {"任务": 任务} if 任务 else {"错误": f"任务 {m.group(1)} 不存在"})
+        if 路径 == "/api/ci_result":               # 814：预检结果详情代理（红徽标点开面）
+            q = urlparse(self.path).query
+            参数 = dict(p.split("=", 1) for p in q.split("&") if "=" in p)
+            sha = unquote(参数.get("sha", "")).strip()
+            if not re.fullmatch(r"[0-9a-f]{7,40}", sha):
+                return self._回JSON(400, {"错误": "sha 须为 7~40 位 hex"})
+            return self._回JSON(200, {"结果": 阶段.取预检详情(sha), "时刻": 时刻()})
         if 路径 == "/api/numbers":
             with 写锁:
                 流水 = [{"号": r[0], "机器": r[1], "对话id": r[2], "描述": r[3], "时刻": r[4]}

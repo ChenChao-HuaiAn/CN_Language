@@ -147,7 +147,9 @@ def 队列快照() -> list[dict]:
     return [dict(zip(("分支", "基线", "报名时刻", "写集摘要", "状态", "更新时刻"), r)) for r in 行们]
 
 
-def 门禁快照(限: int = 20) -> list[dict]:
+def 门禁快照(限: int = 200) -> list[dict]:
+    """814：默认限 20→200（=门禁历史保留同口径）——8301 阶段徽标按收口 sha 在此
+    查 ✅ 任务的 develop 验证轮，高频推送日 20 条几小时就滚出窗口（徽标消隐）。"""
     行们 = con.execute("SELECT sha,平台,绿,总秒,时刻 FROM 门禁 "
                        "ORDER BY 时刻 DESC LIMIT ?", (限,)).fetchall()
     return [dict(zip(("sha", "平台", "绿", "总秒", "时刻"), r)) for r in 行们]
