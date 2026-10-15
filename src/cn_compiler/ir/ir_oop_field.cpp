@@ -790,7 +790,15 @@ void IRGenerator::emitClassFieldDefaults(const std::string& layerClass,
                                           const SourceLocation& loc) {
     if (semantic_ == nullptr) return;
     const ClassInfo* ci = semantic_->findClass(layerClass);
-    if (ci == nullptr) return;
+    if (ci == nullptr) {
+        // 648（miss 不可静默·110 同族）：调用点=类创建路径（上游语义已保证
+        //   类已注册）——此 miss=内部缺陷显形（与 v2 登记内部未登记 同构）；
+        //   driver hasErrors() 统一中止·产物不落地。原静默 return=漏发默认值
+        //   对象字段错值（648 红线本面）。
+        diagnostics_.report(DiagnosticLevel::Error, loc,
+            "内部错误: 类字段默认值注入·类未登记 '" + layerClass + "'（#648）");
+        return;
+    }
     for (const std::string& fn : ci->fieldOrder) {
         auto it = ci->fields.find(fn);
         if (it == ci->fields.end()) continue;
