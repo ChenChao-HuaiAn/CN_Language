@@ -81,13 +81,19 @@ em, .强调 { font-style: normal; font-weight: 600; color: var(--color-accent); 
   block-size: 3.5rem;
 }
 .标识 {
-  display: flex; align-items: baseline; gap: 2px;
+  display: flex; align-items: center; gap: var(--space-3);
   font: 700 var(--text-lg) var(--font-display);
   color: var(--color-fg);
   letter-spacing: 0.06em;
 }
 .标识:hover { text-decoration: none; }
 .标识-点 { color: var(--color-accent); }
+/* 顶栏主 logo（方案戊「怀中印」·内联 SVG·色值走 tokens 双主题自适应） */
+.标识-图 {
+  inline-size: 1.75rem; block-size: 1.75rem; flex: none;
+  transition: transform var(--dur-fast) var(--ease-out);
+}
+.标识:hover .标识-图 { transform: rotate(-6deg); }
 .导航 { display: flex; gap: var(--space-5); margin-inline-start: auto; align-items: center; }
 .导航 a {
   color: var(--color-fg-muted);
@@ -296,6 +302,12 @@ em, .强调 { font-style: normal; font-weight: 600; color: var(--color-accent); 
 }
 .数据-值 .单位 { font-size: var(--text-lg); color: var(--color-fg-muted); font-weight: 700; }
 .数据-名 { color: var(--color-fg-muted); font-size: var(--text-sm); margin-block-start: var(--space-2); letter-spacing: 0.08em; }
+.数据-注 {
+  margin-block-start: var(--space-3);
+  text-align: end;
+  color: var(--color-fg-subtle);
+  font-size: var(--text-xs, 0.75rem);
+}
 
 /* ── 标签 ─────────────────────────────────────────── */
 .签 {

@@ -91,8 +91,33 @@
     });
   }
 
+  /* ── 数据条实时统计（844）：assets/stats.json 由 TX_01 website_stats.py
+     随 develop 定时再生——拉取成功则刷新 [data-stat] 数字与注脚；
+     失败（旧部署/离线）保留 HTML 静态兜底值，页面永不因它坏 ── */
+  function initStats() {
+    if (!document.querySelector("[data-stat]")) return;
+    fetch("assets/stats.json", { cache: "no-store" })
+      .then(function (r) {
+        if (!r.ok) throw new Error("HTTP " + r.status);
+        return r.json();
+      })
+      .then(function (s) {
+        document.querySelectorAll("[data-stat]").forEach(function (el) {
+          var v = s[el.getAttribute("data-stat")];
+          if (typeof v === "number") el.textContent = String(v);
+        });
+        var 注 = document.querySelector("[data-stat-注]");
+        if (注 && s.generated_at) {
+          注.textContent = "⟳ 前两项随 develop 分支自动统计 · 更新于 " + s.generated_at;
+          注.hidden = false;
+        }
+      })
+      .catch(function () { /* 静态兜底值已就位·静默降级 */ });
+  }
+
   initTheme();
   initNav();
   initToc();
   initEntrance();
+  initStats();
 })();

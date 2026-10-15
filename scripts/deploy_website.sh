@@ -20,3 +20,10 @@ echo "发布 $WEBSITE_DIR → $REMOTE:$REMOTE_DIR ..."
 ssh "$REMOTE" "sudo mkdir -p '$REMOTE_DIR' && sudo rm -rf '$REMOTE_DIR'/* "
 tar czf - -C "$WEBSITE_DIR" . | ssh "$REMOTE" "sudo tar xzf - -C '$REMOTE_DIR'"
 echo "✓ 已发布。远端文件数: $(ssh "$REMOTE" "sudo find '$REMOTE_DIR' -type f | wc -l")"
+
+# 844：整树覆盖会连 stats.json 一起清掉——发布后同步统计器并立即再生
+# （TX_01 crontab 每 6h 随 develop 兜底刷新；失败不阻断发布，日志落 ~/cn_stats.log）
+scp -q "$SCRIPT_DIR/website_stats.py" "$REMOTE:/home/ubuntu/website_stats.py"
+ssh "$REMOTE" "python3 /home/ubuntu/website_stats.py >> /home/ubuntu/cn_stats.log 2>&1 \
+  && echo '✓ 数据条统计已再生（stats.json）' \
+  || echo '⚠ stats.json 再生失败——详见 TX_01:~/cn_stats.log（官网仍显静态兜底值）'"

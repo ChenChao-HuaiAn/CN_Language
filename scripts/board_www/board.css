@@ -48,6 +48,12 @@ button { font: inherit; cursor: pointer; }
   margin: 0; font: 700 1.05rem/1.2 var(--font-display);
   letter-spacing: .02em;
 }
+/* 顶栏主 logo（方案戊「怀中印」·内联 SVG·tokens 双主题自适应·844）
+   图形与 website/assets/brand/logo-内联.svg 同源——部署单元隔离故内联复制 */
+.标识-图 {
+  inline-size: 1.35em; block-size: 1.35em;
+  vertical-align: -0.22em; margin-right: .35em;
+}
 .顶栏右 { display: flex; align-items: center; gap: var(--space-3); }
 /* 527：元信息/自动刷新 的包裹行。桌面 display:contents 让子项直接参与顶栏
    flex（视觉与包裹前完全一致，#元信息 照旧右推）；手机档变实体行独占第二行 */

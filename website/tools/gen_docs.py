@@ -29,6 +29,11 @@ SITE = os.path.dirname(HERE)                # website/
 DOCS = os.path.join(SITE, "docs")           # website/docs/
 REPO = os.path.dirname(SITE)                # 仓库根
 
+# 顶栏主 logo（方案戊「怀中印」内联片段·权威源=assets/brand/logo-内联.svg·844）
+with io.open(os.path.join(SITE, "assets", "brand", "logo-内联.svg"),
+             encoding="utf-8") as _f:
+    LOGO_SVG = _f.read().strip()
+
 # ---------------------------------------------------------------- 数据装载
 sys.path.insert(0, HERE)
 import docs_data_core      # noqa: E402
@@ -67,7 +72,7 @@ GEN_PAGES = (
 CHAIN = ["stdlib.html", "builtin.html"] + [
     m["文件"] for m in MODULES if m["文件"] != "builtin.html"] + ["cli.html"]
 
-CSS_VER = {"site": 4, "tokens": 2, "hl": 1, "js": 2}   # 改资源必 bump ?v=N
+CSS_VER = {"site": 5, "tokens": 2, "hl": 1, "js": 2}   # 改资源必 bump ?v=N
 
 
 def esc(s):
@@ -185,6 +190,9 @@ def 骨架(题名, 描述, 正文html, 目录项, 当前路径, 页脚导航, �
     } catch (e) {}
   })()
 </script>
+<link rel="icon" href="%s../assets/brand/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="%s../assets/brand/favicon-32.png" sizes="32x32" type="image/png">
+<link rel="icon" href="%s../assets/brand/favicon-16.png" sizes="16x16" type="image/png">
 <link rel="stylesheet" href="%s../assets/tokens.css?v=%d">
 <link rel="stylesheet" href="%s../assets/site.css?v=%d">
 </head>
@@ -192,7 +200,7 @@ def 骨架(题名, 描述, 正文html, 目录项, 当前路径, 页脚导航, �
 
 <header class="顶栏">
   <div class="容器 顶栏-内">
-    <a class="标识" href="%s">CN<span class="标识-点">·</span>语言</a>
+    <a class="标识" href="%s">%sCN<span class="标识-点">·</span>语言</a>
     <button class="导航-开关" data-导航钮 aria-expanded="false">菜单</button>
     <nav class="导航" aria-label="站点导航">
       <a href="%s">首页</a>
@@ -259,11 +267,12 @@ def 骨架(题名, 描述, 正文html, 目录项, 当前路径, 页脚导航, �
 </footer>
 
 <script src="%s../assets/cn-highlight.js?v=%d"></script>
-<script src="%ssite.js?v=%d"></script>
+<script src="%s../assets/site.js?v=%d"></script>
 </body>
 </html>
-''' % (题名, 描述, rel, CSS_VER["tokens"], rel, CSS_VER["site"],
+''' % (题名, 描述, rel, rel, rel, rel, CSS_VER["tokens"], rel, CSS_VER["site"],
        rel + "../" if rel else "../",  # 标识→站点根
+       LOGO_SVG,                       # 顶栏主 logo（内联·双主题 tokens 自适应）
        rel + "../", rel, a("getting-started.html"), a("reference/"),
        a("stdlib.html"), rel + "../os/" if rel else "../os/",
        "".join(侧栏), 正文html, nav, toc,

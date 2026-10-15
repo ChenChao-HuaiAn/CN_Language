@@ -5,6 +5,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>CN · 任务看板</title>
+<!-- favicon=brand/favicon.svg 的 data URI（部署内联单文件·无独立静态路由可引） -->
+<link rel="icon" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA1MTIgNTEyIj4KICA8IS0tIENOIOivreiogOS4uyBsb2dvIMK3IOaWueahiOaIiuOAjOaAgOS4reWNsOOAjcK3IOa1heW6lS/pgJrnlKjniYggLS0+CiAgPCEtLSBDIOaAgOaKseOAjOS4reOAjeWtl+WNsO+8mkMg57O76aqo5p625om/6L295Lit5paH6K+t5LmJIC0tPgogIDxwYXRoIGQ9Ik0gMjMyIDE1OCBIIDE0OCBRIDkyIDE1OCA5MiAyMTQgViAyOTggUSA5MiAzNTQgMTQ4IDM1NCBIIDIzMiIKICAgICAgICBmaWxsPSJub25lIiBzdHJva2U9IiMyMjFGMTgiIHN0cm9rZS13aWR0aD0iNDYiLz4KICA8cGF0aCBkPSJNIDI5MiAzNTQgViAxNTggTCA0MjAgMzU0IFYgMTU4IgogICAgICAgIGZpbGw9Im5vbmUiIHN0cm9rZT0iIzIyMUYxOCIgc3Ryb2tlLXdpZHRoPSI0NiIgc3Ryb2tlLWxpbmVqb2luPSJiZXZlbCIvPgogIDxnIHRyYW5zZm9ybT0idHJhbnNsYXRlKDExOC41IDE4OS41KSBzY2FsZSgwLjI2KSI+CiAgICA8cmVjdCB4PSI0OCIgeT0iNDgiIHdpZHRoPSI0MTYiIGhlaWdodD0iNDE2IiByeD0iNTYiIGZpbGw9IiNBRDJGMjIiLz4KICAgIDxyZWN0IHg9IjE1NiIgeT0iMTgwIiB3aWR0aD0iMjAwIiBoZWlnaHQ9IjE1MiIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjRkNGQUY2IiBzdHJva2Utd2lkdGg9IjM0Ii8+CiAgICA8cmVjdCB4PSIyMzkiIHk9IjEwNiIgd2lkdGg9IjM0IiBoZWlnaHQ9IjMwMCIgZmlsbD0iI0ZDRkFGNiIvPgogIDwvZz4KPC9zdmc+Cg==">
 <link rel="stylesheet" href="/tokens.css">
 <link rel="stylesheet" href="/board.css">
 </head>
@@ -15,7 +17,7 @@
      另修类名缺陷：钮窄 是单类名匹配不上 .钮.窄——改正为 窄，紧凑按钮样式首次真正生效 -->
 <header class="顶栏">
   <span id="状态灯" class="灯 断" aria-hidden="true"></span>
-  <h1>CN · 任务看板 <span class="淡">／ 三机实时·服务端唯一台账</span></h1>
+  <h1><svg class="标识-图" viewBox="0 0 512 512" aria-hidden="true"><path d="M 232 158 H 148 Q 92 158 92 214 V 298 Q 92 354 148 354 H 232" fill="none" stroke="var(--color-fg, #221F18)" stroke-width="46"/><path d="M 292 354 V 158 L 420 354 V 158" fill="none" stroke="var(--color-fg, #221F18)" stroke-width="46" stroke-linejoin="bevel"/><g transform="translate(118.5 189.5) scale(0.26)"><rect x="48" y="48" width="416" height="416" rx="56" fill="var(--color-accent, #AD2F22)"/><rect x="156" y="180" width="200" height="152" fill="none" stroke="var(--color-accent-fg, #FCFAF6)" stroke-width="34"/><rect x="239" y="106" width="34" height="300" fill="var(--color-accent-fg, #FCFAF6)"/></g></svg>CN · 任务看板 <span class="淡">／ 三机实时·服务端唯一台账</span></h1>
   <div class="顶栏元行">
     <span id="元信息">连接中…</span>
     <label class="自动刷新" title="自动刷新默认关闭（388 用户令：防打断阅读）——开启后每 8 秒更新">
