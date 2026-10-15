@@ -583,6 +583,18 @@ std::string IRGenerator::indexAssignElemType(AssignmentExpr* node) {
                 targetType = mapType(types::pointeeOf(st));
                 elemResolved648 = true;
             }
+        } else if (un->operand->getType() == NodeType::MemberExpr) {
+            // 813（2026-10-16·655 复核轮写面余量）：解引用写目标操作数=成员链
+            //   （*b.游标 = v）——元素类型=字段指针类型 pointee，与读侧 pointer
+            //   PointeeSrcType MemberExpr 分支（655 ④d 同口径）对称；修前仅认
+            //   标识符操作数 -> 合法成员链写被 648 显形诊断误伤（宿主拒绝 vs
+            //   v2 放行分叉·v2 侧同轮已修 解引用所指宽度码813 单点）。
+            const std::string fieldType = memberFieldSrcType(
+                static_cast<MemberExpr*>(un->operand.get()));
+            if (types::isPointer(fieldType)) {
+                targetType = mapType(types::pointeeOf(fieldType));
+                elemResolved648 = true;
+            }
         }
         // 648 归档：解引用目标操作数非指针/非标识符=上游语义层已报错之恢复路径，
         //   不报错，i64 兜底仅为恢复路径。
