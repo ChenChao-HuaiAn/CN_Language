@@ -357,6 +357,15 @@ void IRGenerator::resolveDeclTypesAndAlloc(VarDecl* node, DeclGenCtx& ctx) {
             irType = mapType(node->initializer->semanticType);
             // 推断结果同步回填 typeName（D1 同款全链一致：srcType/槽/成员链）
             node->typeName = node->initializer->semanticType;
+            // 752（839 每头红根治）：推断声明的 srcType 同步回填——与 485
+            //   fnptr 分支同款漏点：原只回填 typeName（srcType 已在函数头
+            //   取值时 typeName 尚空=空串）→ registerVarSlots 的 isI128
+            //   判定为假 → 1 槽登记（$s1 高半槽缺失）→ varSlotOf("名$s1")
+            //   miss 回 0 拼出 [x29,#0] 野写帧头（x64 侧靠 316-a 第二轮
+            //   补登记兜底掩盖；arm64 无兜底=839 逃逸闭包 128 返回 qemu
+            //   segfault 实锤）。回填后 2 槽登记走正规路径，后端兜底幂等。
+            srcType = substGenericType(node->typeName);
+            srcTypeRaw = node->typeName;
         }
     }
     // 分配变量槽（数组自动多槽：registerVarSlots 按数组长度预留）

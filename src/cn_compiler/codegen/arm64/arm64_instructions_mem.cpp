@@ -225,13 +225,18 @@ void Arm64CodeGenerator::emitPtrLoadStore(Arm64AsmWriter& writer,
             //   extra 可为纯十进制（含负号），64 位解析视角会截断符号；
             //   统一走 parseInt128InitText 128 位解析（范围按 type），
             //   emitMovImm movz/movk 分段装载。
+            // 752（802 每头红根治）：原直写硬编码 [x9]——D8（457-a）地址源
+            //   直读后 addr 可能为物理寄存器（静态符号装载进 x19 等），x9 未
+            //   初始化=野写地址 segfault（802 静态 128 槽写 qemu -11 实证）；
+            //   对齐 x64 483-a 同族漏点补修与本人非常量分支（本就 ["+addr+"]）
+            //   ——两处 [x9] 改直读 addr。
             unsigned long long lo = 0, hi = 0;
             const bool ok = types::parseInt128InitText(
                 inst.operands[1].extra, type == "i128", lo, hi);
             emitMovImm(writer, "x10", ok ? lo : 0);
-            writer.line("str x10, [x9]");
+            writer.line("str x10, [" + addr + "]");
             emitMovImm(writer, "x10", ok ? hi : 0);
-            writer.line("str x10, [x9, #8]");
+            writer.line("str x10, [" + addr + ", #8]");
             return;
         }
         const int srcHiId = inst.operands[1].id;

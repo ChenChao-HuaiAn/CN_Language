@@ -380,10 +380,15 @@ void Arm64CodeGenerator::emitIntBinary(Arm64AsmWriter& writer,
             // 窄型有符号：结果域 cmp（i8: [-128,127]；i16: [-32768,32767]）
             // 736 返工三（qemu 逐例定音）：运算在 32 位 w 域——窄和真值
             //   ∈[-65536,65534] fits 32 位无截断，域 cmp 直接对 w 有符号视：
-            //   ①cmp #hi / b.le 过（域内正值+全部负域——负值有符号视 ≤hi）
-            //   ②不过=>hi=正溢出直接落错误 ③cmn #-lo / b.ge 过（≥-lo 负域
-            //   内精判·-32769 起落错误）——四区间逐例完备（正溢 32768 走②
-            //   ·负溢 -32769 走③·两界含值走 ok）。w12 与 x9/x10/x11 无冲突。
+            //   ①cmp #hi / b.gt 错（>hi=正溢出）②cmn #-lo / b.ge 过
+            //   （≥lo 负域内精判）③顺序落入=<lo 负溢出错。四区间逐例完备
+            //   （正溢 32768 走①·负溢 -32769 走③·两界含值走②）。w12 与
+            //   x9/x10/x11 无冲突。
+            // 752（777/870 每头红根治）：原序「b.le okS + b errL」——负值
+            //   （含 32 位域 -129 等域外负值）全被 b.le 放行 → 负溢出永不可
+            //   达（cmn 段死码·777 -128-1 退 0 实锤）；修为 x64 同构序
+            //   （jg 错 / cmn 后 jge 过 / 顺序落入错——升窄对拍 semantic 判
+            //   据不动）。
             const std::string okS = "Lovf_ok" + std::to_string(ptrCheckCounter_++);
             const std::string errL = "Lovf" + std::to_string(ptrCheckCounter_ - 1);
             const long long hi = (srcType == "i8") ? 127 : 32767;
@@ -394,8 +399,7 @@ void Arm64CodeGenerator::emitIntBinary(Arm64AsmWriter& writer,
             } else {
                 writer.line("cmp " + res + ", #" + std::to_string(hi));
             }
-            writer.line("b.le " + okS);
-            writer.line("b " + errL);            // >hi = 正溢出
+            writer.line("b.gt " + errL);         // >hi = 正溢出
             // cmn 负界 -lo（128/32768）：32768=8<<12 在移位窗内可直发
             writer.line("cmn " + res + ", #" + std::to_string(-lo));
             writer.line("b.ge " + okS);          // ≥lo 域内（含 -lo 本值 Z=1）

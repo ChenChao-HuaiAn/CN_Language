@@ -851,6 +851,49 @@ std::string Arm64CodeGenerator::generateFunctionAssembly(const ir::IRFunction& f
             }
         }
     }
+    // 752（839 每头红根治·三后端零分叉）：**第二轮补登记**——必须在上述
+    //   Alloca 全部完成后（多槽变量的 $sN 与基名邻接序是结构体/数组
+    //   「基址+字段偏移」寻址的隐含 ABI，指令流内提前登记会打乱相对布局
+    //   ——同 x64 316-a 纪律）。x64 侧 316-a 已补「Store.extra + $s1 高半
+    //   槽」两步，arm64 遗漏——i128 变量高半槽 $s1 未登记时
+    //   emitLoadStore/emitIntBinary 等 varSlotOf(name+"$s1") miss 回 0
+    //   拼出 [x29,#0] 野写帧头（保存的 x19）→ 839 逃逸闭包 128 返回
+    //   qemu segfault（崩溃现场 X19=垃圾值实证）。只补仍无槽者，新槽
+    //   追加最深偏移：
+    //   ①Store.extra 存储目标名（-O3 SSA 使用点重写的汇合临时无 Alloca）；
+    //   ②128 位名的高半槽 $s1（无邻接依赖·该面由 Alloca 段保证）。
+    for (auto& block : function.blocks) {
+        for (auto& inst : block->instructions) {
+            const bool inst128 = (inst.type == "i128" || inst.type == "u128");
+            if (inst.opcode == ir::Opcode::Store && !inst.extra.empty() &&
+                varSlots_.find(inst.extra) == varSlots_.end()) {
+                registerVarSlot(inst.extra);
+            }
+            const auto ensureS1 = [this](const std::string& name) {
+                if (varSlots_.find(name + "$s1") == varSlots_.end()) {
+                    registerVarSlot(name + "$s1");
+                }
+            };
+            if (inst.opcode == ir::Opcode::Load || inst.opcode == ir::Opcode::Store ||
+                inst.opcode == ir::Opcode::Copy) {
+                if (inst.opcode == ir::Opcode::Store && !inst.extra.empty() && inst128) {
+                    ensureS1(inst.extra);
+                }
+                for (const auto& v : inst.operands) {
+                    if (v.id < 0 && !v.extra.empty() && !v.isConstant &&
+                        (inst128 || v.type == "i128" || v.type == "u128")) {
+                        ensureS1(v.extra);
+                    }
+                }
+                if (inst.result.id < 0 && !inst.result.extra.empty() &&
+                    !inst.result.isConstant &&
+                    (inst128 || inst.result.type == "i128" ||
+                     inst.result.type == "u128")) {
+                    ensureS1(inst.result.extra);
+                }
+            }
+        }
+    }
     // 阶段C（Task 4.4）：调试信息收集器初始化（源码位置注释）
     // 注释前缀（"// "）由 Arm64AsmWriter::comment 统一添加，收集器只存纯文本
     debugInfo_ = debuginfo::DebugInfoCollector();
