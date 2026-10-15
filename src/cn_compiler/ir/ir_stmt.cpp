@@ -11,6 +11,7 @@
 #include <utility>
 
 #include "cn_compiler/ir/ir.hpp"
+#include "cn_compiler/ir/ir_string_temp_util.hpp"
 #include "cn_compiler/model/semantic_view.hpp"
 #include "cn_compiler/model/type_system.hpp"
 
@@ -32,16 +33,18 @@ void IRGenerator::visitExprStmt(ExprStmt* node) {
     //       此处再拦一手防判定面演化回归；字符串释放 返回空类型无串可释）。
     // 663（2026-10-14·任务 663）：语句位二元连接产物析构——645 面只覆盖调用
     //   返回形态（CallExpr），`"a"+甲;` 二元连接产物同为堆串（连接三路径
-    //   ptr+ptr/串+标量/整128 均发射 __cn_str_concat）语句位同样零释放
-    //   （探针 923 实锤：百轮净泄 100）。判定=定义点溯源 isConcatResultReg：
-    //     · 连接产物唯一定义符号 __cn_str_concat，指针算术/标量算术/比较
-    //       产物定义非该符号=天然排除（free=UB 禁入）；
+    //   ptr+ptr/串+标量/整128 均发射 __cn_str_concat；728o 融合路径产物=
+    //   __cn_strbuf_finish·758 附属扩集同收）语句位同样零释放
+    //   （探针 923 实锤：百轮净泄 100）。判定=定义点溯源 isConcatResultInst：
+    //     · 连接产物唯一定义符号 __cn_str_concat/__cn_strbuf_finish，指针算术/
+    //       标量算术/比较产物定义非该符号集=天然排除（free=UB 禁入）；
     //     · 赋值/声明位不进本通道（表达式语句分支独占），无双重释放面。
     if (node->expr->getType() == NodeType::BinaryExpr) {
         const BinaryExpr* bin = static_cast<const BinaryExpr*>(node->expr.get());
         if (bin->op == Operator::Add && discarded.type == "ptr" &&
-            isConcatResultReg(discarded)) {
-            emitRegStringFree(discarded, node->location);
+            isConcatResultInst(currentBlock_, discarded.id)) {
+            // 663：拥有串释放公共发射点直写（emitRegStringFree 成员壳随 hpp 腾行降级·全链同款直写）
+            emit(ir::Opcode::Call, {discarded}, ir::IRValue(), "__cn_str_free", "void", node->location);
         }
         return;
     }
@@ -58,35 +61,12 @@ void IRGenerator::visitExprStmt(ExprStmt* node) {
         if (!ownRet && isOwnedStringBuiltin(calleeId->name)) ownRet = true;
     }
     if (!ownRet) return;
-    emitRegStringFree(discarded, node->location);
+    // 645：语句位弃串释放直写（emitRegStringFree 成员壳随 hpp 腾行降级·663 提炼点回收直写）
+    emit(ir::Opcode::Call, {discarded}, ir::IRValue(), "__cn_str_free", "void", node->location);
 }
-// 663（2026-10-14）：裸寄存器拥有串释放直调公共发射点（事不过三提炼·调用面
-//   见 ir_generator.hpp 注释）。
-void IRGenerator::emitRegStringFree(const ir::IRValue& v, const SourceLocation& loc) {
-    emit(ir::Opcode::Call, {v}, ir::IRValue(), "__cn_str_free", "void", loc);
-}
-// 663（2026-10-14）：定义点溯源——寄存器 SSA id 唯一（regCounter_ 单调递增），
-//   倒序首条同 id 定义即唯一写入点；id<0=变量/常量形态非寄存器直退；当前块
-//   找不到（跨块形态：语句位顶层不会经短路分块产生连接产物）=false=保守不
-//   free（漏放不误放）。
-// 758 附属（2026-10-15）：判定符号集扩 __cn_strbuf_finish——728o 连接链融合
-//   （链长≥3）把连接产物定义符号由 __cn_str_concat 改写为 __cn_strbuf_finish
-//   （唯一返回堆串的 strbuf 符号·new=句柄 i64/append=void/drop=弃置），旧单
-//   符号判定使融合产物逃逸 645/663 语句位与 758 比较面全部收口（946 缺①③
-//   rc=26·987 缺⑤ rc=15 实锤）。扩集后两符号产物同面收口，strbuf 其余符号
-//   不在集=无误伤面。
-bool IRGenerator::isConcatResultReg(const ir::IRValue& v) const {
-    if (currentBlock_ == nullptr || v.id < 0) return false;
-    const auto& insts = currentBlock_->instructions;
-    for (auto it = insts.rbegin(); it != insts.rend(); ++it) {
-        if (it->result.id == v.id) {
-            return it->opcode == ir::Opcode::Call &&
-                   (it->extra == "__cn_str_concat" ||
-                    it->extra == "__cn_strbuf_finish");
-        }
-    }
-    return false;
-}
+// 判据与发射实现降级注记（758 附属）：isConcatResultReg/freeIfConcatTemp/emitRegStringFree
+//   三个成员壳随 hpp 1000 冻结线腾行降级删除——判据=ir_string_temp_util.hpp 纯自由
+//   函数 isConcatResultInst；释放发射=调用点直写 emit（__cn_str_free 单指令直调）。
 void IRGenerator::visitReturnStmt(ReturnStmt* node) {
     if (node->value != nullptr) {
         inReturnExpr_ = true;   // 100（939）：返回值盒移交调用方（盒副本登记豁免）

@@ -16,6 +16,7 @@
 #include <cstdio>
 
 #include "cn_compiler/ir/ir.hpp"
+#include "cn_compiler/ir/ir_string_temp_util.hpp"
 #include "cn_compiler/model/semantic_view.hpp"
 #include "cn_compiler/model/type_system.hpp"
 
@@ -483,8 +484,14 @@ bool IRGenerator::genStringCompareBinary(BinaryExpr* node, const ir::IRValue& le
         //   三判定面之外=每语句净泄 2（百轮泄 200·758 立案实录）。消费点
         //   单点收口（与 732 生成点收口同哲学）；定义点溯源守卫=仅拼接产物
         //   寄存器（变量 load/转换临时/字面量天然排除防误伤）。
-        freeIfConcatTemp(left, node->location);
-        freeIfConcatTemp(right, node->location);
+        //   freeIfConcatTemp 展开形态（758 附属：成员壳随 hpp 腾行降级删除
+        //   ——守卫=ptr 寄存器+isConcatResultInst 定义点溯源·两调用点同构）。
+        if (left.type == "ptr" && isConcatResultInst(currentBlock_, left.id)) {
+            emit(ir::Opcode::Call, {left}, ir::IRValue(), "__cn_str_free", "void", node->location);
+        }
+        if (right.type == "ptr" && isConcatResultInst(currentBlock_, right.id)) {
+            emit(ir::Opcode::Call, {right}, ir::IRValue(), "__cn_str_free", "void", node->location);
+        }
         if (node->op == Operator::EqualEqual) {
             lastExpr_ = eq;
         } else {
@@ -496,8 +503,12 @@ bool IRGenerator::genStringCompareBinary(BinaryExpr* node, const ir::IRValue& le
     ir::IRValue ord = emitResult(ir::Opcode::Call, {left, right}, "i64",
                                  "__cn_str_cmp", node->location);
     // 758：四序比较符（</<=/>/>=）同面收口（__cn_str_cmp 消费·同 eq 注释）
-    freeIfConcatTemp(left, node->location);
-    freeIfConcatTemp(right, node->location);
+    if (left.type == "ptr" && isConcatResultInst(currentBlock_, left.id)) {
+        emit(ir::Opcode::Call, {left}, ir::IRValue(), "__cn_str_free", "void", node->location);
+    }
+    if (right.type == "ptr" && isConcatResultInst(currentBlock_, right.id)) {
+        emit(ir::Opcode::Call, {right}, ir::IRValue(), "__cn_str_free", "void", node->location);
+    }
     ir::IRValue zero = ir::IRValue::constant("0", "i64");
     ir::Opcode cmpOp = (node->op == Operator::Less) ? ir::Opcode::Lt
                      : (node->op == Operator::Greater) ? ir::Opcode::Gt
@@ -511,19 +522,10 @@ bool IRGenerator::genStringCompareBinary(BinaryExpr* node, const ir::IRValue& le
 // 728o：族实现已拆出 src/cn_compiler/ir/ir_expr_concat.cpp（按族拆分——该文件
 //   同时承载连接链融合 pass）；调用点（visitBinaryExpr）与声明（ir_generator.hpp）
 //   不变。拆分=纯机械搬移 + 数值转换段提取共享助手，行为零变更。
-
-// 732（2026-10-14）：嵌套连接中间产物消费即释判定点——寄存器定义点溯源命中
-//   __cn_str_concat（连接产物·拥有契约·消费后零引用）即语句内立即 free。
-//   形态守卫：非 ptr 寄存器（标量/布尔产物）直退；变量 load/转换临时（from_*
-//   已在 663 收口）定义符号非连接调用=天然排除（防双释放防误伤同 663 带）。
-//   跨块形态（当前块无定义）=保守不 free（漏放不误放·与 isConcatResultReg
-//   同带）。框架级评估结论见 genStringConcatBinary 732 注释（清单框架不引入
-//   ——消费者唯一确定·AI 裁决留痕）。
-void IRGenerator::freeIfConcatTemp(const ir::IRValue& v, const SourceLocation& loc) {
-    if (v.type == "ptr" && isConcatResultReg(v)) {
-        emitRegStringFree(v, loc);
-    }
-}
+// 758 附属（2026-10-15）：freeIfConcatTemp 成员壳随 hpp 腾行降级删除——守卫
+//   逻辑（ptr 寄存器+isConcatResultInst 定义点溯源）已在 758 比较位调用点
+//   展开形态（genStringCompareBinary 内·逐指令等价）；判据实现=
+//   ir_string_temp_util.hpp 纯自由函数（全注在该头）。
 
 // ==================== 族④：指针算术（Task 2.4） ====================
 // （原 480~515 段）ptr ± 整型 -> 指针（偏移量×元素大小）。true = 已处理。

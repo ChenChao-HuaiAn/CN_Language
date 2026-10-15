@@ -105,12 +105,6 @@ public:
     void emitChainSegAppend(const ir::IRValue& handle, Expr* segAst,
                             const ir::IRValue& segVal,
                             const SourceLocation& loc);
-    // 663（2026-10-14）：弃值寄存器定义点溯源=定义是否 __cn_str_concat 连接调用（语句位二元连接析构判定面·全注见实现处）。
-    bool isConcatResultReg(const ir::IRValue& v) const;
-    // 663：裸寄存器拥有串释放直调公共发射点（645/663 收口族共用·全注见实现处）。
-    void emitRegStringFree(const ir::IRValue& v, const SourceLocation& loc);
-    // 732（2026-10-14）：嵌套连接中间产物消费即释——定义点溯源命中即 free（守卫同 isConcatResultReg·全注见实现处）。
-    void freeIfConcatTemp(const ir::IRValue& v, const SourceLocation& loc);
     // 族④：指针算术 ptr ± 整型 -> 指针（偏移量×元素大小）。true = 已处理。
     bool genPointerArithmetic(BinaryExpr* node, const ir::IRValue& left,
                               const ir::IRValue& right);
