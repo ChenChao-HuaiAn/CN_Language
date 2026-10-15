@@ -480,6 +480,30 @@ bool IRGenerator::handleClassFieldAssign(IdentifierExpr* ident, Expr* value,
             }
         }
     }
+    // 644-b（2026-10-16·52_library 云端红根治·宿主/v2 同构）：字符串实例字段
+    //   直访赋值（方法/构造体内裸字段名=隐式 this）79-a 同款来源分级归一化——
+    //   原形态 genExpr 产物句柄直存（StorePtr 裸写）=字段接管右值句柄。与 644
+    //   传参位串临时 flush 冲突（探针 p3/p8 铁证）：构造器 ISBN编号 = 编号
+    //   句柄直存 + 调用方 flush = 字段悬空（52_library 三本图书 ISBN 全空）；
+    //   基线则靠「调用方不 flush」侥幸配对（每调用净泄 1·644 立项原病）。
+    //   归一化后字段独立拥有（79-a 立法：零共享零悬垂零泄漏·与 自身.字段 =
+    //   显式形态 memberStringFieldAssign 同构）：字面量=驻留直存（释放侧空
+    //   安全）；拥有返回调用=接管直存（新串无主）；其余（形参/局部/成员链
+    //   借出）=__cn_str_copy 落堆深拷。旧值释放：非构造内=emitFieldStringFreeAt
+    //   幂等清槽（重赋值语义·字段槽 calloc 零初始化+空安全双保险）；构造内=
+    //   初始化语义豁免（145-a 同规：目标槽未初始化不 preFree）。归一化在释放
+    //   前——自赋值 新值已独立于旧句柄。
+    if (!isCompoundAssignOp(op) && types::canonical(fieldType) == "字符串") {
+        val = normalizeStringValueSource(value, val, loc);
+        ir::IRValue strFieldAddr = genInstanceFieldAddr(ident->name, loc);
+        if (!currentMethodIsCtor_) {
+            emitFieldStringFreeAt(strFieldAddr, loc);
+        }
+        emit(ir::Opcode::StorePtr, {strFieldAddr, val}, ir::IRValue(), "",
+             "ptr", loc);
+        lastExpr_ = val;
+        return true;
+    }
     ir::IRValue addr = genInstanceFieldAddr(ident->name, loc);
     // 915-a（任务 084·与 memberGenericAssign:276 同构）：复合赋值先读旧值
     //   再算（原丢读取侧——方法体裸字段 `存量 += n` 实测存 n 应 存量+n）
