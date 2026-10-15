@@ -766,6 +766,17 @@ private:
     //   实例化点。emitClassMethod 序言与 emitConstructorCall 共用（ir_oop.cpp）。
     void emitBaseCtorChain(const std::string& className,
                            const ir::IRValue& thisVal, const SourceLocation& loc);
+
+    // 775（甲案·2026-10-15 用户裁决）：实例字段默认值注入——对 layerClass 的
+    //   本层字段（ownerClass==layerClass·defaultInitText 非空）逐字段写默认值；
+    //   偏移按 objClass 布局查（派生对象上注入基类层时 objClass=派生类）。
+    //   注入点=声明创建（genClassDefaultConstruct·全链）/显式构造（emitCtorInvoke
+    //   ·本类层）/基类构造链（emitBaseCtorChain·逐层）——顺序=默认值先、显式
+    //   赋值（构造体）随后覆盖（C++ NSDMI 语义）。
+    void emitClassFieldDefaults(const std::string& layerClass,
+                                const std::string& objClass,
+                                const ir::IRValue& objPtr,
+                                const SourceLocation& loc);
     // 123（930·用户裁决甲）：拷贝构造基类链——派生类用户拷贝构造序言自动拷
     //   基类部分（祖先用户拷贝构造 Call / 祖先自有字段逐拷 walk-up）；
     void emitBaseCopyChain(const ClassMember* member);

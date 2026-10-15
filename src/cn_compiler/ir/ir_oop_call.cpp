@@ -468,6 +468,9 @@ void IRGenerator::emitCtorInvoke(CallExpr* node, const std::string& className,
                                  const ClassMemberInfo* ctor, const ir::IRValue& obj) {
         // 构造体 Call：符号 = 类名$构造sigKey，实参 = [obj(this)] + 实参
         //   （构造实参不是容器元素所有权入口——不做入容器位归一化）
+        // 775（甲案·2026-10-15 用户裁决）：本类层字段默认值注入——构造体
+        //   （Call）执行前写入，构造体内显式赋值随后覆盖（C++ NSDMI 语义）。
+        emitClassFieldDefaults(className, className, obj, node->location);
         std::vector<ir::IRValue> args;
         args.push_back(obj);  // this（对象指针）
         std::vector<ir::IRValue> userArgs =

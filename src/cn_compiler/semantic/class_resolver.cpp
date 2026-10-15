@@ -83,6 +83,51 @@ std::string foldClassStaticInit(const Expr* init, const std::string& fieldType,
     return "";
 }
 
+// 775（甲案·2026-10-15 用户裁决）：类实例字段声明初始化器折叠——构造期生效。
+//   起步面（甲案实施细节·AI 裁决留痕）：整数（±符号链·规范十进制文本）与布尔
+//   字面量（"1"/"0"）——与 468 静态面同口径收敛（域检查复用 isStaticScalarInitType）；
+//   浮点/字符/字符串/常量名/表达式=语义期拒绝（errorOut 非空）——指路构造函数
+//   赋值（显式赋值优先于默认值），后续轮按需放宽。纯函数无诊断副作用。
+std::string foldClassInstanceInit(const Expr* init, const std::string& fieldType,
+                                  std::string& errorOut) {
+    const Expr* folded = init;
+    int sign = 1;
+    bool pureSignChain = true;
+    while (folded->getType() == NodeType::UnaryExpr) {
+        const auto* un = static_cast<const UnaryExpr*>(folded);
+        if (un->postfix) { pureSignChain = false; break; }
+        if (un->op == Operator::Subtract) {
+            sign = -sign;
+        } else if (un->op != Operator::Add) {
+            pureSignChain = false;
+            break;
+        }
+        folded = un->operand.get();
+    }
+    if (pureSignChain && folded->getType() == NodeType::IntegerLiteral) {
+        const auto* lit = static_cast<const IntegerLiteral*>(folded);
+        const std::string canon = types::canonical(fieldType);
+        if (types::isInt128Type(canon)) {
+            return std::string(sign < 0 ? "-" : "") + lit->raw;
+        }
+        if (types::isStaticScalarInitType(canon)) {
+            const std::int64_t v = static_cast<std::int64_t>(sign) * lit->value;
+            return std::to_string(v);
+        }
+        errorOut = "整数字面量默认值不适用于字段类型 '" + fieldType + "'";
+        return "";
+    }
+    if (init->getType() == NodeType::BoolLiteral) {
+        if (types::isStaticScalarInitType(types::canonical(fieldType))) {
+            return static_cast<const BoolLiteral*>(init)->value ? "1" : "0";
+        }
+        errorOut = "布尔字面量默认值不适用于字段类型 '" + fieldType + "'";
+        return "";
+    }
+    errorOut = "仅整数/布尔字面量可作实例字段默认值（起步面）";
+    return "";
+}
+
 }  // namespace
 
 // ==================== 类型名查询（供 IR 层复用） ====================
@@ -579,6 +624,23 @@ void SemanticAnalyzer::collectClassMembers(ClassDecl* node, ClassInfo& info) {
                             "' 声明初始化器不支持：" + foldErr +
                             "（加载期直存面·001 §静态成员）——请在构造函数或"
                             "主入口赋值（运行期读写链全形态生效）");
+                }
+            }
+            // 775（甲案·2026-10-15 用户裁决甲）：非静态（实例）字段声明初始化器
+            //   =构造期生效（构造序言逐字段写默认值·显式构造赋值覆盖·C++ NSDMI
+            //   同构）。起步面=整数（±符号链）/布尔字面量（与 468 静态面同构）；
+            //   浮点/字符/字符串/常量名/表达式诊断拒绝（指路构造函数赋值）。
+            else if (!member->isStatic && member->initializer != nullptr) {
+                std::string foldErr;
+                mi.defaultInitText = foldClassInstanceInit(
+                    member->initializer.get(), mi.type, foldErr);
+                if (!foldErr.empty()) {
+                    diagnostics_.report(
+                        DiagnosticLevel::Error, member->location,
+                        "类 '" + node->name + "' 字段 '" + mi.name +
+                            "' 默认值不支持：" + foldErr +
+                            "——请在构造函数中赋值（显式赋值优先于默认值·"
+                            "001 §5.6 用户裁决 2026-10-15 甲）");
                 }
             }
             if (info.fields.find(mi.name) != info.fields.end()) {

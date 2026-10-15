@@ -631,16 +631,13 @@ bool Parser::parseFieldMember(ClassMember& out) {
             reportErrorHere("类字段预期名称");
             return false;
         }
-        // 字段初始值（= 表达式）。775（762 呈报·乙案双侧对齐）：实例字段
-        //   初始化器显式拒绝——原缺陷=此处无条件接受填 ClassMember.initializer
-        //   而 semantic/IR 全链零消费=静默错值（探针 `整32 基 = 100;` 实测
-        //   c.加倍() 应 200 得 0·基=0）。静态字段初始化器=468 立法面保持放行。
-        //   报错后照常解析初始化器（错误恢复同步·193 抽象带体同款）——Error
-        //   诊断使编译中止，不会进入语义/生成层。
+        // 字段初始值（= 表达式）。775（762 呈报·2026-10-15 用户裁决甲）：实例字段
+        //   初始化器=合法（构造期生效·显式初始化覆盖）——原缺陷=此处接受填
+        //   ClassMember.initializer 而 semantic/IR 全链零消费=静默错值（探针
+        //   `整32 基 = 100;` 实测 c.加倍() 应 200 得 0·基=0）；甲案=乙案拒绝面
+        //   撤销、语义/IR 补默认值消费（起步面=标量常量表达式·见语义层校验）。
+        //   静态字段初始化器=468 立法面不变。
         if (check(TokenType::Equal)) {
-            if (!out.isStatic) {
-                reportErrorHere(kFieldInitRejectDiag);
-            }
             advance();
             if (check(TokenType::LeftBrace)) {
                 out.initializer = parseInitList();

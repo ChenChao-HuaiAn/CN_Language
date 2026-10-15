@@ -384,6 +384,10 @@ void IRGenerator::emitBaseCtorChain(const std::string& className,
                 break;
             }
         }
+        // 775（甲案·2026-10-15 用户裁决）：基类层字段默认值注入——该层构造体
+        //   （或"无自有构造跳过"路径）之前写入；偏移按派生类（className）布局查
+        //   （派生对象上基类字段偏移含接口分派区移位·classFieldOffset 沿链）。
+        emitClassFieldDefaults(anc->name, className, thisVal, loc);
         if (hasOwnCtor) {
             if (zeroArg == nullptr) {
                 // 基类自有构造但无零实参可调版本：C++ 同款硬错误

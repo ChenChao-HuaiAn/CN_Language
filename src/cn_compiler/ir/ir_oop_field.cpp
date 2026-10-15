@@ -778,4 +778,35 @@ bool IRGenerator::handleClassMemberAssign(MemberExpr* target, Expr* valueExpr,
     lastExpr_ = val;
     return true;
 }
+// 775（甲案·2026-10-15 用户裁决）：实例字段默认值注入——layerClass 的本层字段
+//   （ownerClass==layerClass）逐个写 defaultInitText（语义层 468 同构面折叠：
+//   整数规范十进制文本/布尔 "1"/"0"）。偏移按 objClass 布局查（fieldOffset
+//   沿继承链·含虚表/接口分派区调整——派生对象上写基类层字段时 objClass=派生类）；
+//   写宽=字段 IR 类型（窄字段按宽写·emitPtrLoadStore 宽度分派）。声明序输出
+//   （fieldOrder 保序·确定性）。显式构造赋值在构造体内随后覆盖（C++ NSDMI 语义）。
+void IRGenerator::emitClassFieldDefaults(const std::string& layerClass,
+                                          const std::string& objClass,
+                                          const ir::IRValue& objPtr,
+                                          const SourceLocation& loc) {
+    if (semantic_ == nullptr) return;
+    const ClassInfo* ci = semantic_->findClass(layerClass);
+    if (ci == nullptr) return;
+    for (const std::string& fn : ci->fieldOrder) {
+        auto it = ci->fields.find(fn);
+        if (it == ci->fields.end()) continue;
+        const ClassMemberInfo& fm = it->second;
+        if (fm.isStatic || fm.defaultInitText.empty()) continue;
+        if (!fm.ownerClass.empty() && fm.ownerClass != layerClass) continue;
+        const std::string irType = mapType(fm.type);
+        if (irType.empty()) continue;   // 648：类型未登记面在字段访问处显形·注入保守跳过
+        const int offset = semantic_->classFieldOffset(objClass, fn);
+        if (offset < 0) continue;
+        ir::IRValue addr = emitResult(ir::Opcode::FieldAddr, {objPtr}, "ptr",
+                                      std::to_string(offset), loc);
+        ir::IRValue val = emitResult(ir::Opcode::ConstInt, {}, irType,
+                                     fm.defaultInitText, loc);
+        emit(ir::Opcode::StorePtr, {addr, val}, ir::IRValue(), "", irType, loc);
+    }
+}
+
 } // namespace cn_compiler

@@ -679,6 +679,22 @@ void IRGenerator::genClassDefaultConstruct(VarDecl* node, const DeclGenCtx& ctx)
             // 变量槽存对象指针
             emit(ir::Opcode::Store, {obj}, ir::IRValue(), ctx.unique, "ptr",
                  node->location);
+            // 775（甲案·2026-10-15 用户裁决）：实例字段默认值注入——全链逐层
+            //   （顶基类→本类·构造体显式赋值随后覆盖·C++ NSDMI 同构）。无用户
+            //   构造可调时本注入=对象默认值唯一来源；有构造时构造序言/体覆盖。
+            {
+                std::vector<std::string> layerChain;
+                for (const ClassInfo* p = ci; p != nullptr;
+                     p = p->baseName.empty()
+                             ? nullptr
+                             : semantic_->findClass(p->baseName)) {
+                    layerChain.push_back(p->name);
+                }
+                for (auto rit = layerChain.rbegin(); rit != layerChain.rend();
+                     ++rit) {
+                    emitClassFieldDefaults(*rit, canonSrc, obj, node->location);
+                }
+            }
             // 默认构造调用：本类自身声明的无参构造（有则调用，this = 对象指针）
             for (const auto& mk : ci->methods) {
                 if (mk.second.isConstructor && mk.second.hasBody &&
