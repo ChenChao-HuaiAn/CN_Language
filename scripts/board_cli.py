@@ -15,6 +15,7 @@
   python scripts/board_cli.py 覆盖                                 # 覆盖矩阵摘要（缺口=空格）
   python scripts/board_cli.py 领用例号 <用例名> [--说明 "..."] [--号 N]   # E2E 用号领取（554·577 号名配对唯一）
   python scripts/board_cli.py 查用例号 [用例名]                          # 台账查询（建目录前自检·577）
+  python scripts/board_cli.py 补用例名 <号> <用例名>                     # 已发放存量号补配名（811·未配名号专属）
   python scripts/board_cli.py 裁决 --批 <件们.json>                 # 裁决项批量上传（403·AI 侧）
   python scripts/board_cli.py 裁决 --号 379 --标题 "…" --讲解文件 x.md --选项文件 o.json
   python scripts/board_cli.py 裁决看 [--全部]                       # 裁决项一览（缺省只看待裁决）
@@ -305,6 +306,38 @@ def cmd_查用例号(a) -> int:
     return 0
 
 
+def cmd_补用例名(a) -> int:
+    """已发放存量号补配用例名（811）——744 编号权威收权下「已领号未配名」黄提示的
+    补录正路：只对台账「已发放且用例名空」的号配名（不发新号·不违 744）；台账无此号
+    404、已配名 409 拒改（防篡改）、名被占 409（号名配对唯一·577 同判据）。
+    服务不可达硬拒不降级（与领号同口径——台账唯一权威·宁停不裂）。"""
+    号 = (a.号 or "").strip()
+    用例名 = (a.用例名 or "").strip()
+    if not 号 or not 用例名:
+        print("[失败] 号与用例名必填——用法：补用例名 <号> <用例名>"
+              "（只对台账已发放未配名号；新用例请走 领用例号 <用例名>）")
+        return 2
+    体 = {"号": 号, "用例名": 用例名, "机器": 机器名()}
+    try:
+        码, r = 调服务("POST", "/api/case_pair", 体)
+    except OSError as e:
+        print(f"[失败] 看板服务不可达（{e}）——补名硬拒不降级（恢复网络/核对 "
+              f"CN_BOARD_URL 后重试）")
+        return 1
+    if 码 == 404:
+        print(f"[失败] {r.get('错误', '')}")
+        return 1
+    if 码 == 409:
+        print(f"[拒配] {r.get('错误', '')}")
+        return 1
+    if 码 != 200:
+        print(f"[失败] {码} {r.get('错误', r)}")
+        return 1
+    print(f"[补用例名] #{号} ← 「{用例名}」已锁定（号名配对唯一·台账真值）")
+    print("  建目录/改名同步：tests/e2e 对应目录与覆盖矩阵登记名按 README 改号流程核对")
+    return 0
+
+
 def _读文件(路径: str) -> str:
     return Path(路径).read_text(encoding="utf-8")
 
@@ -440,6 +473,11 @@ def main() -> int:
     s = sub.add_parser("查用例号", help="用例号台账查询（建目录前/改号前自检·577）")
     s.add_argument("用例名", nargs="?", default="", help="按用例名子串查；省略=看台账最近 15 行")
     s.set_defaults(f=cmd_查用例号)
+
+    s = sub.add_parser("补用例名", help="已发放存量号补配用例名（811·只对未配名号·已配名不可改）")
+    s.add_argument("号", help="台账已发放未配名的用例号（核验黄提示「已领号未配名」的号）")
+    s.add_argument("用例名", help="用例主题名（配对即锁定·号名绑定唯一）")
+    s.set_defaults(f=cmd_补用例名)
 
     s = sub.add_parser("裁决", help="裁决项上传（AI 侧·批量或单件）")
     s.add_argument("--批", default="")

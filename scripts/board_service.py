@@ -30,6 +30,8 @@
 #   POST /api/task_update     {号,状态?,分支?,收口sha?,归属?,机器?,对话id?,标题?,前置?,优先级?,备注?} 流转
 #                                 （置 🏃 时自动认领上板：机器+对话id 显式·归属串兜底·494）
 #   POST /api/claim_number    308j 发号/核对（382 后仅视野记账价值·任务表已为唯一权威）
+#   POST /api/case_pair       {号,用例名}  811：已发放存量号补配用例名（只对未配名号·
+#                              已配名 409 拒改·台账无此号 404 拒——配名不得变相指定新号）
 # 384 文档资源（交接/教训/规范覆盖·文档上服务器二期·board_docs.py 模块）：
 #   POST /api/handoff_add     {机器,条目,来源?}              交接追加（两行制）
 #   GET  /api/handoff         ?machine=X&limit=N             交接查询（倒序·machine 空=三机混流）
@@ -592,6 +594,10 @@ class 处理器(BaseHTTPRequestHandler):
         if 路径 == "/api/case_number":                 # 554：E2E 用例号发放
             with 写锁:
                 码, 响应 = 台账.领用例号(连接, 体)
+                return self._回JSON(码, 响应)
+        if 路径 == "/api/case_pair":                   # 811：已发放存量号补配用例名
+            with 写锁:
+                码, 响应 = 台账.补配用例名(连接, 体)
                 return self._回JSON(码, 响应)
         # —— 384 文档资源（交接/教训/规范覆盖·POST 须令牌）——
         if 路径 == "/api/handoff_add":

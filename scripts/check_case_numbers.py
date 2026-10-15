@@ -137,7 +137,8 @@ def main() -> int:
         return 1
     if a.strict and 结["提示们"]:
         print(f"[FAIL] --strict：{len(结['提示们'])} 条台账未配名提示按红处理"
-              "（运行 python scripts/case_ledger.py 导入本地 补录）")
+              "（补录：python scripts/board_cli.py 补用例名 <号> <用例名>——"
+              "811 存量补配通道·只对已发放未配名号）")
         return 1
     print("[PASS] 台账核验一致（或无对应行/断网降级）。")
     return 0
