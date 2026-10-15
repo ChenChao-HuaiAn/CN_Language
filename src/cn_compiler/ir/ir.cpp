@@ -421,6 +421,18 @@ std::string IRGenerator::pointerPointeeSrcType(Expr* node) const {
         }
         return "";
     }
+    if (node->getType() == NodeType::CallExpr) {
+        // 813（144_v2 云端红归因·v2 对称面）：解引用调用返回指针
+        //   （*容器.元素(0)）——返回源码类型经 exprSrcType（其 CallExpr 分支
+        //   已支持 resolvedType/函数返回/方法返回三级），指针剥星=pointee。
+        //   修前无 CallExpr 分支恒返 "" → 648 显形诊断误伤合法程序（v2 侧
+        //   修前兜底 T_整64 对 整64* 返回碰巧宽度正确·813 显形后双侧同修）。
+        const std::string retSrc = exprSrcType(node);
+        if (types::isPointer(retSrc)) {
+            return types::pointeeOf(retSrc);
+        }
+        return "";
+    }
     return "";
 }
 // 973（104 根治·读/写/下标消费点统一）：按宿主类型查字段类型——结构体表
