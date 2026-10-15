@@ -538,6 +538,16 @@ class 处理器(BaseHTTPRequestHandler):
             if not re.fullmatch(r"[0-9a-f]{7,40}", sha):
                 return self._回JSON(400, {"错误": "sha 须为 7~40 位 hex"})
             return self._回JSON(200, {"结果": 阶段.取预检详情(sha), "时刻": 时刻()})
+        if 路径 == "/api/gate_result":             # 842：验证红详情代理（失败用例+归因）
+            q = urlparse(self.path).query
+            参数 = dict(p.split("=", 1) for p in q.split("&") if "=" in p)
+            sha = unquote(参数.get("sha", "")).strip()
+            plat = unquote(参数.get("plat", "")).strip()
+            if not re.fullmatch(r"[0-9a-f]{7,40}", sha):
+                return self._回JSON(400, {"错误": "sha 须为 7~40 位 hex"})
+            if plat not in ("win-x64", "linux-x86_64", "linux-arm64"):
+                return self._回JSON(400, {"错误": "plat 须为 win-x64/linux-x86_64/linux-arm64"})
+            return self._回JSON(200, {"结果": 阶段.取门禁详情(sha, plat), "时刻": 时刻()})
         if 路径 == "/api/numbers":
             with 写锁:
                 流水 = [{"号": r[0], "机器": r[1], "对话id": r[2], "描述": r[3], "时刻": r[4]}

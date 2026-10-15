@@ -383,14 +383,17 @@ def linux构建链(步骤们: dict, 步骤) -> None:
         步骤("单测", [str(单测)], 1800)
 
 
-def 静态门禁与e2e段(步骤们: dict, 步骤, cn: Path | None, 日志) -> None:
+def 静态门禁与e2e段(步骤们: dict, 步骤, cn: Path | None, 日志, sha: str) -> None:
     """③.5 静态门禁面+④ E2E（242/447-a/924 原内联于 跑一轮·523 抽出=跑一轮
     拆函数回 ≤100 行）——两平台公共段；cn 产物定位必须先于本段（原赋值在 ④ 段
     晚于引用=UnboundLocalError 必崩·259 修）。逻辑逐行保持原样。
     728t（2026-10-14）：523 抽出时漏传 日志 形参——e2e 并行红打 422 行 [复验] 提示
     行即 NameError 崩轮（wt2/wt3 双实例实录·红轮永不落盘/不上报→服务端 300s 回收
     重派=池算力黑洞第二形态）。修=签名补 日志 + 调用点传参；selftest 加自由名锚
-    （通用·防抽函数漏参族再犯）+ 422 路径冒烟两态。"""
+    （通用·防抽函数漏参族再犯）+ 422 路径冒烟两态。
+    842（2026-10-15）：e2e 命令带 --json 明细（失败用例/期望实际 diff·8300 页面
+    红行详情数据源）——sha 形参供明细文件命名；传参前探 run_e2e 源码防跨版本
+    窗口（新 daemon × 旧头工作树=未知参数假红·详见 e2e支持json）。"""
     for 名, 参 in (("check_spec_coverage", []),   # 243：非 strict（TX_02「指针有效性」存量红=244 修·红不拦兜底轮）
                   ("check_cli_contract", ["--cn", str(cn)]),
                   ("check_asm_width", ["--cn", str(cn)]),
@@ -418,18 +421,68 @@ def 静态门禁与e2e段(步骤们: dict, 步骤, cn: Path | None, 日志) -> N
         #   放行——旧版 ci_daemon（仍传旧名 --allow-heavy）+新 run_e2e 时经环境判据
         #   命中 CI 通道自愈（旧 daemon 部署面池实例三变量在设；TX_02 待部署清单补
         #   systemd Environment 后 daemon 重启生效）。
+        # 842：明细文件先清残留（本轮未跑到 e2e 时读侧不误读旧明细）；同路径串行
+        #   复验轮覆盖并行轮=读到的恒是最终轮（与 步骤们["e2e"] 取最终 rc 同口径）。
+        e2e明细路径 = 日志目录 / ("e2e明细_%s.json" % sha[:10])
+        try:
+            e2e明细路径.unlink()
+        except OSError:
+            pass
+        e2e明细参 = ["--json", str(e2e明细路径)] if e2e支持json() else []
         e2e基 = ([] if 是win else ["nice", "-n", "10"]) + [
             sys.executable, "tests/e2e/run_e2e.py",
             "--target", 平台, "--cn", str(cn),
             "--max-mem-mb", str(保内存),
             "--heavy-ci",
-            "--full-reason", "ci_daemon 云端全量门禁（TX_02/池 runner）"]
+            "--full-reason", "ci_daemon 云端全量门禁（TX_02/池 runner）"] + e2e明细参
         if 步骤("e2e并行", e2e基 + ["--jobs", str(e2e并行)], 单轮总超时秒):
             步骤们["e2e"] = {"rc": 0}
         else:
             print("  [复验] 并行红——--jobs 1 串行复验（447-a 口径）", file=日志, flush=True)
             步骤("e2e串行复验", e2e基 + ["--jobs", "1"], 单轮总超时秒)
             步骤们["e2e"] = {"rc": 步骤们["e2e串行复验"]["rc"]}
+
+
+def e2e支持json() -> bool:
+    """842：run_e2e.py 是否已带 --json——跨版本兼容窗口防护（daemon 自更新先于
+    工作树 reset 到含本改动的 sha 时，向旧版 run_e2e 传未知参数=argparse 报错=
+    e2e 假红）。传参前探源码：探测失败/旧版=不传（结果无 e2e明细·页面降级提示）。"""
+    try:
+        return "--json" in (仓库根 / "tests" / "e2e" / "run_e2e.py").read_text(
+            encoding="utf-8", errors="replace")
+    except OSError:
+        return False
+
+
+def 读e2e明细(路径: Path):
+    """842：读 run_e2e --json 明细（失败用例/期望实际 diff）——缺文件/坏 JSON=None
+    （e2e 未跑/旧版 run_e2e/未传参三态统一降级：页面显示「无明细」·不炸轮不谎报；
+    明细是附加信息，非测量本体）。"""
+    try:
+        return json.loads(路径.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+
+
+def 取提交历史(条数: int = 100) -> list:
+    """842：最近 N 条提交（sha+主题）——develop 验证红归因数据源（8300 页面
+    「自上次绿以来并入」区）。git 失败/异常=空列表（归因是附加信息：缺失时
+    页面降级提示，不炸轮不谎报）。encoding 显式 utf-8（win 默认 locale 解码
+    git 输出的中文提交信息必乱码）。"""
+    try:
+        r = 运行限时(["git", "log", "-%d" % 条数, "--format=%H%x09%s"], 60,
+                     capture_output=True, text=True, encoding="utf-8",
+                     errors="replace", cwd=仓库根)
+        if r.returncode != 0:
+            return []
+        出 = []
+        for 行 in (r.stdout or "").splitlines():
+            部分 = 行.split("\t", 1)
+            if len(部分) == 2:
+                出.append({"sha": 部分[0], "主题": 部分[1]})
+        return 出
+    except Exception:
+        return []
 
 
 def 带门禁锁跑(sha: str, 轮分支: str = "") -> dict | None:
@@ -577,7 +630,7 @@ def 跑一轮(sha: str, 轮分支: str = "") -> dict:
             cn = next((p for p in ([仓库根 / "target/cn.exe", 仓库根 / "target/cn"] if 是win
                                    else [仓库根 / "target/build/cn", 仓库根 / "target/cn"])
                        if p.exists()), None)
-            静态门禁与e2e段(步骤们, 步骤, cn, 日志)
+            静态门禁与e2e段(步骤们, 步骤, cn, 日志, sha)
         尾部 = []
     # 日志尾部摘录进结果（供 TX_01 结果页直显；完整日志在 run_*.log）
     with 轮日志路径.open("r", encoding="utf-8", errors="replace") as f:
@@ -585,7 +638,11 @@ def 跑一轮(sha: str, 轮分支: str = "") -> dict:
     结果 = {"sha": sha, "分支": 轮分支, "平台": 平台, "步骤": 步骤们,
             "绿": 聚合绿(步骤们),
             "总秒": round(time.time() - 开始), "时刻": datetime.now().isoformat(timespec="seconds"),
-            "日志": 轮日志路径.name, "日志尾部": "".join(尾部).splitlines()[-20:]}
+            "日志": 轮日志路径.name, "日志尾部": "".join(尾部).splitlines()[-20:],
+            # 842：失败详情与归因数据（8300 页面红行详情面板）——e2e 未跑/旧版
+            #   run_e2e=null（页面降级提示）；提交历史取不到=[]（归因区降级提示）。
+            "e2e明细": 读e2e明细(日志目录 / ("e2e明细_%s.json" % sha[:10])),
+            "提交历史": 取提交历史()}
     return 结果
 
 

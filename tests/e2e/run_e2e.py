@@ -18,6 +18,7 @@ import argparse
 import atexit
 import ctypes
 import hashlib
+import json
 import os
 import pathlib
 import re
@@ -2236,6 +2237,28 @@ def 打印详情(失败列表: list, 未实现列表: list, 详细: bool) -> Non
         for 名称, 原因 in 未实现列表:
             print(f"  {黄色('!')} {名称}: {原因}")
 
+
+def 写结果JSON(路径, 目标平台, 总数, 通过数, 失败列表, 未实现列表, 跳过数) -> None:
+    """842：机器可读结果落盘（ci_daemon 云端门禁上报 → 8300 页面失败详情数据源）——
+    失败用例含原因全文（编译/运行退出码、期望与实际 diff 逐行）；路径空=不写
+    （缺省行为与无本参数完全一致）。写失败仅警告不改结论（附加输出面·不影响测量）。"""
+    if not 路径:
+        return
+    内容 = {
+        "目标平台": 目标平台,
+        "时刻": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "总计": 总数, "通过": 通过数, "失败": len(失败列表),
+        "未实现": len(未实现列表), "跳过": 跳过数,
+        "失败用例": [{"名称": 名, "原因": 因} for 名, 因 in 失败列表],
+        "未实现用例": [{"名称": 名, "原因": 因} for 名, 因 in 未实现列表],
+    }
+    try:
+        pathlib.Path(路径).write_text(json.dumps(内容, ensure_ascii=False, indent=1),
+                                     encoding="utf-8")
+    except OSError as e:
+        print(红色(f"警告: --json 结果写入失败（{e}）——不影响本次测试结论"))
+
+
 # ============ 入口 ============
 
 
@@ -2295,6 +2318,10 @@ def 主程序() -> int:
                              "完全一致（--jobs/--shard/锁/内存保护全不动·仅放行）；与本参数"
                              "等价的环境判据=CI环境识别三变量（CN_RUNNER_ID/CN_CI_ROLE/"
                              "CN_CI_BRANCH 任一非空）。本地开发勿用（无并发收敛）")
+    解析器.add_argument("--json", dest="json路径", metavar="路径", default=None,
+                        help="机器可读结果写入该 JSON 文件（含失败用例明细·期望/实际 diff）"
+                             "——ci_daemon 云端门禁上报 8300 失败详情用（842）；"
+                             "缺省=不写·行为与无本参数完全一致")
     参数 = 解析器.parse_args()
 
     # —— 本地裸全量护栏（021 任务 354·AGENTS §4「验证三档阶梯」执行面）——
@@ -2504,6 +2531,8 @@ def 主程序() -> int:
             就绪 = 确保v2p与运行时就绪(编译器路径, 目标平台, 参数.verbose)
             if 就绪[0] is None:
                 print(红色(f"预热失败: {就绪[1]}"))
+                写结果JSON(参数.json路径, 目标平台, len(用例目录们), 0,
+                          [("v2p 预热", 就绪[1])], [], 跳过数)
                 return 1
     else:
         v2用例们 = [d for d in 用例目录们 if 是v2闭环用例(d)]
@@ -2512,6 +2541,8 @@ def 主程序() -> int:
             就绪 = 确保v2p就绪win(编译器路径, 参数.verbose)
             if 就绪[0] is None:
                 print(红色(f"预热失败: {就绪[1]}"))
+                写结果JSON(参数.json路径, 目标平台, len(用例目录们), 0,
+                          [("v2p 预热", 就绪[1])], [], 跳过数)
                 return 1
     print(青色(f"并行模式: jobs={参数.jobs} 进程池（{len(用例目录们)} 个用例统一并行）"))
     print()
@@ -2573,6 +2604,7 @@ def 主程序() -> int:
     失败数 = len(失败列表)
     打印汇总(总数, 通过数, 失败数, 未实现数, 跳过数)
     打印详情(失败列表, 未实现列表, 参数.verbose)
+    写结果JSON(参数.json路径, 目标平台, 总数, 通过数, 失败列表, 未实现列表, 跳过数)
 
     if 失败数 > 0:
         return 1

@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<!-- CN 门禁窗口（842 重构：队列服务 8300 结果页·墨韵 UI）——仿 CN 任务看板：
+     顶栏 + 三页签（最新门禁/验证池/集成队列）+ 表内分页 + 详情滑出面板
+     （失败用例明细 + develop 红灯「自上次绿以来并入」归因）。
+     资源相对引用（tokens.css/queue.css/queue.js）——直连 :8300 与 Caddy /queue/
+     反代两态同源；部署面 deploy_queue.sh 另行内联打包为单文件 index.html。 -->
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CN · 门禁窗口</title>
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="queue.css">
+</head>
+<body>
+
+<header class="顶栏">
+  <span id="状态灯" class="灯 断" aria-hidden="true"></span>
+  <h1>CN · 门禁窗口 <span class="淡">／ 队列·验证池·develop 验证</span></h1>
+  <div class="顶栏元行">
+    <span id="元信息">连接中…</span>
+    <label class="自动刷新" title="自动刷新默认关闭（防打断阅读）——开启后每 8 秒更新">
+      <input type="checkbox" id="自动刷新"> 自动刷新
+    </label>
+  </div>
+  <div class="顶栏右">
+    <button id="刷新钮" class="钮 次 窄" aria-label="手动刷新">⟳ 刷新</button>
+    <button id="主题钮" class="钮 次 窄" aria-label="切换明暗主题">◑</button>
+  </div>
+</header>
+
+<nav class="页签栏" id="页签栏" role="tablist" aria-label="门禁窗口分区">
+  <button class="页签 活" data-页="门禁" role="tab" aria-selected="true">🔒 最新门禁</button>
+  <button class="页签" data-页="池" role="tab" aria-selected="false">🧪 验证池</button>
+  <button class="页签" data-页="队列" role="tab" aria-selected="false">📥 集成队列</button>
+</nav>
+
+<main>
+  <section id="页-门禁" class="页" role="tabpanel">
+    <div class="区题">最新门禁 — develop 每头必验·win→linux→arm64 轮转 <span class="淡">（红行点「失败详情」：哪个用例失败 + 归因「自上次绿以来并入」的提交）</span></div>
+    <div class="工具行">
+      <div class="筛选组" id="门禁筛">
+        <button class="筛 活" data-红="全部">全部</button>
+        <button class="筛" data-红="只看红">只看红</button>
+      </div>
+      <span class="弹性"></span>
+      <span id="门禁计数" class="行时刻"></span>
+    </div>
+    <div id="门禁区"><div class="骨架行"></div><div class="骨架行"></div><div class="骨架行"></div></div>
+  </section>
+
+  <section id="页-池" class="页" role="tabpanel" hidden>
+    <div class="区题">验证池 — 预验=全池随机空闲·develop=平台轮转 <span class="淡">（1021/770·点行看任务详情与失败明细）</span></div>
+    <div class="工具行"><span class="弹性"></span><span id="池计数" class="行时刻"></span></div>
+    <div id="池区"><div class="骨架行"></div><div class="骨架行"></div></div>
+  </section>
+
+  <section id="页-队列" class="页" role="tabpanel" hidden>
+    <div class="区题">集成队列 — 服务端·零 git 提交 <span class="淡">（报名→排队→集成中·批主选举 562）</span></div>
+    <div class="工具行"><span class="弹性"></span><span id="队列计数" class="行时刻"></span></div>
+    <div id="队列区"><div class="骨架行"></div><div class="骨架行"></div></div>
+  </section>
+</main>
+
+<div id="详情遮罩" hidden></div>
+<aside id="详情面板" hidden aria-label="详情"></aside>
+
+<div id="错误条">服务连接中断，正在重试…</div>
+
+<script src="queue.js"></script>
+</body>
+</html>

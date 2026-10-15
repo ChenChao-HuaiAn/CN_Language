@@ -287,12 +287,14 @@ def _728t断言(主模块, 断言) -> None:
 
     import io
     调用: list[str] = []
+    命令们: list = []                          # 842：捕获 (名, 命令) 断言 --json 明细参数
     步骤们: dict = {"构建": {"rc": 0}}        # 构建绿 → 进 e2e 分支
 
     def 假步骤(名: str, 命令, 超时秒) -> bool:
         # 与真 步骤() 闭包同构：落键 步骤们[名] 再返回绿否（真闭包必写，冒烟缺写即
         #   在本断言暴露=同构锁）；e2e并行 假红 → 逼出 [复验] 提示行（422 路径）。
         调用.append(名)
+        命令们.append((名, list(命令)))
         绿 = 名 != "e2e并行"
         步骤们[名] = {"rc": 0 if 绿 else 1}
         return 绿
@@ -301,12 +303,13 @@ def _728t断言(主模块, 断言) -> None:
         假cn = Path(临时) / "cn.exe"
         假cn.write_text("x", encoding="utf-8")
         假日志 = io.StringIO()
+        假sha = "a" * 40
         try:
-            主模块.静态门禁与e2e段(步骤们, 假步骤, 假cn, 假日志)
+            主模块.静态门禁与e2e段(步骤们, 假步骤, 假cn, 假日志, 假sha)
             崩 = None
-        except TypeError:                     # 旧签名（本修复前）按 3 参调用——仍撞 422 行
-            try:                              # NameError（日志 未定义）=wt2/wt3 现场一比一
-                主模块.静态门禁与e2e段(步骤们, 假步骤, 假cn)
+        except TypeError:                     # 旧签名（842 前 4 参/728t 前 3 参）对照——
+            try:                              # 同名函数旧形态直调，报更清晰路径
+                主模块.静态门禁与e2e段(步骤们, 假步骤, 假cn, 假日志)
                 崩 = None
             except Exception as e:
                 崩 = e
@@ -318,6 +321,32 @@ def _728t断言(主模块, 断言) -> None:
          "e2e串行复验" in 步骤们 and 步骤们.get("e2e", {}).get("rc") == 0)
     断言("728t 冒烟：[复验] 提示行入日志句柄（file=日志 实连不炸）",
          "[复验]" in 假日志.getvalue())
+    断言("842 冒烟：e2e 命令带 --json 明细参数（本树 run_e2e 已支持·探测放行·"
+         "并行/串行复验同带）",
+         len([c for _, c in 命令们 if "--json" in c
+              and any("e2e明细" in x for x in c)]) == 2)
+
+
+def _842断言(主模块, 断言) -> None:
+    """842（2026-10-15）：e2e --json 明细链路——读e2e明细正反两态（8300 页面红行
+    详情数据源）+ 取提交历史形态（develop 红灯归因数据源·缺数据=空列表降级）。"""
+    with tempfile.TemporaryDirectory() as 临时:
+        好 = Path(临时) / "好.json"
+        好.write_text('{"失败用例": [{"名称": "01_hello", "原因": "输出不一致"}]}',
+                      encoding="utf-8")
+        明细 = 主模块.读e2e明细(好)
+        断言("842 读e2e明细：正例结构直达（失败用例随结果 JSON 上 8300）",
+             isinstance(明细, dict) and 明细["失败用例"][0]["名称"] == "01_hello")
+        坏 = Path(临时) / "坏.json"
+        坏.write_text("{坏 JSON", encoding="utf-8")
+        断言("842 读e2e明细：坏 JSON=None（页面降级提示·不炸轮）",
+             主模块.读e2e明细(坏) is None)
+        断言("842 读e2e明细：缺文件=None（e2e 未跑/旧版三态统一降级）",
+             主模块.读e2e明细(Path(临时) / "无.json") is None)
+    历史 = 主模块.取提交历史(5)
+    断言("842 取提交历史：列表形态且条目含 sha/主题（归因数据源·git 异常=空列表不炸）",
+         isinstance(历史, list) and all(
+             isinstance(项, dict) and 项.get("sha") and "主题" in 项 for 项 in 历史))
 
 
 def _行数断言(断言) -> None:
@@ -351,7 +380,7 @@ def _770断言(主模块, 断言) -> None:
 
 
 def 自测(主模块) -> int:
-    """--selftest 入口（断言集 523+637+657+660+728t+770）——CI 式：逐条打印，任一红退出 1。"""
+    """--selftest 入口（断言集 523+637+657+660+728t+770+842）——CI 式：逐条打印，任一红退出 1。"""
     断言们: list[tuple[str, bool]] = []
 
     def 断言(名: str, 条件: bool) -> None:
@@ -362,9 +391,10 @@ def 自测(主模块) -> int:
     _660断言(主模块, 断言)
     _728t断言(主模块, 断言)
     _770断言(主模块, 断言)
+    _842断言(主模块, 断言)
     _行数断言(断言)
     for 名, ok in 断言们:
         print("  [%s] %s" % ("OK" if ok else "×", 名))
     红 = sum(1 for _, ok in 断言们 if not ok)
-    print("== ci_daemon 自测（523+637+657+660+728t+770）：%d 断言，%s ==" % (len(断言们), "全绿" if 红 == 0 else "红 %d" % 红))
+    print("== ci_daemon 自测（523+637+657+660+728t+770+842）：%d 断言，%s ==" % (len(断言们), "全绿" if 红 == 0 else "红 %d" % 红))
     return 0 if 红 == 0 else 1

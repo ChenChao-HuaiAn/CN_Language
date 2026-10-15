@@ -1,0 +1,247 @@
+/* ============================================================
+   CN 门禁窗口 · 组件层（842·墨韵设计系统·仿 CN 任务看板）
+   只读 tokens.css 语义名，禁止硬编码色值。
+   通用组件（顶栏/页签/签/钮/工具行/骨架/空态/浮条/详情面板）自 board.css
+   摘取——第 2 处复用（重复归纳纪律：留标记·board.css 改版时此处对齐；
+   第 3 处出现前提炼公共组件文件）。
+   ============================================================ */
+
+/* —— 队列页扩展语义 token（与看板同源）—— */
+:root {
+  --st-doing: oklch(0.46 0.085 262);        /* 青墨·执行中 */
+  --st-doing-soft: oklch(0.92 0.03 262);
+  --dur: 150ms;
+  --dur2: 250ms;
+  --ease: cubic-bezier(.3,.7,.4,1);
+}
+[data-theme="dark"] {
+  --st-doing: oklch(0.72 0.095 262);
+  --st-doing-soft: oklch(0.30 0.05 262);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]):not([data-theme="dark"]) {
+    --st-doing: oklch(0.72 0.095 262);
+    --st-doing-soft: oklch(0.30 0.05 262);
+  }
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--color-bg); color: var(--color-fg);
+  font: 14px/1.6 var(--font-body);
+}
+button { font: inherit; cursor: pointer; }
+:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+.淡 { color: var(--color-fg-subtle); font-weight: 400; font-size: .82em; }
+.弹性 { flex: 1; }
+.mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+
+/* —— 顶栏（sticky 磨砂·看板同法）—— */
+.顶栏 {
+  position: sticky; top: 0; z-index: 20;
+  display: flex; align-items: center; gap: var(--space-3);
+  padding: var(--space-3) var(--space-6);
+  background: color-mix(in srgb, var(--color-bg) 86%, transparent);
+  backdrop-filter: blur(12px) saturate(1.3);
+  border-bottom: 1px solid var(--color-border);
+}
+.顶栏 h1 {
+  margin: 0; font: 700 1.05rem/1.2 var(--font-display);
+  letter-spacing: .02em;
+}
+.顶栏右 { display: flex; align-items: center; gap: var(--space-3); }
+.顶栏元行 { display: contents; }
+#元信息 { margin-left: auto; color: var(--color-fg-subtle); font-size: .8rem;
+          font-variant-numeric: tabular-nums; }
+.灯 { width: 8px; height: 8px; border-radius: 50%; background: var(--color-success);
+      animation: 呼吸 2.4s var(--ease) infinite; }
+.灯.断 { background: var(--color-danger); animation: none; }
+@keyframes 呼吸 { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
+
+/* —— 页签栏（三页·细线底+朱砂活态）—— */
+.页签栏 {
+  max-width: 78rem; margin: 0 auto; padding: var(--space-4) var(--space-6) 0;
+  display: flex; gap: var(--space-2); border-bottom: 1px solid var(--color-border);
+}
+.页签 {
+  border: 0; background: none; color: var(--color-fg-muted);
+  padding: var(--space-2) var(--space-4); font-weight: 600; font-size: .9rem;
+  border-bottom: 2px solid transparent; margin-bottom: -1px;
+  transition: color var(--dur) var(--ease), border-color var(--dur) var(--ease);
+}
+.页签:hover { color: var(--color-fg); }
+.页签.活 { color: var(--color-accent); border-bottom-color: var(--color-accent); }
+
+/* —— 主区 —— */
+main { max-width: 78rem; margin: 0 auto; padding: var(--space-5) var(--space-6) var(--space-16); }
+.页 { animation: 入场 var(--dur2) var(--ease); }
+@keyframes 入场 { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; } }
+.区题 {
+  font: 600 .78rem/1.4 var(--font-body); letter-spacing: .08em;
+  color: var(--color-fg-muted); margin: var(--space-2) 0 var(--space-4);
+  text-transform: uppercase;
+}
+
+/* —— 工具行 / 筛选组 —— */
+.工具行 {
+  display: flex; align-items: center; gap: var(--space-3);
+  flex-wrap: wrap; margin-bottom: var(--space-4);
+}
+.筛选组 { display: flex; gap: 2px; background: var(--color-bg-subtle);
+          border-radius: var(--radius-md); padding: 2px; }
+.筛 {
+  border: 0; background: none; color: var(--color-fg-muted);
+  padding: var(--space-1) var(--space-3); border-radius: var(--radius-sm);
+  font-size: .82rem; font-weight: 600;
+  transition: color var(--dur) var(--ease), background var(--dur) var(--ease);
+}
+.筛:hover { color: var(--color-fg); }
+.筛.活 { background: var(--color-surface); color: var(--color-accent);
+         box-shadow: var(--shadow-sm); }
+
+/* —— 按钮（两级制）—— */
+.钮 {
+  height: 2.4rem; padding: 0 var(--space-4); border-radius: var(--radius-md);
+  font-weight: 600; font-size: .86rem;
+  transition: background var(--dur) var(--ease), border-color var(--dur) var(--ease),
+              color var(--dur) var(--ease), transform var(--dur) var(--ease);
+}
+.钮:active { transform: translateY(1px); }
+.钮.次 { background: transparent; color: var(--color-fg-muted);
+         border: 1px solid var(--color-border); }
+.钮.次:hover { border-color: var(--color-accent); color: var(--color-accent); }
+.钮.次:disabled { opacity: .45; cursor: default; }
+.钮.次:disabled:hover { border-color: var(--color-border); color: var(--color-fg-muted); }
+.钮.窄 { height: 1.9rem; padding: 0 var(--space-2); }
+
+/* —— 签组件（同看板口径）—— */
+.签 {
+  display: inline-block; font-size: .72rem; font-weight: 600; letter-spacing: .06em;
+  padding: .1em .7em; border-radius: var(--radius-sm); white-space: nowrap;
+}
+.签.待办 { color: var(--color-fg-muted); background: color-mix(in srgb, var(--color-fg) 9%, transparent); }
+.签.挂起 { color: var(--color-warning); background: color-mix(in srgb, var(--color-warning) 14%, transparent); }
+.签.完成 { color: var(--color-success); background: color-mix(in srgb, var(--color-success) 14%, transparent); }
+.签.队列中 { color: var(--st-doing); border: 1px solid var(--st-doing); }
+.签.阶段红 { color: var(--color-danger); border: 1px solid var(--color-danger);
+             background: color-mix(in srgb, var(--color-danger) 10%, transparent); }
+.签.阶段灰 { color: var(--color-fg-muted); border: 1px solid var(--color-fg-muted);
+             background: color-mix(in srgb, var(--color-fg) 6%, transparent); }
+
+/* —— 数据表（grid 假表格·细线手法同看板覆盖表）—— */
+.表槽 {
+  background: var(--color-surface); border: 1px solid var(--color-border);
+  border-radius: var(--radius-md); overflow: hidden;
+}
+.数据行 {
+  display: grid; gap: var(--space-3); padding: var(--space-2) var(--space-4);
+  border-bottom: 1px solid var(--color-border-subtle); align-items: center;
+  font-size: .84rem;
+}
+.数据行:last-child { border-bottom: 0; }
+.数据行:hover { background: color-mix(in srgb, var(--color-accent) 4%, transparent); }
+.表头.数据行 {
+  font-weight: 700; letter-spacing: .05em; color: var(--color-fg-muted);
+  background: var(--color-bg-subtle); font-size: .76rem;
+}
+.表头.数据行:hover { background: var(--color-bg-subtle); }
+.门禁行 { grid-template-columns: 7em 8.5em 6.5em 4.5em minmax(8em, 1fr) auto; }
+.池行   { grid-template-columns: minmax(8em, 1.1fr) 7em 5.5em 6.5em 7em 6em 8.5em auto; }
+.队列行 { grid-template-columns: minmax(8em, 1fr) 7em 8.5em 6em minmax(8em, 1.2fr); }
+.时间列 { color: var(--color-fg-subtle); font-size: .78rem; font-variant-numeric: tabular-nums; }
+@media (max-width: 46rem) {
+  .表槽 { overflow-x: auto; }
+  .门禁行, .池行, .队列行 { min-width: 46rem; }
+}
+
+/* —— 分页控件 —— */
+.分页 { display: flex; align-items: center; gap: var(--space-3); margin-top: var(--space-3); }
+.页计 { color: var(--color-fg-subtle); font-size: .8rem; font-variant-numeric: tabular-nums; }
+
+/* —— 骨架 / 空态 / 浮条（同看板）—— */
+.骨架行 {
+  height: 2.2rem; border-radius: var(--radius-sm); margin-bottom: var(--space-2);
+  background: linear-gradient(90deg, var(--color-bg-subtle) 25%,
+              var(--color-surface-2) 50%, var(--color-bg-subtle) 75%);
+  background-size: 200% 100%; animation: 微光 1.4s infinite;
+}
+@keyframes 微光 { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+.空态 { color: var(--color-fg-muted); font-size: .88rem; text-align: center;
+        padding: var(--space-10) var(--space-4); }
+#错误条 {
+  display: none; position: fixed; bottom: var(--space-6); left: 50%;
+  transform: translateX(-50%); background: var(--color-danger); color: #fff;
+  border-radius: var(--radius-md); padding: var(--space-2) var(--space-5);
+  font-size: .86rem; box-shadow: var(--shadow-md); z-index: 50;
+}
+
+/* —— 详情滑出面板（同看板）—— */
+#详情遮罩 { position: fixed; inset: 0; z-index: 30; background: oklch(0 0 0 / .38); }
+#详情面板 {
+  position: fixed; top: 0; right: 0; bottom: 0; z-index: 31;
+  width: min(32rem, 94vw); overflow-y: auto;
+  background: var(--color-surface); border-left: 1px solid var(--color-border);
+  box-shadow: var(--shadow-lg); padding: var(--space-6);
+  animation: 滑入 var(--dur2) var(--ease);
+}
+@keyframes 滑入 { from { transform: translateX(24px); opacity: 0; } to { transform: none; opacity: 1; } }
+#详情面板 .关 {
+  position: absolute; top: var(--space-3); right: var(--space-3);
+  border: 0; background: none; color: var(--color-fg-subtle);
+  font-size: 1.3rem; line-height: 1; padding: var(--space-2);
+}
+#详情面板 .关:hover { color: var(--color-accent); }
+#详情遮罩[hidden], #详情面板[hidden] { display: none; }
+.详号 { font-family: var(--font-mono); font-size: 1.4rem; font-weight: 700;
+        color: var(--color-accent); letter-spacing: .02em; }
+.详题 { font: 700 1.05rem/1.45 var(--font-display); margin: var(--space-2) 0 var(--space-4);
+        overflow-wrap: break-word; }
+.详字段 { display: grid; grid-template-columns: 5em 1fr; gap: var(--space-1) var(--space-3);
+          font-size: .86rem; margin: 0 0 var(--space-5); }
+.详字段 dt { color: var(--color-fg-subtle); }
+.详字段 dd { margin: 0; overflow-wrap: break-word; }
+.详节题 { font-size: .78rem; font-weight: 600; letter-spacing: .08em;
+          color: var(--color-fg-muted); margin: var(--space-5) 0 var(--space-2);
+          border-top: 1px solid var(--color-border); padding-top: var(--space-4); }
+
+/* —— 失败用例卡（红细节）—— */
+.败例 { border: 1px solid var(--color-border); border-left: 3px solid var(--color-danger);
+        border-radius: 0 var(--radius-md) var(--radius-md) 0;
+        padding: var(--space-2) var(--space-3); margin-bottom: var(--space-2); }
+.败例 .名 { font-family: var(--font-mono); font-weight: 700; font-size: .84rem;
+            color: var(--color-danger); overflow-wrap: break-word; }
+.败例 pre { margin: var(--space-1) 0 0; font: .78rem/1.5 var(--font-mono);
+            background: var(--color-bg-subtle); border-radius: var(--radius-sm);
+            padding: var(--space-2); max-height: 12em; overflow: auto; white-space: pre-wrap; }
+
+/* —— 归因区（本次并入提交）—— */
+.归因项 { display: flex; gap: var(--space-2); padding: var(--space-1) 0; font-size: .82rem;
+          border-bottom: 1px dashed var(--color-border-subtle); align-items: baseline; }
+.归因项:last-child { border-bottom: 0; }
+.归因项 .sha { font-family: var(--font-mono); color: var(--color-fg-subtle);
+               flex: 0 0 auto; min-width: 5.6em; font-size: .78rem;
+               white-space: nowrap; }
+.归因项 .主文 { overflow-wrap: break-word; }
+.任务号 { font-family: var(--font-mono); font-weight: 700; color: var(--color-accent); }
+
+/* —— 日志块 —— */
+.日志块 { font: .76rem/1.5 var(--font-mono); background: var(--color-bg-subtle);
+          border-radius: var(--radius-sm); padding: var(--space-3);
+          max-height: 14em; overflow: auto; white-space: pre-wrap;
+          color: var(--color-fg-muted); margin: 0; }
+
+/* —— 自动刷新开关 —— */
+.自动刷新 {
+  display: inline-flex; align-items: center; gap: .4em;
+  color: var(--color-fg-subtle); font-size: .8rem; cursor: pointer;
+  user-select: none; white-space: nowrap;
+}
+.自动刷新 input { accent-color: var(--color-accent); cursor: pointer; }
+
+/* —— 移动端：顶栏折行 —— */
+@media (max-width: 46rem) {
+  .顶栏 { flex-wrap: wrap; }
+  .顶栏元行 { display: flex; order: 9; width: 100%; align-items: center;
+              gap: var(--space-3); }
+  #元信息 { margin-left: 0; }
+}

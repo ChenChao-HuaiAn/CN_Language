@@ -15,9 +15,11 @@
 #   ②预验全池随机空闲（现状认领模型即语义）。③/api/state 增「池忙闲」=integrate 忙时
 #   拼车组链窗口与巡检的忙闲判定源。客户端对兜底任务传的认领限制一律忽略（服务端轮转唯一权威）。
 # API（POST 须 Bearer 令牌·GET 只读放行）：
-#   GET  /            人类可读结果页（最新门禁+历史+队列+预验任务池）
-#   GET  /api/state   {队列:[…], 门禁最近:[…], 预验任务:[…]}
-#   GET  /api/task_result?分支=…   单个预验任务 {状态,绿,详情}（详情=daemon 结果 JSON）
+#   GET  /            门禁窗口（842 重构：queue_www 墨韵 UI·三页签+失败详情+归因）
+#   GET  /queue.css|/queue.js|/tokens.css  静态资源（回静态白名单·tokens 回退 board_www）
+#   GET  /api/state   {队列:[…], 门禁最近:[…], 预验任务:[…], 池忙闲:{…}}
+#   GET  /api/task_result?sha=…    预验/兜底任务详情 {状态,绿,详情}（842 双前缀通用化）
+#   GET  /api/gate_result?sha=&plat=  门禁行详情 {绿,总秒,时刻,详情}（842·红行查看·参数名 ASCII）
 #   POST /api/join    {分支,基线,写集摘要}      报名（幂等）
 #   POST /api/update  {分支,状态}               改状态（排队/集成中/已踢出/已完成）
 #   POST /api/touch   {分支}                    重报时刻（失败恢复重排队·保序不刷=幂等）
@@ -33,6 +35,7 @@
 #   POST /api/task_heartbeat {runner,分支}        心跳续约
 #   POST /api/task_complete {runner,分支,绿,结果}  完成上报（校验认领者·防回收后旧 runner 复活覆盖）
 # 部署：/etc/systemd/system/cn-queue.service（Environment= 端口/令牌/DB 路径）。
+# 自检：python3 queue_service.py --selftest（842 起实现体外迁=queue_selftest.py·惰性导入）。
 
 import json
 import os
@@ -324,7 +327,9 @@ def 处理写(名: str, 数据: dict) -> dict:
                          None if 是执行中 else (1 if 数据.get("绿") else 0),
                          None if 是执行中 else int(数据.get("总秒", 0)),
                          时区时刻(),
-                         json.dumps(数据, ensure_ascii=False)[:20000]))
+                         # 842：上限 20000→500000——失败用例明细+提交历史（归因）随
+                         #   详情入库（20000 在 40+ 失败用例或长 diff 时截断致页面缺明细）
+                         json.dumps(数据, ensure_ascii=False)[:500000]))
             con.execute("DELETE FROM 门禁 WHERE (sha,平台) NOT IN "
                         "(SELECT sha,平台 FROM 门禁 ORDER BY 时刻 DESC LIMIT ?)",
                         (门禁历史保留,))
@@ -483,7 +488,7 @@ def 处理写(名: str, 数据: dict) -> dict:
             绿 = 1 if 数据.get("绿") else 0
             cur = con.execute("UPDATE 预验任务 SET 状态='完成',绿=?,详情=?,心跳时戳=NULL,更新时刻=? "
                               "WHERE 分支=? AND 认领者=? AND 状态='执行中'",
-                              (绿, json.dumps(结果, ensure_ascii=False)[:20000],
+                              (绿, json.dumps(结果, ensure_ascii=False)[:500000],
                                时区时刻(), 分支, runner))
             if cur.rowcount == 0:
                 return {"ok": False, "说明": "任务不在执行中或认领者不匹配（可能已被回收重派）" + 分支}
@@ -497,14 +502,100 @@ def 处理写(名: str, 数据: dict) -> dict:
     return {"ok": True}
 
 
-HTML页 = """<!doctype html><html><head><meta charset="utf-8"><title>CN 队列/门禁状态</title>
-<style>body{font-family:system-ui;margin:24px;background:#f6f8fa}h2{margin:18px 0 6px}
-table{border-collapse:collapse;background:#fff}td,th{border:1px solid #d0d7de;padding:5px 10px;
-font-size:14px}.绿{color:#1a7f37;font-weight:600}.红{color:#cf222e;font-weight:600}
-.执行中{color:#9a6700;font-weight:600}</style></head>
-<body><h2>最新门禁（develop 每头必验·win→linux→arm64 轮转·770）</h2>__门禁表__
-<h2>验证池（预验=全池随机空闲·develop=平台轮转·1021/770）</h2>__任务表__
-<h2>集成队列（服务端·零 git 提交）</h2>__队列表__<p>生成于 __时刻__</p></body></html>"""
+# ===== 842 结果页静态面与详情查询（门禁窗口墨韵 UI·失败详情与归因数据面） =====
+静态目录 = Path(__file__).resolve().parent / "queue_www"
+静态白名单 = {"/": ("index.html", "text/html; charset=utf-8"),
+            "/queue.css": ("queue.css", "text/css; charset=utf-8"),
+            "/queue.js": ("queue.js", "text/javascript; charset=utf-8"),
+            "/tokens.css": ("tokens.css", "text/css; charset=utf-8")}
+
+
+def 回静态(路径: str):
+    """842：queue_www 静态查找（门禁窗口新前端）——白名单制防目录穿越（对照
+    board_service._回静态）；tokens.css 缺时回退 board_www（本机开发树两目录
+    平级；TX_01 部署面由 deploy_queue.sh 生成副本）。返回 (体, MIME) 或 None
+    （调用点 404 显式——miss 不静默）。"""
+    项 = 静态白名单.get(路径)
+    if 项 is None:
+        return None
+    文件名, mime = 项
+    候选 = [静态目录 / 文件名]
+    if 文件名 == "tokens.css":
+        候选.append(静态目录.parent / "board_www" / 文件名)
+    for p in 候选:
+        if p.is_file():
+            return p.read_bytes(), mime
+    return None
+
+
+def 门禁详情查(sha: str, 平台: str):
+    """842：门禁表详情查询（8300 红/绿行点开看失败用例+归因）——sha 前缀匹配
+    （页面持前 10 位/完整皆可）+平台精确；同前缀多点取最新（时刻 DESC LIMIT 1）。
+    miss=None（调用点 404 显式——648 miss 不可静默）。详情坏 JSON（旧行/超长
+    截断）=None 容错（不 500 炸页面·页面显示「无明细」）。"""
+    行 = con.execute("SELECT 绿,总秒,时刻,详情 FROM 门禁 WHERE sha LIKE ? AND 平台=? "
+                    "ORDER BY 时刻 DESC LIMIT 1", (sha + "%", 平台)).fetchone()
+    if 行 is None:
+        return None
+    try:
+        详情 = json.loads(行[3]) if 行[3] else None
+    except ValueError:
+        详情 = None
+    return {"绿": bool(行[0]) if 行[0] is not None else None, "总秒": 行[1],
+            "时刻": 行[2], "详情": 详情}
+
+
+def _包任务行(行):
+    """任务行→dict（详情坏 JSON=None 容错·同 门禁详情查 口径）。"""
+    try:
+        详情 = json.loads(行[2]) if 行[2] else None
+    except ValueError:
+        详情 = None
+    return {"状态": 行[0], "绿": bool(行[1]) if 行[1] is not None else None,
+            "详情": 详情}
+
+
+def 任务详情查(sha10: str):
+    """842：预验/兜底任务详情按 sha10 查——①分支名契约（ci/预验- 优先·旧契约·
+    integrate/看板代理在用），miss 再试 ci/兜底-；②均无再按 sha 前缀查（842
+    鲁棒兜底：分支名与 sha 不一致的异常/历史行也可达；同前缀多点取最新序号）。
+    miss=None（调用点 404 显式——648 miss 不可静默）。"""
+    for 前缀 in ("ci/预验-", "ci/兜底-"):
+        行 = con.execute("SELECT 状态,绿,详情 FROM 预验任务 WHERE 分支=?",
+                        (前缀 + sha10,)).fetchone()
+        if 行 is not None:
+            return _包任务行(行)
+    行 = con.execute("SELECT 状态,绿,详情 FROM 预验任务 WHERE sha LIKE ? "
+                    "ORDER BY 序号 DESC LIMIT 1", (sha10 + "%",)).fetchone()
+    return _包任务行(行) if 行 is not None else None
+
+
+def 归因截取(sha: str, 平台: str, 详情) -> dict:
+    """842：develop 红灯归因（提交区间）——自上次绿验证以来并入 develop 的提交。
+    边界=门禁最近列表（时刻 DESC·200 条窗口）中本行之后更早的最近绿行完整 sha；
+    在 详情.提交历史（ci_daemon 随轮上报·最近 100 条）中截 (边界, 本行] 区间。
+    边界缺失/历史窗口未覆盖=全列+遇边=False（前端标注可能不完整）。算法单点在此
+    （8300 门禁窗口与 8301 看板代理共用·前端只渲染）。
+    防御注：边界依赖「时刻 DESC」列表相对位置——同秒多行（真实链路验证间隔分钟级·
+    理论上罕见）排序歧义时边界可能落空=宁多勿缺降级（全列+不完整标注·不产生错误归因）。"""
+    最近 = 门禁快照()
+    前10 = sha[:10]
+    处 = next((i for i, r in enumerate(最近)
+              if str(r["sha"]).startswith(前10) and r["平台"] == 平台), None)
+    边界 = None
+    if 处 is not None:
+        for r in 最近[处 + 1:]:
+            if r["绿"] == 1:
+                边界 = str(r["sha"])
+                break
+    历史 = ((详情 or {}).get("提交历史") or []) if isinstance(详情, dict) else []
+    出, 遇边 = [], False
+    for 条 in 历史:
+        if 边界 and str(条.get("sha", "")) == 边界:
+            遇边 = True
+            break
+        出.append(条)
+    return {"提交们": 出, "边界sha": 边界, "遇边": 遇边, "历史条数": len(历史)}
 
 
 class 处理器(BaseHTTPRequestHandler):
@@ -533,47 +624,39 @@ class 处理器(BaseHTTPRequestHandler):
                                     "预验任务": 预验任务快照(),
                                     "池忙闲": 池忙闲快照()})   # 770：integrate 拼车窗口/巡检判定源
         if 路径 == "/api/task_result":
-            # 按 sha10 查（分支=ci/预验-<sha10>·URL 保持纯 ASCII 免编码坑）
+            # 按 sha10 查（分支=ci/预验-/ci/兜底-<sha10>·URL 保持纯 ASCII 免编码坑·
+            # 842 通用化：双前缀）
             sha10 = (parse_qs(urlparse(self.path).query).get("sha") or [""])[0]
-            行 = con.execute("SELECT 状态,绿,详情 FROM 预验任务 WHERE 分支=?",
-                             ("ci/预验-" + sha10,)).fetchone()
-            if 行 is None:
-                return self.回JSON({"ok": False, "说明": "无此任务 ci/预验-" + sha10}, 404)
-            return self.回JSON({"状态": 行[0], "绿": bool(行[1]) if 行[1] is not None else None,
-                                "详情": json.loads(行[2]) if 行[2] else None})
-        if 路径 == "/":
-            # 190（1035 轮）：执行中行（绿 IS NULL）显示黄色「执行中」——1030 误判
-            #   「六次推送漏跑」根因修除（daemon 在跑但状态页不可见）。
-            def 门禁单元格(r):
-                if r["绿"] is None:
-                    return "执行中", "执行中", "—"
-                return (("绿" if r["绿"] else "红"),) * 2 + ("%ss" % r["总秒"],)
-            门禁行 = "".join(
-                "<tr><td>%s</td><td>%s</td><td class='%s'>%s</td><td>%s</td><td>%s</td></tr>"
-                % (r["sha"][:10], r["平台"], 格[0], 格[1], 格[2], r["时刻"])
-                for r, 格 in ((r, 门禁单元格(r)) for r in 门禁快照())
-            ) or "<tr><td colspan=5>暂无</td></tr>"
-            队列行 = "".join("<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>"
-                            % (r["分支"], r["基线"][:10], r["报名时刻"], r["状态"], r["写集摘要"][:60])
-                            for r in 队列快照()) or "<tr><td colspan=5>空</td></tr>"
-            任务行 = "".join(
-                "<tr><td>%s</td><td>%s</td><td>%s</td><td class='%s'>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>"
-                % (r["源分支"] or r["分支"], r["sha"][:10], r["状态"],
-                   ("绿" if r["绿"] else "红") if r["状态"] == "完成" and r["绿"] is not None else "",
-                   ("绿" if r["绿"] else "红") if r["状态"] == "完成" and r["绿"] is not None else "—",
-                   r["认领者"] or "—", r["认领限制"] or "不限", r["入队时刻"], r["更新时刻"])
-                for r in 预验任务快照()) or "<tr><td colspan=8>空</td></tr>"
-            页 = (HTML页.replace("__门禁表__", "<table><tr><th>SHA</th><th>平台</th><th>结果</th>"
-                  "<th>耗时</th><th>时刻</th></tr>" + 门禁行 + "</table>")
-                  .replace("__任务表__", "<table><tr><th>分支</th><th>SHA</th><th>状态</th><th>结果</th>"
-                           "<th>认领者</th><th>认领限制</th><th>入队</th><th>更新</th></tr>" + 任务行 + "</table>")
-                  .replace("__队列表__", "<table><tr><th>分支</th><th>基线</th><th>报名时刻</th>"
-                           "<th>状态</th><th>写集</th></tr>" + 队列行 + "</table>")
-                  .replace("__时刻__", 时区时刻()))
-            体 = 页.encode("utf-8")
+            详情 = 任务详情查(sha10) if sha10 else None
+            if 详情 is None:
+                return self.回JSON({"ok": False,
+                                    "说明": "无此任务（ci/预验-/ci/兜底-" + sha10 + " 均无）"}, 404)
+            return self.回JSON(详情)
+        if 路径 == "/api/gate_result":
+            # 842：门禁表详情（8300 门禁窗口红行面板·8301 验证红详情代理共用）——
+            #   参数名用 ASCII（plat）·URL 保持纯 ASCII 免编码坑（同 task_result 口径）
+            参 = parse_qs(urlparse(self.path).query)
+            sha = (参.get("sha") or [""])[0]
+            平台 = (参.get("plat") or [""])[0]
+            if not sha or not 平台:
+                return self.回JSON({"ok": False, "说明": "缺少 sha/plat 参数"}, 400)
+            行详情 = 门禁详情查(sha, 平台)
+            if 行详情 is None:
+                return self.回JSON({"ok": False,
+                                    "说明": "无此门禁行 " + sha[:10] + " " + 平台}, 404)
+            return self.回JSON({**行详情, "归因": 归因截取(sha, 平台, 行详情["详情"])})
+        if 路径 in 静态白名单:
+            # 842：门禁窗口=queue_www 墨韵前端（三页签+失败详情+归因·前端 fetch
+            #   /api/state 渲染）；执行中行（绿 IS NULL）黄标语义由前端三态徽标承担。
+            静态 = 回静态(路径)
+            if 静态 is None:
+                return self.回JSON({"ok": False, "说明": "静态资源缺失 " + 路径 +
+                                    "（部署面含 queue_www/·见 scripts/deploy_queue.sh）"}, 404)
+            体, mime = 静态
             self.send_response(200)
-            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Type", mime)
             self.send_header("Content-Length", str(len(体)))
+            self.send_header("Cache-Control", "no-cache")
             self.end_headers()
             self.wfile.write(体)
             return
@@ -595,290 +678,11 @@ class 处理器(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    # 1020（#180）：--selftest=join 场景矩阵（内存库·不启 HTTP）——
-    #   验证重报重置语义（首报排队/重报刷新/踢出后重报回排队/集成中保护）。
+    # 842：自检实现体外迁 queue_selftest.py（先例=board_selftest.py 405/
+    #   ci_daemon_selftest.py 660——主模块先拆再加防回涨）；入口命令不变。
     if len(sys.argv) > 1 and sys.argv[1] == "--selftest":
-        import tempfile
-        db路径 = os.path.join(tempfile.mkdtemp(), "selftest.db")
-        con = 建库()   # 模块级重绑（__main__ 同作用域·内存态覆盖·服务启动路径不受影响）
-        n绑定 = [0]
-
-        def 断言(条件, 说明):
-            n绑定[0] += 1
-            if not 条件:
-                print("✗ 失败: " + 说明)
-                raise SystemExit(1)
-            print("  ✓ " + 说明)
-
-        r = 处理写("join", {"分支": "任务/甲-1-x", "基线": "aaa", "写集摘要": "2 文件"})
-        断言(r["ok"] and "重报" not in r.get("说明", ""), "首报=排队插入")
-        断言(队列快照()[0]["状态"] == "排队", "首报态=排队")
-        r = 处理写("join", {"分支": "任务/甲-1-x", "基线": "bbb", "写集摘要": "3 文件"})
-        断言(r["ok"] and "重报重置排队" in r.get("说明", ""), "排队态重报=重置+刷新")
-        行 = next(r2 for r2 in 队列快照() if r2["分支"] == "任务/甲-1-x")
-        断言(行["基线"] == "bbb" and 行["状态"] == "排队", "排队态重报基线已刷新")
-        处理写("update", {"分支": "任务/甲-1-x", "状态": "已踢出"})
-        r = 处理写("join", {"分支": "任务/甲-1-x", "基线": "ccc", "写集摘要": "4 文件"})
-        断言(队列快照()[0]["状态"] == "排队" and "原态 已踢出" in r.get("说明", ""),
-             "已踢出重报=重置回排队（1017 死等病根）")
-        处理写("update", {"分支": "任务/甲-1-x", "状态": "集成中"})
-        r = 处理写("join", {"分支": "任务/甲-1-x", "基线": "ddd", "写集摘要": "5 文件"})
-        断言(队列快照()[0]["状态"] == "集成中" and 队列快照()[0]["基线"] == "ccc",
-             "集成中重报=保护不动")
-
-        # ── 456 集成中失联回收：超时降级已踢出/未超时保护/坏串宁漏收 ──
-        处理写("join", {"分支": "任务/乙-2-y", "基线": "aaa", "写集摘要": "1 文件"})
-        处理写("update", {"分支": "任务/乙-2-y", "状态": "集成中"})
-        旧戳 = (datetime.now() - timedelta(seconds=集成中超时秒 * 2)).strftime("%m-%d %H:%M:%S")
-        con.execute("UPDATE 队列 SET 更新时刻=? WHERE 分支='任务/乙-2-y'", (旧戳,))
-        处理写("join", {"分支": "任务/丁-4-w", "基线": "a", "写集摘要": ""})   # 无关行写活动触发扫描
-        行乙 = next(r2 for r2 in 队列快照() if r2["分支"] == "任务/乙-2-y")
-        行甲 = next(r2 for r2 in 队列快照() if r2["分支"] == "任务/甲-1-x")
-        断言(行乙["状态"] == "已踢出", "456 集成中超 2 倍阈值=回收降级已踢出")
-        断言(行甲["状态"] == "集成中", "456 同扫未超时行=保护不动（不误伤在飞批主）")
-        r = 处理写("join", {"分支": "任务/乙-2-y", "基线": "bbb", "写集摘要": "2 文件"})
-        断言("原态 已踢出" in r.get("说明", ""), "456 回收行批主 join=重报回排队（1020 语义兼容）")
-        处理写("join", {"分支": "任务/丙-3-z", "基线": "a", "写集摘要": ""})
-        处理写("update", {"分支": "任务/丙-3-z", "状态": "集成中"})
-        con.execute("UPDATE 队列 SET 更新时刻='坏串' WHERE 分支='任务/丙-3-z'")
-        处理写("join", {"分支": "任务/戊-5-v", "基线": "a", "写集摘要": ""})   # 触发扫描
-        断言(next(r2 for r2 in 队列快照() if r2["分支"] == "任务/丙-3-z")["状态"] == "集成中",
-             "456 更新时刻坏串=宁漏收不误收且不炸服务")
-        处理写("update", {"分支": "任务/甲-1-x", "状态": "冲突出批"})
-        r = 处理写("join", {"分支": "任务/甲-1-x", "基线": "eee", "写集摘要": "6 文件"})
-        断言(队列快照()[0]["状态"] == "排队", "冲突出批重报=回排队")
-        r = 处理写("join", {"分支": "错误名", "基线": "x", "写集摘要": ""})
-        断言(not r["ok"], "非任务/ 分支拒绝")
-
-        # ── 189/770 兜底池化：入队放宽/claim 预验优先/兜底红终态（轮转语义见下 770 段） ──
-        r = 处理写("task_enqueue", {"分支": "ci/兜底-aaaa000001", "sha": "a" * 40})
-        断言(r["ok"], "189 兜底任务入队放宽（ci/兜底- 前缀）")
-        行770a = next(r2 for r2 in 预验任务快照() if r2["分支"] == "ci/兜底-aaaa000001")
-        断言(行770a["认领限制"] == "win-x64",
-             "770 轮转首棒=win-x64（注册表冷启动保守视为有空闲·限制照打）")
-        处理写("task_enqueue", {"分支": "ci/预验-aaaa000002", "sha": "b" * 40})
-        r = 处理写("task_enqueue", {"分支": "develop", "sha": "c" * 40})
-        断言(not r["ok"], "189 非法前缀仍拒（develop 裸名不入池）")
-        t = 处理写("task_claim", {"runner": "r1"})["任务"]
-        断言(t and t["分支"] == "ci/预验-aaaa000002", "189 claim 预验优先（集成吞吐保序）")
-        t = 处理写("task_claim", {"runner": "r2", "平台": "win-x64"})["任务"]
-        断言(t and t["分支"] == "ci/兜底-aaaa000001", "189 预验空后派兜底（770 轮转平台实例领到）")
-        断言(处理写("task_claim", {"runner": "r3"})["任务"] is None, "189 池空")
-        处理写("task_complete", {"runner": "r2", "分支": "ci/兜底-aaaa000001", "绿": False,
-                                 "结果": {"绿": False}})
-        处理写("task_enqueue", {"分支": "ci/兜底-aaaa000001", "sha": "a" * 40})
-        断言(处理写("task_claim", {"runner": "r4", "平台": "win-x64"})["任务"] is None,
-             "189 兜底完成红=终态不重置（防池内死循环重跑）")
-        处理写("task_complete", {"runner": "r1", "分支": "ci/预验-aaaa000002", "绿": False,
-                                 "结果": {"绿": False}})
-        处理写("task_enqueue", {"分支": "ci/预验-aaaa000002", "sha": "b" * 40})
-        t = 处理写("task_claim", {"runner": "r5"})["任务"]
-        断言(t and t["分支"] == "ci/预验-aaaa000002", "189 预验完成红维持重置重跑（flaky 机会·原语义）")
-        处理写("task_complete", {"runner": "r5", "分支": "ci/预验-aaaa000002", "绿": True,
-                                 "结果": {"绿": True}})
-
-        # ── 337 认领限制：平台白名单（runner 自报平台过滤·旧客户端只领不限任务） ──
-        处理写("task_enqueue", {"分支": "ci/预验-bbbb000003", "sha": "d" * 40,
-                                "认领限制": "win-x64,linux-x86_64"})
-        行337 = next(r2 for r2 in 预验任务快照() if r2["分支"] == "ci/预验-bbbb000003")
-        断言(行337["认领限制"] == "win-x64,linux-x86_64", "337 入队白名单已存（快照可见）")
-        断言(处理写("task_claim", {"runner": "r_arm", "平台": "linux-arm64"})["任务"] is None,
-             "337 白名单不含 arm64=arm64 runner 领不到（335 环境红定向规避）")
-        断言(处理写("task_claim", {"runner": "r_old"})["任务"] is None,
-             "337 旧客户端不报平台=只领不限任务（不会错跑限制任务）")
-        t = 处理写("task_claim", {"runner": "r_win", "平台": "win-x64"})["任务"]
-        断言(t and t["分支"] == "ci/预验-bbbb000003", "337 白名单含 win-x64=win runner 领到")
-        处理写("task_complete", {"runner": "r_win", "分支": "ci/预验-bbbb000003", "绿": False,
-                                 "结果": {"绿": False}})
-        处理写("task_enqueue", {"分支": "ci/预验-bbbb000003", "sha": "d" * 40})   # 重发不带限制→刷新不限
-        t = 处理写("task_claim", {"runner": "r_arm", "平台": "linux-arm64"})["任务"]
-        断言(t and t["分支"] == "ci/预验-bbbb000003", "337 完成红重发不带限制=刷新为不限（发起方最新意图）")
-        处理写("task_complete", {"runner": "r_arm", "分支": "ci/预验-bbbb000003", "绿": True,
-                                 "结果": {"绿": True}})   # 770 清场：防占用 arm64 忙闲判定影响轮转断言
-        # ── 770 develop 平台轮转：客户端限制忽略/游标循环（win→linux→arm64）/池忙闲 ──
-        处理写("task_enqueue", {"分支": "ci/兜底-cccc000004", "sha": "e" * 40, "认领限制": "win-x64"})
-        行770 = next(r2 for r2 in 预验任务快照() if r2["分支"] == "ci/兜底-cccc000004")
-        断言(行770["认领限制"] == "linux-x86_64",
-             "770 兜底客户端限制被忽略（服务端轮转唯一权威）·游标第二棒=linux-x86_64")
-        断言(处理写("task_claim", {"runner": "r_win", "平台": "win-x64"})["任务"] is None,
-             "770 非轮转平台领不到轮转限制任务（win 棒已过）")
-        t = 处理写("task_claim", {"runner": "r_linux", "平台": "linux-x86_64"})["任务"]
-        断言(t and t["分支"] == "ci/兜底-cccc000004",
-             "770 轮转平台空闲实例领到（平台内随机=认领竞争天然形成）")
-        处理写("task_complete", {"runner": "r_linux", "分支": "ci/兜底-cccc000004", "绿": True,
-                                 "结果": {"绿": True}})
-        处理写("task_enqueue", {"分支": "ci/兜底-dddd000005", "sha": "f" * 40})   # daemon 路径=不带限制
-        行770b = next(r2 for r2 in 预验任务快照() if r2["分支"] == "ci/兜底-dddd000005")
-        断言(行770b["认领限制"] == "linux-arm64", "770 游标第三棒=linux-arm64（win→linux→arm64 循环）")
-        t = 处理写("task_claim", {"runner": "r_arm", "平台": "linux-arm64"})["任务"]
-        断言(t and t["分支"] == "ci/兜底-dddd000005", "770 arm64 轮转棒领到")
-        处理写("task_complete", {"runner": "r_arm", "分支": "ci/兜底-dddd000005", "绿": True,
-                                 "结果": {"绿": True}})
-        处理写("task_enqueue", {"分支": "ci/兜底-eeee000006", "sha": "6" * 40})
-        行770c = next(r2 for r2 in 预验任务快照() if r2["分支"] == "ci/兜底-eeee000006")
-        断言(行770c["认领限制"] == "win-x64", "770 游标循环回归=第四棒回 win-x64")
-        t = 处理写("task_claim", {"runner": "r_win2", "平台": "win-x64"})["任务"]
-        断言(t and t["分支"] == "ci/兜底-eeee000006", "770 win 棒回归后 win 实例领到")
-        处理写("task_complete", {"runner": "r_win2", "分支": "ci/兜底-eeee000006", "绿": True,
-                                 "结果": {"绿": True}})
-
-        # ── 770 平台全忙→限制放宽 NULL（顺序由下一平台执行·用户裁决） ──
-        处理写("task_enqueue", {"分支": "ci/预验-g111111111", "sha": "7" * 40})
-        处理写("task_enqueue", {"分支": "ci/预验-g222222222", "sha": "8" * 40})
-        t = 处理写("task_claim", {"runner": "w1", "平台": "win-x64"})["任务"]
-        断言(t and t["分支"] == "ci/预验-g111111111", "770 前置：w1 注册 win 并领预验（预验优先）")
-        t = 处理写("task_claim", {"runner": "w2", "平台": "win-x64"})["任务"]
-        断言(t and t["分支"] == "ci/预验-g222222222", "770 前置：w2 注册 win 并领预验")
-        兜底轮转游标["i"] = 0   # 游标重置到 win 棒（直控内存态·测全忙分支）
-        for _虚 in ("r2", "r4", "r_win", "r_win2"):   # 清前段虚构 win 实例·隔离「win 2/2 全忙」场景
-            实例注册.pop(_虚, None)
-        处理写("task_enqueue", {"分支": "ci/兜底-ffff000007", "sha": "9" * 40})
-        行770d = next(r2 for r2 in 预验任务快照() if r2["分支"] == "ci/兜底-ffff000007")
-        断言(行770d["认领限制"] is None,
-             "770 轮转平台全忙（win 2/2 执行中）→限制放宽 NULL=顺序由下一平台执行")
-        t = 处理写("task_claim", {"runner": "l1", "平台": "linux-x86_64"})["任务"]
-        断言(t and t["分支"] == "ci/兜底-ffff000007", "770 放宽后 linux 空闲实例领到 develop 验证")
-        处理写("task_complete", {"runner": "l1", "分支": "ci/兜底-ffff000007", "绿": True,
-                                 "结果": {"绿": True}})
-
-        # ── 770 轮转限制排队超阈值→claim 惰性放宽（平台饿死兜底·win 可领 linux 棒） ──
-        兜底轮转游标["i"] = 1   # 游标重置到 linux 棒
-        处理写("task_enqueue", {"分支": "ci/兜底-h111111111", "sha": "a" * 40})
-        行770e = next(r2 for r2 in 预验任务快照() if r2["分支"] == "ci/兜底-h111111111")
-        断言(行770e["认领限制"] == "linux-x86_64", "770 前置：限制=linux-x86_64（游标棒位）")
-        旧戳770 = (datetime.now() - timedelta(seconds=兜底跳平台阈值秒 * 2)).strftime("%m-%d %H:%M:%S")
-        con.execute("UPDATE 预验任务 SET 更新时刻=? WHERE 分支='ci/兜底-h111111111'", (旧戳770,))
-        t = 处理写("task_claim", {"runner": "w3", "平台": "win-x64"})["任务"]
-        断言(t and t["分支"] == "ci/兜底-h111111111",
-             "770 排队超阈值无人领→claim 惰性放宽不限（跨平台领到·坏串/未超时不动）")
-        处理写("task_complete", {"runner": "w3", "分支": "ci/兜底-h111111111", "绿": True,
-                                 "结果": {"绿": True}})
-        忙闲770 = 池忙闲快照()
-        断言(忙闲770["注册实例"] >= 5 and 忙闲770["执行中"] >= 2,
-             "770 池忙闲快照：注册实例/执行中字段可用（562 执行中行+win 预验行）")
-        断言(忙闲770["池全忙"] is False, "770 池全忙判定=执行中<注册（此景存在空闲实例）")
-
-        # ── 830 兜底饥饿保底 + 陈头去重 + 内容键（2026-10-15 用户裁决·并行化配套）──
-        处理写("task_enqueue", {"分支": "ci/预验-8308308300", "sha": "a" * 40,
-                               "内容键": "k" * 40})
-        行830k = next(r2 for r2 in 预验任务快照() if r2["分支"] == "ci/预验-8308308300")
-        断言(行830k["内容键"] == "k" * 40, "830 内容键入队存取（预验绿复用键·快照可见）")
-        # 饥饿保底：兜底排队行年龄超阈值 → 优先于更早序号的预验排队行派发
-        处理写("task_enqueue", {"分支": "ci/兜底-830aaa0001", "sha": "b" * 40})
-        con.execute("UPDATE 预验任务 SET 认领限制=NULL, 更新时刻=? WHERE 分支='ci/兜底-830aaa0001'",
-                    ((datetime.now() - timedelta(seconds=兜底饥饿秒 * 2)).strftime("%m-%d %H:%M:%S"),))
-        处理写("task_claim", {"runner": "r830a"})   # 不带平台=只领不限行（上面已置 NULL）
-        行饿 = next((r2 for r2 in 预验任务快照()
-                    if r2["分支"] == "ci/兜底-830aaa0001"), None)
-        断言(行饿 and 行饿["状态"] == "执行中" and 行饿["认领者"] == "r830a",
-             "830 兜底饥饿保底：兜底排队超阈值优先派（压过更早序号的预验排队行）")
-        处理写("task_complete", {"runner": "r830a", "分支": "ci/兜底-830aaa0001",
-                                "绿": True, "结果": {"绿": True}})
-        # 陈头去重：新头入池取消更老的排队兜底行
-        处理写("task_enqueue", {"分支": "ci/兜底-830bbb0002", "sha": "c" * 40})
-        处理写("task_enqueue", {"分支": "ci/兜底-830ccc0003", "sha": "d" * 40})
-        旧行830 = next((r2 for r2 in 预验任务快照() if r2["分支"] == "ci/兜底-830bbb0002"), None)
-        新行830 = next((r2 for r2 in 预验任务快照() if r2["分支"] == "ci/兜底-830ccc0003"), None)
-        断言(旧行830 is None and 新行830 is not None,
-             "830 陈头去重：新头入池取消更老的排队兜底行（只验最新头·线性历史包含）")
-        # 清场：饥饿已消费 → 回归预验优先保序；两行分别领掉完成（保持池净）
-        con.execute("UPDATE 预验任务 SET 认领限制=NULL WHERE 分支 IN "
-                    "('ci/兜底-830ccc0003','ci/预验-8308308300')")
-        处理写("task_claim", {"runner": "r830b"})
-        领b = next((r2 for r2 in 预验任务快照() if r2["分支"] == "ci/预验-8308308300"), None)
-        断言(领b and 领b["状态"] == "执行中" and 领b["认领者"] == "r830b",
-             "830 清场：饥饿兜底已消费·预验优先保序回归（领到预验行）")
-        处理写("task_complete", {"runner": "r830b", "分支": "ci/预验-8308308300",
-                                "绿": True, "结果": {"绿": True}})
-        处理写("task_claim", {"runner": "r830c"})
-        处理写("task_complete", {"runner": "r830c", "分支": "ci/兜底-830ccc0003",
-                                "绿": True, "结果": {"绿": True}})
-
-        # ── 562 批主心跳：heartbeat=只刷更新时刻·不改状态——活批不被回收误杀（444 根治） ──
-        #   （真实批主心跳 2 分钟≪集成中超时 2h·行时刻恒新鲜；此处直接断言心跳语义本身）
-        旧戳562 = (datetime.now() - timedelta(seconds=集成中超时秒 * 2)).strftime("%m-%d %H:%M:%S")
-        处理写("join", {"分支": "任务/心-6-p", "基线": "a", "写集摘要": ""})
-        处理写("update", {"分支": "任务/心-6-p", "状态": "集成中"})
-        断言(处理写("heartbeat", {"分支": "任务/心-6-p"})["ok"], "562 heartbeat 集成中行=ok")
-        _time = __import__("time")
-        _time.sleep(1.1)   # 秒级戳——跨秒才能比出刷新
-        断言(处理写("heartbeat", {"分支": "任务/心-6-p"})["ok"], "562 heartbeat 幂等可反复调")
-        行心 = next(r2 for r2 in 队列快照() if r2["分支"] == "任务/心-6-p")
-        断言(行心["状态"] == "集成中" and 行心["更新时刻"] > 旧戳562,
-             "562 心跳刷新更新时刻且不改状态（长门禁活批证明·444 根治）")
-        处理写("join", {"分支": "任务/心-6-q", "基线": "a", "写集摘要": ""})   # 无关写活动触发回收扫描
-        断言(next(r2 for r2 in 队列快照() if r2["分支"] == "任务/心-6-p")["状态"] == "集成中",
-             "562 心跳维持的活批过扫描不误收（456 回收以更新时刻为据）")
-        断言(not 处理写("heartbeat", {"分支": "任务/无此行"})["ok"],
-             "562 heartbeat 无此行=ok False（心跳方静默忽略）")
-
-        # ── 562 排队行孤儿回收：超时降级已踢出（批主选举不再被失联行卡死）·心跳保活不误收 ──
-        处理写("join", {"分支": "任务/孤-7-r", "基线": "a", "写集摘要": ""})
-        孤旧戳 = (datetime.now() - timedelta(seconds=排队超时秒 * 2)).strftime("%m-%d %H:%M:%S")
-        con.execute("UPDATE 队列 SET 更新时刻=? WHERE 分支='任务/孤-7-r'", (孤旧戳,))
-        处理写("join", {"分支": "任务/孤-7-s", "基线": "a", "写集摘要": ""})   # 活跃行+触发扫描
-        断言(next(r2 for r2 in 队列快照() if r2["分支"] == "任务/孤-7-r")["状态"] == "已踢出",
-             "562 排队行超时无写活动=降级已踢出（507/476 孤儿不再卡队列）")
-        断言(next(r2 for r2 in 队列快照() if r2["分支"] == "任务/孤-7-s")["状态"] == "排队",
-             "562 新报名行未超时=保护不动（492 不误删活跃会话守卫）")
-        处理写("join", {"分支": "任务/孤-7-t", "基线": "a", "写集摘要": ""})
-        _time.sleep(1.1)
-        处理写("heartbeat", {"分支": "任务/孤-7-t"})   # 等待者心跳保活
-        行孤 = next(r2 for r2 in 队列快照() if r2["分支"] == "任务/孤-7-t")
-        断言(行孤["状态"] == "排队" and 行孤["更新时刻"] > 孤旧戳,
-             "562 等待者心跳保活=更新时刻恒新鲜（排队回收不误收·492 守卫）")
-        处理写("join", {"分支": "任务/孤-7-u", "基线": "a", "写集摘要": ""})   # 触发扫描
-        断言(next(r2 for r2 in 队列快照() if r2["分支"] == "任务/孤-7-t")["状态"] == "排队",
-             "562 心跳保活行过回收扫描不动")
-        r = 处理写("join", {"分支": "任务/孤-7-r", "基线": "b", "写集摘要": ""})
-        断言("原态 已踢出" in r.get("说明", ""), "562 排队回收行重报=回排队（1020 语义无损）")
-        con.execute("UPDATE 队列 SET 更新时刻='坏串' WHERE 分支='任务/孤-7-s'")
-        处理写("join", {"分支": "任务/孤-7-u", "基线": "b", "写集摘要": ""})   # 触发扫描
-        断言(next(r2 for r2 in 队列快照() if r2["分支"] == "任务/孤-7-s")["状态"] == "排队",
-             "562 更新时刻坏串=宁漏收不误收且不炸服务（456 口径同构）")
-
-        # ── 562 预验已并入检测：源分支已并入 develop=孤儿预验拒入/取消不再重派（555/556） ──
-        真检测562 = 源分支已并入
-        源分支已并入 = lambda 源: True   # 模拟看板台账：核出已并入
-        r = 处理写("task_enqueue", {"分支": "ci/预验-f111111111", "sha": "1" * 40,
-                                    "源分支": "任务/555"})
-        断言(not r["ok"] and "已并入" in r.get("说明", ""),
-             "562 enqueue 核出源分支已并入=拒入")
-        源分支已并入 = lambda 源: False   # 模拟：未并入——放行入池
-        处理写("task_enqueue", {"分支": "ci/预验-f111111111", "sha": "1" * 40,
-                                "源分支": "任务/555"})
-        处理写("task_enqueue", {"分支": "ci/预验-f222222222", "sha": "2" * 40,
-                                "源分支": "任务/556"})
-        处理写("task_enqueue", {"分支": "ci/预验-f333333333", "sha": "3" * 40})   # 旧客户端无源分支
-        源分支已并入 = lambda 源: 源 == "任务/555"   # 555→True·556→False·None 源→False
-        t = 处理写("task_claim", {"runner": "r562"})["任务"]
-        断言(t and t["分支"] == "ci/预验-f222222222",
-             "562 claim 跳过已并入任务派下一个（不浪费池容量重派）")
-        断言(next(r2 for r2 in 预验任务快照()
-                  if r2["分支"] == "ci/预验-f111111111")["状态"] == "已取消",
-             "562 已并入任务=置已取消（不再参与认领·防反复重派）")
-        t = 处理写("task_claim", {"runner": "r562b"})["任务"]
-        断言(t and t["分支"] == "ci/预验-f333333333",
-             "562 无源分支任务照常派发（旧客户端兼容·宁漏检不误杀）")
-        断言(处理写("task_claim", {"runner": "r562c"})["任务"] is None, "562 取消/领完=池空")
-        r = 处理写("task_enqueue", {"分支": "ci/预验-f111111111", "sha": "1" * 40,
-                                    "源分支": "任务/555"})
-        断言(r["ok"], "562 enqueue 见已取消行=不动不复活（幂等防重入队复活）")
-        源分支已并入 = 真检测562   # 还原真实现（防泄漏影响后续段）
-
-        # ── 562 修复（审查 P2-2）：HTTPError 仅 404 免退避·其余纳入退避戳——
-        #    写锁内同步 HTTP 停顿防线（「端口在但持续 500」不再每次写操作都等一次 HTTP） ──
-        假HTTP错 = lambda 码: urllib.error.HTTPError("http://x/api/task/1", 码, "msg", None, None)
-        断言(并入检测退避否(假HTTP错(500)) is True, "562 HTTPError 5xx=置退避（写锁内不再反复同步等 HTTP）")
-        断言(并入检测退避否(假HTTP错(502)) is True and 并入检测退避否(假HTTP错(401)) is True,
-             "562 HTTPError 502/401 同=置退避（除 404 外全部病态纳入）")
-        断言(并入检测退避否(假HTTP错(404)) is False,
-             "562 HTTPError 404=免退避（任务不在台账=正常空结果·重试必有同解）")
-        断言(并入检测退避否(TimeoutError()) is True and 并入检测退避否(OSError()) is True,
-             "562 不可达/超时=置退避（既有语义保持）")
-
-        print("selftest %d 项全过" % n绑定[0])
-        raise SystemExit(0)
+        import queue_selftest
+        queue_selftest.跑()
 
     print("[启动] 端口=%d db=%s 令牌=%s 任务池心跳超时=%ds"
           % (端口, db路径, "已设" if 令牌 else "未设（写操作全拒·fail-closed 561）", 心跳超时秒),

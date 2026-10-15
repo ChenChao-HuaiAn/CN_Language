@@ -111,7 +111,10 @@ def 推导阶段(队列行们: list, 预验行们: list, 门禁行们: list, 任
                    else 阶段_验证中 if 跑活
                    else 阶段_验证中断 if 跑僵
                    else 阶段_验证绿),
-            "阶段时刻": str(组[0].get("时刻") or "")}
+            "阶段时刻": str(组[0].get("时刻") or ""),
+            # 842：验证详情代理参数（红徽标点开看失败用例+归因·gate_result 查询键）
+            "sha": str(组[0].get("sha") or ""),
+            "平台": str(组[0].get("平台") or "")}
     出 = {}
     for t in 任务们:
         号 = t["号"]
@@ -179,6 +182,23 @@ def 取预检详情(sha: str):
     try:
         with urllib.request.urlopen(
                 f"{地址}/api/task_result?sha={urllib.parse.quote(sha)}", timeout=5) as r:
+            return json.loads(r.read().decode("utf-8"))
+    except (OSError, ValueError):
+        return None
+
+
+def 取门禁详情(sha: str, 平台: str):
+    """842：代理 8300 /api/gate_result（含失败用例明细与 develop 红灯归因·归因算法
+    单点在 8300 queue_service）——「已集成·验证红」徽标点开看哪个用例失败+哪个/
+    哪几个任务引入。sha=门禁行完整/前 10 位·平台=win-x64/linux-x86_64/linux-arm64。
+    不可达/无记录=None。"""
+    import urllib.request
+    import urllib.parse
+    地址 = os.environ.get("CN_QUEUE_BASE_URL", "http://127.0.0.1:8300").rstrip("/")
+    try:
+        with urllib.request.urlopen(
+                f"{地址}/api/gate_result?sha={urllib.parse.quote(sha)}"
+                f"&plat={urllib.parse.quote(平台)}", timeout=5) as r:
             return json.loads(r.read().decode("utf-8"))
     except (OSError, ValueError):
         return None
@@ -258,6 +278,8 @@ if __name__ == "__main__":
         实际 = (图.get(号) or {}).get("阶段")
         assert 实际 == 期望, f"#{号} 阶段推导失败：{实际!r}（期望 {期望!r}）"
     assert 图["805"].get("runner") == "TX_02-runner-3", "预检中须附认领者 runner 名"
+    assert 图["811"].get("sha", "").startswith("def2345678") and 图["811"].get("平台") == "linux-arm64", \
+        "842 验证态须附门禁 sha+平台（验证红详情代理 gate_result 查询键）"
     # 兜底行（ci/兜底-*）不得映射到任何任务号；门禁 40 位 sha 前缀匹配生效
     assert all(号 in {"801", "802", "803", "804", "805", "806", "807",
                       "810", "811", "812", "814", "815"} for 号 in 图), f"图越界：{sorted(图)}"

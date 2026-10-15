@@ -40,8 +40,10 @@ const 阶段元 = {
 function 阶段签HTML(阶段, runner) {
   if (!阶段) return "";
   const 元 = 阶段元[阶段] || { 符: "•", 类: "阶段队", 题: "" };
-  const 红可点 = 阶段.indexOf("预检红") === 0 ? ' style="cursor:pointer" title="' + 元.题 +
-    '（点开失败用例）" data-红详情' : ' title="' + 元.题 + (runner ? "·认领者 " + runner : "") + '"';
+  // 842：预检红与「已集成·验证红」徽标均可点开失败详情（验证红走 gate_result）
+  const 是红 = 阶段.indexOf("预检红") === 0 || 阶段 === "已集成·验证红";
+  const 红可点 = 是红 ? ' style="cursor:pointer" title="' + 元.题 +
+    '（点开失败详情）" data-红详情' : ' title="' + 元.题 + (runner ? "·认领者 " + runner : "") + '"';
   return '<span class="签 ' + 元.类 + '"' + 红可点 + ">" + 元.符 + " " + 转义(阶段) + "</span>";
 }
 
@@ -663,30 +665,59 @@ function 渲染流水线() {
   "（在「当前在飞」页看）；卡片点开任务详情，红卡详情内可看预检失败用例。</div>";
 }
 
-/* —— 814：预检红详情（失败用例清单·代理 /api/ci_result）—— */
+/* —— 814/842：红详情（失败用例清单 + develop 红灯归因）——
+   预检红走 /api/ci_result（预验任务详情代理）；验证红走 /api/gate_result
+   （门禁行详情代理·带归因·归因算法单点在 8300 queue_service）。 */
 
-async function 开红详情(号, sha) {
+async function 开红详情(号, sha, 源, 平台) {
   const 区 = $("红详情区");
-  if (!区) { 提示("请从任务详情面板查看失败用例", 3000); 开详情(号); return; }
-  if (!sha) { 区.innerHTML = '<div class="备注行">无预检 sha——预验行已清理</div>'; return; }
-  区.innerHTML = '<div class="备注行">拉取预检详情…</div>';
+  if (!区) { 提示("请从任务详情面板查看失败详情", 3000); 开详情(号); return; }
+  if (!sha) { 区.innerHTML = '<div class="备注行">无 sha（相关行已清理）</div>'; return; }
+  区.innerHTML = '<div class="备注行">拉取详情…</div>';
   try {
-    const r = await 调API("GET", "api/ci_result?sha=" + encodeURIComponent(sha));
-    const 详 = r.结果 && r.结果.详情;
-    if (!详) { 区.innerHTML = '<div class="备注行">无详情（预验行已清理或队列服务不可达）</div>'; return; }
+    const 验 = 源 === "验证";
+    const r = 验
+      ? await 调API("GET", "api/gate_result?sha=" + encodeURIComponent(sha)
+                    + "&plat=" + encodeURIComponent(平台 || ""))
+      : await 调API("GET", "api/ci_result?sha=" + encodeURIComponent(sha));
+    const 结 = (r && r.结果) || null;
+    const 详 = 结 && 结.详情;
+    if (!详) { 区.innerHTML = '<div class="备注行">无详情（行已清理 / 旧版上报 / 队列服务不可达）</div>'; return; }
+    const 部分 = [];
+    const 明细 = 详.e2e明细;
+    const 失败们 = 明细 && Array.isArray(明细.失败用例) ? 明细.失败用例 : [];
+    if (失败们.length) {
+      部分.push('<div class="详节题">失败用例（' + 失败们.length + '）</div>' +
+        失败们.map((u) => '<div class="败例"><div class="名">✗ ' + 转义(u.名称) + '</div>' +
+          "<pre>" + 转义(u.原因) + "</pre></div>").join(""));
+    } else {
+      const 用例行们 = (详.日志尾部 || []).filter((l) => /✗/.test(l));
+      部分.push(用例行们.length
+        ? '<pre class="mono" style="white-space:pre-wrap;margin:.4em 0 0;max-height:14em;overflow:auto">' +
+          转义(用例行们.join("\n")) + "</pre>"
+        : '<div class="淡">无 e2e 失败明细（旧版上报 / 未跑到 e2e / 红在构建或同步步）——完整日志看 runner 机 ci-logs/</div>');
+    }
     const 红步骤们 = Object.entries(详.步骤 || {})
       .filter(([, s]) => s.rc !== 0 || s.超时)
       .map(([名, s]) => 转义(名 + (s.超时 ? "(超时)" : "(rc=" + s.rc + ")")));
-    const 用例行们 = (详.日志尾部 || []).filter((l) => /✗/.test(l));
-    区.innerHTML = '<div class="详备注">' +
-      "<div>链顶 <span class='mono'>" + 转义(详.sha || "") + "</span>·平台 " + 转义(详.平台 || "—") +
-      "·总秒 " + 转义(详.总秒 ?? "—") + "</div>" +
-      (红步骤们.length ? "<div>红步骤：" + 红步骤们.join("、") + "</div>" : "") +
-      (用例行们.length
-        ? '<pre class="mono" style="white-space:pre-wrap;margin:.4em 0 0;max-height:14em;overflow:auto">' +
-          转义(用例行们.join("\n")) + "</pre>"
-        : '<div class="淡">日志尾部无 ✗ 用例行（红在构建/同步步骤）——完整日志看 runner 机 ci-logs/</div>') +
-      "</div>";
+    if (红步骤们.length) {
+      部分.push('<div class="淡" style="margin-top:.4em">红步骤：' + 红步骤们.join("、") + "</div>");
+    }
+    const 归因 = 验 && 结.归因;
+    if (归因 && 归因.历史条数) {
+      部分.push('<div class="详节题">归因 — 本次并入（自上次绿 ' +
+        (归因.边界sha ? 转义(归因.边界sha.slice(0, 10)) : "·列表内更早无绿") + " 以来）</div>" +
+        (归因.提交们 || []).map((条) => '<div class="依赖行" style="cursor:default">' +
+          '<span class="mono 淡">' + 转义(String(条.sha || "").slice(0, 10)) + "</span>" +
+          '<span style="flex:1;min-width:0;overflow-wrap:break-word">' + 转义(条.主题 || "") +
+          "</span></div>").join("") +
+        (归因.遇边 ? "" : '<div class="淡" style="margin-top:.4em">提交历史窗口内未见上次绿' +
+          "——以上为最近 " + 归因.历史条数 + " 条并入（可能不完整）</div>"));
+    }
+    区.innerHTML = '<div class="详备注"><div>' + (验 ? "验证轮" : "预检") +
+      ' <span class="mono">' + 转义(详.sha || sha) + "</span>·平台 " +
+      转义(详.平台 || 平台 || "—") + "·总秒 " + 转义(详.总秒 ?? "—") + "</div>" +
+      部分.join("") + "</div>";
   } catch (e) {
     区.innerHTML = '<div class="备注行">拉取失败：' + 转义(e.message) + "</div>";
   }
@@ -723,13 +754,16 @@ function 开详情(号) {
         '<span class="行时刻">心跳 ' + 相对时(i.时戳) + "</span>" +
         (i.失联 ? '<span class="签 失联">失联</span>' : "") + "</div>").join("")
     : '<div class="备注行">无在做会话</div>';
-  // 814：阶段行——红阶段可展开 CI 失败用例（拉 /api/ci_result 代理）
-  const 红检 = t.阶段 && t.阶段.indexOf("预检红") === 0;
+  // 814/842：阶段行——红阶段可展开 CI 失败详情（预检红走 ci_result·验证红走 gate_result）
+  const 红检 = t.阶段 && (t.阶段.indexOf("预检红") === 0 || t.阶段 === "已集成·验证红");
+  const 红源 = t.阶段 === "已集成·验证红" ? "验证" : "预检";
   const 阶段行 = t.阶段
     ? '<div class="依赖行" style="cursor:default">' + 阶段签HTML(t.阶段, t.runner) +
       '<span class="行时刻">阶段时刻 ' + 转义(t.阶段时刻 || "—") +
       (t.runner ? "·runner " + 转义(t.runner) : "") + "</span>" +
-      (红检 && t.sha ? '<button class="钮 次" data-红详情-sha="' + 转义(t.sha) + '">失败用例</button>' : "") +
+      (红检 && t.sha ? '<button class="钮 次" data-红详情-sha="' + 转义(t.sha) +
+        '" data-红源="' + 红源 + '" data-红平台="' + 转义(t.平台 || "") +
+        '">失败用例</button>' : "") +
       "</div>" + '<div id="红详情区"></div>'
     : '<div class="备注行">无 CI 阶段信号（' +
       (t.状态 === "✅" ? "验证轮未入最近门禁窗口" : "⬜/⏸ 行无编排信号=正常") + "）</div>";
@@ -993,12 +1027,20 @@ document.addEventListener("click", (e) => {
     return;
   }
   const 红钮 = e.target.closest("[data-红详情-sha]");
-  if (红钮) { 开红详情(当前详情, 红钮.dataset.红详情Sha); return; }
+  if (红钮) {
+    // 842：属性尾用 ASCII（data-红源/data-红平台）——dataset 对「连字符+中文」键名
+    //   保留连字符（dataset.红详情-源 而非 红详情源）易踩坑，ASCII 尾无歧义。
+    开红详情(当前详情, 红钮.dataset.红详情Sha, 红钮.dataset.红源, 红钮.dataset.红平台);
+    return;
+  }
   const 红签 = e.target.closest("[data-红详情]");
   if (红签) {                                // 行内红徽标——先于任务行开详情（防 data-详 吞点击）
     const 行 = 红签.closest("[data-详]");
     const t = 行 && (数据.任务们 || []).find((x) => x.号 === 行.dataset.详);
-    if (t && t.sha) { 开详情(t.号); 开红详情(t.号, t.sha); }
+    if (t && t.sha) {
+      开详情(t.号);
+      开红详情(t.号, t.sha, t.阶段 === "已集成·验证红" ? "验证" : "预检", t.平台);
+    }
     return;
   }
   const 详 = e.target.closest("[data-详]");
