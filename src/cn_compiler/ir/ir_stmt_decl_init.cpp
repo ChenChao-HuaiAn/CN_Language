@@ -57,6 +57,9 @@ void IRGenerator::registerClosureIfNeeded(VarDecl* node) {
     if ((node->initializer->getType() == NodeType::LambdaExpr ||
          isMethodValueInit) &&
         !lastLambdaName_.empty()) {
+        // 655 返工：lambda 变量名留痕（与 closureInfo_ 生命周期解耦——visitLambdaExpr
+        //   入口 clear 会清掉快径表，但蹦床通道合法性判定仍需知道该名曾是 lambda）
+        lambdaVarNames_.insert(node->name);
         ClosureInfo info;
         info.lambdaName = lastLambdaName_;
         info.captures = lastLambdaCaptures_;

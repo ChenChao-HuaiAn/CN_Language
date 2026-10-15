@@ -958,18 +958,28 @@ void IRGenerator::visitCallExpr(CallExpr* node) {
         }
     }
     // 间接调用：先求被调者表达式（函数指针变量），再 CallIndirect
-    // 655（648 余量②收口·「miss 不可静默」立法）：648 丙轮归档的静态槽 fnptr
-    //   豁免已由 funcPtrTypeOfCallee 静态槽窄放宽（655）根治——040 合法面不再
-    //   落此终态。走到此处的 calleeFnPtrType 为空=funcPtrTypeOfCallee 全域 miss
-    //   （标识符既非局部/静态槽 fnptr、成员链亦未解析出类型串）=间接调用签名
-    //   终态缺失（形参/返回类型全按 i32 兜底错读=静默错值面），按立法显形报
-    //   诊断后保留 i32 兜底与控制流（driver generate() 后 hasErrors() 中止，
-    //   合法程序零诊断零行为变化）。若 L2/云端全量出现合法程序落此=新 miss
-    //   形态，须补签名解析而非回撤诊断（110/861-a 同教训）。
-    diagnostics_.report(
-        DiagnosticLevel::Error, node->location,
-        "内部错误: 间接调用被调者类型串未解析（funcPtrTypeOfCallee 全域 miss·"
-        "#655）");
+    // 655（648 余量②收口）：静态槽 fnptr 豁免已由 funcPtrTypeOfCallee 窄放宽
+    //   根治。655 返工（720/859/939/942 连锁红根治）：本尾到达条件实为四种，
+    //   原诊断把整个掉穿面误当全域 miss 面报错，现仅①报——
+    //   ①calleeFnPtrType 空且非闭包变量=真全域 miss（签名终态缺失·静默错值
+    //     面）→ 显形（探针 t1~t4 实证解析链无缺口·形参/局部/静态登记全通）；
+    //   ②返回=空类型（retSrc 非空·标量分支 mapped=="void" 不 return 掉穿）
+    //     =合法面：result 无消费者·i32 兜底 eax 装载无害（stdlib/测试框架.cn:55
+    //     体(器) 实锤·859/939/942 连锁红根因）；
+    //   ③retSrc 空已由上方 #648 报过，再报=双报；
+    //   ④lambda 变量但 closureInfo_ 快径 miss（lambdaVarNames_ 留痕判定）=
+    //     蹦床通道合法面：432 lambda 值=蹦床地址，CallIndirect 蹦床与快径语义
+    //     等价——快径受 visitLambdaExpr 入口 clear（485）影响，同函数后定义的
+    //     lambda 清掉先前登记（720 实录·取和走蹦床行为正确），非签名缺失。
+    //   各形态发射同链零行为变化；若合法程序落①=新 miss 形态，须补签名解析
+    //   而非回撤诊断（110/861-a 同教训；v2 侧 发射间接调用480 无此病）。
+    const bool lambdaTrampoline655r = lambdaVarNames_.count(calleeName) > 0;
+    if (calleeFnPtrType.empty() && !lambdaTrampoline655r) {
+        diagnostics_.report(
+            DiagnosticLevel::Error, node->location,
+            "内部错误: 间接调用被调者类型串未解析（funcPtrTypeOfCallee 全域 miss·"
+            "#655）");
+    }
     ir::IRValue calleeVal = genExpr(node->callee.get());
     args.insert(args.begin(), calleeVal);  // operand[0]=指针寄存器
     lastExpr_ = emitResult(ir::Opcode::CallIndirect, args, "i32", "", node->location);

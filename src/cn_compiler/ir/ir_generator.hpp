@@ -429,6 +429,13 @@ private:
         std::vector<std::string> paramTypes;
     };
     std::unordered_map<std::string, ClosureInfo> closureInfo_;
+    // 655 返工（2026-10-15）：曾以 lambda/方法值登记过闭包关联的变量名全集——
+    //   closureInfo_ 快径受 visitLambdaExpr 入口 clear 纪律（485）影响，同函数
+    //   先登记的闭包会被后续 lambda 定义清掉（720 实录：取和 miss/取d hit 交替
+    //   =每组第一个调用退化为 432 蹦床通道 CallIndirect，语义等价合法面）。本集
+    //   与 clear 无关地记住「该名是 lambda 变量」，间接调用尾据此区分「闭包蹦床
+    //   通道合法面」（不报）与「真全域 miss」（报 #655 诊断）。
+    std::unordered_set<std::string> lambdaVarNames_;
     // 变量作用域栈（BlockStmt 进入压栈/退出弹栈，支持同名遮蔽）。
     // 每个条目：源码名 -> {寄存器ID, 唯一内部名（name$N，遮蔽时分配独立槽）, IR类型,
     //                      源码类型（整32*/整32[5]等，Task 2.4 指针元素类型/数组元素类型）}
