@@ -49,7 +49,47 @@ bool IRGenerator::genExprInitializer(VarDecl* node, const DeclGenCtx& ctx) {
 
 // 族⑩ 子方法：lambda/实例方法作值 的闭包关联登记（Task 2.10/P3-23 补完）。
 //   调用 `加倍(...)` 时展开定义处固化的捕获实参。
+// 族⑩ 子方法（816·655 返工遗留乙）：拷贝形态传递登记——初始化器为**标识符**
+//   且该名已在 lambda/方法值留痕集（变量 f = 取和;）时，f 同样是 lambda 变量
+//   （其槽持有蹦床地址 ?lambdaN$trap / 方法地址，调用经间接通道），须与直接
+//   初始化同权留痕 lambdaVarNames_。链式拷贝（h = g = 取和）因声明序保证源头
+//   先登记而自然传递。现状拷贝形态的源类型串经 432/485 推断回填链可解析、
+//   间接调用尾通常不掉穿（①误报用例面无实录），但留痕集语义=「曾以 lambda/
+//   方法值登记过的变量名全集」，拷贝名缺席=oracle 残缺：一旦类型串链出现新
+//   缺口，该名即被误判「真全域 miss」落 #655 诊断①误报（655 返工遗留呈报
+//   本案）。普通变量拷贝（整32 y = x; x 不在集）不触本分支——负向拒绝面零
+//   扩大。查询 miss=「来源非 lambda 变量」的语义本身（集合成员判定·非查表
+//   兜底），不落 miss 不可静默面。
+//
+//   快径整体传递（机制级当场修·1002-⑥ 实锤）：closureInfo_ 命中时把来源
+//   ClosureInfo 整体赋给拷贝名——否则拷贝调用掉进间接通道丢**绑定 this**：
+//   方法值槽=裸方法地址，快径调用=直调+captureArgs（this=Load 对象槽）展开，
+//   间接调用只发用户实参（被调方把首实参当 this 解引用=探针 C0000005
+//   fault=6 实锤·1002 立案前存量缺陷）。lambda 值拷贝同传递（快径直调与
+//   蹦床 CallIndirect 语义等价——655 返工④已论证）。跨函数安全面：lambda
+//   体入口 closureInfo_ clear（485）使体内拷贝判据必 miss 快径表→只留痕
+//   走蹦床通道（captureArgs 寄存器系外层函数定义，跨函数引用被 clear 纪律
+//   结构性排除）。
+void IRGenerator::propagateLambdaCopyBinding816(VarDecl* node) {
+    if (node->initializer == nullptr ||
+        node->initializer->getType() != NodeType::IdentifierExpr) {
+        return;
+    }
+    const auto& srcName =
+        static_cast<const IdentifierExpr*>(node->initializer.get())->name;
+    const auto srcClosure = closureInfo_.find(srcName);
+    if (srcClosure != closureInfo_.end()) {
+        closureInfo_[node->name] = srcClosure->second;
+        lambdaVarNames_.insert(node->name);
+    } else if (lambdaVarNames_.count(srcName) > 0) {
+        // 快径已亡（485 clear/蹦床通道场景）：仅留痕——拷贝调用经类型串
+        //   解析走蹦床间接通道，lambdaVarNames_ 保证不落 #655 诊断①。
+        lambdaVarNames_.insert(node->name);
+    }
+}
+
 void IRGenerator::registerClosureIfNeeded(VarDecl* node) {
+    propagateLambdaCopyBinding816(node);  // 816 拷贝传递登记（独立函数·守百行线）
     // P3-23 补完：实例方法作值（自动 cb = 对象.方法）与 lambda 同为闭包登记路径
     const bool isMethodValueInit =
         node->initializer->getType() == NodeType::MemberExpr &&

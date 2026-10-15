@@ -198,6 +198,7 @@ private:
     bool genStructInitListDecl(VarDecl* node, const DeclGenCtx& ctx);  // ⑨结构体初始化列表
     bool genExprInitializer(VarDecl* node, const DeclGenCtx& ctx);  // ⑩普通表达式初始值
     void registerClosureIfNeeded(VarDecl* node);  // ⑩子 Task 2.10/P3-23 闭包登记
+    void propagateLambdaCopyBinding816(VarDecl* node);  // ⑩子 816 lambda/方法值拷贝形态传递登记
     bool tryGenTransferInit(VarDecl* node, const ir::IRValue& value, const std::string& unique);
     bool tryGenArrayRetbufInit(VarDecl* node, const ir::IRValue& value, const std::string& unique);
     bool tryGenStructPtrInit(VarDecl* node, ir::IRValue value, const DeclGenCtx& ctx);
@@ -429,12 +430,11 @@ private:
         std::vector<std::string> paramTypes;
     };
     std::unordered_map<std::string, ClosureInfo> closureInfo_;
-    // 655 返工（2026-10-15）：曾以 lambda/方法值登记过闭包关联的变量名全集——
-    //   closureInfo_ 快径受 visitLambdaExpr 入口 clear 纪律（485）影响，同函数
-    //   先登记的闭包会被后续 lambda 定义清掉（720 实录：取和 miss/取d hit 交替
-    //   =每组第一个调用退化为 432 蹦床通道 CallIndirect，语义等价合法面）。本集
-    //   与 clear 无关地记住「该名是 lambda 变量」，间接调用尾据此区分「闭包蹦床
-    //   通道合法面」（不报）与「真全域 miss」（报 #655 诊断）。
+    // 655 返工：曾以 lambda/方法值登记过闭包关联的变量名全集。closureInfo_ 快径
+    //   受 visitLambdaExpr 入口 clear 纪律（485）影响（720 实录：同函数后定义的
+    //   lambda 清掉先前登记=首个调用退化 432 蹦床通道·语义等价合法面），本集与
+    //   clear 无关地记住「该名是 lambda 变量」——间接调用尾据此区分「蹦床通道
+    //   合法面」（不报）与「真全域 miss」（报 #655 诊断）。816 扩=拷贝传递登记。
     std::unordered_set<std::string> lambdaVarNames_;
     // 变量作用域栈（BlockStmt 进入压栈/退出弹栈，支持同名遮蔽）。
     // 每个条目：源码名 -> {寄存器ID, 唯一内部名（name$N，遮蔽时分配独立槽）, IR类型,
