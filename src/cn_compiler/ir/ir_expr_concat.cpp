@@ -113,14 +113,10 @@ bool IRGenerator::genStringConcatBinary(BinaryExpr* node, const ir::IRValue& lef
         // 617（2026-10-14 伞批）：concat 只读消费实参——发射完成后结算实参中
         //   的拥有串临时（拼接链中间临时归零点：t2=连接(t1,c) 发射完释放 t1；
         //   字面量/标识符形态由 argIsOwnedStringTemp 判据天然排除）
-        if (argIsOwnedStringTemp(node->left.get())) {
-            emit(ir::Opcode::Call, {left}, ir::IRValue(), "__cn_str_free",
-                 "void", node->location);
-        }
-        if (argIsOwnedStringTemp(node->right.get())) {
-            emit(ir::Opcode::Call, {right}, ir::IRValue(), "__cn_str_free",
-                 "void", node->location);
-        }
+        //   662（617 三元面补全）：三元操作数走分支拥有性感知条件释放
+        //   （单一入口 Rec617·选中字面量分支不得 free——无块计数上下文残余清）
+        emitOwnedTempReleaseRec617(node->left.get(), left, node->location);
+        emitOwnedTempReleaseRec617(node->right.get(), right, node->location);
         return true;
     }
     const bool leftIsString = isStringTypedExpr(node->left.get());
@@ -132,13 +128,10 @@ bool IRGenerator::genStringConcatBinary(BinaryExpr* node, const ir::IRValue& lef
                                "__cn_str_concat", node->location);
         // 617（2026-10-14 伞批）：转换器（from_int/float/char/bool/uint）产物
         //   仅被本次 concat 消费——发射完成即释放；左操作数中拥有串临时
-        //   （如 整数转字符串(1) + 2 的左临时）同点结算。
+        //   （如 整数转字符串(1) + 2 的左临时）同点结算（662 三元走条件释放）。
         emit(ir::Opcode::Call, {rightStr}, ir::IRValue(), "__cn_str_free",
              "void", node->location);
-        if (argIsOwnedStringTemp(node->left.get())) {
-            emit(ir::Opcode::Call, {left}, ir::IRValue(), "__cn_str_free",
-                 "void", node->location);
-        }
+        emitOwnedTempReleaseRec617(node->left.get(), left, node->location);
         return true;
     }
     return false;
@@ -164,13 +157,11 @@ bool IRGenerator::genStringConcatI128(BinaryExpr* node, const ir::IRValue& left,
                                           "__cn_str_from_int", node->location);
         lastExpr_ = emitResult(ir::Opcode::Call, {left, rightStr}, "ptr",
                                "__cn_str_concat", node->location);
-        // 617：转换产物仅被本次 concat 消费——发射完成即释放（族②同口径）
+        // 617：转换产物仅被本次 concat 消费——发射完成即释放（族②同口径；
+        //   左操作数拥有串临时同点结算，662 三元走条件释放）
         emit(ir::Opcode::Call, {rightStr}, ir::IRValue(), "__cn_str_free",
              "void", node->location);
-        if (argIsOwnedStringTemp(node->left.get())) {
-            emit(ir::Opcode::Call, {left}, ir::IRValue(), "__cn_str_free",
-                 "void", node->location);
-        }
+        emitOwnedTempReleaseRec617(node->left.get(), left, node->location);
         return true;
     }
     return false;
@@ -278,13 +269,19 @@ ir::IRValue IRGenerator::emitChainSegToStr(Expr* segAst, const ir::IRValue& segV
 
 // 单段追加发射：追加 + 拥有临时结算（字符串段）或转换产物释放（数值段）
 //   ——内容已入缓冲（append 内拷贝），此后的释放对终串零影响。
+//   662（617 三元面补全）：三元段走分支拥有性感知条件释放（emitOwnedTemp-
+//   ReleaseRec617·选中字面量/标识符借用分支不得 free）；其余形态维持
+//   chainSegOwnedTemp 原判据（零回归面）。
 void IRGenerator::emitChainSegAppend(const ir::IRValue& handle, Expr* segAst,
                                      const ir::IRValue& segVal,
                                      const SourceLocation& loc) {
     if (segVal.type == "ptr") {
         emit(ir::Opcode::Call, {handle, segVal}, ir::IRValue(),
              "__cn_strbuf_append", "void", loc);
-        if (chainSegOwnedTemp(segAst)) {
+        if (segAst != nullptr &&
+            segAst->getType() == NodeType::TernaryExpr) {
+            emitOwnedTempReleaseRec617(segAst, segVal, loc);
+        } else if (chainSegOwnedTemp(segAst)) {
             emit(ir::Opcode::Call, {segVal}, ir::IRValue(), "__cn_str_free",
                  "void", loc);
         }

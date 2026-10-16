@@ -731,6 +731,11 @@ void SemanticAnalyzer::checkFunctionBody(FunctionDecl* node) {
     const FunctionInfo info = it->second;
 
     currentReturnType_ = info.returnType;
+    // 662（方法链消费位）：类对象返回拥有形态收集重置 + 表条目清位重算
+    //   （泛型实例化重走本函数=首遍标记清除防陈旧）
+    curFnClassRetSeen662_ = false;
+    curFnClassRetBorrow662_ = false;
+    it->second.returnsOwnedClass662 = false;
     // P3-18 补完（2026-08）：当前函数是否引用返回（visitReturnStmt 校验用）
     currentIsRefReturn_ = info.isRefReturn;
     // plans/019 阶段4：不安全 函数 上下文（安全区边界观察期检查用）
@@ -807,6 +812,16 @@ void SemanticAnalyzer::checkFunctionBody(FunctionDecl* node) {
                             "函数 '" + node->name + "' 缺少返回语句，返回类型为 '" +
                             currentReturnType_ + "'");
     }
+    // 662（方法链消费位）：类对象返回拥有形态落表——全部返回语句均为拥有形态
+    //   （本地移交/构造新建）时置位（键=函数链接键·重查防体内注册扩容迭代器
+    //   失效；317-a 同款纪律）；借用/透传=保持 false（调用点不析构·既有边界）。
+    if (curFnClassRetSeen662_ && !curFnClassRetBorrow662_) {
+        auto it662 = functions_.find(
+            functionLinkKey(node->moduleName, node->name, node->sigKey));
+        if (it662 != functions_.end()) it662->second.returnsOwnedClass662 = true;
+    }
+    curFnClassRetSeen662_ = false;
+    curFnClassRetBorrow662_ = false;
     currentReturnType_.clear();
     currentIsRefReturn_ = false;
     currentFnUnsafe_ = false;  // plans/019 阶段4：函数级复位
@@ -882,6 +897,60 @@ bool SemanticAnalyzer::argIsBoundMethodValue(const Expr* e) {
     //   this）；用作裸 fnptr 实参属静默错行为，编译报错提示先赋给变量。
     return e != nullptr && e->getType() == NodeType::MemberExpr &&
            static_cast<const MemberExpr*>(e)->isMethodValue;
+}
+
+// 662（方法链消费位·2026-10-16）：类对象返回「拥有形态」收集——返回类型为类
+//   对象（非指针/引用）时判定返回值表达式形态（函数级两标记，收尾落
+//   FunctionInfo::returnsOwnedClass662）：
+//     拥有形态：本地标识符（返回局部=移交·IR 返回块移出豁免语义）/ 类构造调用
+//       （新建）/ 转移(...)（显式交接·成员源成员槽清零）——不置 borrow；
+//     借用形态（置 borrow=函数级不标记·保守放弃析构）：成员/下标/解引用借出、
+//       参数标识符、全局/静态标识符、其余调用（跨函数透传所有权不可静态判定）
+//       及三元等其余形态。
+//   零语义变更：仅收集标记不报错——借用返回行为=现状（调用方不析构·保持既有
+//   边界）；拥有返回在 IR 调用点补析构（方法接收链/字段链/语句位丢弃）。
+void SemanticAnalyzer::checkReturnOwnedClass662(ReturnStmt* node) {
+    if (node->value == nullptr) return;
+    if (!isClassType(types::canonical(currentReturnType_))) return;
+    if (!genericTypeParams_.empty()) return;   // 泛型单态化体内保守豁免（不标记）
+    curFnClassRetSeen662_ = true;
+    const NodeType kind = node->value->getType();
+    if (kind == NodeType::IndexExpr || kind == NodeType::MemberExpr) {
+        curFnClassRetBorrow662_ = true;
+        return;
+    }
+    if (kind == NodeType::UnaryExpr &&
+        static_cast<const UnaryExpr*>(node->value.get())->op == Operator::Deref) {
+        curFnClassRetBorrow662_ = true;
+        return;
+    }
+    if (kind == NodeType::IdentifierExpr) {
+        const std::string& rn =
+            static_cast<const IdentifierExpr*>(node->value.get())->name;
+        if (currentFnParamNames_.count(rn) > 0) {   // 参数=借用
+            curFnClassRetBorrow662_ = true;
+            return;
+        }
+        if (!isCurrentFnLocal(rn)) {   // 全局/静态/类字段（裸名不在局部作用域）=借用
+            curFnClassRetBorrow662_ = true;
+            return;
+        }
+        return;   // 本地标识符=移出（拥有）
+    }
+    if (kind == NodeType::CallExpr) {
+        const CallExpr* ce = static_cast<const CallExpr*>(node->value.get());
+        if (ce->callee != nullptr &&
+            ce->callee->getType() == NodeType::IdentifierExpr) {
+            const std::string calleeName =
+                static_cast<const IdentifierExpr*>(ce->callee.get())->name;
+            if (isClassType(calleeName)) return;   // 类构造调用=新建（拥有）
+        }
+        // 其余调用=透传（跨函数所有权不可静态判定·保守不标记）；转移(源) 已在
+        //   AST 改写为源标识符（走上方标识符分支），此处不再特判（双侧零分叉）。
+        curFnClassRetBorrow662_ = true;
+        return;
+    }
+    curFnClassRetBorrow662_ = true;   // 三元等其余形态保守不标记
 }
 
 } // namespace cn_compiler

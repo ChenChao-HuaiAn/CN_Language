@@ -654,9 +654,13 @@ bool IRGenerator::emitInstanceMethodCall(CallExpr* node, MemberExpr* mem,
         ? -1 : semantic_->classVtableIndex(canonObjForMethod, methodName);
     if (vtableSlot >= 0) {
         emitVirtualMethodCall(node, m, owner, methodName, thisArg);
-        return true;
+    } else {
+        emitDirectMethodCall(node, m, owner, methodName, canonObjForMethod, thisArg);
     }
-    emitDirectMethodCall(node, m, owner, methodName, canonObjForMethod, thisArg);
+    // 662（方法链消费位·2026-10-16）：接收者=调用返回类对象「拥有形态」临时——
+    //   方法调用发射完成后析构（判定+发射实现=ir_oop_call_release.cpp 释放族
+    //   emitOwnedRecvTempDestruct662：构造新建/返回本地移出才析构·借用返回不析构）
+    emitOwnedRecvTempDestruct662(mem->object.get(), thisArg, node->location);
     return true;
 }
 

@@ -330,7 +330,8 @@ void IRGenerator::visitCallExpr(CallExpr* node) {
                      calleeName == "字符串后缀" || calleeName == "字符串包含" ||
                      calleeName == "字符串修剪" || calleeName == "字符串反转" ||
                      calleeName == "字符串拼接" || calleeName == "格式化");
-    std::vector<ir::IRValue> consumedArgTemps617;
+    // 662：收集项携带来源 AST（三元实参结算走分支拥有性感知条件释放）
+    std::vector<std::pair<const Expr*, ir::IRValue>> consumedArgTemps617;
     if (isDirect) {
         if (calleeName == "字符串长度") calleeName = "__cn_str_len";
         else if (calleeName == "字符串比较") calleeName = "__cn_str_eq";
@@ -592,19 +593,21 @@ void IRGenerator::visitCallExpr(CallExpr* node) {
         }
         args.push_back(argVal);
         // 617：消费族拥有串临时实参收集（调用发射完成后结算）——ptr 前置挡
-        //   整数加法形态（BinaryExpr+Add 判定的类型护栏）
+        //   整数加法形态（BinaryExpr+Add 判定的类型护栏）；662：收集项携带
+        //   来源 AST（三元实参结算走条件释放）
         if (isStrConsumer617 && argVal.type == "ptr" &&
             argIsOwnedStringTemp(node->arguments[ai].get())) {
-            consumedArgTemps617.push_back(argVal);
+            consumedArgTemps617.emplace_back(node->arguments[ai].get(), argVal);
             // 644 rebase 交叉收口（2026-10-15）：本实参若已被 81-a 纯串登记
-            //   （genArgValueWithCleanup 644 分支·同在此循环求值），从待清理
+            //   （genArgValueWithCleanup 644/662 分支·同在此循环求值），从待清理
             //   名单移交本通道——释放权单点归 617 结算（防 flushPendingArg
             //   Cleanups 与 617 结算对同一句柄双 __cn_str_free）。实参求值期
             //   间内层调用的 flush 已按各自 base 回卷，该登记项此刻必在名单内。
             for (auto it = pendingArgCleanups_.begin();
                  it != pendingArgCleanups_.end(); ++it) {
-                if (it->second == "字符串" && it->first.id == argVal.id &&
-                    !it->first.isConstant) {
+                if (std::get<1>(*it) == "字符串" &&
+                    std::get<0>(*it).id == argVal.id &&
+                    !std::get<0>(*it).isConstant) {
                     pendingArgCleanups_.erase(it);
                     break;
                 }
@@ -820,9 +823,10 @@ void IRGenerator::visitCallExpr(CallExpr* node) {
         lastExpr_ = emitResult(ir::Opcode::Call, args, resultType, calleeName,
                                node->location);
         // 617：消费族调用发射完成——内容已拷贝/只读消费毕，结算拥有串临时实参
+        //   （662：三元实参走分支拥有性感知条件释放·单一入口 Rec617）
         for (const auto& tmp617 : consumedArgTemps617) {
-            emit(ir::Opcode::Call, {tmp617}, ir::IRValue(), "__cn_str_free",
-                 "void", node->location);
+            emitOwnedTempReleaseRec617(tmp617.first, tmp617.second,
+                                       node->location);
         }
         return;
     }

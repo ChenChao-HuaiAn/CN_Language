@@ -31,17 +31,14 @@ public:
     // plans/018 呈报二 A′（2026-09-07 用户裁决）：函数链接键——全编译器唯一公式。
     //   链接键(模块名, 函数名, 签名键) = (模块名空 或 =="主" 或 函数名=="主"
 
-    // plans/019 阶段1（2026-09-10）：表达式是否为 转移(单实参) 内置函数调用
-    //   （callee 为标识符 "转移" 且实参数==1）——public 供 IR 层（ir_call.cpp）
-    //   展开判定（声明初始化位已在语义层改写为标识符，到 IR 的只剩表达式位）。
+    // plans/019 阶段1：表达式是否为 转移(单实参) 内置调用（callee=标识符"转移"·实参数 1）——
+    //   public 供 IR 层展开判定（声明初始化位已改写为标识符·到 IR 的只剩表达式位）。
 
-    // 任务 094（2026-09-29·008 树波 4）判据单点化：字符串拥有判定白名单
-    //   （runtime 分配族）——语义层 isOwnedStrRvalue 与 IR 层字符串赋值/
-    //   初始化两处共同调用本静态方法（public 供 ir 层）。
+    // 任务 094 判据单点化：字符串拥有判定白名单（runtime 分配族）——语义层
+    //   isOwnedStrRvalue 与 IR 层赋值/初始化两处共同调用（public 供 ir 层）。
 
-    // 206-b（波 4·plans/022 §四.5）：复制(表达式) 泛型克隆内置——返回类型=
-    //   实参类型（调用处特判：泛型内置无法用固定签名注册 functions_ 表）；
-    //   字符串实参置 retOwnedString（A2 拥有契约：克隆产物归调用方拥有）。
+    // 206-b（plans/022 §四.5）：复制(表达式) 泛型克隆——返回类型=实参类型（调用处
+    //   特判）；字符串实参置 retOwnedString（A2：克隆产物归调用方拥有）。
     bool checkCopyBuiltinCall(class CallExpr* node);
 
     // 874（任务 083）：LUE（最后使用消除）判定——与 v2 判据同构（plans/001
@@ -51,14 +48,12 @@ public:
     // 85-a（2026-09-12 第八十五轮）：借出方法名判定**上提 public**——IR 侧聚合
     //   返回位所有权保证（ir_fields.cpp isBorrowedAggregateSource）须按被调方
 
-    // plans/019 阶段4' A2（2026-09-11 第七十二轮 72-a 根治）：签名键是否为泛型
-    //   函数单态化实例（精确判定替代 sigKey.find('$') 符号名模式——后者把跨模块
-    //   链接键 模块$名 误判为泛型产物，令拥有型字符串契约跨模块整体失效）。
+    // plans/019 阶段4' A2（72-a 根治）：签名键是否为泛型单态化实例（精确判定替代
+    //   '$' 名模式——后者把跨模块链接键 模块$名 误判·令串契约跨模块整体失效）。
     bool isGenericFuncInstanceName(const std::string& sigKey) const;
 
-    // plans/019 阶段3b（2026-09-10）：IR 层查询——声明是否转移初始化（浅交接
-    //   分派用：跳过深拷贝改槽位交接）；命中返回 true 并回填源变量名。
-    //   （548 行数门禁腾挪：原类内 inline 体机械迁移 semantic.cpp·零语义变化）
+    // plans/019 阶段3b：IR 层查询——声明是否转移初始化（浅交接分派·跳过深拷）；
+    //   命中返回 true 并回填源变量名（548 门禁腾挪·零语义变化）。
     bool isTransferDecl(const void* varDeclNode, std::string& outSrcName) const override;
 
     // ==================== 结构体/枚举查询（Task 2.7，供IR层复用布局） ====================
@@ -92,6 +87,8 @@ public:
     std::string funcReturnTypeOf(const std::string& funcName) const override ;
     // P3-18 补完（2026-08）：函数返回类型是否为引用（T&）——调用点将结果当"左值地址"
     bool funcReturnsRef(const std::string& funcName) const override ;
+    // 662：函数返回类对象「拥有形态」查询（IR 调用点析构判定·键域同 funcReturnTypeOf）。
+    bool funcReturnOwnsClassOf(const std::string& funcName) const override ;
     // 返回该函数名的第一个签名 key（函数名作值/取地址用，Task 2.10；无此名返回空串）
     std::string funcFirstSigKey(const std::string& name) const override ;
     // 查询函数参数类型列表（未注册返回空；供IR层推导结构体按值实参传递，Task 完善A）
@@ -224,6 +221,8 @@ public:
     // 217-a（D1 行数整改）：visitReturnStmt 拆分的两个族方法（宿主纯重构零行为变更）。
     // A2 拥有契约：返回类型 字符串=拥有——借用形态返回拒绝（泛型单态化体内豁免）。
     void checkReturnBorrowA2(ReturnStmt* node, const std::string& valueType);
+    // 662：类对象返回拥有形态收集（借用/透传=不标记·保守）。
+    void checkReturnOwnedClass662(ReturnStmt* node);
     // 引用返回（T&）与指针返回（T*）的局部地址逃逸检查（悬垂拒绝）。
     void checkReturnAddressEscape(ReturnStmt* node);
     void visitBreakStmt(BreakStmt* node) override;
@@ -306,17 +305,15 @@ private:
     void computeEnumValues(EnumDecl* decl);
     // 从内到外查找变量类型（未找到返回false）
     bool lookupVar(const std::string& name, std::string& type) const;
-    // 缺陷②配套（2026-09-03 用户裁决立案）：名字在作用域链解析处是否为常量
-    // （局部 常量 登记于 scopeConsts_；顶层常量按 globalConstValues_ 裸名命中）。
-    // 与 lookupVar 同序（内层遮蔽外层）；供赋值/自增目标拒绝用。
+    // 缺陷②配套（2026-09-03 用户裁决）：名字在作用域链解析处是否为常量（局部=
+    //   scopeConsts_·顶层=globalConstValues_ 裸名；同序遮蔽）·供赋值/自增拒绝。
     bool isConstVarName(const std::string& name) const;
     // plans/019 阶段1（2026-09-10）：转移(变量) 标记——沿作用域链找到 name 的
     //   声明层，写入该层 scopeMoved_（名 -> 转移点行号，诊断定位用）。
     //   幂等：重复标记（理论上不会再转移已转移变量——visitCallExpr 已拒）。
     void markMovedVar(const std::string& name, int line);
-    // plans/019 阶段1：名字在作用域链解析处是否已转移（与 lookupVar 同序：
-    //   从内到外第一层含该名的层；内层同名新声明=新变量，外层标记不影响）。
-    //   命中返回 true 并回填转移点行号。
+    // plans/019 阶段1：名字在作用域链解析处是否已转移（与 lookupVar 同序·内层同名
+    //   新声明=新变量不影响）；命中返回 true 并回填转移点行号。
     bool lookupMoved(const std::string& name, int& outLine) const;
     // 已转移变量使用拒绝（读值/左值共用）——命中即报 E0382 对标诊断并返回 true
     bool reportMovedUse(const std::string& name, const SourceLocation& loc);
@@ -882,6 +879,8 @@ private:
     std::unordered_map<std::string, std::string> ptrLocalPointees_;
     std::string lastType_;                         // 最近一次表达式推断的类型
     std::string currentReturnType_;                // 当前函数返回类型（空表示顶层）
+    // 662：类对象返回拥有收集（checkFunctionBody 清/落 FunctionInfo 标记）。
+    bool curFnClassRetSeen662_ = false, curFnClassRetBorrow662_ = false;
     // 574-a（T99·211/231）：内置构造器目标类型上下文栈（声明/赋值位压入目标
     //   结果<T,E>/可选<T>，构造器推断优先取之——Rust Err(7): Result<String,i32>
     //   同款，缺失侧由目标补全）

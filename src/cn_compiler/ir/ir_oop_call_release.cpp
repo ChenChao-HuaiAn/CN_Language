@@ -626,4 +626,59 @@ void IRGenerator::genJumpDestructFrom(std::size_t stringBase, std::size_t classB
                                SourceLocation());
     }
 }
+// 662（方法链消费位·2026-10-16）：接收者=调用返回类对象「拥有形态」临时——
+//   方法调用发射完成后析构（DeleteObject=析构调用+对象 free；消费点即释放点，
+//   与 617/907「临时生命周期至完整表达式尾·借用违约边界」同哲学）。判定=
+//   接收者为 CallExpr 且：①类构造调用（串盒("x")=新建对象）或 ②语义层标记
+//   拥有（funcReturnOwnsClassOf·返回本地移交/构造新建——借用返回共享对象
+//   （全局/静态/字段/参数/透传）未标记=不析构，防误释放共享对象悬垂）。
+//   标识符/成员链/下标/解引用接收者=有主对象（调用方 RAII/借用）不析构。
+//   无析构类先发字段级联（658② 同语义·C++ 隐式析构）——有析构类=用户析构
+//   体内已级联不重复（防双释放）；级联无判空，前置判空守卫分块（空返回错误
+//   路径安全跳过；DeleteObject 自带 test/je 空安全不在守卫内）。
+void IRGenerator::emitOwnedRecvTempDestruct662(Expr* recvObj,
+                                               const ir::IRValue& thisArg,
+                                               const SourceLocation& loc) {
+    if (recvObj == nullptr || recvObj->getType() != NodeType::CallExpr ||
+        semantic_ == nullptr) {
+        return;
+    }
+    CallExpr* rc662 = static_cast<CallExpr*>(recvObj);
+    const std::string rt662 = types::canonical(memberObjectSrcType(rc662));
+    if (rt662.empty() || !semantic_->isClassType(rt662)) return;
+    if (rc662->callee == nullptr ||
+        rc662->callee->getType() != NodeType::IdentifierExpr) {
+        return;   // 成员/未知被调形态=保守不析构
+    }
+    const std::string cn662 =
+        static_cast<IdentifierExpr*>(rc662->callee.get())->name;
+    bool recvOwned662 = false;
+    if (semantic_->isClassType(cn662)) {
+        recvOwned662 = true;   // 类构造调用=新建对象（拥有）
+    } else {
+        const std::string keys662[2] = {rc662->resolvedSignature, cn662};
+        for (const std::string& k662 : keys662) {
+            if (!k662.empty() && semantic_->funcReturnOwnsClassOf(k662)) {
+                recvOwned662 = true;
+                break;
+            }
+        }
+    }
+    if (!recvOwned662) return;
+    if (semantic_->findClass(rt662) == nullptr) return;   // 类查询兜底（不静默析构）
+    if (classDestructorSymbolKey(rt662).empty()) {
+        ir::IRValue nonNull662 = emitResult(
+            ir::Opcode::Ne, {thisArg, ir::IRValue::constant("0", "ptr")}, "i1",
+            "", loc);
+        const std::string cascadeLabel = "bb" + std::to_string(blockCounter_++);
+        const std::string mergeLabel = "bb" + std::to_string(blockCounter_++);
+        endBranch(nonNull662.toString(), cascadeLabel, mergeLabel);
+        setCurrentBlock(newBlock(cascadeLabel));
+        emitNoDtorFieldCascade(thisArg, rt662, loc);
+        if (!currentBlock_->terminated) endJump(mergeLabel);
+        setCurrentBlock(newBlock(mergeLabel));
+    }
+    emit(ir::Opcode::DeleteObject, {thisArg}, ir::IRValue(), rt662, "void", loc);
+}
+
 } // namespace cn_compiler

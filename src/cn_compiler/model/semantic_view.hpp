@@ -55,6 +55,13 @@ public:
 
     // ---- 函数/全局符号 ----
     virtual std::string funcReturnTypeOf(const std::string& funcName) const = 0;
+    // 662（方法链消费位）：函数返回类对象是否为「拥有形态」（本地移交/构造新建）
+    //   ——IR 调用点对「调用返回对象」临时做析构的判定（借用返回共享对象不释放）。
+    //   非纯虚+默认保守 false（未覆盖实现=不析构=现状行为·零风险安全默认）。
+    virtual bool funcReturnOwnsClassOf(const std::string& funcName) const {
+        (void)funcName;
+        return false;
+    }
     virtual std::vector<std::string> funcParamTypesOf(const std::string& funcName) const = 0;
     virtual bool funcReturnsRef(const std::string& funcName) const = 0;
     virtual std::string funcFirstSigKey(const std::string& name) const = 0;

@@ -752,6 +752,8 @@ void IRGenerator::finishFunctionEmit(ir::IRFunction& func) {
     ownedStringOrder_.clear();
     // 616：prologue 副本槽名单复位（正常路径 genStringFrees 已清；防御性再清）
     ownedParamCopySlots_.clear();
+    // 662（617 三元面补全）：三元条件寄存器表复位（节点指针键——防跨函数累积）
+    ternaryCondRegs617_.clear();
     ownedClassOrder_.clear();
     ownedFieldOrder_.clear();
     pendingBoxCopies_.clear();

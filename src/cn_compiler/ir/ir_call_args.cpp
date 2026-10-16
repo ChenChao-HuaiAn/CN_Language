@@ -61,6 +61,15 @@ ir::IRValue IRGenerator::genArgValueWithCleanup(Expr* arg,
                  //   与块出口释放同款；(void) 保留=历史签名纪律锚）
     ir::IRValue v = genExprForOop(arg);
     if (arg == nullptr || semantic_ == nullptr) return v;
+    // 662（617 三元面补全·644 传参位扩展）：三元实参「潜在拥有」——登记为纯串
+    //   临时（来源 AST 携带），释放侧按选中分支条件释放（flushPendingArgCleanups
+    //   分流）；选中字面量/标识符借用分支不得无条件 free。
+    if (arg->getType() == NodeType::TernaryExpr) {
+        if (v.type == "ptr" && argIsOwnedStringTemp(arg)) {
+            pendingArgCleanups_.emplace_back(v, std::string("字符串"), arg);
+        }
+        return v;
+    }
     if (arg->getType() != NodeType::CallExpr) return v;
     // 结构体字面量实参走 materializeStructInitArg（已物化，无临时泄漏面）
     CallExpr* ce = static_cast<CallExpr*>(arg);
@@ -96,11 +105,11 @@ ir::IRValue IRGenerator::genArgValueWithCleanup(Expr* arg,
     //   借用（借用契约=调用期有效——临时生命周期至完整表达式尾，C++ 同规；
     //   被调方外存借用句柄=借用违约，非本释放面义务）。
     if (retCanon == "字符串") {
-        pendingArgCleanups_.emplace_back(v, retCanon);
+        pendingArgCleanups_.emplace_back(v, retCanon, nullptr);
         return v;
     }
     if (ownedStrFieldsOf(retCanon).empty()) return v;
-    pendingArgCleanups_.emplace_back(v, retCanon);
+    pendingArgCleanups_.emplace_back(v, retCanon, nullptr);
     return v;
 }
 
@@ -122,12 +131,21 @@ void IRGenerator::flushPendingArgCleanups(std::size_t base) {
     for (std::size_t i = base; i < pendingArgCleanups_.size(); ++i) {
         // 644：纯串临时（canon="字符串" 无字段可遍历）→ 整串句柄释放；
         //   聚合临时维持 81-a 字段偏移逐项释放原路。
-        if (pendingArgCleanups_[i].second == "字符串") {
-            emitStringFreeForValue(pendingArgCleanups_[i].first);
+        // 662：三元实参（来源 AST 在场·617 三元面）走分支拥有性感知条件释放；
+        //   非三元（调用返回串）维持 644 无条件释放原路。
+        const std::string& canon = std::get<1>(pendingArgCleanups_[i]);
+        if (canon == "字符串") {
+            const Expr* src = std::get<2>(pendingArgCleanups_[i]);
+            if (src != nullptr && src->getType() == NodeType::TernaryExpr) {
+                emitOwnedTempReleaseRec617(src, std::get<0>(pendingArgCleanups_[i]),
+                                           SourceLocation());
+            } else {
+                emitStringFreeForValue(std::get<0>(pendingArgCleanups_[i]));
+            }
             continue;
         }
-        emitOwnedStrFieldFreesAt(pendingArgCleanups_[i].first,
-                                 pendingArgCleanups_[i].second, SourceLocation());
+        emitOwnedStrFieldFreesAt(std::get<0>(pendingArgCleanups_[i]), canon,
+                                 SourceLocation());
     }
     pendingArgCleanups_.resize(base);
 }
@@ -218,6 +236,15 @@ bool IRGenerator::argIsOwnedStringTemp(const Expr* arg) const {
     if (arg->getType() == NodeType::BinaryExpr) {
         return static_cast<const BinaryExpr*>(arg)->op == Operator::Add;
     }
+    // 662（617 三元面补全）：三元结果「潜在拥有」——任一分支命中即登记，
+    //   释放侧经 emitOwnedTempReleaseRec617 按选中分支条件释放（选中字面量/
+    //   标识符借用分支无条件 free=只读段崩，故须分支拥有性感知）；两分支皆
+    //   借用（字面量/标识符）不命中。嵌套三元由释放侧递归展开。
+    if (arg->getType() == NodeType::TernaryExpr) {
+        const TernaryExpr* te = static_cast<const TernaryExpr*>(arg);
+        return argIsOwnedStringTemp(te->trueValue.get()) ||
+               argIsOwnedStringTemp(te->falseValue.get());
+    }
     if (arg->getType() != NodeType::CallExpr) return false;
     const CallExpr* ce = static_cast<const CallExpr*>(arg);
     std::string retCanon = types::canonical(ce->resolvedType);
@@ -234,6 +261,66 @@ bool IRGenerator::argIsOwnedStringTemp(const Expr* arg) const {
         }
     }
     return retCanon == "字符串";
+}
+
+// 662（617 三元面补全）：拥有串临时释放发射（单一入口·递归展开）——
+//   非三元：判据命中即无条件 __cn_str_free（与 617 原结算同点同语义）；
+//   三元：分支拥有性感知条件释放——两分支皆「直接拥有」（非嵌套三元且判据
+//   命中）时结果必为堆串=无条件 free（快径）；否则条件跳转分块：真块递归
+//   释放真分支、假块递归释放假分支（嵌套三元逐层递归——选中分支的最终值
+//   即消费点值寄存器 value）。选中字面量/标识符借用分支不得 free（只读段
+//   free 即崩），由分支形态判定挡外；条件寄存器经 ternaryCondRegs617_
+//   （visitTernaryExpr 汇合登记）查询，miss=生成器内部缺陷报诊断显形
+//   （miss 不可静默·648 立法），不静默跳过。
+void IRGenerator::emitOwnedTempReleaseRec617(const Expr* expr,
+                                             const ir::IRValue& value,
+                                             const SourceLocation& loc) {
+    if (expr == nullptr || value.type != "ptr") return;
+    if (expr->getType() != NodeType::TernaryExpr) {
+        if (argIsOwnedStringTemp(expr)) {
+            emit(ir::Opcode::Call, {value}, ir::IRValue(), "__cn_str_free",
+                 "void", loc);
+        }
+        return;
+    }
+    const TernaryExpr* te = static_cast<const TernaryExpr*>(expr);
+    const Expr* tExpr = te->trueValue.get();
+    const Expr* fExpr = te->falseValue.get();
+    const bool tDirect = tExpr != nullptr &&
+                         tExpr->getType() != NodeType::TernaryExpr &&
+                         argIsOwnedStringTemp(tExpr);
+    const bool fDirect = fExpr != nullptr &&
+                         fExpr->getType() != NodeType::TernaryExpr &&
+                         argIsOwnedStringTemp(fExpr);
+    if (tDirect && fDirect) {   // 快径：两分支皆直接拥有=结果必为堆串
+        emit(ir::Opcode::Call, {value}, ir::IRValue(), "__cn_str_free", "void",
+             loc);
+        return;
+    }
+    // 两分支皆非拥有（直接或潜在）=无堆产物可结算（no-op）
+    if (!argIsOwnedStringTemp(tExpr) && !argIsOwnedStringTemp(fExpr)) return;
+    const auto it = ternaryCondRegs617_.find(te);
+    if (it == ternaryCondRegs617_.end()) {
+        // miss 不可静默（648 立法）：visitTernaryExpr 必登记条件寄存器，
+        //   查不到=生成器内部缺陷终态——报错显形，不静默跳过。
+        diagnostics_.report(
+            DiagnosticLevel::Error, loc,
+            "内部错误: 三元实参条件寄存器缺失（617 条件释放登记点 miss）");
+        return;
+    }
+    // 当前块已终止（不可达路径）：无泄漏可结算，与 visitTernaryExpr 同款守卫
+    if (currentBlock_ == nullptr || currentBlock_->terminated) return;
+    const std::string trueLabel = "bb" + std::to_string(blockCounter_++);
+    const std::string falseLabel = "bb" + std::to_string(blockCounter_++);
+    const std::string endLabel = "bb" + std::to_string(blockCounter_++);
+    endBranch(it->second.toString(), trueLabel, falseLabel);
+    setCurrentBlock(newBlock(trueLabel));
+    emitOwnedTempReleaseRec617(tExpr, value, loc);
+    if (!currentBlock_->terminated) endJump(endLabel);
+    setCurrentBlock(newBlock(falseLabel));
+    emitOwnedTempReleaseRec617(fExpr, value, loc);
+    if (!currentBlock_->terminated) endJump(endLabel);
+    setCurrentBlock(newBlock(endLabel));
 }
 
 } // namespace cn_compiler

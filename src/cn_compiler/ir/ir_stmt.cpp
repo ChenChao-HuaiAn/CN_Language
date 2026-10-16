@@ -48,6 +48,16 @@ void IRGenerator::visitExprStmt(ExprStmt* node) {
         }
         return;
     }
+    // 662（617 三元面补全·645 语句位扩展）：三元丢弃值——任一分支拥有型即
+    //   「潜在拥有」，语句尾按选中分支条件释放（选中字面量/标识符借用分支
+    //   不得 free·只读段崩；两分支皆借用=no-op）。嵌套三元递归展开。
+    if (node->expr->getType() == NodeType::TernaryExpr) {
+        if (discarded.type == "ptr" && argIsOwnedStringTemp(node->expr.get())) {
+            emitOwnedTempReleaseRec617(node->expr.get(), discarded,
+                                       node->location);
+        }
+        return;
+    }
     if (node->expr->getType() != NodeType::CallExpr) return;
     const CallExpr* call = static_cast<const CallExpr*>(node->expr.get());
     if (discarded.type != "ptr") return;   // 串句柄寄存器形态守卫（空类型/标量直退）

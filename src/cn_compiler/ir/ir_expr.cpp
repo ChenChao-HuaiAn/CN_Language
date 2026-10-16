@@ -792,11 +792,13 @@ void IRGenerator::emitPrintLikeCall(CallExpr* node, bool isPrintNewline,
     //   （CallExpr 且返回字符串）：字面量（只读段·free 即崩）与标识符
     //   （调用方变量自有 RAII）天然不命中——原实现 `打印("x=",
     //   整数转字符串(42))` 的临时串每语句净漏 1。
-    std::vector<ir::IRValue> ownedStrTemps617;
+    //   662（617 三元面补全）：三元实参按「分支拥有性感知」条件释放（结算入口
+    //   emitOwnedTempReleaseRec617——选中字面量分支不得 free），收集项携带来源 AST。
+    std::vector<std::pair<const Expr*, ir::IRValue>> ownedStrTemps617;
     for (auto& arg : node->arguments) {
         ir::IRValue argVal = genExpr(arg.get());
         if (argIsOwnedStringTemp(arg.get()) && argVal.type == "ptr") {
-            ownedStrTemps617.push_back(argVal);
+            ownedStrTemps617.emplace_back(arg.get(), argVal);
         }
         // 参数类型 -> 打印函数名（字符串/字符* -> 字符串；整型 -> 整数；浮点 -> 浮点）
         std::string printFn;
@@ -854,10 +856,10 @@ void IRGenerator::emitPrintLikeCall(CallExpr* node, bool isPrintNewline,
              node->location);
     }
     // 617：语句尾结算——打印已完成只读消费，释放全部拥有串临时
-    //   （寄存器句柄直传 free，无槽无清零义务）
+    //   （寄存器句柄直传 free，无槽无清零义务；662 三元实参走分支拥有性感知
+    //   条件释放，非三元走无条件释放原路——单一入口 Rec617）
     for (const auto& tmp617 : ownedStrTemps617) {
-        emit(ir::Opcode::Call, {tmp617}, ir::IRValue(), "__cn_str_free",
-             "void", node->location);
+        emitOwnedTempReleaseRec617(tmp617.first, tmp617.second, node->location);
     }
     lastExpr_ = ir::IRValue();  // 无返回值（空类型）
     (void)isPrintNoLine;   // 对称参数：换行分支仅消费 isPrintNewline（保留签名对称）

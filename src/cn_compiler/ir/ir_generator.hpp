@@ -511,6 +511,10 @@ private:
     std::vector<std::size_t> scopeBoxVarsBase_;
     // 本函数拥有串名单（genVarDecl 登记：源码类型=字符串 且未被 stringTainted_ 污染）
     std::vector<std::string> ownedStringOrder_;
+    // 662（617 三元面补全）：三元实参条件寄存器表（节点→条件寄存器·visitTernaryExpr
+    //   汇合登记·finishFunctionEmit 复位）——拥有串临时三元实参在消费点按「分支
+    //   拥有性感知」条件释放（选中字面量/标识符借用分支不得 free·free 即崩）。
+    std::unordered_map<const TernaryExpr*, ir::IRValue> ternaryCondRegs617_;
     // 616（2026-10-14 伞批）：本函数「消耗形参 prologue 深拷」槽名单——ir_decl
     //   102 甲案入口深拷时登记（ParamDecl::ownedConsumed 字符串形参的唯一副本
     //   持有槽）。genStringFrees 返回块按名单注入释放（free+清零幂等）；原实现
@@ -541,6 +545,9 @@ private:
     void emitStringFreeForValue(const ir::IRValue& v);
     // 释放单个类对象槽（Load + DeleteObject 空安全）
     void emitClassDeleteFor(const std::string& unique, const std::string& canon);
+    // 662：接收者=调用返回类对象「拥有形态」临时析构（方法链消费位·ir_oop_call_release.cpp）
+    void emitOwnedRecvTempDestruct662(Expr* recvObj, const ir::IRValue& thisArg,
+                                      const SourceLocation& loc);
 
     // ---- 79-a（2026-09-12 第七十九轮）：聚合拥有型字符串字段 drop glue ----
     // 背景（探针 P1/P2 实证，plans/020 矩阵 #16/#17）：结构体/装箱（结果/可选）
@@ -687,13 +694,20 @@ private:
     ir::IRValue genArgValueWithCleanup(Expr* arg, const SourceLocation& loc);
     // 617（2026-10-14 伞批）：实参表达式是否为「拥有型字符串临时」——CallExpr
     //   且决议返回类型=字符串（拥有契约：内置分配族/数字转换族/格式化/用户函数
-    //   返回堆串；字符* 借用视图与标识符/字面量形态不命中）。打印族与内置
+    //   返回堆串；字符* 借用视图与标识符/字面量形态不命中）；三元=任一分支命中
+    //   （662 递归·「潜在拥有」——运行时按选中分支条件释放结算）。打印族与内置
     //   字符串消费族的实参临时结算共用判据（调用完成后调用方释放）。
     bool argIsOwnedStringTemp(const Expr* arg) const;
+    // 662（617 三元面补全）：拥有串临时释放发射（单一入口·递归）——非三元=判据
+    //   命中即无条件 __cn_str_free；三元=分支拥有性感知条件释放（嵌套三元逐层
+    //   递归，条件寄存器查 ternaryCondRegs617_·miss 显形报诊断不静默·648 立法）。
+    void emitOwnedTempReleaseRec617(const Expr* expr, const ir::IRValue& value,
+                                    const SourceLocation& loc);
     // 调用发射后统一清理本次调用新增的实参临时（base=进入本次调用时的列表基准，
     //   嵌套调用各自持基准——内层清理只覆盖内层新增项）
     void flushPendingArgCleanups(std::size_t base);
-    std::vector<std::pair<ir::IRValue, std::string>> pendingArgCleanups_;
+    // 实参临时清理项：{值寄存器, 返回类型, 来源 AST（三元条件释放用·其余形态可空）}
+    std::vector<std::tuple<ir::IRValue, std::string, const Expr*>> pendingArgCleanups_;
     // 入容器位实参所有权归一化：按来源分级发 __cn_str_copy / 源槽清零（返回值实参值）
     ir::IRValue normalizeContainerInsertArg(Expr* arg, const SourceLocation& loc);
     // 79-a：已求值字符串值按来源分级归一化（值由调用方 genExpr 求得——避免二次

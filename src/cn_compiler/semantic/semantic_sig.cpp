@@ -53,6 +53,17 @@ std::string SemanticAnalyzer::funcReturnTypeOf(const std::string& funcName) cons
     }
     return it->second.returnType;
 }
+// 662（方法链消费位）：函数返回类对象拥有形态查询——键域=funcReturnTypeOf 同款
+//   （含 模块$前缀 剥离回退）；miss（含泛型类方法面）=保守 false（不析构）。
+bool SemanticAnalyzer::funcReturnOwnsClassOf(const std::string& funcName) const {
+    auto it = functions_.find(funcName);
+    if (it == functions_.end()) {
+        const std::size_t dollar = funcName.find('$');
+        if (dollar != std::string::npos) it = functions_.find(funcName.substr(dollar + 1));
+    }
+    if (it == functions_.end()) return false;
+    return it->second.returnsOwnedClass662;
+}
 // 648：miss 返回 false 是接口信号（非引用返回的合法缺省+查无此函数双义），
 //   禁止在本函数改报错；消费点须按「miss 不可静默」立法处置
 //   （先例=ir_call.cpp 用户函数返回类型收口）。

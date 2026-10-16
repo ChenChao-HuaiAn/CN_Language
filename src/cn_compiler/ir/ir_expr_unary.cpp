@@ -645,5 +645,11 @@ void IRGenerator::visitTernaryExpr(TernaryExpr* node) {
     lastExpr_ = emitResult(ir::Opcode::Load,
                            {ir::IRValue::var(tempName, slotIRType)},
                            trueTypeForLoad.type, "", node->location);
+    // 662（617 三元面补全）：三元条件寄存器留存——三元实参位（打印/消费族/
+    //   拼接链/传参位/语句位）的拥有串临时按「分支拥有性感知」条件释放
+    //   （emitOwnedTempReleaseRec617 消费本表）：选中字面量/标识符借用分支
+    //   不得 free（free 只读段即崩）；编译期按分支形态判定拥有性，条件跳转
+    //   保证只释放真正产堆的一方。finishFunctionEmit 复位。
+    ternaryCondRegs617_[node] = cond;
 }
 } // namespace cn_compiler
