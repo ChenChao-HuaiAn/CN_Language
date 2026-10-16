@@ -150,11 +150,30 @@ def 拷贝用例树干净(源目录, 目标目录, ignore=None):
     dirs_exist_ok=True 叠加拷贝会残留「源目录已删除的文件」——31 删漂移副本
     映射集合.cn 后 v2src 仍编残留副本 → v2p 引用副本内部函数面而供给 obj 提供内
     置实现面 → LNK1120 假象（两侧源码集不一致=防虚假验收红线）。v2src/宿主目录/
-    负测目录等「用例目录快照」一律清理重建，保证快照=源目录真子集的镜像。"""
+    负测目录等「用例目录快照」一律清理重建，保证快照=源目录真子集的镜像。
+    ★调用方注意（855）：本函数含 rmtree 整体重建——目标目录内**预建的工作目录
+    骨架**（如 target/、stdlib 链）必须在调用**之后**创建，否则被一并清掉。"""
     import shutil as _shutil
     if 目标目录.exists():
         _shutil.rmtree(目标目录)
     _shutil.copytree(源目录, 目标目录, ignore=ignore)
+
+def 建stdlib软链(工作目录: pathlib.Path, 目标平台: str) -> None:
+    """v2p 的 stdlib 模块按「相对 cwd」读 stdlib/<名>.cn 源码级加载（主.cn 候选4
+    口径；是标准库模块 恒假〔335 重构B 转正定性〕=stdlib 全走源码级加载）——工作
+    目录内建链接到项目根 stdlib。855 归一调用面（四处）：执行v2锚定链 selfwork /
+    执行v2闭环 v2work（Linux/Win 各一）/ 双编译对照 v2 负目录（855 新增——此前
+    dual 轻路径漏建，9 个 stdlib 导入负测报「无法打开依赖模块」=文件缺失假拒绝：
+    rc≠0 成因非语义拒绝，拒绝证据不真实=防线眼盲）。win 用 junction（不需管理员
+    权限）；目标已存在（含用例自带 stdlib 目录场景）跳过=幂等。"""
+    stdlib链 = 工作目录 / "stdlib"
+    if stdlib链.exists():
+        return
+    if 目标平台 == "win-x64":
+        subprocess.run(["cmd", "/c", "mklink", "/J", str(stdlib链),
+                        str(项目根目录 / "stdlib")], capture_output=True)
+    else:
+        os.symlink(项目根目录 / "stdlib", stdlib链)
 
 # 内存保护用例前缀（338-a 扩面·2026-09-18·事故驱动）：原仅 78/79。
 #   事故：76_self_host_bootstrap 产物 `76_self_host_bo*` **anon-rss 28.9GB** 触发系统
@@ -1117,16 +1136,7 @@ def 执行v2锚定链(编译器路径: pathlib.Path, 用例目录: pathlib.Path,
     #   target/v2asm.*，各用例独立工作目录（cwd 隔离），产物互不踩
     工作目录 = 审计目录 / f"selfwork{隔离键值}"
     (工作目录 / "target").mkdir(parents=True, exist_ok=True)
-    # v2p/cn_self 的 stdlib 签名扫描按相对 cwd 读 stdlib/容器.cn（IR签名.cn:358）——
-    #   workdir 内链接到项目根 stdlib（模块导入按入口目录解析不受 cwd 影响，唯此一处；
-    #   win junction 不需管理员权限 / linux symlink）
-    stdlib链 = 工作目录 / "stdlib"
-    if not stdlib链.exists():
-        if 目标平台 == "win-x64":
-            subprocess.run(["cmd", "/c", "mklink", "/J", str(stdlib链),
-                            str(项目根目录 / "stdlib")], capture_output=True)
-        else:
-            os.symlink(项目根目录 / "stdlib", stdlib链)
+    建stdlib软链(工作目录, 目标平台)   # v2p/cn_self stdlib 源码级加载 cwd 口径（855 归一调用面）
 
     # [1] 就绪：v2p（宿主编译 v2 全树；指纹缓存命中零重建）+ 工具链 + 运行时
     if 目标平台 == "win-x64":
@@ -1586,11 +1596,7 @@ def 执行v2闭环Linux(编译器路径: pathlib.Path, 目标平台: str, 详细
     #   适配回相对（.expected 文件保持相对路径文本不动）。
     工作目录 = 审计目录 / f"v2work{隔离键值}"
     (工作目录 / "target").mkdir(parents=True, exist_ok=True)
-    # v2p 的 stdlib 签名扫描按相对 cwd 读 stdlib/容器.cn（IR签名.cn:358）——
-    #   workdir 内软链到项目根 stdlib（模块导入按入口目录解析不受 cwd 影响，唯此一处）
-    stdlib链 = 工作目录 / "stdlib"
-    if not stdlib链.exists():
-        os.symlink(项目根目录 / "stdlib", stdlib链)
+    建stdlib软链(工作目录, 目标平台)   # v2p stdlib 源码级加载 cwd 口径（855 归一调用面）
     v2asm路径 = 工作目录 / "target" / "v2asm.s"
 
     # ===== 负路径闭环（139/141，win64 同款 2026-09-04；linux 侧 ARM64 复验轮对齐）：
@@ -1839,13 +1845,7 @@ def 执行v2闭环(编译器路径: pathlib.Path, 用例目录: pathlib.Path,
     #   路径已归一为正斜杠形式）。
     工作目录 = 审计目录 / f"v2work{隔离键值}"
     (工作目录 / "target").mkdir(parents=True, exist_ok=True)
-    # v2p 的 stdlib 签名扫描按相对 cwd 读 stdlib/容器.cn（IR签名.cn:358）——
-    #   workdir 内 junction 到项目根 stdlib（模块导入按入口目录解析不受 cwd 影响，
-    #   唯此一处）；junction 不需管理员权限（对齐 linux 分支 os.symlink 同款）
-    stdlib链 = 工作目录 / "stdlib"
-    if not stdlib链.exists():
-        subprocess.run(["cmd", "/c", "mklink", "/J", str(stdlib链),
-                        str(项目根目录 / "stdlib")], capture_output=True)
+    建stdlib软链(工作目录, 目标平台)   # v2p stdlib 源码级加载 cwd 口径（855 归一调用面）
     v2asm路径 = 工作目录 / "target" / "v2asm.asm"
 
     # 工具链/运行时/v2p 就绪（111-a 提取为函数：主程序池启动前单线程预热，消除
@@ -2141,7 +2141,6 @@ def 执行双编译对照(编译器路径: pathlib.Path, 用例目录: pathlib.P
             import shutil as _shutil
             v2负目录 = 审计目录 / f"dualnegv2{隔离键值}"
             v2负目录.mkdir(parents=True, exist_ok=True)
-            (v2负目录 / "target").mkdir(parents=True, exist_ok=True)
             for 文件名 in 源文件名们:
                 源f = 用例目录 / 文件名
                 if not 源f.exists():
@@ -2151,6 +2150,20 @@ def 执行双编译对照(编译器路径: pathlib.Path, 用例目录: pathlib.P
                            ignore=_shutil.ignore_patterns("*.expected", "*.input", "*.args",
                                                           "v2闭环.txt", "双编译对照.txt",
                                                           "期望编译失败.txt", "期望check失败.txt"))
+            # 855 修复（原「先 mkdir target 后整树拷贝」被 拷贝用例树干净 的 rmtree 清掉
+            #   ——v2p 写 asm 恒失败「[cg1] asm 写文件失败」噪音 + 「v2p 拒绝后不得产
+            #   asm」断言因文件恒不存在而形同虚设（防线眼盲·614 族））。二项工作骨架
+            #   均须在整树拷贝**之后**就位（顺序纪律见 拷贝用例树干净 docstring）：
+            #   ① target/：v2p 的 asm 输出路径=写死相对 cwd 的 target/v2asm.{s|asm}
+            #      （主.cn:719/722/725）——就位后 v2p 放行会真写出 asm → 下方 rc==0/
+            #      产 asm 两条断言均基于真实产物状态；
+            #   ② stdlib 软链：v2p 的 stdlib 模块按相对 cwd 源码级加载（主.cn 候选4；
+            #      是标准库模块 恒假）——缺链时 stdlib 导入负测报「无法打开依赖模块」
+            #      =文件缺失假拒绝（rc≠0 成因非语义拒绝·拒绝证据不真实）——855 实测
+            #      9 例（145/197/223/224/227/229/312/565/573）被此遮蔽，补链后全部
+            #      转为真实语义/语法拒绝诊断。
+            (v2负目录 / "target").mkdir(parents=True, exist_ok=True)
+            建stdlib软链(v2负目录, 目标平台)
             # 577-a 平台分派修复（569-a 硬编码 win 工具链与 win-x64 目标——linux/arm64
             #   首跑 71 例负测全炸「未找到 ml64/link」；分派对齐 执行v2闭环 同款口径）：
             #   win=v2p.exe+v2asm.asm；linux/arm64=v2p_<后缀>+v2asm.s（GAS 目标参数）
