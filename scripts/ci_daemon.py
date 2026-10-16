@@ -77,6 +77,7 @@ if 是win:
 else:
     import fcntl
 import gate_lock        # win 三段互斥用（linux 零调用·TX_02 行为不变）
+import ci_round_guard   # 578：轮守卫（子进程追踪+轮心跳）——运行/运行限时 底层接线
 
 # ===== 可调常量（集中区·911 先例） =====
 轮询间隔秒 = 90            # git ls-remote 周期
@@ -234,28 +235,14 @@ def 兜底入池(sha: str) -> bool:
 
 
 def 运行限时(命令: list[str], 超时秒: int, **kwargs) -> subprocess.CompletedProcess:
-    """subprocess.run 的超时安全壳（294）：超时返回伪 CompletedProcess（rc=-99·与 步骤()
-    超时标记同口径）而非抛 TimeoutExpired 炸进程——单位机实例实况：网络抖动 git fetch
-    300s 超时未捕获，systemd restart 循环 12 次（轮结果与审计全丢）。"""
-    try:
-        return subprocess.run(命令, timeout=超时秒, **kwargs)
-    except subprocess.TimeoutExpired as e:
-        出 = e.stdout if isinstance(e.stdout, str) else (e.stdout or b"").decode("utf-8", "replace")
-        return subprocess.CompletedProcess(命令, -99,
-                                           stdout=出[-400:], stderr="超时 %ds" % 超时秒)
+    """294/578：超时安全壳（rc=-99 不炸进程·轮守卫追踪）。主体外迁 ci_round_guard
+    （1000 行红线·660 自测外迁先例）——猴补/调用面不变。"""
+    return ci_round_guard.运行限时(命令, 超时秒, **kwargs)
 
 
 def 运行(命令: list[str], 日志, 超时秒: int, **kwargs) -> subprocess.CompletedProcess:
-    """流式写日志（不落内存大块）+总超时看护；可执行不存在（FileNotFoundError·如服务
-    环境 PATH 缺用户级 cmake——单位机实例实录崩循环）记 rc=127 轮红而非炸进程（297·
-    与 294 运行限时同族：环境面异常一律步骤红·不进程崩）。"""
-    print("  $", " ".join(命令[:6]), ("..." if len(命令) > 6 else ""), file=日志, flush=True)
-    try:
-        return subprocess.run(命令, stdout=日志, stderr=subprocess.STDOUT,
-                              cwd=仓库根, timeout=超时秒, **kwargs)
-    except FileNotFoundError as e:
-        print("  [FAIL] 可执行不存在：%s" % e, file=日志, flush=True)
-        return subprocess.CompletedProcess(命令, 127)
+    """297/578：流式日志运行（rc=127 缺可执行·轮守卫追踪）。主体外迁 ci_round_guard。"""
+    return ci_round_guard.运行(命令, 日志, 超时秒, 仓库根, **kwargs)
 
 
 def 找vcvars() -> Path | None:
@@ -504,8 +491,13 @@ def 带门禁锁跑(sha: str, 轮分支: str = "") -> dict | None:
     566（审查 P0-2）：持锁期间向本进程环境注入 CN_GATE_LOCK_HELD=1——嵌套链子进程
     （run_e2e --allow-heavy / gate_lock acquire·run 等）见之即豁免跳过取机器锁，
     防「父进程已持锁·子进程再取同一把」无限自死锁（子进程经 os.environ 继承）；
-    finally 恢复原值（长期驻留 daemon 的环境不被污染）。"""
-    门禁锁 = gate_lock.获取(1800, 形态="acquire", owner_pid=os.getpid()) if 是win else None
+    finally 恢复原值（长期驻留 daemon 的环境不被污染）。
+    578（任务 #578）：获取登记「轮心跳」（owner=常驻 daemon 永活使 917 锚判据对
+    「锚活+轮卡」退化 4h）——持锁跑轮期间 轮守卫.起 启动轮心跳线程，按轮内活跃
+    子进程+主线程进度续约；轮卡死/僵死（子进程消失等）停续约→排队方按 gate_lock
+    判据③ 分钟级接管（实录：win1 daemon 僵死 55 分钟锁无可清判据）。"""
+    门禁锁 = gate_lock.获取(1800, 形态="acquire", owner_pid=os.getpid(),
+                          轮心跳=True) if 是win else None
     if 是win and 门禁锁 is None:
         print("[让出] gate_lock 30 分钟未获得（本机门禁互忙）——本轮放弃，任务由服务端回收重派", flush=True)
         return None
@@ -513,9 +505,12 @@ def 带门禁锁跑(sha: str, 轮分支: str = "") -> dict | None:
     if 是win:
         os.environ["CN_GATE_LOCK_HELD"] = "1"
     try:
+        if 是win:
+            ci_round_guard.守.起(门禁锁)  # 578：轮心跳续约（探测=活跃子进程+进度）
         return 跑一轮(sha, 轮分支)
     finally:
         if 是win:
+            ci_round_guard.守.停()        # 578：先停续约再释放（防释放后线程复活写残留）
             if 豁免原值 is None:
                 os.environ.pop("CN_GATE_LOCK_HELD", None)
             else:
@@ -526,10 +521,14 @@ def 带门禁锁跑(sha: str, 轮分支: str = "") -> dict | None:
 def 预验清产物(树根: Path) -> bool:
     """637（2026-10-14 用户立法）：预验前置②——历史编译中间产物全部清零。
     rm -rf <树根>/target/（含 target/audit2 的 v2p 指纹缓存）——之后从零配置构建。
-    树根参数供 --selftest 注入临时目录隔离断言（生产传 仓库根）。返回是否清干净。"""
+    树根参数供 --selftest 注入临时目录隔离断言（生产传 仓库根）。返回是否清干净。
+    578：清产物是长纯 Python 段（Windows 大目录 rmtree 分钟级）——前后调
+    轮守卫.进度()，轮心跳探测据「主线程进度新鲜」判轮在推进（防长段误判轮卡死）。"""
+    ci_round_guard.守.进度()
     目标目录 = 树根 / "target"
     if 目标目录.exists():
         shutil.rmtree(目标目录, ignore_errors=True)
+    ci_round_guard.守.进度()
     return not 目标目录.exists()
 
 

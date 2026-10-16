@@ -17,6 +17,17 @@ CN_GATE_LOCK_HELD=1（run_e2e --allow-heavy 嵌套链见之跳过取机器锁·�
 根治）；释放(仅属主=pid) 归属校验——fork 进程池 worker 继承的 atexit 释放闭包
 只删真正属于自己进程的锁（917 陈锁接管路径不受影响）。
 
+578（2026-10-16·任务 #578）：长驻持有者（win 池 runner=ci_daemon --loop）作
+acquire 存活锚时 owner_pid 永活——917 判据①「锚死→秒级接管」对「锚活+轮卡」
+退化 4h（实录：daemon 持锁但子进程消失僵死 55 分钟·锁无可清判据）。修=轮心跳：
+  · 获取(轮心跳=True) 在 info.json 登记「轮心跳」标记+「轮锚」字段（轮内活跃
+    子进程 pid·由持有者用 启动轮心跳 线程续约）；
+  · 判据③（是陈锁）：轮心跳标记真 且 轮锚已死/未登记 且 info mtime 停超
+    轮心跳阈值（默认 300s·CN_ROUND_HB_TIMEOUT 覆盖）→ 陈锁（分钟级接管）；
+  · 持有者侧探测（scripts/ci_round_guard.py）=轮内有无活子进程+主线程进度——
+    轮卡死/僵死时停续约，心跳自然陈旧；子进程长跑（构建/E2E）期间持续续约，
+    不误清活锁。
+
   acquire [--timeout 秒] [--owner PID] [--scope machine|tree] 阻塞获取锁（默认等待 2h；
                                  陈锁=存活锚死秒级接管〔917〕/心跳停 4h 兜底）
   release [--scope]          释放锁（Ctrl+C 中断门禁后手动清锁用）
@@ -40,6 +51,19 @@ from pathlib import Path
 本树根 = Path(__file__).resolve().parent.parent
 心跳间隔 = 60
 陈锁阈值 = 4 * 3600  # 心跳停超 4 小时视为持锁进程已死，自动接管
+# 578：轮心跳（轮级判据）参数——长驻持有者形态的补足判据③（见 是陈锁 docstring）。
+轮心跳间隔秒 = 30   # 轮心跳线程续约周期（CN_ROUND_HB_INTERVAL 覆盖·自测收窄用）
+轮心跳阈值秒 = 300  # 轮锚死/未登记 + 心跳停超此值 = 陈锁（CN_ROUND_HB_TIMEOUT 覆盖）
+
+
+def 轮心跳间隔() -> int:
+    """578：轮心跳续约周期（环境变量动态读取——自测跨进程收窄·daemon 用缺省）。"""
+    return int(os.environ.get("CN_ROUND_HB_INTERVAL", str(轮心跳间隔秒)))
+
+
+def 轮心跳阈值() -> int:
+    """578：轮心跳停超此秒数（且轮锚死/未登记）判陈锁（环境变量动态读取·自测收窄用）。"""
+    return int(os.environ.get("CN_ROUND_HB_TIMEOUT", str(轮心跳阈值秒)))
 
 
 def 主树锁目录() -> Path:
@@ -126,12 +150,17 @@ def pid存活(pid) -> bool:
 
 
 def 是陈锁(锁: Path) -> bool:
-    """917（任务 109·021:173）：双判据——
+    """917（任务 109·021:173）：双判据 + 578 轮心跳判据③——
     ① 持锁存活锚已死=立即陈锁（主场景=TaskStop/强杀门禁后锁残留·排队者秒级接管·
        旧 4h 空等根除）。锚=run 形态的 gate_lock 自身 pid / acquire 分离形态由调用方
        传的 --owner pid（如 ci.ps1 传 $PID）。**acquire 未带 owner 的锁其 pid 是已
        退出的 acquire 子进程、不可按 pid 判死**——无锚（旧 info/旧调用）回退②。
     ② 心跳停超 4h=陈锁（原判据保留·兜底 pid 复用与无锚形态）。
+    ③ 578：info 带「轮心跳」标记（长驻池 runner 形态）时 owner 永活使①失效——
+       轮锚（轮内活跃子进程 pid）已死/未登记 且 info mtime 停超 轮心跳阈值
+       （默认 300s）→ 陈锁（轮卡死/僵死·原只能等② 4h）。轮锚活=子进程在跑=
+       轮在推进（不判死——乱清活锁代价 >> 多等）；轮心跳标记不存在=旧格式
+       锁，退回①②行为不变。
     pid 复用方向安全：死 pid 被新进程占→探测「活」→退回②（不误清）。"""
     信息 = 读信息(锁)
     owner = 信息.get("owner_pid")
@@ -141,9 +170,55 @@ def 是陈锁(锁: Path) -> bool:
         return True
     try:
         停跳 = time.time() - (锁 / "info.json").stat().st_mtime
-        return 停跳 > 陈锁阈值
     except OSError:
         return False
+    if 信息.get("轮心跳"):
+        轮锚 = 信息.get("轮锚")
+        if (轮锚 is None or not pid存活(轮锚)) and 停跳 > 轮心跳阈值():
+            return True
+    return 停跳 > 陈锁阈值
+
+
+def 更新轮心跳(锁: Path, 轮锚=None) -> None:
+    """578：轮心跳续约（原子重写 info.json=刷新 mtime + 可更新「轮锚」字段）。
+    仅由 启动轮心跳 线程调用；读-改-写 + os.replace 原子替换（排队方永不读到
+    半截 JSON）。锁已被接管（新锁无「轮心跳」标记）即不动——防续约方复活他人锁。
+    任何 OSError 原样抛出由线程体吞——续约失败=心跳自然陈旧，走同一接管路径。"""
+    信息 = 读信息(锁)
+    if not 信息.get("轮心跳"):
+        return
+    if 轮锚 is not None:
+        信息["轮锚"] = 轮锚
+    临时 = 锁 / "info.json.tmp"
+    临时.write_text(json.dumps(信息, ensure_ascii=False), encoding="utf-8")
+    os.replace(临时, 锁 / "info.json")
+
+
+def 启动轮心跳(锁: Path, 探测=None, 间隔: int | None = None) -> threading.Event:
+    """578：轮心跳线程——长驻持有者（ci_daemon --loop）持锁跑轮期间续约 info.json。
+    探测()=(轮锚 pid 或 None, 该刷新 bool)（scripts/ci_round_guard.py 的轮守卫合成：
+    有活子进程=轮在推进→真；无活子进程但主线程进度新鲜于阈值=步骤间隙→真；
+    否则=轮卡死/僵死→假）：
+      · 该刷新=真 → 更新轮心跳（touch/轮锚刷新）；
+      · 该刷新=假 → 不续约——mtime 自然陈旧，排队方按 是陈锁 判据③ 接管。
+    探测=None=无条件续约（最小形态）。返回 stop 事件（set() 即停·持锁方 finally 调）。
+    线程体全异常吞并不退出（单次续约失败不杀线程；持续失败=mtime 陈旧→同一接管
+    路径，保守方向=宁可判死也不放过活锁封死的判据悖论）。"""
+    周期 = 间隔 or 轮心跳间隔()
+    停 = threading.Event()
+
+    def 敲():
+        while not 停.wait(周期):
+            try:
+                轮锚, 该刷新 = (None, True) if 探测 is None else 探测()
+                if not 该刷新:
+                    continue
+                更新轮心跳(锁, 轮锚=轮锚)
+            except Exception:
+                continue
+
+    threading.Thread(target=敲, daemon=True).start()
+    return 停
 
 
 def 心跳线程(信息文件: Path) -> threading.Thread:
@@ -160,7 +235,7 @@ def 心跳线程(信息文件: Path) -> threading.Thread:
 
 
 def 获取(超时秒: int, 形态: str = "run", owner_pid: int | None = None,
-         锁: Path | None = None) -> Path | None:
+         锁: Path | None = None, 轮心跳: bool = False) -> Path | None:
     if 锁 is None:          # 555：锁目录参数化（树域由调用方传 树锁目录()·缺省=machine 域）
         锁 = 主树锁目录()
     锁.parent.mkdir(parents=True, exist_ok=True)
@@ -174,8 +249,14 @@ def 获取(超时秒: int, 形态: str = "run", owner_pid: int | None = None,
             if 是陈锁(锁):
                 陈锁信息 = 读信息(锁)
                 owner = 陈锁信息.get("owner_pid") or (陈锁信息.get("pid") if 陈锁信息.get("形态") == "run" else None)
-                因 = (f"持锁存活锚 pid={owner} 已死（917 秒级接管）" if owner and not pid存活(owner)
-                      else f"心跳停超 {陈锁阈值 // 3600}h")
+                轮锚 = 陈锁信息.get("轮锚")
+                if owner and not pid存活(owner):
+                    因 = f"持锁存活锚 pid={owner} 已死（917 秒级接管）"
+                elif 陈锁信息.get("轮心跳") and (轮锚 is None or not pid存活(轮锚)):
+                    因 = (f"轮心跳停超 {轮心跳阈值()}s（578 轮级判据·"
+                          f"轮锚 pid={轮锚} 已死/未登记——长驻持有者轮卡死/僵死）")
+                else:
+                    因 = f"心跳停超 {陈锁阈值 // 3600}h"
                 print(f"[gate_lock] 陈锁接管（{因}：{陈锁信息.get('命令', '?')}）", file=sys.stderr)
                 释放(锁, 静默=True)
                 continue
@@ -192,9 +273,14 @@ def 获取(超时秒: int, 形态: str = "run", owner_pid: int | None = None,
             continue
         # owner_pid（917·任务 109）：存活锚——run 形态=gate_lock 自身（贯穿命令执行）；
         #   acquire 分离形态=调用方进程（ci.ps1 传 $PID）——锚死=陈锁秒级接管。
+        # 轮心跳（578）：长驻持有者（win 池 runner）登记「轮心跳」标记——owner 永活
+        #   形态由轮心跳线程续约，轮卡死/僵死时排队方按判据③接管（原只能等 4h）。
         信息 = {"pid": os.getpid(), "形态": 形态, "owner_pid": owner_pid or os.getpid(),
                 "命令": " ".join(sys.argv[1:]),
                 "获取时间": time.strftime("%Y-%m-%d %H:%M:%S")}
+        if 轮心跳:
+            信息["轮心跳"] = True
+            信息["轮锚"] = None
         try:
             (锁 / "info.json").write_text(json.dumps(信息, ensure_ascii=False), encoding="utf-8")
         except OSError:
@@ -207,11 +293,17 @@ def 释放(锁: Path, 静默: bool = False, 仅属主: int | None = None) -> Non
     """仅属主（566·审查 P1-1）：非 None 时先校验 info.json 的 owner_pid==仅属主 才删——
     Linux fork 进程池 worker 继承父进程 atexit 注册的释放闭包，worker 完成任务正常
     退出时会执行它；无校验则 worker 误删真正持锁者（主进程）的锁=全机互斥静默失效。
-    归属不符（或锁已不在）即跳过不动。917 陈锁接管路径不传 仅属主——行为不变。"""
+    归属不符（或锁已不在）即跳过不动。917 陈锁接管路径不传 仅属主——行为不变。
+    578：清目录内全部残留（info.json + 轮心跳原子写残留的 info.json.tmp）再 rmdir
+    ——原只删 info.json，残留文件使 rmdir 失败=锁清不掉。"""
     if 仅属主 is not None and 读信息(锁).get("owner_pid") != 仅属主:
         return
     try:
-        (锁 / "info.json").unlink(missing_ok=True)
+        for 残留 in 锁.glob("*"):
+            try:
+                残留.unlink()
+            except OSError:
+                pass
         锁.rmdir()
     except OSError:
         pass
@@ -247,14 +339,25 @@ def 主流程() -> int:
     #   release 拒删（锁归外层）·acquire/run 跳过取锁直跑（防嵌套自死锁）。
     豁免 = 树锁豁免() if 域 == "tree" else 机器锁豁免()
     豁免变量 = "CN_TREE_LOCK_HELD" if 域 == "tree" else "CN_GATE_LOCK_HELD"
+    域名 = "树锁" if 域 == "tree" else "机器锁"   # 566 文案对齐（test_tree_lock 断言中文域）
 
     if 参数.命令 == "status":
         if 锁目录.exists():
             信息 = 读信息(锁目录)
             owner = 信息.get("owner_pid") or (信息.get("pid") if 信息.get("形态") == "run" else None)
             锚态 = (f"锚 pid={owner} {'活' if pid存活(owner) else '死'}" if owner else "无锚（回退心跳 4h）")
+            轮态 = ""
+            if 信息.get("轮心跳"):   # 578：轮心跳判据可见（停跳秒数/轮锚/阈值）
+                try:
+                    停跳 = int(time.time() - (锁目录 / "info.json").stat().st_mtime)
+                except OSError:
+                    停跳 = -1
+                轮锚 = 信息.get("轮锚")
+                轮态 = (f" 轮心跳=停{停跳}s（轮锚 pid={轮锚}"
+                        f"{' 活' if 轮锚 is not None and pid存活(轮锚) else ' 死/未登记'}"
+                        f"·阈值 {轮心跳阈值()}s）")
             print(f"被持有：pid={信息.get('pid')} 形态={信息.get('形态', '?')} {锚态} "
-                  f"命令={信息.get('命令')} 自 {信息.get('获取时间')}"
+                  f"命令={信息.get('命令')} 自 {信息.get('获取时间')}{轮态}"
                   f"{'（陈锁）' if 是陈锁(锁目录) else ''}")
         else:
             print("空闲")
@@ -262,7 +365,7 @@ def 主流程() -> int:
     if 参数.命令 == "release":
         if 豁免:
             # 555/566：豁免环境（嵌套子进程）的锁归外层持有者——删了=拆外层互斥，拒绝
-            print(f"[gate_lock] 继承外层{域}锁（{豁免变量}=1）——release 跳过（锁归外层持有者）",
+            print(f"[gate_lock] 继承外层{域名}（{豁免变量}=1）——release 跳过（锁归外层持有者）",
                   file=sys.stderr)
             return 0
         释放(锁目录)
@@ -271,7 +374,7 @@ def 主流程() -> int:
     #   （不建锁目录不等待），run 直跑透传退出码。防嵌套链自死锁（最高风险点）。
     #   566：machine 域同构豁免（CN_GATE_LOCK_HELD=1·审查 P0-2 根治死代码）。
     if 豁免:
-        print(f"[gate_lock] 继承外层{域}锁（{豁免变量}=1）", file=sys.stderr)
+        print(f"[gate_lock] 继承外层{域名}（{豁免变量}=1）", file=sys.stderr)
         if 参数.命令 == "acquire":
             return 0
         命令 = 参数.命令
