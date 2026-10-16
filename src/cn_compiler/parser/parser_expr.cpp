@@ -314,8 +314,19 @@ std::unique_ptr<Expr> Parser::parseUnary() {
         if (op == Operator::Subtract &&
             operand->getType() == NodeType::IntegerLiteral) {
             auto* lit = static_cast<IntegerLiteral*>(operand.get());
+            // 二次及以上负号折叠的 raw 符号归一（2026-10-16·1022 linux-arm64
+            //   预验红根因根治）：操作数 raw 已携带前导 '-'（前一层本折叠产物，
+            //   如 -(-5) 的内层 "-5"）时不能再前拼 "-"——病根=文本 "--5"：
+            //   win MASM 表达式解析把 --5 侥幸求为 +5 掩盖病象，linux-x86_64
+            //   GAS / arm64 movz 对非法立即数解析失败静默 0（-(-5)-3 双后端
+            //   算 0-3=-3 错值·1022 用例 arm64 预验实证）。符号只保留最终
+            //   数值一层：已负则剥（外层取负抵消）、未负则前拼——单层
+            //   -5 路径 raw="-5" 零变化（323 立法意图：域检查须见完整符号
+            //   文本）；raw 前导 '-' 唯一来源=本折叠（词法负号恒独立 token）。
+            const bool rawHadMinus = !lit->raw.empty() && lit->raw[0] == '-';
             auto neg = std::make_unique<IntegerLiteral>(
-                static_cast<std::int64_t>(0) - lit->value, "-" + lit->raw);
+                static_cast<std::int64_t>(0) - lit->value,
+                rawHadMinus ? lit->raw.substr(1) : "-" + lit->raw);
             neg->location = loc;
             return neg;
         }
