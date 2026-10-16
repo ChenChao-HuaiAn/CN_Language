@@ -301,6 +301,21 @@ void SemanticAnalyzer::checkIncDecUnary(UnaryExpr* node,
                     return;
                 }
             }
+            // 791（001 §747-8 执法扩面·569 采样 H4）：下标/成员 链 自增自减
+            //   写目标——根对象∈可变全局静态集合（顶层静态/裸全局/函数内静态
+            //   局部）时同受安全区边界约束（原只锁标识符直写形态）。文案与
+            //   标识符位一致（静态变量自增自减）；v2 侧 894-a 后缀/前缀 ++/--
+            //   生成专用 节点_自增表达式（非赋值脱糖），同文案拦截（零分叉）。
+            if (ot == NodeType::IndexExpr || ot == NodeType::MemberExpr) {
+                const std::string rootName =
+                    staticguard::writeTargetRootName(node->operand.get());
+                if (!rootName.empty() &&
+                    (isGlobalStatic(rootName) ||
+                     staticguard::isStaticLocal(rootName))) {
+                    reportUnsafeBoundary(node->location, "静态变量写",
+                                         "静态变量自增自减");
+                }
+            }
             // 自增/自减：数值 或 指针（Task 2.4 指针 ++/-- 按元素大小步进）
             if (!isNumeric(operandType) && !isPointerType(operandType)) {
                 diagnostics_.report(DiagnosticLevel::Error, node->location,

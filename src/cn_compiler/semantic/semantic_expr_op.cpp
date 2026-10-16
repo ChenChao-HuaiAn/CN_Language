@@ -472,6 +472,19 @@ void SemanticAnalyzer::checkIndexMemberAssignTarget(AssignmentExpr* node,
                     "' 是只读借用，不能经成员访问赋值");
         }
     }
+    // 791（001 §747-8 执法扩面·569 采样 H4）：可变全局静态「元素/成员写」——
+    //   写目标为 下标/成员 链且根对象∈可变全局集合（顶层静态/裸全局/
+    //   函数内静态局部）→ 与变量名直写同规则拦截（Rust `static mut` 的
+    //   元素/字段写同属「访问」；原判定只锁标识符直写三形态=间接目标静默
+    //   绕过·双侧运行真写实证 rc=6/4/7）。读形态不受约束（§5.2a 读取无限制），
+    //   局部对象链/形参链根名不在集合中天然放行，不安全函数内照放行
+    //   （reportUnsafeBoundary 内建豁免）。诊断文案与直写形态一致。
+    const std::string rootName =
+        staticguard::writeTargetRootName(node->target.get());
+    if (!rootName.empty() && (isGlobalStatic(rootName) ||
+                              staticguard::isStaticLocal(rootName))) {
+        reportUnsafeBoundary(node->location, "静态变量写", "静态变量赋值");
+    }
     assignmentTargetDepth_++;  // 150-a：抑制 target 求值中的 B6/B8/B9 读判
     targetType = checkExpr(node->target.get());
     assignmentTargetDepth_--;

@@ -13,11 +13,19 @@
 // 遮蔽语义（865-a 双侧同构）：函数内同名普通局部声明 → 该名回普通变量
 //   （notePlainDecl 移除；v2 解析层 遮蔽局部静态名86 同款，作用域退出不恢复
 //   =双侧一致的保守边界）。
+// 791（569 采样 H4·001 §747-8 执法扩面）：写目标根对象解析——下标/成员链
+//   （表[0]/原点.甲/矩阵[0][1]）的根名解析归本模块（写位判定辅助同族），
+//   挂点（semantic_expr_op 赋值族 / semantic_expr_unary 自增自减族）据此与
+//   静态名集合联判（宿主 isGlobalStatic+本表 / v2 全局静态名ID们+静态局部名
+//   ID们），拦截「可变全局静态的元素/成员写」——原只锁标识符直写=间接目标
+//   静默绕过（双侧运行真写实证）；v2 同构=语义检查赋值.cn 写目标根名791。
 #pragma once
 
 #include <string>
 
 namespace cn_compiler {
+class Expr;  // 前置声明（ast_base.hpp 同声明）；实现文件 include ast_expr.hpp
+
 namespace staticguard {
 
 // 函数入口（checkFunctionBody / checkSingleMethodBody 挂点）：清当前表
@@ -33,6 +41,13 @@ void notePlainDecl(const std::string& name);
 
 // 写位判定（赋值/复合赋值/自增自减挂点）：当前函数内该名是否为静态局部
 bool isStaticLocal(const std::string& name);
+
+// 791：写目标根对象名解析——沿「下标/成员」链下降至链首（表[0]/原点.甲/
+//   矩阵[0][1] 的根=表/原点/矩阵；读面共用同一形态解析）。根为标识符返回
+//   其名；根非标识符（解引用/调用/字面量等）返回空串（不判定=责任留既有
+//   条款）。调用方联判：根名 ∈ 顶层静态/裸全局（宿主 isGlobalStatic）或
+//   函数内静态局部（isStaticLocal）→ 与变量名直写同规则拦截。
+std::string writeTargetRootName(const Expr* target);
 
 } // namespace staticguard
 } // namespace cn_compiler
