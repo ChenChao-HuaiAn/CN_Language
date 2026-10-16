@@ -850,6 +850,13 @@ private:
     bool memberStringFieldAssign(AssignmentExpr* node, MemberExpr* member,
                                  const StructDecl* decl, const std::string& objSrcType,
                                  const ir::IRValue& addr, const ir::IRValue& value);
+    // 629（544 呈报）：类字段 ←「返回类对象的调用」产物（盒.槽 = 仓.产()）——
+    //   旧字段对象释放 + 新句柄入槽（自 handleClassMemberAssign 974 段挂点·
+    //   实现于 ir_expr_assign.cpp 成员族）
+    bool memberClassCallProductAssign(Expr* valueExpr,
+                                      const ir::IRValue& fieldAddr,
+                                      const std::string& fieldCanon,
+                                      const SourceLocation& loc);
     // 族：下标/解引用左值（原 320~459 段）
     bool assignToIndexTarget(AssignmentExpr* node);
     void markIndexStringElemTainted(AssignmentExpr* node);
@@ -878,6 +885,14 @@ private:
     // 821（#444）：重载产物右值形态判定（局部/静态共用·非引用返回白名单）
     bool isClassOverloadProductRhs(AssignmentExpr* node,
                                    const std::string& canonTarget) const;
+    // 629（544 呈报）：类/容器目标 ←「返回类对象的调用」产物——接管新句柄 +
+    //   覆盖前旧值释放（Rust `a = f()` drop 语义；实现于 ir_expr_assign_ident_class.cpp）
+    bool identifierClassCallProductAssign(AssignmentExpr* node, IdentifierExpr* ident,
+                                          const std::string& unique);
+    // 629：静态类/容器目标 ← 调用产物（value 已求值·旧静态值释放）
+    bool globalStaticClassCallProductAssign(AssignmentExpr* node, IdentifierExpr* ident,
+                                            const std::string& stType,
+                                            const ir::IRValue& value);
     // 821（#444）：静态类目标 ← 重载产物（句柄接管 + 旧值释放·value 已求值）
     bool globalStaticClassOverloadProductAssign(AssignmentExpr* node, IdentifierExpr* ident,
                                                 const std::string& stType,

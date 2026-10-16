@@ -361,6 +361,40 @@ bool IRGenerator::memberStringFieldAssign(AssignmentExpr* node, MemberExpr* memb
     return false;
 }
 
+// 629（544 呈报·成员目标面·自 handleClassMemberAssign 974 段挂点）：
+//   类字段 ←「返回类对象的调用」产物（盒.槽 = 仓.产() / 盒.槽 = 货架()）
+//   ——原路径落标量 StorePtr 直存新句柄：字段旧对象（连同资源字段）无人
+//   释放=泄漏（探针矩阵双侧实锤宿主残留 +2）。字段=句柄槽（728x 语义）：
+//   旧句柄单发 DeleteObject（095/821 同款·空句柄空安全）+ 新句柄 StorePtr
+//   入槽（fieldAddr 已由调用方经 handleClassMemberLvalue 算好=单一事实源）。
+//   自用右值（盒.槽 = 盒.槽.克隆()）安全：先求值后释放。排除：转移（转移
+//   展开=源槽清零在 ir_call·成员转移面维持原路径）/引用返回（借用产物不得
+//   释放/接管）。容器族字段由 memberClassFieldAssign 前置处理不达此。
+//   返回 true=已处理；false=非该形态（零行为变更落原路径）。
+bool IRGenerator::memberClassCallProductAssign(Expr* valueExpr,
+                                               const ir::IRValue& fieldAddr,
+                                               const std::string& fieldCanon,
+                                               const SourceLocation& loc) {
+    if (semantic_ == nullptr || valueExpr == nullptr) return false;
+    if (valueExpr->getType() != NodeType::CallExpr) return false;
+    const CallExpr* call = static_cast<const CallExpr*>(valueExpr);
+    if (isTransferCall(call)) return false;
+    if (call->isRefReturnCall) return false;
+    // 右值调用返回类型严格等于字段类（异型/引用返回后缀自然不等=保守面）
+    if (types::canonical(exprSrcType(valueExpr)) != fieldCanon) return false;
+    // 源求值（产物=新堆对象句柄——所有权随返回值移交调用方）
+    ir::IRValue newObj = genExpr(valueExpr);
+    // 旧字段对象释放（空句柄空安全）+ 新句柄入槽
+    ir::IRValue oldObj = emitResult(ir::Opcode::LoadPtr, {fieldAddr}, "ptr", "",
+                                    loc);
+    emit(ir::Opcode::DeleteObject, {oldObj}, ir::IRValue(), fieldCanon, "void",
+         loc);
+    emit(ir::Opcode::StorePtr, {fieldAddr, newObj}, ir::IRValue(), "", "ptr",
+         loc);
+    lastExpr_ = fieldAddr;
+    return true;
+}
+
 // ==================== 族：下标/解引用左值（原 320~459 段） ====================
 // 下标/解引用目标：污染标记 → 元素类型推导 → Cast → 地址 → 结构体整体赋值
 //   → 构造字面量 → 复合赋值 → StorePtr。true = 已处理。

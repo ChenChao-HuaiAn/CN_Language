@@ -127,6 +127,9 @@ bool IRGenerator::assignToIdentifierTarget(AssignmentExpr* node, IdentifierExpr*
     // 821（#444）：类目标 ← 运算符重载表达式产物（甲 = 乙 + 丙·重载返回类对象）——
     //   句柄接管 + 覆盖前旧对象释放（族实现=ir_expr_assign_ident_class.cpp）
     if (identifierClassOverloadProductAssign(node, ident, unique)) return true;
+    // 629（544 呈报）：类/容器目标 ←「返回类对象的调用」产物（甲 = 仓.产() /
+    //   造货架() / 货架()）——句柄接管 + 覆盖前旧值释放（族实现=同文件）
+    if (identifierClassCallProductAssign(node, ident, unique)) return true;
     if (identifierStructLiteralAssign(node, ident, unique)) return true;
     identifierGenericAssign(node, ident, unique);
     return true;
@@ -239,6 +242,9 @@ bool IRGenerator::assignToGlobalStatic(AssignmentExpr* node, IdentifierExpr* ide
         //   同款模型：LoadPtr 旧句柄 → 单发 DeleteObject（空句柄空安全）→
         //   StorePtr 新句柄（value=转移展开已加载的源句柄·源槽清零在 ir_call）。
     if (globalStaticClassTransferAssign(node, ident, stType, value)) return true;
+        // 629（同族静态面）：静态类/容器目标 ← 调用产物——旧静态对象释放 +
+        //   句柄入槽（value=已求值·勿重复求值；族实现=ir_expr_assign_ident_class.cpp）
+    if (globalStaticClassCallProductAssign(node, ident, stType, value)) return true;
         // 复合赋值（+= 等）：先读后算再写
         if (isCompoundAssignOp(node->op)) {
             ir::IRValue addrR = emitResult(

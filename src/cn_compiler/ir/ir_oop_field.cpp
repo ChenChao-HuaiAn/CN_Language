@@ -850,6 +850,18 @@ bool IRGenerator::handleClassMemberAssign(MemberExpr* target, Expr* valueExpr,
                                       /*preFree=*/true)) {
                 return true;
             }
+            // 629（544 呈报·成员目标面）：类字段 ←「返回类对象的调用」产物
+            //   （盒.槽 = 仓.产() / 盒.槽 = 货架()）——原落下方标量 StorePtr
+            //   直存新句柄：字段旧对象（连同资源字段）无人释放=泄漏（探针矩阵
+            //   双侧实锤宿主残留 +2；与变量面 identifierClassCallProductAssign
+            //   同族同修）。字段=句柄槽（728x 语义）：旧句柄单发 DeleteObject
+            //   （095/821 同款·空句柄空安全——calloc 新对象字段零=构造体初赋值
+            //   天然空安全）+ 新句柄 StorePtr。排除：转移（转移展开=源槽清零在
+            //   ir_call·成员转移面维持原路径）/引用返回（借用产物不得释放）。
+            if (memberClassCallProductAssign(valueExpr, addr, canon974,
+                                             loc)) {
+                return true;
+            }
         }
     }
     ir::IRValue val = genExpr(valueExpr);

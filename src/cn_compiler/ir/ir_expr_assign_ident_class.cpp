@@ -276,4 +276,94 @@ bool IRGenerator::globalStaticClassOverloadProductAssign(
     return true;
 }
 
+// 629（544 呈报·「返回类对象的调用」右值·赋值位）：类/容器目标 ← 调用产物
+//   ——形态 甲 = 仓.产() / 甲 = 造货架() / 甲 = 货架() / 甲 = 复制(甲2)
+//   （方法调用/普通函数调用/构造调用/复制内置，产物=新堆对象句柄）。
+//   缺陷链（629 探针矩阵双侧实证）：原路径 genExpr 求值产物后落通用 Store
+//   直接覆盖目标槽——旧对象（连同资源字段：容器壳/数据数组/字符串）无人
+//   释放=泄漏（变量×调用/构造 活动分配数残留 +2；宿主未修侧 vs v2 544/472
+//   通道已释放=分叉；成员/容器目标同族同病）。修=Rust drop 语义（`a = f()`
+//   赋值点先析构旧值）：095/821 同款**单发 DeleteObject**（指令内含析构调用
+//   +free·空句柄空安全跳过——与 552/095 类赋值旧值释放同模型）+ 新句柄入槽。
+//   顺序纪律：右值先求值后释放（自用右值 甲 = 甲.克隆() 安全——产物独立于旧
+//   值内存后才释放；Rust 求值序同构）。排除面：转移（identifierClassTransferAssign
+//   前置管辖·源槽清零在 ir_call）；引用返回调用（isRefReturnCall=借用产物，
+//   不得释放旧值/不得获所有权）；复合赋值（读-算-写回另路）。
+//   返回 true=已处理；false=非该形态（零行为变更落原路径）。
+bool IRGenerator::identifierClassCallProductAssign(AssignmentExpr* node,
+                                                   IdentifierExpr* ident,
+                                                   const std::string& unique) {
+    if (semantic_ == nullptr || unique.empty() || isCompoundAssignOp(node->op)) {
+        return false;
+    }
+    if (node->value->getType() != NodeType::CallExpr) return false;
+    const CallExpr* call = static_cast<const CallExpr*>(node->value.get());
+    if (isTransferCall(call)) return false;      // 转移=专用通道（源槽清零在彼）
+    if (call->isRefReturnCall) return false;     // 引用返回=借用产物（目标不得 drop）
+    const std::string canonTarget = types::canonical(lookupSrcType(ident->name));
+    if (!semantic_->isClassType(canonTarget)) return false;
+    // 右值调用返回类型严格等于目标类（异型赋值语义层已拦·此处保守面：
+    //   返回类型推导 miss/引用返回后缀自然不等 → 零行为变更落原路径）
+    if (types::canonical(exprSrcType(node->value.get())) != canonTarget) {
+        return false;
+    }
+    // 右值求值（产物=新堆对象句柄：LUE 类返回/容器返回/构造 NewObject/
+    //   复制内置 ③ 独立深拷壳——所有权随返回值移交调用方）
+    ir::IRValue newObj = genExpr(node->value.get());
+    if (isByRefCapture(ident->name)) {
+        // A-1（引用参数）：目标槽存被引用对象地址——旧句柄两跳读、写回经指针
+        //   （identifierClassTransferAssign 同款）
+        ir::IRValue capAddr = emitResult(ir::Opcode::Load,
+                                         {ir::IRValue::var(unique, "ptr")},
+                                         "ptr", unique, node->location);
+        ir::IRValue oldObj = emitResult(ir::Opcode::LoadPtr, {capAddr}, "ptr",
+                                        "", node->location);
+        emit(ir::Opcode::DeleteObject, {oldObj}, ir::IRValue(), canonTarget,
+             "void", node->location);
+        emit(ir::Opcode::StorePtr, {capAddr, newObj}, ir::IRValue(), "", "ptr",
+             node->location);
+    } else {
+        // 旧值释放（095/821 同款单发 DeleteObject：空句柄空安全）+ 句柄接管
+        ir::IRValue oldObj = emitResult(ir::Opcode::Load,
+                                        {ir::IRValue::var(unique, "ptr")},
+                                        "ptr", unique, node->location);
+        emit(ir::Opcode::DeleteObject, {oldObj}, ir::IRValue(), canonTarget,
+             "void", node->location);
+        emit(ir::Opcode::Store, {newObj}, ir::IRValue(), unique, "ptr",
+             node->location);
+    }
+    lastExpr_ = newObj;
+    return true;
+}
+
+// 629（同族静态面）：静态类/容器目标 ← 调用产物 乙 = 仓.产()（value 已由
+//   assignToGlobalStatic 求值——**勿重复求值**·副作用纪律）。静态槽无块出口
+//   RAII，赋值点是旧值唯一 drop 时机（933/821 静态面同款模型）：LoadPtr 旧
+//   句柄 → 单发 DeleteObject（空句柄空安全）→ StorePtr 新句柄。
+bool IRGenerator::globalStaticClassCallProductAssign(AssignmentExpr* node,
+                                                     IdentifierExpr* ident,
+                                                     const std::string& stType,
+                                                     const ir::IRValue& value) {
+    if (semantic_ == nullptr || isCompoundAssignOp(node->op)) return false;
+    if (node->value->getType() != NodeType::CallExpr) return false;
+    const CallExpr* call = static_cast<const CallExpr*>(node->value.get());
+    if (isTransferCall(call)) return false;
+    if (call->isRefReturnCall) return false;
+    const std::string canonTarget = types::canonical(stType);
+    if (!semantic_->isClassType(canonTarget)) return false;
+    if (types::canonical(exprSrcType(node->value.get())) != canonTarget) {
+        return false;
+    }
+    ir::IRValue slotAddr = emitResult(ir::Opcode::ConstString, {}, "ptr",
+                                      "?gstatic_" + ident->name, node->location);
+    ir::IRValue oldObj = emitResult(ir::Opcode::LoadPtr, {slotAddr}, "ptr", "",
+                                    node->location);
+    emit(ir::Opcode::DeleteObject, {oldObj}, ir::IRValue(), canonTarget, "void",
+         node->location);
+    emit(ir::Opcode::StorePtr, {slotAddr, value}, ir::IRValue(), "", "ptr",
+         node->location);
+    lastExpr_ = value;
+    return true;
+}
+
 } // namespace cn_compiler
