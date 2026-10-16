@@ -207,7 +207,7 @@ void IRGenerator::collectOwnedStrFields(const std::string& canonRaw, int base, i
     visiting.pop_back();
 }
 
-std::vector<IRGenerator::OwnedStrField> IRGenerator::ownedStrFieldsOf(
+std::vector<OwnedStrField> IRGenerator::ownedStrFieldsOf(
     const std::string& canonRaw) const {
     std::vector<OwnedStrField> out;
     if (semantic_ == nullptr) return out;

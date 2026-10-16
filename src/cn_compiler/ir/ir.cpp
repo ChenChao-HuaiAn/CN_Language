@@ -232,7 +232,7 @@ ir::IRValue IRGenerator::lookupVar(const std::string& name) {
     }
     return ir::IRValue::reg(-1, "");
 }
-const IRGenerator::VarEntry* IRGenerator::findVarEntry(const std::string& name) const {
+const VarEntry* IRGenerator::findVarEntry(const std::string& name) const {
     for (auto it = varStack_.rbegin(); it != varStack_.rend(); ++it) {
         auto found = it->find(name);
         if (found != it->end()) return &found->second;

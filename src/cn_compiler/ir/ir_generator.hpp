@@ -3,6 +3,10 @@
 //   ir.hpp 保留 IR 数据结构（Opcode/指令/函数IR）并 include 本头，下游透明。
 #pragma once
 #include "cn_compiler/ir/ir.hpp"
+// 865：生成期状态数据类型外迁头（ClosureInfo/VarEntry/LoopContext/SwitchContext/
+//   OwnedStrField——纯数据结构可外迁·ir_generator_types.hpp 先例=DeclGenCtx），
+// 类内成员声明处类型名直呼，签名零改动。
+#include "cn_compiler/ir/ir_generator_types.hpp"
 
 namespace cn_compiler {
 class IRGenerator : public AstVisitor {
@@ -415,20 +419,8 @@ private:
     // lambda 快照静态槽键（?gstatic_ 前缀外的注册键；lambdaName 唯一保证不撞）
     std::string lambdaSlotKey(const std::string& lambdaName,
                               const std::string& cap) const;
-    // 闭包关联：变量源码名 -> {匿名函数名, 捕获变量列表, 定义处捕获实参, 返回 IR 类型}。
-    // 语义（规格书04-一D，缺陷修复）：
-    struct ClosureInfo {
-        std::string lambdaName;
-        std::vector<std::string> captures;      // 捕获变量源码名列表
-        std::vector<ir::IRValue> captureArgs;   // 定义处求值的捕获实参（值快照 或 &变量 指针）
-        std::string returnIrType;               // 匿名函数返回 IR 类型（结果寄存器类型）
-        // 485：lambda 源码返回类型（结构体/数组返回 sret 判定——returnIrType
-        //   经 mapType 已塌缩 ptr，无法判别；同帧展开通道形态A预插需要源类型）
-        std::string srcReturnType;
-        // 337-a（T53 家系）：用户形参源码类型列表（不含捕获参数）——闭包调用展开
-        //   用户实参的 ABI 定标依据（widenI128Args 形参来源，见 lastLambdaParamTypes_）。
-        std::vector<std::string> paramTypes;
-    };
+    // 闭包关联：变量源码名 -> {匿名函数名, 捕获变量列表, 定义处捕获实参, 返回 IR 类型}
+    //   （值类型 ClosureInfo 见 ir_generator_types.hpp·865 外迁）
     std::unordered_map<std::string, ClosureInfo> closureInfo_;
     // 655 返工：曾以 lambda/方法值登记过闭包关联的变量名全集。closureInfo_ 快径
     //   受 visitLambdaExpr 入口 clear 纪律（485）影响（720 实录：同函数后定义的
@@ -437,18 +429,8 @@ private:
     //   合法面」（不报）与「真全域 miss」（报 #655 诊断）。816 扩=拷贝传递登记。
     std::unordered_set<std::string> lambdaVarNames_;
     // 变量作用域栈（BlockStmt 进入压栈/退出弹栈，支持同名遮蔽）。
-    // 每个条目：源码名 -> {寄存器ID, 唯一内部名（name$N，遮蔽时分配独立槽）, IR类型,
-    //                      源码类型（整32*/整32[5]等，Task 2.4 指针元素类型/数组元素类型）}
-    struct VarEntry {
-        int regId = -1;
-        std::string uniqueName;
-        std::string type;
-        std::string srcType;   // 源码类型（指针/数组复合类型原样保留）
-        bool byRef = false;    // 是否为 [&] 引用捕获参数（lambda 匿名函数内；缺陷修复）
-        // 320-a（T41·方案甲·C static local 同款）：函数内静态局部——存储为
-        //   模块级 .data 槽（?gstatic_$静态$函数名$名 符号·唯一键防多函数同名
-        bool isStaticLocal = false;
-    };
+    // 每个条目：源码名 -> VarEntry（寄存器ID/唯一内部名/IR类型/源码类型等·
+    //   865 外迁见 ir_generator_types.hpp）
     std::vector<std::unordered_map<std::string, VarEntry>> varStack_;
     // 320-a（T41 写面完备）：查找最近作用域的变量条目（含 isStaticLocal 标志）——
     //   静态局部无栈槽（regId 恒 -1，lookupVar 结果与 slot.id>=0 写回守卫均取不到），
@@ -488,34 +470,11 @@ private:
     //   标识符指针变量 / 指针算术（p+1，递归指针侧）/ 取地址（&x 递归 operand）。
     //   返回所指元素源码类型（如 整32* -> 整32）；无法推导返回空串。
     std::string pointerPointeeSrcType(Expr* node) const;
-    // 循环控制流：中断/继续跳转目标栈
-    struct LoopContext {
-        std::string breakTarget;    // 中断跳转目标块标签
-        std::string continueTarget; // 继续跳转目标块标签
-        // 72-a（2026-09-11 第七十二轮）：循环体内的块级作用域析构——中断/继续
-        //   跳出前先释放本块新增拥有资源（Rust drop-on-jump）。基线=进入循环体
-        //   时的 类对象名单/拥有串名单 长度（drop 范围=基线之后的新增项）。
-        std::size_t classBase = 0;   // 类对象名单基线（ownedClassOrder_）
-        std::size_t stringBase = 0;  // 拥有串名单基线（ownedStringOrder_）
-        // 79-a（2026-09-12 第七十九轮）：含串字段聚合局部名单基线（ownedFieldOrder_）
-        std::size_t fieldBase = 0;
-        // 98-a（C9）：字符串元素数组名单基线（ownedStrArrayOrder_）
-        std::size_t strArrayBase = 0;
-        // 72-b（2026-09-11 用户裁决方案B·C 语义）：进入序——中断 绑定「最近的
-        //   选择或循环」（enterSeq 大者=最近进入），与 SwitchContext 比较。
-        std::size_t enterSeq = 0;
-    };
+    // 循环控制流：中断/继续跳转目标栈（条目 LoopContext·865 外迁见 ir_generator_types.hpp）
     std::vector<LoopContext> loopStack_;
-    // 选择控制流：中断跳出目标栈——72-a 收尾（2026-09-11）：选择体（情况/默认
-    //   分支）不走 genBlock（语句直接生成，无块作用域），分支内声明的资源原本
-    struct SwitchContext {
-        std::string exitLabel;      // 中断跳转目标块标签（选择汇合块）
-        std::size_t classBase = 0;  // 分支进入时 类对象名单基线
-        std::size_t stringBase = 0; // 分支进入时 拥有串名单基线
-        std::size_t fieldBase = 0;  // 79-a：分支进入时 含串字段聚合名单基线
-        std::size_t strArrayBase = 0;  // 98-a（C9）：分支进入时 字符串元素数组基线
-        std::size_t enterSeq = 0;   // 进入序（72-b：与 LoopContext 比较定最近）
-    };
+    // 选择控制流：中断跳出目标栈（条目 SwitchContext·865 外迁见 ir_generator_types.hpp）
+    //   ——72-a 收尾（2026-09-11）：选择体（情况/默认分支）不走 genBlock（语句
+    //   直接生成，无块作用域），分支内声明的资源按基线 drop-on-jump。
     std::vector<SwitchContext> switchStack_;
     // 中断绑定序（72-b：单调递增，genWhile/genFor/genSwitch 压栈时取号）
     std::size_t breakScopeSeq_ = 0;
@@ -570,27 +529,7 @@ private:
 
     // ---- 79-a（2026-09-12 第七十九轮）：聚合拥有型字符串字段 drop glue ----
     // 背景（探针 P1/P2 实证，plans/020 矩阵 #16/#17）：结构体/装箱（结果/可选）
-    struct OwnedStrField {
-        int offset = 0;       // 相对聚合基址的字节偏移
-        int condOffset = -1;  // -1=无条件释放；否则条件字段（布尔）偏移
-        // 99-a（C11, 2026-09-13 第九十九轮）：**字符串数组字段**——arrayLen > 0 时
-        //   该字段是「字符串[长度]」（元素=拥有串句柄）：释放=逐元素（fieldAddr +
-        //   i×arrayStride -> LoadPtr -> __cn_str_free -> StorePtr 0），长度=arrayLen
-        int arrayLen = 0;
-        int arrayStride = 0;
-        // 100-a（C12）：arrayLen > 0 且 elemCanon 非空 = **元素是含串字段结构体**
-        //   （逐元素递归释放其串字段；空=元素本身即字符串句柄）。
-        std::string elemCanon = std::string();
-        // 139-a（波 3 最小闭环；plans/022 §三 B3 + plans/020 第五十节发现四则）：
-        //   资源种类——Str=拥有串句柄；ClassObj=**类对象字段（指针槽语义）**——
-        enum class Kind { Str, ClassObj };
-        Kind kind = Kind::Str;
-        // ClassObj：字段类型 canon（析构/拷贝构造符号键与元素释放协议用）；Str：空
-        std::string classCanon = std::string();
-        // 164-a（A4·plans/023 §十二 方案D）：**来自联合体成员**——联合体「共享偏移 +
-        //   无 tag」语义下，自动释放/写入归一化（preFree 清旧）不可判（p13 泄漏/
-        bool viaUnion = false;
-    };
+    //   字段释放描述载体 OwnedStrField·865 外迁见 ir_generator_types.hpp。
     // 收集聚合类型（结构体/结果/可选，递归展开值语义嵌套）的拥有型字符串字段
     std::vector<OwnedStrField> ownedStrFieldsOf(const std::string& canon) const;
     void collectOwnedStrFields(const std::string& canon, int base, int cond,
