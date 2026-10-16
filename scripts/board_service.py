@@ -522,7 +522,7 @@ class 处理器(BaseHTTPRequestHandler):
                            "SELECT 号,机器,对话id,描述,时刻 FROM 发号台账 ORDER BY 时戳").fetchall()]
                 return self._回JSON(200, {"台账": 流水, "下一个": 台账.下一个号(
                     台账.已占号集(连接)), "号占冲突们": 台账.号占冲突们(连接),
-                    "时刻": 时刻()})
+                    "空洞段们": 台账.空洞段们(连接), "时刻": 时刻()})
         if 路径 == "/api/case_numbers":                # 554：E2E 用例号台账（审计面·只读）
             with 写锁:
                 q = urlparse(self.path).query
