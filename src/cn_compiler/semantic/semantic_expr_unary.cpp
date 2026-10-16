@@ -19,7 +19,16 @@ void SemanticAnalyzer::visitUnaryExpr(UnaryExpr* node) {
     //   Rust &mut maybe-init 同款；v2 树 结构体出参 &签 铁证）——操作数求值前
     //   置标志，标识符读判定改为整体置位
     if (node->op == Operator::AddressOf) { inAddrOfCtx_ = true; }
+    // 618（字符串下标只读·自增自减写语境）：登记本次自增/自减的**直接操作数**
+    //   节点——visitIndexExpr 经身份比较（node==currentIncDecOperand_）识别
+    //   「本下标=自增自减隐式写目标」；嵌套下标（s[t[0]]++ 中 t[0] 为读）因
+    //   节点不同不误判，嵌套自增（s[i++]++）经保存/恢复外层登记值不串扰。
+    const bool incDec618 = (node->op == Operator::Increment ||
+                            node->op == Operator::Decrement);
+    const Expr* savedIncDecOperand618 = currentIncDecOperand_;
+    if (incDec618) { currentIncDecOperand_ = node->operand.get(); }
     std::string operandType = checkExpr(node->operand.get());
+    if (incDec618) { currentIncDecOperand_ = savedIncDecOperand618; }
     inAddrOfCtx_ = false;
     // P2-14：单目运算符重载（- ! ~）——类类型操作数先查 运算符X（0 参数）成员
     //   （重载决议：类重载优先；无重载则落入下方内置校验/报错）

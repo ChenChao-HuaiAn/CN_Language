@@ -915,6 +915,7 @@ private:
     //   解引用**写**（B7，在赋值 target case 报）；==0 时=解引用读（B6，在
     //   Deref 分支报）——避免同一 `*p = x` 双报（§六.2 避免重复报告）。
     int assignmentTargetDepth_ = 0;
+    const Expr* currentIncDecOperand_ = nullptr;  // 618：自增/自减直接操作数（字符串下标只读写语境·visitIndexExpr 身份比较·嵌套不误判）
     int switchDepth_ = 0;                          // 选择嵌套深度（中断跳出选择合法性）
     // ---- 188-a（D6·plans/023 B11 变量常量传播）：函数级「恒空指针」判定表 ----
     //   背景：B11 原判据=操作数为 `无` 字面量（plans/023 §九 已批准定义含编译期常量）
