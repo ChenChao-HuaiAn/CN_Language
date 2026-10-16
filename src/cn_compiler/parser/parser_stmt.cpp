@@ -79,8 +79,17 @@ std::unique_ptr<Stmt> Parser::parseStmt() {
     //   与 形式2 a * b 同款既有惯例。
     if (check(TokenType::Identifier)) {
         const bool typeThenVar = (peek(1).getType() == TokenType::Identifier);
-        const bool typePtrVar = (peek(1).getType() == TokenType::Star &&
-                                 peek(2).getType() == TokenType::Identifier);
+        // #639（2026-10-16）：多级指针声明探测——标识符 星{1,N} 标识符（点** pp）。
+        //   原判定仅认单星（peek(2) 恒查 Identifier）→ `乙** pp;` 不匹配任何
+        //   声明形态落表达式路径误报「未声明的标识符」（宿主/v2 双侧同病）。
+        //   多星与单星同惯例：表达式 `a * * b` 误判后由语义层报「不是类型」
+        //   （与既有 `a * b` 歧义惯例一致，非新增风险）。
+        bool typePtrVar = false;
+        if (peek(1).getType() == TokenType::Star) {
+            int k = 2;
+            while (peek(k).getType() == TokenType::Star) { k++; }
+            typePtrVar = (peek(k).getType() == TokenType::Identifier);
+        }
         const bool typeRefVar = (peek(1).getType() == TokenType::Amp &&
                                  peek(2).getType() == TokenType::Identifier);
         // #286（2026-10-08 甲案）：数组声明探测放宽——[ 到配对 ] 间为长度
