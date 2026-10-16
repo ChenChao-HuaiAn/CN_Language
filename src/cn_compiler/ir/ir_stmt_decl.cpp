@@ -170,7 +170,18 @@ void IRGenerator::genStaticLocalGuardInit(VarDecl* node, const std::string& key,
                                       "?gstatic_" + key, sloc);
     if (node->initializer != nullptr) {
         Expr* initExpr = node->initializer.get();
-        if (guardStruct) {
+        // 852（2026-10-16·843 呈报）：函数内静态数组 = 数组变量初值——整块守卫
+        //   快照拷。原落标量分支：genExpr(数组名)=基址 ptr 被 Cast→i32 截断写
+        //   主槽首 4 字节（乙[0]=地址低位·其余元素保持 .bss 零·S7 探针实录；
+        //   1006 乘法消费位即触发 474 运行期溢出错误码 8）。修=259 顶层静态数
+        //   组赋值位同款 emitStructWholeAssign（源地址两态取址+typeSizeOf 精确
+        //   整块拷）·guard 一次性语义不变；返回 false 的形态（诚实边界）落既
+        //   有分派不变。
+        if (types::isArray(types::canonical(srcTypeRaw)) &&
+            emitStructWholeAssign(slotAddr, initExpr, srcTypeRaw, sloc,
+                                  /*preFree=*/false)) {
+            // 整块拷已完成——guard 置位走下方公共尾
+        } else if (guardStruct) {
             // 结构体/合成体：与顶层静态 87-a ①② 同款三分派
             if (initExpr->getType() == NodeType::StructInitExpr) {
                 emitStructInitTo(

@@ -217,6 +217,16 @@ void IRGenerator::visitIdentifierExpr(IdentifierExpr* node) {
                     lastExpr_ = addr;
                     return;
                 }
+                // 852（2026-10-16·843 呈报）：静态局部**数组**——值语义=基址
+                //   （259 顶层数组同款：下标读 genGenericIndexAddress/整体赋值
+                //   源基址均消费 genExpr(名)=符号地址）。原落 LoadPtr 读槽首
+                //   8 字节当基址（读出数据[0..1] 当地址=悬垂·S2 链路实证
+                //   undefined reference 另案；本槽位面=S7 探针）。
+                if (semantic_ != nullptr && !ve->srcType.empty() &&
+                    types::isArray(types::canonical(ve->srcType))) {
+                    lastExpr_ = addr;
+                    return;
+                }
                 lastExpr_ = emitResult(ir::Opcode::LoadPtr, {addr}, irT, "",
                                        node->location);
                 return;

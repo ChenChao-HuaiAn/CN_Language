@@ -31,9 +31,20 @@ void IRGenerator::visitIndexExpr(IndexExpr* node) {
             const std::string elemIrType = mapType(elemSrc);
             ir::IRValue base;
             if (!unique.empty()) {
-                base = emitResult(ir::Opcode::AddrOf,
-                                  {ir::IRValue::var(unique, elemIrType)},
-                                  "ptr", unique, node->location);
+                // 852（2026-10-16·843 呈报）：函数内静态数组——varStack 命中
+                //   （unique=key）但无 varSlot，AddrOf(var) 的 varSlotOf miss
+                //   回 0=lea rbp+0 帧基址野读（#836 同族·S7 探针乙[0]=rbp 低
+                //   32 位实录）。修=320-a/259 同口径符号地址直引。
+                const VarEntry* veIdx852 = findVarEntry(ident->name);
+                if (veIdx852 != nullptr && veIdx852->isStaticLocal) {
+                    base = emitResult(ir::Opcode::ConstString, {}, "ptr",
+                                      "?gstatic_" + veIdx852->uniqueName,
+                                      node->location);
+                } else {
+                    base = emitResult(ir::Opcode::AddrOf,
+                                      {ir::IRValue::var(unique, elemIrType)},
+                                      "ptr", unique, node->location);
+                }
             } else {
                 base = genExpr(node->object.get());
             }

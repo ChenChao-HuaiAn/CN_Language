@@ -125,6 +125,13 @@ bool IRGenerator::emitStructWholeAssign(const ir::IRValue& dstAddr,
         if (semantic_->isGlobalStatic(srcName)) {
             srcAddr = emitResult(ir::Opcode::ConstString, {}, "ptr",
                                  "?gstatic_" + srcName, loc);
+        } else if (const VarEntry* veStatic = findVarEntry(srcName);
+                   veStatic != nullptr && veStatic->isStaticLocal) {
+            // 852（2026-10-16）：源为函数内静态局部——存储在 ?gstatic_key .data
+            //   符号（varStack uniqueName=key·无 varSlot），AddrOf(var) 取的是
+            //   无效栈槽=错源。修=320-a 读路径同口径符号地址直引。
+            srcAddr = emitResult(ir::Opcode::ConstString, {}, "ptr",
+                                 "?gstatic_" + veStatic->uniqueName, loc);
         } else {
             srcUniqueId = lookupVarName(srcName);
             const std::string srcST = lookupSrcType(srcName);
