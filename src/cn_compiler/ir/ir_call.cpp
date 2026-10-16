@@ -191,8 +191,50 @@ void IRGenerator::visitCallExpr(CallExpr* node) {
         auto closureIt = closureInfo_.find(calleeName);
         if (closureIt != closureInfo_.end()) {
             std::vector<ir::IRValue> closureArgs;
-            for (const auto& capArg : closureIt->second.captureArgs) {
-                closureArgs.push_back(capArg);
+            // 482（#482 多实例独立快照）：槽式载体登记优先——从载体槽装载捕获
+            //   实参（每实例独立快照；captureArgs 为定义点寄存器/共享通道=同
+            //   定义点多次求值后写覆盖）。空=旧寄存器式（276/816 既有语义）。
+            if (!closureIt->second.carrierCaptures.empty()) {
+                const auto metaIt =
+                    lambdaCaptureMeta482_.find(closureIt->second.lambdaName);
+                for (std::size_t ci = 0;
+                     ci < closureIt->second.carrierCaptures.size(); ++ci) {
+                    const auto& cc = closureIt->second.carrierCaptures[ci];
+                    const bool byRef =
+                        metaIt != lambdaCaptureMeta482_.end() &&
+                        ci < metaIt->second.refs.size() &&
+                        metaIt->second.refs[ci] != 0;
+                    const std::string capCore = types::stripRef(cc.srcType);
+                    const std::string capIr =
+                        mapType(capCore.empty() ? "整64" : capCore);
+                    if (byRef) {
+                        // [&] 引用捕获：载体槽值=被捕获变量地址（ptr 直传——
+                        //   ?lambdaN 的引用捕获参数按地址收）
+                        closureArgs.push_back(emitResult(
+                            ir::Opcode::Load,
+                            {ir::IRValue::var(cc.unique, "ptr")}, "ptr",
+                            cc.unique, node->location));
+                    } else if (semantic_ != nullptr && !capCore.empty() &&
+                               semantic_->isStructType(
+                                   types::canonical(capCore))) {
+                        // 结构体值捕获：实参=载体槽地址（?lambdaN 按值形参
+                        //   prologue 自该地址整块拷贝——与定义点固化同协议）
+                        closureArgs.push_back(emitResult(
+                            ir::Opcode::AddrOf,
+                            {ir::IRValue::var(cc.unique, "i64")}, "ptr",
+                            cc.unique, node->location));
+                    } else {
+                        // 标量/指针/字符串/i128：值装载（宽度按捕获 IR 类型）
+                        closureArgs.push_back(emitResult(
+                            ir::Opcode::Load,
+                            {ir::IRValue::var(cc.unique, capIr)}, capIr,
+                            cc.unique, node->location));
+                    }
+                }
+            } else {
+                for (const auto& capArg : closureIt->second.captureArgs) {
+                    closureArgs.push_back(capArg);
+                }
             }
             // 337-a（T53 家系·闭包调用路径）：用户实参按闭包形参类型 ABI 定标
             //   （i128 形参的窄整实参宽化）——展开式 `Call(捕获实参..., 用户实参...)`

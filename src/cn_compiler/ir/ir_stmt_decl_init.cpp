@@ -24,7 +24,14 @@ bool IRGenerator::genExprInitializer(VarDecl* node, const DeclGenCtx& ctx) {
         //   先 genExpr（生成匿名函数并记录 lastLambdaName_/lastLambdaCaptures_），
         //   再登记闭包关联（调用 `加倍(...)` 时展开捕获实参）
         ir::IRValue value = genExpr(node->initializer.get());
+        // 482：lambda 字面量名先留快照（registerClosureIfNeeded 会消费清空
+        //   lastLambdaName_；载体登记需要该名解析来源）。
+        const std::string pendingLambda482 = lastLambdaName_;
         registerClosureIfNeeded(node);
+        // 482：载体快照槽登记（声明初始化位统一——lambda 字面量/拷贝链/接收
+        //   调用返回三形态；见 updateCarrierOnAssign482）。
+        updateCarrierOnAssign482(node->name, node->initializer.get(),
+                                 node->location, pendingLambda482);
         // 096（937·008 收官总攻第三轮）转移浅交接**前置**（见 tryGenTransferInit）
         if (tryGenTransferInit(node, value, ctx.unique)) return true;
         // 087（m85 返回面）数组 retbuf 整块 CopyStruct（见 tryGenArrayRetbufInit）
@@ -79,7 +86,12 @@ void IRGenerator::propagateLambdaCopyBinding816(VarDecl* node) {
         static_cast<const IdentifierExpr*>(node->initializer.get())->name;
     const auto srcClosure = closureInfo_.find(srcName);
     if (srcClosure != closureInfo_.end()) {
-        closureInfo_[node->name] = srcClosure->second;
+        // 482：载体快照槽不随名字复制（槽与载体一一对应）——拷贝名的独立载体
+        //   槽由 updateCarrierOnAssign482 在其后重建并整拷（防两变量共享槽=
+        //   一侧重赋值污染另一侧）；元数据（lambdaName/返回类型/形参）照传。
+        ClosureInfo copied = srcClosure->second;
+        copied.carrierCaptures.clear();
+        closureInfo_[node->name] = std::move(copied);
         lambdaVarNames_.insert(node->name);
     } else if (lambdaVarNames_.count(srcName) > 0) {
         // 快径已亡（485 clear/蹦床通道场景）：仅留痕——拷贝调用经类型串

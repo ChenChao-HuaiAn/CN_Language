@@ -484,6 +484,10 @@ void IRGenerator::visitFunctionDecl(FunctionDecl* node) {
     //   被展开为无捕获实参的直调）。闭包变量本就是函数局部概念，入口清空
     //   即隔离；lambda 体上下文由 visitLambdaExpr 入口同样清空。
     closureInfo_.clear();
+    // 482：返回来源跟踪按函数复位（上一函数残留零泄漏；lambda 体由
+    //   visitLambdaExpr save/restore 另行隔离）。
+    currentReturnOrigin482_.clear();
+    carrierAssigned482_.clear();
     ir::IRFunction func;
     // 191-a：本函数 171 行按「注册流水线」提取为 2 个族子方法（纯搬运零行为
     //   变更——多重集核验先行于构建）：参数登记+默认参数收集 / RAII 收尾+入列。
@@ -505,6 +509,9 @@ void IRGenerator::visitFunctionDecl(FunctionDecl* node) {
     linkName = functionLinkKey(node->moduleName, node->name,
                                                  linkName);
     func.mangledName = linkName;
+    // 482：当前函数签名键登记（返回来源表收尾写入用——键与调用点
+    //   resolvedSignature 同源「名#参数串」）。
+    currentSigKey482_ = linkName;
     // P3-18 补完（2026-08）：引用返回（T&）——IR 返回类型映射为 指针（返回被引用
     //   左值的地址）；epilogue 走默认整型 rax 返回（无 structReturn/i128 特判）。
     const bool isRefReturnFn = !node->returnType.empty() &&
@@ -616,6 +623,12 @@ void IRGenerator::visitFunctionDecl(FunctionDecl* node) {
         // 原型声明：生成空入口块 + 默认返回
         setCurrentBlock(entry);
         endReturn("");
+    }
+    // 482：本函数返回来源收尾入表（唯一已知来源才登记——冲突/未知哨兵 "?"
+    //   与空=不登记=未知；接收点 resolveLambdaOrigin482 消费）。
+    if (!currentSigKey482_.empty() && !currentReturnOrigin482_.empty() &&
+        currentReturnOrigin482_ != "?") {
+        funcReturnLambda482_[currentSigKey482_] = currentReturnOrigin482_;
     }
     // RAII 收尾（析构 DeleteObject/串释放/名单复位）+ IR 函数入列 + 作用域弹出
     finishFunctionEmit(func);

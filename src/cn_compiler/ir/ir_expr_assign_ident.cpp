@@ -440,6 +440,10 @@ bool IRGenerator::identifierStructLiteralAssign(AssignmentExpr* node, Identifier
 void IRGenerator::identifierGenericAssign(AssignmentExpr* node, IdentifierExpr* ident,
                                          const std::string& unique) {
     ir::IRValue value = genExpr(node->value.get());
+    // 482：fnptr 目标赋值位载体登记（lambda 字面量/登记变量/接收调用返回
+    //   三形态更新或重建载体快照槽；来源未知=清除陈旧登记防 p482 直调旧实例）。
+    updateCarrierOnAssign482(ident->name, node->value.get(), node->location,
+                             lastLambdaName_, /*fromPlainAssign=*/true);
     // 查找变量类型（唯一内部名 unique 已在上方类深拷贝分支前计算）
     std::string targetType = lookupVarType(ident->name);
     if (targetType.empty()) targetType = value.type;

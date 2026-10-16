@@ -11,6 +11,7 @@
 //     与蹦床语义等价的内联快径，ir_call.cpp 展开通道零变化）。
 //     生命周期：值捕获快照随槽全局存活=闭包逃逸栈帧安全（悬垂零容忍·安全目标②）；
 //     [&] 逃逸=悬垂域（#435/#468 逃逸检查面·本波只做值捕获高阶形态·呈报记录）。
+#include <cstdio>
 #include <string>
 #include <vector>
 
@@ -270,6 +271,12 @@ void IRGenerator::visitLambdaExpr(LambdaExpr* node) {
     std::unordered_map<std::string, ClosureInfo> outerClosures =
         std::move(closureInfo_);
     closureInfo_.clear();  // move 后显式清空：不依赖移动后源的未规定状态
+    // 482：本函数返回来源跟踪同上下文隔离（lambda 体内的「返回」不污染外层
+    //   函数返回来源表；lambda 自身的返回来源无消费点=丢弃）。
+    const std::string outerReturnOrigin482 = currentReturnOrigin482_;
+    currentReturnOrigin482_.clear();
+    const std::unordered_set<std::string> outerAssigned482 = carrierAssigned482_;
+    carrierAssigned482_.clear();
     const std::string lambdaName = "?lambda" + std::to_string(lambdaCounter_++);
     const std::string returnIrType = mapType(node->returnType.empty()
                                                  ? "空类型" : node->returnType);
@@ -307,11 +314,15 @@ void IRGenerator::visitLambdaExpr(LambdaExpr* node) {
     varStack_.emplace_back();
     // 捕获参数：类型 = 外层变量 IR 类型（查当前 varStack 作用域链）；
     //   [&] 引用捕获参数类型为 ptr（存被捕获变量地址），体内 byRef 标记驱动解引用
+    // 482：同步收集捕获源类型（载体快照槽布局元数据·此刻仍在外层作用域可查）。
+    std::vector<std::string> capturedSrcTypes482;
+    capturedSrcTypes482.reserve(capturedNames.size());
     for (std::size_t ci = 0; ci < capturedNames.size(); ++ci) {
         const std::string& cap = capturedNames[ci];
         const bool byRef = captureRefs[ci] != 0;
         const std::string capType = lookupVarType(cap);
         const std::string capSrc = lookupSrcType(cap);
+        capturedSrcTypes482.push_back(capSrc);
         if (capType.empty()) {
             // 648（miss 不可静默·110 同族）：捕获变量 IR 类型未登记=编译器内部
             //   缺陷（语义层回填捕获列表必对应 varStack 已登记变量），显形于此；
@@ -380,6 +391,12 @@ void IRGenerator::visitLambdaExpr(LambdaExpr* node) {
     //   发射与 lastLambda* 收尾（蹦床段不消费闭包表，位置取语义聚合：与上方
     //   四状态恢复同块收尾）。
     closureInfo_ = std::move(outerClosures);
+    // 482：恢复外层函数返回来源跟踪（lambda 体内返回不污染外层·见入口注释）。
+    currentReturnOrigin482_ = outerReturnOrigin482;
+    carrierAssigned482_ = outerAssigned482;
+    // 482：捕获元数据落表（载体快照槽布局单一事实源——名/引用/源类型）。
+    recordLambdaCaptureMeta482(lambdaName, capturedNames, captureRefs,
+                               capturedSrcTypes482);
     // ---- 432 蹦床段（外层块发射）----
     // 快照静态槽注册 + 定义处固化（值捕获快照/[&] 地址——逃逸生命周期根基）
     emitLambdaSnapshotStores(lambdaName, capturedNames, captureRefs,
@@ -402,10 +419,291 @@ void IRGenerator::visitLambdaExpr(LambdaExpr* node) {
                                             ? param->funcPtr.toString()
                                             : param->typeName);
     }
+    // 482：静态调用元数据持久副本（接收点跨函数重建载体登记用——lastLambda*
+    //   为一次性通道，随后被 genVarDecl 消费清空）。
+    {
+        LambdaStaticInfo482 si482;
+        si482.returnIrType = returnIrType;
+        si482.srcReturnType = node->returnType;
+        si482.paramTypes = lastLambdaParamTypes_;
+        lambdaStaticInfo482_[lambdaName] = std::move(si482);
+    }
     // 表达式结果 = 蹦床函数地址（432：原 ?lambdaN 裸地址——捕获实参无载体，
     //   经返回/实参逃逸后调用读到垃圾参数=悬垂面根治）。
     // 注意：FuncAddr 须在外层（主函数）块中生成——function_ 已恢复
     lastExpr_ = emitResult(ir::Opcode::FuncAddr, {}, "ptr", lambdaName + "$trap",
                            node->location);
+}
+
+// ==================== 482（#482 多实例独立快照）载体快照槽族 ====================
+// 缺陷（核验波2 实证）：lambda 值捕获快照固化在「同一定义点共享的静态槽」
+//   （emitLambdaSnapshotStores·蹦床还原读同槽）——同一定义点在循环内/跨函数
+//   多次求值产生多实例共存时后写覆盖先值（p482b 7/107/107、p482e 107/107
+//   实测双侧同病）；赋值位还遗留「重赋值后调用仍直调旧定义点」陈旧登记
+//   （p482 宿主 0/0）。根治模型（快照随「值载体变量」独立存储）：
+//   ① 载体槽=每「lambda 变量」一套隐藏栈槽（每捕获一槽·registerVarSlots 定宽）；
+//   ② 快照流四处维护：定义点（共享槽已写后随批拷入载体槽）/ 接收点
+//      （变量 甲 = 造(7)——被调返回点已写共享槽→拷入甲槽）/ 拷贝链
+//      （g = f——槽对槽整拷）/ 返回点（返回 f——载体槽写回共享槽，保证
+//      接收方按「函数返回来源」拷到的是 f 的当前实例而非定义点最近值）；
+//   ③ 调用点：登记为槽式时从载体槽装载捕获实参直调 ?lambdaN（各实例互不影响）；
+//   ④ 来源解析（resolveLambdaOrigin482）：lambda 字面量/登记变量/直接调用
+//      （函数返回来源表）——来源未知=清除登记退化蹦床通道（共享槽=最近实例，
+//      与现状同界不再更差；数组/字段/参数等载体另域）。
+int IRGenerator::captureBytes482(const std::string& capSrc) {
+    // 641-fix 静态槽宽度口径：lambda 捕获槽恒 8 字节槽宽（固化/还原走
+    //   T_整64 全宽——641 记述「lambda/捕获路径不经静态值码」）；i128=16、
+    //   结构体/数组=typeSizeOf（CopyStruct 整块拷，浅字节口径与
+    //   emitLambdaSnapshotStores 结构体快照一致）。
+    if (semantic_ != nullptr && !capSrc.empty()) {
+        if (types::isI128(types::canonical(capSrc))) return 16;
+        const std::string canon = types::canonical(capSrc);
+        if (semantic_->isStructType(canon) || types::isArray(capSrc)) {
+            const int bytes = semantic_->typeSizeOf(capSrc);
+            if (bytes > 0) return bytes;
+        }
+    }
+    return 8;
+}
+
+void IRGenerator::recordLambdaCaptureMeta482(
+    const std::string& lambdaName,
+    const std::vector<std::string>& capturedNames,
+    const std::vector<char>& captureRefs,
+    const std::vector<std::string>& srcTypes) {
+    LambdaCaptureMeta482 meta;
+    meta.names = capturedNames;
+    meta.refs = captureRefs;
+    meta.srcTypes = srcTypes;
+    lambdaCaptureMeta482_[lambdaName] = std::move(meta);
+}
+
+std::vector<ClosureInfo::CarrierCapture> IRGenerator::makeCarrierSlots482(
+    const std::string& varName, const std::string& lambdaName,
+    const SourceLocation& loc) {
+    std::vector<ClosureInfo::CarrierCapture> slots;
+    auto metaIt = lambdaCaptureMeta482_.find(lambdaName);
+    if (metaIt == lambdaCaptureMeta482_.end()) return slots;
+    for (std::size_t ci = 0; ci < metaIt->second.names.size(); ++ci) {
+        ClosureInfo::CarrierCapture cc;
+        cc.unique = varName + "$snap482$" + metaIt->second.names[ci] + "$" +
+                    std::to_string(varCounter_++);
+        cc.srcType = ci < metaIt->second.srcTypes.size()
+                         ? metaIt->second.srcTypes[ci] : std::string();
+        registerVarSlots(cc.unique, cc.srcType);
+        // 登记锚 Alloca（codegen 两轮槽登记以 Alloca/变量引用为据——载体槽
+        //   在返回点整拷场景可能仅被 AddrOf 消费，须显式锚定防 #836）。
+        emit(ir::Opcode::Alloca, {}, ir::IRValue::reg(regCounter_++, "ptr"),
+             cc.unique, "ptr", loc);
+        slots.push_back(std::move(cc));
+    }
+    return slots;
+}
+
+void IRGenerator::emitSharedToCarrier482(
+    const std::string& lambdaName,
+    const std::vector<ClosureInfo::CarrierCapture>& slots,
+    const SourceLocation& loc) {
+    auto metaIt = lambdaCaptureMeta482_.find(lambdaName);
+    if (metaIt == lambdaCaptureMeta482_.end()) return;
+    const std::size_t n = slots.size() < metaIt->second.names.size()
+                              ? slots.size() : metaIt->second.names.size();
+    for (std::size_t ci = 0; ci < n; ++ci) {
+        const std::string& cap = metaIt->second.names[ci];
+        const int bytes = captureBytes482(slots[ci].srcType);
+        ir::IRValue srcAddr = emitResult(
+            ir::Opcode::ConstString, {}, "ptr",
+            "?gstatic_" + lambdaSlotKey(lambdaName, cap), loc);
+        ir::IRValue dstAddr = emitResult(
+            ir::Opcode::AddrOf, {ir::IRValue::var(slots[ci].unique, "i64")},
+            "ptr", slots[ci].unique, loc);
+        emit(ir::Opcode::CopyStruct, {dstAddr, srcAddr}, ir::IRValue(),
+             std::to_string(bytes), "void", loc);
+    }
+}
+
+void IRGenerator::emitCarrierToShared482(
+    const std::string& lambdaName,
+    const std::vector<ClosureInfo::CarrierCapture>& slots,
+    const SourceLocation& loc) {
+    auto metaIt = lambdaCaptureMeta482_.find(lambdaName);
+    if (metaIt == lambdaCaptureMeta482_.end()) return;
+    const std::size_t n = slots.size() < metaIt->second.names.size()
+                              ? slots.size() : metaIt->second.names.size();
+    for (std::size_t ci = 0; ci < n; ++ci) {
+        const std::string& cap = metaIt->second.names[ci];
+        const int bytes = captureBytes482(slots[ci].srcType);
+        ir::IRValue dstAddr = emitResult(
+            ir::Opcode::ConstString, {}, "ptr",
+            "?gstatic_" + lambdaSlotKey(lambdaName, cap), loc);
+        ir::IRValue srcAddr = emitResult(
+            ir::Opcode::AddrOf, {ir::IRValue::var(slots[ci].unique, "i64")},
+            "ptr", slots[ci].unique, loc);
+        emit(ir::Opcode::CopyStruct, {dstAddr, srcAddr}, ir::IRValue(),
+             std::to_string(bytes), "void", loc);
+    }
+}
+
+void IRGenerator::emitCarrierToCarrier482(
+    const std::vector<ClosureInfo::CarrierCapture>& srcSlots,
+    const std::vector<ClosureInfo::CarrierCapture>& dstSlots,
+    const SourceLocation& loc) {
+    const std::size_t n = srcSlots.size() < dstSlots.size()
+                              ? srcSlots.size() : dstSlots.size();
+    for (std::size_t ci = 0; ci < n; ++ci) {
+        const int bytes = captureBytes482(dstSlots[ci].srcType);
+        ir::IRValue srcAddr = emitResult(
+            ir::Opcode::AddrOf, {ir::IRValue::var(srcSlots[ci].unique, "i64")},
+            "ptr", srcSlots[ci].unique, loc);
+        ir::IRValue dstAddr = emitResult(
+            ir::Opcode::AddrOf, {ir::IRValue::var(dstSlots[ci].unique, "i64")},
+            "ptr", dstSlots[ci].unique, loc);
+        emit(ir::Opcode::CopyStruct, {dstAddr, srcAddr}, ir::IRValue(),
+             std::to_string(bytes), "void", loc);
+    }
+}
+
+std::string IRGenerator::resolveLambdaOrigin482(Expr* rhs,
+                                                const std::string& literalName) {
+    if (rhs == nullptr) return "";
+    switch (rhs->getType()) {
+        case NodeType::LambdaExpr:
+            // 调用者须在 genExpr(rhs) 之后立即调用（lastLambdaName_ 尚未被
+            //   消费清空——registerClosureIfNeeded 场景由调用方先行快照）。
+            return !literalName.empty() ? literalName : lastLambdaName_;
+        case NodeType::IdentifierExpr: {
+            const std::string& name = static_cast<IdentifierExpr*>(rhs)->name;
+            auto it = closureInfo_.find(name);
+            return it != closureInfo_.end() ? it->second.lambdaName
+                                            : std::string();
+        }
+        case NodeType::CallExpr: {
+            const CallExpr* call = static_cast<const CallExpr*>(rhs);
+            if (call->callee != nullptr &&
+                call->callee->getType() == NodeType::IdentifierExpr) {
+                std::string key = call->resolvedSignature;
+                if (key.empty()) {
+                    key = static_cast<const IdentifierExpr*>(
+                              call->callee.get())->name;
+                }
+                auto it = funcReturnLambda482_.find(key);
+                if (it != funcReturnLambda482_.end()) return it->second;
+            }
+            return "";
+        }
+        default:
+            return "";
+    }
+}
+
+void IRGenerator::updateCarrierOnAssign482(const std::string& varName, Expr* rhs,
+                                           const SourceLocation& loc,
+                                           const std::string& literalName,
+                                           bool fromPlainAssign) {
+    if (rhs == nullptr) return;
+    // 方法值（成员表达式）走既有登记通道（P3-23/816/104）——载体族零介入
+    //   （否则「来源未知」分支会把方法值登记误清——1002-⑥ 回归）。
+    if (rhs->getType() == NodeType::MemberExpr &&
+        static_cast<MemberExpr*>(rhs)->isMethodValue) {
+        return;
+    }
+    // 干预面判定（不用目标类型串）：宿主「变量 f = lambda」的 VarEntry.srcType
+    //   为空白（lambda 初始化类型未回填——类型串仅在间接调用定标面消费），
+    //   改以「右值来源 / 历史登记」判定——origin 非空=lambda 来源（建/复用
+    //   载体槽）；origin 空但有历史登记=清除陈旧；普通变量（整型/普通 fnptr
+    //   无历史登记）零介入=零行为变化。
+    const std::string origin = resolveLambdaOrigin482(rhs, literalName);
+    if (origin.empty()) {
+        // 来源未知：清除陈旧登记（p482 根因：重赋值后调用仍展开旧定义点）；
+        //   lambdaVarNames_ 留痕保留（间接调用诊断判据用·655 返工）。
+        if (closureInfo_.erase(varName) > 0 && fromPlainAssign) {
+            carrierAssigned482_.insert(varName);
+        }
+        return;
+    }
+    auto metaIt = lambdaCaptureMeta482_.find(origin);
+    if (metaIt == lambdaCaptureMeta482_.end()) {
+        // 元数据缺失（非 lambda 定义点来源——方法值符号等）：保持既有登记不动。
+        return;
+    }
+    // 复用/新建载体槽：同变量同定义点重复赋值=复用槽（循环体内赋值发射一次，
+    //   运行多轮各自重写槽=互不干扰）；换定义点/换变量=新建槽集合。
+    auto oldIt = closureInfo_.find(varName);
+    const bool reuse = oldIt != closureInfo_.end() &&
+                       oldIt->second.lambdaName == origin &&
+                       !oldIt->second.carrierCaptures.empty() &&
+                       oldIt->second.carrierCaptures.size() ==
+                           metaIt->second.names.size();
+    ClosureInfo info;
+    if (reuse) {
+        info = oldIt->second;
+    } else {
+        info.lambdaName = origin;
+        info.captures = metaIt->second.names;
+        auto stIt = lambdaStaticInfo482_.find(origin);
+        if (stIt != lambdaStaticInfo482_.end()) {
+            info.returnIrType = stIt->second.returnIrType;
+            info.srcReturnType = stIt->second.srcReturnType;
+            info.paramTypes = stIt->second.paramTypes;
+        }
+        info.carrierCaptures = makeCarrierSlots482(varName, origin, loc);
+    }
+    // 快照→载体槽（源按右值形态分派）：标识符=源载体槽整拷（816 拷贝链升级为
+    //   独立快照）；lambda 字面量=定义点已写共享槽、接收调用=被调返回点已写
+    //   共享槽——统一从共享槽拷入载体槽（时间窗=紧随求值，无中间 lambda 求值）。
+    if (!info.carrierCaptures.empty()) {
+        bool copied = false;
+        if (rhs->getType() == NodeType::IdentifierExpr) {
+            const std::string& srcVar =
+                static_cast<IdentifierExpr*>(rhs)->name;
+            auto srcIt = closureInfo_.find(srcVar);
+            if (srcIt != closureInfo_.end() &&
+                srcIt->second.carrierCaptures.size() ==
+                    info.carrierCaptures.size()) {
+                emitCarrierToCarrier482(srcIt->second.carrierCaptures,
+                                        info.carrierCaptures, loc);
+                copied = true;
+            }
+        }
+        if (!copied) {
+            emitSharedToCarrier482(origin, info.carrierCaptures, loc);
+        }
+    }
+    closureInfo_[varName] = std::move(info);
+    // 482×815：纯赋值位更新集（穿透块级回滚——循环内重赋值外层闭包变量时块外
+    //   调用须见新实例）；声明初始化位从集移除（块内遮蔽声明=随作用域回滚）。
+    if (fromPlainAssign) {
+        carrierAssigned482_.insert(varName);
+    } else {
+        carrierAssigned482_.erase(varName);
+    }
+    lambdaVarNames_.insert(varName);
+}
+
+void IRGenerator::emitReturnOriginSnapshot482(Expr* rhs) {
+    if (rhs == nullptr) return;
+    const std::string origin = resolveLambdaOrigin482(rhs);
+    if (origin.empty()) {
+        // 未知来源返回：已有已知痕迹即置冲突哨兵（同一函数多返回路径
+        //   来源不一致=接收点静态解析不可信）。
+        if (!currentReturnOrigin482_.empty()) currentReturnOrigin482_ = "?";
+        return;
+    }
+    // 槽式载体来源：载体槽→共享槽整拷（保证接收方按返回来源拷到当前实例）。
+    if (rhs->getType() == NodeType::IdentifierExpr) {
+        const std::string& name = static_cast<IdentifierExpr*>(rhs)->name;
+        auto it = closureInfo_.find(name);
+        if (it != closureInfo_.end() && it->second.lambdaName == origin &&
+            !it->second.carrierCaptures.empty()) {
+            emitCarrierToShared482(origin, it->second.carrierCaptures,
+                                   rhs->location);
+        }
+    }
+    // lambda 字面量（定义点已写共享槽）/调用返回（被调返回点已写）=无动作。
+    if (currentReturnOrigin482_.empty()) {
+        currentReturnOrigin482_ = origin;
+    } else if (currentReturnOrigin482_ != origin) {
+        currentReturnOrigin482_ = "?";
+    }
 }
 } // namespace cn_compiler

@@ -27,6 +27,17 @@ struct ClosureInfo {
     // 337-a（T53 家系）：用户形参源码类型列表（不含捕获参数）——闭包调用展开
     //   用户实参的 ABI 定标依据（widenI128Args 形参来源，见 lastLambdaParamTypes_）。
     std::vector<std::string> paramTypes;
+    // 482（#482 多实例独立快照·蹦床共享静态槽后写覆盖根治）：载体快照槽——
+    //   以「lambda 值载体变量」为粒度的独立快照存储（每捕获一项：槽唯一名+
+    //   捕获源码类型）。非空=槽式登记：调用点从槽装载捕获实参（替代
+    //   captureArgs 定义点寄存器通道——寄存器/共享静态槽在「同一定义点多次
+    //   求值」时后写覆盖=多实例语义失效）。空=旧寄存器式（同函数定义点直连，
+    //   维持 276/816 既有语义零回归）。
+    struct CarrierCapture {
+        std::string unique;   // 载体槽唯一名（registerVarSlots 已按类型定槽数）
+        std::string srcType;  // 捕获源码类型（拷贝尺寸/装载形态分派依据）
+    };
+    std::vector<CarrierCapture> carrierCaptures;
 };
 
 // 变量作用域栈条目（varStack_ 每个条目的值类型，BlockStmt 进入压栈/退出弹栈，支持同名遮蔽）。
@@ -94,6 +105,24 @@ struct OwnedStrField {
     // 164-a（A4·plans/023 §十二 方案D）：**来自联合体成员**——联合体「共享偏移 +
     //   无 tag」语义下，自动释放/写入归一化（preFree 清旧）不可判（p13 泄漏/
     bool viaUnion = false;
+};
+
+
+// 482（#482 多实例独立快照·载体快照槽族数据·自 ir_generator.hpp 外迁防超限）：
+//   LambdaCaptureMeta482 —— lambda 捕获元数据（lambdaName -> 捕获名/引用标记/
+//     源类型）——载体快照槽发射/共享槽<->载体槽互拷/调用点装载三处的布局单一
+//     事实源（持久到全模块生成结束，与 lastLambda* 一次性通道解耦）。
+//   LambdaStaticInfo482 —— lambda 静态调用元数据（返回IR类型/源返回类型/用户
+//     形参）——载体式登记与 lastLambda* 解耦的持久副本（接收点跨函数建登记用）。
+struct LambdaCaptureMeta482 {
+    std::vector<std::string> names;
+    std::vector<char> refs;
+    std::vector<std::string> srcTypes;
+};
+struct LambdaStaticInfo482 {
+    std::string returnIrType;
+    std::string srcReturnType;
+    std::vector<std::string> paramTypes;
 };
 
 } // namespace cn_compiler

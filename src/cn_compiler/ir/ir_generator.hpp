@@ -432,9 +432,25 @@ private:
     // lambda 快照静态槽键（?gstatic_ 前缀外的注册键；lambdaName 唯一保证不撞）
     std::string lambdaSlotKey(const std::string& lambdaName,
                               const std::string& cap) const;
-    // 闭包关联：变量源码名 -> {匿名函数名, 捕获变量列表, 定义处捕获实参, 返回 IR 类型}
-    //   （值类型 ClosureInfo 见 ir_generator_types.hpp·865 外迁）
+    // ---- 482（#482 多实例独立快照）载体快照槽族私辅（实现在 ir_lambda.cpp；
+    //   数据 LambdaCaptureMeta482/LambdaStaticInfo482 见 ir_generator_types.hpp；
+    //   语义详见 ir_lambda.cpp「482 载体快照槽族」段首）----
+    int captureBytes482(const std::string& capSrc);
+    void emitSharedToCarrier482(const std::string& lambdaName, const std::vector<ClosureInfo::CarrierCapture>& slots, const SourceLocation& loc);
+    void emitCarrierToShared482(const std::string& lambdaName, const std::vector<ClosureInfo::CarrierCapture>& slots, const SourceLocation& loc);
+    void emitCarrierToCarrier482(const std::vector<ClosureInfo::CarrierCapture>& srcSlots, const std::vector<ClosureInfo::CarrierCapture>& dstSlots, const SourceLocation& loc);
+    std::string resolveLambdaOrigin482(Expr* rhs, const std::string& literalName = "");
+    void updateCarrierOnAssign482(const std::string& varName, Expr* rhs, const SourceLocation& loc, const std::string& literalName = "", bool fromPlainAssign = false);
+    std::vector<ClosureInfo::CarrierCapture> makeCarrierSlots482(const std::string& varName, const std::string& lambdaName, const SourceLocation& loc);
+    void emitReturnOriginSnapshot482(Expr* rhs);
+    void recordLambdaCaptureMeta482(const std::string& lambdaName, const std::vector<std::string>& capturedNames, const std::vector<char>& captureRefs, const std::vector<std::string>& srcTypes);
     std::unordered_map<std::string, ClosureInfo> closureInfo_;
+    std::unordered_map<std::string, LambdaCaptureMeta482> lambdaCaptureMeta482_;
+    std::unordered_map<std::string, LambdaStaticInfo482> lambdaStaticInfo482_;
+    std::unordered_map<std::string, std::string> funcReturnLambda482_;
+    std::string currentReturnOrigin482_;
+    std::string currentSigKey482_;
+    std::unordered_set<std::string> carrierAssigned482_;
     // 655 返工：曾以 lambda/方法值登记过闭包关联的变量名全集。closureInfo_ 快径
     //   受 visitLambdaExpr 入口 clear 纪律（485）影响（720 实录：同函数后定义的
     //   lambda 清掉先前登记=首个调用退化 432 蹦床通道·语义等价合法面），本集与

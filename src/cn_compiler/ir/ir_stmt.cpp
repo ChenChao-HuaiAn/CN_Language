@@ -239,6 +239,13 @@ void IRGenerator::visitReturnStmt(ReturnStmt* node) {
         } else {
             value = genExpr(node->value.get());
         }
+        // 482（#482 多实例独立快照）：fnptr 返回位——来源已知时载体槽写回
+        //   共享槽（接收方按「函数返回来源」拷到被返回实例）并跟踪本函数
+        //   返回来源（同名跨调用点直查表）；非 fnptr 返回零介入。
+        if (function_ != nullptr &&
+            types::isFuncPtr(types::canonical(function_->returnTypeSrc))) {
+            emitReturnOriginSnapshot482(node->value.get());
+        }
         // plans/019 阶段4' A2（2026-09-11 方案甲）：返回位字面量拥有化——
         //   返回类型 字符串=拥有契约（调用方登记 RAII free），字面量驻只读段
         //   须 __cn_str_copy 落堆（否则调用方 free 只读段指针=崩溃）。拥有变量
@@ -710,6 +717,21 @@ void IRGenerator::genBlock(BlockStmt* node) {
     scopeBoxVarsBase_.pop_back();
     varStack_.pop_back();  // 退出子作用域
     // 815：闭包关联表块级回滚（终止/未终止路径都执行——与上方 pop 序列同区）
-    closureInfo_ = std::move(closuresSnapshot);
+    // 482 增强：纯赋值位更新（carrierAssigned482_）且块入口快照已存在该键的
+    //   登记=外层变量被重赋值（循环体内 甲 = 造(7)）——保留当前值不参与回滚
+    //   （否则块外调用命中陈旧登记=0/0 缺陷反流）；声明初始化/块内新键维持回滚。
+    if (carrierAssigned482_.empty()) {
+        closureInfo_ = std::move(closuresSnapshot);
+    } else {
+        std::unordered_map<std::string, ClosureInfo> merged482 =
+            std::move(closuresSnapshot);
+        for (auto& kv482 : closureInfo_) {
+            if (carrierAssigned482_.count(kv482.first) > 0 &&
+                merged482.count(kv482.first) > 0) {
+                merged482[kv482.first] = kv482.second;
+            }
+        }
+        closureInfo_ = std::move(merged482);
+    }
 }
 } // namespace cn_compiler
