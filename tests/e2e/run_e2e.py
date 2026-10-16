@@ -40,7 +40,9 @@ import exe新鲜度
 
 # 强制stdout/stderr使用UTF-8输出（避免Windows管道/控制台代码页导致中文乱码）
 if hasattr(sys.stdout, "reconfigure"):
-    sys.stdout.reconfigure(encoding="utf-8")
+    # 935（2026-10-17 两夜实录 379/932）：stdout 改行缓冲——E2E 输出逐行落盘，僵死/
+    #   被强杀现场可查（原块缓冲随僵死进程蒸发：932 轮日志 E2E 段零输出、无从取证）。
+    sys.stdout.reconfigure(encoding="utf-8", line_buffering=True)
 if hasattr(sys.stderr, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8")
 

@@ -3,12 +3,14 @@
 """test_tree_lock.py —— 树锁（555）自测：纯 python·自跑自断言·exit 0/1。
 
 零触碰真实锁：树锁/machine 锁目录分别用 CN_TREE_LOCK_DIR / CN_GATE_LOCK_DIR
-指进临时目录；四场景：
+指进临时目录；五场景：
   ① 并发竞争：A 持锁期间 B 排队，A 释放后 B 才获得（时序断言）；
   ② 陈锁接管：持锁进程被 kill → 排队者秒级接管（gate_lock 917 存活锚判据）；
   ③ 环境豁免与注入：CN_TREE_LOCK_HELD=1 → acquire/run 立即通过且不建锁目录；
     run 形态 tree 域向子进程注入该变量、machine 域不注入；
-  ④ 域隔离：tree 锁不拦 machine 域；status --scope tree 可用；release 后可再取。
+  ④ 域隔离：tree 锁不拦 machine 域；status --scope tree 可用；release 后可再取；
+  ⑤ 接管清尸（935·两夜实录 379/932）：死锚的孤儿后代（强杀不级联残留的
+    spawn worker 形态）在清护接管时被整树回收——无关进程不受影响·重复清理幂等。
 用法：python scripts/test_tree_lock.py   （rc=0=全绿）
 """
 import json
@@ -108,7 +110,7 @@ def 场景3_环境豁免与注入(临时: str) -> None:
     B = 跑锁(["run", "--scope", "tree", "--", sys.executable, "-c", "print('hi')"],
              环境={"CN_TREE_LOCK_DIR": str(锁目录), "CN_TREE_LOCK_HELD": "1"})
     断言(B.returncode == 0 and "继承外层树锁" in (B.stderr or ""),
-         "场景③ 豁免 run 直跑透传 rc 并打印继承提示")
+         "场景③ 豁免 run 直跑透传 rc 并打印继承提示（578 域名文案=树锁·rebase 融合对齐）")
     # ③-b 注入：tree 域 run 形态向子进程注入 CN_TREE_LOCK_HELD=1
     C = 跑锁(["run", "--scope", "tree", "--", sys.executable, "-c",
               "import os,sys; sys.exit(0 if os.environ.get('CN_TREE_LOCK_HELD')=='1' else 3)"],
@@ -146,6 +148,57 @@ def 场景4_域隔离(临时: str) -> None:
     跑锁(["release", "--scope", "tree"], 环境=域树)
 
 
+def 场景5_接管清尸(临时: str) -> None:
+    """935（2026-10-17 win 池两夜实录 379/932）：清护接管——死锚的存活后代
+    （孤儿进程树=multiprocessing spawn worker 形态）在接管前被整树回收；
+    清尸不阻断接管；无关进程不受影响（只裁「死锚后代」）；重复清理幂等。"""
+    import contextlib
+    import io
+    锁目录 = Path(tempfile.mkdtemp(prefix="tl5_", dir=临时)) / "tree.lock"
+    子pid文件 = Path(临时) / "tl5_child.pid"
+    锚脚本 = ("import os, subprocess, sys, time\n"
+              "子 = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(120)'])\n"
+              "open(sys.argv[1], 'w').write(str(子.pid))\n"
+              "time.sleep(120)\n")
+    锚 = subprocess.Popen([sys.executable, "-c", 锚脚本, str(子pid文件)],
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    无关 = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(120)"],
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    等写 = 0.0
+    while 等写 < 20 and not 子pid文件.exists():
+        time.sleep(0.2)
+        等写 += 0.2
+    断言(子pid文件.exists(), "场景⑤ 死锚已派生后代（孤儿形态就位）")
+    子pid = int(子pid文件.read_text().strip())
+    锁目录.mkdir(parents=True)
+    (锁目录 / "info.json").write_text(json.dumps(
+        {"pid": 锚.pid, "形态": "run", "owner_pid": 锚.pid,
+         "命令": "自测·935 清尸场景死锚", "获取时间": time.strftime("%Y-%m-%d %H:%M:%S")},
+        ensure_ascii=False), encoding="utf-8")
+    锚.kill()
+    锚.wait()
+    等死 = 0.0
+    while gate_lock.pid存活(锚.pid) and 等死 < 10:
+        time.sleep(0.2)
+        等死 += 0.2
+    断言(not gate_lock.pid存活(锚.pid), "场景⑤ 死锚已死（917 判据前置·子为孤儿）")
+    抓 = io.StringIO()
+    with contextlib.redirect_stderr(抓):
+        锁 = gate_lock.获取(0, 形态="run", owner_pid=os.getpid(), 锁=锁目录, 清护=True)
+    断言(锁 is not None and 锁目录.exists(), "场景⑤ 清护接管仍获得锁（清尸不阻断接管）")
+    断言("清尸" in 抓.getvalue(), "场景⑤ 清尸日志行可见（可审计·不静默）")
+    等死 = 0.0
+    while gate_lock.pid存活(子pid) and 等死 < 10:
+        time.sleep(0.2)
+        等死 += 0.2
+    断言(not gate_lock.pid存活(子pid), "场景⑤ 死锚的孤儿后代被整树回收（932 worker 形态）")
+    断言(gate_lock.pid存活(无关.pid), "场景⑤ 无关进程不受影响（只裁死锚后代）")
+    断言(gate_lock.清理死树(锚.pid) == [], "场景⑤ 重复清理幂等（无残留=空列表·不炸）")
+    gate_lock.释放(锁)
+    无关.kill()
+    无关.wait()
+
+
 def main() -> int:
     with tempfile.TemporaryDirectory(prefix="cn_tree_lock_test_") as 临时:
         print("== 场景① 并发竞争（排队等待·释放接力） ==")
@@ -156,6 +209,8 @@ def main() -> int:
         场景3_环境豁免与注入(临时)
         print("== 场景④ 域隔离（tree/machine 互不相干） ==")
         场景4_域隔离(临时)
+        print("== 场景⑤ 接管清尸（935·死锚孤儿后代整树回收） ==")
+        场景5_接管清尸(临时)
     print(f"\n[全部通过] {通过} 项断言")
     return 0
 

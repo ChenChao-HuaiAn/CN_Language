@@ -78,6 +78,7 @@ else:
     import fcntl
 import gate_lock        # win 三段互斥用（linux 零调用·TX_02 行为不变）
 import ci_round_guard   # 578：轮守卫（子进程追踪+轮心跳）——运行/运行限时 底层接线
+import ci_proc          # 935：轮级子进程树生命线（Job Object/进程组·超时整树回收）
 
 # ===== 可调常量（集中区·911 先例） =====
 轮询间隔秒 = 90            # git ls-remote 周期
@@ -87,6 +88,9 @@ e2e并行 = int(os.environ.get("CN_E2E_JOBS", "6" if 是win else "3"))
 构建并行 = int(os.environ.get("CN_BUILD_JOBS", "2"))    # 首验实锤：全核 Make 编译 cc1plus 叠加 OOM
                                                         # （9daba·10-01）——TX_02 限 2；家机 8G/实例=4
 单轮总超时秒 = 3 * 3600    # 防挂死（构建+单测+E2E+串行复验的理论上界）
+e2e整轮超时秒 = int(os.environ.get("CN_E2E_TIMEOUT_SEC", "5400"))
+# 935（2026-10-17）：E2E 步骤专用整轮看门狗（默认 90 分钟=实测 win 全量 ~33 分钟+
+# 重负载长尾余量）——超时=整树回收+步骤 rc=-99 诚实红，不再悬空 3h 僵轮。
 远端名 = "origin"
 分支 = os.environ.get("CN_CI_BRANCH", "develop")   # 常规盯 develop；任务分支预验=PR CI 同款用法
 角色 = os.environ.get("CN_CI_ROLE", "")            # 770 起不再区分（统一池·env 仅供 run_e2e CI 识别与旧部署兼容）
@@ -241,7 +245,10 @@ def 运行限时(命令: list[str], 超时秒: int, **kwargs) -> subprocess.Comp
 
 
 def 运行(命令: list[str], 日志, 超时秒: int, **kwargs) -> subprocess.CompletedProcess:
-    """297/578：流式日志运行（rc=127 缺可执行·轮守卫追踪）。主体外迁 ci_round_guard。"""
+    """297/578/935：流式日志运行（rc=127 缺可执行·轮守卫追踪·整树生命线）。
+    主体外迁 ci_round_guard（1000 行红线）；其 跑追踪 底层经 ci_proc.起子（Job
+    Object 整树·超时 ci_proc.超时回收+[超时回收] 审计）＝578 轮追踪与 935 树回收
+    双立（融合点详情见 scripts/ci_round_guard.py 跑追踪 docstring）。"""
     return ci_round_guard.运行(命令, 日志, 超时秒, 仓库根, **kwargs)
 
 
@@ -426,7 +433,7 @@ def 静态门禁与e2e段(步骤们: dict, 步骤, cn: Path | None, 日志, sha:
             "--max-mem-mb", str(保内存),
             "--heavy-ci",
             "--full-reason", "ci_daemon 云端全量门禁（TX_02/池 runner）"] + e2e明细参
-        if 步骤("e2e并行", e2e基 + ["--jobs", str(e2e并行)], 单轮总超时秒):
+        if 步骤("e2e并行", e2e基 + ["--jobs", str(e2e并行)], e2e整轮超时秒):
             步骤们["e2e"] = {"rc": 0}
         else:
             # 2026-10-16 用户令「红即停」（#902）：并行主轮一旦出现失败用例→立即

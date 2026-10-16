@@ -16,6 +16,10 @@
 
 跑追踪 = subprocess.run 的逐行等价实现（Popen + communicate + 超时 kill 语义照抄
 CPython run 源码），仅多注册/注销钩子——调用方（daemon 运行/运行限时）行为零变化。
+935 融合（2026-10-17·rebase 合 935）：跑追踪 底层 Popen 改经 ci_proc.起子——
+子进程+全部后代装入 Job Object（win·KILL_ON_JOB_CLOSE）/进程组（posix），超时经
+ci_proc.超时回收 整树回收（原 kill 只杀直接子进程=932 孤儿 worker 病根·935）+落
+[超时回收] 审计行——轮守卫追踪（578）与整树回收（935）双立，注册/注销语义不变。
 """
 from __future__ import annotations
 
@@ -25,6 +29,7 @@ import threading
 import time
 
 import gate_lock          # 轮心跳阈值/pid存活 复用（同目录·daemon 启动时 scripts/ 已在 sys.path）
+import ci_proc            # 935 融合点：子进程整树生命线（Job Object/进程组）
 
 本机win = sys.platform.startswith("win")
 
@@ -83,32 +88,44 @@ class 轮守卫:
 
     # ── 子进程追踪（daemon 运行/运行限时 底层） ──
     def 跑追踪(self, 命令, 超时秒, **kwargs) -> subprocess.CompletedProcess:
-        """subprocess.run 等价（CPython 源码平移）+ 注册/注销钩子。
+        """subprocess.run 等价 + 注册/注销钩子 + 935 整树生命线（融合点）。
 
-        超时=kill +（win：communicate 补输出；posix：wait）后 raise TimeoutExpired
-        ——与 run 逐行同口径；capture_output 翻译与 run 一致（stdout=PIPE/PIPE）；
-        FileNotFoundError 由 Popen 原样抛出（调用方照既有 except 捕获）。
-        注册先于 communicate、注销在 finally——子进程全程在表（轮心跳据此判活）。"""
+        578 原义：超时=kill +（win：communicate 补输出；posix：wait）后 raise
+        TimeoutExpired——与 run 逐行同口径；capture_output 翻译与 run 一致
+        （stdout=PIPE/PIPE）；FileNotFoundError 由 Popen 原样抛出（调用方照既有
+        except 捕获）。注册先于 communicate、注销在 finally——子进程全程在表
+        （轮心跳据此判活）。
+        935 融合：Popen 改经 ci_proc.起子——子进程+全部后代装入 Job Object/进程组，
+        超时经 ci_proc.超时回收 整树回收（原 kill 只杀直接子=932 孤儿 worker 病根）
+        并落 [超时回收] 审计（流式=日志句柄·capture/无句柄=stderr）。win 补输出
+        communicate 语义逐字保留（run 同款）。"""
         if kwargs.pop("capture_output", False):
             kwargs["stdout"] = subprocess.PIPE
             kwargs["stderr"] = subprocess.PIPE
-        with subprocess.Popen(命令, **kwargs) as 进程:
-            self._注册(进程.pid)
+        日志句柄 = kwargs.get("stdout")
+        日志句柄 = 日志句柄 if hasattr(日志句柄, "write") else None
+        进程, 作业, 装入 = ci_proc.起子(命令, **kwargs)
+        self._注册(进程.pid)
+        try:
             try:
-                try:
-                    出, 误 = 进程.communicate(timeout=超时秒)
-                except subprocess.TimeoutExpired as e:
-                    进程.kill()
-                    if 本机win:
-                        # Windows 输出在子线程累积——kill 后 communicate 收尾并补进异常
+                出, 误 = 进程.communicate(timeout=超时秒)
+            except subprocess.TimeoutExpired as e:
+                ci_proc.超时回收(进程, 作业, 装入, 日志句柄, 超时秒)
+                if 本机win:
+                    # Windows 输出在子线程累积——kill 后 communicate 收尾并补进异常
+                    try:
                         e.stdout, e.stderr = 进程.communicate()
-                    else:
-                        # POSIX _communicate 已把已读输出填进异常
-                        进程.wait()
-                    raise
+                    except (OSError, ValueError):
+                        pass
+                else:
+                    # POSIX _communicate 已把已读输出填进异常
+                    进程.wait()
+                raise
             finally:
                 self._注销(进程.pid)
             码 = 进程.poll()
+        finally:
+            ci_proc.关闭作业(作业)     # 残余后代随 KILL_ON_JOB_CLOSE 回收
         return subprocess.CompletedProcess(进程.args, 码, 出, 误)
 
 

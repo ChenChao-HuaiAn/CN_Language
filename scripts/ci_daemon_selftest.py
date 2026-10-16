@@ -275,9 +275,11 @@ def _文件自由名问题(文件: Path) -> list[str]:
 
 def _728t断言(主模块, 断言) -> None:
     """728t（2026-10-14）：静态门禁与e2e段 日志 漏参族——自由名锚（静态·双文件）+
-    e2e 并行红路径冒烟（行为·零真构建：假 步骤/临时 cn 直调，逼出 422 行 [复验] 行）。
+    e2e 并行红路径冒烟（行为·零真构建：假 步骤/临时 cn 直调，逼出 [红即停] 行）。
     实录（修复前两态）：自由名锚直报「静态门禁与e2e段(): 日志」；冒烟在旧签名下
-    TypeError=红。修复后两态全绿。"""
+    TypeError=红。修复后两态全绿。902（2026-10-16 用户令）：并行红→串行复验废止
+    （红即停）——冒烟断言随 935 一并对齐：锁 [红即停] 提示行与「不落串行键」，
+    防 447-a 复验形态复活（原断言锁 447-a=902 后必红）。"""
     根 = Path(__file__).resolve().parent
     问题: list[str] = []
     for 文件 in ("ci_daemon.py", "ci_daemon_selftest.py"):
@@ -292,7 +294,7 @@ def _728t断言(主模块, 断言) -> None:
 
     def 假步骤(名: str, 命令, 超时秒) -> bool:
         # 与真 步骤() 闭包同构：落键 步骤们[名] 再返回绿否（真闭包必写，冒烟缺写即
-        #   在本断言暴露=同构锁）；e2e并行 假红 → 逼出 [复验] 提示行（422 路径）。
+        #   在本断言暴露=同构锁）；e2e并行 假红 → 逼出 [红即停] 提示行（902 路径）。
         调用.append(名)
         命令们.append((名, list(命令)))
         绿 = 名 != "e2e并行"
@@ -315,16 +317,17 @@ def _728t断言(主模块, 断言) -> None:
                 崩 = e
         except Exception as e:
             崩 = e
-    断言("728t 冒烟：e2e 并行红→串行复验路径零异常（422 行 [复验]%s）"
+    断言("728t 冒烟：e2e 并行红路径零异常（902 红即停·原 422 行 [复验] 演进%s）"
          % ("" if 崩 is None else "｜异常=%r" % (崩,)), 崩 is None)
-    断言("728t 冒烟：串行复验落键且 e2e 判定取串行 rc（447-a 口径保持）",
-         "e2e串行复验" in 步骤们 and 步骤们.get("e2e", {}).get("rc") == 0)
-    断言("728t 冒烟：[复验] 提示行入日志句柄（file=日志 实连不炸）",
-         "[复验]" in 假日志.getvalue())
+    断言("728t 冒烟：红即停不落串行复验键且 e2e 取并行 rc（902 用户令·447-a 废止）",
+         "e2e串行复验" not in 步骤们
+         and 步骤们.get("e2e", {}).get("rc") == 步骤们.get("e2e并行", {}).get("rc") == 1)
+    断言("728t 冒烟：[红即停] 提示行入日志句柄（file=日志 实连不炸）",
+         "[红即停]" in 假日志.getvalue())
     断言("842 冒烟：e2e 命令带 --json 明细参数（本树 run_e2e 已支持·探测放行·"
-         "并行/串行复验同带）",
+         "红即停后仅并行主轮一条）",
          len([c for _, c in 命令们 if "--json" in c
-              and any("e2e明细" in x for x in c)]) == 2)
+              and any("e2e明细" in x for x in c)]) == 1)
 
 
 def _842断言(主模块, 断言) -> None:
@@ -347,6 +350,71 @@ def _842断言(主模块, 断言) -> None:
     断言("842 取提交历史：列表形态且条目含 sha/主题（归因数据源·git 异常=空列表不炸）",
          isinstance(历史, list) and all(
              isinstance(项, dict) and 项.get("sha") and "主题" in 项 for 项 in 历史))
+
+
+def _935断言(主模块, 断言) -> None:
+    """935（2026-10-17 win 池两夜实录 379/932）：轮级看门狗——ci_proc.运行树 整树
+    回收行为直测（真起「父→孙」进程树→真超时→断言父/孙双亡 + [超时回收] 审计行），
+    并锁 运行() 委托 与 E2E 专用整轮超时常量（防回退到 3h 悬空僵轮）。"""
+    import subprocess
+    import sys
+    import time
+    import ci_round_guard
+    断言("935+578 融合锁：ci_daemon.运行 薄壳转发 ci_round_guard（轮追踪单一入口）",
+         "ci_round_guard.运行" in inspect.getsource(主模块.运行))
+    源追踪 = inspect.getsource(ci_round_guard.轮守卫.跑追踪)
+    断言("935+578 融合锁：跑追踪 底层经 ci_proc 起子/超时回收（整树回收与轮追踪双立）",
+         "ci_proc.起子" in 源追踪 and "ci_proc.超时回收" in 源追踪)
+    断言("935 结构锁：e2e 步骤超时取 e2e整轮超时秒（专用看门狗·不悬空 3h）",
+         "e2e整轮超时秒" in inspect.getsource(主模块.静态门禁与e2e段))
+    断言("935 常量：e2e整轮超时秒 ∈ (0, 单轮总超时秒]（CN_E2E_TIMEOUT_SEC 可覆盖）",
+         0 < getattr(主模块, "e2e整轮超时秒", 0) <= getattr(主模块, "单轮总超时秒", 0))
+
+    with tempfile.TemporaryDirectory() as 临时:
+        树pid文件 = Path(临时) / "树pid.txt"
+        轮日志路径 = Path(临时) / "轮日志.txt"
+        父脚本 = ("import os, subprocess, sys, time\n"
+                  "子 = subprocess.Popen([sys.executable, '-c',\n"
+                  "    'import time; time.sleep(120)'])\n"
+                  "open(sys.argv[1], 'w').write('%d %d' % (os.getpid(), 子.pid))\n"
+                  "time.sleep(120)\n")
+        with 轮日志路径.open("w", encoding="utf-8") as 轮日志:
+            try:
+                主模块.运行([sys.executable, "-c", 父脚本, str(树pid文件)],
+                          轮日志, 超时秒=5)
+                崩 = None
+            except subprocess.TimeoutExpired as e:
+                崩 = e
+        日志文本 = 轮日志路径.read_text(encoding="utf-8", errors="replace")
+        断言("935 看门狗：超时抛 TimeoutExpired（步骤层 rc=-99 诚实红语义保持）",
+             isinstance(崩, subprocess.TimeoutExpired))
+        断言("935 看门狗：[超时回收] 审计行落日志（不静默·可审计）",
+             "[超时回收]" in 日志文本)
+        等写 = 0.0
+        while 等写 < 20 and not 树pid文件.exists():
+            time.sleep(0.2)
+            等写 += 0.2
+        父pid = 子pid = None
+        if 树pid文件.exists():
+            部分 = 树pid文件.read_text().split()
+            if len(部分) == 2:
+                父pid, 子pid = int(部分[0]), int(部分[1])
+        断言("935 看门狗：父进程树已建立（父/孙 pid 采样在超时前落盘）",
+             父pid is not None and 子pid is not None)
+        if 父pid and 子pid:
+            死光 = 0.0
+            while 死光 < 20 and (主模块.gate_lock.pid存活(父pid)
+                                 or 主模块.gate_lock.pid存活(子pid)):
+                time.sleep(0.3)
+                死光 += 0.3
+            断言("935 看门狗：超时后父进程已回收（整树生命线）",
+                 not 主模块.gate_lock.pid存活(父pid))
+            断言("935 看门狗：超时后孙进程亦已回收（932 孤儿 worker 形态根治）",
+                 not 主模块.gate_lock.pid存活(子pid))
+        with 轮日志路径.open("w", encoding="utf-8") as 轮日志:
+            不存 = 主模块.运行(["no-such-cmd-935.exe"], 轮日志, 超时秒=5)
+        断言("935 兼容：命令不存在经 运行树 仍 rc=127（297 环境面语义不变）",
+             不存.returncode == 127)
 
 
 def _行数断言(断言) -> None:
@@ -380,7 +448,7 @@ def _770断言(主模块, 断言) -> None:
 
 
 def 自测(主模块) -> int:
-    """--selftest 入口（断言集 523+637+657+660+728t+770+842）——CI 式：逐条打印，任一红退出 1。"""
+    """--selftest 入口（断言集 523+637+657+660+728t+770+842+935）——CI 式：逐条打印，任一红退出 1。"""
     断言们: list[tuple[str, bool]] = []
 
     def 断言(名: str, 条件: bool) -> None:
@@ -392,9 +460,10 @@ def 自测(主模块) -> int:
     _728t断言(主模块, 断言)
     _770断言(主模块, 断言)
     _842断言(主模块, 断言)
+    _935断言(主模块, 断言)
     _行数断言(断言)
     for 名, ok in 断言们:
         print("  [%s] %s" % ("OK" if ok else "×", 名))
     红 = sum(1 for _, ok in 断言们 if not ok)
-    print("== ci_daemon 自测（523+637+657+660+728t+770+842）：%d 断言，%s ==" % (len(断言们), "全绿" if 红 == 0 else "红 %d" % 红))
+    print("== ci_daemon 自测（523+637+657+660+728t+770+842+935）：%d 断言，%s ==" % (len(断言们), "全绿" if 红 == 0 else "红 %d" % 红))
     return 0 if 红 == 0 else 1

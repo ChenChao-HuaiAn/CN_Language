@@ -36,12 +36,17 @@ acquire 存活锚时 owner_pid 永活——917 判据①「锚死→秒级接管
 
 实现：os.mkdir 原子目录锁（跨平台无 msvcrt/fcntl 差异）；持锁期间后台线程每
 60s 触碰 info 文件=心跳；Ctrl+C/命令失败均走 finally 释放。
+
+935（2026-10-17 两夜实录 379/932）：陈锁接管清尸——清护面（树锁运行入口）在
+判定「锚已死」时先回收死锚的存活后代（进程树枚举·PID/PPID 链），治「强杀不留
+活口」病根（Windows 不级联杀→spawn worker 孤儿化与新轮同树互踩）。
 """
 from __future__ import annotations
 
 import argparse
 import json
 import os
+import signal
 import subprocess
 import sys
 import threading
@@ -221,6 +226,88 @@ def 启动轮心跳(锁: Path, 探测=None, 间隔: int | None = None) -> thread
     return 停
 
 
+# ═══════ 935（2026-10-17 两夜实录 379/932）：陈锁接管清尸 ═══════
+# 病根：917「锚死=秒级接管」隐含假设「锚死 ⇒ 其作业已停」——multiprocessing 进程池
+# 打破它：主进程被 TerminateProcess（Windows 不级联）后 spawn worker 孤儿化
+# （932：并行轮主进程死后 6 个 worker 睡 2h·CPU delta=0），接管者/下一轮与「前代
+# 进程树」同树互踩=僵死链。修复：清护面（仅 树锁运行入口=run_e2e 传）在判定
+# 「锚已死」时先把死锚的存活后代整树回收，再接管——任一时刻恰一个有效持有者。
+
+def _进程表() -> list:
+    """全量 (pid, ppid) 快照。win=Toolhelp32（纯 stdlib）；posix=/proc/<pid>/stat。"""
+    if sys.platform == "win32":
+        import ctypes
+        import ctypes.wintypes as w
+
+        class 条目(ctypes.Structure):
+            _fields_ = [("dwSize", w.DWORD), ("cntUsage", w.DWORD), ("pid", w.DWORD),
+                        ("堆", ctypes.c_void_p), ("模块", w.DWORD), ("线程数", w.DWORD),
+                        ("ppid", w.DWORD), ("基类", ctypes.c_long), ("标志", w.DWORD),
+                        ("名", ctypes.c_wchar * 260)]
+
+        内核 = ctypes.WinDLL("kernel32", use_last_error=True)
+        内核.CreateToolhelp32Snapshot.restype = ctypes.c_void_p
+        内核.CreateToolhelp32Snapshot.argtypes = [w.DWORD, w.DWORD]
+        内核.Process32FirstW.argtypes = [ctypes.c_void_p, ctypes.POINTER(条目)]
+        内核.Process32NextW.argtypes = [ctypes.c_void_p, ctypes.POINTER(条目)]
+        快照 = 内核.CreateToolhelp32Snapshot(0x2, 0)
+        if not 快照:
+            return []
+        出, 项 = [], 条目()
+        项.dwSize = ctypes.sizeof(条目)
+        try:
+            ok = 内核.Process32FirstW(快照, ctypes.byref(项))
+            while ok:
+                出.append((int(项.pid), int(项.ppid)))
+                ok = 内核.Process32NextW(快照, ctypes.byref(项))
+        finally:
+            内核.CloseHandle(快照)
+        return 出
+    出 = []
+    for 目录 in Path("/proc").iterdir():
+        if not 目录.name.isdigit():
+            continue
+        try:
+            内容 = (目录 / "stat").read_text(encoding="utf-8", errors="replace")
+            出.append((int(目录.name), int(内容[内容.rfind(")") + 2:].split()[1])))
+        except (OSError, ValueError, IndexError):
+            continue
+    return 出
+
+
+def 收集后代(锚pid: int, 表: list) -> list:
+    """表中 PPID 链递归指向锚 pid 的全体存活进程（锚自身的历代子孙）。"""
+    出, 边界 = [], {锚pid}
+    while True:
+        新 = [p for p, q in 表 if q in 边界 and p not in 边界]
+        if not 新:
+            return 出
+        出 += 新
+        边界 |= set(新)
+
+
+def 清理死树(锚pid) -> list:
+    """回收死锚 pid 的存活后代（强杀不级联留下的「僵尸树」）。返回被杀 pid 列表；
+    清理是接管前的保护动作——任何异常=空列表，绝不阻断接管（锁仍按 917 流程释放）。"""
+    try:
+        锚pid = int(锚pid)
+    except (TypeError, ValueError):
+        return []
+    if 锚pid <= 0:
+        return []
+    被杀 = []
+    try:
+        for p in 收集后代(锚pid, _进程表()):
+            try:
+                os.kill(p, signal.SIGTERM if sys.platform == "win32" else signal.SIGKILL)
+                被杀.append(p)
+            except OSError:
+                pass
+    except Exception:
+        return 被杀
+    return 被杀
+
+
 def 心跳线程(信息文件: Path) -> threading.Thread:
     def 敲():
         while True:
@@ -235,7 +322,14 @@ def 心跳线程(信息文件: Path) -> threading.Thread:
 
 
 def 获取(超时秒: int, 形态: str = "run", owner_pid: int | None = None,
-         锁: Path | None = None, 轮心跳: bool = False) -> Path | None:
+         锁: Path | None = None, 轮心跳: bool = False, 清护: bool = False) -> Path | None:
+    """578 轮心跳 + 935 清护（rebase 融合·两参数正交、各自语义保留）：
+    轮心跳=True：info 登记「轮心跳」标记——长驻持有者（win 池 runner）由 启动轮心跳
+    线程按轮守卫探测续约；轮卡死/僵死时排队方按 是陈锁 判据③ 分钟级接管（owner
+    永活使 917 判据①失效的形态补足）。
+    清护=True：陈锁接管且「锚已死」（判据①）时先整树回收死锚的存活后代再接管——
+    仅树锁运行入口传（E2E 轮=multiprocessing 进程池所有者·孤儿 worker 是互踩源）。
+    两者缺省 False=行为与各自引入前完全一致（machine 域等不动）。"""
     if 锁 is None:          # 555：锁目录参数化（树域由调用方传 树锁目录()·缺省=machine 域）
         锁 = 主树锁目录()
     锁.parent.mkdir(parents=True, exist_ok=True)
@@ -249,8 +343,12 @@ def 获取(超时秒: int, 形态: str = "run", owner_pid: int | None = None,
             if 是陈锁(锁):
                 陈锁信息 = 读信息(锁)
                 owner = 陈锁信息.get("owner_pid") or (陈锁信息.get("pid") if 陈锁信息.get("形态") == "run" else None)
+                # 935+578 融合（rebase 合 935）：判据①（917 锚死）→②（578 轮心跳·owner
+                #   永活形态的补足判据）→③清护动作（935·清护=True 且锚死时先整树回收
+                #   死锚后代再接管）；三者不得互相削弱，各自审计文案保留。
                 轮锚 = 陈锁信息.get("轮锚")
-                if owner and not pid存活(owner):
+                锚死 = bool(owner) and not pid存活(owner)
+                if 锚死:
                     因 = f"持锁存活锚 pid={owner} 已死（917 秒级接管）"
                 elif 陈锁信息.get("轮心跳") and (轮锚 is None or not pid存活(轮锚)):
                     因 = (f"轮心跳停超 {轮心跳阈值()}s（578 轮级判据·"
@@ -258,6 +356,14 @@ def 获取(超时秒: int, 形态: str = "run", owner_pid: int | None = None,
                 else:
                     因 = f"心跳停超 {陈锁阈值 // 3600}h"
                 print(f"[gate_lock] 陈锁接管（{因}：{陈锁信息.get('命令', '?')}）", file=sys.stderr)
+                if 清护 and 锚死:
+                    # 935（2026-10-17 两夜实录 379/932）：锚死≠其作业已停——multiprocessing
+                    # spawn worker 在主进程被强杀后孤儿化（Windows 不级联杀），接管者与
+                    # 「前代进程树」同树互踩。接管前先回收死锚的存活后代（清尸·幂等）。
+                    被杀 = 清理死树(owner)
+                    if 被杀:
+                        print(f"[gate_lock] 清尸：死锚 pid={owner} 的后代残留 {len(被杀)} 个已回收"
+                              f"（pid={','.join(map(str, 被杀))}·935）", file=sys.stderr)
                 释放(锁, 静默=True)
                 continue
             if 超时秒 and time.time() - 起始 > 超时秒:
@@ -443,7 +549,7 @@ def 树锁运行入口(主体) -> int:
     if os.environ.get("CN_TREE_LOCK_HELD"):
         print("[gate_lock] 继承外层树锁（CN_TREE_LOCK_HELD=1）", flush=True)
         return 主体()
-    锁 = 获取(0, 形态="run", owner_pid=os.getpid(), 锁=树锁目录())
+    锁 = 获取(0, 形态="run", owner_pid=os.getpid(), 锁=树锁目录(), 清护=True)
     if 锁 is None:
         print("[gate_lock] 树锁等待超时——同树另一 E2E/构建仍在飞（gate_lock status --scope tree 查看）",
               file=sys.stderr)
