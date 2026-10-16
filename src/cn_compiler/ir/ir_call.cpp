@@ -308,80 +308,10 @@ void IRGenerator::visitCallExpr(CallExpr* node) {
     bool isPrintNewline = (isDirect && calleeName == "打印");      // 打印：换行
     bool isPrintNoLine = (isDirect && calleeName == "打印行");     // 打印行：不换行
     if (isPrintNewline || isPrintNoLine) {
-        // 617（2026-10-14 伞批）：拥有串临时实参登记——打印/打印行对实参只读
-        //   消费（fputs），调用完成后调用方释放（001 §10.3 拼接语义「结果由
-        //   调用方负责字符串释放」的变参通道兑现）。判据=argIsOwnedStringTemp
-        //   （CallExpr 且返回字符串）：字面量（只读段·free 即崩）与标识符
-        //   （调用方变量自有 RAII）天然不命中——原实现 `打印("x=",
-        //   整数转字符串(42))` 的临时串每语句净漏 1。
-        std::vector<ir::IRValue> ownedStrTemps617;
-        for (auto& arg : node->arguments) {
-            ir::IRValue argVal = genExpr(arg.get());
-            if (argIsOwnedStringTemp(arg.get()) && argVal.type == "ptr") {
-                ownedStrTemps617.push_back(argVal);
-            }
-            // 参数类型 -> 打印函数名（字符串/字符* -> 字符串；整型 -> 整数；浮点 -> 浮点）
-            std::string printFn;
-            if (argVal.type == "ptr") {
-                printFn = "__cn_print_str";
-            } else if (argVal.type == "f32" || argVal.type == "f64") {
-                // 浮32 必须先 Cast 浮64 再传 __cn_print_float(double)——
-                // 否则 ABI 不匹配（xmm0 低32位垃圾被当 double 读，输出 0.000000）
-                // 缺陷修复（方案C 2026-08-14）：原 打印行浮点(f32) 靠语义层隐式宽化，
-                //   改 打印(f32) 变参展开后此 Cast 必须显式
-                if (argVal.type == "f32") {
-                    argVal = emitResult(ir::Opcode::Cast, {argVal}, "f64", "",
-                                        node->location);
-                }
-                printFn = "__cn_print_float";
-            } else if (argVal.type == "i128" || argVal.type == "u128") {
-                // i128/正128（Task 完善A）：传双寄存器地址（低64位槽地址），
-                // 运行时辅助函数 __cn_print_i128 读 16 字节双槽
-                printFn = (argVal.type == "u128") ? "__cn_print_u128"
-                                                  : "__cn_print_i128";
-            } else if (argVal.type == "i1") {
-                // 2026-08（用户裁决，布尔打印统一）：布尔（含比较/逻辑表达式
-                //   结果）经 打印 统一输出 真/假（__cn_print_bool）——此前 i1
-                //   走 __cn_print_int 输出 1/0，与字符串拼接 布尔转字符串 不一致
-                printFn = "__cn_print_bool";
-            } else {
-                // 整型（含 i1 布尔）：有符号统一 Cast i64 走 __cn_print_int；
-                // 无符号（正8~正64）直接传 __cn_print_uint（%llu 语义，缺陷修复：
-                //   原实现统一 __cn_print_int（%lld 有符号），正64 值超 2^63 时
-                //   位模式按有符号解释打印成负数）
-                const bool isUnsignedArg = (argVal.type == "u8" ||
-                                            argVal.type == "u16" ||
-                                            argVal.type == "u32" ||
-                                            argVal.type == "u64");
-                if (isUnsignedArg) {
-                    if (argVal.type != "u64") {
-                        argVal = emitResult(ir::Opcode::Cast, {argVal}, "u64", "",
-                                            node->location);
-                    }
-                    printFn = "__cn_print_uint";
-                } else {
-                    if (argVal.type != "i64") {
-                        argVal = emitResult(ir::Opcode::Cast, {argVal}, "i64", "",
-                                            node->location);
-                    }
-                    printFn = "__cn_print_int";
-                }
-            }
-            emit(ir::Opcode::Call, {argVal}, ir::IRValue(), printFn, "void",
-                 node->location);
-        }
-        // 打印（println 语义）末尾统一换行；打印行（print 语义）不换行
-        if (isPrintNewline) {
-            emit(ir::Opcode::Call, {}, ir::IRValue(), "__cn_print_newline", "void",
-                 node->location);
-        }
-        // 617：语句尾结算——打印已完成只读消费，释放全部拥有串临时
-        //   （寄存器句柄直传 free，无槽无清零义务）
-        for (const auto& tmp617 : ownedStrTemps617) {
-            emit(ir::Opcode::Call, {tmp617}, ir::IRValue(), "__cn_str_free",
-                 "void", node->location);
-        }
-        lastExpr_ = ir::IRValue();  // 无返回值（空类型）
+        // 852 收工解堵（2026-10-16）：打印族展开迁出 emitPrintLikeCall
+        //   （visitCallExpr 983 行巨函数首刀瘦身——纯机械搬移零语义；
+        //   单函数 ≤100 行纪律的既有欠账另案清偿）
+        emitPrintLikeCall(node, isPrintNewline, isPrintNoLine);
         return;
     }
 
@@ -995,5 +925,6 @@ void IRGenerator::visitCallExpr(CallExpr* node) {
     args.insert(args.begin(), calleeVal);  // operand[0]=指针寄存器
     lastExpr_ = emitResult(ir::Opcode::CallIndirect, args, "i32", "", node->location);
 }
+
 
 } // namespace cn_compiler

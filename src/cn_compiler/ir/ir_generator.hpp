@@ -134,6 +134,8 @@ public:
     void visitUnaryExpr(UnaryExpr* node) override;
     void visitAssignmentExpr(AssignmentExpr* node) override;
     void visitCallExpr(CallExpr* node) override;
+    // 852 收工解堵：打印/打印行变参展开（visitCallExpr 机械搬移·ir_expr.cpp）
+    void emitPrintLikeCall(CallExpr* node, bool isPrintNewline, bool isPrintNoLine);
     void visitMemberExpr(MemberExpr* node) override;
     void visitIndexExpr(IndexExpr* node) override;
     void visitInitListExpr(InitListExpr* node) override;
