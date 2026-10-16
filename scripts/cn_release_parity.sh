@@ -89,8 +89,9 @@ h1=$(grep -rh "void IRGenerator::emitStringFreeFor" src/cn_compiler/ir/ 2>/dev/n
 h2=$(grep -rc "void IRGenerator::emitClassDeleteFor" src/cn_compiler/ir/ 2>/dev/null | awk -F: '{s+=$2} END{print s+0}')
 v1=$(grep -rh "零寄存器" CN语言编译器v2/IR/ 2>/dev/null | wc -l)
 # 76-a：单槽释放的清零（__cn_map_free_slot / __cn_seq_free_slot 内的槽清零）
+#   945：349 拆分后本组函数在 mem_api.cpp（原 io_api.cpp 恒 0 黄字误报）——目标同步
 h3=$(grep -rhE "keys\[index\] = nullptr|values\[index\] = nullptr|data\[index\] = nullptr" \
-     src/runtime/io_api.cpp 2>/dev/null | wc -l)
+     src/runtime/mem_api.cpp 2>/dev/null | wc -l)
 echo "  宿主 emitStringFreeFor=$h1（内含 Store 0 清零）emitClassDeleteFor=$h2（同）"
 echo "  宿主 76-a 单槽释放清零=$h3（__cn_map_free_slot/__cn_seq_free_slot 槽清零）"
 echo "  v2   零寄存器 引用=$v1（释放点清零 + 预扫回填）"

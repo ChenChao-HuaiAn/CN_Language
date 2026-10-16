@@ -365,6 +365,7 @@ target_link_libraries(cn_compiler_driver PUBLIC cn_compiler_lexer cn_compiler_pa
 add_library(cn_runtime STATIC
     src/runtime/io_api.cpp
     src/runtime/mem_api.cpp
+    src/runtime/mem_pool.cpp
     src/runtime/arena.cpp
     src/runtime/crash_handler.cpp
     src/runtime/intern_api.cpp
@@ -394,7 +395,7 @@ endif()
 if(MSVC)
     file(MAKE_DIRECTORY ${CMAKE_SOURCE_DIR}/target/win-x64)
     set(CNRT_79_SRCS
-        io_api mem_api arena crash_handler intern_api runtime string_api i128_api math_api input_api file_api time_api system_api thread_api)
+        io_api mem_api mem_pool arena crash_handler intern_api runtime string_api i128_api math_api input_api file_api time_api system_api thread_api)
     set(CNRT_79_OBJS "")
     foreach(_s ${CNRT_79_SRCS})
         set(_obj ${CMAKE_SOURCE_DIR}/target/win-x64/${_s}.obj)

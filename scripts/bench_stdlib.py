@@ -81,7 +81,7 @@ def 确保编译器(侧: str) -> pathlib.Path:
     return exe
 
 
-运行时名们 = ["io_api", "mem_api", "arena", "crash_handler",
+运行时名们 = ["io_api", "mem_api", "mem_pool", "arena", "crash_handler",
             "intern_api", "runtime", "string_api", "i128_api",
             "math_api", "input_api", "file_api", "time_api", "system_api"]
 

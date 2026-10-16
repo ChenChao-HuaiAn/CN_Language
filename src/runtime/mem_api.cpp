@@ -1,4 +1,4 @@
-// CN运行时实现：内存管理API + 小对象池 + 对象内存辅助 + 批量释放（规格书10.2）
+// CN运行时实现：内存管理API + 对象内存辅助 + 批量释放（规格书10.2）
 // 所有函数通过 extern "C" 导出，供CN编译器生成的汇编链接
 // CN语言符号映射：分配→cn_alloc、释放→cn_free、重新分配→cn_realloc
 // 方案C（2026-08-14）已修复：遗留的 打印行整数/打印行浮点 已删除——
@@ -6,15 +6,20 @@
 //   printLineInt/printLineFloat 保留（单元测试直接引用 + 防御 ABI 稳定）
 // 349 重构E 自 io_api.cpp 纯机械搬移·零逻辑变化：原 24-784 行（内存管理API+小对象池）
 //   与 870-947 行（对象内存辅助+批量释放）——后两节引用本文件级 static
-//   （g_cn_alloc_live/g_pool/poolFindClass/poolFree/poolReset/g_trackedSet/g_trackedSize），
-//   按 AGENTS 内聚性原则并入本文件，避免跨文件改链接性。
+//   （g_cn_alloc_live/cnrt 池接口），按 AGENTS 内聚性原则并入本文件，避免跨文件改链接性。
+// 945（2026-10-16·P1）无锁并发分配数据竞争根治：**小对象池整体拆出 mem_pool.cpp**
+//   （线程局部快路径 + 全局锁慢路径·设计总纲见该文件头注）；本文件保留 API 层，
+//   tracked 注册表（>4KB 大对象）改 std::mutex 保护（945 前为无锁 unordered_set/map，
+//   多线程并发 insert/erase 即数据结构破坏 = C8 探针 rc=139 的另一半病根）。
 #include "runtime/runtime.hpp"
+#include "runtime/mem_pool.hpp"
 
 #include <atomic>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <mutex>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -60,7 +65,7 @@ static int cnBinOf(std::size_t s) {
     if (kb >= 16 && kb <= 256) return static_cast<int>(kb);
     return 257;
 }
-static void cnPoolReportLines();   // 074/102 观测点（定义于小对象池段后）
+// 074/102 观测点：池规模与重复释放拦截计数（945 移入 cnrt::poolReportLines·mem_pool.cpp）
 
 static void cnBinAdd(std::size_t s) {
     const int b = cnBinOf(s);
@@ -105,7 +110,7 @@ static void cnBinReport() {
     }
     std::fprintf(stderr, "[cnrt-alloc-hist] >256K %lld %lld\n",
                  (long long)g_binCount[257].load(), (long long)g_binBytes[257].load());
-    cnPoolReportLines();   // 074/102 观测点：池规模与重复释放拦截计数（定义在小对象池段后）
+    cnrt::poolReportLines();   // 074/102 观测点：池规模与重复释放拦截计数（mem_pool.cpp）
     std::fflush(stderr);
 }
 struct CnBinReportAtExit { CnBinReportAtExit() { std::atexit(cnBinReport); } };
@@ -118,247 +123,12 @@ extern "C" long long __cn_alloc_bytes() {
     return t;
 }
 
-// ==================== 小对象池（074 波3·2026-09-29·[基准=019]） ====================
-// 背景（885 侦查③实测归因·v2p 全树编译峰值 1.78GB）：
-//   1450 万次 tracked 分配（平均 12 字节）走「malloc + unordered_set/unordered_map
-//   双容器注册表」——注册表为**每个对象**挂两个节点（≈16B+24B）并把桶数组撑到
-//   2×1678 万（≈268MB），加 CRT 每块 ~32B 头/对齐开销，合计 ≈1.1GB；而对象
-//   载荷本身仅 179MB（**簿记成本是载荷的 6 倍**，且分配计数越多越糟）。
-// 设计（Rust bumpalo / slab / rustc Arena 同款·【基准=019】「编译器一次性进程」）：
-//   · **≤4KB 走定档对象池**：档位 8/16/24/32/48/64…4096（~1.25 倍阶梯·8 字节对齐）；
-//     块 64KB 起（档位越大块越大）·块内顺序切分·**每档空闲链复用**（释放即回收，
-//     长循环零增长——E2E 216 口径不变）。
-//   · **>4KB 仍走 malloc + 注册表**（全树仅 ~900 次，注册表开销可忽略），
-//     保留 内存::释放全部() 的批量释放语义。
-//   · **指针溯源＝块目录**（按地址升序的块区间数组 + 二分查找 → 档位），
-//     **不读对象头**——外部/悬垂/已重置指针绝不触碰内存（安全性与旧注册表等同，
-//     且比 malloc 的 free(野指针) 更防御：非槽位对齐的指针一律忽略）。
-//   · 计数语义完全不变：分配 ++活动分配数、释放 --（E2E 216 活动分配数差值断言不变）。
-namespace {
-
-constexpr int kPoolClassCount = 30;
-constexpr std::size_t kPoolMax = 4096;   // 池上限（超过走 malloc + 注册表）
-// 档位（载荷字节·8 字节对齐·约 1.25 倍阶梯）
-const std::size_t kPoolClass[kPoolClassCount] = {
-    8, 16, 24, 32, 48, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320,
-    384, 448, 512, 640, 768, 896, 1024, 1280, 1536, 1792, 2048, 2560, 3072, 3584, 4096};
-
-struct PoolBlock {
-    char* begin;
-    std::size_t bytes;
-    int cls;
-    unsigned char* bits;    // 槽位分配位图（1=占用 / 0=空闲·每槽 1 bit）
-    std::size_t nslots;
-};
-
-struct PoolState {
-    void* freeHead[kPoolClassCount];      // 每档空闲槽链（槽首 8 字节存 next 指针）
-    char* carve[kPoolClassCount];         // 每档当前切分块游标
-    std::size_t carveRemain[kPoolClassCount];   // 每档当前块剩余字节
-    unsigned char* carveBits[kPoolClassCount];   // 每档当前块位图（malloc 持有·地址稳定）
-    char* carveBegin[kPoolClassCount];           // 每档当前块首址（位图下标换算）
-    PoolBlock* dir;                       // 块目录（按 begin 升序·二分查找溯源）
-    std::size_t dirCount;
-    std::size_t dirCap;
-    long long live;                       // 池内活动对象数（供重置时扣减）
-    long long rejectedFree;               // 防御计数：重复释放/非槽位释放被忽略
-};
-
-PoolState g_pool;
-// 档位选择：返回档位下标；>4KB 返回 -1（走 malloc）
-int poolClassOf(std::size_t size) {
-    for (int i = 0; i < kPoolClassCount; ++i) {
-        if (size <= kPoolClass[i]) return i;
-    }
-    return -1;
-}
-
-// 位图操作（裸指针版·切分路径用：位图数组由 malloc 独立持有·地址稳定，
-//   不受块目录插入排序引起的下标漂移影响——885 实测缺陷：缓存"目录下标"
-//   在后续块插入（升序插入排序搬移）后失效 → 位图置错块 → 槽位标志丢失
-//   → 释放被误判重复 且 错块槽位被误判占用（假接受→空闲链重复入链→别名→堆损坏））
-inline void poolBitSetRaw(unsigned char* bits, std::size_t idx) {
-    bits[idx >> 3] = static_cast<unsigned char>(bits[idx >> 3] | (1u << (idx & 7)));
-}
-
-// 位图操作（槽位占用标志·双释放/非槽位释放的结构性拦截）
-inline bool poolBitGet(const PoolBlock& b, std::size_t idx) {
-    return (b.bits[idx >> 3] >> (idx & 7)) & 1u;
-}
-inline void poolBitSet(const PoolBlock& b, std::size_t idx) {
-    b.bits[idx >> 3] = static_cast<unsigned char>(b.bits[idx >> 3] | (1u << (idx & 7)));
-}
-inline void poolBitClear(const PoolBlock& b, std::size_t idx) {
-    b.bits[idx >> 3] = static_cast<unsigned char>(b.bits[idx >> 3] & ~(1u << (idx & 7)));
-}
-
-long long poolLocate(const void* ptr, std::size_t* outIdx);   // 前向声明（poolAlloc 复用链置位用）
-
-// 块目录插入（升序·块数量级 ~10^3·插入排序摊销可忽略）；返回下标（失败 -1）
-long long poolDirInsert(char* begin, std::size_t bytes, int cls, unsigned char* bits,
-                        std::size_t nslots) {
-    if (g_pool.dirCount == g_pool.dirCap) {
-        const std::size_t cap = g_pool.dirCap == 0 ? 256 : g_pool.dirCap * 2;
-        PoolBlock* nd = static_cast<PoolBlock*>(std::realloc(g_pool.dir, cap * sizeof(PoolBlock)));
-        if (nd == nullptr) return -1;
-        g_pool.dir = nd;
-        g_pool.dirCap = cap;
-    }
-    std::size_t i = g_pool.dirCount;
-    while (i > 0 && g_pool.dir[i - 1].begin > begin) {
-        g_pool.dir[i] = g_pool.dir[i - 1];
-        --i;
-    }
-    g_pool.dir[i].begin = begin;
-    g_pool.dir[i].bytes = bytes;
-    g_pool.dir[i].cls = cls;
-    g_pool.dir[i].bits = bits;
-    g_pool.dir[i].nslots = nslots;
-    ++g_pool.dirCount;
-    return static_cast<long long>(i);
-}
-
-// 新块：每档块大小 = max(64KB, 档位×64)（≤4KB 档最多浪费一个槽位）；
-//   返回块字节（0=失败）·*out=块首·*outIdx=目录下标
-std::size_t poolNewBlock(int cls, char** out, long long* outIdx) {
-    const std::size_t slot = kPoolClass[cls];
-    std::size_t bytes = slot * 64;
-    const std::size_t minBytes = 64 * 1024;
-    if (bytes < minBytes) bytes = minBytes;
-    bytes = (bytes + 7) & ~std::size_t(7);
-    char* b = static_cast<char*>(std::malloc(bytes));
-    if (b == nullptr) return 0;
-    const std::size_t nslots = bytes / slot;
-    const std::size_t bitBytes = (nslots + 7) / 8;
-    unsigned char* bits = static_cast<unsigned char*>(std::calloc(bitBytes, 1));
-    if (bits == nullptr) {
-        std::free(b);
-        return 0;
-    }
-    const long long idx = poolDirInsert(b, bytes, cls, bits, nslots);
-    if (idx < 0) {
-        std::free(bits);
-        std::free(b);
-        return 0;
-    }
-    *out = b;
-    *outIdx = idx;
-    return bytes;
-}
-
-// 池分配：空闲链 → 当前块切分 → 新块切分；失败返回 nullptr（调用方回退 malloc）
-void* poolAlloc(std::size_t size) {
-    const int cls = poolClassOf(size);
-    if (cls < 0) return nullptr;
-    const std::size_t slot = kPoolClass[cls];
-    void* head = g_pool.freeHead[cls];
-    if (head != nullptr) {
-        g_pool.freeHead[cls] = *reinterpret_cast<void**>(head);   // 空闲链复用
-        std::size_t idx = 0;
-        const long long bi = poolLocate(head, &idx);
-        if (bi >= 0) poolBitSet(g_pool.dir[bi], idx);   // 复用即置位（否则下次释放被误判重复）
-        ++g_pool.live;
-        return head;
-    }
-    if (g_pool.carveRemain[cls] < slot) {
-        char* b = nullptr;
-        long long idx = 0;
-        const std::size_t bytes = poolNewBlock(cls, &b, &idx);
-        if (bytes == 0) return nullptr;
-        g_pool.carve[cls] = b;
-        g_pool.carveRemain[cls] = bytes;
-        g_pool.carveBits[cls] = g_pool.dir[idx].bits;
-        g_pool.carveBegin[cls] = b;
-    }
-    void* p = g_pool.carve[cls];
-    const std::size_t newIdx =
-        static_cast<std::size_t>(static_cast<char*>(p) - g_pool.carveBegin[cls]) / slot;
-    g_pool.carve[cls] += slot;
-    g_pool.carveRemain[cls] -= slot;
-    poolBitSetRaw(g_pool.carveBits[cls], newIdx);   // 稳定位图指针·不受目录搬移影响
-    ++g_pool.live;
-    return p;
-}
-
-// 溯源：ptr 是否池内槽位起始地址（命中返回块下标·否则 -1·*outIdx=槽位下标）。
-//   只读**块目录元数据**，不触碰对象内存（外部/悬垂指针安全）。
-long long poolLocate(const void* ptr, std::size_t* outIdx) {
-    const char* p = static_cast<const char*>(ptr);
-    std::size_t lo = 0, hi = g_pool.dirCount;
-    while (lo < hi) {                        // 二分：首个 begin > p 的位置
-        const std::size_t mid = (lo + hi) / 2;
-        if (g_pool.dir[mid].begin <= p) lo = mid + 1;
-        else hi = mid;
-    }
-    if (lo == 0) return -1;
-    const std::size_t bi = lo - 1;
-    const PoolBlock& b = g_pool.dir[bi];
-    if (p >= b.begin + b.bytes) return -1;
-    const std::size_t slot = kPoolClass[b.cls];
-    if (static_cast<std::size_t>(p - b.begin) % slot != 0) return -1;   // 非槽位起始：忽略
-    const std::size_t idx = static_cast<std::size_t>(p - b.begin) / slot;
-    if (idx >= b.nslots) return -1;
-    if (outIdx != nullptr) *outIdx = idx;
-    return static_cast<long long>(bi);
-}
-
-// 档位查询（非池指针返回 -1）
-int poolFindClass(const void* ptr) {
-    const long long bi = poolLocate(ptr, nullptr);
-    return bi < 0 ? -1 : g_pool.dir[bi].cls;
-}
-
-// 池释放：位图校验（**双释放/非槽位释放一律忽略**——与旧注册表"未命中即忽略"
-//   同款防御，避免空闲链被重复入链污染）→ 入空闲链。
-bool poolFree(void* ptr, int cls) {
-    std::size_t idx = 0;
-    const long long bi = poolLocate(ptr, &idx);
-    if (bi < 0) return false;
-    const PoolBlock& b = g_pool.dir[bi];
-    if (!poolBitGet(b, idx)) {          // 已空闲（重复释放）→ 忽略，不入链
-        ++g_pool.rejectedFree;         // 102 验收观测点：重复释放计数（应恒为 0）
-        return false;
-    }
-    poolBitClear(b, idx);
-    *reinterpret_cast<void**>(ptr) = g_pool.freeHead[cls];
-    g_pool.freeHead[cls] = ptr;
-    --g_pool.live;
-    return true;
-}
-
-// 池重置（内存::释放全部）：全部块归还（位图一并释放）、空闲链清空、目录清空
-void poolReset() {
-    for (std::size_t i = 0; i < g_pool.dirCount; ++i) {
-        std::free(g_pool.dir[i].bits);
-        std::free(g_pool.dir[i].begin);
-    }
-    if (g_pool.dir != nullptr) {
-        std::free(g_pool.dir);
-        g_pool.dir = nullptr;
-    }
-    g_pool.dirCount = 0;
-    g_pool.dirCap = 0;
-    for (int i = 0; i < kPoolClassCount; ++i) {
-        g_pool.freeHead[i] = nullptr;
-        g_pool.carve[i] = nullptr;
-        g_pool.carveRemain[i] = 0;
-        g_pool.carveBits[i] = nullptr;
-        g_pool.carveBegin[i] = nullptr;
-    }
-    g_pool.live = 0;
-}
-
-} // namespace
-
-// 074/102 观测点：池规模与重复释放拦截计数（102 验收判据＝拦截重复释放 应恒为 0）
-static void cnPoolReportLines() {
-    std::size_t poolBytes = 0;
-    for (std::size_t i = 0; i < g_pool.dirCount; ++i) poolBytes += g_pool.dir[i].bytes;
-    std::fprintf(stderr, "[cnrt-pool] 块 %llu 字节 %llu 活动对象 %lld 拦截重复释放 %lld\n",
-                 (unsigned long long)g_pool.dirCount, (unsigned long long)poolBytes,
-                 g_pool.live, g_pool.rejectedFree);
-}
-
+// ==================== 小对象池（074 波3·945 拆出） ====================
+// 945（2026-10-16）：原全局无锁 g_pool（freeHead/carve/dir/live）并发数据竞争
+//   （C8 探针两线程独立对象 = rc=139）——池实现整体拆出 mem_pool.cpp（线程局部
+//   快路径 + 全局锁慢路径·设计总纲见该文件头注）；本文件经 runtime/mem_pool.hpp
+//   接口调用：poolAlloc/poolTryFree/poolClassOfPtr/poolClassCapacity/poolReset/
+//   poolReportLines。语义面（档位/溯源/重复释放拦截/释放全部整块归还）不变。
 // ---- tracked 分配注册表（供 内存::释放全部() 批量释放）----
 // 2026-08-24 结构性加固（78_chain_build 段错误根治）：
 //   原实现用 std::malloc 手写链表（TrackedNode），reset/reset 之外的释放组合下
@@ -366,21 +136,38 @@ static void cnPoolReportLines() {
 //   现改为 std::unordered_set<void*> 注册表——天然去重、O(1) 增删查、
 //   reset 遍历即释放；size 另存 unordered_map 供 cn_realloc_tracked 精确拷贝。
 //   学习 C++/Rust 经验：容器管理自己的内存；注册表只是“漏网字符串”兜底。
-static std::unordered_set<void*> g_trackedSet;            // tracked 分配集合（去重）
-static std::unordered_map<void*, std::size_t> g_trackedSize;  // ptr -> 分配大小
+
+// 945（2026-10-16）：注册表读写整体加锁——945 前为无锁访问，多线程并发
+//   insert/erase（各线程字符串字面量副本/大缓冲释放）即容器结构破坏 =
+//   C8 探针 rc=139 的另一半病根。注册表只服务 >4KB 大对象 + 宿主契约面
+//   （v2p 全树仅 ~900 次）+ reset 清表——锁开销不在小对象热路径上。
+//   锁对象与容器同生命周期：堆单例（永不析构）——规避静态析构时序（851 教训）。
+struct TrackedTable {
+    std::mutex mu;
+    std::unordered_set<void*> set;
+    std::unordered_map<void*, std::size_t> size;
+};
+TrackedTable& trackedTable() {
+    static TrackedTable* t = new TrackedTable();
+    return *t;
+}
 
 // 注册 tracked 分配（O(1)；重复注册天然去重）
 static void trackedRegister(void* ptr, std::size_t size = 0) {
     if (ptr == nullptr) return;
-    g_trackedSet.insert(ptr);
-    if (size > 0) g_trackedSize[ptr] = size;
+    TrackedTable& t = trackedTable();
+    std::lock_guard<std::mutex> lk(t.mu);
+    t.set.insert(ptr);
+    if (size > 0) t.size[ptr] = size;
 }
 
 // 从注册表移除 tracked 分配（cn_free_tracked 调用时）；返回是否存在
 static bool trackedUnregister(void* ptr) {
     if (ptr == nullptr) return false;
-    const bool existed = g_trackedSet.erase(ptr) > 0;
-    g_trackedSize.erase(ptr);
+    TrackedTable& t = trackedTable();
+    std::lock_guard<std::mutex> lk(t.mu);
+    const bool existed = t.set.erase(ptr) > 0;
+    t.size.erase(ptr);
     return existed;
 }
 
@@ -421,11 +208,14 @@ extern "C" void cn_free(void* ptr) {
     if (dfProbe) {
         std::fprintf(stderr, "[dblfree?] free ptr=%p\n", (void*)ptr);
     }
-    const int cls = poolFindClass(ptr);
-    if (cls >= 0) {
-        if (poolFree(ptr, cls)) --g_cn_alloc_live;
+    // 945：池分流（快路径线程局部无锁·跨线程走池慢路径锁）；命中池=已处理。
+    //   计数口径逐字对齐旧实现：重复释放拦截（RejectedDouble）不扣活动数。
+    const cnrt::PoolFreeResult pr = cnrt::poolTryFree(ptr);
+    if (pr == cnrt::PoolFreeResult::Freed) {
+        --g_cn_alloc_live;
         return;
     }
+    if (pr == cnrt::PoolFreeResult::RejectedDouble) return;
     --g_cn_alloc_live;
     std::free(ptr);
 }
@@ -458,18 +248,19 @@ extern "C" void* cn_realloc(void* ptr, std::size_t size) {
     cnBinAdd(size);   // 829 侦查直方图（扩容：累计新尺寸）
     // 074 波3：池内指针不可 std::realloc（池块非 CRT 块·误用=堆损坏）——
     //   新分配 + 拷贝（旧档位容量内）+ 归还旧槽；跨族误用由此结构性消除。
+    //   945：分流与容量查询走线程安全池接口（>4KB 时 poolAlloc 自返回 nullptr）。
     {
-        const int cls = poolFindClass(ptr);
+        const int cls = cnrt::poolClassOfPtr(ptr);
         if (cls >= 0) {
-            const std::size_t cap = kPoolClass[cls];
-            void* np = (size <= kPoolMax) ? poolAlloc(size) : nullptr;
+            const std::size_t cap = cnrt::poolClassCapacity(cls);
+            void* np = cnrt::poolAlloc(size);
             if (np == nullptr) {
                 np = std::malloc(size);
                 if (np == nullptr) return nullptr;
                 trackedRegister(np, size);
             }
             std::memcpy(np, ptr, cap < size ? cap : size);
-            if (poolFree(ptr, cls)) --g_cn_alloc_live;
+            if (cnrt::poolTryFree(ptr) == cnrt::PoolFreeResult::Freed) --g_cn_alloc_live;
             ++g_cn_alloc_live;
             return np;
         }
@@ -487,7 +278,7 @@ extern "C" void* cn_realloc(void* ptr, std::size_t size) {
 //   分配中 >4KB 仅 ~900 次，逐对象注册表（双容器节点 + 1678 万桶）占 ~725MB
 //   且是 v2p 峰值 1.78GB 的主因；池化后实测 228MB（-87%）。
 extern "C" void* cn_alloc_tracked(std::size_t size) {
-    void* p = poolAlloc(size);                     // ≤4KB：定档池（零逐对象簿记）
+    void* p = cnrt::poolAlloc(size);               // ≤4KB：定档池（零逐对象簿记）
     if (p == nullptr) {
         p = std::malloc(size);                     // 大对象/池失败：malloc + 注册表
         if (p == nullptr) return nullptr;
@@ -518,17 +309,19 @@ extern "C" void* cn_alloc_tracked_host(std::size_t size) {
 }
 
 extern "C" void cn_free_tracked(void* ptr) {
-    // 安全释放（2026-08-24 加固 + 074 波3 池化）：
-    //   ① 池内指针（块目录溯源命中）→ 归还档位空闲链；**位图拦截重复释放**
-    //      （槽位已空闲=重复释放 → 忽略，与旧注册表「未命中即忽略」同款防御）；
+    // 安全释放（2026-08-24 加固 + 074 波3 池化 + 945 线程安全）：
+    //   ① 池内指针（块目录溯源命中·含跨线程释放慢路径）→ 归还空闲链；**位图
+    //      拦截重复释放**（槽位已空闲=重复释放 → 忽略，与旧注册表「未命中即
+    //      忽略」同款防御）；
     //   ② 大对象（注册表命中）→ free；
     //   ③ 其余（reset 后遗留/外部/驻留常量指针）→ **忽略不触碰内存**，杜绝双重释放。
     if (ptr == nullptr) return;
-    const int cls = poolFindClass(ptr);
-    if (cls >= 0) {
-        if (poolFree(ptr, cls)) --g_cn_alloc_live;
+    const cnrt::PoolFreeResult pr = cnrt::poolTryFree(ptr);
+    if (pr == cnrt::PoolFreeResult::Freed) {
+        --g_cn_alloc_live;
         return;
     }
+    if (pr == cnrt::PoolFreeResult::RejectedDouble) return;   // 重复释放拦截（不扣计数）
     if (trackedUnregister(ptr)) {
         --g_cn_alloc_live;
         std::free(ptr);
@@ -545,9 +338,9 @@ extern "C" void* cn_realloc_tracked(void* ptr, std::size_t size) {
     }
     // 池内指针：档位容量足够则原地复用；否则新分配 + 拷贝 + 归还旧槽
     //   （Rust alloc::realloc 合同同款：容量内复用零拷贝，超档位走搬移）
-    const int cls = poolFindClass(ptr);
+    const int cls = cnrt::poolClassOfPtr(ptr);
     if (cls >= 0) {
-        const std::size_t cap = kPoolClass[cls];
+        const std::size_t cap = cnrt::poolClassCapacity(cls);
         if (size <= cap) {
             cnBinAdd(size);
             return ptr;
@@ -833,13 +626,14 @@ extern "C" void* __cn_object_new(long long size) {
 
 // 删除对象：释放对象内存（DeleteObject 指令展开调用；安全释放 nullptr）
 extern "C" void __cn_object_delete(void* ptr) {
-    // 074 波3：防御分流——池内指针归还池（std::free 池块=堆损坏）
+    // 074 波3：防御分流——池内指针归还池（std::free 池块=堆损坏）；945：线程安全接口
     if (ptr == nullptr) return;
-    const int cls = poolFindClass(ptr);
-    if (cls >= 0) {
-        if (poolFree(ptr, cls)) --g_cn_alloc_live;
+    const cnrt::PoolFreeResult pr = cnrt::poolTryFree(ptr);
+    if (pr == cnrt::PoolFreeResult::Freed) {
+        --g_cn_alloc_live;
         return;
     }
+    if (pr == cnrt::PoolFreeResult::RejectedDouble) return;   // 重复释放拦截（不扣计数）
     std::free(ptr);
 }
 
@@ -849,27 +643,34 @@ extern "C" void __cn_object_delete(void* ptr) {
 // 不影响 cn_alloc/cn_realloc 分配的内存（向量数据数组由 RAII 析构管理）。
 // 设计参考 C++ 智能指针池和 Rust 的 Drop trait——批量释放仅针对无 RAII 的分配。
 extern "C" void __cn_alloc_reset() {
-    // 074 波3：池整块归还（块目录遍历 std::free·空闲链/目录清空）——池内全部对象
-    //   一次性失效（语义同旧注册表整批释放，且整块归远比逐对象 free 更彻底）。
-    g_cn_alloc_live -= g_pool.live;
-    poolReset();
+    // 074 波3 / 945：池整块归还（全部线程池块目录遍历 std::free·链/目录清空）——
+    //   池内全部对象一次性失效（语义同旧注册表整批释放，且整块归远比逐对象 free
+    //   更彻底）。945：活动对象数由池内位图扫描统计（poolReset 返回）——
+    //   计数维护已整体移出分配热路径（原 g_pool.live 逐分配加减）。
+    g_cn_alloc_live -= cnrt::poolReset();
     // 自愈式批量释放（2026-08-24 结构性加固）：
     //   unordered_set 遍历释放——天然去重，同一 ptr 只 free 一次（杜绝 double free）；
     //   边遍历边按值收集（set 迭代器不因 free 他人而失效）。
     //   完成后清空注册表；reset 之后旧 ptr 的 unregister/free 走"未找到"忽略。
     //   注意：reset 只应释放"无外部引用"的 tracked 内存（设计语义：组件间清场）。
+    //   945：注册表读写持表锁（并发结构保护）；reset 与并发注册的时序=用户责任
+    //   （组件间清场语义前提同池）。
     // 标识符用 ASCII（待释放）——GCC 9/7 不支持 UTF-8 标识符，中文标识符会中断 Linux 构建
+    TrackedTable& t = trackedTable();
     std::vector<void*> to_free;
-    to_free.reserve(g_trackedSet.size());
-    for (void* p : g_trackedSet) to_free.push_back(p);
+    {
+        std::lock_guard<std::mutex> lk(t.mu);
+        to_free.reserve(t.set.size());
+        for (void* p : t.set) to_free.push_back(p);
+        t.set.clear();
+        t.size.clear();
+    }
     for (void* p : to_free) {
         if (p != nullptr) {
             --g_cn_alloc_live;
             std::free(p);
         }
     }
-    g_trackedSet.clear();
-    g_trackedSize.clear();
 #ifdef _WIN32
     // 2026-08-25 堆压缩：78/79 组件链连续编译多个模块时，每个模块释放百万级
     //   小对象后 Windows 堆不把空闲页归还 OS——工作集持续攀升（实测 26GB 失控）。

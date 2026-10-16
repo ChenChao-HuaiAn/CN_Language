@@ -54,8 +54,9 @@ if hasattr(sys.stderr, "reconfigure"):
 # 运行时 .o 名（cn build 自动编译到 target/<目标平台桶>/；linux 侧现场 g++ -c 同名单，
 #   对齐 run_e2e.py 确保v2p与运行时就绪 的运行时名们——io_api 与 time/system 等
 #   560-a 实测全名单取 runner 同款，缺一链接期 undefined；349 重构E：io_api 拆出
-#   mem_api/arena/crash_handler 三件同编同链；522：win 侧消费 target/win-x64/*.obj）
-运行时名们 = ["io_api", "mem_api", "arena", "crash_handler",
+#   mem_api/arena/crash_handler 三件同编同链；945：mem_api 再拆 mem_pool 同链；
+#   522：win 侧消费 target/win-x64/*.obj）
+运行时名们 = ["io_api", "mem_api", "mem_pool", "arena", "crash_handler",
             "intern_api", "runtime", "string_api", "i128_api",
             "math_api", "input_api", "file_api", "time_api", "system_api"]
 

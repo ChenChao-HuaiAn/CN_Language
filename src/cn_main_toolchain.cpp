@@ -196,7 +196,8 @@ static bool compileRuntime(const std::string& target, const std::string& vcvarsB
                            const std::string& objDir, bool verbose, std::string& error) {
     static const char* runtimeSrcs[] = {
         "src/runtime/io_api.cpp",
-        "src/runtime/mem_api.cpp",   // 349 重构E：自 io_api.cpp 拆出（内存管理+小对象池）
+        "src/runtime/mem_api.cpp",   // 349 重构E：自 io_api.cpp 拆出（内存管理）
+        "src/runtime/mem_pool.cpp",  // 945：自 mem_api.cpp 拆出（小对象池·并发安全）
         "src/runtime/arena.cpp",     // 349 重构E：自 io_api.cpp 拆出（进程竞技场）
         "src/runtime/crash_handler.cpp",  // 349 重构E：自 io_api.cpp 拆出（崩溃处理器）
         "src/runtime/intern_api.cpp",  // 2026-08-25 自举重建 P1：字符串驻留（Symbol ID）
@@ -259,6 +260,7 @@ static bool linkExe(const std::string& target, const std::string& vcvarsBat,
             "/DEFAULTLIB:shell32.lib "  // Task 6.5 系统库：CommandLineToArgvW（Unicode 命令行解析）
             "/OUT:\"" + exePath + "\" \"" + userObj + "\" \"" +
             runtimeObjDir + "\\io_api.obj\" \"" + runtimeObjDir + "\\mem_api.obj\" \"" +  // 349 重构E：io_api 拆分三件同链
+            runtimeObjDir + "\\mem_pool.obj\" \"" +  // 945：池拆出后同链
             runtimeObjDir + "\\arena.obj\" \"" + runtimeObjDir + "\\crash_handler.obj\" \"" +
             runtimeObjDir + "\\intern_api.obj\" \"" +
             runtimeObjDir + "\\runtime.obj\" \"" + runtimeObjDir + "\\thread_api.obj\" \"" + runtimeObjDir + "\\string_api.obj\" \"" + runtimeObjDir + "\\i128_api.obj\" \"" +
@@ -273,6 +275,7 @@ static bool linkExe(const std::string& target, const std::string& vcvarsBat,
         cmdLine =
             linuxCxxTool() + " -no-pie -o \"" + exePath + "\" \"" + userObj + "\" \"" +
             runtimeObjDir + "/io_api.o\" \"" + runtimeObjDir + "/mem_api.o\" \"" +  // 349 重构E：io_api 拆分三件同链
+            runtimeObjDir + "/mem_pool.o\" \"" +  // 945：池拆出后同链
             runtimeObjDir + "/arena.o\" \"" + runtimeObjDir + "/crash_handler.o\" \"" +
             runtimeObjDir + "/intern_api.o\" \"" +
             runtimeObjDir + "/runtime.o\" \"" + runtimeObjDir + "/thread_api.o\" \"" + runtimeObjDir + "/string_api.o\" \"" + runtimeObjDir + "/i128_api.o\" \"" +
