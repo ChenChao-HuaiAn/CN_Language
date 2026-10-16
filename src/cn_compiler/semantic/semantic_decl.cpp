@@ -247,9 +247,14 @@ void SemanticAnalyzer::visitVarDecl(VarDecl* node) {
     //   显式：字符串复制(...)（既有白名单函数落堆）；字符* 借用视图随第三批 A2。
     //   推断声明形态（类型哨兵空串）不在此拦——其类型回填在初始化检查之后，
     //   存量预审为零（诚实边界，随 A2 类型区分一并收口）。
+    // 733（#733）：canonical 剥尾 '&' 会把引用声明（字符串& y = 成员/下标）误当
+    //   拥有变量初始化拦下（探针 e：原报本条+返回位连锁 3 条）；引用变量不注入
+    //   __cn_str_free，A1 的 UAF 机理不适用——悬垂由返回位局部地址检查拒（修后
+    //   与 v2 同判：e 形态双侧同为「引用返回不能返回局部变量的地址（'y'）」）。
     if (node->initializer != nullptr && !varType.empty() &&
         !node->funcPtr.isFunctionPtr() &&
-        types::canonical(varType) == "字符串") {
+        types::canonical(varType) == "字符串" &&
+        !types::isReference(varType)) {
         const NodeType initKindA1 = node->initializer->getType();
         bool borrowInitA1 = initKindA1 == NodeType::IndexExpr ||
                             initKindA1 == NodeType::MemberExpr;
