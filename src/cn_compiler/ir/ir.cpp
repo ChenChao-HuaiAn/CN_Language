@@ -209,6 +209,23 @@ void IRGenerator::registerVarSlots(const std::string& unique, const std::string&
         function_->varSlots[unique] = 1;
     }
 }
+// 936（912 宿主对应面·公共归纳单点）：聚合返回（结构体/数组）调用点 retbuf
+//   缓冲构造（形态A 契约·plans/016）：Alloca 缓冲槽 + AddrOf 取址，缓冲槽数
+//   经 registerVarSlots 按源码类型实际大小登记（结构体 ceil(size/8)、数组按
+//   C 总大小——覆盖 087/虚调用/实例直调三处原有的「先置 8 再按类型登记」形态，
+//   逐字等价；>8 字节结构体多槽=被调 epilogue rep movsb 精确大小拷贝的安全面）。
+//   提炼缘由：同一段原在虚调用 410/实例直调 Task 6.1/普通调用 087 三处逐字
+//   重复，936 静态直调（类名.静态方法()）须补第 4 处——按「事不过三」先提炼。
+ir::IRValue IRGenerator::allocAggRetbufBuf(const std::string& srcRetType,
+                                           const SourceLocation& loc) {
+    const std::string temp = "__retbuf" + std::to_string(varCounter_++);
+    emit(ir::Opcode::Alloca, {}, ir::IRValue::reg(regCounter_++, "ptr"),
+         temp, "ptr", loc);
+    function_->varSlots[temp] = 8;
+    registerVarSlots(temp, srcRetType);
+    return emitResult(ir::Opcode::AddrOf, {ir::IRValue::var(temp, "i64")},
+                      "ptr", temp, loc);
+}
 std::string IRGenerator::lookupVarName(const std::string& name) const {
     for (auto it = varStack_.rbegin(); it != varStack_.rend(); ++it) {
         auto found = it->find(name);

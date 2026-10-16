@@ -803,17 +803,12 @@ void IRGenerator::visitCallExpr(CallExpr* node) {
             (semantic_->isStructType(types::canonical(
                  semantic_->funcReturnTypeOf(calleeName))) ||
              isArrayRet087)) {
-            const std::string retType = semantic_->funcReturnTypeOf(calleeName);
-            const std::string temp = "__retbuf" + std::to_string(varCounter_++);
-            emit(ir::Opcode::Alloca, {}, ir::IRValue::reg(regCounter_++, "ptr"),
-                 temp, "ptr", node->location);
-            // 返回缓冲区按 64 字节（8 槽）分配——与被调方 epilogue 的 64 字节
-            //   拷贝上限一致（结构体实际大小 ≤64 字节场景）
-            function_->varSlots[temp] = 8;
-            registerVarSlots(temp, retType);
-            ir::IRValue buf = emitResult(ir::Opcode::AddrOf,
-                                         {ir::IRValue::var(temp, "i64")},
-                                         "ptr", temp, node->location);
+            // 缓冲构造=allocAggRetbufBuf（936 提炼·公共单点）：槽数经
+            //   registerVarSlots 按源码类型实际大小登记（原「64 字节 8 槽」
+            //   固定假设=被调 epilogue 精确大小拷贝（structReturnSize）时代
+            //   的安全面欠账，936 归纳时统一为多槽登记）。
+            ir::IRValue buf = allocAggRetbufBuf(
+                semantic_->funcReturnTypeOf(calleeName), node->location);
             // 隐藏返回指针作为第一个参数（rcx）
             std::vector<ir::IRValue> hiddenArgs = args;
             hiddenArgs.insert(hiddenArgs.begin(), buf);

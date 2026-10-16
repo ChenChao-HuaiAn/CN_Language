@@ -545,6 +545,26 @@ int IRGenerator::emitStaticMethodCall(CallExpr* node, MemberExpr* mem,
         //   同修（实例方法/虚调用已接·静态方法原缺 → 字面量实参 i64 直传 →
         //   被调方按 i128 指针解引用 SIGSEGV·探针 p_static 实证）。
         normalizeMethodArgs(node, m->paramTypes, args);
+        // 936（912 宿主对应面·1036 探针实锚 C0000005）：静态方法直调（类名.静态
+        //   方法()/类名::静态方法()·两分隔符共用本 MemberExpr 通道）聚合返回
+        //   （结构体/数组/结果<>合成结构体）——与虚调用 410/实例直调 Task 6.1/
+        //   普通调用 087 同款形态A 预插 retbuf 隐藏返回指针（参数位 0=rcx）。
+        //   原缺预插：被调方 epilogue 把垃圾 rcx 当 retbuf rep movsb 野写
+        //   （C0000005 非确定崩·读侧 rax 亦为垃圾）、调用方无缓冲可拷——宿主
+        //   为唯一红侧（v2 侧 912 同族已修·1036_v2 PASS），产物曾首跑假绿复跑
+        //   红（1036 双编译实录）。
+        if (semantic_ != nullptr && !m->type.empty() && !m->isRefReturn &&
+            (semantic_->isStructType(types::canonical(m->type)) ||
+             types::isArray(m->type))) {
+            ir::IRValue buf = allocAggRetbufBuf(m->type, node->location);
+            std::vector<ir::IRValue> hiddenArgs;
+            hiddenArgs.push_back(buf);  // 形态A：retbuf（位 0=rcx）
+            for (auto& a : args) hiddenArgs.push_back(a);
+            emit(ir::Opcode::Call, hiddenArgs, ir::IRValue(),
+                 methodSymbolKey(owner, m->sigKey), "void", node->location);
+            lastExpr_ = buf;
+            return 1;
+        }
         // 118（929）：引用返回方法（-> T&）——resultType=ptr（被引用左值地址）
         const std::string resultType = m->isRefReturn
                                            ? "ptr"
@@ -684,19 +704,11 @@ void IRGenerator::emitVirtualMethodCall(CallExpr* node, const ClassMemberInfo* m
     //   即此形态A 契约；虚调用此前缺预插=被调方把返回值写进 this 对象内存=
     //   堆写穿·调用方从 [rax=this] 拷回仅值侥幸对）。i128 返回不预插（后端
     //   按 result.type 自建缓冲·emitCall hasBigRet 同款）。
+    //   缓冲构造=allocAggRetbufBuf（936 提炼·公共单点）。
     if (semantic_ != nullptr && !m->type.empty() && !m->isRefReturn &&
         (semantic_->isStructType(types::canonical(m->type)) ||
          types::isArray(m->type))) {
-        const std::string temp = "__retbuf" + std::to_string(varCounter_++);
-        emit(ir::Opcode::Alloca, {}, ir::IRValue::reg(regCounter_++, "ptr"),
-             temp, "ptr", node->location);
-        function_->varSlots[temp] = 8;
-        registerVarSlots(temp, m->type);
-        const int structSize = semantic_->typeSizeOf(types::canonical(m->type));
-        if (structSize > 8) function_->varSlots[temp] = (structSize + 7) / 8;
-        ir::IRValue buf = emitResult(ir::Opcode::AddrOf,
-                                     {ir::IRValue::var(temp, "i64")},
-                                     "ptr", temp, node->location);
+        ir::IRValue buf = allocAggRetbufBuf(m->type, node->location);
         std::vector<ir::IRValue> hiddenArgs;
         hiddenArgs.push_back(buf);      // 形态A：retbuf（位 0）
         hiddenArgs.push_back(thisArg);  // this（位 1）
@@ -753,22 +765,12 @@ void IRGenerator::emitDirectMethodCall(CallExpr* node, const ClassMemberInfo* m,
                                        : mapType(m->type.empty() ? "空类型" : m->type);
     // Task 6.1（容器库 追加/读取 返回 结果<空类型,整32> 合成结构体）：方法返回
     //   结构体时须走隐藏返回指针（与 visitCallExpr 普通函数 structReturn 一致）——
+    //   缓冲构造=allocAggRetbufBuf（936 提炼·公共单点；原注释「返回缓冲区槽数按
+    //   结构体实际大小 ceil(size/8)」的槽登记由 registerVarSlots 统一承担）。
     if (semantic_ != nullptr && !m->type.empty() && !m->isRefReturn &&
         (semantic_->isStructType(types::canonical(m->type)) ||
          types::isArray(m->type))) {
-        const std::string temp = "__retbuf" + std::to_string(varCounter_++);
-        emit(ir::Opcode::Alloca, {}, ir::IRValue::reg(regCounter_++, "ptr"),
-             temp, "ptr", node->location);
-        // 返回缓冲区槽数：按结构体实际大小（ceil(size/8)）——不能固定 8 字节，
-        //   否则被调方 rep movsb 12 字节越界覆盖相邻栈槽（this 被覆盖 -> 数据
-        //   基址垃圾）。registerVarSlots 对结构体类型登记多槽，但需类型已注册。
-        function_->varSlots[temp] = 8;
-        registerVarSlots(temp, m->type);
-        const int structSize = semantic_->typeSizeOf(types::canonical(m->type));
-        if (structSize > 8) function_->varSlots[temp] = (structSize + 7) / 8;
-        ir::IRValue buf = emitResult(ir::Opcode::AddrOf,
-                                     {ir::IRValue::var(temp, "i64")},
-                                     "ptr", temp, node->location);
+        ir::IRValue buf = allocAggRetbufBuf(m->type, node->location);
         std::vector<ir::IRValue> hiddenArgs;
         hiddenArgs.push_back(buf);   // 隐藏返回指针（参数位 0，rcx）
         hiddenArgs.push_back(thisArg);  // this（参数位 1，rdx）

@@ -290,6 +290,15 @@ private:
                          const std::string& srcType, const SourceLocation& loc);
     // 登记变量栈槽数（唯一内部名 -> 槽数量）：数组按长度、普通变量1（Task 2.4）
     void registerVarSlots(const std::string& unique, const std::string& srcType);
+    // 936（912 宿主对应面·公共归纳单点）：聚合返回（结构体/数组）调用点 retbuf
+    //   缓冲构造（形态A 契约）——Alloca 缓冲槽（槽数=ceil(类型大小/8)，经
+    //   registerVarSlots 统一）+ AddrOf 取址；返回缓冲地址（ptr）。调用点职责：
+    //   该地址作隐藏返回指针插实参位 0（rcx）+ Call result=void（extra=符号名）
+    //   + lastExpr_=缓冲地址供上层 CopyStruct 物化。四族调用点共用（虚调用 410/
+    //   实例直调 Task 6.1/静态直调 936/普通调用 087）——原逐字重复，936 提炼。
+    //   前提：调用点已判定 semantic_ != nullptr 且 srcRetType 为结构体/数组。
+    ir::IRValue allocAggRetbufBuf(const std::string& srcRetType,
+                                  const SourceLocation& loc);
     // 查找变量寄存器（未找到返回id=-1）
     ir::IRValue lookupVar(const std::string& name);
 
