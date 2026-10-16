@@ -109,6 +109,23 @@ bool SemanticAnalyzer::intLiteralFitsType(const Expr* e, const std::string& to) 
             return decTextFits(decDigits, textNeg, "9223372036854775808",
                                "9223372036854775807");
         }
+        // 640（2026-10-16·535 批乙语义恢复扩展）：128 槽文本级域——558/535
+        //   原注释「整128/正128 域宽于任何 int64 承载内文本恒适」对**超
+        //   int64 文本**不成立（39/41 位文本可超 2^127·m642c/d 探针实锚：
+        //   宿主原仅 IR 层拒/v2 放行错值-1）。整128 合法域 [-2^127, 2^127-1]
+        //  （负号按负值判·与 decTextFits 上界串约定一致）、正128 [0, 2^128-1]。
+        //   本判定使 640 静态槽挂点（顶层登记趟/类字段折叠 else-if）对 128
+        //   槽自动覆盖。
+        if (to == "整128") {
+            return decTextFits(decDigits, textNeg,
+                               "170141183460469231731687303715884105728",
+                               "170141183460469231731687303715884105727");
+        }
+        if (to == "正128") {
+            return !textNeg &&
+                   decTextLe(decDigits,
+                             "340282366920938463463374607431768211455");
+        }
         if (to == "正8") return !textNeg && decTextLe(decDigits, "255");
         if (to == "正16") return !textNeg && decTextLe(decDigits, "65535");
         if (to == "正32") return !textNeg && decTextLe(decDigits, "4294967295");

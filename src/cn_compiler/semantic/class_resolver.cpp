@@ -684,6 +684,21 @@ void SemanticAnalyzer::collectClassMembers(ClassDecl* node, ClassInfo& info) {
                             "' 声明初始化器不支持：" + foldErr +
                             "（加载期直存面·001 §静态成员）——请在构造函数或"
                             "主入口赋值（运行期读写链全形态生效）");
+                } else if (isIntLiteralExpr(member->initializer.get()) &&
+                           !intLiteralFitsType(member->initializer.get(), mi.type)) {
+                    // 640（535 批乙语义恢复·2026-10-16）：类静态字段超域字面量
+                    //   直存编译期拒——折叠面原无值域门槛（静态 整32 总数 =
+                    //   3000000000 宿主按 32 位截断直存·475 探针 m20 实锚）。
+                    //   字面量（含一元负号）数学值须在字段类型值域内；与
+                    //   顶层静态登记（semantic.cpp）/函数内静态（558 链）
+                    //   三形态同构执法。立法见 001 §静态成员（475 批乙）。
+                    diagnostics_.report(
+                        DiagnosticLevel::Error, member->location,
+                        "类 '" + node->name + "' 静态字段 '" + mi.name +
+                            "' 的声明初值超出 '" + mi.type +
+                            "' 值域——静态槽加载期直存须为值域内字面量"
+                            "（001 §静态成员·535）；如确需位模式截断请显式转换"
+                            "（如 " + mi.type + "(表达式)）");
                 }
             }
             // 775（甲案·2026-10-15 用户裁决甲）：非静态（实例）字段声明初始化器

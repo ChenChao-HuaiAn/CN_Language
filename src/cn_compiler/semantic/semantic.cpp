@@ -853,6 +853,27 @@ void SemanticAnalyzer::registerGlobalConstsAndStatics(Program* node) {
             if (staticModules_[g->name].size() == 1) {
                 declareVar(g->name, stType, g->location);
             }
+            // 640（535 批乙语义恢复·2026-10-16）：顶层静态槽超域字面量直存
+            //   编译期拒——本函数是顶层静态的唯一登记通道（不走 visitVarDecl
+            //   初始化检查），原无值域门槛：宿主按 32 位截断（静态 整32 gs =
+            //   3000000000 出 -1294967296）vs v2 64 位槽直读（3000000000）
+            //   双侧分叉（475 探针 m9/m17/m18 实锚）。立法=475 批乙（2026-10-14
+            //   用户网页裁决「静态槽超域字面量直存编译期拒」·001 §静态成员），
+            //   原实施提交（535·fb0306281）未进 develop（收口 sha 记录异常），
+            //   本任务恢复。超承载十进制文本（19~20 位）由 558 升级后的
+            //   intLiteralFitsType 文本级判域一并拦截（该面原仅覆盖函数内静态/
+            //   局部）。字面量（含一元负号）数学值须在槽类型值域内——域内直存
+            //   零变化；与 函数内静态（semantic_decl.cpp 558 链）/类静态字段
+            //   （class_resolver.cpp 同批）三形态同构执法。
+            if (g->initializer != nullptr &&
+                isIntLiteralExpr(g->initializer.get()) &&
+                !intLiteralFitsType(g->initializer.get(), stType)) {
+                diagnostics_.report(
+                    DiagnosticLevel::Error, g->initializer->location,
+                    "静态变量 '" + g->name + "' 的初始字面量超出 '" + stType +
+                        "' 值域——静态槽加载期直存须为值域内字面量（001 §静态成员·535）；"
+                        "如确需位模式截断请显式转换（如 " + stType + "(表达式)）");
+            }
             // 746（2026-10-14）：顶层静态「抽象类/接口」值形态拦截（specs/06 §八）
             //   ——原缺口=顶层静态不走 visitVarDecl（193/593 挂点恒 miss·探针
             //   静态 形状 单; rc=0 实锤）；数组形态 v2 收集静态声明 593 已拦而宿主
