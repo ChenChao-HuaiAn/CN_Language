@@ -361,6 +361,13 @@ private:
     // 函数签名 key -> 尾部默认参数 IR 常量值（Task 2.10 默认实参补全）。
     // 顺序与函数参数一致（仅含带默认值的尾部参数）；调用补全时按此精确展开。
     std::unordered_map<std::string, std::vector<ir::IRValue>> funcDefaultArgs_;
+    // 980 红治理 v2（2026-10-16·880）：自由函数名 → 声明 AST（visitProgram 与
+    //   collectFreeFunctionDefaults 同循环预收集）——registerOopRaii 判「初值=
+    //   用户函数调用接收」的返回来源三分（形参/全局=写穿别名→接收槽豁免登记；
+    //   局部/新建=句柄转移→正常登记回收）。治 980（返回形参·幼≡犬 双删
+    //   C0000374）与 836/878（返回局部/引用·接收应拥有）的判据对偶。重载同名
+    //   取后声明（判据面只用 returnType 引用位与 return 表达式类别·近似足够）。
+    std::unordered_map<std::string, FunctionDecl*> freeFuncDecls880_;
     // D23（248-a）：visitProgram 预收集全部类的构造默认值（类方法提升晚于
     //   主函数生成——生成期收集会晚于调用点查表）；emitClassMethod 内同款
     //   收集保留（幂等跳过）作兜底。
@@ -718,8 +725,7 @@ private:
     void emitClassMethod(const std::string& className, const ClassMemberInfo& mi);
     // 生成方法体 IRFunction 的参数装载（this + 显式参数进入 varStack_ 最外层作用域）
     void setupMethodParams(ir::IRFunction& func, const ClassMemberInfo& mi);
-    // Feature 2 完整版（2026-08-25）：容器<T> 元素自动析构——编译器级注入。
-    //   向量/链表/栈/队列 持有内联类元素（T* 数据/值表）。当 T 为有析构类时：
+    // Feature 2 完整版：容器<T> 元素自动析构注入（详注见 ir_oop_container.cpp 实现头注）。
     void injectContainerElemDestroy(const std::string& className,
                                     const ClassMemberInfo& mi,
                                     const SourceLocation& loc);
@@ -730,15 +736,11 @@ private:
                                 const SourceLocation& loc, int depth = 0);
     // 860-a：构造函数序言级联构造「有默认构造」本类类字段（与析构侧对称·详注见 ir_oop.cpp 实现头注）。
     void injectFieldCascadeConstruct(const ClassMember* member);
-    // #283 甲案（2026-10-08）：类类型字段默认构造级联发射——给定已分配对象指针，
-    //   对本类「有严格无参构造」的类字段逐个 NewObject+默认构造+写入字段槽
-    //   （860-a 用户构造序言路径与此共用单字段发射；无构造类实例化点接入）
+    // #283 甲案：类字段默认构造级联发射（NewObject+默认构造+写入字段槽·详注见 ir_oop.cpp 实现头注）。
     void cascadeConstructFields(const std::string& className,
                                 const ir::IRValue& obj,
                                 const SourceLocation& loc);
-    // 117（v10 p0930_05）：基类构造链注入——派生构造器无显式初始化列表时
-    //   自动调用基类默认构造（C++ 语义·spec 06§三）；亦用于类自身无构造的
-    //   实例化点。emitClassMethod 序言与 emitConstructorCall 共用（ir_oop.cpp）。
+    // 117：基类构造链注入（派生无显式初始化列表自动调基类默认构造·详注见 ir_oop.cpp 实现头注）。
     void emitBaseCtorChain(const std::string& className,
                            const ir::IRValue& thisVal, const SourceLocation& loc);
 

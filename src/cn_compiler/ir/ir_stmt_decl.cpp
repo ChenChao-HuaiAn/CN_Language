@@ -8,6 +8,7 @@
 //   方法顺序=原单函数逐节顺序（零重排）。
 #include <cstdint>
 #include <cstdio>
+#include <functional>
 #include <string>
 #include <utility>
 
@@ -494,7 +495,97 @@ void IRGenerator::registerOopRaii(VarDecl* node, const DeclGenCtx& ctx) {
         semantic_->isClassType(types::canonical(ctx.srcType))) {
         containerElemViewExempt = false;
     }
-    if (!ctx.unique.empty() && !containerElemViewExempt) {
+    // 980 红治理 v2（2026-10-16·880·第三轮判据收窄）：**初值=用户函数调用接收
+    //   → 按被调返回来源三分**——引用写穿立法（plans/001 §5.3·056 甲）下：
+    //   · 返回「形参/全局」=写穿别名（接收槽非拥有者）→ 豁免登记（980：
+    //     幼=喂(犬)·宠≡犬，两槽双删 C0000374）；
+    //   · 返回「局部/函数内新建」=句柄转移（接收槽=唯一拥有者）→ 正常登记
+    //     回收（836：甲=造货架() 块出口在册回收残留 0）；
+    //   · 引用返回=调用点专用深拷路径已物化副本→登记（878）；
+    //   · 内置「复制/转移」=克隆/显式交接产物→登记（284/719）；构造调用
+    //     （含泛型实例文本 名<...>(...)）→登记（770）；容器/合成体→登记。
+    //   AST 不可达/return 非标识符形态=保守豁免（宁漏勿崩·v2 普适口径）。
+    //   函数声明表 freeFuncDecls880_ 由 visitProgram 预收集（含后置定义）。
+    bool callTransferInit = false;
+    if (node->initializer != nullptr &&
+        node->initializer->getType() == NodeType::CallExpr) {
+        auto* initCall = static_cast<CallExpr*>(node->initializer.get());
+        std::string calleeName;
+        if (initCall->callee != nullptr &&
+            initCall->callee->getType() == NodeType::IdentifierExpr) {
+            calleeName = static_cast<IdentifierExpr*>(initCall->callee.get())->name;
+        }
+        // 泛型实例文本归一：名<实参…> → 基名（770 字符串映射<整32> 构造识别）。
+        auto peelTemplateSuffix = [](std::string s) {
+            const std::size_t lt = s.find('<');
+            return lt == std::string::npos ? s : s.substr(0, lt);
+        };
+        const std::string calleeBase = peelTemplateSuffix(calleeName);
+        std::string baseType = ctx.srcType;
+        const std::size_t dl = baseType.find('$');
+        if (dl != std::string::npos) {
+            baseType = baseType.substr(0, dl);
+        }
+        const std::string typeBase = peelTemplateSuffix(baseType);
+        const bool builtinAggregate =
+            typeBase == "向量" || typeBase == "链表" || typeBase == "栈" ||
+            typeBase == "队列" || typeBase == "集合" || typeBase == "映射" ||
+            typeBase == "字符串映射" || typeBase == "结果" || typeBase == "可选";
+        const bool cloneOrMoveCall = calleeBase == "复制" || calleeBase == "转移";
+        if (!calleeName.empty() && !cloneOrMoveCall && calleeBase != typeBase &&
+            !builtinAggregate && semantic_ != nullptr && !ctx.srcType.empty() &&
+            semantic_->isClassType(types::canonical(ctx.srcType))) {
+            auto it = freeFuncDecls880_.find(calleeName);
+            if (it != freeFuncDecls880_.end() && it->second != nullptr &&
+                it->second->body != nullptr) {
+                FunctionDecl* fn = it->second;
+                if (fn->returnType.find('&') == std::string::npos) {
+                    // 找函数体内首个 return 表达式（块/如果 基本形态递归）。
+                    std::function<Expr*(Stmt*)> findReturnExpr = [&](Stmt* s) -> Expr* {
+                        if (s == nullptr) return nullptr;
+                        switch (s->getType()) {
+                        case NodeType::ReturnStmt:
+                            return static_cast<ReturnStmt*>(s)->value.get();
+                        case NodeType::BlockStmt:
+                            for (auto& st : static_cast<BlockStmt*>(s)->statements) {
+                                if (Expr* e = findReturnExpr(st.get())) return e;
+                            }
+                            return nullptr;
+                        case NodeType::IfStmt: {
+                            auto* ifs = static_cast<IfStmt*>(s);
+                            if (Expr* e = findReturnExpr(ifs->thenBranch.get())) return e;
+                            return findReturnExpr(ifs->elseBranch.get());
+                        }
+                        default:
+                            return nullptr;
+                        }
+                    };
+                    Expr* rv = findReturnExpr(fn->body.get());
+                    if (rv != nullptr && rv->getType() == NodeType::IdentifierExpr) {
+                        const std::string rn =
+                            static_cast<IdentifierExpr*>(rv)->name;
+                        bool isParamName = false;
+                        for (auto& p : fn->params) {
+                            if (p != nullptr && p->name == rn) { isParamName = true; break; }
+                        }
+                        bool isGlobalName = false;
+                        if (!isParamName) {
+                            isGlobalName = semantic_->isGlobalStatic(rn) ||
+                                     !semantic_->globalStaticType(rn).empty();
+                        }
+                        // 形参/全局=写穿别名→豁免；局部/新建标识符=转移→登记。
+                        callTransferInit = isParamName || isGlobalName;
+                    } else {
+                        callTransferInit = true;   // 非标识符 return：保守豁免
+                    }
+                }
+                // 引用返回：调用点已走专用深拷路径物化副本→登记（不置位）。
+            } else {
+                callTransferInit = true;           // AST 不可达：保守豁免
+            }
+        }
+    }
+    if (!ctx.unique.empty() && !containerElemViewExempt && !callTransferInit) {
         oopVarSrcTypes_[ctx.unique] = ctx.srcType;
         // 72-a（2026-09-11 第七十二轮）：块级作用域 RAII 名单登记——本块声明的
         //   拥有串/类对象在 genBlock 出口释放（此前仅函数级=循环体中间迭代泄漏）。

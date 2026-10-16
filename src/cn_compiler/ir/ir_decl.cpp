@@ -221,7 +221,11 @@ void IRGenerator::visitProgram(Program* node) {
     //   收集保留（幂等覆盖同 key）作兜底。
     for (auto& decl : node->declarations) {
         if (decl->getType() == NodeType::FunctionDecl) {
-            collectFreeFunctionDefaults(static_cast<FunctionDecl*>(decl.get()));
+            auto* fd = static_cast<FunctionDecl*>(decl.get());
+            collectFreeFunctionDefaults(fd);
+            // 880（980 红治理 v2）：函数声明表预收集——registerOopRaii 判
+            //   调用接收别名的返回来源面（见 ir_generator.hpp 成员注释）。
+            if (!fd->name.empty()) freeFuncDecls880_[fd->name] = fd;
         }
     }
     for (auto& decl : node->declarations) {
