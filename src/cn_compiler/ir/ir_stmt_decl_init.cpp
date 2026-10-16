@@ -168,7 +168,14 @@ void IRGenerator::registerClosureIfNeeded(VarDecl* node) {
                 //   （实测 值捕获p.x: 553448424 而非 1）。
                 if (semantic_ != nullptr &&
                     semantic_->isStructType(types::canonical(capSrc))) {
-                    const int size = semantic_->typeSizeOf(types::canonical(capSrc));
+                    // 940：值捕获结构体快照=定义处**深拷**（原裸 CopyStruct 位拷
+                    //   仅首层字节——字符串字段句柄浅共享，源重赋值/块析构释放堆串
+                    //   后同帧快径读悬垂（空串）；容器/类字段浅共享同病）。深拷=
+                    //   emitStructCopyWithFields 字段级独立副本（串 __cn_str_copy
+                    //   落堆·容器/类字段 NewObject+拷贝构造·嵌套递归）——源保持
+                    //   拥有、快照独立（001 §一D 无悬垂面）。纯 POD 结构体内部落
+                    //   CopyStruct 位拷零开销不变。
+                    const std::string capCanon = types::canonical(capSrc);
                     const std::string temp =
                         "__capstruct" + std::to_string(varCounter_++);
                     emit(ir::Opcode::Alloca, {},
@@ -182,9 +189,27 @@ void IRGenerator::registerClosureIfNeeded(VarDecl* node) {
                         ir::Opcode::AddrOf,
                         {ir::IRValue::var(lookupVarName(cap), "i64")},
                         "ptr", lookupVarName(cap), node->location);
-                    emit(ir::Opcode::CopyStruct, {dstAddr, srcAddr}, ir::IRValue(),
-                         std::to_string(size), "void", node->location);
+                    emitStructCopyWithFields(dstAddr, srcAddr, capCanon,
+                                             node->location,
+                                             /*preFree=*/false,
+                                             /*deepCopy=*/true);
+                    // 940：副本**不登记块出口释放**（安全优先裁决）——闭包值拷贝
+                    //   传递（816 快径继承 closureInfo_）后可在快径中继续消费本
+                    //   临时副本；块出口释放会令拷贝名跨块调用读已释放副本=
+                    //   悬垂回归。释放归属=闭包值生命周期（CN 闭包值=裸函数
+                    //   指针无析构语义·语言级缺口）→ 挂账独立任务
+                    //   （双侧同规：v2 局部槽快照同不释放，零分叉）。
                     info.captureArgs.push_back(dstAddr);
+                } else if (semantic_ != nullptr &&
+                           (types::canonical(capSrc) == "字符串" ||
+                            semantic_->isClassType(types::canonical(capSrc)))) {
+                    // 940：字符串/容器/类值捕获=定义处深拷独立副本（字符串
+                    //   __cn_str_copy 落堆·容器/类 NewObject+拷贝构造）——
+                    //   原裸句柄浅共享，源重赋值/块析构释放后同帧快径读悬垂
+                    //   （F1/F2 探针实录）。其它形态（标量/指针/数组/128 位）
+                    //   走下方原路径零变化。
+                    info.captureArgs.push_back(
+                        evalValueCaptureCopy(cap, capSrc, node->location));
                 } else {
                     // 值捕获：定义处读取变量值快照（i128 双槽 Load 生成双寄存器值）
                     info.captureArgs.push_back(genExpr(

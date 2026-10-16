@@ -30,6 +30,42 @@ std::string IRGenerator::lambdaSlotKey(const std::string& lambdaName,
     return "cap$" + lambdaName + "$" + cap;
 }
 
+// 940（#940 值捕获快照悬垂根治·单一归属）：值捕获快照值求值——字符串/
+//   容器/用户类=定义处深拷独立副本（源重赋值/块析构释放后快照不悬垂·
+//   001 §一D「值捕获快照语义无悬垂面」）；标量/指针/数组原样直取。
+//   字符串：__cn_str_copy 落堆（genCopyBuiltin ① 同通道）；
+//   容器/用户类：NewObject+拷贝构造（genCopyBuiltin ③ 同通道·引用实参=
+//   源变量槽地址·「发现二」约定）；无拷贝构造类=语义层负测拒绝面，
+//   此处防御直取原句柄（不可达路径，非静默兜底：语义检查已拦）。
+ir::IRValue IRGenerator::evalValueCaptureCopy(const std::string& capName,
+                                              const std::string& capSrc,
+                                              const SourceLocation& loc) {
+    ir::IRValue val = genExpr(std::make_unique<IdentifierExpr>(capName).get());
+    if (semantic_ == nullptr) return val;
+    const std::string canon = types::canonical(capSrc);
+    if (canon == "字符串") {
+        return emitResult(ir::Opcode::Call, {val}, "ptr", "__cn_str_copy", loc);
+    }
+    if (semantic_->isClassType(canon)) {
+        const std::string copyKey = classCopyCtorSymbolKey(canon);
+        if (copyKey.empty()) return val;  // 语义层已拒绝（无拷贝构造负测面）
+        const std::string capUnique = lookupVarName(capName);
+        ir::IRValue srcSlot = emitResult(
+            ir::Opcode::AddrOf,
+            {ir::IRValue::var(capUnique, "i64")}, "ptr", capUnique, loc);
+        const ClassInfo* ciC = semantic_->findClass(canon);
+        const std::string extra =
+            canon + "|" + std::to_string(ciC != nullptr ? ciC->totalSize : 0);
+        ir::IRValue newObj = emitResult(
+            ir::Opcode::NewObject, {ir::IRValue::constant(canon, "ptr")}, "ptr",
+            extra, loc);
+        emit(ir::Opcode::Call, {newObj, srcSlot}, ir::IRValue(), copyKey, "void",
+             loc);
+        return newObj;
+    }
+    return val;
+}
+
 // lambda 用户参数段构建（?lambdaN 与蹦床 ?lambdaN$trap 共用——纪律二当场归纳；
 //   原为 visitLambdaExpr 内联段·432 提炼）。前置条件：function_ 已指向 func、
 //   varStack_ 已压入函数作用域。引用参数（T&）按 ptr 槽+byRef 形态（A-1 同款）。
@@ -109,18 +145,31 @@ void IRGenerator::emitLambdaSnapshotStores(
             emit(ir::Opcode::StorePtr, {slotAddr, srcAddr}, ir::IRValue(), "",
                  "ptr", loc);
         } else if (isStructValCap) {
-            // 结构体值捕获：定义处深拷快照到槽（槽地址作目的）
-            const int size = semantic_->typeSizeOf(types::canonical(capSrc));
+            // 结构体值捕获：定义处**深拷快照**到槽（940：#632/#617/#644 深拷通道
+            //   emitStructCopyWithFields）——原裸 CopyStruct 仅位拷首层字节：
+            //   字符串字段=句柄浅共享（源重赋值/块析构释放堆串后快照悬垂·闭包读
+            //   空串/垃圾）、容器/类字段=指针浅共享（源释放后快照读大小 0/元素(0)
+            //   越界——违反 001 §一D「值捕获快照语义无悬垂面」）。深拷=字段级
+            //   独立拥有副本（串 __cn_str_copy 落堆·容器/类字段 NewObject+拷贝
+            //   构造·嵌套递归），快照与源完全解耦。纯 POD 结构体（无拥有字段）
+            //   内部自动落 CopyStruct 位拷（零开销不变）。
+            //   preFree=false（940 裁决）：释放旧副本为本任务外延（重固化=槽
+            //   覆盖语义旧副本成孤儿·与 v2 固化端口径一致——v2 固化点无
+            //   函数级清旧设施，双侧同「不释放」零分叉）；副本释放归属=
+            //   闭包值生命周期（CN 闭包值=裸函数指针无析构语义·语言级缺口）
+            //   → 挂账独立任务。悬垂（安全目标②）优先于残留（性能面）。
+            const std::string canon = types::canonical(capSrc);
             ir::IRValue srcAddr = emitResult(
                 ir::Opcode::AddrOf,
                 {ir::IRValue::var(lookupVarName(cap), "i64")},
                 "ptr", lookupVarName(cap), loc);
-            emit(ir::Opcode::CopyStruct, {slotAddr, srcAddr}, ir::IRValue(),
-                 std::to_string(size), "void", loc);
+            emitStructCopyWithFields(slotAddr, srcAddr, canon, loc,
+                                     /*preFree=*/false, /*deepCopy=*/true);
         } else {
-            // 标量值捕获：定义处读取变量值快照（与 captureArgs 同一求值路径）
-            ir::IRValue val = genExpr(
-                std::make_unique<IdentifierExpr>(cap).get());
+            // 标量/字符串/容器/类值捕获：定义处快照——字符串与容器/类经
+            //   evalValueCaptureCopy 深拷独立副本（940：原裸句柄浅共享，
+            //   源重赋值/释放后悬垂）；标量直取（原路径零变化）。
+            ir::IRValue val = evalValueCaptureCopy(cap, capSrc, loc);
             emit(ir::Opcode::StorePtr, {slotAddr, val}, ir::IRValue(), "",
                  capIrType.empty() ? "i64" : capIrType, loc);
         }

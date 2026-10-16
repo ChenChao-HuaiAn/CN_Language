@@ -428,9 +428,7 @@ private:
     // lambda 快照静态槽键（?gstatic_ 前缀外的注册键；lambdaName 唯一保证不撞）
     std::string lambdaSlotKey(const std::string& lambdaName,
                               const std::string& cap) const;
-    // ---- 482（#482 多实例独立快照）载体快照槽族私辅（实现在 ir_lambda.cpp；
-    //   数据 LambdaCaptureMeta482/LambdaStaticInfo482 见 ir_generator_types.hpp；
-    //   语义详见 ir_lambda.cpp「482 载体快照槽族」段首）----
+    // ---- 482 载体快照槽族私辅（实现/数据/语义见 ir_lambda.cpp 与 ir_generator_types.hpp）----
     int captureBytes482(const std::string& capSrc);
     void emitSharedToCarrier482(const std::string& lambdaName, const std::vector<ClosureInfo::CarrierCapture>& slots, const SourceLocation& loc);
     void emitCarrierToShared482(const std::string& lambdaName, const std::vector<ClosureInfo::CarrierCapture>& slots, const SourceLocation& loc);
@@ -440,6 +438,9 @@ private:
     std::vector<ClosureInfo::CarrierCapture> makeCarrierSlots482(const std::string& varName, const std::string& lambdaName, const SourceLocation& loc);
     void emitReturnOriginSnapshot482(Expr* rhs);
     void recordLambdaCaptureMeta482(const std::string& lambdaName, const std::vector<std::string>& capturedNames, const std::vector<char>& captureRefs, const std::vector<std::string>& srcTypes);
+    // ---- 940 快照值求值单一归属（字符串/容器/类=定义处深拷独立副本；标量/指针/数组直取·静态固化与同帧快径共用防漂移）----
+    ir::IRValue evalValueCaptureCopy(const std::string& capName, const std::string& capSrc, const SourceLocation& loc);
+    // 闭包关联：变量源码名 -> {匿名函数名, 捕获变量列表, 定义处捕获实参, 返回 IR 类型}（ClosureInfo 见 ir_generator_types.hpp）
     std::unordered_map<std::string, ClosureInfo> closureInfo_;
     std::unordered_map<std::string, LambdaCaptureMeta482> lambdaCaptureMeta482_;
     std::unordered_map<std::string, LambdaStaticInfo482> lambdaStaticInfo482_;
