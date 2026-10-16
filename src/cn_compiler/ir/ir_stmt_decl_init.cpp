@@ -629,15 +629,72 @@ bool IRGenerator::tryGenRefReturnClassCopyInit(VarDecl* node, const DeclGenCtx& 
     if (semantic_ == nullptr || node->initializer == nullptr) return false;
     if (node->initializer->getType() != NodeType::CallExpr) return false;
     const CallExpr* call = static_cast<const CallExpr*>(node->initializer.get());
-    if (!call->isRefReturnCall) return false;
     const std::string declCanon = types::canonical(node->typeName);
+    if (!isRefReturnClassValueCall(call, declCanon)) return false;
+    const ClassInfo* ci = semantic_->findClass(declCanon);
+    if (ci == nullptr || ci->totalSize <= 0) return false;
+    ir::IRValue newObj = genRefReturnClassDeepCopy(node->initializer.get(),
+                                                   declCanon, ci);
+    if (newObj.id < 0) return false;  // 防御：异常形态回原路
+    emit(ir::Opcode::Store, {newObj}, ir::IRValue(), ctx.unique, "ptr",
+         node->location);
+    lastExpr_ = newObj;
+    return true;
+}
+
+// 633：模板返回类型文本 → $ 实例名归一（rewriteGenericInstanceTypeName 同款
+//   公式——头名 + 实参逐段 $ + canonicalizeSyntheticArgText；非模板形态原样）。
+//   用途=isRefReturnClassValueCall 的 ret 比较（语义层 canonicalType 不转 $）。
+static std::string refReturnInstanceName633(const std::string& type) {
+    const std::size_t lt = type.find('<');
+    const std::size_t gt = type.rfind('>');
+    if (lt == std::string::npos || gt == std::string::npos || gt <= lt) {
+        return type;
+    }
+    const std::string head = type.substr(0, lt);
+    const std::string inner = type.substr(lt + 1, gt - lt - 1);
+    std::string inst = head;
+    std::size_t pos = 0;
+    while (pos <= inner.size()) {
+        const std::size_t comma = inner.find(',', pos);
+        std::string arg = (comma == std::string::npos)
+                              ? inner.substr(pos)
+                              : inner.substr(pos, comma - pos);
+        const std::size_t b = arg.find_first_not_of(" 	");
+        const std::size_t e = arg.find_last_not_of(" 	");
+        if (b != std::string::npos && e != std::string::npos) {
+            arg = arg.substr(b, e - b + 1);
+        }
+        inst += "$" + types::canonical(canonicalizeSyntheticArgText(arg));
+        if (comma == std::string::npos) break;
+        pos = comma + 1;
+    }
+    return inst;
+}
+
+// 632/633 判定（声明位 632 + 赋值位 633 共用·单一事实源）：
+//   右值=引用返回调用（语义层 isRefReturnCall）&& 目标=用户类（含容器族——
+//   633 放行：容器引用返回接收=深拷副本，须容器拷贝构造命中=容器恒有）
+//   && 直接调用形态时被调返回类型剥 &/* 严格等于目标类（方法调用形态由
+//   语义层标记担保·544 同款宽松面）。
+bool IRGenerator::isRefReturnClassValueCall(const CallExpr* call,
+                                            const std::string& declCanon) const {
+    if (semantic_ == nullptr || call == nullptr) return false;
+    if (!call->isRefReturnCall) return false;
     if (!semantic_->isClassType(declCanon)) return false;
-    // 容器/映射族排除（head 判据与 ir_expr_assign memberClassFieldAssign 同款）
+    // 633（#633 残面④b）：容器/映射族放行——引用返回接收=深拷副本
+    //   （head 判据与 ir_expr_assign memberClassFieldAssign 同款）；原 632
+    //   「容器走既有通道」的暂排前提不成立（既有容器接收通道对引用返回=
+    //   句柄共享双释放·探针 p4b C0000374 实录）。容器恒有容器拷贝构造
+    //   （向量$T$向量$T(向量$T&)）；miss=防御回原路（不落浅壳防句柄共享）。
     const std::size_t dl = declCanon.find('$');
     const std::string head =
         dl == std::string::npos ? declCanon : declCanon.substr(0, dl);
-    if (head == "向量" || head == "栈" || head == "链表" ||
-        head == "队列" || head == "集合" || head == "映射") {
+    const bool isContainerFamily =
+        head == "向量" || head == "栈" || head == "链表" ||
+        head == "队列" || head == "集合" || head == "映射";
+    if (isContainerFamily &&
+        semantic_->findCopyConstructor(declCanon) == nullptr) {
         return false;
     }
     // 直接调用形态：被调返回类型（剥 &/*）须严格等于声明类
@@ -653,41 +710,54 @@ bool IRGenerator::tryGenRefReturnClassCopyInit(VarDecl* node, const DeclGenCtx& 
         while (!ret.empty() && (ret.back() == '&' || ret.back() == '*')) {
             ret.pop_back();
         }
+        // 633（#633 残面④b 定位）：被调返回文本归一实例名——语义层
+        //   funcReturnTypeOf 存 canonicalType 形态（「向量<整32>」·canonical
+        //   不转 $），声明侧 declCanon 经 rewriteGenericInstanceTypeName 已是
+        //   $ 实例名（「向量$整32」）——原直接 canonical 比较对容器族恒不等
+        //   （类短名无 <...> 形态自然命中=632 未暴露）。归一公式=
+        //   rewriteGenericInstanceTypeName 同款（语义层 instantiateGeneric
+        //   注册名·实参逐段 canonicalizeSyntheticArgText）。
+        ret = refReturnInstanceName633(ret);
         if (types::canonical(ret) != declCanon) return false;
     }
-    const ClassInfo* ci = semantic_->findClass(declCanon);
-    if (ci == nullptr || ci->totalSize <= 0) return false;
+    return true;
+}
+
+// 632/633 深拷发射（声明位+赋值位共用）：被引用左值地址 A（抑制语境）→
+//   NewObject 新壳 + 拷贝构造（byRef 传 A）/ 无拷贝构造 CopyStruct 备选。
+//   返回新对象句柄（id<0=异常形态·调用方回原路）。
+ir::IRValue IRGenerator::genRefReturnClassDeepCopy(Expr* rhs,
+                                                   const std::string& declCanon,
+                                                   const ClassInfo* ci) {
     // 被引用左值地址 A（引用返回默认解引用抑制——取地址语义）
     ir::IRValue addr;
     {
         const bool oldSuppress = suppressRefDeref_;
         suppressRefDeref_ = true;
-        addr = genExpr(node->initializer.get());
+        addr = genExpr(rhs);
         suppressRefDeref_ = oldSuppress;
     }
-    if (addr.type != "ptr" && addr.type != "i64") return false;  // 防御：异常形态回原路
-    // 深拷：NewObject 新壳 + 拷贝构造（byRef A）/ 无拷贝构造 CopyStruct 备选
+    if (addr.id < 0 || (addr.type != "ptr" && addr.type != "i64")) {
+        return ir::IRValue();  // 防御：异常形态回原路
+    }
     const std::string extra = declCanon + "|" + std::to_string(ci->totalSize);
     ir::IRValue newObj = emitResult(
         ir::Opcode::NewObject, {ir::IRValue::constant(declCanon, "ptr")}, "ptr",
-        extra, node->location);
+        extra, rhs->location);
     const ClassMemberInfo* copyCtor = semantic_->findCopyConstructor(declCanon);
     if (copyCtor != nullptr) {
         const std::string copyOwner =
             copyCtor->ownerClass.empty() ? declCanon : copyCtor->ownerClass;
         emit(ir::Opcode::Call, {newObj, addr}, ir::IRValue(),
              methodSymbolKey(copyOwner, copyCtor->sigKey), "void",
-             node->location);
+             rhs->location);
     } else {
         ir::IRValue objPtr = emitResult(ir::Opcode::LoadPtr, {addr}, "ptr", "",
-                                        node->location);
+                                        rhs->location);
         emit(ir::Opcode::CopyStruct, {newObj, objPtr}, ir::IRValue(),
-             std::to_string(ci->totalSize), "void", node->location);
+             std::to_string(ci->totalSize), "void", rhs->location);
     }
-    emit(ir::Opcode::Store, {newObj}, ir::IRValue(), ctx.unique, "ptr",
-         node->location);
-    lastExpr_ = newObj;
-    return true;
+    return newObj;
 }
 
 // 族⑩ 子方法：plans/019 阶段4'（2026-09-10 方案A）：拥有型字符串初始化

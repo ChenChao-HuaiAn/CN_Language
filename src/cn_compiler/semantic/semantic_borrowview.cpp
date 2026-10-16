@@ -391,4 +391,122 @@ void SemanticAnalyzer::clearBorrowViewState() {
     borrowViewScopes_.assign(scopes_.size(), {});
 }
 
+// ==================== 217-a/633：返回位借用与逃逸检查族（自 semantic_stmt.cpp 迁入） ====================
+//   先拆再加纪律（semantic_stmt.cpp 触 1000 红线·633 加字段豁免后 1002 行）：
+//   纯机械搬移零行为变更（成员函数实现可任意 cpp；声明仍在 semantic.hpp；
+//   调用点 visitReturnStmt 不变）。v2 对应族=语义检查逃逸.cn（检查返回借用
+//   A2+检查返回局部地址），宿主文件归属对齐「借出/逃逸」域（本文件）。
+
+// 217-a：族① A2 拥有契约检查——返回类型 字符串=拥有（调用方登记 RAII 自动 free，
+//   Rust fn f() -> String）；借用形态返回（下标/成员/解引用借出、字符* 表达式、
+//   参数/全局/静态/类字段标识符）拒绝——调用方 free 借用指针=悬垂/UAF。拥有化须显式：
+//   字符串复制(...)（落堆）或改返回类型 字符*（借用视图）。泛型单态化体内豁免（A2）：
+//   实例化类方法体的 T 来源字符串=借用语义（Rust Vec::get -> &T 同款）。
+void SemanticAnalyzer::checkReturnBorrowA2(ReturnStmt* node, const std::string& valueType) {
+    if (types::canonical(currentReturnType_) == "字符串" &&
+        genericTypeParams_.empty()) {
+        const NodeType retKindA2 = node->value->getType();
+        bool borrowRetA2 = false;
+        std::string whyA2;
+        if (retKindA2 == NodeType::IndexExpr || retKindA2 == NodeType::MemberExpr) {
+            borrowRetA2 = true;
+            whyA2 = "下标/成员借出";
+        } else if (retKindA2 == NodeType::UnaryExpr &&
+                   static_cast<const UnaryExpr*>(node->value.get())->op ==
+                       Operator::Deref) {
+            borrowRetA2 = true;
+            whyA2 = "解引用借出";
+        } else if (valueType == "字符*") {
+            borrowRetA2 = true;
+            whyA2 = "字符* 借用（如 驻留文本/借用返回函数）";
+        } else if (retKindA2 == NodeType::IdentifierExpr) {
+            const std::string& rn =
+                static_cast<const IdentifierExpr*>(node->value.get())->name;
+            if (currentFnParamNames_.count(rn) > 0) {
+                borrowRetA2 = true;
+                whyA2 = "参数 '" + rn + "'（参数=借用）";
+            } else if (!isCurrentFnLocal(rn)) {
+                // 不在函数作用域=全局/静态/类字段（方法体裸字段名不在 scopes_
+                // 中，恰好落入此分支）——均借用
+                borrowRetA2 = true;
+                whyA2 = "'" + rn + "'（全局/静态/类字段=借用）";
+            }
+        }
+        if (borrowRetA2) {
+            diagnostics_.report(
+                DiagnosticLevel::Error, node->location,
+                "函数返回类型 '字符串'=拥有契约，不能返回" + whyA2 +
+                    "——须 字符串复制(...) 显式落堆，或改返回类型为 '字符*'（借用视图）");
+        }
+    }
+}
+
+// 217-a：族② 引用返回（T&）与指针返回（T*）的局部地址逃逸检查——引用返回须可绑定
+//   左值且禁止返回本函数局部（含按值参数）地址；常量引用参数只读借出不可升级为可变
+//   引用返回；指针返回补 T* 面（&局部/引用局部绑局部/局部指针指向局部）。
+void SemanticAnalyzer::checkReturnAddressEscape(ReturnStmt* node) {
+    // 633（#633 残面②·与 v2 329-a 字段豁免同锚）：类实例字段裸名豁免判定——
+    //   方法体内 `返回 库存;`（库存=this 成员）经「字段并入方法作用域」被
+    //   isCurrentFnLocal 命中 → 误拦；字段生命周期=宿主对象（非本栈帧）→
+    //   与引用参数/全局豁免同族放行。遮蔽面：宿主语义层「局部遮蔽字段」在
+    //   声明处已拒（重复声明变量 'X'·p2n2 探针实录）——本判定无合法遮蔽面
+    //   （与 v2 遮蔽判据 是当前类实例字段名633 等效）。
+    auto isCurClassField633 = [&](const std::string& nm) -> bool {
+        if (nm.empty() || contextClassStack_.empty()) return false;
+        const ClassInfo* ci = findClass(contextClassStack_.back());
+        while (ci != nullptr) {
+            if (ci->fields.find(nm) != ci->fields.end()) return true;
+            ci = ci->baseName.empty() ? nullptr : findClass(ci->baseName);
+        }
+        return false;
+    };
+    // P3-18 补完（2026-08）：引用返回函数——返回值须为可绑定左值；禁止返回
+    //   本函数局部变量（含按值参数）的地址（随栈帧消亡的悬垂引用）。
+    if (currentIsRefReturn_) {
+        std::string baseName;
+        if (!refReturnLvalueBase(node->value.get(), baseName)) {
+            diagnostics_.report(
+                DiagnosticLevel::Error, node->location,
+                "引用返回的返回值须为左值（变量/数组元素/解引用/成员/引用返回调用）");
+            return;
+        }
+        if (!baseName.empty() && !isRefParamForCurrentFn(baseName) &&
+            isCurrentFnLocal(baseName) && !isCurClassField633(baseName)) {
+            diagnostics_.report(
+                DiagnosticLevel::Error, node->location,
+                "引用返回不能返回局部变量的地址（'" + baseName + "'）");
+        }
+        // plans/019 阶段3 补：常量引用参数是只读借用——不能作为可变引用（T&）
+        //   返回（借出升级违反只读）
+        if (!baseName.empty() && currentConstRefParams_.count(baseName) > 0) {
+            diagnostics_.report(
+                DiagnosticLevel::Error, node->location,
+                "常量引用参数 '" + baseName +
+                    "' 是只读借用，不能作为可变引用返回");
+        }
+    }
+    // plans/019 阶段2（2026-09-10）：指针返回（T*）——返回值求值为当前函数
+    //   局部的地址（&局部 / 引用局部绑局部 / 指向局部的局部指针[直接 &局部
+    //   赋值登记]）时拒绝（栈帧消亡悬垂；引用返回已上方覆盖，本块补 T* 面）。
+    if (types::isPointer(currentReturnType_) && node->value != nullptr) {
+        std::string escBase;
+        if (isLocalAddressValue(node->value.get(), escBase)) {
+            diagnostics_.report(
+                DiagnosticLevel::Error, node->location,
+                "返回局部变量的地址（'" + escBase +
+                    "'）——函数返回后栈帧消亡将成悬垂");
+        } else if (node->value->getType() == NodeType::IdentifierExpr) {
+            const std::string& name =
+                static_cast<IdentifierExpr*>(node->value.get())->name;
+            auto pit = ptrLocalPointees_.find(name);
+            if (pit != ptrLocalPointees_.end()) {
+                diagnostics_.report(
+                    DiagnosticLevel::Error, node->location,
+                    "返回局部变量的地址（'" + pit->second + "'，经指针 '" + name +
+                        "'）——函数返回后栈帧消亡将成悬垂");
+            }
+        }
+    }
+}
+
 } // namespace cn_compiler

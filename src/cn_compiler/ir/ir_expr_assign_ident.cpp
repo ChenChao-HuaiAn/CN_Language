@@ -120,6 +120,9 @@ bool IRGenerator::assignToIdentifierTarget(AssignmentExpr* node, IdentifierExpr*
     if (assignToGlobalStatic(node, ident)) return true;
     // 目标变量唯一内部名（后续 普通赋值/类深拷贝 均需，提前计算避免重复查找）
     const std::string unique = lookupVarName(ident->name);
+    // 633（632 同根·赋值位扩面）：右值=引用返回调用 → 类深拷（须先于
+    //   identifierClassCopyAssign 等形态判定——右值为调用不入标识符通道）
+    if (identifierRefReturnClassCopyAssign(node, ident, unique)) return true;
     if (identifierClassCopyAssign(node, ident, unique)) return true;
     // 821（#444）：类目标 ← 运算符重载表达式产物（甲 = 乙 + 丙·重载返回类对象）——
     //   句柄接管 + 覆盖前旧对象释放（族实现=ir_expr_assign_ident_class.cpp）

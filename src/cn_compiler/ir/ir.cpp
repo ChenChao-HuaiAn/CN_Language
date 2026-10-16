@@ -767,6 +767,17 @@ ir::IRValue IRGenerator::genIdentifierLvalue(Expr* node) {
                               {ir::IRValue::var(unique, "ptr")},
                               "ptr", unique, node->location);
         }
+        // 633（#633 残面②）：方法体内类字段裸名左值（隐式 this 成员）——
+        //   `返回 库存;`（库存=类实例字段·非局部/参数）原落 AddrOf(空槽名)
+        //   =#836「变量槽未登记 ''」内部错误中止（IR「取地址 空操作数」同病
+        //   显形）；与读路径 handleClassFieldRead（this+FieldAddr）及成员链
+        //   基址回落（genMemberLvalueAddress·512-a isInstanceField 分支）同款
+        //   补齐=this 成员回落单一化。局部/参数同名遮蔽时 lookupVarName 命中
+        //   （unique 非空）天然优先；静态方法内 isInstanceField 恒假=保持原
+        //   显形面（语义层已拒 this 成员引用）。
+        if (unique.empty() && isInstanceField(ident->name)) {
+            return genInstanceFieldAddr(ident->name, node->location);
+        }
         const std::string irType = mapType(types::isArray(srcType)
                                                ? types::arrayElemOf(srcType) : srcType);
         return emitResult(ir::Opcode::AddrOf,

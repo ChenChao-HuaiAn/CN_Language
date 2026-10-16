@@ -212,6 +212,10 @@ private:
                                const ir::IRValue& dstAddr, const ir::IRValue& value,
                                const std::string& unique);
     bool tryGenRefReturnClassCopyInit(VarDecl* node, const DeclGenCtx& ctx);  // ⑩子 632 引用返回调用→类深拷
+    bool isRefReturnClassValueCall(const CallExpr* call,
+                                   const std::string& declCanon) const;  // 632/633 判定（声明位+赋值位共用）
+    ir::IRValue genRefReturnClassDeepCopy(Expr* rhs, const std::string& declCanon,
+                                          const ClassInfo* ci);  // 632/633 深拷发射共用
     bool tryGenClassCopyInit(VarDecl* node, const ir::IRValue& value,
                              const std::string& srcType, const std::string& unique);
     bool tryGenUnwrapBindInit(VarDecl* node, const ir::IRValue& value,
@@ -849,6 +853,10 @@ private:
                                  const std::string& stType, const ir::IRValue& value);
     bool identifierClassCopyAssign(AssignmentExpr* node, IdentifierExpr* ident,
                                    const std::string& unique);
+    // 633（632 同根·赋值位扩面）：类目标 ← 引用返回调用（甲 = 取货(源)）深拷
+    //   + 旧值释放；实现于 ir_expr_assign_ident_class.cpp 类对象族
+    bool identifierRefReturnClassCopyAssign(AssignmentExpr* node, IdentifierExpr* ident,
+                                            const std::string& unique);
     // 821（#444）：类目标 ← 运算符重载表达式产物（乙 + 丙 返回类对象）——句柄
     //   接管 + 覆盖前旧对象释放；实现于 ir_expr_assign_ident_class.cpp 类对象族
     bool identifierClassOverloadProductAssign(AssignmentExpr* node, IdentifierExpr* ident,

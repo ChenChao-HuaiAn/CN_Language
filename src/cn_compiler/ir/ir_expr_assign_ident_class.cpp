@@ -120,6 +120,57 @@ bool IRGenerator::identifierClassCopyAssign(AssignmentExpr* node, IdentifierExpr
     return false;
 }
 
+// 633（632 同根·赋值位扩面·台账 #633 残面①）：类目标 ← 引用返回调用
+//   （`甲 = 取货(源)` / `甲 = 仓.取货()`）——引用返回调用默认 lvalue-to-rvalue
+//   解引用产物=源对象指针被兜底 Store 句柄直存：甲与源共享同一堆对象、块出口
+//   双方析构同一句柄=双释放（探针 p1 C0000374 heap corruption 实录·632 声明位
+//   同根）。语义=从被引用对象深拷出新对象（632 声明位同款通道）：
+//   NewObject+拷贝构造（byRef 传被引用左值地址·共用 genRefReturnClassDeepCopy）
+//   + 覆盖前释放旧对象（095 单发 DeleteObject·空句柄安全——声明即默认构造，
+//   旧对象必在）；引用参数目标经指针写回（A-1 同 identifierClassCopyAssign）。
+//   判定共用 isRefReturnClassValueCall（632/633 单一事实源·容器/映射族排除）。
+//   被引用左值地址在旧值释放**之前**读取（拷贝构造先完成深拷，自赋值
+//   甲 = 取货(甲) 安全）。true = 已处理。
+bool IRGenerator::identifierRefReturnClassCopyAssign(
+    AssignmentExpr* node, IdentifierExpr* ident, const std::string& unique) {
+    if (semantic_ == nullptr || unique.empty() || isCompoundAssignOp(node->op)) {
+        return false;
+    }
+    if (node->value->getType() != NodeType::CallExpr) return false;
+    const CallExpr* call = static_cast<const CallExpr*>(node->value.get());
+    const std::string canonTarget =
+        types::canonical(lookupSrcType(ident->name));
+    if (!isRefReturnClassValueCall(call, canonTarget)) return false;
+    const ClassInfo* ci = semantic_->findClass(canonTarget);
+    if (ci == nullptr || ci->totalSize <= 0) return false;
+    ir::IRValue newObj = genRefReturnClassDeepCopy(node->value.get(),
+                                                   canonTarget, ci);
+    if (newObj.id < 0) return false;  // 防御：异常形态回原路
+    // 覆盖前释放旧对象（095 同款单发 DeleteObject：指令内含析构调用+free·
+    //   空句柄空安全跳过）+ 新句柄入槽；引用参数目标经指针写回（Load 槽地址）
+    if (isByRefCapture(ident->name)) {
+        ir::IRValue capAddr = emitResult(
+            ir::Opcode::Load, {ir::IRValue::var(unique, "ptr")}, "ptr", unique,
+            node->location);
+        ir::IRValue oldObj = emitResult(ir::Opcode::LoadPtr, {capAddr}, "ptr",
+                                        "", node->location);
+        emit(ir::Opcode::DeleteObject, {oldObj}, ir::IRValue(), canonTarget,
+             "void", node->location);
+        emit(ir::Opcode::StorePtr, {capAddr, newObj}, ir::IRValue(), "", "ptr",
+             node->location);
+    } else {
+        ir::IRValue oldObj = emitResult(
+            ir::Opcode::Load, {ir::IRValue::var(unique, "ptr")}, "ptr", unique,
+            node->location);
+        emit(ir::Opcode::DeleteObject, {oldObj}, ir::IRValue(), canonTarget,
+             "void", node->location);
+        emit(ir::Opcode::Store, {newObj}, ir::IRValue(), unique, "ptr",
+             node->location);
+    }
+    lastExpr_ = newObj;
+    return true;
+}
+
 // 821（#444）：运算符符号映射——与 ir_oop_call.cpp operatorSymText 同表（第二处
 //   重复：该函数为文件级 static；第三处出现前须提炼为生成器成员辅助——本处
 //   只映射类运算符重载集合，覆盖 001 §4.6 全部双目+单目符号）。未映射（空串）

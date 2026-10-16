@@ -241,6 +241,18 @@ void SemanticAnalyzer::checkSingleMethodBody(ClassInfo& info, ClassMemberInfo& m
         }
 
 
+        // 633（#633 残面②·宿主侧缺口补齐）：方法体=函数级作用域单元——
+        //   ①funcScopeStart_ 本位设置（原仅 visitFunctionDecl 设置 → 方法体
+        //   检查期恒 -1 → isCurrentFnLocal 恒假 → 「返回局部变量引用」检查在
+        //   方法体从不生效·p2n 探针宿主放行实录）；②引用返回上下文本位
+        //   （currentIsRefReturn_ 按 AST 原文含 & 判定——与 v2 检查方法 同锚·
+        //   零分叉）。设置点=pushScope 前（函数层索引口径与 visitFunctionDecl
+        //   一致），保存/恢复配对（嵌套安全）。
+        const int savedFuncScopeStart633 = funcScopeStart_;
+        funcScopeStart_ = static_cast<int>(scopes_.size());
+        const bool savedIsRefReturn633 = currentIsRefReturn_;
+        currentIsRefReturn_ = !member->returnType.empty() &&
+                              types::isReference(member->returnType);
         // 参数入作用域（方法参数 + this 隐式参数 + 类字段）
         pushScope();
         // 隐式 this 参数（自身 表达式类型）
@@ -407,6 +419,9 @@ void SemanticAnalyzer::checkSingleMethodBody(ClassInfo& info, ClassMemberInfo& m
         containerMutations_ = std::move(savedBorrowMutations);
         borrowViewScopes_ = std::move(savedBorrowScopes);
         currentReturnType_.clear();
+        // 633：方法体函数级上下文恢复（引用返回 + 函数作用域起点）
+        currentIsRefReturn_ = savedIsRefReturn633;
+        funcScopeStart_ = savedFuncScopeStart633;
         popScope();
         // 616：字符串值形参集复位（标记已完成落 AST·与 checkFunctionBody 对称）
         curStringParamDecls_.clear();
