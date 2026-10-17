@@ -669,8 +669,10 @@ private:
                                  std::string& resultType);                  // retbuf 预插
     bool emitVoidBuiltinCall(CallExpr* node, const std::string& calleeName,
                              const std::vector<ir::IRValue>& args);         // void 直发
-    bool emitRefReturnCall(CallExpr* node, const std::string& calleeName,
-                           const std::string& resultType);                  // 引用返回读值
+    bool needsRefReturnDeref(const std::string& calleeName,
+                             const std::string& resultType) const;          // 986 引用返回右值消费谓词
+    void emitRefReturnDeref(CallExpr* node, const std::string& calleeName,
+                            const ir::IRValue& callResult);                 // 986 引用返回解引用后处理
     std::vector<std::string> resolveEffectiveParamTypes(
         CallExpr* node, bool isDirect, const std::string& calleeName,
         const std::string& calleeFnPtrType442);                             // 442 有效形参表

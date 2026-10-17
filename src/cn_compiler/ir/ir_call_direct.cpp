@@ -4,7 +4,8 @@
 //   默认实参（prepareDefaultArgValues）、args 收尾（finalizeCallArgs）、
 //   直调发射（emitDirectCall 编排 + 用户函数返回类型 resolveUserFuncCallResultType
 //   + 聚合返回 emitAggStructReturnCall + 空类型直发 emitVoidBuiltinCall +
-//   引用返回读值 emitRefReturnCall）。成员函数声明仍在 ir_generator.hpp。
+//   引用返回右值消费 needsRefReturnDeref/emitRefReturnDeref〔986：先 Call
+//   后解引用·对齐 v2〕）。成员函数声明仍在 ir_generator.hpp。
 #include <cstdio>
 #include <string>
 #include <utility>
@@ -105,6 +106,10 @@ void IRGenerator::finalizeCallArgs(CallExpr* node, const std::string& calleeName
 // Task 2.7 集成修复：用户自定义函数经语义层查真实返回类型，避免浮64
 // 结果被误标 i32 导致 codegen 用 eax 读 xmm0 返回值）
 // 954（visitCallExpr 拆族·机械搬移）：直调发射编排（结果类型两级 -> 三形态 -> 主发射 + 617 结算）。
+// 986（954 呈报根治·对齐 v2）：引用返回右值消费路径改为「先发被调 Call 再
+//   解引用」——判定提前为纯谓词（needsRefReturnDeref），Call 发射与 617
+//   结算共享主发射单点，解引用输入=显式 Call 结果寄存器。原实现在主发射前
+//   return（Call 静默不发射=副作用丢失）且 LoadPtr 消费 lastExpr_ 残留。
 void IRGenerator::emitDirectCall(CallExpr* node, const std::string& calleeName,
                                  const std::vector<ir::IRValue>& args,
                                  const std::vector<std::pair<const Expr*, ir::IRValue>>&
@@ -116,14 +121,22 @@ void IRGenerator::emitDirectCall(CallExpr* node, const std::string& calleeName,
     }
     if (emitAggStructReturnCall(node, calleeName, args, resultType)) return;
     if (emitVoidBuiltinCall(node, calleeName, args)) return;
-    if (emitRefReturnCall(node, calleeName, resultType)) return;
-    lastExpr_ = emitResult(ir::Opcode::Call, args, resultType, calleeName,
-                           node->location);
+    // 986：引用返回右值消费=纯谓词（Call 前判定·与原实现判定时机一致）
+    const bool refDeref986 = needsRefReturnDeref(calleeName, resultType);
+    // 986：被调 Call 恒发射（对齐 v2「先发 IR_调用参数化再引用返回加载」）
+    const ir::IRValue callRet986 =
+        emitResult(ir::Opcode::Call, args, resultType, calleeName,
+                   node->location);
+    lastExpr_ = callRet986;
     // 617：消费族调用发射完成——内容已拷贝/只读消费毕，结算拥有串临时实参
     //   （662：三元实参走分支拥有性感知条件释放·单一入口 Rec617）
     for (const auto& tmp617 : consumedArgTemps617) {
         emitOwnedTempReleaseRec617(tmp617.first, tmp617.second,
                                    node->location);
+    }
+    // 986：右值消费=对 Call 结果（=被引用左值地址）解引用读值
+    if (refDeref986) {
+        emitRefReturnDeref(node, calleeName, callRet986);
     }
 }
 
@@ -238,25 +251,35 @@ bool IRGenerator::emitVoidBuiltinCall(CallExpr* node, const std::string& calleeN
     return false;
 }
 
-// 954（visitCallExpr 拆族·机械搬移）：引用返回读值（lvalue-to-rvalue）。
-bool IRGenerator::emitRefReturnCall(CallExpr* node, const std::string& calleeName,
-                                    const std::string& resultType) {
-    // 引用返回读值默认 lvalue-to-rvalue（2026-09-04 缺陷零容忍收口）：
-    //   引用返回调用（resultType="ptr" 且被调为引用返回用户函数）作为右值
-    //   须解引用读值（C++ 语义）——原返回裸地址被右值消费=静默错误代码
-    //   （整64 a = 取值(p) 实测读出地址）；赋值目标/复合赋值/引用绑定
-    //   上下文经 suppressRefDeref_ 抑制（取地址语义）
-    if (resultType == "ptr" && semantic_ != nullptr &&
-        semantic_->funcReturnsRef(calleeName) && !suppressRefDeref_) {
-        std::string baseRet = semantic_->funcReturnTypeOf(calleeName);
-        if (!baseRet.empty() && baseRet.back() == '&') {
-            baseRet.pop_back();
-        }
-        lastExpr_ = emitResult(ir::Opcode::LoadPtr, {lastExpr_},
-                               mapType(baseRet), "", node->location);
-        return true;
+// 986（954 呈报根治）：引用返回右值消费谓词——resultType=ptr（resolveUser
+//   FuncCallResultType 对 funcReturnsRef 的约定）且被调为引用返回用户函数
+//   且非抑制语境。抑制=赋值目标/复合赋值/引用绑定/声明位深拷=取地址语义
+//   （Call 结果原样即被引用左值地址，由消费方按引用处理）。纯判定零发射。
+bool IRGenerator::needsRefReturnDeref(const std::string& calleeName,
+                                      const std::string& resultType) const {
+    return resultType == "ptr" && semantic_ != nullptr &&
+           semantic_->funcReturnsRef(calleeName) && !suppressRefDeref_;
+}
+
+// 986（954 呈报根治·对齐 v2）：引用返回读值后处理——lvalue-to-rvalue 语义
+//   （2026-09-04 缺陷零容忍收口）不变：引用返回调用作为右值须解引用读值
+//   （原返回裸地址被右值消费=静默错误代码）。Call 已由调用方发射（副作用
+//   保真），此处只把调用结果（=被引用左值地址）解引用。
+//   根因（954 探针三形态实锤）：原实现（原 ir_call.cpp L845-859·2026-09-04
+//   引入）把 LoadPtr 放在主发射之前并提前 return——①主发射不可达=被调 Call
+//   静默不发射（函数副作用全丢；v2 侧「先发 IR_调用参数化再引用返回加载」
+//   正确=宿主单侧分叉）；②LoadPtr 地址操作数消费 lastExpr_（=最后实参求值
+//   残留）——恒等引用返回（返回 源;）巧合正确（102/1012 用例未覆盖），非恒等
+//   （返回 甲;）读出最后实参残留值，无实参读出更早残留/垃圾。
+//   修复=解引用输入显式取 Call 结果寄存器（不再依赖 lastExpr_ 状态巧合）。
+void IRGenerator::emitRefReturnDeref(CallExpr* node, const std::string& calleeName,
+                                     const ir::IRValue& callResult) {
+    std::string baseRet = semantic_->funcReturnTypeOf(calleeName);
+    if (!baseRet.empty() && baseRet.back() == '&') {
+        baseRet.pop_back();
     }
-    return false;
+    lastExpr_ = emitResult(ir::Opcode::LoadPtr, {callResult},
+                           mapType(baseRet), "", node->location);
 }
 
 
