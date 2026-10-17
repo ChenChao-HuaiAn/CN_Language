@@ -102,8 +102,7 @@ public:
     ir::IRValue emitChainSegToStr(Expr* segAst, const ir::IRValue& segVal,
                                   const SourceLocation& loc);
     //   单段追加发射（追加 + 拥有临时结算/转换产物释放）
-    void emitChainSegAppend(const ir::IRValue& handle, Expr* segAst,
-                            const ir::IRValue& segVal,
+    void emitChainSegAppend(const ir::IRValue& handle, Expr* segAst, const ir::IRValue& segVal,
                             const SourceLocation& loc);
     // 族④：指针算术 ptr ± 整型 -> 指针（偏移量×元素大小）。true = 已处理。
     bool genPointerArithmetic(BinaryExpr* node, const ir::IRValue& left,
@@ -151,15 +150,13 @@ private:
     // ==================== IR构建辅助 ====================
     ir::IRValue newReg();                       // 新建虚拟寄存器
     // 添加指令到当前块
-    void emit(ir::Opcode opcode,
-              const std::vector<ir::IRValue>& operands,
+    void emit(ir::Opcode opcode, const std::vector<ir::IRValue>& operands,
               const ir::IRValue& result,
               const std::string& extra,
               const std::string& type,
               const SourceLocation& loc);
     // 添加带结果寄存器的指令
-    ir::IRValue emitResult(ir::Opcode opcode,
-                           const std::vector<ir::IRValue>& operands,
+    ir::IRValue emitResult(ir::Opcode opcode, const std::vector<ir::IRValue>& operands,
                            const std::string& type,
                            const std::string& extra,
                            const SourceLocation& loc);
@@ -292,8 +289,7 @@ private:
     void registerVarSlots(const std::string& unique, const std::string& srcType);
     // 936：聚合返回调用点 retbuf 缓冲构造（形态A·Alloca 缓冲槽+AddrOf 取址，返回地址=隐藏返回指针插实参位 0，
     //   Call result=void·lastExpr_=缓冲地址供 CopyStruct 物化）。四族共用（虚调用/实例直调/静态直调/普通调用·原逐字重复已提炼）。
-    ir::IRValue allocAggRetbufBuf(const std::string& srcRetType,
-                                  const SourceLocation& loc);
+    ir::IRValue allocAggRetbufBuf(const std::string& srcRetType, const SourceLocation& loc);
     // 查找变量寄存器（未找到返回id=-1）
     ir::IRValue lookupVar(const std::string& name);
 
@@ -318,8 +314,7 @@ private:
     static Operator baseOpOfCompound(Operator op);
     // 复合赋值右值宽化（331-a·T51 单一归属）：目标类型为 128 位（i128/u128）且
     //   右值类型不同时插 转换(Cast) 指令——普通二元表达式路径（ir_expr.cpp 公共
-    ir::IRValue widenCompoundRhs(const ir::IRValue& rhs,
-                                 const std::string& targetType,
+    ir::IRValue widenCompoundRhs(const ir::IRValue& rhs, const std::string& targetType,
                                  const SourceLocation& loc);
     // 字符串字面量解码（剥离引号，阶段一简单解码）
     static std::string decodeString(const std::string& raw);
@@ -404,14 +399,12 @@ private:
     // ---- 432（#276 波3·蹦床闭包模型）lambda 生成族私辅（实现在 ir_lambda.cpp）----
     // lambda 用户参数段构建（?lambdaN 与蹦床共用——纪律二当场归纳）：参数槽/
     //   varStack 登记，引用参数（T&）按 ptr+byRef 形态（A-1 同款）
-    void buildLambdaUserParams(
-        ir::IRFunction& func, LambdaExpr* node);
+    void buildLambdaUserParams(ir::IRFunction& func, LambdaExpr* node);
     // 快照静态槽注册 + 定义处固化（外层块发射）：值捕获=StorePtr 定义处值；
     //   [&]=StorePtr 变量地址；结构体值捕获=CopyStruct 槽（与 genVarDecl
     //   captureArgs 固化同构——数据流终点不同：captureArgs=局部值列表，
     //   本处=.data 静态槽·第 2 处重复留标记：与 ir_stmt_decl_init 固化段互为镜像）
-    void emitLambdaSnapshotStores(
-        const std::string& lambdaName,
+    void emitLambdaSnapshotStores(const std::string& lambdaName,
         const std::vector<std::string>& capturedNames,
         const std::vector<char>& captureRefs,
         const SourceLocation& loc);
@@ -419,15 +412,13 @@ private:
     //   还原捕获实参 + Call ?lambdaN。lambda 值=蹦床地址（可安全作 fnptr
     //   返回/传参——值捕获快照随槽全局存活=逃逸安全；[&] 逃逸=悬垂域挂
     //   #435/#468 逃逸检查面，本波只做值捕获高阶形态）
-    void buildLambdaTrampoline(
-        const std::string& lambdaName, const std::string& returnIrType,
+    void buildLambdaTrampoline(const std::string& lambdaName, const std::string& returnIrType,
         LambdaExpr* node,
         const std::vector<std::string>& capturedNames,
         const std::vector<char>& captureRefs,
         const SourceLocation& loc);
     // lambda 快照静态槽键（?gstatic_ 前缀外的注册键；lambdaName 唯一保证不撞）
-    std::string lambdaSlotKey(const std::string& lambdaName,
-                              const std::string& cap) const;
+    std::string lambdaSlotKey(const std::string& lambdaName, const std::string& cap) const;
     // ---- 482 载体快照槽族私辅（实现/数据/语义见 ir_lambda.cpp 与 ir_generator_types.hpp）----
     int captureBytes482(const std::string& capSrc);
     void emitSharedToCarrier482(const std::string& lambdaName, const std::vector<ClosureInfo::CarrierCapture>& slots, const SourceLocation& loc);
@@ -583,14 +574,11 @@ private:
     void emitStrArrayStructFreesAt(const ir::IRValue& base, int len, int stride,
                                    const std::string& elemCanon,
                                    const SourceLocation& loc);
-    void emitFieldStringFreeAt(const ir::IRValue& fieldAddr,
-                               const SourceLocation& loc);
-    void emitFieldStringFreeIf(const ir::IRValue& condAddr,
-                               const ir::IRValue& fieldAddr,
+    void emitFieldStringFreeAt(const ir::IRValue& fieldAddr, const SourceLocation& loc);
+    void emitFieldStringFreeIf(const ir::IRValue& condAddr, const ir::IRValue& fieldAddr,
                                const SourceLocation& loc);
     // 聚合基址上的全部字段释放（字段地址 = 基址 + 偏移；条件字段经条件分支）
-    void emitOwnedStrFieldFreesAt(const ir::IRValue& base,
-                                  const std::string& canon,
+    void emitOwnedStrFieldFreesAt(const ir::IRValue& base, const std::string& canon,
                                   const SourceLocation& loc);
     // 局部槽版本（按名单 unique 取 AddrOf 基址）
     // 98-a（C9）：字符串元素数组逐元素释放发射（编译期展开 N 次；元素槽清槽幂等）
@@ -603,24 +591,20 @@ private:
     void emitOwnedFieldFreesFor(const std::string& unique, const std::string& canon,
                                 const SourceLocation& loc);
     // 深拷两阶段：preFree=释放目标旧字段值（须在 memcpy 之前；无条件句柄空安全）
-    void emitOwnedStrFieldPreFree(const ir::IRValue& dstBase,
-                                  const std::string& canon,
+    void emitOwnedStrFieldPreFree(const ir::IRValue& dstBase, const std::string& canon,
                                   const SourceLocation& loc);
-    void emitOwnedStrFieldPostCopy(const ir::IRValue& dstBase,
-                                   const ir::IRValue& srcBase,
+    void emitOwnedStrFieldPostCopy(const ir::IRValue& dstBase, const ir::IRValue& srcBase,
                                    const std::string& canon,
                                    const SourceLocation& loc);
     // 结构体整体拷贝单一事实源：含串字段=preFree + memcpy + 深拷（postCopy），
     //   否则纯 memcpy（零开销——无串字段类型原路径不变）。
-    void emitStructCopyWithFields(const ir::IRValue& dstAddr,
-                                  const ir::IRValue& srcAddr,
+    void emitStructCopyWithFields(const ir::IRValue& dstAddr, const ir::IRValue& srcAddr,
                                   const std::string& canon,
                                   const SourceLocation& loc, bool preFree,
                                   bool deepCopy = true);
     // 183-a：聚合自赋值运行时守卫（dst≡src → 拷贝段 no-op）——begin 发射
     //   「Eq + Branch」并切入拷贝块，返回汇合块标签；end 在拷贝段尾发射跳转
-    std::string beginSelfAssignGuard(const ir::IRValue& dstAddr,
-                                     const ir::IRValue& srcAddr,
+    std::string beginSelfAssignGuard(const ir::IRValue& dstAddr, const ir::IRValue& srcAddr,
                                      const SourceLocation& loc);
     void endSelfAssignGuard(const std::string& skipLabel);
     // 206-b（波 4·plans/022 §四.5）：复制(表达式) 泛型克隆内置发射——按实参类型
@@ -633,8 +617,7 @@ private:
     bool isBorrowedAggregateSource(const Expr* e) const;
     // 85-a：聚合返回位所有权保证发射（借用来源 → 物化独立副本并返回其地址）。
     //   调用点 ir_stmt.cpp visitReturnStmt：true 时调用方 endReturn(srcAddr)。
-    bool genOwnedAggregateReturn(Expr* value, const SourceLocation& loc,
-                                 std::string& srcAddr);
+    bool genOwnedAggregateReturn(Expr* value, const SourceLocation& loc, std::string& srcAddr);
 
     // ---- 74-a（2026-09-11 第七十四轮）：容器元素所有权归一化 ----
     // 背景（探针 74 实证）：容器析构**无条件释放元素串**（__cn_*_free_strings 由
@@ -651,13 +634,11 @@ private:
     // 容器元素数组字段名（向量/栈=数据；链表/队列=值表；集合=数据数组）；非容器空串
     static std::string containerElemArrayField(const std::string& canonClass);
     // 槽是否为本函数拥有串局部（ownedStringOrder_ ∩ 非污染）——转移() 真 move 判据
-    bool isOwnedStringSlot(const std::string& unique,
-                           const std::string& srcName) const;
+    bool isOwnedStringSlot(const std::string& unique, const std::string& srcName) const;
     // 发射容器元素串释放（单点事实源：flat 模型传 数据/元素数量；链式模型传
     //   值表/下一索引/头索引/元素数量）——三处释放路径（函数级兜底/块出口/跳出）
     //   共用，避免各写一份字段偏移（plans/020 移植纪律 8「释放路径两侧对照」）。
-    void emitContainerElemFreeFor(const std::string& canonClass,
-                                  const ir::IRValue& objPtr,
+    void emitContainerElemFreeFor(const std::string& canonClass, const ir::IRValue& objPtr,
                                   const SourceLocation& loc);
     // ---- 81-a（第八十一轮）：容器元素=含拥有型串字段结构体 ----
     // 背景（探针 P1~P7 实证，plans/020 矩阵靶子 #1）：元素槽字段串由 stdlib 的
@@ -666,38 +647,40 @@ private:
     bool isOwnedStrFieldElemContainer(const std::string& canonClass) const;
     // 元素遍历循环（全量释放路径单点事实源）——按容器元素模型分派：
     //   平铺（向量/栈/集合）：idx=0..元素数量，元素地址 = 数组 + idx*stride；
-    void emitContainerElemWalk(const std::string& canonClass,
-                               const ir::IRValue& selfPtr,
+    void emitContainerElemWalk(const std::string& canonClass, const ir::IRValue& selfPtr,
                                const ir::IRValue& arrayPtr,
                                const ir::IRValue& count, int stride,
                                const SourceLocation& loc,
                                const std::function<void(const ir::IRValue&)>& body);
     // 单槽元素释放（含既有守卫；body 为单元素释放体）：
     //   索引来源——析构元素/析构被移除=参数 索引（守卫 索引<0 || >=元素数量）；
-    void emitSingleElemRelease(const std::string& canonClass,
-                               const ir::IRValue& selfPtr,
+    void emitSingleElemRelease(const std::string& canonClass, const ir::IRValue& selfPtr,
                                const ir::IRValue& arrayPtr,
                                const ir::IRValue& count, int stride,
                                const std::string& indexParam,
                                const std::string& indexField,
                                const SourceLocation& loc,
                                const std::function<void(const ir::IRValue&)>& body);
+    // ---- 954（visitCallExpr 巨函数拆族·纯机械搬移零语义）----
+    //   函数体按内聚域拆出;实现分布:内置族 ir_call_builtin.cpp / 闭包族
+    //   ir_call_closure.cpp / 直调族 ir_call_direct.cpp / 间接族 ir_call_indirect.cpp /
+    //   实参族 ir_call_args.cpp。族序=原单函数逐节顺序,调用点一一对应。
+    void emitTransferCallExpand(CallExpr* node);                    // 转移展开（builtin）
+    void emitTransferStructSourceCopy(CallExpr* node, const std::string& srcUnique,
+                                      const std::string& srcCanon); // 结构体源物化（builtin）
     // 结构体字面量实参物化（D3 根治共享助手）：Alloca 临时 + emitStructInitTo +
     //   返回地址（按值结构体参数 ABI 传地址）——普通调用路径原实现，81-a 提取
     //   供方法调用路径复用（原方法调用路径无此物化 → 实参地址=空指针 → 段错误）。
-    ir::IRValue materializeStructInitArg(StructInitExpr* init,
-                                         const SourceLocation& loc);
+    ir::IRValue materializeStructInitArg(StructInitExpr* init, const SourceLocation& loc);
     // 106（890 残余·泛型方法实参面）：实参位「无」→ 可选<T> 形参空可选装箱
     //   （canConvertType 豁免放开的 IR 配套）——Alloca 临时 + 整槽零填充
     //   （flag=0/值=0=「无」语义）+ 传地址；形参=模板/合成名双形态可选，
     //   其余实参/形参形态 no-op（四调用点共用：普通/静态/虚/直接方法）。
-    void boxNullOptionalArgs(CallExpr* node,
-                             const std::vector<std::string>& paramTypes,
+    void boxNullOptionalArgs(CallExpr* node, const std::vector<std::string>& paramTypes,
                              std::vector<ir::IRValue>& args);
     // 106 组合：方法调用实参定标单一入口（331-a i128/u128 宽化 + 106
     //   无→可选装箱）——静态/虚/直接方法三路径共用（ir_oop_call 调用点 1 行）。
-    void normalizeMethodArgs(CallExpr* node,
-                             const std::vector<std::string>& paramTypes,
+    void normalizeMethodArgs(CallExpr* node, const std::vector<std::string>& paramTypes,
                              std::vector<ir::IRValue>& userArgs);
     // D1 128-a：injectContainerElemDestroy 子方法（映射<K,V> 字符串键/值释放注入族）
     void injectMapElemDestroy(const std::string& canonClass, const ClassMemberInfo& mi,
@@ -761,8 +744,7 @@ private:
     // 生成方法体 IRFunction 的参数装载（this + 显式参数进入 varStack_ 最外层作用域）
     void setupMethodParams(ir::IRFunction& func, const ClassMemberInfo& mi);
     // Feature 2 完整版：容器<T> 元素自动析构注入（详注见 ir_oop_container.cpp 实现头注）。
-    void injectContainerElemDestroy(const std::string& className,
-                                    const ClassMemberInfo& mi,
+    void injectContainerElemDestroy(const std::string& className, const ClassMemberInfo& mi,
                                     const SourceLocation& loc);
     // 缺陷3 根治：~类名() 体后按字段逆序级联析构「有析构类」字段（详注见 ir_oop_field.cpp 实现头注）。
     void injectFieldCascadeDestroy(const ClassMember* member);
@@ -772,8 +754,7 @@ private:
     // 860-a：构造函数序言级联构造「有默认构造」本类类字段（与析构侧对称·详注见 ir_oop.cpp 实现头注）。
     void injectFieldCascadeConstruct(const ClassMember* member);
     // #283 甲案：类字段默认构造级联发射（NewObject+默认构造+写入字段槽·详注见 ir_oop.cpp 实现头注）。
-    void cascadeConstructFields(const std::string& className,
-                                const ir::IRValue& obj,
+    void cascadeConstructFields(const std::string& className, const ir::IRValue& obj,
                                 const SourceLocation& loc);
     // 117：基类构造链注入（派生无显式初始化列表自动调基类默认构造·详注见 ir_oop.cpp 实现头注）。
     void emitBaseCtorChain(const std::string& className,
@@ -781,8 +762,7 @@ private:
 
     // 775（甲案）：实例字段默认值注入——本层字段逐字段写默认值（偏移按 objClass 布局查）；
     //   注入点=声明创建/显式构造/基类链（顺序=默认值先·构造体后覆盖·C++ NSDMI 语义）。
-    void emitClassFieldDefaults(const std::string& layerClass,
-                                const std::string& objClass,
+    void emitClassFieldDefaults(const std::string& layerClass, const std::string& objClass,
                                 const ir::IRValue& objPtr,
                                 const SourceLocation& loc);
     // 123（930·用户裁决甲）：拷贝构造基类链——派生类用户拷贝构造序言自动拷
@@ -806,8 +786,7 @@ private:
     //   exprSrcType（const）的构造调用类型推导须与 emitConstructorCall 共用本判据
     //   （单一事实源，防两处判定漂移）
     std::string resolveGenericCtorInstanceName(std::string className) const;
-    const ClassMemberInfo* findCtorMember(const ClassInfo* ci,
-                                          const std::string& className,
+    const ClassMemberInfo* findCtorMember(const ClassInfo* ci, const std::string& className,
                                           CallExpr* node);
     void emitCtorInvoke(CallExpr* node, const std::string& className,
                         const ClassMemberInfo* ctor, const ir::IRValue& obj);
@@ -824,10 +803,8 @@ private:
     // 情形B 成员方法调用族
     bool emitMemberMethodCall(CallExpr* node);
     // 返回：1=已处理；0=交回原路径；-1=非静态形态（fall-through 实例方法路径）
-    int emitStaticMethodCall(CallExpr* node, MemberExpr* mem,
-                             const std::string& methodName);
-    bool emitInstanceMethodCall(CallExpr* node, MemberExpr* mem,
-                                const std::string& methodName,
+    int emitStaticMethodCall(CallExpr* node, MemberExpr* mem, const std::string& methodName);
+    bool emitInstanceMethodCall(CallExpr* node, MemberExpr* mem, const std::string& methodName,
                                 const std::string& canonObj);
     void emitVirtualMethodCall(CallExpr* node, const ClassMemberInfo* m,
                                const std::string& owner,
@@ -871,8 +848,7 @@ private:
                                  const ir::IRValue& addr, const ir::IRValue& value);
     // 629（544 呈报）：类字段 ←「返回类对象的调用」产物——旧字段释放+新
     //   句柄入槽（实现见 ir_expr_assign.cpp 成员族）
-    bool memberClassCallProductAssign(Expr* valueExpr,
-                                      const ir::IRValue& fieldAddr,
+    bool memberClassCallProductAssign(Expr* valueExpr, const ir::IRValue& fieldAddr,
                                       const std::string& fieldCanon,
                                       const SourceLocation& loc);
     // 族：下标/解引用左值（原 320~459 段）
@@ -902,8 +878,7 @@ private:
     bool identifierClassOverloadProductAssign(AssignmentExpr* node, IdentifierExpr* ident,
                                               const std::string& unique);
     // 821（#444）：重载产物右值形态判定（局部/静态共用·非引用返回白名单）
-    bool isClassOverloadProductRhs(AssignmentExpr* node,
-                                   const std::string& canonTarget) const;
+    bool isClassOverloadProductRhs(AssignmentExpr* node, const std::string& canonTarget) const;
     // 629（544 呈报）：类/容器目标 ←「返回类对象的调用」产物——接管新句柄 +
     //   覆盖前旧值释放（Rust `a = f()` drop 语义；实现于 ir_expr_assign_ident_class.cpp）
     bool identifierClassCallProductAssign(AssignmentExpr* node, IdentifierExpr* ident,
@@ -969,12 +944,10 @@ private:
     void emitResultCtorValue(CallExpr* node, const std::string& name,
                              ir::IRValue valAddr, const std::string& valueType);
     // 生成 实例字段地址：this 指针（Load 自身参数槽）+ FieldAddr(类字段偏移)
-    ir::IRValue genInstanceFieldAddr(const std::string& fieldName,
-                                     const SourceLocation& loc);
+    ir::IRValue genInstanceFieldAddr(const std::string& fieldName, const SourceLocation& loc);
     // 生成 静态字段地址：ConstString 常量携带 ?static_类名_字段名 链接符号
     //   （codegen emitConstLoad 对 ConstString 生成 lea rax, 符号 -> 地址值）
-    ir::IRValue genStaticFieldAddr(const std::string& className,
-                                   const std::string& fieldName,
+    ir::IRValue genStaticFieldAddr(const std::string& className, const std::string& fieldName,
                                    const SourceLocation& loc);
     // 推导表达式源码类型（标识符查变量表 / 自身=当前类 / 成员字段类型 / 调用返回类型）
     std::string exprSrcType(Expr* node) const;
