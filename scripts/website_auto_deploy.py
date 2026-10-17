@@ -63,13 +63,16 @@ def 跑(args, cwd=None, 检查=True, 超时=900):
 
 
 def 取仓库(分支: str) -> Path:
-    """缓存仓不存在则浅克隆；存在则 fetch+reset 到 origin/<分支> 最新（stats 同款）。"""
+    """缓存仓不存在则浅克隆；存在则 fetch+reset 到 origin/<分支> 最新（stats 同款）。
+    reset 后 checkout -B <分支>：把本地分支名对齐部署分支（首次以他分支克隆的缓存仓
+    切到 develop 时，页脚标注的分支名取自 git HEAD——不对齐会标错来源分支）。"""
     if not (CACHE_REPO / ".git").exists():
         记("缓存仓不存在，浅克隆 %s（分支 %s）→ %s ..." % (GIT_URL, 分支, CACHE_REPO))
         跑(["git", "clone", "--depth", "1", "--branch", 分支, GIT_URL, str(CACHE_REPO)])
     else:
         跑(["git", "fetch", "--depth", "1", "origin", 分支], cwd=CACHE_REPO, 超时=600)
         跑(["git", "reset", "--hard", "-q", "FETCH_HEAD"], cwd=CACHE_REPO)
+        跑(["git", "checkout", "-B", 分支], cwd=CACHE_REPO)
         跑(["git", "clean", "-fdq"], cwd=CACHE_REPO)
     return CACHE_REPO
 
