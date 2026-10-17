@@ -8,7 +8,9 @@ os.utime 控制时刻·不真编译。场景：
   ④ 游离 obj（不在当前构建图）→ rc=0+黄提示（不误红）；
   ⑤ 链接产物旧于输入（链接滞后）→ rc=1；
   ⑥ 核心产物早于 HEAD 提交时刻（rebase 后未重建）→ rc=1；
-  ⑦ Make 布局模式（无 build.ninja）：obj 旧于源红 / 全新鲜绿。
+  ⑦ Make 布局模式（无 build.ninja）：obj 旧于源红 / 全新鲜绿；
+  ⑧ Make 布局链接输入按 target 归属（1006）：cn 旧于无关 unit obj 不误红（#993
+     场景：跨目标 obj 不是输入）/ 触 cn 真实输入 obj 仍红（不假绿）。
 用法：python scripts/test_build_freshness.py   （rc=0=全绿）
 """
 from __future__ import annotations
@@ -183,6 +185,59 @@ def 场景7_Make布局(基础: str) -> None:
     断言(码2 == 0, f"场景⑦ Make 布局全新鲜→rc=0\n{出2}")
 
 
+def 场景8_Make链接归属(基础: str) -> None:
+    """1006 回归锚：Make 布局链接输入按 link.txt（-o 命中该产物）解析——cn 只对
+    自身输入比较；cn_unit_tests 的 obj 新于 cn 不算 cn 陈旧（#993 误报本尊）。
+    时刻设计：产物/无关 obj 取 now 之后（保 ≥ HEAD 提交时刻·防 HEAD 判据混入），
+    cn < 无关 unit obj，但 cn > 自身全部输入（=误报场景的「本应绿」态）。"""
+    现在 = time.time()      # 场景内现取（模块级时刻早于本场景 git commit·会触发 HEAD 判据）
+    根 = Path(tempfile.mkdtemp(prefix="bfl_", dir=基础))
+    造git(根)
+    (根 / "src").mkdir(exist_ok=True)
+    (根 / "tests/unit/ir").mkdir(parents=True)
+    (根 / "src" / "a.cpp").write_text("// a\n", encoding="utf-8")
+    (根 / "tests/unit/ir" / "test_x.cpp").write_text("// t\n", encoding="utf-8")
+    构建目录 = 根 / "target" / "build-quick"
+    obj目录 = 构建目录 / "CMakeFiles" / "cn.dir" / "src"
+    unit目录 = 构建目录 / "tests/unit/CMakeFiles/cn_unit_tests.dir/ir"
+    obj目录.mkdir(parents=True)
+    unit目录.mkdir(parents=True)
+    (构建目录 / "CMakeCache.txt").write_text("# fake\n", encoding="utf-8")
+    (构建目录 / "CMakeFiles/cn.dir/link.txt").write_text(
+        f"/usr/bin/c++ -g -o {根}/target/cn CMakeFiles/cn.dir/src/a.cpp.o {根}/target/libx.a\n",
+        encoding="utf-8")
+    (构建目录 / "tests/unit/CMakeFiles/cn_unit_tests.dir/link.txt").write_text(
+        f"/usr/bin/c++ -g -o {根}/target/cn_unit_tests "
+        f"CMakeFiles/cn_unit_tests.dir/ir/test_x.cpp.o {根}/target/libx.a\n", encoding="utf-8")
+    obj = obj目录 / "a.cpp.o"
+    obj.write_bytes(b"O")
+    无关obj = unit目录 / "test_x.cpp.o"
+    无关obj.write_bytes(b"O")
+    库 = 根 / "target" / "libx.a"
+    库.write_bytes(b"A")
+    cn = 根 / "target" / "cn"
+    cn.write_bytes(b"ELF")
+    单测 = 根 / "target" / "cn_unit_tests"
+    单测.write_bytes(b"ELF")
+    触(根 / "src" / "a.cpp", 现在 - 300)
+    触(obj, 现在 - 100)                         # cn 真实输入（早期）
+    触(库, 现在 - 80)                           # 既有共同输入
+    触(无关obj, 现在 + 2)                       # 晚于 cn——旧法据此误报链接滞后
+    触(cn, 现在 + 1)                            # cn 新于自身全部输入（应绿）
+    触(单测, 现在 + 4)                          # 新于自身全部输入（应绿）
+    码, 出 = 跑核验(根, 构建目录)
+    断言(码 == 0 and "链接滞后" not in 出,
+         f"场景⑧a cn 旧于无关 unit obj 但新于自身输入→rc=0（#993 误报回归锚）\n{出}")
+    触(obj, 现在 + 6)                           # 触 cn 真实输入（link.txt 取出的 obj）
+    码2, 出2 = 跑核验(根, 构建目录)
+    断言(码2 == 1 and "链接滞后" in 出2 and "a.cpp.o" in 出2,
+         "场景⑧b cn 真实输入 obj 被触→仍红（防假绿·不放松）")
+    断言("cn_unit_tests 旧于输入" not in 出2, "场景⑧b 归属过滤：unit 产物不因 cn 输入被牵连")
+    触(obj, 现在 - 100)                         # 还原
+    码3, 出3 = 跑核验(根, 构建目录)
+    断言(码3 == 0, f"场景⑧c 还原后复绿\n{出3}")
+
+
 def main() -> int:
     with tempfile.TemporaryDirectory(prefix="cn_bf_") as 基础:
         print("== 场景① ninja 全新鲜（$: 转义回归） ==")
@@ -199,6 +254,8 @@ def main() -> int:
         场景6_HEAD判据(基础)
         print("== 场景⑦ Make 布局模式 ==")
         场景7_Make布局(基础)
+        print("== 场景⑧ Make 布局链接输入按 target 归属（1006） ==")
+        场景8_Make链接归属(基础)
     print(f"\n[全部通过] {通过} 项断言")
     return 0
 

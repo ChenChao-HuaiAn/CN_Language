@@ -9,6 +9,8 @@
   前置自检 → fetch → rebase（冲突自己解·禁止 develop 手解）→ 写集分类（仅门禁深度）
   → 门禁（跑在合并结果上：快速门禁恒跑；写集触及 src/tests 时全量门禁）
   → push gitcode develop（ff-only·CAS 竞争输家自动 rebase 重试 ≤3 次）→ 补推 github 镜像。
+  写集语义（1008）=**分支自身改动**（三点间改动 <基线>...<HEAD>）——报名在 rebase 之前、
+  分支基线常落后 develop tip，两点 diff 会把 develop 反向差异虚算入写集（#993：4→86 文件）。
 v3（581-a·2026-09-21 用户裁决）：**无任何集成前置的他机回签/批准面**——跨平台正确性由
 集成后异步验收+修复义务保障（AGENTS.md §7·异步验收不需他机回签）。
 业界对照=rustc/bors 合并队列、GitHub merge queue 的脚本化实现。
@@ -166,18 +168,26 @@ def 前置自检(远程: str = 主远程) -> str | None:
     return None
 
 
-def 两点间改动(起点: str, 终点: str) -> list[str]:
-    """两点间 commit 范围的改动文件清单——写集分类与冲突标记扫描的输入。"""
+def 三点间改动(起点: str, 终点: str) -> list[str]:
+    """「终点侧自身改动」文件清单——三点语义 <起点>...<终点>（merge-base(起点,终点)→终点）。
+
+    1008 修复（#993 实录）：原两点 diff <起点>..<终点> 在终点（分支）基线落后起点
+    （develop tip）时，把「起点有而终点没有的反向差异」也算进写集——#993 实际 4 文件
+    被算成 86 文件 → 误判触全量面白跑云端预验 2604 秒；归因辅助同频误导。报名发生在
+    rebase 之前，落后基线是常见态而非边缘场景。三点=A...B：自 merge-base(A,B) 至 B
+    =「本分支自身改动」；终点基于起点（rebase 后/两 develop tip 祖先链）时
+    merge-base=起点，三点与两点等价——既有调用点语义不变。
+    """
     # core.quotepath=false：中文路径默认被转义为带前导双引号的八进制形态（"tests/e2e/...），
     # 令 分类写集 的 startswith 匹配失效 → 触及中文路径写集被静默降级为快速门禁（586-a 实测：
     # 93 个 tests 文件全中文目录名，全量门禁被跳过）；冲突标记检查的 仓库根/路径 拼装同样受害。
-    文本 = 输出(["git", "-c", "core.quotepath=false", "diff", "--name-only", f"{起点}..{终点}"])
+    文本 = 输出(["git", "-c", "core.quotepath=false", "diff", "--name-only", f"{起点}...{终点}"])
     return [行.strip().strip('"') for 行 in 文本.splitlines() if 行.strip()]
 
 
 def 改动文件清单(基准: str) -> list[str]:
-    """基准（develop tip）相对 HEAD 的改动文件清单（=两点间改动 的便捷封装）。"""
-    return 两点间改动(基准, "HEAD")
+    """基准（develop tip）相对 HEAD 的改动文件清单（=三点间改动 的便捷封装）。"""
+    return 三点间改动(基准, "HEAD")
 
 
 def 分类写集(文件们: list[str]) -> bool:
@@ -1001,10 +1011,13 @@ def 报名行(分支: str, 基线: str, 摘要: str) -> dict:
 
 
 def 批写集(成员们: list[dict], 基底: str) -> list[str]:
-    """批内全部成员写集并集（去重·分类门禁深度的输入）。"""
+    """批内全部成员写集并集（去重·分类门禁深度的输入）。
+
+    成员写集=分支自身改动（三点·1008）——基底（最新 develop）常领先成员基线，
+    两点 diff 会把 develop 自 merge-base 起的反向差异算入（#993：4 文件虚大成 86）。"""
     全: list[str] = []
     for 行 in 成员们:
-        全.extend(两点间改动(基底, 行["分支"]))
+        全.extend(三点间改动(基底, 行["分支"]))
     return sorted(set(全))
 
 
@@ -1081,7 +1094,7 @@ def 单次集成尝试(平台: str, 上次已验基准: str | None, 参数: argp
     if 上次已验基准 is None or 上次已验基准 == 最新:
         增量 = 文件们 if 上次已验基准 is None else []
     else:
-        增量 = 两点间改动(上次已验基准, 最新)
+        增量 = 三点间改动(上次已验基准, 最新)   # 两 develop tip=祖先链·三点=两点等价
     增量须全量 = 分类写集(增量)
     print(f"[3] 快速门禁（改动 {len(文件们)} 个文件）")
     问题 = 快速门禁(文件们)
@@ -1254,7 +1267,7 @@ def 批流程(参数: argparse.Namespace) -> int:
             if 已验基准 is None or 已验基准 == 最新:
                 增量须全量 = 须全量 if 已验基准 is None else False
             else:
-                增量须全量 = 分类写集(两点间改动(已验基准, 最新))
+                增量须全量 = 分类写集(三点间改动(已验基准, 最新))   # 两 develop tip·三点=两点等价
             问题 = 快速门禁(批文件们)
             if 问题:
                 return 失败(问题)
@@ -1288,7 +1301,7 @@ def 批流程(参数: argparse.Namespace) -> int:
                 if 问题:
                     print("  [归因辅助] 批成员×写集（对照失败日志定位破坏者后 --drop 踢出重验）：")
                     for 行 in 实际成员:
-                        成员写集 = 两点间改动(最新, 行["分支"])
+                        成员写集 = 三点间改动(最新, 行["分支"])   # 分支自身改动（1008 虚大修复）
                         print(f"    - {行['分支']}：{成员写集}")
                     return 失败(问题 + "（批门禁红——修复后重跑本命令续推）")
                 if 参数.cloud_gate and not 云端首批已绿:

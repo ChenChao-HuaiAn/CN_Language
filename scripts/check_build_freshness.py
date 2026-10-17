@@ -13,7 +13,9 @@
   ① 编译边：obj 缺失（构建图声明未落地）/ 源缺失 / obj.mtime < 源.mtime
      （漏编=假新鲜主判据——探针实证：源内容变+回拨 mtime→ninja 只重编另一个
      obj→LNK2005·见 target/probe872 探针与提交信息）；
-  ② 库/链接边：产物缺失 / 产物.mtime < 任一输入（主+implicit）mtime（链接滞后）；
+  ② 库/链接边：产物缺失 / 产物.mtime < 任一「真实输入」mtime（链接滞后）——
+     ninja 布局按 build.ninja 边取输入；Make 布局按 <目标>.dir/link.txt 真实链接
+     命令行取输入（1006：旧法「构建目录内全部 obj」跨目标误报，见核验make布局）；
   ③ 核心产物（target/cn.exe、cn_unit_tests.exe 等）vs HEAD 提交时刻（rebase/
      检出后未重建形态·795 判据 a 的构建层版·判据语义与 tests/e2e/exe新鲜度 一致）；
   ④ 游离产物（*.obj/*.lib 不在当前构建图内）=黄提示（历史残留·不红——正常树
@@ -24,6 +26,8 @@
     088 全量重扫承担（本器不重复建 .ninja_deps 解析）；
   · Make 布局模式（linux build-quick·无 build.ninja）：obj→源按 CMakeFiles/*.dir
     布局映射，源在仓库根外（munged 名 =_/C_/E_ 段）的 obj 计入豁免计数不红；
+    链接输入按 link.txt 解析（-o 命中该产物才算其链接命令；link.txt 未命中=黄字
+    显式跳过——miss 不静默，禁「全部 obj」近似回潮）；
   · 时间戳判据=严格小于（同秒不报——构建极快时源/obj 同秒为常态）。
 rc：0=全绿（可含黄提示）；1=存在确凿不新鲜（红名单——构建机制失灵，继续跑门禁
     =测旧物；处置：ninja -t clean 或删构建目录后重建）。
@@ -36,6 +40,7 @@ from __future__ import annotations
 import argparse
 import os
 import re
+import shlex
 import subprocess
 import sys
 import time
@@ -190,6 +195,42 @@ def 核验ninja图(构建目录: Path, 红: list, 黄: list) -> tuple[int, int, 
     return 编译数, 链接数, 跳过
 
 
+def _链接脚本词表(link: Path) -> list[str]:
+    """link.txt → 词表（shlex 拆词·路径含空格时引号面同解）；读/解析失败=空表。"""
+    try:
+        return shlex.split(link.read_text(encoding="utf-8", errors="replace"))
+    except (OSError, ValueError):
+        return []
+
+
+def 找make链接输入(构建目录: Path, 产物: Path) -> tuple[list[Path] | None, str | None]:
+    """Make 布局：按 link.txt（CMake 真实链接命令行）解析某产物的真实输入集（1006）。
+
+    旧实现把构建目录内**全部 obj** 当每个产物的输入——cn_unit_tests 的 obj 根本
+    不是 target/cn 的链接输入，并行构建「cn 先链接、unit obj 后编译」时序下即误报
+    「target/cn 旧于输入……（链接滞后）」卡 L1 集成（#993 两次实录；`rm target/cn`
+    重链只是掩盖误报的人工兜底·批场景不可持续）。修复=按真实链接命令解析：候选
+    <名>.dir/link.txt 中 -o 输出路径命中该产物才算它的链接命令，输入=命令行里的
+    .o/.obj/.a/.lib 词；相对词按链接脚本 cwd=CMakeFiles 目录的父解析（build.make
+    实证 `cd <子目录根> && cmake -E cmake_link_script …`）。
+    返回 (输入们, None)；未命中/无输入词=(None, 原因)——调用方黄字显式跳过（miss
+    不静默；禁「全部 obj」近似放宽，防误报回潮）。"""
+    基础名 = 产物.name[:-4] if 产物.name.lower().endswith(".exe") else 产物.name
+    for 候选 in sorted(构建目录.rglob(f"CMakeFiles/{基础名}.dir/link.txt")):
+        词 = _链接脚本词表(候选)
+        根 = 候选.parent.parent.parent          # 链接脚本 cwd：CMakeFiles 目录的父
+        输出 = next((根 / 词[i + 1] if not _是绝对(词[i + 1]) else Path(词[i + 1])
+                    for i in range(len(词) - 1) if 词[i] == "-o"), None)
+        if 输出 is None or 规一(输出) != 规一(产物):
+            continue
+        输入们 = [根 / t if not _是绝对(t) else Path(t) for t in 词
+                 if not t.startswith("-") and Path(t).suffix.lower() in _对象后缀]
+        if 输入们:
+            return 输入们, None
+        return None, f"link.txt 无对象/库输入词（{短(候选)}）——链接输入核验跳过"
+    return None, f"未找到 link.txt（Make 布局·{短(构建目录)}）——链接输入核验跳过"
+
+
 def 核验make布局(构建目录: Path, 红: list, 黄: list) -> tuple[int, int]:
     """Make 生成器布局（linux build-quick）：CMakeFiles/*.dir/** 下 obj→源按相对
     路径映射；源在仓库根外的 munged 名（首段含 _ 转码）计入豁免计数不红。"""
@@ -216,16 +257,24 @@ def 核验make布局(构建目录: Path, 红: list, 黄: list) -> tuple[int, int
         差 = 源.stat().st_mtime - obj.stat().st_mtime
         if 差 > 0:
             红.append(f"{短(obj)} 旧于源 {时分秒(差)}（{短(源)}）——漏编/假新鲜面")
-    # 链接产物 vs 全部 obj（构建目录内 obj 皆属编译链·exe 必须新于每个输入）
+    # 链接产物 vs 各自真实链接输入（1006 修复：旧法「构建目录内全部 obj 皆属每个
+    #   产物输入」把 cn_unit_tests 的 obj 算进 target/cn——并行构建时序误报链接滞后）
     for 名 in ("cn.exe", "cn", "cn_unit_tests.exe", "cn_unit_tests"):
         产物 = 仓库根 / "target" / 名
         if not 产物.exists():
             continue
+        输入们, 原因 = 找make链接输入(构建目录, 产物)
+        if 输入们 is None:
+            黄.append(f"target/{名}：{原因}")
+            continue
         产物时刻 = 产物.stat().st_mtime
-        for obj in 全部obj:
-            差 = obj.stat().st_mtime - 产物时刻
+        for 输入 in 输入们:
+            if not 输入.exists():
+                红.append(f"target/{名} 的链接输入缺失：{短(输入)}（构建图声明未落地）")
+                break
+            差 = 输入.stat().st_mtime - 产物时刻
             if 差 > 0:
-                红.append(f"target/{名} 旧于输入 {短(obj)} {时分秒(差)}（链接滞后）")
+                红.append(f"target/{名} 旧于输入 {短(输入)} {时分秒(差)}（链接滞后）")
                 break
     if 豁免数:
         黄.append(f"{豁免数} 个 obj 无法映射到仓库内源（外部源 munged 名·豁免边界）")
