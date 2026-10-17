@@ -57,10 +57,61 @@
 }</code></pre></div>
 <p class="输出行">输出：1 2.000000
 </p>
-<ul><li><code>导入 模块::符号</code> 后<strong>纯名直用</strong>（公开符号合并机制）；多符号 <code>导入 模块::{a, b, c}</code>；重命名 <code>导入 路径 作为 别名</code>。</li><li>限定名直调形态始终可用：<code>数学::平方根(2.0)</code>（无需导入）。</li><li>顶层 <code>模块 名</code> 声明本模块名（分号可选）；文件顶层 <code>公开:</code> 标签控制导出面（v2.0 默认私有、显式 <code>公开:</code> 导出）。</li></ul>
-<h2 id="内置命名空间">内置命名空间与三层名字解析</h2>
-<p>运行时内置按域分组（<code>IO::</code> <code>数学::</code> <code>文件::</code> <code>时间::</code> <code>系统::</code> <code>线程::</code> <code>解析::</code> <code>内存::</code> <code>字符串构建器::</code>）；标准库模块把它们包装成<code>结果</code> 风格公开函数。纯名引用按三级优先级解析。</p>
-<table class="表"><thead><tr><th>优先级</th><th>名字来源</th><th>说明</th></tr></thead><tbody><tr><td>1</td><td>本地作用域</td><td>局部变量/参数</td></tr><tr><td>2</td><td>当前模块符号</td><td>本文件顶层声明+已导入符号（公开符号合并）</td></tr><tr><td>3</td><td>内置函数/构造器</td><td>打印/字符串长度/分配…与 正常/错误/某些/转移/复制 等</td></tr></tbody></table>
+<ul><li><code>导入 模块::符号</code> 后<strong>纯名直用</strong>（公开符号合并机制）；多符号 <code>导入 模块::{a, b, c}</code>；重命名 <code>导入 路径 作为 别名</code>。</li><li>限定名直调形态始终可用：<code>数学::平方根(2.0)</code>（无需导入）。</li><li>顶层 <code>模块 名;</code> 只在<strong>包根成员聚合/父模块挂子模块</strong>两种位置合法（见下节「模块声明与加载」）；文件顶层 <code>公开:</code> 标签控制导出面（v2.0 默认私有、显式 <code>公开:</code> 导出）。</li></ul>
+<h2 id="模块声明与加载">模块声明与加载</h2>
+<p>模块路径由<strong>文件名 + 目录层级</strong>唯一决定；<code>模块</code> 声明只出现在两个树结构位置，声明 = 自动加载（Rust <code>mod</code> 对齐）。</p>
+<ul><li><strong>定位收紧</strong>：①<strong>包根成员聚合</strong>（<code>包.cn</code> 内 <code>模块 网络;</code>，声明包的组成、不引入名字）；②<strong>父模块挂子模块</strong>（<code>网络.cn</code> 内 <code>模块 传输控制;</code>，建立 <code>网络::传输控制</code> 完整路径）。普通源文件使用 <code>模块</code> 声明=编译诊断「模块声明 'X' 非当前模块 'Y' 的子模块（模块 声明仅限 包根成员聚合/父模块挂子模块）」。</li><li><strong>自动加载强语义</strong>：被 <code>模块</code> 声明引用的模块文件<strong>恒被加载编译</strong>——哪怕无人 <code>导入</code> 它，其内错误也在自身编译期暴露（fail fast，库完整性保证）；触发源 = 声明本身，非目录扫描（未声明的同目录杂散文件不参与编译，封闭树）。</li><li><strong>循环导入拒绝</strong>：模块导入图出现环（直接互引或经中间模块的间接互引）=编译错误——诊断「模块循环依赖」并打印环路径（如 循环乙 → 循环甲 → 循环乙）；加载按依赖拓扑序（被依赖者先编译），不设豁免通道。</li></ul>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">定位收紧断面（声明仅限两位置）</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// —— 网络库.cn（普通依赖文件：非包根、非父模块）——
+模块 兄弟件;        // ✗ 编译诊断：兄弟件.cn 是同目录文件而非 网络库/ 子目录成员
+                    //   挂载只允许「父挂子」（网络库/兄弟件.cn）
+
+// —— 合法位置①：父模块挂子模块 ——
+// 网络.cn 内写：模块 传输控制;   → 建立 网络::传输控制（网络/传输控制.cn）
+
+// —— 合法位置②：包根成员聚合（包.cn 内）——
+// 模块 图形库;        → 声明包的组成（不引入名字）</code></pre></div>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">自动加载强语义断面</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// —— 主.cn ——
+模块 工具件;        // 声明即自动加载（哪怕无人导入）
+
+函数 主() -&gt; 整32 {
+    返回 0;
+}
+
+// —— 工具件.cn（被声明自动加载的子模块）——
+公开:
+函数 坏函数() -&gt; 整32 {
+    返回 未声明名;   // 其错误必暴露：编译失败 rc=1（对照：删声明即不加载）
+}</code></pre></div>
+<h2 id="可见性交集">可见性交集（取最严）</h2>
+<p>符号最终可见性 = 各层级可见性的<strong>交集</strong>（取最严格）——模块级私有一票否决类内 <code>公开:</code>。</p>
+<table class="表"><thead><tr><th>类层级</th><th>成员层级</th><th>同文件</th><th>同包跨文件</th><th>跨包</th></tr></thead><tbody><tr><td>模块公开</td><td>类内公开</td><td>可</td><td>可</td><td>可</td></tr><tr><td>模块公开</td><td>类内私有</td><td>可</td><td>不可</td><td>不可</td></tr><tr><td>模块私有</td><td>类内公开</td><td>可</td><td>不可</td><td>不可</td></tr><tr><td>模块私有</td><td>类内私有</td><td>可</td><td>不可</td><td>不可</td></tr></tbody></table>
+<ul><li>模块公开 × 类内私有：类可跨模块实例化，但私有方法跨文件调用拒（诊断「私有成员」）。</li><li>模块私有 × 类内公开：整个类跨文件不可见（「未声明的标识符」）——模块私有一票否决，类内 <code>公开:</code> 不突破模块边界。</li><li>文件顶层 <code>公开:</code> 标签显式放行导出；无标签=默认私有（v2.0）。</li></ul>
+<h2 id="内置命名空间">内置命名空间与名称解析</h2>
+<p>运行时内置按域分组（<code>IO::</code> <code>数学::</code> <code>文件::</code> <code>时间::</code> <code>系统::</code> <code>线程::</code> <code>解析::</code> <code>内存::</code> <code>字符串构建器::</code>）；标准库模块把它们包装成<code>结果</code> 风格公开函数。纯名引用按作用域链唯一绑定——冲突绝不静默。</p>
+<table class="表"><thead><tr><th>优先级</th><th>名字来源</th><th>说明</th></tr></thead><tbody><tr><td>1</td><td>本地作用域</td><td>局部变量/参数（遮蔽一切同名）</td></tr><tr><td>2</td><td>本模块显式项</td><td>本文件顶层定义（函数/结构体/常量/静态）</td></tr><tr><td>3</td><td>显式导入</td><td><code>导入 m::符号</code> / <code>导入 m::{a, b}</code> / <code>导入 m::符号 作为 别名</code>（具名绑定）</td></tr><tr><td>4</td><td>通配引入</td><td><code>导入 m;</code>（模块整体导入=公开 API 批量引入） / <code>导入 m::*</code></td></tr><tr><td>5</td><td>内置函数/构造器</td><td>打印/字符串长度/分配…与 正常/错误/某些/转移/复制 等</td></tr></tbody></table>
+<ul><li><strong>冲突判定矩阵</strong>（同为纯名）：本模块项 × 显式导入同名=<strong>编译错误</strong>「导入与本地定义同名（E0255）」（改名或删其一）；显式导入 × 显式导入同名=「多次显式导入同名」；通配 × 通配同名=<strong>使用点歧义</strong>「符号歧义：来自 模块A/模块B（E0659）」（仅当该名字被实际引用时报）；本模块项/显式导入 遮蔽 通配=<strong>合法</strong>（唯一允许的遮蔽）。</li><li><strong>限定调用恒明确</strong>：<code>模块::符号(...)</code>（含多级 <code>a::b::c</code>）直接决议到指定模块的公开符号——不参与遮蔽、永无歧义、<strong>无须先导入</strong>；未导入的模块路径引用=「未声明的标识符」（核心包 prelude 内置例外）。</li><li><strong>决议失败绝不静默</strong>：歧义/未命中一律编译诊断，禁止「先收集文件赢」式静默绑定（静默吞=错误绑定）。</li></ul>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">三级解析实测（本模块项遮蔽通配）</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// —— 工具库.cn ——
+公开:
+函数 版本() -&gt; 整64 {
+    返回 200;
+}
+函数 双倍(整64 数值) -&gt; 整64 {
+    返回 数值 * 10;
+}
+
+// —— 主.cn ——（只写整体导入=③ 通配层；不得再写 导入 工具库::版本）
+导入 工具库;
+
+函数 版本() -&gt; 整64 {
+    返回 100;
+}
+
+函数 主() -&gt; 整32 {
+    打印("主 版本(): ", 版本());             // 100（①遮蔽③）
+    打印("工具库::版本(): ", 工具库::版本()); // 200（限定调用恒明确）
+    打印("工具库 双倍(5): ", 双倍(5));       // 50（③glob 纯名直调）
+    返回 0;
+}</code></pre></div>
 <div class="批注 批注-绿"><span class="批注-题">stdlib 与内置的名字分工</span>标准库模块公开函数与内置<strong>纯名不冲突</strong>：如 stdlib IO 模块的 <code>读取行()</code>（返回 结果）与内置 <code>IO::读取行()</code>（返回裸串）以限定名区分。业务代码用 stdlib 包装版（显式错误处理），内置为底层。</div>
 <h2 id="货舱">工程组织：货舱.toml</h2>
 <ul><li>多文件工程由 <code>货舱.toml</code> 声明模块依赖；编译器默认按入口文件同目录自动发现（<code>--货舱 路径</code> 显式指定）。</li><li>标准库随编译器分发（<code>--stdlib 路径</code> 可指定）；<code>stdlib/*.cn</code> 本身就是「模块=文件」的活样板。</li><li>跨模块链接符号冲突（同名公开函数）在导入解析期诊断。</li></ul>
@@ -151,7 +202,7 @@
 }</code></pre></div><nav class="页脚导航"><a class="" href="../reference/concurrency.html"><span class="向">← 上一页</span><span class="题">并发</span></a><a class="下一" href="../cli.html"><span class="向">下一页 →</span><span class="题">命令行参考</span></a></nav></article>
     <aside class="目录" aria-label="本页目录">
       <p class="目录-题">本页目录</p>
-<a href="#导入">导入形态</a><a href="#内置命名空间">内置命名空间与三层名字解析</a><a href="#货舱">工程组织：货舱.toml</a><a href="#包与crate">包与 crate：多包工程</a>
+<a href="#导入">导入形态</a><a href="#模块声明与加载">模块声明与加载</a><a href="#可见性交集">可见性交集（取最严）</a><a href="#内置命名空间">内置命名空间与名称解析</a><a href="#货舱">工程组织：货舱.toml</a><a href="#包与crate">包与 crate：多包工程</a>
     </aside>
   </div>
 </main>
@@ -191,7 +242,7 @@
     </div>
     <div class="页脚-底">
       <span>© 2026 CN 语言项目</span>
-      <span>文档基线：任务/1002 6287413e·2026-10-17·示例经编译器实测</span>
+      <span>文档基线：任务/1003 f6bae87a·2026-10-17·示例经编译器实测</span>
       <span>京ICP备00000000号（备案办理中·占位）</span>
     </div>
   </div>

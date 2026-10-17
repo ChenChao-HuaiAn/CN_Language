@@ -125,7 +125,7 @@
 }</code></pre></div>
 <p class="输出行">输出：1 1 99 99
 </p>
-<ul><li>要与「副本语义」传类，传前显式 <code>复制(对象)</code>（深拷克隆）。</li><li>容器元素读取（元素/获取）返回<strong>副本</strong>（快照）——写回用 <code>设置</code>、写穿用 <code>元素引用</code>：与形参语义正交。</li><li>临时实参传类形参合法（编译器物化临时槽）。</li></ul>
+<ul><li>要与「副本语义」传类，传前显式 <code>复制(对象)</code>（深拷克隆）。</li><li>容器元素读取（元素/获取）返回<strong>副本</strong>（快照）——写回用 <code>设置</code>、写穿用 <code>元素引用</code>：与形参语义正交。</li><li>临时实参传类形参合法（编译器物化临时槽）。</li><li>字符串元素容器的访问器（元素/读取/栈顶/队首/头部元素/读取头部/读取尾部/获取）返回元素句柄<strong>浅拷=借出视图</strong>——容器失效方法（删除/设置/清空/弹出/出队/删除头部/删除尾部/释放内部数组）之后该视图悬垂，编译期拒绝（NLL 顺序近似，Rust E0502 同构）；正则见 <a href="../tutorial-safety.html#借出视图">教程·安全与并发·借出视图</a>。</li></ul>
 <h2 id="泛型">泛型函数：编译期单态化</h2>
 <div class="码窗"><p class="码窗-顶"><span class="码窗-名">泛型.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">泛型 &lt;类型 T&gt;
 函数 首个或默认(T* 表, 整64 长度, T 缺省) -&gt; T {
@@ -162,7 +162,28 @@
 <p class="输出行">输出：9 24
 42
 </p>
-<ul><li>函数名可衰减为函数指针（<code>折叠(表, 加)</code>）；函数指针=代码指针，恒可搬运（可传给新线程）。</li><li>lambda 捕获形态（<code>[]</code> 不捕获 / <code>[=]</code> 值捕获 / <code>[&amp;]</code> 引用捕获 / <code>[变量]</code> 显式捕获）——捕获环境为在案实施面，复杂捕获场景以实测为准。</li><li>声明位形态：<code>整32(*名)(整32, 整32)</code>；字段/数组元素/返回位/静态位全部支持（规格 §5.8）。</li></ul><nav class="页脚导航"><a class="" href="../reference/control-flow.html"><span class="向">← 上一页</span><span class="题">控制流</span></a><a class="下一" href="../reference/oop.html"><span class="向">下一页 →</span><span class="题">类与对象</span></a></nav></article>
+<ul><li>函数名可衰减为函数指针（<code>折叠(表, 加)</code>）；函数指针=代码指针，恒可搬运（可传给新线程）。</li><li>声明位形态：<code>整32(*名)(整32, 整32)</code>；字段/数组元素/返回位/静态位全部支持（规格 §5.8）。</li><li><strong>来源封口</strong>：合法来源仅两种——函数名衰减（含静态方法 <code>类名.静态方法</code>、泛型实例名）与同签名函数指针；整数/空指针等任何其他类型赋给函数指针=编译错误「无法将 … 隐式转换为 '函数指针&lt;…&gt;'」（代码地址与数据地址通道分离——函数指针恒指向真实函数）。</li><li><strong>空调用防线</strong>：零值（未赋值）函数指针间接调用=运行期<strong>确定性失败</strong>——每个间接调用点内置判零检查，零值报 <code>运行时错误(错误码3): 空指针解引用</code>（Rust 裸 fn pointer 调用为 UB；CN 安全区更严）。</li><li><strong>方法作值</strong>：静态方法 <code>类名.方法</code> 可直接作函数指针值（实参位/变量初值/返回位全通）；实例方法 <code>对象.方法</code> 作值=<strong>绑定 this 的闭包</strong>——经变量调用（<code>变量 cb = 对象.方法; cb(实参)</code>）捕获对象地址、读最新状态，<strong>不可直接作裸 fnptr 实参</strong>（裸地址无法携带 this=编译错误「须先赋值给变量」）。</li><li>lambda 捕获形态：<code>[]</code> 不捕获 / <code>[=]</code> 值捕获 / <code>[&amp;]</code> 引用捕获 / <code>[变量]</code> 显式捕获。</li><li><strong>[&amp;] 引用捕获逃逸限制</strong>：引用捕获 lambda 持有定义帧局部变量地址——赋给局部变量+同帧调用（含立即调用）放行；作返回值（含经局部变量的传播链）/作实参传出/存长寿命载体=<strong>编译错误「逃逸当前栈帧」</strong>（指路：改 <code>[=]</code> 值捕获快照，或改在 <code>不安全 函数</code> 内定义豁免——责任上移）；分析不确定按逃逸拒绝（永不静默放行）。值捕获/空捕获=快照语义无悬垂面，不受限（可安全逃逸）。</li></ul>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">逃逸当前栈帧.cn（负例·编译拒绝）</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">函数 得闭包() -&gt; 整32(*)() {
+    变量 x = 5;
+    返回 [&amp;]() -&gt; 整32 { 返回 x; };   // ✗ 编译错误：逃逸当前栈帧
+}
+
+函数 主() -&gt; 整32 {
+    返回 0;
+}</code></pre></div>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">值捕获安全逃逸.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">函数 造取() -&gt; 整64(*)() {
+    整64 基 = 5000000000;
+    变量 取 = [=]() -&gt; 整64 { 返回 基 * 2; };
+    返回 取;               // 值捕获快照：逃逸定义帧合法
+}
+
+函数 主() -&gt; 整32 {
+    变量 取 = 造取();
+    打印(取());
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：10000000000
+</p><nav class="页脚导航"><a class="" href="../reference/control-flow.html"><span class="向">← 上一页</span><span class="题">控制流</span></a><a class="下一" href="../reference/oop.html"><span class="向">下一页 →</span><span class="题">类与对象</span></a></nav></article>
     <aside class="目录" aria-label="本页目录">
       <p class="目录-题">本页目录</p>
 <a href="#声明">声明与调用</a><a href="#重载默认">重载与默认参数</a><a href="#传参">传参语义：副本 / 引用 / 只读借用 / 类=写穿</a><a href="#泛型">泛型函数：编译期单态化</a><a href="#函数指针与lambda">函数指针与 lambda</a>
@@ -205,7 +226,7 @@
     </div>
     <div class="页脚-底">
       <span>© 2026 CN 语言项目</span>
-      <span>文档基线：任务/1002 6287413e·2026-10-17·示例经编译器实测</span>
+      <span>文档基线：任务/1003 f6bae87a·2026-10-17·示例经编译器实测</span>
       <span>京ICP备00000000号（备案办理中·占位）</span>
     </div>
   </div>

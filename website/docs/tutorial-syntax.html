@@ -87,6 +87,45 @@
 <p class="输出行">输出：4 1
 </p>
 <ul><li><code>常量</code> 值在编译期折叠进引用处，可为算术表达式（<code>常量 尺寸2 = 尺寸 * 2;</code>）。</li><li><code>静态</code> 变量生存期=整个进程；顶层静态无初值=零初始化放行，函数内静态<strong>必须显式初值</strong>（<code>静态 整32 槽;</code> 无初值=编译拒绝），写入须在 不安全 域。</li><li>未初始化读取（<code>整32 x; 打印(x);</code>）是编译错误——不会读到垃圾值。</li></ul>
+<h3 id="全局变量与静态变量">全局变量与静态变量</h3>
+<table class="表"><thead><tr><th>形态</th><th>默认可见性</th><th>初始化规则</th><th>写限制</th></tr></thead><tbody><tr><td><code>裸全局</code>（无 <code>静态</code> 前缀）</td><td>默认<strong>外部可见</strong>（跨模块无须 <code>公开:</code>）</td><td><strong>仅限常量表达式</strong>（字面量/常量引用/常量算术）——函数调用/构造调用=编译错误「初始值必须是常量表达式」</td><td>仅限 <code>不安全 函数</code> 体内</td></tr><tr><td><code>静态</code>（顶层）</td><td>文件私有（<code>公开:</code> 可放行）</td><td>常量=加载期直存；非常量=入口注入通道</td><td>同上</td></tr><tr><td><code>静态</code>（函数内）</td><td>函数内局部名</td><td>常量=加载期直存；非常量=<strong>声明点守卫快照</strong>（首调求值一次、再调不重初始化）</td><td>同上（初始化求值<strong>不属</strong>写执法面）</td></tr></tbody></table>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">全局变量.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">整32 全局计数 = 5;             // 裸全局：默认外部可见
+整32 零值槽;                   // 无初始化器 = 零初始化（.bss）
+静态 整32 私密槽 = 1;          // 顶层静态：文件私有
+
+不安全 函数 累加() {
+    全局计数 += 3;             // 全局写须在 不安全 函数 内
+    零值槽 = 7;
+}
+
+函数 主() -&gt; 整32 {
+    累加();
+    打印(全局计数, " ", 零值槽, " ", 私密槽);
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：8 7 1
+</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">守卫快照.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">不安全 函数 计次() -&gt; 整32 {
+    静态 整32 次 = 0;           // 常量初值：加载期直存
+    次 = 次 + 1;                // 静态写=不安全执法面
+    返回 次;
+}
+
+函数 标量快照(整32 轮) -&gt; 整32 {
+    整32 源 = 轮 * 10;
+    静态 整32 甲 = 源;          // 非常量初值：首调经过声明点求值快照
+    返回 甲;                    // 再调不重初始化
+}
+
+函数 主() -&gt; 整32 {
+    打印(计次(), " ", 计次(), " ", 计次());
+    打印(标量快照(1), " ", 标量快照(2), " ", 标量快照(3));
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：1 2 3
+10 10 10
+</p>
+<ul><li>裸全局无初始化器=零初始化（<code>.bss</code>）；<strong>跨模块同名的裸全局定义=重定义编译错误</strong>；写入限制统一（赋值/复合赋值/自增自减仅限 <code>不安全 函数</code> 体内）——安全函数内写全局容器的<strong>方法调用</strong>（追加/设置/清空…）同样拒绝，读方法（大小/元素/读取/获取/包含）放行。</li><li>函数内静态守卫双槽（主槽+哨兵）：首触哨兵为零→求值写主槽并置哨兵；再调直读主槽、跨调用保持。数组初值=<strong>整块拷贝</strong>（按数组类型精确字节数·非首元素/非截断）；可折叠常量初值由 <code>.data</code> 直存（守卫只承载非常量初值）。</li><li>守卫快照初始化<strong>不算「可变静态写」</strong>——安全函数内的函数内静态照常可带非常量初值；静态变量本身的显式改写仍须 <code>不安全 函数</code>。</li><li>跨线程初始化=单线程语义（哨兵为普通布尔槽·无锁非原子）——多线程并发首触的竞争语义为未来扩展项；需要跨线程初始化保障的场景用 <code>互斥锁</code> 自行组织（见<a href="tutorial-safety.html#互斥锁">安全与并发</a>）。</li></ul>
 <h2 id="基本类型">基本类型全景</h2>
 <p>整型 10 种（有符号/无符号 × 5 位宽）、浮点 2 种、布尔/字符/字符串，以及别名 <code>整数</code>=整32、<code>小数</code>=浮64。</p>
 <table class="表"><thead><tr><th>类别</th><th>类型</th><th>大小</th><th>范围/说明</th></tr></thead><tbody><tr><td>默认别名</td><td><code>整数</code> / <code>小数</code></td><td>4B / 8B</td><td>= 整32 / = 浮64（保留中文习惯的别名）</td></tr><tr><td>有符号整数</td><td><code>整8</code> <code>整16</code> <code>整32</code> <code>整64</code> <code>整128</code></td><td>1~16B</td><td>整8：-128~127 …… 整128：±2^127</td></tr><tr><td>无符号整数</td><td><code>正8</code> <code>正16</code> <code>正32</code> <code>正64</code> <code>正128</code></td><td>1~16B</td><td>正8：0~255 …… 正128：0~2^128-1</td></tr><tr><td>浮点</td><td><code>浮32</code> <code>浮64</code></td><td>4B / 8B</td><td>IEEE 754 单/双精度</td></tr><tr><td>其他</td><td><code>布尔</code> <code>字符</code> <code>字符串</code> <code>空类型</code></td><td>1B / 4B / - / -</td><td>真/假；Unicode 码点；UTF-8 拥有串；void</td></tr></tbody></table>
@@ -359,7 +398,15 @@ CN
 <p class="输出行">输出：1.000000 9.000000
 25.000000
 </p>
-<ul><li>成员访问统一 <code>.</code>；指针左侧<strong>自动解引用一级</strong>（<code>p.x</code> 等价 <code>(*p).x</code>）——<code>-&gt;</code> 已废除。</li><li>缺字段/多写字段/重复字段全部编译期拒绝（静默零填禁入安全域）。</li><li>拥有型字段（字符串/容器）的释放随结构体变量作用域自动级联（RAII）。</li></ul>
+<ul><li>成员访问统一 <code>.</code>；指针左侧<strong>自动解引用一级</strong>（<code>p.x</code> 等价 <code>(*p).x</code>）——<code>-&gt;</code> 已废除。</li><li>缺字段/多写字段/重复字段全部编译期拒绝（静默零填禁入安全域）。</li><li>拥有型字段（字符串/容器）的释放随结构体变量作用域自动级联（RAII）。</li><li><strong>不能自己装自己</strong>：值字段（非指针/引用）直接或间接自包含 = <strong>无穷大小类型</strong>，编译期拒绝——诊断「值字段递归」并指路「改该字段为指针或改用类」（类字段=句柄不落值布局·Rust E0072 同类）。</li></ul>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">递归结构体.cn（负例·编译拒绝）</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">结构体 节点 {
+    整32 值;
+    节点 下个;      // ✗ 值字段自包含：无穷大小类型
+}
+
+函数 主() -&gt; 整32 {
+    返回 0;
+}</code></pre></div>
 <h2 id="枚举">枚举：命名常量族</h2>
 <p>枚举成员=命名整数常量，可显式赋值（含负数）；引用形态=<code>枚举名.成员</code>（点号）；<code>选择</code> 内可裸写成员名。</p>
 <div class="码窗"><p class="码窗-顶"><span class="码窗-名">枚举.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">枚举 颜色 { 红, 绿, 蓝, 自定义 = 100 }
@@ -424,7 +471,7 @@ CN
     </div>
     <div class="页脚-底">
       <span>© 2026 CN 语言项目</span>
-      <span>文档基线：任务/1002 6287413e·2026-10-17·示例经编译器实测</span>
+      <span>文档基线：任务/1003 f6bae87a·2026-10-17·示例经编译器实测</span>
       <span>京ICP备00000000号（备案办理中·占位）</span>
     </div>
   </div>

@@ -72,11 +72,12 @@
 <p>看懂了多少就算多少——接下来每个语法点都会在<a href="tutorial-syntax.html">语法基础</a>里展开。</p>
 <h2 id="地图">全站地图</h2>
 <table class="表"><thead><tr><th>分类</th><th>页面</th><th>内容</th></tr></thead><tbody><tr><td>入门</td><td><a href="getting-started.html">快速开始</a></td><td>安装、Hello World、编译运行工作流、常见问题</td></tr><tr><td>教程</td><td><a href="tutorial-syntax.html">语法基础</a></td><td>变量与类型、运算符、控制流、函数、数组与字符串、结构体、枚举</td></tr><tr><td>教程</td><td><a href="tutorial-oop.html">类与泛型</a></td><td>类、构造与析构、继承与接口、泛型类与泛型函数、运算符重载</td></tr><tr><td>教程</td><td><a href="tutorial-safety.html">安全与并发</a></td><td>结果与可选、所有权与转移、线程、互斥锁、安全区边界</td></tr><tr><td>教程</td><td><a href="tutorial-advanced.html">进阶篇</a></td><td>内存模型、拥有型字符串、指针与不安全域、FFI、优化与调试、自举</td></tr><tr><td>参考</td><td><a href="reference/index.html">语言参考（九篇）</a></td><td>词法结构、类型系统、控制流、函数、类与对象、错误处理、并发、模块系统——逐条语法语义</td></tr><tr><td>标准库</td><td><a href="stdlib.html">标准库</a></td><td>13 个模块 187 个条目逐函数文档（定义/用法/示例）</td></tr><tr><td>工具</td><td><a href="cli.html">命令行参考</a></td><td>cn 全部子命令与选项、优化级别、目标平台、调试手段</td></tr></tbody></table>
-<h2 id="哲学">两句话理解语言设计</h2>
-<ul><li><strong>默认安全</strong>：变量必须初始化才能读；<code>结果&lt;T, E&gt;</code> 必须显式检查（丢弃即编译错误）；资源随作用域自动释放（RAII）；裸指针/手动内存收进 <code>不安全</code> 域。</li><li><strong>性能不妥协</strong>：零成本抽象（检查全部在编译期）、C 风格内存布局、可下探到汇编级的手动控制（<code>分配/释放/复制内存</code>）、三后端（win-x64 / linux-x86_64 / linux-arm64）。</li></ul><nav class="页脚导航"><a href="stdlib.html"><span class="向">← 上一页</span><span class="题">标准库总览</span></a><a class="下一" href="getting-started.html"><span class="向">下一页 →</span><span class="题">快速开始</span></a></nav></article>
+<h2 id="哲学">两句话理解语言设计（+ 安全模型四条法令）</h2>
+<ul><li><strong>默认安全</strong>：变量必须初始化才能读；<code>结果&lt;T, E&gt;</code> 必须显式检查（丢弃即编译错误）；资源随作用域自动释放（RAII）；裸指针/手动内存收进 <code>不安全</code> 域。</li><li><strong>性能不妥协</strong>：零成本抽象（检查全部在编译期）、C 风格内存布局、可下探到汇编级的手动控制（<code>分配/释放/复制内存</code>）、三后端（win-x64 / linux-x86_64 / linux-arm64）。</li></ul>
+<div class="批注 批注-绿"><span class="批注-题">安全模型四条法令（分层安全总则）</span><ol><li><strong>① 编译期能证明的，必须在编译期拦</strong>——常量下标越界（<code>整32[3] 表; 表[5]</code>）、常量除零（<code>10 / 0</code>）、常量空指针解引用（B11）等可判定形态一律<strong>硬错误</strong>，不得静默放行到运行期。</li><li><strong>② 编译期证不了的，安全区以确定性失败兜底</strong>——运行期检查（错误码 + 立即终止，非未定义行为）是安全区的合法防线——错误码 1~9 （含栈溢出），Rust panic 同款语义：可控行为，不是脏崩溃。</li><li><strong>③ 完备访问通道并行提供</strong>——追求编译期完备的场景使用结果化 API（<code>结果/可选</code> + 强制检查三分支），用户自选。</li><li><strong>④ <code>不安全 函数</code> = 真零运行期检查</strong>——手动管理区编译器不插检查（<strong>溢出检查都豁免</strong>：按两补码回绕继续执行）；代价是审计责任上移（审计面 = <a href="tutorial-advanced.html#不安全">不安全函数清单</a>）。</li></ol>对照：Rust 安全区依赖运行期 panic（下标/除零）——CN 在①上更严（编译期优先成文）、②上同型（确定性失败）、④上对齐 Zig 的发布零开销模型。</div><nav class="页脚导航"><a href="stdlib.html"><span class="向">← 上一页</span><span class="题">标准库总览</span></a><a class="下一" href="getting-started.html"><span class="向">下一页 →</span><span class="题">快速开始</span></a></nav></article>
     <aside class="目录" aria-label="本页目录">
       <p class="目录-题">本页目录</p>
-<a href="#路径">学习路径：三个阶段</a><a href="#语言速览">一分钟看懂 CN 长什么样</a><a href="#地图">全站地图</a><a href="#哲学">两句话理解语言设计</a>
+<a href="#路径">学习路径：三个阶段</a><a href="#语言速览">一分钟看懂 CN 长什么样</a><a href="#地图">全站地图</a><a href="#哲学">两句话理解语言设计（+ 安全模型四条法令）</a>
     </aside>
   </div>
 </main>
@@ -116,7 +117,7 @@
     </div>
     <div class="页脚-底">
       <span>© 2026 CN 语言项目</span>
-      <span>文档基线：任务/1002 6287413e·2026-10-17·示例经编译器实测</span>
+      <span>文档基线：任务/1003 f6bae87a·2026-10-17·示例经编译器实测</span>
       <span>京ICP备00000000号（备案办理中·占位）</span>
     </div>
   </div>

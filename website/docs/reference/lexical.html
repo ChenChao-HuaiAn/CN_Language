@@ -80,7 +80,30 @@
 <table class="表"><thead><tr><th>优先级</th><th>运算符</th><th>说明</th></tr></thead><tbody><tr><td>13（最高）</td><td><code>()</code> <code>[]</code> <code>.</code> <code>++</code> <code>--</code> <code>?</code></td><td>后缀：调用/下标/成员/后缀自增自减（值=原值）/后缀错误传播</td></tr><tr><td>12</td><td><code>!</code> <code>~</code> <code>-</code> <code>++</code> <code>--</code> <code>*</code> <code>&amp;</code></td><td>一元：非/按位非/负/前缀自增自减（值=新值）/解引用/取地址</td></tr><tr><td>11</td><td><code>*</code> <code>/</code> <code>%</code></td><td>乘除余</td></tr><tr><td>10</td><td><code>+</code> <code>-</code></td><td>加减（字符串 + 数值 自动拼接）</td></tr><tr><td>9</td><td><code>&lt;&lt;</code> <code>&gt;&gt;</code></td><td>移位（超宽=确定性失败：常量移位量编译期硬错误、变量移位量错误码 8；丢高位不属检查对象）</td></tr><tr><td>8</td><td><code>&lt;</code> <code>&lt;=</code> <code>&gt;</code> <code>&gt;=</code></td><td>关系（字符串=字典序）</td></tr><tr><td>7</td><td><code>==</code> <code>!=</code></td><td>相等（字符串=内容比较）</td></tr><tr><td>6</td><td><code>&amp;</code></td><td>按位与</td></tr><tr><td>5</td><td><code>^</code></td><td>按位异或</td></tr><tr><td>4</td><td><code>|</code></td><td>按位或</td></tr><tr><td>3</td><td><code>&amp;&amp;</code></td><td>逻辑与（短路）</td></tr><tr><td>2</td><td><code>||</code></td><td>逻辑或（短路）</td></tr><tr><td>1.5</td><td><code>条件 ? 真值 : 假值</code></td><td>三元（右结合·惰性求值）</td></tr><tr><td>1（最低）</td><td><code>=</code> <code>+=</code> <code>-=</code> …</td><td>赋值与复合赋值</td></tr></tbody></table>
 <ul><li>位运算仅整型；<code>&gt;&gt;</code> 有符号=算术右移、无符号=逻辑右移；<code>~x</code> ≡ <code>x ^ -1</code>。</li><li>成员访问统一 <code>.</code>，指针左侧自动解引用一级；<code>-&gt;</code> 已废除（仅保留于返回类型标注 <code>-&gt; 类型</code>）。</li><li><code>&amp;类变量</code> 产对象地址（非句柄槽地址）；<code>&amp;标量/结构体</code> =槽地址。</li><li>类/结构体可重载的运算符集合与决议规则见<a href="oop.html#重载">类与对象·运算符重载</a>。</li></ul>
 <h2 id="语句终止">语句终止：分号强制</h2>
-<p>每条语句必须以 <code>;</code> 结束（C/Rust 同款）；换行是纯空白，表达式内可自由续行。行尾漏分号=语法错误，不存在自动分号插入——行首/行尾词法拼接类事故被结构性根除。</p>
+<p>每条语句必须以 <code>;</code> 结束（C/Rust 同款）；换行是纯空白，表达式内可自由续行。行尾漏分号=语法错误（诊断「语句缺少分号 ';'」），不存在自动分号插入——行首/行尾词法拼接类事故被结构性根除。</p>
+<ul><li><strong>空语句非法</strong>：裸 <code>;</code> 不合法（诊断「预期表达式」）——合法的空循环体写 <code>当(x) { }</code>（空块合法）。</li><li><strong>循环体强制块</strong>：<code>当(x);</code> 是语法错误（诊断「预期 '{'」）——当/循环/如果 的体一律 <code>{ }</code>，不做单语句体。</li><li><strong>单行多语句合法</strong>：<code>变量 a = 1; 变量 b = 2;</code> 由分号分隔，行内最后一条同样须 <code>;</code>；行内块 <code>{ x = 1; }</code> 内部语句同样强制分号。</li><li><strong><code>}</code> 自终结</strong>：块/如果/当/循环/选择体、函数体、结构体/类/接口/枚举体后<strong>不加</strong>分号（<code>}</code> 即边界）；模块级声明（导入/顶层常量/静态/全局变量）须分号。</li></ul>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">自终结与多语句.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">结构体 点 {
+    整32 x
+    整32 y
+}                     // 结构体体 } 自终结（不加分号）
+
+函数 主() -&gt; 整32 {
+    变量 a = 1; 变量 b = 2;        // 单行多语句
+    如果 a == 1 { 变量 t = 5; a = t; }   // 行内块内部同样须分号
+    打印("a: ", a, " b: ", b);
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：a: 5 b: 2
+</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">裸分号.cn（负例·编译拒绝）</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">函数 主() -&gt; 整32 {
+    ;                     // ✗ 空语句不合法
+    返回 0;
+}</code></pre></div>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">当后分号.cn（负例·编译拒绝）</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">函数 主() -&gt; 整32 {
+    整32 x = 5;
+    当(x &gt; 10);           // ✗ 循环体强制 { }
+    返回 0;
+}</code></pre></div>
 <h2 id="条件编译">条件编译（#定义 / #如果定义）</h2>
 <p>编译期开关：以宏旗标在<strong>词法层</strong>裁剪源码分支——被裁分支不产生任何 token。宏是无值旗标；没有带参宏、宏体展开与 <code>#包含</code>（这些职责由模块系统与常量表达式承担）。</p>
 <table class="表"><thead><tr><th>指令</th><th>形态</th><th>说明</th></tr></thead><tbody><tr><td><code>#定义 宏名</code></td><td>整行（行首可缩进）</td><td>定义宏（无值旗标·仅存在性判定）；父层被裁剪时不生效</td></tr><tr><td><code>#如果定义(宏名)</code> 或 <code>#如果定义 宏名</code></td><td>整行</td><td>条件开始：括号形式与空白形式等价</td></tr><tr><td><code>#否则</code></td><td>整行</td><td>条件分支（每层至多一个）</td></tr><tr><td><code>#结束如果</code></td><td>整行</td><td>条件结束（与 <code>#如果定义</code> 严格配对；纯空分支合法）</td></tr></tbody></table>
@@ -170,7 +193,7 @@
     </div>
     <div class="页脚-底">
       <span>© 2026 CN 语言项目</span>
-      <span>文档基线：任务/1002 6287413e·2026-10-17·示例经编译器实测</span>
+      <span>文档基线：任务/1003 f6bae87a·2026-10-17·示例经编译器实测</span>
       <span>京ICP备00000000号（备案办理中·占位）</span>
     </div>
   </div>
