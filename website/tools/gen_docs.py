@@ -570,11 +570,17 @@ def verify(cn_exe=None, 仅失败=False):
     平台 = 目标平台()                     # 992：显式目标平台（win 缺省=win-x64 会走 MSVC 链）
     产物后缀 = ".exe" if 平台 == "win-x64" else ""
     tmp = tempfile.mkdtemp(prefix="cndocs_")
-    总数 = 通过 = 0
+    总数 = 通过 = 跳过 = 0
     fails = []
 
     def 跑一个(页标识, 条, 导入头):
-        nonlocal 总数, 通过
+        nonlocal 总数, 通过, 跳过
+        # 1017：平台限定条目（pthread_* / cn_install_thread_stack_guard 等 linux 专有
+        #   符号示例）——非匹配平台跳过，不计入总数（仅显式声明"平台"的条目受影响，
+        #   其余条目行为零变化；渲染面不经此路径）。
+        if isinstance(条, dict) and 条.get("平台") and 平台 not in 条["平台"]:
+            跳过 += 1
+            return
         示 = 条.get("示例") or 条.get("原始") or 条.get("代码")
         if not 示:
             return
@@ -656,7 +662,8 @@ def verify(cn_exe=None, 仅失败=False):
                          页.get("导入头"))
             for 条 in ch.get("条目", []):
                 跑一个(页["文件"], 条, 页.get("导入头"))
-    print("示例验证：%d/%d 通过（编译+运行+输出比对）" % (通过, 总数))
+    print("示例验证：%d/%d 通过（编译+运行+输出比对%s）" % (
+        通过, 总数, "·平台跳过 %d" % 跳过 if 跳过 else ""))
     for f in fails:
         print("  [失败] %s :: %s — %s\n    %s" % f)
     if not 仅失败 and not fails:

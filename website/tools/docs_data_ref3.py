@@ -534,8 +534,12 @@ dict(
                  "交叉编译示例：<code>cn build 主.cn --target linux-arm64 -O2</code>"
                  "（在本机产出 ARM64 汇编，链接与运行在对应目标机）。",
                 ]),
-                ("码", "手工线程栈守卫.cn",
-                 '外部 函数 cn_install_thread_stack_guard() -> 空类型\n'
+                dict(名="手工线程栈守卫.cn",
+                 # 1017：pthread_* 与 cn_install_thread_stack_guard 为 linux 专有符号
+                 #   （win 无 pthread 库·链接必 LNK1120）——平台限定=非 linux 平台
+                 #   verify 跳过（渲染面不变·gen_docs 平台字段支持同批）。
+                 平台=["linux"],
+                 代码='外部 函数 cn_install_thread_stack_guard() -> 空类型\n'
                  '外部 函数 pthread_create(整64* 线程号, 空类型* 属性, 空类型(*入口)(空类型*), 空类型* 参数) -> 整32\n'
                  '外部 函数 pthread_join(整64 线程号, 空类型** 返回值) -> 整32\n\n'
                  '不安全 函数 线程体(空类型* 参数) -> 空类型 {\n'
@@ -550,7 +554,7 @@ dict(
                  '    pthread_join(线程号, 无);\n'
                  '    返回 0;\n'
                  '}',
-                 '线程运行中\n'),
+                 输出='线程运行中\n'),
                 ("p", "语言本身的问题去 <a href=\"reference/index.html\">语言参考</a>；"
                       "标准库 API 去 <a href=\"stdlib.html\">标准库</a>。"),
              ]),
