@@ -2,6 +2,9 @@
 # -*- coding: utf-8 -*-
 """合并队列脚本（AGENTS.md §5/§7——develop 唯一入关口）。
 
+状态机全图（976 立·每转移的触发条件/动作/失败恢复+关键不变量+selftest 覆盖矩阵+
+演进评估）= docs/integrate状态机-976.md——改动本文件前先对照该图。
+
 职责：把当前任务分支安全集成回 develop——
   前置自检 → fetch → rebase（冲突自己解·禁止 develop 手解）→ 写集分类（仅门禁深度）
   → 门禁（跑在合并结果上：快速门禁恒跑；写集触及 src/tests 时全量门禁）
@@ -50,7 +53,6 @@ import platform
 import re
 import subprocess
 import sys
-import tempfile
 import threading
 from datetime import datetime
 from pathlib import Path
@@ -294,6 +296,21 @@ def 快速门禁(文件们: list[str]) -> str | None:
     return None
 
 
+def 解析E2E红用例行(文本: str) -> list[str]:
+    """run_e2e 输出文本 → 失败用例名清单（汇总行「✗ 用例名: …」形态·447-a 复验点名消费）。
+
+    976 归纳：win 分步复验与 linux 串行复验两处内联逐字同构（startswith(✗)→
+    split(:)[0]）——抽一处；与 解析预验红用例们（云端结果 JSON 文本的正则面）
+    消费不同协议形态，各自保留。
+    """
+    失败们: list[str] = []
+    for 原行 in (文本 or "").splitlines():
+        行 = 原行.strip()
+        if 行.startswith("✗"):
+            失败们.append(行[1:].split(":")[0].strip())
+    return 失败们
+
+
 def 全量门禁(平台: str, 已知红们: list[str] | None = None, 快速通道: bool = False) -> str | None:
     """全量门禁：零警告构建 + 单测 + E2E 全量（平台相关；win=ci.ps1 一步到位）。
 
@@ -332,11 +349,7 @@ def 全量门禁(平台: str, 已知红们: list[str] | None = None, 快速通�
             # 591-a（T100·170 集成实测）：win 分支补接 --allow-known-red 点名消费
             #   （与锁内版 190-215 段同逻辑——原 win ci.ps1 路径漏接·参数已有实现
             #   未达此处）：串行红全部命中点名=已定性已知红披露放行；任一未点名仍拦。
-            失败们 = []
-            for 原行 in (串行.stdout or "").splitlines():
-                ts = 原行.strip()
-                if ts.startswith("✗"):
-                    失败们.append(ts[1:].split(":")[0].strip())
+            失败们 = 解析E2E红用例行(串行.stdout)
             未点名 = [f for f in 失败们 if f not in (已知红们 or [])]
             if 未点名:
                 return "E2E 串行复验仍未全绿（非并行互踩——真红，禁止集成）。"
@@ -398,11 +411,7 @@ def 全量门禁(平台: str, 已知红们: list[str] | None = None, 快速通�
         #   显式点名机制——串行红若【全部】命中点名清单=「三平台已定性已知红」披露放行；
         #   任一未点名红仍硬拦（机制不弱化）。使用责任=发起机：点名依据+集成广播披露
         #   不实=违规可 revert。fdef8ae9 P1 根治后本分支应移除（移交条款）。
-        失败们 = []
-        for 原行 in (串行.stdout or "").splitlines():
-            t = 原行.strip()
-            if t.startswith("✗"):
-                失败们.append(t[1:].split(":")[0].strip())
+        失败们 = 解析E2E红用例行(串行.stdout)
         未点名 = [f for f in 失败们 if f not in (已知红们 or [])]
         if 已知红们 and not 未点名:
             print(f"  [复验] 串行红 {失败们} 全部命中 --allow-known-red 点名清单"
@@ -484,6 +493,21 @@ def 已并入收场(链顶: str, 已含链顶查=None) -> tuple[bool, str | None
                   "——本链合并结果已过时：请 rebase 最新 develop 后重新集成（562）。")
 
 
+def 构造预验入队载荷(预验分支: str, 链顶: str, 源分支: str,
+                    认领限制: str = "", 内容键: str = "") -> dict:
+    """task_enqueue 载荷（服务端契约：分支/sha 必带·源分支 222·认领限制 337·内容键 830）。
+
+    976 归纳：主入队（云端预验门禁）与池行 miss 防御性重入队（池轮询预验）两处
+    逐字段同构——空值省略（服务端缺省语义=不限/NULL·旧服务端忽略未知字段）。
+    """
+    载荷 = {"分支": 预验分支, "sha": 链顶, "源分支": 源分支}
+    if 内容键:
+        载荷["内容键"] = 内容键
+    if 认领限制:
+        载荷["认领限制"] = 认领限制
+    return 载荷
+
+
 def 池轮询预验(预验分支: str, 链顶: str, 点名清单: list, 源分支: str = "",
                认领限制: str = "", 内容键: str = "", 已含链顶查=None, 状态查=None,
                轮询间隔: float | None = None,
@@ -517,12 +541,8 @@ def 池轮询预验(预验分支: str, 链顶: str, 点名清单: list, 源分�
         if 行 is None:
             # 任务行不在（服务重启丢表/异常裁剪）——重新入队防御（337：认领限制随行补带；
             #   830：内容键随行补带——防重入队后预验复用键丢失）
-            重入队337 = {"分支": 预验分支, "sha": 链顶, "源分支": 源分支}
-            if 内容键:
-                重入队337["内容键"] = 内容键
-            if 认领限制:
-                重入队337["认领限制"] = 认领限制
-            服务调用("/api/task_enqueue", 重入队337)
+            服务调用("/api/task_enqueue",
+                     构造预验入队载荷(预验分支, 链顶, 源分支, 认领限制, 内容键))
             continue
         if 行.get("状态") == "已取消":
             # 562 修复（审查 P1-1）：runner 认领时服务端核出源分支已并入 develop（他批
@@ -615,6 +635,9 @@ def 预验前置检查(链顶: str, 最新develop: str,
 
 # 830：非 --wait 模式哨兵——入池成功但未取到结论时，云端预验门禁 返回此值；
 #   批流程识别后打印续推提示并以 0 退出（不 push·链与队列行保留，重跑本命令续推）。
+# 976 三态协议统一（云端预验门禁 返回值 ↔ 批流程标志位映射）：云端预验门禁 返回 =
+#   None（放行 push develop）| str（拦截原因·调用方失败退出）| 已入池哨兵（仅非 --wait
+#   路径；批流程转「已入池待续」早退 exit 0——solo 恒 --wait 语义·不产生哨兵）。
 已入池哨兵 = "__已入池待续推__"
 
 
@@ -647,7 +670,7 @@ def 云端预验门禁(链顶: str, 参数: argparse.Namespace,
     已入池哨兵=非 --wait 模式入池成功待续推（调用方以 0 退出·不 push）。
     830：源分支=调用方传原始任务分支（批流程 HEAD 已切 batch/* 时勿取当前分支——
     board_ci 归类/562 已并入检测/预验复用键均按「任务/<号>」形态消费）；等待=False
-    =入池即回（哨兵）、不挂机等结果。"""
+    =入池即回（哨兵）、不挂机等结果。三态协议详见 已入池哨兵 定义处。"""
     import time as _time
     if 参数.dry_run:
         print("  [预验·演练] 跳过云端真跑（--dry-run）——正式集成对链顶真跑全量预验")
@@ -677,11 +700,14 @@ def 云端预验门禁(链顶: str, 参数: argparse.Namespace,
     推 = 运行(["git", "push", 参数.remote, f"{链顶}:refs/heads/{预验分支}"])
     if 推.returncode != 0:
         return f"预验分支推送失败（{预验分支}）——检查远程权限后重试。"
-    # 863 修复：远端预验分支删除时机条件化——两条「池中任务仍活但本轮先收场」的返回路径
-    #   （非 --wait 哨兵·池守卫拦截）必须保留分支：runner 认领后首步 git fetch 该分支同步，
-    #   此时删=runner 同步 fatal: couldn't find remote ref → 预验全数同步失败被踢
-    #   （746/764/758/644/728f 五连实测·--wait 路径轮询到结果后才删故无恙——对照组实证）。
-    #   跑轮结束后的分支收口=下一轮同 sha 集成（池轮询拿到结论走 finally 删除）。
+    # 远端预验分支生命周期（863 立·901 补全——删除前提不变量）：**删除 ⟺ 池行已确认
+    #   终态（完成/已取消/明确拒绝未建行）**——runner 认领后首步 git fetch 该分支同步，
+    #   池行可能仍活时删=runner 同步 fatal: couldn't find remote ref → 预验全数同步失败
+    #   被踢+975「同步失败」告警（746/764/758/644/728f 五连实测·--wait 路径轮询到结果后
+    #   才删故无恙——对照组实证）。置位保留的三处来路：①非 --wait 哨兵（入池即返·runner
+    #   尚未 fetch）；②337 池守卫拦截（行活·待白名单 runner 上线）；③降级 ssh/入队响应
+    #   丢失（901——行未确认终态）。分支收口=runner 消费转终态/branch_cleanup 兜底/
+    #   下一轮同 sha 集成（池轮询拿到结论走 finally 删除）。
     保留预验分支 = False
     try:
         # ── ① 池路径：入队（幂等·已完成绿直接复用不重跑）+轮询认领结果
@@ -690,12 +716,8 @@ def 云端预验门禁(链顶: str, 参数: argparse.Namespace,
         # 337 认领限制：--pool-limit 平台白名单——任务只被白名单内平台 runner 认领，
         #   定向规避已知环境红平台（335 单位机 arm64 老工具链）；缺省不限=291 混合池默认不变
         认领限制 = ",".join(参数.pool_limit)
-        入队337 = {"分支": 预验分支, "sha": 链顶, "源分支": 源分支}
-        if 内容键:
-            入队337["内容键"] = 内容键   # 830：内容键随行存（预验绿复用键·旧服务端忽略未知字段）
-        if 认领限制:
-            入队337["认领限制"] = 认领限制
-        入队 = 服务调用("/api/task_enqueue", 入队337)
+        入队 = 服务调用("/api/task_enqueue",
+                        构造预验入队载荷(预验分支, 链顶, 源分支, 认领限制, 内容键))
         if 入队 is not None and 入队.get("ok"):
             print(f"  [预验] 已入 TX_01 任务池（{预验分支}·源 {源分支}·认领限制 {认领限制 or '不限'}）")
             if not 等待:
@@ -714,6 +736,13 @@ def 云端预验门禁(链顶: str, 参数: argparse.Namespace,
                 保留预验分支 = True
                 return (f"池路径超时/不可达·认领限制 [{认领限制}] 不含 linux-x86_64（TX_02 ssh 直发违背限制）"
                         "——等待限制平台 runner 上线后重试·或修正 --pool-limit（770：逃生门已硬禁）。")
+            # 901 修复（863 同族残余面·深度机 10-16 立案）：降级 ssh 前置位保留——池轮询
+            #   未拿结论=池行可能仍在排队/执行中（池空降级的 task_cancel 是尽力而为可失败；
+            #   总超时/3 连不可达路径未取消），runner 稍后认领同 sha 任务首步 git fetch 该
+            #   分支——删=fetch fatal→975「同步失败」告警+假红（863 五连同族）。删除前提=
+            #   池行确认终态或从未建行（入队三态分流）——降级路径两者皆未确认，一律保留；
+            #   收口随 runner 消费/下一轮同 sha 集成/branch_cleanup 兜底。
+            保留预验分支 = True
             print("  [预验] 池路径超时/不可达——降级 ssh 直发 TX_02（028 §四）……")
         else:
             拒说明 = str((入队 or {}).get("说明", ""))
@@ -725,6 +754,13 @@ def 云端预验门禁(链顶: str, 参数: argparse.Namespace,
                     # ——预验无意义，ssh 直发重跑全量同为浪费。按「已取消」同款收场判定：
                     # develop 已含链顶→放行（push no-op）；未含→拦截给 rebase 出路。
                     return 已并入收场(链顶)[1]
+                # 明确拒绝（非已并入）=服务端确认未建行（拒绝路径无写入）——降级 ssh 照删
+                #   （无 runner 可认领·保留=无消费者死残留）
+            else:
+                # 入队响应丢失（超时/网络/队列服务未配置）——请求可能已到达建行而响应未回，
+                #   行活跃与否不确定：保守保留（miss 不静默——不确定不当「未建」处置：
+                #   误删=runner fetch fatal·975 告警；保留=残留由收口面兜底）
+                保留预验分支 = True
             print("  [预验] TX_01 池不可用——降级 ssh 直发 TX_02（028 §四）……")
         # ── ② ssh 直发降级（1008 原路径原样保留）
         # rm 旧预验结果（同 sha 二次预验=CAS 竞争重试路径·旧文件不可当本轮结果）
@@ -774,9 +810,9 @@ def 云端预验门禁(链顶: str, 参数: argparse.Namespace,
                 "等待恢复重试（770：--no-cloud-gate 逃生门已硬禁）。")
     finally:
         if 保留预验分支:
-            # 863：池中任务待 runner 认领消费（认领后首步 git fetch 本分支）——本轮不删；
-            #   分支收口随下一轮同 sha 集成（池轮询拿到结论走下方删除）·或 branch_cleanup 同口径兜底。
-            print(f"  [提示] 预验分支 {预验分支} 保留（池中任务待 runner 认领 fetch·非 --wait/池守卫收场）")
+            # 863/901：池行可能仍待 runner 认领消费（认领后首步 git fetch 本分支）——本轮
+            #   不删；分支收口随 runner 消费转终态/branch_cleanup 兜底/下一轮同 sha 集成。
+            print(f"  [提示] 预验分支 {预验分支} 保留（池行可能待 runner 认领 fetch·删除前提未满足）")
         else:
             清理 = 运行(["git", "push", 参数.remote, "--delete", 预验分支])
             if 清理.returncode != 0:
@@ -803,14 +839,8 @@ def 现在时刻() -> str:
     return datetime.now().strftime(时刻格式)
 
 
-def 解析时刻(文本: str) -> datetime | None:
-    for 格式 in (时刻格式, "%m-%d %H:%M"):   # 兼容分钟级旧行
-        try:
-            return datetime.strptime(文本.strip(), 格式)
-        except ValueError:
-            continue
-    return None
-
+# 976：原 解析时刻（分钟级旧行兼容解析）随看板写侧退役删除——读侧（解析队列/--status）
+#   按字符串序消费时刻，无解析面（830 退役失联判定后即无调用点）。
 
 # 830（2026-10-15 用户裁决）：失联判定/批主接管面随并行化退役——原「行新鲜时刻/
 #   失联分支们」两纯函数删除（旧用途：--wait 自动接管失联批主；新模型无批主——
@@ -837,80 +867,10 @@ def 解析队列(看板文本: str) -> list[dict]:
     return 出
 
 
-def 队列表头行() -> list[str]:
-    return [队列段标题, "", "| 分支 | 基线 | 报名时刻 | 写集摘要 | 状态 |", "|---|---|---|---|---|"]
-
-
-def 队列加行(看板文本: str, 行: dict) -> str:
-    """把报名行加入队列段（幂等：同分支已在段内=不重复加·返回原文）。段不存在则建段（文件末尾）。"""
-    if any(项["分支"] == 行["分支"] for 项 in 解析队列(看板文本)):
-        return 看板文本
-    新表行 = (f"| {行['分支']} | {行['基线']} | {行['时刻']} | {行['摘要']} | {行['状态']} |")
-    行们 = 看板文本.splitlines()
-    段起 = next((n for n, 行_ in enumerate(行们) if 行_.strip() == 队列段标题), None)
-    if 段起 is None:
-        块 = 队列表头行() + [新表行, ""]
-        尾 = 看板文本.rstrip("\n")
-        return 尾 + "\n\n" + "\n".join(块)
-    # 段内找最后一个表行位置，其后插入
-    插入位 = 段起 + 1
-    for n in range(段起 + 1, len(行们)):
-        if 行们[n].startswith("## "):
-            break
-        if 行们[n].startswith("|"):
-            插入位 = n + 1
-    行们.insert(插入位, 新表行)
-    return "\n".join(行们) + ("\n" if 看板文本.endswith("\n") else "")
-
-
-def 队列改状态(看板文本: str, 分支: str, 新状态: str) -> str:
-    """把指定分支行的状态列改写（找不到=原文不动）。"""
-    行们 = 看板文本.splitlines()
-    for n, 行 in enumerate(行们):
-        if not 行.startswith("|"):
-            continue
-        列们 = [列.strip() for 列 in 行.split("|")[1:-1]]
-        if len(列们) == 5 and 列们[0] == 分支:
-            列们[4] = 新状态
-            行们[n] = "| " + " | ".join(列们) + " |"
-    return "\n".join(行们) + ("\n" if 看板文本.endswith("\n") else "")
-
-
-def 队列清行们(看板文本: str, 分支们: list[str]) -> str:
-    """把指定分支们整行移除（集成销账/冲突出批离队）。段内行清空后保留段壳（三机共见结构稳定）。"""
-    行们 = 看板文本.splitlines()
-    出 = [行 for 行 in 行们
-          if not (行.startswith("|")
-                  and len([c for c in (行.split("|")[1:-1])]) == 5
-                  and 行.split("|")[1].strip() in 分支们
-                  and 行.split("|")[1].strip() != "分支")]
-    return "\n".join(出) + ("\n" if 看板文本.endswith("\n") else "")
-
-
-def 队列重报(看板文本: str, 分支: str, 新时刻: str) -> tuple[str, bool]:
-    """出批（冲突/归因）/失联恢复后重新排队：该分支行存在则刷新时刻并置「排队」，返回（新文本, 是否变更）。"""
-    行们 = 解析队列(看板文本)
-    if not any(行["分支"] == 分支 for 行 in 行们):
-        return 看板文本, False
-    出 = 看板文本
-    if any(行["分支"] == 分支 and 行["状态"] == "排队" for 行 in 行们):
-        return 看板文本, False   # 已在排队——幂等不动（不刷新时刻·保序）
-    出 = 队列改状态(出, 分支, "排队")
-    出 = 队列改时刻(出, 分支, 新时刻)
-    return 出, True
-
-
-def 队列改时刻(看板文本: str, 分支: str, 新时刻: str) -> str:
-    """把指定分支行的报名时刻列改写（找不到=原文不动）。"""
-    行们 = 看板文本.splitlines()
-    for n, 行 in enumerate(行们):
-        if not 行.startswith("|"):
-            continue
-        列们 = [列.strip() for 列 in 行.split("|")[1:-1]]
-        if len(列们) == 5 and 列们[0] == 分支:
-            列们[2] = 新时刻
-            行们[n] = "| " + " | ".join(列们) + " |"
-    return "\n".join(行们) + ("\n" if 看板文本.endswith("\n") else "")
+# 976 清理（v5·1016 看板直推废档的收尾）：看板段**写侧**函数族（原 队列表头行/队列加行/
+#   队列改状态/队列清行们/队列重报/队列改时刻）在直推通道退役后全部失去调用点——删除。
+#   读侧（解析队列/远端看板文本/队列段标题）保留：队列读 双源合并与 --status 仍消费
+#   看板段存量行（旧版机未升级 920 服务层期间的报名行兼容面）。
 
 
 # 830（2026-10-15 用户裁决）：选批成员（637 单人封批/--gather 收拢/770 忙时拼车三路）
@@ -918,49 +878,11 @@ def 队列改时刻(看板文本: str, 分支: str, 新时刻: str) -> str:
 #   原函数删除；组链调用点直接构造成员=自己一条。
 
 
-def 直推看板提交(变换, 提交信息: str, 远程: str = 主远程) -> str | None:
-    # v5（1016）：三机看板废档——本直推通道退役（原=服务端不可达时的降级路径）。
-    # 服务端队列（TX_01:8300）为主：不可达时调用方打印警告继续（下轮重试同步），
-    # 或 --solo 逃生门。保留函数签名防破存量调用点。
-    return f"v5 看板已废档——跳过直推（服务端队列为主·稍后重试或 --solo）"
-    """plumbing 直推：对远端 develop 的看板做一次文本变换并提交推送。
-
-    临时 index（GIT_INDEX_FILE）+ commit-tree——零 checkout、不扰动工作树与当前分支
-    （主树/多会话/任意分支上调用均安全）。变换返回 None=无需变更（直接返回）。
-    push 被拒（他人刚推）→ fetch 重试 ≤3。返回失败信息（None=成功）。
-    行尾保真（920·清偿 917 通告欠账）：读看板/写 blob 全程 bytes——text=True 的
-    universal newlines 会把 CRLF 静默归一成 LF（行尾横跳源头·56f19797 只修了存量）。
-    """
-    for _ in range(3):
-        运行(["git", "fetch", 远程])
-        父 = 输出(["git", "rev-parse", f"{远程}/{集成分支}"])
-        原文b = subprocess.run(["git", "show", f"{父}:{看板文件名}"],
-                               cwd=仓库根, capture_output=True).stdout
-        if 原文b == b"" and subprocess.run(["git", "show", f"{父}:{看板文件名}"],
-                                           cwd=仓库根, capture_output=True).returncode != 0:
-            return f"远端 develop 缺 {看板文件名}——窄通道直推前提不成立。"
-        原文 = 原文b.decode("utf-8")          # bytes.decode 不动行尾——变换在 str 层保 \r\n
-        新文 = 变换(原文)
-        if 新文 is None:
-            return None
-        blob = subprocess.run(["git", "hash-object", "-w", "--stdin"],
-                              input=新文.encode("utf-8"), cwd=仓库根,
-                              capture_output=True).stdout.decode().strip()
-        索引文件 = Path(tempfile.mkdtemp(prefix="idx-")) / "index"
-        环境 = dict(os.environ, GIT_INDEX_FILE=str(索引文件))
-        def 索引命令(参数们: list[str]) -> subprocess.CompletedProcess:
-            return subprocess.run(["git", *参数们], cwd=仓库根, env=环境,
-                                  capture_output=True, text=True)
-        索引命令(["read-tree", 父])
-        索引命令(["update-index", "--add", "--cacheinfo", f"100644,{blob},{看板文件名}"])
-        树 = 索引命令(["write-tree"]).stdout.strip()
-        提交 = subprocess.run(["git", "commit-tree", 树, "-p", 父, "-m", 提交信息],
-                              cwd=仓库根, capture_output=True, text=True).stdout.strip()
-        推 = subprocess.run(["git", "push", 远程, f"{提交}:{集成分支}"],
-                            cwd=仓库根, capture_output=True, text=True)
-        if 推.returncode == 0:
-            return None
-    return f"看板窄通道直推连续 3 次竞争失败（他人高频推送）——稍后重试。"
+# 976 清理：原 直推看板提交（plumbing 直推：临时 index+commit-tree 免 checkout 提交看板）
+#   随 v5·1016 看板直推废档后即不可达（函数首行 return 占位、实现体永久死代码）——
+#   连同恒真返回值参与的控制流一并删除：批流程报名段的「服务端不可达→失败」判定
+#   直取 join 结果（行为等价·见批流程 [2] 段）；--join 仅报名路径恒失败语义显式化
+#   （见 批流程_join_only）。
 
 
 def 远端看板文本(远程: str = 主远程) -> str:
@@ -1249,39 +1171,31 @@ def 批流程(参数: argparse.Namespace) -> int:
     摘要 = f"{len(写集)} 文件" + ("·触全量面" if 分类写集(写集) else "·纯文档/脚本")
     新行 = 报名行(当前分支, 基线[:8], 摘要)
 
-    def 报名变换(文: str):
-        重报文, 变更 = 队列重报(文, 当前分支, 新行["时刻"])
-        if 变更:
-            return 重报文
-        加行文 = 队列加行(文, 新行)
-        return None if 加行文 == 文 else 加行文
-
     if 参数.dry_run:
         print(f"  [演练] 跳过看板报名直推（内存行代用）：{当前分支} @ {新行['时刻']} {摘要}")
     else:
-        # 920·边界双写：服务端（权威·实时）+看板段（兼容未升级 920 版的他机）
+        # 920：服务端报名（权威·实时）——v5（1016）看板直推废档后为唯一报名通道：
+        #   不可达=失败退出（三选一指引），无「看板单写回退」面。976 等价化简：原直推
+        #   壳恒返回失败信息经 `问题 and not 服务成` 参与判定——直取 join 结果。
         服务成 = 队列写("join", {"分支": 当前分支, "基线": 新行["基线"], "写集摘要": 摘要})
-        # 1020（#180·方案乙）：报名后自检——join ok≠态正确（旧版幂等吞重报：
-        #   已踢出态停留→排队们无我→批主选不出→全员死等 1017 实录）。服务端
-        #   可达时核「自己行=排队」，异常态 touch 重置再核，仍异常报错不进死等。
-        if 服务成 and not 参数.dry_run:
-            自检 = next((行 for 行 in (队列读(参数.remote) or [])
-                         if 行["分支"] == 当前分支), None)
-            if 自检 is None or 自检["状态"] != "排队":
-                队列写("touch", {"分支": 当前分支})
-                自检 = next((行 for 行 in (队列读(参数.remote) or [])
-                             if 行["分支"] == 当前分支), None)
-                if 自检 is None or 自检["状态"] != "排队":
-                    return 失败(f"报名自检失败：队列行态={自检['状态'] if 自检 else '无行'}"
-                                "（touch 后仍未排队）——检查服务端 join 语义。")
-        问题 = 直推看板提交(报名变换, f"集成队列：{当前分支} 报名（911 批量集成·{摘要}）", 参数.remote)
-        if 问题 and not 服务成:
+        if not 服务成:
             return 失败("TX_01 队列服务不可达（join 失败）——三选一：①稍后重试本命令"
                         "（服务恢复即批路径）②python scripts/integrate.py --solo"
                         "（立即单机集成·全门禁）③python scripts/integrate.py --solo-if-unreachable"
                         "（探测降级：可达走批/不可达自动 solo）")
-        print(f"[2] 报名入队：{当前分支} @ {新行['时刻']}（{摘要}）"
-              + ("｜服务端✓" if 服务成 else "｜服务端不可达·看板单写（回退）"))
+        # 1020（#180·方案乙）：报名后自检——join ok≠态正确（旧版幂等吞重报：
+        #   已踢出态停留→排队们无我→批主选不出→全员死等 1017 实录）。核「自己行=
+        #   排队」，异常态 touch 重置再核，仍异常报错不进死等。
+        自检 = next((行 for 行 in (队列读(参数.remote) or [])
+                     if 行["分支"] == 当前分支), None)
+        if 自检 is None or 自检["状态"] != "排队":
+            队列写("touch", {"分支": 当前分支})
+            自检 = next((行 for 行 in (队列读(参数.remote) or [])
+                         if 行["分支"] == 当前分支), None)
+            if 自检 is None or 自检["状态"] != "排队":
+                return 失败(f"报名自检失败：队列行态={自检['状态'] if 自检 else '无行'}"
+                            "（touch 后仍未排队）——检查服务端 join 语义。")
+        print(f"[2] 报名入队：{当前分支} @ {新行['时刻']}（{摘要}）｜服务端✓")
 
     # ── ③ 并行模型（830·2026-10-15 用户裁决）：不再等待任何批主/不看池忙闲──────────
     #   报名后立即组链入池——池内排队由 runner 空闲认领天然实现（一个任务一个实例·
@@ -1309,7 +1223,8 @@ def 批流程(参数: argparse.Namespace) -> int:
     原分支 = 当前分支
     批分支 = "batch/" + 当前分支.replace("任务/", "", 1)
     成功 = False
-    已入池待续 = False    # 830：非 --wait 入池后早退标志（不 push·不触发失败恢复）
+    已入池待续 = False    # 830：非 --wait 入池后早退标志=已入池哨兵 的批流程侧
+                          #   （不 push·不触发失败恢复；三态协议见 已入池哨兵 定义处）
     链顶 = None
     踢出们: list[str] = []
     已验基准: str | None = None
@@ -1445,17 +1360,11 @@ def 批流程(参数: argparse.Namespace) -> int:
                 except OSError:
                     pass
 
-        def 销账变换(文: str):
-            新 = 队列清行们(文, [行["分支"] for 行 in 实际成员])
-            for 分支, 原因 in 踢出们:
-                新 = 队列改状态(新, 分支, "归因出批" if 原因 == "归因" else "冲突出批")
-            return None if 新 == 文 else 新
-
-        # 920·边界双写：服务端销账（权威）+看板段（兼容旧机）
+        # 920：服务端销账（权威·实时）——v5（1016）看板销账直推废除后为唯一销账面
+        #   （976：原 销账变换 闭包+直推调用随废档删除；021 总账自动收口含解锁播报）
         队列写("clear", {"分支们": [行["分支"] for 行 in 实际成员]})
         for 分支, _原因 in 踢出们:
             队列写("update", {"分支": 分支, "状态": "已踢出"})
-        # v5（1016）：看板销账直推废除——021 总账自动收口（含解锁播报）
         # 392：伞批登记号并集（组链收集）随批销账——成员号不入分支名的漏销盲区
         # 只取实际入链成员的登记号（被踢出者未进 develop·销其登记号=错销）
         实际分支们 = {行["分支"] for 行 in 实际成员}
@@ -1594,31 +1503,21 @@ def 主流程() -> int:
 
 
 def 批流程_join_only(参数: argparse.Namespace) -> int:
-    """--join：仅报名（报名后立即返回 0——组批留给稍后重跑）。"""
+    """--join：仅报名（报名后立即返回 0——组批留给稍后重跑）。
+
+    v5（1016）披露·976 核实：看板直推废档后本路径的服务端报名面未随迁移=恒失败
+    （缺陷在案·修复或退役待独立立项）。本函数显式保持恒失败行为（exit 1）——
+    文案沿用原直推壳输出（行为等价），修复立项前 --join 请改走默认路径或 --solo。
+    """
     问题 = 前置自检(参数.remote)
     if 问题:
         return 失败(问题)
-    当前分支 = 输出(["git", "branch", "--show-current"])
     运行(["git", "fetch", 参数.remote])
     基线 = 输出(["git", "rev-parse", f"{参数.remote}/{集成分支}"])
-    写集 = 改动文件清单(基线)
-    if not 写集:
+    if not 改动文件清单(基线):
         return 失败("分支相对 develop 无任何改动（空集成）。")
-    摘要 = f"{len(写集)} 文件" + ("·触全量面" if 分类写集(写集) else "·纯文档/脚本")
-    新行 = 报名行(当前分支, 基线[:8], 摘要)
-
-    def 报名变换(文: str):
-        重报文, 变更 = 队列重报(文, 当前分支, 新行["时刻"])
-        if 变更:
-            return 重报文
-        加行文 = 队列加行(文, 新行)
-        return None if 加行文 == 文 else 加行文
-
-    问题 = 直推看板提交(报名变换, f"集成队列：{当前分支} 报名（911 批量集成·{摘要}）", 参数.remote)
-    if 问题:
-        return 失败(问题)
-    print(f"[报名成功] {当前分支} @ {新行['时刻']}（{摘要}）——稍后重跑 integrate.py 组批集成。")
-    return 0
+    # 976：原 报名变换+直推看板提交（恒失败壳）显式化——保持恒失败与原文案（行为等价）。
+    return 失败("v5 看板已废档——跳过直推（服务端队列为主·稍后重试或 --solo）")
 
 
 if __name__ == "__main__":
