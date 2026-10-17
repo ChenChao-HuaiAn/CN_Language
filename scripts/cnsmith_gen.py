@@ -6,13 +6,65 @@
 首期生成面：整32/整64 变量、算术（+ - * / %）、位运算（& | ^ << >>）、
 比较（== != < <= > >=）、逻辑（&& || !）、三元、打印行。
 
+「只生成合法程序」契约（847 收口）由二层保护承担：
+  ①移位量域保护：移位量=操作数类型位宽域内小字面量（474 立法）；
+  ②常量折叠溢出保护：常量链折叠值镜像编译器预演域（_算术折叠/…）——
+    超域节点主动修正为恒合法形态（同除数非零保护先例）。
+自校验：python scripts/cnsmith_gen.py --selftest [--编译 target/cn.exe]
+  （移位域+折叠域+采样生成面静态三断言；给 --编译 时加样本全编译通过
+  + 危险表达式全被拒双向对拍）。
+
 用法：python scripts/cnsmith_gen.py --seed 1 --count 10 --out target/cnsmith
 """
 import argparse
 import os
 import random
+import re
+import shutil
+import subprocess
 
 NL = "\n"
+
+# 折叠预演域（847）：镜像编译器常量折叠/溢出预演口径
+#   （semantic_expr_binary.cpp reportConstOverflow + model/semantic_helpers.hpp
+#   cnFoldConstIntExpr505——int64 承载闭包 + 结果类型域预演）
+INT32_MIN = -2147483648
+INT32_MAX = 2147483647
+INT64_MIN = -9223372036854775808
+INT64_MAX = 9223372036854775807
+
+# 474 立法：移位量合法域 [0, 操作数类型位宽)——k ≥ 位宽=编译期硬错误
+类型位宽 = {"整32": 32, "整64": 64}
+
+
+def _超整32(值):
+    """值超整32 域判据（编译器预演升格条件——reportConstOverflow promotedType 同口径）。"""
+    return 值 < INT32_MIN or 值 > INT32_MAX
+
+
+def _算术求值(op, a, b):
+    """+ - * 求值（Python 大整数；闭集三算子显式枚举）。"""
+    if op == "+":
+        return a + b
+    if op == "-":
+        return a - b
+    if op == "*":
+        return a * b
+    raise AssertionError("闭集外算术算符：%s" % op)   # 穷举断言（miss 不可静默）
+
+
+def _截断除(a, b):
+    """向零截断除法（与宿主常量折叠 C++ '/' 口径一致；生成面除数恒 1..9 正数）。"""
+    return a // b if a >= 0 else -((-a) // b)
+
+
+def _域断言(值):
+    """（847 自校验）折叠值承载域不变量：可折叠值必落 int64 闭包域。
+
+    判据保证（<< 超位域不可折叠/修正后值域内）失效时立即显形——防折叠
+    模拟与编译器口径偏离静默产出非法样本。"""
+    assert INT64_MIN <= 值 <= INT64_MAX, "折叠值超 int64 承载域：%d" % 值
+    return 值
 
 
 class Gen:
@@ -20,6 +72,9 @@ class Gen:
         self.rng = random.Random(seed)
         self.vars = []          # (名称, 类型) 整32/整64
         self.tmp = 0
+        # 847 自校验审计面：常量折叠超域被修正为安全形态的「原表达式」文本
+        # （selftest 编译对拍用——每个原表达式应被编译器真实拒绝）
+        self.审计危险 = []
 
     def new_name(self, typ):
         self.tmp += 1
@@ -29,16 +84,24 @@ class Gen:
         self.vars.append((name, typ))
 
     def expr(self, depth, typ="整32"):
-        """生成一个 typ 类型表达式。"""
+        """生成一个 typ 类型表达式；返回 (文本, 折叠值)。
+
+        折叠值=镜像编译器常量折叠器（cnFoldConstIntExpr505）的可折叠量：
+        int=常量闭包值（字面量/一元负/算术/除模/移位），None=不可折叠
+        （变量/显式转换/位运算/比较/逻辑/三元——折叠器不进这些节点）。
+        仅 + - * 节点消费之做溢出预演保护（_算术折叠）——847 契约：
+        生成的样本对当前编译器全部合法。"""
         if depth <= 0 or self.rng.random() < 0.35:
             return self.atom(typ)
         kind = self.rng.randrange(6)
         if typ == "整32" and kind == 0:
-            # 算术二元
+            # 算术二元（折叠值跟踪见 _算术折叠——847 防常量折叠溢出拒绝）
             op = self.rng.choice(["+", "-", "*"])
-            return "(%s %s %s)" % (self.expr(depth - 1), op, self.expr(depth - 1))
+            lt, lv = self.expr(depth - 1)
+            rt, rv = self.expr(depth - 1)
+            return self._算术折叠(op, lt, rt, lv, rv)
         if typ == "整32" and kind == 1:
-            # 位运算/移位；移位量=域内小字面量 [0,31]（474 执法保护——同除数非零
+            # 位运算/移位；移位量=域内小字面量（474 执法保护——同除数非零
             #   保护先例。167 轨道入口实测：原通用 expr 生成常量折叠后超宽移位量→
             #   宿主 474 执法拒 16/24=采样面大面积无效，违背「随机但合法」本职）
             op = self.rng.choice(["&", "|", "^", "<<", ">>"])
@@ -48,45 +111,60 @@ class Gen:
                 #   → 编译期诊断拒绝（s6/s8 实测 build_err）：「生成合法程序」承诺
                 #   被破坏，合法轨产出非法样本污染差分信噪比。右操作数=域内小字面量。
                 #   （167 独立同处发现·两源互证：合并取 840 注释版·代码两侧全同）
-                return "(%s %s %d)" % (self.expr(depth - 1), op,
-                                      self.rng.randint(0, 31))
-            return "(%s %s %s)" % (self.expr(depth - 1), op, self.expr(depth - 1))
+                #   847 收口：域按目标类型位宽取 [0, 类型位宽)——当前移位生成面
+                #   =整32（分支条件），randint 参数 (0,31) 与修复前逐位一致。
+                lt, lv = self.expr(depth - 1)
+                k = self.rng.randint(0, 类型位宽[typ] - 1)
+                return self._移位折叠(op, lt, lv, k)
+            lt, _ = self.expr(depth - 1)
+            rt, _ = self.expr(depth - 1)
+            # 位运算不进折叠闭包（cnFoldConstIntExpr505 default——不可折叠）
+            return "(%s %s %s)" % (lt, op, rt), None
         if kind == 2 and depth >= 2:
             # 除法/取模（除数恒非零保护：字面量 1..9）
             op = self.rng.choice(["/", "%"])
-            return "(%s %s %d)" % (self.expr(depth - 1), op, self.rng.randint(1, 9))
+            lt, lv = self.expr(depth - 1)
+            rv = self.rng.randint(1, 9)
+            return self._除模折叠(op, lt, lv, rv)
         if typ == "整32" and kind == 3:
-            # 比较产生布尔 -> 再转整（三元取整分支）
+            # 比较产生布尔 -> 再转整（三元取整分支）；比较不进折叠闭包
             ops = ["==", "!=", "<", "<=", ">", ">="]
-            b = "(%s %s %s)" % (self.expr(depth - 1), self.rng.choice(ops),
-                                self.expr(depth - 1))
-            return "(%s ? 1 : 0)" % b
+            lt, _ = self.expr(depth - 1)
+            cmp_op = self.rng.choice(ops)
+            rt, _ = self.expr(depth - 1)
+            b = "(%s %s %s)" % (lt, cmp_op, rt)
+            return "(%s ? 1 : 0)" % b, None
         if typ == "整32" and kind == 4 and depth >= 2:
-            # 逻辑组合（操作数=比较表达式·布尔）转 0/1
+            # 逻辑组合（操作数=比较表达式·布尔）转 0/1；逻辑/三元不进折叠闭包
             ops = ["==", "!=", "<", "<=", ">", ">="]
             op = self.rng.choice(["&&", "||"])
             cmp_op = self.rng.choice(ops)
-            lhs = "(%s %s %s)" % (self.expr(depth - 2), cmp_op,
-                                  self.expr(depth - 2))
+            l1, _ = self.expr(depth - 2)
+            r1, _ = self.expr(depth - 2)
+            lhs = "(%s %s %s)" % (l1, cmp_op, r1)
             cmp_op2 = self.rng.choice(ops)
-            rhs = "(%s %s %s)" % (self.expr(depth - 2), cmp_op2,
-                                  self.expr(depth - 2))
-            return "((%s %s %s) ? 1 : 0)" % (lhs, op, rhs)
+            l2, _ = self.expr(depth - 2)
+            r2, _ = self.expr(depth - 2)
+            rhs = "(%s %s %s)" % (l2, cmp_op2, r2)
+            return "((%s %s %s) ? 1 : 0)" % (lhs, op, rhs), None
         return self.atom(typ)
 
     def atom(self, typ):
+        """原子表达式；返回 (文本, 折叠值)。"""
         r = self.rng.random()
         if self.vars and r < 0.4:
             # 复用已声明变量（类型匹配优先，类型不同做显式转换保证合法）
             name, vt = self.rng.choice(self.vars)
             if vt == typ:
-                return name
+                return name, None
             if typ == "整32":
-                return "整32(%s)" % name
-            return "整64(%s)" % name
+                return "整32(%s)" % name, None    # 显式转换不可折叠
+            return "整64(%s)" % name, None
         if typ == "整64":
-            return "%dL" % self.rng.randint(-100000, 100000)
-        return str(self.rng.randint(-1000, 1000))
+            # 整64 字面量不进整32 折叠跟踪（整64 无算术生成面——值无消费点）
+            return "%dL" % self.rng.randint(-100000, 100000), None
+        v = self.rng.randint(-1000, 1000)
+        return str(v), v
 
     def program(self, stmt_n=14):
         out = []
@@ -102,13 +180,65 @@ class Gen:
     def statement(self):
         typ = self.rng.choice(["整32", "整32", "整32", "整64"])
         name = self.new_name(typ)
-        val = self.expr(self.rng.randint(2, 5), typ)  # 先生成值（未登记，避免自引用）
+        val, _ = self.expr(self.rng.randint(2, 5), typ)  # 先生成值（未登记，避免自引用）
         self.declare(name, typ)
         head = "整64" if typ == "整64" else "整32"
         line = "    %s %s = %s;" % (head, name, val)
         if self.rng.random() < 0.6:
             line += NL + '    打印行("%s = ", %s);' % (name, name)
         return line
+
+    # ------------------------------------------------------------------
+    # 常量折叠溢出保护（847 收口：生成器「只生成合法程序」契约）
+    #   病根实录（2026-10-17 复核新 seed 120 样本）：3 个样本被「编译期整数
+    #   溢出」拒绝——常量链折叠超整32 域（((-379*-130)*411)*110、
+    #   ((767<<17)*494) 等；001 §1.1a①/Rust debug 对齐硬错误）。840/167 只修了
+    #   移位量域，未防折叠超域——契约仍破 2.5%。
+    #   修法：expr 递归携带折叠值（镜像 cnFoldConstIntExpr505 闭包——
+    #   字面量/一元负/算术/除模/移位可折叠，位/比较/逻辑/三元不可折叠），
+    #   + - * 节点按编译器预演口径预检（reportConstOverflow：任一侧折叠值超
+    #   整32 域→按整64 域预演，否则整32 域；结果超域=必被拒），超域节点主动
+    #   修正为恒合法形态=右操作数置 0（同除数非零保护先例；修正不消耗 rng
+    #   ——同 seed 下未触发修正的样本产出与修复前逐字节一致）。
+    # ------------------------------------------------------------------
+
+    def _算术折叠(self, op, lt, rt, lv, rv):
+        """+ - * 节点文本+折叠值；折叠结果超预演域时主动修正（右操作数置 0）。"""
+        if lv is None or rv is None:
+            return "(%s %s %s)" % (lt, op, rt), None
+        域上界 = INT64_MAX if (_超整32(lv) or _超整32(rv)) else INT32_MAX
+        结果 = _算术求值(op, lv, rv)
+        if -域上界 - 1 <= 结果 <= 域上界:
+            return "(%s %s %s)" % (lt, op, rt), _域断言(结果)
+        self.审计危险.append("(%s %s %s)" % (lt, op, rt))
+        修正值 = _算术求值(op, lv, 0)
+        return "(%s %s 0)" % (lt, op), _域断言(修正值)
+
+    def _移位折叠(self, op, lt, lv, k):
+        """<< >> 节点文本+折叠值。
+
+        镜像折叠器：<< 仅当左值非负且不超 int64 位域才可折叠（负值左移/
+        超位域=不可折叠——该形态编译器预演不消费，实测合法）；>> 恒算术
+        右移可折叠（k∈[0,32) 域内）。"""
+        if op == "<<":
+            if lv is not None and lv >= 0 and lv <= (INT64_MAX >> k):
+                return "(%s << %d)" % (lt, k), _域断言(lv << k)
+            return "(%s << %d)" % (lt, k), None
+        if lv is None:
+            return "(%s >> %d)" % (lt, k), None
+        return "(%s >> %d)" % (lt, k), _域断言(lv >> k)
+
+    def _除模折叠(self, op, lt, lv, rv):
+        """除/取模节点文本+折叠值（截断除法·余数符号同被除数——与宿主折叠口径一致）。
+
+        除数恒 1..9 正数：除零/INT_MIN÷-1 溢出形态不可达；结果绝对值不超
+        被除数→恒在 int64 承载域。"""
+        if lv is None:
+            return "(%s %s %d)" % (lt, op, rv), None
+        q = _截断除(lv, rv)
+        if op == "/":
+            return "(%s / %d)" % (lt, rv), _域断言(q)
+        return "(%s %% %d)" % (lt, rv), _域断言(lv - q * rv)
 
 
 # 负向注入（246-a）：对合法程序注入一个随机语法/结构错误——
@@ -180,6 +310,102 @@ def _尝试注入(lines, kind, rng):
     return out, i + 1
 
 
+# =====================================================================
+# 自校验（847 收口·判定契约=全绿 0/红 1——对齐 cnsmith_run 判定风格）
+# =====================================================================
+
+
+def selftest(编译路径=None, 目标=None):
+    """生成器自校验：移位域（474）+折叠域（847 同族）+采样生成面。
+
+    静态面（零依赖）：
+      ①样本面=847 实录 12 样本 seed（1..12）+3 个实录危险 seed 采样；
+      ②全部移位量 ∈ [0, 32)（474——防 840 缺陷重演锁面）；
+      ③折叠值不变量（生成期 _域断言 内建·超域即异常显形）；
+      ④生成面未退化+折叠保护审计面有捕获（miss 不可静默）。
+    编译对拍（--编译 <cn.exe>）：⑤样本全编译通过；⑥审计危险表达式全被拒
+      （折叠模拟与编译器口径双向闭环——偏差即显形）。
+    """
+    通过, 失败 = [], []
+    语句数 = 14   # 对齐 CLI 默认 --stmts（实录样本生成口径）
+
+    def 签(名, 条件, 详情=""):
+        if 条件:
+            通过.append(名)
+        else:
+            失败.append((名, 详情))
+
+    # 实录危险 seed（2026-10-17 复核：s1019/s251015000020/s251017000004 曾被
+    #   「编译期整数溢出」拒绝——常量折叠超域）恒入锁面，修复回归即 selftest 红
+    种子们 = list(range(1, 13)) + [1019, 251015000020, 251017000004]
+    样本们 = []
+    审计 = []
+    for seed in 种子们:
+        g = Gen(seed)
+        样本们.append((seed, g.program(语句数)))   # 语句数=CLI 默认（实录口径）
+        审计.extend(g.审计危险)
+
+    移位量们 = []
+    for _seed, src in 样本们:
+        移位量们.extend(int(t) for t in re.findall(r"(?:<<|>>)\s*(-?\d+)", src))
+    签("样本数=%d（12 实录 seed+3 危险 seed）" % len(样本们), len(样本们) == 15)
+    签("移位量全部 ∈ [0,32)（474·%d 个）" % len(移位量们),
+       len(移位量们) > 0 and all(0 <= v < 32 for v in 移位量们))
+    文本全集 = NL.join(src for _s, src in 样本们)
+    签("生成面未退化（移位/算术/除模均有产出）",
+       bool(re.search(r"<<|>>", 文本全集))
+       and bool(re.search(r" [\+\-\*] ", 文本全集))
+       and bool(re.search(r" [/%] ", 文本全集)))
+    签("折叠保护审计面有捕获（危险表达式 %d 个）" % len(审计), len(审计) >= 1)
+
+    if 编译路径 is not None:
+        目标 = 目标 or ("win-x64" if os.name == "nt" else "linux-x64")
+        临时 = os.path.join("target", "cnsmith_selftest_tmp")
+        os.makedirs(临时, exist_ok=True)
+        try:
+            过, 坏 = 0, []
+            for seed, src in 样本们:
+                源 = os.path.join(临时, "s%d.cn" % seed)
+                with open(源, "w", encoding="utf-8", newline="") as f:
+                    f.write(src)
+                r = subprocess.run(
+                    [编译路径, "build", 源, "--target", 目标, "-O0",
+                     "--output", 源[:-3] + ".exe"],
+                    capture_output=True, timeout=120)
+                if r.returncode == 0:
+                    过 += 1
+                else:
+                    坏.append(seed)
+            签("样本全部编译通过（%d/%d）" % (过, len(样本们)),
+               过 == len(样本们), "被拒 seed=%s" % 坏)
+
+            帽子 = list(dict.fromkeys(审计))   # 去重（多样本可能同式）
+            拒 = 0
+            for i, 表达式 in enumerate(帽子):
+                源 = os.path.join(临时, "d%d.cn" % i)
+                with open(源, "w", encoding="utf-8", newline="") as f:
+                    f.write("函数 主() -> 整32 {\n    整32 探针值 = %s;\n"
+                            "    打印(探针值);\n    返回 0;\n}\n" % 表达式)
+                r = subprocess.run(
+                    [编译路径, "build", 源, "--target", 目标, "-O0",
+                     "--output", 源[:-3] + ".exe"],
+                    capture_output=True, timeout=120)
+                输出 = (r.stdout + r.stderr).decode("utf-8", "replace")
+                if r.returncode != 0 and "编译期整数溢出" in 输出:
+                    拒 += 1
+            签("危险表达式全被编译器拒（%d/%d·双向对拍）" % (拒, len(帽子)),
+               len(帽子) >= 1 and 拒 == len(帽子))
+        finally:
+            shutil.rmtree(临时, ignore_errors=True)
+
+    for 名 in 通过:
+        print("  [通过] %s" % 名)
+    for 名, 详情 in 失败:
+        print("  [失败] %s%s" % (名, ("—— " + 详情) if 详情 else ""))
+    print("selftest: %d 通过 / %d 失败" % (len(通过), len(失败)))
+    return 1 if 失败 else 0
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--seed", type=int, default=1)
@@ -188,7 +414,15 @@ def main():
     ap.add_argument("--stmts", type=int, default=14)
     ap.add_argument("--negative", action="store_true",
                     help="负向注入模式：生成非法程序（验证必有诊断不崩溃）")
+    ap.add_argument("--selftest", action="store_true",
+                    help="生成器自校验（移位域/折叠域/采样面·零编译依赖）")
+    ap.add_argument("--编译", default=None,
+                    help="selftest 编译对拍用 cn.exe 路径（可选·增强面）")
+    ap.add_argument("--目标", default=None,
+                    help="selftest 编译对拍目标平台（默认按本机探测）")
     a = ap.parse_args()
+    if a.selftest:
+        return selftest(a.编译, a.目标)
     os.makedirs(a.out, exist_ok=True)
     跳过 = 0
     分布 = {}
@@ -214,7 +448,8 @@ def main():
     if a.negative:
         print("  注入类型分布: %s ｜ 跳过（无可注入行）%d" %
               (dict(sorted(分布.items())), 跳过))
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
