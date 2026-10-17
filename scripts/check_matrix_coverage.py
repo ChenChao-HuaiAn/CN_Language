@@ -9,7 +9,7 @@
 用法：
   python3 scripts/check_matrix_coverage.py             # 常规校验（提交前自检）
   python3 scripts/check_matrix_coverage.py --init      # 首次建基线（或清零重建）
-  python3 scripts/check_matrix_coverage.py --quiet     # 只输出覆盖数（供 plans/021 戳引用）
+  python3 scripts/check_matrix_coverage.py --quiet     # 只输出覆盖数（脚本化取数口）
 """
 import argparse
 import os
