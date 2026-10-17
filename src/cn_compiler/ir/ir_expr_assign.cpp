@@ -129,17 +129,26 @@ bool IRGenerator::memberClassFieldAssign(AssignmentExpr* node, MemberExpr* membe
                 const std::string dtorKeyC = classDestructorSymbolKey(fieldCanonC);
                 if (!dtorKeyC.empty()) {
                     ir::IRValue fieldAddrC = lvalueAddress(node->target.get());
-                    // 145-a 跳过撤销（543 根治·2026-10-14）：原「构造体内对 this
-                    //   字段赋值=初始化语义，跳过 preFree（防读垃圾句柄崩）」的
-                    //   跳过理由已被两道上游防线失效——①__cn_object_new 分配即
-                    //   清零（字段槽确定性 null）；②860-a 序言级联构造（2026-09-28）
-                    //   在体前对有默认构造类字段 NewObject+默认构造+StorePtr（槽=
-                    //   合法壳句柄）。构造体内赋值现覆盖的旧值恒为合法值（null 或
-                    //   级联壳）——preFree 空安全；而跳过=级联壳被体覆盖无人释放
-                    //   （每对象恒漏 1 壳·p_n6/p_n7 探针+箱丁 asm 双 NewObject 双
-                    //   StorePtr 铁证·459 临时合流计数前壳不进检测面不可见）。
+                    // 145-a+543 判据（2026-10-14·459 批甲临时合流计数实证）：
+                    //   preFree ⇔ 非 this 接收者 || 非拷贝构造体内——
+                    //   ①构造外/非拷贝构造体内对 this 字段赋值：序言级联**无条件**
+                    //     写合法槽（NewObject calloc null 或 860-a 级联壳）→ preFree
+                    //     空安全且必要（跳过=级联壳被体覆盖无人释放·每对象恒漏 1 壳·
+                    //     p_n6/p_n7 探针+箱丁 asm 双 NewObject 双 StorePtr 铁证）；
+                    //   ②拷贝构造体内 this 字段：序言无 860-a 级联（ir_oop.cpp 显式
+                    //     排除拷贝构造）→ this 槽可能来自未清零位置（栈槽/容器
+                    //     realloc 槽垃圾）→ 预释放读垃圾句柄=崩（145-a 原始防护·
+                    //     1035 容器追加 0xC0000374 实证）→ 跳过；
+                    //   ③非 this 接收者（如 其他.表/构造外）恒走完整 preFree。
                     //   释放后补清槽（幂等模型不变）：中途异常路径再见本槽=null。
-                    {
+                    bool isCtorThisField = false;
+                    if (currentMethodIsCtor_ &&
+                        member->object->getType() == NodeType::IdentifierExpr) {
+                        const auto* objId =
+                            static_cast<const IdentifierExpr*>(member->object.get());
+                        if (objId->name == "自身") isCtorThisField = true;
+                    }
+                    if (!isCtorThisField || !currentMethodIsCopyCtor_) {
                         ir::IRValue oldObj = emitResult(ir::Opcode::LoadPtr, {fieldAddrC},
                                                         "ptr", "", node->location);
                         emitContainerElemFreeFor(fieldCanonC, oldObj, node->location);

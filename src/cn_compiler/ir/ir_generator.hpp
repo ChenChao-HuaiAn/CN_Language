@@ -970,9 +970,15 @@ private:
     bool currentMethodStatic_ = false;
     // 当前方法是否常量成员函数（常量方法体内禁止修改成员，Task 3.9 语义已检查）
     bool currentMethodConst_ = false;
-    // 145-a：当前方法是否为构造函数（含拷贝构造）——构造体内对 **this 字段**的赋值
-    //   = 初始化语义（Rust 对照：构造即初始化）：写入位拦截跳过 preFree（目标字段
+    // 145-a/543：当前方法是否为构造函数——构造体内对 **this 字段**的赋值：
+    //   非拷贝构造=初始化语义（860-a 序言级联必然先写合法槽：null 或级联壳）
+    //   → 写入位放行 preFree（释放级联壳·543 泄漏根治）；拷贝构造=序言无级联
+    //   （ir_oop.cpp 860-a 判定显式排除）·槽可能未初始化 → 仍跳过 preFree。
     bool currentMethodIsCtor_ = false;
+    // 543：当前方法是否为拷贝构造（单参同类型引用）。拷贝构造的 this 可能来自
+    //   未清零槽位（栈槽/容器扩容 realloc 数组槽）——体内 this 字段赋值不得
+    //   预释放旧值（读垃圾句柄 DeleteObject=崩·1035 容器追加 0xC0000374 实证）。
+    bool currentMethodIsCopyCtor_ = false;
 };
 
 

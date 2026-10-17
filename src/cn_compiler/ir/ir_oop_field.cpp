@@ -402,15 +402,20 @@ bool IRGenerator::handleClassFieldAssign(IdentifierExpr* ident, Expr* value,
             !classDestructorSymbolKey(fieldCanon).empty();
         if (isOwnedContainer) {
             ir::IRValue fieldAddr = genInstanceFieldAddr(ident->name, loc);
-            // 145-a 跳过撤销（543 根治·2026-10-14·与 memberClassFieldAssign 同批）：
-            //   原「构造体内 this 字段赋值=初始化语义，跳过 preFree（防读垃圾句柄
-            //   崩）」的理由已被上游防线失效——①__cn_object_new 分配即清零（槽=
-            //   确定性 null）；②860-a 序言级联构造（2026-09-28）体前对有默认构造
-            //   类字段 NewObject+默认构造+StorePtr（槽=合法壳句柄）。构造内赋值
-            //   覆盖的旧值恒合法（null 或级联壳）→ preFree 空安全；跳过=级联壳
-            //   被体覆盖无人释放（每对象恒漏 1 壳·p_n6/p_n7 探针+箱丁 asm 双
-            //   NewObject 双 StorePtr 铁证·459 临时合流前壳不进检测面不可见）。
-            {
+            // 543 预释放判据（2026-10-14·459 批甲临时合流计数实证；初版撤尽
+            //   145-a 跳过致 1035 容器追加崩 0xC0000374·本处精确化）：
+            //   preFree ⇔ 非构造体内 || 非拷贝构造体内——
+            //   ①构造外/非拷贝构造体内：旧值恒合法——__cn_object_new calloc
+            //     清零（null）或 860-a 序言级联壳（非拷贝构造的序言**无条件**写
+            //     槽：NewObject+默认构造+StorePtr）→ preFree 空安全且必要（跳过=
+            //     级联壳被体覆盖无人释放·每对象恒漏 1 壳·p_n6/p_n7 探针+箱丁
+            //     asm 双 NewObject 双 StorePtr 铁证）；
+            //   ②拷贝构造体内：860-a 字段级联**显式排除拷贝构造**（ir_oop.cpp
+            //     序言判定 isCopyConstructor——字段初始化=用户全权）→ this 槽
+            //     可能来自未清零位置（栈槽/容器扩容 realloc 数组槽=垃圾）——
+            //     预释放读垃圾句柄 DeleteObject=崩（145-a 原始防护场景·1035
+            //     向量<货架>.追加 槽 realloc 后调拷贝构造实证）→ 跳过。
+            if (!currentMethodIsCtor_ || !currentMethodIsCopyCtor_) {
                 ir::IRValue oldObj =
                     emitResult(ir::Opcode::LoadPtr, {fieldAddr}, "ptr", "", loc);
                 emitContainerElemFreeFor(fieldCanon, oldObj, loc);
@@ -908,7 +913,11 @@ bool IRGenerator::handleClassMemberAssign(MemberExpr* target, Expr* valueExpr,
     //   释放模型=183-a 同款：emitContainerElemFreeFor（容器元素串）+ 单发
     //   DeleteObject（指令内含析构调用+free·空槽 null 空安全跳过）——首次赋值
     //   （槽=__cn_object_new 清零 null）与重复覆盖皆幂等。字符串/标量字段不受
-    //   影响（hasDtor 类判定只命中类类型字段）。
+    //   影响（hasDtor 类判定只命中类类型字段）。判据与 handleClassFieldAssign /
+    //   memberClassFieldAssign 同源（543 修正）：接收者=自身 且拷贝构造体内 →
+    //   序言无 860-a 级联（ir_oop.cpp 显式排除拷贝构造）·this 槽可能未初始化
+    //   （栈槽/容器 realloc 槽垃圾）——跳过 preFree（1035 容器追加 0xC0000374
+    //   实证）；其余（有效对象接收者/非拷贝构造的级联槽）恒 preFree。
     if (!isCompoundAssignOp(op) && semantic_->isClassType(
         types::canonical(fieldType))) {
         const ClassInfo* fci543 = semantic_->findClass(
@@ -919,7 +928,8 @@ bool IRGenerator::handleClassMemberAssign(MemberExpr* target, Expr* valueExpr,
                 if (mk543.second.isDestructor) { fHasDtor543 = true; break; }
             }
         }
-        if (fHasDtor543) {
+        const bool thisRecv543 = (objName == "自身");
+        if (fHasDtor543 && !(thisRecv543 && currentMethodIsCopyCtor_)) {
             ir::IRValue oldObj543 = emitResult(ir::Opcode::LoadPtr, {addr},
                                                "ptr", "", loc);
             emitContainerElemFreeFor(types::canonical(fieldType), oldObj543,

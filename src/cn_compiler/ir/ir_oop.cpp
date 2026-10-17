@@ -91,8 +91,12 @@ void IRGenerator::emitClassMethod(const std::string& className, const ClassMembe
     if (!mi.hasBody) return;
     // 145-a：构造体标志（构造/拷贝构造体内 this 字段赋值=初始化语义——写入位
     //   拦截据此跳过 preFree；嵌套方法体生成时保存/恢复）。
+    // 543：拷贝构造标志单列——拷贝构造序言无 860-a 字段级联，this 字段槽可能
+    //   未初始化（栈槽/容器 realloc 槽垃圾），写入位拦截须区分（见 hpp 头注）。
     const bool savedIsCtor = currentMethodIsCtor_;
     currentMethodIsCtor_ = mi.isConstructor;
+    const bool savedIsCopyCtor = currentMethodIsCopyCtor_;
+    currentMethodIsCopyCtor_ = mi.isCopyConstructor;
 
     // Debug 子任务修复（泛型类方法内循环遍历第一个泛型字段）：泛型单态化类
     //   （盒子$整64）方法体提升时须设置 genericTypeParams_（T -> 整64）——
@@ -356,6 +360,7 @@ void IRGenerator::emitClassMethod(const std::string& className, const ClassMembe
     currentMethodConst_ = savedConst;
     genericTypeParams_ = savedTypeParams;  // 恢复泛型类型参数映射（emitClassMethod 开头设置）
     currentMethodIsCtor_ = savedIsCtor;    // 145-a：恢复构造体标志
+    currentMethodIsCopyCtor_ = savedIsCopyCtor;  // 543：恢复拷贝构造标志
     if (!varStack_.empty()) varStack_.pop_back();
 }
 

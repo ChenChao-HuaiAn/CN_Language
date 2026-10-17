@@ -804,6 +804,7 @@ bool IRGenerator::identifierClassTransferAssign(AssignmentExpr* node, Identifier
         return false;
     if (node->value->getType() != NodeType::CallExpr) return false;
     const CallExpr* tr = static_cast<const CallExpr*>(node->value.get());
+    // 静默豁免闭集穷举: 转移通道形态判定（NodeType 闭集/转移函数名白名单）不中=本通道不适用——return false 交还调用方（:482 显式检查返回值分流至通用赋值通道·648 合法处置②），非内部查表静默默认值；与相邻既有守卫（CallExpr 判定）同款语义。
     if (!isTransferCall(tr) || tr->arguments.empty())
         return false;
     // 543 扩面（2026-10-14·579 形态② p_579 探针残 1 实证）：源=成员表达式
