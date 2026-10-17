@@ -4,6 +4,8 @@
 //   汇编/运行时编译/链接 + buildExe 全链路（build 与 run 命令共用）。
 //   readSourceFile/pathStem/systemExitCode/ensureDirExists/ansiToUtf8/toDriverOptions
 //   仍由 cn_main.cpp 提供（声明见 cn_main_toolchain.hpp）。
+// 969（2026-10-17）：运行时清单单源化（runtimeSrcs 编译/链接共用）+ 整批指纹缓存
+//   （清单/源/工具任一变化=整批重编，陈旧 .o 假绿根治·945 移池断链实录）。
 // 522（2026-10-13）：默认产物根=target/<目标平台>/（archBucketDir）——运行时 obj、
 //   中间 asm/obj、可执行按目标架构分桶，根治 arm64 交叉轮与 x64 构建在同 target/ 根
 //   互踩（399 残留面·cn-arm64-3 实弹「file in wrong format」连坐红）。存量（旧版
@@ -28,14 +30,6 @@
 #include "cn_compiler/driver/driver.hpp"
 
 // ==================== MSVC 工具链（build/run 命令共用） ====================
-
-// file 是否不早于 ref（file 存在且修改时间 >= ref，用于运行时编译缓存判断）
-static bool isNewerThan(const std::string& file, const std::string& ref) {
-    struct stat stF, stR;
-    if (stat(file.c_str(), &stF) != 0) return false;  // file 不存在
-    if (stat(ref.c_str(), &stR) != 0) return true;
-    return stF.st_mtime >= stR.st_mtime;
-}
 
 // 执行命令并捕获stdout（用于 vswhere 探测；stderr 透传）
 static std::string runCapture(const std::string& cmdLine) {
@@ -189,34 +183,83 @@ static bool assembleAsm(const std::string& target, const std::string& vcvarsBat,
     return true;
 }
 
-// 编译运行时源文件 -> 目标文件（带缓存：obj 新于 cpp 则跳过）
-//   win-x64：cl /c /std:c++17 /utf-8；linux-arm64：g++ -c -std=c++17 -fno-exceptions -fno-rtti
-//   Linux 需 -DCNRT_LINUX_MAIN 使 runtime.cpp 的 main 生效（与 CMake cn 目标定义一致）
+// ==================== 运行时源清单（编译与链接的单一权威） ====================
+// compileRuntime 按本清单编 .o，linkExe 按本清单拼链接命令——单源双用，
+//   结构上杜绝「编译清单与链接清单漂移」类事故（945 实录：mem_pool.cpp 自
+//   mem_api.cpp 拆出后，任一清单漏它即断链）。新增运行时源文件=只改本清单一处。
+static const char* runtimeSrcs[] = {
+    "src/runtime/io_api.cpp",
+    "src/runtime/mem_api.cpp",   // 349 重构E：自 io_api.cpp 拆出（内存管理）
+    "src/runtime/mem_pool.cpp",  // 945：自 mem_api.cpp 拆出（小对象池·并发安全）
+    "src/runtime/arena.cpp",     // 349 重构E：自 io_api.cpp 拆出（进程竞技场）
+    "src/runtime/crash_handler.cpp",  // 349 重构E：自 io_api.cpp 拆出（崩溃处理器）
+    "src/runtime/intern_api.cpp",  // 2026-08-25 自举重建 P1：字符串驻留（Symbol ID）
+    "src/runtime/runtime.cpp",
+    "src/runtime/string_api.cpp",
+    "src/runtime/thread_api.cpp",  // 996（027 波 1·线程库 __cn_thread_*/__cn_mutex_*）
+    "src/runtime/i128_api.cpp",
+    "src/runtime/math_api.cpp",  // Task 6.3 数学库（__cn_sqrt 等）
+    "src/runtime/input_api.cpp", // Task 6.2 输入 API（__cn_read_* / __cn_print_err）
+    "src/runtime/file_api.cpp",  // Task 6.2 文件 API（__cn_file_*）
+    "src/runtime/time_api.cpp",  // Task 6.5 时间 API（__cn_time/__cn_clock_ms/__cn_time_format）
+    "src/runtime/system_api.cpp",// Task 6.5 系统 API（__cn_argc/__cn_argv）
+};
+
+// 运行时整批构建指纹（对齐 run_e2e.py::计算运行时构建指纹 68-a 方案A）：
+//   清单全列表（含顺序）+ 各源文件 size/mtime + 目标平台 + 编译工具与标志特征。
+//   任一变化 → 指纹不符 → compileRuntime 整批原子重编（不留半新半旧混链）；
+//   指纹文件缺失/内容不符同判不符（显式 miss=整批重编，非静默默认值——648 纪律）。
+static std::string runtimeBuildFingerprint(const std::string& target) {
+    std::string fp;
+    for (const char* src : runtimeSrcs) {
+        struct stat st;
+        if (stat(src, &st) != 0) {
+            // 清单源文件缺失：以显式标记入指纹（编译阶段必然报错暴露）
+            fp += std::string(src) + ":MISSING\n";
+            continue;
+        }
+        fp += std::string(src) + ":" + std::to_string(static_cast<long long>(st.st_size))
+              + ":" + std::to_string(static_cast<long long>(st.st_mtime)) + "\n";
+    }
+    fp += "target:" + target + "\n";
+    fp += isWinX64(target)
+              ? "cc:cl /nologo /c /std:c++17 /utf-8\n"
+              : "cc:" + linuxCxxTool() + " -c -std=c++17 -fno-exceptions -fno-rtti "
+                "-DCNRT_LINUX_MAIN\n";
+    return fp;
+}
+
+// 编译运行时源文件 -> 目标文件（整批指纹缓存：指纹相符且各 .o 齐全=整批跳过；
+//   任一 input 变化=整批原子重编，根治陈旧 .o 假绿）
+//   win-x64：cl /c /std:c++17 /utf-8；linux-arm64/linux-x86_64：g++ -c -std=c++17
+//   -fno-exceptions -fno-rtti；Linux 需 -DCNRT_LINUX_MAIN 使 runtime.cpp 的 main
+//   生效（与 CMake cn 目标定义一致）
 static bool compileRuntime(const std::string& target, const std::string& vcvarsBat,
                            const std::string& objDir, bool verbose, std::string& error) {
-    static const char* runtimeSrcs[] = {
-        "src/runtime/io_api.cpp",
-        "src/runtime/mem_api.cpp",   // 349 重构E：自 io_api.cpp 拆出（内存管理）
-        "src/runtime/mem_pool.cpp",  // 945：自 mem_api.cpp 拆出（小对象池·并发安全）
-        "src/runtime/arena.cpp",     // 349 重构E：自 io_api.cpp 拆出（进程竞技场）
-        "src/runtime/crash_handler.cpp",  // 349 重构E：自 io_api.cpp 拆出（崩溃处理器）
-        "src/runtime/intern_api.cpp",  // 2026-08-25 自举重建 P1：字符串驻留（Symbol ID）
-        "src/runtime/runtime.cpp",
-        "src/runtime/string_api.cpp",
-        "src/runtime/thread_api.cpp",  // 996（027 波 1·线程库 __cn_thread_*/__cn_mutex_*）
-        "src/runtime/i128_api.cpp",
-        "src/runtime/math_api.cpp",  // Task 6.3 数学库（__cn_sqrt 等）
-        "src/runtime/input_api.cpp", // Task 6.2 输入 API（__cn_read_* / __cn_print_err）
-        "src/runtime/file_api.cpp",  // Task 6.2 文件 API（__cn_file_*）
-        "src/runtime/time_api.cpp",  // Task 6.5 时间 API（__cn_time/__cn_clock_ms/__cn_time_format）
-        "src/runtime/system_api.cpp",// Task 6.5 系统 API（__cn_argc/__cn_argv）
-    };
     const std::string sep = isWinX64(target) ? "\\" : "/";
+    // 缓存键与产物同桶（target/<目标平台>/·522 架构分桶天然隔离）
+    const std::string keyPath = objDir + sep + "runtime_build_key.txt";
+    const std::string fingerprint = runtimeBuildFingerprint(target);
+    bool allPresent = true;
     for (const char* src : runtimeSrcs) {
-        std::string stem = pathStem(src);
-        std::string obj = objDir + sep + stem + objSuffix(target);
-        // 缓存：obj 已存在且不早于 cpp 时跳过（避免重复编译）
-        if (isNewerThan(obj, src)) continue;
+        struct stat st;
+        if (stat((objDir + sep + pathStem(src) + objSuffix(target)).c_str(), &st) != 0) {
+            allPresent = false;  // 清单任一件缺失=缓存 miss
+        }
+    }
+    std::string key;
+    {
+        std::ifstream in(keyPath, std::ios::binary);
+        std::ostringstream ss;
+        ss << in.rdbuf();
+        key = ss.str();
+    }
+    if (allPresent && key == fingerprint) {
+        if (verbose) std::cout << "运行时 .o 缓存命中（清单与源未变），复用 " << objDir << "\n";
+        return true;
+    }
+    for (const char* src : runtimeSrcs) {
+        std::string obj = objDir + sep + pathStem(src) + objSuffix(target);
         std::string cmdLine;
         if (isWinX64(target)) {
             cmdLine = "cl /nologo /c /std:c++17 /utf-8 /I\"src\" "
@@ -232,6 +275,9 @@ static bool compileRuntime(const std::string& target, const std::string& vcvarsB
             return false;
         }
     }
+    // 整批成功后写缓存键（下次命中=全部跳过）
+    std::ofstream out(keyPath, std::ios::binary);
+    out << fingerprint;
     return true;
 }
 
@@ -258,30 +304,23 @@ static bool linkExe(const std::string& target, const std::string& vcvarsBat,
                               // 叠加溢出 0xC00000FD；编译器级栈 8MB 为常见配置
             "/DEFAULTLIB:libcmt.lib /DEFAULTLIB:libucrt.lib /DEFAULTLIB:kernel32.lib "
             "/DEFAULTLIB:shell32.lib "  // Task 6.5 系统库：CommandLineToArgvW（Unicode 命令行解析）
-            "/OUT:\"" + exePath + "\" \"" + userObj + "\" \"" +
-            runtimeObjDir + "\\io_api.obj\" \"" + runtimeObjDir + "\\mem_api.obj\" \"" +  // 349 重构E：io_api 拆分三件同链
-            runtimeObjDir + "\\mem_pool.obj\" \"" +  // 945：池拆出后同链
-            runtimeObjDir + "\\arena.obj\" \"" + runtimeObjDir + "\\crash_handler.obj\" \"" +
-            runtimeObjDir + "\\intern_api.obj\" \"" +
-            runtimeObjDir + "\\runtime.obj\" \"" + runtimeObjDir + "\\thread_api.obj\" \"" + runtimeObjDir + "\\string_api.obj\" \"" + runtimeObjDir + "\\i128_api.obj\" \"" +
-            runtimeObjDir + "\\math_api.obj\" \"" + runtimeObjDir + "\\input_api.obj\" \"" +
-            runtimeObjDir + "\\file_api.obj\" \"" + runtimeObjDir + "\\time_api.obj\" \"" +
-            runtimeObjDir + "\\system_api.obj\"";
+            "/OUT:\"" + exePath + "\" \"" + userObj + "\"";
+    } else {
+        cmdLine = linuxCxxTool() + " -no-pie -o \"" + exePath + "\" \"" + userObj + "\"";
+    }
+    // 运行时 .o 逐件拼自 runtimeSrcs 单一清单（编译与链接同源——945 教训：原
+    //   编译/链接两处硬编码列表漂移即断链；win 后缀 .obj / linux .o 由 objSuffix 统一）
+    for (const char* src : runtimeSrcs) {
+        cmdLine += " \"" + runtimeObjDir + (isWinX64(target) ? "\\" : "/") +
+                   pathStem(src) + objSuffix(target) + "\"";
+    }
+    if (isWinX64(target)) {
         // C-3（FFI）：附加链接库（--链接 库名，可多次）
         for (const auto& lib : extraLibs) {
             cmdLine += " \"" + lib + "\"";
         }
     } else {
-        cmdLine =
-            linuxCxxTool() + " -no-pie -o \"" + exePath + "\" \"" + userObj + "\" \"" +
-            runtimeObjDir + "/io_api.o\" \"" + runtimeObjDir + "/mem_api.o\" \"" +  // 349 重构E：io_api 拆分三件同链
-            runtimeObjDir + "/mem_pool.o\" \"" +  // 945：池拆出后同链
-            runtimeObjDir + "/arena.o\" \"" + runtimeObjDir + "/crash_handler.o\" \"" +
-            runtimeObjDir + "/intern_api.o\" \"" +
-            runtimeObjDir + "/runtime.o\" \"" + runtimeObjDir + "/thread_api.o\" \"" + runtimeObjDir + "/string_api.o\" \"" + runtimeObjDir + "/i128_api.o\" \"" +
-            runtimeObjDir + "/math_api.o\" \"" + runtimeObjDir + "/input_api.o\" \"" +
-            runtimeObjDir + "/file_api.o\" \"" + runtimeObjDir + "/time_api.o\" \"" +
-            runtimeObjDir + "/system_api.o\" -lpthread";
+        cmdLine += " -lpthread";
         for (const auto& lib : extraLibs) {
             cmdLine += " " + lib;
         }
@@ -392,7 +431,8 @@ int buildExe(const CliOptions& options, const std::string& file,
     if (!assembleAsm(options.target, vcvarsBat, asmPath, objPath,
                      options.verbose, error)) return 1;
 
-    // 7. 编译运行时库 -> .obj/.o（缓存：target/<桶>/io_api.o 等 14 件）
+    // 7. 编译运行时库 -> .obj/.o（整批指纹缓存：清单/源/工具任一变化=整批重编，
+    //    指纹相符且各 .o 齐全=整批跳过·新文件缺失即 miss 必编；产物=target/<桶>/）
     //    运行时桶目录独立于 exeDir：--output 指定别处时仍复用本架构共享运行时缓存；
     //    win 宿主统一反斜杠（与 exeDir 同款·对齐 999 案乙）
     std::string runtimeObjDir = bucketRoot;
