@@ -51,7 +51,8 @@
 
 用法：
   python3 scripts/neg_expect_audit.py             # 全库对账（报告式·rc=0）
-  python3 scripts/neg_expect_audit.py --strict    # 孤儿负例>0 → rc=1（周检挂载点）
+  python3 scripts/neg_expect_audit.py --strict    # 孤儿负例>0 → rc=1（周检挂载点；
+                                                  #   973 起已周期化挂载=ci_daemon 兜底轮周期段〔ci_reconcile.py〕）
   python3 scripts/neg_expect_audit.py --json      # 机读报告
   python3 scripts/neg_expect_audit.py --limit 50  # 清单截断（默认 20·0=全列）
   python3 scripts/neg_expect_audit.py --selftest  # 自测（临时样例树正反两态·零触碰真实树）

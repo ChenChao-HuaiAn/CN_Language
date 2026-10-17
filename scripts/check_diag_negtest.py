@@ -40,6 +40,7 @@
   python scripts/check_diag_negtest.py --diff           # 本分支相对 develop 新增诊断对账（验收主用法）
   python scripts/check_diag_negtest.py --diff <提交/分支>  # 指定基线的增量对账
   python scripts/check_diag_negtest.py --diff --strict  # 增量对账：存在缺口 → rc=1（收工自查）
+  #   973：--diff --strict 亦周期化挂载 ci_daemon 兜底轮周期段（ci_reconcile.py·每周到期·红步骤播报）
   python scripts/check_diag_negtest.py --all            # 全库盘点时全列缺口清单
   python scripts/check_diag_negtest.py --selftest       # 探测器自测（正/负样本·零触碰真实树）
 

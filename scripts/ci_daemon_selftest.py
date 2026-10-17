@@ -11,7 +11,8 @@ __main__ 副本）；行为级桩对照经猴补/还原主模块属性实现（�
 
 断言面索引：win 构建脚本文本+指纹三态（523）｜预验清产物（637）｜同步后编排正反两态
 +绿聚合三态+AST 互斥链结构锁（657）｜兜底过期纯函数三态+文本结构锁+行为级两态桩
-（660）｜ci_daemon.py 行数红线（660）｜日志 漏参族自由名锚+e2e 并行红路径冒烟（728t）。
+（660）｜ci_daemon.py 行数红线（660）｜日志 漏参族自由名锚+e2e 并行红路径冒烟（728t）｜
+对账周检段周期三态+段行为桩两态+挂载结构锁（973）。
 """
 from __future__ import annotations
 
@@ -417,6 +418,98 @@ def _935断言(主模块, 断言) -> None:
              不存.returncode == 127)
 
 
+def _973断言(主模块, 断言) -> None:
+    """973（2026-10-17）：对账周检段（scripts/ci_reconcile.py）——周期判定三态 +
+    段行为桩两态（临时目录隔离·桩 步骤/取对账基线·零真 git 零真跑）+ 挂载结构锁。"""
+    import io
+    import json as _json
+    import tempfile
+    import ci_reconcile
+
+    # ① 周期判定（纯读·注入路径/周期/时刻）
+    with tempfile.TemporaryDirectory() as 临时:
+        状 = Path(临时) / "对账周检.json"
+        断言("973 周期：无状态→到期（冷启动保守跑）",
+             ci_reconcile.对账周期到期(状, 7.0, 1000000.0)[0])
+        状.write_text(_json.dumps({"上次对账时刻": 1000000.0, "上次对账sha": "a" * 40}),
+                      encoding="utf-8")
+        断言("973 周期：距上次 1 天<7 天→未到期",
+             not ci_reconcile.对账周期到期(状, 7.0, 1000000.0 + 86400)[0])
+        断言("973 周期：距上次恰 7 天→到期",
+             ci_reconcile.对账周期到期(状, 7.0, 1000000.0 + 7 * 86400)[0])
+        状.write_text("{坏 JSON", encoding="utf-8")
+        断言("973 周期：状态损坏→到期（保守=多对账不少对账）",
+             ci_reconcile.对账周期到期(状, 7.0, 1000000.0)[0])
+        状.write_text(_json.dumps({"上次对账sha": "a" * 40}), encoding="utf-8")
+        断言("973 周期：缺「上次对账时刻」→到期（保守）",
+             ci_reconcile.对账周期到期(状, 7.0, 1000000.0)[0])
+
+    # ② 段行为（桩：假 步骤 记录命令/注入返回码；取对账基线 猴补桩）
+    def 跑段(轮分支, 状态文件, 返回码=None, 桩基线=("b" * 40, "桩基线")):
+        返回码 = 返回码 or {}
+        调用: list = []
+        步骤们: dict = {}
+
+        def 假步骤(名, 命令, 超时秒):
+            调用.append((名, [str(c) for c in 命令]))
+            步骤们[名] = {"rc": int(返回码.get(名, 0))}
+            return 步骤们[名]["rc"] == 0
+
+        真基线 = ci_reconcile.取对账基线
+        ci_reconcile.取对账基线 = lambda 状态, 头sha, 天数: 桩基线
+        try:
+            ci_reconcile.对账周检段(步骤们, 假步骤, io.StringIO(), 轮分支, "c" * 40,
+                                   状态文件=状态文件, 周期天数=7.0)
+        finally:
+            ci_reconcile.取对账基线 = 真基线
+        return 调用, 步骤们
+
+    with tempfile.TemporaryDirectory() as 临时:
+        预验状 = Path(临时) / "预验.json"
+        调用, _ = 跑段("ci/预验-abc", 预验状)
+        断言("973 段：预验轮零调用零落盘（设计面仅 develop 面轮）",
+             调用 == [] and not 预验状.exists())
+        状1 = Path(临时) / "账1.json"
+        调用, 步骤们 = 跑段("develop", 状1)
+        断言("973 段：develop 轮到期→两工具依序跑（负测期望对账→诊断锚对账）",
+             [x[0] for x in 调用] == ["负测期望对账", "诊断锚对账"])
+        断言("973 段：neg_expect_audit 命令形态（scripts 相对路径+--strict·静态门禁同款）",
+             调用[0][1][1:] == ["scripts/neg_expect_audit.py", "--strict"])
+        断言("973 段：check_diag_negtest 命令形态（--diff 检查点基线+--strict）",
+             调用[1][1][1:] == ["scripts/check_diag_negtest.py", "--diff", "b" * 40, "--strict"])
+        载 = _json.loads(状1.read_text(encoding="utf-8"))
+        断言("973 段：绿→检查点推进（sha=本轮头+结果留档）",
+             载.get("上次对账sha") == "c" * 40
+             and 载.get("上次结果") == {"负测期望对账": 0, "诊断锚对账": 0})
+        调用2, _ = 跑段("develop", 状1)
+        断言("973 段：未到期→零调用（周检节拍）", 调用2 == [])
+        状2 = Path(临时) / "账2.json"
+        调用, 步骤们 = 跑段("develop", 状2, 返回码={"负测期望对账": 1})
+        载 = _json.loads(状2.read_text(encoding="utf-8"))
+        断言("973 段：红（rc=1）→步骤红播报+第二工具不被中断+检查点照推进（红=有结论）",
+             步骤们["负测期望对账"]["rc"] == 1
+             and [x[0] for x in 调用][-1] == "诊断锚对账"
+             and 载.get("上次结果", {}).get("负测期望对账") == 1)
+        状3 = Path(临时) / "账3.json"
+        调用, _ = 跑段("develop", 状3, 返回码={"负测期望对账": -99})
+        断言("973 段：工具超时（-99）→不推进检查点（下轮重试）且两工具均尝试",
+             [x[0] for x in 调用][-1] == "诊断锚对账" and not 状3.exists())
+        状4 = Path(临时) / "账4.json"
+        调用, 步骤们 = 跑段("develop", 状4, 桩基线=("", "基线不可得"))
+        断言("973 段：基线不可得→诊断锚对账显式留档跳过（rc=-1 显形·非静默·不推进）",
+             [x[0] for x in 调用] == ["负测期望对账"]
+             and 步骤们.get("诊断锚对账", {}).get("rc") == -1 and not 状4.exists())
+
+    # ③ 挂载结构锁（防脱挂/防构建链搬回回涨）
+    源一轮 = inspect.getsource(主模块.跑一轮)
+    p静态, p对账 = 源一轮.find("静态门禁与e2e段("), 源一轮.find("ci_reconcile.对账周检段(")
+    断言("973 结构锁：跑一轮 真调用 对账周检段 且在 静态门禁与e2e段 之后（防脱挂）",
+         0 <= p静态 < p对账)
+    断言("973 拆分锁：daemon 构建链=ci_build 薄壳（防搬回回涨·899 行余量保持）",
+         "ci_build.win构建链" in inspect.getsource(主模块.win构建链)
+         and "ci_build.linux构建链" in inspect.getsource(主模块.linux构建链))
+
+
 def _行数断言(断言) -> None:
     """660 行数红线：ci_daemon.py（自测外迁后）<1000 行——防再回涨到硬上限。"""
     脚本 = Path(__file__).resolve().parent / "ci_daemon.py"
@@ -448,7 +541,7 @@ def _770断言(主模块, 断言) -> None:
 
 
 def 自测(主模块) -> int:
-    """--selftest 入口（断言集 523+637+657+660+728t+770+842+935）——CI 式：逐条打印，任一红退出 1。"""
+    """--selftest 入口（断言集 523+637+657+660+728t+770+842+935+973）——CI 式：逐条打印，任一红退出 1。"""
     断言们: list[tuple[str, bool]] = []
 
     def 断言(名: str, 条件: bool) -> None:
@@ -461,9 +554,10 @@ def 自测(主模块) -> int:
     _770断言(主模块, 断言)
     _842断言(主模块, 断言)
     _935断言(主模块, 断言)
+    _973断言(主模块, 断言)
     _行数断言(断言)
     for 名, ok in 断言们:
         print("  [%s] %s" % ("OK" if ok else "×", 名))
     红 = sum(1 for _, ok in 断言们 if not ok)
-    print("== ci_daemon 自测（523+637+657+660+728t+770+842+935）：%d 断言，%s ==" % (len(断言们), "全绿" if 红 == 0 else "红 %d" % 红))
+    print("== ci_daemon 自测（523+637+657+660+728t+770+842+935+973）：%d 断言，%s ==" % (len(断言们), "全绿" if 红 == 0 else "红 %d" % 红))
     return 0 if 红 == 0 else 1

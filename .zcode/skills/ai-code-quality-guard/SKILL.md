@@ -143,7 +143,7 @@ description: |
 对账：check_diag_negtest.py --diff <基线> → 新增诊断 N 条 强 x/近似 y/弱 z/缺口 0
 ```
 
-执法：`scripts/check_diag_negtest.py`（--diff 增量对账 + --selftest 探测器自测；收工自查手动跑·报告式默认 rc=0）——与 §4 E2E 纪律（负测登记/覆盖矩阵）互为表里。
+执法：`scripts/check_diag_negtest.py`（--diff 增量对账 + --selftest 探测器自测；收工自查手动跑·报告式默认 rc=0；973 起另挂 ci_daemon 兜底轮周期段〔ci_reconcile.py·每周到期 --diff --strict·红步骤播报〕）——与 §4 E2E 纪律（负测登记/覆盖矩阵）互为表里。
 
 ---
 
