@@ -1,0 +1,655 @@
+# 宿主 miss 静默面存余清单（#950·891 对侧件）
+
+> 自动生成：`python3 scripts/check_miss_defaults.py --v2 --limit 0 --md`（工具=机械初筛·档=线索优先级非缺陷定论；逐处人判三选一执法后登记 `scripts/miss_registry.json` 即自动折叠）。
+
+## 统计与口径对照
+
+| 侧 | 文件 | 留痕点 | 其中驳回词 | 形态候选 | 弱形态另计 | 词面兜底 | 词面miss | 词面回退 |
+|---|---|---|---|---|---|---|---|---|
+| 宿主 | 197 | 971 | 5 | 459 | 426 | 278 | 174 | 87 |
+| v2 | 118 | 934 | 6 | 207 | 705 | 333 | 367 | 214 |
+
+词面口径=行数计数（与 950 基线「兜底 278/miss 174/回退 87」同规·本树实测逐字吻合）；留痕点=注释命中留痕词的行数；形态候选=「miss 判定→返默认值」机械共现（弱形态=条件无 miss 信号的普通守卫·机械排除防噪声）。
+
+登记表：就绪；对账命中 4 条。档分布：高 172 / 中 60 / 低 434。
+
+### 高嫌疑目录分布（清偿批次规划输入）
+
+| 目录 | 高嫌疑条数 |
+|---|---|
+| src/cn_compiler/ir | 35 |
+| CN语言编译器v2/IR | 33 |
+| src/cn_compiler/semantic | 25 |
+| CN语言编译器v2/语义 | 24 |
+| src/cn_compiler/model | 22 |
+| src/runtime | 13 |
+| src/cn_compiler/opt | 8 |
+| CN语言编译器v2/语法 | 3 |
+| src/cn_main_toolchain.cpp | 3 |
+| src/cn_main.cpp | 2 |
+| CN语言编译器v2/主.cn | 1 |
+| CN语言编译器v2/代码生成 | 1 |
+| src/cn_compiler/codegen | 1 |
+| src/cn_compiler/lexer | 1 |
+
+## 高嫌疑清单（零处置信号·人判优先）
+
+- **CN语言编译器v2/IR/IR容器签名.cn:873** ≈取静态守卫标记 — `如果 (序 >= 静态守卫标记们.大小()) { 返回 0; }`
+  - 形态=v2 如果-miss-返回；默认值=0；返回类型≈整64；处置=无（零留痕疑似真静默）
+- **CN语言编译器v2/IR/IR布局.cn:99** ≈拆限定名 — `如果 (尾 < 0) { 返回 0; }`
+  - 形态=v2 如果-miss-返回；默认值=0；返回类型≈整64；处置=无（零留痕疑似真静默）
+- **CN语言编译器v2/IR/IR布局中.cn:98** ≈函数指针返回文本 — `如果 (!是函数指针类型文本(文本)) { 返回 ""; }`
+  - 形态=v2 如果-miss-返回；默认值=""；返回类型≈字符串；处置=无（零留痕疑似真静默）
+- **CN语言编译器v2/IR/IR布局中.cn:117** ≈函数指针参数文本 — `如果 (!是函数指针类型文本(文本)) { 返回 ""; }`
+  - 形态=v2 如果-miss-返回；默认值=""；返回类型≈字符串；处置=无（零留痕疑似真静默）
+- **CN语言编译器v2/IR/IR布局中.cn:124** ≈函数指针参数文本 — `如果 (开 < 0) { 返回 ""; }`
+  - 形态=v2 如果-miss-返回；默认值=""；返回类型≈字符串；处置=无（零留痕疑似真静默）
+- **CN语言编译器v2/IR/IR布局尾.cn:465** ≈求值长度表达式286 — `如果 (常量值 < 0 || 常量值 > 2147483647) { 返回 0; }`
+  - 形态=v2 如果-miss-返回；默认值=0；返回类型≈整64；处置=无（零留痕疑似真静默）
+- **CN语言编译器v2/IR/IR布局尾.cn:702** ≈数字文本转数值 — `如果 (!有数字s) { 返回 0; }`
+  - 形态=v2 如果-miss-返回；默认值=0；返回类型≈整64；处置=无（零留痕疑似真静默）
+- **CN语言编译器v2/IR/IR生成.cn:290** ≈解析调用返回容器 — `如果 (!是容器类(类名)) { 返回 0; }`
+  - 形态=v2 如果-miss-返回；默认值=0；返回类型≈整64；处置=无（零留痕疑似真静默）
+- **CN语言编译器v2/IR/IR生成.cn:292** ≈解析调用返回容器 — `如果 (!查方法签名(类名, 驻留文本(整64(被调成员.文本)), 调用节点.附加, &签)) { 返回 0; }`
+  - 形态=v2 如果-miss-返回；默认值=0；返回类型≈整64；处置=无（零留痕疑似真静默）
+- **CN语言编译器v2/IR/IR生成.cn:294** ≈解析调用返回容器 — `如果 (!是容器类(签.返回文本)) { 返回 0; }`
+  - 形态=v2 如果-miss-返回；默认值=0；返回类型≈整64；处置=无（零留痕疑似真静默）
+- **CN语言编译器v2/IR/IR生成类型.cn:212** ≈解析调用返回结构体 — `如果 (!是容器类(类名)) { 返回 0; }`
+  - 形态=v2 如果-miss-返回；默认值=0；返回类型≈整64；处置=无（零留痕疑似真静默）
+- **CN语言编译器v2/IR/IR生成类型.cn:214** ≈解析调用返回结构体 — `如果 (!查方法签名(类名, 驻留文本(整64(被调成员.文本)), 调用节点.附加, &签)) { 返回 0; }`
+  - 形态=v2 如果-miss-返回；默认值=0；返回类型≈整64；处置=无（零留痕疑似真静默）
+- **CN语言编译器v2/IR/IR生成类型.cn:267** ≈解析调用返回类型ID — `如果 (!查方法签名(类名c, 驻留文本(整64(被调成员.文本)), 调用节点.附加, &签c)) { 返回 0; }`
+  - 形态=v2 如果-miss-返回；默认值=0；返回类型≈整64；处置=无（零留痕疑似真静默）
+- **CN语言编译器v2/IR/IR签名.cn:52** ≈合成名首实参 — `如果 (位置 < 0) { 返回 ""; }`
+  - 形态=v2 如果-miss-返回；默认值=""；返回类型≈字符串；处置=无（零留痕疑似真静默）
+- **CN语言编译器v2/IR/IR签名.cn:64** ≈段余 — `如果 (位置 < 0) { 返回 ""; }`
+  - 形态=v2 如果-miss-返回；默认值=""；返回类型≈字符串；处置=无（零留痕疑似真静默）
+- **CN语言编译器v2/IR/IR类尾.cn:862** ≈有虚类清单取 — `如果 (序 < 0 || 序 >= 有虚类清单们.大小()) { 返回 0; }`
+  - 形态=v2 如果-miss-返回；默认值=0；返回类型≈整64；处置=无（零留痕疑似真静默）
+- **CN语言编译器v2/IR/接口表.cn:108** ≈接口槽取接口 — `如果 (槽 < 0 || 槽 * 2 + 1 >= 接口方法序们.大小()) { 返回 0; }`
+  - 形态=v2 如果-miss-返回；默认值=0；返回类型≈整64；留痕=防御(留痕词)@106；处置=无（留痕未处置·疑似立法前存量）
+- **CN语言编译器v2/IR/接口表.cn:113** ≈接口槽取方法 — `如果 (槽 < 0 || 槽 * 2 + 1 >= 接口方法序们.大小()) { 返回 0; }`
+  - 形态=v2 如果-miss-返回；默认值=0；返回类型≈整64；处置=无（零留痕疑似真静默）
+- **CN语言编译器v2/IR/生成类返回接管.cn:188** ≈发射容器元素类副本630 — `如果 (!是用户类(返回文本) || 是容器类(返回文本)) { 返回 0; }`
+  - 形态=v2 如果-miss-返回；默认值=0；返回类型≈整64；处置=无（零留痕疑似真静默）
+- **CN语言编译器v2/IR/生成类返回接管.cn:228** ≈发射容器元素类副本630 — `如果 (目标槽 == 0 && !静633) { 返回 假; }`
+  - 形态=v2 如果-miss-返回；默认值=假；返回类型≈整64；处置=无（零留痕疑似真静默）
+- **CN语言编译器v2/IR/生成表达式中.cn:567** ≈生成表达式 — `如果 (!自增式成) { 返回 0; }`
+  - 形态=v2 如果-miss-返回；默认值=0；返回类型≈整64；处置=无（零留痕疑似真静默）
+- **CN语言编译器v2/IR/生成表达式尾.cn:47** ≈生成打印流式调用 — `如果 (!打印族实参终点们(池, n, 整64(位置), 实参终点们)) { 返回 0; }`
+  - 形态=v2 如果-miss-返回；默认值=0；返回类型≈整32；处置=无（零留痕疑似真静默）
+- **CN语言编译器v2/IR/生成表达式尾.cn:451** ≈顺序链成员地址 — `如果 (左值偏移 < 0) { │ 返回 0;`
+  - 形态=v2 下行如果-miss-返回；默认值=0；返回类型≈整64；处置=无（零留痕疑似真静默）
+- **CN语言编译器v2/IR/生成表达式求值尾.cn:185** ≈查被调函数指针签名480 — `如果 (!是函数指针类型文本(字段文本480)) { 返回 ""; }`
+  - 形态=v2 如果-miss-返回；默认值=""；返回类型≈字符串；处置=无（零留痕疑似真静默）
+- **CN语言编译器v2/IR/生成表达式求值尾.cn:192** ≈查被调函数指针签名480 — `如果 (!是函数指针类型文本(文本480)) { 返回 ""; }`
+  - 形态=v2 如果-miss-返回；默认值=""；返回类型≈字符串；处置=无（零留痕疑似真静默）
+- **CN语言编译器v2/IR/生成表达式求值尾.cn:300** ≈方法引用闭包调用展开 — `如果 (!查符号c.正常) { 返回 0; }`
+  - 形态=v2 如果-miss-返回；默认值=0；返回类型≈整32；处置=无（零留痕疑似真静默）
+- **CN语言编译器v2/IR/生成表达式求值尾.cn:363** ≈lambda闭包调用展开 — `如果 (!查闭包L.正常) { 返回 0; }`
+  - 形态=v2 如果-miss-返回；默认值=0；返回类型≈整32；处置=无（零留痕疑似真静默）
+- **CN语言编译器v2/IR/生成表达式重载.cn:41** ≈解析重载节点类型ID — `如果 (!重载二元符号414(op名)) { 返回 0; }`
+  - 形态=v2 如果-miss-返回；默认值=0；返回类型≈整64；处置=无（零留痕疑似真静默）
+- **CN语言编译器v2/IR/生成表达式重载.cn:44** ≈解析重载节点类型ID — `如果 (左ID <= 0 || !是用户类ID(左ID)) { 返回 0; }`
+  - 形态=v2 如果-miss-返回；默认值=0；返回类型≈整64；处置=无（零留痕疑似真静默）
+- **CN语言编译器v2/IR/生成表达式重载.cn:57** ≈解析重载节点类型ID — `如果 (操作数ID <= 0 || !是用户类ID(操作数ID)) { 返回 0; }`
+  - 形态=v2 如果-miss-返回；默认值=0；返回类型≈整64；处置=无（零留痕疑似真静默）
+- **CN语言编译器v2/IR/生成语句赋值.cn:907** ≈发射重载产物旧值释放821 — `如果 (目标槽 == 0 && !静821) { 返回 假; }`
+  - 形态=v2 如果-miss-返回；默认值=假；返回类型≈空类型；处置=无（零留痕疑似真静默）
+- **CN语言编译器v2/IR/生成语句赋值.cn:960** ≈发射重载产物旧值释放821 — `如果 (!是返回类调用_544(池, 整64(n.子终点 - 1), 左类型ID)) { 返回 假; }`
+  - 形态=v2 如果-miss-返回；默认值=假；返回类型≈空类型；处置=无（零留痕疑似真静默）
+- **CN语言编译器v2/IR/生成语句辅助.cn:101** ≈方法类名85 — `如果 (末段 < 0) { 返回 ""; }`
+  - 形态=v2 如果-miss-返回；默认值=""；返回类型≈字符串；处置=无（零留痕疑似真静默）
+- **CN语言编译器v2/主.cn:139** ≈路径目录 — `如果 (最后斜杠 < 0) { 返回 ""; }`
+  - 形态=v2 如果-miss-返回；默认值=""；返回类型≈字符串；处置=无（零留痕疑似真静默）
+- **CN语言编译器v2/代码生成/代码生成共用.cn:620** ≈类接口槽实现符号 — `如果 (!类实现接口沿链(类ID, 接口f)) { 返回 ""; }`
+  - 形态=v2 如果-miss-返回；默认值=""；返回类型≈字符串；处置=无（零留痕疑似真静默）
+- **CN语言编译器v2/语义/借出检查.cn:154** ≈路径文本递归 — `如果 (索引 < 0 || 索引 >= 整64(池.大小())) { 返回 ""; }`
+  - 形态=v2 如果-miss-返回；默认值=""；返回类型≈字符串；处置=无（零留痕疑似真静默）
+- **CN语言编译器v2/语义/借出检查.cn:171** ≈接收者类型名ID — `如果 (索引 < 0 || 索引 >= 整64(池.大小())) { 返回 -1; }`
+  - 形态=v2 如果-miss-返回；默认值=-1；返回类型≈整64；处置=无（零留痕疑似真静默）
+- **CN语言编译器v2/语义/借出检查.cn:179** ≈接收者类型名ID — `如果 (父类型 < 0) { 返回 -1; }`
+  - 形态=v2 如果-miss-返回；默认值=-1；返回类型≈整64；处置=无（零留痕疑似真静默）
+- **CN语言编译器v2/语义/语义分析.cn:366** ≈表注册 — `如果 (!加.正常) { 返回 0; }`
+  - 形态=v2 如果-miss-返回；默认值=0；返回类型≈整64；处置=无（零留痕疑似真静默）
+- **CN语言编译器v2/语义/语义分析.cn:385** ≈表标记转移 — `如果 (!写.正常) { 返回 0; }`
+  - 形态=v2 如果-miss-返回；默认值=0；返回类型≈整64；处置=无（零留痕疑似真静默）
+- **CN语言编译器v2/语义/语义检查443.cn:44** ≈推导检查类型文本 — `如果 (源末索引 < 0 || 源末索引 >= 整32(池.大小())) { 返回 ""; }`
+  - 形态=v2 如果-miss-返回；默认值=""；返回类型≈字符串；处置=无（零留痕疑似真静默）
+- **CN语言编译器v2/语义/语义检查lambda.cn:96** ≈lambda合成类型 — `如果 (合成索引 < 0) { 返回 -1; }`
+  - 形态=v2 如果-miss-返回；默认值=-1；返回类型≈整64；处置=无（零留痕疑似真静默）
+- **CN语言编译器v2/语义/语义检查实参.cn:349** ≈调用参数串ID623 — `如果 (键基p623 < 0) { 返回 0; }`
+  - 形态=v2 如果-miss-返回；默认值=0；返回类型≈整64；处置=无（零留痕疑似真静默）
+- **CN语言编译器v2/语义/语义检查推导.cn:56** ≈二元结果类型ID — `如果 (!类型可合并(左ID, 右ID)) { 返回 0; }`
+  - 形态=v2 如果-miss-返回；默认值=0；返回类型≈整64；处置=无（零留痕疑似真静默）
+- **CN语言编译器v2/语义/语义检查溢出474.cn:687** ≈回绕实参侧类型474 — `如果 (末474 < 0 || 末474 >= 整64(池.大小())) { 返回 0; }`
+  - 形态=v2 如果-miss-返回；默认值=0；返回类型≈整64；处置=无（零留痕疑似真静默）
+- **CN语言编译器v2/语义/语义检查表达式中.cn:182** ≈泛型函数实参期望类型570 — `如果 (!是泛型参数名(整64(驻留(末形参基570)))) { 返回 0; }`
+  - 形态=v2 如果-miss-返回；默认值=0；返回类型≈整64；处置=无（零留痕疑似真静默）
+- **CN语言编译器v2/语义/语义检查表达式尾.cn:494** ≈本文件合成名首实参 — `如果 (位 < 0) { 返回 ""; }`
+  - 形态=v2 如果-miss-返回；默认值=""；返回类型≈字符串；处置=无（零留痕疑似真静默）
+- **CN语言编译器v2/语义/语义检查表达式尾.cn:563** ≈推导改写泛型隐式调用 — `如果 (字符串长度(基名415) == 0 || !字符串比较(基名415, 被调文本415)) { 返回 0; }`
+  - 形态=v2 如果-miss-返回；默认值=0；返回类型≈整64；处置=无（零留痕疑似真静默）
+- **CN语言编译器v2/语义/语义检查表达式尾.cn:621** ≈推导改写泛型隐式调用 — `如果 (实参末415 < 0 || 实参末415 >= 整64(池.大小())) { 返回 0; }`
+  - 形态=v2 如果-miss-返回；默认值=0；返回类型≈整64；处置=无（零留痕疑似真静默）
+- **CN语言编译器v2/语义/语义检查赋值.cn:33** ≈写目标根名791 — `如果 (cur.子起点 < 0 || 整64(cur.子起点) >= 池.大小()) { 返回 0; }`
+  - 形态=v2 如果-miss-返回；默认值=0；返回类型≈整64；处置=无（零留痕疑似真静默）
+- **CN语言编译器v2/语义/语义检查转换推导.cn:62** ≈调用源返回类型ID静默 — `如果 (键基752 < 0) { 返回 -1; }`
+  - 形态=v2 如果-miss-返回；默认值=-1；返回类型≈整64；处置=无（零留痕疑似真静默）
+- **CN语言编译器v2/语义/语义检查转换推导.cn:93** ≈推导源类型ID静默 — `如果 (源末索引 < 0 || 源末索引 >= 整32(池.大小())) { 返回 -1; }`
+  - 形态=v2 如果-miss-返回；默认值=-1；返回类型≈整64；处置=无（零留痕疑似真静默）
+- **CN语言编译器v2/语义/语义检查重载.cn:50** ≈二元重载返回ID — `如果 (!是二元重载符号(op名)) { 返回 -1; }`
+  - 形态=v2 如果-miss-返回；默认值=-1；返回类型≈整64；留痕=静默(留痕词)@52；处置=无（留痕未处置·疑似立法前存量）
+- **CN语言编译器v2/语义/语义检查重载.cn:58** ≈二元重载返回ID — `如果 (左ID <= 0 || !是用户类ID(左ID)) { 返回 -1; }`
+  - 形态=v2 如果-miss-返回；默认值=-1；返回类型≈整64；处置=无（零留痕疑似真静默）
+- **CN语言编译器v2/语义/语义检查重载.cn:75** ≈一元重载返回ID — `否则 { 返回 -1; }`
+  - 形态=v2 否则-返回；默认值=-1；返回类型≈整64；处置=无（零留痕疑似真静默）
+- **CN语言编译器v2/语义/语义检查重载.cn:78** ≈一元重载返回ID — `如果 (操作数ID <= 0 || !是用户类ID(操作数ID)) { 返回 -1; }`
+  - 形态=v2 如果-miss-返回；默认值=-1；返回类型≈整64；处置=无（零留痕疑似真静默）
+- **CN语言编译器v2/语义/语义检查重载.cn:94** ≈检查二元重载使用点 — `如果 (!是二元重载符号(op名)) { 返回 -1; }`
+  - 形态=v2 如果-miss-返回；默认值=-1；返回类型≈整64；处置=无（零留痕疑似真静默）
+- **CN语言编译器v2/语义/语义检查重载.cn:97** ≈检查二元重载使用点 — `如果 (左ID <= 0 || !是用户类ID(左ID)) { 返回 -1; }`
+  - 形态=v2 如果-miss-返回；默认值=-1；返回类型≈整64；处置=无（零留痕疑似真静默）
+- **CN语言编译器v2/语义/语义检查重载.cn:165** ≈检查一元重载使用点 — `否则 { 返回 -1; }`
+  - 形态=v2 否则-返回；默认值=-1；返回类型≈整64；处置=无（零留痕疑似真静默）
+- **CN语言编译器v2/语法/解析基础.cn:89** ≈当前行 — `如果 (位置 < 0 || 位置 >= 记号.大小()) { 返回 0; }`
+  - 形态=v2 如果-miss-返回；默认值=0；返回类型≈整32；留痕=防御(留痕词)@87；处置=无（留痕未处置·疑似立法前存量）
+- **CN语言编译器v2/语法/解析基础.cn:100** ≈当前ID — `如果 (位置 >= 记号.大小()) { 返回 0; }`
+  - 形态=v2 如果-miss-返回；默认值=0；返回类型≈整32；处置=无（零留痕疑似真静默）
+- **CN语言编译器v2/语法/解析类辅助.cn:241** ≈折叠类字段默认值 — `如果 (!类静态初值解析整数64(文f, 值f)) { │ 返回 "";`
+  - 形态=v2 下行如果-miss-返回；默认值=""；返回类型≈字符串；处置=无（零留痕疑似真静默）
+- **src/cn_compiler/codegen/linux_x64/linux_x64_codegen_frame.cpp:49** ≈LinuxX64CodeGenerator::parseStackOffset — `if (!negative && mem[4] != '+') return 0;`
+  - 形态=同行 if-miss-return；默认值=0；返回类型≈int；处置=无（零留痕疑似真静默）
+- **src/cn_compiler/ir/ir.cpp:263** ≈IRGenerator::funcPtrParamsOfCallee — `if (substType.empty()) return {};`
+  - 形态=同行 if-miss-return；默认值={}；返回类型≈std::vector<std::string>；处置=无（零留痕疑似真静默）
+- **src/cn_compiler/ir/ir.cpp:272** ≈IRGenerator::funcPtrTypeOfCallee — `if (callee == nullptr) return "";`
+  - 形态=同行 if-miss-return；默认值=""；返回类型≈std::string；处置=无（零留痕疑似真静默）
+- **src/cn_compiler/ir/ir.cpp:308** ≈IRGenerator::funcPtrTypeOfCallee — `if (fnPtrType.empty()) return "";`
+  - 形态=同行 if-miss-return；默认值=""；返回类型≈std::string；处置=无（零留痕疑似真静默）
+- **src/cn_compiler/ir/ir.cpp:313** ≈IRGenerator::funcPtrTypeOfCallee — `if (!types::isFuncPtr(types::canonical(substType))) return "";`
+  - 形态=同行 if-miss-return；默认值=""；返回类型≈std::string；处置=无（零留痕疑似真静默）
+- **src/cn_compiler/ir/ir.cpp:371** ≈IRGenerator::pointerPointeeSrcType — `if (node == nullptr) return "";`
+  - 形态=同行 if-miss-return；默认值=""；返回类型≈std::string；处置=无（零留痕疑似真静默）
+- **src/cn_compiler/ir/ir.cpp:445** ≈IRGenerator::structOrClassFieldType — `if (semantic_ == nullptr) return "";`
+  - 形态=同行 if-miss-return；默认值=""；返回类型≈std::string；处置=无（零留痕疑似真静默）
+- **src/cn_compiler/ir/ir.cpp:469** ≈IRGenerator::memberObjStructType — `if (semantic_ == nullptr) return "";`
+  - 形态=同行 if-miss-return；默认值=""；返回类型≈std::string；处置=无（零留痕疑似真静默）
+- **src/cn_compiler/ir/ir.cpp:588** ≈IRGenerator::derefPointeeSrcType — `if (operand == nullptr) return "";`
+  - 形态=同行 if-miss-return；默认值=""；返回类型≈std::string；处置=无（零留痕疑似真静默）
+- **src/cn_compiler/ir/ir_decl_extra.cpp:49** ≈charLiteralCodePoint — `if (decoded.empty()) return 0;`
+  - 形态=同行 if-miss-return；默认值=0；返回类型≈int；处置=无（零留痕疑似真静默）
+- **src/cn_compiler/ir/ir_expr.cpp:596** ≈IRGenerator::genCommonTypeArithmetic — `if (e == nullptr) return false;`
+  - 形态=同行 if-miss-return；默认值=false；返回类型≈void；处置=无（零留痕疑似真静默）
+- **src/cn_compiler/ir/ir_expr_assign.cpp:652** ≈IRGenerator::indexTargetElemSrcType — `if (semantic_ == nullptr || node == nullptr) return "";`
+  - 形态=同行 if-miss-return；默认值=""；返回类型≈std::string；处置=无（零留痕疑似真静默）
+- **src/cn_compiler/ir/ir_expr_member.cpp:149** ≈isCopyBuiltinCall — `if (srcAddr.id < 0) return false;`
+  - 形态=同行 if-miss-return；默认值=false；处置=无（零留痕疑似真静默）
+- **src/cn_compiler/ir/ir_expr_type.cpp:21** ≈IRGenerator::exprSrcType — `if (node == nullptr) return "";`
+  - 形态=同行 if-miss-return；默认值=""；返回类型≈std::string；留痕=回退(留痕词)@19；处置=无（留痕未处置·疑似立法前存量）
+- **src/cn_compiler/ir/ir_expr_type.cpp:165** ≈isInstanceField — `if (objType.empty()) return "";`
+  - 形态=同行 if-miss-return；默认值=""；处置=无（零留痕疑似真静默）
+- **src/cn_compiler/ir/ir_fields.cpp:832** ≈IRGenerator::classDestructorSymbolKey — `if (semantic_ == nullptr) return "";`
+  - 形态=同行 if-miss-return；默认值=""；返回类型≈std::string；处置=无（零留痕疑似真静默）
+- **src/cn_compiler/ir/ir_fields.cpp:834** ≈IRGenerator::classDestructorSymbolKey — `if (ci == nullptr) return "";`
+  - 形态=同行 if-miss-return；默认值=""；返回类型≈std::string；处置=无（零留痕疑似真静默）
+- **src/cn_compiler/ir/ir_fields.cpp:847** ≈IRGenerator::classCopyCtorSymbolKey — `if (semantic_ == nullptr) return "";`
+  - 形态=同行 if-miss-return；默认值=""；返回类型≈std::string；留痕=防御(留痕词)@845；处置=无（留痕未处置·疑似立法前存量）
+- **src/cn_compiler/ir/ir_fields.cpp:849** ≈IRGenerator::classCopyCtorSymbolKey — `if (cc == nullptr) return "";`
+  - 形态=同行 if-miss-return；默认值=""；返回类型≈std::string；处置=无（零留痕疑似真静默）
+- **src/cn_compiler/ir/ir_oop_call.cpp:540** ≈IRGenerator::emitStaticMethodCall — `if (m == nullptr) return 0;`
+  - 形态=同行 if-miss-return；默认值=0；返回类型≈int；留痕=防御(留痕词)@541；处置=无（留痕未处置·疑似立法前存量）
+- **src/cn_compiler/ir/ir_oop_call.cpp:541** ≈IRGenerator::emitStaticMethodCall — `if (!m->isStatic) return 0;`
+  - 形态=同行 if-miss-return；默认值=0；返回类型≈int；留痕=防御(留痕词)@541；处置=无（留痕未处置·疑似立法前存量）
+- **src/cn_compiler/ir/ir_oop_call.cpp:586** ≈types::isPointer — `if (!semantic_->isClassType(canonObjForMethod)) { │ return false;`
+  - 形态=下行 if-miss-return；默认值=false；处置=无（零留痕疑似真静默）
+- **src/cn_compiler/ir/ir_oop_call.cpp:592** ≈types::isPointer — `if (m == nullptr) return false;`
+  - 形态=同行 if-miss-return；默认值=false；留痕=防御(留痕词)@593；处置=无（留痕未处置·疑似立法前存量）
+- **src/cn_compiler/ir/ir_oop_call_release.cpp:360** ≈IRGenerator::genClassDestructorCalls — `if (semantic_ == nullptr) return false;`
+  - 形态=同行 if-miss-return；默认值=false；返回类型≈void；处置=无（零留痕疑似真静默）
+- **src/cn_compiler/ir/ir_oop_container.cpp:162** ≈IRGenerator::injectContainerElemDestroy — `if (eci == nullptr) return true;`
+  - 形态=同行 if-miss-return；默认值=true；返回类型≈void；处置=无（零留痕疑似真静默）
+- **src/cn_compiler/ir/ir_oop_container.cpp:167** ≈IRGenerator::injectContainerElemDestroy — `if (dtorSig.empty()) return true;`
+  - 形态=同行 if-miss-return；默认值=true；返回类型≈void；处置=无（零留痕疑似真静默）
+- **src/cn_compiler/ir/ir_oop_container.cpp:169** ≈IRGenerator::injectContainerElemDestroy — `if (thisUnique.empty()) return true;`
+  - 形态=同行 if-miss-return；默认值=true；返回类型≈void；处置=无（零留痕疑似真静默）
+- **src/cn_compiler/ir/ir_oop_container.cpp:173** ≈IRGenerator::injectContainerElemDestroy — `if (arrayOff < 0 || countOff < 0) return true;`
+  - 形态=同行 if-miss-return；默认值=true；返回类型≈void；处置=无（零留痕疑似真静默）
+- **src/cn_compiler/ir/ir_oop_field.cpp:17** ≈IRGenerator::classFieldType — `if (semantic_ == nullptr) return "";`
+  - 形态=同行 if-miss-return；默认值=""；返回类型≈std::string；处置=无（零留痕疑似真静默）
+- **src/cn_compiler/ir/ir_oop_field.cpp:31** ≈IRGenerator::memberFieldSrcType — `if (semantic_ == nullptr || node == nullptr) return "";`
+  - 形态=同行 if-miss-return；默认值=""；返回类型≈std::string；处置=无（零留痕疑似真静默）
+- **src/cn_compiler/ir/ir_oop_field.cpp:33** ≈IRGenerator::memberFieldSrcType — `if (objType.empty()) return "";`
+  - 形态=同行 if-miss-return；默认值=""；返回类型≈std::string；处置=无（零留痕疑似真静默）
+- **src/cn_compiler/ir/ir_oop_field.cpp:617** ≈methodSymbolKey — `if (fieldType.empty()) return false;`
+  - 形态=同行 if-miss-return；默认值=false；处置=无（零留痕疑似真静默）
+- **src/cn_compiler/ir/ir_oop_field.cpp:669** ≈methodSymbolKey — `if (!semantic_->isClassType(canonObjField)) return false;`
+  - 形态=同行 if-miss-return；默认值=false；处置=无（零留痕疑似真静默）
+- **src/cn_compiler/ir/ir_oop_field.cpp:671** ≈methodSymbolKey — `if (fieldType.empty()) return false;`
+  - 形态=同行 if-miss-return；默认值=false；处置=无（零留痕疑似真静默）
+- **src/cn_compiler/ir/ir_oop_field.cpp:674** ≈methodSymbolKey — `if (offset < 0) return false;`
+  - 形态=同行 if-miss-return；默认值=false；处置=无（零留痕疑似真静默）
+- **src/cn_compiler/ir/ir_stmt_decl.cpp:556** ≈IRGenerator::registerOopRaii — `if (s == nullptr) return nullptr;`
+  - 形态=同行 if-miss-return；默认值=nullptr；返回类型≈void；处置=无（零留痕疑似真静默）
+- **src/cn_compiler/lexer/lexer.cpp:152** ≈Lexer::peekNext — `if (p >= source_.size()) return 0;`
+  - 形态=同行 if-miss-return；默认值=0；返回类型≈char32_t；处置=无（零留痕疑似真静默）
+- **src/cn_compiler/model/semantic_helpers.hpp:32** ≈? — `if (s.empty()) return false;`
+  - 形态=同行 if-miss-return；默认值=false；处置=无（零留痕疑似真静默）
+- **src/cn_compiler/model/semantic_helpers.hpp:190** ≈canonicalType — `if (e == nullptr) return false;`
+  - 形态=同行 if-miss-return；默认值=false；返回类型≈std::string；处置=无（零留痕疑似真静默）
+- **src/cn_compiler/model/semantic_helpers.hpp:214** ≈canonicalType — `if (!cnEvalConstExpr(vals, curMod, u->operand.get(), v)) return false;`
+  - 形态=同行 if-miss-return；默认值=false；返回类型≈std::string；处置=无（零留痕疑似真静默）
+- **src/cn_compiler/model/semantic_helpers.hpp:219** ≈canonicalType — `if (!cnParseInt(v, iv)) return false;`
+  - 形态=同行 if-miss-return；默认值=false；返回类型≈std::string；处置=无（零留痕疑似真静默）
+- **src/cn_compiler/model/semantic_helpers.hpp:231** ≈canonicalType — `if (!cnEvalConstExpr(vals, curMod, b->left.get(), l)) return false;`
+  - 形态=同行 if-miss-return；默认值=false；返回类型≈std::string；处置=无（零留痕疑似真静默）
+- **src/cn_compiler/model/semantic_helpers.hpp:232** ≈canonicalType — `if (!cnEvalConstExpr(vals, curMod, b->right.get(), r)) return false;`
+  - 形态=同行 if-miss-return；默认值=false；返回类型≈std::string；处置=无（零留痕疑似真静默）
+- **src/cn_compiler/model/semantic_helpers.hpp:246** ≈canonicalType — `if (!suffix.empty()) return false;`
+  - 形态=同行 if-miss-return；默认值=false；返回类型≈std::string；处置=无（零留痕疑似真静默）
+- **src/cn_compiler/model/semantic_helpers.hpp:298** ≈canonicalType — `if (!suffix.empty()) return false;`
+  - 形态=同行 if-miss-return；默认值=false；返回类型≈std::string；处置=无（零留痕疑似真静默）
+- **src/cn_compiler/model/semantic_helpers.hpp:315** ≈canonicalType — `if (!isOptionalType(type)) return "";`
+  - 形态=同行 if-miss-return；默认值=""；返回类型≈std::string；处置=无（零留痕疑似真静默）
+- **src/cn_compiler/model/semantic_helpers.hpp:391** ≈resultStructName — `if (param == nullptr) return "";`
+  - 形态=同行 if-miss-return；默认值=""；返回类型≈return；处置=无（零留痕疑似真静默）
+- **src/cn_compiler/model/semantic_helpers.hpp:433** ≈bool — `if (e == nullptr || depth > 64) return false;`
+  - 形态=同行 if-miss-return；默认值=false；返回类型≈std::function<；处置=无（零留痕疑似真静默）
+- **src/cn_compiler/model/semantic_helpers.hpp:448** ≈bool — `if (u->op == Operator::Subtract && !u->postfix) { │ return false;`
+  - 形态=下行 if-miss-return；默认值=false；返回类型≈std::function<；处置=无（零留痕疑似真静默）
+- **src/cn_compiler/model/semantic_helpers.hpp:450** ≈bool — `if (!cnFoldConstIntExpr505(u->operand.get(), v, depth + 1, resolveConstName)) │ return false;`
+  - 形态=下行 if-miss-return；默认值=false；返回类型≈std::function<；处置=无（零留痕疑似真静默）
+- **src/cn_compiler/model/semantic_helpers.hpp:461** ≈bool — `if (!cnFoldConstIntExpr505(b->left.get(), l, depth + 1, resolveConstName)) return false;`
+  - 形态=同行 if-miss-return；默认值=false；返回类型≈std::function<；处置=无（零留痕疑似真静默）
+- **src/cn_compiler/model/semantic_helpers.hpp:462** ≈bool — `if (!cnFoldConstIntExpr505(b->right.get(), r, depth + 1, resolveConstName)) return false;`
+  - 形态=同行 if-miss-return；默认值=false；返回类型≈std::function<；处置=无（零留痕疑似真静默）
+- **src/cn_compiler/model/semantic_helpers.hpp:466** ≈bool — `if ((r > 0 && l > INT64_MAX - r) || (r < 0 && l < INT64_MIN - r)) return false;`
+  - 形态=同行 if-miss-return；默认值=false；返回类型≈std::function<；处置=无（零留痕疑似真静默）
+- **src/cn_compiler/model/semantic_helpers.hpp:470** ≈bool — `if ((r < 0 && l > INT64_MAX + r) || (r > 0 && l < INT64_MIN + r)) return false;`
+  - 形态=同行 if-miss-return；默认值=false；返回类型≈std::function<；处置=无（零留痕疑似真静默）
+- **src/cn_compiler/model/semantic_helpers.hpp:494** ≈bool — `if (l == INT64_MIN && r == -1) return false;`
+  - 形态=同行 if-miss-return；默认值=false；返回类型≈std::function<；处置=无（零留痕疑似真静默）
+- **src/cn_compiler/model/semantic_helpers.hpp:498** ≈bool — `if (l < 0 || r < 0 || r > 62) return false;`
+  - 形态=同行 if-miss-return；默认值=false；返回类型≈std::function<；处置=无（零留痕疑似真静默）
+- **src/cn_compiler/model/semantic_helpers.hpp:504** ≈bool — `if (r < 0 || r > 63) return false;`
+  - 形态=同行 if-miss-return；默认值=false；返回类型≈std::function<；处置=无（零留痕疑似真静默）
+- **src/cn_compiler/model/type_system.cpp:553** ≈splitI128Text — `if (digits.empty()) return "";`
+  - 形态=同行 if-miss-return；默认值=""；返回类型≈std::string；处置=无（零留痕疑似真静默）
+- **src/cn_compiler/model/type_system.cpp:628** ≈arrayLenOf — `if (len.empty() || len.find_first_not_of("0123456789") != std::string::npos) { │ return -1;`
+  - 形态=下行 if-miss-return；默认值=-1；返回类型≈int；处置=无（零留痕疑似真静默）
+- **src/cn_compiler/opt/algebraic_simplify.cpp:94** ≈AlgebraicSimplifyPass::simplifyFloatIdentity — `if (a.isConstant || a.id < 0) return 0;`
+  - 形态=同行 if-miss-return；默认值=0；返回类型≈int；处置=无（零留痕疑似真静默）
+- **src/cn_compiler/opt/algebraic_simplify.cpp:114** ≈AlgebraicSimplifyPass::simplifyFloatIdentity — `if (!hasConst) return 0;`
+  - 形态=同行 if-miss-return；默认值=0；返回类型≈int；处置=无（零留痕疑似真静默）
+- **src/cn_compiler/opt/algebraic_simplify.cpp:151** ≈AlgebraicSimplifyPass::simplifyFloatIdentity — `if (!isLogic && !isIntType(type)) return 0;`
+  - 形态=同行 if-miss-return；默认值=0；返回类型≈int；处置=无（零留痕疑似真静默）
+- **src/cn_compiler/opt/cse.cpp:44** ≈CSEPass::patternOf — `if (!isPureArith(inst.opcode)) return "";`
+  - 形态=同行 if-miss-return；默认值=""；返回类型≈std::string；处置=无（零留痕疑似真静默）
+- **src/cn_compiler/opt/cse.cpp:46** ≈CSEPass::patternOf — `if (!allowFloat_ && isFloatType(inst.type)) return "";`
+  - 形态=同行 if-miss-return；默认值=""；返回类型≈std::string；处置=无（零留痕疑似真静默）
+- **src/cn_compiler/opt/licm.cpp:60** ≈LICMPass::collectBodyDefs — `if (!op.extra.empty() && bodyWrittenSlots.count(op.extra) > 0) { │ return false;`
+  - 形态=下行 if-miss-return；默认值=false；返回类型≈void；处置=无（零留痕疑似真静默）
+- **src/cn_compiler/opt/licm.cpp:70** ≈LICMPass::collectBodyDefs — `if (slot.id >= 0 || slot.extra.empty()) return false;`
+  - 形态=同行 if-miss-return；默认值=false；返回类型≈void；处置=无（零留痕疑似真静默）
+- **src/cn_compiler/opt/mem2reg.cpp:184** ≈walkBlock — `if (!again) return true;`
+  - 形态=同行 if-miss-return；默认值=true；返回类型≈void；处置=无（零留痕疑似真静默）
+- **src/cn_compiler/semantic/class_resolver.cpp:299** ≈SemanticAnalyzer::classVtableIndex — `if (info == nullptr) return -1;`
+  - 形态=同行 if-miss-return；默认值=-1；返回类型≈int；处置=无（零留痕疑似真静默）
+- **src/cn_compiler/semantic/class_resolver.cpp:302** ≈SemanticAnalyzer::classVtableIndex — `if (member == nullptr) return -1;`
+  - 形态=同行 if-miss-return；默认值=-1；返回类型≈int；处置=无（零留痕疑似真静默）
+- **src/cn_compiler/semantic/class_resolver.cpp:318** ≈SemanticAnalyzer::classFieldOffset — `if (info == nullptr) return -1;`
+  - 形态=同行 if-miss-return；默认值=-1；返回类型≈int；处置=无（零留痕疑似真静默）
+- **src/cn_compiler/semantic/error_analysis.cpp:476** ≈indexKeyText — `if (index == nullptr) return "";`
+  - 形态=同行 if-miss-return；默认值=""；返回类型≈std::string；处置=无（零留痕疑似真静默）
+- **src/cn_compiler/semantic/error_analysis.cpp:487** ≈SemanticAnalyzer::objectVarName — `if (object == nullptr) return "";`
+  - 形态=同行 if-miss-return；默认值=""；返回类型≈std::string；处置=无（零留痕疑似真静默）
+- **src/cn_compiler/semantic/error_analysis.cpp:501** ≈SemanticAnalyzer::objectVarName — `if (base.empty()) return "";`
+  - 形态=同行 if-miss-return；默认值=""；返回类型≈std::string；处置=无（零留痕疑似真静默）
+- **src/cn_compiler/semantic/error_analysis.cpp:503** ≈SemanticAnalyzer::objectVarName — `if (sub.empty()) return "";`
+  - 形态=同行 if-miss-return；默认值=""；返回类型≈std::string；处置=无（零留痕疑似真静默）
+- **src/cn_compiler/semantic/error_analysis.cpp:509** ≈SemanticAnalyzer::objectVarName — `if (base.empty()) return "";`
+  - 形态=同行 if-miss-return；默认值=""；返回类型≈std::string；处置=无（零留痕疑似真静默）
+- **src/cn_compiler/semantic/generics.cpp:399** ≈SemanticAnalyzer::instantiateGeneric — `if (gen == nullptr) return "";`
+  - 形态=同行 if-miss-return；默认值=""；返回类型≈std::string；处置=无（零留痕疑似真静默）
+- **src/cn_compiler/semantic/semantic_borrowview.cpp:458** ≈SemanticAnalyzer::checkReturnAddressEscape — `if (ci->fields.find(nm) != ci->fields.end()) return true;`
+  - 形态=同行 if-miss-return；默认值=true；返回类型≈void；处置=无（零留痕疑似真静默）
+- **src/cn_compiler/semantic/semantic_call.cpp:376** ≈wrapLiteralOperandType — `if (e == nullptr) return "";`
+  - 形态=同行 if-miss-return；默认值=""；返回类型≈std::string；处置=无（零留痕疑似真静默）
+- **src/cn_compiler/semantic/semantic_call.cpp:388** ≈wrapLiteralOperandType — `if (lit == nullptr) return "";`
+  - 形态=同行 if-miss-return；默认值=""；返回类型≈std::string；处置=无（零留痕疑似真静默）
+- **src/cn_compiler/semantic/semantic_constlen.cpp:54** ≈SemanticAnalyzer::evalConstLengthText — `if (it == globalConstValues_.end()) return false;`
+  - 形态=同行 if-miss-return；默认值=false；返回类型≈long；处置=无（零留痕疑似真静默）
+- **src/cn_compiler/semantic/semantic_constlen.cpp:66** ≈SemanticAnalyzer::evalConstLengthText — `if (!err.empty()) return 0;`
+  - 形态=同行 if-miss-return；默认值=0；返回类型≈long；处置=无（零留痕疑似真静默）
+- **src/cn_compiler/semantic/semantic_constlen.cpp:75** ≈SemanticAnalyzer::evalConstLengthText — `if (!err.empty()) return 0;`
+  - 形态=同行 if-miss-return；默认值=0；返回类型≈long；处置=无（零留痕疑似真静默）
+- **src/cn_compiler/semantic/semantic_constlen.cpp:102** ≈SemanticAnalyzer::evalConstLengthText — `if (!err.empty()) return 0;`
+  - 形态=同行 if-miss-return；默认值=0；返回类型≈long；处置=无（零留痕疑似真静默）
+- **src/cn_compiler/semantic/semantic_constlen.cpp:108** ≈SemanticAnalyzer::evalConstLengthText — `if (!err.empty()) return 0;`
+  - 形态=同行 if-miss-return；默认值=0；返回类型≈long；处置=无（零留痕疑似真静默）
+- **src/cn_compiler/semantic/semantic_constlen.cpp:119** ≈SemanticAnalyzer::evalConstLengthText — `if (!err.empty()) return 0;`
+  - 形态=同行 if-miss-return；默认值=0；返回类型≈long；处置=无（零留痕疑似真静默）
+- **src/cn_compiler/semantic/semantic_constlen.cpp:125** ≈SemanticAnalyzer::evalConstLengthText — `if (!err.empty()) return 0;`
+  - 形态=同行 if-miss-return；默认值=0；返回类型≈long；处置=无（零留痕疑似真静默）
+- **src/cn_compiler/semantic/semantic_definit.cpp:172** ≈std::to_string — `if (!defInitPlaceOf(mem->object.get(), name, suffix)) return false;`
+  - 形态=同行 if-miss-return；默认值=false；处置=无（零留痕疑似真静默）
+- **src/cn_compiler/semantic/semantic_literal_domain.cpp:37** ≈decimalDigitsOf — `if (digits.empty()) return "";`
+  - 形态=同行 if-miss-return；默认值=""；返回类型≈std::string；处置=无（零留痕疑似真静默）
+- **src/cn_compiler/semantic/semantic_sig.cpp:90** ≈SemanticAnalyzer::funcParamTypesOf — `if (it == functions_.end()) return {};`
+  - 形态=同行 if-miss-return；默认值={}；返回类型≈std::vector<std::string>；处置=无（零留痕疑似真静默）
+- **src/cn_compiler/semantic/semantic_stmt.cpp:29** ≈cloneNameExpr — `if (node == nullptr) return nullptr;`
+  - 形态=同行 if-miss-return；默认值=nullptr；返回类型≈std::unique_ptr<Expr>；处置=无（零留痕疑似真静默）
+- **src/cn_compiler/semantic/semantic_stmt.cpp:141** ≈cloneExprImpl — `if (node == nullptr) return nullptr;`
+  - 形态=同行 if-miss-return；默认值=nullptr；返回类型≈std::unique_ptr<Expr>；处置=无（零留痕疑似真静默）
+- **src/cn_compiler/semantic/semantic_stmt.cpp:291** ≈cloneStmtImpl — `if (node == nullptr) return nullptr;`
+  - 形态=同行 if-miss-return；默认值=nullptr；返回类型≈std::unique_ptr<Stmt>；处置=无（零留痕疑似真静默）
+- **src/cn_main.cpp:320** ≈detectStdlibDir — `if (exeDir.empty()) return "";`
+  - 形态=同行 if-miss-return；默认值=""；返回类型≈std::string；处置=无（零留痕疑似真静默）
+- **src/cn_main.cpp:683** ≈main — `if (args.empty()) { │ return 0;`
+  - 形态=下行 if-miss-return；默认值=0；返回类型≈int；处置=无（零留痕疑似真静默）
+- **src/cn_main_toolchain.cpp:68** ≈getEnvVar — `if (_dupenv_s(&value, &len, name.c_str()) != 0 || value == nullptr) return "";`
+  - 形态=同行 if-miss-return；默认值=""；返回类型≈std::string；处置=无（零留痕疑似真静默）
+- **src/cn_main_toolchain.cpp:84** ≈findVcvarsBat — `if (!getEnvVar("VSCMD_ARG_TGT_ARCH").empty()) return "";`
+  - 形态=同行 if-miss-return；默认值=""；返回类型≈std::string；处置=无（零留痕疑似真静默）
+- **src/cn_main_toolchain.cpp:92** ≈findVcvarsBat — `if (installPath.empty()) { │ return "";`
+  - 形态=下行 if-miss-return；默认值=""；返回类型≈std::string；处置=无（零留痕疑似真静默）
+- **src/runtime/file_api.cpp:72** ≈__cn_file_read — `if (handle == nullptr || buffer == nullptr || count < 0) return 0;`
+  - 形态=同行 if-miss-return；默认值=0；返回类型≈long；处置=无（零留痕疑似真静默）
+- **src/runtime/file_api.cpp:81** ≈__cn_file_write — `if (handle == nullptr || data == nullptr) return 0;`
+  - 形态=同行 if-miss-return；默认值=0；返回类型≈long；处置=无（零留痕疑似真静默）
+- **src/runtime/file_api.cpp:121** ≈__cn_file_size — `if (handle == nullptr) return -1;`
+  - 形态=同行 if-miss-return；默认值=-1；返回类型≈long；处置=无（零留痕疑似真静默）
+- **src/runtime/file_api.cpp:124** ≈__cn_file_size — `if (cur < 0) return -1;`
+  - 形态=同行 if-miss-return；默认值=-1；返回类型≈long；处置=无（零留痕疑似真静默）
+- **src/runtime/file_api.cpp:142** ≈__cn_file_exists — `if (fp == nullptr) return 0;`
+  - 形态=同行 if-miss-return；默认值=0；返回类型≈long；处置=无（零留痕疑似真静默）
+- **src/runtime/input_api.cpp:59** ≈__cn_read_int — `if (line == nullptr) return 0;`
+  - 形态=同行 if-miss-return；默认值=0；返回类型≈long；处置=无（零留痕疑似真静默）
+- **src/runtime/input_api.cpp:77** ≈__cn_read_float — `if (line == nullptr) return 0.0;`
+  - 形态=同行 if-miss-return；默认值=0.0；返回类型≈double；处置=无（零留痕疑似真静默）
+- **src/runtime/intern_api.cpp:96** ≈__cn_intern_text — `if (id <= 0 || static_cast<std::size_t>(id) >= s.pool.size()) return "";`
+  - 形态=同行 if-miss-return；默认值=""；返回类型≈char*；处置=无（零留痕疑似真静默）
+- **src/runtime/mem_api.cpp:203** ≈poolDirInsert — `if (nd == nullptr) return -1;`
+  - 形态=同行 if-miss-return；默认值=-1；返回类型≈long；处置=无（零留痕疑似真静默）
+- **src/runtime/mem_api.cpp:230** ≈poolNewBlock — `if (b == nullptr) return 0;`
+  - 形态=同行 if-miss-return；默认值=0；返回类型≈std::size_t；处置=无（零留痕疑似真静默）
+- **src/runtime/mem_api.cpp:234** ≈poolNewBlock — `if (bits == nullptr) { │ return 0;`
+  - 形态=下行 if-miss-return；默认值=0；返回类型≈std::size_t；处置=无（零留痕疑似真静默）
+- **src/runtime/mem_api.cpp:239** ≈poolNewBlock — `if (idx < 0) { │ return 0;`
+  - 形态=下行 if-miss-return；默认值=0；返回类型≈std::size_t；处置=无（零留痕疑似真静默）
+- **src/runtime/string_api.cpp:64** ≈__cn_str_find — `if (pos == nullptr) return -1;`
+  - 形态=同行 if-miss-return；默认值=-1；返回类型≈long；处置=无（零留痕疑似真静默）
+
+## 中嫌疑清单（有处置·待复核）
+
+- [CN语言编译器v2/IR/生成表达式.cn:206] ≈打印族实参终点们 — `如果 (末位k < 0 || 末位k <= 前末位 || 末位k >= 调用位置) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；处置=报诊断（复核文案指向性·#145 同族）
+- [CN语言编译器v2/IR/生成表达式中.cn:575] ≈生成表达式 — `如果 (!赋值式成) { 返回 0; }` — 形态=v2 如果-miss-返回；默认值=0；返回类型≈整64；处置=豁免声明（复核边界注释齐备性）
+- [CN语言编译器v2/IR/生成表达式求值中.cn:770] ≈生成回绕展开 — `否则 如果 (!字符串比较(被调名474, "回绕加")) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；处置=报诊断（复核文案指向性·#145 同族）
+- [CN语言编译器v2/IR/生成表达式重载.cn:92] ≈发射运算符重载二元 — `如果 (左ID <= 0 || !是用户类ID(左ID)) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；处置=报诊断（复核文案指向性·#145 同族）
+- [CN语言编译器v2/IR/生成语句赋值尾.cn:327] ≈尝试下标结构体整体写 — `如果 (消费x == 0 || 源寄存器x == 0 || !查源x.正常) { │ 返回 真;` — 形态=v2 下行如果-miss-返回；默认值=真；返回类型≈布尔；处置=报诊断（复核文案指向性·#145 同族）
+- [CN语言编译器v2/IR/生成语句赋值尾.cn:678] ≈尝试成员合成体整体写 — `如果 (!是结果类型(字段文本658) && !是可选类型(字段文本658)) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；留痕=静默(留痕词)@680；处置=豁免声明（复核边界注释齐备性）
+- [CN语言编译器v2/IR/生成语句赋值尾.cn:685] ≈尝试成员合成体整体写 — `如果 (!右是调用658 && !右是地点658) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；处置=豁免声明（复核边界注释齐备性）
+- [CN语言编译器v2/主.cn:243] ≈编译文件 — `如果 (!是聚合回引) { │ 返回 0;` — 形态=v2 下行如果-miss-返回；默认值=0；返回类型≈整64；处置=报诊断（复核文案指向性·#145 同族）
+- [CN语言编译器v2/语义/语义检查.cn:304] ≈标注成员偏移 — `如果 (类型ID == -1) { 返回 -1; }` — 形态=v2 如果-miss-返回；默认值=-1；返回类型≈整64；处置=报诊断（复核文案指向性·#145 同族）
+- [CN语言编译器v2/语义/语义检查初始化.cn:79] ≈状态是指针层 — `如果 (类型池下标 < 0 || 类型池下标 >= 池.大小()) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；处置=豁免声明（复核边界注释齐备性）
+- [CN语言编译器v2/语义/语义检查初始化.cn:478] ≈越界超域文本拦728 — `如果 (!下标字面量超整64域728(池, 下标首, 下标末, 显示728)) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；处置=报诊断（复核文案指向性·#145 同族）
+- [CN语言编译器v2/语义/语义检查溢出474.cn:308] ≈折叠整值503 — `如果 (根索引 < 0 || 根索引 >= 整32(池.大小())) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；处置=豁免声明（复核边界注释齐备性）
+- [CN语言编译器v2/语义/语义检查溢出474.cn:318] ≈折叠整值503 — `如果 (!折叠整值503(池, 整32(根503.子终点 - 1), 操作数503, 深度 + 1)) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；处置=豁免声明（复核边界注释齐备性）
+- [CN语言编译器v2/语义/语义检查溢出474.cn:328] ≈折叠整值503 — `如果 (!认算503) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；处置=豁免声明（复核边界注释齐备性）
+- [CN语言编译器v2/语义/语义检查溢出474.cn:332] ≈折叠整值503 — `如果 (右根503 < 0 || 左根503 < 0 || 左根503 >= 右根503) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；处置=豁免声明（复核边界注释齐备性）
+- [CN语言编译器v2/语义/语义检查溢出474.cn:335] ≈折叠整值503 — `如果 (!折叠整值503(池, 左根503, 左值503, 深度 + 1)) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；处置=豁免声明（复核边界注释齐备性）
+- [CN语言编译器v2/语义/语义检查类.cn:246] ≈检查下标表达式 — `如果 (!指针下标所指合法(所指文本x) && !取重放豁免安全区()) { │ 返回 -1;` — 形态=v2 下行如果-miss-返回；默认值=-1；返回类型≈整64；处置=报诊断（复核文案指向性·#145 同族）
+- [CN语言编译器v2/语义/语义检查类.cn:433] ≈检查下标表达式 — `如果 (!指针下标所指合法(所指文本244) && !取重放豁免安全区()) { │ 返回 -1;` — 形态=v2 下行如果-miss-返回；默认值=-1；返回类型≈整64；处置=报诊断（复核文案指向性·#145 同族）
+- [CN语言编译器v2/语义/语义检查表达式尾.cn:681] ≈推导改写泛型隐式调用 — `如果 (!字符串比较(推导们415.元素(整32(名k415)), 推导值415)) { │ 返回 0;` — 形态=v2 下行如果-miss-返回；默认值=0；返回类型≈整64；处置=报诊断（复核文案指向性·#145 同族）
+- [CN语言编译器v2/语义/语义检查表达式标识符.cn:224] ≈检查限定标识符 — `如果 (查标公 < 0) { │ 返回 -1;` — 形态=v2 下行如果-miss-返回；默认值=-1；返回类型≈整64；处置=报诊断（复核文案指向性·#145 同族）
+- [CN语言编译器v2/语义/语义检查语句.cn:36] ≈检查推断声明语句 — `如果 (!是推断) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；处置=报诊断（复核文案指向性·#145 同族）
+- [CN语言编译器v2/语义/语义检查语句.cn:818] ≈报抽象数组声明诊断593 — `如果 (!可判593) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；处置=报诊断（复核文案指向性·#145 同族）
+- [CN语言编译器v2/语义/语义检查语句.cn:859] ≈报抽象单值声明诊断746 — `如果 (!拦接口) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；处置=报诊断（复核文案指向性·#145 同族）
+- [CN语言编译器v2/语义/语义检查转换推导.cn:269] ≈二元操作数类型ID — `如果 (操作数末索引 < 0 || 操作数末索引 >= 整32(池.大小())) { 返回 -1; }` — 形态=v2 如果-miss-返回；默认值=-1；返回类型≈整64；处置=豁免声明（复核边界注释齐备性）
+- [CN语言编译器v2/语义/语义检查转换推导.cn:384] ≈推导二元结果类型ID — `如果 (节点索引 < 0 || 节点索引 >= 整32(池.大小())) { 返回 -1; }` — 形态=v2 如果-miss-返回；默认值=-1；返回类型≈整64；处置=豁免声明（复核边界注释齐备性）
+- [CN语言编译器v2/语义/语义检查转换推导.cn:390] ≈推导二元结果类型ID — `如果 (左ID == -1 || 右ID == -1) { 返回 -1; }` — 形态=v2 如果-miss-返回；默认值=-1；返回类型≈整64；处置=豁免声明（复核边界注释齐备性）
+- [CN语言编译器v2/语义/语义检查限定调用.cn:112] ≈检查限定调用 — `如果 (查限公 < 0) { │ 返回 -1;` — 形态=v2 下行如果-miss-返回；默认值=-1；返回类型≈整64；处置=报诊断（复核文案指向性·#145 同族）
+- [src/cn_compiler/codegen/linux_x64/linux_x64_codegen.cpp:272] ≈LinuxX64CodeGenerator::varSlotOf — `if (it == varSlots_.end()) { │ return 0;` — 形态=下行 if-miss-return；默认值=0；返回类型≈int；处置=报诊断（复核文案指向性·#145 同族）
+- [src/cn_compiler/codegen/x64/x64_codegen.cpp:247] ≈X64CodeGenerator::varSlotOf — `if (it == varSlots_.end()) { │ return 0;` — 形态=下行 if-miss-return；默认值=0；返回类型≈int；处置=报诊断（复核文案指向性·#145 同族）
+- [src/cn_compiler/ir/ir_expr_concat.cpp:218] ≈IRGenerator::chainCallReturnsString — `if (node == nullptr) return false;` — 形态=同行 if-miss-return；默认值=false；返回类型≈bool；处置=豁免声明（复核边界注释齐备性）
+- [src/cn_compiler/ir/ir_fields.cpp:236] ≈IRGenerator::isBorrowedAggregateSource — `if (e == nullptr) return false;` — 形态=同行 if-miss-return；默认值=false；返回类型≈bool；处置=豁免声明（复核边界注释齐备性）
+- [src/cn_compiler/ir/ir_oop_field.cpp:380] ≈IRGenerator::handleClassFieldAssign — `if (!isInstanceField(ident->name)) return false;` — 形态=同行 if-miss-return；默认值=false；返回类型≈bool；处置=报诊断（复核文案指向性·#145 同族）
+- [src/cn_compiler/ir/ir_oop_field.cpp:563] ≈IRGenerator::handleClassFieldIncDec — `if (!isInstanceField(ident->name)) return false;` — 形态=同行 if-miss-return；默认值=false；返回类型≈bool；处置=报诊断（复核文案指向性·#145 同族）
+- [src/cn_compiler/lexer/lexer.cpp:542] ≈Lexer::validateUnicodeEscape — `if (hexBody.empty()) { │ return false;` — 形态=下行 if-miss-return；默认值=false；返回类型≈bool；处置=报诊断（复核文案指向性·#145 同族）
+- [src/cn_compiler/lexer/preprocessor.cpp:84] ≈Preprocessor::extractMacroName — `if (name.empty()) { │ return "";` — 形态=下行 if-miss-return；默认值=""；返回类型≈std::string；处置=报诊断（复核文案指向性·#145 同族）
+- [src/cn_compiler/parser/parser.cpp:352] ≈Parser::parseFuncPtrType — `if (!check(TokenType::IntegerLiteral)) { │ return false;` — 形态=下行 if-miss-return；默认值=false；返回类型≈bool；处置=报诊断（复核文案指向性·#145 同族）
+- [src/cn_compiler/parser/parser.cpp:360] ≈Parser::parseFuncPtrType — `if (!check(TokenType::RightParen)) { │ return false;` — 形态=下行 if-miss-return；默认值=false；返回类型≈bool；处置=报诊断（复核文案指向性·#145 同族）
+- [src/cn_compiler/parser/parser.cpp:366] ≈Parser::parseFuncPtrType — `if (!check(TokenType::LeftParen)) { │ return false;` — 形态=下行 if-miss-return；默认值=false；返回类型≈bool；处置=报诊断（复核文案指向性·#145 同族）
+- [src/cn_compiler/parser/parser.cpp:375] ≈Parser::parseFuncPtrType — `if (!isTypeKeyword(currentType()) && !check(TokenType::Identifier)) { │ return false;` — 形态=下行 if-miss-return；默认值=false；返回类型≈bool；处置=报诊断（复核文案指向性·#145 同族）
+- [src/cn_compiler/semantic/class_resolver_access.cpp:122] ≈SemanticAnalyzer::resolveOperatorOverload — `if (mi == nullptr) return nullptr;` — 形态=同行 if-miss-return；默认值=nullptr；返回类型≈ClassMemberInfo*；处置=报诊断（复核文案指向性·#145 同族）
+- [src/cn_compiler/semantic/semantic.cpp:243] ≈SemanticAnalyzer::reportMovedUse — `if (!lookupMoved(name, movedLine)) return false;` — 形态=同行 if-miss-return；默认值=false；返回类型≈bool；处置=报诊断（复核文案指向性·#145 同族）
+- [src/cn_compiler/semantic/semantic.cpp:271] ≈SemanticAnalyzer::isOwnedStrRvalue — `if (rhs == nullptr) return false;` — 形态=同行 if-miss-return；默认值=false；返回类型≈bool；处置=豁免声明（复核边界注释齐备性）
+- [src/cn_compiler/semantic/semantic.cpp:305] ≈SemanticAnalyzer::declareVar — `if (current.find(name) != current.end()) { │ return false;` — 形态=下行 if-miss-return；默认值=false；返回类型≈bool；处置=报诊断（复核文案指向性·#145 同族）
+- [src/cn_compiler/semantic/semantic_borrowview.cpp:455] ≈SemanticAnalyzer::checkReturnAddressEscape — `if (nm.empty() || contextClassStack_.empty()) return false;` — 形态=同行 if-miss-return；默认值=false；返回类型≈void；处置=豁免声明（复核边界注释齐备性）
+- [src/cn_compiler/semantic/semantic_call.cpp:288] ≈SemanticAnalyzer::checkTransferCall — `if (!lookupVar(ident->name, varType)) { │ return true;` — 形态=下行 if-miss-return；默认值=true；返回类型≈bool；处置=报诊断（复核文案指向性·#145 同族）
+- [src/cn_compiler/semantic/semantic_call.cpp:331] ≈SemanticAnalyzer::checkCopyBuiltinCall — `if (node == nullptr || node->callee->getType() != NodeType::IdentifierExpr) │ return false;` — 形态=下行 if-miss-return；默认值=false；返回类型≈bool；处置=报诊断（复核文案指向性·#145 同族）
+- [src/cn_compiler/semantic/semantic_call.cpp:804] ≈SemanticAnalyzer::checkDirectCallFallback — `if (!sigKey.empty()) return false;` — 形态=同行 if-miss-return；默认值=false；返回类型≈bool；留痕=找不到(留痕词)@806；处置=豁免声明（复核边界注释齐备性）
+- [src/cn_compiler/semantic/semantic_definit.cpp:51] ≈SemanticAnalyzer::isDefInitTrackedType — `if (type.empty()) return false;` — 形态=同行 if-miss-return；默认值=false；返回类型≈bool；处置=豁免声明（复核边界注释齐备性）
+- [src/cn_compiler/semantic/semantic_expr_binary.cpp:689] ≈isNumeric — `if (!leftPtr && rightPtr) { │ return true;` — 形态=下行 if-miss-return；默认值=true；处置=报诊断（复核文案指向性·#145 同族）
+- [src/cn_compiler/semantic/semantic_sig.cpp:77] ≈SemanticAnalyzer::funcReturnsRef — `if (it == functions_.end()) return false;` — 形态=同行 if-miss-return；默认值=false；返回类型≈bool；处置=豁免声明（复核边界注释齐备性）
+- [src/cn_compiler/semantic/semantic_sig.cpp:267] ≈isDerivedFrom — `if (ambiguous && !bestKey.empty()) { │ return "";` — 形态=下行 if-miss-return；默认值=""；处置=报诊断（复核文案指向性·#145 同族）
+- [src/cn_compiler/semantic/semantic_sig.cpp:273] ≈isDerivedFrom — `if (bestKey.empty()) { │ return "";` — 形态=下行 if-miss-return；默认值=""；处置=报诊断（复核文案指向性·#145 同族）
+- [src/cn_compiler/semantic/semantic_sig.cpp:523] ≈SemanticAnalyzer::reportSliceReject — `if (!isClassType(to) || isInterfaceType(to)) return false;` — 形态=同行 if-miss-return；默认值=false；返回类型≈bool；处置=报诊断（复核文案指向性·#145 同族）
+- [src/cn_compiler/semantic/semantic_sig.cpp:524] ≈SemanticAnalyzer::reportSliceReject — `if (!isClassType(from)) return false;` — 形态=同行 if-miss-return；默认值=false；返回类型≈bool；处置=报诊断（复核文案指向性·#145 同族）
+- [src/cn_compiler/semantic/semantic_sig.cpp:525] ≈SemanticAnalyzer::reportSliceReject — `if (!isDerivedFrom(from, to) || from == to) return false;` — 形态=同行 if-miss-return；默认值=false；返回类型≈bool；处置=报诊断（复核文案指向性·#145 同族）
+- [src/cn_compiler/semantic/semantic_sig.cpp:556] ≈types::isInteger — `if (!types::isInteger(fromRaw) || !types::isInteger(toRaw)) return false;` — 形态=同行 if-miss-return；默认值=false；处置=豁免声明（复核边界注释齐备性）
+- [src/cn_compiler/semantic/semantic_types.cpp:214] ≈SemanticAnalyzer::isPortableType — `if (canon.empty()) return true;` — 形态=同行 if-miss-return；默认值=true；返回类型≈bool；处置=豁免声明（复核边界注释齐备性）
+- [src/cn_compiler/semantic/semantic_types.cpp:270] ≈SemanticAnalyzer::isPortableType — `if (decl == nullptr) return true;` — 形态=同行 if-miss-return；默认值=true；返回类型≈bool；处置=豁免声明（复核边界注释齐备性）
+- [src/cn_compiler/semantic/semantic_types.cpp:290] ≈SemanticAnalyzer::isPortableType — `if (ci == nullptr) return true;` — 形态=同行 if-miss-return；默认值=true；返回类型≈bool；处置=豁免声明（复核边界注释齐备性）
+- [src/runtime/file_api.cpp:65] ≈__cn_file_open — `if (fmode == nullptr) return nullptr;` — 形态=同行 if-miss-return；默认值=nullptr；返回类型≈void*；处置=豁免声明（复核边界注释齐备性）
+
+## 低嫌疑清单（已登记/自然哨兵/双处置·抽样前 200）
+
+- [CN语言编译器v2/IR/IR字面量域.cn:70] ≈进制字面量值级入域 — `否则 { 返回 真; }` — 形态=v2 否则-返回；默认值=真；返回类型≈布尔；留痕=防御(留痕词)@70；防御(留痕词)@71；哨兵值 真 + 返回类型≈布尔（错误传播惯习·非默认值面·人判抽检）
+- [CN语言编译器v2/IR/IR字面量域.cn:173] ≈字面量文本入域128_640 — `如果 (!字符串比较(目标文本, "整128") && !字符串比较(目标文本, "正128")) { 返回 真; }` — 形态=v2 如果-miss-返回；默认值=真；返回类型≈布尔；哨兵值 真 + 返回类型≈布尔（错误传播惯习·非默认值面·人判抽检）
+- [CN语言编译器v2/IR/IR容器.cn:615] ≈查限定名静态字段类型 — `如果 (!是用户类_ID(类IDt)) { 返回 0; }` — 形态=v2 如果-miss-返回；默认值=0；返回类型≈整64；处置=无（零留痕疑似真静默）；已登记（待裁决·折叠不重复报）
+- [CN语言编译器v2/IR/IR容器判定.cn:222] ≈是容器类 — `如果 (首分段位置(名) < 0) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；哨兵值 假 + 返回类型≈布尔（错误传播惯习·非默认值面·人判抽检）
+- [CN语言编译器v2/IR/IR容器判定.cn:237] ≈是结果类型 — `如果 (首分段位置(名) < 0) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；哨兵值 假 + 返回类型≈布尔（错误传播惯习·非默认值面·人判抽检）
+- [CN语言编译器v2/IR/IR容器判定.cn:267] ≈是可选类型 — `如果 (首分段位置(名) < 0) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；哨兵值 假 + 返回类型≈布尔（错误传播惯习·非默认值面·人判抽检）
+- [CN语言编译器v2/IR/IR容器判定.cn:339] ≈是字符串元素容器 — `如果 (位置 < 0) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；哨兵值 假 + 返回类型≈布尔（错误传播惯习·非默认值面·人判抽检）
+- [CN语言编译器v2/IR/IR容器判定.cn:357] ≈是字符串值映射 — `如果 (!字符串比较(合成名基名(合成名), "映射")) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；哨兵值 假 + 返回类型≈布尔（错误传播惯习·非默认值面·人判抽检）
+- [CN语言编译器v2/IR/IR容器尾.cn:121] ≈可顺序释放结构体 — `如果 (!可顺序释放结构体(字段类型IDf, 深度 + 1)) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；哨兵值 假 + 返回类型≈布尔（错误传播惯习·非默认值面·人判抽检）
+- [CN语言编译器v2/IR/IR容器尾.cn:466] ≈静十六进制段 — `如果 (d < 0) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；哨兵值 假 + 返回类型≈布尔（错误传播惯习·非默认值面·人判抽检）
+- [CN语言编译器v2/IR/IR容器尾.cn:498] ≈解析128位初值文本 — `如果 (!静十六进制段(文本, 起, 冒号, 低段)) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；哨兵值 假 + 返回类型≈布尔（错误传播惯习·非默认值面·人判抽检）
+- [CN语言编译器v2/IR/IR容器尾.cn:499] ≈解析128位初值文本 — `如果 (!静十六进制段(文本, 冒号 + 1, 终, 高段)) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；哨兵值 假 + 返回类型≈布尔（错误传播惯习·非默认值面·人判抽检）
+- [CN语言编译器v2/IR/IR容器尾.cn:828] ≈发射128位二元运算 — `如果 (!左128 && !右128) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；哨兵值 假 + 返回类型≈布尔（错误传播惯习·非默认值面·人判抽检）
+- [CN语言编译器v2/IR/IR容器尾.cn:870] ≈发射128位二元运算 — `如果 (!左128) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；留痕=回退(留痕词)@869；哨兵值 假 + 返回类型≈布尔（错误传播惯习·非默认值面·人判抽检）
+- [CN语言编译器v2/IR/IR容器尾.cn:966] ≈发射128位二元运算 — `否则 { 返回 假; }` — 形态=v2 否则-返回；默认值=假；返回类型≈布尔；哨兵值 假 + 返回类型≈布尔（错误传播惯习·非默认值面·人判抽检）
+- [CN语言编译器v2/IR/IR容器签名.cn:885] ≈取静态需注入 — `如果 (序 >= 静态需注入们.大小()) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；哨兵值 假 + 返回类型≈布尔（错误传播惯习·非默认值面·人判抽检）
+- [CN语言编译器v2/IR/IR布局中.cn:160] ≈函数指针同签名 — `如果 (!函数指针类型文本比较(函数指针返回文本(a), 函数指针返回文本(b))) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；哨兵值 假 + 返回类型≈布尔（错误传播惯习·非默认值面·人判抽检）
+- [CN语言编译器v2/IR/IR布局尾.cn:355] ≈是数组类型文本 — `如果 (!((整64(文本[整32(长 - 1)]) & 255) == 93)) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；哨兵值 假 + 返回类型≈布尔（错误传播惯习·非默认值面·人判抽检）
+- [CN语言编译器v2/IR/IR生成.cn:197] ≈局部真指针87 — `如果 (查指针变量类型(名ID) < 0) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；哨兵值 假 + 返回类型≈布尔（错误传播惯习·非默认值面·人判抽检）
+- [CN语言编译器v2/IR/优化.cn:345] ≈折叠二元 — `如果 (!检查态可折叠474(数学f, 检查码f)) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；哨兵值 假 + 返回类型≈布尔（错误传播惯习·非默认值面·人判抽检）
+- [CN语言编译器v2/IR/优化.cn:365] ≈折叠二元 — `如果 (右值 < 0 || 右值 >= 检查码位宽474(移检查f)) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；哨兵值 假 + 返回类型≈布尔（错误传播惯习·非默认值面·人判抽检）
+- [CN语言编译器v2/IR/优化.cn:373] ≈折叠二元 — `如果 (右值 < 0 || 右值 >= 检查码位宽474(移检查g)) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；哨兵值 假 + 返回类型≈布尔（错误传播惯习·非默认值面·人判抽检）
+- [CN语言编译器v2/IR/生成函数.cn:59] ≈是无体原型 — `如果 (声明.子终点 >= 池.大小() || 声明.子终点 < 0) { │ 返回 假;` — 形态=v2 下行如果-miss-返回；默认值=假；返回类型≈布尔；哨兵值 假 + 返回类型≈布尔（错误传播惯习·非默认值面·人判抽检）
+- [CN语言编译器v2/IR/生成类尾.cn:127] ≈用户类有析构位 — `如果 (!是用户类ID(名ID)) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；哨兵值 假 + 返回类型≈布尔（错误传播惯习·非默认值面·人判抽检）
+- [CN语言编译器v2/IR/生成类返回接管.cn:108] ≈是返回类调用_544 — `如果 (!是用户类(接文本544) || 是容器类(接文本544)) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；哨兵值 假 + 返回类型≈布尔（错误传播惯习·非默认值面·人判抽检）
+- [CN语言编译器v2/IR/生成类返回接管.cn:126] ≈发射返回类调用声明接管 — `如果 (!是返回类调用_544(池, 整64(n.子终点 - 1), 类名ID)) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；哨兵值 假 + 返回类型≈布尔（错误传播惯习·非默认值面·人判抽检）
+- [CN语言编译器v2/IR/生成类返回接管.cn:128] ≈发射返回类调用声明接管 — `如果 (!是用户类_ID(类名ID) || 是容器类_ID(类名ID)) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；哨兵值 假 + 返回类型≈布尔（错误传播惯习·非默认值面·人判抽检）
+- [CN语言编译器v2/IR/生成类返回接管.cn:162] ≈是容器元素类返回630 — `如果 (类名ID == 0 || !是用户类_ID(类名ID) || 是容器类_ID(类名ID)) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；哨兵值 假 + 返回类型≈布尔（错误传播惯习·非默认值面·人判抽检）
+- [CN语言编译器v2/IR/生成类返回接管.cn:172] ≈是容器元素类返回630 — `如果 (!是容器类(接文本630)) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；哨兵值 假 + 返回类型≈布尔（错误传播惯习·非默认值面·人判抽检）
+- [CN语言编译器v2/IR/生成类返回接管.cn:389] ≈是类对象引用返回633 — `如果 (!是用户类(接文本c) || 是容器类(接文本c)) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；哨兵值 假 + 返回类型≈布尔（错误传播惯习·非默认值面·人判抽检）
+- [CN语言编译器v2/IR/生成表达式.cn:201] ≈打印族实参终点们 — `如果 (!字符串比较(打印名, "打印") && !字符串比较(打印名, "打印行")) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；哨兵值 假 + 返回类型≈布尔（错误传播惯习·非默认值面·人判抽检）
+- [CN语言编译器v2/IR/生成表达式中.cn:267] ≈生成静态点号限定自增 — `如果 (!是用户类_ID(类ID467)) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；哨兵值 假 + 返回类型≈布尔（错误传播惯习·非默认值面·人判抽检）
+- [CN语言编译器v2/IR/生成表达式中.cn:271] ≈生成静态点号限定自增 — `如果 (找静467 < 0) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；哨兵值 假 + 返回类型≈布尔（错误传播惯习·非默认值面·人判抽检）
+- [CN语言编译器v2/IR/生成表达式尾.cn:29] ≈实参是字符形态306 — `如果 (节点索引 < 0 || 节点索引 >= 整64(池.大小())) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；哨兵值 假 + 返回类型≈布尔（错误传播惯习·非默认值面·人判抽检）
+- [CN语言编译器v2/IR/生成表达式求值.cn:550] ≈生成复制展开 — `如果 (!(n.子起点 > 0 && n.附加 == 1)) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；哨兵值 假 + 返回类型≈布尔（错误传播惯习·非默认值面·人判抽检）
+- [CN语言编译器v2/IR/生成表达式求值.cn:553] ≈生成复制展开 — `如果 (!字符串比较(驻留文本(整64(复被调.文本)), "复制")) { 返回 假; }    如果 (表达式栈.大小() < 2) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；留痕=兜底(留痕词)@554；哨兵值 假 + 返回类型≈布尔（错误传播惯习·非默认值面·人判抽检）
+- [CN语言编译器v2/IR/生成表达式运算辅助.cn:316] ≈形参被消耗 — `如果 (块节点 < 0 || 块节点 >= 池.大小()) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；哨兵值 假 + 返回类型≈布尔（错误传播惯习·非默认值面·人判抽检）
+- [CN语言编译器v2/IR/生成表达式重载.cn:89] ≈发射运算符重载二元 — `如果 (!重载二元符号414(op名)) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；哨兵值 假 + 返回类型≈布尔（错误传播惯习·非默认值面·人判抽检）
+- [CN语言编译器v2/IR/生成表达式重载.cn:118] ≈发射运算符重载一元 — `否则 { 返回 假; }` — 形态=v2 否则-返回；默认值=假；返回类型≈布尔；哨兵值 假 + 返回类型≈布尔（错误传播惯习·非默认值面·人判抽检）
+- [CN语言编译器v2/IR/生成表达式重载.cn:121] ≈发射运算符重载一元 — `如果 (操作数ID <= 0 || !是用户类ID(操作数ID)) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；哨兵值 假 + 返回类型≈布尔（错误传播惯习·非默认值面·人判抽检）
+- [CN语言编译器v2/IR/生成语句结构体赋值.cn:375] ≈生成合成体整体赋值 — `如果 (!是结果类型(左类型文本965)) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；哨兵值 假 + 返回类型≈布尔（错误传播惯习·非默认值面·人判抽检）
+- [CN语言编译器v2/IR/生成语句结构体赋值.cn:505] ≈生成数组整体赋值 — `如果 (找静目259 < 0) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；哨兵值 假 + 返回类型≈布尔（错误传播惯习·非默认值面·人判抽检）
+- [CN语言编译器v2/IR/生成语句结构体赋值.cn:506] ≈生成数组整体赋值 — `如果 (!是数组类型文本(驻留文本(取静态类型(找静目259)))) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；哨兵值 假 + 返回类型≈布尔（错误传播惯习·非默认值面·人判抽检）
+- [CN语言编译器v2/IR/生成语句赋值.cn:519] ≈生成容器对象整体赋值 — `如果 (!左是容器 && !左是用户类) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；哨兵值 假 + 返回类型≈布尔（错误传播惯习·非默认值面·人判抽检）
+- [CN语言编译器v2/IR/生成语句赋值.cn:658] ≈生成容器对象整体赋值 — `如果 (目标槽 == 0 && !静472) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；哨兵值 假 + 返回类型≈布尔（错误传播惯习·非默认值面·人判抽检）
+- [CN语言编译器v2/IR/生成语句赋值.cn:738] ≈生成容器对象整体赋值 — `如果 (!右是容器 && !右是用户类) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；哨兵值 假 + 返回类型≈布尔（错误传播惯习·非默认值面·人判抽检）
+- [CN语言编译器v2/IR/生成语句赋值.cn:742] ≈生成容器对象整体赋值 — `如果 (目标槽 == 0 && !目标是静态) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；哨兵值 假 + 返回类型≈布尔（错误传播惯习·非默认值面·人判抽检）
+- [CN语言编译器v2/IR/生成语句赋值.cn:761] ≈生成容器对象整体赋值 — `如果 (找源静 < 0) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；哨兵值 假 + 返回类型≈布尔（错误传播惯习·非默认值面·人判抽检）
+- [CN语言编译器v2/IR/生成语句赋值中.cn:438] ≈尝试成员对象整体写 — `如果 (!字段是容器 && !字段是用户类) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；哨兵值 假 + 返回类型≈布尔（错误传播惯习·非默认值面·人判抽检）
+- [CN语言编译器v2/IR/生成语句赋值中.cn:445] ≈尝试成员对象整体写 — `如果 (!右是标识符 && !右是成员链) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；哨兵值 假 + 返回类型≈布尔（错误传播惯习·非默认值面·人判抽检）
+- [CN语言编译器v2/IR/生成语句赋值中.cn:456] ≈尝试成员对象整体写 — `如果 (!右是容器 && !右是用户类) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；哨兵值 假 + 返回类型≈布尔（错误传播惯习·非默认值面·人判抽检）
+- [CN语言编译器v2/IR/生成语句赋值中.cn:486] ≈尝试成员对象整体写 — `如果 (找源静 < 0) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；哨兵值 假 + 返回类型≈布尔（错误传播惯习·非默认值面·人判抽检）
+- [CN语言编译器v2/IR/生成语句赋值中.cn:621] ≈尝试成员类返回调用写544b — `如果 (!是用户类(字段类型文本544b) || 是容器类(字段类型文本544b)) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；哨兵值 假 + 返回类型≈布尔（错误传播惯习·非默认值面·人判抽检）
+- [CN语言编译器v2/IR/生成语句赋值中.cn:623] ≈尝试成员类返回调用写544b — `如果 (!是返回类调用_544(池, 整64(n.子终点 - 1), 字段类型ID544b)) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；哨兵值 假 + 返回类型≈布尔（错误传播惯习·非默认值面·人判抽检）
+- [CN语言编译器v2/IR/生成语句赋值中.cn:681] ≈尝试成员构造直存写625b — `如果 (!是用户类(字段类型文本625b) || 是容器类(字段类型文本625b)) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；哨兵值 假 + 返回类型≈布尔（错误传播惯习·非默认值面·人判抽检）
+- [CN语言编译器v2/IR/生成语句赋值中.cn:693] ≈尝试成员构造直存写625b — `如果 (!是构造625b) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；哨兵值 假 + 返回类型≈布尔（错误传播惯习·非默认值面·人判抽检）
+- [CN语言编译器v2/IR/生成语句赋值尾.cn:165] ≈尝试下标结构体整体写 — `如果 (!右是调用x && !右是地点x && !右是三元x && !右是构造x) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；哨兵值 假 + 返回类型≈布尔（错误传播惯习·非默认值面·人判抽检）
+- [CN语言编译器v2/IR/生成语句赋值尾.cn:382] ≈尝试解引用结构体整体写 — `如果 (!右是调用d && !右是地点d && !右是三元d && !右是构造d) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；哨兵值 假 + 返回类型≈布尔（错误传播惯习·非默认值面·人判抽检）
+- [CN语言编译器v2/IR/生成语句赋值尾.cn:619] ≈发射类元素拷贝构造写 — `如果 (!是容器元素类返回630(池, 整64(n.子终点 - 1), 左类型ID)) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；哨兵值 假 + 返回类型≈布尔（错误传播惯习·非默认值面·人判抽检）
+- [CN语言编译器v2/IR/生成语句赋值尾.cn:622] ≈发射类元素拷贝构造写 — `如果 (目标槽 == 0 && !静630) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；哨兵值 假 + 返回类型≈布尔（错误传播惯习·非默认值面·人判抽检）
+- [CN语言编译器v2/代码生成/代码生成ARM64.cn:41] ≈是GAS安全 — `如果 (!安全) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；哨兵值 假 + 返回类型≈布尔（错误传播惯习·非默认值面·人判抽检）
+- [CN语言编译器v2/代码生成/代码生成X64Linux.cn:55] ≈是GAS安全X64L — `如果 (!安全) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；哨兵值 假 + 返回类型≈布尔（错误传播惯习·非默认值面·人判抽检）
+- [CN语言编译器v2/语义/借出检查.cn:137] ≈解剖方法调用 — `如果 (调用索引 < 0 || 调用索引 >= 池.大小()) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；哨兵值 假 + 返回类型≈布尔（错误传播惯习·非默认值面·人判抽检）
+- [CN语言编译器v2/语义/语义分析.cn:281] ≈是引用返回调用 — `如果 (返回类型IDr == -1) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；哨兵值 假 + 返回类型≈布尔（错误传播惯习·非默认值面·人判抽检）
+- [CN语言编译器v2/语义/语义分析尾.cn:614] ≈是运算符重载方法名414 — `如果 (!字符串比较(字符串子串(方法名, 0, 前缀字节), "运算符")) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；哨兵值 假 + 返回类型≈布尔（错误传播惯习·非默认值面·人判抽检）
+- [CN语言编译器v2/语义/语义分析尾.cn:638] ≈校验运算符重载参数414 — `如果 (!是运算符重载方法名414(方法名ID)) { 返回 真; }` — 形态=v2 如果-miss-返回；默认值=真；返回类型≈布尔；哨兵值 真 + 返回类型≈布尔（错误传播惯习·非默认值面·人判抽检）
+- [CN语言编译器v2/语义/语义检查.cn:405] ≈检查类名成员访问 — `如果 (m.子起点 <= 0 || 整64(m.子起点) >= 池.大小()) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；哨兵值 假 + 返回类型≈布尔（错误传播惯习·非默认值面·人判抽检）
+- [CN语言编译器v2/语义/语义检查.cn:408] ≈检查类名成员访问 — `如果 (!是用户类ID(整64(对象m.文本))) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；哨兵值 假 + 返回类型≈布尔（错误传播惯习·非默认值面·人判抽检）
+- [CN语言编译器v2/语义/语义检查443.cn:186] ≈是方法值变量553 — `如果 (命中位553 < 0) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；哨兵值 假 + 返回类型≈布尔（错误传播惯习·非默认值面·人判抽检）
+- [CN语言编译器v2/语义/语义检查443.cn:189] ≈是方法值变量553 — `如果 (初末位553 < 0 || 初末位553 >= 整64(池.大小())) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；哨兵值 假 + 返回类型≈布尔（错误传播惯习·非默认值面·人判抽检）
+- [CN语言编译器v2/语义/语义检查初始化.cn:315] ≈取常量下标值 — `如果 (区间首 < 0 || 区间末 <= 区间首 || 区间末 - 区间首 > 2) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；哨兵值 假 + 返回类型≈布尔（错误传播惯习·非默认值面·人判抽检）
+- [CN语言编译器v2/语义/语义检查初始化.cn:346] ≈取常量下标值 — `如果 (数位 < 0) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；哨兵值 假 + 返回类型≈布尔（错误传播惯习·非默认值面·人判抽检）
+- [CN语言编译器v2/语义/语义检查初始化.cn:371] ≈下标字面量超整64域728 — `如果 (区间首 < 0 || 区间末 <= 区间首 || 区间末 - 区间首 > 2) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；哨兵值 假 + 返回类型≈布尔（错误传播惯习·非默认值面·人判抽检）
+- [CN语言编译器v2/语义/语义检查初始化.cn:432] ≈下标字面量超整64域728 — `如果 (!合法728) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；哨兵值 假 + 返回类型≈布尔（错误传播惯习·非默认值面·人判抽检）
+- [CN语言编译器v2/语义/语义检查初始化.cn:464] ≈下标字面量超整64域728 — `如果 (!超728) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；哨兵值 假 + 返回类型≈布尔（错误传播惯习·非默认值面·人判抽检）
+- [CN语言编译器v2/语义/语义检查字面量域.cn:27] ≈负号链至字面量 — `如果 (末端索引 < 0 || 末端索引 >= 整32(池.大小())) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；哨兵值 假 + 返回类型≈布尔（错误传播惯习·非默认值面·人判抽检）
+- [CN语言编译器v2/语义/语义检查字面量域.cn:213] ≈是无后缀非负字面量末端 — `如果 (末端索引 < 0 || 末端索引 >= 整32(池.大小())) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；哨兵值 假 + 返回类型≈布尔（错误传播惯习·非默认值面·人判抽检）
+- [CN语言编译器v2/语义/语义检查实参.cn:129] ≈变量实参转换非法 — `如果 (!字符串比较(字符串复制(驻留文本(指针所指)), "字符")) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；哨兵值 假 + 返回类型≈布尔（错误传播惯习·非默认值面·人判抽检）
+- [CN语言编译器v2/语义/语义检查实参.cn:181] ≈实参转换非法 — `如果 (!是实参标量目标文本(目标文本)) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；哨兵值 假 + 返回类型≈布尔（错误传播惯习·非默认值面·人判抽检）
+- [CN语言编译器v2/语义/语义检查实参.cn:182] ≈实参转换非法 — `如果 (源末索引 < 0 || 源末索引 >= 整32(池.大小())) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；哨兵值 假 + 返回类型≈布尔（错误传播惯习·非默认值面·人判抽检）
+- [CN语言编译器v2/语义/语义检查实参.cn:515] ≈实参是绑定方法值806 — `如果 (实参末索引 < 0 || 实参末索引 >= 整32(池.大小())) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；哨兵值 假 + 返回类型≈布尔（错误传播惯习·非默认值面·人判抽检）
+- [CN语言编译器v2/语义/语义检查实参.cn:518] ≈实参是绑定方法值806 — `如果 (整64(a806.子起点) >= 池.大小()) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；哨兵值 假 + 返回类型≈布尔（错误传播惯习·非默认值面·人判抽检）
+- [CN语言编译器v2/语义/语义检查实参.cn:536] ≈实参是绑定方法值806 — `如果 (方法节点806 < 0) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；哨兵值 假 + 返回类型≈布尔（错误传播惯习·非默认值面·人判抽检）
+- [CN语言编译器v2/语义/语义检查常量传播548.cn:166] ≈查顶层常量值 — `如果 (!顶层常量值们.包含(名ID)) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；哨兵值 假 + 返回类型≈布尔（错误传播惯习·非默认值面·人判抽检）
+- [CN语言编译器v2/语义/语义检查常量传播548.cn:168] ≈查顶层常量值 — `如果 (!取548.正常) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；哨兵值 假 + 返回类型≈布尔（错误传播惯习·非默认值面·人判抽检）
+- [CN语言编译器v2/语义/语义检查溢出474.cn:61] ≈折叠子树值505 — `如果 (!是折叠符505) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；哨兵值 假 + 返回类型≈布尔（错误传播惯习·非默认值面·人判抽检）
+- [CN语言编译器v2/语义/语义检查溢出474.cn:67] ≈折叠子树值505 — `如果 (!折叠子树值505(池, 根索引 - 1, 右值505, 深度 + 1)) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；哨兵值 假 + 返回类型≈布尔（错误传播惯习·非默认值面·人判抽检）
+- [CN语言编译器v2/语义/语义检查溢出474.cn:118] ≈折叠二元应用505 — `如果 (左值505 < 0 || 右值505 < 0 || 右值505 > 62) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；哨兵值 假 + 返回类型≈布尔（错误传播惯习·非默认值面·人判抽检）
+- [CN语言编译器v2/语义/语义检查溢出474.cn:125] ≈折叠二元应用505 — `如果 (右值505 < 0 || 右值505 > 63) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；哨兵值 假 + 返回类型≈布尔（错误传播惯习·非默认值面·人判抽检）
+- [CN语言编译器v2/语义/语义检查溢出474.cn:227] ≈折叠子树值548 — `如果 (!是折叠符548) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；哨兵值 假 + 返回类型≈布尔（错误传播惯习·非默认值面·人判抽检）
+- [CN语言编译器v2/语义/语义检查溢出474.cn:233] ≈折叠子树值548 — `如果 (!折叠子树值548(池, 根索引 - 1, 右值548, 深度 + 1, 符号表)) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；哨兵值 假 + 返回类型≈布尔（错误传播惯习·非默认值面·人判抽检）
+- [CN语言编译器v2/语义/语义检查溢出474.cn:336] ≈折叠整值503 — `如果 (!折叠整值503(池, 右根503, 右值503, 深度 + 1)) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；哨兵值 假 + 返回类型≈布尔（错误传播惯习·非默认值面·人判抽检）
+- [CN语言编译器v2/语义/语义检查表达式尾.cn:41] ≈是整数字面量末端 — `如果 (末端索引 < 0 || 末端索引 >= 整32(池.大小())) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；哨兵值 假 + 返回类型≈布尔（错误传播惯习·非默认值面·人判抽检）
+- [CN语言编译器v2/语义/语义检查表达式尾.cn:161] ≈隐式转换合法 — `如果 (!(目标整数 || 目标浮点 || 目标字符 || 目标布尔 || 目标字符串)) { 返回 真; }` — 形态=v2 如果-miss-返回；默认值=真；返回类型≈布尔；哨兵值 真 + 返回类型≈布尔（错误传播惯习·非默认值面·人判抽检）
+- [CN语言编译器v2/语义/语义检查表达式尾.cn:162] ≈隐式转换合法 — `如果 (源末索引 < 0 || 源末索引 >= 整32(池.大小())) { 返回 真; }` — 形态=v2 如果-miss-返回；默认值=真；返回类型≈布尔；哨兵值 真 + 返回类型≈布尔（错误传播惯习·非默认值面·人判抽检）
+- [CN语言编译器v2/语义/语义检查表达式尾.cn:171] ≈隐式转换合法 — `如果 (目标整数 && !整字面量入域(源末, 池, 目标文本, 假)) { │ 返回 假;` — 形态=v2 下行如果-miss-返回；默认值=假；返回类型≈布尔；哨兵值 假 + 返回类型≈布尔（错误传播惯习·非默认值面·人判抽检）
+- [CN语言编译器v2/语义/语义检查表达式尾.cn:231] ≈隐式转换合法 — `如果 (!(源整数 || 源浮点)) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；哨兵值 假 + 返回类型≈布尔（错误传播惯习·非默认值面·人判抽检）
+- [CN语言编译器v2/语义/语义检查表达式尾.cn:253] ≈是副作用内置被调 — `如果 (调用节点索引 < 0 || 调用节点索引 >= 整32(池.大小())) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；哨兵值 假 + 返回类型≈布尔（错误传播惯习·非默认值面·人判抽检）
+- [CN语言编译器v2/语义/语义检查表达式尾.cn:256] ≈是副作用内置被调 — `如果 (c609.子起点 >= 池.大小()) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；哨兵值 假 + 返回类型≈布尔（错误传播惯习·非默认值面·人判抽检）
+- [CN语言编译器v2/语义/语义检查语句.cn:778] ≈裸全局初值可折叠569 — `如果 (!是折叠符569) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；哨兵值 假 + 返回类型≈布尔（错误传播惯习·非默认值面·人判抽检）
+- [CN语言编译器v2/语义/语义检查语句.cn:784] ≈裸全局初值可折叠569 — `如果 (!裸全局初值可折叠569(池, 根索引 - 1, 符号表, 右值569, 深度 + 1)) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；哨兵值 假 + 返回类型≈布尔（错误传播惯习·非默认值面·人判抽检）
+- [CN语言编译器v2/语义/语义检查语句.cn:810] ≈报抽象数组声明诊断593 — `如果 (!是数组类型文本(类型文本)) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；哨兵值 假 + 返回类型≈布尔（错误传播惯习·非默认值面·人判抽检）
+- [CN语言编译器v2/语义/语义检查逃逸.cn:182] ≈是当前类实例字段名633 — `如果 (层自633 < 0) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；哨兵值 假 + 返回类型≈布尔（错误传播惯习·非默认值面·人判抽检）
+- [CN语言编译器v2/语义/语义检查逃逸.cn:209] ≈是引用lambda节点 — `如果 (!是lambda合成函数名(整64(n.文本))) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；哨兵值 假 + 返回类型≈布尔（错误传播惯习·非默认值面·人判抽检）
+- [CN语言编译器v2/语法/解析类辅助.cn:102] ≈类静态初值解析整数64 — `否则 { 返回 假; }` — 形态=v2 否则-返回；默认值=假；返回类型≈布尔；哨兵值 假 + 返回类型≈布尔（错误传播惯习·非默认值面·人判抽检）
+- [CN语言编译器v2/语法/解析表达式尾.cn:13] ≈是泛型声明 — `如果 (位置 + 1 >= 记号.大小()) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；哨兵值 假 + 返回类型≈布尔（错误传播惯习·非默认值面·人判抽检）
+- [CN语言编译器v2/语法/解析表达式尾.cn:15] ≈是泛型声明 — `如果 (闭合 == -1) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；哨兵值 假 + 返回类型≈布尔（错误传播惯习·非默认值面·人判抽检）
+- [CN语言编译器v2/语法/解析表达式尾.cn:41] ≈是构造调用 — `如果 (位置 + 1 >= 记号.大小()) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；哨兵值 假 + 返回类型≈布尔（错误传播惯习·非默认值面·人判抽检）
+- [CN语言编译器v2/语法/解析表达式尾.cn:43] ≈是构造调用 — `如果 (闭合 == -1) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；哨兵值 假 + 返回类型≈布尔（错误传播惯习·非默认值面·人判抽检）
+- [CN语言编译器v2/语法/解析表达式尾.cn:44] ≈是构造调用 — `如果 (闭合 + 1 >= 记号.大小()) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；哨兵值 假 + 返回类型≈布尔（错误传播惯习·非默认值面·人判抽检）
+- [CN语言编译器v2/语法/解析表达式尾.cn:108] ≈是函数指针声明 — `如果 (!是声明类型起始(记号, 位置)) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；哨兵值 假 + 返回类型≈布尔（错误传播惯习·非默认值面·人判抽检）
+- [CN语言编译器v2/语法/解析表达式尾.cn:109] ≈是函数指针声明 — `如果 (位置 + 5 >= 记号.大小()) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；哨兵值 假 + 返回类型≈布尔（错误传播惯习·非默认值面·人判抽检）
+- [CN语言编译器v2/语法/解析表达式尾.cn:124] ≈是函数指针声明数组 — `如果 (!是声明类型起始(记号, 位置)) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；哨兵值 假 + 返回类型≈布尔（错误传播惯习·非默认值面·人判抽检）
+- [CN语言编译器v2/语法/解析表达式尾.cn:125] ≈是函数指针声明数组 — `如果 (位置 + 8 >= 记号.大小()) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；哨兵值 假 + 返回类型≈布尔（错误传播惯习·非默认值面·人判抽检）
+- [CN语言编译器v2/语法/解析表达式尾.cn:144] ≈是函数指针返回匿名 — `如果 (!是声明类型起始(记号, 位置)) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；哨兵值 假 + 返回类型≈布尔（错误传播惯习·非默认值面·人判抽检）
+- [CN语言编译器v2/语法/解析表达式尾.cn:145] ≈是函数指针返回匿名 — `如果 (位置 + 4 >= 记号.大小()) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；哨兵值 假 + 返回类型≈布尔（错误传播惯习·非默认值面·人判抽检）
+- [CN语言编译器v2/语法/解析表达式尾.cn:387] ≈是lambda捕获起始 — `如果 (p >= 记号.大小()) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；哨兵值 假 + 返回类型≈布尔（错误传播惯习·非默认值面·人判抽检）
+- [CN语言编译器v2/语法/解析语句中.cn:104] ≈是裸全局声明前瞻569 — `如果 (!是声明类型起始(记号, 位置)) { 返回 假; }` — 形态=v2 如果-miss-返回；默认值=假；返回类型≈布尔；哨兵值 假 + 返回类型≈布尔（错误传播惯习·非默认值面·人判抽检）
+- [src/cn_compiler/codegen/arm64/arm64_codegen.cpp:296] ≈Arm64CodeGenerator::varSlotOf — `if (it == varSlots_.end()) { │ return 0;` — 形态=下行 if-miss-return；默认值=0；返回类型≈int；处置=报诊断（复核文案指向性·#145 同族）；已登记（上游已诊断·折叠不重复报）
+- [src/cn_compiler/codegen/arm64/arm64_codegen_emit.cpp:359] ≈Arm64CodeGenerator::isStructParam — `if (index >= function.params.size()) return false;` — 形态=同行 if-miss-return；默认值=false；返回类型≈bool；哨兵值 false + 返回类型≈bool（错误传播惯习·非默认值面·人判抽检）
+- [src/cn_compiler/codegen/debug_info.cpp:36] ≈DebugInfoCollector::commentFor — `if (!isValidLoc(loc)) return "";` — 形态=同行 if-miss-return；默认值=""；返回类型≈std::string；处置=无（零留痕疑似真静默）；已登记（业务值·折叠不重复报）
+- [src/cn_compiler/codegen/linux_x64/linux_x64_codegen_emit.cpp:328] ≈LinuxX64CodeGenerator::isStructParam — `if (index >= function.params.size()) return false;` — 形态=同行 if-miss-return；默认值=false；返回类型≈bool；哨兵值 false + 返回类型≈bool（错误传播惯习·非默认值面·人判抽检）
+- [src/cn_compiler/codegen/x64/x64_codegen.cpp:265] ≈X64CodeGenerator::regAllocOf — `if (regId < 0) return nullptr;` — 形态=同行 if-miss-return；默认值=nullptr；返回类型≈regalloc::RegAssignment*；哨兵值 nullptr + 返回类型≈regalloc::RegAssignment*（错误传播惯习·非默认值面·人判抽检）
+- [src/cn_compiler/codegen/x64/x64_codegen.cpp:267] ≈X64CodeGenerator::regAllocOf — `if (it == regAllocMap_.end()) return nullptr;` — 形态=同行 if-miss-return；默认值=nullptr；返回类型≈regalloc::RegAssignment*；哨兵值 nullptr + 返回类型≈regalloc::RegAssignment*（错误传播惯习·非默认值面·人判抽检）
+- [src/cn_compiler/codegen/x64/x64_codegen.hpp:32] ≈isPureNumericText — `if (t.empty()) return false;` — 形态=同行 if-miss-return；默认值=false；返回类型≈bool；哨兵值 false + 返回类型≈bool（错误传播惯习·非默认值面·人判抽检）
+- [src/cn_compiler/codegen/x64/x64_instructions_cast.cpp:155] ≈X64CodeGenerator::emitCompareFloat — `if (!fcmpPhys.empty()) { │ return true;` — 形态=下行 if-miss-return；默认值=true；返回类型≈bool；哨兵值 true + 返回类型≈bool（错误传播惯习·非默认值面·人判抽检）
+- [src/cn_compiler/codegen/x64/x64_instructions_cast.cpp:343] ≈X64CodeGenerator::emitCastFloatFamily — `if (!ftPhys.empty()) { │ return true;` — 形态=下行 if-miss-return；默认值=true；返回类型≈bool；哨兵值 true + 返回类型≈bool（错误传播惯习·非默认值面·人判抽检）
+- [src/cn_compiler/codegen/x64/x64_instructions_cast.cpp:426] ≈X64CodeGenerator::emitCastPtrAndFloatPair — `if (!piPhys.empty()) { │ return true;` — 形态=下行 if-miss-return；默认值=true；返回类型≈bool；哨兵值 true + 返回类型≈bool（错误传播惯习·非默认值面·人判抽检）
+- [src/cn_compiler/codegen/x64/x64_instructions_cast.cpp:440] ≈X64CodeGenerator::emitCastPtrAndFloatPair — `if (!idPhys.empty()) { │ return true;` — 形态=下行 if-miss-return；默认值=true；返回类型≈bool；哨兵值 true + 返回类型≈bool（错误传播惯习·非默认值面·人判抽检）
+- [src/cn_compiler/codegen/x64/x64_instructions_cast.cpp:655] ≈X64CodeGenerator::emitCastIntWidth — `if (!b64Phys.empty()) { │ return true;` — 形态=下行 if-miss-return；默认值=true；返回类型≈bool；哨兵值 true + 返回类型≈bool（错误传播惯习·非默认值面·人判抽检）
+- [src/cn_compiler/codegen/x64/x64_instructions_cast.cpp:673] ≈X64CodeGenerator::emitCastIntWidth — `if (!s64Phys.empty()) { │ return true;` — 形态=下行 if-miss-return；默认值=true；返回类型≈bool；哨兵值 true + 返回类型≈bool（错误传播惯习·非默认值面·人判抽检）
+- [src/cn_compiler/codegen/x64/x64_instructions_cast.cpp:688] ≈X64CodeGenerator::emitCastIntWidth — `if (!z64Phys.empty()) { │ return true;` — 形态=下行 if-miss-return；默认值=true；返回类型≈bool；哨兵值 true + 返回类型≈bool（错误传播惯习·非默认值面·人判抽检）
+- [src/cn_compiler/codegen/x64/x64_instructions_cast.cpp:701] ≈X64CodeGenerator::emitCastIntWidth — `if (!r64Phys.empty()) { │ return true;` — 形态=下行 if-miss-return；默认值=true；返回类型≈bool；哨兵值 true + 返回类型≈bool（错误传播惯习·非默认值面·人判抽检）
+- [src/cn_compiler/driver/cargo_parser.cpp:146] ≈parseCargoToml — `if (!parseQuotedArray(valueLine, out.features, error)) return false;` — 形态=同行 if-miss-return；默认值=false；返回类型≈bool；哨兵值 false + 返回类型≈bool（错误传播惯习·非默认值面·人判抽检）
+- [src/cn_compiler/driver/cargo_parser.cpp:149] ≈parseCargoToml — `if (!parseQuotedValue(valueLine, value, error)) return false;` — 形态=同行 if-miss-return；默认值=false；返回类型≈bool；哨兵值 false + 返回类型≈bool（错误传播惯习·非默认值面·人判抽检）
+- [src/cn_compiler/driver/cargo_parser.cpp:181] ≈readTomlFile — `if (_wfopen_s(&fp, widePath.data(), L"rb") != 0 || fp == nullptr) return false;` — 形态=同行 if-miss-return；默认值=false；返回类型≈bool；哨兵值 false + 返回类型≈bool（错误传播惯习·非默认值面·人判抽检）
+- [src/cn_compiler/driver/cargo_parser.cpp:194] ≈readTomlFile — `if (!in) return false;` — 形态=同行 if-miss-return；默认值=false；返回类型≈bool；哨兵值 false + 返回类型≈bool（错误传播惯习·非默认值面·人判抽检）
+- [src/cn_compiler/driver/cargo_parser.cpp:211] ≈loadCargoConfig — `if (!readTomlFile(tomlPath, content)) return false;` — 形态=同行 if-miss-return；默认值=false；返回类型≈bool；哨兵值 false + 返回类型≈bool（错误传播惯习·非默认值面·人判抽检）
+- [src/cn_compiler/driver/driver_module.cpp:170] ≈tryReadSource — `if (!module::readSourceFile(filePath, source, error)) return false;` — 形态=同行 if-miss-return；默认值=false；返回类型≈bool；哨兵值 false + 返回类型≈bool（错误传播惯习·非默认值面·人判抽检）
+- [src/cn_compiler/driver/driver_module.cpp:271] ≈tryReadSource — `if (!tryReadSource(mountCand, mountSrc)) { │ return false;` — 形态=下行 if-miss-return；默认值=false；返回类型≈bool；哨兵值 false + 返回类型≈bool（错误传播惯习·非默认值面·人判抽检）
+- [src/cn_compiler/driver/driver_module.cpp:302] ≈tryReadSource — `if (!loadModuleTree(cand1, depBase, entryDir, graph, error, macros, options)) { ` — 形态=下行 if-miss-return；默认值=false；返回类型≈bool；哨兵值 false + 返回类型≈bool（错误传播惯习·非默认值面·人判抽检）
+- [src/cn_compiler/driver/driver_module.cpp:449] ≈restorePackageContext — `if (!tryReadSource(pkgCand, pkgSrc)) return true;` — 形态=同行 if-miss-return；默认值=true；返回类型≈bool；哨兵值 true + 返回类型≈bool（错误传播惯习·非默认值面·人判抽检）
+- [src/cn_compiler/driver/driver_module.cpp:465] ≈restorePackageContext — `if (!isMember) return true;` — 形态=同行 if-miss-return；默认值=true；返回类型≈bool；哨兵值 true + 返回类型≈bool（错误传播惯习·非默认值面·人判抽检）
+- [src/cn_compiler/ir/ir_call_args.cpp:235] ≈IRGenerator::argIsOwnedStringTemp — `if (arg == nullptr || semantic_ == nullptr) return false;` — 形态=同行 if-miss-return；默认值=false；返回类型≈bool；哨兵值 false + 返回类型≈bool（错误传播惯习·非默认值面·人判抽检）
+- [src/cn_compiler/ir/ir_error_ctor.cpp:30] ≈IRGenerator::handleResultCtor — `if (semantic_ == nullptr || function_ == nullptr) return false;` — 形态=同行 if-miss-return；默认值=false；返回类型≈bool；哨兵值 false + 返回类型≈bool（错误传播惯习·非默认值面·人判抽检）
+- [src/cn_compiler/ir/ir_error_ctor.cpp:40] ≈IRGenerator::handleResultCtor — `if (!resolveResultCtorTargetType(node, name, structName, valueType)) { │ return ` — 形态=下行 if-miss-return；默认值=false；返回类型≈bool；哨兵值 false + 返回类型≈bool（错误传播惯习·非默认值面·人判抽检）
+- [src/cn_compiler/ir/ir_error_ctor.cpp:51] ≈IRGenerator::handleResultCtor — `if (decl == nullptr) return false;` — 形态=同行 if-miss-return；默认值=false；返回类型≈bool；哨兵值 false + 返回类型≈bool（错误传播惯习·非默认值面·人判抽检）
+- [src/cn_compiler/ir/ir_error_ctor.cpp:188] ≈IRGenerator::resolveResultCtorTargetType — `if (function_ == nullptr || function_->returnTypeSrc.empty()) return false;` — 形态=同行 if-miss-return；默认值=false；返回类型≈bool；哨兵值 false + 返回类型≈bool（错误传播惯习·非默认值面·人判抽检）
+- [src/cn_compiler/ir/ir_error_ctor.cpp:214] ≈IRGenerator::resolveResultCtorTargetType — `if (t.empty()) return false;` — 形态=同行 if-miss-return；默认值=false；返回类型≈bool；哨兵值 false + 返回类型≈bool（错误传播惯习·非默认值面·人判抽检）
+- [src/cn_compiler/ir/ir_expr.cpp:354] ≈IRGenerator::isStringTypedExpr — `if (node == nullptr) return false;` — 形态=同行 if-miss-return；默认值=false；返回类型≈bool；哨兵值 false + 返回类型≈bool（错误传播惯习·非默认值面·人判抽检）
+- [src/cn_compiler/ir/ir_expr.cpp:482] ≈IRGenerator::genStringCompareBinary — `if (!isCmp) return false;` — 形态=同行 if-miss-return；默认值=false；返回类型≈bool；哨兵值 false + 返回类型≈bool（错误传播惯习·非默认值面·人判抽检）
+- [src/cn_compiler/ir/ir_expr.cpp:484] ≈IRGenerator::genStringCompareBinary — `if (!isStringTypedExpr(node->left.get()) || !isStringTypedExpr(node->right.get()` — 形态=下行 if-miss-return；默认值=false；返回类型≈bool；哨兵值 false + 返回类型≈bool（错误传播惯习·非默认值面·人判抽检）
+- [src/cn_compiler/ir/ir_expr_assign.cpp:94] ≈IRGenerator::memberStructLiteralAssign — `if (!fieldStruct.empty() && semantic_->isStructType(fieldStruct)) { │ return tru` — 形态=下行 if-miss-return；默认值=true；返回类型≈bool；哨兵值 true + 返回类型≈bool（错误传播惯习·非默认值面·人判抽检）
+- [src/cn_compiler/ir/ir_expr_assign.cpp:378] ≈IRGenerator::memberClassCallProductAssign — `if (semantic_ == nullptr || valueExpr == nullptr) return false;` — 形态=同行 if-miss-return；默认值=false；返回类型≈bool；哨兵值 false + 返回类型≈bool（错误传播惯习·非默认值面·人判抽检）
+- [src/cn_compiler/ir/ir_expr_assign_ident.cpp:380] ≈IRGenerator::globalStaticClassTransferAssign — `if (semantic_ == nullptr || isCompoundAssignOp(node->op)) return false;` — 形态=同行 if-miss-return；默认值=false；返回类型≈bool；哨兵值 false + 返回类型≈bool（错误传播惯习·非默认值面·人判抽检）
+- [src/cn_compiler/ir/ir_expr_assign_ident.cpp:382] ≈IRGenerator::globalStaticClassTransferAssign — `if (!semantic_->isClassType(canonTarget)) return false;` — 形态=同行 if-miss-return；默认值=false；返回类型≈bool；哨兵值 false + 返回类型≈bool（错误传播惯习·非默认值面·人判抽检）
+- [src/cn_compiler/ir/ir_expr_assign_ident.cpp:506] ≈IRGenerator::identifierStructWholeAssign — `if (semantic_ == nullptr) return false;` — 形态=同行 if-miss-return；默认值=false；返回类型≈bool；哨兵值 false + 返回类型≈bool（错误传播惯习·非默认值面·人判抽检）
+- [src/cn_compiler/ir/ir_expr_assign_ident.cpp:783] ≈IRGenerator::identifierClassTransferAssign — `if (semantic_ == nullptr || targetType != "ptr" || isCompoundAssignOp(node->op))` — 形态=下行 if-miss-return；默认值=false；返回类型≈bool；哨兵值 false + 返回类型≈bool（错误传播惯习·非默认值面·人判抽检）
+- [src/cn_compiler/ir/ir_expr_assign_ident.cpp:793] ≈IRGenerator::identifierClassTransferAssign — `if (!srcUnique.empty() && srcUnique == unique) return false;` — 形态=同行 if-miss-return；默认值=false；返回类型≈bool；哨兵值 false + 返回类型≈bool（错误传播惯习·非默认值面·人判抽检）
+- [src/cn_compiler/ir/ir_expr_assign_ident.cpp:795] ≈IRGenerator::identifierClassTransferAssign — `if (!semantic_->isClassType(canonTarget)) return false;` — 形态=同行 if-miss-return；默认值=false；返回类型≈bool；哨兵值 false + 返回类型≈bool（错误传播惯习·非默认值面·人判抽检）
+- [src/cn_compiler/ir/ir_expr_assign_ident_class.cpp:136] ≈IRGenerator::identifierRefReturnClassCopyAssign — `if (semantic_ == nullptr || unique.empty() || isCompoundAssignOp(node->op)) { │ ` — 形态=下行 if-miss-return；默认值=false；返回类型≈bool；哨兵值 false + 返回类型≈bool（错误传播惯习·非默认值面·人判抽检）
+- [src/cn_compiler/ir/ir_expr_assign_ident_class.cpp:143] ≈IRGenerator::identifierRefReturnClassCopyAssign — `if (!isRefReturnClassValueCall(call, canonTarget)) return false;` — 形态=同行 if-miss-return；默认值=false；返回类型≈bool；哨兵值 false + 返回类型≈bool（错误传播惯习·非默认值面·人判抽检）
+- [src/cn_compiler/ir/ir_expr_assign_ident_class.cpp:145] ≈IRGenerator::identifierRefReturnClassCopyAssign — `if (ci == nullptr || ci->totalSize <= 0) return false;` — 形态=同行 if-miss-return；默认值=false；返回类型≈bool；哨兵值 false + 返回类型≈bool（错误传播惯习·非默认值面·人判抽检）
+- [src/cn_compiler/ir/ir_expr_assign_ident_class.cpp:148] ≈IRGenerator::identifierRefReturnClassCopyAssign — `if (newObj.id < 0) return false;` — 形态=同行 if-miss-return；默认值=false；返回类型≈bool；留痕=防御(留痕词)@148；哨兵值 false + 返回类型≈bool（错误传播惯习·非默认值面·人判抽检）
+- [src/cn_compiler/ir/ir_expr_assign_ident_class.cpp:203] ≈IRGenerator::isClassOverloadProductRhs — `if (semantic_ == nullptr || node == nullptr || node->value == nullptr) { │ retur` — 形态=下行 if-miss-return；默认值=false；返回类型≈bool；哨兵值 false + 返回类型≈bool（错误传播惯习·非默认值面·人判抽检）
+- [src/cn_compiler/ir/ir_expr_assign_ident_class.cpp:206] ≈IRGenerator::isClassOverloadProductRhs — `if (!semantic_->isClassType(canonTarget)) return false;` — 形态=同行 if-miss-return；默认值=false；返回类型≈bool；哨兵值 false + 返回类型≈bool（错误传播惯习·非默认值面·人判抽检）
+- [src/cn_compiler/ir/ir_expr_assign_ident_class.cpp:212] ≈IRGenerator::isClassOverloadProductRhs — `if (canonValue.empty() || canonValue != canonTarget) return false;` — 形态=同行 if-miss-return；默认值=false；返回类型≈bool；哨兵值 false + 返回类型≈bool（错误传播惯习·非默认值面·人判抽检）
+- [src/cn_compiler/ir/ir_expr_assign_ident_class.cpp:217] ≈IRGenerator::isClassOverloadProductRhs — `if (opSym.empty()) return false;` — 形态=同行 if-miss-return；默认值=false；返回类型≈bool；哨兵值 false + 返回类型≈bool（错误传播惯习·非默认值面·人判抽检）
+- [src/cn_compiler/ir/ir_expr_assign_ident_class.cpp:236] ≈IRGenerator::identifierClassOverloadProductAssign — `if (semantic_ == nullptr || unique.empty() || isCompoundAssignOp(node->op)) { │ ` — 形态=下行 if-miss-return；默认值=false；返回类型≈bool；哨兵值 false + 返回类型≈bool（错误传播惯习·非默认值面·人判抽检）
+- [src/cn_compiler/ir/ir_expr_assign_ident_class.cpp:240] ≈IRGenerator::identifierClassOverloadProductAssign — `if (!isClassOverloadProductRhs(node, canonTarget)) return false;` — 形态=同行 if-miss-return；默认值=false；返回类型≈bool；哨兵值 false + 返回类型≈bool（错误传播惯习·非默认值面·人判抽检）
+- [src/cn_compiler/ir/ir_expr_assign_ident_class.cpp:264] ≈IRGenerator::globalStaticClassOverloadProductAssign — `if (semantic_ == nullptr || isCompoundAssignOp(node->op)) return false;` — 形态=同行 if-miss-return；默认值=false；返回类型≈bool；哨兵值 false + 返回类型≈bool（错误传播惯习·非默认值面·人判抽检）
+- [src/cn_compiler/ir/ir_expr_assign_ident_class.cpp:266] ≈IRGenerator::globalStaticClassOverloadProductAssign — `if (!isClassOverloadProductRhs(node, canonTarget)) return false;` — 形态=同行 if-miss-return；默认值=false；返回类型≈bool；哨兵值 false + 返回类型≈bool（错误传播惯习·非默认值面·人判抽检）
+- [src/cn_compiler/ir/ir_expr_assign_ident_class.cpp:296] ≈IRGenerator::identifierClassCallProductAssign — `if (semantic_ == nullptr || unique.empty() || isCompoundAssignOp(node->op)) { │ ` — 形态=下行 if-miss-return；默认值=false；返回类型≈bool；哨兵值 false + 返回类型≈bool（错误传播惯习·非默认值面·人判抽检）
+- [src/cn_compiler/ir/ir_expr_assign_ident_class.cpp:304] ≈IRGenerator::identifierClassCallProductAssign — `if (!semantic_->isClassType(canonTarget)) return false;` — 形态=同行 if-miss-return；默认值=false；返回类型≈bool；哨兵值 false + 返回类型≈bool（错误传播惯习·非默认值面·人判抽检）
+- [src/cn_compiler/ir/ir_expr_assign_ident_class.cpp:347] ≈IRGenerator::globalStaticClassCallProductAssign — `if (semantic_ == nullptr || isCompoundAssignOp(node->op)) return false;` — 形态=同行 if-miss-return；默认值=false；返回类型≈bool；哨兵值 false + 返回类型≈bool（错误传播惯习·非默认值面·人判抽检）
+- [src/cn_compiler/ir/ir_expr_assign_ident_class.cpp:353] ≈IRGenerator::globalStaticClassCallProductAssign — `if (!semantic_->isClassType(canonTarget)) return false;` — 形态=同行 if-miss-return；默认值=false；返回类型≈bool；哨兵值 false + 返回类型≈bool（错误传播惯习·非默认值面·人判抽检）
+- [src/cn_compiler/ir/ir_expr_concat.cpp:184] ≈IRGenerator::chainStringOperand — `if (node == nullptr) return false;` — 形态=同行 if-miss-return；默认值=false；返回类型≈bool；哨兵值 false + 返回类型≈bool（错误传播惯习·非默认值面·人判抽检）
+- [src/cn_compiler/ir/ir_expr_concat.cpp:245] ≈IRGenerator::chainSegOwnedTemp — `if (segAst == nullptr) return false;` — 形态=同行 if-miss-return；默认值=false；返回类型≈bool；哨兵值 false + 返回类型≈bool（错误传播惯习·非默认值面·人判抽检）
+- [src/cn_compiler/ir/ir_expr_concat.cpp:313] ≈IRGenerator::genStringConcatChain — `if (node == nullptr || node->op != Operator::Add) return false;` — 形态=同行 if-miss-return；默认值=false；返回类型≈bool；哨兵值 false + 返回类型≈bool（错误传播惯习·非默认值面·人判抽检）
+- [src/cn_compiler/ir/ir_expr_concat.cpp:314] ≈IRGenerator::genStringConcatChain — `if (!chainStringOperand(node->left.get())) return false;` — 形态=同行 if-miss-return；默认值=false；返回类型≈bool；哨兵值 false + 返回类型≈bool（错误传播惯习·非默认值面·人判抽检）
+- [src/cn_compiler/ir/ir_expr_member.cpp:20] ≈isCopyBuiltinCall — `if (node == nullptr || node->getType() != NodeType::CallExpr) return false;` — 形态=同行 if-miss-return；默认值=false；返回类型≈bool；哨兵值 false + 返回类型≈bool（错误传播惯习·非默认值面·人判抽检）
+- [src/cn_compiler/ir/ir_expr_member.cpp:49] ≈IRGenerator::structWholeAssignSrcFirst — `if (semantic_ == nullptr || targetExpr == nullptr || valueNode == nullptr) { │ r` — 形态=下行 if-miss-return；默认值=false；返回类型≈bool；哨兵值 false + 返回类型≈bool（错误传播惯习·非默认值面·人判抽检）
+- [src/cn_compiler/ir/ir_expr_member.cpp:59] ≈IRGenerator::structWholeAssignSrcFirst — `if (!semantic_->isStructType(dstElemCanon)) return false;` — 形态=同行 if-miss-return；默认值=false；返回类型≈bool；哨兵值 false + 返回类型≈bool（错误传播惯习·非默认值面·人判抽检）
+- [src/cn_compiler/ir/ir_expr_member.cpp:63] ≈IRGenerator::structWholeAssignSrcFirst — `if (srcAddr.id < 0) { │ return true;` — 形态=下行 if-miss-return；默认值=true；返回类型≈bool；哨兵值 true + 返回类型≈bool（错误传播惯习·非默认值面·人判抽检）
+- [src/cn_compiler/ir/ir_expr_member.cpp:82] ≈IRGenerator::structWholeAssignSrcFirst — `if (semantic_ == nullptr) return false;` — 形态=同行 if-miss-return；默认值=false；返回类型≈bool；哨兵值 false + 返回类型≈bool（错误传播惯习·非默认值面·人判抽检）
+- [src/cn_compiler/ir/ir_fields.cpp:222] ≈IRGenerator::isOwnedFieldSlot — `if (unique.empty()) return false;` — 形态=同行 if-miss-return；默认值=false；返回类型≈bool；哨兵值 false + 返回类型≈bool（错误传播惯习·非默认值面·人判抽检）
+- [src/cn_compiler/ir/ir_fields.cpp:324] ≈IRGenerator::genOwnedAggregateReturn — `if (value == nullptr || semantic_ == nullptr || function_ == nullptr) return fal` — 形态=同行 if-miss-return；默认值=false；返回类型≈bool；哨兵值 false + 返回类型≈bool（错误传播惯习·非默认值面·人判抽检）
+- [src/cn_compiler/ir/ir_fields.cpp:325] ≈IRGenerator::genOwnedAggregateReturn — `if (!function_->structReturn || function_->structReturnSize <= 0) return false;` — 形态=同行 if-miss-return；默认值=false；返回类型≈bool；哨兵值 false + 返回类型≈bool（错误传播惯习·非默认值面·人判抽检）
+- [src/cn_compiler/ir/ir_fields.cpp:327] ≈IRGenerator::genOwnedAggregateReturn — `if (ownedStrFieldsOf(retCanon).empty()) return false;` — 形态=同行 if-miss-return；默认值=false；返回类型≈bool；哨兵值 false + 返回类型≈bool（错误传播惯习·非默认值面·人判抽检）
+- [src/cn_compiler/ir/ir_fields.cpp:328] ≈IRGenerator::genOwnedAggregateReturn — `if (!isBorrowedAggregateSource(value)) return false;` — 形态=同行 if-miss-return；默认值=false；返回类型≈bool；哨兵值 false + 返回类型≈bool（错误传播惯习·非默认值面·人判抽检）
+- [src/cn_compiler/ir/ir_oop.cpp:691] ≈IRGenerator::isContainerElementView — `if (init == nullptr || init->getType() != NodeType::CallExpr) return false;` — 形态=同行 if-miss-return；默认值=false；返回类型≈bool；哨兵值 false + 返回类型≈bool（错误传播惯习·非默认值面·人判抽检）
+- [src/cn_compiler/ir/ir_oop_call.cpp:102] ≈IRGenerator::isOwnedStringSlot — `if (unique.empty()) return false;` — 形态=同行 if-miss-return；默认值=false；返回类型≈bool；哨兵值 false + 返回类型≈bool（错误传播惯习·非默认值面·人判抽检）
+- [src/cn_compiler/ir/ir_oop_call.cpp:242] ≈refReturnAggInline — `if (sem == nullptr || m == nullptr || m->type.empty()) return false;` — 形态=同行 if-miss-return；默认值=false；返回类型≈bool；哨兵值 false + 返回类型≈bool（错误传播惯习·非默认值面·人判抽检）
+- [src/cn_compiler/ir/ir_oop_call.cpp:255] ≈findClassMethod — `if (semantic == nullptr) return nullptr;` — 形态=同行 if-miss-return；默认值=nullptr；返回类型≈ClassMemberInfo*；哨兵值 nullptr + 返回类型≈ClassMemberInfo*（错误传播惯习·非默认值面·人判抽检）
+- [src/cn_compiler/ir/ir_oop_call.cpp:262] ≈IRGenerator::handleClassCallExpr — `if (semantic_ == nullptr) return false;` — 形态=同行 if-miss-return；默认值=false；返回类型≈bool；哨兵值 false + 返回类型≈bool（错误传播惯习·非默认值面·人判抽检）
+- [src/cn_compiler/ir/ir_oop_call.cpp:288] ≈IRGenerator::emitConstructorCall — `if (ci == nullptr) return false;` — 形态=同行 if-miss-return；默认值=false；返回类型≈bool；留痕=防御(留痕词)@289；哨兵值 false + 返回类型≈bool（错误传播惯习·非默认值面·人判抽检）
+- [src/cn_compiler/ir/ir_oop_call.cpp:828] ≈IRGenerator::handleOperatorOverload — `if (semantic_ == nullptr) return false;` — 形态=同行 if-miss-return；默认值=false；返回类型≈bool；哨兵值 false + 返回类型≈bool（错误传播惯习·非默认值面·人判抽检）
+- [src/cn_compiler/ir/ir_oop_call.cpp:830] ≈IRGenerator::handleOperatorOverload — `if (opSym.empty()) return false;` — 形态=同行 if-miss-return；默认值=false；返回类型≈bool；哨兵值 false + 返回类型≈bool（错误传播惯习·非默认值面·人判抽检）
+- [src/cn_compiler/ir/ir_oop_call.cpp:833] ≈IRGenerator::handleOperatorOverload — `if (!semantic_->isClassType(canonLeft)) return false;` — 形态=同行 if-miss-return；默认值=false；返回类型≈bool；哨兵值 false + 返回类型≈bool（错误传播惯习·非默认值面·人判抽检）
+- [src/cn_compiler/ir/ir_oop_call.cpp:838] ≈IRGenerator::handleOperatorOverload — `if (m == nullptr) return false;` — 形态=同行 if-miss-return；默认值=false；返回类型≈bool；哨兵值 false + 返回类型≈bool（错误传播惯习·非默认值面·人判抽检）
+- …（其余 234 条用 --json 取全量）
+
+## 清偿批次规划建议
+
+1. 本清单=机械初筛池，非缺陷定论；清偿=逐处人判三选一（报内部错误诊断/显式哨兵+强制检查/穷举断言），合法面登记 `scripts/miss_registry.json`。
+2. 批次序建议：按上「高嫌疑目录分布」逐目录成批（ir/ 与 semantic/ 优先——852/648 已清面同簇，逐条核消费点防重复清偿）；runtime/ 面属 FFI 契约（大概率批量登记为运行时API 豁免·核边界注释齐备性）。
+3. 与 #891（v2 侧）合流：两侧清洗完成后各跑一次本工具与 891 扫描器，按「文件/行/函数/档/理由/登记」六字段归并成双侧完成度总表。
+4. 本轮止于「工具+清单」——存量逐条裁决与清偿是后续批次；登记表条目为示范 5 条（911 矛盾面=误报照留痕），防「一次性全部登记」的账目灌水。
+
