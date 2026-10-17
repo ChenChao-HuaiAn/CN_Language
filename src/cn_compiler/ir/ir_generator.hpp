@@ -354,8 +354,7 @@ private:
     void collectCtorDefaults(const std::string& className, const ClassMemberInfo& mi);
     // 762：visitProgram 预收集自由函数尾部默认参数值（调用点先于定义查表 miss→静默不补实录治； 原收集点保留幂等兜底·D23 构造预收集同款）。
     void collectFreeFunctionDefaults(FunctionDecl* node);
-    // D23 根治（248-a）：签名 -> 参数总数（含默认参数）——构造（emitClassMethod）
-    //   不入 functions_，funcParamTypesOf 查空时补缺点以「given+defaults 数」回退
+    // D23 根治（248-a）：签名 -> 参数总数（含默认参数）——构造（emitClassMethod）不入 functions_，funcParamTypesOf 查空时补缺点以「given+defaults 数」回退
     std::unordered_map<std::string, std::size_t> funcDefaultTotal_;
     // 当前调用待补全的默认实参（visitCallExpr 收集后追加到 args）
     std::vector<ir::IRValue> defaultArgValues_;
@@ -430,8 +429,7 @@ private:
     //   lambda 清掉先前登记=首个调用退化 432 蹦床通道·语义等价合法面），本集与 clear 无关地记住「该名是 lambda 变量」——间接调用尾据此区分「蹦床通道
     //   合法面」（不报）与「真全域 miss」（报 #655 诊断）。816 扩=拷贝传递登记。
     std::unordered_set<std::string> lambdaVarNames_;
-    // 变量作用域栈（BlockStmt 进入压栈/退出弹栈，支持同名遮蔽）。 每个条目：源码名 -> VarEntry（寄存器ID/唯一内部名/IR类型/源码类型等·
-    //   865 外迁见 ir_generator_types.hpp）
+    // 变量作用域栈（BlockStmt 进入压栈/退出弹栈，支持同名遮蔽）。 每个条目：源码名 -> VarEntry（寄存器ID/唯一内部名/IR类型/源码类型等·865 外迁见 ir_generator_types.hpp）
     std::vector<std::unordered_map<std::string, VarEntry>> varStack_;
     // 320-a（T41 写面完备）：查找最近作用域的变量条目（含 isStaticLocal 标志）——
     //   静态局部无栈槽（regId 恒 -1，lookupVar 结果与 slot.id>=0 写回守卫均取不到），
@@ -453,8 +451,7 @@ private:
     // 推导成员表达式的"字段源码类型"（宿主缺陷1'根治 2026-09-02）：
     //   对象类型经 memberObjStructType 解析后，结构体查 StructDecl 字段、
     std::string memberFieldSrcType(MemberExpr* node) const;
-    // 推导「callee 表达式是函数指针」时的形参类型列表（337-a·T53 家系）：
-    //   被调者形态=标识符（局部变量/函数指针参数/全局）→ lookupSrcType；
+    // 推导「callee 表达式是函数指针」时的形参类型列表（337-a·T53 家系）：被调者形态=标识符（局部变量/函数指针参数/全局）→ lookupSrcType；
     std::vector<std::string> funcPtrParamsOfCallee(Expr* callee) const;
     // 推导「callee 表达式是函数指针」时的规范化源码类型串（485·337-a 同族
     //   提炼）：被调者形态同 funcPtrParamsOfCallee（标识符→lookupSrcType、
@@ -465,8 +462,7 @@ private:
     // 指针算术步进（字节）：普通指针8；结构体指针 = 结构体总大小（Task 2.7 修复）
     std::int64_t ptrElemStride(const std::string& srcType) const;
     // 推导"指针值表达式"的所指源码类型（供解引用 * 用，Task 审查修复）：
-    //   标识符指针变量 / 指针算术（p+1，递归指针侧）/ 取地址（&x 递归 operand）。
-    //   返回所指元素源码类型（如 整32* -> 整32）；无法推导返回空串。
+    //   标识符指针变量 / 指针算术（p+1，递归指针侧）/ 取地址（&x 递归 operand）。返回所指元素源码类型（如 整32* -> 整32）；无法推导返回空串。
     std::string pointerPointeeSrcType(Expr* node) const;
     // 循环控制流：中断/继续跳转目标栈（条目 LoopContext·865 外迁见 ir_generator_types.hpp）
     std::vector<LoopContext> loopStack_;
@@ -596,8 +592,7 @@ private:
     // 85-a：返回值「借用来源」判定（聚合返回位所有权保证用）——返回类型含拥有型
     //   串字段时，返回值的句柄必须归调用方所有（调用方各接收位一律按 owned
     bool isBorrowedAggregateSource(const Expr* e) const;
-    // 85-a：聚合返回位所有权保证发射（借用来源 → 物化独立副本并返回其地址）。
-    //   调用点 ir_stmt.cpp visitReturnStmt：true 时调用方 endReturn(srcAddr)。
+    // 85-a：聚合返回位所有权保证发射（借用来源 → 物化独立副本并返回其地址）。调用点 ir_stmt.cpp visitReturnStmt：true 时调用方 endReturn(srcAddr)。
     bool genOwnedAggregateReturn(Expr* value, const SourceLocation& loc, std::string& srcAddr);
 
     // ---- 74-a（2026-09-11 第七十四轮）：容器元素所有权归一化 ----
@@ -617,8 +612,7 @@ private:
     // 槽是否为本函数拥有串局部（ownedStringOrder_ ∩ 非污染）——转移() 真 move 判据
     bool isOwnedStringSlot(const std::string& unique, const std::string& srcName) const;
     // 发射容器元素串释放（单点事实源：flat 模型传 数据/元素数量；链式模型传
-    //   值表/下一索引/头索引/元素数量）——三处释放路径（函数级兜底/块出口/跳出）
-    //   共用，避免各写一份字段偏移（plans/020 移植纪律 8「释放路径两侧对照」）。
+    //   值表/下一索引/头索引/元素数量）——三处释放路径（函数级兜底/块出口/跳出）共用，避免各写一份字段偏移（plans/020 移植纪律 8「释放路径两侧对照」）。
     void emitContainerElemFreeFor(const std::string& canonClass, const ir::IRValue& objPtr,
                                   const SourceLocation& loc);
     // ---- 81-a（第八十一轮）：容器元素=含拥有型串字段结构体 ----
@@ -845,8 +839,7 @@ private:
     // 类字段左值地址（lvalueAddress 钩子）：返回 实例字段地址（this+偏移）或静态字段符号
     bool handleClassMemberLvalue(MemberExpr* node, ir::IRValue& outAddr);
     // 622（2026-10-14）：类成员访问对象指针生成——显式解引用对象（(*类指针).字段）
-    //   基址=指针值本身（lvalueAddress 对 *p 产指针值）；普通对象（类变量/自身）
-    //   基址=genExpr（指针槽模型读槽=对象指针）。读/左值/方法 this 三消费点共用。
+    //   基址=指针值本身（lvalueAddress 对 *p 产指针值）；普通对象（类变量/自身）基址=genExpr（指针槽模型读槽=对象指针）。读/左值/方法 this 三消费点共用。
     ir::IRValue classMemberBasePtr(Expr* object);
     // 类字段赋值（visitAssignmentExpr 钩子）：对象.字段 = v / 类名.静态字段 = v
     bool handleClassMemberAssign(MemberExpr* target, Expr* valueExpr,
@@ -951,8 +944,7 @@ private:
     bool handleUnaryOperatorOverload(UnaryExpr* node, const ir::IRValue& operand);
     // 名称是否为当前类的实例字段（非静态方法内、未被局部变量/参数遮蔽）
     bool isInstanceField(const std::string& name) const;
-    // 内置构造器降级（visitCallExpr 钩子，Task 3.5）：正常(值)/错误(值)/某些(值)
-    //   -> 分配结果/可选合成结构体临时槽 + 写 是否正常/是否某些 + 值/错误值，
+    // 内置构造器降级（visitCallExpr 钩子，Task 3.5）：正常(值)/错误(值)/某些(值)-> 分配结果/可选合成结构体临时槽 + 写 是否正常/是否某些 + 值/错误值，
     //   返回结构体地址（ptr）。返回 true 表示已处理（lastExpr_ 已设置）。
     bool handleResultCtor(CallExpr* node);
     // 209-a（D1 行数整改）：handleResultCtor 拆分的两个族方法（宿主纯重构零行为变更）。
