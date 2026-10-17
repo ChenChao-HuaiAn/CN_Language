@@ -538,7 +538,7 @@ void cnStrbufInvalidHandle(const char* op) {
 //   always_inline/__forceinline 强制内联消除每次追加的函数调用税。
 #if defined(_MSC_VER)
 #define CN_STRBUF_HOT __forceinline
-#else
+#else   // 静默豁免闭集穷举: 编译器闭集（MSC/非MSC）热属性宏二分支
 #define CN_STRBUF_HOT inline __attribute__((always_inline))
 #endif
 CN_STRBUF_HOT CnStrbufSlot* cnStrbufResolve(void* h, const char* op) {
@@ -575,7 +575,7 @@ CnStrbufTakeResult cnStrbufTakeSlotLocked() {
     CnStrbufSlot* s = t.freeHead;
     if (s != nullptr) {
         t.freeHead = s->nextFree;   // 重发已终结槽（代际在下方统一 +1）
-    } else {
+} else {   // 静默豁免业务值: 空闲链空→惰性建块；槽耗尽走确定性失败（不静默）
         if (t.nextSlot >= kStrbufMaxSlots) {
             std::fprintf(stderr, "[cnrt] 字符串构建器槽表耗尽（%llu 个句柄未收尾）\n",
                          kStrbufMaxSlots);
@@ -628,7 +628,7 @@ char* cnStrbufRetireSlot(CnStrbufSlot* s) {
 // 新建：分配缓冲（失败=返回 0 空句柄·原语义）+ 发放槽（锁内与填充原子化）
 extern "C" void* __cn_strbuf_new() {
     char* buf = static_cast<char*>(std::malloc(kStrbufInitCap));
-    if (buf == nullptr) return nullptr;   // 分配失败：既有空句柄哨兵面（见块头注）
+if (buf == nullptr) return nullptr;   // 静默豁免运行时API: malloc 失败=空句柄哨兵（既有契约·同 __cn_str_len 空指针面）
     buf[0] = 0;
     CnStrbufTable& t = *g_strbufTablePtr;
     unsigned long long handle = 0;
