@@ -240,3 +240,43 @@ TEST(StringApiExtraTest, FreeAfterConcat) {
     EXPECT_STREQ(r, "AB");
     __cn_str_free(r);
 }
+
+// ==================== 10. 字符串构建器（074 波2 五件套·#983 注入面） ====================
+// 说明：#983 扩容失败=确定性终止（错误码 4·不返回）——终止行为无法在 gtest 进程
+//   内验证（death test 项目无先例且 Windows 实现脆弱），由 E2E 双编译用例
+//   （注入钩子经 FFI 触发真终止）覆盖；本段锁定非终止面：正常路径零误伤 +
+//   注入计数器「读点在扩容分支内」（不扩容的追加不消耗额度·性能设计锁定）。
+
+// 正常路径：新建-追加-追加字节-完成（UTF-8 中文按整字符保留）
+TEST(StringApiExtraTest, StrbufNormalAppendFinish) {
+    void* h = __cn_strbuf_new();
+    ASSERT_NE(h, nullptr);
+    __cn_strbuf_append(h, "你好");
+    __cn_strbuf_append_char(h, '!');
+    char* s = __cn_strbuf_finish(h);
+    ASSERT_NE(s, nullptr);
+    EXPECT_STREQ(s, "你好!");
+    __cn_str_free(s);
+}
+
+// 正常路径：弃置（错误路径防泄漏·不出串）
+TEST(StringApiExtraTest, StrbufDrop) {
+    void* h = __cn_strbuf_new();
+    ASSERT_NE(h, nullptr);
+    __cn_strbuf_append(h, "中间态");
+    __cn_strbuf_drop(h);  // 不崩溃即通过
+}
+
+// #983 注入计数器：设置/恢复往返返回旧额度；不触发扩容的追加不消耗额度
+TEST(StringApiExtraTest, StrbufForceOomCounterUntouchedWithoutGrow) {
+    EXPECT_EQ(__cn_set_strbuf_force_oom_for_test(1), 0u);
+    void* h = __cn_strbuf_new();
+    ASSERT_NE(h, nullptr);
+    __cn_strbuf_append(h, "短");  // 3 字节 << 初始 64：不触发扩容 → 额度保留
+    const unsigned int leftover = __cn_set_strbuf_force_oom_for_test(0);
+    EXPECT_EQ(leftover, 1u);  // 未被消耗（读点在扩容分支内·不扩容的追加零开销）
+    char* s = __cn_strbuf_finish(h);
+    ASSERT_NE(s, nullptr);
+    EXPECT_STREQ(s, "短");
+    __cn_str_free(s);
+}

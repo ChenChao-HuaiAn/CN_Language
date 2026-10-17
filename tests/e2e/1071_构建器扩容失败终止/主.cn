@@ -1,0 +1,25 @@
+// E2E 1071（#983·2026-10-17·P1 安全面）：字符串构建器扩容 realloc 失败=确定性失败
+//   （原实现静默丢段继续——数据损坏静默传播·648「miss 不可静默」立法面）。
+//   病根：cnStrbufGrow2 realloc 失败=静默 return，调用点容量检查随即静默丢弃
+//   本段（构建器带残缺内容继续·完成出串缺段无任何信号）；#944 注释标注未改行为面。
+//   修后：失败终态收敛到唯一冷路径出口——stderr 定位行 + 「运行时错误(错误码4):
+//   内存分配失败」+ 退出码 1（001 §1.1a② 确定性失败；真 realloc 失败与此处测试
+//   注入同出口同输出）。注入钩子 __cn_set_strbuf_force_oom_for_test(1)=下一次
+//   扩容模拟失败（仅测试态设置·生产零激活·__cn_set_argv_for_test 同款先例）。
+//   健康对照（反态）：注入前先经真实扩容完成一整段（70 字节 > 初始 64）——
+//   扩容正常面零误伤 + 「确定性失败≠脏崩丢输出」（已缓冲输出必须保留）。
+//   预期失败。双编译对照：宿主+v2 同拒（rc=1 一致 + stdout 逐行一致·
+//   stderr 定位行不参与比对）。
+外部 函数 __cn_set_strbuf_force_oom_for_test(正32 次数) -> 空类型
+
+不安全 函数 主() -> 整32 {
+    整64 句甲 = 字符串构建器::新建();
+    字符串构建器::追加(句甲, "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");   // 70>63：触发真实扩容（64→128）并成功
+    字符串 甲 = 字符串构建器::完成(句甲);
+    打印(甲);                                   // 已缓冲输出（终止时须保留）
+    整64 句乙 = 字符串构建器::新建();
+    __cn_set_strbuf_force_oom_for_test(1);      // 注入：下一次扩容失败（与真 OOM 同出口）
+    字符串构建器::追加(句乙, "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB");   // 64 不够 70+1 → 扩容 → 错误码 4 终止
+    打印("不可达");
+    返回 0;
+}

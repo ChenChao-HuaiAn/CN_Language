@@ -90,6 +90,20 @@ extern "C" {
     CNRT_EXPORT double __cn_str_to_double(const char* str, int* ok);     // 字符串转浮点（字符串.转浮点，strtod 整串解析）
     CNRT_EXPORT long long __cn_str_to_bool(const char* str, int* ok);    // 字符串转布尔（字符串.转布尔，"真"/"假"/"true"/"false"）
 
+    // ---- 字符串构建器五件套（074 波2·Rust String::push_str 同款；CN 层限定名
+    //      字符串构建器::{新建/追加/追加字节/完成/弃置} 经 IR 符号映射到达）----
+    // 句柄=不透明整64（#944 代际槽表编码·internals 见 string_api.cpp 块头注）；
+    // 内存语义：完成=新分配串（字符串释放释放）+缓冲回收；句柄一次性。
+    // #983：扩容失败=确定性终止「运行时错误(错误码4): 内存分配失败」（不返回）。
+    CNRT_EXPORT void* __cn_strbuf_new();                       // 新建（分配失败=空句柄 0 哨兵）
+    CNRT_EXPORT void __cn_strbuf_append(void* h, const char* s);       // 追加段
+    CNRT_EXPORT void __cn_strbuf_append_char(void* h, long long c);    // 追加字节
+    CNRT_EXPORT char* __cn_strbuf_finish(void* h);                     // 完成（出串+终结句柄）
+    CNRT_EXPORT void __cn_strbuf_drop(void* h);                        // 弃置（错误路径防泄漏）
+    // 测试专用：强制扩容失败注入（仅测试态设置·0=未注入·返回旧额度；
+    //   __cn_set_argv_for_test 同款先例；#983 E2E 双编译用例经 FFI 调用）。
+    CNRT_EXPORT unsigned int __cn_set_strbuf_force_oom_for_test(unsigned int times);
+
     // 格式化（Task 2.9，规格书10.6）：sprintf 风格变参，返回动态分配字符串，调用方负责释放
     // 占位符：%d(整) %u(无符号) %f(浮点) %s(字符串) %c(字符) %x/%X(十六进制) %o(八进制) %p(指针)
     CNRT_EXPORT char* __cn_format(const char* fmt, ...);             // sprintf 风格格式化（动态分配）

@@ -436,6 +436,11 @@ extern "C" long long __cn_str_to_bool(const char* str, int* ok) {
 //   #944（2026-10-17）：句柄终态防护——完成/弃置后再收尾（或再追加）=确定性
 //   失败，根治 double free/UAF 段错误（p84c 探针四形态 rc=139 实录：完成后
 //   弃置/弃置后再弃置/完成后追加/完成后完成）。
+//   #983（2026-10-17）：扩容失败显形——原 cnStrbufGrow2 的 realloc 失败=静默
+//   return（调用点容量检查随即静默丢弃本段继续·数据损坏静默传播）；现=冷路径
+//   确定性终止「错误码 4: 内存分配失败」+ stderr 定位行（与 #944 句柄冷路径
+//   同款·648「miss 不可静默」三选一之①），并配套 __cn_set_strbuf_force_oom_
+//   for_test 测试注入（E2E 双编译用例锁定失败链路）。
 //
 // ---- 构建器句柄代际槽表（#944·2026-10-17·001 §1.1a② 确定性失败）----
 // 病根复现：原实现句柄=控制块裸指针，完成/弃置即 free 控制块与缓冲——对已
@@ -532,6 +537,16 @@ void cnStrbufInvalidHandle(const char* op) {
     __cn_runtime_error(6);   // 「运行时错误(错误码6): 无效参数」打印后终止（不返回）
 }
 
+// OOM 终止出口（打印后终止·不返回）：槽表耗尽/槽表块分配失败/扩容失败三处
+//   共用（重复形态「fprintf+fflush+错误码4」第 3 处出现前提炼·纪律二·#983）。
+//   detailFmt 为受控常量格式串（各调用点字面量·仅含单个 %llu 占位：
+//   字节数或句柄个数）；amount=对应数字。
+void cnStrbufOomAbort(const char* detailFmt, unsigned long long amount) {
+    std::fprintf(stderr, detailFmt, amount);
+    std::fflush(stderr);
+    __cn_runtime_error(4);   // 内存分配失败（不返回）
+}
+
 // 句柄解析（五入口首行·热路径）：有效→槽指针；null→nullptr（豁免面见块头注·
 //   调用方静默）；其余（终态/非法值）→ 冷路径确定性失败（不返回）
 //   #944 性能对拍：-O0 现实链（cn 内部 g++ -c 无 -O）连 inline 也不内联——
@@ -577,10 +592,8 @@ CnStrbufTakeResult cnStrbufTakeSlotLocked() {
         t.freeHead = s->nextFree;   // 重发已终结槽（代际在下方统一 +1）
 } else {   // 静默豁免业务值: 空闲链空→惰性建块；槽耗尽走确定性失败（不静默）
         if (t.nextSlot >= kStrbufMaxSlots) {
-            std::fprintf(stderr, "[cnrt] 字符串构建器槽表耗尽（%llu 个句柄未收尾）\n",
-                         kStrbufMaxSlots);
-            std::fflush(stderr);
-            __cn_runtime_error(4);    // 内存分配失败（不返回）
+            cnStrbufOomAbort("[cnrt] 字符串构建器槽表耗尽（%llu 个句柄未收尾）\n",
+                             kStrbufMaxSlots);
             return {nullptr, 0};      // 不可达
         }
         const unsigned long long idx = t.nextSlot;
@@ -589,10 +602,8 @@ CnStrbufTakeResult cnStrbufTakeSlotLocked() {
         if (blk == nullptr) {
             blk = static_cast<CnStrbufBlock*>(std::malloc(sizeof(CnStrbufBlock)));
             if (blk == nullptr) {
-                std::fprintf(stderr, "[cnrt] 字符串构建器槽表块分配失败（%llu 字节）\n",
-                             static_cast<unsigned long long>(sizeof(CnStrbufBlock)));
-                std::fflush(stderr);
-                __cn_runtime_error(4);    // 内存分配失败（不返回）
+                cnStrbufOomAbort("[cnrt] 字符串构建器槽表块分配失败（%llu 字节）\n",
+                                 static_cast<unsigned long long>(sizeof(CnStrbufBlock)));
                 return {nullptr, 0};      // 不可达
             }
             std::memset(blk, 0, sizeof(CnStrbufBlock));   // 全零=空缓冲/代际 0/空链
@@ -644,14 +655,44 @@ if (buf == nullptr) return nullptr;   // 静默豁免运行时API: malloc 失败
     return reinterpret_cast<void*>(static_cast<std::uintptr_t>(handle));
 }
 
+// 测试专用：强制扩容失败注入（__cn_set_argv_for_test 同款测试钩子先例；
+//   0=未注入）。仅测试态设置（E2E 双编译用例 #983 注入），生产不调用=零激活。
+//   读点在扩容分支内——不需要扩容的追加零新增开销（性能面）；每次触发消耗一次
+//   注入额度（次数用尽自动恢复真实 realloc 路径）。返回旧额度（测试可恢复现场）。
+static unsigned int g_strbufForceOomCount = 0;
+
+extern "C" unsigned int __cn_set_strbuf_force_oom_for_test(unsigned int times) {
+    const unsigned int old = g_strbufForceOomCount;
+    g_strbufForceOomCount = times;
+    return old;
+}
+
+// 扩容（#983 契约：返回即保证 b->cap >= b->len + need + 1；不足=冷路径确定性
+//   终止«错误码 4»·不返回）。原实现 realloc 失败静默 return=调用点容量检查随即
+//   静默丢弃本段继续——数据损坏静默传播（648 立法面·#944 注释标注未动）；
+//   本实现把失败终态收敛到唯一出口：真 realloc 失败与测试注入走同一终止函数。
+//   倍增循环写为局部 target 常量 + 回绕防护（doubled < nc：无符号回绕检测，
+//   理论不可达——到达该点需此前每次 2^n 字节 realloc 全部成功，物理地址空间
+//   不满足；防护仅闭合死循环面）。
 static void cnStrbufGrow2(CnStrbufSlot* b, std::size_t need) {
     if (b->len + need + 1 <= b->cap) return;
+    const std::size_t target = b->len + need + 1;
     std::size_t nc = b->cap;
-    while (nc < b->len + need + 1) nc *= 2;
+    while (nc < target) {
+        const std::size_t doubled = nc * 2;
+        if (doubled < nc) { nc = target; break; }   // 回绕防护（理论不可达·见头注）
+        nc = doubled;
+    }
+    if (g_strbufForceOomCount != 0) {
+        g_strbufForceOomCount -= 1;   // 测试注入：模拟 realloc 失败（同真失败出口）
+        cnStrbufOomAbort("[cnrt] 字符串构建器扩容失败（%llu 字节）\n",
+                         static_cast<unsigned long long>(nc));
+    }
     char* nb = static_cast<char*>(std::realloc(b->buf, nc));
-    // realloc 失败=静默丢段（既有全族 OOM 面·另案「分配失败显形」议题——本任务
-    //   只修终态防护，不扩行为面）
-    if (nb == nullptr) return;
+    if (nb == nullptr) {
+        cnStrbufOomAbort("[cnrt] 字符串构建器扩容失败（%llu 字节）\n",
+                         static_cast<unsigned long long>(nc));
+    }
     b->buf = nb;
     b->cap = nc;
 }
@@ -661,8 +702,7 @@ extern "C" void __cn_strbuf_append(void* h, const char* s) {
     if (b == nullptr) return;   // 空句柄豁免（见块头注）
     if (s == nullptr) s = "";
     const std::size_t n = std::strlen(s);
-    cnStrbufGrow2(b, n);
-    if (b->len + n + 1 > b->cap) return;
+    cnStrbufGrow2(b, n);   // 契约：返回即容量足够（不足=冷路径终止不返回）
     std::memcpy(b->buf + b->len, s, n);
     b->len += n;
     b->buf[b->len] = 0;
@@ -671,8 +711,7 @@ extern "C" void __cn_strbuf_append(void* h, const char* s) {
 extern "C" void __cn_strbuf_append_char(void* h, long long c) {
     CnStrbufSlot* b = cnStrbufResolve(h, "追加字节");
     if (b == nullptr) return;   // 空句柄豁免（见块头注）
-    cnStrbufGrow2(b, 1);
-    if (b->len + 2 > b->cap) return;
+    cnStrbufGrow2(b, 1);   // 契约：返回即容量足够（不足=冷路径终止不返回）
     b->buf[b->len] = static_cast<char>(c & 0xFF);
     b->len += 1;
     b->buf[b->len] = 0;
