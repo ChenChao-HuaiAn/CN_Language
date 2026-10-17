@@ -301,6 +301,8 @@ def 扫else块(相对: str, 掩: str, 原文: str, 行首表: list):
     红点 = []
     行们 = 原文.split("\n")
     for m in else模式.finditer(掩):
+        if m.start() > 0 and 掩[m.start() - 1] == "#":
+            continue                     # 预处理 #else/#endif 行（非语言层 else·969 实测盲区）
         j = m.end()
         限 = min(len(掩), j + 200)
         while j < 限 and 掩[j] in " \t\r\n":

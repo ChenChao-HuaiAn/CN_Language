@@ -305,6 +305,7 @@ static bool linkExe(const std::string& target, const std::string& vcvarsBat,
             "/DEFAULTLIB:libcmt.lib /DEFAULTLIB:libucrt.lib /DEFAULTLIB:kernel32.lib "
             "/DEFAULTLIB:shell32.lib "  // Task 6.5 系统库：CommandLineToArgvW（Unicode 命令行解析）
             "/OUT:\"" + exePath + "\" \"" + userObj + "\"";
+    // 静默豁免闭集穷举: win/linux 平台二分（isWinX64 闭集·另一平台命令行构建属正当分派·登记 miss_registry）
     } else {
         cmdLine = linuxCxxTool() + " -no-pie -o \"" + exePath + "\" \"" + userObj + "\"";
     }
@@ -319,6 +320,7 @@ static bool linkExe(const std::string& target, const std::string& vcvarsBat,
         for (const auto& lib : extraLibs) {
             cmdLine += " \"" + lib + "\"";
         }
+    // 静默豁免闭集穷举: win/linux 平台二分（isWinX64 闭集·另一平台命令行构建属正当分派·登记 miss_registry）
     } else {
         cmdLine += " -lpthread";
         for (const auto& lib : extraLibs) {
