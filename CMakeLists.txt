@@ -234,6 +234,10 @@ target_link_libraries(cn_compiler_semantic PUBLIC cn_compiler_model cn_compiler_
 #   ir_oop_op_overload.cpp（运算符重载族：operatorSymText/handleOperatorOverload/
 #   handleUnaryOperatorOverload 搬移零行为变更 + 936 聚合返回 retbuf 预插同族修复；
 #   声明仍在 ir_generator.hpp；findClassMethod/refReturnAggInline 上提为成员）
+# 861（>900 警戒线先拆再加）：ir_oop_field.cpp 1000 行触顶——按族拆出——
+#   ir_oop_field_assign.cpp（类字段写入族：handleClassFieldAssign +
+#   handleClassFieldIncDec 搬移零行为变更 + 861 静态段/复合段归一化补完；
+#   声明仍在 ir_generator.hpp）
 add_library(cn_compiler_ir STATIC
     src/cn_compiler/ir/ir.cpp
     src/cn_compiler/ir/ir_decl_extra.cpp
@@ -242,6 +246,7 @@ add_library(cn_compiler_ir STATIC
     src/cn_compiler/ir/ir_expr_unary.cpp
     src/cn_compiler/ir/ir_expr_assign.cpp
     src/cn_compiler/ir/ir_expr_assign_ident.cpp
+    src/cn_compiler/ir/ir_expr_assign_ident_string.cpp
     src/cn_compiler/ir/ir_expr_assign_ident_class.cpp
     src/cn_compiler/ir/ir_expr_index.cpp
     src/cn_compiler/ir/ir_expr_member.cpp
@@ -260,6 +265,7 @@ add_library(cn_compiler_ir STATIC
     src/cn_compiler/ir/ir_expr_type.cpp
     src/cn_compiler/ir/ir_oop_container.cpp
     src/cn_compiler/ir/ir_oop_field.cpp
+    src/cn_compiler/ir/ir_oop_field_assign.cpp
     src/cn_compiler/ir/ir_oop_call.cpp
     src/cn_compiler/ir/ir_oop_call_iface.cpp
     src/cn_compiler/ir/ir_oop_call_release.cpp

@@ -135,7 +135,7 @@
    "登记日": "2026-10-17"
   },
   {
-   "文件": "src/cn_compiler/ir/ir_expr_assign_ident.cpp",
+   "文件": "src/cn_compiler/ir/ir_expr_assign_ident_string.cpp",
    "函数": "identifierClassTransferAssign",
    "锚文本": "if (!isTransferCall(tr) || tr->arguments.empty())",
    "来源": "543",

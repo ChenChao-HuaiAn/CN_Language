@@ -9,6 +9,7 @@
 
 
 #include "cn_compiler/ir/ir.hpp"
+#include "cn_compiler/ir/ir_string_temp_util.hpp"
 #include "cn_compiler/model/semantic_view.hpp"
 #include "cn_compiler/model/type_system.hpp"
 
@@ -146,6 +147,18 @@ ir::IRValue IRGenerator::normalizeStringValueSource(Expr* arg,
         }
         if (ownRet) return value;
         return emitResult(ir::Opcode::Call, {value}, "ptr", "__cn_str_copy", loc);
+    }
+    // ⑥ 二元连接（+）产物=新堆串（拥有契约·无人别名）——直存接管（不复制）。
+    //   861（732 同口径·零分叉纪律）：判据=**定义点溯源** isConcatResultInst
+    //   （寄存器在块内倒序首条定义=__cn_str_concat/__cn_strbuf_finish——645/
+    //   663/732/758 链单一事实源，比较/指针算术/转换临时/变量 load 定义非该
+    //   符号集天然排除；v2 发射拥有串赋值②「节点_二元运算」同款语义）。原落
+    //   ⑤ 一律复制=拼接产物线程孤儿（每写入净泄 1 个中间串：探针 p9② 复合
+    //   赋值百轮泄 100 实录）。**不用 AST 类型判据**：方法内裸字段名不入
+    //   变量类型表（isStringTypedExpr 对 `字段 + 串` 左操作数盲判 false——
+    //   732 判据在本面不复核），IR 溯源对字段/变量/成员各形态统一命中。
+    if (value.type == "ptr" && isConcatResultInst(currentBlock_, value.id)) {
+        return value;
     }
     // ⑤ 标识符（拥有局部/形参/静态）与借出视图（成员/下标/解引用）——一律复制：
     //   拥有局部=值语义深拷贝（源照常拥有并释放）；借用来源=容器独立拥有
