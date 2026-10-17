@@ -603,17 +603,30 @@ void IRGenerator::genCommonTypeArithmetic(BinaryExpr* node, ir::IRValue& left,
         }
         return false;
     };
+    // 862（#862·001 §3.7a 285/788③「字面量形态（含带后缀）」）：285 拉窄的
+    //   字面量侧承载门——原为 `type == "i32"`（仅无后缀字面量），带后缀字面量
+    //   （L→i64/U→u32/UL→u64）与超 i32 域无后缀字面量（i64）漏网：`甲8+3e9L`
+    //   走混合提升宽算+存回截断（**无窄域溢出检查**——边界 甲127+3000000002L
+    //   静默输出 1；474 立法要求结果超操作数窄域即错误码 8=静默截断漏网根治）。
+    //   放宽为「≤64 位整数族字面量承载」：值面零变化（拉窄截断与宽算存回截断
+    //   模算术等价），仅补全窄域溢出检查面；与语义层 285 拉窄（isIntLiteralExpr
+    //   含任意后缀）+ v2 拉窄通道三口径归一。i128/u128（超 64 域 LL/ULL 物化
+    //   字面量）不在列——128 通道维持既有路径（另行登记）。
+    const auto isNarrowLitCarrier862 = [](const std::string& t) {
+        return t == "i32" || t == "i64" || t == "u32" || t == "u64" ||
+               t == "i8" || t == "i16" || t == "u8" || t == "u16";
+    };
     bool narrowResult377 = false;
     std::string narrowType377;
     if (!isFloat) {
         if (isNarrowIR377(left.type) && isNarrowIR377(right.type)) {
             narrowResult377 = true;
             narrowType377 = left.type;
-        } else if (isNarrowIR377(left.type) && right.type == "i32" &&
+        } else if (isNarrowIR377(left.type) && isNarrowLitCarrier862(right.type) &&
                    isIntLit377(node->right.get())) {
             narrowResult377 = true;
             narrowType377 = left.type;
-        } else if (isNarrowIR377(right.type) && left.type == "i32" &&
+        } else if (isNarrowIR377(right.type) && isNarrowLitCarrier862(left.type) &&
                    isIntLit377(node->left.get())) {
             narrowResult377 = true;
             narrowType377 = right.type;
