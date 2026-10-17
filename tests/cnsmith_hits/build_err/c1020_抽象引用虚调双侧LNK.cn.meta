@@ -1,0 +1,4 @@
+基线: 206080515
+轮: 1020
+类别: build_err
+说明: H1·宿主+v2 同点 LNK2019：抽象方法未映射虚语义（parser 只设 isAbstract 不设 isVirtual→assignVtable 过滤）→抽象静态类型引用调用生成直调纯虚符号 ?甲$f（m01）
