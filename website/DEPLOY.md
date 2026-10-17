@@ -39,7 +39,8 @@ www.cn-os.com   A   124.222.106.84
 `scripts/website_auto_deploy.py`）——浅克隆 develop → 比对已部署 sha → 有变化才在
 服务器侧跑 `website/tools/gen_docs.py` 重新生成 HTML（页脚含「文档基线：develop
 <short-sha>·<日期>·示例经编译器实测」标注）→ 暂存+换名原子发布 → 同步再生 stats.json。
-日志 `TX_01:~/cn_website_deploy.log`；已部署 sha 记录 `TX_01:~/cn_website_deployed_sha`；
+日志 `TX_01:~/cn_website_deploy.log`（脚本自记·cron 行只回收 stderr 防重复行）；
+已部署 sha 记录 `TX_01:~/cn_website_deployed_sha`；
 缓存仓 `TX_01:~/cn_website_repo`（与 website_stats 的 cn_stats_repo 分仓，防 git 锁互撞）。
 
 ```bash

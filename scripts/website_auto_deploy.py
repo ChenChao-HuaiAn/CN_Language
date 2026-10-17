@@ -15,8 +15,9 @@ website/ 有变化才「服务器侧重新生成 HTML + 原子发布」到 /var/
 生成失败/复制失败=现网目录一字未动；换名切换失败=旧目录回滚。日志
 ~/cn_website_deploy.log（仅状态变化/发布/失败登记·无变化不刷屏）。
 
-TX_01 部署：scp 本文件到 /home/ubuntu/ + crontab 每 10 分钟
-  */10 * * * * python3 /home/ubuntu/website_auto_deploy.py >> /home/ubuntu/cn_website_deploy.log 2>&1
+TX_01 部署：scp 本文件到 /home/ubuntu/ + crontab 每 10 分钟（脚本自记日志到
+~/cn_website_deploy.log——cron 只回收 stderr 追加防重复行，stdout 弃）：
+  */10 * * * * python3 /home/ubuntu/website_auto_deploy.py >/dev/null 2>>/home/ubuntu/cn_website_deploy.log
 
 用法：
   python3 website_auto_deploy.py                  # TX_01 正式跑（cron 同款）
