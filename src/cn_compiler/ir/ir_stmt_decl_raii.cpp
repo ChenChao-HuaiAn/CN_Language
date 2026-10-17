@@ -133,7 +133,20 @@ bool IRGenerator::callReceiverExempt880(VarDecl* node, const DeclGenCtx& ctx) {
                 !semantic_->isClassType(objCanon) && types::isPointer(objCanon)) {
                 objCanon = types::canonical(types::pointeeOf(objCanon));
             }
-            if (semantic_ != nullptr && !objCanon.empty() &&
+            // 879 回归根治（877-D2 实录）：**接收者=容器族排除**——容器方法
+            //   （元素/获取等）返回用户类元素=副本语义（plans/001 §052 甲快照），
+            //   接收槽=副本唯一拥有者须登记释放（宿主编译器 630「类类型接收不再
+            //   豁免析构」既有模型）；本判据只辖**用户类方法**（v2 是返回类调用
+            //   _544 的「是容器类(接文本)排除」同口径）。head 判据与
+            //   ir_stmt_decl_init.cpp isContainerFamily 同款（先例：633 容器面）。
+            const std::size_t dlObj = objCanon.find('$');
+            const std::string objHead = (dlObj == std::string::npos)
+                                            ? objCanon
+                                            : objCanon.substr(0, dlObj);
+            const bool objIsContainer880 =
+                objHead == "向量" || objHead == "栈" || objHead == "链表" ||
+                objHead == "队列" || objHead == "集合" || objHead == "映射";
+            if (semantic_ != nullptr && !objCanon.empty() && !objIsContainer880 &&
                 semantic_->isClassType(objCanon) && !ctx.srcType.empty() &&
                 semantic_->isClassType(types::canonical(ctx.srcType))) {
                 const bool cloneOrMoveCallM =
