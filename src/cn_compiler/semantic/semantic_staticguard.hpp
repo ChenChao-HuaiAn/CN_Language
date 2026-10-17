@@ -47,7 +47,26 @@ bool isStaticLocal(const std::string& name);
 //   其名；根非标识符（解引用/调用/字面量等）返回空串（不判定=责任留既有
 //   条款）。调用方联判：根名 ∈ 顶层静态/裸全局（宿主 isGlobalStatic）或
 //   函数内静态局部（isStaticLocal）→ 与变量名直写同规则拦截。
+//   （916 复用：方法调用接收者链 原点.桶.追加()/表[0].追加() 的根名解析——
+//   同一「沿 object 链下降至链首」语义，调用方传接收者表达式。）
 std::string writeTargetRootName(const Expr* target);
+
+// 916（791 派生·P1 安全面·001 §747-8 执法扩面）：容器写方法名白名单——
+//   「方法调用形态」的全局写执法判定用（接收者根对象∈可变全局集合 + 被调
+//   方法名∈本表 → 与 791 赋值链同规则拦截）。清单来源=stdlib/容器.cn +
+//   映射集合.cn 实际 API 逐一核对（「宁全勿漏」：写方法含内部注入挂点）。
+//   读方法（大小/容量/为空/读取/元素/元素引用/获取/包含/桶索引/栈顶/队首/
+//   头部元素/读取头部/读取尾部）不入表=不拦。v2 同构=语义检查赋值.cn
+//   是容器写方法916（零分叉·同表同序）。
+bool isContainerWriteMethod(const std::string& name);
+
+// 916：方法调用形态判定辅助——被调方法名∈写白名单 且 接收者链根名为
+//   标识符时返回根名（非空=形态命中）；否则空串。集合判定（根名∈顶层
+//   静态/裸全局/函数内静态局部）由调用方联判（宿主 isGlobalStatic+
+//   isStaticLocal 两查询源）。挂点=semantic_call.cpp 成员方法调用分派位
+//   （v2 检查调用表达式同构挂点·零分叉）。
+std::string containerWriteCallReceiverRoot(const Expr* receiver,
+                                           const std::string& methodName);
 
 } // namespace staticguard
 } // namespace cn_compiler

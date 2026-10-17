@@ -58,5 +58,35 @@ std::string writeTargetRootName(const Expr* target) {
     return "";
 }
 
+// 916（791 派生·P1 安全面）：容器写方法名白名单实现（契约见头文件）。
+//   清单=stdlib/容器.cn+映射集合.cn 写方法逐一核对（归属行注）：
+//     向量<T>：追加/插入/删除/设置/清空/预留/析构元素/析构被移除/移动元素
+//     链表<T>：追加/头部追加/删除头部/删除尾部/清空/取空闲槽/归还槽
+//     栈<T>：压入/弹出          队列<T>：入队/出队/清空/取空闲槽/归还槽
+//     映射/字符串映射：设置/删除/清空/释放内部数组/析构键值/析构值
+//     集合<T>：添加/删除/清空/析构被移除/移动元素/数组前移
+bool isContainerWriteMethod(const std::string& name) {
+    static const std::unordered_set<std::string> kContainerWriteMethods = {
+        "追加", "插入", "删除", "设置", "清空", "预留",
+        "析构元素", "析构被移除", "移动元素",
+        "头部追加", "删除头部", "删除尾部", "取空闲槽", "归还槽",
+        "压入", "弹出", "入队", "出队",
+        "释放内部数组", "析构键值", "析构值",
+        "添加", "数组前移",
+    };
+    return kContainerWriteMethods.count(name) > 0;
+}
+
+// 916：方法调用形态判定辅助实现（契约见头文件）——判定链=写白名单 ×
+//   接收者链根名解析（writeTargetRootName 复用·791 同源）；根非标识符
+//   （调用/解引用/字面量等根）返回空串=不判定（合法不判定面声明同 791：
+//   集合键=标识符名不可能命中非标识符根，写责任留既有条款），非静默
+//   默认。
+std::string containerWriteCallReceiverRoot(const Expr* receiver,
+                                           const std::string& methodName) {
+    if (!isContainerWriteMethod(methodName)) return "";
+    return writeTargetRootName(receiver);
+}
+
 } // namespace staticguard
 } // namespace cn_compiler

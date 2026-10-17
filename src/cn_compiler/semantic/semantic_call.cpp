@@ -16,6 +16,7 @@
 #include "cn_compiler/model/type_system.hpp"
 #include "cn_compiler/model/semantic_helpers.hpp"
 #include "cn_compiler/semantic/semantic_lambda_escape.hpp"
+#include "cn_compiler/semantic/semantic_staticguard.hpp"  // 916：方法调用位 §747-8 执法
 
 namespace cn_compiler {
 
@@ -213,6 +214,20 @@ void SemanticAnalyzer::visitCallExpr(CallExpr* node) {
         const std::string objType = checkExpr(mem->object.get());
         const std::string methodName = mem->memberName;
         std::string ownerClass;
+        // 916（791 派生·P1 安全面·001 §747-8 通用全局写执法）：**方法调用形态**
+        //   的全局写——接收者根对象∈可变全局集合（顶层静态/裸全局/函数内
+        //   静态局部）且被调方法∈容器写方法白名单（追加/设置/清空/删除/插入/
+        //   弹出…·stdlib/容器.cn+映射集合.cn 逐一对表）→ 与 791 赋值链同规则
+        //   拦截（方法调用这一非赋值链写法原静默绕过）。判定收归 staticguard
+        //   模块（791 同模式）；读方法与局部链/形参链根名不命中天然放行，
+        //   不安全 函数内豁免（reportUnsafeBoundary 内建）。文案与 791 一致
+        //   （静态变量赋值·v2 检查调用表达式挂点同文案·零分叉）。
+        const std::string recvRoot = staticguard::containerWriteCallReceiverRoot(
+            mem->object.get(), methodName);
+        if (!recvRoot.empty() && (isGlobalStatic(recvRoot) ||
+                                  staticguard::isStaticLocal(recvRoot))) {
+            reportUnsafeBoundary(node->location, "静态变量写", "静态变量赋值");
+        }
         if (checkInterfaceMethodCall(node, mem, objType, methodName)) return;  // 族C1：接口方法
         std::string clsName;
         const ClassMemberInfo* method = nullptr;
