@@ -671,6 +671,15 @@ private:
     bool genClosureCallExpr(CallExpr* node, const std::string& calleeName);  // 闭包速径（closure）
     void buildClosureCaptureArgs482(const ClosureInfo& info, CallExpr* node,
                                     std::vector<ir::IRValue>& closureArgs);  // 捕获装载（closure）
+    bool emitWrapBuiltinCall(CallExpr* node);                        // 回绕内置（builtin）
+    bool tryEmitPrintLikeCall(CallExpr* node, bool isDirect,
+                              const std::string& calleeName);        // 打印判定薄封装（builtin）
+    bool isBuiltinStrConsumer617(const std::string& calleeName,
+                                 bool isDirect) const;               // 617 消费族判定（builtin）
+    void mapBuiltinCalleeNameApi(std::string& calleeName);           // 内置名映射段一（builtin）
+    void mapBuiltinCalleeNameLib(std::string& calleeName);           // 内置名映射段二（builtin）
+    bool resolveBuiltinCallResultType(const std::string& calleeName,
+                                      std::string& resultType);      // 内置结果类型表（builtin）
     // 结构体字面量实参物化（D3 根治共享助手）：Alloca 临时 + emitStructInitTo +
     //   返回地址（按值结构体参数 ABI 传地址）——普通调用路径原实现，81-a 提取
     //   供方法调用路径复用（原方法调用路径无此物化 → 实参地址=空指针 → 段错误）。
