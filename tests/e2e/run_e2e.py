@@ -1419,7 +1419,10 @@ def 计算运行时构建指纹(cxx工具: str) -> str:
         项们.append(f"cxx:{cst.st_size}:{int(cst.st_mtime)}")
     else:
         项们.append(f"cxx:{cxx工具}")
-    项们.append("flags:-std=c++17 -fno-exceptions -fno-rtti -DCNRT_LINUX_MAIN -Isrc")
+    # 982：flags 串加 -O2——与宿主 compileRuntime linux 命令同步（用户产物运行时
+    #   编译标志=E2E 门禁运行时编译标志，两侧一致；标志变化即指纹变化=旧 -O0 .o
+    #   整批重编，不留混链）
+    项们.append("flags:-std=c++17 -fno-exceptions -fno-rtti -O2 -DCNRT_LINUX_MAIN -Isrc")
     return hashlib.md5("\n".join(项们).encode("utf-8")).hexdigest()
 
 
@@ -1445,7 +1448,7 @@ def 确保v2p与运行时就绪(编译器路径: pathlib.Path, 目标平台: str
         return None, f"未找到 g++ 链接器（{cxx工具}）"
 
     # 运行时 .o（对齐宿主编译命令 g++ -c -std=c++17 -fno-exceptions -fno-rtti
-    #   -DCNRT_LINUX_MAIN）+ 指纹缓存（2026-09-11 68-a 方案A 根治：指纹=src/runtime
+    #   -O2·982 加优化级 -DCNRT_LINUX_MAIN）+ 指纹缓存（2026-09-11 68-a 方案A 根治：指纹=src/runtime
     #   全部 .cpp 路径/大小/mtime+cxx+标志串，不符整批重编——杜绝跨机 pull 后陈旧
     #   .o 参与门禁链接；整批原子重编避免半新半旧混链，与 v2p 缓存同款模式）
     #   349 重构E：io_api.cpp 拆出 mem_api/arena/crash_handler 三件同编同链
@@ -1466,7 +1469,7 @@ def 确保v2p与运行时就绪(编译器路径: pathlib.Path, 目标平台: str
             if obj.exists():
                 obj.unlink()
             编译rt = 运行命令([cxx工具, "-c", "-std=c++17", "-fno-exceptions", "-fno-rtti",
-                            "-DCNRT_LINUX_MAIN", "-Isrc", "-o", str(obj),
+                            "-O2", "-DCNRT_LINUX_MAIN", "-Isrc", "-o", str(obj),
                             f"src/runtime/{模块}.cpp"], 项目根目录,
                            超时秒数=构建超时秒数)
             if 编译rt.returncode != 0:

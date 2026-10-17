@@ -223,17 +223,27 @@ static std::string runtimeBuildFingerprint(const std::string& target) {
     }
     fp += "target:" + target + "\n";
     fp += isWinX64(target)
-              ? "cc:cl /nologo /c /std:c++17 /utf-8\n"
-              : "cc:" + linuxCxxTool() + " -c -std=c++17 -fno-exceptions -fno-rtti "
+              ? "cc:cl /nologo /c /std:c++17 /utf-8 /O2\n"
+              : "cc:" + linuxCxxTool() + " -c -std=c++17 -fno-exceptions -fno-rtti -O2 "
                 "-DCNRT_LINUX_MAIN\n";
     return fp;
 }
 
 // 编译运行时源文件 -> 目标文件（整批指纹缓存：指纹相符且各 .o 齐全=整批跳过；
 //   任一 input 变化=整批原子重编，根治陈旧 .o 假绿）
-//   win-x64：cl /c /std:c++17 /utf-8；linux-arm64/linux-x86_64：g++ -c -std=c++17
-//   -fno-exceptions -fno-rtti；Linux 需 -DCNRT_LINUX_MAIN 使 runtime.cpp 的 main
+//   win-x64：cl /c /std:c++17 /utf-8 /O2；linux-arm64/linux-x86_64：g++ -c -std=c++17
+//   -fno-exceptions -fno-rtti -O2；Linux 需 -DCNRT_LINUX_MAIN 使 runtime.cpp 的 main
 //   生效（与 CMake cn 目标定义一致）
+//   982（2026-10-17·用户令性能第一）：加 -O2——944 性能对拍发现 runtime 全族以
+//   -O0 链编入用户产物（句柄代际检查热路径 -O2 下可降至 ~12 指令），此为全
+//   runtime 族（字符串/容器/内存/时间等）用户程序性能普涨的单一杠杆。两侧平台
+//   同步加（win cl /O2、linux g++ -O2），并同步 runtimeBuildFingerprint 的 cc 串
+//   （命令行变化=产物语义变化 → 旧 -O0 .o 缓存键不符自动整批重编·不留混链）。
+//   O0=O3 一致性原则核：-O2 不改变行为——runtime 全 15 文件静态排查（严格
+//   别名/符号回绕/未初始化/volatile/移位面·回绕面全用无符号实现）+ 双编译器
+//   警告面（g++ -O2 -Wall -Wextra 与 cl /O2 /W4 均 0 警告）+ -O2 UBSan/ASan
+//   实弹（微基准全段+重点用例·零报告·输出逐字一致）。若 -O2 暴露 UB 则修
+//   runtime 源码，不降优化级（现无此面）。
 static bool compileRuntime(const std::string& target, const std::string& vcvarsBat,
                            const std::string& objDir, bool verbose, std::string& error) {
     const std::string sep = isWinX64(target) ? "\\" : "/";
@@ -262,10 +272,11 @@ static bool compileRuntime(const std::string& target, const std::string& vcvarsB
         std::string obj = objDir + sep + pathStem(src) + objSuffix(target);
         std::string cmdLine;
         if (isWinX64(target)) {
-            cmdLine = "cl /nologo /c /std:c++17 /utf-8 /I\"src\" "
+            cmdLine = "cl /nologo /c /std:c++17 /utf-8 /O2 /I\"src\" "
                       "/Fo\"" + obj + "\" \"" + src + "\"";
+        // 静默豁免闭集穷举: win/linux 平台二分（compileRuntime 运行时编译命令分派·isWinX64 闭集且平台集闭合·另一平台命令行构建属正当分派非业务兜底·登记 miss_registry）
         } else {
-            cmdLine = linuxCxxTool() + " -c -std=c++17 -fno-exceptions -fno-rtti "
+            cmdLine = linuxCxxTool() + " -c -std=c++17 -fno-exceptions -fno-rtti -O2 "
                       "-DCNRT_LINUX_MAIN -I\"src\" -o \"" + obj + "\" \"" + src + "\"";
         }
         int rc = runToolchainCommand(vcvarsBat, cmdLine, verbose);

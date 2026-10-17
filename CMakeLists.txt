@@ -402,6 +402,9 @@ endif()
 # （历史产物陈旧：MSVC 14.44 构建的 /MDd obj 与锚定链的静态 CRT 链接不匹配，
 #   且 io_api.cpp 等的 tracked 加固未同步）。此处每次构建重新编译一份
 #   /MT（静态 CRT）运行时 obj 到 target/win-x64/，消除陈旧产物与运行时漂移。
+# 982：加 /O2——与用户产物运行时链（src/cn_main_toolchain.cpp compileRuntime
+#   cl /O2）优化级一致（E2E 门禁运行时=用户实得运行时同一语义；两侧同一目录
+#   target/win-x64/ 同名 .obj 互为覆盖时语义不漂移）。
 if(MSVC)
     file(MAKE_DIRECTORY ${CMAKE_SOURCE_DIR}/target/win-x64)
     set(CNRT_79_SRCS
@@ -412,7 +415,7 @@ if(MSVC)
         list(APPEND CNRT_79_OBJS ${_obj})
         add_custom_command(
             OUTPUT ${_obj}
-            COMMAND ${CMAKE_CXX_COMPILER} /nologo /c /EHsc /utf-8 /MT
+            COMMAND ${CMAKE_CXX_COMPILER} /nologo /c /EHsc /utf-8 /MT /O2
                     /I${CMAKE_SOURCE_DIR}/src
                     /Fo${_obj} ${CMAKE_SOURCE_DIR}/src/runtime/${_s}.cpp
             DEPENDS ${CMAKE_SOURCE_DIR}/src/runtime/${_s}.cpp
