@@ -321,6 +321,29 @@ std::string IRGenerator::funcPtrTypeOfCallee(Expr* callee) const {
                 }
             }
         }
+    } else if (callee->getType() == NodeType::CallExpr) {
+        // 927（复合被调 造句柄()(3,4)·001 §5.8 间接调用被调=任意 fnptr 表达式）：
+        //   被调=调用表达式结果——原全域 miss 报内部错误 655（探针实测），语义
+        //   合法形态。解析该调用的返回类型（两级查询：纯名 → resolvedSignature，
+        //   与 110/442/485 同口径）——返回类型为函数指针（规范化串
+        //   `函数指针<...>`，parser_decl 已把 `-> T(*)(...)` 归一到此形态）
+        //   即为其签名。内层被调=标识符形态（直接调用）；成员/下标等更深形态
+        //   维持 miss=空串（诚实边界，与 491 覆盖面对齐）。
+        const CallExpr* innerCall927 = static_cast<CallExpr*>(callee);
+        if (semantic_ != nullptr && innerCall927->callee != nullptr &&
+            innerCall927->callee->getType() == NodeType::IdentifierExpr) {
+            const std::string& innerName927 = static_cast<IdentifierExpr*>(
+                innerCall927->callee.get())->name;
+            std::string ret927 = semantic_->funcReturnTypeOf(innerName927);
+            if (ret927.empty() && !innerCall927->resolvedSignature.empty()) {
+                ret927 = semantic_->funcReturnTypeOf(
+                    innerCall927->resolvedSignature);
+            }
+            if (!ret927.empty() &&
+                types::isFuncPtr(types::canonical(ret927))) {
+                fnPtrType = ret927;
+            }
+        }
     }
     if (fnPtrType.empty()) return "";
     // 泛型实例体：形参类型串里的类型参数替换为实参类型（`函数指针<整32>(T,T)`
