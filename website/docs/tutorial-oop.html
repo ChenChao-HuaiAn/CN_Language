@@ -258,7 +258,7 @@
 }</code></pre></div>
 <p class="输出行">输出：4.000000 6.000000 假 真
 </p>
-<ul><li>可重载集合：<code>+ - * / % == != &lt; &gt; &lt;= &gt;= &amp;&amp; || ! &amp; | ^ ~ &lt;&lt; &gt;&gt; [] ()</code>。</li><li>决议：先精确匹配内置运算符，无匹配才查左操作数类型的成员 <code>运算符X</code>。</li><li>字符串 <code>+</code> 数值 拼接是语言内置（自动转字符串），无需重载。</li></ul><nav class="页脚导航"><a class="" href="tutorial-syntax.html"><span class="向">← 上一页</span><span class="题">教程·语法基础</span></a><a class="下一" href="tutorial-safety.html"><span class="向">下一页 →</span><span class="题">教程·安全与并发</span></a></nav></article>
+<ul><li>可重载集合：<code>+ - * / % == != &lt; &gt; &lt;= &gt;= &amp;&amp; || ! &amp; | ^ ~ &lt;&lt; &gt;&gt;</code>——<code>[]</code>/<code>()</code> 解析层显式拒绝（改用 lambda 或函数指针）。</li><li>决议：先精确匹配内置运算符，无匹配才查左操作数类型的成员 <code>运算符X</code>。使用点参数个数校验：单目须 0 个右操作数、双目 1 个——不符报「重载期望 N 个右操作数」。</li><li>字符串 <code>+</code> 数值 拼接是语言内置（自动转字符串），无需重载。</li></ul><nav class="页脚导航"><a class="" href="tutorial-syntax.html"><span class="向">← 上一页</span><span class="题">教程·语法基础</span></a><a class="下一" href="tutorial-safety.html"><span class="向">下一页 →</span><span class="题">教程·安全与并发</span></a></nav></article>
     <aside class="目录" aria-label="本页目录">
       <p class="目录-题">本页目录</p>
 <a href="#第一个类">第一个类：字段、方法、可见性</a><a href="#构造析构">构造与析构：RAII 的根基</a><a href="#继承">继承与多态：虚拟/重写/自身/父类</a><a href="#接口">接口：行为契约</a><a href="#泛型类">泛型类：向量 的原理</a><a href="#静态成员">静态成员与常量成员函数</a><a href="#运算符重载">运算符重载</a>
@@ -301,7 +301,7 @@
     </div>
     <div class="页脚-底">
       <span>© 2026 CN 语言项目</span>
-      <span>文档基线：任务/992 ef3fff8b·2026-10-17·示例经编译器实测</span>
+      <span>文档基线：任务/1001 e0ef4a01·2026-10-17·示例经编译器实测</span>
       <span>京ICP备00000000号（备案办理中·占位）</span>
     </div>
   </div>

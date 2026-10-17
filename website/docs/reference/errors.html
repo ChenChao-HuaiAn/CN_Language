@@ -45,7 +45,7 @@
 <h1>错误处理</h1>
 <p style="color: var(--color-fg-muted); font-size: var(--text-lg); line-height: 2;">结果/可选的精确语义、三条强制检查规则、错误传播 ?、错误码全表、运行时错误通道。</p>
 <h2 id="结果可选">结果&lt;T, E&gt; 与 可选&lt;T&gt;</h2>
-<table class="表"><thead><tr><th>类型</th><th>构造</th><th>检查</th><th>取值</th></tr></thead><tbody><tr><td><code>结果&lt;T, 整32&gt;</code></td><td><code>正常(值)</code> / <code>错误(码)</code></td><td><code>.正常</code>（布尔）</td><td>正常分支内 <code>.值</code>；失败分支 <code>.错误</code></td></tr><tr><td><code>可选&lt;T&gt;</code></td><td><code>某些(值)</code> / <code>无值()</code></td><td><code>.有值</code>（布尔）</td><td>有值分支内 <code>.值</code></td></tr></tbody></table>
+<table class="表"><thead><tr><th>类型</th><th>构造</th><th>检查</th><th>取值</th></tr></thead><tbody><tr><td><code>结果&lt;T, 整32&gt;</code></td><td><code>正常(值)</code> / <code>错误(码)</code></td><td><code>.正常</code>（布尔）</td><td>正常分支内 <code>.值</code>；失败分支 <code>.错误</code></td></tr><tr><td><code>可选&lt;T&gt;</code></td><td><code>某些(值)</code> / <code>无</code>（常量·写作 <code>返回 无</code>；无 <code>无值()</code> 构造器）</td><td><code>.有值</code>（布尔）</td><td>有值分支内 <code>.值</code></td></tr></tbody></table>
 <div class="码窗"><p class="码窗-顶"><span class="码窗-名">可选.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">导入 容器::向量;
 
 函数 主() -&gt; 整32 {
@@ -95,8 +95,8 @@
 </p>
 <div class="批注 批注-赭"><span class="批注-题">? 与三元的词法消歧</span>后缀 <code>?</code>（优先级13）与三元 <code>?:</code> 按<strong>同层 <code>:</code> 配对前瞻</strong>区分——<code>?</code> 后同层存在配对 <code>:</code> 判三元，否则判传播；<code>a ? -b : c</code> 无需加括号。</div>
 <h2 id="错误码">错误码全表（附录 B）</h2>
-<table class="表"><thead><tr><th>码</th><th>枚举成员</th><th>典型来源</th></tr></thead><tbody><tr><td>1</td><td><code>错误码.除零</code></td><td>整数除零（运行期）</td></tr><tr><td>2</td><td><code>错误码.越界</code></td><td>数组/容器下标越界；字符串字节下标越界</td></tr><tr><td>3</td><td><code>错误码.空指针</code></td><td>空指针解引用</td></tr><tr><td>4</td><td><code>错误码.内存</code></td><td>分配失败（容器扩容等）</td></tr><tr><td>5</td><td><code>错误码.文件</code></td><td>文件打开/读写失败；标准输入 EOF</td></tr><tr><td>6</td><td><code>错误码.参数</code></td><td>无效参数（解析失败/越界实参）；断言失败</td></tr><tr><td>7</td><td><code>错误码.未初始化</code></td><td>读取未初始化数据（如空栈弹出/映射未命中）</td></tr><tr><td>8</td><td><code>错误码.溢出</code></td><td>算术溢出域</td></tr></tbody></table>
-<ul><li><code>运行时错误(码)</code> 内置：打印 <code>运行时错误(错误码N): 消息</code> 并终止进程（退出码 1）——标准库「直读越界即中止」就是它。</li><li>win 崩溃诊断（<code>[crash]</code>/<code>[veh]</code> 系列带寄存器与回溯）仅未处理异常时输出到 stderr，正常启动零输出。</li></ul><nav class="页脚导航"><a class="" href="../reference/oop.html"><span class="向">← 上一页</span><span class="题">类与对象</span></a><a class="下一" href="../reference/index.html"><span class="向">下一页 →</span><span class="题">参考总览</span></a></nav></article>
+<table class="表"><thead><tr><th>码</th><th>枚举成员</th><th>典型来源</th></tr></thead><tbody><tr><td>1</td><td><code>错误码.除零</code></td><td>整数除零（运行期）</td></tr><tr><td>2</td><td><code>错误码.越界</code></td><td>数组/容器下标越界；字符串字节下标越界</td></tr><tr><td>3</td><td><code>错误码.空指针</code></td><td>空指针解引用</td></tr><tr><td>4</td><td><code>错误码.内存</code></td><td>分配失败（容器扩容等）</td></tr><tr><td>5</td><td><code>错误码.文件</code></td><td>文件打开/读写失败；标准输入 EOF</td></tr><tr><td>6</td><td><code>错误码.参数</code></td><td>无效参数（解析失败/越界实参）；断言失败</td></tr><tr><td>7</td><td><code>错误码.未初始化</code></td><td>读取未初始化数据（如空栈弹出/映射未命中）</td></tr><tr><td>8</td><td><code>错误码.溢出</code></td><td>运行期算术溢出（<code>+ - *</code>/自增自减/复合赋值）、<code>整MIN / -1</code> 与 <code>整MIN</code> 一元取负、变量移位量超宽</td></tr><tr><td>9</td><td>—（<strong>运行时输出</strong>·未入枚举）</td><td>栈溢出：深递归耗尽线程栈 → 确定性终止（安全/不安全区同拦；手工线程须先调用 <code>cn_install_thread_stack_guard</code>）</td></tr></tbody></table>
+<ul><li><code>运行时错误(码)</code> 内置：打印 <code>运行时错误(错误码N): 消息</code> 并终止进程（退出码 1）——标准库「直读越界即中止」就是它。</li><li>错误码 8 的触发面（<code>不安全</code> 函数内不插检查）：运行期算术溢出、<code>整MIN / -1</code>、<code>整MIN</code> 一元取负、变量移位量 ≥ 位宽——常量面溢出/移位超宽=<strong>编译期硬错误</strong>（不产生退出码）；确需回绕用 <code>回绕加/回绕减/回绕乘</code>。</li><li>入口退出码：<code>主</code> 返回 <code>结果&lt;整32, E&gt;</code> 时，正常 → 退出码取 <code>.值</code>；失败 → 退出码取 <code>.错误</code>（Rust Termination 同构；<code>.值</code> 非数值的结果形态=编译期诊断）。</li><li>win 崩溃诊断（<code>[crash]</code>/<code>[veh]</code> 系列带寄存器与回溯）仅未处理异常时输出到 stderr，正常启动零输出。</li></ul><nav class="页脚导航"><a class="" href="../reference/oop.html"><span class="向">← 上一页</span><span class="题">类与对象</span></a><a class="下一" href="../reference/index.html"><span class="向">下一页 →</span><span class="题">参考总览</span></a></nav></article>
     <aside class="目录" aria-label="本页目录">
       <p class="目录-题">本页目录</p>
 <a href="#结果可选">结果&lt;T, E&gt; 与 可选&lt;T&gt;</a><a href="#三规则">三条强制检查规则（编译期）</a><a href="#传播">错误传播：后缀 ?</a><a href="#错误码">错误码全表（附录 B）</a>
@@ -139,7 +139,7 @@
     </div>
     <div class="页脚-底">
       <span>© 2026 CN 语言项目</span>
-      <span>文档基线：任务/992 ef3fff8b·2026-10-17·示例经编译器实测</span>
+      <span>文档基线：任务/1001 e0ef4a01·2026-10-17·示例经编译器实测</span>
       <span>京ICP备00000000号（备案办理中·占位）</span>
     </div>
   </div>

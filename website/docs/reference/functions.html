@@ -141,7 +141,7 @@
 }</code></pre></div>
 <p class="输出行">输出：5 9.900000
 </p>
-<ul><li><strong>泛型调用须显式单态化</strong>：<code>名&lt;类型&gt;(实参)</code>——这是语言规定形态（不靠实参推导）。</li><li>每个实例化生成一份专用代码：零运行时开销、可内联优化。</li><li>类型参数可约束接口：<code>泛型 &lt;类型 T : 可比较&gt;</code>。</li></ul>
+<ul><li><strong>泛型调用双形态</strong>：显式 <code>名&lt;类型&gt;(实参)</code> 与省略类型的隐式推导 <code>名(实参)</code> 均合法——实参类型可唯一确定时（含后置定义的泛型函数）省略 <code>&lt;类型&gt;</code>；推导不适用的形态（如引用形参位）写显式 <code>&lt;类型&gt;</code> 即可。</li><li>每个实例化生成一份专用代码：零运行时开销、可内联优化。</li><li>类型参数可约束接口：<code>泛型 &lt;类型 T : 可比较&gt;</code>。</li></ul>
 <h2 id="函数指针与lambda">函数指针与 lambda</h2>
 <div class="码窗"><p class="码窗-顶"><span class="码窗-名">函数指针.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">函数 加(整32 a, 整32 b) -&gt; 整32 { 返回 a + b; }
 函数 乘(整32 a, 整32 b) -&gt; 整32 { 返回 a * b; }
@@ -205,7 +205,7 @@
     </div>
     <div class="页脚-底">
       <span>© 2026 CN 语言项目</span>
-      <span>文档基线：任务/992 ef3fff8b·2026-10-17·示例经编译器实测</span>
+      <span>文档基线：任务/1001 e0ef4a01·2026-10-17·示例经编译器实测</span>
       <span>京ICP备00000000号（备案办理中·占位）</span>
     </div>
   </div>

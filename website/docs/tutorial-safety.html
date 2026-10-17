@@ -69,8 +69,8 @@
 <p class="输出行">输出：5
 失败，错误码 1
 </p>
-<ul><li><code>.值</code> 只能在「该分支已检查 <code>.正常</code>」的前提下访问——编译器跟踪检查状态（NLL 同款数据流）。</li><li>错误码用 <a href="stdlib/core.html#错误码">核心.错误码</a> 枚举（除零1/越界2/空指针3/内存4/文件5/参数6/未初始化7/溢出8）。</li><li>多级失败传播可用后缀 <code>?</code>（见<a href="reference/errors.html">错误处理参考</a>）。</li></ul>
-<div class="批注 批注-绿"><span class="批注-题">可选&lt;T&gt;：可能没有值</span>没有自然错误码的「可能缺失」用 <code>可选&lt;T&gt;</code>：<code>某些(值)</code> / <code>无值()</code>，检查 <code>.有值</code> 后取 <code>.值</code>。语义=结果但错误侧无载荷。</div>
+<ul><li><code>.值</code> 只能在「该分支已检查 <code>.正常</code>」的前提下访问——编译器跟踪检查状态（NLL 同款数据流）。</li><li>错误码用 <a href="stdlib/core.html#错误码">核心.错误码</a> 枚举（除零1/越界2/空指针3/内存4/文件5/参数6/未初始化7/溢出8；9=栈溢出由运行时直接输出、未入枚举）。</li><li>多级失败传播可用后缀 <code>?</code>（见<a href="reference/errors.html">错误处理参考</a>）。</li></ul>
+<div class="批注 批注-绿"><span class="批注-题">可选&lt;T&gt;：可能没有值</span>没有自然错误码的「可能缺失」用 <code>可选&lt;T&gt;</code>：<code>某些(值)</code> / <code>无</code>（常量·写作 <code>返回 无</code>；无 <code>无值()</code> 构造器），检查 <code>.有值</code> 后取 <code>.值</code>。语义=结果但错误侧无载荷。</div>
 <h2 id="所有权">所有权与转移：默认安全的核心</h2>
 <p>资源类型（字符串/容器/类对象）变量拥有其资源；<code>转移(x)</code> 把所有权显式交接给另一个变量——<strong>源变量从此禁止读用（编译错误）</strong>；对源变量重新赋值=复活。</p>
 <div class="码窗"><p class="码窗-顶"><span class="码窗-名">转移.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">函数 主() -&gt; 整32 {
@@ -124,7 +124,7 @@
     }
     返回 0;
 }</code></pre></div>
-<ul><li>入口签名固定：<code>整64(空类型*)</code> 函数；实参按值拷贝进新线程。</li><li><code>不安全 函数 主()</code>：线程句柄是裸指针形态，线程域整体属不安全面（见<a href="tutorial-advanced.html#不安全">进阶篇</a>）。</li></ul>
+<ul><li>入口签名固定：<code>整64(空类型*)</code> 函数；实参按值拷贝进新线程，须<strong>可搬运</strong>——含裸指针字段的类型编译期拦截（标量/字符串/函数指针恒可搬运；豁免=<code>不安全 可搬运</code> 修饰），详见<a href="reference/concurrency.html#可搬运">并发参考</a>。</li><li><code>不安全 函数 主()</code>：线程句柄是裸指针形态，线程域整体属不安全面（见<a href="tutorial-advanced.html#不安全">进阶篇</a>）。</li></ul>
 <h2 id="互斥锁">互斥锁&lt;T&gt;：锁与数据绑死</h2>
 <p>类型化互斥锁把「锁」和「被护数据」绑在一个类型里——拿 A 锁护 B 数据的锁错对象错误在类型检查下不可表达（Rust Mutex&lt;T&gt; 同位）。</p>
 <div class="码窗"><p class="码窗-顶"><span class="码窗-名">互斥锁.cn（win 为运行时桩·linux 真锁）</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">导入 线程::互斥锁;
@@ -181,7 +181,7 @@
     </div>
     <div class="页脚-底">
       <span>© 2026 CN 语言项目</span>
-      <span>文档基线：任务/992 ef3fff8b·2026-10-17·示例经编译器实测</span>
+      <span>文档基线：任务/1001 e0ef4a01·2026-10-17·示例经编译器实测</span>
       <span>京ICP备00000000号（备案办理中·占位）</span>
     </div>
   </div>

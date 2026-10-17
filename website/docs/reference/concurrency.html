@@ -68,7 +68,7 @@
 }</code></pre></div>
 <div class="批注 批注-赭"><span class="批注-题">宁严勿松</span><strong>未并入的线程在 主 返回时=运行时错误</strong>（运行时层退出链）——忘记 并入 不是静默泄漏而是立刻报错。linux=pthread 真实现；win 后端为运行时错误桩（路线图波次内）。</div>
 <h2 id="可搬运">可搬运（Send）法则</h2>
-<p>跨线程传递的值必须<strong>可搬运</strong>——含裸指针字段（空类型*/字符串/容器句柄等）的类型默认不可搬运，编译期拦截；豁免窗口=顶层 <code>空类型*</code> 实参位（<code>新线程(f, 无)</code>）。Rust <code>Send</code> 同位。</p>
+<p>跨线程传递的值必须<strong>可搬运</strong>（对标 Rust <code>Send</code>）：含裸指针字段（<code>T*</code>/<code>空类型*</code>）的类型默认不可搬运，编译期拦截；<strong>标量/字符串/函数指针恒可搬运、容器/数组/结果/可选随元素（载荷）</strong>。确需跨线程传含指针类型：声明位加 <code>不安全 可搬运</code> 修饰显式豁免；<code>新线程</code> 实参位的顶层 <code>空类型*</code> 过渡豁免仅限 <code>不安全</code> 函数体内。</p>
 <div class="码窗"><p class="码窗-顶"><span class="码窗-名">不可搬运.cn（负例·编译拒绝）</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">导入 线程::{新线程, 并入线程};
 
 不安全 函数 作业(空类型* 盒) -&gt; 整64 { 返回 0; }
@@ -79,7 +79,7 @@
     结果&lt;空类型*, 整32&gt; 建 = 新线程(作业, 指向局部);   // ✗ 裸指针不可跨线程
     返回 0;
 }</code></pre></div>
-<ul><li>互斥锁&lt;T&gt; 可搬运 ⇔ T 可搬运（容器名单基名判定）。</li><li>函数指针=代码指针，恒可搬运。</li><li>确需跨线程传裸指针：以「所有权移交设计」重构（由目标线程独占）或等待后续显式豁免立法——默认路径零豁免。</li></ul>
+<ul><li>互斥锁&lt;T&gt; 可搬运 ⇔ T 可搬运（容器名单基名判定）。</li><li>函数指针=代码指针，恒可搬运；字符串恒可搬运（拥有型），结果/可选随载荷。</li><li>确需跨线程传裸指针：以「所有权移交设计」重构（由目标线程独占），或在类型声明位加 <code>不安全 可搬运</code> 修饰显式豁免——声明人自担责任（对标 Rust <code>unsafe impl Send</code>；负测诊断即指路「请声明 不安全 可搬运」）。</li></ul>
 <h2 id="互斥锁">互斥锁&lt;T&gt; 与过渡 API</h2>
 <table class="表"><thead><tr><th>形态</th><th>形态成员</th><th>定位</th></tr></thead><tbody><tr><td><code>互斥锁&lt;T&gt;</code>（推荐）</td><td><code>互斥锁(T 初值)</code> / <code>上锁()</code> / <code>解锁()</code> / 公开字段 <code>值</code></td><td>锁与数据类型化绑定；可搬运联动；实例=对象句柄（跨线程共享实例=共用锁）</td></tr><tr><td>过渡函数（不推荐）</td><td><code>互斥锁新建/互斥锁上锁/互斥锁解锁/互斥锁释放</code></td><td>裸句柄无类型=可锁错对象；立法前过渡，新代码禁用</td></tr></tbody></table>
 <ul><li>上锁/解锁 显式配对（RAII 锁守卫在路线图）；必须由加锁者解锁。</li><li>裸句柄互斥锁释放须未加锁态。</li><li>线程六个包装函数全部 <code>不安全</code>（001 §5.8b sunset 收窄）。</li></ul><nav class="页脚导航"><a class="" href="../reference/index.html"><span class="向">← 上一页</span><span class="题">参考总览</span></a><a class="下一" href="../reference/modules.html"><span class="向">下一页 →</span><span class="题">模块系统</span></a></nav></article>
@@ -125,7 +125,7 @@
     </div>
     <div class="页脚-底">
       <span>© 2026 CN 语言项目</span>
-      <span>文档基线：任务/992 ef3fff8b·2026-10-17·示例经编译器实测</span>
+      <span>文档基线：任务/1001 e0ef4a01·2026-10-17·示例经编译器实测</span>
       <span>京ICP备00000000号（备案办理中·占位）</span>
     </div>
   </div>

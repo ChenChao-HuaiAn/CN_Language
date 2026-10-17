@@ -46,8 +46,8 @@
 <p style="color: var(--color-fg-muted); font-size: var(--text-lg); line-height: 2;">全部类型、宽度与值域、类型转换的位模式语义、确定初始化、复合类型细则。</p>
 <h2 id="整数">整数类型（10 种 + 2 别名）</h2>
 <table class="表"><thead><tr><th>类型</th><th>大小</th><th>范围</th></tr></thead><tbody><tr><td><code>整8</code></td><td>1B</td><td>-128 ~ 127</td></tr><tr><td><code>整16</code></td><td>2B</td><td>-32768 ~ 32767</td></tr><tr><td><code>整32</code>（别名 <code>整数</code>）</td><td>4B</td><td>-2^31 ~ 2^31-1</td></tr><tr><td><code>整64</code></td><td>8B</td><td>-2^63 ~ 2^63-1</td></tr><tr><td><code>整128</code></td><td>16B</td><td>-2^127 ~ 2^127-1</td></tr><tr><td><code>正8</code></td><td>1B</td><td>0 ~ 255</td></tr><tr><td><code>正16</code></td><td>2B</td><td>0 ~ 65535</td></tr><tr><td><code>正32</code></td><td>4B</td><td>0 ~ 2^32-1</td></tr><tr><td><code>正64</code></td><td>8B</td><td>0 ~ 2^64-1</td></tr><tr><td><code>正128</code></td><td>16B</td><td>0 ~ 2^128-1</td></tr></tbody></table>
-<h3 id="整数运算语义（四条法规）">整数运算语义（四条法规）</h3>
-<ul><li><strong>常量溢出/除零=编译错误</strong>：两侧均为字面量的常量表达式编译期预演（<code>2147483647 + 1</code>、<code>10 / 0</code> 直接拒绝）。</li><li><strong>变量面两补码回绕</strong>：<code>INT_MIN / -1 ≡ INT_MIN</code>、<code>INT_MIN % -1 ≡ 0</code>——全位宽一致，优化级别间行为一致（O0=O3）。</li><li><strong>窄类型保持窄域</strong>：整8/整16/正8/正16 的二元算术结果保持操作数宽度（<code>整8 + 整8 = 整8</code>），溢出回绕（127+1≡-128）；与更宽操作数混算按宽化规则提升。</li><li><strong>字面量窄化值域检查</strong>：<code>整16 甲 = 40000;</code> 编译拒绝（域内字面量豁免：<code>整8 a = 10</code> 合法）。</li></ul>
+<h3 id="整数运算语义（五条法规）">整数运算语义（五条法规）</h3>
+<ul><li><strong>常量溢出/除零=编译错误</strong>：两侧均为字面量的常量表达式编译期预演（<code>2147483647 + 1</code>、<code>10 / 0</code> 直接拒绝）。</li><li><strong>运行期溢出=错误码 8 确定性失败</strong>（非回绕、非 UB）：安全区二元 <code>+ - *</code>、自增自减、复合赋值在结果超出操作数类型值域时立即报<code>运行时错误(错误码8): 溢出错误</code> 终止（O0=O3、三后端一致）；<code>整MIN / -1</code>、<code>整MIN</code> 一元取负同族纳入（<code>x % -1 ≡ 0</code> 定义保留）；<code>不安全</code> 函数内不插检查。</li><li><strong>显式回绕走内置函数</strong>：确需两补码回绕语义用 <code>回绕加/回绕减/回绕乘</code>（全整型族·按实参类型分派·宽化与混合符号规则同运算符；编译期常量实参按回绕折叠不报错）；回绕语义已自变量面收缩为显式知情通道。</li><li><strong>窄类型保持窄域</strong>：整8/整16/正8/正16 的二元算术结果保持操作数宽度（<code>整8 + 整8 = 整8</code>），运行期溢出同按错误码 8 终止；与更宽操作数混算按宽化规则提升。</li><li><strong>字面量窄化值域检查</strong>：<code>整16 甲 = 40000;</code> 编译拒绝（域内字面量豁免：<code>整8 a = 10</code> 合法；负号形态按数学负值判域——各类型 MIN 如 <code>-2147483648</code> 合法书写）。</li><li><strong>移位量超宽=确定性失败</strong>：常量移位量 ≥ 位宽=编译期硬错误（<code>5 &lt;&lt; 40</code>、「移位量超宽」诊断）；变量移位量=运行期错误码 8终止；确需取模手写 <code>a &lt;&lt; (k % 位宽)</code> 显式闭环；移位丢高位不属检查对象（<code>1 &lt;&lt; 31</code> 合法）。</li></ul>
 <h2 id="浮点其他">浮点、布尔、字符、字符串、空类型</h2>
 <table class="表"><thead><tr><th>类型</th><th>大小</th><th>说明</th></tr></thead><tbody><tr><td><code>浮32</code></td><td>4B</td><td>IEEE 754 单精度；字面量后缀 <code>f</code></td></tr><tr><td><code>浮64</code>（别名 <code>小数</code>）</td><td>8B</td><td>IEEE 754 双精度；<code>整数</code> 别名=整32</td></tr><tr><td><code>布尔</code></td><td>1B</td><td><code>真</code> / <code>假</code></td></tr><tr><td><code>字符</code></td><td>4B</td><td>Unicode 标量值（一个中文字=一个字符）</td></tr><tr><td><code>字符串</code></td><td>-</td><td>UTF-8 拥有型（\0 结尾·堆上·RAII）；<code>字符*</code> 为借用视图</td></tr><tr><td><code>空类型</code></td><td>-</td><td>void：函数无返回值/空指针基类型</td></tr></tbody></table>
 <h2 id="转换">类型转换：显式位模式语义</h2>
@@ -67,7 +67,7 @@
 </p>
 <h2 id="确定初始化">确定初始化（def-init）</h2>
 <p>未初始化的局部值类型变量<strong>不得读取</strong>——编译期数据流拒绝（Rust E0381 对照），零运行时成本。</p>
-<table class="表"><thead><tr><th>面</th><th>内容</th></tr></thead><tbody><tr><td>登记</td><td>无初始化器的纯值类型声明：标量、数组（元素级跟踪）、结构体（叶子字段级）</td></tr><tr><td>置位</td><td>赋值（含下标/字段左值）、复合赋值、自增自减（先读后写·读面拒绝）</td></tr><tr><td>豁免</td><td>拥有型（类/容器/字符串/结果/可选——默认构造兜底）、指针/引用、<code>静态</code>（零初始化）、函数参数</td></tr><tr><td>控制流敏感</td><td>如果=两支汇合取并集；返回终止的分支不参与；当/循环体内赋值不外溢（可能 0 次执行）</td></tr><tr><td>取地址=初始化通道</td><td><code>&amp;x</code> 视为「可能被写」（出参惯用法）——取地址后读取放行</td></tr></tbody></table>
+<table class="表"><thead><tr><th>面</th><th>内容</th></tr></thead><tbody><tr><td>登记</td><td>无初始化器的纯值类型声明：标量、数组（元素级跟踪）、结构体（叶子字段级）</td></tr><tr><td>置位</td><td>赋值（含下标/字段左值）、复合赋值、自增自减（先读后写·读面拒绝）</td></tr><tr><td>豁免</td><td>拥有型（类/容器/字符串/结果/可选——默认构造兜底）、指针/引用、函数参数；<code>静态</code> 豁免仅限<strong>顶层</strong>静态（无初值=零初始化）——函数内 <code>静态 类型 名;</code> 无初值=<strong>编译拒绝</strong>（须显式初值·Rust static 同款）</td></tr><tr><td>控制流敏感</td><td>如果=两支汇合取并集；返回终止的分支不参与；当/循环体内赋值不外溢（可能 0 次执行）</td></tr><tr><td>取地址=初始化通道</td><td><code>&amp;x</code> 视为「可能被写」（出参惯用法）——取地址后读取放行</td></tr></tbody></table>
 <div class="码窗"><p class="码窗-顶"><span class="码窗-名">def-init.cn（负例·编译拒绝）</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">函数 主() -&gt; 整32 {
     整32 x;
     打印(x);              // ✗ 编译错误：读取未初始化变量
@@ -139,7 +139,7 @@
     </div>
     <div class="页脚-底">
       <span>© 2026 CN 语言项目</span>
-      <span>文档基线：任务/992 ef3fff8b·2026-10-17·示例经编译器实测</span>
+      <span>文档基线：任务/1001 e0ef4a01·2026-10-17·示例经编译器实测</span>
       <span>京ICP备00000000号（备案办理中·占位）</span>
     </div>
   </div>

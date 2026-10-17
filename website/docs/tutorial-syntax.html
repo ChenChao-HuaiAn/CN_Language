@@ -86,7 +86,7 @@
 }</code></pre></div>
 <p class="输出行">输出：4 1
 </p>
-<ul><li><code>常量</code> 值在编译期折叠进引用处，可为算术表达式（<code>常量 尺寸2 = 尺寸 * 2;</code>）。</li><li><code>静态</code> 变量有零初始化保证，生存期=整个进程；函数内声明同样合法。</li><li>未初始化读取（<code>整32 x; 打印(x);</code>）是编译错误——不会读到垃圾值。</li></ul>
+<ul><li><code>常量</code> 值在编译期折叠进引用处，可为算术表达式（<code>常量 尺寸2 = 尺寸 * 2;</code>）。</li><li><code>静态</code> 变量生存期=整个进程；顶层静态无初值=零初始化放行，函数内静态<strong>必须显式初值</strong>（<code>静态 整32 槽;</code> 无初值=编译拒绝），写入须在 不安全 域。</li><li>未初始化读取（<code>整32 x; 打印(x);</code>）是编译错误——不会读到垃圾值。</li></ul>
 <h2 id="基本类型">基本类型全景</h2>
 <p>整型 10 种（有符号/无符号 × 5 位宽）、浮点 2 种、布尔/字符/字符串，以及别名 <code>整数</code>=整32、<code>小数</code>=浮64。</p>
 <table class="表"><thead><tr><th>类别</th><th>类型</th><th>大小</th><th>范围/说明</th></tr></thead><tbody><tr><td>默认别名</td><td><code>整数</code> / <code>小数</code></td><td>4B / 8B</td><td>= 整32 / = 浮64（保留中文习惯的别名）</td></tr><tr><td>有符号整数</td><td><code>整8</code> <code>整16</code> <code>整32</code> <code>整64</code> <code>整128</code></td><td>1~16B</td><td>整8：-128~127 …… 整128：±2^127</td></tr><tr><td>无符号整数</td><td><code>正8</code> <code>正16</code> <code>正32</code> <code>正64</code> <code>正128</code></td><td>1~16B</td><td>正8：0~255 …… 正128：0~2^128-1</td></tr><tr><td>浮点</td><td><code>浮32</code> <code>浮64</code></td><td>4B / 8B</td><td>IEEE 754 单/双精度</td></tr><tr><td>其他</td><td><code>布尔</code> <code>字符</code> <code>字符串</code> <code>空类型</code></td><td>1B / 4B / - / -</td><td>真/假；Unicode 码点；UTF-8 拥有串；void</td></tr></tbody></table>
@@ -105,7 +105,7 @@
 <p class="输出行">输出：42 255 10 511
 100 1.500000 15000000000.000000
 </p>
-<div class="批注 批注-赭"><span class="批注-题">窄类型的算术语义（资深提示）</span>同宽窄整数算术<strong>保持窄域</strong>（<code>整8 + 整8 = 整8</code>），溢出按两补码回绕（127+1≡-128）；字面量向窄类型赋值做编译期值域检查（<code>整16 甲 = 40000;</code> 拒绝）。混合符号（整N × 正M）变量运算编译期拒绝、字面量豁免——详见<a href="reference/types.html">类型参考</a>。</div>
+<div class="批注 批注-赭"><span class="批注-题">窄类型的算术语义（资深提示）</span>同宽窄整数算术<strong>保持窄域</strong>（<code>整8 + 整8 = 整8</code>），溢出=错误码 8 确定性失败（127+1 运行时终止；需回绕语义用显式 <code>回绕加/回绕减/回绕乘</code>）；字面量向窄类型赋值做编译期值域检查（<code>整16 甲 = 40000;</code> 拒绝）。混合符号（整N × 正M）变量运算编译期拒绝、字面量豁免——详见<a href="reference/types.html">类型参考</a>。</div>
 <h2 id="类型转换">类型转换</h2>
 <p>宽化隐式进行；窄化/跨符号/浮整/指针↔整数一律显式 <code>类型名(表达式)</code>，语义=位模式变换（Rust <code>as</code> 同款）。</p>
 <div class="码窗"><p class="码窗-顶"><span class="码窗-名">转换.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">函数 主() -&gt; 整32 {
@@ -136,7 +136,7 @@
     打印(c, a);
     返回 0;
 }</code></pre></div>
-<ul><li><code>/</code> 对整数=截断除；<code>%</code> 取余（除零=运行时错误码 1，常量除零=编译错误）。</li><li>逻辑 <code>&amp;&amp;</code> <code>||</code> 短路；位运算只适用整型（浮点位运算编译拒绝）；<code>&gt;&gt;</code> 有符号=算术右移（符号扩展），无符号=逻辑右移；移位量按位宽取模（<code>x &lt;&lt; 64</code> ≡ <code>x</code>）。</li><li>后缀 <code>++/--</code> 表达式值=自增<strong>前</strong>原值；前缀=自增后新值。</li><li>三元 <code>条件 ? 真值 : 假值</code> 右结合、惰性求值。</li></ul>
+<ul><li><code>/</code> 对整数=截断除；<code>%</code> 取余（除零=运行时错误码 1，常量除零=编译错误）。</li><li>逻辑 <code>&amp;&amp;</code> <code>||</code> 短路；位运算只适用整型（浮点位运算编译拒绝）；<code>&gt;&gt;</code> 有符号=算术右移（符号扩展），无符号=逻辑右移；移位量超宽=确定性失败（常量=编译期硬错误，变量=错误码 8；取模用 <code>x &lt;&lt; (k % 位宽)</code> 显式写）。</li><li>后缀 <code>++/--</code> 表达式值=自增<strong>前</strong>原值；前缀=自增后新值。</li><li>三元 <code>条件 ? 真值 : 假值</code> 右结合、惰性求值。</li></ul>
 <h2 id="控制流">控制流：如果/当/循环/选择/遍历</h2>
 <p>条件括号可选（裸条件与带括号均合法）；<code>中断</code> 绑定最近的循环或选择；<code>选择</code> 默认贯穿（fall-through）、显式 <code>中断</code> 停住。</p>
 <div class="码窗"><p class="码窗-顶"><span class="码窗-名">条件与循环.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">函数 分级(整32 分) -&gt; 字符串 {
@@ -280,7 +280,7 @@
 函数 主() -&gt; 整32 {
     整32 甲 = 1;
     整32 乙 = 2;
-    交换泛型&lt;整32&gt;(甲, 乙);      // 显式单态化&amp;lt;类型&amp;gt;；引用实参直传
+    交换泛型&lt;整32&gt;(甲, 乙);      // 显式&lt;类型&gt;；引用实参直传（不加 &amp;）
     打印(甲, 乙);
     返回 0;
 }</code></pre></div>
@@ -424,7 +424,7 @@ CN
     </div>
     <div class="页脚-底">
       <span>© 2026 CN 语言项目</span>
-      <span>文档基线：任务/992 ef3fff8b·2026-10-17·示例经编译器实测</span>
+      <span>文档基线：任务/1001 e0ef4a01·2026-10-17·示例经编译器实测</span>
       <span>京ICP备00000000号（备案办理中·占位）</span>
     </div>
   </div>
