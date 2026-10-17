@@ -599,8 +599,24 @@ void SemanticAnalyzer::computeLayout(StructDecl* decl) {
             if (isEnumType(t280)) continue;  // 枚举恒 4
             const StructDecl* sd280 = findStruct(t280);
             if (sd280 != nullptr && !sd280->layoutComputed) {
-                ready280 = false;  // 已注册未布局（普通结构体或嵌套合成体）
-                break;
+                // 920（任务 920·丙案「合成体就绪化递归」）：依赖「已注册未布局」时
+                //   先递归就绪化依赖闭包（载荷结构体/嵌套合成体/联合体——声明序
+                //   无关化），递归后仍不就绪（值字段环已报错/错误恢复）才回滚。
+                //   原逻辑只回滚不自救：通用结构体字段=合成体 的消费点
+                //   （computeLayout 字段循环 typeSizeOf）在回滚窗口内查到
+                //   totalSize=0 → 「结果最小 12」防御值（typeSizeOf L432）被
+                //   固化进字段尺寸/结构体 totalSize，且 layoutComputed=true 后
+                //   不再重算——包盒4 步长 12 vs 真值 16、包盒16 12 vs 24 实录；
+                //   同结构体拷贝仍按真值 16/24 宽度写 12 步长槽=越界写邻槽
+                //   （内存安全面）。就绪化后消费点查到真值，与 v2 8+max 模型
+                //   零分叉对齐。
+                if (StructDecl* fm280 = findMutableStruct(sd280->name)) {
+                    computeLayout(fm280);
+                }
+                if (!sd280->layoutComputed) {
+                    ready280 = false;  // 环/错误恢复仍不就绪：回滚给重算
+                    break;
+                }
             }
         }
         if (!ready280) {
@@ -669,7 +685,15 @@ void SemanticAnalyzer::computeLayout(StructDecl* decl) {
     for (auto& field : decl->fields) {
         // T3：字段为结构体/合成体时——先查递归环（字段类型 ∈ 计算中栈=环·报错），
         //   未计算则惰性递归其布局（消除间接递归的声明顺序依赖）
-        if (const StructDecl* fd = findStruct(canonicalType(field.type))) {
+        // 920：递归判定剥数组后缀——canonicalType 不剥 ']' 形态，原判定对
+        //   「结构体（含合成体）数组字段」findStruct miss → 依赖未布局时
+        //   typeSizeOf 经数组展开拿 0/防御值固化（数组字段=结果<结构体,E>[2]
+        //   结构体 totalSize 24 vs 真值 32 实录：清零/分配按 12×2、元素寻址
+        //   按真值 16——同字段两消费面不一致=越界写邻槽）。剥后与合成体
+        //   ready280 判定的数组剥离口径（types::arrayElemOf）保持同一。
+        std::string fieldCore = canonicalType(field.type);
+        while (types::isArray(fieldCore)) fieldCore = types::arrayElemOf(fieldCore);
+        if (const StructDecl* fd = findStruct(fieldCore)) {
             if (layoutVisiting_.count(fd->name)) {
                 diagnostics_.report(
                     DiagnosticLevel::Error, decl->location,
