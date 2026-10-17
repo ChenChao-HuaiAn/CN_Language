@@ -15,12 +15,17 @@
 #include "cn_compiler/model/type_system.hpp"
 #include "cn_compiler/model/semantic_helpers.hpp"
 #include "cn_compiler/semantic/semantic_lambda_escape.hpp"
+#include "cn_compiler/semantic/semantic_method_value_943.hpp"
 #include "cn_compiler/semantic/semantic_staticguard.hpp"
 
 namespace cn_compiler {
 
 void SemanticAnalyzer::visitVarDecl(VarDecl* node) {
     std::string varType = node->typeName;
+    // 943（绑定方法值赋值位合法化）：声明初值=实例方法作值的合法落点之一——
+    //   位置守卫置位（初值内 对象.方法 作值放行；IR 赋值位合成蹦床闭包并固化
+    //   绑定对象指针为静态槽，跨函数转发安全）。RAII 覆盖本函数全 return 路径。
+    method_value_943::BindGuard methodValueBind943;
     // 324 甲案（2026-10-09 用户批·001 豁免面条文）：函数内静态无初值声明=
     //   登记面拒绝（Rust `static` 须显式初值同款——显式初值消除「零初始化
     //   时机」歧义）。v2 语义检查中.cn:597 声明点同构执法（修饰=1 函数内
@@ -903,6 +908,22 @@ bool SemanticAnalyzer::argIsBoundMethodValue(const Expr* e) {
     return e != nullptr && e->getType() == NodeType::MemberExpr &&
            static_cast<const MemberExpr*>(e)->isMethodValue;
 }
+
+// 943（2026-10-17·用户质询收口）位置守卫与统一诊断文案（声明见
+//   semantic_method_value_943.hpp）。原文案「须先赋值给变量」在转发语境不安全
+//   （赋值后经 fnptr 形参转发=段错误 rc=139·p82d 探针）；本任务已把赋值位改为
+//   蹦床闭包合成（转发安全），文案按用户令改指**闭包捕获**（首选·载体自带
+//   数据+代码）或先绑定变量（现已安全）。双侧逐字一致（v2=语义检查实参.cn）。
+namespace method_value_943 {
+int bindDepth = 0;
+BindGuard::BindGuard() : saved(bindDepth) { bindDepth = saved + 1; }
+BindGuard::~BindGuard() { bindDepth = saved; }
+std::string positionDiag() {
+    return "实例方法作值不能作为函数指针值使用（绑定 this 无处安放）——"
+           "改用闭包捕获：变量 闭 = [对象](...) { 返回 对象.方法(...); }; "
+           "或先绑定变量：变量 cb = 对象.方法; cb(实参)";
+}
+}  // namespace method_value_943
 
 // 662（方法链消费位·2026-10-16）：类对象返回「拥有形态」收集——返回类型为类
 //   对象（非指针/引用）时判定返回值表达式形态（函数级两标记，收尾落

@@ -6,11 +6,13 @@
 #include <cstdio>
 #include <cstdlib>
 #include <functional>
+#include <optional>
 #include <string>
 #include <unordered_set>
 #include <utility>
 
 #include "cn_compiler/semantic/semantic.hpp"
+#include "cn_compiler/semantic/semantic_method_value_943.hpp"
 #include "cn_compiler/model/type_system.hpp"
 #include "cn_compiler/model/semantic_helpers.hpp"
 #include "cn_compiler/semantic/semantic_lambda_escape.hpp"
@@ -138,8 +140,18 @@ void SemanticAnalyzer::visitAssignmentExpr(AssignmentExpr* node) {
     if (!targetType.empty() && targetType != "未知") {
         ctorTargetStack_.push_back(targetType);
     }
+    // 943（绑定方法值赋值位合法化）：标识符变量简单赋值右值=实例方法作值
+    //   合法落点之一（与声明初值同位；IR 层赋值位合成蹦床闭包+对象指针静态槽
+    //   固化，经 fnptr 转发安全）。非标识符目标（成员/下标/解引用）不置位=
+    //   按非法位置编译拒绝（绑定对象无处固化·§1.1a② 宁拒不放行）。
+    const bool mvBind943 =
+        node->op == Operator::Assign && node->target != nullptr &&
+        node->target->getType() == NodeType::IdentifierExpr;
+    std::optional<method_value_943::BindGuard> mvGuard943;
+    if (mvBind943) mvGuard943.emplace();
     inAggregateReadCtx_ = true;  // 010（def-init）：右值=聚合值读语境（数组整体赋值右值）
     std::string valueType = checkExpr(node->value.get());
+    mvGuard943.reset();
     inAggregateReadCtx_ = false;
     if (!targetType.empty() && targetType != "未知") {
         ctorTargetStack_.pop_back();

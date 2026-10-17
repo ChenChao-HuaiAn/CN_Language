@@ -374,6 +374,27 @@ private:
     // ---- 432（#276 波3·蹦床闭包模型）lambda 生成族私辅（实现在 ir_lambda.cpp）----
     // lambda 用户参数段构建（?lambdaN 与蹦床共用——纪律二当场归纳）：参数槽/ varStack 登记，引用参数（T&）按 ptr+byRef 形态（A-1 同款）
     void buildLambdaUserParams(ir::IRFunction& func, LambdaExpr* node);
+    // 943：lambda/方法值蹦床单点（methodValueTrap=true 时地址透传+裸对象指针捕获）
+    void buildClosureParams943(ir::IRFunction& func,
+                               const std::vector<const ParamDecl*>& params,
+                               bool addressTransparentParams = false);
+    void buildClosureTrampoline943(const std::string& trapName,
+                                   const std::string& calleeName,
+                                   const std::string& closureId,
+                                   const std::string& returnSrcType,
+                                   const std::string& returnIrType,
+                                   const std::vector<const ParamDecl*>& params,
+                                   const std::vector<std::string>& capturedNames,
+                                   const std::vector<char>& captureRefs,
+                                   const SourceLocation& loc,
+                                   bool methodValueTrap = false);
+    // 943：蹦床缓存（节点->蹦床名·复用）；槽键=cap$<蹦床名>$绑定对象；蹦床合成
+    //   体=对象槽 LoadPtr + 直调方法符号(this,实参)。
+    std::unordered_map<const MemberExpr*, std::string> methodValueTrapByNode943_;
+    int methodValueTrapCounter943_ = 0;
+    std::string ensureMethodValueTrap943(MemberExpr* node, const std::string& ownerSym,
+                                         const ClassMemberInfo& method);
+    std::string methodValueSlotKey943(const std::string& trapName) const;
     // 快照静态槽注册 + 定义处固化（外层块发射）：值捕获=StorePtr 定义处值； [&]=StorePtr 变量地址；结构体值捕获=CopyStruct 槽（与 genVarDecl
     //   captureArgs 固化同构——数据流终点不同：captureArgs=局部值列表，
     //   本处=.data 静态槽·第 2 处重复留标记：与 ir_stmt_decl_init 固化段互为镜像）

@@ -10,6 +10,7 @@
 #include <utility>
 
 #include "cn_compiler/semantic/semantic.hpp"
+#include "cn_compiler/semantic/semantic_method_value_943.hpp"
 #include "cn_compiler/model/type_system.hpp"
 #include "cn_compiler/model/semantic_helpers.hpp"
 
@@ -315,6 +316,19 @@ void SemanticAnalyzer::visitMemberExpr(MemberExpr* node) {
             lastType_ = fp;
             // P3-23 补完：实例方法作值（对象.实例方法）标记——IR 合成"绑定 this"
             //   闭包（须先赋给变量经闭包变量调用；不可直接作裸 fnptr 实参，D2 诊断）
+            //
+            // 943（2026-10-17）：位置守卫——实例方法作值仅可作**变量绑定值**
+            //   （声明初值/标识符赋值右值，methodValueBindDepth_>0）：IR 赋值位
+            //   合成蹦床闭包（值=代码+对象槽固化，跨函数转发安全）。其余位置
+            //   （返回位/字段/容器/下标/语句位等）绑定对象无处固化=悬垂或脏崩
+            //   （p82d/p943d 探针 rc=139 实录）→ 编译拒绝（§1.1a② 宁拒不放行·
+            //   plans/031 第一版保守面）。实参位由 806 检查另报；同节点去重标记
+            //   防双报（单诊断口径）。
+            if (method_value_943::bindDepth == 0 && !node->methodValueDiag943) {
+                diagnostics_.report(DiagnosticLevel::Error, node->location,
+                                    method_value_943::positionDiag());
+                node->methodValueDiag943 = true;
+            }
             node->isMethodValue = true;
             return;
         }

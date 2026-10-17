@@ -128,6 +128,16 @@ void IRGenerator::registerClosureIfNeeded(VarDecl* node) {
                     ir::Opcode::Load,
                     {ir::IRValue::var(objUnique, "ptr")},
                     "ptr", objUnique, node->location));
+            } else {  // 静默豁免业务值: 对象非标识符=不登记快径改走 943 蹦床通道（非静默默认值）
+                // 943：对象非变量标识符（自身/成员链/解引用——槽值由 943 蹦床
+                //   闭包自持）→ 不登记快径（无捕获实参的快径会丢 this=直调
+                //   静默错行为）；直调/转发统一走 943 蹦床通道（语义等价）。
+                lastLambdaName_.clear();
+                lastLambdaCaptures_.clear();
+                lastLambdaReturnIrType_.clear();
+                lastLambdaSrcReturnType_.clear();
+                lastLambdaCaptureRefs_.clear();
+                return;
             }
         } else {
         // 缺陷修复（[=] 快照 / [&] 引用，规格书04-一D）：

@@ -71,27 +71,49 @@ ir::IRValue IRGenerator::evalValueCaptureCopy(const std::string& capName,
 //   varStack_ 已压入函数作用域。引用参数（T&）按 ptr 槽+byRef 形态（A-1 同款）。
 void IRGenerator::buildLambdaUserParams(ir::IRFunction& func,
                                         LambdaExpr* node) {
-    for (std::size_t pi = 0; pi < node->params.size(); ++pi) {
-        auto& param = node->params[pi];
+    std::vector<const ParamDecl*> params;
+    params.reserve(node->params.size());
+    for (const auto& p : node->params) params.push_back(p.get());
+    buildClosureParams943(func, params);
+}
+
+// 943（绑定方法值赋值位合法化·蹦床闭包）：闭包参数段构建单点——lambda 蹦床
+//   与 方法值蹦床 共用（A-1 引用参数按 ptr+byRef；函数指针参数按 ptr；其余
+//   按 mapType——与 ?lambdaN 完全同构=蹦床可作 fnptr 的前提）。
+void IRGenerator::buildClosureParams943(
+    ir::IRFunction& func, const std::vector<const ParamDecl*>& params,
+    bool addressTransparentParams) {
+    for (std::size_t pi = 0; pi < params.size(); ++pi) {
+        const ParamDecl* param = params[pi];
         // A-1（引用参数）：lambda 显式引用参数（整32&）同样按 byRef 语义
         const bool isRefParam = !param->funcPtr.isFunctionPtr() &&
                                 types::isReference(param->typeName);
-        const std::string ptype = (param->funcPtr.isFunctionPtr() || isRefParam)
-                                      ? "ptr" : mapType(param->typeName);
+        // 943：方法值蹦床——结构化形参（结构体/数组）按地址透传（与方法符号
+        //   形参约定一致：调用方传地址，被调方 prologue 自行拷贝/按地址用）；
+        //   引用形参同样按 ptr 单槽（槽值=地址，转发原样传回）。
+        const bool addrLike943 =
+            addressTransparentParams && !param->funcPtr.isFunctionPtr() &&
+            (isRefParam || types::isArray(param->typeName) ||
+             (semantic_ != nullptr &&
+              semantic_->isStructType(types::canonical(param->typeName))));
+        const std::string ptype =
+            (param->funcPtr.isFunctionPtr() || isRefParam || addrLike943)
+                ? "ptr" : mapType(param->typeName);
         std::string unique = param->name + "$" + std::to_string(varCounter_++);
         func.params.emplace_back(param->name, ptype);
         func.paramUniques.push_back(unique);
-        registerVarSlots(unique, isRefParam ? ""
+        registerVarSlots(unique, (isRefParam || addrLike943) ? ""
                             : (param->funcPtr.isFunctionPtr() ? "" : param->typeName));
         ir::IRValue reg = newReg();
         reg.type = ptype;
         VarEntry entry;
         entry.regId = reg.id;
         entry.uniqueName = unique;
-        entry.type = isRefParam ? mapType(types::stripRef(param->typeName)) : reg.type;
+        entry.type = isRefParam ? mapType(types::stripRef(param->typeName))
+                    : (addrLike943 ? "ptr" : reg.type);
         // 337-a（T53 家系）：lambda 形参同款——函数指针取完整规范串
         //   （paramSrcTypeOf 单一归属，与 ir_decl/ir_generic_func 登记点同口径）。
-        entry.srcType = paramSrcTypeOf(param.get());
+        entry.srcType = paramSrcTypeOf(param);
         entry.byRef = isRefParam;
         varStack_.back()[param->name] = entry;
     }
@@ -187,17 +209,38 @@ void IRGenerator::buildLambdaTrampoline(
     const std::vector<std::string>& capturedNames,
     const std::vector<char>& captureRefs,
     const SourceLocation& loc) {
+    std::vector<const ParamDecl*> params;
+    params.reserve(node->params.size());
+    for (const auto& p : node->params) params.push_back(p.get());
+    buildClosureTrampoline943(lambdaName + "$trap", lambdaName, lambdaName,
+                              node->returnType, returnIrType, params,
+                              capturedNames, captureRefs, loc);
+}
+
+// 943：通用闭包蹦床构建单点（432 lambda 蹦床 与 方法值蹦床 共用——杜绝复制）。
+//   trapName=蹦床函数名；calleeName=转发目标（lambda=?lambdaN·方法值=方法链接
+//   符号）；closureId=快照静态槽键前缀（?gstatic_cap$<id>$<捕获名>）；params=
+//   蹦床用户参数（lambda 用户形参 / 方法形参——与 callee 的参数序一致）。
+void IRGenerator::buildClosureTrampoline943(
+    const std::string& trapName, const std::string& calleeName,
+    const std::string& closureId, const std::string& returnSrcType,
+    const std::string& returnIrType,
+    const std::vector<const ParamDecl*>& params,
+    const std::vector<std::string>& capturedNames,
+    const std::vector<char>& captureRefs,
+    const SourceLocation& loc,
+    bool methodValueTrap) {
     ir::IRFunction trap;
-    trap.name = lambdaName + "$trap";
+    trap.name = trapName;
     trap.returnType = returnIrType;
-    // 485：蹦床同置 structReturn（与 ?lambdaN 同协议——蹦床作 fnptr 逃逸后
+    // 485：蹦床同置 structReturn（与被调同协议——蹦床作 fnptr 逃逸后
     //   经形态A retbuf 预插间接调用，被调方须按隐藏返回指针回写）。
     //   判定在 visitLambdaExpr 与本函数各算一次（返回类型源码同源幂等）。
-    if (semantic_ != nullptr && !node->returnType.empty() &&
-        (semantic_->isStructType(types::canonical(node->returnType)) ||
-         types::isArray(node->returnType))) {
+    if (semantic_ != nullptr && !returnSrcType.empty() &&
+        (semantic_->isStructType(types::canonical(returnSrcType)) ||
+         types::isArray(returnSrcType))) {
         trap.structReturn = true;
-        trap.structReturnSize = semantic_->typeSizeOf(node->returnType);
+        trap.structReturnSize = semantic_->typeSizeOf(returnSrcType);
     }
     // 保存外层生成状态（trap 构建独立于当前生成上下文·visitLambdaExpr 同框架）
     ir::IRFunction* outerFunction = function_;
@@ -206,17 +249,28 @@ void IRGenerator::buildLambdaTrampoline(
     const std::size_t outerVarDepth = varStack_.size();
     function_ = &trap;
     varStack_.emplace_back();
-    // 用户参数段（与 ?lambdaN 完全同构——ABI 一致是蹦床可作 fnptr 的前提）
-    buildLambdaUserParams(trap, node);
+    // 用户参数段（与被调完全同构——ABI 一致是蹦床可作 fnptr 的前提）
+    buildClosureParams943(trap, params, methodValueTrap);
     blockCounter_ = 0;
     ir::IRBlock* entry = newBlock("bb0");
     (void)entry;
-    // 捕获实参还原 = LoadPtr 快照槽（顺序与 ?lambdaN 捕获参数序严格一致）
+    // 捕获实参还原 = LoadPtr 快照槽（顺序与被调捕获参数序严格一致）
     std::vector<ir::IRValue> callArgs;
-    callArgs.reserve(capturedNames.size() + node->params.size());
+    callArgs.reserve(capturedNames.size() + params.size());
     for (std::size_t ci = 0; ci < capturedNames.size(); ++ci) {
         const std::string& cap = capturedNames[ci];
         const bool byRef = captureRefs[ci] != 0;
+        ir::IRValue slotAddr = emitResult(
+            ir::Opcode::ConstString, {}, "ptr",
+            "?gstatic_" + lambdaSlotKey(closureId, cap), loc);
+        if (methodValueTrap) {
+            // 943（方法值蹦床）：捕获槽值=裸 8 字节对象指针（写侧=赋值位
+            //   对象指针 StorePtr·槽类型登记 整64）——无条件 LoadPtr·不查
+            //   变量类型表（捕获名"绑定对象"非变量·查表必 miss）。
+            callArgs.push_back(emitResult(ir::Opcode::LoadPtr, {slotAddr},
+                                          "ptr", "", loc));
+            continue;
+        }
         const std::string capSrc = lookupSrcType(cap);
         const std::string capIrType = lookupVarType(cap);
         if (capIrType.empty()) {
@@ -228,16 +282,13 @@ void IRGenerator::buildLambdaTrampoline(
             diagnostics_.report(DiagnosticLevel::Error, loc,
                 "内部错误: 捕获变量 '" + cap + "' IR 类型未登记 ——静默宽度兜底已废除（#648）");
         }
-        ir::IRValue slotAddr = emitResult(
-            ir::Opcode::ConstString, {}, "ptr",
-            "?gstatic_" + lambdaSlotKey(lambdaName, cap), loc);
         if (byRef) {
-            // 引用捕获：槽值即变量地址（?lambdaN 捕获参数按 ptr 收地址）
+            // 引用捕获：槽值即变量地址（被调捕获参数按 ptr 收地址）
             callArgs.push_back(emitResult(ir::Opcode::LoadPtr, {slotAddr},
                                           "ptr", "", loc));
         } else if (!capSrc.empty() && semantic_ != nullptr &&
                    semantic_->isStructType(types::canonical(capSrc))) {
-            // 结构体值捕获：实参=槽地址（?lambdaN 结构体值捕获参数经
+            // 结构体值捕获：实参=槽地址（被调结构体值捕获参数经
             //   structParamIndexes 从指针 rep movsb——槽即固化缓冲）
             callArgs.push_back(slotAddr);
         } else {
@@ -247,33 +298,38 @@ void IRGenerator::buildLambdaTrampoline(
                                           "", loc));
         }
     }
-    // 用户实参 = 参数槽值经 Load 读出（与 ?lambda0 体内读参数同通道——
+    // 用户实参 = 参数槽值经 Load 读出（与被调体内读参数同通道——
     //   参数槽引用必须走 var(唯一名) 形态 Load：lookupVar 返回的 reg(regId)
     //   是占位寄存器 id，codegen 会把该寄存器分到普通栈槽而非参数槽
     //   （面2 实弹：trap 读 [rbp-80] 未初始化垃圾·参数槽在 [rbp-112]））
-    for (const auto& param : node->params) {
+    for (const auto* param : params) {
         const VarEntry* pe = findVarEntry(param->name);
         if (pe != nullptr) {
+            // 943：按「槽内实际内容宽度」装载转发——引用形参/地址透传形参
+            //   （结构体/数组）槽值=地址（ptr 宽），按声明窄宽装载会把地址
+            //   截断（457 捕码截断 SEGV 同族）；其余按值宽装载。
+            const std::string loadType =
+                (pe->byRef || pe->type == "ptr") ? "ptr" : pe->type;
             callArgs.push_back(emitResult(
                 ir::Opcode::Load,
                 {ir::IRValue::var(pe->uniqueName, pe->type)},
-                pe->type, pe->uniqueName, loc));
+                loadType, pe->uniqueName, loc));
         } else {
             callArgs.push_back(lookupVar(param->name));
         }
     }
-    // 转发直调 ?lambdaN（返回=透传）
-    // 485（结构体/数组返回）：?lambdaN 已置 structReturn（第一参数位=sret
+    // 转发直调被调（返回=透传）
+    // 485（结构体/数组返回）：被调已置 structReturn（第一参数位=sret
     //   隐藏指针 rcx），转发调用点须预插蹦床内 retbuf 为首实参（形态A）——
     //   i128 返回经 emitCall result.type=i128 自动走 sret（p10 链已通），
     //   结构体返回被 mapType 塌缩 ptr 无法同判，此处显式补齐；返回透传=
     //   epilogue 按 structReturnSize 把 retbuf 拷到蹦床自己的 sret 槽。
-    const bool fwdStructRet = semantic_ != nullptr && !node->returnType.empty() &&
+    const bool fwdStructRet = semantic_ != nullptr && !returnSrcType.empty() &&
                               (semantic_->isStructType(
-                                   types::canonical(node->returnType)) ||
-                               types::isArray(node->returnType));
+                                   types::canonical(returnSrcType)) ||
+                               types::isArray(returnSrcType));
     if (returnIrType.empty() || returnIrType == "void") {
-        emit(ir::Opcode::Call, callArgs, ir::IRValue(), lambdaName, "void", loc);
+        emit(ir::Opcode::Call, callArgs, ir::IRValue(), calleeName, "void", loc);
         endReturn("");
     } else if (fwdStructRet) {
         const std::string temp = "__retbuf" + std::to_string(varCounter_++);
@@ -281,16 +337,16 @@ void IRGenerator::buildLambdaTrampoline(
              temp, "ptr", loc);
         // 返回缓冲区按 64 字节（8 槽）分配——与被调方 epilogue 拷贝上限一致
         function_->varSlots[temp] = 8;
-        registerVarSlots(temp, node->returnType);
+        registerVarSlots(temp, returnSrcType);
         ir::IRValue buf = emitResult(ir::Opcode::AddrOf,
                                      {ir::IRValue::var(temp, "i64")},
                                      "ptr", temp, loc);
         callArgs.insert(callArgs.begin(), buf);  // 隐藏返回指针=第一参数（rcx）
-        emit(ir::Opcode::Call, callArgs, ir::IRValue(), lambdaName, "void", loc);
+        emit(ir::Opcode::Call, callArgs, ir::IRValue(), calleeName, "void", loc);
         endReturn(buf.toString());
-    } else {
+    } else {  // 静默豁免业务值: 转发直调发射末支（标量返回透传·无默认值语义）
         ir::IRValue result = emitResult(ir::Opcode::Call, callArgs, returnIrType,
-                                        lambdaName, loc);
+                                        calleeName, loc);
         endReturn(result.toString());
     }
     varStack_.pop_back();
@@ -300,6 +356,59 @@ void IRGenerator::buildLambdaTrampoline(
     currentBlock_ = outerBlock;
     blockCounter_ = outerBlockCounter;
     while (varStack_.size() > outerVarDepth) varStack_.pop_back();
+}
+
+// 943（绑定方法值赋值位合法化·2026-10-17）：方法值蹦床合成——`对象.方法` 求值
+//   不再发放裸方法符号（签名含隐藏 this、裸作 fnptr 值=丢绑定），而是发放
+//   **自带绑定**的蹦床闭包地址（签名=用户签名，与 fnptr 声明一致）：体=从本站点
+//   静态槽 LoadPtr 还原绑定对象指针（赋值位 StorePtr 固化）→ 直调方法符号
+//   (this, 用户实参…) → 返回透传。值经 fnptr 形参转发/拷贝/跨函数时绑定随值走
+//   （与 lambda 蹦床通道同构），修复 p82d/p943a 探针「赋值后直调绿 105/经函数
+//   参数转发段错误 rc=139」。槽键=cap$<蹦床名>$绑定对象（单一归属
+//   methodValueSlotKey943——写侧=成员表达式位·读侧=蹦床体内同式）。
+std::string IRGenerator::methodValueSlotKey943(const std::string& trapName) const {
+    return lambdaSlotKey(trapName, "绑定对象");
+}
+
+std::string IRGenerator::ensureMethodValueTrap943(MemberExpr* node,
+                                                  const std::string& ownerSym,
+                                                  const ClassMemberInfo& method) {
+    auto it = methodValueTrapByNode943_.find(node);
+    if (it != methodValueTrapByNode943_.end()) return it->second;
+    const std::string trapName =
+        "?mvtrap" + std::to_string(methodValueTrapCounter943_++);
+    // 形参段：按方法形参源码类型串合成 ParamDecl（名字仅蹦床体内局部使用；
+    //   函数指针形参按规范串解析回 funcPtr 结构——ptr 槽通道）。
+    std::vector<std::unique_ptr<ParamDecl>> ownedParams;
+    std::vector<const ParamDecl*> params;
+    ownedParams.reserve(method.paramTypes.size());
+    params.reserve(method.paramTypes.size());
+    for (std::size_t pi = 0; pi < method.paramTypes.size(); ++pi) {
+        auto param = std::make_unique<ParamDecl>();
+        param->name = "参数" + std::to_string(pi);
+        const std::string& t = method.paramTypes[pi];
+        if (t.rfind("函数指针<", 0) == 0) {
+            param->funcPtr.returnType = types::funcPtrReturnTypeOf(t);
+            param->funcPtr.paramTypes = types::funcPtrParamsOf(t);
+        } else {  // 静默豁免业务值: 非函数指针形参=源码类型串直用（无默认值语义）
+            param->typeName = t;
+        }
+        param->location = node->location;
+        params.push_back(param.get());
+        ownedParams.push_back(std::move(param));
+    }
+    // 静态槽登记：绑定对象指针（8 字节·整64 槽——写侧 StorePtr 固化）
+    module_->globalStatics[methodValueSlotKey943(trapName)] = "整64";
+    const std::string retSrc = method.type.empty() ? "空类型" : method.type;
+    const std::vector<std::string> captures = {"绑定对象"};
+    const std::vector<char> captureRefs = {0};
+    buildClosureTrampoline943(trapName,
+                              methodSymbolKey(ownerSym, method.sigKey),
+                              trapName, retSrc, mapType(retSrc), params,
+                              captures, captureRefs, node->location,
+                              /*methodValueTrap=*/true);
+    methodValueTrapByNode943_[node] = trapName;
+    return trapName;
 }
 
 void IRGenerator::visitLambdaExpr(LambdaExpr* node) {

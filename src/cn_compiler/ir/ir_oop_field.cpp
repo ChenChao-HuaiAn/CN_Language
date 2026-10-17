@@ -639,13 +639,20 @@ bool IRGenerator::handleClassMemberExpr(MemberExpr* node) {
     //   语义已置 node->isMethodValue；此处记录闭包绑定信息（lastLambda*_ 供
     //   genVarDecl 在变量绑定态登记 closureInfo_），表达式值 = 方法链接符号。
     //   cb(实参) 经闭包调用展开捕获 this 直接 Call 方法符号（this + 用户实参）。
+    //
+    // 943（绑定方法值赋值位合法化·2026-10-17）：值改发**蹦床闭包地址**并用
+    //   绑定对象指针固化本站点静态槽——裸方法符号（签名含隐藏 this）作 fnptr
+    //   值经形参转发=丢绑定段错误（p82d/p943a 探针 rc=139）；蹦床签名=用户签名，
+    //   体自带"从槽取 this + 直调方法符号"，转发/拷贝安全。同函数直调仍走
+    //   closureInfo_ 内联快径（封存语义等价：绑定对象均为赋值位固化）。
     if (node->isMethodValue && semantic_->isClassType(canonObj)) {
         std::string owner;
         const ClassMemberInfo* method =
             semantic_->lookupClassMember(canonObj, node->memberName, owner);
         if (method != nullptr && !method->isStatic) {
             const std::string ownerSym = owner.empty() ? canonObj : owner;
-            lastLambdaName_ = methodSymbolKey(ownerSym, method->sigKey);
+            const std::string methodSym = methodSymbolKey(ownerSym, method->sigKey);
+            lastLambdaName_ = methodSym;
             lastLambdaCaptures_.clear();
             // 被绑定对象：若为标识符则记录（闭包对象地址由 genVarDecl 求值）
             if (node->object->getType() == NodeType::IdentifierExpr) {
@@ -660,8 +667,17 @@ bool IRGenerator::handleClassMemberExpr(MemberExpr* node) {
             lastLambdaParamTypes_ = method->paramTypes;
             lastLambdaCaptureRefs_.clear();
             lastLambdaCaptureRefs_.push_back(true);  // 引用捕获（存对象地址）
-            lastExpr_ = emitResult(ir::Opcode::FuncAddr, {}, "ptr",
-                                   methodSymbolKey(ownerSym, method->sigKey),
+            // 943：蹦床合成（按节点缓存）+ 绑定对象指针固化本站点静态槽
+            //   （写侧；读侧=蹦床体内 LoadPtr 同键——单一归属 methodValueSlotKey943）。
+            const std::string trapName =
+                ensureMethodValueTrap943(node, ownerSym, *method);
+            ir::IRValue objPtr = classMemberBasePtr(node->object.get());
+            ir::IRValue slotAddr = emitResult(
+                ir::Opcode::ConstString, {}, "ptr",
+                "?gstatic_" + methodValueSlotKey943(trapName), node->location);
+            emit(ir::Opcode::StorePtr, {slotAddr, objPtr}, ir::IRValue(), "",
+                 "ptr", node->location);
+            lastExpr_ = emitResult(ir::Opcode::FuncAddr, {}, "ptr", trapName,
                                    node->location);
             return true;
         }

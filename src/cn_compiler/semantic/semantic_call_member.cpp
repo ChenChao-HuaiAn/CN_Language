@@ -1,6 +1,7 @@
 // 语义调用检查·族C（357 重构F2 自 semantic_call.cpp 纯机械搬移·函数体逐字保留）
 // 职责：成员方法调用 对象.方法(实参) / 类名.静态方法(实参)——接口/实例/静态三路
 #include "cn_compiler/semantic/semantic.hpp"
+#include "cn_compiler/semantic/semantic_method_value_943.hpp"
 #include "cn_compiler/model/semantic_helpers.hpp"
 
 namespace cn_compiler {
@@ -265,10 +266,15 @@ bool SemanticAnalyzer::checkInstanceMethodCall(CallExpr* node, MemberExpr* mem,
                 if (hasParam) ctorTargetStack_.pop_back();
 
                 // P3-23 补完（D2）：绑定方法值不可作裸 fnptr 实参
+                //   （943：文案改指闭包捕获·单诊断去重同 collectCallArgTypes）
                 if (argIsBoundMethodValue(node->arguments[ai].get())) {
-                    diagnostics_.report(
-                        DiagnosticLevel::Error, node->arguments[ai]->location,
-                        "实例方法作值不能直接作为函数指针实参传递（绑定 this 须先赋值给变量：变量 cb = 对象.方法）");
+                    auto* mv = static_cast<MemberExpr*>(node->arguments[ai].get());
+                    if (!mv->methodValueDiag943) {
+                        diagnostics_.report(DiagnosticLevel::Error,
+                                            node->arguments[ai]->location,
+                                            method_value_943::positionDiag());
+                        mv->methodValueDiag943 = true;
+                    }
                 }
             }
             adjustLiteralArgTypes(argTypes, node->arguments);            if (argTypes.size() != method->paramTypes.size()) {

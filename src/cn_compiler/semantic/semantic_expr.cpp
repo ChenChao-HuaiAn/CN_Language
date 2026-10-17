@@ -13,6 +13,7 @@
 #include <utility>
 
 #include "cn_compiler/semantic/semantic.hpp"
+#include "cn_compiler/semantic/semantic_method_value_943.hpp"
 #include "cn_compiler/model/type_system.hpp"
 #include "cn_compiler/model/semantic_helpers.hpp"
 #include "cn_compiler/semantic/semantic_lambda_escape.hpp"
@@ -34,9 +35,14 @@ std::vector<std::string> SemanticAnalyzer::collectCallArgTypes(
     for (const auto& a : args) {
         argTypes.push_back(checkExpr(a.get()));
         if (argIsBoundMethodValue(a.get())) {
-            diagnostics_.report(
-                DiagnosticLevel::Error, a->location,
-                "实例方法作值不能直接作为函数指针实参传递（绑定 this 须先赋值给变量：变量 cb = 对象.方法）");
+            // 943：文案改指闭包捕获（单一归属 methodValuePositionDiag943）；
+            //   同节点已由位置守卫报过（非绑定位置）则跳过=单诊断口径。
+            auto* mv = static_cast<MemberExpr*>(a.get());
+            if (!mv->methodValueDiag943) {
+                diagnostics_.report(DiagnosticLevel::Error, a->location,
+                                    method_value_943::positionDiag());
+                mv->methodValueDiag943 = true;
+            }
         }
     }
     adjustLiteralArgTypes(argTypes, args);
