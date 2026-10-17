@@ -17,6 +17,8 @@ extern "C" void* cn_alloc_tracked_host(std::size_t size);
 #include <cstdlib>
 #include <cstring>
 #include <cerrno>
+#include <cstdint>
+#include <mutex>
 
 // ==================== 字符串API（规格书10.1） ====================
 
@@ -423,7 +425,7 @@ extern "C" long long __cn_str_to_bool(const char* str, int* ok) {
     return 0;  // 非法输入：成功标志保持 0
 }
 
-// ---- 波2（074·2026-09-29）：字符串构建器四件套（Rust String::push_str 同款）----
+// ---- 波2（074·2026-09-29）：字符串构建器五件套（Rust String::push_str 同款）----
 //   病根：`s = s + 段` 逐段拼接 O(L²) 分配（829/863 侦查：16K+ 中块≈3.3GB 主体
 //   =字符串族按长度分配）；本设施=可增长缓冲一次成型 O(L)（缓冲×2 增长）。
 //   用法（CN 侧）：句柄 = 字符串构建器新建(); 循环 字符串构建器追加(句柄, 段);
@@ -431,33 +433,233 @@ extern "C" long long __cn_str_to_bool(const char* str, int* ok) {
 //   __cn_str_concat 同所有权）+ 缓冲释放；句柄一次性（完成后不可再用）。
 //   #366（2026-10-13）：补第五件 弃置（__cn_strbuf_drop）——错误路径中途放弃
 //   时释放缓冲防泄漏（有建必有弃·API 完整性；完成=出串+弃置，弃置=仅弃置）。
-struct CnStrbuf2 { char* buf; std::size_t len; std::size_t cap; };
+//   #944（2026-10-17）：句柄终态防护——完成/弃置后再收尾（或再追加）=确定性
+//   失败，根治 double free/UAF 段错误（p84c 探针四形态 rc=139 实录：完成后
+//   弃置/弃置后再弃置/完成后追加/完成后完成）。
+//
+// ---- 构建器句柄代际槽表（#944·2026-10-17·001 §1.1a② 确定性失败）----
+// 病根复现：原实现句柄=控制块裸指针，完成/弃置即 free 控制块与缓冲——对已
+//   收尾句柄再做 追加/完成/弃置 = 对已释放内存再读写（double free/UAF 脏崩）。
+//   **池通道兜不住机理**（侦察结论）：控制块与缓冲走裸 std::malloc/free（非
+//   cnrt 定档池/cn_alloc_tracked 分流路径），poolTryFree 的重复释放位图拦截
+//   不在本通道上——池只覆盖 cn_alloc_tracked→cn_free_tracked 对象面。
+// 修法（对齐 §1.1a②）：Rust Box drop 后再用=编译期拒（所有权）；CN 句柄=
+//   整64 C 式不透明值，编译期不可追踪所有权 → 取「运行期代际哨兵+确定性失败」。
+//   控制块改驻进程级槽表（槽地址恒稳定·不受 内存::释放全部/池回收影响），句柄
+//   改「标记|代际|槽号」编码（对 CN 层零可见——契约本为不透明整64；五个入口
+//   仅传值不解引用，eager 检查在 runtime 内）：
+//     bit63=1 构建器句柄标记 | bit62..32=代际(31 位) | bit31..0=槽号
+//   新建=发放槽（代际+1）；完成/弃置=终结槽（代际+1·缓冲释放·槽入空闲链）。
+//   任何入口先验代际：相等 ⇔ 句柄有效（代际在建/终每次变迁必增——旧句柄恒
+//   落后于槽当前代际；重发槽时再增一层，故「完成后继之以新建复用」的旧句柄
+//   同样拒绝；回绕=2^31 次重用·理论不可达）；不匹配/越界/非标记值 → 确定性
+//   失败「运行时错误(错误码6): 无效参数」+ stderr 定位行（复用既有错误码通道，
+//   不新增语义面）。
+//   槽表=按块惰性分配（1024 槽/块·首次新建才占内存），槽=48 字节控制块。
+//   豁免边界（显式声明）：null(0) 句柄=「新建分配失败返回 0」的既有哨兵面，
+//   各入口保持静默（原语义零分叉）；非 null 非法值一律确定性失败。
+namespace {
 
-extern "C" void* __cn_strbuf_new() {
-    CnStrbuf2* b = static_cast<CnStrbuf2*>(std::malloc(sizeof(CnStrbuf2)));
-    if (b == nullptr) return nullptr;
-    b->cap = 64;
-    b->len = 0;
-    b->buf = static_cast<char*>(std::malloc(b->cap));
-    if (b->buf == nullptr) { std::free(b); return nullptr; }
-    b->buf[0] = 0;
-    return b;
+// 槽表参数：1024 槽/块 × 256 块上限（26 万同时活跃未收尾句柄·超限=错误码 4
+//   确定性失败——资源失控显形优于静默；原实现无此面=无限泄漏至 OOM）
+constexpr std::size_t kStrbufSlotsPerBlock = 1024;
+constexpr std::size_t kStrbufMaxBlocks = 256;
+constexpr unsigned long long kStrbufMaxSlots = kStrbufSlotsPerBlock * kStrbufMaxBlocks;
+constexpr unsigned long long kStrbufHandleTag = 1ull << 63;    // bit63=构建器句柄
+constexpr unsigned long long kStrbufGenMask = 0x7FFFFFFFull;   // bit62..32
+constexpr unsigned long long kStrbufIdxMask = 0xFFFFFFFFull;   // bit31..0
+constexpr std::size_t kStrbufInitCap = 64;   // 新建初始缓冲（摊还倍增·409 原值）
+
+// 控制块槽（POD·malloc 块内就地）：终结态=空字段哨兵（第二层防御——即便
+//   有人漏过代际检查，buf=nullptr/len=0/cap=0 也读不到已释放缓冲）
+struct CnStrbufSlot {
+    char* buf;
+    std::size_t len;
+    std::size_t cap;
+    unsigned long long gen;     // 代际（建/终变迁递增）
+    unsigned long long idx;     // 槽号（重发槽编码句柄用）
+    CnStrbufSlot* nextFree;     // 空闲链（仅空闲态有效）
+};
+
+struct CnStrbufBlock {
+    CnStrbufSlot slots[kStrbufSlotsPerBlock];
+};
+
+// 槽表（进程级·堆对象永不析构——对齐 TrackedTable/851 静态析构时序教训）
+//   并发面：发放/归还（建/终低频）持锁；检查（追加热路径）无锁只读——槽
+//   「当前所有者」约定（同一活跃句柄的单线程使用）下无需原子；块目录桶
+//   发布一次（锁内一次性写·无并发读者见同一桶发布点——句柄跨线程传递必经
+//   用户同步原语<线程创建/互斥锁均含 release/acquire>，可见性由该同步承担；
+//   #944 性能对拍：std::atomic::load 在 -O0 现实链<cn 内部 g++ -c 无 -O>
+//   退化为真实函数调用→去原子改普通指针+本约定，对齐 mem_pool 945 同款
+//   哲学）。跨线程并发使用同一句柄=调用方数据竞争（与原实现同面）。
+struct CnStrbufTable {
+    std::mutex mu;                                     // 发放/归还（锁内）
+    CnStrbufBlock* blocks[kStrbufMaxBlocks];           // 块目录（只增·发布约定见上）
+    CnStrbufSlot* freeHead;                            // 空闲槽链（锁内）
+    unsigned long long nextSlot;                       // 下一新槽号（锁内）
+    CnStrbufTable() : freeHead(nullptr), nextSlot(0) {
+        for (std::size_t i = 0; i < kStrbufMaxBlocks; ++i) {
+            blocks[i] = nullptr;
+        }
+    }
+};
+
+// 槽表进程级单例（#944 性能对拍第二轮：局部静态函数 cnStrbufTable() 因含
+//   静态初始化被 GCC 拒绝内联→每次追加热路径一次 call+guard；改「全局指针
+//   初始化器 + 堆对象永不析构」——热路径直读指针零调用。全局初始化器在
+//   main 前完成（不依赖他 TU 全局=无 SIOF）；堆分配规避 851 静态析构时序
+//   （对象永不析构）。）
+CnStrbufTable* cnStrbufNewTable() {
+    return new CnStrbufTable();
 }
 
-static void cnStrbufGrow2(CnStrbuf2* b, std::size_t need) {
+CnStrbufTable* g_strbufTablePtr = cnStrbufNewTable();   // 见上注·全文件单点
+
+// 句柄编码/解码（标记|代际|槽号 布局见块头注）
+inline unsigned long long cnStrbufEncodeHandle(unsigned long long gen, unsigned long long idx) {
+    return kStrbufHandleTag | ((gen & kStrbufGenMask) << 32) | (idx & kStrbufIdxMask);
+}
+
+// 无效句柄冷路径（打印后终止·不返回）：与热路径分离——避免 fprintf 冷代码
+//   计入内联预算（#944 性能对拍：resolve 含冷代码整体未内联→热路径 +28%；
+//   拆分后 resolve 可内联，冷分支以独立符号调用·合法句柄永不触达）。
+void cnStrbufInvalidHandle(const char* op) {
+    std::fprintf(stderr,
+                 "[cnrt] 字符串构建器句柄已收尾或无效（完成/弃置后不可再用）·操作=%s\n",
+                 op);
+    std::fflush(stderr);
+    __cn_runtime_error(6);   // 「运行时错误(错误码6): 无效参数」打印后终止（不返回）
+}
+
+// 句柄解析（五入口首行·热路径）：有效→槽指针；null→nullptr（豁免面见块头注·
+//   调用方静默）；其余（终态/非法值）→ 冷路径确定性失败（不返回）
+//   #944 性能对拍：-O0 现实链（cn 内部 g++ -c 无 -O）连 inline 也不内联——
+//   always_inline/__forceinline 强制内联消除每次追加的函数调用税。
+#if defined(_MSC_VER)
+#define CN_STRBUF_HOT __forceinline
+#else
+#define CN_STRBUF_HOT inline __attribute__((always_inline))
+#endif
+CN_STRBUF_HOT CnStrbufSlot* cnStrbufResolve(void* h, const char* op) {
+    if (h == nullptr) return nullptr;   // 空句柄豁免（既有哨兵面·见块头注）
+    const unsigned long long v =
+        static_cast<unsigned long long>(reinterpret_cast<std::uintptr_t>(h));
+    if ((v & kStrbufHandleTag) != 0) {
+        const unsigned long long idx = v & kStrbufIdxMask;
+        const unsigned long long gen = (v >> 32) & kStrbufGenMask;
+        if (idx < kStrbufMaxSlots && gen != 0) {
+            CnStrbufBlock* blk =
+                g_strbufTablePtr->blocks[idx / kStrbufSlotsPerBlock];
+            if (blk != nullptr) {
+                CnStrbufSlot* s = &blk->slots[idx % kStrbufSlotsPerBlock];
+                if (s->gen == gen) return s;   // 代际相等 ⇔ 句柄有效
+            }
+        }
+    }
+    cnStrbufInvalidHandle(op);   // 冷路径：打印后终止（不返回·契约见该函数头注）
+    return nullptr;              // 不可达（防御）
+}
+#undef CN_STRBUF_HOT
+
+// 发放槽（**锁内**）：空闲链优先；否则按 nextSlot 惰性建块+切分。返回槽指针
+//   与已编码句柄（代际+1 已落槽）。失败路径（块分配失败/槽超上限）=确定性
+//   失败（不返回）——资源失控显形。
+struct CnStrbufTakeResult {
+    CnStrbufSlot* slot;
+    unsigned long long handle;
+};
+
+CnStrbufTakeResult cnStrbufTakeSlotLocked() {
+    CnStrbufTable& t = *g_strbufTablePtr;
+    CnStrbufSlot* s = t.freeHead;
+    if (s != nullptr) {
+        t.freeHead = s->nextFree;   // 重发已终结槽（代际在下方统一 +1）
+    } else {
+        if (t.nextSlot >= kStrbufMaxSlots) {
+            std::fprintf(stderr, "[cnrt] 字符串构建器槽表耗尽（%llu 个句柄未收尾）\n",
+                         kStrbufMaxSlots);
+            std::fflush(stderr);
+            __cn_runtime_error(4);    // 内存分配失败（不返回）
+            return {nullptr, 0};      // 不可达
+        }
+        const unsigned long long idx = t.nextSlot;
+        const std::size_t blkNo = static_cast<std::size_t>(idx / kStrbufSlotsPerBlock);
+        CnStrbufBlock* blk = t.blocks[blkNo];   // 锁内（发布约定见 CnStrbufTable 头注）
+        if (blk == nullptr) {
+            blk = static_cast<CnStrbufBlock*>(std::malloc(sizeof(CnStrbufBlock)));
+            if (blk == nullptr) {
+                std::fprintf(stderr, "[cnrt] 字符串构建器槽表块分配失败（%llu 字节）\n",
+                             static_cast<unsigned long long>(sizeof(CnStrbufBlock)));
+                std::fflush(stderr);
+                __cn_runtime_error(4);    // 内存分配失败（不返回）
+                return {nullptr, 0};      // 不可达
+            }
+            std::memset(blk, 0, sizeof(CnStrbufBlock));   // 全零=空缓冲/代际 0/空链
+            t.blocks[blkNo] = blk;   // 发布（锁内一次性写·见 CnStrbufTable 头注）
+        }
+        s = &blk->slots[idx % kStrbufSlotsPerBlock];
+        s->idx = idx;
+        t.nextSlot = idx + 1;
+    }
+    s->gen += 1;   // 发放/重发均递增：旧句柄（若有）代际恒落后 → 区分新旧对象
+    return {s, cnStrbufEncodeHandle(s->gen, s->idx)};
+}
+
+// 终结槽（完成/弃置共用·**锁内**变迁 + 锁外调用方释放缓冲）：代际+1（本句柄
+//   即失效）+ 字段清空哨兵 + 槽入空闲链。调用前提：cnStrbufResolve 已证有效。
+char* cnStrbufRetireSlot(CnStrbufSlot* s) {
+    CnStrbufTable& t = *g_strbufTablePtr;
+    char* buf = s->buf;
+    {
+        std::lock_guard<std::mutex> lk(t.mu);
+        s->gen += 1;          // 终态推进代际：已完成/已弃置句柄此后任何入口必拒
+        s->buf = nullptr;     // 终态哨兵（第二层防御·见 CnStrbufSlot 头注）
+        s->len = 0;
+        s->cap = 0;
+        s->nextFree = t.freeHead;
+        t.freeHead = s;
+    }
+    return buf;
+}
+
+} // namespace
+
+// 新建：分配缓冲（失败=返回 0 空句柄·原语义）+ 发放槽（锁内与填充原子化）
+extern "C" void* __cn_strbuf_new() {
+    char* buf = static_cast<char*>(std::malloc(kStrbufInitCap));
+    if (buf == nullptr) return nullptr;   // 分配失败：既有空句柄哨兵面（见块头注）
+    buf[0] = 0;
+    CnStrbufTable& t = *g_strbufTablePtr;
+    unsigned long long handle = 0;
+    {
+        std::lock_guard<std::mutex> lk(t.mu);
+        const CnStrbufTakeResult take = cnStrbufTakeSlotLocked();
+        // 发放成功（失败=确定性终止不返回）：填充槽（锁内·句柄发出前必完成）
+        take.slot->buf = buf;
+        take.slot->len = 0;
+        take.slot->cap = kStrbufInitCap;
+        handle = take.handle;
+    }
+    return reinterpret_cast<void*>(static_cast<std::uintptr_t>(handle));
+}
+
+static void cnStrbufGrow2(CnStrbufSlot* b, std::size_t need) {
     if (b->len + need + 1 <= b->cap) return;
     std::size_t nc = b->cap;
     while (nc < b->len + need + 1) nc *= 2;
     char* nb = static_cast<char*>(std::realloc(b->buf, nc));
+    // realloc 失败=静默丢段（既有全族 OOM 面·另案「分配失败显形」议题——本任务
+    //   只修终态防护，不扩行为面）
     if (nb == nullptr) return;
     b->buf = nb;
     b->cap = nc;
 }
 
 extern "C" void __cn_strbuf_append(void* h, const char* s) {
-    if (h == nullptr) return;
+    CnStrbufSlot* b = cnStrbufResolve(h, "追加");
+    if (b == nullptr) return;   // 空句柄豁免（见块头注）
     if (s == nullptr) s = "";
-    CnStrbuf2* b = static_cast<CnStrbuf2*>(h);
     const std::size_t n = std::strlen(s);
     cnStrbufGrow2(b, n);
     if (b->len + n + 1 > b->cap) return;
@@ -467,8 +669,8 @@ extern "C" void __cn_strbuf_append(void* h, const char* s) {
 }
 
 extern "C" void __cn_strbuf_append_char(void* h, long long c) {
-    if (h == nullptr) return;
-    CnStrbuf2* b = static_cast<CnStrbuf2*>(h);
+    CnStrbufSlot* b = cnStrbufResolve(h, "追加字节");
+    if (b == nullptr) return;   // 空句柄豁免（见块头注）
     cnStrbufGrow2(b, 1);
     if (b->len + 2 > b->cap) return;
     b->buf[b->len] = static_cast<char>(c & 0xFF);
@@ -477,20 +679,18 @@ extern "C" void __cn_strbuf_append_char(void* h, long long c) {
 }
 
 extern "C" char* __cn_strbuf_finish(void* h) {
-    if (h == nullptr) return nullptr;
-    CnStrbuf2* b = static_cast<CnStrbuf2*>(h);
+    CnStrbufSlot* b = cnStrbufResolve(h, "完成");
+    if (b == nullptr) return nullptr;   // 空句柄豁免（见块头注）
     char* result = static_cast<char*>(cn_alloc_tracked(b->len + 1));
     if (result != nullptr) std::memcpy(result, b->buf, b->len + 1);
-    std::free(b->buf);
-    std::free(b);
+    std::free(cnStrbufRetireSlot(b));   // 终态：缓冲释放+代际推进（句柄即失效）
     return result;
 }
 
 // #366（2026-10-13）：弃置——不取串直接释放缓冲（错误路径中途放弃防泄漏）。
 //   与 完成 的差别仅在不出串：完成=出串+释放，弃置=仅释放；句柄一次性同契。
 extern "C" void __cn_strbuf_drop(void* h) {
-    if (h == nullptr) return;
-    CnStrbuf2* b = static_cast<CnStrbuf2*>(h);
-    std::free(b->buf);
-    std::free(b);
+    CnStrbufSlot* b = cnStrbufResolve(h, "弃置");
+    if (b == nullptr) return;   // 空句柄豁免（见块头注）
+    std::free(cnStrbufRetireSlot(b));
 }
