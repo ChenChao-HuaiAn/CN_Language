@@ -4,15 +4,13 @@
 #pragma once
 #include "cn_compiler/ir/ir.hpp"
 // 865：生成期状态数据类型外迁头（ClosureInfo/VarEntry/LoopContext/SwitchContext/
-//   OwnedStrField——纯数据结构可外迁·ir_generator_types.hpp 先例=DeclGenCtx），
-// 类内成员声明处类型名直呼，签名零改动。
+//   OwnedStrField——纯数据结构可外迁·ir_generator_types.hpp 先例=DeclGenCtx）， 类内成员声明处类型名直呼，签名零改动。
 #include "cn_compiler/ir/ir_generator_types.hpp"
 
 namespace cn_compiler {
 class IRGenerator : public AstVisitor {
 public:
-    // 构造函数：绑定诊断引擎引用
-    // semantic 参数（Task 2.7）：指向已完成分析的语义分析器，
+    // 构造函数：绑定诊断引擎引用 semantic 参数（Task 2.7）：指向已完成分析的语义分析器，
     //   供结构体布局（字段偏移/总大小）与枚举值查询（可空，缺失时布局防御性跳过）
     explicit IRGenerator(Diagnostics& diagnostics, ISemanticView* semantic = nullptr)
         : diagnostics_(diagnostics), semantic_(semantic) {}
@@ -72,24 +70,18 @@ public:
     // ---- visitBinaryExpr 族子方法（176-a 函数级拆分·原 269 行函数）----
     // 族①：逻辑与/或短路求值（rustc 同构手法）。true = 已处理。
     bool genShortCircuitBinary(BinaryExpr* node);
-    // 族②③：字符串连接（Task 2.5 ptr+ptr）+ 字符串+数值隐式拼接（Task 2.9）
-    //   + 字符串+整128/正128（双槽 ptr 形态）。true = 已处理。
+    // 族②③：字符串连接（Task 2.5 ptr+ptr）+ 字符串+数值隐式拼接（Task 2.9） + 字符串+整128/正128（双槽 ptr 形态）。true = 已处理。
     //   实现=ir_expr_concat.cpp（728o 按族拆出——该文件同时承载连接链融合）。
     std::string structOrClassFieldType(const std::string& ownerType,
                                      const std::string& fieldName) const;  // 973（104）：结构体 miss→类表沿链回退
     bool genStringCompareBinary(BinaryExpr* node, const ir::IRValue& left,
                                 const ir::IRValue& right);  // 962（166 立法）：字符串六比较符
-    bool genStringConcatBinary(BinaryExpr* node, const ir::IRValue& left,
-                               const ir::IRValue& right);
-    bool genStringConcatI128(BinaryExpr* node, const ir::IRValue& left,
-                             const ir::IRValue& right);
-    // 728o（366 遗留）：连接链融合——`甲+乙+丙+…` 一趟构建（新建缓冲 ->
-    //   逐段追加 -> 完成）。visitBinaryExpr 顶部调用（须在操作数生成前接管
-    //   整链）；true=已按融合路径发射，false=交回原逐节路径（链长不足/
-    //   非连接形态·零行为变更）。语义等价铁律见 ir_expr_concat.cpp 文件头。
+    bool genStringConcatBinary(BinaryExpr* node, const ir::IRValue& left, const ir::IRValue& right);
+    bool genStringConcatI128(BinaryExpr* node, const ir::IRValue& left, const ir::IRValue& right);
+    // 728o（366 遗留）：连接链融合——`甲+乙+丙+…` 一趟构建（新建缓冲 -> 逐段追加 -> 完成）。visitBinaryExpr 顶部调用（须在操作数生成前接管
+    //   整链）；true=已按融合路径发射，false=交回原逐节路径（链长不足/ 非连接形态·零行为变更）。语义等价铁律见 ir_expr_concat.cpp 文件头。
     bool genStringConcatChain(BinaryExpr* node);
-    // 728o 融合族私辅（实现=ir_expr_concat.cpp）：
-    //   数值转换器发射单点（原 genStringConcatBinary 分支②提取·两消费位共用）
+    // 728o 融合族私辅（实现=ir_expr_concat.cpp）： 数值转换器发射单点（原 genStringConcatBinary 分支②提取·两消费位共用）
     ir::IRValue emitConcatNumToStr(Expr* operandAst, const ir::IRValue& value,
                                    const SourceLocation& loc);
     //   链操作数「是字符串值」判定（isStringTypedExpr 保守超集：补调用返回串）
@@ -105,8 +97,7 @@ public:
     void emitChainSegAppend(const ir::IRValue& handle, Expr* segAst, const ir::IRValue& segVal,
                             const SourceLocation& loc);
     // 族④：指针算术 ptr ± 整型 -> 指针（偏移量×元素大小）。true = 已处理。
-    bool genPointerArithmetic(BinaryExpr* node, const ir::IRValue& left,
-                              const ir::IRValue& right);
+    bool genPointerArithmetic(BinaryExpr* node, const ir::IRValue& left, const ir::IRValue& right);
     // 族⑤：公共类型转换（92-a 浮点公共类型）+ 算术/比较发射
     void genCommonTypeArithmetic(BinaryExpr* node, ir::IRValue& left,
                                  ir::IRValue& right, bool isFloat);
@@ -225,8 +216,7 @@ private:
     // 数组越界检查插桩（Task 2.4）：index < 0 || index >= len 时调用运行时错误(2)
     void emitBoundsCheck(const ir::IRValue& index, int arrayLen,
                          const SourceLocation& loc);    // T4（306-a 波次2）：字符串下标越界检查（运行时长度版）——
-    //   len=__cn_str_len(ptr)；idx<0||idx>=len -> __cn_runtime_error(2)
-    //   （与数组编译期长度版同错误通道=防线对称）
+    //   len=__cn_str_len(ptr)；idx<0||idx>=len -> __cn_runtime_error(2) （与数组编译期长度版同错误通道=防线对称）
     void emitStrBoundsCheck(const ir::IRValue& indexRaw, const ir::IRValue& strPtr,
                             const SourceLocation& loc);
     // 计算左值地址（标识符/下标/解引用/成员访问 -> 地址值），供赋值使用（Task 2.4/2.7）
@@ -234,11 +224,9 @@ private:
     // ==================== i128 内存模型（Task 完善A） ====================
     // i128/正128 值在 IR 层以"指向16字节双槽内存的 ptr"表示（低64位槽+高64位槽）。
     std::string emitI128Temp(const SourceLocation& loc);
-    // 将 i128 值表达式转为地址（ptr）：
-    //   变量标识符/嵌套结果已是 ptr -> 原样；i128 常量/寄存器值 -> 落临时双槽再取地址
+    // 将 i128 值表达式转为地址（ptr）： 变量标识符/嵌套结果已是 ptr -> 原样；i128 常量/寄存器值 -> 落临时双槽再取地址
     ir::IRValue i128ValueAddr(ir::IRValue value, const SourceLocation& loc);
-    // 生成 i128 二元运算（Mul/Div/Mod/Add/Sub -> 运行时辅助函数调用），
-    // 结果写入临时双槽并返回其地址（ptr）
+    // 生成 i128 二元运算（Mul/Div/Mod/Add/Sub -> 运行时辅助函数调用）， 结果写入临时双槽并返回其地址（ptr）
     ir::IRValue genI128Binary(ir::IRValue left, ir::IRValue right, ir::Opcode op,
                               const SourceLocation& loc);
     // D1 130-a：移动元素挂点子方法
@@ -263,24 +251,20 @@ private:
     // 生成 i128 比较（返回 i1 布尔值）
     ir::IRValue genI128Compare(ir::IRValue left, ir::IRValue right, ir::Opcode op,
                                const SourceLocation& loc);
-    // 结构体/联合体初始化展开（Task 2.7）：将 StructInitExpr 的字段逐个写入
-    //   targetBase（目标结构体基址，ptr）。嵌套结构体字段递归展开；
+    // 结构体/联合体初始化展开（Task 2.7）：将 StructInitExpr 的字段逐个写入 targetBase（目标结构体基址，ptr）。嵌套结构体字段递归展开；
     //   普通字段 genExpr 后 Cast 到字段IR类型再 StorePtr。
     void emitStructInitTo(StructInitExpr* init, const ir::IRValue& targetBase,
                           const SourceLocation& loc);
-    // 结构体/类整体赋值发射（46-a 根治 2026-09-09 提取的单一事实源）：
-    //   目标地址 + 右值节点 + 目标类型(canonical)。右值三形态取源地址：
+    // 结构体/类整体赋值发射（46-a 根治 2026-09-09 提取的单一事实源）： 目标地址 + 右值节点 + 目标类型(canonical)。右值三形态取源地址：
     bool emitStructWholeAssign(const ir::IRValue& dstAddr, Expr* valueNode,
                                         const std::string& dstElemCanon,
                                         const SourceLocation& loc,
                                         bool preFree = false);
-    // 348-a（D11 甲方案·Rust place 语义）：整体赋值「源优先序」通道——右值=一般
-    //   结构体返回调用（非 复制 内置）时：先求值源（可能含条件块）→ 再算目标
+    // 348-a（D11 甲方案·Rust place 语义）：整体赋值「源优先序」通道——右值=一般 结构体返回调用（非 复制 内置）时：先求值源（可能含条件块）→ 再算目标
     bool structWholeAssignSrcFirst(Expr* targetExpr, Expr* valueNode,
                                    const std::string& dstElemCanon,
                                    const SourceLocation& loc);
-    // 87-a（2026-09-12 第八十七轮）：顶层静态变量初始化注入（入口函数 entry 块）。
-    //   静态变量的初值语义分三类（性能第一）：
+    // 87-a（2026-09-12 第八十七轮）：顶层静态变量初始化注入（入口函数 entry 块）。 静态变量的初值语义分三类（性能第一）：
     void emitStaticInitsAtEntry();
     // 分配变量寄存器：Alloca并登记映射（Task 2.4：srcType 记录源码复合类型）
     ir::IRValue allocVar(const std::string& name, const std::string& irType,
@@ -318,8 +302,7 @@ private:
                                  const SourceLocation& loc);
     // 字符串字面量解码（剥离引号，阶段一简单解码）
     static std::string decodeString(const std::string& raw);
-    // 判断 AST 表达式是否为字符串类型（Task 2.9 拼接判定）：
-    //   字符串字面量 / 字符串变量（lookupSrcType 为 字符串 或 字符*）→ true；
+    // 判断 AST 表达式是否为字符串类型（Task 2.9 拼接判定）： 字符串字面量 / 字符串变量（lookupSrcType 为 字符串 或 字符*）→ true；
     //   普通指针/整型等 → false。用于区分"字符串+数值拼接"与"指针算术"（ptr + 整型）
     bool isStringTypedExpr(Expr* node) const;
     // 默认参数常量求值（Task 2.10）：字面量 -> IR 常量（ConstInt/Float/String/Bool）
@@ -337,13 +320,11 @@ private:
     ISemanticView* semantic_ = nullptr;      // 语义分析器（结构体布局/枚举值查询，Task 2.7）
 
     // ==================== 泛型函数实例化（Task 6.1） ====================
-    // 当前泛型函数实例化的类型参数映射（类型参数名 -> 实参类型，如 T -> 整32）。
-    // 生成泛型函数实例体时设置，mapType/genVarDecl 等按此替换 T。
+    // 当前泛型函数实例化的类型参数映射（类型参数名 -> 实参类型，如 T -> 整32）。 生成泛型函数实例体时设置，mapType/genVarDecl 等按此替换 T。
     std::unordered_map<std::string, std::string> genericTypeParams_;
     // 替换源码类型中的类型参数（T/T*/结果<T,整32> 等；非参数原样返回）
     std::string substGenericType(const std::string& type) const;
-    // 317-a：泛型源形态（向量<整32>）物化为实例类名（向量$整32·经语义层
-    // resolveGenericTypeName 触发单态化注册）；非泛型形态原样返回
+    // 317-a：泛型源形态（向量<整32>）物化为实例类名（向量$整32·经语义层 resolveGenericTypeName 触发单态化注册）；非泛型形态原样返回
     std::string resolveGenericInstanceType(const std::string& type) const;
     // 提升泛型函数实例化函数体（名$实参）：从 泛型声明 innerFunc 生成 IRFunction
     void emitGenericFuncInstance(const GenericFuncInstance& gfi);
@@ -363,26 +344,22 @@ private:
     bool suppressRefDeref_ = false;
     // P3/D4（2026-08）：接口间接调用 CFI 校验开关（--cfi 透传，默认关保性能）
     bool cfiEnabled_ = false;
-    // 函数签名 key -> 尾部默认参数 IR 常量值（Task 2.10 默认实参补全）。
-    // 顺序与函数参数一致（仅含带默认值的尾部参数）；调用补全时按此精确展开。
+    // 函数签名 key -> 尾部默认参数 IR 常量值（Task 2.10 默认实参补全）。 顺序与函数参数一致（仅含带默认值的尾部参数）；调用补全时按此精确展开。
     std::unordered_map<std::string, std::vector<ir::IRValue>> funcDefaultArgs_;
     // 980 红治理 v2（880）：自由函数名 → 声明 AST 预收集——registerOopRaii 返回来源三分判据
     //   （形参/全局=写穿别名豁免登记；局部/新建=句柄转移正常登记）。治 980/836/878；重载同名取后声明。
     std::unordered_map<std::string, FunctionDecl*> freeFuncDecls880_;
-    // D23（248-a）：visitProgram 预收集全部类的构造默认值（类方法提升晚于
-    //   主函数生成——生成期收集会晚于调用点查表）；emitClassMethod 内同款
+    // D23（248-a）：visitProgram 预收集全部类的构造默认值（类方法提升晚于 主函数生成——生成期收集会晚于调用点查表）；emitClassMethod 内同款
     //   收集保留（幂等跳过）作兜底。
     void collectCtorDefaults(const std::string& className, const ClassMemberInfo& mi);
-    // 762：visitProgram 预收集自由函数尾部默认参数值（调用点先于定义查表 miss→静默不补实录治；
-    //   原收集点保留幂等兜底·D23 构造预收集同款）。
+    // 762：visitProgram 预收集自由函数尾部默认参数值（调用点先于定义查表 miss→静默不补实录治； 原收集点保留幂等兜底·D23 构造预收集同款）。
     void collectFreeFunctionDefaults(FunctionDecl* node);
     // D23 根治（248-a）：签名 -> 参数总数（含默认参数）——构造（emitClassMethod）
     //   不入 functions_，funcParamTypesOf 查空时补缺点以「given+defaults 数」回退
     std::unordered_map<std::string, std::size_t> funcDefaultTotal_;
     // 当前调用待补全的默认实参（visitCallExpr 收集后追加到 args）
     std::vector<ir::IRValue> defaultArgValues_;
-    // 最近一次 lambda 生成的匿名函数名与捕获变量列表（Task 2.10，
-    //   genVarDecl 遇 LambdaExpr 初始值时登记闭包关联）
+    // 最近一次 lambda 生成的匿名函数名与捕获变量列表（Task 2.10， genVarDecl 遇 LambdaExpr 初始值时登记闭包关联）
     std::string lastLambdaName_;
     std::vector<std::string> lastLambdaCaptures_;
     std::string lastLambdaReturnIrType_;  // 最近 lambda 的返回 IR 类型（闭包调用结果类型）
@@ -390,18 +367,14 @@ private:
     // 337-a（T53 家系·闭包调用路径）：最近一次闭包（lambda / 方法作值）的**用户
     //   形参源码类型列表**——闭包调用 `cb(实参)` 展开为 `Call(捕获实参..., 用户实参...)`
     std::vector<std::string> lastLambdaParamTypes_;
-    // 最近 lambda 各捕获是否引用捕获（缺陷修复：决定定义处捕获实参是
-    //   值快照（[=]/[变量]）还是变量地址指针（[&]），genVarDecl 登记闭包时使用）
+    // 最近 lambda 各捕获是否引用捕获（缺陷修复：决定定义处捕获实参是 值快照（[=]/[变量]）还是变量地址指针（[&]），genVarDecl 登记闭包时使用）
     std::vector<char> lastLambdaCaptureRefs_;
-    // 查询变量是否为"引用捕获参数"（lambda 匿名函数内 [&] 捕获的参数槽存
-    //   被捕获变量地址，读取须解引用、赋值须经指针——规格书04-一D 引用语义）
+    // 查询变量是否为"引用捕获参数"（lambda 匿名函数内 [&] 捕获的参数槽存 被捕获变量地址，读取须解引用、赋值须经指针——规格书04-一D 引用语义）
     bool isByRefCapture(const std::string& name) const;
     // ---- 432（#276 波3·蹦床闭包模型）lambda 生成族私辅（实现在 ir_lambda.cpp）----
-    // lambda 用户参数段构建（?lambdaN 与蹦床共用——纪律二当场归纳）：参数槽/
-    //   varStack 登记，引用参数（T&）按 ptr+byRef 形态（A-1 同款）
+    // lambda 用户参数段构建（?lambdaN 与蹦床共用——纪律二当场归纳）：参数槽/ varStack 登记，引用参数（T&）按 ptr+byRef 形态（A-1 同款）
     void buildLambdaUserParams(ir::IRFunction& func, LambdaExpr* node);
-    // 快照静态槽注册 + 定义处固化（外层块发射）：值捕获=StorePtr 定义处值；
-    //   [&]=StorePtr 变量地址；结构体值捕获=CopyStruct 槽（与 genVarDecl
+    // 快照静态槽注册 + 定义处固化（外层块发射）：值捕获=StorePtr 定义处值； [&]=StorePtr 变量地址；结构体值捕获=CopyStruct 槽（与 genVarDecl
     //   captureArgs 固化同构——数据流终点不同：captureArgs=局部值列表，
     //   本处=.data 静态槽·第 2 处重复留标记：与 ir_stmt_decl_init 固化段互为镜像）
     void emitLambdaSnapshotStores(const std::string& lambdaName,
@@ -409,8 +382,7 @@ private:
         const std::vector<char>& captureRefs,
         const SourceLocation& loc);
     // 蹦床合成函数 ?lambdaN$trap 构建（签名=用户签名）：体=LoadPtr 快照槽
-    //   还原捕获实参 + Call ?lambdaN。lambda 值=蹦床地址（可安全作 fnptr
-    //   返回/传参——值捕获快照随槽全局存活=逃逸安全；[&] 逃逸=悬垂域挂
+    //   还原捕获实参 + Call ?lambdaN。lambda 值=蹦床地址（可安全作 fnptr 返回/传参——值捕获快照随槽全局存活=逃逸安全；[&] 逃逸=悬垂域挂
     //   #435/#468 逃逸检查面，本波只做值捕获高阶形态）
     void buildLambdaTrampoline(const std::string& lambdaName, const std::string& returnIrType,
         LambdaExpr* node,
@@ -441,12 +413,10 @@ private:
     std::unordered_set<std::string> carrierAssigned482_;
     // 655 返工：曾以 lambda/方法值登记过闭包关联的变量名全集。closureInfo_ 快径
     //   受 visitLambdaExpr 入口 clear 纪律（485）影响（720 实录：同函数后定义的
-    //   lambda 清掉先前登记=首个调用退化 432 蹦床通道·语义等价合法面），本集与
-    //   clear 无关地记住「该名是 lambda 变量」——间接调用尾据此区分「蹦床通道
+    //   lambda 清掉先前登记=首个调用退化 432 蹦床通道·语义等价合法面），本集与 clear 无关地记住「该名是 lambda 变量」——间接调用尾据此区分「蹦床通道
     //   合法面」（不报）与「真全域 miss」（报 #655 诊断）。816 扩=拷贝传递登记。
     std::unordered_set<std::string> lambdaVarNames_;
-    // 变量作用域栈（BlockStmt 进入压栈/退出弹栈，支持同名遮蔽）。
-    // 每个条目：源码名 -> VarEntry（寄存器ID/唯一内部名/IR类型/源码类型等·
+    // 变量作用域栈（BlockStmt 进入压栈/退出弹栈，支持同名遮蔽）。 每个条目：源码名 -> VarEntry（寄存器ID/唯一内部名/IR类型/源码类型等·
     //   865 外迁见 ir_generator_types.hpp）
     std::vector<std::unordered_map<std::string, VarEntry>> varStack_;
     // 320-a（T41 写面完备）：查找最近作用域的变量条目（含 isStaticLocal 标志）——
@@ -454,20 +424,17 @@ private:
     const VarEntry* findVarEntry(const std::string& name) const;
     // 查找变量的源码类型（指针/数组复合类型；未找到返回空串，Task 2.4）
     std::string lookupSrcType(const std::string& name) const;
-    // 推导成员表达式对象的源码类型（变量/嵌套成员/数组字段元素，Task 2.7/修复10）：
-    //   返回 对象指向的结构体源码类型（如 方形 -> 形状；方形.顶点[0] -> 坐标）。
+    // 推导成员表达式对象的源码类型（变量/嵌套成员/数组字段元素，Task 2.7/修复10）： 返回 对象指向的结构体源码类型（如 方形 -> 形状；方形.顶点[0] -> 坐标）。
     //   arrow 成员（方形指针->顶点）自动剥指针；数组字段元素类型递归推导。
     std::string memberObjStructType(MemberExpr* node) const;
-    // 下标对象元素源码类型（448：memberObjStructType 的 IndexExpr 分支提炼）：
-    //   数组名[下标]/指针[下标]/结构体数组字段[下标] → 元素源码类型；取址
+    // 下标对象元素源码类型（448：memberObjStructType 的 IndexExpr 分支提炼）： 数组名[下标]/指针[下标]/结构体数组字段[下标] → 元素源码类型；取址
     //   表达式成员（&表[i].x 的 &表[i]）与之共用。无法推导返回空串。
     std::string memberIndexObjElemType(IndexExpr* idx) const;
     // 622（2026-10-14）：解引用操作数（*x 的 x）所指源码类型 = x 类型剥一层星——
     //   成员访问族类型推导公共辅助（memberObjStructType / memberAssignObjSrcType /
     //   resolveMemberObjSrcType 三消费点同源）；非指针/推导失败返回空串。
     std::string derefPointeeSrcType(Expr* operand) const;
-    // 622：成员访问对象源码类型（类路径消费入口）——显式解引用 (*类指针).字段
-    //   经 derefPointeeSrcType 剥星，其余直通 exprSrcType（与结构体路径同源）。
+    // 622：成员访问对象源码类型（类路径消费入口）——显式解引用 (*类指针).字段 经 derefPointeeSrcType 剥星，其余直通 exprSrcType（与结构体路径同源）。
     std::string memberObjectSrcType(Expr* object) const;
     // 推导成员表达式的"字段源码类型"（宿主缺陷1'根治 2026-09-02）：
     //   对象类型经 memberObjStructType 解析后，结构体查 StructDecl 字段、
@@ -662,9 +629,8 @@ private:
                                const SourceLocation& loc,
                                const std::function<void(const ir::IRValue&)>& body);
     // ---- 954（visitCallExpr 巨函数拆族·纯机械搬移零语义）----
-    //   函数体按内聚域拆出;实现分布:内置族 ir_call_builtin.cpp / 闭包族
-    //   ir_call_closure.cpp / 直调族 ir_call_direct.cpp / 间接族 ir_call_indirect.cpp /
-    //   实参族 ir_call_args.cpp。族序=原单函数逐节顺序,调用点一一对应。
+    //   族分:builtin(转移/回绕/打印/判定/映射/结果类型)·closure(闭包)·direct(直调)
+    //   ·indirect(间接)·args(形参表/实参定标);族序=原单函数逐节顺序,调用点一一对应。
     void emitTransferCallExpand(CallExpr* node);                    // 转移展开（builtin）
     void emitTransferStructSourceCopy(CallExpr* node, const std::string& srcUnique,
                                       const std::string& srcCanon); // 结构体源物化（builtin）
@@ -680,6 +646,38 @@ private:
     void mapBuiltinCalleeNameLib(std::string& calleeName);           // 内置名映射段二（builtin）
     bool resolveBuiltinCallResultType(const std::string& calleeName,
                                       std::string& resultType);      // 内置结果类型表（builtin）
+    bool resolveCalleeDirectness(CallExpr* node, std::string& calleeName);  // 直调性+符号名
+    void prepareDefaultArgValues(const CallExpr* node, bool isDirect);      // 默认实参
+    void finalizeCallArgs(CallExpr* node, const std::string& calleeName, bool isDirect,
+                          std::vector<ir::IRValue>& args);                  // args 收尾
+    void emitDirectCall(CallExpr* node, const std::string& calleeName,
+                        const std::vector<ir::IRValue>& args,
+                        const std::vector<std::pair<const Expr*, ir::IRValue>>&
+                            consumedArgTemps617);                           // 直调发射
+    std::string resolveUserFuncCallResultType(CallExpr* node,
+                                              const std::string& calleeName);  // 用户返回类型
+    bool emitAggStructReturnCall(CallExpr* node, const std::string& calleeName,
+                                 const std::vector<ir::IRValue>& args,
+                                 std::string& resultType);                  // retbuf 预插
+    bool emitVoidBuiltinCall(CallExpr* node, const std::string& calleeName,
+                             const std::vector<ir::IRValue>& args);         // void 直发
+    bool emitRefReturnCall(CallExpr* node, const std::string& calleeName,
+                           const std::string& resultType);                  // 引用返回读值
+    std::vector<std::string> resolveEffectiveParamTypes(
+        CallExpr* node, bool isDirect, const std::string& calleeName,
+        const std::string& calleeFnPtrType442);                             // 442 有效形参表
+    std::vector<ir::IRValue> buildCallArgs(
+        CallExpr* node, const std::vector<std::string>& effectiveParamTypes,
+        bool isStrConsumer617,
+        std::vector<std::pair<const Expr*, ir::IRValue>>& consumedArgTemps617);  // 实参构建
+    ir::IRValue calibrateCallArgABI(ir::IRValue argVal, std::size_t ai,
+                                    const std::vector<std::string>& effectiveParamTypes,
+                                    const SourceLocation& loc);             // 实参 ABI 定标
+    bool emitFnPtrCall(CallExpr* node, const std::string& calleeFnPtrType,
+                       std::vector<ir::IRValue>& args);                     // fnptr 路径
+    void emitIndirectCallTail(CallExpr* node, const std::string& calleeName,
+                              const std::string& calleeFnPtrType,
+                              std::vector<ir::IRValue>& args);              // 间接调用尾
     // 结构体字面量实参物化（D3 根治共享助手）：Alloca 临时 + emitStructInitTo +
     //   返回地址（按值结构体参数 ABI 传地址）——普通调用路径原实现，81-a 提取
     //   供方法调用路径复用（原方法调用路径无此物化 → 实参地址=空指针 → 段错误）。
@@ -728,8 +726,7 @@ private:
         CallExpr* node, const std::string& canonObj, const std::string& methodName);
     // i128/u128 形参的窄整实参统一宽化（331-a·T53 根治·单一归属）：字面量实参
     //   在 IR 中为窄整（i64），方法/构造调用须按形参 128 位宽化 Cast——否则被调方
-    void widenI128Args(std::vector<ir::IRValue>& args,
-                       const std::vector<std::string>& paramTypes,
+    void widenI128Args(std::vector<ir::IRValue>& args, const std::vector<std::string>& paramTypes,
                        const SourceLocation& loc);
 
     // ---- 阶段3 OOP 调用/析构（ir_oop_call.cpp 实现） ----
@@ -818,12 +815,10 @@ private:
     int emitStaticMethodCall(CallExpr* node, MemberExpr* mem, const std::string& methodName);
     bool emitInstanceMethodCall(CallExpr* node, MemberExpr* mem, const std::string& methodName,
                                 const std::string& canonObj);
-    void emitVirtualMethodCall(CallExpr* node, const ClassMemberInfo* m,
-                               const std::string& owner,
+    void emitVirtualMethodCall(CallExpr* node, const ClassMemberInfo* m, const std::string& owner,
                                const std::string& methodName,
                                const ir::IRValue& thisArg);
-    void emitDirectMethodCall(CallExpr* node, const ClassMemberInfo* m,
-                              const std::string& owner,
+    void emitDirectMethodCall(CallExpr* node, const ClassMemberInfo* m, const std::string& owner,
                               const std::string& methodName,
                               const std::string& canonObjForMethod,
                               const ir::IRValue& thisArg);
@@ -968,8 +963,7 @@ private:
     //   非拥有式视图：跳过 RAII 析构登记（避免释放数组内指针）。
     bool isContainerElementView(Expr* init) const;
     // 查询类字段源码类型（沿继承链；未找到返回空串）
-    std::string classFieldType(const std::string& className,
-                               const std::string& fieldName) const;
+    std::string classFieldType(const std::string& className, const std::string& fieldName) const;
     // 当前方法所属类名（visitClassDecl 设置；方法体内 自身/父类 解析用）
     std::string currentClass_ = "";
     // 当前方法是否静态（静态方法体内 自身 非法，字段访问解析用）
