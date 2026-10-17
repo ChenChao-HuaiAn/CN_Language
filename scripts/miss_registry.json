@@ -1777,6 +1777,204 @@
    "原因": "919-final 超 u128 域哨兵（空串=超一切整型域·按超域命中拒·910 口径·非静默默认）",
    "登记人": "AI（1076 轮·逐条读过代码）",
    "登记日": "2026-10-18"
+  },
+  {
+   "文件": "src/cn_compiler/ir/ir_expr.cpp",
+   "函数": "（910 整数文本判定族）",
+   "锚文本": "} else {",
+   "来源": "910",
+   "类别": "业务值",
+   "静默风险": "低",
+   "原因": "910 轮 visitIntegerLiteral 非 128 常量发射分支（规范十进制文本直存 ConstInt）",
+   "登记人": "AI（910 轮·逐条读过代码）",
+   "登记日": "2026-10-18"
+  },
+  {
+   "文件": "CN语言编译器v2/IR/生成语句赋值.cn",
+   "函数": "生成标识符赋值",
+   "锚文本": "} 否则 { │ IR追加(指令, 建IR指令(IR_取地址, 源槽y, 0, 0,",
+   "来源": "914",
+   "类别": "业务值",
+   "静默风险": "低",
+   "原因": "915-b 源槽解析形态分支——引用槽=IR_加载取被引用地址（非静默默认值；源不可解析时维持底部原通道）（任务 914 rebase 收口补登·915-b 搬迁/新增面）",
+   "登记人": "AI（914 轮·逐条读过代码）",
+   "登记日": "2026-10-17"
+  },
+  {
+   "文件": "CN语言编译器v2/IR/生成语句赋值.cn",
+   "函数": "生成标识符赋值",
+   "锚文本": "} 否则 { │ 整64 找源静y = 查静态序号含类(整64(右末y.文本));",
+   "来源": "914",
+   "类别": "业务值",
+   "静默风险": "低",
+   "原因": "915-b 静态源回退分支——局部/参数 miss 后查静态符号；查无=源地址保持 0 落原通道（形态枚举非默认值）（任务 914 rebase 收口补登·915-b 搬迁/新增面）",
+   "登记人": "AI（914 轮·逐条读过代码）",
+   "登记日": "2026-10-17"
+  },
+  {
+   "文件": "CN语言编译器v2/IR/生成语句赋值.cn",
+   "函数": "生成标识符赋值",
+   "锚文本": "如果 (找源静y >= 0) {",
+   "来源": "914",
+   "类别": "闭集穷举",
+   "静默风险": "低",
+   "原因": "915-b 静态符号命中判定（序号枚举·miss=非静态源维持原通道）（任务 914 rebase 收口补登·915-b 搬迁/新增面）",
+   "登记人": "AI（914 轮·逐条读过代码）",
+   "登记日": "2026-10-17"
+  },
+  {
+   "文件": "src/cn_compiler/ir/ir_expr_assign.cpp",
+   "函数": "canMemberClassCallProductAssign",
+   "锚文本": "if (semantic_ == nullptr || valueNode == nullptr) return false;",
+   "来源": "914",
+   "类别": "闭集穷举",
+   "静默风险": "低",
+   "原因": "915-b 参数防御（语义层/调用点已保证·防御零发射）（任务 914 rebase 收口补登·915-b 搬迁/新增面）",
+   "登记人": "AI（914 轮·逐条读过代码）",
+   "登记日": "2026-10-17"
+  },
+  {
+   "文件": "src/cn_compiler/ir/ir_expr_assign.cpp",
+   "函数": "canMemberClassCallProductAssign",
+   "锚文本": "if (!semantic_->isClassType(types::canonical(fieldCanon))) return false;",
+   "来源": "914",
+   "类别": "闭集穷举",
+   "静默风险": "低",
+   "原因": "915-b 形态判定（非类字段=非本通道·落原路径）（任务 914 rebase 收口补登·915-b 搬迁/新增面）",
+   "登记人": "AI（914 轮·逐条读过代码）",
+   "登记日": "2026-10-17"
+  },
+  {
+   "文件": "src/cn_compiler/ir/ir_expr_assign.cpp",
+   "函数": "canMemberClassCallProductAssign",
+   "锚文本": "if (semantic_->findCopyConstructor(types::canonical(fieldCanon)) == nullptr) {",
+   "来源": "914",
+   "类别": "闭集穷举",
+   "静默风险": "低",
+   "原因": "915-b 无拷贝构造类=走 728x 合成拷贝通道（形态枚举）（任务 914 rebase 收口补登·915-b 搬迁/新增面）",
+   "登记人": "AI（914 轮·逐条读过代码）",
+   "登记日": "2026-10-17"
+  },
+  {
+   "文件": "src/cn_compiler/ir/ir_expr_assign.cpp",
+   "函数": "emitClassFieldHandleCopy",
+   "锚文本": "if (copyCtor == nullptr) return false;   // 调用方已判定（防御·零发射）",
+   "来源": "914",
+   "类别": "闭集穷举",
+   "静默风险": "低",
+   "原因": "915-b 发射防御（调用方已判定非空·零发射）（任务 914 rebase 收口补登·915-b 搬迁/新增面）",
+   "登记人": "AI（914 轮·逐条读过代码）",
+   "登记日": "2026-10-17"
+  },
+  {
+   "文件": "src/cn_compiler/ir/ir_expr_assign.cpp",
+   "函数": "emitClassFieldHandleCopy",
+   "锚文本": "if (srcUnique.empty()) return false;     // 同上（防御）",
+   "来源": "914",
+   "类别": "闭集穷举",
+   "静默风险": "低",
+   "原因": "915-b 源槽防御（同调用方已判定）（任务 914 rebase 收口补登·915-b 搬迁/新增面）",
+   "登记人": "AI（914 轮·逐条读过代码）",
+   "登记日": "2026-10-17"
+  },
+  {
+   "文件": "src/cn_compiler/ir/ir_expr_assign.cpp",
+   "函数": "emitClassFieldHandleCopy",
+   "锚文本": "} else { │ srcRef = emitResult(ir::Opcode::AddrOf,",
+   "来源": "914",
+   "类别": "业务值",
+   "静默风险": "低",
+   "原因": "915-b 源地址形态分支（引用捕获=Load 槽/普通=AddrOf·两形态闭集）（任务 914 rebase 收口补登·915-b 搬迁/新增面）",
+   "登记人": "AI（914 轮·逐条读过代码）",
+   "登记日": "2026-10-17"
+  },
+  {
+   "文件": "src/cn_compiler/ir/ir_expr_assign.cpp",
+   "函数": "memberClassCallProductAssign",
+   "锚文本": "if (!canMemberClassCallProductAssign(valueExpr, fieldCanon)) return false;",
+   "来源": "914",
+   "类别": "闭集穷举",
+   "静默风险": "低",
+   "原因": "629 发射守卫（判定单点已含全形态·防御）（任务 914 rebase 收口补登·915-b 搬迁/新增面）",
+   "登记人": "AI（914 轮·逐条读过代码）",
+   "登记日": "2026-10-17"
+  },
+  {
+   "文件": "src/cn_compiler/ir/ir_expr_assign_ident_class.cpp",
+   "函数": "handleClassMemberLvalue",
+   "锚文本": "if (semantic_ == nullptr) return false;",
+   "来源": "914",
+   "类别": "闭集穷举",
+   "静默风险": "低",
+   "原因": "915-b 族搬迁（自 ir_oop_field.cpp 机械搬迁·零行为变更）——类成员左值形态判定守卫（任务 914 rebase 收口补登·915-b 搬迁/新增面）",
+   "登记人": "AI（914 轮·逐条读过代码）",
+   "登记日": "2026-10-17"
+  },
+  {
+   "文件": "src/cn_compiler/ir/ir_expr_assign_ident_class.cpp",
+   "函数": "handleClassMemberLvalue",
+   "锚文本": "if (!objName.empty() && semantic_->isClassType(objName)) {",
+   "来源": "914",
+   "类别": "闭集穷举",
+   "静默风险": "低",
+   "原因": "915-b 族搬迁——静态字段形态判定（非静态落实例通道）（任务 914 rebase 收口补登·915-b 搬迁/新增面）",
+   "登记人": "AI（914 轮·逐条读过代码）",
+   "登记日": "2026-10-17"
+  },
+  {
+   "文件": "src/cn_compiler/ir/ir_expr_assign_ident_class.cpp",
+   "函数": "handleClassMemberLvalue",
+   "锚文本": "if (classFieldType(objName, node->memberName).empty()) return false;",
+   "来源": "914",
+   "类别": "闭集穷举",
+   "静默风险": "低",
+   "原因": "915-b 族搬迁——静态字段存在性守卫（miss=非本通道落原路径）（任务 914 rebase 收口补登·915-b 搬迁/新增面）",
+   "登记人": "AI（914 轮·逐条读过代码）",
+   "登记日": "2026-10-17"
+  },
+  {
+   "文件": "src/cn_compiler/ir/ir_expr_assign_ident_class.cpp",
+   "函数": "handleClassMemberLvalue",
+   "锚文本": "if (!semantic_->isClassType(canonObjField)) return false;",
+   "来源": "914",
+   "类别": "闭集穷举",
+   "静默风险": "低",
+   "原因": "915-b 族搬迁——实例对象类型判定（非类落原路径）（任务 914 rebase 收口补登·915-b 搬迁/新增面）",
+   "登记人": "AI（914 轮·逐条读过代码）",
+   "登记日": "2026-10-17"
+  },
+  {
+   "文件": "src/cn_compiler/ir/ir_expr_assign_ident_class.cpp",
+   "函数": "handleClassMemberLvalue",
+   "锚文本": "if (fieldType.empty()) return false;",
+   "来源": "914",
+   "类别": "闭集穷举",
+   "静默风险": "低",
+   "原因": "915-b 族搬迁——字段存在性守卫（miss=非本通道）（任务 914 rebase 收口补登·915-b 搬迁/新增面）",
+   "登记人": "AI（914 轮·逐条读过代码）",
+   "登记日": "2026-10-17"
+  },
+  {
+   "文件": "src/cn_compiler/ir/ir_expr_assign_ident_class.cpp",
+   "函数": "handleClassMemberLvalue",
+   "锚文本": "if (offset < 0) return false;",
+   "来源": "914",
+   "类别": "闭集穷举",
+   "静默风险": "低",
+   "原因": "915-b 族搬迁——字段偏移登记守卫（miss=未登记防御·上游已诊断）（任务 914 rebase 收口补登·915-b 搬迁/新增面）",
+   "登记人": "AI（914 轮·逐条读过代码）",
+   "登记日": "2026-10-17"
+  },
+  {
+   "文件": "src/cn_compiler/ir/ir_expr_assign_ident_class.cpp",
+   "函数": "handleClassMemberAssign",
+   "锚文本": "if (!handleClassMemberLvalue(target, addr)) return false;",
+   "来源": "914",
+   "类别": "闭集穷举",
+   "静默风险": "低",
+   "原因": "915-b 族搬迁——左值解析失败=非类字段目标落原路径（任务 914 rebase 收口补登·915-b 搬迁/新增面）",
+   "登记人": "AI（914 轮·逐条读过代码）",
+   "登记日": "2026-10-17"
   }
  ]
 }

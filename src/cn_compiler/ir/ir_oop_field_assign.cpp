@@ -162,6 +162,47 @@ bool IRGenerator::handleClassFieldAssign(IdentifierExpr* ident, Expr* value,
             return true;
         }
     }
+    // 915-b（任务 914·m11 实证·与 v2 生成语句赋值 915-b 裸字段面零分叉）：
+    //   **用户类字段（裸字段名·隐式 this）← 标识符源**深拷——原落下方标量通道
+    //   指针存储=句柄浅共享双主（源变量与字段同对象：源出口 RAII + 父析构级联
+    //   双 DeleteObject = C0000374 堆破坏·探针 m11 双侧实锤）。修=成员链面
+    //   emitClassFieldHandleCopy 同型（新建壳+拷贝构造+旧壳释放+新句柄入槽·
+    //   判定同单点=有拷贝构造类才分流：无拷贝构造类两侧维持无释放面现状）。
+    //   位置=genExpr 前（helper 自发射源地址·防双发副作用）。
+    if (!isCompoundAssignOp(op) && value->getType() == NodeType::IdentifierExpr) {
+        const std::string fieldCanonZ = types::canonical(fieldType);
+        if (canEmitClassFieldHandleCopy(fieldCanonZ, value)) {
+            ir::IRValue fieldAddrZ = genInstanceFieldAddr(ident->name, loc);
+            emitClassFieldHandleCopy(fieldAddrZ, fieldCanonZ, value, loc);
+            lastExpr_ = fieldAddrZ;
+            return true;
+        }
+    }
+    // 915-b 配合（095 覆盖前 drop 旧值面补齐·与 v2 843-a 同款·m10b 实证）：
+    //   **用户类字段（裸字段名）← 调用产物**（构造调用/返回类对象调用·接管
+    //   语义）——原路径句柄直存覆盖：旧壳（连同资源字段）无人释放=每轮泄漏
+    //   1（m10b 析构数 1<51 双侧实锤）。复用 629 成员面单点（转移/引用返回
+    //   排除同口径·先求值后释放=自用右值安全）。容器字段由 180-a 前段处理
+    //   不达此；判定先于地址计算（零发射守卫）。
+    //   ★isClassType 守卫（915-b 收口修正·REBASE 后官网示例回归实证）：
+    //   canMemberClassCallProductAssign=「类字段」判定（原唯一消费点 974 段
+    //   外层已限 isStructType/isClassType），裸字段面裸调时**标量字段也会
+    //   命中**（exprSrcType==fieldCanon·如「整64」==「整64」）→ 对整64字段
+    //   发 DeleteObject(数值当句柄 free)=堆破坏（stdlib/随机数.cn 播种
+    //   `状态0 = 自身.扩散混合(x)` → 官网 random/猜数示例 C0000374 实证·
+    //   develop 对照绿）。与 canEmitClassFieldHandleCopy 内建 isClassType
+    //   同口径显式前置。
+    if (!isCompoundAssignOp(op) && value->getType() == NodeType::CallExpr &&
+        semantic_ != nullptr) {
+        const std::string fieldCanonY = types::canonical(fieldType);
+        if (semantic_->isClassType(fieldCanonY) &&
+            canMemberClassCallProductAssign(value, fieldCanonY)) {
+            ir::IRValue fieldAddrY = genInstanceFieldAddr(ident->name, loc);
+            memberClassCallProductAssign(value, fieldAddrY, fieldCanonY, loc);
+            lastExpr_ = fieldAddrY;
+            return true;
+        }
+    }
     ir::IRValue val = genExpr(value);
     if (val.type != targetIrType && !targetIrType.empty()) {
         val = emitResult(ir::Opcode::Cast, {val}, targetIrType, "", loc);

@@ -198,6 +198,85 @@ bool IRGenerator::memberClassFieldAssign(AssignmentExpr* node, MemberExpr* membe
     return false;
 }
 
+// 915-b（2026-10-16·任务 914 现象 B 宿主侧根治）：**类字段（句柄槽）← 标识符
+//   源** 句柄语义深拷单一实现（判定/发射分离·两成员入口共用：handleClass-
+//   MemberAssign 974 段与 memberWholeStructAssign）。
+//   病根：原经 emitStructWholeAssign「标识符源」分支把字段槽地址当 this 传
+//   拷贝构造（内联元素语义残留）：拷贝构造按对象布局写「槽地址+0..N」→ 8
+//   字节句柄槽被写入对象内容首域（探针 `甲.内 = 丙` fault=内容值 0x2A 实锤），
+//   后续读槽=垃圾句柄解引用崩 + 类大小>8 时写穿后继字段。
+//   ★存储语义分流边界：**成员目标=类字段=句柄槽**走本通道（与标识符类变量
+//   赋值 identifierClassCopyAssign 同型）；**指针下标元素=值槽/内联对象本体**
+//   （容器 raw 缓冲区·emitStructWholeAssign 分支1「this=元素地址」正确——
+//   915-b 首版曾误统一两形态=v2p 构建产物 C0000374 堆破坏实锤，已回退）。
+//   生成=自赋值守卫 + preFree 旧壳（有析构类·空安全幂等清槽；对象分配 calloc
+//   零初始化→未初始化槽 LoadPtr=0 空安全）+ NewObject + 拷贝构造(this=新壳·
+//   实参=源槽地址〔引用参数=Load 捕获槽〕) + StorePtr 新壳入槽（对齐
+//   identifierClassCopyAssign/183-a/728x 同族单点）。
+//   判定=纯查询零发射（lvalueAddress 含空检查发射·调用方须先判后发防双发）。
+bool IRGenerator::canEmitClassFieldHandleCopy(const std::string& fieldCanon,
+                                              Expr* valueNode) {
+    // 静默豁免闭集穷举: 915-b 参数防御（语义层/调用点已保证·防御零发射）
+    if (semantic_ == nullptr || valueNode == nullptr) return false;
+    // 静默豁免闭集穷举: 915-b 形态判定（非类字段=非本通道·落原路径）
+    if (!semantic_->isClassType(types::canonical(fieldCanon))) return false;
+    if (valueNode->getType() != NodeType::IdentifierExpr) return false;
+    // 静默豁免闭集穷举: 915-b 无拷贝构造类=走 728x 合成拷贝通道（形态枚举）
+    if (semantic_->findCopyConstructor(types::canonical(fieldCanon)) == nullptr) {
+        return false;   // 无拷贝构造类字段走 emitStructWholeAssign 728x 合成拷贝
+    }
+    const std::string srcName = static_cast<IdentifierExpr*>(valueNode)->name;
+    return !lookupVarName(srcName).empty();   // 静态源等无局部槽形态维持原路径
+}
+
+bool IRGenerator::emitClassFieldHandleCopy(const ir::IRValue& fieldAddr,
+                                           const std::string& fieldCanon,
+                                           Expr* valueNode,
+                                           const SourceLocation& loc) {
+    const std::string canon = types::canonical(fieldCanon);
+    const ClassMemberInfo* copyCtor = semantic_->findCopyConstructor(canon);
+    // 静默豁免闭集穷举: 915-b 发射防御（调用方已判定非空·零发射）
+    if (copyCtor == nullptr) return false;   // 调用方已判定（防御·零发射）
+    const std::string srcName = static_cast<IdentifierExpr*>(valueNode)->name;
+    const std::string srcUnique = lookupVarName(srcName);
+    // 静默豁免闭集穷举: 915-b 源槽防御（同调用方已判定）
+    if (srcUnique.empty()) return false;     // 同上（防御）
+    ir::IRValue srcRef;
+    if (isByRefCapture(srcName)) {
+        // 引用参数：槽内存=被引用对象槽地址（Load 槽·identifierClassCopyAssign
+        //   :59 同款）
+        srcRef = emitResult(ir::Opcode::Load, {ir::IRValue::var(srcUnique, "ptr")},
+                            "ptr", srcUnique, loc);
+    // 静默豁免业务值: 915-b 源地址形态分支（引用捕获=Load 槽/普通=AddrOf·两形态闭集）
+    } else {
+        srcRef = emitResult(ir::Opcode::AddrOf,
+                            {ir::IRValue::var(srcUnique, "i64")}, "ptr",
+                            srcUnique, loc);
+    }
+    const std::string skipLabel = beginSelfAssignGuard(fieldAddr, srcRef, loc);
+    if (!classDestructorSymbolKey(canon).empty()) {
+        ir::IRValue oldObj = emitResult(ir::Opcode::LoadPtr, {fieldAddr}, "ptr",
+                                        "", loc);
+        emitContainerElemFreeFor(canon, oldObj, loc);
+        emit(ir::Opcode::DeleteObject, {oldObj}, ir::IRValue(), canon, "void", loc);
+        ir::IRValue zero = emitResult(ir::Opcode::ConstInt, {}, "i64", "0", loc);
+        emit(ir::Opcode::StorePtr, {fieldAddr, zero}, ir::IRValue(), "", "ptr", loc);
+    }
+    const std::string copyOwner =
+        copyCtor->ownerClass.empty() ? canon : copyCtor->ownerClass;
+    const ClassInfo* ci = semantic_->findClass(canon);
+    const std::string newObjExtra =
+        canon + "|" + std::to_string(ci != nullptr ? ci->totalSize : 0);
+    ir::IRValue newObj = emitResult(
+        ir::Opcode::NewObject, {ir::IRValue::constant(canon, "ptr")}, "ptr",
+        newObjExtra, loc);
+    emit(ir::Opcode::Call, {newObj, srcRef}, ir::IRValue(),
+         methodSymbolKey(copyOwner, copyCtor->sigKey), "void", loc);
+    emit(ir::Opcode::StorePtr, {fieldAddr, newObj}, ir::IRValue(), "", "ptr", loc);
+    endSelfAssignGuard(skipLabel);
+    return true;
+}
+
 // 成员结构体作值写（成员目标·字段为结构体/类；原 160~190 段）：
 //   emitStructWholeAssign 整体赋值（46-a 根治，Rust place 拷贝语义）。
 bool IRGenerator::memberWholeStructAssign(AssignmentExpr* node, MemberExpr* member) {
@@ -217,6 +296,15 @@ bool IRGenerator::memberWholeStructAssign(AssignmentExpr* node, MemberExpr* memb
             // 348-a（D11 甲方案·源优先序）：右值=一般结构体返回调用 → 先源后目标地址
             if (structWholeAssignSrcFirst(node->target.get(), node->value.get(),
                                           fieldStructW, node->location)) {
+                return true;
+            }
+            // 915-b（任务 914 现象 B）：类字段（句柄槽）← 标识符源 → 句柄语义
+            //   深拷（先判后发·与 handleClassMemberAssign 974 段共用单点）。
+            if (canEmitClassFieldHandleCopy(fieldStructW, node->value.get())) {
+                ir::IRValue fieldAddrB = lvalueAddress(node->target.get());
+                emitClassFieldHandleCopy(fieldAddrB, fieldStructW,
+                                         node->value.get(), node->location);
+                lastExpr_ = fieldAddrB;
                 return true;
             }
             ir::IRValue fieldAddrW = lvalueAddress(node->target.get());
@@ -393,17 +481,26 @@ bool IRGenerator::memberStringFieldAssign(AssignmentExpr* node, MemberExpr* memb
 //   展开=源槽清零在 ir_call·成员转移面维持原路径）/引用返回（借用产物不得
 //   释放/接管）。容器族字段由 memberClassFieldAssign 前置处理不达此。
 //   返回 true=已处理；false=非该形态（零行为变更落原路径）。
-bool IRGenerator::memberClassCallProductAssign(Expr* valueExpr,
-                                               const ir::IRValue& fieldAddr,
-                                               const std::string& fieldCanon,
-                                               const SourceLocation& loc) {
+// 915-b 配合（095 覆盖前 drop 旧值面补齐）：判定/发射分离——判定=纯查询
+//   零发射（915-b 裸字段挂点据此先判后算目标地址·防 lvalueAddress 空检查
+//   白发射），发射=求值+旧壳释放+新句柄入槽（成员/裸字段两挂点共用）。
+bool IRGenerator::canMemberClassCallProductAssign(Expr* valueExpr,
+                                                  const std::string& fieldCanon) {
     if (semantic_ == nullptr || valueExpr == nullptr) return false;
     if (valueExpr->getType() != NodeType::CallExpr) return false;
     const CallExpr* call = static_cast<const CallExpr*>(valueExpr);
     if (isTransferCall(call)) return false;
     if (call->isRefReturnCall) return false;
     // 右值调用返回类型严格等于字段类（异型/引用返回后缀自然不等=保守面）
-    if (types::canonical(exprSrcType(valueExpr)) != fieldCanon) return false;
+    return types::canonical(exprSrcType(valueExpr)) == fieldCanon;
+}
+
+bool IRGenerator::memberClassCallProductAssign(Expr* valueExpr,
+                                               const ir::IRValue& fieldAddr,
+                                               const std::string& fieldCanon,
+                                               const SourceLocation& loc) {
+    // 静默豁免闭集穷举: 629 发射守卫（判定单点已含全形态·防御）
+    if (!canMemberClassCallProductAssign(valueExpr, fieldCanon)) return false;
     // 源求值（产物=新堆对象句柄——所有权随返回值移交调用方）
     ir::IRValue newObj = genExpr(valueExpr);
     // 旧字段对象释放（空句柄空安全）+ 新句柄入槽

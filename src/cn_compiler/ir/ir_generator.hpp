@@ -812,9 +812,9 @@ private:
                                  const StructDecl* decl, const std::string& objSrcType,
                                  const ir::IRValue& addr, const ir::IRValue& value);
     // 629（544 呈报）：类字段 ←「返回类对象的调用」产物——旧字段释放+新 句柄入槽（实现见 ir_expr_assign.cpp 成员族）
-    bool memberClassCallProductAssign(Expr* valueExpr, const ir::IRValue& fieldAddr,
-                                      const std::string& fieldCanon,
-                                      const SourceLocation& loc);
+    bool canMemberClassCallProductAssign(Expr*, const std::string&); bool canEmitClassFieldHandleCopy(const std::string&, Expr*);
+    bool memberClassCallProductAssign(Expr*, const ir::IRValue&, const std::string&, const SourceLocation&);
+    bool emitClassFieldHandleCopy(const ir::IRValue&, const std::string&, Expr*, const SourceLocation&);
     // 族：下标/解引用左值（原 320~459 段）
     bool assignToIndexTarget(AssignmentExpr* node);
     void markIndexStringElemTainted(AssignmentExpr* node);
