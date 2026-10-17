@@ -260,6 +260,7 @@ add_library(cn_compiler_ir STATIC
     src/cn_compiler/ir/ir_stmt.cpp
     src/cn_compiler/ir/ir_stmt_decl.cpp
     src/cn_compiler/ir/ir_stmt_decl_init.cpp
+    src/cn_compiler/ir/ir_stmt_decl_raii.cpp
     src/cn_compiler/ir/ir_decl.cpp
     src/cn_compiler/ir/ir_oop.cpp
     src/cn_compiler/ir/ir_expr_type.cpp

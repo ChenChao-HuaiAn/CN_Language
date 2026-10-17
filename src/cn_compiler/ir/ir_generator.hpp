@@ -183,6 +183,10 @@ private:
     void registerOwnedArrayElems(const DeclGenCtx& ctx);  // ⑤98-a/955 数组元素 RAII 名单
     bool tryGenReferenceBinding(VarDecl* node, const DeclGenCtx& ctx);  // ⑥P3-18 引用绑定
     void registerOopRaii(VarDecl* node, const DeclGenCtx& ctx);  // ⑦OOP/串/字段 RAII 登记
+    // ⑦-a 980/879（929 拆分·实现迁 ir_stmt_decl_raii.cpp）：调用接收 RAII
+    //   豁免三分判据——true=接收槽豁免登记（形参/全局写穿别名·保守面）；
+    //   false=登记回收（局部/新建转移·引用返回·复制/转移内置·构造·容器）。
+    bool callReceiverExempt880(VarDecl* node, const DeclGenCtx& ctx);
     bool genArrayInitListDecl(VarDecl* node, const DeclGenCtx& ctx);  // ⑧数组初始化列表
     void storeArrayInitElements(VarDecl* node, InitListExpr* initList,
                                 const std::string& elemSrc, const std::string& elemIrType,
