@@ -570,11 +570,20 @@ def verify(cn_exe=None, 仅失败=False):
     平台 = 目标平台()                     # 992：显式目标平台（win 缺省=win-x64 会走 MSVC 链）
     产物后缀 = ".exe" if 平台 == "win-x64" else ""
     tmp = tempfile.mkdtemp(prefix="cndocs_")
-    总数 = 通过 = 跳过 = 0
-    fails = []
+    跳过 = 0
 
-    def 跑一个(页标识, 条, 导入头):
-        nonlocal 总数, 通过, 跳过
+    # 1015（2026-10-18）：收集-并行执行-汇总三段式——原逐例串行在 win 家机实测
+    #   268 例约 25-30 分钟（每例 cn build 走 vcvars 链）·多轮集成被 600s/2400s
+    #   超时反复误杀（963/983/790 伞批三实录）；并行化按「单例独立子目录」隔离
+    #   （文件 I/O 示例写 笔记.txt/日志.txt 曾落 cwd——992 起 cwd=tmp·并行下每例
+    #   再隔一层 t<N>/ 根除跨例互写），编译/运行互不共享可写面；编号=输入顺序
+    #   预分配·结果经 map 保序汇总——判定行为与旧实现逐字一致。
+    #   并发度=CN_DOC_VERIFY_JOBS 环境变量（缺省 8；1=退化为串行旧行为）。
+    任务们 = []   # (序号, 页标识, 页序号, 条, 导入头)——顺序=原三层遍历序
+    页序号表 = {}
+
+    def 收集(页标识, 条, 导入头):
+        nonlocal 跳过
         # 1017：平台限定条目（pthread_* / cn_install_thread_stack_guard 等 linux 专有
         #   符号示例）——非匹配平台跳过，不计入总数（仅显式声明"平台"的条目受影响，
         #   其余条目行为零变化；渲染面不经此路径）。
@@ -584,9 +593,21 @@ def verify(cn_exe=None, 仅失败=False):
         示 = 条.get("示例") or 条.get("原始") or 条.get("代码")
         if not 示:
             return
-        总数 += 1
-        src = os.path.join(tmp, "t%d.cn" % 总数)
-        exe = os.path.join(tmp, "t%d%s" % (总数, 产物后缀))
+        if 页标识 not in 页序号表:
+            页序号表[页标识] = len(页序号表) + 1
+        任务们.append((len(任务们) + 1, 页标识, 页序号表[页标识], 条, 导入头))
+
+    def 跑一个(任务):
+        """单例执行（并行 worker）：编译/运行文件落**页级共享目录**（同页示例存在
+        "写→读"序列依赖：file.html 写入文件(日志.txt)→读取文件族 依赖前序用例产物；
+        页内串行执行序=原串行语义），页间目录隔离（防跨页杂散文件互写）。
+        返回 "通过" 或 ("失败", 失败元组)。"""
+        序号, 页标识, 页序, 条, 导入头 = 任务
+        工作目录 = os.path.join(tmp, "p%d" % 页序)
+        os.makedirs(工作目录, exist_ok=True)
+        src = os.path.join(工作目录, "t%d.cn" % 序号)
+        exe = os.path.join(工作目录, "t%d%s" % (序号, 产物后缀))
+        示 = 条.get("示例") or 条.get("原始") or 条.get("代码")
         if 条.get("原始"):
             程序 = 条["原始"]
         else:
@@ -604,34 +625,31 @@ def verify(cn_exe=None, 仅失败=False):
         if 条.get("预期失败"):
             # 负例块：必须编译失败（且诊断含 预期诊断 关键词——给了才比对）
             if r.returncode == 0:
-                fails.append((页标识, 条.get("id", "?"), "负例未拦截",
-                              "预期编译失败却成功了"))
-            elif (条.get("预期诊断") and 条["预期诊断"] not in (r.stdout + r.stderr)):
-                fails.append((页标识, 条.get("id", "?"), "负例诊断不符",
-                              "缺关键词 %r" % 条["预期诊断"]))
-            else:
-                通过 += 1
-            return
+                return ("失败", (页标识, 条.get("id", "?"), "负例未拦截",
+                                 "预期编译失败却成功了"))
+            if (条.get("预期诊断") and 条["预期诊断"] not in (r.stdout + r.stderr)):
+                return ("失败", (页标识, 条.get("id", "?"), "负例诊断不符",
+                                 "缺关键词 %r" % 条["预期诊断"]))
+            return "通过"
         if r.returncode != 0:
-            fails.append((页标识, 条.get("id", "?"), "编译失败", (r.stdout + r.stderr)[-400:]))
-            return
+            return ("失败", (页标识, 条.get("id", "?"), "编译失败",
+                             (r.stdout + r.stderr)[-400:]))
         if 条.get("编译足矣"):
-            通过 += 1
-            return
+            return "通过"
         run = subprocess.run([exe], capture_output=True, text=True,
                              errors="replace", timeout=30, stdin=subprocess.DEVNULL,
-                             cwd=tmp)   # 992：示例程序的相对路径落临时目录（文件 I/O
-                                        # 示例曾把 笔记.txt/日志.txt 写进仓库根）
+                             cwd=工作目录)  # 992：示例程序的相对路径落临时目录（文件 I/O
+                                            # 示例曾把 笔记.txt/日志.txt 写进仓库根）；
+                                            # 1015：再隔 t<N>/ 支持并行（跨例零互写）
         out = run.stdout.replace("\r\n", "\n")
         期望 = 条.get("输出") if "输出" in 条 else 条.get("综合输出")
         if 期望 is not None and out != 期望:
-            fails.append((页标识, 条.get("id", "?"), "输出不符",
-                          "期望=%r 实际=%r" % (期望, out)))
-            return
+            return ("失败", (页标识, 条.get("id", "?"), "输出不符",
+                             "期望=%r 实际=%r" % (期望, out)))
         if run.returncode != 0:
-            fails.append((页标识, 条.get("id", "?"), "运行退出码 %d" % run.returncode, out[-200:]))
-            return
-        通过 += 1
+            return ("失败", (页标识, 条.get("id", "?"), "运行退出码 %d" % run.returncode,
+                             out[-200:]))
+        return "通过"
 
     for m in MODULES:
         for ch in m["章节"]:
@@ -643,27 +661,64 @@ def verify(cn_exe=None, 仅失败=False):
                                      编译足矣=ch.get("综合编译足矣")))
             验证对象 += [条 for 条 in ch["条目"]]
             for 条 in 验证对象:
-                跑一个(m["文件"], 条, m.get("导入头"))
+                收集(m["文件"], 条, m.get("导入头"))
     for 页 in GEN_PAGES:
         for ch in 页["章节"]:
             if ch.get("综合"):
-                跑一个(页["文件"], dict(id=ch["id"] + "·综合", 示例=ch["综合"],
+                收集(页["文件"], dict(id=ch["id"] + "·综合", 示例=ch["综合"],
                                    输出=ch.get("综合输出"),
                                    原始=ch.get("综合原始"),
                                    编译足矣=ch.get("综合编译足矣")),
                      页.get("导入头"))
             for 块 in ch.get("块", []):
                 if isinstance(块, dict) and 块.get("代码"):
-                    跑一个(页["文件"], dict(块, id=块.get("名", "码")), 页.get("导入头"))
+                    收集(页["文件"], dict(块, id=块.get("名", "码")), 页.get("导入头"))
                 elif isinstance(块, tuple) and 块[0] == "码" and 块[2]:
-                    跑一个(页["文件"], dict(id=块[1], 示例=块[2],
+                    收集(页["文件"], dict(id=块[1], 示例=块[2],
                                        输出=块[3] if len(块) > 3 else None,
                                        编译足矣=块[4] if len(块) > 4 else False),
                          页.get("导入头"))
             for 条 in ch.get("条目", []):
-                跑一个(页["文件"], 条, 页.get("导入头"))
-    print("示例验证：%d/%d 通过（编译+运行+输出比对%s）" % (
-        通过, 总数, "·平台跳过 %d" % 跳过 if 跳过 else ""))
+                收集(页["文件"], 条, 页.get("导入头"))
+
+    任务数 = len(任务们)
+    try:
+        并发 = int(os.environ.get("CN_DOC_VERIFY_JOBS") or 8)
+    except ValueError:
+        并发 = 8
+    if 任务数 > 1 and 并发 > 1:
+        # 1015：按页分组——页内**串行保序**（同页示例存在"写→读"序列依赖：file.html
+        #   写入文件(日志.txt)→读取文件/读取文件行/文件大小/关闭文件 依赖前序用例
+        #   产物落共享 cwd，并行打散序即"输出不符"·实测 4 例实录），页间并行；
+        #   各例仍各自 t<N>/ 独立目录（防跨页杂散文件互写）——等价于原串行语义的
+        #   页级并行化。首例（第一页首例）先行=顺带承担 cn build 首编预热。
+        页组 = {}
+        页序 = []
+        for t in 任务们:
+            if t[1] not in 页组:
+                页组[t[1]] = []
+                页序.append(t[1])
+            页组[t[1]].append(t)
+
+        def 跑一页(页名):
+            return [跑一个(t) for t in 页组[页名]]
+
+        from concurrent.futures import ThreadPoolExecutor
+        结果 = []
+        余页 = 页序
+        if 页序:
+            结果 += 跑一页(页序[0])      # 首卷先行·串行承担 cn build 首编预热
+            余页 = 页序[1:]
+        with ThreadPoolExecutor(max_workers=并发) as 池:
+            页结果 = list(池.map(跑一页, 余页))   # map 保序=原页序
+        结果 += [r for 组 in 页结果 for r in 组]
+    else:
+        结果 = [跑一个(t) for t in 任务们]
+    通过 = sum(1 for r in 结果 if r == "通过")
+    fails = [r[1] for r in 结果 if isinstance(r, tuple) and r[0] == "失败"]
+    print("示例验证：%d/%d 通过（编译+运行+输出比对%s%s）" % (
+        通过, 任务数, "·平台跳过 %d" % 跳过 if 跳过 else "",
+        "·%d 路并发" % 并发 if 并发 > 1 and 任务数 > 1 else ""))
     for f in fails:
         print("  [失败] %s :: %s — %s\n    %s" % f)
     if not 仅失败 and not fails:
