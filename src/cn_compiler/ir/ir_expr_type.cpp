@@ -106,7 +106,16 @@ std::string IRGenerator::exprSrcType(Expr* node) const {
                 const std::string fn =
                     static_cast<const IdentifierExpr*>(call->callee.get())->name;
                 const std::string sig = semantic_->funcFirstSigKey(fn);
-                return semantic_->funcReturnTypeOf(sig.empty() ? fn : sig);
+                // 845（零分叉·569 采样轮）：函数返回泛型容器实例（造() ->
+                //   向量<整32>）的返回文本=canonicalType 形态（含 '<'，未转 $
+                //   实例名）——变量声明路径 lookupSrcType 取物化名，调用路径
+                //   原样返回 → 下游（emitMemberMethodCall 对象识别 / 662 临时
+                //   析构 / memberObjStructType 链）isClassType/findClass 全 miss
+                //   （造().大小() 宿主逸出「无法调用非函数类型」/648 内部错误；
+                //   v2 全绿）。此处与变量路径对齐物化（resolveGenericInstanceType
+                //   幂等：非泛型/已物化原样返回）。
+                return resolveGenericInstanceType(
+                    semantic_->funcReturnTypeOf(sig.empty() ? fn : sig));
             }
             // 宿主缺陷根治（2026-08-25）：对象.方法() 调用——解析方法返回类型
             //   （表.元素(0) -> 映射$整64$整64）。原缺此分支导致链式方法调用
@@ -121,7 +130,11 @@ std::string IRGenerator::exprSrcType(Expr* node) const {
                     std::string owner;
                     const ClassMemberInfo* m = semantic_->lookupClassMember(
                         types::canonical(objType), mem->memberName, owner);
-                    if (m != nullptr && !m->type.empty()) return m->type;
+                    // 845：方法返回文本同款物化（容器读方法返回 T 替换后已为
+                    //   实例名；泛型文本残余形态兜底归一——幂等）
+                    if (m != nullptr && !m->type.empty()) {
+                        return resolveGenericInstanceType(m->type);
+                    }
                 }
             }
             return "";

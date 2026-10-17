@@ -159,6 +159,18 @@ bool SemanticAnalyzer::checkMemberCallCore(CallExpr* node, MemberExpr* mem,
                 : (types::isPointer(objTypeForClass)
                        ? canonicalType(types::pointeeOf(objTypeForClass))
                        : canonicalType(objTypeForClass));
+        // 845（569 采样轮实证·零分叉）：对象类型为泛型模板文本（函数返回泛型
+        //   容器实例 造().大小()——info.returnType 存 canonicalType 形态
+        //   「向量<整32>」，未转 $ 实例名）时类表/方法表恒 miss → 方法解析
+        //   落空 → 落 visitCallExpr 尾部终态报「无法调用非函数类型」（v2 侧
+        //   表查找类型ID 消费同一物化名=全绿·宿主单侧拒）。与 visitMemberExpr
+        //   T95/551-a 同款物化步行（先例对齐；幂等：非泛型/已物化/类表已命中
+        //   路径零行为变化）。
+        if (findClass(clsName) == nullptr) {
+            const std::string materialized =
+                resolveGenericTypeName(clsName, node->location);
+            if (materialized != clsName) clsName = canonicalType(materialized);
+        }
         method = lookupClassMember(clsName, methodName, ownerClass);
         // 122（928·用户裁决乙）：父类.构造名()/自身.构造名() 限定构造调用统一
         //   拒绝——构造函数不是方法成员（规格 06§七 父类. 仅限方法）；无参构造
