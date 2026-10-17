@@ -51,8 +51,27 @@
 <h3 id="优化级别">优化级别</h3>
 <table class="表"><thead><tr><th>级别</th><th>内容</th></tr></thead><tbody><tr><td><code>-O0</code></td><td>无优化（默认）</td></tr><tr><td><code>-O1</code></td><td>常量折叠+死代码消除+代数简化+复写传播</td></tr><tr><td><code>-O2</code></td><td>+ 公共子表达式消除+跨块死代码消除+寄存器分配</td></tr><tr><td><code>-O3</code></td><td>+ 全局值传播</td></tr></tbody></table>
 <h2 id="环境">运行时环境变量与诊断通道</h2>
-<table class="表"><thead><tr><th>变量/通道</th><th>作用</th></tr></thead><tbody><tr><td><code>CN_RT_MEM_STATS=1</code></td><td>进程退出时 stderr 打印 8 档分配直方图（内存观测·默认关闭）</td></tr><tr><td><code>运行时错误(错误码N): 消息</code></td><td>stdout·运行时错误诊断行，打印后终止（退出码 1）</td></tr><tr><td><code>[cnrt] cn_realloc 拒绝异常尺寸 N</code></td><td>stderr·重新分配 &gt;2GiB 拒绝（返回 无 不终止）</td></tr><tr><td><code>[crash]/[veh]</code> 系列</td><td>stderr·仅未处理异常时输出（寄存器+回溯 RVA）；正常启动零输出</td></tr></tbody></table>
-<ul><li>E2E 只比对 stdout——诊断走 stderr 不进比对面，但都是用户可观察行为契约。</li><li>交叉编译示例：<code>cn build 主.cn --target linux-arm64 -O2</code>（在本机产出 ARM64 汇编，链接与运行在对应目标机）。</li></ul>
+<table class="表"><thead><tr><th>变量/通道</th><th>作用</th></tr></thead><tbody><tr><td><code>CN_RT_MEM_STATS=1</code></td><td>进程退出时 stderr 打印 8 档分配直方图（内存观测·默认关闭）</td></tr><tr><td><code>运行时错误(错误码N): 消息</code></td><td>stdout·运行时错误诊断行，打印后终止（退出码 1）</td></tr><tr><td><code>运行时错误(错误码9): 栈溢出</code></td><td>stdout·栈溢出<strong>确定性失败</strong>：深度递归耗尽线程栈 → 进程级信号兜底捕获（linux=SIGSEGV+备用栈 / win=EXCEPTION_STACK_OVERFLOW），打印后终止（退出码 1）——安全区与 <code>不安全</code> 函数内同样生效（面向整个进程）</td></tr><tr><td><code>[cnrt] cn_realloc 拒绝异常尺寸 N</code></td><td>stderr·重新分配 &gt;2GiB 拒绝（返回 无 不终止）</td></tr><tr><td><code>cn_install_thread_stack_guard()</code></td><td>运行时公开 API（FFI 可声明）：为<strong>当前线程</strong>安装栈溢出备用栈——手工 <code>pthread_create</code> 线程须在<strong>线程入口调用一次</strong>（经 <code>线程::新</code> 创建=运行时自动装）；win=空操作（进程级过滤器覆盖全部线程）</td></tr><tr><td><code>[crash]/[veh]</code> 系列</td><td>stderr·仅未处理异常时输出（寄存器+回溯 RVA）；正常启动零输出</td></tr></tbody></table>
+<ul><li>E2E 只比对 stdout——诊断走 stderr 不进比对面，但都是用户可观察行为契约。</li><li>栈溢出防线的性质=进程级信号兜底（运行时入口一次性安装），<strong>零热路径开销</strong>——函数体内不插任何栈检查代码；判据是指纹匹配（故障地址与栈指针比邻），<strong>匹配不到=不拦截</strong>（恢复平台默认崩溃，不误报、不承诺）。E2E 锚：<code>818_栈溢出确定性失败</code>（深递归→错误码 9·rc=1 ＋健康深度对照）、<code>929_手工线程栈守卫</code>（手工线程显式安装后同款）。</li><li>交叉编译示例：<code>cn build 主.cn --target linux-arm64 -O2</code>（在本机产出 ARM64 汇编，链接与运行在对应目标机）。</li></ul>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">手工线程栈守卫.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">外部 函数 cn_install_thread_stack_guard() -&gt; 空类型
+外部 函数 pthread_create(整64* 线程号, 空类型* 属性, 空类型(*入口)(空类型*), 空类型* 参数) -&gt; 整32
+外部 函数 pthread_join(整64 线程号, 空类型** 返回值) -&gt; 整32
+
+不安全 函数 线程体(空类型* 参数) -&gt; 空类型 {
+    cn_install_thread_stack_guard();   // ✱ 手工线程入口显式安装（一次）
+    打印("线程运行中");
+    返回;
+}
+
+不安全 函数 主() -&gt; 整32 {
+    整64 线程号 = 0;
+    整32 创建 = pthread_create(&amp;线程号, 无, 线程体, 无);
+    如果 (创建 != 0) { 返回 2; }
+    pthread_join(线程号, 无);
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：线程运行中
+</p>
 <p>语言本身的问题去 <a href="reference/index.html">语言参考</a>；标准库 API 去 <a href="stdlib.html">标准库</a>。</p><nav class="页脚导航"><a class="" href="reference/modules.html"><span class="向">← 上一页</span><span class="题">模块系统</span></a><a href="stdlib.html"><span class="向">← 上一页</span><span class="题">标准库总览</span></a></nav></article>
     <aside class="目录" aria-label="本页目录">
       <p class="目录-题">本页目录</p>
@@ -96,7 +115,7 @@
     </div>
     <div class="页脚-底">
       <span>© 2026 CN 语言项目</span>
-      <span>文档基线：任务/1003 f6bae87a·2026-10-17·示例经编译器实测</span>
+      <span>文档基线：任务/1004 c7ca057f·2026-10-17·示例经编译器实测</span>
       <span>京ICP备00000000号（备案办理中·占位）</span>
     </div>
   </div>

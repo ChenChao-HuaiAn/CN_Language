@@ -65,7 +65,7 @@ cmake --build build -j
     打印("你好，CN！");
     返回 0;
 }</code></pre></div>
-<p>三个要点：①<code>函数</code> 声明函数；②<code>-&gt; 整32</code> 是返回类型（操作系统退出码，0=成功）；③<code>打印</code> 是内置变参输出，<strong>末尾自动换行</strong>，多参数直接逗号排开。</p>
+<p>三个要点：①<code>函数</code> 声明函数；②<code>-&gt; 整32</code> 是返回类型（操作系统退出码，0=成功）；③<code>打印</code> 是内置变参输出，<strong>末尾自动换行</strong>，多参数直接逗号排开。另：入口签名<strong>恒为无参</strong>——<code>主</code> 不带 C 风格 <code>argc/argv</code> 参数，带参形态在链接期被拒；命令行参数用内置 <code>系统::参数个数()</code> / <code>系统::参数(索引)</code> 拿（<code>argv[0]</code>=可执行文件名，越界返回 <code>无</code>），详见<a href="reference/lexical.html#源文件">语言参考·源文件</a>。</p>
 <h2 id="编译运行">第三步：编译、运行、检查</h2>
 <p>cn 是单命令工具链：build 出可执行文件、run 一键编译并运行、check 只做语法与类型检查不生成代码。</p>
 <div class="码窗"><p class="码窗-顶"><span class="码窗-名">工作流</span><span class="码窗-徽">SHELL</span></p><pre><code>cn build 你好.cn              :: 编译出 你好.exe
@@ -108,7 +108,7 @@ cn build 你好.cn -O2          :: 开优化（-O0 ~ -O3）</code></pre></div>
 }</code></pre></div>
 <ul><li><code>读取整数()</code> 返回 <code>结果&lt;整64, 整32&gt;</code>——<strong>必须检查</strong>（.正常），直接当数值用是编译错误。</li><li><code>输入.值</code> 只能在「已检查 <code>.正常</code>」的分支里访问，编译器帮你把关。</li><li><code>随机数生成器(种子)</code> 同种子同序列——把种子换成<code>当前时间戳()</code> 即可每次不同（见<a href="stdlib/random.html">随机数</a>）。</li></ul>
 <h2 id="常见问题">常见问题</h2>
-<table class="表"><thead><tr><th>现象</th><th>原因与解法</th></tr></thead><tbody><tr><td><code>错误: 未声明的标识符 'xxx'</code></td><td>函数/变量名拼错，或忘了 <code>导入 模块::名;</code>。标准库函数（打印/字符串长度 等）是内置的，不需要导入。</td></tr><tr><td><code>结果&lt;正常,错误&gt; 返回值被丢弃未检查</code></td><td>返回 结果 的调用不能当裸语句——按<a href="tutorial-safety.html#结果">结果检查纪律</a>接收并检查。</td></tr><tr><td><code>[安全区边界] xxx 应在 不安全 函数 内</code></td><td>裸指针/手动内存操作须放在 <code>不安全 函数</code> 里，见<a href="tutorial-advanced.html#不安全">进阶篇·安全区边界</a>。</td></tr><tr><td>中文显示乱码（Windows 控制台）</td><td>CN 源码与输出均为 UTF-8；老式 cmd 需先 <code>chcp 65001</code> 切到 UTF-8 代码页（Windows Terminal 默认即可）。</td></tr><tr><td>链接阶段报缺 MASM/GAS</td><td>win 目标需随 Visual Studio 安装的主题组件（masm）；linux 目标需 binutils。交叉目标用 <code>--target</code> 指定。</td></tr></tbody></table>
+<table class="表"><thead><tr><th>现象</th><th>原因与解法</th></tr></thead><tbody><tr><td><code>错误: 未声明的标识符 'xxx'</code></td><td>函数/变量名拼错，或忘了 <code>导入 模块::名;</code>。标准库函数（打印/字符串长度 等）是内置的，不需要导入。</td></tr><tr><td><code>结果&lt;正常,错误&gt; 返回值被丢弃未检查</code></td><td>返回 结果 的调用不能当裸语句——按<a href="tutorial-safety.html#结果">结果检查纪律</a>接收并检查。</td></tr><tr><td><code>[安全区边界] xxx 应在 不安全 函数 内</code></td><td>裸指针/手动内存操作须放在 <code>不安全 函数</code> 里，见<a href="tutorial-advanced.html#不安全">进阶篇·安全区边界</a>。</td></tr><tr><td><code>链接失败</code>（带参的 <code>主</code>）</td><td>入口签名<strong>恒为无参</strong>——<code>函数 主(整32 个数, 字符** 表)</code> 等 C 风格带参形态不合成入口符号 <code>cn_main</code>，链接期被拒。命令行参数改用 <code>系统::参数个数()</code> / <code>系统::参数(索引)</code>：见<a href="reference/lexical.html#源文件">语言参考·源文件</a>。</td></tr><tr><td>中文显示乱码（Windows 控制台）</td><td>CN 源码与输出均为 UTF-8；老式 cmd 需先 <code>chcp 65001</code> 切到 UTF-8 代码页（Windows Terminal 默认即可）。</td></tr><tr><td>链接阶段报缺 MASM/GAS</td><td>win 目标需随 Visual Studio 安装的主题组件（masm）；linux 目标需 binutils。交叉目标用 <code>--target</code> 指定。</td></tr></tbody></table>
 <p>继续：<a href="tutorial-syntax.html">语法基础教程</a> →</p><nav class="页脚导航"><a class="" href="index.html"><span class="向">← 上一页</span><span class="题">文档总览</span></a><a class="下一" href="tutorial-syntax.html"><span class="向">下一页 →</span><span class="题">教程·语法基础</span></a></nav></article>
     <aside class="目录" aria-label="本页目录">
       <p class="目录-题">本页目录</p>
@@ -152,7 +152,7 @@ cn build 你好.cn -O2          :: 开优化（-O0 ~ -O3）</code></pre></div>
     </div>
     <div class="页脚-底">
       <span>© 2026 CN 语言项目</span>
-      <span>文档基线：任务/1003 f6bae87a·2026-10-17·示例经编译器实测</span>
+      <span>文档基线：任务/1004 c7ca057f·2026-10-17·示例经编译器实测</span>
       <span>京ICP备00000000号（备案办理中·占位）</span>
     </div>
   </div>

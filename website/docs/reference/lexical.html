@@ -45,7 +45,33 @@
 <h1>词法结构</h1>
 <p style="color: var(--color-fg-muted); font-size: var(--text-lg); line-height: 2;">源文件、注释、字面量、关键字全表、运算符与 13 级优先级——语法的原子层。</p>
 <h2 id="源文件">源文件与注释</h2>
-<table class="表"><thead><tr><th>项</th><th>规定</th></tr></thead><tbody><tr><td>扩展名</td><td><code>.cn</code></td></tr><tr><td>编码</td><td>UTF-8（必须）</td></tr><tr><td>入口</td><td>入口文件内须定义 <code>主</code> 函数（文件名 <code>主.cn</code> 仅为约定，与函数名无强制绑定）</td></tr><tr><td>单行注释</td><td><code>// 注释</code></td></tr><tr><td>块注释</td><td><code>/* 注释 */</code>——支持嵌套</td></tr></tbody></table>
+<table class="表"><thead><tr><th>项</th><th>规定</th></tr></thead><tbody><tr><td>扩展名</td><td><code>.cn</code></td></tr><tr><td>编码</td><td>UTF-8（必须）</td></tr><tr><td>入口</td><td>入口文件内须定义 <code>主</code> 函数，签名<strong>恒为无参</strong>：<code>函数 主() -&gt; 整32</code>（0=成功）——文件名 <code>主.cn</code> 仅为约定，与函数名无强制绑定</td></tr><tr><td>入口带参</td><td><strong>拒绝</strong>：C 风格 <code>主(整32 个数, 字符** 表)</code> 形态不合成无参入口符号 <code>cn_main</code>（编译器按无参约定合成、运行时启动代码引用）→ <strong>链接期拒绝</strong>（诊断「链接失败」）</td></tr><tr><td>命令行参数</td><td>经内置 <code>系统::参数个数()</code>（含可执行文件名本身）与 <code>系统::参数(索引)</code>（<code>argv[0]</code>=可执行文件名；越界返回 <code>无</code>）获取，无需导入；参数字符串由运行时持有，<strong>不得 字符串释放</strong></td></tr><tr><td>入口退出码</td><td><code>主</code> 返回 <code>结果&lt;整32, E&gt;</code> 时：正常 → 退出码取 <code>.值</code>；失败 → 退出码取 <code>.错误</code>（Rust Termination 同构）</td></tr><tr><td>单行注释</td><td><code>// 注释</code></td></tr><tr><td>块注释</td><td><code>/* 注释 */</code>——支持嵌套</td></tr></tbody></table>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主带参.cn（负例·链接期拒绝）</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">函数 主(整32 个数, 字符** 参数) -&gt; 整32 {
+    返回 个数;                  // ✗ 入口签名恒为无参：不合成 cn_main
+}</code></pre></div>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">命令行参数.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">函数 主() -&gt; 整32 {
+    打印("参数个数≥1: ", 系统::参数个数() &gt;= 1);   // 真（argv[0]=可执行文件名）
+    字符* 程序名 = 系统::参数(0);
+    如果 (程序名 != 无) {
+        打印("argv[0]非空: ", 字符串长度(程序名) &gt; 0);  // 真
+    }
+    字符* 越界 = 系统::参数(99);
+    如果 (越界 == 无) {
+        打印("越界参数=无");                        // 越界返回 无
+    }
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：参数个数≥1: 真
+argv[0]非空: 真
+越界参数=无
+</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">系统参数实测（E2E 37_system·参数注入 你好/CN）</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// —— 主.cn ——（E2E runner 注入命令行参数：你好、CN）
+函数 主() -&gt; 整32 {
+    打印("参数个数: ", 系统::参数个数());       // 3（exe + 你好 + CN）
+    打印("argv[1]: ", 系统::参数(1));          // 你好
+    打印("argv[2]: ", 系统::参数(2));          // CN
+    返回 0;
+}</code></pre></div>
 <h2 id="关键字">关键字全表：46 个保留字 + 上下文关键字</h2>
 <p>保留字在任何标识符位都不可用（字段名/变量名/函数名/参数名一概拒绝）；上下文关键字只在固定语法位识别，<strong>不占用命名空间</strong>——你完全可以有叫 <code>模块</code> 或 <code>公开</code> 的变量。</p>
 <table class="表"><thead><tr><th>分类</th><th>保留字</th></tr></thead><tbody><tr><td>控制流（10）</td><td><code>如果</code> <code>否则</code> <code>当</code> <code>循环</code> <code>返回</code> <code>中断</code> <code>继续</code> <code>选择</code> <code>情况</code> <code>默认</code></td></tr><tr><td>类型（21）</td><td><code>整数</code> <code>小数</code>（别名）；<code>整8/16/32/64/128</code>；<code>正8/16/32/64/128</code>；<code>浮32</code> <code>浮64</code>；<code>布尔</code> <code>字符</code> <code>字符串</code> <code>空类型</code> <code>结构体</code> <code>联合体</code> <code>枚举</code></td></tr><tr><td>声明（3）</td><td><code>函数</code> <code>变量</code> <code>导入</code></td></tr><tr><td>安全（1）</td><td><code>不安全</code></td></tr><tr><td>常量（3）</td><td><code>真</code> <code>假</code> <code>无</code></td></tr><tr><td>OOP（5）</td><td><code>类</code> <code>接口</code> <code>自身</code> <code>父类</code> <code>友元</code></td></tr><tr><td>错误处理（2）</td><td><code>结果</code> <code>可选</code></td></tr><tr><td>泛型（1）</td><td><code>泛型</code></td></tr></tbody></table>
@@ -193,7 +219,7 @@
     </div>
     <div class="页脚-底">
       <span>© 2026 CN 语言项目</span>
-      <span>文档基线：任务/1003 f6bae87a·2026-10-17·示例经编译器实测</span>
+      <span>文档基线：任务/1004 c7ca057f·2026-10-17·示例经编译器实测</span>
       <span>京ICP备00000000号（备案办理中·占位）</span>
     </div>
   </div>

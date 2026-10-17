@@ -153,7 +153,12 @@ dict(
                  '}'),
                 ("p", "三个要点：①<code>函数</code> 声明函数；②<code>-&gt; 整32</code> "
                       "是返回类型（操作系统退出码，0=成功）；③<code>打印</code> 是内置"
-                      "变参输出，<strong>末尾自动换行</strong>，多参数直接逗号排开。"),
+                      "变参输出，<strong>末尾自动换行</strong>，多参数直接逗号排开。"
+                      "另：入口签名<strong>恒为无参</strong>——<code>主</code> 不带 C 风格 "
+                      "<code>argc/argv</code> 参数，带参形态在链接期被拒；命令行参数用内置 "
+                      "<code>系统::参数个数()</code> / <code>系统::参数(索引)</code> 拿"
+                      "（<code>argv[0]</code>=可执行文件名，越界返回 <code>无</code>），"
+                      "详见<a href=\"reference/lexical.html#源文件\">语言参考·源文件</a>。"),
              ]),
         dict(id="编译运行", 题名="第三步：编译、运行、检查",
              述="cn 是单命令工具链：build 出可执行文件、run 一键编译并运行、"
@@ -234,6 +239,11 @@ dict(
                   ["<code>[安全区边界] xxx 应在 不安全 函数 内</code>",
                    "裸指针/手动内存操作须放在 <code>不安全 函数</code> 里，见"
                    "<a href=\"tutorial-advanced.html#不安全\">进阶篇·安全区边界</a>。"],
+                  ["<code>链接失败</code>（带参的 <code>主</code>）",
+                   "入口签名<strong>恒为无参</strong>——<code>函数 主(整32 个数, 字符** 表)</code> "
+                   "等 C 风格带参形态不合成入口符号 <code>cn_main</code>，链接期被拒。"
+                   "命令行参数改用 <code>系统::参数个数()</code> / <code>系统::参数(索引)</code>："
+                   "见<a href=\"reference/lexical.html#源文件\">语言参考·源文件</a>。"],
                   ["中文显示乱码（Windows 控制台）",
                    "CN 源码与输出均为 UTF-8；老式 cmd 需先 <code>chcp 65001</code>"
                    " 切到 UTF-8 代码页（Windows Terminal 默认即可）。"],
