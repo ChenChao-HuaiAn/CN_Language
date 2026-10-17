@@ -38,6 +38,11 @@ import e2e交叉模拟 as 交叉
 # 死循环根治）——核验/陈旧自动重建/--cn 跳过语义见同目录 exe新鲜度.py
 import exe新鲜度
 
+# 任务978（2026-10-17·935 后续·本夜第三实录 914）：run_e2e 内部看门狗三件套
+# （用例心跳+逐用例静默判挂 / 孤儿 worker 自愈 / 池收尾带界等待）——见同目录
+# e2e看门狗.py（914 现场：主进程 0xFFFFFFFF 横死后 6 worker 孤儿静默 40+ 分钟）。
+import e2e看门狗 as 看门狗
+
 # 强制stdout/stderr使用UTF-8输出（避免Windows管道/控制台代码页导致中文乱码）
 if hasattr(sys.stdout, "reconfigure"):
     # 935（2026-10-17 两夜实录 379/932）：stdout 改行缓冲——E2E 输出逐行落盘，僵死/
@@ -45,6 +50,13 @@ if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", line_buffering=True)
 if hasattr(sys.stderr, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8")
+
+# 978：spawn worker 孤儿监控挂载——主进程以任何方式死亡（含被外部 Stop-Process
+# 强杀·退出码 0xFFFFFFFF=914 实测）时 worker 秒级自退，杜绝「6 worker 静默睡
+# 2h」孤儿僵死形态（935 池树一审 932 同族）。__mp_main__=spawn worker 载入主模块
+# 的名字（本机实测验证）；主进程（__main__）不触发（那里另有 close/terminate 收口）。
+if __name__ == "__mp_main__":
+    看门狗.起孤儿监控()
 
 # ============ 常量 ============
 
@@ -172,8 +184,10 @@ def 建stdlib软链(工作目录: pathlib.Path, 目标平台: str) -> None:
     if stdlib链.exists():
         return
     if 目标平台 == "win-x64":
+        # 978：补显式超时（原无超时调用——worker 执行路径上挂死即用例卡死点；
+        #   60s 远超 mklink 正常耗时，超时=TimeoutExpired 上抛由池收口判红）
         subprocess.run(["cmd", "/c", "mklink", "/J", str(stdlib链),
-                        str(项目根目录 / "stdlib")], capture_output=True)
+                        str(项目根目录 / "stdlib")], capture_output=True, timeout=60)
     else:
         os.symlink(项目根目录 / "stdlib", stdlib链)
 
@@ -414,6 +428,9 @@ def 运行命令(命令列表: list, 工作目录: pathlib.Path,
     """
     # 任务399 交叉模拟：arm64 ELF 产物运行自动套 qemu 前缀（非激活/非命中原样返回）
     命令列表 = 交叉.交叉运行命令(list(命令列表))
+    # 978：心跳刷新（子进程执行面）——主进程逐用例静默看门狗的判据数据源
+    #   （worker 侧刷·主进程侧心跳路径 None 时空过，见 e2e看门狗.刷心跳）。
+    看门狗.刷心跳(f"子进程: {pathlib.Path(str(命令列表[0])).name}")
     # 797-a 自动判定：78/79 自举链的全部全树编译（cn_self/v2p/fix_p/fix_s 编译
     #   CN语言编译器v2 树）命令行都含该路径字样；单文件编译/运行/工具链操作均不含。
     全树编译 = any("CN语言编译器v2" in str(c) for c in 命令列表)
@@ -448,8 +465,10 @@ def 运行命令(命令列表: list, 工作目录: pathlib.Path,
     #   期其余 worker 零 CPU 等待·曾被误判挂死〔教训 0930 条〕）；摘除后 78/79 与
     #   普通用例并行，防线=每进程 RLIMIT_AS+RSS 轮询+oom_guard（叠加峰值
     #   3×227.8MB 无压力）。
-    return _运行命令实现(命令列表, 工作目录, 标准输入, preexec_fn,
+    结果 = _运行命令实现(命令列表, 工作目录, 标准输入, preexec_fn,
                        内存上限MB, 超时秒数)
+    看门狗.刷心跳("子进程完成")
+    return 结果
 
 
 def _运行命令实现(命令列表: list, 工作目录: pathlib.Path,
@@ -505,6 +524,9 @@ def _运行命令实现(命令列表: list, 工作目录: pathlib.Path,
         #   普通路径防的偶发零 CPU 挂起是一次性事件（AV/文件锁），重试有效。
         开始时刻 = time.monotonic()
         while 进程.poll() is None:
+            # 978：长编译期间心跳持续（内存路径 0.5s 轮询节拍）——主进程逐用例
+            #   静默判据据此不误判 78/79 等长构建（普通路径无轮询·单步均有超时上界）
+            看门狗.刷心跳(f"子进程运行中: {pathlib.Path(str(命令列表[0])).name}")
             内存MB = 查询进程内存MB(进程.pid)
             if 内存MB > 内存上限MB:
                 终止进程树(进程)
@@ -910,7 +932,12 @@ def 并行用例任务(项):
     用例目录, 编译器路径, 输出目录, 详细, 目标平台, 内存上限 = 项
     global 内存上限MB默认
     内存上限MB默认 = 内存上限
+    # 978：孤儿监控双保险（顶层 __mp_main__ 已挂·幂等）+ 用例心跳开启（worker 侧）
+    看门狗.起孤儿监控()
+    看门狗.设当前心跳路径(看门狗.心跳路径(输出目录, 用例目录.name))
+    看门狗.刷心跳("用例开始")
     状态, 原因 = 执行单个用例(编译器路径, 用例目录, 输出目录, 详细, 目标平台)
+    看门狗.刷心跳("用例完成")   # 978：判挂诊断可辨「完成但结果未回」形态（pool 通信挂）
     return (用例目录.name, 状态, 原因)
 
 
@@ -2394,6 +2421,12 @@ def 主程序() -> int:
                              "用例完成=停摆判定→终止池+未完成用例诚实红+停摆诊断"
                              "（默认 1800s；0=禁用）。arm64 慢机 79_v2 尾部合法静默"
                              "最长 ~20 分钟——勿低于 1800（误触发=整轮门禁作废）")
+    解析器.add_argument("--case-idle-timeout", type=int, default=1800, metavar="秒",
+                        help="逐用例静默看门狗（978·935 后续）：已开工用例心跳冻结超"
+                             "N 秒=判挂死（判失败并从等待集移除·不拖死整池；诊断含"
+                             "最后目击阶段）——防单用例 worker 卡死拖死全轮（914 形态）"
+                             "（默认 1800s；0=禁用）。勿低于最长单步超时上界（构建"
+                             "1500s 为最长合法静默）——过小会把 78/79 合法长编译误判")
     解析器.add_argument("--full-reason", default=None, metavar="文本",
                         help="本地裸全量放行理由（021 任务 354 护栏）：无 --filter 且无 --shard"
                              " 的全量跑法必须显式给理由才放行（CI 门禁脚本自动携带）；"
@@ -2649,8 +2682,14 @@ def 主程序() -> int:
                 return 1
     print(青色(f"并行模式: jobs={参数.jobs} 进程池（{len(用例目录们)} 个用例统一并行）"))
     print()
-    from multiprocessing import Pool
-    池 = Pool(processes=参数.jobs)
+    # 978：心跳目录清空（逐用例静默判据防陈旧混淆）+ 显式 spawn 上下文池：
+    #   ① 孤儿监控（worker 顶层 `__mp_main__` 钩子·本文件顶部）在 spawn 下
+    #      win/posix 一致生效（fork 不重跑模块顶层）；② 规避 fork 继承锁状态
+    #      （604-a 线程池死锁同族）；win 侧本就是 spawn·行为不变；linux 侧由
+    #      云端全量回归覆盖。
+    看门狗.清空心跳目录(输出目录)
+    import multiprocessing as _multiprocessing
+    池 = _multiprocessing.get_context("spawn").Pool(processes=参数.jobs)
     # 917 整池看门狗（021 任务 108 兜底）：原「按提交顺序 get(timeout=1800)」在
     #   worker 卡死时=每卡一个用例全员白等 1800s（N 个卡死=串行累加 N×30 分钟·
     #   447 停摆形态）。改为轮询收集（ready 即收·完成顺序打印）+全局无进展看门狗：
@@ -2664,7 +2703,11 @@ def 主程序() -> int:
         for d in 用例目录们
     ]
     停摆秒数 = max(0, 参数.stall_timeout)
+    静默阈值秒 = max(0, 参数.case_idle_timeout)   # 978：逐用例静默看门狗（0=禁用）
+    静默扫描间隔秒 = 5                            # 判挂扫描节流（防每轮 os.stat 风暴）
     最近进展时刻 = time.monotonic()
+    下次静默扫描 = time.monotonic() + 静默扫描间隔秒
+    挂死数 = 0
     try:
         while 待收们:
             就绪们 = [项 for 项 in 待收们 if 项[1].ready()]
@@ -2672,14 +2715,35 @@ def 主程序() -> int:
                 for 名称, 异步结果 in 就绪们:
                     try:
                         _名称, 状态, 原因 = 异步结果.get()
-                    except Exception:
-                        状态, 原因 = "失败", "worker 进程崩溃/结果取回异常"
+                    except Exception as 异常:
+                        # 978：带异常文本（教训 #205：笼统「worker 进程崩溃」掩盖真因）
+                        状态, 原因 = "失败", f"worker 进程崩溃/结果取回异常: {异常!r}"
                     print(f"运行用例: {名称}")
                     记录结果(名称, 状态, 原因, 即时打印=True)
                     print()
                     待收们.remove((名称, 异步结果))
                 最近进展时刻 = time.monotonic()
                 continue
+            # 978：逐用例静默看门狗——已开工用例心跳冻结超阈值=该用例挂死
+            #   （worker 卡死/任务丢失），判红移出等待集（不拖死整池·914 形态）；
+            #   诊断输出最后目击阶段（僵死可观测）。未开工（无心跳文件）不判——
+            #   池全停（含未开工用例无 worker 可跑）=既有整池停摆看门狗收口
+            #   （边界声明见 e2e看门狗.py 模块头）。
+            if 静默阈值秒 > 0 and time.monotonic() >= 下次静默扫描:
+                下次静默扫描 = time.monotonic() + 静默扫描间隔秒
+                for 名称, 异步结果 in list(待收们):
+                    if 异步结果.ready():
+                        continue
+                    判因 = 看门狗.判挂死(看门狗.心跳路径(输出目录, 名称),
+                                         静默阈值秒)
+                    if not 判因:
+                        continue
+                    print(f"运行用例: {名称}")
+                    记录结果(名称, "失败", 判因 + "（逐用例静默看门狗·978）",
+                             即时打印=True)
+                    print()
+                    待收们.remove((名称, 异步结果))
+                    挂死数 += 1
             if 停摆秒数 > 0 and time.monotonic() - 最近进展时刻 > 停摆秒数:
                 print(红色(f"\n⚠ 整池停摆判定（看门狗 {停摆秒数}s 零完成·917）——"
                            f"未完成 {len(待收们)} 例强制诚实红："))
@@ -2693,11 +2757,23 @@ def 主程序() -> int:
                            "〔教训 0930 判据〕；合法长任务（78/79 全树编译）CPU 随墙上"
                            "时钟 1:1 增长=非挂死，调大 --stall-timeout"))
                 池.terminate()  # 停摆路径：先强拆再收尾（close+join 对卡死 worker 永挂）
-                池.join()
+                # 978：terminate 后带界等待（原 池.join() 无超时——卡死 worker 在场
+                #   时主进程永久悬挂）
+                if not 看门狗.等待池worker退出(60):
+                    print(红色("⚠ 停摆 terminate 后 worker 仍未退出——放弃等待（978）"))
                 break
             time.sleep(1)
         池.close()
-        池.join()
+        # 978：收尾带界（原 池.join() 无超时=914 同族的另一种主进程僵死形态）。
+        #   正常路径 worker 全退即刻返回；有僵死 worker（判挂/停摆残留）超时
+        #   terminate 强制回收——收尾路径永不挂死主进程。
+        收尾宽限秒 = 120
+        if not 看门狗.等待池worker退出(收尾宽限秒):
+            print(黄色(f"⚠ 池收尾超时（{收尾宽限秒}s）——存在僵死 worker"
+                       f"（逐用例看门狗判挂 {挂死数} 例），terminate 强制回收（978）"))
+            池.terminate()
+            if not 看门狗.等待池worker退出(60):
+                print(红色("⚠ terminate 后 worker 仍未退出——放弃等待（防主进程僵死·978）"))
     finally:
         池.terminate()
 
