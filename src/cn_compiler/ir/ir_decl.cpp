@@ -110,7 +110,18 @@ void IRGenerator::visitProgram(Program* node) {
                                         "范围");
                             }
                         }
-                        module_->globalStaticInits[g->name] = lit->raw;
+                        // 790（569 采样轮 H1）：字面量数值化直存——原 lit->raw
+                        //   原文透传（0x/0b/0o/L 后缀四形态 .data 直存被三平台
+                        //   汇编器拒绝：win MASM dq 0xFF A2206 / dq 111111111111L
+                        //   A2048·linux GAS .quad ...L 同病）。十进制规范文本为
+                        //   三后端通用形态（常量算术折叠输出同口径）；超 u64 域
+                        //   文本（128 位字面量）保真原文交 128 位双 quad 通道
+                        //   parseInt128InitText 解析（原生支持四形态·T46）。
+                        std::string initLitText;
+                        if (!types::foldIntLiteralText(lit->raw, initLitText)) {
+                            initLitText = strippedLit;
+                        }
+                        module_->globalStaticInits[g->name] = initLitText;
                     } else if (it == NodeType::UnaryExpr &&
                                types::isInt128Type(canonStatic)) {
                         // T46（467-a）缺口①（IR 侧·Rust const-eval 直存 .data

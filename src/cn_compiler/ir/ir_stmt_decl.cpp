@@ -109,14 +109,15 @@ bool IRGenerator::genStaticLocalScalarDirect(VarDecl* node,
             //   成 0（静态 整128 甲 = i128::MAX 实测槽 .quad 0×2 读出 0·win/linux
             //   双态同病零诊断）；顶层静态同通道用 raw（ir_decl.cpp 467-a T46）
             //   两侧分叉。
-            // 728v：≤64 位域扩同根因面——十进制形态经 foldDecimalLiteralText
-            //   文本保真（19 位 -9223372036854775808 原 value=0 静默物化 0·
-            //   函数内静态 MIN 错值实锚）；0x/0b/0o 等非十进制形态维持值级
-            //   规范化（726 十六进制锁面不动）。
+            // 728v/790：≤64 位域文本保真全形态——十进制（728v 文本保真·19 位
+            //   -9223372036854775808 原 value=0 错值实锚）与 0x/0b/0o/L 后缀
+            //   （790：原值级 lit->value 对 u64 域 0x 文本 stoll 异常回 0——
+            //   0xFFFFFFFFFFFFFFFF 赋 正64 曾物化 0）统一经 foldIntLiteralText
+            //   数值化十进制；超 u64 域文本原文保真（640 判域已拒·不产出产物）。
             if (stType == "i128" || stType == "u128") {
                 initText = types::stripLiteralSuffix(lit->raw);
-            } else if (!types::foldDecimalLiteralText(lit->raw, initText)) {
-                initText = std::to_string(lit->value);
+            } else if (!types::foldIntLiteralText(lit->raw, initText)) {
+                initText = types::stripLiteralSuffix(lit->raw);
             }
         }
         module_->globalStatics[key] = stType;

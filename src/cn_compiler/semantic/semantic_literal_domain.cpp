@@ -156,4 +156,55 @@ bool SemanticAnalyzer::intLiteralFitsType(const Expr* e, const std::string& to) 
     return true;  // 整128/其他：域宽于字面量承载（int64），恒适
 }
 
+// 790（640 面裸全局遗漏补齐·569 采样轮 H1 探针实锚·semantic.cpp/hpp 双
+//   1000 红线先拆再加下沉件）：裸全局（569 通道）常量初始化器字面量判域——
+//   两条与 640 顶层静态挂点逐字同构：
+//   ① 字面量自身 128 域（478 链·IntegerLiteral 形态·含 parser 323 负号折叠
+//      的带符号 raw）：无后缀超 int64 → 提升整128 / 正64 超 u64 → 提升正128；
+//      i128TextInRange 拒超域（超界落发射层 parseInt128InitText 零占位=
+//      「诊断即错误」闭环）。
+//   ② 直存槽值域（640·intLiteralFitsType）：字面量数学值须在槽类型域内——
+//      原 640 三形态（顶层静态/函数内静态/类静态字段）不含裸全局，实测分叉：
+//      十进制超域（整32 x=99999999999999）/承载内十六进制超域（0x1FFFFFFFF）/
+//      正128 负字面量——宿主放行（20 位超 u64 落 ml64 A2071·32 位截断错值）
+//      vs v2 535 通道全拒。①已拒时跳过②（互斥防双报）。
+void SemanticAnalyzer::checkGlobalVarInitLiteralDomain(
+    const std::string& name, const SourceLocation& declLoc, const Expr* init,
+    const std::string& slotType) {
+    if (init == nullptr) return;
+    bool selfRejected = false;
+    if (init->getType() == NodeType::IntegerLiteral) {
+        const auto* lit = static_cast<const IntegerLiteral*>(init);
+        const std::string stripped = types::stripLiteralSuffix(lit->raw);
+        std::string litType = types::literalTypeOf(lit->raw, false);
+        if ((litType == "整32" || litType == "整64") &&
+            types::textExceedsInt64(stripped)) {
+            litType = "整128";
+        }
+        if (litType == "正64" && types::textExceedsU64(stripped)) {
+            litType = "正128";
+        }
+        if (types::isI128(litType)) {
+            const bool signed128 = (litType == "整128");
+            if (!types::i128TextInRange(stripped, signed128)) {
+                diagnostics_.report(
+                    DiagnosticLevel::Error, declLoc,
+                    "整数字面量超出" +
+                        std::string(signed128 ? "整128（2^127-1）"
+                                              : "正128（2^128-1）") +
+                        "范围");
+                selfRejected = true;
+            }
+        }
+    }
+    if (selfRejected) return;
+    if (isIntLiteralExpr(init) && !intLiteralFitsType(init, slotType)) {
+        diagnostics_.report(
+            DiagnosticLevel::Error, init->location,
+            "静态变量 '" + name + "' 的初始字面量超出 '" + slotType +
+                "' 值域——静态槽加载期直存须为值域内字面量（001 §静态成员·535）；"
+                "如确需位模式截断请显式转换（如 " + slotType + "(表达式)）");
+    }
+}
+
 }  // namespace cn_compiler

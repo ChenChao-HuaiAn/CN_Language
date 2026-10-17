@@ -204,6 +204,18 @@ bool textExceedsU64(const std::string& text);
 //   （474 分治）语义一致（零分叉）。
 bool foldDecimalLiteralText(const std::string& raw, std::string& out);
 
+// 790（569 采样轮 H1）：整数字面量文本全形态保真折叠——静态槽/裸全局直存
+//   面共用（.data 直存文本的单一数值化通道）。
+//   语义 = 十进制面沿用 foldDecimalLiteralText（保真·零行为变化）∨ 非十进制
+//   面（0x/0b/0o + L/U 后缀 + 可选前导符号）按进制逐位 u64 累加 → 规范
+//   十进制文本 "[-]digits"。
+//   存在意义：0x/0b/0o/L 后缀形态原文透传 .data 直存被三平台汇编器拒绝
+//   （win MASM `dq 0xFF` A2206 / `dq 111111111111L` A2048·linux GAS
+//   `.quad ...L` 同病）；十进制为三后端通用文本（常量算术折叠输出同形态）。
+//   超 u64 域文本（128 位字面量/超 u64 大十进制）返回 false——调用方按
+//   原文保真交 128 位直存通道（parseInt128InitText 原生支持四形态解析）。
+bool foldIntLiteralText(const std::string& raw, std::string& out);
+
 // 将 i128 字面量文本拆分为 低64位:高64位 十六进制文本（如 "10000000000000000000" -> "0:8AC7230489E80000"）
 // 支持 十进制/0x十六进制/0b二进制/0o八进制 前缀（文本已剥后缀）
 // 解析失败返回空串（词法层已保证合法，防御性）

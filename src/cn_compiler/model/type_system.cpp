@@ -428,6 +428,45 @@ bool foldDecimalLiteralText(const std::string& raw, std::string& out) {
     return true;
 }
 
+// 790：整数字面量文本全形态保真折叠——见头文件声明注释。十进制面（含超
+//   int64 承载的大十进制）沿用 728v 文本保真（本函数对十进制输入与
+//   foldDecimalLiteralText 逐字等价）；非十进制面（0x/0b/0o）剥后缀/符号/
+//   前缀后按进制逐位 u64 累加，溢出（超 u64 域）或残字=false。
+bool foldIntLiteralText(const std::string& raw, std::string& out) {
+    if (foldDecimalLiteralText(raw, out)) return true;
+    std::string s = stripLiteralSuffix(raw);
+    std::size_t i = 0;
+    bool neg = false;
+    if (i < s.size() && (s[i] == '-' || s[i] == '+')) {
+        neg = (s[i] == '-');
+        ++i;
+    }
+    std::uint64_t base = 10;
+    if (i + 1 < s.size() && s[i] == '0') {
+        const char p = s[i + 1];
+        if (p == 'x' || p == 'X') { base = 16; i += 2; }
+        else if (p == 'b' || p == 'B') { base = 2; i += 2; }
+        else if (p == 'o' || p == 'O') { base = 8; i += 2; }
+    }
+    // 静默豁免上游已诊断: 仅符号/前缀无数字位=词法已拒非法字面量形态·显式 false 哨兵
+    if (i >= s.size()) return false;
+    std::uint64_t v = 0;
+    for (; i < s.size(); ++i) {
+        const char c = s[i];
+        std::uint64_t d = 0;
+        if (c >= '0' && c <= '9') d = static_cast<std::uint64_t>(c - '0');
+        else if (c >= 'a' && c <= 'f') d = static_cast<std::uint64_t>(c - 'a' + 10);
+        else if (c >= 'A' && c <= 'F') d = static_cast<std::uint64_t>(c - 'A' + 10);
+        else return false;  // 进制外字节（stripLiteralSuffix 后残余·词法已拒）
+        if (d >= base) return false;
+        // 溢出预检：v*base + d 超 u64 域 ⇔ v > (UINT64_MAX - d) / base
+        if (v > (UINT64_MAX - d) / base) return false;
+        v = v * base + d;
+    }
+    out = (neg && v != 0 ? "-" : "") + std::to_string(v);
+    return true;
+}
+
 // 解析字面量原始文本的后缀，返回推断的 CN 源码类型名
 std::string literalTypeOf(const std::string& raw, bool isFloat) {
     if (isFloat) {

@@ -576,17 +576,17 @@ private:
     bool canConvertWithLiteral(const Expr* value, const std::string& from,
                                const std::string& to) const;
     // 混合符号赋值专用诊断（55-c 方案A）：canConvertWithLiteral 拒绝且为
-    //   「变量间」跨符号（整数族+符号相异+非字面量）时报专用消息并返回 true
-    //   （调用方不再报通用转换消息）——与二元面「混合符号二元运算禁止」对仗
+    //   「变量间」跨符号时报专用消息并返回 true（与二元面禁止文案对仗）
     bool reportMixedSignAssign(const Expr* value, const std::string& from,
                                const std::string& to, const SourceLocation& loc);
     // 整数字面量形态（含一元负号作用于整数字面量，如 -1）——混合符号检查的
-    //   字面量豁免判定（二元运算面 visitBinaryExpr 与赋值面 canConvertWithLiteral
-    //   共用；原 semantic_expr.cpp 匿名函数提升为成员供跨文件豁免点复用）
+    //   字面量豁免判定（二元运算面与赋值面共用·原匿名函数提升为成员）
     static bool isIntLiteralExpr(const Expr* e);
-    // 319-a（T36·方案甲）：整数字面量值域检查——窄化豁免的值域门槛
-    //（整16 甲=40000 静默截断根治；与 isIntLiteralExpr 配对使用）
+    // 319-a（T36·方案甲）：整数字面量值域检查（整16 甲=40000 截断根治）
     static bool intLiteralFitsType(const Expr* e, const std::string& to);
+    // 790：裸全局（569）常量初始化器字面量判域（478 128 链+640 槽域·实体下沉 semantic_literal_domain.cpp）
+    void checkGlobalVarInitLiteralDomain(const std::string& name, const SourceLocation& declLoc,
+                                         const Expr* init, const std::string& slotType);
     // 数值运算的结果类型（整型取宽、整浮混合取浮）——同上腾挪 semantic.cpp
     static std::string commonNumericType(const std::string& a, const std::string& b);
     // 285（001 §3.7a 窄算术回绕·甲案）：实参位窄字面量回绕放行——T36 传参

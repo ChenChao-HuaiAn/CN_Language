@@ -744,34 +744,8 @@ void SemanticAnalyzer::registerGlobalConstsAndStatics(Program* node) {
                             "静态 或在函数内赋值）");
                     continue;  // 拒后不登记（引用处按未声明处理·主因诊断已报）
                 }
-                // 478 同口径：裸全局整数字面量 128 位域检查——超界发射层
-                //   parseInt128InitText 失败=静默零占位（违反「诊断即错误」），
-                //   语义层闭环拒绝（判据/文案与 IR 层 478 同构）。
-                if (ggInit->getType() == NodeType::IntegerLiteral) {
-                    const auto* glit =
-                        static_cast<IntegerLiteral*>(ggInit);
-                    const std::string gStripped =
-                        types::stripLiteralSuffix(glit->raw);
-                    std::string gLitType = types::literalTypeOf(glit->raw, false);
-                    if ((gLitType == "整32" || gLitType == "整64") &&
-                        types::textExceedsInt64(gStripped)) {
-                        gLitType = "整128";
-                    }
-                    if (gLitType == "正64" && types::textExceedsU64(gStripped)) {
-                        gLitType = "正128";
-                    }
-                    if (types::isI128(gLitType)) {
-                        const bool gSigned = (gLitType == "整128");
-                        if (!types::i128TextInRange(gStripped, gSigned)) {
-                            diagnostics_.report(
-                                DiagnosticLevel::Error, g->location,
-                                "整数字面量超出" +
-                                    std::string(gSigned ? "整128（2^127-1）"
-                                                        : "正128（2^128-1）") +
-                                    "范围");
-                        }
-                    }
-                }
+                // 478 128 链 + 640 槽域：裸全局常量初始化器字面量判域实体下沉
+                //   checkGlobalVarInitLiteralDomain（790 先拆再加·ggType 后调用）
                 // 布尔值文本统一发射层口径（cnEvalConstExpr 出「真/假」——
                 //   三后端标量直存须 1/0 数值文本·isStaticScalarInitType 面）
                 if (constText == "真") constText = "1";
@@ -787,6 +761,11 @@ void SemanticAnalyzer::registerGlobalConstsAndStatics(Program* node) {
                     : (g->typeName.empty()
                            ? "自动"
                            : resolveGenericTypeName(g->typeName, g->location));
+            // 790（640 面裸全局遗漏补齐·双侧零分叉对齐）：裸全局常量初始化器
+            //   字面量判域——478 128 链 + 640 槽域（640 三形态不含裸全局的
+            //   分离分叉：宿主放行 vs v2 535 全拒·见函数头注释）
+            checkGlobalVarInitLiteralDomain(g->name, g->location,
+                                            g->initializer.get(), ggType);
             // 061-c 同款：结果/可选 裸全局的合成结构体注册（同静态缺口预防）
             {
                 std::string ggCore, ggSuffix;

@@ -189,7 +189,17 @@ inline std::string canonicalType(const std::string& type) {
                      const std::string& curMod, Expr* e, std::string& out) {
     if (e == nullptr) return false;
     switch (e->getType()) {
-        case NodeType::IntegerLiteral: out = static_cast<IntegerLiteral*>(e)->raw; return true;
+        case NodeType::IntegerLiteral: {
+            // 790（569 采样轮 H1）：整数字面量数值化——原 raw 原文透传经 569
+            //   constInitText 直存 .data，0x/0b/0o/L 后缀形态触发汇编器拒绝
+            //   （win MASM A2206/A2048·linux GAS .quad ...L 同病）。数值化=
+            //   十进制规范文本（与常量算术折叠 cnFoldConstBinary 输出同形态·
+            //   三后端通存）；超 u64 域文本（128 位字面量）原文保真——128 位
+            //   直存通道 parseInt128InitText 原生支持四形态解析。
+            const std::string raw = static_cast<IntegerLiteral*>(e)->raw;
+            if (!types::foldIntLiteralText(raw, out)) out = raw;
+            return true;
+        }
         case NodeType::FloatLiteral: out = static_cast<FloatLiteral*>(e)->raw; return true;
         case NodeType::StringLiteral: out = static_cast<StringLiteral*>(e)->raw; return true;
         case NodeType::BoolLiteral:

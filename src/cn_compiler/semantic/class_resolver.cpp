@@ -28,6 +28,22 @@ namespace cn_compiler {
 
 namespace {
 
+// 790（569 采样轮 H1）：标量整数字面量初始值 → 规范十进制文本——类静态
+//   字段（468）与实例字段默认值（775）两条直存面共用·单一数值化点（原
+//   两处值级/文本级 0x 形态 u64 域分叉：宿主 stoll 异常回 0 vs v2 正确值）。
+//   失败=超 u64 域文本（域外判拒不产出产物）原文保真；sign=±符号链翻转。
+std::string foldScalarIntInitText(const IntegerLiteral* lit, int sign) {
+    std::string decText;
+    if (types::foldIntLiteralText(lit->raw, decText)) {
+        if (sign < 0) {
+            if (decText[0] == '-') decText.erase(0, 1);
+            else decText.insert(0, 1, '-');
+        }
+        return decText;
+    }
+    return types::stripLiteralSuffix(lit->raw);
+}
+
 // 468（甲案·001 §静态成员）：类静态字段声明初始化器折叠——加载期生效。
 //   支持面与顶层静态直存通道（ir_decl.cpp visitProgram + emitDataSection）
 //   同口径：整数字面量（±一元符号链，与顶层 128 位折叠同构；64 位内=规范
@@ -60,24 +76,8 @@ std::string foldClassStaticInit(const Expr* init, const std::string& fieldType,
             return std::string(sign < 0 ? "-" : "") + lit->raw;
         }
         if (types::isStaticScalarInitType(canon)) {
-            // 728v：十进制形态文本保真折叠——parseIntValue 走 std::stoll，对
-            //   超 INT64 承载的十进制文本抛异常 catch 回 0（19 位
-            //   -9223372036854775808 / 2^63 实锚），值级折叠输出静默错值 0；
-            //   改文本级（与顶层静态 raw 直存通道/emitOopGlobals `dq 文本`
-            //   同构·mod 2^64 位模式由汇编器解析·与 v2 位模式累加474 一致）。
-            //   0x/0b/0o 等非十进制形态维持值级规范化（726 十六进制锁面不动）。
-            std::string decText;
-            if (types::foldDecimalLiteralText(lit->raw, decText)) {
-                // 符号链叠加（parser 323 已把一元负号折叠进 raw·sign 恒 1；
-                //   残留复合符号形态按数学符号翻转·两负相消）
-                if (sign < 0) {
-                    if (decText[0] == '-') decText.erase(0, 1);
-                    else decText.insert(0, 1, '-');
-                }
-                return decText;
-            }
-            const std::int64_t v = static_cast<std::int64_t>(sign) * lit->value;
-            return std::to_string(v);
+            // 728v/790：全形态文本级数值化（十进制保真 + 0x/0b/0o/L 归十进制）——见 foldScalarIntInitText
+            return foldScalarIntInitText(lit, sign);
         }
         errorOut = "整数字面量初值不适用于字段类型 '" + fieldType +
                    "'（浮点槽不承载加载期直存）";
@@ -126,8 +126,9 @@ std::string foldClassInstanceInit(const Expr* init, const std::string& fieldType
             return std::string(sign < 0 ? "-" : "") + lit->raw;
         }
         if (types::isStaticScalarInitType(canon)) {
-            const std::int64_t v = static_cast<std::int64_t>(sign) * lit->value;
-            return std::to_string(v);
+            // 790：与 468 同 helper（原值级 lit->value 对 u64 域 0x 文本
+            //   stoll 异常回 0——0xFFFFFFFFFFFFFFFF 曾宿主 0 vs v2 分叉）
+            return foldScalarIntInitText(lit, sign);
         }
         errorOut = "整数字面量默认值不适用于字段类型 '" + fieldType + "'";
         return "";
