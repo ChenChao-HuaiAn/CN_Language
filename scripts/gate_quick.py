@@ -44,6 +44,7 @@ from pathlib import Path
 #   atexit 释放：Ctrl+C（KeyboardInterrupt 传播=解释器正常退出路径）也覆盖。
 sys.path.insert(0, str(仓库根 / "scripts"))
 import gate_lock as _树锁
+import ci_proc as _进程树   # 860：子进程整树生命线（935：Job Object/进程组·超时整树回收）
 
 _gq树锁 = None
 if os.environ.get("CN_TREE_LOCK_HELD"):
@@ -51,6 +52,10 @@ if os.environ.get("CN_TREE_LOCK_HELD"):
 elif os.environ.get("CN_NO_TREE_LOCK"):
     print("[gate_lock] 树锁豁免（CN_NO_TREE_LOCK）", flush=True)
 else:
+    # 860 核对：锁获取=gate_lock 获取(0)（595-a run 形态语义：排队无限等+
+    #   917 陈锁秒级接管+578 轮心跳；等待 30s 一打印且有上限判据链），
+    #   不构成「无超时挂死」面——超时回收只作用于步骤子进程（下述 跑），
+    #   锁等待与超时路径互不阻塞（回收动作走 ci_proc 直接杀树·不经锁）。
     _gq树锁 = _树锁.获取(0, 形态="run", owner_pid=os.getpid(), 锁=_树锁.树锁目录())
     if _gq树锁 is None:
         raise SystemExit("[gate_lock] 树锁等待超时——同树另一 E2E/构建仍在飞"
@@ -59,15 +64,46 @@ else:
     import atexit
     atexit.register(lambda: _树锁.释放(_gq树锁))
 
+# 860（2026-10-15 实录：gate_quick 单测挂死烧满一核 18.4h·父进程持树锁阻塞整树·
+#   强杀恢复）：单测/构建等全部子进程步骤=显式超时，超时=整树回收（ci_proc 运行树=
+#   935 生命线：win Job Object KILL_ON_JOB_CLOSE / posix 进程组 killpg），步骤记
+#   rc=-99 诚实红 + 一行 [超时回收] 审计（ci_proc 落日志）。分级与覆盖：
+#     CN_GATE_STATIC_TIMEOUT 静态检查（默认 300s·脚本秒级冗余大）
+#     CN_GATE_BUILD_TIMEOUT  构建/配置（默认 600s·冷全量构建由 sccache 兜速度）
+#     CN_GATE_TEST_TIMEOUT   单测（默认 300s·1410 例实测秒级——860 实录挂死即此步）
+#     CN_GATE_L2_TIMEOUT     --l2 E2E 影响面子集（默认 1800s·重负载本就排除在外）
+#   ≤0 = 显式不限时（逃生门·仅调试用；诚实红语义不受影响）。
+def _超时(环境名: str, 默认: int):
+    try:
+        值 = int(os.environ.get(环境名, str(默认)))
+    except ValueError:
+        print(f"[警告] {环境名} 非整数——用默认 {默认}s", flush=True)
+        return 默认
+    return 值 if 值 > 0 else None
 
-def 跑(命令: list[str], **kw) -> subprocess.CompletedProcess:
+
+静态超时 = _超时("CN_GATE_STATIC_TIMEOUT", 300)
+构建超时 = _超时("CN_GATE_BUILD_TIMEOUT", 600)
+单测超时 = _超时("CN_GATE_TEST_TIMEOUT", 300)
+L2超时 = _超时("CN_GATE_L2_TIMEOUT", 1800)
+
+
+def 跑(命令: list[str], 超时秒=None, **kw) -> subprocess.CompletedProcess:
+    """子进程统一入口（860）：经 ci_proc.运行树 整树运行——超时=整树回收+
+    [超时回收] 审计行（935）；超时不再抛异常炸进程，记 rc=-99 返回（诚实红由
+    步 打印）。stdout/stderr 合并流式进本进程 stdout（ci_proc 固定形态）。
+    锁安全：本函数不动锁；回收路径（Job Object/ killpg）独立于 gate_lock。"""
     print("  $", " ".join(str(c) for c in 命令)[:100], flush=True)
-    return subprocess.run([str(c) for c in 命令], cwd=仓库根, **kw)
+    try:
+        return _进程树.运行树([str(c) for c in 命令], sys.stdout, 超时秒, cwd=仓库根, **kw)
+    except subprocess.TimeoutExpired:
+        return subprocess.CompletedProcess(命令, -99)
 
 
-def 步(名: str, 命令: list[str], **kw) -> bool:
-    r = 跑(命令, **kw)
-    print(f"[{名}] {'✓' if r.returncode == 0 else '✗ rc=' + str(r.returncode)}", flush=True)
+def 步(名: str, 命令: list[str], 超时秒=None, **kw) -> bool:
+    r = 跑(命令, 超时秒=超时秒, **kw)
+    注 = "（超时回收·见上行 [超时回收] 审计；CN_GATE_*_TIMEOUT 可调）" if r.returncode == -99 else ""
+    print(f"[{名}] {'✓' if r.returncode == 0 else '✗ rc=' + str(r.returncode) + 注}", flush=True)
     return r.returncode == 0
 
 
@@ -79,23 +115,36 @@ print("== L1 快速门禁（920·提交前）==", flush=True)
 #    立法配套：四面四红+冻结基线，无逃生门 flag，唯一合法通道=miss_registry.json 补条）
 for 名 in ("check_ascii_idents", "check_keywords_sync", "check_registry_audit",
            "check_case_numbers", "check_miss_gate"):
-    if not 步(名, [sys.executable, f"scripts/{名}.py"]):
+    if not 步(名, [sys.executable, f"scripts/{名}.py"], 超时秒=静态超时):
         raise SystemExit(1)
-if not 步("file_length 冻结线", [sys.executable, "scripts/check_file_length.py", "--freeze"]):
+if not 步("file_length 冻结线", [sys.executable, "scripts/check_file_length.py", "--freeze"],
+         超时秒=静态超时):
     raise SystemExit(1)
-if not 步("layer_deps 冻结线", [sys.executable, "scripts/check_layer_deps.py"]):
+if not 步("layer_deps 冻结线", [sys.executable, "scripts/check_layer_deps.py"],
+         超时秒=静态超时):
     raise SystemExit(1)
 
 # ② 增量构建（win=Ninja+sccache〔ninja_build.cmd=vcvars+cache 一体〕；linux=Make 增量）
 if 是win:
-    if not 步("增量构建", ["cmd", "/c", "target\\ninja_build.cmd"]):
+    if not 步("增量构建", ["cmd", "/c", "target\\ninja_build.cmd"], 超时秒=构建超时):
         raise SystemExit(1)
 else:
     if not (仓库根 / "target/build-quick/CMakeCache.txt").exists():
-        if not 步("首次配置", ["cmake", "-S", ".", "-B", "target/build-quick"]):
+        if not 步("首次配置", ["cmake", "-S", ".", "-B", "target/build-quick"],
+                 超时秒=构建超时):
             raise SystemExit(1)
-    if not 步("增量构建", ["cmake", "--build", "target/build-quick", "--parallel"]):
+    if not 步("增量构建", ["cmake", "--build", "target/build-quick", "--parallel"],
+             超时秒=构建超时):
         raise SystemExit(1)
+
+# ②.5 产物新鲜度机械核验（872·652 集成反复卡 L1 实录：旧 obj 假新鲜→LNK2005
+#   多重定义假红·同代码 clean 全量绿/增量红）：构建后核对「obj 旧于源/链接滞后/
+#   HEAD 判据」，红=构建机制失灵（继续跑单测=测旧物）——诚实红拦下；游离历史
+#   残留只黄提示不阻断。探针实证与复现见提交信息（target/probe872）。
+构建目录 = "target/build-ninja" if 是win else "target/build-quick"
+if not 步("产物新鲜度", [sys.executable, "scripts/check_build_freshness.py",
+                        "--构建目录", 构建目录], 超时秒=静态超时):
+    raise SystemExit(1)
 
 # ③ 全量单测（产物落源根 target/〔CMakeLists CMAKE_RUNTIME_OUTPUT_DIRECTORY〕）
 单测 = next((p for p in [
@@ -106,7 +155,7 @@ else:
 if 单测 is None:
     print("✗ 未找到单测产物（target/cn_unit_tests）——构建是否成功？")
     raise SystemExit(1)
-if not 步("单测", [单测]):
+if not 步("单测", [单测], 超时秒=单测超时):
     raise SystemExit(1)
 
 # ④ L2 影响面子集（--l2·924 首版保守映射：写集中新增/改动的 E2E 用例目录全跑 +
@@ -148,13 +197,20 @@ def l2推导子集(改动: list[str], 树根: Path) -> tuple[list[str], list[str
 
 if "--l2" in sys.argv:
     import subprocess as _sp
-    基准 = _sp.run(["git", "merge-base", "HEAD", "gitcode/develop"], cwd=仓库根,
-                   capture_output=True, text=True).stdout.strip()
-    # 979 修复（586 轮教训同族再犯）：core.quotepath 默认把中文用例目录名转义成
-    #   "\346\227\..." 八进制串 → 子串 filter 永不匹配 → L2 子集空转 rc=1。
-    #   显式关 quotepath 保证中文路径原样输出（filter 匹配靠它）。
-    改动 = (_sp.run(["git", "-c", "core.quotepath=false", "diff", "--name-only", 基准],
-                    cwd=仓库根, capture_output=True, text=True).stdout or "").split()
+    # 860：git 只读调用加显式超时（120s）——仓库损坏/网络文件系统挂死同样不纵容；
+    #   超时=诚实红退出（2）不裸崩 traceback。
+    try:
+        基准 = _sp.run(["git", "merge-base", "HEAD", "gitcode/develop"], cwd=仓库根,
+                       capture_output=True, text=True, timeout=120).stdout.strip()
+        # 979 修复（586 轮教训同族再犯）：core.quotepath 默认把中文用例目录名转义成
+        #   "\346\227\..." 八进制串 → 子串 filter 永不匹配 → L2 子集空转 rc=1。
+        #   显式关 quotepath 保证中文路径原样输出（filter 匹配靠它）。
+        改动 = (_sp.run(["git", "-c", "core.quotepath=false", "diff", "--name-only", 基准],
+                        cwd=仓库根, capture_output=True, text=True,
+                        timeout=120).stdout or "").split()
+    except _sp.TimeoutExpired as e:
+        print(f"✗ L2 写集推导 git 调用超时 120s（{' '.join(e.cmd)}）——诚实红退出")
+        raise SystemExit(2)
     # 592：导入 run_e2e 取权威名单——模块级仅常量/函数定义，入口有
     #   __main__ 保护，导入零副作用（与 gate_quick→gate_lock 同方向：
     #   门禁脚本依赖被测基础设施的既有先例）。
@@ -177,7 +233,8 @@ if "--l2" in sys.argv:
             if not 步("L2:" + 滤, [sys.executable, "tests/e2e/run_e2e.py",
                                    "--target", 目标, "--cn", str(单测.parent / ("cn.exe" if 是win else "cn")),
                                    "--filter", 滤],
-                      env=dict(os.environ, CN_TREE_LOCK_HELD="1")):
+                     超时秒=L2超时,
+                     env=dict(os.environ, CN_TREE_LOCK_HELD="1")):
                 raise SystemExit(1)
 
 

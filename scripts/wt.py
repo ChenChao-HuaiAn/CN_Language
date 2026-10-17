@@ -233,10 +233,16 @@ cd /d {树}
 set SCCACHE_DIR={缓存目录}
 set SCCACHE_CACHE_SIZE={缓存上限}
 rem 088 root-fix: drop stale .ninja_deps so every build re-scans all headers.
-rem MSVC+Ninja records header deps from /showIncludes stdout, which sccache
-rem (CMAKE_CXX_COMPILER_LAUNCHER) may swallow -> stale deps -> ODR mixed
-rem objects -> silent crash. Deleting .ninja_deps forces a full re-scan
-rem (cost absorbed by sccache hit; measured cold full build ~23s).
+rem MSVC+Ninja records header deps from /showIncludes stdout; a launcher
+rem wrapper (sccache) or version drift can stale them -> missed rebuilds ->
+rem mixed old/new objects -> silent crash or 872 LNK2005 false red (probe-
+rem verified 2026-10-17: bad mtime => ninja skips one obj => duplicate
+rem symbols on link). Deleting .ninja_deps forces a full re-scan: measured
+rem 282 edges ~20s wall, sccache absorbs the cost. 872 also gates builds in
+rem gate_quick (scripts/check_build_freshness.py) as the second line.
+rem 872 note: sccache 0.17.0 forwards /showIncludes verbatim (deps complete;
+rem no-op incremental reports "no work to do") - the delete is kept as a
+rem belt-and-braces guarantee, not because forwarding is known broken.
 if exist target\\build-ninja\\.ninja_deps del /q target\\build-ninja\\.ninja_deps
 cmake --build target\\build-ninja --parallel
 if errorlevel 1 (echo [FAIL] build & exit /b 1)
