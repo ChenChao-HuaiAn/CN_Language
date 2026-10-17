@@ -177,7 +177,10 @@
   全量验证（win→linux→arm64·每轮一个平台一个实例+兜底饥饿保底）；**禁 force push develop**。
   服务端队列 TX_01:8300 可查（`integrate.py --status`）。
 - **异步验收**：集成不需他机回签；云端结果页+红治理（广播→引入者修→48h 可 revert）维持。
-- **通告**：契约变更（.expected/runner/001/spec）在提交信息用〔通告〕前缀+@目标机，下轮各机 fetch 即见。
+- **通告**：契约变更（.expected/runner/001/spec/website-docs）在提交信息用〔通告〕前缀+@目标机，
+  下轮各机 fetch 即见——**改语言语义/语法属于契约变更**：除 .expected/001 外，官网文档数据
+  （website/tools/docs_data_*.py）须同步修改并在提交信息〔通告〕（992：示例 verify 双挂点=
+  本地 L1 写集触发+云端全量恒跑·文档与代码漂移机械化拦截）。
 - 并行度：活跃开发 ≤3（软预算·超限先跑撞车三查）；本机全量每机 ≤1（gate_lock 防 OOM 互抢）；
   云端预验=任务池多 runner（TX_02+家机 WSL 7 实例·1021 池化并行）；多会话各用 worktree 勿共树。
 - 三机 `~/.ssh/config` 配 TX_02 别名（预验真跑依赖·028 §二）。

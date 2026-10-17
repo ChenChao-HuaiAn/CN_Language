@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 # CN 语言官网一键发布（纯静态·tar over ssh·win/linux 皆可跑）
 # 用法: bash scripts/deploy_website.sh [ssh别名]   默认 TX_01
+#
+# 与 scripts/website_auto_deploy.py（992·TX_01 每 10 分钟 develop 自动通道）的关系：
+#   本脚本=手动整树发布（本地树原样上传，适合改版/应急）；auto_deploy=服务器侧浅克隆
+#   develop→重新生成 HTML（页脚带 develop sha 标注）→暂存+换名原子发布。两者写同一
+#   目录 /var/www/cn-language，后到者胜；自动通道按已部署 sha（~/cn_website_deployed_sha）
+#   幂等——手动发布后 develop 下次前进时自动通道照常接续，互不依赖。
 set -euo pipefail
 
 REMOTE="${1:-TX_01}"

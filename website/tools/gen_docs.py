@@ -19,6 +19,7 @@
 import html
 import io
 import os
+import platform
 import re
 import subprocess
 import sys
@@ -261,6 +262,7 @@ def 骨架(题名, 描述, 正文html, 目录项, 当前路径, 页脚导航, �
     </div>
     <div class="页脚-底">
       <span>© 2026 CN 语言项目</span>
+      <span>%s</span>
       <span>京ICP备00000000号（备案办理中·占位）</span>
     </div>
   </div>
@@ -279,6 +281,7 @@ def 骨架(题名, 描述, 正文html, 目录项, 当前路径, 页脚导航, �
        rel + ".././" if rel else "./", a("getting-started.html"),
        a("reference/"), a("stdlib.html"), rel + "../os/" if rel else "../os/",
        a("cli.html"),
+       文档基线(),
        rel, CSS_VER["hl"], rel, CSS_VER["js"])
 
 
@@ -501,14 +504,58 @@ def 条目程序(m, 条):
 
 
 def 找编译器():
-    """优先本树构建（=当前 develop 源码·含最新语言特性），回退主树。"""
-    本树 = os.path.join(REPO, "target", "cn.exe")
-    主树 = os.path.normpath(os.path.join(REPO, "..", "CN_Language_C",
-                                          "target", "cn.exe"))
-    for c in (os.environ.get("CN_EXE"), 本树, 主树):
+    """优先本树构建（=当前 develop 源码·含最新语言特性），回退主树。
+    992 Linux 兼容：win 产物 target/cn.exe、linux 产物 target/cn 各列候选。"""
+    候选 = [os.environ.get("CN_EXE"),
+            os.path.join(REPO, "target", "cn.exe"),
+            os.path.join(REPO, "target", "cn"),
+            os.path.normpath(os.path.join(REPO, "..", "CN_Language_C", "target", "cn.exe")),
+            os.path.normpath(os.path.join(REPO, "..", "CN_Language_C", "target", "cn"))]
+    for c in 候选:
         if c and os.path.exists(c):
             return c
     return None
+
+
+def 目标平台():
+    """示例验证的目标平台（992）：CN_DOCS_TARGET 显式覆盖，缺省运行时探测
+    （与 gate_quick/ci_daemon/check_cli_contract 平台三分同口径）。"""
+    显式 = os.environ.get("CN_DOCS_TARGET")
+    if 显式:
+        return 显式
+    if sys.platform.startswith("win"):
+        return "win-x64"
+    return ("linux-arm64" if platform.machine().lower() in ("aarch64", "arm64")
+            else "linux-x86_64")
+
+
+_基线缓存 = []      # 文档基线标注每进程只算一次（骨架逐页引用）
+
+
+def 文档基线():
+    """页脚版本标注（992）：git 快照=分支 short-sha·提交日期；无 git/异常=优雅降级。
+    线上（TX_01 浅克隆 develop）生成形态=「文档基线：develop 4fee0cb·2026-10-17·
+    示例经编译器实测」；detached HEAD（reset --hard FETCH_HEAD 形态）按 develop 记。"""
+    if _基线缓存:
+        return _基线缓存[0]
+    标注 = "文档基线：本地生成"
+    try:
+        def git(*参):
+            r = subprocess.run(["git", "-C", REPO] + list(参), capture_output=True,
+                               text=True, timeout=15, errors="replace")
+            return r.stdout.strip() if r.returncode == 0 else ""
+
+        sha = git("rev-parse", "--short", "HEAD")
+        日期 = git("show", "-s", "--format=%cs", "HEAD")
+        分支 = git("rev-parse", "--abbrev-ref", "HEAD")
+        if not 分支 or 分支 == "HEAD":
+            分支 = "develop"
+        if sha and 日期:
+            标注 = "文档基线：%s %s·%s·示例经编译器实测" % (分支, sha, 日期)
+    except Exception:
+        标注 = "文档基线：本地生成"
+    _基线缓存.append(标注)
+    return 标注
 
 
 def verify(cn_exe=None, 仅失败=False):
@@ -516,6 +563,8 @@ def verify(cn_exe=None, 仅失败=False):
     if not cn:
         print("找不到编译器")
         return 1
+    平台 = 目标平台()                     # 992：显式目标平台（win 缺省=win-x64 会走 MSVC 链）
+    产物后缀 = ".exe" if 平台 == "win-x64" else ""
     tmp = tempfile.mkdtemp(prefix="cndocs_")
     总数 = 通过 = 0
     fails = []
@@ -527,7 +576,7 @@ def verify(cn_exe=None, 仅失败=False):
             return
         总数 += 1
         src = os.path.join(tmp, "t%d.cn" % 总数)
-        exe = os.path.join(tmp, "t%d.exe" % 总数)
+        exe = os.path.join(tmp, "t%d%s" % (总数, 产物后缀))
         if 条.get("原始"):
             程序 = 条["原始"]
         else:
@@ -539,7 +588,7 @@ def verify(cn_exe=None, 仅失败=False):
                 程序 = "%s\n\n函数 主() -> 整32 {\n%s\n    返回 0;\n}\n" % (导入s, body)
         with io.open(src, "w", encoding="utf-8", newline="\n") as f:
             f.write(程序)
-        r = subprocess.run([cn, "build", src, "--output", exe],
+        r = subprocess.run([cn, "build", src, "--output", exe, "--target", 平台],
                            capture_output=True, text=True,
                            cwd=REPO, errors="replace")
         if 条.get("预期失败"):
@@ -560,7 +609,9 @@ def verify(cn_exe=None, 仅失败=False):
             通过 += 1
             return
         run = subprocess.run([exe], capture_output=True, text=True,
-                             errors="replace", timeout=30, stdin=subprocess.DEVNULL)
+                             errors="replace", timeout=30, stdin=subprocess.DEVNULL,
+                             cwd=tmp)   # 992：示例程序的相对路径落临时目录（文件 I/O
+                                        # 示例曾把 笔记.txt/日志.txt 写进仓库根）
         out = run.stdout.replace("\r\n", "\n")
         期望 = 条.get("输出") if "输出" in 条 else 条.get("综合输出")
         if 期望 is not None and out != 期望:

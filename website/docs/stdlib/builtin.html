@@ -386,7 +386,9 @@ CN LANG
 <h3><code>内存::总分配次数</code></h3>
 <p class="函数定义"><code>函数 内存::总分配次数() -> 整64</code></p>
 <p>进程启动以来累计分配次数（含字符串/容器内部分配）。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">内存-总分配次数.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">打印(内存::总分配次数() &gt; 0);</code></pre></div>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">内存-总分配次数.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">整64 前 = 内存::总分配次数();
+字符串 载荷 = "这段字符串用于触发一次堆分配";
+打印(内存::总分配次数() &gt; 前);</code></pre></div>
 <p class="输出行">输出：真
 </p>
 </section>
@@ -394,7 +396,9 @@ CN LANG
 <h3><code>内存::总分配字节</code></h3>
 <p class="函数定义"><code>函数 内存::总分配字节() -> 整64</code></p>
 <p>累计分配字节总量（直方图和）。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">内存-总分配字节.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">打印(内存::总分配字节() &gt; 0);</code></pre></div>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">内存-总分配字节.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">整64 前 = 内存::总分配字节();
+字符串 载荷 = "这段字符串用于触发一次堆分配";
+打印(内存::总分配字节() &gt; 前);</code></pre></div>
 <p class="输出行">输出：真
 </p>
 </section>
@@ -557,12 +561,13 @@ token
     </div>
     <div class="页脚-底">
       <span>© 2026 CN 语言项目</span>
+      <span>文档基线：任务/992 ef3fff8b·2026-10-17·示例经编译器实测</span>
       <span>京ICP备00000000号（备案办理中·占位）</span>
     </div>
   </div>
 </footer>
 
 <script src="../../assets/cn-highlight.js?v=1"></script>
-<script src="../../assets/site.js?v=3"></script>
+<script src="../../assets/site.js?v=2"></script>
 </body>
 </html>

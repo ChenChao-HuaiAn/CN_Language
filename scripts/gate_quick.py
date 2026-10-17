@@ -146,6 +146,26 @@ if not 步("产物新鲜度", [sys.executable, "scripts/check_build_freshness.py
                         "--构建目录", 构建目录], 超时秒=静态超时):
     raise SystemExit(1)
 
+
+def 写集推导() -> tuple[list[str] | None, str]:
+    """HEAD 相对 gitcode/develop 的写集（core.quotepath=false·中文路径原样输出·
+    979 口径）；返回 (写集, 失败原因)：失败/超时=(None, 原因)——调用方自定
+    照跑或诚实红（992 归纳自 L2 段与官网示例验证段两处同构 git 调用）。"""
+    try:
+        基准 = subprocess.run(["git", "merge-base", "HEAD", "gitcode/develop"], cwd=仓库根,
+                           capture_output=True, text=True, timeout=120)
+        if 基准.returncode != 0:
+            return None, "merge-base rc=%d（gitcode/develop 不可达？）" % 基准.returncode
+        r = subprocess.run(["git", "-c", "core.quotepath=false", "diff", "--name-only",
+                            (基准.stdout or "").strip()],
+                           cwd=仓库根, capture_output=True, text=True, timeout=120)
+        if r.returncode != 0:
+            return None, "diff rc=%d" % r.returncode
+        return (r.stdout or "").split(), ""
+    except subprocess.TimeoutExpired:
+        return None, "git 调用超时 120s"
+
+
 # ③ 全量单测（产物落源根 target/〔CMakeLists CMAKE_RUNTIME_OUTPUT_DIRECTORY〕）
 单测 = next((p for p in [
     仓库根 / "target/cn_unit_tests.exe", 仓库根 / "target/cn_unit_tests",
@@ -157,6 +177,25 @@ if 单测 is None:
     raise SystemExit(1)
 if not 步("单测", [单测], 超时秒=单测超时):
     raise SystemExit(1)
+
+# ③.5 官网文档示例验证（992·条件步·本机实测 239 例 36s）：写集触 website/（文档
+#   数据）·src/·stdlib/（编译器语义/产物）·plans/001（语义裁决）→ 示例可能漂移，
+#   必须编跑全量比对；写集不含=跳过（本地日常零税——云端全量面由 ci_daemon 静态段
+#   恒跑兜底）。写集 git 取不到=照跑（fail-safe·与 189 纯文档判定同哲学）。
+_写集, _写集失败 = 写集推导()
+if _写集 is None:
+    print("[verify] 写集取不到（%s）——照跑官网示例验证（fail-safe）" % _写集失败, flush=True)
+    _跑示例验证 = True
+else:
+    _跑示例验证 = any(p.startswith(("website/", "src/", "stdlib/", "plans/001"))
+                   for p in _写集)
+    if not _跑示例验证:
+        print("[verify] 写集未触 website/src/stdlib/plans/001——跳过（云端全量兜底）", flush=True)
+if _跑示例验证:
+    if not 步("官网示例验证", [sys.executable, "website/tools/gen_docs.py", "--verify"],
+             超时秒=_超时("CN_GATE_VERIFY_TIMEOUT", 600),
+             env=dict(os.environ, CN_EXE=str(单测.parent / ("cn.exe" if 是win else "cn")))):
+        raise SystemExit(1)
 
 # ④ L2 影响面子集（--l2·924 首版保守映射：写集中新增/改动的 E2E 用例目录全跑 +
 #    触 CN语言编译器v2/ 树加跑 v2 面；src 模块→用例关键词精映射=后续演进（025 §1.99 边界）。
@@ -196,20 +235,12 @@ def l2推导子集(改动: list[str], 树根: Path) -> tuple[list[str], list[str
 
 
 if "--l2" in sys.argv:
-    import subprocess as _sp
     # 860：git 只读调用加显式超时（120s）——仓库损坏/网络文件系统挂死同样不纵容；
-    #   超时=诚实红退出（2）不裸崩 traceback。
-    try:
-        基准 = _sp.run(["git", "merge-base", "HEAD", "gitcode/develop"], cwd=仓库根,
-                       capture_output=True, text=True, timeout=120).stdout.strip()
-        # 979 修复（586 轮教训同族再犯）：core.quotepath 默认把中文用例目录名转义成
-        #   "\346\227\..." 八进制串 → 子串 filter 永不匹配 → L2 子集空转 rc=1。
-        #   显式关 quotepath 保证中文路径原样输出（filter 匹配靠它）。
-        改动 = (_sp.run(["git", "-c", "core.quotepath=false", "diff", "--name-only", 基准],
-                        cwd=仓库根, capture_output=True, text=True,
-                        timeout=120).stdout or "").split()
-    except _sp.TimeoutExpired as e:
-        print(f"✗ L2 写集推导 git 调用超时 120s（{' '.join(e.cmd)}）——诚实红退出")
+    #   超时=诚实红退出（2）不裸崩 traceback。992：git 调用归纳进 写集推导()（与
+    #   L1 官网示例验证段单一源）；979 的 quotepath=false 口径在该函数内保持。
+    改动, 失败原因 = 写集推导()
+    if 改动 is None:
+        print(f"✗ L2 写集推导失败（{失败原因}）——诚实红退出")
         raise SystemExit(2)
     # 592：导入 run_e2e 取权威名单——模块级仅常量/函数定义，入口有
     #   __main__ 保护，导入零副作用（与 gate_quick→gate_lock 同方向：

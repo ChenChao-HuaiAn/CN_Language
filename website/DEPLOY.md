@@ -35,10 +35,26 @@ www.cn-os.com   A   124.222.106.84
 
 ## 日常发布
 
+**自动通道（992·推荐）**：TX_01 每 10 分钟跑 `~/website_auto_deploy.py`（源=
+`scripts/website_auto_deploy.py`）——浅克隆 develop → 比对已部署 sha → 有变化才在
+服务器侧跑 `website/tools/gen_docs.py` 重新生成 HTML（页脚含「文档基线：develop
+<short-sha>·<日期>·示例经编译器实测」标注）→ 暂存+换名原子发布 → 同步再生 stats.json。
+日志 `TX_01:~/cn_website_deploy.log`；已部署 sha 记录 `TX_01:~/cn_website_deployed_sha`；
+缓存仓 `TX_01:~/cn_website_repo`（与 website_stats 的 cn_stats_repo 分仓，防 git 锁互撞）。
+
+```bash
+# 服务器上手跑一轮（幂等：sha 未变直接退出；--verbose 连「无变化」也打印）
+ssh TX_01 'python3 /home/ubuntu/website_auto_deploy.py --verbose'
+```
+
+**手动通道（改版/应急·本地树原样上传）**：
+
 ```bash
 bash scripts/deploy_website.sh          # tar over ssh → TX_01:/var/www/cn-language
 ```
 
+- 两通道写同一目录 /var/www/cn-language，后到者胜；手动发布后自动通道在 develop
+  下次前进时照常接续（按 sha 判定，不依赖手动发布记录）。
 - 静态资源更新后 bump HTML 里的 `?v=N` 版本号（浏览器启发式缓存会吃无版本号更新）。
 - 备案号页脚：cn-language.com 域名的备案号以备案控制台查询为准，确认后替换
   全站 18 个 HTML 页脚的「京ICP备00000000号（备案办理中·占位）」。

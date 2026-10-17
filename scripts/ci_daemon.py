@@ -286,7 +286,12 @@ def 静态门禁与e2e段(步骤们: dict, 步骤, cn: Path | None, 日志, sha:
     （通用·防抽函数漏参族再犯）+ 422 路径冒烟两态。
     842（2026-10-15）：e2e 命令带 --json 明细（失败用例/期望实际 diff·8300 页面
     红行详情数据源）——sha 形参供明细文件命名；传参前探 run_e2e 源码防跨版本
-    窗口（新 daemon × 旧头工作树=未知参数假红·详见 e2e支持json）。"""
+    窗口（新 daemon × 旧头工作树=未知参数假红·详见 e2e支持json）。
+    992（2026-10-17）：挂「网站示例verify」恒跑步（官网文档示例=契约面·改语义/
+    语法必须同步官网数据）——本地 L1 仅写集触发，云端全量面为唯一恒覆盖点；
+    平台=gen_docs 运行时原生探测（交叉模拟实例不参与 qemu 面——示例验证非平台
+    覆盖职责）；不传 env（假步骤冒烟桩三参签名兼容·产物经 找编译器 的
+    target/cn(.exe) 定位）。"""
     for 名, 参 in (("check_spec_coverage", []),   # 243：非 strict（TX_02「指针有效性」存量红=244 修·红不拦兜底轮）
                   # 822（2026-10-15）：显式传验证面——交叉模拟实例（CN_CI_PLATFORM=linux-arm64·
                   # CN_AS/CN_CXX=交叉工具链）不传则脚本自探=linux-x86_64 面，运行级格把
@@ -301,6 +306,14 @@ def 静态门禁与e2e段(步骤们: dict, 步骤, cn: Path | None, 日志, sha:
             continue
         if 步骤(名, [sys.executable, f"scripts/{名}.py"] + 参, 900):
             pass
+    # ③.6 网站示例 verify（992）：文档示例包壳编译+运行+stdout 比对（239 例实测
+    #   linux 36s）——红=文档与编译器漂移（语义/语法改而未同步 website 数据）或
+    #   编译器回归显形。恒跑（云端全量=唯一恒覆盖面·本地 L1 仅写集触发）。
+    if cn is None:
+        步骤们["网站示例verify"] = {"rc": -1, "说明": "未找到 cn 产物·跳过"}
+    elif 步骤("网站示例verify",
+              [sys.executable, "website/tools/gen_docs.py", "--verify"], 900):
+        pass
     # ④ E2E（探测平台面；红后串行复验=447-a 口径）
     if cn is None:
         步骤们["e2e"] = {"rc": -1, "说明": "未找到 cn 产物"}
@@ -457,9 +470,10 @@ def 聚合绿(步骤们: dict) -> bool:
     六键（同步/清产物/配置/构建/单测/e2e）中存在的键全 rc==0 才绿；缺键不计
     （未执行段不拖红）；清产物 rc=-1（target/ 残留·预验前置②不满足）即轮必红
     ——--selftest 锁定该口径（648-b 复核结论：清产物失败时后续段照跑，但总绿
-    必 False，integrate 只凭「绿」字段放行=无假绿面）。"""
+    必 False·integrate 只凭「绿」字段放行=无假绿面）。
+    992：加「网站示例verify」键（文档示例漂移=真红·必须进绿聚合防假绿）。"""
     return all(s.get("rc") == 0 for k, s in 步骤们.items()
-               if k in ("同步", "清产物", "配置", "构建", "单测", "e2e"))
+               if k in ("同步", "清产物", "配置", "构建", "单测", "e2e", "网站示例verify"))
 
 
 def 跑一轮(sha: str, 轮分支: str = "") -> dict:
