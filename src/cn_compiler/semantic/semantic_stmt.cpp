@@ -757,7 +757,11 @@ void SemanticAnalyzer::visitReturnStmt(ReturnStmt* node) {
     } else if (!canConvertWithLiteral(node->value.get(), valueType, currentReturnType_)) {
         // 55-c 方案A：返回面字面量豁免（返回 小[正32变量] 于 整64 函数=拒绝；
         // 返回 100 字面量于 正32 函数=豁免放行）；混合符号报专用消息
-        if (!reportMixedSignAssign(node->value.get(), valueType,
+        // 869（234 立法执法面收口·v2 侧 869 同轮对齐）：值形态类切片（派生类值
+        //   → 基类值返回类型）=专用切片诊断（声明/赋值面同款）；切片判定真=
+        //   已报，不再叠加通用/混合符号诊断。
+        if (!reportSliceReject(valueType, currentReturnType_, node->location) &&
+            !reportMixedSignAssign(node->value.get(), valueType,
                                    currentReturnType_, node->location)) {
             diagnostics_.report(DiagnosticLevel::Error, node->location,
                                 "无法将 '" + valueType + "' 隐式转换为返回类型 '" +

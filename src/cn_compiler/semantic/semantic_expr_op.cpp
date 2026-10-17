@@ -175,7 +175,13 @@ void SemanticAnalyzer::visitAssignmentExpr(AssignmentExpr* node) {
     //   canConvertWithLiteral——跨符号拒绝后 `正32 a; a = 5` 等字面量赋值保留）
     if (targetType != "未知" && valueType != "未知" &&
         !canConvertWithLiteral(node->value.get(), valueType, targetType)) {
-        if (!reportMixedSignAssign(node->value.get(), valueType, targetType,
+        // 869（234 立法执法面收口·v2 侧 869 同轮对齐）：值形态类切片（派生类值
+        //   → 基类值左值）=专用切片诊断（声明面 semantic_decl.cpp:431 同款；
+        //   semantic_sig.cpp:193 注释声称「赋值层执行 reportSliceReject」原为
+        //   断链，本处落实——语义与规范 234「基类值形态编译期拒绝·专用诊断」
+        //   对齐）。切片判定真=已报，不再叠加通用/混合符号诊断。
+        if (!reportSliceReject(valueType, targetType, node->location) &&
+            !reportMixedSignAssign(node->value.get(), valueType, targetType,
                                    node->location)) {
             diagnostics_.report(DiagnosticLevel::Error, node->location,
                                 "无法将 '" + valueType + "' 隐式转换为 '" + targetType + "'");

@@ -379,7 +379,11 @@ void SemanticAnalyzer::visitVarDecl(VarDecl* node) {
             //   `正32[2] a = { 5, 6 }` 等形态保留）
             for (auto& elem : initList->elements) {
                 std::string elemInitType = checkExpr(elem.get());
-                if (!canConvertWithLiteral(elem.get(), elemInitType, elemType)) {
+                // 869（234 立法执法面收口·v2 侧 869 同轮对齐）：值形态类切片
+                //   （派生类值 → 基类数组元素类型）=专用切片诊断；切片判定真=
+                //   已报，不再叠加「数组元素无法将」通用诊断。
+                if (!canConvertWithLiteral(elem.get(), elemInitType, elemType) &&
+                    !reportSliceReject(elemInitType, elemType, elem->location)) {
                     diagnostics_.report(DiagnosticLevel::Error, elem->location,
                                         "数组元素无法将 '" + elemInitType +
                                         "' 隐式转换为 '" + elemType + "'");
