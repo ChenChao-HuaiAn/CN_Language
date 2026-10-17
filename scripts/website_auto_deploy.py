@@ -51,7 +51,9 @@ def 记(文本, 回显=True):
 
 
 def 跑(args, cwd=None, 检查=True, 超时=900):
-    """子进程跑命令：UTF-8 文本；检查=True 且 rc≠0 抛 RuntimeError。"""
+    """子进程跑命令：UTF-8 文本；检查=True 且 rc≠0 抛 RuntimeError。
+    与 website_stats.py 的 跑/取仓库 同构重复（第 2 处·部署面两脚本各自独立 scp 到
+    TX_01，不做跨文件 import）——第三处出现时须归纳公共模块。"""
     r = subprocess.run(args, cwd=cwd, capture_output=True, timeout=超时)
     if 检查 and r.returncode != 0:
         raise RuntimeError("%s 失败 rc=%d: %s" % (
