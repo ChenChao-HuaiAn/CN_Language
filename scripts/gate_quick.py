@@ -117,6 +117,13 @@ for 名 in ("check_ascii_idents", "check_keywords_sync", "check_registry_audit",
            "check_case_numbers", "check_miss_gate"):
     if not 步(名, [sys.executable, f"scripts/{名}.py"], 超时秒=静态超时):
         raise SystemExit(1)
+# 1013（2026-10-17 用户裁决）：官网文档覆盖对照 --strict 挂 L1——基线零（61/61 已覆盖·
+#    未归类 0·1013 归类 943 轮新增 1068/1069 归零）即等价棘轮·只拦新增：新 E2E 用例
+#    须在 doc_coverage 台账归类（特性行或兜底桶），未归类/缺口/豁免理由空即红；
+#    豁免唯一合法通道=台账『归类豁免』（理由必填）。纯本地文件实测 <1s。
+if not 步("check_doc_coverage", [sys.executable, "scripts/check_doc_coverage.py", "--strict"],
+         超时秒=静态超时):
+    raise SystemExit(1)
 if not 步("file_length 冻结线", [sys.executable, "scripts/check_file_length.py", "--freeze"],
          超时秒=静态超时):
     raise SystemExit(1)

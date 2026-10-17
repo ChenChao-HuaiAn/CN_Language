@@ -36,6 +36,10 @@ Write-Host "[CI] 0.8/4 E2E 用例编号唯一性门禁（554 立：同编号多�
 python scripts/check_case_numbers.py
 if ($LASTEXITCODE -ne 0) { Write-Host "[CI] E2E 用例编号唯一性门禁失败" -ForegroundColor Red; exit 1 }
 
+Write-Host "[CI] 0.85/4 官网文档覆盖门禁（1013·check_doc_coverage --strict：新 E2E 用例须 doc_coverage 台账归类（特性行/兜底桶/豁免·理由必填）——未归类/缺口/豁免异常即红；基线零=棘轮只拦新增）..." -ForegroundColor Cyan
+python scripts/check_doc_coverage.py --strict
+if ($LASTEXITCODE -ne 0) { Write-Host "[CI] 官网文档覆盖门禁失败" -ForegroundColor Red; exit 1 }
+
 Write-Host "[CI] 1/4 构建（/W4 /WX 零警告门禁）..." -ForegroundColor Cyan
 & powershell -ExecutionPolicy Bypass -File build.ps1 -Config Debug
 if ($LASTEXITCODE -ne 0) { Write-Host "[CI] 构建失败" -ForegroundColor Red; exit 1 }

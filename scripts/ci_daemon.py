@@ -293,6 +293,11 @@ def 静态门禁与e2e段(步骤们: dict, 步骤, cn: Path | None, 日志, sha:
     覆盖职责）；不传 env（假步骤冒烟桩三参签名兼容·产物经 找编译器 的
     target/cn(.exe) 定位）。"""
     for 名, 参 in (("check_spec_coverage", []),   # 243：非 strict（TX_02「指针有效性」存量红=244 修·红不拦兜底轮）
+                  # 1013（2026-10-17 用户裁决）：--strict 挂云端兜底轮——基线零（1013 归零）
+                  # 即等价棘轮·只拦新增（新 E2E 用例须 doc_coverage 台账归类·豁免理由必填），
+                  # 与 L1 gate_quick 静态段/win 全量 ci.ps1 同口径（防漂移·单一注册点=
+                  # check_registry.json）。纯本地文件 <1s。
+                  ("check_doc_coverage", ["--strict"]),
                   # 822（2026-10-15）：显式传验证面——交叉模拟实例（CN_CI_PLATFORM=linux-arm64·
                   # CN_AS/CN_CXX=交叉工具链）不传则脚本自探=linux-x86_64 面，运行级格把
                   # x86_64 汇编喂给 arm64 工具链必败（42/50 恒红 12 轮兜底存量实录）；传后

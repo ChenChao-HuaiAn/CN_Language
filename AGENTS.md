@@ -106,6 +106,9 @@
   （多文件入口必名 主.cn）；负例注「预期失败」；用例须登记服务端覆盖矩阵
   （`python scripts/board_cli.py 用例 <单元ID> <正例|边界例|负例> <用例名>`·豁免=
   `board_cli 豁免 <用例名> <理由>`——check_spec_coverage 门禁数据源·384 起 coverage_map.md 已退位）。
+  新 E2E 用例还须在 doc_coverage 台账归类（特性行或兜底桶），未归类 L1 硬拦；
+  确不属于任何特性/兜底的用例走台账『归类豁免』并注明理由
+  （`website/tools/doc_coverage.json` 顶层·理由必填——2026-10-17 用户裁决·1013）。
 - **E2E 用例编号唯一性**（554 立·577 号名配对唯一增强·**744 编号权威收权**·执行面=
   `check_case_numbers` 门禁·L1+win 全量+云端）：新用例**先领号再建目录**——
   `python scripts/board_cli.py 领用例号 <用例名>`（客户端只报用例名·**编号由服务端按顺序
@@ -137,6 +140,9 @@
    hook 本体=scripts/githooks/（入库·他机 fetch 后 config 一次即生效）。
 1. **L1 本地快速**（每次提交前）：`python scripts/gate_quick.py`（静态+增量构建+全量单测·
    分钟级）；**L2 影响面子集**=同命令加 `--l2`（按写集自动推导 E2E 子集·收工验证面）。
+   改检查工具类脚本（scripts/check_*、integrate.py 等门禁/协议脚本）不强制云端预验
+   （维持纯脚本轮快速通道），但必须跑该脚本自带 selftest（无则写最小正反自测）
+   并在提交信息附证据（2026-10-17 用户裁决·#1011）。
 2. **云端 test-then-commit**（触及全量面时·1015 起默认开）：`python scripts/integrate.py`
    自动把链顶推预验分支跑 linux 全量，**绿才 push develop**（红进不来；
    `--no-cloud-gate` 逃生门=941 事后兜底；纯文档/脚本轮不预验）。

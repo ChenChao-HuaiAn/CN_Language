@@ -15,13 +15,19 @@
   ④ 官网锚点核验（台账引用 页面#章节 是否真实存在于生成 HTML——同时兜底
      检测「HTML 被手工改过、与 docs_data_*.py 数据不一致」的形态）。
 
-设计为提示模式：默认 exit 0（v5 纪律「门禁尽量少」）；--strict 供将来挂门禁
+设计为提示模式：默认 exit 0（v5 纪律「门禁尽量少」）；--strict 供挂门禁
 （存在缺口/未归类/锚点缺失时 exit 1）。重跑幂等：纯读操作、输出稳定排序。
+
+1013（2026-10-17 用户裁决）：基线清零（61/61 已覆盖·未归类 0）后 --strict 挂
+L1 gate_quick 静态段+win 全量+云端兜底——基线零即等价棘轮（只拦新增缺口/新增
+未归类）。豁免通道=台账顶层『归类豁免』（字段：用例/理由）：确不属于任何特性/
+兜底的用例走豁免并注明理由，理由空白或豁免条目无命中（陈旧豁免）=strict 红。
 
 用法：
   python scripts/check_doc_coverage.py                # 提示模式
   python scripts/check_doc_coverage.py --strict       # 门禁模式（exit 1 表示有信号）
   python scripts/check_doc_coverage.py --top 40       # 未归类清单最多展示 40 条
+  python scripts/test_doc_coverage_selftest.py        # 两态自测（临时镜像树·不触真树）
 """
 import argparse
 import fnmatch
@@ -38,20 +44,29 @@ import sys
 判定录入顺序 = ("完全没讲", "讲了不全", "实现待核", "已覆盖")
 
 
-def 读台账(路径=台账路径):
-    """读台账 JSON；失败即显式报错（不静默兜底）。"""
+def 读台账(路径=None):
+    """读台账 JSON；失败即显式报错（不静默兜底）。
+
+    路径=None 时取模块级默认——延迟绑定（1013）：默认参数在 def 时求值会锁死
+    模块常量，selftest 的临时镜像树 monkeypatch 就无法生效，故三处默认参一律
+    None+函数体内取模块变量（test_doc_coverage_selftest 覆盖入口）。
+    """
+    if 路径 is None:
+        路径 = 台账路径
     if not os.path.isfile(路径):
         raise SystemExit("台账不存在：%s" % 路径)
     with io.open(路径, encoding="utf-8") as f:
         return json.load(f)
 
 
-def 列用例(根=用例根目录):
+def 列用例(根=None):
     """枚举 tests/e2e 下的用例目录（不递归；跳过 assets 等非用例目录）。
 
     只收「名字含目录内 .cn 文件」或「含数字前缀」的目录——e2e 目录约定：
-    每用例一目录、内含 主.cn（或多文件入口 主.cn）。
+    每用例一目录、内含 主.cn（或多文件入口 主.cn）。根=None 同上（延迟绑定）。
     """
+    if 根 is None:
+        根 = 用例根目录
     结果 = []
     for 名 in sorted(os.listdir(根)):
         全 = os.path.join(根, 名)
@@ -118,6 +133,35 @@ def 归类兜底(台账, 用例名):
     return None
 
 
+def 豁免列表(台账):
+    """台账顶层『归类豁免』：确不属于任何特性/兜底的用例的白名单（字段：用例/理由）。
+
+    1013（2026-10-17 用户裁决）：--strict 挂 L1 后的唯一合法逃生门——豁免须填
+    理由（核验理由非空），豁免条目指向的用例树中无命中=陈旧豁免，两态均 strict 红。
+    """
+    return 台账.get("归类豁免") or []
+
+
+def 是豁免(豁免们, 用例名):
+    """豁免条目匹配：与 e2e 条目同口径（精确名或 glob）。"""
+    for e in 豁免们:
+        if 命中(e.get("用例", ""), 用例名):
+            return True
+    return False
+
+
+def 校验豁免(豁免们, 用例集):
+    """豁免表自检：理由空白（豁免必填理由）/条目在用例树无命中（陈旧豁免）=问题。"""
+    问题 = []
+    for e in 豁免们:
+        条 = e.get("用例", "")
+        if not str(e.get("理由", "") or "").strip():
+            问题.append((条, "理由空白（归类豁免必填理由）"))
+        elif not any(命中(条, n) for n in 用例集):
+            问题.append((条, "豁免条目在用例树无命中（陈旧豁免·删条或改台账）"))
+    return 问题
+
+
 def 全量归类(台账, 用例名):
     """三层归类：特性行 → 镜像剥离重试 → 归类兜底。返回 (特性行列表, 兜底项|None)。"""
     行 = 归类(台账, 用例名)
@@ -144,8 +188,13 @@ def 校验证据条目(台账, 用例集):
     return 问题
 
 
-def 校验锚点(台账, 官网根=官网根目录):
-    """校验 页面路径#锚点：文件存在 + HTML 内含 id="锚点"（同时兜底 HTML 与数据分叉）。"""
+def 校验锚点(台账, 官网根=None):
+    """校验 页面路径#锚点：文件存在 + HTML 内含 id="锚点"（同时兜底 HTML 与数据分叉）。
+
+    官网根=None 时取模块级默认（延迟绑定·同 读台账 1013 注）。
+    """
+    if 官网根 is None:
+        官网根 = 官网根目录
     问题 = []
     for r in 台账["特性清单"]:
         引用集 = r.get("官网覆盖")
@@ -196,12 +245,16 @@ def 主流程(args):
     未归类 = []
     归类张数 = dict()
     兜底张数 = dict()
+    豁免命中数 = 0
+    豁免们 = 豁免列表(台账)
     for n in 用例集:
         命中行, 兜 = 全量归类(台账, n)
         if 命中行:
             归类张数[n] = len(命中行)
         elif 兜:
             兜底张数[n] = 兜["名称"]
+        elif 是豁免(豁免们, n):
+            豁免命中数 += 1
         else:
             未归类.append(n)
 
@@ -211,6 +264,7 @@ def 主流程(args):
     待核行 = [r for r in 行集 if r.get("判定") == "实现待核"]
     证据问题 = 校验证据条目(台账, 用例集)
     锚点问题 = 校验锚点(台账)
+    豁免问题 = 校验豁免(豁免们, 用例集)
 
     print("===== 官网文档覆盖对照（任务 993）=====")
     print("台账：website/tools/doc_coverage.json（%d 行：已覆盖 %d / 讲了不全 %d / 完全没讲 %d / 实现待核 %d）"
@@ -228,6 +282,11 @@ def 主流程(args):
             桶计[桶] = 桶计.get(桶, 0) + 1
         for 桶, k in sorted(桶计.items()):
             print("  （兜底归类 %d 个：%s）" % (k, 桶))
+    if 豁免命中数:
+        print("  （归类豁免 %d 个：台账『归类豁免』·1013 通道·理由必填）" % 豁免命中数)
+    if 豁免问题:
+        for 条, 原因 in 豁免问题:
+            print("  [豁免异常] %s（%s）" % (条, 原因))
     if not 未归类:
         print("  无——全部 %d 个用例均有归属" % len(用例集))
     for i, n in enumerate(未归类):
@@ -266,11 +325,11 @@ def 主流程(args):
 
     打印分节("汇总")
     print("缺口（讲了不全/完全没讲）：%d 行；其中陈旧失实 %d 行" % (len(缺口行), len(陈旧行)))
-    print("实现待核：%d 行；未归类用例：%d 个；台账自检问题：%d 项；锚点问题：%d 项"
-          % (len(待核行), len(未归类), len(证据问题), len(锚点问题)))
+    print("实现待核：%d 行；未归类用例：%d 个；豁免异常：%d 项；台账自检问题：%d 项；锚点问题：%d 项"
+          % (len(待核行), len(未归类), len(豁免问题), len(证据问题), len(锚点问题)))
 
     if args.strict:
-        有信号 = bool(缺口行 or 未归类 or 证据问题 or 锚点问题 or 未知判定)
+        有信号 = bool(缺口行 or 未归类 or 证据问题 or 锚点问题 or 未知判定 or 豁免问题)
         return 1 if 有信号 else 0
     return 0
 
