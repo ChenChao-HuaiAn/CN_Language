@@ -73,7 +73,7 @@ GEN_PAGES = (
 CHAIN = ["stdlib.html", "builtin.html"] + [
     m["文件"] for m in MODULES if m["文件"] != "builtin.html"] + ["cli.html"]
 
-CSS_VER = {"site": 5, "tokens": 2, "hl": 1, "js": 2}   # 改资源必 bump ?v=N
+CSS_VER = {"site": 6, "tokens": 2, "hl": 1, "js": 2}   # 改资源必 bump ?v=N
 
 
 def esc(s):
