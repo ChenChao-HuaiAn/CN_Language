@@ -356,6 +356,20 @@ inline std::string canonicalType(const std::string& type) {
            node->arguments.size() == 1;
 }
 
+// 923（第三处出现前收口）：复制 内置调用判定——callee=标识符「复制」+ 单实参
+//   + 语义层已推导 resolvedType（与 ir_call.cpp 生成特判同口径）。原为
+//   ir_expr_member.cpp 文件级 static（234-a 首处·structWholeAssignSrcFirst/
+//   emitStructWholeAssign 两处引用）；923 元素面接管通道需第三处判定 → 提炼
+//   为公共单点，原 static 删除改调本函数（判据逐字搬运·零行为变更）。
+[[maybe_unused]] inline bool isCopyBuiltinCall(const Expr* node) {
+    if (node == nullptr || node->getType() != NodeType::CallExpr) return false;
+    const CallExpr* call = static_cast<const CallExpr*>(node);
+    return call->callee->getType() == NodeType::IdentifierExpr &&
+           static_cast<const IdentifierExpr*>(call->callee.get())->name == "复制" &&
+           call->arguments.size() == 1 &&
+           !call->resolvedType.empty();
+}
+
 [[maybe_unused]] inline bool isOwnedStringBuiltin(const std::string& name) {
     // 与 IR 层字符串拥有判定白名单同一集合（原 ir_expr_assign_ident.cpp
     // identifierStringOwnAssign / ir_stmt_decl.cpp 拥有型初始化两处硬编码——

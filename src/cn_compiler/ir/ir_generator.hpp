@@ -869,9 +869,8 @@ private:
     bool memberStringFieldAssign(AssignmentExpr* node, MemberExpr* member,
                                  const StructDecl* decl, const std::string& objSrcType,
                                  const ir::IRValue& addr, const ir::IRValue& value);
-    // 629（544 呈报）：类字段 ←「返回类对象的调用」产物（盒.槽 = 仓.产()）——
-    //   旧字段对象释放 + 新句柄入槽（自 handleClassMemberAssign 974 段挂点·
-    //   实现于 ir_expr_assign.cpp 成员族）
+    // 629（544 呈报）：类字段 ←「返回类对象的调用」产物——旧字段释放+新
+    //   句柄入槽（实现见 ir_expr_assign.cpp 成员族）
     bool memberClassCallProductAssign(Expr* valueExpr,
                                       const ir::IRValue& fieldAddr,
                                       const std::string& fieldCanon,
@@ -884,6 +883,7 @@ private:
     // 348-a：下标目标元素源码类型推导（自 indexStructElemAssign 首段提取——
     //   供「源优先序」挂点在 addr 计算前判定目标类型；空=非标识符对象/未定）
     std::string indexTargetElemSrcType(AssignmentExpr* node);
+    bool indexClassCallProductAssign(AssignmentExpr* node);   // 923：元素（类内联体）←类调用产物（959 同模型）
     // 族：调用左值（原 461~484 段）
     bool assignToCallTarget(AssignmentExpr* node);
     // 族：标识符左值（原 490~1048 段）

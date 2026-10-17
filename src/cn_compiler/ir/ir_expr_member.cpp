@@ -16,14 +16,9 @@ namespace cn_compiler {
 
 // 234-a（A7 第二层根治）：复制 内置调用判定（callee=标识符「复制」+ 单实参 +
 //   语义层已推导 resolvedType——与 ir_call.cpp 生成特判同口径）。
-static bool isCopyBuiltinCall(Expr* node) {
-    if (node == nullptr || node->getType() != NodeType::CallExpr) return false;
-    CallExpr* call = static_cast<CallExpr*>(node);
-    return call->callee->getType() == NodeType::IdentifierExpr &&
-           static_cast<IdentifierExpr*>(call->callee.get())->name == "复制" &&
-           call->arguments.size() == 1 &&
-           !call->resolvedType.empty();
-}
+//   923：第三处出现前收口——原文件级 static 已提炼为公共单点
+//   semantic_helpers.hpp isCopyBuiltinCall（本文件两处引用改调公共函数·
+//   判据逐字搬运零行为变更；ir_expr_assign.cpp 元素面接管通道为第三引用处）。
 
 // 结构体/类整体赋值发射（46-a 根治 2026-09-09 提取的单一事实源——原机制内联
 //   于 visitAssignmentExpr 下标目标分支（集成验证修复+H8 类补完），成员目标

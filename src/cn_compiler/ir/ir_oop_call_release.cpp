@@ -69,7 +69,31 @@ void IRGenerator::genStringFrees() {
             auto srcIt2 = oopVarSrcTypes_.find(unique);
             if (srcIt2 == oopVarSrcTypes_.end()) continue;
             const std::string st2 = types::canonical(srcIt2->second);
-            if (types::isArray(st2) && types::arrayElemOf(st2) == "字符串") {
+            if (!types::isArray(st2)) continue;
+            bool ownedElem2 = types::arrayElemOf(st2) == "字符串";
+            // 923（629 派生·元素面·宿主 955 对位补齐）：**类/容器元素数组**
+            //   同入函数尾兜底——955 的类分派只在块出口/跳出名单（
+            //   ownedStrArrayOrder_·块出口截断/差值释放）发射；返回块终止的
+            //   路径块出口析构被守卫跳过（ir_stmt 出口守卫），类数组元素资源
+            //   无人释放（p923ret 实证：带 返回 的函数残留 2/数组，字符串数组
+            //   因本段兜底=0 不对称）。收集条件与 955 登记
+            //   （registerOwnedArrayElems）同口径：类元素+有析构方法。
+            if (!ownedElem2) {
+                const std::string elemCanon2 = types::canonical(
+                    types::arrayElemOf(st2));
+                if (semantic_->isClassType(elemCanon2)) {
+                    const ClassInfo* eci2 = semantic_->findClass(elemCanon2);
+                    if (eci2 != nullptr) {
+                        for (const auto& mk : eci2->methods) {
+                            if (mk.second.isDestructor) {
+                                ownedElem2 = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+            if (ownedElem2) {
                 ownedStrArrays.push_back(unique);
             }
         }
@@ -565,6 +589,17 @@ void IRGenerator::emitStrArrayElemFreesFor(const std::string& unique) {
             }
             emit(ir::Opcode::Call, {addr955}, ir::IRValue(),
                  methodSymbolKey(dtorOwner955, dtor955->sigKey), "void", loc955);
+            // 923（629 派生·幂等补齐·955 注释「析构后元素首字段清零」设计意图
+            //   落地）：类元素析构后**整对象置零**（cn_memset(元素地址, 类大小)）
+            //   ——块出口/跳出/函数尾兜底多路径共享数组区（函数尾扫描看不到
+            //   名单截断=对已释放数组二次发射）：原仅 Call 无清零 → 二次 ~T
+            //   对已 free 的资源句柄再释放=C0000374（923 修复后 p923f/
+            //   p923scope 五探针实测崩）；整对象清零后二次析构=全空句柄空安全
+            //   跳过（只清首字段不够——资源字段未必在偏移 0）。
+            emit(ir::Opcode::Call,
+                 {addr955,
+                  ir::IRValue::constant(std::to_string(stride955), "整64")},
+                 ir::IRValue(), "cn_memset", "void", loc955);
         }
         return;
     }

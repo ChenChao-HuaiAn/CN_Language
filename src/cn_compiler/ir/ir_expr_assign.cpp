@@ -402,9 +402,9 @@ bool IRGenerator::assignToIndexTarget(AssignmentExpr* node) {
     // 959（008 总攻·转移位余二①）：目标=数组元素（类容器内联体）且值=转移(标识符)
     //   → **整块搬迁**（096 同模型）：CopyStruct 类大小到元素地址 + 源槽清零
     //   （析构跳过=所有权交接）。原路径 StorePtr 8B 句柄直存内联体首字段——
-    //   数据指针对但长度/容量字段垃圾（p2b 实证 大小()=0）。诚实边界：元素
-    //   已有值时旧对象不释放（数组声明零初始化=转移通常首写；重赋值旧值
-    //   随宿主 095 边界同登记）。
+    //   数据指针对但长度/容量字段垃圾（p2b 实证 大小()=0）。原「元素已有值时
+    //   旧对象不释放」边界已由 923 补齐（重赋值旧内联对象析构——见下方通道内
+    //   注释；923 同族：p629f/p629g 元素×调用产物实锤）。
     if (semantic_ != nullptr && !isCompoundAssignOp(node->op) &&
         node->value->getType() == NodeType::CallExpr &&
         isTransferCall(
@@ -443,6 +443,18 @@ bool IRGenerator::assignToIndexTarget(AssignmentExpr* node) {
                                 ir::Opcode::Load,
                                 {ir::IRValue::var(srcUnique959, "ptr")},
                                 "ptr", srcUnique959, node->location);
+                            // 923（629 派生·旧值释放补齐·原「元素已有值时旧对象
+                            //   不释放」诚实边界解除）：重赋值旧内联对象析构——
+                            //   有析构类单发 Call dtor(元素地址)（与
+                            //   injectClassElemDestroy 单元素析构同形态）；首写
+                            //   零初始化槽/无析构类=空安全跳过。顺序=源求值后、
+                            //   搬迁前（Rust 求值序；源=独立变量无别名）。
+                            const std::string dtorSym959 =
+                                classDestructorSymbolKey(elemCanon959);
+                            if (!dtorSym959.empty()) {
+                                emit(ir::Opcode::Call, {addr959}, ir::IRValue(),
+                                     dtorSym959, "void", node->location);
+                            }
                             emit(ir::Opcode::CopyStruct,
                                  {addr959, handle959}, ir::IRValue(),
                                  std::to_string(bytes959), "void",
@@ -465,6 +477,10 @@ bool IRGenerator::assignToIndexTarget(AssignmentExpr* node) {
             }
         }
     }
+    // 923（629 派生·元素面）：目标=下标（类元素内联体）且右值=「返回类对象的
+    //   调用」产物 → 内联体接管通道（原落下方标量 StorePtr 8 字节直存句柄——
+    //   元素内联体语义下读取按 [元素]=首字段解，句柄被当字段消费=值错/段错误）。
+    if (indexClassCallProductAssign(node)) return true;
     // 结构体初始化赋值：点数组[0] = 点{ x = 5, y = 6 }（Task 2.7）
     //   按目标地址逐字段原地构造（结构体不能作为单寄存器值）。648 显形化收尾
     //   （既有红 07_struct_enum/10_struct_value）：本通道须先于下方 genExpr 通用
@@ -679,6 +695,68 @@ std::string IRGenerator::indexTargetElemSrcType(AssignmentExpr* node) {
     return "";
 }
 
+// 923（629 派生·元素面）：数组/指针元素（类元素内联体）←「返回类对象的调用」
+//   产物——元素内联体接管（959 转移通道同模型·下标族）。
+//   缺陷链（629 矩阵 p629f/p629g 实锤）：CN 的类元素数组/容器数据区=**内联
+//   对象体**（959 转移搬迁 + 517-a 容器元素布局 + 读取路径 [元素]=首字段偏移
+//   三点互证），而「元素 ← 调用产物」原无专用通道：genExpr 产物（新堆对象
+//   句柄）经 indexStructElemAssign→emitStructWholeAssign 判定非左值来源
+//   return false → 落标量 StorePtr 8 字节把**对象句柄直存元素内联体首 8 字节**
+//   ——读取把句柄当首字段消费（p923f「表[0].记录.大小()」打印垃圾）、深层
+//   形态解引用崩（629 矩阵原文「宿主段错误崩溃」）。修=Rust move 语义（产物
+//   所有权随返回值移交调用方·元素=接管方）：
+//     ① 右值求值（产物=新堆对象句柄——LUE 类返回/构造 NewObject 壳）；
+//     ② 目标元素地址（lvalueAddress——纯地址计算）；
+//     ③ 旧值释放（重赋值安全：有析构类单发 Call dtor(元素地址)·与
+//        injectClassElemDestroy 单元素析构同形态；首写零初始化槽=空句柄空
+//        安全跳过，无析构类=无释放面维持现状〔183-a/728x 同口径〕）；
+//     ④ 内容搬迁（CopyStruct 类布局大小：产物本体 → 元素内联体）；
+//     ⑤ 产物壳裸放（__cn_object_delete 只 free 不析构——内容已搬进元素，
+//        析构会释放元素已接管的字段资源=悬垂；959 同款）。
+//   排除：转移（959 专用通道前置管辖·源槽清零在彼）、引用返回（借用产物
+//   不得释放/接管）、复制内置（234-a 专属分支管辖·产物含 __copytmp 栈槽形态
+//   不可裸放）、复合赋值（读-算-写回另路）、非类元素（标量/结构体落原路）。
+//   true=已处理；false=非该形态（零行为变更落原路径）。
+bool IRGenerator::indexClassCallProductAssign(AssignmentExpr* node) {
+    if (semantic_ == nullptr || node == nullptr) return false;
+    if (isCompoundAssignOp(node->op)) return false;
+    if (node->target->getType() != NodeType::IndexExpr) return false;
+    if (node->value->getType() != NodeType::CallExpr) return false;
+    const CallExpr* call = static_cast<const CallExpr*>(node->value.get());
+    if (isTransferCall(call)) return false;     // 转移=959 专用通道
+    if (call->isRefReturnCall) return false;    // 引用返回=借用产物（另行处理）
+    if (isCopyBuiltinCall(node->value.get())) return false;  // 复制=234-a 分支
+    const std::string elemCanon =
+        types::canonical(indexTargetElemSrcType(node));
+    if (elemCanon.empty() || !semantic_->isClassType(elemCanon)) return false;
+    // 右值调用返回类型严格等于元素类（异型赋值语义层已拦·推导 miss/引用
+    //   返回后缀自然不等=保守面零行为变更）
+    if (types::canonical(exprSrcType(node->value.get())) != elemCanon) {
+        return false;
+    }
+    const ClassInfo* ci = semantic_->findClass(elemCanon);
+    if (ci == nullptr || ci->totalSize <= 0) return false;
+    // ① 产物求值（新堆对象句柄：LUE 类返回/构造 NewObject——所有权随返回值
+    //    移交调用方；自用引用右值 表[0] = 取(表[0]) 由引用返回面排除）
+    ir::IRValue obj = genExpr(node->value.get());
+    // ② 目标元素地址
+    ir::IRValue dstAddr = lvalueAddress(node->target.get());
+    // ③ 旧值析构（重赋值安全——首写零初始化槽=空句柄空安全）
+    const std::string dtorSym = classDestructorSymbolKey(elemCanon);
+    if (!dtorSym.empty()) {
+        emit(ir::Opcode::Call, {dstAddr}, ir::IRValue(), dtorSym, "void",
+             node->location);
+    }
+    // ④ 内容搬迁（产物本体 → 元素内联体·类布局大小整块）
+    emit(ir::Opcode::CopyStruct, {dstAddr, obj}, ir::IRValue(),
+         std::to_string(ci->totalSize), "void", node->location);
+    // ⑤ 产物壳裸放（只 free 不析构——内容已搬走）
+    emit(ir::Opcode::Call, {obj}, ir::IRValue(), "__cn_object_delete", "void",
+         node->location);
+    lastExpr_ = dstAddr;
+    return true;
+}
+
 bool IRGenerator::indexStructElemAssign(AssignmentExpr* node, const ir::IRValue& addr) {
     // 集成验证修复 Bug：下标/解引用目标的结构体整体赋值——
     //   `名单[j] = 名单[j+1]`（结构体指针数组元素交换）目标为 IndexExpr，
@@ -726,6 +804,48 @@ bool IRGenerator::assignToCallTarget(AssignmentExpr* node) {
         suppressRefDeref_ = true;
         ir::IRValue tgtAddr = genExpr(node->target.get());
         suppressRefDeref_ = oldSuppress;
+        // 923（629 派生·元素面·引用左值形态）：引用返回调用左值 ×「返回类对象的
+        //   调用」产物——引用所指=类元素内联体（容器数据数组元素），产物=新堆
+        //   对象句柄。原路径 StorePtr 8B 把**对象句柄直存内联体首 8 字节**——
+        //   元素内联体语义下读取把句柄当首字段消费（p923ref 实证：
+        //   表.元素引用(0) = 仓.产() 后 表.元素(0).记录.大小() 读垃圾）。
+        //   修=内联体接管（indexClassCallProductAssign 同构）：① 产物求值
+        //   ② 旧值析构（有析构类单发 Call dtor(引用地址)——引用目标=已登记
+        //   有效元素/内联对象，非零槽空安全）③ 内容搬迁 CopyStruct ④ 产物壳
+        //   裸放。排除：转移（专用通道）/引用返回右值（借用产物）/
+        //   复制内置（234-a 分支·产物含栈槽形态不可裸放）/复合赋值；非类引用
+        //   目标零行为变更落原路径。
+        if (semantic_ != nullptr && !isCompoundAssignOp(node->op) &&
+            node->value->getType() == NodeType::CallExpr) {
+            const CallExpr* vcall923 =
+                static_cast<const CallExpr*>(node->value.get());
+            const std::string refCanon923 = types::canonical(
+                types::stripRef(exprSrcType(node->target.get())));
+            if (semantic_->isClassType(refCanon923) &&
+                !isTransferCall(vcall923) && !vcall923->isRefReturnCall &&
+                !isCopyBuiltinCall(node->value.get()) &&
+                types::canonical(exprSrcType(node->value.get())) ==
+                    refCanon923) {
+                const ClassInfo* ciRef923 = semantic_->findClass(refCanon923);
+                if (ciRef923 != nullptr && ciRef923->totalSize > 0) {
+                    ir::IRValue obj923 = genExpr(node->value.get());
+                    const std::string dtorSym923 =
+                        classDestructorSymbolKey(refCanon923);
+                    if (!dtorSym923.empty()) {
+                        emit(ir::Opcode::Call, {tgtAddr}, ir::IRValue(),
+                             dtorSym923, "void", node->location);
+                    }
+                    emit(ir::Opcode::CopyStruct, {tgtAddr, obj923},
+                         ir::IRValue(),
+                         std::to_string(ciRef923->totalSize), "void",
+                         node->location);
+                    emit(ir::Opcode::Call, {obj923}, ir::IRValue(),
+                         "__cn_object_delete", "void", node->location);
+                    lastExpr_ = tgtAddr;
+                    return true;
+                }
+            }
+        }
         ir::IRValue val = genExpr(node->value.get());
         if (isCompoundAssignOp(node->op)) {
             ir::IRValue current = emitResult(ir::Opcode::LoadPtr, {tgtAddr}, val.type,
