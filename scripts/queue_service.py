@@ -34,6 +34,10 @@
 #                                                 不限或白名单含本平台的任务·旧客户端不报=空串只领不限任务·不会错跑）
 #   POST /api/task_heartbeat {runner,分支}        心跳续约
 #   POST /api/task_complete {runner,分支,绿,结果}  完成上报（校验认领者·防回收后旧 runner 复活覆盖）
+#       975（87 篇反思①·863 五连静默机械化）：结果含认领失败形状（步骤.同步.rc 非零
+#       =fetch 预验分支失败/轮内同步异常）→ 行级「连续同类失败计数」+达阈值（默认 3）
+#       journal 播报 `[975 预验失败告警]`；计数字段随 /api/state 预验任务行与
+#       /api/task_result 详情流出（8300 门禁窗口池页签徽标面）。
 # 部署：/etc/systemd/system/cn-queue.service（Environment= 端口/令牌/DB 路径）。
 # 自检：python3 queue_service.py --selftest（842 起实现体外迁=queue_selftest.py·惰性导入）。
 
@@ -75,6 +79,10 @@ db路径 = os.environ.get("CN_QUEUE_DB",
 #   年龄超此秒数 → claim 优先派兜底——防任务级预验长期占满池时 develop 平台轮转验证
 #   被无限推迟（原两级查询严格「预验优先」=兜底可被饿死·develop 权威验证名存实亡）。
 兜底饥饿秒 = int(os.environ.get("CN_FALLBACK_HUNGER_SEC", "900"))
+# 975 预验失败计数告警（87 篇反思①·863 五连静默机械化）：runner 认领失败（同步异常）
+#   连续同类达此阈值 → journal 播报 `[975 预验失败告警]` + 行上告警时刻（页面可见）。
+#   下限钳 1=参数校验（0/负值非法——防告警节拍取整除零崩任务完成路径；语义=每次告警）。
+预验失败告警阈值 = max(1, int(os.environ.get("CN_PREFAIL_ALERT_N", "3")))
 
 写锁 = threading.Lock()          # SQLite 写串行化（读靠 WAL 并发）
 时区时刻 = lambda: datetime.now().strftime("%m-%d %H:%M:%S")   # 911 教训：秒级戳
@@ -133,6 +141,9 @@ def 建库() -> sqlite3.Connection:
         认领者 TEXT, 心跳时戳 INTEGER,  -- 心跳=服务端收到时刻（免疫客户端时钟漂移）
         绿 INTEGER, 详情 TEXT,          -- 详情=ci_daemon 结果 JSON 原样
         内容键 TEXT,                    -- 830：任务分支 tip sha（预验绿复用键·旧行 NULL）
+        失败计数 INTEGER DEFAULT 0,     -- 975：连续同类认领失败次数（真实验证红/绿清零·重跑保留）
+        失败类别 TEXT, 失败摘要 TEXT,   -- 975：最近一次认领失败类别（同步失败…）与原因摘要
+        告警时刻 TEXT,                  -- 975：最近一次达阈值告警的时戳（NULL=未告警）
         入队时刻 TEXT, 更新时刻 TEXT)""")
     try:   # 222 旧库兼容：表已存在时 CREATE IF NOT EXISTS 不加列·ALTER 补（列已在=重复列错吞掉）
         con.execute("ALTER TABLE 预验任务 ADD COLUMN 源分支 TEXT")
@@ -144,6 +155,22 @@ def 建库() -> sqlite3.Connection:
         pass
     try:   # 830 内容键：任务分支 tip sha（预验绿复用键·integrate 传·旧行/旧客户端 NULL）
         con.execute("ALTER TABLE 预验任务 ADD COLUMN 内容键 TEXT")
+    except sqlite3.OperationalError:
+        pass
+    try:   # 975 连续同类认领失败计数（863 五连静默机械化·真实验证红/绿清零·重跑保留）
+        con.execute("ALTER TABLE 预验任务 ADD COLUMN 失败计数 INTEGER DEFAULT 0")
+    except sqlite3.OperationalError:
+        pass
+    try:   # 975 失败类别（枚举见 认领失败分类·如「同步失败」）
+        con.execute("ALTER TABLE 预验任务 ADD COLUMN 失败类别 TEXT")
+    except sqlite3.OperationalError:
+        pass
+    try:   # 975 失败摘要（最近一次认领失败原因摘要·≤200 字·页面/详情展示）
+        con.execute("ALTER TABLE 预验任务 ADD COLUMN 失败摘要 TEXT")
+    except sqlite3.OperationalError:
+        pass
+    try:   # 975 告警时刻（达阈值播报时戳·审计面；NULL=从未告警）
+        con.execute("ALTER TABLE 预验任务 ADD COLUMN 告警时刻 TEXT")
     except sqlite3.OperationalError:
         pass
     con.commit()
@@ -174,11 +201,14 @@ def 门禁快照(限: int = 200) -> list[dict]:
 
 
 def 预验任务快照() -> list[dict]:
-    """预验任务池快照（不含 详情 大字段——integrate 取详情走 /api/task_result）。"""
-    行们 = con.execute("SELECT 序号,分支,sha,源分支,状态,认领者,绿,认领限制,入队时刻,更新时刻,内容键 "
+    """预验任务池快照（不含 详情 大字段——integrate 取详情走 /api/task_result）。
+    975：补 失败计数/失败类别/失败摘要/告警时刻（认领失败告警面·8300 池页签徽标数据源）。"""
+    行们 = con.execute("SELECT 序号,分支,sha,源分支,状态,认领者,绿,认领限制,入队时刻,更新时刻,内容键,"
+                       "COALESCE(失败计数,0),失败类别,失败摘要,告警时刻 "
                        "FROM 预验任务 ORDER BY 序号 DESC LIMIT 50").fetchall()
     return [dict(zip(("序号", "分支", "sha", "源分支", "状态", "认领者", "绿", "认领限制",
-                      "入队时刻", "更新时刻", "内容键"), r))
+                      "入队时刻", "更新时刻", "内容键", "失败计数", "失败类别", "失败摘要",
+                      "告警时刻"), r))
             for r in 行们]
 
 
@@ -258,6 +288,63 @@ def 源分支已并入(源分支: str) -> bool | None:
     if not 任务:
         return None
     return 任务.get("状态") == "✅"
+
+
+def 认领失败分类(结果) -> tuple[str, str]:
+    """975（87 篇反思①·863 五连静默机械化）：认领阶段基础设施失败分类+原因摘要——
+    数据源=ci_daemon task_complete 结果 JSON（runner 侧零协议新增：失败形状「步骤.同步.rc
+    非零+日志尾部含 stderr」为 863 时代即有的既有形状，服务端解析即可·旧 runner 同得覆盖）。
+
+    类别枚举（单一事实源·#901 fetch 删除时机残余 / #574 solo 静默 同域扩展点）：
+    当前唯一类别=「同步失败」——认领后 git fetch 预验分支失败（分支已被删除=863 病灶）
+    或轮内 fetch/reset/clean 异常；静默特征=完成红→重入队→再认领再失败（五连
+    746/764/758/644/728f 全链无告警面·全靠人盯队列）。构建/单测/e2e 红（同步 rc=0）
+    属真实验证结论，不属基础设施失败=不分类（否则真实红会污染告警语义——真红走
+    既有「预检红·返工」红治理面）。
+
+    前向兼容：结果.失败类别 显式字段优先（runner 将来显式声明新类别时零服务端改动）；
+    缺省回退按上面隐式形状分类。返回 (类别, 摘要)；非认领失败=("", "")。"""
+    if not isinstance(结果, dict):
+        return "", ""
+    显式 = str(结果.get("失败类别") or "").strip()
+    if 显式:
+        return 显式, str(结果.get("失败摘要") or "").strip()[:200]
+    同步 = (结果.get("步骤") or {}).get("同步")
+    rc = 同步.get("rc") if isinstance(同步, dict) else None
+    if not isinstance(rc, int) or rc == 0:
+        return "", ""
+    尾部 = [str(行).strip() for 行 in (结果.get("日志尾部") or []) if str(行).strip()]
+    摘要 = "；".join(尾部)[:200] or ("同步段 rc=%s" % rc)
+    return "同步失败", 摘要
+
+
+def 记认领失败并告警(分支: str, 类别: str, 摘要: str) -> str:
+    """975：认领失败计数与阈值告警（task_complete 内调用·须在写锁内）——返回告警行
+    文本（空=未告警；调用方 print 进服务端 journal·`[975 预验失败告警]` 前缀可 grep）。
+
+    计数语义=「连续同类」：类别与上次不同则计数重置为 1；类别为空（真实验证绿/红=
+    基础设施面恢复证据）→ 连续链清零（告警时刻保留可审计）。重跑（task_enqueue
+    完成红→重置排队）不清计数=同 sha 跨重跑累计（五连回环正由此暴露）。
+    告警节拍=计数每跨过 阈值 的整数倍一次（持续失败持续可见·防刷屏）。
+    幂等：complete 的状态机校验（状态=执行中∧认领者匹配）使 runner 重试/被回收旧
+    runner 复活天然不重复计数。"""
+    if not 类别:
+        con.execute("UPDATE 预验任务 SET 失败计数=0,失败类别=NULL,失败摘要=NULL WHERE 分支=?",
+                    (分支,))
+        return ""
+    行 = con.execute("SELECT 失败计数,失败类别,sha FROM 预验任务 WHERE 分支=?", (分支,)).fetchone()
+    # 行必在（调用点 task_complete 刚以 分支∧认领者∧执行中 校验 UPDATE rowcount>0·同写锁内）——
+    # 三元兜底=穷举声明不可达③（防 None 解包崩），非语义默认（miss 处置纪律）。
+    旧计数, 旧类别, sha = (int(行[0] or 0), 行[1], str(行[2] or "")) if 行 else (0, None, "")
+    新计数 = 旧计数 + 1 if 旧类别 == 类别 else 1
+    con.execute("UPDATE 预验任务 SET 失败计数=?,失败类别=?,失败摘要=? WHERE 分支=?",
+                (新计数, 类别, (摘要 or "")[:200], 分支))
+    if (新计数 < 预验失败告警阈值
+            or 新计数 // 预验失败告警阈值 <= (新计数 - 1) // 预验失败告警阈值):
+        return ""
+    con.execute("UPDATE 预验任务 SET 告警时刻=? WHERE 分支=?", (时区时刻(), 分支))
+    return ("[975 预验失败告警] %s sha=%s 连续同类认领失败 %d 次（阈值 %d）：类别=%s 原因=%s"
+            % (分支, sha[:10], 新计数, 预验失败告警阈值, 类别, (摘要 or "")[:200]))
 
 
 def 处理写(名: str, 数据: dict) -> dict:
@@ -498,6 +585,12 @@ def 处理写(名: str, 数据: dict) -> dict:
                                时区时刻(), 分支, runner))
             if cur.rowcount == 0:
                 return {"ok": False, "说明": "任务不在执行中或认领者不匹配（可能已被回收重派）" + 分支}
+            # 975（87 篇反思①·863 五连静默机械化）：认领失败计数+阈值告警——真实红/绿
+            #   （同步 rc=0）清零连续链（基础设施恢复证据），不告警；告警行走服务端
+            #   journal（print）+ 行字段（快照/详情流出）。
+            告警行 = 记认领失败并告警(分支, *认领失败分类(结果))
+            if 告警行:
+                print(告警行, flush=True)
             con.execute("DELETE FROM 预验任务 WHERE 状态 IN ('完成','已取消') AND 序号 NOT IN "
                         "(SELECT 序号 FROM 预验任务 WHERE 状态 IN ('完成','已取消') "
                         "ORDER BY 序号 DESC LIMIT ?)",
@@ -552,13 +645,15 @@ def 门禁详情查(sha: str, 平台: str):
 
 
 def _包任务行(行):
-    """任务行→dict（详情坏 JSON=None 容错·同 门禁详情查 口径）。"""
+    """任务行→dict（详情坏 JSON=None 容错·同 门禁详情查 口径）。
+    975：补 失败计数/失败类别/失败摘要/告警时刻（详情面板认领失败展示数据源）。"""
     try:
         详情 = json.loads(行[2]) if 行[2] else None
     except ValueError:
         详情 = None
     return {"状态": 行[0], "绿": bool(行[1]) if 行[1] is not None else None,
-            "详情": 详情}
+            "详情": 详情, "失败计数": int(行[3] or 0), "失败类别": 行[4],
+            "失败摘要": 行[5], "告警时刻": 行[6]}
 
 
 def 任务详情查(sha10: str):
@@ -566,12 +661,13 @@ def 任务详情查(sha10: str):
     integrate/看板代理在用），miss 再试 ci/兜底-；②均无再按 sha 前缀查（842
     鲁棒兜底：分支名与 sha 不一致的异常/历史行也可达；同前缀多点取最新序号）。
     miss=None（调用点 404 显式——648 miss 不可静默）。"""
+    列 = "状态,绿,详情,COALESCE(失败计数,0),失败类别,失败摘要,告警时刻"   # 975：三查询同列单一事实源
     for 前缀 in ("ci/预验-", "ci/兜底-"):
-        行 = con.execute("SELECT 状态,绿,详情 FROM 预验任务 WHERE 分支=?",
+        行 = con.execute("SELECT " + 列 + " FROM 预验任务 WHERE 分支=?",
                         (前缀 + sha10,)).fetchone()
         if 行 is not None:
             return _包任务行(行)
-    行 = con.execute("SELECT 状态,绿,详情 FROM 预验任务 WHERE sha LIKE ? "
+    行 = con.execute("SELECT " + 列 + " FROM 预验任务 WHERE sha LIKE ? "
                     "ORDER BY 序号 DESC LIMIT 1", (sha10 + "%",)).fetchone()
     return _包任务行(行) if 行 is not None else None
 
