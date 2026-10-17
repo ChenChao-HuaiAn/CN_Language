@@ -114,6 +114,21 @@ bool IRGenerator::emitStructWholeAssign(const ir::IRValue& dstAddr,
         //   **无控制流**）——一般结构体返回调用可能含条件块（正常/错误构造器），
         //   在 dst 地址已发射后触发会打乱调用方块时序（全量 v2 树编译实证
         //   285 失败）——该面维持既有发射（StorePtr），登记 plans/021 待查。
+         srcAddr = genExpr(valueNode);
+    } else if ((valueNode->getType() == NodeType::BinaryExpr ||
+                valueNode->getType() == NodeType::UnaryExpr) &&
+               !semantic_->isClassType(dstElemCanon)) {
+        // 936 同族（运算符重载返回结构体·整体赋值各目标位统一）：右侧重载
+        //   命中（语义层 resolvedType 写回=结构体；exprSrcType 单一事实源）→
+        //   genExpr 产结构体地址（形态A 预插/物化壳，与复制调用分支同款源
+        //   地址定位=发射后取源）。原不认 → srcAddr id<0 → 调用方落 8 字节
+        //   StorePtr（p11 静态位『静态和 = 甲 + 乙』读出垃圾实录）。非重载
+        //   （普通算术）resolvedType 非结构体 → return false 原路径零变更；
+        //   类目标排除（重载类对象产物经 414/821 专门通道，不经本函数）。
+        const std::string binRet = exprSrcType(valueNode);
+        if (!semantic_->isStructType(types::canonical(binRet))) {
+            return false;  // 非重载结构体产物——交回调用方原路径
+        }
         srcAddr = genExpr(valueNode);
     } else if (valueNode->getType() == NodeType::IdentifierExpr) {
         const std::string srcName =
@@ -457,6 +472,15 @@ void IRGenerator::visitMemberExpr(MemberExpr* node) {
     //   访问按 base 类型递归解析（field.ty()），深度不限。
     if (objSrcType.empty()) {
         objSrcType = memberObjStructType(node);
+    }
+    // 936 同族（运算符重载返回结构体·成员链消费位）：对象=二元/单目表达式
+    //   （重载命中→产物=结构体；语义层 resolvedType 写回→exprSrcType 单一
+    //   事实源）。原两推导链不认重载表达式 → 落 648 内部错误（p11 探针
+    //   『(甲 + 乙).x』实录——与 82-d 三级链兜底同层级补全）。
+    if (objSrcType.empty() &&
+        (node->object->getType() == NodeType::BinaryExpr ||
+         node->object->getType() == NodeType::UnaryExpr)) {
+        objSrcType = exprSrcType(node->object.get());
     }
     const StructDecl* decl = semantic_->findStruct(types::canonical(objSrcType));
     if (decl == nullptr) {

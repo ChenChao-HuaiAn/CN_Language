@@ -35,6 +35,27 @@ std::string methodSymbolKey(const std::string& className, const std::string& sig
     return className + "$" + sigKey;
 }
 
+// 查询类方法成员（沿继承链；ownerClass 输出所属类。声明在 ir_generator.hpp——
+//   936 拆分：原 ir_oop_call.cpp 文件级 static 上提，运算符重载族拆出
+//   ir_oop_op_overload.cpp 后跨文件共用；语义零变更=lookupClassMember 薄包装）。
+const ClassMemberInfo* IRGenerator::findClassMethod(const std::string& className,
+                                                    const std::string& methodName,
+                                                    std::string& ownerClass) {
+    if (semantic_ == nullptr) return nullptr;
+    return semantic_->lookupClassMember(className, methodName, ownerClass);
+}
+
+// 118（929）：引用返回方法的读值分叉判据（semantic 判定聚合内联）——聚合 T
+//   （结构体/类容器元素=内联实宽存储·元素地址即对象本体）直传不 LoadPtr。
+//   （声明在 ir_generator.hpp，936 拆分：同 findClassMethod 自 ir_oop_call.cpp
+//   文件级 static 上提，语义零变更。）
+bool IRGenerator::refReturnAggInline(const ClassMemberInfo* m) const {
+    if (semantic_ == nullptr || m == nullptr || m->type.empty()) return false;
+    const std::string canon = types::canonical(m->type);
+    if (semantic_->isStructType(canon) || semantic_->isClassType(canon)) return true;
+    return false;
+}
+
 // D23（248-a）：构造默认值预收集（幂等）——键=methodSymbolKey(类名$sigKey)，
 //   与调用点 resolvedSignature（类名$名#参数串）一致；缺省值=尾部默认参数
 //   常量求值。visitProgram 先于全部函数生成预收集（类方法体提升晚于主函数

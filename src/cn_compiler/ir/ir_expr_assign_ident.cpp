@@ -647,6 +647,22 @@ std::string IRGenerator::assignValueSrcType(AssignmentExpr* node,
         //   与成员/下标来源同构 → 后续 emitStructCopyWithFields 深拷（源非
         //   调用返回）正确落堆。
         valueSrcType = exprSrcType(node->value.get());
+    } else if (node->value->getType() == NodeType::BinaryExpr ||
+               node->value->getType() == NodeType::UnaryExpr) {
+        // 936 同族（运算符重载返回结构体·TernaryExpr 86-a 先例同构）：
+        //   右值=二元/单目表达式——重载命中时语义层已把重载返回类型写回
+        //   resolvedType（exprSrcType 读取，912 注释同源）；genExpr 经
+        //   handleOperatorOverload 返回结构体地址（形态A 预插 retbuf/物化壳）
+        //   → 与调用返回同通道（srcAddr=value·浅拷接管）。非重载（普通算术）
+        //   exprSrcType 非结构体 → 上层 targetAgg 守卫 return false=行为不变。
+        //   原缺此分支：valueSrcType 空 → 落标量 Store 只写 8 字节指针
+        //   （p9 探针『差 = 甲 - 乙』读出指针低 32 位垃圾·非确定性实录）。
+        const std::string binRet = exprSrcType(node->value.get());
+        if (semantic_ != nullptr &&
+            semantic_->isStructType(types::canonical(binRet))) {
+            valueSrcType = binRet;
+            isStructReturnCall = true;  // 一次性返回物化壳语义（同调用返回）
+        }
     }
     return valueSrcType;
 }

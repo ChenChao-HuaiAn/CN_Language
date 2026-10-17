@@ -6,6 +6,7 @@
 // 说明：单条IR指令的降级（算术/比较/调用等）在 x64_instructions.cpp 中实现
 // 规范：英文API命名，中文仅注释；函数<=100行
 #include <algorithm>
+#include <cctype>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -76,15 +77,20 @@ std::string X64CodeGenerator::nameMangleImpl(const std::string& name) {
             start = comma + 1;
         }
     }
-    // 纯 ASCII 且无参数：直接使用（内置/运行时符号路径不走本函数）
-    bool hasNonAscii = false;
+    // MASM 符号名合法字符：字母/数字/_$.（与 linux_x64/arm64 后端判据对齐——
+    //   936 三后端零分叉：原判定仅查非 ASCII，`W$-`（ASCII 类名 + 单目运算符
+    //   无参 sigKey）直通 → MASM A2008 syntax error『-』+ 截断 undefined
+    //   `W$`（p9 探针实录）；linux/arm64 同款判据早已含特殊字符表——win 单侧
+    //   补齐。既有合法产物零扰动：原直通名全为合法标识符字符时行为不变）。
+    bool needsMangle = false;
     for (unsigned char c : baseName) {
-        if (c >= 0x80) {
-            hasNonAscii = true;
+        if (c >= 0x80 ||
+            !(std::isalnum(c) || c == '_' || c == '$' || c == '.')) {
+            needsMangle = true;
             break;
         }
     }
-    if (!hasNonAscii && paramTypes.empty()) return baseName;
+    if (!needsMangle && paramTypes.empty()) return baseName;
     // 非ASCII符号：? + 每字节%02X（UTF-8十六进制编码，附录C）
     std::string mangled = "?";
     for (unsigned char c : baseName) {

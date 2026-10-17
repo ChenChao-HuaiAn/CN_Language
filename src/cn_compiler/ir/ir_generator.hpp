@@ -290,13 +290,8 @@ private:
                          const std::string& srcType, const SourceLocation& loc);
     // 登记变量栈槽数（唯一内部名 -> 槽数量）：数组按长度、普通变量1（Task 2.4）
     void registerVarSlots(const std::string& unique, const std::string& srcType);
-    // 936（912 宿主对应面·公共归纳单点）：聚合返回（结构体/数组）调用点 retbuf
-    //   缓冲构造（形态A 契约）——Alloca 缓冲槽（槽数=ceil(类型大小/8)，经
-    //   registerVarSlots 统一）+ AddrOf 取址；返回缓冲地址（ptr）。调用点职责：
-    //   该地址作隐藏返回指针插实参位 0（rcx）+ Call result=void（extra=符号名）
-    //   + lastExpr_=缓冲地址供上层 CopyStruct 物化。四族调用点共用（虚调用 410/
-    //   实例直调 Task 6.1/静态直调 936/普通调用 087）——原逐字重复，936 提炼。
-    //   前提：调用点已判定 semantic_ != nullptr 且 srcRetType 为结构体/数组。
+    // 936：聚合返回调用点 retbuf 缓冲构造（形态A·Alloca 缓冲槽+AddrOf 取址，返回地址=隐藏返回指针插实参位 0，
+    //   Call result=void·lastExpr_=缓冲地址供 CopyStruct 物化）。四族共用（虚调用/实例直调/静态直调/普通调用·原逐字重复已提炼）。
     ir::IRValue allocAggRetbufBuf(const std::string& srcRetType,
                                   const SourceLocation& loc);
     // 查找变量寄存器（未找到返回id=-1）
@@ -376,23 +371,15 @@ private:
     // 函数签名 key -> 尾部默认参数 IR 常量值（Task 2.10 默认实参补全）。
     // 顺序与函数参数一致（仅含带默认值的尾部参数）；调用补全时按此精确展开。
     std::unordered_map<std::string, std::vector<ir::IRValue>> funcDefaultArgs_;
-    // 980 红治理 v2（2026-10-16·880）：自由函数名 → 声明 AST（visitProgram 与
-    //   collectFreeFunctionDefaults 同循环预收集）——registerOopRaii 判「初值=
-    //   用户函数调用接收」的返回来源三分（形参/全局=写穿别名→接收槽豁免登记；
-    //   局部/新建=句柄转移→正常登记回收）。治 980（返回形参·幼≡犬 双删
-    //   C0000374）与 836/878（返回局部/引用·接收应拥有）的判据对偶。重载同名
-    //   取后声明（判据面只用 returnType 引用位与 return 表达式类别·近似足够）。
+    // 980 红治理 v2（880）：自由函数名 → 声明 AST 预收集——registerOopRaii 返回来源三分判据
+    //   （形参/全局=写穿别名豁免登记；局部/新建=句柄转移正常登记）。治 980/836/878；重载同名取后声明。
     std::unordered_map<std::string, FunctionDecl*> freeFuncDecls880_;
     // D23（248-a）：visitProgram 预收集全部类的构造默认值（类方法提升晚于
     //   主函数生成——生成期收集会晚于调用点查表）；emitClassMethod 内同款
     //   收集保留（幂等跳过）作兜底。
     void collectCtorDefaults(const std::string& className, const ClassMemberInfo& mi);
-    // 762：visitProgram 预收集全部自由函数（顶层 FunctionDecl·有体）的尾部
-    //   默认参数值——原收集点在 visitFunctionDecl（按声明顺序单遍发射时），
-    //   调用点先于定义（同文件后置定义·001 两遍编译立法合法形态）时查
-    //   funcDefaultArgs_ miss → 缺省实参静默不补=静默错值（探针实录：
-    //   带缺省() 应 6 静默返 0）。D23 类构造预收集同款根治；visitFunctionDecl
-    //   内原收集保留（幂等覆盖同 key）作兜底。
+    // 762：visitProgram 预收集自由函数尾部默认参数值（调用点先于定义查表 miss→静默不补实录治；
+    //   原收集点保留幂等兜底·D23 构造预收集同款）。
     void collectFreeFunctionDefaults(FunctionDecl* node);
     // D23 根治（248-a）：签名 -> 参数总数（含默认参数）——构造（emitClassMethod）
     //   不入 functions_，funcParamTypesOf 查空时补缺点以「given+defaults 数」回退
@@ -791,12 +778,8 @@ private:
     void emitBaseCtorChain(const std::string& className,
                            const ir::IRValue& thisVal, const SourceLocation& loc);
 
-    // 775（甲案·2026-10-15 用户裁决）：实例字段默认值注入——对 layerClass 的
-    //   本层字段（ownerClass==layerClass·defaultInitText 非空）逐字段写默认值；
-    //   偏移按 objClass 布局查（派生对象上注入基类层时 objClass=派生类）。
-    //   注入点=声明创建（genClassDefaultConstruct·全链）/显式构造（emitCtorInvoke
-    //   ·本类层）/基类构造链（emitBaseCtorChain·逐层）——顺序=默认值先、显式
-    //   赋值（构造体）随后覆盖（C++ NSDMI 语义）。
+    // 775（甲案）：实例字段默认值注入——本层字段逐字段写默认值（偏移按 objClass 布局查）；
+    //   注入点=声明创建/显式构造/基类链（顺序=默认值先·构造体后覆盖·C++ NSDMI 语义）。
     void emitClassFieldDefaults(const std::string& layerClass,
                                 const std::string& objClass,
                                 const ir::IRValue& objPtr,
@@ -827,6 +810,16 @@ private:
                                           CallExpr* node);
     void emitCtorInvoke(CallExpr* node, const std::string& className,
                         const ClassMemberInfo* ctor, const ir::IRValue& obj);
+    // 查询类方法成员（沿继承链；ownerClass 输出所属类）——936 拆分上提：
+    //   原 ir_oop_call.cpp 文件级 static，运算符重载族拆出（ir_oop_op_overload.cpp）
+    //   后跨文件共用 → 提为成员。定义=ir_oop.cpp。
+    const ClassMemberInfo* findClassMethod(const std::string& className,
+                                           const std::string& methodName,
+                                           std::string& ownerClass);
+    // 118（929）：引用返回方法的读值分叉判据（semantic 判定聚合内联）——
+    //   聚合 T（结构体/类容器元素=内联实宽存储·元素地址即对象本体）直传不
+    //   LoadPtr。936 拆分上提（同 findClassMethod：原 ir_oop_call.cpp static）。
+    bool refReturnAggInline(const ClassMemberInfo* m) const;
     // 情形B 成员方法调用族
     bool emitMemberMethodCall(CallExpr* node);
     // 返回：1=已处理；0=交回原路径；-1=非静态形态（fall-through 实例方法路径）

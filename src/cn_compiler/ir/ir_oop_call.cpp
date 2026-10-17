@@ -236,25 +236,7 @@ void IRGenerator::widenI128Args(std::vector<ir::IRValue>& args,
     }
 }
 
-// 118（929）：引用返回方法的读值分叉判据（semantic 判定聚合内联）——
-//   聚合 T（结构体/类容器元素=内联实宽存储·元素地址即对象本体）直传不 LoadPtr。
-static bool refReturnAggInline(const ISemanticView* sem, const ClassMemberInfo* m) {
-    if (sem == nullptr || m == nullptr || m->type.empty()) return false;
-    const std::string canon = types::canonical(m->type);
-    if (sem->isStructType(canon) || sem->isClassType(canon)) return true;
-    return false;
-}
-
 // ==================== 类方法调用/构造调用 ====================
-
-// 查询类方法成员（沿继承链；返回方法信息，ownerClass 输出所属类）
-// 供 IR 层判断虚/非虚、取 sigKey 与返回类型
-static const ClassMemberInfo* findClassMethod(
-    ISemanticView* semantic, const std::string& className,
-    const std::string& methodName, std::string& ownerClass) {
-    if (semantic == nullptr) return nullptr;
-    return semantic->lookupClassMember(className, methodName, ownerClass);
-}
 
 // 类调用处理（visitCallExpr 钩子）：
 //   返回 true 表示已处理（lastExpr_ 已设置），false 表示非类调用（交回原路径）
@@ -536,7 +518,7 @@ int IRGenerator::emitStaticMethodCall(CallExpr* node, MemberExpr* mem,
     if (!staticClassName.empty()) {
         std::string owner;
         const ClassMemberInfo* m =
-            findClassMethod(semantic_, staticClassName, methodName, owner);
+            findClassMethod(staticClassName, methodName, owner);
         if (m == nullptr) return 0;  // 非方法（静态字段等，交回原路径）
         if (!m->isStatic) return 0;  // 语义层已报错，防御跳过
         std::vector<ir::IRValue> args =
@@ -579,7 +561,7 @@ int IRGenerator::emitStaticMethodCall(CallExpr* node, MemberExpr* mem,
                                    methodSymbolKey(owner, m->sigKey), node->location);
             // 118（929）：引用返回读值默认 lvalue-to-rvalue（与直接函数调用
             //   ir_call P3-18 同构）；赋值目标/复合赋值/引用绑定语境经
-            if (m->isRefReturn && !suppressRefDeref_ && !refReturnAggInline(semantic_, m)) {
+            if (m->isRefReturn && !suppressRefDeref_ && !refReturnAggInline(m)) {
                 lastExpr_ = emitResult(ir::Opcode::LoadPtr, {lastExpr_},
                                        mapType(m->type.empty() ? "空类型" : m->type),
                                        "", node->location);
@@ -608,7 +590,7 @@ bool IRGenerator::emitInstanceMethodCall(CallExpr* node, MemberExpr* mem,
     }
     // 查方法成员（沿继承链；owner=声明类）
     std::string owner;
-    const ClassMemberInfo* m = findClassMethod(semantic_, canonObjForMethod, methodName, owner);
+    const ClassMemberInfo* m = findClassMethod(canonObjForMethod, methodName, owner);
     if (m == nullptr) return false;  // 非方法（字段访问等，交回原路径）
     if (m->isStatic) return false;   // 实例.静态方法 语义允许，但走静态路径（防御）
 
@@ -732,7 +714,7 @@ void IRGenerator::emitVirtualMethodCall(CallExpr* node, const ClassMemberInfo* m
                                extra, node->location);
         // 118（929）：引用返回读值默认 lvalue-to-rvalue（suppressRefDeref_
         //   抑制=赋值目标/绑定语境取地址——与直接函数调用同构）。
-        if (m->isRefReturn && !suppressRefDeref_ && !refReturnAggInline(semantic_, m)) {
+        if (m->isRefReturn && !suppressRefDeref_ && !refReturnAggInline(m)) {
             lastExpr_ = emitResult(ir::Opcode::LoadPtr, {lastExpr_},
                                    mapType(m->type.empty() ? "空类型" : m->type),
                                    "", node->location);
@@ -790,7 +772,7 @@ void IRGenerator::emitDirectMethodCall(CallExpr* node, const ClassMemberInfo* m,
                                methodSymbolKey(owner, m->sigKey), node->location);
         // 118（929）：引用返回读值默认 lvalue-to-rvalue（suppressRefDeref_
         //   抑制=赋值目标/绑定语境取地址——与直接函数调用同构）。
-        if (m->isRefReturn && !suppressRefDeref_ && !refReturnAggInline(semantic_, m)) {
+        if (m->isRefReturn && !suppressRefDeref_ && !refReturnAggInline(m)) {
             lastExpr_ = emitResult(ir::Opcode::LoadPtr, {lastExpr_},
                                    mapType(m->type.empty() ? "空类型" : m->type),
                                    "", node->location);
@@ -800,104 +782,8 @@ void IRGenerator::emitDirectMethodCall(CallExpr* node, const ClassMemberInfo* m,
 }
 
 
-// ==================== 运算符重载（visitBinaryExpr 钩子） ====================
-
-// 运算符 -> 方法符号（运算符X，与语义层 resolveOperatorOverload 的 opSym 一致）
-static std::string operatorSymText(Operator op) {
-    switch (op) {
-        case Operator::Add: return "+";
-        case Operator::Subtract: return "-";
-        case Operator::Multiply: return "*";
-        case Operator::Divide: return "/";
-        case Operator::Modulo: return "%";
-        case Operator::EqualEqual: return "==";
-        case Operator::BangEqual: return "!=";
-        case Operator::Less: return "<";
-        case Operator::Greater: return ">";
-        case Operator::LessEqual: return "<=";
-        case Operator::GreaterEqual: return ">=";
-        // P2-14：单目运算符符号（! ~；- 与二元减共用 Operator::Subtract）
-        case Operator::Bang: return "!";
-        case Operator::Tilde: return "~";
-        default: return "";
-    }
-}
-
-// 运算符重载降级：左操作数为类实例且类有 运算符X 成员 ->
-//   成员方法调用（this=左操作数指针，实参=右操作数）
-bool IRGenerator::handleOperatorOverload(BinaryExpr* node, const ir::IRValue& left,
-                                         const ir::IRValue& right) {
-    if (semantic_ == nullptr) return false;
-    const std::string opSym = operatorSymText(node->op);
-    if (opSym.empty()) return false;
-    const std::string leftSrcType = exprSrcType(node->left.get());
-    const std::string canonLeft = types::canonical(leftSrcType);
-    if (!semantic_->isClassType(canonLeft)) return false;
-    // 查 运算符X 成员（沿继承链）
-    std::string owner;
-    const ClassMemberInfo* m =
-        findClassMethod(semantic_, canonLeft, opSym, owner);
-    if (m == nullptr) return false;
-    // 调用：this=左操作数指针（left 已是类实例地址/对象指针），实参=右操作数
-    std::vector<ir::IRValue> args;
-    args.push_back(left);
-    args.push_back(right);
-    // 118（929）：引用返回运算符重载（运算符X -> T&）——ptr 地址 + 读值
-    //   lvalue-to-rvalue（运算结果恒右值消费；suppressRefDeref_ 同构防御）
-    const std::string resultType = m->isRefReturn
-                                       ? "ptr"
-                                       : mapType(m->type.empty() ? "空类型" : m->type);
-    if (resultType == "void" || resultType.empty()) {
-        emit(ir::Opcode::Call, args, ir::IRValue(),
-             methodSymbolKey(owner, m->sigKey), "void", node->location);
-        lastExpr_ = ir::IRValue();
-    } else {
-        lastExpr_ = emitResult(ir::Opcode::Call, args, resultType,
-                               methodSymbolKey(owner, m->sigKey), node->location);
-        if (m->isRefReturn && !suppressRefDeref_ && !refReturnAggInline(semantic_, m)) {
-            lastExpr_ = emitResult(ir::Opcode::LoadPtr, {lastExpr_},
-                                   mapType(m->type.empty() ? "空类型" : m->type),
-                                   "", node->location);
-        }
-    }
-    return true;
-}
-
-// P2-14：单目运算符重载（- ! ~）降级为成员方法调用（this=操作数指针，无右实参）
-bool IRGenerator::handleUnaryOperatorOverload(UnaryExpr* node, const ir::IRValue& operand) {
-    if (semantic_ == nullptr || node->postfix) return false;
-    const std::string opSym = operatorSymText(node->op);
-    if (opSym.empty()) return false;
-    const std::string srcType = exprSrcType(node->operand.get());
-    const std::string canon = types::canonical(srcType);
-    if (!semantic_->isClassType(canon)) return false;
-    // 查 运算符X 成员（沿继承链，0 参数单目）
-    std::string owner;
-    const ClassMemberInfo* m = findClassMethod(semantic_, canon, opSym, owner);
-    if (m == nullptr) return false;
-    // 单目调用：this=操作数指针，无右实参
-    std::vector<ir::IRValue> args;
-    args.push_back(operand);
-    // 118（929）：引用返回运算符重载同构（二元版同款注释）
-    const std::string resultType = m->isRefReturn
-                                       ? "ptr"
-                                       : mapType(m->type.empty() ? "空类型" : m->type);
-    if (resultType == "void" || resultType.empty()) {
-        emit(ir::Opcode::Call, args, ir::IRValue(),
-             methodSymbolKey(owner, m->sigKey), "void", node->location);
-        lastExpr_ = ir::IRValue();
-    } else {
-        lastExpr_ = emitResult(ir::Opcode::Call, args, resultType,
-                               methodSymbolKey(owner, m->sigKey), node->location);
-        if (m->isRefReturn && !suppressRefDeref_ && !refReturnAggInline(semantic_, m)) {
-            lastExpr_ = emitResult(ir::Opcode::LoadPtr, {lastExpr_},
-                                   mapType(m->type.empty() ? "空类型" : m->type),
-                                   "", node->location);
-        }
-    }
-    return true;
-}
-
+// ==================== 运算符重载族 → 936 拆分迁 ir_oop_op_overload.cpp ====================
+// （D1 行数整改先例 114-a/456-a：纯搬迁零行为变更 + 聚合返回 retbuf 预插同族修复）
 
 
 // 方法参数装载：this（自身）+ 显式参数进入 varStack_ 最外层作用域。

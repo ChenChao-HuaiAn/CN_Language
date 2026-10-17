@@ -195,7 +195,8 @@ target_link_libraries(cn_compiler_semantic PUBLIC cn_compiler_model cn_compiler_
 # IR模块库：CN-IR结构与IR生成器（Task 1.6 + Task 2.3 类型映射/字面量后缀 + 阶段3 OOP
 #   指令发射，供编译器与单元测试共用）
 # 阶段3 拆分子模块（单文件<=1000行约束）：ir_oop.cpp（类方法体提升/自身/父类/字段访问）、
-#   ir_oop_call.cpp（构造/虚调用/方法调用/运算符重载/DeleteObject）、
+#   ir_oop_call.cpp（构造/虚调用/方法调用/DeleteObject；运算符重载族 936 拆出至
+#   ir_oop_op_overload.cpp）、
 #   ir_error_ctor.cpp（结果/可选内置构造器降级）
 # D1 行数整改 112-a（单文件<=1000行约束）：ir_expr.cpp 2798 行按族拆分——
 #   ir_expr_unary.cpp（一元/三元）、ir_expr_assign.cpp（赋值）、
@@ -229,6 +230,10 @@ target_link_libraries(cn_compiler_semantic PUBLIC cn_compiler_model cn_compiler_
 # 728o（366 遗留·>900 警戒线先拆再加）：ir_expr.cpp 按族拆出——
 #   ir_expr_concat.cpp（字符串连接族②③搬移 + 连接链融合 pass）
 #   （搬移零行为变更 + 728o 新增融合；声明仍在 ir_generator.hpp）
+# 936（>900 警戒线先拆再加）：ir_oop_call.cpp 按族拆出——
+#   ir_oop_op_overload.cpp（运算符重载族：operatorSymText/handleOperatorOverload/
+#   handleUnaryOperatorOverload 搬移零行为变更 + 936 聚合返回 retbuf 预插同族修复；
+#   声明仍在 ir_generator.hpp；findClassMethod/refReturnAggInline 上提为成员）
 add_library(cn_compiler_ir STATIC
     src/cn_compiler/ir/ir.cpp
     src/cn_compiler/ir/ir_decl_extra.cpp
@@ -254,6 +259,7 @@ add_library(cn_compiler_ir STATIC
     src/cn_compiler/ir/ir_oop_call.cpp
     src/cn_compiler/ir/ir_oop_call_iface.cpp
     src/cn_compiler/ir/ir_oop_call_release.cpp
+    src/cn_compiler/ir/ir_oop_op_overload.cpp
     src/cn_compiler/ir/ir_error_ctor.cpp
     src/cn_compiler/ir/ir_fields.cpp
     src/cn_compiler/ir/ir_generic_func.cpp
