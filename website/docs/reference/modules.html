@@ -63,10 +63,95 @@
 <table class="表"><thead><tr><th>优先级</th><th>名字来源</th><th>说明</th></tr></thead><tbody><tr><td>1</td><td>本地作用域</td><td>局部变量/参数</td></tr><tr><td>2</td><td>当前模块符号</td><td>本文件顶层声明+已导入符号（公开符号合并）</td></tr><tr><td>3</td><td>内置函数/构造器</td><td>打印/字符串长度/分配…与 正常/错误/某些/转移/复制 等</td></tr></tbody></table>
 <div class="批注 批注-绿"><span class="批注-题">stdlib 与内置的名字分工</span>标准库模块公开函数与内置<strong>纯名不冲突</strong>：如 stdlib IO 模块的 <code>读取行()</code>（返回 结果）与内置 <code>IO::读取行()</code>（返回裸串）以限定名区分。业务代码用 stdlib 包装版（显式错误处理），内置为底层。</div>
 <h2 id="货舱">工程组织：货舱.toml</h2>
-<ul><li>多文件工程由 <code>货舱.toml</code> 声明模块依赖；编译器默认按入口文件同目录自动发现（<code>--货舱 路径</code> 显式指定）。</li><li>标准库随编译器分发（<code>--stdlib 路径</code> 可指定）；<code>stdlib/*.cn</code> 本身就是「模块=文件」的活样板。</li><li>跨模块链接符号冲突（同名公开函数）在导入解析期诊断。</li></ul><nav class="页脚导航"><a class="" href="../reference/concurrency.html"><span class="向">← 上一页</span><span class="题">并发</span></a><a class="下一" href="../cli.html"><span class="向">下一页 →</span><span class="题">命令行参考</span></a></nav></article>
+<ul><li>多文件工程由 <code>货舱.toml</code> 声明模块依赖；编译器默认按入口文件同目录自动发现（<code>--货舱 路径</code> 显式指定）。</li><li>标准库随编译器分发（<code>--stdlib 路径</code> 可指定）；<code>stdlib/*.cn</code> 本身就是「模块=文件」的活样板。</li><li>跨模块链接符号冲突（同名公开函数）在导入解析期诊断。</li></ul>
+<h3 id="特性声明制（[特性]）">特性声明制（[特性]）</h3>
+<p>宏名的受控来源：<code>[特性]</code> 节声明启用名单，每个启用特性即一个条件编译旗标（与 <code>-D</code> 同通道）——声明制=宏名有单一事实来源（对齐 Cargo features）。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">货舱.toml（片段）</span><span class="码窗-徽">TOML</span></p><pre><code class="language-cn">[货舱]
+名称 = "特性示例包"
+
+[特性]
+启用 = ["网络", "压缩"]</code></pre></div>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">特性开关.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">函数 主() -&gt; 整32 {
+    #如果定义(网络)
+    打印("网络: 命中");
+    #结束如果
+    #如果定义 图形
+    打印("图形: 命中");
+    #结束如果
+    打印("主程序运行");
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：主程序运行
+</p>
+<ul><li>上例按本页默认构建（未启用任何特性）只剩「主程序运行」一行；同目录放入<code>[特性] 启用 = ["网络"]</code> 的 货舱.toml 后，同一源码输出「网络: 命中」「主程序运行」两行（<code>-D 网络</code> 等效）。</li><li><code>启用 = []</code> 空数组合法（无旗标命中）；值不是字符串数组=货舱.toml 解析错误拒绝。</li></ul>
+<h2 id="包与crate">包与 crate：多包工程</h2>
+<p>包（crate）= 一个 <code>货舱.toml</code> 描述的编译单元，也是<strong>命名空间边界</strong>——跨包同名符号互不冲突（链接符号带 <code>包名$</code> 前缀）。包根 <code>包.cn</code> 聚合包内模块并再导出公共 API。</p>
+<table class="表"><thead><tr><th>概念</th><th>形态</th><th>要点</th></tr></thead><tbody><tr><td>包 / crate</td><td><code>货舱.toml</code> + <code>依赖/</code> 子目录</td><td>一个编译单元、一个命名空间边界；本地依赖放 <code>依赖/包名/</code></td></tr><tr><td>包根</td><td><code>包.cn</code></td><td><code>模块 包名;</code> 聚合 + <code>公开 导入</code> 再导出</td></tr><tr><td>跨包导入</td><td><code>导入 网络库::连接</code></td><td>包名作路径首段——消费方不感知包内文件划分</td></tr><tr><td>同名隔离</td><td>链接符号 <code>包名$</code> 前缀</td><td><code>甲库::双倍</code> 与 <code>乙库::双倍</code> 各自独立</td></tr><tr><td>核心包 prelude</td><td>默认可见</td><td><code>打印</code>/字符串 API/<code>数学::</code> 限定名等基础项无需导入</td></tr></tbody></table>
+<h3 id="包根与再导出：工程断面">包根与再导出：工程断面</h3>
+<p>实测断面：主程序经 <code>货舱.toml</code> 依赖本地包 图形库；包根 <code>包.cn</code> 再导出内部模块的 <code>绘制</code>——消费方只导入 <code>图形库::绘制</code> 即可用（输出 <code>绘制: 7</code>）。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">货舱.toml（主程序）</span><span class="码窗-徽">TOML</span></p><pre><code class="language-cn">[货舱]
+名称 = "主程序"
+版本 = "0.1.0"
+
+[依赖]
+图形库 = "本地"
+核心 = "内置"</code></pre></div>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">依赖/图形库/包.cn（包根）</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 图形库 crate 根：聚合模块 + 公开 导入 再导出
+模块 图形库;
+
+公开 导入 图形库::绘制;</code></pre></div>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">依赖/图形库/图形库.cn（包内模块）</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 图形库 模块（crate 内部模块）
+公开:
+函数 绘制() -&gt; 整32 {
+    返回 7;
+}</code></pre></div>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn（消费方）</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">导入 图形库::绘制;
+
+函数 主() -&gt; 整32 {
+    打印("绘制: ", 绘制());
+    返回 0;
+}</code></pre></div>
+<h3 id="跨包同名：命名空间隔离">跨包同名：命名空间隔离</h3>
+<p>两个库包各自定义同名公开函数 <code>双倍</code>——符号加 <code>包名$</code> 前缀隔离，互不冲突；消费方以「花括号 + <code>作为</code>」重命名导入同时使用（实测输出 <code>12 18</code>）。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">依赖/甲库/甲库.cn 与 依赖/乙库/乙库.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// —— 依赖/甲库/甲库.cn ——
+公开:
+函数 双倍(整32 x) -&gt; 整32 {
+    返回 2 * x;
+}
+
+// —— 依赖/乙库/乙库.cn（同名·独立命名空间）——
+公开:
+函数 双倍(整32 x) -&gt; 整32 {
+    返回 3 * x;
+}</code></pre></div>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn（重命名导入双包）</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">导入 甲库::{双倍 作为 甲库双倍};
+导入 乙库::{双倍 作为 乙库双倍};
+
+函数 主() -&gt; 整32 {
+    打印(甲库双倍(6), " ", 乙库双倍(6));   // 12 18
+    返回 0;
+}</code></pre></div>
+<h3 id="核心包 prelude">核心包 prelude</h3>
+<p>核心包基础项默认可见（等价隐式 <code>导入 核心::*</code>）——以下程序<strong>无任何导入语句</strong>：</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">prelude.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">函数 主() -&gt; 整32 {
+    打印("prelude 打印 可用");
+    打印("数学::平方根(9.0) = ", 数学::平方根(9.0));
+    打印("整数转字符串(42) = ", 整数转字符串(42));
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：prelude 打印 可用
+数学::平方根(9.0) = 3.000000
+整数转字符串(42) = 42
+</p>
+<h3 id="缺失依赖=编译拒绝">缺失依赖=编译拒绝</h3>
+<p>引用未声明的包（<code>货舱.toml [依赖]</code> 无此包）=编译期拒绝（诊断「未声明的标识符」），不会拖到链接期才暴露：</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">跨包缺失依赖.cn（负例·编译拒绝）</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">函数 主() -&gt; 整32 {
+    整32 甲 = 幽灵包::取值();
+    返回 0;
+}</code></pre></div><nav class="页脚导航"><a class="" href="../reference/concurrency.html"><span class="向">← 上一页</span><span class="题">并发</span></a><a class="下一" href="../cli.html"><span class="向">下一页 →</span><span class="题">命令行参考</span></a></nav></article>
     <aside class="目录" aria-label="本页目录">
       <p class="目录-题">本页目录</p>
-<a href="#导入">导入形态</a><a href="#内置命名空间">内置命名空间与三层名字解析</a><a href="#货舱">工程组织：货舱.toml</a>
+<a href="#导入">导入形态</a><a href="#内置命名空间">内置命名空间与三层名字解析</a><a href="#货舱">工程组织：货舱.toml</a><a href="#包与crate">包与 crate：多包工程</a>
     </aside>
   </div>
 </main>
@@ -106,7 +191,7 @@
     </div>
     <div class="页脚-底">
       <span>© 2026 CN 语言项目</span>
-      <span>文档基线：任务/1001 e0ef4a01·2026-10-17·示例经编译器实测</span>
+      <span>文档基线：任务/1002 6287413e·2026-10-17·示例经编译器实测</span>
       <span>京ICP备00000000号（备案办理中·占位）</span>
     </div>
   </div>

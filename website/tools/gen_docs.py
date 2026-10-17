@@ -286,14 +286,14 @@ def 骨架(题名, 描述, 正文html, 目录项, 当前路径, 页脚导航, �
 
 
 # ---------------------------------------------------------------- 条目渲染
-def 码窗(名, 代码, 输出=None):
+def 码窗(名, 代码, 输出=None, 徽="CN"):
     out = ""
     if 输出 is not None:
         out = ('\n<p class="输出行">输出：%s</p>' % esc(输出))
     return ('<div class="码窗"><p class="码窗-顶"><span class="码窗-名">%s</span>'
-            '<span class="码窗-徽">CN</span></p>'
+            '<span class="码窗-徽">%s</span></p>'
             '<pre><code class="language-cn">%s</code></pre></div>%s'
-            % (esc(名), esc(代码.strip("\n")), out))
+            % (esc(名), esc(徽), esc(代码.strip("\n")), out))
 
 
 def 条目html(条, 页导入, 综合窗名=None):
@@ -417,6 +417,10 @@ def 块html(块):
         return ('<div class="码窗"><p class="码窗-顶"><span class="码窗-名">%s</span>'
                 '<span class="码窗-徽">SHELL</span></p>'
                 '<pre><code>%s</code></pre></div>' % (esc(块[1]), esc(块[2].strip("\n"))))
+    if t == "码览":
+        # 展示专用码窗（多包工程断面等多文件实测素材）：只展示不进 --verify
+        # （素材随 E2E 双编译实测，无法在单文件临时目录中独立复现）；徽默认 CN
+        return 码窗(块[1], 块[2], 徽=块[3] if len(块) > 3 else "CN")
     if t == "码":
         名, 代码, 输出 = 块[1], 块[2], 块[3] if len(块) > 3 else None
         return 码窗(名, 代码, 输出)

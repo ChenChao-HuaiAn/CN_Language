@@ -52,7 +52,7 @@
 <table class="表"><thead><tr><th>类型</th><th>大小</th><th>说明</th></tr></thead><tbody><tr><td><code>浮32</code></td><td>4B</td><td>IEEE 754 单精度；字面量后缀 <code>f</code></td></tr><tr><td><code>浮64</code>（别名 <code>小数</code>）</td><td>8B</td><td>IEEE 754 双精度；<code>整数</code> 别名=整32</td></tr><tr><td><code>布尔</code></td><td>1B</td><td><code>真</code> / <code>假</code></td></tr><tr><td><code>字符</code></td><td>4B</td><td>Unicode 标量值（一个中文字=一个字符）</td></tr><tr><td><code>字符串</code></td><td>-</td><td>UTF-8 拥有型（\0 结尾·堆上·RAII）；<code>字符*</code> 为借用视图</td></tr><tr><td><code>空类型</code></td><td>-</td><td>void：函数无返回值/空指针基类型</td></tr></tbody></table>
 <h2 id="转换">类型转换：显式位模式语义</h2>
 <p><code>类型名(表达式)</code> 构造转换覆盖宽化/窄化/浮整/指针↔整数；规则与 Rust <code>as</code> 逐条同款。</p>
-<table class="表"><thead><tr><th>方向</th><th>语义</th><th>例</th></tr></thead><tbody><tr><td>宽化（隐式放行）</td><td>有符号源=符号扩展；无符号源=零扩展</td><td><code>整64 大 = 整32值;</code></td></tr><tr><td>同宽跨符号（显式）</td><td>位模式重解释</td><td><code>整64(正64(2^63))</code> = -2^63</td></tr><tr><td>降宽（显式）</td><td>低位截断</td><td><code>整32(大值)</code> 取低 32 位</td></tr><tr><td>浮→整（显式）</td><td>截断（向零取整）</td><td><code>整32(3.99)</code> = 3</td></tr><tr><td>整→浮（显式）</td><td>精确转换</td><td><code>浮64(3) / 4</code> = 0.75</td></tr><tr><td>指针↔整数（显式）</td><td>位模式往返</td><td><code>整64(指针)</code> / <code>指针(地址)</code></td></tr></tbody></table>
+<table class="表"><thead><tr><th>方向</th><th>语义</th><th>例</th></tr></thead><tbody><tr><td>宽化（隐式放行）</td><td>有符号源=符号扩展；无符号源=零扩展</td><td><code>整64 大 = 整32值;</code></td></tr><tr><td>同宽跨符号（显式）</td><td>位模式重解释</td><td><code>整64(正64(2^63))</code> = -2^63</td></tr><tr><td>降宽（显式）</td><td>低位截断</td><td><code>整32(大值)</code> 取低 32 位</td></tr><tr><td>浮→整/字符（显式）</td><td>饱和截断（非 UB·NaN→0、超域钳制到边界，详下节）</td><td><code>整32(3.99)</code> = 3；<code>整32(1.0e18)</code> = 2147483647</td></tr><tr><td>整→浮（显式）</td><td>精确转换</td><td><code>浮64(3) / 4</code> = 0.75</td></tr><tr><td>指针↔整数（显式）</td><td>位模式往返</td><td><code>整64(指针)</code> / <code>指针(地址)</code></td></tr></tbody></table>
 <div class="批注 批注-赭"><span class="批注-题">混合符号禁隐式</span>有符号（整N）×无符号（正M）的<strong>变量间</strong>二元运算/赋值/传参一律编译期拒绝（隐式宽化会静默反转值语义）；<strong>字面量豁免</strong>——一侧为字面量时按另一侧类型参与（<code>正64 b = 5</code>、<code>大 &gt; 100</code> 照常）。同符号混合宽度维持宽化放行。</div>
 <div class="码窗"><p class="码窗-顶"><span class="码窗-名">转换实证.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">函数 主() -&gt; 整32 {
     正64 位模式 = 正64(整32(-1));     // 符号扩展 → 2^64-1
@@ -65,6 +65,46 @@
 <p class="输出行">输出：真 3
 真
 </p>
+<h3 id="浮点→整数/字符：饱和截断">浮点→整数/字符：饱和截断</h3>
+<p>浮源显式转换<strong>全定义、零 UB</strong>——C 系的超域/NaN 未定义行为在此不存在；语义与 Rust <code>as</code> 逐条对齐。整数族间的位模式变换（上表）不受影响——浮点→整数不在位模式变换域内。</p>
+<table class="表"><thead><tr><th>输入</th><th>结果</th></tr></thead><tbody><tr><td>NaN</td><td><code>0</code></td></tr><tr><td>正超域（含 +inf）</td><td>目标类型 MAX（整N 为 2^(N-1)-1，正N 为 2^N-1）</td></tr><tr><td>负超域（含 -inf）</td><td>有符号目标 MIN；无符号目标 <code>0</code></td></tr><tr><td>域内</td><td>向零截断（<code>整32(3.99) = 3</code>、<code>整32(-3.99) = -3</code>）</td></tr><tr><td>字符目标</td><td>按 Unicode 标量域 <code>[0, 0x10FFFF]</code> 钳制：上超域→<code>0x10FFFF</code>、非正值→<code>0</code>；代理区 <code>[0xD800, 0xDFFF]</code> 域内<strong>透传</strong></td></tr><tr><td>常数 vs 运行期</td><td>编译期常量折叠与运行期三后端发射<strong>同语义</strong></td></tr></tbody></table>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">饱和截断.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">函数 主() -&gt; 整32 {
+    // 编译期常量形态（字面量直转）
+    打印("整32(1.0e18) = ", 整32(1.0e18));        // 正超域 → MAX
+    打印("整32(3.99) = ", 整32(3.99));            // 域内 → 向零截断
+    打印("整64(1.0e19) = ", 整64(1.0e19));
+    // 运行期变量形态（与常量同语义）
+    浮64 负超 = -1.0e18;
+    浮64 非数 = 0.0 / 0.0;
+    打印("整32(-1.0e18) = ", 整32(负超));         // 负超域 → MIN
+    打印("整32(NaN) = ", 整32(非数));             // NaN → 0
+    打印("正16(-1.0e5) = ", 整64(正16(-100000.0)));   // 无符号负超域 → 0
+    打印("正64(1.0e20) = ", 正64(1.0e20));        // 无符号上超域 → MAX
+    // 字符目标：Unicode 标量域钳制
+    打印("字符(1.0e18) = ", 整32(字符(1.0e18)));      // 上超域 → 0x10FFFF
+    打印("字符(-5.0) = ", 整32(字符(-5.0)));          // 非正值 → 0
+    打印("字符(65.9) = ", 整32(字符(65.9)));          // 向零截断
+    打印("字符(55296.0) = ", 整32(字符(55296.0)));    // 代理区透传
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：整32(1.0e18) = 2147483647
+整32(3.99) = 3
+整64(1.0e19) = 9223372036854775807
+整32(-1.0e18) = -2147483648
+整32(NaN) = 0
+正16(-1.0e5) = 0
+正64(1.0e20) = 18446744073709551615
+字符(1.0e18) = 1114111
+字符(-5.0) = 0
+字符(65.9) = 65
+字符(55296.0) = 55296
+</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">浮转字符隐式拒绝.cn（负例·编译拒绝）</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">函数 主() -&gt; 整32 {
+    字符 甲 = 1.5;              // ✗ 浮→字符只有显式通道
+    打印行(整32(甲));
+    返回 0;
+}</code></pre></div>
+<ul><li>适用面：显式 <code>整N(浮表达式)</code> / <code>正N(浮表达式)</code> / <code>字符(浮表达式)</code>（浮32/浮64 源一律覆盖——含浮32→整128/正128 全宽）。</li><li>浮→字符的唯一通道是显式转换（隐式初始化/赋值无一例外拒绝）；整数→字符维持位模式互通不受影响。</li></ul>
 <h2 id="确定初始化">确定初始化（def-init）</h2>
 <p>未初始化的局部值类型变量<strong>不得读取</strong>——编译期数据流拒绝（Rust E0381 对照），零运行时成本。</p>
 <table class="表"><thead><tr><th>面</th><th>内容</th></tr></thead><tbody><tr><td>登记</td><td>无初始化器的纯值类型声明：标量、数组（元素级跟踪）、结构体（叶子字段级）</td></tr><tr><td>置位</td><td>赋值（含下标/字段左值）、复合赋值、自增自减（先读后写·读面拒绝）</td></tr><tr><td>豁免</td><td>拥有型（类/容器/字符串/结果/可选——默认构造兜底）、指针/引用、函数参数；<code>静态</code> 豁免仅限<strong>顶层</strong>静态（无初值=零初始化）——函数内 <code>静态 类型 名;</code> 无初值=<strong>编译拒绝</strong>（须显式初值·Rust static 同款）</td></tr><tr><td>控制流敏感</td><td>如果=两支汇合取并集；返回终止的分支不参与；当/循环体内赋值不外溢（可能 0 次执行）</td></tr><tr><td>取地址=初始化通道</td><td><code>&amp;x</code> 视为「可能被写」（出参惯用法）——取地址后读取放行</td></tr></tbody></table>
@@ -139,7 +179,7 @@
     </div>
     <div class="页脚-底">
       <span>© 2026 CN 语言项目</span>
-      <span>文档基线：任务/1001 e0ef4a01·2026-10-17·示例经编译器实测</span>
+      <span>文档基线：任务/1002 6287413e·2026-10-17·示例经编译器实测</span>
       <span>京ICP备00000000号（备案办理中·占位）</span>
     </div>
   </div>

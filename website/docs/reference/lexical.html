@@ -80,10 +80,57 @@
 <table class="表"><thead><tr><th>优先级</th><th>运算符</th><th>说明</th></tr></thead><tbody><tr><td>13（最高）</td><td><code>()</code> <code>[]</code> <code>.</code> <code>++</code> <code>--</code> <code>?</code></td><td>后缀：调用/下标/成员/后缀自增自减（值=原值）/后缀错误传播</td></tr><tr><td>12</td><td><code>!</code> <code>~</code> <code>-</code> <code>++</code> <code>--</code> <code>*</code> <code>&amp;</code></td><td>一元：非/按位非/负/前缀自增自减（值=新值）/解引用/取地址</td></tr><tr><td>11</td><td><code>*</code> <code>/</code> <code>%</code></td><td>乘除余</td></tr><tr><td>10</td><td><code>+</code> <code>-</code></td><td>加减（字符串 + 数值 自动拼接）</td></tr><tr><td>9</td><td><code>&lt;&lt;</code> <code>&gt;&gt;</code></td><td>移位（超宽=确定性失败：常量移位量编译期硬错误、变量移位量错误码 8；丢高位不属检查对象）</td></tr><tr><td>8</td><td><code>&lt;</code> <code>&lt;=</code> <code>&gt;</code> <code>&gt;=</code></td><td>关系（字符串=字典序）</td></tr><tr><td>7</td><td><code>==</code> <code>!=</code></td><td>相等（字符串=内容比较）</td></tr><tr><td>6</td><td><code>&amp;</code></td><td>按位与</td></tr><tr><td>5</td><td><code>^</code></td><td>按位异或</td></tr><tr><td>4</td><td><code>|</code></td><td>按位或</td></tr><tr><td>3</td><td><code>&amp;&amp;</code></td><td>逻辑与（短路）</td></tr><tr><td>2</td><td><code>||</code></td><td>逻辑或（短路）</td></tr><tr><td>1.5</td><td><code>条件 ? 真值 : 假值</code></td><td>三元（右结合·惰性求值）</td></tr><tr><td>1（最低）</td><td><code>=</code> <code>+=</code> <code>-=</code> …</td><td>赋值与复合赋值</td></tr></tbody></table>
 <ul><li>位运算仅整型；<code>&gt;&gt;</code> 有符号=算术右移、无符号=逻辑右移；<code>~x</code> ≡ <code>x ^ -1</code>。</li><li>成员访问统一 <code>.</code>，指针左侧自动解引用一级；<code>-&gt;</code> 已废除（仅保留于返回类型标注 <code>-&gt; 类型</code>）。</li><li><code>&amp;类变量</code> 产对象地址（非句柄槽地址）；<code>&amp;标量/结构体</code> =槽地址。</li><li>类/结构体可重载的运算符集合与决议规则见<a href="oop.html#重载">类与对象·运算符重载</a>。</li></ul>
 <h2 id="语句终止">语句终止：分号强制</h2>
-<p>每条语句必须以 <code>;</code> 结束（C/Rust 同款）；换行是纯空白，表达式内可自由续行。行尾漏分号=语法错误，不存在自动分号插入——行首/行尾词法拼接类事故被结构性根除。</p><nav class="页脚导航"><a class="" href="../tutorial-advanced.html"><span class="向">← 上一页</span><span class="题">教程·进阶篇</span></a><a class="下一" href="../reference/types.html"><span class="向">下一页 →</span><span class="题">类型系统</span></a></nav></article>
+<p>每条语句必须以 <code>;</code> 结束（C/Rust 同款）；换行是纯空白，表达式内可自由续行。行尾漏分号=语法错误，不存在自动分号插入——行首/行尾词法拼接类事故被结构性根除。</p>
+<h2 id="条件编译">条件编译（#定义 / #如果定义）</h2>
+<p>编译期开关：以宏旗标在<strong>词法层</strong>裁剪源码分支——被裁分支不产生任何 token。宏是无值旗标；没有带参宏、宏体展开与 <code>#包含</code>（这些职责由模块系统与常量表达式承担）。</p>
+<table class="表"><thead><tr><th>指令</th><th>形态</th><th>说明</th></tr></thead><tbody><tr><td><code>#定义 宏名</code></td><td>整行（行首可缩进）</td><td>定义宏（无值旗标·仅存在性判定）；父层被裁剪时不生效</td></tr><tr><td><code>#如果定义(宏名)</code> 或 <code>#如果定义 宏名</code></td><td>整行</td><td>条件开始：括号形式与空白形式等价</td></tr><tr><td><code>#否则</code></td><td>整行</td><td>条件分支（每层至多一个）</td></tr><tr><td><code>#结束如果</code></td><td>整行</td><td>条件结束（与 <code>#如果定义</code> 严格配对；纯空分支合法）</td></tr></tbody></table>
+<div class="批注 批注-绿"><span class="批注-题">词法层裁剪模型</span>非选中分支的整行在词法层被替换为空白（行号与换行保留）——不产生任何 token，<strong>即使内含语法错误也不诊断</strong>。宏名由 ASCII 字母/数字/下划线或中文组成。</div>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">条件编译.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">#定义 发布模式
+
+函数 主() -&gt; 整32 {
+    // 1. #如果定义 / #否则：源内宏定义生效
+    #如果定义 发布模式
+    打印("发布模式: 开启");
+    #否则
+    打印("发布模式: 关闭");
+    #结束如果
+
+    // 2. 未定义宏的分支被裁剪——内含非法写法也不诊断
+    #如果定义 不存在的宏
+    这一段是非法语法：它不产生 token，也不参与解析
+    #否则
+    打印("未定义宏分支: 已裁剪");
+    #结束如果
+
+    // 3. 嵌套两层：父层被裁剪时内层恒假
+    #如果定义 发布模式
+    #如果定义 调试模式
+    打印("内层: 调试");
+    #否则
+    打印("内层: 非调试");
+    #结束如果
+    #结束如果
+
+    // 4. 括号形式与空白形式等价
+    #如果定义(发布模式)
+    打印("括号形式: 命中");
+    #结束如果
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：发布模式: 开启
+未定义宏分支: 已裁剪
+内层: 非调试
+括号形式: 命中
+</p>
+<ul><li>嵌套：条件块可嵌套（上例第 3 段）——父层被裁剪时，内层 <code>#定义</code> 不生效、内层 <code>#如果定义</code> 恒假（C 语义）。</li><li>上游注入：命令行 <code>-D 宏名</code>（可多次）与货舱.toml <code>[特性]</code> 的启用名单并入同一宏集合，等价源内 <code>#定义</code>——见<a href="../cli.html#选项">命令行参考·选项</a>、<a href="modules.html#货舱">模块系统·货舱</a>。</li><li>行尾无关性：裁剪与源文件行尾格式（CRLF/LF）无关，两种行尾形态编译产物一致。</li><li>不支持：带参宏、宏体展开、<code>#包含</code>、<code>#取消定义</code>、常量表达式条件——与 C 预处理器的能力边界划清。</li></ul>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">未闭合条件编译.cn（负例·编译拒绝）</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">函数 主() -&gt; 整32 {
+    #如果定义 未闭合宏
+    打印行("无结束如果");
+    返回 0;
+}</code></pre></div><nav class="页脚导航"><a class="" href="../tutorial-advanced.html"><span class="向">← 上一页</span><span class="题">教程·进阶篇</span></a><a class="下一" href="../reference/types.html"><span class="向">下一页 →</span><span class="题">类型系统</span></a></nav></article>
     <aside class="目录" aria-label="本页目录">
       <p class="目录-题">本页目录</p>
-<a href="#源文件">源文件与注释</a><a href="#关键字">关键字全表：46 个保留字 + 上下文关键字</a><a href="#字面量">字面量</a><a href="#优先级">运算符与 13 级优先级</a><a href="#语句终止">语句终止：分号强制</a>
+<a href="#源文件">源文件与注释</a><a href="#关键字">关键字全表：46 个保留字 + 上下文关键字</a><a href="#字面量">字面量</a><a href="#优先级">运算符与 13 级优先级</a><a href="#语句终止">语句终止：分号强制</a><a href="#条件编译">条件编译（#定义 / #如果定义）</a>
     </aside>
   </div>
 </main>
@@ -123,7 +170,7 @@
     </div>
     <div class="页脚-底">
       <span>© 2026 CN 语言项目</span>
-      <span>文档基线：任务/1001 e0ef4a01·2026-10-17·示例经编译器实测</span>
+      <span>文档基线：任务/1002 6287413e·2026-10-17·示例经编译器实测</span>
       <span>京ICP备00000000号（备案办理中·占位）</span>
     </div>
   </div>
