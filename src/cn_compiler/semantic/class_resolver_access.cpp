@@ -253,6 +253,22 @@ void SemanticAnalyzer::checkSingleMethodBody(ClassInfo& info, ClassMemberInfo& m
         const bool savedIsRefReturn633 = currentIsRefReturn_;
         currentIsRefReturn_ = !member->returnType.empty() &&
                               types::isReference(member->returnType);
+        // 928（#928·633 同段第三缺口·零分叉）：引用参数/常量引用参数/参数名集
+        //   本位保存+收集——原仅 visitFunctionDecl 收集 → 方法体
+        //   isRefParamForCurrentFn 恒假 → `函数 取货(货架& 源) -> 货架& { 返回 源; }`
+        //   被「引用返回不能返回局部变量的地址（'源'）」**误拒**（参数经
+        //   declareVar 入方法作用域 → isCurrentFnLocal 真；引用参数指向调用方
+        //   存储=合法借出面）。v2 检查方法 经 清空当前引用参数/登记函数参数们
+        //   已收集（放行）——本补齐=宿主与 v2 同锚（零分叉）。
+        //   保存/恢复配对（嵌套安全·泛型实例化重入不丢外层登记）。
+        const std::unordered_set<std::string> savedRefParams928 = currentRefParams_;
+        const std::unordered_set<std::string> savedConstRefParams928 =
+            currentConstRefParams_;
+        const std::unordered_set<std::string> savedFnParamNames928 =
+            currentFnParamNames_;
+        currentRefParams_.clear();
+        currentConstRefParams_.clear();
+        currentFnParamNames_.clear();
         // 参数入作用域（方法参数 + this 隐式参数 + 类字段）
         pushScope();
         // 隐式 this 参数（自身 表达式类型）
@@ -305,6 +321,13 @@ void SemanticAnalyzer::checkSingleMethodBody(ClassInfo& info, ClassMemberInfo& m
                 !types::isReference(ptype)) {
                 curStringParamDecls_.emplace_back(p->name, p);
             }
+            // 928：引用参数名集本位收集（visitFunctionDecl 同款——引用返回
+            //   局部检查豁免 / 字符串借用返回「参数=借用」判定消费）
+            if (!p->funcPtr.isFunctionPtr() && types::isReference(ptype)) {
+                currentRefParams_.insert(p->name);
+            }
+            if (p->isConstParam) currentConstRefParams_.insert(p->name);
+            currentFnParamNames_.insert(p->name);
         }
         // 类字段并入方法作用域（直接字段访问，Task 3.1）：
         //   方法体内 字段名 = 值 与 字段名 读取 直接解析为实例字段。
@@ -422,6 +445,10 @@ void SemanticAnalyzer::checkSingleMethodBody(ClassInfo& info, ClassMemberInfo& m
         // 633：方法体函数级上下文恢复（引用返回 + 函数作用域起点）
         currentIsRefReturn_ = savedIsRefReturn633;
         funcScopeStart_ = savedFuncScopeStart633;
+        // 928：引用参数/常量引用参数/参数名集本位恢复（嵌套安全·配对入口）
+        currentRefParams_ = savedRefParams928;
+        currentConstRefParams_ = savedConstRefParams928;
+        currentFnParamNames_ = savedFnParamNames928;
         popScope();
         // 616：字符串值形参集复位（标记已完成落 AST·与 checkFunctionBody 对称）
         curStringParamDecls_.clear();
