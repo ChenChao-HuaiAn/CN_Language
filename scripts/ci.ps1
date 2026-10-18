@@ -67,6 +67,10 @@ Write-Host "[CI] 3.5/4 arm64 位宽编码门禁（D31 方案C④·258-a：E2E �
 python scripts/check_asm_width.py --cn target/Debug/cn.exe
 if ($LASTEXITCODE -ne 0) { Write-Host "[CI] arm64 位宽编码门禁失败" -ForegroundColor Red; exit 1 }
 
+Write-Host "[CI] 3.55/4 交叉汇编守卫序列对照门禁（887·835 病根立法化：内嵌探针×三后端 -O0 汇编的守卫判定序列机械对照·秒级）..." -ForegroundColor Cyan
+python scripts/check_cross_asm_guards.py --cn target/Debug/cn.exe
+if ($LASTEXITCODE -ne 0) { Write-Host "[CI] 交叉汇编守卫序列对照门禁失败" -ForegroundColor Red; exit 1 }
+
 Write-Host "[CI] 3.6/4 源码覆盖率门禁（检查网第 3 层·plans/026 §2.8·仅 -Coverage 时跑；linux gcov 口径）..." -ForegroundColor Cyan
 if ($Coverage) {
     if (Test-Path "target/cov/cn") {

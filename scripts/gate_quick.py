@@ -209,6 +209,22 @@ if _跑示例验证:
              env=dict(os.environ, CN_EXE=str(单测.parent / ("cn.exe" if 是win else "cn")))):
         raise SystemExit(1)
 
+# ③.6 交叉汇编守卫序列对照（887·835 病根立法化·2026-10-16 用户令立案）：内嵌
+#   探针 × 三后端 --target compile -O0（只产汇编不调 as/ld·实测 ~0.2s）——
+#   溢出/判零/移位域守卫判定序列机械对照（ERROR 块向前重建谓词+语义期望对表+
+#   三平台互照），835「条件码写反」同族笔误必红。条件步与官网示例验证同源写集
+#   判定（触代码生成相关面 src//v2//plans/001 时跑）；写集取不到=fail-safe 照跑。
+_跑守卫对照 = _写集 is None or any(
+    p.startswith(("src/", "CN语言编译器v2/", "plans/001",
+                  "scripts/check_cross_asm_guards.py")) for p in _写集)
+if not _跑守卫对照:
+    print("[verify] 写集未触 src/v2/plans/001——跳过交叉汇编守卫对照（云端兜底）", flush=True)
+else:
+    if not 步("交叉汇编守卫对照", [sys.executable, "scripts/check_cross_asm_guards.py",
+                                  "--cn", str(单测.parent / ("cn.exe" if 是win else "cn"))],
+             超时秒=静态超时):
+        raise SystemExit(1)
+
 # ④ L2 影响面子集（--l2·924 首版保守映射：写集中新增/改动的 E2E 用例目录全跑 +
 #    触 CN语言编译器v2/ 树加跑 v2 面；src 模块→用例关键词精映射=后续演进（025 §1.99 边界）。
 #    映射不覆盖的改动=诚实兜底：提示走 L3 云端全量，不静默漏。）

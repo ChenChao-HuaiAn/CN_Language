@@ -426,11 +426,19 @@ void X64CodeGenerator::emitIntMul(AsmWriter& writer, const ir::IRInstruction& in
         }
         writer.line("imul rax, rcx");
         if (needOvf) {
+            // 887（交叉汇编门禁首抓·835 同族「条件码写反」）：原 `jz @ovfN` 的
+            //   目标标签就发在下一条（`@ovfN:` 紧跟 jz）——跳与不跳都落错误块，
+            //   正32 乘法 100*3 实测恒报「运行时错误(错误码8)」（rc=1 实锤）。
+            //   修为反向结构：高 32 为 0（未溢出）跳 @ovfN_ok 越过错误块；
+            //   高 32 非零（溢出）顺序落入——与 linux_x64/arm64 反向结构及
+            //   v2「64 位精确积回扩比较」口径同构。
+            const std::string ok = trap + "_ok";
             writer.line("mov r11, rax");
             writer.line("shr r11, 32");
-            writer.line("jz " + trap);   // 反向：高 32 为 0（未溢出）跳过错误块
+            writer.line("jz " + ok);         // 高 32 为 0（未溢出）→ 跳过错误块
             writer.raw(trap + ":");
             emitOverflowErrorBody(writer);
+            writer.raw(ok + ":");
         }
         writer.line("mov " + shrunkOperand(ty, dst) + ", eax");
         return;

@@ -298,6 +298,15 @@ void LinuxX64CodeGenerator::emitIntMul(LinuxX64AsmWriter& writer,
     const bool is32 = (ty == "i8" || ty == "i16" || ty == "i32" ||
                        ty == "u8" || ty == "u16" || ty == "u32");
     const bool needOvf = (inst.opcode == ir::Opcode::Mul) && !currentFnUnsafe474_;
+    // 887（交叉汇编门禁首抓·835 同族「条件码写反」）：u32 须走**64 位** imul——
+    //   原 is32 后缀把 u32 也压到 `imul r10d, r9d`（32 位乘写清 r10 高 32），
+    //   高半溢出信息被抹除 → 下方高 32 位检查恒「未溢出」+原 `jz trap` 标签
+    //   紧邻错误块（跳与不跳同落）=正32 乘法 100*3 实测恒报错误码 8。
+    //   u32 操作数经 32 位装载（loadOperandToX/emitStackLoad 写清高 32）为
+    //   零扩全值，64 位 imul 得精确全积（(2^32-1)^2 < 2^64）。立即数路径
+    //   隐含 v≥0（u32 域不承载负字面量·上游语义层值域检查已拒——错误恢复
+    //   面不达此处）；v∈[0,2^31) 的 imm32 符号扩展即零扩。
+    const std::string mulSuf = (is32 && ty != "u32") ? "d" : "";
     // 任务 474：trap 标签先占号（分支前置·store 中继·错误块垫底）
     const std::string trap = "Lovf" + std::to_string(ptrCheckCounter_++);
     // op1 -> r10；op2 -> 常量立即数 / r9 寄存器
@@ -309,21 +318,18 @@ void LinuxX64CodeGenerator::emitIntMul(LinuxX64AsmWriter& writer,
         bool ok = false;
         try { v = std::stoll(inst.operands[1].extra); ok = true; } catch (...) {}
         if (ok && v >= -2147483648LL && v <= 2147483647LL) {
-            writer.line("imul r10" + std::string(is32 ? "d" : "") + ", " +
-                        std::to_string(v));
+            writer.line("imul r10" + mulSuf + ", " + std::to_string(v));
         } else {
             if (!ok) {
                 try { v = static_cast<long long>(std::stoull(inst.operands[1].extra)); }
                 catch (...) { v = 0; }
             }
             writer.line("mov r9, " + uint64HexText(static_cast<std::uint64_t>(v)));
-            writer.line("imul r10" + std::string(is32 ? "d" : "") + ", r9" +
-                        std::string(is32 ? "d" : ""));
+            writer.line("imul r10" + mulSuf + ", r9" + mulSuf);
         }
     } else {
         loadOperandToX(writer, inst.operands[1], "r9");
-        writer.line("imul r10" + std::string(is32 ? "d" : "") + ", r9" +
-                    std::string(is32 ? "d" : ""));
+        writer.line("imul r10" + mulSuf + ", r9" + mulSuf);
     }
     if (!needOvf) {
         emitStackStore(writer, regSlotOffset(inst.result.id), "r10", ty);
@@ -362,12 +368,17 @@ void LinuxX64CodeGenerator::emitIntMul(LinuxX64AsmWriter& writer,
         emitOverflowErrorBody(writer);
         writer.raw(ok + ":");
     } else if (ty == "u32") {
-        // u32：64 位积低 64=真积 → 高 32 位非零即溢出（反向 jz）
+        // u32：64 位积低 64=真积 → 高 32 位非零即溢出（887 修：原 `jz trap`
+        //   目标紧邻错误块=跳与不跳同落错误块——正32 乘法恒报错误码 8。
+        //   修为反向结构：高 32 为 0（未溢出）跳过错误块到正常路径 store；
+        //   非零（溢出）顺序落入。）
+        const std::string ok = trap + "_ok";
         writer.line("mov r11, r10");
         writer.line("shr r11, 32");
-        writer.line("jz " + trap);
+        writer.line("jz " + ok);
         writer.raw(trap + ":");
         emitOverflowErrorBody(writer);
+        writer.raw(ok + ":");
     } else {
         // u64：mul 单操作数（CF=rdx 高半≠0）——需 rax×r9 形态，重发乘法（反向 jnc）
         writer.line("mov rax, r10");

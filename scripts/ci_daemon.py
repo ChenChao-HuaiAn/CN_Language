@@ -308,6 +308,10 @@ def 静态门禁与e2e段(步骤们: dict, 步骤, cn: Path | None, 日志, sha:
                   # target=arm64≠本机运行时平台→运行级格 SKIP（红例三返工机制生效）。
                   ("check_cli_contract", ["--cn", str(cn), "--target", 平台]),
                   ("check_asm_width", ["--cn", str(cn)]),
+                  # 887：交叉汇编守卫序列对照（835 病根立法化·内嵌探针×三后端 -O0
+                  #   只产汇编不调 as/ld·秒级）——守备溢出/判零/移位域守卫序列的
+                  #   条件码级正确性机械对照。
+                  ("check_cross_asm_guards", ["--cn", str(cn)]),
                   ("check_matrix_coverage", []),
                   ("check_file_length", ["--freeze"])):
         if cn is None and "--cn" in 参:
