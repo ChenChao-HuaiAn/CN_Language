@@ -191,6 +191,42 @@ bool textExceedsU32(const std::string& text);
 // 审查修复：无符号后缀（UL）字面量值超出 2^64-1 时自动提升为 正128。
 bool textExceedsU64(const std::string& text);
 
+// ==================== 整数字面量文本归一与域判定（910·超64域口径收口） ====================
+
+// 910：整数字面量文本归一化——任意进制（十进制/0x/0b/0o·大小写前缀）+
+//   可选前导符号 + L/l/U/u 后缀（十六进制面 F 不剥·与 stripLiteralSuffix
+//   同守卫）→ 规范十进制文本 "[-]digits"（去前导零·保留至少一位）。
+//   返回空串哨兵 = 超 u128 域（> 2^128-1·任意进制）或非法（无有效数字——
+//   词法层已拒·防御面）。
+//   存在意义：textExceedsInt64/textExceedsU32/U64 按「十进制文本长度」判域，
+//   对 hex/oct/bin 文本误判（`0x8000000000000000` 18 字符 <19 判不超——759
+//   探针实锚）；parseIntValue 走 stoll 对超承载文本抛异常静默回 0。本工具把
+//   一切字面量文本先归一为十进制文本，后续「长度+字典序」判定大数安全且
+//   单点（宿主语义/IR 两侧消费）。
+std::string normalizeIntLiteralToDecimal(const std::string& raw);
+
+// 910：规范十进制文本（可带 '-'/'+'）是否在有符号域 [-negBound, posBound]——
+//   负号形态按 |digits| ≤ negBound（-2147483648=整32::MIN 域内合法）、正值
+//   digits ≤ posBound。文本级比较（去前导零·大数安全·负号不参与字典序）。
+bool decTextFitsSignedRange(const std::string& decText, const char* negBound,
+                            const char* posBound);
+
+// 910：规范十进制文本是否在无符号域 [0, bound]（负号形态恒 false）。
+bool decTextFitsUnsignedRange(const std::string& decText, const char* bound);
+
+// 910（788/420 提升链单点归属）：整数字面量 IR 运行时类型——带后缀按后缀
+//   定级；无后缀恒定级整32 按**数学值域**提升（超 int32 双域→整64、超
+//   int64 双域→整128；正32 超 u32→正64、正64 超 u64→正128）。判据全部按
+//   normalizeIntLiteralToDecimal 规范文本（hex 超承载安全·替代原值级
+//   literalValueExceedsInt32Domain(node->value) 与十进制文本长度判据的
+//   hex 误判面）。消费点=IR 物化（ir_expr/ir_decl）、语义推断面
+//   （semantic_expr）、实参推断（semantic_call）、二元折叠提升
+//   （semantic_expr_binary）——四处原各自复制的提升链单点收口。
+//   outStatus（可空）置域态：0=域内；1=超 整128 域；2=超 正128 域
+//   （超 u128 域亦归此，按无符号后缀族分流）。返回=类型名（超域时返回可
+//   诊断的定级类型：无符号后缀族→正128 / 其余→整128）。
+std::string integerLiteralRuntimeType(const std::string& raw, int* outStatus);
+
 // ==================== 十进制字面量文本保真折叠（728v·静态槽直存面共用） ====================
 
 // 728v：十进制字面量文本 → 规范十进制文本（保真折叠·静态槽直存面共用）。

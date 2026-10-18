@@ -55,9 +55,14 @@ void SemanticAnalyzer::adjustLiteralArgTypes(
     for (std::size_t i = 0; i < args.size() && i < argTypes.size(); ++i) {
         const auto* lit = dynamic_cast<const IntegerLiteral*>(args[i].get());
         if (lit != nullptr && argTypes[i] == "整32" &&
-            types::literalTypeOf(lit->raw, false) == "整32" &&
-            !intLiteralFitsType(args[i].get(), "整32")) {
-            argTypes[i] = "整64";
+            types::literalTypeOf(lit->raw, false) == "整32") {
+            // 910：无后缀字面量实参按数学值域提升收口单点
+            //   types::integerLiteralRuntimeType（原 intLiteralFitsType 单查
+            //   超整32域只升整64——hex 超 int64 大值/负号超域漏升 128；提升
+            //   链判据与 IR 物化同源防分叉）
+            const std::string up =
+                types::integerLiteralRuntimeType(lit->raw, nullptr);
+            if (up != "整32") argTypes[i] = up;
         }
     }
 }
@@ -67,24 +72,26 @@ void SemanticAnalyzer::adjustLiteralArgTypes(
 
 
 void SemanticAnalyzer::visitIntegerLiteral(IntegerLiteral* node) {
+    // 910：lastType_ 保持「标记域」语义（literalTypeOf 后缀定级；无后缀恒定级
+    //   整32——638甲/788 三分法的随侧豁免与 1004/1005 锁面依赖此契约，不得
+    //   改为值域提升类型）；**求值域/物化域**提升链在 IR 层与
+    //   integerLiteralRuntimeType 单点（标记域 vs 求值域分离=851 轮既有立法）。
     lastType_ = types::literalTypeOf(node->raw, false);
     if (lastType_.empty()) lastType_ = "整32";  // 非法后缀防御性回退
     // Task 完善A：i128/正128 字面量越界检查（规格书4.3 字面量范围）——
     //   整128（有符号）合法域 [-2^127, 2^127-1]（负界 2^127 允许）、
     //   正128（无符号）上限 2^128-1。超限立即报错（IR 层同样防御性检查，
-    //   语义层先拦截供诊断）。323 修正：范围判定收口 types::i128TextInRange
-    //   （剥符号分界比较——原带符号原文长度比较把负边界误判超范围）。
-    const std::string stripped = types::stripLiteralSuffix(node->raw);
-    if (lastType_ == "整128" || lastType_ == "正128" ||
-        (lastType_ == "整32" && types::textExceedsInt64(stripped))) {
-        const bool isSigned = (lastType_ != "正128");
-        if (!types::i128TextInRange(stripped, isSigned)) {
-            diagnostics_.report(DiagnosticLevel::Error, node->location,
-                                "整数字面量超出" +
-                                    std::string(isSigned ? "整128（2^127-1）"
-                                                         : "正128（2^128-1）") +
-                                    "范围");
-        }
+    //   语义层先拦截供诊断）。910 收口：判定走 types::integerLiteralRuntimeType
+    //   状态（全形态归一——原 textExceedsInt64/i128TextInRange 十进制文本判据
+    //   对 hex 面误判：0x8000000000000000 不判超、hex 超 2^128 域漏拒）。
+    int st910 = 0;
+    (void)types::integerLiteralRuntimeType(node->raw, &st910);
+    if (st910 != 0) {
+        diagnostics_.report(DiagnosticLevel::Error, node->location,
+                            "整数字面量超出" +
+                                std::string(st910 == 2 ? "正128（2^128-1）"
+                                                        : "整128（2^127-1）") +
+                                "范围");
     }
 }
 void SemanticAnalyzer::visitFloatLiteral(FloatLiteral* node) {

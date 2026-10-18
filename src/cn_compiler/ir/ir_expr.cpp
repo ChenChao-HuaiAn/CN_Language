@@ -23,55 +23,39 @@
 namespace cn_compiler {
 
 void IRGenerator::visitIntegerLiteral(IntegerLiteral* node) {
-    std::string type = types::literalTypeOf(node->raw, false);
-    if (type.empty()) type = "整32";
-    // 无后缀（整32）但值超出 int32 范围：自动提升为整64
-    // 728g（#506甲/420）：判据=数学值域（负号形态按负值判）——parser 323 负号
-    //   折叠后 node->value 即数学负值，修前只判正域使 -3000000000 等负超下界
-    //   字面量恒留 int32 标记域，ConstInt i32 + codegen 32 位截断回绕（声明/
-    //   赋值/实参/返回/表达式全位置错值实锤）；共用单点判据
-    //   types::literalValueExceedsInt32Domain（正负双域·与 v2 负号域判定对齐）。
-    if (type == "整32" && types::literalValueExceedsInt32Domain(node->value)) type = "整64";
-    // 无后缀但值超出 int64 范围：自动提升为整128（十进制文本比较，2^63-1 上限）
-    if ((type == "整32" || type == "整64") &&
-        types::textExceedsInt64(types::stripLiteralSuffix(node->raw))) {
-        type = "整128";
+    // 910（超64域口径收口·759 探针实锚）：判定/物化链收口
+    //   types::integerLiteralRuntimeType 单点——原链三处读 node->value 值级
+    //   判域（literalValueExceedsInt32Domain）而 parser parseIntValue 对超承载
+    //   进制文本 stoll 溢出静默回 0（`0x8000000000000000` → value=0 → 类型留
+    //   整32 → codegen 发 `mov eax,9223372036854775808` 巨额立即数 ml64 A2022
+    //   汇编失败），且 textExceedsInt64 十进制文本长度判据对 hex 误判（长 18
+    //   判不超）。修后：规范十进制文本（数学值）判提升链（超 int32 双域→
+    //   整64、超 int64 双域→整128；正32/正64 无符号链同位）+ 128 域检查；
+    //   ConstInt extra 统存规范十进制文本（codegen 免 hex 再解析·i128 走
+    //   splitI128Text 双半——与 v2「字面量按数值物化」同口径）。
+    int st910 = 0;
+    const std::string type =
+        types::integerLiteralRuntimeType(node->raw, &st910);
+    if (st910 != 0) {
+        diagnostics_.report(
+            DiagnosticLevel::Error, node->location,
+            "整数字面量超出" +
+                std::string(st910 == 2 ? "正128（2^128-1）" : "整128（2^127-1）") +
+                "范围");
+        lastExpr_ = emitResult(ir::Opcode::ConstInt, {}, mapType(type), "0:0",
+                               node->location);
+        return;
     }
-    // 审查修复：无符号后缀（U=正32 / UL=正64）字面量值超出对应位宽时提升。
-    //   原实现漏了无符号提升，`9000000000000000000U`（正32 但值 > 2^32-1）走
-    //   stripped 十进制文本直接存，codegen std::stoull 溢出回绕（3800301568）。
-    //   正32 超 2^32-1 -> 正64；正64 超 2^64-1 -> 正128。
-    const std::string strippedForUnsigned = types::stripLiteralSuffix(node->raw);
-    if (type == "正32" && types::textExceedsU32(strippedForUnsigned)) {
-        type = "正64";
-    }
-    if (type == "正64" && types::textExceedsU64(strippedForUnsigned)) {
-        type = "正128";
-    }
-    // i128/正128 字面量：常量文本存 低64位:高64位 十六进制（codegen 拆双槽加载）
-    // 其余类型：直接存剥后缀十进制文本
-    const std::string stripped = types::stripLiteralSuffix(node->raw);
+    const std::string dec = types::normalizeIntLiteralToDecimal(node->raw);
     if (types::isI128(type)) {
-        // Task 完善A：i128（有符号）越界检查——正128 上限 2^128-1（无符号），
-        //   整128 合法域 [-2^127, 2^127-1]（负界 2^127 允许）。超限报错
-        //   （规格书4.3 字面量范围）。323 修正：判定收口 types::i128TextInRange
-        //   （剥符号分界比较——原带符号原文长度比较把负边界误判超范围）。
-        const bool isSigned = (type == "整128");
-        if (!types::i128TextInRange(stripped, isSigned)) {
-            diagnostics_.report(DiagnosticLevel::Error, node->location,
-                                "整数字面量超出" +
-                                    std::string(isSigned ? "整128（2^127-1）" : "正128（2^128-1）") +
-                                    "范围");
-            lastExpr_ = emitResult(ir::Opcode::ConstInt, {}, mapType(type), "0:0",
-                                   node->location);
-            return;
-        }
-        const std::string split = types::splitI128Text(stripped);
+        // i128/正128：常量文本存 低64位:高64位 十六进制（codegen 拆双槽加载）
+        const std::string split = types::splitI128Text(dec);
         lastExpr_ = emitResult(ir::Opcode::ConstInt, {}, mapType(type),
-                               split.empty() ? stripped : split, node->location);
+                               split.empty() ? dec : split, node->location);
+    // 静默豁免业务值: 910 轮 visitIntegerLiteral 非 128 常量发射分支（规范十进制文本直存 ConstInt）
     } else {
-        lastExpr_ = emitResult(ir::Opcode::ConstInt, {}, mapType(type),
-                               stripped, node->location);
+        lastExpr_ = emitResult(ir::Opcode::ConstInt, {}, mapType(type), dec,
+                               node->location);
     }
 }
 void IRGenerator::visitFloatLiteral(FloatLiteral* node) {
@@ -105,9 +89,24 @@ ir::IRValue IRGenerator::evalDefaultExpr(Expr* expr) {
     switch (expr->getType()) {
         case NodeType::IntegerLiteral: {
             IntegerLiteral* lit = static_cast<IntegerLiteral*>(expr);
-            std::string type = types::literalTypeOf(lit->raw, false);
-            const std::string irType = mapType(type.empty() ? "整32" : type);
-            return ir::IRValue::constant(std::to_string(lit->value), irType);
+            // 910：全形态归一（原 std::to_string(lit->value) 对 hex 超承载
+            //   文本=parser stoll 溢出回 0 的毒化值；to_string 亦丢 128 域）
+            int st910 = 0;
+            const std::string type =
+                types::integerLiteralRuntimeType(lit->raw, &st910);
+            const std::string irType = mapType(type);
+            const std::string dec910 =
+                types::normalizeIntLiteralToDecimal(lit->raw);
+            if (st910 != 0 || dec910.empty()) {
+                // 超域形态：语义层已诊断（诊断即错误闭环）——此处置零占位
+                return ir::IRValue::constant("0", irType);
+            }
+            if (types::isI128(type)) {
+                const std::string split = types::splitI128Text(dec910);
+                return ir::IRValue::constant(split.empty() ? dec910 : split,
+                                             irType);
+            }
+            return ir::IRValue::constant(dec910, irType);
         }
         case NodeType::FloatLiteral: {
             FloatLiteral* lit = static_cast<FloatLiteral*>(expr);

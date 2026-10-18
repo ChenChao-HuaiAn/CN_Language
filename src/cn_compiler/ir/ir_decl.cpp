@@ -80,35 +80,23 @@ void IRGenerator::visitProgram(Program* node) {
                         // 478（473 采样轮）：顶层静态字面量补 128 位域检查——
                         //   原直存通道绕过 visitIntegerLiteral 域检查，无后缀
                         //   u128::MAX 赋 正128 漏网放行（483 实锚），与 540
-                        //   「双侧同拒」裁决（001 §4.3 后缀映射·无后缀按整128
-                        //   有符号域）矛盾。提升链/判据/文案与 visitIntegerLiteral
-                        //   同构（literalTypeOf 后缀+textExceeds 值域提升）。
+                        //   「双侧同拒」裁决（001 §4.3 后缀映射）矛盾。
+                        // 910：判定收口 types::integerLiteralRuntimeType（全形态
+                        //   归一——原 textExceedsInt64/i128TextInRange 十进制文本
+                        //   判据对 hex 面误判：`0x8000000000000000` 长 18 判不超/
+                        //   hex 文本比较失真；759 探针实锚）。
                         const auto* lit =
                             static_cast<IntegerLiteral*>(g->initializer.get());
-                        const std::string strippedLit =
-                            types::stripLiteralSuffix(lit->raw);
-                        std::string litType =
-                            types::literalTypeOf(lit->raw, false);
-                        if ((litType == "整32" || litType == "整64") &&
-                            types::textExceedsInt64(strippedLit)) {
-                            litType = "整128";
-                        }
-                        if (litType == "正64" &&
-                            types::textExceedsU64(strippedLit)) {
-                            litType = "正128";
-                        }
-                        if (types::isI128(litType)) {
-                            const bool litSigned = (litType == "整128");
-                            if (!types::i128TextInRange(strippedLit,
-                                                        litSigned)) {
-                                diagnostics_.report(
-                                    DiagnosticLevel::Error, g->location,
-                                    "整数字面量超出" +
-                                        std::string(litSigned
-                                                        ? "整128（2^127-1）"
-                                                        : "正128（2^128-1）") +
-                                        "范围");
-                            }
+                        int st910 = 0;
+                        (void)types::integerLiteralRuntimeType(lit->raw, &st910);
+                        if (st910 != 0) {
+                            diagnostics_.report(
+                                DiagnosticLevel::Error, g->location,
+                                "整数字面量超出" +
+                                    std::string(st910 == 2
+                                                    ? "正128（2^128-1）"
+                                                    : "整128（2^127-1）") +
+                                    "范围");
                         }
                         // 790（569 采样轮 H1）：字面量数值化直存——原 lit->raw
                         //   原文透传（0x/0b/0o/L 后缀四形态 .data 直存被三平台
@@ -119,7 +107,7 @@ void IRGenerator::visitProgram(Program* node) {
                         //   parseInt128InitText 解析（原生支持四形态·T46）。
                         std::string initLitText;
                         if (!types::foldIntLiteralText(lit->raw, initLitText)) {
-                            initLitText = strippedLit;
+                            initLitText = types::stripLiteralSuffix(lit->raw);
                         }
                         module_->globalStaticInits[g->name] = initLitText;
                     } else if (it == NodeType::UnaryExpr &&

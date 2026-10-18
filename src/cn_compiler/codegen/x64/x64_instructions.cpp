@@ -314,7 +314,13 @@ void X64CodeGenerator::emitConstLoad(AsmWriter& writer, const ir::IRInstruction&
         const long long v = std::stoll(value);
         valueFits32 = (v >= -2147483648LL && v <= 2147483647LL);
     } catch (...) {
-        // 解析失败按不溢出处理（防御性）
+        // 910（超64域口径收口·miss 终态显式化）：解析失败 ⇒ 32 位必不装——
+        //   原「解析失败按不溢出处理（防御性）」使超 int64 十进制文本
+        //   （如 9223372036854775808）落 32 位 `mov eax,<巨额立即数>`
+        //   （ml64 A2022 汇编失败 / 静默截断错值双实录·759 探针实锚）。
+        //   stoll 抛=超域或非法文本，两者任一都不得按 32 位装——显式分流
+        //   64 位分支（uint64HexText 转换；非法文本由汇编器报错·不静默）。
+        valueFits32 = false;
     }
     if (need64 || !valueFits32) {
         // 审查修复：无符号 64 位大值（如 9000000000000000000）用十进制立即数

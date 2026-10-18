@@ -153,6 +153,7 @@ add_library(cn_compiler_model STATIC
     src/cn_compiler/model/ast.cpp
     src/cn_compiler/model/ast_printer.cpp
     src/cn_compiler/model/type_system.cpp
+    src/cn_compiler/model/type_system_int_text.cpp
 )
 target_include_directories(cn_compiler_model PUBLIC ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(cn_compiler_model PUBLIC cn_compiler_common)
