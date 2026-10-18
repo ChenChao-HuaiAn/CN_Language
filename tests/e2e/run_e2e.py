@@ -290,12 +290,13 @@ def CI环境识别() -> str:
         #   提供」）·linux 真线程（两线程 200 轮类对象构造/赋值/析构+锁内闭合·
         #   校验和 161600·dual 双侧）
         "1039_线程对象赋值析构",
-        # 1077（#1060 迁移未随迁 #1017 平台限定·win 全量每轮 1 败解锁）：官网示例
-        #   「cli-手工线程栈守卫」= 929 同族（FFI 手工 pthread_create +
-        #   cn_install_thread_stack_guard·win 无 pthread 库·链接必 LNK1120）——
-        #   win 本地跳过；linux 真线程真跑。填不含编号短名=改号稳健（用例目录
-        #   当前=1176_官网示例-cli-手工线程栈守卫；含号前缀改号即静默失配）。
-        "官网示例-cli-手工线程栈守卫",
+        # 1176（930 轮补·1060 官网示例迁移漏配·cli.html 手工线程入口）：与 929
+        #   同形同源码形态——FFI 手工 pthread_create/pthread_join，win 无 pthread
+        #   符号（线程 API 为 __cn_thread_* 桩，无 pthread_* 同名符号）→ 链接期
+        #   LNK2019（host-only 通道下 win 本就红——930 补配 dual 时实测发现）。
+        #   linux 真线程（手工线程入口调 cn_install_thread_stack_guard 后打印
+        #   「线程运行中」）；win 手工线程无此缺口（VEH/UEF 进程级过滤器）。
+        "1176_官网示例-cli-手工线程栈守卫",
     ],
 }
 

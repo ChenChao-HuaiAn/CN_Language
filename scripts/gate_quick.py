@@ -133,6 +133,14 @@ for 名 in ("check_ascii_idents", "check_keywords_sync", "check_registry_audit",
 if not 步("check_doc_coverage", [sys.executable, "scripts/check_doc_coverage.py", "--strict"],
          超时秒=静态超时):
     raise SystemExit(1)
+# 930（2026-10-18）：E2E 用例 v2 覆盖通道守卫挂 L1——306 轮 662/1025「自述 dual
+#    实为探针（用例本体未配 双编译对照.txt）」验收缺口立法化：用例无 v2 通道
+#    （双编译对照.txt/v2闭环.txt/v2锚定链.txt）必须在脚本内嵌豁免清单登记
+#    （案号+理由·只减不增棘轮）；新用例静默 host-only 即红。同族=853 死配置族
+#    （906 已闸）/855 DN 轻路径断言恒真（已修）。纯本地目录扫描 <1s。
+if not 步("check_dual_coverage", [sys.executable, "scripts/check_dual_coverage.py"],
+         超时秒=静态超时):
+    raise SystemExit(1)
 if not 步("file_length 冻结线", [sys.executable, "scripts/check_file_length.py", "--freeze"],
          超时秒=静态超时):
     raise SystemExit(1)
