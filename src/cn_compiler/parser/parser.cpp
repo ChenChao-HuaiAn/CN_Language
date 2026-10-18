@@ -774,6 +774,7 @@ std::unique_ptr<Program> Parser::parse(const std::vector<Token>& tokens) {
                     peek(1).getType() == TokenType::Star ||       // 类型* 名（569 形态全集）
                     arrayDeclAhead() ||                            // 类型[N] 名（569 形态全集）
                     genericDeclAhead() ||                          // 容器<…> 名（569 形态全集）
+                    methodValueDeclAhead() ||                      // 031：方法值<类,返回(参数)> 名
                     funcPtrDeclAhead(true, true, false))) {
             // 569 甲案（2026-10-14 用户裁决·001 §5.2a）：顶层裸全局变量声明
             //   `整32 全局计数 = 5;` —— §5.1 文法「全局变量声明」实体形态

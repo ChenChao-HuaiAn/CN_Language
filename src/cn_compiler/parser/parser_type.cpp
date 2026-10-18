@@ -101,6 +101,94 @@ bool Parser::isTemplateAngleOpen() const {
     }
 }
 
+// 031（#1075）：方法值类型形态探测——`方法值<类名, 返回类型(参数表)>`。
+//   lookahead 不消费：'<' 后依序 类名（类型/标识符）',' 返回类型（可带 * &
+//   后缀）'(' 参数表平衡 ')' 闭合 '>'。专用（不复用 isTemplateAngleOpen）：
+//   签名段的括号为方法值专有形态，通用模板探测不放宽（防 `a < b(1), c > d`
+//   表达式误判）。
+bool Parser::isMethodValueAngleOpen() const {
+    return methodValueAngleCloseOffset(0) >= 0;
+}
+
+// 031：方法值尖括号内核——ltOff='<' 相对 current 的 peek 偏移（0=current 即
+//   '<'；1=current 为「方法值」名——声明 guard 用）。返回闭合 '>' 之后的
+//   peek 偏移（调用方据以查后续 token）；-1=不匹配。
+int Parser::methodValueAngleCloseOffset(int ltOff) const {
+    if (peek(ltOff).getType() != TokenType::Less) return -1;
+    int i = ltOff + 1;  // 已跳过 '<'
+    // 段1：类名
+    const TokenType t0 = peek(i).getType();
+    // 静默豁免业务值: 段形态不匹配=探测语义（-1 哨兵·调用方回退）
+    if (!isTypeKeyword(t0) && t0 != TokenType::Identifier) return -1;
+    i++;
+    // 逗号
+    if (peek(i).getType() != TokenType::Comma) return -1;
+    i++;
+    // 段2：返回类型（可带 * & 后缀）
+    const TokenType t1 = peek(i).getType();
+    // 静默豁免业务值: 段形态不匹配=探测语义（-1 哨兵·调用方回退）
+    if (!isTypeKeyword(t1) && t1 != TokenType::Identifier) return -1;
+    i++;
+    while (true) {
+        const TokenType t = peek(i).getType();
+        if (t == TokenType::Star || t == TokenType::Amp) { i++; continue; }
+        break;
+    }
+    // 参数表：'(' ... ')' 平衡扫描
+    if (peek(i).getType() != TokenType::LeftParen) return -1;
+    int depth = 0;
+    while (true) {
+        const TokenType t = peek(i).getType();
+        if (t == TokenType::LeftParen) {
+            depth++;
+        } else if (t == TokenType::RightParen) {
+            depth--;
+            if (depth == 0) { i++; break; }
+        } else if (t == TokenType::EndOfFile) {
+            return -1;
+        }
+        i++;
+    }
+    // 闭合 '>'
+    const TokenType te = peek(i).getType();
+    if (te == TokenType::Greater || te == TokenType::GreaterGreater) return i + 1;
+    return -1;
+}
+
+// 031：顶层/静态声明 guard——`方法值<类, 返回(参数表)> 名` 形态（
+//   genericDeclAhead 白名单不含签名段括号；本函数为方法值专用前瞻）。
+bool Parser::methodValueDeclAhead() const {
+    if (current().getValue() != "方法值") return false;
+    const int after = methodValueAngleCloseOffset(1);
+    // 静默豁免业务值: 哨兵 -1 精确匹配=探测不匹配语义（调用方回退）
+    if (after == -1) return false;
+    // 闭合 '>' 后须为变量名（标识符）
+    return peek(after).getType() == TokenType::Identifier;
+}
+
+// 031：参数表文本消费（'(' 至配对 ')' 逐 token 无空格拼接——与语义层内建
+//   函数指针串同格式：`(整32,整32)`；星号/尖括号 token 原样衔接。
+//   注：签名参数表内嵌函数指针参数（含嵌套括号）由深度计数覆盖。
+std::string Parser::parseMethodValueParamList() {
+    consume(TokenType::LeftParen, "'('");
+    std::string text;
+    int depth = 1;
+    while (!check(TokenType::EndOfFile)) {
+        if (check(TokenType::LeftParen)) {
+            depth++;
+        } else if (check(TokenType::RightParen)) {
+            depth--;
+            if (depth == 0) {
+                advance();  // 消费配对 ')'
+                break;
+            }
+        }
+        text += current().getValue();
+        advance();
+    }
+    return text;
+}
+
 // 模块路径段判定（Task 3.6，v2.0）：标识符 或 关键字
 // 模块名可为关键字（规范官方示例 核心::可选::{某些, 无} 中 可选/无 均为关键字）；
 // 但须排除语法分隔 作为（Kw_As）——重命名导入 导入 路径 作为 别名 的别名不应被
@@ -200,6 +288,32 @@ std::string Parser::parseTypeNameEx() {
             }
             consume(TokenType::RightBracket, "']'");
             suffixes += "[" + lenText + "]";
+        } else if (base == "方法值" && check(TokenType::Less) &&
+                   isMethodValueAngleOpen()) {
+            // 031（#1075）：方法值<类名, 返回类型(参数表)>——源码形态归一出
+            //   内部串 `方法值<类名,函数指针<返回类型>(参数表)>`（parser 归一
+            //   先例=fnptr 声明 `T(*)(...)`→函数指针<...>·语义/IR 消费单一口径；
+            //   plans/031 §二·② 内部串实现锚）。方法值类型第一版无后缀面
+            //   （不可指针/数组/引用）——归一后直接返回。
+            advance();  // 消费 '<'
+            const std::string cls = parseTypeNameEx();
+            consume(TokenType::Comma, "','");
+            const std::string ret = parseTypeNameEx();
+            const std::string paramsText = parseMethodValueParamList();
+            // 闭合 '>'（嵌套场景 `向量<方法值<...>>` 的 '>>' 合并 token 拆解——
+            //   与通用模板分支 H3 嵌套泛型同款处理）
+            if (check(TokenType::Greater)) {
+                advance();
+            } else if (check(TokenType::GreaterGreater)) {
+                tokens_[pos_] = Token(TokenType::Greater, ">", tokens_[pos_].getLocation());
+                tokens_.insert(tokens_.begin() + static_cast<std::ptrdiff_t>(pos_ + 1),
+                               Token(TokenType::Greater, ">",
+                                     tokens_[pos_].getLocation()));
+                advance();
+            } else {
+                reportErrorHere("方法值类型缺少闭合 '>'");
+            }
+            return "方法值<" + cls + ",函数指针<" + ret + ">(" + paramsText + ")>";
         } else if (check(TokenType::Less) && isTemplateAngleOpen()) {
             // 模板尖括号（Task 3.5/3.8）：类型名<实参类型[,...]>（结果<整32, 整32>）
             // 与小于比较区分：isTemplateAngleOpen() 已确认后续是类型形态

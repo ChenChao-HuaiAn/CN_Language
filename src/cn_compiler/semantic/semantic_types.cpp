@@ -457,6 +457,10 @@ int SemanticAnalyzer::typeSizeOf(const std::string& typeRaw) const {
     //   口径不动——NewObject 分配/类内联布局消费面依赖）。
     const ClassInfo* cls = findClass(type);
     if (cls != nullptr) return cls->totalSize;
+    // 031（#1075）：绑定方法值=栈上两槽 {this, code}（16 字节·对齐 8——
+    //   plans/031 §二·①）。第一版放置骨架禁字段/全局/静态/容器，本登记服务
+    //   错误恢复路径的布局查询（防「尺寸未登记」级联噪音）+ 类型元数据完备。
+    if (types::isMethodValueType(type)) return 16;
     const int baseSize = types::typeSize(type);
     if (baseSize > 0) return baseSize;
     // 字符串 = 指针（8字节）；未知类型防御性返回8
@@ -492,6 +496,8 @@ int SemanticAnalyzer::typeAlignOf(const std::string& typeRaw) const {
     if (types::isArray(type)) return typeAlignOf(types::arrayElemOf(type));
     if (types::isPointer(type)) return 8;
     if (isFuncPtrType(type)) return 8;  // 040：函数指针=指针族对齐 8（与 typeSizeOf 同步）
+    // 031（#1075）：绑定方法值两槽对（16 字节值·8 对齐——plans/031 §二·①）
+    if (types::isMethodValueType(type)) return 8;
     // 阶段3（Task 3.5/3.1）：结果/可选 合成结构体、类类型
     if (isResultType(type) || isOptionalType(type)) {
         const StructDecl* lowered = findStruct(type);

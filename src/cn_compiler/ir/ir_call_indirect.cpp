@@ -39,6 +39,57 @@ namespace cn_compiler {
 bool IRGenerator::emitFnPtrCall(CallExpr* node,
                                 const std::string& calleeFnPtrType,
                                 std::vector<ir::IRValue>& args) {
+    // ---- 031（#1075）：绑定方法值变量调用（calleeFnPtrType=内嵌签名——
+    //   funcPtrTypeOfCallee 031 窄放宽返回）——两槽装载 this/code 后
+    //   CallIndirect：operands=[code, (retbuf), this, 实参...]——this 注入
+    //   参数位 0（与实例方法直调 ABI 一致·被调方零特例）；sret 形态 retbuf
+    //   预插后 this 顺延位 1（同实例直调 sret 协议）。实参已物理级
+    //   （方法值实参两位展开已在 buildCallArgs 完成）。 ----
+    if (node->callee != nullptr &&
+        node->callee->getType() == NodeType::IdentifierExpr) {
+        const std::string mvName =
+            static_cast<IdentifierExpr*>(node->callee.get())->name;
+        if (isMethodValueVar(mvName)) {
+            const std::string unique = lookupVarName(mvName);
+            // 静默豁免上游已诊断: 已报内部错误·return true=已消费占位（控制流不变）
+            if (unique.empty()) {
+                // miss 不可静默：语义层保证方法值变量已登记槽位
+                diagnostics_.report(DiagnosticLevel::Error, node->location,
+                    "内部错误: 方法值变量 '" + mvName + "' 槽未登记（#1075）");
+                return true;
+            }
+            ir::IRValue thisVal, codeVal;
+            loadMethodValuePair(unique, thisVal, codeVal, node->location);
+            args.insert(args.begin(), thisVal);   // 参数位 0（this 注入）
+            const std::string retSrcMV =
+                types::funcPtrReturnTypeOf(calleeFnPtrType);
+            if (!retSrcMV.empty() && semantic_ != nullptr &&
+                (semantic_->isStructType(types::canonical(retSrcMV)) ||
+                 types::isArray(retSrcMV))) {
+                const std::string temp = "__retbuf" + std::to_string(varCounter_++);
+                emit(ir::Opcode::Alloca, {}, ir::IRValue::reg(regCounter_++, "ptr"),
+                     temp, "ptr", node->location);
+                function_->varSlots[temp] = 8;
+                registerVarSlots(temp, retSrcMV);
+                ir::IRValue buf = emitResult(
+                    ir::Opcode::AddrOf, {ir::IRValue::var(temp, "i64")},
+                    "ptr", temp, node->location);
+                args.insert(args.begin(), buf);       // 隐藏返回指针（位 0 前插）
+                args.insert(args.begin(), codeVal);   // 间接调用目标
+                emit(ir::Opcode::CallIndirect, args, ir::IRValue(), "", "void",
+                     node->location);
+                lastExpr_ = buf;
+                return true;
+            }
+            // 标量返回（空类型维持 "i32" 兜底——同 fnptr 谱·result 无消费者）
+            std::string mapped = mapType(retSrcMV);
+            if (mapped.empty() || mapped == "void") mapped = "i32";
+            args.insert(args.begin(), codeVal);   // operand[0]=指针寄存器
+            lastExpr_ = emitResult(ir::Opcode::CallIndirect, args, mapped, "",
+                                   node->location);
+            return true;
+        }
+    }
     if (!calleeFnPtrType.empty()) {
         const std::vector<std::string> fnPtrParams =
             types::funcPtrParamsOf(calleeFnPtrType);

@@ -686,16 +686,31 @@ void IRGenerator::registerFunctionParams(FunctionDecl* node, ir::IRFunction& fun
         // Task 2.4：数组参数按多槽登记（varSlots）；引用参数仅 1 槽（存地址）
         registerVarSlots(unique, isRefParam ? ""
                             : (param->funcPtr.isFunctionPtr() ? "" : param->typeName));
+        // 031（#1075）：绑定方法值形参——源码级 1 个（语义层 arity/调用检查零
+        //   变更），物理级摊平为两个连续形参位（this、code）与调用方两槽实参
+        //   两位展开对位（〔一值=两位〕单点·plans/031 §二·⑤；codegen prologue
+        //   按位收寄存器/栈参——三后端零协议新增）。物理起始位=当前 params 数
+        //   （后续 structParamIndexes 须按物理位登记防偏移）。
+        const bool isMvParam =
+            !isRefParam && !param->funcPtr.isFunctionPtr() &&
+            !param->typeName.empty() &&
+            types::isMethodValueType(types::canonical(param->typeName));
+        const int physBase = static_cast<int>(func.params.size());
         // Task 完善A：结构体按值参数标记（语义层查询——结构体源码类型）；
         //   引用参数（账户&）按地址传递（非按值结构体拷贝），须排除
         //   087：数组按值参数同通道标记（emitParamSetup 拷贝判定同款）
         if (!isRefParam && semantic_ != nullptr && !param->funcPtr.isFunctionPtr() &&
             (semantic_->isStructType(types::canonical(param->typeName)) ||
              isArrayParam)) {
-            func.structParamIndexes.insert(static_cast<int>(pi));
+            func.structParamIndexes.insert(physBase);
         }
         func.params.emplace_back(param->name, paramIrType);
         func.paramUniques.push_back(unique);
+        if (isMvParam) {
+            // 二槽物理形参：code 位（$s1 命名与 varSlots 多槽登记同规）
+            func.params.emplace_back(param->name + "$s1", "ptr");
+            func.paramUniques.push_back(unique + "$s1");
+        }
         ir::IRValue reg = newReg();
         reg.type = paramIrType;
         VarEntry entryInfo;

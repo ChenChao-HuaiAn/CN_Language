@@ -189,6 +189,10 @@ std::string IRGenerator::mapType(const std::string& type) {
     if (types::isArray(type)) return mapType(types::arrayElemOf(type));
     // Task 2.2：函数指针类型（函数指针<返回>(参数,...)）按指针处理
     if (!type.empty() && type.rfind("函数指针<", 0) == 0) return "ptr";
+    // 031（#1075）：绑定方法值类型（方法值<类,签名>）按指针处理——两槽值
+    //   （this/code）在 IR 层降为两个 8 字节标量；表达式通道值=槽对基名
+    //   （ptr 型），槽数经 registerVarSlots 方法值分支登记 2（ir.cpp）。
+    if (types::isMethodValueType(type)) return "ptr";
     // Task 2.7：枚举类型按整32处理（与语义层 typeSizeOf 一致）
     if (semantic_ != nullptr && semantic_->isEnumType(type)) return "i32";
     // 648 归档（豁免边界声明）：mapType 为宽接口纯映射函数，被全树消费

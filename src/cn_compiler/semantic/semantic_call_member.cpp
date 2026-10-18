@@ -241,6 +241,10 @@ bool SemanticAnalyzer::checkInstanceMethodCall(CallExpr* node, MemberExpr* mem,
         if (method != nullptr && !method->isStatic) {
             // 实例方法调用：校验参数个数与类型
             std::vector<std::string> argTypes;
+            // 031（#1075）：实参位对方法值开放（目标形参细判移交下方转换检查
+            //   ——方法值实参→方法值形参放行）；求值期置 argDepth 防位置守卫
+            //   误报（943 原 806 逐位报错已随一等公民化退役）。
+            method_value_943::ArgGuard methodValueArg943;
             for (std::size_t ai = 0; ai < node->arguments.size(); ++ai) {
 
                 // 067-002（p0927_05 15 行实证）：实参检查目标类型=形参类型压
@@ -264,18 +268,6 @@ bool SemanticAnalyzer::checkInstanceMethodCall(CallExpr* node, MemberExpr* mem,
                 argTypes.push_back(checkExpr(node->arguments[ai].get()));
 
                 if (hasParam) ctorTargetStack_.pop_back();
-
-                // P3-23 补完（D2）：绑定方法值不可作裸 fnptr 实参
-                //   （943：文案改指闭包捕获·单诊断去重同 collectCallArgTypes）
-                if (argIsBoundMethodValue(node->arguments[ai].get())) {
-                    auto* mv = static_cast<MemberExpr*>(node->arguments[ai].get());
-                    if (!mv->methodValueDiag943) {
-                        diagnostics_.report(DiagnosticLevel::Error,
-                                            node->arguments[ai]->location,
-                                            method_value_943::positionDiag());
-                        mv->methodValueDiag943 = true;
-                    }
-                }
             }
             adjustLiteralArgTypes(argTypes, node->arguments);            if (argTypes.size() != method->paramTypes.size()) {
                 diagnostics_.report(DiagnosticLevel::Error, node->location,
@@ -296,11 +288,17 @@ bool SemanticAnalyzer::checkInstanceMethodCall(CallExpr* node, MemberExpr* mem,
                     if (!refAlready &&
                         !canConvertWithLiteral(node->arguments[i].get(), argTypes[i], method->paramTypes[i]) &&
                         !canConvertArgNarrow(node->arguments[i].get(), argTypes[i], method->paramTypes[i])) {
-                        diagnostics_.report(
-                            DiagnosticLevel::Error, node->arguments[i]->location,
-                            "方法 '" + methodName + "' 第 " + std::to_string(i + 1) +
-                                " 个实参无法将 '" + argTypes[i] + "' 隐式转换为 '" +
-                                method->paramTypes[i] + "'");
+                        // 031：方法值↔fnptr 转换拒绝=专用文案（单点）
+                        if (!method_value_943::reportConvertReject(
+                                diagnostics_, argTypes[i], method->paramTypes[i],
+                                node->arguments[i]->location,
+                                node->arguments[i].get())) {
+                            diagnostics_.report(
+                                DiagnosticLevel::Error, node->arguments[i]->location,
+                                "方法 '" + methodName + "' 第 " + std::to_string(i + 1) +
+                                    " 个实参无法将 '" + argTypes[i] + "' 隐式转换为 '" +
+                                    method->paramTypes[i] + "'");
+                        }
                     }
                 }
             }

@@ -16,6 +16,7 @@
 #include "cn_compiler/model/type_system.hpp"
 #include "cn_compiler/model/semantic_helpers.hpp"
 #include "cn_compiler/semantic/semantic_lambda_escape.hpp"
+#include "cn_compiler/semantic/semantic_method_value_943.hpp"
 
 namespace cn_compiler {
 // 8. D1 行数整改 117-a：按族拆出 semantic_types.cpp（类型系统）/semantic_sig.cpp（签名重载）/semantic_builtins.cpp（内置注册）（纯重构零行为变更）
@@ -712,6 +713,11 @@ void SemanticAnalyzer::registerGlobalConstsAndStatics(Program* node) {
         if (g->isConst) {
             continue;  // 常量值注册已抽至 registerConstValues（#286·early/正常两趟共用）
         }
+        // 031（#1075）：放置骨架——顶层全局/静态变量不可为方法值（R3 语法面·
+        //   plans/031 §二·④⑤；诊断后继续登记=控制流不变）。
+        method_value_943::checkPlacement(
+            diagnostics_, g->typeName,
+            g->isStatic ? "静态变量" : "全局变量", g->location);
         // 569 甲案（2026-10-14 用户裁决·001 §5.2a）：顶层裸全局变量声明通道
         //   （`整32 全局计数 = 5;`·§5.1 文法「全局变量声明」实体形态——此前
         //   落解析层拒/静态通道漏登记）。登记与顶层静态同表（globalStatics_/

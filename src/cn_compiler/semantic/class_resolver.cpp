@@ -23,6 +23,7 @@
 #include "cn_compiler/semantic/semantic.hpp"
 #include "cn_compiler/model/type_system.hpp"
 #include "cn_compiler/model/semantic_helpers.hpp"
+#include "cn_compiler/semantic/semantic_method_value_943.hpp"
 
 namespace cn_compiler {
 
@@ -314,8 +315,7 @@ int SemanticAnalyzer::classFieldOffset(const std::string& className,
         c = c->baseName.empty() ? nullptr : findClass(c->baseName);
     }
     std::reverse(chain.begin(), chain.end());
-    // 精确偏移：虚表指针占位 + 接口分派区（P3-19）+ 沿继承链累加字段大小。
-    // 860-a（058 挂账①全局口径·双表归一）：本函数曾为独立第二实现——无对齐
+    // 精确偏移：虚表指针占位 + 接口分派区（P3-19）+ 沿继承链累加字段大小。 860-a（058 挂账①全局口径·双表归一）：本函数曾为独立第二实现——无对齐
     //   放置且类字段按实宽累计，与 computeClassLayout（布局权威·NewObject
     //   分配大小）在「窄字段后跟宽字段」形态偏移不一致（793「偏移双表二义」
     //   同族）。此处逐位对齐 computeClassLayout：对齐放置 + 类字段句柄 8/8
@@ -438,7 +438,7 @@ void SemanticAnalyzer::resolveClass(ClassDecl* node) {
     }
 
     // 收集自身成员
-    collectClassMembers(node, info);
+    method_value_943::checkClassMemberPlacement(diagnostics_, node->members); collectClassMembers(node, info);  // 031 放置骨架（禁写位 R2/R3·实现见 semantic_method_value_943.cpp）
 
     // 父类成员并入（字段在前、方法随后；父类自身已 resolve）
     if (!info.baseName.empty()) {

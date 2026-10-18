@@ -416,6 +416,13 @@ std::vector<ir::IRValue> IRGenerator::buildCallArgs(
         ir::IRValue argVal = genArgValueWithCleanup(node->arguments[ai].get(),
                                                     node->location);
         argVal = calibrateCallArgABI(argVal, ai, effectiveParamTypes, node->location);
+        // 031（#1075）：方法值实参→两个物理实参（this、code）单点展开（两槽值
+        //   作实参=两位通道·031 §二·⑤）；calibrate 已按源码级位号完成（展开
+        //   不参与 ABI 定标——两物理位均 ptr）。方法值非字符串=617 收集不适用。
+        if (isMethodValueArg(node->arguments[ai].get())) {
+            expandMethodValueArg(node->arguments[ai].get(), args, node->location);
+            continue;
+        }
         args.push_back(argVal);
         // 617：消费族拥有串临时实参收集（调用发射完成后结算）——ptr 前置挡
         //   整数加法形态（BinaryExpr+Add 判定的类型护栏）；662：收集项携带

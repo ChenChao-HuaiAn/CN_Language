@@ -24,6 +24,10 @@ bool IRGenerator::genExprInitializer(VarDecl* node, const DeclGenCtx& ctx) {
         //   先 genExpr（生成匿名函数并记录 lastLambdaName_/lastLambdaCaptures_），
         //   再登记闭包关联（调用 `加倍(...)` 时展开捕获实参）
         ir::IRValue value = genExpr(node->initializer.get());
+        // 031（#1075）：方法值初始化（对象.方法 / 方法值变量拷贝链）——两槽值
+        //   整拷（从物化临时/源变量读两槽写目标两槽），须在通用单槽 Store 之前
+        //   返回（单槽写会把两槽值截半）。判定=目标声明类型（ctx.srcType 回填）。
+        if (tryGenMethodValueInit(node, ctx)) return true;
         // 482：lambda 字面量名先留快照（registerClosureIfNeeded 会消费清空
         //   lastLambdaName_；载体登记需要该名解析来源）。
         const std::string pendingLambda482 = lastLambdaName_;
@@ -102,12 +106,10 @@ void IRGenerator::propagateLambdaCopyBinding816(VarDecl* node) {
 
 void IRGenerator::registerClosureIfNeeded(VarDecl* node) {
     propagateLambdaCopyBinding816(node);  // 816 拷贝传递登记（独立函数·守百行线）
-    // P3-23 补完：实例方法作值（自动 cb = 对象.方法）与 lambda 同为闭包登记路径
-    const bool isMethodValueInit =
-        node->initializer->getType() == NodeType::MemberExpr &&
-        static_cast<MemberExpr*>(node->initializer.get())->isMethodValue;
-    if ((node->initializer->getType() == NodeType::LambdaExpr ||
-         isMethodValueInit) &&
+    // 031（#1075）：实例方法作值（对象.方法）不再是本闭包登记的消费面——方法值
+    //   走两槽值通道（ir_method_value.cpp）且绑定对象随值自带（无编译期旁路表），
+    //   转发/拷贝/跨函数天然安全；本函数回归纯 lambda 语义（Task 2.10）。
+    if (node->initializer->getType() == NodeType::LambdaExpr &&
         !lastLambdaName_.empty()) {
         // 655 返工：lambda 变量名留痕（与 closureInfo_ 生命周期解耦——visitLambdaExpr
         //   入口 clear 会清掉快径表，但蹦床通道合法性判定仍需知道该名曾是 lambda）
@@ -118,28 +120,7 @@ void IRGenerator::registerClosureIfNeeded(VarDecl* node) {
         info.returnIrType = lastLambdaReturnIrType_;
         info.srcReturnType = lastLambdaSrcReturnType_;  // 485：源返回类型（sret 判定）
         info.paramTypes = lastLambdaParamTypes_;  // 337-a：用户形参类型（ABI 定标）
-        if (isMethodValueInit) {
-            // 绑定方法：捕获实参 = 被绑定对象地址（对象指针 = Load 槽）
-            const std::string& objName =
-                lastLambdaCaptures_.empty() ? "" : lastLambdaCaptures_[0];
-            const std::string objUnique = lookupVarName(objName);
-            if (!objUnique.empty()) {
-                info.captureArgs.push_back(emitResult(
-                    ir::Opcode::Load,
-                    {ir::IRValue::var(objUnique, "ptr")},
-                    "ptr", objUnique, node->location));
-            } else {  // 静默豁免业务值: 对象非标识符=不登记快径改走 943 蹦床通道（非静默默认值）
-                // 943：对象非变量标识符（自身/成员链/解引用——槽值由 943 蹦床
-                //   闭包自持）→ 不登记快径（无捕获实参的快径会丢 this=直调
-                //   静默错行为）；直调/转发统一走 943 蹦床通道（语义等价）。
-                lastLambdaName_.clear();
-                lastLambdaCaptures_.clear();
-                lastLambdaReturnIrType_.clear();
-                lastLambdaSrcReturnType_.clear();
-                lastLambdaCaptureRefs_.clear();
-                return;
-            }
-        } else {
+        {
         // 缺陷修复（[=] 快照 / [&] 引用，规格书04-一D）：
         //   捕获实参在"lambda 定义处"（即此处）求值并固化：
         //     [=]/[变量] 值捕获：genExpr(变量) 读取当前值 -> 快照

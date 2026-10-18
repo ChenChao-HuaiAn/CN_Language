@@ -445,8 +445,8 @@ private:
     bool checkWrapBuiltinCall(CallExpr* node);  // 474: 回绕内置（显式回绕·溢出检查豁免面）
     // 族2：内置构造器 正常/错误/某些（原 433~490 段）
     bool checkBuiltinCtorCall(CallExpr* node);
-    // 族3：函数指针间接调用（原 949~981 段）
-    bool checkFuncPtrCall(CallExpr* node, const std::string& calleeType);
+    // 族3：函数指针间接调用（原 949~981 段）；031（#1075）：绑定方法值调用（冻结线承载·同行并声明）
+    bool checkFuncPtrCall(CallExpr* node, const std::string& calleeType); bool checkMethodValueCall(CallExpr* node, const std::string& calleeType);
     // 子族A：use 导入绑定名重写（原 semantic_call.cpp 273~311 段）
     void rewriteUseImportAlias(CallExpr* node, std::string& calleeName);
     // 子族B：泛型函数调用单态化（原 312~383 段）

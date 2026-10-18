@@ -382,16 +382,15 @@ bool IRGenerator::handleClassMemberExpr(MemberExpr* node) {
         return true;
     }
 
-    // P3-23 补完：实例方法作值（对象.实例方法）——绑定 this 的闭包。
-    //   语义已置 node->isMethodValue；此处记录闭包绑定信息（lastLambda*_ 供
-    //   genVarDecl 在变量绑定态登记 closureInfo_），表达式值 = 方法链接符号。
-    //   cb(实参) 经闭包调用展开捕获 this 直接 Call 方法符号（this + 用户实参）。
-    //
-    // 943（绑定方法值赋值位合法化·2026-10-17）：值改发**蹦床闭包地址**并用
-    //   绑定对象指针固化本站点静态槽——裸方法符号（签名含隐藏 this）作 fnptr
-    //   值经形参转发=丢绑定段错误（p82d/p943a 探针 rc=139）；蹦床签名=用户签名，
-    //   体自带"从槽取 this + 直调方法符号"，转发/拷贝安全。同函数直调仍走
-    //   closureInfo_ 内联快径（封存语义等价：绑定对象均为赋值位固化）。
+    // 031（#1075·2026-10-18 用户批·一等公民化）：`对象.实例方法` 求值=绑定方法值
+    //   ——栈上两槽 {this, code}（值语义·零堆分配·零运行期检查·plans/031 §二·①）。
+    //   表达式通道物化为临时两槽变量（__mvN），消费点（声明位/赋值位/实参位/
+    //   调用位）按「一值=两位」单点读取（ir_method_value.cpp·031 风险表第一条）。
+    //   旧 943 蹦床闭包通道已废弃（plans/031 §二·③⑥）：此前的「蹦床+静态槽 +
+    //   编译期旁路（closureInfo_ 快径）」在转发语境丢绑定（p82d 段错误病灶），
+    //   两槽值随值自带对象引用——转发/拷贝/跨函数天然安全，同帧快径不再是
+    //   正确性依据。code 槽=方法链接符号；虚方法值=创建时快照（lookupClassMember
+    //   从对象实际类沿链解析——对象类终生不变=与运行期分派恒等价，§二·①④）。
     if (node->isMethodValue && semantic_->isClassType(canonObj)) {
         std::string owner;
         const ClassMemberInfo* method =
@@ -399,33 +398,14 @@ bool IRGenerator::handleClassMemberExpr(MemberExpr* node) {
         if (method != nullptr && !method->isStatic) {
             const std::string ownerSym = owner.empty() ? canonObj : owner;
             const std::string methodSym = methodSymbolKey(ownerSym, method->sigKey);
-            lastLambdaName_ = methodSym;
-            lastLambdaCaptures_.clear();
-            // 被绑定对象：若为标识符则记录（闭包对象地址由 genVarDecl 求值）
-            if (node->object->getType() == NodeType::IdentifierExpr) {
-                lastLambdaCaptures_.push_back(
-                    static_cast<IdentifierExpr*>(node->object.get())->name);
-            }
-            lastLambdaReturnIrType_ =
-                mapType(method->type.empty() ? "空类型" : method->type);
-            // 337-a（T53 家系）：用户形参类型列表随闭包登记（闭包调用展开用户
-            //   实参的 ABI 定标依据——i128 形参窄整实参宽化，见 ir_call.cpp 闭包
-            //   调用段）。
-            lastLambdaParamTypes_ = method->paramTypes;
-            lastLambdaCaptureRefs_.clear();
-            lastLambdaCaptureRefs_.push_back(true);  // 引用捕获（存对象地址）
-            // 943：蹦床合成（按节点缓存）+ 绑定对象指针固化本站点静态槽
-            //   （写侧；读侧=蹦床体内 LoadPtr 同键——单一归属 methodValueSlotKey943）。
-            const std::string trapName =
-                ensureMethodValueTrap943(node, ownerSym, *method);
+            // this 槽：对象指针求值（标识符/自身/成员链/指针形态——classMemberBasePtr
+            //   622 统一助手）；code 槽：方法符号地址。两槽物化=单点发射。
             ir::IRValue objPtr = classMemberBasePtr(node->object.get());
-            ir::IRValue slotAddr = emitResult(
-                ir::Opcode::ConstString, {}, "ptr",
-                "?gstatic_" + methodValueSlotKey943(trapName), node->location);
-            emit(ir::Opcode::StorePtr, {slotAddr, objPtr}, ir::IRValue(), "",
-                 "ptr", node->location);
-            lastExpr_ = emitResult(ir::Opcode::FuncAddr, {}, "ptr", trapName,
-                                   node->location);
+            ir::IRValue codeVal = emitResult(ir::Opcode::FuncAddr, {}, "ptr",
+                                             methodSym, node->location);
+            const std::string temp =
+                emitMethodValuePair(objPtr, codeVal, node->location);
+            lastExpr_ = ir::IRValue::var(temp, "ptr");
             return true;
         }
     }

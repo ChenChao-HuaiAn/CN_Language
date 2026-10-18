@@ -380,22 +380,45 @@ private:
     // ---- 432（#276 波3·蹦床闭包模型）lambda 生成族私辅（实现在 ir_lambda.cpp）----
     // lambda 用户参数段构建（?lambdaN 与蹦床共用——纪律二当场归纳）：参数槽/ varStack 登记，引用参数（T&）按 ptr+byRef 形态（A-1 同款）
     void buildLambdaUserParams(ir::IRFunction& func, LambdaExpr* node);
-    // 943：lambda/方法值蹦床单点（methodValueTrap=true 时地址透传+裸对象指针捕获）
+    // 943：lambda/方法值蹦床单点（031 起方法值蹦床已废=仅 lambda 用）
     //   （1013 排版压缩 1006→997·903/943 收口先例纯排版零语义：参数合行不动 token 序）
-    void buildClosureParams943(ir::IRFunction& func, const std::vector<const ParamDecl*>& params,
-                               bool addressTransparentParams = false);
+    void buildClosureParams943(ir::IRFunction& func, const std::vector<const ParamDecl*>& params);
     void buildClosureTrampoline943(const std::string& trapName, const std::string& calleeName,
                                    const std::string& closureId, const std::string& returnSrcType,
                                    const std::string& returnIrType,
                                    const std::vector<const ParamDecl*>& params,
                                    const std::vector<std::string>& capturedNames,
-                                   const std::vector<char>& captureRefs, const SourceLocation& loc,
-                                   bool methodValueTrap = false);
-    // 943：蹦床缓存（节点->蹦床名·复用）；槽键=cap$<蹦床名>$绑定对象；蹦床合成体=对象槽 LoadPtr + 直调方法符号(this,实参)。
-    std::unordered_map<const MemberExpr*, std::string> methodValueTrapByNode943_;
-    int methodValueTrapCounter943_ = 0;
-    std::string ensureMethodValueTrap943(MemberExpr* node, const std::string& ownerSym, const ClassMemberInfo& method);
-    std::string methodValueSlotKey943(const std::string& trapName) const;
+                                   const std::vector<char>& captureRefs, const SourceLocation& loc);
+    // ---- 031（#1075·绑定方法值一等公民化·两槽值族·实现在 ir_method_value.cpp）----
+    // 值模型：`方法值<类,签名>` = 栈上两槽 {this, code}（unique / unique$s1——
+    //   与 i128 双槽命名同规·varSlots=2 登记）。「一值=两位」映射单点收口本族
+    //   （031 风险表第一条：禁散点 arity 映射）。
+    // 判定：表达式是否为绑定方法值求值（MemberExpr 的 isMethodValue 标记）
+    static bool isMethodValueExpr(const Expr* e);
+    // 判定：变量名是否为方法值变量（lookupSrcType=方法值串·类型驱动）
+    bool isMethodValueVar(const std::string& name) const;
+    // 两槽物化：Alloca 临时（2 槽）+ Store this/code → 返回临时基名
+    std::string emitMethodValuePair(const ir::IRValue& thisVal,
+                                    const ir::IRValue& codeVal,
+                                    const SourceLocation& loc);
+    // 读取两槽（Load×2——基名/基名$s1）
+    void loadMethodValuePair(const std::string& unique, ir::IRValue& thisOut,
+                             ir::IRValue& codeOut, const SourceLocation& loc);
+    // 声明位/赋值位统一：源表达式（方法值表达式/方法值变量）→ 目标变量两槽。
+    //   true=已处理（两槽整拷）；false=源非方法值（调用方回原路）
+    bool tryMethodValueAssign(const std::string& targetUnique, const Expr* src,
+                              const SourceLocation& loc);
+    // 声明位钩子（genExprInitializer 消费）：方法值初始化两槽整拷
+    bool tryGenMethodValueInit(VarDecl* node, const DeclGenCtx& ctx);
+    // 赋值位钩子（assignToIdentifierTarget 消费）：方法值变量赋值两槽整拷
+    bool identifierMethodValueAssign(AssignmentExpr* node, const IdentifierExpr* ident,
+                                     const std::string& unique);
+    // 实参位判定（方法值表达式 or 方法值变量）
+    bool isMethodValueArg(const Expr* arg) const;
+    // 实参位单点展开：单个实参若为方法值 → 追加两个物理实参（this、code）
+    //   （buildCallArgs 与 genMethodValueCall 位共用·per-arg 语义）
+    void expandMethodValueArg(Expr* arg, std::vector<ir::IRValue>& args,
+                              const SourceLocation& loc);
     // 快照静态槽注册 + 定义处固化（外层块发射）：值捕获=StorePtr 定义处值； [&]=StorePtr 变量地址；结构体值捕获=CopyStruct 槽（与 genVarDecl captureArgs 固化同构——数据流终点不同：captureArgs=局部值列表，本处=.data 静态槽·第 2 处重复留标记：与 ir_stmt_decl_init 固化段互为镜像）
     void emitLambdaSnapshotStores(const std::string& lambdaName,
         const std::vector<std::string>& capturedNames,

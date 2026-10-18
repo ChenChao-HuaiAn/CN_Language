@@ -190,6 +190,7 @@ add_library(cn_compiler_semantic STATIC
     src/cn_compiler/semantic/semantic_borrowview.cpp
     src/cn_compiler/semantic/semantic_lue.cpp
     src/cn_compiler/semantic/semantic_lambda_escape.cpp
+    src/cn_compiler/semantic/semantic_method_value_943.cpp
     src/cn_compiler/semantic/semantic_staticguard.cpp
 )
 target_link_libraries(cn_compiler_semantic PUBLIC cn_compiler_model cn_compiler_parser cn_compiler_common)
@@ -258,6 +259,7 @@ add_library(cn_compiler_ir STATIC
     src/cn_compiler/ir/ir_call_closure.cpp
     src/cn_compiler/ir/ir_call_direct.cpp
     src/cn_compiler/ir/ir_call_indirect.cpp
+    src/cn_compiler/ir/ir_method_value.cpp
     src/cn_compiler/ir/ir_lambda.cpp
     src/cn_compiler/ir/ir_stmt.cpp
     src/cn_compiler/ir/ir_stmt_decl.cpp

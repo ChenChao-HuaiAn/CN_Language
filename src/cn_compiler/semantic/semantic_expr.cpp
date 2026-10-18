@@ -32,18 +32,13 @@ std::vector<std::string> SemanticAnalyzer::collectCallArgTypes(
     (void)loc;
     std::vector<std::string> argTypes;
     argTypes.reserve(args.size());
+    // 031（#1075）：实参位对方法值开放——目标形参细判移交各调用点转换检查
+    //   （方法值→方法值形参放行；→fnptr 由 reportConvertReject 报专用文案）。
+    //   求值期置 argDepth 防位置守卫误报（语句位调用 `应用(对象.方法, 5);` 的
+    //   直接方法值实参在此位求值的覆盖）。
+    method_value_943::ArgGuard methodValueArg943;
     for (const auto& a : args) {
         argTypes.push_back(checkExpr(a.get()));
-        if (argIsBoundMethodValue(a.get())) {
-            // 943：文案改指闭包捕获（单一归属 methodValuePositionDiag943）；
-            //   同节点已由位置守卫报过（非绑定位置）则跳过=单诊断口径。
-            auto* mv = static_cast<MemberExpr*>(a.get());
-            if (!mv->methodValueDiag943) {
-                diagnostics_.report(DiagnosticLevel::Error, a->location,
-                                    method_value_943::positionDiag());
-                mv->methodValueDiag943 = true;
-            }
-        }
     }
     adjustLiteralArgTypes(argTypes, args);
     return argTypes;

@@ -133,6 +133,20 @@ private:
     // 模板实参形态探测（Task 3.5/3.8）：当前为 '<'，判断是否为模板尖括号
     //   （类型名 < 类型[,...] >），而非小于比较运算符。lookahead 扫描不消费 token。
     bool isTemplateAngleOpen() const;
+    // 031（#1075）：方法值类型形态探测——`方法值<类名, 返回类型(参数表)>`：
+    //   '<' 后=类名,返回类型+可选 * &，随后 (参数表) 平衡括号，闭合 '>'。
+    //   与 isTemplateAngleOpen 分离（签名段的括号是方法值专有形态，通用探测
+    //   不放宽防表达式 a < b(1), c > d 误判）。
+    bool isMethodValueAngleOpen() const;
+    // 031：方法值尖括号内核——ltOff='<' 相对 current 的 peek 偏移；返回闭合
+    //   '>' 后的 peek 偏移（调用方据以查后续 token）、-1=不匹配。
+    int methodValueAngleCloseOffset(int ltOff) const;
+    // 031：顶层/静态/字段声明 guard——`方法值<类, 返回(参数表)> 名` 前瞻
+    //   （genericDeclAhead 白名单不含签名段括号，方法值专用前瞻）。
+    bool methodValueDeclAhead() const;
+    // 031：方法值类型参数表文本消费（'(' 至配对 ')' 逐 token 拼接——内部串
+    //   标注同格式 `(整32,整32)`；括号可嵌套一轮防御）。
+    std::string parseMethodValueParamList();
     // 模块路径解析（v2.0）：标识符(:: 标识符)*（ColonColon 分隔，Task 3.6）
     //   返回路径段向量（segments）；兼容旧调用方经 importPath 拼接访问
     std::vector<std::string> parseModulePath();

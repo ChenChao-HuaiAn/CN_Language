@@ -80,6 +80,29 @@ std::vector<std::string> funcPtrParamsOf(const std::string& type);
 //   同为**唯一实现**——IR 层间接调用点 funcPtrRetTypeOfCallee 转发至此。
 std::string funcPtrReturnTypeOf(const std::string& type);
 
+// ==================== 绑定方法值类型（031·#1075·第一等民化） ====================
+// 内部串形态：`方法值<类名,函数指针<返回类型>(参数表)>`（类名=方法符号 owner 类；
+//   源码书写 方法值<类名, 返回类型(参数表)>，语义层构造时归一为内嵌函数指针串）。
+//   运行时表示=栈上两槽 {this 对象引用, 方法代码}（值语义 16 字节·零堆分配）——
+//   详见 plans/031 §二·①/⑤。静态方法作值保持裸函数指针语义（不入本族）。
+
+// 是否绑定方法值类型（前缀 `方法值<`）
+bool isMethodValueType(const std::string& type);
+
+// 拼接绑定方法值类型串（类名 + 内嵌函数指针串——调用方保证 fnPtrType 为
+//   `函数指针<...>(...)` 规范形态）
+std::string makeMethodValueType(const std::string& className,
+                                const std::string& fnPtrType);
+
+// 提取绑定方法值的类名（`方法值<X,函数指针<...>(...)>` -> "X"；
+//   非方法值串/无首个逗号返回空串）
+std::string methodValueClassOf(const std::string& type);
+
+// 提取绑定方法值内嵌的签名函数指针串（`方法值<X,函数指针<...>(...)>` ->
+//   "函数指针<...>(...)"；非方法值串返回空串）。返回空串=调用方按未登记
+//   处置（miss 不可静默纪律——031 内部串由 makeMethodValueType 单一构造）。
+std::string methodValueFnPtrOf(const std::string& type);
+
 // ==================== 指针/数组复合类型（Task 2.4） ====================
 
 // 是否指针类型（类型名以 * 结尾，如 整32* / 空类型*）

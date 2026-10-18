@@ -306,25 +306,30 @@ void SemanticAnalyzer::visitMemberExpr(MemberExpr* node) {
         // 方法引用：类型为 方法签名（供 对象.方法() 调用检查；此处给返回类型）
         if (!member->paramTypes.empty() || member->isConstructor ||
             member->isDestructor) {
-            // 方法作值（函数指针类型）
+            // 方法作值（签名串）
             std::string fp = "函数指针<" + member->type + ">(";
             for (std::size_t i = 0; i < member->paramTypes.size(); ++i) {
                 if (i > 0) fp += ",";
                 fp += member->paramTypes[i];
             }
             fp += ")";
-            lastType_ = fp;
-            // P3-23 补完：实例方法作值（对象.实例方法）标记——IR 合成"绑定 this"
-            //   闭包（须先赋给变量经闭包变量调用；不可直接作裸 fnptr 实参，D2 诊断）
-            //
-            // 943（2026-10-17）：位置守卫——实例方法作值仅可作**变量绑定值**
-            //   （声明初值/标识符赋值右值，methodValueBindDepth_>0）：IR 赋值位
-            //   合成蹦床闭包（值=代码+对象槽固化，跨函数转发安全）。其余位置
-            //   （返回位/字段/容器/下标/语句位等）绑定对象无处固化=悬垂或脏崩
-            //   （p82d/p943d 探针 rc=139 实录）→ 编译拒绝（§1.1a② 宁拒不放行·
-            //   plans/031 第一版保守面）。实参位由 806 检查另报；同节点去重标记
-            //   防双报（单诊断口径）。
-            if (method_value_943::bindDepth == 0 && !node->methodValueDiag943) {
+            // 031（#1075 一等公民化·2026-10-18 用户批）：「对象.实例方法」求值
+            //   类型改判=方法值<owner类,函数指针<返回>(参数)>（plans/031 §二·②
+            //   内部串）——运行时载体=栈上两槽 {this, 方法代码}（值语义·零堆
+            //   分配）；调用 `cb(实参)` 零新语法。类名取方法符号 owner 类
+            //   （lookupClassMember 口径——同一方法经派生实例取值类型一致）。
+            //   静态方法作值（上方 isStatic 分支）=裸 fnptr 语义保持不变（98）。
+            const std::string mvOwner = ownerClass.empty() ? structType : ownerClass;
+            lastType_ = types::makeMethodValueType(mvOwner, fp);
+            // 031 位置守卫（第一版保守面·plans/031 §二·③④）：禁写位拒绝——
+            //   返回位/字段写位/下标位/语句位等（R2/R3 语法面）非「变量绑定」
+            //   亦非「实参」位时编译拒绝（诊断指路绑定变量/闭包捕获）。
+            //   绑定位置（声明初值/标识符赋值右值·bindDepth>0）与实参位
+            //   （argDepth>0——目标形参细判移交转换检查点报 fnPtrConvertDiag）
+            //   放行；同节点去重标记防双报（单诊断口径）。
+            if (method_value_943::bindDepth == 0 &&
+                method_value_943::argDepth == 0 &&
+                !node->methodValueDiag943) {
                 diagnostics_.report(DiagnosticLevel::Error, node->location,
                                     method_value_943::positionDiag());
                 node->methodValueDiag943 = true;

@@ -12,6 +12,7 @@
 #include "cn_compiler/semantic/semantic.hpp"
 #include "cn_compiler/model/type_system.hpp"
 #include "cn_compiler/model/semantic_helpers.hpp"
+#include "cn_compiler/semantic/semantic_method_value_943.hpp"
 
 namespace cn_compiler {
 
@@ -271,6 +272,32 @@ std::string SemanticAnalyzer::resolveOverload(const std::string& name,
         return "";
     }
     if (bestKey.empty()) {
+        // 031（#1075）：含方法值实参的调用决议失败——优先报专用文案（指路
+        //   绑定变量/闭包捕获）。判据=无任何同名候选在该实参位的形参是方法值
+        //   类型（有=方法值位本身不是决议失败主因，走通用报错保持原诊断面）。
+        bool anyMvTarget = false;
+        for (const auto& kv : functions_) {
+            const FunctionInfo& info = kv.second;
+            if (!overloadEntryMatch(kv.first, name, info, moduleFilter, currentHasName)) {
+                continue;
+            }
+            const std::size_t cap = std::min(argTypes.size(), info.paramTypes.size());
+            for (std::size_t ai = 0; ai < cap; ++ai) {
+                if (types::isMethodValueType(argTypes[ai]) &&
+                    types::isMethodValueType(info.paramTypes[ai])) {
+                    anyMvTarget = true;
+                }
+            }
+        }
+        if (!anyMvTarget) {
+            for (std::size_t ai = 0; ai < argTypes.size(); ++ai) {
+                if (types::isMethodValueType(argTypes[ai])) {
+                    diagnostics_.report(DiagnosticLevel::Error, loc,
+                                        method_value_943::fnPtrConvertDiag());
+                    return "";
+                }
+            }
+        }
         diagnostics_.report(DiagnosticLevel::Error, loc,
                             "未找到匹配的函数 '" + name + "'（参数个数或类型不匹配）");
         return "";

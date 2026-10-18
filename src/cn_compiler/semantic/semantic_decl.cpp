@@ -21,6 +21,9 @@
 namespace cn_compiler {
 
 void SemanticAnalyzer::visitVarDecl(VarDecl* node) {
+    // 031（#1075）：放置骨架——静态位/嵌套面禁写（实现见 semantic_method_value_943.cpp）
+    method_value_943::checkLocalVarDeclPlacement(diagnostics_, node->isStatic,
+                                                 node->typeName, node->location);
     std::string varType = node->typeName;
     // 943（绑定方法值赋值位合法化）：声明初值=实例方法作值的合法落点之一——
     //   位置守卫置位（初值内 对象.方法 作值放行；IR 赋值位合成蹦床闭包并固化
@@ -435,6 +438,14 @@ void SemanticAnalyzer::visitVarDecl(VarDecl* node) {
                 return;
             }
             if (!canConvertType(initType, varType)) {
+                // 031（#1075）：方法值→fnptr（任一方向）转换拒绝=专用文案
+                //   （单点 reportConvertReject；#943 旧过渡路径
+                //   `整32(*绑)(整32)=对象.方法` 由放行改拒——plans/031 §二·③）。
+                if (method_value_943::reportConvertReject(
+                        diagnostics_, initType, varType, node->location,
+                        node->initializer.get())) {
+                    return;
+                }
                 // 234（2026-10-06·91303）：类→基类值形态=切片拒绝专用诊断
                 //   （立法 234·防切片；指针/引用形态已在 canConvertType 放行）
                 if (reportSliceReject(initType, varType, node->location)) {
@@ -927,21 +938,10 @@ bool SemanticAnalyzer::argIsBoundMethodValue(const Expr* e) {
            static_cast<const MemberExpr*>(e)->isMethodValue;
 }
 
-// 943（2026-10-17·用户质询收口）位置守卫与统一诊断文案（声明见
-//   semantic_method_value_943.hpp）。原文案「须先赋值给变量」在转发语境不安全
-//   （赋值后经 fnptr 形参转发=段错误 rc=139·p82d 探针）；本任务已把赋值位改为
-//   蹦床闭包合成（转发安全），文案按用户令改指**闭包捕获**（首选·载体自带
-//   数据+代码）或先绑定变量（现已安全）。双侧逐字一致（v2=语义检查实参.cn）。
-namespace method_value_943 {
-int bindDepth = 0;
-BindGuard::BindGuard() : saved(bindDepth) { bindDepth = saved + 1; }
-BindGuard::~BindGuard() { bindDepth = saved; }
-std::string positionDiag() {
-    return "实例方法作值不能作为函数指针值使用（绑定 this 无处安放）——"
-           "改用闭包捕获：变量 闭 = [对象](...) { 返回 对象.方法(...); }; "
-           "或先绑定变量：变量 cb = 对象.方法; cb(实参)";
-}
-}  // namespace method_value_943
+// 943（2026-10-17·用户质询收口）位置守卫与统一诊断文案已搬移——031（#1075）
+//   起实现归位 semantic_method_value_943.cpp（本文件触 1000 行硬线「先拆再加」），
+//   并在该文件扩充 argDepth（实参位开放）与 fnPtrConvertDiag（方法值→fnptr
+//   转换拒绝专用文案）。声明见 semantic_method_value_943.hpp。
 
 // 662（方法链消费位·2026-10-16）：类对象返回「拥有形态」收集——返回类型为类
 //   对象（非指针/引用）时判定返回值表达式形态（函数级两标记，收尾落

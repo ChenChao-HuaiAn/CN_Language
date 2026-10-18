@@ -14,6 +14,7 @@
 #include "cn_compiler/model/type_system.hpp"
 #include "cn_compiler/model/semantic_helpers.hpp"
 #include "cn_compiler/semantic/semantic_lambda_escape.hpp"
+#include "cn_compiler/semantic/semantic_method_value_943.hpp"
 
 namespace cn_compiler {
 
@@ -765,6 +766,11 @@ void SemanticAnalyzer::visitReturnStmt(ReturnStmt* node) {
         //   → 基类值返回类型）=专用切片诊断（声明/赋值面同款）；切片判定真=
         //   已报，不再叠加通用/混合符号诊断。
         if (!reportSliceReject(valueType, currentReturnType_, node->location) &&
+            // 031（#1075）：方法值→fnptr（任一方向）返回位转换拒绝=专用文案
+            //   （单点；R2 禁返回第一版面——返回位另由位置守卫承担主诊断）
+            !method_value_943::reportConvertReject(
+                diagnostics_, valueType, currentReturnType_, node->location,
+                node->value.get()) &&
             !reportMixedSignAssign(node->value.get(), valueType,
                                    currentReturnType_, node->location)) {
             diagnostics_.report(DiagnosticLevel::Error, node->location,

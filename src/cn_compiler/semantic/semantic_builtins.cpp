@@ -12,6 +12,7 @@
 #include "cn_compiler/semantic/semantic.hpp"
 #include "cn_compiler/model/type_system.hpp"
 #include "cn_compiler/model/semantic_helpers.hpp"
+#include "cn_compiler/semantic/semantic_method_value_943.hpp"
 
 namespace cn_compiler {
 
@@ -381,6 +382,10 @@ void SemanticAnalyzer::registerFunction(FunctionDecl* node) {
         return;
     }
     FunctionInfo info;
+    // 031（#1075）：放置骨架——方法值类型不可作函数返回类型（R2 语法面·
+    //   plans/031 §二·④⑤；诊断后继续注册=控制流不变，错误计数中止产物）。
+    method_value_943::checkPlacement(diagnostics_, node->returnType,
+                                     "函数返回类型", node->location);
     // A-2（crate 分桶）：返回类型按所属模块解析——多模块同名类型改写为限定键
     //   （模块名::类型），IR 层按改写后的类型查询语义表（findStruct/typeSizeOf）
     if (!node->returnType.empty()) {
@@ -496,6 +501,10 @@ void SemanticAnalyzer::checkDefaultParams(FunctionDecl* node, FunctionInfo& info
 //   crate 分桶解析/泛型实例化类型参数归一。写入 info.paramTypes/constParams。
 void SemanticAnalyzer::resolveParamTypes(FunctionDecl* node, FunctionInfo& info) {
     for (auto& param : node->params) {
+        // 031（#1075）：放置骨架——方法值形参合法（前缀形态放行）；容器元素/
+        //   嵌套形态（向量<方法值<...>>）拒绝（生命周期不可证）。
+        method_value_943::checkMethodValueNesting(
+            diagnostics_, param->typeName, param->location);
         // plans/019 阶段3：常量 只读引用参数位登记（与 paramTypes 等长）
         info.constParams.push_back(param->isConstParam);
         // 函数指针参数：整32(*func)(整32, 整32) 类型存规范化字符串

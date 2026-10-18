@@ -295,6 +295,50 @@ std::string funcPtrReturnTypeOf(const std::string& type) {
     return "";
 }
 
+// ==================== 绑定方法值类型（031·#1075·一等公民化） ====================
+// 内部串形态：`方法值<类名,函数指针<返回类型>(参数表)>`——类名=方法符号 owner
+//   类（lookupClassMember 口径）；内嵌签名=规范函数指针串（与 fnptr 同语系）。
+//   构造/解析单点收口本族（031 风险表：一值=两位映射散点须单点化——类型串
+//   解析同属该单点纪律，禁调用点各自 find(',')）。
+bool isMethodValueType(const std::string& type) {
+    return type.rfind("方法值<", 0) == 0;
+}
+
+std::string makeMethodValueType(const std::string& className,
+                                const std::string& fnPtrType) {
+    return "方法值<" + className + "," + fnPtrType + ">";
+}
+
+// 类名提取：`方法值<` 后至**首个顶层逗号**（类名=用户类名/实例化名，不含逗号）。
+std::string methodValueClassOf(const std::string& type) {
+    // 静默豁免业务值: 非方法值串=解析协议空串哨兵（调用方按未登记处置）
+    if (!isMethodValueType(type)) return "";
+    const std::size_t lp = type.find('<');
+    const std::size_t comma = type.find(',', lp + 1);
+    if (comma == std::string::npos) return "";
+    const std::string raw = type.substr(lp + 1, comma - lp - 1);
+    const std::size_t b = raw.find_first_not_of(" \t");
+    const std::size_t e = raw.find_last_not_of(" \t");
+    if (b == std::string::npos) return "";
+    return raw.substr(b, e - b + 1);
+}
+
+// 内嵌签名提取：首个顶层逗号后至末尾外层 '>' 之前（内嵌函数指针串原样）。
+std::string methodValueFnPtrOf(const std::string& type) {
+    // 静默豁免业务值: 非方法值串=解析协议空串哨兵（调用方按未登记处置）
+    if (!isMethodValueType(type)) return "";
+    const std::size_t lp = type.find('<');
+    const std::size_t comma = type.find(',', lp + 1);
+    if (comma == std::string::npos) return "";
+    // 静默豁免业务值: 非方法值串/无闭合'>'=解析协议空串哨兵
+    if (type.empty() || type.back() != '>') return "";
+    const std::string raw = type.substr(comma + 1, type.size() - comma - 2);
+    const std::size_t b = raw.find_first_not_of(" \t");
+    const std::size_t e = raw.find_last_not_of(" \t");
+    if (b == std::string::npos) return "";
+    return raw.substr(b, e - b + 1);
+}
+
 // 能否隐式转换（规格书3.7 + 整型宽化/浮点宽化/整数->浮点）
 // 规则：
 //   1. 相同类型（别名规范化后）可转

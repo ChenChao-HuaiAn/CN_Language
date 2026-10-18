@@ -392,6 +392,17 @@ void IRGenerator::resolveDeclTypesAndAlloc(VarDecl* node, DeclGenCtx& ctx) {
             //   segfault 实锤）。回填后 2 槽登记走正规路径，后端兜底幂等。
             srcType = substGenericType(node->typeName);
             srcTypeRaw = node->typeName;
+        } else if (!node->initializer->semanticType.empty() &&
+                   types::isMethodValueType(node->initializer->semanticType)) {
+            // 031（#1075·绑定方法值推断声明）：`变量 cb = 对象.方法;`——初始值
+            //   语义注记=方法值串（semantic_expr_access 改判）。irType=ptr（两槽
+            //   值基名〔首槽=this〕·槽数经 registerVarSlots 方法值分支登记 2）；
+            //   srcType/typeName 同步回填（485/752 教训同款——srcType 不回填=
+            //   槽登记 miss 单槽、调用位 isMethodValueVar 判据落空）。
+            irType = "ptr";
+            node->typeName = node->initializer->semanticType;
+            srcType = substGenericType(node->typeName);
+            srcTypeRaw = node->typeName;
         }
     }
     // 分配变量槽（数组自动多槽：registerVarSlots 按数组长度预留）

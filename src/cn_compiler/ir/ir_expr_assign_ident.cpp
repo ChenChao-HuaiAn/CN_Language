@@ -121,6 +121,9 @@ bool IRGenerator::assignToIdentifierTarget(AssignmentExpr* node, IdentifierExpr*
     if (assignToGlobalStatic(node, ident)) return true;
     // 目标变量唯一内部名（后续 普通赋值/类深拷贝 均需，提前计算避免重复查找）
     const std::string unique = lookupVarName(ident->name);
+    // 031（#1075）：方法值变量赋值（cb = 对象.方法 / cb2 = cb）——两槽值整拷
+    //   （须先于类深拷/通用单槽形态判定——单槽写会把两槽值截半）
+    if (identifierMethodValueAssign(node, ident, unique)) return true;
     // 633（632 同根·赋值位扩面）：右值=引用返回调用 → 类深拷（须先于
     //   identifierClassCopyAssign 等形态判定——右值为调用不入标识符通道）
     if (identifierRefReturnClassCopyAssign(node, ident, unique)) return true;

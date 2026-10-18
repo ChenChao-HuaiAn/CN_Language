@@ -168,6 +168,13 @@ ir::IRValue IRGenerator::allocVar(const std::string& name, const std::string& ir
 }
 void IRGenerator::registerVarSlots(const std::string& unique, const std::string& srcType) {
     if (function_ == nullptr) return;
+    // 031（#1075）：绑定方法值变量按 2 个连续槽登记（首槽=this、二槽=code·
+    //   $s1 高半槽命名与 i128 同规）——mem2reg 多槽变量降级不提升（两槽名字级
+    //   独立安全）；两槽读写经 ir_method_value.cpp 单点。
+    if (types::isMethodValueType(types::canonical(srcType))) {
+        function_->varSlots[unique] = 2;
+        return;
+    }
     // Task 完善A：i128/正128 变量/参数按 2 个连续 8 字节槽登记
     // （低64位槽 + 高64位槽 name$s1，与结构体 2 槽机制一致）
     if (types::isI128(types::canonical(srcType))) {
@@ -350,6 +357,12 @@ std::string IRGenerator::funcPtrTypeOfCallee(Expr* callee) const {
     //   → `...<整32>(整128,整128)`）；非泛型上下文 substGenericType 原样返回
     //   （幂等，与登记位替换双保险——登记位见 ir_decl.cpp / ir_stmt_decl.cpp）。
     const std::string substType = substGenericType(fnPtrType);
+    // 031（#1075）：方法值变量被调——返回**内嵌签名**函数指针串（形参表/返回
+    //   类型两消费点与 fnptr 同源对位·widenI128 等 ABI 定标单点复用；两槽
+    //   this 注入与 code 间接调用在 emitFnPtrCall 的 031 分支承担）。
+    if (types::isMethodValueType(types::canonical(substType))) {
+        return types::methodValueFnPtrOf(types::canonical(substType));
+    }
     if (!types::isFuncPtr(types::canonical(substType))) return "";
     return substType;
 }

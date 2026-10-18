@@ -217,6 +217,10 @@ void SemanticAnalyzer::visitAssignmentExpr(AssignmentExpr* node) {
         //   断链，本处落实——语义与规范 234「基类值形态编译期拒绝·专用诊断」
         //   对齐）。切片判定真=已报，不再叠加通用/混合符号诊断。
         if (!reportSliceReject(valueType, targetType, node->location) &&
+            // 031（#1075）：方法值→fnptr（任一方向）转换拒绝=专用文案（单点）
+            !method_value_943::reportConvertReject(diagnostics_, valueType,
+                                                   targetType, node->location,
+                                                   node->value.get()) &&
             !reportMixedSignAssign(node->value.get(), valueType, targetType,
                                    node->location)) {
             diagnostics_.report(DiagnosticLevel::Error, node->location,

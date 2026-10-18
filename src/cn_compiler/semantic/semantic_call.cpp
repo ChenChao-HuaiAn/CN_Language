@@ -16,6 +16,7 @@
 #include "cn_compiler/model/type_system.hpp"
 #include "cn_compiler/model/semantic_helpers.hpp"
 #include "cn_compiler/semantic/semantic_lambda_escape.hpp"
+#include "cn_compiler/semantic/semantic_method_value_943.hpp"
 #include "cn_compiler/semantic/semantic_staticguard.hpp"  // 916：方法调用位 §747-8 执法
 
 namespace cn_compiler {
@@ -258,6 +259,13 @@ void SemanticAnalyzer::visitCallExpr(CallExpr* node) {
         //   早退先例），非查表 miss 终态，按立法不重复报错。
         for (auto& arg : node->arguments) checkExpr(arg.get());
         lastType_ = "未知";
+        return;
+    }
+    // ---- 031（#1075）：绑定方法值变量调用 `cb(实参)`（零新语法）----
+    //   callee 静态类型=方法值<类,签名>：参数检查按内嵌签名；IR 层
+    //   CallIndirect(code)(this, 实参...)（this 注入参数位 0）----
+    if (types::isMethodValueType(calleeType)) {
+        checkMethodValueCall(node, calleeType);
         return;
     }
     if (checkFuncPtrCall(node, calleeType)) return;   // 族3：函数指针间接调用
@@ -641,7 +649,6 @@ bool SemanticAnalyzer::checkFuncPtrCall(CallExpr* node, const std::string& calle
     return false;
 }
 
-
 // 子族A：第 4 层 use 导入表——花括号/路径导入绑定名重写（原 visitCallExpr 273~311 段）：
 //   calleeName 为绑定名时映射回原符号名，并携带来源模块（moduleFilter）。
 void SemanticAnalyzer::rewriteUseImportAlias(CallExpr* node, std::string& calleeName) {
@@ -933,10 +940,16 @@ bool SemanticAnalyzer::checkDirectCall(CallExpr* node, const std::string& callee
             const std::string& paramType = info.paramTypes[i];
             if (!canConvertWithLiteral(node->arguments[i].get(), argTypes[i], paramType) &&
                 !canConvertArgNarrow(node->arguments[i].get(), argTypes[i], paramType)) {
-                diagnostics_.report(DiagnosticLevel::Error, node->arguments[i]->location,
-                                    "函数 '" + calleeName + "' 第 " + std::to_string(i + 1) +
-                                    " 个参数无法将 '" + argTypes[i] + "' 隐式转换为 '" +
-                                    paramType + "'");
+                // 031（#1075）：方法值→fnptr 实参拒绝=专用文案（单点）——
+                //   合法面（方法值实参→方法值形参）由 canConvert 同串放行。
+                if (!method_value_943::reportConvertReject(
+                        diagnostics_, argTypes[i], paramType,
+                        node->arguments[i]->location, node->arguments[i].get())) {
+                    diagnostics_.report(DiagnosticLevel::Error, node->arguments[i]->location,
+                                        "函数 '" + calleeName + "' 第 " + std::to_string(i + 1) +
+                                        " 个参数无法将 '" + argTypes[i] + "' 隐式转换为 '" +
+                                        paramType + "'");
+                }
             }
         }
         lastType_ = info.returnType;
