@@ -599,14 +599,49 @@ std::unique_ptr<Stmt> cloneStmt(Stmt* node);
     }
 }
 
-// 919：常量整数表达式形态（全字面量可折叠算术）——值域门槛适用面谓词
-//   （intLiteralFitsType 表达式扩展的调用点前置）。覆盖=裸字面量/一元负号
-//   字面量（isIntLiteralExpr 原面）∪ 二元 + - * / % 常量表达式（本轮扩展
-//   面）——刻意为 isIntLiteralExpr 的超集：调用点以本谓词替换即完成「字面量
-//   →字面量∪常量表达式」面扩展（判据主体仍在 intLiteralFitsType 单点）。
-[[maybe_unused]] inline bool cnIsConstIntExpr919(const Expr* e) {
-    std::string v;
-    return cnEvalConstIntExprText919(e, v);
+// 919-final（2026-10-18 用户裁决「字面量单点判域·Rust 口径」）：表达式子树
+//   含整数字面量谓词——值域门槛适用面扩展（含变量形态也判「子树内字面量
+//   数学值 vs 目标类型域」，判据主体=语义层 intLiteralFitsType 子树扫描
+//   单点 cnSubtreeLiteralBeyond919）。覆盖=字面量/一元 ± 链/二元运算
+//   （+ - * / % 及位/移位/比较等一切二元——子树内字面量不因运算种类豁免）；
+//   不穿越显式转换（CastExpr=用户显式承接/截断意图·1106/1318 后既有语义面）
+//   与调用/标识符/下标/成员访问（各自通道独立判域·非本扫描面）。刻意为
+//   cnIsConstIntExpr919（全常量可折叠形态）的超集：调用点以本谓词替换即
+//   完成「字面量∪常量表达式→含字面量的任意形态」适用范围扩展。
+[[maybe_unused]] inline bool cnExprHasIntLiteral919(const Expr* e,
+                                                    int depth = 0) {
+    // 静默豁免业务值: 919-final 谓词入口守卫（空节点/深度超限=非扫描面
+    // 判定·谓词语义非静默默认；深度上限防病态深嵌套栈溢出）
+    if (e == nullptr || depth > 64) {
+        return false;
+    }
+    switch (e->getType()) {
+        case NodeType::IntegerLiteral:
+            return true;
+        case NodeType::UnaryExpr: {
+            const auto* u = static_cast<const UnaryExpr*>(e);
+            return cnExprHasIntLiteral919(u->operand.get(), depth + 1);
+        }
+        case NodeType::BinaryExpr: {
+            const auto* b = static_cast<const BinaryExpr*>(e);
+            return cnExprHasIntLiteral919(b->left.get(), depth + 1) ||
+                   cnExprHasIntLiteral919(b->right.get(), depth + 1);
+        }
+        case NodeType::TernaryExpr: {
+            const auto* t = static_cast<const TernaryExpr*>(e);
+            return cnExprHasIntLiteral919(t->condition.get(), depth + 1) ||
+                   cnExprHasIntLiteral919(t->trueValue.get(), depth + 1) ||
+                   cnExprHasIntLiteral919(t->falseValue.get(), depth + 1);
+        }
+        case NodeType::AssignmentExpr: {
+            const auto* a = static_cast<const AssignmentExpr*>(e);
+            return cnExprHasIntLiteral919(a->value.get(), depth + 1);
+        }
+        default:
+            // 静默豁免业务值: 919-final 谓词闭集穷举（显式转换/调用/标识符/
+            // 下标/成员=非本扫描面·各自通道独立判域）
+            return false;
+    }
 }
 
 } // namespace cn_compiler

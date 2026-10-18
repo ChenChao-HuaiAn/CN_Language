@@ -550,9 +550,11 @@ bool SemanticAnalyzer::canConvertWithLiteral(const Expr* value,
         //   99999999999999999999/3;` 修前宿主静默错值放行 vs v2 修正后拒的
         //   分叉面（返回/赋值/实参/元素/字段五消费面随本单点统一对齐；值域
         //   判定主体 intLiteralFitsType 表达式扩展见 semantic_literal_domain）。
+        // 919-final（2026-10-18 用户裁决「字面量单点判域」）：谓词收拢为
+        //   cnExprHasIntLiteral919（含变量形态同判——子树扫描取代 isIntLiteralExpr
+        //   ∪ cnIsConstIntExpr919 两形态拼合，单谓词单判据）。
         if (value != nullptr && types::isInteger(fromRaw) &&
-            types::isInteger(toRaw) &&
-            (isIntLiteralExpr(value) || cnIsConstIntExpr919(value)) &&
+            types::isInteger(toRaw) && cnExprHasIntLiteral919(value) &&
             !intLiteralFitsType(value, toRaw)) {
             return false;
         }

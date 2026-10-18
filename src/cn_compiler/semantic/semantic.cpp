@@ -854,8 +854,12 @@ void SemanticAnalyzer::registerGlobalConstsAndStatics(Program* node) {
             //   值域判域族；非整数非枚举槽面维持原条件零变化）。756×919 合并：
             //   适用面=919 常量表达式扩展 ∨ 756 枚举槽分支（枚举槽任何初值形态
             //   进 intLiteralFitsType 判据面·判据面外恒真由判据内部分流）。
+            // 919-final（2026-10-18 用户裁决「字面量单点判域」·1076 叠加）：
+            //   谓词 cnExprHasIntLiteral919 取代 cnIsConstIntExpr919——含变量
+            //   形态同判（intLiteralFitsType 内子树扫描·无论表达式含不含变量，
+            //   超目标域字面量一律编译期拒）；枚举槽面（756）并列保留。
             if (g->initializer != nullptr &&
-                (cnIsConstIntExpr919(g->initializer.get()) || isEnumType(stType)) &&
+                (cnExprHasIntLiteral919(g->initializer.get()) || isEnumType(stType)) &&
                 !intLiteralFitsType(g->initializer.get(), stType)) {
                 diagnostics_.report(
                     DiagnosticLevel::Error, g->initializer->location,

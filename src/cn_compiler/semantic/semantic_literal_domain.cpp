@@ -8,11 +8,20 @@
 //   decTextFits* 单点（原匿名 decimalDigitsOf/decTextLe 族删除——十进制面
 //   逐字等价，进制面补齐，见 intLiteralFitsType 注释）。
 #define _CRT_SECURE_NO_WARNINGS
+#include <functional>
 #include <string>
 
 #include "cn_compiler/semantic/semantic.hpp"
 
 namespace cn_compiler {
+
+// 919-final（1076·用户裁决「字面量单点判域·Rust 口径」）前置声明：子树扫描
+//   自由函数（定义在 intLiteralFitsType 之后·判域经回调复用单点·防散写第二份
+//   判域）。回调签名=bool(const Expr*, const std::string&)——调用方传
+//   intLiteralFitsType（成员 static 私有，类内 lambda 可访问）。
+static bool scanSubtreeLiteralBeyond919(
+    const Expr* e, const std::string& to, int depth,
+    const std::function<bool(const Expr*, const std::string&)>& fits);
 
 // 319-a（T36·方案甲·用户批量裁决）：整数字面量值域检查——窄化豁免的值域门槛
 //（整16 甲=40000 超 32767：原静默截断 -25536 与表达式面〔0+40000 拒〕口径
@@ -88,6 +97,19 @@ bool SemanticAnalyzer::intLiteralFitsType(const Expr* e, const std::string& to) 
         //   既有通道（族④a 常量溢出预演/既有隐式转换判定）不动——防与既有
         //   「编译期整数溢出」诊断双报。求值空串=超 u128 域（910 空串口径）
         //   → 落下方统一空串分支（一切整型目标超域拒）。
+        // 919-final（2026-10-18 用户裁决「字面量单点判域·Rust 口径」）：
+        //   子树扫描加严——表达式（含变量形态）内任一整数字面量数学值超
+        //   目标类型域 → 拒（边界2：19 位超 i64 字面量+变量=拒；边界3：
+        //   `20位%7` 结果域内不豁免；边界1：超域带后缀字面量同判）。先于
+        //   求值面执行（求值面仅剩「字面量全在域内但常量结果超承载」面——
+        //   `5000000000*3` 类结果级拒，族④a 链协同）。
+        if (scanSubtreeLiteralBeyond919(
+                e, to, 0,
+                [this](const Expr* x, const std::string& t) {
+                    return intLiteralFitsType(x, t);
+                })) {
+            return false;
+        }
         if (!cnEvalConstIntExprText919(e, dec)) return true;  // 静默豁免业务值: 919 轮非常量形态判定（返回真=交既有转换主链判定·非静默默认）
         // 承载内值（int64 域内）：交既有折叠/溢出预演链（族④a 防双报）
         if (!dec.empty() &&
@@ -143,6 +165,81 @@ bool SemanticAnalyzer::intLiteralFitsType(const Expr* e, const std::string& to) 
     return true;  // 非整数目标（豁免面 isInteger 已前置）——防御性恒真
 }
 
+// 919-final（2026-10-18 用户裁决「字面量单点判域·Rust 口径」·四边界定案）：
+//   子树扫描——表达式（含变量等非常量形态）内任一**超 64 位承载**整数字面量
+//   （数学值 > 2^63-1 / 负值 < -2^63·parseIntValue 毒化面）超目标类型域即真
+//   （调用方拒）。承载内字面量（如 300 对 整8）不属本判据面——由既有链管辖
+//   （285/788③ 窄域拉窄=位模式拉窄定义语义·862/1078 锁：`甲8+300`→44 合法；
+//   T36 值域门槛/编译期溢出预演同链）——「超 64 位承载」是本轮静默分叉的
+//   实质面（1078 回归实锚：全幅度单点判会误伤窄域拉窄）。
+//   与既有面关系：
+//   ① 判据单点：子节点字面量直接复用 intLiteralFitsType（lit 直路·数学值
+//      语义含负号壳与后缀语义），禁散写第二份判域；
+//   ② 负号壳（-9223372036854775808=整64::MIN·|值| 恰 2^63≯ 承载上限文本）
+//      由 intLiteralFitsType 数学负值面判域（域内=不命中·483 字面量合法面
+//      零误伤）；
+//   ③ 显式转换（CastExpr）不穿越=用户显式承接/截断意图面（`整64(表达式)`
+//      既有截断语义·1106/1318 之外的存量合法面）；调用/标识符/下标/成员
+//      不穿越（各自通道独立判域·运行期值）；
+//   ④ 覆盖含变量形态=本轮核心扩展（`静态 整64 甲 = 20位 + 变;` 修前放行
+//      到运行期窄化，新口径=编译期拒·与「表达式含不含变量无关」）。
+static bool scanSubtreeLiteralBeyond919(
+    const Expr* e, const std::string& to, int depth,
+    const std::function<bool(const Expr*, const std::string&)>& fits) {
+    // 静默豁免业务值: 919-final 扫描入口守卫（空节点/深度超限=非扫描面
+    // 判定·谓词语义非静默默认；深度上限防病态深嵌套栈溢出）
+    if (e == nullptr || depth > 64) {
+        return false;
+    }
+    const NodeType t = e->getType();
+    if (t == NodeType::IntegerLiteral ||
+        (t == NodeType::UnaryExpr &&
+         static_cast<const UnaryExpr*>(e)->operand != nullptr &&
+         !static_cast<const UnaryExpr*>(e)->postfix &&
+         (static_cast<const UnaryExpr*>(e)->op == Operator::Subtract ||
+          static_cast<const UnaryExpr*>(e)->op == Operator::Add) &&
+         static_cast<const UnaryExpr*>(e)->operand->getType() ==
+             NodeType::IntegerLiteral)) {
+        const bool negShell = (t == NodeType::UnaryExpr);
+        const auto* lit = static_cast<const IntegerLiteral*>(
+            negShell ? static_cast<const UnaryExpr*>(e)->operand.get() : e);
+        std::string dec = types::normalizeIntLiteralToDecimal(lit->raw);
+        // 静默豁免业务值: 919-final 超 u128 域哨兵（空串=超一切整型域·按超域命中拒·910 口径非静默默认）
+        if (dec.empty()) return true;
+        // 64 位承载门槛（含负号：负值按 |值| ≤ 2^63）；承载内=非本扫描面
+        if (negShell) dec.insert(dec.begin(), '-');
+        if (types::decTextFitsSignedRange(dec, "9223372036854775808",
+                                          "9223372036854775807")) {
+            // 静默豁免业务值: 919-final 承载内字面量（既有链管辖·285 拉窄/
+            // T36 值域面·判定语义非静默默认）
+            return false;
+        }
+        return !fits(e, to);
+    }
+    if (t == NodeType::UnaryExpr) {
+        const UnaryExpr* u = static_cast<const UnaryExpr*>(e);
+        return scanSubtreeLiteralBeyond919(u->operand.get(), to, depth + 1, fits);
+    }
+    if (t == NodeType::BinaryExpr) {
+        const BinaryExpr* b = static_cast<const BinaryExpr*>(e);
+        return scanSubtreeLiteralBeyond919(b->left.get(), to, depth + 1, fits) ||
+               scanSubtreeLiteralBeyond919(b->right.get(), to, depth + 1, fits);
+    }
+    if (t == NodeType::TernaryExpr) {
+        const TernaryExpr* t3 = static_cast<const TernaryExpr*>(e);
+        return scanSubtreeLiteralBeyond919(t3->condition.get(), to, depth + 1, fits) ||
+               scanSubtreeLiteralBeyond919(t3->trueValue.get(), to, depth + 1, fits) ||
+               scanSubtreeLiteralBeyond919(t3->falseValue.get(), to, depth + 1, fits);
+    }
+    if (t == NodeType::AssignmentExpr) {
+        const AssignmentExpr* a = static_cast<const AssignmentExpr*>(e);
+        return scanSubtreeLiteralBeyond919(a->value.get(), to, depth + 1, fits);
+    }
+    // 静默豁免业务值: 919-final 扫描闭集穷举（显式转换/调用/标识符/下标/
+    // 成员访问=非本扫描面·各自通道独立判域或运行期值）
+    return false;
+}
+
 // 790（640 面裸全局遗漏补齐·569 采样轮 H1 探针实锚·semantic.cpp/hpp 双
 //   1000 红线先拆再加下沉件）：裸全局（569 通道）常量初始化器字面量判域——
 //   两条与 640 顶层静态挂点逐字同构：
@@ -176,7 +273,10 @@ void SemanticAnalyzer::checkGlobalVarInitLiteralDomain(
         }
     }
     if (selfRejected) return;
-    if (isIntLiteralExpr(init) && !intLiteralFitsType(init, slotType)) {
+    // 919-final：谓词 isIntLiteralExpr→cnExprHasIntLiteral919（含字面量的任意
+    //   形态入判——子树扫描 cnSubtreeLiteralBeyond919 在 intLiteralFitsType
+    //   内对含变量形态单点判域·四边界口径 2026-10-18 用户裁决）。
+    if (cnExprHasIntLiteral919(init) && !intLiteralFitsType(init, slotType)) {
         diagnostics_.report(
             DiagnosticLevel::Error, init->location,
             "静态变量 '" + name + "' 的初始字面量超出 '" + slotType +

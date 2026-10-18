@@ -317,7 +317,8 @@ void SemanticAnalyzer::visitVarDecl(VarDecl* node) {
         //   扩面：谓词 isIntLiteralExpr→cnIsConstIntExpr919（常量表达式同面
         //   具值域门槛——`变量 甲 = 99999999999999999999+0;` 修前双侧静默
         //   错值分叉：宿主 1661992959 vs v2 -1076103128）。
-        if (types::isInteger(varType) && cnIsConstIntExpr919(node->initializer.get()) &&
+        // 919-final（1076·用户裁决单点判域）：谓词扩为 cnExprHasIntLiteral919（含变量形态·子树扫描见 literal_domain）。
+        if (types::isInteger(varType) && cnExprHasIntLiteral919(node->initializer.get()) &&
             !intLiteralFitsType(node->initializer.get(), varType)) {
             diagnostics_.report(DiagnosticLevel::Error, node->location,
                                 "无法将 '" + varType + "' 隐式转换为 '" +
@@ -463,12 +464,12 @@ void SemanticAnalyzer::visitVarDecl(VarDecl* node) {
                     }
                 }
             } else if (((types::isInteger(initType) && types::isInteger(varType) &&
-                         cnIsConstIntExpr919(node->initializer.get())) ||
+                         cnExprHasIntLiteral919(node->initializer.get())) ||
                         // 756（2026-10-18 用户裁决·枚举值域门槛）：枚举槽 i32 域——
                         //   枚举变量初始化初值为超 i32 域常量（枚举成员常量/字面量
                         //   直存形态）编译期拒；判据=值域判域族单点（含静态局部）。
-                        // 756×919 合并：整数面谓词取 919 常量表达式扩展（超集原
-                        //   isIntLiteralExpr），枚举面 756 分支原样保留。
+                        // 756×919 合并：整数面谓词取 919 单点扫描扩展（含变量形态·
+                        //   超集 cnIsConstIntExpr919）/枚举面 756 分支原样保留。
                         isEnumType(varType)) &&
                        !intLiteralFitsType(node->initializer.get(), varType)) {
                 // 558（506甲·用户裁决 2026-10-13）：同型字面量值域门槛——

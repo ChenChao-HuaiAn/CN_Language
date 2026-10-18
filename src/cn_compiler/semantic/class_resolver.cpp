@@ -685,7 +685,7 @@ void SemanticAnalyzer::collectClassMembers(ClassDecl* node, ClassInfo& info) {
                             "' 声明初始化器不支持：" + foldErr +
                             "（加载期直存面·001 §静态成员）——请在构造函数或"
                             "主入口赋值（运行期读写链全形态生效）");
-                } else if (isIntLiteralExpr(member->initializer.get()) &&
+                } else if (cnExprHasIntLiteral919(member->initializer.get()) &&
                            !intLiteralFitsType(member->initializer.get(), mi.type)) {
                     // 640（535 批乙语义恢复·2026-10-16）：类静态字段超域字面量
                     //   直存编译期拒——折叠面原无值域门槛（静态 整32 总数 =
