@@ -109,12 +109,14 @@ def 步(名: str, 命令: list[str], 超时秒=None, **kw) -> bool:
 
 print("== L1 快速门禁（920·提交前）==", flush=True)
 
-# ① 静态七检查（与 ci.ps1 第 0~0.8 步同源·不依赖构建产物；242 增 file_length 冻结线·
+# ① 静态检查族（与 ci.ps1 第 0~0.8 步同源·不依赖构建产物；242 增 file_length 冻结线·
 #    334 增分层依赖冻结线——AGENTS §3 单向依赖的执法点：宿主 include 方向+v2 导入方向双面·
 #    554 增用例编号唯一性——487/489/496 治理链的防增量机制·882 增静默值登记制硬拦——648
-#    立法配套：四面四红+冻结基线，无逃生门 flag，唯一合法通道=miss_registry.json 补条）
+#    立法配套：四面四红+冻结基线，无逃生门 flag，唯一合法通道=miss_registry.json 补条·
+#    896 增部署清单一致性——deploy_*.sh 拷贝清单 ⊇ 服务运行依赖闭包（AST 全扫）+静态
+#    资源覆盖，406/824 漏部署类防复发）
 for 名 in ("check_ascii_idents", "check_keywords_sync", "check_registry_audit",
-           "check_case_numbers", "check_miss_gate"):
+           "check_case_numbers", "check_miss_gate", "check_deploy_manifest"):
     if not 步(名, [sys.executable, f"scripts/{名}.py"], 超时秒=静态超时):
         raise SystemExit(1)
 # 1013（2026-10-17 用户裁决）：官网文档覆盖对照 --strict 挂 L1——基线零（61/61 已覆盖·

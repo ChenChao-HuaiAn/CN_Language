@@ -40,6 +40,10 @@ Write-Host "[CI] 0.85/4 官网文档覆盖门禁（1013·check_doc_coverage --st
 python scripts/check_doc_coverage.py --strict
 if ($LASTEXITCODE -ne 0) { Write-Host "[CI] 官网文档覆盖门禁失败" -ForegroundColor Red; exit 1 }
 
+Write-Host "[CI] 0.87/4 部署清单一致性门禁（896·deploy_*.sh 拷贝清单 ⊇ 服务运行依赖闭包+静态资源覆盖——406/824 漏部署类防复发）..." -ForegroundColor Cyan
+python scripts/check_deploy_manifest.py
+if ($LASTEXITCODE -ne 0) { Write-Host "[CI] 部署清单一致性门禁失败" -ForegroundColor Red; exit 1 }
+
 Write-Host "[CI] 1/4 构建（/W4 /WX 零警告门禁）..." -ForegroundColor Cyan
 & powershell -ExecutionPolicy Bypass -File build.ps1 -Config Debug
 if ($LASTEXITCODE -ne 0) { Write-Host "[CI] 构建失败" -ForegroundColor Red; exit 1 }

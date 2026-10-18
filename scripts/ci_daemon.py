@@ -298,6 +298,10 @@ def 静态门禁与e2e段(步骤们: dict, 步骤, cn: Path | None, 日志, sha:
                   # 与 L1 gate_quick 静态段/win 全量 ci.ps1 同口径（防漂移·单一注册点=
                   # check_registry.json）。纯本地文件 <1s。
                   ("check_doc_coverage", ["--strict"]),
+                  # 896（2026-10-17）：部署清单一致性——deploy_*.sh 拷贝清单 ⊇ 服务运行
+                  # 依赖闭包+静态资源覆盖（406/824 漏部署类防复发）；纯本地文件秒级，
+                  # 与 L1 gate_quick 静态段/win 全量 ci.ps1 同口径。
+                  ("check_deploy_manifest", []),
                   # 822（2026-10-15）：显式传验证面——交叉模拟实例（CN_CI_PLATFORM=linux-arm64·
                   # CN_AS/CN_CXX=交叉工具链）不传则脚本自探=linux-x86_64 面，运行级格把
                   # x86_64 汇编喂给 arm64 工具链必败（42/50 恒红 12 轮兜底存量实录）；传后

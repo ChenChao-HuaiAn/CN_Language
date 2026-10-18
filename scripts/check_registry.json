@@ -193,6 +193,14 @@
    "v5执行面": "L1 gate_quick 静态段（882 起·提交前硬拦）+selftest+人工轮 --report"
   },
   {
+   "名称": "部署清单一致性门禁（896）",
+   "脚本": "scripts/check_deploy_manifest.py",
+   "组": "ci常规",
+   "检查网层": 9,
+   "说明": "896 立（406 漏 board_adjudication.py·824 漏 board_xxx 部署教训立法化）：deploy_board.sh/deploy_queue.sh 拷贝清单 ⊇ 服务运行依赖——①依赖闭包面=AST 全扫 import（含函数内延迟导入与 importlib/__import__ 字面量动态导入），本地模块传递闭包必须全在清单（非字面量动态导入=无法静态判定=红·fail-closed）；②内联打包读取面=heredoc 内 pathlib 链式 read_text 读取源必须存在且被清单覆盖（deploy_queue 漏 scp tokens.css 类）；③静态前端面=board_www/queue_www 的 index.html 本地引用部署后必须存在（本地存在或 scp 服务器目标补传）；④清单自洽=清单文件/目录必须存在+deploy_*.sh 必须登记入口或豁免（防门禁盲区）。清单多列不红，只抓漏项；selftest=--selftest（真实树+临时镜像树 14 例正反两态·406/824 场景复现含恢复回绿）",
+   "v5执行面": "L1 gate_quick 静态段（896 起·提交前）+win全量（ci.ps1 0.87）+云端兜底（ci_daemon 静态门禁段）"
+  },
+  {
    "名称": "构建产物新鲜度门禁（872）",
    "脚本": "scripts/check_build_freshness.py",
    "组": "ci常规",
