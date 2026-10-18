@@ -65,7 +65,7 @@ except Exception:
 # 887：探针/期望表/条件码映射数据面拆至 cross_asm_guards_data（单一职责·
 #   主脚本 1000 行红线内）；同目录导入（用户级 sys.path 不含 scripts/）。
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
-from cross_asm_guards_data import (探针源码, 期望类别, 期望计数, 采样点,
+from cross_asm_guards_data import (探针源码, 期望类别, 期望计数, 采样点, 自检样本,
                                    比较码, 相等码, 不等码, 标志码, 条件跳转集,
                                    运算类, 标志指令集)  # noqa: E402
 
@@ -293,7 +293,13 @@ def 解析跳转原子(行们, 跳转行, 条件码, 跳转文本):
 
     # ---- 相等/不等类（判零、移位零、乘法恒等）----
     if 条件码 in ("cbz", "cbnz"):
-        近 = [行们[j][1][0] for j in range(max(0, idx - 3), idx)
+        # 908：umulh 与 cbz 相邻即恒等成立的反向结构（arm64 u64 乘法——
+        #   `umulh x12, …; cbz x12, ok`）。原 `近` 取 idx 之前三行——真实
+        #   arm64 u64 序列里 umulh 就是最近标志指令（idx 行自身），永不在
+        #   前窗内 → 该分支从未命中过（887 探针缺 u64 乘法样本·同轮补齐）。
+        #   修法=近窗口含 idx 行（umulh 命中）；对既有样本含 cmp 家族面
+        #   零影响（它们走下方 相等/不等 分支，不达本支）。
+        近 = [行们[j][1][0] for j in range(max(0, idx - 3), idx + 1)
               if 行们[j] and 行们[j][0] == "insn"]
         if "umulh" in 近:
             return 原子_域内(0, 2 ** 64 - 1, 条件码 == "cbz",
@@ -614,7 +620,9 @@ def _类别(名):
     return next(t for t in 期望类别 if t[0] == 名)
 
 
-def 自检():
+def 自检() -> tuple:
+    """探测器自测（样本数据面=自检样本·908 外置拆分）：正样本须判等价、
+    负样本须判红（探测器自身亦被测·110-a）。返回 (正样本数, 负样本数)。"""
     失败 = []
 
     def 单样本(名称, 文本, 类别名, 应通过=True):
@@ -628,173 +636,19 @@ def 自检():
         if not 应通过 and 实际通过:
             失败.append(f"{名称}：笔误样本未被捕获（误判等价）")
 
-    # 正样本：三平台正确形态
-    单样本("arm64 窄加8", """
-    cmp w9, #127
-    b.gt Lovf1
-    cmn w9, #128
-    b.ge Lovf_ok1
-Lovf1:
-    movz x0, #8
-    bl __cn_runtime_error
-Lovf_ok1:
-""", "有符号8溢出")
-    单样本("win 窄加8", """
-    add eax, ecx
-    cmp eax, 127
-    jg @ovf0
-    cmp eax, -128
-    jge @ovf_ok0
-@ovf0:
-    mov rcx, 8
-    call __cn_runtime_error
-@ovf_ok0:
-""", "有符号8溢出")
-    单样本("lx64 窄加8（8 位标志）", """
-    add r10b, r9b
-    jno Lovf0_ok
-Lovf0:
-    mov rdi, 8
-    call __cn_runtime_error
-Lovf0_ok:
-""", "有符号8溢出")
-    单样本("lx64 无符号加（jnc）", """
-    add r10b, r9b
-    jnc Lovf3_ok
-Lovf3:
-    mov rdi, 8
-    call __cn_runtime_error
-Lovf3_ok:
-""", "无符号8溢出")
-    单样本("win 无符号加（单界）", """
-    add eax, ecx
-    cmp eax, 255
-    jbe @ovf_ok3
-    mov rcx, 8
-    call __cn_runtime_error
-@ovf_ok3:
-""", "无符号8溢出")
-    单样本("win 32 位加（标志）", """
-    add eax, ecx
-    jno @ovf_ok5
-@ovf5:
-    mov rcx, 8
-    call __cn_runtime_error
-@ovf_ok5:
-""", "有符号32溢出")
-    单样本("arm64 i32 乘法恒等式", """
-    smull x12, w9, w11
-    cmp x12, w12, sxtw
-    b.eq Lovf10_ok
-Lovf10:
-    movz x0, #8
-    bl __cn_runtime_error
-Lovf10_ok:
-""", "有符号32溢出")
-    单样本("arm64 i64 乘法恒等式", """
-    smulh x12, x10, x11
-    mul x10, x10, x11
-    cmp x12, x10, asr #63
-    b.eq Lovf12_ok
-Lovf12:
-    movz x0, #8
-    bl __cn_runtime_error
-Lovf12_ok:
-""", "有符号64溢出")
-    单样本("win u32 乘法（shr+jz 修复形态）", """
-    imul rax, rcx
-    mov r11, rax
-    shr r11, 32
-    jz @ovf0_ok
-@ovf0:
-    mov rcx, 8
-    call __cn_runtime_error
-@ovf_ok0:
-""", "无符号32溢出")
-    单样本("判零（test/jne）", """
-    test rax, rax
-    jne @field_ok2
-    mov rcx, 3
-    call __cn_runtime_error
-@field_ok2:
-""", "判零(空指针)")
-    单样本("判零（cmp#0/b.ne）", """
-    cmp x9, #0
-    b.ne Lfield_ok15
-    movz x0, #3
-    bl __cn_runtime_error
-Lfield_ok15:
-""", "判零(空指针)")
-    单样本("移位域（cmp/jb）", """
-    cmp ecx, 32
-    jb @ovf2_ok
-@ovf2:
-    mov rcx, 8
-    call __cn_runtime_error
-@ovf2_ok:
-""", "移位量域32")
-
-    # 负样本：835 反转 / 判零反转 / 移位界笔误 / u32 双落 / 家族混用 / 边界笔误
-    单样本("835 反转（b.le 序）", """
-    cmp w9, #127
-    b.le Lovf_ok1
-    b Lovf1
-    cmn w9, #128
-    b.ge Lovf_ok1
-Lovf1:
-    movz x0, #8
-    bl __cn_runtime_error
-Lovf_ok1:
-""", "有符号8溢出", 应通过=False)
-    单样本("判零反转（je）", """
-    test rax, rax
-    je @field_ok2
-    mov rcx, 3
-    call __cn_runtime_error
-@field_ok2:
-""", "判零(空指针)", 应通过=False)
-    单样本("移位界笔误（32→31）", """
-    cmp ecx, 31
-    jb @ovf2_ok
-@ovf2:
-    mov rcx, 8
-    call __cn_runtime_error
-@ovf2_ok:
-""", "移位量域32", 应通过=False)
-    单样本("u32 双落错误块（修复前形态回放）", """
-    imul rax, rcx
-    mov r11, rax
-    shr r11, 32
-    jz @ovf0
-@ovf0:
-    mov rcx, 8
-    call __cn_runtime_error
-@ovf_ok0:
-""", "无符号32溢出", 应通过=False)
-    单样本("标志家族混用（jno→jnc）", """
-    add eax, ecx
-    jnc @ovf1_ok
-@ovf1:
-    mov rcx, 8
-    call __cn_runtime_error
-@ovf1_ok:
-""", "有符号32溢出", 应通过=False)
-    单样本("arm64 边界笔误（127→126）", """
-    cmp w9, #126
-    b.gt Lovf1
-    cmn w9, #128
-    b.ge Lovf_ok1
-Lovf1:
-    movz x0, #8
-    bl __cn_runtime_error
-Lovf_ok1:
-""", "有符号8溢出", 应通过=False)
+    正数 = 负数 = 0
+    for 名称, 文本, 类别名, 应通过 in 自检样本:
+        if 应通过:
+            正数 += 1
+        else:
+            负数 += 1
+        单样本(名称, 文本, 类别名, 应通过)
 
     if 失败:
         raise SystemExit("自检失败：\n  " + "\n  ".join(失败))
+    return 正数, 负数
 
 
-# ============ 主流程 ============
 def 找编译器(参数路径):
     if 参数路径:
         p = pathlib.Path(参数路径)
@@ -815,9 +669,9 @@ def main():
     args = ap.parse_args()
 
     t0 = time.time()
-    自检()
+    正数, 负数 = 自检()
     print("== check_cross_asm_guards（887·交叉汇编守卫序列对照·835 病根立法化）==")
-    print("自检：正 11 负 6 样本全过（探测器自身亦被测）")
+    print(f"自检：正 {正数} 负 {负数} 样本全过（探测器自身亦被测·样本表 908 外置）")
 
     cn = 找编译器(args.cn)
     if cn is None:
@@ -861,7 +715,15 @@ def main():
             for g in 守卫们:
                 for c in g.常量们:
                     if -(2 ** 65) < c < 2 ** 65:
-                        动态.update({c - 1, c, c + 1})
+                        # 908：邻域点逐点过滤到 64 位承载窗口内——u64 域内
+                        #   常量 2^64-1 的邻域含 2^64，该点对「机器窗口原子」
+                        #   型守卫（判零 test/cmp、移位高半 shr）会按 64 位截断
+                        #   求值而非数学值，与期望判定（数学值）失配——使
+                        #   判零/无符号32 等类别在引入 u64 乘法探针后集体
+                        #   「未登记」（908 首跑实录）。窗口外数学值自洽面由
+                        #   负数越界点（-1 等）覆盖；越 ±2^64 点不承载。
+                        动态.update({p for p in (c - 1, c, c + 1)
+                                    if -(2 ** 64) < p < 2 ** 64})
         点们 = sorted(动态)
 
         总失败 = 0

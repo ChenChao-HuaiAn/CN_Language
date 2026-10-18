@@ -371,6 +371,9 @@ private:
     void emitOverflowErrorBody(LinuxX64AsmWriter& writer);
     // 整型乘法发射（任务 474 拆分：乘法溢出检测 OF/域检查/mul 高半三分·独立于加/减）
     void emitIntMul(LinuxX64AsmWriter& writer, const ir::IRInstruction& inst);
+    // u64 安全乘法守卫（908 拆出·双乘缺陷根治：重装 op1 原始操作数——见 cpp 头注）
+    void emitIntMulU64(LinuxX64AsmWriter& writer, const ir::IRInstruction& inst,
+                       const std::string& trap, bool op2Const);
 
     // 语义分析器指针（类布局/虚表槽位/静态字段查询；可空）
     ISemanticView* semantic_ = nullptr;

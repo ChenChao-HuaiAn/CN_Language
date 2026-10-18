@@ -379,27 +379,51 @@ void LinuxX64CodeGenerator::emitIntMul(LinuxX64AsmWriter& writer,
         writer.raw(trap + ":");
         emitOverflowErrorBody(writer);
         writer.raw(ok + ":");
-    } else {
-        // u64：mul 单操作数（CF=rdx 高半≠0）——需 rax×r9 形态，重发乘法（反向 jnc）
-        writer.line("mov rax, r10");
-        if (op2Const) {
-            long long v = 0;
-            try { v = std::stoll(inst.operands[1].extra); } catch (...) {
-                try { v = static_cast<long long>(std::stoull(inst.operands[1].extra)); }
-                catch (...) { v = 0; }
-            }
-            writer.line("mov r9, " + uint64HexText(static_cast<std::uint64_t>(v)));
-        }
-        // 寄存器操作数已装载于 r9，直接 mul
-        writer.line("mul r9");
-        const std::string ok = trap + "_ok";
-        writer.line("jnc " + ok);
-        writer.raw(trap + ":");
-        emitOverflowErrorBody(writer);
-        writer.raw(ok + ":");
-        writer.line("mov r10, rax");
+    } else if (ty == "u64") {
+        // 908：u64 安全乘法拆出函数（双乘缺陷根治·详见 emitIntMulU64 头注）。
+        //   写 else if 而非尾 else：else 块被 else 新规（2026-10-17）降格为
+        //   非法输入拦截面（禁业务调用）——本处为正常分派（链延续形态）。
+        emitIntMulU64(writer, inst, trap, op2Const);
     }
     emitStackStore(writer, regSlotOffset(inst.result.id), "r10", ty);
+}
+
+// ==================== 908（855 呈报·837 形态核查）：u64 安全乘法守卫 ====================
+// u64：mul 单操作数（CF=rdx 高半≠0）→ 反向 jnc 结构（win x64/arm64 同口径）。
+//   908 修复（linux_x64 u64 双乘缺陷根治·自 emitIntMul 拆出·先拆再加）：
+//   原内联实现 `mov rax, r10` 取的是通用段 `imul r10, r9` 之后的**已算积**
+//   ——`mul r9` 变成再乘一次 op2（结果 = a*b*b：不溢出形态静默错值；
+//   二次积 a*b² 越 2^64 的形态恒报错误码 8）。实录（855 呈报·任务 908
+//   定性）：v2p（CN 编译器自举产物）编译用例 837「嵌套折叠溢出预演」的
+//   折叠形态 ((30000+30000)*30000000) 时，内部折叠 `绝左505 * 绝右505`
+//   （60000×30000000=1.8e12）被二次乘 30000000 → 5.4e19 越 2^64 → CF=1
+//   → v2p 输出「运行时错误(错误码8)」编译期中止（gdb 实录：mul 前
+//   rax=1800000000000、r9=30000000=双乘铁证）。修为重装 op1 原始操作数
+//   到 rax（对齐 win x64 同分支 `mov rax, op1` 与 arm64 `mul x10, op1Src,
+//   op2Src` 形态）——rax×r9=真积，溢出判据恢复语义（修前 win 正确/linux
+//   崩溃平台分叉，本修收口为三后端同口径）。
+//   注：通用段对 u64 已发一次 `imul r10, r9`（结果被本函数覆盖）——保留
+//   是为与 win x64 重装重乘结构逐形对齐（两处皆重发装载），非计算依赖。
+void LinuxX64CodeGenerator::emitIntMulU64(LinuxX64AsmWriter& writer,
+                                          const ir::IRInstruction& inst,
+                                          const std::string& trap, bool op2Const) {
+    loadOperandToX(writer, inst.operands[0], "rax");   // 908 修复点：重装 op1（原 mov rax, r10）
+    if (op2Const) {
+        long long v = 0;
+        try { v = std::stoll(inst.operands[1].extra); } catch (...) {
+            try { v = static_cast<long long>(std::stoull(inst.operands[1].extra)); }
+            catch (...) { v = 0; }
+        }
+        writer.line("mov r9, " + uint64HexText(static_cast<std::uint64_t>(v)));
+    }
+    // op2 寄存器操作数已由通用段装载于 r9（重装 op1 不动 r9）——直接 mul
+    writer.line("mul r9");
+    const std::string ok = trap + "_ok";
+    writer.line("jnc " + ok);
+    writer.raw(trap + ":");
+    emitOverflowErrorBody(writer);
+    writer.raw(ok + ":");
+    writer.line("mov r10, rax");
 }
 
 // 除/余：有符号 cqo+idiv / 无符号 xor edx,edx+div（商 rax、余 rdx）
