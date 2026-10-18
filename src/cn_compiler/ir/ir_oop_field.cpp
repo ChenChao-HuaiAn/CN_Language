@@ -228,6 +228,47 @@ void IRGenerator::emitNoDtorFieldCascade(const ir::IRValue& objPtr,
     }
 }
 
+// 942（#942）：类「含可释放字段」递归判定——**容器元素=无用户析构类**释放注入
+//   门控（宿主 injectClassElemDestroy 调用）：性能红线=SLA 精确化，释放注入只对
+//   「字段含拥有资源」的类生效，纯标量/无资源类零注入零运行期税（禁对全部无
+//   析构类一刀切加税）。判据与 emitNoDtorFieldCascade 的发射分支**一一对应**
+//   （集合变更须两处同步核对）：
+//     · 字符串字段 → 真（free+清槽）；
+//     · 盒载荷字段（可选/结果）→ 收集器非空才真（条件释放单点同判）；
+//     · 类字段：有析构（含容器族）→ 真（DeleteObject）；无析构 → 递归
+//       （深度限 4 防环·与 emitNoDtorFieldCascade 同限）。
+bool IRGenerator::classHasReleasableFields(const std::string& classCanon,
+                                           int depth) const {
+    // 静默豁免业务值: 空依赖/深度上限（防环）——无更深资源可判（判定终止·非查表 miss）
+    if (semantic_ == nullptr || depth > 4) return false;
+    const std::string canon = types::canonical(classCanon);
+    const ClassInfo* ci = semantic_->findClass(canon);
+    // 静默豁免业务值: findClass miss=非类名（无字段可释放·业务分流）
+    if (ci == nullptr) return false;
+    for (const auto& fn : ci->fieldOrder) {
+        const auto f = ci->fields.find(fn);
+        if (f == ci->fields.end() || f->second.isStatic) continue;
+        const std::string ftype = classFieldType(canon, fn);
+        if (ftype.empty()) continue;
+        const std::string fcanon = types::canonical(ftype);
+        if (fcanon == "字符串") return true;
+        const std::string fcanonNorm = canonicalizeSyntheticArgText(fcanon);
+        if (fcanonNorm.rfind("可选$", 0) == 0 ||
+            fcanonNorm.rfind("结果$", 0) == 0) {
+            // 静默豁免业务值: 收集器非空=含串载荷——判定为真（正判据·非失败路径）
+            if (!ownedStrFieldsOf(ftype).empty()) return true;
+            continue;
+        }
+        if (!semantic_->isClassType(fcanon)) continue;
+        if (classDestructorSymbolKey(fcanon).empty()) {
+            if (classHasReleasableFields(fcanon, depth + 1)) return true;
+            continue;
+        }
+        return true;
+    }
+    return false;
+}
+
 // ==================== 实例/静态字段地址 ====================
 
 // 生成实例字段地址：this 指针（Load 自身参数槽）+ FieldAddr（类字段偏移）。

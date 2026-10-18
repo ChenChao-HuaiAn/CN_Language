@@ -567,9 +567,20 @@ void IRGenerator::emitStrArrayElemFreesFor(const std::string& unique) {
         for (const auto& mk : eci955->methods) {
             if (mk.second.isDestructor) { dtor955 = &mk.second; break; }
         }
-        if (dtor955 == nullptr) return;
-        const std::string dtorOwner955 =
-            dtor955->ownerClass.empty() ? elemCanon955 : dtor955->ownerClass;
+        // 942（#942）：无用户析构但含可释放字段的类元素同注入（容器元素同案·
+        //   数组载体面——原 dtor955==null 早退使元素内部资源块出口全漏，双侧
+        //   同漏实证 4/4）。无析构类发射通道=emitNoDtorFieldCascade 字段级联
+        //   （幂等：随后的 cn_memset 整对象置零使多路径二次调用空安全）；
+        //   **纯标量/无资源类仍早退**（性能红线·classHasReleasableFields
+        //   判定面精确化，与 v2 类字段含资源942表 同判据）。
+        const bool cascade955 = (dtor955 == nullptr);
+        if (cascade955 && !classHasReleasableFields(elemCanon955)) return;
+        std::string dtorSym955;
+        if (!cascade955) {
+            const std::string owner955 =
+                dtor955->ownerClass.empty() ? elemCanon955 : dtor955->ownerClass;
+            dtorSym955 = methodSymbolKey(owner955, dtor955->sigKey);
+        }
         const int len955 = types::arrayLenOf(srcType);
         if (len955 <= 0) return;
         int stride955 = semantic_->typeSizeOf(elemCanon955);
@@ -587,8 +598,15 @@ void IRGenerator::emitStrArrayElemFreesFor(const std::string& unique) {
                 addr955 = emitResult(ir::Opcode::Add, {base955, off955}, "ptr", "",
                                      loc955);
             }
-            emit(ir::Opcode::Call, {addr955}, ir::IRValue(),
-                 methodSymbolKey(dtorOwner955, dtor955->sigKey), "void", loc955);
+            // 释放通道二分（无 else 形态·else 新规）：无用户析构=字段级联
+            //   （942），有用户析构=Call ~T（既有）。
+            if (cascade955) {
+                emitNoDtorFieldCascade(addr955, elemCanon955, loc955, 1);
+            }
+            if (!cascade955) {
+                emit(ir::Opcode::Call, {addr955}, ir::IRValue(), dtorSym955,
+                     "void", loc955);
+            }
             // 923（629 派生·幂等补齐·955 注释「析构后元素首字段清零」设计意图
             //   落地）：类元素析构后**整对象置零**（cn_memset(元素地址, 类大小)）
             //   ——块出口/跳出/函数尾兜底多路径共享数组区（函数尾扫描看不到

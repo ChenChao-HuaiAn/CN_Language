@@ -164,7 +164,17 @@ bool IRGenerator::injectClassElemDestroy(const std::string& canonClass,
     for (const auto& mk : eci->methods) {
         if (mk.second.isDestructor) { dtorSig = mk.second.sigKey; break; }
     }
-    if (dtorSig.empty()) return true;  // 无析构：不注入（标量/结构体元素）
+    // 942（#942）：无用户析构类元素释放面扩展——原「dtorSig 空即返回」使元素
+    //   字段资源（字符串/容器/盒载荷/类字段）在 ~容器/清空/元素删除路径全漏
+    //   （643 实施轮 E 探针：宿主 2/v2 2 双侧同漏）。C++ 隐式析构完整语义=无
+    //   用户析构器≠字段不析构（658② 局部出口/字段级联同案）：含可释放字段者
+    //   改走字段级联释放（emitNoDtorFieldCascade 单点·元素=内联本体地址即
+    //   对象基址·级联自带释放+清槽幂等）；**纯标量/无资源类仍直接返回=零注入
+    //   零运行期税**（性能红线：判定面精确化 classHasReleasableFields）。
+    const bool cascadeMode = dtorSig.empty();
+    // 静默豁免业务值: 无用户析构且无可释放字段（字符串/容器/盒载荷/类字段递归）=元素
+    //   无释放义务（业务分流·非查表 miss）——性能红线：纯标量/无资源类零注入零运行期税
+    if (cascadeMode && !classHasReleasableFields(elemCanon)) return true;
     const std::string thisUnique = lookupVarName("自身");
     if (thisUnique.empty()) return true;
     // 容器字段：数组（T*）/ 元素数量（整64）
@@ -173,7 +183,8 @@ bool IRGenerator::injectClassElemDestroy(const std::string& canonClass,
     if (arrayOff < 0 || countOff < 0) return true;
     const int stride = semantic_->typeSizeOf(elemCanon);
     if (stride <= 0) return true;
-    const std::string dtorSym = methodSymbolKey(elemCanon, dtorSig);
+    const std::string dtorSym =
+        cascadeMode ? std::string() : methodSymbolKey(elemCanon, dtorSig);
     // this + 数组/元素数量 字段加载（循环外只读一次，循环内不修改）
     ir::IRValue selfPtr = emitResult(ir::Opcode::Load,
                                      {ir::IRValue::var(thisUnique, "ptr")},
@@ -188,8 +199,14 @@ bool IRGenerator::injectClassElemDestroy(const std::string& canonClass,
     //   （原实现全量平铺：删除头部/尾部 摘链后槽内容仍在且槽序号可能 >= 元素数量，
     //   平铺会漏释有效元素 + 误触越界槽二次析构，探针 P7 实证：链表<向量<字符串>>
     //   三元素删头×2 → 有效元素泄漏 1 + 越界槽二次调用 ~T）。
+    // 942：dtorBody 双通道（有析构类=Call ~T/元素地址=内联本体 this；无用户析构
+    //   类=字段级联释放于元素地址——字段集与 emitNoDtorFieldCascade 同源）。
     const std::function<void(const ir::IRValue&)> dtorBody =
         [&](const ir::IRValue& elemAddr) {
+            if (cascadeMode) {
+                emitNoDtorFieldCascade(elemAddr, elemCanon, loc, 1);
+                return;
+            }
             emit(ir::Opcode::Call, {elemAddr}, ir::IRValue(), dtorSym, "void", loc);
         };
     if (isFull) {

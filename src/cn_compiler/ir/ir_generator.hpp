@@ -762,6 +762,8 @@ private:
     // 658②：**无析构类**出口 RAII 字段级联释放（C++ 隐式析构同语义·细则见 ir_oop_field.cpp 实现头注）。
     void emitNoDtorFieldCascade(const ir::IRValue& objPtr, const std::string& classCanon,
                                 const SourceLocation& loc, int depth = 0);
+    // 942：类「含可释放字段」递归判定（无析构类元素级联注入门控·详注见 ir_oop_field.cpp 实现头注）。
+    bool classHasReleasableFields(const std::string& classCanon, int depth = 0) const;
     // 860-a：构造函数序言级联构造「有默认构造」本类类字段（与析构侧对称·详注见 ir_oop.cpp 实现头注）。
     void injectFieldCascadeConstruct(const ClassMember* member);
     // #283 甲案：类字段默认构造级联发射（NewObject+默认构造+写入字段槽·详注见 ir_oop.cpp 实现头注）。

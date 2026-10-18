@@ -432,11 +432,16 @@ void IRGenerator::registerOwnedArrayElems(const DeclGenCtx& ctx) {
         if (semantic_->isClassType(elemCanon955)) {
             const ClassInfo* eci955 = semantic_->findClass(elemCanon955);
             if (eci955 != nullptr) {
+                // 942（#942）：无用户析构但含可释放字段的类元素同登记（容器元素
+                //   同案·数组载体面——原仅「有析构」登记使无析构类数组元素资源
+                //   块出口全漏）。释放面与 emitStrArrayElemFreesFor 门控同源
+                //   （classHasReleasableFields）；纯标量/无资源类不登记（零开销）。
+                bool needs955 = classHasReleasableFields(elemCanon955);
                 for (const auto& mk : eci955->methods) {
-                    if (mk.second.isDestructor) {
-                        ownedStrArrayOrder_.push_back(ctx.unique);
-                        break;
-                    }
+                    if (mk.second.isDestructor) { needs955 = true; break; }
+                }
+                if (needs955) {
+                    ownedStrArrayOrder_.push_back(ctx.unique);
                 }
             }
         }
