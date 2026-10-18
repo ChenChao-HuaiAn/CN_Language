@@ -541,6 +541,28 @@ bool IRGenerator::genStringCompareBinary(BinaryExpr* node, const ir::IRValue& le
 // （原 480~515 段）ptr ± 整型 -> 指针（偏移量×元素大小）。true = 已处理。
 bool IRGenerator::genPointerArithmetic(BinaryExpr* node, const ir::IRValue& left,
                                        const ir::IRValue& right) {
+    // 1040（2026-10-18 用户批甲·001 §5.3 清单 #1）：指针差（尾-首）——语义层
+    //   已限定同型非字符串语义指针+标识符对（resolvedType=整64），此处按
+    //   (addrL - addrR) / 元素大小 → i64「元素个数」发射（C ptrdiff 同款·
+    //   尾在首前得负）。步进口径与下方指针±整数同源（ptrElemStride）。
+    if (left.type == "ptr" && right.type == "ptr") {
+        // 非减法（指针比较 ==/!= 等）交上层原路径处理（比较段/数值段自管）——
+        //   原双 ptr 在 genPointerArithmetic 恒 return false，此处保持零回归。
+        if (node->op != Operator::Subtract) return false;
+        std::string ptrSrcType = "";
+        if (node->left->getType() == NodeType::IdentifierExpr) {
+            ptrSrcType = lookupSrcType(
+                static_cast<IdentifierExpr*>(node->left.get())->name);
+        }
+        const std::int64_t stride = ptrElemStride(ptrSrcType);
+        ir::IRValue bytes = emitResult(ir::Opcode::Sub, {left, right}, "i64", "",
+                                       node->location);
+        lastExpr_ = emitResult(
+            ir::Opcode::Div,
+            {bytes, ir::IRValue::constant(std::to_string(stride), "i64")},
+            "i64", "", node->location);
+        return true;
+    }
     if ((left.type == "ptr" && right.type != "ptr") ||
         (right.type == "ptr" && left.type != "ptr")) {
         const bool ptrLeft = (left.type == "ptr");

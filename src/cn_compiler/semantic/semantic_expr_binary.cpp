@@ -693,6 +693,32 @@ bool SemanticAnalyzer::checkStringConcatAndPtrArithmetic(BinaryExpr* node,
         return true;
     }
     if (leftPtr && rightPtr) {
+        // 1040（2026-10-18 任务 1040 用户批甲·001 §5.3 清单 #1 扩充）：同型指针差
+        //   （尾-首）＝不安全函数内合法——结果=有符号整64「元素个数」（IR 层按
+        //   (地址差)/元素大小 发射·C ptrdiff 同款·尾在首前得负）；安全区边界已由
+        //   上方 reportUnsafeBoundary（「指针算术」kind）先行执法，本分支只决定
+        //   不安全域内的类型/拒绝面。
+        //   同型 = 规范化类型文本全等且非字符串语义类型（字符串/字符*=视图·
+        //   001 §5.3 豁免①不适用指针差）；异型 = 编译错误（文案与 v2 逐字一致）。
+        //   操作数形态=两侧标识符（与 v2 425 指针面可靠面同口径——表达式操作数
+        //   扩展（(p+1)-p 等）受 v2 推导器二元丢星面限制=派生缺口立项留档）。
+        const bool sameTypeDiff1040 =
+            (leftType == rightType) && !isStringSemanticType(leftType);
+        const bool identPair1040 =
+            node->left->getType() == NodeType::IdentifierExpr &&
+            node->right->getType() == NodeType::IdentifierExpr;
+        if (node->op == Operator::Subtract && sameTypeDiff1040 && identPair1040) {
+            lastType_ = "整64";
+            node->resolvedType = "整64";   // IR 侧 genPointerArithmetic 双指针分支识别
+            return true;
+        }
+        // 静默豁免闭集穷举: 指针差形态三分穷举——op=减 且 异型（同型/异型/非减 闭集判定·本分支内显式诊断「指针差要求两个指针同型」后终止），非静默取默认值。
+        if (node->op == Operator::Subtract && !sameTypeDiff1040) {
+            diagnostics_.report(DiagnosticLevel::Error, node->location,
+                                "指针差要求两个指针同型");
+            lastType_ = "整64";
+            return true;
+        }
         diagnostics_.report(DiagnosticLevel::Error, node->location,
                             "两个指针不能做算术运算");
         lastType_ = leftType;
