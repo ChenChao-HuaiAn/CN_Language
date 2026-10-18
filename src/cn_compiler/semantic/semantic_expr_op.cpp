@@ -513,6 +513,35 @@ void SemanticAnalyzer::checkIndexMemberAssignTarget(AssignmentExpr* node,
                 lvalueOk = false;
                 return;
             }
+            // 938（618 探针分叉面·v2 同轮登记对齐）：**顶层字符串常量**作下标写
+            //   基座（`常量 S = "AB"; S[0] = x;`）——常量经值内联（globalConstValues_）
+            //   不入变量族/类型非「字符串」，910 变量判定漏网 → 落 IR 层两条内部
+            //   错误（#648「下标/解引用赋值目标元素类型未解析」+「指针步进源类型
+            //   未登记」）非语义专诊断；与变量形态同文同拒（含 : S[i] = ... 尾巴
+            //   ——v2 侧 938 登记修复后同文案）。
+            {
+                const std::string& constName938 =
+                    static_cast<const IdentifierExpr*>(iobj)->name;
+                std::string constVal938;
+                auto cv938 = globalConstValues_.find(constName938);
+                if (cv938 != globalConstValues_.end()) {
+                    constVal938 = cv938->second;
+                } else if (!currentModuleName_.empty()) {
+                    auto cq938 = globalConstValues_.find(
+                        currentModuleName_ + "$" + constName938);
+                    if (cq938 != globalConstValues_.end()) constVal938 = cq938->second;
+                }
+                if (!constVal938.empty() &&
+                    (constVal938.front() == '"' || constVal938.front() == '\'')) {
+                    diagnostics_.report(
+                        DiagnosticLevel::Error, node->target->location,
+                        "下标左值赋值未支持（字符串下标只读）——字符串为不可变"
+                        "拥有型，原地修改请用 字符 数组或不安全区指针（112 甲）: " +
+                        constName938 + "[i] = ...");
+                    lvalueOk = false;
+                    return;
+                }
+            }
         }
     }
     // plans/019 阶段3：对象为常量引用参数（只读借用经成员链写=写借用

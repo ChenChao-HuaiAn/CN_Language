@@ -36,26 +36,15 @@ void IRGenerator::visitFloatLiteral(FloatLiteral* node) {
                            types::stripLiteralSuffix(node->raw), node->location);
 }
 void IRGenerator::visitStringLiteral(StringLiteral* node) {
-    std::string text = decodeString(node->raw);
-    int index = -1;
-    auto it = module_->stringIndex.find(text);
-    if (it != module_->stringIndex.end()) {
-        index = it->second;
-    } else {
-        index = static_cast<int>(module_->stringConstants.size());
-        module_->stringConstants.push_back(text);
-        module_->stringIndex[text] = index;
-    }
-    lastExpr_ = emitResult(ir::Opcode::ConstString, {}, "ptr",
-                           "@str" + std::to_string(index), node->location);
+    // 938：注册逻辑提炼 internString（原内联·常量内联/默认值同款单点复用）
+    lastExpr_ = emitResult(
+        ir::Opcode::ConstString, {}, "ptr",
+        "@str" + std::to_string(internString(decodeString(node->raw))),
+        node->location);
 }
 int IRGenerator::internEmptyString() {
-    auto it = module_->stringIndex.find("");
-    if (it != module_->stringIndex.end()) return it->second;
-    const int index = static_cast<int>(module_->stringConstants.size());
-    module_->stringConstants.push_back("");
-    module_->stringIndex[""] = index;
-    return index;
+    // 938：并入 internString 单点（行为等价）
+    return internString("");
 }
 ir::IRValue IRGenerator::evalDefaultExpr(Expr* expr) {
     switch (expr->getType()) {
@@ -88,17 +77,10 @@ ir::IRValue IRGenerator::evalDefaultExpr(Expr* expr) {
         }
         case NodeType::StringLiteral: {
             StringLiteral* lit = static_cast<StringLiteral*>(expr);
+            // 938：注册逻辑提炼 internString 单点复用（行为等价）
             const std::string text = decodeString(lit->raw);
-            int index = -1;
-            auto it = module_->stringIndex.find(text);
-            if (it != module_->stringIndex.end()) {
-                index = it->second;
-            } else {
-                index = static_cast<int>(module_->stringConstants.size());
-                module_->stringConstants.push_back(text);
-                module_->stringIndex[text] = index;
-            }
-            return ir::IRValue::constant("@str" + std::to_string(index), "ptr");
+            return ir::IRValue::constant(
+                "@str" + std::to_string(internString(text)), "ptr");
         }
         case NodeType::BoolLiteral: {
             BoolLiteral* lit = static_cast<BoolLiteral*>(expr);
@@ -244,11 +226,15 @@ void IRGenerator::visitIdentifierExpr(IdentifierExpr* node) {
             if (!constText.empty()) {
                 if (constText.size() >= 2 &&
                     (constText.front() == '"' || constText.front() == '\'')) {
-                    // 字符串常量：去引号后入字符串常量池
-                    std::string strVal = constText;
-                    if (strVal.size() >= 2) strVal = strVal.substr(1, strVal.size() - 2);
-                    lastExpr_ = emitResult(ir::Opcode::ConstString, {}, "ptr", strVal,
-                                           node->location);
+                    // 938（字符串常量全链）：字符串常量内联——原去引号后以值文本
+                    //   直接作 ConstString extra → codegen `lea X, AB`（值文本被当
+                    //   符号名·ml64 undefined symbol A2006·字符串常量全形态无法
+                    //   构建）；与字面量路径同口径（decodeString 转义解码 +
+                    //   internString 池化·938 探针实录）
+                    lastExpr_ = emitResult(
+                        ir::Opcode::ConstString, {}, "ptr",
+                        "@str" + std::to_string(internString(decodeString(constText))),
+                        node->location);
                 } else if (constText == "真" || constText == "假") {
                     // 239-a：布尔常量（内建 调试模式 等）——纯值返回不发射指令（对齐
                     //   BoolLiteral 形态）：isConstant 使 如果(常量) 走 genIfConst 直取

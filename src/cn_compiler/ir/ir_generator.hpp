@@ -320,6 +320,8 @@ private:
     ir::IRValue evalDefaultExpr(Expr* expr);
     // 空串入常量池并返回 @str 编号（默认字符串参数补全）
     int internEmptyString();
+    // 938：字符串内容入常量池（去重·返回池编号）——字面量/默认值/常量内联/空串复用
+    int internString(const std::string& content);
 
     // 查找变量的唯一内部名（未找到返回空串）
     std::string lookupVarName(const std::string& name) const;

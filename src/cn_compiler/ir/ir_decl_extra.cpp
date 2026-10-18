@@ -335,4 +335,21 @@ void IRGenerator::emitConstRefIntLiteral(const std::string& decText,
     lastExpr_ = emitResult(ir::Opcode::ConstInt, {}, "i64", decText, loc);
 }
 
+// 938（字符串常量全链·纪律二第三处前提炼）：字符串内容入常量池（去重·返回池
+//   编号）——字符串字面量（visitStringLiteral）/默认值字符串（evalDefaultExpr）/
+//   顶层字符串常量内联（visitIdentifierExpr 常量分支）/空串（internEmptyString）
+//   多消费点单点复用。原各自内联注册；第三处（常量内联）原直接以值文本作
+//   ConstString extra → codegen `lea X, AB`（未注册池·ml64 undefined symbol·
+//   宿主字符串常量全形态无法构建·938 探针实录）。
+int IRGenerator::internString(const std::string& content) {
+    auto it = module_->stringIndex.find(content);
+    if (it != module_->stringIndex.end()) {
+        return it->second;
+    }
+    const int index = static_cast<int>(module_->stringConstants.size());
+    module_->stringConstants.push_back(content);
+    module_->stringIndex[content] = index;
+    return index;
+}
+
 } // namespace cn_compiler

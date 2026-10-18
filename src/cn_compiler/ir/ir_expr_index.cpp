@@ -135,7 +135,22 @@ void IRGenerator::visitIndexExpr(IndexExpr* node) {
         }
         // 自举前置 A-1（plans/004）：字符串[i] 逐字节 O(1) 访问（字符* 字节
         //   视图，步进 1；与 C 的 s[i] 一致，越界由调用方按 字符串长度 约束）
-        if (!unique.empty() && types::canonical(srcType) == "字符串") {
+        // 938（618 探针分叉面）：**顶层字符串常量**同走本分支——常量经值内联
+        //   （globalConstValues_·unique/srcType 双空）原落「其他对象」兜底
+        //   8 字节步进/标量 LoadPtr=下标错值（S[1] 实测读 @str0+8→61=宿主
+        //   读面第二缺陷；与 v2 语义拒同族反向分叉）。判定=值文本含引号
+        //   （checkConstIdentifier/IR 常量内联 938 同源判据）；基址=genExpr
+        //   (object)=常量内联 @strN 地址，同款越界检查+i8 装载（与变量串
+        //   单路径）。
+        bool isStrObj938 = !unique.empty() && types::canonical(srcType) == "字符串";
+        if (!isStrObj938 && semantic_ != nullptr) {
+            const std::string cvStr938 = semantic_->globalConstValue(ident->name);
+            if (!cvStr938.empty() &&
+                (cvStr938.front() == '"' || cvStr938.front() == '\'')) {
+                isStrObj938 = true;
+            }
+        }
+        if (isStrObj938) {
             ir::IRValue ptr = genExpr(node->object.get());
             ir::IRValue index = genExpr(node->index.get());
             if (index.type != "i64") {
