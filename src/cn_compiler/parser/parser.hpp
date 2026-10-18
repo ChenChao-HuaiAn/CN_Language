@@ -223,6 +223,10 @@ private:
     //   （标识符+{ 被 parsePrimary 贪心判为 类型名{字段=值}，而循环体 { 块
     //    紧随迭代对象——遍历 数据 中 每个 x { 体 } 的 { 须留给语句解析）
     bool suppressStructInit_ = false;
+    // 846：当前正在解析的类的声明基名（parseClassDecl 进入类体前设置·退出恢复）——
+    //   构造初始化列表项名比对用（不符=「初始化列表基名与声明基类不符」，逐字
+    //   对齐 v2 解析类.cn 同句）。空串=无类上下文或当前类无基类。
+    std::string currentClassBaseName_;
 };
 
 } // namespace cn_compiler

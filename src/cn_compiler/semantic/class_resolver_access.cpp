@@ -346,12 +346,12 @@ void SemanticAnalyzer::checkSingleMethodBody(ClassInfo& info, ClassMemberInfo& m
         //   info.baseName 比对必误拒三级链（丙:乙:甲 中 乙(n):甲(n) 报
         //   「目标 '甲' 必须是直接父类 '乙'」的自相矛盾诊断）。
         if (mi.isConstructor && !member->ctorInitBase.empty() && mi.name == info.name) {
-            if (member->ctorInitBase != info.baseName) {
-                diagnostics_.report(
-                    DiagnosticLevel::Error, member->location,
-                    "父类构造初始化列表目标 '" + member->ctorInitBase +
-                        "' 必须是直接父类 '" + info.baseName + "'");
-            } else {
+            // 846（诊断职责上移·双侧对齐）：不符形态的诊断「初始化列表基名与
+            //   声明基类不符」已由解析层统一报出（parser_oop.cpp parseFunctionMember
+            //   ·逐字对齐 v2 解析类.cn 同句——v2 唯一诊断点亦在解析层，原此处
+            //   「必须是直接父类」重复报会致双侧诊断条数不对齐）。此处不再重复报，
+            //   仅对相符形态做父构造实参匹配检查（个数/类型——类型信息此层独有）。
+            if (member->ctorInitBase == info.baseName) {
                 const ClassInfo* parentI = info.baseName.empty()
                     ? nullptr : findClass(info.baseName);
                 const ClassMemberInfo* pc = nullptr;

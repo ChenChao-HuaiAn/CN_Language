@@ -343,6 +343,10 @@ std::unique_ptr<ClassDecl> Parser::parseClassDecl() {
     // 类体：访问标签段*（公开:/保护:/私有: 块级标签，规格书06-二）
     // 默认访问级别：私有（v2.0 变更，规格书06-二 默认私有；标签未出现前的
     //   成员按私有处理，公共 API 须显式 公开: 标注）
+    // 846：类基名上下文本位设置——构造初始化列表项名比对（parseFunctionMember）
+    //   消费；类体结束恢复（防御性保存还原·类体不支持嵌套类但保局部类安全）。
+    const std::string savedClassBase = currentClassBaseName_;
+    currentClassBaseName_ = decl->baseName;
     AccessSpecifier currentAccess = AccessSpecifier::Private;
     while (!check(TokenType::RightBrace) && !check(TokenType::EndOfFile)) {
         // 访问标签：公开: / 保护: / 私有:
@@ -381,6 +385,7 @@ std::unique_ptr<ClassDecl> Parser::parseClassDecl() {
         }
     }
     consume(TokenType::RightBrace, "'}'");
+    currentClassBaseName_ = savedClassBase;  // 846：类基名上下文恢复
     return decl;
 }
 
@@ -563,22 +568,79 @@ bool Parser::parseFunctionMember(ClassMember& out) {
         consume(TokenType::RightParen, "')'");
         // P3-20：父类构造初始化列表（构造 函数 子(...) : 父(实参)）——
         //   parser 记录，语义层校验（父类名/实参类型）、IR 层在构造体首部调用父构造
+        // 846（成员初始化列表形态·001 无立法·双侧诊断与恢复对齐）：项序列解析
+        //   `名(实参)[, 名(实参)]*`——原实现只吃第一项，`, 二(2)` 尾巴交还类体
+        //   循环被当字段声明误报「类字段预期名称」并连环雪崩（p08 探针实录：
+        //   6:21 类字段预期名称 + 预期顶层声明×4）。本修：①逐项消费整个列表；
+        //   ②项名与声明基类（currentClassBaseName_）不符=报「初始化列表基名与
+        //   声明基类不符」（逐字对齐 v2 解析类.cn 同句·首处不符只报一次防连环）；
+        //   ③非标识符项名=报「初始化列表预期基类名」（对齐 v2）并中断；
+        //   ④中断/畸形残留=同步跳到安全 token（`{` / `;` / `}` / `->`，括号
+        //   深度 0 处），后续成员恢复正常解析——不再连环误报。合法形态
+        //   （568·基类初始化列表 `: 父(实参)` 相符）零行为变更。
         if (check(TokenType::Colon)) {
             advance();
-            if (check(TokenType::Identifier)) {
-                out.ctorInitBase = current().getValue();
+            bool initHadError = false;  // 本段报过诊断（驱动收尾同步跳过）
+            bool initReported = false;  // 「不符」诊断只报首处（防连环误报）
+            while (true) {
+                if (!check(TokenType::Identifier)) {
+                    reportErrorHere("初始化列表预期基类名");
+                    initHadError = true;
+                    break;
+                }
+                const std::string initName = current().getValue();
+                const bool isFirstInit = out.ctorInitBase.empty();
+                if (initName != currentClassBaseName_ && !initReported) {
+                    reportErrorHere("初始化列表基名与声明基类不符");
+                    initReported = true;
+                    initHadError = true;
+                }
+                if (isFirstInit) out.ctorInitBase = initName;
                 advance();
-            } else {
-                reportErrorHere("构造初始化列表预期父类名");
-                return false;
+                if (!check(TokenType::LeftParen)) {
+                    // 846 恢复同步：项名后无 `(`——畸形（如 `: 一 {`）不当实参解析
+                    //   （parseExpr 会吞方法体 `{`），报一次后交下方同步跳到安全点。
+                    reportErrorHere("预期 '('，实际为 '" + current().getValue() + "'");
+                    initHadError = true;
+                    break;
+                }
+                advance();  // 消费 '('
+                if (!check(TokenType::RightParen)) {
+                    do {
+                        // 846：仅首项实参入列（语义/IR 消费面）——后续项属成员
+                        //   初始化列表形态（已诊断·编译中止），入列会污染父构造
+                        //   实参计数（「没有匹配实参数量的构造函数」误报）；
+                        //   非首项解析即弃（求值后按 isFirstInit 决定去留）。
+                        auto initArg = parseExpr();
+                        if (isFirstInit) {
+                            out.ctorInitArgs.push_back(std::move(initArg));
+                        }
+                    } while (match(TokenType::Comma));
+                }
+                consume(TokenType::RightParen, "')'");
+                if (match(TokenType::Comma)) continue;  // 下一项
+                break;
             }
-            consume(TokenType::LeftParen, "'('");
-            if (!check(TokenType::RightParen)) {
-                do {
-                    out.ctorInitArgs.push_back(parseExpr());
-                } while (match(TokenType::Comma));
+            // 846 恢复同步点：列表后残留（非 `{`/`;`/`}`/`->` 且括号深度 0）
+            //   一次性跳到安全边界——原实现把残留 token 交还类体循环导致后续行
+            //   连环误报雪崩。括号深度感知=实参内嵌套 `(...)`/`[...]` 不误停。
+            if (initHadError) {
+                int depth = 0;
+                while (!check(TokenType::EndOfFile)) {
+                    if (depth == 0 &&
+                        (check(TokenType::LeftBrace) || check(TokenType::Semicolon) ||
+                         check(TokenType::RightBrace) || check(TokenType::Arrow))) {
+                        break;
+                    }
+                    if (check(TokenType::LeftParen) || check(TokenType::LeftBracket)) {
+                        ++depth;
+                    } else if (check(TokenType::RightParen) ||
+                               check(TokenType::RightBracket)) {
+                        if (depth != 0) --depth;
+                    }
+                    advance();
+                }
             }
-            consume(TokenType::RightParen, "')'");
         }
         // 返回类型（-> 类型，可省略）
         if (check(TokenType::Arrow)) {
