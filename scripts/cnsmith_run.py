@@ -183,9 +183,9 @@ def 单侧负向判定(rc, 输出, 产物路径):
 def v2p编译一次(运行器, v2p, 源, 工作目录, 平台):
     """v2 侧单样本编译（工作目录隔离·asm 落点 target/v2asm.s）→ (rc, 输出, asm路径)。"""
     (工作目录 / "target").mkdir(parents=True, exist_ok=True)
-    链 = 工作目录 / "stdlib"
-    if not 链.exists():
-        os.symlink(根 / "stdlib", 链)
+    # 1038 修：win 侧原 os.symlink 需开发者模式/管理员特权（未开=OSError 中断）；
+    #   改用 run_e2e 同款 win junction（mklink /J·999 先例「建stdlib软链」）
+    运行器.建stdlib软链(工作目录, 平台)
     入口 = 工作目录 / pathlib.Path(源).name
     shutil.copy2(源, 入口)
     asm = 工作目录 / "target" / "v2asm.s"
@@ -550,7 +550,13 @@ def 就绪v2侧(a, 平台):
     except Exception as e:
         a.v2侧未就绪原因 = "e2e 运行器加载失败：%r" % (e,)
         return None, None
-    就绪 = 运行器.确保v2p与运行时就绪(a.cn, 平台, a.详细, "cnsmith")
+    if 平台 == "win-x64":
+        # 1038 修：win 侧就绪=确保v2p就绪win（ml64/link 工具链）；原无条件调
+        #   确保v2p与运行时就绪（linux 专用 as/g++ 探测）→ win 上恒「未找到 as」
+        #   两轨道无效（#1020 轮 H7 在案·本轮 win 实证复现+根治）
+        就绪 = 运行器.确保v2p就绪win(a.cn, a.详细, "cnsmith")
+    else:
+        就绪 = 运行器.确保v2p与运行时就绪(a.cn, 平台, a.详细, "cnsmith")
     if 就绪[0] is None:
         a.v2侧未就绪原因 = "v2p 就绪失败：" + str(就绪[1])[:200]
         return 运行器, None
