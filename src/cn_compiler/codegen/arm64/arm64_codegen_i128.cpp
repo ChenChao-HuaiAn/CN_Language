@@ -143,8 +143,10 @@ void Arm64CodeGenerator::emitInt128Bitwise(Arm64AsmWriter& writer,
 
 // i128/u128 移位：完整 128 位——移位量按位宽 128 取模（plans/001:289）。
 //   AArch64 移位量可用寄存器（无 cl 约束）：变量路径 and x11,#127 + cmp/b.hs 二分路；
-//   k<64：dstLo=lo<<k · dstHi=(hi<<k)|(lo>>(64-k))（lsl+lsr+orr·64-k 经
-//   mov #64/sub 或 neg/add 求得）；k>=64 跨半（k'=k-64）。有符号 asr/无符号 lsr。
+//   k=0 直通拷贝（1103：寄存器移位取模 64 不可表达「移位 64=清零」——「64-k」互补式
+//   在 k=0 会恒等污染双半；x86 shld/shrd 硬件自带 count=0 特判）；
+//   k∈[1,63]：dstLo=lo<<k · dstHi=(hi<<k)|(lo>>(64-k))（lsl+lsr+orr·64-k 经
+//   mov #64/sub 求得）；k>=64 跨半（k'=k-64）。有符号 asr/无符号 lsr。
 void Arm64CodeGenerator::emitInt128Shift(Arm64AsmWriter& writer,
                                          const ir::IRInstruction& inst) {
     const bool isShl = (inst.opcode == ir::Opcode::Shl);
@@ -241,7 +243,14 @@ void Arm64CodeGenerator::emitInt128Shift(Arm64AsmWriter& writer,
     }
     writer.line("cmp x11, #64");
     writer.line("b.hs " + bigL);
-    // 小路径（k<64）：x12 = 64 - k
+    // 1103 收口（arm64 面真缺陷·k=0 边界）：AArch64 寄存器移位量对 64 取模——
+    //   本小路径的「64-k」互补移位在 k=0 时 x12=64（模 64=不移位）→ shl 时
+    //   hi|=(lo>>0) 污染高半（1LL<<0 → 2^64+1）、shr 时 lo|=(hi<<0) 污染低半；
+    //   x86 shld/shrd 硬件自带 count=0 直通特判（x64 后端无此面·v2 runtime
+    //   helper sh==0 显式直通同语义）。k=0 直通拷贝（对齐常量路径 k==0 分支）。
+    const std::string zeroL = "Lsh128_z" + std::to_string(cid);
+    writer.line("cbz x11, " + zeroL);
+    // 小路径（k∈[1,63]）：x12 = 64 - k
     writer.line("mov x12, #64");
     writer.line("sub x12, x12, x11");
     if (isShl) {
@@ -266,7 +275,7 @@ void Arm64CodeGenerator::emitInt128Shift(Arm64AsmWriter& writer,
         storeVirtualResult(writer, dstLoId, "x9", "i64");
     }
     writer.line("b " + endL);
-    // 大路径（k>=64：k' = k-64）
+    // 大路径（k>=64：k' = k-64 ∈ [0,63]·单侧移位无互补面）
     writer.raw(bigL + ":");
     writer.line("sub x11, x11, #64");
     if (isShl) {
@@ -287,6 +296,14 @@ void Arm64CodeGenerator::emitInt128Shift(Arm64AsmWriter& writer,
         }
         storeVirtualResult(writer, dstHiId, "x9", "i64");
     }
+    writer.line("b " + endL);
+    // k=0 直通（1103）：双半原样拷贝——对齐 x86 shld/shrd count=0 硬件特判与
+    //   runtime helper sh==0 直通分支（上「64-k」互补式对 k=0 不可表达）。
+    writer.raw(zeroL + ":");
+    emitStackLoad(writer, regSlotOffset(hiId), "x9", "i64");
+    storeVirtualResult(writer, dstHiId, "x9", "i64");
+    emitStackLoad(writer, regSlotOffset(loId), "x9", "i64");
+    storeVirtualResult(writer, dstLoId, "x9", "i64");
     writer.raw(endL + ":");
 }
 
