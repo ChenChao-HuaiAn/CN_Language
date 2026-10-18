@@ -73,42 +73,74 @@
 <h3><code>映射()</code> <span class="签 签-赭">不安全</span></h3>
 <p class="函数定义"><code>不安全 函数 映射()</code></p>
 <p>构造空映射（8 桶起步，不预分配大数组）。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">映射-映射.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">映射&lt;整64, 整64&gt; 字典 = 映射&lt;整64, 整64&gt;();
-打印(字典.为空());</code></pre></div>
-<p class="输出行">输出：真
-</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · stdlib/mapset.html · 映射（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+导入 映射集合::映射;
+导入 映射集合::{字符串映射, 集合};
+导入 映射集合::{查找键位置, 查找值位置};
+
+函数 主() -&gt; 整32 {
+映射&lt;整64, 整64&gt; 字典 = 映射&lt;整64, 整64&gt;();
+打印(字典.为空());
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：真</p>
 </section>
 <section class="函数条" id="映射-映射拷贝">
 <h3><code>映射(其他)</code> <span class="签 签-赭">不安全</span></h3>
 <p class="函数定义"><code>不安全 函数 映射(映射& 其他)</code></p>
 <p>拷贝构造：桶/键/值/链数组全量深拷（元素按 T 拷贝语义）。</p>
 <table class="表 参数表"><thead><tr><th>参数</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>其他</code></td><td><code>映射&amp;</code></td><td>被拷贝的映射</td></tr></tbody></table>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">映射-映射拷贝.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">映射&lt;整64, 整64&gt; 甲 = 映射&lt;整64, 整64&gt;();
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · stdlib/mapset.html · 映射（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+导入 映射集合::映射;
+导入 映射集合::{字符串映射, 集合};
+导入 映射集合::{查找键位置, 查找值位置};
+
+函数 主() -&gt; 整32 {
+映射&lt;整64, 整64&gt; 甲 = 映射&lt;整64, 整64&gt;();
 结果&lt;空类型, 整32&gt; 设 = 甲.设置(1, 11);
 映射&lt;整64, 整64&gt; 乙 = 甲;
 设 = 乙.设置(2, 22);
-打印(甲.大小(), " ", 乙.大小());</code></pre></div>
-<p class="输出行">输出：1 2
-</p>
+打印(甲.大小(), " ", 乙.大小());
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：1 2</p>
 </section>
 <section class="函数条" id="映射-大小">
 <h3><code>大小</code> <span class="签 签-绿">常量</span></h3>
 <p class="函数定义"><code>常量 函数 大小() -> 整64</code></p>
 <p>键值对个数。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">映射-大小.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">映射&lt;整64, 整64&gt; 字典 = 映射&lt;整64, 整64&gt;();
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · stdlib/mapset.html · 映射（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+导入 映射集合::映射;
+导入 映射集合::{字符串映射, 集合};
+导入 映射集合::{查找键位置, 查找值位置};
+
+函数 主() -&gt; 整32 {
+映射&lt;整64, 整64&gt; 字典 = 映射&lt;整64, 整64&gt;();
 结果&lt;空类型, 整32&gt; 设 = 字典.设置(1, 1);
-打印(字典.大小());</code></pre></div>
-<p class="输出行">输出：1
-</p>
+打印(字典.大小());
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：1</p>
 </section>
 <section class="函数条" id="映射-为空">
 <h3><code>为空</code> <span class="签 签-绿">常量</span></h3>
 <p class="函数定义"><code>常量 函数 为空() -> 布尔</code></p>
 <p>是否为空映射。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">映射-为空.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">映射&lt;整64, 整64&gt; 字典 = 映射&lt;整64, 整64&gt;();
-打印(字典.为空());</code></pre></div>
-<p class="输出行">输出：真
-</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · stdlib/mapset.html · 映射（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+导入 映射集合::映射;
+导入 映射集合::{字符串映射, 集合};
+导入 映射集合::{查找键位置, 查找值位置};
+
+函数 主() -&gt; 整32 {
+映射&lt;整64, 整64&gt; 字典 = 映射&lt;整64, 整64&gt;();
+打印(字典.为空());
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：真</p>
 </section>
 <section class="函数条" id="映射-设置">
 <h3><code>设置</code> <span class="签 签-赭">不安全</span></h3>
@@ -116,12 +148,20 @@
 <p>写入键值：键已存在→覆盖旧值（旧值字符串正确释放）；不存在→追加。负载因子 3/4 触发桶翻倍+全键重哈希。</p>
 <table class="表 参数表"><thead><tr><th>参数</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>键</code></td><td><code>K</code></td><td>键（须支持 == 与位模式转换）</td></tr><tr><td><code>值</code></td><td><code>V</code></td><td>值</td></tr></tbody></table>
 <p><strong>返回</strong>　<code>正常()</code>；扩容失败 → <code>错误(错误码.内存)</code>。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">映射-设置.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">映射&lt;整64, 整64&gt; 字典 = 映射&lt;整64, 整64&gt;();
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · stdlib/mapset.html · 映射（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+导入 映射集合::映射;
+导入 映射集合::{字符串映射, 集合};
+导入 映射集合::{查找键位置, 查找值位置};
+
+函数 主() -&gt; 整32 {
+映射&lt;整64, 整64&gt; 字典 = 映射&lt;整64, 整64&gt;();
 结果&lt;空类型, 整32&gt; 设 = 字典.设置(7, 77);
 结果&lt;整64, 整32&gt; 取 = 字典.获取(7);
-如果 (取.正常) { 打印(取.值); }</code></pre></div>
-<p class="输出行">输出：77
-</p>
+如果 (取.正常) { 打印(取.值); }
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：77</p>
 </section>
 <section class="函数条" id="映射-获取">
 <h3><code>获取</code> <span class="签 签-赭">不安全</span></h3>
@@ -129,23 +169,39 @@
 <p>按键取值（副本）；键不存在返回 <code>错误(错误码.未初始化)</code>而非垃圾值。</p>
 <table class="表 参数表"><thead><tr><th>参数</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>键</code></td><td><code>K</code></td><td>要查的键</td></tr></tbody></table>
 <p><strong>返回</strong>　<code>正常(值)</code>；未命中 → <code>错误(错误码.未初始化)</code>。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">映射-获取.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">映射&lt;整64, 整64&gt; 字典 = 映射&lt;整64, 整64&gt;();
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · stdlib/mapset.html · 映射（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+导入 映射集合::映射;
+导入 映射集合::{字符串映射, 集合};
+导入 映射集合::{查找键位置, 查找值位置};
+
+函数 主() -&gt; 整32 {
+映射&lt;整64, 整64&gt; 字典 = 映射&lt;整64, 整64&gt;();
 结果&lt;空类型, 整32&gt; 设 = 字典.设置(7, 77);
 结果&lt;整64, 整32&gt; 有 = 字典.获取(7);
 结果&lt;整64, 整32&gt; 未中 = 字典.获取(8);
-打印(有.正常, " ", 未中.正常);</code></pre></div>
-<p class="输出行">输出：真 假
-</p>
+打印(有.正常, " ", 未中.正常);
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：真 假</p>
 </section>
 <section class="函数条" id="映射-包含">
 <h3><code>包含</code> <span class="签 签-绿">常量</span></h3>
 <p class="函数定义"><code>常量 函数 包含(K 键) -> 布尔</code></p>
 <p>键是否存在。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">映射-包含.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">映射&lt;整64, 整64&gt; 字典 = 映射&lt;整64, 整64&gt;();
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · stdlib/mapset.html · 映射（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+导入 映射集合::映射;
+导入 映射集合::{字符串映射, 集合};
+导入 映射集合::{查找键位置, 查找值位置};
+
+函数 主() -&gt; 整32 {
+映射&lt;整64, 整64&gt; 字典 = 映射&lt;整64, 整64&gt;();
 结果&lt;空类型, 整32&gt; 设 = 字典.设置(7, 77);
-打印(字典.包含(7));</code></pre></div>
-<p class="输出行">输出：真
-</p>
+打印(字典.包含(7));
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：真</p>
 </section>
 <section class="函数条" id="映射-删除">
 <h3><code>删除</code> <span class="签 签-赭">不安全</span></h3>
@@ -153,24 +209,40 @@
 <p>删除键值对：链摘除 + 与数组末元素交换（空洞无引用）；被删项的键/值字符串正确释放。存在返回真。</p>
 <table class="表 参数表"><thead><tr><th>参数</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>键</code></td><td><code>K</code></td><td>要删除的键</td></tr></tbody></table>
 <p><strong>返回</strong>　删除成功真；键不存在假。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">映射-删除.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">映射&lt;整64, 整64&gt; 字典 = 映射&lt;整64, 整64&gt;();
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · stdlib/mapset.html · 映射（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+导入 映射集合::映射;
+导入 映射集合::{字符串映射, 集合};
+导入 映射集合::{查找键位置, 查找值位置};
+
+函数 主() -&gt; 整32 {
+映射&lt;整64, 整64&gt; 字典 = 映射&lt;整64, 整64&gt;();
 结果&lt;空类型, 整32&gt; 设 = 字典.设置(7, 77);
 打印(字典.删除(7));
-打印(字典.删除(7));</code></pre></div>
+打印(字典.删除(7));
+    返回 0;
+}</code></pre></div>
 <p class="输出行">输出：真
-假
-</p>
+假</p>
 </section>
 <section class="函数条" id="映射-清空">
 <h3><code>清空</code> <span class="签 签-赭">不安全</span></h3>
 <p class="函数定义"><code>不安全 函数 清空()</code></p>
 <p>全部桶头复位、元素数清零（容量保留）。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">映射-清空.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">映射&lt;整64, 整64&gt; 字典 = 映射&lt;整64, 整64&gt;();
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · stdlib/mapset.html · 映射（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+导入 映射集合::映射;
+导入 映射集合::{字符串映射, 集合};
+导入 映射集合::{查找键位置, 查找值位置};
+
+函数 主() -&gt; 整32 {
+映射&lt;整64, 整64&gt; 字典 = 映射&lt;整64, 整64&gt;();
 结果&lt;空类型, 整32&gt; 设 = 字典.设置(1, 1);
 字典.清空();
-打印(字典.大小(), " ", 字典.为空());</code></pre></div>
-<p class="输出行">输出：0 真
-</p>
+打印(字典.大小(), " ", 字典.为空());
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：0 真</p>
 </section>
 <section class="函数条" id="映射-释放内部数组">
 <h3><code>释放内部数组</code> <span class="签 签-灰">内部</span> <span class="签 签-赭">不安全</span></h3>
@@ -212,10 +284,18 @@
 <h3><code>字符串映射()</code> <span class="签 签-赭">不安全</span></h3>
 <p class="函数定义"><code>不安全 函数 字符串映射()</code></p>
 <p>构造空字符串键映射。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">字符串映射-构造.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">字符串映射&lt;整64&gt; 表 = 字符串映射&lt;整64&gt;();
-打印(表.包含("任意键"));</code></pre></div>
-<p class="输出行">输出：假
-</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · stdlib/mapset.html · 字符串映射（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+导入 映射集合::映射;
+导入 映射集合::{字符串映射, 集合};
+导入 映射集合::{查找键位置, 查找值位置};
+
+函数 主() -&gt; 整32 {
+字符串映射&lt;整64&gt; 表 = 字符串映射&lt;整64&gt;();
+打印(表.包含("任意键"));
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：假</p>
 </section>
 <section class="函数条" id="字符串映射-设置">
 <h3><code>设置</code> <span class="签 签-赭">不安全</span></h3>
@@ -223,12 +303,20 @@
 <p>写入键值（存在即覆盖；键字符串入表时拥有化复制）。</p>
 <table class="表 参数表"><thead><tr><th>参数</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>键</code></td><td><code>字符串</code></td><td>字符串键</td></tr><tr><td><code>值</code></td><td><code>V</code></td><td>值</td></tr></tbody></table>
 <p><strong>返回</strong>　<code>正常()</code>；扩容失败 → <code>错误(错误码.内存)</code>。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">字符串映射-设置.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">字符串映射&lt;整64&gt; 表 = 字符串映射&lt;整64&gt;();
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · stdlib/mapset.html · 字符串映射（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+导入 映射集合::映射;
+导入 映射集合::{字符串映射, 集合};
+导入 映射集合::{查找键位置, 查找值位置};
+
+函数 主() -&gt; 整32 {
+字符串映射&lt;整64&gt; 表 = 字符串映射&lt;整64&gt;();
 结果&lt;空类型, 整32&gt; 设 = 表.设置("键甲", 1);
 结果&lt;整64, 整32&gt; 取 = 表.获取("键甲");
-如果 (取.正常) { 打印(取.值); }</code></pre></div>
-<p class="输出行">输出：1
-</p>
+如果 (取.正常) { 打印(取.值); }
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：1</p>
 </section>
 <section class="函数条" id="字符串映射-获取">
 <h3><code>获取</code> <span class="签 签-赭">不安全</span></h3>
@@ -236,22 +324,38 @@
 <p>按键取值；未命中 → <code>错误(错误码.未初始化)</code>。</p>
 <table class="表 参数表"><thead><tr><th>参数</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>键</code></td><td><code>字符串</code></td><td>要查的键</td></tr></tbody></table>
 <p><strong>返回</strong>　<code>正常(值)</code>；未命中 → 错误。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">字符串映射-获取.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">字符串映射&lt;整64&gt; 表 = 字符串映射&lt;整64&gt;();
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · stdlib/mapset.html · 字符串映射（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+导入 映射集合::映射;
+导入 映射集合::{字符串映射, 集合};
+导入 映射集合::{查找键位置, 查找值位置};
+
+函数 主() -&gt; 整32 {
+字符串映射&lt;整64&gt; 表 = 字符串映射&lt;整64&gt;();
 结果&lt;空类型, 整32&gt; 设 = 表.设置("键甲", 1);
 结果&lt;整64, 整32&gt; 取 = 表.获取("键乙");
-如果 (!取.正常) { 打印("没有"); }</code></pre></div>
-<p class="输出行">输出：没有
-</p>
+如果 (!取.正常) { 打印("没有"); }
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：没有</p>
 </section>
 <section class="函数条" id="字符串映射-包含">
 <h3><code>包含</code> <span class="签 签-绿">常量</span></h3>
 <p class="函数定义"><code>常量 函数 包含(字符串 键) -> 布尔</code></p>
 <p>键是否存在。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">字符串映射-包含.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">字符串映射&lt;整64&gt; 表 = 字符串映射&lt;整64&gt;();
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · stdlib/mapset.html · 字符串映射（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+导入 映射集合::映射;
+导入 映射集合::{字符串映射, 集合};
+导入 映射集合::{查找键位置, 查找值位置};
+
+函数 主() -&gt; 整32 {
+字符串映射&lt;整64&gt; 表 = 字符串映射&lt;整64&gt;();
 结果&lt;空类型, 整32&gt; 设 = 表.设置("键甲", 1);
-打印(表.包含("键甲"));</code></pre></div>
-<p class="输出行">输出：真
-</p>
+打印(表.包含("键甲"));
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：真</p>
 </section>
 <section class="函数条" id="字符串映射-删除">
 <h3><code>删除</code> <span class="签 签-赭">不安全</span></h3>
@@ -259,25 +363,41 @@
 <p>删除键值对（链摘除 + 末元素交换；键值字符串正确释放）。存在返回真。</p>
 <table class="表 参数表"><thead><tr><th>参数</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>键</code></td><td><code>字符串</code></td><td>要删除的键</td></tr></tbody></table>
 <p><strong>返回</strong>　删除成功真；不存在假。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">字符串映射-删除.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">字符串映射&lt;整64&gt; 表 = 字符串映射&lt;整64&gt;();
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · stdlib/mapset.html · 字符串映射（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+导入 映射集合::映射;
+导入 映射集合::{字符串映射, 集合};
+导入 映射集合::{查找键位置, 查找值位置};
+
+函数 主() -&gt; 整32 {
+字符串映射&lt;整64&gt; 表 = 字符串映射&lt;整64&gt;();
 结果&lt;空类型, 整32&gt; 设 = 表.设置("键甲", 1);
-打印(表.删除("键甲"), " ", 表.包含("键甲"));</code></pre></div>
-<p class="输出行">输出：真 假
-</p>
+打印(表.删除("键甲"), " ", 表.包含("键甲"));
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：真 假</p>
 </section>
 <section class="函数条" id="字符串映射-清空拷贝">
 <h3><code>清空 / 拷贝构造</code></h3>
 <p class="函数定义"><code>不安全 函数 清空() ｜ 不安全 函数 字符串映射(字符串映射& 其他)</code></p>
 <p>清空=全部桶头复位、元素数清零；拷贝构造=桶/键/值数组全量深拷（与 <a href="#映射-映射拷贝">映射</a> 同构）。注意：本类暂无 大小()/为空() 成员（判空/计数用 包含 或等 泛型键分派落地后补齐）。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">字符串映射-清空拷贝.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">字符串映射&lt;整64&gt; 甲 = 字符串映射&lt;整64&gt;();
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · stdlib/mapset.html · 字符串映射（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+导入 映射集合::映射;
+导入 映射集合::{字符串映射, 集合};
+导入 映射集合::{查找键位置, 查找值位置};
+
+函数 主() -&gt; 整32 {
+字符串映射&lt;整64&gt; 甲 = 字符串映射&lt;整64&gt;();
 结果&lt;空类型, 整32&gt; 设 = 甲.设置("键", 1);
 字符串映射&lt;整64&gt; 乙 = 甲;      // 深拷
 打印(乙.包含("键"));
 乙.清空();
-打印(乙.包含("键"), " ", 甲.包含("键"));</code></pre></div>
+打印(乙.包含("键"), " ", 甲.包含("键"));
+    返回 0;
+}</code></pre></div>
 <p class="输出行">输出：真
-假 真
-</p>
+假 真</p>
 </section>
 <section class="函数条" id="字符串映射-内部">
 <h3><code>析构键值 / 析构值 / 桶索引 / 链查找 / 释放内部数组</code> <span class="签 签-灰">内部</span></h3>
@@ -308,10 +428,18 @@
 <h3><code>集合()</code></h3>
 <p class="函数定义"><code>函数 集合()</code></p>
 <p>构造空集合。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">集合-构造.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">集合&lt;整64&gt; 池 = 集合&lt;整64&gt;();
-打印(池.为空());</code></pre></div>
-<p class="输出行">输出：真
-</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · stdlib/mapset.html · 集合（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+导入 映射集合::映射;
+导入 映射集合::{字符串映射, 集合};
+导入 映射集合::{查找键位置, 查找值位置};
+
+函数 主() -&gt; 整32 {
+集合&lt;整64&gt; 池 = 集合&lt;整64&gt;();
+打印(池.为空());
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：真</p>
 </section>
 <section class="函数条" id="集合-添加">
 <h3><code>添加</code> <span class="签 签-赭">不安全</span></h3>
@@ -319,22 +447,38 @@
 <p>添加元素；已存在则无事发生（幂等）。</p>
 <table class="表 参数表"><thead><tr><th>参数</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>值</code></td><td><code>T</code></td><td>要添加的值（须支持 ==）</td></tr></tbody></table>
 <p><strong>返回</strong>　<code>正常()</code>（幂等）；扩容失败 → <code>错误(错误码.内存)</code>。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">集合-添加.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">集合&lt;整64&gt; 池 = 集合&lt;整64&gt;();
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · stdlib/mapset.html · 集合（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+导入 映射集合::映射;
+导入 映射集合::{字符串映射, 集合};
+导入 映射集合::{查找键位置, 查找值位置};
+
+函数 主() -&gt; 整32 {
+集合&lt;整64&gt; 池 = 集合&lt;整64&gt;();
 结果&lt;空类型, 整32&gt; 加 = 池.添加(1);
 加 = 池.添加(1);
-打印(池.大小());</code></pre></div>
-<p class="输出行">输出：1
-</p>
+打印(池.大小());
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：1</p>
 </section>
 <section class="函数条" id="集合-包含">
 <h3><code>包含</code> <span class="签 签-绿">常量</span></h3>
 <p class="函数定义"><code>常量 函数 包含(T 值) -> 布尔</code></p>
 <p>值是否在集合中。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">集合-包含.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">集合&lt;整64&gt; 池 = 集合&lt;整64&gt;();
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · stdlib/mapset.html · 集合（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+导入 映射集合::映射;
+导入 映射集合::{字符串映射, 集合};
+导入 映射集合::{查找键位置, 查找值位置};
+
+函数 主() -&gt; 整32 {
+集合&lt;整64&gt; 池 = 集合&lt;整64&gt;();
 结果&lt;空类型, 整32&gt; 加 = 池.添加(3);
-打印(池.包含(3));</code></pre></div>
-<p class="输出行">输出：真
-</p>
+打印(池.包含(3));
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：真</p>
 </section>
 <section class="函数条" id="集合-删除">
 <h3><code>删除</code> <span class="签 签-赭">不安全</span></h3>
@@ -342,43 +486,75 @@
 <p>按值删除（后继元素前移；字符串正确释放）。存在返回真。</p>
 <table class="表 参数表"><thead><tr><th>参数</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>值</code></td><td><code>T</code></td><td>要删除的值</td></tr></tbody></table>
 <p><strong>返回</strong>　删除成功真；不存在假。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">集合-删除.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">集合&lt;整64&gt; 池 = 集合&lt;整64&gt;();
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · stdlib/mapset.html · 集合（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+导入 映射集合::映射;
+导入 映射集合::{字符串映射, 集合};
+导入 映射集合::{查找键位置, 查找值位置};
+
+函数 主() -&gt; 整32 {
+集合&lt;整64&gt; 池 = 集合&lt;整64&gt;();
 结果&lt;空类型, 整32&gt; 加 = 池.添加(3);
 打印(池.删除(3));
-打印(池.删除(3));</code></pre></div>
+打印(池.删除(3));
+    返回 0;
+}</code></pre></div>
 <p class="输出行">输出：真
-假
-</p>
+假</p>
 </section>
 <section class="函数条" id="集合-大小">
 <h3><code>大小</code> <span class="签 签-绿">常量</span></h3>
 <p class="函数定义"><code>常量 函数 大小() -> 整64</code></p>
 <p>元素个数（值唯一）。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">集合-大小.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">集合&lt;整64&gt; 池 = 集合&lt;整64&gt;();
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · stdlib/mapset.html · 集合（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+导入 映射集合::映射;
+导入 映射集合::{字符串映射, 集合};
+导入 映射集合::{查找键位置, 查找值位置};
+
+函数 主() -&gt; 整32 {
+集合&lt;整64&gt; 池 = 集合&lt;整64&gt;();
 结果&lt;空类型, 整32&gt; 加 = 池.添加(1);
-打印(池.大小());</code></pre></div>
-<p class="输出行">输出：1
-</p>
+打印(池.大小());
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：1</p>
 </section>
 <section class="函数条" id="集合-为空">
 <h3><code>为空</code> <span class="签 签-绿">常量</span></h3>
 <p class="函数定义"><code>常量 函数 为空() -> 布尔</code></p>
 <p>是否为空集合。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">集合-为空.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">集合&lt;整64&gt; 池 = 集合&lt;整64&gt;();
-打印(池.为空());</code></pre></div>
-<p class="输出行">输出：真
-</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · stdlib/mapset.html · 集合（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+导入 映射集合::映射;
+导入 映射集合::{字符串映射, 集合};
+导入 映射集合::{查找键位置, 查找值位置};
+
+函数 主() -&gt; 整32 {
+集合&lt;整64&gt; 池 = 集合&lt;整64&gt;();
+打印(池.为空());
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：真</p>
 </section>
 <section class="函数条" id="集合-清空">
 <h3><code>清空</code> <span class="签 签-赭">不安全</span></h3>
 <p class="函数定义"><code>不安全 函数 清空()</code></p>
 <p>元素数清零（容量保留）。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">集合-清空.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">集合&lt;整64&gt; 池 = 集合&lt;整64&gt;();
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · stdlib/mapset.html · 集合（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+导入 映射集合::映射;
+导入 映射集合::{字符串映射, 集合};
+导入 映射集合::{查找键位置, 查找值位置};
+
+函数 主() -&gt; 整32 {
+集合&lt;整64&gt; 池 = 集合&lt;整64&gt;();
 结果&lt;空类型, 整32&gt; 加 = 池.添加(1);
 池.清空();
-打印(池.为空());</code></pre></div>
-<p class="输出行">输出：真
-</p>
+打印(池.为空());
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：真</p>
 </section>
 <section class="函数条" id="集合-内部">
 <h3><code>析构被移除 / 移动元素 / 数组前移</code> <span class="签 签-灰">内部</span></h3>
@@ -393,13 +569,21 @@
 <p>在键数组中线性查找（<code>==</code> 比较），返回下标或 -1。</p>
 <table class="表 参数表"><thead><tr><th>参数</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>键数组</code></td><td><code>K*</code></td><td>数组首地址</td></tr><tr><td><code>长度</code></td><td><code>整64</code></td><td>元素个数</td></tr><tr><td><code>目标</code></td><td><code>K</code></td><td>要找的键</td></tr></tbody></table>
 <p><strong>返回</strong>　首个命中下标；未找到 -1。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">查找键位置.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">整64[3] 键;
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · stdlib/mapset.html · 泛型辅助（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+导入 映射集合::映射;
+导入 映射集合::{字符串映射, 集合};
+导入 映射集合::{查找键位置, 查找值位置};
+
+函数 主() -&gt; 整32 {
+整64[3] 键;
 键[0] = 10;
 键[1] = 20;
 键[2] = 30;
-打印(查找键位置&lt;整64&gt;(键, 3, 20));</code></pre></div>
-<p class="输出行">输出：1
-</p>
+打印(查找键位置&lt;整64&gt;(键, 3, 20));
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：1</p>
 </section>
 <section class="函数条" id="查找值位置">
 <h3><code>查找值位置</code></h3>
@@ -407,13 +591,21 @@
 <p>在数据数组中线性查找，返回下标或 -1（集合.包含 的构件）。</p>
 <table class="表 参数表"><thead><tr><th>参数</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>数据数组</code></td><td><code>T*</code></td><td>数组首地址</td></tr><tr><td><code>长度</code></td><td><code>整64</code></td><td>元素个数</td></tr><tr><td><code>目标</code></td><td><code>T</code></td><td>要找的值</td></tr></tbody></table>
 <p><strong>返回</strong>　首个命中下标；未找到 -1。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">查找值位置.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">整64[3] 值;
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · stdlib/mapset.html · 泛型辅助（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+导入 映射集合::映射;
+导入 映射集合::{字符串映射, 集合};
+导入 映射集合::{查找键位置, 查找值位置};
+
+函数 主() -&gt; 整32 {
+整64[3] 值;
 值[0] = 4;
 值[1] = 5;
 值[2] = 6;
-打印(查找值位置&lt;整64&gt;(值, 3, 6));</code></pre></div>
-<p class="输出行">输出：2
-</p>
+打印(查找值位置&lt;整64&gt;(值, 3, 6));
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：2</p>
 </section><nav class="页脚导航"><a class="" href="../stdlib/container.html"><span class="向">← 上一页</span><span class="题">容器</span></a><a class="下一" href="../stdlib/string.html"><span class="向">下一页 →</span><span class="题">字符串扩展</span></a></nav></article>
     <aside class="目录" aria-label="本页目录">
       <p class="目录-题">本页目录</p>
@@ -457,7 +649,7 @@
     </div>
     <div class="页脚-底">
       <span>© 2026 CN 语言项目</span>
-      <span>文档基线：任务/1021 20608051·2026-10-17·示例经编译器实测</span>
+      <span>文档基线：任务/1060 bae186a0·2026-10-18·示例经编译器实测</span>
       <span>京ICP备00000000号（备案办理中·占位）</span>
     </div>
   </div>

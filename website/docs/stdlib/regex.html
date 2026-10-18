@@ -68,10 +68,16 @@
 <p class="函数定义"><code>函数 正则引擎(字符串 模式串)</code></p>
 <p>以模式串构造引擎。模式在每次 搜索/完全匹配 时解释执行（无独立编译步骤）。</p>
 <table class="表 参数表"><thead><tr><th>参数</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>模式串</code></td><td><code>字符串</code></td><td>正则模式（语法见上表）</td></tr></tbody></table>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">正则引擎-构造.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">正则引擎 数字 = 正则引擎("[0-9]+");
-打印(数字.搜索("ab123") &gt;= 0);</code></pre></div>
-<p class="输出行">输出：真
-</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · stdlib/regex.html · 语法子集（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+导入 正则::正则引擎;
+
+函数 主() -&gt; 整32 {
+正则引擎 数字 = 正则引擎("[0-9]+");
+打印(数字.搜索("ab123") &gt;= 0);
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：真</p>
 </section>
 <section class="函数条" id="正则引擎-搜索">
 <h3><code>搜索</code></h3>
@@ -79,10 +85,16 @@
 <p>在文本中寻找首个匹配，返回匹配<strong>起点下标</strong>；无匹配 -1。模式以 <code>^</code> 开头时只尝试起点 0。</p>
 <table class="表 参数表"><thead><tr><th>参数</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>输入</code></td><td><code>字符串</code></td><td>被搜索的文本</td></tr></tbody></table>
 <p><strong>返回</strong>　首个匹配起点；无匹配 -1。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">正则引擎-搜索.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">正则引擎 re = 正则引擎("o+");
-打印(re.搜索("moon"));</code></pre></div>
-<p class="输出行">输出：1
-</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · stdlib/regex.html · 语法子集（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+导入 正则::正则引擎;
+
+函数 主() -&gt; 整32 {
+正则引擎 re = 正则引擎("o+");
+打印(re.搜索("moon"));
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：1</p>
 </section>
 <section class="函数条" id="正则引擎-完全匹配">
 <h3><code>完全匹配</code></h3>
@@ -90,12 +102,18 @@
 <p>整个文本须被模式完整覆盖（首尾隐式锚定，无需写 ^ $）。</p>
 <table class="表 参数表"><thead><tr><th>参数</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>输入</code></td><td><code>字符串</code></td><td>被检验的文本</td></tr></tbody></table>
 <p><strong>返回</strong>　完整覆盖为真，否则假。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">正则引擎-完全匹配.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">正则引擎 整数模式 = 正则引擎("[0-9]+");
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · stdlib/regex.html · 语法子集（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+导入 正则::正则引擎;
+
+函数 主() -&gt; 整32 {
+正则引擎 整数模式 = 正则引擎("[0-9]+");
 打印(整数模式.完全匹配("2026"));
-打印(整数模式.完全匹配("2026年"));</code></pre></div>
+打印(整数模式.完全匹配("2026年"));
+    返回 0;
+}</code></pre></div>
 <p class="输出行">输出：真
-假
-</p>
+假</p>
 </section>
 <section class="函数条" id="正则引擎-内部">
 <h3><code>匹配或 / 匹配序列 / 贪婪循环 / 匹配原子 / 类含</code> <span class="签 签-灰">内部</span></h3>
@@ -144,7 +162,7 @@
     </div>
     <div class="页脚-底">
       <span>© 2026 CN 语言项目</span>
-      <span>文档基线：任务/1021 20608051·2026-10-17·示例经编译器实测</span>
+      <span>文档基线：任务/1060 bae186a0·2026-10-18·示例经编译器实测</span>
       <span>京ICP备00000000号（备案办理中·占位）</span>
     </div>
   </div>

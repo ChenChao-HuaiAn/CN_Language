@@ -47,7 +47,9 @@
 <h2 id="内存模型">内存模型：三种生存期</h2>
 <p>CN 只有三种内存生存期，每种都有明确的所有者——理解了这张表，内存安全就不用背规则。</p>
 <table class="表"><thead><tr><th>生存期</th><th>谁分配/谁释放</th><th>例子</th></tr></thead><tbody><tr><td>栈（自动）</td><td>编译器：进入作用域分配、退出释放（含类字段/容器元素级联）</td><td>局部标量/结构体/类实例/容器</td></tr><tr><td>堆（拥有）</td><td>拥有者变量：字符串/容器在声明处分配、<strong>作用域结束自动释放</strong>（RAII）</td><td><code>字符串</code> 变量、<code>向量&lt;T&gt;</code> 底层数组</td></tr><tr><td>堆（手动）</td><td><strong>你</strong>：<code>分配</code> 拿、<code>释放</code> 还——须在 <code>不安全</code> 域内</td><td><code>分配(n)</code> 返回的 <code>空类型*</code></td></tr></tbody></table>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">RAII 展示.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">导入 容器::向量;
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · tutorial-advanced.html · 内存模型（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+导入 容器::向量;
 
 函数 主() -&gt; 整32 {
     字符串 s = "堆上";            // 拥有型：分配落堆
@@ -66,7 +68,9 @@
     打印(p[0]);           // ✗ 编译错误：[安全区边界] 指针下标读应在 不安全 函数 内
     返回 0;
 }</code></pre></div>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">安全域全形态.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">不安全 函数 裸写(整64* p) -&gt; 整64 {
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · tutorial-advanced.html · 不安全（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+不安全 函数 裸写(整64* p) -&gt; 整64 {
     整64* q = p + 1;        // 1 指针算术（不安全函数内合法）
     *q = 7;                 // 4 解引用写
     q[0] = q[0] + 2;        // 5/2 下标读写
@@ -78,8 +82,7 @@
     打印(裸写(基));          // 9
     返回 0;
 }</code></pre></div>
-<p class="输出行">输出：9
-</p>
+<p class="输出行">输出：9</p>
 <div class="码窗"><p class="码窗-顶"><span class="码窗-名">常量空指针.cn（负例·编译拒绝）</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">不安全 函数 主() -&gt; 整32 {
     整64* p = 无;
     整64 v = *p;           // ✗ 编译错误：编译期常量空指针解引用（B11）
@@ -88,7 +91,9 @@
 <ul><li><strong>豁免与例外</strong>：<code>字符串</code>/<code>字符*</code> 为字符串视图（非裸指针）——清单 1/3/5/6 对其不适用（拼接/视图读=安全操作）；<code>字符*</code>（借用视图）下标访问=编译期拒绝（视图按 UTF-8 字节序列解释，与裸指针步进错位——先 <code>字符串复制(...)</code> 转拥有串再下标）；<code>字符串</code> 下标读安全（字节语义·越界=运行期错误码 2）；<strong>取地址、指针比较、指针类型转换=安全</strong>（Rust 对照）。</li><li><strong>B11 常量空指针=独立硬错误</strong>（不属十项清单、<strong>不因不安全区豁免</strong>）：<code>无</code> 字面量解引用/成员访问/下标（<code>*无</code>/<code>无.x</code>/<code>无[0]</code>），及「变量经 <code>无</code> 初始化且全函数无其他写入」的常量传播形态——编译期硬错误「编译期常量空指针解引用」（§1.1a①编译期能证必须编译期拦；运行期数据面判零由错误码 3 兜底）。</li><li><strong>调用 不安全 函数=允许</strong>（责任上移；审计面=不安全函数清单）；<code>不安全</code> 是保留字（46 个保留字之一）。</li><li><strong>溢出检查在此豁免</strong>：<code>不安全 函数</code> 内不插溢出检查（按两补码回绕继续执行）——「真零运行期检查」；对照：安全区变量面溢出=错误码 8 确定性失败（见 <a href="reference/types.html#整数">类型参考·整数</a>）。</li><li>标准库容器内部全是不安全域，但<strong>使用容器不需要不安全</strong>——危险面被库收口，这正是安全区的意义。</li></ul>
 <h2 id="手动内存">手动内存：分配/释放/重新分配</h2>
 <p>逃生舱四件套对标 C（malloc/free/realloc/memcpy）；另有统计族（泄漏检测）与竞技场族（进程级一次性分配）。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">动态数组.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">不安全 函数 主() -&gt; 整32 {   // 手动内存=不安全域
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · tutorial-advanced.html · 手动内存（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+不安全 函数 主() -&gt; 整32 {   // 手动内存=不安全域
     整64* 表 = 分配(4 * 类型大小(整64));   // 4 个整64 槽
     循环 (整64 i = 0; i &lt; 4; i++) { 表[i] = (i + 1) * 100; }
     空类型* 更大块 = 重新分配(表, 8 * 类型大小(整64));
@@ -97,17 +102,19 @@
     释放(大表);
     返回 0;
 }</code></pre></div>
+<p class="输出行">输出：100 400</p>
 <ul><li>企业级建议：动态容器直接用标准库 <a href="stdlib/container.html">向量</a>——扩容翻倍+RAII+元素析构全替你管好；手动内存留给 FFI 边界与极致优化点。</li><li><code>重新分配</code> 对 &gt;2GiB 请求拒绝（stderr 诊断+返回 无）——垃圾尺寸静默失败会在解引用时崩，可观测拒绝前置。</li><li>竞技场族（<code>内存::竞技场分配</code>）适合编译器式「长生命周期+一次分配」负载：只进不出，<code>内存::竞技场重置</code> 一次全清。</li></ul>
 <h2 id="FFI">FFI：与 C 互操作</h2>
 <p>CN 与 C 的 ABI 天然互通：外部函数声明+<code>--链接 库名</code>；字符串边界遵守「借用/拥有」契约（<code>字符*</code> 借用视图 vs <code>字符串</code> 拥有串）。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">FFI.cn（C 运行时函数直调·三平台默认链接 libc/ucrt）</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">外部 函数 strlen(字符串 s) -&gt; 整64
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · tutorial-advanced.html · FFI（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+外部 函数 strlen(字符串 s) -&gt; 整64
 
 不安全 函数 主() -&gt; 整32 {
     打印(strlen("中文"));     // 6（UTF-8 两汉字 3+3 字节）
     返回 0;
 }</code></pre></div>
-<p class="输出行">输出：6
-</p>
+<p class="输出行">输出：6</p>
 <ul><li>链接：<code>cn build 程序.cn --链接 库名</code>（可多次）；库搜索遵循平台惯例。</li><li>字符串契约：<code>字符*</code>=借用（C 层持有的视图，不释放）；<code>字符串</code>=拥有（RAII）。借用转拥有用 <code>字符串复制</code>，反之直接传。</li><li><strong>返回类型白名单</strong>：仅<strong>标量</strong>（整数族/浮点，含 字符/布尔）/ <strong>指针</strong> / <strong>字符串</strong>（句柄）；聚合（类/结构体/结果）与引用（<code>T&amp;</code>）返回=<strong>编译期拒绝「外部 函数 返回类型 '&lt;T&gt;' 不支持」</strong>（待 sret 跨语言约定立法后放行）；无返回值（缺 <code>-&gt;</code> 或 空类型）不属限制面。</li><li><strong>声明形态规则</strong>：外部 函数 <strong>不得带函数体</strong>（符号由外部库提供）；<strong>同名同签名重复声明=允许</strong>（C 语义，同一 C 符号多次声明；链接符号=函数名本身，无 mangling）。</li><li>整64 标量 FFI 形参的 arm64 传参 ABI 有在案限制（大值塌缩），跨平台 FFI 密集场景关注 <a href="https://gitcode.com/ChenChao_GitCode/CN_Language" target="_blank" rel="noopener">仓库</a> 021 总账 #110。</li></ul>
 <div class="码窗"><p class="码窗-顶"><span class="码窗-名">聚合返回拒绝.cn（负例·编译拒绝）</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">结构体 点 { 整32 x; 整32 y; }
 
@@ -118,7 +125,9 @@
 }</code></pre></div>
 <h2 id="字符串性能">字符串与容器的性能面</h2>
 <p>拥有型字符串的每一次 <code>+</code> 都是分配+拷贝。高频拼接用<strong>字符串构建器</strong>（摊销 O(n)），高频读取用引用访问。加号链适合少量短拼接；循环/大段拼接（k 段累计 O(k²)）请用构建器（编译器不报提示·这条边界须自觉）。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">构建器.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">函数 主() -&gt; 整32 {
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · tutorial-advanced.html · 字符串性能（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+函数 主() -&gt; 整32 {
     整64 建 = 字符串构建器::新建();
     循环 (整32 i = 0; i &lt; 1000; i++) {
         字符串构建器::追加(建, "行" + 整数转字符串(i) + "\n");
@@ -127,7 +136,10 @@
     打印(字符串长度(全文));
     返回 0;
 }</code></pre></div>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">引用读取避深拷.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">导入 容器::向量;
+<p class="输出行">输出：6890</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · tutorial-advanced.html · 字符串性能（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+导入 容器::向量;
 
 函数 主() -&gt; 整32 {
     向量&lt;整64&gt; 表 = 向量&lt;整64&gt;();
@@ -140,16 +152,21 @@
     打印(和, " ", 表.元素(0));
     返回 0;
 }</code></pre></div>
+<p class="输出行">输出：4950 999</p>
 <h2 id="优化调试">优化级别与调试</h2>
 <p>四级优化 <code>-O0 ~ -O3</code>；<code>--debug</code> 在汇编中嵌入源码位置注释；<code>调试模式</code> 编译期常量做发布/调试分支（死分支零开销消除）。</p>
 <table class="表"><thead><tr><th>级别</th><th>内容</th></tr></thead><tbody><tr><td><code>-O0</code></td><td>不做优化（默认）——编译最快，逐语句直译</td></tr><tr><td><code>-O1</code></td><td>常量折叠+死代码消除+代数简化+复写传播</td></tr><tr><td><code>-O2</code></td><td>增加 公共子表达式消除（CSE）+跨块死代码消除+寄存器分配启用</td></tr><tr><td><code>-O3</code></td><td>增加 全局值传播</td></tr></tbody></table>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">调试模式.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">函数 主() -&gt; 整32 {
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · tutorial-advanced.html · 优化调试（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+函数 主() -&gt; 整32 {
     如果 (调试模式) {
         打印("[调试构建]");      // --发布 构建时整支直取消除
     }
     打印("核心逻辑");
     返回 0;
 }</code></pre></div>
+<p class="输出行">输出：[调试构建]
+核心逻辑</p>
 <ul><li><code>调试模式</code> 两个分支<strong>都做完整语义检查</strong>（区别于条件编译——不存在裁剪盲区）；未选中分支零运行时开销。</li><li>调试实战：<code>cn build 程序.cn --debug -O0</code> 产出的汇编带源码行注记，配合 <code>cn ir 程序.cn</code> / <code>cn ast 程序.cn</code> 可逐层下探（详见 <a href="cli.html">命令行参考</a>）。</li></ul>
 <h2 id="自举">自举与双编译对照（项目故事）</h2>
 <p>CN 的终极目标是<strong>用 CN 编译器自己编译 CN 编译器</strong>。项目保持「宿主 C++ 实现」与「v2 CN 自举实现」两套功能完全一致的编译器，全部测试双跑对照（dual）——这也是文档示例可信的根基。</p>
@@ -197,7 +214,7 @@
     </div>
     <div class="页脚-底">
       <span>© 2026 CN 语言项目</span>
-      <span>文档基线：任务/1021 20608051·2026-10-17·示例经编译器实测</span>
+      <span>文档基线：任务/1060 bae186a0·2026-10-18·示例经编译器实测</span>
       <span>京ICP备00000000号（备案办理中·占位）</span>
     </div>
   </div>

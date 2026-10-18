@@ -47,7 +47,9 @@
 <h2 id="导航">九篇导航</h2>
 <table class="表"><thead><tr><th>篇</th><th>回答的问题</th></tr></thead><tbody><tr><td><a href="lexical.html">词法结构</a></td><td>46 个保留字是哪些？运算符优先级怎么排？原始/多行字符串怎么写？</td></tr><tr><td><a href="types.html">类型系统</a></td><td>整8 和 正8 差在哪？转换的位模式语义？未初始化检查的豁免面？联合体为什么禁字符串成员？</td></tr><tr><td><a href="control-flow.html">控制流</a></td><td>条件括号什么时候可省？选择怎么贯穿？中断 绑定谁？</td></tr><tr><td><a href="functions.html">函数</a></td><td>四种传参语义？泛型为什么要 显式&lt;类型&gt;？函数指针与 lambda？</td></tr><tr><td><a href="oop.html">类与对象</a></td><td>句柄模型下赋值意味着什么？构造级联与析构链？运算符重载集合？</td></tr><tr><td><a href="errors.html">错误处理</a></td><td>三条强制检查规则？后缀 ? 的词法消歧？错误码全表？</td></tr><tr><td><a href="concurrency.html">并发</a></td><td>线程必须并入？什么类型可跨线程？互斥锁&lt;T&gt; 怎么用？</td></tr><tr><td><a href="modules.html">模块系统</a></td><td>导入的五种形态？名字解析三级优先级？货舱.toml？</td></tr><tr><td><a href="../stdlib.html">标准库</a></td><td>13 模块 187 条目逐函数文档</td></tr></tbody></table>
 <h2 id="全貌">语言全貌（一页速览）</h2>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">一页看全.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">导入 容器::向量;
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · reference/index.html · 全貌（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+导入 容器::向量;
 导入 核心::{最大};
 
 枚举 状态 { 空, 就绪, 完成 = 100 }
@@ -78,6 +80,7 @@
     张三.报告(最大&lt;整64&gt;(板.大小(), 1));
     返回 0;
 }</code></pre></div>
+<p class="输出行">输出：张三 完成 1 项</p>
 <ul><li>全部示例经双编译对照实测；语义以 <a href="https://gitcode.com/ChenChao_GitCode/CN_Language" target="_blank" rel="noopener">plans/001 规格书</a> 为唯一权威。</li><li>发现文档与实现不一致？那是缺陷——欢迎在仓库提单（提及即立项）。</li></ul><nav class="页脚导航"><a class="" href="../reference/errors.html"><span class="向">← 上一页</span><span class="题">错误处理</span></a><a class="下一" href="../reference/concurrency.html"><span class="向">下一页 →</span><span class="题">并发</span></a></nav></article>
     <aside class="目录" aria-label="本页目录">
       <p class="目录-题">本页目录</p>
@@ -121,7 +124,7 @@
     </div>
     <div class="页脚-底">
       <span>© 2026 CN 语言项目</span>
-      <span>文档基线：任务/1021 20608051·2026-10-17·示例经编译器实测</span>
+      <span>文档基线：任务/1060 bae186a0·2026-10-18·示例经编译器实测</span>
       <span>京ICP备00000000号（备案办理中·占位）</span>
     </div>
   </div>

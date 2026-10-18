@@ -64,30 +64,48 @@
 <h3><code>打印</code></h3>
 <p class="函数定义"><code>函数 打印(任意值...) -> 空类型</code></p>
 <p>变参打印，逐参输出，<strong>末尾自动换行</strong>。多参数间无分隔符（需要空格自己加：<code>打印(甲, , 乙)</code>）。整128/正128 打印完整 128 位。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">打印.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">打印("甲", 1, 2.5, 真);</code></pre></div>
-<p class="输出行">输出：甲12.500000真
-</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · stdlib/builtin.html · 输出（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+
+
+函数 主() -&gt; 整32 {
+打印("甲", 1, 2.5, 真);
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：甲12.500000真</p>
 </section>
 <section class="函数条" id="打印行">
 <h3><code>打印行</code></h3>
 <p class="函数定义"><code>函数 打印行(任意值...) -> 空类型</code></p>
 <p>同 打印 但<strong>末尾不换行</strong>——适合分段拼一行输出。（历史教训：旧版 打印行整数 语义恰好相反，已删除，勿混淆。）</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">打印行.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">打印行("A");
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · stdlib/builtin.html · 输出（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+
+
+函数 主() -&gt; 整32 {
+打印行("A");
 打印行("B");
 打印("");
-打印("C");</code></pre></div>
+打印("C");
+    返回 0;
+}</code></pre></div>
 <p class="输出行">输出：AB
-C
-</p>
+C</p>
 </section>
 <section class="函数条" id="格式化">
 <h3><code>格式化</code></h3>
 <p class="函数定义"><code>函数 格式化(字符串 格式串, 参数...) -> 字符串</code></p>
 <p>sprintf 风格格式化，<strong>返回新字符串</strong>（拥有型）而不直接输出。占位符：<code>%d</code> 整、<code>%u</code> 无符号、<code>%f</code> 浮点、<code>%s</code> 字符串、<code>%c</code> 字符、<code>%x</code>/<code>%X</code> 十六进制、<code>%o</code> 八进制、<code>%p</code> 指针。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">格式化.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">字符串 文 = 格式化("%x %f", 255, 1.5);
-打印(文);</code></pre></div>
-<p class="输出行">输出：ff 1.500000
-</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · stdlib/builtin.html · 输出（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+
+
+函数 主() -&gt; 整32 {
+字符串 文 = 格式化("%x %f", 255, 1.5);
+打印(文);
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：ff 1.500000</p>
 </section>
 <section class="函数条" id="读取行内置">
 <h3><code>IO::读取行</code></h3>
@@ -118,174 +136,295 @@ CN LANG
 <h3><code>字符串长度</code></h3>
 <p class="函数定义"><code>函数 字符串长度(字符串 值) -> 整64</code></p>
 <p>UTF-8 <strong>字节数</strong>（非字符数）。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">字符串长度.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">打印(字符串长度("abc"));
-打印(字符串长度("中文"));</code></pre></div>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · stdlib/builtin.html · 字符串内置（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+
+
+函数 主() -&gt; 整32 {
+打印(字符串长度("abc"));
+打印(字符串长度("中文"));
+    返回 0;
+}</code></pre></div>
 <p class="输出行">输出：3
-6
-</p>
+6</p>
 </section>
 <section class="函数条" id="字符串比较">
 <h3><code>字符串比较</code></h3>
 <p class="函数定义"><code>函数 字符串比较(字符串 甲, 字符串 乙) -> 布尔</code></p>
 <p>内容相等判定（<code>==</code> 运算符同义）。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">字符串比较.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">打印(字符串比较("ab", "ab"));
-打印("ab" == "ab");</code></pre></div>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · stdlib/builtin.html · 字符串内置（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+
+
+函数 主() -&gt; 整32 {
+打印(字符串比较("ab", "ab"));
+打印("ab" == "ab");
+    返回 0;
+}</code></pre></div>
 <p class="输出行">输出：真
-真
-</p>
+真</p>
 </section>
 <section class="函数条" id="字符串字典序">
 <h3><code>字符串字典序</code></h3>
 <p class="函数定义"><code>函数 字符串字典序(字符串 甲, 字符串 乙) -> 整64</code></p>
 <p>字典序比较：甲&lt;乙 返回负、相等 0、甲&gt;乙 返回正。<code>&lt;</code> 等关系运算符等价于它与 0 比较。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">字符串字典序.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">打印(字符串字典序("apple", "banana"));
-打印(字符串字典序("同", "同"));</code></pre></div>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · stdlib/builtin.html · 字符串内置（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+
+
+函数 主() -&gt; 整32 {
+打印(字符串字典序("apple", "banana"));
+打印(字符串字典序("同", "同"));
+    返回 0;
+}</code></pre></div>
 <p class="输出行">输出：-1
-0
-</p>
+0</p>
 </section>
 <section class="函数条" id="字符串连接">
 <h3><code>字符串连接</code></h3>
 <p class="函数定义"><code>函数 字符串连接(字符串 甲, 字符串 乙) -> 字符串</code></p>
 <p>拼接两串返回新串（拥有型）。<code>+</code> 运算符同义，且 <code>字符串 + 数值</code> 会自动把数值转成字符串。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">字符串连接.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">字符串 文 = 字符串连接("你好", ", 世界");
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · stdlib/builtin.html · 字符串内置（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+
+
+函数 主() -&gt; 整32 {
+字符串 文 = 字符串连接("你好", ", 世界");
 打印(文);
-打印("编号-" + 7);          // 数值自动拼接</code></pre></div>
+打印("编号-" + 7);          // 数值自动拼接
+    返回 0;
+}</code></pre></div>
 <p class="输出行">输出：你好, 世界
-编号-7
-</p>
+编号-7</p>
 </section>
 <section class="函数条" id="字符串复制">
 <h3><code>字符串复制</code></h3>
 <p class="函数定义"><code>函数 字符串复制(字符串 值) -> 字符串</code></p>
 <p>复制为独立拥有的新堆串。借用视图（<code>字符*</code>）落堆为拥有串的显式通道。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">字符串复制.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">字符* 视图 = "借用";
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · stdlib/builtin.html · 字符串内置（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+
+
+函数 主() -&gt; 整32 {
+字符* 视图 = "借用";
 字符串 拥有 = 字符串复制(视图);
-打印(拥有);</code></pre></div>
-<p class="输出行">输出：借用
-</p>
+打印(拥有);
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：借用</p>
 </section>
 <section class="函数条" id="字符串查找">
 <h3><code>字符串查找</code></h3>
 <p class="函数定义"><code>函数 字符串查找(字符串 主串, 字符串 子串) -> 整64</code></p>
 <p>返回子串首次出现的字节下标；未找到 -1。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">字符串查找.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">打印(字符串查找("hello world", "world"));
-打印(字符串查找("hello", "zz"));</code></pre></div>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · stdlib/builtin.html · 字符串内置（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+
+
+函数 主() -&gt; 整32 {
+打印(字符串查找("hello world", "world"));
+打印(字符串查找("hello", "zz"));
+    返回 0;
+}</code></pre></div>
 <p class="输出行">输出：6
--1
-</p>
+-1</p>
 </section>
 <section class="函数条" id="字符串子串">
 <h3><code>字符串子串</code></h3>
 <p class="函数定义"><code>函数 字符串子串(字符串 值, 整64 起点, 整64 长度) -> 字符串</code></p>
 <p>取 [起点, 起点+长度) 的字节切片为新串。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">字符串子串.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">打印(字符串子串("2026-10-08", 5, 2));</code></pre></div>
-<p class="输出行">输出：10
-</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · stdlib/builtin.html · 字符串内置（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+
+
+函数 主() -&gt; 整32 {
+打印(字符串子串("2026-10-08", 5, 2));
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：10</p>
 </section>
 <section class="函数条" id="字符串大写">
 <h3><code>字符串大写</code></h3>
 <p class="函数定义"><code>函数 字符串大写(字符串 值) -> 字符串</code></p>
 <p>ASCII 字母转大写的新串。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">字符串大写.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">打印(字符串大写("cn"));</code></pre></div>
-<p class="输出行">输出：CN
-</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · stdlib/builtin.html · 字符串内置（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+
+
+函数 主() -&gt; 整32 {
+打印(字符串大写("cn"));
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：CN</p>
 </section>
 <section class="函数条" id="字符串小写">
 <h3><code>字符串小写</code></h3>
 <p class="函数定义"><code>函数 字符串小写(字符串 值) -> 字符串</code></p>
 <p>ASCII 字母转小写的新串。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">字符串小写.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">打印(字符串小写("CN"));</code></pre></div>
-<p class="输出行">输出：cn
-</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · stdlib/builtin.html · 字符串内置（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+
+
+函数 主() -&gt; 整32 {
+打印(字符串小写("CN"));
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：cn</p>
 </section>
 <section class="函数条" id="字符串修剪">
 <h3><code>字符串修剪</code></h3>
 <p class="函数定义"><code>函数 字符串修剪(字符串 值) -> 字符串</code></p>
 <p>去除两端空白的新串。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">字符串修剪.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">打印("[" + 字符串修剪("  中  ") + "]");</code></pre></div>
-<p class="输出行">输出：[中]
-</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · stdlib/builtin.html · 字符串内置（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+
+
+函数 主() -&gt; 整32 {
+打印("[" + 字符串修剪("  中  ") + "]");
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：[中]</p>
 </section>
 <section class="函数条" id="字符串反转">
 <h3><code>字符串反转</code></h3>
 <p class="函数定义"><code>函数 字符串反转(字符串 值) -> 字符串</code></p>
 <p>字节序反转的新串（ASCII 文本安全；多字节 UTF-8 会破坏字符）。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">字符串反转.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">打印(字符串反转("abc"));</code></pre></div>
-<p class="输出行">输出：cba
-</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · stdlib/builtin.html · 字符串内置（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+
+
+函数 主() -&gt; 整32 {
+打印(字符串反转("abc"));
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：cba</p>
 </section>
 <section class="函数条" id="字符串包含">
 <h3><code>字符串包含</code></h3>
 <p class="函数定义"><code>函数 字符串包含(字符串 主串, 字符串 子串) -> 布尔</code></p>
 <p>是否含有子串。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">字符串包含.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">打印(字符串包含("中华民族", "民族"));</code></pre></div>
-<p class="输出行">输出：真
-</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · stdlib/builtin.html · 字符串内置（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+
+
+函数 主() -&gt; 整32 {
+打印(字符串包含("中华民族", "民族"));
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：真</p>
 </section>
 <section class="函数条" id="字符串前缀">
 <h3><code>字符串前缀</code></h3>
 <p class="函数定义"><code>函数 字符串前缀(字符串 值, 字符串 前缀) -> 布尔</code></p>
 <p>是否以前缀开头。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">字符串前缀.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">打印(字符串前缀("https://cn", "https:"));</code></pre></div>
-<p class="输出行">输出：真
-</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · stdlib/builtin.html · 字符串内置（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+
+
+函数 主() -&gt; 整32 {
+打印(字符串前缀("https://cn", "https:"));
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：真</p>
 </section>
 <section class="函数条" id="字符串后缀">
 <h3><code>字符串后缀</code></h3>
 <p class="函数定义"><code>函数 字符串后缀(字符串 值, 字符串 后缀) -> 布尔</code></p>
 <p>是否以后缀结尾。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">字符串后缀.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">打印(字符串后缀("主.cn", ".cn"));</code></pre></div>
-<p class="输出行">输出：真
-</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · stdlib/builtin.html · 字符串内置（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+
+
+函数 主() -&gt; 整32 {
+打印(字符串后缀("主.cn", ".cn"));
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：真</p>
 </section>
 <section class="函数条" id="整数转字符串">
 <h3><code>整数转字符串</code></h3>
 <p class="函数定义"><code>函数 整数转字符串(整64 值) -> 字符串</code></p>
 <p>整64 转十进制字符串。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">整数转字符串.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">打印(整数转字符串(-42) + "!");</code></pre></div>
-<p class="输出行">输出：-42!
-</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · stdlib/builtin.html · 字符串内置（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+
+
+函数 主() -&gt; 整32 {
+打印(整数转字符串(-42) + "!");
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：-42!</p>
 </section>
 <section class="函数条" id="浮点转字符串">
 <h3><code>浮点转字符串</code></h3>
 <p class="函数定义"><code>函数 浮点转字符串(浮64 值) -> 字符串</code></p>
 <p>浮64 转字符串（6 位小数格式）。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">浮点转字符串.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">打印(浮点转字符串(3.5));</code></pre></div>
-<p class="输出行">输出：3.500000
-</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · stdlib/builtin.html · 字符串内置（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+
+
+函数 主() -&gt; 整32 {
+打印(浮点转字符串(3.5));
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：3.500000</p>
 </section>
 <section class="函数条" id="字符转字符串">
 <h3><code>字符转字符串</code></h3>
 <p class="函数定义"><code>函数 字符转字符串(字符 值) -> 字符串</code></p>
 <p>单字符转字符串。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">字符转字符串.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">打印(字符转字符串('甲') + "乙");</code></pre></div>
-<p class="输出行">输出：甲乙
-</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · stdlib/builtin.html · 字符串内置（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+
+
+函数 主() -&gt; 整32 {
+打印(字符转字符串('甲') + "乙");
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：甲乙</p>
 </section>
 <section class="函数条" id="布尔转字符串">
 <h3><code>布尔转字符串</code></h3>
 <p class="函数定义"><code>函数 布尔转字符串(布尔 值) -> 字符串</code></p>
 <p>布尔转 "真"/"假"（拼接上下文自动调用）。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">布尔转字符串.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">打印(布尔转字符串(1 &lt; 2));</code></pre></div>
-<p class="输出行">输出：真
-</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · stdlib/builtin.html · 字符串内置（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+
+
+函数 主() -&gt; 整32 {
+打印(布尔转字符串(1 &lt; 2));
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：真</p>
 </section>
 <section class="函数条" id="正数转字符串">
 <h3><code>正数转字符串</code></h3>
 <p class="函数定义"><code>函数 正数转字符串(正64 值) -> 字符串</code></p>
 <p>无符号 64 位转十进制字符串。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">正数转字符串.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">正64 大数 = 18446744073709551615;
-打印(字符串长度(正数转字符串(大数)));</code></pre></div>
-<p class="输出行">输出：20
-</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · stdlib/builtin.html · 字符串内置（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+
+
+函数 主() -&gt; 整32 {
+正64 大数 = 18446744073709551615;
+打印(字符串长度(正数转字符串(大数)));
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：20</p>
 </section>
 <section class="函数条" id="字符串释放">
 <h3><code>字符串释放</code></h3>
 <p class="函数定义"><code>函数 字符串释放(字符串 值) -> 空类型</code></p>
 <p>手动释放堆串。<strong>拥有型字符串变量由 RAII 自动释放，通常不需要调用</strong>——仅供 C 风格输出参数边界（如 分割 填出的数组元素）手动清理。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">字符串释放.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">字符串 临时 = 字符串复制("手动管理");
-字符串释放(临时);</code></pre></div>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · stdlib/builtin.html · 字符串内置（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+
+
+函数 主() -&gt; 整32 {
+字符串 临时 = 字符串复制("手动管理");
+字符串释放(临时);
+    返回 0;
+}</code></pre></div>
 </section>
 <h2 id="字符串构建器">字符串构建器</h2>
 <p>高频拼接的缓冲区句柄五件套（Rust <code>String::push_str</code> 同款）：反复 <code>字符串连接</code> 是 O(n²)，构建器摊销 O(n)。加号链仅适合少量短拼接；循环/大段拼接请用构建器（k 段累计 O(k²)·编译器不报提示）。句柄为整数 ID，完成后 必须 <code>字符串构建器::完成</code> 收尾，中途放弃用 <code>字符串构建器::弃置</code>。</p>
@@ -378,29 +517,47 @@ CN LANG
 <h3><code>内存::活动分配数</code></h3>
 <p class="函数定义"><code>函数 内存::活动分配数() -> 整64</code></p>
 <p>当前未释放块数（原子计数）——泄漏检测基线：程序结束前应为 0。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">内存-活动分配数.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">打印(内存::活动分配数() &gt;= 0);</code></pre></div>
-<p class="输出行">输出：真
-</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · stdlib/builtin.html · 内存（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+
+
+函数 主() -&gt; 整32 {
+打印(内存::活动分配数() &gt;= 0);
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：真</p>
 </section>
 <section class="函数条" id="内存-总分配次数">
 <h3><code>内存::总分配次数</code></h3>
 <p class="函数定义"><code>函数 内存::总分配次数() -> 整64</code></p>
 <p>进程启动以来累计分配次数（含字符串/容器内部分配）。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">内存-总分配次数.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">整64 前 = 内存::总分配次数();
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · stdlib/builtin.html · 内存（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+
+
+函数 主() -&gt; 整32 {
+整64 前 = 内存::总分配次数();
 字符串 载荷 = "这段字符串用于触发一次堆分配";
-打印(内存::总分配次数() &gt; 前);</code></pre></div>
-<p class="输出行">输出：真
-</p>
+打印(内存::总分配次数() &gt; 前);
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：真</p>
 </section>
 <section class="函数条" id="内存-总分配字节">
 <h3><code>内存::总分配字节</code></h3>
 <p class="函数定义"><code>函数 内存::总分配字节() -> 整64</code></p>
 <p>累计分配字节总量（直方图和）。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">内存-总分配字节.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">整64 前 = 内存::总分配字节();
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · stdlib/builtin.html · 内存（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+
+
+函数 主() -&gt; 整32 {
+整64 前 = 内存::总分配字节();
 字符串 载荷 = "这段字符串用于触发一次堆分配";
-打印(内存::总分配字节() &gt; 前);</code></pre></div>
-<p class="输出行">输出：真
-</p>
+打印(内存::总分配字节() &gt; 前);
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：真</p>
 </section>
 <section class="函数条" id="内存-竞技场分配">
 <h3><code>内存::竞技场分配</code></h3>
@@ -448,9 +605,15 @@ CN LANG
 <h3><code>类型大小</code></h3>
 <p class="函数定义"><code>函数 类型大小(类型名) -> 整64</code></p>
 <p>返回类型的字节宽度。<strong>参数是类型名</strong>（语法级内建，泛型代码里对 T 也有效），不是表达式。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">类型大小.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">打印(类型大小(整32), " ", 类型大小(浮64));</code></pre></div>
-<p class="输出行">输出：4 8
-</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · stdlib/builtin.html · 类型工具（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+
+
+函数 主() -&gt; 整32 {
+打印(类型大小(整32), " ", 类型大小(浮64));
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：4 8</p>
 </section>
 <section class="函数条" id="复制">
 <h3><code>复制</code></h3>
@@ -461,14 +624,20 @@ CN LANG
 <h3><code>转移</code></h3>
 <p class="函数定义"><code>内置 函数 转移(变量) -> 实参的值</code></p>
 <p>所有权移交（C++ <code>std::move</code> / Rust move 同构）：零拷贝交接，<strong>源变量自该点起任何读性使用均为编译错误</strong>（Rust E0382 同款）；对源变量纯赋值可复活（重新初始化）。标量（整数/浮点/布尔/字符）拒绝转移——复制语义无转移意义。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">转移.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">字符串 甲 = "贵重";
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · stdlib/builtin.html · 类型工具（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+
+
+函数 主() -&gt; 整32 {
+字符串 甲 = "贵重";
 字符串 乙 = 转移(甲);      // 交接，甲不可再用
 打印(乙);
 甲 = "新值";               // 纯赋值=复活，合法
-打印(甲);</code></pre></div>
+打印(甲);
+    返回 0;
+}</code></pre></div>
 <p class="输出行">输出：贵重
-新值
-</p>
+新值</p>
 </section>
 <section class="函数条" id="运行时错误">
 <h3><code>运行时错误</code></h3>
@@ -494,30 +663,48 @@ token
 <h3><code>驻留</code></h3>
 <p class="函数定义"><code>函数 驻留(字符串 值) -> 整64</code></p>
 <p>内容入驻留表并返回唯一 ID；相同内容返回同一 ID。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">驻留.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">打印(驻留("甲") == 驻留("甲"));
-打印(驻留("甲") != 驻留("乙"));</code></pre></div>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · stdlib/builtin.html · 驻留（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+
+
+函数 主() -&gt; 整32 {
+打印(驻留("甲") == 驻留("甲"));
+打印(驻留("甲") != 驻留("乙"));
+    返回 0;
+}</code></pre></div>
 <p class="输出行">输出：真
-真
-</p>
+真</p>
 </section>
 <section class="函数条" id="驻留文本">
 <h3><code>驻留文本</code></h3>
 <p class="函数定义"><code>函数 驻留文本(整64 标识) -> 字符*</code></p>
 <p>ID 反查文本（<strong>借用视图</strong>——驻留表持有；长期持有须 字符串复制 落堆）。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">驻留文本.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">字符* 文 = 驻留文本(驻留("反查"));
-打印(字符串复制(文));</code></pre></div>
-<p class="输出行">输出：反查
-</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · stdlib/builtin.html · 驻留（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+
+
+函数 主() -&gt; 整32 {
+字符* 文 = 驻留文本(驻留("反查"));
+打印(字符串复制(文));
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：反查</p>
 </section>
 <section class="函数条" id="驻留计数">
 <h3><code>驻留计数</code></h3>
 <p class="函数定义"><code>函数 驻留计数() -> 整64</code></p>
 <p>驻留表中唯一内容个数。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">驻留计数.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">驻留("统计一");
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · stdlib/builtin.html · 驻留（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+
+
+函数 主() -&gt; 整32 {
+驻留("统计一");
 驻留("统计二");
-打印(驻留计数() &gt;= 2);</code></pre></div>
-<p class="输出行">输出：真
-</p>
+打印(驻留计数() &gt;= 2);
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：真</p>
 </section><nav class="页脚导航"><a class="" href="../stdlib/thread.html"><span class="向">← 上一页</span><span class="题">线程</span></a><a class="下一" href="../cli.html"><span class="向">下一页 →</span><span class="题">命令行参考</span></a></nav></article>
     <aside class="目录" aria-label="本页目录">
       <p class="目录-题">本页目录</p>
@@ -561,7 +748,7 @@ token
     </div>
     <div class="页脚-底">
       <span>© 2026 CN 语言项目</span>
-      <span>文档基线：任务/1021 20608051·2026-10-17·示例经编译器实测</span>
+      <span>文档基线：任务/1060 bae186a0·2026-10-18·示例经编译器实测</span>
       <span>京ICP备00000000号（备案办理中·占位）</span>
     </div>
   </div>

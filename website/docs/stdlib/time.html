@@ -68,22 +68,34 @@
 <p class="函数定义"><code>函数 当前时间戳() -> 整64</code></p>
 <p>Unix 纪元起的秒数（UTC 墙钟）。</p>
 <p><strong>返回</strong>　秒级时间戳。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">当前时间戳.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">打印(当前时间戳() &gt; 1700000000);</code></pre></div>
-<p class="输出行">输出：真
-</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · stdlib/time.html · 时间函数（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+导入 时间::{当前时间戳, 单调时钟毫秒, 格式化时间};
+
+函数 主() -&gt; 整32 {
+打印(当前时间戳() &gt; 1700000000);
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：真</p>
 </section>
 <section class="函数条" id="单调时钟毫秒">
 <h3><code>单调时钟毫秒</code></h3>
 <p class="函数定义"><code>函数 单调时钟毫秒() -> 整64</code></p>
 <p>单调不减的毫秒时钟——<strong>耗时测量唯一正确选择</strong>（墙钟可能因校时回拨）。两次取值相减即耗时。</p>
 <p><strong>返回</strong>　单调毫秒数。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">单调时钟毫秒.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">整64 起 = 单调时钟毫秒();
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · stdlib/time.html · 时间函数（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+导入 时间::{当前时间戳, 单调时钟毫秒, 格式化时间};
+
+函数 主() -&gt; 整32 {
+整64 起 = 单调时钟毫秒();
 整64 和 = 0;
 整64 i = 0;
 当 (i &lt; 100000) { 和 = 和 + i; i++; }
-打印(单调时钟毫秒() &gt;= 起);</code></pre></div>
-<p class="输出行">输出：真
-</p>
+打印(单调时钟毫秒() &gt;= 起);
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：真</p>
 </section>
 <section class="函数条" id="格式化时间">
 <h3><code>格式化时间</code></h3>
@@ -91,10 +103,16 @@
 <p>按 strftime 格式串格式化时间戳为本地时间字符串。常用占位符：<code>%Y</code> 年 <code>%m</code> 月 <code>%d</code> 日 <code>%H</code> 时 <code>%M</code> 分 <code>%S</code> 秒。</p>
 <table class="表 参数表"><thead><tr><th>参数</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>时间戳</code></td><td><code>整64</code></td><td>Unix 秒级时间戳</td></tr><tr><td><code>格式</code></td><td><code>字符串</code></td><td>strftime 格式串</td></tr></tbody></table>
 <p><strong>返回</strong>　<code>正常(格式化串)</code>（拥有型）；非法 → <code>错误(6)</code>。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">格式化时间.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">结果&lt;字符串, 整32&gt; 文 = 格式化时间(0, "%Y");
-如果 (文.正常) { 打印(文.值); }</code></pre></div>
-<p class="输出行">输出：1970
-</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · stdlib/time.html · 时间函数（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+导入 时间::{当前时间戳, 单调时钟毫秒, 格式化时间};
+
+函数 主() -&gt; 整32 {
+结果&lt;字符串, 整32&gt; 文 = 格式化时间(0, "%Y");
+如果 (文.正常) { 打印(文.值); }
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：1970</p>
 </section><nav class="页脚导航"><a class="" href="../stdlib/file.html"><span class="向">← 上一页</span><span class="题">文件</span></a><a class="下一" href="../stdlib/math.html"><span class="向">下一页 →</span><span class="题">数学</span></a></nav></article>
     <aside class="目录" aria-label="本页目录">
       <p class="目录-题">本页目录</p>
@@ -138,7 +156,7 @@
     </div>
     <div class="页脚-底">
       <span>© 2026 CN 语言项目</span>
-      <span>文档基线：任务/1021 20608051·2026-10-17·示例经编译器实测</span>
+      <span>文档基线：任务/1060 bae186a0·2026-10-18·示例经编译器实测</span>
       <span>京ICP备00000000号（备案办理中·占位）</span>
     </div>
   </div>

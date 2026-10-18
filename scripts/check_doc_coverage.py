@@ -237,6 +237,64 @@ def 打印分节(标题):
     print("----- %s -----" % 标题)
 
 
+def 枚举文档引用():
+    """1060：读 docs_data（经 gen_docs 装配）→ docs 里「用例引用」的用例名集合。
+
+    selftest 可 monkeypatch 本函数（镜像树不搭 docs_data 全量数据）。"""
+    sys.path.insert(0, os.path.join(仓库根, "website", "tools"))
+    import gen_docs as gd
+    引用 = set()
+
+    def 收(条):
+        if isinstance(条, dict) and 条.get("用例"):
+            引用.add(条["用例"])
+
+    for 页 in gd.GEN_PAGES:
+        for ch in 页["章节"]:
+            for 块 in ch.get("块", []):
+                if isinstance(块, tuple) and 块[0] == "用例":
+                    引用.add(块[1])
+                else:
+                    收(块)
+            for 条 in ch.get("条目", []):
+                收(条)
+    for m in gd.MODULES:
+        for ch in m["章节"]:
+            for 条 in ch.get("条目", []):
+                收(条)
+    return 引用
+
+
+def 校验引用集(引用集):
+    """1060：引用用例轻校验（不依赖编译器）——目录/主.cn/主.expected 齐备且非负测。
+    返回 [(用例名, 原因)]。用例根目录=模块常量（延迟绑定·selftest 可 monkeypatch）。"""
+    import glob as _glob
+    问题 = []
+    for 名 in sorted(引用集):
+        目录 = os.path.join(用例根目录, 名)
+        if not os.path.isdir(目录):
+            命中 = sorted(_glob.glob(os.path.join(用例根目录, "*_" + 名)))
+            if len(命中) == 1:
+                目录 = 命中[0]
+            elif len(命中) > 1:
+                问题.append((名, "用例名不唯一（多目录后缀匹配）"))
+                continue
+        if not os.path.isdir(目录):
+            问题.append((名, "用例目录不存在"))
+            continue
+        if not os.path.isfile(os.path.join(目录, "主.cn")):
+            问题.append((名, "缺 主.cn"))
+            continue
+        if not os.path.isfile(os.path.join(目录, "主.expected")):
+            问题.append((名, "缺 主.expected"))
+            continue
+        with io.open(os.path.join(目录, "主.cn"), encoding="utf-8") as f:
+            头 = f.read(800)
+        if "预期失败" in 头:
+            问题.append((名, "负测用例（预期失败）不可作教学示例"))
+    return 问题
+
+
 def 主流程(args):
     台账 = 读台账()
     用例集 = 列用例()
@@ -265,6 +323,8 @@ def 主流程(args):
     证据问题 = 校验证据条目(台账, 用例集)
     锚点问题 = 校验锚点(台账)
     豁免问题 = 校验豁免(豁免们, 用例集)
+    引用集 = 枚举文档引用()
+    引用问题 = 校验引用集(引用集)
 
     print("===== 官网文档覆盖对照（任务 993）=====")
     print("台账：website/tools/doc_coverage.json（%d 行：已覆盖 %d / 讲了不全 %d / 完全没讲 %d / 实现待核 %d）"
@@ -316,20 +376,27 @@ def 主流程(args):
     else:
         引用数 = 0
         for r in 行集:
-            引用集 = r.get("官网覆盖")
-            if isinstance(引用集, str):
+            覆盖引用 = r.get("官网覆盖")
+            if isinstance(覆盖引用, str):
                 引用数 += 1
-            elif 引用集:
-                引用数 += len(引用集)
+            elif 覆盖引用:
+                引用数 += len(覆盖引用)
         print("  全部命中（%d 处引用）" % 引用数)
+
+    打印分节("⑤ 官网示例引用校验（1060·docs_data 用例引用 → tests/e2e 存在性）")
+    if 引用问题:
+        for 名, 原因 in 引用问题:
+            print("  [引用失效] %s：%s" % (名, 原因))
+    else:
+        print("  全部命中（%d 个引用用例·目录/主.cn/主.expected 齐备且非负测）" % len(引用集))
 
     打印分节("汇总")
     print("缺口（讲了不全/完全没讲）：%d 行；其中陈旧失实 %d 行" % (len(缺口行), len(陈旧行)))
-    print("实现待核：%d 行；未归类用例：%d 个；豁免异常：%d 项；台账自检问题：%d 项；锚点问题：%d 项"
-          % (len(待核行), len(未归类), len(豁免问题), len(证据问题), len(锚点问题)))
+    print("实现待核：%d 行；未归类用例：%d 个；豁免异常：%d 项；台账自检问题：%d 项；锚点问题：%d 项；引用问题：%d 项"
+          % (len(待核行), len(未归类), len(豁免问题), len(证据问题), len(锚点问题), len(引用问题)))
 
     if args.strict:
-        有信号 = bool(缺口行 or 未归类 or 证据问题 or 锚点问题 or 未知判定 or 豁免问题)
+        有信号 = bool(缺口行 or 未归类 or 证据问题 or 锚点问题 or 未知判定 or 豁免问题 or 引用问题)
         return 1 if 有信号 else 0
     return 0
 

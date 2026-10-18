@@ -46,7 +46,9 @@
 <p style="color: var(--color-fg-muted); font-size: var(--text-lg); line-height: 2;">类、构造与析构、可见性、继承与接口、泛型类与泛型函数、运算符重载——面向对象与泛型编程全套。</p>
 <h2 id="第一个类">第一个类：字段、方法、可见性</h2>
 <p>类=字段+方法的蓝图；<code>公开:/保护:/私有:</code> 标签分段控制可见性（默认私有）；实例化即 <code>类名()</code> 表达式，方法用 <code>.</code> 调用。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">栈.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">类 计数器 {
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · tutorial-oop.html · 第一个类（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+类 计数器 {
 私有:
     整64 值槽;              // 私有字段：类外不可访问
 公开:
@@ -71,12 +73,13 @@
     打印(c.读值());       // 3
     返回 0;
 }</code></pre></div>
-<p class="输出行">输出：3
-</p>
+<p class="输出行">输出：3</p>
 <ul><li><code>公开:</code>（类外可访问）/ <code>保护:</code>（子类可访问）/ <code>私有:</code>（仅本类）——标签分段，影响其后所有成员直到下一标签。</li><li>构造函数与类同名、无返回类型；可有多个重载（按实参区分）。</li><li>类实例赋值/传参=句柄（引用语义，见<a href="#构造析构">构造析构</a>与<a href="reference/oop.html">类参考</a>）。</li></ul>
 <h2 id="构造析构">构造与析构：RAII 的根基</h2>
 <p>构造函数=与类同名的函数（可重载）；析构函数=<code>~类名</code>，作用域结束自动调用——资源获取即初始化（RAII），忘记释放不可能。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">RAII.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">类 日志 {
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · tutorial-oop.html · 构造析构（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+类 日志 {
 私有:
     字符串 名字;
 公开:
@@ -101,12 +104,13 @@
 }</code></pre></div>
 <p class="输出行">输出：[开] 主日志
 [写] 程序运行中
-[关] 主日志
-</p>
+[关] 主日志</p>
 <ul><li>拷贝构造=<code>函数 类名(类名&amp; 其他)</code>——定义了它，容器元素、按值传参等拷贝场合都会深拷（标准库容器全部定义了拷贝构造）。</li><li>析构顺序与构造相反；成员对象、容器元素、字符串全部自动级联释放。</li><li>构造函数重载已支持：无参构造+带参构造可共存。</li></ul>
 <h2 id="继承">继承与多态：虚拟/重写/自身/父类</h2>
 <p>单继承 <code>类 子 : 父</code>；父类方法标 <code>虚拟</code>，子类 <code>重写</code>；<code>自身</code> 指本实例（this），<code>父类.方法()</code> 调父类实现。经父类引用/指针调用=动态分派。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">多态.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">类 动物 {
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · tutorial-oop.html · 继承（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+类 动物 {
 公开:
     字符串 名称;
 
@@ -149,12 +153,13 @@
     返回 0;
 }</code></pre></div>
 <p class="输出行">输出：阿黄 说：汪汪
-咪咪 说：喵
-</p>
+咪咪 说：喵</p>
 <div class="批注 批注-赭"><span class="批注-题">自身 是保留字</span><code>自身</code>（this）在任何标识符位（字段名/变量名/参数名）都不可用——Rust <code>self</code> 同款硬保留。</div>
 <h2 id="接口">接口：行为契约</h2>
 <p>接口=纯虚拟方法集合；<code>类 实现类 : 接口</code> 实现全部方法；接口引用可指向任何实现类实例（鸭子类型的静态版）。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">接口.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">接口 可发声 {
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · tutorial-oop.html · 接口（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+接口 可发声 {
     虚拟 函数 发声() -&gt; 字符串
 }
 
@@ -180,11 +185,12 @@
     返回 0;
 }</code></pre></div>
 <p class="输出行">输出：呜哇呜哇
-叮咚
-</p>
+叮咚</p>
 <h2 id="泛型类">泛型类：向量 的原理</h2>
 <p><code>泛型 &lt;类型 T&gt;</code> 声明类型参数；使用处 <code>类名&lt;实参&gt;</code> 实例化——编译期单态化（每个实例化生成一份专用代码，零运行时开销）。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">盒子.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">泛型 &lt;类型 T&gt;
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · tutorial-oop.html · 泛型类（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+泛型 &lt;类型 T&gt;
 类 盒子 {
 私有:
     T 内容;
@@ -205,12 +211,13 @@
     打印(数盒.取出(), " ", 文盒.取出());
     返回 0;
 }</code></pre></div>
-<p class="输出行">输出：42 礼物
-</p>
+<p class="输出行">输出：42 礼物</p>
 <ul><li>实际工程不重复造轮子：标准库有现成的 <a href="stdlib/container.html">向量/链表/栈/队列</a>、<a href="stdlib/mapset.html">映射/集合</a>。</li><li>泛型类型参数可约束为接口（<code>泛型 &lt;类型 T : 可比较&gt;</code>）。</li></ul>
 <h2 id="静态成员">静态成员与常量成员函数</h2>
 <p><code>静态</code> 字段全类共享（<code>类名.字段</code> 访问）；<code>常量 函数</code> 承诺不改对象状态——可在常量上下文调用。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">静态.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">类 实例计数器 {
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · tutorial-oop.html · 静态成员（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+类 实例计数器 {
 公开:
     静态 整64 总数 = 0;      // 全类共享一份
 
@@ -229,11 +236,12 @@
     返回 0;
 }</code></pre></div>
 <p class="输出行">输出：2
-1
-</p>
+1</p>
 <h2 id="运算符重载">运算符重载</h2>
 <p>成员函数 <code>函数 运算符X(参数)</code> 自定义运算符语义；仅限成员（左操作数必须本类实例）；双目单参数、单目无参数。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">复数.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">类 复数 {
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · tutorial-oop.html · 运算符重载（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+类 复数 {
 公开:
     浮64 实;
     浮64 虚;
@@ -256,8 +264,7 @@
     打印(c.实, " ", c.虚, " ", a == b, " ", a + b == c);
     返回 0;
 }</code></pre></div>
-<p class="输出行">输出：4.000000 6.000000 假 真
-</p>
+<p class="输出行">输出：4.000000 6.000000 假 真</p>
 <ul><li>可重载集合：<code>+ - * / % == != &lt; &gt; &lt;= &gt;= &amp;&amp; || ! &amp; | ^ ~ &lt;&lt; &gt;&gt;</code>——<code>[]</code>/<code>()</code> 解析层显式拒绝（改用 lambda 或函数指针）。</li><li>决议：先精确匹配内置运算符，无匹配才查左操作数类型的成员 <code>运算符X</code>。使用点参数个数校验：单目须 0 个右操作数、双目 1 个——不符报「重载期望 N 个右操作数」。</li><li>字符串 <code>+</code> 数值 拼接是语言内置（自动转字符串），无需重载。</li></ul><nav class="页脚导航"><a class="" href="tutorial-syntax.html"><span class="向">← 上一页</span><span class="题">教程·语法基础</span></a><a class="下一" href="tutorial-safety.html"><span class="向">下一页 →</span><span class="题">教程·安全与并发</span></a></nav></article>
     <aside class="目录" aria-label="本页目录">
       <p class="目录-题">本页目录</p>
@@ -301,7 +308,7 @@
     </div>
     <div class="页脚-底">
       <span>© 2026 CN 语言项目</span>
-      <span>文档基线：任务/1021 20608051·2026-10-17·示例经编译器实测</span>
+      <span>文档基线：任务/1060 bae186a0·2026-10-18·示例经编译器实测</span>
       <span>京ICP备00000000号（备案办理中·占位）</span>
     </div>
   </div>

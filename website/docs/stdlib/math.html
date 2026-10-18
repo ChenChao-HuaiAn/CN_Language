@@ -72,9 +72,15 @@
 <p>算术平方根；负值返回 NaN（硬件语义）。</p>
 <table class="表 参数表"><thead><tr><th>参数</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>值</code></td><td><code>浮64</code></td><td>非负实数</td></tr></tbody></table>
 <p><strong>返回</strong>　√值。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">平方根.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">打印(平方根(16.0));</code></pre></div>
-<p class="输出行">输出：4.000000
-</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · stdlib/math.html · 浮点函数（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+导入 数学::{平方根, 幂, 绝对值, 向上取整, 向下取整};
+
+函数 主() -&gt; 整32 {
+打印(平方根(16.0));
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：4.000000</p>
 </section>
 <section class="函数条" id="幂">
 <h3><code>幂</code></h3>
@@ -82,63 +88,105 @@
 <p>底数的指数次幂。</p>
 <table class="表 参数表"><thead><tr><th>参数</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>底数</code></td><td><code>浮64</code></td><td>底数</td></tr><tr><td><code>指数</code></td><td><code>浮64</code></td><td>指数</td></tr></tbody></table>
 <p><strong>返回</strong>　底数^指数。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">幂.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">打印(幂(2.0, 8.0));</code></pre></div>
-<p class="输出行">输出：256.000000
-</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · stdlib/math.html · 浮点函数（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+导入 数学::{平方根, 幂, 绝对值, 向上取整, 向下取整};
+
+函数 主() -&gt; 整32 {
+打印(幂(2.0, 8.0));
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：256.000000</p>
 </section>
 <section class="函数条" id="正弦">
 <h3><code>正弦</code></h3>
 <p class="函数定义"><code>函数 正弦(浮64 弧度) -> 浮64</code></p>
 <p>正弦函数（弧度制）。</p>
 <table class="表 参数表"><thead><tr><th>参数</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>弧度</code></td><td><code>浮64</code></td><td>弧度值</td></tr></tbody></table>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">正弦.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">打印(正弦(0.0));</code></pre></div>
-<p class="输出行">输出：0.000000
-</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · stdlib/math.html · 浮点函数（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+导入 数学::{平方根, 幂, 绝对值, 向上取整, 向下取整};
+
+函数 主() -&gt; 整32 {
+打印(正弦(0.0));
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：0.000000</p>
 </section>
 <section class="函数条" id="余弦">
 <h3><code>余弦</code></h3>
 <p class="函数定义"><code>函数 余弦(浮64 弧度) -> 浮64</code></p>
 <p>余弦函数（弧度制）。</p>
 <table class="表 参数表"><thead><tr><th>参数</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>弧度</code></td><td><code>浮64</code></td><td>弧度值</td></tr></tbody></table>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">余弦.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">打印(余弦(0.0));</code></pre></div>
-<p class="输出行">输出：1.000000
-</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · stdlib/math.html · 浮点函数（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+导入 数学::{平方根, 幂, 绝对值, 向上取整, 向下取整};
+
+函数 主() -&gt; 整32 {
+打印(余弦(0.0));
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：1.000000</p>
 </section>
 <section class="函数条" id="正切">
 <h3><code>正切</code></h3>
 <p class="函数定义"><code>函数 正切(浮64 弧度) -> 浮64</code></p>
 <p>正切函数（弧度制）。</p>
 <table class="表 参数表"><thead><tr><th>参数</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>弧度</code></td><td><code>浮64</code></td><td>弧度值</td></tr></tbody></table>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">正切.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">打印(正切(0.0));</code></pre></div>
-<p class="输出行">输出：0.000000
-</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · stdlib/math.html · 浮点函数（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+导入 数学::{平方根, 幂, 绝对值, 向上取整, 向下取整};
+
+函数 主() -&gt; 整32 {
+打印(正切(0.0));
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：0.000000</p>
 </section>
 <section class="函数条" id="绝对值">
 <h3><code>绝对值</code></h3>
 <p class="函数定义"><code>函数 绝对值(浮64 值) -> 浮64</code></p>
 <p>浮点绝对值。</p>
 <table class="表 参数表"><thead><tr><th>参数</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>值</code></td><td><code>浮64</code></td><td>任意浮点</td></tr></tbody></table>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">绝对值.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">打印(绝对值(-2.5));</code></pre></div>
-<p class="输出行">输出：2.500000
-</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · stdlib/math.html · 浮点函数（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+导入 数学::{平方根, 幂, 绝对值, 向上取整, 向下取整};
+
+函数 主() -&gt; 整32 {
+打印(绝对值(-2.5));
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：2.500000</p>
 </section>
 <section class="函数条" id="向上取整">
 <h3><code>向上取整</code></h3>
 <p class="函数定义"><code>函数 向上取整(浮64 值) -> 浮64</code></p>
 <p>向上取整（天花板）：不小于 值 的最小整数（仍为浮64 类型）。</p>
 <table class="表 参数表"><thead><tr><th>参数</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>值</code></td><td><code>浮64</code></td><td>任意浮点</td></tr></tbody></table>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">向上取整.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">打印(向上取整(2.1));</code></pre></div>
-<p class="输出行">输出：3.000000
-</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · stdlib/math.html · 浮点函数（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+导入 数学::{平方根, 幂, 绝对值, 向上取整, 向下取整};
+
+函数 主() -&gt; 整32 {
+打印(向上取整(2.1));
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：3.000000</p>
 </section>
 <section class="函数条" id="向下取整">
 <h3><code>向下取整</code></h3>
 <p class="函数定义"><code>函数 向下取整(浮64 值) -> 浮64</code></p>
 <p>向下取整（地板）：不大于 值 的最大整数（仍为浮64 类型）。</p>
 <table class="表 参数表"><thead><tr><th>参数</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>值</code></td><td><code>浮64</code></td><td>任意浮点</td></tr></tbody></table>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">向下取整.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">打印(向下取整(2.9));</code></pre></div>
-<p class="输出行">输出：2.000000
-</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · stdlib/math.html · 浮点函数（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+导入 数学::{平方根, 幂, 绝对值, 向上取整, 向下取整};
+
+函数 主() -&gt; 整32 {
+打印(向下取整(2.9));
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：2.000000</p>
 </section><nav class="页脚导航"><a class="" href="../stdlib/time.html"><span class="向">← 上一页</span><span class="题">时间</span></a><a class="下一" href="../stdlib/random.html"><span class="向">下一页 →</span><span class="题">随机数</span></a></nav></article>
     <aside class="目录" aria-label="本页目录">
       <p class="目录-题">本页目录</p>
@@ -182,7 +230,7 @@
     </div>
     <div class="页脚-底">
       <span>© 2026 CN 语言项目</span>
-      <span>文档基线：任务/1021 20608051·2026-10-17·示例经编译器实测</span>
+      <span>文档基线：任务/1060 bae186a0·2026-10-18·示例经编译器实测</span>
       <span>京ICP备00000000号（备案办理中·占位）</span>
     </div>
   </div>

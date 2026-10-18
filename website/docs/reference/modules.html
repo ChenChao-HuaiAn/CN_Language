@@ -45,7 +45,9 @@
 <h1>模块系统</h1>
 <p style="color: var(--color-fg-muted); font-size: var(--text-lg); line-height: 2;">导入形态、公开面、内置命名空间、标准库组织——CN 的代码组织单位。</p>
 <h2 id="导入">导入形态</h2>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">导入.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">导入 容器::向量;                    // 单符号（公开符号合并→纯名直用）
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · reference/modules.html · 导入（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+导入 容器::向量;                    // 单符号（公开符号合并→纯名直用）
 导入 容器::{链表, 栈, 队列};        // 多符号花括号
 导入 数学::平方根;                  // 限定名亦可省（纯名直用）
 
@@ -55,9 +57,10 @@
     打印(表.大小(), " ", 平方根(4.0));
     返回 0;
 }</code></pre></div>
-<p class="输出行">输出：1 2.000000
-</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">导入全形式.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">导入 容器::*;                       // 通配：模块公开 API 批量引入纯名
+<p class="输出行">输出：1 2.000000</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · reference/modules.html · 导入（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+导入 容器::*;                       // 通配：模块公开 API 批量引入纯名
 导入 数学::{平方根 作为 开方};       // 花括号项内重命名：纯名 开方
 导入 数学::*;                       // 通配引入 平方根
 
@@ -67,8 +70,7 @@
     打印(表.大小(), " ", 开方(4.0), " ", 平方根(9.0));
     返回 0;
 }</code></pre></div>
-<p class="输出行">输出：1 2.000000 3.000000
-</p>
+<p class="输出行">输出：1 2.000000 3.000000</p>
 <ul><li><code>导入 模块::符号</code> 后<strong>纯名直用</strong>（公开符号合并机制）；多符号 <code>导入 模块::{a, b, c}</code>，项内可重命名 <code>导入 模块::{a 作为 b}</code>；模块级别名 <code>导入 路径 作为 别名</code>（绑定模块路径本身，供 <code>别名::符号</code> 限定访问）。</li><li><strong>通配</strong> <code>导入 路径::*</code>：把模块的公开 API 批量引入纯名（引入层级=最低级，见「内置命名空间」的冲突矩阵——本模块显式定义或显式导入同名项可合法遮蔽它，通配×通配同名=使用点歧义错误）。整模块导入 <code>导入 模块;</code> 同属此层。</li><li><strong>再导出</strong> <code>公开 导入 网络::连接</code>：与普通 <code>导入</code> 同语法，加 <code>公开</code> 前缀=把该符号继续对外导出，调用方<strong>导入包根路径即直达</strong>（见下例与「包与 crate」）——库 crate 的包.cn 用「模块聚合 + 公开 导入」组装公开 API 面。</li><li>限定名直调形态始终可用：<code>数学::平方根(2.0)</code>（无需导入）。</li><li>顶层 <code>模块 名;</code> 只在<strong>包根成员聚合/父模块挂子模块</strong>两种位置合法（见下节「模块声明与加载」）；文件顶层 <code>公开:</code> 标签控制导出面（v2.0 默认私有、显式 <code>公开:</code> 导出）。</li></ul>
 <div class="码窗"><p class="码窗-顶"><span class="码窗-名">再导出断面（库 crate 包根聚合·E2E 370 实测）</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// —— 图形库/包.cn（库 crate 根：模块聚合 + 公开 导入 再导出）——
 模块 图形库;
@@ -151,7 +153,9 @@
 
 [特性]
 启用 = ["网络", "压缩"]</code></pre></div>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">特性开关.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">函数 主() -&gt; 整32 {
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · reference/modules.html · 货舱（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+函数 主() -&gt; 整32 {
     #如果定义(网络)
     打印("网络: 命中");
     #结束如果
@@ -161,8 +165,7 @@
     打印("主程序运行");
     返回 0;
 }</code></pre></div>
-<p class="输出行">输出：主程序运行
-</p>
+<p class="输出行">输出：主程序运行</p>
 <ul><li>上例按本页默认构建（未启用任何特性）只剩「主程序运行」一行；同目录放入<code>[特性] 启用 = ["网络"]</code> 的 货舱.toml 后，同一源码输出「网络: 命中」「主程序运行」两行（<code>-D 网络</code> 等效）。</li><li><code>启用 = []</code> 空数组合法（无旗标命中）；值不是字符串数组=货舱.toml 解析错误拒绝。</li></ul>
 <h2 id="包与crate">包与 crate：多包工程</h2>
 <p>包（crate）= 一个 <code>货舱.toml</code> 描述的编译单元，也是<strong>命名空间边界</strong>——跨包同名符号互不冲突（链接符号带 <code>包名$</code> 前缀）。包根 <code>包.cn</code> 聚合包内模块并再导出公共 API。</p>
@@ -213,7 +216,9 @@
 }</code></pre></div>
 <h3 id="核心包 prelude">核心包 prelude</h3>
 <p>核心包基础项默认可见（等价隐式 <code>导入 核心::*</code>）——以下程序<strong>无任何导入语句</strong>：</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">prelude.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">函数 主() -&gt; 整32 {
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · reference/modules.html · 包与crate（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+函数 主() -&gt; 整32 {
     打印("prelude 打印 可用");
     打印("数学::平方根(9.0) = ", 数学::平方根(9.0));
     打印("整数转字符串(42) = ", 整数转字符串(42));
@@ -221,8 +226,7 @@
 }</code></pre></div>
 <p class="输出行">输出：prelude 打印 可用
 数学::平方根(9.0) = 3.000000
-整数转字符串(42) = 42
-</p>
+整数转字符串(42) = 42</p>
 <h3 id="缺失依赖=编译拒绝">缺失依赖=编译拒绝</h3>
 <p>引用未声明的包（<code>货舱.toml [依赖]</code> 无此包）=编译期拒绝（诊断「未声明的标识符」），不会拖到链接期才暴露：</p>
 <div class="码窗"><p class="码窗-顶"><span class="码窗-名">跨包缺失依赖.cn（负例·编译拒绝）</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">函数 主() -&gt; 整32 {
@@ -271,7 +275,7 @@
     </div>
     <div class="页脚-底">
       <span>© 2026 CN 语言项目</span>
-      <span>文档基线：任务/1021 20608051·2026-10-17·示例经编译器实测</span>
+      <span>文档基线：任务/1060 bae186a0·2026-10-18·示例经编译器实测</span>
       <span>京ICP备00000000号（备案办理中·占位）</span>
     </div>
   </div>

@@ -67,35 +67,56 @@
 <p class="函数定义"><code>函数 随机数生成器(整64 种子)</code></p>
 <p>以种子构造并完成 splitmix64 四轮扩散播种（近邻种子扩散远离，避免全零/近邻状态退化）。</p>
 <table class="表 参数表"><thead><tr><th>参数</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>种子</code></td><td><code>整64</code></td><td>任意 64 位种子</td></tr></tbody></table>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">随机数生成器-构造.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">随机数生成器 甲 = 随机数生成器(7);
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · stdlib/random.html · 随机数生成器（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+导入 随机数::随机数生成器;
+导入 随机数::播种扩散;
+
+函数 主() -&gt; 整32 {
+随机数生成器 甲 = 随机数生成器(7);
 随机数生成器 乙 = 随机数生成器(7);
-打印(甲.下一个() == 乙.下一个());   // 同种子同序列</code></pre></div>
-<p class="输出行">输出：真
-</p>
+打印(甲.下一个() == 乙.下一个());   // 同种子同序列
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：真</p>
 </section>
 <section class="函数条" id="随机数生成器-播种">
 <h3><code>播种</code></h3>
 <p class="函数定义"><code>函数 播种(整64 种子)</code></p>
 <p>重置内部状态并按新种子重新扩散播种（复用同一生成器实例）。</p>
 <table class="表 参数表"><thead><tr><th>参数</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>种子</code></td><td><code>整64</code></td><td>新种子</td></tr></tbody></table>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">随机数生成器-播种.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">随机数生成器 生 = 随机数生成器(1);
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · stdlib/random.html · 随机数生成器（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+导入 随机数::随机数生成器;
+导入 随机数::播种扩散;
+
+函数 主() -&gt; 整32 {
+随机数生成器 生 = 随机数生成器(1);
 生.播种(2);
 随机数生成器 对照 = 随机数生成器(2);
-打印(生.下一个() == 对照.下一个());</code></pre></div>
-<p class="输出行">输出：真
-</p>
+打印(生.下一个() == 对照.下一个());
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：真</p>
 </section>
 <section class="函数条" id="随机数生成器-下一个">
 <h3><code>下一个</code></h3>
 <p class="函数定义"><code>函数 下一个() -> 整64</code></p>
 <p>输出 整64 全域随机值（含负值=两补码位模式）。</p>
 <p><strong>返回</strong>　64 位伪随机整数。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">随机数生成器-下一个.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">随机数生成器 生 = 随机数生成器(9);
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · stdlib/random.html · 随机数生成器（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+导入 随机数::随机数生成器;
+导入 随机数::播种扩散;
+
+函数 主() -&gt; 整32 {
+随机数生成器 生 = 随机数生成器(9);
 整64 甲 = 生.下一个();
 整64 乙 = 生.下一个();
-打印(甲 != 乙);                     // 连续两值几乎必不同</code></pre></div>
-<p class="输出行">输出：真
-</p>
+打印(甲 != 乙);                     // 连续两值几乎必不同
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：真</p>
 </section>
 <section class="函数条" id="随机数生成器-下一个范围">
 <h3><code>下一个范围</code></h3>
@@ -103,22 +124,36 @@
 <p>输出 <code>[0, 上限)</code> 的非负随机整数。取模法，上限不整除 2^63 时有极轻低值偏差（非加密用途可接受）。</p>
 <table class="表 参数表"><thead><tr><th>参数</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>上限</code></td><td><code>整64</code></td><td>排他上界（须 > 0）</td></tr></tbody></table>
 <p><strong>返回</strong>　[0, 上限) 内整数。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">随机数生成器-下一个范围.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">随机数生成器 生 = 随机数生成器(3);
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · stdlib/random.html · 随机数生成器（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+导入 随机数::随机数生成器;
+导入 随机数::播种扩散;
+
+函数 主() -&gt; 整32 {
+随机数生成器 生 = 随机数生成器(3);
 整64 骰子 = 生.下一个范围(6) + 1;   // 1~6
-打印(骰子 &gt;= 1 &amp;&amp; 骰子 &lt;= 6);</code></pre></div>
-<p class="输出行">输出：真
-</p>
+打印(骰子 &gt;= 1 &amp;&amp; 骰子 &lt;= 6);
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：真</p>
 </section>
 <section class="函数条" id="随机数生成器-下一个浮点">
 <h3><code>下一个浮点</code></h3>
 <p class="函数定义"><code>函数 下一个浮点() -> 浮64</code></p>
 <p>输出 <code>[0.0, 1.0)</code> 均匀浮点（高 53 位构造，IEEE 754 精确）。</p>
 <p><strong>返回</strong>　[0.0, 1.0) 浮点。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">随机数生成器-下一个浮点.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">随机数生成器 生 = 随机数生成器(5);
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · stdlib/random.html · 随机数生成器（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+导入 随机数::随机数生成器;
+导入 随机数::播种扩散;
+
+函数 主() -&gt; 整32 {
+随机数生成器 生 = 随机数生成器(5);
 浮64 概率 = 生.下一个浮点();
-打印(概率 &gt;= 0.0 &amp;&amp; 概率 &lt; 1.0);</code></pre></div>
-<p class="输出行">输出：真
-</p>
+打印(概率 &gt;= 0.0 &amp;&amp; 概率 &lt; 1.0);
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：真</p>
 </section>
 <section class="函数条" id="随机数生成器-内部">
 <h3><code>旋转左 / 扩散混合</code> <span class="签 签-灰">内部</span></h3>
@@ -132,11 +167,18 @@
 <p>熵源混合便捷函数（质数乘 + 黄金常数回绕扩散）。典型用法：<code>生成器.播种(播种扩散(当前时间戳()))</code>——时间戳近邻值经扩散后远离，Rust SeedableRng 同构。</p>
 <table class="表 参数表"><thead><tr><th>参数</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>熵源</code></td><td><code>整64</code></td><td>原始熵（如时间戳×质数+计数器）</td></tr></tbody></table>
 <p><strong>返回</strong>　扩散后的种子。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">播种扩散-函数.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">随机数生成器 生 = 随机数生成器(0);
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · stdlib/random.html · 播种扩散（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+导入 随机数::随机数生成器;
+导入 随机数::播种扩散;
+
+函数 主() -&gt; 整32 {
+随机数生成器 生 = 随机数生成器(0);
 生.播种(播种扩散(1700000000));
-打印(生.下一个范围(10) &gt;= 0);</code></pre></div>
-<p class="输出行">输出：真
-</p>
+打印(生.下一个范围(10) &gt;= 0);
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：真</p>
 </section><nav class="页脚导航"><a class="" href="../stdlib/math.html"><span class="向">← 上一页</span><span class="题">数学</span></a><a class="下一" href="../stdlib/thread.html"><span class="向">下一页 →</span><span class="题">线程</span></a></nav></article>
     <aside class="目录" aria-label="本页目录">
       <p class="目录-题">本页目录</p>
@@ -180,7 +222,7 @@
     </div>
     <div class="页脚-底">
       <span>© 2026 CN 语言项目</span>
-      <span>文档基线：任务/1021 20608051·2026-10-17·示例经编译器实测</span>
+      <span>文档基线：任务/1060 bae186a0·2026-10-18·示例经编译器实测</span>
       <span>京ICP备00000000号（备案办理中·占位）</span>
     </div>
   </div>

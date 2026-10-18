@@ -15,6 +15,14 @@
 示例验证约定：条目.示例 = 主函数体内语句（不含 返回）；验证壳 =
   页.导入头 + "函数 主() -> 整32 {" + 示例 + "返回 0;}"。
   需要顶层定义的条目直接给 原始=完整程序。
+
+用例引用（1060·2026-10-18 用户令）：示例条目支持「用例引用」形态——
+  块 tuple ("用例", "用例名"[, 说明]) 或条目 dict 键 用例="用例名"：
+  展示直接读 tests/e2e/<用例名>/ 的 主.cn 与 主.expected（与 run_e2e 门禁
+  同一份文件·单一事实源）；verify 对引用只做映射轻校验（存在性+非负测·
+  不重复编译——「进了 develop 的必然绿灯」）。存量手写示例保留过渡，
+  迁移工具=docs_migrate_e2e.py（预检→建用例→改写→登记·幂等状态在
+  docs_migrate_state.json）。
 """
 import html
 import io
@@ -286,6 +294,60 @@ def 骨架(题名, 描述, 正文html, 目录项, 当前路径, 页脚导航, �
 
 
 # ---------------------------------------------------------------- 条目渲染
+# ---------------------------------------------------------------- 用例引用（1060）
+# 用户令（2026-10-18）：官网示例与 E2E 用例同源化——「进了 develop 的必然绿灯，
+#   无需重复验证官方案例」。示例条目支持「用例引用」形态（块 tuple ("用例", 名[, 说明])、
+#   条目 dict 键 用例=名）：渲染直接读 tests/e2e/<用例名>/ 的 主.cn 与 主.expected
+#   ——官网展示与 run_e2e 门禁同一份文件，天然同步零漂移；verify 对引用条目只做
+#   映射轻校验（目录/主.cn/主.expected 齐备且非负测），不再重复编译运行。
+def 用例目录(用例名):
+    """用例名 → 目录：支持「全名」或「<号>_<用例名>」带号目录（1060 迁移用例
+    目录名=号_名，docs_data 引用写不含号用例名——按后缀唯一匹配）。"""
+    直 = os.path.join(REPO, "tests", "e2e", 用例名)
+    if os.path.isdir(直):
+        return 直
+    import glob as _glob
+    命中 = sorted(_glob.glob(os.path.join(REPO, "tests", "e2e", "*_" + 用例名)))
+    if len(命中) == 1:
+        return 命中[0]
+    if len(命中) > 1:
+        raise SystemExit("用例名不唯一（多目录后缀匹配）：%s -> %s" % (用例名, 命中))
+    return 直
+
+
+def 用例资源(用例名):
+    """读引用用例的 主.cn 源码与 主.expected 期望输出（渲染用·显示即门禁文件）。"""
+    目录 = 用例目录(用例名)
+    主 = os.path.join(目录, "主.cn")
+    if not os.path.isfile(主):
+        raise SystemExit("用例引用无效（缺 主.cn）：%s" % 用例名)
+    with io.open(主, encoding="utf-8") as f:
+        源码 = f.read()
+    期 = os.path.join(目录, "主.expected")
+    期望 = ""
+    if os.path.isfile(期):
+        with io.open(期, encoding="utf-8") as f:
+            期望 = f.read().rstrip("\n")
+    return 源码, 期望
+
+
+def 用例校验(用例名):
+    """引用用例轻校验（verify 分流·不编译不运行）：目录/主.cn/主.expected 齐备
+    且非负测。返回错误描述或 None。"""
+    目录 = 用例目录(用例名)
+    if not os.path.isdir(目录):
+        return "用例目录不存在"
+    if not os.path.isfile(os.path.join(目录, "主.cn")):
+        return "缺 主.cn"
+    if not os.path.isfile(os.path.join(目录, "主.expected")):
+        return "缺 主.expected"
+    with io.open(os.path.join(目录, "主.cn"), encoding="utf-8") as f:
+        头 = f.read(800)
+    if "预期失败" in 头:
+        return "负测用例（预期失败）不可作教学示例"
+    return None
+
+
 def 码窗(名, 代码, 输出=None, 徽="CN"):
     out = ""
     if 输出 is not None:
@@ -317,6 +379,10 @@ def 条目html(条, 页导入, 综合窗名=None):
     if 示:
         名 = 综合窗名 or (条["id"] + ".cn")
         h.append(码窗(名, 示, 条.get("输出")))
+    elif 条.get("用例"):
+        # 1060：用例引用形态——展示文件即 E2E 门禁文件（同源）
+        源码, 期望 = 用例资源(条["用例"])
+        h.append(码窗(综合窗名 or "主.cn", 源码, 期望 or None))
     h.append("</section>")
     return "\n".join(h)
 
@@ -424,6 +490,15 @@ def 块html(块):
     if t == "码":
         名, 代码, 输出 = 块[1], 块[2], 块[3] if len(块) > 3 else None
         return 码窗(名, 代码, 输出)
+    if t == "用例":
+        # 1060：用例引用形态——展示= tests/e2e/<名>/主.cn（与 run_e2e 门禁同源）
+        用例名 = 块[1]
+        说明 = 块[2] if len(块) > 2 else None
+        源码, 期望 = 用例资源(用例名)
+        窗 = 码窗("主.cn", 源码, 期望 or None)
+        if 说明:
+            return "<p>%s</p>\n%s" % (说明, 窗)
+        return 窗
     if t == "表":
         表头, 行们 = 块[1], 块[2]
         rows = "".join("<tr>%s</tr>" % "".join("<td>%s</td>" % c for c in r)
@@ -580,6 +655,7 @@ def verify(cn_exe=None, 仅失败=False):
     #   预分配·结果经 map 保序汇总——判定行为与旧实现逐字一致。
     #   并发度=CN_DOC_VERIFY_JOBS 环境变量（缺省 8；1=退化为串行旧行为）。
     任务们 = []   # (序号, 页标识, 页序号, 条, 导入头)——顺序=原三层遍历序
+    引用们 = []   # 1060：用例引用清单（轻校验·不编译）
     页序号表 = {}
 
     def 收集(页标识, 条, 导入头):
@@ -589,6 +665,10 @@ def verify(cn_exe=None, 仅失败=False):
         #   其余条目行为零变化；渲染面不经此路径）。
         if isinstance(条, dict) and 条.get("平台") and 平台 not in 条["平台"]:
             跳过 += 1
+            return
+        # 1060：用例引用条目——不编译，进轻校验清单（映射有效性）
+        if isinstance(条, dict) and 条.get("用例"):
+            引用们.append(条["用例"])
             return
         示 = 条.get("示例") or 条.get("原始") or 条.get("代码")
         if not 示:
@@ -671,8 +751,12 @@ def verify(cn_exe=None, 仅失败=False):
                                    编译足矣=ch.get("综合编译足矣")),
                      页.get("导入头"))
             for 块 in ch.get("块", []):
-                if isinstance(块, dict) and 块.get("代码"):
+                if isinstance(块, dict) and 块.get("用例"):
+                    引用们.append(块["用例"])   # 1060：用例引用（dict 块形态）
+                elif isinstance(块, dict) and 块.get("代码"):
                     收集(页["文件"], dict(块, id=块.get("名", "码")), 页.get("导入头"))
+                elif isinstance(块, tuple) and 块[0] == "用例":
+                    引用们.append(块[1])       # 1060：用例引用（块形态）
                 elif isinstance(块, tuple) and 块[0] == "码" and 块[2]:
                     收集(页["文件"], dict(id=块[1], 示例=块[2],
                                        输出=块[3] if len(块) > 3 else None,
@@ -721,10 +805,22 @@ def verify(cn_exe=None, 仅失败=False):
         "·%d 路并发" % 并发 if 并发 > 1 and 任务数 > 1 else ""))
     for f in fails:
         print("  [失败] %s :: %s — %s\n    %s" % f)
+    # 1060：用例引用轻校验（不编译——develop 门禁已保证 E2E 绿灯，用户令「进了
+    #   develop 的必然绿灯，无需重复验证」；此处只锚「官网引用的映射有效性」）。
+    引用去重 = sorted(set(引用们))
+    引用失败 = []
+    for 名 in 引用去重:
+        错 = 用例校验(名)
+        if 错:
+            引用失败.append((名, 错))
+    if 引用去重:
+        print("用例引用校验：%d 例（去重后·失败 %d）" % (len(引用去重), len(引用失败)))
+    for 名, 错 in 引用失败:
+        print("  [引用失败] %s: %s" % (名, 错))
     if not 仅失败 and not fails:
         import shutil
         shutil.rmtree(tmp, ignore_errors=True)
-    return 1 if fails else 0
+    return 1 if (fails or 引用失败) else 0
 
 
 # ---------------------------------------------------------------- 断链自检

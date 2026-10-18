@@ -75,30 +75,48 @@
 <p class="函数定义"><code>函数 读取行() -> 结果&lt;字符串, 整32&gt;</code></p>
 <p>从标准输入读一行（不含行尾换行符）。EOF 时返回错误。返回字符串为拥有型，作用域结束自动释放。</p>
 <p><strong>返回</strong>　<code>正常(一行文本)</code>；EOF → <code>错误(错误码.文件)</code>。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">读取行.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">结果&lt;字符串, 整32&gt; 行 = 读取行();
-如果 (行.正常) { 打印(行.值); } 否则 { 打印("(EOF)"); }</code></pre></div>
-<p class="输出行">输出：(EOF)
-</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · stdlib/io.html · 标准输入（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+导入 IO::{读取行, 读取整数, 读取浮点, 打印到错误};
+
+函数 主() -&gt; 整32 {
+结果&lt;字符串, 整32&gt; 行 = 读取行();
+如果 (行.正常) { 打印(行.值); } 否则 { 打印("(EOF)"); }
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：(EOF)</p>
 </section>
 <section class="函数条" id="读取整数">
 <h3><code>读取整数</code></h3>
 <p class="函数定义"><code>函数 读取整数() -> 结果&lt;整64, 整32&gt;</code></p>
 <p>从标准输入读取一个整数；EOF/非法输入返回错误。</p>
 <p><strong>返回</strong>　<code>正常(整64值)</code>；失败 → <code>错误(错误码.文件)</code>。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">读取整数.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">结果&lt;整64, 整32&gt; 值 = 读取整数();
-如果 (值.正常) { 打印(值.值 * 2); } 否则 { 打印("(EOF)"); }</code></pre></div>
-<p class="输出行">输出：(EOF)
-</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · stdlib/io.html · 标准输入（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+导入 IO::{读取行, 读取整数, 读取浮点, 打印到错误};
+
+函数 主() -&gt; 整32 {
+结果&lt;整64, 整32&gt; 值 = 读取整数();
+如果 (值.正常) { 打印(值.值 * 2); } 否则 { 打印("(EOF)"); }
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：(EOF)</p>
 </section>
 <section class="函数条" id="读取浮点">
 <h3><code>读取浮点</code></h3>
 <p class="函数定义"><code>函数 读取浮点() -> 结果&lt;浮64, 整32&gt;</code></p>
 <p>从标准输入读取一个浮点数；EOF/非法输入返回错误。</p>
 <p><strong>返回</strong>　<code>正常(浮64值)</code>；失败 → <code>错误(错误码.文件)</code>。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">读取浮点.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">结果&lt;浮64, 整32&gt; 值 = 读取浮点();
-如果 (值.正常) { 打印(值.值 + 0.5); } 否则 { 打印("(EOF)"); }</code></pre></div>
-<p class="输出行">输出：(EOF)
-</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · stdlib/io.html · 标准输入（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+导入 IO::{读取行, 读取整数, 读取浮点, 打印到错误};
+
+函数 主() -&gt; 整32 {
+结果&lt;浮64, 整32&gt; 值 = 读取浮点();
+如果 (值.正常) { 打印(值.值 + 0.5); } 否则 { 打印("(EOF)"); }
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：(EOF)</p>
 </section>
 <h2 id="错误输出">错误输出</h2>
 <section class="函数条" id="打印到错误">
@@ -106,8 +124,16 @@
 <p class="函数定义"><code>函数 打印到错误(字符串 消息) -> 空类型</code></p>
 <p>把消息写到标准错误流（stderr），不换行。诊断/日志走 stderr，程序结果数据走 stdout——两者分离便于管道处理。</p>
 <table class="表 参数表"><thead><tr><th>参数</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>消息</code></td><td><code>字符串</code></td><td>要写出的文本</td></tr></tbody></table>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">打印到错误.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">打印到错误("[警告] 配置缺省");
-打印("正常输出不受影响");</code></pre></div>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · stdlib/io.html · 错误输出（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+导入 IO::{读取行, 读取整数, 读取浮点, 打印到错误};
+
+函数 主() -&gt; 整32 {
+打印到错误("[警告] 配置缺省");
+打印("正常输出不受影响");
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：正常输出不受影响</p>
 </section><nav class="页脚导航"><a class="" href="../stdlib/system.html"><span class="向">← 上一页</span><span class="题">系统</span></a><a class="下一" href="../stdlib/file.html"><span class="向">下一页 →</span><span class="题">文件</span></a></nav></article>
     <aside class="目录" aria-label="本页目录">
       <p class="目录-题">本页目录</p>
@@ -151,7 +177,7 @@
     </div>
     <div class="页脚-底">
       <span>© 2026 CN 语言项目</span>
-      <span>文档基线：任务/1021 20608051·2026-10-17·示例经编译器实测</span>
+      <span>文档基线：任务/1060 bae186a0·2026-10-18·示例经编译器实测</span>
       <span>京ICP备00000000号（备案办理中·占位）</span>
     </div>
   </div>

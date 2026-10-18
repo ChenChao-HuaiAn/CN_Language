@@ -45,7 +45,9 @@
 <h1>控制流</h1>
 <p style="color: var(--color-fg-muted); font-size: var(--text-lg); line-height: 2;">如果/当/循环/选择/遍历 的精确语义：括号可选、贯穿规则、中断绑定、确定初始化交互。</p>
 <h2 id="条件">如果 / 否则：括号可选</h2>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">双形态.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">函数 分级(整32 分) -&gt; 字符串 {
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · reference/control-flow.html · 条件（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+函数 分级(整32 分) -&gt; 字符串 {
     如果 分 &gt;= 90 { 返回 "优"; }          // 裸条件（括号可选）
     如果 (分 &gt;= 60) { 返回 "及格"; }      // 带括号（同合法）
     返回 "不及格";
@@ -55,11 +57,12 @@
     打印(分级(95), " ", 分级(70), " ", 分级(30));
     返回 0;
 }</code></pre></div>
-<p class="输出行">输出：优 及格 不及格
-</p>
+<p class="输出行">输出：优 及格 不及格</p>
 <div class="批注 批注-赭"><span class="批注-题">裸条件消歧条文</span>裸条件（无括号）的条件表达式内，<code>类型名{...}</code> 裸结构体初始化字面量=编译期拒绝（<code>{</code> 归条件后的语句块）；带括号条件不在此限。Rust 同款。</div>
 <h2 id="循环">当 / 循环：两种循环</h2>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">循环.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">函数 主() -&gt; 整32 {
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · reference/control-flow.html · 循环（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+函数 主() -&gt; 整32 {
     整32 i = 0;
     当 i &lt; 3 {                   // 当：前测循环
         打印行(i, " ");
@@ -73,11 +76,12 @@
     返回 0;
 }</code></pre></div>
 <p class="输出行">输出：0 1 2 
-10 6 2 
-</p>
+10 6 2 </p>
 <h2 id="选择">选择：贯穿语义与三种增强</h2>
 <p>分支体不写 <code>中断/返回</code> 自动<strong>贯穿</strong>下一分支（C 语义）；支持多值分组、字符串情况、裸枚举成员。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">贯穿与多值.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">函数 分类(整32 n) -&gt; 字符串 {
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · reference/control-flow.html · 选择（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+函数 分类(整32 n) -&gt; 字符串 {
     字符串 结果文 = "";
     选择 (n) {
         情况 0:
@@ -95,11 +99,12 @@
     打印(分类(0), " ", 分类(2), " ", 分类(9));
     返回 0;
 }</code></pre></div>
-<p class="输出行">输出：小 小 大
-</p>
+<p class="输出行">输出：小 小 大</p>
 <ul><li>上例 <code>情况 0:</code> 无 中断 → 贯穿进 <code>情况 1,2,3</code> 体（n=0 时 结果文 被覆盖为「小」）——C 贯穿语义原样。</li><li><code>中断</code> 绑定最近进入的 选择 或 循环；选择体内的 <code>继续</code> 绑定最近循环。</li><li>字符串情况可多值分组 <code>情况 "开始", "继续":</code>；枚举条件可裸写成员名（按条件类型定向解析）。</li><li><code>枚举名::成员</code> 非法（<code>::</code> 保留给模块路径）。</li></ul>
 <h2 id="遍历">遍历…中每个：迭代协议</h2>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">遍历.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">导入 容器::向量;
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · reference/control-flow.html · 遍历（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+导入 容器::向量;
 
 函数 主() -&gt; 整32 {
     整32[3] 数组 = {7, 8, 9};
@@ -113,8 +118,7 @@
     返回 0;
 }</code></pre></div>
 <p class="输出行">输出：7 8 9 
-甲 乙 
-</p>
+甲 乙 </p>
 <ul><li>迭代变量=元素<strong>副本</strong>（快照语义）——要写穿用 <code>元素引用(i)</code>（不安全域）。</li><li>标准库全部容器（向量/链表/栈/队列）均支持遍历。</li></ul><nav class="页脚导航"><a class="" href="../reference/types.html"><span class="向">← 上一页</span><span class="题">类型系统</span></a><a class="下一" href="../reference/functions.html"><span class="向">下一页 →</span><span class="题">函数</span></a></nav></article>
     <aside class="目录" aria-label="本页目录">
       <p class="目录-题">本页目录</p>
@@ -158,7 +162,7 @@
     </div>
     <div class="页脚-底">
       <span>© 2026 CN 语言项目</span>
-      <span>文档基线：任务/1021 20608051·2026-10-17·示例经编译器实测</span>
+      <span>文档基线：任务/1060 bae186a0·2026-10-18·示例经编译器实测</span>
       <span>京ICP备00000000号（备案办理中·占位）</span>
     </div>
   </div>

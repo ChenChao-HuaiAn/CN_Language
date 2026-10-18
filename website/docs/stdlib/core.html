@@ -53,7 +53,9 @@
 <h3><code>错误码</code></h3>
 <p class="函数定义"><code>枚举 错误码 { 除零=1, 越界=2, 空指针=3, 内存=4, 文件=5, 参数=6, 未初始化=7, 溢出=8 }</code></p>
 <p>值域与《设计规格书》附录 B 一致（1~8 入枚举）。成员访问用点号：<code>错误码.越界</code>。与内置构造器 <code>错误(...)</code> 搭配使用：<code>返回 错误(错误码.文件);</code>。附录 B 的 <strong>9=栈溢出</strong> 由运行时直接输出，不在本枚举内。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">错误码-值域.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">导入 核心::错误码;
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · stdlib/core.html · 错误码（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+导入 核心::错误码;
 
 函数 演示() -&gt; 结果&lt;整64, 整32&gt; {
     返回 错误(错误码.越界);
@@ -66,6 +68,7 @@
     }
     返回 0;
 }</code></pre></div>
+<p class="输出行">输出：失败，错误值：2</p>
 </section>
 <h2 id="工具函数">工具函数</h2>
 <p>三个泛型函数编译期单态化（<code>T</code> 替换为实参类型），要求类型支持对应的比较运算符。</p>
@@ -89,12 +92,19 @@
 <p>交换两个变量的值。参数为指针（<code>T*</code>），调用时取地址：<code>交换(&amp;甲, &amp;乙)</code>。函数体内用下标写法 <code>左[0]</code> 读写（等价 <code>*左</code>；行首解引用赋值与乘法有词法歧义，标准库统一用下标）。</p>
 <table class="表 参数表"><thead><tr><th>参数</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>左</code></td><td><code>T*</code></td><td>指向第一个变量的指针</td></tr><tr><td><code>右</code></td><td><code>T*</code></td><td>指向第二个变量的指针</td></tr></tbody></table>
 <p><strong>返回</strong>　无。原地交换。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">交换.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">整64 甲 = 1;
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · stdlib/core.html · 工具函数（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+导入 核心::错误码;
+导入 核心::{交换, 最小, 最大, 断言};
+
+函数 主() -&gt; 整32 {
+整64 甲 = 1;
 整64 乙 = 99;
 交换&lt;整64&gt;(&amp;甲, &amp;乙);
-打印(甲, " ", 乙);</code></pre></div>
-<p class="输出行">输出：99 1
-</p>
+打印(甲, " ", 乙);
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：99 1</p>
 </section>
 <section class="函数条" id="最小">
 <h3><code>最小</code></h3>
@@ -102,9 +112,16 @@
 <p>返回两者中较小的一个。按值传参，支持所有实现了 <code>&lt;</code> 比较的类型。</p>
 <table class="表 参数表"><thead><tr><th>参数</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>左</code></td><td><code>T</code></td><td>候选值一</td></tr><tr><td><code>右</code></td><td><code>T</code></td><td>候选值二</td></tr></tbody></table>
 <p><strong>返回</strong>　较小者（类型 T）。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">最小.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">打印(最小&lt;整32&gt;(3, 7), " ", 最小&lt;浮64&gt;(2.5, 1.8));</code></pre></div>
-<p class="输出行">输出：3 1.800000
-</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · stdlib/core.html · 工具函数（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+导入 核心::错误码;
+导入 核心::{交换, 最小, 最大, 断言};
+
+函数 主() -&gt; 整32 {
+打印(最小&lt;整32&gt;(3, 7), " ", 最小&lt;浮64&gt;(2.5, 1.8));
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：3 1.800000</p>
 </section>
 <section class="函数条" id="最大">
 <h3><code>最大</code></h3>
@@ -112,9 +129,16 @@
 <p>返回两者中较大的一个。要求类型支持 <code>&gt;</code> 比较。</p>
 <table class="表 参数表"><thead><tr><th>参数</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>左</code></td><td><code>T</code></td><td>候选值一</td></tr><tr><td><code>右</code></td><td><code>T</code></td><td>候选值二</td></tr></tbody></table>
 <p><strong>返回</strong>　较大者（类型 T）。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">最大.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">打印(最大&lt;整32&gt;(3, 7), " ", 最大&lt;浮64&gt;(2.5, 1.8));</code></pre></div>
-<p class="输出行">输出：7 2.500000
-</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · stdlib/core.html · 工具函数（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+导入 核心::错误码;
+导入 核心::{交换, 最小, 最大, 断言};
+
+函数 主() -&gt; 整32 {
+打印(最大&lt;整32&gt;(3, 7), " ", 最大&lt;浮64&gt;(2.5, 1.8));
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：7 2.500000</p>
 </section>
 <section class="函数条" id="断言">
 <h3><code>断言</code></h3>
@@ -122,10 +146,17 @@
 <p>条件为假时调用 <code>运行时错误(错误码.参数)</code> 终止进程，并在标准输出打印诊断行。用于开发期前置条件检查；发布构建不会自动移除断言（需手动裁剪）。</p>
 <table class="表 参数表"><thead><tr><th>参数</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>条件</code></td><td><code>布尔</code></td><td>断言条件；假则终止</td></tr><tr><td><code>消息</code></td><td><code>字符串</code></td><td>失败时的诊断消息</td></tr></tbody></table>
 <p><strong>返回</strong>　无。条件为真时什么也不做。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">断言.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">断言(1 + 1 == 2, "算术坏了");
-打印("到这了");</code></pre></div>
-<p class="输出行">输出：到这了
-</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · stdlib/core.html · 工具函数（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+导入 核心::错误码;
+导入 核心::{交换, 最小, 最大, 断言};
+
+函数 主() -&gt; 整32 {
+断言(1 + 1 == 2, "算术坏了");
+打印("到这了");
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：到这了</p>
 </section><nav class="页脚导航"><a class="" href="../stdlib/builtin.html"><span class="向">← 上一页</span><span class="题">内置函数</span></a><a class="下一" href="../stdlib/container.html"><span class="向">下一页 →</span><span class="题">容器</span></a></nav></article>
     <aside class="目录" aria-label="本页目录">
       <p class="目录-题">本页目录</p>
@@ -169,7 +200,7 @@
     </div>
     <div class="页脚-底">
       <span>© 2026 CN 语言项目</span>
-      <span>文档基线：任务/1021 20608051·2026-10-17·示例经编译器实测</span>
+      <span>文档基线：任务/1060 bae186a0·2026-10-18·示例经编译器实测</span>
       <span>京ICP备00000000号（备案办理中·占位）</span>
     </div>
   </div>

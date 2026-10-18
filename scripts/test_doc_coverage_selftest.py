@@ -2,12 +2,14 @@
 # -*- coding: utf-8 -*-
 """check_doc_coverage 两态自测（1013·裁决「改检查工具须带 selftest」配套）。
 
-临时镜像树五态（不触真树·跑完即清理）：
+临时镜像树七态（不触真树·跑完即清理）：
   态1 正证：最小干净树（1 特性行全命中）--strict → rc=0（好样本零误伤）
   态2 反证：新增未归类用例 --strict → rc=1（未归类拦截真实生效）
   态3 豁免绿：豁免条目（理由非空）→ rc=0（豁免通道生效）
   态4 豁免理由空白 → rc=1（理由必填核验生效）
   态5 陈旧豁免（条目在用例树无命中）→ rc=1（陈旧豁免核验生效）
+  态6 官网示例引用有效（用例齐备）→ rc=0（1060·引用通道生效）
+  态7 官网示例引用失效 → rc=1（1060·引用存在性拦截生效）
 
 机制：check_doc_coverage 三处默认参延迟绑定（1013）——monkeypatch 模块级
 台账路径/用例根目录/官网根目录 指向临时树后直调 主流程()（绕开 __main__ 的
@@ -89,6 +91,8 @@ def 主流程():
         模.台账路径 = os.path.join(根, "website", "tools", "doc_coverage.json")
         模.用例根目录 = os.path.join(根, "tests", "e2e")
         模.官网根目录 = os.path.join(根, "website", "docs")
+        # 1060：镜像树默认空引用面（态1~5 关注归类/豁免语义；态6/7 再覆盖为具体引用）
+        模.枚举文档引用 = lambda: set()
 
         # 态1 正证：干净树 --strict 绿
         检("态1 干净树 --strict", 0, _跑strict(模))
@@ -114,13 +118,27 @@ def 主流程():
         台账["归类豁免"] = [{"用例": "999_不存在", "理由": "陈旧条目自测"}]
         _写台账(根, 台账)
         检("态5 陈旧豁免（无命中） --strict", 1, _跑strict(模))
+
+        # ---- 1060：官网示例引用校验两态（monkeypatch 枚举——镜像树不搭 docs_data）----
+        # 态6 前置：还原干净树（删 02_b、清豁免、补 01_a/主.expected）+ 注入有效引用
+        shutil.rmtree(os.path.join(模.用例根目录, "02_b"), ignore_errors=True)
+        台账["归类豁免"] = []
+        _写台账(根, 台账)
+        with _io.open(os.path.join(模.用例根目录, "01_a", "主.expected"), "w", encoding="utf-8") as f:
+            f.write("ok\n")
+        模.枚举文档引用 = lambda: {"01_a"}
+        检("态6 引用有效（用例齐备） --strict", 0, _跑strict(模))
+
+        # 态7 引用失效 → 红（引用存在性拦截真实生效）
+        模.枚举文档引用 = lambda: {"官网示例-不存在-自测"}
+        检("态7 引用失效 --strict", 1, _跑strict(模))
     finally:
         shutil.rmtree(根, ignore_errors=True)
 
     if 失败们:
         print("test_doc_coverage_selftest FAIL：%s" % "、".join(失败们))
         return 1
-    print("test_doc_coverage_selftest PASS ✓（5 态全过·临时树已清理）")
+    print("test_doc_coverage_selftest PASS ✓（7 态全过·临时树已清理）")
     return 0
 
 

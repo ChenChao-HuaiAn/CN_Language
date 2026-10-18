@@ -46,7 +46,9 @@
 <p style="color: var(--color-fg-muted); font-size: var(--text-lg); line-height: 2;">类布局、可见性、构造析构链、继承与接口的精确规则、静态成员、友元、运算符重载。</p>
 <h2 id="布局">类与实例：句柄模型</h2>
 <p>类变量槽存<strong>对象句柄</strong>（不是对象本体）——赋值/传参传句柄、体内写穿同一堆对象；实例在无引用后由 RAII 链释放。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">句柄语义.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">类 计数 {
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · reference/oop.html · 布局（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+类 计数 {
 公开:
     整64 n;
     函数 计数(整64 初) { n = 初; }
@@ -67,12 +69,13 @@
     返回 0;
 }</code></pre></div>
 <p class="输出行">输出：42
-1 7
-</p>
+1 7</p>
 <ul><li><strong>两种「拷贝」要分清</strong>：传参/返回=句柄拷贝（写穿同一对象）；<code>b = a</code> 声明初始化=<strong>拷贝构造</strong>——类定义了拷贝构造（如标准库容器）按其语义深拷；没有则逐字段浅拷、对象独立。</li><li>要独立副本：定义拷贝构造 <code>函数 类名(类名&amp;)</code> 并用 <code>复制(对象)</code> 克隆（标准库容器全部定义了深拷构造）。</li><li>取地址 <code>&amp;a</code> 产<strong>对象地址</strong>（解包句柄），与 C++ <code>&amp;obj</code> 语义一致。</li></ul>
 <h2 id="成员">可见性、构造、析构、静态</h2>
 <ul><li><code>公开:</code>/<code>保护:</code>/<code>私有:</code> 标签分段；缺省=私有。<code>友元 函数名/类名</code> 可越权访问私有。</li><li>构造=与类同名（可重载）；<strong>类类型字段自动级联默认构造</strong>（用户构造未显式构造的字段同此）——构造/析构对称。</li><li>析构=<code>~类名</code>；作用域结束自动调用，先成员后自身、与构造反序。</li><li><code>静态</code> 字段/函数属于类（<code>类名.成员</code> 访问）；<code>常量 函数</code> 承诺不改状态。</li><li><code>虚拟 函数</code> 动态分派；<code>重写</code> 显式标注覆盖；<code>抽象</code> 纯虚（接口成员）。</li></ul>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">级联构造.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">类 引擎 {
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · reference/oop.html · 成员（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+类 引擎 {
 公开:
     函数 引擎() { 打印("[引擎就绪]"); }
 }
@@ -88,8 +91,7 @@
     返回 0;
 }</code></pre></div>
 <p class="输出行">输出：[引擎就绪]
-[汽车就绪]
-</p>
+[汽车就绪]</p>
 <h2 id="继承接口">继承与接口</h2>
 <ul><li>单继承：<code>类 子 : 父</code>；接口实现同形态：<code>类 实现类 : 接口</code>。</li><li><code>虚拟</code> 开启动态分派；<code>重写</code> 覆盖父类虚拟；<code>父类.方法()</code> 调父类实现；<code>父类.构造(实参)</code> 在子类构造内调用父类构造。</li><li><code>自身</code> 是保留字——任何标识符位不可用。</li><li><strong>接口实现三查</strong>（逐接口方法校验）：①<strong>存在</strong>——缺实现报「未实现接口 'I' 的方法 'M'」（多层继承未实现有指路诊断）；②<strong>签名一致</strong>——参数类型与返回类型须与接口精确一致，不一致=编译错误「签名不一致」（防静默错位/截断）；③<strong>修饰</strong>——实现方法须 <code>虚拟</code> 或 <code>重写</code> 修饰。</li><li><strong>抽象成员=纯虚声明</strong>：<code>抽象 函数 名(参数) -&gt; 返回类型</code> 不得带实现体（带体=编译错误「抽象方法不得带实现体」）；含抽象成员的类与接口<strong>不可实例化</strong>（「不能实例化」），派生类/实现类须实现全部抽象成员。</li><li>接口可含虚拟函数声明（无体）；接口引用可指任何实现类实例。</li><li>析构链：子类析构自动级联父类析构（容器元素同此）。</li></ul>
 <div class="码窗"><p class="码窗-顶"><span class="码窗-名">接口签名不一致.cn（负例·编译拒绝）</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">接口 通道 {
@@ -120,7 +122,9 @@
 }</code></pre></div>
 <h2 id="重载">运算符重载</h2>
 <ul><li>成员函数形态：<code>函数 运算符X(参数) -&gt; 返回类型</code>；左操作数必须本类实例；双目单参数、单目无参数。</li><li>可重载集合：<code>+ - * / % == != &lt; &gt; &lt;= &gt;= &amp;&amp; || ! &amp; | ^ ~ &lt;&lt; &gt;&gt;</code>（<code>-&gt;</code> 已随成员访问统一废除；<code>[]</code>/<code>()</code> <strong>解析层显式拒绝</strong>——请求重载即报「不支持重载」，改用 lambda 或函数指针）。</li><li>使用点参数个数校验：单目 <code>运算符X()</code> 须 0 个右操作数、双目须 1 个——个数不符报「重载期望 N 个右操作数」。</li><li>决议：①优先精确匹配内置运算符；②无内置匹配→按左操作数类型查找成员 <code>运算符X</code>；③仍无→「类型不兼容」错误。</li></ul>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">一元负重载.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">类 复数 {
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · reference/oop.html · 重载（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+类 复数 {
 公开:
     浮64 实;
     浮64 虚;
@@ -136,8 +140,7 @@
     打印(共.实, " ", 共.虚);
     返回 0;
 }</code></pre></div>
-<p class="输出行">输出：3.000000 -4.000000
-</p><nav class="页脚导航"><a class="" href="../reference/functions.html"><span class="向">← 上一页</span><span class="题">函数</span></a><a class="下一" href="../reference/errors.html"><span class="向">下一页 →</span><span class="题">错误处理</span></a></nav></article>
+<p class="输出行">输出：3.000000 -4.000000</p><nav class="页脚导航"><a class="" href="../reference/functions.html"><span class="向">← 上一页</span><span class="题">函数</span></a><a class="下一" href="../reference/errors.html"><span class="向">下一页 →</span><span class="题">错误处理</span></a></nav></article>
     <aside class="目录" aria-label="本页目录">
       <p class="目录-题">本页目录</p>
 <a href="#布局">类与实例：句柄模型</a><a href="#成员">可见性、构造、析构、静态</a><a href="#继承接口">继承与接口</a><a href="#重载">运算符重载</a>
@@ -180,7 +183,7 @@
     </div>
     <div class="页脚-底">
       <span>© 2026 CN 语言项目</span>
-      <span>文档基线：任务/1021 20608051·2026-10-17·示例经编译器实测</span>
+      <span>文档基线：任务/1060 bae186a0·2026-10-18·示例经编译器实测</span>
       <span>京ICP备00000000号（备案办理中·占位）</span>
     </div>
   </div>

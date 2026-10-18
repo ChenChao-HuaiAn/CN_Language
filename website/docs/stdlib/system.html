@@ -65,9 +65,15 @@
 <p class="函数定义"><code>函数 参数个数() -> 整32</code></p>
 <p>命令行参数个数，<strong>含程序名本身</strong>（对标 <code>argv[0]</code>），至少为 1。</p>
 <p><strong>返回</strong>　参数个数（整32）。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">参数个数.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">打印(参数个数());</code></pre></div>
-<p class="输出行">输出：1
-</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · stdlib/system.html · 命令行参数（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+导入 系统::{参数个数, 参数};
+
+函数 主() -&gt; 整32 {
+打印(参数个数());
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：1</p>
 </section>
 <section class="函数条" id="参数">
 <h3><code>参数</code></h3>
@@ -75,13 +81,19 @@
 <p>按索引取参数字符串。<code>参数(0)</code> = 程序名。越界返回 <code>错误(6)</code>。返回的字符串为拥有型（内部已复制落堆，RAII 自动释放）。</p>
 <table class="表 参数表"><thead><tr><th>参数</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>索引</code></td><td><code>整32</code></td><td>参数下标（0=程序名）</td></tr></tbody></table>
 <p><strong>返回</strong>　<code>正常(参数串)</code>；越界 → <code>错误(6)</code>。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">参数.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">结果&lt;字符串, 整32&gt; 名 = 参数(0);
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · stdlib/system.html · 命令行参数（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+导入 系统::{参数个数, 参数};
+
+函数 主() -&gt; 整32 {
+结果&lt;字符串, 整32&gt; 名 = 参数(0);
 如果 (名.正常) { 打印("程序名拿到了"); }
 结果&lt;字符串, 整32&gt; 越界 = 参数(99);
-如果 (!越界.正常) { 打印("无此参数"); }</code></pre></div>
+如果 (!越界.正常) { 打印("无此参数"); }
+    返回 0;
+}</code></pre></div>
 <p class="输出行">输出：程序名拿到了
-无此参数
-</p>
+无此参数</p>
 </section><nav class="页脚导航"><a class="" href="../stdlib/regex.html"><span class="向">← 上一页</span><span class="题">正则</span></a><a class="下一" href="../stdlib/io.html"><span class="向">下一页 →</span><span class="题">IO</span></a></nav></article>
     <aside class="目录" aria-label="本页目录">
       <p class="目录-题">本页目录</p>
@@ -125,7 +137,7 @@
     </div>
     <div class="页脚-底">
       <span>© 2026 CN 语言项目</span>
-      <span>文档基线：任务/1021 20608051·2026-10-17·示例经编译器实测</span>
+      <span>文档基线：任务/1060 bae186a0·2026-10-18·示例经编译器实测</span>
       <span>京ICP备00000000号（备案办理中·占位）</span>
     </div>
   </div>

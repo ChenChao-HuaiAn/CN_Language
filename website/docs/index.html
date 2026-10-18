@@ -50,7 +50,9 @@
 <div class="批注 批注-绿"><span class="批注-题">示例的可信度</span>本站全部 CN 代码示例<strong>逐个经过编译器编译+运行+输出比对</strong>（与开发者在真实链路上验证同款流程），示例下方标注的「输出」即真实运行结果，非手写。</div>
 <h2 id="语言速览">一分钟看懂 CN 长什么样</h2>
 <p>一个摸底示例：变量、函数、容器、遍历、结果检查、字符串拼接各一遭。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">速览.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">导入 容器::向量;
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · index.html · 语言速览（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+导入 容器::向量;
 
 // 求平方和：函数、循环、容器一次看完
 函数 平方和(整64 上限) -&gt; 整64 {
@@ -67,8 +69,7 @@
     打印("1~10 平方和 = ", 平方和(10));
     返回 0;
 }</code></pre></div>
-<p class="输出行">输出：1~10 平方和 = 385
-</p>
+<p class="输出行">输出：1~10 平方和 = 385</p>
 <p>看懂了多少就算多少——接下来每个语法点都会在<a href="tutorial-syntax.html">语法基础</a>里展开。</p>
 <h2 id="地图">全站地图</h2>
 <table class="表"><thead><tr><th>分类</th><th>页面</th><th>内容</th></tr></thead><tbody><tr><td>入门</td><td><a href="getting-started.html">快速开始</a></td><td>安装、Hello World、编译运行工作流、常见问题</td></tr><tr><td>教程</td><td><a href="tutorial-syntax.html">语法基础</a></td><td>变量与类型、运算符、控制流、函数、数组与字符串、结构体、枚举</td></tr><tr><td>教程</td><td><a href="tutorial-oop.html">类与泛型</a></td><td>类、构造与析构、继承与接口、泛型类与泛型函数、运算符重载</td></tr><tr><td>教程</td><td><a href="tutorial-safety.html">安全与并发</a></td><td>结果与可选、所有权与转移、线程、互斥锁、安全区边界</td></tr><tr><td>教程</td><td><a href="tutorial-advanced.html">进阶篇</a></td><td>内存模型、拥有型字符串、指针与不安全域、FFI、优化与调试、自举</td></tr><tr><td>参考</td><td><a href="reference/index.html">语言参考（九篇）</a></td><td>词法结构、类型系统、控制流、函数、类与对象、错误处理、并发、模块系统——逐条语法语义</td></tr><tr><td>标准库</td><td><a href="stdlib.html">标准库</a></td><td>13 个模块 187 个条目逐函数文档（定义/用法/示例）</td></tr><tr><td>工具</td><td><a href="cli.html">命令行参考</a></td><td>cn 全部子命令与选项、优化级别、目标平台、调试手段</td></tr></tbody></table>
@@ -117,7 +118,7 @@
     </div>
     <div class="页脚-底">
       <span>© 2026 CN 语言项目</span>
-      <span>文档基线：任务/1021 20608051·2026-10-17·示例经编译器实测</span>
+      <span>文档基线：任务/1060 bae186a0·2026-10-18·示例经编译器实测</span>
       <span>京ICP备00000000号（备案办理中·占位）</span>
     </div>
   </div>

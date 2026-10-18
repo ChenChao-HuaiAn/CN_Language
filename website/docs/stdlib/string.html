@@ -72,10 +72,16 @@
 <p>把字符串解析为 64 位整数。允许前后空白与前导正负号；遇到非法字符即失败。</p>
 <table class="表 参数表"><thead><tr><th>参数</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>输入</code></td><td><code>字符串</code></td><td>待解析的字符串</td></tr></tbody></table>
 <p><strong>返回</strong>　<code>正常(值)</code>；非法/空串 → <code>错误(6)</code>。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">字符串转整数.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">结果&lt;整64, 整32&gt; 值 = 字符串转整数("  -42");
-如果 (值.正常) { 打印(值.值); }</code></pre></div>
-<p class="输出行">输出：-42
-</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · stdlib/string.html · 解析（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+导入 字符串扩展::{字符串转整数, 替换, 分割};
+
+函数 主() -&gt; 整32 {
+结果&lt;整64, 整32&gt; 值 = 字符串转整数("  -42");
+如果 (值.正常) { 打印(值.值); }
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：-42</p>
 </section>
 <section class="函数条" id="字符串转浮点">
 <h3><code>字符串转浮点</code></h3>
@@ -83,10 +89,16 @@
 <p>把字符串解析为 64 位浮点数（支持小数点形式）。</p>
 <table class="表 参数表"><thead><tr><th>参数</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>输入</code></td><td><code>字符串</code></td><td>待解析的字符串</td></tr></tbody></table>
 <p><strong>返回</strong>　<code>正常(值)</code>；非法 → <code>错误(6)</code>。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">字符串转浮点.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">结果&lt;浮64, 整32&gt; 值 = 字符串转浮点("2.75");
-如果 (值.正常) { 打印(值.值); }</code></pre></div>
-<p class="输出行">输出：2.750000
-</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · stdlib/string.html · 解析（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+导入 字符串扩展::{字符串转整数, 替换, 分割};
+
+函数 主() -&gt; 整32 {
+结果&lt;浮64, 整32&gt; 值 = 字符串转浮点("2.75");
+如果 (值.正常) { 打印(值.值); }
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：2.750000</p>
 </section>
 <section class="函数条" id="字符串转布尔">
 <h3><code>字符串转布尔</code></h3>
@@ -94,10 +106,16 @@
 <p>识别「真/假」（以及数值 0/非 0）。</p>
 <table class="表 参数表"><thead><tr><th>参数</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>输入</code></td><td><code>字符串</code></td><td>待解析的字符串</td></tr></tbody></table>
 <p><strong>返回</strong>　<code>正常(布尔值)</code>；无法识别 → <code>错误(6)</code>。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">字符串转布尔.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">结果&lt;布尔, 整32&gt; 值 = 字符串转布尔("假");
-如果 (值.正常) { 打印(值.值); }</code></pre></div>
-<p class="输出行">输出：假
-</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · stdlib/string.html · 解析（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+导入 字符串扩展::{字符串转整数, 替换, 分割};
+
+函数 主() -&gt; 整32 {
+结果&lt;布尔, 整32&gt; 值 = 字符串转布尔("假");
+如果 (值.正常) { 打印(值.值); }
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：假</p>
 </section>
 <h2 id="加工">替换与填充</h2>
 <p>返回值均为<strong>拥有型字符串</strong>（调用方 RAII 自动释放）。替换按字节偏移处理；目标为空串时原样返回。</p>
@@ -107,10 +125,16 @@
 <p>把 输入 中<strong>所有</strong>出现的 目标 替换为 替换为，返回新串（输入不变）。内置安全计数器（上限 100 次）防自包含死循环；目标不存在时返回原样副本。</p>
 <table class="表 参数表"><thead><tr><th>参数</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>输入</code></td><td><code>字符串</code></td><td>原始字符串</td></tr><tr><td><code>目标</code></td><td><code>字符串</code></td><td>被替换的子串（空串=原样返回）</td></tr><tr><td><code>替换为</code></td><td><code>字符串</code></td><td>替换成的子串</td></tr></tbody></table>
 <p><strong>返回</strong>　替换后的新字符串。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">替换.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">字符串 新 = 替换("甲乙甲", "甲", "丙");
-打印(新);</code></pre></div>
-<p class="输出行">输出：丙乙丙
-</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · stdlib/string.html · 加工（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+导入 字符串扩展::{字符串转整数, 替换, 分割};
+
+函数 主() -&gt; 整32 {
+字符串 新 = 替换("甲乙甲", "甲", "丙");
+打印(新);
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：丙乙丙</p>
 </section>
 <section class="函数条" id="填充左">
 <h3><code>填充左</code></h3>
@@ -118,10 +142,16 @@
 <p>长度不足 目标长度 时在左侧补 填充 字符（右对齐排版）；已达标原样返回。</p>
 <table class="表 参数表"><thead><tr><th>参数</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>输入</code></td><td><code>字符串</code></td><td>原始字符串</td></tr><tr><td><code>目标长度</code></td><td><code>整64</code></td><td>目标总长度</td></tr><tr><td><code>填充</code></td><td><code>字符</code></td><td>填充用的字符</td></tr></tbody></table>
 <p><strong>返回</strong>　填充后的新字符串。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">填充左.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">字符串 对齐 = 填充左("42", 5, '0');
-打印(对齐);</code></pre></div>
-<p class="输出行">输出：00042
-</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · stdlib/string.html · 加工（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+导入 字符串扩展::{字符串转整数, 替换, 分割};
+
+函数 主() -&gt; 整32 {
+字符串 对齐 = 填充左("42", 5, '0');
+打印(对齐);
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：00042</p>
 </section>
 <section class="函数条" id="填充右">
 <h3><code>填充右</code></h3>
@@ -129,10 +159,16 @@
 <p>长度不足时在右侧补 填充 字符（左对齐排版）。</p>
 <table class="表 参数表"><thead><tr><th>参数</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>输入</code></td><td><code>字符串</code></td><td>原始字符串</td></tr><tr><td><code>目标长度</code></td><td><code>整64</code></td><td>目标总长度</td></tr><tr><td><code>填充</code></td><td><code>字符</code></td><td>填充用的字符</td></tr></tbody></table>
 <p><strong>返回</strong>　填充后的新字符串。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">填充右.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">字符串 对齐 = 填充右("42", 5, '.');
-打印(对齐);</code></pre></div>
-<p class="输出行">输出：42...
-</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · stdlib/string.html · 加工（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+导入 字符串扩展::{字符串转整数, 替换, 分割};
+
+函数 主() -&gt; 整32 {
+字符串 对齐 = 填充右("42", 5, '.');
+打印(对齐);
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：42...</p>
 </section>
 <h2 id="分割">分割</h2>
 <p>C 风格输出参数边界：结果写入调用方准备的 <code>字符串*</code> 数组。数组长度须为编译期常量（数组声明限制），故以「数组+长度」传参。<strong>切分出的每个元素是动态分配串</strong>，用完须逐一 <code>字符串释放</code>。</p>
@@ -142,7 +178,12 @@
 <p>按 分隔符 把 输入 切成若干段写入 结果数组，返回实际段数。数组装不下剩余内容 → <code>错误(6)</code>（已填元素由调用方释放）；分隔符为空串 → <code>错误(6)</code>。</p>
 <table class="表 参数表"><thead><tr><th>参数</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>输入</code></td><td><code>字符串</code></td><td>原始字符串</td></tr><tr><td><code>分隔符</code></td><td><code>字符串</code></td><td>切分用分隔串（不可为空）</td></tr><tr><td><code>结果数组</code></td><td><code>字符串*</code></td><td>调用方准备的输出数组</td></tr><tr><td><code>数组长度</code></td><td><code>整64</code></td><td>输出数组容量</td></tr></tbody></table>
 <p><strong>返回</strong>　<code>正常(实际段数)</code>；数组不足/分隔符空 → <code>错误(6)</code>。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">分割.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">字符串[8] 段;
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · stdlib/string.html · 分割（任务 1060 同源化：本文件即官网展示内容，
+//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+导入 字符串扩展::{字符串转整数, 替换, 分割};
+
+函数 主() -&gt; 整32 {
+字符串[8] 段;
 结果&lt;整64, 整32&gt; 数量 = 分割("甲,乙,丙", ",", 段, 8);
 如果 (数量.正常) {
     整64 i = 0;
@@ -152,9 +193,10 @@
         i++;
     }
     打印("");
+}
+    返回 0;
 }</code></pre></div>
-<p class="输出行">输出：甲|乙|丙|
-</p>
+<p class="输出行">输出：甲|乙|丙|</p>
 </section><nav class="页脚导航"><a class="" href="../stdlib/mapset.html"><span class="向">← 上一页</span><span class="题">映射集合</span></a><a class="下一" href="../stdlib/algorithm.html"><span class="向">下一页 →</span><span class="题">算法</span></a></nav></article>
     <aside class="目录" aria-label="本页目录">
       <p class="目录-题">本页目录</p>
@@ -198,7 +240,7 @@
     </div>
     <div class="页脚-底">
       <span>© 2026 CN 语言项目</span>
-      <span>文档基线：任务/1021 20608051·2026-10-17·示例经编译器实测</span>
+      <span>文档基线：任务/1060 bae186a0·2026-10-18·示例经编译器实测</span>
       <span>京ICP备00000000号（备案办理中·占位）</span>
     </div>
   </div>
