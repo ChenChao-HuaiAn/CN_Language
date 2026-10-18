@@ -313,7 +313,11 @@ void SemanticAnalyzer::visitVarDecl(VarDecl* node) {
         //   整128 x = 巨字面量 照常）。报错后不 return：甲仍按恒定级整32
         //   登记走正常声明流程（单诊断口径·防后续语句连环「未声明」噪音，
         //   324 静态未初始化同款）。
-        if (types::isInteger(varType) && isIntLiteralExpr(node->initializer.get()) &&
+        // 919（超承载字面量参与表达式求值双侧静默分叉根治·640 侦察副产品）
+        //   扩面：谓词 isIntLiteralExpr→cnIsConstIntExpr919（常量表达式同面
+        //   具值域门槛——`变量 甲 = 99999999999999999999+0;` 修前双侧静默
+        //   错值分叉：宿主 1661992959 vs v2 -1076103128）。
+        if (types::isInteger(varType) && cnIsConstIntExpr919(node->initializer.get()) &&
             !intLiteralFitsType(node->initializer.get(), varType)) {
             diagnostics_.report(DiagnosticLevel::Error, node->location,
                                 "无法将 '" + varType + "' 隐式转换为 '" +
@@ -459,12 +463,15 @@ void SemanticAnalyzer::visitVarDecl(VarDecl* node) {
                     }
                 }
             } else if (types::isInteger(initType) && types::isInteger(varType) &&
-                       isIntLiteralExpr(node->initializer.get()) &&
+                       cnIsConstIntExpr919(node->initializer.get()) &&
                        !intLiteralFitsType(node->initializer.get(), varType)) {
                 // 558（506甲·用户裁决 2026-10-13）：同型字面量值域门槛——
                 //   canConvertType 同型真即零检查放行=声明面短路绕过 T36
                 //  （c506 实锤：整32 甲=2147483648 静默回绕）；文案对齐既有
                 //   转换拒绝链（v2 通用链同款·双侧一致）。
+                // 919 扩面：谓词经 cnIsConstIntExpr919 覆盖常量表达式同面
+                //   （`整64 甲 = 99999999999999999999+0;` 修前双侧静默回绕
+                //   7766279631452241919 放行——超整64 域须拒·506/558 口径）。
                 diagnostics_.report(DiagnosticLevel::Error, node->location,
                                     "无法将 '" + initType + "' 隐式转换为 '" +
                                         varType + "'");

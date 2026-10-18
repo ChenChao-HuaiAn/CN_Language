@@ -545,8 +545,14 @@ bool SemanticAnalyzer::canConvertWithLiteral(const Expr* value,
         //   Rust E0308「同型亦查域」同款）；负号形态按负值判域
         //  （-2147483648=整32::MIN 域内合法·存量零翻转）。赋值/返回/传参/
         //   数组元素/字段各面共用本入口·一次补检全链生效。
+        // 919 扩面（640 侦察副产品·超承载字面量参与表达式求值双侧静默分叉
+        //   根治）：谓词经 cnIsConstIntExpr919 覆盖常量表达式同面——`返回
+        //   99999999999999999999/3;` 修前宿主静默错值放行 vs v2 修正后拒的
+        //   分叉面（返回/赋值/实参/元素/字段五消费面随本单点统一对齐；值域
+        //   判定主体 intLiteralFitsType 表达式扩展见 semantic_literal_domain）。
         if (value != nullptr && types::isInteger(fromRaw) &&
-            types::isInteger(toRaw) && isIntLiteralExpr(value) &&
+            types::isInteger(toRaw) &&
+            (isIntLiteralExpr(value) || cnIsConstIntExpr919(value)) &&
             !intLiteralFitsType(value, toRaw)) {
             return false;
         }

@@ -533,5 +533,81 @@ std::unique_ptr<Stmt> cloneStmt(Stmt* node);
     }
 }
 
+// ===== 919：常量整数表达式文本级求值（超承载字面量求值单点·大数安全） =====
+// 640 侦察副产品（超承载十进制字面量参与表达式求值双侧静默分叉根治）：
+//   表达式语境常量值求值——文本级大数安全（types::decText*919 十进制串
+//   四则），区别于值级折叠通道（cnFoldConstIntExpr505 信任 IntegerLiteral::
+//   value——parser parseIntValue 对超 int64 承载文本 std::stoll 溢出静默回
+//   0 的毒化值；1034 教训 #232 毒化值多消费点同源）。
+//   语义边界（与 001 §506甲/558/638/640 立法链口径一致）：
+//     ① 返回 true + out 非空 = 折叠成功（out=规范十进制文本·可带 '-'）；
+//     ② 返回 true + out 空串 = 命中超 u128 域哨兵（沿 910
+//        normalizeIntLiteralToDecimal 空串口径——中间值或最终值任一超
+//        2^128-1 即哨兵）；消费方判「超一切整型域」；
+//     ③ 返回 false = 非常量形态（变量/调用/除零/移位/位运算/比较等）——消费
+//        方维持既有链（编译期除零/溢出预演/移位量域各专诊断不动）。
+//   节点覆盖面：整数字面量（raw 全文归一·含负号折叠 raw）+ 一元 ± 负号链
+//   + 二元 + - * / %。消费点=语义层 intLiteralFitsType 表达式扩展
+//   （semantic_literal_domain.cpp）——「表达式常量数学值超目标类型域 →
+//   编译期拒」判据底座。
+[[maybe_unused]] inline bool cnEvalConstIntExprText919(
+    const Expr* e, std::string& out, int depth = 0) {
+    if (e == nullptr || depth > 64) return false;   // 静默豁免业务值: 919 轮求值器入口判定（空节点/深度超限=非常量形态缺省判假·谓词语义非静默默认；深度守卫防病态深嵌套同步在位）
+    if (e->getType() == NodeType::IntegerLiteral) {
+        out = types::normalizeIntLiteralToDecimal(
+            static_cast<const IntegerLiteral*>(e)->raw);
+        return true;   // 空串=超 u128 域哨兵（词法已拒非法文本·上游已诊断）
+    }
+    if (e->getType() == NodeType::UnaryExpr) {
+        const UnaryExpr* u = static_cast<const UnaryExpr*>(e);
+        if (u->postfix) return false;
+        if (u->op != Operator::Subtract && u->op != Operator::Add) return false;
+        std::string v;
+        if (!cnEvalConstIntExprText919(u->operand.get(), v, depth + 1)) return false;  // 静默豁免业务值: 919 轮求值器非常量形态传播（子节点不可折叠=整体非常量·谓词语义）
+        if (v.empty()) {  // 静默豁免业务值: 919 轮求值器超 u128 域哨兵传播（空串=显式哨兵·调用方按超域拒）
+            out.clear();
+            return true;
+        }
+        out = (u->op == Operator::Subtract) ? types::decTextNegate919(v) : v;
+        return true;
+    }
+    if (e->getType() != NodeType::BinaryExpr) return false;
+    const BinaryExpr* b = static_cast<const BinaryExpr*>(e);
+    std::string l, r;
+    if (!cnEvalConstIntExprText919(b->left.get(), l, depth + 1)) return false;  // 静默豁免业务值: 919 轮求值器非常量形态传播（子节点不可折叠=整体非常量·谓词语义）
+    if (!cnEvalConstIntExprText919(b->right.get(), r, depth + 1)) return false;  // 静默豁免业务值: 919 轮求值器非常量形态传播（子节点不可折叠=整体非常量·谓词语义）
+    if (l.empty() || r.empty()) {  // 静默豁免业务值: 919 轮求值器超 u128 域哨兵传播（空串=显式哨兵·调用方按超域拒）
+        out.clear();
+        return true;
+    }
+    switch (b->op) {
+        case Operator::Add: out = types::decTextAdd919(l, r); return true;
+        case Operator::Subtract: out = types::decTextSub919(l, r); return true;
+        case Operator::Multiply: out = types::decTextMul919(l, r); return true;
+        case Operator::Divide:
+            // 除零=不可折叠交既有编译期除零诊断链（503·此处 return false）
+            if (r == "0") return false;
+            out = types::decTextDiv919(l, r);
+            return true;
+        case Operator::Modulo:
+            if (r == "0") return false;
+            out = types::decTextMod919(l, r);
+            return true;
+        default:
+            // 移位/位运算/比较/逻辑不进本族（547 巨移位量/474 位宽域各现有通道）
+            return false;
+    }
+}
+
+// 919：常量整数表达式形态（全字面量可折叠算术）——值域门槛适用面谓词
+//   （intLiteralFitsType 表达式扩展的调用点前置）。覆盖=裸字面量/一元负号
+//   字面量（isIntLiteralExpr 原面）∪ 二元 + - * / % 常量表达式（本轮扩展
+//   面）——刻意为 isIntLiteralExpr 的超集：调用点以本谓词替换即完成「字面量
+//   →字面量∪常量表达式」面扩展（判据主体仍在 intLiteralFitsType 单点）。
+[[maybe_unused]] inline bool cnIsConstIntExpr919(const Expr* e) {
+    std::string v;
+    return cnEvalConstIntExprText919(e, v);
+}
+
 } // namespace cn_compiler
 

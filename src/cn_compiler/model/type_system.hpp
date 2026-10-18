@@ -257,5 +257,28 @@ bool foldIntLiteralText(const std::string& raw, std::string& out);
 // 解析失败返回空串（词法层已保证合法，防御性）
 std::string splitI128Text(const std::string& raw);
 
+// ==================== 919：十进制文本大数四则（超承载常量表达式求值底座） ====================
+
+// 919（640 侦察副产品·超承载字面量参与表达式求值双侧静默分叉根治）：
+//   十进制文本四则（大数安全·平台无 128 位依赖）——纯文本进文本出，供
+//   semantic_helpers.hpp cnEvalConstIntExprText919 常量表达式文本级求值消费。
+//   输入约定=规范十进制文本（与 normalizeIntLiteralToDecimal 输出同形：
+//   可带 '-'·无前导零·"0" 表零）；输出同形。
+//   返回空串 = 显式哨兵双语义：①超 u128 域（> 2^128-1·沿 910 空串哨兵
+//   口径——中间与最终结果同判）；②除数为零（调用方求值器先判除零交既有
+//   编译期除零诊断链，不达本族）。调用方按 910 空串口径处置（超一切整型
+//   域拒）。
+//   存在意义：解析/折叠链（parseIntValue stoll 静默回 0、cnFoldConstIntExpr505
+//   值级 int64 域）对超承载字面量（20 位十进制 99999999999999999999+0）输出
+//   静默错值/回绕；文本级四则为常量表达式值域判定（intLiteralFitsType 表达式
+//   扩展）提供大数安全的数学值。
+std::string decTextAdd919(const std::string& a, const std::string& b);
+std::string decTextSub919(const std::string& a, const std::string& b);
+std::string decTextMul919(const std::string& a, const std::string& b);
+std::string decTextDiv919(const std::string& a, const std::string& b);
+std::string decTextMod919(const std::string& a, const std::string& b);
+// 919：规范十进制文本取负（"0" → "0" 归一·"5"→"-5"·"-5"→"5"）
+std::string decTextNegate919(std::string t);
+
 } // namespace types
 } // namespace cn_compiler

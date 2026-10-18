@@ -844,8 +844,13 @@ void SemanticAnalyzer::registerGlobalConstsAndStatics(Program* node) {
             //   局部）。字面量（含一元负号）数学值须在槽类型值域内——域内直存
             //   零变化；与 函数内静态（semantic_decl.cpp 558 链）/类静态字段
             //   （class_resolver.cpp 同批）三形态同构执法。
+            // 919 扩面：谓词 isIntLiteralExpr→cnIsConstIntExpr919——超承载
+            //   字面量参与的常量表达式初值同判据同诊断（`静态 整32 槽 =
+            //   99999999999999999999+0;` 修前宿主顶层槽静默 5 vs v2 1661992959
+            //   双侧错值分叉；判据主体 intLiteralFitsType 表达式扩展见
+            //   semantic_literal_domain.cpp，本点仅放宽适用面谓词）。
             if (g->initializer != nullptr &&
-                isIntLiteralExpr(g->initializer.get()) &&
+                cnIsConstIntExpr919(g->initializer.get()) &&
                 !intLiteralFitsType(g->initializer.get(), stType)) {
                 diagnostics_.report(
                     DiagnosticLevel::Error, g->initializer->location,

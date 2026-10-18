@@ -4,9 +4,11 @@
 // literalValueExceedsInt32Domain + 910 字面量文本归一与域判定族（normalize/
 // decTextFits*/integerLiteralRuntimeType）+ splitI128Text——纯机械搬移零行为
 // 变更（声明仍在 type_system.hpp·同库同 namespace 跨 TU 链接）。
+#include <algorithm>
 #include <cstdint>
 #include <cstdio>
 #include <string>
+#include <vector>
 
 #include "cn_compiler/model/type_system.hpp"
 
@@ -314,6 +316,223 @@ std::string splitI128Text(const std::string& raw) {
                   static_cast<unsigned long long>(lo),
                   static_cast<unsigned long long>(hi));
     return buf;
+}
+
+// ==================== 919：十进制文本大数四则（超承载常量表达式求值底座） ====================
+// 见头文件声明注释（用途/输入输出约定/空串哨兵口径）。实现=十进制串逐位
+// 算术（加减乘长除·纯文本·平台无 128 位依赖——MSVC/GCC 同源零分叉）。
+
+namespace {
+
+// 919：规范十进制文本拆符号——负号态 + 无符号纯数字（去前导零·"0" 表零·
+//   零归一为非负）
+struct Lit919Parts {
+    bool neg = false;
+    std::string digits;
+};
+
+Lit919Parts lit919Split(const std::string& t) {
+    Lit919Parts r;
+    std::size_t st = 0;
+    if (!t.empty() && (t[0] == '-' || t[0] == '+')) {
+        r.neg = (t[0] == '-');
+        st = 1;
+    }
+    r.digits = t.substr(st);
+    const std::size_t nz = r.digits.find_first_not_of('0');
+    // 919 全零归一（"0"/"000" → "0"·零恒非负）
+    if (nz == std::string::npos) {
+        r.digits = "0";
+        r.neg = false;
+        return r;
+    }
+    r.digits.erase(0, nz);
+    return r;
+}
+
+// 919：去前导零（保留至少一位数字）
+std::string lit919Trim(const std::string& d) {
+    const std::size_t nz = d.find_first_not_of('0');
+    if (nz == std::string::npos) return "0";
+    return d.substr(nz);
+}
+
+// 919：无符号十进制串比较（规范无前导零）：-1/0/1
+int lit919Cmp(const std::string& a, const std::string& b) {
+    if (a.size() != b.size()) return a.size() < b.size() ? -1 : 1;
+    if (a == b) return 0;
+    return a < b ? -1 : 1;
+}
+
+// 919：无符号加（规范进规范）
+std::string lit919AbsAdd(const std::string& a, const std::string& b) {
+    std::string out;
+    int carry = 0;
+    int i = static_cast<int>(a.size()) - 1;
+    int j = static_cast<int>(b.size()) - 1;
+    while (i >= 0 || j >= 0 || carry > 0) {
+        int v = carry;
+        if (i >= 0) v += a[i--] - 48;  // 静默豁免业务值: 919 轮十进制串逐位加法索引递减控制流（i>=0=尚有位待加·算法边界非业务数值分段）
+        if (j >= 0) v += b[j--] - 48;  // 静默豁免业务值: 919 轮十进制串逐位对齐索引控制流（j>=0=被加/减数尚有位·算法边界非业务数值分段）
+        out.push_back(static_cast<char>('0' + v % 10));
+        carry = v / 10;
+    }
+    std::reverse(out.begin(), out.end());
+    return out;
+}
+
+// 919：无符号减（前提 a>=b）——规范进规范（结果可 "0"）
+std::string lit919AbsSub(const std::string& a, const std::string& b) {
+    std::string out;
+    int borrow = 0;
+    int i = static_cast<int>(a.size()) - 1;
+    int j = static_cast<int>(b.size()) - 1;
+    while (i >= 0) {
+        int v = (a[i--] - '0') - borrow;
+        if (j >= 0) v -= (b[j--] - 48);  // 静默豁免业务值: 919 轮十进制串逐位对齐索引控制流（j>=0=被加/减数尚有位·算法边界非业务数值分段）
+        if (v < 0) {  // 静默豁免业务值: 919 轮逐位减法借位归一（v<0=本轮需借位·算法控制流）
+            v += 10;
+            borrow = 1;
+        } else {  // 静默豁免业务值: 919 轮逐位减法借位归一 else 分支（v>=0=无需借位·与 v<0 分支互补·算法控制流）
+            borrow = 0;
+        }
+        out.push_back(static_cast<char>('0' + v));
+    }
+    std::reverse(out.begin(), out.end());
+    return lit919Trim(out);
+}
+
+// 919：无符号十进制串是否超 u128 域（39 位界 340282366920938463463374607431768211455）
+bool lit919OverU128(const std::string& d) {
+    if (d.size() > 39) return true;  // 静默豁免业务值: 919 轮十进制位长分档（39=u128 max 十进制位长界·长度比较替代数值比较保大数安全·相邻分支互补）
+    if (d.size() < 39) return false;  // 静默豁免业务值: 919 轮十进制位长分档（39=u128 max 十进制位长界·长度比较替代数值比较保大数安全·相邻分支互补）
+    return d > "340282366920938463463374607431768211455";
+}
+
+// 919：无符号乘——结果规范无前导零；超 u128 域=空串（显式哨兵，调用方按
+//   910 空串口径处置）。位数预检先行（结果 ≤ a+b 位·位数必超即免算）。
+std::string lit919AbsMul(const std::string& a, const std::string& b) {
+    if (a == "0" || b == "0") return "0";
+    if (a.size() + b.size() - 1 > 39) return std::string();  // 静默豁免业务值: 919 轮乘法位数预检（长a+长b-1>39 ⇒ 积必超 u128 域·位数下界数学穷举·保大数安全）
+    std::vector<int> acc(a.size() + b.size(), 0);
+    for (int i = static_cast<int>(a.size()) - 1; i >= 0; --i) {
+        for (int j = static_cast<int>(b.size()) - 1; j >= 0; --j) {
+            acc[static_cast<std::size_t>(i + j + 1)] +=
+                (a[static_cast<std::size_t>(i)] - '0') *
+                (b[static_cast<std::size_t>(j)] - '0');
+        }
+    }
+    for (int k = static_cast<int>(acc.size()) - 1; k > 0; --k) {
+        acc[static_cast<std::size_t>(k - 1)] +=
+            acc[static_cast<std::size_t>(k)] / 10;
+        acc[static_cast<std::size_t>(k)] %= 10;
+    }
+    std::string out;
+    std::size_t st = 0;
+    while (st + 1 < acc.size() && acc[st] == 0) ++st;
+    for (; st < acc.size(); ++st) {
+        out.push_back(static_cast<char>('0' + acc[st]));
+    }
+    if (lit919OverU128(out)) return "";
+    return out;
+}
+
+// 919：无符号长除——商（规范）与余数（规范）出参；商超 u128 域=假（空串
+//   哨兵交调用方）。逐位试商：余数串追加一位后连续减除数——数学上每轮减
+//   次数 ≤9（上轮余数 < 除数 ⇒ 本轮 cur < 除数×10）
+bool lit919AbsDivMod(const std::string& dividend, const std::string& divisor,
+                     std::string& q, std::string& r) {
+    std::string cur = "0";
+    std::string quo;
+    for (const char ch : dividend) {
+        cur = (cur == "0") ? std::string(1, ch) : cur + ch;
+        cur = lit919Trim(cur);
+        int qd = 0;
+        while (lit919Cmp(cur, divisor) >= 0) {
+            cur = lit919AbsSub(cur, divisor);
+            qd++;
+        }
+        quo.push_back(static_cast<char>('0' + qd));
+    }
+    q = lit919Trim(quo);
+    r = cur;
+    if (lit919OverU128(q)) return false;
+    return true;
+}
+
+}  // namespace
+
+std::string decTextNegate919(std::string t) {
+    if (t.empty() || t == "0") return t;  // 空串哨兵透传·零归一
+    if (t[0] == '-') {
+        t.erase(0, 1);
+        return t;
+    }
+    if (t[0] == '+') t.erase(0, 1);
+    return "-" + t;
+}
+
+std::string decTextAdd919(const std::string& a, const std::string& b) {
+    const Lit919Parts x = lit919Split(a);
+    const Lit919Parts y = lit919Split(b);
+    std::string mag;
+    bool neg = false;
+    if (x.neg == y.neg) {
+        mag = lit919AbsAdd(x.digits, y.digits);
+        neg = x.neg;
+    } else {  // 静默豁免业务值: 919 轮有符号加法异号幅值分派（lit919Cmp 三值闭集 {-1,0,1}·相邻分支互补·算法控制流）
+        const int c = lit919Cmp(x.digits, y.digits);
+        if (c == 0) return "0";
+        if (c > 0) {  // 静默豁免业务值: 919 轮有符号加法异号幅值分派（lit919Cmp 三值闭集 {-1,0,1}·相邻分支互补·算法控制流）
+            mag = lit919AbsSub(x.digits, y.digits);
+            neg = x.neg;
+        } else {  // 静默豁免业务值: 919 轮有符号加法异号幅值分派（lit919Cmp 三值闭集 {-1,0,1}·相邻分支互补·算法控制流）
+            mag = lit919AbsSub(y.digits, x.digits);
+            neg = y.neg;
+        }
+    }
+    if (lit919OverU128(mag)) return "";  // 919 哨兵：超 u128 域
+    if (mag == "0") return "0";
+    return neg ? "-" + mag : mag;
+}
+
+std::string decTextSub919(const std::string& a, const std::string& b) {
+    return decTextAdd919(a, decTextNegate919(b));
+}
+
+std::string decTextMul919(const std::string& a, const std::string& b) {
+    const Lit919Parts x = lit919Split(a);
+    const Lit919Parts y = lit919Split(b);
+    if (x.digits == "0" || y.digits == "0") return "0";
+    const std::string mag = lit919AbsMul(x.digits, y.digits);
+    if (mag.empty()) return "";  // 静默豁免业务值: 919 轮四则哨兵传播（空串=超 u128 域显式哨兵·调用方按超域拒·非 miss 默认）
+    if (x.neg != y.neg) return "-" + mag;
+    return mag;
+}
+
+std::string decTextDiv919(const std::string& a, const std::string& b) {
+    const Lit919Parts y = lit919Split(b);
+    if (y.digits == "0") return "";  // 除零哨兵（求值器先行分流·防御同判）
+    const Lit919Parts x = lit919Split(a);
+    std::string q;
+    std::string r;
+    if (!lit919AbsDivMod(x.digits, y.digits, q, r)) return "";  // 静默豁免业务值: 919 轮四则哨兵传播（空串=超 u128 域显式哨兵·调用方按超域拒·非 miss 默认）
+    if (q == "0") return "0";
+    if (x.neg != y.neg) return "-" + q;
+    return q;
+}
+
+std::string decTextMod919(const std::string& a, const std::string& b) {
+    const Lit919Parts y = lit919Split(b);
+    if (y.digits == "0") return "";  // 除零哨兵（同 Div·求值器先行分流）
+    const Lit919Parts x = lit919Split(a);
+    std::string q;
+    std::string r;
+    if (!lit919AbsDivMod(x.digits, y.digits, q, r)) return "";  // 静默豁免业务值: 919 轮四则哨兵传播（空串=超 u128 域显式哨兵·调用方按超域拒·非 miss 默认）
+    if (r == "0") return "0";
+    // 截断取余：符号随被除数（C/Rust 口径·与 cnFoldConstIntExpr505 % 同）
+    if (x.neg) return "-" + r;
+    return r;
 }
 
 } // namespace types

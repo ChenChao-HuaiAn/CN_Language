@@ -45,10 +45,31 @@ bool SemanticAnalyzer::intLiteralFitsType(const Expr* e, const std::string& to) 
             neg = true;
         }
     }
-    if (lit == nullptr) return true;  // 非字面量形态（canConvert 主链判定）
-    std::string dec = types::normalizeIntLiteralToDecimal(lit->raw);
+    std::string dec;
+    if (lit != nullptr) {
+        dec = types::normalizeIntLiteralToDecimal(lit->raw);
+    } else {  // 静默豁免业务值: 919 轮非常量形态判定（返回真=交既有转换主链判定·非静默默认）
+        // 919（超承载字面量参与表达式求值双侧静默分叉根治·640 侦察副产品）：
+        //   常量表达式形态扩展——全字面量算术表达式（+ - * / %·一元 ±）经
+        //   cnEvalConstIntExprText919 文本级大数安全折叠求值，数学值与目标
+        //   类型域按本族既有 decTextFits* 单点判定（禁散写第二份判据）。
+        //   启用条件=求值结果超 int64 承载（parseIntValue stoll /
+        //   cnFoldConstIntExpr505 值级承载域外——正是静默毒化/回绕发生面：
+        //   探针 `静态 整32 槽 = 99999999999999999999+0` 宿主顶层槽 5/函数内
+        //   1661992959 vs v2 1661992959 双侧静默错值分叉）；承载内值维持
+        //   既有通道（族④a 常量溢出预演/既有隐式转换判定）不动——防与既有
+        //   「编译期整数溢出」诊断双报。求值空串=超 u128 域（910 空串口径）
+        //   → 落下方统一空串分支（一切整型目标超域拒）。
+        if (!cnEvalConstIntExprText919(e, dec)) return true;  // 静默豁免业务值: 919 轮非常量形态判定（返回真=交既有转换主链判定·非静默默认）
+        // 承载内值（int64 域内）：交既有折叠/溢出预演链（族④a 防双报）
+        if (!dec.empty() &&
+            types::decTextFitsSignedRange(dec, "9223372036854775808",
+                                          "9223372036854775807")) {
+            return true;
+        }
+    }
     // 静默豁免业务值: 910 轮整数字面量文本超 u128 域（归一化空串）⇒ 一切整型目标超域 → 拒（业务判定非 miss 默认）
-    if (dec.empty()) return false;  // 超 u128 域：一切整型目标皆超（910）
+    if (dec.empty()) return false;  // 超 u128 域：一切整型目标皆超（910/919）
     const bool rawNeg = (dec[0] == '-');
     if (rawNeg) dec.erase(0, 1);
     // 728g：负号形态按数学负值判域——parser 323 负号折叠（raw 带 '-'）与
