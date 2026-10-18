@@ -173,6 +173,11 @@ def 建库() -> sqlite3.Connection:
         con.execute("ALTER TABLE 预验任务 ADD COLUMN 告警时刻 TEXT")
     except sqlite3.OperationalError:
         pass
+    try:   # 1070：门禁提交时刻（epoch 秒·daemon 上报）——排序键（提交序取代完成时刻序·
+           #   池并行下完成时刻乱序）；NULL=旧版上报行（门禁快照排序显式分流沉底）
+        con.execute("ALTER TABLE 门禁 ADD COLUMN 提交时刻 INTEGER")
+    except sqlite3.OperationalError:
+        pass
     con.commit()
     return con
 
@@ -194,10 +199,17 @@ def 队列快照() -> list[dict]:
 
 def 门禁快照(限: int = 200) -> list[dict]:
     """814：默认限 20→200（=门禁历史保留同口径）——8301 阶段徽标按收口 sha 在此
-    查 ✅ 任务的 develop 验证轮，高频推送日 20 条几小时就滚出窗口（徽标消隐）。"""
-    行们 = con.execute("SELECT sha,平台,绿,总秒,时刻 FROM 门禁 "
-                       "ORDER BY 时刻 DESC LIMIT ?", (限,)).fetchall()
-    return [dict(zip(("sha", "平台", "绿", "总秒", "时刻"), r)) for r in 行们]
+    查 ✅ 任务的 develop 验证轮，高频推送日 20 条几小时就滚出窗口（徽标消隐）。
+    1070（2026-10-18 用户令）：排序改按提交序——提交时刻 DESC 为主键（池并行下完成
+    时刻与提交谱系无关：win 慢轮旧提交行常压在 linux 新提交行之上·同一提交三平台行
+    散落）；同提交三平台行按轮转序 win→linux→arm64 相邻（页眉口径）；旧行（提交时刻
+    NULL=旧版 daemon 上报）沉底（随窗口滚动自然淘汰），组内仍按完成时刻 DESC 兜序。"""
+    行们 = con.execute(
+        "SELECT sha,平台,绿,总秒,时刻,提交时刻 FROM 门禁 "
+        "ORDER BY COALESCE(提交时刻,0) DESC, "
+        "CASE 平台 WHEN 'win-x64' THEN 0 WHEN 'linux-x86_64' THEN 1 "
+        "WHEN 'linux-arm64' THEN 2 ELSE 9 END, 时刻 DESC LIMIT ?", (限,)).fetchall()
+    return [dict(zip(("sha", "平台", "绿", "总秒", "时刻", "提交时刻"), r)) for r in 行们]
 
 
 def 预验任务快照() -> list[dict]:
@@ -414,15 +426,19 @@ def 处理写(名: str, 数据: dict) -> dict:
             #   完成行覆盖或被 时刻 DESC 淘汰（不单设超时——daemon 存活属
             #   另一监控域）。
             是执行中 = str(数据.get("状态", "完成")) == "执行中"
-            con.execute("INSERT OR REPLACE INTO 门禁(sha,平台,绿,总秒,时刻,详情) "
-                        "VALUES(?,?,?,?,?,?)",
+            提交时刻 = 数据.get("提交时刻")
+            con.execute("INSERT OR REPLACE INTO 门禁(sha,平台,绿,总秒,时刻,详情,提交时刻) "
+                        "VALUES(?,?,?,?,?,?,?)",
                         (sha, 平台,
                          None if 是执行中 else (1 if 数据.get("绿") else 0),
                          None if 是执行中 else int(数据.get("总秒", 0)),
                          时区时刻(),
                          # 842：上限 20000→500000——失败用例明细+提交历史（归因）随
                          #   详情入库（20000 在 40+ 失败用例或长 diff 时截断致页面缺明细）
-                         json.dumps(数据, ensure_ascii=False)[:500000]))
+                         json.dumps(数据, ensure_ascii=False)[:500000],
+                         # 1070：提交时刻（epoch·排序键）——旧版 daemon 不带/非法类型=None
+                         #   显式哨兵（门禁快照 COALESCE 分流沉底·不静默错排）
+                         int(提交时刻) if isinstance(提交时刻, (int, float)) else None))
             con.execute("DELETE FROM 门禁 WHERE (sha,平台) NOT IN "
                         "(SELECT sha,平台 FROM 门禁 ORDER BY 时刻 DESC LIMIT ?)",
                         (门禁历史保留,))
@@ -673,31 +689,40 @@ def 任务详情查(sha10: str):
 
 
 def 归因截取(sha: str, 平台: str, 详情) -> dict:
-    """842：develop 红灯归因（提交区间）——自上次绿验证以来并入 develop 的提交。
-    边界=门禁最近列表（时刻 DESC·200 条窗口）中本行之后更早的最近绿行完整 sha；
-    在 详情.提交历史（ci_daemon 随轮上报·最近 100 条）中截 (边界, 本行] 区间。
-    边界缺失/历史窗口未覆盖=全列+遇边=False（前端标注可能不完整）。算法单点在此
-    （8300 门禁窗口与 8301 看板代理共用·前端只渲染）。
-    防御注：边界依赖「时刻 DESC」列表相对位置——同秒多行（真实链路验证间隔分钟级·
-    理论上罕见）排序歧义时边界可能落空=宁多勿缺降级（全列+不完整标注·不产生错误归因）。"""
+    """1070（842 归因缺陷根治·2026-10-18 用户实报「列一大堆」）：develop 红灯归因
+    （提交区间）——自上次绿验证以来并入 develop 的提交。
+    边界=详情.提交历史（ci_daemon 随轮上报·最近 100 条·新→旧）中红提交之后的第一条
+    「门禁绿行 sha」（链内搜索）。842 原「列表位置法」（取快照时刻更早的最近绿行）
+    在池并行下失真：win 慢轮完成红行时 linux 已跑完更新提交并记绿——边界取到红提交的
+    后代，历史链（红提交祖先快照）中永不可见→全列 100 条误报。新法边界取自链内成员
+    （构造保证「遇边」成立），区间与提交谱系一致；边界行连平台/时刻回传（前端标注
+    「自上次绿 <sha>（平台 · 时刻）以来」）。
+    降级两态（红提交不在链内=窗口滚动 / 链内无绿行=绿全在门禁窗口外）：全列+遇边=False
+    （前端标注可能不完整·宁多勿缺）。算法单点在此（8300 门禁窗口与 8301 看板代理共用·
+    前端只渲染）。"""
     最近 = 门禁快照()
     前10 = sha[:10]
-    处 = next((i for i, r in enumerate(最近)
-              if str(r["sha"]).startswith(前10) and r["平台"] == 平台), None)
-    边界 = None
-    if 处 is not None:
-        for r in 最近[处 + 1:]:
-            if r["绿"] == 1:
-                边界 = str(r["sha"])
-                break
+    绿行 = {}
+    for r in 最近:
+        if r["绿"] == 1:
+            绿行.setdefault(str(r["sha"]), r)   # 同 sha 多绿行取快照首见（平台轮转序=验证面序）
     历史 = ((详情 or {}).get("提交历史") or []) if isinstance(详情, dict) else []
-    出, 遇边 = [], False
-    for 条 in 历史:
-        if 边界 and str(条.get("sha", "")) == 边界:
-            遇边 = True
-            break
-        出.append(条)
-    return {"提交们": 出, "边界sha": 边界, "遇边": 遇边, "历史条数": len(历史)}
+    红位 = next((i for i, 条 in enumerate(历史)
+                if str(条.get("sha", "")).startswith(前10)), None)
+    边界行 = None
+    出 = list(历史)
+    if 红位 is not None:
+        for 位 in range(红位 + 1, len(历史)):
+            if str(历史[位].get("sha", "")) in 绿行:
+                边界行 = 绿行[str(历史[位]["sha"])]
+                出 = 历史[:位]
+                break
+    return {"提交们": 出,
+            "边界sha": str(边界行["sha"]) if 边界行 else None,
+            "边界平台": 边界行["平台"] if 边界行 else None,
+            "边界时刻": 边界行["时刻"] if 边界行 else None,
+            "遇边": 边界行 is not None,
+            "历史条数": len(历史)}
 
 
 class 处理器(BaseHTTPRequestHandler):

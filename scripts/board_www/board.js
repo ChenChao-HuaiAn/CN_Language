@@ -705,11 +705,18 @@ async function 开红详情(号, sha, 源, 平台) {
     }
     const 归因 = 验 && 结.归因;
     if (归因 && 归因.历史条数) {
-      部分.push('<div class="详节题">归因 — 本次并入（自上次绿 ' +
-        (归因.边界sha ? 转义(归因.边界sha.slice(0, 10)) : "·列表内更早无绿") + " 以来）</div>" +
+      const 边界题 = 归因.边界sha
+        ? 转义(归因.边界sha.slice(0, 10)) +
+          (归因.边界平台 ? "（" + 转义(归因.边界平台) + " · " +
+           转义(String(归因.边界时刻 || "").slice(0, 11)) + "）" : "")
+        : "·列表内更早无绿";
+      const 红10 = sha ? String(sha).slice(0, 10) : "";
+      部分.push('<div class="详节题">归因 — 本次并入（自上次绿 ' + 边界题 + " 以来）</div>" +
         (归因.提交们 || []).map((条) => '<div class="依赖行" style="cursor:default">' +
           '<span class="mono 淡">' + 转义(String(条.sha || "").slice(0, 10)) + "</span>" +
           '<span style="flex:1;min-width:0;overflow-wrap:break-word">' + 转义(条.主题 || "") +
+          (红10 && String(条.sha || "").startsWith(红10)
+            ? ' <span class="任务号">本行</span>' : "") +
           "</span></div>").join("") +
         (归因.遇边 ? "" : '<div class="淡" style="margin-top:.4em">提交历史窗口内未见上次绿' +
           "——以上为最近 " + 归因.历史条数 + " 条并入（可能不完整）</div>"));

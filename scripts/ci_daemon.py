@@ -414,6 +414,22 @@ def 取提交历史(条数: int = 100) -> list:
         return []
 
 
+def 提交时刻(sha: str) -> int | None:
+    """1070：sha 的提交 epoch 秒（committer date）——8300 门禁表排序键（提交序取代
+    完成时刻序·池并行下完成时刻与提交谱系无关）。git 出错/输出非纯数字=None 显式
+    哨兵：服务端排序 COALESCE 分流沉底（宁缺不错排·不静默取假值）。"""
+    try:
+        r = 运行限时(["git", "log", "-1", "--format=%ct", sha], 30,
+                     capture_output=True, text=True, encoding="utf-8",
+                     errors="replace", cwd=仓库根)
+        if r.returncode != 0:
+            return None
+        文本 = (r.stdout or "").strip()
+        return int(文本) if 文本.isdigit() else None
+    except Exception:
+        return None
+
+
 def 带门禁锁跑(sha: str, 轮分支: str = "") -> dict | None:
     """291 win 三段外套 gate_lock：家机同机有人工开发全量门禁（与 TX_02 独占 CI 场景
     不同）——win 池实例三段与主树门禁全机互斥（AGENTS §7 本机全量每机 ≤1；池树经
@@ -586,7 +602,9 @@ def 跑一轮(sha: str, 轮分支: str = "") -> dict:
             # 842：失败详情与归因数据（8300 页面红行详情面板）——e2e 未跑/旧版
             #   run_e2e=null（页面降级提示）；提交历史取不到=[]（归因区降级提示）。
             "e2e明细": 读e2e明细(日志目录 / ("e2e明细_%s.json" % sha[:10])),
-            "提交历史": 取提交历史()}
+            "提交历史": 取提交历史(),
+            # 1070：提交时刻（门禁排序键·8300 提交序展示）
+            "提交时刻": 提交时刻(sha)}
     return 结果
 
 
@@ -642,6 +660,14 @@ def 上报(结果: dict) -> None:
         urllib.request.urlopen(请求, timeout=10)
     except Exception as e:
         print("[警告] 上报失败（不影响本地结果）：%s" % e, flush=True)
+
+
+def 上报执行中(sha: str, 分支: str, 平台: str) -> None:
+    """190（1035 轮）：开跑即上报「执行中」——状态页门禁表实时可见在跑轮（1030 误判
+    「漏跑」根因=执行中不可见）；完成轮由 落盘 上报覆盖同 sha 行（INSERT OR REPLACE）。
+    1070：提炼单点（两处调用归一）+随行「提交时刻」——门禁排序键（执行中行同享提交序位）。"""
+    上报({"sha": sha, "分支": 分支, "平台": 平台, "绿": None, "总秒": None,
+          "状态": "执行中", "提交时刻": 提交时刻(sha)})
 
 
 # ═══════════════ 1021 预验执行器池（TX_01 认领池客户端·家机/TX_02 同构） ═══════════════
@@ -873,10 +899,8 @@ def 主(常驻: bool, 强制: bool, 等锁: bool = False) -> int:
             print("[开跑] %s @ %s（分支=%s%s）" % (sha[:10],
                   datetime.now().strftime("%H:%M:%S"), 分支,
                   "·预验" if 分支 != "develop" else ""), flush=True)
-            # 190（1035 轮）：开跑即上报「执行中」——状态页门禁表实时可见在跑轮。
-            #   完成轮由 落盘 上报覆盖同 sha 行（INSERT OR REPLACE·绿/红/耗时齐）。
-            上报({"sha": sha, "分支": 分支, "平台": 平台,
-                  "绿": None, "总秒": None, "状态": "执行中"})
+            # 190（1035 轮）：开跑即上报「执行中」（细节见 上报执行中 函数）
+            上报执行中(sha, 分支, 平台)
             结果 = 带门禁锁跑(sha)
             if 结果 is not None:     # None=291 让出（gate_lock 互忙）——不落盘·下轮再战
                 落盘(结果)
@@ -886,13 +910,8 @@ def 主(常驻: bool, 强制: bool, 等锁: bool = False) -> int:
             print("[开跑] %s @ %s（分支=%s%s）" % (sha[:10],
                   datetime.now().strftime("%H:%M:%S"), 分支,
                   "·预验" if 分支 != "develop" else ""), flush=True)
-            # 190（1035 轮）：开跑即上报「执行中」——状态页门禁表实时可见在跑轮。
-            #   1030 轮误判「六次推送漏跑」实录：1759d685 兜底 16:18-16:57 在跑，
-            #   运营者 16:2x 查状态页只见完成轮（执行中不可见）→误立 190。
-            #   完成轮由 落盘 上报覆盖同 sha 行（INSERT OR REPLACE·绿/红/耗时齐）。
             if 分支 == "develop":
-                上报({"sha": sha, "分支": 分支, "平台": 平台,
-                      "绿": None, "总秒": None, "状态": "执行中"})
+                上报执行中(sha, 分支, 平台)   # 190：在跑轮实时可见（细节见函数）
             结果 = 带门禁锁跑(sha)
             if 结果 is not None:     # None=291 让出（gate_lock 互忙）——不落盘·下轮再战
                 落盘(结果)
