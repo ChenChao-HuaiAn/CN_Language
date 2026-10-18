@@ -819,6 +819,18 @@ void IRGenerator::ownStringInitValue(VarDecl* node, const std::string& srcType,
                 // 094 判据单点化：白名单收口 ISemanticView::isOwnedStringBuiltin
                 ownRet = isOwnedStringBuiltin(cn);
             }
+            // 933（任务 933·双侧零分叉）：引用返回字符串调用（`字符串 副 =
+            //   b.读名();`·被调返回 字符串&）——右值读值为**借用视图**（句柄
+            //   归被引用对象），声明位值接收=拥有型初始化 → __cn_str_copy
+            //   落堆独立拥有（与字面量/标识符拷贝初始化同款；878/632 类深拷
+            //   同构·Rust &String → String::clone）。原落「非拥有调用 →
+            //   markStringTainted」=浅拷共享句柄+退出 RAII：源改名（free 旧串）
+            //   后副悬垂读空（933 探针实录）；v2 侧同面同轮对齐。
+            if (!ownRet && ice->isRefReturnCall) {
+                value = emitResult(ir::Opcode::Call, {value}, "ptr",
+                                   "__cn_str_copy", node->location);
+                return;   // 拥有化完成——不污染（拥有独立堆串·RAII 名单照常）
+            }
             if (!ownRet) markStringTainted(node->name);
         }
     }

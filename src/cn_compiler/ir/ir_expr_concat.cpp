@@ -253,6 +253,62 @@ bool IRGenerator::chainSegOwnedTemp(Expr* segAst) const {
     return false;
 }
 
+// 判断 AST 表达式是否字符串语义类型（Task 2.9 拼接判定 / 962 比较判定共用）。
+//   字符串字面量 / 字符串变量（字符串|字符*）→ true；连接结果沿左递归。
+//   933（先拆再加·自 ir_expr.cpp 机械搬迁＋调用形态覆盖）：原定义在 ir_expr.cpp
+//   （该文件 903 行超 900 警戒线），随「调用返回字符串」覆盖面补齐迁至本文件
+//   （连接族判据消费主文件）。新增 CallExpr 分支=962 立法（字符串 ==/!= 内容
+//   比较）在「调用返回串」形态的判定缺口：`拼后(x) == "名后"`（值返回）与
+//   `b.读名() == "盒名"`（引用返回 字符串&）原落指针地址比较（同内容异地址
+//   恒假·933 探针实录）；同时覆盖「调用返回串 + 数值」拼接判定（左串侧）。
+//   类型来源=exprSrcType 统一推导（985 面：自由函数 funcReturnTypeOf ∪ 方法
+//   调用 lookupClassMember），剥尾 '&'（引用返回后缀·右值读值后类型）后判定
+//   （'*' 不剥——`字符*` 是字符串视图类型本体）。
+//   诚实边界：exprSrcType 对「对象为表达式/链式」的方法调用与未知形态返回
+//   空串 → false（保守不判字符串·零行为变更；主形态=标识符对象/直接调用）。
+bool IRGenerator::isStringTypedExpr(Expr* node) const {
+    if (node == nullptr) return false;
+    switch (node->getType()) {
+        case NodeType::StringLiteral:
+            return true;
+        case NodeType::IdentifierExpr: {
+            const std::string st = types::canonical(lookupSrcType(
+                static_cast<IdentifierExpr*>(node)->name));
+            return (st == "字符串" || st == "字符*");
+        }
+        case NodeType::BinaryExpr: {
+            BinaryExpr* bin = static_cast<BinaryExpr*>(node);
+            if (bin->op == Operator::Add) {
+                // 连接/拼接结果：左字符串（含数值拼接）即结果字符串
+                return isStringTypedExpr(bin->left.get());
+            }
+            return false;
+        }
+        case NodeType::IndexExpr: {
+            // 数组元素：元素类型为字符串/字符（字符串[i] -> 字符 仍可参与拼接）
+            IndexExpr* idx = static_cast<IndexExpr*>(node);
+            if (idx->object->getType() == NodeType::IdentifierExpr) {
+                const std::string st = types::canonical(lookupSrcType(
+                    static_cast<IdentifierExpr*>(idx->object.get())->name));
+                if (types::isArray(st)) {
+                    const std::string elem = types::canonical(types::arrayElemOf(st));
+                    return (elem == "字符串" || elem == "字符");
+                }
+            }
+            return false;
+        }
+        case NodeType::CallExpr: {
+            // 933：调用返回类型经 exprSrcType 推导（含引用返回），剥尾 '&' 判定
+            std::string ct = exprSrcType(node);
+            if (!ct.empty() && ct.back() == '&') ct.pop_back();
+            const std::string ccanon = types::canonical(ct);
+            return (ccanon == "字符串" || ccanon == "字符*");
+        }
+        default:
+            return false;
+    }
+}
+
 // 段值 -> 字符串值（融合段追加前转换单点入口）：
 //   ptr（字符串/字符*）直通；i128/u128 取低 64 位后 from_int（族③同口径）；
 //   其余数值/字符/布尔走 emitConcatNumToStr（族②共享转换器）。

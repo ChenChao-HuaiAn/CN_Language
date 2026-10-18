@@ -119,7 +119,13 @@ bool SemanticAnalyzer::checkInterfaceMethodCall(CallExpr* node, MemberExpr* mem,
                 //   已随签名注册（class_resolver 阶段B 填充）。
                 wrapRefArgs(node, imit->second.paramTypes);
                 lastType_ = imit->second.type;
-                node->retOwnedString = (lastType_ == "字符串");  // A2：接口方法拥有契约
+                // A2：接口方法拥有契约。933（任务 933·双侧零分叉）：引用返回
+                //   方法（-> T&）不置位——type 注册剥 & 后为「字符串」致原判定
+                //   误 true：读值是借用视图（句柄归被引用对象），误标拥有 →
+                //   声明/赋值/返回/语句位/拼接链结算按「拥有临时」直存或释放=
+                //   与源共享/悬垂（933 探针实录）。实例/静态方法同轮同修。
+                node->retOwnedString = (lastType_ == "字符串" &&
+                                        !imit->second.isRefReturn);
                 // 118（929）：接口方法引用返回放行（-> T& 签名即 ABI·isRefReturn
                 //   注册时按 AST 原文判定）
                 if (imit->second.isRefReturn) {
@@ -315,7 +321,9 @@ bool SemanticAnalyzer::checkInstanceMethodCall(CallExpr* node, MemberExpr* mem,
             lastType_ = method->type;
             // A2：泛型实例化类成员（ownerClass 含 $，如 向量$字符串）不置位
             //   ——T 来源返回=借用（容器元素访问），保守不登记
-            node->retOwnedString = (lastType_ == "字符串" &&
+            // 933（任务 933·双侧零分叉）：引用返回方法（-> T&）不置位——误标
+            //   拥有后果与接口面同（见上方同注）。
+            node->retOwnedString = (lastType_ == "字符串" && !method->isRefReturn &&
                                     ownerClass.find('$') == std::string::npos);
             // plans/019 阶段3 扩展（A21 借出视图生命周期，第七十七轮）：借出调用
             //   标记（字符串元素容器 元素/读取/栈顶/队首/头部元素/读取头部/
@@ -356,7 +364,8 @@ bool SemanticAnalyzer::checkStaticMethodCall(CallExpr* node, const std::string& 
                 wrapRefArgs(node, method->paramTypes);
             lastType_ = method->type;
             // A2：泛型实例化类成员（ownerClass 含 $）不置位——同实例方法口径
-            node->retOwnedString = (lastType_ == "字符串" &&
+            // 933：引用返回方法（-> T&）不置位（同实例方法注）。
+            node->retOwnedString = (lastType_ == "字符串" && !method->isRefReturn &&
                                     ownerClass.find('$') == std::string::npos);
             // 118（929）：静态方法引用返回放行（与实例方法/接口同构）
             if (method->isRefReturn) {

@@ -213,6 +213,13 @@ bool IRGenerator::identifierStringOwnAssign(AssignmentExpr* node, IdentifierExpr
         //   其余非白名单调用污染退出 RAII（借用安全方向）
         bool ownAssign = ownAt == NodeType::StringLiteral ||
                          ownAt == NodeType::IdentifierExpr;
+        // 933（任务 933·双侧零分叉）：引用返回字符串调用（`副 = b.读名();`·
+        //   被调返回 字符串&）——右值读值=借用视图（句柄归被引用对象），赋值位
+        //   =拥有型语义 → free 旧 + __cn_str_copy 落堆独立拥有（与字面量/
+        //   标识符赋值同款，而**非**调用返回的直存 move）。原落「非白名单
+        //   调用 → markStringTainted」=浅拷共享+退出 RAII：源改名后副悬垂
+        //   （933 探针实录）。声明位同族修见 ir_stmt_decl_init.cpp。
+        bool refReturnCopy933 = false;
         if (ownAt == NodeType::CallExpr) {
             const CallExpr* ace =
                 static_cast<const CallExpr*>(node->value.get());
@@ -222,6 +229,9 @@ bool IRGenerator::identifierStringOwnAssign(AssignmentExpr* node, IdentifierExpr
                     static_cast<const IdentifierExpr*>(ace->callee.get())->name;
                 // 094 判据单点化：白名单收口 ISemanticView::isOwnedStringBuiltin
                 ownAssign = isOwnedStringBuiltin(cn);
+            }
+            if (!ownAssign && ace->isRefReturnCall) {
+                refReturnCopy933 = true;   // 引用返回=借用来源→复制落堆
             }
         }
         // 732（2026-10-14）：二元连接产物=新堆串（拥有契约·无人别名）——
@@ -248,13 +258,15 @@ bool IRGenerator::identifierStringOwnAssign(AssignmentExpr* node, IdentifierExpr
                          (value.type == "ptr" &&
                           isConcatResultInst(currentBlock_, value.id)));
         }
-        if (ownAssign) {
-            if (ownAt != NodeType::CallExpr && ownAt != NodeType::BinaryExpr) {
-                // 字面量/标识符形态：先 free 旧（drop 旧再 move 新——Rust/C++
-                //   赋值语义），源为借用/只读段须 __cn_str_copy 落堆（自赋值
-                //   s = s 安全——copy 产物独立于旧值内存后才能释放旧值）。
-                //   调用/二元连接形态走下方直存分支（产物本就新堆串·copy 纯
-                //   浪费且破坏双侧分配数对照）。
+        if (ownAssign || refReturnCopy933) {
+            if (refReturnCopy933 ||
+                (ownAt != NodeType::CallExpr && ownAt != NodeType::BinaryExpr)) {
+                // 字面量/标识符/引用返回调用形态：先 free 旧（drop 旧再 move
+                //   新——Rust/C++ 赋值语义），源为借用/只读段（或引用返回的
+                //   借用视图·933）须 __cn_str_copy 落堆（自赋值 s = s 安全——
+                //   copy 产物独立于旧值内存后才能释放旧值）。
+                //   值返回调用/二元连接形态走下方直存分支（产物本就新堆串·
+                //   copy 纯浪费且破坏双侧分配数对照）。
                 ir::IRValue oldPtr = emitResult(
                     ir::Opcode::Load, {ir::IRValue::var(unique, "ptr")}, "ptr",
                     unique, node->location);

@@ -249,12 +249,27 @@ void IRGenerator::visitReturnStmt(ReturnStmt* node) {
         // plans/019 阶段4' A2（2026-09-11 方案甲）：返回位字面量拥有化——
         //   返回类型 字符串=拥有契约（调用方登记 RAII free），字面量驻只读段
         //   须 __cn_str_copy 落堆（否则调用方 free 只读段指针=崩溃）。拥有变量
-        //   返回=槽 Load 堆串直传（移出）；拼接/复制等调用=堆串直传——均直落。
+        //   返回=槽 Load 堆串直传（移出）；值返回调用（拥有契约）/拼接产物=
+        //   堆串直传——均直落。
+        // 933（任务 933·双侧零分叉）：引用返回字符串调用（`返回 b.读名();`·
+        //   被调返回 字符串&）——右值读值=借用视图（句柄归被引用对象/其宿主
+        //   帧），返回位=拥有契约 → 深拷落堆（Rust 借用来源返回须 clone 同款）。
+        //   原直传借用句柄：被引用局部对象析构（free 字段串）后返回值悬垂
+        //   （933 探针：返回读出空/比较恒假）。
         if (function_ != nullptr &&
-            types::canonical(function_->returnTypeSrc) == "字符串" &&
-            node->value->getType() == NodeType::StringLiteral) {
-            value = emitResult(ir::Opcode::Call, {value}, "ptr",
-                               "__cn_str_copy", node->location);
+            types::canonical(function_->returnTypeSrc) == "字符串") {
+            bool needOwnCopy933 =
+                node->value->getType() == NodeType::StringLiteral;
+            if (!needOwnCopy933 &&
+                node->value->getType() == NodeType::CallExpr) {
+                const CallExpr* rce =
+                    static_cast<const CallExpr*>(node->value.get());
+                needOwnCopy933 = rce->isRefReturnCall;
+            }
+            if (needOwnCopy933) {
+                value = emitResult(ir::Opcode::Call, {value}, "ptr",
+                                   "__cn_str_copy", node->location);
+            }
         }
         // 273（021 任务 273·#211 宿主镜像面）：返回位 结果/可选<析构类> 局部盒
         //   移交——返回表达式=局部盒标识符时，盒的类载荷析构责任随返回值移交

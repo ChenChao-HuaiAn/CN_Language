@@ -319,41 +319,8 @@ void IRGenerator::visitIdentifierExpr(IdentifierExpr* node) {
                            {ir::IRValue::var(unique, reg.type)},
                            reg.type, unique, node->location);
 }
-bool IRGenerator::isStringTypedExpr(Expr* node) const {
-    if (node == nullptr) return false;
-    switch (node->getType()) {
-        case NodeType::StringLiteral:
-            return true;
-        case NodeType::IdentifierExpr: {
-            const std::string st = types::canonical(lookupSrcType(
-                static_cast<IdentifierExpr*>(node)->name));
-            return (st == "字符串" || st == "字符*");
-        }
-        case NodeType::BinaryExpr: {
-            BinaryExpr* bin = static_cast<BinaryExpr*>(node);
-            if (bin->op == Operator::Add) {
-                // 连接/拼接结果：左字符串（含数值拼接）即结果字符串
-                return isStringTypedExpr(bin->left.get());
-            }
-            return false;
-        }
-        case NodeType::IndexExpr: {
-            // 数组元素：元素类型为字符串/字符（字符串[i] -> 字符 仍可参与拼接）
-            IndexExpr* idx = static_cast<IndexExpr*>(node);
-            if (idx->object->getType() == NodeType::IdentifierExpr) {
-                const std::string st = types::canonical(lookupSrcType(
-                    static_cast<IdentifierExpr*>(idx->object.get())->name));
-                if (types::isArray(st)) {
-                    const std::string elem = types::canonical(types::arrayElemOf(st));
-                    return (elem == "字符串" || elem == "字符");
-                }
-            }
-            return false;
-        }
-        default:
-            return false;
-    }
-}
+// 933（先拆再加·本文件 903 行超 900 警戒线）：isStringTypedExpr 实现迁
+//   ir_expr_concat.cpp（连接族的判据消费主文件·同轮补 CallExpr 覆盖）。
 void IRGenerator::visitBinaryExpr(BinaryExpr* node) {
     // 176-a：本函数 269 行按「短路求值 / 字符串连接族 / 指针算术 / 公共类型
     //   算术」提取为 5 个族子方法（纯搬运零行为变更——逐行核验）。

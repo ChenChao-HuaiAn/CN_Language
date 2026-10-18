@@ -734,7 +734,15 @@
    "src/runtime/time_api.cpp::if(ts<0)returnnullptr;",
    "src/cn_compiler/ir/ir_expr_assign_ident_class.cpp::if(semantic_==nullptr||node==nullptr)returnfalse;",
    "src/cn_compiler/ir/ir_expr_assign_ident_class.cpp::if(elemCanon.empty()||!semantic_->isClassType(elemCanon))returnfalse;",
-   "src/cn_compiler/ir/ir_expr_assign_ident_class.cpp::if(ci==nullptr||ci->totalSize<=0)returnfalse;"
+   "src/cn_compiler/ir/ir_expr_assign_ident_class.cpp::if(ci==nullptr||ci->totalSize<=0)returnfalse;",
+   "src/cn_compiler/semantic/class_resolver.cpp::if(member==nullptr)return-1;",
+   "src/cn_compiler/ir/ir_oop_field.cpp::if(!handleClassMemberLvalue(target,addr))returnfalse;",
+   "src/cn_compiler/ir/ir_oop_field.cpp::if(!objName.empty()&&semantic_->isClassType(objName)){│returntrue;",
+   "src/cn_compiler/ir/ir_oop_field.cpp::if(classFieldType(objName,node->memberName).empty())returnfalse;",
+   "src/cn_compiler/model/type_system.cpp::if(digits.empty())return\"\";",
+   "src/cn_compiler/semantic/semantic_literal_domain.cpp::if(digits.empty())return\"\";",
+   "src/cn_compiler/semantic/semantic_literal_domain.cpp::if(lit==nullptr)returntrue;",
+   "src/cn_compiler/semantic/semantic_literal_domain.cpp::if(mathValue<0)returnfalse;"
   ],
   "else业务": [
    "CN语言编译器v2/IR/IR字面量域.cn::}否则{│档Ah=真",
@@ -1973,7 +1981,16 @@
    "src/runtime/mem_pool.cpp::elsehi=mid;│hi=mid",
    "src/runtime/mem_pool.cpp::}else{│poolInvariantFail(\"TLS链槽归属丢失\")",
    "src/runtime/string_api.cpp::}else{//静默豁免业务值:空闲链空→惰性建块；槽耗尽走确定性失败（不静默）│if(t.nextSlot>=kStrbufMaxSlots){cnStrbufOomAbort(\"[cnrt]字符串构建器槽表耗尽（%llu个句柄未收尾）",
-   "src/runtime/string_api.cpp::}else{│buf[len++]=static_cast<char>(0xF0|(cp>>18))"
+   "src/runtime/string_api.cpp::}else{│buf[len++]=static_cast<char>(0xF0|(cp>>18))",
+   "src/cn_compiler/semantic/class_resolver.cpp::}else{│info.vtableOrder.push_back(mname)",
+   "src/cn_compiler/semantic/class_resolver.cpp::}else{│mi.vtableIndex=static_cast<int>(info.vtableOrder.size())",
+   "CN语言编译器v2/IR/IR字面量域.cn::否则{返回真;}//非法字符=检不出放行（防御·词法不可达面）│返回真",
+   "CN语言编译器v2/IR/生成表达式求值中.cn::}否则{│整64提升码474=公共整型提升(溢出检查码自码474(查寄存器类型(左474)),溢出检查码自码474(查寄存器类型(右474)))",
+   "src/cn_compiler/codegen/linux_x64/linux_x64_instructions.cpp::}else{│writer.line(\"movrax,r10\")",
+   "src/cn_compiler/ir/ir_expr.cpp::}else{│lastExpr_=emitResult(ir::Opcode::ConstInt,{},mapType(type),stripped,node->locati",
+   "src/cn_compiler/model/type_system.cpp::elsereturn\"\";//非法数字字符（防御性）│return\"\"",
+   "src/cn_compiler/model/type_system.cpp::else{lo+=1;}│lo+=1",
+   "src/cn_compiler/semantic/semantic_literal_domain.cpp::}else{│break"
   ],
   "单边比较": [
    "CN语言编译器v2/IR/IR字面量域.cn::如果(kh<128){返回真;}",
@@ -4176,7 +4193,24 @@
    "src/runtime/string_api.cpp::if(value<0||value<=0xFF){",
    "src/runtime/string_api.cpp::}elseif(cp<0x10000){",
    "src/runtime/string_api.cpp::}elseif(cp<0x800){",
-   "src/runtime/time_api.cpp::if(ts<0)returnnullptr;"
+   "src/runtime/time_api.cpp::if(ts<0)returnnullptr;",
+   "src/cn_compiler/semantic/class_resolver.cpp::if(parentSlot>=0){",
+   "CN语言编译器v2/IR/IR容器尾.cn::如果(位数<39){返回假;}",
+   "CN语言编译器v2/IR/IR容器尾.cn::如果(位数>128){返回真;}",
+   "CN语言编译器v2/IR/IR容器尾.cn::如果(位数>32){返回真;}",
+   "CN语言编译器v2/IR/IR容器尾.cn::如果(位数>39){返回真;}",
+   "CN语言编译器v2/IR/IR容器尾.cn::如果(位数>42){返回真;}",
+   "CN语言编译器v2/IR/生成表达式求值中.cn::如果(!(右节点474.类型==节点_整数字面量||",
+   "CN语言编译器v2/IR/生成表达式求值中.cn::如果(!(左节点474.类型==节点_整数字面量||",
+   "src/cn_compiler/model/type_system.cpp::if(body.size()>2&&body[0]==){",
+   "src/cn_compiler/model/type_system.cpp::if(text.size()<10)returnfalse;",
+   "src/cn_compiler/model/type_system.cpp::if(text.size()<19)returnfalse;",
+   "src/cn_compiler/model/type_system.cpp::if(text.size()<20)returnfalse;",
+   "src/cn_compiler/model/type_system.cpp::if(text.size()>10)returntrue;",
+   "src/cn_compiler/model/type_system.cpp::if(text.size()>19)returntrue;",
+   "src/cn_compiler/model/type_system.cpp::if(text.size()>20)returntrue;",
+   "src/cn_compiler/semantic/semantic_literal_domain.cpp::if(mathValue<0)returnfalse;",
+   "src/cn_compiler/semantic/semantic_literal_domain.cpp::if(raw.size()>2&&raw[0]==&&"
   ],
   "红旗词面": [
    "CN语言编译器v2/IR/IR生成类型辅助.cn:://登记缺=保守回退原路径（诊断由下游发）",
