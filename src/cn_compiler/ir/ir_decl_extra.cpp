@@ -303,4 +303,32 @@ std::string IRGenerator::decodeString(const std::string& raw) {
     return decodeEscapes(body);
 }
 
+// 1073：顶层常量引用整数发射单点——常量文本（规范十进制·可带负号）值域分流：
+//   ① 超 128 域 → 诊断拒 + 0:0 哨兵（错误恢复；语义层 535/638 判域已前置拦截，
+//      本面同 910 口径兜底）；② 超 64 位承载 → 128 双半文本（splitI128Text·
+//      与 visitIntegerLiteral i128 分支同契约——低64位:高64位 十六进制·第 2 处
+//      重复留此标记：第 3 处出现前提炼）；③ 承载内 → i64 直存（原行为保平）。
+void IRGenerator::emitConstRefIntLiteral(const std::string& decText,
+                                         const SourceLocation& loc) {
+    int st = 0;
+    const std::string rt = types::integerLiteralRuntimeType(decText, &st);
+    if (st != 0) {
+        diagnostics_.report(
+            DiagnosticLevel::Error, loc,
+            "整数字面量超出" +
+                std::string(st == 2 ? "正128（2^128-1）" : "整128（2^127-1）") +
+                "范围");
+        lastExpr_ = emitResult(ir::Opcode::ConstInt, {}, mapType(rt), "0:0", loc);
+        return;
+    }
+    if (types::isI128(rt)) {
+        // i128/正128：常量文本存 低64位:高64位 十六进制（codegen 拆双槽加载）
+        const std::string split = types::splitI128Text(decText);
+        lastExpr_ = emitResult(ir::Opcode::ConstInt, {}, mapType(rt),
+                               split.empty() ? decText : split, loc);
+        return;
+    }
+    lastExpr_ = emitResult(ir::Opcode::ConstInt, {}, "i64", decText, loc);
+}
+
 } // namespace cn_compiler

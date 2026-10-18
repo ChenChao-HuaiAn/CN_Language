@@ -144,6 +144,9 @@ private:
                            const std::string& type,
                            const std::string& extra,
                            const SourceLocation& loc);
+    // 1073：顶层常量引用整数发射单点（规范十进制文本·超 64 位承载 → 128
+    //   双半文本；超 128 域 → 诊断拒）——实现在 ir_decl_extra.cpp
+    void emitConstRefIntLiteral(const std::string& decText, const SourceLocation& loc);
     // 生成零常量（一元负号/按位非辅助）
     ir::IRValue zeroConst(const std::string& type);
     // 终结当前块：无条件跳转

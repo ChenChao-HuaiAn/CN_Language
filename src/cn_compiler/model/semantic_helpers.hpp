@@ -644,5 +644,76 @@ std::unique_ptr<Stmt> cloneStmt(Stmt* node);
     }
 }
 
+// 1073：128 域常量折叠放行——919 文本级大数求值 + 顶层常量引用（对偶
+//   cnEvalConstIntExprText919：递归骨架逐支同构，仅增 IdentifierExpr 分支；
+//   宿主常量注册回退链专用=需要 vals 上下文）。语义同 919 版：真=常量表达式
+//   （out=规范十进制文本·空串=超 u128 域哨兵）；假=非常量（未登记常量引用/
+//   非整数常量文本——字符串/浮点/布尔文本经整数文本校验落假，交既有链终态）。
+[[maybe_unused]] inline bool cnEvalConstIntExprText919WithVals(
+    const std::unordered_map<std::string, std::string>& vals,
+    const std::string& curMod, const Expr* e, std::string& out, int depth = 0) {
+    if (e == nullptr || depth > 64) return false;  // 静默豁免业务值: 919 轮求值器入口判定（空节点/深度超限=非常量形态缺省判假·谓词语义非静默默认）
+    if (e->getType() == NodeType::IdentifierExpr) {
+        const std::string n = static_cast<const IdentifierExpr*>(e)->name;
+        auto it = vals.find(n);
+        if (it == vals.end() && !curMod.empty()) it = vals.find(curMod + "$" + n);
+        if (it == vals.end()) return false;  // 静默豁免业务值: 未登记/前向引用常量=非常量形态判假（声明序依赖·与旧链终态一致）
+        const std::string& t = it->second;
+        if (t.empty()) return false;  // 静默豁免业务值: 常量表空串值不可达（注册链空串=超域拒不入表）——防御判假
+        std::size_t i = 0;
+        if (t[0] == '-' || t[0] == '+') i = 1;
+        if (i >= t.size()) return false;  // 静默豁免业务值: 仅有符号无数字的非法文本=非常量形态判假（词法已拒形态·防御）
+        for (; i < t.size(); ++i) {
+            if (t[i] < '0' || t[i] > '9') return false;  // 静默豁免业务值: 非整数常量文本（字符串/浮点/布尔=非常量形态判假·与旧链终态一致）
+        }
+        out = t;
+        return true;
+    }
+    if (e->getType() == NodeType::IntegerLiteral) {
+        out = types::normalizeIntLiteralToDecimal(
+            static_cast<const IntegerLiteral*>(e)->raw);
+        return true;  // 空串=超 u128 域哨兵（词法已拒非法文本·上游已诊断）
+    }
+    if (e->getType() == NodeType::UnaryExpr) {
+        const UnaryExpr* u = static_cast<const UnaryExpr*>(e);
+        if (u->postfix) return false;
+        if (u->op != Operator::Subtract && u->op != Operator::Add) return false;
+        std::string v;
+        if (!cnEvalConstIntExprText919WithVals(vals, curMod, u->operand.get(), v, depth + 1)) return false;  // 静默豁免业务值: 919 轮求值器非常量形态传播（子节点不可折叠=整体非常量·谓词语义）
+        if (v.empty()) {  // 静默豁免业务值: 919 轮求值器超 u128 域哨兵传播（空串=显式哨兵·调用方按超域拒）
+            out.clear();
+            return true;
+        }
+        out = (u->op == Operator::Subtract) ? types::decTextNegate919(v) : v;
+        return true;
+    }
+    if (e->getType() != NodeType::BinaryExpr) return false;
+    const BinaryExpr* b = static_cast<const BinaryExpr*>(e);
+    std::string l, r;
+    if (!cnEvalConstIntExprText919WithVals(vals, curMod, b->left.get(), l, depth + 1)) return false;  // 静默豁免业务值: 919 轮求值器非常量形态传播（子节点不可折叠=整体非常量·谓词语义）
+    if (!cnEvalConstIntExprText919WithVals(vals, curMod, b->right.get(), r, depth + 1)) return false;  // 静默豁免业务值: 919 轮求值器非常量形态传播（子节点不可折叠=整体非常量·谓词语义）
+    if (l.empty() || r.empty()) {  // 静默豁免业务值: 919 轮求值器超 u128 域哨兵传播（空串=显式哨兵·调用方按超域拒）
+        out.clear();
+        return true;
+    }
+    switch (b->op) {
+        case Operator::Add: out = types::decTextAdd919(l, r); return true;
+        case Operator::Subtract: out = types::decTextSub919(l, r); return true;
+        case Operator::Multiply: out = types::decTextMul919(l, r); return true;
+        case Operator::Divide:
+            // 除零=不可折叠交既有编译期除零诊断链（503·此处 return false）
+            if (r == "0") return false;
+            out = types::decTextDiv919(l, r);
+            return true;
+        case Operator::Modulo:
+            if (r == "0") return false;
+            out = types::decTextMod919(l, r);
+            return true;
+        default:
+            // 移位/位运算/比较/逻辑不进本族（547 巨移位量/474 位宽域各现有通道）
+            return false;
+    }
+}
+
 } // namespace cn_compiler
 

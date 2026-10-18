@@ -256,12 +256,8 @@ void IRGenerator::visitIdentifierExpr(IdentifierExpr* node) {
                 } else if (constText.find_first_of(".eE") != std::string::npos) {
                     lastExpr_ = emitResult(ir::Opcode::ConstFloat, {}, "f64", constText,
                                            node->location);
-                } else if (constText.find_first_of(".eE") == std::string::npos) {
-                    // 整数常量（可能为十六进制/负数 raw）：919 切 910 判域单点
-                    //   emitIntLiteralConst（超承载文本 128 域 splitI128Text 双半
-                    //   ——原恒 "i64" 对 20 位文本发 `mov rax,<文本>` ml64 A2084
-                    //   实锚〔p36〕；域内沿 910 规范十进制直存零回归）。
-                    lastExpr_ = emitIntLiteralConst(constText, node->location);
+                } else {  // 静默豁免业务值: 整数常量引用发射（域内 i64 直存/超承载 128 双半·1073 单点——910/919 常数发射面）
+                    emitConstRefIntLiteral(constText, node->location);
                 }
                 return;
             }

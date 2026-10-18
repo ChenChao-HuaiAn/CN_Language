@@ -20,12 +20,29 @@ void SemanticAnalyzer::registerConstValues(Program* node, bool quiet) {
         std::string constText;
         // P3-22：编译期常量表达式求值（字面量 / 引用其他常量 / 整浮算术 / 字符串拼接）
         if (!cnEvalConstExpr(globalConstValues_, g->moduleName, init, constText)) {
-            if (!quiet) {
-                diagnostics_.report(DiagnosticLevel::Error, init->location,
-                                    "顶层常量 '" + g->name +
-                                        "' 初始值必须是字面量或常量表达式");
+            // 1073：128 域常量折叠放行（919 遗留）——919 文本级大数求值回退
+            //   （单点判域口径：128 上下文承载内→放行）。旧链 int64 预演承载
+            //   不足（大数字面量算术/负号壳经 cnParseInt 溢出返回假）；文本链
+            //   + - * / %·一元负号·常量引用一源（对偶 v2 常量末至十进制919）。
+            //   空串=超 u128 域哨兵（超一切整型域→拒·专文诊断）。
+            std::string text919;
+            const bool foldOk919 = cnEvalConstIntExprText919WithVals(
+                globalConstValues_, g->moduleName, init, text919);
+            if (!foldOk919 || text919.empty()) {
+                if (!quiet) {
+                    if (foldOk919) {
+                        diagnostics_.report(DiagnosticLevel::Error, init->location,
+                                            "顶层常量 '" + g->name +
+                                                "' 初始值超出整128范围");
+                    } else {
+                        diagnostics_.report(DiagnosticLevel::Error, init->location,
+                                            "顶层常量 '" + g->name +
+                                                "' 初始值必须是字面量或常量表达式");
+                    }
+                }
+                continue;
             }
-            continue;
+            constText = text919;
         }
         // A-2（常量 crate 分桶）：多模块同名常量各自登记限定键（模块$名），
         // 引用经语义层按当前模块解析并重写节点名；裸名仅保留首定义
