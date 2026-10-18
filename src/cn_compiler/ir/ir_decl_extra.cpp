@@ -128,6 +128,35 @@ static std::string decodeEscapes(const std::string& body) {
     return out;
 }
 
+// 919（超承载字面量参与表达式·常量引用面收口）：整数字面量文本 -> IR
+//   ConstInt 发射单点——910 判域收口原内联于 visitIntegerLiteral，常量引用
+//   面（常量值文本直存原恒 "i64"：20 位文本被当 i64 常量 mov rax,<文本> →
+//   ml64 A2084 汇编失败·探针 p36 实锚）复用同构逻辑=第 3 处提炼纪律兑现。
+//   行为：types::integerLiteralRuntimeType 判域（910 提升链单点）+ 超 128 域
+//   诊断 + 规范十进制文本（i128/正128 走 splitI128Text 低:高 双半——codegen
+//   拆双槽加载；其余规范十进制直存）。
+ir::IRValue IRGenerator::emitIntLiteralConst(const std::string& raw,
+                                             const SourceLocation& loc) {
+    int st910 = 0;
+    const std::string type = types::integerLiteralRuntimeType(raw, &st910);
+    if (st910 != 0) {
+        diagnostics_.report(
+            DiagnosticLevel::Error, loc,
+            "整数字面量超出" +
+                std::string(st910 == 2 ? "正128（2^128-1）" : "整128（2^127-1）") +
+                "范围");
+        return emitResult(ir::Opcode::ConstInt, {}, mapType(type), "0:0", loc);
+    }
+    const std::string dec = types::normalizeIntLiteralToDecimal(raw);
+    if (types::isI128(type)) {
+        const std::string split = types::splitI128Text(dec);
+        return emitResult(ir::Opcode::ConstInt, {}, mapType(type),
+                          split.empty() ? dec : split, loc);
+    }
+    // 静默豁免业务值: 910 收口非 128 常量发射分支（规范十进制文本直存 ConstInt·910 登记条目迁移至本单点）
+    return emitResult(ir::Opcode::ConstInt, {}, mapType(type), dec, loc);
+}
+
 // ==================== 类型映射 ====================
 
 // 源码类型 -> IR类型映射（规格书7.5类型表示）

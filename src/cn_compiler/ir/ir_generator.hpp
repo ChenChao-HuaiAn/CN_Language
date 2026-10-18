@@ -285,6 +285,11 @@ private:
 
     // ==================== 类型与辅助 ==================== 源码类型 -> IR类型映射（Task 2.7：枚举类型按 i32 处理，依赖 semantic_）
     std::string mapType(const std::string& type);
+    // 919：整数字面量文本 -> IR ConstInt 发射单点（910 判域收口：超 128 域诊断
+    //   + 规范十进制文本 + i128 走 splitI128Text 双半）——visitIntegerLiteral 与
+    //   常量引用面共用（第 3 处提炼纪律兑现）。
+    ir::IRValue emitIntLiteralConst(const std::string& raw,
+                                    const SourceLocation& loc);
     // 运算符 -> IR操作码映射（返回false表示不支持）
     static bool mapBinaryOp(Operator op, bool isFloat, ir::Opcode& out);
     // 是否复合赋值运算符

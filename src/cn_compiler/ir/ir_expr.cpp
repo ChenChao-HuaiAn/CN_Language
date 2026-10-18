@@ -23,40 +23,12 @@
 namespace cn_compiler {
 
 void IRGenerator::visitIntegerLiteral(IntegerLiteral* node) {
-    // 910（超64域口径收口·759 探针实锚）：判定/物化链收口
-    //   types::integerLiteralRuntimeType 单点——原链三处读 node->value 值级
-    //   判域（literalValueExceedsInt32Domain）而 parser parseIntValue 对超承载
-    //   进制文本 stoll 溢出静默回 0（`0x8000000000000000` → value=0 → 类型留
-    //   整32 → codegen 发 `mov eax,9223372036854775808` 巨额立即数 ml64 A2022
-    //   汇编失败），且 textExceedsInt64 十进制文本长度判据对 hex 误判（长 18
-    //   判不超）。修后：规范十进制文本（数学值）判提升链（超 int32 双域→
-    //   整64、超 int64 双域→整128；正32/正64 无符号链同位）+ 128 域检查；
-    //   ConstInt extra 统存规范十进制文本（codegen 免 hex 再解析·i128 走
-    //   splitI128Text 双半——与 v2「字面量按数值物化」同口径）。
-    int st910 = 0;
-    const std::string type =
-        types::integerLiteralRuntimeType(node->raw, &st910);
-    if (st910 != 0) {
-        diagnostics_.report(
-            DiagnosticLevel::Error, node->location,
-            "整数字面量超出" +
-                std::string(st910 == 2 ? "正128（2^128-1）" : "整128（2^127-1）") +
-                "范围");
-        lastExpr_ = emitResult(ir::Opcode::ConstInt, {}, mapType(type), "0:0",
-                               node->location);
-        return;
-    }
-    const std::string dec = types::normalizeIntLiteralToDecimal(node->raw);
-    if (types::isI128(type)) {
-        // i128/正128：常量文本存 低64位:高64位 十六进制（codegen 拆双槽加载）
-        const std::string split = types::splitI128Text(dec);
-        lastExpr_ = emitResult(ir::Opcode::ConstInt, {}, mapType(type),
-                               split.empty() ? dec : split, node->location);
-    // 静默豁免业务值: 910 轮 visitIntegerLiteral 非 128 常量发射分支（规范十进制文本直存 ConstInt）
-    } else {
-        lastExpr_ = emitResult(ir::Opcode::ConstInt, {}, mapType(type), dec,
-                               node->location);
-    }
+    // 910（超64域口径收口·759 探针实锚）：判定/物化链收口——919 提炼为
+    //   emitIntLiteralConst 单点（ir_decl_extra.cpp·常量引用面共用）。原链
+    //   三处读 node->value 值级判域（parser parseIntValue stoll 溢出静默回 0
+    //   → 巨额立即数 A2022/textExceedsInt64 长度判据对 hex 误判）；910 修后=
+    //   规范十进制文本判提升链 + 128 域检查 + ConstInt 存规范文本（i128 双半）。
+    lastExpr_ = emitIntLiteralConst(node->raw, node->location);
 }
 void IRGenerator::visitFloatLiteral(FloatLiteral* node) {
     std::string type = types::literalTypeOf(node->raw, true);
@@ -284,10 +256,12 @@ void IRGenerator::visitIdentifierExpr(IdentifierExpr* node) {
                 } else if (constText.find_first_of(".eE") != std::string::npos) {
                     lastExpr_ = emitResult(ir::Opcode::ConstFloat, {}, "f64", constText,
                                            node->location);
-                } else {
-                    // 整数常量（可能为十六进制/负数 raw，codegen 按文本解析）
-                    lastExpr_ = emitResult(ir::Opcode::ConstInt, {}, "i64", constText,
-                                           node->location);
+                } else if (constText.find_first_of(".eE") == std::string::npos) {
+                    // 整数常量（可能为十六进制/负数 raw）：919 切 910 判域单点
+                    //   emitIntLiteralConst（超承载文本 128 域 splitI128Text 双半
+                    //   ——原恒 "i64" 对 20 位文本发 `mov rax,<文本>` ml64 A2084
+                    //   实锚〔p36〕；域内沿 910 规范十进制直存零回归）。
+                    lastExpr_ = emitIntLiteralConst(constText, node->location);
                 }
                 return;
             }

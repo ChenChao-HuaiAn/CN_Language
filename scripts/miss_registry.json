@@ -855,13 +855,13 @@
    "登记日": "2026-10-18"
   },
   {
-   "文件": "src/cn_compiler/ir/ir_expr.cpp",
-   "函数": "（910 整数文本判定族）",
-   "锚文本": "} else {",
+   "文件": "src/cn_compiler/ir/ir_decl_extra.cpp",
+   "函数": "emitIntLiteralConst（919 提炼单点·原 visitIntegerLiteral 内联）",
+   "锚文本": "return emitResult(ir::Opcode::ConstInt, {}, mapType(type), dec, loc)",
    "来源": "910",
    "类别": "业务值",
    "静默风险": "低",
-   "原因": "910 轮 visitIntegerLiteral 非 128 常量发射分支（规范十进制文本直存 ConstInt）",
+   "原因": "910 轮非 128 常量发射分支（规范十进制文本直存 ConstInt）——919 提炼至 emitIntLiteralConst 单点，常量引用面共用",
    "登记人": "AI（910 轮·逐条读过代码）",
    "登记日": "2026-10-18"
   },

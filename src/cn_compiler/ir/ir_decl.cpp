@@ -452,6 +452,24 @@ void IRGenerator::emitStaticInitsAtEntry() {
         if (types::isInt128Type(canonStatic)) {
             storeType = types::isInt128Signed(canonStatic) ? "i128" : "u128";
         }
+        // 919（超承载字面量参与表达式·求值链收口）：表达式值为 128 域承载
+        //   （i128/u128——638 甲案「无后缀大字面量提升链」表达式面归整128）
+        //   而槽为 ≤64 位整数时，原直接 StorePtr 类型错配（8 字节槽 + i128
+        //   值）→ 后端落 8 字节存储分支读值高半（探针实录：`静态 整64 甲 =
+        //   99999999999999999999 + 0;` 出 5＝高位半字，应为
+        //   7766279631452241919＝低 64 位截断；19 位形态出 0）。修法=与局部
+        //   声明初始化（genExprInitializer）同款：值类型≠槽类型时插 Cast
+        //   （§3.7a ④ 128→64 表达式源窄化特例＝低 N 位截断；128 槽
+        //   i128/u128 直存路径不受影响）。
+        if ((obj.type == "i128" || obj.type == "u128") &&
+            !types::isInt128Type(canonStatic) && types::isInteger(canonStatic)) {
+            const std::string slotIr919 = mapType(canonStatic);
+            if (!slotIr919.empty() && slotIr919 != obj.type) {
+                obj = emitResult(ir::Opcode::Cast, {obj}, slotIr919, "",
+                                 initExpr != nullptr ? initExpr->location
+                                                     : SourceLocation());
+            }
+        }
         emit(ir::Opcode::StorePtr, {symAddr, obj}, ir::IRValue(), "", storeType,
              SourceLocation());
     }
