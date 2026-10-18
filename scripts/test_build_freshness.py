@@ -238,6 +238,51 @@ def 场景8_Make链接归属(基础: str) -> None:
     断言(码3 == 0, f"场景⑧c 还原后复绿\n{出3}")
 
 
+def _git提交(根: Path, 消息: str) -> int:
+    subprocess.run(["git", "add", "-A"], cwd=str(根), capture_output=True)
+    subprocess.run(["git", "-c", "user.email=t@t", "-c", "user.name=t",
+                    "commit", "-q", "-m", 消息], cwd=str(根), capture_output=True)
+    return int(subprocess.run(["git", "log", "-1", "--format=%ct"], cwd=str(根),
+                             capture_output=True, text=True).stdout.strip())
+
+
+def 场景9_纯文档提交豁免(基础: str) -> None:
+    """872 完备化两态（1060 集成实录：纯文档/脚本轮批树被 HEAD 判据假红）：
+    态1 纯非构建输入提交不触发假红（旧口径会红——本场景核心）；
+    态2 构建输入提交后未重建仍红（795 防混合体语义保留）。"""
+    根 = Path(tempfile.mkdtemp(prefix="bfd_", dir=基础))
+    造git(根)
+    (根 / "src" / "a.cpp").write_text("// a\n", encoding="utf-8")
+    (根 / "src" / "b.cpp").write_text("// b\n", encoding="utf-8")
+    _git提交(根, "构建输入提交A")
+    (根 / "target" / "build-ninja").mkdir(parents=True, exist_ok=True)
+    (根 / "target" / "build-ninja" / "build.ninja").write_text(ninja文(根), encoding="utf-8")
+    (根 / "target" / "build-ninja" / "CMakeCache.txt").write_text("# fake\n", encoding="utf-8")
+    编 = 根 / "target" / "build-ninja" / "CMakeFiles" / "x.dir" / "src"
+    编.mkdir(parents=True, exist_ok=True)
+    for 名 in ("a.cpp.obj", "b.cpp.obj"):
+        (编 / 名).write_bytes(b"OBJ")          # mtime=now（≥ 源，等同态）
+    (根 / "target" / "x.lib").write_bytes(b"LIB")
+    (根 / "target" / "cn.exe").write_bytes(b"MZ")
+    # 态1：纯文档提交 B（不含构建输入）——产物晚于「最近构建输入提交A」→ 绿
+    (根 / "README.md").write_text("doc\n", encoding="utf-8")
+    _git提交(根, "纯文档提交B")
+    码, 出 = 跑核验(根)
+    断言(码 == 0, f"场景⑨ 纯文档提交→无假红（旧口径会红）\n{出}")
+    # 态2：构建输入二次提交 C，产物回拨到 C 之前 → 红（795 语义：输入已更新未重建）
+    (根 / "src" / "b.cpp").write_text("// b2\n", encoding="utf-8")
+    c时刻 = _git提交(根, "构建输入提交C")
+    触(根 / "src" / "a.cpp", c时刻 - 3000)
+    触(根 / "src" / "b.cpp", c时刻 - 3000)
+    for 名 in ("a.cpp.obj", "b.cpp.obj"):
+        触(编 / 名, c时刻 - 20)
+    触(根 / "target" / "x.lib", c时刻 - 20)
+    触(根 / "target" / "cn.exe", c时刻 - 10)
+    码2, 出2 = 跑核验(根)
+    断言(码2 == 1 and "构建输入已更新" in 出2,
+         f"场景⑨ 构建输入提交后未重建→红（完备化口径）\n{出2}")
+
+
 def main() -> int:
     with tempfile.TemporaryDirectory(prefix="cn_bf_") as 基础:
         print("== 场景① ninja 全新鲜（$: 转义回归） ==")
@@ -256,6 +301,8 @@ def main() -> int:
         场景7_Make布局(基础)
         print("== 场景⑧ Make 布局链接输入按 target 归属（1006） ==")
         场景8_Make链接归属(基础)
+        print("== 场景⑨ 纯文档提交豁免（872 完备化·1060） ==")
+        场景9_纯文档提交豁免(基础)
     print(f"\n[全部通过] {通过} 项断言")
     return 0
 

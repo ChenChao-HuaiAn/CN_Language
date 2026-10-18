@@ -281,29 +281,51 @@ def 核验make布局(构建目录: Path, 红: list, 黄: list) -> tuple[int, int
     return 映射数, 豁免数
 
 
+构建输入路径 = ["CMakeLists.txt", "src", "tests/unit"]
+
+
 def 核验HEAD判据(红: list, 黄: list) -> None:
-    """核心产物 vs HEAD 提交时刻（795 判据 a 同语义：exe 早于 HEAD=rebase/检出后
-    未重建）。HEAD 不可知/产物不存在=黄字跳过（gate_quick 构建后在 pipeline 里，
-    此判据是兜底——构建机制失灵时的最后防线）。"""
+    """核心产物 vs「最近一次构建输入提交」时刻（795 判据 a 语义·872 完备化）。
+
+    原口径=HEAD 提交时刻——对「纯文档/脚本轮」假红误伤（HEAD 提交不含构建输入，
+    产物时刻早于提交时刻但内容不可能过期；1060 集成实录：批树上门禁被误红）。
+    改向：git log -1 --format=%ct HEAD -- <构建输入路径>——产物只需覆盖「最后
+    一次修改构建输入的提交」；输入变了→该提交时刻新→产物旧→仍红（795 防混
+    合体语义完整保留），输入未变→分界时刻为旧提交→绿。
+    构建输入不可知（路径无历史/HEAD 不可知）=回退 HEAD 时刻旧口径（保守）。
+    产物不存在=黄字跳过（gate_quick 构建后在 pipeline 里，此判据是兜底）。"""
     产物们 = [仓库根 / "target" / 名 for 名 in
              ("cn.exe", "cn_unit_tests.exe", "cn", "cn_unit_tests")]
     存在们 = [p for p in 产物们 if p.exists()]
     if not 存在们:
         黄.append("核心产物（target/cn*）不存在——HEAD 判据跳过")
         return
-    try:
-        结 = subprocess.run(["git", "log", "-1", "--format=%ct"], cwd=str(仓库根),
-                           capture_output=True, text=True, timeout=60)
-        头时刻 = int((结.stdout or "").strip()) if 结.returncode == 0 else None
-    except (subprocess.TimeoutExpired, ValueError, OSError):
-        头时刻 = None
-    if 头时刻 is None:
+
+    def _时刻(路径参数) -> int | None:
+        try:
+            结 = subprocess.run(["git", "log", "-1", "--format=%ct", "HEAD", "--"] + 路径参数,
+                               cwd=str(仓库根), capture_output=True, text=True, timeout=60)
+            文 = (结.stdout or "").strip()
+            return int(文) if 结.returncode == 0 and 文 else None
+        except (subprocess.TimeoutExpired, ValueError, OSError):
+            return None
+
+    分界时刻 = _时刻(构建输入路径)
+    口径 = "最近构建输入提交"
+    if 分界时刻 is None:
+        分界时刻 = _时刻([])
+        口径 = "当前 HEAD 提交"
+    if 分界时刻 is None:
         黄.append("git HEAD 提交时刻不可知——HEAD 判据跳过")
         return
     for p in 存在们:
-        if p.stat().st_mtime < 头时刻:
-            红.append(f"{短(p)} 早于当前 HEAD 提交时刻（rebase/检出后未重建·"
-                      f"795 判据 a 构建层版）")
+        if p.stat().st_mtime < 分界时刻:
+            if 口径 == "最近构建输入提交":
+                红.append(f"{短(p)} 早于{口径}时刻（构建输入已更新而未重建·"
+                          f"795 判据 a 构建层版·872 完备化口径）")
+            else:
+                红.append(f"{短(p)} 早于当前 HEAD 提交时刻（rebase/检出后未重建·"
+                          f"795 判据 a 构建层版）")
 
 
 def main() -> int:
