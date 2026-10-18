@@ -596,16 +596,39 @@ def 找编译器():
     return None
 
 
-def 目标平台():
-    """示例验证的目标平台（992）：CN_DOCS_TARGET 显式覆盖，缺省运行时探测
-    （与 gate_quick/ci_daemon/check_cli_contract 平台三分同口径）。"""
-    显式 = os.environ.get("CN_DOCS_TARGET")
-    if 显式:
-        return 显式
+def 运行时平台():
+    """本机真实执行平台（只凭运行时探测·不读自报覆盖）——1081/822/run_e2e 同判据。"""
     if sys.platform.startswith("win"):
         return "win-x64"
     return ("linux-arm64" if platform.machine().lower() in ("aarch64", "arm64")
             else "linux-x86_64")
+
+
+def 目标平台():
+    """示例验证的目标平台（992）：CN_DOCS_TARGET 显式覆盖，缺省运行时探测
+    （与 gate_quick/ci_daemon/check_cli_contract 平台三分同口径·1081 起单一源）。"""
+    显式 = os.environ.get("CN_DOCS_TARGET")
+    if 显式:
+        return 显式
+    return 运行时平台()
+
+
+def 交叉模拟跳过():
+    """1081（2026-10-18）：交叉模拟实例自判——CN_CI_PLATFORM 自报≠本机运行时
+    平台（与 run_e2e 判定交叉模拟/check_cli_contract 822 运行级可达同口径·
+    单一事实源）。病根（xsim 六轮恒红）：028 xsim 实例（x64 宿主自报 linux-arm64 +
+    CN_AS/CN_CXX=arm64 交叉工具链）下本步骤继承交叉变量——宿主 cn 工具链探测
+    对 CN_AS/CN_CXX 无条件优先、不感知 --target（cn_main_toolchain.cpp），
+    linux-x86_64 汇编喂 aarch64-as 必败。示例验证非平台覆盖职责（992）：
+    交叉实例跳过留痕（rc=0 不计红），原生平台实例照常真跑兜底。"""
+    自报 = os.environ.get("CN_CI_PLATFORM", "").strip()
+    本机 = 运行时平台()
+    if not 自报 or 自报 == 本机:
+        return False
+    print("示例验证：跳过（交叉模拟实例——CN_CI_PLATFORM 自报 %s≠本机 %s："
+          "交叉工具链下示例编译必败·示例验证非平台覆盖职责，"
+          "由原生平台实例兜底·1081）" % (自报, 本机))
+    return True
 
 
 _基线缓存 = []      # 文档基线标注每进程只算一次（骨架逐页引用）
@@ -642,6 +665,9 @@ def verify(cn_exe=None, 仅失败=False):
     if not cn:
         print("找不到编译器")
         return 1
+    # 1081：交叉模拟实例前置跳过（留痕·rc=0 不计红——判据见 交叉模拟跳过 docstring）
+    if 交叉模拟跳过():
+        return 0
     平台 = 目标平台()                     # 992：显式目标平台（win 缺省=win-x64 会走 MSVC 链）
     产物后缀 = ".exe" if 平台 == "win-x64" else ""
     tmp = tempfile.mkdtemp(prefix="cndocs_")
