@@ -75,3 +75,5 @@ scripts/case_ledger_cache.json
 *.db-shm
 *.db-wal
 website/assets/stats.json
+/日志.txt
+/笔记.txt
