@@ -52,6 +52,35 @@ bool rewriteStringConcatCompoundAssign(SemanticAnalyzer& sa, AssignmentExpr* nod
     node->op = Operator::Assign;
     return true;
 }
+
+// 1038（1037 采样轮 D1·2026-10-18）：指针复合赋值糖展开——p ±= 整数 ≡
+//   p = p ± 整数（001 §不安全清单1 明文 p±整数 合法；#488 复合赋值=等价展开
+//   同规则）。与 v2 语法层回退重析（p += 1 → 合成二元+赋值节点）同构·零分叉：
+//   IR 层零改动承接（普通赋值通道 → 二元指针算术按元素步进生成）；改写后由
+//   调用方补 checkExpr 触发二元完整检查——不安全函数内放行/安全区报
+//   「[安全区边界] 指针算术应在 不安全 函数 内（指针 +/- 整数）」（与 v2
+//   拒绝面逐字对齐）。修前=isNumeric 一刀切误拒「复合赋值要求数值操作数」
+//   （安全区/不安全区同拒=与二元面分叉）。
+// 判定=目标指针类型且 op ∈ {+=,-=} 且右值整数（「未知」=上游已诊断面交二元
+//   兜底）；其余 op（*= 等）与其余类型维持既有拒绝（v2 检查复合赋值操作数
+//   同构）。字符串/字符* += 不达此处（上方拼接展开先行）。
+bool rewritePointerCompoundAssign(AssignmentExpr* node, const std::string& targetType,
+                                  const std::string& valueType) {
+    if (node->op != Operator::PlusAssign && node->op != Operator::MinusAssign)
+        return false;
+    // 静默豁免业务值: 改写试判谓词——目标非指针=本通道不适用，return false 交调用方（唯一调用点紧随其后报「复合赋值要求数值操作数」，非静默取默认值·543/943 同族先例）。
+    if (!types::isPointer(targetType)) return false;
+    // 静默豁免业务值: 改写试判谓词——右值非整数=本通道不适用，return false 交调用方（同上；「未知」=上游已诊断面交二元兜底）。
+    if (valueType != "未知" && !types::isInteger(valueType)) return false;
+    const Operator baseOp =
+        (node->op == Operator::PlusAssign) ? Operator::Add : Operator::Subtract;
+    auto bin = std::make_unique<BinaryExpr>(
+        baseOp, cloneExpr(node->target.get()), std::move(node->value));
+    bin->location = node->location;
+    node->value = std::move(bin);
+    node->op = Operator::Assign;
+    return true;
+}
 } // namespace
 
 void SemanticAnalyzer::visitTernaryExpr(TernaryExpr* node) {
@@ -658,6 +687,16 @@ bool SemanticAnalyzer::checkCompoundAssign(AssignmentExpr* node,
             //   串·752/753 数值锁面不受影响——数值复合赋值仍走下方原路径）。
             if (rewriteStringConcatCompoundAssign(*this, node, targetType,
                                                   valueType)) {
+                lastType_ = targetType;
+                return true;
+            }
+            // 1038：指针 ±= 整数糖展开（p ±= 1 ≡ p = p ± 1·001 §不安全清单1）
+            //   ——不安全函数内放行；安全区经二元面报「[安全区边界] 指针算术
+            //   应在 不安全 函数 内」（与 v2 拒绝面同）。改写后合成二元为新造
+            //   节点须补 checkExpr（指针算术+安全区边界执法）；IR 零改动承接
+            //   （普通赋值通道 → 二元指针算术按元素步进生成）。
+            if (rewritePointerCompoundAssign(node, targetType, valueType)) {
+                checkExpr(node->value.get());
                 lastType_ = targetType;
                 return true;
             }

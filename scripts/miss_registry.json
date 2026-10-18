@@ -633,6 +633,28 @@
    "静默风险": "低",
    "原因": "递归出口哨兵：空节点=非该形态（调用点对非空守卫）",
    "登记人": "879-会话"
+  },
+  {
+   "文件": "src/cn_compiler/semantic/semantic_expr_op.cpp",
+   "函数": "rewritePointerCompoundAssign",
+   "锚文本": "if (!types::isPointer(targetType)) return false;",
+   "来源": "1038",
+   "类别": "业务值",
+   "静默风险": "低",
+   "原因": "1038：指针复合赋值糖展开试判谓词——目标非指针=本通道不适用，return false 交调用方（唯一调用点紧随其后报「复合赋值要求数值操作数」，非静默取默认值·543/943 试判谓词同族）。协议注释在位。",
+   "登记人": "AI（1038 轮·逐条读过代码）",
+   "登记日": "2026-10-18"
+  },
+  {
+   "文件": "src/cn_compiler/semantic/semantic_expr_op.cpp",
+   "函数": "rewritePointerCompoundAssign",
+   "锚文本": "if (valueType != \"未知\" && !types::isInteger(valueType)) return false;",
+   "来源": "1038",
+   "类别": "业务值",
+   "静默风险": "低",
+   "原因": "1038：同族试判谓词——右值非整数=本通道不适用，return false 交调用方（同上；「未知」=上游已诊断面交二元兜底）。协议注释在位。",
+   "登记人": "AI（1038 轮·逐条读过代码）",
+   "登记日": "2026-10-18"
   }
  ]
 }
