@@ -132,7 +132,14 @@ void SemanticAnalyzer::rewriteQualifiedCall(CallExpr* node,
         //   限定名存在时，内置优先——否则解析到自身包装（返回 结果 与内置
         //   字符串 类型冲突）。用户模块限定调用（27_module 数学::平方根）
         //   仍用户公开函数优先（内置 数学::平方根 存在但不应遮蔽）。
-        if (info.userFuncExists &&
+        // 1047（2026-10-18·t5 静默截胡根治）：用户公开函数优先规则限定于
+        //   「限定名前缀为已加载真实模块」（moduleLoaded）——非模块前缀的
+        //   内建族（字符串构建器::/内存:: 等全名注册）不被同名裸名用户函数
+        //   截胡：修前 用户定义 函数 追加(整64,字符串) 即致
+        //   字符串构建器::追加 重写为裸名「追加」（moduleFilter 对主模块
+        //   函数不滤）=调用派发到用户函数·内建未发生·零诊断静默错值
+        //   （v2 同探针正确=单侧分叉；t6 改名对照宿主正常实锤）。
+        if (info.userFuncExists && info.moduleLoaded &&
             !(info.builtinQualified && currentModuleName_ == info.moduleName)) {
             node->callee = std::make_unique<IdentifierExpr>(info.funcName);
             // 模块过滤（resolveOverload 用）：子模块限定调用按子模块名过滤
