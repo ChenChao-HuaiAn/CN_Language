@@ -77,6 +77,27 @@ bool unifyUnsuffixedLiteralOperand728(const Expr* leftExpr, const Expr* rightExp
     return false;
 }
 
+// 1064（2026-10-18·#1040 派生缺口·表达式操作数扩展）：指针差操作数判可——
+//   语义层已判两侧同型指针（isPointerType 命中）之后，本判据限定**可放行**
+//   的操作数形态：标识符（指针变量/数组名退化）或 ± 链（指针侧为标识符或
+//   递归 ± 链）——与 IR 侧 ptrOperandSrcType 的步进源回溯同构（genPointer
+//   Arithmetic 双指针/单指针分支须解析元素步进），保证放行面在 IR 恒可解析
+//   步进（648 显形面零新增）。其余形态（成员链/取地址/调用返回/下标/三元
+//   等）=不可判——维持既拒文案「两个指针不能做算术运算」，与 v2 指针值
+//   表达式元素1064 边界一致（双侧同拒·立法收窄不放松）。
+bool isJudgedPtrDiffOperand1040(const Expr* e) {
+    if (e == nullptr) return false;  // 静默豁免业务值: 空节点=非该形态缺省判假谓词语义（调用点 node->left/right 恒非空·防御面不可达），非静默默认值
+    if (e->getType() == NodeType::IdentifierExpr) return true;
+    if (e->getType() == NodeType::BinaryExpr) {
+        const BinaryExpr* b = static_cast<const BinaryExpr*>(e);
+        if (b->op == Operator::Add || b->op == Operator::Subtract) {
+            return isJudgedPtrDiffOperand1040(b->left.get()) ||
+                   isJudgedPtrDiffOperand1040(b->right.get());
+        }
+    }
+    return false;
+}
+
 }  // namespace
 
 void SemanticAnalyzer::visitBinaryExpr(BinaryExpr* node) {
@@ -700,14 +721,16 @@ bool SemanticAnalyzer::checkStringConcatAndPtrArithmetic(BinaryExpr* node,
         //   不安全域内的类型/拒绝面。
         //   同型 = 规范化类型文本全等且非字符串语义类型（字符串/字符*=视图·
         //   001 §5.3 豁免①不适用指针差）；异型 = 编译错误（文案与 v2 逐字一致）。
-        //   操作数形态=两侧标识符（与 v2 425 指针面可靠面同口径——表达式操作数
-        //   扩展（(p+1)-p 等）受 v2 推导器二元丢星面限制=派生缺口立项留档）。
+        //   操作数形态（1064·2026-10-18 任务 1064 扩展）：标识符对（1040 首批）
+        //   + 表达式操作数（(p+1)/(p+n) 等 ± 链——isJudgedPtrDiffOperand1040
+        //   判可·与 v2 指针值表达式元素1064/IR ptrOperandSrcType 三处同构）；
+        //   其余形态（成员/取地址/调用/下标）维持「两个指针不能做算术运算」
+        //   （v2 同判·立法收窄不放松）。
         const bool sameTypeDiff1040 =
             (leftType == rightType) && !isStringSemanticType(leftType);
-        const bool identPair1040 =
-            node->left->getType() == NodeType::IdentifierExpr &&
-            node->right->getType() == NodeType::IdentifierExpr;
-        if (node->op == Operator::Subtract && sameTypeDiff1040 && identPair1040) {
+        const bool operandsJudgeable1040 = isJudgedPtrDiffOperand1040(node->left.get()) &&
+                                     isJudgedPtrDiffOperand1040(node->right.get());
+        if (node->op == Operator::Subtract && sameTypeDiff1040 && operandsJudgeable1040) {
             lastType_ = "整64";
             node->resolvedType = "整64";   // IR 侧 genPointerArithmetic 双指针分支识别
             return true;

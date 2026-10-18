@@ -538,20 +538,56 @@ bool IRGenerator::genStringCompareBinary(BinaryExpr* node, const ir::IRValue& le
 
 // ==================== 族④：指针算术（Task 2.4） ====================
 // （原 480~515 段）ptr ± 整型 -> 指针（偏移量×元素大小）。true = 已处理。
+// 1064（2026-10-18·#1040 派生缺口·表达式操作数扩展）：指针差/指针算术操作数
+//   的指针源类型回溯——语义层 1040 判可面（isJudgedPtrDiffOperand1040）放行
+//   的形态在此恒可解析：
+//   ①标识符（指针变量/数组名退化）→ lookupSrcType 直查变量表（数组名返数组
+//     全文，ptrElemStride 数组分支自管元素宽——425 同源）；
+//   ②二元 ±（指针在左为主（p±n/p-q）——右指针形态（n+p）语义层已拒；仍
+//     对称回溯，仅当回溯结果确为指针/数组形态才采信，防错采整数侧源文本）。
+//   其余（成员链/取地址/调用返回/下标等不可判面）返回空串——调用方交给
+//   ptrElemStride 的 648 内部错误显形（不静默取默认值）。与 v2 指针值表达式
+//   元素1064 结构面同构（v2 面合判可+元素，本处仅源类型回溯）。
+std::string IRGenerator::ptrOperandSrcType(const Expr* e) const {
+    if (e == nullptr) return "";  // 静默豁免业务值: 空节点=非指针形态缺省判空谓词语义（调用点恒传 node->left/right 子树非空·防御面不可达），非静默默认值
+    if (e->getType() == NodeType::IdentifierExpr) {
+        return lookupSrcType(static_cast<const IdentifierExpr*>(e)->name);
+    }
+    if (e->getType() == NodeType::BinaryExpr) {
+        const BinaryExpr* b = static_cast<const BinaryExpr*>(e);
+        if (b->op == Operator::Add || b->op == Operator::Subtract) {
+            const std::string left = ptrOperandSrcType(b->left.get());
+            if (!left.empty() &&
+                (types::isPointer(left) || types::isArray(left))) {
+                return left;
+            }
+            const std::string right = ptrOperandSrcType(b->right.get());
+            if (!right.empty() &&
+                (types::isPointer(right) || types::isArray(right))) {
+                return right;
+            }
+        }
+        return "";
+    }
+    return "";
+}
+
 bool IRGenerator::genPointerArithmetic(BinaryExpr* node, const ir::IRValue& left,
                                        const ir::IRValue& right) {
     // 1040（2026-10-18 用户批甲·001 §5.3 清单 #1）：指针差（尾-首）——语义层
-    //   已限定同型非字符串语义指针+标识符对（resolvedType=整64），此处按
+    //   已限定同型非字符串语义指针+可判操作数（resolvedType=整64），此处按
     //   (addrL - addrR) / 元素大小 → i64「元素个数」发射（C ptrdiff 同款·
     //   尾在首前得负）。步进口径与下方指针±整数同源（ptrElemStride）。
+    //   1064（#1040 派生·表达式操作数扩展）：操作数含 ± 链（(p+1)-p 等）——
+    //   源类型经 ptrOperandSrcType 回溯根指针（与语义判可面 isJudgedPtrDiff
+    //   Operand1040 同构·合法程序恒可解析）。
     if (left.type == "ptr" && right.type == "ptr") {
         // 非减法（指针比较 ==/!= 等）交上层原路径处理（比较段/数值段自管）——
         //   原双 ptr 在 genPointerArithmetic 恒 return false，此处保持零回归。
         if (node->op != Operator::Subtract) return false;
-        std::string ptrSrcType = "";
-        if (node->left->getType() == NodeType::IdentifierExpr) {
-            ptrSrcType = lookupSrcType(
-                static_cast<IdentifierExpr*>(node->left.get())->name);
+        std::string ptrSrcType = ptrOperandSrcType(node->left.get());
+        if (ptrSrcType.empty()) {
+            ptrSrcType = ptrOperandSrcType(node->right.get());
         }
         const std::int64_t stride = ptrElemStride(ptrSrcType);
         ir::IRValue bytes = emitResult(ir::Opcode::Sub, {left, right}, "i64", "",
@@ -577,15 +613,11 @@ bool IRGenerator::genPointerArithmetic(BinaryExpr* node, const ir::IRValue& left
         if (delta.type != "i64") {
             delta = emitResult(ir::Opcode::Cast, {delta}, "i64", "", node->location);
         }
-        // 指针操作数的源码类型：标识符查变量表，否则按 8 字节（无法推断）
-        std::string ptrSrcType = "";
-        if (ptrLeft && node->left->getType() == NodeType::IdentifierExpr) {
-            ptrSrcType = lookupSrcType(
-                static_cast<IdentifierExpr*>(node->left.get())->name);
-        } else if (!ptrLeft && node->right->getType() == NodeType::IdentifierExpr) {
-            ptrSrcType = lookupSrcType(
-                static_cast<IdentifierExpr*>(node->right.get())->name);
-        }
+        // 指针操作数的源码类型（1064：经 ptrOperandSrcType 回溯——标识符直查；
+        //   ± 链（(p+1)+1 等）回溯根指针；成员/取地址等不可判面返空串 →
+        //   ptrElemStride 内部错误显形（648 纪律·不静默取默认值））
+        const std::string ptrSrcType =
+            ptrOperandSrcType(ptrLeft ? node->left.get() : node->right.get());
         const std::int64_t stride = ptrElemStride(ptrSrcType);
         ir::IRValue scaled = emitResult(
             ir::Opcode::Mul,

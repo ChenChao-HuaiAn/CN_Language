@@ -450,6 +450,13 @@ private:
     // 推导"指针值表达式"的所指源码类型（供解引用 * 用，Task 审查修复）：
     //   标识符指针变量 / 指针算术（p+1，递归指针侧）/ 取地址（&x 递归 operand）。返回所指元素源码类型（如 整32* -> 整32）；无法推导返回空串。
     std::string pointerPointeeSrcType(Expr* node) const;
+    // 1064（#1040 派生·表达式操作数扩展）：指针差/指针算术操作数的**指针源类型**
+    //   解析——标识符（指针变量/数组名）直查变量表；± 链（指针可能在左或右）
+    //   沿指针侧回溯根标识符。返回源类型全文（如 整32*/整32[5]·供 ptrElemStride）；
+    //   无法解析（成员/取地址/调用等不可判面）返回空串——调用方按 648 miss
+    //   纪律显形（ptrElemStride 内部报告内部错误）；语义层 1040 判可面已先行
+    //   收窄（isJudgedPtrDiffOperand1040），合法程序恒可解析。
+    std::string ptrOperandSrcType(const Expr* e) const;
     // 循环控制流：中断/继续跳转目标栈（条目 LoopContext·865 外迁见 ir_generator_types.hpp）
     std::vector<LoopContext> loopStack_;
     // 选择控制流：中断跳出目标栈（条目 SwitchContext·865 外迁见 ir_generator_types.hpp）
