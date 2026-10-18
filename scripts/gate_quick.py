@@ -117,9 +117,13 @@ print("== L1 快速门禁（920·提交前）==", flush=True)
 #    资源覆盖，406/824 漏部署类防复发）
 #    871 增语法接受面↔语义实现面同步——762/775 病例（parser 收下语法而语义静默丢弃）
 #    立法化：新增节点类型/零消费 AST 字段必须登记语义实现锚+用例，锚/用例存在性核）
+#    894 增验证机器自身考核——「考官被考」缺口（云端验证机器报绿是否可信）：坏结果
+#    注入四态（绿/红/超时/空结果）× 三端判定面（聚合/落盘上报/解析放行/服务端存储/
+#    跨端管线）+ 元断言（判别力自证·防自检空转）；a 面阴性对照轮设计=plans/028 §十六。
+#    纯本机零池依赖秒级（临时 DB/目录隔离·零 HTTP）。
 for 名 in ("check_ascii_idents", "check_keywords_sync", "check_registry_audit",
            "check_case_numbers", "check_miss_gate", "check_deploy_manifest",
-           "check_syntax_semantic_sync"):
+           "check_syntax_semantic_sync", "check_verifier_selfcheck"):
     if not 步(名, [sys.executable, f"scripts/{名}.py"], 超时秒=静态超时):
         raise SystemExit(1)
 # 1013（2026-10-17 用户裁决）：官网文档覆盖对照 --strict 挂 L1——基线零（61/61 已覆盖·
