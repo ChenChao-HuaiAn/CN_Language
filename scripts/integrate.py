@@ -61,6 +61,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import board_closeout   # 392：伞批销账号解析（登记制·提交信息 [销账:号,…] 行）
+import integrate_disclosure   # 818：点名放行披露机械化（known-red 放行路径强制披露闸门·纯函数）
 
 仓库根 = Path(__file__).resolve().parent.parent
 主远程 = "gitcode"
@@ -324,6 +325,21 @@ def 解析E2E红用例行(文本: str) -> list[str]:
     return 失败们
 
 
+def 链顶提交信息披露检查(红例们: list[str]) -> str | None:
+    """818 点名放行披露闸门：读链顶（HEAD=将推送 develop 的提交）完整提交信息→披露检查。
+
+    返回 None=披露齐备（放行走）；非 None=拒因（放行路径拦截·修复=把〔点名放行〕披露段
+    写入本分支最新提交（amend/补一提交）后重推重跑集成——链顶由组链 cherry-pick 保真
+    原提交信息，solo/批两路径同语义）。
+    提交信息不可读（git 失败）= None 传入纯函数=拒（miss 不静默·宁拦勿放）。
+    纯函数面=integrate_disclosure.点名放行披露检查（selftest 直测）；本函数=git 读取粘合
+    （注入面=运行捕获·与 ⑪ 段既有假运行捕获注入同口径）。四个 known-red 放行消费点共用。
+    """
+    结果 = 运行捕获(["git", "log", "-1", "--format=%B", "HEAD"])
+    信息 = 结果.stdout if 结果.returncode == 0 else None
+    return integrate_disclosure.点名放行披露检查(信息, 红例们)
+
+
 def 全量门禁(平台: str, 已知红们: list[str] | None = None, 快速通道: bool = False) -> str | None:
     """全量门禁：零警告构建 + 单测 + E2E 全量（平台相关；win=ci.ps1 一步到位）。
 
@@ -372,7 +388,12 @@ def 全量门禁(平台: str, 已知红们: list[str] | None = None, 快速通�
             未点名 = [f for f in 失败们 if f not in (已知红们 or [])]
             if 未点名:
                 return "E2E 串行复验仍未全绿（非并行互踩——真红，禁止集成）。"
-            print(f"  [复验] 串行红 {失败们} 全部命中 --allow-known-red 点名清单——披露放行。")
+            # 818 披露闸门：known-red 放行前核链顶提交〔点名放行〕披露段（无则拒）
+            披露拒 = 链顶提交信息披露检查(失败们)
+            if 披露拒:
+                return 披露拒
+            print(f"  [复验] 串行红 {失败们} 全部命中 --allow-known-red 点名清单"
+                  "——披露放行（链顶〔点名放行〕段已核·818）。")
         print("  [复验] 并行红+串行绿=并行环境因素嫌疑（隔离键已根治 557 轮·新形态须披露定位）"
               "——放行；须在后续提交信息以〔通告〕前缀披露。")
         return None
@@ -439,9 +460,13 @@ def 全量门禁(平台: str, 已知红们: list[str] | None = None, 快速通�
                     f"·868·--target {目标}）——禁止集成；重跑 E2E 复核失败清单后重试。")
         未点名 = [f for f in 失败们 if f not in (已知红们 or [])]
         if 已知红们 and not 未点名:
+            # 818 披露闸门：known-red 放行前核链顶提交〔点名放行〕披露段（无则拒）
+            披露拒 = 链顶提交信息披露检查(失败们)
+            if 披露拒:
+                return 披露拒
             print(f"  [复验] 串行红 {失败们} 全部命中 --allow-known-red 点名清单"
-                  f"（fdef8ae9 P1 批次抽签/三平台已定性已知红）——披露放行；"
-                  f"须在后续提交信息以〔通告〕前缀完整披露点名依据。")
+                  f"（fdef8ae9 P1 批次抽签/三平台已定性已知红）——披露放行"
+                  f"（链顶〔点名放行〕段已核·818·使用责任=发起机·不实可 revert）。")
             return None
         if 未点名:
             return (f"E2E 串行复验存在未点名真红 {未点名}（--target {目标}"
@@ -639,9 +664,15 @@ def 池轮询预验(预验分支: str, 链顶: str, 点名清单: list, 源分�
         红用例们216 = 解析预验红用例们(文本)
         未点名216 = [u for u in 红用例们216 if u not in 点名清单]
         if 红用例们216 and not 未点名216:
+            # 818 披露闸门：known-red 放行前核链顶提交〔点名放行〕披露段（无则拒·
+            #   拿到结论态返回拦截——不降级 ssh 重跑：披露缺失是发起机侧问题）
+            披露拒818 = 链顶提交信息披露检查(红用例们216)
+            if 披露拒818:
+                print(f"  [预验] 红 {len(红用例们216)} 例全部命中点名清单·但{披露拒818}")
+                return True, 披露拒818
             print(f"  [预验] 红 {len(红用例们216)} 例全部命中 --allow-pool-red 点名清单"
                   f"（{'、'.join(红用例们216)}）——披露放行 push develop"
-                  "（使用责任=发起机·广播披露·不实可 revert）")
+                  "（链顶〔点名放行〕段已核·818·使用责任=发起机·不实可 revert）")
             return True, None
         if 未点名216:
             print(f"  [预验] 红 {len(红用例们216)} 例·未点名红（{'、'.join(未点名216)}）"
@@ -852,9 +883,14 @@ def 云端预验门禁(链顶: str, 参数: argparse.Namespace,
                 红用例们216b = 解析预验红用例们(取.stdout)
                 未点名216b = [u for u in 红用例们216b if u not in 参数.allow_pool_red]
                 if 红用例们216b and not 未点名216b:
+                    # 818 披露闸门：ssh 直发路径同判据（与池路径共用纯函数单点）
+                    披露拒818b = 链顶提交信息披露检查(红用例们216b)
+                    if 披露拒818b:
+                        print(f"  [预验] 红 {len(红用例们216b)} 例全部命中点名清单·但{披露拒818b}")
+                        return 披露拒818b
                     print(f"  [预验] 红 {len(红用例们216b)} 例全部命中 --allow-pool-red 点名清单"
                           f"（{'、'.join(红用例们216b)}）——披露放行 push develop"
-                          "（使用责任=发起机·广播披露·不实可 revert）")
+                          "（链顶〔点名放行〕段已核·818·使用责任=发起机·不实可 revert）")
                     return None
                 if not 红用例们216b:
                     # 868 显形（同池路径）：轮红但 ✗ 清单未取得=未显形红·非无红——硬拦。
@@ -1541,12 +1577,16 @@ def 主流程() -> int:
                         help="已知红显式点名（564-a 过渡机制·fdef8ae9 P1 构建确定性根治前）："
                              "串行复验红若全部命中点名清单=三平台已定性已知红披露放行；"
                              "未点名红仍硬拦。使用责任=发起机（点名依据+集成广播披露不实=违规可 revert）。"
+                             "818 披露机械化：放行前强制核链顶提交含〔点名放行〕段（标记+全部红例名），"
+                             "无披露=拒——先 amend 本分支最新提交补披露段再重推重跑。"
                              "fdef8ae9 P1 根治后本参数应移除。可多次传入点名多个用例。")
     解析器.add_argument("--allow-pool-red", action="append", default=[],
                         metavar="用例名",
                         help="216 批预验已知红点名：云端预验（池/ssh 路径）红若**全部**命中点名清单="
                              "披露放行（使用责任=发起机：点名依据+集成广播披露·不实可 revert）；"
-                             "未点名红仍硬拦。场景=环境敏感用例（606 判零防线 WSL 池红 vs TX_02 门禁绿）"
+                             "未点名红仍硬拦。818 披露机械化：放行前强制核链顶提交含〔点名放行〕段"
+                             "（标记+全部红例名），无披露=拒（补披露段后重推重跑）。"
+                             "场景=环境敏感用例（606 判零防线 WSL 池红 vs TX_02 门禁绿）"
                              "锁死集成链。可多次传入点名多个用例。")
     解析器.add_argument("--pool-limit", action="append", default=[],
                         metavar="平台",

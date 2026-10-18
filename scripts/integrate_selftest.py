@@ -17,10 +17,14 @@
      池忙继续等（830）/排队超时降级+取消（1026）/337 守限制/总超时
   ⑦ 预验前置检查（637 两前置）            ⑧+⑨ 云端预验门禁 mock 全路径：
      863 六例（哨兵保留/--wait 照删）/dry-run/830 复用绿/推分支失败/337 守卫/
-     901 降级保留（绿/触发失败/入队响应丢失）/入队明确拒绝照删/562 已并入收场
+     901 降级保留（绿/触发失败/入队响应丢失）/入队明确拒绝照删/562 已并入收场/
+     818 披露两态（ssh 直发红全点名放行面·无披露拒/有披露过）
   ⑩ 976 归纳件：E2E 红用例行解析/预验入队载荷构造
   ⑪ 868 预验红解析放行面核查：解析边界矩阵（非对象壳/坏字段/绿形态）+
-     win/linux 复验面空清单硬红（722「空集合恒真」残留加固·点名机制不回归）
+     win/linux 复验面空清单硬红（722「空集合恒真」残留加固·点名机制不回归）+
+     818 披露两态（无披露拒/有披露过·含读取失败=拒 glue 面）
+  ⑫ 818 点名放行披露机械化：纯函数矩阵（标记缺失/红例名缺/段外提及/不可读/
+     空清单五拒态+多例全列过态）——⑤c（池）+⑪（win/linux 复验）三消费点接入锁面
   （原「③选批成员/⑥失联判定」两段随 830 并行化退役删除——批主/拼车/接管面已废除）
 """
 from __future__ import annotations
@@ -29,6 +33,7 @@ import json
 import types
 
 import integrate
+import integrate_disclosure   # 818：点名放行披露机械化（纯函数矩阵直测）
 from integrate import (board_closeout, 解析队列, 队列段标题, 临时用例检查,
                        解析预验结果, 池轮询预验, 已并入收场, 池行龄分, 打印验证池状态,
                        批写集, 预验前置检查, 云端预验门禁, 已入池哨兵,
@@ -136,13 +141,22 @@ def 自测() -> int:
 
     # ⑤c 池轮询预验全转移（976 补缺）：完成绿/红/点名（216）·行 miss 重入队（337/830 字段随行）·
     #   3 连不可达·池忙继续等（830）·排队超时降级+取消（1026）·337 守限制·总超时——
-    #   注入状态查+假 服务调用（详情/入队/取消面）·测毕恢复绑定（零真网络/零真 git）
+    #   注入状态查+假 服务调用（详情/入队/取消面）·测毕恢复绑定（零真网络/零真 git）。
+    #   818 起点名放行路径带披露闸门（读链顶提交信息经 运行捕获）——注入假捕获供两态。
     预验支 = "ci/预验-" + "a" * 10
     完成行 = [{"分支": 预验支, "状态": "完成", "认领者": "TX_02"}]
     绿详情 = {"绿": True, "总秒": 800, "日志": "r.log", "步骤": {"构建": {"rc": 0}}, "日志尾部": []}
     红详情 = {"绿": False, "总秒": 900, "日志": "r.log", "步骤": {"e2e": {"rc": 1}},
              "日志尾部": ["✗ 501_某用例: 失败"]}
     真服务调用池 = integrate.服务调用
+    真运行捕获池818 = integrate.运行捕获
+    链顶信息818 = {"rc": 0, "文": "〔点名放行〕红例 501_某用例（818 披露面注入）。"}
+
+    def 假运行捕获818(命令):
+        assert "log" in 命令 and "--format=%B" in 命令, f"818：未预期的捕获调用 {命令}"
+        return types.SimpleNamespace(returncode=链顶信息818["rc"],
+                                     stdout=链顶信息818["文"], stderr="")
+
     try:
         def 造假服务池(状态序列, 详情=None, 台账=None):
             def 假服务池(路径, 数据=None):
@@ -155,6 +169,7 @@ def 自测() -> int:
                 return next(状态序列)   # 耗尽应抛 StopIteration=未预期轮次（测试显形非静默）
             return 假服务池
 
+        integrate.运行捕获 = 假运行捕获818   # 818：仅点名放行路径触达（其余转移零 git 读取）
         integrate.服务调用 = 造假服务池(iter([{"预验任务": 完成行, "池忙闲": {}}]), 绿详情)
         拿到c, 原因c = 池轮询预验(预验支, "a" * 40, [], 轮询间隔=0)
         断言(拿到c and 原因c is None, "池轮询：完成行+详情绿=拿到结论放行（绿链）")
@@ -164,7 +179,13 @@ def 自测() -> int:
              "池轮询：完成行+详情红=拿到结论拦截（红链）")
         integrate.服务调用 = 造假服务池(iter([{"预验任务": 完成行, "池忙闲": {}}]), 红详情)
         拿到c, 原因c = 池轮询预验(预验支, "a" * 40, ["501_某用例"], 轮询间隔=0)
-        断言(拿到c and 原因c is None, "池轮询：红用例全命中点名=披露放行（216）")
+        断言(拿到c and 原因c is None, "池轮询：红用例全命中点名+链顶披露齐=披露放行（216/818）")
+        integrate.服务调用 = 造假服务池(iter([{"预验任务": 完成行, "池忙闲": {}}]), 红详情)
+        链顶信息818["文"] = "修复 501 相关问题（无〔点名放行〕披露段）"
+        拿到c, 原因c = 池轮询预验(预验支, "a" * 40, ["501_某用例"], 轮询间隔=0)
+        断言(拿到c and 原因c is not None and "点名放行披露" in 原因c,
+             "818 池轮询：全点名但链顶无披露段=拒（放行路径机械化拦截·不降级 ssh）")
+        链顶信息818["文"] = "〔点名放行〕红例 501_某用例（回填披露）"
         integrate.服务调用 = 造假服务池(iter([{"预验任务": 完成行, "池忙闲": {}}]), 红详情)
         拿到c, 原因c = 池轮询预验(预验支, "a" * 40, ["别用例"], 轮询间隔=0)
         断言(拿到c and 原因c is not None, "池轮询：存在未点名红=硬拦（216）")
@@ -225,6 +246,7 @@ def 自测() -> int:
             integrate.预验总超时分钟 = 真超时
     finally:
         integrate.服务调用 = 真服务调用池
+        integrate.运行捕获 = 真运行捕获池818
 
     # ⑤d 825 残余 B（并行度观测·池饱和排队可见性）：池行龄分纯函数两态 +
     #   打印验证池状态注入假服务三态 stdout（池全忙排队/空闲待认领/不可达降级）。
@@ -295,17 +317,28 @@ def 自测() -> int:
 
     # ⑧+⑨ 云端预验门禁 mock 全路径（monkeypatch 假 git/网络/subprocess 面·测毕恢复·零副作用）：
     #   ⑧ 863 六例（非 --wait 哨兵保留·--wait 结论后照删）；⑨ 976 扩展（dry-run/830 复用绿/
-    #   推分支失败/337 守卫/901 降级保留/入队响应丢失保留/入队明确拒绝照删/562 已并入收场）。
+    #   推分支失败/337 守卫/901 降级保留/入队响应丢失保留/入队明确拒绝照删/562 已并入收场）+
+    #   818 披露两态（ssh 直发红全点名放行面：无披露拒/有披露过——第四消费点接入锁面）。
     #   删除前提不变量（863 立·901 补全）：预验分支删除 ⟺ 池行已确认终态或从未建行。
     假SHA = "e" * 40
     真绑门禁 = {名: getattr(integrate, 名) for 名 in
                ("运行", "输出", "服务调用", "读CI配置", "查可复用预验绿",
-                "池轮询预验", "subprocess")}
+                "池轮询预验", "subprocess", "运行捕获", "预验轮询间隔秒")}
     调用账: list = []
-    面 = {"复用绿": False, "池轮询": (True, None), "入队": {"ok": True}, "推失败": False}
+    面 = {"复用绿": False, "池轮询": (True, None), "入队": {"ok": True}, "推失败": False,
+         "ssh红JSON": None}
     绿JSON门禁 = json.dumps({"绿": True, "总秒": 800, "日志": "b.log",
                           "步骤": {"同步": {"rc": 0}, "构建": {"rc": 0}}, "日志尾部": []},
                          ensure_ascii=False)
+    红JSON门禁 = json.dumps({"绿": False, "总秒": 900, "日志": "b.log",
+                          "步骤": {"e2e": {"rc": 1}}, "日志尾部": ["✗ 501_某用例: 失败"]},
+                         ensure_ascii=False)
+    链顶信息门禁818 = {"文": "〔点名放行〕红例 501_某用例（818 披露面注入）。"}
+
+    def 假捕获门禁818(命令):
+        assert "log" in 命令 and "--format=%B" in 命令, f"818：未预期的捕获调用 {命令}"
+        return types.SimpleNamespace(returncode=0, stdout=链顶信息门禁818["文"], stderr="")
+
     try:
         def 假运行(命令, **_):
             调用账.append(list(命令))
@@ -318,7 +351,8 @@ def 自测() -> int:
             if "pkill" in 文本:
                 return types.SimpleNamespace(returncode=0, stdout="", stderr="")
             if "cat" in 文本 and "预验_" in 文本:
-                return types.SimpleNamespace(returncode=0, stdout=绿JSON门禁, stderr="")
+                return types.SimpleNamespace(returncode=0,
+                                             stdout=面["ssh红JSON"] or 绿JSON门禁, stderr="")
             return types.SimpleNamespace(returncode=0, stdout="触发成功", stderr="")
 
         integrate.运行 = 假运行
@@ -330,14 +364,17 @@ def 自测() -> int:
         integrate.查可复用预验绿 = lambda 源, 键, 状态查=None: 面["复用绿"]
         integrate.池轮询预验 = lambda *a, **kw: 面["池轮询"]
         integrate.subprocess = types.SimpleNamespace(run=假subprocess运行)
+        integrate.运行捕获 = 假捕获门禁818          # 818：仅 ssh 红点名放行路径触达
+        integrate.预验轮询间隔秒 = 0.01            # 818：ssh 轮询注入短间隔（免 60s 实等）
 
-        def 造参数(wait: bool, pool_limit=None, dry_run=False):
+        def 造参数(wait: bool, pool_limit=None, dry_run=False, pool_red=None):
             return types.SimpleNamespace(dry_run=dry_run, remote="gitcode", wait=wait,
-                                         allow_pool_red=[], pool_limit=pool_limit or [])
+                                         allow_pool_red=pool_red or [], pool_limit=pool_limit or [])
 
         def 复位面():
             面.update({"复用绿": False, "池轮询": (True, None), "入队": {"ok": True},
-                      "推失败": False})
+                      "推失败": False, "ssh红JSON": None})
+            链顶信息门禁818["文"] = "〔点名放行〕红例 501_某用例（818 披露面注入）。"
             调用账.clear()
 
         # —— ⑧ 863 六例（删除时机回归锚·原样保留）——
@@ -397,6 +434,23 @@ def 自测() -> int:
         回值 = 云端预验门禁(假SHA, 造参数(True), 源分支="任务/863", 等待=True)
         断言(回值 is None and any("--delete" in c for c in 调用账),
              "⑨ 门禁：562 入队被拒已并入——develop 已含链顶=放行收场（不降级重跑全量）")
+
+        # —— 818 ssh 直发红全点名放行面两态（known-red 第四消费点·与池/复验面同判据）——
+        复位面()
+        面["池轮询"] = (False, None)
+        面["ssh红JSON"] = 红JSON门禁
+        回值 = 云端预验门禁(假SHA, 造参数(True, pool_red=["501_某用例"]),
+                        源分支="任务/863", 等待=True)
+        断言(回值 is None and not any("--delete" in c for c in 调用账),
+             "818 门禁 ssh：红全命中点名+链顶披露齐=放行（None·分支保留不删）")
+        复位面()
+        面["池轮询"] = (False, None)
+        面["ssh红JSON"] = 红JSON门禁
+        链顶信息门禁818["文"] = "修复 501 相关问题（无〔点名放行〕披露段）"
+        回值 = 云端预验门禁(假SHA, 造参数(True, pool_red=["501_某用例"]),
+                        源分支="任务/863", 等待=True)
+        断言(回值 is not None and "点名放行披露" in 回值,
+             "818 门禁 ssh：红全点名但链顶无披露=拒（拦截返回·两态之拒）")
         复位面()
         面["池轮询"] = (False, None)
         integrate.subprocess = types.SimpleNamespace(run=lambda 命令, **kw: (
@@ -434,6 +488,7 @@ def 自测() -> int:
     真运行复验 = integrate.运行
     真运行捕获复验 = integrate.运行捕获
     假串行出口 = {"stdout": ""}
+    假链顶818 = {"rc": 0, "文": "〔点名放行〕红例 501_某用例（818 披露面注入）。"}
     try:
         def 假运行复验(命令, **_):
             文 = " ".join(str(c) for c in 命令)
@@ -443,6 +498,9 @@ def 自测() -> int:
 
         def 假运行捕获复验(命令):
             文 = " ".join(str(c) for c in 命令)
+            if "log" in 文 and "%B" in 文:    # 818：披露闸门读链顶提交信息（git log -1）
+                return types.SimpleNamespace(returncode=假链顶818["rc"],
+                                             stdout=假链顶818["文"], stderr="")
             if "--jobs 1" in 文:              # 串行复验轮（win/linux 两平台同判据）
                 return types.SimpleNamespace(returncode=1, stdout=假串行出口["stdout"], stderr="")
             return types.SimpleNamespace(returncode=1, stdout="并行轮输出\n", stderr="")
@@ -459,7 +517,17 @@ def 自测() -> int:
         断言(问题 is not None and "真红" in 问题,
              "868 win 复验：清单非空+无点名=未点名真红拦截")
         问题 = 全量门禁("win", ["501_某用例"], 快速通道=False)
-        断言(问题 is None, "868 win 复验：清单全命中点名=披露放行（点名机制不回归）")
+        断言(问题 is None, "868 win 复验：清单全命中点名+链顶披露齐=披露放行（点名机制不回归）")
+        假链顶818["文"] = "修复 501 相关问题（无披露段）"
+        问题 = 全量门禁("win", ["501_某用例"], 快速通道=False)
+        断言(问题 is not None and "点名放行披露" in 问题,
+             "818 win 复验：全命中点名但链顶无披露段=拒（机械化拦截·两态之拒）")
+        假链顶818["rc"] = 1
+        问题 = 全量门禁("win", ["501_某用例"], 快速通道=False)
+        断言(问题 is not None and "不可读" in 问题,
+             "818 win 复验：链顶提交信息读取失败=拒（miss 不静默·宁拦勿放）")
+        假链顶818["rc"] = 0
+        假链顶818["文"] = "〔点名放行〕红例 501_某用例（回填披露）"
 
         假串行出口["stdout"] = ""
         问题 = 全量门禁("linux-x64", [], 快速通道=False)
@@ -473,10 +541,37 @@ def 自测() -> int:
         断言(问题 is not None and "未点名" in 问题,
              "868 linux 复验：清单非空+无点名=未点名真红拦截")
         问题 = 全量门禁("linux-x64", ["501_某用例"], 快速通道=False)
-        断言(问题 is None, "868 linux 复验：清单全命中点名=披露放行（点名机制不回归）")
+        断言(问题 is None, "868 linux 复验：清单全命中点名+链顶披露齐=披露放行（点名机制不回归）")
+        假链顶818["文"] = "无披露段"
+        问题 = 全量门禁("linux-x64", ["501_某用例"], 快速通道=False)
+        断言(问题 is not None and "点名放行披露" in 问题,
+             "818 linux 复验：全命中点名但链顶无披露段=拒（两态之拒·win/linux 同判据）")
+        假链顶818["文"] = "〔点名放行〕红例 501_某用例（回填披露）"
     finally:
         integrate.运行 = 真运行复验
         integrate.运行捕获 = 真运行捕获复验
+
+    # ⑫ 818 点名放行披露机械化（known-red 放行路径强制披露·防御留存——机制本体直测）：
+    #   纯函数矩阵（拒态：无标记/段内缺红例名/段外提及不算/不可读/空清单；过态：单例/多例）
+    #   + 三消费点接入两态已由 ⑤c（池路径）与 ⑪（win/linux 复验）锁面。
+    断言(integrate_disclosure.点名放行披露检查("〔点名放行〕红例 501_某用例", ["501_某用例"]) is None,
+         "818 披露：标记+全部红例名在段内=过（放行）")
+    断言(integrate_disclosure.点名放行披露检查(
+        "修复若干\n〔点名放行〕红例：524_条件编译双编译、715_x（三平台已定性）",
+        ["524_条件编译双编译", "715_x"]) is None,
+         "818 披露：多红例全列=过（链顶多例放行形态）")
+    断言(integrate_disclosure.点名放行披露检查("无标记正文 501_某用例", ["501_某用例"]) is not None,
+         "818 披露：无标记〔点名放行〕=拒")
+    断言(integrate_disclosure.点名放行披露检查("〔点名放行〕只写标记", ["501_某用例"]) is not None,
+         "818 披露：标记在但段内缺红例名=拒（红例清单非空壳）")
+    断言(integrate_disclosure.点名放行披露检查(
+        "正文提 501_某用例\n〔点名放行〕红例清单见上", ["501_某用例"]) is not None,
+         "818 披露：红例名在披露段之外=拒（段=标记起至信息末尾）")
+    断言(integrate_disclosure.点名放行披露检查(None, ["501_某用例"]) is not None
+         and integrate_disclosure.点名放行披露检查("", ["501_某用例"]) is not None,
+         "818 披露：链顶提交信息不可读/空=拒（miss 不静默·宁拦勿放）")
+    断言(integrate_disclosure.点名放行披露检查("〔点名放行〕红例任意", []) is not None,
+         "818 披露：红例清单空=拒（空清单=未显形红·868 同口径）")
 
     print(f"\n[selftest] {案例数} 例全过 ✓")
     return 0
