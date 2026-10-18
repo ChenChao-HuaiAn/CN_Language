@@ -849,8 +849,13 @@ void SemanticAnalyzer::registerGlobalConstsAndStatics(Program* node) {
             //   99999999999999999999+0;` 修前宿主顶层槽静默 5 vs v2 1661992959
             //   双侧错值分叉；判据主体 intLiteralFitsType 表达式扩展见
             //   semantic_literal_domain.cpp，本点仅放宽适用面谓词）。
+            // 756（2026-10-18 用户裁决·枚举值域门槛）：枚举槽 i32 域——顶层静态
+            //   初值超 i32 域常量（枚举成员常量/字面量直存形态）同拒（判据单点
+            //   值域判域族；非整数非枚举槽面维持原条件零变化）。756×919 合并：
+            //   适用面=919 常量表达式扩展 ∨ 756 枚举槽分支（枚举槽任何初值形态
+            //   进 intLiteralFitsType 判据面·判据面外恒真由判据内部分流）。
             if (g->initializer != nullptr &&
-                cnIsConstIntExpr919(g->initializer.get()) &&
+                (cnIsConstIntExpr919(g->initializer.get()) || isEnumType(stType)) &&
                 !intLiteralFitsType(g->initializer.get(), stType)) {
                 diagnostics_.report(
                     DiagnosticLevel::Error, g->initializer->location,

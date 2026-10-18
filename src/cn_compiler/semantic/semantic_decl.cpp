@@ -462,8 +462,14 @@ void SemanticAnalyzer::visitVarDecl(VarDecl* node) {
                                             "无法将 '" + initType + "' 隐式转换为 '" + varType + "'");
                     }
                 }
-            } else if (types::isInteger(initType) && types::isInteger(varType) &&
-                       cnIsConstIntExpr919(node->initializer.get()) &&
+            } else if (((types::isInteger(initType) && types::isInteger(varType) &&
+                         cnIsConstIntExpr919(node->initializer.get())) ||
+                        // 756（2026-10-18 用户裁决·枚举值域门槛）：枚举槽 i32 域——
+                        //   枚举变量初始化初值为超 i32 域常量（枚举成员常量/字面量
+                        //   直存形态）编译期拒；判据=值域判域族单点（含静态局部）。
+                        // 756×919 合并：整数面谓词取 919 常量表达式扩展（超集原
+                        //   isIntLiteralExpr），枚举面 756 分支原样保留。
+                        isEnumType(varType)) &&
                        !intLiteralFitsType(node->initializer.get(), varType)) {
                 // 558（506甲·用户裁决 2026-10-13）：同型字面量值域门槛——
                 //   canConvertType 同型真即零检查放行=声明面短路绕过 T36

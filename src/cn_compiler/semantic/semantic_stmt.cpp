@@ -754,7 +754,11 @@ void SemanticAnalyzer::visitReturnStmt(ReturnStmt* node) {
     if (currentReturnType_ == "空类型") {
         diagnostics_.report(DiagnosticLevel::Error, node->location,
                             "空类型函数不允许返回值");
-    } else if (!canConvertWithLiteral(node->value.get(), valueType, currentReturnType_)) {
+    } else if (!canConvertWithLiteral(node->value.get(), valueType, currentReturnType_) ||
+               // 756（2026-10-18 用户裁决·枚举值域门槛）：枚举返回槽 i32 域——
+               //   返回值超域常量（枚举成员常量/字面量直存）编译期拒。
+               (isEnumType(currentReturnType_) &&
+                !intLiteralFitsType(node->value.get(), currentReturnType_))) {
         // 55-c 方案A：返回面字面量豁免（返回 小[正32变量] 于 整64 函数=拒绝；
         // 返回 100 字面量于 正32 函数=豁免放行）；混合符号报专用消息
         // 869（234 立法执法面收口·v2 侧 869 同轮对齐）：值形态类切片（派生类值

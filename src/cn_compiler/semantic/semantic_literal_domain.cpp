@@ -2,7 +2,8 @@
 //   拆前该文件 1000 行贴 §3 硬红线，按「先拆再加」纪律先拆本族再落 #728g
 //   修正——拆出后 877 行）。
 //   家族 = 319-a T36 值域门槛（intLiteralFitsType） + 558 十进制文本级判域
-//   + #728g 负号折叠形态与无符号目标收口。
+//   + #728g 负号折叠形态与无符号目标收口 + 756 枚举槽 i32 域（值源=枚举成员
+//   常量/目标=枚举类型两枚扩展·2026-10-18 用户裁决）。
 //   910（超64域口径收口）：判定核心收口 types::normalizeIntLiteralToDecimal /
 //   decTextFits* 单点（原匿名 decimalDigitsOf/decTextLe 族删除——十进制面
 //   逐字等价，进制面补齐，见 intLiteralFitsType 注释）。
@@ -29,7 +30,7 @@ namespace cn_compiler {
 //   归一为规范十进制文本，再走同一「长度+字典序」大数安全判域；超 u128 域
 //   文本（归一空串）对一切整型目标超域 → 拒（原「检不出放行」防御面同灭——
 //   词法层已保证合法整数 token，能到此处必为真实超域文本）。
-bool SemanticAnalyzer::intLiteralFitsType(const Expr* e, const std::string& to) {
+bool SemanticAnalyzer::intLiteralFitsType(const Expr* e, const std::string& to) const {
     if (e == nullptr) return true;
     // 提取裸字面量（含一元负号形态——-40000 对 整16 同超域）
     bool neg = false;
@@ -45,9 +46,36 @@ bool SemanticAnalyzer::intLiteralFitsType(const Expr* e, const std::string& to) 
             neg = true;
         }
     }
+    // 756（2026-10-18 用户裁决·枚举值域门槛）：值源扩一枚——枚举成员常量
+    //   直存形态（枚举名.成员，如 E.甲；E 为枚举类型名且成员存在）与字面量
+    //   同族判域：成员值=整64（parseEnumMemberValue/computeEnumValues 两补码
+    //   回绕口径），转规范十进制文本后走下方同一 decTextFits* 判据单点。
+    //   非枚举形态（结构体字段访问/变量成员等）不属判据面——下落 919 通道
+    //   /统一主链（与 756 原「非枚举成员常量形态放行」边界等价）。
+    std::string enumDec756;
+    if (lit == nullptr && e->getType() == NodeType::MemberExpr) {
+        const MemberExpr* m = static_cast<const MemberExpr*>(e);
+        if (m->object != nullptr &&
+            m->object->getType() == NodeType::IdentifierExpr) {
+            const IdentifierExpr* obj =
+                static_cast<const IdentifierExpr*>(m->object.get());
+            std::int64_t v = 0;
+            if (isEnumType(obj->name) &&
+                enumValueOf(obj->name, m->memberName, v)) {
+                enumDec756 = std::to_string(v);
+            }
+        }
+    }
     std::string dec;
     if (lit != nullptr) {
         dec = types::normalizeIntLiteralToDecimal(lit->raw);
+    } else if (!enumDec756.empty()) {
+        // 756 枚举成员常量命中：走下方统一判域（不经 919 承载内放行——
+        //   枚举槽 i32 域判据须对成员值生效，值域门槛 756 语义。）
+        dec = enumDec756;
+    } else if (isEnumType(to)) {
+        // 静默豁免业务值: 枚举槽非常量直存形态=756 判据面外放行（表达式/标识符/调用交 canConvert 主链·与 v2 枚举槽分支同口径）
+        return true;
     } else {  // 静默豁免业务值: 919 轮非常量形态判定（返回真=交既有转换主链判定·非静默默认）
         // 919（超承载字面量参与表达式求值双侧静默分叉根治·640 侦察副产品）：
         //   常量表达式形态扩展——全字面量算术表达式（+ - * / %·一元 ±）经
@@ -76,14 +104,17 @@ bool SemanticAnalyzer::intLiteralFitsType(const Expr* e, const std::string& to) 
     //   一元负号（值在字面量外）两形态合并为「或」语义（与 728g 同构；
     //   双负形态罕见不作翻转定义）。-2147483648 对 整32 仍域内（855 锚）。
     if (neg || rawNeg) dec.insert(dec.begin(), '-');
-    if (to == "整8") return types::decTextFitsSignedRange(dec, "128", "127");
-    if (to == "整16") {
+    // 756（2026-10-18 用户裁决·枚举值域门槛）：目标域扩一枚——枚举类型按
+    //   整32 存储域判（枚举按整32存储；与 v2 侧 枚举槽常量入域756 同口径）。
+    const std::string domain = isEnumType(to) ? std::string("整32") : to;
+    if (domain == "整8") return types::decTextFitsSignedRange(dec, "128", "127");
+    if (domain == "整16") {
         return types::decTextFitsSignedRange(dec, "32768", "32767");
     }
-    if (to == "整32" || to == "整数") {
+    if (domain == "整32" || domain == "整数") {
         return types::decTextFitsSignedRange(dec, "2147483648", "2147483647");
     }
-    if (to == "整64") {
+    if (domain == "整64") {
         return types::decTextFitsSignedRange(dec, "9223372036854775808",
                                              "9223372036854775807");
     }
@@ -92,21 +123,21 @@ bool SemanticAnalyzer::intLiteralFitsType(const Expr* e, const std::string& to) 
     //   成立（39/41 位文本可超 2^127·m642c/d 探针实锚：宿主原仅 IR 层拒/v2
     //   放行错值-1）。整128 合法域 [-2^127, 2^127-1]（负号按负值判）、正128
     //   [0, 2^128-1]。
-    if (to == "整128") {
+    if (domain == "整128") {
         return types::decTextFitsSignedRange(
             dec, "170141183460469231731687303715884105728",
             "170141183460469231731687303715884105727");
     }
-    if (to == "正128") {
+    if (domain == "正128") {
         return types::decTextFitsUnsignedRange(
             dec, "340282366920938463463374607431768211455");
     }
-    if (to == "正8") return types::decTextFitsUnsignedRange(dec, "255");
-    if (to == "正16") return types::decTextFitsUnsignedRange(dec, "65535");
-    if (to == "正32") {
+    if (domain == "正8") return types::decTextFitsUnsignedRange(dec, "255");
+    if (domain == "正16") return types::decTextFitsUnsignedRange(dec, "65535");
+    if (domain == "正32") {
         return types::decTextFitsUnsignedRange(dec, "4294967295");
     }
-    if (to == "正64") {
+    if (domain == "正64") {
         return types::decTextFitsUnsignedRange(dec, "18446744073709551615");
     }
     return true;  // 非整数目标（豁免面 isInteger 已前置）——防御性恒真

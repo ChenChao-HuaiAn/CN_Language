@@ -582,8 +582,8 @@ private:
     // 整数字面量形态（含一元负号作用于整数字面量，如 -1）——混合符号检查的
     //   字面量豁免判定（二元运算面与赋值面共用·原匿名函数提升为成员）
     static bool isIntLiteralExpr(const Expr* e);
-    // 319-a（T36·方案甲）：整数字面量值域检查（整16 甲=40000 截断根治）
-    static bool intLiteralFitsType(const Expr* e, const std::string& to);
+    // 319-a（T36·方案甲）：整数字面量值域检查（整16 甲=40000 截断根治·756 去 static 加 const 扩枚举值源/目标）
+    bool intLiteralFitsType(const Expr* e, const std::string& to) const;
     // 790：裸全局（569）常量初始化器字面量判域（478 128 链+640 槽域·实体下沉 semantic_literal_domain.cpp）
     void checkGlobalVarInitLiteralDomain(const std::string& name, const SourceLocation& declLoc,
                                          const Expr* init, const std::string& slotType);

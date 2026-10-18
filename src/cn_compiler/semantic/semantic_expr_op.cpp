@@ -202,8 +202,15 @@ void SemanticAnalyzer::visitAssignmentExpr(AssignmentExpr* node) {
 
     // 简单赋值 =：要求右值可隐式转换为左值类型（55-c 方案A：字面量豁免走
     //   canConvertWithLiteral——跨符号拒绝后 `正32 a; a = 5` 等字面量赋值保留）
+    // 756（2026-10-18 用户裁决·枚举值域门槛）：枚举槽 i32 域——右值为超 i32
+    //   域常量（枚举成员常量/整数字面量直存形态）编译期拒（判据=值域判域族
+    //   单点；声明/返回/静态面同批接线，v2 侧同构）。
+    const bool enumSlotConstOver756 =
+        isEnumType(targetType) &&
+        !intLiteralFitsType(node->value.get(), targetType);
     if (targetType != "未知" && valueType != "未知" &&
-        !canConvertWithLiteral(node->value.get(), valueType, targetType)) {
+        (!canConvertWithLiteral(node->value.get(), valueType, targetType) ||
+         enumSlotConstOver756)) {
         // 869（234 立法执法面收口·v2 侧 869 同轮对齐）：值形态类切片（派生类值
         //   → 基类值左值）=专用切片诊断（声明面 semantic_decl.cpp:431 同款；
         //   semantic_sig.cpp:193 注释声称「赋值层执行 reportSliceReject」原为

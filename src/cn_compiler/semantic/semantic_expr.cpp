@@ -511,8 +511,15 @@ void SemanticAnalyzer::visitStructInitExpr(StructInitExpr* node) {
         }
         // 值类型检查（嵌套结构体初始化递归检查：checkExpr 返回内层类型）
         std::string valueType = checkExpr(fieldPair.second.get());
+        // 756（2026-10-18 用户裁决·枚举值域门槛）：枚举字段 i32 域——字段初值
+        //   超域常量（枚举成员常量/字面量直存形态）编译期拒；v2 侧结构体构造
+        //   脱糖为字段赋值进 检查标量隐式转换 同拒（探针 p2 双侧对齐实证）。
+        const bool enumFieldOver756 =
+            isEnumType(fieldType) &&
+            !intLiteralFitsType(fieldPair.second.get(), fieldType);
         if (!fieldType.empty() && valueType != "未知" &&
-            !canConvertWithLiteral(fieldPair.second.get(), valueType, fieldType)) {
+            (!canConvertWithLiteral(fieldPair.second.get(), valueType, fieldType) ||
+             enumFieldOver756)) {
             diagnostics_.report(DiagnosticLevel::Error, fieldPair.second->location,
                                 "结构体字段 '" + fieldName + "' 无法将 '" + valueType +
                                 "' 隐式转换为 '" + fieldType + "'");
