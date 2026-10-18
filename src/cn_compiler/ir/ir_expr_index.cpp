@@ -431,6 +431,20 @@ void IRGenerator::visitIndexExpr(IndexExpr* node) {
                      semantic_->isClassType(elemCanon))) {
                     elemIsStruct = true;
                 }
+            } else if (types::isArray(ftype)) {
+                // 1059：**类字段数组**元素形态（findStruct 面 398~407 的
+                //   memberFieldSrcType 兜底对称面；类宿主原落 i64 8 字节宽读
+                //   =元素打包错值〔探针 a「0=42+43<<32」实录〕）——元素 IR 类型
+                //   =数组元素映射；元素为结构体/类=地址语义（类元素内联体）。
+                const std::string elemSrc1059 = types::arrayElemOf(ftype);
+                elemIrType = mapType(elemSrc1059);
+                elemTyped648 = true;
+                const std::string elemCanon1059 = types::canonical(elemSrc1059);
+                if (semantic_ != nullptr &&
+                    (semantic_->isStructType(elemCanon1059) ||
+                     semantic_->isClassType(elemCanon1059))) {
+                    elemIsStruct = true;
+                }
             } else if (types::canonical(ftype) == "字符串") {
                 // D30 根治（255-a）：字符串字段元素=i8（字节视图·与字符串变量
                 //   兜底及「字符串成员 i8」分支对称；原默认 i64 -> 4/8 字节打包读）

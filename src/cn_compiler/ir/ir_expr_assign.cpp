@@ -240,6 +240,17 @@ bool IRGenerator::memberGenericAssign(AssignmentExpr* node, MemberExpr* member) 
     const StructDecl* decl = (semantic_ != nullptr)
                                  ? semantic_->findStruct(types::canonical(objSrcType))
                                  : nullptr;
+    // 1059：类宿主回退——类字段（b.组[0].数 = v 的成员目标 数 属类 件）不入
+    //   结构体表（findStruct 恒 miss → 原 648 误伤；v2 放行=宿主单侧拒绝分叉）。
+    //   字段类型经 classFieldType（973 统一查询同源·沿继承链）。
+    const bool ownerIsClass1059 =
+        semantic_ != nullptr && !objSrcType.empty() &&
+        semantic_->isClassType(types::canonical(objSrcType));
+    std::string classFieldSrc1059;
+    if (decl == nullptr && ownerIsClass1059) {
+        classFieldSrc1059 =
+            classFieldType(types::canonical(objSrcType), member->memberName);
+    }
     if (decl != nullptr) {
         bool fieldFound648 = false;
         for (const auto& f : decl->fields) {
@@ -254,11 +265,15 @@ bool IRGenerator::memberGenericAssign(AssignmentExpr* node, MemberExpr* member) 
             //   'X' 没有成员 'Y'」（Error），此处 i64 兜底仅为恢复路径继续
             //   发射，产物将被 driver 丢弃；非新增静默面。
         }
-    } else {
+    } else if (!classFieldSrc1059.empty()) {
+        targetType = mapType(classFieldSrc1059);
+    } else if (!ownerIsClass1059) {
         // 648（miss 不可静默·110 同族）：对象结构体类型推导 miss（对象形态
         //   未覆盖·如嵌套成员目标 a.b.c = v）=合法程序内部缺陷，上游无错误
         //   短路，显形于此；driver 在 generate() 后 hasErrors() 统一中止，
         //   产物不落地。原 i64 宽写兜底保留（控制流零变更）。
+        //   （类宿主的字段名 miss 落此之外=上游语义层已报「没有成员」的
+        //   错误恢复，与结构体面 fieldFound648 同径——非新增静默面。）
         diagnostics_.report(DiagnosticLevel::Error, node->location,
             "内部错误: 成员赋值目标 '" + member->memberName +
                 "' 所属结构体类型未解析（对象类型 '" + objSrcType +
@@ -605,31 +620,29 @@ std::string IRGenerator::indexAssignElemType(AssignmentExpr* node) {
                 }
             }
         } else if (idx->object->getType() == NodeType::MemberExpr) {
-            // 出.分数[1] = v：对象为结构体数组字段（整32[3] 分数）——
-            //   元素类型 = 字段数组元素类型（memberObjStructType 推导对象结构体）
-            const std::string innerType = memberObjStructType(
-                static_cast<MemberExpr*>(idx->object.get()));
-            const StructDecl* innerDecl = (semantic_ != nullptr)
-                                              ? semantic_->findStruct(types::canonical(innerType))
-                                              : nullptr;
-            if (innerDecl != nullptr) {
-                MemberExpr* inner = static_cast<MemberExpr*>(idx->object.get());
-                for (const auto& f : innerDecl->fields) {
-                    if (f.name == inner->memberName) {
-                        if (types::isArray(f.type)) {
-                            targetType = mapType(types::arrayElemOf(f.type));
-                            elemResolved648 = true;
-                        } else if (types::isPointer(f.type)) {
-                            targetType = mapType(types::pointeeOf(f.type));
-                            elemResolved648 = true;
-                        }
-                        // 648 归档：字段名 miss=上游语义层已报「没有成员」；
-                        //   字段命中但非数组/指针（标量下标）=语义层拒绝形态的
-                        //   错误恢复——均不报错，i64 兜底仅为恢复路径。
-                        break;
-                    }
-                }
+            // 1059：对象为**类/结构体**的字段数组（出.分数[1] = v / b.数据[0] = v）
+            //   ——元素类型 = 字段数组元素类型；字段类型查询经 memberFieldSrcType
+            //   （findStruct+findClass 双路径·973 统一查询同源）。原仅 findStruct
+            //   → 类字段数组恒 miss → 648 误伤（v2 放行=宿主单侧拒绝分叉）。类宿主
+            //   仅**数组字段**放行——非数组（指针/标量）字段下标写=v2 语义层现行
+            //   拒绝面（97-a 非数组不可写），维持 648 拒绝（指针字段下标写族另立案）。
+            MemberExpr* inner = static_cast<MemberExpr*>(idx->object.get());
+            const std::string ftype1059 = memberFieldSrcType(inner);
+            const std::string canonOwner1059 =
+                types::canonical(memberObjStructType(inner));
+            const bool ownerIsClass1059 =
+                semantic_ != nullptr && !canonOwner1059.empty() &&
+                semantic_->isClassType(canonOwner1059);
+            if (types::isArray(ftype1059)) {
+                targetType = mapType(types::arrayElemOf(ftype1059));
+                elemResolved648 = true;
+            } else if (types::isPointer(ftype1059) && !ownerIsClass1059) {
+                targetType = mapType(types::pointeeOf(ftype1059));
+                elemResolved648 = true;
             }
+            // 648 归档：字段名 miss=上游语义层已报「没有成员」；字段命中但非
+            //   数组/指针（标量下标）=语义层拒绝形态的错误恢复——i64 兜底仅为
+            //   恢复路径（真拒绝面由上游诊断+尾段 648 显形双承担）。
         }
     } else if (node->target->getType() == NodeType::UnaryExpr) {
         UnaryExpr* un = static_cast<UnaryExpr*>(node->target.get());
@@ -685,6 +698,17 @@ std::string IRGenerator::indexTargetElemSrcType(AssignmentExpr* node) {
     }
     if (node->target->getType() != NodeType::IndexExpr) return "";
     IndexExpr* tIdx = static_cast<IndexExpr*>(node->target.get());
+    if (tIdx->object->getType() == NodeType::MemberExpr) {
+        // 1059：类/结构体对象的**数组字段**元素源码类型（c.组[0]/t.两行[0] 的
+        //   整体赋值 CopyStruct 与类元素调用产物接管〔923 通道〕消费）——字段
+        //   类型查询经 memberFieldSrcType（findStruct+findClass 双路径·973 同源）。
+        //   仅数组字段：非数组（指针/标量）字段下标写=v2 语义层现行拒绝面，
+        //   返回空串落 648 拒绝（与 indexAssignElemType 同口径零分叉）。
+        const std::string ftype1059 = memberFieldSrcType(
+            static_cast<MemberExpr*>(tIdx->object.get()));
+        if (types::isArray(ftype1059)) return types::arrayElemOf(ftype1059);
+        return "";
+    }
     if (tIdx->object->getType() != NodeType::IdentifierExpr) return "";
     const std::string st = lookupSrcType(
         static_cast<IdentifierExpr*>(tIdx->object.get())->name);

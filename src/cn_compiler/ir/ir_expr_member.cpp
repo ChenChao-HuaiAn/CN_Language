@@ -477,20 +477,32 @@ void IRGenerator::visitMemberExpr(MemberExpr* node) {
          node->object->getType() == NodeType::UnaryExpr)) {
         objSrcType = exprSrcType(node->object.get());
     }
-    const StructDecl* decl = semantic_->findStruct(types::canonical(objSrcType));
-    if (decl == nullptr) {
-        // 648（miss 不可静默·110 同族）：对象结构体类型推导 miss=合法程序内部
-        //   缺陷（82-d 三级链/1014 调用链等四次复发实录），上游无错误短路，
-        //   显形于此；driver 在 generate() 后 hasErrors() 统一中止，产物不落地。
-        //   原常量 0 兜底保留（控制流零变更）。
+    const std::string canonObjSrc1059 = types::canonical(objSrcType);
+    const bool ownerIsClass1059 = semantic_->isClassType(canonObjSrc1059);
+    const StructDecl* decl = semantic_->findStruct(canonObjSrc1059);
+    std::string fieldSrcType;
+    if (decl != nullptr) {
+        fieldSrcType = resolveMemberFieldSrcType(node, objSrcType, decl);
+    }
+    // 1059：类宿主回退——类不入结构体表（findStruct 恒 miss → 原 648 误伤类
+    //   对象成员读：b.组[0].数 等类字段元素对象位多形态；v2 放行=宿主单侧拒绝
+    //   分叉）。字段类型经 classFieldType（973 统一查询同源·沿继承链）；字段名
+    //   miss=上游语义层已报「没有成员」，落下方 655 空串显形（与结构体面 字段名
+    //   miss 落 resolveMemberFieldSrcType 空串同径=错误恢复）。
+    if (decl == nullptr && ownerIsClass1059) {
+        fieldSrcType = classFieldType(canonObjSrc1059, node->memberName);
+    }
+    // 648（miss 不可静默·110 同族）：对象结构体类型推导 miss（且非类宿主）=合法
+    //   程序内部缺陷（82-d 三级链/1014 调用链等四次复发实录），上游无错误短路，
+    //   显形于此；driver 在 generate() 后 hasErrors() 统一中止，产物不落地。
+    //   原常量 0 兜底保留（控制流零变更）。
+    if (decl == nullptr && !ownerIsClass1059) {
         diagnostics_.report(DiagnosticLevel::Error, node->location,
             "内部错误: 成员 '" + node->memberName + "' 所属结构体类型未解析（对象类型 '" +
                 objSrcType + "'）——静默常量0兜底已废除（#648）");
         lastExpr_ = emitResult(ir::Opcode::ConstInt, {}, "i32", "0", node->location);
         return;
     }
-    std::string fieldSrcType =
-        resolveMemberFieldSrcType(node, objSrcType, decl);
     // 修复10（数组字段退化）：结构体数组字段（如 方形.顶点）作为值表达式时，
     //   按 C 语义退化为指向首元素的指针——返回字段地址（FieldAddr）而非 LoadPtr
     //   读取字段处 8 字节当指针（垃圾值 -> 空指针错误3/访问冲突崩溃）。
