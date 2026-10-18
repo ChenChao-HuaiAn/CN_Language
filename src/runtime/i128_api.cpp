@@ -309,6 +309,33 @@ extern "C" void __cn_neg_i128_chk(const std::uint64_t* a, std::uint64_t* out) {
     out[1] = rHi;
 }
 
+// 移位量域上界（任务 474）：128 位左操作数移位量 ∈ [0, 128)——宿主 win/x64L/arm64
+//   三后端内联 cmp/jae|b.hs 同域；负移位量位模式巨大经无符号比较恒命中，域外
+//   统一错误码 8（命名常量防魔法值：不得写裸字面量单边条件）。
+constexpr std::uint64_t kShiftAmtLimit128_474 = 128;
+
+// 128位左移（移位量检查版·任务 474 安全函数面）：移位量 ∉ [0,128) → 错误码 8
+//   （v2 生成层安全函数选版本版；不安全 函数维持 __cn_shl_i128 掩码 &0x7f 回绕
+//   ——与 __cn_add_i128_chk 同族先例·检查落点=runtime helper 通道）
+extern "C" void __cn_shl_i128_chk(const std::uint64_t* a, std::uint64_t sh,
+                                  std::uint64_t* out) {
+    if (sh < kShiftAmtLimit128_474) {
+        __cn_shl_i128(a, sh, out);  // 域内：[0,128) 与无检查版逐位一致
+    } else {
+        __cn_runtime_error(8);  // 错误码 8：溢出错误（打印后终止进程）
+    }
+}
+
+// 128位算术右移（移位量检查版·任务 474 安全函数面）：移位量域检查同左移版
+extern "C" void __cn_shr_i128_chk(const std::uint64_t* a, std::uint64_t sh,
+                                  std::uint64_t* out) {
+    if (sh < kShiftAmtLimit128_474) {
+        __cn_shr_i128(a, sh, out);
+    } else {
+        __cn_runtime_error(8);
+    }
+}
+
 // 有符号128位除法：a / b -> out（符号处理 + 无符号长除法）
 // 任务 474：INT128_MIN / -1（除法唯一溢出形态）→ 错误码 8『溢出错误』终止
 //   （三后端共用发射层调用点；符号回绕绕过——负长除法的 |INT128_MIN| 越界面）
