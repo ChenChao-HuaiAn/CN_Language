@@ -379,17 +379,20 @@ bool SemanticAnalyzer::checkCopyBuiltinCall(CallExpr* node) {
 
 // 535：整数字面量（含一元负号形态）的「参与域」——按值提升。420 立法（族④
 //   预演域 promotedType 同源）：无后缀字面量标记域恒整32、求值域按值——超
-//   int32 → 整64、数字文本超 int64 → 整128（m27 提升链）；带后缀按后缀；
-//   一元负号按负号后数字文本判定（-2147483648 参与域=整64——与 IR 层
-//   visitIntegerLiteral 装载提升、v2 字面量寄存器值域选型三方同判）。修前
-//   回绕内置实参面直接用标记域（恒整32）：回绕乘(3000000000, 1) 按整32 位域
-//   截断折叠出 -1294967296，与同型普通算术 3000000000+0=3000000000（420 面）
-//   及 v2 分叉——违 001 §3.7a「回绕与算术运算符同类型规则」。非字面量返回
-//   ""（调用方保持 checkExpr 原类型）。仅回绕实参面调用点（语义层其他面
+//   int32 → 整64、数字文本超 int64 → 整128（m27 提升链）；带后缀先按后缀
+//   定级再值域提升；一元负号按数学负值判定（-2147483648 参与域=整64——与
+//   IR 层 visitIntegerLiteral 装载提升、v2 字面量寄存器值域选型三方同判）。
+//   修前回绕内置实参面直接用标记域（恒整32）：回绕乘(3000000000, 1) 按整32
+//   位域截断折叠出 -1294967296，与同型普通算术 3000000000+0=3000000000（420
+//   面）及 v2 分叉——违 001 §3.7a「回绕与算术运算符同类型规则」。非字面量
+//   返回 ""（调用方保持 checkExpr 原类型）。仅回绕实参面调用点（语义层其他面
 //   维持标记域口径·420 预演域预演体独立），故驻本文件匿名/静态域不动 .hpp。
+//   1068：判定本体已切 types::integerLiteralRuntimeType 单点（见函数内注释·
+//   进制文本/带后缀超域形态收口·910 五面同判据）。
 std::string wrapLiteralOperandType(const Expr* e) {
     if (e == nullptr) return "";
     const IntegerLiteral* lit = nullptr;
+    bool outerNeg = false;
     if (e->getType() == NodeType::IntegerLiteral) {
         lit = static_cast<const IntegerLiteral*>(e);
     } else if (e->getType() == NodeType::UnaryExpr) {
@@ -398,21 +401,27 @@ std::string wrapLiteralOperandType(const Expr* e) {
             u->operand != nullptr &&
             u->operand->getType() == NodeType::IntegerLiteral) {
             lit = static_cast<const IntegerLiteral*>(u->operand.get());
+            outerNeg = true;
         }
     }
     if (lit == nullptr) return "";
-    const std::string lt = types::literalTypeOf(lit->raw, false);
-    if (lt != "整32") return lt;  // 带后缀/其他：按后缀类型
-    // 无后缀：按值提升（超 int32 -> 整64；数字文本超 int64 -> 整128）
-    if (types::textExceedsInt64(types::stripLiteralSuffix(lit->raw))) {
-        return "整128";
-    }
-    // 728g（#506甲·420 负号形态）：数学值域判据含负号——parser 323 负号折叠
-    //   后 lit->value 即数学负值，修前只判正域使 回绕乘(-3000000000, 1) 仍按
-    //   整32 位域折叠（1294967296 错值·v2 同形出 -3000000000 分叉）；共用单点
-    //   判据（域内负号如 -2147483648 保持整32=851 锁面零翻转）。
-    if (types::literalValueExceedsInt32Domain(lit->value)) return "整64";
-    return "整32";
+    // 一元负号非折叠形态（parser 323 折叠后不可达·防御面）：负号归一进文本，
+    //   与 323 折叠的符号归一规则同构（-(-5) 取负抵消等）。
+    std::string raw = lit->raw;
+    if (outerNeg && (raw.empty() || raw[0] != '-')) raw = "-" + raw;
+    // 1068（910 邻接·遗留收口）：判定切 types::integerLiteralRuntimeType 单点
+    //   （910 就绪·声明位/赋值/返回/静态/推断五面已收）——全形态（十/0x/0b/0o
+    //   + 后缀 + 符号）经 normalizeIntLiteralToDecimal 归一按数学值域提升：
+    //   无后缀 超 int32 双域→整64、超 int64 双域→整128（728g 负号判据含于
+    //   归一文本）；后缀族 整64→整128（超 int64）、正32→正64→正128（超 u32/
+    //   u64）。原链对进制文本误判：textExceedsInt64 十进制长度判据
+    //   （0x8000000000000000 18 字符<19 判不超）+ literalValueExceedsInt32Domain
+    //   (lit->value) 值级毒化（parser parseIntValue stoll 对超承载进制文本
+    //   溢出静默回 0）→ 回绕乘(0x8000000000000000, 1) 参与域留整32、IR 按
+    //   resolvedType Cast 截断出 0（应 2^63=9223372036854775808·910 后 IR/物化
+    //   面已按单点整128 装载=域错位）；转义超 u128 域（归一空串）由
+    //   visitIntegerLiteral 统一「超出…范围」诊断拒（单点同判据·零分叉）。
+    return types::integerLiteralRuntimeType(raw, nullptr);
 }
 
 // 回绕内置识别（表达式位特判，占位注册已防重定义）：true = 本调用是回绕内置，
@@ -457,11 +466,13 @@ bool SemanticAnalyzer::checkWrapBuiltinCall(CallExpr* node) {
         lastType_ = "未知";
         return true;
     }
-    // 535：字面量实参参与域按值提升（420 立法·001 §3.7a「回绕与算术运算符
-    //   同类型规则」）——修前标记域恒整32：回绕乘(3000000000, 1) 按整32 位域
-    //   截断折叠出 -1294967296，与同型普通算术 3000000000+0=3000000000（420 面）
-    //   及 v2（字面量寄存器值域选型）分叉。变量实参不受影响（wrapLiteralOperandType
-    //   非字面量返回 ""，保持 checkExpr 原类型——791 变量矩阵零变化）。
+    // 535/1068：字面量实参参与域按值提升（420 立法·001 §3.7a「回绕与算术
+    //   运算符同类型规则」）——修前标记域恒整32：回绕乘(3000000000, 1) 按整32
+    //   位域截断折叠出 -1294967296，与同型普通算术 3000000000+0=3000000000
+    //   （420 面）及 v2（字面量寄存器值域选型）分叉；1068 起进制/后缀超域
+    //   形态经 wrapLiteralOperandType 单点收口（整128 档可达·超 128 域由
+    //   字面量自身诊断拒）。变量实参不受影响（wrapLiteralOperandType 非字面量
+    //   返回 ""，保持 checkExpr 原类型——791 变量矩阵零变化）。
     {
         const std::string pL = wrapLiteralOperandType(node->arguments[0].get());
         if (!pL.empty()) leftType = pL;
