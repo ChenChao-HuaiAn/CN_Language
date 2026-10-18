@@ -93,9 +93,14 @@ bool SemanticAnalyzer::inferGenericArgs(const GenericInfo* gi, const FunctionDec
             at = at.substr(0, brk) + "*";
         }
         std::string base = ptype;
-        std::string suffix;
+        std::string suffix;   // 只含 '*'（参与实参尾匹配）
         while (!base.empty() && (base.back() == '*' || base.back() == '&')) {
-            suffix = base.back() + suffix;
+            // 1005（2026-10-18）：引用后缀 '&' 不参与实参尾匹配——实参为左值时
+            //   其类型文本无 '&'（交换(a,b) 的 a 类型=整32），并入后缀致
+            //   「实参形态与参数位不匹配」恒败=隐式推导对 T& 位失效（裸名
+            //   「未声明的标识符」卡点）；左值性/引用绑定校验由主参数检查负责。
+            //   混合形态 T*&：'*' 仍参与（位须收指针）。
+            if (base.back() == '*') suffix = '*' + suffix;
             base.pop_back();
         }
         bool boundHere = false;
