@@ -267,6 +267,8 @@ bool IRGenerator::chainSegOwnedTemp(Expr* segAst) const {
 //   诚实边界：exprSrcType 对「对象为表达式/链式」的方法调用与未知形态返回
 //   空串 → false（保守不判字符串·零行为变更；主形态=标识符对象/直接调用）。
 bool IRGenerator::isStringTypedExpr(Expr* node) const {
+    // 静默豁免闭集穷举: nullptr 哨兵域（节点指针两态闭集：空=无节点/非空=有节点）——
+    //   933 谓词入参守卫保守不判字符串（零行为变更·见函数头诚实边界注）；非业务数值默认。
     if (node == nullptr) return false;
     switch (node->getType()) {
         case NodeType::StringLiteral:
