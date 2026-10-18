@@ -61,6 +61,52 @@ function 失败徽(r) {
   return ` <span class="${签}" title="${转义(题)}">⚠ ${转义(r["失败类别"] || "失败")}×${数}</span>`;
 }
 
+/* 825 残余 A：完成红「失败原因」徽（红步骤名+失败用例名·title 全文）——真实红首因
+   行内可见，不必点开详情（构建/单测/e2e 红不再只有 rc）。 */
+function 红因徽(r) {
+  if (r["状态"] !== "完成" || r["绿"] !== 0 || !r["失败原因"]) return "";
+  const 因 = String(r["失败原因"]);
+  return ` <span class="签 阶段红" title="${转义("失败原因：" + 因)}">${
+    转义(因.length > 26 ? 因.slice(0, 26) + "…" : 因)}</span>`;
+}
+
+/* 825 残余 B（并行度观测）：池忙闲摘要条——注册实例/执行中/排队数+三态提示；
+   池饱和时明示「排队是正常态·有空闲实例即被认领」（用户 10-15「预检才两个·
+   池实例空转」观察面）。快照无池忙闲字段=隐藏（旧服务端兼容）。 */
+function 渲染忙闲条() {
+  const 条 = $("池忙闲条");
+  const 忙 = (快照 && 快照["池忙闲"]) || null;
+  if (!忙) { 条.hidden = true; return; }
+  const 注 = Number(忙["注册实例"] || 0), 执 = Number(忙["执行中"] || 0),
+        排 = Number(忙["排队"] || 0);
+  let 态 = '<span class="签 完成">有空闲实例</span> <span class="淡">排队行将在数秒内被认领</span>';
+  if (注 === 0) {
+    态 = '<span class="签 挂起">暂无注册实例</span> <span class="淡">runner 未上线或尚未认领过任务</span>';
+  } else if (忙["池全忙"]) {
+    态 = '<span class="签 阶段红">池全忙</span> <span class="淡">排队是正常态——有空闲实例即被认领（先空闲先认领）</span>';
+  }
+  条.hidden = false;
+  条.innerHTML = `实例注册 <b class="mono">${注}</b> · 执行中 <b class="mono">${执}</b> · `
+    + `排队 <b class="mono">${排}</b> ｜ ${态}`;
+}
+
+/* 825 残余 B：排队原因（行内 title）——池全忙/限平台/有空闲待认领三分支。 */
+function 排队因(r) {
+  const 忙 = (快照 && 快照["池忙闲"]) || {};
+  if (忙["池全忙"]) return "池全忙——等任一实例空出（先空闲先认领）";
+  if (r["认领限制"]) return `限 ${r["认领限制"]} 平台实例认领——该平台空闲即被领走`;
+  return "池有空闲实例——待实例轮询认领（数秒级）";
+}
+
+/* 入队时刻（%m-%d %H:%M:%S·无年份）→ 已等待分钟；坏串/未来时刻=null（宁缺不编）。 */
+function 等分(时刻) {
+  const m = /^(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})$/.exec(String(时刻 || ""));
+  if (!m) return null;
+  const t = new Date(new Date().getFullYear(), +m[1] - 1, +m[2], +m[3], +m[4], +m[5]);
+  const 差 = (Date.now() - t.getTime()) / 60000;
+  return 差 >= 0 ? Math.round(差) : null;
+}
+
 const 队列状态签 = (s) => ({
   "排队": '<span class="签 待办">排队</span>',
   "集成中": '<span class="签 队列中">集成中</span>',
@@ -114,6 +160,7 @@ function 渲染门禁() {
 /* —— 页签二：验证池 —— */
 function 渲染池() {
   const 根 = $("池区");
+  渲染忙闲条();
   const 全部 = (快照.预验任务 || []).map((r, i) => ({ r, i }));
   $("池计数").textContent = `共 ${全部.length} 条`;
   if (!全部.length) { 根.innerHTML = `<div class="空态">验证池为空</div>`; return; }
@@ -121,15 +168,18 @@ function 渲染池() {
   const 行 = 显示.map(({ r }) => {
     const 源 = r["源分支"] || r["分支"];
     const 结果 = r["状态"] === "完成" ? 结果签(r["绿"]) : "—";
+    const 等待 = r["状态"] === "排队" || r["状态"] === "执行中" ? 等分(r["入队时刻"]) : null;
+    const 时 = 转义(r["入队时刻"] || "")
+      + (等待 === null ? "" : `（等 ${等待} 分）`);
     return `
     <div class="数据行 池行">
       <span class="mono">${转义(源)}</span>
       <span class="mono">${转义((r.sha || "").slice(0, 10))}</span>
       <span>${池状态签(r["状态"])}</span>
-      <span>${结果}${失败徽(r)}</span>
+      <span>${结果}${失败徽(r)}${红因徽(r)}</span>
       <span>${转义(r["认领者"] || "—")}</span>
       <span class="淡">${转义(r["认领限制"] || "不限")}</span>
-      <span class="时间列">${转义(r["入队时刻"] || "")}</span>
+      <span class="时间列" title="${转义(r["状态"] === "排队" ? 排队因(r) : "")}">${时}</span>
       <span><button class="钮 次 窄" data-详池="${转义((r.sha || "").slice(0, 10))}"
         data-源="${转义(源)}" data-态="${转义(r["状态"])}">详情</button></span>
     </div>`;
@@ -315,6 +365,9 @@ async function 开池详情(sha10, 源分支) {
     <dt>分支</dt><dd class="mono">${转义(源分支 || "")}</dd>
     <dt>状态</dt><dd>${状态签} ${r && r["绿"] !== null && r["绿"] !== undefined ? 结果签(r["绿"]) : ""}</dd>
     </dl>` +
+    (r && r["失败原因"] ? `<div class="详节题">失败原因（完成红首因·825）</div>
+      <div class="归因项"><span class="sha">首因</span>
+      <span class="主文">${转义(r["失败原因"])}</span></div>` : "") +
     (r && r["失败计数"] ? `<div class="详节题">认领失败（975·连续同类 ${转义(r["失败计数"])} 次）</div>
       <div class="归因项"><span class="sha">${转义(r["失败类别"] || "失败")}</span>
       <span class="主文">${转义(r["失败摘要"] || "无摘要")}${

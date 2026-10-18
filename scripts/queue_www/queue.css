@@ -105,6 +105,15 @@ main { max-width: 78rem; margin: 0 auto; padding: var(--space-5) var(--space-6) 
 .筛.活 { background: var(--color-surface); color: var(--color-accent);
          box-shadow: var(--shadow-sm); }
 
+/* —— 池忙闲摘要条（825 残余 B·并行度观测：注册/执行中/排队+饱和三态）—— */
+.池忙闲条 {
+  display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap;
+  background: var(--color-bg-subtle); border: 1px solid var(--color-border);
+  border-radius: var(--radius-md); padding: var(--space-2) var(--space-4);
+  margin-bottom: var(--space-4); font-size: .84rem;
+}
+.池忙闲条 b { font-weight: 700; }
+
 /* —— 按钮（两级制）—— */
 .钮 {
   height: 2.4rem; padding: 0 var(--space-4); border-radius: var(--radius-md);

@@ -30,7 +30,7 @@ import types
 
 import integrate
 from integrate import (board_closeout, 解析队列, 队列段标题, 临时用例检查,
-                       解析预验结果, 池轮询预验, 已并入收场,
+                       解析预验结果, 池轮询预验, 已并入收场, 池行龄分, 打印验证池状态,
                        批写集, 预验前置检查, 云端预验门禁, 已入池哨兵,
                        解析E2E红用例行, 构造预验入队载荷, 三点间改动, 全量门禁)
 
@@ -225,6 +225,56 @@ def 自测() -> int:
             integrate.预验总超时分钟 = 真超时
     finally:
         integrate.服务调用 = 真服务调用池
+
+    # ⑤d 825 残余 B（并行度观测·池饱和排队可见性）：池行龄分纯函数两态 +
+    #   打印验证池状态注入假服务三态 stdout（池全忙排队/空闲待认领/不可达降级）。
+    import contextlib as _ctx
+    import io as _io
+    from datetime import datetime as _dt, timedelta as _td
+    五分前 = (_dt.now() - _td(minutes=5)).strftime("%m-%d %H:%M:%S")
+    断言(池行龄分(五分前) == 5, "825 池行龄分：正常时刻=已等分钟（--status/页面等待时长）")
+    断言(池行龄分("坏串") is None and 池行龄分("") is None,
+         "825 池行龄分：坏串/空=None（宁缺不编·不印假等待）")
+    真服务调用825 = integrate.服务调用
+    try:
+        integrate.服务调用 = lambda 路径, 数据=None: {
+            "池忙闲": {"注册实例": 3, "执行中": 3, "排队": 2, "池全忙": True},
+            "预验任务": [
+                {"分支": "ci/预验-aaaa000001", "源分支": "任务/825", "状态": "排队",
+                 "认领限制": None, "入队时刻": 五分前},
+                {"分支": "ci/预验-bbbb000002", "源分支": "", "状态": "执行中",
+                 "认领者": "TX_02", "入队时刻": 五分前},
+            ]}
+        捕获825 = _io.StringIO()
+        with _ctx.redirect_stdout(捕获825):
+            打印验证池状态()
+        文825 = 捕获825.getvalue()
+        断言("池全忙" in 文825 and "排队 2" in 文825 and "已等 5 分" in 文825
+             and "等任一实例空出" in 文825 and "runner TX_02" in 文825,
+             "825 --status 验证池段：池全忙+排队行原因/等待时长+执行中行（并行度观测）")
+        integrate.服务调用 = lambda 路径, 数据=None: {
+            "池忙闲": {"注册实例": 3, "执行中": 1, "排队": 2, "池全忙": False},
+            "预验任务": [
+                {"分支": "ci/预验-cccc000003", "源分支": "任务/826", "状态": "排队",
+                 "认领限制": "win-x64", "入队时刻": "坏串"},
+                {"分支": "ci/预验-dddd000004", "源分支": "任务/827", "状态": "排队",
+                 "认领限制": None, "入队时刻": 五分前},
+            ]}
+        捕获825b = _io.StringIO()
+        with _ctx.redirect_stdout(捕获825b):
+            打印验证池状态()
+        文825b = 捕获825b.getvalue()
+        断言("有空闲实例" in 文825b and "限 win-x64 平台实例认领" in 文825b
+             and "待实例认领" in 文825b and 文825b.count("已等") == 1,
+             "825 --status：有空闲=两分支排队原因（限平台/待认领）+坏串行不印等待（只印可算的）")
+        integrate.服务调用 = lambda 路径, 数据=None: None
+        捕获825c = _io.StringIO()
+        with _ctx.redirect_stdout(捕获825c):
+            打印验证池状态()
+        断言("不可达" in 捕获825c.getvalue(),
+             "825 --status 验证池段：服务不可达=一行提示降级（不炸 --status）")
+    finally:
+        integrate.服务调用 = 真服务调用825
 
     # ⑥（原「失联判定基准」段随 830 并行化退役删除——无批主无接管）
 

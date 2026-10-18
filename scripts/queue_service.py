@@ -18,7 +18,9 @@
 #   GET  /            门禁窗口（842 重构：queue_www 墨韵 UI·三页签+失败详情+归因）
 #   GET  /queue.css|/queue.js|/tokens.css  静态资源（回静态白名单·tokens 回退 board_www）
 #   GET  /api/state   {队列:[…], 门禁最近:[…], 预验任务:[…], 池忙闲:{…}}
-#   GET  /api/task_result?sha=…    预验/兜底任务详情 {状态,绿,详情}（842 双前缀通用化）
+#        825：池忙闲补「排队」数（并行度观测·池饱和排队可见性数据源）；预验任务行补
+#        「失败原因」（完成红首因——红步骤名+失败用例名·8300 池页签徽标/integrate --status）。
+#   GET  /api/task_result?sha=…    预验/兜底任务详情 {状态,绿,详情,失败原因,…}（842 双前缀通用化）
 #   GET  /api/gate_result?sha=&plat=  门禁行详情 {绿,总秒,时刻,详情}（842·红行查看·参数名 ASCII）
 #   POST /api/join    {分支,基线,写集摘要}      报名（幂等）
 #   POST /api/update  {分支,状态}               改状态（排队/集成中/已踢出/已完成）
@@ -38,6 +40,8 @@
 #       =fetch 预验分支失败/轮内同步异常）→ 行级「连续同类失败计数」+达阈值（默认 3）
 #       journal 播报 `[975 预验失败告警]`；计数字段随 /api/state 预验任务行与
 #       /api/task_result 详情流出（8300 门禁窗口池页签徽标面）。
+#       825 残余 A：完成红一律落「失败原因」=首因摘要（红步骤名+失败用例名——真实红
+#       显形：构建/单测/e2e 红不再只有 rc；绿=1/重置重跑清 NULL）。
 # 部署：/etc/systemd/system/cn-queue.service（Environment= 端口/令牌/DB 路径）。
 # 自检：python3 queue_service.py --selftest（842 起实现体外迁=queue_selftest.py·惰性导入）。
 
@@ -116,11 +120,15 @@ def 平台有空闲(平台: str) -> bool:
 
 def 池忙闲快照() -> dict:
     """770：池忙闲（integrate 忙时拼车窗口与巡检的判定源）——注册实例数/执行中数/池全忙。
-    全忙=有注册实例且执行中数≥注册数（每台都在跑）；无注册（冷启动）=不算全忙。须持写锁。"""
+    全忙=有注册实例且执行中数≥注册数（每台都在跑）；无注册（冷启动）=不算全忙。
+    825 残余 B（并行度观测）：补「排队」=排队任务数——池饱和排队可见性数据源
+    （8300 池页签摘要条/integrate --status 验证池段/巡检 B3）。须持写锁。"""
     执行中 = con.execute(
         "SELECT COUNT(*) FROM 预验任务 WHERE 状态='执行中'").fetchone()[0]
+    排队 = con.execute(
+        "SELECT COUNT(*) FROM 预验任务 WHERE 状态='排队'").fetchone()[0]
     注册 = len(实例注册)
-    return {"注册实例": 注册, "执行中": 执行中,
+    return {"注册实例": 注册, "执行中": 执行中, "排队": 排队,
             "池全忙": bool(注册 and 执行中 >= 注册)}
 
 
@@ -144,6 +152,7 @@ def 建库() -> sqlite3.Connection:
         失败计数 INTEGER DEFAULT 0,     -- 975：连续同类认领失败次数（真实验证红/绿清零·重跑保留）
         失败类别 TEXT, 失败摘要 TEXT,   -- 975：最近一次认领失败类别（同步失败…）与原因摘要
         告警时刻 TEXT,                  -- 975：最近一次达阈值告警的时戳（NULL=未告警）
+        失败原因 TEXT,                  -- 825：最近一次完成红首因（红步骤名+失败用例名·绿/重跑清 NULL）
         入队时刻 TEXT, 更新时刻 TEXT)""")
     try:   # 222 旧库兼容：表已存在时 CREATE IF NOT EXISTS 不加列·ALTER 补（列已在=重复列错吞掉）
         con.execute("ALTER TABLE 预验任务 ADD COLUMN 源分支 TEXT")
@@ -171,6 +180,10 @@ def 建库() -> sqlite3.Connection:
         pass
     try:   # 975 告警时刻（达阈值播报时戳·审计面；NULL=从未告警）
         con.execute("ALTER TABLE 预验任务 ADD COLUMN 告警时刻 TEXT")
+    except sqlite3.OperationalError:
+        pass
+    try:   # 825 失败原因（完成红首因：红步骤名+失败用例名·真实红显形面）
+        con.execute("ALTER TABLE 预验任务 ADD COLUMN 失败原因 TEXT")
     except sqlite3.OperationalError:
         pass
     try:   # 1070：门禁提交时刻（epoch 秒·daemon 上报）——排序键（提交序取代完成时刻序·
@@ -214,13 +227,14 @@ def 门禁快照(限: int = 200) -> list[dict]:
 
 def 预验任务快照() -> list[dict]:
     """预验任务池快照（不含 详情 大字段——integrate 取详情走 /api/task_result）。
-    975：补 失败计数/失败类别/失败摘要/告警时刻（认领失败告警面·8300 池页签徽标数据源）。"""
+    975：补 失败计数/失败类别/失败摘要/告警时刻（认领失败告警面·8300 池页签徽标数据源）。
+    825：补 失败原因（完成红首因——红步骤名+失败用例名·页面积木/详情可见）。"""
     行们 = con.execute("SELECT 序号,分支,sha,源分支,状态,认领者,绿,认领限制,入队时刻,更新时刻,内容键,"
-                       "COALESCE(失败计数,0),失败类别,失败摘要,告警时刻 "
+                       "COALESCE(失败计数,0),失败类别,失败摘要,告警时刻,失败原因 "
                        "FROM 预验任务 ORDER BY 序号 DESC LIMIT 50").fetchall()
     return [dict(zip(("序号", "分支", "sha", "源分支", "状态", "认领者", "绿", "认领限制",
                       "入队时刻", "更新时刻", "内容键", "失败计数", "失败类别", "失败摘要",
-                      "告警时刻"), r))
+                      "告警时刻", "失败原因"), r))
             for r in 行们]
 
 
@@ -328,6 +342,61 @@ def 认领失败分类(结果) -> tuple[str, str]:
     尾部 = [str(行).strip() for 行 in (结果.get("日志尾部") or []) if str(行).strip()]
     摘要 = "；".join(尾部)[:200] or ("同步段 rc=%s" % rc)
     return "同步失败", 摘要
+
+
+def 红用例名们(结果) -> list[str]:
+    """825 残余 A：真实红失败用例名提取——①结果.e2e明细.失败用例[].名称（842 主源·
+    run_e2e --json 明细随轮上报）；②退化扫描 结果.日志尾部「✗ 名:」形态行（旧版
+    runner 无 e2e明细·与 integrate.py 解析预验红用例们 同形）。保序去重；
+    miss/无受控取值一律空列表（调用点以其为空与否显式分流，不静默冒名）。"""
+    if not isinstance(结果, dict):
+        return []
+    出: list[str] = []
+    明细 = 结果.get("e2e明细")
+    if isinstance(明细, dict) and isinstance(明细.get("失败用例"), list):
+        for 例 in 明细["失败用例"]:
+            if isinstance(例, dict) and str(例.get("名称") or "").strip():
+                出.append(str(例["名称"]).strip())
+    if 出:
+        return 出
+    for 行 in 结果.get("日志尾部") or []:
+        m = re.search(r"✗\s+(\S+?)[：:]", str(行))
+        if m and m.group(1) not in 出:
+            出.append(m.group(1))
+    return 出
+
+
+def 用例名串(用例们: list[str]) -> str:
+    """825：失败用例清单缩写——前 3 名顿号连列·超 3 附「等」（真实红首因两分支共用）。"""
+    return "、".join(用例们[:3]) + (" 等" if len(用例们) > 3 else "")
+
+
+def 真实红首因(结果) -> str:
+    """825 残余 A（825 备注①剩余·失败原因显形最后一段）：完成红首因摘要——
+    红步骤名+失败用例名，落「失败原因」列（快照/详情/页面积木三面流出）。
+
+    口径：①按步骤执行序（结果.步骤 保序）取首个 rc 非零/超时步骤为首因；e2e 红
+    带用例清单（e2e明细 主源·日志尾部 ✗ 形态兜底·最多列 3 名）；②红但无可辨红
+    步骤（结果形态异常/旧 runner）=显式文本（miss 不静默·648——不编不藏）；
+    ③本字段对全部完成红统一落文本（含 975 认领失败=同步 rc 非零——首因即同步；
+    与 失败类别/失败摘要 的连续计数告警面互不替代，各司其职）。"""
+    if not isinstance(结果, dict):
+        return "未识别红步骤（结果非对象）"
+    步骤 = 结果.get("步骤")
+    if not isinstance(步骤, dict) or not 步骤:
+        return "未识别红步骤（结果缺步骤字段）"
+    用例们 = 红用例名们(结果)
+    for 名, 步 in 步骤.items():
+        if not isinstance(步, dict):
+            continue
+        rc = 步.get("rc")
+        if (isinstance(rc, int) and rc != 0) or 步.get("超时"):
+            if str(名) == "e2e" and 用例们:
+                return "e2e：失败 %d 例（%s）" % (len(用例们), 用例名串(用例们))
+            return "%s（rc=%s%s）" % (名, rc, "·超时" if 步.get("超时") else "")
+    if 用例们:   # 红在聚合面外/步骤 rc 形态缺失——用例清单仍为首因证据
+        return "e2e：失败 %d 例（%s）" % (len(用例们), 用例名串(用例们))
+    return "未识别红步骤（步骤无 rc 非零项）"
 
 
 def 记认领失败并告警(分支: str, 类别: str, 摘要: str) -> str:
@@ -490,7 +559,7 @@ def 处理写(名: str, 数据: dict) -> dict:
                 #   （TX_02 下一周期 enqueue 幂等直达、runner 不再被派）；预验维持红=重置重跑
                 #   （同 sha CAS 重试路径·给 flaky 一次机会）。337：认领限制随重发刷新（发起方最新意图为准）。
                 con.execute("UPDATE 预验任务 SET 状态='排队',认领者=NULL,心跳时戳=NULL,"
-                            "绿=NULL,详情=NULL,源分支=COALESCE(?,源分支),认领限制=?,"
+                            "绿=NULL,详情=NULL,失败原因=NULL,源分支=COALESCE(?,源分支),认领限制=?,"
                             "内容键=COALESCE(?,内容键),更新时刻=? WHERE 分支=?",
                             (源分支, 认领限制, 内容键, 时区时刻(), 分支))
         elif 名 == "task_claim":
@@ -595,9 +664,12 @@ def 处理写(名: str, 数据: dict) -> dict:
             runner, 分支 = str(数据.get("runner", "")), str(数据.get("分支", ""))
             结果 = 数据.get("结果")
             绿 = 1 if 数据.get("绿") else 0
-            cur = con.execute("UPDATE 预验任务 SET 状态='完成',绿=?,详情=?,心跳时戳=NULL,更新时刻=? "
+            # 825 残余 A：完成红首因落「失败原因」（红步骤名+失败用例名·页面直读）；
+            #   绿=1 显式清 NULL（同「详情」寿命——红后转绿不残留误导）。
+            cur = con.execute("UPDATE 预验任务 SET 状态='完成',绿=?,详情=?,失败原因=?,心跳时戳=NULL,更新时刻=? "
                               "WHERE 分支=? AND 认领者=? AND 状态='执行中'",
                               (绿, json.dumps(结果, ensure_ascii=False)[:500000],
+                               None if 绿 else 真实红首因(结果),
                                时区时刻(), 分支, runner))
             if cur.rowcount == 0:
                 return {"ok": False, "说明": "任务不在执行中或认领者不匹配（可能已被回收重派）" + 分支}
@@ -662,14 +734,15 @@ def 门禁详情查(sha: str, 平台: str):
 
 def _包任务行(行):
     """任务行→dict（详情坏 JSON=None 容错·同 门禁详情查 口径）。
-    975：补 失败计数/失败类别/失败摘要/告警时刻（详情面板认领失败展示数据源）。"""
+    975：补 失败计数/失败类别/失败摘要/告警时刻（详情面板认领失败展示数据源）。
+    825：补 失败原因（完成红首因——详情面板「失败原因」区数据源·绿轮为 NULL）。"""
     try:
         详情 = json.loads(行[2]) if 行[2] else None
     except ValueError:
         详情 = None
     return {"状态": 行[0], "绿": bool(行[1]) if 行[1] is not None else None,
             "详情": 详情, "失败计数": int(行[3] or 0), "失败类别": 行[4],
-            "失败摘要": 行[5], "告警时刻": 行[6]}
+            "失败摘要": 行[5], "告警时刻": 行[6], "失败原因": 行[7]}
 
 
 def 任务详情查(sha10: str):
@@ -677,7 +750,7 @@ def 任务详情查(sha10: str):
     integrate/看板代理在用），miss 再试 ci/兜底-；②均无再按 sha 前缀查（842
     鲁棒兜底：分支名与 sha 不一致的异常/历史行也可达；同前缀多点取最新序号）。
     miss=None（调用点 404 显式——648 miss 不可静默）。"""
-    列 = "状态,绿,详情,COALESCE(失败计数,0),失败类别,失败摘要,告警时刻"   # 975：三查询同列单一事实源
+    列 = "状态,绿,详情,COALESCE(失败计数,0),失败类别,失败摘要,告警时刻,失败原因"   # 975/825：单点列清单
     for 前缀 in ("ci/预验-", "ci/兜底-"):
         行 = con.execute("SELECT " + 列 + " FROM 预验任务 WHERE 分支=?",
                         (前缀 + sha10,)).fetchone()
