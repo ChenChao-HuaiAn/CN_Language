@@ -731,7 +731,10 @@
    "src/runtime/system_api.cpp::if(index<0||index>=g_cached_argc||g_cached_argv==nullptr){│returnnullptr;",
    "src/runtime/time_api.cpp::if(localtime_r(&t,&local)==nullptr)returnnullptr;",
    "src/runtime/time_api.cpp::if(result==nullptr)returnnullptr;",
-   "src/runtime/time_api.cpp::if(ts<0)returnnullptr;"
+   "src/runtime/time_api.cpp::if(ts<0)returnnullptr;",
+   "src/cn_compiler/ir/ir_expr_assign_ident_class.cpp::if(semantic_==nullptr||node==nullptr)returnfalse;",
+   "src/cn_compiler/ir/ir_expr_assign_ident_class.cpp::if(elemCanon.empty()||!semantic_->isClassType(elemCanon))returnfalse;",
+   "src/cn_compiler/ir/ir_expr_assign_ident_class.cpp::if(ci==nullptr||ci->totalSize<=0)returnfalse;"
   ],
   "else业务": [
    "CN语言编译器v2/IR/IR字面量域.cn::}否则{│档Ah=真",

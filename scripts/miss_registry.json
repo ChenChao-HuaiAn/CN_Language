@@ -2140,6 +2140,50 @@
    "原因": "查类节点索引 miss 不可达（1024 时序修复：收集类声明 内 类节点索引表 登记已先于 校验接口实现齐全 消费）——定义层经 类方法返回们 反证其已在登记域；miss=内部不一致，报内部错误诊断显形（648 ①）后返回真（编译必败·非静默默认）。",
    "登记人": "AI（1024 轮·逐处读过代码）",
    "登记日": "2026-10-19"
+  },
+  {
+   "文件": "src/cn_compiler/ir/ir_expr_assign_ident_class.cpp",
+   "函数": "classElemInlineAssign",
+   "锚文本": "if (semantic_ == nullptr || valueNode == nullptr || dstAddr.id < 0)",
+   "来源": "961",
+   "类别": "闭集穷举",
+   "静默风险": "低",
+   "原因": "编译器上下文不变量守卫（调用点 indexStructElemAssign 保证非空/合法元素地址）；非本通道=哨兵 false 显式分流——消费点强制检查后回退原路径（emitStructWholeAssign 既有通道），非查表 miss。",
+   "登记人": "AI（961 轮·逐条读过代码）",
+   "登记日": "2026-10-18"
+  },
+  {
+   "文件": "src/cn_compiler/ir/ir_expr_assign_ident_class.cpp",
+   "函数": "classElemInlineAssign",
+   "锚文本": "if (!semantic_->isClassType(canon)) return false;",
+   "来源": "961",
+   "类别": "闭集穷举",
+   "静默风险": "低",
+   "原因": "非类元素目标=通道形态外（结构体/标量元素由 emitStructWholeAssign 原有分支管辖）；哨兵 false=显式分流非查表 miss。",
+   "登记人": "AI（961 轮·逐条读过代码）",
+   "登记日": "2026-10-18"
+  },
+  {
+   "文件": "src/cn_compiler/ir/ir_expr_assign_ident_class.cpp",
+   "函数": "classElemInlineAssign",
+   "锚文本": "if (ci == nullptr) return false;",
+   "来源": "961",
+   "类别": "闭集穷举",
+   "静默风险": "低",
+   "原因": "类名已由语义层登记（isClassType 为真）=类表必存在，本分支不可达（穷举断言面）；哨兵 false=非本通道分流。",
+   "登记人": "AI（961 轮·逐条读过代码）",
+   "登记日": "2026-10-18"
+  },
+  {
+   "文件": "src/cn_compiler/ir/ir_expr_assign_ident_class.cpp",
+   "函数": "classElemInlineAssign",
+   "锚文本": "if (srcBody.id < 0) return false;",
+   "来源": "961",
+   "类别": "上游已诊断",
+   "静默风险": "低",
+   "原因": "求值异常（非法形态）由 IR 层既有纪律收口不产可信产物（348-a 同款：指令可能已部分发射·不得重复求值）；哨兵 false=非本通道分流，非查表 miss。",
+   "登记人": "AI（961 轮·逐条读过代码）",
+   "登记日": "2026-10-18"
   }
  ]
 }

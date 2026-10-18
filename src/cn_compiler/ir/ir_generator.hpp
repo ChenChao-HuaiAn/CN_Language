@@ -259,6 +259,15 @@ private:
                                         const std::string& dstElemCanon,
                                         const SourceLocation& loc,
                                         bool preFree = false);
+    // 961（914 探针边角·362 复验外溢）：类元素内联体写通道——下标/解引用元素
+    //   （类元素数组元素=内联对象体·923/1052 模型）← 类源（标识符/成员/下标/
+    //   三元）。目标=元素本体地址（读侧 [元素+字段偏移]）；写入=dtor(元素地址)
+    //   旧值释放（有析构类）+ 拷贝构造(this=元素地址·源引用经包装槽)/CopyStruct
+    //   本体（无拷贝构造类）。返回 true=已处理；false=非该形态（落原路径）。
+    bool classElemInlineAssign(const ir::IRValue& dstAddr, Expr* valueNode,
+                               const std::string& elemCanon,
+                               const SourceLocation& loc,
+                               bool allowPreFree);
     // 348-a（D11 甲方案·Rust place 语义）：整体赋值「源优先序」通道——右值=一般 结构体返回调用（非 复制 内置）时：先求值源（可能含条件块）→ 再算目标
     bool structWholeAssignSrcFirst(Expr* targetExpr, Expr* valueNode,
                                    const std::string& dstElemCanon,

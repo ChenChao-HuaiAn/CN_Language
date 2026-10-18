@@ -822,69 +822,6 @@ std::string IRGenerator::indexTargetElemSrcType(AssignmentExpr* node) {
     }
     return "";
 }
-
-// 923（629 派生·元素面）：数组/指针元素（类元素内联体）←「返回类对象的调用」
-//   产物——元素内联体接管（959 转移通道同模型·下标族）。
-//   缺陷链（629 矩阵 p629f/p629g 实锤）：CN 的类元素数组/容器数据区=**内联
-//   对象体**（959 转移搬迁 + 517-a 容器元素布局 + 读取路径 [元素]=首字段偏移
-//   三点互证），而「元素 ← 调用产物」原无专用通道：genExpr 产物（新堆对象
-//   句柄）经 indexStructElemAssign→emitStructWholeAssign 判定非左值来源
-//   return false → 落标量 StorePtr 8 字节把**对象句柄直存元素内联体首 8 字节**
-//   ——读取把句柄当首字段消费（p923f「表[0].记录.大小()」打印垃圾）、深层
-//   形态解引用崩（629 矩阵原文「宿主段错误崩溃」）。修=Rust move 语义（产物
-//   所有权随返回值移交调用方·元素=接管方）：
-//     ① 右值求值（产物=新堆对象句柄——LUE 类返回/构造 NewObject 壳）；
-//     ② 目标元素地址（lvalueAddress——纯地址计算）；
-//     ③ 旧值释放（重赋值安全：有析构类单发 Call dtor(元素地址)·与
-//        injectClassElemDestroy 单元素析构同形态；首写零初始化槽=空句柄空
-//        安全跳过，无析构类=无释放面维持现状〔183-a/728x 同口径〕）；
-//     ④ 内容搬迁（CopyStruct 类布局大小：产物本体 → 元素内联体）；
-//     ⑤ 产物壳裸放（__cn_object_delete 只 free 不析构——内容已搬进元素，
-//        析构会释放元素已接管的字段资源=悬垂；959 同款）。
-//   排除：转移（959 专用通道前置管辖·源槽清零在彼）、引用返回（借用产物
-//   不得释放/接管）、复制内置（234-a 专属分支管辖·产物含 __copytmp 栈槽形态
-//   不可裸放）、复合赋值（读-算-写回另路）、非类元素（标量/结构体落原路）。
-//   true=已处理；false=非该形态（零行为变更落原路径）。
-bool IRGenerator::indexClassCallProductAssign(AssignmentExpr* node) {
-    if (semantic_ == nullptr || node == nullptr) return false;
-    if (isCompoundAssignOp(node->op)) return false;
-    if (node->target->getType() != NodeType::IndexExpr) return false;
-    if (node->value->getType() != NodeType::CallExpr) return false;
-    const CallExpr* call = static_cast<const CallExpr*>(node->value.get());
-    if (isTransferCall(call)) return false;     // 转移=959 专用通道
-    if (call->isRefReturnCall) return false;    // 引用返回=借用产物（另行处理）
-    if (isCopyBuiltinCall(node->value.get())) return false;  // 复制=234-a 分支
-    const std::string elemCanon =
-        types::canonical(indexTargetElemSrcType(node));
-    if (elemCanon.empty() || !semantic_->isClassType(elemCanon)) return false;
-    // 右值调用返回类型严格等于元素类（异型赋值语义层已拦·推导 miss/引用
-    //   返回后缀自然不等=保守面零行为变更）
-    if (types::canonical(exprSrcType(node->value.get())) != elemCanon) {
-        return false;
-    }
-    const ClassInfo* ci = semantic_->findClass(elemCanon);
-    if (ci == nullptr || ci->totalSize <= 0) return false;
-    // ① 产物求值（新堆对象句柄：LUE 类返回/构造 NewObject——所有权随返回值
-    //    移交调用方；自用引用右值 表[0] = 取(表[0]) 由引用返回面排除）
-    ir::IRValue obj = genExpr(node->value.get());
-    // ② 目标元素地址
-    ir::IRValue dstAddr = lvalueAddress(node->target.get());
-    // ③ 旧值析构（重赋值安全——首写零初始化槽=空句柄空安全）
-    const std::string dtorSym = classDestructorSymbolKey(elemCanon);
-    if (!dtorSym.empty()) {
-        emit(ir::Opcode::Call, {dstAddr}, ir::IRValue(), dtorSym, "void",
-             node->location);
-    }
-    // ④ 内容搬迁（产物本体 → 元素内联体·类布局大小整块）
-    emit(ir::Opcode::CopyStruct, {dstAddr, obj}, ir::IRValue(),
-         std::to_string(ci->totalSize), "void", node->location);
-    // ⑤ 产物壳裸放（只 free 不析构——内容已搬走）
-    emit(ir::Opcode::Call, {obj}, ir::IRValue(), "__cn_object_delete", "void",
-         node->location);
-    lastExpr_ = dstAddr;
-    return true;
-}
-
 bool IRGenerator::indexStructElemAssign(AssignmentExpr* node, const ir::IRValue& addr) {
     // 集成验证修复 Bug：下标/解引用目标的结构体整体赋值——
     //   `名单[j] = 名单[j+1]`（结构体指针数组元素交换）目标为 IndexExpr，
@@ -908,6 +845,35 @@ bool IRGenerator::indexStructElemAssign(AssignmentExpr* node, const ir::IRValue&
             (semantic_->isStructType(tElemCanon) ||
              semantic_->isClassType(tElemCanon)) &&
             !isCompoundAssignOp(node->op)) {
+            // 961（914 探针边角·362 复验外溢）：**类元素（内联体存储）← 类源
+            //   （标识符/成员/下标/三元）——内联体写通道前置**（详见
+            //   classElemInlineAssign 注释：元素=对象本体·923/1052 模型；
+            //   728x〔无拷贝构造类〕与 183-a〔成员/下标/三元源〕既有分支写
+            //   句柄进本体槽=读写成对性破坏）。**有拷贝构造类+标识符源保留
+            //   164 分支原样**：164 已是内联构造（this=元素地址）语义等价；
+            //   全量接管三轮构建二分之一秒实录 v2p 自举链崩（映射值数组追加
+            //   位新通道旧值释放对未初始化槽析构 free 垃圾·copyCtor+标识符
+            //   形态=该面唯一高频触达者）——保留 164=零破坏面。
+            //   允许旧值释放仅「局部数组标识符元素」（声明零初始化=安全）；
+            //   指针数据区/容器区元素=未初始化槽不析构（与 923 v2 侧
+            //   「数组对象923」同口径）。返回假（非该形态）落下方既有通道。
+            const bool allowPreFree961 =
+                node->target->getType() == NodeType::IndexExpr &&
+                static_cast<IndexExpr*>(node->target.get())
+                        ->object->getType() == NodeType::IdentifierExpr &&
+                types::isArray(lookupSrcType(
+                    static_cast<IdentifierExpr*>(
+                        static_cast<IndexExpr*>(node->target.get())
+                            ->object.get())->name));
+            if (semantic_->isClassType(tElemCanon) &&
+                (semantic_->findCopyConstructor(tElemCanon) == nullptr ||
+                 node->value->getType() != NodeType::IdentifierExpr) &&
+                classElemInlineAssign(addr, node->value.get(), tElemCanon,
+                                      node->location, allowPreFree961)) {
+                lastExpr_ = emitResult(ir::Opcode::ConstInt, {}, "i32", "0",
+                                       node->location);
+                return true;
+            }
             if (emitStructWholeAssign(addr, node->value.get(),
                                       tElemCanon, node->location)) {
                 lastExpr_ = emitResult(ir::Opcode::ConstInt, {}, "i32", "0",

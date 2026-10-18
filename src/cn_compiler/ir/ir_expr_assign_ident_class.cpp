@@ -634,4 +634,153 @@ bool IRGenerator::handleClassMemberAssign(MemberExpr* target, Expr* valueExpr,
 }
 
 
+
+// 961（先拆再加·自 ir_expr_assign.cpp 机械搬迁·函数体逐字保留零行为
+//   变更）：element ← 调用产物（923）与 element ← 类地点源（961）同族。
+
+// 923（629 派生·元素面）：数组/指针元素（类元素内联体）←「返回类对象的调用」
+//   产物——元素内联体接管（959 转移通道同模型·下标族）。
+//   缺陷链（629 矩阵 p629f/p629g 实锤）：CN 的类元素数组/容器数据区=**内联
+//   对象体**（959 转移搬迁 + 517-a 容器元素布局 + 读取路径 [元素]=首字段偏移
+//   三点互证），而「元素 ← 调用产物」原无专用通道：genExpr 产物（新堆对象
+//   句柄）经 indexStructElemAssign→emitStructWholeAssign 判定非左值来源
+//   return false → 落标量 StorePtr 8 字节把**对象句柄直存元素内联体首 8 字节**
+//   ——读取把句柄当首字段消费（p923f「表[0].记录.大小()」打印垃圾）、深层
+//   形态解引用崩（629 矩阵原文「宿主段错误崩溃」）。修=Rust move 语义（产物
+//   所有权随返回值移交调用方·元素=接管方）：
+//     ① 右值求值（产物=新堆对象句柄——LUE 类返回/构造 NewObject 壳）；
+//     ② 目标元素地址（lvalueAddress——纯地址计算）；
+//     ③ 旧值释放（重赋值安全：有析构类单发 Call dtor(元素地址)·与
+//        injectClassElemDestroy 单元素析构同形态；首写零初始化槽=空句柄空
+//        安全跳过，无析构类=无释放面维持现状〔183-a/728x 同口径〕）；
+//     ④ 内容搬迁（CopyStruct 类布局大小：产物本体 → 元素内联体）；
+//     ⑤ 产物壳裸放（__cn_object_delete 只 free 不析构——内容已搬进元素，
+//        析构会释放元素已接管的字段资源=悬垂；959 同款）。
+//   排除：转移（959 专用通道前置管辖·源槽清零在彼）、引用返回（借用产物
+//   不得释放/接管）、复制内置（234-a 专属分支管辖·产物含 __copytmp 栈槽形态
+//   不可裸放）、复合赋值（读-算-写回另路）、非类元素（标量/结构体落原路）。
+//   true=已处理；false=非该形态（零行为变更落原路径）。
+bool IRGenerator::indexClassCallProductAssign(AssignmentExpr* node) {
+    if (semantic_ == nullptr || node == nullptr) return false;
+    if (isCompoundAssignOp(node->op)) return false;
+    if (node->target->getType() != NodeType::IndexExpr) return false;
+    if (node->value->getType() != NodeType::CallExpr) return false;
+    const CallExpr* call = static_cast<const CallExpr*>(node->value.get());
+    if (isTransferCall(call)) return false;     // 转移=959 专用通道
+    if (call->isRefReturnCall) return false;    // 引用返回=借用产物（另行处理）
+    if (isCopyBuiltinCall(node->value.get())) return false;  // 复制=234-a 分支
+    const std::string elemCanon =
+        types::canonical(indexTargetElemSrcType(node));
+    if (elemCanon.empty() || !semantic_->isClassType(elemCanon)) return false;
+    // 右值调用返回类型严格等于元素类（异型赋值语义层已拦·推导 miss/引用
+    //   返回后缀自然不等=保守面零行为变更）
+    if (types::canonical(exprSrcType(node->value.get())) != elemCanon) {
+        return false;
+    }
+    const ClassInfo* ci = semantic_->findClass(elemCanon);
+    if (ci == nullptr || ci->totalSize <= 0) return false;
+    // ① 产物求值（新堆对象句柄：LUE 类返回/构造 NewObject——所有权随返回值
+    //    移交调用方；自用引用右值 表[0] = 取(表[0]) 由引用返回面排除）
+    ir::IRValue obj = genExpr(node->value.get());
+    // ② 目标元素地址
+    ir::IRValue dstAddr = lvalueAddress(node->target.get());
+    // ③ 旧值析构（重赋值安全——首写零初始化槽=空句柄空安全）
+    const std::string dtorSym = classDestructorSymbolKey(elemCanon);
+    if (!dtorSym.empty()) {
+        emit(ir::Opcode::Call, {dstAddr}, ir::IRValue(), dtorSym, "void",
+             node->location);
+    }
+    // ④ 内容搬迁（产物本体 → 元素内联体·类布局大小整块）
+    emit(ir::Opcode::CopyStruct, {dstAddr, obj}, ir::IRValue(),
+         std::to_string(ci->totalSize), "void", node->location);
+    // ⑤ 产物壳裸放（只 free 不析构——内容已搬走）
+    emit(ir::Opcode::Call, {obj}, ir::IRValue(), "__cn_object_delete", "void",
+         node->location);
+    lastExpr_ = dstAddr;
+    return true;
+}
+
+// 961（914 探针边角·362 复验外溢）：类元素内联体写通道——下标/解引用元素
+//   （类元素数组元素=内联对象体·923/1052 模型·步进=类布局大小）← 类源
+//   （标识符/成员/下标/三元）。元素存储=**对象本体**（读侧 [元素+字段偏移]；
+//   宿主下标步进=typeSizeOf 已对齐），而既有类分支服务「变量/字段=8B 句柄槽」
+//   目标：元素目标误入=NewObject+句柄写进本体槽，读侧按本体字段解=读写成对性
+//   破坏（961 探针：无拷贝构造类 `组[0]=丙` 后 `组[0].值` 读出堆句柄 468990752
+//   vs 应 42；pC 16 字节类元素残体 0；v2 同形态 42 正确=宿主单侧）。修=元素
+//   目标显式内联体写入：
+//     ① 自赋值守卫（组[0]=组[0] 本体自拷 no-op——先释放旧值再拷贝会毁源）
+//     ② preFree：有析构类单发 dtor(元素地址)（旧本体释放·923 元素面同款；
+//        首写=声明零初始化本体，空安全）
+//     ③ 本体写入：
+//        · 有拷贝构造类=Call 拷贝构造（this=元素地址·源引用经包装槽〔槽内容=
+//          源本体地址·callee 引用实参约定=槽地址〕）——内联构造零 NewObject
+//          （对齐 v2 容器/类元素内联路径）
+//        · 无拷贝构造类=CopyStruct(元素地址 ← 源本体·类布局大小)（001 §3.5
+//          聚合位拷语义·对齐 v2 回退路径 IR_结构体拷贝）
+//   源本体地址=genExpr(源)（类对象值语义=本体地址：变量/字段槽 Load 得句柄=
+//   堆本体；下标元素=本体原地）——与 v2「生成表达式」源同口径。
+//   返回 true=已处理；false=非该形态（调用/转移/复制等由上游专属通道管辖）。
+bool IRGenerator::classElemInlineAssign(const ir::IRValue& dstAddr, Expr* valueNode,
+                                        const std::string& elemCanon,
+                                        const SourceLocation& loc,
+                                        bool allowPreFree) {
+    // 静默豁免闭集穷举: 编译器上下文不变量守卫（调用点保证非空/合法元素地址）；非本通道=哨兵 false 显式分流（消费点检查回退原路径），非查表 miss
+    if (semantic_ == nullptr || valueNode == nullptr || dstAddr.id < 0) {
+        return false;
+    }
+    const std::string canon = types::canonical(elemCanon);
+    // 静默豁免闭集穷举: 非类元素目标=通道形态外（上游专属通道管辖）；哨兵 false 分流非查表 miss
+    if (!semantic_->isClassType(canon)) return false;
+    const NodeType valueKind = valueNode->getType();
+    if (valueKind != NodeType::IdentifierExpr &&
+        valueKind != NodeType::MemberExpr &&
+        valueKind != NodeType::IndexExpr &&
+        valueKind != NodeType::TernaryExpr) {
+        return false;
+    }
+    const ClassInfo* ci = semantic_->findClass(canon);
+    // 静默豁免闭集穷举: 类名已由语义层登记（isClassType 已真）=布局表必存在·此处不可达；哨兵 false=非本通道分流
+    if (ci == nullptr) return false;
+    const ir::IRValue srcBody = genExpr(valueNode);
+    // 静默豁免上游已诊断: 求值异常（非法形态）由 IR 层 [ir2] 纪律收口不产可信产物；哨兵 false=非本通道分流
+    if (srcBody.id < 0) return false;
+    const std::string skipLabel = beginSelfAssignGuard(dstAddr, srcBody, loc);
+    // 旧值释放仅限「局部数组标识符元素」面（调用点判定——声明零初始化保证
+    //   槽内旧值为安全本体·923 v2 侧「数组对象923」同口径）：指针数据区/容器
+    //   数据区元素=分配区未初始化槽，dtor(垃圾) 即崩（961 v2p 构建实录：
+    //   映射值数组追加位 dtor 释放垃圾指针 free 崩·B1 二分实证）。
+    const std::string dtorKey = classDestructorSymbolKey(canon);
+    if (allowPreFree && !dtorKey.empty()) {
+        emit(ir::Opcode::Call, {dstAddr}, ir::IRValue(), dtorKey, "void", loc);
+    }
+    const ClassMemberInfo* copyCtor = semantic_->findCopyConstructor(canon);
+    if (copyCtor != nullptr) {
+        const std::string copyOwner =
+            copyCtor->ownerClass.empty() ? canon : copyCtor->ownerClass;
+        // 源引用经包装槽（槽内容=源本体地址）；变量/字段源槽内容即本体地址、
+        //   下标元素源本体在 place 无槽——包装槽统一三形态（callee 实参一跳）
+        const std::string holdName = "__celemhold" + std::to_string(varCounter_++);
+        emit(ir::Opcode::Alloca, {}, ir::IRValue::reg(regCounter_++, "ptr"),
+             holdName, "ptr", loc);
+        function_->varSlots[holdName] = 8;
+        const ir::IRValue holdAddr = emitResult(
+            ir::Opcode::AddrOf, {ir::IRValue::var(holdName, "i64")}, "ptr",
+            holdName, loc);
+        emit(ir::Opcode::StorePtr, {holdAddr, srcBody}, ir::IRValue(), "", "ptr",
+             loc);
+        emit(ir::Opcode::Call, {dstAddr, holdAddr}, ir::IRValue(),
+             methodSymbolKey(copyOwner, copyCtor->sigKey), "void", loc);
+        endSelfAssignGuard(skipLabel);
+        lastExpr_ = dstAddr;
+        return true;
+    }
+    // 无拷贝构造类：本体整块拷贝（POD 浅拷·001 §3.5 位拷语义·早退结构·
+    //   else 新规：else 块禁业务代码——两条互斥出口各自显式返回）
+    emit(ir::Opcode::CopyStruct, {dstAddr, srcBody}, ir::IRValue(),
+         std::to_string(ci->totalSize), "void", loc);
+    endSelfAssignGuard(skipLabel);
+    lastExpr_ = dstAddr;
+    return true;
+}
+
 } // namespace cn_compiler
