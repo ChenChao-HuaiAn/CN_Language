@@ -460,15 +460,19 @@ bool IRGenerator::tryGenReferenceBinding(VarDecl* node, const DeclGenCtx& ctx) {
             if (it == NodeType::IdentifierExpr) {
                 IdentifierExpr* initIdent =
                     static_cast<IdentifierExpr*>(node->initializer.get());
-                const std::string initUnique = lookupVarName(initIdent->name);
-                if (initUnique.empty()) {
-                    // 防御：找不到被引用变量则终止本分支（语义层已报错）
-                    return true;
-                }
-                targetAddr = emitResult(
-                    ir::Opcode::AddrOf,
-                    {ir::IRValue::var(initUnique, "ptr")}, "ptr", initUnique,
-                    node->location);
+                // #1023（H2 引用绑定契约收口）：引用槽内容恒为「绑定对象左值
+                //   地址」（读取两层〔变量地址→对象指针〕/写回 Load+指针存储/
+                //   再传引用实参 Load 槽 全链路契约·847 模型）。原实现无条件
+                //   AddrOf(源槽)=源变量存储地址——普通变量恰好正确；两形态
+                //   错位：①源=静态变量（lookupVarName 空→静默放弃绑定→槽
+                //   未初始化·引用绑定静态对象读=错误码3）；②源=引用变量/[&]
+                //   捕获（AddrOf 取「引用变量存储位置」多一层=绑定到引用槽
+                //   本身，读取按契约两读把源槽地址当绑定对象→引用绑定引用
+                //   全形态错位·1020 采样轮 p10/p15 实录）。收口=复用
+                //   genIdentifierLvalue 四分流单点（静态符号地址/引用与捕获
+                //   Load 槽=被引用左值地址/实例字段地址/普通变量 AddrOf 槽,
+                //   与读路径 320-a/87-a/缺陷修复 同源）。
+                targetAddr = genIdentifierLvalue(initIdent);
             } else if (callInit) {
                 // 引用返回调用：调用结果本身即被引用左值地址（ptr）——
                 //   2026-09-04 缺陷零容忍收口：抑制读值默认解引用
