@@ -207,6 +207,14 @@
    "检查网层": 8,
    "说明": "872 立（652 集成反复卡 L1 实录：ninja 增量旧 obj 假新鲜→LNK2005 多重定义假红·同代码 clean 全量绿/增量红）：构建后核验产物-输入时间戳闭包——①编译边 obj 缺失/源缺失/obj 旧于源（漏编=假新鲜主判据）；②库/链接边产物缺失/旧于输入（链接滞后）；③核心产物早于 HEAD 提交时刻（795 判据 a 构建层版）；④游离 obj/lib 只黄提示（历史残留为常态·不误红）。ninja 图解析（build.ninja·$: 转义）+Make 布局双模式（CMakeFiles/*.dir 映射·外部源 munged 名=显式豁免黄字）；自测 scripts/test_build_freshness.py（12 断言·伪造布局）；复现探针=target/probe872（不落库·假新鲜→LNK2005→删 .ninja_deps 对照绿）",
    "v5执行面": "L1 gate_quick 构建后（872 起·红=构建机制失灵拦下）+test_build_freshness 自测"
+  },
+  {
+   "名称": "语法接受面↔语义实现面同步门禁（871）",
+   "脚本": "scripts/check_syntax_semantic_sync.py",
+   "组": "ci常规",
+   "检查网层": 9,
+   "说明": "871 立（762/775 病例立法化·用户令）：解析器（宿主 parser+v2 语法包）新接受的语法节点形态/零消费 AST 字段必须登记（syntax_semantic_registry.json「语法形态×语义实现点×用例」）——三面枚举（宿主 NodeType/ v2 节点_*/ AST 字段零消费=762 型静默丢弃面）+登记锚/用例存在性核+冻结基线 syntax_semantic_baseline.json 只减不增（新增节点/零消费字段未登记=红·形态陈旧/锚缺失/用例缺失=红·无逃生门）",
+   "v5执行面": "L1 gate_quick 静态段（871 起·提交前硬拦）+win 全量 ci.ps1+selftest+探针抽查 --probe（登记用例跑真实 E2E·云端/手动）"
   }
  ]
 }

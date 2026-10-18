@@ -1,0 +1,26 @@
+{
+ "版本": 1,
+ "说明": "871 语法接受面↔语义实现面同步登记表（check_syntax_semantic_sync.py 数据源）：「语法形态 × 语义实现点 × 覆盖用例」对账表。①门禁红线=冻结基线（syntax_semantic_baseline.json）之外新增的节点类型（宿主 NodeType 枚举 / v2 节点_* 常量）与零消费 AST 字段（语义/IR/代码生成面零引用——762 型静默丢弃形态）必须在表内登记；②登记条校验=形态存在（防陈旧·改代码须同步修表）+语义锚「文件::锚文本」在所指文件存在（防「注释声称」·728n 纪律五同源）+用例在 tests/e2e 存在（覆盖机械核）；③形态前缀枚举=宿主节点:/v2节点:/宿主字段:——节点条必填「语义锚」+「用例」，字段条必填「备注」（写语义消费面或豁免理由·762 型零消费豁免须留痕）；④存量形态不强制登记（冻结基线放行），病例回登=推荐（登记后锚/用例持续被核·实现点漂移即红）。",
+ "条目们": [
+  {
+   "形态": "宿主字段:initializer",
+   "语义锚": [
+    "src/cn_compiler/semantic/class_resolver.cpp::mi.defaultInitText = foldClassInstanceInit(",
+    "src/cn_compiler/semantic/class_resolver.cpp::else if (!member->isStatic && member->initializer != nullptr) {",
+    "src/cn_compiler/semantic/class_resolver.cpp::mi.staticInitText = foldClassStaticInit("
+   ],
+   "用例": ["988", "996", "986"],
+   "登记人": "871",
+   "备注": "病例 762/775：类字段初始化器——parser_oop parseFieldMember 填 ClassMember.initializer 而 semantic/IR 全链零消费=静默丢弃（探查实测 基=0）；775 甲案 10-15 收口（静态=468 加载期直存 foldClassStaticInit；实例=构造期 NSDMI foldClassInstanceInit）。本锚集=775 语义实现点，漂移/删除即红（防回退）。"
+  },
+  {
+   "形态": "v2节点:节点_字段初值",
+   "语义锚": [
+    "CN语言编译器v2/IR/生成表达式构造.cn::如果 (字段节点.类型 == 节点_字段初值) {"
+   ],
+   "用例": ["988", "996"],
+   "登记人": "871",
+   "备注": "病例 762/775 v2 侧：节点_字段初值=构造字面量字段初值节点（语法 解析表达式.cn 产生·语义包零出现属表转发通路），IR 消费点=生成表达式构造.cn 字段值区间发射。节点面已消费（非零消费观察面）。"
+  }
+ ]
+}

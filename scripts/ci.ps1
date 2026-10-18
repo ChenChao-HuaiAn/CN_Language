@@ -43,6 +43,9 @@ if ($LASTEXITCODE -ne 0) { Write-Host "[CI] 官网文档覆盖门禁失败" -For
 Write-Host "[CI] 0.87/4 部署清单一致性门禁（896·deploy_*.sh 拷贝清单 ⊇ 服务运行依赖闭包+静态资源覆盖——406/824 漏部署类防复发）..." -ForegroundColor Cyan
 python scripts/check_deploy_manifest.py
 if ($LASTEXITCODE -ne 0) { Write-Host "[CI] 部署清单一致性门禁失败" -ForegroundColor Red; exit 1 }
+Write-Host "[CI] 0.9/4 语法接受面↔语义实现面同步门禁（871·762/775 病例立法化：解析器新接受的节点形态/零消费 AST 字段必须登记语义实现锚+用例——syntax_semantic_registry.json+baseline 冻结基线）..." -ForegroundColor Cyan
+python scripts/check_syntax_semantic_sync.py
+if ($LASTEXITCODE -ne 0) { Write-Host "[CI] 语法接受面↔语义实现面同步门禁失败" -ForegroundColor Red; exit 1 }
 
 Write-Host "[CI] 1/4 构建（/W4 /WX 零警告门禁）..." -ForegroundColor Cyan
 & powershell -ExecutionPolicy Bypass -File build.ps1 -Config Debug

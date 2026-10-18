@@ -115,8 +115,11 @@ print("== L1 快速门禁（920·提交前）==", flush=True)
 #    立法配套：四面四红+冻结基线，无逃生门 flag，唯一合法通道=miss_registry.json 补条·
 #    896 增部署清单一致性——deploy_*.sh 拷贝清单 ⊇ 服务运行依赖闭包（AST 全扫）+静态
 #    资源覆盖，406/824 漏部署类防复发）
+#    871 增语法接受面↔语义实现面同步——762/775 病例（parser 收下语法而语义静默丢弃）
+#    立法化：新增节点类型/零消费 AST 字段必须登记语义实现锚+用例，锚/用例存在性核）
 for 名 in ("check_ascii_idents", "check_keywords_sync", "check_registry_audit",
-           "check_case_numbers", "check_miss_gate", "check_deploy_manifest"):
+           "check_case_numbers", "check_miss_gate", "check_deploy_manifest",
+           "check_syntax_semantic_sync"):
     if not 步(名, [sys.executable, f"scripts/{名}.py"], 超时秒=静态超时):
         raise SystemExit(1)
 # 1013（2026-10-17 用户裁决）：官网文档覆盖对照 --strict 挂 L1——基线零（61/61 已覆盖·
