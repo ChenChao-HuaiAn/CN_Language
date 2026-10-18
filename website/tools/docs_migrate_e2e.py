@@ -18,6 +18,13 @@
               tuple 替换 ("用例", 名) / dict 键 示例=…,输出=… → 用例='名'。
   --登记      覆盖矩阵：board_cli 用例 官网示例 正例 <名>（逐例服务端登记）。
 
+平台限定（1077）：docs_data 条目「平台」字段（#1017·gen_docs verify 平台分流同源）
+  非覆盖三平台全集（win-x64/linux-x86_64/linux-arm64）者=非全平台——迁移面跳过：
+  用例不建（state 记「平台」事实与「排」理由·--报告 列明细）。E2E 用例级平台限定
+  的唯一真值源=tests/e2e/run_e2e.py 平台跳过表（用例目录内无平台标记机制·不自创
+  ——见教训 #96「平台跳过=运行期整例跳过非编译期标记」）；迁入先例=
+  1176_官网示例-cli-手工线程栈守卫（win 表登记·1077 补）。
+
 用法（仓库根目录）：
   python website/tools/docs_migrate_e2e.py --报告
   python website/tools/docs_migrate_e2e.py --预检 [--并发 8]
@@ -86,6 +93,31 @@ def 短页(页文件):
     return 页文件.replace(".html", "").replace("/", "-")
 
 
+# 1077：平台限定（1017 字段 / 1060 迁移回溯）——docs_data 条目「平台」字段在 1060
+#   迁移链路未被识别，致「官网示例-cli-手工线程栈守卫」（1176）在 win 全量链接必红
+#   （LNK1120·pthread 专有符号）而 run_e2e 平台跳过表无登记。非全平台条目=迁移面
+#   跳过（state/报告留痕）；用例级平台限定唯一真值源=run_e2e.py 平台跳过表。
+全域平台集 = frozenset(("win-x64", "linux-x86_64", "linux-arm64"))
+
+
+def 平台限定描述(平台值):
+    """「平台」字段 → None=全平台/未声明（照常迁移）；否则='仅 <值>'（迁移面跳过）。"""
+    if not 平台值:
+        return None
+    序列 = [平台值] if isinstance(平台值, str) else list(平台值)
+    if 全域平台集 <= set(序列):
+        return None
+    return "仅 %s" % "、".join(str(x) for x in 序列)
+
+
+def 排标记(平台值, 编译足矣):
+    """recs 层排除标记合成（1077）：平台限定优先于「编译足矣」；无排除=None。"""
+    限 = 平台限定描述(平台值)
+    if 限:
+        return "平台限定（%s）" % 限
+    return "编译足矣" if 编译足矣 else None
+
+
 def 枚举():
     """全站示例 → (可迁移记录列表, 排除报告列表)。记录含壳化程序。"""
     recs, 排除 = [], []
@@ -106,7 +138,8 @@ def 枚举():
                         continue
                     recs.append(dict(形状="dict块", 文件=f, 页=页["文件"], 章=ch["id"],
                                      序=i, 窗名=块.get("名", "码"), 代码=块["代码"],
-                                     输出=块.get("输出"), 排="编译足矣" if 块.get("编译足矣") else None))
+                                     输出=块.get("输出"), 平台=块.get("平台"),
+                                     排=排标记(块.get("平台"), 块.get("编译足矣"))))
                     continue
                 if not (isinstance(块, tuple) and len(块) > 2 and 块[0] == "码" and 块[2]):
                     continue
@@ -125,8 +158,8 @@ def 枚举():
                 elif 条.get("示例"):
                     recs.append(dict(形状="条目", 文件=f, 页=页["文件"], 章=ch["id"],
                                      条id=条["id"], 窗名=条["id"] + ".cn", 代码=条["示例"],
-                                     输出=条.get("输出"),
-                                     排="编译足矣" if 条.get("编译足矣") else None))
+                                     输出=条.get("输出"), 平台=条.get("平台"),
+                                     排=排标记(条.get("平台"), 条.get("编译足矣"))))
     for m in gd.MODULES:
         f = 模块归属(m)
         for ch in m["章节"]:
@@ -140,8 +173,8 @@ def 枚举():
                 elif 条.get("示例"):
                     recs.append(dict(形状="条目", 文件=f, 页="stdlib/" + m["文件"], 章=ch["id"],
                                      条id=条["id"], 窗名=条["id"] + ".cn", 代码=条["示例"],
-                                     输出=条.get("输出"),
-                                     排="编译足矣" if 条.get("编译足矣") else None))
+                                     输出=条.get("输出"), 平台=条.get("平台"),
+                                     排=排标记(条.get("平台"), 条.get("编译足矣"))))
     # 壳化程序（与 verify 同口径=条目程序）+ 键
     for r in recs:
         r["键"] = 代码键(r["代码"])
@@ -183,6 +216,32 @@ def 读状态():
 def 写状态(st):
     with io.open(状态路径, "w", encoding="utf-8", newline="\n") as f:
         json.dump(st, f, ensure_ascii=False, indent=1, sort_keys=True)
+
+
+def 平台限定留痕(st, recs):
+    """平台限定条目 → state 留痕（1077·只改组内记录，落盘由调用方 写状态）。
+
+    未建条目加「排」理由（迁移面跳过——同 1060「序列依赖」排除族先例形态）；
+    已建/已改写条目（历史已迁·先例 1176）仅补「平台」事实字段，不覆盖状态。
+    返回留痕条数。
+    """
+    n = 0
+    for r in recs:
+        if not r.get("平台"):
+            continue
+        e = st.setdefault(r["键"], {})
+        e.setdefault("用例名", r["用例名"])
+        e.setdefault("页", r["页"])
+        e.setdefault("窗名", r["窗名"])
+        e.setdefault("文件", r["文件"])
+        e["平台"] = r["平台"]
+        if e.get("状态") not in ("已建", "已改写"):
+            e["排"] = ("平台限定（%s）——迁移面跳过：E2E 用例级平台限定唯一真值源="
+                      "run_e2e.py 平台跳过表（先例 929/1176）；迁入须先在该表登记后"
+                      "删本标记与 docs_data「平台」字段再按常规流程迁移"
+                      % 平台限定描述(r["平台"]))
+        n += 1
+    return n
 
 
 def 行比对(期望文本, 实际文本):
@@ -227,14 +286,28 @@ def 真跑(cn_exe, 程序文本, 工作目录):
 
 def cmd_报告(a):
     recs, 排除 = 枚举()
+    st = 读状态()
     可迁 = [r for r in recs if not r["排"]]
     待排 = [r for r in recs if r["排"]]
-    print("枚举：可迁移 %d 例 / 含排除标记 %d 例 / 排除项 %d 条" % (len(可迁), len(待排), len(排除)))
+    限 = [r for r in 待排 if r.get("平台")]
+    print("枚举：可迁移 %d 例 / 含排除标记 %d 例（平台限定 %d）/ 排除项 %d 条"
+          % (len(可迁), len(待排), len(限), len(排除)))
     页计 = {}
     for r in 可迁:
         页计[r["页"]] = 页计.get(r["页"], 0) + 1
     for k in sorted(页计):
         print("  %-28s %d" % (k, 页计[k]))
+    if 限:
+        print("平台限定（%d 例·迁移面跳过——E2E 用例级平台限定唯一真值源=run_e2e"
+              " 平台跳过表）：" % len(限))
+        for r in 限:
+            e = st.get(r["键"], {})
+            注 = ("（已迁·见 %s）" % e["目录"]
+                  if e.get("状态") in ("已建", "已改写") and e.get("目录") else "")
+            print("  - %s :: %s（%s）%s" % (r["页"], r["窗名"], 平台限定描述(r["平台"]), 注))
+        print("  迁入指引：先在 tests/e2e/run_e2e.py 平台跳过表对应平台数组登记用例短名"
+              "（先例 929/1176），再删 state「排」标记与 docs_data 条目「平台」字段，"
+              "按常规流程迁移。")
     if 排除:
         print("排除项（保留手写+verify 过渡）：")
         for x in 排除[:30]:
@@ -252,6 +325,8 @@ def cmd_预检(a):
         print("缺少本树编译器 target/cn（先构建）")
         return 1
     st = 读状态()
+    # 1077：平台限定条目 state 留痕（迁移面跳过·幂等——不进下方可迁面/不领号）
+    限数 = 平台限定留痕(st, recs)
     tmp = tempfile.mkdtemp(prefix="mig_pre_")
     合格 = 不一致 = 失败 = 0
 
@@ -290,6 +365,8 @@ def cmd_预检(a):
                 e["预检"] = 错; 不一致 += 1; 结.append((r, 错))
     写状态(st)
     print("预检：合格 %d / 不一致 %d / 编译失败 %d（共 %d）" % (合格, 不一致, 失败, len(可迁)))
+    if 限数:
+        print("平台限定：%d 例迁移面跳过（state 已留痕·--报告 列明细与迁入指引）" % 限数)
     for r, 错 in 结[:40]:
         print("  [%s] %s :: %s" % (r["页"], r["窗名"], 错))
     return 1 if (不一致 or 失败) else 0
