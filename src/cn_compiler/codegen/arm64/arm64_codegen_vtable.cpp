@@ -47,6 +47,15 @@ void Arm64CodeGenerator::emitOopGlobals(Arm64AsmWriter& writer,
             auto it = ci.methods.find(methodName);
             if (it != ci.methods.end()) {
                 owner = it->second.ownerClass;
+                // 1022（2026-10-18·1020 采样轮 H1）：纯虚（抽象）槽发射 0——
+                //   抽象方法无体无符号（直发 ?甲$f 必链接失败 LNK2019）。0 槽=
+                //   不可达防御：抽象类不可实例化（193/593/746 链式拦截），任何
+                //   可实例化类的该槽均被派生类有体重写覆盖（覆盖即发实体符号），
+                //   故运行期不会被调用（与 win x64 / linux x64 后端同构）。
+                if (it->second.isAbstract) {
+                    writer.raw("    .quad 0");
+                    continue;
+                }
                 target = classMethodSymbol(owner, methodName, it->second.paramTypes);
             } else {
                 // 继承的虚方法：按方法名查基类实现（防御性：槽位保持父类符号）
