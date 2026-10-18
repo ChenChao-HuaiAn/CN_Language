@@ -1453,14 +1453,71 @@ def 计算运行时构建指纹(cxx工具: str) -> str:
     return hashlib.md5("\n".join(项们).encode("utf-8")).hexdigest()
 
 
+# ═══════════ 1046（2026-10-18·1041 呈报立案）：共享产物重建跨进程互斥 ═══════════
+# 病根（竞态时序）：就绪函数的「查缓存键→删旧产物→重建→写缓存键」是无互斥的
+#   check-then-act——正常单跑有「池启动前预热」前置兜底（各 worker 只读命中），但一切
+#   预热兜不住的并发形态（孤儿 worker〔935/978 语境·主进程死后 worker 存续〕、绕过树锁
+#   的并行 run_e2e、缓存键被外部失效/删除的窗口）会让 N 进程同时进入临界区：并发
+#   unlink/写同一 v2p.exe/v2p.obj（Windows 共享冲突=PermissionError「另一个程序正在
+#   使用此文件」）→ 宿主构建互踩同一中间产物 → rc=1 /「编译返回成功但未生成」（产物
+#   被对家删除）→ 缓存键缺失或键/exe/obj 混合态残留。1046 复现实录：冷缓存+28 进程
+#   同刻调用 确保v2p就绪win=28/28 败、终态互斥残留（键无/exe 无/obj 有）；6 并发=
+#   5 败 1 名义成功（混合态静默污染风险）。
+# 修法（任务 1046 指令「v2p 构建串行化」）：锁原语复用 gate_lock（os.mkdir 原子目录锁
+#   +917 陈锁秒级接管+心跳兜底，与树锁同源）；锁域=本树 target/audit2/v2p_build.lock
+#   （同树跨进程互斥；跨树各有 audit2 天然隔离）。语义=双重检查：命中直返；miss→取锁
+#   →锁内复检（等待期间对家可能已完成重建=「检测到构建进行中则等待」→命中让位）→仍
+#   未命中才重建。任一时刻至多一个进程处于「删旧+重建+写键」，等待者纯只读复核——
+#   竞态窗口机械消除。等待上限=构建超时×2+300s，超时=诚实红（miss 不可静默·绝不
+#   降级并发直建——1046 复现即直建实录）。清护=陈锁接管先回收死锚后代（孤儿构建子进程
+#   仍在写 audit2 时被接管者整树回收——935 语义在本锁同样成立）。
+def v2p共享锁路径() -> pathlib.Path:
+    """共享产物（v2p/rt/交叉双工件）重建互斥锁目录（audit2 内=同树跨进程互斥）。"""
+    return 项目根目录 / "target" / "audit2" / "v2p_build.lock"
+
+
+def v2p锁等待上限秒() -> int:
+    """锁等待上限：覆盖锁内一整个重建周期（构建超时×2）+收尾余量。"""
+    return 构建超时秒数 * 2 + 300
+
+
+def 共享产物就绪(编号: str, 命中判据, 重建过程, 锁路径=None):
+    """共享产物「查缓存→重建」临界区（1046；v2p/rt/交叉双工件调用方共用）：
+    返回 (成功, 错误文本, 路径)——路径 ∈ "命中"/"锁内命中"/"重建"（""=失败）。
+    命中判据() -> bool；重建过程() -> (成功, 错误文本)，两者均为无参可调用。
+    锁不可得（等待超时）=诚实红，绝不降级直建（1046 复现即并发直建实录）。"""
+    if 命中判据():
+        return True, None, "命中"
+    if 锁路径 is None:
+        锁路径 = v2p共享锁路径()
+    if str(项目根目录 / "scripts") not in sys.path:
+        sys.path.insert(0, str(项目根目录 / "scripts"))
+    import gate_lock as _锁原语
+    持锁 = _锁原语.获取(v2p锁等待上限秒(), 形态="acquire",
+                         owner_pid=os.getpid(), 锁=锁路径, 清护=True)
+    if 持锁 is None:
+        return False, (f"{编号} 共享产物构建锁等待超时（{v2p锁等待上限秒()}s）——"
+                       "另一进程重建未释放（锁信息见 "
+                       f"{锁路径}/info.json·gate_lock status 同判据）"), ""
+    try:
+        if 命中判据():
+            return True, None, "锁内命中"
+        成功, 错误 = 重建过程()
+        return 成功, 错误, ("重建" if 成功 else "")
+    finally:
+        _锁原语.释放(持锁, 静默=True)
+
+
 def 确保v2p与运行时就绪(编译器路径: pathlib.Path, 目标平台: str, 详细: bool, 编号: str = "PRE"):
     """v2 闭环共享工件就绪（2026-09-11 全量并行裁决）：工具链探测 + 运行时 .o
     （指纹缓存=src/runtime 全部 .cpp 路径/大小/mtime+cxx+标志串，不符整批重编
     ——68-a 方案A 根治，杜绝陈旧 .o 参与门禁链接）+ v2p 构建缓存（指纹=v2 全树
     .cn mtime/size+编译器 mtime/size，cargo 增量构建理念——输入不变不重建）。
     返回 (v2p, v2pobj, 运行时objs, as工具, cxx工具)；失败返回 (None, 错误信息)。
-    并行纪律：主程序在统一并行池启动前调用一次（预热——消除并发构建竞态），
-    各 v2 用例再调用时必命中缓存（纯只读，无竞态）。"""
+    并发纪律（1046 分层）：①主程序在统一并行池启动前调用一次（预热）——各用例
+    再调用命中缓存=常规零竞态路径；②一切预热兜不住的并发形态（孤儿 worker/并行
+    run_e2e/缓存被外部失效窗口）由 共享产物就绪 的跨进程锁+双检兜底——锁内至多
+    一个重建者，其余等待后复核命中（v2p/rt 两组各自独立持锁·互斥贯穿重建全程）。"""
     import shutil
     import os
     审计目录 = 项目根目录 / "target" / "audit2"
@@ -1480,28 +1537,42 @@ def 确保v2p与运行时就绪(编译器路径: pathlib.Path, 目标平台: str
     #   .o 参与门禁链接；整批原子重编避免半新半旧混链，与 v2p 缓存同款模式）
     #   349 重构E：io_api.cpp 拆出 mem_api/arena/crash_handler 三件同编同链
     #   945：mem_api 再拆出 mem_pool.cpp（小对象池并发安全改造）同编同链
+    #   1046：整批重建走 共享产物就绪（跨进程锁+双检）——并发重建=互斥串行
     运行时名们 = ["io_api", "mem_api", "mem_pool", "arena", "crash_handler",
                 "intern_api", "runtime", "thread_api", "string_api", "i128_api",
                 "math_api", "input_api", "file_api", "time_api", "system_api"]
     rt缓存键路径 = 审计目录 / "rt_build_key.txt"
-    rt指纹 = 计算运行时构建指纹(cxx工具)
-    rt全部存在 = all((审计目录 / f"{模块}.o").exists() for 模块 in 运行时名们)
-    if rt全部存在 and rt缓存键路径.exists() \
-            and rt缓存键路径.read_text(encoding="utf-8") == rt指纹:
-        if 详细:
-            print(f"    [{编号}-0] rt objs 缓存命中（src/runtime 未变），复用 {审计目录}/*.o")
-    else:
+
+    def _rt命中() -> bool:
+        rt指纹 = 计算运行时构建指纹(cxx工具)
+        return (all((审计目录 / f"{模块}.o").exists() for 模块 in 运行时名们)
+                and rt缓存键路径.exists()
+                and rt缓存键路径.read_text(encoding="utf-8") == rt指纹)
+
+    def _rt重建():
+        rt指纹 = 计算运行时构建指纹(cxx工具)
         for 模块 in 运行时名们:
             obj = 审计目录 / f"{模块}.o"
             if obj.exists():
-                obj.unlink()
+                try:
+                    obj.unlink()
+                except OSError as 异常:
+                    return False, f"{编号}-0 旧 {模块}.o 删除失败: {异常}"
             编译rt = 运行命令([cxx工具, "-c", "-std=c++17", "-fno-exceptions", "-fno-rtti",
                             "-O2", "-DCNRT_LINUX_MAIN", "-Isrc", "-o", str(obj),
                             f"src/runtime/{模块}.cpp"], 项目根目录,
                            超时秒数=构建超时秒数)
             if 编译rt.returncode != 0:
-                return None, f"{编号}-0 运行时 {模块}.o 编译失败: {(编译rt.stderr or 编译rt.stdout).strip()[:200]}"
+                return False, f"{编号}-0 运行时 {模块}.o 编译失败: {(编译rt.stderr or 编译rt.stdout).strip()[:200]}"
         rt缓存键路径.write_text(rt指纹, encoding="utf-8")
+        return True, None
+
+    成功, 错误, 路径 = 共享产物就绪(编号, _rt命中, _rt重建)
+    if not 成功:
+        return None, 错误
+    if 详细 and 路径 in ("命中", "锁内命中"):
+        复核 = "·锁内复核" if 路径 == "锁内命中" else ""
+        print(f"    [{编号}-0] rt objs 缓存命中（src/runtime 未变）{复核}，复用 {审计目录}/*.o")
     运行时objs = [审计目录 / f"{模块}.o" for 模块 in 运行时名们]
 
     # v2p 构建缓存（30+ v2 用例全量 E2E 最大瓶颈——每个全树构建数十秒）
@@ -1509,9 +1580,11 @@ def 确保v2p与运行时就绪(编译器路径: pathlib.Path, 目标平台: str
         # 任务399 交叉模拟：双工件=本体 v2p_linuxx64（x64·原生速度跑）+
         #   容器符号 v2p_linux.o（arm64·链进产物）——两次构建均由 x64 宿主 cn
         #   原生驱动，模拟开销只落在用例产物运行面。见 e2e交叉模拟.py。
+        #   1046：双工件建段分别注入 共享产物就绪（同树跨进程恰一重建者）。
         v2p, v2pobj, 构建错误 = 交叉.构建交叉v2p双工件(
             编译器路径, 项目根目录 / "CN语言编译器v2" / "主.cn", 项目根目录,
-            审计目录, 运行命令, 计算v2构建指纹, 构建超时秒数, 详细, 编号)
+            审计目录, 运行命令, 计算v2构建指纹, 构建超时秒数, 详细, 编号,
+            加锁重建=共享产物就绪)
         if 构建错误:
             return None, 构建错误
         return v2p, v2pobj, 运行时objs, as工具, cxx工具
@@ -1519,28 +1592,39 @@ def 确保v2p与运行时就绪(编译器路径: pathlib.Path, 目标平台: str
     v2p = 审计目录 / f"v2p_{产物后缀}"
     v2pobj = 审计目录 / f"v2p_{产物后缀}.o"
     缓存键路径 = 审计目录 / f"v2p_build_key_{产物后缀}.txt"
-    本次指纹 = 计算v2构建指纹(编译器路径)
-    if (v2p.exists() and v2pobj.exists() and 缓存键路径.exists()
-            and 缓存键路径.read_text(encoding="utf-8") == 本次指纹):
+
+    def _v2p命中() -> bool:
+        本次指纹 = 计算v2构建指纹(编译器路径)
+        return (v2p.exists() and v2pobj.exists() and 缓存键路径.exists()
+                and 缓存键路径.read_text(encoding="utf-8") == 本次指纹)
+
+    def _v2p重建():
+        for 旧产物 in (v2p, v2pobj):
+            if 旧产物.exists():
+                try:
+                    旧产物.unlink()
+                except OSError as 异常:
+                    return False, f"{编号}-1 旧 {旧产物.name} 删除失败: {异常}"
         if 详细:
-            print(f"    [{编号}-1] v2p 构建缓存命中（v2 源码与编译器未变），复用 {v2p.name}")
-        return v2p, v2pobj, 运行时objs, as工具, cxx工具
-    if v2p.exists():
-        v2p.unlink()
-    if v2pobj.exists():
-        v2pobj.unlink()
-    if 详细:
-        print(f"    [{编号}-1] {编译器路径} build 主.cn -> {v2p.name}（{目标平台}）")
-    编译结果 = 运行命令([str(编译器路径), "build", str(项目根目录 / "CN语言编译器v2" / "主.cn"),
-                      "--target", 目标平台, "--output", str(v2p)], 项目根目录,
-                     超时秒数=构建超时秒数)
-    if 编译结果.returncode != 0:
-        return None, f"{编号}-1 编译 v2 组件失败(退出码{编译结果.returncode}): {(编译结果.stderr or 编译结果.stdout).strip()[:200]}"
-    if not v2p.exists():
-        return None, f"{编号}-1 编译返回成功但未生成 {v2p.name}"
-    if not v2pobj.exists():
-        return None, f"{编号}-1 中间产物 {v2pobj.name} 未留存（容器符号提供者）"
-    缓存键路径.write_text(本次指纹, encoding="utf-8")
+            print(f"    [{编号}-1] {编译器路径} build 主.cn -> {v2p.name}（{目标平台}）")
+        编译结果 = 运行命令([str(编译器路径), "build", str(项目根目录 / "CN语言编译器v2" / "主.cn"),
+                          "--target", 目标平台, "--output", str(v2p)], 项目根目录,
+                         超时秒数=构建超时秒数)
+        if 编译结果.returncode != 0:
+            return False, f"{编号}-1 编译 v2 组件失败(退出码{编译结果.returncode}): {(编译结果.stderr or 编译结果.stdout).strip()[:200]}"
+        if not v2p.exists():
+            return False, f"{编号}-1 编译返回成功但未生成 {v2p.name}"
+        if not v2pobj.exists():
+            return False, f"{编号}-1 中间产物 {v2pobj.name} 未留存（容器符号提供者）"
+        缓存键路径.write_text(计算v2构建指纹(编译器路径), encoding="utf-8")
+        return True, None
+
+    成功, 错误, 路径 = 共享产物就绪(编号, _v2p命中, _v2p重建)
+    if not 成功:
+        return None, 错误
+    if 详细 and 路径 in ("命中", "锁内命中"):
+        复核 = "·锁内复核" if 路径 == "锁内命中" else ""
+        print(f"    [{编号}-1] v2p 构建缓存命中（v2 源码与编译器未变）{复核}，复用 {v2p.name}")
     return v2p, v2pobj, 运行时objs, as工具, cxx工具
 
 
@@ -1548,8 +1632,10 @@ def 确保v2p就绪win(编译器路径: pathlib.Path, 详细: bool, 编号: str 
     """win-x64 侧 v2p 就绪（111-a：自 执行v2闭环 原内联步骤0/1 提取，供预热与各用例共用）：
     工具链探测（ml64/link + MSVC/Kits LIB 路径）→ 运行时 .obj 存在性 → v2p 构建缓存
     （v2 全树指纹，输入未变不重建）。
-    并发安全：池启动前单线程预热一次（写缓存），此后各用例只读命中——消除并发首建
-    竞态（对齐 linux 分支 确保v2p与运行时就绪 的同款预热模式）。
+    并发纪律（1046 分层）：①池启动前单线程预热一次（写缓存），各用例再调用命中缓存=
+    常规零竞态路径（对齐 linux 分支 确保v2p与运行时就绪 的同款预热模式）；②一切预热
+    兜不住的并发形态（孤儿 worker/并行 run_e2e/缓存被外部失效窗口）由 共享产物就绪 的
+    跨进程锁+双检兜底——锁内至多一个重建者，其余等待后复核命中。
     返回 (v2p, v2pobj, 运行时objs, ML64, LINK, LIB路径们)；失败返回 (None, 错误描述)。"""
     审计目录 = 项目根目录 / "target" / "audit2"
     审计目录.mkdir(parents=True, exist_ok=True)
@@ -1599,35 +1685,47 @@ def 确保v2p就绪win(编译器路径: pathlib.Path, 详细: bool, 编号: str 
         if not obj.exists():
             return None, f"缺少运行时 .obj: {obj.name}（请先构建 C++ 版编译器）"
 
-    # v2p 构建缓存（同 Linux 分支——输入未变不重建）
+    # v2p 构建缓存（同 Linux 分支——输入未变不重建；1046：重建临界区跨进程互斥）
     缓存键路径 = 审计目录 / "v2p_build_key_win.txt"
-    本次指纹 = 计算v2构建指纹(编译器路径)
-    # 255（2026-10-07）：exe/obj 同批校验——cn_self 链接借链 v2p.obj，两者不同批
-    #   （历史中断残留/外部触碰）=fix_s 混合体产物→固定点假红（236 轮 12K 行差实录）。
-    #   指纹命中但 mtime 差超阈值（5 分钟·同批构建秒级完成）→视为混合态强制重建。
-    同批 = (v2p.exists() and v2pobj.exists()
-            and abs(v2p.stat().st_mtime - v2pobj.stat().st_mtime) <= 300)
-    if (同批 and 缓存键路径.exists()
-            and 缓存键路径.read_text(encoding="utf-8") == 本次指纹):
+
+    def _v2p命中() -> bool:
+        本次指纹 = 计算v2构建指纹(编译器路径)
+        # 255（2026-10-07）：exe/obj 同批校验——cn_self 链接借链 v2p.obj，两者不同批
+        #   （历史中断残留/外部触碰）=fix_s 混合体产物→固定点假红（236 轮 12K 行差实录）。
+        #   指纹命中但 mtime 差超阈值（5 分钟·同批构建秒级完成）→视为混合态强制重建。
+        同批 = (v2p.exists() and v2pobj.exists()
+                and abs(v2p.stat().st_mtime - v2pobj.stat().st_mtime) <= 300)
+        return (同批 and 缓存键路径.exists()
+                and 缓存键路径.read_text(encoding="utf-8") == 本次指纹)
+
+    def _v2p重建():
+        for 旧产物 in (v2p, v2pobj):
+            if 旧产物.exists():
+                try:
+                    旧产物.unlink()
+                except OSError as 异常:
+                    return False, (f"{编号}-1 旧 {旧产物.name} 删除失败: {异常}"
+                                   "（同树另一进程仍占用 v2p 产物？）")
         if 详细:
-            print(f"    [{编号}-1] v2p 构建缓存命中（v2 源码与编译器未变），复用 {v2p.name}")
-        return v2p, v2pobj, 运行时objs, ML64, LINK, LIB路径们
-    if v2p.exists():
-        v2p.unlink()
-    if v2pobj.exists():
-        v2pobj.unlink()
-    if 详细:
-        print(f"    [{编号}-1] {编译器路径} build 主.cn -> v2p.exe")
-    编译结果 = 运行命令([str(编译器路径), "build", str(v2源码目录 / "主.cn"),
-                      "--target", "win-x64", "--output", str(v2p)], 项目根目录,
-                     超时秒数=构建超时秒数)
-    if 编译结果.returncode != 0:
-        return None, f"{编号}-1 编译 v2 组件失败(退出码{编译结果.returncode}): {(编译结果.stderr or 编译结果.stdout).strip()[:200]}"
-    if not v2p.exists():
-        return None, f"{编号}-1 编译返回成功但未生成 v2p.exe"
-    if not v2pobj.exists():
-        return None, f"{编号}-1 中间产物 {v2pobj.name} 未留存（容器符号提供者）"
-    缓存键路径.write_text(本次指纹, encoding="utf-8")
+            print(f"    [{编号}-1] {编译器路径} build 主.cn -> v2p.exe")
+        编译结果 = 运行命令([str(编译器路径), "build", str(v2源码目录 / "主.cn"),
+                          "--target", "win-x64", "--output", str(v2p)], 项目根目录,
+                         超时秒数=构建超时秒数)
+        if 编译结果.returncode != 0:
+            return False, f"{编号}-1 编译 v2 组件失败(退出码{编译结果.returncode}): {(编译结果.stderr or 编译结果.stdout).strip()[:200]}"
+        if not v2p.exists():
+            return False, f"{编号}-1 编译返回成功但未生成 v2p.exe"
+        if not v2pobj.exists():
+            return False, f"{编号}-1 中间产物 {v2pobj.name} 未留存（容器符号提供者）"
+        缓存键路径.write_text(计算v2构建指纹(编译器路径), encoding="utf-8")
+        return True, None
+
+    成功, 错误, 路径 = 共享产物就绪(编号, _v2p命中, _v2p重建)
+    if not 成功:
+        return None, 错误
+    if 详细 and 路径 in ("命中", "锁内命中"):
+        复核 = "·锁内复核" if 路径 == "锁内命中" else ""
+        print(f"    [{编号}-1] v2p 构建缓存命中（v2 源码与编译器未变）{复核}，复用 {v2p.name}")
     return v2p, v2pobj, 运行时objs, ML64, LINK, LIB路径们
 
 
@@ -2659,7 +2757,10 @@ def 主程序() -> int:
     # 并行恒定（568-a 用户令·604-a 进程池落地）：全部用例统一进程池，
     #   串行路径删除（显式 --jobs 1=单 worker 进程等效串行）。
     #   v2 产物已按用例隔离（v2work<编号>）；唯一共享工件 v2p/运行时 .o
-    #   在池启动前由主进程单线程预热（确保v2p与运行时就绪）——消除并发构建竞态。
+    #   在池启动前由主进程单线程预热（确保v2p与运行时就绪）——消除常规并发
+    #   构建竞态；1046 兜底：预热兜不住的并发形态（孤儿 worker/并行 run_e2e/
+    #   缓存被外部失效窗口）由 ensure 内跨进程锁+双检收口（共享产物就绪——
+    #   锁内至多一个重建者，等待者复核命中）。
     if 目标平台 in ("linux-arm64", "linux-x86_64"):
         v2用例们 = [d for d in 用例目录们 if 是v2闭环用例(d)]
         if v2用例们:

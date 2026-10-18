@@ -40,6 +40,11 @@ acquire 存活锚时 owner_pid 永活——917 判据①「锚死→秒级接管
 935（2026-10-17 两夜实录 379/932）：陈锁接管清尸——清护面（树锁运行入口）在
 判定「锚已死」时先回收死锚的存活后代（进程树枚举·PID/PPID 链），治「强杀不留
 活口」病根（Windows 不级联杀→spawn worker 孤儿化与新轮同树互踩）。
+1046（2026-10-18·v2p 共享产物构建锁配套）：释放竞态加固——等待者每 2s 读
+  info.json 的瞬态句柄（Windows 读打开不带 FILE_SHARE_DELETE）可令持有方
+  unlink/rmdir 撞 PermissionError；原「单次尝试失败即静默放弃」在短命 worker
+  持锁场景=锁残留且 owner 存活（无陈锁判据可接管）→ 排队者堵至超时。修=
+  释放带界重试（≤2s）+ 未清警告行（详见 释放 docstring）。
 """
 from __future__ import annotations
 
@@ -401,18 +406,35 @@ def 释放(锁: Path, 静默: bool = False, 仅属主: int | None = None) -> Non
     退出时会执行它；无校验则 worker 误删真正持锁者（主进程）的锁=全机互斥静默失效。
     归属不符（或锁已不在）即跳过不动。917 陈锁接管路径不传 仅属主——行为不变。
     578：清目录内全部残留（info.json + 轮心跳原子写残留的 info.json.tmp）再 rmdir
-    ——原只删 info.json，残留文件使 rmdir 失败=锁清不掉。"""
+    ——原只删 info.json，残留文件使 rmdir 失败=锁清不掉。
+    1046（2026-10-18·释放竞态加固）：「单次尝试失败即静默放弃」在等待者高频读
+    info.json（读打开不带 FILE_SHARE_DELETE）时会撞 PermissionError「另一个程序正在
+    使用此文件」→ 锁残留而 owner 仍活（短命 worker 持锁场景=owner 存活整个池生命
+    周期→排队者无陈锁判据可接管→等待至超时；1046 小探针实录：释放泄漏→其余写者
+    全部被堵）。修=带界重试（累计 ≤2s·20ms 间隔）：真人等待循环 2s 节拍下读窗口
+    必让出；重试全程本锁目录仍在=无人可 mkdir 抢占（归属安全·不误删他者）。
+    到期仍未清=维持原「尽力而为」语义（不抛异常阻断调用方收尾），但打警告行
+    显形（miss 不可静默——锁泄漏必须可见）。"""
     if 仅属主 is not None and 读信息(锁).get("owner_pid") != 仅属主:
         return
-    try:
-        for 残留 in 锁.glob("*"):
-            try:
-                残留.unlink()
-            except OSError:
-                pass
-        锁.rmdir()
-    except OSError:
-        pass
+    截止 = time.monotonic() + 2.0
+    while True:
+        try:
+            for 残留 in 锁.glob("*"):
+                try:
+                    残留.unlink()
+                except OSError:
+                    pass
+            锁.rmdir()
+        except OSError:
+            pass
+        if not 锁.exists():
+            break
+        if time.monotonic() >= 截止:
+            print(f"[gate_lock] 警告：锁释放未完成（{锁} 残留·读侧句柄持续占用？"
+                  f"——重试 2s 仍被阻），请 gate_lock status 核查", file=sys.stderr)
+            break
+        time.sleep(0.02)
     if not 静默:
         print("[gate_lock] 已释放", file=sys.stderr)
 

@@ -112,7 +112,7 @@ def 交叉运行命令(命令列表: list) -> list:
 
 
 def 构建交叉v2p双工件(编译器路径, 主cn, 项目根, 审计目录, 运行命令函数,
-                      指纹函数, 构建超时秒数, 详细=False, 编号="PRE"):
+                      指纹函数, 构建超时秒数, 详细=False, 编号="PRE", 加锁重建=None):
     """交叉模式 v2p 双工件：本体 v2p_linuxx64（x64·跑）+ 符号 v2p_linux.o
     （arm64·链）。缓存复用既有 per-后缀 指纹键模式（输入不变不重建；符号侧
     独立键 v2p_symbol_key_linux.txt）。构建 cwd=项目根（与原生轮中间产物
@@ -123,16 +123,34 @@ def 构建交叉v2p双工件(编译器路径, 主cn, 项目根, 审计目录, �
     互不可见。399 立轮时「target/*.o 判据只有 mtime 不含架构、双架构同树
     互踩（x64 io_api.o 被 arm64 链接撞 EM:62 重定位错误）」的清缓存 workaround
     就此退役（治本分桶替代症状级清场）；本函数只保留 env -u 工具链变量摘除
-    （本体必须走原生 as/g++，与分桶无关）。构建序列仍为本体在前、符号收尾。"""
+    （本体必须走原生 as/g++，与分桶无关）。构建序列仍为本体在前、符号收尾。
+
+    1046：加锁重建=调用方注入的「锁+双检」原语（run_e2e.共享产物就绪，
+    签名(编号, 命中判据, 重建过程) -> (成功, 错误文本, 路径)）——两个建段
+    各自独立持锁，并发重建=互斥串行（交叉双工件与原生 v2p 共用同一把
+    audit2 锁，恰一重建者）；缺省 None=不注入（等价旧行为·直建）。"""
     本体 = 审计目录 / "v2p_linuxx64"
     本体键 = 审计目录 / "v2p_build_key_linuxx64.txt"
     符号obj = 审计目录 / "v2p_linux.o"
     符号键 = 审计目录 / "v2p_symbol_key_linux.txt"
     本次指纹 = 指纹函数(编译器路径)
 
+    def _段就绪(段编号, 命中判据, 重建过程):
+        """段级「查键→（锁）重建→写键」：加锁重建 已注入=锁+双检（1046）；
+        未注入=旧行为直建。返回 (成功, 错误文本, 路径)。"""
+        if 加锁重建 is None:
+            if 命中判据():
+                return True, None, "命中"
+            成功, 错误 = 重建过程()
+            return 成功, 错误, ("重建" if 成功 else "")
+        return 加锁重建(段编号, 命中判据, 重建过程)
+
     # 本体（x64·与原生 linux-x86_64 轮共用既有缓存键）
-    if not (本体.exists() and 本体键.exists()
-            and 本体键.read_text(encoding="utf-8") == 本次指纹):
+    def _本体命中():
+        return (本体.exists() and 本体键.exists()
+                and 本体键.read_text(encoding="utf-8") == 本次指纹)
+
+    def _本体重建():
         # env -u 摘除 CN_AS/CN_CXX：本体构建是 x64 目标，cn 内部工具链必须走
         #   PATH 原生 as/g++（实测教训：交叉变量全局注入时 x64 本体被 arm64
         #   as 汇编必败）
@@ -141,17 +159,26 @@ def 构建交叉v2p双工件(编译器路径, 主cn, 项目根, 审计目录, �
                              "--target", "linux-x86_64", "--output", str(本体)],
                             项目根, 超时秒数=构建超时秒数)
         if 编译.returncode != 0:
-            return None, None, (f"{编号}-1 交叉本体构建失败(退出码{编译.returncode}): "
-                                f"{(编译.stderr or 编译.stdout).strip()[:200]}")
+            return False, (f"{编号}-1 交叉本体构建失败(退出码{编译.returncode}): "
+                           f"{(编译.stderr or 编译.stdout).strip()[:200]}")
         if not 本体.exists():
-            return None, None, f"{编号}-1 交叉本体构建成功但未生成 {本体.name}"
+            return False, f"{编号}-1 交叉本体构建成功但未生成 {本体.name}"
         本体键.write_text(本次指纹, encoding="utf-8")
-    elif 详细:
-        print(f"    [{编号}-1] 交叉本体缓存命中，复用 {本体.name}")
+        return True, None
+
+    成功, 错误, 路径 = _段就绪(f"{编号}-1", _本体命中, _本体重建)
+    if not 成功:
+        return None, None, 错误
+    if 详细 and 路径 in ("命中", "锁内命中"):
+        复核 = "·锁内复核" if 路径 == "锁内命中" else ""
+        print(f"    [{编号}-1] 交叉本体缓存命中{复核}，复用 {本体.name}")
 
     # 容器符号（arm64 .o·产物链接面；可执行副产品删除防误用）
-    if not (符号obj.exists() and 符号键.exists()
-            and 符号键.read_text(encoding="utf-8") == 本次指纹):
+    def _符号命中():
+        return (符号obj.exists() and 符号键.exists()
+                and 符号键.read_text(encoding="utf-8") == 本次指纹)
+
+    def _符号重建():
         # 符号构建：--target linux-arm64 走交叉 CN_AS/CN_CXX，运行时 obj 落
         #   target/linux-arm64/ 桶（与本体 x64 桶隔离·522 分桶）
         副产品 = 审计目录 / "v2p_linux"
@@ -159,13 +186,19 @@ def 构建交叉v2p双工件(编译器路径, 主cn, 项目根, 审计目录, �
                              "--target", "linux-arm64", "--output", str(副产品)],
                             项目根, 超时秒数=构建超时秒数)
         if 编译.returncode != 0:
-            return None, None, (f"{编号}-1a 交叉符号构建失败(退出码{编译.returncode}): "
-                                f"{(编译.stderr or 编译.stdout).strip()[:200]}")
+            return False, (f"{编号}-1a 交叉符号构建失败(退出码{编译.returncode}): "
+                           f"{(编译.stderr or 编译.stdout).strip()[:200]}")
         if not 符号obj.exists():
-            return None, None, f"{编号}-1a 交叉符号构建未产出 {符号obj.name}"
+            return False, f"{编号}-1a 交叉符号构建未产出 {符号obj.name}"
         if 副产品.exists():
             副产品.unlink()
         符号键.write_text(本次指纹, encoding="utf-8")
-    elif 详细:
-        print(f"    [{编号}-1a] 交叉符号缓存命中，复用 {符号obj.name}")
+        return True, None
+
+    成功, 错误, 路径 = _段就绪(f"{编号}-1a", _符号命中, _符号重建)
+    if not 成功:
+        return None, None, 错误
+    if 详细 and 路径 in ("命中", "锁内命中"):
+        复核 = "·锁内复核" if 路径 == "锁内命中" else ""
+        print(f"    [{编号}-1a] 交叉符号缓存命中{复核}，复用 {符号obj.name}")
     return 本体, 符号obj, None
