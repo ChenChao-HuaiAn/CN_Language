@@ -24,6 +24,9 @@ void LICMPass::collectBodyDefs(
     const ir::IRFunction& fn, const std::vector<int>& bodyIndexes,
     std::unordered_set<int>& defRegs,
     std::unordered_set<std::string>& writtenSlots) {
+    // 按循环体块数预留（每块至少一个定义寄存器；减少扩容/重哈希）
+    defRegs.reserve(bodyIndexes.size() * 4);
+    writtenSlots.reserve(bodyIndexes.size());
     for (const int bi : bodyIndexes) {
         const auto& insts = fn.blocks[static_cast<std::size_t>(bi)]->instructions;
         for (const auto& inst : insts) {
@@ -108,11 +111,9 @@ bool LICMPass::runFunction(ir::IRFunction& fn) {
         //    初始 = 循环外定义的寄存器；每轮把"操作数全为常量/不变寄存器/
         //    未写槽"的纯运算结果加入，直到无新增
         std::unordered_set<int> invariantRegs;
-        for (const int r : defRegs) {
-            // 循环外定义的寄存器（体内 Load 的定义在 defRegs 中——
-            // 需按"其指令本身是否不变"判定，故从空集开始迭代）
-            (void)r;
-        }
+        invariantRegs.reserve(defRegs.size());
+        // 从空集开始迭代：体内定义按其指令自身是否不变判定（旧实现在此
+        //   有一个只读 defRegs 的空转循环——无副作用，删除）
         bool grew = true;
         int rounds = 0;
         while (grew && rounds < 16) {

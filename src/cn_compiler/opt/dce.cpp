@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "cn_compiler/opt/dce.hpp"
+#include "cn_compiler/opt/opt_common.hpp"
 
 namespace cn_compiler {
 namespace opt {
@@ -93,23 +94,17 @@ bool DCEPass::run(ir::IRModule& module) {
                 //   否则条件寄存器定义被级联删除 -> 条件装载槽垃圾）
                 if (block->terminated && block->termKind == "返回" &&
                     !block->termReturnValue.empty()) {
-                    const std::string& s = block->termReturnValue;
-                    if (s.size() > 2 && s[0] == '%' && s[1] == 'v') {
-                        try {
-                            usedRegs.push_back(std::stoi(s.substr(2)));
-                        } catch (...) {
-                            // 解析失败忽略（防御性）
-                        }
+                    int regId = 0;
+                    // 解析失败（IR 契约外文本）按无引用处理（与旧 stoi 异常忽略等价）
+                    if (parseRegText(block->termReturnValue, regId)) {
+                        usedRegs.push_back(regId);
                     }
                 }
                 if (block->terminated && block->termKind == "条件跳转") {
-                    const std::string& c = block->termCondition;
-                    if (c.size() > 2 && c[0] == '%' && c[1] == 'v') {
-                        try {
-                            usedRegs.push_back(std::stoi(c.substr(2)));
-                        } catch (...) {
-                            // 解析失败忽略（防御性）
-                        }
+                    int regId = 0;
+                    // 解析失败（IR 契约外文本）按无引用处理（与旧 stoi 异常忽略等价）
+                    if (parseRegText(block->termCondition, regId)) {
+                        usedRegs.push_back(regId);
                     }
                 }
             }

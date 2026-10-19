@@ -7,6 +7,7 @@
 //      负数加 2^n-1 修正后即向零截断（GCC/LLVM sdiv-by-power-of-2 同款·零分支）。
 //   3. 常量解析：normalizeIntText 规范化后 stoull（防御异常）
 //   4. 幂等：削减后 opcode 变为 Shl/Shr，不再匹配 Mul/Div
+#include <charconv>
 #include <string>
 
 #include "cn_compiler/opt/opt_common.hpp"
@@ -18,6 +19,18 @@ namespace opt {
 // 解析整型常量文本为十进制（支持 0x/0b/0o 前缀），失败返回 false
 bool StrengthReducePass::parseIntText(const std::string& text,
                                       unsigned long long& out) {
+    // 十进制快路径：from_chars 无分配/无异常（带前缀文本先归一化；
+    //   空白/+号/负号等形态回退 stoull，保持旧语义）
+    if (!hasRadixPrefix(text)) {
+        const char* const begin = text.c_str();
+        unsigned long long value = 0;
+        const auto result = std::from_chars(begin, begin + text.size(), value);
+        if (result.ec == std::errc()) {
+            out = value;
+            return true;
+        }
+        if (result.ec == std::errc::result_out_of_range) return false;
+    }
     const std::string norm = normalizeIntText(text);
     try {
         out = std::stoull(norm);
@@ -166,12 +179,21 @@ bool StrengthReducePass::tryExpandSignedDiv(ir::IRInstruction& inst,
 bool StrengthReducePass::run(ir::IRModule& module) {
     bool changed = false;
     for (auto& fn : module.functions) {
-        int nextReg = maxRegIdOf(fn) + 1;
         // 任务 474：安全函数的 Mul 受错误码 8 溢出检查——Mul→Shl 非等价跳过
         const bool mulMayOvfl474 = !fn.isUnsafe;
+        // 新寄存器基址仅在激进模式（有符号除法展开）需要：-O2 默认关时
+        //   跳过整函数扫描（maxRegIdOf），语义不变（nextReg 未被使用）
+        int nextReg = signedDivEnabled_ ? maxRegIdOf(fn) + 1 : 0;
         for (auto& block : fn.blocks) {
             auto& insts = block->instructions;
             for (std::size_t i = 0; i < insts.size(); ++i) {
+                // 仅 Mul/WrapMul/Div 可削减：其余指令快速跳过，避免逐指令
+                //   类型字符串比较（isIntType）与两级判定
+                const ir::Opcode op = insts[i].opcode;
+                const bool reducible = op == ir::Opcode::Mul ||
+                                       op == ir::Opcode::WrapMul ||
+                                       op == ir::Opcode::Div;
+                if (!reducible) continue;
                 if (reduceInstruction(insts[i], mulMayOvfl474)) { changed = true; continue; }
                 // F1-29：有符号 Div x, 2^n → 4 条修正序列（1 条指令原位展开；
                 //   仅 aggressive 模式（-O3）启用——默认保守保持既有行为）

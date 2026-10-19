@@ -28,6 +28,9 @@ void DomTree::rebuild(const ir::IRFunction& fn) {
     idom_.clear();
 
     // 1. 建立 label -> 索引映射
+    //    （1153：按块数预留容量——旧实现逐 push/insert 触发多次扩容与重哈希）
+    labels_.reserve(fn.blocks.size());
+    index_.reserve(fn.blocks.size() * 2);
     for (std::size_t i = 0; i < fn.blocks.size(); ++i) {
         labels_.push_back(fn.blocks[i]->label);
         index_[fn.blocks[i]->label] = static_cast<int>(i);
@@ -64,6 +67,7 @@ void DomTree::rebuild(const ir::IRFunction& fn) {
     if (n > 0) {
         visited[0] = 1;
         std::vector<std::pair<int, std::size_t>> dfs;
+        dfs.reserve(static_cast<std::size_t>(n));
         dfs.push_back({0, 0});
         while (!dfs.empty()) {
             auto& [b, i] = dfs.back();
@@ -149,6 +153,7 @@ std::vector<DomTree::Loop> DomTree::findNaturalLoops() const {
     }
     // 去重（同一循环可能多个 back edge 指向同一 header）
     std::vector<std::pair<int, int>> uniqueEdges;
+    uniqueEdges.reserve(backEdges.size());
     for (const auto& e : backEdges) {
         bool dup = false;
         for (const auto& u : uniqueEdges) {

@@ -33,6 +33,21 @@ bool parseIntText(const std::string& text, std::int64_t& out) {
     }
 }
 
+// 是否可简化操作码（simplifyInstruction 的 case 列表）。
+//   主循环据此跳过其余指令（Load/Store/Call/Phi...），避免每条指令都做
+//   类型字符串比较与分派。
+bool isSimplifiableOpcode(ir::Opcode op) {
+    switch (op) {
+        case ir::Opcode::Add: case ir::Opcode::Sub: case ir::Opcode::Mul:
+        case ir::Opcode::Div: case ir::Opcode::Shl: case ir::Opcode::Shr:
+        case ir::Opcode::BitOr: case ir::Opcode::BitXor: case ir::Opcode::BitAnd:
+        case ir::Opcode::And: case ir::Opcode::Or:
+            return true;
+        default:
+            return false;
+    }
+}
+
 } // namespace
 
 // 操作数是否为整型常量文本
@@ -139,7 +154,8 @@ int AlgebraicSimplifyPass::simplifyInstruction(ir::IRInstruction& inst,
     if (inst.operands.size() < 2) return 0;
     const ir::IRValue& a = inst.operands[0];
     const ir::IRValue& b = inst.operands[1];
-    const std::string type = inst.type;
+    // 引用而非拷贝（旧实现每条指令复制一次类型字符串）
+    const std::string& type = inst.type;
 
     // ---- D9（228-a）：浮点恒等式（仅 aggressive 模式·IEEE 恒真者） ----
     if (floatIdent && (type == "f32" || type == "f64")) {
@@ -322,11 +338,14 @@ bool AlgebraicSimplifyPass::run(ir::IRModule& module) {
             for (auto& inst : block->instructions) {
                 // 第一步：应用已收集的替换（本块内先前简化 + 前序块的寄存器替换）
                 if (replaceUses(inst, regRewrite, constRewrite)) changed = true;
-                // 第二步：尝试简化
+                // 第二步：尝试简化（仅可简化操作码进入）
                 ir::IRValue constResult;
                 int replaceReg = -1;
-                const int status = simplifyInstruction(inst, constResult, replaceReg,
-                                                       floatIdentEnabled_, &regConsts);
+                int status = 0;
+                if (isSimplifiableOpcode(inst.opcode)) {
+                    status = simplifyInstruction(inst, constResult, replaceReg,
+                                                 floatIdentEnabled_, &regConsts);
+                }
                 if (status == 1) {
                     // 常量结果：原地替换为 ConstInt/ConstBool（保留结果寄存器）
                     replaceWithConstant(inst, constResult.extra, constResult.type,
