@@ -75,7 +75,14 @@ void IRGenerator::visitUnaryExpr(UnaryExpr* node) {
             //   合成结构体（{i1 正常, pad, 联合体{值, 错误}}，正常标志 @0、值/错误 @8）。
             //   正常 -> 取 .值 继续；失败 -> 构造 结果{正常=false, 错误=E} 并返回
             //   （Rust ? 语义；node->propagateType 由语义层回填）
-            ir::IRValue propOperand = genExpr(node->operand.get());
+            // #1173 根治（P0 宿主 ? 操作数双求值）：入口 visitUnaryExpr 已对操作数
+            //   genExpr 一次（operand 变量），本分支原再 genExpr 一次——带副作用操作数
+            //   （函数调用打印/计数/局部 RAII）被求值两次，asm 可见两个 call + 两个
+            //   独立 retbuf（e09 实测 I I A I I B，v2 正确 I A I B）。此处直接复用
+            //   入口结果：IR 发射序列与「只保留原第二次求值」完全等价（两次调用间
+            //   无块切换/状态变更；结果缓冲为栈 Alloca 槽，无堆所有权登记），
+            //   副作用单次且不引入新泄漏/重复释放面。
+            ir::IRValue propOperand = operand;
             const std::string ptype = node->propagateType;  // 函数返回类型（写侧）
             // 宿主缺陷根治（2026-08-25）：propagateType 现为当前函数返回类型
             //   （语义层回填 currentReturnType_）。写侧（失败临时/返回）用返回
