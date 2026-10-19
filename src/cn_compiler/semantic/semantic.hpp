@@ -291,10 +291,11 @@ private:
                                          const std::string& name) const;
     const EnumDecl* findEnumInModule(const std::string& module,
                                      const std::string& name) const;
+    // 1155：类型名查询索引惰性构建（三表 size 变化整表重建·见 semantic_name_index.hpp）
+    const TypeLookupIndex& ensureTypeLookupIndex() const;
     // 计算结构体/联合体布局（C风格对齐，Task 2.7）
     void computeLayout(StructDecl* decl);
-    // T3（306-a 波次2）：布局计算中的结构体名栈——值字段递归环检测
-    //   （环=无穷大小类型·编译期拒绝；Rust E0072 同类）
+    // T3（306-a 波次2）：布局计算中的结构体名栈——值字段递归环检测（无穷大小类型·编译期拒绝；Rust E0072 同类）
     std::unordered_set<std::string> layoutVisiting_;
     // 按名取非常量结构体声明（306-a T3 惰性递归布局用；跨 program_->structs 线性查）
     StructDecl* findMutableStruct(const std::string& name);
@@ -314,8 +315,7 @@ private:
     bool lookupMoved(const std::string& name, int& outLine) const;
     // 已转移变量使用拒绝（读值/左值共用）——命中即报 E0382 对标诊断并返回 true
     bool reportMovedUse(const std::string& name, const SourceLocation& loc);
-    // 981 赋值复活（001 条文⑥·用户裁决甲）：清除 name 的已转移标记（纯赋值
-    //   写点=复活点·Rust assign-to-move 同款）——与 markMovedVar 同序找声明层。
+    // 981 赋值复活（001 条文⑥·用户裁决甲）：清除 name 的已转移标记（纯赋值写点=复活点·Rust assign-to-move 同款——与 markMovedVar 同序找声明层）
     void reviveMovedVar(const std::string& name);
     // ==================== 980 波7（任务 007 NLL）：已转移集分支合流设施 ====================
     // 背景：markMovedVar 词法标记跨互斥分支残留（886 轮 货舱解析.cn 115/117 假阳性
@@ -327,8 +327,7 @@ private:
     // 当前态 ∪= extra（may-moved 合流写回——extra 中变量按声明层写入）
     void mergeMovedOr(const MovedSet& extra);
     // 分支体遍历包装（then/else 遍历点分散时复用——trackIfCheck 各形态）：
-    //   thenWalk 执行后快照终态并恢复入口态，elseWalk（可空）执行后合流。
-    //   thenExits/elseExits=stmtGuaranteesReturn 口径（终止支单侧取对侧终态）。
+    //   thenWalk 后快照终态并恢复入口态，elseWalk（可空）后合流；Exits 口径=stmtGuaranteesReturn。
     void movedCheckBranches(const std::function<void()>& thenWalk,
                             const std::function<void()>& elseWalk,
                             bool thenExits, bool elseExits);
@@ -779,6 +778,7 @@ private:
     bool builtinReleaseMode_ = false;  // 239-a：发布构建旗标（内建常量 调试模式 取值）
     std::unordered_map<std::string, FunctionInfo> functions_;   // 函数符号表
     mutable FuncNameIndex funcNameIndex_;  // 1143：函数名分桶索引（size 变化整表重建·const 查询惰性构建）
+    mutable TypeLookupIndex typeLookupIndex_;  // 1155：结构体/枚举/类名索引（同判据惰性重建）
     // ---- crate 模型（第 4 层）·签名 key -> 已注册该签名的模块名集合（跨模块同名函数允许·限定调用验证用）
     std::unordered_map<std::string, std::unordered_set<std::string>> funcSigModules_;
     std::unordered_map<std::string, FunctionDecl*> funcProtoDecls_;  // 762：链接键->已注册原型节点（原型+定义配对时默认值合并数据源·spec 04 §一C）

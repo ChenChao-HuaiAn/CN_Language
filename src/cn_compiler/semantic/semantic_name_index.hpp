@@ -54,4 +54,36 @@ struct FuncNameIndex {
     std::unordered_map<std::string_view, std::vector<const FuncEntryView*>> byBaseDollar;
 };
 
+// 1155（2026-10-19）：结构体/枚举/类名查询索引——isStructType/findStruct/
+//   isEnumType/findEnum/findClass 五查询的共享加速设施。
+//   背景（perf 语义面自身耗时 top：isStructType 18% / findClass 12% /
+//   findStruct 7%）：三查询逐次线性扫描 program_->structs/enums/classes_，
+//   每条目现场 std::string 比较/substr 构造临时串；classes_ 含全部泛型实例
+//   （向量$整32 …），裸名未命中当前模块时全表回退代价随实例数线性增长。
+//   方案（与 FuncNameIndex 同构）：三表只增不减（structs 唯一运行期插入=
+//   error_analysis 合成体降级、classes_=注册/泛型实例化、enums=解析期合并），
+//   以三表 size 变化为重建判据惰性整表构建；查询 O(1) 且零临时串。
+//   首命中语义：索引按容器遍历顺序 emplace（先到先得），与原循环「首个匹配
+//   即返回」逐字节一致（classes_ 裸名回退/结构体/枚举向量同序）。
+//   string_view 键指向容器内恒定存储：unordered_map 节点 rehash 不搬家、
+//   StructDecl/EnumDecl 对象经 unique_ptr 间接持有（vector 扩容只搬指针）。
+struct TypeLookupIndex {
+    const Program* builtProgram = nullptr;                      // 换程序即重建
+    std::size_t structsSize = static_cast<std::size_t>(-1);     // 未构建哨兵
+    std::size_t enumsSize = static_cast<std::size_t>(-1);
+    std::size_t classesSize = static_cast<std::size_t>(-1);
+    std::unordered_map<std::string_view, const StructDecl*> structByName;
+    std::unordered_map<std::string_view, std::unordered_map<std::string_view,
+                                                      const StructDecl*>> structByModule;
+    std::unordered_map<std::string_view, const EnumDecl*> enumByName;
+    std::unordered_map<std::string_view, std::unordered_map<std::string_view,
+                                                      const EnumDecl*>> enumByModule;
+    // 类索引三面：全键（限定名直查）/ 基名（原裸名回退首命中）/ 模块+基名
+    //   （当前模块精确命中；键=模块名，即类键最后一个 "::" 之前的前缀）。
+    std::unordered_map<std::string_view, const ClassInfo*> classByFullKey;
+    std::unordered_map<std::string_view, const ClassInfo*> classByBase;
+    std::unordered_map<std::string_view, std::unordered_map<std::string_view,
+                                                       const ClassInfo*>> classByModule;
+};
+
 }  // namespace cn_compiler

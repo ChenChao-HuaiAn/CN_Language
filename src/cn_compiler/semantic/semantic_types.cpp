@@ -6,6 +6,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -44,23 +45,81 @@ void SemanticAnalyzer::splitQualifiedType(const std::string& type, std::string& 
         base = type;
     }
 }
+// 1155：类型名查询索引惰性构建（设计/不变量见 semantic_name_index.hpp）。
+//   三表 size 任一变化（含换 Program）即整表重建；size 不变期间零重建。
+//   首命中语义：按容器遍历顺序 emplace（先到先得）与原「首个匹配即返回」一致。
+const TypeLookupIndex& SemanticAnalyzer::ensureTypeLookupIndex() const {
+    TypeLookupIndex& idx = typeLookupIndex_;
+    const Program* prog = program_;
+    const std::size_t structsSize = (prog == nullptr) ? 0 : prog->structs.size();
+    const std::size_t enumsSize = (prog == nullptr) ? 0 : prog->enums.size();
+    if (idx.builtProgram == prog && idx.structsSize == structsSize &&
+        idx.enumsSize == enumsSize && idx.classesSize == classes_.size()) {
+        return idx;
+    }
+    idx.structByName.clear();
+    idx.structByModule.clear();
+    idx.enumByName.clear();
+    idx.enumByModule.clear();
+    idx.classByFullKey.clear();
+    idx.classByBase.clear();
+    idx.classByModule.clear();
+    if (prog != nullptr) {
+        for (const auto& s : prog->structs) {
+            const std::string_view name(s->name);
+            idx.structByName.emplace(name, s.get());  // 首命中优先
+            idx.structByModule[std::string_view(s->moduleName)].emplace(name, s.get());
+        }
+        for (const auto& e : prog->enums) {
+            const std::string_view name(e->name);
+            idx.enumByName.emplace(name, e.get());
+            idx.enumByModule[std::string_view(e->moduleName)].emplace(name, e.get());
+        }
+    }
+    for (const auto& kv : classes_) {
+        const std::string_view key(kv.first);
+        const std::size_t sep = key.rfind("::");
+        const std::string_view base =
+            (sep == std::string_view::npos) ? key : key.substr(sep + 2);
+        const std::string_view module =
+            (sep == std::string_view::npos) ? std::string_view() : key.substr(0, sep);
+        idx.classByFullKey.emplace(key, &kv.second);    // 限定名直查（整键）
+        idx.classByBase.emplace(base, &kv.second);      // 裸名回退首命中（原 rfind 口径）
+        idx.classByModule[module].emplace(base, &kv.second);  // 当前模块精确命中
+    }
+    idx.builtProgram = prog;
+    idx.structsSize = structsSize;
+    idx.enumsSize = enumsSize;
+    idx.classesSize = classes_.size();
+    return idx;
+}
 const StructDecl* SemanticAnalyzer::findStructInModule(const std::string& module,
                                                        const std::string& name) const {
     if (program_ == nullptr) return nullptr;
-    for (const auto& s : program_->structs) {
-        if (s->name != name) continue;
-        if (module.empty() || s->moduleName == module) return s.get();
+    const TypeLookupIndex& idx = ensureTypeLookupIndex();
+    const std::string_view nameView(name);
+    if (module.empty()) {
+        const auto it = idx.structByName.find(nameView);
+        return (it == idx.structByName.end()) ? nullptr : it->second;
     }
-    return nullptr;
+    const auto mit = idx.structByModule.find(std::string_view(module));
+    if (mit == idx.structByModule.end()) return nullptr;
+    const auto it = mit->second.find(nameView);
+    return (it == mit->second.end()) ? nullptr : it->second;
 }
 const EnumDecl* SemanticAnalyzer::findEnumInModule(const std::string& module,
                                                    const std::string& name) const {
     if (program_ == nullptr) return nullptr;
-    for (const auto& e : program_->enums) {
-        if (e->name != name) continue;
-        if (module.empty() || e->moduleName == module) return e.get();
+    const TypeLookupIndex& idx = ensureTypeLookupIndex();
+    const std::string_view nameView(name);
+    if (module.empty()) {
+        const auto it = idx.enumByName.find(nameView);
+        return (it == idx.enumByName.end()) ? nullptr : it->second;
     }
-    return nullptr;
+    const auto mit = idx.enumByModule.find(std::string_view(module));
+    if (mit == idx.enumByModule.end()) return nullptr;
+    const auto it = mit->second.find(nameView);
+    return (it == mit->second.end()) ? nullptr : it->second;
 }
 
 namespace {
@@ -309,34 +368,41 @@ bool SemanticAnalyzer::isPortableType(const std::string& type, std::string& offe
 
 bool SemanticAnalyzer::isStructType(const std::string& type) const {
     if (type.empty() || program_ == nullptr) return false;
-    // A-2：限定键（甲::记录）按模块精确匹配；裸名匹配任一模块（既有行为）
-    std::string qmod, qbase;
-    splitQualifiedType(type, qmod, qbase);
-    if (!qmod.empty()) {
-        for (const auto& s : program_->structs) {
-            if (s->name == qbase && s->moduleName == qmod) return true;
+    // A-2：限定键（甲::记录）按模块精确匹配；裸名匹配任一模块（既有行为）。
+    // 1155：改查 TypeLookupIndex（原逐条线性扫 program_->structs + std::string 比较）。
+    //   与 splitQualifiedType 同口径：首个 "::" 且前缀非空=限定；前缀为空
+    //   （形如 "::记录"）按原 mod.empty() 分支走裸名 "记录"。
+    const TypeLookupIndex& idx = ensureTypeLookupIndex();
+    const std::string_view nameView(type);
+    const std::size_t sep = nameView.find("::");
+    if (sep != std::string_view::npos && sep > 0) {
+        const auto mit = idx.structByModule.find(nameView.substr(0, sep));
+        if (mit != idx.structByModule.end() &&
+            mit->second.count(nameView.substr(sep + 2)) > 0) {
+            return true;
         }
     } else {
-        for (const auto& s : program_->structs) {
-            if (s->name == type) return true;
-        }
+        const std::string_view lookupName =
+            (sep == std::string_view::npos) ? nameView : nameView.substr(2);
+        if (idx.structByName.count(lookupName) > 0) return true;
     }
-    if (isResultType(type)) {
+    // 1155：合成体（结果/可选）仅在前缀命中时进入字符串解析——原实现无条件调
+    //   isResultType/isOptionalType（splitTypeSuffix 双串分配）；前缀判定等价
+    //   （splitTypeSuffix 只剥尾部后缀，不会改变前缀）。
+    if (type.rfind("结果<", 0) == 0) {
+        if (!isResultType(type)) return false;
         const std::vector<std::string> args = resultTypeArgs(type);
         if (args.size() == 2) {
             const std::string sname =
                 resultStructName(types::canonical(args[0]), types::canonical(args[1]));
-            for (const auto& s : program_->structs) {
-                if (s->name == sname) return true;
-            }
+            return idx.structByName.count(std::string_view(sname)) > 0;
         }
-    } else if (isOptionalType(type)) {
+    } else if (type.rfind("可选<", 0) == 0) {
+        if (!isOptionalType(type)) return false;
         const std::string t = types::canonical(optionalTypeArg(type));
         if (!t.empty()) {
             const std::string sname = optionalStructName(t);
-            for (const auto& s : program_->structs) {
-                if (s->name == sname) return true;
-            }
+            return idx.structByName.count(std::string_view(sname)) > 0;
         }
     }
     return false;
@@ -344,39 +410,55 @@ bool SemanticAnalyzer::isStructType(const std::string& type) const {
 bool SemanticAnalyzer::isEnumType(const std::string& type) const {
     if (type.empty() || program_ == nullptr) return false;
     // A-2：限定键（甲::颜色）按模块精确匹配；裸名匹配任一模块（既有行为）
-    std::string qmod, qbase;
-    splitQualifiedType(type, qmod, qbase);
-    for (const auto& e : program_->enums) {
-        if (e->name != qbase) continue;
-        if (qmod.empty() || e->moduleName == qmod) return true;
+    const TypeLookupIndex& idx = ensureTypeLookupIndex();
+    const std::string_view nameView(type);
+    const std::size_t sep = nameView.find("::");
+    if (sep != std::string_view::npos && sep > 0) {
+        const auto mit = idx.enumByModule.find(nameView.substr(0, sep));
+        return mit != idx.enumByModule.end() &&
+               mit->second.count(nameView.substr(sep + 2)) > 0;
     }
-    return false;
+    const std::string_view lookupName =
+        (sep == std::string_view::npos) ? nameView : nameView.substr(2);
+    return idx.enumByName.count(lookupName) > 0;
 }
 const StructDecl* SemanticAnalyzer::findStruct(const std::string& name) const {
     if (program_ == nullptr) return nullptr;
     // A-2：限定键（甲::记录）按模块精确匹配；裸名匹配任一模块（既有行为）
-    std::string qmod, qbase;
-    splitQualifiedType(name, qmod, qbase);
-    for (const auto& s : program_->structs) {
-        if (s->name != qbase) continue;
-        if (qmod.empty() || s->moduleName == qmod) return s.get();
+    const TypeLookupIndex& idx = ensureTypeLookupIndex();
+    const std::string_view nameView(name);
+    const std::size_t sep = nameView.find("::");
+    const StructDecl* found = nullptr;
+    if (sep != std::string_view::npos && sep > 0) {
+        const auto mit = idx.structByModule.find(nameView.substr(0, sep));
+        if (mit != idx.structByModule.end()) {
+            const auto it = mit->second.find(nameView.substr(sep + 2));
+            if (it != mit->second.end()) found = it->second;
+        }
+    } else {
+        const std::string_view lookupName =
+            (sep == std::string_view::npos) ? nameView : nameView.substr(2);
+        const auto it = idx.structByName.find(lookupName);
+        if (it != idx.structByName.end()) found = it->second;
     }
-    if (isResultType(name)) {
+    if (found != nullptr) return found;
+    // 1155：合成体前缀门（同 isStructType——避免普通类型的解析分配）
+    if (name.rfind("结果<", 0) == 0) {
+        if (!isResultType(name)) return nullptr;
         const std::vector<std::string> args = resultTypeArgs(name);
         if (args.size() == 2) {
             const std::string sname =
                 resultStructName(types::canonical(args[0]), types::canonical(args[1]));
-            for (const auto& s : program_->structs) {
-                if (s->name == sname) return s.get();
-            }
+            const auto it = idx.structByName.find(std::string_view(sname));
+            if (it != idx.structByName.end()) return it->second;
         }
-    } else if (isOptionalType(name)) {
+    } else if (name.rfind("可选<", 0) == 0) {
+        if (!isOptionalType(name)) return nullptr;
         const std::string t = types::canonical(optionalTypeArg(name));
         if (!t.empty()) {
             const std::string sname = optionalStructName(t);
-            for (const auto& s : program_->structs) {
-                if (s->name == sname) return s.get();
-            }
+            const auto it = idx.structByName.find(std::string_view(sname));
+            if (it != idx.structByName.end()) return it->second;
         }
     }
     return nullptr;
@@ -384,13 +466,19 @@ const StructDecl* SemanticAnalyzer::findStruct(const std::string& name) const {
 const EnumDecl* SemanticAnalyzer::findEnum(const std::string& name) const {
     if (program_ == nullptr) return nullptr;
     // A-2：限定键（甲::颜色）按模块精确匹配；裸名匹配任一模块（既有行为）
-    std::string qmod, qbase;
-    splitQualifiedType(name, qmod, qbase);
-    for (const auto& e : program_->enums) {
-        if (e->name != qbase) continue;
-        if (qmod.empty() || e->moduleName == qmod) return e.get();
+    const TypeLookupIndex& idx = ensureTypeLookupIndex();
+    const std::string_view nameView(name);
+    const std::size_t sep = nameView.find("::");
+    if (sep != std::string_view::npos && sep > 0) {
+        const auto mit = idx.enumByModule.find(nameView.substr(0, sep));
+        if (mit == idx.enumByModule.end()) return nullptr;
+        const auto it = mit->second.find(nameView.substr(sep + 2));
+        return (it == mit->second.end()) ? nullptr : it->second;
     }
-    return nullptr;
+    const std::string_view lookupName =
+        (sep == std::string_view::npos) ? nameView : nameView.substr(2);
+    const auto it = idx.enumByName.find(lookupName);
+    return (it == idx.enumByName.end()) ? nullptr : it->second;
 }
 bool SemanticAnalyzer::enumValueOf(const std::string& enumName, const std::string& memberName,
                                    std::int64_t& outValue) const {

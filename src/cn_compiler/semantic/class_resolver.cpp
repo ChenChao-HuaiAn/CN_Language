@@ -15,6 +15,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -173,24 +174,37 @@ bool SemanticAnalyzer::isInterfaceType(const std::string& type) const {
 //   键规则——原 static cclassKey 在此删除，调用点改用 classKey）。
 
 // 查找类符号（P2-16 模块感知：限定名直查；裸名先当前模块、再任意模块末段匹配）
+// 1155：改查 TypeLookupIndex（原实现：splitQualifiedType 双串分配 + 当前模块
+//   classKey 拼接 + 未命中全 classes_ 扫描逐条 rfind/substr；classes_ 含全部
+//   泛型实例，回退代价随实例数线性增长）。三面等价性：
+//   ①限定名：classKey(首个"::"前, 之后)=查询串本身 ⇒ 整键直查；
+//   ②当前模块：类键=当前模块名+"::"+裸名，索引按最后一个"::"拆出（类名不含
+//     "::"，嵌套模块名 "甲::乙" 亦落在模块前缀侧）⇒ (模块,裸名) 精确命中；
+//   ③裸名回退：原 rfind("::") 取末段、按 classes_ 遍历序首命中 ⇒ classByBase
+//     以同序 emplace 先到先得。
 const ClassInfo* SemanticAnalyzer::findClass(const std::string& name) const {
-    std::string mod, base;
-    splitQualifiedType(name, mod, base);
-    if (!mod.empty()) {
-        auto it = classes_.find(classKey(mod, base));
-        return (it == classes_.end()) ? nullptr : &it->second;
+    const TypeLookupIndex& idx = ensureTypeLookupIndex();
+    const std::string_view nameView(name);
+    const std::size_t sep = nameView.find("::");
+    std::string_view baseView = nameView;
+    if (sep != std::string_view::npos) {
+        if (sep > 0) {
+            const auto it = idx.classByFullKey.find(nameView);
+            return (it == idx.classByFullKey.end()) ? nullptr : it->second;
+        }
+        // 前缀为空（形如 "::类"）：原 splitQualifiedType 得 mod 空 → 走裸名分支，
+        //   base=首个 "::" 之后（与上面 struct/enum 查询同口径）。
+        baseView = nameView.substr(2);
     }
     if (!currentModuleName_.empty()) {
-        auto it = classes_.find(classKey(currentModuleName_, base));
-        if (it != classes_.end()) return &it->second;
+        const auto mit = idx.classByModule.find(std::string_view(currentModuleName_));
+        if (mit != idx.classByModule.end()) {
+            const auto it = mit->second.find(baseView);
+            if (it != mit->second.end()) return it->second;
+        }
     }
-    for (const auto& kv : classes_) {
-        const std::size_t sep = kv.first.rfind("::");
-        const std::string kbase = (sep == std::string::npos) ? kv.first
-                                                             : kv.first.substr(sep + 2);
-        if (kbase == base) return &kv.second;
-    }
-    return nullptr;
+    const auto it = idx.classByBase.find(baseView);
+    return (it == idx.classByBase.end()) ? nullptr : it->second;
 }
 
 // 查找接口符号（未找到返回nullptr）
