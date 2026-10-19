@@ -437,8 +437,15 @@ std::string commonNumericType(const std::string& aRaw, const std::string& bRaw) 
 // 注意：十六进制 0xFF 的 F 不能当作后缀剥除！
 std::string stripLiteralSuffix(const std::string& raw) {
     std::string s = raw;
-    // 识别进制前缀：0x/0X（十六进制）后缀字母 F 不剥（F 是十六进制数字）
-    const bool isHex = (s.size() > 2 && s[0] == '0' && (s[1] == 'x' || s[1] == 'X'));
+    // 识别进制前缀：0x/0X（十六进制）后缀字母 F 不剥（F 是十六进制数字）。
+    // 1016（790 特例族窄角实锚）：前缀识别须跳过可选前导符号——原判 s[0]=='0'
+    //   对 "-0x..." 恒假 → 末尾 F 被当浮点后缀循环剥净（-0x7FFFFFFFFFFFFFFF
+    //   → "-0x7" → 折叠值 -7 静默错值；-0xFF → "-0x" → fold 失败原文透传）。
+    //   与 parseIntValue/literalTypeOf 的前导符号守卫同口径（零分叉）。
+    std::size_t signLen = 0;
+    if (!s.empty() && (s[0] == '-' || s[0] == '+')) signLen = 1;
+    const bool isHex = (s.size() > signLen + 2 && s[signLen] == '0' &&
+                        (s[signLen + 1] == 'x' || s[signLen + 1] == 'X'));
     while (!s.empty()) {
         const char c = s.back();
         const bool isSuffix = (c == 'L' || c == 'l' || c == 'U' || c == 'u');
