@@ -2913,7 +2913,7 @@
   {
    "文件": "src/cn_compiler/codegen/peephole_slot.cpp",
    "函数": "parseLoadLine",
-   "锚文本": "if (dstTok.empty() || dstTok.find(' ') != std::string::npos) return false;",
+   "锚文本": "if (dstTok.empty() || dstTok.find(' ') != std::string_view::npos) return false;",
    "来源": "1144",
    "类别": "业务值",
    "静默风险": "低",

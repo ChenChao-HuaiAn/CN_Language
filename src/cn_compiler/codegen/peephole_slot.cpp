@@ -3,6 +3,7 @@
 //   store→load 相邻转发对（规则与安全条件见 peephole_slot.hpp 头注释）。
 // 实现纪律：
 //   - 手写 token 解析（不用 std::regex——全树 90 万行级文本，正则开销不可接受）；
+//   - 行/槽/操作数为 std::string_view 零拷贝（指向入参文本·调用期存活）；
 //   - 只改「两行都完整识别」的对，识别失败即跳过（保守优先）；
 //   - 无匹配时返回原文（逐字节不变）。
 // 正确性论证（W1<=W2 时的寄存器搬运替换等价）：
@@ -11,8 +12,8 @@
 //   后位模式一致；W1>W2 时 load 高位来自槽内残留（不可复现）-> 拒绝。
 #include "cn_compiler/codegen/peephole_slot.hpp"
 
-#include <algorithm>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <vector>
 
@@ -23,12 +24,12 @@ namespace {
 
 // 单行槽访问解析结果
 struct SlotAccess {
-    std::string slot;      // 槽文本（"[rbp-N]"）
-    std::string reg64;     // 归一化寄存器名（r10 / xmm0）
-    int width = 0;         // 位宽：8/16/32/64
-    bool isFloat = false;  // 浮点寄存器族（xmm）
-    bool signExt = false;  // movsx（load 用）
-    bool zeroExt = false;  // movzx（load 用）
+    std::string_view slot;  // 槽文本（"[rbp-N]"）
+    std::string reg64;      // 归一化寄存器名（r10 / xmm0）
+    int width = 0;          // 位宽：8/16/32/64
+    bool isFloat = false;   // 浮点寄存器族（xmm）
+    bool signExt = false;   // movsx（load 用）
+    bool zeroExt = false;   // movzx（load 用）
 };
 
 // 一对消除动作
@@ -40,13 +41,13 @@ struct PairAction {
 };
 
 // 去左侧空白
-std::string lstrip(const std::string& s) {
+std::string_view lstrip(std::string_view s) {
     const std::size_t p = s.find_first_not_of(" \t");
-    return (p == std::string::npos) ? std::string() : s.substr(p);
+    return (p == std::string_view::npos) ? std::string_view() : s.substr(p);
 }
 
 // 寄存器名归一化：64 位（或 xmm 原样）名 + 位宽；识别失败返回 false
-bool normalizeReg(const std::string& tok, std::string& reg64, int& width, bool& isFloat) {
+bool normalizeReg(std::string_view tok, std::string& reg64, int& width, bool& isFloat) {
     // 静默豁免业务值: 形态探测未命中=该行不参与消除（原样保留·非查表默认值）
     if (tok.empty()) return false;
     if (tok.compare(0, 3, "xmm") == 0) {
@@ -54,7 +55,7 @@ bool normalizeReg(const std::string& tok, std::string& reg64, int& width, bool& 
         for (std::size_t i = 3; i < tok.size(); ++i) {
             if (tok[i] < '0' || tok[i] > '9') return false;
         }
-        reg64 = tok;
+        reg64 = std::string(tok);
         width = 0;  // 由 mnemonic/前缀决定
         isFloat = true;
         return true;
@@ -68,7 +69,7 @@ bool normalizeReg(const std::string& tok, std::string& reg64, int& width, bool& 
     static const char* k8[] = {"al", "bl", "cl", "dl", "sil", "dil", "bpl", "spl",
                                "r8b", "r9b", "r10b", "r11b", "r12b", "r13b", "r14b", "r15b"};
     for (int i = 0; i < 16; ++i) {
-        if (tok == k64[i]) { reg64 = tok;  width = 64; isFloat = false; return true; }
+        if (tok == k64[i]) { reg64 = k64[i]; width = 64; isFloat = false; return true; }
         if (tok == k32[i]) { reg64 = k64[i]; width = 32; isFloat = false; return true; }
         if (tok == k16[i]) { reg64 = k64[i]; width = 16; isFloat = false; return true; }
         if (tok == k8[i])  { reg64 = k64[i]; width = 8;  isFloat = false; return true; }
@@ -98,12 +99,12 @@ std::string regWithWidth(const std::string& reg64, int width) {
 }
 
 // 尝试吃掉内存宽度前缀（"qword ptr " 等）；命中返回 true 并给出位宽
-bool takeWidthPrefix(const std::string& s, std::size_t& consumed, int& width) {
+bool takeWidthPrefix(std::string_view s, std::size_t& consumed, int& width) {
     struct P { const char* text; int width; };
     static const P kPrefixes[] = {
         {"qword ptr ", 64}, {"dword ptr ", 32}, {"word ptr ", 16}, {"byte ptr ", 8}};
     for (const auto& p : kPrefixes) {
-        const std::size_t n = std::string(p.text).size();
+        const std::size_t n = std::string_view(p.text).size();
         if (s.compare(0, n, p.text) == 0) {
             consumed = n;
             width = p.width;
@@ -114,20 +115,20 @@ bool takeWidthPrefix(const std::string& s, std::size_t& consumed, int& width) {
 }
 
 // 浮点 mnemonic -> 位宽（movsd=64 / movss=32）；非浮点返回 0
-int floatMnemWidth(const std::string& mnem) {
+int floatMnemWidth(std::string_view mnem) {
     if (mnem == "movsd") return 64;
     if (mnem == "movss") return 32;
     return 0;
 }
 
 // 解析 store 行：mov [宽度] [rbp-N], reg（浮点 movsd/movss [宽度] [rbp-N], xmmN）
-bool parseStoreLine(const std::string& line, SlotAccess& out) {
-    const std::string s = lstrip(line);
+bool parseStoreLine(std::string_view line, SlotAccess& out) {
+    const std::string_view s = lstrip(line);
     const std::size_t sp = s.find(' ');
-    if (sp == std::string::npos) return false;
-    const std::string mnem = s.substr(0, sp);
+    if (sp == std::string_view::npos) return false;
+    const std::string_view mnem = s.substr(0, sp);
     if (mnem != "mov" && mnem != "movsd" && mnem != "movss") return false;
-    std::string rest = s.substr(sp + 1);
+    std::string_view rest = s.substr(sp + 1);
     int width = 0;
     const int fw = floatMnemWidth(mnem);
     std::size_t consumed = 0;
@@ -142,9 +143,9 @@ bool parseStoreLine(const std::string& line, SlotAccess& out) {
     }
     if (rest.compare(0, 4, "[rbp") != 0) return false;
     const std::size_t rb = rest.find(']');
-    if (rb == std::string::npos) return false;
+    if (rb == std::string_view::npos) return false;
     out.slot = rest.substr(0, rb + 1);
-    std::string tail = lstrip(rest.substr(rb + 1));
+    std::string_view tail = lstrip(rest.substr(rb + 1));
     // 静默豁免业务值: 形态探测未命中=该行不参与消除（原样保留·非查表默认值）
     if (tail.empty() || tail[0] != ',') return false;
     tail = lstrip(tail.substr(1));
@@ -165,19 +166,19 @@ bool parseStoreLine(const std::string& line, SlotAccess& out) {
 }
 
 // 解析 load 行：mov/movsx/movzx/movsd/movss dst, [宽度] [rbp-N]
-bool parseLoadLine(const std::string& line, SlotAccess& out) {
-    const std::string s = lstrip(line);
+bool parseLoadLine(std::string_view line, SlotAccess& out) {
+    const std::string_view s = lstrip(line);
     const std::size_t sp = s.find(' ');
-    if (sp == std::string::npos) return false;
-    const std::string mnem = s.substr(0, sp);
+    if (sp == std::string_view::npos) return false;
+    const std::string_view mnem = s.substr(0, sp);
     if (mnem != "mov" && mnem != "movsx" && mnem != "movzx" &&
         mnem != "movsd" && mnem != "movss") return false;
-    std::string rest = lstrip(s.substr(sp + 1));
+    std::string_view rest = lstrip(s.substr(sp + 1));
     const std::size_t comma = rest.find(',');
-    if (comma == std::string::npos) return false;
-    const std::string dstTok = rest.substr(0, comma);
+    if (comma == std::string_view::npos) return false;
+    const std::string_view dstTok = rest.substr(0, comma);
     // 静默豁免业务值: 形态探测未命中=该行不参与消除（原样保留·非查表默认值）
-    if (dstTok.empty() || dstTok.find(' ') != std::string::npos) return false;
+    if (dstTok.empty() || dstTok.find(' ') != std::string_view::npos) return false;
     rest = lstrip(rest.substr(comma + 1));
     const int fw = floatMnemWidth(mnem);
     int width = 0;
@@ -193,7 +194,7 @@ bool parseLoadLine(const std::string& line, SlotAccess& out) {
     }
     if (rest.compare(0, 4, "[rbp") != 0) return false;
     const std::size_t rb = rest.find(']');
-    if (rb == std::string::npos) return false;
+    if (rb == std::string_view::npos) return false;
     if (rb + 1 != rest.size()) return false;  // ']' 后不得有残余
     out.slot = rest.substr(0, rb + 1);
     std::string reg64;
@@ -220,17 +221,16 @@ bool parseLoadLine(const std::string& line, SlotAccess& out) {
     return true;
 }
 
-// 收集「槽 token -> 出现行号列表」（升序；注释与任意指令行一律计入——保守口径）
-std::unordered_map<std::string, std::vector<int>> collectSlotLines(
-    const std::vector<std::string>& lines) {
-    std::unordered_map<std::string, std::vector<int>> occ;
-    for (std::size_t i = 0; i < lines.size(); ++i) {
-        const std::string& ln = lines[i];
+// 收集「槽 token -> 出现次数」（string_view 键零拷贝；注释与任意指令行一律计入——保守口径）
+std::unordered_map<std::string_view, int> collectSlotCounts(
+    const std::vector<std::string_view>& lines) {
+    std::unordered_map<std::string_view, int> occ;
+    for (const std::string_view ln : lines) {
         std::size_t pos = 0;
-        while ((pos = ln.find("[rbp", pos)) != std::string::npos) {
+        while ((pos = ln.find("[rbp", pos)) != std::string_view::npos) {
             const std::size_t rb = ln.find(']', pos);
-            if (rb == std::string::npos) break;
-            occ[ln.substr(pos, rb - pos + 1)].push_back(static_cast<int>(i));
+            if (rb == std::string_view::npos) break;
+            ++occ[ln.substr(pos, rb - pos + 1)];
             pos = rb + 1;
         }
     }
@@ -242,8 +242,8 @@ std::unordered_map<std::string, std::vector<int>> collectSlotLines(
 //   （文本行号=代码位置，非动态执行序），届时删除 store 会读到过期值。
 //   要求槽在整个函数文本中恰好出现两次（=本对两行）时，任何路径要执行 load
 //   行必先经 store 行（两行物理相邻且 load 行前无标签），循环跳转亦无第三处访问。
-bool slotOnlyInPair(const std::vector<int>& occLines) {
-    return occLines.size() == 2;
+bool slotOnlyInPair(int occCount) {
+    return occCount == 2;
 }
 
 // 把 load 行改写为「从 store 源寄存器取值」的寄存器搬运
@@ -262,8 +262,8 @@ std::string rewriteLoadAsRegMove(const std::string& srcReg64, const SlotAccess& 
 }
 
 // 尝试消除一对（store 行 i、load 行 i+1）
-PairAction tryEliminatePair(const std::vector<std::string>& lines,
-                            const std::unordered_map<std::string, std::vector<int>>& slotOcc,
+PairAction tryEliminatePair(const std::vector<std::string_view>& lines,
+                            const std::unordered_map<std::string_view, int>& slotOcc,
                             int i) {
     PairAction act;
     SlotAccess store;
@@ -292,30 +292,31 @@ PairAction tryEliminatePair(const std::vector<std::string>& lines,
 
 } // namespace
 
-// 主入口：行级单遍扫描 + 槽访问快照
+// 主入口：行级单遍扫描 + 槽访问计数快照
 std::string eliminateRedundantSlotTraffic(const std::string& functionText) {
     if (functionText.find("[rbp") == std::string::npos) return functionText;
-    // 切行（保留无尾随换行的最后一行）
-    std::vector<std::string> lines;
+    // 切行（string_view 零拷贝·入参文本调用期存活）
+    std::vector<std::string_view> lines;
     {
+        const std::string_view text = functionText;
         std::size_t start = 0;
         while (true) {
-            const std::size_t nl = functionText.find('\n', start);
-            if (nl == std::string::npos) {
-                lines.push_back(functionText.substr(start));
+            const std::size_t nl = text.find('\n', start);
+            if (nl == std::string_view::npos) {
+                lines.push_back(text.substr(start));
                 break;
             }
-            lines.push_back(functionText.substr(start, nl - start));
+            lines.push_back(text.substr(start, nl - start));
             start = nl + 1;
-            if (start >= functionText.size()) break;  // 以 '\n' 结尾
+            if (start >= text.size()) break;  // 以 '\n' 结尾
         }
     }
-    const auto slotOcc = collectSlotLines(lines);
+    const auto slotOcc = collectSlotCounts(lines);
     std::vector<char> drop(lines.size(), 0);
     std::vector<std::string> repl(lines.size());
     bool any = false;
     for (std::size_t i = 0; i + 1 < lines.size(); ++i) {
-        if (lines[i].find("[rbp") == std::string::npos) continue;
+        if (lines[i].find("[rbp") == std::string_view::npos) continue;
         const PairAction act = tryEliminatePair(lines, slotOcc, static_cast<int>(i));
         if (!act.hit) continue;
         drop[i] = 1;
