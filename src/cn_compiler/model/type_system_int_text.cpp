@@ -245,10 +245,13 @@ bool decTextFitsTypeDomain(const std::string& decText,
     if (typeName == "正64") {
         return decTextFitsUnsignedRange(decText, "18446744073709551615");
     }
-    // 1137（审查修复 P0-C·甲案）：字符**不设独立域条**——字符条件标签按
-    //   整32 存储域（001 §3.7/§3.7b 整源→字符位模式互通口径；Unicode 标量
-    //   语义=乙案须用户批准落 001，本实现不擅自扩）。char 标签值本身=码点
-    //   （CharLiteral 面），可表示字符值恒有匹配标签。
+    // 1137（P0-C 甲案 + 第三轮审查 P0-3）：字符=整32 存储域——字符初始化/
+    //   条件标签/情况标签三通道一致（001 §3.7/§3.7b 整源→字符位模式互通；
+    //   Unicode 标量语义=乙案须用户批准落 001）。超 i32 的整数初始化/
+    //   标签=编译期拒（原删条致初始化通道恒真·超域静默截断实锚）。
+    if (typeName == "字符") {
+        return decTextFitsSignedRange(decText, "2147483648", "2147483647");
+    }
     return true;  // 非整数目标（调用方 isInteger/枚举归并已前置）——防御性恒真
 }
 

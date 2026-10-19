@@ -221,7 +221,7 @@ public:
     // 662：类对象返回拥有形态收集（借用/透传=不标记·保守）。
     void checkReturnOwnedClass662(ReturnStmt* node);
     // 引用返回（T&）与指针返回（T*）的局部地址逃逸检查（悬垂拒绝）。
-    void checkReturnAddressEscape(ReturnStmt* node);  void checkSwitchCaseLabel1137(CaseLabel*, const std::string&, std::unordered_set<std::string>&);  // 1137 域判+去重
+    void checkReturnAddressEscape(ReturnStmt* node);
     void visitBreakStmt(BreakStmt* node) override;
     void visitContinueStmt(ContinueStmt* node) override;
     void visitSwitchStmt(SwitchStmt* node) override;

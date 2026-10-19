@@ -303,23 +303,13 @@ void SemanticAnalyzer::visitVarDecl(VarDecl* node) {
     if (varType.empty() && node->initializer != nullptr) {
         // 类型推断：无显式类型时从初始值推断
         varType = checkExpr(node->initializer.get());
-        // 638（甲案·2026-10-14 用户裁决「一种语言不该有歧义——丙的分段有
-        //   边界解释歧义」）：推断通道一律拒——无后缀字面量恒定级=整32
-        //  （T36 已批·literalTypeOf 与值大小无关），值装不下（含超 int64
-        //   巨字面量）编译期拒绝，报错引导显式写类型（整64 甲 =
-        //   2147483649;·Rust `let x = 2147483649;` E0308 同款）。原 497
-        //   真值域提升改判（推断超域→整64/整128 放行·813 旧锁面）与 T36
-        //   扩面「推断通道拒」条文互斥，随本裁决废止（inferredLiteralWidthType
-        //   撤销·813 用例翻转为拒）。负号形态按负值判域（-2147483648=
-        //   整32::MIN 域内合法·855 锚不翻转）。显式目标类型场景字面量
-        //   解析能力不动（visitIntegerLiteral/ir_expr 提升链适用面照旧·
-        //   整128 x = 巨字面量 照常）。报错后不 return：甲仍按恒定级整32
-        //   登记走正常声明流程（单诊断口径·防后续语句连环「未声明」噪音，
-        //   324 静态未初始化同款）。
-        // 919（超承载字面量参与表达式求值双侧静默分叉根治·640 侦察副产品）
-        //   扩面：谓词 isIntLiteralExpr→cnIsConstIntExpr919（常量表达式同面
-        //   具值域门槛——`变量 甲 = 99999999999999999999+0;` 修前双侧静默
-        //   错值分叉：宿主 1661992959 vs v2 -1076103128）。
+        // 638（甲案·2026-10-14 用户裁决）：推断通道一律拒——无后缀字面量恒定级
+        //   =整32（literalTypeOf 与值大小无关），值装不下编译期拒并引导显式类型
+        //   （Rust E0308 同款）；原真值域提升改判废止（813 翻转为拒）；负号按负值
+        //   判域（-2^31 合法·855）；显式目标类型面照旧；报错后不 return（单诊断
+        //   口径·324 同款）。
+        // 919（640 侦察副产品）：谓词扩 cnIsConstIntExpr919——常量表达式同具
+        //   值域门槛（`变量 甲 = 20位+0;` 修前双侧静默错值分叉）。
         // 919-final（1076·用户裁决单点判域）：谓词扩为 cnExprHasIntLiteral919（含变量形态·子树扫描见 literal_domain）。
         if (types::isInteger(varType) && cnExprHasIntLiteral919(node->initializer.get()) &&
             !intLiteralFitsType(node->initializer.get(), varType)) {
@@ -493,6 +483,12 @@ void SemanticAnalyzer::visitVarDecl(VarDecl* node) {
                 diagnostics_.report(DiagnosticLevel::Error, node->location,
                                     "无法将 '" + initType + "' 隐式转换为 '" +
                                         varType + "'");
+            }
+            // 1137（P0-3）：字符=整32 存储域——整数常量初值超 i32 拒（三通道一致；原位模式互通静默截断）。
+            if (varType == "字符" && cnExprHasIntLiteral919(node->initializer.get()) &&
+                !intLiteralFitsType(node->initializer.get(), varType)) {
+                diagnostics_.report(DiagnosticLevel::Error, node->location,
+                                    "无法将 '" + initType + "' 隐式转换为 '" + varType + "'");
             }
         }
     }

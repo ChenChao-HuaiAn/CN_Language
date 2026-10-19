@@ -12,6 +12,7 @@
 #include <string>
 
 #include "cn_compiler/semantic/semantic.hpp"
+#include "cn_compiler/semantic/semantic_case_label.hpp"
 
 namespace cn_compiler {
 
@@ -143,26 +144,24 @@ bool SemanticAnalyzer::intLiteralFitsType(const Expr* e, const std::string& to) 
 //   001 §3.7/§3.7b 整源→字符位模式互通；Unicode 标量语义=乙案待用户批准）；
 //   枚举成员标签回填值同样受判（P1-2：原仅整数字面量判域，成员值超 i32 时
 //   静默截断错命中）。超域=编译期拒（用户令 2026-10-18 #1076）。
-void SemanticAnalyzer::checkSwitchCaseLabel1137(
-    CaseLabel* caseNode, const std::string& condType,
-    std::unordered_set<std::string>& seenTexts) {
+CaseLabelCheck1137 checkCaseLabel1137(const CaseLabel* caseNode,
+                                      const std::string& condType, bool enumCond,
+                                      std::unordered_set<std::string>& seenTexts) {
+    CaseLabelCheck1137 out;
     std::string key1137 = !caseNode->decValue.empty()
                               ? caseNode->decValue
                               : std::to_string(caseNode->value);
     if (key1137 == "-0") key1137 = "0";  // 数值零归一
     const std::string condDomain1137 =
-        (condType == "字符" || isEnumType(condType)) ? std::string("整32")
-                                                     : condType;
+        (condType == "字符" || enumCond) ? std::string("整32") : condType;
     if (!types::decTextFitsTypeDomain(key1137, condDomain1137)) {
-        diagnostics_.report(DiagnosticLevel::Error, caseNode->location,
-                            "情况标签 '" + key1137 + "' 超出条件类型 '" +
-                                condType + "' 的表示范围");
+        out.domainError = "情况标签 '" + key1137 + "' 超出条件类型 '" +
+                          condType + "' 的表示范围";
     }
     if (!seenTexts.insert(key1137).second) {
-        diagnostics_.report(DiagnosticLevel::Error, caseNode->location,
-                            "选择语句中情况值 '" + caseNode->rawValue +
-                                "' 重复");
+        out.dupError = "选择语句中情况值 '" + caseNode->rawValue + "' 重复";
     }
+    return out;
 }
 
 

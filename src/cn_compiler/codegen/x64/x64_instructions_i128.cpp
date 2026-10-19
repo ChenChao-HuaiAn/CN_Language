@@ -289,9 +289,10 @@ void X64CodeGenerator::emitInt128MulDivMod(AsmWriter& writer, const ir::IRInstru
     }
     // 操作数 a/b 地址：i128 寄存器双槽 lea 低64位槽（%vN+1）；
     // i128 常量需先落双槽临时区再取地址（不能 lea 立即数）。
-    // 常量临时区：a 用 [rsp+32]/[rsp+40]、b 用 [rsp+48]/[rsp+56]
-    // （call 前预留的 32 字节影子空间上方，两个操作数各自独立临时区，
-    //   避免 b 覆盖 a 的临时值；call 期间被调函数只读操作数，安全）
+    // 常量临时区：a 用 [rsp+32]/[rsp+40]、b 用 [rsp+48]/[rsp+56]。
+    // 1137（第三轮审查 P1-4）：原写在调用前 rsp 之上（帧内低端·与局部槽
+    //   重叠）——改为先 sub rsp,64（32 影子 + 32 常量区）再写（此时 [rsp+32]
+    //   起为常量区）；call 后 add rsp,64。与 emitInt128Compare 同款修复。
     int tempBase = 32;
     auto addrOfI128 = [this, &tempBase](const ir::IRValue& v, AsmWriter& w) -> std::string {
         if (v.isConstant) {
@@ -318,6 +319,7 @@ void X64CodeGenerator::emitInt128MulDivMod(AsmWriter& writer, const ir::IRInstru
         if (v.id >= 0) return regSlot(v.id + 1);  // 低64位槽地址
         return regSlot(v.id);  // 防御
     };
+    writer.line("sub rsp, 64");  // 32 影子空间 + 32 常量临时区
     const std::string aAddr = addrOfI128(inst.operands[0], writer);
     const std::string bAddr = addrOfI128(inst.operands[1], writer);
     // 结果双槽：%vN（高）+ %vN+1（低），lea 低64位槽
@@ -327,9 +329,8 @@ void X64CodeGenerator::emitInt128MulDivMod(AsmWriter& writer, const ir::IRInstru
     writer.line("lea rcx, " + aAddr);
     writer.line("lea rdx, " + bAddr);
     writer.line("lea r8, " + outAddr);
-    writer.line("sub rsp, 32");  // 影子空间
     writer.line("call " + helper);
-    writer.line("add rsp, 32");
+    writer.line("add rsp, 64");
 }
 
 // ==================== i128 比较（Task 完善A：运行时辅助函数） ====================
@@ -374,8 +375,9 @@ void X64CodeGenerator::emitInt128Compare(AsmWriter& writer, const ir::IRInstruct
     //   [rsp+40]（调用前 rsp 之上=函数帧内低端）——与局部变量槽重叠：先比较
     //   一次 128 常量会踩坏活跃 128 变量（同一变量第二次 128 比较恒不命中·
     //   1137 实锚：正128 丁=u128max 经一次 switch 后第二次比较丢失值）。
-    //   改为先 sub rsp,64（32 字节影子空间 + 32 字节常量区）再写
-    //   [rsp+32]/[rsp+48]——常量区位于影子空间之上（callee 不写该区）。
+    //   改为先 sub rsp,64（32 字节影子空间 + 32 字节常量区）再写：
+    //   a=[rsp+32]/[rsp+40]、b=[rsp+48]/[rsp+56]——常量区位于影子空间
+    //   之上（callee 不写该区）。
     writer.line("sub rsp, 64");
     const std::string aAddr = addrOfI128(inst.operands[0], writer);
     const std::string bAddr = addrOfI128(inst.operands[1], writer);

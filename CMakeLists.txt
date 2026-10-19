@@ -151,6 +151,7 @@ target_link_libraries(cn_compiler_parser PUBLIC cn_compiler_lexer cn_compiler_co
 #   前端产出、后端消费的中立模型（与 v2 协议常量包对称·AGENTS §3 目标态 model 层）
 add_library(cn_compiler_model STATIC
     src/cn_compiler/model/ast.cpp
+    src/cn_compiler/model/char_literal.cpp
     src/cn_compiler/model/ast_printer.cpp
     src/cn_compiler/model/type_system.cpp
     src/cn_compiler/model/type_system_int_text.cpp

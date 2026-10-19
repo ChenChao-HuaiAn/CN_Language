@@ -2978,7 +2978,7 @@
   },
   {
    "文件": "src/cn_compiler/parser/parser_stmt.cpp",
-   "函数": "parseCaseValue",
+   "函数": "parseCaseIntLabel",
    "锚文本": "if (!normalizeCaseIntText(raw1, neg1, dec1, st1)) {",
    "来源": "1137",
    "类别": "上游已诊断",
@@ -2989,7 +2989,7 @@
   },
   {
    "文件": "src/cn_compiler/parser/parser_stmt.cpp",
-   "函数": "parseCaseValue",
+   "函数": "parseCaseIntLabel",
    "锚文本": "if (!carryOk1137) {",
    "来源": "1137",
    "类别": "上游已诊断",
@@ -3029,6 +3029,116 @@
    "静默风险": "低",
    "原因": "1137 审查修复 P2 拆分轮：括号未闭合=非简单折叠形态判定回退（pos_=save 回退通用路径·由「情况标签必须是整型/字符/字符串常量」诊断收口）——谓词形态判定非静默默认值。",
    "登记人": "AI（1137 审查修复轮·逐处实读）",
+   "登记日": "2026-10-19"
+  },
+  {
+   "文件": "src/cn_compiler/model/char_literal.cpp",
+   "函数": "appendUtf8/charLiteralCodePoint/decodeEscapes",
+   "锚文本": "} else {",
+   "来源": "1137",
+   "类别": "业务值",
+   "静默风险": "低",
+   "原因": "1137 第三轮审查 P0-2 下沉搬迁（自 ir/ir_decl_extra.cpp 逐字搬移·原位置在冻结基线内放行·新文件位置按登记制留痕）：非花括号 unicode 转义=保留反斜杠（原样传递业务语义）",
+   "登记人": "AI（1137 第三轮审查轮·逐处实读）",
+   "登记日": "2026-10-19"
+  },
+  {
+   "文件": "src/cn_compiler/model/char_literal.cpp",
+   "函数": "appendUtf8/charLiteralCodePoint/decodeEscapes",
+   "锚文本": "} else {",
+   "来源": "1137",
+   "类别": "业务值",
+   "静默风险": "低",
+   "原因": "1137 第三轮审查 P0-2 下沉搬迁（自 ir/ir_decl_extra.cpp 逐字搬移·原位置在冻结基线内放行·新文件位置按登记制留痕）：非法 unicode 花括号转义=保留反斜杠（词法已拒·防御面业务值）",
+   "登记人": "AI（1137 第三轮审查轮·逐处实读）",
+   "登记日": "2026-10-19"
+  },
+  {
+   "文件": "src/cn_compiler/model/char_literal.cpp",
+   "函数": "appendUtf8/charLiteralCodePoint/decodeEscapes",
+   "锚文本": "else { ok = false; break; }",
+   "来源": "1137",
+   "类别": "业务值",
+   "静默风险": "低",
+   "原因": "1137 第三轮审查 P0-2 下沉搬迁（自 ir/ir_decl_extra.cpp 逐字搬移·原位置在冻结基线内放行·新文件位置按登记制留痕）：非十六进制字符=转义解析失败置假（闭集字符判定·非默认值）",
+   "登记人": "AI（1137 第三轮审查轮·逐处实读）",
+   "登记日": "2026-10-19"
+  },
+  {
+   "文件": "src/cn_compiler/model/char_literal.cpp",
+   "函数": "appendUtf8/charLiteralCodePoint/decodeEscapes",
+   "锚文本": "if (b0 < 0x80) return static_cast<int>(b0);",
+   "来源": "1137",
+   "类别": "闭集穷举",
+   "静默风险": "低",
+   "原因": "1137 第三轮审查 P0-2 下沉搬迁（自 ir/ir_decl_extra.cpp 逐字搬移·原位置在冻结基线内放行·新文件位置按登记制留痕）：ASCII 单字节码点分支（<0x80 闭集分档）",
+   "登记人": "AI（1137 第三轮审查轮·逐处实读）",
+   "登记日": "2026-10-19"
+  },
+  {
+   "文件": "src/cn_compiler/model/char_literal.cpp",
+   "函数": "appendUtf8/charLiteralCodePoint/decodeEscapes",
+   "锚文本": "if (decoded.empty()) return 0;",
+   "来源": "1137",
+   "类别": "业务值",
+   "静默风险": "低",
+   "原因": "1137 第三轮审查 P0-2 下沉搬迁（自 ir/ir_decl_extra.cpp 逐字搬移·原位置在冻结基线内放行·新文件位置按登记制留痕）：空解码=码点 0（词法保证字符字面量非空·闭集防御）",
+   "登记人": "AI（1137 第三轮审查轮·逐处实读）",
+   "登记日": "2026-10-19"
+  },
+  {
+   "文件": "src/cn_compiler/model/char_literal.cpp",
+   "函数": "appendUtf8/charLiteralCodePoint/decodeEscapes",
+   "锚文本": "const bool quoted1137 =",
+   "来源": "1137",
+   "类别": "闭集穷举",
+   "静默风险": "低",
+   "原因": "1137 第三轮审查 P0-2 下沉搬迁（自 ir/ir_decl_extra.cpp 逐字搬移·原位置在冻结基线内放行·新文件位置按登记制留痕）：引号包裹判定（长度≥2 且首尾单引号·闭集边界）",
+   "登记人": "AI（1137 第三轮审查轮·逐处实读）",
+   "登记日": "2026-10-19"
+  },
+  {
+   "文件": "src/cn_compiler/model/char_literal.cpp",
+   "函数": "appendUtf8/charLiteralCodePoint/decodeEscapes",
+   "锚文本": "} else {",
+   "来源": "1137",
+   "类别": "业务值",
+   "静默风险": "低",
+   "原因": "1137 第三轮审查 P0-2 下沉搬迁（自 ir/ir_decl_extra.cpp 逐字搬移·原位置在冻结基线内放行·新文件位置按登记制留痕）：UTF-8 四字节档编码（前三档已穷举·最后一档业务编码非兜底）",
+   "登记人": "AI（1137 第三轮审查轮·逐处实读）",
+   "登记日": "2026-10-19"
+  },
+  {
+   "文件": "src/cn_compiler/model/char_literal.cpp",
+   "函数": "appendUtf8/charLiteralCodePoint/decodeEscapes",
+   "锚文本": "} else if (cp < 0x10000) {",
+   "来源": "1137",
+   "类别": "闭集穷举",
+   "静默风险": "低",
+   "原因": "1137 第三轮审查 P0-2 下沉搬迁（自 ir/ir_decl_extra.cpp 逐字搬移·原位置在冻结基线内放行·新文件位置按登记制留痕）：UTF-8 首字节前缀位宽分档（1/2/3/4 字节·闭集穷举·非业务数值区间）",
+   "登记人": "AI（1137 第三轮审查轮·逐处实读）",
+   "登记日": "2026-10-19"
+  },
+  {
+   "文件": "src/cn_compiler/model/char_literal.cpp",
+   "函数": "appendUtf8/charLiteralCodePoint/decodeEscapes",
+   "锚文本": "} else if (cp < 0x800) {",
+   "来源": "1137",
+   "类别": "闭集穷举",
+   "静默风险": "低",
+   "原因": "1137 第三轮审查 P0-2 下沉搬迁（自 ir/ir_decl_extra.cpp 逐字搬移·原位置在冻结基线内放行·新文件位置按登记制留痕）：UTF-8 首字节前缀位宽分档（1/2/3/4 字节·闭集穷举·非业务数值区间）",
+   "登记人": "AI（1137 第三轮审查轮·逐处实读）",
+   "登记日": "2026-10-19"
+  },
+  {
+   "文件": "src/cn_compiler/model/char_literal.cpp",
+   "函数": "appendUtf8/charLiteralCodePoint/decodeEscapes",
+   "锚文本": "if (cp < 0x80) {",
+   "来源": "1137",
+   "类别": "闭集穷举",
+   "静默风险": "低",
+   "原因": "1137 第三轮审查 P0-2 下沉搬迁（自 ir/ir_decl_extra.cpp 逐字搬移·原位置在冻结基线内放行·新文件位置按登记制留痕）：UTF-8 首字节前缀位宽分档（1/2/3/4 字节·闭集穷举·非业务数值区间）",
+   "登记人": "AI（1137 第三轮审查轮·逐处实读）",
    "登记日": "2026-10-19"
   }
  ]

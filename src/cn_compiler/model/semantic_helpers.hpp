@@ -417,6 +417,9 @@ inline std::string canonicalType(const std::string& type) {
 }
 std::string methodSymbolKey(const std::string& className, const std::string& sigKey);
 int charLiteralCodePoint(const std::string& raw);
+// 1137（P0-2 下沉配套）：转义序列/unicode 花括号转义解码（charLiteralCodePoint
+//   与字符串解码共用·实现驻 model/char_literal.cpp）
+std::string decodeEscapes(const std::string& body);
 
 // ===== 728b：模块限定类键（自 class_resolver.cpp static cclassKey 提升 inline——
 //   预降级期类名注册（第一趟a）与 findClass/类成员解析（第一趟d）共用单一键规则；

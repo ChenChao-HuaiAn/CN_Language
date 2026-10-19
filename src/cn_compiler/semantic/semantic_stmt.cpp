@@ -11,6 +11,7 @@
 #include <utility>
 
 #include "cn_compiler/semantic/semantic.hpp"
+#include "cn_compiler/semantic/semantic_case_label.hpp"
 #include "cn_compiler/model/type_system.hpp"
 #include "cn_compiler/model/semantic_helpers.hpp"
 #include "cn_compiler/semantic/semantic_lambda_escape.hpp"
@@ -879,9 +880,19 @@ void SemanticAnalyzer::visitSwitchStmt(SwitchStmt* node) {
                                         "' 须为整型/字符常量（裸成员名仅用于枚举选择）");
             }
         }
-        // 1137（审查修复 P1-1/P1-2/P0-C）：条件域判 + 重复检测单点（helper·
-        //   跨形态统一归一文本键；超域=编译期拒·用户令 #1076）
-        checkSwitchCaseLabel1137(caseNode.get(), condType, seenTexts);
+        // 1137（审查修复 P1-1/P1-2/P0-C；第三轮 P2-1 拆小头）：条件域判 +
+        //   重复检测纯函数（跨形态统一归一文本键；超域=编译期拒·#1076）
+        const CaseLabelCheck1137 chk1137 =
+            checkCaseLabel1137(caseNode.get(), condType,
+                               isEnumType(condType), seenTexts);
+        if (!chk1137.domainError.empty()) {
+            diagnostics_.report(DiagnosticLevel::Error, caseNode->location,
+                                chk1137.domainError);
+        }
+        if (!chk1137.dupError.empty()) {
+            diagnostics_.report(DiagnosticLevel::Error, caseNode->location,
+                                chk1137.dupError);
+        }
         restoreMoved(swBase);
         checkStmt(caseNode.get());
         for (const auto& kv : snapshotMoved()) swMerged[kv.first] = kv.second;

@@ -320,8 +320,13 @@ void Arm64CodeGenerator::emitInt128MulDivMod(Arm64AsmWriter& writer,
         default: helper = "__cn_mul_i128"; break;
     }
     // 操作数 a/b 地址：i128 寄存器双槽 lea 低64位槽（%vN+1）；
-    // i128 常量先落临时区（[sp,#0]/[sp,#8] 与 [sp,#16]/[sp,#24]）再取地址
-    int tempBase = 0;
+    // i128 常量先落临时区再取地址——1137（第三轮审查 P0-1）：临时区原写
+    // [sp,#0]/[sp,#8]、[sp,#16]/[sp,#24]（帧底变量槽区）会覆盖局部变量
+    // （实锚：表在 [x29,#-408]、sub sp,#416 后 [sp,#8]=x29-408 覆盖表[0]）。
+    // 现统一 sub sp,sp,#64（16 对齐）后在 [sp,#32]/[sp,#40]（a）与
+    // [sp,#48]/[sp,#56]（b）写常量，bl 后 add sp,sp,#64——变量槽=x29 相对
+    // 不受 sp 调整影响；epilogue 走 x29 亦不受影响。
+    int tempBase = 32;
     // a/b 用不同寄存器（x11/x12），否则后算的地址覆盖先算的导致 x0=x1 同地址
     auto addrOfI128 = [this, &writer, &tempBase](const ir::IRValue& v,
                                                 const std::string& reg) -> std::string {
@@ -352,6 +357,7 @@ void Arm64CodeGenerator::emitInt128MulDivMod(Arm64AsmWriter& writer,
         }
         return reg;
     };
+    writer.line("sub sp, sp, #64");
     const std::string aAddr = addrOfI128(inst.operands[0], "x11");
     const std::string bAddr = addrOfI128(inst.operands[1], "x12");
     // 结果双槽：%vN（高）+ %vN+1（低），lea 低64位槽
@@ -361,6 +367,7 @@ void Arm64CodeGenerator::emitInt128MulDivMod(Arm64AsmWriter& writer,
     writer.line("mov x1, " + bAddr);
     emitStackAddr(writer, "x2", regSlotOffset(dstLoId));
     writer.line("bl " + helper);
+    writer.line("add sp, sp, #64");
 }
 
 // ==================== i128 比较（Task 完善A：运行时辅助函数） ====================
@@ -375,7 +382,9 @@ void Arm64CodeGenerator::emitInt128Compare(Arm64AsmWriter& writer,
                              inst.operands[0].type == "u128" ||
                              inst.operands[1].type == "u128");
     const std::string helper = isUnsigned ? "__cn_cmp_u128" : "__cn_cmp_i128";
-    int tempBase = 0;
+    // 1137（第三轮审查 P0-1）：常量临时区同乘除模——sub sp,sp,#64 后写
+    // [sp,#32]/[sp,#40]（a）与 [sp,#48]/[sp,#56]（b），bl 后 add sp,sp,#64。
+    int tempBase = 32;
     // a/b 用不同寄存器（x11/x12）
     auto addrOfI128 = [this, &writer, &tempBase](const ir::IRValue& v,
                                                 const std::string& reg) -> std::string {
@@ -405,11 +414,13 @@ void Arm64CodeGenerator::emitInt128Compare(Arm64AsmWriter& writer,
         }
         return reg;
     };
+    writer.line("sub sp, sp, #64");
     const std::string aAddr = addrOfI128(inst.operands[0], "x11");
     const std::string bAddr = addrOfI128(inst.operands[1], "x12");
     writer.line("mov x0, " + aAddr);
     writer.line("mov x1, " + bAddr);
     writer.line("bl " + helper);
+    writer.line("add sp, sp, #64");
     // 返回值在 w0（int，AAPCS64：返回 32 位整型时 x0 高 32 位未定义），按比较操作码 cset
     const bool isUnsignedCmp = isUnsigned;
     // 与 0 比较：cmp w0, #0（32 位）——__cn_cmp_i128 返回 int，若用 64 位 cmp x0 会在

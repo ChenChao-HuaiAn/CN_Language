@@ -8,6 +8,7 @@
 
 #include "cn_compiler/parser/parser.hpp"
 #include "cn_compiler/model/type_system.hpp"
+#include "cn_compiler/model/semantic_helpers.hpp"
 
 namespace cn_compiler {
 
@@ -534,11 +535,11 @@ bool Parser::parseCaseValue(std::int64_t& outValue, std::string& outRaw,
     }
     if (currentType() == TokenType::CharLiteral) {
         outRaw = current().getValue();
-        // 字符常量：取引号内首字节值（与 IR 层 visitCharLiteral 一致）
-        std::string text = current().getValue();
-        int code = 0;
-        if (text.size() >= 3) code = static_cast<unsigned char>(text[1]);
-        outValue = code;
+        // 1137（第三轮审查 P0-2）：字符常量=Unicode 码点——统一调
+        //   charLiteralCodePoint（model 单点·转义/unicode 花括号/直书 UTF-8
+        //   全解码）。原「取首字节」对非 ASCII（'中'=0xE4）与 v2 码点语义
+        //   分叉（实锚：宿主不命中/v2 命中 20013）。
+        outValue = charLiteralCodePoint(outRaw);
         advance();  // 消费字符字面量
         return true;
     }
