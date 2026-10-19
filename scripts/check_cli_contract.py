@@ -213,7 +213,13 @@ def 主流程() -> int:
             p = 运行(cn, ["run", str(返回码路径[n]), *台])
             断言(f"run 退出码透传 rc={n}（B4 锚定）", p.returncode == n, f"rc={p.returncode}（期望 {n}）")
         p = 运行(cn, ["run", str(除零), *台])
-        断言("run 运行期错误码→rc=1", p.returncode == 1 and "错误码1" in 诊断(p), f"rc={p.returncode}")
+        # 1078：详情带诊断尾部——本格两度因语义演进改样本后语义再次「前移」为编译期
+        #   硬错误（548 常量传播判「变量持常量零作除数」拒绝）：rc 同为 1 但诊断无
+        #   「错误码1」，若只打 rc 则云轮红无法从步骤输出定性（126 红轮取证实录）。
+        #   尾部输出使「编译期拒绝」与「运行期错误码」一眼可分，判据本身不放宽。
+        诊断尾部 = next((行 for 行 in reversed(诊断(p).strip().splitlines()) if 行.strip()), "")
+        断言("run 运行期错误码→rc=1", p.returncode == 1 and "错误码1" in 诊断(p),
+             f"rc={p.returncode}·诊断尾部={诊断尾部[:120]}")
     else:
         for n in (1, 3, 5, 255):
             跳过(f"run 退出码透传 rc={n}（B4 锚定）", "交叉视角产物非本机可执行形态")
