@@ -174,9 +174,37 @@ inline std::string canonicalType(const std::string& type) {
     }
     long long c = 0;
     switch (op) {
-        case Operator::Add: c = a + b; break;
-        case Operator::Subtract: c = a - b; break;
-        case Operator::Multiply: c = a * b; break;
+        // 1016（审查 P2-A·存量 UB）：加/减/乘有符号溢出在 C++ 是 UB（实测
+        //   INT64_MIN-1 / INT64_MAX+1 / INT64_MIN*-1 静默回绕错值）——按
+        //   cnFoldConstIntExpr505 同判据溢出预检，失败=空串哨兵交诊断通道。
+        case Operator::Add:
+            if ((b > 0 && a > INT64_MAX - b) || (b < 0 && a < INT64_MIN - b)) return "";  // 静默豁免业务值: 溢出折叠失败哨兵（调用方诊断通道）
+            c = a + b;
+            break;
+        case Operator::Subtract:
+            if ((b < 0 && a > INT64_MAX + b) || (b > 0 && a < INT64_MIN + b)) return "";  // 静默豁免业务值: 溢出折叠失败哨兵（调用方诊断通道）
+            c = a - b;
+            break;
+        case Operator::Multiply: {
+            const std::uint64_t magL =
+                (a < 0) ? static_cast<std::uint64_t>(~static_cast<std::uint64_t>(a)) + 1
+                        : static_cast<std::uint64_t>(a);
+            const std::uint64_t magR =
+                (b < 0) ? static_cast<std::uint64_t>(~static_cast<std::uint64_t>(b)) + 1
+                        : static_cast<std::uint64_t>(b);
+            const bool negResult = (a < 0) != (b < 0);
+            // 乘积域界：正结果=INT64_MAX；负结果=|INT64_MIN|=2^63
+            const std::uint64_t magHi =
+                negResult ? static_cast<std::uint64_t>(INT64_MAX) + 1
+                          : static_cast<std::uint64_t>(INT64_MAX);
+            if (magL != 0 && magR != 0 &&
+                (magL > magHi / magR || magL * magR > magHi)) return "";
+            c = negResult
+                    ? static_cast<std::int64_t>(
+                          ~static_cast<std::uint64_t>(magL * magR) + 1)
+                    : static_cast<std::int64_t>(magL * magR);
+            break;
+        }
         case Operator::Divide:
             if (b == 0) return "";
             // 1016（审查 P1-2·存量崩溃）：INT64_MIN / -1 在 x86 idiv 溢出
