@@ -5,6 +5,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -617,6 +618,22 @@ bool SemanticAnalyzer::checkDuplicateRegistration(FunctionDecl* node,
     //   （见上方配对分支；有体定义不登记，原型后置组合本就按重复定义拒绝）
     if (node->body == nullptr) {
         funcProtoDecls_[linkKey] = node;
+        // 1155：原型名+模块索引——供 checkOverloadProtoConsistency O(1) 判定。
+        //   键=链接键按「查询名不含 '$'」形态剥模块前缀后取 '#' 前 base（与
+        //   checkOverloadProtoConsistency 原全表扫描逐字同式；零参函数键无 '#'
+        //   时同样剥模块前缀）。
+        const std::string_view keyView(linkKey);
+        const std::size_t hashFirst = keyView.find('#');
+        const std::size_t dollarPos = keyView.find('$');
+        std::string_view k = keyView;
+        if (dollarPos != std::string_view::npos &&
+            (hashFirst != std::string_view::npos ? dollarPos < hashFirst : true)) {
+            k = k.substr(dollarPos + 1);
+        }
+        const std::size_t hashPos = k.find('#');
+        const std::string_view base =
+            (hashPos == std::string_view::npos) ? k : k.substr(0, hashPos);
+        protoNameModules_[std::string(base)].insert(node->moduleName);
     }
     return false;
 }
@@ -633,30 +650,47 @@ bool SemanticAnalyzer::checkOverloadProtoConsistency(FunctionDecl* node,
     //   （仅同模块内检查——跨模块原型不约束其他模块的定义）。
     //   A′：键含公式前缀（模块名$名#参数）须先剥前缀再取同名 base（与
     //   resolveOverload 的形态判定一致）。
-    // 1155：保持全表扫描语义（funcNameBucket 分桶索引以 functions_ size 变化为
-    //   重建判据——注册期每插一个函数后查询都触发整表重建，实测使语义相位
-    //   1.6s→3.9s 回归；本函数只在注册期调用，维持原 O(1) 迭代顺序语义更稳）。
-    //   去分配优化：原实现每条目 `std::string k = kv.first` 整键拷贝 + 剥前缀
-    //   substr 分配；改 string_view 切分（零拷贝），base 比较语义逐字不变。
-    const bool nameHasDollar = node->name.find('$') != std::string::npos;
-    for (const auto& kv : functions_) {
-        const std::string_view key(kv.first);
-        const std::size_t hashFirst = key.find('#');
-        const std::size_t dollarPos = key.find('$');
-        std::string_view k = key;
-        if (dollarPos != std::string_view::npos &&
-            (hashFirst != std::string_view::npos ? dollarPos < hashFirst : !nameHasDollar)) {
-            k = k.substr(dollarPos + 1);
-        }
-        const std::size_t hashPos = k.find('#');
-        const std::string_view base =
-            (hashPos == std::string_view::npos) ? k : k.substr(0, hashPos);
-        if (base == node->name && kv.second.moduleName == node->moduleName &&
-            !kv.second.hasBody && info.hasBody) {
+    // 1155：注册期 O(1) 快路径——原型名+模块索引（protoNameModules_，在
+    //   checkDuplicateRegistration 原型登记点维护）。查询名不含 '$' 时，原全表
+    //   扫描的 base 判定对每个原型条目等价于「该条目链接键按无 '$' 形态剥出的
+    //   base」，索引已按同式建好；命中即同一判定成立。查询名含 '$' 时 base 形态
+    //   依查询名而变（键含 '$' 且无 '#' 的条目不再剥前缀），走下方原扫描保语义
+    //   （该形态在本语料不出现，仅兜底）。
+    const bool nameBare = node->name.find('$') == std::string::npos;
+    if (info.hasBody && nameBare) {
+        const auto protoIt = protoNameModules_.find(node->name);
+        const bool hasProto = protoIt != protoNameModules_.end() &&
+                              protoIt->second.count(node->moduleName) > 0;
+        if (hasProto) {
             diagnostics_.report(DiagnosticLevel::Error, node->location,
                                 "函数 '" + node->name +
                                 "' 原型声明与定义签名不一致（重载须参数类型不同）");
             return true;
+        }
+        return false;
+    }
+    if (info.hasBody) {
+        for (const auto& kv : functions_) {
+            const std::string_view key(kv.first);
+            const std::size_t hashFirst = key.find('#');
+            const std::size_t dollarPos = key.find('$');
+            std::string_view k = key;
+            if (dollarPos != std::string_view::npos &&
+                (hashFirst != std::string_view::npos ? dollarPos < hashFirst : !nameBare)) {
+                k = k.substr(dollarPos + 1);
+            }
+            const std::size_t hashPos = k.find('#');
+            const std::string_view base =
+                (hashPos == std::string_view::npos) ? k : k.substr(0, hashPos);
+            const bool protoHit = base == node->name &&
+                                  kv.second.moduleName == node->moduleName &&
+                                  !kv.second.hasBody && info.hasBody;
+            if (protoHit) {
+                diagnostics_.report(DiagnosticLevel::Error, node->location,
+                                    "函数 '" + node->name +
+                                    "' 原型声明与定义签名不一致（重载须参数类型不同）");
+                return true;
+            }
         }
     }
     return false;

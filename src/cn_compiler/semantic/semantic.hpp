@@ -782,14 +782,14 @@ private:
     // ---- crate 模型（第 4 层）·签名 key -> 已注册该签名的模块名集合（跨模块同名函数允许·限定调用验证用）
     std::unordered_map<std::string, std::unordered_set<std::string>> funcSigModules_;
     std::unordered_map<std::string, FunctionDecl*> funcProtoDecls_;  // 762：链接键->已注册原型节点（原型+定义配对时默认值合并数据源·spec 04 §一C）
+    std::unordered_map<std::string, std::unordered_set<std::string>> protoNameModules_;  // 1155：原型 base->模块集（原型一致性 O(1) 判定）
     // use 导入表（P1-3）：模块名 -> 导入符号信息（符号集合/别名/通配符）
     struct UseImportInfo {
         std::unordered_set<std::string> symbols;                 // 导入的具体符号名
         std::unordered_map<std::string, std::string> aliases;    // 别名 -> 原符号名
         bool wildcard = false;                                   // 导入 模块::*
     };
-    // 218-a（D1 行数整改）：visitImportDecl 拆分（宿主纯重构零行为变更）。
-    // 路径段 join（"::" 连接）——visitImportDecl 内三处同构循环的单一归属。
+    // 218-a（D1 行数整改）：visitImportDecl 拆分（纯重构零行为变更）；joinPathSegments=路径段 join 单一归属。
     static std::string joinPathSegments(const std::vector<std::string>& segments);
     // 尾段符号具名绑定（② 具名绑定 + A-5 过滤哨兵 + 自导入豁免）。
     void bindImportedSymbols(ImportDecl* node, UseImportInfo& use,

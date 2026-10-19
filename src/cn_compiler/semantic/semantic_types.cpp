@@ -119,9 +119,11 @@ const StructDecl* SemanticAnalyzer::findStructInModule(const std::string& module
         return (it == idx.structByName.end()) ? nullptr : it->second;
     }
     const auto mit = idx.structByModule.find(std::string_view(module));
-    if (mit == idx.structByModule.end()) return nullptr;
-    const auto it = mit->second.find(nameView);
-    return (it == mit->second.end()) ? nullptr : it->second;
+    if (mit != idx.structByModule.end()) {
+        const auto it = mit->second.find(nameView);
+        if (it != mit->second.end()) return it->second;
+    }
+    return nullptr;
 }
 const EnumDecl* SemanticAnalyzer::findEnumInModule(const std::string& module,
                                                    const std::string& name) const {
@@ -133,9 +135,11 @@ const EnumDecl* SemanticAnalyzer::findEnumInModule(const std::string& module,
         return (it == idx.enumByName.end()) ? nullptr : it->second;
     }
     const auto mit = idx.enumByModule.find(std::string_view(module));
-    if (mit == idx.enumByModule.end()) return nullptr;
-    const auto it = mit->second.find(nameView);
-    return (it == mit->second.end()) ? nullptr : it->second;
+    if (mit != idx.enumByModule.end()) {
+        const auto it = mit->second.find(nameView);
+        if (it != mit->second.end()) return it->second;
+    }
+    return nullptr;
 }
 
 namespace {
@@ -391,34 +395,37 @@ bool SemanticAnalyzer::isStructType(const std::string& type) const {
     const TypeLookupIndex& idx = ensureTypeLookupIndex();
     const std::string_view nameView(type);
     const std::size_t sep = nameView.find("::");
-    if (sep != std::string_view::npos && sep > 0) {
+    const bool hasSep = sep != std::string_view::npos;
+    const bool qualifiedForm = hasSep && sep != 0;  // 前缀非空=限定名
+    const bool leadingSepForm = hasSep && sep == 0;  // "::名"=原 mod 空分支
+    if (qualifiedForm) {
         const auto mit = idx.structByModule.find(nameView.substr(0, sep));
         if (mit != idx.structByModule.end() &&
-            mit->second.count(nameView.substr(sep + 2)) > 0) {
+            mit->second.count(nameView.substr(sep + 2)) != 0) {
             return true;
         }
-    } else {
-        const std::string_view lookupName =
-            (sep == std::string_view::npos) ? nameView : nameView.substr(2);
-        if (idx.structByName.count(lookupName) > 0) return true;
+    }
+    if (!qualifiedForm) {
+        const std::string_view lookupName = leadingSepForm ? nameView.substr(2) : nameView;
+        if (idx.structByName.count(lookupName) != 0) return true;
     }
     // 1155：合成体（结果/可选）仅在前缀命中时进入字符串解析——原实现无条件调
     //   isResultType/isOptionalType（splitTypeSuffix 双串分配）；前缀判定等价
     //   （splitTypeSuffix 只剥尾部后缀，不会改变前缀）。
-    if (type.rfind("结果<", 0) == 0) {
-        if (!isResultType(type)) return false;
+    if (type.rfind("结果<", 0) == 0 && isResultType(type)) {
         const std::vector<std::string> args = resultTypeArgs(type);
         if (args.size() == 2) {
             const std::string sname =
                 resultStructName(types::canonical(args[0]), types::canonical(args[1]));
-            return idx.structByName.count(std::string_view(sname)) > 0;
+            return idx.structByName.count(std::string_view(sname)) != 0;
         }
-    } else if (type.rfind("可选<", 0) == 0) {
-        if (!isOptionalType(type)) return false;
+        return false;  // 结果<...> 形态但实参拆分失败=非合成体（原实现同落空）
+    }
+    if (type.rfind("可选<", 0) == 0 && isOptionalType(type)) {
         const std::string t = types::canonical(optionalTypeArg(type));
         if (!t.empty()) {
             const std::string sname = optionalStructName(t);
-            return idx.structByName.count(std::string_view(sname)) > 0;
+            return idx.structByName.count(std::string_view(sname)) != 0;
         }
     }
     return false;
@@ -429,14 +436,16 @@ bool SemanticAnalyzer::isEnumType(const std::string& type) const {
     const TypeLookupIndex& idx = ensureTypeLookupIndex();
     const std::string_view nameView(type);
     const std::size_t sep = nameView.find("::");
-    if (sep != std::string_view::npos && sep > 0) {
+    const bool hasSep = sep != std::string_view::npos;
+    const bool qualifiedForm = hasSep && sep != 0;
+    const bool leadingSepForm = hasSep && sep == 0;
+    if (qualifiedForm) {
         const auto mit = idx.enumByModule.find(nameView.substr(0, sep));
         return mit != idx.enumByModule.end() &&
-               mit->second.count(nameView.substr(sep + 2)) > 0;
+               mit->second.count(nameView.substr(sep + 2)) != 0;
     }
-    const std::string_view lookupName =
-        (sep == std::string_view::npos) ? nameView : nameView.substr(2);
-    return idx.enumByName.count(lookupName) > 0;
+    const std::string_view lookupName = leadingSepForm ? nameView.substr(2) : nameView;
+    return idx.enumByName.count(lookupName) != 0;
 }
 const StructDecl* SemanticAnalyzer::findStruct(const std::string& name) const {
     if (program_ == nullptr) return nullptr;
@@ -444,23 +453,25 @@ const StructDecl* SemanticAnalyzer::findStruct(const std::string& name) const {
     const TypeLookupIndex& idx = ensureTypeLookupIndex();
     const std::string_view nameView(name);
     const std::size_t sep = nameView.find("::");
+    const bool hasSep = sep != std::string_view::npos;
+    const bool qualifiedForm = hasSep && sep != 0;
+    const bool leadingSepForm = hasSep && sep == 0;
     const StructDecl* found = nullptr;
-    if (sep != std::string_view::npos && sep > 0) {
+    if (qualifiedForm) {
         const auto mit = idx.structByModule.find(nameView.substr(0, sep));
         if (mit != idx.structByModule.end()) {
             const auto it = mit->second.find(nameView.substr(sep + 2));
             if (it != mit->second.end()) found = it->second;
         }
-    } else {
-        const std::string_view lookupName =
-            (sep == std::string_view::npos) ? nameView : nameView.substr(2);
+    }
+    if (!qualifiedForm) {
+        const std::string_view lookupName = leadingSepForm ? nameView.substr(2) : nameView;
         const auto it = idx.structByName.find(lookupName);
         if (it != idx.structByName.end()) found = it->second;
     }
     if (found != nullptr) return found;
     // 1155：合成体前缀门（同 isStructType——避免普通类型的解析分配）
-    if (name.rfind("结果<", 0) == 0) {
-        if (!isResultType(name)) return nullptr;
+    if (name.rfind("结果<", 0) == 0 && isResultType(name)) {
         const std::vector<std::string> args = resultTypeArgs(name);
         if (args.size() == 2) {
             const std::string sname =
@@ -468,8 +479,9 @@ const StructDecl* SemanticAnalyzer::findStruct(const std::string& name) const {
             const auto it = idx.structByName.find(std::string_view(sname));
             if (it != idx.structByName.end()) return it->second;
         }
-    } else if (name.rfind("可选<", 0) == 0) {
-        if (!isOptionalType(name)) return nullptr;
+        return nullptr;  // 结果<...> 形态但实参拆分失败=非合成体（原实现同落空）
+    }
+    if (name.rfind("可选<", 0) == 0 && isOptionalType(name)) {
         const std::string t = types::canonical(optionalTypeArg(name));
         if (!t.empty()) {
             const std::string sname = optionalStructName(t);
@@ -485,14 +497,18 @@ const EnumDecl* SemanticAnalyzer::findEnum(const std::string& name) const {
     const TypeLookupIndex& idx = ensureTypeLookupIndex();
     const std::string_view nameView(name);
     const std::size_t sep = nameView.find("::");
-    if (sep != std::string_view::npos && sep > 0) {
+    const bool hasSep = sep != std::string_view::npos;
+    const bool qualifiedForm = hasSep && sep != 0;
+    const bool leadingSepForm = hasSep && sep == 0;
+    if (qualifiedForm) {
         const auto mit = idx.enumByModule.find(nameView.substr(0, sep));
-        if (mit == idx.enumByModule.end()) return nullptr;
-        const auto it = mit->second.find(nameView.substr(sep + 2));
-        return (it == mit->second.end()) ? nullptr : it->second;
+        if (mit != idx.enumByModule.end()) {
+            const auto it = mit->second.find(nameView.substr(sep + 2));
+            if (it != mit->second.end()) return it->second;
+        }
+        return nullptr;
     }
-    const std::string_view lookupName =
-        (sep == std::string_view::npos) ? nameView : nameView.substr(2);
+    const std::string_view lookupName = leadingSepForm ? nameView.substr(2) : nameView;
     const auto it = idx.enumByName.find(lookupName);
     return (it == idx.enumByName.end()) ? nullptr : it->second;
 }

@@ -186,7 +186,10 @@ const ClassInfo* SemanticAnalyzer::findClass(const std::string& name) const {
     const TypeLookupIndex& idx = ensureTypeLookupIndex();
     const std::string_view nameView(name);
     const std::size_t sep = nameView.find("::");
-    if (sep != std::string_view::npos && sep > 0) {
+    const bool hasSep = sep != std::string_view::npos;
+    const bool qualifiedForm = hasSep && sep != 0;   // 前缀非空=限定名
+    const bool leadingSepForm = hasSep && sep == 0;  // "::类"=原 mod 空分支
+    if (qualifiedForm) {
         const auto it = idx.classByFullKey.find(nameView);
         return (it == idx.classByFullKey.end()) ? nullptr : it->second;
     }
@@ -197,12 +200,8 @@ const ClassInfo* SemanticAnalyzer::findClass(const std::string& name) const {
     if (cacheIt != idx.classCache.end() && cacheIt->second.module == currentModuleName_) {
         return cacheIt->second.result;
     }
-    std::string_view baseView = nameView;
-    if (sep == 0) {
-        // 前缀为空（形如 "::类"）：原 splitQualifiedType 得 mod 空 → 走裸名分支，
-        //   base=首个 "::" 之后（与上面 struct/enum 查询同口径）。
-        baseView = nameView.substr(2);
-    }
+    const std::string_view baseView =
+        leadingSepForm ? nameView.substr(2) : nameView;
     const ClassInfo* result = nullptr;
     if (!currentModuleName_.empty()) {
         const auto mit = idx.classByModule.find(std::string_view(currentModuleName_));
