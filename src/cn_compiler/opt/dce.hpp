@@ -10,6 +10,8 @@
 //      Block 终止信息引用的寄存器视为引用（返回值/条件寄存器）
 #pragma once
 
+#include <vector>
+
 #include "cn_compiler/ir/ir.hpp"
 #include "cn_compiler/opt/pass.hpp"
 
@@ -29,8 +31,8 @@ public:
 
 private:
     // 单轮块内 DCE（返回是否删除）
-    // usedRegs 为函数级引用集合（所有块的指令操作数 + 终止信息返回值）
-    static bool runBlock(ir::IRBlock& block, const std::vector<int>& usedRegs);
+    // usedRegs 为函数级引用位图（下标=寄存器 id，1=被引用；由 run 收集）
+    static bool runBlock(ir::IRBlock& block, const std::vector<char>& usedRegs);
 
     // 指令是否纯（无副作用且结果可删）：
     //   返回 true 表示"结果未被使用时可删除"；false 表示永不删除

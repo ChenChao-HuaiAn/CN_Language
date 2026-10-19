@@ -43,9 +43,9 @@ bool DCEPass::isPure(ir::Opcode op) {
 }
 
 // 单轮块内 DCE（返回是否删除）
-// usedRegs 为函数级引用集合（所有块的指令操作数 + 终止信息返回值）
+// usedRegs 为函数级引用位图（下标=寄存器 id，1=被引用）
 bool DCEPass::runBlock(ir::IRBlock& block,
-                       const std::vector<int>& usedRegs) {
+                       const std::vector<char>& usedRegs) {
     // ---- 反向扫描删除死指令 ----
     // 反向：先处理靠后的指令，删除后其操作数寄存器在后续轮次中
     // 才可能变死（级联删除由外部循环处理）
@@ -55,10 +55,10 @@ bool DCEPass::runBlock(ir::IRBlock& block,
         const ir::IRInstruction& inst = insts[i];
         if (inst.result.id < 0) continue;              // 无结果：不删
         if (!isPure(inst.opcode)) continue;            // 有副作用：不删
-        // 结果是否被函数内任何指令/终止信息引用
-        const int resultId = inst.result.id;
-        const bool referenced = std::find(usedRegs.begin(), usedRegs.end(), resultId) !=
-                                usedRegs.end();
+        // 结果是否被函数内任何指令/终止信息引用（位图 O(1)；超出位图=未引用）
+        const std::size_t resultId = static_cast<std::size_t>(inst.result.id);
+        const bool referenced =
+            resultId < usedRegs.size() && usedRegs[resultId] != 0;
         if (referenced) continue;
         // 删除该指令（记录其操作数引用，供级联判断）
         insts.erase(insts.begin() + static_cast<std::ptrdiff_t>(i));
@@ -77,7 +77,10 @@ bool DCEPass::run(ir::IRModule& module) {
         // 级联收敛：删除一条死指令可能使引用它的指令变死，
         // 循环到一轮内无删除为止（上限防病态输入）
         for (int round = 0; round < 16; ++round) {
-            // 每轮重新收集函数级引用（删除后引用集合变化）
+            // 每轮重新收集函数级引用（删除后引用集合变化）。
+            // 先收集引用 id 列表，再一次性摊平成位图：
+            // 旧实现每个死指令候选都对 vector 线性 std::find（O(引用数)）——
+            // 改为位图后判定 O(1)，语义不变（引用集合成员关系）。
             std::vector<int> usedRegs;
             for (auto& block : fn.blocks) {
                 for (const auto& inst : block->instructions) {
@@ -110,10 +113,19 @@ bool DCEPass::run(ir::IRModule& module) {
                     }
                 }
             }
+            int maxUsedId = -1;
+            for (const int id : usedRegs) {
+                if (id > maxUsedId) maxUsedId = id;
+            }
+            std::vector<char> usedMask(
+                static_cast<std::size_t>(maxUsedId) + 1, 0);
+            for (const int id : usedRegs) {
+                usedMask[static_cast<std::size_t>(id)] = 1;
+            }
             // 逐块删除死指令
             bool roundChanged = false;
             for (auto& block : fn.blocks) {
-                if (runBlock(*block, usedRegs)) roundChanged = true;
+                if (runBlock(*block, usedMask)) roundChanged = true;
             }
             if (!roundChanged) break;
             changed = true;

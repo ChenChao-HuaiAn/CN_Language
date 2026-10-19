@@ -112,7 +112,7 @@ bool CrossBlockDCEPass::run(ir::IRModule& module) {
         }
         // 第二步：可达性分析 + 删除不可达块
         // 单块函数无可删（入口自身必可达）：跳过索引映射构建，省哈希/分配
-        if (fn.blocks.size() < 2) continue;
+        if (fn.blocks.empty() || fn.blocks.size() == 1) continue;
         // label->索引映射（每函数建一次；与 cfg.DomTree::rebuild 的索引映射
         // 同构，第二处重复——待归纳，见质量纪律二）
         std::unordered_map<std::string, int> labelIndex;
