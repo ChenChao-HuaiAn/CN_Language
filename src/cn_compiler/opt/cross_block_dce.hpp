@@ -15,7 +15,8 @@
 #pragma once
 
 #include <string>
-#include <unordered_set>
+#include <unordered_map>
+#include <vector>
 
 #include "cn_compiler/ir/ir.hpp"
 #include "cn_compiler/opt/pass.hpp"
@@ -38,13 +39,17 @@ private:
     // 返回: 是否折叠
     static bool foldConstantBranch(ir::IRBlock& block);
 
-    // 收集函数内可达块 label 集合（从入口 BFS/DFS，沿跳转目标遍历）
-    static std::unordered_set<std::string> collectReachable(
-        const ir::IRFunction& fn);
+    // 收集函数内可达块集合（从入口 BFS，沿跳转目标遍历）。
+    //   返回按块索引标记的可达位图（1=可达）；labelIndex 为 label->索引。
+    //   入口=blocks[0]（IRGenerator 契约）。
+    static std::vector<char> collectReachable(
+        const ir::IRFunction& fn,
+        const std::unordered_map<std::string, int>& labelIndex);
 
-    // 删除不可达块（返回是否删除）；label 字符串互引，删除后无需修正索引
+    // 删除不可达块（返回是否删除）；reachable 按块索引标记。
+    //   从尾部向前删除，删除后剩余块索引不变，无需修正跳转 label。
     static bool removeUnreachableBlocks(ir::IRFunction& fn,
-                                        const std::unordered_set<std::string>& reachable);
+                                        const std::vector<char>& reachable);
 };
 
 } // namespace opt

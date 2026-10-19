@@ -5,12 +5,12 @@
 //      - 条件为"真"/"1" -> 折叠为无条件跳转到 termTrueTarget
 //      - 条件为"假"/"0" -> 折叠为无条件跳转到 termFalseTarget
 //   2. collectReachable：入口（blocks[0]）BFS，沿"跳转"/"条件跳转"目标遍历
-//   3. removeUnreachableBlocks：删除 label 不在可达集合的块
-//      （label 字符串互引，删除后无需修正索引）
+//      （label->索引映射 + 索引队列，O(块数+边数)；旧实现逐 label 线性扫块）
+//   3. removeUnreachableBlocks：删除可达位图中未标记的块
+//      （从尾部向前删除，剩余块索引不变，label 互引无需修正）
 #include <algorithm>
-#include <queue>
 #include <string>
-#include <unordered_set>
+#include <unordered_map>
 #include <vector>
 
 #include "cn_compiler/opt/cross_block_dce.hpp"
@@ -49,52 +49,53 @@ bool CrossBlockDCEPass::foldConstantBranch(ir::IRBlock& block) {
     return true;
 }
 
-// 收集函数内可达块 label 集合（从入口 BFS，沿跳转目标遍历）
-std::unordered_set<std::string> CrossBlockDCEPass::collectReachable(
-    const ir::IRFunction& fn) {
-    std::unordered_set<std::string> reachable;
+// 收集函数内可达块集合（从入口 BFS，沿跳转目标遍历）。
+//   旧实现按 label 逐个线性扫描全部块（O(块数²) 字符串比较）；现先建
+//   label->索引映射，BFS 直接按下标访问（O(块数+边数)）。
+//   label 唯一性=IRGenerator 契约；重复 label 取首个（与旧实现首个命中一致）。
+std::vector<char> CrossBlockDCEPass::collectReachable(
+    const ir::IRFunction& fn,
+    const std::unordered_map<std::string, int>& labelIndex) {
+    std::vector<char> reachable(fn.blocks.size(), 0);
     if (fn.blocks.empty()) return reachable;
-    std::queue<std::string> pending;
+    // 待处理块索引队列（vector 作队列：head 指针推进，避免 deque 分配）
+    std::vector<int> pending;
+    pending.reserve(fn.blocks.size());
     // 入口块 = blocks[0]（IRGenerator 保证第一个块为函数入口）
-    const std::string entry = fn.blocks[0]->label;
-    pending.push(entry);
-    reachable.insert(entry);
-    while (!pending.empty()) {
-        const std::string label = pending.front();
-        pending.pop();
-        // 找到对应块，收集其跳转目标
-        for (const auto& block : fn.blocks) {
-            if (block->label != label) continue;
-            if (block->terminated) {
-                if (block->termKind == "跳转" && !block->termTarget.empty()) {
-                    if (reachable.insert(block->termTarget).second) {
-                        pending.push(block->termTarget);
-                    }
-                } else if (block->termKind == "条件跳转") {
-                    if (!block->termTrueTarget.empty() &&
-                        reachable.insert(block->termTrueTarget).second) {
-                        pending.push(block->termTrueTarget);
-                    }
-                    if (!block->termFalseTarget.empty() &&
-                        reachable.insert(block->termFalseTarget).second) {
-                        pending.push(block->termFalseTarget);
-                    }
-                }
-            }
-            break;
+    pending.push_back(0);
+    reachable[0] = 1;
+    for (std::size_t head = 0; head < pending.size(); ++head) {
+        const ir::IRBlock& block = *fn.blocks[static_cast<std::size_t>(pending[head])];
+        if (!block.terminated) continue;
+        // 目标 label 入队（未能映射到块的目标忽略——旧实现同样无块可遍历）
+        const auto enqueue = [&](const std::string& target) {
+            if (target.empty()) return;
+            const auto it = labelIndex.find(target);
+            if (it == labelIndex.end()) return;
+            const int t = it->second;
+            if (reachable[static_cast<std::size_t>(t)]) return;
+            reachable[static_cast<std::size_t>(t)] = 1;
+            pending.push_back(t);
+        };
+        if (block.termKind == "跳转") {
+            enqueue(block.termTarget);
+        } else if (block.termKind == "条件跳转") {
+            enqueue(block.termTrueTarget);
+            enqueue(block.termFalseTarget);
         }
     }
     return reachable;
 }
 
-// 删除不可达块（返回是否删除）；label 字符串互引，删除后无需修正索引
+// 删除不可达块（返回是否删除）；reachable 按块索引标记。
+//   从尾部向前删除：删除位置之后的元素已处理完，剩余块索引不变，
+//   label 字符串互引无需修正。
 bool CrossBlockDCEPass::removeUnreachableBlocks(
-    ir::IRFunction& fn, const std::unordered_set<std::string>& reachable) {
+    ir::IRFunction& fn, const std::vector<char>& reachable) {
     bool removed = false;
     auto& blocks = fn.blocks;
     for (std::size_t i = blocks.size(); i-- > 0;) {
-        const std::string& label = blocks[i]->label;
-        if (reachable.find(label) != reachable.end()) continue;
+        if (reachable[i]) continue;
         blocks.erase(blocks.begin() + static_cast<std::ptrdiff_t>(i));
         removed = true;
     }
@@ -110,7 +111,16 @@ bool CrossBlockDCEPass::run(ir::IRModule& module) {
             if (foldConstantBranch(*block)) changed = true;
         }
         // 第二步：可达性分析 + 删除不可达块
-        const std::unordered_set<std::string> reachable = collectReachable(fn);
+        // 单块函数无可删（入口自身必可达）：跳过索引映射构建，省哈希/分配
+        if (fn.blocks.size() < 2) continue;
+        // label->索引映射（每函数建一次；与 cfg.DomTree::rebuild 的索引映射
+        // 同构，第二处重复——待归纳，见质量纪律二）
+        std::unordered_map<std::string, int> labelIndex;
+        labelIndex.reserve(fn.blocks.size() * 2);
+        for (std::size_t i = 0; i < fn.blocks.size(); ++i) {
+            labelIndex.emplace(fn.blocks[i]->label, static_cast<int>(i));
+        }
+        const std::vector<char> reachable = collectReachable(fn, labelIndex);
         if (removeUnreachableBlocks(fn, reachable)) changed = true;
     }
     return changed;
