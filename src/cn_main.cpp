@@ -77,6 +77,41 @@ void printHelp() {
     std::cout << "  --help, -h             显示帮助信息\n";
 }
 
+// argv 文本参数 UTF-8 归一（258-a 旗标面立·1026 扩 -D 宏名面）。
+//   Windows argv 窄字符=当前 ANSI 代码页（简中系统=GBK）字节，而编译器内部文本
+//   （源文件内容/宏名/诊断）统一 UTF-8：含高字节且已是合法 UTF-8 的保持原样
+//   （防双重转换，例如调用方直接以 UTF-8 字节构造命令行）；其余按 ANSI 代码页
+//   转 UTF-8。纯 ASCII 原样返回（零开销）。
+//   注意：仅用于**文本语义**参数（旗标名/宏名）；路径参数不进本通道——ml64/link
+//   按 ANSI 解释路径，保持原样（E2E 18/19 回归史）。
+static std::string ansiArgToUtf8(const std::string& text) {
+    bool hasHighByte = false;
+    bool validUtf8 = true;
+    for (std::size_t i = 0; i < text.size(); ++i) {
+        const unsigned char c = static_cast<unsigned char>(text[i]);
+        if (c < 0x80) continue;
+        hasHighByte = true;
+        const int cont = (c & 0xE0) == 0xC0 ? 1 : (c & 0xF0) == 0xE0 ? 2
+                       : (c & 0xF8) == 0xF0 ? 3 : -1;
+        // cont 取值=闭集 {1,2,3,-1}（三目分类），-1=非法首字节：用等值判定
+        //   表达「闭集穷举」语义（非业务数值区间，无单边开区间问题）。
+        if (cont == -1 || i + static_cast<std::size_t>(cont) >= text.size()) {
+            validUtf8 = false;
+            break;
+        }
+        for (int k = 1; k <= cont; ++k) {
+            if ((static_cast<unsigned char>(text[i + k]) & 0xC0) != 0x80) {
+                validUtf8 = false;
+                break;
+            }
+        }
+        if (!validUtf8) break;
+        i += static_cast<std::size_t>(cont);
+    }
+    if (!hasHighByte || validUtf8) return text;
+    return ansiToUtf8(text);
+}
+
 // 解析选项与文件参数
 // 参数: 待解析参数列表、当前下标（引用，前进）、选项结构、输出文件路径
 // 返回: 错误消息（空字符串表示成功）
@@ -131,7 +166,12 @@ std::string parseOptions(const std::vector<std::string>& args, size_t& index,
         } else if (current == "-D") {
             // Task 6.6 条件编译：注入宏定义（-D 宏名，可多次指定）
             if (index + 1 >= args.size()) return "选项 -D 缺少宏名参数";
-            options.macros.insert(args[++index]);
+            // 1026（1020 采样轮 H5 根治）：宏名与 UTF-8 源文件文本按字节比对
+            //   （#如果定义），其编码空间必须同为 UTF-8——argv 非'-'起参数此前
+            //   保持 ANSI（路径通道），中文宏名=GBK 字节永不出现在 UTF-8 源码中
+            //   => 恒不命中（v2 的 系统::参数=UTF-8 命中=双侧分叉）。此处对 -D
+            //   的宏名单点做代码页归一；宏展开语义与其他参数零变更。
+            options.macros.insert(ansiArgToUtf8(args[++index]));
         } else if (current == "--货舱") {
             // 模块系统 v2.0 第 5 层：显式指定 货舱.toml 路径（覆盖自动发现）
             if (index + 1 >= args.size()) return "选项 --货舱 缺少路径参数";
@@ -655,27 +695,7 @@ int main(int argc, char** argv) {
 #ifdef _WIN32
     for (auto& a : args) {
         if (a.size() < 2 || a[0] != '-') continue;
-        bool hasHighByte = false;
-        bool validUtf8 = true;
-        for (std::size_t i = 0; i < a.size(); ++i) {
-            const unsigned char c = static_cast<unsigned char>(a[i]);
-            if (c < 0x80) continue;
-            hasHighByte = true;
-            const int cont = (c & 0xE0) == 0xC0 ? 1 : (c & 0xF0) == 0xE0 ? 2
-                           : (c & 0xF8) == 0xF0 ? 3 : -1;
-            if (cont < 0 || i + static_cast<std::size_t>(cont) >= a.size()) {
-                validUtf8 = false; break;
-            }
-            for (int k = 1; k <= cont; ++k) {
-                if ((static_cast<unsigned char>(a[i + k]) & 0xC0) != 0x80) {
-                    validUtf8 = false; break;
-                }
-            }
-            if (!validUtf8) break;
-            i += static_cast<std::size_t>(cont);
-        }
-        if (hasHighByte && validUtf8) continue;  // 已是 UTF-8，避免二次转换
-        a = ansiToUtf8(a);
+        a = ansiArgToUtf8(a);   // 解码策略单点（1026：与 -D 宏名通道共用）
     }
 #endif
 
