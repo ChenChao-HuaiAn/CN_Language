@@ -71,7 +71,7 @@ _INCLUDE_RE = re.compile(r'#include\s+["<](cn_compiler/[^">]+)[">]')
 
 # ============ CN 面：v2 树内包 + 包白名单（目标态） ============
 V2_ROOT = Path("CN语言编译器v2")
-CN_PACKS = ("词法", "协议常量", "IR", "语法", "语义", "代码生成", "货舱解析")
+CN_PACKS = ("词法", "协议常量", "IR", "语法", "语义", "代码生成", "货舱解析", "驱动")
 # 335 重构B：协议常量包自 IR 独立；原拟「语法树」中立包方案经勘察修正——IR→语法
 # 13 处依赖本质=泛型实例化重解析（IR 段调解析函数·宿主 recheckGeneric* 同构），
 # 非数据定义可搬，留基线豁免+021 债行（职责重排独立轮）。
@@ -84,6 +84,9 @@ CN_ALLOW = {
     "语义": {"词法", "协议常量", "IR", "语法"},
     "代码生成": {"词法", "协议常量", "IR"},
     "货舱解析": set(),
+    "驱动": set(),                                   # 1108 拆分轮：驱动器文件/路径辅助
+                                                     #   （宿主 driver 层对称）——只消费
+                                                     #   stdlib，零 CN 包依赖
     "主": set(CN_PACKS),                             # 主 导入全部（组合入口）
 }
 
@@ -236,14 +239,44 @@ def 冻结线检查(仓库根: Path, 更新基线: bool) -> int:
     return 0
 
 
+def 自测():
+    """最小正反自测（#1108 拆分轮·§5.1 检查工具脚本自证）：对临时仓库根构造
+    真实样本，验证 ①驱动 包登记后 主->驱动 放行、②驱动 包违规导入（白名单=∅）
+    被真实拦截、③stdlib 导入恒放行。返回 0=全部通过。"""
+    import tempfile
+    with tempfile.TemporaryDirectory() as tmp:
+        根 = Path(tmp)
+        v2 = 根 / "CN语言编译器v2"
+        (v2 / "驱动").mkdir(parents=True)
+        # 正态：主 导入 驱动（白名单含）；驱动 导入 stdlib 文件（放行）
+        (v2 / "主.cn").write_text("导入 驱动;\n", encoding="utf-8")
+        (v2 / "驱动" / "辅助.cn").write_text("导入 文件::打开文件;\n", encoding="utf-8")
+        正态违规 = 当前违规(根)["cn"]
+        if 正态违规:
+            print(f"[自测·红] 正态样本被误拦：{正态违规}")
+            return 1
+        # 反态：驱动 导入 语义（白名单=∅）——必须真实检出
+        (v2 / "驱动" / "辅助.cn").write_text("导入 语义;\n", encoding="utf-8")
+        反态违规 = 当前违规(根)["cn"]
+        if not 反态违规 or 反态违规[0][1] != "语义":
+            print(f"[自测·红] 违规样本未被拦截：{反态违规}")
+            return 1
+    print("[自测·绿] CN 面正态放行/反态拦截/std 包放行 三态全过")
+    return 0
+
+
 def main():
     ap = argparse.ArgumentParser(description="分层依赖方向门禁（C++ include + CN 导入 双面）")
     ap.add_argument("--root", default=".", help="仓库根目录")
     ap.add_argument("--report", action="store_true", help="报告当前全部违规（不拦截）")
     ap.add_argument("--update-baseline", action="store_true",
                     help="以当前实测重写冻结基线（清账后收基线）")
+    ap.add_argument("--selftest", action="store_true",
+                    help="最小正反自测（临时仓库根·不触真实树）")
     args = ap.parse_args()
 
+    if args.selftest:
+        return 自测()
     仓库根 = Path(args.root).resolve()
     if args.report:
         return 报告(仓库根)
