@@ -17,6 +17,7 @@
 
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 
 #include "cn_compiler/ir/ir.hpp"
 #include "cn_compiler/opt/pass.hpp"
@@ -42,6 +43,16 @@ private:
     static bool mayWriteMemory(ir::Opcode op);
 
     bool allowFloat_ = false;  // 浮点 CSE 开关（-O2 以上）
+    // fixpoint 收敛去重：块 -> 已报告过的重复结果寄存器集合。
+    //   重复纯指令被 DCE 删除前、重复 Load（有副作用永不删除）在后续轮次
+    //   仍会被检出。登记本身不改 IR——首次报告已足以触发后续轮次；若不记住，
+    //   同一登记每轮都报 changed，fixpoint 永不收敛（1153 实测 16 轮）。
+    //   其他 pass 改动 IR 产生的新重复结果寄存器不同，仍会正常报告。
+    std::unordered_map<const ir::IRBlock*, std::unordered_set<int>>
+        reportedDuplicates_;
+    // 去重状态所属模块（同一模块的 fixpoint 轮共享；换模块即清空，
+    //   防跨文件编译时块地址复用导致误抑制新重复的报告）
+    const ir::IRModule* lastModule_ = nullptr;
 };
 
 } // namespace opt

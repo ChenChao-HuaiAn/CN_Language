@@ -157,6 +157,11 @@ bool CSEPass::mayWriteMemory(ir::Opcode op) {
 
 // 遍历模块全部函数的全部基本块，消除块内公共子表达式
 bool CSEPass::run(ir::IRModule& module) {
+    // 换模块=新一轮优化（去重状态仅用于同一模块的 fixpoint 轮）
+    if (&module != lastModule_) {
+        reportedDuplicates_.clear();
+        lastModule_ = &module;
+    }
     bool changed = false;
     for (auto& fn : module.functions) {
         for (auto& block : fn.blocks) {
@@ -194,12 +199,16 @@ bool CSEPass::run(ir::IRModule& module) {
                     const bool hit = repIndex != -1;
                     if (hit && hasResult) {
                         // 命中：登记替换（代表指令的结果寄存器）。
-                        //   不在此处置 changed：登记本身不改 IR，真正改动由后续
-                        //   replaceUses 报告。旧实现无条件 changed=true 导致
-                        //   重复 Load（永不删除）每轮重复登记 -> fixpoint 永不收敛，
-                        //   固定跑满 16 轮全流水线（1153 实测根因）。
+                        //   changed 仅在首次发现该重复时报告——登记本身不改 IR
+                        //   （实际引用替换由 replaceUses 报告）；重复 Load/暂存
+                        //   重复指令会在后续 fixpoint 轮被再次检出，若每轮都报
+                        //   changed 则永不收敛（1153 根因）。见 hpp 成员说明。
                         regRewrite[inst.result.id] = insts[static_cast<std::size_t>(
                             repIndex)].result.id;
+                        const bool firstReport =
+                            reportedDuplicates_[block.get()].insert(
+                                inst.result.id).second;
+                        if (firstReport) changed = true;
                     }
                     const bool firstSeen = !hit;
                     if (firstSeen && hasResult) {
@@ -214,9 +223,13 @@ bool CSEPass::run(ir::IRModule& module) {
                     auto it = loadResults.find(name);
                     if (it != loadResults.end()) {
                         // 同槽 Load 命中（两者间无写内存）-> 复用。
-                        //   不在此处置 changed（同上：Load 本身不删除，重复登记
-                        //   会让 fixpoint 永不收敛）；实际引用替换由 replaceUses 报告。
+                        //   changed 仅在首次发现该重复 Load 时报告（Load 有副作用
+                        //   永不删除，后续轮次会重复检出同一登记——见 hpp 成员说明）。
                         regRewrite[inst.result.id] = it->second;
+                        const bool firstReport =
+                            reportedDuplicates_[block.get()].insert(
+                                inst.result.id).second;
+                        if (firstReport) changed = true;
                     } else {
                         loadResults[name] = inst.result.id;
                     }
