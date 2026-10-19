@@ -195,10 +195,13 @@ bool CSEPass::run(ir::IRModule& module) {
                     const bool hasResult = inst.result.id >= 0;
                     const bool hit = repIndex != -1;
                     if (hit && hasResult) {
-                        // 命中：登记替换（代表指令的结果寄存器）
+                        // 命中：登记替换（代表指令的结果寄存器）。
+                        //   不在此处置 changed：登记本身不改 IR，真正改动由后续
+                        //   replaceUses 报告。旧实现无条件 changed=true 导致
+                        //   重复 Load（永不删除）每轮重复登记 -> fixpoint 永不收敛，
+                        //   固定跑满 16 轮全流水线（1153 实测根因）。
                         regRewrite[inst.result.id] = insts[static_cast<std::size_t>(
                             repIndex)].result.id;
-                        changed = true;
                     }
                     const bool firstSeen = !hit;
                     if (firstSeen && hasResult) {
@@ -212,9 +215,10 @@ bool CSEPass::run(ir::IRModule& module) {
                     if (name.empty() || inst.operands[0].id >= 0) continue;
                     auto it = loadResults.find(name);
                     if (it != loadResults.end()) {
-                        // 同槽 Load 命中（两者间无写内存）-> 复用
+                        // 同槽 Load 命中（两者间无写内存）-> 复用。
+                        //   不在此处置 changed（同上：Load 本身不删除，重复登记
+                        //   会让 fixpoint 永不收敛）；实际引用替换由 replaceUses 报告。
                         regRewrite[inst.result.id] = it->second;
-                        changed = true;
                     } else {
                         loadResults[name] = inst.result.id;
                     }
