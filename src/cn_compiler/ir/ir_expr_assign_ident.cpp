@@ -496,6 +496,18 @@ void IRGenerator::identifierGenericAssign(AssignmentExpr* node, IdentifierExpr* 
         ir::IRValue capAddr = emitResult(ir::Opcode::Load,
                                          {ir::IRValue::var(unique, "ptr")},
                                          "ptr", unique, node->location);
+        // 1089：字符串 byRef 目标（引用参数出参/引用捕获变量·canonical 剥 &）——
+        //   写回覆盖前 drop 旧值（Rust 赋值语义=旧值先析构；空/非追踪指针安全
+        //   ——cn_free_tracked 对未注册指针忽略）。补给面=**非标识符源**形态
+        //   （字面量/调用产物/拼接/转移）——72-a 通道只覆盖「源=标识符」
+        //   （identifierStringByRefAssign 先行 return 不到此·其内已 drop）；
+        //   实测泄漏：`出 = 字符串复制("新")` 三次覆盖净泄 3 块（内存账探针）。
+        if (types::canonical(lookupSrcType(ident->name)) == "字符串") {
+            ir::IRValue oldPtr = emitResult(ir::Opcode::LoadPtr, {capAddr},
+                                            "ptr", "", node->location);
+            emit(ir::Opcode::Call, {oldPtr}, ir::IRValue(), "__cn_str_free",
+                 "void", node->location);
+        }
         emit(ir::Opcode::StorePtr, {capAddr, value}, ir::IRValue(), "",
              targetType, node->location);
         lastExpr_ = value;

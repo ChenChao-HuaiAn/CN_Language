@@ -52,8 +52,21 @@ bool IRGenerator::identifierStringAssign(AssignmentExpr* node, IdentifierExpr* i
     return false;
 }
 
-// 引用参数（T& 出参）赋值拥有型串（原 927~949 段）：句柄直写调用方槽 + 源槽清零
-//   （Rust `*out = s` 对 String 即 move 对照）。
+// 引用参数（T& 出参）赋值拥有型串（原 927~949 段）：drop 旧目标 + 句柄直写调用方槽
+//   + 源槽清零（Rust `*out = s` 对 String 即 move 对照——旧值析构、出参槽获得
+//   所有权、源失效）。
+//   1089（1017 采样轮探针 v07 同族·字符串 T& 引用交换双侧病·宿主侧）：两修——
+//   ①源清零分桶：原实现一律清「源槽」，对**源=引用参数**（另一调用方变量）误清
+//     参槽自身（存变量地址）＝地址丢失：交换第二笔 `乙 = 临时` 经 0 地址写回=
+//     空指针解引用（错误码3·泛型与非泛型 字符串& 同崩实录）。修=源=引用参数清
+//     **被引用变量槽**（*源参槽=0、参槽保留——后续再读/写该参数链不断）；源=普通
+//     变量（局部/按值参数·拥有型）清源槽（既有面不动·72-a move 语义）。
+//   ②drop 目标旧值：原实现写回覆盖无释放——交换 甲=乙 时甲旧句柄被覆盖无主=
+//     每次交换净泄 1 堆串（双侧内存账探针：活动分配差 3 vs 基线 2 实录）。修=
+//     写回前 __cn_str_free(*目标变量)（Rust 赋值语义=旧值先析构；空/非追踪指针
+//     安全——cn_free_tracked 对未注册指针忽略，字面量/视图直存形态零误伤）。
+//   同槽自赋值（甲=甲）跳过两修（drop 旧值后写回同句柄=UAF 面，无操作语义）。
+//   v2 侧 发射出参串赋前处理1089 对应同构（双侧零分叉）。
 bool IRGenerator::identifierStringByRefAssign(AssignmentExpr* node, IdentifierExpr* ident,
                                               const std::string& unique,
                                               const std::string& targetType,
@@ -72,12 +85,35 @@ bool IRGenerator::identifierStringByRefAssign(AssignmentExpr* node, IdentifierEx
             ir::IRValue byRefAddr = emitResult(
                 ir::Opcode::Load, {ir::IRValue::var(unique, "ptr")}, "ptr",
                 unique, node->location);
+            if (unique != rpSrcUnique) {
+                // ①drop 目标旧值（写回覆盖前——旧值析构后写入·Rust 赋值语义）
+                ir::IRValue oldPtr = emitResult(ir::Opcode::LoadPtr, {byRefAddr},
+                                                "ptr", "", node->location);
+                emit(ir::Opcode::Call, {oldPtr}, ir::IRValue(), "__cn_str_free",
+                     "void", node->location);
+            }
+            // ②句柄直写调用方槽
             emit(ir::Opcode::StorePtr, {byRefAddr, value}, ir::IRValue(), "",
                  targetType, node->location);
             ir::IRValue rpZero = emitResult(ir::Opcode::ConstInt, {}, "i64", "0",
                                             node->location);
-            emit(ir::Opcode::Store, {rpZero}, ir::IRValue(), rpSrcUnique, "i64",
-                 node->location);
+            if (unique == rpSrcUnique) {
+                // 同槽自赋值（甲=甲）：源=目标同一变量槽——drop/清源均跳过
+                //   （写回同值=无操作语义）。
+            } else if (isByRefCapture(rpSrcName)) {
+                // ③源=引用参数（另一调用方变量）：清零被引用变量槽（*源参槽=0）
+                //   ——源参槽自身保留（1089）。
+                ir::IRValue srcVarAddr = emitResult(
+                    ir::Opcode::Load, {ir::IRValue::var(rpSrcUnique, "ptr")},
+                    "ptr", rpSrcUnique, node->location);
+                emit(ir::Opcode::StorePtr, {srcVarAddr, rpZero}, ir::IRValue(), "",
+                     targetType, node->location);
+            } else if (!isByRefCapture(rpSrcName)) {
+                // ③'源=普通变量（局部/按值参数·拥有型·显式枚举非引用参数）：
+                //   清源槽（既有面·72-a move 语义）。
+                emit(ir::Opcode::Store, {rpZero}, ir::IRValue(), rpSrcUnique, "i64",
+                     node->location);
+            }
             lastExpr_ = value;
             return true;
         }
