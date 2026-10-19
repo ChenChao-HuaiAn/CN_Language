@@ -44,8 +44,28 @@ void IRGenerator::visitUnaryExpr(UnaryExpr* node) {
         }
         case Operator::Tilde: {
             // 按位非（Task 2.3）：~x = x ^ -1（真正的位非，codegen 发射 not 指令）
+            // 1102（#1018 采样轮 D4 根治）：128 位取反掩码必须走**双半文本**——
+            //   十进制 "-1" 落后端「纯十进制小值」协议面只物化低 64 位（高半=0），
+            //   ~0LL 得 2^64-1（应 2^128-1）、~x 高半不翻转（win/arm64/linux 三后端
+            //   同源静默错值）。splitI128Text("-1") = "FFFFFFFFFFFFFFFF:FFFFFFFFFFFFFFFF"
+            //   （低:高 十六进制·与字面量 -1LL 同一契约，三后端共用解析通道）。
+            //   输入为硬编码合法十进制文本——函数仅对空 digits/非法数字字符返回空
+            //   （闭集穷举：两者皆非），此处恒产出非空双半文本。
+            std::string maskText = "-1";
+            if (operand.type == "i128" || operand.type == "u128") {
+                const std::string split = types::splitI128Text("-1");
+                if (split.empty()) {
+                    // miss 三选一①（648/110 同规）：硬编码 "-1" 拆分为空=编译器
+                    //   内部缺陷，显形于此（driver 见 hasErrors 中止，产物不落地）；
+                    //   掩码保留 "-1"（控制流零变更，不再降级）。
+                    diagnostics_.report(DiagnosticLevel::Error, node->location,
+                        "内部错误: 128 位取反掩码常量文本拆分失败——'-1' 为合法"
+                        "十进制文本（splitI128Text 契约应恒非空），静默降级已废除（#1102）");
+                }
+                if (!split.empty()) maskText = split;
+            }
             ir::IRValue minusOne = emitResult(ir::Opcode::ConstInt, {}, operand.type,
-                                              "-1", node->location);
+                                              maskText, node->location);
             lastExpr_ = emitResult(ir::Opcode::BitXor, {operand, minusOne}, operand.type,
                                    "", node->location);
             break;
