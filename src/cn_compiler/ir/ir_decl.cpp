@@ -740,7 +740,9 @@ void IRGenerator::registerFunctionParams(FunctionDecl* node, ir::IRFunction& fun
         std::vector<ir::IRValue> defaults;
         for (auto& param : node->params) {
             if (param->hasDefault && param->defaultExpr != nullptr) {
-                defaults.push_back(evalDefaultExpr(param->defaultExpr.get()));
+                // 1150：按形参声明类型落位（128 形参的 <=64 位默认值须拆双半）
+                defaults.push_back(
+                    evalDefaultExpr(param->defaultExpr.get(), param->typeName));
             }
         }
         if (!defaults.empty()) {
@@ -765,7 +767,9 @@ void IRGenerator::collectFreeFunctionDefaults(FunctionDecl* node) {
     std::vector<ir::IRValue> defaults;
     for (auto& param : node->params) {
         if (param->hasDefault && param->defaultExpr != nullptr) {
-            defaults.push_back(evalDefaultExpr(param->defaultExpr.get()));
+            // 1150：按形参声明类型落位（128 形参的 <=64 位默认值须拆双半）
+            defaults.push_back(
+                evalDefaultExpr(param->defaultExpr.get(), param->typeName));
         }
     }
     if (defaults.empty()) return;

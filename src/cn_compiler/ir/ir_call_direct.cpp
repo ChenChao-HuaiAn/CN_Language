@@ -6,6 +6,10 @@
 //   + 聚合返回 emitAggStructReturnCall + 空类型直发 emitVoidBuiltinCall +
 //   引用返回右值消费 needsRefReturnDeref/emitRefReturnDeref〔986：先 Call
 //   后解引用·对齐 v2〕）。成员函数声明仍在 ir_generator.hpp。
+//   1150：默认值求值/物化族（evalDefaultExpr/materializeDefaultArg·原 ir_expr.cpp
+//   超 1000 行冻结线前搬入——默认参数声明类型落位+寄存器物化，本文件即补参
+//   消费点的单一归属文件）。
+#include <cstdint>
 #include <cstdio>
 #include <string>
 #include <utility>
@@ -95,9 +99,12 @@ void IRGenerator::finalizeCallArgs(CallExpr* node, const std::string& calleeName
     if (isDirect && semantic_ != nullptr) {
         boxNullOptionalArgs(node, semantic_->funcParamTypesOf(calleeName), args);
     }
-    // 追加默认实参（Task 2.10）：缺省参数在实参之后按参数顺序补全
+    // 追加默认实参（Task 2.10）：缺省参数在实参之后按参数顺序补全。
+    // 1150：默认值常量须物化为虚拟寄存器（与显式实参同通道）——常量直作
+    //   Call 实参时 win 后端 128 位走栈临时区（越界写/多常量同址），物化后
+    //   三后端统一寄存器双槽实参协议（C0000005 根治）。
     for (const auto& defVal : defaultArgValues_) {
-        args.push_back(defVal);
+        args.push_back(materializeDefaultArg(defVal, node->location));
     }
     defaultArgValues_.clear();
 }
@@ -280,6 +287,282 @@ void IRGenerator::emitRefReturnDeref(CallExpr* node, const std::string& calleeNa
     }
     lastExpr_ = emitResult(ir::Opcode::LoadPtr, {callResult},
                            mapType(baseRet), "", node->location);
+}
+
+
+namespace {
+
+// 1150：默认值落位辅助（128 位默认参数产物 C0000005 根治）。
+//   背景：默认值原按"字面量自身运行期类型"收集（42→i32、2^64→i128），调用点
+//   原样补参——整128/正128 形参 ABI 要求 16 字节双槽地址，i32/i64 常量按值
+//   传入后被调方把 42 当地址解引用（C0000005）；显式实参经 genExpr+宽化通道
+//   类型正确。默认值必须与显式实参同口径落到形参声明 IR 类型。
+bool is128IrTypeText(const std::string& type) {
+    return type == "i128" || type == "u128";
+}
+bool isIntFamilyIrType(const std::string& type) {
+    return type == "i8" || type == "i16" || type == "i32" || type == "i64" ||
+           type == "i128" || type == "u8" || type == "u16" || type == "u32" ||
+           type == "u64" || type == "u128" || type == "i1";
+}
+bool isFloatFamilyIrType(const std::string& type) {
+    return type == "f32" || type == "f64";
+}
+// 形参类型是否参与默认值落位：仅基本标量。泛型 T 未替换（mapType→ptr）/
+//   自定义类型/字符串默认值保持既有字面量类型，不臆测转换（语义层负责诊断）。
+bool isDefaultArgScalarTarget(const std::string& type) {
+    return isIntFamilyIrType(type) || isFloatFamilyIrType(type);
+}
+
+// "低64:高64"（十六进制）128 位常量文本取负：16 字节二补码（全取反 +1，
+//   低半回绕 0 时高半进位）。解析失败返回 false（调用方按内部错误显形）。
+bool negateI128ConstText(const std::string& text, std::string& out) {
+    const std::size_t colon = text.find(':');
+    if (colon == std::string::npos) return false;
+    try {
+        std::uint64_t lo = std::stoull(text.substr(0, colon), nullptr, 16);
+        std::uint64_t hi = std::stoull(text.substr(colon + 1), nullptr, 16);
+        lo = ~lo;
+        hi = ~hi;
+        if (++lo == 0) ++hi;  // 无符号回绕=跨半进位（二补码定义）
+        char buf[48];
+        std::snprintf(buf, sizeof(buf), "%llX:%llX",
+                      static_cast<unsigned long long>(lo),
+                      static_cast<unsigned long long>(hi));
+        out = buf;
+        return true;
+    } catch (...) {
+        return false;
+    }
+}
+
+// "低64:高64" -> 64 位域十进制文本：高半全 0=无符号值；高半全 1 且低半
+//   bit63=1=负值二补码（低半按 long long 解释）；其余形态超 64 位域。
+bool i128ConstTextTo64Decimal(const std::string& text, std::string& out) {
+    const std::size_t colon = text.find(':');
+    if (colon == std::string::npos) return false;
+    try {
+        const std::uint64_t lo = std::stoull(text.substr(0, colon), nullptr, 16);
+        const std::uint64_t hi = std::stoull(text.substr(colon + 1), nullptr, 16);
+        if (hi == 0) {
+            out = std::to_string(lo);
+            return true;
+        }
+        if (hi == 0xFFFFFFFFFFFFFFFFULL && (lo & 0x8000000000000000ULL) != 0) {
+            out = std::to_string(static_cast<long long>(lo));
+            return true;
+        }
+        return false;
+    } catch (...) {
+        return false;
+    }
+}
+
+// "低64:高64" -> 任意域十进制文本（16 字节小端逐字节 ×256 累加；负值按
+//   二补码取绝对值加负号）。浮点目标用（f64 承载 128 域值不设 64 位落域限）。
+bool i128ConstTextToDecimal(const std::string& text, std::string& out) {
+    const std::size_t colon = text.find(':');
+    if (colon == std::string::npos) return false;
+    try {
+        std::uint64_t lo = std::stoull(text.substr(0, colon), nullptr, 16);
+        std::uint64_t hi = std::stoull(text.substr(colon + 1), nullptr, 16);
+        const bool negative = (hi & 0x8000000000000000ULL) != 0;
+        if (negative) {
+            lo = ~lo;
+            hi = ~hi;
+            if (++lo == 0) ++hi;  // 二补码取绝对值（跨半进位）
+        }
+        unsigned char bytes[16];
+        for (int i = 0; i < 8; ++i) {
+            bytes[i] = static_cast<unsigned char>((lo >> (8 * i)) & 0xFF);
+            bytes[8 + i] = static_cast<unsigned char>((hi >> (8 * i)) & 0xFF);
+        }
+        std::string dec = "0";
+        for (int i = 15; i >= 0; --i) {
+            unsigned carry = bytes[i];
+            for (int j = static_cast<int>(dec.size()) - 1; j >= 0; --j) {
+                const unsigned cur =
+                    static_cast<unsigned>(dec[j] - '0') * 256 + carry;
+                dec[j] = static_cast<char>('0' + cur % 10);
+                carry = cur / 10;
+            }
+            while (carry > 0) {
+                dec.insert(dec.begin(), static_cast<char>('0' + carry % 10));
+                carry /= 10;
+            }
+        }
+        if (negative && dec != "0") dec.insert(dec.begin(), '-');
+        out = dec;
+        return true;
+    } catch (...) {
+        return false;
+    }
+}
+
+}  // namespace
+
+ir::IRValue IRGenerator::evalDefaultExpr(Expr* expr,
+                                         const std::string& paramTypeName) {
+    // 1150：目标形参 IR 类型（仅基本标量参与落位；空=不转换）。
+    std::string target;
+    if (!paramTypeName.empty()) {
+        const std::string mapped = mapType(paramTypeName);
+        if (isDefaultArgScalarTarget(mapped)) target = mapped;
+    }
+    ir::IRValue base;
+    bool zeroPlaceholder = false;  // 超域/非法常量：语义层已诊断，按目标类型补 0
+    switch (expr->getType()) {
+        case NodeType::IntegerLiteral: {
+            IntegerLiteral* lit = static_cast<IntegerLiteral*>(expr);
+            // 910：全形态归一（原 std::to_string(lit->value) 对 hex 超承载
+            //   文本=parser stoll 溢出回 0 的毒化值；to_string 亦丢 128 域）
+            int st910 = 0;
+            const std::string type =
+                types::integerLiteralRuntimeType(lit->raw, &st910);
+            const std::string irType = mapType(type);
+            const std::string dec910 =
+                types::normalizeIntLiteralToDecimal(lit->raw);
+            if (st910 != 0 || dec910.empty()) {
+                // 超域形态：语义层已诊断（诊断即错误闭环）——按目标类型零占位
+                const std::string zeroType = target.empty() ? irType : target;
+                base = ir::IRValue::constant(
+                    is128IrTypeText(zeroType) ? "0:0" : "0", zeroType);
+                zeroPlaceholder = true;
+                break;
+            }
+            if (is128IrTypeText(irType)) {
+                const std::string split = types::splitI128Text(dec910);
+                base = ir::IRValue::constant(split.empty() ? dec910 : split,
+                                             irType);
+                break;
+            }
+            base = ir::IRValue::constant(dec910, irType);
+            break;
+        }
+        case NodeType::FloatLiteral: {
+            FloatLiteral* lit = static_cast<FloatLiteral*>(expr);
+            std::string type = types::literalTypeOf(lit->raw, true);
+            base = ir::IRValue::constant(types::stripLiteralSuffix(lit->raw),
+                                         mapType(type));
+            break;
+        }
+        case NodeType::StringLiteral: {
+            StringLiteral* lit = static_cast<StringLiteral*>(expr);
+            // 938：注册逻辑提炼 internString 单点复用（行为等价）
+            const std::string text = decodeString(lit->raw);
+            base = ir::IRValue::constant(
+                "@str" + std::to_string(internString(text)), "ptr");
+            break;
+        }
+        case NodeType::BoolLiteral: {
+            BoolLiteral* lit = static_cast<BoolLiteral*>(expr);
+            base = ir::IRValue::constant(lit->value ? "真" : "假", "i1");
+            break;
+        }
+        case NodeType::CharLiteral: {
+            CharLiteral* lit = static_cast<CharLiteral*>(expr);
+            // 95-a：字符字面量码点（单一归属 charLiteralCodePoint——转义/\u{}/UTF-8
+            //   全解码，规范 01b 三；原「单引号取首字节」注释声称全解码实为未实现）
+            base = ir::IRValue::constant(
+                std::to_string(charLiteralCodePoint(lit->raw)), "i32");
+            break;
+        }
+        case NodeType::UnaryExpr: {
+            // 一元负号：-N（常量取负）。操作数按自身字面量类型求值——
+            //   -9223372036854775808 的原值 2^63 属 128 域，须先出 128 再取负。
+            UnaryExpr* un = static_cast<UnaryExpr*>(expr);
+            if (un->op == Operator::Subtract) {
+                ir::IRValue inner = evalDefaultExpr(un->operand.get(), "");
+                if (inner.isConstant && inner.type != "ptr" && inner.type != "i1") {
+                    const bool inner128 = is128IrTypeText(inner.type);
+                    if (inner128) {
+                        std::string negated;
+                        const bool negatedOk =
+                            negateI128ConstText(inner.extra, negated);
+                        if (!negatedOk) {
+                            // 648/110 同规：内部缺陷显形（driver hasErrors 中止）
+                            diagnostics_.report(DiagnosticLevel::Error, expr->location,
+                                "内部错误: 默认参数 128 位常量 '" + inner.extra +
+                                    "' 取负失败（双半文本契约）——补零（#1150）");
+                            inner.extra = "0:0";
+                        }
+                        if (negatedOk) inner.extra = negated;
+                    }
+                    if (!inner128) {
+                        try {
+                            const long long v = std::stoll(inner.extra);
+                            inner.extra = std::to_string(-v);
+                        } catch (...) {
+                            // 原实现静默回 0（错值掩盖）；改为内部错误显形
+                            diagnostics_.report(DiagnosticLevel::Error, expr->location,
+                                "内部错误: 默认参数常量 '" + inner.extra +
+                                    "' 十进制取负失败——补零（#1150）");
+                            inner.extra = "0";
+                        }
+                    }
+                    base = inner;
+                    break;
+                }
+            }
+            base = ir::IRValue::constant("0", "i64");
+            break;
+        }
+        default:
+            // 非字面量默认值（标识符/调用等）：语义层已报错，此处补 0
+            base = ir::IRValue::constant("0", "i64");
+            break;
+    }
+    if (zeroPlaceholder || target.empty() || target == base.type) return base;
+    // 仅数值常量参与落位：字符串/自定义类型默认值非法（语义层已诊断），保持原值。
+    const bool baseInt = isIntFamilyIrType(base.type);
+    const bool baseFloat = isFloatFamilyIrType(base.type);
+    if (!baseInt && !baseFloat) return base;
+    // 浮点 -> 整型 非本通道（语义层拒；不臆造截断）。
+    if (baseFloat && !isFloatFamilyIrType(target)) return base;
+    std::string text = base.extra;
+    if (base.type == "i1") text = (text == "真") ? "1" : "0";
+    if (is128IrTypeText(target)) {
+        // 目标 128：整数常量统一为 "低64:高64" 双半（codegen 双槽契约）。
+        if (!is128IrTypeText(base.type) || text.find(':') == std::string::npos) {
+            const std::string split = types::splitI128Text(text);
+            if (split.empty()) {
+                diagnostics_.report(DiagnosticLevel::Error, expr->location,
+                    "内部错误: 默认参数常量 '" + text +
+                        "' 无法拆分为 128 位双半——补零（#1150）");
+                return ir::IRValue::constant("0:0", target);
+            }
+            text = split;
+        }
+        return ir::IRValue::constant(text, target);
+    }
+    if (is128IrTypeText(base.type)) {
+        // 目标 64 位及以下整数：128 常量须落 64 位域（如 整64 默认
+        //   -9223372036854775808）；浮点目标不设落域限（f64 全宽承载）。
+        std::string dec;
+        const bool converted = isFloatFamilyIrType(target)
+                                   ? i128ConstTextToDecimal(text, dec)
+                                   : i128ConstTextTo64Decimal(text, dec);
+        if (!converted) {
+            diagnostics_.report(DiagnosticLevel::Error, expr->location,
+                "内部错误: 默认参数 128 位常量 '" + text + "' 超出形参类型 '" +
+                    target + "' 承载域（语义层应已拒）——补零（#1150）");
+            return ir::IRValue::constant("0", target);
+        }
+        return ir::IRValue::constant(dec, target);
+    }
+    return ir::IRValue::constant(text, target);
+}
+
+ir::IRValue IRGenerator::materializeDefaultArg(const ir::IRValue& val,
+                                               const SourceLocation& loc) {
+    // 1150：仅 128 位默认实参常量需要物化为双槽虚拟寄存器——常量直接作
+    //   Call 实参时 win 后端 128 位分支把值写 [rsp+48]/[rsp+56] 栈临时区
+    //   （<=4 参时未分配=踩调用方帧；多常量共用同址=后值覆盖前值）；其余
+    //   类型常量实参通道本就按值正确（整型立即数/浮点常量池/字符串 lea/
+    //   布尔立即数），保持直通=零额外开销。物化后 = 常量双 mov + 传槽地址，
+    //   与显式 i128 字面量实参完全同通道（三后端统一寄存器双槽实参协议）。
+    if (!val.isConstant || !is128IrTypeText(val.type)) return val;
+    return emitResult(ir::Opcode::ConstInt, {}, val.type, val.extra, loc);
 }
 
 

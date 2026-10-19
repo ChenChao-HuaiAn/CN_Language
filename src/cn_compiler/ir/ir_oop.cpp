@@ -70,7 +70,9 @@ void IRGenerator::collectCtorDefaults(const std::string& className,
     std::vector<ir::IRValue> defaults;
     for (const auto& param : mi.ast->params) {
         if (param->hasDefault && param->defaultExpr != nullptr) {
-            defaults.push_back(evalDefaultExpr(param->defaultExpr.get()));
+            // 1150：按形参声明类型落位（构造形参 128 位默认值同规）
+            defaults.push_back(
+                evalDefaultExpr(param->defaultExpr.get(), param->typeName));
         }
     }
     if (!defaults.empty()) {
@@ -273,8 +275,11 @@ void IRGenerator::emitClassMethod(const std::string& className, const ClassMembe
                             static_cast<std::size_t>(&pp - parentCtor->ast->params.data());
                         if (pi < member->ctorInitArgs.size()) continue;
                         if (pp->hasDefault && pp->defaultExpr != nullptr) {
-                            ctorArgs.push_back(
-                                evalDefaultExpr(pp->defaultExpr.get()));
+                            // 1150：按形参声明类型落位 + 物化为寄存器实参
+                            ctorArgs.push_back(materializeDefaultArg(
+                                evalDefaultExpr(pp->defaultExpr.get(),
+                                                pp->typeName),
+                                member->body->location));
                         }
                         di++;
                         (void)di;
@@ -427,8 +432,11 @@ void IRGenerator::emitBaseCtorChain(const std::string& className,
                 if (zeroArg->ast != nullptr) {
                     for (const auto& pp : zeroArg->ast->params) {
                         if (pp->hasDefault && pp->defaultExpr != nullptr) {
-                            ctorArgs.push_back(
-                                evalDefaultExpr(pp->defaultExpr.get()));
+                            // 1150：按形参声明类型落位 + 物化为寄存器实参
+                            ctorArgs.push_back(materializeDefaultArg(
+                                evalDefaultExpr(pp->defaultExpr.get(),
+                                                pp->typeName),
+                                loc));
                         }
                     }
                 }

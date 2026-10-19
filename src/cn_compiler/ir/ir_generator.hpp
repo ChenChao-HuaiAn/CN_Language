@@ -321,8 +321,18 @@ private:
     // 判断 AST 表达式是否为字符串类型（Task 2.9 拼接判定）： 字符串字面量 / 字符串变量（lookupSrcType 为 字符串 或 字符*）→ true；
     //   普通指针/整型等 → false。用于区分"字符串+数值拼接"与"指针算术"（ptr + 整型）
     bool isStringTypedExpr(Expr* node) const;
-    // 默认参数常量求值（Task 2.10）：字面量 -> IR 常量（ConstInt/Float/String/Bool）
-    ir::IRValue evalDefaultExpr(Expr* expr);
+    // 默认参数常量求值（Task 2.10）：字面量 -> IR 常量（ConstInt/Float/String/Bool）。
+    // 1150：按形参声明类型（paramTypeName）落位——默认值须与显式实参同口径转换
+    //   （整128/正128 形参的 <=64 位字面量默认值原保留字面量类型，调用点按值
+    //   传→被调方把 42 当双槽地址解引用 C0000005）。空串=不落位（泛型 T 等）。
+    ir::IRValue evalDefaultExpr(Expr* expr,
+                                const std::string& paramTypeName = "");
+    // 1150：128 位默认实参常量 -> 双槽虚拟寄存器（ConstInt 发射）——与显式
+    //   实参同一物化通道；常量直接作 Call 实参时 128 位在 win 后端走栈临时区
+    //   （越界写+多常量共用），物化后三后端统一走寄存器双槽实参协议。非 128
+    //   类型直通（常量实参通道本就正确·零额外开销）。
+    ir::IRValue materializeDefaultArg(const ir::IRValue& val,
+                                      const SourceLocation& loc);
     // 空串入常量池并返回 @str 编号（默认字符串参数补全）
     int internEmptyString();
     // 938：字符串内容入常量池（去重·返回池编号）——字面量/默认值/常量内联/空串复用

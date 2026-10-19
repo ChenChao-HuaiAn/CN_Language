@@ -494,7 +494,9 @@ void IRGenerator::emitCtorInvoke(CallExpr* node, const std::string& className,
                     const auto& defaults = defIt->second;
                     for (std::size_t k = defaults.size() - missing;
                          k < defaults.size(); ++k) {
-                        args.push_back(defaults[k]);
+                        // 1150：默认值物化为寄存器（与显式实参同通道）
+                        args.push_back(materializeDefaultArg(defaults[k],
+                                                            node->location));
                     }
                 }
             }
