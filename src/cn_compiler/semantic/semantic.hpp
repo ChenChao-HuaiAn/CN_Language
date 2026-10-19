@@ -13,6 +13,7 @@
 #include "cn_compiler/model/type_system.hpp"
 #include "cn_compiler/model/symbols.hpp"
 #include "cn_compiler/model/semantic_view.hpp"
+#include "cn_compiler/semantic/semantic_name_index.hpp"
 
 namespace cn_compiler {
 
@@ -34,22 +35,18 @@ public:
     // plans/019 阶段1：表达式是否为 转移(单实参) 内置调用（callee=标识符"转移"·实参数 1）——
     //   public 供 IR 层展开判定（声明初始化位已改写为标识符·到 IR 的只剩表达式位）。
 
-    // 任务 094 判据单点化：字符串拥有判定白名单（runtime 分配族）——语义层
-    //   isOwnedStrRvalue 与 IR 层赋值/初始化两处共同调用（public 供 ir 层）。
+    // 任务 094 判据单点化：字符串拥有判定白名单（runtime 分配族）——语义层 isOwnedStrRvalue 与 IR 层赋值/初始化两处共同调用（public 供 ir 层）。
 
-    // 206-b（plans/022 §四.5）：复制(表达式) 泛型克隆——返回类型=实参类型（调用处
-    //   特判）；字符串实参置 retOwnedString（A2：克隆产物归调用方拥有）。
+    // 206-b（plans/022 §四.5）：复制(表达式) 泛型克隆——返回类型=实参类型（调用处特判）；字符串实参置 retOwnedString（A2：克隆产物归调用方拥有）。
     bool checkCopyBuiltinCall(class CallExpr* node);
 
-    // 874（任务 083）：LUE（最后使用消除）判定——与 v2 判据同构（plans/001
-    //   §5.3·〔基准=019〕）：纯局部标识符＋文本后向无同名＋循环跨迭代保守
+    // 874（任务 083）：LUE（最后使用消除）判定——与 v2 判据同构（plans/001 §5.3·〔基准=019〕）：纯局部标识符＋文本后向无同名＋循环跨迭代保守
     bool lueEligible(class CallExpr* call, class Expr* arg);
 
     // 85-a（2026-09-12 第八十五轮）：借出方法名判定**上提 public**——IR 侧聚合
     //   返回位所有权保证（ir_fields.cpp isBorrowedAggregateSource）须按被调方
 
-    // plans/019 阶段4' A2（72-a 根治）：签名键是否为泛型单态化实例（精确判定替代
-    //   '$' 名模式——后者把跨模块链接键 模块$名 误判·令串契约跨模块整体失效）。
+    // plans/019 阶段4' A2（72-a 根治）：签名键是否为泛型单态化实例（精确判定替代 '$' 名模式——后者把跨模块链接键 模块$名 误判·令串契约跨模块整体失效）。
     bool isGenericFuncInstanceName(const std::string& sigKey) const;
 
     // plans/019 阶段3b：IR 层查询——声明是否转移初始化（浅交接分派·跳过深拷）；
@@ -674,10 +671,12 @@ private:
     // 206-a（D1 行数整改）：resolveOverload 拆分的两个族方法（宿主纯重构零行为变更）。
     // A-5 前置扫描：当前模块是否定义过该函数名（crate 隔离纯名调用的遮蔽判定）。
     bool hasCurrentModuleDefinition(const std::string& name);
-    // 单条签名候选的 key 形态剥离 + 模块过滤匹配（true=参与决议；false=跳过）。
-    bool overloadEntryMatch(const std::string& rawKey, const std::string& name,
+    // 1143：单条候选模块过滤匹配（key 剥离改用索引预解析视图）+ 分桶索引两查询
+    bool overloadEntryMatch(const FuncEntryView& view, const std::string& name,
                             const FunctionInfo& info, const std::string& moduleFilter,
                             bool currentHasName);
+    const FuncNameIndex& ensureFuncNameIndex() const;                     // 1143：惰性构建（size 变化整表重建）
+    const std::vector<const FuncEntryView*>& funcNameBucket(const std::string& name) const;  // 1143：按名取桶
     // 实参类型到参数类型的转换等级：0=精确 1=宽化 2=隐式转换 -1=不可转
     //（非静态：需调用 canConvertType/isEnumType 等成员，Task 2.10）
     int conversionLevel(const std::string& argType, const std::string& paramType,
@@ -779,6 +778,7 @@ private:
     Diagnostics& diagnostics_;
     bool builtinReleaseMode_ = false;  // 239-a：发布构建旗标（内建常量 调试模式 取值）
     std::unordered_map<std::string, FunctionInfo> functions_;   // 函数符号表
+    mutable FuncNameIndex funcNameIndex_;  // 1143：函数名分桶索引（size 变化整表重建·const 查询惰性构建）
     // ---- crate 模型（第 4 层）·签名 key -> 已注册该签名的模块名集合（跨模块同名函数允许·限定调用验证用）
     std::unordered_map<std::string, std::unordered_set<std::string>> funcSigModules_;
     std::unordered_map<std::string, FunctionDecl*> funcProtoDecls_;  // 762：链接键->已注册原型节点（原型+定义配对时默认值合并数据源·spec 04 §一C）

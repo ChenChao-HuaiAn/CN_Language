@@ -16,6 +16,14 @@
 
 namespace cn_compiler {
 
+namespace {
+// 1143：空桶共享实例（函数名分桶索引 miss 返回——调用方循环自然零次）
+const std::vector<const FuncEntryView*>& emptyFuncNameBucket() {
+    static const std::vector<const FuncEntryView*> kEmpty;
+    return kEmpty;
+}
+}  // namespace
+
 // 648：miss 返回空串是接口信号（消费点遍布全树），禁止在本函数改报错；
 //   消费点须按「miss 不可静默」立法处置（先例=ir_call.cpp 用户函数返回类型
 //   两级查询收口·内置/泛型回退命中不涉）。
@@ -112,63 +120,29 @@ std::string SemanticAnalyzer::signatureKey(const std::string& name,
 
 bool SemanticAnalyzer::hasFunctionName(const std::string& name) const {
     if (functions_.find(name) != functions_.end()) return true;  // 内置纯名 key
-    for (const auto& kv : functions_) {
-        // 用户函数 key 形如 名#参数串；纯名内置 key 无 '#'
-        const std::size_t hashPos = kv.first.find('#');
-        const std::size_t dollarPos = kv.first.find('$');
-        // 第 8 层（52_library 实测缺陷）：无参跨模块条目（模块名$函数名，
-        //   如 格式化$版本）剥离 '$' 前缀后 base 才匹配纯名；含 '#' 的
-        //   跨模块条目（模块名$名#参数）同样剥离。泛型实例名（排序$整32）
-        //   不剥离（base 保持 排序$整32 匹配泛型调用）——name 含 '$' 时跳过。
-        const bool crossModuleNoHash =
-            (hashPos == std::string::npos && dollarPos != std::string::npos &&
-             name.find('$') == std::string::npos);
-        const bool crossModuleWithHash =
-            (hashPos != std::string::npos && dollarPos != std::string::npos &&
-             dollarPos < hashPos);
-        if (crossModuleNoHash || crossModuleWithHash) {
-            const std::size_t hashP2 = kv.first.find('#');
-            const std::string base2 = (hashP2 == std::string::npos)
-                                          ? kv.first.substr(dollarPos + 1)
-                                          : kv.first.substr(dollarPos + 1, hashP2 - dollarPos - 1);
-            if (base2 == name) return true;
-        } else {
-            const std::string base = (hashPos == std::string::npos)
-                                         ? kv.first
-                                         : kv.first.substr(0, hashPos);
-            if (base == name) return true;
-        }
+    // 1143：分桶索引——同名候选桶（两形态按 name 是否含 '$' 选表；桶内条目
+    //   base 恒等于 name，逐条等值判定与原全表逐条剥离匹配等价）
+    const bool nameNoDollar = name.find('$') == std::string::npos;
+    for (const FuncEntryView* view : funcNameBucket(name)) {
+        const std::string_view base =
+            nameNoDollar ? view->baseNoDollar : view->baseWithDollar;
+        if (base == name) return true;
     }
     return false;
 }
 std::string SemanticAnalyzer::funcFirstSigKey(const std::string& name) const {
     std::string best;
-    for (const auto& kv : functions_) {
-        const std::size_t hashPos = kv.first.find('#');
-        const std::size_t dollarPos = kv.first.find('$');
-        // 997 案丁：与 hasFunctionName 同一套跨模块 base 剥离（52_library 第 8 层键
-        //   形态=模块$名#参数 / 模块$名）——原版仅剥 '#' 前缀，crate 合并态（导入
-        //   任意模块时当前模块函数键也写 crate 名）base 匹配恒失败=函数名衰减全断
-        //   （打印(函数名)/初始化位/赋值位三态挂·a27/a25/a23 探针·无导入态单文件
-        //   singleModule 纯名键掩盖至今）。泛型实例键（排序$整32·name 含 '$'）
-        //   不剥离，与 hasFunctionName 判据一致。
-        const bool crossModuleNoHash =
-            (hashPos == std::string::npos && dollarPos != std::string::npos &&
-             name.find('$') == std::string::npos);
-        const bool crossModuleWithHash =
-            (hashPos != std::string::npos && dollarPos != std::string::npos &&
-             dollarPos < hashPos);
-        std::string base;
-        if (crossModuleNoHash) {
-            base = kv.first.substr(dollarPos + 1);
-        } else if (crossModuleWithHash) {
-            base = kv.first.substr(dollarPos + 1, hashPos - dollarPos - 1);
-        } else {
-            base = (hashPos == std::string::npos) ? kv.first
-                                                  : kv.first.substr(0, hashPos);
-        }
-        if (base != name) continue;
-        if (best.empty() || kv.first < best) best = kv.first;
+    // 1143：分桶索引——最小键选取与遍历顺序无关（纯 min 运算），过滤等价
+    const bool nameNoDollar = name.find('$') == std::string::npos;
+    for (const FuncEntryView* view : funcNameBucket(name)) {
+        const std::string_view base =
+            nameNoDollar ? view->baseNoDollar : view->baseWithDollar;
+        if (base != name) continue;  // 桶已保证同名；保留判定防索引偏差静默
+        const std::string& key = view->entry->first;
+        // 997 案丁口径（原实现注释保留结论）：与 hasFunctionName 同一套跨模块
+        //   base 剥离（52_library 第 8 层键形态=模块$名#参数 / 模块$名）——
+        //   泛型实例键（排序$整32·name 含 '$'）不剥离，与 hasFunctionName 判据一致。
+        if (best.empty() || key < best) best = key;
     }
     return best;
 }
@@ -234,9 +208,13 @@ std::string SemanticAnalyzer::resolveOverload(const std::string& name,
     //   转换等级+最优更新+歧义/未命中诊断（宿主纯重构零行为变更）。
     const bool currentHasName = moduleFilter.empty() && !currentModuleName_.empty() &&
                                 hasCurrentModuleDefinition(name);
-    for (const auto& kv : functions_) {
-        const FunctionInfo& info = kv.second;
-        if (!overloadEntryMatch(kv.first, name, info, moduleFilter, currentHasName)) {
+    // 1143：分桶索引遍历——只走同名条目（原全表扫描+逐条现场剥离）；桶内顺序
+    //   =构建时 functions_ 遍历顺序（同名子序列与原全表扫描一致，决议/诊断等价）
+    const std::vector<const FuncEntryView*>& bucket = funcNameBucket(name);
+    for (const FuncEntryView* view : bucket) {
+        const FunctionInfo& info = view->entry->second;
+        const std::string& sigEntryKey = view->entry->first;
+        if (!overloadEntryMatch(*view, name, info, moduleFilter, currentHasName)) {
             continue;
         }
         // 参数个数匹配：实参个数 + 可补全的默认参数数 >= 参数总数
@@ -257,12 +235,12 @@ std::string SemanticAnalyzer::resolveOverload(const std::string& name,
         }
         if (!ok) continue;
         if (bestKey.empty() || total < bestTotal) {
-            bestKey = kv.first;
+            bestKey = sigEntryKey;
             bestTotal = total;
             ambiguous = false;
-        } else if (total == bestTotal && kv.first != bestKey) {
+        } else if (total == bestTotal && sigEntryKey != bestKey) {
             ambiguous = true;  // 两个签名同样优
-            ambiguousDetail = kv.first + " 与 " + bestKey;
+            ambiguousDetail = sigEntryKey + " 与 " + bestKey;
         }
     }
     if (ambiguous && !bestKey.empty()) {
@@ -276,9 +254,9 @@ std::string SemanticAnalyzer::resolveOverload(const std::string& name,
         //   绑定变量/闭包捕获）。判据=无任何同名候选在该实参位的形参是方法值
         //   类型（有=方法值位本身不是决议失败主因，走通用报错保持原诊断面）。
         bool anyMvTarget = false;
-        for (const auto& kv : functions_) {
-            const FunctionInfo& info = kv.second;
-            if (!overloadEntryMatch(kv.first, name, info, moduleFilter, currentHasName)) {
+        for (const FuncEntryView* view : bucket) {
+            const FunctionInfo& info = view->entry->second;
+            if (!overloadEntryMatch(*view, name, info, moduleFilter, currentHasName)) {
                 continue;
             }
             const std::size_t cap = std::min(argTypes.size(), info.paramTypes.size());
@@ -310,122 +288,168 @@ std::string SemanticAnalyzer::resolveOverload(const std::string& name,
 //   定义过则其他模块同名条目不参与纯名决议（作用域遮蔽导入语义：跨模块同名
 //   函数纯名调用不再一律报歧义，当前模块版本优先）；调用方守卫 moduleFilter 空
 //   与 currentModuleName_ 非空（206-a：条件留主函数，族① 语义纯粹）。
+// 1143：遍历改分桶索引（只走同名条目）；key 剥离取视图预解析字段（原逐条
+//   substr 现场构造）——按 name 含/不含 '$' 两形态选对应字段，规则逐字同原实现。
 bool SemanticAnalyzer::hasCurrentModuleDefinition(const std::string& name) {
-    bool currentHasName = false;
-    if (!currentModuleName_.empty()) {
-        for (const auto& kv : functions_) {
-            std::string k2 = kv.first;
-            const std::size_t h2 = k2.find('#');
-            const std::size_t d2 = k2.find('$');
-            std::string km2;
-            if (d2 != std::string::npos && h2 != std::string::npos && d2 < h2) {
-                km2 = k2.substr(0, d2);
-                k2 = k2.substr(d2 + 1);
-            } else if (h2 == std::string::npos && d2 != std::string::npos &&
-                       name.find('$') == std::string::npos) {
-                km2 = k2.substr(0, d2);
-                k2 = k2.substr(d2 + 1);
-            }
-            const std::size_t hp = k2.find('#');
-            const std::string b2 = (hp == std::string::npos) ? k2 : k2.substr(0, hp);
-            if (b2 != name) continue;
-            const std::string em2 = km2.empty() ? kv.second.moduleName : km2;
-            if (em2 == currentModuleName_) {
-                currentHasName = true;
-                break;
-            }
-        }
+    // 静默豁免业务值: currentModuleName_ 空=无模块上下文（单文件管线/未入模块体），
+    //   「当前模块是否定义该名」语义恒假——业务定义非错误默认（调用方同守卫）
+    if (currentModuleName_.empty()) return false;
+    const bool nameNoDollar = name.find('$') == std::string::npos;
+    for (const FuncEntryView* view : funcNameBucket(name)) {
+        const std::string_view base =
+            nameNoDollar ? view->baseNoDollar : view->baseWithDollar;
+        if (base != name) continue;  // 桶已保证同名；保留判定防索引偏差静默
+        const std::string_view mod =
+            nameNoDollar ? view->moduleNoDollar : view->moduleWithDollar;
+        const std::string_view entryModule =
+            mod.empty() ? std::string_view(view->entry->second.moduleName) : mod;
+        if (entryModule == currentModuleName_) return true;
     }
-    return currentHasName;
+    return false;
 }
 
-// 206-a：单条签名候选的 key 形态剥离 + crate 隔离模块过滤——
-//   普通/跨模块/无参/泛型形态剥离（第 4/8 层）；精确/父前缀/末段三级模块匹配
-//   （52_library 实测缺陷+挂账1 包前缀化）；A-5 纯名遮蔽。返回 false=跳过该条目
-//   （原 continue 语义），true=参与决议。
-bool SemanticAnalyzer::overloadEntryMatch(const std::string& rawKey,
+// 206-a：单条签名候选的模块过滤匹配（原 key 形态剥离族；1143 改用索引视图）——
+//   剥离规则：形态由调用名 name 是否含 '$' 决定（含 '$'=泛型调用形态，'$' 前缀
+//   仅 '#' 前剥；不含 '$'=普通调用形态，无 '#' 的 模块名$名 亦剥——第 8 层
+//   52_library 实测）；精确/父前缀/末段三级模块匹配（52_library 实测缺陷+挂账1
+//   包前缀化）；A-5 纯名遮蔽。返回 false=跳过该条目（原 continue 语义），true=参与决议。
+bool SemanticAnalyzer::overloadEntryMatch(const FuncEntryView& view,
                                           const std::string& name,
                                           const FunctionInfo& info,
                                           const std::string& moduleFilter,
                                           bool currentHasName) {
-        // 第 4 层：key 形态兼容——普通签名（名#参数）与跨模块条目
-        //   （模块名$名#参数）。模块条目 key 含 '$' 前缀（模块名$），
-        //   base 提取须剥离 模块名$ 前缀。
-        // 注意：泛型实例名（排序$整32）与重载签名（名#参数）不含模块前缀——
-        //   仅当 '#' 存在且 '$' 位于 '#' 之前（模块名$名#参数）才剥离；
-        //   排序$整32 无 '#' -> 不剥离（base 保持 排序$整32 匹配泛型调用）。
-        std::string key = rawKey;
-        std::string keyModule;  // key 携带的模块名（跨模块条目）
-        const std::size_t hashFirst = key.find('#');
-        const std::size_t dollarPos = key.find('$');
-        if (dollarPos != std::string::npos && hashFirst != std::string::npos &&
-            dollarPos < hashFirst) {
-            keyModule = key.substr(0, dollarPos);
-            key = key.substr(dollarPos + 1);
-        } else if (hashFirst == std::string::npos && dollarPos != std::string::npos &&
-                   name.find('$') == std::string::npos) {
-            // 第 8 层（52_library 实测缺陷）：无参函数（sigKey 无 '#'）跨模块
-            //   注册 key = 模块名$函数名（如 格式化$版本）。调用 name 不含 '$'
-            //   （普通函数调用，区别于泛型实例名 排序$整32）——剥离 '$' 前缀。
-            keyModule = key.substr(0, dollarPos);
-            key = key.substr(dollarPos + 1);
-        }
-        const std::size_t hashPos = key.find('#');
-        const std::string base = (hashPos == std::string::npos) ? key
-                                                                : key.substr(0, hashPos);
-        if (base != name) return false;  // 仅同名的签名参与决议
-        // 第 4 层（crate 隔离）：限定调用按模块过滤——跨模块同名函数各自独立，
-        //   仅匹配调用模块的签名（数学::双倍 只解析 数学.cn 的双倍）。
-        // A-5（2026-08）：纯名调用（moduleFilter 空）当前模块条目优先——
-        //   crate 隔离同名函数纯名调用不再一律歧义（作用域遮蔽导入语义，
-        //   与 52_library 的 主::版本() 自限定等价）。
-        const std::string entryModule = keyModule.empty() ? info.moduleName : keyModule;
-        if (!moduleFilter.empty()) {
-            // 模块过滤：普通条目按 info.moduleName，跨模块条目按 key 前缀模块
-            //   呈报一B 补充（2026-09-07）：moduleName 空 = 单文件管线
-            //   （runPipeline 未合并 / mergeModules singleModule）——全部声明
-            //   同属唯一模块，限定调用过滤器（自导入 主::版本 等）恒命中本
-            //   模块；多文件管线声明恒带模块名，不受影响。
-            if (entryModule == moduleFilter || entryModule.empty()) {
-                // 精确匹配：同包限定调用（网络::传输控制::发送 -> 网络::传输控制）
-            } else {
-                // A-5（父模块名限定调用子模块函数）：entryModule（网络::传输控制）
-                //   以 moduleFilter + "::"（网络::）为前缀即视为同一模块——
-                //   子模块属于父模块命名空间（网络::连接() 解析到 网络::传输控制::连接）
-                const std::string filterPrefix = moduleFilter + "::";
-                const bool isSubModule =
-                    entryModule.compare(0, filterPrefix.size(), filterPrefix) == 0;
-                if (!isSubModule) {
-                    // 第 8 层（52_library 实测缺陷）：跨 crate 限定调用
-                    //   （工具库::格式化::版本）——外部依赖模块注册 moduleName =
-                    //   文件主干（格式化），而调用路径 subModule = 工具库::格式化。
-                    //   最后段匹配：moduleFilter 末段（:: 之后）== entryModule 即视为
-                    //   同一模块（跨 crate 限定调用解析到依赖包内同名模块）。
-                    //   挂账1 包前缀化扩展（2026-09-08）：目录包/父挂子成员模块名
-                    //   带包前缀（语义::内置）——条目名**末段**与 filterLast 对齐即
-                    //   命中（v1 自举组件 语义::语义::内置::行类型 实测：条目
-                    //   语义::内置 末段 内置 == filterLast 内置）。与跨 crate 末段
-                    //   按名匹配同族：精确/前缀匹配优先，末段为松匹配兜底。
-                    const std::size_t lastColon = moduleFilter.rfind("::");
-                    const std::string filterLast = (lastColon == std::string::npos)
-                                                        ? moduleFilter
-                                                        : moduleFilter.substr(lastColon + 2);
-                    const std::size_t entryLastColon = entryModule.rfind("::");
-                    const std::string entryLast =
-                        (entryLastColon == std::string::npos)
-                            ? entryModule
-                            : entryModule.substr(entryLastColon + 2);
-                    if (entryModule != filterLast && entryLast != filterLast) return false;
-                }
+    // 1143：key 形态剥离已由索引预解析（视图字段）——此处按 name 形态取对应
+    //   base/模块前缀，规则与原现场 find/substr 逐字一致。
+    const bool nameNoDollar = name.find('$') == std::string::npos;
+    const std::string_view base = nameNoDollar ? view.baseNoDollar : view.baseWithDollar;
+    if (base != name) return false;  // 仅同名的签名参与决议（桶外条目恒不命中）
+    // 第 4 层（crate 隔离）：限定调用按模块过滤——跨模块同名函数各自独立，
+    //   仅匹配调用模块的签名（数学::双倍 只解析 数学.cn 的双倍）。
+    // A-5（2026-08）：纯名调用（moduleFilter 空）当前模块条目优先——
+    //   crate 隔离同名函数纯名调用不再一律歧义（作用域遮蔽导入语义，
+    //   与 52_library 的 主::版本() 自限定等价）。
+    const std::string_view keyModule =
+        nameNoDollar ? view.moduleNoDollar : view.moduleWithDollar;
+    const std::string_view entryModule =
+        keyModule.empty() ? std::string_view(info.moduleName) : keyModule;
+    if (!moduleFilter.empty()) {
+        // 模块过滤：普通条目按 info.moduleName，跨模块条目按 key 前缀模块
+        //   呈报一B 补充（2026-09-07）：moduleName 空 = 单文件管线
+        //   （runPipeline 未合并 / mergeModules singleModule）——全部声明
+        //   同属唯一模块，限定调用过滤器（自导入 主::版本 等）恒命中本
+        //   模块；多文件管线声明恒带模块名，不受影响。
+        // 精确匹配：同包限定调用（网络::传输控制::发送 -> 网络::传输控制）——恒
+        //   直接放行；非精确才做 A-5 父模块前缀/末段两级松匹配
+        const bool moduleExact = (entryModule == moduleFilter) || entryModule.empty();
+        if (!moduleExact) {
+            // A-5（父模块名限定调用子模块函数）：entryModule（网络::传输控制）
+            //   以 moduleFilter + "::"（网络::）为前缀即视为同一模块——
+            //   子模块属于父模块命名空间（网络::连接() 解析到 网络::传输控制::连接）
+            //   （1143：前缀判定改无分配等价式——长度下限+前缀段+双冒号，
+            //   替代 moduleFilter+"::" 临时串构造与 compare）
+            const std::size_t fsz = moduleFilter.size();
+            const bool isSubModule = entryModule.size() >= fsz + 2 &&
+                                     entryModule.compare(0, fsz, moduleFilter) == 0 &&
+                                     entryModule[fsz] == ':' && entryModule[fsz + 1] == ':';
+            if (!isSubModule) {
+                // 第 8 层（52_library 实测缺陷）：跨 crate 限定调用
+                //   （工具库::格式化::版本）——外部依赖模块注册 moduleName =
+                //   文件主干（格式化），而调用路径 subModule = 工具库::格式化。
+                //   最后段匹配：moduleFilter 末段（:: 之后）== entryModule 即视为
+                //   同一模块（跨 crate 限定调用解析到依赖包内同名模块）。
+                //   挂账1 包前缀化扩展（2026-09-08）：目录包/父挂子成员模块名
+                //   带包前缀（语义::内置）——条目名**末段**与 filterLast 对齐即
+                //   命中（v1 自举组件 语义::语义::内置::行类型 实测：条目
+                //   语义::内置 末段 内置 == filterLast 内置）。与跨 crate 末段
+                //   按名匹配同族：精确/前缀匹配优先，末段为松匹配兜底。
+                const std::size_t lastColon = moduleFilter.rfind("::");
+                const std::string_view filterLast =
+                    (lastColon == std::string::npos)
+                        ? std::string_view(moduleFilter)
+                        : std::string_view(moduleFilter).substr(lastColon + 2);
+                const std::size_t entryLastColon = entryModule.rfind("::");
+                const std::string_view entryLast =
+                    (entryLastColon == std::string::npos)
+                        ? entryModule
+                        : entryModule.substr(entryLastColon + 2);
+                if (entryModule != filterLast && entryLast != filterLast) return false;
             }
-        } else if (currentHasName && !entryModule.empty() &&
-                   entryModule != currentModuleName_) {
-            // A-5（crate 隔离纯名调用）：当前模块有同名函数时，其他模块条目
-            //   不参与决议（作用域遮蔽导入；52_library 的 主::版本() 自限定
-            //   语义等价，纯名 版本() 现在直接命中当前模块版本）
-            return false;
         }
+    } else if (currentHasName && !entryModule.empty() &&
+               entryModule != currentModuleName_) {
+        // A-5（crate 隔离纯名调用）：当前模块有同名函数时，其他模块条目
+        //   不参与决议（作用域遮蔽导入；52_library 的 主::版本() 自限定
+        //   语义等价，纯名 版本() 现在直接命中当前模块版本）
+        return false;
+    }
     return true;
+}
+
+// 1143：函数名分桶索引惰性构建——size 变化（含首查）时按 functions_ 遍历顺序
+//   整表重建（O(条目数)·每 key 一次性剥离+双桶插入）；size 不变期间零重建、
+//   查询零临时串。functions_ 无删除路径（全树核验零 erase/clear·写入皆新键
+//   插入/同键覆盖）⇒ size 相等即索引与表一致；单次编译单实例（driver 每编译
+//   局部构造分析器）⇒ 跨程序复用不进入本缓存。桶内追加顺序=functions_ 遍历
+//   顺序 ⇒ 同名子序列处理顺序与原全表扫描一致（决议遍历/歧义诊断等价）。
+const FuncNameIndex& SemanticAnalyzer::ensureFuncNameIndex() const {
+    if (funcNameIndex_.builtSize == functions_.size()) {
+        return funcNameIndex_;
+    }
+    FuncNameIndex& idx = funcNameIndex_;
+    idx.views.clear();
+    idx.byBase.clear();
+    idx.byBaseDollar.clear();
+    for (const auto& kv : functions_) {
+        const std::string& key = kv.first;
+        const std::size_t hashPos = key.find('#');
+        const std::size_t dollarPos = key.find('$');
+        idx.views.emplace_back();
+        FuncEntryView& view = idx.views.back();
+        view.entry = &kv;
+        const std::string_view keyView(key);
+        // 形态 A（查询名不含 '$'）：默认未剥=剥 '#' 后缀为 base；含 '$' 且（无 '#'
+        //   或 '$' 在 '#' 前）⇒ 覆盖为剥 模块$（剥后取到 '#' 前——第 4 层
+        //   模块名$名#参数；无 '#' 取到串尾——第 8 层 模块名$名·52_library 实测）
+        view.baseNoDollar = (hashPos == std::string::npos)
+                                ? keyView
+                                : keyView.substr(0, hashPos);
+        if (dollarPos != std::string::npos &&
+            (hashPos == std::string::npos || dollarPos < hashPos)) {
+            view.moduleNoDollar = keyView.substr(0, dollarPos);
+            view.baseNoDollar = (hashPos == std::string::npos)
+                                    ? keyView.substr(dollarPos + 1)
+                                    : keyView.substr(dollarPos + 1, hashPos - dollarPos - 1);
+        }
+        // 形态 B（查询名含 '$'）：默认未剥；含 '$' 且含 '#' 且 '$' 在 '#' 前 ⇒
+        //   覆盖为剥 模块$（泛型实例名 排序$整32 无 '#' 保持整键）
+        view.baseWithDollar = (hashPos == std::string::npos)
+                                  ? keyView
+                                  : keyView.substr(0, hashPos);
+        if (dollarPos != std::string::npos && hashPos != std::string::npos &&
+            dollarPos < hashPos) {
+            view.moduleWithDollar = keyView.substr(0, dollarPos);
+            view.baseWithDollar = keyView.substr(dollarPos + 1, hashPos - dollarPos - 1);
+        }
+        idx.byBase[view.baseNoDollar].push_back(&view);
+        idx.byBaseDollar[view.baseWithDollar].push_back(&view);
+    }
+    idx.builtSize = functions_.size();
+    return idx;
+}
+
+// 1143：按名取同名额桶——查询名含 '$' 与否选两分表（形态 A/B）；无同名条目
+//   返回共享空表。桶向量在下次「size 变化后的重建」前恒有效（单线程遍历期内
+//   无插入；views 用 deque 持稳定地址）。
+const std::vector<const FuncEntryView*>& SemanticAnalyzer::funcNameBucket(
+    const std::string& name) const {
+    const FuncNameIndex& idx = ensureFuncNameIndex();
+    const auto& table =
+        (name.find('$') == std::string::npos) ? idx.byBase : idx.byBaseDollar;
+    const auto it = table.find(std::string_view(name));
+    if (it == table.end()) {
+        return emptyFuncNameBucket();
+    }
+    return it->second;
 }
 
 bool SemanticAnalyzer::canConvertType(const std::string& fromRaw,
