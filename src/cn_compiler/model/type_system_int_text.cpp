@@ -211,6 +211,47 @@ bool decTextFitsUnsignedRange(const std::string& decText, const char* bound) {
     return a <= b;
 }
 
+// 1137（P0-1）：整数类型名 → 表示范围（文本级判定单点）——见头文件声明注释。
+//   域表自 semantic_literal_domain intLiteralFitsType 尾段原样搬移（728g/756/
+//   640 立法边界逐字保留），消费方=字面量判域（intLiteralFitsType 复用本表）
+//   与情况标签条件域判定（语义层 visitSwitchStmt）。
+bool decTextFitsTypeDomain(const std::string& decText,
+                           const std::string& typeName) {
+    if (typeName == "整8") return decTextFitsSignedRange(decText, "128", "127");
+    if (typeName == "整16") {
+        return decTextFitsSignedRange(decText, "32768", "32767");
+    }
+    if (typeName == "整32" || typeName == "整数") {
+        return decTextFitsSignedRange(decText, "2147483648", "2147483647");
+    }
+    if (typeName == "整64") {
+        return decTextFitsSignedRange(decText, "9223372036854775808",
+                                      "9223372036854775807");
+    }
+    if (typeName == "整128") {
+        return decTextFitsSignedRange(
+            decText, "170141183460469231731687303715884105728",
+            "170141183460469231731687303715884105727");
+    }
+    if (typeName == "正128") {
+        return decTextFitsUnsignedRange(
+            decText, "340282366920938463463374607431768211455");
+    }
+    if (typeName == "正8") return decTextFitsUnsignedRange(decText, "255");
+    if (typeName == "正16") return decTextFitsUnsignedRange(decText, "65535");
+    if (typeName == "正32") {
+        return decTextFitsUnsignedRange(decText, "4294967295");
+    }
+    if (typeName == "正64") {
+        return decTextFitsUnsignedRange(decText, "18446744073709551615");
+    }
+    // 1137：字符=规范码点域 0..0x10FFFF（字符 i32 存储·Unicode 标量值）
+    if (typeName == "字符") {
+        return decTextFitsUnsignedRange(decText, "1114111");
+    }
+    return true;  // 非整数目标（调用方 isInteger/枚举归并已前置）——防御性恒真
+}
+
 // 910：整数字面量 IR 运行时类型（提升链单点）——见头文件声明注释。
 std::string integerLiteralRuntimeType(const std::string& raw, int* outStatus) {
     if (outStatus != nullptr) *outStatus = 0;

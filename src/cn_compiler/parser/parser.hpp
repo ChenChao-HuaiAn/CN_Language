@@ -198,7 +198,7 @@ private:
     // 求值情况标签常量（整数字面量/字符字面量，返回是否成功）
     bool parseCaseValue(std::int64_t& outValue, std::string& outRaw,
                         bool& outIsString, bool& outIsEnumMember,
-                        bool& outUnmatchable);  // C-4：字符串/裸枚举成员；1137：超整64承载恒不匹配
+                        std::string& outDecValue);  // C-4：字符串/裸枚举成员；1137：整数标签归一十进制文本（权威值）
 
     // ==================== 表达式解析（Pratt优先级链，13级，规格书4.5） ====================
 

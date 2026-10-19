@@ -57,11 +57,14 @@ Operator toAssignOp(TokenType type) {
 //   1137：失败面=超 int64 承载文本——词法层只拒进制外字符/格式、不拒超域
 //   （原注释「解析失败返回0（错误已在词法阶段报告）」不实·本轮回正）。
 //   调用点全集判域证据链与豁免登记=scripts/miss_registry.json 来源 1137 条：
-//   ①parser_expr.cpp:538 IntegerLiteral.value 注入（下游判域/物化全文本级
-//   910/478/728v/790/919）；②parser_decl.cpp:274 枚举非十进制回退（728u
-//   零变化面·与 v2 数字文本转数值「stoll 溢出静默 0 同款」双侧对齐）；
-//   ③情况标签调用点 1137 轮已切文本级判域接口 resolveCaseIntText（不再经
-//   此静默面——双编译对照实测原宿主 11 vs v2 22 分叉已修）。
+//   ①parser_expr.cpp:538 IntegerLiteral.value 注入（下游判域/物化走 910 文本级
+//   链 478/728v/790/919；值级消费通道 503 除零定性与 548 零初值传播在 1137
+//   审查修复轮已切 919 文本判零——原毒化误拒已消除）；
+//   ②parser_decl.cpp:274 枚举非十进制回退（728u 零变化面·与 v2 数字文本
+//   转数值「stoll 溢出静默 0 同款」双侧对齐）；
+//   ③情况标签调用点=1137 轮已切「归一文本+承载判域」接口 normalizeCaseIntText
+//   （收口 types::integerLiteralRuntimeType/910 单点·不再经此静默面——双编译
+//   对照实测原宿主 11 vs v2 22 分叉已修）。
 std::int64_t parseIntValue(const std::string& text) {
     std::string s = text;
     int base = 10;

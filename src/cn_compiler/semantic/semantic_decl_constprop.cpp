@@ -132,6 +132,24 @@ void SemanticAnalyzer::noteZeroAssign(const std::string& name, const Expr* value
         [this](const std::string& n, std::int64_t& o) {
             return resolveConstNameValue(n, o);
         };
+    // 1137（P0-3）：纯字面量形态**优先**走 919 文本级判零（大数安全）——
+    //   原单链 505 值级折叠读 IntegerLiteral::value，超 i64 承载字面量是
+    //   parseIntValue stoll 溢出毒化 0：`整128 甲 = 99999999999999999999;`
+    //   被误 seed 为零初值 → 后续 `10/甲` 误报「变量持常量零初值」拒合法
+    //   程序（双侧分叉实锚）。非常量形态（变量/常量名）回落 505+resolver
+    //   既有通道（548 常量名面保留）。
+    std::string d919;
+    if (cnEvalConstIntExprText919(value, d919)) {
+        // 文本级判定：0=零初值种子；非零（含超 u128 域空串哨兵=数学值
+        //   超承载必非零）→ 失格。两 if 分流（避免 else 承载业务代码）。
+        if (d919 == "0") {
+            zp548_.seeded.insert(name);
+        }
+        if (d919 != "0") {
+            zp548_.disqualified.insert(name);
+        }
+        return;
+    }
     if (cnFoldConstIntExpr505(value, v, 0, &resolver)) {
         if (v == 0) {
             zp548_.seeded.insert(name);

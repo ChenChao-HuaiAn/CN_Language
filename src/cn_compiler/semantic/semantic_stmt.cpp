@@ -373,7 +373,7 @@ std::unique_ptr<Stmt> cloneStmtImpl(Stmt* node) {
             for (auto& c : n->cases) {
                 auto cc = std::make_unique<CaseLabel>(c->value);
                 cc->rawValue = c->rawValue;
-                cc->unmatchable = c->unmatchable;  // 1137：超承载恒不匹配标记随克隆
+                cc->decValue = c->decValue;  // 1137：归一文本（权威值）随克隆
                 for (auto& s : c->statements) cc->statements.push_back(cloneStmt(s.get()));
                 sw->cases.push_back(std::move(cc));
             }
@@ -812,6 +812,9 @@ void SemanticAnalyzer::visitSwitchStmt(SwitchStmt* node) {
     }
     // 情况值去重检测（编译期常量，语义层用 set 去重）
     std::unordered_set<std::int64_t> seenValues;
+    // 1137（P1-2）：整数标签按归一十进制文本去重（超 i64 承载标签 value 为
+    //   占位 0——按 value 去重会与真实 0 标签误判；重复超域标签仍报重复）
+    std::unordered_set<std::string> seenTexts;
     std::unordered_set<std::string> seenStrings;
     switchDepth_++;
     // 980 波7（任务 007 NLL）：情况 支互斥——各支从入口态出发（标记不跨支泄漏）
@@ -874,11 +877,34 @@ void SemanticAnalyzer::visitSwitchStmt(SwitchStmt* node) {
                                         "' 须为整型/字符常量（裸成员名仅用于枚举选择）");
             }
         }
-        // 重复检测：与已见情况值比较
-        // 1137：超整64 承载的恒不匹配标签不参与——其 value 为承载占位 0，
-        //   参与去重会与真实「情况 0」误判重复（值本身不可承载·语义=恒不命中）
-        if (!caseNode->unmatchable &&
-            !seenValues.insert(caseNode->value).second) {
+        // 1137（P0-1/P0-2·用户令 #1076 口径）：情况标签值域判——整数字面量
+        //   标签须在**条件类型**的表示范围内（超域=编译期直接拒绝：字面量
+        //   超出上下文/目标类型表示范围即拒·Rust pattern 值不可表示同口径；
+        //   原「恒不匹配」静默语义废止）。域表单点=types::decTextFitsTypeDomain
+        //   （枚举条件归并整32；字符=码点域）。
+        if (!caseNode->decValue.empty()) {
+            const std::string condDomain1137 =
+                isEnumType(condType) ? std::string("整32") : condType;
+            if (!types::decTextFitsTypeDomain(caseNode->decValue,
+                                              condDomain1137)) {
+                diagnostics_.report(
+                    DiagnosticLevel::Error, caseNode->location,
+                    "情况标签 '" + caseNode->decValue + "' 超出条件类型 '" +
+                        condType + "' 的表示范围");
+            }
+        }
+        // 重复检测：整数标签按归一文本、其它（枚举/字符值）按 value——
+        //   超 i64 承载标签不复用 value 占位（P1-2：重复超域标签仍报重复）
+        bool dupLabel1137 = false;
+        if (!caseNode->decValue.empty()) {
+            std::string dupText1137 = caseNode->decValue;
+            if (dupText1137 == "-0") dupText1137 = "0";  // 数值零归一
+            dupLabel1137 = !seenTexts.insert(dupText1137).second;
+        }
+        if (caseNode->decValue.empty()) {
+            dupLabel1137 = !seenValues.insert(caseNode->value).second;
+        }
+        if (dupLabel1137) {
             diagnostics_.report(DiagnosticLevel::Error, caseNode->location,
                                 "选择语句中情况值 '" + caseNode->rawValue +
                                 "' 重复");

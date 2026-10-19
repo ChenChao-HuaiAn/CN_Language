@@ -128,41 +128,11 @@ bool SemanticAnalyzer::intLiteralFitsType(const Expr* e, const std::string& to) 
     if (neg || rawNeg) dec.insert(dec.begin(), '-');
     // 756（2026-10-18 用户裁决·枚举值域门槛）：目标域扩一枚——枚举类型按
     //   整32 存储域判（枚举按整32存储；与 v2 侧 枚举槽常量入域756 同口径）。
+    // 1137（P0-1）：类型域表下沉 model 层单点 types::decTextFitsTypeDomain
+    //   （728g/756/640 边界逐字保留）——情况标签条件域判定（visitSwitchStmt）
+    //   与本判域共用同一张域表，禁第二份。
     const std::string domain = isEnumType(to) ? std::string("整32") : to;
-    if (domain == "整8") return types::decTextFitsSignedRange(dec, "128", "127");
-    if (domain == "整16") {
-        return types::decTextFitsSignedRange(dec, "32768", "32767");
-    }
-    if (domain == "整32" || domain == "整数") {
-        return types::decTextFitsSignedRange(dec, "2147483648", "2147483647");
-    }
-    if (domain == "整64") {
-        return types::decTextFitsSignedRange(dec, "9223372036854775808",
-                                             "9223372036854775807");
-    }
-    // 640（2026-10-16·535 批乙语义恢复扩展）：128 槽文本级域——558/535 原注释
-    //   「整128/正128 域宽于任何 int64 承载内文本恒适」对**超 int64 文本**不
-    //   成立（39/41 位文本可超 2^127·m642c/d 探针实锚：宿主原仅 IR 层拒/v2
-    //   放行错值-1）。整128 合法域 [-2^127, 2^127-1]（负号按负值判）、正128
-    //   [0, 2^128-1]。
-    if (domain == "整128") {
-        return types::decTextFitsSignedRange(
-            dec, "170141183460469231731687303715884105728",
-            "170141183460469231731687303715884105727");
-    }
-    if (domain == "正128") {
-        return types::decTextFitsUnsignedRange(
-            dec, "340282366920938463463374607431768211455");
-    }
-    if (domain == "正8") return types::decTextFitsUnsignedRange(dec, "255");
-    if (domain == "正16") return types::decTextFitsUnsignedRange(dec, "65535");
-    if (domain == "正32") {
-        return types::decTextFitsUnsignedRange(dec, "4294967295");
-    }
-    if (domain == "正64") {
-        return types::decTextFitsUnsignedRange(dec, "18446744073709551615");
-    }
-    return true;  // 非整数目标（豁免面 isInteger 已前置）——防御性恒真
+    return types::decTextFitsTypeDomain(dec, domain);
 }
 
 // 919-final（2026-10-18 用户裁决「字面量单点判域·Rust 口径」·四边界定案）：

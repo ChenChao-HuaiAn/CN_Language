@@ -237,6 +237,16 @@ bool decTextFitsSignedRange(const std::string& decText, const char* negBound,
 // 910：规范十进制文本是否在无符号域 [0, bound]（负号形态恒 false）。
 bool decTextFitsUnsignedRange(const std::string& decText, const char* bound);
 
+// 1137（P0-1/#1076）：规范十进制文本是否在整数类型名（含「整数」别名；
+//   枚举由调用方归并为 整32）的表示范围内——**类型域表单点收口**（原散于
+//   semantic_literal_domain intLiteralFitsType 尾段的域表；情况标签条件域
+//   判定与字面量判域共用单点，禁止第二份域表）。域口径与 910/728g/756/640
+//   立法链一致：整8[-128,127]…整128[-2^127,2^127-1]、正族[0,bound]；
+//   字符=规范码点域 [0,0x10FFFF]（字符 i32 存储·Unicode 标量值）。
+//   非整数类型名=防御恒真（调用方 isInteger/枚举归并已前置）。
+bool decTextFitsTypeDomain(const std::string& decText,
+                           const std::string& typeName);
+
 // 910（788/420 提升链单点归属）：整数字面量 IR 运行时类型——带后缀按后缀
 //   定级；无后缀恒定级整32 按**数学值域**提升（超 int32 双域→整64、超
 //   int64 双域→整128；正32 超 u32→正64、正64 超 u64→正128）。判据全部按
