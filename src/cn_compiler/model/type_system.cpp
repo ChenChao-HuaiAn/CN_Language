@@ -441,7 +441,7 @@ std::string stripLiteralSuffix(const std::string& raw) {
     // 1016（790 特例族窄角实锚）：前缀识别须跳过可选前导符号——原判 s[0]=='0'
     //   对 "-0x..." 恒假 → 末尾 F 被当浮点后缀循环剥净（-0x7FFFFFFFFFFFFFFF
     //   → "-0x7" → 折叠值 -7 静默错值；-0xFF → "-0x" → fold 失败原文透传）。
-    //   与 parseIntValue/literalTypeOf 的前导符号守卫同口径（零分叉）。
+    //   与 literalTypeOf 的前导符号守卫同口径（零分叉）。
     std::size_t signLen = 0;
     if (!s.empty() && (s[0] == '-' || s[0] == '+')) signLen = 1;
     const bool isHex = (s.size() > signLen + 2 && s[signLen] == '0' &&

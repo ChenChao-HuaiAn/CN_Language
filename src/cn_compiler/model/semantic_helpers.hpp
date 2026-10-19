@@ -177,8 +177,20 @@ inline std::string canonicalType(const std::string& type) {
         case Operator::Add: c = a + b; break;
         case Operator::Subtract: c = a - b; break;
         case Operator::Multiply: c = a * b; break;
-        case Operator::Divide: if (b == 0) return ""; c = a / b; break;
-        case Operator::Modulo: if (b == 0) return ""; c = a % b; break;
+        case Operator::Divide:
+            if (b == 0) return "";
+            // 1016（审查 P1-2·存量崩溃）：INT64_MIN / -1 在 x86 idiv 溢出
+            //   （0xC0000409 无诊断脏崩）——折叠层按不可折叠失败返回，交调用方
+            //   诊断通道（与 cnFoldConstIntExpr505 同口径）。
+            if (a == INT64_MIN && b == -1) return "";  // 静默豁免业务值: 折叠失败哨兵（调用方诊断通道）
+            c = a / b;
+            break;
+        case Operator::Modulo:
+            if (b == 0) return "";
+            // 1016：INT64_MIN % -1 同族（数学值 0，但 idiv 指令先溢出）
+            if (a == INT64_MIN && b == -1) return "";  // 静默豁免业务值: 折叠失败哨兵（调用方诊断通道）
+            c = a % b;
+            break;
         default: return "";
     }
     return std::to_string(c);
@@ -227,6 +239,9 @@ inline std::string canonicalType(const std::string& type) {
                 } else {
                     long long iv;
                     if (!cnParseInt(v, iv)) return false;
+                    // 1016（审查 P1-2 同族）：-INT64_MIN 超出 int64 域（C++
+                    //   有符号溢出 UB）——按不可折叠失败返回交诊断通道。
+                    if (iv == INT64_MIN) return false;
                     out = std::to_string(-iv);
                 }
                 return true;
