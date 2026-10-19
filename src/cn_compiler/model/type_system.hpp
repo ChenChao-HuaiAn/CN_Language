@@ -169,6 +169,16 @@ std::string literalTypeOf(const std::string& raw, bool isFloat);
 // 剥离字面量文本的后缀，返回纯数字文本（"123ULL" -> "123"，"3.5f" -> "3.5"）
 std::string stripLiteralSuffix(const std::string& raw);
 
+// ==================== 无符号后缀 + 文本非零判定（1016 四轮审查） ====================
+// 无符号后缀白名单：U/UL/ULL（大小写不敏感）——与 literalTypeOf 定级口径一致；
+//   LU/LLU 等非法顺序返回 false（宿主回退整32=不属无符号面）。
+bool unsignedSuffixedLiteralText(const std::string& raw);
+
+// 整数字面量文本非零判定（任意精度·不依赖 int64 承载）：剥可选 +/-、
+//   0x/0b/0o 前缀、L/l/U/u 后缀后，数字段是否存在非 '0' 字节。
+//   用途=parseIntValue stoll 溢出静默回 0 时区分「真零」与「溢出巨值」。
+bool integerLiteralTextNonZero(const std::string& raw);
+
 // ==================== 字符串元素容器/映射判定（语义与IR共用，单一事实源） ====================
 // 第七十七轮（A21 借出视图生命周期检查）：判定原在 IR 层 isStringElemContainer/
 //   isStringValuedMap（74-a/76-a 容器元素释放面确立），语义层新增借出视图生命周期

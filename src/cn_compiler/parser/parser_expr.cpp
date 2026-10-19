@@ -5,6 +5,7 @@
 #include <memory>
 #include <string>
 
+#include "cn_compiler/model/type_system.hpp"
 #include "cn_compiler/parser/parser.hpp"
 
 namespace cn_compiler {
@@ -324,6 +325,17 @@ std::unique_ptr<Expr> Parser::parseUnary() {
             //   -5 路径 raw="-5" 零变化（323 立法意图：域检查须见完整符号
             //   文本）；raw 前导 '-' 唯一来源=本折叠（词法负号恒独立 token）。
             const bool rawHadMinus = !lit->raw.empty() && lit->raw[0] == '-';
+            // 1016（四轮审查 P1-B）：双重负号 + 无符号后缀非零字面量——内层
+            //   `-5U` 的负号+后缀信息在外层折叠后丢失（产物 raw="5U"=正形，
+            //   裸全局/静态初值绕过域检查：宿主 0/v2 1）。保留 UnaryExpr 不折叠，
+            //   交语义层静态/裸全局初值区间扫描（检查初值负无符号1016）。
+            //   常量声明通道不扫描=宿主放行现状（常量 甲 = -0xFFU 0/0）。
+            if (rawHadMinus && types::unsignedSuffixedLiteralText(lit->raw) &&
+                types::integerLiteralTextNonZero(lit->raw)) {
+                auto keep = std::make_unique<UnaryExpr>(op, std::move(operand), false);
+                keep->location = loc;
+                return keep;
+            }
             auto neg = std::make_unique<IntegerLiteral>(
                 static_cast<std::int64_t>(0) - lit->value,
                 rawHadMinus ? lit->raw.substr(1) : "-" + lit->raw);

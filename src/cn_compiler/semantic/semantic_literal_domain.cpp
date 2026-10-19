@@ -78,6 +78,16 @@ bool SemanticAnalyzer::intLiteralFitsType(const Expr* e, const std::string& to) 
     }
     std::string dec;
     if (lit != nullptr) {
+        // 1016（四轮审查 P1-B）：负号 + 无符号后缀（U/u）非零字面量——无符号
+        //   域不承载负值（001 §3.7a）。parser 折叠形态（raw 带 '-'）与一元
+        //   负号形态（neg）同判；裸全局/静态初值子树扫描（scanSubtreeLiteral
+        //   Beyond919）据此覆盖 -(-5U)、1 + -5U（原 normalize 剥后缀后按
+        //   数学负值域内放行=宿主放行/v2 拒分叉）。负零与有符号后缀零影响。
+        const bool litNeg = neg || (!lit->raw.empty() && lit->raw[0] == '-');
+        if (litNeg && types::unsignedSuffixedLiteralText(lit->raw) &&
+            types::integerLiteralTextNonZero(lit->raw)) {
+            return false;
+        }
         dec = types::normalizeIntLiteralToDecimal(lit->raw);
     } else if (!enumDec756.empty()) {
         // 756 枚举成员常量命中：走下方统一判域（不经 919 承载内放行——
@@ -203,6 +213,15 @@ static bool scanSubtreeLiteralBeyond919(
         const bool negShell = (t == NodeType::UnaryExpr);
         const auto* lit = static_cast<const IntegerLiteral*>(
             negShell ? static_cast<const UnaryExpr*>(e)->operand.get() : e);
+        // 1016（四轮审查 P1-B）：负号 + 无符号后缀（U/u）非零字面量——无符号
+        //   域不承载负值（001 §3.7a）；须先于承载内门槛判定（原承载内
+        //   "-5U" 归一为 -5 直接判非扫描面=1 + -5U 裸全局漏检）。
+        const bool litNeg = negShell ||
+                            (!lit->raw.empty() && lit->raw[0] == '-');
+        if (litNeg && types::unsignedSuffixedLiteralText(lit->raw) &&
+            types::integerLiteralTextNonZero(lit->raw)) {
+            return true;
+        }
         std::string dec = types::normalizeIntLiteralToDecimal(lit->raw);
         // 静默豁免业务值: 919-final 超 u128 域哨兵（空串=超一切整型域·按超域命中拒·910 口径非静默默认）
         if (dec.empty()) return true;

@@ -459,6 +459,48 @@ std::string stripLiteralSuffix(const std::string& raw) {
     return s;
 }
 
+// 1016（四轮审查 P1-A/P1-B）：无符号后缀白名单（仅 U/UL/ULL 大小写不敏感）——
+//   与 literalTypeOf 定级口径一致；LU/LLU 等非法顺序=非无符号面（宿主回退
+//   整32）。hex 面 F/f 是数字不在后缀集合。
+bool unsignedSuffixedLiteralText(const std::string& raw) {
+    std::string s = raw;
+    std::string suffix;
+    while (!s.empty()) {
+        const char c = s.back();
+        if (c == 'L' || c == 'l' || c == 'U' || c == 'u') {
+            suffix.insert(suffix.begin(),
+                          static_cast<char>(std::toupper(static_cast<unsigned char>(c))));
+            s.pop_back();
+        } else {
+            break;
+        }
+    }
+    return suffix == "U" || suffix == "UL" || suffix == "ULL";
+}
+
+// 1016（四轮审查 P1-A/P2③）：整数字面量文本非零判定——任意精度，不依赖
+//   int64 承载（parseIntValue stoll 溢出静默回 0 时据此区分真零与巨值）。
+//   剥可选 +/-、0x/0b/0o 前缀、L/l/U/u 后缀后逐字节扫描；任意非 '0' 数字
+//   （含 A-F 等）即非零。全零/空数字段=假。
+bool integerLiteralTextNonZero(const std::string& raw) {
+    std::string s = raw;
+    std::size_t i = 0;
+    while (i < s.size() && (s[i] == ' ' || s[i] == '\t')) ++i;
+    if (i < s.size() && (s[i] == '-' || s[i] == '+')) ++i;
+    if (i + 1 < s.size() && s[i] == '0') {
+        const char p = s[i + 1];
+        if (p == 'x' || p == 'X' || p == 'b' || p == 'B' || p == 'o' || p == 'O') {
+            i += 2;
+        }
+    }
+    for (; i < s.size(); ++i) {
+        const char c = s[i];
+        if (c == 'L' || c == 'l' || c == 'U' || c == 'u') continue;  // 尾部后缀区
+        if (c != '0') return true;
+    }
+    return false;
+}
+
 // 728v：十进制字面量文本保真折叠——见头文件声明注释。剥后缀复用
 //   stripLiteralSuffix（十六进制 F 不剥→0x 前缀天然不通过全数字判定）；
 //   符号仅识别前导单个 '-'/'+'；前导零去净保留一位；非数字字符=false。
@@ -539,11 +581,8 @@ std::string literalTypeOf(const std::string& raw, bool isFloat) {
         const char c = raw[i - 1];
         const bool isSuffix = (c == 'l' || c == 'L' || c == 'u' || c == 'U') ||
                               (!isHex && (c == 'f' || c == 'F'));
-        if (isSuffix) {
-            suffix = static_cast<char>(std::toupper(static_cast<unsigned char>(c))) + suffix;
-        } else {
-            break;
-        }
+        if (!isSuffix) break;  // 非后缀字符=收集终止（显式中断·非业务分支）
+        suffix = static_cast<char>(std::toupper(static_cast<unsigned char>(c))) + suffix;
     }
     if (suffix.empty()) return "整32";       // 无后缀 -> 整32（规格书默认）
     if (suffix == "F") return "浮32";        // 123f -> 浮32
