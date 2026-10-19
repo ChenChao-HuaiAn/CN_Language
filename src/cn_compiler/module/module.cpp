@@ -114,15 +114,23 @@ bool parseSourceText(const std::string& source, const std::string& filePath,
     ast = parser.parse(tokens);
     if (diags.hasErrors()) return false;
 
-    // 收集导入依赖（模块名去重）。
-    // 第 4 层（v2.0 决策6，P1-2）：目录层级——依赖模块名取 :: 路径**前缀层级**：
-    //   - 导入 网络::传输控制  -> 依赖 网络（加载 网络.cn 或 网络/ 目录树）
-    //   - 导入 网络::传输控制::发送 -> 依赖 网络（首段模块树根）
-    //   - 导入 网络协议::HTTP::请求 -> 依赖 网络协议（crate/模块树首段）
-    //   模块声明（isModuleDecl，模块 网络）同样取首段加载网络.cn。
-    //   依赖收集仍以首段为模块名（driver 递归加载 网络.cn 后，其内部再
-    //   通过子模块声明加载 网络/传输控制.cn——目录层级由 driver 展开）。
-    for (const auto& imp : ast->imports) {
+    // 收集导入依赖（模块名去重）——1142 提取 collectImportDeps 公共函数
+    // （driver AST 缓存命中路径按同一规则从反序列化 AST 重建）
+    collectImportDeps(*ast, moduleName, imports);
+    return true;
+}
+
+// 收集模块导入依赖（1142 自 parseSourceText 逐字提取·零行为变更）：
+// 第 4 层（v2.0 决策6，P1-2）：目录层级——依赖模块名取 :: 路径**前缀层级**：
+//   - 导入 网络::传输控制  -> 依赖 网络（加载 网络.cn 或 网络/ 目录树）
+//   - 导入 网络::传输控制::发送 -> 依赖 网络（首段模块树根）
+//   - 导入 网络协议::HTTP::请求 -> 依赖 网络协议（crate/模块树首段）
+//   模块声明（isModuleDecl，模块 网络）同样取首段加载网络.cn。
+//   依赖收集仍以首段为模块名（driver 递归加载 网络.cn 后，其内部再
+//   通过子模块声明加载 网络/传输控制.cn——目录层级由 driver 展开）。
+void collectImportDeps(const Program& ast, const std::string& moduleName,
+                       std::vector<std::string>& out) {
+    for (const auto& imp : ast.imports) {
         std::string dep = imp->importPath;
         const std::size_t sep = dep.find("::");
         if (sep != std::string::npos) dep = dep.substr(0, sep);
@@ -132,17 +140,16 @@ bool parseSourceText(const std::string& source, const std::string& filePath,
         //   不可见 -> 成员文件永不加载（2026-09-08 千行拆分轮 探针实证）。
         if (imp->isModuleDecl) {
             if (!dep.empty() &&
-                std::find(imports.begin(), imports.end(), dep) == imports.end()) {
-                imports.push_back(dep);
+                std::find(out.begin(), out.end(), dep) == out.end()) {
+                out.push_back(dep);
             }
             continue;
         }
         if (!dep.empty() && dep != moduleName &&
-            std::find(imports.begin(), imports.end(), dep) == imports.end()) {
-            imports.push_back(dep);
+            std::find(out.begin(), out.end(), dep) == out.end()) {
+            out.push_back(dep);
         }
     }
-    return true;
 }
 
 // ==================== 模块依赖图 ====================

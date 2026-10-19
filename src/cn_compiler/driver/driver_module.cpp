@@ -16,6 +16,7 @@
 
 #include "cn_compiler/codegen/backend_factory.hpp"
 #include "cn_compiler/common/diagnostics.hpp"
+#include "cn_compiler/driver/driver_ast_cache.hpp"  // 1142：模块级 AST 缓存
 #include "cn_compiler/ir/ir.hpp"
 #include "cn_compiler/module/module.hpp"
 #include "cn_compiler/opt/pass_manager.hpp"
@@ -189,8 +190,10 @@ bool loadModuleTree(const std::string& filePath, const std::string& dir,
             unit->moduleDir = "";
         }
     }
-    if (!module::parseSourceText(source, filePath, moduleName, unit->ast, unit->imports,
-                                 diags, macros)) {
+    // 1142：模块级 AST 缓存（命中跳过词法+语法；失败/损坏回退完整解析——
+    //   与 module::parseSourceText 同语义出口，解析失败语义不变）
+    if (!parseModuleWithCache(source, filePath, moduleName, macros, options,
+                              unit->ast, unit->imports, diags)) {
         std::cerr << diags.format();
         error = "模块 '" + moduleName + "' 解析失败";
         return false;
@@ -703,6 +706,7 @@ int runModulePipeline(const std::string& entryFile, const DriverOptions& options
         emitDiagnostics(diagnostics, options);
         return 1;
     }
+    reportAstCacheStats(options.verbose);  // 1142：缓存统计（CN_AST_CACHE_STATS=1 或 verbose）
     return 0;
 }
 

@@ -59,6 +59,7 @@ add_executable(cn_unit_tests
     semantic/test_bootstrap_gaps.cpp
     module/test_module.cpp
     module/test_module_driver.cpp
+    model/test_ast_serialize.cpp
     driver/test_cargo_parser.cpp
     ir/test_ir.cpp
     ir/test_ir_verify_errors.cpp

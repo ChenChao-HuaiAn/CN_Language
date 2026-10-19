@@ -156,6 +156,9 @@ add_library(cn_compiler_model STATIC
     src/cn_compiler/model/ast_printer.cpp
     src/cn_compiler/model/type_system.cpp
     src/cn_compiler/model/type_system_int_text.cpp
+    src/cn_compiler/model/ast_serialize.cpp             # 1142：AST 二进制序列化（写侧）
+    src/cn_compiler/model/ast_serialize_read.cpp        # 1142：AST 反序列化（表达式/语句族）
+    src/cn_compiler/model/ast_serialize_read_decl.cpp   # 1142：AST 反序列化（声明族/Program 入口）
 )
 target_include_directories(cn_compiler_model PUBLIC ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(cn_compiler_model PUBLIC cn_compiler_common)
@@ -376,6 +379,7 @@ add_library(cn_compiler_driver STATIC
     src/cn_compiler/driver/driver.cpp
     src/cn_compiler/driver/driver_module.cpp
     src/cn_compiler/driver/cargo_parser.cpp
+    src/cn_compiler/driver/driver_ast_cache.cpp   # 1142：模块级 AST 预编译缓存
 )
 target_include_directories(cn_compiler_driver PUBLIC ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(cn_compiler_driver PUBLIC cn_compiler_lexer cn_compiler_parser cn_compiler_semantic cn_compiler_ir cn_compiler_codegen cn_compiler_model cn_compiler_opt cn_compiler_module)

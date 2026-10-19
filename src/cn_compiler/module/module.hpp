@@ -69,6 +69,14 @@ bool parseSourceText(const std::string& source, const std::string& filePath,
                      std::vector<std::string>& imports, Diagnostics& diags,
                      const std::unordered_set<std::string>& macros = {});
 
+// 收集模块导入依赖（1142 自 parseSourceText 逐字提取·两处共用）：
+//   parseSourceText 正常路径与 driver AST 缓存命中路径（反序列化 AST 无
+//   imports 输出，按同一规则重建）。规则：:: 路径取首段；模块声明恒登记
+//   （树结构声明而非依赖引用）；普通导入过滤自引用 moduleName；按出现
+//   顺序去重。追加写入 out（不清空调用前内容）。
+void collectImportDeps(const Program& ast, const std::string& moduleName,
+                       std::vector<std::string>& out);
+
 // 模块依赖图：按导入关系建立并拓扑排序（被依赖者在前；入口模块最后）
 class ModuleGraph {
 public:

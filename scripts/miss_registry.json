@@ -4291,6 +4291,138 @@
    "登记人": "AI（1157 轮·逐条读过代码）",
    "登记日": "2026-10-20",
    "批准": "已批"
+  },
+  {
+   "文件": "src/cn_compiler/model/ast_serialize.cpp",
+   "函数": "serializeProgram",
+   "锚文本": "if (program == nullptr) {",
+   "来源": "1142",
+   "类别": "业务值",
+   "静默风险": "低",
+   "原因": "空输入守卫·false=语义结果且 error 消息已写（调用方按未缓存处置·非默认值继续）",
+   "登记人": "AI（1142 模块级 AST 缓存轮·逐条读过代码）",
+   "登记日": "2026-10-19",
+   "批准": "存量过渡"
+  },
+  {
+   "文件": "src/cn_compiler/driver/driver_ast_cache.cpp",
+   "函数": "ensureDirRecursive",
+   "锚文本": "if (path.empty()) return false;",
+   "来源": "1142",
+   "类别": "闭集穷举",
+   "静默风险": "低",
+   "原因": "空路径守卫（无目录可建·计数并随 verbose/统计显形·非查表默认值）",
+   "登记人": "AI（1142 模块级 AST 缓存轮·逐条读过代码）",
+   "登记日": "2026-10-19",
+   "批准": "存量过渡"
+  },
+  {
+   "文件": "src/cn_compiler/driver/driver_ast_cache.cpp",
+   "函数": "ensureDirRecursive",
+   "锚文本": "if (cur.size() <= 1) continue;",
+   "来源": "1142",
+   "类别": "闭集穷举",
+   "静默风险": "低",
+   "原因": "根 '/' 段跳过（逐级 mkdir 段守卫·长度守卫单边形态无静态上界可双边界化）",
+   "登记人": "AI（1142 模块级 AST 缓存轮·逐条读过代码）",
+   "登记日": "2026-10-19",
+   "批准": "存量过渡"
+  },
+  {
+   "文件": "src/cn_compiler/driver/driver_ast_cache.cpp",
+   "函数": "readWholeFile",
+   "锚文本": "if (fp == nullptr) return false;",
+   "来源": "1142",
+   "类别": "运行时API",
+   "静默风险": "低",
+   "原因": "fopen 失败=系统调用契约（文件缺失/不可读=缓存未命中正常态·非默认值继续）",
+   "登记人": "AI（1142 模块级 AST 缓存轮·逐条读过代码）",
+   "登记日": "2026-10-19",
+   "批准": "存量过渡"
+  },
+  {
+   "文件": "src/cn_compiler/driver/driver_ast_cache.cpp",
+   "函数": "readWholeFile",
+   "锚文本": "if (size <= 0 || static_cast<std::size_t>(size) > kMaxFileBytes) {",
+   "来源": "1142",
+   "类别": "闭集穷举",
+   "静默风险": "低",
+   "原因": "文件尺寸合法性守卫（非正=空文件/超限=损坏·由调用方按未命中处置·尺寸守卫单边形态含上界常量）",
+   "登记人": "AI（1142 模块级 AST 缓存轮·逐条读过代码）",
+   "登记日": "2026-10-19",
+   "批准": "存量过渡"
+  },
+  {
+   "文件": "src/cn_compiler/driver/driver_ast_cache.cpp",
+   "函数": "tryLoadCache",
+   "锚文本": "if (!readWholeFile(cacheFile, buf)) {",
+   "来源": "1142",
+   "类别": "业务值",
+   "静默风险": "低",
+   "原因": "读缓存失败=未命中信号（missNew 计数·回退完整解析=唯一正确路径）",
+   "登记人": "AI（1142 模块级 AST 缓存轮·逐条读过代码）",
+   "登记日": "2026-10-19",
+   "批准": "存量过渡"
+  },
+  {
+   "文件": "src/cn_compiler/driver/driver_ast_cache.cpp",
+   "函数": "tryLoadCache",
+   "锚文本": "if (ast == nullptr) {",
+   "来源": "1142",
+   "类别": "上游已诊断",
+   "静默风险": "低",
+   "原因": "反序列化失败已 warnCorrupt 显形（stderr）+回退完整解析",
+   "登记人": "AI（1142 模块级 AST 缓存轮·逐条读过代码）",
+   "登记日": "2026-10-19",
+   "批准": "存量过渡"
+  },
+  {
+   "文件": "src/cn_compiler/driver/driver_ast_cache.cpp",
+   "函数": "parseModuleWithCache",
+   "锚文本": "if (!module::parseSourceText(source, filePath, moduleName, ast, imports, diags, macros)) {",
+   "来源": "1142",
+   "类别": "上游已诊断",
+   "静默风险": "低",
+   "原因": "解析失败 diags 已记录·error 由上层原样报出（不缓存错误态）",
+   "登记人": "AI（1142 模块级 AST 缓存轮·逐条读过代码）",
+   "登记日": "2026-10-19",
+   "批准": "存量过渡"
+  },
+  {
+   "文件": "src/cn_compiler/model/ast_serialize_impl.hpp",
+   "函数": "Reader::u8",
+   "锚文本": "if (ok_ && remaining() >= 1) {",
+   "来源": "1142",
+   "类别": "闭集穷举",
+   "静默风险": "低",
+   "原因": "剩余字节下界守卫（定长原语读取越界防护·无静态上界可双边界化）",
+   "登记人": "AI（1142 模块级 AST 缓存轮·逐条读过代码）",
+   "登记日": "2026-10-19",
+   "批准": "存量过渡"
+  },
+  {
+   "文件": "src/cn_compiler/model/ast_serialize_impl.hpp",
+   "函数": "Reader::u32",
+   "锚文本": "if (ok_ && remaining() >= 4) {",
+   "来源": "1142",
+   "类别": "闭集穷举",
+   "静默风险": "低",
+   "原因": "剩余字节下界守卫（定长原语读取越界防护·无静态上界可双边界化）",
+   "登记人": "AI（1142 模块级 AST 缓存轮·逐条读过代码）",
+   "登记日": "2026-10-19",
+   "批准": "存量过渡"
+  },
+  {
+   "文件": "src/cn_compiler/model/ast_serialize_impl.hpp",
+   "函数": "Reader::u64",
+   "锚文本": "if (ok_ && remaining() >= 8) {",
+   "来源": "1142",
+   "类别": "闭集穷举",
+   "静默风险": "低",
+   "原因": "剩余字节下界守卫（定长原语读取越界防护·无静态上界可双边界化）",
+   "登记人": "AI（1142 模块级 AST 缓存轮·逐条读过代码）",
+   "登记日": "2026-10-19",
+   "批准": "存量过渡"
   }
  ]
 }
