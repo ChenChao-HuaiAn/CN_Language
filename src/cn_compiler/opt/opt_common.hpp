@@ -7,6 +7,9 @@
 // 设计原则（规格书12.4 优化正确性）：安全第一，保守为要。
 #pragma once
 
+#include <cerrno>
+#include <climits>
+#include <cstdlib>
 #include <string>
 #include <unordered_map>
 
@@ -44,16 +47,23 @@ inline bool constCanPropagate(const ir::IRValue& cv, const ir::IRValue& op) {
     return cv.type == op.type || cv.type == "i1";
 }
 
+// 常量文本是否带 0x/0b/0o 进制前缀（需归一化为十进制；
+//   十进制文本是恒等变换，调用方可跳过归一化省一次字符串拷贝）
+inline bool hasRadixPrefix(const std::string& text) {
+    return text.size() > 2 && text[0] == '0' &&
+           (text[1] == 'x' || text[1] == 'X' || text[1] == 'b' ||
+            text[1] == 'B' || text[1] == 'o' || text[1] == 'O');
+}
+
 // 常量文本规范化：0b1100/0xFF/077 -> 十进制（codegen 对常量直接输出文本，
 //   MASM 不支持 0b/0x/0o 前缀）；解析失败返回原文本
 inline std::string normalizeIntText(const std::string& text) {
-    if (text.size() > 2 && text[0] == '0' &&
-        (text[1] == 'x' || text[1] == 'X' || text[1] == 'b' ||
-         text[1] == 'B' || text[1] == 'o' || text[1] == 'O')) {
+    if (hasRadixPrefix(text)) {
         const int base = (text[1] == 'x' || text[1] == 'X') ? 16
                          : (text[1] == 'b' || text[1] == 'B') ? 2 : 8;
         try {
-            const unsigned long long raw = std::stoull(text.substr(2), nullptr, base);
+            // 直接按 c_str()+2 解析，避免 substr 临时 string 分配
+            const unsigned long long raw = std::stoull(text.c_str() + 2, nullptr, base);
             return std::to_string(raw);
         } catch (...) {
             return text;
@@ -101,30 +111,50 @@ inline bool replaceUses(ir::IRInstruction& inst,
                         const RegRewriteMap& regRewrite,
                         const ConstRewriteMap& constRewrite) {
     bool changed = false;
-    for (auto& op : inst.operands) {
-        if (op.isConstant || op.id < 0) continue;
-        const auto rit = regRewrite.find(op.id);
-        if (rit != regRewrite.end()) {
-            op.id = rit->second;  // 寄存器替换（保持原类型）
+    // 两表皆空 = 无任何可替换项（多数块/轮次）：省去全操作数遍历与查表
+    if (!regRewrite.empty() || !constRewrite.empty()) {
+        for (auto& op : inst.operands) {
+            if (op.isConstant || op.id < 0) continue;
+            const auto rit = regRewrite.find(op.id);
+            if (rit != regRewrite.end()) {
+                op.id = rit->second;  // 寄存器替换（保持原类型）
+                changed = true;
+                continue;
+            }
+            // 常量替换范围：纯运算指令 + Call/CallIndirect 实参（整型安全）。
+            //   不可传播指令直接跳过——不再为它们白查常量表。
+            if (!isPureArith(inst.opcode) &&
+                inst.opcode != ir::Opcode::Call &&
+                inst.opcode != ir::Opcode::CallIndirect) {
+                continue;
+            }
+            const auto cit = constRewrite.find(op.id);
+            if (cit == constRewrite.end()) continue;
+            const ir::IRValue& cv = cit->second;
+            if (!constCanPropagate(cv, op)) continue;
+            // 直接赋值再就地归一化（旧实现多一次 IRValue 拷贝）；
+            //   十进制文本归一化是恒等变换，跳过省一次字符串拷贝。
+            op = cv;
+            if (hasRadixPrefix(op.extra)) op.extra = normalizeIntText(op.extra);
             changed = true;
-            continue;
         }
-        const auto cit = constRewrite.find(op.id);
-        if (cit == constRewrite.end()) continue;
-        const ir::IRValue& cv = cit->second;
-        // 常量替换范围：纯运算指令 + Call/CallIndirect 实参（整型安全）
-        if (!isPureArith(inst.opcode) &&
-            inst.opcode != ir::Opcode::Call &&
-            inst.opcode != ir::Opcode::CallIndirect) {
-            continue;
-        }
-        if (!constCanPropagate(cv, op)) continue;
-        ir::IRValue normalized = cv;
-        normalized.extra = normalizeIntText(cv.extra);
-        op = normalized;
-        changed = true;
     }
     return changed;
+}
+
+// 解析 "%vN" 文本（N 为 int）到寄存器 id。
+//   快速路径 strtol（无异常/无 substr 分配）；语义与旧 std::stoi(c.substr(2))
+//   一致：接受前导空白与正负号、尾随非数字截止；无数字/溢出=false。
+inline bool parseRegText(const std::string& c, int& id) {
+    if (c.size() <= 2 || c[0] != '%' || c[1] != 'v') return false;
+    const char* const start = c.c_str() + 2;
+    char* end = nullptr;
+    errno = 0;
+    const long value = std::strtol(start, &end, 10);
+    if (end == start) return false;                       // 无数字（stoi 抛 invalid）
+    if (errno == ERANGE || value < INT_MIN || value > INT_MAX) return false;  // 溢出
+    id = static_cast<int>(value);
+    return true;
 }
 
 // 280-a T12 字段化连带：块终止条件跳转的条件寄存器同步替换。
@@ -137,25 +167,21 @@ inline bool replaceTermCondition(ir::IRBlock& block,
                                  const RegRewriteMap& regRewrite,
                                  const ConstRewriteMap& constRewrite) {
     if (!block.terminated || block.termKind != "条件跳转") return false;
-    const std::string& c = block.termCondition;
-    if (c.size() <= 2 || c[0] != '%' || c[1] != 'v') return false;
     int id = 0;
-    try {
-        id = std::stoi(c.substr(2));
-    } catch (...) {
-        return false;
-    }
-    const auto rit = regRewrite.find(id);
-    if (rit != regRewrite.end()) {
-        block.termCondition = "%v" + std::to_string(rit->second);
-        return true;
-    }
-    const auto cit = constRewrite.find(id);
-    if (cit != constRewrite.end() && cit->second.isConstant) {
-        ir::IRValue cond = cit->second;
-        if (constCanPropagate(cond, ir::IRValue::reg(id, "i1"))) {
-            block.termCondition = cond.extra;  // "真"/"假"/数值文本
+    // 解析失败（IR 契约外文本）：不替换（与旧 stoi 异常返回 false 等价）
+    if (parseRegText(block.termCondition, id)) {
+        const auto rit = regRewrite.find(id);
+        if (rit != regRewrite.end()) {
+            block.termCondition = "%v" + std::to_string(rit->second);
             return true;
+        }
+        const auto cit = constRewrite.find(id);
+        if (cit != constRewrite.end() && cit->second.isConstant) {
+            ir::IRValue cond = cit->second;
+            if (constCanPropagate(cond, ir::IRValue::reg(id, "i1"))) {
+                block.termCondition = cond.extra;  // "真"/"假"/数值文本
+                return true;
+            }
         }
     }
     return false;

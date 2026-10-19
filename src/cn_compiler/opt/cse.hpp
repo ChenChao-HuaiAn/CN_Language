@@ -38,10 +38,6 @@ public:
     const char* name() const override { return "cse"; }
 
 private:
-    // 计算纯运算指令的模式键（操作码+类型+操作数身份）；非纯运算返回空串
-    // （成员函数：需访问 allowFloat_ 判断浮点是否可 CSE）
-    std::string patternOf(const ir::IRInstruction& inst);
-
     // 是否可能修改任意内存的指令（清空 Load 表）
     static bool mayWriteMemory(ir::Opcode op);
 
