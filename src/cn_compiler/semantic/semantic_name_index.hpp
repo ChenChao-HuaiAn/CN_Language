@@ -84,6 +84,15 @@ struct TypeLookupIndex {
     std::unordered_map<std::string_view, const ClassInfo*> classByBase;
     std::unordered_map<std::string_view, std::unordered_map<std::string_view,
                                                        const ClassInfo*>> classByModule;
+    // 1155：裸名解析结果缓存（findClass 高频调用面——IR 生成期同一批类型串
+    //   反复查询）。键=查询名；条目记录解析时的当前模块（模块上下文切换 =
+    //   同一裸名可解析到不同类）与结果（nullptr=负缓存）。类表规模变化时整表
+    //   重建并清空本缓存（见 ensureTypeLookupIndex）。mutable：const 查询填充。
+    struct ClassLookupCacheEntry {
+        std::string module;
+        const ClassInfo* result = nullptr;
+    };
+    mutable std::unordered_map<std::string, ClassLookupCacheEntry> classCache;
 };
 
 }  // namespace cn_compiler

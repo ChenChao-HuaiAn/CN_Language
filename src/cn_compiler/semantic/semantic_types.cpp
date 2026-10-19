@@ -46,51 +46,67 @@ void SemanticAnalyzer::splitQualifiedType(const std::string& type, std::string& 
     }
 }
 // 1155：类型名查询索引惰性构建（设计/不变量见 semantic_name_index.hpp）。
-//   三表 size 任一变化（含换 Program）即整表重建；size 不变期间零重建。
+//   三表 size 任一变化（含换 Program）即对应分表重建；未变分表零重建。
 //   首命中语义：按容器遍历顺序 emplace（先到先得）与原「首个匹配即返回」一致。
+//   类表含全部泛型实例且注册期频繁增长——只重建类分表（结构体/枚举表不动），
+//   避免每次泛型实例化都重建全部三表。
 const TypeLookupIndex& SemanticAnalyzer::ensureTypeLookupIndex() const {
     TypeLookupIndex& idx = typeLookupIndex_;
     const Program* prog = program_;
     const std::size_t structsSize = (prog == nullptr) ? 0 : prog->structs.size();
     const std::size_t enumsSize = (prog == nullptr) ? 0 : prog->enums.size();
+    const std::size_t classesSize = classes_.size();
     if (idx.builtProgram == prog && idx.structsSize == structsSize &&
-        idx.enumsSize == enumsSize && idx.classesSize == classes_.size()) {
+        idx.enumsSize == enumsSize && idx.classesSize == classesSize) {
         return idx;
     }
-    idx.structByName.clear();
-    idx.structByModule.clear();
-    idx.enumByName.clear();
-    idx.enumByModule.clear();
-    idx.classByFullKey.clear();
-    idx.classByBase.clear();
-    idx.classByModule.clear();
-    if (prog != nullptr) {
-        for (const auto& s : prog->structs) {
-            const std::string_view name(s->name);
-            idx.structByName.emplace(name, s.get());  // 首命中优先
-            idx.structByModule[std::string_view(s->moduleName)].emplace(name, s.get());
-        }
-        for (const auto& e : prog->enums) {
-            const std::string_view name(e->name);
-            idx.enumByName.emplace(name, e.get());
-            idx.enumByModule[std::string_view(e->moduleName)].emplace(name, e.get());
+    const bool programChanged = idx.builtProgram != prog;
+    const bool structsDirty = programChanged || idx.structsSize != structsSize;
+    const bool enumsDirty = programChanged || idx.enumsSize != enumsSize;
+    const bool classesDirty = programChanged || idx.classesSize != classesSize;
+    if (structsDirty) {
+        idx.structByName.clear();
+        idx.structByModule.clear();
+        if (prog != nullptr) {
+            for (const auto& s : prog->structs) {
+                const std::string_view name(s->name);
+                idx.structByName.emplace(name, s.get());  // 首命中优先
+                idx.structByModule[std::string_view(s->moduleName)].emplace(name, s.get());
+            }
         }
     }
-    for (const auto& kv : classes_) {
-        const std::string_view key(kv.first);
-        const std::size_t sep = key.rfind("::");
-        const std::string_view base =
-            (sep == std::string_view::npos) ? key : key.substr(sep + 2);
-        const std::string_view module =
-            (sep == std::string_view::npos) ? std::string_view() : key.substr(0, sep);
-        idx.classByFullKey.emplace(key, &kv.second);    // 限定名直查（整键）
-        idx.classByBase.emplace(base, &kv.second);      // 裸名回退首命中（原 rfind 口径）
-        idx.classByModule[module].emplace(base, &kv.second);  // 当前模块精确命中
+    if (enumsDirty) {
+        idx.enumByName.clear();
+        idx.enumByModule.clear();
+        if (prog != nullptr) {
+            for (const auto& e : prog->enums) {
+                const std::string_view name(e->name);
+                idx.enumByName.emplace(name, e.get());
+                idx.enumByModule[std::string_view(e->moduleName)].emplace(name, e.get());
+            }
+        }
+    }
+    if (classesDirty) {
+        idx.classByFullKey.clear();
+        idx.classByBase.clear();
+        idx.classByModule.clear();
+        idx.classCache.clear();  // 裸名解析缓存依赖类表内容/迭代顺序
+        for (const auto& kv : classes_) {
+            const std::string_view key(kv.first);
+            const std::size_t sep = key.rfind("::");
+            const std::string_view base =
+                (sep == std::string_view::npos) ? key : key.substr(sep + 2);
+            const std::string_view module =
+                (sep == std::string_view::npos) ? std::string_view() : key.substr(0, sep);
+            idx.classByFullKey.emplace(key, &kv.second);    // 限定名直查（整键）
+            idx.classByBase.emplace(base, &kv.second);      // 裸名回退首命中（原 rfind 口径）
+            idx.classByModule[module].emplace(base, &kv.second);  // 当前模块精确命中
+        }
     }
     idx.builtProgram = prog;
     idx.structsSize = structsSize;
     idx.enumsSize = enumsSize;
-    idx.classesSize = classes_.size();
+    idx.classesSize = classesSize;
     return idx;
 }
 const StructDecl* SemanticAnalyzer::findStructInModule(const std::string& module,

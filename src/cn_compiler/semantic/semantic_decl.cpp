@@ -701,10 +701,13 @@ void SemanticAnalyzer::checkFunctionBody(FunctionDecl* node) {
     //   变量名为键无作用域维度，同 94 行 声明位 erase 同理）
     errorCheckState_.clear();
 
-    // 317-a：FunctionInfo 值拷贝——体内检查可触发泛型实例化注册（recheck 场景
-    //   的推断段 insert functions_），unordered_map 扩容使迭代器失效；后续对
-    //   it->second 的读取均为悬垂 UB（段错误）。
-    const FunctionInfo info = it->second;
+    // 317-a：体内检查可触发泛型实例化注册（recheck 场景的推断段 insert
+    //   functions_），unordered_map 扩容使**迭代器**失效——但节点不搬家，
+    //   指向元素的引用/指针仍有效（C++ 标准 rehash 只失效迭代器）。原整份
+    //   FunctionInfo 值拷贝（每函数深拷贝返回类型+参数/默认值/常量参数三向量）
+    //   非必要；1155 改存引用（三个字段均在体内检查开始前读取，此后不再经
+    //   info 访问）。317-a 的迭代器失效防线由「不跨体持有 it」保持。
+    const FunctionInfo& info = it->second;
 
     currentReturnType_ = info.returnType;
     // 662（方法链消费位）：类对象返回拥有形态收集重置 + 表条目清位重算

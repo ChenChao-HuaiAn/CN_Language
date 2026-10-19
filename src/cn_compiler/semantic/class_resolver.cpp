@@ -186,25 +186,37 @@ const ClassInfo* SemanticAnalyzer::findClass(const std::string& name) const {
     const TypeLookupIndex& idx = ensureTypeLookupIndex();
     const std::string_view nameView(name);
     const std::size_t sep = nameView.find("::");
+    if (sep != std::string_view::npos && sep > 0) {
+        const auto it = idx.classByFullKey.find(nameView);
+        return (it == idx.classByFullKey.end()) ? nullptr : it->second;
+    }
+    // 1155：裸名解析缓存（同一类型串反复查询的高频面——IR 生成期尤甚）。
+    //   命中条件=该条目解析时的当前模块与本次相同（模块上下文切换可改变裸名
+    //   解析结果）；类表规模变化在 ensureTypeLookupIndex 中清空缓存。
+    const auto cacheIt = idx.classCache.find(name);
+    if (cacheIt != idx.classCache.end() && cacheIt->second.module == currentModuleName_) {
+        return cacheIt->second.result;
+    }
     std::string_view baseView = nameView;
-    if (sep != std::string_view::npos) {
-        if (sep > 0) {
-            const auto it = idx.classByFullKey.find(nameView);
-            return (it == idx.classByFullKey.end()) ? nullptr : it->second;
-        }
+    if (sep == 0) {
         // 前缀为空（形如 "::类"）：原 splitQualifiedType 得 mod 空 → 走裸名分支，
         //   base=首个 "::" 之后（与上面 struct/enum 查询同口径）。
         baseView = nameView.substr(2);
     }
+    const ClassInfo* result = nullptr;
     if (!currentModuleName_.empty()) {
         const auto mit = idx.classByModule.find(std::string_view(currentModuleName_));
         if (mit != idx.classByModule.end()) {
             const auto it = mit->second.find(baseView);
-            if (it != mit->second.end()) return it->second;
+            if (it != mit->second.end()) result = it->second;
         }
     }
-    const auto it = idx.classByBase.find(baseView);
-    return (it == idx.classByBase.end()) ? nullptr : it->second;
+    if (result == nullptr) {
+        const auto it = idx.classByBase.find(baseView);
+        if (it != idx.classByBase.end()) result = it->second;
+    }
+    idx.classCache[name] = TypeLookupIndex::ClassLookupCacheEntry{currentModuleName_, result};
+    return result;
 }
 
 // 查找接口符号（未找到返回nullptr）
