@@ -63,10 +63,8 @@ bool CopyPropagationPass::run(ir::IRModule& module) {
             // 寄存器替换表：Load 结果寄存器 -> 存储值寄存器/常量
             RegRewriteMap regRewrite;
             ConstRewriteMap constRewrite;
-            // 283-a T12 字段化：块终止条件寄存器同步替换（在指令遍历前应用）
-            if (replaceTermCondition(*block, regRewrite, constRewrite)) {
-                changed = true;
-            }
+            // 注：旧实现在此调用 replaceTermCondition（283-a 字段化同步），但此刻
+            //   两表必为空——该调用恒返回 false，已删除（无行为变化）。
             for (auto& inst : block->instructions) {
                 // 第一步：应用已收集的替换到本指令的引用点
                 //   （Load 命中槽值表登记替换后，后续指令（含 Store 的值、

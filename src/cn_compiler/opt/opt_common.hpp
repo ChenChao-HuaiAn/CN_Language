@@ -77,20 +77,40 @@ inline bool isIntType(const std::string& type) {
     // 注：i128/u128 **不在此列**——各 pass 的 64 位解析对它不适用（单测
     //   I128AddZeroSkipped/I128MulNotReduced 锁定既有保守行为）；i128 的
     //   常量折叠由 ConstFold 内部单独判据承担（D9·228-a）。
-    return type == "i8" || type == "u8" || type == "i16" || type == "u16" ||
-           type == "i32" || type == "u32" || type == "i64" || type == "u64";
+    //   按长度+字符判定（等价于 8 个字符串比较，免 memcmp 调用开销）。
+    const std::size_t n = type.size();
+    if (n == 2) {
+        if (type[0] != 'i' && type[0] != 'u') return false;
+        return type[1] == '8';
+    }
+    if (n == 3) {
+        if (type[0] != 'i' && type[0] != 'u') return false;
+        const char d1 = type[1];
+        const char d2 = type[2];
+        return (d1 == '1' && d2 == '6') || (d1 == '3' && d2 == '2') ||
+               (d1 == '6' && d2 == '4');
+    }
+    return false;
 }
 
-// 是否浮点 IR 类型
+// 是否浮点 IR 类型（f32/f64；按长度+字符判定，等价且免 memcmp）
 inline bool isFloatType(const std::string& type) {
-    return type == "f32" || type == "f64";
+    if (type.size() != 3 || type[0] != 'f') return false;
+    return (type[1] == '3' && type[2] == '2') ||
+           (type[1] == '6' && type[2] == '4');
 }
 
 // 整型位宽（位）：i8=8, i16=16, i32=32, i64=64, u8=8, ...；未知返回 64
 inline int intBitWidth(const std::string& type) {
-    if (type == "i8" || type == "u8") return 8;
-    if (type == "i16" || type == "u16") return 16;
-    if (type == "i32" || type == "u32") return 32;
+    const std::size_t n = type.size();
+    if (n == 2) {
+        const bool matched = (type[0] == 'i' || type[0] == 'u') && type[1] == '8';
+        return matched ? 8 : 64;
+    }
+    if (n == 3 && (type[0] == 'i' || type[0] == 'u')) {
+        if (type[1] == '1' && type[2] == '6') return 16;
+        if (type[1] == '3' && type[2] == '2') return 32;
+    }
     return 64;
 }
 
@@ -167,20 +187,23 @@ inline bool replaceTermCondition(ir::IRBlock& block,
                                  const RegRewriteMap& regRewrite,
                                  const ConstRewriteMap& constRewrite) {
     if (!block.terminated || block.termKind != "条件跳转") return false;
-    int id = 0;
-    // 解析失败（IR 契约外文本）：不替换（与旧 stoi 异常返回 false 等价）
-    if (parseRegText(block.termCondition, id)) {
-        const auto rit = regRewrite.find(id);
-        if (rit != regRewrite.end()) {
-            block.termCondition = "%v" + std::to_string(rit->second);
-            return true;
-        }
-        const auto cit = constRewrite.find(id);
-        if (cit != constRewrite.end() && cit->second.isConstant) {
-            ir::IRValue cond = cit->second;
-            if (constCanPropagate(cond, ir::IRValue::reg(id, "i1"))) {
-                block.termCondition = cond.extra;  // "真"/"假"/数值文本
+    // 两表皆空 = 无替换项（多数块/轮次）：省去条件文本解析
+    if (!regRewrite.empty() || !constRewrite.empty()) {
+        int id = 0;
+        // 解析失败（IR 契约外文本）：不替换（与旧 stoi 异常返回 false 等价）
+        if (parseRegText(block.termCondition, id)) {
+            const auto rit = regRewrite.find(id);
+            if (rit != regRewrite.end()) {
+                block.termCondition = "%v" + std::to_string(rit->second);
                 return true;
+            }
+            const auto cit = constRewrite.find(id);
+            if (cit != constRewrite.end() && cit->second.isConstant) {
+                ir::IRValue cond = cit->second;
+                if (constCanPropagate(cond, ir::IRValue::reg(id, "i1"))) {
+                    block.termCondition = cond.extra;  // "真"/"假"/数值文本
+                    return true;
+                }
             }
         }
     }

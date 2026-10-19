@@ -125,6 +125,29 @@ std::string formatDouble(double value, const std::string& type) {
     return buf;
 }
 
+// 常量传播目标指令（与旧 27 项 || 长链等价；switch 分派开销更低）。
+//   注意：Store 不在列（codegen 依赖操作数为寄存器/槽，见 run 内注意5）。
+bool isConstPropagateTarget(ir::Opcode op) {
+    switch (op) {
+        case ir::Opcode::Add: case ir::Opcode::Sub: case ir::Opcode::Mul:
+        case ir::Opcode::Div: case ir::Opcode::Mod:
+        case ir::Opcode::BitAnd: case ir::Opcode::BitOr: case ir::Opcode::BitXor:
+        case ir::Opcode::Shl: case ir::Opcode::Shr:
+        case ir::Opcode::Eq: case ir::Opcode::Ne:
+        case ir::Opcode::Lt: case ir::Opcode::Le: case ir::Opcode::Gt: case ir::Opcode::Ge:
+        case ir::Opcode::And: case ir::Opcode::Or: case ir::Opcode::Not:
+        case ir::Opcode::Cast:
+        case ir::Opcode::Load: case ir::Opcode::LoadPtr:
+        case ir::Opcode::StorePtr:
+        case ir::Opcode::Call: case ir::Opcode::CallIndirect:
+        case ir::Opcode::FieldAddr: case ir::Opcode::StrFieldAddr:
+        case ir::Opcode::AddrOf:
+            return true;
+        default:
+            return false;
+    }
+}
+
 // 是否可折叠操作码（foldResolved 的 case 列表；其余指令调用必然返回 false，
 //   run 主循环据此跳过 resolveOperands 的向量/IRValue 拷贝）。
 bool isFoldableOpcode(ir::Opcode op) {
@@ -722,24 +745,8 @@ bool ConstFoldPass::run(ir::IRModule& module) {
                 //        由折叠替换指令本身（Store 不折叠），常量仍从槽加载，安全。
                 // 注意6：常量类型必须与操作数类型匹配（i32 常量 100 不能传播给 i8 操作数
                 //        ——原 IR 有 Cast 窄化；直接传播会跳过窄化）。
-                const bool isPureOp =
-                    inst.opcode == ir::Opcode::Add || inst.opcode == ir::Opcode::Sub ||
-                    inst.opcode == ir::Opcode::Mul || inst.opcode == ir::Opcode::Div ||
-                    inst.opcode == ir::Opcode::Mod ||
-                    inst.opcode == ir::Opcode::BitAnd || inst.opcode == ir::Opcode::BitOr ||
-                    inst.opcode == ir::Opcode::BitXor || inst.opcode == ir::Opcode::Shl ||
-                    inst.opcode == ir::Opcode::Shr ||
-                    inst.opcode == ir::Opcode::Eq || inst.opcode == ir::Opcode::Ne ||
-                    inst.opcode == ir::Opcode::Lt || inst.opcode == ir::Opcode::Le ||
-                    inst.opcode == ir::Opcode::Gt || inst.opcode == ir::Opcode::Ge ||
-                    inst.opcode == ir::Opcode::And || inst.opcode == ir::Opcode::Or ||
-                    inst.opcode == ir::Opcode::Not || inst.opcode == ir::Opcode::Cast ||
-                    inst.opcode == ir::Opcode::Load || inst.opcode == ir::Opcode::LoadPtr ||
-                    inst.opcode == ir::Opcode::StorePtr || inst.opcode == ir::Opcode::Call ||
-                    inst.opcode == ir::Opcode::CallIndirect ||
-                    inst.opcode == ir::Opcode::FieldAddr ||
-                    inst.opcode == ir::Opcode::StrFieldAddr ||
-                    inst.opcode == ir::Opcode::AddrOf;
+                //   switch 判定（旧实现为 27 项 || 长链，每指令比较开销大）
+                const bool isPureOp = isConstPropagateTarget(inst.opcode);
                 // 操作数数量与可折叠性按 opcode 一次判定（旧实现每指令两次）
                 const std::size_t opCount = operandCount(inst.opcode);
                 const bool foldable = isFoldableOpcode(inst.opcode);
