@@ -370,13 +370,19 @@ void X64CodeGenerator::emitInt128Compare(AsmWriter& writer, const ir::IRInstruct
         if (v.id >= 0) return regSlot(v.id + 1);
         return regSlot(v.id);
     };
+    // 1137（审查修复 P0-A 暴露的既有机制缺陷）：常量临时区原写 [rsp+32]/
+    //   [rsp+40]（调用前 rsp 之上=函数帧内低端）——与局部变量槽重叠：先比较
+    //   一次 128 常量会踩坏活跃 128 变量（同一变量第二次 128 比较恒不命中·
+    //   1137 实锚：正128 丁=u128max 经一次 switch 后第二次比较丢失值）。
+    //   改为先 sub rsp,64（32 字节影子空间 + 32 字节常量区）再写
+    //   [rsp+32]/[rsp+48]——常量区位于影子空间之上（callee 不写该区）。
+    writer.line("sub rsp, 64");
     const std::string aAddr = addrOfI128(inst.operands[0], writer);
     const std::string bAddr = addrOfI128(inst.operands[1], writer);
     writer.line("lea rcx, " + aAddr);
     writer.line("lea rdx, " + bAddr);
-    writer.line("sub rsp, 32");  // 影子空间
     writer.line("call " + helper);
-    writer.line("add rsp, 32");
+    writer.line("add rsp, 64");
     // 返回值在 eax（int），结果槽存 i1
     std::string dst = resultText(inst.result);
     writer.line("mov rcx, rax");  // 保存比较结果

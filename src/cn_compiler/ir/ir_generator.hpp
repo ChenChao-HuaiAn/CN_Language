@@ -292,6 +292,11 @@ private:
     void genWhile(WhileStmt* node);             // 当循环
     void genFor(ForStmt* node);                 // 循环（for风格/无限）
     void genSwitch(SwitchStmt* node);           // 选择语句（级联条件跳转）
+    // 1137（审查修复 P2·体量拆分）：情况字符串比较（__cn_str_eq 链·
+    //   genSwitch 内联段外迁）。
+    ir::IRValue emitCaseStringCompare1137(const std::string& text,
+                                          const ir::IRValue& sel,
+                                          const SourceLocation& loc);
     ir::IRBlock* newBlock(const std::string& label);  // 新建基本块并加入函数
     void setCurrentBlock(ir::IRBlock* block);   // 设置当前生成块
 

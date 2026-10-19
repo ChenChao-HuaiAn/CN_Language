@@ -218,7 +218,17 @@ void X64CodeGenerator::emitCompareInt(AsmWriter& writer, const ir::IRInstruction
                 op2Text = "rcx";
             }
         } catch (...) {
-            // 解析失败按立即数原样（防御性）
+            // 1137（审查修复 P0-B）：>i64max 的十进制常量（stoll 溢出）——
+            //   补 stoull+hex 装载中转经 rcx 比较（原样保留十进制文本会被
+            //   ml64 判非法立即数 A2084：`cmp r12, 9223372036854775808`；
+            //   (i64max, u64max] 区间标签/常量比较实测 build rc=1）。
+            try {
+                const unsigned long long uv = std::stoull(op2Text);
+                writer.line("mov rcx, " + uint64HexText(uv));
+                op2Text = "rcx";
+            } catch (...) {
+                // 解析失败按立即数原样（防御性）
+            }
         }
     }
     std::string w = widthFor(cmpType, "rax");

@@ -2990,7 +2990,7 @@
   {
    "文件": "src/cn_compiler/parser/parser_stmt.cpp",
    "函数": "parseCaseValue",
-   "锚文本": "if (acc.empty()) {",
+   "锚文本": "if (!carryOk1137) {",
    "来源": "1137",
    "类别": "上游已诊断",
    "静默风险": "低",
@@ -3006,6 +3006,28 @@
    "类别": "上游已诊断",
    "静默风险": "低",
    "原因": "1137 审查修复轮：解析失败路径=先 reportCaseCarry 报错（承载超域/非法文本）再 return false——该返回是解析失败中止信号（调用方 groupOk=false 跳过该组），非静默默认值（错误已诊断·上游已诊断恢复路径）。",
+   "登记人": "AI（1137 审查修复轮·逐处实读）",
+   "登记日": "2026-10-19"
+  },
+  {
+   "文件": "src/cn_compiler/parser/parser_stmt.cpp",
+   "函数": "parseCaseIntLabel",
+   "锚文本": "if (!normalizeCaseIntText(raw2, neg2, dec2, st2)) {",
+   "来源": "1137",
+   "类别": "上游已诊断",
+   "静默风险": "低",
+   "原因": "1137 审查修复 P2 拆分轮：第二操作数解析失败路径=先 reportCaseCarryError 报错再 return false（解析失败中止信号·调用方跳过该组），非静默默认值。",
+   "登记人": "AI（1137 审查修复轮·逐处实读）",
+   "登记日": "2026-10-19"
+  },
+  {
+   "文件": "src/cn_compiler/parser/parser_stmt.cpp",
+   "函数": "parseCaseIntLabel",
+   "锚文本": "if (hasParen && !match(TokenType::RightParen)) {",
+   "来源": "1137",
+   "类别": "业务值",
+   "静默风险": "低",
+   "原因": "1137 审查修复 P2 拆分轮：括号未闭合=非简单折叠形态判定回退（pos_=save 回退通用路径·由「情况标签必须是整型/字符/字符串常量」诊断收口）——谓词形态判定非静默默认值。",
    "登记人": "AI（1137 审查修复轮·逐处实读）",
    "登记日": "2026-10-19"
   }

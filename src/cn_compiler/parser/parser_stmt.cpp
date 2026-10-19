@@ -377,6 +377,115 @@ std::int64_t caseIntValueIfFits(const std::string& dec) {
 
 }  // namespace
 
+// 1137（审查修复 P2·体量拆分）：情况标签承载超域/非法文本报错（st=2 →
+//   正128；1 → 整128；0=非法文本防御面）。
+void Parser::reportCaseCarryError(int st) {
+    if (st == 2) {
+        reportErrorHere("整数字面量超出正128（2^128-1）范围");
+    } else if (st == 1) {
+        reportErrorHere("整数字面量超出整128（2^127-1）范围");
+    } else {
+        reportErrorHere("情况标签不是有效的整型常量");
+    }
+}
+
+// 1137（审查修复 P2·体量拆分；折叠求值逻辑自 parseCaseValue 原样外迁）：
+//   整型常量表达式标签——320-a 窄面（[-]字面 / ([-]字面 ± [-]字面)）+ 归一
+//   文本承载判（normalizeCaseIntText·910 单点）与文本级折叠求值
+//   （types::decTextAdd919/decTextSub919·大数安全）。handled=false=非该
+//   形态回退通用路径；handled=true 时 ok=false 表示已报错。
+bool Parser::parseCaseIntLabel(std::int64_t& outValue, std::string& outRaw,
+                               std::string& outDecValue, bool& handled) {
+    handled = false;
+    const bool hasParen = check(TokenType::LeftParen);
+    const std::size_t save = pos_;
+    if (hasParen) advance();  // 进括号
+    const bool neg1 = match(TokenType::Minus);
+    if (currentType() != TokenType::IntegerLiteral ||
+        peek(1).getType() == TokenType::Dot) {
+        pos_ = save;  // 回退（非整型常量表达式形态）
+        return false;
+    }
+    handled = true;
+    const std::string raw1 = current().getValue();
+    advance();
+    std::string dec1;
+    int st1 = 0;
+    // 静默豁免上游已诊断: 承载超域/非法文本已由 reportCaseCarryError 报错——return false=解析失败中止信号（调用方跳过该组），非静默默认值
+    if (!normalizeCaseIntText(raw1, neg1, dec1, st1)) {
+        reportCaseCarryError(st1);
+        return false;
+    }
+    // 括号一层折叠第二项（320-a 窄面不变）
+    bool folded2 = false;
+    bool subOp = false;
+    bool neg2 = false;
+    std::string dec2;
+    std::string raw2;
+    if (hasParen && (check(TokenType::Plus) || check(TokenType::Minus))) {
+        subOp = check(TokenType::Minus);
+        advance();
+        neg2 = match(TokenType::Minus);
+        if (currentType() == TokenType::IntegerLiteral) {
+            raw2 = current().getValue();
+            int st2 = 0;
+            // 静默豁免上游已诊断: 第二项承载超域/非法文本已由 reportCaseCarryError 报错——return false=解析失败中止信号
+            if (!normalizeCaseIntText(raw2, neg2, dec2, st2)) {
+                reportCaseCarryError(st2);
+                return false;
+            }
+            advance();
+            folded2 = true;
+        }
+    }
+    // 折叠求值全文本级（919 十进制文本加减·大数安全）。结构：无括号 或
+    //   括号已闭合 → 求值取值（提前 return 扣住合法区间）；余下=括号未闭合
+    //   的非简单折叠形态 → 回退通用路径（将报错）。
+    // 静默豁免业务值: 括号未闭合=非简单折叠形态判定（回退通用路径后由「情况标签必须是整型/字符/字符串常量」诊断收口·非静默默认值）
+    if (hasParen && !match(TokenType::RightParen)) {
+        pos_ = save;  // 非简单折叠形态——回退通用路径（将报错）
+        handled = false;
+        return false;
+    }
+    std::string acc = dec1;
+    if (folded2) {
+        acc = subOp ? types::decTextSub919(dec1, dec2)
+                    : types::decTextAdd919(dec1, dec2);
+    }
+    // 1137（审查修复 P0-A）：结果承载判按**操作数原始后缀符号性**——
+    //   无后缀/整族=整128 有符号域（±2^127）；任一操作数为无符号族
+    //   （U/UL/ULL）且非负号形态 → 正128 无符号域（2^128-1）。禁对已剥
+    //   后缀的归一文本二次按无后缀重判（2^127..2^128-1 的 ULL 标签曾被
+    //   误拒·P0-A 实锚）。
+    const auto isUnsignedLit1137 = [](const std::string& t) {
+        return t == "正32" || t == "正64" || t == "正128";
+    };
+    bool unsignedCarry1137 =
+        !neg1 && isUnsignedLit1137(types::literalTypeOf(raw1, false));
+    if (folded2 && !neg2 &&
+        isUnsignedLit1137(types::literalTypeOf(raw2, false))) {
+        unsignedCarry1137 = true;
+    }
+    const bool carryOk1137 =
+        !acc.empty() &&
+        (unsignedCarry1137
+             ? types::decTextFitsUnsignedRange(
+                   acc, "340282366920938463463374607431768211455")
+             : types::decTextFitsSignedRange(
+                   acc, "170141183460469231731687303715884105728",
+                   "170141183460469231731687303715884105727"));
+    // 静默豁免上游已诊断: 折叠结果超承载族（超 u128/超整128/超正128）已报错误——return false=解析失败中止信号
+    if (!carryOk1137) {
+        reportCaseCarryError(unsignedCarry1137 ? 2 : 1);
+        return false;
+    }
+    outDecValue = acc;
+    outValue = caseIntValueIfFits(acc);
+    // 括号形态 outRaw=折叠后值文本（320-a 原行为）；直取形态=原文
+    outRaw = hasParen ? acc : (neg1 ? "-" : "") + raw1;
+    return true;
+}
+
 // 求值情况标签常量：整数字面量 / 字符字面量 / 字符串字面量 / 枚举引用（编译期常量）
 // C-4（2026-08）扩展：字符串字面量（outIsString=true，选择 字符串匹配）与
 //   裸枚举成员名（outIsEnumMember=true，形如 情况 红——语义层按 选择 条件枚举类型解析；
@@ -391,92 +500,14 @@ bool Parser::parseCaseValue(std::int64_t& outValue, std::string& outRaw,
     outIsString = false;
     outIsEnumMember = false;
     outDecValue.clear();
-    // 1137：承载超域/非法文本报错（st=2 → 正128；1 → 整128；0=非法防御面）
-    const auto reportCaseCarry = [this](int st) {
-        if (st == 2) {
-            reportErrorHere("整数字面量超出正128（2^128-1）范围");
-        } else if (st == 1) {
-            reportErrorHere("整数字面量超出整128（2^127-1）范围");
-        } else {
-            reportErrorHere("情况标签不是有效的整型常量");
-        }
-    };
-    // 320-a（T37·方案甲·C 同款）：整型常量表达式标签——负字面（情况 -1:，
-    //   词法把负号切成独立 Minus token，原 IntegerLiteral 分支不可达）与
-    //   一层折叠（情况 (0-1): / 情况 1,-1:）。窄面：[-]字面 与 ([-]字面 ± [-]字面)
-    //   ——完整常量表达式求值（嵌套/乘除）留后续按需扩（诚实边界）。
-    // 1137：取值链切「归一文本 + 承载判域」（normalizeCaseIntText·910 单点）：
-    //   原 parseIntValue stoll 溢出静默回 0 毒化超承载标签；折叠求值切
-    //   types::decTextAdd919/decTextSub919（大数安全·消除域内极端值 v1±v2
-    //   的有符号溢出 UB 面）。条件类型域（P0-1）留语义层（condType 上下文）。
+    // 1137（审查修复 P2·体量拆分）：整型常量表达式标签（[-]字面 与
+    //   ([-]字面 ± [-]字面) 窄面）外迁 parseCaseIntLabel——handled=false
+    //   回退下方通用路径；handled=true 时 ok=false 表示已报错。
     {
-        const bool hasParen = check(TokenType::LeftParen);
-        const std::size_t save = pos_;
-        if (hasParen) advance();  // 进括号
-        const bool neg1 = match(TokenType::Minus);
-        if (currentType() == TokenType::IntegerLiteral &&
-            peek(1).getType() != TokenType::Dot) {
-            const std::string raw1 = current().getValue();
-            advance();
-            std::string dec1;
-            int st1 = 0;
-            // 静默豁免上游已诊断: 承载超域/非法文本已由 reportCaseCarry 报错——return false=解析失败中止信号（调用方跳过该组），非静默默认值
-            if (!normalizeCaseIntText(raw1, neg1, dec1, st1)) {
-                reportCaseCarry(st1);
-                return false;
-            }
-            // 括号一层折叠第二项（320-a 窄面不变）
-            bool folded2 = false;
-            bool subOp = false;
-            std::string dec2;
-            if (hasParen &&
-                (check(TokenType::Plus) || check(TokenType::Minus))) {
-                subOp = check(TokenType::Minus);
-                advance();
-                const bool neg2 = match(TokenType::Minus);
-                if (currentType() == TokenType::IntegerLiteral) {
-                    int st2 = 0;
-                    if (!normalizeCaseIntText(current().getValue(), neg2, dec2,
-                                              st2)) {
-                        reportCaseCarry(st2);
-                        return false;
-                    }
-                    advance();
-                    folded2 = true;
-                }
-            }
-            // 折叠求值全文本级（919 十进制文本加减·大数安全）。结构：无括号
-            //   或 括号已闭合 → 求值取值（提前 return 扣住合法区间）；余下
-            //   =括号未闭合的非简单折叠形态 → 回退通用路径（将报错）。
-            if (!hasParen || match(TokenType::RightParen)) {
-                std::string acc = dec1;
-                if (folded2) {
-                    acc = subOp ? types::decTextSub919(dec1, dec2)
-                                : types::decTextAdd919(dec1, dec2);
-                }
-                // 折叠结果承载判（结果超整128/正128 承载族=编译期拒；
-                //   空串=超 u128 域同判）
-                int stAcc = 0;
-                // 静默豁免上游已诊断: 折叠结果超 u128 域已报「超出整128」——return false=解析失败中止信号
-                if (acc.empty()) {
-                    reportCaseCarry(1);
-                    return false;
-                }
-                (void)types::integerLiteralRuntimeType(acc, &stAcc);
-                if (stAcc != 0) {
-                    reportCaseCarry(stAcc);
-                    return false;
-                }
-                outDecValue = acc;
-                outValue = caseIntValueIfFits(acc);
-                // 括号形态 outRaw=折叠后值文本（320-a 原行为）；直取形态=原文
-                outRaw = hasParen ? acc : (neg1 ? "-" : "") + raw1;
-                return true;
-            }
-            pos_ = save;  // 非简单折叠形态——回退通用路径（将报错）
-        } else {
-            pos_ = save;  // 回退（非整型常量表达式形态）
-        }
+        bool handled1137 = false;
+        const bool ok1137 =
+            parseCaseIntLabel(outValue, outRaw, outDecValue, handled1137);
+        if (handled1137) return ok1137;
     }
     if (currentType() == TokenType::StringLiteral) {
         // 字符串情况值（C-4）：rawValue 保留含引号字面量，语义层解码
@@ -492,9 +523,9 @@ bool Parser::parseCaseValue(std::int64_t& outValue, std::string& outRaw,
         // 1137：同折叠段——归一文本 + 承载判域（超承载=报错；原裸 stoll
         //   的「抛异常/静默」两态统一收口）
         int stG = 0;
-        // 静默豁免上游已诊断: 承载超域/非法文本已由 reportCaseCarry 报错——return false=解析失败中止信号
+        // 静默豁免上游已诊断: 承载超域/非法文本已由 reportCaseCarryError 报错——return false=解析失败中止信号
         if (!normalizeCaseIntText(outRaw, false, outDecValue, stG)) {
-            reportCaseCarry(stG);
+            reportCaseCarryError(stG);
             return false;
         }
         outValue = caseIntValueIfFits(outDecValue);

@@ -135,6 +135,37 @@ bool SemanticAnalyzer::intLiteralFitsType(const Expr* e, const std::string& to) 
     return types::decTextFitsTypeDomain(dec, domain);
 }
 
+// 1137（审查修复 P0-C/P1-1/P1-2）：选择情况标签条件域判 + 重复检测单点。
+//   键统一=归一十进制文本（整数标签 decValue；枚举成员/字符值 to_string）——
+//   跨形态同值即重复（`情况 红:` vs `情况 1:`、`情况 'A':` vs `情况 65:`·
+//   P1-1；与父提交 int64 单集合口径等价）。域判按条件类型域单点
+//   types::decTextFitsTypeDomain：字符/枚举归并整32 存储域（P0-C 甲案——
+//   001 §3.7/§3.7b 整源→字符位模式互通；Unicode 标量语义=乙案待用户批准）；
+//   枚举成员标签回填值同样受判（P1-2：原仅整数字面量判域，成员值超 i32 时
+//   静默截断错命中）。超域=编译期拒（用户令 2026-10-18 #1076）。
+void SemanticAnalyzer::checkSwitchCaseLabel1137(
+    CaseLabel* caseNode, const std::string& condType,
+    std::unordered_set<std::string>& seenTexts) {
+    std::string key1137 = !caseNode->decValue.empty()
+                              ? caseNode->decValue
+                              : std::to_string(caseNode->value);
+    if (key1137 == "-0") key1137 = "0";  // 数值零归一
+    const std::string condDomain1137 =
+        (condType == "字符" || isEnumType(condType)) ? std::string("整32")
+                                                     : condType;
+    if (!types::decTextFitsTypeDomain(key1137, condDomain1137)) {
+        diagnostics_.report(DiagnosticLevel::Error, caseNode->location,
+                            "情况标签 '" + key1137 + "' 超出条件类型 '" +
+                                condType + "' 的表示范围");
+    }
+    if (!seenTexts.insert(key1137).second) {
+        diagnostics_.report(DiagnosticLevel::Error, caseNode->location,
+                            "选择语句中情况值 '" + caseNode->rawValue +
+                                "' 重复");
+    }
+}
+
+
 // 919-final（2026-10-18 用户裁决「字面量单点判域·Rust 口径」·四边界定案）：
 //   子树扫描——表达式（含变量等非常量形态）内任一**超 64 位承载**整数字面量
 //   （数学值 > 2^63-1 / 负值 < -2^63·parseIntValue 毒化面）超目标类型域即真

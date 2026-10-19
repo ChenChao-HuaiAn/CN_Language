@@ -241,8 +241,10 @@ bool decTextFitsUnsignedRange(const std::string& decText, const char* bound);
 //   枚举由调用方归并为 整32）的表示范围内——**类型域表单点收口**（原散于
 //   semantic_literal_domain intLiteralFitsType 尾段的域表；情况标签条件域
 //   判定与字面量判域共用单点，禁止第二份域表）。域口径与 910/728g/756/640
-//   立法链一致：整8[-128,127]…整128[-2^127,2^127-1]、正族[0,bound]；
-//   字符=规范码点域 [0,0x10FFFF]（字符 i32 存储·Unicode 标量值）。
+//   立法链一致：整8[-128,127]…整128[-2^127,2^127-1]、正族[0,bound]。
+//   1137 审查修复 P0-C（甲案）：字符**不设独立条**——字符条件标签按整32
+//   存储域判（001 §3.7/§3.7b 整源→字符位模式互通；Unicode 标量语义=乙案
+//   须用户批准落 001）。
 //   非整数类型名=防御恒真（调用方 isInteger/枚举归并已前置）。
 bool decTextFitsTypeDomain(const std::string& decText,
                            const std::string& typeName);

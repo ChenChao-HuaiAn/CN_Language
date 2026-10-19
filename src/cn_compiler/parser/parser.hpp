@@ -199,6 +199,13 @@ private:
     bool parseCaseValue(std::int64_t& outValue, std::string& outRaw,
                         bool& outIsString, bool& outIsEnumMember,
                         std::string& outDecValue);  // C-4：字符串/裸枚举成员；1137：整数标签归一十进制文本（权威值）
+    // 1137（审查修复 P2·体量拆分）：整型常量表达式标签（[-]字面 与
+    //   ([-]字面 ± [-]字面) 窄面）——handled=false 回退通用路径；
+    //   handled=true 时 ok=false 表示已报错（承载超域/非法文本）。
+    bool parseCaseIntLabel(std::int64_t& outValue, std::string& outRaw,
+                           std::string& outDecValue, bool& handled);
+    // 1137：情况标签承载超域/非法文本报错（st=2 正128、1 整128、0 非法）。
+    void reportCaseCarryError(int st);
 
     // ==================== 表达式解析（Pratt优先级链，13级，规格书4.5） ====================
 

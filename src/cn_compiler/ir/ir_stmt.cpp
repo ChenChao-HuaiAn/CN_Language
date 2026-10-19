@@ -520,6 +520,43 @@ void IRGenerator::genFor(ForStmt* node) {
     setCurrentBlock(newBlock(endLabel));
     varStack_.pop_back();   // 916-a：循环头声明作用域弹出
 }
+namespace {
+
+// 1137（审查修复 P2·体量拆分）：情况标签比较操作数文本——归一十进制文本
+//   权威值（i128/u128 条件按 splitI128Text 双半·与 evalDefaultExpr 同款）；
+//   非整数标签（decValue 空）=枚举/字符值文本。
+std::string caseCompareOperandText1137(const CaseLabel* label,
+                                       const std::string& selType) {
+    if (label->decValue.empty()) return std::to_string(label->value);
+    if (selType == "i128" || selType == "u128") {
+        const std::string split = types::splitI128Text(label->decValue);
+        if (!split.empty()) return split;
+    }
+    return label->decValue;
+}
+
+}  // namespace
+
+// 1137（审查修复 P2·体量拆分）：情况字符串值比较（原 genSwitch 内联段）——
+//   字符串常量池注册 + __cn_str_eq 调用（sel 为 ptr 时整值 Eq 会误比较
+//   指针地址，须走字符串相等调用）。
+ir::IRValue IRGenerator::emitCaseStringCompare1137(const std::string& text,
+                                                   const ir::IRValue& sel,
+                                                   const SourceLocation& loc) {
+    int sindex = -1;
+    auto sit = module_->stringIndex.find(text);
+    if (sit != module_->stringIndex.end()) {
+        sindex = sit->second;
+    } else {
+        sindex = static_cast<int>(module_->stringConstants.size());
+        module_->stringConstants.push_back(text);
+        module_->stringIndex[text] = sindex;
+    }
+    ir::IRValue caseStr = emitResult(ir::Opcode::ConstString, {}, "ptr",
+                                     "@str" + std::to_string(sindex), loc);
+    return emitResult(ir::Opcode::Call, {sel, caseStr}, "i1", "__cn_str_eq", loc);
+}
+
 void IRGenerator::genSwitch(SwitchStmt* node) {
     const std::size_t caseCount = node->cases.size();
     // 第一遍：预创建全部标签块（判断块+体块+默认块+出口块），
@@ -554,37 +591,15 @@ void IRGenerator::genSwitch(SwitchStmt* node) {
         if (node->cases[i]->isString) {
             std::string text = node->cases[i]->strValue;
             if (text.empty()) text = decodeString(node->cases[i]->rawValue);
-            int sindex = -1;
-            auto sit = module_->stringIndex.find(text);
-            if (sit != module_->stringIndex.end()) {
-                sindex = sit->second;
-            } else {
-                sindex = static_cast<int>(module_->stringConstants.size());
-                module_->stringConstants.push_back(text);
-                module_->stringIndex[text] = sindex;
-            }
-            ir::IRValue caseStr = emitResult(ir::Opcode::ConstString, {}, "ptr",
-                                             "@str" + std::to_string(sindex),
-                                             node->location);
-            cmp = emitResult(ir::Opcode::Call, {sel, caseStr}, "i1", "__cn_str_eq",
-                             node->location);
+            cmp = emitCaseStringCompare1137(text, sel, node->location);
         }
         // 1137（P0-1）：非字符串面=归一十进制文本常量比较（机械分流·避免
-        //   else 承载业务代码的 else 新规）。
+        //   else 承载业务代码的 else 新规）。条件类型域超 i64 的标签值由
+        //   语义层判域后以文本发射（i128/u128 双半），不再经 int64 value。
         if (!node->cases[i]->isString) {
-            // 条件类型域可超 i64（整128/正128 域标签值 int64 无法承载；原
-            //   to_string(value) 对超承载标签用占位 0=静默错值）；i128/u128
-            //   条件用 splitI128Text 双半文本（与 evalDefaultExpr 整128
-            //   常量物化同款），需条件域已在语义层判域（超域=编译期拒）。
-            const std::string& decC = node->cases[i]->decValue;
-            std::string litText = decC.empty()
-                                      ? std::to_string(node->cases[i]->value)
-                                      : decC;
-            if (!decC.empty() && (sel.type == "i128" || sel.type == "u128")) {
-                const std::string split = types::splitI128Text(decC);
-                if (!split.empty()) litText = split;
-            }
-            ir::IRValue caseConst = ir::IRValue::constant(litText, sel.type);
+            ir::IRValue caseConst = ir::IRValue::constant(
+                caseCompareOperandText1137(node->cases[i].get(), sel.type),
+                sel.type);
             cmp = emitResult(ir::Opcode::Eq, {sel, caseConst}, "i1", "", node->location);
         }
         // 匹配 -> 体块；不匹配 -> 下一判断/默认/出口

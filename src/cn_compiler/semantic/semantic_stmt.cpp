@@ -374,6 +374,9 @@ std::unique_ptr<Stmt> cloneStmtImpl(Stmt* node) {
                 auto cc = std::make_unique<CaseLabel>(c->value);
                 cc->rawValue = c->rawValue;
                 cc->decValue = c->decValue;  // 1137：归一文本（权威值）随克隆
+                cc->isString = c->isString;      // 1137（P2）：字符串面标记
+                cc->isEnumMember = c->isEnumMember;
+                cc->strValue = c->strValue;
                 for (auto& s : c->statements) cc->statements.push_back(cloneStmt(s.get()));
                 sw->cases.push_back(std::move(cc));
             }
@@ -811,9 +814,8 @@ void SemanticAnalyzer::visitSwitchStmt(SwitchStmt* node) {
                             condType + "'");
     }
     // 情况值去重检测（编译期常量，语义层用 set 去重）
-    std::unordered_set<std::int64_t> seenValues;
-    // 1137（P1-2）：整数标签按归一十进制文本去重（超 i64 承载标签 value 为
-    //   占位 0——按 value 去重会与真实 0 标签误判；重复超域标签仍报重复）
+    // 1137（审查修复 P1-1）：整数/枚举/字符标签**统一归一十进制文本键**——
+    //   跨形态同值即重复（原整数与枚举/字符双轨不相交=漏报）
     std::unordered_set<std::string> seenTexts;
     std::unordered_set<std::string> seenStrings;
     switchDepth_++;
@@ -877,38 +879,9 @@ void SemanticAnalyzer::visitSwitchStmt(SwitchStmt* node) {
                                         "' 须为整型/字符常量（裸成员名仅用于枚举选择）");
             }
         }
-        // 1137（P0-1/P0-2·用户令 #1076 口径）：情况标签值域判——整数字面量
-        //   标签须在**条件类型**的表示范围内（超域=编译期直接拒绝：字面量
-        //   超出上下文/目标类型表示范围即拒·Rust pattern 值不可表示同口径；
-        //   原「恒不匹配」静默语义废止）。域表单点=types::decTextFitsTypeDomain
-        //   （枚举条件归并整32；字符=码点域）。
-        if (!caseNode->decValue.empty()) {
-            const std::string condDomain1137 =
-                isEnumType(condType) ? std::string("整32") : condType;
-            if (!types::decTextFitsTypeDomain(caseNode->decValue,
-                                              condDomain1137)) {
-                diagnostics_.report(
-                    DiagnosticLevel::Error, caseNode->location,
-                    "情况标签 '" + caseNode->decValue + "' 超出条件类型 '" +
-                        condType + "' 的表示范围");
-            }
-        }
-        // 重复检测：整数标签按归一文本、其它（枚举/字符值）按 value——
-        //   超 i64 承载标签不复用 value 占位（P1-2：重复超域标签仍报重复）
-        bool dupLabel1137 = false;
-        if (!caseNode->decValue.empty()) {
-            std::string dupText1137 = caseNode->decValue;
-            if (dupText1137 == "-0") dupText1137 = "0";  // 数值零归一
-            dupLabel1137 = !seenTexts.insert(dupText1137).second;
-        }
-        if (caseNode->decValue.empty()) {
-            dupLabel1137 = !seenValues.insert(caseNode->value).second;
-        }
-        if (dupLabel1137) {
-            diagnostics_.report(DiagnosticLevel::Error, caseNode->location,
-                                "选择语句中情况值 '" + caseNode->rawValue +
-                                "' 重复");
-        }
+        // 1137（审查修复 P1-1/P1-2/P0-C）：条件域判 + 重复检测单点（helper·
+        //   跨形态统一归一文本键；超域=编译期拒·用户令 #1076）
+        checkSwitchCaseLabel1137(caseNode.get(), condType, seenTexts);
         restoreMoved(swBase);
         checkStmt(caseNode.get());
         for (const auto& kv : snapshotMoved()) swMerged[kv.first] = kv.second;
