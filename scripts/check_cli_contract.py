@@ -219,7 +219,7 @@ def 主流程() -> int:
         #   尾部输出使「编译期拒绝」与「运行期错误码」一眼可分，判据本身不放宽。
         诊断尾部 = next((行 for 行 in reversed(诊断(p).strip().splitlines()) if 行.strip()), "")
         断言("run 运行期错误码→rc=1", p.returncode == 1 and "错误码1" in 诊断(p),
-             f"rc={p.returncode}·诊断尾部={诊断尾部[:120]}")
+             f"rc={p.returncode}·诊断尾部={诊断尾部[-120:]}")
     else:
         for n in (1, 3, 5, 255):
             跳过(f"run 退出码透传 rc={n}（B4 锚定）", "交叉视角产物非本机可执行形态")
