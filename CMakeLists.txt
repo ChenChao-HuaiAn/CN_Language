@@ -125,6 +125,9 @@ add_library(cn_compiler_common STATIC
 )
 target_include_directories(cn_compiler_common PUBLIC ${CMAKE_SOURCE_DIR}/src)
 
+# 线程库（任务 1145：codegen 函数级并行发射——std::thread；win/linux/arm64 三平台）
+find_package(Threads REQUIRED)
+
 # 词法模块库：Token定义 + 词法分析器 + 预处理器（Task 1.1 + Task 1.2 + Task 6.6 条件编译，
 #   供编译器与单元测试共用）
 add_library(cn_compiler_lexer STATIC
@@ -300,6 +303,7 @@ target_link_libraries(cn_compiler_ir PUBLIC cn_compiler_model cn_compiler_parser
 # 阶段C（Task 4.3/4.4）：reg_alloc.cpp（线性扫描寄存器分配器）+ debug_info.cpp（调试信息）
 add_library(cn_compiler_codegen STATIC
     src/cn_compiler/codegen/backend_factory.cpp
+    src/cn_compiler/codegen/parallel_codegen.cpp
     src/cn_compiler/codegen/reg_alloc.cpp
     src/cn_compiler/codegen/peephole_slot.cpp
     src/cn_compiler/codegen/debug_info.cpp
@@ -339,7 +343,7 @@ add_library(cn_compiler_codegen STATIC
     src/cn_compiler/codegen/linux_x64/linux_x64_codegen_vtable.cpp
 )
 target_include_directories(cn_compiler_codegen PUBLIC ${CMAKE_SOURCE_DIR}/src)
-target_link_libraries(cn_compiler_codegen PUBLIC cn_compiler_ir cn_compiler_model cn_compiler_common)
+target_link_libraries(cn_compiler_codegen PUBLIC cn_compiler_ir cn_compiler_model cn_compiler_common Threads::Threads)
 
 # AST打印器：访问者模式递归打印AST树（Task 1.10 ast 命令，供编译器与单元测试共用）
 
