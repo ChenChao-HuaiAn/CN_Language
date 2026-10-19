@@ -124,7 +124,16 @@ std::string foldClassInstanceInit(const Expr* init, const std::string& fieldType
         const auto* lit = static_cast<const IntegerLiteral*>(folded);
         const std::string canon = types::canonical(fieldType);
         if (types::isInt128Type(canon)) {
-            return std::string(sign < 0 ? "-" : "") + lit->raw;
+            // 1016（五轮审查 P1-4）：嵌套/双重负号保留形态 raw 可能已带 '-'
+            //   （P1-B parser 保留 UnaryExpr 后的内层折叠 raw）——先剥号并翻转
+            //   符号，原直接 "-"+raw 产出 "--5U" 非法汇编（ml64 A2017）。
+            std::string body = lit->raw;
+            int effSign = sign;
+            if (!body.empty() && body[0] == '-') {
+                body.erase(0, 1);
+                effSign = -effSign;
+            }
+            return std::string(effSign < 0 ? "-" : "") + body;
         }
         if (types::isStaticScalarInitType(canon)) {
             // 790：与 468 同 helper（原值级 lit->value 对 u64 域 0x 文本

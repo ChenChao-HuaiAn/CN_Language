@@ -210,7 +210,11 @@ static bool scanSubtreeLiteralBeyond919(
           static_cast<const UnaryExpr*>(e)->op == Operator::Add) &&
          static_cast<const UnaryExpr*>(e)->operand->getType() ==
              NodeType::IntegerLiteral)) {
-        const bool negShell = (t == NodeType::UnaryExpr);
+        // 1016（五轮审查 P2③）：negShell 仅一元负号（Subtract）——原含一元
+        //   加号（Add 与 Subtract 同入本分支）时误置真（+字面量被插 '-'）。
+        const bool negShell =
+            (t == NodeType::UnaryExpr &&
+             static_cast<const UnaryExpr*>(e)->op == Operator::Subtract);
         const auto* lit = static_cast<const IntegerLiteral*>(
             negShell ? static_cast<const UnaryExpr*>(e)->operand.get() : e);
         // 1016（四轮审查 P1-B）：负号 + 无符号后缀（U/u）非零字面量——无符号
