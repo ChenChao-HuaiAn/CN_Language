@@ -13,6 +13,7 @@
 //      否则 codegen 读不到分支条件（emitTerminator 取 last.operands.back()）
 //   5. 副作用指令（Load/Store/StorePtr/LoadPtr/Call/CallIndirect/FieldAddr）
 //      后清空常量表（内存可能被修改，保守）
+#include <charconv>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -20,32 +21,29 @@
 #include <vector>
 
 #include "cn_compiler/opt/const_fold.hpp"
+#include "cn_compiler/opt/opt_common.hpp"
 
 namespace cn_compiler {
 namespace opt {
 
 namespace {
 
-// 常量文本规范化：解析 10/16/2/8 进制（IR生成器保留原始字面量文本，
-// 如 0b1100/0xFF/077），返回十进制字符串；解析失败返回原文本
-std::string normalizeIntText(const std::string& text) {
-    if (text.size() > 2 && text[0] == '0' &&
-        (text[1] == 'x' || text[1] == 'X' || text[1] == 'b' ||
-         text[1] == 'B' || text[1] == 'o' || text[1] == 'O')) {
-        const int base = (text[1] == 'x' || text[1] == 'X') ? 16
-                         : (text[1] == 'b' || text[1] == 'B') ? 2 : 8;
-        try {
-            const unsigned long long raw = std::stoull(text.substr(2), nullptr, base);
-            return std::to_string(raw);
-        } catch (...) {
-            return text;  // 解析失败保持原样
-        }
-    }
-    return text;
-}
-
-// 整型常量文本 -> int64 值（支持负号与各进制），失败返回 false
+// 整型常量文本 -> int64 值（支持负号与各进制），失败返回 false。
+//   十进制快路径 std::from_chars（0x/0b/0o 先走 opt_common 归一化）；
+//   非法形态回退 std::stoll 保持旧语义（前导空白/+号/尾随垃圾截止）。
 bool parseInt64(const std::string& textRaw, std::int64_t& out) {
+    if (!hasRadixPrefix(textRaw)) {
+        const char* const begin = textRaw.c_str();
+        std::int64_t value = 0;
+        const auto result =
+            std::from_chars(begin, begin + textRaw.size(), value);
+        if (result.ec == std::errc()) {
+            out = value;
+            return true;
+        }
+        if (result.ec == std::errc::result_out_of_range) return false;
+        // invalid_argument：空串/空白/正号等——回退 stoll（旧行为）
+    }
     const std::string text = normalizeIntText(textRaw);
     try {
         out = std::stoll(text, nullptr, 10);
@@ -53,25 +51,6 @@ bool parseInt64(const std::string& textRaw, std::int64_t& out) {
     } catch (...) {
         return false;
     }
-}
-
-// 整型位宽（位）：i8=8, i16=16, i32=32, i64=64, u8=8, ...；未知返回 64
-int intBitWidth(const std::string& type) {
-    if (type == "i8" || type == "u8") return 8;
-    if (type == "i16" || type == "u16") return 16;
-    if (type == "i32" || type == "u32") return 32;
-    return 64;  // i64/u64 及未知类型按64位
-}
-
-// 是否整型 IR 类型（i8~u64；i128 暂不折叠）
-bool isIntType(const std::string& type) {
-    return type == "i8" || type == "u8" || type == "i16" || type == "u16" ||
-           type == "i32" || type == "u32" || type == "i64" || type == "u64";
-}
-
-// 是否浮点 IR 类型
-bool isFloatType(const std::string& type) {
-    return type == "f32" || type == "f64";
 }
 
 // 是否布尔 IR 类型
@@ -146,6 +125,25 @@ std::string formatDouble(double value, const std::string& type) {
     return buf;
 }
 
+// 是否可折叠操作码（foldResolved 的 case 列表；其余指令调用必然返回 false，
+//   run 主循环据此跳过 resolveOperands 的向量/IRValue 拷贝）。
+bool isFoldableOpcode(ir::Opcode op) {
+    switch (op) {
+        case ir::Opcode::Add: case ir::Opcode::Sub: case ir::Opcode::Mul:
+        case ir::Opcode::Div: case ir::Opcode::Mod:
+        case ir::Opcode::WrapAdd: case ir::Opcode::WrapSub: case ir::Opcode::WrapMul:
+        case ir::Opcode::BitAnd: case ir::Opcode::BitOr: case ir::Opcode::BitXor:
+        case ir::Opcode::Shl: case ir::Opcode::Shr:
+        case ir::Opcode::Eq: case ir::Opcode::Ne:
+        case ir::Opcode::Lt: case ir::Opcode::Le: case ir::Opcode::Gt: case ir::Opcode::Ge:
+        case ir::Opcode::And: case ir::Opcode::Or: case ir::Opcode::Not:
+        case ir::Opcode::Cast:
+            return true;
+        default:
+            return false;
+    }
+}
+
 // 将折叠结果写回指令（opcode/extra/type/operands），保留尾部操作数
 void replaceWithConstant(ir::IRInstruction& inst, const std::string& value,
                          const std::string& resultType, bool isFloat,
@@ -211,6 +209,7 @@ bool ConstFoldPass::resolveOperands(const ir::IRInstruction& inst,
                                     std::vector<ir::IRValue>& out,
                                     std::vector<ir::IRValue>& tail) {
     const std::size_t count = operandCount(inst.opcode);
+    out.reserve(count);
     for (std::size_t i = 0; i < count && i < inst.operands.size(); ++i) {
         const ir::IRValue& op = inst.operands[i];
         if (op.isConstant) {
@@ -569,8 +568,10 @@ bool ConstFoldPass::compareFloat(ir::Opcode op, const std::string& aText,
 bool ConstFoldPass::foldResolved(ir::IRInstruction& inst,
                                  const std::vector<ir::IRValue>& out,
                                  const std::vector<ir::IRValue>& tail) {
-    const std::string opType = out.empty() ? "" : out[0].type;
-    const std::string resultType = inst.type;
+    // 引用而非拷贝（旧实现每条可折叠指令复制类型字符串）
+    static const std::string kEmptyType;
+    const std::string& opType = out.empty() ? kEmptyType : out[0].type;
+    const std::string& resultType = inst.type;
 
     switch (inst.opcode) {
         // ---- 算术（整型/浮点；Wrap* 回绕折叠同面·任务 474）----
@@ -739,14 +740,16 @@ bool ConstFoldPass::run(ir::IRModule& module) {
                     inst.opcode == ir::Opcode::FieldAddr ||
                     inst.opcode == ir::Opcode::StrFieldAddr ||
                     inst.opcode == ir::Opcode::AddrOf;
+                // 操作数数量与可折叠性按 opcode 一次判定（旧实现每指令两次）
+                const std::size_t opCount = operandCount(inst.opcode);
+                const bool foldable = isFoldableOpcode(inst.opcode);
                 // 注意7：Branch 条件（尾部操作数）必须传播——条件跳转块的
                 //        最后一条指令被折叠为 ConstBool 后，尾部条件寄存器若不替换，
                 //        codegen emitTerminator 读 last.operands.back() 得到槽垃圾 -> 崩溃。
                 //        因此尾部操作数无条件传播（条件是 i1 布尔，安全）。
                 bool replaced = false;
                 if (isPureOp) {
-                    const std::size_t count = operandCount(inst.opcode);
-                    for (std::size_t i = 0; i < count && i < inst.operands.size(); ++i) {
+                    for (std::size_t i = 0; i < opCount && i < inst.operands.size(); ++i) {
                         ir::IRValue& op = inst.operands[i];
                         if (!op.isConstant && op.id >= 0) {
                             auto it = consts.find(op.id);
@@ -757,10 +760,11 @@ bool ConstFoldPass::run(ir::IRModule& module) {
                                 (cv.type == op.type || cv.type == "i1")) {
                                 // 常量文本规范化：0b1100/0xFF/077 -> 十进制
                                 // （codegen operandText 对常量直接输出文本，
-                                //  MASM 不支持 0b/0x 前缀）
-                                ir::IRValue normalized = cv;
-                                normalized.extra = normalizeIntText(cv.extra);
-                                op = normalized;  // 替换为常量值
+                                //  MASM 不支持 0b/0x 前缀）；十进制恒等跳过拷贝
+                                op = cv;
+                                if (hasRadixPrefix(op.extra)) {
+                                    op.extra = normalizeIntText(op.extra);
+                                }
                                 replaced = true;
                             }
                         }
@@ -772,7 +776,7 @@ bool ConstFoldPass::run(ir::IRModule& module) {
                 // 常量会把实参替换为 4.0 文本，emitCall 生成 `movsd xmm2, qword ptr 4.0`
                 // （A2050 real or BCD number not allowed）。故尾部传播同样排除
                 // 浮点/i128 常量（与主操作数传播一致），仅 i1/整型常量安全传播。
-                for (std::size_t i = operandCount(inst.opcode);
+                for (std::size_t i = opCount;
                      i < inst.operands.size(); ++i) {
                     ir::IRValue& op = inst.operands[i];
                     if (!op.isConstant && op.id >= 0) {
@@ -788,8 +792,9 @@ bool ConstFoldPass::run(ir::IRModule& module) {
                     }
                 }
                 if (replaced) changed = true;
-                // 第二步：常量折叠（操作数已替换为常量/命中常量表）
-                if (foldInstruction(inst, consts)) changed = true;
+                // 第二步：常量折叠（操作数已替换为常量/命中常量表）。
+                //   仅可折叠操作码进入（不可折叠指令跳过操作数解析与向量拷贝）。
+                if (foldable && foldInstruction(inst, consts)) changed = true;
                 // 折叠后指令已变为常量指令 -> updateConstTable 登记新常量；
                 // 副作用指令 -> 清空映射（内存可能被修改，保守）
                 updateConstTable(inst, consts);
@@ -799,18 +804,15 @@ bool ConstFoldPass::run(ir::IRModule& module) {
             //    字段化后由本段承接，供 cross_block_dce foldConstantBranch
             //    折叠恒真/恒假分支）
             if (block->terminated && block->termKind == "条件跳转") {
-                const std::string& c = block->termCondition;
-                if (c.size() > 2 && c[0] == '%' && c[1] == 'v') {
-                    try {
-                        auto it = consts.find(std::stoi(c.substr(2)));
-                        if (it != consts.end() && it->second.isConstant &&
-                            it->second.type != "f32" && it->second.type != "f64" &&
-                            it->second.type != "i128" && it->second.type != "u128") {
-                            block->termCondition = it->second.extra;
-                            changed = true;
-                        }
-                    } catch (...) {
-                        // 解析失败忽略（防御性）
+                int condReg = 0;
+                // 解析失败（IR 契约外文本）：不传播（与旧 stoi 异常忽略等价）
+                if (parseRegText(block->termCondition, condReg)) {
+                    auto it = consts.find(condReg);
+                    if (it != consts.end() && it->second.isConstant &&
+                        it->second.type != "f32" && it->second.type != "f64" &&
+                        it->second.type != "i128" && it->second.type != "u128") {
+                        block->termCondition = it->second.extra;
+                        changed = true;
                     }
                 }
             }
