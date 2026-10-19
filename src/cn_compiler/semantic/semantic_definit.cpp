@@ -51,8 +51,14 @@ bool SemanticAnalyzer::isDefInitTrackedType(const std::string& type) const {
     if (type.empty()) return false;
     if (type.back() == '*') return false;                 // 指针豁免
     if (types::isReference(type)) return false;           // 引用豁免
-    if (type == "字符串" || isResultType(type) || isOptionalType(type)) return false; // 拥有型
-    if (isClassType(type) || findClass(type) != nullptr) return false;               // 类/容器实例
+    // 1155：结果/可选判定加 '<' 前缀门（原每次变量声明无条件 splitTypeSuffix 双串拷贝）
+    if (type == "字符串" || (type.rfind("结果<", 0) == 0 && isResultType(type)) ||
+        (type.rfind("可选<", 0) == 0 && isOptionalType(type))) {
+        return false;  // 拥有型
+    }
+    // 1155：isClassType 恒等于 findClass(type)!=nullptr——原双调用在未命中路径
+    //   做两次相同索引查询，删去重复。
+    if (isClassType(type)) return false;  // 类/容器实例
     if (types::arrayLenOf(type) >= 0) return true;        // 数组
     // 结构体/联合体豁免：局部结构体裸声明=编译器入口零初始化注入（257 形二
     //   「字段数组零初始化」断言 r.分数[0]==0 实锤·两侧既有防御）——字段读有

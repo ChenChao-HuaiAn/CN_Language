@@ -451,7 +451,9 @@ void SemanticAnalyzer::registerFunction(FunctionDecl* node) {
     if (checkOverloadProtoConsistency(node, info)) return;
     funcSigModules_[node->sigKey].insert(node->moduleName);
     // A′：注册键 = 公式键（与定义侧 mangledName 同源，消顺序依赖）
-    functions_[linkKey] = info;
+    // 1155：info 此后不再使用 ⇒ 移动入表（原拷贝赋值逐函数深拷贝返回/参数/
+    //   默认值三组字符串+向量——注册期热点之一）。
+    functions_[linkKey] = std::move(info);
 }
 
 // ==================== 189-a 流水线族子方法（原 registerFunction 379~515 段） ====================
@@ -631,19 +633,24 @@ bool SemanticAnalyzer::checkOverloadProtoConsistency(FunctionDecl* node,
     //   （仅同模块内检查——跨模块原型不约束其他模块的定义）。
     //   A′：键含公式前缀（模块名$名#参数）须先剥前缀再取同名 base（与
     //   resolveOverload 的形态判定一致）。
+    // 1155：保持全表扫描语义（funcNameBucket 分桶索引以 functions_ size 变化为
+    //   重建判据——注册期每插一个函数后查询都触发整表重建，实测使语义相位
+    //   1.6s→3.9s 回归；本函数只在注册期调用，维持原 O(1) 迭代顺序语义更稳）。
+    //   去分配优化：原实现每条目 `std::string k = kv.first` 整键拷贝 + 剥前缀
+    //   substr 分配；改 string_view 切分（零拷贝），base 比较语义逐字不变。
+    const bool nameHasDollar = node->name.find('$') != std::string::npos;
     for (const auto& kv : functions_) {
-        std::string k = kv.first;
-        const std::size_t hashFirst = k.find('#');
-        const std::size_t dollarPos = k.find('$');
-        if (dollarPos != std::string::npos &&
-            (hashFirst != std::string::npos
-                 ? dollarPos < hashFirst
-                 : node->name.find('$') == std::string::npos)) {
+        const std::string_view key(kv.first);
+        const std::size_t hashFirst = key.find('#');
+        const std::size_t dollarPos = key.find('$');
+        std::string_view k = key;
+        if (dollarPos != std::string_view::npos &&
+            (hashFirst != std::string_view::npos ? dollarPos < hashFirst : !nameHasDollar)) {
             k = k.substr(dollarPos + 1);
         }
         const std::size_t hashPos = k.find('#');
-        const std::string base = (hashPos == std::string::npos) ? k
-                                                                : k.substr(0, hashPos);
+        const std::string_view base =
+            (hashPos == std::string_view::npos) ? k : k.substr(0, hashPos);
         if (base == node->name && kv.second.moduleName == node->moduleName &&
             !kv.second.hasBody && info.hasBody) {
             diagnostics_.report(DiagnosticLevel::Error, node->location,
