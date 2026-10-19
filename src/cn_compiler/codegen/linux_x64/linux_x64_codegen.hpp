@@ -76,6 +76,11 @@ public:
     // 主入口：生成完整汇编文件（.intel_syntax 头 + .data + .rodata + .text）
     std::string generateAssembly(const ir::IRModule& module) override;
 
+    // 任务 1145：函数级并行发射（每函数独立后端实例生成到独立缓冲，按原序拼接）。
+    //   返回 false = 不走并行（小输入/CN_CODEGEN_THREADS=1/常量池预扫描 miss），
+    //   调用方按原串行路径生成——产物与串行逐字节一致。
+    bool emitFunctionBodiesParallel(const ir::IRModule& module, LinuxX64AsmWriter& writer);
+
     // 目标平台标识
     std::string targetPlatform() const override { return "linux-x86_64"; }
 

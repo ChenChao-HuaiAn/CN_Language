@@ -10,10 +10,12 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <memory>
 #include <string>
 #include <unordered_set>
 #include <vector>
 
+#include "cn_compiler/codegen/parallel_codegen.hpp"
 #include "cn_compiler/codegen/x64/x64_codegen.hpp"
 #include "cn_compiler/codegen/judgement.hpp"
 #include "cn_compiler/codegen/peephole_slot.hpp"
@@ -643,6 +645,52 @@ void X64CodeGenerator::emitBlock(AsmWriter& writer, const ir::IRBlock& block) {
     }
 }
 
+// 任务 1145：由 ptrCheckCounter_ 派生的函数级标签前缀（前缀后紧跟十进制编号）。
+//   拼接期按前序函数标签总数平移局部编号，恢复模块级串行编号（产物逐字节一致）。
+namespace {
+const std::vector<std::string>& x64LabelPrefixes() {
+    static const std::vector<std::string> prefixes = {
+        "@fnptr_ok", "@objdel_ok", "@field_ok", "@field_err", "@ptr_ok", "@ptr_err",
+        "@ovf_ok", "@ovf", "@div_ok", "@div_norm", "@div_neg", "@div_end", "@dmin_ok",
+        "@sh128_b", "@sh128_e"};
+    return prefixes;
+}
+}  // namespace
+
+// 函数级并行发射：每 worker 独立后端实例（计数器/变量槽/分配器线程私有），
+//   模块级浮点常量池以只读快照复制；按原函数序拼接并平移标签编号。
+bool X64CodeGenerator::emitFunctionBodiesParallel(const ir::IRModule& module,
+                                                  AsmWriter& writer) {
+    const std::size_t poolSize = floatConstLabels_.size();
+    auto makeGenerator = [this, poolSize](Diagnostics& localDiagnostics)
+        -> std::unique_ptr<parallel_codegen::IGenerator> {
+        auto generator = std::make_shared<X64CodeGenerator>(localDiagnostics, semantic_);
+        generator->regAllocEnabled_ = regAllocEnabled_;
+        generator->debugInfoEnabled_ = debugInfoEnabled_;
+        generator->floatConstLabels_ = floatConstLabels_;  // 模块级常量池只读快照
+        generator->floatConstOrder_ = floatConstOrder_;
+        auto generate = [generator](const ir::IRFunction& function,
+                                    parallel_codegen::FunctionOutput& out) {
+            generator->ptrCheckCounter_ = 0;  // 函数局部编号（拼接期平移）
+            out.text = generator->generateFunctionAssembly(function);
+            out.labelCount = generator->ptrCheckCounter_;
+        };
+        // 生成期若出现预扫描未登记常量（池尺寸变化），并行编号不可确定——走串行
+        auto poolMiss = [generator, poolSize]() {
+            return generator->floatConstLabels_.size() != poolSize;
+        };
+        return std::make_unique<parallel_codegen::CallbackGenerator>(
+            std::move(generate), std::move(poolMiss), generator);
+    };
+    std::vector<std::string> texts;
+    if (!parallel_codegen::generateFunctionBodies(
+            module, x64LabelPrefixes(), makeGenerator, diagnostics_, texts)) {
+        return false;
+    }
+    for (std::string& text : texts) writer.raw(text);
+    return true;
+}
+
 // 主入口：生成完整汇编文件
 std::string X64CodeGenerator::generateAssembly(const ir::IRModule& module) {
     // 重置浮点常量池（模块级状态，每次生成独立）
@@ -695,8 +743,11 @@ std::string X64CodeGenerator::generateAssembly(const ir::IRModule& module) {
     writer.raw("");
     // 代码段
     emitCodeHeader(writer, module);
-    for (auto& function : module.functions) {
-        writer.raw(generateFunctionAssembly(function));
+    // 任务 1145：函数级并行发射（小输入/线程数=1/常量池 miss 时走原串行路径）
+    if (!emitFunctionBodiesParallel(module, writer)) {
+        for (auto& function : module.functions) {
+            writer.raw(generateFunctionAssembly(function));
+        }
     }
     writer.raw("END");
     writer.raw("");
