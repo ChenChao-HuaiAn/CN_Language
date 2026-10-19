@@ -1752,7 +1752,8 @@ def 执行v2闭环Linux(编译器路径: pathlib.Path, 目标平台: str, 详细
                    源文件名们: list, 预期退出码: int, 链接v2pobj: bool,
                    期望文件, 审计目录: pathlib.Path, v2源码目录: pathlib.Path,
                    用例目录: pathlib.Path, 名称: str, 编号: str,
-                   供给源们: list = None, 断言运行输出: bool = False) -> tuple:
+                   供给源们: list = None, 断言运行输出: bool = False,
+                   运行明细: dict = None) -> tuple:
     """执行 v2 自举链接闭环（linux 两平台，阶段A 2026-09-02 ARM64 首建；plans/017 T3
     2026-09-06 平台参数化并入 linux-x86_64）：v2 GAS 后端 -> as -> g++ -> 运行
 
@@ -1979,6 +1980,11 @@ def 执行v2闭环Linux(编译器路径: pathlib.Path, 目标平台: str, 详细
     运行结果2 = 运行命令([str(输出exe)] + 参数列表2, 项目根目录, 输入文本2,
                       超时秒数=运行超时秒数,
                       栈上限MB=查找运行栈上限MB(用例目录))  # 587：声明式小栈（默认0=不变）
+    # 1130：可选运行明细出参（CN-Smith 同源码双编译对拍轨道的结构化差异报告数据源
+    #   ——默认 None=行为逐字节不变；运行级判据仍由下方 rc/.expected 断言承担）
+    if 运行明细 is not None:
+        运行明细.update(rc=运行结果2.returncode, stdout=运行结果2.stdout or "",
+                        stderr=运行结果2.stderr or "")
     预期值 = 预期退出码 % 256
     if 运行结果2.returncode != 预期值:
         return "失败", (f"{编号}-6 v2 产物运行退出码={运行结果2.returncode}"
@@ -1995,7 +2001,8 @@ def 执行v2闭环Linux(编译器路径: pathlib.Path, 目标平台: str, 详细
 def 执行v2闭环(编译器路径: pathlib.Path, 用例目录: pathlib.Path,
                输出目录: pathlib.Path, 详细: bool, 目标平台: str,
                源文件名们: list, 预期退出码: int, 链接v2pobj: bool = False,
-               供给源们: list = None, 断言运行输出: bool = False) -> tuple:
+               供给源们: list = None, 断言运行输出: bool = False,
+               运行明细: dict = None) -> tuple:
     """执行 v2 自举链接闭环（119/120… 通用，三平台）：v2 多文件编译 -> 链接宿主运行时 -> 运行
 
     目标平台 = win-x64（ml64/link 原路径）| linux-arm64 / linux-x86_64（as/g++，
@@ -2025,7 +2032,7 @@ def 执行v2闭环(编译器路径: pathlib.Path, 用例目录: pathlib.Path,
     if 目标平台 in ("linux-arm64", "linux-x86_64"):
         return 执行v2闭环Linux(编译器路径, 目标平台, 详细, 源文件名们, 预期退出码, 链接v2pobj,
                               期望文件, 审计目录, v2源码目录, 用例目录, 名称, 编号,
-                              供给源们, 断言运行输出)
+                              供给源们, 断言运行输出, 运行明细)
 
     # ---- win-x64 原路径（ml64/link）----
     # v2 产物按用例隔离（111-a，对齐 linux 分支）：v2 驱动器 asm 输出路径为相对
@@ -2247,7 +2254,12 @@ def 执行v2闭环(编译器路径: pathlib.Path, 用例目录: pathlib.Path,
     参数列表2 = 查找参数文件(用例目录 / 入口名2)
     运行结果2 = 运行命令([str(输出exe)] + 参数列表2, 项目根目录, 输入文本2,
                       超时秒数=运行超时秒数,
-                      栈上限MB=查找运行栈上限MB(用例目录))  # 587：声明式小栈（win 侧无 RLIMIT=忽略）
+                      栈上限MB=查找运行栈上限MB(用例目录))  # 587：声明式小栈（默认0=不变）
+    # 1130：可选运行明细出参（同 Linux 分支——CN-Smith 对拍轨道结构化差异报告数据源；
+    #   默认 None=行为不变，运行级判据仍由下方 rc/.expected 断言承担）
+    if 运行明细 is not None:
+        运行明细.update(rc=运行结果2.returncode, stdout=运行结果2.stdout or "",
+                        stderr=运行结果2.stderr or "")
     if 运行结果2.returncode != 预期退出码:
         return "失败", (f"{编号}-6 v2 产物运行退出码={运行结果2.returncode}"
                         f"（期望 {预期退出码}）: {(运行结果2.stderr or '').strip()[:200]}")

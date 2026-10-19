@@ -13,25 +13,37 @@
 
 每轮产出（归档默认 target/cnsmith_runs/<轮次>/·gitignore 勿污 git）：
   轮次.json（结构化）· 报告.md（人类可读）· 日志.txt（步骤与命中明细）
+  对拍/差异报告.json + 对拍/差异报告.md（1130：两侧输出/首差异行/rc/建议立案）
   归档根另落「最新.json / 最新-报告.md」指针——供看板巡检/交接引用；
   stdout 末行=机器可读摘要行（automation/巡检可直接 grep）。
 
+对拍轨道（1130 常态化·独立实现 scripts/cnsmith_dual.py）：
+  输入=随机采样+矩阵抽样+内置锁面+`--对拍目录` 目录批量（含 主.cn 的目录=多文件
+  样本；否则每个 .cn 各为一个样本）；宿主与 v2p 同源码双编译双运行，逐行比对
+  stdout+退出码（stderr 按 `--对拍比stderr`），差异=分叉候选并给建议立案标题。
+  **新特性轮强制**（语义/语法/内建符号/代码生成改动）：集成前必跑
+  `python3 scripts/cnsmith_run.py --轨道 对拍 --对拍预算秒 1800`
+  （新特性相关 E2E 用例目录以 `--对拍目录 tests/e2e/<用例>` 一并纳入）。
+  周采样推荐：`--轨道 对拍 --对拍样本 24 --对拍矩阵 16 --对拍内置 5 --对拍预算秒 1800`。
+
 判定契约（miss 不可静默——差分无结果不算过）：
   全绿=0 ｜ 红=1（任一轨道命中）｜ 无效=2（任一轨道未产出结果/解析失败/就绪失败）
-  轨道「无效」在报告与退出码中显式显形，禁止当绿。
+  轨道「无效」在报告与退出码中显式显形，禁止当绿。对拍「跳过」（预算耗尽）显式计数。
 
 用法：
   python3 scripts/cnsmith_run.py                          # 默认四轨道·小规模
   python3 scripts/cnsmith_run.py --轨道 矩阵 --样本 100    # 单轨道
+  python3 scripts/cnsmith_run.py --track 对拍              # 英文别名同义（1130）
+  python3 scripts/cnsmith_run.py --轨道 对拍 --对拍目录 tests/e2e/01_hello
   python3 scripts/cnsmith_run.py --轨道 全部 --入日志      # 摘要行追加命中库日志（入库面）
   python3 scripts/cnsmith_run.py --轮 3 --间隔 600         # 按轮常驻（每轮独立归档）
+  python3 scripts/cnsmith_run.py --selftest                # 对拍轨道自校验（1130）
 
 ZCode automation「CN-Smith」定时任务推荐 prompt（仓库根执行）：
   git pull --ff-only && python3 scripts/cnsmith_run.py --轨道 全部 --入日志
 （automation 已 paused 现状下，等效形态=手动/daemon 挂载；见报告「消费方式」节。）
 """
 import argparse
-import importlib.util
 import json
 import os
 import pathlib
@@ -53,26 +65,12 @@ import time
 # 负向轨道严重命中类别（干净拒之外的异常态）
 负向严重类 = ("崩溃", "误接受", "错误产物")
 
-# 内置对拍样本族（167）：分叉形态的确定性锁面——随机样本不保证覆盖之形态每轮必测，
-#   且修复后可作回归锁。全部为**非法源码**（双侧应等效拒绝；一侧放行即不一致显形）：
-#   ①缺右花括号/②文件截断/③缺右括号=167 自测现场命中（v2 解析静默吞错形态）；
-#   ④移位超宽+三元左操作数=167 自测现场命中（v2 474 检查左操作数形态漏检）。
-#   合法形态由随机/矩阵样本天然覆盖，不设内置正例。
-# 命名纪律：样本名第一段须 ASCII——run_e2e 隔离键=「首段+哈希」进 v2src/v2work
-#   目录名与 v2p 入口路径（789/406 中文路径 GBK 教训）；其余段可中文（仅报告面）。
-内置对拍样本 = [
-    ("inner_缺右花括号",
-     '函数 主() -> 整32 {\n    打印行("甲");\n    返回 0;\n'),
-    ("inner_截断文件",
-     '函数 主() -> 整32 {\n    打印行("甲");\n'),
-    ("inner_缺右括号",
-     '函数 主() -> 整32 {\n    打印行("甲";\n    返回 0;\n}\n'),
-    ("inner_移位超宽_三元左操作数",
-     '函数 主() -> 整32 {\n    整32 甲 = 1;\n    整32 乙 = ((甲 < 2) ? 1 : 0) >> 652;\n'
-     '    打印(乙);\n    返回 0;\n}\n'),
-    ("inner_尾随非法字符",
-     '函数 主() -> 整32 {\n    返回 0;\n}\n@@\n'),
-]
+# 1130：对拍轨道独立实现（同源码双编译 stdout 对拍·结构化差异报告+建议立案）。
+#   本入口只做轨道编排与报告聚合；对拍核心/自校验在 scripts/cnsmith_dual.py
+#   （独立可复用：目录批量/并行/预算/首差异行/建议立案；见该模块 docstring）。
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+import cnsmith_dual  # noqa: E402  （路径注入后导入，兼容 python scripts/ 直跑）
+内置对拍样本 = cnsmith_dual.内置对拍样本
 
 
 # =====================================================================
@@ -272,137 +270,32 @@ def 轨道_矩阵(a, 轮目录, 种子):
     return {"状态": "完成", "汇总": 汇总, "命中数": 汇总["红"], "清单": 红例, "说明": 说明}
 
 
-# =====================================================================
-# 轨道 4：双侧行为对拍（宿主×v2）
-# =====================================================================
-def 加载e2e运行器():
-    """惰性加载 tests/e2e/run_e2e.py——复用 v2p 就绪（指纹缓存）/运行防线（内存上限+
-    进程树）/执行v2闭环（v2 编译→as→g++→运行→断言）与 E2E 双编译对照同源判据。
-    测试设施同层复用（不重复实现）；顶层仅 stdout 重配置+心跳容错，无重副作用。"""
-    路径 = 根 / "tests" / "e2e" / "run_e2e.py"
-    sys.path.insert(0, str(路径.parent))
-    spec = importlib.util.spec_from_file_location("cnsmith_run_e2e", 路径)
-    模 = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(模)
-    return 模
-
-
-def 准备对拍样本(a, 轮目录, 种子):
-    """对拍样本 = 随机 N 个 + 矩阵均匀抽样 M 个。返回 ([(名, 源路径, 来源)], 错误说明)。"""
-    样本们 = []
-    if a.对拍样本 > 0:
-        随目录 = 轮目录 / "对拍样本" / "随机"
-        随目录.mkdir(parents=True, exist_ok=True)
-        r = 跑([sys.executable, "scripts/cnsmith_gen.py", "--seed", str(种子 + 11),
-                "--count", str(a.对拍样本), "--out", str(随目录)], 超时=600)
-        if r.returncode != 0:
-            return 样本们, "对拍随机样本生成失败：" + (r.stdout or r.stderr)[-200:]
-        for 名 in sorted(f for f in os.listdir(随目录) if f.endswith(".cn")):
-            样本们.append(("rand_" + 名[:-3], 随目录 / 名, "随机"))
-    if a.对拍矩阵 > 0:
-        if (轮目录 / "矩阵").is_dir():          # 矩阵轨道已跑：复用其样本（零重复生成）
-            候 = [(f, 轮目录 / "矩阵" / f) for f in
-                 sorted(os.listdir(轮目录 / "矩阵")) if f.endswith(".cn")]
-        else:
-            矩目录 = 轮目录 / "对拍样本" / "矩阵"
-            矩目录.mkdir(parents=True, exist_ok=True)
-            r = 跑([sys.executable, "scripts/cnsmith_matrix.py", "--cn", str(a.cn),
-                    "--out", str(矩目录), "--seed", str(种子 + 3)], 超时=3600)
-            if 解析矩阵汇总(r.stdout or "") is None:
-                return 样本们, "对拍矩阵样本生成无效：" + (r.stdout or r.stderr)[-200:]
-            候 = [(f, 矩目录 / f) for f in sorted(os.listdir(矩目录)) if f.endswith(".cn")]
-        if len(候) > a.对拍矩阵:                # 均匀抽样（骨架序均匀·不总取同一族）
-            步 = (len(候) - 1) / (a.对拍矩阵 - 1) if a.对拍矩阵 > 1 else 0
-            候 = [候[round(i * 步)] for i in range(a.对拍矩阵)]
-        for 名, 路径 in 候:
-            样本们.append(("mat_" + 名[:-3], 路径, "矩阵"))
-    if a.对拍内置 > 0:                          # 内置执法形态锁面（确定性·每轮必测）
-        内目录 = 轮目录 / "对拍样本" / "内置"
-        内目录.mkdir(parents=True, exist_ok=True)
-        for 名, 源码 in 内置对拍样本[:a.对拍内置]:
-            路径 = 内目录 / (名 + ".cn")
-            路径.write_text(源码, encoding="utf-8")
-            样本们.append((名, 路径, "内置"))
-    return 样本们, ""
-
-
-def 对拍一例(ctx, 样本名, 源, 来源):
-    """单样本双侧对拍 → dict。判据：双侧编译均拒=一致拒；一侧过一侧拒=不一致；
-    双侧过=rc 一致且输出逐行一致（.expected=宿主 stdout·v2 侧走执行v2闭环断言）。"""
-    运行器, cn, 平台 = ctx["运行器"], ctx["cn"], ctx["平台"]
-    登记目录 = ctx["用例根"] / 样本名
-    登记目录.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(源, 登记目录 / "主.cn")
-    记录 = {"样本": 样本名, "来源": 来源, "源": str(源)}
-    宿主exe = ctx["用例输出"] / (样本名 + ".宿主")
-    宿主 = 运行器.运行命令([str(cn), "build", str(登记目录 / "主.cn"), "--target", 平台,
-                        "--output", str(宿主exe)], 根, 超时秒数=运行器.编译超时秒数)
-    if 宿主.returncode != 0:
-        # 宿主拒绝 → 双侧应等效拒绝（轻量 v2 负编译断言·对齐 E2E -DN 无 .expected 分支）
-        记录["宿主"] = "拒(rc=%d)" % 宿主.returncode
-        rc, 输出, asm = v2p编译一次(运行器, ctx["v2p"], 源,
-                                ctx["用例输出"] / (样本名 + ".v2neg"), 平台)
-        if rc == 0:
-            记录.update(v2="放行(rc=0)", 判定="不一致",
-                      详情="宿主拒绝而 v2 放行（双侧拒绝不等效）")
-        elif asm.exists():
-            记录.update(v2="拒但产 asm", 判定="不一致", 详情="v2 拒绝后仍产出错误产物")
-        else:
-            记录.update(v2="拒", 判定="一致拒", 详情="双侧等效拒绝")
-        return 记录
-    宿主运行 = 运行器.运行命令([str(宿主exe)], 根, 超时秒数=运行器.运行超时秒数)
-    if 宿主运行.returncode < 0:
-        记录.update(宿主="运行崩溃 rc=%d" % 宿主运行.returncode, 判定="不一致",
-                   详情="宿主侧产物运行崩溃（无法作对拍基准——显形）")
-        return 记录
-    记录["宿主"] = "rc=%d 输出%d行" % (宿主运行.returncode,
-                                   len((宿主运行.stdout or "").splitlines()))
-    (登记目录 / "主.expected").write_text(宿主运行.stdout or "", encoding="utf-8")
-    状态, 说明 = 运行器.执行v2闭环(cn, 登记目录, ctx["用例输出"], False, 平台,
-                                ["主.cn"], 宿主运行.returncode, False, [], True)
-    if 状态 == "通过":
-        记录.update(v2="通过", 判定="一致", 详情="rc+输出逐行双侧一致")
-    else:
-        记录.update(v2="未达", 判定="不一致", 详情=说明[:260])
-    return 记录
-
-
-def 轨道_对拍(a, 轮目录, 种子, 运行器, v2p, 平台):
-    if v2p is None:
-        return {"状态": "无效", "说明": "v2p 未就绪（对拍无 v2 侧即无意义·显形）："
-                                      + a.v2侧未就绪原因}
-    样本们, 错 = 准备对拍样本(a, 轮目录, 种子)
-    if 错:
-        return {"状态": "无效", "说明": 错}
-    if not 样本们:
-        return {"状态": "无效", "说明": "对拍样本 0 个（无结果不算过）"}
-    ctx = {"运行器": 运行器, "cn": a.cn, "平台": 平台, "v2p": v2p,
-           "用例输出": 轮目录 / "对拍输出", "用例根": 轮目录 / "对拍用例"}
-    用例输出 = ctx["用例输出"]
-    用例输出.mkdir(parents=True, exist_ok=True)
-    结果们 = [对拍一例(ctx, 名, 源, 来) for 名, 源, 来 in 样本们]
-    命中 = [r for r in 结果们 if r["判定"] == "不一致"]
-    一致 = len(结果们) - len(命中)
-    return {"状态": "完成", "样本数": len(结果们), "一致": 一致, "命中数": len(命中),
-            "清单": 命中, "结果明细": 结果们,
-            "说明": "一致 %d/%d·不一致 %d" % (一致, len(结果们), len(命中))}
 
 
 # =====================================================================
 # 命中归档 + 报告
 # =====================================================================
-def 归档命中(根目录, 类别, 轮次名, 源路径, meta行们):
+def 归档命中(根目录, 类别, 轮次名, 源路径, meta行们, 源是目录=False):
     """命中样本归档（目录可切换）：默认轮目录/命中/<类别>/（target 面·零污 git）；
     --入命中库 时 tests/cnsmith_hits/<类别>/（对齐 daemon 存档制·防 target 清场丢失）。
-    已存在同名（历史命中）不覆盖，返回 ""。"""
+    已存在同名（历史命中）不覆盖，返回 ""。源是目录=整树样本（多文件程序）整目录归档。"""
     目录 = pathlib.Path(根目录) / 类别
     目录.mkdir(parents=True, exist_ok=True)
-    名 = 轮次名.split("-")[0] + "_" + pathlib.Path(源路径).name
-    目标 = 目录 / 名
     源 = pathlib.Path(源路径)
-    if 目标.exists() or not 源.exists():
-        return ""
-    shutil.copy2(源, 目标)
+    if 源是目录:
+        源 = 源.parent if 源.is_file() else 源     # 整树样本：源=目录（或入口文件的父目录）
+        名 = 轮次名.split("-")[0] + "_" + 源.name
+        目标 = 目录 / 名
+        if 目标.exists() or not 源.exists():
+            return ""
+        shutil.copytree(源, 目标,
+                        ignore=shutil.ignore_patterns(".git", "target", "*.expected"))
+    else:
+        名 = 轮次名.split("-")[0] + "_" + pathlib.Path(源路径).name
+        目标 = 目录 / 名
+        if 目标.exists() or not 源.exists():
+            return ""
+        shutil.copy2(源, 目标)
     (目录 / (名 + ".meta")).write_text("\n".join(meta行们) + "\n", encoding="utf-8")
     return str(目标.relative_to(根))
 
@@ -425,7 +318,9 @@ def 轨道速记(k, v):
     if k == "矩阵":
         return "矩阵=%d/%d" % (v["汇总"]["绿"], v["汇总"]["绿"] + v["汇总"]["红"])
     if k == "对拍":
-        return "对拍=%d/%d" % (v["一致"], v["样本数"])
+        return "对拍=%d/%d%s" % (v["一致"], v["样本数"],
+                               ("(跳过%d)" % v.get("跳过数", 0))
+                               if v.get("跳过数") else "")
     return k
 
 
@@ -469,12 +364,23 @@ def 写报告(轮目录, 记录, 轨道结果们):
             len(记录["归档"]), "、".join(记录["归档"][:5]),
             "…" if len(记录["归档"]) > 5 else ""))
     if 轨道结果们.get("对拍", {}).get("结果明细"):   # 对拍全清单（常态证据面）
+        对拍结果 = 轨道结果们["对拍"]
         行 += ["", "## 双侧对拍明细（宿主×v2）", "",
-              "| 样本 | 宿主 | v2 | 判定 | 详情 |", "|---|---|---|---|---|"]
-        for r in 轨道结果们["对拍"]["结果明细"]:
-            行.append("| %s | %s | %s | %s | %s |" % (r["样本"], r.get("宿主", "?"),
-                                                  r.get("v2", "?"), r["判定"],
-                                                  (r.get("详情") or "").replace("|", "/")[:120]))
+              "- 结构化差异报告：`%s`（JSON）｜ `%s`（MD）" % (
+                 对拍结果.get("差异报告", "?"), 对拍结果.get("差异报告md", "?")),
+              "- 样本 %d：一致 %d ｜ 分叉候选 %d ｜ 跳过 %d" % (
+                 对拍结果.get("样本数", 0), 对拍结果.get("一致", 0),
+                 对拍结果.get("命中数", 0), 对拍结果.get("跳过数", 0))]
+        if 对拍结果.get("建议立案"):
+            行 += ["", "### 建议立案标题（%d 件·不自动写服务端，人类/编排者据此立项）"
+                   % len(对拍结果["建议立案"])]
+            行 += ["- %s" % 标 for 标 in 对拍结果["建议立案"]]
+        行 += ["", "| 样本 | 宿主 | v2 | 判定 | 详情 |", "|---|---|---|---|---|"]
+        for r in 对拍结果["结果明细"]:
+            宿主文, v2文 = cnsmith_dual.记录速记(r)
+            行.append("| %s | %s | %s | %s | %s |" % (
+                r["样本"], 宿主文.replace("|", "/"), v2文.replace("|", "/"), r["判定"],
+                (r.get("详情") or "").replace("|", "/")[:120]))
     行 += ["", "## 消费方式",
           "- 摘要行（机器可读投影·automation/巡检可直接 grep）：`%s`" % 摘要行(记录),
           "- 命中样本归档：%s（`--入命中库` 切入 tests/cnsmith_hits/<类别>/ 资产面）"
@@ -500,6 +406,13 @@ def 写日志(轮目录, 轨道结果们):
                   v.get("汇总", {}), ensure_ascii=False)]
         if v.get("输出"):
             行 += ["- 尾部输出：", "```", v["输出"][-800:], "```"]
+        if v.get("差异报告"):
+            行 += ["- 差异报告：%s ｜ %s" % (v["差异报告"], v.get("差异报告md", "")),
+                  "- 样本 %d：一致 %d ｜ 候选 %d ｜ 跳过 %d" % (
+                      v.get("样本数", 0), v.get("一致", 0),
+                      v.get("命中数", 0), v.get("跳过数", 0))]
+        for 标 in v.get("建议立案", []):
+            行.append("- 建议立案：%s" % 标)
         for e in v.get("清单", []):
             行.append("- 命中：%s %s" % (e.get("样本"), (e.get("详情") or "")[:200]))
         for e in v.get("黄例", []):
@@ -530,14 +443,25 @@ def 归档本轮命中(a, 轮目录, 轮次名, 记录, 轨道结果们):
                       "说明: 矩阵红例 %s" % (e.get("详情") or "")[:260]]
             else:
                 桶 = 类别桶_对拍
+                宿主文, v2文 = cnsmith_dual.记录速记(e)
                 元 = ["基线: %s" % 记录["编译器"].get("仓库HEAD", "?")[:9],
                       "轮: %s（轨道入口·双侧对拍）" % 轮次名,
-                      "宿主: %s；v2: %s" % (e.get("宿主", "?"), e.get("v2", "?")),
+                      "宿主: %s；v2: %s" % (宿主文, v2文),
+                      "判定: %s" % e.get("判定", ""),
                       "说明: %s" % (e.get("详情") or "")[:260]]
-            路径 = 归档命中(目标根, 桶, 轮次名, 源, 元)
+            路径 = 归档命中(目标根, 桶, 轮次名, 源, 元,
+                         源是目录=bool(e.get("整树")))
             if 路径:
                 落.append(路径)
     return 落
+
+
+# =====================================================================
+# 轨道 4：双侧行为对拍（宿主×v2·1130 独立实现 cnsmith_dual）
+# =====================================================================
+def 轨道_对拍(a, 轮目录, 种子, 运行器, v2p, 平台):
+    """转调独立对拍轨道（目录批量/并行/预算/首差异/建议立案见 cnsmith_dual）。"""
+    return cnsmith_dual.轨道_对拍(a, 轮目录, 种子, 运行器, v2p, 平台)
 
 
 # =====================================================================
@@ -546,7 +470,7 @@ def 归档本轮命中(a, 轮目录, 轮次名, 记录, 轨道结果们):
 def 就绪v2侧(a, 平台):
     """v2p 就绪（指纹缓存）；失败=显式记因（不静默降级）。返回 (运行器, v2p 或 None)。"""
     try:
-        运行器 = 加载e2e运行器()
+        运行器 = cnsmith_dual.加载e2e运行器()
     except Exception as e:
         a.v2侧未就绪原因 = "e2e 运行器加载失败：%r" % (e,)
         return None, None
@@ -573,8 +497,14 @@ def 单轮(a, 轮次名, 归档根):
     平台 = 探测目标平台()
     记录 = {"轮次": 轮次名, "时刻": time.strftime("%Y-%m-%d %H:%M:%S"), "平台": 平台,
             "种子": 种子, "编译器": 编译指纹(a.cn),
-            "轨道参数": {"随机样本": a.样本, "对拍随机": a.对拍样本, "对拍矩阵": a.对拍矩阵},
+            "轨道参数": {"随机样本": a.样本, "对拍随机": a.对拍样本,
+                       "对拍矩阵": a.对拍矩阵, "对拍目录": a.对拍目录 or "",
+                       "对拍预算秒": a.对拍预算秒,
+                       "对拍比stderr": bool(a.对拍比stderr)},
             "报告相对": str(轮目录.relative_to(根))}
+    # 1130：对拍轨道报告所需的轮次/编译器身份上下文（与主轮次记录同源，防漂移）
+    a.轮次名 = 轮次名
+    a.编译指纹 = 记录["编译器"]
     运行器 = v2p = None
     a.v2侧未就绪原因 = ""
     if "对拍" in a.轨道 or "负向" in a.轨道:
@@ -614,28 +544,44 @@ def 单轮(a, 轮次名, 归档根):
 
 
 def main():
-    ap = argparse.ArgumentParser(description="CN-Smith 轨道入口（167）")
-    ap.add_argument("--轨道", default="全部",
-                    help="逗号分隔：随机,负向,矩阵,对拍；全部=四轨道全上")
+    ap = argparse.ArgumentParser(description="CN-Smith 轨道入口（167·1130 对拍常态轨）")
+    ap.add_argument("--轨道", "--track", dest="轨道", default="全部",
+                    help="逗号分隔：随机,负向,矩阵,对拍；全部=四轨道全上（--track 同义别名）")
     ap.add_argument("--样本", type=int, default=24, help="随机/负向轨道样本数（默认 24·小规模）")
     ap.add_argument("--对拍样本", type=int, default=12, help="对拍轨道随机样本数（默认 12）")
     ap.add_argument("--对拍矩阵", type=int, default=12, help="对拍轨道矩阵抽样数（默认 12·0=不取）")
     ap.add_argument("--对拍内置", type=int, default=len(内置对拍样本),
                     help="对拍轨道内置执法样本数（默认 %d·0=不取；族上限 %d）"
                          % (len(内置对拍样本), len(内置对拍样本)))
+    ap.add_argument("--对拍目录", default="",
+                    help="对拍轨道目录批量输入（逗号分隔）：含 主.cn 的目录=一个多文件"
+                         "样本；否则每个顶层 .cn 各为一个样本")
+    ap.add_argument("--对拍预算秒", type=int, default=1800,
+                    help="对拍轨道时间预算（秒·默认 1800=周采样推荐；0=不限；"
+                         "耗尽样本显式计「跳过」不当绿）")
+    ap.add_argument("--对拍比stderr", action="store_true",
+                    help="对拍判定纳入 stderr 逐行比对（默认仅记录不参与判定）")
     ap.add_argument("--seed", type=int, default=0, help="种子（0=时间戳·默认）")
     ap.add_argument("--cn", default="target/cn", help="宿主编译器路径（相对仓库根）")
     ap.add_argument("--归档", default=str(默认归档根), help="归档根目录（默认 target/cnsmith_runs）")
     ap.add_argument("--标签", default="手动", help="轮次名标签")
     ap.add_argument("--轮", type=int, default=1, help="循环轮数（按轮自动跑）")
     ap.add_argument("--间隔", type=int, default=0, help="轮间睡眠秒数")
-    ap.add_argument("--jobs", type=int, default=8, help="随机差分并行度")
+    ap.add_argument("--jobs", type=int, default=8, help="随机差分/对拍并行度")
     ap.add_argument("--入日志", action="store_true",
                     help="摘要行追加 tests/cnsmith_hits/日志/当日文件（入库面·默认关）")
     ap.add_argument("--入命中库", action="store_true",
                     help="命中样本入库 tests/cnsmith_hits/<类别>/（默认落轮目录/命中/·零污 git）")
     ap.add_argument("--详细", action="store_true", help="v2p 就绪等详细输出")
+    ap.add_argument("--selftest", action="store_true",
+                    help="对拍轨道自校验（1130·判定层正/反例+报告结构；加 --selftest实跑 附加端到端）")
+    ap.add_argument("--selftest实跑", action="store_true",
+                    help="selftest 附加端到端真跑（需 v2p 就绪）")
     a = ap.parse_args()
+    if a.selftest:
+        return cnsmith_dual.selftest(
+            str((根 / a.cn) if not pathlib.Path(a.cn).is_absolute() else pathlib.Path(a.cn)),
+            a.selftest实跑)
     a.轨道 = list(轨道全集) if a.轨道.strip() == "全部" else \
         [x.strip() for x in a.轨道.split(",") if x.strip()]
     未知 = [x for x in a.轨道 if x not in 轨道全集]
@@ -645,6 +591,10 @@ def main():
     a.cn = pathlib.Path(a.cn)
     if not a.cn.is_absolute():
         a.cn = 根 / a.cn
+    # win 便利：默认 target/cn 在多配置/单配置构建下实际产物为 cn.exe（显式探测，
+    #   不静默换路径——解析结果进报告「编译器.路径」可追溯）
+    if not a.cn.exists() and a.cn.with_suffix(".exe").exists():
+        a.cn = a.cn.with_suffix(".exe")
     归档根 = pathlib.Path(a.归档)
     if not 归档根.is_absolute():
         归档根 = 根 / 归档根
