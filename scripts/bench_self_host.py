@@ -19,7 +19,16 @@
 # 三平台：win-x64 走 ml64/link（原逻辑保留）；linux-arm64 / linux-x86_64 走
 #   as/g++ -no-pie（CN_AS/CN_CXX 环境变量优先 -> PATH -> gcc7 兜底，对齐 run_e2e.py）。
 #
+# 【036 交叉模拟支持】x86_64 宿主上测 linux-arm64（无 arm64 真机时）：
+#   宿主 cn 用 CN_AS=aarch64-linux-gnu-as / CN_CXX=aarch64-linux-gnu-g++ 交叉构建；
+#   v2p/cn_self 等 arm64 ELF 由 运行命令 入口按 ELF 头（e_machine=0xB7）自动套
+#   qemu 前缀（默认 qemu-aarch64 -L /usr/aarch64-linux-gnu，可用 CN_RUN_PREFIX 覆盖）。
+#   qemu 下全树编译很慢：--超时秒 给单命令超时（默认 1800），--样本数 控制 M2/M5
+#   采样数（默认 3·取中位）；超时/失败如实入报告（M2 失败=仅 M1 的部分基线）。
+#   --跳过M5：M4 后停止（qemu 下 M5 常需数小时——只取 M1~M4 时用；报告标注未执行）。
+#
 # 用法: python scripts/bench_self_host.py [--platform linux-arm64] [--cn <编译器路径>]
+#       [--超时秒 1800] [--样本数 3]
 # 产物: target/bench/性能基线报告.md（报告）+ target/bench/selfwork/（中间产物，
 #       独立子路径——不与 E2E 的 target/audit2/selfwork78|79 互踩）
 
@@ -57,20 +66,55 @@ if hasattr(sys.stderr, "reconfigure"):
 #   mem_api/arena/crash_handler 三件同编同链；945：mem_api 再拆 mem_pool 同链；
 #   522：win 侧消费 target/win-x64/*.obj）
 运行时名们 = ["io_api", "mem_api", "mem_pool", "arena", "crash_handler",
-            "intern_api", "runtime", "string_api", "i128_api",
+            "intern_api", "runtime", "thread_api", "string_api", "i128_api",
             "math_api", "input_api", "file_api", "time_api", "system_api"]
 
 # v2 产物行数下界（防「近乎空产物」假绿；对齐 run_e2e.py 锚定链下界口径）
 行数下界 = 100000
 
+# 交叉模拟运行前缀（main 一次性判定；空=原生执行）与命令超时/采样数（命令行可覆盖）
+交叉前缀 = []
+命令超时秒 = 1800
+样本数 = 3
+
 # ============ 工具函数 ============
 
 
+def 是arm64可执行(路径: str) -> bool:
+    """ELF 头探测：e_machine（offset 18·小端 2 字节）==183(0xB7)=AArch64。
+    非 ELF/读失败一律 False——宿主工具链程序（x64 ELF）零误伤。
+    与 tests/e2e/e2e交叉模拟.py 同判据（第二处·第三处出现前归并）。"""
+    try:
+        with open(路径, "rb") as f:
+            头 = f.read(20)
+    except OSError:
+        return False
+    return (len(头) >= 20 and 头[:4] == b"\x7fELF"
+            and 头[18] == 0xB7 and 头[19] == 0)
+
+
+def 交叉运行命令(命令列表: list) -> list:
+    """arm64 ELF 产物自动套 qemu 前缀（x86_64 宿主跑 linux-arm64 目标时）。
+    与 tests/e2e/e2e交叉模拟.py 同策略（第二处·第三处出现前归并）。"""
+    if 交叉前缀 and 命令列表 and 是arm64可执行(str(命令列表[0])):
+        return 交叉前缀 + list(命令列表)
+    return 命令列表
+
+
 def 运行命令(命令列表: list, 工作目录: pathlib.Path) -> subprocess.CompletedProcess:
-    """执行命令并返回结果（捕获 stdout/stderr，UTF-8 解码容错）"""
-    return subprocess.run(
-        命令列表, cwd=str(工作目录), capture_output=True,
-        text=True, encoding="utf-8", errors="replace")
+    """执行命令并返回结果（捕获 stdout/stderr，UTF-8 解码容错）。
+    交叉模拟激活时先套 qemu 前缀；命令超时 → 合成 returncode=-9 结果（不抛异常，
+    由调用方按普通失败处理并如实入报告——基线任务禁因超时伪造数字）。"""
+    命令列表 = 交叉运行命令(list(命令列表))
+    try:
+        return subprocess.run(
+            命令列表, cwd=str(工作目录), capture_output=True,
+            text=True, encoding="utf-8", errors="replace",
+            timeout=命令超时秒 if 命令超时秒 > 0 else None)
+    except subprocess.TimeoutExpired:
+        return subprocess.CompletedProcess(
+            命令列表, -9, "",
+            f"超时（>{命令超时秒} 秒·命令: {' '.join(str(c) for c in 命令列表[:3])}）")
 
 
 def 计时(函数, *参数, **关键字参数) -> tuple:
@@ -82,8 +126,8 @@ def 计时(函数, *参数, **关键字参数) -> tuple:
 
 
 def 探测平台(显式平台: str) -> str:
-    """确定目标平台：优先 --platform，否则按宿主机探测（bench=本机自举基线，
-    不做交叉——asm/链接均走本机工具链）"""
+    """确定目标平台：优先 --platform，否则按宿主机探测。
+    显式 linux-arm64 且宿主为 x86_64 时由 判定交叉模拟 激活 qemu 前缀。"""
     if 显式平台:
         if 显式平台 not in 平台们:
             print(f"错误: --platform 取值非法: {显式平台}（须 {'/'.join(平台们)}）")
@@ -102,6 +146,26 @@ def 探测平台(显式平台: str) -> str:
 
 def machine_is_arm(机器: str) -> bool:
     return 机器 in ("aarch64", "arm64", "armv8l", "armv7l")
+
+
+def 判定交叉模拟(目标平台: str) -> bool:
+    """x86_64 宿主 × linux-arm64 目标 → 激活 qemu 运行前缀（返回 True）。
+    CN_RUN_PREFIX 语义对齐 run_e2e.py：非空=自定义前缀；空串=禁用；
+    缺省=qemu-aarch64 -L /usr/aarch64-linux-gnu。前缀程序缺失=配置错误立即退出。"""
+    global 交叉前缀
+    交叉前缀 = []
+    if 目标平台 != "linux-arm64" or machine_is_arm(platform.machine().lower()):
+        return False
+    覆盖 = os.environ.get("CN_RUN_PREFIX")
+    if 覆盖 is not None:
+        前缀 = 覆盖.split() if 覆盖.strip() else []
+    else:
+        前缀 = ["qemu-aarch64", "-L", "/usr/aarch64-linux-gnu"]
+    if 前缀 and shutil.which(前缀[0]) is None:
+        print(f"错误: 交叉模拟需 {前缀[0]} 未找到——安装 qemu-user 或设 CN_RUN_PREFIX 覆盖")
+        sys.exit(2)
+    交叉前缀 = 前缀
+    return bool(前缀)
 
 
 def 探测编译器(显式路径: str) -> pathlib.Path:
@@ -266,19 +330,19 @@ def 测量M1(编译器路径: pathlib.Path, 目标平台: str, v2p: pathlib.Path
 
 
 def 测量M2(目标平台: str, v2p: pathlib.Path, fixp: pathlib.Path) -> tuple:
-    """M2: CN版编译 v2 全树 -> fix_p（3 次取中位数）；返回 (中位数, 样本表, 行数)。
-    M2 失败=核心指标缺失（基线不成立）→ 硬退出。"""
+    """M2: CN版编译 v2 全树 -> fix_p（样本数 次取中位数）；返回 (中位数, 样本表,
+    行数, 错误消息)。失败/超时=核心指标缺失，由主程序出「仅 M1」部分基线报告
+    （036：qemu 模拟下 M2 可能远超单命令超时——如实记录，不硬吞）。"""
     样本 = []
     行数 = 0
-    for i in range(3):
+    for i in range(样本数):
         耗时, 行数, asm, 错误 = 编译v2全树计时(v2p, 目标平台)
         if 错误:
-            print(f"错误: [M2] {错误}")
-            sys.exit(1)
+            return 0.0, [round(v, 3) for v in 样本], 0, 错误
         样本.append(耗时)
         shutil.copy2(asm, fixp)
     样本.sort()
-    return 样本[1], [round(v, 3) for v in 样本], 行数
+    return 样本[len(样本) // 2], [round(v, 3) for v in 样本], 行数, ""
 
 
 def 测量M3(as工具, ML64, 目标平台: str, fixp: pathlib.Path,
@@ -339,6 +403,9 @@ def 测量M4(目标平台: str, LINK, LIB路径们, v2pobj, cn_self_obj: pathlib
                 "-no-pie", "-Wl,-z,muldefs", "-Wl,-Map," + str(map文件),
                 "-o", str(cn_self_exe), str(cn_self_obj), str(v2pobj)]
         命令 += [str(o) for o in 运行时objs]
+        # 996 线程波 1：thread_api.o 入链配套（glibc<2.34 缺 -lpthread 必炸·
+        # >=2.34 平台合并 libpthread 掩盖——对齐 run_e2e.py 链接命令）
+        命令 += ["-lpthread"]
         结果, 耗时 = 计时(运行命令, 命令, 项目根目录)
     if 结果.returncode != 0:
         print(f"错误: M4 链接失败(退出码{结果.returncode}): "
@@ -357,14 +424,14 @@ def 测量M5(目标平台: str, cn_self_exe: pathlib.Path, fixs: pathlib.Path) -
     降级报告（M1~M4 成果保留）。"""
     样本 = []
     行数 = 0
-    for i in range(3):
+    for i in range(样本数):
         耗时, 行数, asm, 错误 = 编译v2全树计时(cn_self_exe, 目标平台)
         if 错误:
-            return 0.0, [], 0, 错误
+            return 0.0, [round(v, 3) for v in 样本], 0, 错误
         样本.append(耗时)
         shutil.copy2(asm, fixs)
     样本.sort()
-    return 样本[1], [round(v, 3) for v in 样本], 行数, ""
+    return 样本[len(样本) // 2], [round(v, 3) for v in 样本], 行数, ""
 
 
 def 测量M6(fixp: pathlib.Path, fixs: pathlib.Path) -> bool:
@@ -408,69 +475,119 @@ def 绑定自检(目标平台: str, map文件: pathlib.Path, cn_self_obj: pathli
 # ============ 报告生成 ============
 
 
-def 生成报告(测量结果: dict, 编译器路径: pathlib.Path, 输入规模: dict,
-             M6一致: bool, 目标平台: str) -> pathlib.Path:
-    """生成性能基线报告 target/bench/性能基线报告.md"""
-    报告路径 = 基准目录 / "性能基线报告.md"
-    cpu信息 = platform.processor() or platform.machine()
-    组件总行数 = sum(输入规模.values())
-
+def 报告视图(测量结果: dict, M6一致: bool) -> dict:
+    """计算报告展示值（失败/未执行分支在此单点收口），返回视图字典。"""
     m1 = 测量结果["M1"]
-    m2 = 测量结果["M2"]
-    m5 = 测量结果["M5"]
-    m5错误 = 测量结果.get("M5错误", "")
-    比值vscpp = (m2 / m1) if m1 > 0 else float("inf")
+    m2 = 测量结果.get("M2", 0.0)
+    m2错误 = 测量结果.get("M2错误", "")
+    m3 = 测量结果.get("M3")
+    m4 = 测量结果.get("M4")
+    m5 = 测量结果.get("M5", 0.0)
+    m5错误 = 测量结果.get("M5错误", "") if not m2错误 else ""
+    m5跳过 = bool(测量结果.get("M5跳过", False)) and not m2错误
+    比值vscpp = (m2 / m1) if (m1 > 0 and m2 > 0) else float("inf")
     比值自洽 = (m5 / m2) if (m2 > 0 and m5 > 0) else float("inf")
-
-    if m5错误:
+    if m2错误:
+        结论 = ("⚠️ 部分基线：仅 M1 有效（M2 编译失败/超时——M3~M6 未执行；"
+                "036 qemu 交叉模拟性能深坑或口径问题·详见末节）")
+        m5显示 = "— 未执行（M2 失败）"
+        m6显示 = "— 未执行（M2 失败）"
+    elif m5错误:
         结论 = ("⚠️ 部分基线：M1~M4 有效（M5/M6 未达成——cn_self 自身编译失败·"
                 "缺陷域非口径问题·详见末节）")
+        m5显示 = "失败（降级·见末节）"
+        m6显示 = "— 未执行（M5 失败）"
+    elif m5跳过:
+        结论 = ("⚠️ 部分基线：M1~M4 有效（M5/M6 按 --跳过M5 未执行——"
+                "qemu 下 M5 预算不足的显式口径）")
+        m5显示 = "— 跳过（--跳过M5）"
+        m6显示 = "— 未执行（M5 跳过）"
     else:
         结论 = ("✅ 自举固定点成立（fix_p ≡ fix_s 逐字节）·基线入库"
                 if M6一致 else "❌ 固定点不一致——性能对比无效（M6 失败）")
-    m5显示 = f"{m5:.1f}" if not m5错误 else "失败（降级·见末节）"
-    m6显示 = ("✅ 一致" if M6一致 else
-              ("— 未执行（M5 失败）" if m5错误 else "❌ 不一致"))
-    比值自洽显示 = f"{比值自洽:.3f}x" if 比值自洽 != float("inf") else "—"
+        m5显示 = f"{m5:.1f}"
+        m6显示 = "✅ 一致" if M6一致 else "❌ 不一致"
+    return {
+        "m1": m1, "m2": m2, "m2错误": m2错误, "m5错误": m5错误,
+        "m2显示": f"{m2:.1f}" if not m2错误 else "失败/超时（见末节）",
+        "m3显示": f"{m3:.1f}" if m3 is not None else "— 未执行",
+        "m4显示": f"{m4:.1f}" if m4 is not None else "— 未执行",
+        "m5显示": m5显示, "m6显示": m6显示, "结论": 结论,
+        "比值vscpp显示": f"{比值vscpp:.2f}x" if 比值vscpp != float("inf") else "—",
+        "比值自洽显示": f"{比值自洽:.3f}x" if 比值自洽 != float("inf") else "—",
+    }
 
-    行们 = [
+
+def 报告正文行们(测量结果: dict, 视图: dict, 编译器路径: pathlib.Path,
+                输入规模: dict, 目标平台: str) -> list:
+    """报告头部与两张表（不含失败降级说明节）。"""
+    cpu信息 = platform.processor() or platform.machine()
+    平台说明 = 目标平台
+    if 交叉前缀:
+        平台说明 += (f"（qemu 交叉模拟：宿主 {platform.machine()} + "
+                    f"{' '.join(交叉前缀)}）")
+    return [
         "# CN 语言自举性能基线报告（plans/004 D-1 · 560-a v2 口径）",
         "",
         f"- **生成时间**: {time.strftime('%Y-%m-%d %H:%M:%S')}",
-        f"- **平台**: {目标平台}（本机自举基线·跨机比较无意义）",
+        f"- **平台**: {平台说明}（本机自举基线·跨机比较无意义）",
         f"- **编译器（C++ 宿主）**: {编译器路径}",
         f"- **CPU**: {cpu信息}",
-        f"- **测量对象**: CN语言编译器v2 全树（{组件总行数} 行·{len(输入规模)} 文件）",
+        f"- **测量对象**: CN语言编译器v2 全树（{sum(输入规模.values())} 行·"
+        f"{len(输入规模)} 文件）",
+        f"- **口径**: 单命令超时 {命令超时秒} 秒·M2/M5 样本数 {样本数}（取中位）",
         "",
         "## 一、各测量点耗时",
         "",
         "| 测量点 | 说明 | 耗时(ms) |",
         "|--------|------|---------:|",
-        f"| M1 | C++ 宿主 build v2 全树（cn build -> v2p） | {m1:.1f} |",
-        f"| M2 | CN 版编译 v2 全树 -> fix_p（3 次中位数·样本 {测量结果['M2样本']}） | {m2:.1f} |",
-        f"| M3 | as 汇编 fix_p -> cn_self.obj | {测量结果['M3']:.1f} |",
-        f"| M4 | 链接 cn_self（cn_self.obj 在前 + v2p.obj 借链 + 运行时） | {测量结果['M4']:.1f} |",
-        f"| M5 | cn_self 再编译 v2 全树 -> fix_s（3 次中位数·样本 {测量结果['M5样本']}） | {m5显示} |",
-        f"| M6 | 固定点 fix_p ≡ fix_s 逐字节 | {m6显示} |",
+        f"| M1 | C++ 宿主 build v2 全树（cn build -> v2p） | {视图['m1']:.1f} |",
+        f"| M2 | CN 版编译 v2 全树 -> fix_p（{样本数} 次中位数·样本 "
+        f"{测量结果.get('M2样本', [])}） | {视图['m2显示']} |",
+        f"| M3 | as 汇编 fix_p -> cn_self.obj | {视图['m3显示']} |",
+        f"| M4 | 链接 cn_self（cn_self.obj 在前 + v2p.obj 借链 + 运行时） | "
+        f"{视图['m4显示']} |",
+        f"| M5 | cn_self 再编译 v2 全树 -> fix_s（{样本数} 次中位数·样本 "
+        f"{测量结果.get('M5样本', [])}） | {视图['m5显示']} |",
+        f"| M6 | 固定点 fix_p ≡ fix_s 逐字节 | {视图['m6显示']} |",
         "",
         "## 二、性能比值",
         "",
         "| 对比项 | 基准 | CN 版 | 比值 |",
         "|--------|-----:|------:|-----:|",
-        f"| 编译 v2 全树（M2/M1） | {m1:.1f} ms（C++ 宿主） | {m2:.1f} ms | {比值vscpp:.2f}x |",
-        f"| 两代自洽（M5/M2·应≈1） | {m2:.1f} ms（v2p） | {m5显示} | {比值自洽显示} |",
+        f"| 编译 v2 全树（M2/M1） | {视图['m1']:.1f} ms（C++ 宿主） | "
+        f"{视图['m2显示']} | {视图['比值vscpp显示']} |",
+        f"| 两代自洽（M5/M2·应≈1） | {视图['m2显示']}（v2p） | "
+        f"{视图['m5显示']} | {视图['比值自洽显示']} |",
         "",
-        f"- **v2p / cn_self 产物行数**: {测量结果['M2行数']} / {测量结果['M5行数']}（下界 {行数下界}）",
-        f"- **结论**: {结论}",
+        f"- **v2p / cn_self 产物行数**: {测量结果.get('M2行数', 0)} / "
+        f"{测量结果.get('M5行数', 0)}（下界 {行数下界}）",
+        f"- **结论**: {视图['结论']}",
         "",
         "> **口径说明**：M2/M5 计时含编译器进程启动；比值 M2/M1 为「CN 版 vs C++ 版",
         "> 编译同一棵 v2 全树」的性能比（plans/004「性能达 C -O0」里程碑口径）；",
         "> M5/M2 为自举两代编译器自洽比（固定点成立时应 ≈1.00，偏差大=产物不自洽）。",
         "> 单机口径——跨机比较无意义（CPU/负载不同），仅作本平台纵向基线。",
+        "> qemu 交叉模拟数值含指令转译开销，不等价于 arm64 真机性能。",
         "",
     ]
+
+
+def 失败说明行们(测量结果: dict) -> list:
+    """M2 失败/超时或 M5 失败时的第三节说明（互斥）。"""
+    m2错误 = 测量结果.get("M2错误", "")
+    m5错误 = 测量结果.get("M5错误", "")
+    if m2错误:
+        return [
+            "## 三、M2 失败/超时说明（036 交叉模拟）",
+            "",
+            f"- **M2 错误**: {m2错误}",
+            "- **性质**：M2 是基线核心指标；失败/超时=M3~M6 无输入，本报告仅 M1 有效。",
+            "- **处置**：如实入册（禁伪造数字）；可放宽 `--超时秒` 或改真机复测。",
+            "",
+        ]
     if m5错误:
-        行们 += [
+        return [
             "## 三、M5 失败降级说明（720-a）",
             "",
             f"- **M5 错误**: {m5错误}",
@@ -480,6 +597,26 @@ def 生成报告(测量结果: dict, 编译器路径: pathlib.Path, 输入规模
             "  同一 cn_self 缺陷；M5/M6 随该缺陷清偿后重跑本脚本回填。",
             "",
         ]
+    if 测量结果.get("M5跳过"):
+        return [
+            "## 三、M5 跳过说明（--跳过M5）",
+            "",
+            "- **性质**：M1~M4 已完成且有效；M5/M6 按显式参数未执行（非失败）。",
+            "- **用途**：qemu 交叉模拟下 M5 常需数小时——预算不足时先取 M1~M4。",
+            "- **回填**：真机或放宽超时后重跑本脚本（不带 --跳过M5）即可补齐。",
+            "",
+        ]
+    return []
+
+
+def 生成报告(测量结果: dict, 编译器路径: pathlib.Path, 输入规模: dict,
+             M6一致: bool, 目标平台: str) -> pathlib.Path:
+    """生成性能基线报告 target/bench/性能基线报告.md（036：支持 M2 失败/超时的
+    部分基线——M1 成果保留，未执行点如实标「—」而非伪造数字）"""
+    报告路径 = 基准目录 / "性能基线报告.md"
+    视图 = 报告视图(测量结果, M6一致)
+    行们 = 报告正文行们(测量结果, 视图, 编译器路径, 输入规模, 目标平台)
+    行们 += 失败说明行们(测量结果)
     报告路径.parent.mkdir(parents=True, exist_ok=True)
     with open(报告路径, "w", encoding="utf-8") as f:
         f.write("\n".join(行们) + "\n")
@@ -489,29 +626,54 @@ def 生成报告(测量结果: dict, 编译器路径: pathlib.Path, 输入规模
 # ============ 主程序 ============
 
 
-def 主程序() -> int:
+def 解析参数() -> tuple:
+    """解析命令行并回写全局口径（超时/样本数），返回
+    (目标平台, 编译器路径, 跳过M5)。"""
     解析器 = argparse.ArgumentParser(
         description="CN语言自举性能基线测量（plans/004 D-1 · 560-a v2 口径三平台）",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="示例:\n"
                "  python scripts/bench_self_host.py\n"
-               "  python scripts/bench_self_host.py --platform linux-arm64 --cn target/cn")
+               "  python scripts/bench_self_host.py --platform linux-arm64 --cn target/cn\n"
+               "  CN_AS=aarch64-linux-gnu-as CN_CXX=aarch64-linux-gnu-g++ \\\n"
+               "    python scripts/bench_self_host.py --platform linux-arm64 --样本数 1")
     解析器.add_argument("--platform", help="目标平台（默认按宿主探测）")
     解析器.add_argument("--cn", help="cn编译器路径（默认自动探测 target/ 下）")
+    解析器.add_argument("--超时秒", type=int, default=1800,
+                        help="单条命令超时秒数（默认 1800·0=不限；超时如实入报告）")
+    解析器.add_argument("--样本数", type=int, default=3,
+                        help="M2/M5 采样次数（默认 3·取中位；qemu 模拟可设 1）")
+    解析器.add_argument("--跳过M5", action="store_true",
+                        help="M4 后停止（qemu 下 M5 常需数小时·只取 M1~M4 时用）")
     参数 = 解析器.parse_args()
 
-    目标平台 = 探测平台(参数.platform)
-    编译器路径 = 探测编译器(参数.cn)
+    global 命令超时秒, 样本数
+    命令超时秒 = 参数.超时秒
+    样本数 = max(1, 参数.样本数)
+    return 探测平台(参数.platform), 探测编译器(参数.cn), 参数.跳过M5
 
+
+def 准备工具链(目标平台: str) -> tuple:
+    """探测 as/cxx 与 win 工具链；交叉模拟激活时校验 aarch64 工具链配置。
+    返回 (as工具, cxx工具, ML64, LINK, LIB路径们)。"""
     if 目标平台 == "win-x64":
         ML64, LINK, LIB路径们 = 探测win工具链()
-        as工具 = None
-    else:
-        as工具, cxx工具 = 探测linux工具链()
-        ML64 = LINK = None
-        LIB路径们 = None
+        return None, None, ML64, LINK, LIB路径们
+    as工具, cxx工具 = 探测linux工具链()
+    if 判定交叉模拟(目标平台):
+        print(f"  [交叉模拟] 宿主 {platform.machine()} × linux-arm64——"
+              f"产物运行前缀: {' '.join(交叉前缀)}")
+        if not ("aarch64" in pathlib.Path(as工具).name
+                and "aarch64" in pathlib.Path(cxx工具).name):
+            print(f"错误: 交叉模拟需 aarch64 工具链（当前 CN_AS={as工具}、"
+                  f"CN_CXX={cxx工具}）——设 CN_AS=aarch64-linux-gnu-as "
+                  f"CN_CXX=aarch64-linux-gnu-g++ 或 CN_RUN_PREFIX= 禁用")
+            sys.exit(2)
+    return as工具, cxx工具, None, None, None
 
-    # 工作目录（独立子路径·stdlib 软链——v2 驱动器按相对 cwd 读 stdlib/容器.cn）
+
+def 准备工作目录() -> None:
+    """重建 bench 工作目录并软链 stdlib（v2 驱动器按相对 cwd 读 stdlib/容器.cn）。"""
     if 工作目录.exists():
         shutil.rmtree(工作目录)
     (工作目录 / "target").mkdir(parents=True, exist_ok=True)
@@ -525,16 +687,11 @@ def 主程序() -> int:
             ["cmd", "/c", "mklink", "/J", str(链接目标), str(项目根目录 / "stdlib")],
             check=True, capture_output=True)
 
-    输入规模 = 统计输入规模()
-    print("CN语言 自举性能基线测量（v2 口径）")
-    print(f"  平台: {目标平台}")
-    print(f"  编译器（C++ 宿主）: {编译器路径}")
-    print(f"  输入规模: {sum(输入规模.values())} 行 / {len(输入规模)} 文件")
-    print()
 
-    # linux 侧运行时 .o 现场准备（不计时）；win 侧由 cn build 产出 target/win-x64/*.obj
-    #   （522：架构桶——桶名=目标平台标识）
-    v2pobj = None
+def 准备借链对象(目标平台: str, cxx工具: str):
+    """M4 借链对象前置准备：win=audit2/v2p.obj（须先跑 E2E 预热）；linux=现场
+    编译运行时 .o（不计时；720-a 恢复）并返回 None——linux 的 v2p.o 由 M1 产出，
+    须待 M1 后由 执行测量 校验（时序：m1 → v2p.o 存在）。"""
     if 目标平台 == "win-x64":
         # 637-a 根治：win 面借链 obj=audit2/v2p.obj（cn_self.obj 靠前定义胜出·
         #   对齐 run_e2e 执行v2锚定链 [4]；原 win 分支 v2pobj=None 直塞 rsp
@@ -549,80 +706,95 @@ def 主程序() -> int:
         if 缺失运行时:
             print(f"错误: M4 缺少运行时 obj（cn build 后即产出）: {缺失运行时[0].name}")
             sys.exit(1)
+        return v2pobj
+    # 720-a：linux 侧运行时 .o 现场编译——637-a win 面重构时误删本调用（win 需求
+    #   补回、linux 面漏补·linux-x64 首跑 720 轮实测暴露 M4 缺 io_api.o 等 5 件）。
+    准备运行时objs(目标平台, cxx工具)
+    return None
 
-    # [M1] 宿主 build v2 全树 -> v2p
-    v2p = 工作目录 / "v2p"
-    if 目标平台 == "win-x64":
-        v2p = 工作目录 / "v2p.exe"
-    print("[M1] C++ 宿主 build v2 全树 ...")
+
+def 执行测量(目标平台: str, 编译器路径: pathlib.Path, as工具, ML64, LINK,
+             LIB路径们, v2pobj, 跳过M5: bool = False) -> tuple:
+    """执行 M1~M6；返回 (测量结果, M6一致, 是否提前失败)。
+    提前失败仅指 M2（核心指标缺失）——保留 M1 出部分报告。
+    跳过M5=True：M4 绑定自检后停止（报告标注 M5/M6 未执行）。"""
     测量结果 = {}
+    v2p = 工作目录 / ("v2p.exe" if 目标平台 == "win-x64" else "v2p")
+    print("[M1] C++ 宿主 build v2 全树 ...")
     测量结果["M1"] = 测量M1(编译器路径, 目标平台, v2p)
     print(f"      {测量结果['M1']:.1f} ms")
-
-    # [M2] v2p 编译 v2 全树 -> fix_p（3 次中位数）
-    fixp = 工作目录 / ("fix_p.asm" if 目标平台 == "win-x64" else "fix_p.s")
-    print("[M2] CN 版编译 v2 全树 -> fix_p（3 次取中位数）...")
-    测量结果["M2"], 测量结果["M2样本"], 测量结果["M2行数"] = 测量M2(
-        目标平台, v2p, fixp)
-    print(f"      样本: {测量结果['M2样本']} -> 中位数 {测量结果['M2']:.1f} ms"
-          f"（{测量结果['M2行数']} 行）")
-
-    # [M3] 汇编 fix_p -> cn_self.obj（linux 侧 v2p.obj 借链=v2p 自身；win=中间 obj）
-    cn_self_obj = 工作目录 / ("cn_self.obj")
-    print("[M3] 汇编 fix_p -> cn_self.obj ...")
-    测量结果["M3"] = 测量M3(as工具, ML64, 目标平台, fixp, cn_self_obj)
-    print(f"      {测量结果['M3']:.1f} ms")
-
-    # 借链对象（linux）：cn build 的中间产物 v2p.o（M1 自动产出·run_e2e 锚定链
-    #   同款「容器符号提供者」——fix_p 缺跨模块符号定义〔实测 词法$Token追加 仅引用
-    #   无定义〕，须宿主 obj 借链补齐；cn_self.obj 在前=靠前定义胜出）
-    if 目标平台 != "win-x64":
-        # 720-a 恢复：linux 侧运行时 .o 现场编译（不计入测量点）——637-a win 面
-        #   重构时误删本调用（win 需求补回、linux 面漏补·linux-x64 首跑 720 轮实测
-        #   暴露 M4 缺 io_api.o 等 5 件＝M4 链接必败），560 arm64 基线时本调用在。
-        准备运行时objs(目标平台, cxx工具)
+    if v2pobj is None:  # linux：M1 的中间产物 v2p.o = M4 借链对象
         v2pobj = 工作目录 / "v2p.o"
         if not v2pobj.exists():
             print(f"错误: M4 缺少借链 obj: {v2pobj}（cn build 中间产物未留存）")
             sys.exit(1)
 
-    # [M4] 链接 cn_self
+    fixp = 工作目录 / ("fix_p.asm" if 目标平台 == "win-x64" else "fix_p.s")
+    print(f"[M2] CN 版编译 v2 全树 -> fix_p（{样本数} 次取中位数）...")
+    (测量结果["M2"], 测量结果["M2样本"], 测量结果["M2行数"],
+     测量结果["M2错误"]) = 测量M2(目标平台, v2p, fixp)
+    if 测量结果["M2错误"]:
+        print(f"      [M2 失败/超时·仅 M1 部分基线] {测量结果['M2错误']}")
+        return 测量结果, False, True
+    print(f"      样本: {测量结果['M2样本']} -> 中位数 {测量结果['M2']:.1f} ms"
+          f"（{测量结果['M2行数']} 行）")
+
+    cn_self_obj = 工作目录 / "cn_self.obj"
+    print("[M3] 汇编 fix_p -> cn_self.obj ...")
+    测量结果["M3"] = 测量M3(as工具, ML64, 目标平台, fixp, cn_self_obj)
+    print(f"      {测量结果['M3']:.1f} ms")
+
     cn_self_exe = 工作目录 / ("cn_self.exe" if 目标平台 == "win-x64" else "cn_self")
     print("[M4] 链接 cn_self ...")
     测量结果["M4"] = 测量M4(目标平台, LINK, LIB路径们, v2pobj,
                         cn_self_obj, cn_self_exe)
     print(f"      {测量结果['M4']:.1f} ms")
 
-    # 绑定自检（linux=map 解析；win=map 文本——供家机跨机复验）
     map文件 = 工作目录 / "cn_self_link.map"
     绑定自检(目标平台, map文件, cn_self_obj)
     print("      绑定自检: cn_main ∈ cn_self.obj ✓")
+    if 跳过M5:
+        测量结果["M5跳过"] = True
+        print("[M5] 跳过（--跳过M5·M5/M6 未执行）")
+        return 测量结果, False, False
 
-    # [M5] cn_self 再编译 v2 全树 -> fix_s（3 次中位数）
     fixs = 工作目录 / ("fix_s.asm" if 目标平台 == "win-x64" else "fix_s.s")
-    print("[M5] cn_self 再编译 v2 全树 -> fix_s（3 次取中位数）...")
+    print(f"[M5] cn_self 再编译 v2 全树 -> fix_s（{样本数} 次取中位数）...")
     测量结果["M5"], 测量结果["M5样本"], 测量结果["M5行数"], 测量结果["M5错误"] = \
         测量M5(目标平台, cn_self_exe, fixs)
     if 测量结果["M5错误"]:
         print(f"      [M5 失败·降级出报告] {测量结果['M5错误']}")
-    else:
-        print(f"      样本: {测量结果['M5样本']} -> 中位数 {测量结果['M5']:.1f} ms"
-              f"（{测量结果['M5行数']} 行）")
+        return 测量结果, False, False
+    print(f"      样本: {测量结果['M5样本']} -> 中位数 {测量结果['M5']:.1f} ms"
+          f"（{测量结果['M5行数']} 行）")
 
-    # [M6] 固定点（M5 失败时无 fix_s 可比——跳过并标注）
-    if 测量结果["M5错误"]:
-        M6一致 = False
-        print("[M6] 跳过（M5 未产出 fix_s·cn_self 缺陷域）")
-    else:
-        print("[M6] 正确性验证（fix_p ≡ fix_s）...")
-        M6一致 = 测量M6(fixp, fixs)
-        print(f"      {'✅ 两次产物逐字节一致（自举固定点成立）' if M6一致 else '❌ 不一致'}")
+    print("[M6] 正确性验证（fix_p ≡ fix_s）...")
+    M6一致 = 测量M6(fixp, fixs)
+    print(f"      {'✅ 两次产物逐字节一致（自举固定点成立）' if M6一致 else '❌ 不一致'}")
+    return 测量结果, M6一致, False
 
+
+def 主程序() -> int:
+    目标平台, 编译器路径, 跳过M5 = 解析参数()
+    as工具, cxx工具, ML64, LINK, LIB路径们 = 准备工具链(目标平台)
+    准备工作目录()
+
+    输入规模 = 统计输入规模()
+    print("CN语言 自举性能基线测量（v2 口径）")
+    print(f"  平台: {目标平台}")
+    print(f"  编译器（C++ 宿主）: {编译器路径}")
+    print(f"  输入规模: {sum(输入规模.values())} 行 / {len(输入规模)} 文件")
+    print(f"  单命令超时: {命令超时秒} 秒 | M2/M5 样本数: {样本数}"
+          f"{' | 跳过M5' if 跳过M5 else ''}")
+    print()
+
+    v2pobj = 准备借链对象(目标平台, cxx工具)
+    测量结果, M6一致, 提前失败 = 执行测量(
+        目标平台, 编译器路径, as工具, ML64, LINK, LIB路径们, v2pobj, 跳过M5)
     报告路径 = 生成报告(测量结果, 编译器路径, 输入规模, M6一致, 目标平台)
     print()
-    print(f"性能基线报告: {报告路径}")
-
-    return 0 if M6一致 else 1
+    print(f"性能基线报告{'（部分）' if 提前失败 else ''}: {报告路径}")
+    return 0 if (M6一致 and not 提前失败) else 1
 
 
 if __name__ == "__main__":
