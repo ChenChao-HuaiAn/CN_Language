@@ -46,10 +46,12 @@ std::unique_ptr<Backend> createBackend(const std::string& target,
         return backend;
     }
     if (target == "linux-x86_64") {
-        // plans/016：System V AMD64 ABI + GAS Intel 语法（对齐 arm64 的
-        //   寄存器分配决策：默认关闭，保持全栈帧，正确性最高优先）
+        // plans/016：System V AMD64 ABI + GAS Intel 语法。
+        // 任务 1144：-O2 起与 win-x64/arm64 同款联动开启后端优化发射通道
+        //   （该后端当前不消费物理寄存器分配结果；regAllocEnabled_ 作优化开关，
+        //    门控发射后窥孔等 -O2 设面——-O0/-O1/--no-regalloc 产物逐字节不变）。
         auto backend = std::make_unique<LinuxX64CodeGenerator>(diag, sem);
-        backend->setRegAllocEnabled(false);
+        backend->setRegAllocEnabled(regAllocOn);
         backend->setDebugInfoEnabled(debugInfo);
         return backend;
     }

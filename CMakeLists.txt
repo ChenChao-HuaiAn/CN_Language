@@ -295,6 +295,7 @@ target_link_libraries(cn_compiler_ir PUBLIC cn_compiler_model cn_compiler_parser
 add_library(cn_compiler_codegen STATIC
     src/cn_compiler/codegen/backend_factory.cpp
     src/cn_compiler/codegen/reg_alloc.cpp
+    src/cn_compiler/codegen/peephole_slot.cpp
     src/cn_compiler/codegen/debug_info.cpp
     src/cn_compiler/codegen/judgement.cpp
     src/cn_compiler/codegen/x64/x64_codegen.cpp

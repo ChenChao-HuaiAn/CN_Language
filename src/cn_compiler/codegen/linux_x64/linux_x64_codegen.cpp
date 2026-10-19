@@ -21,6 +21,7 @@
 #include <vector>
 
 #include "cn_compiler/codegen/linux_x64/linux_x64_codegen.hpp"
+#include "cn_compiler/codegen/peephole_slot.hpp"
 #include "cn_compiler/model/semantic_view.hpp"
 #include "cn_compiler/model/type_system.hpp"
 
@@ -599,7 +600,15 @@ std::string LinuxX64CodeGenerator::generateFunctionAssembly(const ir::IRFunction
         function.mangledName.empty() ? function.name : function.mangledName);
     writer.raw(".size " + sym + ", .-" + sym);
     writer.raw("");
-    return writer.str();
+    // 任务 1144（波2）：发射后窥孔——冗余槽读写消除（相邻 store→load 同槽转发，
+    //   仅槽死时）。门控 = regAllocEnabled_（-O2 起由 backend_factory 联动开启）：
+    //   -O0/-O1/--no-regalloc 的产物逐字节不变（与 458 红线同口径）。窥孔为纯等价
+    //   变换（见 peephole_slot.hpp 规则与安全条件），不改任何运行时语义。
+    std::string asmText = writer.str();
+    if (regAllocEnabled_) {
+        asmText = peephole::eliminateRedundantSlotTraffic(asmText);
+    }
+    return asmText;
 }
 
 // 生成一个基本块（标签 + 指令序列 + 终止）
