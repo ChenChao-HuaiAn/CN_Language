@@ -12,8 +12,15 @@ namespace cn_compiler {
 namespace {
 
 // 从 pos 处解码一个UTF-8字符，返回Unicode码点，len 输出该字符的字节长度
+// #103（1143 批·解析层分配点零分配改造）：ASCII 快路径——ASCII 单字节字符
+//   （空白/标点/数字/ASCII 标识符）占源码字节大头，显式短路省多字节分支链
+//   与续字节循环（语义零变化：len=1、cp=首字节；多字节路径逐字节同原实现）。
 char32_t decodeUtf8(const std::string& s, std::size_t pos, int& len) {
     unsigned char first = static_cast<unsigned char>(s[pos]);
+    if ((first & 0x80) == 0) {  // ASCII 区段=高位清零（0x00-0x7F 穷举判定）
+        len = 1;
+        return first;
+    }
     len = 1;
     char32_t cp = first;
     if (first >= 0xF0) {
@@ -102,7 +109,12 @@ const std::unordered_map<std::string, TokenType>& keywordTable() {
 } // namespace
 
 // 查找关键字：命中返回true并设置类型
+// #103（1143 批）：快筛——46 保留字首字符全为汉字（多字节头字节），ASCII 起始
+//   文本直接拒绝（免哈希查询；命中域不变——0x80-0xE3 起始罕见文本仍走原表兜底）。
+//   ★维护警示：新增 ASCII/低位起始保留字时须同步放宽本快筛。
 bool Lexer::lookupKeyword(const std::string& text, TokenType& type) {
+    const unsigned char b0 = text.empty() ? 0u : static_cast<unsigned char>(text[0]);
+    if ((b0 & 0x80) == 0) return false;  // ASCII 区段=高位清零
     const auto& table = keywordTable();
     const auto it = table.find(text);
     if (it != table.end()) {
@@ -238,7 +250,11 @@ bool Lexer::isIdentifierContChar(char32_t c) const {
 // 特殊处理：原始/多行前缀后紧跟引号时转入带前缀字符串读取
 Token Lexer::readIdentifierOrKeyword() {
     SourceLocation loc = currentLocation();
-    std::string text;
+    // #103（1143 批）：标识符字节区间单次截取——原逐字符 `text += currentUtf8()`
+    //   每字符构造一个临时 std::string；advance 按解码长度推进字节，扫描所得区间
+    //   [start, pos_) 与逐字符累积串逐字节相同（损坏 UTF-8 尾亦等价：substr 自动
+    //   截到串尾=原 currentUtf8 越界保护同口径；字符判定循环体不变）。
+    const std::size_t idStart = pos_;
     while (!isAtEnd()) {
         char32_t c = peek();
         // T21（306-a 波次2·方案甲）：「中文」限定=汉字区段——CJK 统一表意
@@ -247,9 +263,9 @@ Token Lexer::readIdentifierOrKeyword() {
         //   （对照 Rust XIDStart/XIDContinue 业界标准；ASCII 面不变）。
         //   原实现 `c >= 0x80` 对全部非 ASCII 放行=字符集过宽（行59/60 立案）。
         if (!isIdentifierContChar(c)) break;
-        text += currentUtf8();
         advance();
     }
+    std::string text = source_.substr(idStart, pos_ - idStart);
     // 原始/多行 前缀上下文识别（162-a 非保留化，plans/024 §7.3）：词后紧跟
     //   引号才是字符串字面量；前缀后仅空白再跟引号=前缀误用，报友好诊断；
     //   其余语境回退普通标识符（原始/多行 可作变量名/字段名/函数名）
