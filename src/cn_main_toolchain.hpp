@@ -58,7 +58,10 @@ bool readSourceFile(const std::string& path, std::string& content, std::string& 
 std::string pathStem(const std::string& path);
 int systemExitCode(int status);
 bool ensureDirExists(const std::string& dir);
-std::string ansiToUtf8(const std::string& ansi);
+// UTF-8 -> 当前 ANSI 代码页视图（ml64/link 路径通道·Windows；Linux 原样返回）。
+//   返回 false=含 ANSI 代码页不可表示的字符或转换失败（调用方显式报错，
+//   禁静默替换 '?' —— miss 不可静默纪律）。文本语义参数不做本转换。
+bool utf8ToAnsi(const std::string& utf8, std::string& ansi);
 bool toDriverOptions(const CliOptions& options, const std::string& file,
                      cn_compiler::driver::DriverOptions& dopts, std::string& error);
 

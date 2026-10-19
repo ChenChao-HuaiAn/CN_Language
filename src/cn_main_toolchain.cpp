@@ -2,8 +2,10 @@
 // 职责：MSVC vcvars 探测（vswhere）+ 工具链命令执行（Windows 经 vcvars 环境、
 //   Linux 直接 as/g++）+ 目标平台辅助（win-x64 / linux-arm64 / linux-x86_64）+
 //   汇编/运行时编译/链接 + buildExe 全链路（build 与 run 命令共用）。
-//   readSourceFile/pathStem/systemExitCode/ensureDirExists/ansiToUtf8/toDriverOptions
+//   readSourceFile/pathStem/systemExitCode/ensureDirExists/toDriverOptions
 //   仍由 cn_main.cpp 提供（声明见 cn_main_toolchain.hpp）。
+// 1026（审查 P1 根治）：CLI 取参=宽命令行→UTF-8（文本语义统一 UTF-8）；
+//   工具链（ml64/link/cl）路径约束不变——utf8ToAnsi 生成 ANSI 视图单点。
 // 969（2026-10-17）：运行时清单单源化（runtimeSrcs 编译/链接共用）+ 整批指纹缓存
 //   （清单/源/工具任一变化=整批重编，陈旧 .o 假绿根治·945 移池断链实录）。
 // 522（2026-10-13）：默认产物根=target/<目标平台>/（archBucketDir）——运行时 obj、
@@ -67,6 +69,40 @@ static std::string getEnvVar(const std::string& name) {
     (void)name;  // Linux 分支：仅作 getenv 参数，防御性避免 -Wunused-parameter
     const char* v = std::getenv(name.c_str());
     return v ? std::string(v) : "";
+#endif
+}
+
+// UTF-8 -> 当前 ANSI 代码页视图（ml64/link 路径通道·1026 审查 P1）。
+//   CLI 取参已统一 UTF-8（宽命令行通道）；工具链（ml64/link/cl 命令行与
+//   CreateDirectoryA/fstream 窄路径）仍按 ANSI 解释——路径参数在此生成 ANSI
+//   视图，文本语义参数（宏名/旗标）不走本函数。返回 false=转换失败或含 ANSI
+//   不可表示字符（禁静默替换 '?'；调用方必须显式报错）。Linux 原样返回。
+bool utf8ToAnsi(const std::string& utf8, std::string& ansi) {
+#ifdef _WIN32
+    ansi.clear();
+    if (utf8.size() == 0) return true;
+    // MB_ERR_INVALID_CHARS：非法 UTF-8 显式失败（不静默替换 U+FFFD）
+    const int wideLen = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS,
+                                            utf8.c_str(), -1, nullptr, 0);
+    if (wideLen == 0) return false;
+    std::vector<wchar_t> wide(static_cast<std::size_t>(wideLen));
+    MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, utf8.c_str(), -1, wide.data(), wideLen);
+    // WC_NO_BEST_FIT_CHARS + usedDefault 双段探测：含 ACP 不可表示字符=显式失败
+    BOOL usedDefault = FALSE;
+    const int ansiLen = WideCharToMultiByte(CP_ACP, WC_NO_BEST_FIT_CHARS, wide.data(), -1,
+                                            nullptr, 0, nullptr, &usedDefault);
+    if (ansiLen == 0) return false;
+    std::vector<char> buf(static_cast<std::size_t>(ansiLen));
+    usedDefault = FALSE;
+    if (WideCharToMultiByte(CP_ACP, WC_NO_BEST_FIT_CHARS, wide.data(), -1, buf.data(), ansiLen,
+                            nullptr, &usedDefault) == 0) return false;
+    if (usedDefault) return false;
+    ansi.assign(buf.data(), static_cast<std::size_t>(ansiLen - 1));
+    return true;
+#else
+    (void)utf8;
+    ansi = utf8;
+    return true;
 #endif
 }
 
@@ -328,8 +364,15 @@ static bool linkExe(const std::string& target, const std::string& vcvarsBat,
     }
     if (isWinX64(target)) {
         // C-3（FFI）：附加链接库（--链接 库名，可多次）
+        // 1026：库名/路径来自 UTF-8 argv——link 按 ANSI 解释，逐件生成 ANSI 视图
         for (const auto& lib : extraLibs) {
-            cmdLine += " \"" + lib + "\"";
+            std::string libAnsi;
+            const bool libOk = utf8ToAnsi(lib, libAnsi);
+            if (libOk == false) {
+                error = "链接库参数包含当前 ANSI 代码页无法表示的字符: " + lib;
+                return false;
+            }
+            cmdLine += " \"" + libAnsi + "\"";
         }
     // 静默豁免闭集穷举: win/linux 平台二分（isWinX64 闭集·另一平台命令行构建属正当分派·登记 miss_registry）
     } else {
@@ -359,6 +402,21 @@ int buildExe(const CliOptions& options, const std::string& file,
         return 1;
     }
 
+    // 1026（审查 P1）：CLI 路径参数=UTF-8（宽命令行通道）；ml64/link/cl 与
+    //   CreateDirectoryA/fstream 窄路径仍按 ANSI 解释——此处单点生成 ANSI 视图，
+    //   内部源读取/模块流水线/诊断用 UTF-8。含 ACP 不可表示字符=显式报错。
+    std::string fileAnsi;
+    if (!utf8ToAnsi(file, fileAnsi)) {
+        error = "源文件路径包含当前 ANSI 代码页无法表示的字符（工具链路径约束）: " + file;
+        return 1;
+    }
+    std::string outputAnsi;
+    if (!utf8ToAnsi(options.output, outputAnsi)) {
+        error = "输出路径包含当前 ANSI 代码页无法表示的字符（工具链路径约束）: " +
+                options.output;
+        return 1;
+    }
+
     // 1. 读取源文件（UTF-8）
     std::string source;
     if (!readSourceFile(file, source, error)) return 1;
@@ -376,9 +434,9 @@ int buildExe(const CliOptions& options, const std::string& file,
     cn_compiler::driver::PipelineOutput output;
     // 242-a（D13）：build 强制入口 主 函数（编译期诊断）
     dopts.requireEntryMain = true;
-    // 入口文件转 UTF-8 传给 driver（依赖查找/模块名判定统一 UTF-8；
-    //   工具链路径保持 GBK file——ml64/link 按 ANSI 解释中文名）
-    if (cn_compiler::driver::runModulePipeline(ansiToUtf8(file), dopts, output) != 0) {
+    // 入口文件已 UTF-8（宽命令行通道）直传 driver（依赖查找/模块名判定统一
+    //   UTF-8；工具链路径由 fileAnsi/outputAnsi 的 ANSI 视图承载）
+    if (cn_compiler::driver::runModulePipeline(file, dopts, output) != 0) {
         return 1;
     }
 
@@ -389,8 +447,9 @@ int buildExe(const CliOptions& options, const std::string& file,
     //    --output 指定深层不存在目录时自动逐级创建（如 target/deep/a/b/c/out）
     const std::string exeSuf = exeSuffix(options.target);
     const std::string bucketRoot = "target/" + archBucketDir(options.target);
-    std::string stem = pathStem(file);
-    exePath = options.output.empty() ? bucketRoot + "/" + stem + exeSuf : options.output;
+    // 主干名取 ANSI 视图（默认产物名/中间文件走工具链 ANSI 路径通道）
+    std::string stem = pathStem(fileAnsi);
+    exePath = outputAnsi.empty() ? bucketRoot + "/" + stem + exeSuf : outputAnsi;
     // 提取 exe 所在目录（含末尾分隔符）；无目录（纯文件名）则用本架构桶目录
     std::string exeDir = bucketRoot + "/";
     std::string exeName = stem + exeSuf;

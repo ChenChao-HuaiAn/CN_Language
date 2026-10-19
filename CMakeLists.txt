@@ -442,6 +442,11 @@ add_executable(cn
     src/cn_main_toolchain.cpp
 )
 target_link_libraries(cn PRIVATE cn_compiler_common cn_compiler_lexer cn_compiler_parser cn_compiler_semantic cn_compiler_ir cn_compiler_codegen cn_compiler_model cn_compiler_driver)
+# 1026（审查 P1）：宽命令行取参 CommandLineToArgvW -> shell32（与 v2 runtime
+#   system_api.cpp 同源；cn_runtime 早已挂该库，编译器本体 cn 此前只走 CRT 窄 argv）
+if(WIN32)
+    target_link_libraries(cn PRIVATE shell32)
+endif()
 # Linux 下 cn 运行时入口 main（单元测试不需——gtest_main 提供 main，避免冲突）
 if(NOT WIN32)
     target_compile_definitions(cn PRIVATE CNRT_LINUX_MAIN)

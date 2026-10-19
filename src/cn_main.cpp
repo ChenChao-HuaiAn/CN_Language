@@ -10,6 +10,7 @@
 //   ast <源.cn>      输出AST（调试用）
 //   token <源.cn>    输出Token流（调试用）
 // 公共流水线（词法->语法->语义->IR->汇编）抽取到 cn_compiler/driver 模块
+#include <cassert>
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
@@ -23,6 +24,7 @@
 
 #ifdef _WIN32
 #include <windows.h>
+#include <shellapi.h>  // CommandLineToArgvW（1026：宽命令行取参·shell32）
 #include <crtdbg.h>  // _CALL_REPORTFAULT（#513 abort 弹窗收敛）
 #else
 #include <sys/wait.h>  // WIFEXITED/WEXITSTATUS（system 返回值解包，249-a）
@@ -37,7 +39,7 @@
 
 // 349 重构E：MSVC vcvars 探测+工具链调用+buildExe 抽取到 cn_main_toolchain.hpp/cpp
 //   （纯机械搬移·零逻辑变化）；CliOptions 移入 cn_main_toolchain.hpp；
-//   readSourceFile/pathStem/systemExitCode/ensureDirExists/ansiToUtf8/toDriverOptions
+//   readSourceFile/pathStem/systemExitCode/ensureDirExists/toDriverOptions
 //   由文件级 static 提为可链接（签名/语义零变化·声明住 cn_main_toolchain.hpp）。
 #include "cn_main_toolchain.hpp"
 
@@ -77,40 +79,37 @@ void printHelp() {
     std::cout << "  --help, -h             显示帮助信息\n";
 }
 
-// argv 文本参数 UTF-8 归一（258-a 旗标面立·1026 扩 -D 宏名面）。
-//   Windows argv 窄字符=当前 ANSI 代码页（简中系统=GBK）字节，而编译器内部文本
-//   （源文件内容/宏名/诊断）统一 UTF-8：含高字节且已是合法 UTF-8 的保持原样
-//   （防双重转换，例如调用方直接以 UTF-8 字节构造命令行）；其余按 ANSI 代码页
-//   转 UTF-8。纯 ASCII 原样返回（零开销）。
-//   注意：仅用于**文本语义**参数（旗标名/宏名）；路径参数不进本通道——ml64/link
-//   按 ANSI 解释路径，保持原样（E2E 18/19 回归史）。
-static std::string ansiArgToUtf8(const std::string& text) {
-    bool hasHighByte = false;
-    bool validUtf8 = true;
-    for (std::size_t i = 0; i < text.size(); ++i) {
-        const unsigned char c = static_cast<unsigned char>(text[i]);
-        if (c < 0x80) continue;
-        hasHighByte = true;
-        const int cont = (c & 0xE0) == 0xC0 ? 1 : (c & 0xF0) == 0xE0 ? 2
-                       : (c & 0xF8) == 0xF0 ? 3 : -1;
-        // cont 取值=闭集 {1,2,3,-1}（三目分类），-1=非法首字节：用等值判定
-        //   表达「闭集穷举」语义（非业务数值区间，无单边开区间问题）。
-        if (cont == -1 || i + static_cast<std::size_t>(cont) >= text.size()) {
-            validUtf8 = false;
-            break;
-        }
-        for (int k = 1; k <= cont; ++k) {
-            if ((static_cast<unsigned char>(text[i + k]) & 0xC0) != 0x80) {
-                validUtf8 = false;
-                break;
-            }
-        }
-        if (!validUtf8) break;
-        i += static_cast<std::size_t>(cont);
-    }
-    if (!hasHighByte || validUtf8) return text;
-    return ansiToUtf8(text);
+#ifdef _WIN32
+// UTF-8 -> UTF-16 宽路径（Windows 文件 API 通道）。返回 false=UTF-8 非法/转换失败。
+static bool utf8ToWidePath(const std::string& path, std::vector<wchar_t>& wide) {
+    wide.clear();
+    // MB_ERR_INVALID_CHARS：非法 UTF-8 显式失败（不静默替换 U+FFFD）
+    const int wideLen = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS,
+                                            path.c_str(), -1, nullptr, 0);
+    if (wideLen == 0) return false;
+    wide.resize(static_cast<std::size_t>(wideLen));
+    MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, path.c_str(), -1, wide.data(), wideLen);
+    return true;
 }
+
+// UTF-16 -> UTF-8（宽命令行取参通道）。返回 false=Win32 转换失败（调用方显式
+//   报错退出，禁静默空串——miss 不可静默纪律）。
+static bool wideToUtf8(const wchar_t* wide, std::string& utf8) {
+    // 调用契约：wide 非空（CommandLineToArgvW 返回数组元素保证）——不可达断言
+    assert(wide != nullptr);
+    utf8.clear();
+    const int len = WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, wide, -1,
+                                        nullptr, 0, nullptr, nullptr);
+    if (len == 0) return false;
+    std::vector<char> buf(static_cast<std::size_t>(len));
+    if (WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, wide, -1,
+                            buf.data(), len, nullptr, nullptr) == 0) {
+        return false;
+    }
+    utf8.assign(buf.data(), static_cast<std::size_t>(len - 1));
+    return true;
+}
+#endif
 
 // 解析选项与文件参数
 // 参数: 待解析参数列表、当前下标（引用，前进）、选项结构、输出文件路径
@@ -166,12 +165,11 @@ std::string parseOptions(const std::vector<std::string>& args, size_t& index,
         } else if (current == "-D") {
             // Task 6.6 条件编译：注入宏定义（-D 宏名，可多次指定）
             if (index + 1 >= args.size()) return "选项 -D 缺少宏名参数";
-            // 1026（1020 采样轮 H5 根治）：宏名与 UTF-8 源文件文本按字节比对
-            //   （#如果定义），其编码空间必须同为 UTF-8——argv 非'-'起参数此前
-            //   保持 ANSI（路径通道），中文宏名=GBK 字节永不出现在 UTF-8 源码中
-            //   => 恒不命中（v2 的 系统::参数=UTF-8 命中=双侧分叉）。此处对 -D
-            //   的宏名单点做代码页归一；宏展开语义与其他参数零变更。
-            options.macros.insert(ansiArgToUtf8(args[++index]));
+            // 1026（1020 采样轮 H5·审查 P1 根治）：args 由宽命令行
+            //   （GetCommandLineW+CommandLineToArgvW）转 UTF-8，宏名与源文件
+            //   #如果定义 文本同码空间直接比对——不再依赖「字节串是否合法 UTF-8」
+            //   判别式（CRT 窄 argv 恒=ACP 字节，该判别式不成立）。宏展开语义不变。
+            options.macros.insert(args[++index]);
         } else if (current == "--货舱") {
             // 模块系统 v2.0 第 5 层：显式指定 货舱.toml 路径（覆盖自动发现）
             if (index + 1 >= args.size()) return "选项 --货舱 缺少路径参数";
@@ -201,15 +199,24 @@ std::string parseOptions(const std::vector<std::string>& args, size_t& index,
 // ==================== 源文件读取与路径工具 ====================
 
 // 读取UTF-8源文件（自动去除UTF-8 BOM，兼容记事本保存的源码）
-// 路径编码兼容（第 5 层，货舱.toml 中文路径统一 UTF-8）：
-//   先试窄字符（GBK/ASCII），失败再试 UTF-8 -> UTF-16 宽路径（_wfopen），
-//   与 module::readSourceFile 同机制（依赖模块中文名已验证）。
+// 路径编码（1026 宽命令行通道）：CLI 路径参数统一 UTF-8——Windows 下先
+//   UTF-8 -> UTF-16 宽路径（_wfopen·中文/Ext-B 均可达）；UTF-8 转换失败
+//   （非 UTF-8 历史调用面）才回退窄字符（GBK/ASCII）。Linux 直接 UTF-8。
 bool readSourceFile(const std::string& path, std::string& content, std::string& error) {
     // 拒绝目录等非常规文件路径（Linux 下 ifstream 打开目录会"成功"且读出空内容——
     // 曾致目录 .cn 路径静默放行"检查通过"；249-a CLI 契约面发现并根治）
 #ifdef _WIN32
     {
-        const DWORD attrs = GetFileAttributesA(path.c_str());
+        // UTF-8 -> 宽路径判定（MB_ERR_INVALID_CHARS：非法 UTF-8 才回退 ANSI）
+        DWORD attrs = INVALID_FILE_ATTRIBUTES;
+        std::vector<wchar_t> widePath;
+        const bool wideOk = utf8ToWidePath(path, widePath);
+        if (wideOk) {
+            attrs = GetFileAttributesW(widePath.data());
+        }
+        if (wideOk == false) {
+            attrs = GetFileAttributesA(path.c_str());
+        }
         if (attrs != INVALID_FILE_ATTRIBUTES && (attrs & FILE_ATTRIBUTE_DIRECTORY)) {
             error = "源文件路径是目录而非文件: " + path;
             return false;
@@ -239,29 +246,37 @@ bool readSourceFile(const std::string& path, std::string& content, std::string& 
         std::fclose(fp);
         return true;
     };
-    if (!readNarrow(path, content)) {
-        const int wideLen = MultiByteToWideChar(CP_UTF8, 0, path.c_str(), -1, nullptr, 0);
-        if (wideLen <= 0) {
-            error = "无法打开源文件: " + path;
-            return false;
+    // UTF-8 宽路径读取（1026 主通道）：converted=路径是否已按 UTF-8 转宽成功
+    auto readWideUtf8 = [&](std::string& out, bool& converted) -> bool {
+        std::vector<wchar_t> widePath;
+        converted = utf8ToWidePath(path, widePath);
+        if (converted) {
+            FILE* fp = nullptr;
+            if (_wfopen_s(&fp, widePath.data(), L"rb") != 0) return false;
+            // _wfopen_s 成功契约：fp 必非空（失败返回非 0）
+            out.clear();
+            std::fseek(fp, 0, SEEK_END);
+            const long size = std::ftell(fp);
+            std::fseek(fp, 0, SEEK_SET);
+            if (size > 0) {
+                out.resize(static_cast<std::size_t>(size));
+                out.resize(std::fread(&out[0], 1, static_cast<std::size_t>(size), fp));
+            }
+            std::fclose(fp);
+            return true;
         }
-        std::vector<wchar_t> widePath(static_cast<std::size_t>(wideLen));
-        MultiByteToWideChar(CP_UTF8, 0, path.c_str(), -1, widePath.data(), wideLen);
-        FILE* fp = nullptr;
-        if (_wfopen_s(&fp, widePath.data(), L"rb") != 0 || fp == nullptr) {
-            error = "无法打开源文件: " + path;
-            return false;
-        }
-        std::string buf;
-        std::fseek(fp, 0, SEEK_END);
-        const long size = std::ftell(fp);
-        std::fseek(fp, 0, SEEK_SET);
-        if (size > 0) {
-            buf.resize(static_cast<std::size_t>(size));
-            buf.resize(std::fread(&buf[0], 1, static_cast<std::size_t>(size), fp));
-        }
-        std::fclose(fp);
-        content = std::move(buf);
+        return false;
+    };
+    bool converted = false;
+    bool readOk = readWideUtf8(content, converted);
+    if (readOk == false && converted == false) {
+        // 仅 UTF-8 转换失败（非 UTF-8 历史调用面）才回退 ANSI 窄路径；
+        //   UTF-8 已转换成功但打开失败=确定失败（禁回退窄字符：那是另一个文件名）
+        readOk = readNarrow(path, content);
+    }
+    if (readOk == false) {
+        error = "无法打开源文件: " + path;
+        return false;
     }
 #else
     std::ifstream in(path, std::ios::binary);
@@ -376,42 +391,18 @@ static std::string detectStdlibDir(const CliOptions& options) {
     return "";
 }
 
-// Windows 辅助：ANSI 代码页（GBK）窄字符串 -> UTF-8（MultiByteToWideChar 经宽字符）
-//   入口文件路径来自命令行（GBK）；"货舱.toml" 文件名为源码 UTF-8 字面量。
-//   自动发现需拼成**纯 UTF-8 路径**（目录段 GBK 转 UTF-8 + 文件段 UTF-8），
-//   供 readTomlFile 的 UTF-8 宽路径分支打开（混合编码两段都无法匹配）。
-std::string ansiToUtf8(const std::string& ansi) {
-#ifdef _WIN32
-    if (ansi.empty()) return ansi;
-    const int wideLen = MultiByteToWideChar(CP_ACP, 0, ansi.c_str(), -1, nullptr, 0);
-    if (wideLen <= 0) return ansi;  // 非 ANSI 编码（纯 ASCII 时 CP_ACP 也成功）
-    std::vector<wchar_t> wide(static_cast<std::size_t>(wideLen));
-    MultiByteToWideChar(CP_ACP, 0, ansi.c_str(), -1, wide.data(), wideLen);
-    const int utf8Len = WideCharToMultiByte(CP_UTF8, 0, wide.data(), -1, nullptr, 0, nullptr, nullptr);
-    std::string utf8(static_cast<std::size_t>(utf8Len - 1), '\0');
-    WideCharToMultiByte(CP_UTF8, 0, wide.data(), -1, &utf8[0], utf8Len, nullptr, nullptr);
-    return utf8;
-#else
-    (void)ansi;  // Linux 统一 UTF-8，无需转换
-    return ansi;
-#endif
-}
-
 // 加载 货舱.toml 配置到 driver 选项：
 //   --货舱 显式指定 -> 加载指定路径（缺失/解析失败报错）
 //   否则 -> 入口文件同目录自动发现 货舱.toml（对标 Cargo 自动发现；缺失不报错）
 // 返回 false 表示货舱.toml 存在但加载失败（错误已写入 error）
 static bool applyCargoConfig(const CliOptions& options, const std::string& file,
                              cn_compiler::driver::DriverOptions& dopts, std::string& error) {
-    // 确定 货舱.toml 路径
-    std::string tomlPath;
-    if (!options.cargoToml.empty()) {
-        tomlPath = options.cargoToml;
-    } else {
-        // 入口目录（命令行 GBK）转 UTF-8 后拼接 UTF-8 文件名 货舱.toml，
-        //   得到纯 UTF-8 路径（readTomlFile 宽路径分支可打开）
-        const std::string dir = ansiToUtf8(pathDirPart(file));
-        tomlPath = (dir.empty() ? "" : dir) + "货舱.toml";
+    // 确定 货舱.toml 路径：显式 --货舱 优先；为空=入口同目录自动发现
+    std::string tomlPath = options.cargoToml;
+    if (tomlPath.empty()) {
+        // 入口目录已是 UTF-8（宽命令行取参通道）——直接拼接 UTF-8 文件名
+        //   货舱.toml，得到纯 UTF-8 路径（readTomlFile 宽路径分支可打开）
+        tomlPath = pathDirPart(file) + "货舱.toml";
     }
     // 读取并解析
     cn_compiler::driver::CargoConfig config;
@@ -503,18 +494,30 @@ static int runCompile(const CliOptions& options, const std::string& file) {
     }
     cn_compiler::driver::PipelineOutput output;
     // Task 3.6：compile 命令走多文件流水线（自动加载导入依赖）；
-    //   入口文件转 UTF-8（依赖查找/模块名判定统一 UTF-8）
+    //   入口文件=UTF-8（宽命令行通道·依赖查找/模块名判定统一 UTF-8）
     // 242-a（D13）：compile 同 build 强制入口 主 函数
     dopts.requireEntryMain = true;
-    if (cn_compiler::driver::runModulePipeline(ansiToUtf8(file), dopts, output) != 0) {
+    if (cn_compiler::driver::runModulePipeline(file, dopts, output) != 0) {
         return 1;
     }
     // 输出汇编文件（--output 指定或默认 target/<目标架构桶>/<stem>.<asm|s>）
     // 522：默认产物根同 build 命令=target/<目标平台>/（archBucketDir·单一规则）
-    std::string stem = pathStem(file);
-    std::string asmPath = options.output.empty()
+    // 1026：写盘/工具链路径走 ANSI 视图（与 buildExe 同口径）
+    std::string fileAnsi;
+    std::string outputAnsi;
+    if (!utf8ToAnsi(file, fileAnsi)) {
+        std::cerr << "错误: 源文件路径包含当前 ANSI 代码页无法表示的字符: " << file << "\n";
+        return 1;
+    }
+    if (!utf8ToAnsi(options.output, outputAnsi)) {
+        std::cerr << "错误: 输出路径包含当前 ANSI 代码页无法表示的字符: "
+                  << options.output << "\n";
+        return 1;
+    }
+    std::string stem = pathStem(fileAnsi);
+    std::string asmPath = outputAnsi.empty()
         ? "target/" + archBucketDir(options.target) + "/" + stem + asmSuffix(options.target)
-        : options.output;
+        : outputAnsi;
     // 默认桶目录与 --output 深层目录统一由本分支逐级创建（522：旧 ensureTargetDir
     //   单层兜底退役——默认路径必含 '/'，本分支覆盖全部创建需求）
     {
@@ -573,7 +576,7 @@ static int runCheckCommand(const CliOptions& options, const std::string& file) {
         return 1;
     }
     cn_compiler::driver::PipelineOutput output;
-    const int rc = cn_compiler::driver::runModulePipeline(ansiToUtf8(file), dopts, output);
+    const int rc = cn_compiler::driver::runModulePipeline(file, dopts, output);
     // F2-35（556-a）：--json 模式诊断已由流水线走 stdout JSON 通道；rc==0 时
     //   输出零诊断空数组（纯 JSON 流·human「检查通过」行抑制）；rc 语义不变
     if (options.jsonDiagnostics) {
@@ -603,7 +606,7 @@ static int runIr(const CliOptions& options, const std::string& file) {
         return 1;
     }
     cn_compiler::driver::PipelineOutput output;
-    if (cn_compiler::driver::runModulePipeline(ansiToUtf8(file), dopts, output) != 0) {
+    if (cn_compiler::driver::runModulePipeline(file, dopts, output) != 0) {
         return 1;
     }
     cn_compiler::driver::printIr(output.module);
@@ -671,11 +674,36 @@ int main(int argc, char** argv) {
     SetConsoleCP(CP_UTF8);
 #endif
 
-    // 注意：命令行参数保持 argv 原样（Windows 下为当前 ANSI 代码页 GBK 字节）——
-    //   ml64/link 等工具链按 ANSI 解释路径，UTF-8 中文会乱码（E2E 18/19 回归）。
-    //   货舱.toml 自动发现的中文文件名由 applyCargoConfig 做 UTF-8 -> ANSI 适配。
-    std::vector<std::string> args(argv + 1, argv + argc);
+    // 命令行取参（1026·审查 P1 根治）：Windows CRT 窄 argv 恒=进程 ANSI 代码页
+    //   （CP_ACP·简中=GBK）字节——「字节串是否合法 UTF-8」不是可用判别式（GBK
+    //   双字节串偶合合法 UTF-8 约 14.7%，如「目录」「平台」；Ext-B 字符 ANSI
+    //   无法承载）。故与 v2 系统::参数 同源：GetCommandLineW+CommandLineToArgvW
+    //   取宽命令行，逐参数 UTF-16→UTF-8——文本语义（-D 宏名/中文旗标/源路径逻辑/
+    //   诊断）全部统一 UTF-8。路径参数在工具链边界由 utf8ToAnsi 生成 ANSI 视图
+    //   供 ml64/link（保留其 ANSI 路径约束·E2E 18/19 回归史）。
+    std::vector<std::string> args;
 #ifdef _WIN32
+    (void)argc;
+    (void)argv;
+    {
+        int wideArgc = 0;
+        wchar_t** wideArgv = CommandLineToArgvW(GetCommandLineW(), &wideArgc);
+        if (wideArgv == nullptr) {
+            std::cerr << "错误: 无法解析命令行（CommandLineToArgvW 失败）\n";
+            return 1;
+        }
+        args.reserve(wideArgc != 0 ? static_cast<std::size_t>(wideArgc - 1) : 0);
+        for (int i = 1; i < wideArgc; ++i) {
+            std::string arg;
+            if (!wideToUtf8(wideArgv[i], arg)) {
+                LocalFree(wideArgv);
+                std::cerr << "错误: 命令行参数 UTF-16→UTF-8 转换失败\n";
+                return 1;
+            }
+            args.push_back(std::move(arg));
+        }
+        LocalFree(wideArgv);
+    }
     // 路径身份归一（2026-09-09 用户裁决，Rust std::path 分隔符等价同构）：win 下
     //   '\' 与 '/' 均为合法分隔符，argv 反斜杠形态与编译器内部构造的正斜杠路径
     //   文本失配=包上下文恢复失配/已加载去重失效双载歧义。入口单点归一 '\'->'/'，
@@ -685,18 +713,8 @@ int main(int argc, char** argv) {
             if (ch == '\\') ch = '/';
         }
     }
-#endif
-
-    // 258-a（CLI 契约矩阵 --发布/--验证-ir win 格恒败根治）：旗标参数 GBK -> UTF-8 归一。
-    //   Windows argv 窄字符=当前 ANSI 代码页（GBK）字节，源码内旗标字面量=UTF-8 字节——
-    //   中文旗标按字节比较永不命中、只能走 ASCII 别名（绕行非根治）。对 '-' 起头的参数做
-    //   ANSI->UTF-8 转换；已是合法 UTF-8（含非 ASCII）者保持原样防双重转换。路径参数
-    //   （非 '-' 起）不动：ml64/link 按 ANSI 解释路径（E2E 18/19 回归史），不属本变更面。
-#ifdef _WIN32
-    for (auto& a : args) {
-        if (a.size() < 2 || a[0] != '-') continue;
-        a = ansiArgToUtf8(a);   // 解码策略单点（1026：与 -D 宏名通道共用）
-    }
+#else
+    args.assign(argv + 1, argv + argc);
 #endif
 
     // 无参数：打印帮助
