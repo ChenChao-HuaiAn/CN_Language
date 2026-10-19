@@ -454,16 +454,22 @@ const std::vector<const FuncEntryView*>& SemanticAnalyzer::funcNameBucket(
 
 bool SemanticAnalyzer::canConvertType(const std::string& fromRaw,
                                       const std::string& toRaw) const {
+    // 1155：同串快速放行（语义恒真——原实现最终走到 types::canConvert 的
+    //   from==to 早退；结果/可选同串递归亦恒真）。省去规范化与后续全部分支。
+    if (fromRaw == toRaw) return true;
     const std::string from = canonicalType(fromRaw);
     const std::string to = canonicalType(toRaw);
+    if (from == to) return true;  // 别名归一后同型（整数→整32 等）
     // 320-a（T42·方案甲·Rust () 同款）：空类型不与任何类型互转——空类型
     //   调用结果参与赋值/传参/返回一律拒绝（「无返回值却有值」违反类型
     //   安全）；算术/比较面由 visitBinaryExpr 操作数检查覆盖。
     if ((from == "空类型") != (to == "空类型")) return false;
     // 模板类型兼容（Task 3.5）：结果<T,E> 与 结果<T,E> 须完全一致；
     //   结果<A,B> 与 结果<C,D>（A可转C 且 B可转D）允许（错误码类型宽化）
-    const bool fromResult = isResultType(from);
-    const bool toResult = isResultType(to);
+    // 1155：前缀门（原无条件 isResultType/isOptionalType——splitTypeSuffix 双串分配；
+    //   splitTypeSuffix 只剥尾部后缀不改前缀 ⇒ 前缀判定等价）。
+    const bool fromResult = (from.rfind("结果<", 0) == 0) && isResultType(from);
+    const bool toResult = (to.rfind("结果<", 0) == 0) && isResultType(to);
     if (fromResult && toResult) {
         const std::vector<std::string> fa = resultTypeArgs(from);
         const std::vector<std::string> ta = resultTypeArgs(to);
@@ -472,8 +478,8 @@ bool SemanticAnalyzer::canConvertType(const std::string& fromRaw,
         }
         return false;
     }
-    const bool fromOpt = isOptionalType(from);
-    const bool toOpt = isOptionalType(to);
+    const bool fromOpt = (from.rfind("可选<", 0) == 0) && isOptionalType(from);
+    const bool toOpt = (to.rfind("可选<", 0) == 0) && isOptionalType(to);
     if (fromOpt && toOpt) {
         const std::string fa = optionalTypeArg(from);
         const std::string ta = optionalTypeArg(to);
@@ -486,17 +492,25 @@ bool SemanticAnalyzer::canConvertType(const std::string& fromRaw,
     //   为 '可选$整32'」（探针 F1/E2 实证；v2 侧同形态放行=宿主单侧拒绝分叉，
     //   规范 07-三 空指针常量→可选 无语境限制）。后缀（* / &）存在时不豁免
     //   ——与 toOpt（isOptionalType 见到后缀即假）口径对齐。
-    {
-        std::string toCore, toSuffix;
-        types::splitTypeSuffix(to, toCore, toSuffix);
-        const bool toSynOpt = toSuffix.empty() && toCore.rfind("可选$", 0) == 0;
-        if (from == "空类型*" && (toOpt || toSynOpt)) return true;
+    // 1155：$ 合成名前缀门（原每次转换都 splitTypeSuffix——$ 形态极少数）。
+    if (from == "空类型*" && (toOpt || to.rfind("可选$", 0) == 0)) {
+        bool toSynOpt = false;
+        if (to.rfind("可选$", 0) == 0) {
+            std::string toCore, toSuffix;
+            types::splitTypeSuffix(to, toCore, toSuffix);
+            toSynOpt = toSuffix.empty() && toCore.rfind("可选$", 0) == 0;
+        }
+        if (toOpt || toSynOpt) return true;
     }
+    // 且「<<」形态门：合成分/泛型名统一仅在含 '<' 的模板文本上可能改写
+    //   （canonicalizeSyntheticArgText/genericClassInstanceName 对无 '<' 串原样返回）。
+    const bool hasAngle = from.find('<') != std::string::npos ||
+                          to.find('<') != std::string::npos;
     // 061-d（2026-09-27 804 轮）：合成体名 ↔ 模板文本 同一性（A-3b 泛型类实例
     //   同构）——容器克隆体签名用合成体名（结果$整32$整32，实参经
     //   canonicalizeSyntheticArgText 统一 $ 形态），用户源码用模板文本
     //   （结果<整32, 整32>），双向视为同一类型。指针/数组后缀保留比对。
-    {
+    if (hasAngle) {
         const std::string fromSyn = canonicalizeSyntheticArgText(from);
         const std::string toSyn = canonicalizeSyntheticArgText(to);
         if (fromSyn != from || toSyn != to) return fromSyn == toSyn;
@@ -518,13 +532,16 @@ bool SemanticAnalyzer::canConvertType(const std::string& fromRaw,
     //   视为同一类型。此前 返回 表（表=向量$字符串）与返回类型 向量<字符串>
     //   比较失败 -> "无法将 '向量$字符串' 隐式转换为 '向量<字符串>'"
     //   （返回容器/自定义泛型不可用，自举源码大面积受阻）。
-    const std::string fromInst = genericClassInstanceName(from);
-    const std::string toInst = genericClassInstanceName(to);
-    if (fromInst != from || toInst != to) {
-        return fromInst == toInst;
+    if (hasAngle) {
+        const std::string fromInst = genericClassInstanceName(from);
+        const std::string toInst = genericClassInstanceName(to);
+        if (fromInst != from || toInst != to) {
+            return fromInst == toInst;
+        }
     }
     // P3-19：类 → 接口 隐式转换（值或指针；接口类型可持有任何实现类对象）
-    {
+    // 1155：接口表空时整块短路（isInterfaceType 恒假）。
+    if (!interfaces_.empty()) {
         std::string toIface = to;
         if (types::isPointer(to) && isInterfaceType(types::pointeeOf(to))) {
             toIface = types::pointeeOf(to);
