@@ -545,6 +545,20 @@ void IRGenerator::genSwitch(SwitchStmt* node) {
     const std::string fallLabel = node->defaultCase != nullptr ? defLabel : endLabel;
     for (std::size_t i = 0; i < caseCount; ++i) {
         setCurrentBlock(newBlock(testLabels[i]));
+        // 匹配 -> 体块；不匹配 -> 下一判断/默认/出口
+        const std::string nextTarget =
+            (i + 1 < caseCount) ? testLabels[i + 1] : fallLabel;
+        // 1137：超整64 承载的恒不匹配标签——不发射比较（值超 i64 域无比较
+        //   常量可承载·原值 0 占位比较=静默误命中），判断块直接跳下一判断/
+        //   链尾；语义=恒不命中（对 ≤64 位条件类型的数学正确语义，与 v2
+        //   生成期 128 句柄比较实测行为对齐·1137 双编译对照）。
+        //   恒不匹配面已由本跳转收口，正常标签面在下方独立 if（机械分流·
+        //   避免 else 承载业务代码的 else 新规）。体块与 fallthrough 链照常
+        //   生成（死码·结构统一；优化器可删）。
+        if (node->cases[i]->unmatchable) {
+            endJump(nextTarget);
+        }
+        if (!node->cases[i]->unmatchable) {
         // C-4（2026-08）：字符串情况值——按解码文本比较（__cn_str_eq 运行时）
         //   （sel 为 字符串 = ptr；整值 Eq 会误比较指针地址，须走字符串相等调用）
         ir::IRValue cmp;
@@ -571,10 +585,8 @@ void IRGenerator::genSwitch(SwitchStmt* node) {
                 std::to_string(node->cases[i]->value), sel.type);
             cmp = emitResult(ir::Opcode::Eq, {sel, caseConst}, "i1", "", node->location);
         }
-        // 匹配 -> 体块；不匹配 -> 下一判断/默认/出口
-        const std::string nextTarget =
-            (i + 1 < caseCount) ? testLabels[i + 1] : fallLabel;
         endBranch(cmp.toString(), bodyLabels[i], nextTarget);
+        }
         // 体块（嵌套控制流在此处 newBlock 自增，不影响已分配标签的唯一性）
         setCurrentBlock(newBlock(bodyLabels[i]));
         // 72-a 收尾：分支基线随栈压入（中断 跳出时的 drop 范围）；

@@ -373,6 +373,7 @@ std::unique_ptr<Stmt> cloneStmtImpl(Stmt* node) {
             for (auto& c : n->cases) {
                 auto cc = std::make_unique<CaseLabel>(c->value);
                 cc->rawValue = c->rawValue;
+                cc->unmatchable = c->unmatchable;  // 1137：超承载恒不匹配标记随克隆
                 for (auto& s : c->statements) cc->statements.push_back(cloneStmt(s.get()));
                 sw->cases.push_back(std::move(cc));
             }
@@ -874,7 +875,10 @@ void SemanticAnalyzer::visitSwitchStmt(SwitchStmt* node) {
             }
         }
         // 重复检测：与已见情况值比较
-        if (!seenValues.insert(caseNode->value).second) {
+        // 1137：超整64 承载的恒不匹配标签不参与——其 value 为承载占位 0，
+        //   参与去重会与真实「情况 0」误判重复（值本身不可承载·语义=恒不命中）
+        if (!caseNode->unmatchable &&
+            !seenValues.insert(caseNode->value).second) {
             diagnostics_.report(DiagnosticLevel::Error, caseNode->location,
                                 "选择语句中情况值 '" + caseNode->rawValue +
                                 "' 重复");

@@ -7,6 +7,7 @@
 #include <string>
 
 #include "cn_compiler/parser/parser.hpp"
+#include "cn_compiler/model/type_system.hpp"
 
 namespace cn_compiler {
 
@@ -330,20 +331,62 @@ std::unique_ptr<Stmt> Parser::parseContinueStmt() {
     return stmt;
 }
 
+namespace {
+
+// 1137：情况标签整数文本求值（文本级判域后取值——910 族判域单点复用）。
+//   背景（1137 取证实证）：原链直接 parseIntValue（std::stoll）对超整64
+//   承载文本溢出静默回 0——`选择(甲) { 情况 99999999999999999999: }` 被
+//   毒化成「情况 0」：检查通过、产物比较常量 0、甲=0 误命中（用户可观察
+//   错值）；双编译对照实测宿主退出码 11 vs v2 22=双侧分叉实锤。本函数按
+//   910 立法「字面量判域收口 types::normalizeIntLiteralToDecimal/
+//   decTextFits* 单点（语义/IR 层零调用 parseIntValue 的同一口径）」：
+//   先文本归一判 i64 域、域内才取值——正常=域内（含 -9223372036854775808
+//   =整64 最小界·原毒化得 0 错值）；超整64恒不匹配=数学值超 i64 域
+//   （对 ≤64 位条件恒不命中·与 v2 生成期 128 句柄比较实测行为对齐）；
+//   超整128域=归一空串哨兵（>u128 域·v2 生成期「字面量超128域」同拒，
+//   调用方报错）。
+enum class CaseIntTextStatus { Ok, Unmatchable, OutOfI64Carry };
+
+CaseIntTextStatus resolveCaseIntText(const std::string& raw, bool negForm,
+                                     std::string& decOut) {
+    std::string text = raw;
+    // 外层负号（320-a 折叠形态）归并入文本——910 归一支持前导 '-'；
+    //   -2^63=整64 最小界是合法承载值，负号必须参与判域与取值
+    if (negForm && (text.empty() || text[0] != '-')) text = "-" + text;
+    decOut = types::normalizeIntLiteralToDecimal(text);
+    if (decOut.empty()) return CaseIntTextStatus::OutOfI64Carry;
+    if (!types::decTextFitsSignedRange(decOut, "9223372036854775808",
+                                       "9223372036854775807")) {
+        return CaseIntTextStatus::Unmatchable;
+    }
+    return CaseIntTextStatus::Ok;
+}
+
+}  // namespace
+
 // 求值情况标签常量：整数字面量 / 字符字面量 / 字符串字面量 / 枚举引用（编译期常量）
 // C-4（2026-08）扩展：字符串字面量（outIsString=true，选择 字符串匹配）与
 //   裸枚举成员名（outIsEnumMember=true，形如 情况 红——语义层按 选择 条件枚举类型解析；
 //   限定形态 颜色.红 保持原行为，语义层按 rawValue 含 '.' 求值）。
 // 返回是否成功；成功时 outValue 为整数值、outRaw 为原始文本
+// 1137：outUnmatchable=true 表示整数字面量标签数学值超整64 承载——恒不匹配
+//   语义（outValue 为占位 0·消费方【语义去重/IR genSwitch】须按此位分流，
+//   禁按 value 比较）。超 u128 域标签=报错面（不产出 unmatchable）。
 // 注意：解析成功后必须 advance() 消费该 Token（调用方随后 expect ':'）
 bool Parser::parseCaseValue(std::int64_t& outValue, std::string& outRaw,
-                            bool& outIsString, bool& outIsEnumMember) {
+                            bool& outIsString, bool& outIsEnumMember,
+                            bool& outUnmatchable) {
     outIsString = false;
     outIsEnumMember = false;
+    outUnmatchable = false;
     // 320-a（T37·方案甲·C 同款）：整型常量表达式标签——负字面（情况 -1:，
     //   词法把负号切成独立 Minus token，原 IntegerLiteral 分支不可达）与
     //   一层折叠（情况 (0-1): / 情况 1,-1:）。窄面：[-]字面 与 ([-]字面 ± [-]字面)
     //   ——完整常量表达式求值（嵌套/乘除）留后续按需扩（诚实边界）。
+    // 1137：取值链切文本级判域（resolveCaseIntText·910 族单点）——原
+    //   parseIntValue stoll 溢出静默回 0 毒化超承载标签（详证见 helper 注释）；
+    //   折叠求值切 types::decTextAdd919/decTextSub919（大数安全·同时消除
+    //   域内极端值 v1±v2 的有符号溢出 UB 面）。
     {
         const bool hasParen = check(TokenType::LeftParen);
         const std::size_t save = pos_;
@@ -353,45 +396,62 @@ bool Parser::parseCaseValue(std::int64_t& outValue, std::string& outRaw,
             peek(1).getType() != TokenType::Dot) {
             const std::string raw1 = current().getValue();
             advance();
-            std::int64_t v1 = 0;
-            try {
-                v1 = parseIntValue(raw1);
-            } catch (...) {
-                reportErrorHere("情况标签不是有效的整型常量");
+            std::string dec1;
+            const CaseIntTextStatus st1 = resolveCaseIntText(raw1, neg1, dec1);
+            if (st1 == CaseIntTextStatus::OutOfI64Carry) {
+                // 超 u128 域=真错误（v2 生成期「整数字面量超出整128
+                //   （2^127-1）范围」同拒·双侧对齐面）
+                reportErrorHere("整数字面量超出整128（2^127-1）范围");
                 return false;
             }
-            if (neg1) v1 = -v1;
+            // 括号一层折叠第二项（320-a 窄面不变）
+            bool folded2 = false;
+            bool subOp = false;
+            std::string dec2;
             if (hasParen &&
                 (check(TokenType::Plus) || check(TokenType::Minus))) {
-                const bool sub = check(TokenType::Minus);
+                subOp = check(TokenType::Minus);
                 advance();
                 const bool neg2 = match(TokenType::Minus);
                 if (currentType() == TokenType::IntegerLiteral) {
-                    std::int64_t v2 = 0;
-                    try {
-                        v2 = parseIntValue(current().getValue());
-                    } catch (...) {
-                        reportErrorHere("情况标签不是有效的整型常量");
+                    const CaseIntTextStatus st2 = resolveCaseIntText(
+                        current().getValue(), neg2, dec2);
+                    if (st2 == CaseIntTextStatus::OutOfI64Carry) {
+                        reportErrorHere("整数字面量超出整128（2^127-1）范围");
                         return false;
                     }
-                    if (neg2) v2 = -v2;
-                    v1 = sub ? (v1 - v2) : (v1 + v2);
                     advance();
+                    folded2 = true;
                 }
             }
-            if (hasParen) {
-                if (!match(TokenType::RightParen)) {
-                    pos_ = save;  // 非简单折叠形态——回退通用路径（将报错）
-                } else {
-                    outValue = v1;
-                    outRaw = std::to_string(v1);
+            // 折叠求值全文本级（919 十进制文本加减·大数安全）——
+            //   原值级 v1±v2 对超承载操作数读毒化 0（(A-A)=0 侥幸、(A-B)
+            //   错值），且域内极端组合有符号溢出 UB 风险。
+            //   结构：无括号 或 括号已闭合 → 求值取值（提前 return 扣住
+            //   合法区间）；余下=括号未闭合的非简单折叠形态 → 回退将报错。
+            if (!hasParen || match(TokenType::RightParen)) {
+                std::string acc = dec1;
+                if (folded2) {
+                    acc = subOp ? types::decTextSub919(dec1, dec2)
+                                : types::decTextAdd919(dec1, dec2);
+                }
+                const bool unmatch =
+                    acc.empty() ||  // 超 u128 域结果（恒超一切整型目标）
+                    !types::decTextFitsSignedRange(acc, "9223372036854775808",
+                                                   "9223372036854775807");
+                if (unmatch) {
+                    outUnmatchable = true;
+                    outValue = 0;  // 占位（消费方按 unmatchable 分流）
+                    outRaw = (neg1 ? "-" : "") + raw1;
                     return true;
                 }
-            } else {
-                outValue = v1;
-                outRaw = (neg1 ? "-" : "") + raw1;
+                outValue = std::stoll(acc);  // 域内：承载安全
+                // 括号形态 outRaw=折叠后值文本（320-a 原行为）；直取形态=原文
+                outRaw = hasParen ? std::to_string(outValue)
+                                  : (neg1 ? "-" : "") + raw1;
                 return true;
             }
+            pos_ = save;  // 非简单折叠形态——回退通用路径（将报错）
         } else {
             pos_ = save;  // 回退（非整型常量表达式形态）
         }
@@ -407,26 +467,21 @@ bool Parser::parseCaseValue(std::int64_t& outValue, std::string& outRaw,
     if (currentType() == TokenType::IntegerLiteral) {
         outRaw = current().getValue();
         outValue = 0;
-        // 解析十进制/十六进制/二进制/八进制整数（无后缀简化处理）
-        std::string text = outRaw;
-        bool negative = false;
-        if (!text.empty() && text.front() == '-') {
-            negative = true;
-            text = text.substr(1);
-        }
-        int base = 10;
-        if (text.size() > 2 && text[0] == '0') {
-            if (text[1] == 'x' || text[1] == 'X') { base = 16; text = text.substr(2); }
-            else if (text[1] == 'b' || text[1] == 'B') { base = 2; text = text.substr(2); }
-            else if (text[1] == 'o' || text[1] == 'O') { base = 8; text = text.substr(2); }
-        }
-        try {
-            outValue = static_cast<std::int64_t>(std::stoll(text, nullptr, base));
-        } catch (...) {
-            reportErrorHere("情况标签不是有效的整型常量");
+        // 1137：同折叠段——文本级判域后取值（原裸 stoll 对超承载文本抛
+        //   异常报错；统一走 resolveCaseIntText 两段同口径——域内取值、
+        //   超整64=恒不匹配标记、超 u128=报错）
+        std::string decG;
+        const CaseIntTextStatus stG = resolveCaseIntText(outRaw, false, decG);
+        if (stG == CaseIntTextStatus::OutOfI64Carry) {
+            reportErrorHere("整数字面量超出整128（2^127-1）范围");
             return false;
         }
-        if (negative) outValue = -outValue;
+        if (stG == CaseIntTextStatus::Unmatchable) {
+            outUnmatchable = true;
+            advance();  // 消费整数字面量
+            return true;
+        }
+        outValue = std::stoll(decG);  // 域内：承载安全
         advance();  // 消费整数字面量
         return true;
     }
@@ -498,8 +553,9 @@ std::unique_ptr<Stmt> Parser::parseSwitchStmt() {
             while (true) {
                 std::int64_t caseValue = 0;
                 std::string rawValue;
-                bool isStr = false, isEnum = false;
-                if (!parseCaseValue(caseValue, rawValue, isStr, isEnum)) {
+                bool isStr = false, isEnum = false, unmatchable = false;
+                if (!parseCaseValue(caseValue, rawValue, isStr, isEnum,
+                                    unmatchable)) {
                     groupOk = false;
                     // 常量求值失败：跳过到标签结束（防御性同步）
                     while (!check(TokenType::Colon) && !check(TokenType::EndOfFile) &&
@@ -510,6 +566,7 @@ std::unique_ptr<Stmt> Parser::parseSwitchStmt() {
                 label->rawValue = rawValue;
                 label->isString = isStr;
                 label->isEnumMember = isEnum;
+                label->unmatchable = unmatchable;  // 1137：超承载恒不匹配
                 label->location = caseLoc;
                 group.push_back(std::move(label));
                 if (check(TokenType::Comma)) {

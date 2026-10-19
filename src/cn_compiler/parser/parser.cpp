@@ -54,6 +54,14 @@ Operator toAssignOp(TokenType type) {
 }
 
 // 解析整数字面量文本为数值（支持 10/16/2/8 进制、整数后缀；声明见 parser.hpp）
+//   1137：失败面=超 int64 承载文本——词法层只拒进制外字符/格式、不拒超域
+//   （原注释「解析失败返回0（错误已在词法阶段报告）」不实·本轮回正）。
+//   调用点全集判域证据链与豁免登记=scripts/miss_registry.json 来源 1137 条：
+//   ①parser_expr.cpp:538 IntegerLiteral.value 注入（下游判域/物化全文本级
+//   910/478/728v/790/919）；②parser_decl.cpp:274 枚举非十进制回退（728u
+//   零变化面·与 v2 数字文本转数值「stoll 溢出静默 0 同款」双侧对齐）；
+//   ③情况标签调用点 1137 轮已切文本级判域接口 resolveCaseIntText（不再经
+//   此静默面——双编译对照实测原宿主 11 vs v2 22 分叉已修）。
 std::int64_t parseIntValue(const std::string& text) {
     std::string s = text;
     int base = 10;
@@ -76,17 +84,23 @@ std::int64_t parseIntValue(const std::string& text) {
     try {
         return std::stoll(digits, nullptr, base);
     } catch (...) {
-        return 0;  // 解析失败返回0（错误已在词法阶段报告）
+        // 静默豁免闭集穷举: catch 可达面=超 i64 承载的合法字面量（invalid_argument=非法文本词法不可达）；值级毒化面经 910 家族文本级判域/物化接管·调用点全集证据链见 miss_registry 来源 1137 条
+        return 0;
     }
 }
 
 // 解析浮点字面量文本为数值（剥离浮点后缀；声明见 parser.hpp）
+//   1137：失败面=超 double 域文本（stod out_of_range·如 1e999）。产物链以
+//   raw 文本为唯一源（IR 常量浮点文本直通发射 ir_expr.cpp:33-36）；全仓
+//   FloatLiteral.value 消费点=clone 两处值传递（semantic_stmt.cpp:55/151）
+//   ——value 无产物性消费点。登记见 miss_registry 来源 1137 条。
 double parseFloatValue(const std::string& text) {
     std::string s = text;
     while (!s.empty() && (s.back() == 'F' || s.back() == 'f')) s.pop_back();
     try {
         return std::stod(s);
     } catch (...) {
+        // 静默豁免闭集穷举: catch 可达面=超 double 域合法浮点文本（非法文本词法不可达）；FloatLiteral.value 无产物消费点（IR/语义全链读 raw 文本·克隆仅值传递）——见 miss_registry 来源 1137 条
         return 0.0;
     }
 }

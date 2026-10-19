@@ -228,8 +228,28 @@ void SemanticAnalyzer::checkConstIntExprSafety(BinaryExpr* node, const std::stri
                 [this](const std::string& n, std::int64_t& v) {
                     return resolveConstNameValue(n, v);
                 };
-            std::int64_t foldR = 0;
-            if (cnFoldConstIntExpr505(node->right.get(), foldR, 0, &resolver) && foldR == 0) {
+            // 1137：纯常量形态先走 919 文本级求值判零（大数安全）——原单链
+            //   505 值级折叠读 IntegerLiteral::value，对超整64 承载字面量是
+            //   parseIntValue stoll 溢出毒化 0（catch 静默面）→ 数学值非零的
+            //   右操作数被误判为零：`10/(99999999999999999999-99999999999999999998)`
+            //   （数学=1）误报「编译期除零」拒合法程序（1137 探针实证·值级
+            //   消费点的毒化出口）。919 判定不了（含变量/常量名）回落 505+
+            //   resolver 既有通道（548 面保留·判定口径展开不改文案）。
+            std::string r919;
+            bool zeroR = false;
+            const bool textFoldable1137 =
+                cnEvalConstIntExprText919(node->right.get(), r919);
+            if (textFoldable1137) {
+                // 空串=超 u128 域哨兵（数学值必非零·不报除零）
+                zeroR = (r919 == "0");
+            }
+            if (!textFoldable1137) {
+                std::int64_t foldR = 0;
+                zeroR = cnFoldConstIntExpr505(node->right.get(), foldR, 0,
+                                              &resolver) &&
+                        foldR == 0;
+            }
+            if (zeroR) {
                 diagnostics_.report(DiagnosticLevel::Error, node->location,
                                     "编译期除零：常量表达式除数为零（运行期除零已有"
                                     "错误码防护，常量折叠面编译期硬错误）");

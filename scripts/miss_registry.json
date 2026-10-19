@@ -2942,6 +2942,39 @@
    "原因": "1143 函数名分桶索引重写：currentModuleName_ 空=无模块上下文（单文件管线/未进模块体），『当前模块是否定义该名』语义恒假——业务定义非错误恢复（调用方 resolveOverload 同条件守卫，原实现 bool 默认值同义）。",
    "登记人": "AI（1143 轮·逐条读过代码）",
    "登记日": "2026-10-19"
+  },
+  {
+   "文件": "src/cn_compiler/parser/parser.cpp",
+   "函数": "parseIntValue",
+   "锚文本": "return 0;",
+   "来源": "1137",
+   "类别": "闭集穷举",
+   "静默风险": "低",
+   "原因": "调用点全集逐点核对（1137）：①parser_expr.cpp:538 整数字面量 value 注入——下游判域/物化全文本级接管（语义 intLiteralFitsType 910 链 semantic_literal_domain.cpp:42、IR emitIntLiteralConst ir_expr.cpp:31、478/728v/790 foldIntLiteralText ir_stmt_decl.cpp:119、919 表达式文本求值），1137 探针实证：整128 超承载字面量装载/二元表达式求值/除零定性均全文本级无 value 毒化出口；②parser_decl.cpp:274 枚举非十进制回退——728u 明示零变化面，与 v2 数字文本转数值（IR布局尾.cn:679）「累加超 2^63-1→0（宿主 stoll out_of_range 静默 0 同款）」双侧对齐（759 立法）；③情况标签调用点（原 parser_stmt.cpp:358/372）1137 轮已切文本级判域接口 resolveCaseIntText（超 i64 承载=恒不匹配标记 CaseLabel.unmatchable，不再经此静默面）。catch 可达面=超 i64 承载合法字面量（invalid_argument 非法文本=词法不可达防御面）。",
+   "登记人": "AI（1137 逐调用点读过代码+探针/双编译对照实证）",
+   "登记日": "2026-10-19"
+  },
+  {
+   "文件": "src/cn_compiler/parser/parser.cpp",
+   "函数": "parseFloatValue",
+   "锚文本": "return 0.0;",
+   "来源": "1137",
+   "类别": "闭集穷举",
+   "静默风险": "低",
+   "原因": "调用点全集（1137）：唯一调用点 parser_expr.cpp:545 浮点字面量 value 注入；全仓 FloatLiteral 消费点=IR/语义读 raw 文本（ir_expr.cpp:33-36 visitFloatLiteral、ir_decl.cpp:166、ir_stmt_decl.cpp:333）与 clone 两处 value 传递（semantic_stmt.cpp:55/151）——value 无产物性消费点。catch 可达面=超 double 域合法浮点文本（stod out_of_range·如 1e999）+非法文本（词法不可达）。遗留（另案）：超 double 域浮点文本产物面（raw 直通汇编·1e999 实测汇编层解析为 0）无编译期诊断——独立缺陷面。",
+   "登记人": "AI（1137 逐调用点读过代码+探针实证）",
+   "登记日": "2026-10-19"
+  },
+  {
+   "文件": "CN语言编译器v2/IR/IR布局尾.cn",
+   "函数": "数字文本转数值",
+   "锚文本": "如果 (值s > (9223372036854775807 - 数s) / 进制s) { 返回 0; }",
+   "来源": "1137",
+   "类别": "业务值",
+   "静默风险": "低",
+   "原因": "v2 侧与宿主 parseIntValue 同源静默点（759 注释自证「宿主 stoll out_of_range 静默 0 同款」·grep 同构证明）——枚举成员值承载口径=进制形态超 i64 承载回 0（728u/759 双侧立法链；宿主侧非十进制回退同款·miss_registry 来源 1137 parseIntValue 条互证）。消费面=枚举成员值语义（双侧同值 0·1137 枚举探针双侧核验无分叉）。修正=语义变更须双侧同步（另案）。",
+   "登记人": "AI（1137 v2 逐行实读+双编译对照核验）",
+   "登记日": "2026-10-19"
   }
  ]
 }

@@ -696,9 +696,24 @@ bool SemanticAnalyzer::checkCompoundAssign(AssignmentExpr* node,
                 [this](const std::string& n, std::int64_t& o) {
                     return resolveConstNameValue(n, o);
                 };
-            std::int64_t foldR548 = 0;
-            if (cnFoldConstIntExpr505(node->value.get(), foldR548, 0, &resolver) &&
-                foldR548 == 0) {
+            // 1137：与二元除/余通道同款收口——纯常量形态先走 919 文本级
+            //   求值判零（大数安全·超整64 承载字面量值级折叠毒化 0 误报
+            //   除零/误报拒合法程序的根因消除）；非常量形态回落 505+
+            //   resolver 既有通道（548 常量名面保留）。
+            std::string r919op;
+            bool zeroR548 = false;
+            const bool textFoldable1137 =
+                cnEvalConstIntExprText919(node->value.get(), r919op);
+            if (textFoldable1137) {
+                zeroR548 = (r919op == "0");
+            }
+            if (!textFoldable1137) {
+                std::int64_t foldR548 = 0;
+                zeroR548 = cnFoldConstIntExpr505(node->value.get(), foldR548, 0,
+                                                 &resolver) &&
+                           foldR548 == 0;
+            }
+            if (zeroR548) {
                 diagnostics_.report(DiagnosticLevel::Error, node->location,
                                     "编译期除零：常量表达式除数为零（运行期除零已有"
                                     "错误码防护，常量折叠面编译期硬错误）");
