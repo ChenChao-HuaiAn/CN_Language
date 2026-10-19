@@ -18,9 +18,11 @@
   stdout 末行=机器可读摘要行（automation/巡检可直接 grep）。
 
 对拍轨道（1130 常态化·独立实现 scripts/cnsmith_dual.py）：
-  输入=随机采样+矩阵抽样+内置锁面+`--对拍目录` 目录批量（含 主.cn 的目录=多文件
-  样本；否则每个 .cn 各为一个样本）；宿主与 v2p 同源码双编译双运行，逐行比对
-  stdout+退出码（stderr 按 `--对拍比stderr`），差异=分叉候选并给建议立案标题。
+  输入=随机采样+矩阵抽样+内置锁面+`--对拍目录` 目录批量（含 主.cn 或
+  v2闭环/双编译对照配置的目录=多文件样本并自动读配置；否则每个 .cn 各自
+  独立样本）；宿主与 v2p 同源码双编译双运行，逐行比对 stdout+退出码
+  （stderr 按 `--对拍比stderr`），差异=分叉候选并给建议立案标题。
+  **跳过/配置不对齐 > 0 时轨道状态=无效（exit 2）**——无结果不算过，禁当绿。
   **新特性轮强制**（语义/语法/内建符号/代码生成改动）：集成前必跑
   `python3 scripts/cnsmith_run.py --轨道 对拍 --对拍预算秒 1800`
   （新特性相关 E2E 用例目录以 `--对拍目录 tests/e2e/<用例>` 一并纳入）。
@@ -301,14 +303,26 @@ def 归档命中(根目录, 类别, 轮次名, 源路径, meta行们, 源是目�
 
 
 def 汇总判定(轨道结果们):
-    命中 = sum(v.get("命中数", 0) for v in 轨道结果们.values() if v.get("状态") == "完成")
+    """轮次判定：红优先（已知缺陷不被过程无效掩盖）→ 无效 → 全绿。
+
+    P0-1（1130 审查）：对拍轨道「跳过>0」（预算耗尽/配置不对齐）由轨道自身置
+    状态=无效（exe 码 2）——无结果不算过，禁当绿。命中仍全轨统计（无效轨道
+    若已跑出分叉候选，红优先显形）。"""
+    命中 = sum(v.get("命中数", 0) for v in 轨道结果们.values())
     无效 = [k for k, v in 轨道结果们.items() if v.get("状态") != "完成"]
+    if 命中:
+        return "红", 命中, 无效
     if 无效:
-        return "无效", 命中, 无效
-    return ("红", 命中, []) if 命中 else ("全绿", 0, [])
+        return "无效", 0, 无效
+    return "全绿", 0, []
 
 
 def 轨道速记(k, v):
+    if k == "对拍":                  # 1130：无效（跳过）时仍给结果面，不吞一致数
+        return "对拍=%d/%d%s%s" % (
+            v.get("一致", 0), v.get("样本数", 0),
+            ("(跳过%d)" % v.get("跳过数", 0)) if v.get("跳过数") else "",
+            "(无效)" if v.get("状态") != "完成" else "")
     if v.get("状态") != "完成":
         return "%s=无效" % k
     if k == "随机":
@@ -317,10 +331,6 @@ def 轨道速记(k, v):
         return "负向=%d/%d" % (v["样本数"] - v["命中数"], v["样本数"])
     if k == "矩阵":
         return "矩阵=%d/%d" % (v["汇总"]["绿"], v["汇总"]["绿"] + v["汇总"]["红"])
-    if k == "对拍":
-        return "对拍=%d/%d%s" % (v["一致"], v["样本数"],
-                               ("(跳过%d)" % v.get("跳过数", 0))
-                               if v.get("跳过数") else "")
     return k
 
 
@@ -343,7 +353,8 @@ def 写报告(轮目录, 记录, 轨道结果们):
                                           记录["编译器"].get("mtime", "?")),
           "- 种子：%s ｜ 归档：%s" % (记录["种子"], 记录["报告相对"]), ""]
     if 无效:
-        行 += ["> **轨道未产出结果（miss 不静默——无结果不算过）**：" + "、".join(无效), ""]
+        行 += ["> **轨道未完成（无结果/覆盖不足——miss 不静默·无结果不算过）**："
+             + "、".join(无效), ""]
     行 += ["| 轨道 | 状态 | 结果 | 说明 |", "|---|---|---|---|"]
     for k, v in 轨道结果们.items():
         行.append("| %s | %s | %s | %s |" % (k, v.get("状态", "?"), 轨道速记(k, v),
@@ -554,11 +565,11 @@ def main():
                     help="对拍轨道内置执法样本数（默认 %d·0=不取；族上限 %d）"
                          % (len(内置对拍样本), len(内置对拍样本)))
     ap.add_argument("--对拍目录", default="",
-                    help="对拍轨道目录批量输入（逗号分隔）：含 主.cn 的目录=一个多文件"
-                         "样本；否则每个顶层 .cn 各为一个样本")
+                    help="对拍轨道目录批量输入（逗号分隔）：含 主.cn 或 v2闭环/双编译对照"
+                         "配置的目录=一个多文件样本（自动读配置）；否则每个顶层 .cn 各为一个样本")
     ap.add_argument("--对拍预算秒", type=int, default=1800,
                     help="对拍轨道时间预算（秒·默认 1800=周采样推荐；0=不限；"
-                         "耗尽样本显式计「跳过」不当绿）")
+                         "耗尽样本显式计「跳过」→ 轨道无效 exit 2·不当绿）")
     ap.add_argument("--对拍比stderr", action="store_true",
                     help="对拍判定纳入 stderr 逐行比对（默认仅记录不参与判定）")
     ap.add_argument("--seed", type=int, default=0, help="种子（0=时间戳·默认）")
@@ -579,22 +590,16 @@ def main():
                     help="selftest 附加端到端真跑（需 v2p 就绪）")
     a = ap.parse_args()
     if a.selftest:
-        return cnsmith_dual.selftest(
-            str((根 / a.cn) if not pathlib.Path(a.cn).is_absolute() else pathlib.Path(a.cn)),
-            a.selftest实跑)
+        import cnsmith_dual_selftest as 自测          # 延迟导入（对拍自测模块）
+        return 自测.selftest(cnsmith_dual.解析编译器路径(a.cn), a.selftest实跑)
     a.轨道 = list(轨道全集) if a.轨道.strip() == "全部" else \
         [x.strip() for x in a.轨道.split(",") if x.strip()]
     未知 = [x for x in a.轨道 if x not in 轨道全集]
     if 未知:
         print("未知轨道：%s（可选：%s）" % (未知, "、".join(轨道全集)))
         return 2
-    a.cn = pathlib.Path(a.cn)
-    if not a.cn.is_absolute():
-        a.cn = 根 / a.cn
-    # win 便利：默认 target/cn 在多配置/单配置构建下实际产物为 cn.exe（显式探测，
-    #   不静默换路径——解析结果进报告「编译器.路径」可追溯）
-    if not a.cn.exists() and a.cn.with_suffix(".exe").exists():
-        a.cn = a.cn.with_suffix(".exe")
+    # 编译器路径归一（Path + 相对根 + win .exe 探测·审查 P2-1 共同入口）
+    a.cn = cnsmith_dual.解析编译器路径(a.cn)
     归档根 = pathlib.Path(a.归档)
     if not 归档根.is_absolute():
         归档根 = 根 / 归档根
