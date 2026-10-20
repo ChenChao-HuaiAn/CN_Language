@@ -36,10 +36,16 @@ void LinuxX64CodeGenerator::emitPrologue(LinuxX64AsmWriter& writer,
     const int frameSize = computeFrameSize(function) + 16;
     retbufFrameOffset_ = -frameSize;
     currentFrameSize_ = frameSize;
-    const int totalAlloc = frameSize + (needHiddenRet ? 8 : 0);
+    // 1256：被调用者保存寄存器（rbx/r12~r15）在 sub 之后压栈保存。
+    //   SysV 对齐：push rbp 后 rsp≡0；sub F 后 ≡-F；再 push N 个 -> ≡(-F-8N)。
+    //   F 为 16 的倍数，故 N 为奇数时 F 额外 +8，保证 call 前 rsp≡0。
+    const int calleeSavedPad =
+        (static_cast<int>(calleeSavedRegs_.size()) % 2 == 1) ? 8 : 0;
+    const int totalAlloc = frameSize + calleeSavedPad + (needHiddenRet ? 8 : 0);
     if (totalAlloc > 0) {
         writer.line("sub rsp, " + std::to_string(totalAlloc));
     }
+    emitSaveCalleeSaved(writer);
 }
 
 // 从栈槽内存操作数文本解析偏移（"[rbp-24]" -> -24；"[rbp+32]" -> 32；"[rbp]" -> 0）
@@ -219,6 +225,11 @@ void LinuxX64CodeGenerator::emitEpilogue(LinuxX64AsmWriter& writer,
             // 返回 %vN 文本：解析寄存器ID
             const int id = std::stoi(returnReg.substr(2));
             emitStackLoad(writer, regSlotOffset(id), "rax", currentReturnType_);
+        } else if (x86Reg32(returnReg) != returnReg) {
+            // 1256：返回值在已分配的物理寄存器内（直写），按类型宽度搬入 rax
+            //   （窄型/32 位用 32 位名——写 eax 清高 32 位，与槽装载语义一致）
+            writer.line("mov " + widthFor(currentReturnType_, "rax") + ", " +
+                        widthFor(currentReturnType_, returnReg));
         } else {
             // 常量文本返回（如 "0"/"1"）：立即数装载
             try {
@@ -235,6 +246,10 @@ void LinuxX64CodeGenerator::emitEpilogue(LinuxX64AsmWriter& writer,
 // epilogue 收尾（mov rsp,rbp 一步还原 / [pop rbx] / pop rbp / ret）
 // 拆出供 struct/i128 返回分支复用（保持每函数<=100行约束）
 void LinuxX64CodeGenerator::emitEpilogueTail(LinuxX64AsmWriter& writer) {
+    // 1256：先恢复被调用者保存寄存器（push 的逆序 pop），再 mov rsp,rbp 一步还原。
+    //   隐藏返回指针函数强制关闭分配（calleeSavedRegs_ 为空）——rbx 此时承载
+    //   返回缓冲区指针，恢复动作不影响该路径。
+    emitRestoreCalleeSaved(writer);
     // 弹出顺序与压栈相反：prologue 是 push rbp 先、push rbx 后（rbx 位于更低位），
     //   mov rsp,rbp 后栈顶依次为 saved rbp、saved rbx、返回地址——
     //   必须先 pop rbp 再 pop rbx（顺序颠倒会把返回地址弹进 rbp、ret 读垃圾）

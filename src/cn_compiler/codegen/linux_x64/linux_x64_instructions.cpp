@@ -70,8 +70,8 @@ std::string LinuxX64CodeGenerator::setccFor(ir::Opcode opcode, bool isUnsigned,
 
 // ==================== 操作数文本 ====================
 
-// 操作数 -> 源操作数文本（常量立即数 / 寄存器槽 / 变量槽）
-// 注：本函数返回"内存操作数文本"，实际装载由 loadOperandToX/loadOperandToV 统一处理
+// 操作数 -> 源操作数文本（常量立即数 / 寄存器槽 / 变量槽 / 物理寄存器）
+// 1256：分配开启时已分配虚拟寄存器直接输出物理寄存器名，否则保持栈槽映射
 std::string LinuxX64CodeGenerator::operandText(const ir::IRValue& operand) {
     if (operand.isConstant) {
         // 322：兼容「真|1」两形态 i1 文本（guard 写"1"曾被折算 0=守卫恒失效）三后端同构
@@ -79,126 +79,21 @@ std::string LinuxX64CodeGenerator::operandText(const ir::IRValue& operand) {
         return operand.extra;
     }
     if (operand.id >= 0) {
+        const std::string phys = physRegOf(operand);
+        if (!phys.empty()) return phys;  // 物理寄存器
         return regSlotMem(operand.id);
     }
     return stackMemText(varSlotOf(operand.extra));
 }
 
-// 结果寄存器 -> 目的操作数文本（寄存器槽）
+// 结果寄存器 -> 目的操作数文本（寄存器槽 / 物理寄存器）
 std::string LinuxX64CodeGenerator::resultText(const ir::IRValue& result) {
+    const std::string phys = physRegOf(result);
+    if (!phys.empty()) return phys;  // 物理寄存器
     return regSlotMem(result.id);
 }
 
 // ==================== 常量加载 ====================
-
-// 常量加载：ConstInt/ConstBool 立即数 mov；ConstString/FuncAddr 加载符号地址；
-// ConstFloat 从常量池加载（i128 常量拆低/高双槽）
-void LinuxX64CodeGenerator::emitConstLoad(LinuxX64AsmWriter& writer,
-                                          const ir::IRInstruction& inst) {
-    if (inst.opcode == ir::Opcode::ConstFloat) {
-        const bool isDouble = (inst.type == "f64");
-        const std::string label = registerFloatConstant(inst.extra, isDouble);
-        emitLoadSymbolAddr(writer, "rax", label);
-        const std::string vreg = "xmm7";
-        // 宽度前缀按类型：movsd=qword / movss=dword（movss 配 qword 汇编报错）
-        writer.line("mov" + std::string(isDouble ? "sd" : "ss") + " " + vreg + ", " +
-                    std::string(isDouble ? "qword ptr" : "dword ptr") + " [rax]");
-        emitStackStore(writer, regSlotOffset(inst.result.id), vreg, inst.type);
-        writer.comment("浮点常量 " + inst.extra);
-        return;
-    }
-    if (inst.opcode == ir::Opcode::ConstString) {
-        // 字符串常量：@strN（IR 层常量池 ID）-> GAS 标签 LstrN -> 结果槽
-        std::string sym = inst.extra;
-        // 静态字段/顶层静态符号（与 X64 一致的 ?static_/​?gstatic_ 前缀）GAS 化：
-        // GAS 符号不能以 ? 开头，转 _cn_static_/_cn_gstatic_（与 vtable.cpp 一致）
-        if (sym.compare(0, 8, "?static_") == 0) {
-            sym = "_cn_static_" + nameMangle(sym.substr(8));
-        } else if (sym.compare(0, 9, "?gstatic_") == 0) {
-            sym = "_cn_gstatic_" + nameMangle(sym.substr(9));
-        } else if (sym.compare(0, 4, "@str") == 0) {
-            sym = "L" + sym.substr(1);  // @strN -> LstrN
-        }
-        emitLoadSymbolAddr(writer, "r10", sym);
-        emitStackStore(writer, regSlotOffset(inst.result.id), "r10", "ptr");
-        return;
-    }
-    if (inst.opcode == ir::Opcode::FuncAddr) {
-        // 函数地址：lea rip 相对加载函数链接符号地址
-        emitLoadSymbolAddr(writer, "r10", symbolName(inst.extra));
-        emitStackStore(writer, regSlotOffset(inst.result.id), "r10", "ptr");
-        return;
-    }
-    // i128/u128 常量：extra = "LO:HI"（十六进制）或纯十进制小值
-    // 结果双槽：%vN（高64位）+ %vN+1（低64位），低64位槽地址更低
-    if (inst.type == "i128" || inst.type == "u128") {
-        const std::string& extra = inst.extra;
-        const std::size_t colon = extra.find(':');
-        std::uint64_t lo = 0;
-        std::uint64_t hi = 0;
-        if (colon != std::string::npos) {
-            lo = std::stoull(extra.substr(0, colon), nullptr, 16);
-            hi = std::stoull(extra.substr(colon + 1), nullptr, 16);
-        } else {
-            try {
-                lo = static_cast<std::uint64_t>(std::stoull(extra));
-            } catch (...) {
-                lo = 0;
-            }
-        }
-        const int dstHiId = inst.result.id;
-        const int dstLoId = inst.result.id + 1;
-        writer.line("mov r10, " + uint64HexText(lo));
-        emitStackStore(writer, regSlotOffset(dstLoId), "r10", "i64");
-        writer.line("mov r10, " + uint64HexText(hi));
-        emitStackStore(writer, regSlotOffset(dstHiId), "r10", "i64");
-        return;
-    }
-    // 整型/布尔常量：立即数（x86_64 mov reg, imm64 全范围一条指令）
-    std::string value = (inst.extra == "真") ? "1" : (inst.extra == "假") ? "0" : inst.extra;
-    // 任务 119（927）：常量值文本为空 = 硬错误。原「catch → mov r10, 0」兜底把
-    //   空文本静默发射成 0——119 实弹：stride 错 0 → 元素偏移恒 0 → 写错元素
-    //   （`矩阵.元素(1).设置(0,99)` 写穿第 0 行·rc=0 静默内存错写）。错值比
-    //   编译失败更糟（fail-fast：编译器 bug 当场炸，不产错值产物）。
-    if (value.empty()) {
-        diagnostics_.report(Diagnostic::error(
-            inst.loc,
-            std::string("常量指令缺值文本（extra 为空）——无法发射立即数（") +
-                targetPlatform() + " 后端末防线·任务 119）"));
-        return;
-    }
-    if (!value.empty() && value[0] == '0' && value.size() > 1 &&
-        (value[1] == 'x' || value[1] == 'X' || value[1] == 'b' ||
-         value[1] == 'B' || value[1] == 'o' || value[1] == 'O')) {
-        try {
-            const std::uint64_t raw =
-                std::stoull(value.substr(2), nullptr,
-                             (value[1] == 'x' || value[1] == 'X') ? 16 :
-                             (value[1] == 'b' || value[1] == 'B') ? 2 : 8);
-            value = std::to_string(raw);
-        } catch (...) {
-        }
-    }
-    // 任务 119（927）：双层解析全失败（空/非法文本）同样硬错误——原兜底
-    //   mov r10, 0 属静默错值通道（与空文本同族），一并根治。
-    try {
-        const long long v = std::stoll(value);
-        writer.line("mov r10, " + std::to_string(v));
-    } catch (...) {
-        try {
-            const std::uint64_t u = std::stoull(value);
-            writer.line("mov r10, " + uint64HexText(u));
-        } catch (...) {
-            diagnostics_.report(Diagnostic::error(
-                inst.loc,
-                std::string("常量值文本无法解析（\"") + value +
-                    "\"）——无法发射立即数（" + targetPlatform() +
-                    " 后端末防线·任务 119）"));
-            return;
-        }
-    }
-    emitStackStore(writer, regSlotOffset(inst.result.id), "r10", inst.type);
-}
 
 // ==================== 整型二元运算 ====================
 
@@ -219,6 +114,24 @@ bool immFitsWidth474(const std::string& suffix, long long v) {
     if (suffix == "w") return v >= -32768 && v <= 65535;
     return v >= -2147483648LL && v <= 2147483647LL;
 }
+
+// 1256：乘法常量操作数解析（stoll 优先，溢出回落 stoull；返回是否为常量）
+bool mulConstValue474(const ir::IRInstruction& inst, long long& value) {
+    if (inst.operands[1].isConstant) {
+        try {
+            value = std::stoll(inst.operands[1].extra);
+        } catch (...) {
+            try {
+                value = static_cast<long long>(std::stoull(inst.operands[1].extra));
+            } catch (...) {
+                value = 0;
+            }
+        }
+        return true;
+    }
+    return false;
+}
+
 } // namespace
 
 // 单步整型二元运算（Add/Sub/And/Or/Xor 双操作数；Mul 转发 emitIntMul）
@@ -227,6 +140,79 @@ bool immFitsWidth474(const std::string& suffix, long long v) {
 //   i32 32 位、i64 64 位），有符号溢出=硬件 OF 单条 jo、无符号借/进位=CF jc
 //   （热路径零 cmp·错误块冷路径）；Wrap* 回绕内置/不安全 函数体内不插检查；
 //   位运算/布尔逻辑（and/or/xor）无溢出面，不插。结果按 inst.type 截断存储。
+// 1256：整型二元运算直写（结果已分配）——发射成功返回真；未分配/同寄存器冲突返回假。
+//   计算落 dstPhys，窄型宽度名（b/w）运算 + 结果按类型符号性规范化。
+bool LinuxX64CodeGenerator::emitIntBinaryDirect(LinuxX64AsmWriter& writer,
+                                                const ir::IRInstruction& inst,
+                                                const std::string& mnemonic,
+                                                const std::string& w, bool needOvf,
+                                                bool isSigned, const std::string& trap) {
+    const std::string& ty = inst.type;
+    const std::string dstPhys = physRegOf(inst.result);
+    if (!dstPhys.empty() && !hasRegisterConflict(inst)) {
+        const std::string regW = w.empty() ? dstPhys
+                 : (w == "d" ? x86Reg32(dstPhys) : narrowOperand(ty, dstPhys));
+        // 操作数宽度名：i8/i16 窄名、i32/u32 32 位名、i64/u64 全名（同型取自操作数）
+        auto opW = [&](const std::string& r) -> std::string {
+            return w.empty() ? r
+                 : (w == "d" ? x86Reg32(r) : narrowOperand(ty, r));
+        };
+        loadOperandToX(writer, inst.operands[0], dstPhys);
+        if (inst.operands[1].isConstant) {
+            std::string text = inst.operands[1].extra;
+            if (inst.operands[1].type == "i1") {
+                text = (text == "真" || text == "1") ? "1" : "0";
+            }
+            try {
+                const long long v = std::stoll(text);
+                if (immFitsWidth474(w, v)) {
+                    writer.line(mnemonic + " " + regW + ", " + std::to_string(v));
+                } else {
+                    writer.line("mov r9, " + uint64HexText(static_cast<std::uint64_t>(v)));
+                    writer.line(mnemonic + " " + regW + ", " + opW("r9"));
+                }
+            } catch (...) {
+                try {
+                    const std::uint64_t u = std::stoull(text);
+                    writer.line("mov r9, " + uint64HexText(u));
+                    writer.line(mnemonic + " " + regW + ", " + opW("r9"));
+                } catch (...) {
+                    writer.line("mov " + regW + ", 0");
+                }
+            }
+        } else if (!inst.operands[1].isConstant) {
+            // op2 已分配且与 dst 不同：直接读物理寄存器（免 r9 中转）；
+            //   同寄存器（分配器死点复用）退回 r9 装载——两地址 op 先覆盖
+            //   op2 原值会错。
+            const std::string op2Phys = physRegOf(inst.operands[1]);
+            if (!op2Phys.empty() && op2Phys != dstPhys) {
+                writer.line(mnemonic + " " + regW + ", " + opW(op2Phys));
+            } else {
+                loadOperandToX(writer, inst.operands[1], "r9");
+                writer.line(mnemonic + " " + regW + ", " + opW("r9"));
+            }
+        }
+        if (needOvf) {
+            const std::string ok = trap + "_ok";
+            writer.line(std::string(isSigned ? "jno " : "jnc ") + ok);
+            writer.raw(trap + ":");
+            emitOverflowErrorBody(writer);
+            writer.raw(ok + ":");
+        }
+        // 窄型结果规范化：低 32 位呈符号/零扩展值（寄存器内约定），
+        //   与槽路径消费侧按声明类型窄读逐位一致
+        if (ty == "i8" || ty == "i16") {
+            writer.line("movsx " + x86Reg32(dstPhys) + ", " +
+                        narrowOperand(ty, dstPhys));
+        } else if (ty == "u8" || ty == "u16") {
+            writer.line("movzx " + x86Reg32(dstPhys) + ", " +
+                        narrowOperand(ty, dstPhys));
+        }
+    return true;
+    }
+    return false;
+}
+
 void LinuxX64CodeGenerator::emitIntBinary(LinuxX64AsmWriter& writer,
                                           const ir::IRInstruction& inst,
                                           const std::string& mnemonic) {
@@ -245,6 +231,10 @@ void LinuxX64CodeGenerator::emitIntBinary(LinuxX64AsmWriter& writer,
     // 任务 474：反向结构（除零检查同款）——jno/jnc 跳过错误块（几乎不跳转），
     //   溢出时顺序落入错误块；标签先占号
     const std::string trap = "Lovf" + std::to_string(ptrCheckCounter_++);
+    // 1256 直写：结果已分配且无冲突 -> 计算落分配寄存器（辅助函数发射并返回真）
+    if (emitIntBinaryDirect(writer, inst, mnemonic, w, needOvf, isSigned, trap)) {
+        return;
+    }
     loadOperandToX(writer, inst.operands[0], "r10");
     if (inst.operands[1].isConstant) {
         std::string text = inst.operands[1].extra;
@@ -253,7 +243,7 @@ void LinuxX64CodeGenerator::emitIntBinary(LinuxX64AsmWriter& writer,
             const long long v = std::stoll(text);
             if (immFitsWidth474(w, v)) {
                 writer.line(mnemonic + " r10" + w + ", " + std::to_string(v));
-            } else {
+            } else if (!immFitsWidth474(w, v)) {
                 writer.line("mov r9, " + uint64HexText(static_cast<std::uint64_t>(v)));
                 writer.line(mnemonic + " r10" + w + ", r9" + w);
             }
@@ -279,8 +269,8 @@ void LinuxX64CodeGenerator::emitIntBinary(LinuxX64AsmWriter& writer,
         emitOverflowErrorBody(writer);
         writer.raw(ok + ":");
     }
-    // 结果存回结果槽（按 inst.type 宽度截断）
-    emitStackStore(writer, regSlotOffset(inst.result.id), "r10", inst.type);
+    // 结果存回（三段收尾）：已分配 -> 规范化写物理寄存器；未分配 -> 原槽
+    storeCanonicalResult(writer, inst.result, "r10", inst.type);
 }
 
 // 整型乘法发射（任务 474 拆分：乘法溢出检测与加/减不同构）
@@ -291,6 +281,157 @@ void LinuxX64CodeGenerator::emitIntBinary(LinuxX64AsmWriter& writer,
 //   u32：64 位 imul 低 64 位=真积（<2^64）→ 高 32 位非零检查（mov+shr+jnz）；
 //   u64：mul 单操作数（rax×r9→rdx:rax，CF=高半≠0）→ jc；
 //   WrapMul / 不安全 函数：纯回绕（双操作数 imul·低 N 位=回绕位模式）。
+// 1256：乘法直写分派（结果已分配且无同寄存器冲突）——发射成功返回真
+bool LinuxX64CodeGenerator::emitIntMulDirect(LinuxX64AsmWriter& writer,
+                                             const ir::IRInstruction& inst,
+                                             const std::string& ty, bool needOvf,
+                                             bool isSigned, const std::string& trap) {
+    const std::string dstPhys = physRegOf(inst.result);
+    if (!dstPhys.empty() && !hasRegisterConflict(inst)) {
+        if (ty == "u64") {
+            emitIntMulDirectU64(writer, inst, dstPhys, needOvf, trap);
+        } else if (ty == "u32") {
+            emitIntMulDirectU32(writer, inst, dstPhys, needOvf, trap);
+        } else if (ty == "i8" || ty == "i16" || ty == "i32" || ty == "i64" ||
+                   ty == "u8" || ty == "u16") {
+            emitIntMulDirectWide(writer, inst, ty, dstPhys, needOvf, isSigned, trap);
+        }
+    return true;
+    }
+    return false;
+}
+
+// 1256：u64 直写——mul 单操作数语义（rax×r9→rdx:rax），积落分配寄存器
+void LinuxX64CodeGenerator::emitIntMulDirectU64(LinuxX64AsmWriter& writer,
+                                                const ir::IRInstruction& inst,
+                                                const std::string& dstPhys,
+                                                bool needOvf, const std::string& trap) {
+    const bool op2ConstD = inst.operands[1].isConstant;
+    long long cv = 0;
+    if (op2ConstD) mulConstValue474(inst, cv);
+    loadOperandToX(writer, inst.operands[0], "rax");
+    if (op2ConstD) {
+        writer.line("mov r9, " + uint64HexText(static_cast<std::uint64_t>(cv)));
+    } else {
+        loadOperandToX(writer, inst.operands[1], "r9");
+    }
+    if (!needOvf) {
+        writer.line("imul rax, r9");
+        writer.line("mov " + dstPhys + ", rax");
+        return;
+    }
+    writer.line("mul r9");
+    const std::string ok = trap + "_ok";
+    writer.line("jnc " + ok);
+    writer.raw(trap + ":");
+    emitOverflowErrorBody(writer);
+    writer.raw(ok + ":");
+    writer.line("mov " + dstPhys + ", rax");
+}
+
+// 1256：u32 直写——64 位 imul 精确全积 + 高 32 位溢出检查
+void LinuxX64CodeGenerator::emitIntMulDirectU32(LinuxX64AsmWriter& writer,
+                                                const ir::IRInstruction& inst,
+                                                const std::string& dstPhys,
+                                                bool needOvf, const std::string& trap) {
+    const bool op2ConstD = inst.operands[1].isConstant;
+    long long cv = 0;
+    if (op2ConstD) mulConstValue474(inst, cv);
+    loadOperandToX(writer, inst.operands[0], dstPhys);
+    if (op2ConstD) {
+        if (cv >= -2147483648LL && cv <= 2147483647LL) {
+            writer.line("imul " + dstPhys + ", " + std::to_string(cv));
+        } else if (!(cv >= -2147483648LL && cv <= 2147483647LL)) {
+            writer.line("mov r9, " + uint64HexText(static_cast<std::uint64_t>(cv)));
+            writer.line("imul " + dstPhys + ", r9");
+        }
+    } else if (!op2ConstD) {
+        const std::string op2Phys = physRegOf(inst.operands[1]);
+        if (!op2Phys.empty() && op2Phys != dstPhys) {
+            writer.line("imul " + dstPhys + ", " + op2Phys);
+        } else if (op2Phys.empty() || op2Phys == dstPhys) {
+            loadOperandToX(writer, inst.operands[1], "r9");
+            writer.line("imul " + dstPhys + ", r9");
+        }
+    }
+    if (needOvf) {
+        const std::string ok = trap + "_ok";
+        writer.line("mov r11, " + dstPhys);
+        writer.line("shr r11, 32");
+        writer.line("jz " + ok);
+        writer.raw(trap + ":");
+        emitOverflowErrorBody(writer);
+        writer.raw(ok + ":");
+    }
+    // 截断回 32 位（low32 值 + 高 32 清零）
+    writer.line("mov " + x86Reg32(dstPhys) + ", " + x86Reg32(dstPhys));
+}
+
+// 1256：窄整型/i32/i64 直写——乘积落 dst，按类型域做溢出检查与窄型规范化
+void LinuxX64CodeGenerator::emitIntMulDirectWide(LinuxX64AsmWriter& writer,
+                                                 const ir::IRInstruction& inst,
+                                                 const std::string& ty,
+                                                 const std::string& dstPhys,
+                                                 bool needOvf, bool isSigned,
+                                                 const std::string& trap) {
+    const bool narrow = (ty == "i8" || ty == "i16" ||
+                         ty == "u8" || ty == "u16");
+    const bool is32Mul = (ty == "i8" || ty == "i16" || ty == "i32");
+    const std::string acc = (is32Mul || narrow) ? x86Reg32(dstPhys) : dstPhys;
+    const bool op2ConstD = inst.operands[1].isConstant;
+    long long cv = 0;
+    if (op2ConstD) mulConstValue474(inst, cv);
+    loadOperandToX(writer, inst.operands[0], dstPhys);
+    if (op2ConstD) {
+        if (cv >= -2147483648LL && cv <= 2147483647LL) {
+            writer.line("imul " + acc + ", " + std::to_string(cv));
+        } else if (!(cv >= -2147483648LL && cv <= 2147483647LL)) {
+            writer.line("mov r9, " + uint64HexText(static_cast<std::uint64_t>(cv)));
+            writer.line("imul " + acc + ", " + (acc == dstPhys ? "r9" : "r9d"));
+        }
+    } else if (!op2ConstD) {
+        const std::string op2Phys = physRegOf(inst.operands[1]);
+        if (!op2Phys.empty() && op2Phys != dstPhys) {
+            writer.line("imul " + acc + ", " +
+                        (acc == dstPhys ? op2Phys : x86Reg32(op2Phys)));
+        } else if (op2Phys.empty() || op2Phys == dstPhys) {
+            loadOperandToX(writer, inst.operands[1], "r9");
+            writer.line("imul " + acc + ", " + (acc == dstPhys ? "r9" : "r9d"));
+        }
+    }
+    if (needOvf && (ty == "i32" || ty == "i64")) {
+        const std::string ok = trap + "_ok";
+        writer.line("jno " + ok);
+        writer.raw(trap + ":");
+        emitOverflowErrorBody(writer);
+        writer.raw(ok + ":");
+    } else if (needOvf && isSigned) {
+        const long long hi = (ty == "i8") ? 127 : 32767;
+        const long long lo = (ty == "i8") ? -128 : -32768;
+        const std::string ok = trap + "_ok";
+        writer.line("cmp " + x86Reg32(dstPhys) + ", " + std::to_string(hi));
+        writer.line("jg " + trap);
+        writer.line("cmp " + x86Reg32(dstPhys) + ", " + std::to_string(lo));
+        writer.line("jge " + ok);
+        writer.raw(trap + ":");
+        emitOverflowErrorBody(writer);
+        writer.raw(ok + ":");
+    } else if (needOvf && (ty == "u8" || ty == "u16")) {
+        const std::string ok = trap + "_ok";
+        writer.line("cmp " + x86Reg32(dstPhys) + ", " +
+                    std::string((ty == "u8") ? "255" : "65535"));
+        writer.line("jbe " + ok);
+        writer.raw(trap + ":");
+        emitOverflowErrorBody(writer);
+        writer.raw(ok + ":");
+    }
+    if (ty == "i8" || ty == "i16") {
+        writer.line("movsx " + x86Reg32(dstPhys) + ", " + narrowOperand(ty, dstPhys));
+    } else if (ty == "u8" || ty == "u16") {
+        writer.line("movzx " + x86Reg32(dstPhys) + ", " + narrowOperand(ty, dstPhys));
+    }
+}
+
 void LinuxX64CodeGenerator::emitIntMul(LinuxX64AsmWriter& writer,
                                        const ir::IRInstruction& inst) {
     const std::string& ty = inst.type;
@@ -309,6 +450,8 @@ void LinuxX64CodeGenerator::emitIntMul(LinuxX64AsmWriter& writer,
     const std::string mulSuf = (is32 && ty != "u32") ? "d" : "";
     // 任务 474：trap 标签先占号（分支前置·store 中继·错误块垫底）
     const std::string trap = "Lovf" + std::to_string(ptrCheckCounter_++);
+    // 1256 直写：结果已分配且无冲突 -> 乘积落分配寄存器（按类型分派辅助）
+    if (emitIntMulDirect(writer, inst, ty, needOvf, isSigned, trap)) return;
     // op1 -> r10；op2 -> 常量立即数 / r9 寄存器
     loadOperandToX(writer, inst.operands[0], "r10");
     const bool op2Const = inst.operands[1].isConstant;
@@ -327,12 +470,12 @@ void LinuxX64CodeGenerator::emitIntMul(LinuxX64AsmWriter& writer,
             writer.line("mov r9, " + uint64HexText(static_cast<std::uint64_t>(v)));
             writer.line("imul r10" + mulSuf + ", r9" + mulSuf);
         }
-    } else {
+    } else if (!op2Const) {
         loadOperandToX(writer, inst.operands[1], "r9");
         writer.line("imul r10" + mulSuf + ", r9" + mulSuf);
     }
     if (!needOvf) {
-        emitStackStore(writer, regSlotOffset(inst.result.id), "r10", ty);
+        storeCanonicalResult(writer, inst.result, "r10", ty);
         return;
     }
     if (isSigned && (ty == "i32" || ty == "i64")) {
@@ -385,7 +528,7 @@ void LinuxX64CodeGenerator::emitIntMul(LinuxX64AsmWriter& writer,
         //   非法输入拦截面（禁业务调用）——本处为正常分派（链延续形态）。
         emitIntMulU64(writer, inst, trap, op2Const);
     }
-    emitStackStore(writer, regSlotOffset(inst.result.id), "r10", ty);
+    storeCanonicalResult(writer, inst.result, "r10", ty);
 }
 
 // ==================== 908（855 呈报·837 形态核查）：u64 安全乘法守卫 ====================
@@ -428,13 +571,117 @@ void LinuxX64CodeGenerator::emitIntMulU64(LinuxX64AsmWriter& writer,
 
 // 除/余：有符号 cqo+idiv / 无符号 xor edx,edx+div（商 rax、余 rdx）
 // 含除零检查（错误码1）：常量非零编译期消除；运行期检查 test + jnz
+// 1256：有符号除/余 INT_MIN/-1 特例（常量 -1 与运行期除数两形态）——
+//   发射并返回真（调用方 return）；非常量且非 -1 形态返回假走通用 idiv。
+bool LinuxX64CodeGenerator::emitDivModSignedSpecial(
+    LinuxX64AsmWriter& writer, const ir::IRInstruction& inst,
+    const std::string& type, bool is32Div, const std::string& op1Reg,
+    const std::string& op2Reg) {
+    const bool divisorConst = inst.operands[1].isConstant;
+    const std::string op2Reg32 = x86Reg32(op2Reg);
+    // 319-a（B12 甲·T27 根治）→ 任务 474 改造：有符号除法的 INT_MIN/-1 溢出
+    //   防护从「两补码回绕」改为**错误码 8 确定性失败**（neg 置 OF 当且仅当
+    //   操作数为 INT_MIN——单指令检测；x≠INT_MIN 时维持原回绕特判结果）。
+    //   ①常量 -1：编译期直入特判分支；②非常量：idiv 前运行时特判（op2 与 -1 比）。
+    //   op1 此刻仍持被除数（除零检查只动 op2/rdi）。不安全 函数体内维持回绕
+    //   （溢出检查家族豁免面·x64 idiv INT_MIN/-1 在不安全域=回绕不陷阱）。
+    bool divisorIsNegOne = false;
+    if (divisorConst) {
+        try {
+            divisorIsNegOne = (std::stoll(inst.operands[1].extra) == -1);
+        } catch (...) { divisorIsNegOne = false; }
+    }
+    // INT_MIN/-1 检测（除数==-1 分支内）：neg 被除数 → OF ⇔ INT_MIN；
+    //   jno 正常（恢复被除数·neg 自逆）→ 回绕特判；jo → 错误码 8 冷路径。
+    //   474 条文口径：守卫只属除法——x % -1 ≡ 0 恒良定义（余零非溢出·
+    //   001 §3.7a 保留条文），Mod 不发守卫。
+    auto emitIntMinGuard474 = [&]() {
+        if (currentFnUnsafe474_) return;  // 不安全 域维持回绕
+        const int gid = ptrCheckCounter_++;
+        const std::string okL = "Ldmin_ok" + std::to_string(gid);
+        // neg 按类型域宽度发射（neg 置 OF 当且仅当该宽度 INT_MIN）：
+        //   i8 -> al、i16 -> ax、i32 -> eax（mov eax,eax 清高位后位模式对齐）、
+        //   i64 -> rax（全窄域除法唯一溢出形态=INT_W/-1 逐宽检测）。
+        //   反向结构：jno 跳过错误块到恢复点（溢出时顺序落入）
+        const std::string nx = (type == "i8") ? "al"
+                             : (type == "i16") ? "ax"
+                             : is32Div ? "eax" : "rax";
+        writer.line("neg " + nx);
+        writer.line("jno " + okL);
+        emitOverflowTrap(writer, "Lovf" + std::to_string(gid));
+        writer.raw(okL + ":");
+        writer.line("neg " + nx);  // 恢复被除数（neg 自逆）
+    };
+    if (divisorIsNegOne) {
+        writer.line("mov rax, " + op1Reg);
+        if (is32Div) writer.line("mov eax, eax");
+        if (inst.opcode == ir::Opcode::Div) {
+            emitIntMinGuard474();
+            writer.line(is32Div ? "neg eax" : "neg rax");
+        } else {
+            writer.line("xor eax, eax");
+        }
+        storeCanonicalResult(writer, inst.result, "rax", type);
+        return true;
+    }
+    if (!divisorConst) {
+        const int negId = ptrCheckCounter_++;
+        const std::string cont = "Ldiv_norm" + std::to_string(negId);
+        const std::string endl = "Ldiv_end" + std::to_string(negId);
+        // 324-c（C24/T44 甲·win 319-a 宽度感知同款）：比较宽度须对齐除数
+        //   装载——32 位除数经 mov r9d 零扩展（-1 → 0x00000000FFFFFFFF），
+        //   原恒 64 位 cmp r9,-1（0xFFFFFFFFFFFFFFFF）永不命中→INT_MIN/-1
+        //   落 idiv 溢出 SIGFPE（m27_01/s2609179004 x64l -O0 实锤）；win
+        //   侧宽度感知 ecx/rcx 正确=本判据对齐。
+        writer.line(is32Div ? "cmp " + op2Reg32 + ", -1"
+                            : "cmp " + op2Reg + ", -1");
+        writer.line("jne " + cont);
+        writer.line("mov rax, " + op1Reg);
+        if (is32Div) writer.line("mov eax, eax");
+        if (inst.opcode == ir::Opcode::Div) {
+            emitIntMinGuard474();
+            writer.line(is32Div ? "neg eax" : "neg rax");
+        } else {
+            writer.line("xor eax, eax");
+        }
+        storeCanonicalResult(writer, inst.result, "rax", type);
+        writer.line("jmp " + endl);
+        writer.raw(cont + ":");
+        // 正常路径（落入下方通用 idiv 流程后跳回 end）
+        // 注意：通用流程尾部各自 return——此处内联复制通用路径再跳 end
+        writer.line("mov rax, " + op1Reg);
+        if (is32Div) {
+            writer.line("mov eax, eax");
+            writer.line("cdq");
+            writer.line("idiv " + op2Reg32);
+            if (inst.opcode == ir::Opcode::Div) {
+                storeCanonicalResult(writer, inst.result, "rax", type);
+            } else if (inst.opcode == ir::Opcode::Mod) {
+                storeCanonicalResult(writer, inst.result, "rdx", type);
+            }
+        } else {
+            writer.line("cqo");
+            writer.line("idiv " + op2Reg);
+            if (inst.opcode == ir::Opcode::Div) {
+                storeCanonicalResult(writer, inst.result, "rax", type);
+            } else if (inst.opcode == ir::Opcode::Mod) {
+                storeCanonicalResult(writer, inst.result, "rdx", type);
+            }
+        }
+        writer.raw(endl + ":");
+        return true;
+    }
+    return false;
+}
+
 void LinuxX64CodeGenerator::emitDivMod(LinuxX64AsmWriter& writer,
                                        const ir::IRInstruction& inst) {
     const std::string& type = inst.type;
     const bool isUnsigned = (type == "u8" || type == "u16" || type == "u32" ||
                              type == "u64");
-    loadOperandToX(writer, inst.operands[0], "r10");
-    loadOperandToX(writer, inst.operands[1], "r9");
+    // 1256：操作数可能已分配物理寄存器（未分配返回 r10/r9，产物逐字节不变）
+    const std::string op1Reg = loadOperandToX(writer, inst.operands[0], "r10");
+    const std::string op2Reg = loadOperandToX(writer, inst.operands[1], "r9");
     // 除零检查（错误码1）：常量非零跳过；运行期除数检查
     const bool divisorConst = inst.operands[1].isConstant;
     bool divisorKnownNonZero = false;
@@ -453,8 +700,8 @@ void LinuxX64CodeGenerator::emitDivMod(LinuxX64AsmWriter& writer,
             writer.line("mov rdi, 1");
             writer.line("call __cn_runtime_error");
             writer.line("ret");
-        } else {
-            writer.line("test r9, r9");
+        } else if (!divisorConst) {
+            writer.line("test " + op2Reg + ", " + op2Reg);
             writer.line("jnz " + okLabel);
             writer.line("mov rdi, 1");
             writer.line("call __cn_runtime_error");
@@ -466,101 +713,13 @@ void LinuxX64CodeGenerator::emitDivMod(LinuxX64AsmWriter& writer,
     //   i32 负数经装载清高32（零扩展位模式），64 位 cqo+idiv 会按正数除
     //   （-8/2 实测商 2147483644）；对齐 ARM64 的 sdiv w9/w10 策略
     const bool is32Div = !(type == "i64" || type == "u64");
-    // 319-a（B12 甲·T27 根治）→ 任务 474 改造：有符号除法的 INT_MIN/-1 溢出
-    //   防护从「两补码回绕」（x/-1 ≡ -x · x%-1 ≡ 0）改为**错误码 8 确定性失败**：
-    //   被除数==INT_MIN 且除数==-1 → 报『溢出错误』（neg 置 OF 当且仅当操作数
-    //   为 INT_MIN——单指令检测·x≠INT_MIN 时维持原回绕特判结果）。
-    //   ①常量 -1：编译期直入特判分支；②非常量：idiv 前运行时特判（r9 与 -1 比）。
-    //   r10 此刻仍持被除数（除零检查只动 r9/rdi）。不安全 函数体内维持回绕
-    //   （溢出检查家族豁免面·x64 idiv INT_MIN/-1 在不安全域=回绕不陷阱）。
-    if (!isUnsigned) {
-        bool divisorIsNegOne = false;
-        if (divisorConst) {
-            try {
-                divisorIsNegOne = (std::stoll(inst.operands[1].extra) == -1);
-            } catch (...) { divisorIsNegOne = false; }
-        }
-        // INT_MIN/-1 检测（除数==-1 分支内）：neg 被除数 → OF ⇔ INT_MIN；
-        //   jno 正常（恢复被除数·neg 自逆）→ 回绕特判；jo → 错误码 8 冷路径。
-        //   474 条文口径：守卫只属除法——x % -1 ≡ 0 恒良定义（余零非溢出·
-        //   001 §3.7a 保留条文），Mod 不发守卫。
-        auto emitIntMinGuard474 = [&]() {
-            if (currentFnUnsafe474_) return;  // 不安全 域维持回绕
-            const int gid = ptrCheckCounter_++;
-            const std::string okL = "Ldmin_ok" + std::to_string(gid);
-            // neg 按类型域宽度发射（neg 置 OF 当且仅当该宽度 INT_MIN）：
-            //   i8 -> al、i16 -> ax、i32 -> eax（mov eax,eax 清高位后位模式对齐）、
-            //   i64 -> rax（全窄域除法唯一溢出形态=INT_W/-1 逐宽检测）。
-            //   反向结构：jno 跳过错误块到恢复点（溢出时顺序落入）
-            const std::string nx = (type == "i8") ? "al"
-                                 : (type == "i16") ? "ax"
-                                 : is32Div ? "eax" : "rax";
-            writer.line("neg " + nx);
-            writer.line("jno " + okL);
-            emitOverflowTrap(writer, "Lovf" + std::to_string(gid));
-            writer.raw(okL + ":");
-            writer.line("neg " + nx);  // 恢复被除数（neg 自逆）
-        };
-        if (divisorIsNegOne) {
-            writer.line("mov rax, r10");
-            if (is32Div) writer.line("mov eax, eax");
-            if (inst.opcode == ir::Opcode::Div) {
-                emitIntMinGuard474();
-                writer.line(is32Div ? "neg eax" : "neg rax");
-            } else {
-                writer.line("xor eax, eax");
-            }
-            emitStackStore(writer, regSlotOffset(inst.result.id), "rax", type);
-            return;
-        }
-        if (!divisorConst) {
-            const int negId = ptrCheckCounter_++;
-            const std::string cont = "Ldiv_norm" + std::to_string(negId);
-            const std::string endl = "Ldiv_end" + std::to_string(negId);
-            // 324-c（C24/T44 甲·win 319-a 宽度感知同款）：比较宽度须对齐除数
-            //   装载——32 位除数经 mov r9d 零扩展（-1 → 0x00000000FFFFFFFF），
-            //   原恒 64 位 cmp r9,-1（0xFFFFFFFFFFFFFFFF）永不命中→INT_MIN/-1
-            //   落 idiv 溢出 SIGFPE（m27_01/s2609179004 x64l -O0 实锤）；win
-            //   侧宽度感知 ecx/rcx 正确=本判据对齐。
-            writer.line(is32Div ? "cmp r9d, -1" : "cmp r9, -1");
-            writer.line("jne " + cont);
-            writer.line("mov rax, r10");
-            if (is32Div) writer.line("mov eax, eax");
-            if (inst.opcode == ir::Opcode::Div) {
-                emitIntMinGuard474();
-                writer.line(is32Div ? "neg eax" : "neg rax");
-            } else {
-                writer.line("xor eax, eax");
-            }
-            emitStackStore(writer, regSlotOffset(inst.result.id), "rax", type);
-            writer.line("jmp " + endl);
-            writer.raw(cont + ":");
-            // 正常路径（落入下方通用 idiv 流程后跳回 end）
-            // 注意：通用流程尾部各自 return——此处内联复制通用路径再跳 end
-            writer.line("mov rax, r10");
-            if (is32Div) {
-                writer.line("mov eax, eax");
-                writer.line("cdq");
-                writer.line("idiv r9d");
-                if (inst.opcode == ir::Opcode::Div) {
-                    emitStackStore(writer, regSlotOffset(inst.result.id), "rax", type);
-                } else {
-                    emitStackStore(writer, regSlotOffset(inst.result.id), "rdx", type);
-                }
-            } else {
-                writer.line("cqo");
-                writer.line("idiv r9");
-                if (inst.opcode == ir::Opcode::Div) {
-                    emitStackStore(writer, regSlotOffset(inst.result.id), "rax", type);
-                } else {
-                    emitStackStore(writer, regSlotOffset(inst.result.id), "rdx", type);
-                }
-            }
-            writer.raw(endl + ":");
-            return;
-        }
+    const std::string op2Reg32 = x86Reg32(op2Reg);
+    // 1256：有符号 INT_MIN/-1 特例（常量/运行期两形态）——辅助函数发射成功即返回
+    if (!isUnsigned &&
+        emitDivModSignedSpecial(writer, inst, type, is32Div, op1Reg, op2Reg)) {
+        return;
     }
-    writer.line("mov rax, r10");
+    writer.line("mov rax, " + op1Reg);
     if (is32Div) {
         writer.line("mov eax, eax");  // 清高32（保留 low32 位模式）
         if (isUnsigned) {
@@ -568,12 +727,12 @@ void LinuxX64CodeGenerator::emitDivMod(LinuxX64AsmWriter& writer,
         } else {
             writer.line("cdq");
         }
-        writer.line(std::string(isUnsigned ? "div r9d" : "idiv r9d"));
-        // 商 rax / 余 rdx（32 位结果在 eax/edx，emitStackStore 按宽度截取）
+        writer.line(std::string(isUnsigned ? "div " : "idiv ") + op2Reg32);
+        // 商 rax / 余 rdx（32 位结果在 eax/edx，按宽度截取）
         if (inst.opcode == ir::Opcode::Div) {
-            emitStackStore(writer, regSlotOffset(inst.result.id), "rax", type);
-        } else {
-            emitStackStore(writer, regSlotOffset(inst.result.id), "rdx", type);
+            storeCanonicalResult(writer, inst.result, "rax", type);
+        } else if (inst.opcode == ir::Opcode::Mod) {
+            storeCanonicalResult(writer, inst.result, "rdx", type);
         }
         return;
     }
@@ -582,12 +741,12 @@ void LinuxX64CodeGenerator::emitDivMod(LinuxX64AsmWriter& writer,
     } else {
         writer.line("cqo");
     }
-    writer.line(std::string(isUnsigned ? "div r9" : "idiv r9"));
+    writer.line(std::string(isUnsigned ? "div " : "idiv ") + op2Reg);
     if (inst.opcode == ir::Opcode::Div) {
-        emitStackStore(writer, regSlotOffset(inst.result.id), "rax", type);
-    } else {
+        storeCanonicalResult(writer, inst.result, "rax", type);
+    } else if (inst.opcode == ir::Opcode::Mod) {
         // 余数在 rdx
-        emitStackStore(writer, regSlotOffset(inst.result.id), "rdx", type);
+        storeCanonicalResult(writer, inst.result, "rdx", type);
     }
 }
 
@@ -641,7 +800,12 @@ void LinuxX64CodeGenerator::emitShift(LinuxX64AsmWriter& writer,
                           : (srcType == "i32" || srcType == "u32") ? 31
                           : (srcType == "i16" || srcType == "u16") ? 15 : 7;
     const int widthBits = shiftMask + 1;  // 任务 474：类型位宽（检查上界）
-    loadOperandToX(writer, inst.operands[0], "r10");
+    // 1256：结果已分配 -> 计算落分配寄存器（acc=dstPhys）；未分配 acc=r10
+    //   （既有产物逐字节不变）
+    const std::string dstPhys = physRegOf(inst.result);
+    const bool direct = !dstPhys.empty() && !hasRegisterConflict(inst);
+    const std::string acc = direct ? dstPhys : "r10";
+    loadOperandToX(writer, inst.operands[0], acc);
     // 287-a（M3 采样 s2026091705·asm 三件套定案）：i32 源补 movsxd 符号扩展——
     //   同 270-a T14（emitCast 整→浮）零扩展家族：i32 槽装载（mov r10d）天然
     //   零扩展丢符号位，负值经 64 位 sar 符号位=0（-426 装成 4294956821，
@@ -649,13 +813,28 @@ void LinuxX64CodeGenerator::emitShift(LinuxX64AsmWriter& writer,
     //   巧合正确）。i8/i16 装载已 movsx 免疫；u*/i1/常量/shl/shr 免疫；
     //   win（sar eax）arm64（asr w9）宽度化寄存器免疫；v2 树 D34 出口规范化免疫。
     if (sh == "sar" && srcType == "i32" && !inst.operands[0].isConstant) {
-        writer.line("movsxd r10, r10d");
+        writer.line("movsxd " + acc + ", " + x86Reg32(acc));
     }
+    // 1256：结果落位统一收尾（已分配按结果类型规范化窄型；未分配原槽写）
+    auto finishShift = [&]() {
+        if (!direct) {
+            storeCanonicalResult(writer, inst.result, acc, inst.type);
+            return;
+        }
+        const std::string r32 = x86Reg32(dstPhys);
+        if (inst.type == "i8" || inst.type == "i16") {
+            writer.line("movsx " + r32 + ", " + narrowOperand(inst.type, dstPhys));
+        } else if (inst.type == "u8" || inst.type == "u16") {
+            writer.line("movzx " + r32 + ", " + narrowOperand(inst.type, dstPhys));
+        } else if (inst.type == "i32" || inst.type == "u32") {
+            writer.line("mov " + r32 + ", " + r32);  // 清高 32（low32 即值）
+        }
+    };
     if (inst.operands[1].isConstant) {
         const int raw = shiftAmtOf(inst.operands[1].extra);
         if (!currentFnUnsafe474_ && (raw < 0 || raw >= widthBits)) {
             // 任务 474：常量移位量超宽——语义层字面量面已编译期硬错误；此处
-            //   承接优化器常量传播面漏入的形态（变量常量化），保留运行期错误
+            //   承接优化器常量传播面漏入的形态，保留运行期错误
             //   码 8 通路（O0 变量路径与 O2 常量路径行为一致·确定性失败）
             const std::string trap = "Lovf" + std::to_string(ptrCheckCounter_++);
             writer.line("mov ecx, " + std::to_string(raw));
@@ -665,15 +844,15 @@ void LinuxX64CodeGenerator::emitShift(LinuxX64AsmWriter& writer,
             writer.raw(trap + ":");
             emitOverflowErrorBody(writer);
             writer.raw(ok + ":");
-            writer.line(sh + " r10, cl");
-            emitStackStore(writer, regSlotOffset(inst.result.id), "r10", inst.type);
+            writer.line(sh + " " + acc + ", cl");
+            finishShift();
             return;
         }
         const int shiftAmt = raw & shiftMask;
-        writer.line(sh + " r10, " + std::to_string(shiftAmt));
-    } else {
-        loadOperandToX(writer, inst.operands[1], "r9");
-        writer.line("mov ecx, r9d");
+        writer.line(sh + " " + acc + ", " + std::to_string(shiftAmt));
+    } else if (!inst.operands[1].isConstant) {
+        const std::string shSrc = loadOperandToX(writer, inst.operands[1], "r9");
+        writer.line("mov ecx, " + widthFor("i32", shSrc));
         if (currentFnUnsafe474_) {
             // 不安全 函数：维持掩码回绕（溢出检查家族豁免面）
             if (shiftMask < 63) {
@@ -689,9 +868,9 @@ void LinuxX64CodeGenerator::emitShift(LinuxX64AsmWriter& writer,
             emitOverflowErrorBody(writer);
             writer.raw(ok + ":");
         }
-        writer.line(sh + " r10, cl");
+        writer.line(sh + " " + acc + ", cl");
     }
-    emitStackStore(writer, regSlotOffset(inst.result.id), "r10", inst.type);
+    finishShift();
 }
 
 
@@ -706,8 +885,8 @@ void LinuxX64CodeGenerator::emitCopy(LinuxX64AsmWriter& writer,
     //   [rbp] 裸读 saved rbp=左假恒真）——常量源改立即数装载
     if (inst.operands[0].isConstant) {
         loadOperandToX(writer, inst.operands[0], "r10");
-        emitStackStore(writer, regSlotOffset(inst.result.id), "r10",
-                       (inst.type == "i1") ? "i64" : inst.type);
+        storeResult(writer, inst.result, "r10",
+                    (inst.type == "i1") ? "i64" : inst.type);
         return;
     }
     // 324-c（C24/T44 甲·win 316-a emitCopy 蓝本）：i128/u128 双半搬运——
@@ -749,13 +928,10 @@ void LinuxX64CodeGenerator::emitCopy(LinuxX64AsmWriter& writer,
                              inst.type == "u8" || inst.type == "u16" ||
                              inst.type == "i32" || inst.type == "u32" ||
                              inst.type == "i1");
-    if (inst.operands[0].id >= 0) {
-        emitStackLoad(writer, regSlotOffset(inst.operands[0].id), "r10", inst.type, __LINE__);
-    } else {
-        emitStackLoad(writer, varSlotOf(inst.operands[0].extra), "r10", inst.type, __LINE__);
-    }
-    emitStackStore(writer, regSlotOffset(inst.result.id), "r10",
-                   narrowType ? "i64" : inst.type);
+    // 1256：源可能已分配 -> loadOperandToX 返回物理寄存器（未分配仍为 r10，
+    //   产物逐字节不变）；结果已分配 -> 直写物理寄存器
+    const std::string copySrc = loadOperandToX(writer, inst.operands[0], "r10");
+    storeResult(writer, inst.result, copySrc, inst.type, narrowType);
 }
 
 } // namespace cn_compiler

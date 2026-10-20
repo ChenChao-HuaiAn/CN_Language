@@ -136,7 +136,12 @@ void LinuxX64CodeGenerator::emitNewObject(LinuxX64AsmWriter& writer,
             writer.comment("接口分派区 " + className);
         }
     }
-    // 3. 结果槽 = 对象指针
+    // 3. 结果槽 = 对象指针（1256：已分配 -> 直写物理寄存器）
+    const std::string newObjDst = physRegOf(inst.result);
+    if (!newObjDst.empty()) {
+        writer.line("mov " + newObjDst + ", rax");
+        return;
+    }
     emitStackStore(writer, dstOff, "rax", "ptr");
 }
 
@@ -151,12 +156,21 @@ void LinuxX64CodeGenerator::emitDeleteObject(LinuxX64AsmWriter& writer,
     // 空指针跳过标签（模块级递增避免重复）
     const int skipId = ptrCheckCounter_++;
     const std::string skipLabel = "Lobjdel_ok" + std::to_string(skipId);
+    // 1256：对象指针可能已分配——按需搬入 rdi（调用后重装；未分配原槽装载）
+    auto loadObjToRdi = [&]() {
+        const std::string phys = physRegOf(inst.operands[0]);
+        if (!phys.empty()) {
+            if (phys != "rdi") writer.line("mov rdi, " + phys);
+            return;
+        }
+        if (inst.operands[0].id >= 0) {
+            emitStackLoad(writer, regSlotOffset(inst.operands[0].id), "rdi", "ptr", __LINE__);
+        } else {
+            emitStackLoad(writer, varSlotOf(inst.operands[0].extra), "rdi", "ptr", __LINE__);
+        }
+    };
     // 1. 对象指针入 rdi（this）；空指针 -> 跳过
-    if (inst.operands[0].id >= 0) {
-        emitStackLoad(writer, regSlotOffset(inst.operands[0].id), "rdi", "ptr", __LINE__);
-    } else {
-        emitStackLoad(writer, varSlotOf(inst.operands[0].extra), "rdi", "ptr", __LINE__);
-    }
+    loadObjToRdi();
     writer.line("test rdi, rdi");
     writer.line("jz " + skipLabel);
     // 2. 调用析构函数。
@@ -185,11 +199,7 @@ void LinuxX64CodeGenerator::emitDeleteObject(LinuxX64AsmWriter& writer,
         }
     }
     // 3. 释放内存（对象指针重新装载——call 会破坏 rdi）
-    if (inst.operands[0].id >= 0) {
-        emitStackLoad(writer, regSlotOffset(inst.operands[0].id), "rdi", "ptr", __LINE__);
-    } else {
-        emitStackLoad(writer, varSlotOf(inst.operands[0].extra), "rdi", "ptr", __LINE__);
-    }
+    loadObjToRdi();
     writer.line("call __cn_object_delete");
     writer.raw(skipLabel + ":");
 }
@@ -232,11 +242,8 @@ void LinuxX64CodeGenerator::emitVirtualCall(LinuxX64AsmWriter& writer,
                                         inst.result.type == "u128"));
     const char* thisReg = (vcFormA || vcBigRet) ? "rsi" : "rdi";
     // 1. this 入 rdi（形态A/i128 时 rsi——retbuf 占 rdi）
-    if (inst.operands[thisIdx].id >= 0) {
-        emitStackLoad(writer, regSlotOffset(inst.operands[thisIdx].id), thisReg, "ptr", __LINE__);
-    } else {
-        emitStackLoad(writer, varSlotOf(inst.operands[thisIdx].extra), thisReg, "ptr", __LINE__);
-    }
+    //    1256：操作数可能已分配（loadOperandToX 直读物理寄存器）
+    loadOperandToX(writer, inst.operands[thisIdx], thisReg);
     // 2. 虚表指针：r9 = [this]（对象首地址存虚表指针）
     writer.line(std::string("mov r9, qword ptr [") + thisReg + "]");
     // 3. 函数指针：r11 = [r9 + 槽位*8]（r11 为 SysV 间接调用惯例寄存器）
@@ -256,11 +263,7 @@ void LinuxX64CodeGenerator::emitVirtualCall(LinuxX64AsmWriter& writer,
     // 410：retbuf——形态A=IR 层预插地址寄存器（operands[0]）；i128=帧内固定区
     //   （emitCall 同款·rbp 相对持久）。被调方写此缓冲，调用方接收消费。
     if (vcFormA) {
-        if (inst.operands[0].id >= 0) {
-            emitStackLoad(writer, regSlotOffset(inst.operands[0].id), "rdi", "ptr", __LINE__);
-        } else {
-            emitStackLoad(writer, varSlotOf(inst.operands[0].extra), "rdi", "ptr", __LINE__);
-        }
+        loadOperandToX(writer, inst.operands[0], "rdi");
     } else if (vcBigRet) {
         writer.line("lea rdi, " + stackMemText(retbufFrameOffset_));
     }
@@ -347,8 +350,16 @@ void LinuxX64CodeGenerator::emitVirtualCall(LinuxX64AsmWriter& writer,
             emitStackStore(writer, dstOff, "r9", "i64");
         } else if (isFloatType(inst.result.type)) {
             emitStackStore(writer, dstOff, "xmm0", inst.result.type);
-        } else {
-            emitStackStore(writer, dstOff, "rax", inst.result.type);
+        } else if (!isFloatType(inst.result.type) &&
+                   inst.result.type != "i128" && inst.result.type != "u128") {
+            // 1256：结果已分配 -> 返回值直写物理寄存器
+            const std::string vcDst = physRegOf(inst.result);
+            if (!vcDst.empty()) {
+                writer.line("mov " + widthFor(inst.result.type, vcDst) + ", " +
+                            widthFor(inst.result.type, "rax"));
+            } else {
+                emitStackStore(writer, dstOff, "rax", inst.result.type);
+            }
         }
     }
 }
@@ -371,15 +382,28 @@ void LinuxX64CodeGenerator::emitOopInstruction(LinuxX64AsmWriter& writer,
             break;
         case ir::Opcode::VtableAddr: {
             const int dstOff = regSlotOffset(inst.result.id);
-            if (!inst.operands.empty() && inst.operands[0].id >= 0) {
-                // 取对象虚表指针：r10 = [对象首地址]
-                emitStackLoad(writer, regSlotOffset(inst.operands[0].id), "r10", "ptr", __LINE__);
-                writer.line("mov r10, qword ptr [r10]");
-            } else {
+            const std::string vDst = physRegOf(inst.result);
+            const bool hasObjOperand =
+                !inst.operands.empty() && inst.operands[0].id >= 0;
+            if (hasObjOperand) {
+                // 取对象虚表指针：结果寄存器（或 r10）= [对象首地址]
+                const std::string objPhys = physRegOf(inst.operands[0]);
+                const std::string objReg = objPhys.empty()
+                                               ? loadOperandToX(writer, inst.operands[0], "r10")
+                                               : objPhys;
+                const std::string dstReg = vDst.empty() ? "r10" : vDst;
+                writer.line("mov " + dstReg + ", qword ptr [" + objReg + "]");
+                if (vDst.empty()) {
+                    emitStackStore(writer, dstOff, "r10", "ptr");
+                }
+            } else if (!hasObjOperand) {
                 // 加载类虚表地址：lea rip 相对
-                emitLoadSymbolAddr(writer, "r10", vtableSymbol(inst.extra));
+                emitLoadSymbolAddr(writer, vDst.empty() ? "r10" : vDst,
+                                   vtableSymbol(inst.extra));
+                if (vDst.empty()) {
+                    emitStackStore(writer, dstOff, "r10", "ptr");
+                }
             }
-            emitStackStore(writer, dstOff, "r10", "ptr");
             break;
         }
         default:

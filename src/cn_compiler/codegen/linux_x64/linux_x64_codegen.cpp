@@ -29,6 +29,14 @@
 
 namespace cn_compiler {
 
+// 1256：虚拟寄存器 ID 合法上限（双边界判据用；IR 侧 id 为 int 且远小于此——
+//   越界 id 只可能来自损坏输入，视为无分配结果）。
+constexpr int kMaxVirtualRegId1256 = 1 << 24;
+
+// 1256：小函数分配门槛（实测护栏）——虚拟寄存器数 < 本值时，被调用者保存寄存器
+//   的序言/尾声 push/pop 开销 ≥ 槽访问收益（v2p 全树指令数 +1% → 持平）。
+constexpr int kRegAllocMinVregs1256 = 128;
+
 // D1 行数整改 119-a：按族拆出 linux_x64_codegen_emit.cpp（纯重构零行为变更，声明仍在对应 hpp）
 
 // ==================== 基础工具函数 ====================
@@ -286,6 +294,182 @@ int LinuxX64CodeGenerator::varSlotAreaSize() const {
     return static_cast<int>(varSlots_.size()) * 8;
 }
 
+// ==================== 1256：寄存器分配消费辅助 ====================
+
+// 虚拟寄存器ID -> 寄存器分配结果（未分配或未启用返回 nullptr）
+const regalloc::RegAssignment* LinuxX64CodeGenerator::regAllocOf(int regId) const {
+    // 1256：regId 合法域=[0, 虚拟寄存器ID上限]（闭集双边界；越界=无分配结果）
+    if (regId >= 0 && regId <= kMaxVirtualRegId1256) {
+        auto it = regAllocMap_.find(regId);
+        if (it != regAllocMap_.end()) return &it->second;
+    }
+    return nullptr;
+}
+
+// 虚拟寄存器是否分配到物理寄存器
+bool LinuxX64CodeGenerator::hasPhysReg(int regId) const {
+    const regalloc::RegAssignment* ra = regAllocOf(regId);
+    return ra != nullptr && !ra->assignedReg.empty();
+}
+
+// 值已分配的物理寄存器名（未分配返回空串）
+std::string LinuxX64CodeGenerator::physRegOf(const ir::IRValue& value) const {
+    const regalloc::RegAssignment* ra = regAllocOf(value.id);
+    return (ra != nullptr && !ra->assignedReg.empty()) ? ra->assignedReg
+                                                       : std::string();
+}
+
+// 序言保存被调用者保存寄存器（压栈顺序 = 排序后的分配寄存器顺序）
+void LinuxX64CodeGenerator::emitSaveCalleeSaved(LinuxX64AsmWriter& writer) {
+    for (const auto& reg : calleeSavedRegs_) {
+        writer.line("push " + reg);
+    }
+}
+
+// 尾声恢复被调用者保存寄存器（逆序 pop）
+void LinuxX64CodeGenerator::emitRestoreCalleeSaved(LinuxX64AsmWriter& writer) {
+    for (auto it = calleeSavedRegs_.rbegin(); it != calleeSavedRegs_.rend(); ++it) {
+        writer.line("pop " + *it);
+    }
+}
+
+// 目标宽度寄存器名：窄整型统一 32 位（与 win-x64 widthFor 同口径——分配寄存器
+//   内约定=低 32 位为符号/零扩展值）；i32/i1/u32 -> 32 位名；else 64 位原名。
+std::string LinuxX64CodeGenerator::widthFor(const std::string& type,
+                                            const std::string& reg) {
+    if (isFloatType(type)) return reg;  // xmm 名原样
+    if (type == "i32" || type == "i1" || type == "u32" ||
+        type == "i8" || type == "u8" || type == "i16" || type == "u16") {
+        return x86Reg32(reg);
+    }
+    return reg;
+}
+
+// 源操作数按目标宽度收缩：仅物理寄存器名生效（r14 -> r14d），
+//   槽文本/立即数/64 位及以上类型原样。
+std::string LinuxX64CodeGenerator::shrunkOperand(const std::string& type,
+                                                 const std::string& op) {
+    if (type == "i64" || type == "u64" || type == "ptr" ||
+        type == "f32" || type == "f64" || type == "i128" || type == "u128") {
+        return op;
+    }
+    if (op.empty() || op[0] != 'r') return op;  // 槽/立即数
+    // 仅当 op 恰为 64 位寄存器全名时收缩（x86Reg32 对非全名原样返回）
+    const std::string shrunk = x86Reg32(op);
+    return (shrunk == op) ? op : shrunk;
+}
+
+// 8/16 位目标的窄名：64 位全名或 32 位名 -> 8/16 位别名；
+//   槽文本/立即数原样。
+std::string LinuxX64CodeGenerator::narrowOperand(const std::string& type,
+                                                 const std::string& op) {
+    const bool is8 = (type == "i8" || type == "u8");
+    const bool is16 = (type == "i16" || type == "u16");
+    if ((!is8 && !is16) || op.empty() || op[0] != 'r') return op;
+    // 64 位全名先归一为 32 位名（x86Reg32 对 32 位名原样）
+    const std::string reg32 = x86Reg32(op);
+    if (reg32 == op) {
+        // op 已是 32 位名（r14d）：用 32->8/16 映射（复用 x86Reg8/16 的 64 位表
+        //   不可行——此处按已知表反查）
+        static const std::pair<const char*, const char*> to8[] = {
+            {"eax", "al"}, {"ebx", "bl"}, {"ecx", "cl"}, {"edx", "dl"},
+            {"esi", "sil"}, {"edi", "dil"}, {"r8d", "r8b"}, {"r9d", "r9b"},
+            {"r10d", "r10b"}, {"r11d", "r11b"}, {"r12d", "r12b"},
+            {"r13d", "r13b"}, {"r14d", "r14b"}, {"r15d", "r15b"}};
+        static const std::pair<const char*, const char*> to16[] = {
+            {"eax", "ax"}, {"ebx", "bx"}, {"ecx", "cx"}, {"edx", "dx"},
+            {"esi", "si"}, {"edi", "di"}, {"r8d", "r8w"}, {"r9d", "r9w"},
+            {"r10d", "r10w"}, {"r11d", "r11w"}, {"r12d", "r12w"},
+            {"r13d", "r13w"}, {"r14d", "r14w"}, {"r15d", "r15w"}};
+        for (const auto& kv : (is8 ? to8 : to16)) {
+            if (op == kv.first) return kv.second;
+        }
+        return op;
+    }
+    return is8 ? x86Reg8(op) : x86Reg16(op);
+}
+
+// 结果落位统一出口：已分配 -> 物理寄存器；未分配 -> 原槽（逐字节不变）
+void LinuxX64CodeGenerator::storeResult(LinuxX64AsmWriter& writer,
+                                        const ir::IRValue& result,
+                                        const std::string& srcReg,
+                                        const std::string& type,
+                                        bool narrowStoreAs64) {
+    const std::string phys = physRegOf(result);
+    if (!phys.empty()) {
+        writer.line("mov " + widthFor(type, phys) + ", " +
+                    widthFor(type, srcReg));
+        return;
+    }
+    emitStackStore(writer, regSlotOffset(result.id), srcReg,
+                   narrowStoreAs64 ? "i64" : type);
+}
+
+// 已分配源的规范化拷贝（与 emitStackLoad 扩展语义一致）；未分配返回空串。
+std::string LinuxX64CodeGenerator::copyAllocatedTo(LinuxX64AsmWriter& writer,
+                                                   const ir::IRValue& operand,
+                                                   const std::string& reg) {
+    const bool hasPhys = (!operand.isConstant && operand.id >= 0 &&
+                          operand.id <= kMaxVirtualRegId1256);
+    const std::string phys = hasPhys ? physRegOf(operand) : std::string();
+    if (!phys.empty()) {
+        if (phys == reg) return reg;
+        const std::string& t = operand.type;
+        if (t == "i8" || t == "i16") {
+            writer.line("movsxd " + reg + ", " + x86Reg32(phys));
+        } else if (t == "u8" || t == "u16" || t == "i32" || t == "u32") {
+            writer.line("mov " + x86Reg32(reg) + ", " + x86Reg32(phys));
+        } else if (t == "i64" || t == "u64" || t == "ptr") {
+            writer.line("mov " + reg + ", " + phys);
+        } else {
+            // 不可达：本函数仅对已分配（可分配整型/指针）值调用——其余类型闭集排除
+            diagnostics_.report(Diagnostic::error(
+                SourceLocation(), "内部错误: 已分配值类型非整型/指针 '" + t + "'（1256）"));
+        }
+        return reg;
+    }
+    return std::string();
+}
+
+// 计算后结果落位（三段路径专用）：按结果类型规范化（窄型取低 8/16 位扩展，
+//   32 位写 32 位名清高，64 位全名）；未分配保持原槽写（逐字节不变）。
+void LinuxX64CodeGenerator::storeCanonicalResult(LinuxX64AsmWriter& writer,
+                                                 const ir::IRValue& result,
+                                                 const std::string& srcReg,
+                                                 const std::string& type) {
+    const std::string phys = physRegOf(result);
+    if (!phys.empty()) {
+        if (type == "i8" || type == "i16") {
+            writer.line("movsx " + x86Reg32(phys) + ", " + narrowOperand(type, srcReg));
+        } else if (type == "u8" || type == "u16") {
+            writer.line("movzx " + x86Reg32(phys) + ", " + narrowOperand(type, srcReg));
+        } else if (type == "i32" || type == "u32" || type == "i1") {
+            writer.line("mov " + x86Reg32(phys) + ", " + x86Reg32(srcReg));
+        } else if (type == "i64" || type == "u64" || type == "ptr") {
+            writer.line("mov " + phys + ", " + srcReg);
+        } else {
+            // 不可达：已分配结果只可能是可分配整型/指针（浮点/i128 恒走槽）
+            diagnostics_.report(Diagnostic::error(
+                SourceLocation(), "内部错误: 已分配结果类型非整型/指针 '" + type + "'（1256）"));
+        }
+        return;
+    }
+    emitStackStore(writer, regSlotOffset(result.id), srcReg, type);
+}
+
+// 结果物理寄存器是否与某操作数同寄存器（分配器死点复用）：两地址直写会先
+//   覆盖 op2 原值——命中时回退三段（r10 中转）。
+bool LinuxX64CodeGenerator::hasRegisterConflict(const ir::IRInstruction& inst) const {
+    const std::string phys = physRegOf(inst.result);
+    if (!phys.empty()) {
+        for (const auto& op : inst.operands) {
+            if (op.isConstant || op.id == inst.result.id) continue;
+            if (physRegOf(op) == phys) return true;
+        }
+    }
+    return false;
+}
+
 // 扫描函数内最大虚拟寄存器ID（i128/u128 值占 2 个连续虚拟寄存器）
 int LinuxX64CodeGenerator::maxRegIdIn(const ir::IRFunction& function) {
     int maxId = -1;
@@ -490,6 +674,84 @@ void LinuxX64CodeGenerator::emitFunctionHeader(LinuxX64AsmWriter& writer,
     writer.raw(sym + ":");
 }
 
+// 1256：函数级寄存器分配准备（-O2 联动；镜像 win-x64 保守策略）。
+//   隐藏返回指针函数强制关闭；其余开放 rbx/r12~r15，收集序言/尾声保存集。
+void LinuxX64CodeGenerator::prepareRegisterAllocation(const ir::IRFunction& function) {
+    // ---- 1256：线性扫描寄存器分配（-O2 联动；镜像 win-x64 保守策略） ----
+    //   - 隐藏返回指针函数（结构体/i128/u128 返回）强制关闭：prologue 固定
+    //     push rbx 保存 rdi、epilogue 用 rbx 写回缓冲——rbx 不可被分配器占用；
+    //     且这些函数返回路径特殊（需保持既有产物）。
+    //   - 其余函数开放 rbx/r12~r15（被调用者保存，发射器临时寄存器均为
+    //     caller-saved，无冲突面）。
+    regAllocMap_.clear();
+    calleeSavedRegs_.clear();
+    regAllocUsed_ = false;
+    // 小函数门槛（1256 性能护栏）：虚拟寄存器极少时槽访问收益 < 被调用者保存
+    //   寄存器的序言/尾声 push/pop 开销（实测 v2p 指令数回归的主因）。
+    const bool tooSmall =
+        (regSlotCount_ >= 0 && regSlotCount_ < kRegAllocMinVregs1256);
+    const bool useRegAlloc = regAllocEnabled_ && !currentNeedHiddenRet_ && !tooSmall;
+    if (useRegAlloc) {
+        regalloc::LinearScanAllocator allocator(regalloc::TargetArch::LinuxX64);
+        // regSlotCount_ 已由 maxRegIdIn 实测（= 最大ID+1）——传最大ID免二次扫描
+        regAllocMap_ = allocator.allocate(function, regSlotCount_ - 1);
+        for (const auto& kv : regAllocMap_) {
+            if (!kv.second.assignedReg.empty()) {
+                calleeSavedRegs_.push_back(kv.second.assignedReg);
+            }
+        }
+        std::sort(calleeSavedRegs_.begin(), calleeSavedRegs_.end());
+        calleeSavedRegs_.erase(
+            std::unique(calleeSavedRegs_.begin(), calleeSavedRegs_.end()),
+            calleeSavedRegs_.end());
+        regAllocUsed_ = !calleeSavedRegs_.empty();
+    }
+}
+
+// 324-c：第二轮变量槽补登记（Store.extra 目标名 + i128 高半 $s1；
+//   须在全部 Alloca 登记完成后执行——见原注册段注释）。
+void LinuxX64CodeGenerator::registerReferencedVarSlots(const ir::IRFunction& function) {
+    // 324-c（C24/T44 甲·win 316-a 第二轮补登记映射）：Store.extra 存储目标名 +
+    //   128 位名高半槽 $s1——①-O3 SSA 使用点重写的汇合临时（__ternary$N）无
+    //   Alloca，emitStackLoad/Store 的 varSlotOf 未登记回 0 拼出裸 [rbp] 偏移 0
+    //   （x64l 双级 SIGSEGV·与 win rbp0 同源）；②i128 双槽经独立槽名寻址
+    //   （各自 varSlotOf），无邻接依赖（$sN 与基名邻接序仅结构体/数组「基址+
+    //   偏移」路径要求·该面由 Alloca 段保证）。须在全部 Alloca 完成后执行
+    //   （顺序同 win 316-a——指令流内提前登记会打乱邻接序·236 回归实证）。
+    for (auto& block : function.blocks) {
+        for (auto& inst : block->instructions) {
+            const bool inst128 = (inst.type == "i128" || inst.type == "u128");
+            if (inst.opcode == ir::Opcode::Store && !inst.extra.empty() &&
+                varSlots_.find(inst.extra) == varSlots_.end()) {
+                registerVarSlot(inst.extra);
+            }
+            const auto ensureS1 = [this](const std::string& name) {
+                if (varSlots_.find(name + "$s1") == varSlots_.end()) {
+                    registerVarSlot(name + "$s1");
+                }
+            };
+            if (inst.opcode == ir::Opcode::Load || inst.opcode == ir::Opcode::Store ||
+                inst.opcode == ir::Opcode::Copy) {
+                if (inst.opcode == ir::Opcode::Store && !inst.extra.empty() && inst128) {
+                    ensureS1(inst.extra);
+                }
+                for (const auto& v : inst.operands) {
+                    if (v.id < 0 && !v.extra.empty() && !v.isConstant &&
+                        (inst128 || v.type == "i128" || v.type == "u128")) {
+                        ensureS1(v.extra);
+                    }
+                }
+                if (inst.result.id < 0 && !inst.result.extra.empty() &&
+                    !inst.result.isConstant &&
+                    (inst128 || inst.result.type == "i128" ||
+                     inst.result.type == "u128")) {
+                    ensureS1(inst.result.extra);
+                }
+            }
+        }
+    }
+}
+
 std::string LinuxX64CodeGenerator::generateFunctionAssembly(const ir::IRFunction& function) {
     regSlotCount_ = maxRegIdIn(function) + 1;
     varSlots_.clear();
@@ -498,6 +760,7 @@ std::string LinuxX64CodeGenerator::generateFunctionAssembly(const ir::IRFunction
     currentNeedHiddenRet_ = (function.structReturn ||
                              function.returnType == "i128" ||
                              function.returnType == "u128");
+    prepareRegisterAllocation(function);
     // 登记参数槽（使用唯一内部名 paramUniques；多槽变量先登记 $s1.. 后主槽）
     for (std::size_t i = 0; i < function.params.size(); ++i) {
         const std::string& unique = (i < function.paramUniques.size())
@@ -543,45 +806,7 @@ std::string LinuxX64CodeGenerator::generateFunctionAssembly(const ir::IRFunction
             }
         }
     }
-    // 324-c（C24/T44 甲·win 316-a 第二轮补登记映射）：Store.extra 存储目标名 +
-    //   128 位名高半槽 $s1——①-O3 SSA 使用点重写的汇合临时（__ternary$N）无
-    //   Alloca，emitStackLoad/Store 的 varSlotOf 未登记回 0 拼出裸 [rbp] 偏移 0
-    //   （x64l 双级 SIGSEGV·与 win rbp0 同源）；②i128 双槽经独立槽名寻址
-    //   （各自 varSlotOf），无邻接依赖（$sN 与基名邻接序仅结构体/数组「基址+
-    //   偏移」路径要求·该面由 Alloca 段保证）。须在全部 Alloca 完成后执行
-    //   （顺序同 win 316-a——指令流内提前登记会打乱邻接序·236 回归实证）。
-    for (auto& block : function.blocks) {
-        for (auto& inst : block->instructions) {
-            const bool inst128 = (inst.type == "i128" || inst.type == "u128");
-            if (inst.opcode == ir::Opcode::Store && !inst.extra.empty() &&
-                varSlots_.find(inst.extra) == varSlots_.end()) {
-                registerVarSlot(inst.extra);
-            }
-            const auto ensureS1 = [this](const std::string& name) {
-                if (varSlots_.find(name + "$s1") == varSlots_.end()) {
-                    registerVarSlot(name + "$s1");
-                }
-            };
-            if (inst.opcode == ir::Opcode::Load || inst.opcode == ir::Opcode::Store ||
-                inst.opcode == ir::Opcode::Copy) {
-                if (inst.opcode == ir::Opcode::Store && !inst.extra.empty() && inst128) {
-                    ensureS1(inst.extra);
-                }
-                for (const auto& v : inst.operands) {
-                    if (v.id < 0 && !v.extra.empty() && !v.isConstant &&
-                        (inst128 || v.type == "i128" || v.type == "u128")) {
-                        ensureS1(v.extra);
-                    }
-                }
-                if (inst.result.id < 0 && !inst.result.extra.empty() &&
-                    !inst.result.isConstant &&
-                    (inst128 || inst.result.type == "i128" ||
-                     inst.result.type == "u128")) {
-                    ensureS1(inst.result.extra);
-                }
-            }
-        }
-    }
+    registerReferencedVarSlots(function);
     // 阶段C（Task 4.4）：调试信息收集器初始化（源码位置注释）
     debugInfo_ = debuginfo::DebugInfoCollector();
     asmLineCounter_ = 0;

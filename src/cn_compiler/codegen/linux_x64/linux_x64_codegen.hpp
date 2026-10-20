@@ -66,8 +66,9 @@ public:
     explicit LinuxX64CodeGenerator(Diagnostics& diagnostics, ISemanticView* semantic)
         : diagnostics_(diagnostics), semantic_(semantic) {}
 
-    // 寄存器分配开关（接口与 arm64 一致；linux-x86_64 沿阶段C 决策默认关闭，
-    //   保持全栈帧行为，正确性最高优先——本后端不消费分配结果）
+    // 寄存器分配开关（-O2 由 backend_factory 联动开启；关闭=全栈槽，
+    //   -O0/-O1/--no-regalloc 产物逐字节不变——458 红线）
+    //   1256：本后端自 -O2 起消费线性扫描分配结果（直写族，镜像 win-x64 D8 面）
     void setRegAllocEnabled(bool enabled) { regAllocEnabled_ = enabled; }
     bool regAllocEnabled() const { return regAllocEnabled_; }
     void setDebugInfoEnabled(bool enabled) { debugInfoEnabled_ = enabled; }
@@ -113,6 +114,10 @@ private:
 
     // 生成单个函数的汇编（标签头 -> prologue -> 基本块 -> epilogue）
     std::string generateFunctionAssembly(const ir::IRFunction& function);
+    // 1256：函数级寄存器分配准备（序言/尾声保存集）
+    void prepareRegisterAllocation(const ir::IRFunction& function);
+    // 第二轮变量槽补登记（Store.extra 目标名 + i128 高半 $s1）
+    void registerReferencedVarSlots(const ir::IRFunction& function);
 
     // 操作码 + 结果类型 -> 汇编指令助记符（用于诊断/分派辅助）
     std::string selectInstruction(ir::Opcode opcode, const std::string& type) const;
@@ -168,13 +173,25 @@ private:
 
     // 生成常量加载（ConstInt/ConstFloat/ConstString/ConstBool/FuncAddr/i128 常量）
     void emitConstLoad(LinuxX64AsmWriter& writer, const ir::IRInstruction& inst);
+    // 1256：i128/u128 常量双槽加载（自 emitConstLoad 拆出）
+    void emitConst128Load(LinuxX64AsmWriter& writer, const ir::IRInstruction& inst);
 
     // 生成单步整型二元运算（Add/Sub/Mul/And/Or/Xor，imul 三操作数）
     void emitIntBinary(LinuxX64AsmWriter& writer, const ir::IRInstruction& inst,
                        const std::string& mnemonic);
+    // 1256：整型二元运算直写（结果已分配）——发射成功返回真
+    bool emitIntBinaryDirect(LinuxX64AsmWriter& writer, const ir::IRInstruction& inst,
+                             const std::string& mnemonic, const std::string& w,
+                             bool needOvf, bool isSigned, const std::string& trap);
 
     // 生成除/余（有符号 cqo+idiv / 无符号 xor edx+div；含除零检查错误码1）
     void emitDivMod(LinuxX64AsmWriter& writer, const ir::IRInstruction& inst);
+    // 1256：有符号 INT_MIN/-1 特例（发射并返回真；常规形态返回假走通用 idiv）
+    bool emitDivModSignedSpecial(LinuxX64AsmWriter& writer,
+                                 const ir::IRInstruction& inst,
+                                 const std::string& type, bool is32Div,
+                                 const std::string& op1Reg,
+                                 const std::string& op2Reg);
 
     // 生成浮点二元运算（addss/sd、subss/sd、mulss/sd、divss/sd）
     void emitFloatBinary(LinuxX64AsmWriter& writer, const ir::IRInstruction& inst,
@@ -221,6 +238,11 @@ private:
 
     // 生成指针加载/存储（LoadPtr/StorePtr：经指针值地址访存，空指针检查错误码3）
     void emitPtrLoadStore(LinuxX64AsmWriter& writer, const ir::IRInstruction& inst);
+    // 1256：指针加载/存储族拆分（空指针检查后按操作码分派，单函数 <=100 行）
+    void emitPtrLoad(LinuxX64AsmWriter& writer, const ir::IRInstruction& inst,
+                     const std::string& addr, const std::string& type);
+    void emitPtrStore(LinuxX64AsmWriter& writer, const ir::IRInstruction& inst,
+                      const std::string& addr, const std::string& type);
 
     // 生成函数调用（整型 rdi..r9 / 浮点 xmm0..xmm7 独立计数，第7整型起写栈；
     //   call 前 rsp 16 字节对齐；隐藏返回指针 rdi）
@@ -322,11 +344,63 @@ private:
     // 变量槽区大小（当前已登记槽数 * 8，供栈帧计算）
     int varSlotAreaSize() const;
 
-    // 虚拟寄存器/变量 -> 源操作数文本（常量立即数 / 寄存器槽 / 变量槽）
+    // 虚拟寄存器/变量 -> 源操作数文本（常量立即数 / 寄存器槽 / 变量槽 / 物理寄存器）
     std::string operandText(const ir::IRValue& operand);
 
-    // 结果寄存器 -> 目的操作数文本（寄存器槽）
+    // 结果寄存器 -> 目的操作数文本（寄存器槽 / 物理寄存器）
     std::string resultText(const ir::IRValue& result);
+
+    // ==================== 1256：寄存器分配消费面 ====================
+
+    // 虚拟寄存器ID -> 分配结果（未分配/未启用返回 nullptr）
+    const regalloc::RegAssignment* regAllocOf(int regId) const;
+
+    // 虚拟寄存器是否分配到物理寄存器（分配开启且映射非空）
+    bool hasPhysReg(int regId) const;
+
+    // 值已分配的物理寄存器名（未分配返回空串）——直写族判据
+    std::string physRegOf(const ir::IRValue& value) const;
+
+    // 本函数实际使用的被调用者保存寄存器：序言压栈 / 尾声逆序恢复
+    void emitSaveCalleeSaved(LinuxX64AsmWriter& writer);
+    void emitRestoreCalleeSaved(LinuxX64AsmWriter& writer);
+
+    // 目标宽度寄存器名（i8/i16/u8/u16 统一提升 32 位；i32/i1/u32 -> 32 位名；
+    //   i64/u64/ptr -> 64 位名；浮点/xmm 原样）
+    static std::string widthFor(const std::string& type, const std::string& reg);
+
+    // 源操作数按目标宽度对齐（已分配物理寄存器收缩为 32 位名；槽/立即数原样）
+    static std::string shrunkOperand(const std::string& type, const std::string& op);
+
+    // 8/16 位目标的窄名（r12 -> r12b/r12w；32 位名同样可窄化）
+    static std::string narrowOperand(const std::string& type, const std::string& op);
+
+    // 结果落位（1256 直写统一出口）：
+    //   已分配 -> 按类型宽度写入物理寄存器（窄型写 32 位名，清高 32 位且保
+    //   留符号/零扩展位模式——寄存器内约定与槽装载语义一致）；
+    //   未分配 -> 原 emitStackStore 槽路径（narrowStoreAs64 保持既有窄型存
+    //   64 位槽的产物形态——Load/Copy 面逐字节不变）
+    void storeResult(LinuxX64AsmWriter& writer, const ir::IRValue& result,
+                     const std::string& srcReg, const std::string& type,
+                     bool narrowStoreAs64 = false);
+
+    // 计算后结果落位（三段路径专用）：已分配 -> 按结果类型规范化写物理寄存器
+    //   （窄型 movsx/movzx 窄名源；32 位写 32 位名；64 位全名）；未分配 -> 原槽写。
+    //   供「未走直写」（操作数同寄存器冲突/固定寄存器族）的路径收尾，
+    //   避免窄型高位残留/分配结果丢失。
+    void storeCanonicalResult(LinuxX64AsmWriter& writer, const ir::IRValue& result,
+                              const std::string& srcReg, const std::string& type);
+
+    // 结果物理寄存器是否与某操作数同寄存器（分配器死点复用）：直写两地址形
+    //   会先覆盖 op2 原值——命中时回退三段（r10 中转），由 storeCanonicalResult 收尾。
+    bool hasRegisterConflict(const ir::IRInstruction& inst) const;
+
+    // 已分配源按类型规范化拷贝到指定寄存器（未分配返回空串，调用方走原装载）：
+    //   i8/i16 有符号 -> movsxd（64 位全值）；u8/u16/u32/i32 -> 32 位写（清高）；
+    //   i64/u64/ptr -> 64 位 mov。与 emitStackLoad 的扩展语义逐位一致。
+    std::string copyAllocatedTo(LinuxX64AsmWriter& writer, const ir::IRValue& operand,
+                                const std::string& reg);
+
 
     Diagnostics& diagnostics_;  // 诊断引擎（错误报告预留）
 
@@ -376,6 +450,19 @@ private:
     void emitOverflowErrorBody(LinuxX64AsmWriter& writer);
     // 整型乘法发射（任务 474 拆分：乘法溢出检测 OF/域检查/mul 高半三分·独立于加/减）
     void emitIntMul(LinuxX64AsmWriter& writer, const ir::IRInstruction& inst);
+    // 1256：乘法直写族（结果已分配；按类型分派，单函数 <=100 行）
+    bool emitIntMulDirect(LinuxX64AsmWriter& writer, const ir::IRInstruction& inst,
+                          const std::string& ty, bool needOvf, bool isSigned,
+                          const std::string& trap);
+    void emitIntMulDirectU64(LinuxX64AsmWriter& writer, const ir::IRInstruction& inst,
+                             const std::string& dstPhys, bool needOvf,
+                             const std::string& trap);
+    void emitIntMulDirectU32(LinuxX64AsmWriter& writer, const ir::IRInstruction& inst,
+                             const std::string& dstPhys, bool needOvf,
+                             const std::string& trap);
+    void emitIntMulDirectWide(LinuxX64AsmWriter& writer, const ir::IRInstruction& inst,
+                              const std::string& ty, const std::string& dstPhys,
+                              bool needOvf, bool isSigned, const std::string& trap);
     // u64 安全乘法守卫（908 拆出·双乘缺陷根治：重装 op1 原始操作数——见 cpp 头注）
     void emitIntMulU64(LinuxX64AsmWriter& writer, const ir::IRInstruction& inst,
                        const std::string& trap, bool op2Const);
@@ -390,9 +477,14 @@ private:
     std::unordered_set<std::string> vtableRefs_;
     std::unordered_set<std::string> staticRefs_;
 
-    // ---- 阶段C：寄存器分配（默认关闭，接口对齐 arm64；本后端不消费分配结果） ----
+    // ---- 阶段C：寄存器分配（1256；-O2 起消费分配结果） ----
     regalloc::RegAssignmentMap regAllocMap_;
+    // 本函数实际使用的被调用者保存寄存器（rbx/r12~r15，排序去重后压栈）
+    std::vector<std::string> calleeSavedRegs_;
+    // 是否启用了寄存器分配（-O2 且非隐藏返回指针函数）
     bool regAllocEnabled_ = false;
+    // 本函数是否实际使用了物理寄存器（决定序言/尾声保存恢复）
+    bool regAllocUsed_ = false;
 
     // ---- 阶段C：调试信息（Task 4.4） ----
     debuginfo::DebugInfoCollector debugInfo_;  // 源码行号映射收集器

@@ -234,6 +234,12 @@ void LinuxX64CodeGenerator::emitStackStore(LinuxX64AsmWriter& writer, int offset
 std::string LinuxX64CodeGenerator::loadOperandToX(LinuxX64AsmWriter& writer,
                                                   const ir::IRValue& operand,
                                                   const std::string& reg) {
+    // 1256：已分配物理寄存器——按类型规范化拷贝到目标（无需读槽；与槽装载
+    //   扩展语义一致，未分配路径逐字节不变）
+    if (!operand.isConstant) {
+        const std::string phys = copyAllocatedTo(writer, operand, reg);
+        if (!phys.empty()) return phys;
+    }
     if (operand.isConstant) {
         // ptr 常量：@strN 字符串池标签 / 函数符号 -> 加载符号地址；
         // 数值 ptr 常量（如 "0" 空指针）仍按立即数装载
@@ -328,6 +334,141 @@ bool LinuxX64CodeGenerator::isStructParam(const ir::IRFunction& function,
     if (index >= function.params.size()) return false;
     return function.params[index].second == "ptr" &&
            function.structParamIndexes.count(static_cast<int>(index)) > 0;
+}
+
+// ==================== 常量加载族（1256 自 instructions 拆出·先拆再加） ====================
+
+// 常量加载：ConstInt/ConstBool 立即数 mov；ConstString/FuncAddr 加载符号地址；
+// ConstFloat 从常量池加载（i128 常量拆低/高双槽）
+// 1256：i128/u128 常量加载（结果双槽：%vN 高 64 位 + %vN+1 低 64 位）
+void LinuxX64CodeGenerator::emitConst128Load(LinuxX64AsmWriter& writer,
+                                             const ir::IRInstruction& inst) {
+    // i128/u128 常量：extra = "LO:HI"（十六进制）或纯十进制小值
+    // 结果双槽：%vN（高64位）+ %vN+1（低64位），低64位槽地址更低
+    if (inst.type == "i128" || inst.type == "u128") {
+        const std::string& extra = inst.extra;
+        const std::size_t colon = extra.find(':');
+        std::uint64_t lo = 0;
+        std::uint64_t hi = 0;
+        if (colon != std::string::npos) {
+            lo = std::stoull(extra.substr(0, colon), nullptr, 16);
+            hi = std::stoull(extra.substr(colon + 1), nullptr, 16);
+        } else if (colon == std::string::npos) {
+            try {
+                lo = static_cast<std::uint64_t>(std::stoull(extra));
+            } catch (...) {
+                lo = 0;
+            }
+        }
+        const int dstHiId = inst.result.id;
+        const int dstLoId = inst.result.id + 1;
+        writer.line("mov r10, " + uint64HexText(lo));
+        emitStackStore(writer, regSlotOffset(dstLoId), "r10", "i64");
+        writer.line("mov r10, " + uint64HexText(hi));
+        emitStackStore(writer, regSlotOffset(dstHiId), "r10", "i64");
+        return;
+    }
+}
+
+void LinuxX64CodeGenerator::emitConstLoad(LinuxX64AsmWriter& writer,
+                                          const ir::IRInstruction& inst) {
+    if (inst.opcode == ir::Opcode::ConstFloat) {
+        const bool isDouble = (inst.type == "f64");
+        const std::string label = registerFloatConstant(inst.extra, isDouble);
+        emitLoadSymbolAddr(writer, "rax", label);
+        const std::string vreg = "xmm7";
+        // 宽度前缀按类型：movsd=qword / movss=dword（movss 配 qword 汇编报错）
+        writer.line("mov" + std::string(isDouble ? "sd" : "ss") + " " + vreg + ", " +
+                    std::string(isDouble ? "qword ptr" : "dword ptr") + " [rax]");
+        emitStackStore(writer, regSlotOffset(inst.result.id), vreg, inst.type);
+        writer.comment("浮点常量 " + inst.extra);
+        return;
+    }
+    if (inst.opcode == ir::Opcode::ConstString) {
+        // 字符串常量：@strN（IR 层常量池 ID）-> GAS 标签 LstrN -> 结果槽
+        std::string sym = inst.extra;
+        // 静态字段/顶层静态符号 GAS 化（GAS 符号不能以 ? 开头，与 vtable.cpp 一致）
+        if (sym.compare(0, 8, "?static_") == 0) {
+            sym = "_cn_static_" + nameMangle(sym.substr(8));
+        } else if (sym.compare(0, 9, "?gstatic_") == 0) {
+            sym = "_cn_gstatic_" + nameMangle(sym.substr(9));
+        } else if (sym.compare(0, 4, "@str") == 0) {
+            sym = "L" + sym.substr(1);  // @strN -> LstrN
+        }
+        const std::string phys = physRegOf(inst.result);
+        if (!phys.empty()) {
+            // 1256：直写分配寄存器（免 r10 中转）
+            emitLoadSymbolAddr(writer, phys, sym);
+            return;
+        }
+        emitLoadSymbolAddr(writer, "r10", sym);
+        emitStackStore(writer, regSlotOffset(inst.result.id), "r10", "ptr");
+        return;
+    }
+    if (inst.opcode == ir::Opcode::FuncAddr) {
+        // 函数地址：lea rip 相对加载函数链接符号地址
+        const std::string phys = physRegOf(inst.result);
+        if (!phys.empty()) {
+            emitLoadSymbolAddr(writer, phys, symbolName(inst.extra));
+            return;
+        }
+        emitLoadSymbolAddr(writer, "r10", symbolName(inst.extra));
+        emitStackStore(writer, regSlotOffset(inst.result.id), "r10", "ptr");
+        return;
+    }
+    if (inst.type == "i128" || inst.type == "u128") {
+        emitConst128Load(writer, inst);
+        return;
+    }
+    // 整型/布尔常量：立即数（x86_64 mov reg, imm64 全范围一条指令）
+    std::string value = (inst.extra == "真") ? "1" : (inst.extra == "假") ? "0" : inst.extra;
+    // 任务 119（927）：常量值文本为空 = 硬错误。原「catch → mov r10, 0」兜底把
+    //   空文本静默发射成 0（119 实弹：stride 错 0 → 元素偏移恒 0 → 写错元素，
+    //   `矩阵.元素(1).设置(0,99)` 写穿第 0 行·rc=0 静默错写）——错值比编译失败更糟。
+    if (value.empty()) {
+        diagnostics_.report(Diagnostic::error(
+            inst.loc,
+            std::string("常量指令缺值文本（extra 为空）——无法发射立即数（") +
+                targetPlatform() + " 后端末防线·任务 119）"));
+        return;
+    }
+    if (!value.empty() && value[0] == '0' && value.size() > 1 &&
+        value.size() <= 128 &&
+        (value[1] == 'x' || value[1] == 'X' || value[1] == 'b' ||
+         value[1] == 'B' || value[1] == 'o' || value[1] == 'O')) {
+        try {
+            const std::uint64_t raw =
+                std::stoull(value.substr(2), nullptr,
+                             (value[1] == 'x' || value[1] == 'X') ? 16 :
+                             (value[1] == 'b' || value[1] == 'B') ? 2 : 8);
+            value = std::to_string(raw);
+        } catch (...) {
+        }
+    }
+    // 任务 119（927）：双层解析全失败（空/非法文本）同样硬错误——原兜底
+    //   mov r10, 0 属静默错值通道（与空文本同族），一并根治。
+    // 1256：结果已分配 -> 立即数直落分配寄存器（按类型宽度：窄/32 位写 32 位名）
+    const std::string phys = physRegOf(inst.result);
+    const std::string dst = phys.empty() ? "r10" : widthFor(inst.type, phys);
+    try {
+        const long long v = std::stoll(value);
+        writer.line("mov " + dst + ", " + std::to_string(v));
+    } catch (...) {
+        try {
+            const std::uint64_t u = std::stoull(value);
+            writer.line("mov " + dst + ", " + uint64HexText(u));
+        } catch (...) {
+            diagnostics_.report(Diagnostic::error(
+                inst.loc,
+                std::string("常量值文本无法解析（\"") + value +
+                    "\"）——无法发射立即数（" + targetPlatform() +
+                    " 后端末防线·任务 119）"));
+            return;
+        }
+    }
+    if (phys.empty()) {
+        emitStackStore(writer, regSlotOffset(inst.result.id), "r10", inst.type);
+    }
 }
 
 } // namespace cn_compiler

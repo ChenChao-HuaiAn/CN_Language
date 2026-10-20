@@ -23,7 +23,11 @@ void LinuxX64CodeGenerator::emitTerminator(LinuxX64AsmWriter& writer,
         if (!block.termReturnValue.empty()) {
             std::string s = block.termReturnValue;
             if (s.size() > 2 && s[0] == '%' && s[1] == 'v') {
-                returnReg = regSlotMem(std::stoi(s.substr(2)));
+                const int id = std::stoi(s.substr(2));
+                // 1256：返回值已分配物理寄存器 -> 直传寄存器名（epilogue 按类型
+                //   宽度搬入 rax），未分配保持原槽文本
+                const std::string phys = physRegOf(ir::IRValue::reg(id, currentReturnType_));
+                returnReg = phys.empty() ? regSlotMem(id) : phys;
             } else {
                 returnReg = s;
             }

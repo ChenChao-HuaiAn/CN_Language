@@ -232,7 +232,16 @@ void LinuxX64CodeGenerator::emitInt128Shift(LinuxX64AsmWriter& writer,
     const int cid = ptrCheckCounter_++;
     const std::string bigL = "Lsh128_b" + std::to_string(cid);
     const std::string endL = "Lsh128_e" + std::to_string(cid);
-    emitStackLoad(writer, regSlotOffset(shId), "r10", "i32", __LINE__);
+    if (shOp.type == "i128" || shOp.type == "u128") {
+        emitStackLoad(writer, regSlotOffset(shId), "r10", "i32", __LINE__);
+    } else if (!physRegOf(shOp).empty()) {
+        // 1256：移位量已分配（i32/i64）——按类型规范化到 r10（原恒读
+        //   regSlotOffset(shId)，分配后该槽为弃用槽=错值）
+        copyAllocatedTo(writer, shOp, "r10");
+    } else if (physRegOf(shOp).empty()) {
+        // 未分配：保持原 i32 窄读（产物逐字节不变）
+        emitStackLoad(writer, regSlotOffset(shId), "r10", "i32", __LINE__);
+    }
     writer.line("mov ecx, r10d");
     // 任务 474：安全函数分支——域检查（cmp+jae）前置，小/大路径顺序发射，
     //   错误块垫底（两条路径完成后，正常执行不可达）

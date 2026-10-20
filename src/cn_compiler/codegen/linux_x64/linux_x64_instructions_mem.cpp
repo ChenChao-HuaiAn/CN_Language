@@ -32,12 +32,26 @@ void LinuxX64CodeGenerator::emitLoadStore(LinuxX64AsmWriter& writer,
                                  inst.type == "u8" || inst.type == "u16" ||
                                  inst.type == "i32" || inst.type == "u32" ||
                                  inst.type == "i1");
-        if (inst.operands[0].id >= 0) {
-            // 寄存器到寄存器（复制槽）
-            emitStackLoad(writer, regSlotOffset(inst.operands[0].id), "r10", inst.type, __LINE__);
-        } else {
-            // 变量槽
-            emitStackLoad(writer, varSlotOf(inst.operands[0].extra), "r10", inst.type, __LINE__);
+        // 1256：结果已分配 -> 扩展装载直落分配寄存器（免 r10 中转）
+        const std::string dst = physRegOf(inst.result);
+        if (!dst.empty()) {
+            if (copyAllocatedTo(writer, inst.operands[0], dst).empty()) {
+                const int off = (inst.operands[0].id >= 0)
+                                    ? regSlotOffset(inst.operands[0].id)
+                                    : varSlotOf(inst.operands[0].extra);
+                emitStackLoad(writer, off, dst, inst.type, __LINE__);
+            }
+            return;
+        }
+        // 源可能已分配 -> 规范化拷贝到 r10（未分配即原槽装载，产物不变）
+        if (copyAllocatedTo(writer, inst.operands[0], "r10").empty()) {
+            if (inst.operands[0].id >= 0) {
+                // 寄存器到寄存器（复制槽）
+                emitStackLoad(writer, regSlotOffset(inst.operands[0].id), "r10", inst.type, __LINE__);
+            } else {
+                // 变量槽
+                emitStackLoad(writer, varSlotOf(inst.operands[0].extra), "r10", inst.type, __LINE__);
+            }
         }
         emitStackStore(writer, regSlotOffset(inst.result.id), "r10",
                        narrowType ? "i64" : inst.type);
@@ -52,6 +66,24 @@ void LinuxX64CodeGenerator::emitLoadStore(LinuxX64AsmWriter& writer,
             emitStackStore(writer, varSlotOf(inst.extra + "$s1"), "r10", "i64");
             return;
         }
+        // 1256：值已分配 -> 单条直写变量槽（免 r10 中转）；未分配保持原路径
+        if (!inst.operands[0].isConstant) {
+            const std::string stPhys = physRegOf(inst.operands[0]);
+            if (!stPhys.empty()) {
+                const std::string mp =
+                    (inst.type == "i8" || inst.type == "u8") ? "byte ptr " :
+                    (inst.type == "i16" || inst.type == "u16") ? "word ptr " :
+                    (inst.type == "i32" || inst.type == "u32") ? "dword ptr " :
+                    "qword ptr ";
+                const std::string regW =
+                    (inst.type == "i8" || inst.type == "u8") ? x86Reg8(stPhys) :
+                    (inst.type == "i16" || inst.type == "u16") ? x86Reg16(stPhys) :
+                    (inst.type == "i32" || inst.type == "u32") ? x86Reg32(stPhys) :
+                    stPhys;
+                writer.line("mov " + mp + stackMemText(varSlotOf(inst.extra)) + ", " + regW);
+                return;
+            }
+        }
         const std::string src = loadOperandToX(writer, inst.operands[0], "r10");
         emitStackStore(writer, varSlotOf(inst.extra), src, inst.type);
     }
@@ -63,6 +95,12 @@ void LinuxX64CodeGenerator::emitLoadStore(LinuxX64AsmWriter& writer,
 void LinuxX64CodeGenerator::emitAddrOf(LinuxX64AsmWriter& writer,
                                        const ir::IRInstruction& inst) {
     const int off = varSlotOf(inst.extra);
+    // 1256：结果已分配 -> lea 直落分配寄存器
+    const std::string dst = physRegOf(inst.result);
+    if (!dst.empty()) {
+        writer.line("lea " + dst + ", " + stackMemText(off));
+        return;
+    }
     writer.line("lea r10, " + stackMemText(off));
     emitStackStore(writer, regSlotOffset(inst.result.id), "r10", "ptr");
 }
@@ -70,20 +108,40 @@ void LinuxX64CodeGenerator::emitAddrOf(LinuxX64AsmWriter& writer,
 // 结构体字段地址（FieldAddr）：基址 + 字段偏移 -> 结果槽（含空指针检查错误码3）
 void LinuxX64CodeGenerator::emitFieldAddr(LinuxX64AsmWriter& writer,
                                           const ir::IRInstruction& inst) {
-    loadOperandToX(writer, inst.operands[0], "r10");
+    // 1256：基址可能已分配——直接读物理寄存器（勿 add 修改：分配值可能后续
+    //   仍被使用）；未分配沿用 r10 装载原路径
+    const std::string basePhys = physRegOf(inst.operands[0]);
+    const std::string base = basePhys.empty()
+                                 ? loadOperandToX(writer, inst.operands[0], "r10")
+                                 : basePhys;
     const long long fieldOffset = std::stoll(inst.extra);
     const int checkId = ptrCheckCounter_++;
     const std::string okLabel = "Lfield_ok" + std::to_string(checkId);
-    // 空指针检查：r10 == 0 -> 错误块
-    writer.line("test r10, r10");
+    // 空指针检查：base == 0 -> 错误块
+    writer.line("test " + base + ", " + base);
     writer.line("jnz " + okLabel);
     writer.line("mov rdi, 3");
     writer.line("call __cn_runtime_error");
     writer.line("ret");
     writer.raw(okLabel + ":");
-    // 字段地址 = 基址 + 偏移
-    if (fieldOffset != 0) {
-        writer.line("add r10, " + std::to_string(fieldOffset));
+    const std::string dst = physRegOf(inst.result);
+    if (!dst.empty()) {
+        // 字段地址 = 基址 + 偏移（lea 不破坏基址寄存器）
+        if (fieldOffset != 0) {
+            writer.line("lea " + dst + ", [" + base + "+" + std::to_string(fieldOffset) + "]");
+        } else if (fieldOffset == 0) {
+            writer.line("mov " + dst + ", " + base);
+        }
+        return;
+    }
+    // 字段地址 = 基址 + 偏移（原路径：r10 可原地 add）
+    if (base == "r10") {
+        if (fieldOffset != 0) {
+            writer.line("add r10, " + std::to_string(fieldOffset));
+        }
+    } else if (base != "r10") {
+        writer.line("lea r10, [" + base +
+                    (fieldOffset != 0 ? "+" + std::to_string(fieldOffset) : "") + "]");
     }
     emitStackStore(writer, regSlotOffset(inst.result.id), "r10", "ptr");
 }
@@ -92,10 +150,27 @@ void LinuxX64CodeGenerator::emitFieldAddr(LinuxX64AsmWriter& writer,
 //   串句柄 0=空串（运行时串函数已容错），不触发错误码 3。
 void LinuxX64CodeGenerator::emitStrFieldAddr(LinuxX64AsmWriter& writer,
                                              const ir::IRInstruction& inst) {
-    loadOperandToX(writer, inst.operands[0], "r10");
+    const std::string basePhys = physRegOf(inst.operands[0]);
+    const std::string base = basePhys.empty()
+                                 ? loadOperandToX(writer, inst.operands[0], "r10")
+                                 : basePhys;
     const long long fieldOffset = std::stoll(inst.extra);
-    if (fieldOffset != 0) {
-        writer.line("add r10, " + std::to_string(fieldOffset));
+    const std::string dst = physRegOf(inst.result);
+    if (!dst.empty()) {
+        if (fieldOffset != 0) {
+            writer.line("lea " + dst + ", [" + base + "+" + std::to_string(fieldOffset) + "]");
+        } else if (fieldOffset == 0) {
+            writer.line("mov " + dst + ", " + base);
+        }
+        return;
+    }
+    if (base == "r10") {
+        if (fieldOffset != 0) {
+            writer.line("add r10, " + std::to_string(fieldOffset));
+        }
+    } else if (base != "r10") {
+        writer.line("lea r10, [" + base +
+                    (fieldOffset != 0 ? "+" + std::to_string(fieldOffset) : "") + "]");
     }
     emitStackStore(writer, regSlotOffset(inst.result.id), "r10", "ptr");
 }
@@ -103,76 +178,104 @@ void LinuxX64CodeGenerator::emitStrFieldAddr(LinuxX64AsmWriter& writer,
 // 指针加载/存储（LoadPtr/StorePtr）：经指针值地址访存（含空指针检查错误码3）
 void LinuxX64CodeGenerator::emitPtrLoadStore(LinuxX64AsmWriter& writer,
                                              const ir::IRInstruction& inst) {
-    loadOperandToX(writer, inst.operands[0], "r10");  // 地址
+    // 1256：地址操作数可能已分配——直读物理寄存器（不改写）；未分配原 r10 路径
+    const std::string addrPhys = physRegOf(inst.operands[0]);
+    const std::string addr = addrPhys.empty()
+                                 ? loadOperandToX(writer, inst.operands[0], "r10")
+                                 : addrPhys;
     const int checkId = ptrCheckCounter_++;
     const std::string okLabel = "Lptr_ok" + std::to_string(checkId);
-    writer.line("test r10, r10");
+    writer.line("test " + addr + ", " + addr);
     writer.line("jnz " + okLabel);
     writer.line("mov rdi, 3");
     writer.line("call __cn_runtime_error");
     writer.line("ret");
     writer.raw(okLabel + ":");
     if (inst.opcode == ir::Opcode::LoadPtr) {
-        // 加载：按 inst.type 宽度读取
-        const std::string& type = inst.type;
-        if (isFloatType(type)) {
-            const std::string vreg = "xmm0";
-            // 92-a 根治（H2）：宽度前缀必须按类型分派——原写死 qword ptr 使
-            //   f32 发射 movss + qword ptr（汇编器 operand size mismatch 直接
-            //   编译失败）；与 emitConstLoad/loadOperandToV 同规则、对齐 win-x64
-            //   后端（x64_instructions.cpp LoadPtr 早有 mp 分派）。
-            writer.line("mov" + std::string(type == "f64" ? "sd" : "ss") + " " + vreg +
-                        ", " + (type == "f64" ? "qword ptr" : "dword ptr") + " [r10]");
-            emitStackStore(writer, regSlotOffset(inst.result.id), vreg, type);
-            return;
-        }
-        if (type == "i8" || type == "i16") {
-            const std::string width = (type == "i8") ? "byte ptr" : "word ptr";
-            writer.line("movsx r9, " + width + " [r10]");
-            // movsx 已符号扩展到64位，用64位存储避免截断
-            emitStackStore(writer, regSlotOffset(inst.result.id), "r9", "i64");
-            return;
-        }
-        if (type == "u8" || type == "u16") {
-            const std::string width = (type == "u8") ? "byte ptr" : "word ptr";
-            writer.line("movzx r9, " + width + " [r10]");
-            // movzx 已零扩展到64位
-            emitStackStore(writer, regSlotOffset(inst.result.id), "r9", "i64");
-            return;
-        }
-        if (type == "i1") {
-            // i1（布尔）1 字节访存（#176）：布局层 类型大小=1——原归 32 位组
-            //   读 4 字节吃相邻字段（窗口窄于 win 的 8 字节但同族缺陷）
-            writer.line("movzx r9, byte ptr [r10]");
-            emitStackStore(writer, regSlotOffset(inst.result.id), "r9", "i64");
-            return;
-        }
-        if (type == "i32" || type == "u32") {
-            writer.line("mov r9d, dword ptr [r10]");
-            // 32位装载清高32位（零扩展），用64位存储
-            emitStackStore(writer, regSlotOffset(inst.result.id), "r9", "i64");
-            return;
-        }
-        if (type == "i128" || type == "u128") {
-            // i128 指针加载：低64位 [r10]、高64位 [r10+8]
-            writer.line("mov r9, qword ptr [r10]");
-            emitStackStore(writer, regSlotOffset(inst.result.id + 1), "r9", "i64");
-            writer.line("mov r9, qword ptr [r10+8]");
-            emitStackStore(writer, regSlotOffset(inst.result.id), "r9", "i64");
-            return;
-        }
-        writer.line("mov r9, qword ptr [r10]");
-        emitStackStore(writer, regSlotOffset(inst.result.id), "r9", type);
+        emitPtrLoad(writer, inst, addr, inst.type);
         return;
     }
-    // StorePtr：operand[1] 为值
-    const std::string& type = inst.type;
+    emitPtrStore(writer, inst, addr, inst.type);
+}
+
+// 1256：指针加载族（按类型宽度直装；结果已分配走物理寄存器）
+void LinuxX64CodeGenerator::emitPtrLoad(LinuxX64AsmWriter& writer,
+                                        const ir::IRInstruction& inst,
+                                        const std::string& addr,
+                                        const std::string& type) {
+    const std::string dstPhys = physRegOf(inst.result);
+    if (isFloatType(type)) {
+        const std::string vreg = "xmm0";
+        writer.line("mov" + std::string(type == "f64" ? "sd" : "ss") + " " + vreg +
+                    ", " + (type == "f64" ? "qword ptr" : "dword ptr") + " [" + addr + "]");
+        emitStackStore(writer, regSlotOffset(inst.result.id), vreg, type);
+        return;
+    }
+    if (type == "i128" || type == "u128") {
+        // i128 指针加载：低64位 [addr]、高64位 [addr+8]（结果恒双槽）
+        writer.line("mov r9, qword ptr [" + addr + "]");
+        emitStackStore(writer, regSlotOffset(inst.result.id + 1), "r9", "i64");
+        writer.line("mov r9, qword ptr [" + addr + "+8]");
+        emitStackStore(writer, regSlotOffset(inst.result.id), "r9", "i64");
+        return;
+    }
+    // 1256：结果已分配 -> 按宽度直装分配寄存器（免 r9 中转）
+    if (!dstPhys.empty()) {
+        if (type == "i8" || type == "i16") {
+            writer.line("movsx " + x86Reg32(dstPhys) + ", " +
+                        ((type == "i8") ? "byte ptr [" : "word ptr [") + addr + "]");
+        } else if (type == "u8" || type == "u16") {
+            writer.line("movzx " + x86Reg32(dstPhys) + ", " +
+                        ((type == "u8") ? "byte ptr [" : "word ptr [") + addr + "]");
+        } else if (type == "i32" || type == "u32") {
+            writer.line("mov " + x86Reg32(dstPhys) + ", dword ptr [" + addr + "]");
+        } else if (type == "i1") {
+            writer.line("movzx " + x86Reg32(dstPhys) + ", byte ptr [" + addr + "]");
+        } else if (type == "i64" || type == "u64" || type == "ptr") {
+            writer.line("mov " + dstPhys + ", qword ptr [" + addr + "]");
+        }
+        return;
+    }
+    if (type == "i8" || type == "i16") {
+        const std::string width = (type == "i8") ? "byte ptr" : "word ptr";
+        writer.line("movsx r9, " + width + " [" + addr + "]");
+        // movsx 已符号扩展到64位，用64位存储避免截断
+        emitStackStore(writer, regSlotOffset(inst.result.id), "r9", "i64");
+        return;
+    }
+    if (type == "u8" || type == "u16") {
+        const std::string width = (type == "u8") ? "byte ptr" : "word ptr";
+        writer.line("movzx r9, " + width + " [" + addr + "]");
+        // movzx 已零扩展到64位
+        emitStackStore(writer, regSlotOffset(inst.result.id), "r9", "i64");
+        return;
+    }
+    if (type == "i1") {
+        // i1（布尔）1 字节访存（#176）：布局层 类型大小=1——原归 32 位组
+        //   读 4 字节吃相邻字段（窗口窄于 win 的 8 字节但同族缺陷）
+        writer.line("movzx r9, byte ptr [" + addr + "]");
+        emitStackStore(writer, regSlotOffset(inst.result.id), "r9", "i64");
+        return;
+    }
+    if (type == "i32" || type == "u32") {
+        writer.line("mov r9d, dword ptr [" + addr + "]");
+        // 32位装载清高32位（零扩展），用64位存储
+        emitStackStore(writer, regSlotOffset(inst.result.id), "r9", "i64");
+        return;
+    }
+    writer.line("mov r9, qword ptr [" + addr + "]");
+    emitStackStore(writer, regSlotOffset(inst.result.id), "r9", type);
+}
+
+// 1256：指针存储族（按类型宽度直写；值已分配走单条内存直写）
+void LinuxX64CodeGenerator::emitPtrStore(LinuxX64AsmWriter& writer,
+                                         const ir::IRInstruction& inst,
+                                         const std::string& addr,
+                                         const std::string& type) {
     if (isFloatType(type)) {
         loadOperandToV(writer, inst.operands[1], "xmm0");
-        // 92-a 根治（H2）：宽度前缀按类型分派（原写死 qword ptr — f32 的
-        //   movss 配 qword ptr 汇编失败），与 LoadPtr 分支同规则。
         writer.line("mov" + std::string(type == "f64" ? "sd" : "ss") + " " +
-                    (type == "f64" ? "qword ptr" : "dword ptr") + " [r10], xmm0");
+                    (type == "f64" ? "qword ptr" : "dword ptr") + " [" + addr + "], xmm0");
         return;
     }
     if (type == "i128" || type == "u128") {
@@ -184,44 +287,56 @@ void LinuxX64CodeGenerator::emitPtrLoadStore(LinuxX64AsmWriter& writer,
             const bool ok = types::parseInt128InitText(
                 inst.operands[1].extra, type == "i128", lo, hi);
             writer.line(std::string("mov r9, ") + (ok ? uint64HexText(lo) : "0"));
-            writer.line("mov qword ptr [r10], r9");
+            writer.line("mov qword ptr [" + addr + "], r9");
             writer.line(std::string("mov r9, ") + (ok ? uint64HexText(hi) : "0"));
-            writer.line("mov qword ptr [r10+8], r9");
+            writer.line("mov qword ptr [" + addr + "+8], r9");
             return;
         }
         const int srcHiId = inst.operands[1].id;
         const int srcLoId = inst.operands[1].id + 1;
         emitStackLoad(writer, regSlotOffset(srcLoId), "r9", "i64", __LINE__);
-        writer.line("mov qword ptr [r10], r9");
+        writer.line("mov qword ptr [" + addr + "], r9");
         emitStackLoad(writer, regSlotOffset(srcHiId), "r9", "i64", __LINE__);
-        writer.line("mov qword ptr [r10+8], r9");
+        writer.line("mov qword ptr [" + addr + "+8], r9");
         return;
     }
-    if (type == "i8" || type == "u8") {
-        loadOperandToX(writer, inst.operands[1], "r9");
-        writer.line("mov byte ptr [r10], r9b");
-        return;
+    // 1256：值已分配 -> 单条直写内存（按类型宽度）；未分配原 r9 中转路径
+    if (!inst.operands[1].isConstant) {
+        const std::string stPhys = physRegOf(inst.operands[1]);
+        if (!stPhys.empty()) {
+            const std::string mem = "[" + addr + "]";
+            if (type == "i8" || type == "u8" || type == "i1") {
+                writer.line("mov byte ptr " + mem + ", " + x86Reg8(stPhys));
+            } else if (type == "i16" || type == "u16") {
+                writer.line("mov word ptr " + mem + ", " + x86Reg16(stPhys));
+            } else if (type == "i32" || type == "u32") {
+                writer.line("mov dword ptr " + mem + ", " + x86Reg32(stPhys));
+            } else if (type == "i64" || type == "u64" || type == "ptr") {
+                writer.line("mov qword ptr " + mem + ", " + stPhys);
+            }
+            return;
+        }
     }
-    if (type == "i1") {
+    if (type == "i8" || type == "u8" || type == "i1") {
         // i1（布尔）1 字节存储（#176）：与 i8/u8 同款 byte 写——原归 32 位组
         //   4 字节写破坏相邻字段
-        loadOperandToX(writer, inst.operands[1], "r9");
-        writer.line("mov byte ptr [r10], r9b");
+        const std::string val = loadOperandToX(writer, inst.operands[1], "r9");
+        writer.line("mov byte ptr [" + addr + "], " + x86Reg8(val));
         return;
     }
     if (type == "i16" || type == "u16") {
-        loadOperandToX(writer, inst.operands[1], "r9");
-        writer.line("mov word ptr [r10], r9w");
+        const std::string val = loadOperandToX(writer, inst.operands[1], "r9");
+        writer.line("mov word ptr [" + addr + "], " + x86Reg16(val));
         return;
     }
     if (type == "i32" || type == "u32") {
-        loadOperandToX(writer, inst.operands[1], "r9");
-        writer.line("mov dword ptr [r10], r9d");
+        const std::string val = loadOperandToX(writer, inst.operands[1], "r9");
+        writer.line("mov dword ptr [" + addr + "], " + x86Reg32(val));
         return;
     }
     // i64/ptr：64 位存储
-    loadOperandToX(writer, inst.operands[1], "r9");
-    writer.line("mov qword ptr [r10], r9");
+    const std::string val = loadOperandToX(writer, inst.operands[1], "r9");
+    writer.line("mov qword ptr [" + addr + "], " + val);
 }
 
 } // namespace cn_compiler

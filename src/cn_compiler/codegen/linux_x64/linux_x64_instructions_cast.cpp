@@ -47,6 +47,13 @@ void LinuxX64CodeGenerator::emitCast(LinuxX64AsmWriter& writer,
     case judgement::CastKind::FloatToInt: {
         loadOperandToV(writer, inst.operands[0], "xmm0");
         writer.line("call " + judgement::floatToIntHelperName(from, to));
+        // 1256：结果已分配 -> 直写物理寄存器（按目标宽度；窄型 32 位名保留
+        //   辅助返回的符号/零扩展位模式），未分配保持 rax -> r10 -> 槽原路径
+        const std::string phys = physRegOf(inst.result);
+        if (!phys.empty()) {
+            writer.line("mov " + widthFor(to, phys) + ", " + widthFor(to, "rax"));
+            return;
+        }
         writer.line("mov r10, rax");
         emitStackStore(writer, dstOff, "r10", to);
         return;
@@ -109,8 +116,8 @@ void LinuxX64CodeGenerator::emitCast(LinuxX64AsmWriter& writer,
     case judgement::CastKind::Int64Reinterpret:
     // u64->i64 原链落本域（win 侧独立分支为方言差异·行为同为 64 位重解释）
     case judgement::CastKind::U64ToI64: {
-        loadOperandToX(writer, inst.operands[0], "r10");
-        emitStackStore(writer, dstOff, "r10", "i64");
+        const std::string src = loadOperandToX(writer, inst.operands[0], "r10");
+        storeResult(writer, inst.result, src, "i64");
         return;
     }
     // ---- 128 位目标转换（须先于整数扩展/窄截断等分支——857 根治：
@@ -153,8 +160,25 @@ void LinuxX64CodeGenerator::emitCast(LinuxX64AsmWriter& writer,
     }
     // ---- 整数扩展（i8/i16/u8/u16 源）：装载即扩展，64 位存槽 ----
     case judgement::CastKind::NarrowSourceExtend: {
-        loadOperandToX(writer, inst.operands[0], "r10");
-        emitStackStore(writer, dstOff, "r10", "i64");
+        const std::string src = loadOperandToX(writer, inst.operands[0], "r10");
+        const std::string dst = physRegOf(inst.result);
+        if (dst.empty()) {
+            emitStackStore(writer, dstOff, src, "i64");
+            return;
+        }
+        // 1256：结果已分配——按目标类型规范化写入（与槽值消费者逐位一致：
+        //   窄目标按目标符号性规范化；宽目标 64 位扩展；32 位目标 32 位写）
+        if (to == "i8" || to == "i16") {
+            writer.line("movsx " + x86Reg32(dst) + ", " + narrowOperand(from, src));
+        } else if (to == "u8" || to == "u16") {
+            writer.line("movzx " + x86Reg32(dst) + ", " + narrowOperand(from, src));
+        } else if (to == "i32" || to == "u32" || to == "i1") {
+            writer.line("mov " + x86Reg32(dst) + ", " + x86Reg32(src));
+        } else if (from == "i8" || from == "i16") {
+            writer.line("movsxd " + dst + ", " + x86Reg32(src));
+        } else if (from == "u8" || from == "u16") {
+            writer.line("mov " + x86Reg32(dst) + ", " + x86Reg32(src));
+        }
         return;
     }
     // ---- 大 -> 小（截断）：装载任意宽度，按目标窄宽存储 ----
@@ -164,20 +188,43 @@ void LinuxX64CodeGenerator::emitCast(LinuxX64AsmWriter& writer,
     case judgement::CastKind::I128ToNarrow: {
         const int srcLoId = inst.operands[0].id + 1;
         emitStackLoad(writer, regSlotOffset(srcLoId), "r10", "i64", __LINE__);
-        emitStackStore(writer, dstOff, "r10", to);
+        const std::string dst = physRegOf(inst.result);
+        if (dst.empty()) {
+            emitStackStore(writer, dstOff, "r10", to);
+            return;
+        }
+        if (to == "i8" || to == "i16") {
+            writer.line("movsx " + x86Reg32(dst) + ", " + narrowOperand(to, "r10"));
+        } else if (to == "u8" || to == "u16") {
+            writer.line("movzx " + x86Reg32(dst) + ", " + narrowOperand(to, "r10"));
+        } else if (to == "i32" || to == "u32") {
+            writer.line("mov " + x86Reg32(dst) + ", r10d");
+        } else if (to == "i64" || to == "u64") {
+            writer.line("mov " + dst + ", r10");
+        }
         return;
     }
     // （原链 to∈{i8,u8,i16,u16} 一条分支——TruncateTo8/TruncateTo16 两域同体）
     case judgement::CastKind::TruncateTo8:
     case judgement::CastKind::TruncateTo16: {
-        loadOperandToX(writer, inst.operands[0], "r10");
-        emitStackStore(writer, dstOff, "r10", to);
+        const std::string src = loadOperandToX(writer, inst.operands[0], "r10");
+        const std::string dst = physRegOf(inst.result);
+        if (dst.empty()) {
+            emitStackStore(writer, dstOff, src, to);
+            return;
+        }
+        // 1256：截断直写——按目标符号性规范化到 32 位（寄存器内约定）
+        if (to == "i8" || to == "i16") {
+            writer.line("movsx " + x86Reg32(dst) + ", " + narrowOperand(to, src));
+        } else if (to == "u8" || to == "u16") {
+            writer.line("movzx " + x86Reg32(dst) + ", " + narrowOperand(to, src));
+        }
         return;
     }
     // i1 -> i64/u64（零扩展）
     case judgement::CastKind::I1To64: {
-        loadOperandToX(writer, inst.operands[0], "r10");
-        emitStackStore(writer, dstOff, "r10", to);
+        const std::string src = loadOperandToX(writer, inst.operands[0], "r10");
+        storeResult(writer, inst.result, src, to);
         return;
     }
     // i32 -> i64/u64（符号扩展 movsx r10, r10d——i32 装载是 mov r10d 清高32，
@@ -186,7 +233,12 @@ void LinuxX64CodeGenerator::emitCast(LinuxX64AsmWriter& writer,
     //   扩展体（原 if 条件 to∈{i64,u64} 一体）；win 侧 I32ToU64 为零扩展独立体。
     case judgement::CastKind::I32ToI64:
     case judgement::CastKind::I32ToU64: {
-        loadOperandToX(writer, inst.operands[0], "r10");
+        const std::string src = loadOperandToX(writer, inst.operands[0], "r10");
+        const std::string dst = physRegOf(inst.result);
+        if (!dst.empty()) {
+            writer.line("movsxd " + dst + ", " + x86Reg32(src));
+            return;
+        }
         writer.line("movsx r10, r10d");
         emitStackStore(writer, dstOff, "r10", to);
         return;
@@ -194,22 +246,22 @@ void LinuxX64CodeGenerator::emitCast(LinuxX64AsmWriter& writer,
     // u32 -> i64/u64（零扩展：mov r10d 装载已清高32，直接存）
     case judgement::CastKind::U32ToI64:
     case judgement::CastKind::U32ToU64: {
-        loadOperandToX(writer, inst.operands[0], "r10");
-        emitStackStore(writer, dstOff, "r10", to);
+        const std::string src = loadOperandToX(writer, inst.operands[0], "r10");
+        storeResult(writer, inst.result, src, to);
         return;
     }
     // i64 -> i32（截断）
     case judgement::CastKind::I64ToI32: {
-        loadOperandToX(writer, inst.operands[0], "r10");
-        emitStackStore(writer, dstOff, "r10", to);
+        const std::string src = loadOperandToX(writer, inst.operands[0], "r10");
+        storeResult(writer, inst.result, src, to);
         return;
     }
     // i1 -> i32/u32 原链无独立分支=落默认通道（win 独立体为方言差异）
     case judgement::CastKind::I1To32:
     // 默认：同宽度 mov（值语义传递）
     case judgement::CastKind::DefaultPass: {
-        loadOperandToX(writer, inst.operands[0], "r10");
-        emitStackStore(writer, dstOff, "r10", inst.type);
+        const std::string src = loadOperandToX(writer, inst.operands[0], "r10");
+        storeResult(writer, inst.result, src, inst.type);
         return;
     }
     }
@@ -271,15 +323,17 @@ void LinuxX64CodeGenerator::emitCompare(LinuxX64AsmWriter& writer,
         emitStackStore(writer, regSlotOffset(inst.result.id), "r10", "i1");
         return;
     }
-    loadOperandToX(writer, inst.operands[0], "r10");
-    loadOperandToX(writer, inst.operands[1], "r9");
+    // 1256：源可能已分配 -> 直接读物理寄存器（未分配仍为 r10/r9，产物不变）
+    const std::string cmpOp1 = loadOperandToX(writer, inst.operands[0], "r10");
+    const std::string cmpOp2 = loadOperandToX(writer, inst.operands[1], "r9");
     // 32 位类型（i32/u32/i1/窄型）用 32 位比较（cmp r10d, r9d）——
     //   i32 变量装载（mov r10d 清高32=零扩展位模式）与 64 位常量装载
     //   （mov r9, -1 全1）在 64 位 cmp 下位模式不一致（负数枚举 -1 ==
     //   -1 误判不等实测）；低 32 位比较与 ARM64 的 w9/w10 策略语义一致
     const bool wideCmp = (cmpType == "i64" || cmpType == "u64" ||
                           cmpType == "ptr");
-    writer.line(wideCmp ? "cmp r10, r9" : "cmp r10d, r9d");
+    writer.line(wideCmp ? "cmp " + cmpOp1 + ", " + cmpOp2
+                        : "cmp " + x86Reg32(cmpOp1) + ", " + x86Reg32(cmpOp2));
     // setcc -> movzx 到 64 位（setcc 只写 8 位，movzx 清高位保证 store 确定性）
     const std::string cc = setccFor(inst.opcode, isUnsigned, isFloat);    writer.line(cc + " r9b");
     writer.line("movzx r10, r9b");
@@ -289,8 +343,8 @@ void LinuxX64CodeGenerator::emitCompare(LinuxX64AsmWriter& writer,
 // 逻辑非（i1语义）：test + sete
 void LinuxX64CodeGenerator::emitNot(LinuxX64AsmWriter& writer,
                                     const ir::IRInstruction& inst) {
-    loadOperandToX(writer, inst.operands[0], "r10");
-    writer.line("test r10, r10");
+    const std::string op = loadOperandToX(writer, inst.operands[0], "r10");
+    writer.line("test " + op + ", " + op);
     writer.line("sete r9b");
     writer.line("movzx r10, r9b");
     emitStackStore(writer, regSlotOffset(inst.result.id), "r10", "i1");
