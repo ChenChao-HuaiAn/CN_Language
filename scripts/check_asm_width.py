@@ -101,10 +101,23 @@ def self_check() -> None:
     if len(WIN_BAD_MIX.findall(SELF_WIN_ILLEGAL)) != 4:
         raise SystemExit("自检失败：win-x64 宽度混配/rbp0 样本漏判，仅命中 "
                          f"{len(WIN_BAD_MIX.findall(SELF_WIN_ILLEGAL))} 处")
+    # 1257：旗标通道与 runner 同口径——空行/# 注释行不得混入 argv
+    #   （1402 首行注释曾被当「多余的源文件参数」，三后端每跑 3 假红）
+    with tempfile.TemporaryDirectory() as td:
+        case = pathlib.Path(td)
+        (case / "编译选项.txt").write_text(
+            "# 注释行不是旗标\n-D\n中文宏名\n\n", encoding="utf-8")
+        flags = read_case_flags(case)
+        if flags != ["-D", "中文宏名"]:
+            raise SystemExit("自检失败：编译选项 # 注释/空行未过滤: " + repr(flags))
 
 
 def read_case_flags(case_dir: pathlib.Path) -> list:
-    """用例级编译旗标（runner「编译选项.txt」通道同口径）。"""
+    """用例级编译旗标（runner「编译选项.txt」通道同口径）。
+
+    空行与 # 注释行跳过（与 tests/e2e/run_e2e.py 查找编译选项文件 一致；
+    1257：1402 用例首行注释曾被当旗标传入，三后端每跑必报假编译失败）。
+    """
     marker = case_dir / "编译选项.txt"
     if not marker.exists():
         return []
