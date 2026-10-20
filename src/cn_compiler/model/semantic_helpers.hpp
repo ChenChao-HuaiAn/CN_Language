@@ -294,6 +294,10 @@ inline std::string canonicalType(const std::string& type) {
 
 // ===== 静态类型判据/工具族（346 重构D 自 SemanticAnalyzer 静态方法转自由函数——ir/codegen/semantic 三方共用·原 78+ 处 SemanticAnalyzer:: 前缀调用点全树去前缀）=====
 [[maybe_unused]] inline bool isResultType(const std::string& type) {
+    // #1154 前缀门：splitTypeSuffix 只剥尾部复合后缀、不改前缀 ⇒ type 不以
+    //   「结果<」开头时 core 也不可能以它开头。原实现无条件 splitTypeSuffix
+    //   （每次两个 std::string 拷贝；实际调用绝大多数是非模板类型）。
+    if (type.rfind("结果<", 0) != 0) return false;
     std::string core, suffix;
     types::splitTypeSuffix(type, core, suffix);
     if (!suffix.empty()) return false;
@@ -346,6 +350,8 @@ inline std::string canonicalType(const std::string& type) {
 }
 
 [[maybe_unused]] inline bool isOptionalType(const std::string& type) {
+    // #1154 前缀门（与 isResultType 同构）
+    if (type.rfind("可选<", 0) != 0) return false;
     std::string core, suffix;
     types::splitTypeSuffix(type, core, suffix);
     if (!suffix.empty()) return false;
