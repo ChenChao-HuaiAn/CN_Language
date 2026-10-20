@@ -15,6 +15,7 @@
 #include <vector>
 
 #include "cn_compiler/codegen/arm64/arm64_codegen.hpp"
+#include "cn_compiler/codegen/peephole_slot.hpp"
 #include "cn_compiler/model/semantic_view.hpp"
 #include "cn_compiler/model/type_system.hpp"
 
@@ -625,7 +626,15 @@ std::string Arm64CodeGenerator::generateFunctionAssembly(const ir::IRFunction& f
         function.mangledName.empty() ? function.name : function.mangledName);
     writer.raw(".size " + sym + ", .-" + sym);
     writer.raw("");
-    return writer.str();
+    // 任务 1157：发射后窥孔——冗余槽读写消除（相邻 store→load 同槽转发，仅槽死时）。
+    //   门控 = regAllocEnabled_（-O2 起由 backend_factory 联动开启）：-O0/-O1/
+    //   --no-regalloc 的产物逐字节不变（与 1144/458 红线同口径）。AArch64 面识别
+    //   str/strb/strh + ldr/ldrb/ldrh/ldrsb/ldrsh 与 d/s 浮点族。
+    std::string asmText = writer.str();
+    if (regAllocEnabled_) {
+        asmText = peephole::eliminateRedundantSlotTrafficAArch64(asmText);
+    }
+    return asmText;
 }
 
 // 生成一个基本块（标签 + 指令序列 + 终止）

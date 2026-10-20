@@ -16,6 +16,7 @@
 
 #include "cn_compiler/codegen/x64/x64_codegen.hpp"
 #include "cn_compiler/codegen/judgement.hpp"
+#include "cn_compiler/codegen/peephole_slot.hpp"
 #include "cn_compiler/model/semantic_view.hpp"
 #include "cn_compiler/model/type_system.hpp"
 
@@ -613,7 +614,15 @@ std::string X64CodeGenerator::generateFunctionAssembly(const ir::IRFunction& fun
         function.mangledName.empty() ? function.name : function.mangledName);
     writer.raw(endSym + " ENDP");
     writer.raw("");
-    return writer.str();
+    // 任务 1157：发射后窥孔——冗余槽读写消除（相邻 store→load 同槽转发，仅槽死时）。
+    //   门控 = regAllocEnabled_（-O2 起由 backend_factory 联动开启）：-O0/-O1/
+    //   --no-regalloc 的产物逐字节不变（与 1144/458 红线同口径）。MASM 面识别本
+    //   后端实际产物（无 ptr 前缀的直写/直装、32 位目的 movsx/movzx）。
+    std::string asmText = writer.str();
+    if (regAllocEnabled_) {
+        asmText = peephole::eliminateRedundantSlotTrafficMasm(asmText);
+    }
+    return asmText;
 }
 
 // 生成一个基本块（标签 + 指令序列 + 终止）
