@@ -76,16 +76,19 @@ ScalarKind scalarKindOf(std::string_view t) {
     if (t == "布尔") return ScalarKind::Bool;
     if (isFloatName(t)) return t == "浮32" ? ScalarKind::Float32 : ScalarKind::Float64;
     const int rank = intRankOfName(t);
-    if (rank <= 0) return ScalarKind::Other;
-    const bool isUnsignedName = t.compare(0, 3, "正") == 0;
-    switch (rank) {
-        case 1: return isUnsignedName ? ScalarKind::UInt8 : ScalarKind::Int8;
-        case 2: return isUnsignedName ? ScalarKind::UInt16 : ScalarKind::Int16;
-        case 3: return isUnsignedName ? ScalarKind::UInt32 : ScalarKind::Int32;
-        case 4: return isUnsignedName ? ScalarKind::UInt64 : ScalarKind::Int64;
-        case 5: return isUnsignedName ? ScalarKind::UInt128 : ScalarKind::Int128;
-        default: return ScalarKind::Other;  // 不可达：intRankOfName 值域 0..5
+    // 双边界闭区间（miss 门禁单边比较禁令）：rank 合法域=1..5，域外返回 Other
+    if (rank >= 1 && rank <= 5) {
+        const bool isUnsignedName = t.compare(0, 3, "正") == 0;
+        switch (rank) {
+            case 1: return isUnsignedName ? ScalarKind::UInt8 : ScalarKind::Int8;
+            case 2: return isUnsignedName ? ScalarKind::UInt16 : ScalarKind::Int16;
+            case 3: return isUnsignedName ? ScalarKind::UInt32 : ScalarKind::Int32;
+            case 4: return isUnsignedName ? ScalarKind::UInt64 : ScalarKind::Int64;
+            case 5: return isUnsignedName ? ScalarKind::UInt128 : ScalarKind::Int128;
+            default: return ScalarKind::Other;  // 不可达：区间 1..5 已穷举
+        }
     }
+    return ScalarKind::Other;
 }
 
 bool isIntScalar(ScalarKind k) {
@@ -184,7 +187,9 @@ bool isInteger(const std::string& type) {
 //   #1154：免 canonical 拷贝快路径（与 canonical 后查表逐值等价）。
 bool isStaticScalarInitType(const std::string& type) {
     const std::string_view t = stripRefSuffix(type);
-    if (intRankOfName(t) > 0) return true;   // 中文整数族（整8..正128/整数）
+    const int rank = intRankOfName(t);
+    // 中文整数族（整8..正128/整数）：双边界闭区间（miss 门禁单边比较禁令）
+    if (rank >= 1 && rank <= 5) return true;
     if (t == "字符" || t == "布尔") return true;
     // IR 标量整型名：i1/i8/u8/i16/u16/i32/u32/i64/u64（i128/u128 走双 quad 分支）
     if (t.size() == 2) return t == "i1" || t == "i8" || t == "u8";
