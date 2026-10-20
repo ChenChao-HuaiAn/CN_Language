@@ -2,6 +2,10 @@
 // 文件级豁免必须先于任何 CRT 头（仅本文件·MSVC 惯例·POSIX 平台无此告警）。
 #define _CRT_SECURE_NO_WARNINGS
 // AST 模块缓存实现（任务 1142·模块级预编译缓存第一台阶）
+// 1185 构建修复：getenv 触发 C4996（/WX 下 warning 当错误·本机 MSVC 实测
+//   develop 顶存量构建红）——补 _CRT_SECURE_NO_WARNINGS（semantic_expr_binary.cpp
+//   等文件同款先例），零语义变化。
+#define _CRT_SECURE_NO_WARNINGS
 // 文件格式（小端）：
 //   [8]  魔数 "CNASTC01"
 //   [8]  内容哈希通道 a        [8] 内容哈希通道 b
