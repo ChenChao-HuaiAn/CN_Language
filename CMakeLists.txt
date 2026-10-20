@@ -118,9 +118,10 @@ else()
     endif()
 endif()
 
-# 公共模块库：诊断系统（供编译器与单元测试共用）
+# 公共模块库：诊断系统 + 全局字符串驻留表（供编译器与单元测试共用）
 add_library(cn_compiler_common STATIC
     src/cn_compiler/common/diagnostics.cpp
+    src/cn_compiler/common/string_intern.cpp
 )
 target_include_directories(cn_compiler_common PUBLIC ${CMAKE_SOURCE_DIR}/src)
 
