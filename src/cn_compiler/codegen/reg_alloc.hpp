@@ -10,11 +10,8 @@
 //       —— 仅分配被调用者保存寄存器，是因为两个后端发射器内部均使用调用者保存寄存器
 //          （rax/rcx/rdx/r8~r11 / x0~x18 等）作临时寄存器，被调用者保存区空闲可安全使用；
 //          同时分配器寄存器在函数序言保存、尾声恢复（不破坏调用者预期）
-//   5. 分配类型集合（1159 扩展）：64 位整型/指针（i64/u64/ptr）+ 32 位整型（i32/u32）
-//      + 窄整型（i8/u8/i16/u16）参与物理寄存器分配；i128 双槽、浮点、i1 保持栈槽映射。
-//      小位宽寄存器内约定：**低 32 位为符号/零扩展后的值**（i8/i16 由后端规范为
-//      32 位符号/零扩展形态，u* 为零扩展形态），消费点按声明宽度使用 32 位名或
-//      窄宽寄存器形态；64 位消费点显式 movsxd/sxtw 等扩展——与栈槽窄宽装载语义一致。
+//   5. 保守策略（正确性最高优先）：仅对 64 位整型/指针类型（i64/u64/ptr）虚拟寄存器做
+//      物理寄存器分配；i128 双槽、浮点、小位宽寄存器保持栈槽映射（避免与发射器宽度假设冲突）
 //   6. 溢出策略：物理寄存器不足时，溢出虚拟寄存器到"溢出槽"（复用栈槽区，偏移由调用方决定）
 //   7. 英文API命名（GCC 7 不支持中文标识符），中文仅用于注释
 #pragma once
@@ -31,8 +28,9 @@ namespace regalloc {
 
 // 目标平台类型（与 Backend::targetPlatform 对应）
 enum class TargetArch {
-    X64,      // Win x64（被调用者保存：rbx/r12~r15）
-    Arm64,    // Linux ARM64（被调用者保存：x19~x28）
+    X64,        // Win x64（被调用者保存：rbx/r12~r15）
+    Arm64,      // Linux ARM64（被调用者保存：x19~x28）
+    LinuxX64,   // Linux x86_64（被调用者保存：rbx/r12~r15；1256 起 32/窄整型接入）
 };
 
 // 活跃区间（live interval）：虚拟寄存器从定义点到最后一次使用的范围
@@ -40,9 +38,9 @@ struct LiveInterval {
     int regId = -1;            // 虚拟寄存器编号
     int start = 0;             // 起始点（指令序数，函数级线性化）
     int end = 0;               // 结束点（最后一次使用，含）
-    std::string type;          // IR 类型（1159：窄位宽按架构支持面过滤用）
     bool isFloat = false;      // 是否浮点（当前不参与寄存器分配）
     bool is128 = false;        // 是否 i128/u128 双槽（当前不参与寄存器分配）
+    std::string type;          // 值类型（架构可分配面过滤用：1256 LinuxX64 窄/32 位）
 
     bool overlaps(const LiveInterval& other) const {
         return start <= other.end && other.start <= end;
@@ -68,9 +66,10 @@ public:
                                  const std::vector<std::string>& reservedRegs = {});
 
     // 主入口：对函数做寄存器分配，返回虚拟寄存器 -> 分配结果
-    //  - 对 64/32 位整型、窄整型与指针虚拟寄存器分配物理寄存器；i128/浮点/i1
-    //    保持栈槽映射（assignedReg 空）
-    RegAssignmentMap allocate(const ir::IRFunction& function);
+    //  - 仅对可分配类型分配物理寄存器；其余保持栈槽映射（assignedReg 空）
+    //  - maxRegId：调用方已知的函数最大虚拟寄存器ID（同后端 maxRegIdIn 口径）；
+    //    -1=内部实测（1256：免后端路径二次全函数扫描）
+    RegAssignmentMap allocate(const ir::IRFunction& function, int maxRegId = -1);
 
     // 活跃区间列表（allocate 后可用，测试/调试）
     const std::vector<LiveInterval>& intervals() const { return intervals_; }
@@ -79,8 +78,11 @@ public:
     const std::vector<std::string>& regs() const { return regs_; }
 
     // 静态：活跃区间计算（暴露供单测直接验证 def-use / 跨块活跃）
-    //  - 返回按 start 升序排序的活跃区间列表
+    //  - 返回按 start 升序排序的活跃区间列表（全可分配类型面）
     static std::vector<LiveInterval> computeLiveIntervals(const ir::IRFunction& function);
+    // 1256：按架构可分配面计算（allowNarrow=false 时活跃集只含 i64/u64/ptr）
+    static std::vector<LiveInterval> computeLiveIntervalsInternal(
+        const ir::IRFunction& function, bool allowNarrow, int maxRegId);
     // ---- computeLiveIntervals 流水线族子方法（190-a 函数级拆分·原 179 行函数）----
     // 族①：块序线性化——块序 -> (起始序数, 块内指令数)
     static std::vector<std::pair<int, int>> computeBlockRanges(const ir::IRFunction& function);
@@ -88,7 +90,8 @@ public:
     static void computeBlockDefUse(const ir::IRFunction& function,
                                    const std::vector<std::pair<int, int>>& blockRanges,
                                    std::vector<std::unordered_set<int>>& blockDef,
-                                   std::vector<std::unordered_set<int>>& blockUse);
+                                   std::vector<std::unordered_set<int>>& blockUse,
+                                   bool allowNarrow, int maxRegId);
     // 族③：跨块活跃传播（迭代数据流）——返回 in 集合
     static std::vector<std::unordered_set<int>> computeLivenessIn(
         const ir::IRFunction& function,
@@ -99,10 +102,12 @@ public:
         const ir::IRFunction& function,
         const std::vector<std::pair<int, int>>& blockRanges,
         const std::vector<std::unordered_set<int>>& in,
-        const std::vector<std::unordered_set<int>>& blockDef);
+        const std::vector<std::unordered_set<int>>& blockDef, bool allowNarrow,
+        int maxRegId);
 
     // 静态：判断 IR 类型是否可参与寄存器分配（i64/u64/ptr/i32/u32/i8/u8/i16/u16；
-    //   非浮点/非 i128/i1）
+    //   非浮点、非 i128、非 i1）。架构可分配面由 allocate() 按 TargetArch 过滤
+    //   （1256：LinuxX64 全接入；X64/Arm64 暂保持 i64/u64/ptr，待 1159 合入后统一）
     static bool isAllocableType(const std::string& type);
 
 private:

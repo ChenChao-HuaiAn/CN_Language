@@ -4,8 +4,9 @@
 //   2. 分配无冲突：同一物理寄存器不被两个活跃区间同时占用（重叠区间不同寄存器）
 //   3. 溢出正确：物理寄存器不足时溢出到栈槽（spillSlot >= 0）
 //   4. 被调用者保存寄存器：分配结果只使用被调用者保存寄存器（rbx/r12~r15 / x19~x28）
-//   5. kind型过滤：1159 起 i64/u64/ptr/i32/u32 与窄整型（i8/u8/i16/u16）在
-//      x64/arm64 两端均参与分配，浮点/i128/i1 保持栈槽
+//   5. kind型过滤：1256 起 i64/u64/ptr/i32/u32/窄整型（i8/u8/i16/u16）均为
+//      可分配类型；架构可分配面由 allocate() 过滤（LinuxX64 全接入，
+//      win-x64/arm64 暂保持 i64/u64/ptr，待 1159 合入后统一）；浮点/i128/i1 保持栈槽
 //   6. 保留寄存器：x64 隐藏返回指针场景保留 r12
 // 构造方式：直接手工构造 ir::IRFunction（不经过前端链路，聚焦分配器本身）
 // 注意：GCC 7 不支持中文标识符，测试名必须使用英文
@@ -458,7 +459,7 @@ TEST(RegAllocTest, Arm64RegSet) {
 // ---- 5. 类型过滤 ----
 
 TEST(RegAllocTest, AllocableTypeFilter) {
-    // i64/u64/ptr 可分配；i32/浮点/i128/i1 不可分配
+    // 1256：64/32/窄整型与指针均为可分配类型（架构面由 allocate() 过滤）
     EXPECT_TRUE(LinearScanAllocator::isAllocableType("i64"));
     EXPECT_TRUE(LinearScanAllocator::isAllocableType("u64"));
     EXPECT_TRUE(LinearScanAllocator::isAllocableType("ptr"));
@@ -475,10 +476,10 @@ TEST(RegAllocTest, AllocableTypeFilter) {
     EXPECT_FALSE(LinearScanAllocator::isAllocableType("i1"));
 }
 
-TEST(RegAllocTest, I32ParticipatesInAllocation) {
-    // 1159：i32 参与分配（不再保持栈槽）——x64/arm64 两架构均覆盖
+TEST(RegAllocTest, NarrowTypesStayStack) {
+    // win-x64 面：32/窄整型暂不分配（1159 合入前保持栈槽——架构门控）
     IRFunction func;
-    func.name = "i32 alloc";
+    func.name = "narrow";
     func.returnType = "i32";
     auto block = std::make_unique<IRBlock>();
     block->label = "块0";
@@ -494,22 +495,19 @@ TEST(RegAllocTest, I32ParticipatesInAllocation) {
     func.blocks.push_back(std::move(block));
     func.nextRegId = 1;
 
-    LinearScanAllocator x64Allocator(TargetArch::X64);
-    const RegAssignmentMap x64Map = x64Allocator.allocate(func);
-    auto it = x64Map.find(0);
-    ASSERT_NE(it, x64Map.end());
-    EXPECT_FALSE(it->second.assignedReg.empty()) << "i32 应参与 x64 寄存器分配";
-
-    LinearScanAllocator arm64Allocator(TargetArch::Arm64);
-    const RegAssignmentMap arm64Map = arm64Allocator.allocate(func);
-    auto ait = arm64Map.find(0);
-    ASSERT_NE(ait, arm64Map.end());
-    EXPECT_FALSE(ait->second.assignedReg.empty()) << "i32 应参与 arm64 寄存器分配";
+    LinearScanAllocator allocator(TargetArch::X64);
+    const RegAssignmentMap map = allocator.allocate(func);
+    // i32 寄存器不参与分配 -> 映射为空或 assignedReg 为空
+    auto it = map.find(0);
+    if (it != map.end()) {
+        EXPECT_TRUE(it->second.assignedReg.empty());
+        EXPECT_EQ(it->second.spillSlot, -1);
+    }
 }
 
-TEST(RegAllocTest, NarrowAllocationBothArch) {
-    // 1159 步3：窄整型 x64/arm64 两端均参与分配
-    const char* types[] = {"i8", "u8", "i16", "u16"};
+TEST(RegAllocTest, LinuxX64AllocatesNarrowTypes) {
+    // 1256：LinuxX64 面 32/窄整型全部参与分配（直写族已完备）
+    const char* types[] = {"i32", "u32", "i8", "u8", "i16", "u16"};
     for (const char* t : types) {
         IRFunction func;
         func.name = std::string("narrow ") + t;
@@ -528,19 +526,12 @@ TEST(RegAllocTest, NarrowAllocationBothArch) {
         func.blocks.push_back(std::move(block));
         func.nextRegId = 1;
 
-        LinearScanAllocator x64Allocator(TargetArch::X64);
-        const RegAssignmentMap x64Map = x64Allocator.allocate(func);
-        auto it = x64Map.find(0);
-        ASSERT_NE(it, x64Map.end()) << t;
+        LinearScanAllocator allocator(TargetArch::LinuxX64);
+        const RegAssignmentMap map = allocator.allocate(func);
+        auto it = map.find(0);
+        ASSERT_NE(it, map.end()) << t;
         EXPECT_FALSE(it->second.assignedReg.empty())
-            << t << " 应参与 x64 寄存器分配";
-
-        LinearScanAllocator arm64Allocator(TargetArch::Arm64);
-        const RegAssignmentMap arm64Map = arm64Allocator.allocate(func);
-        auto ait = arm64Map.find(0);
-        ASSERT_NE(ait, arm64Map.end()) << t;
-        EXPECT_FALSE(ait->second.assignedReg.empty())
-            << t << " 应参与 arm64 寄存器分配";
+            << t << " 应参与 LinuxX64 寄存器分配";
     }
 }
 

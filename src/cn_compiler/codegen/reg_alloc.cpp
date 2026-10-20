@@ -10,8 +10,7 @@
 //   2. 线性扫描：区间按 start 升序，活跃集合按 end 升序（小顶堆）；
 //      区间开始弹出已结束的活跃区间（end < 当前 start），空闲寄存器回收；
 //      分配最早空闲的物理寄存器；无空闲寄存器时溢出（spillSlot 递增）
-//   3. 分配类型集合（1159）：64/32 位整型、窄整型（8/16 位）与指针；i128/浮点/i1
-//      保持栈槽
+//   3. 保守策略：仅 i64/u64/ptr 且非浮点/非 i128 的虚拟寄存器参与分配
 //   4. 溢出策略：spillSlot 从 0 递增（语义：每个溢出值一个独立溢出槽，
 //      由 codegen 按需映射到栈偏移；不与其他栈槽区冲突）
 //   5. 英文API命名（GCC 7 不支持中文标识符），中文仅用于注释
@@ -30,29 +29,56 @@ namespace regalloc {
 
 namespace {
 
-// 窄整型（8/16 位）：1159 起参与分配（两端发射族窄源/截断直写已完备）
-bool isNarrowIntType(const std::string& type) {
-    return type == "i8" || type == "u8" || type == "i16" || type == "u16";
-}
-
-// IR 类型是否参与寄存器分配（1159：64/32 位整型、指针与窄整型；i1/浮点/i128 不参与）
+// IR 类型是否参与寄存器分配（1256：64/32 位整型、指针与窄整型；
+//   i1/浮点/i128 不参与）。架构可分配面见 archAllowsAllocType。
 bool isAllocableIntType(const std::string& type) {
     return type == "i64" || type == "u64" || type == "ptr" ||
-           type == "i32" || type == "u32" || isNarrowIntType(type);
+           type == "i32" || type == "u32" ||
+           type == "i8" || type == "u8" || type == "i16" || type == "u16";
 }
 
-// 指令使用到的寄存器ID集合（operands 中的虚拟寄存器）
-std::vector<int> usedRegIds(const ir::IRInstruction& inst) {
-    std::vector<int> ids;
-    for (const auto& op : inst.operands) {
-        if (op.id >= 0 && !op.isConstant) {
-            // 去重（同一寄存器多次使用只计一次）
-            if (std::find(ids.begin(), ids.end(), op.id) == ids.end()) {
-                ids.push_back(op.id);
+// 64 位整型/指针（所有架构的基础可分配面）
+bool isWideIntType(const std::string& type) {
+    return type == "i64" || type == "u64" || type == "ptr";
+}
+
+// 架构可分配类型面（1256）：LinuxX64 起 32/窄整型全部接入（本后端直写族本任务
+//   同步完备）；win-x64 / arm64 维持 i64/u64/ptr——其 32/窄直写面由 1159 单独
+//   落地，在 1159 合入前全局放开会让两端发射器产出宽度混配/错值产物。
+//   （1159 合入后本门控收敛为「全部架构」并删除——两分支同步点。）
+bool archAllowsAllocType(TargetArch arch, const std::string& type) {
+    if (isWideIntType(type)) return true;
+    return arch == TargetArch::LinuxX64;
+}
+
+// 活跃性参与面：活跃集只需含可分配寄存器（非可分配类型不参与传播——1256
+//   性能：v2 全树窄/32 位 id 数量使活跃集膨胀，过滤后编译期回到基线量级）。
+bool livenessAllowsType(const std::string& type, bool allowNarrow) {
+    return isWideIntType(type) || (allowNarrow && isAllocableIntType(type));
+}
+
+
+// 1256：函数内虚拟寄存器最大 ID（IRFunction.nextRegId 未经 IR 层维护，恒 0——
+//   边界过滤必须实测；与各后端 maxRegIdIn 同口径：结果+操作数+终止值）。
+int computeMaxRegId(const ir::IRFunction& function) {
+    int maxId = -1;
+    auto see = [&maxId](int id) { if (id > maxId) maxId = id; };
+    for (const auto& block : function.blocks) {
+        for (const auto& inst : block->instructions) {
+            see(inst.result.id);
+            for (const auto& op : inst.operands) {
+                if (!op.isConstant) see(op.id);
             }
         }
+        auto seeText = [&see](const std::string& s) {
+            if (s.size() > 2 && s.size() <= 16 && s[0] == '%' && s[1] == 'v') {
+                see(std::stoi(s.substr(2)));
+            }
+        };
+        seeText(block->termCondition);
+        seeText(block->termReturnValue);
     }
-    return ids;
+    return maxId;
 }
 
 // 终止指令使用的寄存器ID（条件跳转的条件寄存器/返回寄存器）
@@ -81,8 +107,8 @@ int instResultId(const ir::IRInstruction& inst) {
 
 } // namespace
 
-// 静态：判断 IR 类型是否可参与寄存器分配（i64/u64/ptr/i32/u32/i8/u8/i16/u16；
-//   非浮点/非 i128/i1）
+// 静态：判断 IR 类型是否可参与寄存器分配（1256：64/32 位整型、指针与窄整型；
+//   非浮点、非 i128、非 i1）。架构可分配面由 allocate() 过滤。
 bool LinearScanAllocator::isAllocableType(const std::string& type) {
     return isAllocableIntType(type);
 }
@@ -96,7 +122,7 @@ LinearScanAllocator::LinearScanAllocator(TargetArch arch,
     //        r12 由调用方在隐藏返回指针场景保留）
     //   arm64：x19~x28（x29 帧指针、x30 链接寄存器不在集合内）
     std::vector<std::string> base;
-    if (arch == TargetArch::X64) {
+    if (arch == TargetArch::X64 || arch == TargetArch::LinuxX64) {
         base = {"rbx", "r12", "r13", "r14", "r15"};
     } else {
         base = {"x19", "x20", "x21", "x22", "x23",
@@ -115,6 +141,14 @@ LinearScanAllocator::LinearScanAllocator(TargetArch arch,
 // 返回按 start 升序排序的活跃区间列表
 std::vector<LiveInterval> LinearScanAllocator::computeLiveIntervals(
     const ir::IRFunction& function) {
+    // 公共 API：全可分配类型面（单元测试/调试口径）
+    return computeLiveIntervalsInternal(function, true, computeMaxRegId(function));
+}
+
+// 1256：活跃性内部流水线（allowNarrow=架构是否支持 32/窄整型分配）。
+//   性能要点：活跃集只含可分配类型（v2 全树窄/32 位 id 膨胀 → 编译期回基线）。
+std::vector<LiveInterval> LinearScanAllocator::computeLiveIntervalsInternal(
+    const ir::IRFunction& function, bool allowNarrow, int maxRegId) {
     // 190-a：本函数 179 行按「四步流水线」提取为 4 个静态族子方法（纯搬运
     //   零行为变更——多重集核验先行于构建）。
     // ---- 第1步：函数级线性化指令序数 ----
@@ -122,11 +156,12 @@ std::vector<LiveInterval> LinearScanAllocator::computeLiveIntervals(
     // ---- 第2步：块级 def/use 集合（跨块活跃传播用） ----
     std::vector<std::unordered_set<int>> blockDef(function.blocks.size());
     std::vector<std::unordered_set<int>> blockUse(function.blocks.size());
-    computeBlockDefUse(function, blockRanges, blockDef, blockUse);
-    // ---- 第3步：跨块活跃传播（迭代数据流，in/out 集合） ----
+    computeBlockDefUse(function, blockRanges, blockDef, blockUse, allowNarrow, maxRegId);
+    // ---- 第3步：跨块活跃传播（迭代数据流，in 集合） ----
     const auto in = computeLivenessIn(function, blockDef, blockUse);
     // ---- 第4步：生成活跃区间（def/use 精确序数 + 跨块活跃扩展） ----
-    auto intervalMap = buildLiveIntervalMap(function, blockRanges, in, blockDef);
+    auto intervalMap = buildLiveIntervalMap(function, blockRanges, in, blockDef,
+                                            allowNarrow, maxRegId);
     // 结束点修正：仅 def 无 use 的寄存器 end < start 时，end = start（单点活跃）
     std::vector<LiveInterval> intervals;
     intervals.reserve(intervalMap.size());
@@ -169,10 +204,12 @@ void LinearScanAllocator::computeBlockDefUse(
     const ir::IRFunction& function,
     const std::vector<std::pair<int, int>>& blockRanges,
     std::vector<std::unordered_set<int>>& blockDef,
-    std::vector<std::unordered_set<int>>& blockUse) {
+    std::vector<std::unordered_set<int>>& blockUse, bool allowNarrow,
+    int maxRegId) {
     // ---- 第2步：块级 def/use 集合（跨块活跃传播用） ----
     // def[B]：块内定义的寄存器（结果）；use[B]：块内使用（操作数 + 终止）
     // 同时收集每块指令的 def/use（供区间 end 精确化）
+    const int maxId = maxRegId + 1;
     for (std::size_t b = 0; b < function.blocks.size(); ++b) {
         const auto& block = function.blocks[b];
         const int base = blockRanges[b].first;
@@ -180,12 +217,17 @@ void LinearScanAllocator::computeBlockDefUse(
             const auto& inst = block->instructions[i];
             const int point = base + static_cast<int>(i);
             const int rid = instResultId(inst);
-            if (rid >= 0) {
+            if (rid >= 0 && rid < maxId &&
+                livenessAllowsType(inst.result.type, allowNarrow)) {
                 blockDef[b].insert(rid);
                 (void)point;
             }
-            for (int uid : usedRegIds(inst)) {
-                blockUse[b].insert(uid);
+            // 操作数直插（set 天然去重；免 usedRegIds 临时向量）
+            for (const auto& op : inst.operands) {
+                if (op.id >= 0 && op.id < maxId && !op.isConstant &&
+                    livenessAllowsType(op.type, allowNarrow)) {
+                    blockUse[b].insert(op.id);
+                }
             }
         }
         // 终止指令的使用（条件/返回）
@@ -201,23 +243,24 @@ std::vector<std::unordered_set<int>> LinearScanAllocator::computeLivenessIn(
     const ir::IRFunction& function,
     const std::vector<std::unordered_set<int>>& blockDef,
     const std::vector<std::unordered_set<int>>& blockUse) {
-    // ---- 第3步：跨块活跃传播（迭代数据流，in/out 集合） ----
+    // ---- 第3步：跨块活跃传播（迭代数据流） ----
     // 块索引 -> label 映射（构造前驱/后继）
+    const std::size_t n = function.blocks.size();
     std::unordered_map<std::string, int> labelIndex;
-    for (std::size_t b = 0; b < function.blocks.size(); ++b) {
+    labelIndex.reserve(n * 2);
+    for (std::size_t b = 0; b < n; ++b) {
         labelIndex[function.blocks[b]->label] = static_cast<int>(b);
     }
-    std::vector<std::vector<int>> succ(function.blocks.size());
-    std::vector<std::vector<int>> pred(function.blocks.size());
-    for (std::size_t b = 0; b < function.blocks.size(); ++b) {
+    std::vector<std::vector<int>> succ(n);
+    std::vector<std::vector<int>> pred(n);
+    for (std::size_t b = 0; b < n; ++b) {
         const auto& block = function.blocks[b];
         if (!block->terminated) continue;
         auto addEdge = [&](const std::string& target) {
             auto it = labelIndex.find(target);
             if (it == labelIndex.end()) return;  // 目标块不存在（防御）
-            const int t = it->second;
-            succ[b].push_back(t);
-            pred[t].push_back(static_cast<int>(b));
+            succ[b].push_back(it->second);
+            pred[static_cast<std::size_t>(it->second)].push_back(static_cast<int>(b));
         };
         if (block->termKind == "跳转") {
             addEdge(block->termTarget);
@@ -227,35 +270,41 @@ std::vector<std::unordered_set<int>> LinearScanAllocator::computeLivenessIn(
         }
     }
 
-    // 迭代求解：in[B] = use[B] ∪ (out[B] - def[B])；out[B] = ∪ succ in[S]
-    // 315-a：后向数据流按**逆序**遍历（b 从尾块到入口）——链式 CFG 一轮收敛；
-    //   原正序对"活跃性向前面块回传"每轮只推进一块 = O(n) 轮迭代（深分支
-    //   千块级函数的立方耗时来源之一）。
-    const std::size_t n = function.blocks.size();
-    std::vector<std::unordered_set<int>> in(n), out(n);
-    bool changed = true;
-    while (changed) {
-        changed = false;
-        for (std::size_t bi = n; bi-- > 0;) {
-            const std::size_t b = bi;
-            // out[B] = ∪ succ in[S]
-            std::unordered_set<int> newOut;
-            for (int s : succ[b]) {
-                for (int r : in[static_cast<std::size_t>(s)]) {
-                    newOut.insert(r);
-                }
+    // 迭代求解：in[B] = use[B] ∪ (out[B] - def[B])；out[B] = ∪ succ in[S]。
+    // 1256 性能：①worklist（只有 in 变化的块才回推前驱——巨型 CFG 不做全表扫描）；
+    //   ②out 不跨轮保存（out 变化必伴随某 in 变化——只比较 in 即等价）；
+    //   ③每块复用 scratch 集合并保留容量（swap 保留旧容量），消除每轮构造/析构。
+    std::vector<std::unordered_set<int>> in(n);
+    std::vector<std::unordered_set<int>> scratch(n);
+    std::vector<char> queued(n, 1);
+    std::vector<int> worklist;
+    worklist.reserve(n);
+    for (std::size_t b = 0; b < n; ++b) worklist.push_back(static_cast<int>(b));
+    while (!worklist.empty()) {
+        const std::size_t b = static_cast<std::size_t>(worklist.back());
+        worklist.pop_back();
+        queued[b] = 0;
+        auto& newIn = scratch[b];
+        newIn.clear();
+        if (newIn.bucket_count() < blockUse[b].size()) {
+            newIn.reserve(blockUse[b].size() + 8);
+        }
+        // in[B] = use[B] ∪ (out[B] - def[B])；out[B] = ∪ succ in[S]
+        for (int s : succ[b]) {
+            for (int r : in[static_cast<std::size_t>(s)]) {
+                if (blockDef[b].count(r) == 0) newIn.insert(r);
             }
-            // in[B] = use[B] ∪ (out[B] - def[B])
-            std::unordered_set<int> newIn = blockUse[b];
-            for (int r : newOut) {
-                if (blockDef[b].count(r) == 0) {
-                    newIn.insert(r);
+        }
+        for (int r : blockUse[b]) {
+            newIn.insert(r);
+        }
+        if (newIn != in[b]) {
+            in[b].swap(newIn);
+            for (int p : pred[b]) {
+                if (!queued[static_cast<std::size_t>(p)]) {
+                    queued[static_cast<std::size_t>(p)] = 1;
+                    worklist.push_back(p);
                 }
-            }
-            if (newIn != in[b] || newOut != out[b]) {
-                in[b] = std::move(newIn);
-                out[b] = std::move(newOut);
-                changed = true;
             }
         }
     }
@@ -268,8 +317,10 @@ std::unordered_map<int, LiveInterval> LinearScanAllocator::buildLiveIntervalMap(
     const ir::IRFunction& function,
     const std::vector<std::pair<int, int>>& blockRanges,
     const std::vector<std::unordered_set<int>>& in,
-    const std::vector<std::unordered_set<int>>& blockDef) {
+    const std::vector<std::unordered_set<int>>& blockDef, bool allowNarrow,
+    int maxRegId) {
     const std::size_t n = function.blocks.size();
+    const int maxId = maxRegId + 1;
     // ---- 第4步：生成活跃区间（def/use 精确序数 + 跨块活跃扩展） ----
     // 寄存器 -> 区间（start=首次 def 或 use，end=最后一次 use；def 处 start）
     std::unordered_map<int, LiveInterval> intervalMap;
@@ -284,14 +335,15 @@ std::unordered_map<int, LiveInterval> LinearScanAllocator::buildLiveIntervalMap(
             // Alloca 结果排除：栈上分配无实际值，且结果寄存器活到函数尾
             //   会无意义占满物理寄存器（真实 IR 中 Alloca 结果被后续 Load 引用）
             if (inst.opcode == ir::Opcode::Alloca) continue;
-            if (inst.result.id >= 0 && isAllocableType(inst.result.type)) {
+            if (inst.result.id >= 0 && inst.result.id < maxId &&
+                livenessAllowsType(inst.result.type, allowNarrow)) {
                 auto it = intervalMap.find(inst.result.id);
                 if (it == intervalMap.end()) {
                     LiveInterval li;
                     li.regId = inst.result.id;
                     li.start = point;
                     li.end = point;
-                    li.type = inst.result.type;  // 1159：类型随区间（架构支持面过滤）
+                    li.type = inst.result.type;   // 1256：架构可分配面过滤用
                     intervalMap[inst.result.id] = li;
                 } else {
                     it->second.start = std::min(it->second.start, point);
@@ -299,18 +351,19 @@ std::unordered_map<int, LiveInterval> LinearScanAllocator::buildLiveIntervalMap(
             }
             // use（含 isConstant 检查：常量无寄存器）
             for (const auto& op : inst.operands) {
-                if (op.id >= 0 && !op.isConstant && isAllocableType(op.type)) {
+                if (op.id >= 0 && op.id < maxId && !op.isConstant &&
+                    livenessAllowsType(op.type, allowNarrow)) {
                     auto it = intervalMap.find(op.id);
                 if (it == intervalMap.end()) {
                     LiveInterval li;
                     li.regId = op.id;
                     li.start = point;
                     li.end = point;
-                    li.type = op.type;  // 1159：类型随区间（架构支持面过滤）
+                    li.type = op.type;            // 1256：架构可分配面过滤用
                     intervalMap[op.id] = li;
                 } else {
-                        it->second.end = std::max(it->second.end, point);
-                    }
+                    it->second.end = std::max(it->second.end, point);
+                }
                 }
             }
         }
@@ -416,8 +469,22 @@ void LinearScanAllocator::scan(const std::vector<LiveInterval>& intervals,
 }
 
 // 主入口：对函数做寄存器分配
-RegAssignmentMap LinearScanAllocator::allocate(const ir::IRFunction& function) {
-    intervals_ = computeLiveIntervals(function);
+RegAssignmentMap LinearScanAllocator::allocate(const ir::IRFunction& function,
+                                               int maxRegId) {
+    const int maxId = (maxRegId >= 0) ? maxRegId : computeMaxRegId(function);
+    intervals_ = computeLiveIntervalsInternal(function,
+                                              archAllowsAllocType(arch_, "i8"), maxId);
+    // 1256：按架构可分配面过滤区间（LinuxX64 窄/32 位全接入；X64/Arm64 仅宽型）。
+    //   被过滤的寄存器不参与 scan = 保持槽映射（发射器回退路径），与 1159 前
+    //   两端产物逐字节一致。
+    if (arch_ != TargetArch::LinuxX64) {
+        intervals_.erase(
+            std::remove_if(intervals_.begin(), intervals_.end(),
+                           [this](const LiveInterval& li) {
+                               return !archAllowsAllocType(arch_, li.type);
+                           }),
+            intervals_.end());
+    }
     RegAssignmentMap out;
     scan(intervals_, out);
     return out;
