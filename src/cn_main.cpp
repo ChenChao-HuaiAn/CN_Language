@@ -43,6 +43,8 @@
 //   由文件级 static 提为可链接（签名/语义零变化·声明住 cn_main_toolchain.hpp）。
 #include "cn_main_toolchain.hpp"
 
+#include <optional>
+
 // 打印版本信息
 void printVersion() {
     std::cout << "CN语言编译器 cn 0.1.0\n";
@@ -344,17 +346,18 @@ bool ensureDirExists(const std::string& dir) {
 #endif
 }
 
-// 提取文件所在目录（含末尾分隔符）；无目录返回空串
-static std::string pathDirPart(const std::string& path) {
+// 提取文件所在目录（含末尾分隔符）；无目录 → 无值（1240：空串哨兵改 optional）
+static std::optional<std::string> pathDirPart(const std::string& path) {
     size_t slash = path.find_last_of("/\\");
-    return (slash == std::string::npos) ? "" : path.substr(0, slash + 1);
+    if (slash == std::string::npos) return std::nullopt;
+    return path.substr(0, slash + 1);
 }
 
 // 探测编译器内置 stdlib 目录：
 //   1. --stdlib 显式指定 -> 使用该路径
 //   2. 默认：相对可执行文件所在目录的 stdlib/（编译器发行布局 target/stdlib 或 exe 同级）
-// 返回空串表示未探测到（依赖查找跳过内置 stdlib 兜底）
-static std::string detectStdlibDir(const CliOptions& options) {
+// 无值表示未探测到（1240：空串哨兵改 optional·依赖查找跳过内置 stdlib 兜底）
+static std::optional<std::string> detectStdlibDir(const CliOptions& options) {
     if (!options.stdlibDir.empty()) {
         return options.stdlibDir;
     }
@@ -363,16 +366,16 @@ static std::string detectStdlibDir(const CliOptions& options) {
 #ifdef _WIN32
     char buf[MAX_PATH] = {0};
     GetModuleFileNameA(nullptr, buf, MAX_PATH);
-    exeDir = pathDirPart(buf);
+    exeDir = pathDirPart(buf).value_or("");
 #else
     char buf[4096] = {0};
     const ssize_t n = readlink("/proc/self/exe", buf, sizeof(buf) - 1);
     if (n > 0) {
         buf[n] = '\0';
-        exeDir = pathDirPart(buf);
+        exeDir = pathDirPart(buf).value_or("");
     }
 #endif
-    if (exeDir.empty()) return "";
+    if (exeDir.empty()) return std::nullopt;
     // 从可执行文件目录逐级向上回溯（最多 3 层），找含 stdlib/ 子目录的目录：
     //   发行布局 target/Debug/cn.exe -> 项目根/stdlib（上溯 2 层）
     //   本地布局 target/cn.exe       -> 项目根/stdlib（上溯 1 层）
@@ -388,7 +391,7 @@ static std::string detectStdlibDir(const CliOptions& options) {
         if (sep == std::string::npos) break;
         dir = dir.substr(0, sep + 1);
     }
-    return "";
+    return std::nullopt;
 }
 
 // 加载 货舱.toml 配置到 driver 选项：
@@ -402,7 +405,7 @@ static bool applyCargoConfig(const CliOptions& options, const std::string& file,
     if (tomlPath.empty()) {
         // 入口目录已是 UTF-8（宽命令行取参通道）——直接拼接 UTF-8 文件名
         //   货舱.toml，得到纯 UTF-8 路径（readTomlFile 宽路径分支可打开）
-        tomlPath = pathDirPart(file) + "货舱.toml";
+        tomlPath = pathDirPart(file).value_or("") + "货舱.toml";
     }
     // 读取并解析
     cn_compiler::driver::CargoConfig config;
@@ -421,7 +424,7 @@ static bool applyCargoConfig(const CliOptions& options, const std::string& file,
     }
     dopts.hasCargoConfig = true;
     dopts.cargoConfig = config;
-    dopts.cargoDir = pathDirPart(tomlPath);
+    dopts.cargoDir = pathDirPart(tomlPath).value_or("");
     // 239-a（规格书 4.7 特性声明制）：货舱 [特性] 启用名单并入注入宏集合——
     //   每个启用特性即一个条件编译旗标（#如果定义(名) 命中），
     //   与命令行 -D 同通道；未启用特性不在集合（裁剪为假分支）。
@@ -454,7 +457,7 @@ bool toDriverOptions(const CliOptions& options, const std::string& file,
     // F2-35（556-a）：诊断 JSON 机器可读输出透传
     dopts.jsonDiagnostics = options.jsonDiagnostics;
     // 模块系统 v2.0 第 5 层：货舱.toml + stdlib 目录
-    dopts.stdlibDir = detectStdlibDir(options);
+    dopts.stdlibDir = detectStdlibDir(options).value_or("");
     if (!applyCargoConfig(options, file, dopts, error)) return false;
     return true;
 }

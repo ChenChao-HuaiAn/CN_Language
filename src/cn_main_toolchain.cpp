@@ -29,6 +29,8 @@
 #endif
 
 #include "cn_main_toolchain.hpp"
+
+#include <optional>
 #include "cn_compiler/driver/driver.hpp"
 
 // ==================== MSVC 工具链（build/run 命令共用） ====================
@@ -56,19 +58,20 @@ static std::string trim(const std::string& text) {
     return text.substr(begin, end - begin + 1);
 }
 
-// 读取环境变量（MSVC安全版封装：_dupenv_s），未设置返回空串
-static std::string getEnvVar(const std::string& name) {
+// 读取环境变量（MSVC安全版封装：_dupenv_s），未设置 → 无值（1240：空串哨兵改 optional——
+//   环境变量「值为空」与「未设置」原被空串合并，optional 显式区分）
+static std::optional<std::string> getEnvVar(const std::string& name) {
 #ifdef _WIN32
     char* value = nullptr;
     size_t len = 0;
-    if (_dupenv_s(&value, &len, name.c_str()) != 0 || value == nullptr) return "";
+    if (_dupenv_s(&value, &len, name.c_str()) != 0 || value == nullptr) return std::nullopt;
     std::string result(value);
     std::free(value);
     return result;
 #else
-    (void)name;  // Linux 分支：仅作 getenv 参数，防御性避免 -Wunused-parameter
     const char* v = std::getenv(name.c_str());
-    return v ? std::string(v) : "";
+    if (v == nullptr) return std::nullopt;
+    return std::string(v);
 #endif
 }
 
@@ -108,10 +111,10 @@ bool utf8ToAnsi(const std::string& utf8, std::string& ansi) {
 
 // 查找 vcvars64.bat 路径：优先检测是否已在VS开发者环境（PATH已含ml64/link/cl），
 // 否则用 vswhere 定位 Visual Studio 安装路径并拼接 vcvars64.bat
-// 返回空串表示已在开发者环境中；error 非空表示定位失败
-static std::string findVcvarsBat(std::string& error) {
+// 无值=已在开发者环境或定位失败（error 非空表示定位失败）；1240：空串哨兵改 optional
+static std::optional<std::string> findVcvarsBat(std::string& error) {
     // 已处于 VS 开发者命令提示符：VSCMD_ARG_TGT_ARCH 环境变量存在
-    if (!getEnvVar("VSCMD_ARG_TGT_ARCH").empty()) return "";
+    if (getEnvVar("VSCMD_ARG_TGT_ARCH").has_value()) return std::nullopt;
     // vswhere 探测安装路径（要求已安装VC工具集组件）
     const std::string vswhere =
         "C:\\Program Files (x86)\\Microsoft Visual Studio\\Installer\\vswhere.exe";
@@ -121,13 +124,13 @@ static std::string findVcvarsBat(std::string& error) {
         "-property installationPath"));
     if (installPath.empty()) {
         error = "未找到 Visual Studio 2022（vswhere 无输出），build 命令需要 MSVC 工具链";
-        return "";
+        return std::nullopt;
     }
     std::string vcvars = installPath + "\\VC\\Auxiliary\\Build\\vcvars64.bat";
     struct stat st;
     if (stat(vcvars.c_str(), &st) != 0) {
         error = "未找到 vcvars64.bat: " + vcvars;
-        return "";
+        return std::nullopt;
     }
     return vcvars;
 }
@@ -165,14 +168,14 @@ bool isGnuToolchain(const std::string& target) {
 // Linux 工具链探测：环境变量 CN_AS / CN_CXX 优先，其次便携工具链（~/gcc7），最后 PATH
 //   本机为无系统 g++ 的 ARM64 环境，便携工具链位于 /home/user/gcc7/usr/bin/g++
 static std::string linuxAsTool() {
-    const std::string env = getEnvVar("CN_AS");
+    const std::string env = getEnvVar("CN_AS").value_or("");
     if (!env.empty()) return env;
     struct stat st;
     if (stat("/home/user/gcc7/usr/bin/as", &st) == 0) return "/home/user/gcc7/usr/bin/as";
     return "as";
 }
 static std::string linuxCxxTool() {
-    const std::string env = getEnvVar("CN_CXX");
+    const std::string env = getEnvVar("CN_CXX").value_or("");
     if (!env.empty()) return env;
     struct stat st;
     if (stat("/home/user/gcc7/usr/bin/g++", &st) == 0) return "/home/user/gcc7/usr/bin/g++";
@@ -498,7 +501,7 @@ int buildExe(const CliOptions& options, const std::string& file,
     // 5. 定位 MSVC 工具链（仅 win-x64；linux-arm64 用系统 as/g++，无需 vcvars）
     std::string vcvarsBat;
     if (isWinX64(options.target)) {
-        vcvarsBat = findVcvarsBat(error);
+        vcvarsBat = findVcvarsBat(error).value_or("");
         if (!error.empty()) return 1;
     }
 
