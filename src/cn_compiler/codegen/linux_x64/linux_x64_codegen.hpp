@@ -2,9 +2,10 @@
 // 设计要点：
 //   1. 目标平台 linux-x86_64，汇编格式 GNU as（GAS）.intel_syntax noprefix，
 //      ABI System V AMD64（SVG ABI 1.0）
-//   2. 与 X64/ARM64 相同的寄存器策略：所有虚拟寄存器（%vN）映射到栈槽
-//      [rbp-8N-8]（与 ARM64 的 [x29,#-8N-8] 完全对应），无需寄存器分配器；
-//      x86_64 栈槽寻址 disp32 全范围一条指令，无 ARM64 的 255/4095 立即数限制
+//   2. 寄存器策略（1256 起分双路径）：默认/低优化档所有虚拟寄存器（%vN）映射到
+//      栈槽 [rbp-8N-8]；-O2 起消费线性扫描分配结果（rbx/r12~r15 被调用者保存），
+//      已分配值直写物理寄存器、未分配值仍走栈槽（458 红线：-O0/-O1/
+//      --no-regalloc 产物逐字节不变）。x86_64 栈槽寻址 disp32 全范围一条指令
 //   3. 段声明：.text（代码）/ .data（可写数据）/ .section .rodata（只读常量），
 //      文件头 .intel_syntax noprefix，文件尾 .section .note.GNU-stack（防可执行栈告警）
 //   4. System V AMD64 调用约定（与 Win x64 的关键差异，见 plans/016 第二节）：

@@ -9,7 +9,8 @@
 
 namespace cn_compiler {
 
-// 生成函数 prologue（push rbp / mov rbp,rsp / [push rbx+mov rbx,rdi] / sub rsp,alloc）
+// 生成函数 prologue（push rbp / mov rbp,rsp / [push rbx+mov rbx,rdi] / sub rsp,alloc
+//   / 1256：push 被调用者保存寄存器（rbx/r12~r15 中实际分配的））
 // SysV 对齐纪律：入口 rsp≡8；push rbp 后 ≡0；再 push rbx 后 ≡8——
 // needHiddenRet 时分配量 frameSize+8 补齐偶数个 8 字节，保证 call 前 rsp≡0
 void LinuxX64CodeGenerator::emitPrologue(LinuxX64AsmWriter& writer,
