@@ -24,7 +24,8 @@ public:
     // 可选：命令行注入宏集合（-D 宏名，条件编译 #如果定义 判定用；Task 6.6）
     Lexer(const std::string& source, std::string fileName, Diagnostics& diagnostics,
           const std::unordered_set<std::string>& macros = {})
-        : source_(source), fileName_(std::move(fileName)), diagnostics_(diagnostics),
+        : source_(source), fileName_(std::move(fileName)),
+          internedFileName_(&intern::internRef(fileName_)), diagnostics_(diagnostics),
           macros_(macros) {}
 
     // 主入口：分析源码返回Token流（末尾含文件结束Token）
@@ -61,6 +62,8 @@ private:
 
     std::string source_;       // 源码全文（预处理裁剪后）
     std::string fileName_;     // 源文件名
+    // #1154：文件名驻留一次（逐 Token 的 SourceLocation 只拷指针，免逐次加锁/哈希）
+    const std::string* internedFileName_ = nullptr;
     std::size_t pos_ = 0;      // 当前字节偏移
     int line_ = 1;             // 当前行号（从1开始）
     int column_ = 1;           // 当前列号（从1开始，按字符计数）

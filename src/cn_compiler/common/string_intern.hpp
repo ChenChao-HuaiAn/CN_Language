@@ -34,6 +34,10 @@ constexpr InternId kInvalidId = 0xFFFFFFFFu;
 // 驻留文本并返回稳定 ID：同内容恒同 ID（空串恒 kEmptyId）
 InternId intern(std::string_view text);
 
+// 驻留并直接返回稳定文本引用（一次加锁；语义 = text(intern(text))，供
+//   「只要文本、不要 ID」的热点构造点用——如 SourceLocation 文件名）
+const std::string& internRef(std::string_view text);
+
 // 仅查询不插入：命中返回 ID；未驻留（含空串以外的未登记文本）返回 kInvalidId
 InternId find(std::string_view text);
 

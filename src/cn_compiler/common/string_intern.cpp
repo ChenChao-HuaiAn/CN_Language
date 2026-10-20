@@ -54,6 +54,21 @@ InternId intern(std::string_view text) {
     return id;
 }
 
+const std::string& internRef(std::string_view text) {
+    InternTable& t = table();
+    std::lock_guard<std::mutex> lock(t.mutex);
+    if (!text.empty()) {
+        const auto it = t.index.find(text);
+        if (it != t.index.end()) return t.texts[it->second];
+    }
+    // 空串恒命中 ID 0；非空新内容追加（deque 尾部插入，既有引用稳定）
+    if (text.empty()) return t.texts[kEmptyId];
+    const InternId id = static_cast<InternId>(t.texts.size());
+    t.texts.emplace_back(text);
+    t.index.emplace(std::string_view(t.texts.back()), id);
+    return t.texts.back();
+}
+
 InternId find(std::string_view text) {
     if (text.empty()) return kEmptyId;  // 空串恒命中固定 ID
     InternTable& t = table();

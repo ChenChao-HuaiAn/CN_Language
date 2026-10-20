@@ -179,7 +179,8 @@ std::string Lexer::currentUtf8() const {
 
 // 当前位置（文件名/行/列）
 SourceLocation Lexer::currentLocation() const {
-    return SourceLocation(fileName_, line_, column_);
+    // #1154：文件名已在 Lexer 构造时驻留一次——逐 Token 只拷指针，免重复驻留
+    return SourceLocation::fromInternedFileName(*internedFileName_, line_, column_);
 }
 
 // 跳过空白与注释：//单行注释、/* */块注释（支持嵌套），循环直到无空白/注释

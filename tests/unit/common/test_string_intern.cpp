@@ -9,6 +9,7 @@
 
 using cn_compiler::intern::find;
 using cn_compiler::intern::intern;
+using cn_compiler::intern::internRef;
 using cn_compiler::intern::InternId;
 using cn_compiler::intern::kEmptyId;
 using cn_compiler::intern::kInvalidId;
@@ -82,6 +83,16 @@ TEST(StringInternTest, TextReferenceStableAfterGrowth) {
     }
     EXPECT_EQ(ref, "稳定性锚点_1154");
     EXPECT_EQ(&ref, &text(id));  // 同一存储地址（未被搬移）
+}
+
+// internRef：一次加锁直接取稳定文本引用（与 text(intern()) 同一存储）
+TEST(StringInternTest, InternRefMatchesTextStorage) {
+    const std::string content = "引用形态锚点_1154";
+    const std::string& ref = internRef(content);
+    EXPECT_EQ(ref, content);
+    EXPECT_EQ(&ref, &text(intern(content)));
+    EXPECT_EQ(&internRef(content), &ref);
+    EXPECT_EQ(&internRef(""), &text(intern("")));
 }
 
 // 驻留条目数随新内容单调增长（重复驻留不增长）
