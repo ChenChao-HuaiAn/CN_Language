@@ -448,11 +448,17 @@ void SemanticAnalyzer::resolveClass(ClassDecl* node) {
         if (interfaces_.find(node->baseName) != interfaces_.end()) {
             // 冒号后是接口名：作为接口实现
             info.interfaces.push_back(node->baseName);
-        } else if (findClass(node->baseName) != nullptr) {
-            info.baseName = node->baseName;
+        } else if (const ClassInfo* parent = findClass(node->baseName)) {
+            // 1210（#1155 勘察·miss 静默默认根治）：父类 hasVtable 直接取自
+            //   findClass 命中的真实类条目。原实现改读 classes_[node->baseName]：
+            //   多模块下类键=模块::父类（classKey），裸名查不中且 operator[]
+            //   静默插入空 ClassInfo（miss 取默认 false + 类表污染——后续裸名
+            //   查找可能命中空条目，实测派生构造/基类指针转换/继承方法全部失败）。
+            //   baseName 记真实父类符号名（跨模块同名冲突时=模块::类），使后续
+            //   布局/虚表/构造析构链沿链查找走同一已解析身份，不再受裸名歧义影响。
+            info.baseName = parent->name;
             // 继承标记：从父类继承虚表（子类覆写时覆盖槽位）
-            const ClassInfo& parent = classes_[node->baseName];
-            info.hasVtable = parent.hasVtable;
+            info.hasVtable = parent->hasVtable;
         } else {
             diagnostics_.report(DiagnosticLevel::Error, node->location,
                                 "类 '" + node->name + "' 的父类/接口 '" + node->baseName +
