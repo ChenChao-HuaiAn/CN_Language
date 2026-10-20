@@ -729,8 +729,8 @@ def verify(cn_exe=None, 仅失败=False):
         with io.open(src, "w", encoding="utf-8", newline="\n") as f:
             f.write(程序)
         r = subprocess.run([cn, "build", src, "--output", exe, "--target", 平台],
-                           capture_output=True, text=True,
-                           cwd=REPO, errors="replace")
+                           capture_output=True, text=True, encoding="utf-8",
+                           cwd=REPO, errors="replace")  # 显式 UTF-8：win 管道默认 GBK 解码=中文诊断/输出乱码假红
         if 条.get("预期失败"):
             # 负例块：必须编译失败（且诊断含 预期诊断 关键词——给了才比对）
             if r.returncode == 0:
@@ -745,7 +745,7 @@ def verify(cn_exe=None, 仅失败=False):
                              (r.stdout + r.stderr)[-400:]))
         if 条.get("编译足矣"):
             return "通过"
-        run = subprocess.run([exe], capture_output=True, text=True,
+        run = subprocess.run([exe], capture_output=True, text=True, encoding="utf-8",
                              errors="replace", timeout=30, stdin=subprocess.DEVNULL,
                              cwd=工作目录)  # 992：示例程序的相对路径落临时目录（文件 I/O
                                             # 示例曾把 笔记.txt/日志.txt 写进仓库根）；
