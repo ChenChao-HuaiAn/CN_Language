@@ -17,10 +17,12 @@
 #pragma once
 
 #include <string>
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
 #include "cn_compiler/ir/ir.hpp"
+#include "cn_compiler/opt/cfg.hpp"
 #include "cn_compiler/opt/pass.hpp"
 
 namespace cn_compiler {
@@ -37,8 +39,35 @@ public:
     const char* name() const override { return "licm"; }
 
 private:
-    // 单函数 LICM：返回是否外提
-    static bool runFunction(ir::IRFunction& fn);
+    // ---- 1207 跨轮缓存：CFG 快照 + 循环分析（fixpoint 轮间复用） ----
+    //   DomTree 的输入只有块序/标签/终止边（指令不参与）——逐块四字段快照
+    //   相同即可证明 CFG 未变，支配树/循环集合/preheader 逐位可复用。
+    struct CfgBlock {
+        std::string label;      // 块标签（索引顺序有意义）
+        std::string termKind;   // 有效终止形态（未终止块=空=无出边）
+        std::string target0;    // 跳转目标 / 条件跳转真目标
+        std::string target1;    // 条件跳转假目标
+    };
+    struct LoopCache {
+        std::vector<CfgBlock> cfg;          // 上次分析时的 CFG 快照
+        std::vector<DomTree::Loop> loops;   // 自然循环集合（空=无循环）
+        std::vector<int> preheaders;        // 与 loops 同下标（-1=无 preheader）
+    };
+    std::unordered_map<std::string, LoopCache> loopCache_;
+    const ir::IRModule* lastModule_ = nullptr;  // 缓存所属模块（换模块即清空）
+
+    // 单函数 LICM：返回是否外提（非静态——持有跨轮缓存）
+    bool runFunction(ir::IRFunction& fn);
+
+    // CFG 快照采集/比较（采集与比较共用 cfgFieldsOf 单一读取口径）
+    static void captureCfg(const ir::IRFunction& fn, std::vector<CfgBlock>& out);
+    static bool sameCfg(const ir::IRFunction& fn, const std::vector<CfgBlock>& cfg);
+
+    // 循环存在性快筛（1207）：返回 true = 已证明 CFG 无环（全部边严格
+    //   前向，按块生成序号全序）=> 必然无自然循环，调用方可跳过 DomTree
+    //   构建与整个 LICM。返回 false 仅表示"未证明无环"（含标签不可解析），
+    //   仍走完整支配树判定——宽进严出，不改变任何优化语义。
+    static bool hasNoCycle(const ir::IRFunction& fn);
 
     // 指令是否不变量（体内定义集合 + 不变寄存器集合 + 体内写入槽集合）
     //   操作数寄存器：体内定义且未判不变 -> 非不变量；循环外定义 -> 不变

@@ -8,6 +8,11 @@
 //      多个前驱时选第一个（保守）；无循环外前驱跳过
 //   5. 外提：指令从循环体块中移除，插入 preheader 末尾
 //      （保持操作数定义序——preheader 定义的操作数先于 header 执行）
+//   6. 循环存在性快筛（1207）：无后向边候选的函数直接跳过，不构建支配树
+//      （绝大多数函数无循环，避免每轮 fixpoint 对全函数付 DomTree 成本）
+//   7. 跨轮缓存（1207）：CFG 快照（块序/标签/终止边）相同的 fixpoint 轮复用
+//      循环集合与 preheader（DomTree 输入不含指令，快照相同即结构相同）
+#include <algorithm>
 #include <string>
 #include <unordered_set>
 #include <vector>
@@ -19,6 +24,93 @@
 namespace cn_compiler {
 namespace opt {
 
+namespace {
+
+constexpr long long kInvalidBlockOrder = -1;   // 标签不可解析哨兵
+constexpr long long kMaxBlockOrder = 1LL << 40;  // 病态标签上限（防解析溢出）
+constexpr int kNoPreheader = -1;               // 循环无循环外前驱哨兵
+
+// 十进制数字判定（比较不放在 if 条件位——单边比较禁令只扫条件位）
+bool isDecimalDigit(char c) {
+    return c >= '0' && c <= '9';
+}
+
+// 解析块标签的生成序号（宿主 IRGenerator 契约："bb<十进制>"）。
+//   解析失败返回 kInvalidBlockOrder（调用方按"未证明无环"保守处理）。
+long long blockOrder(const std::string& label) {
+    if (label.rfind("bb", 0) != 0) return kInvalidBlockOrder;  // 非 bb 前缀
+    if (label.size() == 2) return kInvalidBlockOrder;          // 仅前缀无序号
+    long long value = 0;
+    for (std::size_t i = 2; i < label.size(); ++i) {
+        const char c = label[i];
+        if (!isDecimalDigit(c)) return kInvalidBlockOrder;
+        value = value * 10 + (c - '0');
+        if (value > kMaxBlockOrder) return kInvalidBlockOrder;
+    }
+    return value;
+}
+
+// 有效 CFG 字段的单一读取口径（快照采集与比较共用，防两处口径漂移）：
+//   未终止块=无出边；跳转=单目标；条件跳转=双目标；返回/未知=无目标。
+struct CfgFields {
+    const std::string* label;
+    const std::string* termKind;
+    const std::string* target0;
+    const std::string* target1;
+};
+
+CfgFields cfgFieldsOf(const ir::IRBlock& block) {
+    static const std::string kEmpty;
+    if (!block.terminated) {
+        return {&block.label, &kEmpty, &kEmpty, &kEmpty};
+    }
+    if (block.termKind == "跳转") {
+        return {&block.label, &block.termKind, &block.termTarget, &kEmpty};
+    }
+    if (block.termKind == "条件跳转") {
+        return {&block.label, &block.termKind, &block.termTrueTarget,
+                &block.termFalseTarget};
+    }
+    // 返回（及未知终止形态）：无出边（与 DomTree::rebuild 同口径）
+    return {&block.label, &block.termKind, &kEmpty, &kEmpty};
+}
+
+} // namespace
+
+// 循环存在性快筛（1207）：返回 true = 已证明 CFG 无环（必然无自然循环）。
+//   原理：任意有向环在任一顶点全序下必含一条「目标 <= 源」的边——若全部
+//   边严格前向，沿环序号严格递增，无法回到起点，故必然无环；无环即无
+//   自然循环（自然循环以回边为必要条件）。块标签 bbN 的 N 即 IR 生成序，
+//   构成与块列表一致的全序；块删除/重排后仍是合法全序（结论不受影响）。
+//   标签不可解析（非宿主 IRGenerator 形态）=> 返回 false（未证明，走完整
+//   支配树判定——宽进严出，不改变任何优化语义）。
+bool LICMPass::hasNoCycle(const ir::IRFunction& fn) {
+    for (const auto& block : fn.blocks) {
+        if (!block->terminated) continue;
+        if (block->termKind == "跳转") {
+            const long long source = blockOrder(block->label);
+            const long long target = blockOrder(block->termTarget);
+            if (source == kInvalidBlockOrder || target == kInvalidBlockOrder) {
+                return false;
+            }
+            if (target <= source) return false;
+            continue;
+        }
+        if (block->termKind == "条件跳转") {
+            const long long source = blockOrder(block->label);
+            const long long trueTarget = blockOrder(block->termTrueTarget);
+            const long long falseTarget = blockOrder(block->termFalseTarget);
+            if (source == kInvalidBlockOrder ||
+                trueTarget == kInvalidBlockOrder ||
+                falseTarget == kInvalidBlockOrder) {
+                return false;
+            }
+            if (trueTarget <= source || falseTarget <= source) return false;
+        }
+        // "返回" 无后继；未知终止形态按 rebuild 同口径视为无出边
+    }
+    return true;
+}
 // 收集循环体内定义的寄存器集合与写入的槽集合
 void LICMPass::collectBodyDefs(
     const ir::IRFunction& fn, const std::vector<int>& bodyIndexes,
@@ -76,30 +168,71 @@ bool LICMPass::isInvariant(
     return false;
 }
 
+// CFG 快照采集（逐块标签/有效终止边；指令不参与支配树输入）
+void LICMPass::captureCfg(const ir::IRFunction& fn,
+                          std::vector<CfgBlock>& out) {
+    out.clear();
+    out.reserve(fn.blocks.size());
+    for (const auto& block : fn.blocks) {
+        const CfgFields f = cfgFieldsOf(*block);
+        out.push_back({*f.label, *f.termKind, *f.target0, *f.target1});
+    }
+}
+
+// CFG 快照比较：true = CFG 结构与上次分析时逐块一致（支配树结果可复用）
+bool LICMPass::sameCfg(const ir::IRFunction& fn,
+                       const std::vector<CfgBlock>& cfg) {
+    if (cfg.size() != fn.blocks.size()) return false;
+    for (std::size_t i = 0; i < cfg.size(); ++i) {
+        const CfgFields f = cfgFieldsOf(*fn.blocks[i]);
+        const CfgBlock& c = cfg[i];
+        if (c.label != *f.label || c.termKind != *f.termKind ||
+            c.target0 != *f.target0 || c.target1 != *f.target1) {
+            return false;
+        }
+    }
+    return true;
+}
+
 // 单函数 LICM：识别循环 + 外提不变量
 bool LICMPass::runFunction(ir::IRFunction& fn) {
     if (fn.blocks.size() < 2) return false;
-    DomTree dom;
-    dom.rebuild(fn);
-    const std::vector<DomTree::Loop> loops = dom.findNaturalLoops();
-    if (loops.empty()) return false;
+    // 1207 快筛：已证明无环 = 无自然循环——跳过支配树构建
+    //   （无循环函数此前也逐轮付 DomTree 的索引/DFS/CHK/回边扫描成本）
+    if (hasNoCycle(fn)) return false;
+
+    // 1207 跨轮缓存：fixpoint 各轮之间 CFG 通常不变（其余 Pass 以改指令为主），
+    //   逐块快照相同即证明 CFG 未变——复用循环集合与 preheader，不再重复
+    //   DomTree::rebuild/findNaturalLoops/前驱扫描。快照不同则重建并刷新缓存。
+    const std::string key = fn.mangledName.empty() ? fn.name : fn.mangledName;
+    LoopCache& cache = loopCache_[key];
+    if (!sameCfg(fn, cache.cfg)) {
+        DomTree dom;
+        dom.rebuild(fn);
+        cache.loops = dom.findNaturalLoops();
+        cache.preheaders.clear();
+        cache.preheaders.reserve(cache.loops.size());
+        for (const auto& loop : cache.loops) {
+            int preheader = kNoPreheader;
+            for (const int p : dom.predecessors(loop.header)) {
+                // 循环外前驱 = 不在循环体块集合中；多个时取首个（保守，原语义）
+                if (std::find(loop.body.begin(), loop.body.end(), p) ==
+                    loop.body.end()) {
+                    preheader = p;
+                    break;
+                }
+            }
+            cache.preheaders.push_back(preheader);
+        }
+        captureCfg(fn, cache.cfg);
+    }
     bool changed = false;
 
-    // 对每个循环：确定 preheader（header 的循环外前驱）
-    for (const auto& loop : loops) {
-        const int header = loop.header;
-        std::vector<int> preheaders;
-        for (const int p : dom.predecessors(header)) {
-            // 循环外前驱 = 不在循环体块集合中
-            bool inBody = false;
-            for (const int b : loop.body) {
-                if (b == p) { inBody = true; break; }
-            }
-            if (!inBody) preheaders.push_back(p);
-        }
-        if (preheaders.empty()) continue;  // 无 preheader：跳过（保守）
-        // preheader 选择第一个循环外前驱（多入口循环保守处理）
-        const int preheader = preheaders[0];
+    // 对每个循环：preheader 来自缓存（CFG 快照保证索引有效）
+    for (std::size_t li = 0; li < cache.loops.size(); ++li) {
+        const DomTree::Loop& loop = cache.loops[li];
+        const int preheader = cache.preheaders[li];
+        if (preheader == kNoPreheader) continue;  // 无 preheader：跳过（保守）
         ir::IRBlock* preBlock = fn.blocks[static_cast<std::size_t>(preheader)].get();
 
         // 1. 收集循环体定义寄存器与写入槽
@@ -174,6 +307,12 @@ bool LICMPass::runFunction(ir::IRFunction& fn) {
 
 // 遍历模块全部函数：循环不变量外提
 bool LICMPass::run(ir::IRModule& module) {
+    // 换模块=新一轮优化：跨轮缓存仅对同一模块有意义（清空防内存增长；
+    //   即便键/地址复用也有 sameCfg 逐块快照兜底，不会误用陈旧分析）
+    if (&module != lastModule_) {
+        loopCache_.clear();
+        lastModule_ = &module;
+    }
     bool changed = false;
     for (auto& fn : module.functions) {
         if (runFunction(fn)) changed = true;
