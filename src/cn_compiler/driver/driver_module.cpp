@@ -8,6 +8,7 @@
 // 单文件 <=1000 行、单函数 <=100 行约束。
 #include "cn_compiler/driver/driver.hpp"
 
+#include <cstdio>
 #include <iostream>
 #include <memory>
 #include <string>
@@ -17,6 +18,8 @@
 #include "cn_compiler/codegen/backend_factory.hpp"
 #include "cn_compiler/common/diagnostics.hpp"
 #include "cn_compiler/driver/driver_ast_cache.hpp"  // 1142：模块级 AST 缓存
+#include "cn_compiler/driver/driver_cache_util.hpp" // 1156：缓存键原语（源摘要）
+#include "cn_compiler/driver/driver_program_cache.hpp"  // 1156：程序级产物缓存
 #include "cn_compiler/ir/ir.hpp"
 #include "cn_compiler/module/module.hpp"
 #include "cn_compiler/opt/pass_manager.hpp"
@@ -180,6 +183,8 @@ bool loadModuleTree(const std::string& filePath, const std::string& dir,
     // 模块目录前缀（相对入口；网络/传输控制.cn -> 网络/），子模块从该目录加载。
     // 外部模块（stdlib/依赖目录）moduleDir 为空——子模块从文件所在目录加载。
     unit->moduleDir = externalModule ? "" : pathDir(relPart);
+    // 1156：程序级缓存键输入——源内容摘要（与 AST 缓存命中与否无关，源文本恒可得）
+    unit->sourceDigest = cacheKeyHex(cacheHash128(source));
     // 阶段7 修复：模块实际目录 dir 已含 relDir（包目录加载链：包.cn 子模块
     //   经包目录 dir 加载，relPart 相对 entryDir 仍带包前缀）——置空防重复拼接
     //   （<入口>/CN语言编译器//CN语言编译器/词法分析.cn 实测）。
@@ -508,11 +513,63 @@ int runModulePipeline(const std::string& entryFile, const DriverOptions& options
         return 1;
     }
 
-    // 2. 拓扑排序（被依赖者在前，入口最后；循环依赖报错）
+    // 2 拓扑排序（被依赖者在前，入口最后；循环依赖报错）
     std::vector<module::ModuleUnit*> ordered;
     if (!graph.topoSort(ordered, error)) {
         std::cerr << "错误: " << error << "\n";
         return 1;
+    }
+
+    // 2.5（1156）程序级预编译缓存（汇编产物级·方案 A）：完整输入哈希命中即复用
+    //   产物，跳过 语义/IR/优化/代码生成（加载段仍经 1142 AST 缓存）。
+    //   键=编译器自身哈希（源码/构建变化必失效）+ 拓扑序全模块源摘要与形态
+    //   + 编译选项 + 排序宏集合 + 货舱 [依赖] 名；任何输入变化=未命中重编译。
+    std::string programCacheDir;
+    CacheKey128 programKey;
+    ProgramCacheEntry cachedProgram;
+    bool programCacheOn = programCacheActive(options);
+    bool programCacheHit = false;
+    if (programCacheOn) {
+        std::vector<ProgramUnitKey> units;
+        units.reserve(ordered.size());
+        for (module::ModuleUnit* u : ordered) {
+            ProgramUnitKey item;
+            item.moduleName = u->moduleName;
+            item.filePath = u->filePath;
+            item.sourceDigest = u->sourceDigest;
+            item.moduleDir = u->moduleDir;
+            item.pkgRoot = u->pkgRoot;
+            item.isEntryUnit = u->isEntryUnit;
+            item.cargoPkgRoot = u->cargoPkgRoot;
+            units.push_back(std::move(item));
+        }
+        std::vector<std::string> cargoDepNames;
+        cargoDepNames.reserve(options.cargoConfig.deps.size());
+        for (const auto& dep : options.cargoConfig.deps) cargoDepNames.push_back(dep.name);
+        // 键构造失败（编译器自身身份不可得）=缓存显式禁用（不再写入）
+        programCacheOn = computeProgramCacheKey(units, options, cargoDepNames, programKey);
+        if (programCacheOn) {
+            programCacheDir = cacheLeafDir(options, "program", "CN_PROGRAM_CACHE_DIR");
+            programCacheHit = loadProgramCache(programCacheDir, entryFile, options,
+                                               programKey, cachedProgram);
+        }
+    }
+    // 验证通道（CN_PROGRAM_CACHE_VERIFY=1）：命中后仍完整重编译，末尾逐字节比对
+    if (programCacheHit && !programCacheVerifyEnabled()) {
+        output.asmText = cachedProgram.asmText;
+        // 命中重放该次编译的诊断警告（human/JSON 双通道按当前选项；空串零输出）
+        if (options.jsonDiagnostics) {
+            std::cout << cachedProgram.warningsJson;
+        } else {
+            std::cerr << cachedProgram.warningsHuman;
+        }
+        if (options.verbose) {
+            std::cerr << "提示: [程序缓存] 命中，复用汇编产物"
+                         "（跳过语义/IR/优化/代码生成）\n";
+        }
+        reportAstCacheStats(options.verbose);
+        reportProgramCacheStats(options.verbose);
+        return 0;
     }
 
     // 3. 合并 AST 为单一 Program（被导入模块仅公开声明；入口模块全部声明）
@@ -621,6 +678,9 @@ int runModulePipeline(const std::string& entryFile, const DriverOptions& options
     }
 
     // 4. 语义分析（符号表/类型检查/类解析/错误码传播）
+    //    1156：成功编译的诊断警告文本随产物入缓存（命中重放，stderr/stdout 行为一致）
+    std::string warnHuman;
+    std::string warnJson;
     SemanticAnalyzer semantic(diagnostics);
     // 239-a：内建编译期常量 调试模式 取值（--发布=假）
     semantic.setBuiltinReleaseMode(options.releaseMode);
@@ -632,6 +692,8 @@ int runModulePipeline(const std::string& entryFile, const DriverOptions& options
     //   输出（安全区边界警告原被 hasErrors 短路吞掉；模块主管线=check/build
     //   实际路径）
     if (!diagnostics.hasErrors() && diagnostics.getWarningCount() > 0) {
+        warnHuman = diagnostics.format();
+        warnJson = diagnostics.formatJson();
         emitDiagnostics(diagnostics, options);
     }
 
@@ -706,7 +768,36 @@ int runModulePipeline(const std::string& entryFile, const DriverOptions& options
         emitDiagnostics(diagnostics, options);
         return 1;
     }
+    // 6.5（1156）程序级缓存写入/验证：
+    //   ①验证通道命中：与本次完整重编译产物逐字节比较（不符=显形+以重编译为准覆盖）；
+    //   ②成功产物 + 本次诊断警告文本入缓存（下次同输入命中直接复用）。
+    if (programCacheOn) {
+        bool needStore = true;
+        if (programCacheHit) {
+            const bool matched = (cachedProgram.asmText == output.asmText);
+            noteProgramCacheVerifyResult(matched);
+            if (!matched) {
+                std::fprintf(stderr,
+                             "错误: [程序缓存验证] 命中产物与重编译产物不一致"
+                             "（以重编译产物为准并覆盖缓存）\n");
+            }
+            if (matched) {
+                // 验证通过：缓存条目与重编译产物一致，无需重写（省一次大产物落盘）
+                needStore = false;
+                std::fprintf(stderr, "[程序缓存验证] 通过：命中产物与重编译产物逐字节一致\n");
+            }
+        }
+        if (needStore) {
+            ProgramCacheEntry fresh;
+            fresh.asmText = output.asmText;
+            fresh.warningsHuman = warnHuman;
+            fresh.warningsJson = warnJson;
+            storeProgramCache(programCacheDir, entryFile, options, programKey, fresh,
+                              options.verbose);
+        }
+    }
     reportAstCacheStats(options.verbose);  // 1142：缓存统计（CN_AST_CACHE_STATS=1 或 verbose）
+    reportProgramCacheStats(options.verbose);  // 1156：程序缓存统计
     return 0;
 }
 

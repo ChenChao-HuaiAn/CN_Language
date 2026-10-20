@@ -386,6 +386,7 @@ add_library(cn_compiler_driver STATIC
     src/cn_compiler/driver/cargo_parser.cpp
     src/cn_compiler/driver/driver_ast_cache.cpp   # 1142：模块级 AST 预编译缓存
     src/cn_compiler/driver/driver_cache_util.cpp  # 1156：缓存公共原语（哈希/目录/原子写）
+    src/cn_compiler/driver/driver_program_cache.cpp  # 1156：程序级产物缓存
 )
 target_include_directories(cn_compiler_driver PUBLIC ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(cn_compiler_driver PUBLIC cn_compiler_lexer cn_compiler_parser cn_compiler_semantic cn_compiler_ir cn_compiler_codegen cn_compiler_model cn_compiler_opt cn_compiler_module)

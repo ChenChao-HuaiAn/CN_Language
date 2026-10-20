@@ -434,6 +434,9 @@ int buildExe(const CliOptions& options, const std::string& file,
     cn_compiler::driver::PipelineOutput output;
     // 242-a（D13）：build 强制入口 主 函数（编译期诊断）
     dopts.requireEntryMain = true;
+    // 1156：build 只消费汇编产物 → 启用程序级预编译缓存（命中跳过语义/IR/优化/
+    //   代码生成；CN_NO_PROGRAM_CACHE=1 逃生门）
+    dopts.useProgramCache = true;
     // 入口文件已 UTF-8（宽命令行通道）直传 driver（依赖查找/模块名判定统一
     //   UTF-8；工具链路径由 fileAnsi/outputAnsi 的 ANSI 视图承载）
     if (cn_compiler::driver::runModulePipeline(file, dopts, output) != 0) {

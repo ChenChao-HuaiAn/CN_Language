@@ -8357,6 +8357,90 @@
    "登记人": "AI（1156 程序级预编译缓存轮·逐条读过代码）",
    "登记日": "2026-10-20",
    "批准": "已批"
+  },
+  {
+   "文件": "src/cn_compiler/driver/driver_program_cache.cpp",
+   "函数": "probeCompilerIdentity",
+   "锚文本": "if (!lengthOk) return id;",
+   "来源": "1156",
+   "类别": "运行时API",
+   "静默风险": "低",
+   "原因": "readlink 失败/截断=系统调用契约（身份不可得→缓存显式禁用并告警）",
+   "登记人": "AI（1156 程序级预编译缓存轮·逐条读过代码）",
+   "登记日": "2026-10-20",
+   "批准": "已批"
+  },
+  {
+   "文件": "src/cn_compiler/driver/driver_program_cache.cpp",
+   "函数": "programCacheActive",
+   "锚文本": "if (!options.useProgramCache) return false;",
+   "来源": "1156",
+   "类别": "业务值",
+   "静默风险": "低",
+   "原因": "功能开关不启用（调用方按命令语义显式声明·非查表默认值）",
+   "登记人": "AI（1156 程序级预编译缓存轮·逐条读过代码）",
+   "登记日": "2026-10-20",
+   "批准": "已批"
+  },
+  {
+   "文件": "src/cn_compiler/driver/driver_program_cache.cpp",
+   "函数": "programCacheActive",
+   "锚文本": "if (cacheLeafDir(options, \"program\", \"CN_PROGRAM_CACHE_DIR\").empty()) return false;",
+   "来源": "1156",
+   "类别": "闭集穷举",
+   "静默风险": "低",
+   "原因": "项目根不可推导=缓存目录为空（缓存禁用·直连编译）",
+   "登记人": "AI（1156 程序级预编译缓存轮·逐条读过代码）",
+   "登记日": "2026-10-20",
+   "批准": "已批"
+  },
+  {
+   "文件": "src/cn_compiler/driver/driver_program_cache.cpp",
+   "函数": "programCacheActive",
+   "锚文本": "if (!compilerIdentity().valid) {",
+   "来源": "1156",
+   "类别": "上游已诊断",
+   "静默风险": "低",
+   "原因": "身份不可得已 warnIdentityUnavailableOnce 显形（缓存禁用）",
+   "登记人": "AI（1156 程序级预编译缓存轮·逐条读过代码）",
+   "登记日": "2026-10-20",
+   "批准": "已批"
+  },
+  {
+   "文件": "src/cn_compiler/driver/driver_program_cache.cpp",
+   "函数": "computeProgramCacheKey",
+   "锚文本": "if (!identity.valid) return false;",
+   "来源": "1156",
+   "类别": "上游已诊断",
+   "静默风险": "低",
+   "原因": "身份不可得已由 programCacheActive 显形告警（缓存禁用）",
+   "登记人": "AI（1156 程序级预编译缓存轮·逐条读过代码）",
+   "登记日": "2026-10-20",
+   "批准": "已批"
+  },
+  {
+   "文件": "src/cn_compiler/driver/driver_program_cache.cpp",
+   "函数": "loadProgramCache",
+   "锚文本": "if (!parsePayload(payload, payloadLen, entry, why)) {",
+   "来源": "1156",
+   "类别": "上游已诊断",
+   "静默风险": "低",
+   "原因": "载荷结构不符已 warnCorrupt 显形（stderr）+回退重编译",
+   "登记人": "AI（1156 程序级预编译缓存轮·逐条读过代码）",
+   "登记日": "2026-10-20",
+   "批准": "已批"
+  },
+  {
+   "文件": "src/cn_compiler/driver/driver_program_cache.cpp",
+   "函数": "loadProgramCache",
+   "锚文本": "if (!cacheReadWholeFile(cacheFile, buf, kMaxFileBytes)) {",
+   "来源": "1156",
+   "类别": "业务值",
+   "静默风险": "低",
+   "原因": "读缓存失败=未命中信号（missNew 计数·回退完整编译=唯一正确路径）",
+   "登记人": "AI（1156 程序级预编译缓存轮·逐条读过代码）",
+   "登记日": "2026-10-20",
+   "批准": "已批"
   }
  ]
 }

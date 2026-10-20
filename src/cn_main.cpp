@@ -497,6 +497,8 @@ static int runCompile(const CliOptions& options, const std::string& file) {
     //   入口文件=UTF-8（宽命令行通道·依赖查找/模块名判定统一 UTF-8）
     // 242-a（D13）：compile 同 build 强制入口 主 函数
     dopts.requireEntryMain = true;
+    // 1156：compile 只消费汇编产物 → 启用程序级预编译缓存
+    dopts.useProgramCache = true;
     if (cn_compiler::driver::runModulePipeline(file, dopts, output) != 0) {
         return 1;
     }

@@ -54,6 +54,10 @@ struct DriverOptions {
     // 编译器内置 stdlib 目录（相对可执行文件的 stdlib/ 或显式 --stdlib 覆盖）：
     //   依赖版本 = "内置" 时在此查找（如 核心.cn）；空 = 未探测到（跳过内置查找）。
     std::string stdlibDir;
+    // 1156：程序级预编译缓存（汇编产物级）——仅 build/compile/run 等「消费 asmText」
+    //   的命令置 true；check/ir 需要语义/IR 阶段副作用，不得启用（命中会跳过这些阶段）。
+    //   命中时 PipelineOutput 仅填充 asmText（program/module/tokens 为空，调用方勿消费）。
+    bool useProgramCache = false;
 };
 
 // 流水线产物：保存各阶段中间结果，按命令需要消费
