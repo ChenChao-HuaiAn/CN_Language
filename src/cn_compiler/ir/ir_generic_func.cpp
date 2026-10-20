@@ -144,7 +144,13 @@ void IRGenerator::emitGenericFuncInstance(const GenericFuncInstance& gfi) {
     // 修复（2026-08）：结果/可选 返回同样走隐藏返回指针协议（与 ir_decl/ir_oop
     //   一致）——调用方 emitCall 按被调 structReturn 标志传返回缓冲
     //   087b 捎带（泛型实例面·ir_decl 087 sret isArray 同构）：数组返回同通道
-    if (semantic_ != nullptr && !retSrc.empty() &&
+    // 1260（1020 采样轮·同族预防·引用返回 sret 副本）：引用返回实例豁免
+    //   structReturn（canonical 剥 & 后 isStructType 曾命中）——与 ir_decl
+    //   普通函数 !isRefReturnFn / ir_oop 方法 !mi.isRefReturn（118/929）同规：
+    //   引用返回签名即 ABI，8B 被引用左值地址直传 rax（泛型自由函数
+    //   T& 返回面如 mapType/返回语句未全链适配则语义层另有缺口，此处只保证
+    //   不再误置 sret 值拷贝协议）。
+    if (semantic_ != nullptr && !retSrc.empty() && !types::isReference(retSrc) &&
         semantic_->isStructType(types::canonical(retSrc))) {
         func.structReturn = true;
         func.structReturnSize = semantic_->typeSizeOf(retSrc).value_or(8);

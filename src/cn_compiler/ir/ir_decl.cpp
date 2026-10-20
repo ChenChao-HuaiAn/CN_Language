@@ -554,7 +554,15 @@ void IRGenerator::visitFunctionDecl(FunctionDecl* node) {
     func.isUnsafe = node->isUnsafe;
     // Task 完善A：结构体返回值标记（返回类型为自定义结构体时走隐藏返回指针）
     // 修复（2026-08 自举检查发现）：结果/可选 返回同样走隐藏返回指针协议
-    if (semantic_ != nullptr && !node->returnType.empty() &&
+    // 1260（1020 采样轮·P0·引用返回 sret 副本根治·被调方）：引用返回豁免
+    //   structReturn——canonical 剥 & 后 isStructType 曾命中（点& → 点），
+    //   被调方被误置 sret 协议（epilogue 把返回地址指向的数据按
+    //   structReturnSize 值拷贝进隐藏缓冲）→ 调用方拿到的 rax=副本缓冲，
+    //   `点& pr = 取点引用(p); pr.x = 40;` 写副本丢写（p.x 不变·pr.x 读副本
+    //   自洽假绿 40）。与 ir_oop.cpp 方法定义侧 !mi.isRefReturn 豁免（118/929）
+    //   同规：引用返回签名即 ABI——8B 被引用左值地址直传 rax（上方
+    //   isRefReturnFn 分支已置 returnType=ptr），epilogue 走默认整型路径。
+    if (semantic_ != nullptr && !node->returnType.empty() && !isRefReturnFn &&
         (semantic_->isStructType(types::canonical(node->returnType)) ||
          types::isArray(node->returnType))) {
         // 结果/可选 返回同样走隐藏返回指针协议（Win x64 ABI）——IR 层对结构体

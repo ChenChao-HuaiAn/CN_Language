@@ -208,6 +208,16 @@ bool IRGenerator::emitAggStructReturnCall(CallExpr* node,
                                           const std::string& calleeName,
                                           const std::vector<ir::IRValue>& args,
                                           std::string& resultType) {
+    // 1260（1020 采样轮·P0·引用返回 sret 副本根治·调用方）：引用返回直调豁免
+    //   sret——funcReturnsRef 命中=被调方按 rax 返回被引用左值地址（与 ir_decl
+    //   被调方 !isRefReturnFn 豁免同轮配套）。canonical 剥 & 后 isStructType 曾
+    //   命中（点& → 点）→ 预插 retbuf 隐藏指针、调用按值收副本：引用绑定
+    //   `点& pr = 取点引用(p);` 的槽存副本缓冲地址，成员写/复合写/自增全写丢
+    //   （打印(p.x)=4 假绿 pr.x=40 自洽）。与 ir_oop_call 三方法路径
+    //   （静态/虚/非虚·118/929）!isRefReturn 豁免同构。
+    if (semantic_ != nullptr && semantic_->funcReturnsRef(calleeName)) {
+        return false;
+    }
     // 结构体返回值函数（Task 完善A）：调用方分配返回缓冲区（结构体临时变量），
     //   以隐藏指针（rcx，Win x64 ABI）传给被调方；被调方写入缓冲区。
     //   结果 = 缓冲区地址（ptr），供调用方 CopyStruct 到目标。
@@ -302,6 +312,21 @@ void IRGenerator::emitRefReturnDeref(CallExpr* node, const std::string& calleeNa
         semantic_->funcReturnTypeOf(calleeName).value_or(std::string());
     if (!baseRet.empty() && baseRet.back() == '&') {
         baseRet.pop_back();
+    }
+    // 1260（1020 采样轮·P0 同轮配套）：结构体/数组引用返回的右值消费**不做
+    //   LoadPtr**——产物恒为被引用左值地址，值语义（拷贝）由下游结构体接收
+    //   通道（声明位 tryGenStructPtrInit/tryGenArrayRetbufInit·赋值位·实参
+    //   按值展开）按地址消费。判据与 emitAggStructReturnCall 旧 sret 判定同
+    //   集（isStructType(canonical)∪isArray）——该集形态在调用方 sret 豁免
+    //   前产物=retbuf 地址（下游本就按地址拷贝），豁免后=被引用原体地址，
+    //   下游通道同构零漂移；LoadPtr 只读 8 字节会把结构体首字段拼合值当地址
+    //   （1012 位⑤ `点 甲 = 取点(源)` 回归 C0000005 fault=x|y 实锤）。标量=
+    //   读值、字符串/类=读句柄，维持 LoadPtr（118/929/986 既有绿面不动）。
+    if (semantic_ != nullptr &&
+        (semantic_->isStructType(types::canonical(baseRet)) ||
+         types::isArray(baseRet))) {
+        lastExpr_ = callResult;
+        return;
     }
     lastExpr_ = emitResult(ir::Opcode::LoadPtr, {callResult},
                            mapType(baseRet), "", node->location);
