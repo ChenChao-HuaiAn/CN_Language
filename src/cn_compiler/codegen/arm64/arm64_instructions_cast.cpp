@@ -180,7 +180,19 @@ void Arm64CodeGenerator::emitCast(Arm64AsmWriter& writer,
         const std::string resX = resultTargetReg(inst.result.id, "x9");
         const std::string resW = (resX == "x9") ? std::string("w9")
                                                 : "w" + resX.substr(1);
-        if (signedSrc) {
+        // 1159：源已分配 -> 按源窄宽在寄存器内扩展（sxtb/sxth/uxtb/uxth 直接读
+        //   低 8/16 位，避免 [x29] 弃用槽误读——regSlotOffset 已分配=0）
+        const std::string srcPhys = allocRegOf(inst.operands[0].id);
+        if (!srcPhys.empty()) {
+            const std::string srcW = "w" + srcPhys.substr(1);
+            if (signedSrc) {
+                writer.line(std::string(from == "i8" ? "sxtb " : "sxth ") +
+                            resX + ", " + srcW);
+            } else if (!signedSrc) {
+                writer.line(std::string(from == "u8" ? "uxtb " : "uxth ") +
+                            resX + ", " + srcW);
+            }
+        } else if (signedSrc) {
             const std::string ins = (from == "i8") ? "ldrsb" : "ldrsh";
             if (inst.operands[0].id >= 0) {
                 const std::string mem = stackMemText(regSlotOffset(inst.operands[0].id), writer);
@@ -189,7 +201,7 @@ void Arm64CodeGenerator::emitCast(Arm64AsmWriter& writer,
                 const std::string mem = stackMemText(varSlotOf(inst.operands[0].extra), writer);
                 writer.line(ins + " " + resX + ", " + mem);
             }
-        } else {
+        } else if (!signedSrc) {
             const std::string ins = (from == "u8") ? "ldrb" : "ldrh";
             if (inst.operands[0].id >= 0) {
                 const std::string mem = stackMemText(regSlotOffset(inst.operands[0].id), writer);
@@ -200,6 +212,9 @@ void Arm64CodeGenerator::emitCast(Arm64AsmWriter& writer,
             }
         }
         storeVirtualResult(writer, inst.result.id, resX, "i64");
+        // 1159：声明类型规范化（窄→窄按目标符号性，如 i8 -112 -> u8 = 144；
+        //   窄→32/64 亦收口为声明宽度的 64 位形态·与槽路径消费侧窄读语义一致）
+        canonicalizeNarrowResultOf(writer, inst.result.id, to);
         return;
     }
     // 大 -> 小（截断）：strb/strh/str wN（写低字节/低32位）
@@ -215,14 +230,16 @@ void Arm64CodeGenerator::emitCast(Arm64AsmWriter& writer,
     case judgement::CastKind::TruncateTo8: {
         // D8（525-a）：源直读写槽（strb w 形态由 emitStackStore 转换·免
         //   「mov x9, x20」中转）；未分配 -> 装载 x9 原路径逐字节不变
+        // 1159：传声明的目标类型（i8/u8）——已分配结果按目标符号性规范化
+        //   （strb 两型同指令=未分配产物逐字节不变）
         const std::string src = operandSourceReg(writer, inst.operands[0], "x9");
-        storeVirtualResult(writer, inst.result.id, src, "i8");
+        storeVirtualResult(writer, inst.result.id, src, to);
         return;
     }
     case judgement::CastKind::TruncateTo16: {
-        // D8（525-a）：同上（strh w 形态）
+        // D8（525-a）：同上（strh w 形态）；1159 传 to（i16/u16）
         const std::string src = operandSourceReg(writer, inst.operands[0], "x9");
-        storeVirtualResult(writer, inst.result.id, src, "i16");
+        storeVirtualResult(writer, inst.result.id, src, to);
         return;
     }
     // i1 -> i64/u64（零扩展）

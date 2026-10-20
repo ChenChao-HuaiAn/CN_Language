@@ -68,8 +68,8 @@ public:
                                  const std::vector<std::string>& reservedRegs = {});
 
     // 主入口：对函数做寄存器分配，返回虚拟寄存器 -> 分配结果
-    //  - 对 64/32 位整型与指针虚拟寄存器分配物理寄存器；i128/浮点/i1 保持栈槽映射
-    //    （assignedReg 空）；窄位宽按架构支持面分阶段接入（1159）
+    //  - 对 64/32 位整型、窄整型与指针虚拟寄存器分配物理寄存器；i128/浮点/i1
+    //    保持栈槽映射（assignedReg 空）
     RegAssignmentMap allocate(const ir::IRFunction& function);
 
     // 活跃区间列表（allocate 后可用，测试/调试）
@@ -102,7 +102,7 @@ public:
         const std::vector<std::unordered_set<int>>& blockDef);
 
     // 静态：判断 IR 类型是否可参与寄存器分配（i64/u64/ptr/i32/u32/i8/u8/i16/u16；
-    //   非浮点/非 i128/i1）。架构侧支持面由 allocate() 内 allowNarrow_ 收口。
+    //   非浮点/非 i128/i1）
     static bool isAllocableType(const std::string& type);
 
 private:
@@ -112,7 +112,6 @@ private:
     TargetArch arch_;                     // 目标架构
     std::vector<std::string> regs_;       // 可用物理寄存器（被调用者保存，去保留）
     std::vector<LiveInterval> intervals_; // 活跃区间（排序后）
-    bool allowNarrow_ = false;            // 窄整型是否参与（1159：按后端支持面分步）
 };
 
 } // namespace regalloc

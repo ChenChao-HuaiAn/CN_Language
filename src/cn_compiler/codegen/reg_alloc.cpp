@@ -10,8 +10,8 @@
 //   2. 线性扫描：区间按 start 升序，活跃集合按 end 升序（小顶堆）；
 //      区间开始弹出已结束的活跃区间（end < 当前 start），空闲寄存器回收；
 //      分配最早空闲的物理寄存器；无空闲寄存器时溢出（spillSlot 递增）
-//   3. 分配类型集合（1159）：64/32 位整型与指针；i128/浮点/i1 保持栈槽（窄整型
-//      按后端宽度直写完备度分阶段扩展，见 isAllocableType 注释）
+//   3. 分配类型集合（1159）：64/32 位整型、窄整型（8/16 位）与指针；i128/浮点/i1
+//      保持栈槽
 //   4. 溢出策略：spillSlot 从 0 递增（语义：每个溢出值一个独立溢出槽，
 //      由 codegen 按需映射到栈偏移；不与其他栈槽区冲突）
 //   5. 英文API命名（GCC 7 不支持中文标识符），中文仅用于注释
@@ -30,16 +30,15 @@ namespace regalloc {
 
 namespace {
 
+// 窄整型（8/16 位）：1159 起参与分配（两端发射族窄源/截断直写已完备）
+bool isNarrowIntType(const std::string& type) {
+    return type == "i8" || type == "u8" || type == "i16" || type == "u16";
+}
+
 // IR 类型是否参与寄存器分配（1159：64/32 位整型、指针与窄整型；i1/浮点/i128 不参与）
 bool isAllocableIntType(const std::string& type) {
     return type == "i64" || type == "u64" || type == "ptr" ||
-           type == "i32" || type == "u32" ||
-           type == "i8" || type == "u8" || type == "i16" || type == "u16";
-}
-
-// 窄整型（8/16 位）：按架构直写完备度分步接入（1159 步2 x64 / 步3 arm64）
-bool isNarrowIntType(const std::string& type) {
-    return type == "i8" || type == "u8" || type == "i16" || type == "u16";
+           type == "i32" || type == "u32" || isNarrowIntType(type);
 }
 
 // 指令使用到的寄存器ID集合（operands 中的虚拟寄存器）
@@ -110,9 +109,6 @@ LinearScanAllocator::LinearScanAllocator(TargetArch arch,
             regs_.push_back(reg);
         }
     }
-    // 1159 步2：窄整型先接 x64（该后端发射族窄源/截断直写已完备）；arm64 在
-    //   步3 接通前保持栈槽映射（共享分配器按架构收口，防中间态产物错值）。
-    allowNarrow_ = (arch == TargetArch::X64);
 }
 
 // 静态：活跃区间计算（def-use 链 + 跨块活跃传播）
@@ -389,8 +385,6 @@ void LinearScanAllocator::scan(const std::vector<LiveInterval>& intervals,
     };
 
     for (const auto& li : intervals) {
-        // 1159：架构支持面外的窄整型保持栈槽映射（不产出分配结果=assignedReg 空）
-        if (!allowNarrow_ && isNarrowIntType(li.type)) continue;
         const int point = li.start;
         expire(point);
         // 已分配？跳过（理论上线性扫描每个寄存器一次）

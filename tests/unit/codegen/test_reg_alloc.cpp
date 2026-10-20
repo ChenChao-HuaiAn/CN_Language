@@ -4,8 +4,8 @@
 //   2. 分配无冲突：同一物理寄存器不被两个活跃区间同时占用（重叠区间不同寄存器）
 //   3. 溢出正确：物理寄存器不足时溢出到栈槽（spillSlot >= 0）
 //   4. 被调用者保存寄存器：分配结果只使用被调用者保存寄存器（rbx/r12~r15 / x19~x28）
-//   5. kind型过滤：1159 起 i64/u64/ptr/i32/u32 与窄整型（i8/u8/i16/u16）参与
-//      分配（窄整型按后端支持面分步：x64 先接通），浮点/i128/i1 保持栈槽
+//   5. kind型过滤：1159 起 i64/u64/ptr/i32/u32 与窄整型（i8/u8/i16/u16）在
+//      x64/arm64 两端均参与分配，浮点/i128/i1 保持栈槽
 //   6. 保留寄存器：x64 隐藏返回指针场景保留 r12
 // 构造方式：直接手工构造 ir::IRFunction（不经过前端链路，聚焦分配器本身）
 // 注意：GCC 7 不支持中文标识符，测试名必须使用英文
@@ -507,8 +507,8 @@ TEST(RegAllocTest, I32ParticipatesInAllocation) {
     EXPECT_FALSE(ait->second.assignedReg.empty()) << "i32 应参与 arm64 寄存器分配";
 }
 
-TEST(RegAllocTest, NarrowAllocationPerArch) {
-    // 1159 步2：窄整型先接 x64；arm64 在步3 前保持栈槽映射（assignedReg 空）
+TEST(RegAllocTest, NarrowAllocationBothArch) {
+    // 1159 步3：窄整型 x64/arm64 两端均参与分配
     const char* types[] = {"i8", "u8", "i16", "u16"};
     for (const char* t : types) {
         IRFunction func;
@@ -538,9 +538,9 @@ TEST(RegAllocTest, NarrowAllocationPerArch) {
         LinearScanAllocator arm64Allocator(TargetArch::Arm64);
         const RegAssignmentMap arm64Map = arm64Allocator.allocate(func);
         auto ait = arm64Map.find(0);
-        EXPECT_TRUE(ait == arm64Map.end() ||
-                    ait->second.assignedReg.empty())
-            << t << " 在 arm64 步3 前应保持栈槽映射";
+        ASSERT_NE(ait, arm64Map.end()) << t;
+        EXPECT_FALSE(ait->second.assignedReg.empty())
+            << t << " 应参与 arm64 寄存器分配";
     }
 }
 
