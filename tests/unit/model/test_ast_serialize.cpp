@@ -2,6 +2,7 @@
 // 覆盖：序列化往返（打印文本逐字节等价 + 再序列化字节等价——抓漏字段/漂移）、
 //       导入依赖重建等价（collectImportDeps 与解析路径共用）、真实源码文件往返、
 //       损坏/截断/版本篡改显式失败（禁默认值继续）。
+#include <filesystem>
 #include <gtest/gtest.h>
 
 #include <fstream>
@@ -64,7 +65,14 @@ void expectRoundTrip(const std::string& source, const char* what) {
 
 // 读取真实源码文件（仓库根运行；缺失即失败提示）
 bool readRepoFile(const std::string& rel, std::string& out) {
+    // win 窄字符 API=ANSI(GBK)：仓库文件名是 UTF-8 中文（如 stdlib/核心.cn），
+    // 窄路径不可寻 → RealStdlibFilesRoundTrip 在 win 恒红「读取失败」（1142
+    // 存量红·编译器无关改动即触发显形）。UTF-8 宽路径 ifstream（C++17）。
+#ifdef _WIN32
+    std::ifstream in(std::filesystem::u8path(rel), std::ios::binary);
+#else
     std::ifstream in(rel, std::ios::binary);
+#endif
     if (!in) return false;
     std::ostringstream buf;
     buf << in.rdbuf();
