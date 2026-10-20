@@ -9,8 +9,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <string>
-#include <unordered_map>
-#include <unordered_set>
+#include <string_view>
 
 #include "cn_compiler/model/type_system.hpp"
 
@@ -19,16 +18,110 @@ namespace types {
 
 namespace {
 
-// 整型位宽秩表（整8/正8=1 ... 整128/正128=5）
-const std::unordered_map<std::string, int>& intRankTable() {
-    static const std::unordered_map<std::string, int> kTable = {
-        {"正8", 1}, {"整8", 1},
-        {"正16", 2}, {"整16", 2},
-        {"正32", 3}, {"整32", 3},
-        {"正64", 4}, {"整64", 4},
-        {"正128", 5}, {"整128", 5},
-    };
-    return kTable;
+// ==================== 类型名快速分类（#1154·免 canonical 拷贝） ====================
+// 背景：isInteger/isFloat/intRank/isUnsigned/isStaticScalarInitType/isInt128Type
+//   原先统一经 canonical(type) 构造临时 std::string（每次都拷贝，长类型名还会
+//   堆分配）再查哈希表。标量类型名的 canonical 改写只有两种：别名
+//   （整数→整32 / 小数→浮64 / 指针→空类型*）与递归剥除引用后缀 '&'——因此
+//   「剥 & + 定长字节判定」与 canonical 后查表逐值等价（'*' / '[N]' 后缀只会
+//   追加后缀，不可能得到标量名，按非标量处理与原实现一致）。
+//   IR 类型名（i8..u64/i1）不经 canonical 改写，按原样比对。
+
+// 递归剥除引用后缀（等价 canonical 的 '&' 递归剥除：整32&& -> 整32）
+std::string_view stripRefSuffix(std::string_view t) {
+    while (!t.empty() && t.back() == '&') t.remove_suffix(1);
+    return t;
+}
+
+// 整型名秩（整8/正8=1 ... 整128/正128=5；整数别名=整32→3）；非整型名=0
+int intRankOfName(std::string_view t) {
+    const std::size_t n = t.size();
+    if (n == 4) {  // 整8 / 正8
+        if (t[3] != '8') return 0;
+        return (t.compare(0, 3, "整") == 0 || t.compare(0, 3, "正") == 0) ? 1 : 0;
+    }
+    if (n == 5) {  // 整16 / 整32 / 整64 / 正16 / 正32 / 正64
+        if (t.compare(0, 3, "整") != 0 && t.compare(0, 3, "正") != 0) return 0;
+        const char d1 = t[3];
+        const char d2 = t[4];
+        if (d1 == '1' && d2 == '6') return 2;
+        if (d1 == '3' && d2 == '2') return 3;
+        if (d1 == '6' && d2 == '4') return 4;
+        return 0;
+    }
+    if (n == 6) {  // 整128 / 正128 / 整数（别名→整32）
+        if (t == "整数") return 3;
+        if (t.compare(0, 3, "整") != 0 && t.compare(0, 3, "正") != 0) return 0;
+        return t.compare(3, 3, "128") == 0 ? 5 : 0;
+    }
+    return 0;
+}
+
+// 浮点名判定（浮32/浮64/小数别名→浮64）
+bool isFloatName(std::string_view t) {
+    return t == "浮32" || t == "浮64" || t == "小数";
+}
+
+// 标量类型分类（canConvert 快速路径用；Other=非标量/复合类型，落字符串路径）
+enum class ScalarKind : std::uint8_t {
+    Other = 0,
+    Int8, Int16, Int32, Int64, Int128,
+    UInt8, UInt16, UInt32, UInt64, UInt128,
+    Float32, Float64,
+    Char, Bool,
+};
+
+ScalarKind scalarKindOf(std::string_view t) {
+    if (t == "字符") return ScalarKind::Char;
+    if (t == "布尔") return ScalarKind::Bool;
+    if (isFloatName(t)) return t == "浮32" ? ScalarKind::Float32 : ScalarKind::Float64;
+    const int rank = intRankOfName(t);
+    if (rank <= 0) return ScalarKind::Other;
+    const bool isUnsignedName = t.compare(0, 3, "正") == 0;
+    switch (rank) {
+        case 1: return isUnsignedName ? ScalarKind::UInt8 : ScalarKind::Int8;
+        case 2: return isUnsignedName ? ScalarKind::UInt16 : ScalarKind::Int16;
+        case 3: return isUnsignedName ? ScalarKind::UInt32 : ScalarKind::Int32;
+        case 4: return isUnsignedName ? ScalarKind::UInt64 : ScalarKind::Int64;
+        case 5: return isUnsignedName ? ScalarKind::UInt128 : ScalarKind::Int128;
+        default: return ScalarKind::Other;  // 不可达：intRankOfName 值域 0..5
+    }
+}
+
+bool isIntScalar(ScalarKind k) {
+    return k >= ScalarKind::Int8 && k <= ScalarKind::UInt128;
+}
+bool isUnsignedScalar(ScalarKind k) {
+    return k >= ScalarKind::UInt8 && k <= ScalarKind::UInt128;
+}
+int scalarRank(ScalarKind k) {
+    if (k >= ScalarKind::Int8 && k <= ScalarKind::Int128) {
+        return static_cast<int>(k) - static_cast<int>(ScalarKind::Int8) + 1;
+    }
+    return static_cast<int>(k) - static_cast<int>(ScalarKind::UInt8) + 1;
+}
+
+// 标量 ↔ 标量隐式转换判定（规格书3.7 子集；与下方字符串路径逐分支等价）
+bool scalarCanConvert(ScalarKind from, ScalarKind to) {
+    if (from == to) return true;
+    if (from == ScalarKind::Char) return isIntScalar(to);
+    if (to == ScalarKind::Char) return isIntScalar(from);
+    if (isIntScalar(from) && isIntScalar(to)) {
+        // 55-c 方案A：跨符号一律拒绝隐式
+        if (isUnsignedScalar(from) != isUnsignedScalar(to)) return false;
+        // 128 -> 64 同符号窄化特例（方案C）
+        if ((from == ScalarKind::Int128 && to == ScalarKind::Int64) ||
+            (from == ScalarKind::UInt128 && to == ScalarKind::UInt64)) {
+            return true;
+        }
+        return scalarRank(from) < scalarRank(to);
+    }
+    if (from == ScalarKind::Float32 && to == ScalarKind::Float64) return true;
+    if (isIntScalar(from) &&
+        (to == ScalarKind::Float32 || to == ScalarKind::Float64)) {
+        return true;
+    }
+    return false;
 }
 
 } // namespace
@@ -81,34 +174,38 @@ std::string canonicalParam(const std::string& type) {
     return canonical(type);
 }
 
-// 是否整数类型（整8~整128/正8~正128/整数）
+// 是否整数类型（整8~整128/正8~正128/整数）——#1154：免 canonical 拷贝快路径
 bool isInteger(const std::string& type) {
-    const std::string t = canonical(type);
-    return intRankTable().count(t) > 0;
+    return intRankOfName(stripRefSuffix(type)) > 0;
 }
 
 // 静态标量初值可否直存 .data（331-a·T50 根治·三后端单一归属）——见头文件说明。
-//   IR 名集合=mapType 产物（函数内静态局部）；中文名集合经 canonical+intRankTable
-//   （顶层静态）。i128/u128 不在本判定（走双 .quad 分支）。
+//   IR 名集合=mapType 产物（函数内静态局部）；中文名集合=整型族/字符/布尔。
+//   #1154：免 canonical 拷贝快路径（与 canonical 后查表逐值等价）。
 bool isStaticScalarInitType(const std::string& type) {
-    const std::string t = canonical(type);
-    if (intRankTable().count(t) > 0) return true;   // 中文整数族（整8..正128）
+    const std::string_view t = stripRefSuffix(type);
+    if (intRankOfName(t) > 0) return true;   // 中文整数族（整8..正128/整数）
     if (t == "字符" || t == "布尔") return true;
-    static const std::unordered_set<std::string> kIrScalarInts = {
-        "i8", "i16", "i32", "i64", "u8", "u16", "u32", "u64", "i1",
-    };
-    return kIrScalarInts.count(t) > 0;
+    // IR 标量整型名：i1/i8/u8/i16/u16/i32/u32/i64/u64（i128/u128 走双 quad 分支）
+    if (t.size() == 2) return t == "i1" || t == "i8" || t == "u8";
+    if (t.size() == 3) {
+        if (t[0] != 'i' && t[0] != 'u') return false;
+        const std::string_view width = t.substr(1);
+        return width == "16" || width == "32" || width == "64";
+    }
+    return false;
 }
 
 // 是否 128 位整数类型（T46·467-a·单一归属）——见头文件说明。
+// #1154：免 canonical 拷贝快路径。
 bool isInt128Type(const std::string& type) {
-    const std::string t = canonical(type);
+    const std::string_view t = stripRefSuffix(type);
     return t == "整128" || t == "正128" || t == "i128" || t == "u128";
 }
 
-// 128 位整数是否有符号（整128/i128 有符号；正128/u128 无符号）——见头文件说明。
+// 128 位整数是否有符号（整128/i128 有符号）——见头文件说明。
 bool isInt128Signed(const std::string& type) {
-    const std::string t = canonical(type);
+    const std::string_view t = stripRefSuffix(type);
     return t == "整128" || t == "i128";
 }
 
@@ -216,10 +313,9 @@ bool parseInt128InitText(const std::string& text, bool isSigned,
     return true;
 }
 
-// 是否浮点类型（浮32/浮64/小数）
+// 是否浮点类型（浮32/浮64/小数）——#1154：免 canonical 拷贝快路径
 bool isFloat(const std::string& type) {
-    const std::string t = canonical(type);
-    return t == "浮32" || t == "浮64";
+    return isFloatName(stripRefSuffix(type));
 }
 
 // 是否数值类型（整/正/浮）
@@ -227,18 +323,16 @@ bool isNumeric(const std::string& type) {
     return isInteger(type) || isFloat(type);
 }
 
-// 是否无符号整数类型（正N）
+// 是否无符号整数类型（正N）——#1154：免 canonical 拷贝快路径
 bool isUnsigned(const std::string& type) {
-    const std::string t = canonical(type);
-    return t.compare(0, 3, "正") == 0 && intRankTable().count(t) > 0;
+    const std::string_view t = stripRefSuffix(type);
+    return intRankOfName(t) > 0 && t.compare(0, 3, "正") == 0;
 }
 
-// 整型位宽秩（整8=1 ... 整128=5）；非整数类型返回0
+// 整型位宽秩（整8=1 ... 整128=5；整数别名=3）；非整数类型返回0
+// #1154：免 canonical 拷贝快路径
 int intRank(const std::string& type) {
-    const std::string t = canonical(type);
-    auto it = intRankTable().find(t);
-    if (it != intRankTable().end()) return it->second;
-    return 0;
+    return intRankOfName(stripRefSuffix(type));
 }
 
 // 是否函数指针类型（函数指针<返回>(参数,...)，Task 2.2 规范化字符串）
@@ -359,6 +453,14 @@ std::string methodValueFnPtrOf(const std::string& type) {
 //   5. 整数 -> 浮点（允许整隐式转浮；浮点不可隐式转整数，需显式转换）
 //   6. 函数指针：仅完全同签名（返回+参数逐个相等）允许（保守，防ABI不匹配）
 bool canConvert(const std::string& fromRaw, const std::string& toRaw) {
+    // #1154 标量快速路径：两边均为标量名时免 canonical 两次拷贝与多次哈希查表，
+    //   与下方字符串路径逐分支等价（别名/引用后缀先经 stripRefSuffix 归一）。
+    if (fromRaw == toRaw) return true;  // 原实现 canonical 后 from==to 亦恒真
+    const ScalarKind fastFrom = scalarKindOf(stripRefSuffix(fromRaw));
+    const ScalarKind fastTo = scalarKindOf(stripRefSuffix(toRaw));
+    if (fastFrom != ScalarKind::Other && fastTo != ScalarKind::Other) {
+        return scalarCanConvert(fastFrom, fastTo);
+    }
     const std::string from = canonical(fromRaw);
     const std::string to = canonical(toRaw);
     if (from == to) return true;
