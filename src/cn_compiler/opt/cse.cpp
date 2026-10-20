@@ -12,6 +12,10 @@
 //   4. 替换复用 opt_common 的 replaceUses（寄存器替换无条件安全）
 //   5. 哈希碰撞处理：桶内逐条 samePattern 结构比较（含常量文本归一化），
 //      碰撞不影响正确性；代表指令按插入序首个（与旧 map 首插入一致）。
+//   6. 块终止条件字段（283-a 字段化）同步替换（1206）：条件值不再寄生于
+//      块尾指令操作数，replaceUses 覆盖不到；块内指令遍历结束后以完整
+//      regRewrite 调用 replaceTermCondition，重复比较结果作分支条件时
+//      替换不再丢失（代表指令在本块内先于终止点，支配关系不变）。
 #include <cstdint>
 #include <cstring>
 #include <string>
@@ -174,8 +178,6 @@ bool CSEPass::run(ir::IRModule& module) {
             std::unordered_map<std::string, int> loadResults;
             // 寄存器替换表：重复指令结果 -> 第一个结果
             RegRewriteMap regRewrite;
-            // 注：旧实现在此调用 replaceTermCondition（283-a 字段化同步），但此刻
-            //   regRewrite 必为空——该调用恒返回 false，已删除（无行为变化）。
             for (std::size_t i = 0; i < insts.size(); ++i) {
                 ir::IRInstruction& inst = insts[i];
                 // 第一步：应用已收集的替换（本指令引用点）
@@ -237,6 +239,13 @@ bool CSEPass::run(ir::IRModule& module) {
                     // 写内存指令：清空 Load 表（内存可能被修改，保守）
                     loadResults.clear();
                 }
+            }
+            // 第三步：块终止条件字段（283-a 字段化）同步替换（1206）。
+            //   循环结束后 regRewrite 才是本块完整替换集合（1153 删除的旧
+            //   调用点在循环前，必为空）；条件值的定义（代表指令）在本块内
+            //   先于重复指令与终止点，寄存器替换无条件安全。
+            if (replaceTermCondition(*block, regRewrite, ConstRewriteMap())) {
+                changed = true;
             }
         }
     }
