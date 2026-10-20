@@ -8,6 +8,9 @@
 //      - 可能写任意内存的指令（StorePtr/LoadPtr/Call/CallIndirect/
 //        FieldAddr/AddrOf）：清空槽值表（保守）
 //   3. 替换延迟到"应用替换"步骤（replaceUses 处理全部引用点）
+//   4. 块终止条件字段（termCondition·283-a 字段化）在块内指令遍历结束后
+//      同步替换（1253）：条件值不再是块尾指令操作数，replaceUses 覆盖不到，
+//      漏替时条件仍读被转发的 Load 结果（优化遗漏，非正确性缺陷）。
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -118,7 +121,13 @@ bool CopyPropagationPass::run(ir::IRModule& module) {
                         break;
                 }
             }
-            // 块内最后一条指令后的替换：无需再应用（块边界外不传播）
+            // 块内最后一条指令后的替换：块终止字段（283-a 字段化）不寄生于
+            //   指令操作数，replaceUses 覆盖不到；循环结束后 regRewrite/
+            //   constRewrite 才是本块完整替换集合——此处同步块终止条件字段
+            //   （1253·与 1206 CSE 同族缺口：Load 结果被转发后条件仍读 Load）。
+            if (replaceTermCondition(*block, regRewrite, constRewrite)) {
+                changed = true;
+            }
         }
     }
     return changed;
