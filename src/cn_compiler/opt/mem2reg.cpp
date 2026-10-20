@@ -23,6 +23,8 @@
 //     遍2：删除 dieSlots 全部 Store；组装 Phi（操作数=前驱出口值·resolve 后）
 //       插块头；termReturnValue/termCondition 文本 "%v<id>" 引用同步替换。
 //     收尾：SSAPass::lowerPhis 把 φ 降级为前驱块尾并行拷贝。
+//   1255（收敛）：φ 计划按需求建——只有「有 Load 真实消费」的 φ 指纹才插 φ；
+//     无消费者的 φ 不再每轮重插（原实现 -O3 fixpoint 触顶 16 轮·纯成本）。
 #include <algorithm>
 #include <string>
 #include <unordered_map>
@@ -103,7 +105,8 @@ SlotEnv computeEnvIn(const std::vector<int>& preds,
 //   两模式共用同一 Store/Load 推进逻辑（波1 T2/T3 不对称的缺陷根源·626-a 同构根治）。
 void walkBlock(ir::IRBlock& block, bool rewriting,
                const std::unordered_set<std::string>& promotable,
-               SlotEnv& env, ValuePool& pool, RewriteCtx* ctx, std::size_t keptIdx) {
+               SlotEnv& env, ValuePool& pool, RewriteCtx* ctx, std::size_t keptIdx,
+               std::unordered_set<std::string>* phiUses = nullptr) {
     for (auto& inst : block.instructions) {
         if (rewriting) replaceUses(inst, ctx->regRewrite, {});
         if (inst.opcode == ir::Opcode::Store && !inst.extra.empty() &&
@@ -122,6 +125,11 @@ void walkBlock(ir::IRBlock& block, bool rewriting,
             auto it = env.find(slot);
             bool eliminated = false;
             if (it != env.end()) {
+                // 分析模式（1255）：记录被 Load 真实消费的 φ 指纹——只有这些
+                //   指纹需要建 φ 计划；无消费者的 φ 每轮重插=永不收敛。
+                if (!rewriting && phiUses != nullptr && isPhiKey(it->second)) {
+                    phiUses->insert(it->second);
+                }
                 auto pit = pool.find(it->second);
                 if (pit != pool.end() && !pit->second.isConstant && pit->second.id >= 0) {
                     if (rewriting) {
@@ -319,6 +327,27 @@ bool Mem2RegPass::run(ir::IRModule& module) {
             }
         }
 
+        // ---- φ 需求扫描（1255）：只为「有 Load 真实消费」的 φ 指纹建计划。
+        //   原实现按 envIn 中每个 φ 指纹无条件建计划：首轮提升已删除 Join 块
+        //   内可消元 Load，后续轮次这些 φ 已无任何消费者，却仍每轮重新插入
+        //   φ + 前驱并行拷贝（新寄存器编号）→ changed 永真，v2 全树 -O3
+        //   fixpoint 触顶 16 轮。扫描与 T2/T3 共用 walkBlock（Analyze 模式），
+        //   env 推进语义完全一致（Store/Load 同序、同指纹键）。
+        std::unordered_set<std::string> neededPhiKeys;
+        if (phiEnabled) {
+            ValuePool scanPool;
+            for (const int b : domPreorder(dom)) {
+                if (b < 0 || b >= n) continue;
+                ir::IRBlock* blk = fn.blocks[static_cast<std::size_t>(b)].get();
+                if (blk->label != labels[static_cast<std::size_t>(b)]) continue;
+                SlotEnv env = computeEnvIn(dom.predecessors(b), envOut, promotable,
+                                           labels[static_cast<std::size_t>(b)],
+                                           phiEnabled, n);
+                walkBlock(*blk, false, promotable, env, scanPool, nullptr, 0,
+                          &neededPhiKeys);
+            }
+        }
+
         // ---- φ 分配 + 预检（写前验证·失败整函数放弃·原指令未动）----
         int nextReg = maxRegId(fn) + 1;
         struct PhiPlan { int resultReg; std::string slot; std::string type;
@@ -332,6 +361,8 @@ bool Mem2RegPass::run(ir::IRModule& module) {
                                       labels[static_cast<std::size_t>(b)], phiEnabled, n);
             for (const auto& kv : in) {
                 if (!isPhiKey(kv.second)) continue;
+                // 无消费者的 φ：不建计划（1255·否则每轮重插空 φ 永不收敛）
+                if (neededPhiKeys.count(kv.second) == 0) continue;
                 PhiPlan plan;
                 plan.resultReg = nextReg++;
                 plan.slot = kv.first;
