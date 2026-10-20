@@ -1,3 +1,6 @@
+// 1142 模块缓存读环境开关：MSVC /WX 下 getenv 触发 C4996（std::getenv 同报）——
+// 文件级豁免必须先于任何 CRT 头（仅本文件·MSVC 惯例·POSIX 平台无此告警）。
+#define _CRT_SECURE_NO_WARNINGS
 // AST 模块缓存实现（任务 1142·模块级预编译缓存第一台阶）
 // 文件格式（小端）：
 //   [8]  魔数 "CNASTC01"
