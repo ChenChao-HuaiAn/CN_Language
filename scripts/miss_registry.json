@@ -481,7 +481,7 @@
   {
    "文件": "src/cn_compiler/model/type_system.cpp",
    "函数": "methodValueClassOf",
-   "锚文本": "if (!isMethodValueType(type)) return \"\";",
+   "锚文本": "if (!isMethodValueType(type)) return std::nullopt;",
    "来源": "1075",
    "类别": "业务值",
    "静默风险": "低",
@@ -489,13 +489,13 @@
    "登记人": "AI（1075 轮·逐条读过代码）",
    "登记日": "2026-10-18",
    "批准": "存量过渡",
-   "替代": "可选",
-   "替代依据": "形态探测否定回答→可选/结果 显式化"
+   "替代": "已替代",
+   "替代依据": "1240 宿主 optional（空串哨兵消除）"
   },
   {
    "文件": "src/cn_compiler/model/type_system.cpp",
    "函数": "methodValueFnPtrOf",
-   "锚文本": "if (!isMethodValueType(type)) return \"\";",
+   "锚文本": "if (!isMethodValueType(type)) return std::nullopt;",
    "来源": "1075",
    "类别": "业务值",
    "静默风险": "低",
@@ -503,13 +503,13 @@
    "登记人": "AI（1075 轮·逐条读过代码）",
    "登记日": "2026-10-18",
    "批准": "存量过渡",
-   "替代": "可选",
-   "替代依据": "形态探测否定回答→可选/结果 显式化"
+   "替代": "已替代",
+   "替代依据": "1240 宿主 optional（空串哨兵消除）"
   },
   {
    "文件": "src/cn_compiler/model/type_system.cpp",
    "函数": "methodValueFnPtrOf",
-   "锚文本": "if (type.empty() || type.back() != '>') return \"\";",
+   "锚文本": "if (type.empty() || type.back() != '>') return std::nullopt;",
    "来源": "1075",
    "类别": "业务值",
    "静默风险": "低",
@@ -517,8 +517,8 @@
    "登记人": "AI（1075 轮·逐条读过代码）",
    "登记日": "2026-10-18",
    "批准": "存量过渡",
-   "替代": "可选",
-   "替代依据": "形态探测否定回答→可选/结果 显式化"
+   "替代": "已替代",
+   "替代依据": "1240 宿主 optional"
   },
   {
    "文件": "src/cn_compiler/parser/parser_type.cpp",
@@ -4309,6 +4309,20 @@
    "批准": "存量过渡",
    "替代": "不可替代",
    "替代依据": "索引域守卫（-1 非合法索引·两态不重叠）"
+  },
+  {
+   "文件": "src/cn_compiler/ir/ir.cpp",
+   "函数": "funcPtrParamsOfCallee",
+   "锚文本": "if (!substType.has_value()) return {};",
+   "来源": "1240",
+   "类别": "业务值",
+   "静默风险": "低",
+   "原因": "非函数指针被调=空形参表（无间接调用签名·业务否定语义）",
+   "登记人": "AI（1240 改造轮）",
+   "登记日": "2026-10-20",
+   "批准": "存量过渡",
+   "替代": "不可替代",
+   "替代依据": "空 vector=无签名业务否定（两态不重叠）"
   }
  ]
 }

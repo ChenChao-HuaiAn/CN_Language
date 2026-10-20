@@ -85,9 +85,9 @@ void IRGenerator::visitCallExpr(CallExpr* node) {
     }
 
     // ---- 442（判据统一·421 审查 P2-2/P2-3）：有效形参表（954 族体见 resolveEffectiveParamTypes）----
-    const std::string calleeFnPtrType442 = isDirect
-                                               ? std::string()
-                                               : funcPtrTypeOfCallee(node->callee.get());
+    const std::string calleeFnPtrType442 =
+        isDirect ? std::string()
+                 : funcPtrTypeOfCallee(node->callee.get()).value_or("");
     const std::vector<std::string> effectiveParamTypes =
         resolveEffectiveParamTypes(node, isDirect, calleeName, calleeFnPtrType442);
 

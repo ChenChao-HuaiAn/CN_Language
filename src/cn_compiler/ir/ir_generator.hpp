@@ -2,6 +2,7 @@
 //   ir.hpp 保留 IR 数据结构（Opcode/指令/函数IR）并 include 本头，下游透明。
 #pragma once
 #include "cn_compiler/ir/ir.hpp"
+#include <optional>
 // 865：生成期状态数据类型外迁头（ClosureInfo/VarEntry/LoopContext/SwitchContext/
 //   OwnedStrField——纯数据结构可外迁·ir_generator_types.hpp 先例=DeclGenCtx）， 类内成员声明处类型名直呼，签名零改动。
 #include "cn_compiler/ir/ir_generator_types.hpp"
@@ -501,7 +502,7 @@ private:
     // 推导「callee 表达式是函数指针」时的规范化源码类型串（485·337-a 同族 提炼）：被调者形态同 funcPtrParamsOfCallee（标识符→lookupSrcType、
     //   成员→memberFieldSrcType）+泛型单态化+isFuncPtr 判定；非函数指针/ 无法解析返回空串。形参列表与返回类型（funcPtrReturnTypeOf）两个
     //   消费面共用此单一入口。
-    std::string funcPtrTypeOfCallee(Expr* callee) const;
+    std::optional<std::string> funcPtrTypeOfCallee(Expr* callee) const;
     // 指针算术步进（字节）：普通指针8；结构体指针 = 结构体总大小（Task 2.7 修复）
     std::int64_t ptrElemStride(const std::string& srcType) const;
     // 推导"指针值表达式"的所指源码类型（供解引用 * 用，Task 审查修复）：

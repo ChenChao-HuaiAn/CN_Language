@@ -5,6 +5,7 @@
 //   3. 数值运算结果类型：整型取秩高者、含浮点取较宽浮点（整/浮混合取浮点）
 //   4. 字面量后缀（规格书4.3）：f/L/LL/U/UL/ULL -> 浮32/整64/整128/正32/正64/正128
 #include <algorithm>
+#include <optional>
 #include <cctype>
 #include <cstdint>
 #include <cstdio>
@@ -409,32 +410,31 @@ std::string makeMethodValueType(const std::string& className,
 }
 
 // 类名提取：`方法值<` 后至**首个顶层逗号**（类名=用户类名/实例化名，不含逗号）。
-std::string methodValueClassOf(const std::string& type) {
-    // 静默豁免业务值: 非方法值串=解析协议空串哨兵（调用方按未登记处置）
-    if (!isMethodValueType(type)) return "";
+// （1240：空串哨兵 → optional·非方法值/残缺=无值）
+std::optional<std::string> methodValueClassOf(const std::string& type) {
+    if (!isMethodValueType(type)) return std::nullopt;
     const std::size_t lp = type.find('<');
     const std::size_t comma = type.find(',', lp + 1);
-    if (comma == std::string::npos) return "";
+    if (comma == std::string::npos) return std::nullopt;
     const std::string raw = type.substr(lp + 1, comma - lp - 1);
     const std::size_t b = raw.find_first_not_of(" \t");
     const std::size_t e = raw.find_last_not_of(" \t");
-    if (b == std::string::npos) return "";
+    if (b == std::string::npos) return std::nullopt;
     return raw.substr(b, e - b + 1);
 }
 
 // 内嵌签名提取：首个顶层逗号后至末尾外层 '>' 之前（内嵌函数指针串原样）。
-std::string methodValueFnPtrOf(const std::string& type) {
-    // 静默豁免业务值: 非方法值串=解析协议空串哨兵（调用方按未登记处置）
-    if (!isMethodValueType(type)) return "";
+// （1240：空串哨兵 → optional·非方法值/残缺=无值）
+std::optional<std::string> methodValueFnPtrOf(const std::string& type) {
+    if (!isMethodValueType(type)) return std::nullopt;
     const std::size_t lp = type.find('<');
     const std::size_t comma = type.find(',', lp + 1);
-    if (comma == std::string::npos) return "";
-    // 静默豁免业务值: 非方法值串/无闭合'>'=解析协议空串哨兵
-    if (type.empty() || type.back() != '>') return "";
+    if (comma == std::string::npos) return std::nullopt;
+    if (type.empty() || type.back() != '>') return std::nullopt;
     const std::string raw = type.substr(comma + 1, type.size() - comma - 2);
     const std::size_t b = raw.find_first_not_of(" \t");
     const std::size_t e = raw.find_last_not_of(" \t");
-    if (b == std::string::npos) return "";
+    if (b == std::string::npos) return std::nullopt;
     return raw.substr(b, e - b + 1);
 }
 

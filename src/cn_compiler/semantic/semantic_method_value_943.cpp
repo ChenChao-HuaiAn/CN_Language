@@ -5,6 +5,7 @@
 //   文案宿主与 v2 逐字一致（v2 同构=语义检查实参.cn；改文案须双侧同改·对拍
 //   scripts/diag_dual_diff.py）。
 #include "cn_compiler/semantic/semantic_method_value_943.hpp"
+#include <optional>
 
 #include <string>
 #include <vector>
@@ -139,8 +140,8 @@ void checkLocalVarDeclPlacement(Diagnostics& diag, bool isStatic,
 //   IR 层注入参数位 0·被调方协议零特例）。诊断文案与函数指针调用对仗。
 bool SemanticAnalyzer::checkMethodValueCall(CallExpr* node,
                                             const std::string& calleeType) {
-    const std::string fnPtr = types::methodValueFnPtrOf(calleeType);
-    if (fnPtr.empty()) {
+    const std::optional<std::string> fnPtr = types::methodValueFnPtrOf(calleeType);
+    if (!fnPtr.has_value()) {
         // 内部串残缺=编译器缺陷显形（内部串由 makeMethodValueType 单点构造·
         //   miss 不可静默纪律——报错后按零参保守继续控制流）
         diagnostics_.report(
@@ -149,8 +150,8 @@ bool SemanticAnalyzer::checkMethodValueCall(CallExpr* node,
         lastType_ = "未知";
         return true;
     }
-    const std::string retType = funcPtrReturnOf(fnPtr);
-    const std::vector<std::string> paramTypes = funcPtrParamsOf(fnPtr);
+    const std::string retType = funcPtrReturnOf(*fnPtr);
+    const std::vector<std::string> paramTypes = funcPtrParamsOf(*fnPtr);
     // 参数数量检查
     if (node->arguments.size() != paramTypes.size()) {
         diagnostics_.report(DiagnosticLevel::Error, node->location,
