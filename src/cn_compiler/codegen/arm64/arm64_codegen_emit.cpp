@@ -305,7 +305,14 @@ std::string Arm64CodeGenerator::loadOperandToX(Arm64AsmWriter& writer,
         const std::string src = allocRegOf(operand.id);
         if (!src.empty()) {
             if (src != reg) {
-                writer.line("mov " + reg + ", " + src);
+                // 1159：目标寄存器宽度与源形态对齐——调用方要 w 形态（32 位装载/
+                //   零扩展）时源取同号 w 名（mov w9, x21 非法；mov w9, w21 语义=
+                //   低 32 位值，与栈槽 ldr w 一致）。
+                std::string srcText = src;
+                if (!reg.empty() && !src.empty() && reg[0] != src[0]) {
+                    srcText = std::string(1, reg[0]) + src.substr(1);
+                }
+                writer.line("mov " + reg + ", " + srcText);
             }
             return reg;
         }

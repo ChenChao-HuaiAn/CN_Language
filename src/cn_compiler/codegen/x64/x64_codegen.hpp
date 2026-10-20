@@ -290,6 +290,10 @@ private:
     //   槽文本/立即数原样。仅 i8/u8/i16/u16 类型生效，其余原样。
     static std::string narrowOperand(const std::string& type, const std::string& op);
 
+    // 文本是否为 64 位通用寄存器全名（rax/rbx/.../r15）——1159：窄位宽直写族
+    //   判据（寄存器形态 vs 内存槽/立即数；决定 movsx/movzx 的操作数形态）。
+    static bool is64BitRegisterName(const std::string& text);
+
     // 源操作数按目标宽度对齐（A2022 收缩族统一设施，320-a 补强）：
     //   regAlloc 下 vreg 直接落 r8~r15 全名，32 位指令按全名装载即 A2022
     //   （mov eax, r14）。寄存器名按 widthFor 收缩（r14→r14d）；槽文本

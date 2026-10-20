@@ -82,9 +82,14 @@ void Arm64CodeGenerator::emitCast(Arm64AsmWriter& writer,
         const bool wide = (from == "i64" || from == "u64");
         const std::string cvt = isUnsigned ? "ucvtf" : "scvtf";
         // D8（525-a）：宽源已分配时直读（scvtf/ucvtf 源操作数任意寄存器合法，
-        //   免「mov x9, x21」中转）；窄源不参与分配 -> fallback w9 原路径不变
-        const std::string cvtSrc = operandSourceReg(writer, inst.operands[0],
-                                                    wide ? "x9" : "w9");
+        //   免「mov x9, x21」中转）；1159：32 位/窄位宽源参与分配后须取 w 形态
+        //   （源驻留值规范为 32 位符号/零扩展，scvtf x 形态会把高位当数值——
+        //    与栈槽 ldr w 装载语义对齐）。
+        std::string cvtSrc = operandSourceReg(writer, inst.operands[0],
+                                              wide ? "x9" : "w9");
+        if (!wide && !cvtSrc.empty() && cvtSrc[0] == 'x') {
+            cvtSrc = "w" + cvtSrc.substr(1);
+        }
         writer.line(cvt + " " + vreg + ", " + cvtSrc);
         storeVirtualResult(writer, inst.result.id, vreg, to);
         return;

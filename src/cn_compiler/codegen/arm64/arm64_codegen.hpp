@@ -313,6 +313,14 @@ private:
     //   虚拟寄存器结果的**唯一**落位通道——替换全部 emitStackStore(regSlotOffset(...))
     void storeVirtualResult(Arm64AsmWriter& writer, int resultId,
                             const std::string& srcReg, const std::string& type);
+    // 1159：窄/32 位已分配寄存器结果规范化——把值统一为 64 位符号/零扩展形态
+    //   （i8/i16/i32 -> sxt*；u8/u16/u32 -> uxt*/清高 32），使任何 w/x 宽度消费点
+    //   与栈槽窄读语义（ldrsb/ldrsh/ldrb/ldrh/ldr w）逐位一致。非窄型/未分配无操作。
+    void canonicalizeNarrowResult(Arm64AsmWriter& writer, const std::string& xReg,
+                                  const std::string& type);
+    // 同上，但入口是 virtual regId（未分配=无操作）——结果落位后调用
+    void canonicalizeNarrowResultOf(Arm64AsmWriter& writer, int resultId,
+                                    const std::string& type);
     // 同上，但源为浮点寄存器（sN/dN）：已分配时 fmov dN, src；否则栈槽 store
     void storeVirtualResultFp(Arm64AsmWriter& writer, int resultId,
                               const std::string& srcFp, const std::string& type);

@@ -245,26 +245,70 @@ std::string Arm64CodeGenerator::regSlotMem(int regId) const {
 
 // ==================== 结果落位统一入口（F1-28） ====================
 
+// 1159：窄/32 位已分配寄存器结果规范化（64 位符号/零扩展形态）。
+//   栈槽路径的窄值装载语义=ldrsb/ldrsh（符号扩展到 x）/ldrb/ldrh（零扩展到 w）/
+//   ldr w（零扩展到 x）；本函数把寄存器驻留值规范为同一形态，使 w 宽度消费
+//   （加法/比较/移位/存储）与 x 宽度消费（i128 宽化/64 位搬运/返回）都无需
+//   再按来源猜测高位状态。i64/u64/ptr 已是规范形=无操作。
+void Arm64CodeGenerator::canonicalizeNarrowResult(Arm64AsmWriter& writer,
+                                                  const std::string& xReg,
+                                                  const std::string& type) {
+    // 非 x 形态（浮点/空串/单字符）直接返回：调用方仅传 xN 物理寄存器名。
+    if (xReg.empty()) return;
+    if (xReg[0] != 'x') return;
+    if (xReg == "x") return;
+    const std::string wReg = "w" + xReg.substr(1);
+    if (type == "i8") {
+        writer.line("sxtb " + xReg + ", " + wReg);
+    } else if (type == "u8") {
+        writer.line("uxtb " + xReg + ", " + wReg);
+    } else if (type == "i16") {
+        writer.line("sxth " + xReg + ", " + wReg);
+    } else if (type == "u16") {
+        writer.line("uxth " + xReg + ", " + wReg);
+    } else if (type == "i32") {
+        writer.line("sxtw " + xReg + ", " + wReg);
+    } else if (type == "u32") {
+        writer.line("mov " + wReg + ", " + wReg);  // 写 wN 清高 32 位=零扩展
+    }
+}
+
+// virtual regId 形态：未分配=无操作（栈槽存储由调用方按声明宽度完成）。
+void Arm64CodeGenerator::canonicalizeNarrowResultOf(Arm64AsmWriter& writer,
+                                                    int resultId,
+                                                    const std::string& type) {
+    const std::string reg = allocRegOf(resultId);
+    if (reg.empty()) return;
+    canonicalizeNarrowResult(writer, reg, type);
+}
+
 // 虚拟寄存器结果落位：已分配到物理寄存器时 mov 物理寄存器, srcReg（同名跳过）；
 //   否则保持原栈槽存储。整型/指针类结果专用（含 i1 布尔结果）。
+//   1159：分配落位后按声明类型规范化窄/32 位值（见 canonicalizeNarrowResult）。
 void Arm64CodeGenerator::storeVirtualResult(Arm64AsmWriter& writer, int resultId,
                                             const std::string& srcReg,
                                             const std::string& type) {
     const std::string dst = allocRegOf(resultId);
     if (!dst.empty()) {
-        if (dst != srcReg) {
-            writer.line("mov " + dst + ", " + srcReg);
+        std::string src = srcReg;
+        // 源偶为 w 形态（32 位运算结果）时与 x 目标对齐（mov xN, wN 非法）
+        if (!src.empty() && src[0] == 'w' && dst[0] == 'x') {
+            src = "x" + src.substr(1);
+        }
+        if (dst != src) {
+            writer.line("mov " + dst + ", " + src);
             writer.comment("寄存器分配：结果 %v" + std::to_string(resultId) +
                            " -> " + dst);
         }
+        canonicalizeNarrowResult(writer, dst, type);
         return;
     }
     emitStackStore(writer, regSlotOffset(resultId), srcReg, type);
 }
 
 // 同上，源为浮点寄存器（sN/dN）：已分配时 fmov dN, src；否则栈槽 store。
-//   注意：分配器当前只覆盖 i64/u64/ptr，浮点结果不会被分配——此入口为
-//   与类型面解耦的统一落位通道（分配面扩展时无需改调用点）。
+//   注意：浮点结果不参与寄存器分配——此入口为与类型面解耦的统一落位通道
+//   （分配面扩展时无需改调用点）。
 void Arm64CodeGenerator::storeVirtualResultFp(Arm64AsmWriter& writer, int resultId,
                                               const std::string& srcFp,
                                               const std::string& type) {

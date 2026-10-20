@@ -288,7 +288,11 @@ void X64CodeGenerator::emitEpilogue(AsmWriter& writer, const std::string& return
             const std::string load = (currentReturnType_ == "f64") ? "movsd" : "movss";
             const std::string mp = (currentReturnType_ == "f64") ? "qword ptr " : "dword ptr ";
             writer.line(load + " xmm0, " + mp + returnReg);
-        } else {
+        } else if (currentReturnType_ == "i8" || currentReturnType_ == "u8" ||
+                   currentReturnType_ == "i16" || currentReturnType_ == "u16" ||
+                   currentReturnType_ == "i32" || currentReturnType_ == "u32" ||
+                   currentReturnType_ == "i64" || currentReturnType_ == "u64" ||
+                   currentReturnType_ == "ptr" || currentReturnType_ == "i1") {
             // 111-a（2026-09-13）：按返回类型宽度装载（与 linux 后端
             //   emitStackLoad(..., "rax", currentReturnType_) 对齐）——≤32 位返回类型
             //   （i1/i8/i16/i32/u8/u16/u32）用 32 位读（mov eax，32 位写自动清零
@@ -298,7 +302,17 @@ void X64CodeGenerator::emitEpilogue(AsmWriter& writer, const std::string& return
             //   污染（E2E 221 形态①实证：映射$包含 布尔返回 → 校验位丢失）。
             //   槽内窄类型为 32 位提升形式（widthFor 注释同款纪律），故 32 位读
             //   与槽内实际有效宽度一致。
-            writer.line("mov " + widthFor(currentReturnType_, "rax") + ", " + returnReg);
+            // 1159：返回值可能已分配到物理寄存器（i32/u32 起参与分配）——按返回
+            //   类型宽度收缩源名（r12→r12d；i8/i16 亦为 32 位提升名），槽文本原样。
+            writer.line("mov " + widthFor(currentReturnType_, "rax") + ", " +
+                        shrunkOperand(currentReturnType_, returnReg));
+        } else {
+            // 兜底=非法输入拦截（非业务处理）：返回类型不在整型/浮点/i128 闭集
+            //   = IR 构造缺陷，显式诊断中止（miss 不可静默·648/110 纪律）。
+            diagnostics_.report(Diagnostic::error(
+                "", 0, 0,
+                std::string("内部错误: 未归类的函数返回类型 \"") +
+                    currentReturnType_ + "\"（x64 尾声返回装载）"));
         }
     }
     // 阶段C（Task 4.3）：恢复被调用者保存寄存器（逆序 pop，与 prologue 压栈相反）

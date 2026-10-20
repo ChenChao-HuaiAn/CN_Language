@@ -4,7 +4,8 @@
 //   2. 分配无冲突：同一物理寄存器不被两个活跃区间同时占用（重叠区间不同寄存器）
 //   3. 溢出正确：物理寄存器不足时溢出到栈槽（spillSlot >= 0）
 //   4. 被调用者保存寄存器：分配结果只使用被调用者保存寄存器（rbx/r12~r15 / x19~x28）
-//   5. kind型过滤：仅 i64/u64/ptr 参与分配，i32/浮point/i128 保持栈槽
+//   5. kind型过滤：1159 起 i64/u64/ptr/i32/u32 参与分配（窄整型随后扩展），
+//      浮点/i128/i1 保持栈槽
 //   6. 保留寄存器：x64 隐藏返回指针场景保留 r12
 // 构造方式：直接手工构造 ir::IRFunction（不经过前端链路，聚焦分配器本身）
 // 注意：GCC 7 不支持中文标识符，测试名必须使用英文
@@ -461,9 +462,12 @@ TEST(RegAllocTest, AllocableTypeFilter) {
     EXPECT_TRUE(LinearScanAllocator::isAllocableType("i64"));
     EXPECT_TRUE(LinearScanAllocator::isAllocableType("u64"));
     EXPECT_TRUE(LinearScanAllocator::isAllocableType("ptr"));
-    EXPECT_FALSE(LinearScanAllocator::isAllocableType("i32"));
-    EXPECT_FALSE(LinearScanAllocator::isAllocableType("u32"));
+    EXPECT_TRUE(LinearScanAllocator::isAllocableType("i32"));
+    EXPECT_TRUE(LinearScanAllocator::isAllocableType("u32"));
     EXPECT_FALSE(LinearScanAllocator::isAllocableType("i8"));
+    EXPECT_FALSE(LinearScanAllocator::isAllocableType("u8"));
+    EXPECT_FALSE(LinearScanAllocator::isAllocableType("i16"));
+    EXPECT_FALSE(LinearScanAllocator::isAllocableType("u16"));
     EXPECT_FALSE(LinearScanAllocator::isAllocableType("f64"));
     EXPECT_FALSE(LinearScanAllocator::isAllocableType("f32"));
     EXPECT_FALSE(LinearScanAllocator::isAllocableType("i128"));
@@ -471,10 +475,10 @@ TEST(RegAllocTest, AllocableTypeFilter) {
     EXPECT_FALSE(LinearScanAllocator::isAllocableType("i1"));
 }
 
-TEST(RegAllocTest, NarrowTypesStayStack) {
-    // i32 寄存器不参与分配（保持栈槽）
+TEST(RegAllocTest, I32ParticipatesInAllocation) {
+    // 1159：i32 参与分配（不再保持栈槽）——x64/arm64 两架构均覆盖
     IRFunction func;
-    func.name = "narrow";
+    func.name = "i32 alloc";
     func.returnType = "i32";
     auto block = std::make_unique<IRBlock>();
     block->label = "块0";
@@ -490,14 +494,17 @@ TEST(RegAllocTest, NarrowTypesStayStack) {
     func.blocks.push_back(std::move(block));
     func.nextRegId = 1;
 
-    LinearScanAllocator allocator(TargetArch::X64);
-    const RegAssignmentMap map = allocator.allocate(func);
-    // i32 寄存器不参与分配 -> 映射为空或 assignedReg 为空
-    auto it = map.find(0);
-    if (it != map.end()) {
-        EXPECT_TRUE(it->second.assignedReg.empty());
-        EXPECT_EQ(it->second.spillSlot, -1);
-    }
+    LinearScanAllocator x64Allocator(TargetArch::X64);
+    const RegAssignmentMap x64Map = x64Allocator.allocate(func);
+    auto it = x64Map.find(0);
+    ASSERT_NE(it, x64Map.end());
+    EXPECT_FALSE(it->second.assignedReg.empty()) << "i32 应参与 x64 寄存器分配";
+
+    LinearScanAllocator arm64Allocator(TargetArch::Arm64);
+    const RegAssignmentMap arm64Map = arm64Allocator.allocate(func);
+    auto ait = arm64Map.find(0);
+    ASSERT_NE(ait, arm64Map.end());
+    EXPECT_FALSE(ait->second.assignedReg.empty()) << "i32 应参与 arm64 寄存器分配";
 }
 
 // ---- 6. 保留寄存器 ----

@@ -302,7 +302,7 @@ void Arm64CodeGenerator::emitCopy(Arm64AsmWriter& writer,
     }
     const bool is64 = (srcType == "i64" || srcType == "u64" || srcType == "ptr");
     // D8（451-a）：64 位结果已分配 -> 直接装载到分配寄存器（免 x10 中转）；
-    //   32 位结果不参与分配（分配器仅 i64/u64/ptr）-> 保持 x9 装载 + w9 栈存储原路径
+    //   1159：32 位/窄位宽结果亦参与分配 -> 直装分配寄存器（未分配仍 x9 原路径）
     const std::string xr = resultTargetReg(inst.result.id, is64 ? "x10" : "x9");
     // D8（525-a）：Copy 源直读——源已分配时免「mov x9/x10, x20」装载中转：
     //   结果已分配 -> mov dst, phys（必要结果写入·同寄存器零发射）；
@@ -315,6 +315,8 @@ void Arm64CodeGenerator::emitCopy(Arm64AsmWriter& writer,
             if (dst != phys) {
                 writer.line("mov " + dst + ", " + phys);
             }
+            // 1159：Copy 保持值语义，落位后按声明类型规范化（窄/32 位 64 位形态）
+            canonicalizeNarrowResult(writer, dst, srcType);
             return;
         }
         const std::string w = (!is64 && phys[0] == 'x') ? "w" + phys.substr(1)
@@ -323,7 +325,9 @@ void Arm64CodeGenerator::emitCopy(Arm64AsmWriter& writer,
         return;
     }
     loadOperandToX(writer, inst.operands[0], xr);
-    storeVirtualResult(writer, inst.result.id, is64 ? xr : "w9", inst.type);
+    // 1159：统一传 x 形态源（未分配 x9 时 emitStackStore 内部转 w 形态=原产物
+    //   逐字节不变；分配时 storeVirtualResult 直接落位并规范化）
+    storeVirtualResult(writer, inst.result.id, xr, inst.type);
 }
 
 void Arm64CodeGenerator::emitIntBinary(Arm64AsmWriter& writer,
@@ -357,7 +361,9 @@ void Arm64CodeGenerator::emitIntBinary(Arm64AsmWriter& writer,
                             srcType != "ptr" && !isFloatType(srcType);
     const std::string resX = needOvfPre ? "x9"
                               : resultTargetReg(inst.result.id, is64 ? "x10" : "x9");
-    const std::string res = is64 ? resX : std::string("w9");
+    // 1159：32 位/窄位宽结果参与分配时，计算寄存器取分配寄存器的 w 形态
+    //   （w19 写自动清高 32 位·与固定 w9 原路径逐位等价）；未分配仍 w9。
+    const std::string res = is64 ? resX : ("w" + resX.substr(1));
     auto srcText = [&](const ir::IRValue& op, const std::string& fback) -> std::string {
         const std::string s = operandSourceReg(writer, op, fback);
         return is64 ? s : ("w" + s.substr(1));
@@ -492,7 +498,9 @@ void Arm64CodeGenerator::emitIntMul(Arm64AsmWriter& writer,
     const bool is64 = (srcType == "i64" || srcType == "u64" || srcType == "ptr");
     const std::string xr = is64 ? "x10" : "x9";
     const std::string resX = resultTargetReg(inst.result.id, is64 ? "x10" : "x9");
-    const std::string res = is64 ? resX : std::string("w9");
+    // 1159：32 位/窄位宽结果参与分配时，计算寄存器取分配寄存器的 w 形态
+    //   （w19 写自动清高 32 位·与固定 w9 原路径逐位等价）；未分配仍 w9。
+    const std::string res = is64 ? resX : ("w" + resX.substr(1));
     auto srcText = [&](const ir::IRValue& op, const std::string& fback) -> std::string {
         const std::string s = operandSourceReg(writer, op, fback);
         return is64 ? s : ("w" + s.substr(1));
@@ -612,7 +620,9 @@ void Arm64CodeGenerator::emitDivMod(Arm64AsmWriter& writer,
     const std::string divMnem = isUnsigned ? "udiv" : "sdiv";
     const std::string wd = is64 ? "x" : "w";
     const std::string resX = resultTargetReg(inst.result.id, "x9");
-    const std::string res = is64 ? resX : std::string("w9");
+    // 1159：32 位/窄位宽结果参与分配时，计算寄存器取分配寄存器的 w 形态
+    //   （w19 写自动清高 32 位·与固定 w9 原路径逐位等价）；未分配仍 w9。
+    const std::string res = is64 ? resX : ("w" + resX.substr(1));
     // 任务 474：INT_MIN/-1（Div）→ 错误码 8 确定性失败。
     //   arm64 sdiv 溢出无陷阱（结果=被除数回绕）——原实现无特判静默回绕；
     //   改为安全函数先查（cmn op2,#1 探 -1；被除数==INT_MIN 检测：64/32 位用
@@ -724,7 +734,9 @@ void Arm64CodeGenerator::emitShift(Arm64AsmWriter& writer,
                           : (srcType == "i16" || srcType == "u16") ? 15 : 7;
     // D8（451-a）：结果直写分配寄存器（64 位结果参与分配；32 位以下不分配保持 w9）
     const std::string resX = resultTargetReg(inst.result.id, "x9");
-    const std::string res = is64 ? resX : std::string("w9");
+    // 1159：32 位/窄位宽结果参与分配时，计算寄存器取分配寄存器的 w 形态
+    //   （w19 写自动清高 32 位·与固定 w9 原路径逐位等价）；未分配仍 w9。
+    const std::string res = is64 ? resX : ("w" + resX.substr(1));
     // D8（457-a）：op1 源直读（已分配 -> 物理寄存器；未分配装载 x9/w9 原路径·
     //   32 位文本统一 w 形态）
     auto srcText = [&](const ir::IRValue& op, const std::string& fback) -> std::string {

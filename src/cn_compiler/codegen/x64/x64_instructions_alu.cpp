@@ -545,9 +545,14 @@ void X64CodeGenerator::emitDivMod(AsmWriter& writer, const ir::IRInstruction& in
             divisor = (type == "i32" || type == "u32") ? "ecx" : "rcx";
         } else {
             // 运行期除数：按宽度读入检查（≤32位 dword 低32位；64位 qword 全值）
+            // 1159：除数可能已分配到物理寄存器（i32/u32 起参与分配）——寄存器
+            //   形态用 32 位名直读（mov ecx, r12d），内存槽保持 dword ptr 显式宽度。
             if (wide) {
                 writer.line("mov rcx, " + op2);
                 writer.line("test rcx, rcx");
+            } else if (is64BitRegisterName(op2)) {
+                writer.line("mov ecx, " + widthFor("i32", op2));
+                writer.line("test ecx, ecx");
             } else {
                 writer.line("mov ecx, dword ptr " + op2);
                 writer.line("test ecx, ecx");

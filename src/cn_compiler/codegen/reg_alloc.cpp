@@ -10,7 +10,8 @@
 //   2. 线性扫描：区间按 start 升序，活跃集合按 end 升序（小顶堆）；
 //      区间开始弹出已结束的活跃区间（end < 当前 start），空闲寄存器回收；
 //      分配最早空闲的物理寄存器；无空闲寄存器时溢出（spillSlot 递增）
-//   3. 保守策略：仅 i64/u64/ptr 且非浮点/非 i128 的虚拟寄存器参与分配
+//   3. 分配类型集合（1159）：64/32 位整型与指针；i128/浮点/i1 保持栈槽（窄整型
+//      按后端宽度直写完备度分阶段扩展，见 isAllocableType 注释）
 //   4. 溢出策略：spillSlot 从 0 递增（语义：每个溢出值一个独立溢出槽，
 //      由 codegen 按需映射到栈偏移；不与其他栈槽区冲突）
 //   5. 英文API命名（GCC 7 不支持中文标识符），中文仅用于注释
@@ -29,9 +30,12 @@ namespace regalloc {
 
 namespace {
 
-// IR 类型是否为 64 位整型/指针（可分配类型）
-bool isWideIntType(const std::string& type) {
-    return type == "i64" || type == "u64" || type == "ptr";
+// IR 类型是否参与寄存器分配（1159：64/32 位整型与指针；i1/浮点/i128 不参与）
+//   32 位集合先接入（x64/arm64 两侧同时完备后），窄整型随后扩展——见 allocate()
+//   与 isAllocableType 的架构支持面注释。
+bool isAllocableIntType(const std::string& type) {
+    return type == "i64" || type == "u64" || type == "ptr" ||
+           type == "i32" || type == "u32";
 }
 
 // 指令使用到的寄存器ID集合（operands 中的虚拟寄存器）
@@ -74,9 +78,9 @@ int instResultId(const ir::IRInstruction& inst) {
 
 } // namespace
 
-// 静态：判断 IR 类型是否可参与寄存器分配（i64/u64/ptr；非浮点、非 i128）
+// 静态：判断 IR 类型是否可参与寄存器分配（i64/u64/ptr/i32/u32；非浮点/非 i128/i1）
 bool LinearScanAllocator::isAllocableType(const std::string& type) {
-    return isWideIntType(type);
+    return isAllocableIntType(type);
 }
 
 // 构造函数：按平台配置被调用者保存寄存器集合，扣除保留寄存器

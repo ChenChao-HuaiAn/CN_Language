@@ -77,8 +77,7 @@ std::string X64CodeGenerator::widthFor(const std::string& type, const std::strin
 
 // 源/目操作数按 8/16 位目标宽度对齐（A2022 收缩族·窄宽分支）：
 //   64 位名 → 8 位名（r14→r14b）或 16 位名（r14→r14w）；槽/立即数原样。
-std::string X64CodeGenerator::narrowOperand(const std::string& type, const std::string& op) {
-    const bool is8 = (type == "i8" || type == "u8");
+std::string X64CodeGenerator::narrowOperand(const std::string& type, const std::string& op) {    const bool is8 = (type == "i8" || type == "u8");
     const bool is16 = (type == "i16" || type == "u16");
     if ((!is8 && !is16) || op.size() < 2 || op[0] != 'r') return op;
     static const char* k64[] = {"rax", "rbx", "rcx", "rdx", "rsi", "rdi",
@@ -91,6 +90,17 @@ std::string X64CodeGenerator::narrowOperand(const std::string& type, const std::
         if (op == k64[i]) return is8 ? k8[i] : k16[i];
     }
     return op;
+}
+
+// 文本是否为 64 位通用寄存器全名（1159：窄位宽直写族的寄存器形态判据）
+bool X64CodeGenerator::is64BitRegisterName(const std::string& text) {
+    static const char* kRegNames[] = {
+        "rax", "rbx", "rcx", "rdx", "rsi", "rdi",
+        "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15"};
+    for (const char* r : kRegNames) {
+        if (text == r) return true;
+    }
+    return false;
 }
 
 // 源操作数按目标宽度对齐（A2022 收缩族统一设施，320-a 补强）：
