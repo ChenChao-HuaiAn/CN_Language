@@ -86,7 +86,7 @@ flowchart TD
 | 转移 | 触发条件 | 动作 | 失败恢复 |
 |------|---------|------|---------|
 | 建链 | 每次循环 | `fetch`→`checkout -B batch/<号> <最新develop>` | 建链失败=exit1 |
-| 组链 | 成员=自己 | cherry-pick（GIT_COMMITTER_DATE 确定性化）；冲突=踢出 | 全踢=exit1；踢出=(批销账跳过·重跑重报) |
+| 组链 | 成员=自己 | cherry-pick（GIT_COMMITTER_DATE 确定性化）；冲突=**立即中止整链**（1258·错误列出已叠/冲突成员） | 冲突中止=exit1（行回排队·批链删·解冲突重跑·预验按内容键复用）；全踢=exit1；踢出但链上有已应用提交=防线中止（1258·禁软继续） |
 | 快速门禁 | 恒跑 | 冲突标记+临时用例+task_board --check | 败=exit1 |
 | 等价免验 | `--verified-same-content` 且单飞且写集面 diff 空 | 免重跑全量 | 实质差异=回落全量 |
 | 全量门禁 | 须全量 且（fast_lane 或增量须全量） | 重组轮=gate_quick(L1)；首轮=平台分步全量（897） | 败=exit1+成员×写集归因打印 |

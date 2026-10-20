@@ -25,12 +25,17 @@
      818 披露两态（无披露拒/有披露过·含读取失败=拒 glue 面）
   ⑫ 818 点名放行披露机械化：纯函数矩阵（标记缺失/红例名缺/段外提及/不可读/
      空清单五拒态+多例全列过态）——⑤c（池）+⑪（win/linux 复验）三消费点接入锁面
+  ⑬ 1258 组链踢出硬隔离：临时 git 仓库沙箱（真 cherry-pick 冲突·副作用隔离在
+     tempfile 目录·测毕即删）——多成员冲突即中止（后续成员不入链·错误列出已叠
+     与冲突成员）/830 单人链部分提交冲突（1157 实录形态·修复前=空成员集继续
+     push develop）/无冲突正路对照（好路径不回归）
   （原「③选批成员/⑥失联判定」两段随 830 并行化退役删除——批主/拼车/接管面已废除）
 """
 from __future__ import annotations
 
 import json
 import types
+from pathlib import Path
 
 import integrate
 import integrate_disclosure   # 818：点名放行披露机械化（纯函数矩阵直测）
@@ -572,6 +577,112 @@ def 自测() -> int:
          "818 披露：链顶提交信息不可读/空=拒（miss 不静默·宁拦勿放）")
     断言(integrate_disclosure.点名放行披露检查("〔点名放行〕红例任意", []) is not None,
          "818 披露：红例清单空=拒（空清单=未显形红·868 同口径）")
+
+    # ⑬ 1258 组链踢出硬隔离（临时 git 仓库沙箱·真 cherry-pick 冲突——1157 实录回归锚）。
+    #   沙箱=origin.git 裸仓+work 工作仓（tempfile 隔离·零接触真仓库·测毕即删）；
+    #   组链全部 git 调用经 integrate.运行/输出（cwd=integrate.仓库根）——注入 仓库根 指向
+    #   沙箱即全链路落沙箱。三场景：
+    #   一（多成员·成员冲突）=已叠A+冲突B+后续C → 立即中止且 C 不入链（禁软继续·旧逻辑
+    #      continue 下一位会把 A(+C) 部分链推上 develop=1157 实录）；
+    #   二（830 单人链·自身部分提交冲突=1157 形态）=成员第 k 提交冲突、前 k-1 已入链 →
+    #      中止（修复前=踢出自己+链顶≠基底+实际成员空 → 批流程以空批写集绕过预验直接
+    #      push develop=部分中间态入主干+队列行「已踢出」账实分裂）；
+    #   三（对照·无冲突正路）=组链照常返回链顶（好路径不回归锚）。
+    import shutil as _sh
+    import subprocess as _sp
+    import tempfile as _tf
+    真仓库根1258 = integrate.仓库根
+    沙箱根1258: Path | None = None
+    try:
+        沙箱根1258 = Path(_tf.mkdtemp(prefix="integrate_selftest_1258_"))
+        裸仓 = 沙箱根1258 / "origin.git"
+        工仓 = 沙箱根1258 / "work"
+
+        def 沙git(*参数们: str, cwd: Path | None = None, 允败: bool = False):
+            结果 = _sp.run(["git", "-c", "user.name=自测", "-c", "user.email=self@test",
+                          *参数们], cwd=cwd or 工仓, capture_output=True, text=True,
+                         encoding="utf-8", errors="replace")
+            if 结果.returncode != 0 and not 允败:
+                raise AssertionError(f"1258 沙箱 git 失败：{参数们}\n{结果.stderr}")
+            return 结果
+
+        def 链上主题(分支: str) -> str:
+            return 沙git("log", "--format=%s", 分支).stdout
+
+        沙git("init", "--bare", "-b", "develop", str(裸仓), cwd=沙箱根1258)
+        沙git("clone", "--quiet", str(裸仓), str(工仓), cwd=沙箱根1258)
+        f件 = 工仓 / "f.txt"
+        f件.write_text("基\n", encoding="utf-8")
+        沙git("add", "-A")
+        沙git("commit", "-m", "基底")
+        沙git("push", "--quiet", "origin", "develop")
+        # 成员A（任务/11）：g.txt 两干净提交（可叠）
+        沙git("checkout", "-b", "任务/11")
+        g件 = 工仓 / "g.txt"
+        g件.write_text("A一\n", encoding="utf-8")
+        沙git("add", "-A"); 沙git("commit", "-m", "甲一")
+        g件.write_text("A二\n", encoding="utf-8")
+        沙git("add", "-A"); 沙git("commit", "-m", "甲二")
+        沙git("push", "--quiet", "origin", "任务/11")
+        # 成员B（任务/12）：基于基底改 f.txt 首行（与 develop 前进提交必然冲突）
+        沙git("checkout", "-b", "任务/12", "develop")
+        f件.write_text("乙改\n", encoding="utf-8")
+        沙git("add", "-A"); 沙git("commit", "-m", "乙一")
+        沙git("push", "--quiet", "origin", "任务/12")
+        # 成员C（任务/13）：h.txt 干净提交（验证「立即中止·不叠后续成员」）
+        沙git("checkout", "-b", "任务/13", "develop")
+        (工仓 / "h.txt").write_text("丙\n", encoding="utf-8")
+        沙git("add", "-A"); 沙git("commit", "-m", "丙一")
+        沙git("push", "--quiet", "origin", "任务/13")
+        # 成员D（任务/21·场景二）：丁一建 i.txt（干净）+ 丁二改 f.txt 首行（冲突）
+        沙git("checkout", "-b", "任务/21", "develop")
+        (工仓 / "i.txt").write_text("丁\n", encoding="utf-8")
+        沙git("add", "-A"); 沙git("commit", "-m", "丁一")
+        f件.write_text("戊改\n", encoding="utf-8")
+        沙git("add", "-A"); 沙git("commit", "-m", "丁二")
+        沙git("push", "--quiet", "origin", "任务/21")
+        # develop 前进：改 f.txt 同一行（乙一/丁二 在其上 cherry-pick 必冲突）
+        沙git("checkout", "develop")
+        f件.write_text("丁改\n", encoding="utf-8")
+        沙git("add", "-A"); 沙git("commit", "-m", "干一")
+        沙git("push", "--quiet", "origin", "develop")
+        沙git("fetch", "--quiet", "origin")
+        最新 = 沙git("rev-parse", "origin/develop").stdout.strip()
+        参数沙箱 = types.SimpleNamespace(drop=[], remote="origin")
+        integrate.仓库根 = 工仓   # 组链 git 全落沙箱（运行/输出 cwd 注入面）
+
+        # 场景一：A 叠入 → B 冲突 → 立即中止（C 不再叠入·错误列出 A 与 B）
+        沙git("checkout", "-B", "batch/1258a", "origin/develop")
+        链顶, 踢出, 错误, _销 = integrate.组链(
+            [{"分支": "任务/11"}, {"分支": "任务/12"}, {"分支": "任务/13"}], 最新, 参数沙箱)
+        断言(链顶 is None and 错误 is not None and "立即中止" in 错误
+             and "任务/11" in 错误 and "任务/12" in 错误,
+             "1258 场景一：成员冲突=立即中止整链（错误列出已叠成员与冲突成员）")
+        断言(踢出 == [("任务/12", "冲突")], "1258 场景一：踢出清单=冲突成员（甲案硬隔离）")
+        断言("丙一" not in 链上主题("batch/1258a") and "甲二" in 链上主题("batch/1258a"),
+             "1258 场景一：中止后不再叠后续成员（禁踢出后软继续·已叠成员留链待整链作废）")
+
+        # 场景二（1157 形态）：单人链自身第 2 提交冲突、第 1 已入链 → 中止推送
+        沙git("checkout", "-B", "batch/1258b", "origin/develop")
+        链顶二, 踢出二, 错误二, _销二 = integrate.组链(
+            [{"分支": "任务/21"}], 最新, 参数沙箱)
+        断言(链顶二 is None and 错误二 is not None and "任务/21" in 错误二
+             and "前 1 个提交" in 错误二,
+             "1258 场景二（1157 形态·部分提交冲突）：中止推送并披露已进链前缀"
+             "（修复前=踢出自己+链顶≠基底+成员集空 → 绕过预验直推 develop）")
+        断言(踢出二 == [("任务/21", "冲突")], "1258 场景二：踢出清单=冲突成员自身")
+
+        # 场景三（对照）：无冲突链照常叠入返回链顶（好路径不回归）
+        沙git("checkout", "-B", "batch/1258c", "origin/develop")
+        链顶三, 踢出三, 错误三, _销三 = integrate.组链(
+            [{"分支": "任务/11"}, {"分支": "任务/13"}], 最新, 参数沙箱)
+        断言(错误三 is None and 链顶三 and not 踢出三
+             and "甲二" in 链上主题("batch/1258c") and "丙一" in 链上主题("batch/1258c"),
+             "1258 场景三对照：无冲突链照常叠入返回链顶（好路径不回归锚）")
+    finally:
+        integrate.仓库根 = 真仓库根1258
+        if 沙箱根1258 is not None:
+            _sh.rmtree(沙箱根1258, ignore_errors=True)
 
     print(f"\n[selftest] {案例数} 例全过 ✓")
     return 0
