@@ -40,6 +40,7 @@ struct LiveInterval {
     int regId = -1;            // 虚拟寄存器编号
     int start = 0;             // 起始点（指令序数，函数级线性化）
     int end = 0;               // 结束点（最后一次使用，含）
+    std::string type;          // IR 类型（1159：窄位宽按架构支持面过滤用）
     bool isFloat = false;      // 是否浮点（当前不参与寄存器分配）
     bool is128 = false;        // 是否 i128/u128 双槽（当前不参与寄存器分配）
 
@@ -100,7 +101,8 @@ public:
         const std::vector<std::unordered_set<int>>& in,
         const std::vector<std::unordered_set<int>>& blockDef);
 
-    // 静态：判断 IR 类型是否可参与寄存器分配（i64/u64/ptr/i32/u32；非浮点/非 i128/i1）
+    // 静态：判断 IR 类型是否可参与寄存器分配（i64/u64/ptr/i32/u32/i8/u8/i16/u16；
+    //   非浮点/非 i128/i1）。架构侧支持面由 allocate() 内 allowNarrow_ 收口。
     static bool isAllocableType(const std::string& type);
 
 private:
@@ -110,6 +112,7 @@ private:
     TargetArch arch_;                     // 目标架构
     std::vector<std::string> regs_;       // 可用物理寄存器（被调用者保存，去保留）
     std::vector<LiveInterval> intervals_; // 活跃区间（排序后）
+    bool allowNarrow_ = false;            // 窄整型是否参与（1159：按后端支持面分步）
 };
 
 } // namespace regalloc

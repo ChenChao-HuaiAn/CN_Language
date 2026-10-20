@@ -51,8 +51,10 @@ void X64CodeGenerator::emitLoadStore(AsmWriter& writer, const ir::IRInstruction&
             //   pass 演化的同构防线·与 500 Store 面防御同理由）。
             if (inst.operands[0].isConstant) {
                 writer.line("mov " + dw + ", " + src);
-            } else {
-                writer.line("movsx " + dw + ", " + memSizePtr(inst.type) + src);  // 符号扩展 8/16 -> 32
+            }
+            if (!inst.operands[0].isConstant) {
+                // 1159：源为分配寄存器时按窄宽名扩展（r12→r12b/r12w）；槽路径不变
+                emitNarrowOperandTo32(writer, inst.type, src, false, dw);  // 符号扩展 8/16 -> 32
             }
             if (dstPhys.empty()) {
                 writer.line("mov " + shrunkOperand("i32", dst) + ", eax");
@@ -66,8 +68,10 @@ void X64CodeGenerator::emitLoadStore(AsmWriter& writer, const ir::IRInstruction&
             //   32 位=零扩展语义（movzx 等价）。
             if (inst.operands[0].isConstant) {
                 writer.line("mov " + dw + ", " + src);
-            } else {
-                writer.line("movzx " + dw + ", " + memSizePtr(inst.type) + src);  // 零扩展 8/16 -> 32
+            }
+            if (!inst.operands[0].isConstant) {
+                // 1159：源为分配寄存器时按窄宽名零扩展（r12→r12b/r12w）；槽路径不变
+                emitNarrowOperandTo32(writer, inst.type, src, false, dw);  // 零扩展 8/16 -> 32
             }
             if (dstPhys.empty()) {
                 writer.line("mov " + shrunkOperand("i32", dst) + ", eax");
@@ -144,8 +148,10 @@ void X64CodeGenerator::emitLoadStore(AsmWriter& writer, const ir::IRInstruction&
             //   窄常量值域 ≤32767 在 imm32 内，movsxd 继续符号扩展）。
             if (inst.operands[0].isConstant) {
                 writer.line("mov eax, " + src);
-            } else {
-                writer.line("movsx eax, " + memSizePtr(inst.type) + src);  // 符号扩展 -> eax
+            }
+            if (!inst.operands[0].isConstant) {
+                // 1159：源为分配寄存器时按窄宽名扩展（r12→r12b/r12w）；槽路径不变
+                emitNarrowOperandTo32(writer, inst.type, src, false, "eax");  // 符号扩展 -> eax
             }
             writer.line("movsxd rax, eax");                             // 符号扩展 -> rax（存满8字节）
             writer.line("mov " + slot + ", rax");
@@ -156,8 +162,10 @@ void X64CodeGenerator::emitLoadStore(AsmWriter& writer, const ir::IRInstruction&
             //   =零扩展语义，与 movzx 等价）
             if (inst.operands[0].isConstant) {
                 writer.line("mov eax, " + src);
-            } else {
-                writer.line("movzx eax, " + memSizePtr(inst.type) + src);   // 零扩展 -> eax
+            }
+            if (!inst.operands[0].isConstant) {
+                // 1159：源为分配寄存器时按窄宽名零扩展（r12→r12b/r12w）；槽路径不变
+                emitNarrowOperandTo32(writer, inst.type, src, false, "eax");   // 零扩展 -> eax
             }
             writer.line("mov " + slot + ", rax");                        // eax 写入即清零高32位
             return;
@@ -450,6 +458,9 @@ void X64CodeGenerator::emitPtrLoadStore(AsmWriter& writer, const ir::IRInstructi
         //   立即数操作数（A2070），mov 直载全 64 位（写 cl/cx 取低字节=补码截断）
         if (inst.operands[1].isConstant) {
             writer.line("mov rcx, " + value);
+        } else if (is64BitRegisterName(value)) {
+            // 1159：值已分配 -> 窄宽寄存器名直取（movsx rcx, r12b）
+            writer.line("movsx rcx, " + narrowOperand(inst.type, value));
         } else {
             writer.line("movsx rcx, " + memSizePtr(inst.type) + value);
         }
@@ -503,6 +514,9 @@ void X64CodeGenerator::emitPtrLoadStore(AsmWriter& writer, const ir::IRInstructi
         // 同上：立即数常量走 mov 直载（movzx 不接受立即数，A2070）
         if (inst.operands[1].isConstant) {
             writer.line("mov rcx, " + value);
+        } else if (is64BitRegisterName(value)) {
+            // 1159：值已分配 -> 窄宽寄存器名直取（movzx rcx, r12b）
+            writer.line("movzx rcx, " + narrowOperand(inst.type, value));
         } else {
             writer.line("movzx rcx, " + memSizePtr(inst.type) + value);
         }

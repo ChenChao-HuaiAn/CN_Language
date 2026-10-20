@@ -520,6 +520,9 @@ bool X64CodeGenerator::emitCastIntWidth(AsmWriter& writer, const ir::IRInstructi
                 //   整8(-112) -> 正8 值应为 144），截断到目标域（写 eax 清高 32）。
                 writer.line("and eax, " + std::string(to == "u8" ? "255" : "65535"));
             }
+        } else if (isRegisterOperandText(src)) {
+            // 1159：源已分配 -> 窄宽寄存器名扩展（r12→r12b/r12w）；槽路径不变
+            writer.line(ext + " eax, " + narrowOperand(from, src));
         } else {
             writer.line(ext + " eax, " + mp + src);
         }
@@ -572,6 +575,19 @@ bool X64CodeGenerator::emitCastIntWidth(AsmWriter& writer, const ir::IRInstructi
                 (!dst.empty() && dst[0] == '[') ? dst : widthFor("i32", dst);
             writer.line("mov rax, " + regSlot(srcLoId));
             writer.line("mov " + dstW32 + ", eax");
+            // 1159：已分配目标按声明窄宽规范化到 32 位（低 8/16 位截断后的高位
+            //   残留不得进入后续 32 位消费点；槽路径保持低字节有效约定不变）
+            if (!dst.empty() && dst[0] != '[') {
+                if (to == "i8") {
+                    writer.line("movsx " + dstW32 + ", al");
+                } else if (to == "u8") {
+                    writer.line("movzx " + dstW32 + ", al");
+                } else if (to == "i16") {
+                    writer.line("movsx " + dstW32 + ", ax");
+                } else if (to == "u16") {
+                    writer.line("movzx " + dstW32 + ", ax");
+                }
+            }
         }
         return true;
     }
@@ -647,12 +663,33 @@ bool X64CodeGenerator::emitCastIntWidth(AsmWriter& writer, const ir::IRInstructi
     // 大 -> 小（截断）：mov 低8/16/32位（写低字节，高位清零由槽位决定）
     if (to == "i8" || to == "u8") {
         writer.line("mov al, " + narrowOperand(to, src));
-        writer.line("mov " + narrowOperand(to, dst) + ", al");
+        // 1159：结果已分配 -> 低位截取后按目标符号性规范化到 32 位（r12b 写只动
+        //   低 8 位，高位残留会被后续 32 位消费点读到——movsx/movzx 一次收口）；
+        //   槽路径保持原两段（低字节有效约定不变·产物逐字节不变）。
+        const std::string dstPhys = physRegOf(inst.result);
+        const bool dstAllocated = !dstPhys.empty();
+        if (dstAllocated) {
+            const bool toSigned = (to == "i8");
+            writer.line(std::string(toSigned ? "movsx " : "movzx ") +
+                        widthFor("i32", dstPhys) + ", al");
+        }
+        if (!dstAllocated) {
+            writer.line("mov " + narrowOperand(to, dst) + ", al");
+        }
         return true;
     }
     if (to == "i16" || to == "u16") {
         writer.line("mov ax, " + narrowOperand(to, src));
-        writer.line("mov " + narrowOperand(to, dst) + ", ax");
+        const std::string dstPhys = physRegOf(inst.result);
+        const bool dstAllocated = !dstPhys.empty();
+        if (dstAllocated) {
+            const bool toSigned = (to == "i16");
+            writer.line(std::string(toSigned ? "movsx " : "movzx ") +
+                        widthFor("i32", dstPhys) + ", ax");
+        }
+        if (!dstAllocated) {
+            writer.line("mov " + narrowOperand(to, dst) + ", ax");
+        }
         return true;
     }
     // i1 -> i64/u64（修复集成审查 BUG #4）：布尔值 0/1 零扩展。
@@ -745,6 +782,10 @@ bool X64CodeGenerator::emitCastIntWidth(AsmWriter& writer, const ir::IRInstructi
             if (inst.operands[0].isConstant) {
                 writer.line("mov eax, " + src);
                 writer.line("cdqe");
+            } else if (isRegisterOperandText(src)) {
+                // 1159：源已分配 -> 窄宽寄存器名符号扩展（movsx eax, r12b/r12w）
+                writer.line("movsx eax, " + narrowOperand(from, src));
+                writer.line("movsxd rax, eax");
             } else {
                 writer.line("movsx eax, " + memSizePtr(from) + src);
                 writer.line("movsxd rax, eax");
@@ -752,6 +793,9 @@ bool X64CodeGenerator::emitCastIntWidth(AsmWriter& writer, const ir::IRInstructi
         } else if (from == "u8" || from == "u16") {
             if (inst.operands[0].isConstant) {
                 writer.line("mov eax, " + src);  // 写 eax 清高 32=零扩展
+            } else if (isRegisterOperandText(src)) {
+                // 1159：源已分配 -> 窄宽寄存器名零扩展（movzx eax, r12b/r12w）
+                writer.line("movzx eax, " + narrowOperand(from, src));
             } else {
                 writer.line("movzx eax, " + memSizePtr(from) + src);
             }

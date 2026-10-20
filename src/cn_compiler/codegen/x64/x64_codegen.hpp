@@ -293,6 +293,18 @@ private:
     // 文本是否为 64 位通用寄存器全名（rax/rbx/.../r15）——1159：窄位宽直写族
     //   判据（寄存器形态 vs 内存槽/立即数；决定 movsx/movzx 的操作数形态）。
     static bool is64BitRegisterName(const std::string& text);
+    // 文本是否为 32 位通用寄存器名（eax/.../r15d）——emitCast 顶部会先把源收缩为
+    //   32 位名，窄位宽直写族须同时识别两形态（否则拼出 byte ptr r13d 非法操作数）。
+    static bool is32BitRegisterName(const std::string& text);
+    static bool isRegisterOperandText(const std::string& text);
+
+    // 1159：窄整型（i8/u8/i16/u16）源 -> 32 位寄存器。
+    //   物理寄存器：movsx/movzx dist32, r12b/r12w（按低位取窄值，不依赖高位规范）；
+    //   内存槽：保持 byte/word ptr 显式宽度（A2070）；常量：mov 直载（写 32 位名
+    //   清高 32=符号/零扩展同义）。未分配路径与既有发射逐字节一致。
+    void emitNarrowOperandTo32(AsmWriter& writer, const std::string& type,
+                               const std::string& op, bool isConstant,
+                               const std::string& dst32);
 
     // 源操作数按目标宽度对齐（A2022 收缩族统一设施，320-a 补强）：
     //   regAlloc 下 vreg 直接落 r8~r15 全名，32 位指令按全名装载即 A2022

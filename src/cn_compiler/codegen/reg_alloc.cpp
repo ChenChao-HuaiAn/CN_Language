@@ -30,12 +30,16 @@ namespace regalloc {
 
 namespace {
 
-// IR 类型是否参与寄存器分配（1159：64/32 位整型与指针；i1/浮点/i128 不参与）
-//   32 位集合先接入（x64/arm64 两侧同时完备后），窄整型随后扩展——见 allocate()
-//   与 isAllocableType 的架构支持面注释。
+// IR 类型是否参与寄存器分配（1159：64/32 位整型、指针与窄整型；i1/浮点/i128 不参与）
 bool isAllocableIntType(const std::string& type) {
     return type == "i64" || type == "u64" || type == "ptr" ||
-           type == "i32" || type == "u32";
+           type == "i32" || type == "u32" ||
+           type == "i8" || type == "u8" || type == "i16" || type == "u16";
+}
+
+// 窄整型（8/16 位）：按架构直写完备度分步接入（1159 步2 x64 / 步3 arm64）
+bool isNarrowIntType(const std::string& type) {
+    return type == "i8" || type == "u8" || type == "i16" || type == "u16";
 }
 
 // 指令使用到的寄存器ID集合（operands 中的虚拟寄存器）
@@ -78,7 +82,8 @@ int instResultId(const ir::IRInstruction& inst) {
 
 } // namespace
 
-// 静态：判断 IR 类型是否可参与寄存器分配（i64/u64/ptr/i32/u32；非浮点/非 i128/i1）
+// 静态：判断 IR 类型是否可参与寄存器分配（i64/u64/ptr/i32/u32/i8/u8/i16/u16；
+//   非浮点/非 i128/i1）
 bool LinearScanAllocator::isAllocableType(const std::string& type) {
     return isAllocableIntType(type);
 }
@@ -105,6 +110,9 @@ LinearScanAllocator::LinearScanAllocator(TargetArch arch,
             regs_.push_back(reg);
         }
     }
+    // 1159 步2：窄整型先接 x64（该后端发射族窄源/截断直写已完备）；arm64 在
+    //   步3 接通前保持栈槽映射（共享分配器按架构收口，防中间态产物错值）。
+    allowNarrow_ = (arch == TargetArch::X64);
 }
 
 // 静态：活跃区间计算（def-use 链 + 跨块活跃传播）
@@ -287,6 +295,7 @@ std::unordered_map<int, LiveInterval> LinearScanAllocator::buildLiveIntervalMap(
                     li.regId = inst.result.id;
                     li.start = point;
                     li.end = point;
+                    li.type = inst.result.type;  // 1159：类型随区间（架构支持面过滤）
                     intervalMap[inst.result.id] = li;
                 } else {
                     it->second.start = std::min(it->second.start, point);
@@ -296,13 +305,14 @@ std::unordered_map<int, LiveInterval> LinearScanAllocator::buildLiveIntervalMap(
             for (const auto& op : inst.operands) {
                 if (op.id >= 0 && !op.isConstant && isAllocableType(op.type)) {
                     auto it = intervalMap.find(op.id);
-                    if (it == intervalMap.end()) {
-                        LiveInterval li;
-                        li.regId = op.id;
-                        li.start = point;
-                        li.end = point;
-                        intervalMap[op.id] = li;
-                    } else {
+                if (it == intervalMap.end()) {
+                    LiveInterval li;
+                    li.regId = op.id;
+                    li.start = point;
+                    li.end = point;
+                    li.type = op.type;  // 1159：类型随区间（架构支持面过滤）
+                    intervalMap[op.id] = li;
+                } else {
                         it->second.end = std::max(it->second.end, point);
                     }
                 }
@@ -379,6 +389,8 @@ void LinearScanAllocator::scan(const std::vector<LiveInterval>& intervals,
     };
 
     for (const auto& li : intervals) {
+        // 1159：架构支持面外的窄整型保持栈槽映射（不产出分配结果=assignedReg 空）
+        if (!allowNarrow_ && isNarrowIntType(li.type)) continue;
         const int point = li.start;
         expire(point);
         // 已分配？跳过（理论上线性扫描每个寄存器一次）

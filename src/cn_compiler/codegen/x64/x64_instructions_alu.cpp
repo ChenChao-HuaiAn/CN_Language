@@ -68,8 +68,6 @@ void X64CodeGenerator::emitShift(AsmWriter& writer, const ir::IRInstruction& ins
                            : (isUnsigned ? "shr" : "sar");
     // 8/16位：扩展后按32位运算（与 emitIntBinary 一致）
     if (srcType == "i8" || srcType == "i16" || srcType == "u8" || srcType == "u16") {
-        const std::string ext = (srcType == "i8" || srcType == "i16") ? "movsx" : "movzx";
-        const std::string mp = memSizePtr(srcType);
         const int shiftMask = (srcType == "i16" || srcType == "u16") ? 15 : 7;
         const int widthBits = shiftMask + 1;  // 任务 474：类型位宽
         // D8（458-a）：dst 已分配时计算寄存器=dst 的 32 位形态（cl 固定约束不冲突）
@@ -79,11 +77,9 @@ void X64CodeGenerator::emitShift(AsmWriter& writer, const ir::IRInstruction& ins
         // 常量传播面守卫（#500·077 Cast 常量源适配同构）：op1 为立即数常量时
         //   movsx/movzx 不接受立即数操作数（word ptr 32767 → ml64 A2070）——
         //   mov 直载（写 32 位寄存器清高位=窄值全值，值域 ≤65535 在 imm32 内）。
-        if (inst.operands[0].isConstant) {
-            writer.line("mov " + ew + ", " + op1);
-        } else {
-            writer.line(ext + " " + ew + ", " + mp + op1);
-        }
+        // 1159：op1 寄存器形态按窄宽名扩展（未分配路径与上述原路径逐字节一致）
+        emitNarrowOperandTo32(writer, srcType, op1,
+                              inst.operands[0].isConstant, ew);
         // 移位量：常量 -> 立即数；否则 -> cl
         if (inst.operands[1].isConstant) {
             const int raw = shiftAmtOf(inst.operands[1].extra);
@@ -241,25 +237,19 @@ void X64CodeGenerator::emitIntBinary(AsmWriter& writer, const ir::IRInstruction&
     // 8/16位：两个操作数都扩展后按32位运算
     if (srcType == "i8" || srcType == "i16" ||
         srcType == "u8" || srcType == "u16") {
-        const bool isS = (srcType == "i8" || srcType == "i16");
-        const std::string ext = isS ? "movsx" : "movzx";
-        // MASM 无法推断内存宽度（A2070）：8/16位内存操作数必须带 byte/word ptr 前缀
-        const std::string mp = memSizePtr(srcType);
         if (!dstPhys.empty()) {
             // 直写：计算寄存器=dst 的 32 位形态（ecx 是固定临时·与 dst 无冲突面）
             const std::string dw = widthFor("i32", dstPhys);
-            // 常量传播面守卫（#500·077 修法同构）：op1 常量时 mov 直载
-            //   （movsx 不接受立即数操作数·A2070）
-            if (inst.operands[0].isConstant) {
-                writer.line("mov " + dw + ", " + op1);
-            } else {
-                writer.line(ext + " " + dw + ", " + mp + op1);   // op1 扩展 -> dst
-            }
+            // 1159：op1 源三分（常量直载/寄存器窄宽名/内存 byte·word ptr）
+            emitNarrowOperandTo32(writer, srcType, op1,
+                                  inst.operands[0].isConstant, dw);
             if (inst.operands[1].isConstant) {
                 writer.line(mnemonic + " " + dw + ", " + op2);
-            } else {
-                const std::string mp2 = memSizePtr(inst.operands[1].type);
-                writer.line(ext + " ecx, " + mp2 + op2);   // 槽：扩展 -> ecx
+            }
+            if (!inst.operands[1].isConstant) {
+                // 1159：op2 寄存器形态经 narrowOperand 取窄宽名（r12→r12b/r12w）
+                emitNarrowOperandTo32(writer, inst.operands[1].type, op2,
+                                      false, "ecx");
                 writer.line(mnemonic + " " + dw + ", ecx");
             }
             narrowGuard474(dw);
@@ -269,17 +259,16 @@ void X64CodeGenerator::emitIntBinary(AsmWriter& writer, const ir::IRInstruction&
         //   实锤触发形态：O1 复写传播 `甲=32767` 折叠进 `加 %v 32767 1 (i16)`，
         //   窄域溢出检查面常量折叠器正确不折叠（溢出须运行期错误码8），发射层
         //   原样拼 word ptr 32767 → ml64 拒绝（658/681/682/734/736 五族实证）。
-        if (inst.operands[0].isConstant) {
-            writer.line("mov eax, " + op1);
-        } else {
-            writer.line(ext + " eax, " + mp + op1);   // op1 扩展 -> eax
-        }
+        // 1159：寄存器形态按窄宽名扩展（未分配输出与上述原路径逐字节一致）
+        emitNarrowOperandTo32(writer, srcType, op1,
+                              inst.operands[0].isConstant, "eax");
         // op2 可能是常量/槽：常量直接作为32位立即数（其值本身正确）
         if (inst.operands[1].isConstant) {
             writer.line(mnemonic + " eax, " + op2);
-        } else {
-            const std::string mp2 = memSizePtr(inst.operands[1].type);
-            writer.line(ext + " ecx, " + mp2 + op2);   // 槽：扩展 -> ecx
+        }
+        if (!inst.operands[1].isConstant) {
+            emitNarrowOperandTo32(writer, inst.operands[1].type, op2,
+                                  false, "ecx");
             writer.line(mnemonic + " eax, ecx");
         }
         narrowGuard474("eax");
@@ -368,24 +357,20 @@ void X64CodeGenerator::emitIntMul(AsmWriter& writer, const ir::IRInstruction& in
     const std::string trap = "@ovf" + std::to_string(ptrCheckCounter_++);
     if (isNarrow) {
         const bool isS = (ty == "i8" || ty == "i16");
-        const std::string ext = isS ? "movsx" : "movzx";
-        const std::string mp = memSizePtr(ty);
         // D8（369 波1·乘法族直写）：结果已分配且无溢出检查面（WrapMul/不安全）
         //   时计算落 dst 的 32 位名（emitIntBinary 458-a 直写同构·免尾部 mov
         //   中转）；needOvf 时强制三段（481 域 cmp 错误块在中间·垫底布局）。
         const std::string narrowPhys = needOvf ? std::string() : physRegOf(inst.result);
         const std::string acc = narrowPhys.empty() ? std::string("eax")
                                                    : widthFor("i32", narrowPhys);
-        // 常量传播面守卫（#500·077 修法同构）：op1 常量时 mov 直载（A2070 同上）
-        if (inst.operands[0].isConstant) {
-            writer.line("mov " + acc + ", " + op1);
-        } else {
-            writer.line(ext + " " + acc + ", " + mp + op1);
-        }
+        // 1159：op1 源三分（常量/寄存器窄宽名/内存 byte·word ptr）
+        emitNarrowOperandTo32(writer, ty, op1, inst.operands[0].isConstant, acc);
         if (inst.operands[1].isConstant) {
             writer.line("imul " + acc + ", " + op2Text);
-        } else {
-            writer.line(ext + " ecx, " + memSizePtr(inst.operands[1].type) + op2);
+        }
+        if (!inst.operands[1].isConstant) {
+            // 1159：op2 寄存器形态按窄宽名扩展（r12→r12b/r12w）
+            emitNarrowOperandTo32(writer, inst.operands[1].type, op2, false, "ecx");
             writer.line("imul " + acc + ", ecx");
         }
         if (needOvf) {
@@ -506,7 +491,18 @@ void X64CodeGenerator::emitDivMod(AsmWriter& writer, const ir::IRInstruction& in
     const bool isUnsigned = (type == "u8" || type == "u16" || type == "u32" ||
                              type == "u64" || type == "u128");
     std::string w = widthFor(type, "rax");
-    writer.line("mov " + w + ", " + shrunkOperand(type, op1));  // 物理寄存器全名收缩（A2022）
+    // 1159：窄型 op1 已分配到物理寄存器时按窄宽名扩展（槽/常量保持原路径：
+    //   槽 4 字节提升读、常量 imm 直载——未分配产物逐字节不变）
+    const bool narrowType = (type == "i8" || type == "i16" ||
+                             type == "u8" || type == "u16");
+    if (narrowType && !inst.operands[0].isConstant &&
+        is64BitRegisterName(op1)) {
+        emitNarrowOperandTo32(writer, type, op1, false, w);
+    }
+    if (!(narrowType && !inst.operands[0].isConstant &&
+          is64BitRegisterName(op1))) {
+        writer.line("mov " + w + ", " + shrunkOperand(type, op1));  // 物理寄存器全名收缩（A2022）
+    }
     if (isUnsigned) {
         writer.line("xor edx, edx");  // 无符号除法：被除数高64位零扩展
     } else if (type == "i32" || type == "i8" || type == "i16") {
@@ -551,9 +547,16 @@ void X64CodeGenerator::emitDivMod(AsmWriter& writer, const ir::IRInstruction& in
                 writer.line("mov rcx, " + op2);
                 writer.line("test rcx, rcx");
             } else if (is64BitRegisterName(op2)) {
-                writer.line("mov ecx, " + widthFor("i32", op2));
+                // 1159：窄型除数寄存器按窄宽名扩展（与槽 4 字节提升读同值）；
+                //   i32/u32 直接取 32 位名
+                if (type == "i8" || type == "i16" || type == "u8" || type == "u16") {
+                    emitNarrowOperandTo32(writer, type, op2, false, "ecx");
+                } else if (!(type == "i8" || type == "i16" ||
+                             type == "u8" || type == "u16")) {
+                    writer.line("mov ecx, " + widthFor("i32", op2));
+                }
                 writer.line("test ecx, ecx");
-            } else {
+            } else if (!is64BitRegisterName(op2)) {
                 writer.line("mov ecx, dword ptr " + op2);
                 writer.line("test ecx, ecx");
             }

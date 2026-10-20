@@ -57,16 +57,24 @@ std::string X64CodeGenerator::widthFor(const std::string& type, const std::strin
     }
     // 8/16位：运算统一提升到32位（避免 8 位运算需要 al/ah 特殊寄存器限制），
     // 返回 32 位名（movzx/movsx 从槽加载后按32位运算）
+    // 1159：补全 rsi/rdi/r12~r15 映射（分配池 rbx/r12~r15 全在表内——原表缺
+    //   r12~r15 时 widthFor("i8","r12") 落 "eax" 兜底=运算读到错寄存器）。
     if (type == "i8" || type == "i16" || type == "u8" || type == "u16") {
         if (reg == "rax") return "eax";
         if (reg == "rbx") return "ebx";
         if (reg == "rcx") return "ecx";
         if (reg == "rdx") return "edx";
+        if (reg == "rsi") return "esi";
+        if (reg == "rdi") return "edi";
         if (reg == "r8") return "r8d";
         if (reg == "r9") return "r9d";
         if (reg == "r10") return "r10d";
         if (reg == "r11") return "r11d";
-        return "eax";  // 其他寄存器（rbp等）回退 eax
+        if (reg == "r12") return "r12d";
+        if (reg == "r13") return "r13d";
+        if (reg == "r14") return "r14d";
+        if (reg == "r15") return "r15d";
+        return "eax";  // 其他文本（非寄存器名）回退 eax（调用点均为寄存器名）
     }
     // i128/u128：低64位运算（Task 2.3 务实实现，值域≤2^63；128位全范围留后续运行时库）
     if (type == "i128" || type == "u128") {
@@ -86,8 +94,10 @@ std::string X64CodeGenerator::narrowOperand(const std::string& type, const std::
                                 "r8b", "r9b", "r10b", "r11b", "r12b", "r13b", "r14b", "r15b"};
     static const char* k16[] = {"ax", "bx", "cx", "dx", "si", "di",
                                 "r8w", "r9w", "r10w", "r11w", "r12w", "r13w", "r14w", "r15w"};
+    static const char* k32[] = {"eax", "ebx", "ecx", "edx", "esi", "edi",
+                                "r8d", "r9d", "r10d", "r11d", "r12d", "r13d", "r14d", "r15d"};
     for (int i = 0; i < 14; ++i) {
-        if (op == k64[i]) return is8 ? k8[i] : k16[i];
+        if (op == k64[i] || op == k32[i]) return is8 ? k8[i] : k16[i];
     }
     return op;
 }
@@ -101,6 +111,42 @@ bool X64CodeGenerator::is64BitRegisterName(const std::string& text) {
         if (text == r) return true;
     }
     return false;
+}
+
+// 32 位通用寄存器名（emitCast 顶部收缩后的源形态）
+bool X64CodeGenerator::is32BitRegisterName(const std::string& text) {
+    static const char* kRegNames[] = {
+        "eax", "ebx", "ecx", "edx", "esi", "edi",
+        "r8d", "r9d", "r10d", "r11d", "r12d", "r13d", "r14d", "r15d"};
+    for (const char* r : kRegNames) {
+        if (text == r) return true;
+    }
+    return false;
+}
+
+bool X64CodeGenerator::isRegisterOperandText(const std::string& text) {
+    return is64BitRegisterName(text) || is32BitRegisterName(text);
+}
+
+// 1159：窄整型源 -> 32 位寄存器（寄存器/内存/常量三分；见头文件注释）
+void X64CodeGenerator::emitNarrowOperandTo32(AsmWriter& writer,
+                                             const std::string& type,
+                                             const std::string& op,
+                                             bool isConstant,
+                                             const std::string& dst32) {
+    const bool isSigned = (type == "i8" || type == "i16");
+    const std::string ext = isSigned ? "movsx" : "movzx";
+    if (isConstant) {
+        writer.line("mov " + dst32 + ", " + op);
+        return;
+    }
+    if (isRegisterOperandText(op)) {
+        // 寄存器形态（64 位全名或 emitCast 顶部收缩后的 32 位名）：按窄宽寄存器名
+        //   取值（r12/r12d→r12b/r12w），与槽读逐位等价
+        writer.line(ext + " " + dst32 + ", " + narrowOperand(type, op));
+        return;
+    }
+    writer.line(ext + " " + dst32 + ", " + memSizePtr(type) + op);
 }
 
 // 源操作数按目标宽度对齐（A2022 收缩族统一设施，320-a 补强）：
