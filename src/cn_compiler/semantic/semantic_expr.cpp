@@ -93,6 +93,18 @@ void SemanticAnalyzer::visitIntegerLiteral(IntegerLiteral* node) {
 void SemanticAnalyzer::visitFloatLiteral(FloatLiteral* node) {
     // 1360 结果化：浮点面无后缀契约态=浮64（001 §4.3·显形默认）
     lastType_ = types::literalTypeOf(node->raw, true).value_or("浮64");
+    // 1161（910 家族浮点面·#1076「字面量超目标类型表示范围=编译期拒」对齐）：
+    //   浮点字面量承载域编译期拒——超目标定级类型（浮64/浮32）表示域的字面量
+    //   在一切消费面（声明/赋值/传参/返回/元素/字段/表达式）均不可合法承载，
+    //   修前静默发射 0 位模式/负零（floatBitsHex 解析失败回 0·m1/m3 探针实锚：
+    //   `浮64 a=1e999` 运行 a=0.000000、`-1e999` IR 乘 -1.0 得 -0.000000）。
+    //   判定单点=types::floatLiteralFitsTypeDomain（模型层文本级·与 v2 自举
+    //   侧 逐字同构零分叉）；下溢 subnormal（1e-320）域内放行=宿主现状。
+    if (!types::floatLiteralFitsTypeDomain(node->raw, lastType_)) {
+        diagnostics_.report(DiagnosticLevel::Error, node->location,
+                            "浮点字面量超出'" + lastType_ + "'表示范围: " +
+                                node->raw);
+    }
     (void)node;
 }
 void SemanticAnalyzer::visitStringLiteral(StringLiteral* node) {

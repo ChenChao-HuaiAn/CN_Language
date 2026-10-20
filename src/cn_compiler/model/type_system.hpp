@@ -303,6 +303,18 @@ bool decTextFitsUnsignedRange(const std::string& decText, const char* bound);
 bool decTextFitsTypeDomain(const std::string& decText,
                            const std::string& typeName);
 
+// 1161（910 家族浮点面·#1076「字面量超目标类型表示范围=编译期拒」对齐）：
+//   浮点字面量承载域判定——raw 文本（词法合法浮点 token：十进制段+可选
+//   .小数段+可选 e 指数段+可选 f/F 后缀）数学值是否在目标浮点类型表示域内。
+//   文本级判据（与 v2 自举侧 逐字同构·零分叉）：归一 尾数数字串S×10^E 与
+//   上界（浮64=DBL_MAX≈1.7976931348623157e308 / 浮32=FLT_MAX≈
+//   3.4028234663852886e38）按科学计数指数与有效数字字典序比较。
+//   下溢 subnormal（1e-320）非超域=域内放行（宿主现状 subnormal 位模式
+//   发射保真）；不用 strtod/errno（下溢 ERANGE 语义平台有差，不接触）。
+//   非浮点类型名恒真（调用方 literalTypeOf 定级已前置）。
+bool floatLiteralFitsTypeDomain(const std::string& raw,
+                                const std::string& typeName);
+
 // 910（788/420 提升链单点归属）：整数字面量 IR 运行时类型——带后缀按后缀
 //   定级；无后缀恒定级整32 按**数学值域**提升（超 int32 双域→整64、超
 //   int64 双域→整128；正32 超 u32→正64、正64 超 u64→正128）。判据全部按

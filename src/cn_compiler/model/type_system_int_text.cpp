@@ -591,5 +591,104 @@ cn::Optional<std::string> decTextMod919(const std::string& a, const std::string&
     return r;
 }
 
+// ==================== 1161 浮点字面量承载域判定（910 家族浮点面） ====================
+
+// 1161 辅助：科学计数法上界——目标类型 → (指数上界 U, 17 位有效数字上界串 M)。
+//   浮64: DBL_MAX = 1.7976931348623157e308 = 17976931348623157 × 10^292
+//   浮32: FLT_MAX = 3.4028234663852886e38  = 34028234663852886 × 10^22
+//   （两上界串各 17 位有效数字·与 IEEE754 十进制最短表示一致）
+void floatDomainBound1161(const std::string& typeName, long long& boundExp,
+                          const char*& boundDigits) {
+    // 显式闭集枚举（调用方 literalTypeOf 定级仅产 浮32/浮64·无双边界外值）
+    if (typeName == "浮32") {
+        boundExp = 38;
+        boundDigits = "34028234663852886";
+    }
+    if (typeName == "浮64") {
+        boundExp = 308;
+        boundDigits = "17976931348623157";
+    }
+}
+
+// 1161 辅助：剥前导零（空段返回空串；全零 → 空串=值 0 哨兵）
+std::string floatDigitsTrimZeros1161(const std::string& digits) {
+    const std::size_t nz = digits.find_first_not_of('0');
+    if (nz == std::string::npos) return "";
+    return digits.substr(nz);
+}
+
+// 1161：浮点字面量承载域文本级判定——见 type_system.hpp 声明注释。
+//   算法（与 v2 自举侧 IR字面量域.浮点字面量文本入域 逐字同构·零分叉）：
+//   ① 剥 f/F 后缀与正负号（符号不影响 |值| 域判定）；② 拆 e/E 指数段与
+//   主体；③ 主体拆 整数段.小数段，数字串 S=两段拼接剥前导零，有效指数
+//   E=e指数-小数位数；④ 科学计数归一指数 m=S长+E-1（d.ddd×10^m）；
+//   ⑤ m 与上界指数 U 比较定超域/域内；m==U 时 S 与上界串右补零至等长
+//   字典序比较（补零后同指数·比较即数学值比较）。E 数量级先钳定防 整64
+//   回绕（|E|>10000 时 10^±10000 必超/必域内，钳定面数学上等价）。
+//   边界锚：1e308 域内（0x7FE1CCF385EBC8A0）/1e309 拒/DBL_MAX 文本域内/
+//   比 DBL_MAX 大 1ulp 的文本拒/1e-320 subnormal 域内/1e999f（浮32）拒。
+bool floatLiteralFitsTypeDomain(const std::string& raw,
+                                const std::string& typeName) {
+    if (typeName != "浮64" && typeName != "浮32") return true;
+    std::string t = raw;
+    if (!t.empty() && (t.back() == 'f' || t.back() == 'F')) t.pop_back();
+    if (!t.empty() && (t[0] == '+' || t[0] == '-')) t.erase(0, 1);
+    long long exponent = 0;
+    std::string body = t;
+    const std::size_t ePos = t.find_first_of("eE");
+    if (ePos != std::string::npos) {
+        body = t.substr(0, ePos);
+        std::string expText = t.substr(ePos + 1);
+        bool expNeg = false;
+        if (!expText.empty() && (expText[0] == '+' || expText[0] == '-')) {
+            expNeg = (expText[0] == '-');
+            expText.erase(0, 1);
+        }
+        expText = floatDigitsTrimZeros1161(expText);
+        // 三区间显式枚举（else 新规·无兜底 else 块）：空段=指数 0／
+        //   [1,18] 位=承载内正常解析／19 位以上=巨指数量级钳定
+        if (expText.empty()) {
+            exponent = 0;  // 1e+ 词法退化形态（符号后空段）=指数 0
+        }
+        if (expText.size() >= 1 && expText.size() <= 18) {
+            exponent = static_cast<long long>(std::stoll(expText));
+            if (expNeg) exponent = -exponent;
+        }
+        if (expText.size() > 18) {  // 静默豁免业务值: 巨指数（剥零后 19 位以上=10^±10^18 级）按数量级直接定域·数学上恒真恒假·防 to_ll 承载回绕毒化·非 miss 默认
+            return !expNeg;
+        }
+    }
+    std::string intPart = body;
+    std::string fracPart;
+    const std::size_t dotPos = body.find('.');
+    if (dotPos != std::string::npos) {
+        intPart = body.substr(0, dotPos);
+        fracPart = body.substr(dotPos + 1);
+    }
+    const std::string digits =
+        floatDigitsTrimZeros1161(intPart + fracPart);
+    // 静默豁免业务值: 数字串全零=值 0 域内放行（0.0/000e5 词法闭集形态·业务判定非 miss 默认）
+    if (digits.empty()) return true;
+    // 有效指数 E = e指数 - 小数位数；数量级钳定防下方 S长+E-1 回绕
+    const long long effExp = exponent - static_cast<long long>(fracPart.size());
+    if (effExp > 10000) return false;  // 静默豁免业务值: 10^10000 必超一切浮点域（数学上恒真·非 miss 默认）
+    if (effExp < -10000) return true;  // 静默豁免业务值: 10^-10000 必 subnormal 下溢方向=域内放行（宿主现状·非 miss 默认）
+    const long long normExp =
+        static_cast<long long>(digits.size()) + effExp - 1;
+    long long boundExp = 0;
+    const char* boundDigits = "";
+    floatDomainBound1161(typeName, boundExp, boundDigits);
+    if (normExp > boundExp) return false;
+    if (normExp < boundExp) return true;
+    // m == U：有效数字等长（右补零）字典序比较——补零后两串同指数
+    const std::string b(boundDigits);
+    const std::size_t width = digits.size() > b.size() ? digits.size() : b.size();
+    std::string padded = digits;
+    std::string boundPad = b;
+    padded.resize(width, '0');
+    boundPad.resize(width, '0');
+    return padded <= boundPad;
+}
+
 } // namespace types
 } // namespace cn_compiler

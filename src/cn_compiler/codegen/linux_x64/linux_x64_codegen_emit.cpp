@@ -69,6 +69,7 @@ std::string LinuxX64CodeGenerator::floatBitsHex(const std::string& text, bool is
             bits = bits32;
         }
     } catch (...) {
+        // 静默豁免上游已诊断: 超域浮点字面量语义层 1161 已编译期拒（visitFloatLiteral→floatLiteralFitsTypeDomain·修前此 catch 即 1e999 静默 0 位模式错值源·拒后不可达防御）——登记见 miss_registry 来源 1161 条
         bits = 0;
     }
     char buf[32];
