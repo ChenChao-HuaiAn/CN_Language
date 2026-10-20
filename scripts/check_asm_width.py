@@ -109,7 +109,7 @@ def read_case_flags(case_dir: pathlib.Path) -> list:
     if not marker.exists():
         return []
     return [ln.strip() for ln in marker.read_text(encoding="utf-8-sig").splitlines()
-            if ln.strip()]
+            if ln.strip() and not ln.strip().startswith("#")]
 
 
 def collect_cases(root: pathlib.Path) -> list:

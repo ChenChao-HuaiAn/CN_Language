@@ -31,6 +31,9 @@ import platform
 import re
 import subprocess
 import sys
+# win GBK console 打印安全（云端 runner stdout=GBK 时 ✓/中文详情崩=假红）
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
 import tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
