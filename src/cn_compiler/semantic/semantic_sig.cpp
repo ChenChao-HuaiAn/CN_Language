@@ -652,16 +652,26 @@ bool SemanticAnalyzer::reportMixedSignAssign(const Expr* value,
 }
 std::string SemanticAnalyzer::genericClassInstanceName(const std::string& typeRaw) const {
     const std::string type = canonicalType(typeRaw);
-    const std::size_t lt = type.find('<');
-    if (lt == std::string::npos || type.empty() || type.back() != '>') return type;
-    const std::string head = type.substr(0, lt);
+    // 1175（2026-10-20）：**后缀感知**——原实现要求 canonical 文本整体以 '>' 收尾，
+    //   指针/引用/数组后缀形态（节点<整32>* / 节点<整32>& / 节点<整32>[3]）因此
+    //   原样返回：源码模板形态与实例合成形态在 canConvertType 比较域不统一——
+    //   函数返回类型 `节点<整32>*` 对比函数体 `返回 p`（参数类型已经实例化=
+    //   `节点$整32*`）→ 宿主误报「无法将 '节点$整32*' 隐式转换为返回类型
+    //   '节点<整32>*'」（v2 同形态放行=零分叉缺口·r1 探针实录）。
+    //   处置仅「拆后缀→核心归一→拼回」：后缀（星/引用/数组）不参与泛型实例身份；
+    //   核心无 '<' 或无匹配自定义泛型类时仍按原样返回（零行为变更）。
+    std::string core, suffix;
+    types::splitTypeSuffix(type, core, suffix);
+    const std::size_t lt = core.find('<');
+    if (lt == std::string::npos || core.empty() || core.back() != '>') return type;
+    const std::string head = core.substr(0, lt);
     // 仅自定义泛型类（向量/映射/链表/栈/队列 等）参与统一；结果/可选 是
     //   合成模板（另有降级路径），函数指针/其他 名<...> 形态不在此列
     if (findGeneric(head) == nullptr || findGeneric(head)->ast->innerClass == nullptr) {
         return type;
     }
     std::string instance = head;
-    std::string inner = type.substr(lt + 1, type.size() - lt - 2);
+    std::string inner = core.substr(lt + 1, core.size() - lt - 2);
     std::size_t pos = 0;
     while (pos <= inner.size()) {
         const std::size_t comma = inner.find(',', pos);
@@ -674,6 +684,6 @@ std::string SemanticAnalyzer::genericClassInstanceName(const std::string& typeRa
         if (comma == std::string::npos) break;
         pos = comma + 1;
     }
-    return instance;
+    return instance + suffix;
 }
 } // namespace cn_compiler
