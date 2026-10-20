@@ -56,14 +56,9 @@ using ValuePool = std::unordered_map<std::string, ir::IRValue>; // 指纹→IRVa
 // 替换路径压缩：replaceUses 单层查表不递归，登记与消费须解析到最终定义
 //   （被删 Load 的 result 可再命中后续 env 指纹——loadId→9 且 9→v 并存时
 //    使用者必须直达 v，否则引用已删定义=悬空）
+//   （链解析与其他 Pass 共性部分归并 opt_common::resolveRegChain）
 int resolveReg(int id, const RegRewriteMap& map) {
-    int guard = 0;
-    auto it = map.find(id);
-    while (it != map.end() && guard++ < 64) {
-        id = it->second;
-        it = map.find(id);
-    }
-    return id;
+    return resolveRegChain(id, map);
 }
 
 // T3 遍1 上下文

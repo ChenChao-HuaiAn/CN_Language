@@ -177,6 +177,19 @@ inline bool parseRegText(const std::string& c, int& id) {
     return true;
 }
 
+// 沿寄存器替换链解析最终寄存器 id（%v3->%v1->%v0 解析为 %v0）。
+//   单层查表会留下中间寄存器：登记链（如代数简化 x*1 链）必须直达最终定义，
+//   否则替换后仍引用可能被 DCE 删除的中间结果。防环上限 64。
+inline int resolveRegChain(int id, const RegRewriteMap& regRewrite) {
+    int current = id;
+    for (int depth = 0; depth < 64; ++depth) {
+        auto it = regRewrite.find(current);
+        if (it == regRewrite.end()) return current;
+        current = it->second;
+    }
+    return current;
+}
+
 // 280-a T12 字段化连带：块终止条件跳转的条件寄存器同步替换。
 //   条件已显式存 termCondition（不再寄生于块尾指令 operands），
 //   replaceUses 的指令级遍历覆盖不到——各持 RegRewriteMap 的 Pass
@@ -208,6 +221,64 @@ inline bool replaceTermCondition(ir::IRBlock& block,
         }
     }
     return false;
+}
+
+// 返回值常量化：仅当常量类型与函数返回类型严格一致且为整型/i1。
+//   i1 常量在 IR 中可能是 "真"/"假" 文本——后端返回路径按数值立即数发射
+//   （arm64 std::stoll 无异常捕获），必须归一化为 1/0；整型常量带 0x/0b/0o
+//   前缀时归一化为十进制（codegen 直接输出文本）。浮点/i128/ptr/struct 一律
+//   不写返回字段（后端各有专属装载路径，常量文本语义不安全——保守）。
+inline bool constForReturn(const ir::IRValue& cv, const std::string& returnType,
+                           std::string& text) {
+    // 单出口风格：资格判定先合并（非整型/类型不符=不常量化·调用方按否处理）
+    bool ok = cv.isConstant && !cv.type.empty() && cv.type == returnType;
+    if (ok && cv.type == "i1") {
+        text = (cv.extra == "真") ? "1" : (cv.extra == "假") ? "0" : cv.extra;
+        return true;
+    }
+    ok = ok && isIntType(cv.type);
+    if (ok) {
+        text = hasRadixPrefix(cv.extra) ? normalizeIntText(cv.extra) : cv.extra;
+    }
+    return ok;
+}
+
+// 280-a T12 字段化连带：块终止返回值的引用点同步替换（1254）。
+//   termReturnValue 为 "%vN" 时：寄存器替换按链解析到最终定义（SSA 安全，
+//   指令级 replaceUses 覆盖不到该字段——CSE/复写传播/代数简化/全局值传播
+//   四处同族缺口：漏替时返回仍引用幸存重复寄存器，代表指令被 DCE 删除）；
+//   常量替换仅整型/i1 且与返回类型严格一致（见 constForReturn 的保守边界）。
+inline bool replaceTermReturnValue(ir::IRBlock& block,
+                                   const std::string& returnType,
+                                   const RegRewriteMap& regRewrite,
+                                   const ConstRewriteMap& constRewrite) {
+    bool changed = false;
+    if (block.terminated && block.termKind == "返回") {
+        int id = 0;
+        // 解析失败（IR 契约外文本/空返回）：无替换面（否定回答·非错误）
+        if (parseRegText(block.termReturnValue, id)) {
+            const auto rit = regRewrite.find(id);
+            const bool hasReg = rit != regRewrite.end();
+            if (hasReg) {
+                const int finalId = resolveRegChain(rit->second, regRewrite);
+                const bool moved = finalId != id;
+                if (moved) {
+                    block.termReturnValue = "%v" + std::to_string(finalId);
+                    changed = true;
+                }
+            }
+            // 常量替换仅在没有寄存器替换项时生效（两表互斥·显式判定无 else 兜底）
+            const auto cit = constRewrite.find(id);
+            std::string text;
+            const bool constOk = !hasReg && cit != constRewrite.end() &&
+                                 constForReturn(cit->second, returnType, text);
+            if (constOk) {
+                block.termReturnValue = text;
+                changed = true;
+            }
+        }
+    }
+    return changed;
 }
 
 } // namespace opt

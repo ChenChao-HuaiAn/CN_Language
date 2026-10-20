@@ -239,6 +239,17 @@ bool CSEPass::run(ir::IRModule& module) {
                     // 写内存指令：清空 Load 表（内存可能被修改，保守）
                     loadResults.clear();
                 }
+                // 块末返回字段同步替换（1254·与条件字段同族，283-a 字段化）：
+                //   重复表达式结果作返回值时 regRewrite 须落到 termReturnValue，
+                //   否则返回仍引用幸存重复指令、代表指令反被 DCE 删除。
+                //   置于最后一条指令处理之后（此时本块 regRewrite 已完整；仅
+                //   最后一条指令自身的登记也已完成）——与 1206 的块后条件字段
+                //   挂点分离，避免两任务同锚点集成冲突。
+                if (i + 1 == insts.size() &&
+                    replaceTermReturnValue(*block, fn.returnType, regRewrite,
+                                           ConstRewriteMap())) {
+                    changed = true;
+                }
             }
             // 第三步：块终止条件字段（283-a 字段化）同步替换（1206）。
             //   循环结束后 regRewrite 才是本块完整替换集合（1153 删除的旧

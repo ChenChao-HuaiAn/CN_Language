@@ -372,6 +372,13 @@ bool AlgebraicSimplifyPass::run(ir::IRModule& module) {
                     }
                 }
             }
+            // 块终止返回字段同步替换（1254）：本块简化登记（status==2）后
+            //   regRewrite 才覆盖本块结果；返回寄存器不寄生于指令操作数，
+            //   漏替时返回仍读被简化的原结果（代表值寄存器可能被 DCE 判定）
+            if (replaceTermReturnValue(*block, fn.returnType, regRewrite,
+                                       constRewrite)) {
+                changed = true;
+            }
         }
     }
     return changed;

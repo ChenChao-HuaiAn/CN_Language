@@ -124,6 +124,13 @@ bool GlobalValuePass::run(ir::IRModule& module) {
                         break;
                 }
             }
+            // 块终止返回字段同步替换（1254）：常量表命中只登记 constRewrite，
+            //   返回寄存器不寄生于指令操作数——漏替时返回仍从槽读取已知常量。
+            //   常量化仅整型/i1 且与返回类型严格一致（constForReturn 保守边界）。
+            if (replaceTermReturnValue(*block, fn.returnType, RegRewriteMap(),
+                                       constRewrite)) {
+                changed = true;
+            }
         }
     }
     return changed;

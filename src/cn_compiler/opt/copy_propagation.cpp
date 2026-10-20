@@ -8,9 +8,10 @@
 //      - 可能写任意内存的指令（StorePtr/LoadPtr/Call/CallIndirect/
 //        FieldAddr/AddrOf）：清空槽值表（保守）
 //   3. 替换延迟到"应用替换"步骤（replaceUses 处理全部引用点）
-//   4. 块终止条件字段（termCondition·283-a 字段化）在块内指令遍历结束后
-//      同步替换（1253）：条件值不再是块尾指令操作数，replaceUses 覆盖不到，
-//      漏替时条件仍读被转发的 Load 结果（优化遗漏，非正确性缺陷）。
+//   4. 块终止字段（termCondition/termReturnValue·283-a 字段化）在块内指令
+//      遍历结束后同步替换（1253/1254）：终止值不再是块尾指令操作数，
+//      replaceUses 覆盖不到，漏替时条件/返回仍读被转发的 Load 结果
+//      （优化遗漏，非正确性缺陷）。
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -22,14 +23,9 @@ namespace cn_compiler {
 namespace opt {
 
 // 沿寄存器替换链解析最终寄存器 id（%v3->%v1->%v0 解析为 %v0）
+//   （链解析与其他 Pass 共性部分归并 opt_common::resolveRegChain）
 int CopyPropagationPass::resolveReg(int id, const RegRewriteMap& regRewrite) {
-    int current = id;
-    for (int depth = 0; depth < 16; ++depth) {  // 防环保护
-        auto it = regRewrite.find(current);
-        if (it == regRewrite.end()) return current;
-        current = it->second;
-    }
-    return current;
+    return resolveRegChain(id, regRewrite);
 }
 
 // 是否可能写入任意内存的指令（清空槽值表）
@@ -126,6 +122,12 @@ bool CopyPropagationPass::run(ir::IRModule& module) {
             //   constRewrite 才是本块完整替换集合——此处同步块终止条件字段
             //   （1253·与 1206 CSE 同族缺口：Load 结果被转发后条件仍读 Load）。
             if (replaceTermCondition(*block, regRewrite, constRewrite)) {
+                changed = true;
+            }
+            // 块终止返回字段同步替换（1254·同族缺口：返回寄存器不寄生于
+            //   指令操作数，漏替时返回仍读 Load 结果而存储值寄存器被 DCE 判定）
+            if (replaceTermReturnValue(*block, fn.returnType, regRewrite,
+                                       constRewrite)) {
                 changed = true;
             }
         }
