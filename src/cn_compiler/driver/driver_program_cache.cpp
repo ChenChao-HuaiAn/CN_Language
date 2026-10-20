@@ -10,6 +10,8 @@
 //     [N] 汇编文本（UTF-8）  [N] warningsHuman  [N] warningsJson
 // 命中判定：魔数 → 键比对（完整输入变化=陈旧失效）→ 长度一致 → 校验和 → 载荷结构。
 //   任一不符=显形（损坏分支）或普通未命中，一律回退完整编译（唯一正确路径）。
+// MSVC /W4 /WX：getenv 等 CRT 传统函数视为 C4996（项目既有文件同款处置）
+#define _CRT_SECURE_NO_WARNINGS
 #include "cn_compiler/driver/driver_program_cache.hpp"
 
 #include <algorithm>

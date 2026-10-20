@@ -1,6 +1,8 @@
 // 驱动层缓存公共原语实现（任务 1156·自 driver_ast_cache.cpp 提炼）
 // 行为与 1142 AST 缓存原实现逐字节一致（哈希算法/目录探测/原子写语义零变化），
 // 仅把「AST 缓存专用」提升为「驱动层缓存共用」；失败面全部显式返回，禁静默默认值。
+// MSVC /W4 /WX：getenv 等 CRT 传统函数视为 C4996（项目既有文件同款处置）
+#define _CRT_SECURE_NO_WARNINGS
 #include "cn_compiler/driver/driver_cache_util.hpp"
 
 #include <cstdio>
