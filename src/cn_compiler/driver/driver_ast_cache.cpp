@@ -11,6 +11,9 @@
 //   [N]  payload（ast_serial::serializeProgram 产物，内含格式版本）
 // 命中判定：魔数 → 内容/环境哈希比对（内容更新=陈旧失效）→ 长度一致 →
 //   校验和 → 反序列化成功。任一不符=安全回退完整解析；损坏/版本不符显形。
+// 本文件 getenv/fopen 为缓存统计与读写专用（MSVC C4996 安全警告压制·
+//   项目既有惯例同 semantic_call.cpp 等——缓存面不处理用户输入，无安全面）
+#define _CRT_SECURE_NO_WARNINGS
 #include "cn_compiler/driver/driver_ast_cache.hpp"
 
 #include <algorithm>
