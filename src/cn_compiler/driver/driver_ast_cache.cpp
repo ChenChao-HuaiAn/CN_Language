@@ -283,15 +283,20 @@ bool parseModuleWithCache(const std::string& source, const std::string& filePath
         // 命中路径：按同一规则重建依赖表（collectImportDeps 与解析路径共用）
         imports.clear();
         module::collectImportDeps(*ast, moduleName, imports);
-        if (verifyEnabled() && !verifyAgainstParse(*ast, source, filePath, moduleName, macros)) {
-            ast = nullptr;
-            imports.clear();
-            return module::parseSourceText(source, filePath, moduleName, ast, imports, diags,
-                                           macros);
+        const bool cacheUsable =
+            !verifyEnabled() ||
+            verifyAgainstParse(*ast, source, filePath, moduleName, macros);
+        if (cacheUsable) {
+            return true;
         }
-        return true;
+        // 验证不符=可反序列化但与重新解析不一致的损坏条目（verifyAgainstParse 已
+        //   显形+计入损坏回退）：丢弃命中结果，落到下方完整解析并重建覆盖——
+        //   1213 修复：原实现此处直接 return 重解析结果、不写回，坏条目残留导致
+        //   下次未开验证的运行静默命中错误 AST（验证通道只报不修=半截机制）。
+        ast = nullptr;
+        imports.clear();
     }
-    // 未命中/失效/损坏：完整解析（唯一正确路径；解析失败不缓存——诊断每次重建）
+    // 未命中/失效/损坏/验证不符：完整解析（唯一正确路径；解析失败不缓存——诊断每次重建）
     if (!module::parseSourceText(source, filePath, moduleName, ast, imports, diags, macros)) {
         return false;
     }
