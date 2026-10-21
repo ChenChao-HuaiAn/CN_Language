@@ -283,7 +283,6 @@ IRFunction buildLateRedefinition() {
     IRFunction func;
     func.name = "late redefinition";
     func.returnType = "i64";
-    func.nextRegId = 5;
     auto constInt = [](int id, const std::string& val) {
         IRInstruction c;
         c.opcode = Opcode::ConstInt;
