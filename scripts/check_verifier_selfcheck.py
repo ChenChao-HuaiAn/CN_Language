@@ -79,6 +79,8 @@ atexit.register(lambda: shutil.rmtree(_隔离目录, ignore_errors=True))
 import ci_daemon          # noqa: E402（导入顺序=上方隔离前置依赖）
 import integrate          # noqa: E402
 import queue_service      # noqa: E402
+import queue_result       # noqa: E402  1297：认领失败分类 实现外迁 queue_result（queue_service 先拆再加）
+import ci_report          # noqa: E402  1297：落盘/上报 实现外迁（隔离猴补对象）
 
 # 轮绿聚合白名单（与 ci_daemon.聚合绿 对齐——行为面逐键注入断言锁白名单；
 #   此处别名仅作构造用，单一事实源仍在 聚合绿 实现内）
@@ -188,7 +190,9 @@ def 跑一次落盘(落盘实现, 结果: dict) -> dict:
     result数, 上报, 崩}——断言面消费；被测实现的异常作为事实记录（不吞不掩饰），
     由「空结果 fail-fast」断言判定。"""
     with tempfile.TemporaryDirectory(prefix="cn_894_落盘_") as 临时:
-        真目录, 真上报 = ci_daemon.日志目录, ci_daemon.上报
+        # 1297：落盘/上报 实现外迁 ci_report（模块全局 _日志目录/上报）——猴补对象
+        #   跟实现走（原 ci_daemon.日志目录/上报 现为薄壳别名·补之不达真身）
+        真目录, 真上报 = ci_report._日志目录, ci_report.上报
         次 = {"上报": 0}
 
         def 桩上报(结果) -> None:
@@ -196,14 +200,14 @@ def 跑一次落盘(落盘实现, 结果: dict) -> dict:
 
         崩 = None
         try:
-            ci_daemon.日志目录 = Path(临时)
-            ci_daemon.上报 = 桩上报
+            ci_report._日志目录 = Path(临时)
+            ci_report.上报 = 桩上报
             try:
                 落盘实现(结果)
             except Exception as e:
                 崩 = e
         finally:
-            ci_daemon.日志目录, ci_daemon.上报 = 真目录, 真上报
+            ci_report._日志目录, ci_report.上报 = 真目录, 真上报
         目录 = Path(临时)
         return {"latest": (目录 / "latest.json").exists(),
                 "预验档": bool(list(目录.glob("预验_*.json"))),
@@ -353,7 +357,7 @@ def main() -> int:
     全部 += 解析面断言(integrate.解析预验结果)
     全部 += 落盘面断言(ci_daemon.落盘)
     全部 += 服务端面断言(queue_service.处理写, queue_service.任务详情查,
-                          queue_service.认领失败分类)
+                          queue_result.认领失败分类)   # 1297：实现外迁 queue_result
     全部 += 管线自洽断言(ci_daemon.聚合绿, integrate.解析预验结果)
     全部 += 结构断言条()
     全部 += 元断言条()

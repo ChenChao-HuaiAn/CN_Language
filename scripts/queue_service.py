@@ -59,6 +59,12 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse
 
+# 1297：结果解析面（975/825）与分片面外迁——本文件加分片协议时守 900 警戒线
+#   （「先拆再加」·973 外迁 ci_build 同款）；预验失败告警阈值 常量随迁 queue_result
+#   （该功能专属配置·单一事实源）。依赖单向：本文件 → 二者（二者禁反引本文件）。
+import queue_result
+import queue_shard
+
 # ===== 可调常量 =====
 端口 = int(os.environ.get("CN_QUEUE_PORT", "8300"))
 令牌 = os.environ.get("CN_QUEUE_TOKEN", "")
@@ -191,6 +197,12 @@ def 建库() -> sqlite3.Connection:
         con.execute("ALTER TABLE 门禁 ADD COLUMN 提交时刻 INTEGER")
     except sqlite3.OperationalError:
         pass
+    try:   # 1301 排队秒观测：认领时刻（%m-%d %H:%M:%S）——排队秒=认领时刻-入队时刻
+           #   （排队与跑轮分开可见·10-21 诊断实证「池空闲排队零」的常态化观测面）
+        con.execute("ALTER TABLE 预验任务 ADD COLUMN 认领时刻 TEXT")
+    except sqlite3.OperationalError:
+        pass
+    queue_shard.建表(con)   # 1297：预验分片表（独立新表·不碰父表结构）
     con.commit()
     return con
 
@@ -230,11 +242,11 @@ def 预验任务快照() -> list[dict]:
     975：补 失败计数/失败类别/失败摘要/告警时刻（认领失败告警面·8300 池页签徽标数据源）。
     825：补 失败原因（完成红首因——红步骤名+失败用例名·页面积木/详情可见）。"""
     行们 = con.execute("SELECT 序号,分支,sha,源分支,状态,认领者,绿,认领限制,入队时刻,更新时刻,内容键,"
-                       "COALESCE(失败计数,0),失败类别,失败摘要,告警时刻,失败原因 "
+                       "COALESCE(失败计数,0),失败类别,失败摘要,告警时刻,失败原因,认领时刻 "
                        "FROM 预验任务 ORDER BY 序号 DESC LIMIT 50").fetchall()
     return [dict(zip(("序号", "分支", "sha", "源分支", "状态", "认领者", "绿", "认领限制",
                       "入队时刻", "更新时刻", "内容键", "失败计数", "失败类别", "失败摘要",
-                      "告警时刻", "失败原因"), r))
+                      "告警时刻", "失败原因", "认领时刻"), r))
             for r in 行们]
 
 
@@ -314,118 +326,6 @@ def 源分支已并入(源分支: str) -> bool | None:
     if not 任务:
         return None
     return 任务.get("状态") == "✅"
-
-
-def 认领失败分类(结果) -> tuple[str, str]:
-    """975（87 篇反思①·863 五连静默机械化）：认领阶段基础设施失败分类+原因摘要——
-    数据源=ci_daemon task_complete 结果 JSON（runner 侧零协议新增：失败形状「步骤.同步.rc
-    非零+日志尾部含 stderr」为 863 时代即有的既有形状，服务端解析即可·旧 runner 同得覆盖）。
-
-    类别枚举（单一事实源·#901 fetch 删除时机残余 / #574 solo 静默 同域扩展点）：
-    当前唯一类别=「同步失败」——认领后 git fetch 预验分支失败（分支已被删除=863 病灶）
-    或轮内 fetch/reset/clean 异常；静默特征=完成红→重入队→再认领再失败（五连
-    746/764/758/644/728f 全链无告警面·全靠人盯队列）。构建/单测/e2e 红（同步 rc=0）
-    属真实验证结论，不属基础设施失败=不分类（否则真实红会污染告警语义——真红走
-    既有「预检红·返工」红治理面）。
-
-    前向兼容：结果.失败类别 显式字段优先（runner 将来显式声明新类别时零服务端改动）；
-    缺省回退按上面隐式形状分类。返回 (类别, 摘要)；非认领失败=("", "")。"""
-    if not isinstance(结果, dict):
-        return "", ""
-    显式 = str(结果.get("失败类别") or "").strip()
-    if 显式:
-        return 显式, str(结果.get("失败摘要") or "").strip()[:200]
-    同步 = (结果.get("步骤") or {}).get("同步")
-    rc = 同步.get("rc") if isinstance(同步, dict) else None
-    if not isinstance(rc, int) or rc == 0:
-        return "", ""
-    尾部 = [str(行).strip() for 行 in (结果.get("日志尾部") or []) if str(行).strip()]
-    摘要 = "；".join(尾部)[:200] or ("同步段 rc=%s" % rc)
-    return "同步失败", 摘要
-
-
-def 红用例名们(结果) -> list[str]:
-    """825 残余 A：真实红失败用例名提取——①结果.e2e明细.失败用例[].名称（842 主源·
-    run_e2e --json 明细随轮上报）；②退化扫描 结果.日志尾部「✗ 名:」形态行（旧版
-    runner 无 e2e明细·与 integrate.py 解析预验红用例们 同形）。保序去重；
-    miss/无受控取值一律空列表（调用点以其为空与否显式分流，不静默冒名）。"""
-    if not isinstance(结果, dict):
-        return []
-    出: list[str] = []
-    明细 = 结果.get("e2e明细")
-    if isinstance(明细, dict) and isinstance(明细.get("失败用例"), list):
-        for 例 in 明细["失败用例"]:
-            if isinstance(例, dict) and str(例.get("名称") or "").strip():
-                出.append(str(例["名称"]).strip())
-    if 出:
-        return 出
-    for 行 in 结果.get("日志尾部") or []:
-        m = re.search(r"✗\s+(\S+?)[：:]", str(行))
-        if m and m.group(1) not in 出:
-            出.append(m.group(1))
-    return 出
-
-
-def 用例名串(用例们: list[str]) -> str:
-    """825：失败用例清单缩写——前 3 名顿号连列·超 3 附「等」（真实红首因两分支共用）。"""
-    return "、".join(用例们[:3]) + (" 等" if len(用例们) > 3 else "")
-
-
-def 真实红首因(结果) -> str:
-    """825 残余 A（825 备注①剩余·失败原因显形最后一段）：完成红首因摘要——
-    红步骤名+失败用例名，落「失败原因」列（快照/详情/页面积木三面流出）。
-
-    口径：①按步骤执行序（结果.步骤 保序）取首个 rc 非零/超时步骤为首因；e2e 红
-    带用例清单（e2e明细 主源·日志尾部 ✗ 形态兜底·最多列 3 名）；②红但无可辨红
-    步骤（结果形态异常/旧 runner）=显式文本（miss 不静默·648——不编不藏）；
-    ③本字段对全部完成红统一落文本（含 975 认领失败=同步 rc 非零——首因即同步；
-    与 失败类别/失败摘要 的连续计数告警面互不替代，各司其职）。"""
-    if not isinstance(结果, dict):
-        return "未识别红步骤（结果非对象）"
-    步骤 = 结果.get("步骤")
-    if not isinstance(步骤, dict) or not 步骤:
-        return "未识别红步骤（结果缺步骤字段）"
-    用例们 = 红用例名们(结果)
-    for 名, 步 in 步骤.items():
-        if not isinstance(步, dict):
-            continue
-        rc = 步.get("rc")
-        if (isinstance(rc, int) and rc != 0) or 步.get("超时"):
-            if str(名) == "e2e" and 用例们:
-                return "e2e：失败 %d 例（%s）" % (len(用例们), 用例名串(用例们))
-            return "%s（rc=%s%s）" % (名, rc, "·超时" if 步.get("超时") else "")
-    if 用例们:   # 红在聚合面外/步骤 rc 形态缺失——用例清单仍为首因证据
-        return "e2e：失败 %d 例（%s）" % (len(用例们), 用例名串(用例们))
-    return "未识别红步骤（步骤无 rc 非零项）"
-
-
-def 记认领失败并告警(分支: str, 类别: str, 摘要: str) -> str:
-    """975：认领失败计数与阈值告警（task_complete 内调用·须在写锁内）——返回告警行
-    文本（空=未告警；调用方 print 进服务端 journal·`[975 预验失败告警]` 前缀可 grep）。
-
-    计数语义=「连续同类」：类别与上次不同则计数重置为 1；类别为空（真实验证绿/红=
-    基础设施面恢复证据）→ 连续链清零（告警时刻保留可审计）。重跑（task_enqueue
-    完成红→重置排队）不清计数=同 sha 跨重跑累计（五连回环正由此暴露）。
-    告警节拍=计数每跨过 阈值 的整数倍一次（持续失败持续可见·防刷屏）。
-    幂等：complete 的状态机校验（状态=执行中∧认领者匹配）使 runner 重试/被回收旧
-    runner 复活天然不重复计数。"""
-    if not 类别:
-        con.execute("UPDATE 预验任务 SET 失败计数=0,失败类别=NULL,失败摘要=NULL WHERE 分支=?",
-                    (分支,))
-        return ""
-    行 = con.execute("SELECT 失败计数,失败类别,sha FROM 预验任务 WHERE 分支=?", (分支,)).fetchone()
-    # 行必在（调用点 task_complete 刚以 分支∧认领者∧执行中 校验 UPDATE rowcount>0·同写锁内）——
-    # 三元兜底=穷举声明不可达③（防 None 解包崩），非语义默认（miss 处置纪律）。
-    旧计数, 旧类别, sha = (int(行[0] or 0), 行[1], str(行[2] or "")) if 行 else (0, None, "")
-    新计数 = 旧计数 + 1 if 旧类别 == 类别 else 1
-    con.execute("UPDATE 预验任务 SET 失败计数=?,失败类别=?,失败摘要=? WHERE 分支=?",
-                (新计数, 类别, (摘要 or "")[:200], 分支))
-    if (新计数 < 预验失败告警阈值
-            or 新计数 // 预验失败告警阈值 <= (新计数 - 1) // 预验失败告警阈值):
-        return ""
-    con.execute("UPDATE 预验任务 SET 告警时刻=? WHERE 分支=?", (时区时刻(), 分支))
-    return ("[975 预验失败告警] %s sha=%s 连续同类认领失败 %d 次（阈值 %d）：类别=%s 原因=%s"
-            % (分支, sha[:10], 新计数, 预验失败告警阈值, 类别, (摘要 or "")[:200]))
 
 
 def 处理写(名: str, 数据: dict) -> dict:
@@ -573,9 +473,14 @@ def 处理写(名: str, 数据: dict) -> dict:
             if 平台337:
                 实例注册[runner] = 平台337   # 770：注册表刷新（平台忙闲判定与池全忙快照的数据源）
             现在 = int(time.time())
+            回收们 = [r[0] for r in con.execute(
+                "SELECT 分支 FROM 预验任务 WHERE 状态='执行中' AND 心跳时戳 IS NOT NULL "
+                "AND 心跳时戳<?", (现在 - 心跳超时秒,)).fetchall()]
             con.execute("UPDATE 预验任务 SET 状态='排队',认领者=NULL,心跳时戳=NULL,更新时刻=? "
                         "WHERE 状态='执行中' AND 心跳时戳 IS NOT NULL AND 心跳时戳<?",
                         (时区时刻(), 现在 - 心跳超时秒))
+            for 分支r in 回收们:   # 1297：父任务回收重派=分片行作废（重派后由新主实例重新召唤）
+                queue_shard.清父分片(con, 分支r)
             # 770 跳平台兜底：轮转限制的兜底任务排队超阈值仍无人领（该平台全忙/离线饿死）→
             #   限制惰性放宽 NULL——任何平台空闲实例可领（用户裁决「该平台全忙由下一轮平台执行」
             #   的运行期兜底形态；入池时的即时放宽是快路径，此处是慢路径保险）。坏串行龄 None=不动。
@@ -610,13 +515,14 @@ def 处理写(名: str, 数据: dict) -> dict:
                 if 源分支已并入(兜底饥饿行[2]) is True:
                     con.execute("UPDATE 预验任务 SET 状态='已取消',更新时刻=? WHERE 分支=?",
                                 (时区时刻(), 兜底饥饿行[0]))
+                    queue_shard.清父分片(con, 兜底饥饿行[0])   # 1297：父取消=片行作废
                     con.commit()   # 自提交：作废后落回正常两级派发
                     print("[取消] 兜底饥饿行 %s 源分支已并入 develop——作废落回正常派发（562）"
                           % 兜底饥饿行[0], flush=True)
                 else:
-                    con.execute("UPDATE 预验任务 SET 状态='执行中',认领者=?,心跳时戳=?,更新时刻=? "
+                    con.execute("UPDATE 预验任务 SET 状态='执行中',认领者=?,心跳时戳=?,认领时刻=?,更新时刻=? "
                                 "WHERE 分支=?",
-                                (runner, 现在, 时区时刻(), 兜底饥饿行[0]))
+                                (runner, 现在, 时区时刻(), 时区时刻(), 兜底饥饿行[0]))
                     print("[兜底饥饿] 兜底排队超 %ds——优先派 %s（830 保底：develop 验证不被预验饿死）"
                           % (兜底饥饿秒, 兜底饥饿行[0]), flush=True)
                     return {"ok": True, "任务": {"分支": 兜底饥饿行[0], "sha": 兜底饥饿行[1]}}
@@ -637,12 +543,13 @@ def 处理写(名: str, 数据: dict) -> dict:
                 if 源分支已并入(行[2]) is True:
                     con.execute("UPDATE 预验任务 SET 状态='已取消',更新时刻=? WHERE 分支=?",
                                 (时区时刻(), 行[0]))
+                    queue_shard.清父分片(con, 行[0])   # 1297：父取消=片行作废
                     con.commit()   # 自提交：继续选下一个不受影响
                     print("[取消] 预验 %s 源分支 %s 已并入 develop（台账销账）——任务作废不再派发（562）"
                           % (行[0], 行[2]), flush=True)
                     continue
-                con.execute("UPDATE 预验任务 SET 状态='执行中',认领者=?,心跳时戳=?,更新时刻=? "
-                            "WHERE 分支=?", (runner, 现在, 时区时刻(), 行[0]))
+                con.execute("UPDATE 预验任务 SET 状态='执行中',认领者=?,心跳时戳=?,认领时刻=?,更新时刻=? "
+                            "WHERE 分支=?", (runner, 现在, 时区时刻(), 时区时刻(), 行[0]))
                 return {"ok": True, "任务": {"分支": 行[0], "sha": 行[1]}}
             return {"ok": True, "任务": None}
         elif 名 == "task_heartbeat":
@@ -669,20 +576,37 @@ def 处理写(名: str, 数据: dict) -> dict:
             cur = con.execute("UPDATE 预验任务 SET 状态='完成',绿=?,详情=?,失败原因=?,心跳时戳=NULL,更新时刻=? "
                               "WHERE 分支=? AND 认领者=? AND 状态='执行中'",
                               (绿, json.dumps(结果, ensure_ascii=False)[:500000],
-                               None if 绿 else 真实红首因(结果),
+                               None if 绿 else queue_result.真实红首因(结果),
                                时区时刻(), 分支, runner))
             if cur.rowcount == 0:
                 return {"ok": False, "说明": "任务不在执行中或认领者不匹配（可能已被回收重派）" + 分支}
             # 975（87 篇反思①·863 五连静默机械化）：认领失败计数+阈值告警——真实红/绿
             #   （同步 rc=0）清零连续链（基础设施恢复证据），不告警；告警行走服务端
-            #   journal（print）+ 行字段（快照/详情流出）。
-            告警行 = 记认领失败并告警(分支, *认领失败分类(结果))
+            #   journal（print）+ 行字段（快照/详情流出）。1297：实现外迁 queue_result.py。
+            告警行 = queue_result.记认领失败并告警(
+                con, 时区时刻, 分支, *queue_result.认领失败分类(结果))
             if 告警行:
                 print(告警行, flush=True)
             con.execute("DELETE FROM 预验任务 WHERE 状态 IN ('完成','已取消') AND 序号 NOT IN "
                         "(SELECT 序号 FROM 预验任务 WHERE 状态 IN ('完成','已取消') "
                         "ORDER BY 序号 DESC LIMIT ?)",
                         (任务历史保留,))
+            # 1297：片行随父任务裁剪联动（孤儿片不堆积·父行已滚出保留窗口者删）
+            queue_shard.清孤儿分片(con, 任务历史保留)
+        elif 名 in ("task_shard_enqueue", "task_shard_claim",
+                    "task_shard_heartbeat", "task_shard_complete"):
+            # 1297：分片协议委托 queue_shard（写锁内·统一落下方 commit 后返回富响应——
+            #   提前 return 会跳过 commit=WAL 下他连接读不到写入，故不走直返形态）
+            if 名 == "task_shard_enqueue":
+                回s = queue_shard.召唤(con, 时区时刻, 数据)     # 主实例召唤从片（幂等登记缺口）
+            elif 名 == "task_shard_claim":
+                回s = queue_shard.认领(con, 时区时刻, 数据)     # 从实例领缺口片 / 主实例抢补指定片
+            elif 名 == "task_shard_heartbeat":
+                回s = queue_shard.心跳(con, 时区时刻, 数据)     # 片心跳续约
+            else:
+                回s = queue_shard.完成(con, 时区时刻, 数据)     # 片结果上报（认领者校验同 task_complete）
+            con.commit()
+            return 回s
         else:
             return {"ok": False, "说明": "未知操作 " + 名}
         con.commit()
@@ -845,6 +769,23 @@ class 处理器(BaseHTTPRequestHandler):
                 return self.回JSON({"ok": False,
                                     "说明": "无此门禁行 " + sha[:10] + " " + 平台}, 404)
             return self.回JSON({**行详情, "归因": 归因截取(sha, 平台, 行详情["详情"])})
+        if 路径 == "/api/task_shards":
+            # 1297：片状态快照（主实例收片轮询用）——分支=ci/预验-<sha10> 纯 ASCII 免编码
+            分支 = (parse_qs(urlparse(self.path).query).get("branch") or [""])[0]
+            if not 分支:
+                return self.回JSON({"ok": False, "说明": "缺少 branch 参数"}, 400)
+            return self.回JSON({"ok": True, "分片": queue_shard.快照(con, 分支)})
+        if 路径 == "/api/task_shard_result":
+            # 1297：单片结果详情（主实例聚合 e2e明细 用）
+            参 = parse_qs(urlparse(self.path).query)
+            分支 = (参.get("branch") or [""])[0]
+            片序 = (参.get("i") or [""])[0]
+            if not 分支 or not 片序.isdigit():
+                return self.回JSON({"ok": False, "说明": "缺少 branch/i 参数"}, 400)
+            详情 = queue_shard.片详情(con, 分支, int(片序))
+            if 详情 is None:
+                return self.回JSON({"ok": False, "说明": "无此片 %s#%s" % (分支, 片序)}, 404)
+            return self.回JSON({"ok": True, **详情})
         if 路径 in 静态白名单:
             # 842：门禁窗口=queue_www 墨韵前端（三页签+失败详情+归因·前端 fetch
             #   /api/state 渲染）；执行中行（绿 IS NULL）黄标语义由前端三态徽标承担。
