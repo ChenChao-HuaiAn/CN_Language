@@ -582,8 +582,16 @@ bool X64CodeGenerator::emitCastIntWidth(AsmWriter& writer, const ir::IRInstructi
             const bool dstAllocated = !dstPhysI128.empty();
             const std::string dstW32 = dstAllocated ? widthFor("i32", dstPhysI128)
                                                     : "eax";
+            const bool narrowTarget = (to == "i8" || to == "u8" ||
+                                       to == "i16" || to == "u16");
             writer.line("mov rax, " + regSlot(srcLoId));
-            writer.line("mov " + dstW32 + ", eax");
+            // 已分配且非窄目标才需把 eax 搬入分配寄存器；槽目标直接以 eax 为工作
+            //   寄存器（P2-3：原 `mov eax, eax` 空指令——i32/u32/i1 槽目标同样
+            //   虚增指令，1281 集成审查实测）；窄目标由下方 movsx/movzx 一步落位
+            //   （已分配时直接窄读 eax 低 8/16 位，免两次写同一寄存器）。
+            if (dstAllocated && !narrowTarget) {
+                writer.line("mov " + dstW32 + ", eax");
+            }
             if (to == "i8") {
                 writer.line("movsx " + dstW32 + ", al");
             } else if (to == "u8") {

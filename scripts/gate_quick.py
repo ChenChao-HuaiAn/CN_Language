@@ -154,6 +154,46 @@ if not 步("layer_deps 冻结线", [sys.executable, "scripts/check_layer_deps.py
 
 # ② 增量构建（win=Ninja+sccache〔ninja_build.cmd=vcvars+cache 一体〕；linux=Make 增量）
 if 是win:
+    # 1281：集成批树/CI 新树 target/ 不入库——wt.py 生成的 Ninja 构建脚本不存在时
+    #   原逻辑直接 `cmd /c target\ninja_build.cmd` → L1 构建步必红
+    #   （实际报错：'target\ninja_build.cmd' 不是内部或外部命令）。此处按 wt.py
+    #   同款模板就地生成 setup+build（同参数 Ninja+sccache 全量构建，不弱化检查），
+    #   再走统一增量构建步——与 linux 分支「首次配置 + 增量构建」同构。
+    if not (仓库根 / "target/ninja_build.cmd").exists():
+        try:
+            import wt as _wt
+            vcvars, ninja, sccache = _wt.找vcvars(), _wt.找ninja(), _wt.找sccache()
+        except Exception as 异常:
+            print(f"[构建] 新树生成 Ninja 脚本失败（import wt：{异常}）", flush=True)
+            raise SystemExit(1)
+        if vcvars is None or ninja is None:
+            print("[构建] 新树缺少 vcvars64.bat / ninja.exe——无法生成 Ninja 构建脚本",
+                  flush=True)
+            raise SystemExit(1)
+        (仓库根 / "target").mkdir(exist_ok=True)
+        公共 = dict(树=str(仓库根),
+                    缓存目录=os.environ.get(
+                        "SCCACHE_DIR", str(Path.home() / "Documents" / "sccache-cache")),
+                    缓存上限=os.environ.get("SCCACHE_CACHE_SIZE", "5G"))
+        if sccache is not None:
+            配置脚本 = _wt.设置脚本模板.format(
+                vcvars=vcvars, ninja=ninja, sccache=sccache, **公共)
+        else:
+            # 无 sccache 机器：去掉 compiler launcher 的最小配置（慢但正确）
+            配置脚本 = (
+                "@echo off\n"
+                f'call "{vcvars}" >nul 2>&1\n'
+                "where cl >nul 2>&1 || (echo [FAIL] cl not found after vcvars & exit /b 1)\n"
+                f"cd /d {仓库根}\n"
+                "cmake -G Ninja -S . -B target\\build-ninja "
+                f'-DCMAKE_MAKE_PROGRAM="{ninja}" -DCMAKE_BUILD_TYPE=Debug\n'
+                "if errorlevel 1 (echo [FAIL] cmake configure & exit /b 1)\n"
+                "echo [OK] ninja tree configured\n")
+        (仓库根 / "target" / "ninja_setup.cmd").write_text(配置脚本, encoding="ascii")
+        (仓库根 / "target" / "ninja_build.cmd").write_text(
+            _wt.构建脚本模板.format(vcvars=vcvars, **公共), encoding="ascii")
+        if not 步("首次配置", ["cmd", "/c", "target\\ninja_setup.cmd"], 超时秒=构建超时):
+            raise SystemExit(1)
     if not 步("增量构建", ["cmd", "/c", "target\\ninja_build.cmd"], 超时秒=构建超时):
         raise SystemExit(1)
 else:
