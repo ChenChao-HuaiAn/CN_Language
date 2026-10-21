@@ -189,6 +189,8 @@ def 主程序() -> int:
     解析 = argparse.ArgumentParser(description="stdlib 微基准族双测 runner（#367）")
     解析.add_argument("--runs", type=int, default=3, help="每侧运行次数（默认 3·取中位）")
     解析.add_argument("--only", default="", help="只跑指定用例（逗号分隔·默认全部）")
+    解析.add_argument("--host-only", action="store_true",
+                      help="仅宿主侧（win 无 as/g++ linux 链时开发自测；v2 列=挂）")
     参数 = 解析.parse_args()
 
     只跑 = [s for s in 参数.only.split(",") if s] or list(用例们)
@@ -200,13 +202,16 @@ def 主程序() -> int:
     host = 确保编译器("host")
     # 385 随批：only 全为挂起用例（如 b4=#362）时 v2 侧不参与——免强制现建 v2p
     #   （win 本机现建走 linux 目标链无 as·该缺口随 386 bench 门禁候选处理）
-    v2p = 确保编译器("v2") if any(n not in v2挂起 for n in 只跑) else None
-    print(f"宿主={host}\n  v2p={v2p or '（挂起-only·未建）'}\n  轮数={参数.runs}\n")
+    # --host-only（#1211 返工）：win 无 as/g++ linux 链时的显式 host-only 自测通道；
+    #   默认行为不变（linux CI 双测照跑）。
+    v2p = (None if 参数.host_only else
+           (确保编译器("v2") if any(n not in v2挂起 for n in 只跑) else None))
+    print(f"宿主={host}\n  v2p={v2p or '（挂起-only/未建）'}\n  轮数={参数.runs}"
+          f"{'（host-only）' if 参数.host_only else ''}\n")
 
     结果 = {}   # (用例, 侧) → 数字列表们
     for 用例 in 只跑:
-        侧面们 = ["host"] + ([] if 用例 not in v2挂起 else []) + (
-            ["v2"] if 用例 not in v2挂起 else [])
+        侧面们 = ["host"] if (参数.host_only or 用例 in v2挂起) else ["host", "v2"]
         if 用例 in v2挂起:
             print(f"[黄] {用例}/v2 挂起——{v2挂起[用例]}（host-only 收口·清偿后恢复 dual）")
         for 侧, exe in [(s, host if s == "host" else v2p) for s in 侧面们]:
@@ -241,7 +246,9 @@ def 主程序() -> int:
                 "b6_JSON生成": ["8192 段生成 第1轮", "第2轮", "第3轮"],
                 "b6_连接链融合": ["2 段链（不融合）", "4 段链（融合）",
                               "8 段链（融合）", "16 段链（融合）",
-                              "循环累积（不融合）"]}[用例]
+                              "循环累积（不融合）"],
+                "b8_集合哈希": ["20000 键 添加", "20000 键 命中查",
+                             "20000 键 漏检查", "20000 键 删除"]}[用例]
         h = [statistics.median(c) for c in zip(*结果[(用例, "host")])]
         if (用例, "v2") in 结果:
             v = [statistics.median(c) for c in zip(*结果[(用例, "v2")])]
@@ -250,7 +257,7 @@ def 主程序() -> int:
         for i, 名 in enumerate(指标名们):
             行们.append(f"| {用例} | {名} | {h[i]:.0f} | {v[i] if isinstance(v[i], str) else f'{v[i]:.0f}'} |")
     行们 += ["", "> 校验断言全过（终串长/两和相等/尾块和/错误码）·耗时只收数字不判优——",
-            "> 「挂」=v2 侧被在案缺陷阻断（见 v2挂起 注册表·清偿后恢复 dual）·单机口径",
+            "> 「挂」=v2 侧被在案缺陷阻断（见 v2挂起 注册表）或 --host-only 未跑 v2·单机口径",
             "> 优化对拍按 plans/004「优化验收规程」执行（改前改后同机同负载）。", ""]
     报告.write_text("\n".join(行们), encoding="utf-8")
     print(f"\n报告: {报告}")
