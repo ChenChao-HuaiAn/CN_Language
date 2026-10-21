@@ -275,6 +275,78 @@ IRFunction buildLoopCarried() {
     return func;
 }
 
+// 1267（09-D2 云预验回归锁）：φ 降级形态——同一虚拟寄存器在"末次使用之后"
+//   再次定义（前驱块尾并行拷贝写 φ 结果）。活跃区间 end 必须覆盖该后置 def，
+//   否则寄存器被提前回收给另一区间，拷贝源值被目标覆写（p++ 后 p 变成索引值，
+//   下一迭代解引用野指针 SIGSEGV）。
+//   bb0: v0=0; v2=5; -> bb1
+//   bb1: v1 = (v0 < v2); 条件 -> bb2/bb3
+//   bb2: v3 = v0 + v2（末次使用 v0 @3）; v0 = v3 + v2（后置 def @4）; -> bb1
+//   bb3: v4=0; 返回 v4
+IRFunction buildLateRedefinition() {
+    IRFunction func;
+    func.name = "late redefinition";
+    func.returnType = "i64";
+    func.nextRegId = 5;
+    auto constInt = [](int id, const std::string& val) {
+        IRInstruction c;
+        c.opcode = Opcode::ConstInt;
+        c.result = IRValue::reg(id, "i64");
+        c.type = "i64";
+        c.extra = val;
+        return c;
+    };
+    auto add = [](int id, int a, int b) {
+        IRInstruction x;
+        x.opcode = Opcode::Add;
+        x.result = IRValue::reg(id, "i64");
+        x.type = "i64";
+        x.operands = {IRValue::reg(a, "i64"), IRValue::reg(b, "i64")};
+        return x;
+    };
+    auto bb0 = std::make_unique<IRBlock>();
+    bb0->label = "bb0";
+    bb0->instructions.push_back(constInt(0, "0"));
+    bb0->instructions.push_back(constInt(2, "5"));
+    bb0->terminated = true;
+    bb0->termKind = "跳转";
+    bb0->termTarget = "bb1";
+
+    auto bb1 = std::make_unique<IRBlock>();
+    bb1->label = "bb1";
+    IRInstruction lt;
+    lt.opcode = Opcode::Lt;
+    lt.result = IRValue::reg(1, "i1");
+    lt.type = "i1";
+    lt.operands = {IRValue::reg(0, "i64"), IRValue::reg(2, "i64")};
+    bb1->instructions.push_back(lt);
+    bb1->terminated = true;
+    bb1->termKind = "条件跳转";
+    bb1->termTrueTarget = "bb2";
+    bb1->termFalseTarget = "bb3";
+
+    auto bb2 = std::make_unique<IRBlock>();
+    bb2->label = "bb2";
+    bb2->instructions.push_back(add(3, 0, 2));  // 末次使用 v0 @3
+    bb2->instructions.push_back(add(0, 3, 2));  // 后置 def v0 @4（φ 拷贝形态）
+    bb2->terminated = true;
+    bb2->termKind = "跳转";
+    bb2->termTarget = "bb1";
+
+    auto bb3 = std::make_unique<IRBlock>();
+    bb3->label = "bb3";
+    bb3->instructions.push_back(constInt(4, "0"));
+    bb3->terminated = true;
+    bb3->termKind = "返回";
+    bb3->termReturnValue = "%v4";
+
+    func.blocks.push_back(std::move(bb0));
+    func.blocks.push_back(std::move(bb1));
+    func.blocks.push_back(std::move(bb2));
+    func.blocks.push_back(std::move(bb3));
+    return func;
+}
+
 } // namespace
 
 TEST(RegAllocTest, IntervalsCoverAllUsesCrossBlock) {
@@ -297,6 +369,26 @@ TEST(RegAllocTest, IntervalsCoverAllUsesLoopCarried) {
         if (li.regId == 0) {
             found = true;
             EXPECT_GE(li.end, 5) << "v0 区间未覆盖循环出口使用点（end=" << li.end << "）";
+        }
+    }
+    EXPECT_TRUE(found) << "v0 应有活跃区间";
+}
+
+// 1267（09-D2 回归锁）：后置 def（φ 拷贝）必须落在区间内——旧实现只对 use
+//   延长 end，def 在末次使用之后时区间不覆盖该点，寄存器被提前回收复用。
+TEST(RegAllocTest, IntervalsCoverLateRedefinition) {
+    const IRFunction func = buildLateRedefinition();
+    const std::vector<std::string> violations = verifyIntervalCoverage(func);
+    EXPECT_TRUE(violations.empty())
+        << "后置 def 区间覆盖violations: "
+        << (violations.empty() ? "" : violations[0]);
+    // v0: def@0 / use@2 / use@3 / def@4 → end 必须 >= 4
+    const auto intervals = LinearScanAllocator::computeLiveIntervals(func);
+    bool found = false;
+    for (const auto& li : intervals) {
+        if (li.regId == 0) {
+            found = true;
+            EXPECT_GE(li.end, 4) << "v0 区间未覆盖后置 def（end=" << li.end << "）";
         }
     }
     EXPECT_TRUE(found) << "v0 应有活跃区间";

@@ -327,7 +327,12 @@ std::unordered_map<int, LiveInterval> LinearScanAllocator::buildLiveIntervalMap(
         for (std::size_t i = 0; i < block->instructions.size(); ++i) {
             const auto& inst = block->instructions[i];
             const int point = base + static_cast<int>(i);
-            // def（首次创建时 start=point；后续 def 保持最早 def 点）
+            // def（首次创建时 start=point；后续 def 更新最早 def 点，并同样
+            //   延长 end——1267 云预验 09-D2 根治：φ 降级在前驱块尾重复定义
+            //   φ 结果寄存器（多 def 是合法 IR 形态），若像原实现只对 use 延长
+            //   end，末次使用之后的再定义点落在区间外 → 寄存器被提前回收给
+            //   另一区间，并行拷贝的源值被目标覆写（p++/索引++ 后 p 变成索引值，
+            //   第二次迭代解引用野指针 SIGSEGV）。def 点必须占住本寄存器。
             // Alloca 结果排除：栈上分配无实际值，且结果寄存器活到函数尾
             //   会无意义占满物理寄存器（真实 IR 中 Alloca 结果被后续 Load 引用）
             if (inst.opcode == ir::Opcode::Alloca) continue;
@@ -343,6 +348,7 @@ std::unordered_map<int, LiveInterval> LinearScanAllocator::buildLiveIntervalMap(
                     intervalMap[inst.result.id] = li;
                 } else {
                     it->second.start = std::min(it->second.start, point);
+                    it->second.end = std::max(it->second.end, point);
                 }
             }
             // use（含 isConstant 检查：常量无寄存器）

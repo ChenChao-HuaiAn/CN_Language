@@ -18,13 +18,28 @@ namespace opt {
 
 // 指令是否纯（无副作用且结果可删）：
 //   返回 true 表示"结果未被使用时可删除"；false 表示永不删除
-bool DCEPass::isPure(ir::Opcode op) {
+//   1267（779 云预验根治）：安全函数（!fn.isUnsafe）的 Add/Sub/Mul/Shl/Shr
+//   带运行期溢出/移位域检查（错误码 8，任务 474），Div/Mod 带除零检查
+//   （错误码 1，不安全 函数也不豁免）——检查是程序可观察行为，结果死亡
+//   ≠ 指令可删（原实现把它们归纯指令：mem2reg 删除 Store 后唯一消费者
+//   消失 → Add 被删 → 整16 32767++ 不再报错误码 8，779 云预验实录）。
+//   Wrap* 显式回绕语义无检查；位运算/比较/逻辑/转换/常量无检查——保持可删。
+bool DCEPass::isPure(ir::Opcode op, bool safeFunction) {
     switch (op) {
-        // ---- 纯运算指令（无副作用，结果可删） ----
+        // ---- 检查家族（任务 474·语义可观察）----
         case ir::Opcode::Add: case ir::Opcode::Sub:
-        case ir::Opcode::Mul: case ir::Opcode::Div: case ir::Opcode::Mod:
+        case ir::Opcode::Mul: case ir::Opcode::Shl: case ir::Opcode::Shr:
+            // 溢出/移位域检查：安全函数保留；不安全 函数回绕豁免可删
+            return !safeFunction;
+        case ir::Opcode::Div: case ir::Opcode::Mod:
+            // 除零检查恒有（错误码 1）；Div 另有 INT_MIN/-1 溢出检查
+            return false;
+        // ---- 显式回绕（无检查·豁免面）----
+        case ir::Opcode::WrapAdd: case ir::Opcode::WrapSub:
+        case ir::Opcode::WrapMul:
+            return true;
+        // ---- 纯运算指令（无副作用，结果可删） ----
         case ir::Opcode::BitAnd: case ir::Opcode::BitOr: case ir::Opcode::BitXor:
-        case ir::Opcode::Shl: case ir::Opcode::Shr:
         case ir::Opcode::Eq: case ir::Opcode::Ne:
         case ir::Opcode::Lt: case ir::Opcode::Le: case ir::Opcode::Gt: case ir::Opcode::Ge:
         case ir::Opcode::And: case ir::Opcode::Or: case ir::Opcode::Not:
@@ -62,7 +77,7 @@ bool DCEPass::isPure(ir::Opcode op) {
 // 单轮块内 DCE（返回是否删除）
 // usedRegs 为函数级引用位图（下标=寄存器 id，1=被引用）
 bool DCEPass::runBlock(ir::IRBlock& block,
-                       const std::vector<char>& usedRegs) {
+                       const std::vector<char>& usedRegs, bool safeFunction) {
     // ---- 反向扫描删除死指令 ----
     // 反向：先处理靠后的指令，删除后其操作数寄存器在后续轮次中
     // 才可能变死（级联删除由外部循环处理）
@@ -71,7 +86,7 @@ bool DCEPass::runBlock(ir::IRBlock& block,
     for (std::size_t i = insts.size(); i-- > 0;) {
         const ir::IRInstruction& inst = insts[i];
         if (inst.result.id < 0) continue;              // 无结果：不删
-        if (!isPure(inst.opcode)) continue;            // 有副作用：不删
+        if (!isPure(inst.opcode, safeFunction)) continue;  // 有副作用/可观察检查：不删
         // 结果是否被函数内任何指令/终止信息引用（位图 O(1)；超出位图=未引用）
         const std::size_t resultId = static_cast<std::size_t>(inst.result.id);
         const bool referenced =
@@ -91,6 +106,8 @@ bool DCEPass::runBlock(ir::IRBlock& block,
 bool DCEPass::run(ir::IRModule& module) {
     bool changed = false;
     for (auto& fn : module.functions) {
+        // 1267：安全函数（!isUnsafe）的算术带可观察运行期检查——见 isPure。
+        const bool safeFunction = !fn.isUnsafe;
         // 级联收敛：删除一条死指令可能使引用它的指令变死，
         // 循环到一轮内无删除为止（上限防病态输入）
         for (int round = 0; round < 16; ++round) {
@@ -136,7 +153,7 @@ bool DCEPass::run(ir::IRModule& module) {
             // 逐块删除死指令
             bool roundChanged = false;
             for (auto& block : fn.blocks) {
-                if (runBlock(*block, usedMask)) roundChanged = true;
+                if (runBlock(*block, usedMask, safeFunction)) roundChanged = true;
             }
             if (!roundChanged) break;
             changed = true;

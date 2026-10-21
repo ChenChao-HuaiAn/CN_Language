@@ -110,11 +110,60 @@ int countOpcode(const IRModule& module, Opcode opcode) {
 
 // ==================== 纯指令删除 ====================
 
-// 结果未被引用的加法：删除
+// 结果未被引用的加法：删除——仅在"不安全"函数（溢出检查豁免=无观察行为；
+//   1267 起安全函数死算术必须保留，见 SafeFunctionKeepsCheckedAdd）
 TEST(DCETest, RemoveUnusedAdd) {
     auto module = makeModule({
         makeInst(Opcode::Add, {IRValue::reg(1, "i32"), IRValue::reg(2, "i32")},
                 IRValue::reg(0, "i32"), "i32"),
+    });
+    module.functions[0].isUnsafe = true;
+    EXPECT_TRUE(DCEPass().run(module));
+    EXPECT_EQ(countInstructions(module), 0);
+}
+
+// 1267（779 云预验回归锁）：安全函数（!isUnsafe）的加/减/乘/移位带运行期
+//   溢出检查（错误码 8）——结果死亡也不得删除（检查是程序可观察行为）
+TEST(DCETest, SafeFunctionKeepsCheckedAdd) {
+    auto module = makeModule({
+        makeInst(Opcode::Add, {IRValue::reg(1, "i16"), IRValue::reg(2, "i16")},
+                IRValue::reg(0, "i16"), "i16"),
+    });
+    // isUnsafe 默认 false = 安全函数
+    EXPECT_FALSE(DCEPass().run(module));
+    EXPECT_EQ(countInstructions(module), 1);
+}
+
+// 安全函数死移位同样保留（移位量域检查=错误码 8）
+TEST(DCETest, SafeFunctionKeepsCheckedShl) {
+    auto module = makeModule({
+        makeInst(Opcode::Shl, {IRValue::reg(1, "i32"), IRValue::reg(2, "i32")},
+                IRValue::reg(0, "i32"), "i32"),
+    });
+    EXPECT_FALSE(DCEPass().run(module));
+    EXPECT_EQ(countInstructions(module), 1);
+}
+
+// 除零检查恒有（错误码1）——不安全函数也不得删除死除法/取余
+TEST(DCETest, DivModNeverDropped) {
+    auto module = makeModule({
+        makeInst(Opcode::Div, {IRValue::reg(1, "i64"), IRValue::reg(2, "i64")},
+                IRValue::reg(0, "i64"), "i64"),
+        makeInst(Opcode::Mod, {IRValue::reg(1, "i64"), IRValue::reg(2, "i64")},
+                IRValue::reg(3, "i64"), "i64"),
+    });
+    module.functions[0].isUnsafe = true;
+    EXPECT_FALSE(DCEPass().run(module));
+    EXPECT_EQ(countInstructions(module), 2);
+}
+
+// 显式回绕运算（Wrap*）无检查——死代码可删（豁免面）
+TEST(DCETest, WrapArithmeticDropped) {
+    auto module = makeModule({
+        makeInst(Opcode::WrapAdd, {IRValue::reg(1, "i32"), IRValue::reg(2, "i32")},
+                IRValue::reg(0, "i32"), "i32"),
+        makeInst(Opcode::WrapMul, {IRValue::reg(1, "i32"), IRValue::reg(2, "i32")},
+                IRValue::reg(3, "i32"), "i32"),
     });
     EXPECT_TRUE(DCEPass().run(module));
     EXPECT_EQ(countInstructions(module), 0);
@@ -152,7 +201,7 @@ TEST(DCETest, NoDeadCodeReturnsFalse) {
     EXPECT_EQ(countInstructions(module), 1);
 }
 
-// 级联删除：加法结果被另一个无引用加法引用 -> 两条都删
+// 级联删除：加法结果被另一个无引用加法引用 -> 两条都删（不安全 函数豁免面）
 TEST(DCETest, CascadeDelete) {
     auto module = makeModule({
         makeInst(Opcode::Add, {IRValue::reg(1, "i32"), IRValue::reg(2, "i32")},
@@ -160,11 +209,12 @@ TEST(DCETest, CascadeDelete) {
         makeInst(Opcode::Mul, {IRValue::reg(0, "i32"), IRValue::reg(3, "i32")},
                 IRValue::reg(4, "i32"), "i32"),
     });
+    module.functions[0].isUnsafe = true;
     EXPECT_TRUE(DCEPass().run(module));
     EXPECT_EQ(countInstructions(module), 0);
 }
 
-// 多条死指令（加/乘/转换）都删除
+// 多条死指令（加/乘/转换）都删除（不安全 函数豁免面）
 TEST(DCETest, RemoveMultipleDead) {
     auto module = makeModule({
         makeInst(Opcode::Add, {IRValue::reg(1, "i32"), IRValue::reg(2, "i32")},
@@ -174,6 +224,7 @@ TEST(DCETest, RemoveMultipleDead) {
         makeInst(Opcode::Cast, {IRValue::reg(6, "i32")},
                 IRValue::reg(7, "i64"), "i64"),
     });
+    module.functions[0].isUnsafe = true;
     EXPECT_TRUE(DCEPass().run(module));
     EXPECT_EQ(countInstructions(module), 0);
 }
@@ -286,12 +337,13 @@ TEST(DCETest, KeepChainedUse) {
     EXPECT_EQ(countInstructions(module), 2);
 }
 
-// 常量操作数不算引用（常量不是寄存器）
+// 常量操作数不算引用（常量不是寄存器）；不安全 函数死加可删
 TEST(DCETest, ConstantOperandNotReference) {
     auto module = makeModule({
         makeInst(Opcode::Add, {IRValue::constant("1", "i32"), IRValue::constant("2", "i32")},
                 IRValue::reg(0, "i32"), "i32"),
     });
+    module.functions[0].isUnsafe = true;
     EXPECT_TRUE(DCEPass().run(module));
     EXPECT_EQ(countInstructions(module), 0);
 }

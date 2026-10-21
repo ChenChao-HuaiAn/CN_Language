@@ -32,11 +32,17 @@ public:
 private:
     // 单轮块内 DCE（返回是否删除）
     // usedRegs 为函数级引用位图（下标=寄存器 id，1=被引用；由 run 收集）
-    static bool runBlock(ir::IRBlock& block, const std::vector<char>& usedRegs);
+    // safeFunction=false（不安全 函数）时溢出检查家族豁免，见 isPure 说明。
+    static bool runBlock(ir::IRBlock& block, const std::vector<char>& usedRegs,
+                         bool safeFunction);
 
     // 指令是否纯（无副作用且结果可删）：
     //   返回 true 表示"结果未被使用时可删除"；false 表示永不删除
-    static bool isPure(ir::Opcode op);
+    //   1267（779 云预验根治）：安全函数（!fn.isUnsafe）的 Add/Sub/Mul/Shl/Shr
+    //   带运行期溢出/移位域检查（错误码 8），Div/Mod 带除零检查（错误码 1，
+    //   不安全 函数也不豁免）——检查是程序可观察行为，结果死亡≠可删；
+    //   Wrap* 与位运算/比较/逻辑/转换/常量无检查，保持可删。
+    static bool isPure(ir::Opcode op, bool safeFunction);
 };
 
 } // namespace opt
