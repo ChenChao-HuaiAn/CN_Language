@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # stdlib 微基准族双测 runner（#367 ②·2026-10-09）
-#   四用例（tests/bench/b1~b4）：宿主 cn 与 v2 自举编译器（v2p）双编译同测——
-#   双测铁律性能版（369 行同款纪律）。数字=优化验收基线（#366/#368 对拍锚），
-#   报告落 target/bench/stdlib基线报告.md（gitignore·数字入册=誊进 plans/004）。
-#   用法: python scripts/bench_stdlib.py [--runs 3] [--only b1,b2]
+#   微基准族（tests/bench/b1~b8，b4 v2 挂起）：宿主 cn 与 v2 自举编译器（v2p）
+#   双编译同测——双测铁律性能版（369 行同款纪律）。数字=优化验收基线
+#   （#366/#368 对拍锚），报告落 target/bench/stdlib基线报告.md
+#   （gitignore·数字入册=誊进 plans/004）。
+#   用法: python scripts/bench_stdlib.py [--runs 3] [--only b1,b2] [--host-only]
+#         --host-only = 仅宿主侧（win 无 as/g++ linux 链时开发自测；v2 列=挂，
+#         默认双测行为不变·linux CI 照跑 v2）。
 #   判据（防假绿）：每用例编译 rc=0 + 校验行断言（终串长/两和相等/尾块和/错误码），
 #   耗时数字只收集不判优——优化对拍由人按 plans/004 规程执行。
 
