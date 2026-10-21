@@ -241,12 +241,37 @@ constexpr std::size_t keywordFirstGroupViolations() {
 static_assert(keywordFirstGroupViolations() == 0,
               "关键字首码点分组表须连续覆盖全表且组序严格升序");
 
+// 关键字域与映射唯一性核验（返回违规数，0=合法）：
+//   ① 首码点 >= 0x80——lookupKeyword 对 ASCII 起始文本直接短路拒绝；新增
+//      ASCII 关键字而未同步放宽快筛时，该词会被静默当标识符。确需 ASCII
+//      关键字时删除本断言并同步放宽 lookupKeyword（维护点显式化，防静默）。
+//   ② 词→TokenType 映射唯一（两词同类型=词法识别必错一路；词与类型的正确
+//      对应由 tests/unit/lexer/test_keyword_table.cpp 逐项对照）。
+constexpr char32_t kKeywordAsciiLimit = 0x80;
+constexpr std::size_t keywordTableDomainViolations() {
+    constexpr std::size_t n = sizeof(kKeywordTable) / sizeof(kKeywordTable[0]);
+    std::size_t violations = 0;
+    for (std::size_t i = 0; i < n; ++i) {
+        if (firstCodepoint(kKeywordTable[i].text) < kKeywordAsciiLimit) ++violations;
+        for (std::size_t j = i + 1; j < n; ++j) {
+            if (static_cast<int>(kKeywordTable[i].type) ==
+                static_cast<int>(kKeywordTable[j].type)) {
+                ++violations;
+            }
+        }
+    }
+    return violations;
+}
+static_assert(keywordTableDomainViolations() == 0,
+              "关键字首码点须 >= 0x80（ASCII 关键字须同步放宽词法快筛）且词→TokenType 映射唯一");
+
 } // namespace
 
 // 查找关键字：命中返回true并设置类型
 // #103（1143 批）：快筛——46 保留字首字符全为汉字（多字节头字节），ASCII 起始
-//   文本直接拒绝（命中域不变；非关键字中文标识符走常量表二分兜底）。
-//   ★维护警示：新增 ASCII/低位起始保留字时须同步放宽本快筛。
+//   文本直接拒绝（命中域不变；非关键字中文标识符走首码点分派兜底）。
+//   ★维护警示：新增 ASCII 关键字须同步放宽本快筛（keywordTableDomainViolations
+//   的 static_assert 会把漏改变成编译期失败）。
 // #1215 阶段A：constexpr 有序表 + 首码点分派（无哈希、无启动分配、无堆节点）。
 bool Lexer::lookupKeyword(std::string_view text, TokenType& type) {
     const unsigned char b0 = text.empty() ? 0u : static_cast<unsigned char>(text[0]);

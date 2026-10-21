@@ -12,6 +12,7 @@ add_executable(cn_unit_tests
     lexer/test_lexer.cpp
     lexer/test_lexer_string.cpp
     lexer/test_lexer_keywords.cpp
+    lexer/test_keyword_table.cpp
     lexer/test_lexer_stage3.cpp
     lexer/test_preprocessor.cpp
     parser/test_ast.cpp
@@ -61,6 +62,7 @@ add_executable(cn_unit_tests
     module/test_module.cpp
     module/test_module_driver.cpp
     model/test_ast_serialize.cpp
+    model/test_type_system_canonical.cpp
     driver/test_cargo_parser.cpp
     driver/test_cache_atomic.cpp  # 1213：缓存原子写并发压测（同进程多线程）
     ir/test_ir.cpp
