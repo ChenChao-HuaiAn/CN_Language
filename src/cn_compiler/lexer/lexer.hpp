@@ -3,6 +3,7 @@
 #pragma once
 #include <cstddef>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -55,7 +56,7 @@ private:
     Token readOperatorOrDelimiter();         // 读取运算符或分隔符（贪婪最长匹配）
 
     // ---- 工具 ----
-    static bool lookupKeyword(const std::string& text, TokenType& type); // 查找46个保留字
+    static bool lookupKeyword(std::string_view text, TokenType& type); // 查找46个保留字（constexpr 表首码点分派）
     // 前缀误用探测（162-a 非保留化）：跳过空格/制表后紧跟引号（诊断用，不消费）
     bool prefixAbuseNextQuote() const;
     void reportError(const SourceLocation& loc, const std::string& message); // 报告词法错误

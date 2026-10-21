@@ -36,10 +36,10 @@ V1_EXTRA: set[str] = {"遍历", "中", "每个"}  # v1 遗留上下文词（不�
 
 
 def 提取宿主表() -> set[str]:
-    """lexer.cpp keywordTable 的 {"词", TokenType::Kw_X} 条目"""
+    """lexer.cpp kKeywordTable 的 {"词", TokenType::Kw_X} 条目（#1215：静态有序表）"""
     txt = (ROOT / "src/cn_compiler/lexer/lexer.cpp").read_text(encoding="utf-8")
-    block = txt[txt.index("keywordTable()"):]
-    block = block[: block.index("};")]
+    block = txt[txt.index("kKeywordTable[] = {"):]
+    block = block[: block.index("\n};")]
     return set(re.findall(r'\{"([^"]+)",\s*TokenType::Kw_\w+\}', block))
 
 

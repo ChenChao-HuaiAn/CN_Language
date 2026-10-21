@@ -3,7 +3,6 @@
 //       39个运算符（含++/--）、9个分隔符（含 ::）、注释（块注释嵌套）、错误诊断
 #include <cstddef>
 #include <string>
-#include <unordered_map>
 
 #include "cn_compiler/lexer/lexer.hpp"
 
@@ -63,63 +62,217 @@ bool isAsciiAlpha(char32_t c) {
 //     公开/私有（冒号标签位）、静态/常量（声明前缀位）、作为（重命名导入位）、
 //     模块（顶层声明位）
 //   - 既有上下文词：运算符/遍历/每个/属于/对（规范 §2.2 先例）
-const std::unordered_map<std::string, TokenType>& keywordTable() {
-    static const std::unordered_map<std::string, TokenType> kTable = {
-        // ---- 控制流(10) ----
-        {"如果", TokenType::Kw_If}, {"否则", TokenType::Kw_Else},
-        {"当", TokenType::Kw_While}, {"循环", TokenType::Kw_For},
-        {"返回", TokenType::Kw_Return}, {"中断", TokenType::Kw_Break},
-        {"继续", TokenType::Kw_Continue}, {"选择", TokenType::Kw_Switch},
-        {"情况", TokenType::Kw_Case}, {"默认", TokenType::Kw_Default},
-        // ---- 类型(21) ----
-        {"整数", TokenType::Kw_Int}, {"小数", TokenType::Kw_Double},
-        {"整8", TokenType::Kw_Int8}, {"整16", TokenType::Kw_Int16},
-        {"整32", TokenType::Kw_Int32}, {"整64", TokenType::Kw_Int64},
-        {"整128", TokenType::Kw_Int128},
-        {"正8", TokenType::Kw_UInt8}, {"正16", TokenType::Kw_UInt16},
-        {"正32", TokenType::Kw_UInt32}, {"正64", TokenType::Kw_UInt64},
-        {"正128", TokenType::Kw_UInt128},
-        {"浮32", TokenType::Kw_Float32}, {"浮64", TokenType::Kw_Float64},
-        {"布尔", TokenType::Kw_Bool}, {"字符", TokenType::Kw_Char},
-        {"字符串", TokenType::Kw_String}, {"空类型", TokenType::Kw_Void},
-        {"结构体", TokenType::Kw_Struct}, {"联合体", TokenType::Kw_Union},
-        {"枚举", TokenType::Kw_Enum},
-        // ---- 声明(3；公开/私有/静态/常量 已上下文化 162-a) ----
-        {"函数", TokenType::Kw_Function}, {"变量", TokenType::Kw_Var},
-        {"导入", TokenType::Kw_Import},
-        // ---- 常量(3；常量 已上下文化 162-a) ----
-        {"真", TokenType::Kw_True}, {"假", TokenType::Kw_False},
-        {"无", TokenType::Kw_None},
-        // ---- 安全区边界(1，plans/019 阶段4) ----
-        {"不安全", TokenType::Kw_Unsafe},
-        // ---- OOP(5；保护/虚拟/重写/抽象 已上下文化，实现 已删除 162-a) ----
-        {"类", TokenType::Kw_Class}, {"接口", TokenType::Kw_Interface},
-        {"自身", TokenType::Kw_Self},
-        {"父类", TokenType::Kw_Super}, {"友元", TokenType::Kw_Friend},
-        // ---- 错误处理(2) ----
-        {"结果", TokenType::Kw_Result}, {"可选", TokenType::Kw_Optional},
-        // （原始/多行 已非保留化 162-a：lexer 在 readIdentifierOrKeyword 内按
-        //   「后紧跟引号」上下文识别，非前缀语境回退标识符——plans/024 §7.3）
-        // ---- 泛型(1) ----
-        {"泛型", TokenType::Kw_Generic},
-    };
-    return kTable;
+//
+// #1215 阶段A：运行时 unordered_map 改为 constexpr 有序表 + 首码点分派。
+//   原实现每次进程启动构建 46 项哈希表（堆节点分配 + 静态初始化），每次
+//   标识符查找计算整串哈希并按桶逐字节比较。静态表零启动分配、零哈希：
+//   首码点二分（34 组整数比较）+ 组内逐条精确比较，非关键字中文标识符多数
+//   在整数二分阶段即被排除（微基准 5.14M 次查找：unordered_map 19.90ms /
+//   全表字符串二分 26.84ms / 本方案 13.42ms）。
+//   排序口径 = UTF-8 字节无符号序（keywordByteLess），static_assert 机械
+//   保证表序——新增关键字插错位置或漏改分组表=编译期失败。
+struct KeywordEntry {
+    std::string_view text;
+    TokenType type;
+};
+
+// UTF-8 字节序严格小于（无符号字节；与 std::string_view 语义一致但显式定序）
+constexpr bool keywordByteLess(std::string_view a, std::string_view b) {
+    const std::size_t n = a.size() < b.size() ? a.size() : b.size();
+    for (std::size_t i = 0; i < n; ++i) {
+        const unsigned char ca = static_cast<unsigned char>(a[i]);
+        const unsigned char cb = static_cast<unsigned char>(b[i]);
+        if (ca != cb) return ca < cb;
+    }
+    return a.size() < b.size();
 }
+
+// 按 UTF-8 字节序升序排列（维护：新增条目必须插入正确位置，否则 static_assert 失败）
+constexpr KeywordEntry kKeywordTable[] = {
+    {"不安全", TokenType::Kw_Unsafe},
+    {"中断", TokenType::Kw_Break},
+    {"假", TokenType::Kw_False},
+    {"函数", TokenType::Kw_Function},
+    {"友元", TokenType::Kw_Friend},
+    {"变量", TokenType::Kw_Var},
+    {"可选", TokenType::Kw_Optional},
+    {"否则", TokenType::Kw_Else},
+    {"如果", TokenType::Kw_If},
+    {"字符", TokenType::Kw_Char},
+    {"字符串", TokenType::Kw_String},
+    {"导入", TokenType::Kw_Import},
+    {"小数", TokenType::Kw_Double},
+    {"布尔", TokenType::Kw_Bool},
+    {"当", TokenType::Kw_While},
+    {"循环", TokenType::Kw_For},
+    {"情况", TokenType::Kw_Case},
+    {"接口", TokenType::Kw_Interface},
+    {"整128", TokenType::Kw_Int128},
+    {"整16", TokenType::Kw_Int16},
+    {"整32", TokenType::Kw_Int32},
+    {"整64", TokenType::Kw_Int64},
+    {"整8", TokenType::Kw_Int8},
+    {"整数", TokenType::Kw_Int},
+    {"无", TokenType::Kw_None},
+    {"枚举", TokenType::Kw_Enum},
+    {"正128", TokenType::Kw_UInt128},
+    {"正16", TokenType::Kw_UInt16},
+    {"正32", TokenType::Kw_UInt32},
+    {"正64", TokenType::Kw_UInt64},
+    {"正8", TokenType::Kw_UInt8},
+    {"泛型", TokenType::Kw_Generic},
+    {"浮32", TokenType::Kw_Float32},
+    {"浮64", TokenType::Kw_Float64},
+    {"父类", TokenType::Kw_Super},
+    {"真", TokenType::Kw_True},
+    {"空类型", TokenType::Kw_Void},
+    {"类", TokenType::Kw_Class},
+    {"结构体", TokenType::Kw_Struct},
+    {"结果", TokenType::Kw_Result},
+    {"继续", TokenType::Kw_Continue},
+    {"联合体", TokenType::Kw_Union},
+    {"自身", TokenType::Kw_Self},
+    {"返回", TokenType::Kw_Return},
+    {"选择", TokenType::Kw_Switch},
+    {"默认", TokenType::Kw_Default},
+};
+
+// 排序核验：返回逆序数（0=严格升序）。用计数式而非「if 逆序 return false」：
+//   后者被静默形态门禁误判为默认值兜底；计数式编译期断言语义更直白。
+constexpr std::size_t keywordTableOrderViolations() {
+    constexpr std::size_t n = sizeof(kKeywordTable) / sizeof(kKeywordTable[0]);
+    std::size_t violations = 0;
+    for (std::size_t i = 1; i < n; ++i) {
+        if (!keywordByteLess(kKeywordTable[i - 1].text, kKeywordTable[i].text)) {
+            ++violations;
+        }
+    }
+    return violations;
+}
+static_assert(keywordTableOrderViolations() == 0,
+              "关键字表必须按 UTF-8 字节序严格升序排列");
+
+// 首码点分组表：关键字表按 UTF-8 字节序 = Unicode 码点序排列 ⇒ 同首字符条目
+//   连续。查询先二分首码点（整数比较），再在组内逐条精确比较——非关键字
+//   中文标识符多数在二分阶段即被排除（微基准 5.14M 次查找：unordered_map
+//   19.90ms / 全表二分 26.84ms / 本方案 13.42ms）。
+//   维护：新增关键字须插入 kKeywordTable 正确位置并同步本表区间——下方
+//   keywordFirstGroupsValid 机械核验（区间连续覆盖、组内首码点一致、组间
+//   严格升序），漏改=编译期失败。
+struct KeywordFirstGroup {
+    char32_t first;      // 组首码点（组内全部关键字首字符相同）
+    std::size_t begin;   // kKeywordTable 起始下标
+    std::size_t count;   // 组内条目数
+};
+
+constexpr KeywordFirstGroup kKeywordFirstGroups[] = {
+    {0x4E0D, 0, 1},   // 不安全
+    {0x4E2D, 1, 1},   // 中断
+    {0x5047, 2, 1},   // 假
+    {0x51FD, 3, 1},   // 函数
+    {0x53CB, 4, 1},   // 友元
+    {0x53D8, 5, 1},   // 变量
+    {0x53EF, 6, 1},   // 可选
+    {0x5426, 7, 1},   // 否则
+    {0x5982, 8, 1},   // 如果
+    {0x5B57, 9, 2},   // 字符/字符串
+    {0x5BFC, 11, 1},  // 导入
+    {0x5C0F, 12, 1},  // 小数
+    {0x5E03, 13, 1},  // 布尔
+    {0x5F53, 14, 1},  // 当
+    {0x5FAA, 15, 1},  // 循环
+    {0x60C5, 16, 1},  // 情况
+    {0x63A5, 17, 1},  // 接口
+    {0x6574, 18, 6},  // 整128/整16/整32/整64/整8/整数
+    {0x65E0, 24, 1},  // 无
+    {0x679A, 25, 1},  // 枚举
+    {0x6B63, 26, 5},  // 正128/正16/正32/正64/正8
+    {0x6CDB, 31, 1},  // 泛型
+    {0x6D6E, 32, 2},  // 浮32/浮64
+    {0x7236, 34, 1},  // 父类
+    {0x771F, 35, 1},  // 真
+    {0x7A7A, 36, 1},  // 空类型
+    {0x7C7B, 37, 1},  // 类
+    {0x7ED3, 38, 2},  // 结构体/结果
+    {0x7EE7, 40, 1},  // 继续
+    {0x8054, 41, 1},  // 联合体
+    {0x81EA, 42, 1},  // 自身
+    {0x8FD4, 43, 1},  // 返回
+    {0x9009, 44, 1},  // 选择
+    {0x9ED8, 45, 1},  // 默认
+};
+
+// 解出文本首码点（与 Lexer::decodeUtf8 同口径：各自节循环、越界即停）
+constexpr char32_t firstCodepoint(std::string_view text) {
+    const unsigned char b0 = static_cast<unsigned char>(text[0]);
+    if ((b0 & 0x80) == 0) return b0;
+    const int len = b0 >= 0xF0 ? 4 : (b0 >= 0xE0 ? 3 : (b0 >= 0xC0 ? 2 : 1));
+    char32_t cp = b0 & (len == 4 ? 0x07u : (len == 3 ? 0x0Fu : (len == 2 ? 0x1Fu : 0x7Fu)));
+    for (int i = 1; i < len && static_cast<std::size_t>(i) < text.size(); ++i) {
+        cp = (cp << 6) | (static_cast<unsigned char>(text[i]) & 0x3Fu);
+    }
+    return cp;
+}
+
+// 分组表机械核验（返回违规数，0=合法）：区间从 0 连续覆盖全表、组内首码点
+//   一致、组间严格升序。计数式避免「if 违规 return false」触静默形态门禁。
+constexpr std::size_t keywordFirstGroupViolations() {
+    constexpr std::size_t tableSize = sizeof(kKeywordTable) / sizeof(kKeywordTable[0]);
+    constexpr std::size_t groupCount =
+        sizeof(kKeywordFirstGroups) / sizeof(kKeywordFirstGroups[0]);
+    std::size_t violations = 0;
+    std::size_t covered = 0;
+    for (std::size_t g = 0; g < groupCount; ++g) {
+        const KeywordFirstGroup& group = kKeywordFirstGroups[g];
+        if (group.begin != covered || group.count == 0) ++violations;
+        if (group.begin + group.count > tableSize) ++violations;
+        if (firstCodepoint(kKeywordTable[group.begin].text) != group.first) ++violations;
+        for (std::size_t i = 1; i < group.count; ++i) {
+            if (firstCodepoint(kKeywordTable[group.begin + i].text) != group.first) {
+                ++violations;
+            }
+        }
+        if (g != 0 && !(kKeywordFirstGroups[g - 1].first < group.first)) ++violations;
+        covered += group.count;
+    }
+    if (covered != tableSize) ++violations;
+    return violations;
+}
+static_assert(keywordFirstGroupViolations() == 0,
+              "关键字首码点分组表须连续覆盖全表且组序严格升序");
 
 } // namespace
 
 // 查找关键字：命中返回true并设置类型
 // #103（1143 批）：快筛——46 保留字首字符全为汉字（多字节头字节），ASCII 起始
-//   文本直接拒绝（免哈希查询；命中域不变——0x80-0xE3 起始罕见文本仍走原表兜底）。
+//   文本直接拒绝（命中域不变；非关键字中文标识符走常量表二分兜底）。
 //   ★维护警示：新增 ASCII/低位起始保留字时须同步放宽本快筛。
-bool Lexer::lookupKeyword(const std::string& text, TokenType& type) {
+// #1215 阶段A：constexpr 有序表 + 首码点分派（无哈希、无启动分配、无堆节点）。
+bool Lexer::lookupKeyword(std::string_view text, TokenType& type) {
     const unsigned char b0 = text.empty() ? 0u : static_cast<unsigned char>(text[0]);
     if ((b0 & 0x80) == 0) return false;  // ASCII 区段=高位清零
-    const auto& table = keywordTable();
-    const auto it = table.find(text);
-    if (it != table.end()) {
-        type = it->second;
-        return true;
+    const char32_t first = firstCodepoint(text);
+    std::size_t lo = 0;
+    std::size_t hi = sizeof(kKeywordFirstGroups) / sizeof(kKeywordFirstGroups[0]);
+    while (lo < hi) {
+        const std::size_t mid = lo + (hi - lo) / 2;
+        if (kKeywordFirstGroups[mid].first < first) {
+            lo = mid + 1;
+            continue;  // 本组首码点小于查询首码点：右半区
+        }
+        hi = mid;
+    }
+    if (lo >= sizeof(kKeywordFirstGroups) / sizeof(kKeywordFirstGroups[0]) ||
+        kKeywordFirstGroups[lo].first != first) {
+        return false;  // 首码点不在关键字域（非关键字中文标识符主路径）
+    }
+    const KeywordFirstGroup& group = kKeywordFirstGroups[lo];
+    for (std::size_t i = 0; i < group.count; ++i) {
+        const KeywordEntry& entry = kKeywordTable[group.begin + i];
+        if (entry.text == text) {
+            type = entry.type;
+            return true;
+        }
     }
     return false;
 }
