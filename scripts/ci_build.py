@@ -142,29 +142,68 @@ def win构建链(步骤们: dict, 步骤, 日志, vcvars: Path, 当前头: str,
 
 # ═══════════ 1299 linux 编译器缓存（ccache/sccache·预验冷建成本） ═══════════
 缓存关闭词 = frozenset(("off", "0", "false", "no", "关闭", "否"))
+缓存非法字符 = frozenset((";", "\r", "\n", "\0"))
+
+
+def 解析缓存配置(环境=None, 探测器=None) -> dict:
+    """linux 构建编译器缓存配置解析（1299·纯函数可注入自测）。
+
+    CN_BUILD_CACHE 语义（运维旋钮·缺省 auto）：
+      · 未设 / auto           → 依次探测 ccache、sccache；都无=不启用（构建照旧）；
+      · off/0/false/no/关闭/否 → 显式关闭（即使已安装也不用）；
+      · 含路径分隔符的值       → 显式 launcher：必须存在且可执行；
+      · 裸命令名               → 按 PATH 解析；解析不到=配置错误；
+      · 引号/分号/换行等       → 配置错误（不猜、不静默降级——882/1239 口径）。
+    返回 {"launcher": str|None, "说明": str, "错误": str|None}：错误非空时调用方
+    必须把配置步记红并中止构建（不得 fallback 到「未启用」继续跑）。"""
+    环境 = os.environ if 环境 is None else 环境
+    原始 = 环境.get("CN_BUILD_CACHE")
+    指定 = (原始 or "").strip()
+    探测器 = 探测器 or shutil.which
+
+    def 错误(说明: str, 错误: str) -> dict:
+        return {"launcher": None, "说明": 说明, "错误": 错误}
+
+    if not 指定 or 指定.lower() == "auto":
+        for 名 in ("ccache", "sccache"):
+            路径 = 探测器(名)
+            if 路径:
+                return {"launcher": 路径, "说明": "自动探测命中 %s" % 路径, "错误": None}
+        return {"launcher": None,
+                "说明": "自动探测：ccache/sccache 均未安装（构建走原始编译器）",
+                "错误": None}
+    if 指定.lower() in 缓存关闭词:
+        return {"launcher": None, "说明": "显式关闭（CN_BUILD_CACHE=%s）" % 指定,
+                "错误": None}
+    坏字 = "".join(sorted(set(指定) & 缓存非法字符))
+    if 坏字:
+        return 错误("配置非法",
+                    "CN_BUILD_CACHE 含非法字符 %r：%r（拒绝进入构建）" % (坏字, 指定))
+    if '"' in 指定 or "'" in 指定:
+        return 错误("配置非法",
+                    "CN_BUILD_CACHE 不支持带引号的值 %r（systemd Environment= 的引号由 "
+                    "systemd 剥离；值内引号=配置错误）" % 指定)
+    if os.path.sep in 指定 or (os.path.altsep and os.path.altsep in 指定):
+        候选 = Path(os.path.expanduser(指定))
+        if not 候选.is_file() or not os.access(str(候选), os.X_OK):
+            return 错误("配置非法",
+                        "CN_BUILD_CACHE=%r 指向的 launcher 不存在或不可执行" % 指定)
+        return {"launcher": str(候选), "说明": "显式 launcher %s" % 候选, "错误": None}
+    命中 = 探测器(指定)
+    if not 命中:
+        return 错误("配置非法",
+                    "CN_BUILD_CACHE=%r 不是受支持的值（可用 auto/off/关闭 或可执行 "
+                    "launcher 路径；不支持 1/disable/none 等别名）" % 指定)
+    return {"launcher": 命中, "说明": "显式 launcher %s" % 命中, "错误": None}
 
 
 def 选编译器缓存(环境=None, 探测器=None) -> str | None:
-    """linux 构建编译器缓存选择（1299·纯函数可注入自测）。
-
-    CN_BUILD_CACHE 语义（运维旋钮·缺省 auto）：
-      · 未设 / auto      → 依次探测 ccache、sccache，命中返回路径；都无→None（构建照旧）；
-      · off/0/false/no/关闭/否 → None（显式关闭，即使已安装也不用）；
-      · 其他非空值       → 原样返回（显式 launcher 路径/包装器名，存在性交给 cmake 报错）。
-    返回 None=不启用（**可选**语义，非「不存在」哨兵：调用方据此显式传空 launcher，
-    防 CMakeCache 残留旧 launcher 造成「已卸载缓存仍被调用」的构建红）。"""
-    环境 = os.environ if 环境 is None else 环境
-    指定 = (环境.get("CN_BUILD_CACHE") or "").strip()
-    if 指定.lower() in 缓存关闭词:
-        return None
-    if 指定 and 指定.lower() != "auto":
-        return 指定
-    探测器 = 探测器 or shutil.which
-    for 名 in ("ccache", "sccache"):
-        路径 = 探测器(名)
-        if 路径:
-            return 路径
-    return None
+    """兼容入口（1299）：返回 launcher 或 None；非法配置抛 ValueError（调用方显式红，
+    不得静默按「未启用」继续）。详细原因/说明用 解析缓存配置。"""
+    决策 = 解析缓存配置(环境, 探测器)
+    if 决策["错误"]:
+        raise ValueError(决策["错误"])
+    return 决策["launcher"]
 
 
 def linux配置命令(launcher: str | None) -> list[str]:
@@ -179,15 +218,19 @@ def linux构建链(步骤们: dict, 步骤, 构建并行: int, 单轮总超时�
                日志=None) -> None:
     """linux 构建段整段（657 自 跑一轮 抽出·与 win构建链 对称=跑一轮 回 ≤100 行
     纪律）：②配置（默认生成器 Make·与 integrate 同口径；产物落 target/ 根）→构建→
-    ③单测（产物三 fallback=integrate 同款）。逻辑与抽出前逐行等价（零行为变化）。
+    ③单测（产物三 fallback=integrate 同款）。除 1299 缓存接线外与抽出前逐行等价。
     973 外迁：构建并行/单轮总超时秒 由调用方注入（daemon 常量单源·911）。
-    1299：配置前探测编译器缓存（ccache/sccache）并显式传入 launcher；日志参数可选
-    （None=不额外输出·兼容自测桩调用面）。"""
-    launcher = 选编译器缓存()
+    1299：配置前解析编译器缓存（ccache/sccache）并显式传入 launcher；配置非法=配置步
+    诚实红并中止（不静默降级）；日志参数可选（None=不输出·兼容自测桩调用面）。"""
+    决策 = 解析缓存配置()
     if 日志 is not None:
-        print("  [1299] 编译器缓存：%s" % (launcher or "未启用（ccache/sccache 均未安装·构建照旧）"),
-              file=日志, flush=True)
-    if not 步骤("配置", linux配置命令(launcher), 600):
+        print("  [1299] 编译器缓存：%s" % 决策["说明"], file=日志, flush=True)
+    if 决策["错误"]:
+        if 日志 is not None:
+            print("  [1299] %s" % 决策["错误"], file=日志, flush=True)
+        步骤们["配置"] = {"rc": -1, "说明": 决策["错误"]}
+        return  # 配置非法——不进入 cmake（防带病构建/静默降级）
+    if not 步骤("配置", linux配置命令(决策["launcher"]), 600):
         return  # 配置红——步骤们 已记 rc，构建/单测不跑（原 pass 分支语义）
     if not 步骤("构建", ["cmake", "--build", "target/build",
                         "--parallel", str(构建并行)], 单轮总超时秒):

@@ -130,6 +130,12 @@ for 名 in ("check_ascii_idents", "check_keywords_sync", "check_registry_audit",
            "check_parallel_prefix"):
     if not 步(名, [sys.executable, f"scripts/{名}.py"], 超时秒=静态超时):
         raise SystemExit(1)
+# 1299（2026-10-22 审查裁决）：ci_daemon 自测挂 L1 静态段——缓存配置解析（off/auto/
+#    显式/非法值/引号/分号/路径存在）+ linux 构建链行为级（假步骤）+执行机归因字段
+#    每次提交机械复核；纯本机零构建零池依赖（秒级·--selftest 惰性导入自测体）。
+if not 步("ci_daemon 自测", [sys.executable, "scripts/ci_daemon.py", "--selftest"],
+         超时秒=静态超时):
+    raise SystemExit(1)
 # 1013（2026-10-17 用户裁决）：官网文档覆盖对照 --strict 挂 L1——基线零（61/61 已覆盖·
 #    未归类 0·1013 归类 943 轮新增 1068/1069 归零）即等价棘轮·只拦新增：新 E2E 用例
 #    须在 doc_coverage 台账归类（特性行或兜底桶），未归类/缺口/豁免理由空即红；

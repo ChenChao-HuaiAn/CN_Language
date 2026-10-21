@@ -27,6 +27,16 @@ def 初始化(仓库根: Path, 平台: str, 日志目录: Path, 远端名: str) 
     _仓库根, _平台, _日志目录, _远端名 = 仓库根, 平台, 日志目录, 远端名
 
 
+def 执行机字段(runner: str, 构建并行: int, 是win: bool) -> dict:
+    """1299：门禁结果执行机归因字段（构建段 63s↔372s 查因必需——同 sha 同平台不同
+    runner/作业数可差数倍；详情无执行机只能翻各机 ci-logs 考古）。
+    win 侧 Ninja `--parallel` 用全核，`CN_BUILD_JOBS` 不适用→不写入（不虚报默认 2）。"""
+    字段 = {"runner": runner}
+    if not 是win:
+        字段["CN_BUILD_JOBS"] = 构建并行
+    return 字段
+
+
 def 上报(结果: dict) -> None:
     """可选上报 TX_01 队列服务——URL/token 从环境变量或 ci_config.json 读；不可达仅警告。"""
     配置 = {}

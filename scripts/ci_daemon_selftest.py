@@ -13,7 +13,7 @@ __main__ 副本）；行为级桩对照经猴补/还原主模块属性实现（�
 +绿聚合三态+AST 互斥链结构锁（657）｜兜底过期纯函数三态+文本结构锁+行为级两态桩
 （660）｜ci_daemon.py 行数红线（660）｜日志 漏参族自由名锚+e2e 并行红路径冒烟（728t）｜
 对账周检段周期三态+段行为桩两态+挂载结构锁（973）｜runner↔服务端失败分类契约锁（975）｜
-linux 编译器缓存选择正反两态+配置命令行锁定（1299）。
+linux 编译器缓存配置解析（auto/off/显式/非法值）+构建链行为级桩+执行机归因值/结构锁（1299）。
 """
 from __future__ import annotations
 
@@ -533,37 +533,115 @@ def _975断言(主模块, 断言) -> None:
 
 
 def _1299断言(主模块, 断言) -> None:
-    """1299（2026-10-21）：linux 编译器缓存选择（ccache/sccache）——纯函数正反两态
-    （注入探测器·零真工具零真构建）+ 配置命令行锁定 + 构建链接线结构锁 + 执行机归因锁。"""
+    """1299（2026-10-21/22 返工）：linux 编译器缓存配置解析（自动/关闭/显式/非法值
+    区分·引号与分号拒绝·路径存在校验）+ 构建链行为级（假步骤捕获配置命令与日志）+
+    配置命令行锁定 + 执行机归因（runner/CN_BUILD_JOBS·win 不适用）值断言与结构锁。"""
+    import io
+    import os
+    import tempfile
     import ci_build
+    import ci_report
+
     有cc = lambda 名: "/usr/bin/ccache" if 名 == "ccache" else None
     有sc = lambda 名: "/usr/bin/sccache" if 名 == "sccache" else None
+    都有 = lambda 名: {"ccache": "/usr/bin/ccache", "sccache": "/usr/bin/sccache"}.get(名)
     无 = lambda 名: None
-    断言("1299 缓存：ccache 优先探测",
-         ci_build.选编译器缓存({}, 有cc) == "/usr/bin/ccache")
-    断言("1299 缓存：ccache 缺失回退 sccache",
-         ci_build.选编译器缓存({}, 有sc) == "/usr/bin/sccache")
-    断言("1299 缓存：两者皆无→None（不启用·构建照旧）",
-         ci_build.选编译器缓存({}, 无) is None)
-    断言("1299 缓存：CN_BUILD_CACHE=off 即使已装也关闭",
-         ci_build.选编译器缓存({"CN_BUILD_CACHE": "off"}, 有cc) is None)
-    断言("1299 缓存：CN_BUILD_CACHE=auto 等同未设",
-         ci_build.选编译器缓存({"CN_BUILD_CACHE": "auto"}, 有cc) == "/usr/bin/ccache")
-    断言("1299 缓存：显式路径原样作 launcher（运维覆盖）",
-         ci_build.选编译器缓存({"CN_BUILD_CACHE": "/opt/wrap/cc"}, 无) == "/opt/wrap/cc")
+
+    决 = ci_build.解析缓存配置({}, 有cc)
+    断言("1299 解析：自动命中 ccache（说明含命中路径）",
+         决["launcher"] == "/usr/bin/ccache" and "自动探测命中" in 决["说明"]
+         and 决["错误"] is None)
+    断言("1299 解析：ccache 与 sccache 并存时优先 ccache",
+         ci_build.解析缓存配置({}, 都有)["launcher"] == "/usr/bin/ccache")
+    断言("1299 解析：ccache 缺失回退 sccache",
+         ci_build.解析缓存配置({}, 有sc)["launcher"] == "/usr/bin/sccache")
+    决 = ci_build.解析缓存配置({}, 无)
+    断言("1299 解析：两者皆无=不启用且说明「均未安装」（不误报关闭）",
+         决["launcher"] is None and "均未安装" in 决["说明"] and 决["错误"] is None)
+    决 = ci_build.解析缓存配置({"CN_BUILD_CACHE": "off"}, 有cc)
+    断言("1299 解析：off 即使已装也关闭·说明「显式关闭」（不误报均未安装）",
+         决["launcher"] is None and "显式关闭" in 决["说明"] and 决["错误"] is None)
+    决 = ci_build.解析缓存配置({"CN_BUILD_CACHE": "auto"}, 有cc)
+    断言("1299 解析：auto 等同未设（正常命中）",
+         决["launcher"] == "/usr/bin/ccache" and 决["错误"] is None)
+    for 坏值 in ("1", "disable", "none"):
+        决 = ci_build.解析缓存配置({"CN_BUILD_CACHE": 坏值}, 无)
+        断言("1299 解析：不支持的值 %r 显式报错（不静默降级）" % 坏值,
+             决["launcher"] is None and 决["错误"] and "不是受支持的值" in 决["错误"])
+    for 坏值, 关键词 in (('"off"', "引号"), ("off;rm -rf /", "非法字符"),
+                        ("/opt/cc\nrm", "非法字符")):
+        决 = ci_build.解析缓存配置({"CN_BUILD_CACHE": 坏值}, 无)
+        断言("1299 解析：%r 拒绝（%s）" % (坏值, 关键词),
+             决["launcher"] is None and 决["错误"] and 关键词 in 决["错误"])
+    决 = ci_build.解析缓存配置({"CN_BUILD_CACHE": "/opt/wrap/cc"}, 无)
+    断言("1299 解析：显式路径不存在=清晰错误（不原样交 cmake）",
+         决["launcher"] is None and 决["错误"] and "不存在或不可执行" in 决["错误"])
+    with tempfile.TemporaryDirectory() as 临时:
+        候选 = Path(临时) / "cc-wrapper"
+        候选.write_text("#!/bin/sh\nexec ccache \"$@\"\n", encoding="utf-8")
+        os.chmod(str(候选), 0o755)
+        决 = ci_build.解析缓存配置({"CN_BUILD_CACHE": str(候选)}, 无)
+        断言("1299 解析：显式存在的 launcher 原样采用",
+             决["launcher"] == str(候选) and 决["错误"] is None)
+    断言("1299 兼容入口：非法值抛 ValueError（调用方显式红）",
+         _抛值错误(lambda: ci_build.选编译器缓存({"CN_BUILD_CACHE": "1"}, 无)))
     断言("1299 配置命令：无缓存也显式传空 launcher（清 CMakeCache 残留）",
          ci_build.linux配置命令(None) == ["cmake", "-S", ".", "-B", "target/build",
                                        "-DCMAKE_CXX_COMPILER_LAUNCHER:STRING="])
     断言("1299 配置命令：有缓存=launcher 路径入参",
          ci_build.linux配置命令("/usr/bin/ccache")[-1]
          == "-DCMAKE_CXX_COMPILER_LAUNCHER:STRING=/usr/bin/ccache")
-    源构 = inspect.getsource(ci_build.linux构建链)
-    断言("1299 接线锁：linux构建链 选缓存后以 linux配置命令(launcher) 配置",
-         "选编译器缓存(" in 源构 and "linux配置命令(launcher)" in 源构)
+
+    # 行为级：假步骤捕获配置命令+日志（猴补 解析缓存配置/仓库根·零真构建）
+    def 跑链(决策: dict) -> tuple:
+        真解, 真根 = ci_build.解析缓存配置, ci_build.仓库根
+        记录: list = []
+        步骤们: dict = {}
+        日志 = io.StringIO()
+        try:
+            ci_build.解析缓存配置 = lambda: dict(决策)
+            with tempfile.TemporaryDirectory() as 临时:
+                ci_build.仓库根 = Path(临时)
+
+                def 假步骤(名, 命令, 超时秒):
+                    记录.append((名, 命令))
+                    步骤们[名] = {"rc": 0}
+                    return True
+                ci_build.linux构建链(步骤们, 假步骤, 4, 3600, 日志)
+        finally:
+            ci_build.解析缓存配置, ci_build.仓库根 = 真解, 真根
+        return 记录, 步骤们, 日志.getvalue()
+
+    记录, 步骤们, 日志文 = 跑链({"launcher": "/usr/bin/ccache",
+                                  "说明": "自动探测命中 /usr/bin/ccache", "错误": None})
+    配置命令 = next((命令 for 名, 命令 in 记录 if 名 == "配置"), [])
+    断言("1299 构建链行为：配置命令带 ccache launcher 且日志留痕",
+         配置命令 and 配置命令[-1].endswith("/usr/bin/ccache")
+         and "[1299] 编译器缓存：自动探测命中" in 日志文)
+    记录, 步骤们, 日志文 = 跑链({"launcher": None, "说明": "配置非法",
+                                  "错误": "CN_BUILD_CACHE=%r 指向的 launcher 不存在或不可执行" % "x"})
+    断言("1299 构建链行为：非法配置=配置步 rc=-1 且零命令执行（不静默降级）",
+         步骤们.get("配置", {}).get("rc") == -1 and not 记录
+         and "不存在或不可执行" in 日志文)
+
+    断言("1299 归因：linux 字段含 runner/CN_BUILD_JOBS",
+         ci_report.执行机字段("home-wsl-1", 4, False)
+         == {"runner": "home-wsl-1", "CN_BUILD_JOBS": 4})
+    断言("1299 归因：win 不写不适用项（Ninja --parallel 全核·不虚报默认 2）",
+         ci_report.执行机字段("CHENCHAO-PC-win1", 2, True) == {"runner": "CHENCHAO-PC-win1"})
     for 轮 in ("跑一轮", "跑分片轮"):
-        断言("1299 归因锁：%s 结果带 runner/CN_BUILD_JOBS（门禁表可追溯执行机与作业数）" % 轮,
-             '"runner": runner标识, "CN_BUILD_JOBS": 构建并行' in inspect.getsource(
-                 getattr(主模块, 轮)))
+        断言("1299 归因锁：%s 经 ci_report.执行机字段 组装（防回退为写死）" % 轮,
+             "ci_report.执行机字段(runner标识, 构建并行, 是win)"
+             in inspect.getsource(getattr(主模块, 轮)))
+
+
+def _抛值错误(调用) -> bool:
+    """1299：断言调用抛 ValueError（兼容入口非法配置显式红）。"""
+    try:
+        调用()
+    except ValueError:
+        return True
+    return False
 
 
 def _行数断言(断言) -> None:
@@ -630,7 +708,7 @@ def _1297断言(断言) -> None:
 
 
 def 自测(主模块) -> int:
-    """--selftest 入口（断言集 523+637+657+660+728t+770+842+935+973+975+1297）——CI 式：逐条打印，任一红退出 1。"""
+    """--selftest 入口（断言集 523+637+657+660+728t+770+842+935+973+975+1297+1299）——CI 式：逐条打印，任一红退出 1。"""
     断言们: list[tuple[str, bool]] = []
 
     def 断言(名: str, 条件: bool) -> None:
