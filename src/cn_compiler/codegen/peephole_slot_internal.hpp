@@ -1,8 +1,9 @@
-// 发射后窥孔·冗余槽读写消除——方言实现共享面（任务 1243 拆分）
+// 发射后窥孔·冗余槽读写消除——方言实现共享面（任务 1243 拆分；1279 扩展判据）
 // 职责：peephole_slot.cpp（x86 方言 + 扫描内核）与 peephole_slot_arm64.cpp
 //   （AArch64 方言：固定帧槽 1157 + 大偏移间接寻址 1243）之间的内部契约。
 //   仅 codegen 内部使用；公开 API 见 peephole_slot.hpp。
 #pragma once
+#include <cstddef>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -23,13 +24,27 @@ struct SlotAccess {
     bool zeroExt = false;   // movzx / ldrb / ldrh（load 用）
 };
 
+// 行级寄存器访问效果（任务 1279 高位零证明用）
+//   Write：dest 为该寄存器；width=目的位宽；zeroExt=写后高 32 位确定为 0
+//   （x86/ARM 的 32 位目的写、movzx/uxt*、非负 imm32 装载）。
+//   Read：仅读取该寄存器；Control：控制流/隐式写，证明必须在此截断；
+//   None：与本寄存器无关（含 8/16 位部分写——高位保持原值，证明可继续向前）。
+struct RegEffect {
+    enum class Kind { None, Read, Write, Control };
+    Kind kind = Kind::None;
+    int width = 0;
+    bool zeroExt = false;
+};
+
 // 方言规则束：解析/改写由各方言注入，扫描与消除内核共用
 struct SlotRules {
     std::string_view slotAnchor;                                 // 槽文本起始锚（"[rbp"/"[x29"）
     bool (*parseStore)(std::string_view, SlotAccess&);           // store 行解析
     bool (*parseLoad)(std::string_view, SlotAccess&);            // load 行解析
     std::string (*rewriteLoad)(const std::string&, const SlotAccess&);  // load 行改写
-    bool (*fullDelete)(const SlotAccess&, const SlotAccess&);    // 两行全删判据
+    bool (*fullDelete)(const SlotAccess&, const SlotAccess&);    // 两行全删判据（无需上下文）
+    bool (*fullDeleteNeedsProof)(const SlotAccess&, const SlotAccess&);  // 形态可全删但需高位零证明
+    RegEffect (*classifyReg)(std::string_view, const std::string&);  // 行对归一化寄存器的效果
 };
 
 // 去左侧空白（1248：手写扫描——寄存器/助记符分离前每行必经，避免
@@ -95,6 +110,163 @@ inline bool iequals(std::string_view a, std::string_view b) {
         if (ca != cb) return false;
     }
     return true;
+}
+
+// ==================== 1279：行级寄存器效果分类（高位零证明共用） ====================
+
+// 单行切分结果：助记符 + 至多三个操作数（'[' 内逗号不切——AArch64 槽 [x29,#-8]）
+struct AsmLine {
+    std::string_view mnem;
+    std::string_view ops[3];
+    int opCount = 0;
+    bool isLabel = false;
+    bool directive = false;
+    bool overflow = false;  // 操作数超过 3 个：分类器须保守截断，不得按无作用继续
+    bool valid = false;     // 非空且非纯注释
+};
+
+// 切分汇编行（剥 '//' 注释；去首尾空白；标签/伪指令单独标记）
+inline AsmLine splitAsmLine(std::string_view line) {
+    AsmLine out;
+    std::string_view s = line;
+    const std::size_t cmt = s.find("//");
+    if (cmt != std::string_view::npos) s = s.substr(0, cmt);
+    s = trimView(s);
+    // 静默豁免业务值: 空行/纯注释=无寄存器作用（证明扫描继续向前，非查表默认值）
+    if (s.empty()) return out;
+    if (s.back() == ':') {
+        out.isLabel = true;
+        out.valid = true;
+        return out;
+    }
+    if (s.front() == '.') {
+        out.directive = true;
+        out.valid = true;
+        return out;
+    }
+    const std::size_t sp = s.find_first_of(" \t");
+    out.mnem = (sp == std::string_view::npos) ? s : s.substr(0, sp);
+    out.valid = true;
+    // 静默豁免业务值: 无操作数助记符（ret/nop 等）=无操作数（调用方按助记符分流）
+    if (sp == std::string_view::npos) return out;
+    const std::string_view rest = s.substr(sp + 1);
+    int depth = 0;
+    std::size_t start = 0;
+    for (std::size_t i = 0; i <= rest.size(); ++i) {
+        const char c = (i < rest.size()) ? rest[i] : ',';
+        if (c == '[') {
+            ++depth;
+        } else if (c == ']') {
+            --depth;
+        } else if (c == ',' && depth == 0) {
+            const std::string_view op = trimView(rest.substr(start, i - start));
+            if (!op.empty()) {
+                const bool hasRoom = (out.opCount < 3);
+                if (hasRoom) out.ops[out.opCount++] = op;
+                if (!hasRoom) out.overflow = true;  // 第 4+ 操作数：分类器保守截断证明
+            }
+            start = i + 1;
+        }
+    }
+    return out;
+}
+
+// ASCII 小写化（助记符集合比较；产物恒小写，MASM 面放宽）
+inline std::string asciiLower(std::string_view s) {
+    std::string out(s);
+    for (char& c : out) {
+        if (c >= 'A' && c <= 'Z') c = static_cast<char>(c - 'A' + 'a');
+    }
+    return out;
+}
+
+inline RegEffect noneEffect() { return RegEffect{}; }
+inline RegEffect readEffect() {
+    RegEffect e;
+    e.kind = RegEffect::Kind::Read;
+    return e;
+}
+inline RegEffect writeEffect(int width, bool zeroExt) {
+    RegEffect e;
+    e.kind = RegEffect::Kind::Write;
+    e.width = width;
+    e.zeroExt = zeroExt;
+    return e;
+}
+inline RegEffect controlEffect() {
+    RegEffect e;
+    e.kind = RegEffect::Kind::Control;
+    return e;
+}
+
+// 立即数操作数 -> 数值（十进制/0x 十六进制·可带正负号）；失败返回 false。
+//   手写解析（不走 stoll）：证明扫描为热路径且需拒绝尾随杂质。
+inline bool parseImmOperand(std::string_view op, long long& value) {
+    std::string_view s = trimView(op);
+    // 静默豁免业务值: 空操作数=非立即数形态（调用方按未知写分流）
+    if (s.empty()) return false;
+    bool neg = false;
+    if (s.front() == '-' || s.front() == '+') {
+        neg = (s.front() == '-');
+        s.remove_prefix(1);
+    }
+    // 静默豁免业务值: 仅符号无数字=非立即数（调用方按未知写分流）
+    if (s.empty()) return false;
+    unsigned long long v = 0;
+    const bool hex = (s.size() >= 2 && s[0] == '0' && (s[1] == 'x' || s[1] == 'X'));
+    const std::size_t start = hex ? 2 : 0;
+    // 静默豁免业务值: 0x 后无数字=非立即数（调用方按未知写分流）
+    if (start >= s.size()) return false;
+    for (std::size_t i = start; i < s.size(); ++i) {
+        const char c = s[i];
+        int d = -1;
+        if (c >= '0' && c <= '9') {
+            d = c - '0';
+        } else if (hex && c >= 'a' && c <= 'f') {
+            d = c - 'a' + 10;
+        } else if (hex && c >= 'A' && c <= 'F') {
+            d = c - 'A' + 10;
+        } else {
+            return false;  // 尾随非数字字符：非纯立即数
+        }
+        // 静默豁免业务值: 溢出立即数=非本判据形态（调用方按未知写分流）
+        if (v > 0x0FFFFFFFFFFFFFFFULL) return false;
+        v = v * static_cast<unsigned long long>(hex ? 16 : 10) +
+            static_cast<unsigned long long>(d);
+    }
+    value = neg ? -static_cast<long long>(v) : static_cast<long long>(v);
+    return true;
+}
+
+// 有效行文本：已改写行取改写文本，否则原文（删除行由调用方跳过）
+inline std::string_view effectiveText(const std::vector<std::string_view>& lines,
+                                      const std::vector<std::string>& repl,
+                                      std::size_t i) {
+    return repl[i].empty() ? lines[i] : std::string_view(repl[i]);
+}
+
+// 高位零证明回溯上限（正常产物定义点距使用点极近；超出=保守拒绝，防病态函数平方开销）
+inline constexpr int kProofScanLimit = 128;
+
+// 高位零证明：自 lineIdx 向前找最近一次「写 reg64」的行，返回该写是否清高 32 位。
+//   控制流/隐式写=拒绝；对本寄存器无作用/只读=继续；部分写（8/16 位）由分类器
+//   归为 None（高位保持原值，继续向前找定值点）。无定值点=拒绝（初值未知）。
+//   正确性：只有当高 32 位在 store 前已为零时，删除「32 位 store→load 同寄存器对」
+//   才不会丢失 load 的零扩展语义——此后任何使用读到的位模式与未删除时一致。
+inline bool upperHalfZeroBefore(const std::vector<std::string_view>& lines,
+                                const std::vector<char>& drop,
+                                const std::vector<std::string>& repl, int lineIdx,
+                                const std::string& reg64, const SlotRules& rules) {
+    const int lo = (lineIdx - kProofScanLimit > 0) ? lineIdx - kProofScanLimit : 0;
+    for (int j = lineIdx - 1; j >= lo; --j) {
+        const std::size_t uj = static_cast<std::size_t>(j);
+        if (drop[uj]) continue;  // 已删除行不产生寄存器效果
+        const RegEffect eff =
+            rules.classifyReg(effectiveText(lines, repl, uj), reg64);
+        if (eff.kind == RegEffect::Kind::Control) return false;
+        if (eff.kind == RegEffect::Kind::Write) return eff.zeroExt;
+    }
+    return false;
 }
 
 // 方言无关主扫描（定义在 peephole_slot.cpp）

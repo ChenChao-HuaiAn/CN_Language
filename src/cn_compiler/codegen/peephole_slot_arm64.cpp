@@ -255,6 +255,168 @@ bool fullDeleteArm(const SlotAccess& store, const SlotAccess& load) {
            store.width == 64 && load.width == 64;
 }
 
+// AArch64 立即数操作数（去 '#'）-> 数值；失败=非立即数形态
+bool parseArmImmOperand(std::string_view op, long long& value) {
+    const std::string_view s = trimView(op);
+    constexpr std::size_t kMaxImmOperandLength = 32;  // 立即数文本上界（双边界判据）
+    // 静默豁免业务值: 无 '#' 前缀/超长=非本产物族立即数形态（调用方按未知写分流）
+    if (s.size() < 2 || s.size() > kMaxImmOperandLength || s.front() != '#') {
+        return false;
+    }
+    return parseImmOperand(s.substr(1), value);
+}
+
+// 操作数是否提及归一化寄存器 xN（xN/wN 两形态；非纯寄存器操作数=未提及）
+bool armMentions(std::string_view op, int regNum) {
+    char form = 0;
+    int num = 0;
+    // 静默豁免业务值: 形态探测未命中=该操作数非寄存器（调用方按未提及分流）
+    if (!parseArmRegToken(op, form, num)) return false;
+    return (form == 'x' || form == 'w') && num == regNum;
+}
+
+// 移位操作数是否为「移位量 0」的恒等形态（lsl/lsr/asr/ror #0）；
+//   其它移位/形态一律非恒等（mov xN,xN,lsr #4 的结果=原低 32 位可能非零）。
+bool parseArmZeroShift(std::string_view op) {
+    const std::string_view s = trimView(op);
+    const std::size_t sp = s.find_first_of(" \t");
+    // 静默豁免业务值: 无移位量文本=非恒等移位形态（调用方按未知写分流）
+    if (sp == std::string_view::npos) return false;
+    const std::string m = asciiLower(s.substr(0, sp));
+    if (m != "lsl" && m != "lsr" && m != "asr" && m != "ror") return false;
+    long long amount = 0;
+    // 静默豁免业务值: 移位量非立即数=非本判据形态（调用方按未知写分流）
+    if (!parseArmImmOperand(trimView(s.substr(sp + 1)), amount)) return false;
+    return amount == 0;
+}
+
+// AArch64 X 目的写的高位零判定：mov/movz/uxt* 等确定高半为零；其余保守未知
+RegEffect classifyArmXDest(const AsmLine& al, const std::string& m, int regNum) {
+    bool zeroExt = false;
+    if (m == "mov" && al.opCount >= 2 && al.opCount <= 3) {
+        // 三操作数 = mov xN, 源, 移位：仅移位量 0 是恒等；其余移位后高 32 位
+        //   来自原低 32 位（可能非零），不得当作自搬（P1-1 审查实证）
+        if (al.opCount == 3 && !parseArmZeroShift(al.ops[2])) {
+            return writeEffect(64, false);
+        }
+        char srcForm = 0;
+        int srcNum = 0;
+        long long imm = 0;
+        if (parseArmRegToken(al.ops[1], srcForm, srcNum)) {
+            // 静默豁免业务值: 源为 xN 自身=自搬（高位保持原值，证明继续向前）
+            if ((srcForm == 'x' || srcForm == 'w') && srcNum == regNum) {
+                return (srcForm == 'x') ? noneEffect() : writeEffect(64, true);
+            }
+        } else if (parseArmImmOperand(al.ops[1], imm)) {
+            zeroExt = (imm >= 0 && imm <= 0xFFFFFFFFLL);
+        }
+    } else if (m == "movz") {
+        zeroExt = true;  // movz xN,#imm[,lsl #0/#16]：其余位清零
+        for (int k = 2; k < al.opCount; ++k) {
+            const std::string shift = asciiLower(al.ops[k]);
+            if (shift.find("#32") != std::string::npos ||
+                shift.find("#48") != std::string::npos) {
+                zeroExt = false;  // 写高半 -> 未知
+            }
+        }
+    } else if (m == "movk") {
+        // movk 只改写 16 位片段：lsl #0/#16 时高 32 位保持原值（证明继续）；
+        //   lsl #32/#48 改写高半 -> 未知写
+        for (int k = 2; k < al.opCount; ++k) {
+            const std::string shift = asciiLower(al.ops[k]);
+            if (shift.find("#32") != std::string::npos ||
+                shift.find("#48") != std::string::npos) {
+                return writeEffect(64, false);
+            }
+        }
+        return noneEffect();
+    } else if (m == "uxtb" || m == "uxth" || m == "uxtw") {
+        zeroExt = true;  // 零扩展至 64 位
+    } else if (m == "cset") {
+        zeroExt = true;  // cset xN：结果恒 0/1，高 32 位必为零
+    }
+    return writeEffect(64, zeroExt);
+}
+
+// AArch64 行对归一化整型寄存器的效果（1279 高位零证明共用）
+//   架构保证：任何 W 目的写都清零 xN 高 32 位 -> 直接作为零证明。
+//   控制流/链接/双目的写（ldp 等）保守截断；store/比较族按只读处理。
+RegEffect classifyArmRegEffect(std::string_view line, const std::string& reg64) {
+    const AsmLine al = splitAsmLine(line);
+    // 静默豁免业务值: 空行/纯注释=无寄存器作用（证明扫描继续向前）
+    if (!al.valid) return noneEffect();
+    // 静默豁免业务值: 标签=多前驱汇合点（证明保守拒绝，非查表默认值）
+    if (al.isLabel) return controlEffect();
+    // 静默豁免业务值: 伪指令=无寄存器作用（证明扫描继续向前）
+    if (al.directive) return noneEffect();
+    // 操作数超过三个：无法完整分类，保守截断证明（如 bfi 四操作数）
+    if (al.overflow) return controlEffect();
+    // 内部契约：reg64 恒为 "x<编号>"（parseArmStoreLine 归一化产物）
+    constexpr std::size_t kMaxRegTokenLength = 4;  // "x"+最多两位编号（双边界判据）
+    // 静默豁免业务值: 非契约形态=无法分类（保守截断证明）
+    if (reg64.size() < 2 || reg64.size() > kMaxRegTokenLength ||
+        reg64[0] != 'x') {
+        return controlEffect();
+    }
+    int regNum = 0;
+    for (std::size_t i = 1; i < reg64.size(); ++i) {
+        // 静默豁免业务值: 非数字=非契约形态（保守截断证明）
+        if (reg64[i] < '0' || reg64[i] > '9') return controlEffect();
+        regNum = regNum * 10 + (reg64[i] - '0');
+    }
+    const std::string m = asciiLower(al.mnem);
+    // 控制流/链接/双目的写（ldp 族写两个目的寄存器）-> 保守截断
+    if (m == "b" || m == "bl" || m == "br" || m == "blr" || m == "ret" ||
+        m == "cbz" || m == "cbnz" || m == "tbz" || m == "tbnz" ||
+        (m.size() >= 2 && m.size() <= 16 && m[0] == 'b' && m[1] == '.') ||
+        m == "ldp" || m == "ldpsw" || m == "ldxp" || m == "ldaxp" ||
+        m == "stxp" || m == "stlxp" || m == "stlex" || m == "stlxr" ||
+        m == "ldxr" || m == "ldaxr" ||
+        m == "svc" || m == "hvc" || m == "smc" || m == "brk" || m == "udf") {
+        return controlEffect();
+    }
+    // 只读族：store（源寄存器）、比较、预取（含 release 族 stlr/stllr/stlrb/
+    //   stlrh/sttr*——首操作数是源，若按目的写处理会掩盖未知 64 位写，P1-2 审查实证）
+    if (m == "str" || m == "strb" || m == "strh" || m == "stur" ||
+        m == "sturb" || m == "sturh" || m == "stp" || m == "stnp" ||
+        m == "stlr" || m == "stllr" || m == "stlrb" || m == "stlrh" ||
+        m == "stllrb" || m == "stllrh" || m == "sttr" || m == "sttrb" ||
+        m == "sttrh" ||
+        m == "cmp" || m == "cmn" || m == "tst" || m == "fcmp" ||
+        m == "fcmpe" || m == "ccmp" || m == "ccmn" || m == "prfm") {
+        for (int k = 0; k < al.opCount; ++k) {
+            // 静默豁免业务值: 只读族未提及目标寄存器=无作用
+            if (armMentions(al.ops[k], regNum)) return readEffect();
+        }
+        return noneEffect();
+    }
+    char dstForm = 0;
+    int dstNum = 0;
+    const bool dstMatch = parseArmRegToken(al.ops[0], dstForm, dstNum) &&
+                          (dstForm == 'x' || dstForm == 'w') && dstNum == regNum;
+    if (dstMatch) {
+        if (dstForm == 'w') return writeEffect(32, true);  // W 目的写恒清 xN 高 32
+        return classifyArmXDest(al, m, regNum);
+    }
+    for (int k = 1; k < al.opCount; ++k) {
+        // 静默豁免业务值: 源操作数提及目标寄存器=只读使用
+        if (armMentions(al.ops[k], regNum)) return readEffect();
+    }
+    return noneEffect();
+}
+
+// 32 位同槽同宽同寄存器对：形态可全删，但须「xN 高 32 位已为零」证明
+//   （W 目的写的零扩展语义在删除后必须由前态保证）。
+bool fullDeleteArmNeedsProof(const SlotAccess& store, const SlotAccess& load) {
+    return store.reg64 == load.reg64 && !store.isFloat && !load.isFloat &&
+           !load.signExt && !load.zeroExt && store.width == 32 && load.width == 32;
+}
+
+// AArch64 方言规则束（1157 固定帧槽面；1279 补高位零证明）
+const SlotRules kAArch64 = {"[x29", parseArmStoreLine, parseArmLoadLine,
+                            rewriteArmLoad, fullDeleteArm,
+                            fullDeleteArmNeedsProof, classifyArmRegEffect};
+
 // ==================== AArch64 大偏移间接寻址（任务 1243） ====================
 
 // 发射器 stackMemText 在 |off|>255 时以 x13 物化槽地址（寄存器硬编码·地址临时）：
@@ -652,7 +814,8 @@ struct IndirectPairAction {
 IndirectPairAction tryEliminateIndirectPair(
     const std::vector<std::string_view>& lines,
     const std::unordered_map<long long, int>& offsetOcc,
-    const std::vector<char>& safeFromUndefined, std::size_t i) {
+    const std::vector<char>& safeFromUndefined, std::size_t i,
+    const std::vector<char>& drop, const std::vector<std::string>& repl) {
     IndirectPairAction act;
     std::string base;
     // 静默豁免业务值: 形态探测未命中=该行不参与消除（原样保留·非查表默认值）
@@ -691,7 +854,13 @@ IndirectPairAction tryEliminateIndirectPair(
     act.blockStart = blk.start;
     act.blockLen = blk.len;
     act.loadIndex = static_cast<int>(loadIdx);
-    act.dropLoad = fullDeleteArm(store, load);
+    // 1279：32 位同槽同宽同寄存器对需高位零证明（load 的 W 零扩展语义须由前态保证）
+    bool dropLoad = fullDeleteArm(store, load);
+    if (!dropLoad && fullDeleteArmNeedsProof(store, load)) {
+        dropLoad = upperHalfZeroBefore(lines, drop, repl, static_cast<int>(i),
+                                       store.reg64, kAArch64);
+    }
+    act.dropLoad = dropLoad;
     if (!act.dropLoad) act.rewrittenLoad = rewriteArmLoad(store.reg64, load);
     return act;
 }
@@ -709,7 +878,7 @@ bool eliminateArmIndirectPairsInPlace(std::string& functionText) {
     // 最短形态 = store 后 1 行块② + 1 行 load（块①在 store 之前）
     for (std::size_t i = 0; i + 2 < lines.size(); ++i) {
         const IndirectPairAction act =
-            tryEliminateIndirectPair(lines, offsetOcc, safe, i);
+            tryEliminateIndirectPair(lines, offsetOcc, safe, i, drop, repl);
         if (!act.hit) continue;
         for (int k = 0; k < act.blockLen; ++k) {
             drop[static_cast<std::size_t>(act.blockStart + k)] = 1;  // 地址物化块①
@@ -727,10 +896,6 @@ bool eliminateArmIndirectPairsInPlace(std::string& functionText) {
     }
     return any;
 }
-
-// AArch64 方言规则束（1157 固定帧槽面）
-const SlotRules kAArch64 = {"[x29", parseArmStoreLine, parseArmLoadLine,
-                            rewriteArmLoad, fullDeleteArm};
 
 } // namespace
 

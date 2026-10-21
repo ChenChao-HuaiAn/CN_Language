@@ -40,10 +40,20 @@ namespace peephole {
 namespace {
 
 // 共享解析结果/规则束/文本助手来自 peephole_slot_internal.hpp（1243 拆分）
+using detail::AsmLine;
+using detail::RegEffect;
 using detail::SlotAccess;
 using detail::SlotRules;
+using detail::asciiLower;
+using detail::controlEffect;
 using detail::lstrip;
 using detail::iequals;
+using detail::noneEffect;
+using detail::parseImmOperand;
+using detail::readEffect;
+using detail::splitAsmLine;
+using detail::upperHalfZeroBefore;
+using detail::writeEffect;
 
 using namespace std::string_view_literals;  // 1248：字面量直接成 string_view（免 strlen 构造）
 
@@ -376,12 +386,141 @@ bool fullDeleteX86(const SlotAccess& store, const SlotAccess& load) {
     return load.width == 64 && store.width == 64;
 }
 
+// 纯整型寄存器操作数 -> 归一化 64 位名 + 该形态位宽（内存/立即数/浮点族=未命中）
+bool operandIntReg(std::string_view op, std::string& reg64, int& width) {
+    // 静默豁免业务值: 形态探测未命中=该操作数非整型寄存器（调用方按无提及分流）
+    if (op.empty() || op.find('[') != std::string_view::npos ||
+        op.find(' ') != std::string_view::npos) {
+        return false;
+    }
+    bool isFloat = false;
+    // 静默豁免业务值: 形态探测未命中=非整型寄存器操作数（调用方按无提及分流）
+    if (!normalizeReg(op, reg64, width, isFloat)) return false;
+    return !isFloat;
+}
+
+// 操作数是否提及目标寄存器（仅纯寄存器形态；内存基址为只读、不参与写判定）
+bool x86Mentions(std::string_view op, const std::string& reg64) {
+    std::string reg;
+    int width = 0;
+    // 静默豁免业务值: 形态探测未命中=未提及目标寄存器（调用方按无提及分流）
+    if (!operandIntReg(op, reg, width)) return false;
+    return reg == reg64;
+}
+
+// 控制流/隐式写寄存器助记符（call 清 caller-saved / mul·div 隐式 rax·rdx /
+//   字符串指令隐式写 rsi·rdi·rcx / cmpxchg·xadd 双目写 / lock·rep 前缀）
+bool isX86ControlMnemonic(const std::string& m) {
+    const bool jumpLike = (m.size() >= 2 && m.size() <= 16 && m[0] == 'j');
+    const bool cmovLike = (m.size() >= 4 && m.size() <= 16 && m.compare(0, 4, "cmov") == 0);
+    return m == "call" || m == "ret" || m == "leave" || m == "jmp" || jumpLike ||
+           cmovLike || m == "mul" || m == "div" || m == "idiv" || m == "cqo" ||
+           m == "cdq" || m == "cwd" || m == "cdqe" || m == "cwde" || m == "cbw" ||
+           m == "cmpxchg" || m == "cmpxchg8b" || m == "cmpxchg16b" ||
+           m == "xadd" || m == "xchg" || m == "syscall" || m == "sysenter" ||
+           m == "int" || m == "ud2" || m == "hlt" || m == "cpuid" || m == "rdtsc" ||
+           m == "rdtscp" || m == "lock" || m == "rep" || m == "repe" ||
+           m == "repne" || m == "movsb" || m == "movsq" || m == "stosb" ||
+           m == "stosq" || m == "lodsb" || m == "lodsq" || m == "scasb" ||
+           m == "scasq" || m == "cmpsb" || m == "cmpsq";
+}
+
+// 只读助记符（首操作数不写回；出现目标寄存器时按只读处理）
+bool isX86ReadOnlyMnemonic(const std::string& m) {
+    return m == "cmp" || m == "test" || m == "push" || m == "bt" ||
+           m == "prefetch" || m == "prefetchw" || m == "nop" || m == "ucomisd" ||
+           m == "ucomiss" || m == "comisd" || m == "comiss";
+}
+
+// mov/movsx/movzx/movsxd 目的为 64 位寄存器时的清高判定；命中返回 true
+bool classifyX86Move64(const AsmLine& al, const std::string& m,
+                       const std::string& reg64, RegEffect& out) {
+    if (m != "mov" && m != "movsx" && m != "movzx" && m != "movsxd") return false;
+    if (m == "mov") {
+        std::string srcReg;
+        int srcWidth = 0;
+        const bool srcIsReg = operandIntReg(al.ops[1], srcReg, srcWidth);
+        long long imm = 0;
+        if (srcIsReg && srcReg == reg64 && srcWidth == 64) {
+            out = noneEffect();  // 64 位自搬：高位保持原值，证明继续向前
+            return true;
+        }
+        const bool zeroExt = parseImmOperand(al.ops[1], imm) && imm >= 0 &&
+                             imm <= 0xFFFFFFFFLL;
+        out = writeEffect(64, zeroExt);
+        return true;
+    }
+    if (m == "movzx") {
+        out = writeEffect(64, true);  // 零扩展至 64 位
+        return true;
+    }
+    out = writeEffect(64, false);  // movsx/movsxd：符号扩展，高 32 位未知
+    return true;
+}
+
+// x86 行对归一化整型寄存器的效果（1279 高位零证明共用）
+//   判定顺序：控制流 -> 只读助记符 -> 目的写（32 位目的恒清高 32）-> 其余只读。
+RegEffect classifyX86RegEffect(std::string_view line, const std::string& reg64) {
+    const AsmLine al = splitAsmLine(line);
+    // 静默豁免业务值: 空行/纯注释=无寄存器作用（证明扫描继续向前）
+    if (!al.valid) return noneEffect();
+    // 静默豁免业务值: 标签=多前驱汇合点（证明保守拒绝，非查表默认值）
+    if (al.isLabel) return controlEffect();
+    // 静默豁免业务值: 伪指令=无寄存器作用（证明扫描继续向前）
+    if (al.directive) return noneEffect();
+    // 操作数超过三个：无法完整分类，保守截断证明
+    if (al.overflow) return controlEffect();
+    const std::string m = asciiLower(al.mnem);
+    if (isX86ControlMnemonic(m)) return controlEffect();
+    // 单操作数 imul 隐式写 rdx:rax（本产物族恒双操作数；防御未来形态）
+    if (m == "imul" && (al.opCount == 0 || al.opCount == 1)) return controlEffect();
+    if (isX86ReadOnlyMnemonic(m)) {
+        for (int k = 0; k < al.opCount; ++k) {
+            // 静默豁免业务值: 只读助记符未提及目标寄存器=无作用
+            if (x86Mentions(al.ops[k], reg64)) return readEffect();
+        }
+        return noneEffect();
+    }
+    std::string dstReg;
+    int dstWidth = 0;
+    const bool dstMatch =
+        operandIntReg(al.ops[0], dstReg, dstWidth) && dstReg == reg64;
+    if (dstMatch) {
+        if (dstWidth == 32) return writeEffect(32, true);  // 32 位目的写恒清高 32
+        if (dstWidth == 16) return noneEffect();  // 16 位部分写：高 32 位保持原值
+        if (dstWidth == 8) return noneEffect();   // 8 位部分写：高 32 位保持原值
+        if (dstWidth == 64) {
+            RegEffect out;
+            // 静默豁免业务值: 非 mov 族 64 位目的写=高半未知（调用方按未知写拒绝证明）
+            if (classifyX86Move64(al, m, reg64, out)) return out;
+            return writeEffect(64, false);
+        }
+        return writeEffect(dstWidth, false);
+    }
+    for (int k = 1; k < al.opCount; ++k) {
+        // 静默豁免业务值: 源操作数提及目标寄存器=只读使用
+        if (x86Mentions(al.ops[k], reg64)) return readEffect();
+    }
+    return noneEffect();
+}
+
+// 32 位同槽同宽同寄存器对：形态可全删，但须「源寄存器高 32 位已为零」证明
+//   （x64 任何 32 位目的写都零扩展高 32；load 删除后该零扩展语义必须由前态保证）。
+bool fullDeleteX86NeedsProof(const SlotAccess& store, const SlotAccess& load) {
+    if (store.reg64 != load.reg64) return false;
+    if (store.isFloat || load.isFloat) return false;
+    if (load.signExt || load.zeroExt) return false;
+    return store.width == 32 && load.width == 32;
+}
+
 // ==================== 方言规则束 ====================
 
 const SlotRules kGasIntelX64 = {"[rbp", parseX86StoreLine, parseGasLoad,
-                                rewriteX86Load, fullDeleteX86};
+                                rewriteX86Load, fullDeleteX86,
+                                fullDeleteX86NeedsProof, classifyX86RegEffect};
 const SlotRules kMasmX64 = {"[rbp", parseX86StoreLine, parseMasmLoad,
-                            rewriteX86Load, fullDeleteX86};
+                            rewriteX86Load, fullDeleteX86,
+                            fullDeleteX86NeedsProof, classifyX86RegEffect};
 
 // ==================== 共享扫描内核 ====================
 
@@ -489,8 +628,12 @@ bool slotOnlyInPair(int occCount) {
 }
 
 // 尝试消除一对（store 行 i、load 行 i+1）
+//   drop/repl：已扫描前缀的删除/改写状态（1279 高位零证明跳过已删行、用改写后文本）
 PairAction tryEliminatePair(const std::vector<std::string_view>& lines,
-                            const SlotOccCounter& slotOcc, int i, const SlotRules& rules) {
+                            const SlotOccCounter& slotOcc, int i,
+                            const std::vector<char>& drop,
+                            const std::vector<std::string>& repl,
+                            const SlotRules& rules) {
     PairAction act;
     SlotAccess store;
     SlotAccess load;
@@ -504,8 +647,13 @@ PairAction tryEliminatePair(const std::vector<std::string_view>& lines,
     }
     act.hit = true;
     act.dropStore = true;
-    // 全删：同寄存器且均为 64 位/同宽浮点（删除后寄存器保持值 = load 语义）
-    if (rules.fullDelete(store, load)) {
+    // 全删：同寄存器且均为 64 位/同宽浮点（删除后寄存器保持值 = load 语义）；
+    //   32 位同槽同宽对需先证明高 32 位已为零（load 的零扩展语义由前态保证）
+    bool full = rules.fullDelete(store, load);
+    if (!full && rules.fullDeleteNeedsProof(store, load)) {
+        full = upperHalfZeroBefore(lines, drop, repl, i, store.reg64, rules);
+    }
+    if (full) {
         act.dropLoad = true;
         return act;
     }
@@ -528,12 +676,14 @@ bool eliminateWithRulesInPlace(std::string& functionText, const SlotRules& rules
     std::vector<char> hasAnchor;
     const auto slotOcc = collectSlotCounts(lines, rules.slotAnchor, hasAnchor);
     std::vector<char> drop(lines.size(), 0);
-    std::vector<std::size_t> replIdx;  // 被改写 load 行下标（扫描序单调递增·稀疏）
-    std::vector<std::string> replText;
+    // 逐行改写表（1279：高位零证明按行号回读改写后文本，须为稠密表；
+    //   空串=该行原样保留。MSVC string 空态 SSO，不产生逐行堆分配）
+    std::vector<std::string> repl(lines.size());
     bool any = false;
     for (std::size_t i = 0; i + 1 < lines.size(); ++i) {
         if (!hasAnchor[i]) continue;
-        PairAction act = tryEliminatePair(lines, slotOcc, static_cast<int>(i), rules);
+        PairAction act = tryEliminatePair(lines, slotOcc, static_cast<int>(i), drop,
+                                          repl, rules);
         if (!act.hit) continue;
         drop[i] = 1;
         const bool fullDelete = act.dropLoad;
@@ -541,8 +691,7 @@ bool eliminateWithRulesInPlace(std::string& functionText, const SlotRules& rules
             drop[i + 1] = 1;  // 全删：drop 优先于 repl（输出时跳过该行）
         }
         if (!fullDelete) {
-            replIdx.push_back(i + 1);  // 非全删时 load 行被重写为寄存器搬运
-            replText.push_back(std::move(act.rewrittenLoad));
+            repl[i + 1] = std::move(act.rewrittenLoad);  // load 行改写为寄存器搬运
         }
         any = true;
         ++i;  // 跳过已消费的 load 行
@@ -550,16 +699,9 @@ bool eliminateWithRulesInPlace(std::string& functionText, const SlotRules& rules
     if (any) {
         std::string out;
         out.reserve(functionText.size());
-        std::size_t rp = 0;
         for (std::size_t i = 0; i < lines.size(); ++i) {
             if (drop[i]) continue;
-            if (rp < replIdx.size() && replIdx[rp] == i) {
-                out += replText[rp];
-                ++rp;
-                out += '\n';
-                continue;
-            }
-            out += lines[i];
+            out += repl[i].empty() ? lines[i] : repl[i];
             out += '\n';
         }
         if (!out.empty() && functionText.back() != '\n') {

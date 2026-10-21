@@ -726,3 +726,256 @@ TEST(PeepholeSlotArm64Indirect, TailRematerializedAddrCalcStillEliminates) {
     EXPECT_EQ(eliminateRedundantSlotTrafficAArch64(in),
               join({"    mov x1, x0", "    movz x13, #28000", "    add x9, x29, x13"}));
 }
+
+// ==================== 1279：32 位同槽同宽对（高位零证明·三面） ====================
+
+// 49. MASM：dword/dword 同寄存器 + 前态 32 位写 -> 两行全删
+TEST(PeepholeSlotMasm, DwordSameRegZeroProofFullDelete) {
+    const std::string in = join({
+        "    mov eax, dword ptr [rbp-16]",
+        "    mov [rbp-8], eax",
+        "    mov eax, [rbp-8]",
+        "    add r9d, eax",
+    });
+    const std::string out = eliminateRedundantSlotTrafficMasm(in);
+    EXPECT_EQ(out, join({"    mov eax, dword ptr [rbp-16]", "    add r9d, eax"}));
+}
+
+// 50. MASM：前态为 64 位装载（高半未知）-> 保留自搬
+TEST(PeepholeSlotMasm, DwordSameRegUnknownHighKeepsSelfMove) {
+    const std::string in = join({
+        "    mov rax, qword ptr [rbp-16]",
+        "    mov dword ptr [rbp-8], eax",
+        "    mov eax, dword ptr [rbp-8]",
+    });
+    const std::string out = eliminateRedundantSlotTrafficMasm(in);
+    EXPECT_EQ(out, join({"    mov rax, qword ptr [rbp-16]",
+                         "    mov eax, eax"}));
+}
+
+// 51. MASM：第三处访问 -> 拒绝
+TEST(PeepholeSlotMasm, DwordThirdOccurrenceRejected) {
+    const std::string in = join({
+        "    mov eax, dword ptr [rbp-16]",
+        "    mov dword ptr [rbp-8], eax",
+        "    mov eax, dword ptr [rbp-8]",
+        "    mov r9d, dword ptr [rbp-8]",
+    });
+    EXPECT_EQ(eliminateRedundantSlotTrafficMasm(in), in);
+}
+
+// 52. ARM：W 宽同寄存器 + 前态 W 写（高 32 已清零）-> 两行全删
+TEST(PeepholeSlotArm64, W32SameRegZeroProofFullDelete) {
+    const std::string in = join({
+        "    mov w3, w2",
+        "    str w3, [x29,#-8]",
+        "    ldr w3, [x29,#-8]",
+        "    cmp w3, #0",
+    });
+    const std::string out = eliminateRedundantSlotTrafficAArch64(in);
+    EXPECT_EQ(out, join({"    mov w3, w2", "    cmp w3, #0"}));
+}
+
+// 53. ARM：W 宽同寄存器、前态未知 -> 保留自搬（W 写零扩展语义）
+TEST(PeepholeSlotArm64, W32SameRegWithoutProofKeepsSelfMove) {
+    const std::string in = join({
+        "    str w3, [x29,#-8]",
+        "    ldr w3, [x29,#-8]",
+        "    cmp w3, #0",
+    });
+    const std::string out = eliminateRedundantSlotTrafficAArch64(in);
+    EXPECT_EQ(out, join({"    mov w3, w3", "    cmp w3, #0"}));
+}
+
+// 54. ARM：跨宽（x 存 w 读同寄存器）-> 不整对删除
+TEST(PeepholeSlotArm64, XStoreWLoadSameRegKeepsSelfMove) {
+    const std::string in = join({
+        "    mov w3, w2",
+        "    str x3, [x29,#-8]",
+        "    ldr w3, [x29,#-8]",
+    });
+    const std::string out = eliminateRedundantSlotTrafficAArch64(in);
+    EXPECT_EQ(out, join({"    mov w3, w2", "    mov w3, w3"}));
+}
+
+// 55. ARM：第三处访问 -> 拒绝
+TEST(PeepholeSlotArm64, W32ThirdOccurrenceRejected) {
+    const std::string in = join({
+        "    mov w3, w2",
+        "    str w3, [x29,#-8]",
+        "    ldr w3, [x29,#-8]",
+        "    ldr w4, [x29,#-8]",
+    });
+    EXPECT_EQ(eliminateRedundantSlotTrafficAArch64(in), in);
+}
+
+// 56. ARM 大偏移间接面：W 宽同寄存器 + 前态 W 写 -> 整组（含两块物化）全删
+TEST(PeepholeSlotArm64Indirect, W32SameRegZeroProofFullDelete) {
+    const std::string in = join({
+        "    mov w3, w2",
+        "    sub x13, x29, #300",
+        "    str w3, [x13]",
+        "    sub x13, x29, #300",
+        "    ldr w3, [x13]",
+        "    cmp w3, #0",
+    });
+    const std::string out = eliminateRedundantSlotTrafficAArch64(in);
+    EXPECT_EQ(out, join({"    mov w3, w2", "    cmp w3, #0"}));
+}
+
+// 57. ARM 大偏移间接面：W 宽无证明 -> 保留自搬（不整组删除）
+TEST(PeepholeSlotArm64Indirect, W32SameRegWithoutProofKeepsSelfMove) {
+    const std::string in = join({
+        "    sub x13, x29, #300",
+        "    str w3, [x13]",
+        "    sub x13, x29, #300",
+        "    ldr w3, [x13]",
+        "    cmp w3, #0",
+    });
+    const std::string out = eliminateRedundantSlotTrafficAArch64(in);
+    EXPECT_EQ(out, join({"    mov w3, w3", "    cmp w3, #0"}));
+}
+
+// ==================== 1279 审查 P1/P2：ARM 分类器细分支 ====================
+
+// 58. P1-1 负例：三操作数 mov xN,xN,lsr #4 非自搬（高 32 位=原低 32 位，可能非零）
+//     -> 证明不成立，保留自搬
+TEST(PeepholeSlotArm64, ShiftedSelfMoveBlocksProof) {
+    const std::string in = join({
+        "    mov x3, x3, lsr #4",
+        "    str w3, [x29,#-8]",
+        "    ldr w3, [x29,#-8]",
+    });
+    const std::string out = eliminateRedundantSlotTrafficAArch64(in);
+    EXPECT_EQ(out, join({"    mov x3, x3, lsr #4", "    mov w3, w3"}));
+}
+
+// 59. P1-1 正例：三操作数 mov xN,xN,lsl #0 是恒等 -> 证明继续向前找到定值点
+TEST(PeepholeSlotArm64, ZeroShiftSelfMoveIsIdentity) {
+    const std::string in = join({
+        "    mov w3, w2",
+        "    mov x3, x3, lsl #0",
+        "    str w3, [x29,#-8]",
+        "    ldr w3, [x29,#-8]",
+    });
+    const std::string out = eliminateRedundantSlotTrafficAArch64(in);
+    EXPECT_EQ(out, join({"    mov w3, w2", "    mov x3, x3, lsl #0"}));
+}
+
+// 60. P1-1 负例：mov xN,#imm,lsr #4 移位后高半未知 -> 证明不成立
+TEST(PeepholeSlotArm64, ShiftedImmMoveBlocksProof) {
+    const std::string in = join({
+        "    mov x3, #1, lsr #4",
+        "    str w3, [x29,#-8]",
+        "    ldr w3, [x29,#-8]",
+    });
+    const std::string out = eliminateRedundantSlotTrafficAArch64(in);
+    EXPECT_EQ(out, join({"    mov x3, #1, lsr #4", "    mov w3, w3"}));
+}
+
+// 61. P1-2 负例：stlr 首操作数是源（非目的写）——不得作为零证明
+//     修前会误判 W 目的写->证明成立->整对误删；修后保留自搬
+TEST(PeepholeSlotArm64, StoreReleaseIsReadOnly) {
+    const std::string in = join({
+        "    stlr w3, [x1]",
+        "    str w3, [x29,#-8]",
+        "    ldr w3, [x29,#-8]",
+    });
+    const std::string out = eliminateRedundantSlotTrafficAArch64(in);
+    EXPECT_EQ(out, join({"    stlr w3, [x1]", "    mov w3, w3"}));
+}
+
+// 62. P1-2：stllr/stlrb/stlrh 同族均按只读处理
+TEST(PeepholeSlotArm64, StoreReleaseFamilyIsReadOnly) {
+    const std::string variants[] = {"stllr w3, [x1]", "stlrb w3, [x1]",
+                                    "stlrh w3, [x1]"};
+    for (const std::string& st : variants) {
+        const std::string in = join({
+            "    " + st,
+            "    str w3, [x29,#-8]",
+            "    ldr w3, [x29,#-8]",
+        });
+        const std::string out = eliminateRedundantSlotTrafficAArch64(in);
+        EXPECT_EQ(out, join({"    " + st, "    mov w3, w3"}));
+    }
+}
+
+// 63. movz xN,#0：高半确定清零 -> 证明成立
+TEST(PeepholeSlotArm64, DwordProofFromMovz) {
+    const std::string in = join({
+        "    movz x3, #0",
+        "    str w3, [x29,#-8]",
+        "    ldr w3, [x29,#-8]",
+    });
+    EXPECT_EQ(eliminateRedundantSlotTrafficAArch64(in), "    movz x3, #0\n");
+}
+
+// 64. movz lsl #32 写高半 -> 证明不成立
+TEST(PeepholeSlotArm64, DwordProofBlockedByMovzHighShift) {
+    const std::string in = join({
+        "    movz x3, #1, lsl #32",
+        "    str w3, [x29,#-8]",
+        "    ldr w3, [x29,#-8]",
+    });
+    const std::string out = eliminateRedundantSlotTrafficAArch64(in);
+    EXPECT_EQ(out, join({"    movz x3, #1, lsl #32", "    mov w3, w3"}));
+}
+
+// 65. movk 低 16 位片段（lsl #16）：高 32 位保持，证明继续向前
+TEST(PeepholeSlotArm64, DwordProofSkipsLowMovk) {
+    const std::string in = join({
+        "    mov w3, w2",
+        "    movk x3, #1, lsl #16",
+        "    str w3, [x29,#-8]",
+        "    ldr w3, [x29,#-8]",
+    });
+    const std::string out = eliminateRedundantSlotTrafficAArch64(in);
+    EXPECT_EQ(out, join({"    mov w3, w2", "    movk x3, #1, lsl #16"}));
+}
+
+// 66. movk lsl #48 写高半 -> 证明不成立
+TEST(PeepholeSlotArm64, DwordProofBlockedByMovkHighShift) {
+    const std::string in = join({
+        "    mov w3, w2",
+        "    movk x3, #1, lsl #48",
+        "    str w3, [x29,#-8]",
+        "    ldr w3, [x29,#-8]",
+    });
+    const std::string out = eliminateRedundantSlotTrafficAArch64(in);
+    EXPECT_EQ(out, join({"    mov w3, w2", "    movk x3, #1, lsl #48",
+                         "    mov w3, w3"}));
+}
+
+// 67. uxtw xN,wM：零扩展 -> 证明成立
+TEST(PeepholeSlotArm64, DwordProofFromUxtw) {
+    const std::string in = join({
+        "    uxtw x3, w2",
+        "    str w3, [x29,#-8]",
+        "    ldr w3, [x29,#-8]",
+    });
+    EXPECT_EQ(eliminateRedundantSlotTrafficAArch64(in), "    uxtw x3, w2\n");
+}
+
+// 68. cset xN：结果恒 0/1，高 32 位为零 -> 证明成立
+TEST(PeepholeSlotArm64, DwordProofFromCset) {
+    const std::string in = join({
+        "    cset x3, gt",
+        "    str w3, [x29,#-8]",
+        "    ldr w3, [x29,#-8]",
+    });
+    EXPECT_EQ(eliminateRedundantSlotTrafficAArch64(in), "    cset x3, gt\n");
+}
+
+// 69. 窗口边界（ARM 面）：定值点距 store 129 行 -> 证明失败
+TEST(PeepholeSlotArm64, DwordProofWindowExclusiveAt129) {
+    std::vector<std::string> lines;
+    lines.push_back("    mov w3, w2");
+    for (int k = 0; k < 128; ++k) lines.push_back("    nop");
+    lines.push_back("    str w3, [x29,#-8]");
+    lines.push_back("    ldr w3, [x29,#-8]");
+    const std::string out = eliminateRedundantSlotTrafficAArch64(join(lines));
+    std::string want = "    mov w3, w2\n";
+    for (int k = 0; k < 128; ++k) want += "    nop\n";
+    want += "    mov w3, w3\n";
+    EXPECT_EQ(out, want);
+}

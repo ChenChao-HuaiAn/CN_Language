@@ -103,3 +103,17 @@ TEST(PeepholeSlotInPlace, NoAnchorKeepsTextUntouched) {
     EXPECT_FALSE(eliminateRedundantSlotTrafficInPlace(got));
     EXPECT_EQ(got, in);
 }
+
+// 7. 32 位同槽同宽高 32 零证明全删：就地入口与值语义入口一致
+TEST(PeepholeSlotInPlace, DwordProofDeleteMatchesValueSemantics) {
+    const std::string in = join({
+        "    mov r10d, dword ptr [rbp-16]",
+        "    mov dword ptr [rbp-8], r10d",
+        "    mov r10d, dword ptr [rbp-8]",
+    });
+    const std::string want = eliminateRedundantSlotTraffic(in);
+    std::string got = in;
+    EXPECT_TRUE(eliminateRedundantSlotTrafficInPlace(got));
+    EXPECT_EQ(got, want);
+    EXPECT_EQ(got, "    mov r10d, dword ptr [rbp-16]\n");
+}

@@ -236,3 +236,256 @@ TEST(PeepholeSlot, MultiplePairsIndependent) {
     const std::string out = eliminateRedundantSlotTraffic(in);
     EXPECT_EQ(out, "    mov qword ptr [rbp-8], r10\n");
 }
+
+// ==================== 1279：32 位同槽同宽对（高位零证明） ====================
+
+// 6a. dword/dword 同寄存器 + 前态 32 位写（高 32 已清零）：两行全删
+TEST(PeepholeSlot, DwordSameRegWithZeroProofFullDelete) {
+    const std::string in = join({
+        "    mov r10d, dword ptr [rbp-16]",
+        "    mov dword ptr [rbp-8], r10d",
+        "    mov r10d, dword ptr [rbp-8]",
+        "    add r9d, r10d",
+    });
+    const std::string out = eliminateRedundantSlotTraffic(in);
+    EXPECT_EQ(out, join({"    mov r10d, dword ptr [rbp-16]",
+                         "    add r9d, r10d"}));
+}
+
+// 6b. 证明源=movzx（写 64 位目的零扩展）：1253 窄布尔真实形态
+TEST(PeepholeSlot, DwordSameRegProofFromMovzx) {
+    const std::string in = join({
+        "    cmp r10d, r9d",
+        "    setg r9b",
+        "    movzx r10, r9b",
+        "    mov dword ptr [rbp-8], r10d",
+        "    mov r10d, dword ptr [rbp-8]",
+        "    test r10, r10",
+    });
+    const std::string out = eliminateRedundantSlotTraffic(in);
+    EXPECT_EQ(out, join({"    cmp r10d, r9d",
+                         "    setg r9b",
+                         "    movzx r10, r9b",
+                         "    test r10, r10"}));
+}
+
+// 6c. dword/dword 同寄存器、前态高位未知：自吞不消除（保留自搬保零扩展）
+TEST(PeepholeSlot, DwordSameRegWithoutProofKeepsSelfMove) {
+    const std::string in = join({
+        "    mov dword ptr [rbp-8], r10d",
+        "    mov r10d, dword ptr [rbp-8]",
+        "    add r9d, r10d",
+    });
+    const std::string out = eliminateRedundantSlotTraffic(in);
+    EXPECT_EQ(out, join({"    mov r10d, r10d", "    add r9d, r10d"}));
+}
+
+// 6d. dword/dword 同寄存器、前态为 64 位装载（高位未知）：不整对删除
+TEST(PeepholeSlot, DwordSameRegUnknownHighKeepsSelfMove) {
+    const std::string in = join({
+        "    mov r10, qword ptr [rbp-16]",
+        "    mov dword ptr [rbp-8], r10d",
+        "    mov r10d, dword ptr [rbp-8]",
+    });
+    const std::string out = eliminateRedundantSlotTraffic(in);
+    EXPECT_EQ(out, join({"    mov r10, qword ptr [rbp-16]",
+                         "    mov r10d, r10d"}));
+}
+
+// 6e. 跨宽（dword 存 + qword 读同寄存器）：拒绝（槽内残留高位不可复现）
+TEST(PeepholeSlot, DwordStoreQwordLoadSameRegRejected) {
+    const std::string in = join({
+        "    mov r10d, dword ptr [rbp-16]",
+        "    mov dword ptr [rbp-8], r10d",
+        "    mov r10, qword ptr [rbp-8]",
+    });
+    EXPECT_EQ(eliminateRedundantSlotTraffic(in), in);
+}
+
+// 6f. 第三处访问：拒绝（不得放宽到漏第三处）
+TEST(PeepholeSlot, DwordThirdOccurrenceRejected) {
+    const std::string in = join({
+        "    mov r10d, dword ptr [rbp-16]",
+        "    mov dword ptr [rbp-8], r10d",
+        "    mov r10d, dword ptr [rbp-8]",
+        "    mov eax, dword ptr [rbp-8]",
+    });
+    EXPECT_EQ(eliminateRedundantSlotTraffic(in), in);
+}
+
+// 6g. 取址/别名访问（lea 第三处）：拒绝
+TEST(PeepholeSlot, DwordAliasAccessRejected) {
+    const std::string in = join({
+        "    mov r10d, dword ptr [rbp-16]",
+        "    mov dword ptr [rbp-8], r10d",
+        "    mov r10d, dword ptr [rbp-8]",
+        "    lea r11, [rbp-8]",
+    });
+    EXPECT_EQ(eliminateRedundantSlotTraffic(in), in);
+}
+
+// 6h. volatile 标记形态（非本产物族）：不识别、原样保留
+TEST(PeepholeSlot, DwordVolatileMarkerRejected) {
+    const std::string in = join({
+        "    mov dword ptr [rbp-8], r10d // volatile",
+        "    mov r10d, dword ptr [rbp-8]",
+    });
+    EXPECT_EQ(eliminateRedundantSlotTraffic(in), in);
+}
+
+// 6i. 证明被控制流截断（前态写与 store 之间隔标签）：保留自搬
+TEST(PeepholeSlot, DwordProofBrokenByLabelKeepsSelfMove) {
+    const std::string in = join({
+        "    mov r10d, dword ptr [rbp-16]",
+        "Lentry:",
+        "    mov dword ptr [rbp-8], r10d",
+        "    mov r10d, dword ptr [rbp-8]",
+    });
+    const std::string out = eliminateRedundantSlotTraffic(in);
+    EXPECT_EQ(out, join({"    mov r10d, dword ptr [rbp-16]",
+                         "Lentry:",
+                         "    mov r10d, r10d"}));
+}
+
+// ==================== 1279 审查 P2：分类器细分支 ====================
+
+// 7a. movsx 64 位目的（符号扩展，高半未知）：证明不成立，保留自搬
+TEST(PeepholeSlot, DwordProofBlockedByMovsx64) {
+    const std::string in = join({
+        "    movsx r10, r9b",
+        "    mov dword ptr [rbp-8], r10d",
+        "    mov r10d, dword ptr [rbp-8]",
+    });
+    const std::string out = eliminateRedundantSlotTraffic(in);
+    EXPECT_EQ(out, join({"    movsx r10, r9b", "    mov r10d, r10d"}));
+}
+
+// 7b. movsxd（32->64 符号扩展，高半未知）：证明不成立，保留自搬
+TEST(PeepholeSlot, DwordProofBlockedByMovsxd) {
+    const std::string in = join({
+        "    movsxd r10, r9d",
+        "    mov dword ptr [rbp-8], r10d",
+        "    mov r10d, dword ptr [rbp-8]",
+    });
+    const std::string out = eliminateRedundantSlotTraffic(in);
+    EXPECT_EQ(out, join({"    movsxd r10, r9d", "    mov r10d, r10d"}));
+}
+
+// 7c. xor r32 目的写（32 位目的恒清高 32）：证明成立，两行全删
+TEST(PeepholeSlot, DwordProofFromXor32) {
+    const std::string in = join({
+        "    xor r10d, r10d",
+        "    mov dword ptr [rbp-8], r10d",
+        "    mov r10d, dword ptr [rbp-8]",
+    });
+    const std::string out = eliminateRedundantSlotTraffic(in);
+    EXPECT_EQ(out, "    xor r10d, r10d\n");
+}
+
+// 7d. sub r32 目的写：证明成立
+TEST(PeepholeSlot, DwordProofFromSub32) {
+    const std::string in = join({
+        "    sub r10d, r9d",
+        "    mov dword ptr [rbp-8], r10d",
+        "    mov r10d, dword ptr [rbp-8]",
+    });
+    const std::string out = eliminateRedundantSlotTraffic(in);
+    EXPECT_EQ(out, "    sub r10d, r9d\n");
+}
+
+// 7e. imul r32 目的写：证明成立
+TEST(PeepholeSlot, DwordProofFromImul32) {
+    const std::string in = join({
+        "    imul r10d, r9d",
+        "    mov dword ptr [rbp-8], r10d",
+        "    mov r10d, dword ptr [rbp-8]",
+    });
+    const std::string out = eliminateRedundantSlotTraffic(in);
+    EXPECT_EQ(out, "    imul r10d, r9d\n");
+}
+
+// 7f. mov r64, 非负 imm32：高 32 位确定为零，证明成立
+TEST(PeepholeSlot, DwordProofFromNonNegativeImm32) {
+    const std::string in = join({
+        "    mov r10, 2147483647",
+        "    mov dword ptr [rbp-8], r10d",
+        "    mov r10d, dword ptr [rbp-8]",
+    });
+    const std::string out = eliminateRedundantSlotTraffic(in);
+    EXPECT_EQ(out, "    mov r10, 2147483647\n");
+}
+
+// 7g. mov r64, 负立即数：高 32 位未知（符号扩展），证明不成立
+TEST(PeepholeSlot, DwordProofBlockedByNegativeImm) {
+    const std::string in = join({
+        "    mov r10, -1",
+        "    mov dword ptr [rbp-8], r10d",
+        "    mov r10d, dword ptr [rbp-8]",
+    });
+    const std::string out = eliminateRedundantSlotTraffic(in);
+    EXPECT_EQ(out, join({"    mov r10, -1", "    mov r10d, r10d"}));
+}
+
+// 7h. 8 位部分写：高 32 位保持，证明继续向前找到 32 位定值点
+TEST(PeepholeSlot, DwordProofSkipsPartial8BitWrite) {
+    const std::string in = join({
+        "    mov r10d, dword ptr [rbp-16]",
+        "    mov r10b, al",
+        "    mov dword ptr [rbp-8], r10d",
+        "    mov r10d, dword ptr [rbp-8]",
+    });
+    const std::string out = eliminateRedundantSlotTraffic(in);
+    EXPECT_EQ(out, join({"    mov r10d, dword ptr [rbp-16]", "    mov r10b, al"}));
+}
+
+// 7i. 16 位部分写：同上
+TEST(PeepholeSlot, DwordProofSkipsPartial16BitWrite) {
+    const std::string in = join({
+        "    mov r10d, dword ptr [rbp-16]",
+        "    mov r10w, ax",
+        "    mov dword ptr [rbp-8], r10d",
+        "    mov r10d, dword ptr [rbp-8]",
+    });
+    const std::string out = eliminateRedundantSlotTraffic(in);
+    EXPECT_EQ(out, join({"    mov r10d, dword ptr [rbp-16]", "    mov r10w, ax"}));
+}
+
+// 7j. call 截断证明（caller-saved 可能被清）：保留自搬
+TEST(PeepholeSlot, DwordProofBlockedByCall) {
+    const std::string in = join({
+        "    mov r10d, dword ptr [rbp-16]",
+        "    call foo",
+        "    mov dword ptr [rbp-8], r10d",
+        "    mov r10d, dword ptr [rbp-8]",
+    });
+    const std::string out = eliminateRedundantSlotTraffic(in);
+    EXPECT_EQ(out, join({"    mov r10d, dword ptr [rbp-16]", "    call foo",
+                         "    mov r10d, r10d"}));
+}
+
+// 7k. 证明窗口边界：定值点距 store 恰 128 行（窗口内）-> 全删
+TEST(PeepholeSlot, DwordProofWindowInclusiveAt128) {
+    std::vector<std::string> lines;
+    lines.push_back("    mov r10d, dword ptr [rbp-16]");
+    for (int k = 0; k < 127; ++k) lines.push_back("    nop");
+    lines.push_back("    mov dword ptr [rbp-8], r10d");
+    lines.push_back("    mov r10d, dword ptr [rbp-8]");
+    const std::string out = eliminateRedundantSlotTraffic(join(lines));
+    std::string want = "    mov r10d, dword ptr [rbp-16]\n";
+    for (int k = 0; k < 127; ++k) want += "    nop\n";
+    EXPECT_EQ(out, want);
+}
+
+// 7l. 证明窗口边界：定值点距 store 129 行（窗口外）-> 证明失败，保留自搬
+TEST(PeepholeSlot, DwordProofWindowExclusiveAt129) {
+    std::vector<std::string> lines;
+    lines.push_back("    mov r10d, dword ptr [rbp-16]");
+    for (int k = 0; k < 128; ++k) lines.push_back("    nop");
+    lines.push_back("    mov dword ptr [rbp-8], r10d");
+    lines.push_back("    mov r10d, dword ptr [rbp-8]");
+    const std::string out = eliminateRedundantSlotTraffic(join(lines));
+    std::string want = "    mov r10d, dword ptr [rbp-16]\n";
+    for (int k = 0; k < 128; ++k) want += "    nop\n";
+    want += "    mov r10d, r10d\n";
+    EXPECT_EQ(out, want);
+}
