@@ -48,6 +48,7 @@ with io.open(os.path.join(SITE, "assets", "brand", "logo-内联.svg"),
 
 # ---------------------------------------------------------------- 数据装载
 sys.path.insert(0, HERE)
+import doc_platforms       # noqa: E402  1096：平台字段值域校验+族匹配（独立自测）
 import docs_data_core      # noqa: E402
 import docs_data_mapset    # noqa: E402
 import docs_data_text      # noqa: E402
@@ -513,8 +514,13 @@ def 统计():
 
 # ---------------------------------------------------------------- 通用叙述页
 def 块html(块):
-    """叙述块节点 → HTML。tuple 形态按首元素分派；dict 形态=码块（可带 编译足矣）。"""
+    """叙述块节点 → HTML。tuple 形态按首元素分派；dict 形态=码块（可带 编译足矣/
+    用例引用——1096 dict「代码」键条目改引用后仍走同源展示）。"""
     if isinstance(块, dict):
+        if 块.get("用例"):
+            # 1096：dict 块用例引用——展示= tests/e2e/<名>（与 tuple 用例同源）
+            源码, 期望 = 用例资源(块["用例"])
+            return 码窗(块.get("名") or "主.cn", 源码, 期望 or None)
         return 码窗(块["名"], 块["代码"], 块.get("输出"))
     t = 块[0]
     if t == "p":
@@ -729,12 +735,17 @@ def verify(cn_exe=None, 仅失败=False):
 
     def 收集(页标识, 条, 导入头):
         nonlocal 跳过
-        # 1017：平台限定条目（pthread_* / cn_install_thread_stack_guard 等 linux 专有
-        #   符号示例）——非匹配平台跳过，不计入总数（仅显式声明"平台"的条目受影响，
-        #   其余条目行为零变化；渲染面不经此路径）。
-        if isinstance(条, dict) and 条.get("平台") and 平台 not in 条["平台"]:
-            跳过 += 1
-            return
+        # 1017/1096：平台限定条目（pthread_* / cn_install_thread_stack_guard 等 linux
+        #   专有符号示例）——非匹配平台跳过。判定=doc_platforms 值域校验+族展开：
+        #   ["linux"] 覆盖 linux-x86_64/linux-arm64；未登记值显式报错（禁止静默跳过）。
+        #   用例引用（用例=）只做静态映射校验、不编译，故不受平台门控——平台声明仍
+        #   照常过值域校验（非法值在任何平台都报错）。
+        if isinstance(条, dict) and "平台" in 条:
+            场景 = "%s·%s" % (页标识, 条.get("名") or 条.get("id") or "?")
+            覆盖 = doc_platforms.展开(条["平台"], 场景)
+            if not 条.get("用例") and 平台 not in 覆盖:
+                跳过 += 1
+                return
         # 1060：用例引用条目——不编译，进轻校验清单（映射有效性）
         if isinstance(条, dict) and 条.get("用例"):
             引用们.append(条["用例"])

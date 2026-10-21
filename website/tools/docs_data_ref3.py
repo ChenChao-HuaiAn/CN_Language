@@ -471,26 +471,13 @@ dict(
                  "（在本机产出 ARM64 汇编，链接与运行在对应目标机）。",
                 ]),
                 dict(名="手工线程栈守卫.cn",
-                 # 1017：pthread_* 与 cn_install_thread_stack_guard 为 linux 专有符号
-                 #   （win 无 pthread 库·链接必 LNK1120）——平台限定=非 linux 平台
-                 #   verify 跳过（渲染面不变·gen_docs 平台字段支持同批）。
+                 # 1017/1096：pthread_* 与 cn_install_thread_stack_guard 为 linux 专有符号
+                 #   （win 无 pthread 库·链接必 LNK1120）。1096 起本块=用例引用
+                 #   （929_手工线程栈守卫·E2E run_e2e 平台跳过表登记该例）——verify 只做
+                 #   引用静态校验、不编译；「平台」仍如实记录示例的平台面（值域由
+                 #   doc_platforms 校验，族名 linux 覆盖 linux-x86_64/linux-arm64）。
                  平台=["linux"],
-                 代码='外部 函数 cn_install_thread_stack_guard() -> 空类型\n'
-                 '外部 函数 pthread_create(整64* 线程号, 空类型* 属性, 空类型(*入口)(空类型*), 空类型* 参数) -> 整32\n'
-                 '外部 函数 pthread_join(整64 线程号, 空类型** 返回值) -> 整32\n\n'
-                 '不安全 函数 线程体(空类型* 参数) -> 空类型 {\n'
-                 '    cn_install_thread_stack_guard();   // ✱ 手工线程入口显式安装（一次）\n'
-                 '    打印("线程运行中");\n'
-                 '    返回;\n'
-                 '}\n\n'
-                 '不安全 函数 主() -> 整32 {\n'
-                 '    整64 线程号 = 0;\n'
-                 '    整32 创建 = pthread_create(&线程号, 无, 线程体, 无);\n'
-                 '    如果 (创建 != 0) { 返回 2; }\n'
-                 '    pthread_join(线程号, 无);\n'
-                 '    返回 0;\n'
-                 '}',
-                 输出='线程运行中\n'),
+                 用例='手工线程栈守卫'),
                 ("p", "语言本身的问题去 <a href=\"reference/index.html\">语言参考</a>；"
                       "标准库 API 去 <a href=\"stdlib.html\">标准库</a>。"),
              ]),
