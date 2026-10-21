@@ -1633,7 +1633,7 @@
     {
       "文件": "src/cn_compiler/codegen/peephole_slot.cpp",
       "函数": "parseX86StoreLine",
-      "锚文本": "if (!iequals(mnem, \"mov\") && !iequals(mnem, \"movsd\") && !iequals(mnem, \"movss\")) {",
+      "锚文本": "if (!iequals(mnem, \"mov\"sv) && !iequals(mnem, \"movsd\"sv) &&",
       "来源": "1157",
       "类别": "业务值",
       "静默风险": "低",
@@ -1645,7 +1645,7 @@
     {
       "文件": "src/cn_compiler/codegen/peephole_slot.cpp",
       "函数": "parseX86LoadLine",
-      "锚文本": "if (!isMov && !isSx && !isZx && !iequals(mnem, \"movsd\") && !iequals(mnem, \"movss\")) {",
+      "锚文本": "if (!isMov && !isSx && !isZx && !iequals(mnem, \"movsd\"sv) && !iequals(mnem, \"movss\"sv)) {",
       "来源": "1157",
       "类别": "业务值",
       "静默风险": "低",
@@ -2155,6 +2155,54 @@
       "批准": "存量过渡",
       "替代": "已替代",
       "替代依据": "1240 结果化（返回 错误/无·.正常/.有值 强制检查）"
+    },
+    {
+      "文件": "src/cn_compiler/codegen/peephole_slot.cpp",
+      "函数": "normalizeReg",
+      "锚文本": "if (tok.size() < 2 || tok.size() > 4) return false;",
+      "来源": "1248",
+      "类别": "业务值",
+      "静默风险": "低",
+      "原因": "新业务值形态探测点（非静默默认值）；AI 无自行发许可通道（#1238），当前按存量过渡宽限，已呈报用户待批",
+      "登记人": "AI（1248 重解析优化·逐条读过代码）",
+      "登记日": "2026-10-21",
+      "批准": "存量过渡"
+    },
+    {
+      "文件": "src/cn_compiler/codegen/peephole_slot.cpp",
+      "函数": "normalizeReg",
+      "锚文本": "if (it == end || it->key != key) return false;",
+      "来源": "1248",
+      "类别": "业务值",
+      "静默风险": "低",
+      "原因": "新业务值形态探测点（非静默默认值）；AI 无自行发许可通道（#1238），当前按存量过渡宽限，已呈报用户待批",
+      "登记人": "AI（1248 重解析优化·逐条读过代码）",
+      "登记日": "2026-10-21",
+      "批准": "存量过渡"
+    },
+    {
+      "文件": "src/cn_compiler/codegen/peephole_slot.cpp",
+      "函数": "takeWidthPrefix",
+      "锚文本": "if (s.empty()) return false;",
+      "来源": "1248",
+      "类别": "业务值",
+      "静默风险": "低",
+      "原因": "新业务值形态探测点（非静默默认值）；AI 无自行发许可通道（#1238），当前按存量过渡宽限，已呈报用户待批",
+      "登记人": "AI（1248 重解析优化·逐条读过代码）",
+      "登记日": "2026-10-21",
+      "批准": "存量过渡"
+    },
+    {
+      "文件": "src/cn_compiler/codegen/peephole_slot.cpp",
+      "函数": "takeWidthPrefix",
+      "锚文本": "if (s.size() < p->text.size() || !iequals(s.substr(0, p->text.size()), p->text)) {",
+      "来源": "1248",
+      "类别": "业务值",
+      "静默风险": "低",
+      "原因": "新业务值形态探测点（非静默默认值）；AI 无自行发许可通道（#1238），当前按存量过渡宽限，已呈报用户待批",
+      "登记人": "AI（1248 重解析优化·逐条读过代码）",
+      "登记日": "2026-10-21",
+      "批准": "存量过渡"
     }
   ]
 }
