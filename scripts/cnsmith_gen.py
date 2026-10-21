@@ -71,6 +71,7 @@ class Gen:
     def __init__(self, seed):
         self.rng = random.Random(seed)
         self.vars = []          # (名称, 类型) 整32/整64
+        self.flt_vars = []      # (名称,) 浮64（1306 推断声明面产物·供后续语句复用）
         self.tmp = 0
         # 847 自校验审计面：常量折叠超域被修正为安全形态的「原表达式」文本
         # （selftest 编译对拍用——每个原表达式应被编译器真实拒绝）
@@ -178,6 +179,8 @@ class Gen:
         return NL.join(out)
 
     def statement(self):
+        if self.rng.random() < 0.2:
+            return self._推断语句()
         typ = self.rng.choice(["整32", "整32", "整32", "整64"])
         name = self.new_name(typ)
         val, _ = self.expr(self.rng.randint(2, 5), typ)  # 先生成值（未登记，避免自引用）
@@ -186,6 +189,49 @@ class Gen:
         line = "    %s %s = %s;" % (head, name, val)
         if self.rng.random() < 0.6:
             line += NL + '    打印行("%s = ", %s);' % (name, name)
+        return line
+
+    def _推断语句(self):
+        """推断声明语句（1306 扩面·#1304/#1305 形态域）：变量 名 = <表达式>;
+
+        三型（宿主全部合法——合法性契约=宿主编译通过；对拍轨道中 v2 拒=
+        分叉命中即扩面目的，非生成器缺陷）：
+        ①拼接型：字符串字面量 + 整值 + 字面量 + 浮值 + 字面量 混链
+          （001 §253 数值->字符串自动转换承诺面——v2 推导通道曾全拒）；
+        ②浮整混算型：整值×浮字面量 两序（宿主 usual arithmetic 提升浮64）；
+        ③三元跨类型：整条件 ? 整分支 : 浮分支（宿主提升合并·#1305 形态域）。
+        浮64 结果入 flt_vars 复用池；字符串结果打印消费即止（不入池）。"""
+        name = self.new_name("推断")
+        kind = self.rng.randrange(3)
+        if kind == 0:
+            if self.vars and self.rng.random() < 0.6:
+                整段 = self.rng.choice(self.vars)[0]
+            else:
+                整段 = str(self.rng.randint(0, 999))
+            if self.flt_vars and self.rng.random() < 0.4:
+                浮段 = self.rng.choice(self.flt_vars)
+            else:
+                浮段 = self.rng.choice(["1.5", "2.25", "0.5", "3.5"])
+            line = '    变量 %s = "%s" + %s + "%s" + %s + "%s";' % (
+                name, self.rng.choice(["前", "甲", "x", "v"]), 整段,
+                self.rng.choice(["中", "乙", "-", "."]), 浮段,
+                self.rng.choice(["尾", "end", "!", "9"]))
+        elif kind == 1:
+            整段 = self.rng.choice(self.vars)[0] if self.vars else \
+                str(self.rng.randint(1, 99))
+            flt = self.rng.choice(["1.5", "2.5", "0.25", "4.0"])
+            op = self.rng.choice(["+", "-", "*"])
+            if self.rng.random() < 0.5:
+                line = "    变量 %s = %s %s %s;" % (name, 整段, op, flt)
+            else:
+                line = "    变量 %s = %s %s %s;" % (name, flt, op, 整段)
+            self.flt_vars.append(name)
+        else:
+            条件 = self.rng.choice(self.vars)[0] if self.vars else \
+                str(self.rng.randint(0, 9))
+            line = "    变量 %s = (%s > 0) ? 1 : 2.5;" % (name, 条件)
+            self.flt_vars.append(name)
+        line += NL + '    打印行("%s = ", %s);' % (name, name)
         return line
 
     # ------------------------------------------------------------------
@@ -356,7 +402,27 @@ def selftest(编译路径=None, 目标=None):
        bool(re.search(r"<<|>>", 文本全集))
        and bool(re.search(r" [\+\-\*] ", 文本全集))
        and bool(re.search(r" [/%] ", 文本全集)))
-    签("折叠保护审计面有捕获（危险表达式 %d 个）" % len(审计), len(审计) >= 1)
+    # 847 折叠保护确定性锁面（1306：推断语句消耗随机流致 15 实录 seed 采样
+    #   漂移·「随机面审计>=1」断言概率化失效——847 注释实录危险式直接单元化，
+    #   同 seed 恒绿；随机面审计列表继续积累供编译对拍面双向对拍）
+    g847 = Gen(847)
+    t1_847, v1_847 = g847._算术折叠("*", "(-379 * -130)", "411",
+                                    -379 * -130, 411)
+    t2_847, v2_847 = g847._算术折叠("*", t1_847, "110", v1_847, 110)
+    签("折叠保护修正确定面（847 实录式超域→右置 0+审计捕获）",
+       v1_847 == 49270 * 411 and v2_847 == 0
+       and len(g847.审计危险) == 1 and t2_847.endswith("* 0)"))
+    审计.extend(g847.审计危险)   # 编译对拍面恒有实录超域式（非空锁）
+    # 1306 扩面锁：推断声明三型（拼接/浮整混算/三元跨类）均有产出——
+    #   形态域即 #1304/#1305 命中域，生成面回退=自动面重新致盲
+    推断语句 = re.findall(r"变量 \S+ = [^\n]+", 文本全集)
+    签("推断声明有产出（%d 条）" % len(推断语句),
+       len(推断语句) >= 15, "样本集推断语句过少")
+    签("推断声明三型覆盖（拼接/浮整混算/三元跨类）",
+       bool(re.search(r'变量 \S+ = "[^"]*" \+', 文本全集))
+       and bool(re.search(r"变量 \S+ = \S+ [\+\-\*] \d+\.\d+", 文本全集))
+       and bool(re.search(r"变量 \S+ = \(\S+ > 0\) \? 1 : 2\.5", 文本全集)),
+       "三型缺一")
 
     if 编译路径 is not None:
         目标 = 目标 or ("win-x64" if os.name == "nt" else "linux-x64")
