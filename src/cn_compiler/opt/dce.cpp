@@ -33,6 +33,22 @@ bool DCEPass::isPure(ir::Opcode op) {
         case ir::Opcode::ConstFloat:
         case ir::Opcode::ConstBool:
             return true;
+        // ---- 寄存器搬运（1278：Phi 降级的孤儿拷贝清理） ----
+        // 判据（Copy 是纯寄存器/栈槽搬运，结果可删）：
+        //   ① 语义=把 operand[0] 的源值写入 result 虚拟寄存器槽
+        //      （ir_opcode.hpp:57，唯一产生点=Phi 降级 lowerPhis 的并行拷贝）；
+        //   ② 三后端发射仅 mov/movsd/movss（win-x64/linux_x64/arm64 的 emitCopy，
+        //      i128/u128 为双半 mov）：无函数调用、不写堆/用户内存（目标只可能是
+        //      虚拟寄存器槽或变量槽）、无判空/越界/除零检查、不触碰所有权/引用计数；
+        //      mov 类指令也不产生被后继指令消费的标志位（条件跳转发射时自行
+        //      装载并 test 条件值）。故结果未被任何指令操作数或终止字段引用时，
+        //      该搬运不可观测，删除不改变程序行为。
+        //   ③ 前提：result.id>=0 由 runBlock 的「无结果不删」保护（变量名形态
+        //      result.id<0 的 Copy 保留，维持其变量槽登记语义）；跨块引用由 run
+        //      收集的函数级 usedRegs 位图覆盖（含 termCondition/termReturnValue，
+        //      也是跨块引用），跨块活 Copy 不会被误删。
+        case ir::Opcode::Copy:
+            return true;
         // ---- 永不删除（有副作用） ----
         // Load：可能触发空指针/越界检查；Store/StorePtr：写内存；
         // Call/CallIndirect：可能输出/修改状态；FieldAddr：隐含空指针检查（错误码3）；

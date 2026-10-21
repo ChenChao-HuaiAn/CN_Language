@@ -2,7 +2,8 @@
 // 覆盖：块内纯指令删除（结果未被引用的 Add/Sub/Mul 等无副作用指令）、
 //       副作用指令保留（Store/LoadPtr/Call/FieldAddr/Branch/Jump/Return）、
 //       结果被引用的指令保留（后续指令操作数引用）、
-//       跨指令链删除（折叠后无引用的中间结果被级联删除）
+//       跨指令链删除（折叠后无引用的中间结果被级联删除）、
+//       Copy 纯性（1278：死 Copy 删除/活 Copy 保留/跨块引用/链级联/副作用隔离/无结果保护）
 // 测试方式：直接构造 IRModule 调用 DCEPass（opt 为纯内部模块，单元测试直接实例化）
 // 注意：测试名必须使用英文（GCC 7 不支持中文标识符，注释可为中文）
 #include <gtest/gtest.h>
@@ -48,10 +49,56 @@ IRInstruction makeInst(Opcode op, const std::vector<IRValue>& ops,
     return inst;
 }
 
+// 便捷构造：寄存器搬运 Copy（dst = src·Phi 降级 lowerPhis 的产物形态）
+IRInstruction makeCopy(int dst, int src, const std::string& type) {
+    return makeInst(Opcode::Copy, {IRValue::reg(src, type)},
+                    IRValue::reg(dst, type), type);
+}
+
+// 结束块：无条件跳转
+void endJump(IRBlock& block, const std::string& target) {
+    block.terminated = true;
+    block.termKind = "跳转";
+    block.termTarget = target;
+}
+
+// 结束块：返回寄存器 %vN（value 为空 = 无返回值）
+void endReturn(IRBlock& block, const std::string& value) {
+    block.terminated = true;
+    block.termKind = "返回";
+    block.termReturnValue = value;
+}
+
+// 构造含多个基本块的模块（块顺序=调用方给定顺序，首块=入口）
+IRModule makeMultiBlockModule(std::vector<IRBlock> blocks) {
+    IRModule module;
+    IRFunction fn;
+    fn.name = "主";
+    fn.returnType = "i32";
+    for (auto& block : blocks) {
+        fn.blocks.push_back(std::make_unique<IRBlock>(std::move(block)));
+    }
+    module.functions.push_back(std::move(fn));
+    return module;
+}
+
 // 统计块内指令数
 int countInstructions(const IRModule& module) {
     return static_cast<int>(
         module.functions[0].blocks[0]->instructions.size());
+}
+
+// 统计模块内指定操作码条数
+int countOpcode(const IRModule& module, Opcode opcode) {
+    int count = 0;
+    for (const auto& fn : module.functions) {
+        for (const auto& block : fn.blocks) {
+            for (const auto& inst : block->instructions) {
+                if (inst.opcode == opcode) ++count;
+            }
+        }
+    }
+    return count;
 }
 
 // 块内第i条指令（部分用例未使用，GCC -Wunused-function 兼容）
@@ -247,4 +294,126 @@ TEST(DCETest, ConstantOperandNotReference) {
     });
     EXPECT_TRUE(DCEPass().run(module));
     EXPECT_EQ(countInstructions(module), 0);
+}
+
+// ==================== Copy 纯性（1278） ====================
+// 背景：Copy 是 Phi 降级（lowerPhis）的并行拷贝产物，原不在 isPure 白名单，
+//   结果无引用的死 Copy 永不删除（Mem2Reg 汇合提升的孤儿拷贝放大器）。
+
+// ① 死 Copy：结果无任何引用 -> 删除
+TEST(DCETest, RemoveDeadCopy) {
+    auto module = makeModule({makeCopy(0, 1, "i32")});
+    endReturn(*module.functions[0].blocks[0], "");
+    EXPECT_TRUE(DCEPass().run(module));
+    EXPECT_EQ(countInstructions(module), 0);
+}
+
+// ② 活 Copy：结果被终止信息（返回值）引用 -> 保留
+TEST(DCETest, KeepCopyReferencedByReturn) {
+    auto module = makeModule({makeCopy(0, 1, "i32")});
+    endReturn(*module.functions[0].blocks[0], "%v0");
+    EXPECT_FALSE(DCEPass().run(module));
+    EXPECT_EQ(countInstructions(module), 1);
+}
+
+// ② 活 Copy：结果被后续指令操作数引用 -> 保留
+TEST(DCETest, KeepCopyUsedByInstruction) {
+    auto module = makeModule({
+        makeCopy(0, 1, "i32"),
+        makeInst(Opcode::Add, {IRValue::reg(0, "i32"), IRValue::reg(2, "i32")},
+                IRValue::reg(3, "i32"), "i32"),
+    });
+    endReturn(*module.functions[0].blocks[0], "%v3");
+    EXPECT_FALSE(DCEPass().run(module));
+    EXPECT_EQ(countOpcode(module, Opcode::Copy), 1);
+    EXPECT_EQ(countInstructions(module), 2);
+}
+
+// ② 活 Copy：结果仅被条件跳转终止字段（termCondition）引用 -> 保留
+TEST(DCETest, KeepCopyReferencedByBranchCondition) {
+    auto module = makeModule({makeCopy(0, 1, "i1")});
+    auto& block = *module.functions[0].blocks[0];
+    block.terminated = true;
+    block.termKind = "条件跳转";
+    block.termTrueTarget = "块真";
+    block.termFalseTarget = "块假";
+    block.termCondition = "%v0";
+    EXPECT_FALSE(DCEPass().run(module));
+    EXPECT_EQ(countInstructions(module), 1);
+}
+
+// ③ 跨块引用：块0 的 Copy 结果在块1 被引用 -> 保留（函数级引用位图）
+TEST(DCETest, KeepCrossBlockReferencedCopy) {
+    IRBlock b0;
+    b0.label = "块0";
+    b0.instructions.push_back(makeCopy(0, 1, "i32"));
+    endJump(b0, "块1");
+    IRBlock b1;
+    b1.label = "块1";
+    b1.instructions.push_back(
+        makeInst(Opcode::Add, {IRValue::reg(0, "i32"), IRValue::reg(2, "i32")},
+                 IRValue::reg(3, "i32"), "i32"));
+    endReturn(b1, "%v3");
+    std::vector<IRBlock> blocks;
+    blocks.push_back(std::move(b0));
+    blocks.push_back(std::move(b1));
+    auto module = makeMultiBlockModule(std::move(blocks));
+    EXPECT_FALSE(DCEPass().run(module));
+    EXPECT_EQ(countOpcode(module, Opcode::Copy), 1);
+}
+
+// ④ 连续 Copy 链（全部结果无引用）：级联删净
+TEST(DCETest, CascadeRemoveCopyChain) {
+    auto module = makeModule({
+        makeCopy(0, 1, "i32"),   // %v0 = %v1
+        makeCopy(2, 0, "i32"),   // %v2 = %v0
+        makeCopy(4, 2, "i32"),   // %v4 = %v2
+    });
+    endReturn(*module.functions[0].blocks[0], "");
+    EXPECT_TRUE(DCEPass().run(module));
+    EXPECT_EQ(countOpcode(module, Opcode::Copy), 0);
+    EXPECT_EQ(countInstructions(module), 0);
+}
+
+// ④ 活链对照：链尾结果被返回引用 -> 整链保留（不误删上游定义）
+TEST(DCETest, KeepLiveCopyChain) {
+    auto module = makeModule({
+        makeCopy(0, 1, "i32"),   // %v0 = %v1
+        makeCopy(2, 0, "i32"),   // %v2 = %v0
+        makeInst(Opcode::Add, {IRValue::reg(2, "i32"), IRValue::constant("1", "i32")},
+                 IRValue::reg(3, "i32"), "i32"),
+    });
+    endReturn(*module.functions[0].blocks[0], "%v3");
+    EXPECT_FALSE(DCEPass().run(module));
+    EXPECT_EQ(countOpcode(module, Opcode::Copy), 2);
+}
+
+// ⑤ 含副作用的指令不受影响：死 Copy 删除、Load/Call 保留
+TEST(DCETest, RemoveDeadCopyKeepsSideEffects) {
+    auto module = makeModule({
+        makeInst(Opcode::Load, {IRValue::var("x$0", "i32")},
+                 IRValue::reg(0, "i32"), "i32"),
+        makeCopy(2, 1, "i32"),
+        makeInst(Opcode::Call, {IRValue::reg(5, "i32")},
+                 IRValue::reg(4, "i32"), "i32"),
+    });
+    endReturn(*module.functions[0].blocks[0], "");
+    EXPECT_TRUE(DCEPass().run(module));
+    EXPECT_EQ(countOpcode(module, Opcode::Copy), 0);
+    EXPECT_EQ(countOpcode(module, Opcode::Load), 1);
+    EXPECT_EQ(countOpcode(module, Opcode::Call), 1);
+    EXPECT_EQ(countInstructions(module), 2);
+}
+
+// 无结果保护：变量名形态 Copy（result.id<0）不在删除面（保留变量槽语义）
+TEST(DCETest, KeepVariableTargetCopy) {
+    IRInstruction copy;
+    copy.opcode = Opcode::Copy;
+    copy.result = IRValue::var("__临时槽", "i32");
+    copy.operands.push_back(IRValue::reg(1, "i32"));
+    copy.type = "i32";
+    auto module = makeModule({copy});
+    endReturn(*module.functions[0].blocks[0], "");
+    EXPECT_FALSE(DCEPass().run(module));
+    EXPECT_EQ(countInstructions(module), 1);
 }
