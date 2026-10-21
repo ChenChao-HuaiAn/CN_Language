@@ -54,44 +54,16 @@ bool livenessAllowsType(const std::string& type, bool allowNarrow) {
 }
 
 
-// 1256：函数内虚拟寄存器最大 ID（IRFunction.nextRegId 未经 IR 层维护，恒 0——
-//   边界过滤必须实测；与各后端 maxRegIdIn 同口径：结果+操作数+终止值）。
-int computeMaxRegId(const ir::IRFunction& function) {
-    int maxId = -1;
-    auto see = [&maxId](int id) { if (id > maxId) maxId = id; };
-    for (const auto& block : function.blocks) {
-        for (const auto& inst : block->instructions) {
-            see(inst.result.id);
-            for (const auto& op : inst.operands) {
-                if (!op.isConstant) see(op.id);
-            }
-        }
-        auto seeText = [&see](const std::string& s) {
-            if (s.size() > 2 && s.size() <= 16 && s[0] == '%' && s[1] == 'v') {
-                see(std::stoi(s.substr(2)));
-            }
-        };
-        seeText(block->termCondition);
-        seeText(block->termReturnValue);
-    }
-    return maxId;
-}
-
 // 终止指令使用的寄存器ID（条件跳转的条件寄存器/返回寄存器）
 std::vector<int> termUsedRegIds(const ir::IRBlock& block) {
     std::vector<int> ids;
     if (!block.terminated) return ids;
+    int id = 0;
     if (block.termKind == "条件跳转") {
         // 280-a T12 字段化：条件值显式存 termCondition（不再寄生于块尾指令）
-        const std::string& c = block.termCondition;
-        if (c.size() > 2 && c[0] == '%' && c[1] == 'v') {
-            ids.push_back(std::stoi(c.substr(2)));
-        }
+        if (ir::parseVirtualRegIdText(block.termCondition, id)) ids.push_back(id);
     } else if (block.termKind == "返回") {
-        const std::string& s = block.termReturnValue;
-        if (s.size() > 2 && s[0] == '%' && s[1] == 'v') {
-            ids.push_back(std::stoi(s.substr(2)));
-        }
+        if (ir::parseVirtualRegIdText(block.termReturnValue, id)) ids.push_back(id);
     }
     return ids;
 }
@@ -138,7 +110,8 @@ LinearScanAllocator::LinearScanAllocator(TargetArch arch,
 std::vector<LiveInterval> LinearScanAllocator::computeLiveIntervals(
     const ir::IRFunction& function) {
     // 公共 API：全可分配类型面（单元测试/调试口径）
-    return computeLiveIntervalsInternal(function, true, computeMaxRegId(function));
+    return computeLiveIntervalsInternal(function, true,
+                                        ir::maxVirtualRegId(function));
 }
 
 // 1256：活跃性内部流水线（allowNarrow=架构是否支持 32/窄整型分配）。
@@ -473,7 +446,7 @@ void LinearScanAllocator::scan(const std::vector<LiveInterval>& intervals,
 // 主入口：对函数做寄存器分配
 RegAssignmentMap LinearScanAllocator::allocate(const ir::IRFunction& function,
                                                int maxRegId) {
-    const int maxId = (maxRegId >= 0) ? maxRegId : computeMaxRegId(function);
+    const int maxId = (maxRegId >= 0) ? maxRegId : ir::maxVirtualRegId(function);
     // 1281：全架构活跃性参与面=可分配整型/指针全集（i1/浮点/i128 不参与）
     intervals_ = computeLiveIntervalsInternal(function, true, maxId);
     RegAssignmentMap out;

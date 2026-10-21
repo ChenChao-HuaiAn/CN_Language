@@ -55,9 +55,6 @@ private:
                                    int& nextReg,
                                    std::vector<ir::IRInstruction>& out);
 
-    // 函数内最大虚拟寄存器 id（新寄存器从 max+1 起分配·防冲突）
-    static int maxRegIdOf(const ir::IRFunction& fn);
-
     // 解析整型常量文本为十进制（支持 0x/0b/0o 前缀），失败返回 false
     static bool parseIntText(const std::string& text, unsigned long long& out);
 

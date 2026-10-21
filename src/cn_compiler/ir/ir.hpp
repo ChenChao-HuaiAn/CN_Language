@@ -1,6 +1,8 @@
 // CN-IR中间表示定义 + IR生成器（Task 1.6）
 // 设计要点：
 #pragma once
+#include <climits>
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -123,7 +125,6 @@ struct IRFunction {
     //   emitGenericFuncInstance），codegen 在 generateFunctionAssembly 置函数级状态。
     bool isUnsafe = false;
     std::vector<std::unique_ptr<IRBlock>> blocks;             // 基本块列表
-    int nextRegId = 0;                         // 下一个虚拟寄存器编号
     std::unordered_map<std::string, std::string> varTypes;   // 变量名 -> IR类型
     // 变量栈槽数（唯一内部名 -> 槽数量，Task 2.4 数组多槽）。
     // 数组变量（整32[5]）占用 长度 个连续8字节槽；普通变量默认1。
@@ -137,6 +138,65 @@ struct IRFunction {
     IRFunction(IRFunction&&) = default;
     IRFunction& operator=(IRFunction&&) = default;
 };
+
+// ==================== 虚拟寄存器编号查询（1268 单一事实源） ====================
+// 背景：IRFunction 原有 nextRegId 字段全仓无赋值点（恒 0），分配器与三后端
+//   各自扫描「函数内最大虚拟寄存器 ID」——四份实现口径漂移（i128 双槽/终止
+//   字段覆盖不一）。字段已删除：函数内编号是 IR 值的纯函数，不保留可失真的
+//   冗余状态；本函数是唯一实现，reg_alloc、三后端帧/槽预留与 opt 新寄存器
+//   编号统一调用。
+//
+// 语义（与 IR 值布局一一对应）：
+//   1. 指令结果寄存器 result.id；
+//   2. 指令操作数中的非恒定寄存器（常量/变量引用 id=-1，跳过）；
+//   3. 块终止字段 termCondition/termReturnValue 的 "%vN" 文本；
+//   4. i128/u128 值占 id 与 id+1 两个连续槽（emitResult 双槽约定；
+//      漏计 id+1 曾致 lambda 捕获 i128 读垃圾值），最大编号按 id+1 计。
+// 边界：空函数/无基本块/全部为非寄存器值 -> 返回 -1（无虚拟寄存器；调用方
+//   以 max+1 得槽数 0）。编号域=非负整数；-1=非寄存器契约值（IRValue）。
+inline bool parseVirtualRegIdText(const std::string& text, int& id) {
+    // 终止字段契约 = "%vN"（N 为十进制非负整数）| 常量文本（"真"/"假"/数值）。
+    // 严格全串匹配（不做 stoi 式尾随截断）；非 "%vN" 文本是契约内的常量值，
+    // 返回 false = 「不是寄存器引用」的否定回答，不是错误通道。
+    if (text.rfind("%v", 0) != 0) return false;  // 非 %v 前缀（含过短文本）
+    if (text.size() == 2) return false;          // "%v" 后无编号
+    int value = 0;
+    for (std::size_t i = 2; i < text.size(); ++i) {
+        const char c = text[i];
+        if (c < '0' || c > '9') return false;
+        const int digit = c - '0';
+        if (value > (INT_MAX - digit) / 10) return false;  // 超出 int 编号域
+        value = value * 10 + digit;
+    }
+    id = value;
+    return true;
+}
+
+inline int maxVirtualRegId(const IRFunction& function) {
+    int maxId = -1;
+    const auto seeValue = [&maxId](const IRValue& value) {
+        if (value.id == -1) return;  // 非寄存器契约值（常量/变量引用/无结果）
+        const int top = (value.type == "i128" || value.type == "u128")
+                            ? value.id + 1
+                            : value.id;
+        if (top > maxId) maxId = top;
+    };
+    const auto seeText = [&maxId](const std::string& text) {
+        int id = 0;
+        if (parseVirtualRegIdText(text, id) && id > maxId) maxId = id;
+    };
+    for (const auto& block : function.blocks) {
+        for (const auto& inst : block->instructions) {
+            seeValue(inst.result);
+            for (const auto& op : inst.operands) {
+                if (!op.isConstant) seeValue(op);
+            }
+        }
+        seeText(block->termCondition);
+        seeText(block->termReturnValue);
+    }
+    return maxId;
+}
 
 // IR模块：函数列表 + 字符串常量池
 struct IRModule {

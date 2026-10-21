@@ -309,45 +309,10 @@ void X64CodeGenerator::emitRestoreCalleeSaved(AsmWriter& writer) {
     }
 }
 
-// 扫描函数内最大虚拟寄存器ID（用于寄存器槽区预留）
-// 缺陷修复：i128/u128 值占用 2 个连续虚拟寄存器（result.id 与 result.id+1），
-//   原实现只按 result.id 计 maxId——当 i128 结果是函数内最后一个寄存器时
-//   （如 lambda 内捕获 i128 参数后仅一次 Load），id+1 槽未预留，落在变量
-//   槽区，与捕获参数双槽（$s1 高64位槽）重叠 -> i128 捕获值读垃圾
-//   （实测 1234567890123456789LL 输出 22773757910726981403490738691264577813
-//    = 低64位 << 64 | 低64位）。修复：i128/u128 结果按 id+1 计。
-int X64CodeGenerator::maxRegIdIn(const ir::IRFunction& function) {
-    int maxId = -1;
-    auto check = [&maxId](const ir::IRValue& v) {
-        if (v.id < 0) return;
-        // i128/u128 双寄存器：占用 id 与 id+1（result.id=高64位、id+1=低64位）
-        if (v.type == "i128" || v.type == "u128") {
-            if (v.id + 1 > maxId) maxId = v.id + 1;
-        } else if (v.id > maxId) {
-            maxId = v.id;
-        }
-    };
-    for (auto& block : function.blocks) {
-        for (auto& inst : block->instructions) {
-            check(inst.result);
-            for (auto& op : inst.operands) check(op);
-        }
-        // 返回寄存器（%vN 文本）
-        if (!block->termReturnValue.empty()) {
-            auto& s = block->termReturnValue;
-            if (s.size() > 2 && s[0] == '%' && s[1] == 'v') {
-                int id = std::stoi(s.substr(2));
-                if (id > maxId) maxId = id;
-            }
-        }
-    }
-    return maxId;
-}
-
 // 计算函数栈帧大小：变量槽区 + 寄存器槽区（maxRegId+1个槽），16字节对齐
 int X64CodeGenerator::computeFrameSize(const ir::IRFunction& function) const {
     int varBytes = varSlotAreaSize();
-    int regCount = maxRegIdIn(function) + 1;
+    int regCount = ir::maxVirtualRegId(function) + 1;
     int regBytes = (regCount > 0) ? regCount * 8 : 0;
     int total = varBytes + regBytes;
     // 16字节对齐（栈帧在 push rbp 后仍满足16对齐要求）
@@ -459,7 +424,7 @@ void X64CodeGenerator::emitFunctionHeader(AsmWriter& writer, const ir::IRFunctio
 // 生成单个函数：登记变量槽 -> PROC头 -> prologue -> 参数 -> 基本块 -> epilogue -> ENDP
 std::string X64CodeGenerator::generateFunctionAssembly(const ir::IRFunction& function) {
     // 计算寄存器槽数量（变量槽区定位依赖）
-    regSlotCount_ = maxRegIdIn(function) + 1;
+    regSlotCount_ = ir::maxVirtualRegId(function) + 1;
     varSlots_.clear();
     // 任务 474：函数级不安全 状态（体内算术/移位/除法不插溢出检查·判空豁免同源）
     currentFnUnsafe474_ = function.isUnsafe;

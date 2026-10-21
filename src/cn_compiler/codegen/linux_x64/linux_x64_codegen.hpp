@@ -323,9 +323,6 @@ private:
     // 计算函数栈帧大小（变量槽区 + 寄存器槽区，16字节对齐——SysV call 对齐纪律）
     int computeFrameSize(const ir::IRFunction& function) const;
 
-    // 扫描函数内最大虚拟寄存器ID（用于寄存器槽区预留；i128 按 id+1 计）
-    static int maxRegIdIn(const ir::IRFunction& function);
-
     // 预扫描模块内全部 i128 常量实参（Call 实参 / i128 算术与比较操作数），
     //   在 .data 段发射前登记全局常量池（L128cN）——否则函数体生成时登记的标签
     //   晚于 .data 发射，lea 引用未定义符号（单测 I128ConstViaGlobalPool 抓出）

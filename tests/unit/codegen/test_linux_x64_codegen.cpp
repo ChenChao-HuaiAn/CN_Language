@@ -55,7 +55,6 @@ IRModule buildMinModule() {
     block->termReturnValue = "%v1";
 
     func.blocks.push_back(std::move(block));
-    func.nextRegId = 2;
     module.functions.push_back(std::move(func));
     return module;
 }
@@ -85,7 +84,6 @@ IRModule buildStringModule() {
     block->termReturnValue = "%v0";
 
     func.blocks.push_back(std::move(block));
-    func.nextRegId = 1;
     module.functions.push_back(std::move(func));
     return module;
 }
@@ -206,7 +204,6 @@ TEST(LinuxX64CodegenTest, ConstIntImmediateLoad) {
     block->termKind = "返回";
     block->termReturnValue = "%v0";
     func.blocks.push_back(std::move(block));
-    func.nextRegId = 1;
     module.functions.push_back(std::move(func));
 
     std::string asmText = generator.generateAssembly(module);
@@ -251,7 +248,6 @@ TEST(LinuxX64CodegenTest, DivSignedForm) {
     block->termKind = "返回";
     block->termReturnValue = "%v1";
     func.blocks.push_back(std::move(block));
-    func.nextRegId = 2;
     module.functions.push_back(std::move(func));
 
     std::string asmText = generator.generateAssembly(module);
@@ -283,7 +279,6 @@ TEST(LinuxX64CodegenTest, CompareSetccForm) {
     block->termKind = "返回";
     block->termReturnValue = "%v1";
     func.blocks.push_back(std::move(block));
-    func.nextRegId = 2;
     module.functions.push_back(std::move(func));
 
     std::string asmText = generator.generateAssembly(module);
@@ -353,7 +348,6 @@ TEST(LinuxX64CodegenTest, I128ConstDualSlot) {
     block->termKind = "返回";
     block->termReturnValue = "%v10";
     func.blocks.push_back(std::move(block));
-    func.nextRegId = 12;
     module.functions.push_back(std::move(func));
 
     std::string asmText = generator.generateAssembly(module);
@@ -390,7 +384,6 @@ TEST(LinuxX64CodegenTest, I128ConstViaGlobalPool) {
     block->termKind = "返回";
     block->termReturnValue = "%v10";
     func.blocks.push_back(std::move(block));
-    func.nextRegId = 14;
     module.functions.push_back(std::move(func));
 
     std::string asmText = generator.generateAssembly(module);
@@ -423,7 +416,6 @@ TEST(LinuxX64CodegenTest, StructReturnHiddenPointer) {
     block->termKind = "返回";
     block->termReturnValue = "%v0";
     func.blocks.push_back(std::move(block));
-    func.nextRegId = 1;
     module.functions.push_back(std::move(func));
 
     std::string asmText = generator.generateAssembly(module);
@@ -469,7 +461,6 @@ TEST(LinuxX64CodegenTest, DirectCallForm) {
     block->termKind = "返回";
     block->termReturnValue = "%v0";
     func.blocks.push_back(std::move(block));
-    func.nextRegId = 1;
     module.functions.push_back(std::move(func));
 
     std::string asmText = generator.generateAssembly(module);
@@ -499,7 +490,6 @@ TEST(LinuxX64CodegenTest, IndirectCallViaR11) {
     block->termKind = "返回";
     block->termReturnValue = "%v0";
     func.blocks.push_back(std::move(block));
-    func.nextRegId = 2;
     module.functions.push_back(std::move(func));
 
     std::string asmText = generator.generateAssembly(module);
@@ -543,7 +533,6 @@ TEST(LinuxX64CodegenTest, StructParamCopyMustNotClobberR9) {
     ret.operands = {IRValue::reg(0, "i64"), IRValue::reg(0, "i64")};
     block->instructions.push_back(ret);
     func.blocks.push_back(std::move(block));
-    func.nextRegId = 2;
     module.functions.push_back(std::move(func));
 
     std::string asmText = generator.generateAssembly(module);
@@ -585,7 +574,6 @@ TEST(LinuxX64CodegenTest, HiddenRetStackParamAnchor24) {
     add.operands = {IRValue::reg(0, "i64"), IRValue::reg(0, "i64")};
     block->instructions.push_back(add);
     func.blocks.push_back(std::move(block));
-    func.nextRegId = 2;
     module.functions.push_back(std::move(func));
 
     std::string asmText = generator.generateAssembly(module);

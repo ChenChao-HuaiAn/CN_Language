@@ -305,16 +305,9 @@ static std::vector<int> predsOf(const ir::IRFunction& fn, std::size_t b) {
 
 void SSAPass::lowerPhis(ir::IRFunction& fn) {
     // 降级临时寄存器编号：取函数内现有最大虚拟寄存器 id + 1（不得跳大——寄存器
-    //   分配器的表按 id 索引，超大 id 曾致越界段错误（256-a 实测 rc=139））
-    int tmpCounter = 0;
-    for (const auto& blk : fn.blocks) {
-        for (const auto& inst : blk->instructions) {
-            if (inst.result.id >= tmpCounter) tmpCounter = inst.result.id + 1;
-            for (const auto& op : inst.operands) {
-                if (op.id >= tmpCounter) tmpCounter = op.id + 1;
-            }
-        }
-    }
+    //   分配器的表按 id 索引，超大 id 曾致越界段错误（256-a 实测 rc=139））。
+    //   1268 起最大编号口径统一走 ir::maxVirtualRegId（含 i128 双槽/终止字段）。
+    int tmpCounter = ir::maxVirtualRegId(fn) + 1;
     for (std::size_t b = 0; b < fn.blocks.size(); ++b) {
         auto& block = fn.blocks[b];
         struct PhiInfo { std::string slot; int resultId; std::string type;

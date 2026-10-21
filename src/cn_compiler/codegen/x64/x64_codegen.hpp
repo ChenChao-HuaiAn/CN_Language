@@ -334,9 +334,6 @@ private:
     // 计算函数栈帧大小（变量槽区 + 寄存器槽区，16字节对齐）
     int computeFrameSize(const ir::IRFunction& function) const;
 
-    // 扫描函数内最大虚拟寄存器ID（用于寄存器槽区预留）
-    static int maxRegIdIn(const ir::IRFunction& function);
-
     // ==================== 变量槽映射 ====================
 
     // 登记一个变量（参数/局部）到变量槽映射，返回槽索引

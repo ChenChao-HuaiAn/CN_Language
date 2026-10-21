@@ -337,27 +337,6 @@ std::vector<int> domPreorder(const DomTree& dom) {
     return order;
 }
 
-// 函数内最大虚拟寄存器 id（新寄存器自 max+1 连续分配——不得跳大，RA 表按 id 索引）
-int maxRegId(const ir::IRFunction& fn) {
-    int maxId = -1;
-    for (const auto& blk : fn.blocks) {
-        for (const auto& inst : blk->instructions) {
-            if (inst.result.id >= 0 && inst.result.id > maxId) maxId = inst.result.id;
-            for (const auto& op : inst.operands) {
-                if (op.id >= 0 && op.id > maxId) maxId = op.id;
-            }
-        }
-        if (blk->terminated && blk->termCondition.size() > 2 &&
-            blk->termCondition[0] == '%' && blk->termCondition[1] == 'v') {
-            try {
-                const int id = std::stoi(blk->termCondition.substr(2));
-                if (id > maxId) maxId = id;
-            } catch (...) {}
-        }
-    }
-    return maxId;
-}
-
 // 终止字段文本 "%v<id>" 替换（被删 Load 的 result 仅存于 termCondition/
 //   termReturnValue 文本时·指令遍历覆盖不到——逐块同步）
 bool replaceTermTexts(ir::IRFunction& fn, const RegRewriteMap& regRewrite) {
@@ -537,7 +516,9 @@ bool Mem2RegPass::run(ir::IRModule& module) {
         }
 
         // ---- φ 分配 + 预检（写前验证·失败整函数放弃·原指令未动）----
-        int nextReg = maxRegId(fn) + 1;
+        // 新寄存器自函数最大编号+1 连续分配（不得跳大——RA 表按 id 索引）；
+        //   最大编号口径统一走 ir::maxVirtualRegId（1268 单一事实源）。
+        int nextReg = ir::maxVirtualRegId(fn) + 1;
         struct PhiPlan {
             int resultReg;
             std::string slot;

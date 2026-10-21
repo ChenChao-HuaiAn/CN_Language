@@ -59,7 +59,6 @@ IRModule buildMinModule() {
     block->termReturnValue = "%v1";
 
     func.blocks.push_back(std::move(block));
-    func.nextRegId = 2;
     module.functions.push_back(std::move(func));
     return module;
 }
@@ -90,7 +89,6 @@ IRModule buildStringModule() {
     block->termReturnValue = "%v0";
 
     func.blocks.push_back(std::move(block));
-    func.nextRegId = 1;
     module.functions.push_back(std::move(func));
     return module;
 }
@@ -274,7 +272,6 @@ IRModule buildI64SingleModule() {
     block->termKind = "返回";
     block->termReturnValue = "%v0";
     func.blocks.push_back(std::move(block));
-    func.nextRegId = 1;
     module.functions.push_back(std::move(func));
     return module;
 }
@@ -334,7 +331,6 @@ IRModule buildBigFrameModule(int varCount) {
     block->termKind = "返回";
     block->termReturnValue = "%v0";
     func.blocks.push_back(std::move(block));
-    func.nextRegId = 1;
     module.functions.push_back(std::move(func));
     return module;
 }

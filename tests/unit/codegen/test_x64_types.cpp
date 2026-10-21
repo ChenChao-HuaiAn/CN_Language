@@ -46,7 +46,6 @@ IRModule buildFloatConstModule() {
     block->termReturnValue = "%v0";
 
     func.blocks.push_back(std::move(block));
-    func.nextRegId = 1;
     module.functions.push_back(std::move(func));
     return module;
 }
@@ -88,7 +87,6 @@ IRModule buildFloatAddModule() {
     block->termReturnValue = "%v2";
 
     func.blocks.push_back(std::move(block));
-    func.nextRegId = 3;
     module.functions.push_back(std::move(func));
     return module;
 }
@@ -130,7 +128,6 @@ IRModule buildSmallIntAddModule() {
     block->termReturnValue = "%v2";
 
     func.blocks.push_back(std::move(block));
-    func.nextRegId = 3;
     module.functions.push_back(std::move(func));
     return module;
 }
@@ -165,7 +162,6 @@ IRModule buildCastWidenModule() {
     block->termReturnValue = "%v1";
 
     func.blocks.push_back(std::move(block));
-    func.nextRegId = 2;
     module.functions.push_back(std::move(func));
     return module;
 }
@@ -246,7 +242,6 @@ TEST(X64TypeTest, CastIntToFloatUsesCvtsi2sd) {
     block->termReturnValue = "%v1";
 
     func.blocks.push_back(std::move(block));
-    func.nextRegId = 2;
     module.functions.push_back(std::move(func));
 
     std::string asmText = genAsm(module);
@@ -285,7 +280,6 @@ TEST(X64TypeTest, CastFloatToIntUsesSaturateHelper) {
     block->termReturnValue = "%v1";
 
     func.blocks.push_back(std::move(block));
-    func.nextRegId = 2;
     module.functions.push_back(std::move(func));
 
     std::string asmText = genAsm(module);
@@ -331,7 +325,6 @@ TEST(X64TypeTest, ShiftLeftUsesShl) {
     block->termReturnValue = "%v2";
 
     func.blocks.push_back(std::move(block));
-    func.nextRegId = 3;
     module.functions.push_back(std::move(func));
 
     std::string asmText = genAsm(module);
@@ -383,7 +376,6 @@ TEST(X64TypeTest, BitwiseUsesAndXor) {
     block->termReturnValue = "%v3";
 
     func.blocks.push_back(std::move(block));
-    func.nextRegId = 4;
     module.functions.push_back(std::move(func));
 
     std::string asmText = genAsm(module);
@@ -438,7 +430,6 @@ TEST(X64TypeTest, DivZeroCheckEmittedForRuntimeDivisor) {
     block->termReturnValue = "%v2";
 
     func.blocks.push_back(std::move(block));
-    func.nextRegId = 3;
     module.functions.push_back(std::move(func));
 
     std::string asmText = genAsm(module);
@@ -479,7 +470,6 @@ TEST(X64TypeTest, DivConstantDivisorMovesToReg) {
     block->termReturnValue = "%v1";
 
     func.blocks.push_back(std::move(block));
-    func.nextRegId = 2;
     module.functions.push_back(std::move(func));
 
     std::string asmText = genAsm(module);
@@ -527,7 +517,6 @@ TEST(X64TypeTest, UnsignedDivUsesDivNotIdiv) {
     block->termReturnValue = "%v2";
 
     func.blocks.push_back(std::move(block));
-    func.nextRegId = 3;
     module.functions.push_back(std::move(func));
 
     std::string asmText = genAsm(module);
@@ -575,7 +564,6 @@ TEST(X64TypeTest, UnsignedCompareUsesSetaNotSetg) {
     block->termReturnValue = "%v2";
 
     func.blocks.push_back(std::move(block));
-    func.nextRegId = 3;
     module.functions.push_back(std::move(func));
 
     std::string asmText = genAsm(module);
@@ -607,7 +595,6 @@ TEST(X64TypeTest, U32LoadPtrZeroExtends) {
     block->termReturnValue = "%v1";
 
     func.blocks.push_back(std::move(block));
-    func.nextRegId = 2;
     module.functions.push_back(std::move(func));
 
     std::string asmText = genAsm(module);
@@ -638,7 +625,6 @@ TEST(X64TypeTest, FloatReturnSetsXmm0) {
     block->termReturnValue = "%v0";
 
     func.blocks.push_back(std::move(block));
-    func.nextRegId = 1;
     module.functions.push_back(std::move(func));
 
     std::string asmText = genAsm(module);

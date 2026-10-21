@@ -470,38 +470,11 @@ bool LinuxX64CodeGenerator::hasRegisterConflict(const ir::IRInstruction& inst) c
     return false;
 }
 
-// 扫描函数内最大虚拟寄存器ID（i128/u128 值占 2 个连续虚拟寄存器）
-int LinuxX64CodeGenerator::maxRegIdIn(const ir::IRFunction& function) {
-    int maxId = -1;
-    auto check = [&maxId](const ir::IRValue& v) {
-        if (v.id < 0) return;
-        if (v.type == "i128" || v.type == "u128") {
-            if (v.id + 1 > maxId) maxId = v.id + 1;
-        } else if (v.id > maxId) {
-            maxId = v.id;
-        }
-    };
-    for (auto& block : function.blocks) {
-        for (auto& inst : block->instructions) {
-            check(inst.result);
-            for (auto& op : inst.operands) check(op);
-        }
-        if (!block->termReturnValue.empty()) {
-            auto& s = block->termReturnValue;
-            if (s.size() > 2 && s[0] == '%' && s[1] == 'v') {
-                const int id = std::stoi(s.substr(2));
-                if (id > maxId) maxId = id;
-            }
-        }
-    }
-    return maxId;
-}
-
 // 计算函数栈帧大小：变量槽区 + 寄存器槽区（maxRegId+1个槽），16字节对齐
 // （SysV call 对齐纪律：见文件头注释——needHiddenRet 时分配量另 +8，见 emitPrologue）
 int LinuxX64CodeGenerator::computeFrameSize(const ir::IRFunction& function) const {
     const int varBytes = varSlotAreaSize();
-    const int regCount = maxRegIdIn(function) + 1;
+    const int regCount = ir::maxVirtualRegId(function) + 1;
     const int regBytes = (regCount > 0) ? regCount * 8 : 0;
     const int total = varBytes + regBytes;
     return ((total + 15) / 16) * 16;
@@ -693,7 +666,7 @@ void LinuxX64CodeGenerator::prepareRegisterAllocation(const ir::IRFunction& func
     const bool useRegAlloc = regAllocEnabled_ && !currentNeedHiddenRet_ && !tooSmall;
     if (useRegAlloc) {
         regalloc::LinearScanAllocator allocator(regalloc::TargetArch::LinuxX64);
-        // regSlotCount_ 已由 maxRegIdIn 实测（= 最大ID+1）——传最大ID免二次扫描
+        // regSlotCount_ 已由 ir::maxVirtualRegId 实测（= 最大ID+1）——传最大ID免二次扫描
         regAllocMap_ = allocator.allocate(function, regSlotCount_ - 1);
         for (const auto& kv : regAllocMap_) {
             if (!kv.second.assignedReg.empty()) {
@@ -753,7 +726,7 @@ void LinuxX64CodeGenerator::registerReferencedVarSlots(const ir::IRFunction& fun
 }
 
 std::string LinuxX64CodeGenerator::generateFunctionAssembly(const ir::IRFunction& function) {
-    regSlotCount_ = maxRegIdIn(function) + 1;
+    regSlotCount_ = ir::maxVirtualRegId(function) + 1;
     varSlots_.clear();
     // 任务 474：函数级不安全 状态（体内算术/移位/除法不插溢出检查·判空豁免同源）
     currentFnUnsafe474_ = function.isUnsafe;

@@ -49,7 +49,6 @@ IRModule buildFuncPtrModule() {
     addBlock->termKind = "返回";
     addBlock->termReturnValue = "%v0";
     addFunc.blocks.push_back(std::move(addBlock));
-    addFunc.nextRegId = 1;
     module.functions.push_back(std::move(addFunc));
 
     // 主函数 main
@@ -119,7 +118,6 @@ IRModule buildFuncPtrModule() {
     block->termKind = "返回";
     block->termReturnValue = "%v4";
     mainFunc.blocks.push_back(std::move(block));
-    mainFunc.nextRegId = 5;
     module.functions.push_back(std::move(mainFunc));
     return module;
 }
@@ -151,7 +149,6 @@ IRModule buildExternCallModule() {
     block->termKind = "返回";
     block->termReturnValue = "%v1";
     func.blocks.push_back(std::move(block));
-    func.nextRegId = 2;
     module.functions.push_back(std::move(func));
     return module;
 }
@@ -241,7 +238,6 @@ TEST(X64FunctionTest, FloatParamReadFromXmm) {
     block->termReturnValue = "%v0";
 
     func.blocks.push_back(std::move(block));
-    func.nextRegId = 1;
     module.functions.push_back(std::move(func));
 
     std::string asm_ = genAssembly(module);

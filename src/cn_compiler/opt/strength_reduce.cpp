@@ -104,19 +104,7 @@ bool StrengthReducePass::reduceInstruction(ir::IRInstruction& inst, bool mulMayO
     return false;
 }
 
-// F1-29（227-a）：函数内最大虚拟寄存器 id（新寄存器从 max+1 起分配·防与原编号冲突）
-int StrengthReducePass::maxRegIdOf(const ir::IRFunction& fn) {
-    int maxId = -1;
-    for (const auto& block : fn.blocks) {
-        for (const auto& inst : block->instructions) {
-            if (inst.result.id > maxId) maxId = inst.result.id;
-            for (const auto& op : inst.operands) {
-                if (!op.isConstant && op.id > maxId) maxId = op.id;
-            }
-        }
-    }
-    return maxId;
-}
+// F1-29（227-a）：新寄存器编号基准——1268 起统一走 ir::maxVirtualRegId（单一事实源）。
 
 // F1-29（227-a）：有符号除法展开——Div x, 2^n（i8/i16/i32/i64）→ 4 条无分支修正序列：
 //   t1 = x >> (BW-1)      ; 算术右移（Shr 对有符号类型 = 算术）→ 全1（负）/ 0（正）
@@ -182,8 +170,8 @@ bool StrengthReducePass::run(ir::IRModule& module) {
         // 任务 474：安全函数的 Mul 受错误码 8 溢出检查——Mul→Shl 非等价跳过
         const bool mulMayOvfl474 = !fn.isUnsafe;
         // 新寄存器基址仅在激进模式（有符号除法展开）需要：-O2 默认关时
-        //   跳过整函数扫描（maxRegIdOf），语义不变（nextReg 未被使用）
-        int nextReg = signedDivEnabled_ ? maxRegIdOf(fn) + 1 : 0;
+        //   跳过整函数扫描（ir::maxVirtualRegId），语义不变（nextReg 未被使用）
+        int nextReg = signedDivEnabled_ ? ir::maxVirtualRegId(fn) + 1 : 0;
         for (auto& block : fn.blocks) {
             auto& insts = block->instructions;
             for (std::size_t i = 0; i < insts.size(); ++i) {

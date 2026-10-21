@@ -20,6 +20,7 @@ using cn_compiler::Parser;
 using cn_compiler::Program;
 using cn_compiler::ir::IRBlock;
 using cn_compiler::ir::IRModule;
+using cn_compiler::ir::IRValue;
 using cn_compiler::ir::Opcode;
 
 namespace {
@@ -211,26 +212,121 @@ TEST(IRFunctionTest, RegIdResetPerFunction) {
     EXPECT_FALSE(r.diagnostics.hasErrors());
     // 全部函数生成
     EXPECT_EQ(r.module.functions.size(), 7u);
-    // 逐函数最大寄存器 ID（含 i128 双寄存器扩展语义——此处标量简单函数恒小）
-    auto maxRegId = [](const cn_compiler::ir::IRFunction& f) {
-        int m = -1;
-        for (auto& block : f.blocks) {
-            for (auto& inst : block->instructions) {
-                if (inst.result.id > m) m = inst.result.id;
-                for (auto& op : inst.operands) {
-                    if (op.id > m) m = op.id;
-                }
-            }
-        }
-        return m;
-    };
+    // 逐函数最大寄存器 ID（1268 起统一走 ir::maxVirtualRegId 单一事实源）
     // 尾部函数与头部函数同为单表达式函数——寄存器号不应随模块内位置增长
     int headIdx = findFunction(r.module, "头部函数");
     int tailIdx = findFunction(r.module, "尾部函数");
     ASSERT_GE(headIdx, 0);
     ASSERT_GE(tailIdx, 0);
-    int headMax = maxRegId(r.module.functions[headIdx]);
-    int tailMax = maxRegId(r.module.functions[tailIdx]);
+    int headMax = cn_compiler::ir::maxVirtualRegId(r.module.functions[headIdx]);
+    int tailMax = cn_compiler::ir::maxVirtualRegId(r.module.functions[tailIdx]);
     EXPECT_LE(tailMax, headMax + 4);  // 同形态函数：寄存器号同量级（复位后恒小）
     EXPECT_LT(tailMax, 32);           // 修复杂锚：全局递增下尾部函数继承 6 个前驱的号
+}
+
+// ==================== 最大虚拟寄存器编号查询（1268 单一事实源） ====================
+
+namespace {
+
+// 构造一条测试指令（结果+操作数+类型）
+cn_compiler::ir::IRInstruction makeInst(
+    Opcode opcode, const IRValue& result,
+    const std::vector<IRValue>& operands = {}, const std::string& type = "") {
+    cn_compiler::ir::IRInstruction inst;
+    inst.opcode = opcode;
+    inst.result = result;
+    inst.operands = operands;
+    inst.type = type;
+    return inst;
+}
+
+} // namespace
+
+// 多块 + 终止字段：结果/非恒定操作数/termCondition/termReturnValue 全覆盖，
+//   取全部引用面的最大编号（终止字段文本 %v9/%v12 高于任何指令结果）。
+TEST(IRFunctionTest, MaxVirtualRegIdCoversBlocksAndTermFields) {
+    cn_compiler::ir::IRFunction fn;
+    fn.name = "多块";
+
+    auto block0 = std::make_unique<IRBlock>();
+    block0->label = "块0";
+    block0->instructions.push_back(
+        makeInst(Opcode::ConstInt, IRValue::reg(2, "i32"), {}, "i32"));
+    block0->terminated = true;
+    block0->termKind = "条件跳转";
+    block0->termCondition = "%v9";
+    block0->termTrueTarget = "块1";
+    block0->termFalseTarget = "块1";
+
+    auto block1 = std::make_unique<IRBlock>();
+    block1->label = "块1";
+    block1->instructions.push_back(makeInst(
+        Opcode::Add, IRValue::reg(4, "i64"),
+        {IRValue::reg(3, "i64"), IRValue::constant("1", "i64")}, "i64"));
+    block1->terminated = true;
+    block1->termKind = "返回";
+    block1->termReturnValue = "%v12";
+
+    fn.blocks.push_back(std::move(block0));
+    fn.blocks.push_back(std::move(block1));
+    EXPECT_EQ(cn_compiler::ir::maxVirtualRegId(fn), 12);
+}
+
+// i128/u128 双槽：值占 id 与 id+1，最大编号按 id+1 计（结果与操作数同规）。
+TEST(IRFunctionTest, MaxVirtualRegIdCountsI128DoubleSlot) {
+    cn_compiler::ir::IRFunction fn;
+    fn.name = "宽值";
+
+    auto block = std::make_unique<IRBlock>();
+    block->label = "块0";
+    block->instructions.push_back(
+        makeInst(Opcode::ConstInt, IRValue::reg(7, "i128"), {}, "i128"));
+    block->instructions.push_back(makeInst(
+        Opcode::Add, IRValue::reg(2, "i64"),
+        {IRValue::reg(9, "u128"), IRValue::constant("1", "u128")}, "i64"));
+    block->terminated = true;
+    block->termKind = "返回";
+    block->termReturnValue = "%v2";
+
+    fn.blocks.push_back(std::move(block));
+    EXPECT_EQ(cn_compiler::ir::maxVirtualRegId(fn), 10);
+}
+
+// 边界：空函数/无块 -> -1；仅常量、变量引用与负 id 结果 -> -1；
+//   终止字段常量文本（"真"/空）不计入编号。
+TEST(IRFunctionTest, MaxVirtualRegIdEmptyAndNonRegisterValues) {
+    cn_compiler::ir::IRFunction emptyFn;
+    emptyFn.name = "空函数";
+    EXPECT_EQ(cn_compiler::ir::maxVirtualRegId(emptyFn), -1);
+
+    cn_compiler::ir::IRFunction fn;
+    fn.name = "无寄存器";
+    auto block = std::make_unique<IRBlock>();
+    block->label = "块0";
+    block->instructions.push_back(makeInst(
+        Opcode::Store, IRValue(),
+        {IRValue::constant("0", "i32"), IRValue::var("x$0", "i32")}, "i32"));
+    block->terminated = true;
+    block->termKind = "条件跳转";
+    block->termCondition = "真";
+    block->termTrueTarget = "块0";
+    block->termFalseTarget = "块0";
+    fn.blocks.push_back(std::move(block));
+    EXPECT_EQ(cn_compiler::ir::maxVirtualRegId(fn), -1);
+}
+
+// 终止字段文本解析契约：严格 "%vN"（纯十进制非负编号）；常量文本/负号/
+//   尾随字符均不是寄存器引用（否定回答，不猜测编号）。
+TEST(IRFunctionTest, ParseVirtualRegIdTextContract) {
+    int id = -1;
+    EXPECT_TRUE(cn_compiler::ir::parseVirtualRegIdText("%v0", id));
+    EXPECT_EQ(id, 0);
+    EXPECT_TRUE(cn_compiler::ir::parseVirtualRegIdText("%v2147483647", id));
+    EXPECT_EQ(id, 2147483647);
+    EXPECT_FALSE(cn_compiler::ir::parseVirtualRegIdText("", id));
+    EXPECT_FALSE(cn_compiler::ir::parseVirtualRegIdText("真", id));
+    EXPECT_FALSE(cn_compiler::ir::parseVirtualRegIdText("%v", id));
+    EXPECT_FALSE(cn_compiler::ir::parseVirtualRegIdText("%v-1", id));
+    EXPECT_FALSE(cn_compiler::ir::parseVirtualRegIdText("%v12x", id));
+    EXPECT_FALSE(cn_compiler::ir::parseVirtualRegIdText("%v2147483648", id));
 }

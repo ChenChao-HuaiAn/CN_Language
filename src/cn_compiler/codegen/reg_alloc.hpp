@@ -68,7 +68,7 @@ public:
 
     // 主入口：对函数做寄存器分配，返回虚拟寄存器 -> 分配结果
     //  - 仅对可分配类型分配物理寄存器；其余保持栈槽映射（assignedReg 空）
-    //  - maxRegId：调用方已知的函数最大虚拟寄存器ID（同后端 maxRegIdIn 口径）；
+    //  - maxRegId：调用方已知的函数最大虚拟寄存器ID（同 ir::maxVirtualRegId 口径）；
     //    -1=内部实测（1256：免后端路径二次全函数扫描）
     RegAssignmentMap allocate(const ir::IRFunction& function, int maxRegId = -1);
 

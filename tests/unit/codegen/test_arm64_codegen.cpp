@@ -61,7 +61,6 @@ IRModule buildMinModule() {
     block->termReturnValue = "%v1";
 
     func.blocks.push_back(std::move(block));
-    func.nextRegId = 2;
     module.functions.push_back(std::move(func));
     return module;
 }
@@ -91,7 +90,6 @@ IRModule buildStringModule() {
     block->termReturnValue = "%v0";
 
     func.blocks.push_back(std::move(block));
-    func.nextRegId = 1;
     module.functions.push_back(std::move(func));
     return module;
 }
@@ -295,7 +293,6 @@ TEST(Arm64CodegenTest, FloatArithmetic) {
     block->termReturnValue = "%v1";
 
     func.blocks.push_back(std::move(block));
-    func.nextRegId = 2;
     module.functions.push_back(std::move(func));
 
     std::string asmText = generator.generateAssembly(module);
@@ -341,7 +338,6 @@ TEST(Arm64CodegenTest, Int128Binary) {
     block->termReturnValue = "";
 
     func.blocks.push_back(std::move(block));
-    func.nextRegId = 4;
     module.functions.push_back(std::move(func));
 
     std::string asmText = generator.generateAssembly(module);
@@ -388,7 +384,6 @@ TEST(Arm64CodegenTest, FieldAddrAccess) {
     block->termReturnValue = "%v1";
 
     func.blocks.push_back(std::move(block));
-    func.nextRegId = 2;
     module.functions.push_back(std::move(func));
 
     std::string asmText = generator.generateAssembly(module);
@@ -427,7 +422,6 @@ TEST(Arm64CodegenTest, NewObjectEmit) {
     block->termReturnValue = "%v0";
 
     func.blocks.push_back(std::move(block));
-    func.nextRegId = 1;
     module.functions.push_back(std::move(func));
 
     std::string asmText = generator.generateAssembly(module);
@@ -473,7 +467,6 @@ TEST(Arm64CodegenTest, VirtualCallEmit) {
     block->termReturnValue = "%v1";
 
     func.blocks.push_back(std::move(block));
-    func.nextRegId = 2;
     module.functions.push_back(std::move(func));
 
     std::string asmText = generator.generateAssembly(module);
@@ -526,7 +519,6 @@ TEST(Arm64CodegenTest, ConditionalBranch) {
     func.blocks.push_back(std::move(block));
     func.blocks.push_back(std::move(block1));
     func.blocks.push_back(std::move(block2));
-    func.nextRegId = 2;
     module.functions.push_back(std::move(func));
 
     std::string asmText = generator.generateAssembly(module);
@@ -565,7 +557,6 @@ TEST(Arm64CodegenTest, DirectCall) {
     block->termReturnValue = "%v0";
 
     func.blocks.push_back(std::move(block));
-    func.nextRegId = 1;
     module.functions.push_back(std::move(func));
 
     std::string asmText = generator.generateAssembly(module);
@@ -591,7 +582,6 @@ static IRModule buildSretI64ParamsModule(int paramCount) {
     block->terminated = true;
     block->termKind = "返回";
     func.blocks.push_back(std::move(block));
-    func.nextRegId = 0;
     module.functions.push_back(std::move(func));
     return module;
 }
@@ -631,7 +621,6 @@ TEST(Arm64CodegenTest, PlainStackParamAnchorBase16) {
     block->terminated = true;
     block->termKind = "返回";
     func.blocks.push_back(std::move(block));
-    func.nextRegId = 0;
     module.functions.push_back(std::move(func));
 
     std::string asmText = generator.generateAssembly(module);
@@ -663,7 +652,6 @@ TEST(Arm64CodegenTest, SretFloatParamPositionAndAnchor) {
     block->terminated = true;
     block->termKind = "返回";
     func.blocks.push_back(std::move(block));
-    func.nextRegId = 0;
     module.functions.push_back(std::move(func));
 
     std::string asmText = generator.generateAssembly(module);

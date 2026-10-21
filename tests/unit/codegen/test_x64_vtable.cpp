@@ -36,7 +36,6 @@ std::string genAsmWithInst(const IRInstruction& target) {
     block->termKind = "返回";
 
     func.blocks.push_back(std::move(block));
-    func.nextRegId = 8;
     module.functions.push_back(std::move(func));
 
     Diagnostics diagnostics;

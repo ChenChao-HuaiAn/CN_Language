@@ -60,7 +60,6 @@ IRModule buildAddrOfModule() {
     block->termReturnValue = "%v0";
 
     func.blocks.push_back(std::move(block));
-    func.nextRegId = 1;
     module.functions.push_back(std::move(func));
     return module;
 }
@@ -88,7 +87,6 @@ IRModule buildLoadPtrModule() {
     block->termReturnValue = "%v0";
 
     func.blocks.push_back(std::move(block));
-    func.nextRegId = 1;
     module.functions.push_back(std::move(func));
     return module;
 }
@@ -116,7 +114,6 @@ IRModule buildStorePtrModule() {
     block->termReturnValue = "";
 
     func.blocks.push_back(std::move(block));
-    func.nextRegId = 0;
     module.functions.push_back(std::move(func));
     return module;
 }
@@ -208,7 +205,6 @@ TEST(X64PointerTest, ArrayMultiSlot) {
     block->termReturnValue = "";
 
     func.blocks.push_back(std::move(block));
-    func.nextRegId = 1;
     module.functions.push_back(std::move(func));
 
     Diagnostics diagnostics;

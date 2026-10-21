@@ -67,7 +67,6 @@ IRFunction buildSimpleFunc() {
     block->termKind = "返回";
     block->termReturnValue = "%v3";
     func.blocks.push_back(std::move(block));
-    func.nextRegId = 4;
     return func;
 }
 
@@ -78,7 +77,6 @@ IRFunction buildBranchFunc() {
     IRFunction func;
     func.name = "branch";
     func.returnType = "i64";
-    func.nextRegId = 3;
 
     auto block0 = std::make_unique<IRBlock>();
     block0->label = "blk0";
@@ -169,7 +167,6 @@ IRFunction buildCrossBlockChain() {
     IRFunction func;
     func.name = "cross-block chain";
     func.returnType = "i64";
-    func.nextRegId = 4;
     auto mkConst = [](int id) {
         IRInstruction c;
         c.opcode = Opcode::ConstInt;
@@ -212,7 +209,6 @@ IRFunction buildLoopCarried() {
     IRFunction func;
     func.name = "循环携带val";
     func.returnType = "i64";
-    func.nextRegId = 6;
     auto mkConst = [](int id, const std::string& val) {
         IRInstruction c;
         c.opcode = Opcode::ConstInt;
@@ -488,7 +484,6 @@ TEST(RegAllocTest, SpillWhenRegsExhausted) {
     block->termKind = "返回";
     block->termReturnValue = "%v15";
     func.blocks.push_back(std::move(block));
-    func.nextRegId = 16;
 
     LinearScanAllocator allocator(TargetArch::X64);
     const RegAssignmentMap map = allocator.allocate(func);
@@ -585,7 +580,6 @@ TEST(RegAllocTest, NarrowTypesAllocatedAllArch) {
         block->termKind = "返回";
         block->termReturnValue = "%v0";
         func.blocks.push_back(std::move(block));
-        func.nextRegId = 1;
 
         LinearScanAllocator allocator(arch);
         const RegAssignmentMap map = allocator.allocate(func);
@@ -615,7 +609,6 @@ TEST(RegAllocTest, LinuxX64AllocatesNarrowTypes) {
         block->termKind = "返回";
         block->termReturnValue = "%v0";
         func.blocks.push_back(std::move(block));
-        func.nextRegId = 1;
 
         LinearScanAllocator allocator(TargetArch::LinuxX64);
         const RegAssignmentMap map = allocator.allocate(func);

@@ -212,7 +212,6 @@ TEST(X64OopTest, NoSemanticRegression) {
     block->termKind = "返回";
     block->termReturnValue = "%v0";
     func.blocks.push_back(std::move(block));
-    func.nextRegId = 1;
     module.functions.push_back(std::move(func));
 
     Diagnostics diagnostics;

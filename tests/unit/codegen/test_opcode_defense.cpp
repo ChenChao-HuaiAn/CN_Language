@@ -56,7 +56,6 @@ IRModule buildSingleOpcodeModule(Opcode op) {
     block->termReturnValue = "%v1";
 
     func.blocks.push_back(std::move(block));
-    func.nextRegId = 2;
     module.functions.push_back(std::move(func));
     return module;
 }

@@ -74,7 +74,6 @@ IRModule buildFieldAddrModule() {
     block->termReturnValue = "%v2";
 
     func.blocks.push_back(std::move(block));
-    func.nextRegId = 3;
     module.functions.push_back(std::move(func));
     return module;
 }
@@ -110,7 +109,6 @@ IRModule buildArrowFieldModule() {
     block->termReturnValue = "%v1";
 
     func.blocks.push_back(std::move(block));
-    func.nextRegId = 2;
     module.functions.push_back(std::move(func));
     return module;
 }
