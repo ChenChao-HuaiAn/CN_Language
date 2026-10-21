@@ -859,12 +859,14 @@ void LinuxX64CodeGenerator::emitBlock(LinuxX64AsmWriter& writer, const ir::IRBlo
 
 // 任务 1145：由 ptrCheckCounter_ 派生的函数级标签前缀（前缀后紧跟十进制编号）。
 //   拼接期按前序函数标签总数平移局部编号，恢复模块级串行编号（产物逐字节一致）。
+//   1170：表必须与实际发射点一一对应（check_parallel_prefix.py 机械核对）——
+//   本后端只用 Lovf（错误块后缀 "_ok" 由平移后的前缀编号自然覆盖），不复制
+//   x64/arm64 的 Lovf_ok/Lfield_err/Lptr_err/Ldiv_n1_/Ldiv_e1_ 等死表项。
 namespace {
 const std::vector<std::string>& linuxX64LabelPrefixes() {
     static const std::vector<std::string> prefixes = {
-        "Lfnptr_ok", "Lobjdel_ok", "Lfield_ok", "Lfield_err", "Lptr_ok", "Lptr_err",
-        "Lovf_ok", "Lovf", "Ldiv_ok", "Ldiv_norm", "Ldiv_end", "Ldmin_ok",
-        "Ldiv_n1_", "Ldiv_e1_", "Lsh128_b", "Lsh128_e"};
+        "Lfnptr_ok", "Lobjdel_ok", "Lfield_ok", "Lptr_ok", "Lovf", "Ldiv_ok",
+        "Ldiv_norm", "Ldiv_end", "Ldmin_ok", "Lsh128_b", "Lsh128_e"};
     return prefixes;
 }
 }  // namespace

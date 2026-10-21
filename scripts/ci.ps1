@@ -51,6 +51,10 @@ Write-Host "[CI] 0.9/4 语法接受面↔语义实现面同步门禁（871·762/
 python scripts/check_syntax_semantic_sync.py
 if ($LASTEXITCODE -ne 0) { Write-Host "[CI] 语法接受面↔语义实现面同步门禁失败" -ForegroundColor Red; exit 1 }
 
+Write-Host "[CI] 0.92/4 并行 codegen 标签前缀表守卫（1170·1145 并行平移依赖三后端 prefix 表：发射源新增 ptrCheckCounter_ 派生前缀未同步表=并行漏平移产物静默漂移；缺失/陈旧/未分类三面+接线机械核对）..." -ForegroundColor Cyan
+python scripts/check_parallel_prefix.py
+if ($LASTEXITCODE -ne 0) { Write-Host "[CI] 并行 codegen 标签前缀表守卫失败" -ForegroundColor Red; exit 1 }
+
 Write-Host "[CI] 1/4 构建（/W4 /WX 零警告门禁）..." -ForegroundColor Cyan
 & powershell -ExecutionPolicy Bypass -File build.ps1 -Config Debug
 if ($LASTEXITCODE -ne 0) { Write-Host "[CI] 构建失败" -ForegroundColor Red; exit 1 }

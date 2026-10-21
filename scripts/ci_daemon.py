@@ -312,6 +312,11 @@ def 静态门禁与e2e段(步骤们: dict, 步骤, cn: Path | None, 日志, sha:
                   #   只产汇编不调 as/ld·秒级）——守备溢出/判零/移位域守卫序列的
                   #   条件码级正确性机械对照。
                   ("check_cross_asm_guards", ["--cn", str(cn)]),
+                  # 1170：并行 codegen 标签前缀表守卫——1145 并行发射按三后端
+                  #   prefix 表平移局部标签编号；新增 ptrCheckCounter_ 派生前缀未
+                  #   同步表=并行漏平移产物静默漂移。纯源码静态核对（缺失/陈旧/
+                  #   未分类+接线），与 L1 gate_quick 静态段/win 全量 ci.ps1 同口径。
+                  ("check_parallel_prefix", []),
                   ("check_matrix_coverage", []),
                   ("check_file_length", ["--freeze"])):
         if cn is None and "--cn" in 参:

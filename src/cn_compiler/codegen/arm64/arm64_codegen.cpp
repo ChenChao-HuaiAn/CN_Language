@@ -704,12 +704,14 @@ void Arm64CodeGenerator::emitBlock(Arm64AsmWriter& writer, const ir::IRBlock& bl
 
 // 任务 1145：由 ptrCheckCounter_ 派生的函数级标签前缀（前缀后紧跟十进制编号）。
 //   拼接期按前序函数标签总数平移局部编号，恢复模块级串行编号（产物逐字节一致）。
+//   1170：表必须与实际发射点一一对应（check_parallel_prefix.py 机械核对）——
+//   本后端不发射 Lfield_err/Lptr_err/Ldiv_norm/Ldiv_end/Ldmin_ok（x64/linux 专有
+//   标签形态），复制进来的死表项已清除（死表项会掩盖真漏登记，必须归零）。
 namespace {
 const std::vector<std::string>& arm64LabelPrefixes() {
     static const std::vector<std::string> prefixes = {
-        "Lfnptr_ok", "Lobjdel_ok", "Lfield_ok", "Lfield_err", "Lptr_ok", "Lptr_err",
-        "Lovf_ok", "Lovf", "Ldiv_ok", "Ldiv_norm", "Ldiv_end", "Ldmin_ok",
-        "Ldiv_n1_", "Ldiv_e1_", "Lsh128_b", "Lsh128_e", "Lsh128_z"};
+        "Lfnptr_ok", "Lobjdel_ok", "Lfield_ok", "Lptr_ok", "Lovf_ok", "Lovf",
+        "Ldiv_ok", "Ldiv_n1_", "Ldiv_e1_", "Lsh128_b", "Lsh128_e", "Lsh128_z"};
     return prefixes;
 }
 }  // namespace
