@@ -12,9 +12,18 @@
   · 超时/并行两常量保持 daemon 单源（911 可调常量集中区）：win构建链/linux构建链
     以参数注入（单轮总超时秒 / 构建并行），本模块内部逐行代码不变。
   · 树根/日志目录本模块自推导（与 ci_daemon 同式·__file__ 上两级——同树同值）。
+
+1299（2026-10-21）：linux 构建段补编译器缓存（ccache/sccache 自动探测）——缘由=门禁表
+构建段 63s（家机 WSL 4 作业）↔372s（深度机 2 核 2 作业）差异中「预验 637 清产物后全量
+冷编」是常态成本；win 侧早由 sccache（291）吸收 523 清建成本，linux 侧此前零缓存=两
+平台构建配置不对等。预验「干净构建」语义不变（target/ 仍全清、CMake 从零配置；缓存
+只复用「预处理后源码+编译器+编译选项」哈希完全一致的编译结果，等价 win sccache 先例），
+告警文本照常回放（ccache 命中会重放 stderr）。CN_BUILD_CACHE 控制：未设/auto=探测
+ccache→sccache→不启用；off/0/false/no/关闭/否=显式关闭；其他值=原样作 launcher 路径。
 """
 from __future__ import annotations
 
+import os
 import shutil
 from pathlib import Path
 
@@ -131,12 +140,54 @@ def win构建链(步骤们: dict, 步骤, 日志, vcvars: Path, 当前头: str,
         print("  [523] 构建指纹已更新：%s" % 当前头[:10], file=日志, flush=True)
 
 
-def linux构建链(步骤们: dict, 步骤, 构建并行: int, 单轮总超时秒: int) -> None:
+# ═══════════ 1299 linux 编译器缓存（ccache/sccache·预验冷建成本） ═══════════
+缓存关闭词 = frozenset(("off", "0", "false", "no", "关闭", "否"))
+
+
+def 选编译器缓存(环境=None, 探测器=None) -> str | None:
+    """linux 构建编译器缓存选择（1299·纯函数可注入自测）。
+
+    CN_BUILD_CACHE 语义（运维旋钮·缺省 auto）：
+      · 未设 / auto      → 依次探测 ccache、sccache，命中返回路径；都无→None（构建照旧）；
+      · off/0/false/no/关闭/否 → None（显式关闭，即使已安装也不用）；
+      · 其他非空值       → 原样返回（显式 launcher 路径/包装器名，存在性交给 cmake 报错）。
+    返回 None=不启用（**可选**语义，非「不存在」哨兵：调用方据此显式传空 launcher，
+    防 CMakeCache 残留旧 launcher 造成「已卸载缓存仍被调用」的构建红）。"""
+    环境 = os.environ if 环境 is None else 环境
+    指定 = (环境.get("CN_BUILD_CACHE") or "").strip()
+    if 指定.lower() in 缓存关闭词:
+        return None
+    if 指定 and 指定.lower() != "auto":
+        return 指定
+    探测器 = 探测器 or shutil.which
+    for 名 in ("ccache", "sccache"):
+        路径 = 探测器(名)
+        if 路径:
+            return 路径
+    return None
+
+
+def linux配置命令(launcher: str | None) -> list[str]:
+    """linux cmake 配置命令（1299 抽出·正反两态自测锚）：make 增量口径不变，只额外
+    显式传入 CMAKE_CXX_COMPILER_LAUNCHER——launcher=None 也传空值（覆盖 CMakeCache
+    里可能残留的旧 launcher；实测空 :STRING= 配置合法）。"""
+    return ["cmake", "-S", ".", "-B", "target/build",
+            "-DCMAKE_CXX_COMPILER_LAUNCHER:STRING=%s" % (launcher or "")]
+
+
+def linux构建链(步骤们: dict, 步骤, 构建并行: int, 单轮总超时秒: int,
+               日志=None) -> None:
     """linux 构建段整段（657 自 跑一轮 抽出·与 win构建链 对称=跑一轮 回 ≤100 行
     纪律）：②配置（默认生成器 Make·与 integrate 同口径；产物落 target/ 根）→构建→
     ③单测（产物三 fallback=integrate 同款）。逻辑与抽出前逐行等价（零行为变化）。
-    973 外迁：构建并行/单轮总超时秒 由调用方注入（daemon 常量单源·911）。"""
-    if not 步骤("配置", ["cmake", "-S", ".", "-B", "target/build"], 600):
+    973 外迁：构建并行/单轮总超时秒 由调用方注入（daemon 常量单源·911）。
+    1299：配置前探测编译器缓存（ccache/sccache）并显式传入 launcher；日志参数可选
+    （None=不额外输出·兼容自测桩调用面）。"""
+    launcher = 选编译器缓存()
+    if 日志 is not None:
+        print("  [1299] 编译器缓存：%s" % (launcher or "未启用（ccache/sccache 均未安装·构建照旧）"),
+              file=日志, flush=True)
+    if not 步骤("配置", linux配置命令(launcher), 600):
         return  # 配置红——步骤们 已记 rc，构建/单测不跑（原 pass 分支语义）
     if not 步骤("构建", ["cmake", "--build", "target/build",
                         "--parallel", str(构建并行)], 单轮总超时秒):

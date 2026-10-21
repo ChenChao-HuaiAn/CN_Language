@@ -196,9 +196,10 @@ def win构建链(步骤们: dict, 步骤, 日志, vcvars: Path, 当前头: str) 
     return ci_build.win构建链(步骤们, 步骤, 日志, vcvars, 当前头, 单轮总超时秒)
 
 
-def linux构建链(步骤们: dict, 步骤) -> None:
-    """973 薄壳：实现见 ci_build.linux构建链（657 原样·并行/超时常量注入单源）。"""
-    return ci_build.linux构建链(步骤们, 步骤, 构建并行, 单轮总超时秒)
+def linux构建链(步骤们: dict, 步骤, 日志=None) -> None:
+    """973 薄壳：实现见 ci_build.linux构建链（657 原样·并行/超时常量注入单源；
+    1299 增日志参数=编译器缓存选择留痕·None 兼容自测桩调用面）。"""
+    return ci_build.linux构建链(步骤们, 步骤, 构建并行, 单轮总超时秒, 日志)
 
 
 def e2e命令基(cn: Path, 保内存: int) -> list:
@@ -516,8 +517,9 @@ def 构建段执行(排: dict, 步骤们: dict, 步骤, 日志) -> None:
         else:
             win构建链(步骤们, 步骤, 日志, vcvars, 头.stdout.strip())
     elif 排["构建段"] == "linux":
-        # ② linux 构建段（与 win构建链 对称·657 抽函数=跑一轮 拆函数回 ≤100 行纪律）
-        linux构建链(步骤们, 步骤)
+        # ② linux 构建段（与 win构建链 对称·657 抽函数=跑一轮 拆函数回 ≤100 行纪律；
+        #    1299 传日志=编译器缓存选择（ccache/sccache）留痕到轮日志）
+        linux构建链(步骤们, 步骤, 日志)
 
 
 def 预验清产物(树根: Path) -> bool:
@@ -624,6 +626,9 @@ def 跑一轮(sha: str, 轮分支: str = "", 分片: int = 0) -> dict:
     with 轮日志路径.open("r", encoding="utf-8", errors="replace") as f:
         尾部 = f.readlines()[-40:]
     结果 = {"sha": sha, "分支": 轮分支, "平台": 平台, "步骤": 步骤们,
+            # 1299：执行机归因（门禁表构建段 63s↔372s 查因必需——同 sha 同平台不同
+            #   runner/作业数可差 6 倍，详情无执行机=只能翻各机 ci-logs 考古）
+            "runner": runner标识, "CN_BUILD_JOBS": 构建并行,
             "绿": 聚合绿(步骤们),
             "总秒": round(time.time() - 开始), "时刻": datetime.now().isoformat(timespec="seconds"),
             "日志": 轮日志路径.name, "日志尾部": "".join(尾部).splitlines()[-20:],
@@ -689,6 +694,8 @@ def 跑分片轮(sha: str, 轮分支: str, 片序: int = 0, 片数: int = 1) -> 
     with 轮日志路径.open("r", encoding="utf-8", errors="replace") as f:
         尾部 = f.readlines()[-40:]
     return {"sha": sha, "分支": 轮分支, "平台": 平台, "步骤": 步骤们,
+            # 1299：执行机归因（分片行同口径·主实例聚合时可见各片机器）
+            "runner": runner标识, "CN_BUILD_JOBS": 构建并行,
             "绿": 聚合绿(步骤们),
             "总秒": round(time.time() - 开始), "时刻": datetime.now().isoformat(timespec="seconds"),
             "日志": 轮日志路径.name, "日志尾部": "".join(尾部).splitlines()[-20:],

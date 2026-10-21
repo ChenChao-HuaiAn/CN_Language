@@ -12,7 +12,8 @@ __main__ 副本）；行为级桩对照经猴补/还原主模块属性实现（�
 断言面索引：win 构建脚本文本+指纹三态（523）｜预验清产物（637）｜同步后编排正反两态
 +绿聚合三态+AST 互斥链结构锁（657）｜兜底过期纯函数三态+文本结构锁+行为级两态桩
 （660）｜ci_daemon.py 行数红线（660）｜日志 漏参族自由名锚+e2e 并行红路径冒烟（728t）｜
-对账周检段周期三态+段行为桩两态+挂载结构锁（973）｜runner↔服务端失败分类契约锁（975）。
+对账周检段周期三态+段行为桩两态+挂载结构锁（973）｜runner↔服务端失败分类契约锁（975）｜
+linux 编译器缓存选择正反两态+配置命令行锁定（1299）。
 """
 from __future__ import annotations
 
@@ -531,6 +532,40 @@ def _975断言(主模块, 断言) -> None:
          "记认领失败并告警(" in 服务源)
 
 
+def _1299断言(主模块, 断言) -> None:
+    """1299（2026-10-21）：linux 编译器缓存选择（ccache/sccache）——纯函数正反两态
+    （注入探测器·零真工具零真构建）+ 配置命令行锁定 + 构建链接线结构锁 + 执行机归因锁。"""
+    import ci_build
+    有cc = lambda 名: "/usr/bin/ccache" if 名 == "ccache" else None
+    有sc = lambda 名: "/usr/bin/sccache" if 名 == "sccache" else None
+    无 = lambda 名: None
+    断言("1299 缓存：ccache 优先探测",
+         ci_build.选编译器缓存({}, 有cc) == "/usr/bin/ccache")
+    断言("1299 缓存：ccache 缺失回退 sccache",
+         ci_build.选编译器缓存({}, 有sc) == "/usr/bin/sccache")
+    断言("1299 缓存：两者皆无→None（不启用·构建照旧）",
+         ci_build.选编译器缓存({}, 无) is None)
+    断言("1299 缓存：CN_BUILD_CACHE=off 即使已装也关闭",
+         ci_build.选编译器缓存({"CN_BUILD_CACHE": "off"}, 有cc) is None)
+    断言("1299 缓存：CN_BUILD_CACHE=auto 等同未设",
+         ci_build.选编译器缓存({"CN_BUILD_CACHE": "auto"}, 有cc) == "/usr/bin/ccache")
+    断言("1299 缓存：显式路径原样作 launcher（运维覆盖）",
+         ci_build.选编译器缓存({"CN_BUILD_CACHE": "/opt/wrap/cc"}, 无) == "/opt/wrap/cc")
+    断言("1299 配置命令：无缓存也显式传空 launcher（清 CMakeCache 残留）",
+         ci_build.linux配置命令(None) == ["cmake", "-S", ".", "-B", "target/build",
+                                       "-DCMAKE_CXX_COMPILER_LAUNCHER:STRING="])
+    断言("1299 配置命令：有缓存=launcher 路径入参",
+         ci_build.linux配置命令("/usr/bin/ccache")[-1]
+         == "-DCMAKE_CXX_COMPILER_LAUNCHER:STRING=/usr/bin/ccache")
+    源构 = inspect.getsource(ci_build.linux构建链)
+    断言("1299 接线锁：linux构建链 选缓存后以 linux配置命令(launcher) 配置",
+         "选编译器缓存(" in 源构 and "linux配置命令(launcher)" in 源构)
+    for 轮 in ("跑一轮", "跑分片轮"):
+        断言("1299 归因锁：%s 结果带 runner/CN_BUILD_JOBS（门禁表可追溯执行机与作业数）" % 轮,
+             '"runner": runner标识, "CN_BUILD_JOBS": 构建并行' in inspect.getsource(
+                 getattr(主模块, 轮)))
+
+
 def _行数断言(断言) -> None:
     """660 行数红线：ci_daemon.py（自测外迁后）<1000 行——防再回涨到硬上限。"""
     脚本 = Path(__file__).resolve().parent / "ci_daemon.py"
@@ -611,9 +646,10 @@ def 自测(主模块) -> int:
     _973断言(主模块, 断言)
     _975断言(主模块, 断言)
     _1297断言(断言)
+    _1299断言(主模块, 断言)
     _行数断言(断言)
     for 名, ok in 断言们:
         print("  [%s] %s" % ("OK" if ok else "×", 名))
     红 = sum(1 for _, ok in 断言们 if not ok)
-    print("== ci_daemon 自测（523+637+657+660+728t+770+842+935+973+975+1297）：%d 断言，%s ==" % (len(断言们), "全绿" if 红 == 0 else "红 %d" % 红))
+    print("== ci_daemon 自测（523+637+657+660+728t+770+842+935+973+975+1297+1299）：%d 断言，%s ==" % (len(断言们), "全绿" if 红 == 0 else "红 %d" % 红))
     return 0 if 红 == 0 else 1
