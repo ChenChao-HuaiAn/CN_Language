@@ -101,3 +101,16 @@ extern "C" const char* __cn_intern_text(long long id) {
 extern "C" long long __cn_intern_count() {
     return static_cast<long long>(internState().pool.size() - 1);
 }
+
+// 驻留表截断（任务 1272）：保留 ID 0..keep，移除其后的内容映射与池条目。
+//   调用方保证被截断 ID 不再被任何持久状态引用（v2 闭包扫描的 Token 已丢弃，
+//   注入宏名经字符串快照重建）。keep >= 当前计数=无操作。
+extern "C" void __cn_intern_truncate(unsigned long long keep) {
+    auto& s = internState();
+    const unsigned long long count = static_cast<unsigned long long>(s.pool.size() - 1);
+    if (keep >= count) return;
+    for (unsigned long long id = keep + 1; id <= count; ++id) {
+        s.map.erase(s.pool[static_cast<std::size_t>(id)]);
+    }
+    s.pool.resize(static_cast<std::size_t>(keep) + 1);
+}

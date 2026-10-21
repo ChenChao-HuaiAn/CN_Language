@@ -9,10 +9,14 @@
 //   WideCharToMultiByte(CP_UTF8) 转 UTF-8 缓存（CN 字符串按 UTF-8 处理）。
 //   转换后字符串为进程生命周期持有（进程退出由 CRT 清理，无需显式释放）。
 // 单元测试可通过 __cn_set_argv_for_test 注入固定参数（防御 ABI 稳定，测试专用）。
+// MSVC /W4 /WX：_wgetenv/_wgetenv_s 等 CRT 传统函数视为 C4996（1272 环境变量原语）
+#define _CRT_SECURE_NO_WARNINGS
 #include "runtime/runtime.hpp"
 
 #include <cstdlib>
 #include <cstring>
+#include <string>
+#include <vector>
 
 #ifdef _WIN32
 #include <windows.h>
@@ -84,5 +88,44 @@ extern "C" void __cn_cache_argv(int argc, char** argv) {
 #else
     g_cached_argc = argc;
     g_cached_argv = argv;
+#endif
+}
+
+// ==================== 环境变量（任务 1272·程序缓存逃生门） ====================
+// 读取 UTF-8 环境变量：0=存在（out=进程内静态 UTF-8 借用视图，调用方复制），
+//   1=不存在（否定回答），2=非法/转换失败。无 nullptr 哨兵——状态通道显式分流。
+// Windows 走 _wgetenv + WideCharToMultiByte(CP_UTF8)；POSIX 直接借用环境块。
+namespace {
+std::string g_envBuffer;  // 单线程编译器；返回借用视图
+}
+extern "C" long long __cn_getenv_utf8(const char* name, char** out) {
+    if (name == nullptr || name[0] == '\0' || out == nullptr) return 2;
+#ifdef _WIN32
+    const int nameLen = MultiByteToWideChar(CP_UTF8, 0, name, -1, nullptr, 0);
+    // 静默豁免运行时API: 名称转换失败=参数错误（状态码 2 显式返回）
+    if (nameLen <= 0) return 2;
+    std::vector<wchar_t> wideName(static_cast<std::size_t>(nameLen));
+    // 静默豁免运行时API: 名称转换失败=参数错误（状态码 2 显式返回）
+    if (MultiByteToWideChar(CP_UTF8, 0, name, -1, wideName.data(), nameLen) <= 0) {
+        return 2;
+    }
+    const wchar_t* value = _wgetenv(wideName.data());
+    if (value == nullptr) return 1;
+    const int valueLen = WideCharToMultiByte(CP_UTF8, 0, value, -1, nullptr, 0, nullptr, nullptr);
+    // 静默豁免运行时API: 值转换失败=参数错误（状态码 2 显式返回）
+    if (valueLen <= 0) return 2;
+    g_envBuffer.resize(static_cast<std::size_t>(valueLen));
+    if (WideCharToMultiByte(CP_UTF8, 0, value, -1, &g_envBuffer[0], valueLen,
+                            nullptr, nullptr) <= 0) {
+        return 2;
+    }
+    g_envBuffer.resize(static_cast<std::size_t>(valueLen - 1));  // 去结尾 NUL
+    *out = const_cast<char*>(g_envBuffer.c_str());
+    return 0;
+#else
+    const char* value = std::getenv(name);
+    if (value == nullptr) return 1;
+    *out = const_cast<char*>(value);
+    return 0;
 #endif
 }

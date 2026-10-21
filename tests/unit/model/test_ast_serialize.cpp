@@ -5,6 +5,7 @@
 #include <filesystem>
 #include <gtest/gtest.h>
 
+#include <cstdio>
 #include <fstream>
 #include <memory>
 #include <sstream>
@@ -18,6 +19,10 @@
 #include "cn_compiler/model/ast_serialize.hpp"
 #include "cn_compiler/module/module.hpp"
 #include "cn_compiler/parser/parser.hpp"
+
+#ifdef _WIN32
+#include <windows.h>
+#endif
 
 using cn_compiler::AstPrinter;
 using cn_compiler::Diagnostics;

@@ -15,6 +15,8 @@
 #include <cerrno>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
+#include <string>
 
 // 从 stdin 读取一整行（动态分配 UTF-8 字符串，剥除尾部换行）
 // 返回：动态分配字符串（不含换行）；EOF（无数据）或分配失败返回 nullptr
@@ -88,7 +90,41 @@ extern "C" double __cn_read_float(int* ok) {
 
 // 打印到标准错误：fprintf(stderr, "%s") 语义（不换行）
 // 对应 CN 层 stdlib/IO.cn 的 打印到错误（与 打印行 的不换行语义一致）
+// 任务 1272：捕获模式下同步写入诊断缓冲（mode 1 仍输出，mode 2 仅缓冲），
+//   供 v2 整程序级预编译缓存原样重放该次编译的全部诊断/进度文本。
+namespace {
+std::string g_diagCapture;
+int g_diagCaptureMode = 0;  // 0=关闭 1=tee 2=discard
+}  // namespace
+
+extern "C" void __cn_diag_capture_begin(long long mode) {
+    g_diagCapture.clear();
+    g_diagCaptureMode = (mode == 1 || mode == 2) ? static_cast<int>(mode) : 0;
+}
+
+extern "C" long long __cn_diag_capture_take(char** out) {
+    g_diagCaptureMode = 0;
+    if (out == nullptr) return 2;
+    const std::size_t len = g_diagCapture.size();
+    char* buf = static_cast<char*>(cn_alloc_tracked(len + 1));
+    if (buf == nullptr) {
+        g_diagCapture.clear();
+        return 2;
+    }
+    if (len != 0) std::memcpy(buf, g_diagCapture.data(), len);
+    buf[len] = '\0';
+    g_diagCapture.clear();
+    *out = buf;
+    return 0;
+}
+
+extern "C" void __cn_diag_capture_end() {
+    g_diagCaptureMode = 0;
+    g_diagCapture.clear();
+}
+
 extern "C" void __cn_print_err(const char* text) {
     if (text == nullptr) text = "";
-    std::fprintf(stderr, "%s", text);
+    if (g_diagCaptureMode != 0) g_diagCapture.append(text);
+    if (g_diagCaptureMode != 2) std::fprintf(stderr, "%s", text);
 }

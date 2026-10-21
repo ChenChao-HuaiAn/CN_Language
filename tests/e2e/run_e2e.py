@@ -403,7 +403,8 @@ def 终止进程树(进程: subprocess.Popen) -> None:
 
 def 运行命令(命令列表: list, 工作目录: pathlib.Path,
              标准输入: str = "", 内存上限MB: int = 0,
-             超时秒数: int = 0, 栈上限MB: int = 0) -> subprocess.CompletedProcess:
+             超时秒数: int = 0, 栈上限MB: int = 0,
+             环境变量: dict = None) -> subprocess.CompletedProcess:
     """执行命令并返回结果（捕获stdout/stderr，UTF-8解码容错）
 
     任务399 交叉模拟注入：交叉模拟激活时，首元素为 arm64 ELF 产物（ELF 头
@@ -474,14 +475,15 @@ def 运行命令(命令列表: list, 工作目录: pathlib.Path,
     #   普通用例并行，防线=每进程 RLIMIT_AS+RSS 轮询+oom_guard（叠加峰值
     #   3×227.8MB 无压力）。
     结果 = _运行命令实现(命令列表, 工作目录, 标准输入, preexec_fn,
-                       内存上限MB, 超时秒数)
+                       内存上限MB, 超时秒数, 环境变量)
     看门狗.刷心跳("子进程完成")
     return 结果
 
 
 def _运行命令实现(命令列表: list, 工作目录: pathlib.Path,
                  标准输入: str, preexec_fn,
-                 内存上限MB: int, 超时秒数: int) -> subprocess.CompletedProcess:
+                 内存上限MB: int, 超时秒数: int,
+                 环境变量: dict = None) -> subprocess.CompletedProcess:
     # ---- 内存保护路径：Popen + 轮询工作集，超限立即终止 ----
     # 2026-08-24 防死锁修复：轮询期间必须持续排空 stdout/stderr 管道——
     #   78/79 组件链编译器输出量大，管道缓冲（约 64KB）写满后子进程阻塞在
@@ -495,6 +497,8 @@ def _运行命令实现(命令列表: list, 工作目录: pathlib.Path,
         if sys.platform != "win32":
             # Linux 独立进程组，便于 killpg 终止整棵子进程树
             启动参数["start_new_session"] = True
+        if 环境变量:
+            启动参数["env"] = {**os.environ, **环境变量}
         进程 = subprocess.Popen(命令列表, **启动参数)
         if 标准输入:
             try:
@@ -597,6 +601,8 @@ def _运行命令实现(命令列表: list, 工作目录: pathlib.Path,
         text=True, encoding="utf-8", errors="replace", preexec_fn=preexec_fn)
     if sys.platform != "win32":
         启动参数["start_new_session"] = True  # killpg 终止整树的前提
+    if 环境变量:
+        启动参数["env"] = {**os.environ, **环境变量}
     for 尝试轮 in range(重试轮数):
         进程 = subprocess.Popen(命令列表, **启动参数)
         try:
@@ -1190,8 +1196,11 @@ def 锚定链编译v2全树(exe, 工作目录: pathlib.Path, 主入口: str, 目
         asm路径.unlink()
     if 详细:
         print(f"    [{标签}] {pathlib.Path(exe).name} {主入口}")
+    # 1272 审查 P1-1：78/79 自举链禁用 v2 程序级缓存——fix_s 不得命中上一轮
+    #   cn_self 条目（固定点测试须为真实重编译，不能缓存自证）。
     运行结果 = 运行命令(命令, 工作目录, 内存上限MB=内存上限MB默认,
-                     超时秒数=构建超时秒数)
+                     超时秒数=构建超时秒数,
+                     环境变量={"CN_NO_V2_PROGRAM_CACHE": "1"})
     if 运行结果.returncode != 0:
         return "失败", (f"{标签} 编译 v2 全树失败(退出码{运行结果.returncode}): "
                         f"{(运行结果.stderr or 运行结果.stdout or '').strip()[:300]}"), 0

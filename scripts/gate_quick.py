@@ -304,6 +304,24 @@ if _跑示例验证:
              env=dict(os.environ, CN_EXE=str(单测.parent / ("cn.exe" if 是win else "cn")))):
         raise SystemExit(1)
 
+# ③.5b v2 程序级缓存三态（1272·条件步）：写集触及缓存实现/运行时缓存原语/
+#   其单测/脚本时跑真实 v2p 三态矩阵（首建/命中/无缓存 asm+stderr、失效、损坏、
+#   VERIFY、货舱特性、intern 截断单测）。v2p 缺失或落后于 v2 源码时用宿主 cn 重建
+#   （~3 分钟；仅缓存写集触发，日常零税）。写集取不到=跳过（云端全量兜底）。
+_跑v2缓存 = _写集 is not None and any(
+    p.startswith(("CN语言编译器v2/驱动/程序缓存.cn", "src/runtime/",
+                  "tests/unit/runtime/test_intern_api.cpp",
+                  "scripts/test_v2_program_cache.py"))
+    for p in _写集)
+if _跑v2缓存:
+    if not 步("v2 程序缓存三态",
+             [sys.executable, "scripts/test_v2_program_cache.py",
+              "--v2p", "target/cache_selftest/v2p.exe",
+              "--cn", str(单测.parent / ("cn.exe" if 是win else "cn")),
+              "--build-v2p"],
+             超时秒=_超时("CN_GATE_V2CACHE_TIMEOUT", 900)):
+        raise SystemExit(1)
+
 # ③.6 交叉汇编守卫序列对照（887·835 病根立法化·2026-10-16 用户令立案）：内嵌
 #   探针 × 三后端 --target compile -O0（只产汇编不调 as/ld·实测 ~0.2s）——
 #   溢出/判零/移位域守卫判定序列机械对照（ERROR 块向前重建谓词+语义期望对表+

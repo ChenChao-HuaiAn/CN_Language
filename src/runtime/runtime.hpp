@@ -172,6 +172,20 @@ CNRT_EXPORT void __cn_print_bool(bool value);             // 打印布尔（不�
     CNRT_EXPORT double __cn_read_float(int* ok);        // 读取浮点（IO.读取浮点，strtod 整行解析）
     CNRT_EXPORT void __cn_print_err(const char* text);  // 打印到标准错误（IO.打印到错误，fprintf stderr 不换行）
 
+    // 诊断捕获（任务 1272：v2 整程序级预编译缓存的警告重放通道）
+    //   模式：1=tee（正常输出 + 追加缓冲）、2=discard（仅缓冲不输出）、其余=关闭。
+    //   take 返回动态分配 UTF-8 文本（缓冲为空返回 nullptr；调用方 __cn_str_free），
+    //   并结束捕获。编译器单线程消费；运行时不做并发承诺。
+    CNRT_EXPORT void __cn_diag_capture_begin(long long mode);  // 开始捕获（1=tee 2=discard）
+    // 取走捕获文本（结束捕获）：0=成功（out=拥有串，调用方 __cn_str_free；
+    //   无文本时返回空串而非 nullptr），2=分配失败。结果走状态通道，无哨兵默认值。
+    CNRT_EXPORT long long __cn_diag_capture_take(char** out);
+    CNRT_EXPORT void __cn_diag_capture_end();                  // 结束并丢弃捕获
+    // 驻留表截断（任务 1272：v2 闭包扫描后回退到基线，使完整编译的驻留序列
+    //   与无缓存单遍编译逐位一致——否则字符串池编号漂移改变 asm 字节）。
+    //   keep=保留的 Symbol 数（0..当前计数）；被截断条目从内容映射同步移除。
+    CNRT_EXPORT void __cn_intern_truncate(unsigned long long keep);
+
     // 文件 API（Task 6.2，规格书阶段五「文件系统」；对应 CN 层 stdlib/文件.cn 函数）
     // 句柄类型：C 层 FILE* 以 void* 传递（CN 层对应 空类型*）。
     // 模式：1=读"rb"、2=写"wb"（截断）、3=追加"ab"；失败返回 nullptr。
@@ -185,6 +199,30 @@ CNRT_EXPORT void __cn_print_bool(bool value);             // 打印布尔（不�
     CNRT_EXPORT void __cn_file_close(void* handle);                          // 关闭文件（文件.关闭文件）
     CNRT_EXPORT long long __cn_file_exists(const char* path);                // 文件存在（文件.文件存在，1=真 0=假）
     CNRT_EXPORT long long __cn_file_mkdir(const char* path);                 // 递归创建目录（文件.创建目录，1=成功 0=失败）
+
+    // 程序缓存支撑原语（任务 1272·v2 整程序级预编译缓存；内部 FFI 契约，
+    //   非 stdlib 公开面——v2 源码以 外部 函数 声明消费）：
+    //   digest 走 FNV-1a 128（双 64 位通道），流式读取任意大小文件（自身可执行
+    //   文件身份/输入指纹）；rename 走 MoveFileExW(REPLACE_EXISTING) / rename(2)
+    //   原子替换；dir 递归创建（UTF-8 路径）；getenv 返回 UTF-8 拥有串（缺失=nullptr）。
+    CNRT_EXPORT long long __cn_file_digest_utf8(const char* path, long long* a, long long* b);
+    CNRT_EXPORT long long __cn_file_rename_replace_utf8(const char* from, const char* to);
+    CNRT_EXPORT long long __cn_file_delete_utf8(const char* path);
+    CNRT_EXPORT long long __cn_dir_ensure_utf8(const char* path);
+    // 环境变量：0=存在（out=进程内静态 UTF-8 借用视图，调用方复制），
+    //   1=不存在（否定回答），2=非法/转换错误。无 nullptr 哨兵。
+    CNRT_EXPORT long long __cn_getenv_utf8(const char* name, char** out);
+    //   内存哈希/整文件读取（1272：汇编产物可达数十 MB，CN 逐字节循环不可接受）：
+    //   __cn_str_hash128 与 __cn_file_digest_utf8 同算法；整文件读取 0=成功
+    //   （out=拥有串，__cn_str_free；长度经 outLen），1=打开失败 2=定位失败
+    //   3=超上限 4=分配失败 5=读取/关闭失败。
+    CNRT_EXPORT long long __cn_str_hash128(const char* text, long long* a, long long* b);
+    CNRT_EXPORT long long __cn_file_read_all_utf8(const char* path, char** out,
+                                                  unsigned long long* outLen);
+    // 自身可执行文件身份（GetModuleFileNameW / /proc/self/exe）：0=成功，1=失败。
+    CNRT_EXPORT long long __cn_exe_identity(long long* a, long long* b);
+    // 进程 ID（缓存 tmp 名唯一化；失败返回 0）。
+    CNRT_EXPORT long long __cn_process_id();
 
     // 数学库 API（Task 6.3，规格书10.5 数学库；对应 CN 层 stdlib/数学.cn 函数）
     // 命名约定：运行时英文 API，CN 层中文函数名由编译器 IR 层映射到此符号
