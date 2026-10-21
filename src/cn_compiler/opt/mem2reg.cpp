@@ -29,6 +29,13 @@
 //     输入常来自内层汇合 φ）；只按直接 Load 消费建计划会漏建内层 φ，外层 φ
 //     组装引用的寄存器不存在——原 phiRegOf[] 静默取 0 号槽（384-D2a 垃圾值
 //     实录）。操作数解析改为写前预检（缺项整函数放弃·禁止静默默认值）。
+//   1267（变量槽提升接入 -O2）：①单基本块函数提升（原跳过=CopyProp 只做块内
+//     转发、Store 不死；v2 全树 1885 函数中单块函数占相当面）；②全槽提升后
+//     删除 Alloca（帧槽/发射注释一并消失）；③T1 增加 Store 值与 Load 结果类型
+//     一致性预检、不可达块触达整槽回退（重命名不覆盖不可达块=禁止半提升）；
+//     ④Pass 级 Options 开关（runOptLevel 第三参 + DriverOptions::useMem2Reg，
+//     目标=linux-x86_64 且 -O2 且启用寄存器分配时打开；-O0/-O1/--no-regalloc
+//     恒关闭，全栈帧产物契约不变）。形态矩阵与判据见 mem2reg.hpp 头注释。
 #include <algorithm>
 #include <string>
 #include <unordered_map>
@@ -44,12 +51,36 @@ namespace cn_compiler {
 namespace opt {
 namespace {
 
-// φ 值指纹前缀（寄存器值指纹="r<id>|<type>|<extra>"·常量=空·ASCII 前缀防冲突）
+// φ 值指纹前缀（寄存器值指纹="r<id>|<type>|<extra>"·常量指纹="c:<type>|<text>"·
+//   ASCII 前缀防冲突）
 constexpr const char* kPhiPrefix = "phi:";
+constexpr const char* kConstPrefix = "c:";
 
 std::string valueKey(const ir::IRValue& v) {
-    if (v.isConstant) return {};  // 常量=空 key（不可直递信号·ConstRewrite 留 CopyProp）
+    if (v.isConstant) {
+        // 1267：常量进入值流（原实现返回空 key=常量 Store 后 Load 整槽回退——
+        //   `整32 结果值 = 0; ...` 这类常量初值变量因此永不提升）。缺值文本的
+        //   畸形常量由 T1 整槽排除（badConstant），不进入本函数。
+        return std::string(kConstPrefix) + v.type + "|" + v.extra;
+    }
     return "r" + std::to_string(v.id) + "|" + v.type + "|" + v.extra;
+}
+
+// 常量物化指令操作码（按 IR 类型；与 IRGenerator 常量发射同族）
+ir::Opcode constOpcodeFor(const std::string& type) {
+    if (type == "f32" || type == "f64") return ir::Opcode::ConstFloat;
+    if (type == "i1") return ir::Opcode::ConstBool;
+    return ir::Opcode::ConstInt;
+}
+
+// Load 命中常量值：原地改写为常量物化（结果寄存器不变——所有使用点零改动）。
+//   同指令数置换（Load -> Const），但 Store 可随整槽提升消亡、且常量可被后续
+//   常量折叠消费。类型由 T1 预检保证与 Load 结果一致。
+void materializeConstant(ir::IRInstruction& load, const ir::IRValue& constant) {
+    load.opcode = constOpcodeFor(constant.type);
+    load.operands.clear();
+    load.extra = constant.extra;
+    load.type = constant.type;
 }
 
 bool isPhiKey(const std::string& key) {
@@ -76,17 +107,27 @@ struct RewriteCtx {
 
 // 汇合块 envIn 计算：单前驱直继；汇合逐槽——同值直继/有值不齐 φ 指纹/缺源放弃。
 //   phiEnabled=false = 波1 交集模式（φ 关闭·guard 超限降级路径）。
+//   1267 回边修正（v2 全树 -O2 实测：解析二元循环 入口即循环头 → 回边值经
+//   单前驱直继污染入口，Load 被替换为循环体内后定义的寄存器=use-before-def）：
+//   · 全部前驱都是回边（函数入口是循环头/自环头）=没有循环初值来源 → envIn 空；
+//   · 单前驱且是回边（自环）同理 → envIn 空；
+//   · 含回边的汇合块仍按「同值直继/异值建 φ」：同 key 只可能来自共同支配的
+//     单一定义（循环体内新定义与入口侧必为不同 key），直继安全；异值 φ 覆盖
+//     循环携带值；任一前驱缺值 → 该槽无值（保守）。
 SlotEnv computeEnvIn(const std::vector<int>& preds,
                      const std::vector<SlotEnv>& envOut,
                      const std::unordered_set<std::string>& promotable,
-                     const std::string& label, bool phiEnabled, int n) {
+                     const std::string& label, bool phiEnabled, int n,
+                     bool hasBackEdgePred, bool hasNormalPred) {
     SlotEnv in;
+    if (preds.empty()) return in;
     if (preds.size() == 1) {
+        if (hasBackEdgePred) return in;  // 回边（自环头/入口循环头）：无初值
         const int p = preds[0];
         if (p >= 0 && p < n) in = envOut[static_cast<std::size_t>(p)];
         return in;
     }
-    if (preds.size() < 2) return in;
+    if (!hasNormalPred) return in;  // 前驱全为回边：入口循环头，无初值来源
     for (const auto& slot : promotable) {
         std::string v0;
         bool all = true, same = true, first = true;
@@ -98,8 +139,14 @@ SlotEnv computeEnvIn(const std::vector<int>& preds,
             else if (it->second != v0) same = false;
         }
         if (!all) continue;
-        if (same) in[slot] = v0;
-        else if (phiEnabled) in[slot] = std::string(kPhiPrefix) + slot + "@" + label;
+        if (same) {
+            // 同值直继（含含回边的汇合块）：同一寄存器只能定义一次且该定义
+            //   必支配所有前驱（回边前驱的出口值若为循环体定义则与入口前驱
+            //   不同 key）——同 key 即共同支配，直继安全。
+            in[slot] = v0;
+        } else if (phiEnabled) {
+            in[slot] = std::string(kPhiPrefix) + slot + "@" + label;
+        }
     }
     return in;
 }
@@ -128,6 +175,7 @@ void walkBlock(ir::IRBlock& block, bool rewriting,
             const std::string& slot = inst.operands[0].extra;
             auto it = env.find(slot);
             bool eliminated = false;
+            bool known = false;
             if (it != env.end()) {
                 // 分析模式（1255）：记录被 Load 真实消费的 φ 指纹——只有这些
                 //   指纹需要建 φ 计划；无消费者的 φ 每轮重插=永不收敛。
@@ -135,26 +183,38 @@ void walkBlock(ir::IRBlock& block, bool rewriting,
                     phiUses->insert(it->second);
                 }
                 auto pit = pool.find(it->second);
-                if (pit != pool.end() && !pit->second.isConstant && pit->second.id >= 0) {
-                    if (rewriting) {
-                        const int src = resolveReg(pit->second.id, ctx->regRewrite);
+                if (pit != pool.end()) {
+                    const ir::IRValue& value = pit->second;
+                    // 可用值=常量（物化）或有效寄存器 id（直递）；其余形态保持 Load
+                    const bool constValue = value.isConstant;
+                    const bool regValue = (!constValue && value.id >= 0);
+                    known = constValue || regValue;
+                    if (rewriting && constValue) {
+                        // 1267：常量命中——重写模式把 Load 原地改写为常量物化
+                        //   （结果寄存器不变，使用点零改动）。
+                        materializeConstant(inst, value);
+                    }
+                    if (rewriting && regValue) {
+                        const int src = resolveReg(value.id, ctx->regRewrite);
                         if (src != inst.result.id) {
                             ctx->regRewrite[inst.result.id] = src;
                             eliminated = true;  // Load 消亡
                         }
-                    } else {
-                        eliminated = true;
                     }
+                    if (!rewriting) eliminated = known;  // 分析模式：可用值即消解
                 }
             }
             if (eliminated) continue;  // 消亡：跳过 kept 收集（Rewrite）/仅推进（Analyze）
-            // 未命中/防御失败：Load 自身=新 def（后续块直继此值）；
-            //   Rewrite 模式保留原 Load 并登记 keepSlot（整槽回退删除面）
-            const std::string key = "r" + std::to_string(inst.result.id) + "|" +
-                                    inst.result.type + "|" + inst.result.extra;
-            env[slot] = key;
-            pool[key] = inst.result;
-            if (rewriting) ctx->keepSlots.insert(slot);
+            if (!known) {
+                // 未命中/防御失败：Load 自身=新 def（后续块直继此值）；
+                //   Rewrite 模式保留原 Load 并登记 keepSlot（整槽回退删除面）
+                const std::string key = "r" + std::to_string(inst.result.id) + "|" +
+                                        inst.result.type + "|" + inst.result.extra;
+                env[slot] = key;
+                pool[key] = inst.result;
+                if (rewriting) ctx->keepSlots.insert(slot);
+            }
+            // known && rewriting（常量物化）：env 保持常量指纹（值等价），不登记 keepSlot
         }
         if (rewriting) ctx->kept[keptIdx].push_back(std::move(inst));
     }
@@ -169,7 +229,9 @@ void walkBlock(ir::IRBlock& block, bool rewriting,
 void closePhiDependencies(const DomTree& dom, const std::vector<SlotEnv>& envOut,
                           const std::unordered_set<std::string>& promotable,
                           const std::vector<std::string>& labels, bool phiEnabled,
-                          int n, std::unordered_set<std::string>& neededPhiKeys) {
+                          int n, const std::vector<char>& hasBackPred,
+                          const std::vector<char>& hasNormalPred,
+                          std::unordered_set<std::string>& neededPhiKeys) {
     std::unordered_map<std::string, std::unordered_set<std::string>> deps;
     for (int b = 0; b < n; ++b) {
         const std::vector<int>& preds = dom.predecessors(b);
@@ -177,7 +239,9 @@ void closePhiDependencies(const DomTree& dom, const std::vector<SlotEnv>& envOut
         if (preds.size() == 0 || preds.size() == 1) continue;
         const SlotEnv in = computeEnvIn(preds, envOut, promotable,
                                         labels[static_cast<std::size_t>(b)],
-                                        phiEnabled, n);
+                                        phiEnabled, n,
+                                        hasBackPred[static_cast<std::size_t>(b)] != 0,
+                                        hasNormalPred[static_cast<std::size_t>(b)] != 0);
         for (const auto& kv : in) {
             if (!isPhiKey(kv.second)) continue;
             auto& edges = deps[kv.second];
@@ -204,28 +268,36 @@ void closePhiDependencies(const DomTree& dom, const std::vector<SlotEnv>& envOut
 }
 
 // T2 值流不动点。返回是否在 guard 内收敛（超限=调用方降级/放弃）。
+//   phiUses（可空）：收敛轮的 walk 顺带收集「被 Load 真实消费」的 φ 指纹——
+//   收敛轮使用的 envIn 即最终 envOut（无再变化），等价于原独立扫描遍，
+//   省一遍全函数 walk（1267 编译期开销优化）。
 bool runFixpoint(ir::IRFunction& fn, const DomTree& dom,
                  const std::vector<std::string>& labels,
                  const std::unordered_set<std::string>& promotable,
                  const std::vector<SlotEnv>& init,
                  std::vector<SlotEnv>& envOut, ValuePool& pool,
-                 bool phiEnabled) {
+                 bool phiEnabled, const std::vector<char>& hasBackPred,
+                 const std::vector<char>& hasNormalPred,
+                 std::unordered_set<std::string>* phiUses = nullptr) {
     const int n = dom.blockCount();
     envOut = init;
-    auto blockByLabel = [&](const std::string& label) -> ir::IRBlock* {
-        for (auto& blk : fn.blocks) {
-            if (blk->label == label) return blk.get();
-        }
-        return nullptr;
-    };
+    // label -> 块指针（原逐块线性查 fn.blocks=O(n²)）
+    std::unordered_map<std::string, ir::IRBlock*> blockMap;
+    blockMap.reserve(fn.blocks.size() * 2);
+    for (auto& blk : fn.blocks) blockMap[blk->label] = blk.get();
     for (int guard = 0; guard < 8; ++guard) {
         bool again = false;
+        if (phiUses != nullptr) phiUses->clear();
         for (int b = 0; b < n; ++b) {
-            SlotEnv in = computeEnvIn(dom.predecessors(b), envOut, promotable,
-                                      labels[static_cast<std::size_t>(b)], phiEnabled, n);
-            ir::IRBlock* blk = blockByLabel(labels[static_cast<std::size_t>(b)]);
-            if (blk == nullptr) continue;
-            walkBlock(*blk, false, promotable, in, pool, nullptr, 0);
+            SlotEnv in = computeEnvIn(
+                dom.predecessors(b), envOut, promotable,
+                labels[static_cast<std::size_t>(b)], phiEnabled, n,
+                hasBackPred[static_cast<std::size_t>(b)] != 0,
+                hasNormalPred[static_cast<std::size_t>(b)] != 0);
+            auto bit = blockMap.find(labels[static_cast<std::size_t>(b)]);
+            if (bit == blockMap.end()) continue;
+            walkBlock(*bit->second, false, promotable, in, pool, nullptr, 0,
+                      phiUses);
             if (in != envOut[static_cast<std::size_t>(b)]) {
                 envOut[static_cast<std::size_t>(b)] = std::move(in);
                 again = true;
@@ -316,25 +388,55 @@ bool replaceTermTexts(ir::IRFunction& fn, const RegRewriteMap& regRewrite) {
 bool Mem2RegPass::run(ir::IRModule& module) {
     bool changed = false;
     for (auto& fn : module.functions) {
-        if (fn.blocks.size() < 2) continue;  // 单块=CopyProp 管辖
-        // ---- T1 槽分类 ----
+        if (fn.blocks.empty()) continue;  // 声明/外部函数（无函数体）
+        // 1267：单基本块函数也提升（原实现跳过=CopyProp 仅块内转发、Store 不死）。
+        //   Options.promoteSingleBlock 关闭时保持旧行为（仅供对照/回滚）。
+        if (fn.blocks.size() == 1 && !options_.promoteSingleBlock) continue;
+
+        // ---- T1 槽分类（形态矩阵见 mem2reg.hpp 头注释）----
+        //   先做纯指令扫描（不需要 CFG）：无可提升候选的函数直接返回——
+        //   1267 编译期优化：DomTree 重建（每函数每轮）只在有候选时发生，
+        //   空函数与后续收敛轮不再付 O(块数) 重建成本。
         std::unordered_set<std::string> slots;     // 直接 Store/Load 触达
         std::unordered_set<std::string> hasLoad;   // 至少一次 Load（有读者）
         std::unordered_set<std::string> escaped;   // 地址逃逸/指针触达
-        std::unordered_map<std::string, std::string> slotType; // 槽→IR 类型（Load 结果）
+        std::unordered_set<std::string> typeConflict;  // Store 值类型 ≠ Load 结果类型
+        std::unordered_set<std::string> badConstant;   // 缺值文本的畸形常量 Store
+        std::unordered_map<std::string, std::string> slotType;     // 槽→IR 类型（Load 结果）
+        std::unordered_map<std::string, std::string> storeType;    // 槽→Store 值类型
         for (auto& block : fn.blocks) {
             for (auto& inst : block->instructions) {
                 if (inst.opcode == ir::Opcode::Store && !inst.extra.empty()) {
                     slots.insert(inst.extra);
+                    if (!inst.operands.empty() && !inst.operands[0].type.empty()) {
+                        const std::string& vt = inst.operands[0].type;
+                        auto it = storeType.find(inst.extra);
+                        if (it == storeType.end()) {
+                            storeType[inst.extra] = vt;
+                        } else if (it->second != vt) {
+                            typeConflict.insert(inst.extra);  // 同槽多写类型
+                        }
+                    }
+                    // 畸形常量（缺值文本）：无法物化 → 该槽整槽不提升
+                    const bool badConstStore =
+                        !inst.operands.empty() && inst.operands[0].isConstant &&
+                        inst.operands[0].extra.empty();
+                    if (badConstStore) badConstant.insert(inst.extra);
                 } else if (inst.opcode == ir::Opcode::Load && !inst.operands.empty() &&
                            inst.operands[0].id < 0 && !inst.operands[0].extra.empty()) {
-                    slots.insert(inst.operands[0].extra);
-                    hasLoad.insert(inst.operands[0].extra);
-                    if (!slotType.count(inst.operands[0].extra)) {
-                        slotType[inst.operands[0].extra] = inst.result.type;
+                    const std::string& name = inst.operands[0].extra;
+                    slots.insert(name);
+                    hasLoad.insert(name);
+                    auto it = slotType.find(name);
+                    if (it == slotType.end()) {
+                        slotType[name] = inst.result.type;
+                    } else if (it->second != inst.result.type) {
+                        typeConflict.insert(name);  // 同槽多读类型
                     }
                 } else if (inst.opcode == ir::Opcode::AddrOf && !inst.operands.empty() &&
                            !inst.operands[0].extra.empty()) {
+                    // 地址逃逸唯一入口：&x / 传引用 / 闭包 [&] 捕获 / FFI 出参
+                    //   / 结构体/数组地址形态——一律不提升（禁猜别名）。
                     escaped.insert(inst.operands[0].extra);
                 } else if ((inst.opcode == ir::Opcode::LoadPtr ||
                             inst.opcode == ir::Opcode::StorePtr) &&
@@ -346,56 +448,92 @@ bool Mem2RegPass::run(ir::IRModule& module) {
         std::unordered_set<std::string> promotable;
         for (const auto& s : slots) {
             if (escaped.count(s) || !hasLoad.count(s)) continue;
+            if (typeConflict.count(s) || badConstant.count(s)) continue;
             if (!slotType.count(s)) continue;
             const std::string& ty = slotType[s];
-            if (ty == "i128" || ty == "u128") continue;  // 双槽类型保守（Copy 面未验证）
+            // i128/u128 双槽：Copy/φ 双槽面未验证——显式不提升（形态矩阵条目）。
+            if (ty == "i128" || ty == "u128") continue;
             auto it = fn.varSlots.find(s);
-            if (it != fn.varSlots.end() && it->second > 1) continue;  // 多槽保守
+            if (it != fn.varSlots.end() && it->second > 1) continue;  // 多槽聚合/方法值
+            // Store 值类型与 Load 结果类型一致（防止跨类型转发破坏位宽语义）
+            auto st = storeType.find(s);
+            if (st != storeType.end() && !ty.empty() && st->second != ty) continue;
             promotable.insert(s);
         }
         if (promotable.empty()) continue;
 
-        // ---- T2 值流不动点（φ-aware·超限降级交集=波1 语义）----
+        // ---- 支配树/可达性/回边（T2 前置）----
         DomTree dom;
         dom.rebuild(fn);
         const int n = dom.blockCount();
+        std::vector<char> reachable(static_cast<std::size_t>(n), 0);
+        for (const int b : domPreorder(dom)) {
+            if (b >= 0 && b < n) reachable[static_cast<std::size_t>(b)] = 1;
+        }
+        const bool hasUnreachable =
+            std::find(reachable.begin(), reachable.end(), 0) != reachable.end();
+        // 不可达块不参与重命名（walk 只走可达块）——其触达的槽整槽回退，
+        //   否则「Store 已删而不可达 Load 仍在」=半提升。
+        if (hasUnreachable) {
+            for (std::size_t bi = 0; bi < fn.blocks.size(); ++bi) {
+                if (bi < reachable.size() && reachable[bi] != 0) continue;
+                for (const auto& inst : fn.blocks[bi]->instructions) {
+                    const bool loadVarRef =
+                        (inst.opcode == ir::Opcode::Load) && !inst.operands.empty() &&
+                        inst.operands[0].id < 0 && !inst.operands[0].extra.empty();
+                    if (inst.opcode == ir::Opcode::Store && !inst.extra.empty()) {
+                        promotable.erase(inst.extra);
+                    }
+                    if (loadVarRef) promotable.erase(inst.operands[0].extra);
+                }
+            }
+            if (promotable.empty()) continue;
+        }
+        // 1267 回边判定（循环头 φ 需求）：b 的前驱 p 若被 b 支配（b dominates p）
+        //   则为回边；hasBackPred[b]=含回边前驱，hasNormalPred[b]=含非回边前驱。
+        //   入口即循环头（entry 只有回边前驱）=无循环初值来源（computeEnvIn 空）。
+        std::vector<char> hasBackPred(static_cast<std::size_t>(n), 0);
+        std::vector<char> hasNormalPred(static_cast<std::size_t>(n), 0);
+        for (int b = 0; b < n; ++b) {
+            for (const int p : dom.predecessors(b)) {
+                if (p < 0 || p >= n) continue;
+                const bool isBackEdge = dom.dominates(b, p);
+                hasBackPred[static_cast<std::size_t>(b)] |= isBackEdge ? 1 : 0;
+                hasNormalPred[static_cast<std::size_t>(b)] |= isBackEdge ? 0 : 1;
+            }
+        }
+
+        // ---- T2 值流不动点（φ-aware·超限降级交集=波1 语义）----
         std::vector<std::string> labels(static_cast<std::size_t>(n));
         for (int b = 0; b < n; ++b) labels[static_cast<std::size_t>(b)] = dom.labelOf(b);
         std::vector<SlotEnv> envOut(static_cast<std::size_t>(n));
         ValuePool pool;
-        bool phiEnabled = true;
+        bool phiEnabled = options_.allowPhi;
         const std::vector<SlotEnv> emptyInit(static_cast<std::size_t>(n));
-        if (!runFixpoint(fn, dom, labels, promotable, emptyInit, envOut, pool,
-                         phiEnabled)) {
-            phiEnabled = false;
-            if (!runFixpoint(fn, dom, labels, promotable, emptyInit, envOut, pool,
-                             phiEnabled)) {
-                continue;  // 双模式均不收敛（异常形态）：整函数放弃（保守）
-            }
-        }
-
-        // ---- φ 需求扫描（1255）：只为「有 Load 真实消费」的 φ 指纹建计划。
-        //   原实现按 envIn 中每个 φ 指纹无条件建计划：首轮提升已删除 Join 块
-        //   内可消元 Load，后续轮次这些 φ 已无任何消费者，却仍每轮重新插入
-        //   φ + 前驱并行拷贝（新寄存器编号）→ changed 永真，v2 全树 -O3
-        //   fixpoint 触顶 16 轮。扫描与 T2/T3 共用 walkBlock（Analyze 模式），
-        //   env 推进语义完全一致（Store/Load 同序、同指纹键）。
+        // φ 需求集合（1255）：只为「有 Load 真实消费」的 φ 指纹建计划。
+        //   原实现独立扫描遍；1267 起由收敛轮的 walkBlock 顺带收集（收敛轮
+        //   envIn == 最终 envOut，语义等价，省一遍全函数 walk）。
         std::unordered_set<std::string> neededPhiKeys;
         if (phiEnabled) {
-            ValuePool scanPool;
-            for (const int b : domPreorder(dom)) {
-                if (b < 0 || b >= n) continue;
-                ir::IRBlock* blk = fn.blocks[static_cast<std::size_t>(b)].get();
-                if (blk->label != labels[static_cast<std::size_t>(b)]) continue;
-                SlotEnv env = computeEnvIn(dom.predecessors(b), envOut, promotable,
-                                           labels[static_cast<std::size_t>(b)],
-                                           phiEnabled, n);
-                walkBlock(*blk, false, promotable, env, scanPool, nullptr, 0,
-                          &neededPhiKeys);
+            if (!runFixpoint(fn, dom, labels, promotable, emptyInit, envOut, pool,
+                             phiEnabled, hasBackPred, hasNormalPred,
+                             &neededPhiKeys)) {
+                phiEnabled = false;  // φ 模式不收敛：降级交集模式（波1 语义）
+                neededPhiKeys.clear();
+                if (!runFixpoint(fn, dom, labels, promotable, emptyInit, envOut,
+                                 pool, phiEnabled, hasBackPred, hasNormalPred)) {
+                    continue;  // 双模式均不收敛（异常形态）：整函数放弃（保守）
+                }
             }
+        } else if (!runFixpoint(fn, dom, labels, promotable, emptyInit, envOut,
+                                pool, phiEnabled, hasBackPred, hasNormalPred)) {
+            continue;  // φ 关闭模式不收敛：整函数放弃（保守）
+        }
+
+        if (phiEnabled) {
             // 直接消费集合 → φ 操作数依赖传递闭包（1255 修复·内层汇合 φ 必建）
             closePhiDependencies(dom, envOut, promotable, labels, phiEnabled, n,
-                                 neededPhiKeys);
+                                 hasBackPred, hasNormalPred, neededPhiKeys);
         }
 
         // ---- φ 分配 + 预检（写前验证·失败整函数放弃·原指令未动）----
@@ -406,14 +544,18 @@ bool Mem2RegPass::run(ir::IRModule& module) {
             std::string type;
             std::vector<std::pair<bool, std::string>> ops;  // (是否φ, 指纹)
             std::vector<int> opRegs;                        // 解析后源寄存器 id
+            std::vector<char> opConst;                      // 源=常量（需前驱物化）
         };
         std::vector<std::vector<PhiPlan>> plans(static_cast<std::size_t>(n));
         bool planOk = true;
         for (int b = 0; b < n && planOk; ++b) {
             const auto& preds = dom.predecessors(b);
             if (preds.size() < 2) continue;
-            SlotEnv in = computeEnvIn(preds, envOut, promotable,
-                                      labels[static_cast<std::size_t>(b)], phiEnabled, n);
+            SlotEnv in = computeEnvIn(
+                preds, envOut, promotable,
+                labels[static_cast<std::size_t>(b)], phiEnabled, n,
+                hasBackPred[static_cast<std::size_t>(b)] != 0,
+                hasNormalPred[static_cast<std::size_t>(b)] != 0);
             for (const auto& kv : in) {
                 if (!isPhiKey(kv.second)) continue;
                 // 无消费者的 φ：不建计划（1255·否则每轮重插空 φ 永不收敛）
@@ -464,14 +606,25 @@ bool Mem2RegPass::run(ir::IRModule& module) {
                         const auto rit = phiRegOf.find(op.second);
                         if (rit == phiRegOf.end()) { planOk = false; break; }
                         plan.opRegs.push_back(rit->second);
-                    } else {
-                        const auto pit = pool.find(op.second);
-                        // 可用性谓词独立成句：池值须存在、非常量、为有效寄存器 id
-                        const bool valueUsable =
-                            pit != pool.end() && !pit->second.isConstant &&
-                            pit->second.id >= 0;
-                        if (!valueUsable) { planOk = false; break; }
+                        plan.opConst.push_back(0);
+                        continue;
+                    }
+                    const auto pit = pool.find(op.second);
+                    if (pit == pool.end()) { planOk = false; break; }
+                    // 常量 φ 操作数：分配临时寄存器，T3 遍2 后在对应前驱块尾
+                    //   物化（lowerPhis 追加的并行拷贝在其后）。非常量必须是
+                    //   有效寄存器 id，否则池值不可用（内部不变量破坏）→ 整函数放弃。
+                    const bool constOp = pit->second.isConstant;
+                    const bool regOp = (!constOp && pit->second.id >= 0);
+                    if (!constOp && !regOp) { planOk = false; break; }
+                    if (constOp) {
+                        const int tmp = nextReg++;
+                        plan.opRegs.push_back(tmp);
+                        plan.opConst.push_back(1);
+                    }
+                    if (regOp) {
                         plan.opRegs.push_back(pit->second.id);
+                        plan.opConst.push_back(0);
                     }
                 }
                 if (!planOk) break;
@@ -488,8 +641,11 @@ bool Mem2RegPass::run(ir::IRModule& module) {
             if (b < 0 || b >= n) continue;
             ir::IRBlock* blk = fn.blocks[static_cast<std::size_t>(b)].get();
             if (blk->label != labels[static_cast<std::size_t>(b)]) continue;
-            SlotEnv env = computeEnvIn(dom.predecessors(b), envOut, promotable,
-                                       labels[static_cast<std::size_t>(b)], phiEnabled, n);
+            SlotEnv env = computeEnvIn(
+                dom.predecessors(b), envOut, promotable,
+                labels[static_cast<std::size_t>(b)], phiEnabled, n,
+                hasBackPred[static_cast<std::size_t>(b)] != 0,
+                hasNormalPred[static_cast<std::size_t>(b)] != 0);
             walkBlock(*blk, true, promotable, env, pool, &ctx,
                       static_cast<std::size_t>(b));
             walked[static_cast<std::size_t>(b)] = 1;
@@ -531,13 +687,61 @@ bool Mem2RegPass::run(ir::IRModule& module) {
             for (auto& inst : ctx.kept[static_cast<std::size_t>(b)]) {
                 if (inst.opcode == ir::Opcode::Store && !inst.extra.empty() &&
                     dieSlots.count(inst.extra)) {
-                    continue;  // Store 消亡
+                    fnChanged = true;  // Store 消亡（即使本槽无 Load 替换也属修改）
+                    continue;
                 }
                 finalInsts.push_back(std::move(inst));
             }
             blk->instructions = std::move(finalInsts);
         }
+        // ---- 1267：Alloca 删除（整槽提升后帧槽不再需要）----
+        //   只删 dieSlots（全槽提升且无保留 Load/Store）的 Alloca；未提升形态
+        //   （聚合/逃逸/i128/常量读回等）的 Alloca 原样保留——合法不优化。
+        //   不可达块也一并删除（该槽所有可达读写已消亡，不可达块不执行）。
+        if (options_.removeAlloca && !dieSlots.empty()) {
+            for (auto& block : fn.blocks) {
+                std::vector<ir::IRInstruction> keptInsts;
+                keptInsts.reserve(block->instructions.size());
+                for (auto& inst : block->instructions) {
+                    if (inst.opcode == ir::Opcode::Alloca && !inst.extra.empty() &&
+                        dieSlots.count(inst.extra)) {
+                        fnChanged = true;
+                        continue;
+                    }
+                    keptInsts.push_back(std::move(inst));
+                }
+                block->instructions = std::move(keptInsts);
+            }
+        }
         if (replaceTermTexts(fn, ctx.regRewrite)) fnChanged = true;
+
+        // ---- 1267：常量 φ 操作数物化（对应前驱块尾）----
+        //   φ 的常量输入无现成寄存器：在「提供该输入的出口块」尾部物化一条
+        //   Const（结果=预检时分配的临时寄存器）。lowerPhis 随后在这些块尾
+        //   追加并行拷贝——本步先入列表，顺序=Const 先于 Copy，语义正确。
+        for (int b = 0; b < n; ++b) {
+            const auto& preds = dom.predecessors(b);
+            for (const auto& plan : plans[static_cast<std::size_t>(b)]) {
+                const std::size_t nops =
+                    std::min(plan.opRegs.size(), plan.opConst.size());
+                for (std::size_t oi = 0; oi < nops; ++oi) {
+                    if (plan.opConst[oi] == 0) continue;
+                    if (oi >= preds.size()) continue;  // 预检已保证（防御）
+                    const int p = preds[oi];
+                    if (p < 0 || p >= n) continue;
+                    const auto pit = pool.find(plan.ops[oi].second);
+                    if (pit == pool.end() || !pit->second.isConstant) continue;
+                    ir::IRInstruction c;
+                    c.opcode = constOpcodeFor(pit->second.type);
+                    c.result = ir::IRValue::reg(plan.opRegs[oi], pit->second.type);
+                    c.type = pit->second.type;
+                    c.extra = pit->second.extra;
+                    fn.blocks[static_cast<std::size_t>(p)]->instructions.push_back(
+                        std::move(c));
+                    fnChanged = true;
+                }
+            }
+        }
 
         // ---- 收尾：φ 消除（前驱块尾并行拷贝·Phi 不出本 Pass）----
         if (fnChanged) {
