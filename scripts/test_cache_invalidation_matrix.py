@@ -26,6 +26,7 @@ import os
 import platform
 import re
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
@@ -183,16 +184,28 @@ def 解析统计(文本: str, 模式, 字段名):
     return dict(zip(字段名, (int(v) for v in 匹配[-1])))
 
 
+def 解析可选统计(文本: str, 模式, 字段名):
+    """失败编译可能在任何阶段提前返回（缓存统计收尾未执行）：无统计行=返回 None。"""
+    匹配 = 模式.findall(文本)
+    if not 匹配:
+        return None
+    return dict(zip(字段名, (int(v) for v in 匹配[-1])))
+
+
 def 编译(编译器: Path, 工作目录: Path, 源文件: Path, 输出: Path,
-         选项列表, AST目录: Path, 程序目录: Path, 额外环境=None) -> 编译结果:
+         选项列表, AST目录: Path, 程序目录: Path, 额外环境=None,
+         期望成功=True) -> 编译结果:
     命令 = [str(编译器), "compile", str(源文件), "--output", str(输出)] + list(选项列表)
     结果 = subprocess.run(命令, cwd=str(工作目录), capture_output=True, timeout=180,
                           env=旁路环境(AST目录, 程序目录, 额外环境))
     文本 = (结果.stdout + 结果.stderr).decode("utf-8", errors="replace")
-    assert 结果.returncode == 0, "编译失败（rc=%d）：%s" % (结果.returncode, 文本[-800:])
+    if 期望成功:
+        assert 结果.returncode == 0, "编译失败（rc=%d）：%s" % (结果.returncode, 文本[-800:])
+    else:
+        assert 结果.returncode != 0, "预期编译失败但 rc=0：%s" % 文本[-800:]
     return 编译结果(结果.returncode, 结果.stdout, 结果.stderr,
-                    解析统计(文本, AST_统计模式, AST_字段),
-                    解析统计(文本, 程序_统计模式, 程序_字段), 文本)
+                    解析可选统计(文本, AST_统计模式, AST_字段),
+                    解析可选统计(文本, 程序_统计模式, 程序_字段), 文本)
 
 
 def 无缓存编译(编译器: Path, 工作目录: Path, 源文件: Path, 输出: Path,
@@ -236,6 +249,75 @@ def 写工具源(路径: Path, 值: int):
         "函数 取值() -> 整32 {\n"
         "    返回 %d;\n"
         "}\n" % 值, encoding="utf-8")
+
+
+def 诊断文本(文本: str) -> str:
+    """去掉缓存统计/成功行，保留编译诊断（human 通道逐字节对照用）。"""
+    return "\n".join(
+        行 for 行 in 文本.splitlines()
+        if "[AST 缓存]" not in 行 and "[程序缓存]" not in 行
+        and not 行.startswith("编译成功") and not 行.startswith("检查通过"))
+
+
+def 提取JSON(标准输出: bytes) -> str:
+    """--json 通道：stdout=[JSON 数组]（无换行）后接「编译成功: …」——取 JSON 段。"""
+    文本 = 标准输出.decode("utf-8", errors="replace")
+    界 = 文本.find("编译成功")
+    return (文本 if 界 < 0 else 文本[:界]).strip()
+
+
+def 注入AST漂移(AST目录: Path, 原文: bytes, 替换文: bytes, 限定: bytes = None):
+    """在 AST 载荷内做等长替换并重算 FNV（反序列化成功、语义/打印与源不同）。
+
+    返回被篡改条目路径；未找到唯一命中返回 None。限定=载荷必须包含的字节
+    （用于区分入口/依赖条目）。"""
+    assert len(原文) == len(替换文), "AST 漂移替换必须等长（不改载荷结构）"
+    for 条目 in sorted(AST目录.glob("*.cnast")):
+        数据 = bytearray(条目.read_bytes())
+        载荷 = bytes(数据[AST_条目头长:])
+        if 限定 is not None and 限定 not in 载荷:
+            continue
+        if 载荷.count(原文) != 1:
+            continue
+        新载荷 = 载荷.replace(原文, 替换文)
+        数据[AST_条目头长:] = 新载荷
+        数据[40:48] = fnv1a64(新载荷).to_bytes(8, "little")
+        条目.write_bytes(bytes(数据))
+        return 条目
+    return None
+
+
+def 注入写失败(缓存目录: Path, 条目: Path) -> bool:
+    """让缓存重建写入失败（P2-4 显形验证）：返回 True=注入生效。
+
+    Windows：目标条目置只读——tmp 可写但 remove/rename 覆盖失败；
+    POSIX：缓存目录置 0555——tmp 创建失败。root/特殊权限模型下可能无法注入
+    （探测写入成功=返回 False，调用方打印说明，不伪装证据）。"""
+    if sys.platform.startswith("win"):
+        条目.chmod(stat.S_IREAD)
+        try:
+            with open(条目, "ab"):
+                pass
+        except OSError:
+            return True
+        条目.chmod(stat.S_IWRITE | stat.S_IREAD)
+        return False
+    缓存目录.chmod(0o555)
+    探针 = 缓存目录 / "probe_write_1213"
+    try:
+        探针.write_text("x", encoding="utf-8")
+    except OSError:
+        return True
+    探针.unlink(missing_ok=True)
+    缓存目录.chmod(0o755)
+    return False
+
+
+def 解除写失败(缓存目录: Path, 条目: Path):
+    if sys.platform.startswith("win"):
+        条目.chmod(stat.S_IWRITE | stat.S_IREAD)
+    else:
+        缓存目录.chmod(0o755)
 
 
 def 统计断言(结果: 编译结果, 级别: str, 期望: dict, 说明: str):
@@ -302,8 +384,11 @@ def 场景0_双路径验证(编译器, 工作目录, 缓存根):
     断言((工作目录 / "verify" / "漂移.asm").read_bytes() == 基准,
          "漂移场景输出以重编译产物为准（与基准逐字节一致）")
     修复 = 编译(编译器, 主.parent, 主, 工作目录 / "verify" / "修复.asm", 选项,
-                AST目录, 程序目录)
-    统计断言(修复, "程序", {"命中": 1, "验证不符": 0}, "覆盖后再次命中且验证不符清零")
+                AST目录, 程序目录, {"CN_PROGRAM_CACHE_VERIFY": "1"})
+    统计断言(修复, "程序", {"命中": 1, "验证不符": 0},
+             "覆盖写回后开 VERIFY 复验：命中且验证不符=0（真实比对而非未开验证恒真）")
+    断言("[程序缓存验证] 通过：命中产物与重编译产物逐字节一致" in 修复.文本,
+         "覆盖写回后的条目经双路径复验逐字节一致")
     断言((工作目录 / "verify" / "修复.asm").read_bytes() == 基准, "覆盖修复后产物与基准一致")
 
     # AST 漂移注入：-D 甲 条目的序列化载荷里「甲分支」→「乙分支」（UTF-8 等长），
@@ -606,6 +691,169 @@ def 旧子集不变(旧快照: dict, 新快照: dict) -> bool:
     return all(名 in 新快照 and 新快照[名] == 内容 for 名, 内容 in 旧快照.items())
 
 
+def 写警告源(路径: Path):
+    路径.write_text(
+        "函数 包装(整32 值) -> 结果<整32, 整32> {\n"
+        "    返回 正常(值);\n"
+        "}\n\n"
+        "函数 主() -> 整32 {\n"
+        "    结果<整32, 整32> 盒 = 包装(7);\n"
+        "    如果 (盒.正常) {\n"
+        "        打印(整数转字符串(盒.值));\n"
+        "    }\n"
+        "    返回 0;\n"
+        "}\n", encoding="utf-8")
+
+
+def 写错误源(路径: Path):
+    路径.write_text(
+        "函数 主() -> 整32 {\n"
+        "    返回 未声明名;\n"
+        "}\n", encoding="utf-8")
+
+
+def 场景7_警告与错误路径(编译器, 工作目录, 缓存根):
+    print("[场景⑦] 警告重放一致性 + 语义错误不写程序缓存（P2-1 成功/失败/诊断）")
+    选项 = ["--target", 本机目标平台(), "-O2"]
+
+    # ---- 警告源：程序缓存命中重放 warningsHuman / warningsJson 与完整编译逐字节一致
+    警告目录 = 工作目录 / "s7" / "warn"
+    警告目录.mkdir(parents=True, exist_ok=True)
+    警告主 = 警告目录 / "主.cn"
+    写警告源(警告主)
+    AST目录, 程序目录 = 缓存根 / "warn" / "ast", 缓存根 / "warn" / "prog"
+    警告1 = 编译(编译器, 警告目录, 警告主, 警告目录 / "警告1.asm", 选项, AST目录, 程序目录)
+    统计断言(警告1, "AST", {"首建": 1, "写入": 1}, "警告源首次：AST 首建")
+    统计断言(警告1, "程序", {"首建": 1, "写入": 1}, "警告源首次：程序产物含警告文本写入")
+    警告词 = "检查 结果.正常 后未处理错误分支"
+    断言(警告词 in 警告1.标准错误.decode("utf-8", errors="replace"),
+         "首次编译 stderr 输出语义警告")
+    首次诊断 = 诊断文本(警告1.文本)
+
+    警告命中 = 编译(编译器, 警告目录, 警告主, 警告目录 / "警告命中.asm", 选项,
+                   AST目录, 程序目录)
+    统计断言(警告命中, "程序", {"命中": 1, "写入": 0}, "警告源第二次：程序缓存命中")
+    断言(诊断文本(警告命中.文本) == 首次诊断,
+         "程序缓存命中重放 warningsHuman 与首次完整编译逐字节一致")
+    断言((警告目录 / "警告命中.asm").read_bytes() == (警告目录 / "警告1.asm").read_bytes(),
+         "警告源命中产物与首次逐字节一致")
+
+    json命中 = 编译(编译器, 警告目录, 警告主, 警告目录 / "警告命中_json.asm",
+                  选项 + ["--json"], AST目录, 程序目录)
+    统计断言(json命中, "程序", {"命中": 1}, "同条目 --json 命中（json 开关不入缓存键）")
+    json无缓存 = 编译(编译器, 警告目录, 警告主, 警告目录 / "警告无缓存_json.asm",
+                    选项 + ["--json"], AST目录, 程序目录,
+                    {"CN_NO_AST_CACHE": "1", "CN_NO_PROGRAM_CACHE": "1"})
+    json命中文本 = 提取JSON(json命中.标准输出)
+    json无缓存文本 = 提取JSON(json无缓存.标准输出)
+    断言(警告词 in json命中文本, "命中重放的 JSON 诊断含语义警告")
+    断言(json命中文本 == json无缓存文本,
+         "程序缓存命中重放 warningsJson 与无缓存完整编译逐字节一致")
+
+    # ---- 语义错误源：rc=1、不写程序缓存、不命中、诊断与无缓存逐字节一致
+    错误目录 = 工作目录 / "s7" / "err"
+    错误目录.mkdir(parents=True, exist_ok=True)
+    错误主 = 错误目录 / "主.cn"
+    写错误源(错误主)
+    AST错误, 程序错误 = 缓存根 / "err" / "ast", 缓存根 / "err" / "prog"
+    错误1 = 编译(编译器, 错误目录, 错误主, 错误目录 / "错误1.asm", 选项,
+                AST错误, 程序错误, 期望成功=False)
+    断言("未声明的标识符" in 错误1.标准错误.decode("utf-8", errors="replace"),
+         "语义错误源 rc≠0 且诊断原文含「未声明的标识符」")
+    断言(len(list(程序错误.glob("*.cnpg"))) == 0, "语义错误不写程序缓存（条目数 0）")
+    AST错误数 = len(list(AST错误.glob("*.cnast")))
+    断言(AST错误数 == 1, "解析成功的 AST 仍缓存（AST 缓存只覆盖词法+语法）")
+    错误诊断 = 诊断文本(错误1.文本)
+
+    错误2 = 编译(编译器, 错误目录, 错误主, 错误目录 / "错误2.asm", 选项,
+                AST错误, 程序错误, 期望成功=False)
+    断言(错误2.返回码 == 错误1.返回码,
+         "语义错误重复编译返回码一致（rc=%d）" % 错误1.返回码)
+    断言(诊断文本(错误2.文本) == 错误诊断,
+         "语义错误重复编译诊断逐字节一致（缓存不改变诊断/不吞错）")
+    断言(len(list(程序错误.glob("*.cnpg"))) == 0, "重复失败后程序缓存条目仍为 0（不命中）")
+    断言(len(list(AST错误.glob("*.cnast"))) == AST错误数, "重复失败后 AST 条目数不增")
+
+    错误无缓存 = 编译(编译器, 错误目录, 错误主, 错误目录 / "错误无缓存.asm", 选项,
+                    AST错误, 程序错误,
+                    {"CN_NO_AST_CACHE": "1", "CN_NO_PROGRAM_CACHE": "1"},
+                    期望成功=False)
+    断言(诊断文本(错误无缓存.文本) == 错误诊断,
+         "缓存开启与无缓存完整编译的失败诊断逐字节一致")
+
+
+def 场景8_验证失败显形与坏条目清理(编译器, 工作目录, 缓存根):
+    print("[场景⑧] 验证不符重建失败显形 + 程序缓存编译失败清条目（P2-4）")
+    选项 = ["--target", 本机目标平台(), "-O2"]
+
+    # ---- 8a AST：验证不符 → 重建写入失败 → 无条件 stderr 显形（非 verbose）
+    AST目录, 程序目录 = 缓存根 / "ast_repair" / "ast", 缓存根 / "ast_repair" / "prog"
+    主, _ = 建项目(工作目录 / "s8a")
+    基准文件 = 工作目录 / "s8a" / "基准.asm"
+    编译(编译器, 主.parent, 主, 基准文件, 选项, AST目录, 程序目录)
+    基准 = 基准文件.read_bytes()
+    条目 = 注入AST漂移(AST目录, "乙分支".encode("utf-8"), "丙分支".encode("utf-8"))
+    assert 条目 is not None, "P2-4 未找到可篡改的 AST 条目"
+    断言(校验AST条目(条目) is None, "注入漂移后条目头/长度/FNV 仍合法（故障面只留内容）")
+    if 注入写失败(AST目录, 条目):
+        try:
+            失败显形 = 编译(编译器, 主.parent, 主, 工作目录 / "s8a" / "失败显形.asm",
+                          选项, AST目录, 程序目录,
+                          {"CN_AST_CACHE_VERIFY": "1", "CN_NO_PROGRAM_CACHE": "1"})
+            断言("反序列化 AST 与重新解析不一致" in 失败显形.文本,
+                 "验证不符先显形（AST 缓存验证错误）")
+            断言("验证不符条目重建失败" in 失败显形.文本,
+                 "重建写入失败无条件 stderr 显形（未开 verbose 也输出）")
+            统计断言(失败显形, "AST", {"损坏回退": 1, "写失败": 1, "写入": 0},
+                     "重建失败计数：损坏回退 1 + 写失败 1 + 写入 0")
+            断言(失败显形.返回码 == 0, "重建失败不阻断编译（rc=0）")
+            断言((工作目录 / "s8a" / "失败显形.asm").read_bytes() == 基准,
+                 "重建失败的本次产物仍与基准逐字节一致（本次解析正确）")
+        finally:
+            解除写失败(AST目录, 条目)
+        for 旧 in AST目录.glob("*.cnast"):
+            旧.unlink()
+        恢复 = 编译(编译器, 主.parent, 主, 工作目录 / "s8a" / "恢复.asm", 选项,
+                   AST目录, 程序目录)
+        统计断言(恢复, "AST", {"首建": 2, "写入": 2}, "清理坏条目后两模块重新首建")
+        断言((工作目录 / "s8a" / "恢复.asm").read_bytes() == 基准, "恢复后产物与基准一致")
+    else:
+        print("  [说明] 当前权限模型无法注入写失败（root/特殊 ACL），P2-4 AST "
+              "写失败显形由 Windows 本机证据覆盖")
+
+    # ---- 8b 程序缓存：VERIFY 命中后完整重编译失败 → 删除坏条目（防未开验证误命中）
+    AST目录2, 程序目录2 = 缓存根 / "prog_guard" / "ast", 缓存根 / "prog_guard" / "prog"
+    主2, _ = 建项目(工作目录 / "s8b")
+    基准2文件 = 工作目录 / "s8b" / "基准.asm"
+    编译(编译器, 主2.parent, 主2, 基准2文件, 选项, AST目录2, 程序目录2)
+    基准2 = 基准2文件.read_bytes()
+    断言(len(list(程序目录2.glob("*.cnpg"))) == 1, "程序缓存基准条目 1 个")
+    # 篡改入口 AST 的调用名（取值→坏名·UTF-8 等长）：程序缓存键只含源摘要仍命中，
+    #   但完整重编译在语义阶段失败=命中产物不可信。
+    入口条目 = 注入AST漂移(AST目录2, "取值".encode("utf-8"), "坏名".encode("utf-8"),
+                        限定="主".encode("utf-8"))
+    assert 入口条目 is not None, "P2-4 未找到入口 AST 条目（限定「主」）"
+    断言(校验AST条目(入口条目) is None, "篡改后的入口 AST 条目头/长度/FNV 仍合法")
+    失败 = 编译(编译器, 主2.parent, 主2, 工作目录 / "s8b" / "失败.asm", 选项,
+               AST目录2, 程序目录2, {"CN_PROGRAM_CACHE_VERIFY": "1"},
+               期望成功=False)
+    断言("未声明" in 失败.标准错误.decode("utf-8", errors="replace"),
+         "VERIFY 命中后完整重编译在语义阶段失败（rc=%d）" % 失败.返回码)
+    断言(len(list(程序目录2.glob("*.cnpg"))) == 0,
+         "完整编译失败后坏程序条目已删除（下次未开 VERIFY 不会命中坏产物）")
+    for 旧 in AST目录2.glob("*.cnast"):
+        旧.unlink()
+    重编译 = 编译(编译器, 主2.parent, 主2, 工作目录 / "s8b" / "重编译.asm", 选项,
+                AST目录2, 程序目录2)
+    统计断言(重编译, "程序", {"首建": 1, "写入": 1}, "清理坏 AST 后程序缓存重新首建")
+    断言((工作目录 / "s8b" / "重编译.asm").read_bytes() == 基准2,
+         "重编译产物与基准逐字节一致")
+    再命中 = 编译(编译器, 主2.parent, 主2, 工作目录 / "s8b" / "再命中.asm", 选项,
+                AST目录2, 程序目录2)
+    统计断言(再命中, "程序", {"命中": 1, "写入": 0}, "重建后的程序条目稳定命中")
+    断言((工作目录 / "s8b" / "再命中.asm").read_bytes() == 基准2, "重建条目命中产物与基准一致")
+
+
 def 主程序() -> int:
     解析器 = argparse.ArgumentParser(description="两级缓存正确性三锁（1213）自测")
     解析器.add_argument("--cn", help="cn 编译器路径（默认自动探测 target/cn[.exe]）")
@@ -626,6 +874,8 @@ def 主程序() -> int:
         场景4_改编译选项(编译器, 工作目录, 临时根 / "s4")
         场景5_改编译器身份(编译器, 工作目录, 临时根 / "s5")
         场景6_改格式版本(编译器, 工作目录, 临时根 / "s6")
+        场景7_警告与错误路径(编译器, 工作目录, 临时根 / "s7")
+        场景8_验证失败显形与坏条目清理(编译器, 工作目录, 临时根 / "s8")
         print("\n全绿：%d 项断言通过" % 通过)
         return 0
     finally:

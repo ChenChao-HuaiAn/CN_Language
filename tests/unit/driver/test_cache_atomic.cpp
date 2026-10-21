@@ -14,8 +14,10 @@
 //   竞态当作数据撕裂。
 #include <gtest/gtest.h>
 
+#include <atomic>
 #include <chrono>
 #include <cstdint>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
@@ -24,6 +26,7 @@
 #include <thread>
 #include <vector>
 
+#include "cn_compiler/driver/driver.hpp"
 #include "cn_compiler/driver/driver_cache_util.hpp"
 
 namespace fs = std::filesystem;
@@ -208,4 +211,85 @@ TEST(CacheAtomicWriteTest, UnwritablePathFailsExplicitlyWithoutResidue) {
     EXPECT_FALSE(error.empty()) << "写失败必须返回具体阶段说明（miss 不可静默）";
     EXPECT_FALSE(fs::exists(missingDir)) << "失败路径不应创建目录";
     EXPECT_EQ(tempResidue(dir.path), 0u) << "失败后存在 .tmp 残留";
+}
+
+// ④ cacheLeafDir 并发首次探测（1213·P2-3·#1272/#1298 并行加载前置回归）：
+//   8 线程同时首次调用（同 leaf + 不同 leaf 交错）——记忆化 map 无数据竞争、
+//   同 leaf 返回同一稳定地址/路径、不同 leaf 各自独立，目录并发创建无错误。
+TEST(CacheAtomicWriteTest, CacheLeafDirConcurrentFirstCallsStable) {
+    TempDir dir;
+    cn_compiler::driver::DriverOptions options;
+    // stdlibDir=<proj>/stdlib（无尾分隔符，与 detectStdlibDir 实际返回值一致）
+    // -> 缓存叶目录 <proj>/target/cache/<leaf>
+    options.stdlibDir = (dir.path / "proj" / "stdlib").string();
+    const char* envName = "CN_TEST_CACHE_LEAF_DIR_1213";
+    // 环境变量置空=不使用覆盖（cacheLeafDir 以 env[0]=='\0' 判未设置）
+#ifdef _WIN32
+    _putenv_s(envName, "");
+#else
+    setenv(envName, "", 1);
+#endif
+    const std::string leafA = "leaf_a_1213";
+    const std::string leafB = "leaf_b_1213";
+    constexpr unsigned kThreads = 8;
+    std::vector<const std::string*> ptrA(kThreads, nullptr);
+    std::vector<const std::string*> ptrB(kThreads, nullptr);
+    std::atomic<int> ready{0};
+    std::atomic<bool> go{false};
+    std::vector<std::thread> threads;
+    for (unsigned t = 0; t < kThreads; ++t) {
+        threads.emplace_back([&, t] {
+            ready.fetch_add(1);
+            while (!go.load(std::memory_order_acquire)) std::this_thread::yield();
+            // 首次并发探测：同线程内 A/B 交错，跨线程同 leaf 交错
+            ptrA[t] = &cn_compiler::driver::cacheLeafDir(options, leafA.c_str(), envName);
+            ptrB[t] = &cn_compiler::driver::cacheLeafDir(options, leafB.c_str(), envName);
+        });
+    }
+    while (ready.load() < static_cast<int>(kThreads)) std::this_thread::yield();
+    go.store(true, std::memory_order_release);
+    for (auto& thread : threads) thread.join();
+
+    const std::string expectedA =
+        (dir.path / "proj" / "target" / "cache" / leafA).string();
+    const std::string expectedB =
+        (dir.path / "proj" / "target" / "cache" / leafB).string();
+    // 缓存实现以 '/' 拼路径（跨平台统一），Windows 期望串为原生 '\'——按
+    //   generic_string 归一后比较（分隔符差异不是路径不稳定）。
+    const fs::path expectedANorm = fs::path(expectedA);
+    const fs::path expectedBNorm = fs::path(expectedB);
+    for (unsigned t = 0; t < kThreads; ++t) {
+        ASSERT_NE(ptrA[t], nullptr) << "线程 " << t << " leafA 返回空指针";
+        ASSERT_NE(ptrB[t], nullptr) << "线程 " << t << " leafB 返回空指针";
+        EXPECT_EQ(fs::path(*ptrA[t]).generic_string(), expectedANorm.generic_string())
+            << "线程 " << t << " leafA 路径不稳定";
+        EXPECT_EQ(fs::path(*ptrB[t]).generic_string(), expectedBNorm.generic_string())
+            << "线程 " << t << " leafB 路径不稳定";
+        EXPECT_EQ(ptrA[t], ptrA[0]) << "同 leaf 返回引用地址不稳定（线程 " << t << "）";
+        EXPECT_EQ(ptrB[t], ptrB[0]) << "同 leaf 返回引用地址不稳定（线程 " << t << "）";
+    }
+    EXPECT_NE(ptrA[0], ptrB[0]) << "不同 leaf 返回了同一记忆化节点";
+
+    // 并发创建目录：同 leaf 多线程 mkdir 竞争不得报错，最终目录存在
+    std::vector<int> okA(kThreads, 0);
+    std::vector<int> okB(kThreads, 0);
+    std::vector<std::thread> mkdirs;
+    for (unsigned t = 0; t < kThreads; ++t) {
+        mkdirs.emplace_back([&, t] {
+            okA[t] = cn_compiler::driver::cacheEnsureDir(*ptrA[t]) ? 1 : 0;
+            okB[t] = cn_compiler::driver::cacheEnsureDir(*ptrB[t]) ? 1 : 0;
+        });
+    }
+    for (auto& thread : mkdirs) thread.join();
+    for (unsigned t = 0; t < kThreads; ++t) {
+        EXPECT_EQ(okA[t], 1) << "线程 " << t << " 并发创建 leafA 目录失败";
+        EXPECT_EQ(okB[t], 1) << "线程 " << t << " 并发创建 leafB 目录失败";
+    }
+    EXPECT_TRUE(fs::is_directory(expectedA)) << "leafA 目录不存在";
+    EXPECT_TRUE(fs::is_directory(expectedB)) << "leafB 目录不存在";
+#ifdef _WIN32
+    _putenv_s(envName, "");
+#else
+    unsetenv(envName);
+#endif
 }

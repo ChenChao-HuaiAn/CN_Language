@@ -309,6 +309,13 @@ void storeProgramCache(const std::string& dir, const std::string& entryFilePath,
     g_stats.written += 1;
 }
 
+bool discardProgramCacheEntry(const std::string& dir, const std::string& entryFilePath,
+                              const DriverOptions& options) {
+    const std::string cacheFile = cacheFilePath(dir, entryFilePath, options);
+    // 删除成功=条目已清除；失败（不存在/权限）由调用方显形，不以返回值静默继续
+    return std::remove(cacheFile.c_str()) == 0;
+}
+
 bool programCacheVerifyEnabled() {
     const char* env = std::getenv("CN_PROGRAM_CACHE_VERIFY");
     return env != nullptr && env[0] != '\0';

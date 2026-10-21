@@ -13,6 +13,7 @@
 #include <memory>
 #include <string>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 #include "cn_compiler/codegen/backend_factory.hpp"
@@ -474,6 +475,35 @@ bool restorePackageContext(const std::string& entryFile,
     return loadModuleTree(pkgCand, dir, dir, graph, error, macros, options);
 }
 
+// 程序缓存坏条目守卫（1213·P2-4）：VERIFY 命中后需完整重编译才能逐字节比对；
+//   若重编译中途失败（语义/IR/代码生成），命中的旧条目不可信且无法完成验证——
+//   析构时删除该条目，防下次未开 VERIFY 的运行静默命中坏产物。成功路径 commit
+//   保留（验证不符时已由 6.5 覆盖写回新产物）。删除失败无条件 stderr 显形
+//   （非 verbose）——残留坏条目是「静默错产物」风险，不得降级为提示。
+class ProgramCacheBadEntryGuard {
+public:
+    ProgramCacheBadEntryGuard(std::string dir, std::string entryFile,
+                              const DriverOptions& options, bool armed)
+        : dir_(std::move(dir)), entryFile_(std::move(entryFile)),
+          options_(options), armed_(armed) {}
+    ~ProgramCacheBadEntryGuard() {
+        if (!armed_) return;
+        if (!discardProgramCacheEntry(dir_, entryFile_, options_)) {
+            std::fprintf(stderr,
+                         "警告: [程序缓存验证] 完整重编译失败且旧条目删除失败"
+                         "（下次未开验证可能命中不可信产物）: %s\n",
+                         entryFile_.c_str());
+        }
+    }
+    void commit() { armed_ = false; }
+
+private:
+    std::string dir_;
+    std::string entryFile_;
+    const DriverOptions& options_;
+    bool armed_;
+};
+
 } // namespace
 
 // 多文件编译流水线（Task 3.6 模块系统）：
@@ -554,6 +584,10 @@ int runModulePipeline(const std::string& entryFile, const DriverOptions& options
                                                programKey, cachedProgram);
         }
     }
+    // 1213·P2-4：VERIFY 命中后要完整重编译；中途失败=命中产物不可信且无法比对，
+    //   守卫析构时删除该条目（防下次未开 VERIFY 静默命中坏产物），成功路径 commit。
+    ProgramCacheBadEntryGuard badEntryGuard(programCacheDir, entryFile, options,
+                                            programCacheHit && programCacheVerifyEnabled());
     // 验证通道（CN_PROGRAM_CACHE_VERIFY=1）：命中后仍完整重编译，末尾逐字节比对
     if (programCacheHit && !programCacheVerifyEnabled()) {
         output.asmText = cachedProgram.asmText;
@@ -780,6 +814,15 @@ int runModulePipeline(const std::string& entryFile, const DriverOptions& options
                 std::fprintf(stderr,
                              "错误: [程序缓存验证] 命中产物与重编译产物不一致"
                              "（以重编译产物为准并覆盖缓存）\n");
+                // 1213·P2-4：先删坏条目再写新产物——写入失败时也不留下「命中但
+                //   过期」的旧产物；删除失败无条件显形（重建写入若再失败则坏条目
+                //   残留，必须是可见告警而非 verbose 提示）。
+                if (!discardProgramCacheEntry(programCacheDir, entryFile, options)) {
+                    std::fprintf(stderr,
+                                 "警告: [程序缓存验证] 坏条目删除失败"
+                                 "（重建写入失败时可能残留不可信产物）: %s\n",
+                                 entryFile.c_str());
+                }
             }
             if (matched) {
                 // 验证通过：缓存条目与重编译产物一致，无需重写（省一次大产物落盘）
@@ -798,6 +841,7 @@ int runModulePipeline(const std::string& entryFile, const DriverOptions& options
     }
     reportAstCacheStats(options.verbose);  // 1142：缓存统计（CN_AST_CACHE_STATS=1 或 verbose）
     reportProgramCacheStats(options.verbose);  // 1156：程序缓存统计
+    badEntryGuard.commit();  // 完整编译/验证成功：保留条目（验证不符时已覆盖写回）
     return 0;
 }
 

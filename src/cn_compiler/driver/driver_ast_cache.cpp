@@ -221,8 +221,10 @@ bool verifyAgainstParse(Program& cachedAst, const std::string& source,
 // ==================== 写入 ====================
 
 // 序列化并原子写入缓存条目（tmp + rename；失败不阻断编译，verbose 提示）。
+//   repair=true：本次写入是「验证不符坏条目」的重建覆盖——失败必须无条件显形
+//   （非 verbose）：坏条目可能残留，下次未开验证的运行会静默命中错误 AST。
 void storeCache(const std::string& cacheFile, const CacheKey128& kContent, const CacheKey128& kEnv,
-                const Program& ast, bool verbose) {
+                const Program& ast, bool verbose, bool repair) {
     std::vector<char> payload;
     std::string serr;
     if (!ast_serial::serializeProgram(&ast, payload, serr)) {
@@ -244,7 +246,13 @@ void storeCache(const std::string& cacheFile, const CacheKey128& kContent, const
     std::string werr;
     if (!cacheWriteFileAtomic(cacheFile, out, werr)) {
         g_stats.storeFail += 1;
-        if (verbose) std::cerr << "提示: [AST 缓存] " << werr << "\n";
+        if (repair) {
+            std::fprintf(stderr,
+                         "警告: [AST 缓存] 验证不符条目重建失败（坏条目仍可能残留，"
+                         "建议删除缓存目录后重建）：%s\n", werr.c_str());
+        } else if (verbose) {
+            std::cerr << "提示: [AST 缓存] " << werr << "\n";
+        }
         return;
     }
     g_stats.written += 1;
@@ -279,6 +287,7 @@ bool parseModuleWithCache(const std::string& source, const std::string& filePath
     const CacheKey128 kContent = cacheHash128(source);
     const CacheKey128 kEnv = hashEnv(identity, moduleName, macros);
     const std::string cacheFile = cacheFilePath(dir, filePath, kEnv);
+    bool verifyFailed = false;
     if (tryLoadCache(cacheFile, kContent, kEnv, ast)) {
         // 命中路径：按同一规则重建依赖表（collectImportDeps 与解析路径共用）
         imports.clear();
@@ -295,6 +304,10 @@ bool parseModuleWithCache(const std::string& source, const std::string& filePath
         //   下次未开验证的运行静默命中错误 AST（验证通道只报不修=半截机制）。
         ast = nullptr;
         imports.clear();
+        verifyFailed = true;
+        // 先删坏条目：即使重建写入失败，下次未开验证也不会命中错误 AST。
+        //   删除失败不阻断（重建失败时 storeCache 无条件显形告警）。
+        std::remove(cacheFile.c_str());
     }
     // 未命中/失效/损坏/验证不符：完整解析（唯一正确路径；解析失败不缓存——诊断每次重建）
     if (!module::parseSourceText(source, filePath, moduleName, ast, imports, diags, macros)) {
@@ -302,12 +315,16 @@ bool parseModuleWithCache(const std::string& source, const std::string& filePath
     }
     if (!cacheEnsureDir(dir)) {
         g_stats.storeFail += 1;
-        if (options.verbose) {
+        if (verifyFailed) {
+            std::fprintf(stderr,
+                         "警告: [AST 缓存] 验证不符条目重建失败（缓存目录不可用，"
+                         "坏条目可能残留）：%s\n", dir.c_str());
+        } else if (options.verbose) {
             std::cerr << "提示: [AST 缓存] 无法创建缓存目录: " << dir << "\n";
         }
         return true;
     }
-    storeCache(cacheFile, kContent, kEnv, *ast, options.verbose);
+    storeCache(cacheFile, kContent, kEnv, *ast, options.verbose, verifyFailed);
     return true;
 }
 

@@ -67,6 +67,12 @@ void storeProgramCache(const std::string& dir, const std::string& entryFilePath,
                        const DriverOptions& options, const CacheKey128& key,
                        const ProgramCacheEntry& entry, bool verbose);
 
+// 删除指定入口/选项组合的缓存条目（1213·P2-4）：VERIFY 命中后完整重编译失败=
+//   命中产物不可信且无法完成逐字节比对——清除条目，防下次未开 VERIFY 静默命中
+//   坏产物。返回 false=条目不存在或删除失败（调用方无条件显形告警）。
+bool discardProgramCacheEntry(const std::string& dir, const std::string& entryFilePath,
+                              const DriverOptions& options);
+
 // CN_PROGRAM_CACHE_VERIFY=1：命中后仍完整重编译并逐字节比对（验证通道）
 bool programCacheVerifyEnabled();
 
