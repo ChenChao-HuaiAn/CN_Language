@@ -38,6 +38,31 @@ if(CN_ENABLE_ASAN)
     endif()
 endif()
 
+# 1171（2026-10-21）：可选 ThreadSanitizer 构建——并发 codegen（1145 函数级并行发射）
+#   数据竞争检测（编译器自身多线程发射/标签平移/诊断合并面）。默认 OFF=发布构建零影响。
+#   开启：cmake -S . -B target/build-tsan -DCN_ENABLE_TSAN=ON（独立构建目录，不污染常规构建；
+#   产物=target/build-tsan/tsan/cn——输出目录隔离见下方块内说明）
+#   压测口径：CN_CODEGEN_THREADS={1,2,4,8,...} cn compile CN语言编译器v2/主.cn --target <t>
+#   多轮产物逐字节对拍 + TSan 零 WARNING。
+#   ★位置要求：与 ASan 同——必须在所有 target 定义之前（add_compile_options 只影响其后的 target）；
+#   ★平台边界：ThreadSanitizer 仅 GCC/Clang（MSVC 无对应实现，win 口径=诚实边界）。
+option(CN_ENABLE_TSAN "启用 ThreadSanitizer（并发 codegen 数据竞争检测·仅 GCC/Clang）" OFF)
+if(CN_ENABLE_TSAN)
+    if(MSVC)
+        message(FATAL_ERROR "CN_ENABLE_TSAN 仅支持 GCC/Clang（ThreadSanitizer）；MSVC 无对应实现")
+    else()
+        add_compile_options(-fsanitize=thread -fno-omit-frame-pointer)
+        add_link_options(-fsanitize=thread)
+        # ★产物目录隔离（1171 L1 实锤）：本工程统一输出目录=源码 target/，多构建目录共用
+        #   会互踩——TSan 静态库曾覆盖常规库导致常规链接 __tsan_* 未定义。TSan 构建的
+        #   cn/静态库/单测全部落 <构建目录>/tsan/，与常规构建（target/）物理隔离。
+        set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/tsan)
+        set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/tsan)
+        set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/tsan)
+        message(STATUS "[CN] TSan 已启用（-fsanitize=thread；产物隔离于 ${CMAKE_BINARY_DIR}/tsan/）")
+    endif()
+endif()
+
 # 检查网第 3 层（250-a）：可选源码覆盖率构建——编译器自身源码行/分支覆盖（GCC/Clang gcov）。
 #   开启：cmake -S . -B target/build-cov -DCN_ENABLE_COVERAGE=ON
 #   配套全链脚本：scripts/check_source_coverage.py（构建→门禁语料→gcov 聚合→报告→阈值门禁→新代码红线）。
