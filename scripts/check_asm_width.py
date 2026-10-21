@@ -7,9 +7,11 @@
      `movk wN, #imm, lsl #32/48` 为非法编码（GNU as 拒绝 = 编译失败级，plans/021 D31）。
   2. linux_x64：dispatch 对未实现 opcode 落 default 只出「未支持操作码」注释
      = 静默丢值（258-a 实证 Copy 曾漏发射——比汇编失败更危险），指纹零命中。
-  3. win-x64：mov 操作数宽度混配（r64 目标配 r32 源 / r32 目标配 r64 源）——
-     x86 无此编码（MASM A2022 拒绝；GCC 面早暴露、MSVC 面晚暴露的跨机分叉点，
-     CN-Smith s268 实证），指纹零命中。内存操作数与 movsx/movzx/movsxd 合法形态排除。
+  3. win-x64：操作数宽度混配（r64 目标配 r32 源 / r32 目标配 r64 源）——
+     覆盖 mov 全族与 cmp/test/算术族前两纯寄存器操作数（1281：#1159 窄整型
+     纳入分配后 `cmp ebx, r14` 实锤）。x86 无此编码（MASM A2022 拒绝；GCC 面
+     早暴露、MSVC 面晚暴露的跨机分叉点，CN-Smith s268 实证），指纹零命中。
+     内存操作数（[rbx] 等寻址基址）与 movsx/movzx/movsxd 合法形态排除。
 
 流程：tests/e2e 宿主通道全量用例经 `compile --target <后端>` 出 .s（只产汇编、
 不调 as —— 任意平台可跑），逐文件扫描。负例（期望编译失败/期望check失败）与
@@ -57,17 +59,24 @@ ARM64_BAD_ENC = re.compile(r"\bmov[kz]\s+w\d+\s*,\s*#\d+\s*,\s*lsl\s*#(?:32|48)\
 # linux_x64 未支持 opcode 指纹（dispatch default 只出注释 = 静默丢值）
 LX64_SILENT_DROP = re.compile(r"未支持操作码")
 
-# win-x64 mov 宽度混配（x86 无此编码，MASM A2022；s268/D32 族）：
+# win-x64 宽度混配（x86 无此编码，MASM A2022；s268/D32 族）：
 #   仅锚定「逗号 + 纯寄存器 + 行尾/注释」形态，内存操作数([..])与
-#   movsx/movzx/movsxd（\bmov\s 不匹配）天然排除
+#   movsx/movzx/movsxd（\bmov\s 不匹配）天然排除。
+# 1281（#1159 回归）：同一虚拟寄存器在两消费点宽度不一致不限于 mov——
+#   `cmp ebx, r14`（32 位工作名 + 64 位源名）实锤 ml64 A2022。判据扩到
+#   比较/算术族前两操作数（两序均拦）；内存寻址基址（[rbx]）不参与判定
+#   （cmp eax, dword ptr [rbx] 合法，第二操作数非纯寄存器不命中）。
 _R64 = r"(?:rax|rbx|rcx|rdx|rsi|rdi|rbp|rsp|r(?:8|9|1[0-5]))\b"
 _R32 = r"(?:eax|ebx|ecx|edx|esi|edi|ebp|esp|r(?:8|9|1[0-5])d)\b"
+_ALU = r"(?:cmp|test|add|sub|adc|sbb|and|or|xor|imul)"
 # 4.（316-a·C22 丙/T44）win `[rbp0]` = varSlotOf 未登记回 0 拼接（rbp0 家族·
 #    MASM A2006 undefined symbol·T44 汇合临时槽实锤）——合法槽恒带非零偏移文本。
 WIN_BAD_MIX = re.compile(
     r"\[rbp0\]|"
     r"\bmov\s+" + _R64 + r"\s*,\s*" + _R32 + r"\s*(?:$|;)|"
-    r"\bmov\s+" + _R32 + r"\s*,\s*" + _R64 + r"\s*(?:$|;)",
+    r"\bmov\s+" + _R32 + r"\s*,\s*" + _R64 + r"\s*(?:$|;)|"
+    r"^\s*" + _ALU + r"\s+" + _R64 + r"\s*,\s*" + _R32 + r"\s*(?:$|;)|"
+    r"^\s*" + _ALU + r"\s+" + _R32 + r"\s*,\s*" + _R64 + r"\s*(?:$|;)",
     re.MULTILINE)
 
 # ---- 自检样本（探测器自身也是被测对象——110-a 教训）----
@@ -100,6 +109,18 @@ SELF_WIN_ILLEGAL = (
     "    mov eax, r14\n"          # r32 <- r64 非法（s268 修复前形态）
     "    mov r9, ecx ; src: a.cn:3\n"     # 带行尾注释同样命中
     "    mov [rbp0], rax\n"       # rbp0 家族（T44 高半槽偏移 0 拼接·316-a）
+    "    cmp ebx, r14\n"          # 1281 实锤形态（32 位工作名 + 64 位源名）
+    "    test r12, ecx\n"         # 同族反向（64 位首操作数 + 32 位源）
+    "    imul eax, r13\n"         # 同族乘法
+)
+SELF_WIN_ALU_LEGAL = (
+    "    cmp ebx, ecx\n"          # 同宽（32）合法
+    "    cmp r12, r13\n"          # 同宽（64）合法
+    "    cmp eax, dword ptr [rbx]\n"  # 内存寻址基址不参与宽度判定
+    "    add r12, 8\n"            # 64 位 + 立即数
+    "    shl rax, cl\n"           # 移位量 cl 固定 8 位（不同指令族判定）
+    "    and al, cl\n"            # 8 位位运算合法
+    "    movsxd rcx, eax\n"       # 符号扩展指令合法（非 mov 精确形态）
 )
 
 
@@ -113,9 +134,12 @@ def self_check() -> None:
     if WIN_BAD_MIX.search(SELF_WIN_LEGAL):
         raise SystemExit("自检失败：win-x64 合法样本被误判:\n"
                          + WIN_BAD_MIX.search(SELF_WIN_LEGAL).group(0))
-    if len(WIN_BAD_MIX.findall(SELF_WIN_ILLEGAL)) != 4:
+    if len(WIN_BAD_MIX.findall(SELF_WIN_ILLEGAL)) != 7:
         raise SystemExit("自检失败：win-x64 宽度混配/rbp0 样本漏判，仅命中 "
                          f"{len(WIN_BAD_MIX.findall(SELF_WIN_ILLEGAL))} 处")
+    if WIN_BAD_MIX.search(SELF_WIN_ALU_LEGAL):
+        raise SystemExit("自检失败：win-x64 同宽/内存样本被误判：\n"
+                         + WIN_BAD_MIX.search(SELF_WIN_ALU_LEGAL).group(0))
     # 1257：旗标通道与 runner 同口径——空行/# 注释行不得混入 argv
     #   （1402 首行注释曾被当「多余的源文件参数」，三后端每跑 3 假红）
     with tempfile.TemporaryDirectory() as td:

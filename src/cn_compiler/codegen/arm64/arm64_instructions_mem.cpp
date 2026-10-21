@@ -45,6 +45,12 @@ void Arm64CodeGenerator::emitLoadStore(Arm64AsmWriter& writer,
         // 窄类型用64位存储（ldrsb/ldrsh/ldrb/ldrh/ldr w已扩展到x9/w9，
         //   AArch64 ldr wN 自动清高32位，ldrsb/ldrsh符号扩展到64位xN）
         storeVirtualResult(writer, inst.result.id, res, narrowType ? "i64" : inst.type);
+        // 1281：i32 装载经 ldr wN 零扩展，而分配器寄存器约定=i32 为 64 位符号
+        //   扩展形态（canonicalizeNarrowResult i32→sxtw）——已分配结果补规范化，
+        //   使 64 位消费点（i128 宽化先例外的显式搬运）不依赖装载路径隐含高位。
+        if (inst.type == "i32") {
+            canonicalizeNarrowResultOf(writer, inst.result.id, "i32");
+        }
     } else {
         // Store：operands[0] 值，extra 变量名
         if (inst.type == "i128" || inst.type == "u128") {

@@ -33,99 +33,94 @@ std::string X64CodeGenerator::memSizePtr(const std::string& type) {
     return "";
 }
 
-// 选择整型寄存器宽度（i8->al / i16->ax / i32->eax / i64->rax；rcx/rdx/r8/r9 仅64位名）
-// Task 2.3：扩展 8/16 位宽度支持（movsx/movzx 扩展后以32/64位运算，小宽度用 al/ax 局部）
+// ==================== 通用寄存器别名表（1281·宽度判据唯一权威） ====================
+// 16 项通用寄存器 × 4 位宽（64/32/16/8）。全文件（widthFor/narrowOperand/
+//   shrunkOperand/is*BitRegisterName/比较宽度对齐）统一经此表换算——禁止再写
+//   局部 r64↔r32 映射表（1281 病根：emitCompareInt 局部 alignReg 用「名字末尾是
+//   'd'」猜宽度，w=ebx/ecx/edx/esi/edi 被误判为 64 位 → `cmp ebx, r14` A2022）。
+namespace {
+struct GprAliases {
+    const char* r64;
+    const char* r32;
+    const char* r16;
+    const char* r8;
+};
+const GprAliases kGprAliases[] = {
+    {"rax", "eax", "ax", "al"},   {"rbx", "ebx", "bx", "bl"},
+    {"rcx", "ecx", "cx", "cl"},   {"rdx", "edx", "dx", "dl"},
+    {"rsi", "esi", "si", "sil"},  {"rdi", "edi", "di", "dil"},
+    {"rbp", "ebp", "bp", "bpl"},  {"rsp", "esp", "sp", "spl"},
+    {"r8", "r8d", "r8w", "r8b"},  {"r9", "r9d", "r9w", "r9b"},
+    {"r10", "r10d", "r10w", "r10b"}, {"r11", "r11d", "r11w", "r11b"},
+    {"r12", "r12d", "r12w", "r12b"}, {"r13", "r13d", "r13w", "r13b"},
+    {"r14", "r14d", "r14w", "r14b"}, {"r15", "r15d", "r15w", "r15b"},
+};
+} // namespace
+
+// 任意宽度通用寄存器名 -> 目标位宽别名；槽/立即数/符号文本原样（非寄存器不猜宽度）。
+//   bits ∉ {64,32,16,8} 返回空串=内部错误哨兵（调用方必须检查并报诊断）。
+std::string X64CodeGenerator::regAtWidth(const std::string& text, int bits) {
+    if (bits != 64 && bits != 32 && bits != 16 && bits != 8) return std::string();
+    for (const auto& g : kGprAliases) {
+        if (text == g.r64 || text == g.r32 || text == g.r16 || text == g.r8) {
+            if (bits == 64) return g.r64;
+            if (bits == 32) return g.r32;
+            if (bits == 16) return g.r16;
+            return g.r8;
+        }
+    }
+    return text;  // 槽文本/立即数/符号：原样
+}
+
+bool X64CodeGenerator::isGeneralRegisterName(const std::string& text) {
+    for (const auto& g : kGprAliases) {
+        if (text == g.r64 || text == g.r32 || text == g.r16 || text == g.r8) return true;
+    }
+    return false;
+}
+
+// 选择整型寄存器宽度（i8/i16/i32 -> 32 位提升名 / i64 -> 64 位名）
+// Task 2.3：8/16 位运算统一提升到 32 位（避免 8 位运算的 al/ah 特殊寄存器限制），
+//   窄型消费点一律按 32 位名（装载侧 movsx/movzx 已完成符号/零扩展）。
+// 1159：分配池 rbx/r12~r15 与调用者保存寄存器全部经别名表覆盖。
 std::string X64CodeGenerator::widthFor(const std::string& type, const std::string& reg) {
     if (isFloatType(type)) return reg;  // 浮点寄存器名原样（SSE xmm 由调用方处理）
-    if (type == "i32" || type == "i1" || type == "u32") {
-        if (reg == "rax") return "eax";
-        if (reg == "rbx") return "ebx";
-        if (reg == "rcx") return "ecx";
-        if (reg == "rdx") return "edx";
-        if (reg == "rsi") return "esi";
-        if (reg == "rdi") return "edi";
-        if (reg == "rsp") return "esp";
-        if (reg == "rbp") return "ebp";
-        if (reg == "r8") return "r8d";
-        if (reg == "r9") return "r9d";
-        if (reg == "r10") return "r10d";
-        if (reg == "r11") return "r11d";
-        if (reg == "r12") return "r12d";
-        if (reg == "r13") return "r13d";
-        if (reg == "r14") return "r14d";
-        if (reg == "r15") return "r15d";
+    if (type == "i32" || type == "i1" || type == "u32" ||
+        type == "i8" || type == "u8" || type == "i16" || type == "u16") {
+        // 槽/立即数文本经 regAtWidth 原样返回（调用点仅对物理寄存器名调用）
+        return regAtWidth(reg, 32);
     }
-    // 8/16位：运算统一提升到32位（避免 8 位运算需要 al/ah 特殊寄存器限制），
-    // 返回 32 位名（movzx/movsx 从槽加载后按32位运算）
-    // 1159：补全 rsi/rdi/r12~r15 映射（分配池 rbx/r12~r15 全在表内——原表缺
-    //   r12~r15 时 widthFor("i8","r12") 落 "eax" 兜底=运算读到错寄存器）。
-    if (type == "i8" || type == "i16" || type == "u8" || type == "u16") {
-        if (reg == "rax") return "eax";
-        if (reg == "rbx") return "ebx";
-        if (reg == "rcx") return "ecx";
-        if (reg == "rdx") return "edx";
-        if (reg == "rsi") return "esi";
-        if (reg == "rdi") return "edi";
-        if (reg == "r8") return "r8d";
-        if (reg == "r9") return "r9d";
-        if (reg == "r10") return "r10d";
-        if (reg == "r11") return "r11d";
-        if (reg == "r12") return "r12d";
-        if (reg == "r13") return "r13d";
-        if (reg == "r14") return "r14d";
-        if (reg == "r15") return "r15d";
-        return "eax";  // 其他文本（非寄存器名）回退 eax（调用点均为寄存器名）
-    }
-    // i128/u128：低64位运算（Task 2.3 务实实现，值域≤2^63；128位全范围留后续运行时库）
-    if (type == "i128" || type == "u128") {
-        return reg;  // 64位寄存器名原样（低64位值）
-    }
-    return reg;  // i64/u64/其他：64位寄存器名原样
+    // i64/u64/ptr/i128/u128 及其他：64 位名原样
+    return reg;
 }
 
 // 源/目操作数按 8/16 位目标宽度对齐（A2022 收缩族·窄宽分支）：
-//   64 位名 → 8 位名（r14→r14b）或 16 位名（r14→r14w）；槽/立即数原样。
-std::string X64CodeGenerator::narrowOperand(const std::string& type, const std::string& op) {    const bool is8 = (type == "i8" || type == "u8");
+//   64/32 位名 → 8 位名（r14/r14d→r14b）或 16 位名（r14→r14w）；槽/立即数原样。
+std::string X64CodeGenerator::narrowOperand(const std::string& type, const std::string& op) {
+    const bool is8 = (type == "i8" || type == "u8");
     const bool is16 = (type == "i16" || type == "u16");
-    if ((!is8 && !is16) || op.size() < 2 || op[0] != 'r') return op;
-    static const char* k64[] = {"rax", "rbx", "rcx", "rdx", "rsi", "rdi",
-                                "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15"};
-    static const char* k8[]  = {"al", "bl", "cl", "dl", "sil", "dil",
-                                "r8b", "r9b", "r10b", "r11b", "r12b", "r13b", "r14b", "r15b"};
-    static const char* k16[] = {"ax", "bx", "cx", "dx", "si", "di",
-                                "r8w", "r9w", "r10w", "r11w", "r12w", "r13w", "r14w", "r15w"};
-    static const char* k32[] = {"eax", "ebx", "ecx", "edx", "esi", "edi",
-                                "r8d", "r9d", "r10d", "r11d", "r12d", "r13d", "r14d", "r15d"};
-    for (int i = 0; i < 14; ++i) {
-        if (op == k64[i] || op == k32[i]) return is8 ? k8[i] : k16[i];
-    }
-    return op;
+    if (!is8 && !is16) return op;
+    return regAtWidth(op, is8 ? 8 : 16);
 }
 
 // 文本是否为 64 位通用寄存器全名（1159：窄位宽直写族的寄存器形态判据）
 bool X64CodeGenerator::is64BitRegisterName(const std::string& text) {
-    static const char* kRegNames[] = {
-        "rax", "rbx", "rcx", "rdx", "rsi", "rdi",
-        "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15"};
-    for (const char* r : kRegNames) {
-        if (text == r) return true;
+    for (const auto& g : kGprAliases) {
+        if (text == g.r64) return true;
     }
     return false;
 }
 
 // 32 位通用寄存器名（emitCast 顶部收缩后的源形态）
 bool X64CodeGenerator::is32BitRegisterName(const std::string& text) {
-    static const char* kRegNames[] = {
-        "eax", "ebx", "ecx", "edx", "esi", "edi",
-        "r8d", "r9d", "r10d", "r11d", "r12d", "r13d", "r14d", "r15d"};
-    for (const char* r : kRegNames) {
-        if (text == r) return true;
+    for (const auto& g : kGprAliases) {
+        if (text == g.r32) return true;
     }
     return false;
 }
 
 bool X64CodeGenerator::isRegisterOperandText(const std::string& text) {
-    return is64BitRegisterName(text) || is32BitRegisterName(text);
+    return isGeneralRegisterName(text);
 }
 
 // 1159：窄整型源 -> 32 位寄存器（寄存器/内存/常量三分；见头文件注释）
@@ -141,8 +136,8 @@ void X64CodeGenerator::emitNarrowOperandTo32(AsmWriter& writer,
         return;
     }
     if (isRegisterOperandText(op)) {
-        // 寄存器形态（64 位全名或 emitCast 顶部收缩后的 32 位名）：按窄宽寄存器名
-        //   取值（r12/r12d→r12b/r12w），与槽读逐位等价
+        // 寄存器形态（任意宽度名）：按窄宽寄存器名取值（r12/r12d→r12b/r12w），
+        //   与槽读逐位等价
         writer.line(ext + " " + dst32 + ", " + narrowOperand(type, op));
         return;
     }
@@ -151,20 +146,14 @@ void X64CodeGenerator::emitNarrowOperandTo32(AsmWriter& writer,
 
 // 源操作数按目标宽度对齐（A2022 收缩族统一设施，320-a 补强）：
 //   regAlloc 下 vreg 直接落 r8~r15 全名，32 位指令按全名装载即 A2022。
-//   仅寄存器名经 widthFor 收缩；槽文本/立即数/64 位及以上类型原样。
+//   32 位运算类型（i32/u32/i1/窄型）的寄存器名统一换算为 32 位别名；
+//   槽文本/立即数/64 位及以上类型原样。
 std::string X64CodeGenerator::shrunkOperand(const std::string& type, const std::string& op) {
-    if (type == "i64" || type == "u64" || type == "ptr" ||
-        type == "f32" || type == "f64" || type == "i128" || type == "u128") {
-        return op;
+    if (type == "i32" || type == "u32" || type == "i1" ||
+        type == "i8" || type == "u8" || type == "i16" || type == "u16") {
+        return regAtWidth(op, 32);
     }
-    if (op.size() < 2 || op[0] != 'r') return op;  // 槽/立即数/其它：原样
-    static const char* kRegNames[] = {
-        "rax", "rbx", "rcx", "rdx", "rsi", "rdi",
-        "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15"};
-    for (const char* r : kRegNames) {
-        if (op == r) return widthFor(type, op);
-    }
-    return op;
+    return op;  // i64/u64/ptr/浮点/i128/未知类型：原样
 }
 
 // 比较操作码 -> 条件跳转助记符

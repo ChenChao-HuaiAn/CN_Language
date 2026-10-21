@@ -23,6 +23,11 @@ bool is64IntType(const std::string& type);        // i64|u64（64 位整槽）
 bool isSignedSourceType(const std::string& type); // i8|i16|i32|i64（符号扩展源域）
 bool isTrueLikeI1(const std::string& text);       // i1 常量文本「真|1」两形态（322 归一）
 
+// 整型运算/比较的寄存器位宽（1281·三后端单点）：i64/u64/ptr=64；
+//   i8/i16/i32/u8/u16/u32/i1=32（窄型按 32 位提升形态）；其余=0（不适用哨兵——
+//   调用方必须按 i128/浮点各自通道分流，0 命中=内部错误）。
+int intOpWidthBits(const std::string& type);
+
 // ---- 类型转换矩阵（指令选择判据面·emitCast 三后端 if 链的枚举化）----
 // 原三后端 if 链中「分支优先序」承载语义（857/302-a 教训：特例须先于通例，否则
 //   窄8/16→i128 被通例截胡只发低半槽）。本枚举判定把序固化为一一归域——

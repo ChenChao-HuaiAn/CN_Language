@@ -22,6 +22,17 @@ bool is64IntType(const std::string& type) {
     return type == "i64" || type == "u64";
 }
 
+// 1281：整型运算/比较的寄存器位宽（三后端单点）——i64/u64/ptr=64；
+//   i8/i16/i32/u8/u16/u32/i1=32（窄整型按 32 位提升形态消费）；其余=0（不适用哨兵）。
+int intOpWidthBits(const std::string& type) {
+    if (type == "i64" || type == "u64" || type == "ptr") return 64;
+    if (type == "i8" || type == "i16" || type == "i32" ||
+        type == "u8" || type == "u16" || type == "u32" || type == "i1") {
+        return 32;
+    }
+    return 0;
+}
+
 bool isSignedSourceType(const std::string& type) {
     return type == "i8" || type == "i16" || type == "i32" || type == "i64";
 }

@@ -42,14 +42,10 @@ bool isWideIntType(const std::string& type) {
     return type == "i64" || type == "u64" || type == "ptr";
 }
 
-// 架构可分配类型面（1256）：LinuxX64 起 32/窄整型全部接入（本后端直写族本任务
-//   同步完备）；win-x64 / arm64 维持 i64/u64/ptr——其 32/窄直写面由 1159 单独
-//   落地，在 1159 合入前全局放开会让两端发射器产出宽度混配/错值产物。
-//   （1159 合入后本门控收敛为「全部架构」并删除——两分支同步点。）
-bool archAllowsAllocType(TargetArch arch, const std::string& type) {
-    if (isWideIntType(type)) return true;
-    return arch == TargetArch::LinuxX64;
-}
+// 1281：三架构可分配面统一（1256 架构门控退场）。1159 已合入且三后端
+//   32/窄整型直写与宽度判据已由 1281 全族审计收口（compare/算术/移位/
+//   除法/截断/参数搬运），win-x64 / arm64 与 linux-x86_64 同等参与分配。
+//   类型面唯一权威=isAllocableIntType（见上）。
 
 // 活跃性参与面：活跃集只需含可分配寄存器（非可分配类型不参与传播——1256
 //   性能：v2 全树窄/32 位 id 数量使活跃集膨胀，过滤后编译期回到基线量级）。
@@ -472,19 +468,8 @@ void LinearScanAllocator::scan(const std::vector<LiveInterval>& intervals,
 RegAssignmentMap LinearScanAllocator::allocate(const ir::IRFunction& function,
                                                int maxRegId) {
     const int maxId = (maxRegId >= 0) ? maxRegId : computeMaxRegId(function);
-    intervals_ = computeLiveIntervalsInternal(function,
-                                              archAllowsAllocType(arch_, "i8"), maxId);
-    // 1256：按架构可分配面过滤区间（LinuxX64 窄/32 位全接入；X64/Arm64 仅宽型）。
-    //   被过滤的寄存器不参与 scan = 保持槽映射（发射器回退路径），与 1159 前
-    //   两端产物逐字节一致。
-    if (arch_ != TargetArch::LinuxX64) {
-        intervals_.erase(
-            std::remove_if(intervals_.begin(), intervals_.end(),
-                           [this](const LiveInterval& li) {
-                               return !archAllowsAllocType(arch_, li.type);
-                           }),
-            intervals_.end());
-    }
+    // 1281：全架构活跃性参与面=可分配整型/指针全集（i1/浮点/i128 不参与）
+    intervals_ = computeLiveIntervalsInternal(function, true, maxId);
     RegAssignmentMap out;
     scan(intervals_, out);
     return out;

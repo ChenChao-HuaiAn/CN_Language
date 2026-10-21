@@ -307,18 +307,33 @@ void Arm64CodeGenerator::emitCompare(Arm64AsmWriter& writer,
         loadOperandToV(writer, inst.operands[0], vd + "0");
         loadOperandToV(writer, inst.operands[1], vd + "1");
         writer.line("fcmp " + vd + "0, " + vd + "1");
-    } else {
-        // 整型：op1/op2 已分配直读物理寄存器（D8 457-a·免装载中转），
-        //   未分配装载 x9/x10（64 位装载保持符号扩展语义）；文本按宽度形态化
-        const bool wide = (cmpType == "i64" || cmpType == "u64");
-        auto srcText = [&](const ir::IRValue& op, const std::string& fback) -> std::string {
-            const std::string s = operandSourceReg(writer, op, fback);
-            return (!wide && !s.empty() && s[0] == 'x') ? ("w" + s.substr(1)) : s;
-        };
-        const std::string op1Src = srcText(inst.operands[0], "x9");
-        const std::string op2Src = srcText(inst.operands[1], "x10");
-        writer.line("cmp " + op1Src + ", " + op2Src);
+        const std::string cc = csetCondition(inst.opcode, isUnsigned, isFloat);
+        writer.line("cset x9, " + cc);
+        storeVirtualResult(writer, inst.result.id, "x9", "i1");
+        return;
     }
+    // 整型：op1/op2 已分配直读物理寄存器（D8 457-a·免装载中转），
+    //   未分配装载 x9/x10（64 位装载保持符号扩展语义）；文本按宽度形态化。
+    // 1281 单点：比较位宽由 IR 类型唯一决定（i64/u64/ptr=64；其余=32）。
+    //   原判定 (i64||u64) 漏 ptr——指针比较按 32 位截断（三后端分叉：win/
+    //   linux-x64 均按 64 位比较）；现收敛到 judgement::intOpWidthBits。
+    const int cmpBits = judgement::intOpWidthBits(cmpType);
+    if (cmpBits == 0) {
+        // 不可比较类型=IR 分派缺陷（i128 走专用比较通道）——miss 不可静默
+        diagnostics_.report(Diagnostic::error(
+            inst.loc,
+            std::string("内部错误: 不可比较类型 \"") + cmpType +
+                "\"（arm64 emitCompare·i128/浮点须走专用通道）"));
+        return;
+    }
+    const bool wide = (cmpBits == 64);
+    auto srcText = [&](const ir::IRValue& op, const std::string& fback) -> std::string {
+        const std::string s = operandSourceReg(writer, op, fback);
+        return (!wide && !s.empty() && s[0] == 'x') ? ("w" + s.substr(1)) : s;
+    };
+    const std::string op1Src = srcText(inst.operands[0], "x9");
+    const std::string op2Src = srcText(inst.operands[1], "x10");
+    writer.line("cmp " + op1Src + ", " + op2Src);
     // cset：按条件码设置结果（i1 -> 0/1）
     const std::string cc = csetCondition(inst.opcode, isUnsigned, isFloat);
     writer.line("cset x9, " + cc);

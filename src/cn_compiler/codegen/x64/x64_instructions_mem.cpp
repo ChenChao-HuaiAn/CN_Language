@@ -125,13 +125,10 @@ void X64CodeGenerator::emitLoadStore(AsmWriter& writer, const ir::IRInstruction&
         // Task 2.3：小宽度（i8/i16/i32）值先符号/零扩展存满8字节槽，
         // 避免后续以整64读取时读到槽中高位垃圾（栈残留）
         std::string src = operandText(inst.operands[0]);
-        // 源为物理寄存器（寄存器分配）：32 位值须用 32 位名
-        //   （mov eax, r12 尺寸不匹配 A2022，与 Load 路径对称处理）
+        // 源为物理寄存器（寄存器分配）：32 位值统一经别名表取 32 位名
+        //   （mov eax, r12 → mov eax, r12d，A2022 收缩族·1281 单点）。
         if (inst.type == "i32" || inst.type == "u32") {
-            const std::string reg = (src == "rax" || src == "rbx" || src == "rcx" ||
-                                     src == "rdx" || src == "r12" || src == "r13" ||
-                                     src == "r14" || src == "r15") ? src : "";
-            if (!reg.empty()) src = widthFor(inst.type, reg);
+            src = shrunkOperand(inst.type, src);
         }
         int offset = varSlotOf(inst.extra);
         std::string slot = "[rbp" + std::to_string(offset) + "]";
@@ -458,8 +455,8 @@ void X64CodeGenerator::emitPtrLoadStore(AsmWriter& writer, const ir::IRInstructi
         //   立即数操作数（A2070），mov 直载全 64 位（写 cl/cx 取低字节=补码截断）
         if (inst.operands[1].isConstant) {
             writer.line("mov rcx, " + value);
-        } else if (is64BitRegisterName(value)) {
-            // 1159：值已分配 -> 窄宽寄存器名直取（movsx rcx, r12b）
+        } else if (isRegisterOperandText(value)) {
+            // 1159/1281：值已分配 -> 窄宽寄存器名直取（movsx rcx, r12b）
             writer.line("movsx rcx, " + narrowOperand(inst.type, value));
         } else {
             writer.line("movsx rcx, " + memSizePtr(inst.type) + value);
@@ -514,8 +511,8 @@ void X64CodeGenerator::emitPtrLoadStore(AsmWriter& writer, const ir::IRInstructi
         // 同上：立即数常量走 mov 直载（movzx 不接受立即数，A2070）
         if (inst.operands[1].isConstant) {
             writer.line("mov rcx, " + value);
-        } else if (is64BitRegisterName(value)) {
-            // 1159：值已分配 -> 窄宽寄存器名直取（movzx rcx, r12b）
+        } else if (isRegisterOperandText(value)) {
+            // 1159/1281：值已分配 -> 窄宽寄存器名直取（movzx rcx, r12b）
             writer.line("movzx rcx, " + narrowOperand(inst.type, value));
         } else {
             writer.line("movzx rcx, " + memSizePtr(inst.type) + value);

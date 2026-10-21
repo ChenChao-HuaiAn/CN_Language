@@ -4,9 +4,8 @@
 //   2. 分配无冲突：同一物理寄存器不被两个活跃区间同时占用（重叠区间不同寄存器）
 //   3. 溢出正确：物理寄存器不足时溢出到栈槽（spillSlot >= 0）
 //   4. 被调用者保存寄存器：分配结果只使用被调用者保存寄存器（rbx/r12~r15 / x19~x28）
-//   5. kind型过滤：1256 起 i64/u64/ptr/i32/u32/窄整型（i8/u8/i16/u16）均为
-//      可分配类型；架构可分配面由 allocate() 过滤（LinuxX64 全接入，
-//      win-x64/arm64 暂保持 i64/u64/ptr，待 1159 合入后统一）；浮点/i128/i1 保持栈槽
+//   5. kind型过滤：1281 起 i64/u64/ptr/i32/u32/窄整型（i8/u8/i16/u16）在三架构
+//      均参与分配（1256 架构门控随 1159 三后端直写审计收口退场）；浮点/i128/i1 保持栈槽
 //   6. 保留寄存器：x64 隐藏返回指针场景保留 r12
 // 构造方式：直接手工构造 ir::IRFunction（不经过前端链路，聚焦分配器本身）
 // 注意：GCC 7 不支持中文标识符，测试名必须使用英文
@@ -476,37 +475,37 @@ TEST(RegAllocTest, AllocableTypeFilter) {
     EXPECT_FALSE(LinearScanAllocator::isAllocableType("i1"));
 }
 
-TEST(RegAllocTest, NarrowTypesStayStack) {
-    // win-x64 面：32/窄整型暂不分配（1159 合入前保持栈槽——架构门控）
-    IRFunction func;
-    func.name = "narrow";
-    func.returnType = "i32";
-    auto block = std::make_unique<IRBlock>();
-    block->label = "块0";
-    IRInstruction c;
-    c.opcode = Opcode::ConstInt;
-    c.result = IRValue::reg(0, "i32");
-    c.type = "i32";
-    c.extra = "10";
-    block->instructions.push_back(c);
-    block->terminated = true;
-    block->termKind = "返回";
-    block->termReturnValue = "%v0";
-    func.blocks.push_back(std::move(block));
-    func.nextRegId = 1;
+TEST(RegAllocTest, NarrowTypesAllocatedAllArch) {
+    // 1281：win-x64/arm64 与 linux-x64 同面——32/窄整型全部参与分配
+    for (TargetArch arch : {TargetArch::X64, TargetArch::Arm64}) {
+        IRFunction func;
+        func.name = "narrow";
+        func.returnType = "i32";
+        auto block = std::make_unique<IRBlock>();
+        block->label = "块0";
+        IRInstruction c;
+        c.opcode = Opcode::ConstInt;
+        c.result = IRValue::reg(0, "i32");
+        c.type = "i32";
+        c.extra = "10";
+        block->instructions.push_back(c);
+        block->terminated = true;
+        block->termKind = "返回";
+        block->termReturnValue = "%v0";
+        func.blocks.push_back(std::move(block));
+        func.nextRegId = 1;
 
-    LinearScanAllocator allocator(TargetArch::X64);
-    const RegAssignmentMap map = allocator.allocate(func);
-    // i32 寄存器不参与分配 -> 映射为空或 assignedReg 为空
-    auto it = map.find(0);
-    if (it != map.end()) {
-        EXPECT_TRUE(it->second.assignedReg.empty());
-        EXPECT_EQ(it->second.spillSlot, -1);
+        LinearScanAllocator allocator(arch);
+        const RegAssignmentMap map = allocator.allocate(func);
+        auto it = map.find(0);
+        ASSERT_NE(it, map.end());
+        EXPECT_FALSE(it->second.assignedReg.empty())
+            << "i32 应参与寄存器分配（1281 全架构统一）";
     }
 }
 
 TEST(RegAllocTest, LinuxX64AllocatesNarrowTypes) {
-    // 1256：LinuxX64 面 32/窄整型全部参与分配（直写族已完备）
+    // 1281：LinuxX64 面 32/窄整型全部参与分配（直写族已完备）
     const char* types[] = {"i32", "u32", "i8", "u8", "i16", "u16"};
     for (const char* t : types) {
         IRFunction func;

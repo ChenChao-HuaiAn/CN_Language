@@ -329,9 +329,17 @@ void LinuxX64CodeGenerator::emitCompare(LinuxX64AsmWriter& writer,
     // 32 位类型（i32/u32/i1/窄型）用 32 位比较（cmp r10d, r9d）——
     //   i32 变量装载（mov r10d 清高32=零扩展位模式）与 64 位常量装载
     //   （mov r9, -1 全1）在 64 位 cmp 下位模式不一致（负数枚举 -1 ==
-    //   -1 误判不等实测）；低 32 位比较与 ARM64 的 w9/w10 策略语义一致
-    const bool wideCmp = (cmpType == "i64" || cmpType == "u64" ||
-                          cmpType == "ptr");
+    //   -1 误判不等实测）；低 32 位比较与 ARM64 的 w9/w10 策略语义一致。
+    // 1281：位宽判据收敛到 judgement::intOpWidthBits（三后端同源；ptr=64）。
+    const int cmpBits = judgement::intOpWidthBits(cmpType);
+    if (cmpBits == 0) {
+        diagnostics_.report(Diagnostic::error(
+            inst.loc,
+            std::string("内部错误: 不可比较类型 \"") + cmpType +
+                "\"（linux_x64 emitCompare）"));
+        return;
+    }
+    const bool wideCmp = (cmpBits == 64);
     writer.line(wideCmp ? "cmp " + cmpOp1 + ", " + cmpOp2
                         : "cmp " + x86Reg32(cmpOp1) + ", " + x86Reg32(cmpOp2));
     // setcc -> movzx 到 64 位（setcc 只写 8 位，movzx 清高位保证 store 确定性）

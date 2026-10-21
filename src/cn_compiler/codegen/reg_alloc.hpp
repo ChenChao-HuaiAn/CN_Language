@@ -10,9 +10,9 @@
 //       —— 仅分配被调用者保存寄存器，是因为两个后端发射器内部均使用调用者保存寄存器
 //          （rax/rcx/rdx/r8~r11 / x0~x18 等）作临时寄存器，被调用者保存区空闲可安全使用；
 //          同时分配器寄存器在函数序言保存、尾声恢复（不破坏调用者预期）
-//   5. 类型面（1256）：i64/u64/ptr + i32/u32 + i8/u8/i16/u16 可分配（窄/32 位面
-//      按 TargetArch 过滤——LinuxX64 全接入；win-x64/arm64 暂 i64/u64/ptr，待 1159
-//      合入后统一）；i128 双槽、浮点、i1 保持栈槽映射
+//   5. 类型面（1281 全架构统一）：i64/u64/ptr + i32/u32 + i8/u8/i16/u16 可分配；
+//      i128 双槽、浮点、i1 保持栈槽映射（1256 的 win-x64/arm64 架构门控随 1159
+//      三后端直写审计收口退场）
 //   6. 溢出策略：物理寄存器不足时，溢出虚拟寄存器到"溢出槽"（复用栈槽区，偏移由调用方决定）
 //   7. 英文API命名（GCC 7 不支持中文标识符），中文仅用于注释
 #pragma once
@@ -41,7 +41,7 @@ struct LiveInterval {
     int end = 0;               // 结束点（最后一次使用，含）
     bool isFloat = false;      // 是否浮点（当前不参与寄存器分配）
     bool is128 = false;        // 是否 i128/u128 双槽（当前不参与寄存器分配）
-    std::string type;          // 值类型（架构可分配面过滤用：1256 LinuxX64 窄/32 位）
+    std::string type;          // 值类型（可分配面判定：1281 全架构统一）
 
     bool overlaps(const LiveInterval& other) const {
         return start <= other.end && other.start <= end;
@@ -81,7 +81,7 @@ public:
     // 静态：活跃区间计算（暴露供单测直接验证 def-use / 跨块活跃）
     //  - 返回按 start 升序排序的活跃区间列表（全可分配类型面）
     static std::vector<LiveInterval> computeLiveIntervals(const ir::IRFunction& function);
-    // 1256：按架构可分配面计算（allowNarrow=false 时活跃集只含 i64/u64/ptr）
+    // 活跃性参与面：allowNarrow=false 时活跃集只含 i64/u64/ptr（单元测试调试用）
     static std::vector<LiveInterval> computeLiveIntervalsInternal(
         const ir::IRFunction& function, bool allowNarrow, int maxRegId);
     // ---- computeLiveIntervals 流水线族子方法（190-a 函数级拆分·原 179 行函数）----
@@ -107,8 +107,7 @@ public:
         int maxRegId);
 
     // 静态：判断 IR 类型是否可参与寄存器分配（i64/u64/ptr/i32/u32/i8/u8/i16/u16；
-    //   非浮点、非 i128、非 i1）。架构可分配面由 allocate() 按 TargetArch 过滤
-    //   （1256：LinuxX64 全接入；X64/Arm64 暂保持 i64/u64/ptr，待 1159 合入后统一）
+    //   非浮点、非 i128、非 i1）。1281：三架构同面（架构门控已退场）
     static bool isAllocableType(const std::string& type);
 
 private:

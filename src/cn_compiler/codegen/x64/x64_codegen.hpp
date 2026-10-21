@@ -285,8 +285,16 @@ private:
     // 选择整型寄存器宽度（i32->eax / i64->rax）
     static std::string widthFor(const std::string& type, const std::string& reg);
 
+    // 1281：通用寄存器别名换算（宽度唯一权威·全文件共用一张 16 项 GPR 表）。
+    //   text 为任一宽度通用寄存器名（64/32/16/8 位别名）时返回目标位宽（64/32/16/8）
+    //   的别名；槽文本（[rbp-X]）/立即数/符号文本原样返回（非寄存器不猜宽度）。
+    //   bits 非 {64,32,16,8} 返回空串=内部错误哨兵（调用方必须报诊断中止）。
+    static std::string regAtWidth(const std::string& text, int bits);
+    // text 是否为任意宽度的通用寄存器名（ra~r15b 闭集）
+    static bool isGeneralRegisterName(const std::string& text);
+
     // 源/目操作数按 8/16 位目标宽度对齐（A2022 收缩族·窄宽分支）：
-    //   64 位名 → 8 位名（r14→r14b·rax→al）或 16 位名（r14→r14w·rax→ax）；
+    //   64/32 位名 → 8 位名（r14/r14d→r14b·rax→al）或 16 位名（r14→r14w·rax→ax）；
     //   槽文本/立即数原样。仅 i8/u8/i16/u16 类型生效，其余原样。
     static std::string narrowOperand(const std::string& type, const std::string& op);
 

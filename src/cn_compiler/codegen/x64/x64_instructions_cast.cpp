@@ -231,43 +231,48 @@ void X64CodeGenerator::emitCompareInt(AsmWriter& writer, const ir::IRInstruction
             }
         }
     }
-    std::string w = widthFor(cmpType, "rax");
-    // 320-a（A2022·258-a 收缩同族）：操作数为分配的物理寄存器时按比较宽度
-    //   对齐名（mov rax, r12d / cmp rax, r13d 宽度混配 A2022——424 O3
-    //   regAlloc 下 v2 树编译首跑暴露）。双向映射：w=eax 时 r13→r13d；
-    //   w=rax 时 r13d→r13（分配器写 32 位名高 32 清零·读全名安全）。
-    //   完整 r64↔r32 映射表（rbx 的 32 位名是 ebx——首版 r13d 式拼 d 出
-    //   rbxd undefined symbol A2006 实锤）。
-    auto alignReg = [&w](const std::string& text) -> std::string {
-        static const std::pair<const char*, const char*> kRegWidthTable[] = {
-            {"rax","eax"},{"rbx","ebx"},{"rcx","ecx"},{"rdx","edx"},
-            {"rsi","esi"},{"rdi","edi"},{"r8","r8d"},{"r9","r9d"},
-            {"r10","r10d"},{"r11","r11d"},{"r12","r12d"},{"r13","r13d"},
-            {"r14","r14d"},{"r15","r15d"}};
-        for (const auto& kv : kRegWidthTable) {
-            const std::string r64 = kv.first, r32 = kv.second;
-            if (w == "eax" || w == "r8d" || (w.size() > 1 && w.back() == 'd' && w != "rdx")) {
-                // 32 位比较：64 位名 → 32 位名
-                if (text == r64) return r32;
-            } else {
-                // 64 位比较：32 位名 → 64 位名
-                if (text == r32) return r64;
-            }
-        }
-        return text;
-    };
+    // 1281 单点：比较位宽由 IR 类型唯一决定（i64/u64/ptr=64；整型/布尔其余=32，
+    //   窄型按 32 位提升形态比较——与装载侧 movsx/movzx 语义一致）。判据收敛到
+    //   judgement::intOpWidthBits，寄存器名换算收敛到 regAtWidth（全文件唯一别名表）。
+    const int cmpBits = judgement::intOpWidthBits(cmpType);
+    if (cmpBits == 0) {
+        // i128/浮点比较须走各自专用通道——到达此处=IR 分派缺陷（miss 不可静默）
+        diagnostics_.report(Diagnostic::error(
+            inst.loc,
+            std::string("内部错误: 不可比较类型 \"") + cmpType +
+                "\"（x64 emitCompareInt·i128/浮点须走专用通道）"));
+        return;
+    }
+    // 320-a 历史教训（1281 根治）：原局部 alignReg 以「名字末尾是 'd'」判 32 位，
+    //   w=ebx/ecx/edx/esi/edi 被误判 64 位 → 64 位名 r14 不收缩，产出
+    //   `cmp ebx, r14`（ml64 A2022）。现按类型位宽查统一别名表，与寄存器名形态无关。
+    std::string w = regAtWidth("rax", cmpBits);
     // D8（483-a）：op1 已分配物理寄存器 -> cmp 第一操作数直读（免 mov w 装载
-    //   中转）；比较宽度工作名 w 换为 op1 按宽度收缩名（op2 宽度对齐基准随行）。
+    //   中转）；比较工作名 w 取 op1 按比较位宽的别名（op2 同表对齐）。
     //   op1 为槽/常量保持 mov w 装载原路径（cmp mem 需尺寸前缀、cmp 首操作数
     //   不能为立即数——不直读）。
     const std::string op1Phys = physRegOf(inst.operands[0]);
     const bool op1Direct = !op1Phys.empty();
     if (op1Direct) {
-        w = widthFor(cmpType, op1Phys);
-        op1Text = op1Phys;
+        const std::string aligned = regAtWidth(op1Phys, cmpBits);
+        if (aligned.empty()) {
+            // 分配器寄存器名闭集=通用寄存器；空串=内部错误哨兵（miss 不可静默）
+            diagnostics_.report(Diagnostic::error(
+                inst.loc,
+                std::string("内部错误: 分配寄存器名 \"") + op1Phys +
+                    "\" 不在通用寄存器别名表（x64 整数比较）"));
+            return;
+        }
+        w = aligned;
+        op1Text = aligned;
     }
-    op1Text = alignReg(op1Text);
-    op2Text = alignReg(op2Text);
+    if (!op1Direct) {
+        // 非常量寄存器形态同表对齐；槽/立即数文本原样返回
+        op1Text = regAtWidth(op1Text, cmpBits);
+    }
+    // op2：寄存器名（含 >imm32 常量经 rcx 的中转形态）按比较位宽换算；
+    //   槽/立即数文本原样（内存宽度由 w 推断）。
+    op2Text = regAtWidth(op2Text, cmpBits);
     if (!op1Direct) writer.line("mov " + w + ", " + op1Text);
     writer.line("cmp " + w + ", " + op2Text);
     if (isUnsigned) {
@@ -660,36 +665,41 @@ bool X64CodeGenerator::emitCastIntWidth(AsmWriter& writer, const ir::IRInstructi
         writer.line("mov " + regSlot(inst.result.id) + ", rax");
         return true;
     }
-    // 大 -> 小（截断）：mov 低8/16/32位（写低字节，高位清零由槽位决定）
+    // 大 -> 小（截断）：按目标宽度取低 8/16 位并规范化为 32 位提升形态。
+    // 1281：槽路径原只写低 1/2 字节（mov [slot], al/ax），与「窄型寄存器槽=
+    //   32 位提升形态」约定冲突——32 位消费点（比较/除法除数/移位量）直读
+    //   4 字节会吃到上 3 字节陈旧垃圾（探针实锤：O0 `整8 甲=-100; 甲/-3`
+    //   常量除数槽仅写 1 字节 → 商恒 0）。现统一 movsx/movzx + 4 字节槽写
+    //   （低字节语义不变，高位规范；已分配目标仍直写分配寄存器）。
     if (to == "i8" || to == "u8") {
-        writer.line("mov al, " + narrowOperand(to, src));
-        // 1159：结果已分配 -> 低位截取后按目标符号性规范化到 32 位（r12b 写只动
-        //   低 8 位，高位残留会被后续 32 位消费点读到——movsx/movzx 一次收口）；
-        //   槽路径保持原两段（低字节有效约定不变·产物逐字节不变）。
+        const bool toSigned = (to == "i8");
         const std::string dstPhys = physRegOf(inst.result);
         const bool dstAllocated = !dstPhys.empty();
-        if (dstAllocated) {
-            const bool toSigned = (to == "i8");
-            writer.line(std::string(toSigned ? "movsx " : "movzx ") +
-                        widthFor("i32", dstPhys) + ", al");
+        const std::string dst32 = dstAllocated ? widthFor("i32", dstPhys) : "eax";
+        if (inst.operands[0].isConstant) {
+            // movsx/movzx 不接受立即数（A2070）：mov 直载后按低字节扩展
+            writer.line("mov " + dst32 + ", " + src);
+            writer.line(std::string(toSigned ? "movsx " : "movzx ") + dst32 + ", al");
         }
-        if (!dstAllocated) {
-            writer.line("mov " + narrowOperand(to, dst) + ", al");
+        if (!inst.operands[0].isConstant) {
+            emitNarrowOperandTo32(writer, to, src, false, dst32);
         }
+        if (!dstAllocated) writer.line("mov " + dst + ", eax");
         return true;
     }
     if (to == "i16" || to == "u16") {
-        writer.line("mov ax, " + narrowOperand(to, src));
+        const bool toSigned = (to == "i16");
         const std::string dstPhys = physRegOf(inst.result);
         const bool dstAllocated = !dstPhys.empty();
-        if (dstAllocated) {
-            const bool toSigned = (to == "i16");
-            writer.line(std::string(toSigned ? "movsx " : "movzx ") +
-                        widthFor("i32", dstPhys) + ", ax");
+        const std::string dst32 = dstAllocated ? widthFor("i32", dstPhys) : "eax";
+        if (inst.operands[0].isConstant) {
+            writer.line("mov " + dst32 + ", " + src);
+            writer.line(std::string(toSigned ? "movsx " : "movzx ") + dst32 + ", ax");
         }
-        if (!dstAllocated) {
-            writer.line("mov " + narrowOperand(to, dst) + ", ax");
+        if (!inst.operands[0].isConstant) {
+            emitNarrowOperandTo32(writer, to, src, false, dst32);
         }
+        if (!dstAllocated) writer.line("mov " + dst + ", " + dst32);
         return true;
     }
     // i1 -> i64/u64（修复集成审查 BUG #4）：布尔值 0/1 零扩展。

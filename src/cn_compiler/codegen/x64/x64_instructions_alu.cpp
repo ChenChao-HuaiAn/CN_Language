@@ -71,9 +71,15 @@ void X64CodeGenerator::emitShift(AsmWriter& writer, const ir::IRInstruction& ins
         const int shiftMask = (srcType == "i16" || srcType == "u16") ? 15 : 7;
         const int widthBits = shiftMask + 1;  // 任务 474：类型位宽
         // D8（458-a）：dst 已分配时计算寄存器=dst 的 32 位形态（cl 固定约束不冲突）
+        // 1281：移位量寄存器与结果分配寄存器相同=两地址自吞（先写 dst 再读移位
+        //   量读到新值）——回退 eax 计算，尾部再写 dst。
         const std::string dstPhys = physRegOf(inst.result);
+        const std::string shAmtPhys = inst.operands[1].isConstant
+                                          ? std::string()
+                                          : physRegOf(inst.operands[1]);
+        const bool shiftSelfClobber = !dstPhys.empty() && shAmtPhys == dstPhys;
         std::string ew = "eax";
-        if (!dstPhys.empty()) ew = widthFor("i32", dstPhys);
+        if (!dstPhys.empty() && !shiftSelfClobber) ew = widthFor("i32", dstPhys);
         // 常量传播面守卫（#500·077 Cast 常量源适配同构）：op1 为立即数常量时
         //   movsx/movzx 不接受立即数操作数（word ptr 32767 → ml64 A2070）——
         //   mov 直载（写 32 位寄存器清高位=窄值全值，值域 ≤65535 在 imm32 内）。
@@ -115,7 +121,7 @@ void X64CodeGenerator::emitShift(AsmWriter& writer, const ir::IRInstruction& ins
             }
             writer.line(sh + " " + ew + ", cl");
         }
-        if (dstPhys.empty()) {
+        if (dstPhys.empty() || shiftSelfClobber) {
             writer.line("mov " + shrunkOperand("i32", dst) + ", eax");
         }
         return;
@@ -124,11 +130,17 @@ void X64CodeGenerator::emitShift(AsmWriter& writer, const ir::IRInstruction& ins
     // D8（458-a）：dst 已分配且移位量寄存器（cl）不冲突 -> 计算落 dst 免尾部中转
     //   （cl=rcx 低 8 位·rcx 非分配池寄存器·与 dst 无冲突面）
     const std::string dstPhys64 = physRegOf(inst.result);
+    // 1281：移位量寄存器与结果分配寄存器相同=两地址自吞（先写 dst 再读移位量
+    //   读到新值）——回退 rax 计算，尾部再写 dst（窄型分支同判据）。
+    const std::string amtPhys64 = inst.operands[1].isConstant
+                                      ? std::string()
+                                      : physRegOf(inst.operands[1]);
+    const bool direct64 = !dstPhys64.empty() && amtPhys64 != dstPhys64;
     std::string w;
-    const bool direct64 = !dstPhys64.empty();
     if (direct64) {
         w = widthFor(srcType, dstPhys64);
-    } else {
+    }
+    if (!direct64) {
         w = widthFor(srcType, "rax");
     }
     writer.line("mov " + w + ", " + shrunkOperand(srcType, op1));  // 物理寄存器全名收缩（A2022）
@@ -170,7 +182,7 @@ void X64CodeGenerator::emitShift(AsmWriter& writer, const ir::IRInstruction& ins
         }
         writer.line(sh + " " + w + ", cl");
     }
-    if (dstPhys64.empty()) {
+    if (!direct64) {
         writer.line("mov " + shrunkOperand(srcType, dst) + ", " + w);
     }
 }
@@ -237,7 +249,13 @@ void X64CodeGenerator::emitIntBinary(AsmWriter& writer, const ir::IRInstruction&
     // 8/16位：两个操作数都扩展后按32位运算
     if (srcType == "i8" || srcType == "i16" ||
         srcType == "u8" || srcType == "u16") {
-        if (!dstPhys.empty()) {
+        // 1281：op2 与结果同物理寄存器=两地址自吞（写 dst 覆盖未读的 op2）——
+        //   回退 eax/ecx 三段（与 32/64 位直写判据同构）。
+        const std::string nOp2Phys = inst.operands[1].isConstant
+                                         ? std::string()
+                                         : physRegOf(inst.operands[1]);
+        const bool narrowSelfClobber = !dstPhys.empty() && nOp2Phys == dstPhys;
+        if (!dstPhys.empty() && !narrowSelfClobber) {
             // 直写：计算寄存器=dst 的 32 位形态（ecx 是固定临时·与 dst 无冲突面）
             const std::string dw = widthFor("i32", dstPhys);
             // 1159：op1 源三分（常量直载/寄存器窄宽名/内存 byte·word ptr）
@@ -361,8 +379,14 @@ void X64CodeGenerator::emitIntMul(AsmWriter& writer, const ir::IRInstruction& in
         //   时计算落 dst 的 32 位名（emitIntBinary 458-a 直写同构·免尾部 mov
         //   中转）；needOvf 时强制三段（481 域 cmp 错误块在中间·垫底布局）。
         const std::string narrowPhys = needOvf ? std::string() : physRegOf(inst.result);
-        const std::string acc = narrowPhys.empty() ? std::string("eax")
-                                                   : widthFor("i32", narrowPhys);
+        // 1281：op2 与结果同物理寄存器=两地址自吞（见 emitIntBinary 同判据）
+        const std::string nOp2Phys = inst.operands[1].isConstant
+                                         ? std::string()
+                                         : physRegOf(inst.operands[1]);
+        const bool narrowSelfClobber = !narrowPhys.empty() && nOp2Phys == narrowPhys;
+        const std::string acc = (narrowPhys.empty() || narrowSelfClobber)
+                                    ? std::string("eax")
+                                    : widthFor("i32", narrowPhys);
         // 1159：op1 源三分（常量/寄存器窄宽名/内存 byte·word ptr）
         emitNarrowOperandTo32(writer, ty, op1, inst.operands[0].isConstant, acc);
         if (inst.operands[1].isConstant) {
@@ -512,18 +536,21 @@ void X64CodeGenerator::emitDivMod(AsmWriter& writer, const ir::IRInstruction& in
     }
     // 除数：常量立即数先移入 rcx（div/idiv 不接受立即数，A2001）；
     // 内存操作数需显式大小前缀（A2023）
+    // 1281：除数宽度与运算宽度同源（wide=64 位除法；其余含窄型=32 位除法）——
+    //   窄型常量除数原落 "rcx"（64 位 idiv 读 rcx 高 32 为零/残留：负数常量
+    //   变成 4G 级正数 → 商恒 0），现统一按类型宽度取 ecx/rcx。
+    const bool wide = (type == "i64" || type == "u64" || type == "i128" || type == "u128");
     const bool divisorConst = inst.operands[1].isConstant;
     std::string divisor;
     if (divisorConst) {
         const std::string cw = widthFor(type, "rcx");
         writer.line("mov " + cw + ", " + op2);
-        divisor = (type == "i32" || type == "u32") ? "ecx" : "rcx";
+        divisor = wide ? "rcx" : "ecx";
     }
     // 除零检查（错误码1）：常量非零跳过；常量零/运行期寄存器检查
     // 注意：虚拟寄存器槽（regSlot）32 位运算只写低 32 位（mov [rbp-X], eax），
     //       高 32 位是槽中垃圾——64 位读 rcx 会误判非零跳过检查导致除零崩溃。
     //       故 ≤32 位类型按 dword 读（mov ecx, dword ptr），64 位类型按 qword 读。
-    const bool wide = (type == "i64" || type == "u64" || type == "i128" || type == "u128");
     if (!(divisorConst && op2 != "0")) {
         const int checkId = ptrCheckCounter_++;
         const std::string okLabel = "@div_ok" + std::to_string(checkId);
@@ -538,25 +565,29 @@ void X64CodeGenerator::emitDivMod(AsmWriter& writer, const ir::IRInstruction& in
             // 常量零除法实际不可达（上方已 ret），防御性补 div 操作数
             const std::string cw = widthFor(type, "rcx");
             writer.line("mov " + cw + ", 0");
-            divisor = (type == "i32" || type == "u32") ? "ecx" : "rcx";
-        } else {
+            divisor = wide ? "rcx" : "ecx";
+        }
+        if (!divisorConst) {
             // 运行期除数：按宽度读入检查（≤32位 dword 低32位；64位 qword 全值）
-            // 1159：除数可能已分配到物理寄存器（i32/u32 起参与分配）——寄存器
-            //   形态用 32 位名直读（mov ecx, r12d），内存槽保持 dword ptr 显式宽度。
+            // 1159/1281：除数可能已分配到物理寄存器（全整型参与分配）——寄存器
+            //   形态经统一别名表取 32 位名（窄型按 movsx/movzx 窄宽名扩展），
+            //   内存槽保持 dword ptr 显式宽度。
+            const bool narrowDiv = (type == "i8" || type == "i16" ||
+                                    type == "u8" || type == "u16");
             if (wide) {
                 writer.line("mov rcx, " + op2);
                 writer.line("test rcx, rcx");
-            } else if (is64BitRegisterName(op2)) {
-                // 1159：窄型除数寄存器按窄宽名扩展（与槽 4 字节提升读同值）；
-                //   i32/u32 直接取 32 位名
-                if (type == "i8" || type == "i16" || type == "u8" || type == "u16") {
+            }
+            if (!wide && isRegisterOperandText(op2)) {
+                if (narrowDiv) {
                     emitNarrowOperandTo32(writer, type, op2, false, "ecx");
-                } else if (!(type == "i8" || type == "i16" ||
-                             type == "u8" || type == "u16")) {
-                    writer.line("mov ecx, " + widthFor("i32", op2));
+                }
+                if (!narrowDiv) {
+                    writer.line("mov ecx, " + regAtWidth(op2, 32));
                 }
                 writer.line("test ecx, ecx");
-            } else if (!is64BitRegisterName(op2)) {
+            }
+            if (!wide && !isRegisterOperandText(op2)) {
                 writer.line("mov ecx, dword ptr " + op2);
                 writer.line("test ecx, ecx");
             }
@@ -581,15 +612,28 @@ void X64CodeGenerator::emitDivMod(AsmWriter& writer, const ir::IRInstruction& in
         if (divisorConst && op2 == "-1") {
             if (inst.opcode == ir::Opcode::Div) {
                 if (!currentFnUnsafe474_) {
-                    // 反向结构：jno 跳过错误块；INT_MIN 顺序落入
+                    // 反向结构：域内跳过错误块；溢出顺序落入。
+                    // 1281：窄型溢出域=类型域（x==INT8/16_MIN 时 -x 不可表示）——
+                    //   原负值域判定用 32 位 neg OF，窄域最小值的 -x 在 32 位域
+                    //   不溢出（-128→128）恒漏报；32/64 位维持 neg OF 单指令检测。
                     const std::string trap = "@ovf" + std::to_string(ptrCheckCounter_++);
-                    writer.line("neg " + w);
                     const std::string ok = trap + "_ok";
-                    writer.line("jno " + ok);
-                    writer.raw(trap + ":");
-                    emitOverflowErrorBody(writer);
-                    writer.raw(ok + ":");
-                    writer.line("neg " + w);  // 恢复被除数（neg 自逆）
+                    if (narrowType) {
+                        writer.line("cmp " + w + ", " +
+                                    std::string((type == "i8") ? "-128" : "-32768"));
+                        writer.line("jne " + ok);
+                        writer.raw(trap + ":");
+                        emitOverflowErrorBody(writer);
+                        writer.raw(ok + ":");
+                    }
+                    if (!narrowType) {
+                        writer.line("neg " + w);
+                        writer.line("jno " + ok);
+                        writer.raw(trap + ":");
+                        emitOverflowErrorBody(writer);
+                        writer.raw(ok + ":");
+                        writer.line("neg " + w);  // 恢复被除数（neg 自逆）
+                    }
                 }
                 writer.line("neg " + w);
                 writer.line("mov " + shrunkOperand(type, dst) + ", " + w);
@@ -609,14 +653,24 @@ void X64CodeGenerator::emitDivMod(AsmWriter& writer, const ir::IRInstruction& in
             writer.line("jne " + contLabel);
             if (inst.opcode == ir::Opcode::Div && !currentFnUnsafe474_) {
                 // 任务 474：被除数==INT_MIN → 错误码 8（neg OF 单指令检测·
-                //   反向结构：jno 跳过错误块到恢复点；Mod 余≡0 不发守卫）
+                //   反向结构：jno 跳过错误块到恢复点；Mod 余≡0 不发守卫）。
+                // 1281：窄型按类型域比较（i8/i16 最小值），32/64 位维持 neg OF。
                 const std::string trap = "@ovf" + std::to_string(ptrCheckCounter_++);
                 const std::string okL = "@dmin_ok" + std::to_string(negId);
-                writer.line("neg " + w);
-                writer.line("jno " + okL);
-                emitOverflowTrap(writer, trap);
-                writer.raw(okL + ":");
-                writer.line("neg " + w);  // 恢复被除数（neg 自逆）
+                if (narrowType) {
+                    writer.line("cmp " + w + ", " +
+                                std::string((type == "i8") ? "-128" : "-32768"));
+                    writer.line("jne " + okL);
+                    emitOverflowTrap(writer, trap);
+                    writer.raw(okL + ":");
+                }
+                if (!narrowType) {
+                    writer.line("neg " + w);
+                    writer.line("jno " + okL);
+                    emitOverflowTrap(writer, trap);
+                    writer.raw(okL + ":");
+                    writer.line("neg " + w);  // 恢复被除数（neg 自逆）
+                }
             }
             if (inst.opcode == ir::Opcode::Div) {
                 writer.line("neg " + w);           // 商 = -被除数（x≠INT_MIN 域）
