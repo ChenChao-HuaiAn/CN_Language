@@ -678,7 +678,7 @@ std::string Arm64CodeGenerator::generateFunctionAssembly(const ir::IRFunction& f
     //   str/strb/strh + ldr/ldrb/ldrh/ldrsb/ldrsh 与 d/s 浮点族。
     std::string asmText = writer.str();
     if (regAllocEnabled_) {
-        asmText = peephole::eliminateRedundantSlotTrafficAArch64(asmText);
+        peephole::eliminateRedundantSlotTrafficAArch64InPlace(asmText);
     }
     return asmText;
 }

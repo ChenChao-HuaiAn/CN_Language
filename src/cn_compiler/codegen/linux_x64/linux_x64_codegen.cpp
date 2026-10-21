@@ -833,7 +833,7 @@ std::string LinuxX64CodeGenerator::generateFunctionAssembly(const ir::IRFunction
     //   变换（见 peephole_slot.hpp 规则与安全条件），不改任何运行时语义。
     std::string asmText = writer.str();
     if (regAllocEnabled_) {
-        asmText = peephole::eliminateRedundantSlotTraffic(asmText);
+        peephole::eliminateRedundantSlotTrafficInPlace(asmText);
     }
     return asmText;
 }

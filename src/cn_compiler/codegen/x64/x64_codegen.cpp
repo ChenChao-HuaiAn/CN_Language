@@ -622,7 +622,7 @@ std::string X64CodeGenerator::generateFunctionAssembly(const ir::IRFunction& fun
     //   后端实际产物（无 ptr 前缀的直写/直装、32 位目的 movsx/movzx）。
     std::string asmText = writer.str();
     if (regAllocEnabled_) {
-        asmText = peephole::eliminateRedundantSlotTrafficMasm(asmText);
+        peephole::eliminateRedundantSlotTrafficMasmInPlace(asmText);
     }
     return asmText;
 }

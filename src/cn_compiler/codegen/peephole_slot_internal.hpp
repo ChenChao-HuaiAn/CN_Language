@@ -32,10 +32,12 @@ struct SlotRules {
     bool (*fullDelete)(const SlotAccess&, const SlotAccess&);    // 两行全删判据
 };
 
-// 去左侧空白
+// 去左侧空白（1248：手写扫描——寄存器/助记符分离前每行必经，避免
+//   find_first_not_of 的字符集表开销；语义与原 find_first_not_of(" \t") 相同）
 inline std::string_view lstrip(std::string_view s) {
-    const std::size_t p = s.find_first_not_of(" \t");
-    return (p == std::string_view::npos) ? std::string_view() : s.substr(p);
+    std::size_t p = 0;
+    while (p < s.size() && (s[p] == ' ' || s[p] == '\t')) ++p;
+    return s.substr(p);
 }
 
 // 去两侧空白（含行尾 '\r'：函数文本可能来自 CRLF 片段）
@@ -98,9 +100,18 @@ inline bool iequals(std::string_view a, std::string_view b) {
 // 方言无关主扫描（定义在 peephole_slot.cpp）
 std::string eliminateWithRules(const std::string& functionText, const SlotRules& rules);
 
+// 方言无关主扫描（就地·任务 1248）：命中返回 true 并原地替换文本；未命中返回
+//   false，不复制/不替换文本（仅锚点存在时构建扫描结构）。命中时 functionText
+//   可能重分配，调用方持有的 view/迭代器/引用失效。语义与值语义版逐字节一致。
+bool eliminateWithRulesInPlace(std::string& functionText, const SlotRules& rules);
+
 // AArch64 面入口（定义在 peephole_slot_arm64.cpp）：固定帧槽（1157）→ 大偏移
 //   间接寻址（1243）
 std::string eliminateAArch64Pass(const std::string& functionText);
+
+// AArch64 面就地入口（任务 1248）：命中返回 true 并原地替换文本；未命中返回
+//   false，不复制/不替换文本（仅锚点存在时构建扫描结构）。命中时可重分配。
+bool eliminateAArch64PassInPlace(std::string& functionText);
 
 } // namespace detail
 } // namespace peephole

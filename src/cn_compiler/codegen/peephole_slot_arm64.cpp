@@ -696,9 +696,10 @@ IndirectPairAction tryEliminateIndirectPair(
     return act;
 }
 
-// 大偏移间接寻址主扫描（整体消除·无命中返回原文）
-std::string eliminateArmIndirectPairs(const std::string& functionText) {
-    if (functionText.find("[x13]") == std::string::npos) return functionText;
+// 大偏移间接寻址主扫描（整体消除·就地：命中返回 true 并替换文本；
+//   未命中返回 false 且文本不动——1248 就地入口，代码生成热路径免无命中复制）
+bool eliminateArmIndirectPairsInPlace(std::string& functionText) {
+    if (functionText.find("[x13]") == std::string::npos) return false;
     const std::vector<std::string_view> lines = splitLines(functionText);
     const auto offsetOcc = collectArmFrameOffsetCounts(lines);
     const std::vector<char> safe = computeArmTailSafety(lines, false);
@@ -721,9 +722,12 @@ std::string eliminateArmIndirectPairs(const std::string& functionText) {
         any = true;
         i = static_cast<std::size_t>(act.loadIndex);  // 跳过已消费的 load 行
     }
-    if (!any) return functionText;
-    return renderLines(lines, drop, repl, functionText);
+    if (any) {
+        functionText = renderLines(lines, drop, repl, functionText);
+    }
+    return any;
 }
+
 // AArch64 方言规则束（1157 固定帧槽面）
 const SlotRules kAArch64 = {"[x29", parseArmStoreLine, parseArmLoadLine,
                             rewriteArmLoad, fullDeleteArm};
@@ -732,7 +736,16 @@ const SlotRules kAArch64 = {"[x29", parseArmStoreLine, parseArmLoadLine,
 
 // AArch64 面入口：固定帧槽（1157）→ 大偏移间接寻址（1243）
 std::string eliminateAArch64Pass(const std::string& functionText) {
-    return eliminateArmIndirectPairs(eliminateWithRules(functionText, kAArch64));
+    std::string out(functionText);
+    eliminateAArch64PassInPlace(out);
+    return out;
+}
+
+// AArch64 面就地入口（1248）：两阶段均走就地内核，未命中文本不动
+bool eliminateAArch64PassInPlace(std::string& functionText) {
+    const bool fixedHit = eliminateWithRulesInPlace(functionText, kAArch64);
+    const bool indirectHit = eliminateArmIndirectPairsInPlace(functionText);
+    return fixedHit || indirectHit;
 }
 
 } // namespace detail

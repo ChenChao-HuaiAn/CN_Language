@@ -59,5 +59,13 @@ std::string eliminateRedundantSlotTrafficMasm(const std::string& functionText);
 //   linux-arm64 面（AArch64 GAS·str/ldr 族·1157）
 std::string eliminateRedundantSlotTrafficAArch64(const std::string& functionText);
 
+// 就地入口（任务 1248·代码生成热路径）：命中返回 true 并原地替换文本；
+//   未命中返回 false，不复制/不替换文本（仅锚点存在时构建扫描结构）。
+//   命中时 functionText 可能重分配，调用方持有的 view/迭代器/引用随之失效。
+//   产物与值语义入口逐字节一致。
+bool eliminateRedundantSlotTrafficInPlace(std::string& functionText);
+bool eliminateRedundantSlotTrafficMasmInPlace(std::string& functionText);
+bool eliminateRedundantSlotTrafficAArch64InPlace(std::string& functionText);
+
 } // namespace peephole
 } // namespace cn_compiler
