@@ -798,51 +798,9 @@ bool X64CodeGenerator::emitCastIntWidth(AsmWriter& writer, const ir::IRInstructi
         writer.line("mov " + regSlot(inst.result.id) + ", rax");
         return true;
     }
-    // 普通整数 -> i128/u128（集成验证发现 Bug）：i32/i64 等扩展为 128 位。
-    //   原实现无此分支，落到默认 32 位 mov —— 高64位槽残留垃圾 -> i128 运算结果错误。
-    //   i128 双槽约定：%vN=高64、%vN+1=低64（regSlot(id)/regSlot(id+1)）
-    if (to == "i128" || to == "u128") {
-        const bool signedSrc = (from == "i8" || from == "i16" ||
-                                from == "i32" || from == "i64");
-        // 低64位：源值（<64位 先扩展为64位）
-        if (from == "i8" || from == "i16") {
-            // 077 常量源适配（同 316-a 分支）：立即数装载=符号扩展语义等价
-            if (inst.operands[0].isConstant) {
-                writer.line("mov eax, " + src);
-                writer.line("cdqe");
-            } else if (isRegisterOperandText(src)) {
-                // 1159：源已分配 -> 窄宽寄存器名符号扩展（movsx eax, r12b/r12w）
-                writer.line("movsx eax, " + narrowOperand(from, src));
-                writer.line("movsxd rax, eax");
-            } else {
-                writer.line("movsx eax, " + memSizePtr(from) + src);
-                writer.line("movsxd rax, eax");
-            }
-        } else if (from == "u8" || from == "u16") {
-            if (inst.operands[0].isConstant) {
-                writer.line("mov eax, " + src);  // 写 eax 清高 32=零扩展
-            } else if (isRegisterOperandText(src)) {
-                // 1159：源已分配 -> 窄宽寄存器名零扩展（movzx eax, r12b/r12w）
-                writer.line("movzx eax, " + narrowOperand(from, src));
-            } else {
-                writer.line("movzx eax, " + memSizePtr(from) + src);
-            }
-        } else if (from == "i32" || from == "u32") {
-            writer.line("mov eax, " + shrunkOperand("i32", src));
-            if (signedSrc) writer.line("movsxd rax, eax");
-        } else {
-            writer.line("mov rax, " + src);
-        }
-        writer.line("mov " + regSlot(inst.result.id + 1) + ", rax");  // 低64位
-        // 高64位：有符号源符号扩展（算术右移63位）；无符号/常量 置 0
-        if (signedSrc) {
-            writer.line("sar rax, 63");
-        } else {
-            writer.line("xor rax, rax");
-        }
-        writer.line("mov " + regSlot(inst.result.id) + ", rax");      // 高64位
-        return true;
-    }
+    // 316-a 已完整覆盖「整数 -> i128/u128」全部源类型（i8/i16/i32/i64/u8/u16/
+    //   u32/u64）并 return true——原先位于此处的 1159 重复通道（同条件同分支）
+    //   为不可达死代码（#1215 审查 P2 收口：删除，防两套实现漂移）。
     return false;
 }
 } // namespace cn_compiler

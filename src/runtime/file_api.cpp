@@ -51,8 +51,11 @@ const char* modeToFopen(int mode) {
 //   #1215 预验 1442 根治：原实现先窄路径 fopen_s——GBK 代码页（936）下中文
 //   UTF-8 路径会被 fopen_s 当作 GBK 接受并创建**乱码名文件**（打开文件看似
 //   成功，创建目录随后在正确中文路径成功 → 中段文件阻断判据失效）。改为
-//   宽路径优先（MB_ERR_INVALID_CHARS：仅合法 UTF-8 走宽路径），失败再回退
-//   窄路径（兼容 GBK 命令行传入的非 UTF-8 路径）。
+//   宽路径优先（MB_ERR_INVALID_CHARS：仅合法 UTF-8 走宽路径）。
+//   回退边界（审查 P1-1）：仅「路径/模式串本身不是合法 UTF-8」（宽转换返回 0）
+//   才回退窄路径（GBK 命令行）；合法 UTF-8 的宽打开失败直接返回 nullptr 并
+//   保留宽路径 errno——否则同一 UTF-8 字节被按 GBK 再解释一次，可能误命中/
+//   创建旧乱码名文件。
 // 非 Windows：直接 fopen。
 FILE* fileOpenImpl(const char* path, const char* mode) {
     if (path == nullptr || mode == nullptr) return nullptr;
@@ -62,20 +65,27 @@ FILE* fileOpenImpl(const char* path, const char* mode) {
                                             nullptr, 0);
     if (wideLen != 0) {
         std::vector<wchar_t> widePath(static_cast<std::size_t>(wideLen));
-        MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, path, -1, widePath.data(),
-                            wideLen);
+        if (MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, path, -1,
+                                widePath.data(), wideLen) == 0) {
+            return nullptr;
+        }
         const int modeLen = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, mode, -1,
                                                 nullptr, 0);
         if (modeLen != 0) {
             std::vector<wchar_t> wideMode(static_cast<std::size_t>(modeLen));
-            MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, mode, -1, wideMode.data(),
-                                modeLen);
+            if (MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, mode, -1,
+                                    wideMode.data(), modeLen) == 0) {
+                return nullptr;
+            }
             if (_wfopen_s(&fp, widePath.data(), wideMode.data()) == 0 && fp != nullptr) {
                 return fp;
             }
+            // 合法 UTF-8：宽打开失败即最终失败（保留 _wfopen_s 的 errno），
+            //   禁把同一字节按 GBK 再解释（审查 P1-1：乱码名命中/创建面）。
+            return nullptr;
         }
     }
-    // 非 UTF-8（GBK 命令行路径）或宽路径失败：窄路径兜底
+    // 非 UTF-8（GBK 命令行）或模式串不可宽转换：窄路径兜底
     if (fopen_s(&fp, path, mode) == 0 && fp != nullptr) return fp;
     return nullptr;
 #else
@@ -94,14 +104,18 @@ bool makeDirsImpl(const char* path) {
         return ok;  // 空路径=失败哨兵（调用方 stdlib 创建目录 转 错误(错误码.文件)）
     }
 #ifdef _WIN32
-    // UTF-8 -> UTF-16（中文路径；与 fileOpenImpl 同口径）；API 失败返回 0
-    const int wideLen = MultiByteToWideChar(CP_UTF8, 0, path, -1, nullptr, 0);
+    // UTF-8 -> UTF-16（中文路径；与 fileOpenImpl 同编码口径 MB_ERR_INVALID_CHARS）。
+    //   审查 P1-2：CN 字符串恒 UTF-8，非 UTF-8 路径显式失败（禁 U+FFFD 替换后
+    //   在错误路径上建目录）；第二次转换返回值必须检查（原实现忽略=静默跳过）。
+    const int wideLen = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, path, -1,
+                                            nullptr, 0);
     if (wideLen == 0) {
         ok = false;
         return ok;
     }
     std::wstring dir(static_cast<std::size_t>(wideLen), L'\0');
-    if (MultiByteToWideChar(CP_UTF8, 0, path, -1, &dir[0], wideLen) == 0) {
+    if (MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, path, -1, &dir[0],
+                            wideLen) == 0) {
         ok = false;
         return ok;
     }
@@ -248,7 +262,8 @@ extern "C" void __cn_file_close(void* handle) {
     }
 }
 
-// 文件是否存在：_wfopen_s 试读（模式"rb"），成功即关闭返回真；失败返回假
+// 文件是否存在：fileOpenImpl 试读（模式"rb"，UTF-8 宽路径优先——与打开同编码
+//   口径，见文件头注释），成功即关闭返回真；失败返回假。
 extern "C" long long __cn_file_exists(const char* path) {
     FILE* fp = fileOpenImpl(path, "rb");
     if (fp == nullptr) return 0;
