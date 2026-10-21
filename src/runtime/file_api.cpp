@@ -48,22 +48,36 @@ const char* modeToFopen(int mode) {
 
 // 打开文件（内部实现）：UTF-8 路径 -> 宽路径（_wfopen_s），失败返回 nullptr
 // Windows：MultiByteToWideChar(CP_UTF8) 转 UTF-16 后 _wfopen_s（中文路径可靠）；
-//   窄路径直试（兼容 GBK 命令行传入路径，与 module.cpp readSourceFile 策略一致）。
+//   #1215 预验 1442 根治：原实现先窄路径 fopen_s——GBK 代码页（936）下中文
+//   UTF-8 路径会被 fopen_s 当作 GBK 接受并创建**乱码名文件**（打开文件看似
+//   成功，创建目录随后在正确中文路径成功 → 中段文件阻断判据失效）。改为
+//   宽路径优先（MB_ERR_INVALID_CHARS：仅合法 UTF-8 走宽路径），失败再回退
+//   窄路径（兼容 GBK 命令行传入的非 UTF-8 路径）。
 // 非 Windows：直接 fopen。
 FILE* fileOpenImpl(const char* path, const char* mode) {
     if (path == nullptr || mode == nullptr) return nullptr;
 #ifdef _WIN32
     FILE* fp = nullptr;
+    const int wideLen = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, path, -1,
+                                            nullptr, 0);
+    if (wideLen != 0) {
+        std::vector<wchar_t> widePath(static_cast<std::size_t>(wideLen));
+        MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, path, -1, widePath.data(),
+                            wideLen);
+        const int modeLen = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, mode, -1,
+                                                nullptr, 0);
+        if (modeLen != 0) {
+            std::vector<wchar_t> wideMode(static_cast<std::size_t>(modeLen));
+            MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, mode, -1, wideMode.data(),
+                                modeLen);
+            if (_wfopen_s(&fp, widePath.data(), wideMode.data()) == 0 && fp != nullptr) {
+                return fp;
+            }
+        }
+    }
+    // 非 UTF-8（GBK 命令行路径）或宽路径失败：窄路径兜底
     if (fopen_s(&fp, path, mode) == 0 && fp != nullptr) return fp;
-    // 窄字符失败：UTF-8 路径 -> UTF-16 宽路径（中文文件名）
-    const int wideLen = MultiByteToWideChar(CP_UTF8, 0, path, -1, nullptr, 0);
-    if (wideLen <= 0) return nullptr;
-    std::vector<wchar_t> widePath(static_cast<std::size_t>(wideLen));
-    MultiByteToWideChar(CP_UTF8, 0, path, -1, widePath.data(), wideLen);
-    std::vector<wchar_t> wideMode(wideLen);  // 模式串同为 ASCII，宽度复用
-    MultiByteToWideChar(CP_UTF8, 0, mode, -1, wideMode.data(), wideLen);
-    if (_wfopen_s(&fp, widePath.data(), wideMode.data()) != 0 || fp == nullptr) return nullptr;
-    return fp;
+    return nullptr;
 #else
     return std::fopen(path, mode);
 #endif

@@ -639,6 +639,7 @@ bool X64CodeGenerator::emitCastIntWidth(AsmWriter& writer, const ir::IRInstructi
                 //   （movzx 同构）。
                 writer.line("mov eax, " + src);
             } else if (isRegisterOperandText(src)) {
+                // 1281 同族（#1215 集成预验红·同 i8/i16 分支）：寄存器形态零扩展
                 writer.line("movzx eax, " + narrowOperand(from, src));
             } else {
                 writer.line("movzx eax, " + memSizePtr(from) + src);

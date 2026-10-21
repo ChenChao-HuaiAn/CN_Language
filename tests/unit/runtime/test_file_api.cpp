@@ -14,6 +14,10 @@
 #include <filesystem>
 #include <string>
 
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
 // 安全的文件打开（MSVC /W4 /WX 下 fopen 触发 C4996 警告即错误）
 #ifdef _WIN32
 #define TEST_FOPEN(path, mode, f) (fopen_s(&(f), (path), (mode)) == 0)
@@ -42,7 +46,22 @@ std::string tempFile(const char* tag) {
 }
 
 // 删除临时文件（忽略不存在；删除失败必须暴露——句柄未关/路径错等都属异常）
+//   #1215 报备修改（仅测试辅助层，断言零改动）：Windows 下 std::remove 按 ANSI
+//   （GBK 936）解释路径，而运行时自 #1215 起 UTF-8 宽路径优先——中文文件名用
+//   窄删除会删错名/漏删（ChineseFilename 残留→exists 断言失败）。清理走与生产
+//   同一 UTF-8→UTF-16 口径；非 Windows 保持 std::remove。
 void cleanup(const std::string& path) {
+#ifdef _WIN32
+    const int wideLen = MultiByteToWideChar(CP_UTF8, 0, path.c_str(), -1, nullptr, 0);
+    if (wideLen > 0) {
+        std::wstring widePath(static_cast<std::size_t>(wideLen), L'\0');
+        MultiByteToWideChar(CP_UTF8, 0, path.c_str(), -1, &widePath[0], wideLen);
+        errno = 0;
+        EXPECT_TRUE(_wremove(widePath.c_str()) == 0 || errno == ENOENT)
+            << "临时文件删除失败（errno=" << errno << "）: " << path;
+        return;
+    }
+#endif
     errno = 0;
     EXPECT_TRUE(std::remove(path.c_str()) == 0 || errno == ENOENT)
         << "临时文件删除失败（errno=" << errno << "）: " << path;
