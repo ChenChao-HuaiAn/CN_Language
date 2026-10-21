@@ -417,12 +417,14 @@ std::string LinuxX64CodeGenerator::copyAllocatedTo(LinuxX64AsmWriter& writer,
         const std::string& t = operand.type;
         if (t == "i8" || t == "i16") {
             writer.line("movsxd " + reg + ", " + x86Reg32(phys));
-        } else if (t == "u8" || t == "u16" || t == "i32" || t == "u32") {
+        } else if (t == "u8" || t == "u16" || t == "i32" || t == "u32" ||
+                   t == "i1") {
+            // 1267 续：i1 与 32 位整型同款（寄存器内低 32 位规范承载）
             writer.line("mov " + x86Reg32(reg) + ", " + x86Reg32(phys));
         } else if (t == "i64" || t == "u64" || t == "ptr") {
             writer.line("mov " + reg + ", " + phys);
         } else {
-            // 不可达：本函数仅对已分配（可分配整型/指针）值调用——其余类型闭集排除
+            // 不可达：本函数仅对已分配（可分配整型/指针/i1）值调用——其余类型闭集排除
             diagnostics_.report(Diagnostic::error(
                 SourceLocation(), "内部错误: 已分配值类型非整型/指针 '" + t + "'（1256）"));
         }

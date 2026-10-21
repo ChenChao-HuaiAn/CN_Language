@@ -199,8 +199,23 @@ void LinuxX64CodeGenerator::emitCast(LinuxX64AsmWriter& writer,
             writer.line("movzx " + x86Reg32(dst) + ", " + narrowOperand(to, "r10"));
         } else if (to == "i32" || to == "u32") {
             writer.line("mov " + x86Reg32(dst) + ", r10d");
-        } else if (to == "i64" || to == "u64") {
+        } else if (to == "i64" || to == "u64" || to == "ptr") {
+            // 1267 复审 P0：ptr 目标不可漏——judgement.cpp 的 I128ToNarrow 域
+            //   显式含 to=="ptr"（655 归档：128→ptr 取低 64 位、win 后端 mov
+            //   64 位同语义）。原已分配分支只列 i64/u64，ptr 落零发射 return
+            //   →结果寄存器残留前序值（大函数 RA 开时实测指针错值/野指针）。
+            //   ptr 与 i64/u64 同款 64 位搬运（不影响 win/arm 产物）。
             writer.line("mov " + dst + ", r10");
+        } else if (to == "i1") {
+            // 1267 审查 P1-1：to=i1 在本分支不可达（judgement.cpp「整→i1（布尔
+            //   目标）」归档：语义层 isNumeric 不含布尔，显式转换「无法将…转换为
+            //   布尔」编译期拒绝；内部发射面无 to=i1 的 Cast）。不可达不等于可
+            //   静默——若未来新增通道落此，报内部错误显形（禁止零发射 return）。
+            //   修向备选（若规范放开布尔目标）：test/setne 规范化 0/1 后 mov 32 位。
+            diagnostics_.report(Diagnostic::error(
+                inst.loc,
+                "内部错误: i128→i1 已分配结果落位未实现（语义层拒绝布尔目标="
+                "不可达；禁止静默漏写·1267 审查 P1-1）"));
         }
         return;
     }
@@ -320,7 +335,9 @@ void LinuxX64CodeGenerator::emitCompare(LinuxX64AsmWriter& writer,
                 break;
         }
         writer.line("movzx r10, r9b");
-        emitStackStore(writer, regSlotOffset(inst.result.id), "r10", "i1");
+        // 1267 续：i1 结果已分配 -> 32 位规范化直写物理寄存器（r10 已经
+        //   movzx 清零高 32 位；未分配原槽不变）
+        storeCanonicalResult(writer, inst.result, "r10", "i1");
         return;
     }
     // 1256：源可能已分配 -> 直接读物理寄存器（未分配仍为 r10/r9，产物不变）
@@ -345,7 +362,9 @@ void LinuxX64CodeGenerator::emitCompare(LinuxX64AsmWriter& writer,
     // setcc -> movzx 到 64 位（setcc 只写 8 位，movzx 清高位保证 store 确定性）
     const std::string cc = setccFor(inst.opcode, isUnsigned, isFloat);    writer.line(cc + " r9b");
     writer.line("movzx r10, r9b");
-    emitStackStore(writer, regSlotOffset(inst.result.id), "r10", "i1");
+    // 1267 续：i1 结果已分配 -> 32 位规范化直写物理寄存器
+    //   （r10 已经 movzx 清零高 32 位，test/使用点按 32 位规范值安全）
+    storeCanonicalResult(writer, inst.result, "r10", "i1");
 }
 
 // 逻辑非（i1语义）：test + sete
@@ -355,7 +374,9 @@ void LinuxX64CodeGenerator::emitNot(LinuxX64AsmWriter& writer,
     writer.line("test " + op + ", " + op);
     writer.line("sete r9b");
     writer.line("movzx r10, r9b");
-    emitStackStore(writer, regSlotOffset(inst.result.id), "r10", "i1");
+    // 1267 续：i1 结果已分配 -> 32 位规范化直写物理寄存器
+    //   （r10 已经 movzx 清零高 32 位，test/使用点按 32 位规范值安全）
+    storeCanonicalResult(writer, inst.result, "r10", "i1");
 }
 
 } // namespace cn_compiler

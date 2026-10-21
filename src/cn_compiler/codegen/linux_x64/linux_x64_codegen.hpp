@@ -394,7 +394,7 @@ private:
     bool hasRegisterConflict(const ir::IRInstruction& inst) const;
 
     // 已分配源按类型规范化拷贝到指定寄存器（未分配返回空串，调用方走原装载）：
-    //   i8/i16 有符号 -> movsxd（64 位全值）；u8/u16/u32/i32 -> 32 位写（清高）；
+    //   i8/i16 有符号 -> movsxd（64 位全值）；u8/u16/u32/i32/i1 -> 32 位写（清高）；
     //   i64/u64/ptr -> 64 位 mov。与 emitStackLoad 的扩展语义逐位一致。
     std::string copyAllocatedTo(LinuxX64AsmWriter& writer, const ir::IRValue& operand,
                                 const std::string& reg);

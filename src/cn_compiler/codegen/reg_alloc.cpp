@@ -10,7 +10,8 @@
 //   2. 线性扫描：区间按 start 升序，活跃集合按 end 升序（小顶堆）；
 //      区间开始弹出已结束的活跃区间（end < 当前 start），空闲寄存器回收；
 //      分配最早空闲的物理寄存器；无空闲寄存器时溢出（spillSlot 递增）
-//   3. 保守策略：仅 i64/u64/ptr 且非浮点/非 i128 的虚拟寄存器参与分配
+//   3. 保守策略：仅整型/指针且非浮点/非 i128 的虚拟寄存器参与分配
+//      （1267 续：i1 纳入 LinuxX64 可分配面，见 isAllocableIntType）
 //   4. 溢出策略：spillSlot 从 0 递增（语义：每个溢出值一个独立溢出槽，
 //      由 codegen 按需映射到栈偏移；不与其他栈槽区冲突）
 //   5. 英文API命名（GCC 7 不支持中文标识符），中文仅用于注释
@@ -29,11 +30,14 @@ namespace regalloc {
 
 namespace {
 
-// IR 类型是否参与寄存器分配（1281：64/32 位整型、指针与窄整型；
-//   i1/浮点/i128 不参与）。三架构同面——1256 的架构门控已随 1159 合入退场。
+// IR 类型是否参与寄存器分配（1281：64/32 位整型、指针与窄整型；三架构同面——
+//   1256 的架构门控已随 1159 合入退场）。1267 续：i1 布尔也进入本类型面——
+//   寄存器内按 32 位规范承载（低 32 位 0/1、高 32 位清零），由 allocate() 的
+//   i1 架构过滤限定在 LinuxX64（win-x64/arm64 的 i1 落位面未审计=后续任务，
+//   显式过滤保持其产物逐字节不变）。浮点/i128 不参与。
 bool isAllocableIntType(const std::string& type) {
     return type == "i64" || type == "u64" || type == "ptr" ||
-           type == "i32" || type == "u32" ||
+           type == "i32" || type == "u32" || type == "i1" ||
            type == "i8" || type == "u8" || type == "i16" || type == "u16";
 }
 
@@ -46,6 +50,8 @@ bool isWideIntType(const std::string& type) {
 //   32/窄整型直写与宽度判据已由 1281 全族审计收口（compare/算术/移位/
 //   除法/截断/参数搬运），win-x64 / arm64 与 linux-x86_64 同等参与分配。
 //   类型面唯一权威=isAllocableIntType（见上）。
+//   1267 续：i1 是唯一例外——仅 LinuxX64 参与（allocate() 显式按架构过滤，
+//   理由见 isAllocableIntType 注释）。
 
 // 活跃性参与面：活跃集只需含可分配寄存器（非可分配类型不参与传播——1256
 //   性能：v2 全树窄/32 位 id 数量使活跃集膨胀，过滤后编译期回到基线量级）。
@@ -75,8 +81,9 @@ int instResultId(const ir::IRInstruction& inst) {
 
 } // namespace
 
-// 静态：判断 IR 类型是否可参与寄存器分配（1256：64/32 位整型、指针与窄整型；
-//   非浮点、非 i128、非 i1）。架构可分配面由 allocate() 过滤。
+// 静态：判断 IR 类型是否可参与寄存器分配（i64/u64/ptr/i32/u32/i1/i8/u8/i16/u16；
+//   非浮点、非 i128）。1281 起三架构类型面统一；1267 续：i1 由 allocate()
+//   按 TargetArch 再过滤（仅 LinuxX64 分配，其余架构保持槽映射）。
 bool LinearScanAllocator::isAllocableType(const std::string& type) {
     return isAllocableIntType(type);
 }
@@ -446,9 +453,22 @@ void LinearScanAllocator::scan(const std::vector<LiveInterval>& intervals,
 // 主入口：对函数做寄存器分配
 RegAssignmentMap LinearScanAllocator::allocate(const ir::IRFunction& function,
                                                int maxRegId) {
+    // 1268：最大虚拟寄存器编号单一事实源=ir::maxVirtualRegId（原 computeMaxRegId
+    //   七处重复扫描已收敛删除）。
     const int maxId = (maxRegId >= 0) ? maxRegId : ir::maxVirtualRegId(function);
-    // 1281：全架构活跃性参与面=可分配整型/指针全集（i1/浮点/i128 不参与）
+    // 1281：全架构活跃性参与面=可分配整型/指针全集（浮点/i128 不参与；
+    //   1267 续：i1 进入可分配类型面，实际分配面由下方按架构过滤）
     intervals_ = computeLiveIntervalsInternal(function, true, maxId);
+    // 1267 续：i1 布尔仅 LinuxX64 分配（该后端 i1 结果落位/条件值读取已全接
+    //   storeCanonicalResult/physRegOf 并经自举闭环验证；win-x64/arm64 的 i1
+    //   落位面未审计=后续任务）。非 LinuxX64 显式剔除 i1 区间——保留原栈槽
+    //   映射，产物逐字节不变。
+    if (arch_ != TargetArch::LinuxX64) {
+        intervals_.erase(
+            std::remove_if(intervals_.begin(), intervals_.end(),
+                           [](const LiveInterval& li) { return li.type == "i1"; }),
+            intervals_.end());
+    }
     RegAssignmentMap out;
     scan(intervals_, out);
     return out;

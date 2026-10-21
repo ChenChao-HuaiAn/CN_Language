@@ -289,15 +289,22 @@ bool LinuxX64CodeGenerator::emitIntMulDirect(LinuxX64AsmWriter& writer,
                                              bool isSigned, const std::string& trap) {
     const std::string dstPhys = physRegOf(inst.result);
     if (!dstPhys.empty() && !hasRegisterConflict(inst)) {
+        // 1267 审查 P1-2：逐类型显式发射并返回真；未列举类型（如 i1）返回假
+        //   交通用路径（与未分配路径同款）。原实现未列举类型也 return true 且
+        //   零发射=静默返回成功；i1 已被 1267 纳入可分配面，必须显式分流。
         if (ty == "u64") {
             emitIntMulDirectU64(writer, inst, dstPhys, needOvf, trap);
-        } else if (ty == "u32") {
-            emitIntMulDirectU32(writer, inst, dstPhys, needOvf, trap);
-        } else if (ty == "i8" || ty == "i16" || ty == "i32" || ty == "i64" ||
-                   ty == "u8" || ty == "u16") {
-            emitIntMulDirectWide(writer, inst, ty, dstPhys, needOvf, isSigned, trap);
+            return true;
         }
-    return true;
+        if (ty == "u32") {
+            emitIntMulDirectU32(writer, inst, dstPhys, needOvf, trap);
+            return true;
+        }
+        if (ty == "i8" || ty == "i16" || ty == "i32" || ty == "i64" ||
+            ty == "u8" || ty == "u16") {
+            emitIntMulDirectWide(writer, inst, ty, dstPhys, needOvf, isSigned, trap);
+            return true;
+        }
     }
     return false;
 }

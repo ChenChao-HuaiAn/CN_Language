@@ -5,7 +5,8 @@
 //   3. 溢出正确：物理寄存器不足时溢出到栈槽（spillSlot >= 0）
 //   4. 被调用者保存寄存器：分配结果只使用被调用者保存寄存器（rbx/r12~r15 / x19~x28）
 //   5. kind型过滤：1281 起 i64/u64/ptr/i32/u32/窄整型（i8/u8/i16/u16）在三架构
-//      均参与分配（1256 架构门控随 1159 三后端直写审计收口退场）；浮点/i128/i1 保持栈槽
+//      均参与分配（1256 架构门控随 1159 三后端直写审计收口退场）；浮点/i128 保持
+//      栈槽；i1 自 1267 续起仅 LinuxX64 参与（win-x64/arm64 显式按架构过滤）
 //   6. 保留寄存器：x64 隐藏返回指针场景保留 r12
 // 构造方式：直接手工构造 ir::IRFunction（不经过前端链路，聚焦分配器本身）
 // 注意：GCC 7 不支持中文标识符，测试名必须使用英文
@@ -554,11 +555,12 @@ TEST(RegAllocTest, AllocableTypeFilter) {
     EXPECT_TRUE(LinearScanAllocator::isAllocableType("u8"));
     EXPECT_TRUE(LinearScanAllocator::isAllocableType("i16"));
     EXPECT_TRUE(LinearScanAllocator::isAllocableType("u16"));
+    // 1267 续：i1 布尔纳入可分配面（LinuxX64 起；win/arm64 由架构门控过滤）
+    EXPECT_TRUE(LinearScanAllocator::isAllocableType("i1"));
     EXPECT_FALSE(LinearScanAllocator::isAllocableType("f64"));
     EXPECT_FALSE(LinearScanAllocator::isAllocableType("f32"));
     EXPECT_FALSE(LinearScanAllocator::isAllocableType("i128"));
     EXPECT_FALSE(LinearScanAllocator::isAllocableType("u128"));
-    EXPECT_FALSE(LinearScanAllocator::isAllocableType("i1"));
 }
 
 TEST(RegAllocTest, NarrowTypesAllocatedAllArch) {
@@ -616,6 +618,63 @@ TEST(RegAllocTest, LinuxX64AllocatesNarrowTypes) {
         EXPECT_FALSE(it->second.assignedReg.empty())
             << t << " 应参与 LinuxX64 寄存器分配";
     }
+}
+
+// 1267 续：i1 布尔参与 LinuxX64 分配（win-x64/arm64 架构门控仍不分配）
+TEST(RegAllocTest, LinuxX64AllocatesBool) {
+    IRFunction func;
+    func.name = "bool";
+    func.returnType = "i1";
+    auto block = std::make_unique<IRBlock>();
+    block->label = "块0";
+    IRInstruction c;
+    c.opcode = Opcode::ConstBool;
+    c.result = IRValue::reg(0, "i1");
+    c.type = "i1";
+    c.extra = "真";
+    block->instructions.push_back(c);
+    IRInstruction n;
+    n.opcode = Opcode::Not;
+    n.result = IRValue::reg(1, "i1");
+    n.type = "i1";
+    n.operands = {IRValue::reg(0, "i1")};
+    block->instructions.push_back(n);
+    block->terminated = true;
+    block->termKind = "返回";
+    block->termReturnValue = "%v1";
+    func.blocks.push_back(std::move(block));
+
+    LinearScanAllocator allocator(TargetArch::LinuxX64);
+    const RegAssignmentMap map = allocator.allocate(func);
+    for (const int id : {0, 1}) {
+        auto it = map.find(id);
+        ASSERT_NE(it, map.end()) << "i1 v" << id;
+        EXPECT_FALSE(it->second.assignedReg.empty())
+            << "i1 v" << id << " 应参与 LinuxX64 寄存器分配";
+    }
+}
+
+TEST(RegAllocTest, WinX64BoolStaysStack) {
+    // win-x64 面：i1 仍不分配（1267 续：allocate() 对非 LinuxX64 显式剔除 i1 区间）
+    IRFunction func;
+    func.name = "bool win";
+    func.returnType = "i1";
+    auto block = std::make_unique<IRBlock>();
+    block->label = "块0";
+    IRInstruction c;
+    c.opcode = Opcode::ConstBool;
+    c.result = IRValue::reg(0, "i1");
+    c.type = "i1";
+    c.extra = "真";
+    block->instructions.push_back(c);
+    block->terminated = true;
+    block->termKind = "返回";
+    block->termReturnValue = "%v0";
+    func.blocks.push_back(std::move(block));
+
+    LinearScanAllocator allocator(TargetArch::X64);
+    const RegAssignmentMap map = allocator.allocate(func);
+    EXPECT_EQ(map.count(0), 0u) << "win-x64 面 i1 不应出现在分配结果（架构过滤）";
 }
 
 // ---- 6. 保留寄存器 ----

@@ -405,7 +405,9 @@ void LinuxX64CodeGenerator::emitInt128Compare(LinuxX64AsmWriter& writer,
     }
     writer.line(cc + " r9b");
     writer.line("movzx r10, r9b");
-    emitStackStore(writer, regSlotOffset(inst.result.id), "r10", "i1");
+    // 1267 续：i1 结果已分配 -> 32 位规范化直写物理寄存器
+    //   （r10 已由上方 movzx 清零高 32 位；未分配原槽不变）
+    storeCanonicalResult(writer, inst.result, "r10", "i1");
 }
 
 } // namespace cn_compiler

@@ -73,12 +73,14 @@ void LinuxX64CodeGenerator::emitLoadStore(LinuxX64AsmWriter& writer,
                 const std::string mp =
                     (inst.type == "i8" || inst.type == "u8") ? "byte ptr " :
                     (inst.type == "i16" || inst.type == "u16") ? "word ptr " :
-                    (inst.type == "i32" || inst.type == "u32") ? "dword ptr " :
+                    (inst.type == "i32" || inst.type == "u32" ||
+                     inst.type == "i1") ? "dword ptr " :
                     "qword ptr ";
                 const std::string regW =
                     (inst.type == "i8" || inst.type == "u8") ? x86Reg8(stPhys) :
                     (inst.type == "i16" || inst.type == "u16") ? x86Reg16(stPhys) :
-                    (inst.type == "i32" || inst.type == "u32") ? x86Reg32(stPhys) :
+                    (inst.type == "i32" || inst.type == "u32" ||
+                     inst.type == "i1") ? x86Reg32(stPhys) :
                     stPhys;
                 writer.line("mov " + mp + stackMemText(varSlotOf(inst.extra)) + ", " + regW);
                 return;

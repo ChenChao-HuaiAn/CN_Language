@@ -45,7 +45,16 @@ void LinuxX64CodeGenerator::emitTerminator(LinuxX64AsmWriter& writer,
             writer.line("mov r10, 0");
         } else if (cond.size() > 2 && cond[0] == '%' && cond[1] == 'v') {
             const int id = std::stoi(cond.substr(2));
-            emitStackLoad(writer, regSlotOffset(id), condReg, "i1", __LINE__);
+            // 1267 续：i1 条件值已分配（LinuxX64 起 i1 参与寄存器分配）-> 直接
+            //   读物理寄存器；未分配保持原槽装载（产物逐字节不变）。寄存器内
+            //   i1 按 32 位规范承载（低 32 位 0/1、高 32 位清零），test 64 位安全。
+            //   P3（审查）：装载分支与赋值合并为一次判空（未分配装载留置原
+            //   condReg=r10；已分配直接用 phys 覆盖）。
+            const std::string phys = physRegOf(ir::IRValue::reg(id, "i1"));
+            if (phys.empty()) {
+                emitStackLoad(writer, regSlotOffset(id), condReg, "i1", __LINE__);
+            }
+            condReg = phys.empty() ? condReg : phys;
         } else {
             // 常量文本条件（"真"/"假"/数值）
             condReg = loadOperandToX(writer,

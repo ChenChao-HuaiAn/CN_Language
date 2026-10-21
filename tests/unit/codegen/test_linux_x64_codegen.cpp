@@ -587,3 +587,86 @@ TEST(LinuxX64CodegenTest, HiddenRetStackParamAnchor24) {
     // prologue 须有 push rbx（隐藏返回指针保存——锚 24 的前提）
     EXPECT_NE(asmText.find("push rbx"), std::string::npos);
 }
+
+// 1267 余量·审查 P2-7：已分配 i1 的规范化寄存器路径（-O2 RA 形态）
+//   判据：①比较结果直写物理寄存器（mov rXXd, r10d = 32 位规范化，高 32 位清零）；
+//   ②条件跳转直接 test 物理寄存器（无 i1 槽装载）；③i1→i64 转换从物理寄存器
+//   32 位拷贝；④全程不出现 i1 的 dword 槽写（未分配路径才落槽）。
+//   函数 vreg 数 ≥128（kRegAllocMinVregs1256 门槛）以启用分配器。
+TEST(LinuxX64CodegenTest, AllocatedBoolEmitsCanonicalRegisters) {
+    Diagnostics diagnostics;
+    LinuxX64CodeGenerator generator(diagnostics);
+    generator.setRegAllocEnabled(true);
+
+    IRModule module;
+    IRFunction func;
+    func.name = "boolreg";
+    func.returnType = "i64";
+    auto block0 = std::make_unique<IRBlock>();
+    block0->label = "块0";
+    // 128 个常量（id 0..127）：压过分配器小函数门槛（128 vreg）
+    for (int i = 0; i < 128; ++i) {
+        IRInstruction c;
+        c.opcode = Opcode::ConstInt;
+        c.result = IRValue::reg(i, "i64");
+        c.type = "i64";
+        c.extra = "0";
+        block0->instructions.push_back(std::move(c));
+    }
+    // i1 比较（id 128）+ i1→i64 转换（id 129）
+    IRInstruction lt;
+    lt.opcode = Opcode::Lt;
+    lt.result = IRValue::reg(128, "i1");
+    lt.type = "i1";
+    lt.operands = {IRValue::reg(0, "i64"), IRValue::reg(1, "i64")};
+    block0->instructions.push_back(std::move(lt));
+    IRInstruction cast;
+    cast.opcode = Opcode::Cast;
+    cast.result = IRValue::reg(129, "i64");
+    cast.type = "i64";
+    cast.operands = {IRValue::reg(128, "i1")};
+    block0->instructions.push_back(std::move(cast));
+    block0->terminated = true;
+    block0->termKind = "条件跳转";
+    block0->termCondition = "%v128";
+    block0->termTrueTarget = "块1";
+    block0->termFalseTarget = "块1";
+
+    auto block1 = std::make_unique<IRBlock>();
+    block1->label = "块1";
+    block1->terminated = true;
+    block1->termKind = "返回";
+    block1->termReturnValue = "%v129";
+
+    func.blocks.push_back(std::move(block0));
+    func.blocks.push_back(std::move(block1));
+    module.functions.push_back(std::move(func));
+
+    const std::string asmText = generator.generateAssembly(module);
+
+    const char* regs64[] = {"rbx", "r12", "r13", "r14", "r15"};
+    const char* regs32[] = {"ebx", "r12d", "r13d", "r14d", "r15d"};
+    bool boolDirect = false;   // 比较 i1 结果直写 32 位物理寄存器
+    bool condViaReg = false;   // 条件跳转 test 物理寄存器
+    bool castFromReg = false;  // i1 源按 32 位从物理寄存器拷贝
+    for (int i = 0; i < 5; ++i) {
+        if (asmText.find(std::string("mov ") + regs32[i] + ", r10d") !=
+            std::string::npos) {
+            boolDirect = true;
+        }
+        if (asmText.find(std::string("test ") + regs64[i] + ", " + regs64[i]) !=
+            std::string::npos) {
+            condViaReg = true;
+        }
+        if (asmText.find(std::string("mov r10d, ") + regs32[i]) !=
+            std::string::npos) {
+            castFromReg = true;
+        }
+    }
+    EXPECT_TRUE(boolDirect) << "比较 i1 结果须 32 位直写物理寄存器（高 32 位清零）";
+    EXPECT_TRUE(condViaReg) << "条件跳转须 test 已分配物理寄存器";
+    EXPECT_TRUE(castFromReg) << "i1→i64 须按 32 位从物理寄存器拷贝";
+    // i1 已分配 = 不应出现 i1 槽读写（未分配路径才会 dword 落槽/装载）
+    EXPECT_EQ(asmText.find("dword ptr [rbp"), std::string::npos);
+    EXPECT_EQ(asmText.find("mov r10d, dword ptr [rbp"), std::string::npos);
+}
