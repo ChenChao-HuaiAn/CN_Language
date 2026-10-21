@@ -111,14 +111,6 @@ bool X64CodeGenerator::is64BitRegisterName(const std::string& text) {
     return false;
 }
 
-// 32 位通用寄存器名（emitCast 顶部收缩后的源形态）
-bool X64CodeGenerator::is32BitRegisterName(const std::string& text) {
-    for (const auto& g : kGprAliases) {
-        if (text == g.r32) return true;
-    }
-    return false;
-}
-
 bool X64CodeGenerator::isRegisterOperandText(const std::string& text) {
     return isGeneralRegisterName(text);
 }

@@ -29,8 +29,8 @@ namespace regalloc {
 
 namespace {
 
-// IR 类型是否参与寄存器分配（1256：64/32 位整型、指针与窄整型；
-//   i1/浮点/i128 不参与）。架构可分配面见 archAllowsAllocType。
+// IR 类型是否参与寄存器分配（1281：64/32 位整型、指针与窄整型；
+//   i1/浮点/i128 不参与）。三架构同面——1256 的架构门控已随 1159 合入退场。
 bool isAllocableIntType(const std::string& type) {
     return type == "i64" || type == "u64" || type == "ptr" ||
            type == "i32" || type == "u32" ||

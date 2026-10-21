@@ -121,6 +121,12 @@ void X64CodeGenerator::emitShift(AsmWriter& writer, const ir::IRInstruction& ins
             }
             writer.line(sh + " " + ew + ", cl");
         }
+        // P1 同族（1281 返工）：窄型移位结果按声明宽度截断（u8 200<<1=144、
+        //   i8 -100<<1=56）——安全/不安全同规（移位量域检查不约束结果域，
+        //   Rust 语义=按类型位宽丢弃高位）；arm64 sxtb/uxtb、linux 后端同口径。
+        const bool signedShift = (srcType == "i8" || srcType == "i16");
+        writer.line(std::string(signedShift ? "movsx " : "movzx ") + ew + ", " +
+                    narrowOperand(srcType, ew));
         if (dstPhys.empty() || shiftSelfClobber) {
             writer.line("mov " + shrunkOperand("i32", dst) + ", eax");
         }
@@ -255,6 +261,20 @@ void X64CodeGenerator::emitIntBinary(AsmWriter& writer, const ir::IRInstruction&
                                          ? std::string()
                                          : physRegOf(inst.operands[1]);
         const bool narrowSelfClobber = !dstPhys.empty() && nOp2Phys == dstPhys;
+        // P1（1281 返工）：needOvf=false（回绕内置/不安全函数）的窄型加/减结果
+        //   是 32 位完整和差（u8 255+1=256、i8 100+100=200），必须按声明窄宽
+        //   movsx/movzx 规范化后再落位——否则 32 位消费点（比较/除法等）读到
+        //   未截断值（win O0 `回绕加(正8(255),1)==正8(0)` 判假；linux/arm64 与
+        //   v2 win 均正确=宿主 win 单端分叉）。域内安全加/减（needOvf=true 且
+        //   已过窄域检查）的 32 位结果本就是窄域补码的符号/零扩展形态，无需重写；
+        //   位运算对符号扩展值封闭（and/or/xor 高 24 位恒=结果符号位），不改。
+        auto normalizeNarrowResult = [&](const std::string& acc) {
+            if (needOvf) return;
+            if (mnemonic != "add" && mnemonic != "sub") return;
+            const bool signedNarrow = (srcType == "i8" || srcType == "i16");
+            writer.line(std::string(signedNarrow ? "movsx " : "movzx ") + acc +
+                        ", " + narrowOperand(srcType, acc));
+        };
         if (!dstPhys.empty() && !narrowSelfClobber) {
             // 直写：计算寄存器=dst 的 32 位形态（ecx 是固定临时·与 dst 无冲突面）
             const std::string dw = widthFor("i32", dstPhys);
@@ -271,6 +291,7 @@ void X64CodeGenerator::emitIntBinary(AsmWriter& writer, const ir::IRInstruction&
                 writer.line(mnemonic + " " + dw + ", ecx");
             }
             narrowGuard474(dw);
+            normalizeNarrowResult(dw);
             return;
         }
         // 常量传播面守卫（#500·077 修法同构）：op1 常量时 mov 直载（A2070 同上）
@@ -290,6 +311,7 @@ void X64CodeGenerator::emitIntBinary(AsmWriter& writer, const ir::IRInstruction&
             writer.line(mnemonic + " eax, ecx");
         }
         narrowGuard474("eax");
+        normalizeNarrowResult("eax");
         writer.line("mov " + shrunkOperand("i32", dst) + ", eax");
         return;
     }
@@ -397,6 +419,14 @@ void X64CodeGenerator::emitIntMul(AsmWriter& writer, const ir::IRInstruction& in
             emitNarrowOperandTo32(writer, inst.operands[1].type, op2, false, "ecx");
             writer.line("imul " + acc + ", ecx");
         }
+        // P1（1281 返工）：回绕乘/不安全乘的 32 位乘积按声明窄宽规范化后再落位
+        //   （与 emitIntBinary 回绕加/减同判据；安全乘已过窄域检查=域内补码形态）。
+        auto normalizeNarrowProduct = [&](const std::string& acc) {
+            if (needOvf) return;
+            const bool signedNarrow = (ty == "i8" || ty == "i16");
+            writer.line(std::string(signedNarrow ? "movsx " : "movzx ") + acc +
+                        ", " + narrowOperand(ty, acc));
+        };
         if (needOvf) {
             // 481 修（窄域乘法恒窄域·与 linux_x64 同构）：原结构「cmp hi;
             //   jle ok; cmp lo; jge ok」第二跳只对 >hi 的值求值且恒真
@@ -419,6 +449,7 @@ void X64CodeGenerator::emitIntMul(AsmWriter& writer, const ir::IRInstruction& in
             emitOverflowErrorBody(writer);
             writer.raw(ok + ":");
         }
+        normalizeNarrowProduct(acc);
         if (acc != "eax") {
             return;  // D8（369 波1）直写：乘积已落分配寄存器
         }

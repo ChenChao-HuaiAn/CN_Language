@@ -570,29 +570,30 @@ bool X64CodeGenerator::emitCastIntWidth(AsmWriter& writer, const ir::IRInstructi
         if (to == "i64" || to == "u64" || to == "ptr") {
             writer.line("mov rax, " + regSlot(srcLoId));
             writer.line("mov " + dst + ", rax");
-        } else {
-            // 窄目标：写 32 位（eax=低 64 的低 32；i8/i16 读取侧按声明类型窄读，
-            //   低位含正确值）。**不可 widthFor(to, dst)**——dst 为槽文本时
-            //   widthFor("i16","[rbp-X]") 落兜底 "eax"（T39 修复中自查实锤：
-            //   mov eax, eax 空写→结果槽未写→打印读垃圾非确定）；寄存器名（RA
-            //   场景）才经 widthFor 收缩为 32 位名。
-            const std::string dstW32 =
-                (!dst.empty() && dst[0] == '[') ? dst : widthFor("i32", dst);
+            return true;
+        }
+        {
+            // 窄目标：写 32 位（eax=低 64 的低 32）；结果位宽按目标类型选择——
+            //   已分配目标取分配寄存器 32 位别名，槽目标经 eax 中转。宽类型
+            //   （i32/u32/i1）保持 32 位写；i8/i16/u8/u16 在落位前按声明符号性
+            //   movsx/movzx 规范化（1281：槽路径原只写低字节有效形态，32 位消费点
+            //   比较/除法会读到未截断高位——`整8(整128(511)) == 整8(-1)` 判假）。
+            const std::string dstPhysI128 = physRegOf(inst.result);
+            const bool dstAllocated = !dstPhysI128.empty();
+            const std::string dstW32 = dstAllocated ? widthFor("i32", dstPhysI128)
+                                                    : "eax";
             writer.line("mov rax, " + regSlot(srcLoId));
             writer.line("mov " + dstW32 + ", eax");
-            // 1159：已分配目标按声明窄宽规范化到 32 位（低 8/16 位截断后的高位
-            //   残留不得进入后续 32 位消费点；槽路径保持低字节有效约定不变）
-            if (!dst.empty() && dst[0] != '[') {
-                if (to == "i8") {
-                    writer.line("movsx " + dstW32 + ", al");
-                } else if (to == "u8") {
-                    writer.line("movzx " + dstW32 + ", al");
-                } else if (to == "i16") {
-                    writer.line("movsx " + dstW32 + ", ax");
-                } else if (to == "u16") {
-                    writer.line("movzx " + dstW32 + ", ax");
-                }
+            if (to == "i8") {
+                writer.line("movsx " + dstW32 + ", al");
+            } else if (to == "u8") {
+                writer.line("movzx " + dstW32 + ", al");
+            } else if (to == "i16") {
+                writer.line("movsx " + dstW32 + ", ax");
+            } else if (to == "u16") {
+                writer.line("movzx " + dstW32 + ", ax");
             }
+            if (!dstAllocated) writer.line("mov " + dst + ", eax");
         }
         return true;
     }
