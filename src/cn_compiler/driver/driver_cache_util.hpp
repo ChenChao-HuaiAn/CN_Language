@@ -78,12 +78,13 @@ const CompilerIdentity& compilerIdentity();
 //   的分隔符拼键：module="m\x1fx",macros={} 与 module="m",macros={"x"} 会同串）。
 void cacheAppendField(std::string& out, const std::string& value);
 
-// tmp+rename 原子写（同目录多进程并发写互不撕裂；POSIX rename 原子替换，
-//   Windows 先删旧条目再改名）。失败时 error 写入具体阶段（调用方显形）。
+// tmp+rename 原子写（同目录多进程/同进程多线程并发写互不撕裂；tmp 名含 pid+
+//   进程内原子序号；POSIX rename 原子替换，Windows 先删旧条目再改名）。
+//   失败时 error 写入具体阶段（调用方显形）。
 bool cacheWriteFileAtomic(const std::string& path, const std::vector<char>& data,
                           std::string& error);
 
-// 缓存叶目录（进程内按 leaf 记忆化）：
+// 缓存叶目录（进程内按 leaf 记忆化·线程安全）：
 //   1. envOverride（如 CN_AST_CACHE_DIR / CN_PROGRAM_CACHE_DIR）显式覆盖
 //   2. <项目根>/target/cache/<leaf>——项目根 = options.stdlibDir 的父目录
 //   3. 无法推导（stdlibDir 为空）：返回空串=该缓存禁用（直连，非静默错用）

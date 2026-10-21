@@ -5,10 +5,12 @@
 #define _CRT_SECURE_NO_WARNINGS
 #include "cn_compiler/driver/driver_cache_util.hpp"
 
+#include <atomic>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <map>
+#include <mutex>
 
 #ifdef _WIN32
 #include <direct.h>
@@ -34,6 +36,27 @@ inline void feedByte(std::uint64_t& a, std::uint64_t& b, char ch) {
     const std::uint8_t v = static_cast<std::uint8_t>(ch);
     a = (a ^ v) * kFnvPrime;
     b = (b ^ v) * kFnvPrime;
+}
+
+// 当前进程号（tmp 文件名第一段；_getpid/getpid 双平台可移植）
+long long currentProcessId() {
+#ifdef _WIN32
+    return static_cast<long long>(_getpid());
+#else
+    return static_cast<long long>(getpid());
+#endif
+}
+
+// 进程内 tmp 写序号（1213·#1272/#1298 同进程并行加载的前置加固）：
+//   tmp 名 = <目标>.tmp<pid>.<序号>——pid 区分进程、原子序号区分同进程线程；
+//   旧实现只有 pid，同进程多线程写同一目标共用 tmp（写者互相截断=撕裂条目）。
+//   不用 std::thread::id：标准未承诺可转数值、实现可能复用（可移植性差），
+//   进程内单调序号天然唯一且无平台分支。只改命名，tmp+rename 原子替换语义不变。
+std::atomic<std::uint64_t> g_tmpWriteSeq{0};
+
+std::string nextTmpPath(const std::string& path) {
+    const std::uint64_t seq = g_tmpWriteSeq.fetch_add(1, std::memory_order_relaxed);
+    return path + ".tmp" + std::to_string(currentProcessId()) + "." + std::to_string(seq);
 }
 
 }  // namespace
@@ -221,11 +244,8 @@ std::uint64_t cacheReadU64LE(const char* p) {
 
 bool cacheWriteFileAtomic(const std::string& path, const std::vector<char>& data,
                           std::string& error) {
-#ifdef _WIN32
-    const std::string tmp = path + ".tmp" + std::to_string(_getpid());
-#else
-    const std::string tmp = path + ".tmp" + std::to_string(getpid());
-#endif
+    // pid+进程内序号：同进程多线程/跨进程写同一目标各有独立 tmp（见 nextTmpPath）
+    const std::string tmp = nextTmpPath(path);
     std::FILE* fp = std::fopen(tmp.c_str(), "wb");
     // 静默豁免运行时API: fopen 失败=系统调用契约（error 返回具体阶段·调用方显形计数）
     if (fp == nullptr) {
@@ -253,8 +273,13 @@ bool cacheWriteFileAtomic(const std::string& path, const std::vector<char>& data
 
 const std::string& cacheLeafDir(const DriverOptions& options, const char* leaf,
                                 const char* envOverride) {
-    // 进程内按叶目录记忆化（options 在单进程内恒定；环境变量不再变化）
+    // 进程内按叶目录记忆化（options 在单进程内恒定；环境变量不再变化）。
+    // 1213：并发加载（#1272/#1298）下同进程多线程首次探测同一/不同 leaf 会并发
+    //   读写 std::map=数据竞争——加锁保护查找/插入；返回引用指向 map 节点（节点
+    //   地址稳定，后续插入不失效），锁外读取已完成的值无竞争。
+    static std::mutex probeMutex;
     static std::map<std::string, std::string> probe;
+    std::lock_guard<std::mutex> lock(probeMutex);
     const auto it = probe.find(leaf);
     if (it != probe.end()) return it->second;
     std::string dir;
