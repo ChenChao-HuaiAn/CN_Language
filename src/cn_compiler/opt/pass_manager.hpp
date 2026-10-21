@@ -50,10 +50,13 @@ private:
 // 级别组合（规格书9.1 + 完善C）：
 //   -O1: 常量折叠 + DCE + 代数简化 + 复写传播（块内 Store->Load 转发）
 //   -O2: -O1 + 块内 CSE（含浮点）+ 跨块 DCE（不可达块删除）
-//   -O3: -O2 + 全局值传播（常量 Store->Load 安全子集）
+//        + 变量槽提升（1267：useSlotPromotion=true 时运行 Mem2Reg——目标
+//          linux-x86_64 且启用寄存器分配时为真；-O0/-O1/--no-regalloc 恒假）
+//   -O3: -O2 + 全局值传播 + 变量槽提升（F1-26 既有行为·恒开）
 // 所有级别输出必须与 -O0 一致（规格书12.4 优化正确性）
 // 返回: 是否执行了至少一次修改
-bool runOptLevel(ir::IRModule& module, int optLevel);
+bool runOptLevel(ir::IRModule& module, int optLevel,
+                 bool useSlotPromotion = false);
 
 } // namespace opt
 } // namespace cn_compiler

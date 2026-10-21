@@ -99,7 +99,7 @@ int runPipeline(const std::string& source, const std::string& fileName,
         }
     }
     if (options.optLevel > 0) {
-        opt::runOptLevel(output.module, options.optLevel);
+        opt::runOptLevel(output.module, options.optLevel, options.useMem2Reg);
     }
     if (options.verifyIr) {
         const std::vector<std::string> postErrors = ir::verifyIRModule(output.module);

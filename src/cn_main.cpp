@@ -462,6 +462,10 @@ bool toDriverOptions(const CliOptions& options, const std::string& file,
     // 阶段C（Task 4.3）：寄存器分配联动——-O2 及以上默认启用，
     //   --no-regalloc 显式关闭（options.useRegAlloc=false 覆盖）
     dopts.useRegAlloc = (options.optLevel >= 2) && options.useRegAlloc;
+    // 1267：变量槽提升（Mem2Reg Alloca->vreg）——现阶段仅 linux-x86_64 开启
+    //   （1256 线性扫描分配器的同一分批策略：win-x64/arm64 待验证后收敛；
+    //   --no-regalloc 恒关=全栈帧契约，-O0/-O1 恒关）。
+    dopts.useMem2Reg = dopts.useRegAlloc && options.target == "linux-x86_64";
     // 阶段C（Task 4.4）：调试信息
     dopts.debugInfo = options.debugInfo;
     // B-4（2026-08，规格书9.3）：IR 结构验证

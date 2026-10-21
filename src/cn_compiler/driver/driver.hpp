@@ -35,6 +35,10 @@ struct DriverOptions {
     //   useRegAlloc：-O2 及以上默认启用（可被 --no-regalloc 关闭）；-O0/-O1 恒 false
     //   debugInfo：--debug 开启，汇编中嵌入源码位置注释
     bool useRegAlloc = false;        // 是否启用寄存器分配（由 cn_main 按 optLevel 联动设置）
+    // 1267：变量槽提升（Mem2Reg Alloca->vreg）开关——与寄存器分配同门槛、可独立
+    //   关闭；当前由 cn_main 置为「linux-x86_64 + -O2 及以上 + useRegAlloc」。
+    //   -O0/-O1/--no-regalloc 恒 false（全栈帧产物契约不变）。
+    bool useMem2Reg = false;
     bool debugInfo = false;          // 是否嵌入源码位置注释
     // B-4（2026-08，规格书9.3）：--验证-ir 开启 IR 结构验证（CFG 终止/跳转目标/
     //   寄存器 def-before-use），验证失败输出错误并中止编译

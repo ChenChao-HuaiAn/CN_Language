@@ -708,7 +708,7 @@ int runModulePipeline(const std::string& entryFile, const DriverOptions& options
 
     // 5.5 优化阶段（与 runPipeline 一致：-O1~O3 Pass 流水线）
     if (options.optLevel > 0) {
-        opt::runOptLevel(output.module, options.optLevel);
+        opt::runOptLevel(output.module, options.optLevel, options.useMem2Reg);
     }
 
     // 5.6 机械验证器（T11 面③·331-a：模块路径此前零验证器调用=半截机制，本轮

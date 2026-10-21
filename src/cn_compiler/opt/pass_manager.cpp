@@ -48,7 +48,7 @@ bool PassManager::run(ir::IRModule& module) {
 // 按优化级别构建并运行 Pass 流水线（Task 完善C 优化器增强）
 // 组合原则：级别逐级叠加（-O2 含 -O1 全部 Pass），fixpoint 收敛保证
 //   Pass 间协同（折叠->简化->CSE->传播->DCE 相互促进）
-bool runOptLevel(ir::IRModule& module, int optLevel) {
+bool runOptLevel(ir::IRModule& module, int optLevel, bool useSlotPromotion) {
     if (optLevel <= 0) return false;
     PassManager manager;
     // ---- 基础 Pass（-O1）：常量折叠 + 死代码消除 ----
@@ -65,6 +65,15 @@ bool runOptLevel(ir::IRModule& module, int optLevel) {
         manager.addPass(std::make_unique<CSEPass>(true));
         // ---- 跨块 DCE 增强（-O2）：不可达块删除 + 常量条件跳转折叠 ----
         manager.addPass(std::make_unique<CrossBlockDCEPass>());
+        // ---- 变量槽提升（1267·-O2 可开关）：Alloca/Load/Store 标量槽 ->
+        //      虚拟寄存器（复用 1253/1255 的 DomTree+φ 设施，全槽提升后删
+        //      Alloca）。开启条件=DriverOptions::useMem2Reg（linux-x86_64 +
+        //      -O2 + 启用寄存器分配；--no-regalloc 恒关）——-O2 位次在跨块
+        //      DCE 之后（不可达块先清）、LICM 之前（提升后循环值流更纯）。
+        //      -O3 维持既有位次（SSAPass 之后，见下方 -O3 段），不在此重复。----
+        if (optLevel == 2 && useSlotPromotion) {
+            manager.addPass(std::make_unique<Mem2RegPass>());
+        }
         // ---- 循环不变量外提（-O2，阶段B Task 4.2）：循环内不变量移到循环前
         //      （规格书9.2：-O2 含循环优化；仅在循环外提后不改变执行次数语义） ----
         manager.addPass(std::make_unique<LICMPass>());
