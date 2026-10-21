@@ -25,6 +25,10 @@
 //     收尾：SSAPass::lowerPhis 把 φ 降级为前驱块尾并行拷贝。
 //   1255（收敛）：φ 计划按需求建——只有「有 Load 真实消费」的 φ 指纹才插 φ；
 //     无消费者的 φ 不再每轮重插（原实现 -O3 fixpoint 触顶 16 轮·纯成本）。
+//   1255 修复：需求集合须沿「φ 作另一 φ 操作数」传递闭包（循环头 φ 的回边
+//     输入常来自内层汇合 φ）；只按直接 Load 消费建计划会漏建内层 φ，外层 φ
+//     组装引用的寄存器不存在——原 phiRegOf[] 静默取 0 号槽（384-D2a 垃圾值
+//     实录）。操作数解析改为写前预检（缺项整函数放弃·禁止静默默认值）。
 #include <algorithm>
 #include <string>
 #include <unordered_map>
@@ -153,6 +157,49 @@ void walkBlock(ir::IRBlock& block, bool rewriting,
             if (rewriting) ctx->keepSlots.insert(slot);
         }
         if (rewriting) ctx->kept[keptIdx].push_back(std::move(inst));
+    }
+}
+
+// φ 依赖传递闭包（1255 修复）：φ 可作为另一个 φ 的操作数（典型=循环头 φ
+//   的回边输入来自内层汇合 φ）。需求扫描只收集「被 Load 直接消费」的 φ 指纹；
+//   操作数 φ 不随之建计划时，外层 φ 组装引用的寄存器不存在（原实现
+//   phiRegOf[] 静默取 0 号寄存器=%v0 栈址——384-D2a 垃圾输出实录）。
+//   本函数按 envOut 收集每个 φ 指纹的操作数 φ 依赖边，从直接消费集合做
+//   工作列表闭包；φ 环（回边自引用/互引用）自然收敛：入集合即不再入队。
+void closePhiDependencies(const DomTree& dom, const std::vector<SlotEnv>& envOut,
+                          const std::unordered_set<std::string>& promotable,
+                          const std::vector<std::string>& labels, bool phiEnabled,
+                          int n, std::unordered_set<std::string>& neededPhiKeys) {
+    std::unordered_map<std::string, std::unordered_set<std::string>> deps;
+    for (int b = 0; b < n; ++b) {
+        const std::vector<int>& preds = dom.predecessors(b);
+        // 前驱 0/1 = 非汇合块（无 φ 需求面）
+        if (preds.size() == 0 || preds.size() == 1) continue;
+        const SlotEnv in = computeEnvIn(preds, envOut, promotable,
+                                        labels[static_cast<std::size_t>(b)],
+                                        phiEnabled, n);
+        for (const auto& kv : in) {
+            if (!isPhiKey(kv.second)) continue;
+            auto& edges = deps[kv.second];
+            for (const int p : preds) {
+                if (p < 0 || p >= n) continue;
+                const SlotEnv& pout = envOut[static_cast<std::size_t>(p)];
+                const auto it = pout.find(kv.first);
+                if (it != pout.end() && isPhiKey(it->second)) {
+                    edges.insert(it->second);
+                }
+            }
+        }
+    }
+    std::vector<std::string> work(neededPhiKeys.begin(), neededPhiKeys.end());
+    while (!work.empty()) {
+        const std::string key = std::move(work.back());
+        work.pop_back();
+        const auto dit = deps.find(key);
+        if (dit == deps.end()) continue;
+        for (const auto& dep : dit->second) {
+            if (neededPhiKeys.insert(dep).second) work.push_back(dep);
+        }
     }
 }
 
@@ -346,12 +393,20 @@ bool Mem2RegPass::run(ir::IRModule& module) {
                 walkBlock(*blk, false, promotable, env, scanPool, nullptr, 0,
                           &neededPhiKeys);
             }
+            // 直接消费集合 → φ 操作数依赖传递闭包（1255 修复·内层汇合 φ 必建）
+            closePhiDependencies(dom, envOut, promotable, labels, phiEnabled, n,
+                                 neededPhiKeys);
         }
 
         // ---- φ 分配 + 预检（写前验证·失败整函数放弃·原指令未动）----
         int nextReg = maxRegId(fn) + 1;
-        struct PhiPlan { int resultReg; std::string slot; std::string type;
-                         std::vector<std::pair<bool, std::string>> ops; }; // ops: (是否φ, 指纹)
+        struct PhiPlan {
+            int resultReg;
+            std::string slot;
+            std::string type;
+            std::vector<std::pair<bool, std::string>> ops;  // (是否φ, 指纹)
+            std::vector<int> opRegs;                        // 解析后源寄存器 id
+        };
         std::vector<std::vector<PhiPlan>> plans(static_cast<std::size_t>(n));
         bool planOk = true;
         for (int b = 0; b < n && planOk; ++b) {
@@ -394,6 +449,36 @@ bool Mem2RegPass::run(ir::IRModule& module) {
             }
         }
 
+        // ---- φ 操作数解析预检（1255 修复）：φ 指纹→计划结果寄存器；非 φ
+        //   指纹→pool 值 id（T3 遍1 后再按替换链解析）。任一缺项=需求闭包/
+        //   计划不变量破坏→整函数放弃（原指令未动）；禁止 operator[] 静默
+        //   造 0 号寄存器（%v0=栈槽地址·384-D2a 垃圾值病根）。
+        std::size_t plannedCount = 0;
+        for (const auto& perBlock : plans) plannedCount += perBlock.size();
+        if (plannedCount != neededPhiKeys.size()) planOk = false;
+        for (int b = 0; b < n && planOk; ++b) {
+            for (auto& plan : plans[static_cast<std::size_t>(b)]) {
+                plan.opRegs.reserve(plan.ops.size());
+                for (const auto& op : plan.ops) {
+                    if (op.first) {
+                        const auto rit = phiRegOf.find(op.second);
+                        if (rit == phiRegOf.end()) { planOk = false; break; }
+                        plan.opRegs.push_back(rit->second);
+                    } else {
+                        const auto pit = pool.find(op.second);
+                        // 可用性谓词独立成句：池值须存在、非常量、为有效寄存器 id
+                        const bool valueUsable =
+                            pit != pool.end() && !pit->second.isConstant &&
+                            pit->second.id >= 0;
+                        if (!valueUsable) { planOk = false; break; }
+                        plan.opRegs.push_back(pit->second.id);
+                    }
+                }
+                if (!planOk) break;
+            }
+        }
+        if (!planOk) continue;  // 操作数解析失败：整函数放弃（原指令未动）
+
         // ---- T3 遍1：DomTree 前序·全局替换表重写 ----
         RewriteCtx ctx;
         ctx.kept.resize(fn.blocks.size());
@@ -432,15 +517,13 @@ bool Mem2RegPass::run(ir::IRModule& module) {
                 phi.result = ir::IRValue::reg(plan.resultReg, plan.type);
                 phi.type = plan.type;
                 phi.extra = plan.slot;
-                for (const auto& op : plan.ops) {
-                    if (op.first) {
-                        phi.operands.push_back(
-                            ir::IRValue::reg(phiRegOf[op.second], plan.type));
-                    } else {
-                        const auto pit = pool.find(op.second);
-                        const int src = resolveReg(pit->second.id, ctx.regRewrite);
-                        phi.operands.push_back(ir::IRValue::reg(src, plan.type));
-                    }
+                for (std::size_t oi = 0; oi < plan.ops.size(); ++oi) {
+                    // φ 项已解析为计划结果寄存器（新寄存器·无需替换链）；
+                    //   非 φ 项为 T2 值指纹 id，按 T3 遍1 替换链解析到最终定义
+                    const int src = plan.ops[oi].first
+                                        ? plan.opRegs[oi]
+                                        : resolveReg(plan.opRegs[oi], ctx.regRewrite);
+                    phi.operands.push_back(ir::IRValue::reg(src, plan.type));
                 }
                 finalInsts.push_back(std::move(phi));
                 fnChanged = true;
