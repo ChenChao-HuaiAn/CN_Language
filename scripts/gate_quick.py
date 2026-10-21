@@ -211,6 +211,27 @@ if not 步("单测", [单测], 超时秒=单测超时):
 #   必须编跑全量比对；写集不含=跳过（本地日常零税——云端全量面由 ci_daemon 静态段
 #   恒跑兜底）。写集 git 取不到=照跑（fail-safe·与 189 纯文档判定同哲学）。
 _写集, _写集失败 = 写集推导()
+
+# ③.45 AST 缓存环境键/身份自测（1271·条件步·真实编译器全链 ~5s）：写集触及缓存
+#   实现面（driver_ast_cache.* / driver_cache_util.* / ast_serialize* / 自测脚本本身）
+#   才跑——缓存键/身份的回归不会被日常无关改动拖慢；写集取不到=fail-safe 照跑
+#   （与官网示例验证同哲学·云端全量兜底）。覆盖：宏集合条目分离/跨进程命中/
+#   损坏与版本显形/并发写/编译器身份变化/键编码歧义。
+_触及缓存面 = _写集 is None or any(
+    p.startswith(("src/cn_compiler/driver/driver_ast_cache.",
+                  "src/cn_compiler/driver/driver_cache_util.",
+                  "src/cn_compiler/model/ast_serialize",
+                  "scripts/test_ast_cache_env_key.py"))
+    for p in _写集)
+if not _触及缓存面:
+    print("[verify] 写集未触 AST 缓存实现面——跳过缓存环境键自测（云端全量兜底）", flush=True)
+else:
+    if not 步("AST 缓存环境键自测", [
+            sys.executable, "scripts/test_ast_cache_env_key.py",
+            "--cn", str(单测.parent / ("cn.exe" if 是win else "cn"))],
+             超时秒=_超时("CN_GATE_STATIC_TIMEOUT", 300)):
+        raise SystemExit(1)
+
 if _写集 is None:
     print("[verify] 写集取不到（%s）——照跑官网示例验证（fail-safe）" % _写集失败, flush=True)
     _跑示例验证 = True

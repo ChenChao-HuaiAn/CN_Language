@@ -58,6 +58,26 @@ std::uint64_t cacheReadU64LE(const char* p);
 // 缓存文件头长度：魔数 8 + 5×u64（键两通道 + 环境键两通道 + 载荷校验和）+ 载荷长 u32
 constexpr std::size_t kCacheHeaderBytes = 8 + 8 * 5 + 4;  // 52
 
+// ==================== 编译器自身身份（1271 自 1156 提炼·两缓存共用） ====================
+
+// 编译器身份 = 当前可执行文件内容哈希：编译器源码/构建配置任何变化=身份变，
+//   机械保证「新编译器绝不命中旧产物」（无需人工维护格式版本号手动递增）。
+struct CompilerIdentity {
+    bool valid = false;
+    CacheKey128 key;
+};
+
+// 探测并进程内记忆化编译器身份（每进程仅一次：首次调用读取可执行文件并做
+//   128 位流式哈希；1156 程序缓存与 1142 AST 缓存共用同一实现）。
+const CompilerIdentity& compilerIdentity();
+
+// ==================== 键字段规范编码（1271 自 1156 appendField 提炼） ====================
+
+// 字段以 '\0' 结尾拼入规范串（文件名/模块名/宏名/十六进制键均不含 NUL——
+//   命令行 argv 无法承载 NUL，长度歧义为零；禁止以 0x1F 等可出现在字段内容中
+//   的分隔符拼键：module="m\x1fx",macros={} 与 module="m",macros={"x"} 会同串）。
+void cacheAppendField(std::string& out, const std::string& value);
+
 // tmp+rename 原子写（同目录多进程并发写互不撕裂；POSIX rename 原子替换，
 //   Windows 先删旧条目再改名）。失败时 error 写入具体阶段（调用方显形）。
 bool cacheWriteFileAtomic(const std::string& path, const std::vector<char>& data,

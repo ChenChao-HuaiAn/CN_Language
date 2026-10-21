@@ -13,9 +13,10 @@
 #ifdef _WIN32
 #include <direct.h>
 #include <process.h>  // _getpid
+#include <windows.h>  // GetModuleFileNameW（编译器自身身份）
 #else
 #include <sys/stat.h>
-#include <unistd.h>  // getpid
+#include <unistd.h>  // getpid / readlink（/proc/self/exe 编译器自身身份）
 #endif
 
 namespace cn_compiler {
@@ -91,6 +92,47 @@ std::string cacheHex64(std::uint64_t v) {
 
 std::string cacheKeyHex(const CacheKey128& key) {
     return cacheHex64(key.a) + cacheHex64(key.b);
+}
+
+// ==================== 编译器自身身份（1156 原实现·1271 提炼共用） ====================
+
+namespace {
+
+// 读取当前可执行文件并做 128 位流式哈希：编译器源码/构建配置任何变化=键变。
+CompilerIdentity probeCompilerIdentity() {
+    CompilerIdentity id;
+#ifdef _WIN32
+    wchar_t buf[32768];
+    const DWORD n = GetModuleFileNameW(nullptr, buf, 32768);
+    // 路径长度双边界闭区间（1..32767）：0=GetModuleFileNameW 失败，32768=可能截断
+    if (n < 1 || n > 32767) return id;
+    std::FILE* fp = nullptr;
+    if (_wfopen_s(&fp, buf, L"rb") != 0 || fp == nullptr) return id;
+    id.valid = cacheHashStream(fp, id.key);
+    std::fclose(fp);
+#else
+    char buf[4096];
+    const ssize_t n = readlink("/proc/self/exe", buf, sizeof(buf) - 1);
+    // 路径长度双边界闭区间（1..4095）：0=readlink 失败，4095=可能截断
+    const bool lengthOk = (n >= 1 && n <= static_cast<ssize_t>(sizeof(buf) - 2));
+    // 静默豁免运行时API: readlink 失败/截断=系统调用契约（身份不可得→缓存显式禁用）
+    if (!lengthOk) return id;
+    buf[n] = '\0';
+    id.valid = cacheHashFile(std::string(buf, static_cast<std::size_t>(n)), id.key);
+#endif
+    return id;
+}
+
+}  // namespace
+
+const CompilerIdentity& compilerIdentity() {
+    static const CompilerIdentity id = probeCompilerIdentity();
+    return id;
+}
+
+void cacheAppendField(std::string& out, const std::string& value) {
+    out += value;
+    out.push_back('\0');
 }
 
 bool cacheDirExists(const std::string& path) {

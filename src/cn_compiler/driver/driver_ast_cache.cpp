@@ -14,9 +14,12 @@
 //   [4]  payload 长度
 //   [N]  payload（ast_serial::serializeProgram 产物，内含格式版本）
 // 条目文件名（1271 起）：<路径哈希32hex>-<环境哈希32hex>.cnast——环境摘要
-//   （模块名+排序宏集合）进入条目身份：同一路径不同 -D 宏集合各有独立条目，
-//   交替构建各自稳定命中（1142 原始实现仅用路径哈希命名、环境哈希只存文件头，
-//   同路径不同宏集合共写一条互相覆盖→交替宏每次失效重建：1271 根治）。
+//   （编译器自身身份 + 模块名 + 排序宏集合）进入条目身份：同一路径不同 -D 宏
+//   集合各有独立条目，交替构建各自稳定命中（1142 原始实现仅用路径哈希命名、
+//   环境哈希只存文件头，同路径不同宏集合共写一条互相覆盖→交替宏每次失效重建：
+//   1271 根治）。编译器身份（可执行文件内容哈希）机械覆盖「解析行为变化」——
+//   禁止只靠人工递增 CACHE_FORMAT_VERSION（布局没变而词法/语法/预处理行为变了
+//   时旧 AST 会被误命中）。
 // 命中判定：文件名身份（路径+环境）→ 魔数 → 内容/环境哈希逐字段复核（防复制/
 //   命名碰撞；内容更新=陈旧失效）→ 长度一致 → 校验和 → 反序列化成功。
 //   任一不符=安全回退完整解析；损坏/版本不符显形。
@@ -82,22 +85,33 @@ const std::string& cacheDirRef(const DriverOptions& options) {
     return cacheLeafDir(options, "ast", "CN_AST_CACHE_DIR");
 }
 
-// ==================== 环境键（模块名+宏集合） ====================
+// ==================== 环境键（编译器身份+模块名+宏集合） ====================
 
-// 环境键：模块名 + 排序后的宏集合（-D 宏影响 #如果定义 条件编译结果）。
+// 身份不可得：显式告警一次并禁用 AST 缓存（不以「无身份键」静默继续——
+//   miss 不可静默纪律；语义与 1156 程序缓存身份不可得处置同构）
+void warnAstIdentityUnavailableOnce() {
+    static bool warned = false;
+    if (warned) return;
+    warned = true;
+    std::fprintf(stderr,
+                 "提示: [AST 缓存] 无法读取编译器自身身份，AST 缓存禁用（直连解析）\n");
+}
+
+// 环境键：编译器自身身份 + 模块名 + 排序后的宏集合（-D 宏影响 #如果定义
+//   条件编译结果）。字段以 '\0' 结尾编码（cacheAppendField·与 1156 程序缓存
+//   同实现）：模块名/宏名不含 NUL，module="m\x1fx",macros={} 与
+//   module="m",macros={"x"} 不再同键（0x1F 分隔的确定性键歧义：1271 审查 P2）。
 //   排序保证同一宏集合与 -D 传入顺序 / std::unordered_set 遍历序无关——
 //   环境摘要跨进程确定、稳定（不含时间/临时路径等进程瞬时量）。
-CacheKey128 hashEnv(const std::string& moduleName,
+CacheKey128 hashEnv(const CompilerIdentity& identity, const std::string& moduleName,
                     const std::unordered_set<std::string>& macros) {
     std::vector<std::string> ms(macros.begin(), macros.end());
     std::sort(ms.begin(), ms.end());
-    std::string joined = moduleName;
-    joined.push_back('\x1f');
-    for (const auto& m : ms) {
-        joined += m;
-        joined.push_back('\x1f');
-    }
-    return cacheHash128(joined);
+    std::string canonical;
+    cacheAppendField(canonical, cacheKeyHex(identity.key));  // 编译器语言行为身份
+    cacheAppendField(canonical, moduleName);
+    for (const auto& m : ms) cacheAppendField(canonical, m);
+    return cacheHash128(canonical);
 }
 
 // 缓存文件路径：<dir>/<路径哈希32hex>-<环境哈希32hex>.cnast
@@ -254,8 +268,17 @@ bool parseModuleWithCache(const std::string& source, const std::string& filePath
         return module::parseSourceText(source, filePath, moduleName, ast, imports, diags,
                                        macros);
     }
+    // 编译器自身身份（每进程一次记忆化探测）：任何编译器源码/构建变化=键变，
+    //   旧 AST 条目不命中（防「改了解析行为但没递增格式版本」的假绿）。
+    const CompilerIdentity& identity = compilerIdentity();
+    // 静默豁免上游已诊断: 身份不可得已 warnAstIdentityUnavailableOnce 显形并禁用缓存
+    if (!identity.valid) {
+        warnAstIdentityUnavailableOnce();
+        return module::parseSourceText(source, filePath, moduleName, ast, imports, diags,
+                                       macros);
+    }
     const CacheKey128 kContent = cacheHash128(source);
-    const CacheKey128 kEnv = hashEnv(moduleName, macros);
+    const CacheKey128 kEnv = hashEnv(identity, moduleName, macros);
     const std::string cacheFile = cacheFilePath(dir, filePath, kEnv);
     if (tryLoadCache(cacheFile, kContent, kEnv, ast)) {
         // 命中路径：按同一规则重建依赖表（collectImportDeps 与解析路径共用）

@@ -7639,13 +7639,13 @@
    "批准": "已批"
   },
   {
-   "文件": "src/cn_compiler/driver/driver_program_cache.cpp",
+   "文件": "src/cn_compiler/driver/driver_cache_util.cpp",
    "函数": "probeCompilerIdentity",
    "锚文本": "if (!lengthOk) return id;",
    "来源": "1156",
    "类别": "运行时API",
    "静默风险": "低",
-   "原因": "readlink 失败/截断=系统调用契约（身份不可得→缓存显式禁用并告警）",
+   "原因": "readlink 失败/截断=系统调用契约（身份不可得→缓存显式禁用并告警）（1271 提炼至 driver_cache_util 共用·锚随代码搬移）",
    "登记人": "AI（1156 程序级预编译缓存轮·逐条读过代码）",
    "登记日": "2026-10-20",
    "批准": "已批"
@@ -9111,6 +9111,18 @@
    "批准": "存量过渡",
    "替代": "不可替代",
    "替代依据": "业务缺省值"
+  },
+  {
+   "文件": "src/cn_compiler/driver/driver_ast_cache.cpp",
+   "函数": "parseModuleWithCache",
+   "锚文本": "if (!identity.valid) {",
+   "来源": "1271",
+   "类别": "上游已诊断",
+   "静默风险": "低",
+   "原因": "身份不可得已 warnAstIdentityUnavailableOnce 显形并禁用 AST 缓存（直连解析·与 1156 程序缓存身份不可得处置同构）",
+   "登记人": "AI（1271 审查加固轮·逐条读过代码）",
+   "登记日": "2026-10-21",
+   "批准": "存量过渡"
   }
  ]
 }

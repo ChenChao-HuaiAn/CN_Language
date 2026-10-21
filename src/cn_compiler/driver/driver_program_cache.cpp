@@ -22,12 +22,6 @@
 #include <string>
 #include <vector>
 
-#ifdef _WIN32
-#include <windows.h>  // GetModuleFileNameW（编译器自身身份）
-#else
-#include <unistd.h>  // readlink（/proc/self/exe）
-#endif
-
 namespace cn_compiler {
 namespace driver {
 namespace {
@@ -59,43 +53,7 @@ bool cacheDisabledByEnv() {
     return env != nullptr && env[0] != '\0' && std::strcmp(env, "0") != 0;
 }
 
-// ==================== 编译器自身身份（可执行文件内容哈希） ====================
-
-struct CompilerIdentity {
-    bool valid = false;
-    CacheKey128 key;
-};
-
-// 读取当前可执行文件并做 128 位流式哈希：编译器源码/构建配置任何变化=键变，
-//   机械保证「新编译器绝不命中旧产物」（无需人工维护版本号）。
-CompilerIdentity probeCompilerIdentity() {
-    CompilerIdentity id;
-#ifdef _WIN32
-    wchar_t buf[32768];
-    const DWORD n = GetModuleFileNameW(nullptr, buf, 32768);
-    // 路径长度双边界闭区间（1..32767）：0=GetModuleFileNameW 失败，32768=可能截断
-    if (n < 1 || n > 32767) return id;
-    std::FILE* fp = nullptr;
-    if (_wfopen_s(&fp, buf, L"rb") != 0 || fp == nullptr) return id;
-    id.valid = cacheHashStream(fp, id.key);
-    std::fclose(fp);
-#else
-    char buf[4096];
-    const ssize_t n = readlink("/proc/self/exe", buf, sizeof(buf) - 1);
-    // 路径长度双边界闭区间（1..4095）：0=readlink 失败，4095=可能截断
-    const bool lengthOk = (n >= 1 && n <= static_cast<ssize_t>(sizeof(buf) - 2));
-    // 静默豁免运行时API: readlink 失败/截断=系统调用契约（身份不可得→缓存显式禁用）
-    if (!lengthOk) return id;
-    buf[n] = '\0';
-    id.valid = cacheHashFile(std::string(buf, static_cast<std::size_t>(n)), id.key);
-#endif
-    return id;
-}
-
-const CompilerIdentity& compilerIdentity() {
-    static const CompilerIdentity id = probeCompilerIdentity();
-    return id;
-}
+// ==================== 编译器自身身份（1271：探测/记忆化已提炼 driver_cache_util） ====================
 
 // 身份不可得：显式告警一次并禁用缓存（不以其他版本号冒充身份）
 void warnIdentityUnavailableOnce() {
@@ -108,17 +66,13 @@ void warnIdentityUnavailableOnce() {
 
 // ==================== 键序列化 ====================
 
-// 字段以 '\0' 结尾拼入规范串（文件名/模块名不含 NUL，长度歧义为零）
-void appendField(std::string& out, const std::string& value) {
-    out += value;
-    out.push_back('\0');
+void appendBool(std::string& out, bool value) {
+    cacheAppendField(out, value ? "1" : "0");
 }
 
-void appendBool(std::string& out, bool value) { appendField(out, value ? "1" : "0"); }
-
 void appendOptions(std::string& out, const DriverOptions& options) {
-    appendField(out, options.target);
-    appendField(out, std::to_string(options.optLevel));
+    cacheAppendField(out, options.target);
+    cacheAppendField(out, std::to_string(options.optLevel));
     appendBool(out, options.useRegAlloc);
     appendBool(out, options.debugInfo);
     appendBool(out, options.releaseMode);
@@ -126,18 +80,18 @@ void appendOptions(std::string& out, const DriverOptions& options) {
     appendBool(out, options.requireEntryMain);
     std::vector<std::string> macros(options.macros.begin(), options.macros.end());
     std::sort(macros.begin(), macros.end());
-    appendField(out, std::to_string(macros.size()));
-    for (const std::string& macro : macros) appendField(out, macro);
+    cacheAppendField(out, std::to_string(macros.size()));
+    for (const std::string& macro : macros) cacheAppendField(out, macro);
 }
 
 void appendUnits(std::string& out, const std::vector<ProgramUnitKey>& units) {
-    appendField(out, std::to_string(units.size()));
+    cacheAppendField(out, std::to_string(units.size()));
     for (const ProgramUnitKey& unit : units) {
-        appendField(out, unit.moduleName);
-        appendField(out, unit.filePath);
-        appendField(out, unit.sourceDigest);
-        appendField(out, unit.moduleDir);
-        appendField(out, unit.pkgRoot);
+        cacheAppendField(out, unit.moduleName);
+        cacheAppendField(out, unit.filePath);
+        cacheAppendField(out, unit.sourceDigest);
+        cacheAppendField(out, unit.moduleDir);
+        cacheAppendField(out, unit.pkgRoot);
         appendBool(out, unit.isEntryUnit);
         appendBool(out, unit.cargoPkgRoot);
     }
@@ -243,10 +197,10 @@ bool computeProgramCacheKey(const std::vector<ProgramUnitKey>& units,
     if (!identity.valid) return false;
     std::string canonical = kKeyFormatVersion;
     canonical.push_back('\0');
-    appendField(canonical, cacheKeyHex(identity.key));
+    cacheAppendField(canonical, cacheKeyHex(identity.key));
     appendOptions(canonical, options);
-    appendField(canonical, std::to_string(cargoDepNames.size()));
-    for (const std::string& dep : cargoDepNames) appendField(canonical, dep);
+    cacheAppendField(canonical, std::to_string(cargoDepNames.size()));
+    for (const std::string& dep : cargoDepNames) cacheAppendField(canonical, dep);
     appendUnits(canonical, units);
     key = cacheHash128(canonical);
     return true;
