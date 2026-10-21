@@ -298,28 +298,45 @@ else:
                    for p in _写集)
     if not _跑示例验证:
         print("[verify] 写集未触 website/src/stdlib/plans/001——跳过（云端全量兜底）", flush=True)
+
+# ②.7 v2 程序级缓存回归（#1273·适配 1272 返工版）：缓存正确性需要「同一工作区
+#   多次编译 + 改导入文件/-O/目标/-D/货舱特性 + 破坏条目 + 替换编译器自身 + 构造
+#   读写失败」等跨运行状态，E2E 单例（一次编译+一次输出比对）无法无损表达；独立
+#   脚本直驱 v2p 真实链路（CNV2PC02/.cnvpc/环境旗标/VERIFY/货舱键），实测 ~5s
+#   （另加 v2p 构建 ~12s）。写集触及缓存实现面=跑，未触=跳过（云端全量兜底）；
+#   写集取不到=fail-safe 照跑。触发面=缓存模块/主流程挂点/运行时缓存原语/其单测/
+#   回归脚本自身——防「改了缓存实现却没跑缓存回归」。
+_缓存触发面 = (
+    "CN语言编译器v2/驱动/程序缓存.cn",
+    "CN语言编译器v2/主.cn",
+    "CN语言编译器v2/协议常量/命令行.cn",
+    "CN语言编译器v2/词法/预处理.cn",
+    "CN语言编译器v2/语法/解析基础.cn",
+    "CN语言编译器v2/IR/IR布局.cn",
+    "CN语言编译器v2/代码生成/汇编落盘.cn",
+    "src/runtime/file_api.cpp",
+    "src/runtime/input_api.cpp",
+    "src/runtime/intern_api.cpp",
+    "src/runtime/runtime.hpp",
+    "src/runtime/system_api.cpp",
+    "tests/unit/runtime/test_intern_api.cpp",
+    "scripts/test_v2_program_cache.py",
+    "scripts/v2_program_cache_testlib.py",
+)
+_跑缓存回归 = _写集 is None or any(
+    p in _缓存触发面 or p.startswith("CN语言编译器v2/驱动/程序缓存") for p in _写集)
+if _跑缓存回归:
+    if not 步("v2 程序缓存回归", [sys.executable, "scripts/test_v2_program_cache.py",
+                                  "--cn", str(单测.parent / ("cn.exe" if 是win else "cn"))],
+             超时秒=_超时("CN_GATE_CACHE_TEST_TIMEOUT", 900)):
+        raise SystemExit(1)
+else:
+    print("[verify] 写集未触程序级缓存面——跳过缓存回归（云端全量兜底）", flush=True)
+
 if _跑示例验证:
     if not 步("官网示例验证", [sys.executable, "website/tools/gen_docs.py", "--verify"],
              超时秒=_超时("CN_GATE_VERIFY_TIMEOUT", 600),
              env=dict(os.environ, CN_EXE=str(单测.parent / ("cn.exe" if 是win else "cn")))):
-        raise SystemExit(1)
-
-# ③.5b v2 程序级缓存三态（1272·条件步）：写集触及缓存实现/运行时缓存原语/
-#   其单测/脚本时跑真实 v2p 三态矩阵（首建/命中/无缓存 asm+stderr、失效、损坏、
-#   VERIFY、货舱特性、intern 截断单测）。v2p 缺失或落后于 v2 源码时用宿主 cn 重建
-#   （~3 分钟；仅缓存写集触发，日常零税）。写集取不到=跳过（云端全量兜底）。
-_跑v2缓存 = _写集 is not None and any(
-    p.startswith(("CN语言编译器v2/驱动/程序缓存.cn", "src/runtime/",
-                  "tests/unit/runtime/test_intern_api.cpp",
-                  "scripts/test_v2_program_cache.py"))
-    for p in _写集)
-if _跑v2缓存:
-    if not 步("v2 程序缓存三态",
-             [sys.executable, "scripts/test_v2_program_cache.py",
-              "--v2p", "target/cache_selftest/v2p.exe",
-              "--cn", str(单测.parent / ("cn.exe" if 是win else "cn")),
-              "--build-v2p"],
-             超时秒=_超时("CN_GATE_V2CACHE_TIMEOUT", 900)):
         raise SystemExit(1)
 
 # ③.6 交叉汇编守卫序列对照（887·835 病根立法化·2026-10-16 用户令立案）：内嵌
