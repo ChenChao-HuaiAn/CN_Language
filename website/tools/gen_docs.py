@@ -16,13 +16,13 @@
   页.导入头 + "函数 主() -> 整32 {" + 示例 + "返回 0;}"。
   需要顶层定义的条目直接给 原始=完整程序。
 
-用例引用（1060·2026-10-18 用户令）：示例条目支持「用例引用」形态——
+用例引用（1060 立·1295 收敛为唯一形态）：示例条目支持「用例引用」形态——
   块 tuple ("用例", "用例名"[, 说明]) 或条目 dict 键 用例="用例名"：
-  展示直接读 tests/e2e/<用例名>/ 的 主.cn 与 主.expected（与 run_e2e 门禁
-  同一份文件·单一事实源）；verify 对引用只做映射轻校验（存在性+非负测·
-  不重复编译——「进了 develop 的必然绿灯」）。存量手写示例保留过渡，
-  迁移工具=docs_migrate_e2e.py（预检→建用例→改写→登记·幂等状态在
-  docs_migrate_state.json）。
+  展示直接读 tests/e2e/<用例名>/ 的入口源码与期望输出（入口真值源=
+  双编译对照.txt「源文件=」键·缺省 主.cn；与 run_e2e 门禁同一份文件·
+  单一事实源）；verify 对引用只做映射轻校验（存在性+非负测·不重复编译
+  ——「进了 develop 的必然绿灯」）。仅存的内嵌示例=排除面（序列依赖/
+  平台限定/负例），仍走真编真跑。
 """
 import html
 import io
@@ -311,6 +311,11 @@ def 用例目录(用例名):
         return 直
     import glob as _glob
     命中 = sorted(_glob.glob(os.path.join(REPO, "tests", "e2e", "*_" + 用例名)))
+    if len(命中) > 1:
+        # 宿主+v2 成对共号（合法共号族）：引用不带号名时宿主侧优先，仍不唯一才报错
+        非v2 = [h for h in 命中 if "_v2_" not in os.path.basename(h)]
+        if len(非v2) == 1:
+            命中 = 非v2
     if len(命中) == 1:
         return 命中[0]
     if len(命中) > 1:
@@ -318,15 +323,34 @@ def 用例目录(用例名):
     return 直
 
 
+def 用例入口(目录):
+    """用例目录 → (源文件名, 期望文件名)：入口真值源=双编译对照.txt「源文件=」键
+    （多文件用例入口不叫 主.cn 的先例=01_hello/15_expressiveness 等 1295 批），
+    缺键或缺对照文件回退 主.cn／主.expected（单文件用例惯例）。"""
+    名 = "主.cn"
+    对照 = os.path.join(目录, "双编译对照.txt")
+    if os.path.isfile(对照):
+        with io.open(对照, encoding="utf-8", errors="replace") as f:
+            for 行 in f:
+                m = re.match(r"^源文件\s*=\s*(\S+)", 行.strip())
+                if m:
+                    # 多文件用例「源文件=主.cn,容器.cn」：展示取首个（主入口）
+                    名 = re.split(r"[,，\s]+", m.group(1))[0]
+                    break
+    期 = os.path.splitext(名)[0] + ".expected"
+    return 名, 期
+
+
 def 用例资源(用例名):
-    """读引用用例的 主.cn 源码与 主.expected 期望输出（渲染用·显示即门禁文件）。"""
+    """读引用用例的入口源码与期望输出（渲染用·显示即门禁文件）。"""
     目录 = 用例目录(用例名)
-    主 = os.path.join(目录, "主.cn")
+    源名, 期名 = 用例入口(目录)
+    主 = os.path.join(目录, 源名)
     if not os.path.isfile(主):
-        raise SystemExit("用例引用无效（缺 主.cn）：%s" % 用例名)
+        raise SystemExit("用例引用无效（缺 %s）：%s" % (源名, 用例名))
     with io.open(主, encoding="utf-8") as f:
         源码 = f.read()
-    期 = os.path.join(目录, "主.expected")
+    期 = os.path.join(目录, 期名)
     期望 = ""
     if os.path.isfile(期):
         with io.open(期, encoding="utf-8") as f:
@@ -335,16 +359,17 @@ def 用例资源(用例名):
 
 
 def 用例校验(用例名):
-    """引用用例轻校验（verify 分流·不编译不运行）：目录/主.cn/主.expected 齐备
+    """引用用例轻校验（verify 分流·不编译不运行）：目录/入口源码/期望文件齐备
     且非负测。返回错误描述或 None。"""
     目录 = 用例目录(用例名)
     if not os.path.isdir(目录):
         return "用例目录不存在"
-    if not os.path.isfile(os.path.join(目录, "主.cn")):
-        return "缺 主.cn"
-    if not os.path.isfile(os.path.join(目录, "主.expected")):
-        return "缺 主.expected"
-    with io.open(os.path.join(目录, "主.cn"), encoding="utf-8") as f:
+    源名, 期名 = 用例入口(目录)
+    if not os.path.isfile(os.path.join(目录, 源名)):
+        return "缺 " + 源名
+    if not os.path.isfile(os.path.join(目录, 期名)):
+        return "缺 " + 期名
+    with io.open(os.path.join(目录, 源名), encoding="utf-8") as f:
         头 = f.read(800)
     if "预期失败" in 头:
         return "负测用例（预期失败）不可作教学示例"

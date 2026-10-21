@@ -34,6 +34,7 @@ import fnmatch
 import io
 import json
 import os
+import re
 import sys
 
 仓库根 = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -265,15 +266,36 @@ def 枚举文档引用():
     return 引用
 
 
+def 用例入口文件(目录):
+    """入口真值源=双编译对照.txt「源文件=」键（1295 与 gen_docs.用例入口 同规：
+    多文件用例入口不叫 主.cn——01_hello/15_expressiveness 等；多值「主.cn,容器.cn」
+    取首个），expected=<入口基名>.expected。缺对照/缺键回退 主.cn。"""
+    名 = "主.cn"
+    对照 = os.path.join(目录, "双编译对照.txt")
+    if os.path.isfile(对照):
+        with io.open(对照, encoding="utf-8", errors="replace") as f:
+            for 行 in f:
+                m = re.match(r"^源文件\s*=\s*(\S+)", 行.strip())
+                if m:
+                    名 = re.split(r"[,，\s]+", m.group(1))[0]
+                    break
+    return 名, os.path.splitext(名)[0] + ".expected"
+
+
 def 校验引用集(引用集):
-    """1060：引用用例轻校验（不依赖编译器）——目录/主.cn/主.expected 齐备且非负测。
-    返回 [(用例名, 原因)]。用例根目录=模块常量（延迟绑定·selftest 可 monkeypatch）。"""
+    """1060：引用用例轻校验（不依赖编译器）——目录/入口源码/期望文件齐备且非负测。
+    返回 [(用例名, 原因)]。用例根目录=模块常量（延迟绑定·selftest 可 monkeypatch）。
+    1295：宿主+v2 成对共号（合法共号族）引用不带号名时宿主侧优先（与 gen_docs 同规）。"""
     import glob as _glob
     问题 = []
     for 名 in sorted(引用集):
         目录 = os.path.join(用例根目录, 名)
         if not os.path.isdir(目录):
             命中 = sorted(_glob.glob(os.path.join(用例根目录, "*_" + 名)))
+            if len(命中) > 1:
+                非v2 = [h for h in 命中 if "_v2_" not in os.path.basename(h)]
+                if len(非v2) == 1:
+                    命中 = 非v2
             if len(命中) == 1:
                 目录 = 命中[0]
             elif len(命中) > 1:
@@ -282,13 +304,14 @@ def 校验引用集(引用集):
         if not os.path.isdir(目录):
             问题.append((名, "用例目录不存在"))
             continue
-        if not os.path.isfile(os.path.join(目录, "主.cn")):
-            问题.append((名, "缺 主.cn"))
+        源名, 期名 = 用例入口文件(目录)
+        if not os.path.isfile(os.path.join(目录, 源名)):
+            问题.append((名, "缺 " + 源名))
             continue
-        if not os.path.isfile(os.path.join(目录, "主.expected")):
-            问题.append((名, "缺 主.expected"))
+        if not os.path.isfile(os.path.join(目录, 期名)):
+            问题.append((名, "缺 " + 期名))
             continue
-        with io.open(os.path.join(目录, "主.cn"), encoding="utf-8") as f:
+        with io.open(os.path.join(目录, 源名), encoding="utf-8") as f:
             头 = f.read(800)
         if "预期失败" in 头:
             问题.append((名, "负测用例（预期失败）不可作教学示例"))

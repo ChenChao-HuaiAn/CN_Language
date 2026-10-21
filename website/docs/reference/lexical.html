@@ -49,23 +49,72 @@
 <div class="码窗"><p class="码窗-顶"><span class="码窗-名">主带参.cn（负例·链接期拒绝）</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">函数 主(整32 个数, 字符** 参数) -&gt; 整32 {
     返回 个数;                  // ✗ 入口签名恒为无参：不合成 cn_main
 }</code></pre></div>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · reference/lexical.html · 源文件（任务 1060 同源化：本文件即官网展示内容，
-//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 系统库 E2E（Task 6.5，规格书10.4 命令行参数；对标 C++ argv）
+// 覆盖：参数个数（含可执行文件名本身）/ 参数按索引取 argv
+// 调用方式：直接调用系统库内置函数（系统::参数个数/系统::参数，全局注册、无需导入），
+//   由编译器 IR 层映射到运行时 __cn_argc/__cn_argv（system_api.cpp）
+//   ——与 stdlib/系统.cn 模块封装同名（25_math 数学库同模式：E2E 直接验证内置）
+// 命令行参数注入：run_e2e.py 检测同名 主.args 文件（每行一个参数，首行=argv[1]；
+//   argv[0] 恒为可执行文件名本身）——本用例参数：
+//     hello
+//     CN语言
+//   → argc=3（argv[0]=可执行文件名、argv[1]=hello、argv[2]=CN语言）
+// 打印语义（用户裁决）：打印=println（自动换行）
+// 注意：参数字符串由运行时（CRT）持有，不得 字符串释放
+
 函数 主() -&gt; 整32 {
-    打印("参数个数≥1: ", 系统::参数个数() &gt;= 1);   // 真（argv[0]=可执行文件名）
+    打印("===== 系统库（Task 6.5）=====");
+
+    // ==================== 1. 参数个数（含可执行文件名本身） ====================
+    整64 个数 = 系统::参数个数();
+    打印("参数个数: ", 个数);             // 3（exe + hello + CN语言）
+
+    // ==================== 2. 参数按索引取 argv ====================
+    打印("参数个数&gt;=1: ", 个数 &gt;= 1);     // 1
+
+    // argv[0]：可执行文件名本身（非空）
     字符* 程序名 = 系统::参数(0);
     如果 (程序名 != 无) {
-        打印("argv[0]非空: ", 字符串长度(程序名) &gt; 0);  // 真
+        打印("argv[0]非空: ", 字符串长度(程序名) &gt; 0);  // 1
+    } 否则 {
+        打印("argv[0]为空");
     }
+
+    // argv[1]：hello
+    字符* 参数一 = 系统::参数(1);
+    如果 (参数一 != 无) {
+        打印("argv[1]: ", 参数一);        // hello
+    } 否则 {
+        打印("argv[1]为空");
+    }
+
+    // argv[2]：CN语言（中文参数）
+    字符* 参数二 = 系统::参数(2);
+    如果 (参数二 != 无) {
+        打印("argv[2]: ", 参数二);        // CN语言
+    } 否则 {
+        打印("argv[2]为空");
+    }
+
+    // 越界：超出 argc-1 → nullptr → 失败
     字符* 越界 = 系统::参数(99);
-    如果 (越界 == 无) {
-        打印("越界参数=无");                        // 越界返回 无
+    如果 (越界 != 无) {
+        打印("越界参数: ", 越界);
+    } 否则 {
+        打印("越界参数失败");             // 失败
     }
+
+    打印("===== 系统库测试完成 =====");
     返回 0;
 }</code></pre></div>
-<p class="输出行">输出：参数个数≥1: 真
+<p class="输出行">输出：===== 系统库（Task 6.5）=====
+参数个数: 3
+参数个数&gt;=1: 真
 argv[0]非空: 真
-越界参数=无</p>
+argv[1]: hello
+argv[2]: CN语言
+越界参数失败
+===== 系统库测试完成 =====</p>
 <div class="码窗"><p class="码窗-顶"><span class="码窗-名">系统参数实测（E2E 37_system·参数注入 你好/CN）</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// —— 主.cn ——（E2E runner 注入命令行参数：你好、CN）
 函数 主() -&gt; 整32 {
     打印("参数个数: ", 系统::参数个数());       // 3（exe + 你好 + CN）
@@ -79,33 +128,63 @@ argv[0]非空: 真
 <table class="表"><thead><tr><th>上下文关键字</th><th>唯一语法位置</th></tr></thead><tbody><tr><td><code>原始</code> <code>多行</code></td><td>字符串字面量前缀位（后紧跟引号才是前缀）</td></tr><tr><td><code>公开</code> <code>私有</code> <code>保护</code></td><td>可见性标签位（<code>公开:</code> 等）</td></tr><tr><td><code>静态</code> <code>常量</code></td><td>声明前缀位（顶层/局部/循环初始/类成员）</td></tr><tr><td><code>虚拟</code> <code>重写</code> <code>抽象</code></td><td>类/接口成员修饰位（后随 函数）</td></tr><tr><td><code>作为</code></td><td>重命名导入位（<code>导入 路径 作为 别名</code>）</td></tr><tr><td><code>模块</code></td><td>顶层声明位（后随标识符即声明）</td></tr><tr><td><code>运算符</code> <code>遍历</code> <code>每个</code> <code>属于</code> <code>对</code></td><td>运算符重载/遍历循环固定形态</td></tr><tr><td><code>正常</code> <code>错误</code> <code>某些</code></td><td>内置构造器名（结果/可选构造位）</td></tr></tbody></table>
 <h2 id="字面量">字面量</h2>
 <h3 id="整数字面量">整数字面量</h3>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · reference/lexical.html · 字面量（任务 1060 同源化：本文件即官网展示内容，
-//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 176_字面量进制形态：整数字面量位模式全形态锚定（2026-09-09 第四十二轮 单位机，
+// 第四十一轮 字面量位模式 共用层根治的自身源码之外探针——lessons 权重10：
+// 「凡编译器支持的语法必须有自身源码之外的探针锚定后端发射」）。
+// 覆盖：0x/0b/0o 进制前缀 + L/U 类型后缀 + 超 imm32 域十进制 + 2^63-1 边界 +
+// 负常量补码。原 arm64/X64L 本地解析只认十进制（0x 前缀静默解析为 0 潜伏缺陷）。
+// 断言双保险：打印（末尾换行）逐行比对 + 全部相等判定通过返回 0。
 函数 主() -&gt; 整32 {
-    打印(42, " ", 0xFF, " ", 0b1010, " ", 0o777);   // 42 255 10 511
-    打印(100L, " ", 5U, " ", 7ULL);            // 100 5 7（整64/正32/正128）
-    打印(1.5f, " ", 2.5, " ", 1.5e10);         // 浮32/浮64/科学计数
-    返回 0;
+    整64 甲 = 0xFF;                // 255
+    整64 乙 = 0b1010;              // 10
+    整64 丙 = 0o777;               // 511
+    整64 丁 = 42L;                 // 42
+    整64 戊 = 7U;                  // 7
+    整64 己 = 36028797018963968;   // 2^55（超 imm32 域十进制）
+    整64 庚 = 0x7FFFFFFFFFFFFFFF;  // 2^63-1（int64 正上界）
+    整64 辛 = -255;                // 负常量（补码 neg 路径）
+    打印(甲);
+    打印(乙);
+    打印(丙);
+    打印(丁);
+    打印(戊);
+    打印(己);
+    打印(庚);
+    打印(辛);
+    如果 (甲 == 255 &amp;&amp; 乙 == 10 &amp;&amp; 丙 == 511 &amp;&amp; 丁 == 42 &amp;&amp; 戊 == 7) {
+        如果 (己 == 36028797018963968 &amp;&amp; 庚 == 9223372036854775807 &amp;&amp; 辛 == 0 - 255) {
+            返回 0;
+        }
+    }
+    返回 1;
 }</code></pre></div>
-<p class="输出行">输出：42 255 10 511
-100 5 7
-1.500000 2.500000 15000000000.000000</p>
+<p class="输出行">输出：255
+10
+511
+42
+7
+36028797018963968
+9223372036854775807
+-255</p>
 <ul><li>后缀：<code>f</code>→浮32、<code>L</code>→整64、<code>LL</code>→整128、<code>U</code>→正32、<code>UL</code>→正64、<code>ULL</code>→正128。</li><li>无后缀大字面量超出 整64 域时提升为 整128（在整128 域内求值）。</li><li>不支持数字下划线分隔。</li></ul>
 <h3 id="字符与字符串字面量">字符与字符串字面量</h3>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · reference/lexical.html · 字面量（任务 1060 同源化：本文件即官网展示内容，
-//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
-函数 主() -&gt; 整32 {
-    字符 c1 = '甲';             // Unicode 码点（4 字节）
-    字符 c2 = '\n';             // 转义
-    字符 c3 = '\u{4E2D}';       // Unicode 转义 = '中'
-    字符串 普通 = "第一行\n";
-    字符串 原样 = 原始"正则^\d+$";     // 反斜杠不转义
-    字符串 多行文 = 多行"""第一行
-第二行""";                     // 内部仍处理转义
-    打印(字符串长度(普通), 字符串长度(原样), 字符串长度(多行文));
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">函数 主() -&gt; 整32 {
+    打印(原始"正则: ^\d+\.\d+$");
+    打印(原始"路径: C:\dir\file");
+    打印(多行"""甲
+乙""");
+    打印(原始多行"""a\nb""");
+    打印("普通: \n[换行]");
     返回 0;
-}</code></pre></div>
-<p class="输出行">输出：101119</p>
+}
+// 496 撞号改号让位，原号 459</code></pre></div>
+<p class="输出行">输出：正则: ^\d+\.\d+$
+路径: C:\dir\file
+甲
+乙
+a\nb
+普通: 
+[换行]</p>
 <ul><li>常用转义：<code>\n</code> 换行、<code>\t</code> 制表、<code>\0</code> 空、<code>\\</code> 反斜杠、<code>\"</code> 引号、<code>\u{码点}</code>。</li><li><code>原始"..."</code> 反斜杠原样；<code>多行"""..."""</code> 跨行（内部仍处理转义）；<code>原始多行"""..."""</code> 完全原始。</li></ul>
 <h2 id="优先级">运算符与 13 级优先级</h2>
 <table class="表"><thead><tr><th>优先级</th><th>运算符</th><th>说明</th></tr></thead><tbody><tr><td>13（最高）</td><td><code>()</code> <code>[]</code> <code>.</code> <code>++</code> <code>--</code> <code>?</code></td><td>后缀：调用/下标/成员/后缀自增自减（值=原值）/后缀错误传播</td></tr><tr><td>12</td><td><code>!</code> <code>~</code> <code>-</code> <code>++</code> <code>--</code> <code>*</code> <code>&amp;</code></td><td>一元：非/按位非/负/前缀自增自减（值=新值）/解引用/取地址</td></tr><tr><td>11</td><td><code>*</code> <code>/</code> <code>%</code></td><td>乘除余</td></tr><tr><td>10</td><td><code>+</code> <code>-</code></td><td>加减（字符串 + 数值 自动拼接）</td></tr><tr><td>9</td><td><code>&lt;&lt;</code> <code>&gt;&gt;</code></td><td>移位（超宽=确定性失败：常量移位量编译期硬错误、变量移位量错误码 8；丢高位不属检查对象）</td></tr><tr><td>8</td><td><code>&lt;</code> <code>&lt;=</code> <code>&gt;</code> <code>&gt;=</code></td><td>关系（字符串=字典序）</td></tr><tr><td>7</td><td><code>==</code> <code>!=</code></td><td>相等（字符串=内容比较）</td></tr><tr><td>6</td><td><code>&amp;</code></td><td>按位与</td></tr><tr><td>5</td><td><code>^</code></td><td>按位异或</td></tr><tr><td>4</td><td><code>|</code></td><td>按位或</td></tr><tr><td>3</td><td><code>&amp;&amp;</code></td><td>逻辑与（短路）</td></tr><tr><td>2</td><td><code>||</code></td><td>逻辑或（短路）</td></tr><tr><td>1.5</td><td><code>条件 ? 真值 : 假值</code></td><td>三元（右结合·惰性求值）</td></tr><tr><td>1（最低）</td><td><code>=</code> <code>+=</code> <code>-=</code> …</td><td>赋值与复合赋值</td></tr></tbody></table>
@@ -113,20 +192,21 @@ argv[0]非空: 真
 <h2 id="语句终止">语句终止：分号强制</h2>
 <p>每条语句必须以 <code>;</code> 结束（C/Rust 同款）；换行是纯空白，表达式内可自由续行。行尾漏分号=语法错误（诊断「语句缺少分号 ';'」），不存在自动分号插入——行首/行尾词法拼接类事故被结构性根除。</p>
 <ul><li><strong>空语句非法</strong>：裸 <code>;</code> 不合法（诊断「预期表达式」）——合法的空循环体写 <code>当(x) { }</code>（空块合法）。</li><li><strong>循环体强制块</strong>：<code>当(x);</code> 是语法错误（诊断「预期 '{'」）——当/循环/如果 的体一律 <code>{ }</code>，不做单语句体。</li><li><strong>单行多语句合法</strong>：<code>变量 a = 1; 变量 b = 2;</code> 由分号分隔，行内最后一条同样须 <code>;</code>；行内块 <code>{ x = 1; }</code> 内部语句同样强制分号。</li><li><strong><code>}</code> 自终结</strong>：块/如果/当/循环/选择体、函数体、结构体/类/接口/枚举体后<strong>不加</strong>分号（<code>}</code> 即边界）；模块级声明（导入/顶层常量/静态/全局变量）须分号。</li></ul>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · reference/lexical.html · 语句终止（任务 1060 同源化：本文件即官网展示内容，
-//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// E2E 355：语句终止边界形态（规格书 4.6 规则1）
+// ① 行内块 { 语句; } 内部语句同样须分号；② 控制体 } 自终结后可直接跟
+// 下一条语句；③ 函数体 } 自终结后不加也是边界（结构体体同）。
 结构体 点 {
     整32 x
     整32 y
-}                     // 结构体体 } 自终结（不加分号）
+}
 
 函数 主() -&gt; 整32 {
-    变量 a = 1; 变量 b = 2;        // 单行多语句
-    如果 a == 1 { 变量 t = 5; a = t; }   // 行内块内部同样须分号
-    打印("a: ", a, " b: ", b);
+    变量 a = 1;
+    如果 a == 1 { 变量 t = 5; a = t; }
+    打印("a: ", a);
     返回 0;
 }</code></pre></div>
-<p class="输出行">输出：a: 5 b: 2</p>
+<p class="输出行">输出：a: 5</p>
 <div class="码窗"><p class="码窗-顶"><span class="码窗-名">裸分号.cn（负例·编译拒绝）</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">函数 主() -&gt; 整32 {
     ;                     // ✗ 空语句不合法
     返回 0;
@@ -140,44 +220,67 @@ argv[0]非空: 真
 <p>编译期开关：以宏旗标在<strong>词法层</strong>裁剪源码分支——被裁分支不产生任何 token。宏是无值旗标；没有带参宏、宏体展开与 <code>#包含</code>（这些职责由模块系统与常量表达式承担）。</p>
 <table class="表"><thead><tr><th>指令</th><th>形态</th><th>说明</th></tr></thead><tbody><tr><td><code>#定义 宏名</code></td><td>整行（行首可缩进）</td><td>定义宏（无值旗标·仅存在性判定）；父层被裁剪时不生效</td></tr><tr><td><code>#如果定义(宏名)</code> 或 <code>#如果定义 宏名</code></td><td>整行</td><td>条件开始：括号形式与空白形式等价</td></tr><tr><td><code>#否则</code></td><td>整行</td><td>条件分支（每层至多一个）</td></tr><tr><td><code>#结束如果</code></td><td>整行</td><td>条件结束（与 <code>#如果定义</code> 严格配对；纯空分支合法）</td></tr></tbody></table>
 <div class="批注 批注-绿"><span class="批注-题">词法层裁剪模型</span>非选中分支的整行在词法层被替换为空白（行号与换行保留）——不产生任何 token，<strong>即使内含语法错误也不诊断</strong>。宏名由 ASCII 字母/数字/下划线或中文组成。</div>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 官网文档示例 · reference/lexical.html · 条件编译（任务 1060 同源化：本文件即官网展示内容，
-//   经 run_e2e 门禁实测——展示与门禁同一份文件，单一事实源）
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 条件编译 E2E（Task 6.6，规格书阶段六）
+// 覆盖：
+//   #定义 宏 / #如果定义(宏) / #否则 / #结束如果 指令
+//   命令行 -D 宏注入（run_e2e.py 编译命令附加 -D 调试 参数）
+//   未定义宏分支被裁剪（不产生语法错误）
+//   嵌套条件编译
+// 说明：E2E 编译命令为
+//   cn build 条件编译.cn --target win-x64 -D 调试 --output ...
+//   （run_e2e.py 编译命令不含 -D，故本用例的 #定义 宏 与嵌套分支用于
+//    验证源码内宏机制；命令行宏注入由单元测试 + 手动命令验证）
 #定义 发布模式
 
 函数 主() -&gt; 整32 {
-    // 1. #如果定义 / #否则：源内宏定义生效
+    // ---- 1. 源码内 #定义 宏 + #如果定义 选择 ----
     #如果定义 发布模式
     打印("发布模式: 开启");
     #否则
-    打印("发布模式: 关闭");
+    打印("发布模式: 关闭")
     #结束如果
 
-    // 2. 未定义宏的分支被裁剪——内含非法写法也不诊断
+    // ---- 2. 未定义宏分支裁剪：语法错误代码被裁剪不应报错 ----
     #如果定义 不存在的宏
-    这一段是非法语法：它不产生 token，也不参与解析
+    这行是非法语法，不应被解析
     #否则
     打印("未定义宏分支: 已裁剪");
     #结束如果
 
-    // 3. 嵌套两层：父层被裁剪时内层恒假
+    // ---- 3. 嵌套条件编译 ----
     #如果定义 发布模式
+    打印("外层: 真");
     #如果定义 调试模式
-    打印("内层: 调试");
+    打印("内层: 调试")
     #否则
     打印("内层: 非调试");
     #结束如果
+    #否则
+    打印("外层: 假")
     #结束如果
 
-    // 4. 括号形式与空白形式等价
+    // ---- 4. 空宏名占位（宏未定义时的 #结束如果 正确闭合）----
+    #如果定义 调试模式
+    #结束如果
+    打印("空分支: 已闭合");
+
+    // ---- 5. 括号形式与空白形式等价 ----
     #如果定义(发布模式)
     打印("括号形式: 命中");
     #结束如果
+    #如果定义 发布模式
+    打印("空白形式: 命中");
+    #结束如果
+
     返回 0;
 }</code></pre></div>
 <p class="输出行">输出：发布模式: 开启
 未定义宏分支: 已裁剪
+外层: 真
 内层: 非调试
-括号形式: 命中</p>
+空分支: 已闭合
+括号形式: 命中
+空白形式: 命中</p>
 <ul><li>嵌套：条件块可嵌套（上例第 3 段）——父层被裁剪时，内层 <code>#定义</code> 不生效、内层 <code>#如果定义</code> 恒假（C 语义）。</li><li>上游注入：命令行 <code>-D 宏名</code>（可多次）与货舱.toml <code>[特性]</code> 的启用名单并入同一宏集合，等价源内 <code>#定义</code>——见<a href="../cli.html#选项">命令行参考·选项</a>、<a href="modules.html#货舱">模块系统·货舱</a>。</li><li>行尾无关性：裁剪与源文件行尾格式（CRLF/LF）无关，两种行尾形态编译产物一致。</li><li>不支持：带参宏、宏体展开、<code>#包含</code>、<code>#取消定义</code>、常量表达式条件——与 C 预处理器的能力边界划清。</li></ul>
 <div class="码窗"><p class="码窗-顶"><span class="码窗-名">未闭合条件编译.cn（负例·编译拒绝）</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">函数 主() -&gt; 整32 {
     #如果定义 未闭合宏
@@ -226,7 +329,7 @@ argv[0]非空: 真
     </div>
     <div class="页脚-底">
       <span>© 2026 CN 语言项目</span>
-      <span>文档基线：任务/1060 bae186a0·2026-10-18·示例经编译器实测</span>
+      <span>文档基线：任务/1295 1600fc3e5·2026-10-21·示例经编译器实测</span>
       <span>京ICP备00000000号（备案办理中·占位）</span>
     </div>
   </div>

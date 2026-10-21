@@ -32,7 +32,7 @@ dict(
              ]),
         dict(id="全貌", 题名="语言全貌（一页速览）",
              块=[
-                ("用例", "官网示例-reference-index-一页看全"),
+                ("用例", "integration"),
                 ("ul", [
                  "全部示例经双编译对照实测；语义以 <a href=\"https://gitcode.com/ChenChao_GitCode/CN_Language\" "
                  "target=\"_blank\" rel=\"noopener\">plans/001 规格书</a> 为唯一权威。",
@@ -131,8 +131,8 @@ dict(
     章节=[
         dict(id="导入", 题名="导入形态",
              块=[
-                ("用例", "官网示例-reference-modules-导入"),
-                ("用例", "官网示例-reference-modules-导入全形式"),
+                ("用例", "导入多名与嵌套路径"),
+                ("用例", "stdlib模块独立导入"),
                 ("ul", [
                  "<code>导入 模块::符号</code> 后<strong>纯名直用</strong>（公开符号合并机制）；"
                  "多符号 <code>导入 模块::{a, b, c}</code>，项内可重命名 "
@@ -299,7 +299,7 @@ dict(
                  '[特性]\n'
                  '启用 = ["网络", "压缩"]\n',
                  "TOML"),
-                ("用例", "官网示例-reference-modules-特性开关"),
+                ("用例", "货舱特性声明制"),
                 ("ul", [
                  "上例按本页默认构建（未启用任何特性）只剩「主程序运行」一行；同目录放入"
                  "<code>[特性] 启用 = [\"网络\"]</code> 的 货舱.toml 后，同一源码输出"
@@ -383,7 +383,7 @@ dict(
                 ("h3", "核心包 prelude"),
                 ("p", "核心包基础项默认可见（等价隐式 <code>导入 核心::*</code>）——"
                       "以下程序<strong>无任何导入语句</strong>："),
-                ("用例", "官网示例-reference-modules-prelude"),
+                ("用例", "prelude"),
                 ("h3", "缺失依赖=编译拒绝"),
                 ("p", "引用未声明的包（<code>货舱.toml [依赖]</code> 无此包）=编译期拒绝"
                       "（诊断「未声明的标识符」），不会拖到链接期才暴露："),

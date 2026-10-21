@@ -1,5 +1,9 @@
 // 代码生成函数级并行发射实现（任务 1145）
 // 规范：中文注释；函数 <= 100 行；无全局可变状态（线程池状态全部栈上）。
+// MSVC /W4 /WX：getenv 触发 C4996（1295 本机 win 构建实测·1145 入 develop 时
+//   linux 预验无此警告故未暴露）——driver_cache_util.cpp / driver_ast_cache.cpp
+//   同款处置（1185 先例），须先于任何 CRT 头定义。
+#define _CRT_SECURE_NO_WARNINGS
 #include "cn_compiler/codegen/parallel_codegen.hpp"
 
 #include <algorithm>
