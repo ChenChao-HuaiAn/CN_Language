@@ -586,5 +586,55 @@ def 树锁运行入口(主体) -> int:
         释放(锁)
 
 
+
+# ===== daemon 单实例字节锁（1297 自 ci_daemon.py 外迁·291 口径原样） =====
+# ci_daemon 的 daemon.lock 劝告锁（同机 daemon 进程单飞）——与本模块机器锁/树锁
+#   同属文件锁域；迁移动机=ci_daemon 加分片协议时守 1000 行硬红线（「先拆再加」）。
+#   win=msvcrt.locking 字节锁（LK_LOCK 仅约 10s 重试·阻塞等待自行轮询）；
+#   posix=flock。区域锁从文件指针起算，统一 seek(0) 保证各进程锁同一字节。
+
+是win平台 = sys.platform.startswith("win")
+if 是win平台:
+    import msvcrt
+else:
+    import fcntl
+
+
+def 抢锁(锁, 阻塞: bool = False, 轮询间隔秒: int = 90) -> bool:
+    """跨平台劝告锁（291）：posix=flock；win=msvcrt.locking。阻塞等待时自行轮询。"""
+    锁.seek(0)
+    if 是win平台:
+        try:
+            msvcrt.locking(锁.fileno(), msvcrt.LK_LOCK if 阻塞 else msvcrt.LK_NBLCK, 1)
+            return True
+        except OSError:
+            if not 阻塞:
+                return False
+            while True:
+                time.sleep(轮询间隔秒)
+                锁.seek(0)
+                try:
+                    msvcrt.locking(锁.fileno(), msvcrt.LK_NBLCK, 1)
+                    return True
+                except OSError:
+                    continue
+    try:
+        fcntl.flock(锁, fcntl.LOCK_EX | (0 if 阻塞 else fcntl.LOCK_NB))
+        return True
+    except OSError:
+        return False
+
+
+def 放锁(锁) -> None:
+    if 是win平台:
+        锁.seek(0)
+        try:
+            msvcrt.locking(锁.fileno(), msvcrt.LK_UNLCK, 1)
+        except OSError:
+            pass
+    else:
+        fcntl.flock(锁, fcntl.LOCK_UN)
+
+
 if __name__ == "__main__":
     sys.exit(主流程())

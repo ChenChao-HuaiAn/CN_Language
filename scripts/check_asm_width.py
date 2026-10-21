@@ -16,8 +16,23 @@
 v2 闭环用例（v2p 工具链通道）不在扫描面。旗标通道「编译选项.txt」与 runner 同口径。
 自带正/负样本自检（探测器自身也是被测对象——110-a 教训）。
 
-用法：python scripts/check_asm_width.py [--cn target/Debug/cn.exe]
+用法：python scripts/check_asm_width.py [--cn target/Debug/cn.exe] [--基线 <sha>]
 退出码：0 = 全过；1 = 有违例或编译失败。
+
+1300 写集增量（2026-10-21·门禁表实测 10-17 5~8s→10-21 645s——后者是该检查云轮上
+首次以完整形态真跑的真实价格：全用例×3 后端各起真实编译子进程·无缓存无增量；
+按用例入库增速约一周撞 900s 步骤超时）：带 --基线 <sha> 时按 git diff 基线..HEAD
+分类扫描面——
+  ① 编译器核心面变更（src/CN语言编译器v2/stdlib/runtime/tools/CMake）→ 全扫
+    （编译器动了才可能全局影响 asm·安全面不松）；
+  ② 仅 tests/e2e/<目录> 变更 → 只扫这些目录；
+  ③ 仅明确无关面（.md/website/docs/plans/scripts/项目记忆）→ 跳过（显式说明）；
+  ④ 含未知路径（不在①③清单的新顶层）→ 保守全扫（宁多扫不漏扫）。
+不带 --基线（develop/兜底轮·本地）=恒全扫（develop 平台轮转=权威全量面·铁律保持）。
+1300 内容寻址缓存：键=(源内容+旗标+后端+编译器面 git 树哈希)——编译器面未变的轮
+  cn 二进制即便重建也语义等价（树哈希未变），命中 .s 与重编逐字节同源=数学等价；
+  缓存放 target/cache/asm_width（与 1142 target/cache/ast 同址）。云端预验轮因
+  637 清产物恒冷（缓存主要收益面=本地开发轮与未来 637 豁免接口）。
 """
 import argparse
 import concurrent.futures
@@ -110,6 +125,22 @@ def self_check() -> None:
         flags = read_case_flags(case)
         if flags != ["-D", "中文宏名"]:
             raise SystemExit("自检失败：编译选项 # 注释/空行未过滤: " + repr(flags))
+    # 1300：写集分类正反两态（纯函数·扫描面判定的四象限）
+    模式, 们 = 写集扫描面(["src/cn_main.cpp"])
+    if 模式 != "全":
+        raise SystemExit("自检失败：编译器面变更应全扫")
+    模式, 们 = 写集扫描面(["tests/e2e/01_hello/主.cn", "tests/e2e/02_x/y.cn"])
+    if 模式 != "目录" or 们 != ["01_hello", "02_x"]:
+        raise SystemExit(f"自检失败：用例目录变更应目录扫，得 {模式} {们}")
+    模式, 们 = 写集扫描面(["README.md", "website/x.py", "plans/001.md"])
+    if 模式 != "跳过":
+        raise SystemExit(f"自检失败：纯无关面应跳过，得 {模式}")
+    模式, 们 = 写集扫描面(["新顶层/未知.cn"])
+    if 模式 != "全":
+        raise SystemExit(f"自检失败：未知路径应保守全扫，得 {模式}")
+    模式, 们 = 写集扫描面(["tests/e2e/01_hello/主.cn", "scripts/x.py"])
+    if 模式 != "目录" or 们 != ["01_hello"]:
+        raise SystemExit(f"自检失败：用例+scripts 混合应目录扫，得 {模式} {们}")
 
 
 def read_case_flags(case_dir: pathlib.Path) -> list:
@@ -123,6 +154,67 @@ def read_case_flags(case_dir: pathlib.Path) -> list:
         return []
     return [ln.strip() for ln in marker.read_text(encoding="utf-8-sig").splitlines()
             if ln.strip() and not ln.strip().startswith("#")]
+
+
+# ---- 1300 写集分类（纯函数·selftest 正反两态面）----
+编译器面前缀 = ("src/", "CN语言编译器v2/", "stdlib/", "runtime/", "tools/",
+                "third-party/")
+编译器面文件 = ("CMakeLists.txt",)
+明确无关前缀 = ("website/", "docs/", "plans/", "scripts/", "项目记忆/", ".zcode/",
+                ".github/")
+
+
+def 写集扫描面(变更文件们: list) -> tuple:
+    """变更文件清单 → (模式, 用例目录名们)。模式∈("全","目录","跳过")。
+    分类序=①编译器核心面→全扫；②tests/e2e/<目录>→目录扫（去重保序）；
+    ③纯明确无关面→跳过；④含未知路径→保守全扫（宁多扫不漏扫——新顶层目录
+    语义未知时不可假设无关）。"""
+    若编译器面 = any(f.startswith(编译器面前缀)
+                    or f in 编译器面文件
+                    or f.startswith("CMakeLists") or f.endswith(".cmake")
+                    for f in 变更文件们)
+    if 若编译器面:
+        return "全", []
+    用例们 = []
+    全无关 = True
+    for f in 变更文件们:
+        if f.startswith("tests/e2e/"):
+            全无关 = False
+            目 = f.split("/")[2] if f.count("/") >= 2 else ""
+            if 目 and 目 not in 用例们:
+                用例们.append(目)
+        elif not f.startswith(明确无关前缀) and not f.lower().endswith(".md"):
+            全无关 = False   # 未知路径——保守全扫
+    if 全无关:
+        return "跳过", []
+    if 用例们:
+        return "目录", 用例们
+    return "全", []   # 混有未知路径且无用例目录命中→保守全扫
+
+
+def 编译器面树哈希(仓库根: pathlib.Path) -> str:
+    """编译器核心面的 git 树哈希拼接（内容寻址·面未变则串不变）——缓存键的
+    编译器维度：面未变时 cn 即便重建（字节可不同）语义等价，命中 .s 与重编同源。
+    git 失败=返回异常文本（键全变=缓存恒 miss·退化为无缓存正确性无损）。"""
+    import hashlib
+    h = hashlib.sha256()
+    for 面 in ("src", "stdlib", "runtime", "tools", "CN语言编译器v2"):
+        r = subprocess.run(["git", "rev-parse", "HEAD:" + 面], cwd=仓库根,
+                           capture_output=True, text=True, timeout=30)
+        h.update((r.stdout.strip() if r.returncode == 0 else "miss:" + 面).encode())
+    return h.hexdigest()[:16]
+
+
+def 缓存条目路径(缓存目录: pathlib.Path, src: pathlib.Path, 旗标: list,
+                 后端: str, 编译器哈希: str) -> pathlib.Path:
+    """1300 内容寻址缓存条目——键=sha256(源内容+旗标串+后端+编译器面树哈希)：
+    源/旗标/编译器面任一变即 miss（保守键·宁重编不错用陈产物；编译器面未变时
+    cn 重建后语义等价·命中 .s 与重编同源=数学等价非「脏缓存」）。"""
+    import hashlib
+    h = hashlib.sha256()
+    h.update(src.read_bytes())
+    h.update(("|".join(旗标) + "|" + 后端 + "|" + 编译器哈希).encode("utf-8"))
+    return 缓存目录 / (h.hexdigest() + ".s")
 
 
 def collect_cases(root: pathlib.Path) -> list:
@@ -160,6 +252,10 @@ def main() -> int:
     ap.add_argument("--e2e", default="tests/e2e")
     ap.add_argument("--jobs", type=int, default=0,
                     help="并行度（0=CPU 核数，1=串行）")
+    ap.add_argument("--基线", default="",
+                    help="写集基线 sha（1300）：带=按 git diff 基线..HEAD 分类扫描面"
+                         "（编译器面→全扫/仅用例目录→目录扫/纯无关→跳过/未知→保守全扫）；"
+                         "不带=全扫（develop 兜底轮权威面·本地默认）")
     args = ap.parse_args()
 
     self_check()
@@ -169,6 +265,27 @@ def main() -> int:
         return 1
 
     cases = collect_cases(pathlib.Path(args.e2e))
+    扫描模式, 扫描目录们 = "全", []
+    if args.基线:
+        r = subprocess.run(["git", "diff", "--name-only", args.基线 + "..HEAD"],
+                           capture_output=True, text=True, timeout=60)
+        变更们 = [l.strip() for l in (r.stdout or "").splitlines() if l.strip()] \
+            if r.returncode == 0 else []
+        if r.returncode != 0:
+            print(f"写集 diff 失败（rc={r.returncode}）——保守全扫")
+        else:
+            扫描模式, 扫描目录们 = 写集扫描面(变更们)
+            if 扫描模式 == "目录":
+                集 = set(扫描目录们)
+                cases = [c for c in cases if c[0] in 集]
+            elif 扫描模式 == "跳过":
+                print(f"== check_asm_width（D31/D32·258-a/260-a）==\n"
+                      f"写集基线 {args.基线[:10]} 无编译器面/用例面变更"
+                      f"（纯无关面 {len(变更们)} 文件）——跳过扫描（1300 增量·"
+                      f"develop 兜底轮不带 --基线 恒全扫）\nPASS（写集跳过·三后端零变更面）")
+                return 0
+    编译哈希 = 编译器面树哈希(pathlib.Path("."))   # 1300：缓存键编译器维度（git 失败=恒 miss 无损）
+    缓存目录 = pathlib.Path("target/cache/asm_width")
     compile_fails = []   # (用例名[后端], 消息)
     arm64_hits = []      # (用例名, 行号, 片段)
     silent_hits = []     # (用例名, 行号, 片段)
@@ -177,25 +294,41 @@ def main() -> int:
                 ("linux-x86_64", LX64_SILENT_DROP, silent_hits),
                 ("win-x64", WIN_BAD_MIX, win_hits))
     jobs = args.jobs if args.jobs > 0 else (os.cpu_count() or 4)
+    命中缓存数 = [0]
 
     def scan_one(name, src, target, pattern):
-        """单（用例×后端）任务：compile 出 .s + 扫描。
+        """单（用例×后端）任务：compile 出 .s + 扫描（1300：内容寻址缓存命中跳编译）。
         返回 (fails, hits)：fails 为 (标签,消息) 列表；hits 为 (名,行,片段) 列表。"""
         fails, hits = [], []
-        with tempfile.TemporaryDirectory() as td:
-            out_s = pathlib.Path(td) / "out.s"
-            cmd = [str(cn), "compile", str(src), "--target", target,
-                   "--output", str(out_s)]
-            cmd += read_case_flags(src.parent)
-            r = subprocess.run(cmd, capture_output=True, timeout=120)
-            if r.returncode != 0 or not out_s.exists():
-                msg = r.stderr.decode("utf-8", "replace").strip().splitlines()
-                fails.append((f"{name}[{target}]", msg[-1] if msg else "无 .s 产出"))
-                return fails, hits
-            text = out_s.read_text(encoding="utf-8", errors="replace")
-            for m in pattern.finditer(text):
-                lineno = text.count("\n", 0, m.start()) + 1
-                hits.append((name, lineno, m.group(0).strip()))
+        旗标 = read_case_flags(src.parent)
+        条目 = 缓存条目路径(缓存目录, src, 旗标, target, 编译哈希)
+        text = None
+        if 条目.exists():
+            try:
+                text = 条目.read_text(encoding="utf-8", errors="replace")
+                命中缓存数[0] += 1
+            except OSError:
+                text = None
+        if text is None:
+            with tempfile.TemporaryDirectory() as td:
+                out_s = pathlib.Path(td) / "out.s"
+                cmd = [str(cn), "compile", str(src), "--target", target,
+                       "--output", str(out_s)]
+                cmd += 旗标
+                r = subprocess.run(cmd, capture_output=True, timeout=120)
+                if r.returncode != 0 or not out_s.exists():
+                    msg = r.stderr.decode("utf-8", "replace").strip().splitlines()
+                    fails.append((f"{name}[{target}]", msg[-1] if msg else "无 .s 产出"))
+                    return fails, hits
+                text = out_s.read_text(encoding="utf-8", errors="replace")
+            try:
+                缓存目录.mkdir(parents=True, exist_ok=True)
+                条目.write_text(text, encoding="utf-8")
+            except OSError:
+                pass   # 缓存写失败=退化为无缓存（正确性无损·下次重编）
+        for m in pattern.finditer(text):
+            lineno = text.count("\n", 0, m.start()) + 1
+            hits.append((name, lineno, m.group(0).strip()))
         return fails, hits
 
     t0 = time.time()
@@ -214,6 +347,11 @@ def main() -> int:
                 bucket.extend(hits)
 
     print("== check_asm_width（D31/D32·258-a/260-a）==")
+    模式说明 = ("全扫" if 扫描模式 == "全"
+               else "目录扫（%d 个：%s）" % (len(扫描目录们), "、".join(扫描目录们[:5])
+                                            + ("…" if len(扫描目录们) > 5 else "")))
+    print(f"扫描面 {模式说明}{f'（1300 写集基线 {args.基线[:10]}）' if args.基线 else ''}"
+          f" ｜ 缓存命中 {命中缓存数[0]}/{len(tasks)}")
     print(f"用例 {len(cases)}×3 后端 ｜ 并行 {jobs}"
           f" ｜ 编译失败 {len(compile_fails)}"
           f" ｜ arm64 非法编码 {len(arm64_hits)}"
