@@ -13,8 +13,13 @@
 //   [8]  payload FNV-1a 校验和（防位翻转/截断损坏）
 //   [4]  payload 长度
 //   [N]  payload（ast_serial::serializeProgram 产物，内含格式版本）
-// 命中判定：魔数 → 内容/环境哈希比对（内容更新=陈旧失效）→ 长度一致 →
-//   校验和 → 反序列化成功。任一不符=安全回退完整解析；损坏/版本不符显形。
+// 条目文件名（1271 起）：<路径哈希32hex>-<环境哈希32hex>.cnast——环境摘要
+//   （模块名+排序宏集合）进入条目身份：同一路径不同 -D 宏集合各有独立条目，
+//   交替构建各自稳定命中（1142 原始实现仅用路径哈希命名、环境哈希只存文件头，
+//   同路径不同宏集合共写一条互相覆盖→交替宏每次失效重建：1271 根治）。
+// 命中判定：文件名身份（路径+环境）→ 魔数 → 内容/环境哈希逐字段复核（防复制/
+//   命名碰撞；内容更新=陈旧失效）→ 长度一致 → 校验和 → 反序列化成功。
+//   任一不符=安全回退完整解析；损坏/版本不符显形。
 // 本文件 getenv/fopen 为缓存统计与读写专用（MSVC C4996 安全警告压制·
 //   项目既有惯例同 semantic_call.cpp 等——缓存面不处理用户输入，无安全面）
 #define _CRT_SECURE_NO_WARNINGS
@@ -79,7 +84,9 @@ const std::string& cacheDirRef(const DriverOptions& options) {
 
 // ==================== 环境键（模块名+宏集合） ====================
 
-// 环境键：模块名 + 排序后的宏集合（-D 宏影响 #如果定义 条件编译结果）
+// 环境键：模块名 + 排序后的宏集合（-D 宏影响 #如果定义 条件编译结果）。
+//   排序保证同一宏集合与 -D 传入顺序 / std::unordered_set 遍历序无关——
+//   环境摘要跨进程确定、稳定（不含时间/临时路径等进程瞬时量）。
 CacheKey128 hashEnv(const std::string& moduleName,
                     const std::unordered_set<std::string>& macros) {
     std::vector<std::string> ms(macros.begin(), macros.end());
@@ -93,9 +100,14 @@ CacheKey128 hashEnv(const std::string& moduleName,
     return cacheHash128(joined);
 }
 
-// 缓存文件路径：<dir>/<路径哈希32hex>.cnast（路径哈希=内容键函数对 filePath 复用）
-std::string cacheFilePath(const std::string& dir, const std::string& filePath) {
-    return dir + "/" + cacheKeyHex(cacheHash128(filePath)) + ".cnast";
+// 缓存文件路径：<dir>/<路径哈希32hex>-<环境哈希32hex>.cnast
+//   路径哈希=filePath 的 128 位内容键；环境哈希=hashEnv（模块名+排序宏集合）。
+//   环境摘要进入文件名身份=同路径不同宏集合各有条目，互不覆盖（1271）；
+//   文件头中的内容/环境键仍全量复核（损坏/复制条目显形回退）。
+std::string cacheFilePath(const std::string& dir, const std::string& filePath,
+                          const CacheKey128& envKey) {
+    return dir + "/" + cacheKeyHex(cacheHash128(filePath)) + "-" + cacheKeyHex(envKey) +
+           ".cnast";
 }
 
 // ==================== 文件头 ====================
@@ -244,7 +256,7 @@ bool parseModuleWithCache(const std::string& source, const std::string& filePath
     }
     const CacheKey128 kContent = cacheHash128(source);
     const CacheKey128 kEnv = hashEnv(moduleName, macros);
-    const std::string cacheFile = cacheFilePath(dir, filePath);
+    const std::string cacheFile = cacheFilePath(dir, filePath, kEnv);
     if (tryLoadCache(cacheFile, kContent, kEnv, ast)) {
         // 命中路径：按同一规则重建依赖表（collectImportDeps 与解析路径共用）
         imports.clear();
