@@ -47,22 +47,7 @@
 <h2 id="导航">九篇导航</h2>
 <table class="表"><thead><tr><th>篇</th><th>回答的问题</th></tr></thead><tbody><tr><td><a href="lexical.html">词法结构</a></td><td>46 个保留字是哪些？运算符优先级怎么排？原始/多行字符串怎么写？</td></tr><tr><td><a href="types.html">类型系统</a></td><td>整8 和 正8 差在哪？转换的位模式语义？未初始化检查的豁免面？联合体为什么禁字符串成员？</td></tr><tr><td><a href="control-flow.html">控制流</a></td><td>条件括号什么时候可省？选择怎么贯穿？中断 绑定谁？</td></tr><tr><td><a href="functions.html">函数</a></td><td>四种传参语义？泛型为什么要 显式&lt;类型&gt;？函数指针与 lambda？</td></tr><tr><td><a href="oop.html">类与对象</a></td><td>句柄模型下赋值意味着什么？构造级联与析构链？运算符重载集合？</td></tr><tr><td><a href="errors.html">错误处理</a></td><td>三条强制检查规则？后缀 ? 的词法消歧？错误码全表？</td></tr><tr><td><a href="concurrency.html">并发</a></td><td>线程必须并入？什么类型可跨线程？互斥锁&lt;T&gt; 怎么用？</td></tr><tr><td><a href="modules.html">模块系统</a></td><td>导入的五种形态？名字解析三级优先级？货舱.toml？</td></tr><tr><td><a href="../stdlib.html">标准库</a></td><td>13 模块 187 条目逐函数文档</td></tr></tbody></table>
 <h2 id="全貌">语言全貌（一页速览）</h2>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">﻿// Task 阶段2 全链路集成验证 E2E 测试
-// 覆盖：一个"学生成绩管理系统"程序，串联阶段2全部7个Task的功能：
-//   Task 2.1 控制流：如果/否则/当/循环/选择/情况/默认/中断/继续 组合
-//   Task 2.2 函数：函数指针回调/递归/原型前向引用
-//   Task 2.3 类型：位宽整数/浮点/后缀字面量/位运算/移位/隐式转换
-//   Task 2.4 数组与指针：数组初始化/下标/指针算术/解引用/取地址/空指针判空
-//   Task 2.5 字符串：普通/原始/多行/连接/长度/查找/打印行多参数
-//   Task 2.7 结构体/枚举/联合体：嵌套/数组/-&gt; 成员访问/枚举case/联合体共享内存
-//   Task 2.6 优化器：-O1 常量折叠+DCE 下输出与 -O0 完全一致
-// 语法依据（cn-language-spec 02/03/04/05）：结构体字段换行分隔；枚举自动递增；
-//   选择 case 枚举值；函数指针 C风格；指针算术按元素大小步进；字符串映射 ptr
-
-// ==================== 类型定义 ====================
-
-// 等级枚举：优秀=0 良好=1 及格=2 不及格=3（自动递增），外加负数成员展示枚举负数
-枚举 等级 {
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">枚举 等级 {
     优秀,
     良好,
     及格,
@@ -423,7 +408,7 @@ DCE后: 100 200
     </div>
     <div class="页脚-底">
       <span>© 2026 CN 语言项目</span>
-      <span>文档基线：任务/1295 1600fc3e5·2026-10-21·示例经编译器实测</span>
+      <span>文档基线：任务/1295 3270a3ba6·2026-10-21·示例经编译器实测</span>
       <span>京ICP备00000000号（备案办理中·占位）</span>
     </div>
   </div>

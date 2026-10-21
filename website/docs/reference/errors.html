@@ -74,10 +74,7 @@
 }</code></pre></div>
 <h2 id="传播">错误传播：后缀 ?</h2>
 <p><code>表达式?</code>：正常/有值→取 .值 继续；失败→<strong>构造错误结果从当前函数返回</strong>（须函数返回类型兼容）。Rust <code>?</code> 同构。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// E2E 364：错误传播运算符 ? 链式边界（规格书 5.4）
-// 三层传播链：顶层? -&gt; 中层? -&gt; 底层，正常逐层取 .值；失败沿调用链逐层
-// 上抛（短路），最终错误码在调用侧检查锚定。
-函数 底层(整32 v) -&gt; 结果&lt;整32, 整32&gt; {
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">函数 底层(整32 v) -&gt; 结果&lt;整32, 整32&gt; {
     如果 v &lt; 0 { 返回 错误(6); }
     返回 正常(v * 2);
 }
@@ -151,7 +148,7 @@
     </div>
     <div class="页脚-底">
       <span>© 2026 CN 语言项目</span>
-      <span>文档基线：任务/1295 1600fc3e5·2026-10-21·示例经编译器实测</span>
+      <span>文档基线：任务/1295 3270a3ba6·2026-10-21·示例经编译器实测</span>
       <span>京ICP备00000000号（备案办理中·占位）</span>
     </div>
   </div>

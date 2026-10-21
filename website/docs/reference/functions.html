@@ -45,12 +45,7 @@
 <h1>函数</h1>
 <p style="color: var(--color-fg-muted); font-size: var(--text-lg); line-height: 2;">声明与调用、重载、默认参数、按值/引用/常量引用传参、泛型单态化、函数指针、lambda。</p>
 <h2 id="声明">声明与调用</h2>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">﻿// 函数E2E测试：覆盖 函数原型声明（前向引用）/ 递归调用 / 函数指针（声明/赋值/调用）
-// 注意：本文件为中文名（run_e2e.py 用 *.cn glob 遍历，支持中文文件名）
-// 入口函数 主 返回 整32，返回0表示成功
-
-// ---- 1. 函数原型声明（前向引用）：声明在调用之前，定义在调用之后 ----
-函数 计算(整32 n) -&gt; 整32
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">函数 计算(整32 n) -&gt; 整32
 
 函数 使用前向() -&gt; 整32 {
     返回 计算(10);   // 调用时 计算 仅有原型声明，定义在文件末尾
@@ -135,10 +130,7 @@
 <h2 id="传参">传参语义：副本 / 引用 / 只读借用 / 类=写穿</h2>
 <p>CN 传参有<strong>四种</strong>语义，按形参类型决定——这是最容易被其他语言经验带偏的地方，务必读全。</p>
 <table class="表"><thead><tr><th>形参形态</th><th>语义</th><th>体内写对调用方的影响</th></tr></thead><tbody><tr><td>标量 / 结构体 按值</td><td><strong>副本</strong>（整块值拷贝）</td><td>无影响</td></tr><tr><td><code>T&amp;</code> 引用</td><td><strong>写穿</strong>（左值地址传递）</td><td>直接影响调用方</td></tr><tr><td><code>常量 T&amp;</code></td><td>只读借用（体内写=编译错误）</td><td>无影响（也不可能）</td></tr><tr><td><strong>类类型按值</strong></td><td><strong>引用语义</strong>（形参槽=对象句柄拷贝，体内经句柄写同一堆对象）</td><td>字段写/方法调用<strong>写穿调用方</strong></td></tr></tbody></table>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 536 参数传递语义矩阵（056 甲·805 轮·双编译对照）
-// 覆盖：类对象按值形参=引用写穿 / 结构体按值形参=副本 / 临时实参物化
-// 规范：plans/001 §5.3 参数传递语义（056 甲·2026-09-27 落盘）
-导入 容器::向量;
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">导入 容器::向量;
 导入 映射集合;
 
 类 盒子 {
@@ -190,10 +182,7 @@
 类主函数: 55
 结构体函数内: 99
 结构体主函数: 1</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// E2E 102_引用返回（P3-18 收尾）：函数 返回类型 T&amp; —— 返回被引用左值的地址
-// 覆盖：引用变量接收（整32&amp; 别名 = 传回(值)）、读、经返回引用写回（传回(值) = 值）、
-//       引用变量写（别名 = 值）写回原变量。
-函数 传回(整32&amp; x) -&gt; 整32&amp; {
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">函数 传回(整32&amp; x) -&gt; 整32&amp; {
     返回 x;
 }
 函数 主() -&gt; 整32 {
@@ -233,10 +222,7 @@
 }</code></pre></div>
 <ul><li>要与「副本语义」传类，传前显式 <code>复制(对象)</code>（深拷克隆）。</li><li>容器元素读取（元素/获取）返回<strong>副本</strong>（快照）——写回用 <code>设置</code>、写穿用 <code>元素引用</code>：与形参语义正交。</li><li>临时实参传类形参合法（编译器物化临时槽）。</li><li>字符串元素容器的访问器（元素/读取/栈顶/队首/头部元素/读取头部/读取尾部/获取）返回元素句柄<strong>浅拷=借出视图</strong>——容器失效方法（删除/设置/清空/弹出/出队/删除头部/删除尾部/释放内部数组）之后该视图悬垂，编译期拒绝（NLL 顺序近似，Rust E0502 同构）；正则见 <a href="../tutorial-safety.html#借出视图">教程·安全与并发·借出视图</a>。</li></ul>
 <h2 id="泛型">泛型函数：编译期单态化</h2>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 455 泛型函数单态化（420-a D42 波 3 防线·双编译对照）
-// 覆盖：泛型 &lt;类型 T&gt; 函数 声明/显式实例化调用 名&lt;实参&gt;(...)/T* 指针参数
-//       下标读/参数传递（数组退化指针+标量）/克隆体单态化生成（符号含实例参数）
-泛型 &lt;类型 T&gt;
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">泛型 &lt;类型 T&gt;
 函数 首个(T* 数组, 整64 长度) -&gt; T {
     返回 数组[0];
 }
@@ -270,20 +256,7 @@
 函数 主() -&gt; 整32 {
     返回 0;
 }</code></pre></div>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 742_闭包逃逸跨函数调用（#485·#435 立法消费面·「[=] 闭包经返回真逃逸后
-//   跨函数调用=宿主运行 C0000005」探针实锤形态收口）：
-//   宿主面=间接调用返回类型根治——CallIndirect 返回类型原硬编码 i32：整128
-//   返回=调用点不传 sret 隐藏指针且按 eax 取值（蹦床按 sret 协议写 rcx 垃圾
-//   地址=C0000005）；整64 返回=eax 截断；浮64 返回=eax 垃圾。修复=fnptr
-//   声明返回类型逐面贯通（间接调用/推断声明 srcType/结构体返回 sret）。
-//   v2 面=128/结构体捕获蹦床否决解除（快照静态槽全尺寸+固化整块拷+还原
-//   传址——原旧轨局部快照=逃逸后读已销亡帧）。
-// 面1 [=] 值捕获整128·经返回逃逸·跨函数调用（立案形态·期望 246913578024690）
-// 面2 [=] 值捕获整64·逃逸（截断面·期望 10000000000）
-// 面3 fnptr 返回浮64·逃逸（浮点面·期望 7.000000）
-// 面4 结构体值捕获·标量返回·逃逸（快照整块拷面·期望 78）
-// 期望：246913578024690 / 10000000000 / 7.000000 / 78 / 42（打印 逐行）
-函数 造i128() -&gt; 整128(*)() {
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">函数 造i128() -&gt; 整128(*)() {
     整128 大值 = 123456789012345;
     变量 取 = [=]() -&gt; 整128 { 返回 大值 * 2; };
     返回 取;
@@ -364,7 +337,7 @@
     </div>
     <div class="页脚-底">
       <span>© 2026 CN 语言项目</span>
-      <span>文档基线：任务/1295 1600fc3e5·2026-10-21·示例经编译器实测</span>
+      <span>文档基线：任务/1295 3270a3ba6·2026-10-21·示例经编译器实测</span>
       <span>京ICP备00000000号（备案办理中·占位）</span>
     </div>
   </div>

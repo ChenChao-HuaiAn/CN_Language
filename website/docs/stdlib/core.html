@@ -118,16 +118,7 @@
 <p>返回两者中较小的一个。按值传参，支持所有实现了 <code>&lt;</code> 比较的类型。</p>
 <table class="表 参数表"><thead><tr><th>参数</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>左</code></td><td><code>T</code></td><td>候选值一</td></tr><tr><td><code>右</code></td><td><code>T</code></td><td>候选值二</td></tr></tbody></table>
 <p><strong>返回</strong>　较小者（类型 T）。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 核心库 E2E（Task 6.1，规格书10.2 核心工具）
-// 覆盖：错误码枚举引用 / 泛型 交换/最小/最大（整32+浮64 多类型实例化）/
-//       断言（真条件通过）
-// 模块导入：导入 核心::符号 后使用纯名调用（泛型函数 交换&lt;整32&gt; 等，
-//   Task 6.1 打通：泛型函数跨模块合并 + 单态化 + IR 函数体生成）
-// 说明：断言 假条件会调 运行时错误(6) 终止进程——E2E 只验证真条件通过；
-//   假条件终止路径由语义层单测（运行时错误 注册）间接覆盖
-// 打印语义（用户裁决）：打印=println（自动换行）
-
-导入 核心::交换;
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">导入 核心::交换;
 导入 核心::最小;
 导入 核心::最大;
 导入 核心::断言;
@@ -188,16 +179,7 @@
 <p>返回两者中较大的一个。要求类型支持 <code>&gt;</code> 比较。</p>
 <table class="表 参数表"><thead><tr><th>参数</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>左</code></td><td><code>T</code></td><td>候选值一</td></tr><tr><td><code>右</code></td><td><code>T</code></td><td>候选值二</td></tr></tbody></table>
 <p><strong>返回</strong>　较大者（类型 T）。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 核心库 E2E（Task 6.1，规格书10.2 核心工具）
-// 覆盖：错误码枚举引用 / 泛型 交换/最小/最大（整32+浮64 多类型实例化）/
-//       断言（真条件通过）
-// 模块导入：导入 核心::符号 后使用纯名调用（泛型函数 交换&lt;整32&gt; 等，
-//   Task 6.1 打通：泛型函数跨模块合并 + 单态化 + IR 函数体生成）
-// 说明：断言 假条件会调 运行时错误(6) 终止进程——E2E 只验证真条件通过；
-//   假条件终止路径由语义层单测（运行时错误 注册）间接覆盖
-// 打印语义（用户裁决）：打印=println（自动换行）
-
-导入 核心::交换;
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">导入 核心::交换;
 导入 核心::最小;
 导入 核心::最大;
 导入 核心::断言;
@@ -258,16 +240,7 @@
 <p>条件为假时调用 <code>运行时错误(错误码.参数)</code> 终止进程，并在标准输出打印诊断行。用于开发期前置条件检查；发布构建不会自动移除断言（需手动裁剪）。</p>
 <table class="表 参数表"><thead><tr><th>参数</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>条件</code></td><td><code>布尔</code></td><td>断言条件；假则终止</td></tr><tr><td><code>消息</code></td><td><code>字符串</code></td><td>失败时的诊断消息</td></tr></tbody></table>
 <p><strong>返回</strong>　无。条件为真时什么也不做。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 核心库 E2E（Task 6.1，规格书10.2 核心工具）
-// 覆盖：错误码枚举引用 / 泛型 交换/最小/最大（整32+浮64 多类型实例化）/
-//       断言（真条件通过）
-// 模块导入：导入 核心::符号 后使用纯名调用（泛型函数 交换&lt;整32&gt; 等，
-//   Task 6.1 打通：泛型函数跨模块合并 + 单态化 + IR 函数体生成）
-// 说明：断言 假条件会调 运行时错误(6) 终止进程——E2E 只验证真条件通过；
-//   假条件终止路径由语义层单测（运行时错误 注册）间接覆盖
-// 打印语义（用户裁决）：打印=println（自动换行）
-
-导入 核心::交换;
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">导入 核心::交换;
 导入 核心::最小;
 导入 核心::最大;
 导入 核心::断言;
@@ -364,7 +337,7 @@
     </div>
     <div class="页脚-底">
       <span>© 2026 CN 语言项目</span>
-      <span>文档基线：任务/1295 1600fc3e5·2026-10-21·示例经编译器实测</span>
+      <span>文档基线：任务/1295 3270a3ba6·2026-10-21·示例经编译器实测</span>
       <span>京ICP备00000000号（备案办理中·占位）</span>
     </div>
   </div>

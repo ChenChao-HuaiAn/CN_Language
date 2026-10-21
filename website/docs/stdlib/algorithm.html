@@ -83,18 +83,7 @@
 <p class="函数定义"><code>不安全 函数 排序整32(整32* 数组, 整64 长度) -> 空类型</code></p>
 <p>对 整32 数组原地冒泡排序（升序）。长度为 0/1 时不动。</p>
 <table class="表 参数表"><thead><tr><th>参数</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>数组</code></td><td><code>整32*</code></td><td>数组首地址</td></tr><tr><td><code>长度</code></td><td><code>整64</code></td><td>元素个数</td></tr></tbody></table>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 算法库 E2E（Task 6.7，对标 C++ &lt;algorithm&gt;）
-// 覆盖：整32数组排序 {5,2,8,1,9,3} → 升序 / 线性查找（找到索引/找不到-1）/
-//       二分查找（升序数组查目标）/ 逆序 {1,2,3} → {3,2,1} /
-//       变换 ×2 / 计数出现次数 / 最大元素
-// 模块导入：导入 算法::排序整32 等（具体类型重载 + 比较内联，规避泛型+函数指针缺陷）
-// 实测边界（Task 6.7）：
-//   - 泛型函数 + 函数指针回调组合编译器暂不支持（单态化后签名不匹配）——
-//     排序/二分 用 整32/整64 具体类型重载；线性查找/计数/最大/逆序 泛型（无函数指针）正常
-//   - 静态数组 整32[6] 名退化传参正常
-// 打印语义（用户裁决）：打印=println（自动换行）
-
-导入 算法::排序整32;
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">导入 算法::排序整32;
 导入 算法::排序整64;
 导入 算法::线性查找;
 导入 算法::二分查找整32;
@@ -185,18 +174,7 @@
 <p class="函数定义"><code>不安全 函数 排序整64(整64* 数组, 整64 长度) -> 空类型</code></p>
 <p>对 整64 数组原地冒泡排序（升序）。</p>
 <table class="表 参数表"><thead><tr><th>参数</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>数组</code></td><td><code>整64*</code></td><td>数组首地址</td></tr><tr><td><code>长度</code></td><td><code>整64</code></td><td>元素个数</td></tr></tbody></table>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 算法库 E2E（Task 6.7，对标 C++ &lt;algorithm&gt;）
-// 覆盖：整32数组排序 {5,2,8,1,9,3} → 升序 / 线性查找（找到索引/找不到-1）/
-//       二分查找（升序数组查目标）/ 逆序 {1,2,3} → {3,2,1} /
-//       变换 ×2 / 计数出现次数 / 最大元素
-// 模块导入：导入 算法::排序整32 等（具体类型重载 + 比较内联，规避泛型+函数指针缺陷）
-// 实测边界（Task 6.7）：
-//   - 泛型函数 + 函数指针回调组合编译器暂不支持（单态化后签名不匹配）——
-//     排序/二分 用 整32/整64 具体类型重载；线性查找/计数/最大/逆序 泛型（无函数指针）正常
-//   - 静态数组 整32[6] 名退化传参正常
-// 打印语义（用户裁决）：打印=println（自动换行）
-
-导入 算法::排序整32;
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">导入 算法::排序整32;
 导入 算法::排序整64;
 导入 算法::线性查找;
 导入 算法::二分查找整32;
@@ -307,18 +285,7 @@
 <p><strong>前置条件：数组已升序</strong>。折半查找，O(log n)。</p>
 <table class="表 参数表"><thead><tr><th>参数</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>数组</code></td><td><code>整32*</code></td><td>已升序数组</td></tr><tr><td><code>长度</code></td><td><code>整64</code></td><td>元素个数</td></tr><tr><td><code>目标</code></td><td><code>整32</code></td><td>要找的值</td></tr></tbody></table>
 <p><strong>返回</strong>　命中下标；未找到 -1。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 算法库 E2E（Task 6.7，对标 C++ &lt;algorithm&gt;）
-// 覆盖：整32数组排序 {5,2,8,1,9,3} → 升序 / 线性查找（找到索引/找不到-1）/
-//       二分查找（升序数组查目标）/ 逆序 {1,2,3} → {3,2,1} /
-//       变换 ×2 / 计数出现次数 / 最大元素
-// 模块导入：导入 算法::排序整32 等（具体类型重载 + 比较内联，规避泛型+函数指针缺陷）
-// 实测边界（Task 6.7）：
-//   - 泛型函数 + 函数指针回调组合编译器暂不支持（单态化后签名不匹配）——
-//     排序/二分 用 整32/整64 具体类型重载；线性查找/计数/最大/逆序 泛型（无函数指针）正常
-//   - 静态数组 整32[6] 名退化传参正常
-// 打印语义（用户裁决）：打印=println（自动换行）
-
-导入 算法::排序整32;
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">导入 算法::排序整32;
 导入 算法::排序整64;
 导入 算法::线性查找;
 导入 算法::二分查找整32;
@@ -410,18 +377,7 @@
 <p><strong>前置条件：数组已升序</strong>。整64 版折半查找。</p>
 <table class="表 参数表"><thead><tr><th>参数</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>数组</code></td><td><code>整64*</code></td><td>已升序数组</td></tr><tr><td><code>长度</code></td><td><code>整64</code></td><td>元素个数</td></tr><tr><td><code>目标</code></td><td><code>整64</code></td><td>要找的值</td></tr></tbody></table>
 <p><strong>返回</strong>　命中下标；未找到 -1。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 算法库 E2E（Task 6.7，对标 C++ &lt;algorithm&gt;）
-// 覆盖：整32数组排序 {5,2,8,1,9,3} → 升序 / 线性查找（找到索引/找不到-1）/
-//       二分查找（升序数组查目标）/ 逆序 {1,2,3} → {3,2,1} /
-//       变换 ×2 / 计数出现次数 / 最大元素
-// 模块导入：导入 算法::排序整32 等（具体类型重载 + 比较内联，规避泛型+函数指针缺陷）
-// 实测边界（Task 6.7）：
-//   - 泛型函数 + 函数指针回调组合编译器暂不支持（单态化后签名不匹配）——
-//     排序/二分 用 整32/整64 具体类型重载；线性查找/计数/最大/逆序 泛型（无函数指针）正常
-//   - 静态数组 整32[6] 名退化传参正常
-// 打印语义（用户裁决）：打印=println（自动换行）
-
-导入 算法::排序整32;
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">导入 算法::排序整32;
 导入 算法::排序整64;
 导入 算法::线性查找;
 导入 算法::二分查找整32;
@@ -512,18 +468,7 @@
 <p class="函数定义"><code>泛型 &lt;类型 T&gt; 不安全 函数 逆序(T* 数组, 整64 长度) -> 空类型</code></p>
 <p>原地反转（首尾双指针交换）。</p>
 <table class="表 参数表"><thead><tr><th>参数</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>数组</code></td><td><code>T*</code></td><td>数组首地址</td></tr><tr><td><code>长度</code></td><td><code>整64</code></td><td>元素个数</td></tr></tbody></table>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 算法库 E2E（Task 6.7，对标 C++ &lt;algorithm&gt;）
-// 覆盖：整32数组排序 {5,2,8,1,9,3} → 升序 / 线性查找（找到索引/找不到-1）/
-//       二分查找（升序数组查目标）/ 逆序 {1,2,3} → {3,2,1} /
-//       变换 ×2 / 计数出现次数 / 最大元素
-// 模块导入：导入 算法::排序整32 等（具体类型重载 + 比较内联，规避泛型+函数指针缺陷）
-// 实测边界（Task 6.7）：
-//   - 泛型函数 + 函数指针回调组合编译器暂不支持（单态化后签名不匹配）——
-//     排序/二分 用 整32/整64 具体类型重载；线性查找/计数/最大/逆序 泛型（无函数指针）正常
-//   - 静态数组 整32[6] 名退化传参正常
-// 打印语义（用户裁决）：打印=println（自动换行）
-
-导入 算法::排序整32;
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">导入 算法::排序整32;
 导入 算法::排序整64;
 导入 算法::线性查找;
 导入 算法::二分查找整32;
@@ -614,18 +559,7 @@
 <p class="函数定义"><code>不安全 函数 变换整32(整32* 数组, 整64 长度) -> 空类型</code></p>
 <p>原地变换：每个元素翻倍（<code>数组[i] = 数组[i] * 2</code>）。</p>
 <table class="表 参数表"><thead><tr><th>参数</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>数组</code></td><td><code>整32*</code></td><td>数组首地址</td></tr><tr><td><code>长度</code></td><td><code>整64</code></td><td>元素个数</td></tr></tbody></table>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 算法库 E2E（Task 6.7，对标 C++ &lt;algorithm&gt;）
-// 覆盖：整32数组排序 {5,2,8,1,9,3} → 升序 / 线性查找（找到索引/找不到-1）/
-//       二分查找（升序数组查目标）/ 逆序 {1,2,3} → {3,2,1} /
-//       变换 ×2 / 计数出现次数 / 最大元素
-// 模块导入：导入 算法::排序整32 等（具体类型重载 + 比较内联，规避泛型+函数指针缺陷）
-// 实测边界（Task 6.7）：
-//   - 泛型函数 + 函数指针回调组合编译器暂不支持（单态化后签名不匹配）——
-//     排序/二分 用 整32/整64 具体类型重载；线性查找/计数/最大/逆序 泛型（无函数指针）正常
-//   - 静态数组 整32[6] 名退化传参正常
-// 打印语义（用户裁决）：打印=println（自动换行）
-
-导入 算法::排序整32;
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">导入 算法::排序整32;
 导入 算法::排序整64;
 导入 算法::线性查找;
 导入 算法::二分查找整32;
@@ -716,18 +650,7 @@
 <p class="函数定义"><code>不安全 函数 变换整64(整64* 数组, 整64 长度) -> 空类型</code></p>
 <p>原地变换：整64 版逐元素翻倍。</p>
 <table class="表 参数表"><thead><tr><th>参数</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>数组</code></td><td><code>整64*</code></td><td>数组首地址</td></tr><tr><td><code>长度</code></td><td><code>整64</code></td><td>元素个数</td></tr></tbody></table>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 算法库 E2E（Task 6.7，对标 C++ &lt;algorithm&gt;）
-// 覆盖：整32数组排序 {5,2,8,1,9,3} → 升序 / 线性查找（找到索引/找不到-1）/
-//       二分查找（升序数组查目标）/ 逆序 {1,2,3} → {3,2,1} /
-//       变换 ×2 / 计数出现次数 / 最大元素
-// 模块导入：导入 算法::排序整32 等（具体类型重载 + 比较内联，规避泛型+函数指针缺陷）
-// 实测边界（Task 6.7）：
-//   - 泛型函数 + 函数指针回调组合编译器暂不支持（单态化后签名不匹配）——
-//     排序/二分 用 整32/整64 具体类型重载；线性查找/计数/最大/逆序 泛型（无函数指针）正常
-//   - 静态数组 整32[6] 名退化传参正常
-// 打印语义（用户裁决）：打印=println（自动换行）
-
-导入 算法::排序整32;
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">导入 算法::排序整32;
 导入 算法::排序整64;
 导入 算法::线性查找;
 导入 算法::二分查找整32;
@@ -819,18 +742,7 @@
 <p>统计 目标 在数组中出现的次数。</p>
 <table class="表 参数表"><thead><tr><th>参数</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>数组</code></td><td><code>T*</code></td><td>数组首地址</td></tr><tr><td><code>长度</code></td><td><code>整64</code></td><td>元素个数</td></tr><tr><td><code>目标</code></td><td><code>T</code></td><td>要统计的值</td></tr></tbody></table>
 <p><strong>返回</strong>　出现次数。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 算法库 E2E（Task 6.7，对标 C++ &lt;algorithm&gt;）
-// 覆盖：整32数组排序 {5,2,8,1,9,3} → 升序 / 线性查找（找到索引/找不到-1）/
-//       二分查找（升序数组查目标）/ 逆序 {1,2,3} → {3,2,1} /
-//       变换 ×2 / 计数出现次数 / 最大元素
-// 模块导入：导入 算法::排序整32 等（具体类型重载 + 比较内联，规避泛型+函数指针缺陷）
-// 实测边界（Task 6.7）：
-//   - 泛型函数 + 函数指针回调组合编译器暂不支持（单态化后签名不匹配）——
-//     排序/二分 用 整32/整64 具体类型重载；线性查找/计数/最大/逆序 泛型（无函数指针）正常
-//   - 静态数组 整32[6] 名退化传参正常
-// 打印语义（用户裁决）：打印=println（自动换行）
-
-导入 算法::排序整32;
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">导入 算法::排序整32;
 导入 算法::排序整64;
 导入 算法::线性查找;
 导入 算法::二分查找整32;
@@ -922,18 +834,7 @@
 <p>返回数组中的最大值。<strong>空数组（长度 0）是未定义行为</strong>——调用方保证长度 ≥ 1。</p>
 <table class="表 参数表"><thead><tr><th>参数</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>数组</code></td><td><code>T*</code></td><td>数组首地址</td></tr><tr><td><code>长度</code></td><td><code>整64</code></td><td>元素个数（≥1）</td></tr></tbody></table>
 <p><strong>返回</strong>　最大元素。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 算法库 E2E（Task 6.7，对标 C++ &lt;algorithm&gt;）
-// 覆盖：整32数组排序 {5,2,8,1,9,3} → 升序 / 线性查找（找到索引/找不到-1）/
-//       二分查找（升序数组查目标）/ 逆序 {1,2,3} → {3,2,1} /
-//       变换 ×2 / 计数出现次数 / 最大元素
-// 模块导入：导入 算法::排序整32 等（具体类型重载 + 比较内联，规避泛型+函数指针缺陷）
-// 实测边界（Task 6.7）：
-//   - 泛型函数 + 函数指针回调组合编译器暂不支持（单态化后签名不匹配）——
-//     排序/二分 用 整32/整64 具体类型重载；线性查找/计数/最大/逆序 泛型（无函数指针）正常
-//   - 静态数组 整32[6] 名退化传参正常
-// 打印语义（用户裁决）：打印=println（自动换行）
-
-导入 算法::排序整32;
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">导入 算法::排序整32;
 导入 算法::排序整64;
 导入 算法::线性查找;
 导入 算法::二分查找整32;
@@ -1061,7 +962,7 @@
     </div>
     <div class="页脚-底">
       <span>© 2026 CN 语言项目</span>
-      <span>文档基线：任务/1295 1600fc3e5·2026-10-21·示例经编译器实测</span>
+      <span>文档基线：任务/1295 3270a3ba6·2026-10-21·示例经编译器实测</span>
       <span>京ICP备00000000号（备案办理中·占位）</span>
     </div>
   </div>

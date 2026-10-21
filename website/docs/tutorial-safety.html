@@ -46,11 +46,7 @@
 <p style="color: var(--color-fg-muted); font-size: var(--text-lg); line-height: 2;">结果与可选、所有权与转移、线程、互斥锁——CN 的安全模型不靠运行时罚站，靠编译器拦截。</p>
 <h2 id="结果">结果&lt;T, E&gt;：失败是类型的一部分</h2>
 <p>可能失败的函数返回 <code>结果&lt;T, 整32&gt;</code>；成功=<code>正常(值)</code>，失败=<code>错误(错误码)</code>。<strong>丢弃返回值不检查=编译错误</strong>——这是 CN 最重要的一条纪律。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 344：入口 主 返回 结果&lt;T,E&gt; 的退出码语义（plans/001 附录B 扩展·246-a 根治）——
-//   wrapper：正常→.值 截断为退出码、错误→.错误 码（用户裁决 2026-09-16·Rust
-//   Termination 同构）。本用例锚定正常路径：? 解包+wrapper 返回 正常(0)→rc=0。
-//   错误路径退出码手工探针回填：主 返回 错误(3) → 退出码=3。
-函数 工作(整32 模式) -&gt; 结果&lt;整32, 整32&gt; {
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">函数 工作(整32 模式) -&gt; 结果&lt;整32, 整32&gt; {
     如果 模式 == 0 {
         返回 正常(7);
     }
@@ -79,10 +75,7 @@
 <ul><li>标量（整数/浮点/布尔/字符）是复制语义，<code>转移</code> 对它们拒绝（无意义）。</li><li><code>复制(x)</code> 是显式深拷贝克隆（与 转移 构成复制/移动双内置）。</li><li>编译器还有<strong>最后使用消除</strong>：源变量在拷贝后不再使用时，自动降级为转移（零拷贝）——多数时候你不用手写 转移。</li></ul>
 <h2 id="借用">借用：引用参数与只读借用</h2>
 <p>不想转移也不想拷贝？<code>T&amp;</code> 可变借用（直写调用方）、<code>常量 T&amp;</code> 只读借用（体内禁止写）。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// E2E 200（宿主正测，2026-09-10 第五十九轮 plans/019 阶段3）：
-//   常量 只读引用参数（常量 T&amp; 名，Rust &amp;T 对标）——只读借用合法面：
-//   读值 / 只读→只读链传（常量引用传常量引用形参）。期望 stdout：42 / 42。
-函数 读数(常量 整64&amp; 值) -&gt; 整64 {
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">函数 读数(常量 整64&amp; 值) -&gt; 整64 {
     返回 值 * 2;
 }
 函数 借读(常量 整64&amp; 值) -&gt; 整64 {
@@ -113,19 +106,7 @@
     打印(字符串长度(借出));         // ✗ 编译错误：失效点之后仍被使用
     返回 0;
 }</code></pre></div>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// E2E 226（2026-09-12 第七十七轮，plans/020 移植纪律 9 第四个对照用例）：
-//   **双编译对照·借出视图合法形态**——同一源码宿主 / v2 两侧各编各跑，
-//   **退出码须一致=255**（八形态折校验和；宿主侧锚定用例期望值，v2 侧以
-//   宿主实测值为期望）。判据意义：借出视图生命周期检查在两侧落地后，
-//   **合法形态零误伤**须两侧同构（宿主 semantic_borrowview.cpp ↔ v2 语义/
-//   借出检查.cn）——任一侧过度拦截（含 NLL 活跃区间近似过宽/容器判定过宽）
-//   即该校验位丢失、退出码不同 → 对照失败。
-//   八形态（与 E2E 225 同源，折入退出码）：
-//     ①立即消费（借出不绑定）；②显式复制后容器修改；③借出→消费→修改；
-//     ④借出后修改不使用；⑤非字符串元素容器（向量&lt;整64&gt;，值语义非借用面）；
-//     ⑥结果变量消费在失效点之前；⑦扩容类修改点（追加）后借出仍有效；
-//     ⑧循环内每轮重新借出。校验和 255=①1+②2+③4+④8+⑤16+⑥32+⑦64+⑧128。
-导入 容器::向量;
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">导入 容器::向量;
 
 // ① 立即消费
 函数 形态一() -&gt; 整64 {
@@ -333,7 +314,7 @@
     </div>
     <div class="页脚-底">
       <span>© 2026 CN 语言项目</span>
-      <span>文档基线：任务/1295 1600fc3e5·2026-10-21·示例经编译器实测</span>
+      <span>文档基线：任务/1295 3270a3ba6·2026-10-21·示例经编译器实测</span>
       <span>京ICP备00000000号（备案办理中·占位）</span>
     </div>
   </div>

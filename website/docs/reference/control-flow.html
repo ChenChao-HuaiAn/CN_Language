@@ -45,12 +45,7 @@
 <h1>控制流</h1>
 <p style="color: var(--color-fg-muted); font-size: var(--text-lg); line-height: 2;">如果/当/循环/选择/遍历 的精确语义：括号可选、贯穿规则、中断绑定、确定初始化交互。</p>
 <h2 id="条件">如果 / 否则：括号可选</h2>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 309：编译期内建常量 调试模式（规格书 3.8，239-a）——普通 如果 语义：
-//   两分支都经过完整语义检查（与条件编译的本质差异）；未选分支由
-//   IR 常量条件直取消除（asm 互斥包含分支常量——收工回填手工实测：默认配置
-//   asm 仅含调试分支字符串、--release 配置 asm 仅含发布分支字符串，rc=0 双向正确）。
-// 本用例固化默认（调试构建）配置输出。
-函数 主() -&gt; 整32 {
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">函数 主() -&gt; 整32 {
     如果 (调试模式) {
         打印行("调试分支运行");
     } 否则 {
@@ -64,13 +59,7 @@
 <p class="输出行">输出：调试分支运行显式比较真: 命中</p>
 <div class="批注 批注-赭"><span class="批注-题">裸条件消歧条文</span>裸条件（无括号）的条件表达式内，<code>类型名{...}</code> 裸结构体初始化字面量=编译期拒绝（<code>{</code> 归条件后的语句块）；带括号条件不在此限。Rust 同款。</div>
 <h2 id="循环">当 / 循环：两种循环</h2>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// E2E 448（2026-09-18 第 357 轮·D39 根治门禁）：三段式循环 循环 (init; cond;
-//   step) { 体 } 全链（规范 plans/001 §3「循环头分号=三段分隔符」）——①基本
-//   累加与迭代序列 ②继续→step 语义（C for 同款：continue 先执行 step 再判
-//   cond）③中断提前退出 ④init 作用域（循环头声明随循环）⑤空 cond（恒真+
-//   中断退出）⑥赋值 step（i = i + 2）⑦嵌套（内外层继续/中断各自目标）⑧
-//   当式宽容（循环 (cond) { }=当语句别名）。双编译对照：宿主/v2 同源同测。
-函数 主() -&gt; 整32 {
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">函数 主() -&gt; 整32 {
     // ① 基本
     整32 总 = 0;
     循环 (整32 i = 0; i &lt; 5; i++) {
@@ -150,12 +139,7 @@
 1</p>
 <h2 id="选择">选择：贯穿语义与三种增强</h2>
 <p>分支体不写 <code>中断/返回</code> 自动<strong>贯穿</strong>下一分支（C 语义）；支持多值分组、字符串情况、裸枚举成员。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// E2E 757（496 撞号改号让位，原号 457；2026-09-19 第 434 轮·T65 424 死循环根治+C-4 多值情况标签）：
-//   规范 03 §270-271（C-4）：情况值, {",", 情况值}——「等价多个连续标签」。
-//   ①数值多值 ②字符多值（三值）③字符串多值（__cn_str_eq 路径）④默认回退
-//   ⑤单值回归（存量形态零扰动）。双编译对照：宿主/v2 同源同测。
-//   反证：原版 v2p 对 `情况 1, 2:` 死循环（424 立案·失控 34 分钟）。
-函数 主() -&gt; 整32 {
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">函数 主() -&gt; 整32 {
     // ① 数值多值（命中第二值）
     选择 (2) {
         情况 1, 2: 打印(100);
@@ -196,9 +180,7 @@
 900</p>
 <ul><li>上例 <code>情况 0:</code> 无 中断 → 贯穿进 <code>情况 1,2,3</code> 体（n=0 时 结果文 被覆盖为「小」）——C 贯穿语义原样。</li><li><code>中断</code> 绑定最近进入的 选择 或 循环；选择体内的 <code>继续</code> 绑定最近循环。</li><li>字符串情况可多值分组 <code>情况 "开始", "继续":</code>；枚举条件可裸写成员名（按条件类型定向解析）。</li><li>情况常量须在<strong>条件类型表示范围</strong>内（整8..整128/正族按各域、枚举与字符按整32存储域）；承载族按字面量后缀（无后缀=整128±2^127、正128后缀=2^128-1）；超域=编译期拒绝（用户令 #1076：字面量超出上下文类型表示范围即拒）。</li><li><code>枚举名::成员</code> 非法（<code>::</code> 保留给模块路径）。</li></ul>
 <h2 id="遍历">遍历…中每个：迭代协议</h2>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// E2E 97_遍历 表达式（P3-24）：遍历 造数据() 中 每个 x —— 迭代对象为函数调用临时值（类容器）
-// 设计：非名称式迭代对象先求值为隐藏临时变量，再经 大小()/元素() 遍历（求值一次）。
-导入 容器::向量;
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">导入 容器::向量;
 
 函数 造数据() -&gt; 向量&lt;整32&gt; {
     向量&lt;整32&gt; 数据 = 向量&lt;整32&gt;();
@@ -271,7 +253,7 @@ x: 30
     </div>
     <div class="页脚-底">
       <span>© 2026 CN 语言项目</span>
-      <span>文档基线：任务/1295 1600fc3e5·2026-10-21·示例经编译器实测</span>
+      <span>文档基线：任务/1295 3270a3ba6·2026-10-21·示例经编译器实测</span>
       <span>京ICP备00000000号（备案办理中·占位）</span>
     </div>
   </div>

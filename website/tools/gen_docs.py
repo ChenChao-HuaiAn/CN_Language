@@ -341,15 +341,30 @@ def 用例入口(目录):
     return 名, 期
 
 
+def 剥头部注释(源码):
+    """展示层剥离开头的连续整行注释与空行（1295）：E2E 用例的缺陷背景注释头
+    （轮次/任务号/期望说明等内部过程记录）不作官网教学展示；行内注释保留。
+    门禁文件本身不动——负测判定（用例校验）仍读原文件头。剥离后为空则回退原文。"""
+    行们 = 源码.splitlines()
+    i = 0
+    while i < len(行们):
+        s = 行们[i].lstrip("\ufeff").strip()   # lstrip BOM（部分旧用例文件头带 \ufeff）
+        if s and not s.startswith("//"):
+            break
+        i += 1
+    剩 = "\n".join(行们[i:]).strip("\n")
+    return 剩 if 剩.strip() else 源码
+
+
 def 用例资源(用例名):
-    """读引用用例的入口源码与期望输出（渲染用·显示即门禁文件）。"""
+    """读引用用例的入口源码与期望输出（渲染用·同一门禁文件派生·头部注释剥离）。"""
     目录 = 用例目录(用例名)
     源名, 期名 = 用例入口(目录)
     主 = os.path.join(目录, 源名)
     if not os.path.isfile(主):
         raise SystemExit("用例引用无效（缺 %s）：%s" % (源名, 用例名))
     with io.open(主, encoding="utf-8") as f:
-        源码 = f.read()
+        源码 = 剥头部注释(f.read())
     期 = os.path.join(目录, 期名)
     期望 = ""
     if os.path.isfile(期):

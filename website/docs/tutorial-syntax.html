@@ -46,9 +46,7 @@
 <p style="color: var(--color-fg-muted); font-size: var(--text-lg); line-height: 2;">变量、类型、运算符、控制流、函数、数组、字符串、结构体、枚举——写过程式 CN 的全部基础。</p>
 <h2 id="程序骨架">程序骨架与语句</h2>
 <p>CN 源文件 UTF-8 编码、<code>.cn</code> 扩展名；顶层由函数/结构体/枚举/类/接口/导入/全局变量声明组成；入口=名为 <code>主</code> 的函数。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">﻿// Hello World：CN语言第一个E2E测试用例
-// 入口函数 主 返回 整32，返回0表示成功（符合设计规格书入口约定）
-函数 主() -&gt; 整32 {
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">函数 主() -&gt; 整32 {
     打印("你好，世界");
     返回 0;
 }</code></pre></div>
@@ -56,10 +54,7 @@
 <div class="批注 "><span class="批注-题">分号是语句边界的唯一标记</span>与 C/Rust 同款：<strong>每条语句必须以分号 <code>;</code> 结束</strong>。换行在词法层只是空白——表达式可以任意换行续写，但行尾漏分号不会被「自动补分号」救回来，而是直接报语法错误。这避免了行尾/行首词法拼接类的事故。</div>
 <h2 id="变量">变量与常量</h2>
 <p>声明即初始化是 CN 的默认姿势——<strong>未初始化的局部值类型变量读取是编译错误</strong>（编译期数据流检查，零运行时成本）。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// E2E 360：变量声明（类型前置）形态边界（规格书 5.2）
-// 一炉覆盖：静态 显式类型（模块级）/常量 推断（顶层+局部）/变量 推断/
-// 显式位宽（整32、正16）/数组声明带初始化列表/循环 init 位声明。
-静态 整32 全局计 = 7;
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">静态 整32 全局计 = 7;
 常量 上限 = 100;
 
 函数 主() -&gt; 整32 {
@@ -79,9 +74,7 @@
 <p class="输出行">输出：合计: 23
 窄值: 5
 上限: 100</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// E2E 96_顶层常量表达式（P3-22）：顶层常量初始值支持常量表达式
-// （引用其他常量 + 整型算术 + 一元负；编译期折叠为值文本，引用处替换）
-常量 基础 = 10;
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">常量 基础 = 10;
 常量 增量 = 基础 + 5;
 常量 双倍 = 基础 * 2;
 常量 减半 = 双倍 / 4;
@@ -110,23 +103,7 @@
 <ul><li><code>常量</code> 值在编译期折叠进引用处，可为算术表达式（<code>常量 尺寸2 = 尺寸 * 2;</code>）。</li><li><code>静态</code> 变量生存期=整个进程；顶层静态无初值=零初始化放行，函数内静态<strong>必须显式初值</strong>（<code>静态 整32 槽;</code> 无初值=编译拒绝），写入须在 不安全 域。</li><li>未初始化读取（<code>整32 x; 打印(x);</code>）是编译错误——不会读到垃圾值。</li></ul>
 <h3 id="全局变量与静态变量">全局变量与静态变量</h3>
 <table class="表"><thead><tr><th>形态</th><th>默认可见性</th><th>初始化规则</th><th>写限制</th></tr></thead><tbody><tr><td><code>裸全局</code>（无 <code>静态</code> 前缀）</td><td>默认<strong>外部可见</strong>（跨模块无须 <code>公开:</code>）</td><td><strong>仅限常量表达式</strong>（字面量/常量引用/常量算术）——函数调用/构造调用=编译错误「初始值必须是常量表达式」</td><td>仅限 <code>不安全 函数</code> 体内</td></tr><tr><td><code>静态</code>（顶层）</td><td>文件私有（<code>公开:</code> 可放行）</td><td>常量=加载期直存；非常量=入口注入通道</td><td>同上</td></tr><tr><td><code>静态</code>（函数内）</td><td>函数内局部名</td><td>常量=加载期直存；非常量=<strong>声明点守卫快照</strong>（首调求值一次、再调不重初始化）</td><td>同上（初始化求值<strong>不属</strong>写执法面）</td></tr></tbody></table>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// E2E 888（569 甲案·2026-10-14 用户裁决「甲+配套」·001 §5.2a 立法锁面）：
-//   顶层裸全局变量声明全链——同一份源码宿主+v2p 各编各跑，退出码须一致。
-//   覆盖十形态：①字面量初始化 ②常量算术/常量引用初始化（d 款 constinit
-//   语义·防初始化顺序 fiasco）③无初始化器零初始化（.bss）④不安全 函数 内
-//   写（赋值/复合赋值/自增——§747 第 8 条「可变静态/全局变量写」执法面）
-//   ⑤跨文件访问（e 款：供给.cn 裸全局默认外部可见·无须 公开: 标签）
-//   ⑥别名关键字形态（整数=整32）⑦指针形态零初始化（`== 无` 空判锁 .bss
-//   零值）⑧数组形态（`整32[4]` 元素写读锁存储面）⑨泛型容器形态（728c 补锁
-//   `向量&lt;整32&gt;` 裸全局·声明即构造+追加/大小/元素 全链）⑩静态合成体形态
-//   （728c 补锁 `静态 结果&lt;整32,整32&gt;` 零值对象·正常=假语义双侧一致）。
-//   前四形态曾双侧分叉：宿主解析层拒「预期顶层声明」/v2 静默吞（asm 无全局
-//   符号）——双侧全链补实现。⑨泛型容器缺口（向量$整32$向量 构造符号供给）
-//   经 569 接棒修复顺带打通；⑩无初值静态合成体槽 0=空句柄崩（728c 根治：
-//   v2 零值对象注入·989 同构）——两形态本用例补锁（t1~t11 探针矩阵实证）。
-//   退出码 = 9 + 22 + 8 + 13 + 4 + 6 + 7 + 1 + 6 = 76
-//   （①9 ②22 ③⑩8 ⑤13 ⑥4 ⑧13 ⑨7=大小1+元素6）。
-导入 供给;
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">导入 供给;
 导入 容器::向量;
 
 常量 系数 = 10;
@@ -170,13 +147,7 @@
 }</code></pre></div>
 <p class="输出行">输出：[p6h] 已解析: target/audit2/v2src888/供给.cn
 [p6h] 已解析: target/audit2/v2src888/主.cn</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 1006（852 正例 dual·2026-10-16）：函数内静态初值引用局部名——守卫快照初始化双侧全链。
-// 病（843 呈报·852 根治）：①静态标量=局部名 v2 语义「未声明标识符」误拒（宿主绿 42）
-//   ②静态数组=局部数组 宿主走标量通道 Cast 截断基址只写 4 字节（乙[0]=地址低位·余垃圾）、
-//   v2 函数内静态数组下标读「下标对象须为字符串或指针」全拒。
-// 语义=001 §5.2a + 665 先例：首调经过声明点快照初始化（guard 一次性）·再调不重初始化。
-//   计次=665 既有面回归锚（静态写 不安全 执法 480·声明初值非写不受限·998 同）。
-不安全 函数 计次() -&gt; 整32 {
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">不安全 函数 计次() -&gt; 整32 {
     静态 整32 次 = 0;
     次 = 次 + 1;
     返回 次;
@@ -211,10 +182,7 @@
 <h2 id="基本类型">基本类型全景</h2>
 <p>整型 10 种（有符号/无符号 × 5 位宽）、浮点 2 种、布尔/字符/字符串，以及别名 <code>整数</code>=整32、<code>小数</code>=浮64。</p>
 <table class="表"><thead><tr><th>类别</th><th>类型</th><th>大小</th><th>范围/说明</th></tr></thead><tbody><tr><td>默认别名</td><td><code>整数</code> / <code>小数</code></td><td>4B / 8B</td><td>= 整32 / = 浮64（保留中文习惯的别名）</td></tr><tr><td>有符号整数</td><td><code>整8</code> <code>整16</code> <code>整32</code> <code>整64</code> <code>整128</code></td><td>1~16B</td><td>整8：-128~127 …… 整128：±2^127</td></tr><tr><td>无符号整数</td><td><code>正8</code> <code>正16</code> <code>正32</code> <code>正64</code> <code>正128</code></td><td>1~16B</td><td>正8：0~255 …… 正128：0~2^128-1</td></tr><tr><td>浮点</td><td><code>浮32</code> <code>浮64</code></td><td>4B / 8B</td><td>IEEE 754 单/双精度</td></tr><tr><td>其他</td><td><code>布尔</code> <code>字符</code> <code>字符串</code> <code>空类型</code></td><td>1B / 4B / - / -</td><td>真/假；Unicode 码点；UTF-8 拥有串；void</td></tr></tbody></table>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// E2E 359：整数字面量类型后缀与进制边界（规格书 4.3）
-// 后缀映射：L-&gt;整64、U-&gt;正32、UL-&gt;正64；进制：0x 十六进制、0b 二进制、
-// 0o 八进制——值语义逐项锚定。
-函数 主() -&gt; 整32 {
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">函数 主() -&gt; 整32 {
     打印("L: ", 100L);
     打印("U: ", 7U);
     打印("UL: ", 9UL);
@@ -232,12 +200,7 @@ oct: 15</p>
 <div class="批注 批注-赭"><span class="批注-题">窄类型的算术语义（资深提示）</span>同宽窄整数算术<strong>保持窄域</strong>（<code>整8 + 整8 = 整8</code>），溢出=错误码 8 确定性失败（127+1 运行时终止；需回绕语义用显式 <code>回绕加/回绕减/回绕乘</code>）；字面量向窄类型赋值做编译期值域检查（<code>整16 甲 = 40000;</code> 拒绝）。混合符号（整N × 正M）变量运算编译期拒绝、字面量豁免——详见<a href="reference/types.html">类型参考</a>。</div>
 <h2 id="类型转换">类型转换</h2>
 <p>宽化隐式进行；窄化/跨符号/浮整/指针↔整数一律显式 <code>类型名(表达式)</code>，语义=位模式变换（Rust <code>as</code> 同款）。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// E2E 193：混合符号显式转换正测（2026-09-10 第五十一轮 方案A，Rust 对齐）：
-//   192 负测的对偶——显式 类型名(表达式) 构造转换后语义正确 + 字面量豁免形态
-//   保留 + 同符号混合宽度宽化保留。五锚校验和（累计=29）：显式转换后比较
-//   （整64(小)&gt;负 真 +1 / 整64(小)&lt;负 假 +0）+ 字面量豁免（大&gt;100 真 +4 /
-//   负&lt;100 真 +8）+ 同符号宽化对照（小&lt;大 真 +16）。v2 侧同源用例=193_v2。
-函数 主() -&gt; 整32 {
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">函数 主() -&gt; 整32 {
     正32 小 = 4000000000;
     整64 负 = -1;
     正64 大 = 9223372036854775808;
@@ -256,16 +219,7 @@ oct: 15</p>
 <ul><li>升宽：有符号源符号扩展、无符号源零扩展。</li><li>同宽跨符号：位模式重解释（<code>整64(正64(2^63))</code> = -2^63）。</li><li>降宽：低位截断。</li><li>字符串拼接语境例外：<code>"编号-" + 7</code> 自动把数值转字符串（布尔转「真/假」），见<a href="#字符串">字符串</a>节。</li></ul>
 <h2 id="运算符">运算符与优先级</h2>
 <p>全套 C 风格运算符，13 级优先级；这里只讲 CN 有立法规矩的部分，完整优先级表见<a href="reference/lexical.html#优先级">词法参考</a>。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// Task 3.7 运算符重载 E2E 测试
-// 覆盖：双目运算符重载（+ 加法 / == 相等 / != 不等）、运算符重载返回类对象、
-//       运算符重载与普通方法混用、字符串 + 数值拼接不受用户重载影响
-// 语法依据（cn-language-spec 06-九）：函数 运算符X(参数) -&gt; 类型（成员函数）；
-//   双目运算符单参数（右操作数），左操作数为本类实例（this）；
-//   字符串 + 拼接由编译器隐式转换，不与用户重载冲突
-// 说明：单目运算符（- ! ~）IR 层未映射（operatorSymText 仅双目），E2E 只验证双目
-// 打印语义（用户裁决）：打印=println（自动换行）
-
-类 复数 {
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">类 复数 {
 公开:
     整32 实部;
     整32 虚部;
@@ -361,11 +315,7 @@ oct: 15</p>
 <ul><li><code>/</code> 对整数=截断除；<code>%</code> 取余（除零=运行时错误码 1，常量除零=编译错误）。</li><li>逻辑 <code>&amp;&amp;</code> <code>||</code> 短路；位运算只适用整型（浮点位运算编译拒绝）；<code>&gt;&gt;</code> 有符号=算术右移（符号扩展），无符号=逻辑右移；移位量超宽=确定性失败（常量=编译期硬错误，变量=错误码 8；取模用 <code>x &lt;&lt; (k % 位宽)</code> 显式写）。</li><li>后缀 <code>++/--</code> 表达式值=自增<strong>前</strong>原值；前缀=自增后新值。</li><li>三元 <code>条件 ? 真值 : 假值</code> 右结合、惰性求值。</li></ul>
 <h2 id="控制流">控制流：如果/当/循环/选择/遍历</h2>
 <p>条件括号可选（裸条件与带括号均合法）；<code>中断</code> 绑定最近的循环或选择；<code>选择</code> 默认贯穿（fall-through）、显式 <code>中断</code> 停住。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">﻿// 控制流E2E测试：覆盖 如果/否则/当/循环/选择/中断/继续 全组合
-// 注意：本文件为中文名（run_e2e.py 用 *.cn glob 遍历，支持中文文件名）
-// 入口函数 主 返回 整32，返回0表示成功
-
-函数 主() -&gt; 整32 {
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">函数 主() -&gt; 整32 {
     // ---- 1. 如果/否则 链 ----
     整数 x = 5;
     如果 (x &gt; 10) {
@@ -479,15 +429,7 @@ B
 嵌套
 fall1
 fall2</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// E2E 63_pattern_match：模式匹配增强（C-4，2026-08）
-// 覆盖：字符串选择（情况 "字面量"）、多值情况标签（情况 1, 2:）、
-//   裸枚举成员名（情况 红:，按 选择 条件枚举类型定向解析）、
-//   限定枚举成员（情况 颜色.蓝:）、字符串选择 + 多值组合、默认分支
-// 语法依据：C-4 选择 增强（值匹配；对标 Rust match）——
-//   选择 表达式须为 整数/字符/字符串/枚举；情况 值为 常量/字符串/枚举成员；
-//   分支以 中断 结束（C fallthrough 语义，多值标签的前序标签体为空自动落入组）
-
-枚举 颜色 {
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">枚举 颜色 {
     红,
     绿,
     蓝,
@@ -589,14 +531,7 @@ fall2</p>
 自定义色
 键: 甲乙组
 ===== 模式匹配测试完成 =====</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// E2E 61_range_for：遍历...中每个 迭代语句（C-2，2026-08）
-// 覆盖：数组迭代（值拷贝）、向量&lt;T&gt; 迭代（大小()/元素() 降级）、
-//   迭代变量累加、继续 跳过、中断 提前退出、嵌套迭代（二维数组）、
-//   结构体字段数组迭代、向量&lt;字符串&gt; 迭代
-// 语法依据：C-2（对标 C++ range-for / Python for-in）——
-//   遍历 容器 中 每个 元素 { 循环体 }；数组 -&gt; 下标遍历；类容器 -&gt; 大小()/元素(整64)
-
-导入 容器::向量;
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">导入 容器::向量;
 
 结构体 班级 {
     整32[3] 成绩;
@@ -706,12 +641,7 @@ fall2</p>
 <div class="批注 批注-赭"><span class="批注-题">中断 的绑定规则</span><code>中断</code> 跳出<strong>最近进入</strong>的一层 选择 或 循环（谁近绑谁，与 C 的 break 一致）：循环内选择体写 <code>中断</code> 只跳出该选择，循环继续；从选择内直接跳出外层循环无直接语法。<code>继续</code> 仅对循环有意义。</div>
 <h2 id="函数">函数：重载、默认参数、引用参数</h2>
 <p>函数是first-class公民：同名重载按参数类型区分、默认参数从右向左连续、<code>T&amp;</code> 引用参数直写调用方、泛型函数编译期单态化。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">﻿// 函数E2E测试：覆盖 函数原型声明（前向引用）/ 递归调用 / 函数指针（声明/赋值/调用）
-// 注意：本文件为中文名（run_e2e.py 用 *.cn glob 遍历，支持中文文件名）
-// 入口函数 主 返回 整32，返回0表示成功
-
-// ---- 1. 函数原型声明（前向引用）：声明在调用之前，定义在调用之后 ----
-函数 计算(整32 n) -&gt; 整32
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">函数 计算(整32 n) -&gt; 整32
 
 函数 使用前向() -&gt; 整32 {
     返回 计算(10);   // 调用时 计算 仅有原型声明，定义在文件末尾
@@ -781,12 +711,7 @@ fall2</p>
 函数指针作参数: 执行(回调, 100, 40)=
 60</p>
 <div class="批注 批注-赭"><span class="批注-题">按值传参的两种语义（资深提示）</span>标量/结构体按值形参=<strong>副本语义</strong>（体内写不影响实参）；<strong>类类型按值形参=引用语义</strong>（形参槽存对象句柄，体内经句柄写穿调用方同一堆对象——类变量即指针槽模型）。要与「副本语义」写类，传前显式 <code>复制(对象)</code>。详见<a href="reference/functions.html#传参">函数参考</a>。</div>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 453 泛型函数声明形态（417-a D42 波 3 前置件①防线·双编译对照）
-// 覆盖：泛型 &lt;类型 T&gt; 函数 名(参数...) 声明解析（规范 06-十三 函数分支·
-//       stdlib 容器/映射集合 线性表辅助同款形态）+ 泛型类并存
-// 边界（诚实边界·随轮登记）：显式实例化调用（名&lt;实参&gt;(...)）的单态化生成
-//       与调用点解析=波 3 主件（418+ 轮）——本用例锁定声明形态不回归
-泛型 &lt;类型 T&gt;
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">泛型 &lt;类型 T&gt;
 类 盒子 {
 私有:
     T 数据;
@@ -821,13 +746,7 @@ fall2</p>
 }</code></pre></div>
 <h2 id="数组">数组：定长、值语义、编译期长度</h2>
 <p>数组=<code>类型[长度]</code>，长度可为编译期常量表达式；整体赋值=整块值拷贝（两态独立）；越界=运行时错误（错误码 2）。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">﻿// 数组与指针E2E测试（Task 2.4）
-// 覆盖：数组声明/初始化/下标读写、部分初始化补零、指针取地址/解引用/算术/遍历、
-//       数组名退化、指针比较、空指针、空类型*转换
-// 注意：数组语法为 类型[长度] 名（规格书3.5）；指针语法为 类型* 名
-// 越界(错误码2)/空指针解引用(错误码3)验证见 越界.cn / 空指针.cn（冒烟验证）
-
-不安全 函数 主() -&gt; 整32 {
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">不安全 函数 主() -&gt; 整32 {
     // ---- 1. 数组声明与初始化 ----
     整32[5] 数据 = { 1, 2, 3, 4, 5 };
     打印("数组[2]: ");
@@ -937,10 +856,7 @@ r &lt; s
 <ul><li>下标从 0 起；越界读/写=运行时错误 <code>错误码2 越界</code> 终止。</li><li>数组作为实参传给函数=按值整块拷贝（形参内改不影响实参）；要原地改用 <code>T*</code> 或 <code>T&amp;</code> 形参。</li><li>定长数组之外，动态容器用标准库 <a href="stdlib/container.html">向量&lt;T&gt;</a>。</li></ul>
 <h2 id="字符串">字符串：拥有型 UTF-8</h2>
 <p>字符串变量=<strong>拥有型</strong>（堆上 UTF-8，作用域结束自动释放）；<code>+</code> 拼接（右侧数值自动转字符串）；<code>s[i]</code> 按<strong>字节</strong>读（UTF-8）；写入不可（不可变类型）。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">﻿// Task 2.5 字符串系统 E2E 测试
-// 覆盖：普通/原始/多行/原始多行字符串字面量、字符串变量、字符* 变量、
-//       + 连接、字符串↔字符* 转换、字符串 API（长度/比较/查找/复制）、打印行多参数
-函数 主() -&gt; 整32 {
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">函数 主() -&gt; 整32 {
     // 1. 普通字符串与转义
     打印("你好");                          // 你好
     打印("带制表\t符");                     // 带制表	符（\t 转义为制表符）
@@ -1028,16 +944,7 @@ A\nB
 <ul><li>长度/查找/子串/下标全部按 <strong>UTF-8 字节</strong> 口径（一个汉字 3 字节）——<code>字符串长度("中")</code> = 3。</li><li><code>s[i]</code> 返回 <code>整8</code>（带符号字节）；字符串<strong>不可原地下标写</strong>（编译拒绝）——修改=用内置函数重建新串。</li><li>完整的字符串函数族（20 个内置）见<a href="stdlib/builtin.html#字符串内置">内置函数·字符串族</a>。</li></ul>
 <h2 id="结构体">结构体：值聚合与指定初始化器</h2>
 <p>结构体是纯值聚合（无方法）；用 <code>类型{字段=值}</code> 指定初始化器构造——<strong>穷举纪律</strong>：缺字段/未知字段/重复字段=编译错误。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">﻿// Task 完善A：结构体按值传参/返回 与 结构体整体赋值 E2E 测试
-// 覆盖：
-//   1. 小结构体（≤8字节：2×整32）按值传参/返回（寄存器传递）
-//   2. 大结构体（&gt;8字节）按值传参/返回（调用方栈上分配+传指针 / 返回缓冲）
-//   3. 结构体整体赋值（b = a；含数组字段结构体；链式赋值；修改后重新赋值）
-//   4. 结构体数组元素作为参数
-// 语法依据（cn-language-spec 05 + 规格书8.1 Win x64 调用约定）：
-//   结构体按值传参/返回，≤8字节走寄存器、&gt;8字节调用方栈分配传指针（规格书8.1）
-
-结构体 点对 {
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">结构体 点对 {
     整32 x;
     整32 y;
 }
@@ -1268,7 +1175,7 @@ A\nB
     </div>
     <div class="页脚-底">
       <span>© 2026 CN 语言项目</span>
-      <span>文档基线：任务/1295 1600fc3e5·2026-10-21·示例经编译器实测</span>
+      <span>文档基线：任务/1295 3270a3ba6·2026-10-21·示例经编译器实测</span>
       <span>京ICP备00000000号（备案办理中·占位）</span>
     </div>
   </div>

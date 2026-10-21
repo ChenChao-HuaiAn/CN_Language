@@ -65,20 +65,7 @@
 <p class="函数定义"><code>函数 参数个数() -> 整32</code></p>
 <p>命令行参数个数，<strong>含程序名本身</strong>（对标 <code>argv[0]</code>），至少为 1。</p>
 <p><strong>返回</strong>　参数个数（整32）。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 系统库 E2E（Task 6.5，规格书10.4 命令行参数；对标 C++ argv）
-// 覆盖：参数个数（含可执行文件名本身）/ 参数按索引取 argv
-// 调用方式：直接调用系统库内置函数（系统::参数个数/系统::参数，全局注册、无需导入），
-//   由编译器 IR 层映射到运行时 __cn_argc/__cn_argv（system_api.cpp）
-//   ——与 stdlib/系统.cn 模块封装同名（25_math 数学库同模式：E2E 直接验证内置）
-// 命令行参数注入：run_e2e.py 检测同名 主.args 文件（每行一个参数，首行=argv[1]；
-//   argv[0] 恒为可执行文件名本身）——本用例参数：
-//     hello
-//     CN语言
-//   → argc=3（argv[0]=可执行文件名、argv[1]=hello、argv[2]=CN语言）
-// 打印语义（用户裁决）：打印=println（自动换行）
-// 注意：参数字符串由运行时（CRT）持有，不得 字符串释放
-
-函数 主() -&gt; 整32 {
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">函数 主() -&gt; 整32 {
     打印("===== 系统库（Task 6.5）=====");
 
     // ==================== 1. 参数个数（含可执行文件名本身） ====================
@@ -138,20 +125,7 @@ argv[2]: CN语言
 <p>按索引取参数字符串。<code>参数(0)</code> = 程序名。越界返回 <code>错误(6)</code>。返回的字符串为拥有型（内部已复制落堆，RAII 自动释放）。</p>
 <table class="表 参数表"><thead><tr><th>参数</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>索引</code></td><td><code>整32</code></td><td>参数下标（0=程序名）</td></tr></tbody></table>
 <p><strong>返回</strong>　<code>正常(参数串)</code>；越界 → <code>错误(6)</code>。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 系统库 E2E（Task 6.5，规格书10.4 命令行参数；对标 C++ argv）
-// 覆盖：参数个数（含可执行文件名本身）/ 参数按索引取 argv
-// 调用方式：直接调用系统库内置函数（系统::参数个数/系统::参数，全局注册、无需导入），
-//   由编译器 IR 层映射到运行时 __cn_argc/__cn_argv（system_api.cpp）
-//   ——与 stdlib/系统.cn 模块封装同名（25_math 数学库同模式：E2E 直接验证内置）
-// 命令行参数注入：run_e2e.py 检测同名 主.args 文件（每行一个参数，首行=argv[1]；
-//   argv[0] 恒为可执行文件名本身）——本用例参数：
-//     hello
-//     CN语言
-//   → argc=3（argv[0]=可执行文件名、argv[1]=hello、argv[2]=CN语言）
-// 打印语义（用户裁决）：打印=println（自动换行）
-// 注意：参数字符串由运行时（CRT）持有，不得 字符串释放
-
-函数 主() -&gt; 整32 {
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">函数 主() -&gt; 整32 {
     打印("===== 系统库（Task 6.5）=====");
 
     // ==================== 1. 参数个数（含可执行文件名本身） ====================
@@ -247,7 +221,7 @@ argv[2]: CN语言
     </div>
     <div class="页脚-底">
       <span>© 2026 CN 语言项目</span>
-      <span>文档基线：任务/1295 1600fc3e5·2026-10-21·示例经编译器实测</span>
+      <span>文档基线：任务/1295 3270a3ba6·2026-10-21·示例经编译器实测</span>
       <span>京ICP备00000000号（备案办理中·占位）</span>
     </div>
   </div>

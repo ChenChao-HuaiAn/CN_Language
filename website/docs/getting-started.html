@@ -61,9 +61,7 @@ cmake --build build -j
 <div class="批注 批注-绿"><span class="批注-题">三平台支持</span>编译器可<strong>生成</strong>三种目标平台的代码：win-x64（MASM）、linux-x86_64（GAS）、linux-arm64（GAS）——用 <code>--target</code> 选择（详见<a href="cli.html">命令行参考</a>）。编译器本身目前主要在 Windows 与 Linux x86_64 上运行。</div>
 <h2 id="第一个程序">第二步：Hello World</h2>
 <p>CN 的源文件以 <code>.cn</code> 为扩展名，UTF-8 编码。程序入口是 <code>主</code> 函数。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">﻿// Hello World：CN语言第一个E2E测试用例
-// 入口函数 主 返回 整32，返回0表示成功（符合设计规格书入口约定）
-函数 主() -&gt; 整32 {
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">函数 主() -&gt; 整32 {
     打印("你好，世界");
     返回 0;
 }</code></pre></div>
@@ -80,11 +78,7 @@ cn build 你好.cn -O2          :: 开优化（-O0 ~ -O3）</code></pre></div>
 <div class="批注 批注-绿"><span class="批注-题">标准库在哪？</span>编译器按可执行文件位置自动探测内置 <code>stdlib/</code> 目录（与仓库同构部署即可）；特殊布局用 <code>--stdlib 路径</code> 指定。标准库的 187 个 API 全部有逐函数文档：见<a href="stdlib.html">标准库</a>。</div>
 <h2 id="第一个实战">第四步：稍大一点的程序</h2>
 <p>一个猜数小游戏，串起输入、循环、条件、类型转换与结果检查——这些都是日常写 CN 的核心动作。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 394_双编译stdlib随机数兜底（276-a D29①验收）：
-//   纯 stdlib 依赖形态——用例目录不含 随机数.cn，宿主/v2 两侧均须走
-//   「stdlib 兜底」加载 stdlib/随机数.cn（宿主 driver 候选4 既有；
-//   v2p 276-a 新增同款候选4）。断言面全为确定性（同种子序列一致+范围界内）。
-导入 随机数::随机数生成器;
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">导入 随机数::随机数生成器;
 函数 主() -&gt; 整32 {
     随机数生成器 甲 = 随机数生成器(42);
     随机数生成器 乙 = 随机数生成器(42);
@@ -145,7 +139,7 @@ cn build 你好.cn -O2          :: 开优化（-O0 ~ -O3）</code></pre></div>
     </div>
     <div class="页脚-底">
       <span>© 2026 CN 语言项目</span>
-      <span>文档基线：任务/1295 1600fc3e5·2026-10-21·示例经编译器实测</span>
+      <span>文档基线：任务/1295 3270a3ba6·2026-10-21·示例经编译器实测</span>
       <span>京ICP备00000000号（备案办理中·占位）</span>
     </div>
   </div>

@@ -72,19 +72,7 @@
 <p>算术平方根；负值返回 NaN（硬件语义）。</p>
 <table class="表 参数表"><thead><tr><th>参数</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>值</code></td><td><code>浮64</code></td><td>非负实数</td></tr></tbody></table>
 <p><strong>返回</strong>　√值。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 数学库 E2E（Task 6.3，规格书10.5 数学库）
-// 覆盖：8 个数学库内置函数（数学::平方根/幂/正弦/余弦/正切/绝对值/向上取整/向下取整）
-//   ——内置函数全局注册（无需导入即可调用），由编译器 IR 层映射到运行时
-//   __cn_sqrt/__cn_pow/__cn_sin/__cn_cos/__cn_tan/__cn_fabs/__cn_ceil/__cn_floor
-// 验证值：
-//   平方根(9.0)=3.0、幂(2.0,3.0)=8.0、正弦(0)=0、余弦(0)=1、
-//   正切(0)=0、绝对值(-5.5)=5.5、向上取整(3.2)=4.0、向下取整(3.8)=3.0
-// 打印浮点默认 %f 6 位小数（expected 文件按此匹配）
-// 说明：stdlib/数学.cn 为 CN 层标准库模块（公开同名函数封装）；本 E2E 直接验证
-//   内置函数端到端（避免模块函数体内 数学::xxx 与内置限定名递归冲突——
-//   模块函数与同名内置共存时以用户模块函数优先，见 stdlib/数学.cn 头注释）
-
-函数 主() -&gt; 整32 {
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">函数 主() -&gt; 整32 {
     打印("===== 数学库（Task 6.3）=====");
 
     // ---- 1. 平方根 ----
@@ -145,19 +133,7 @@
 <p>底数的指数次幂。</p>
 <table class="表 参数表"><thead><tr><th>参数</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>底数</code></td><td><code>浮64</code></td><td>底数</td></tr><tr><td><code>指数</code></td><td><code>浮64</code></td><td>指数</td></tr></tbody></table>
 <p><strong>返回</strong>　底数^指数。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 数学库 E2E（Task 6.3，规格书10.5 数学库）
-// 覆盖：8 个数学库内置函数（数学::平方根/幂/正弦/余弦/正切/绝对值/向上取整/向下取整）
-//   ——内置函数全局注册（无需导入即可调用），由编译器 IR 层映射到运行时
-//   __cn_sqrt/__cn_pow/__cn_sin/__cn_cos/__cn_tan/__cn_fabs/__cn_ceil/__cn_floor
-// 验证值：
-//   平方根(9.0)=3.0、幂(2.0,3.0)=8.0、正弦(0)=0、余弦(0)=1、
-//   正切(0)=0、绝对值(-5.5)=5.5、向上取整(3.2)=4.0、向下取整(3.8)=3.0
-// 打印浮点默认 %f 6 位小数（expected 文件按此匹配）
-// 说明：stdlib/数学.cn 为 CN 层标准库模块（公开同名函数封装）；本 E2E 直接验证
-//   内置函数端到端（避免模块函数体内 数学::xxx 与内置限定名递归冲突——
-//   模块函数与同名内置共存时以用户模块函数优先，见 stdlib/数学.cn 头注释）
-
-函数 主() -&gt; 整32 {
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">函数 主() -&gt; 整32 {
     打印("===== 数学库（Task 6.3）=====");
 
     // ---- 1. 平方根 ----
@@ -217,19 +193,7 @@
 <p class="函数定义"><code>函数 正弦(浮64 弧度) -> 浮64</code></p>
 <p>正弦函数（弧度制）。</p>
 <table class="表 参数表"><thead><tr><th>参数</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>弧度</code></td><td><code>浮64</code></td><td>弧度值</td></tr></tbody></table>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 数学库 E2E（Task 6.3，规格书10.5 数学库）
-// 覆盖：8 个数学库内置函数（数学::平方根/幂/正弦/余弦/正切/绝对值/向上取整/向下取整）
-//   ——内置函数全局注册（无需导入即可调用），由编译器 IR 层映射到运行时
-//   __cn_sqrt/__cn_pow/__cn_sin/__cn_cos/__cn_tan/__cn_fabs/__cn_ceil/__cn_floor
-// 验证值：
-//   平方根(9.0)=3.0、幂(2.0,3.0)=8.0、正弦(0)=0、余弦(0)=1、
-//   正切(0)=0、绝对值(-5.5)=5.5、向上取整(3.2)=4.0、向下取整(3.8)=3.0
-// 打印浮点默认 %f 6 位小数（expected 文件按此匹配）
-// 说明：stdlib/数学.cn 为 CN 层标准库模块（公开同名函数封装）；本 E2E 直接验证
-//   内置函数端到端（避免模块函数体内 数学::xxx 与内置限定名递归冲突——
-//   模块函数与同名内置共存时以用户模块函数优先，见 stdlib/数学.cn 头注释）
-
-函数 主() -&gt; 整32 {
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">函数 主() -&gt; 整32 {
     打印("===== 数学库（Task 6.3）=====");
 
     // ---- 1. 平方根 ----
@@ -289,19 +253,7 @@
 <p class="函数定义"><code>函数 余弦(浮64 弧度) -> 浮64</code></p>
 <p>余弦函数（弧度制）。</p>
 <table class="表 参数表"><thead><tr><th>参数</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>弧度</code></td><td><code>浮64</code></td><td>弧度值</td></tr></tbody></table>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 数学库 E2E（Task 6.3，规格书10.5 数学库）
-// 覆盖：8 个数学库内置函数（数学::平方根/幂/正弦/余弦/正切/绝对值/向上取整/向下取整）
-//   ——内置函数全局注册（无需导入即可调用），由编译器 IR 层映射到运行时
-//   __cn_sqrt/__cn_pow/__cn_sin/__cn_cos/__cn_tan/__cn_fabs/__cn_ceil/__cn_floor
-// 验证值：
-//   平方根(9.0)=3.0、幂(2.0,3.0)=8.0、正弦(0)=0、余弦(0)=1、
-//   正切(0)=0、绝对值(-5.5)=5.5、向上取整(3.2)=4.0、向下取整(3.8)=3.0
-// 打印浮点默认 %f 6 位小数（expected 文件按此匹配）
-// 说明：stdlib/数学.cn 为 CN 层标准库模块（公开同名函数封装）；本 E2E 直接验证
-//   内置函数端到端（避免模块函数体内 数学::xxx 与内置限定名递归冲突——
-//   模块函数与同名内置共存时以用户模块函数优先，见 stdlib/数学.cn 头注释）
-
-函数 主() -&gt; 整32 {
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">函数 主() -&gt; 整32 {
     打印("===== 数学库（Task 6.3）=====");
 
     // ---- 1. 平方根 ----
@@ -361,19 +313,7 @@
 <p class="函数定义"><code>函数 正切(浮64 弧度) -> 浮64</code></p>
 <p>正切函数（弧度制）。</p>
 <table class="表 参数表"><thead><tr><th>参数</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>弧度</code></td><td><code>浮64</code></td><td>弧度值</td></tr></tbody></table>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 数学库 E2E（Task 6.3，规格书10.5 数学库）
-// 覆盖：8 个数学库内置函数（数学::平方根/幂/正弦/余弦/正切/绝对值/向上取整/向下取整）
-//   ——内置函数全局注册（无需导入即可调用），由编译器 IR 层映射到运行时
-//   __cn_sqrt/__cn_pow/__cn_sin/__cn_cos/__cn_tan/__cn_fabs/__cn_ceil/__cn_floor
-// 验证值：
-//   平方根(9.0)=3.0、幂(2.0,3.0)=8.0、正弦(0)=0、余弦(0)=1、
-//   正切(0)=0、绝对值(-5.5)=5.5、向上取整(3.2)=4.0、向下取整(3.8)=3.0
-// 打印浮点默认 %f 6 位小数（expected 文件按此匹配）
-// 说明：stdlib/数学.cn 为 CN 层标准库模块（公开同名函数封装）；本 E2E 直接验证
-//   内置函数端到端（避免模块函数体内 数学::xxx 与内置限定名递归冲突——
-//   模块函数与同名内置共存时以用户模块函数优先，见 stdlib/数学.cn 头注释）
-
-函数 主() -&gt; 整32 {
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">函数 主() -&gt; 整32 {
     打印("===== 数学库（Task 6.3）=====");
 
     // ---- 1. 平方根 ----
@@ -433,19 +373,7 @@
 <p class="函数定义"><code>函数 绝对值(浮64 值) -> 浮64</code></p>
 <p>浮点绝对值。</p>
 <table class="表 参数表"><thead><tr><th>参数</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>值</code></td><td><code>浮64</code></td><td>任意浮点</td></tr></tbody></table>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 数学库 E2E（Task 6.3，规格书10.5 数学库）
-// 覆盖：8 个数学库内置函数（数学::平方根/幂/正弦/余弦/正切/绝对值/向上取整/向下取整）
-//   ——内置函数全局注册（无需导入即可调用），由编译器 IR 层映射到运行时
-//   __cn_sqrt/__cn_pow/__cn_sin/__cn_cos/__cn_tan/__cn_fabs/__cn_ceil/__cn_floor
-// 验证值：
-//   平方根(9.0)=3.0、幂(2.0,3.0)=8.0、正弦(0)=0、余弦(0)=1、
-//   正切(0)=0、绝对值(-5.5)=5.5、向上取整(3.2)=4.0、向下取整(3.8)=3.0
-// 打印浮点默认 %f 6 位小数（expected 文件按此匹配）
-// 说明：stdlib/数学.cn 为 CN 层标准库模块（公开同名函数封装）；本 E2E 直接验证
-//   内置函数端到端（避免模块函数体内 数学::xxx 与内置限定名递归冲突——
-//   模块函数与同名内置共存时以用户模块函数优先，见 stdlib/数学.cn 头注释）
-
-函数 主() -&gt; 整32 {
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">函数 主() -&gt; 整32 {
     打印("===== 数学库（Task 6.3）=====");
 
     // ---- 1. 平方根 ----
@@ -505,19 +433,7 @@
 <p class="函数定义"><code>函数 向上取整(浮64 值) -> 浮64</code></p>
 <p>向上取整（天花板）：不小于 值 的最小整数（仍为浮64 类型）。</p>
 <table class="表 参数表"><thead><tr><th>参数</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>值</code></td><td><code>浮64</code></td><td>任意浮点</td></tr></tbody></table>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 数学库 E2E（Task 6.3，规格书10.5 数学库）
-// 覆盖：8 个数学库内置函数（数学::平方根/幂/正弦/余弦/正切/绝对值/向上取整/向下取整）
-//   ——内置函数全局注册（无需导入即可调用），由编译器 IR 层映射到运行时
-//   __cn_sqrt/__cn_pow/__cn_sin/__cn_cos/__cn_tan/__cn_fabs/__cn_ceil/__cn_floor
-// 验证值：
-//   平方根(9.0)=3.0、幂(2.0,3.0)=8.0、正弦(0)=0、余弦(0)=1、
-//   正切(0)=0、绝对值(-5.5)=5.5、向上取整(3.2)=4.0、向下取整(3.8)=3.0
-// 打印浮点默认 %f 6 位小数（expected 文件按此匹配）
-// 说明：stdlib/数学.cn 为 CN 层标准库模块（公开同名函数封装）；本 E2E 直接验证
-//   内置函数端到端（避免模块函数体内 数学::xxx 与内置限定名递归冲突——
-//   模块函数与同名内置共存时以用户模块函数优先，见 stdlib/数学.cn 头注释）
-
-函数 主() -&gt; 整32 {
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">函数 主() -&gt; 整32 {
     打印("===== 数学库（Task 6.3）=====");
 
     // ---- 1. 平方根 ----
@@ -577,19 +493,7 @@
 <p class="函数定义"><code>函数 向下取整(浮64 值) -> 浮64</code></p>
 <p>向下取整（地板）：不大于 值 的最大整数（仍为浮64 类型）。</p>
 <table class="表 参数表"><thead><tr><th>参数</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>值</code></td><td><code>浮64</code></td><td>任意浮点</td></tr></tbody></table>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 数学库 E2E（Task 6.3，规格书10.5 数学库）
-// 覆盖：8 个数学库内置函数（数学::平方根/幂/正弦/余弦/正切/绝对值/向上取整/向下取整）
-//   ——内置函数全局注册（无需导入即可调用），由编译器 IR 层映射到运行时
-//   __cn_sqrt/__cn_pow/__cn_sin/__cn_cos/__cn_tan/__cn_fabs/__cn_ceil/__cn_floor
-// 验证值：
-//   平方根(9.0)=3.0、幂(2.0,3.0)=8.0、正弦(0)=0、余弦(0)=1、
-//   正切(0)=0、绝对值(-5.5)=5.5、向上取整(3.2)=4.0、向下取整(3.8)=3.0
-// 打印浮点默认 %f 6 位小数（expected 文件按此匹配）
-// 说明：stdlib/数学.cn 为 CN 层标准库模块（公开同名函数封装）；本 E2E 直接验证
-//   内置函数端到端（避免模块函数体内 数学::xxx 与内置限定名递归冲突——
-//   模块函数与同名内置共存时以用户模块函数优先，见 stdlib/数学.cn 头注释）
-
-函数 主() -&gt; 整32 {
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">函数 主() -&gt; 整32 {
     打印("===== 数学库（Task 6.3）=====");
 
     // ---- 1. 平方根 ----
@@ -686,7 +590,7 @@
     </div>
     <div class="页脚-底">
       <span>© 2026 CN 语言项目</span>
-      <span>文档基线：任务/1295 1600fc3e5·2026-10-21·示例经编译器实测</span>
+      <span>文档基线：任务/1295 3270a3ba6·2026-10-21·示例经编译器实测</span>
       <span>京ICP备00000000号（备案办理中·占位）</span>
     </div>
   </div>

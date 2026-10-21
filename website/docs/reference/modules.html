@@ -57,13 +57,7 @@
 }</code></pre></div>
 <p class="输出行">输出：4.000000
 42</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// E2E 122（宿主缺陷回归，2026-09-01）：stdlib 模块独立导入。
-//   文件.cn / IO.cn 使用 错误码（定义于 核心.cn 的枚举）但漏 导入 核心::错误码
-//   ——此前仅当程序恰好先导入 容器（容器 导入 核心）时符号才侥幸可见；
-//   单独 导入 文件::* 的程序直接编译失败（未声明的标识符 '错误码'）。
-//   根治：文件.cn / IO.cn 补 导入 核心::错误码（与 容器.cn/映射集合.cn 同款）。
-//   本用例刻意不导入 容器，单独使用 文件 模块（打开/关闭）验证独立可编译运行。
-导入 文件::打开文件;
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">导入 文件::打开文件;
 导入 文件::关闭文件;
 
 函数 主() -&gt; 整32 {
@@ -158,9 +152,7 @@
 
 [特性]
 启用 = ["网络", "压缩"]</code></pre></div>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 764（496 撞号改号让位，原号 495；原 329-a 预编 310 改号·编号让位家机）：货舱 [特性] 声明制（规格书 4.7 特性小节，239-a）——
-//   启用特性=条件编译旗标（与 -D 同通道）；未启用特性被裁剪。
-函数 主() -&gt; 整32 {
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">函数 主() -&gt; 整32 {
     #如果定义(网络)
     打印行("特性-网络: 命中");
     #结束如果
@@ -225,21 +217,7 @@
 }</code></pre></div>
 <h3 id="核心包 prelude">核心包 prelude</h3>
 <p>核心包基础项默认可见（等价隐式 <code>导入 核心::*</code>）——以下程序<strong>无任何导入语句</strong>：</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 主入口（第 7 层：48_prelude 核心包 prelude E2E，规格书08-六/09-五）
-// 验证 v2.0 核心包 prelude：编译器隐式提供 导入 核心::* 级别的基础项——
-//   内置函数（打印/格式化/字符串 API/数学限定名）无需显式导入即可用
-//   （v2.0 将内置函数归入核心包 prelude，替代 v1.0 无前缀硬编码扁平表）。
-// 本文件**无任何导入语句**，全部调用依赖 prelude 默认可见：
-//   ① 打印（println 语义，自动换行）
-//   ② 格式化（sprintf 风格 %d/%f/%s，返回动态内存需 字符串释放）
-//   ③ 整数转字符串（字符串 API 族，返回动态内存需 字符串释放）
-//   ④ 数学::平方根（内置限定名——核心包 prelude 成员，无需导入）
-//   ⑤ 字符串长度 / 字符串比较（字符串 API 族）
-//   ⑥ 布尔转字符串（返回 真/假 中文文本）
-// 注：布尔 多参数直接传 打印 走 __cn_format 转 1/0；拼接方式输出 真/假。
-//   导入 核心::* 通配导入核心包（扩展符号）由单测 UseImportWildcard 覆盖。
-
-函数 主() -&gt; 整32 {
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">函数 主() -&gt; 整32 {
     打印("===== 核心包 prelude（第 7 层）=====");
 
     // ---- ① 打印（println）：prelude 基础函数 ----
@@ -327,7 +305,7 @@ prelude 打印 可用
     </div>
     <div class="页脚-底">
       <span>© 2026 CN 语言项目</span>
-      <span>文档基线：任务/1295 1600fc3e5·2026-10-21·示例经编译器实测</span>
+      <span>文档基线：任务/1295 3270a3ba6·2026-10-21·示例经编译器实测</span>
       <span>京ICP备00000000号（备案办理中·占位）</span>
     </div>
   </div>

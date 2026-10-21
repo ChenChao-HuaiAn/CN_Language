@@ -67,11 +67,7 @@
 <p class="函数定义"><code>函数 随机数生成器(整64 种子)</code></p>
 <p>以种子构造并完成 splitmix64 四轮扩散播种（近邻种子扩散远离，避免全零/近邻状态退化）。</p>
 <table class="表 参数表"><thead><tr><th>参数</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>种子</code></td><td><code>整64</code></td><td>任意 64 位种子</td></tr></tbody></table>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// E2E 379（250/251/252 系·F2-33 stdlib 随机数模块，2026-09-16）：
-//   xoshiro256++ + splitmix64 播种——固定种子确定性序列（期望值=python 独立
-//   参考实现预计算，非「跑出什么写什么」）+ 范围/浮点值域 + 双编译对照
-//   （宿主 vs v2 位运算语义对齐的运行级验证）。
-导入 随机数::{随机数生成器, 播种扩散};
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">导入 随机数::{随机数生成器, 播种扩散};
 
 函数 主() -&gt; 整32 {
     // —— 段1：固定种子 42 的确定性序列（下一个 整64 全域）——
@@ -145,12 +141,7 @@
 <p class="函数定义"><code>函数 播种(整64 种子)</code></p>
 <p>重置内部状态并按新种子重新扩散播种（复用同一生成器实例）。</p>
 <table class="表 参数表"><thead><tr><th>参数</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>种子</code></td><td><code>整64</code></td><td>新种子</td></tr></tbody></table>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// E2E 380（252-a·算法面双编译对照）：随机数算法 stdlib 导入形态。
-//   位运算旋转掩码/两补码回绕/移位取模语义的宿主 vs v2 运行级对齐——
-//   算法实现以 stdlib/随机数.cn 为唯一来源（候选4 stdlib 兜底：D29①；
-//   导入类构造初始化=D28·两缺陷根治后本用例由类内联形态升级，285-a）。
-
-导入 随机数::随机数生成器;
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">导入 随机数::随机数生成器;
 导入 随机数::播种扩散;
 
 函数 主() -&gt; 整32 {
@@ -202,11 +193,7 @@
 <p class="函数定义"><code>函数 下一个() -> 整64</code></p>
 <p>输出 整64 全域随机值（含负值=两补码位模式）。</p>
 <p><strong>返回</strong>　64 位伪随机整数。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// E2E 379（250/251/252 系·F2-33 stdlib 随机数模块，2026-09-16）：
-//   xoshiro256++ + splitmix64 播种——固定种子确定性序列（期望值=python 独立
-//   参考实现预计算，非「跑出什么写什么」）+ 范围/浮点值域 + 双编译对照
-//   （宿主 vs v2 位运算语义对齐的运行级验证）。
-导入 随机数::{随机数生成器, 播种扩散};
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">导入 随机数::{随机数生成器, 播种扩散};
 
 函数 主() -&gt; 整32 {
     // —— 段1：固定种子 42 的确定性序列（下一个 整64 全域）——
@@ -281,11 +268,7 @@
 <p>输出 <code>[0, 上限)</code> 的非负随机整数。取模法，上限不整除 2^63 时有极轻低值偏差（非加密用途可接受）。</p>
 <table class="表 参数表"><thead><tr><th>参数</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>上限</code></td><td><code>整64</code></td><td>排他上界（须 > 0）</td></tr></tbody></table>
 <p><strong>返回</strong>　[0, 上限) 内整数。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 394_双编译stdlib随机数兜底（276-a D29①验收）：
-//   纯 stdlib 依赖形态——用例目录不含 随机数.cn，宿主/v2 两侧均须走
-//   「stdlib 兜底」加载 stdlib/随机数.cn（宿主 driver 候选4 既有；
-//   v2p 276-a 新增同款候选4）。断言面全为确定性（同种子序列一致+范围界内）。
-导入 随机数::随机数生成器;
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">导入 随机数::随机数生成器;
 函数 主() -&gt; 整32 {
     随机数生成器 甲 = 随机数生成器(42);
     随机数生成器 乙 = 随机数生成器(42);
@@ -306,11 +289,7 @@
 <p class="函数定义"><code>函数 下一个浮点() -> 浮64</code></p>
 <p>输出 <code>[0.0, 1.0)</code> 均匀浮点（高 53 位构造，IEEE 754 精确）。</p>
 <p><strong>返回</strong>　[0.0, 1.0) 浮点。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// E2E 379（250/251/252 系·F2-33 stdlib 随机数模块，2026-09-16）：
-//   xoshiro256++ + splitmix64 播种——固定种子确定性序列（期望值=python 独立
-//   参考实现预计算，非「跑出什么写什么」）+ 范围/浮点值域 + 双编译对照
-//   （宿主 vs v2 位运算语义对齐的运行级验证）。
-导入 随机数::{随机数生成器, 播种扩散};
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">导入 随机数::{随机数生成器, 播种扩散};
 
 函数 主() -&gt; 整32 {
     // —— 段1：固定种子 42 的确定性序列（下一个 整64 全域）——
@@ -391,12 +370,7 @@
 <p>熵源混合便捷函数（质数乘 + 黄金常数回绕扩散）。典型用法：<code>生成器.播种(播种扩散(当前时间戳()))</code>——时间戳近邻值经扩散后远离，Rust SeedableRng 同构。</p>
 <table class="表 参数表"><thead><tr><th>参数</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>熵源</code></td><td><code>整64</code></td><td>原始熵（如时间戳×质数+计数器）</td></tr></tbody></table>
 <p><strong>返回</strong>　扩散后的种子。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// E2E 380（252-a·算法面双编译对照）：随机数算法 stdlib 导入形态。
-//   位运算旋转掩码/两补码回绕/移位取模语义的宿主 vs v2 运行级对齐——
-//   算法实现以 stdlib/随机数.cn 为唯一来源（候选4 stdlib 兜底：D29①；
-//   导入类构造初始化=D28·两缺陷根治后本用例由类内联形态升级，285-a）。
-
-导入 随机数::随机数生成器;
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">导入 随机数::随机数生成器;
 导入 随机数::播种扩散;
 
 函数 主() -&gt; 整32 {
@@ -485,7 +459,7 @@
     </div>
     <div class="页脚-底">
       <span>© 2026 CN 语言项目</span>
-      <span>文档基线：任务/1295 1600fc3e5·2026-10-21·示例经编译器实测</span>
+      <span>文档基线：任务/1295 3270a3ba6·2026-10-21·示例经编译器实测</span>
       <span>京ICP备00000000号（备案办理中·占位）</span>
     </div>
   </div>

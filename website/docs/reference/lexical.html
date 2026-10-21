@@ -49,20 +49,7 @@
 <div class="码窗"><p class="码窗-顶"><span class="码窗-名">主带参.cn（负例·链接期拒绝）</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">函数 主(整32 个数, 字符** 参数) -&gt; 整32 {
     返回 个数;                  // ✗ 入口签名恒为无参：不合成 cn_main
 }</code></pre></div>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 系统库 E2E（Task 6.5，规格书10.4 命令行参数；对标 C++ argv）
-// 覆盖：参数个数（含可执行文件名本身）/ 参数按索引取 argv
-// 调用方式：直接调用系统库内置函数（系统::参数个数/系统::参数，全局注册、无需导入），
-//   由编译器 IR 层映射到运行时 __cn_argc/__cn_argv（system_api.cpp）
-//   ——与 stdlib/系统.cn 模块封装同名（25_math 数学库同模式：E2E 直接验证内置）
-// 命令行参数注入：run_e2e.py 检测同名 主.args 文件（每行一个参数，首行=argv[1]；
-//   argv[0] 恒为可执行文件名本身）——本用例参数：
-//     hello
-//     CN语言
-//   → argc=3（argv[0]=可执行文件名、argv[1]=hello、argv[2]=CN语言）
-// 打印语义（用户裁决）：打印=println（自动换行）
-// 注意：参数字符串由运行时（CRT）持有，不得 字符串释放
-
-函数 主() -&gt; 整32 {
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">函数 主() -&gt; 整32 {
     打印("===== 系统库（Task 6.5）=====");
 
     // ==================== 1. 参数个数（含可执行文件名本身） ====================
@@ -128,13 +115,7 @@ argv[2]: CN语言
 <table class="表"><thead><tr><th>上下文关键字</th><th>唯一语法位置</th></tr></thead><tbody><tr><td><code>原始</code> <code>多行</code></td><td>字符串字面量前缀位（后紧跟引号才是前缀）</td></tr><tr><td><code>公开</code> <code>私有</code> <code>保护</code></td><td>可见性标签位（<code>公开:</code> 等）</td></tr><tr><td><code>静态</code> <code>常量</code></td><td>声明前缀位（顶层/局部/循环初始/类成员）</td></tr><tr><td><code>虚拟</code> <code>重写</code> <code>抽象</code></td><td>类/接口成员修饰位（后随 函数）</td></tr><tr><td><code>作为</code></td><td>重命名导入位（<code>导入 路径 作为 别名</code>）</td></tr><tr><td><code>模块</code></td><td>顶层声明位（后随标识符即声明）</td></tr><tr><td><code>运算符</code> <code>遍历</code> <code>每个</code> <code>属于</code> <code>对</code></td><td>运算符重载/遍历循环固定形态</td></tr><tr><td><code>正常</code> <code>错误</code> <code>某些</code></td><td>内置构造器名（结果/可选构造位）</td></tr></tbody></table>
 <h2 id="字面量">字面量</h2>
 <h3 id="整数字面量">整数字面量</h3>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 176_字面量进制形态：整数字面量位模式全形态锚定（2026-09-09 第四十二轮 单位机，
-// 第四十一轮 字面量位模式 共用层根治的自身源码之外探针——lessons 权重10：
-// 「凡编译器支持的语法必须有自身源码之外的探针锚定后端发射」）。
-// 覆盖：0x/0b/0o 进制前缀 + L/U 类型后缀 + 超 imm32 域十进制 + 2^63-1 边界 +
-// 负常量补码。原 arm64/X64L 本地解析只认十进制（0x 前缀静默解析为 0 潜伏缺陷）。
-// 断言双保险：打印（末尾换行）逐行比对 + 全部相等判定通过返回 0。
-函数 主() -&gt; 整32 {
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">函数 主() -&gt; 整32 {
     整64 甲 = 0xFF;                // 255
     整64 乙 = 0b1010;              // 10
     整64 丙 = 0o777;               // 511
@@ -192,10 +173,7 @@ a\nb
 <h2 id="语句终止">语句终止：分号强制</h2>
 <p>每条语句必须以 <code>;</code> 结束（C/Rust 同款）；换行是纯空白，表达式内可自由续行。行尾漏分号=语法错误（诊断「语句缺少分号 ';'」），不存在自动分号插入——行首/行尾词法拼接类事故被结构性根除。</p>
 <ul><li><strong>空语句非法</strong>：裸 <code>;</code> 不合法（诊断「预期表达式」）——合法的空循环体写 <code>当(x) { }</code>（空块合法）。</li><li><strong>循环体强制块</strong>：<code>当(x);</code> 是语法错误（诊断「预期 '{'」）——当/循环/如果 的体一律 <code>{ }</code>，不做单语句体。</li><li><strong>单行多语句合法</strong>：<code>变量 a = 1; 变量 b = 2;</code> 由分号分隔，行内最后一条同样须 <code>;</code>；行内块 <code>{ x = 1; }</code> 内部语句同样强制分号。</li><li><strong><code>}</code> 自终结</strong>：块/如果/当/循环/选择体、函数体、结构体/类/接口/枚举体后<strong>不加</strong>分号（<code>}</code> 即边界）；模块级声明（导入/顶层常量/静态/全局变量）须分号。</li></ul>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// E2E 355：语句终止边界形态（规格书 4.6 规则1）
-// ① 行内块 { 语句; } 内部语句同样须分号；② 控制体 } 自终结后可直接跟
-// 下一条语句；③ 函数体 } 自终结后不加也是边界（结构体体同）。
-结构体 点 {
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">结构体 点 {
     整32 x
     整32 y
 }
@@ -220,17 +198,7 @@ a\nb
 <p>编译期开关：以宏旗标在<strong>词法层</strong>裁剪源码分支——被裁分支不产生任何 token。宏是无值旗标；没有带参宏、宏体展开与 <code>#包含</code>（这些职责由模块系统与常量表达式承担）。</p>
 <table class="表"><thead><tr><th>指令</th><th>形态</th><th>说明</th></tr></thead><tbody><tr><td><code>#定义 宏名</code></td><td>整行（行首可缩进）</td><td>定义宏（无值旗标·仅存在性判定）；父层被裁剪时不生效</td></tr><tr><td><code>#如果定义(宏名)</code> 或 <code>#如果定义 宏名</code></td><td>整行</td><td>条件开始：括号形式与空白形式等价</td></tr><tr><td><code>#否则</code></td><td>整行</td><td>条件分支（每层至多一个）</td></tr><tr><td><code>#结束如果</code></td><td>整行</td><td>条件结束（与 <code>#如果定义</code> 严格配对；纯空分支合法）</td></tr></tbody></table>
 <div class="批注 批注-绿"><span class="批注-题">词法层裁剪模型</span>非选中分支的整行在词法层被替换为空白（行号与换行保留）——不产生任何 token，<strong>即使内含语法错误也不诊断</strong>。宏名由 ASCII 字母/数字/下划线或中文组成。</div>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 条件编译 E2E（Task 6.6，规格书阶段六）
-// 覆盖：
-//   #定义 宏 / #如果定义(宏) / #否则 / #结束如果 指令
-//   命令行 -D 宏注入（run_e2e.py 编译命令附加 -D 调试 参数）
-//   未定义宏分支被裁剪（不产生语法错误）
-//   嵌套条件编译
-// 说明：E2E 编译命令为
-//   cn build 条件编译.cn --target win-x64 -D 调试 --output ...
-//   （run_e2e.py 编译命令不含 -D，故本用例的 #定义 宏 与嵌套分支用于
-//    验证源码内宏机制；命令行宏注入由单元测试 + 手动命令验证）
-#定义 发布模式
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">#定义 发布模式
 
 函数 主() -&gt; 整32 {
     // ---- 1. 源码内 #定义 宏 + #如果定义 选择 ----
@@ -329,7 +297,7 @@ a\nb
     </div>
     <div class="页脚-底">
       <span>© 2026 CN 语言项目</span>
-      <span>文档基线：任务/1295 1600fc3e5·2026-10-21·示例经编译器实测</span>
+      <span>文档基线：任务/1295 3270a3ba6·2026-10-21·示例经编译器实测</span>
       <span>京ICP备00000000号（备案办理中·占位）</span>
     </div>
   </div>

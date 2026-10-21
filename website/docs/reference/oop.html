@@ -46,11 +46,7 @@
 <p style="color: var(--color-fg-muted); font-size: var(--text-lg); line-height: 2;">类布局、可见性、构造析构链、继承与接口的精确规则、静态成员、友元、运算符重载。</p>
 <h2 id="布局">类与实例：句柄模型</h2>
 <p>类变量槽存<strong>对象句柄</strong>（不是对象本体）——赋值/传参传句柄、体内写穿同一堆对象；实例在无引用后由 RAII 链释放。</p>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 228 双编译对照·类支持（第七十八轮，2026-09-12）——移植纪律 9 第五个对照用例。
-// 形态（六项折校验和）：①带参构造+字段写+方法调用 ②自身.方法() ③容器字段操作
-// ④借出→先 字符串复制 取拥有副本→改容器（借出检查不误报的合法形态）
-// ⑤无参构造+循环内方法调用 ⑥字段直读。两侧各编各跑，退出码须一致=31。
-导入 容器::向量;
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">导入 容器::向量;
 
 类 账本 {
 公开:
@@ -114,16 +110,7 @@
 <ul><li><strong>两种「拷贝」要分清</strong>：传参/返回=句柄拷贝（写穿同一对象）；<code>b = a</code> 声明初始化=<strong>拷贝构造</strong>——类定义了拷贝构造（如标准库容器）按其语义深拷；没有则逐字段浅拷、对象独立。</li><li>要独立副本：定义拷贝构造 <code>函数 类名(类名&amp;)</code> 并用 <code>复制(对象)</code> 克隆（标准库容器全部定义了深拷构造）。</li><li>取地址 <code>&amp;a</code> 产<strong>对象地址</strong>（解包句柄），与 C++ <code>&amp;obj</code> 语义一致。</li></ul>
 <h2 id="成员">可见性、构造、析构、静态</h2>
 <ul><li><code>公开:</code>/<code>保护:</code>/<code>私有:</code> 标签分段；缺省=私有。<code>友元 函数名/类名</code> 可越权访问私有。</li><li>构造=与类同名（可重载）；<strong>类类型字段自动级联默认构造</strong>（用户构造未显式构造的字段同此）——构造/析构对称。</li><li>析构=<code>~类名</code>；作用域结束自动调用，先成员后自身、与构造反序。</li><li><code>静态</code> 字段/函数属于类（<code>类名.成员</code> 访问）；<code>常量 函数</code> 承诺不改状态。</li><li><code>虚拟 函数</code> 动态分派；<code>重写</code> 显式标注覆盖；<code>抽象</code> 纯虚（接口成员）。</li></ul>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 548 级联构造与类字段布局（058 挂账①②收口转正·860 轮）：
-//   挂账①=全局口径：类/结构体的类字段=句柄 8/8（宿主 computeLayout/
-//   computeClassLayout/classFieldOffset 三点+v2 解析层两点——布局与运行时
-//   内容一致，相邻字段不再覆写句柄高 4 字节）；
-//   挂账②=字段级联构造（H7 字段版）：类构造函数序言对「有默认构造」类字段
-//   NewObject+默认构造（宿主 injectFieldCascadeConstruct·析构级联对称）；
-//   结构体无初始化器声明对闭合域字段（有析构∧有拷贝构造∧有默认构造）级联
-//   （=资源字段收集域，拷贝/释放链闭合）。治理前：类版 rc=139 空句柄解引、
-//   结构体版 rc=1 空指针解引。
-类 内层 {
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">类 内层 {
     公开:
     整32 x;
     函数 内层() { x = 7; }
@@ -197,12 +184,7 @@
 }</code></pre></div>
 <h2 id="重载">运算符重载</h2>
 <ul><li>成员函数形态：<code>函数 运算符X(参数) -&gt; 返回类型</code>；左操作数必须本类实例；双目单参数、单目无参数。</li><li>可重载集合：<code>+ - * / % == != &lt; &gt; &lt;= &gt;= &amp;&amp; || ! &amp; | ^ ~ &lt;&lt; &gt;&gt;</code>（<code>-&gt;</code> 已随成员访问统一废除；<code>[]</code>/<code>()</code> <strong>解析层显式拒绝</strong>——请求重载即报「不支持重载」，改用 lambda 或函数指针）。</li><li>使用点参数个数校验：单目 <code>运算符X()</code> 须 0 个右操作数、双目须 1 个——个数不符报「重载期望 N 个右操作数」。</li><li>决议：①优先精确匹配内置运算符；②无内置匹配→按左操作数类型查找成员 <code>运算符X</code>；③仍无→「类型不兼容」错误。</li></ul>
-<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">// 709（414 审查 P0-3·E2E 正例）：单目取反 运算符~ 重载+内置 ~ 回归
-//   语法依据（plans/001 §4.6）：~ ∈ 可重载集合（单目 0 个右参数）。v2 修前
-//   表达式位 ~x 解析期脱糖为 x^(0-1)，类「运算符~」定义侧放行、使用侧必拒
-//   =自相矛盾分叉。修后：类命中走重载（0 - 值 - 1 = -11）；整数 ~x 走 IR 层
-//   内置展开 x^(0-1)（= -6·原脱糖语义逐位保持）。
-类 计量 {
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">类 计量 {
 公开:
     整32 值;
     函数 计量(整32 甲) { 值 = 甲; }
@@ -262,7 +244,7 @@
     </div>
     <div class="页脚-底">
       <span>© 2026 CN 语言项目</span>
-      <span>文档基线：任务/1295 1600fc3e5·2026-10-21·示例经编译器实测</span>
+      <span>文档基线：任务/1295 3270a3ba6·2026-10-21·示例经编译器实测</span>
       <span>京ICP备00000000号（备案办理中·占位）</span>
     </div>
   </div>
