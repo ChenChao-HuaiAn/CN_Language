@@ -568,7 +568,6 @@ private:
     // 族④：函数名作值——构造函数指针类型（funcFirstSigKey 确定性选择）。true = 已处理
     bool checkFunctionNameValue(IdentifierExpr* node);
 
-
     bool canConvertWithLiteral(const Expr* value, const std::string& from,
                                const std::string& to) const;
     // 混合符号赋值专用诊断（55-c 方案A）：canConvertWithLiteral 拒绝且为
@@ -694,6 +693,7 @@ private:
     void registerClassAndInterfaces(Program* node);
     // 解析单个类：成员收集 + 继承并入 + 虚表分配 + 接口实现验证 + 访问控制校验
     void resolveClass(ClassDecl* node);
+    const ClassInfo* resolveBaseClass(const ClassDecl* node);  // #1252 继承位父类解析（歧义诊断·细则见 class_resolver_base.cpp）
     // 收集类成员到 ClassInfo（含访问标签处理）
     void collectClassMembers(ClassDecl* node, ClassInfo& info);
     // 分配虚函数表槽位（父类槽位 + 重写覆盖 + 新虚函数追加）

@@ -217,6 +217,7 @@ add_library(cn_compiler_semantic STATIC
     src/cn_compiler/semantic/semantic_decl_import.cpp
     src/cn_compiler/semantic/semantic_decl_abstract.cpp
     src/cn_compiler/semantic/class_resolver.cpp
+    src/cn_compiler/semantic/class_resolver_base.cpp
     src/cn_compiler/semantic/class_resolver_access.cpp
     src/cn_compiler/semantic/class_vtable.cpp
     src/cn_compiler/semantic/error_analysis.cpp

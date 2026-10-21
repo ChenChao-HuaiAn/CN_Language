@@ -448,21 +448,15 @@ void SemanticAnalyzer::resolveClass(ClassDecl* node) {
         if (interfaces_.find(node->baseName) != interfaces_.end()) {
             // 冒号后是接口名：作为接口实现
             info.interfaces.push_back(node->baseName);
-        } else if (const ClassInfo* parent = findClass(node->baseName)) {
-            // 1210（#1155 勘察·miss 静默默认根治）：父类 hasVtable 直接取自
-            //   findClass 命中的真实类条目。原实现改读 classes_[node->baseName]：
-            //   多模块下类键=模块::父类（classKey），裸名查不中且 operator[]
-            //   静默插入空 ClassInfo（miss 取默认 false + 类表污染——后续裸名
-            //   查找可能命中空条目，实测派生构造/基类指针转换/继承方法全部失败）。
-            //   baseName 记真实父类符号名（跨模块同名冲突时=模块::类），使后续
-            //   布局/虚表/构造析构链沿链查找走同一已解析身份，不再受裸名歧义影响。
+        } else if (const ClassInfo* parent = resolveBaseClass(node)) {
+            // #1252（#1210 派生）：父类身份由 resolveBaseClass 唯一裁定（歧义/
+            //   未声明已显式诊断，不再兜底）。baseName 记真实符号名（跨模块同名
+            //   冲突时=模块::类），hasVtable 与后续布局/虚表/构造析构链沿同一
+            //   已解析身份；原实现改读 classes_[node->baseName]——多模块裸名查
+            //   不中且 operator[] 静默插入空 ClassInfo（miss 静默默认+类表污染，
+            //   实测派生构造/基类指针转换/继承方法连锁失败）。
             info.baseName = parent->name;
-            // 继承标记：从父类继承虚表（子类覆写时覆盖槽位）
             info.hasVtable = parent->hasVtable;
-        } else {
-            diagnostics_.report(DiagnosticLevel::Error, node->location,
-                                "类 '" + node->name + "' 的父类/接口 '" + node->baseName +
-                                    "' 未声明");
         }
     }
 
@@ -475,6 +469,25 @@ void SemanticAnalyzer::resolveClass(ClassDecl* node) {
             continue;
         }
         info.interfaces.push_back(ifaceName);
+    }
+
+    // #1252：初始化列表基名规范化——`函数 子() : 父()` 的语法名是裸名；跨模块
+    //   同名父类解析为 模块::父 后，此处把初始化列表基名同步为真实符号名。
+    //   否则语义检查 `ctorInitBase == info.baseName` 失配（跳过父构造实参校验），
+    //   IR 层 findClass(裸名) 再次静默选一（实测：继承方法取甲、构造却调乙，
+    //   腿=6 而方法体=甲）。单继承下初始化列表名=声明父类名（parser 已校验）。
+    if (!info.baseName.empty()) {
+        for (auto& member : node->members) {
+            // parser 对构造函数 kind 仍记 Method（collectClassMembers 按名判构造）——
+            //   此处同口径：kind≠析构 且 名==类名 即构造。
+            const bool isCtor = member->kind != ClassMemberKind::Destructor &&
+                                !member->name.empty() &&
+                                member->name == node->name;
+            if (isCtor && !member->ctorInitBase.empty() &&
+                member->ctorInitBase == node->baseName) {
+                member->ctorInitBase = info.baseName;
+            }
+        }
     }
 
     // 收集自身成员
