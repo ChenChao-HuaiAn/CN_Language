@@ -449,3 +449,280 @@ TEST(PeepholeSlotArm64, NarrowStoreWideReadRejected) {
     });
     EXPECT_EQ(eliminateRedundantSlotTrafficAArch64(in), in);
 }
+
+// ==================== linux-arm64 大偏移间接寻址面（任务 1243） ====================
+// 真实产物形态：sub x13,x29,#N / str ..,[x13] / sub x13,x29,#N / ldr ..,[x13]
+
+// 26. 4 行同寄存器 64 位：整体全删（含两条地址物化）
+TEST(PeepholeSlotArm64Indirect, SameReg64FullDelete) {
+    const std::string in = join({
+        "    sub x13, x29, #300",
+        "    str x0, [x13]",
+        "    sub x13, x29, #300",
+        "    ldr x0, [x13]",
+    });
+    EXPECT_EQ(eliminateRedundantSlotTrafficAArch64(in), "");
+}
+
+// 27. 4 行异寄存器：删两块+store，load 改写为 mov
+TEST(PeepholeSlotArm64Indirect, DiffRegRewrite) {
+    const std::string in = join({
+        "    sub x13, x29, #300",
+        "    str x0, [x13]",
+        "    sub x13, x29, #300",
+        "    ldr x1, [x13]",
+    });
+    EXPECT_EQ(eliminateRedundantSlotTrafficAArch64(in), "    mov x1, x0\n");
+}
+
+// 28. 正向偏移 add 形态
+TEST(PeepholeSlotArm64Indirect, PositiveOffsetRewrite) {
+    const std::string in = join({
+        "    add x13, x29, #264",
+        "    str x5, [x13]",
+        "    add x13, x29, #264",
+        "    ldr x6, [x13]",
+    });
+    EXPECT_EQ(eliminateRedundantSlotTrafficAArch64(in), "    mov x6, x5\n");
+}
+
+// 29. 32 位存读：mov w 形态
+TEST(PeepholeSlotArm64Indirect, W32Rewrite) {
+    const std::string in = join({
+        "    sub x13, x29, #300",
+        "    str w3, [x13]",
+        "    sub x13, x29, #300",
+        "    ldr w9, [x13]",
+    });
+    EXPECT_EQ(eliminateRedundantSlotTrafficAArch64(in), "    mov w9, w3\n");
+}
+
+// 30. 宽存窄读 ldrb：uxtb 零扩展
+TEST(PeepholeSlotArm64Indirect, LdrbZeroExtendRewrite) {
+    const std::string in = join({
+        "    sub x13, x29, #300",
+        "    str x3, [x13]",
+        "    sub x13, x29, #300",
+        "    ldrb w9, [x13]",
+    });
+    EXPECT_EQ(eliminateRedundantSlotTrafficAArch64(in), "    uxtb w9, w3\n");
+}
+
+// 31. 窄存 ldrsb：sxtb 符号扩展
+TEST(PeepholeSlotArm64Indirect, LdrsbSignExtendRewrite) {
+    const std::string in = join({
+        "    sub x13, x29, #300",
+        "    strb w10, [x13]",
+        "    sub x13, x29, #300",
+        "    ldrsb x9, [x13]",
+    });
+    EXPECT_EQ(eliminateRedundantSlotTrafficAArch64(in), "    sxtb x9, w10\n");
+}
+
+// 32. 浮点 d 宽：fmov
+TEST(PeepholeSlotArm64Indirect, FloatDoubleRewrite) {
+    const std::string in = join({
+        "    sub x13, x29, #300",
+        "    str d0, [x13]",
+        "    sub x13, x29, #300",
+        "    ldr d1, [x13]",
+    });
+    EXPECT_EQ(eliminateRedundantSlotTrafficAArch64(in), "    fmov d1, d0\n");
+}
+
+// 33. movz/movk 物化链（|off|>4095）：跨 6 行消除
+TEST(PeepholeSlotArm64Indirect, MovzMovkChainRewrite) {
+    const std::string in = join({
+        "    movz x13, #4464",
+        "    movk x13, #1, lsl #16",
+        "    sub x13, x29, x13",
+        "    str x0, [x13]",
+        "    movz x13, #4464",
+        "    movk x13, #1, lsl #16",
+        "    sub x13, x29, x13",
+        "    ldr x1, [x13]",
+    });
+    EXPECT_EQ(eliminateRedundantSlotTrafficAArch64(in), "    mov x1, x0\n");
+}
+
+// 34. 尾部后续访问有完整物化：旧值不泄漏，仍消除
+TEST(PeepholeSlotArm64Indirect, TailRematerializedStillEliminates) {
+    const std::string in = join({
+        "    sub x13, x29, #300",
+        "    str x0, [x13]",
+        "    sub x13, x29, #300",
+        "    ldr x1, [x13]",
+        "    sub x13, x29, #8",
+        "    str x1, [x13]",
+    });
+    EXPECT_EQ(eliminateRedundantSlotTrafficAArch64(in),
+              join({"    mov x1, x0", "    sub x13, x29, #8", "    str x1, [x13]"}));
+}
+
+// 35. 对前已有 x13 其它使用（block1 会覆盖）：不影响消除
+TEST(PeepholeSlotArm64Indirect, PriorX13UseIgnored) {
+    const std::string in = join({
+        "    mov x13, x5",
+        "    sub x13, x29, #300",
+        "    str x0, [x13]",
+        "    sub x13, x29, #300",
+        "    ldr x1, [x13]",
+    });
+    EXPECT_EQ(eliminateRedundantSlotTrafficAArch64(in), join({"    mov x13, x5", "    mov x1, x0"}));
+}
+
+// 36. 尾部把 x13 当值读（mov x0, x13）：删除定义后旧值泄漏 -> 拒绝
+TEST(PeepholeSlotArm64Indirect, TailValueReadRejected) {
+    const std::string in = join({
+        "    sub x13, x29, #300",
+        "    str x0, [x13]",
+        "    sub x13, x29, #300",
+        "    ldr x1, [x13]",
+        "    mov x0, x13",
+    });
+    EXPECT_EQ(eliminateRedundantSlotTrafficAArch64(in), in);
+}
+
+// 37. 尾部 x13 参与栈调整（读未定义值）-> 拒绝
+TEST(PeepholeSlotArm64Indirect, TailStackAdjustRejected) {
+    const std::string in = join({
+        "    sub x13, x29, #300",
+        "    str x0, [x13]",
+        "    sub x13, x29, #300",
+        "    ldr x1, [x13]",
+        "    sub sp, sp, x13",
+    });
+    EXPECT_EQ(eliminateRedundantSlotTrafficAArch64(in), in);
+}
+
+// 38. 同槽经另一寄存器物化访问（偏移计数 3）-> 拒绝
+TEST(PeepholeSlotArm64Indirect, SameOffsetViaOtherRegRejected) {
+    const std::string in = join({
+        "    sub x13, x29, #300",
+        "    str x0, [x13]",
+        "    sub x13, x29, #300",
+        "    ldr x1, [x13]",
+        "    sub x14, x29, #300",
+        "    ldr x2, [x14]",
+    });
+    EXPECT_EQ(eliminateRedundantSlotTrafficAArch64(in), in);
+}
+
+// 39. 同槽另有直接寻址访问（偏移计数 3）-> 拒绝
+TEST(PeepholeSlotArm64Indirect, SameOffsetDirectAccessRejected) {
+    const std::string in = join({
+        "    sub x13, x29, #300",
+        "    str x0, [x13]",
+        "    sub x13, x29, #300",
+        "    ldr x1, [x13]",
+        "    ldr x2, [x29,#-300]",
+    });
+    EXPECT_EQ(eliminateRedundantSlotTrafficAArch64(in), in);
+}
+
+// 40. 中间隔标签（load 不可达块内）-> 拒绝
+TEST(PeepholeSlotArm64Indirect, LabelBetweenRejected) {
+    const std::string in = join({
+        "    sub x13, x29, #300",
+        "    str x0, [x13]",
+        "    sub x13, x29, #300",
+        "L跳点:",
+        "    ldr x1, [x13]",
+    });
+    EXPECT_EQ(eliminateRedundantSlotTrafficAArch64(in), in);
+}
+
+// 41. 读宽>存宽：拒绝
+TEST(PeepholeSlotArm64Indirect, NarrowStoreWideReadRejected) {
+    const std::string in = join({
+        "    sub x13, x29, #300",
+        "    str w0, [x13]",
+        "    sub x13, x29, #300",
+        "    ldr x1, [x13]",
+    });
+    EXPECT_EQ(eliminateRedundantSlotTrafficAArch64(in), in);
+}
+
+// 42. 两块物化偏移不同：拒绝
+TEST(PeepholeSlotArm64Indirect, DifferentMaterializationRejected) {
+    const std::string in = join({
+        "    sub x13, x29, #300",
+        "    str x0, [x13]",
+        "    sub x13, x29, #304",
+        "    ldr x1, [x13]",
+    });
+    EXPECT_EQ(eliminateRedundantSlotTrafficAArch64(in), in);
+}
+
+// 43. store 源就是地址寄存器：拒绝（删块后源值无定义）
+TEST(PeepholeSlotArm64Indirect, StoreSourceIsAddrRegRejected) {
+    const std::string in = join({
+        "    sub x13, x29, #300",
+        "    str x13, [x13]",
+        "    sub x13, x29, #300",
+        "    ldr x1, [x13]",
+    });
+    EXPECT_EQ(eliminateRedundantSlotTrafficAArch64(in), in);
+}
+
+// 44. 尾部 movk 无 movz 头（读未定义值）：拒绝
+TEST(PeepholeSlotArm64Indirect, TailMovkWithoutMovzRejected) {
+    const std::string in = join({
+        "    sub x13, x29, #300",
+        "    str x0, [x13]",
+        "    sub x13, x29, #300",
+        "    ldr x1, [x13]",
+        "    movk x13, #1, lsl #16",
+        "    str x0, [x13]",
+    });
+    EXPECT_EQ(eliminateRedundantSlotTrafficAArch64(in), in);
+}
+
+// 45. 无尾随换行：形态保持
+TEST(PeepholeSlotArm64Indirect, NoTrailingNewlinePreserved) {
+    const std::string in =
+        "    sub x13, x29, #300\n    str x0, [x13]\n"
+        "    sub x13, x29, #300\n    ldr x1, [x13]";
+    EXPECT_EQ(eliminateRedundantSlotTrafficAArch64(in), "    mov x1, x0");
+}
+
+// 46. 单 movz + sub 的物化链（|off| 略超 4095）：跨 6 行消除
+TEST(PeepholeSlotArm64Indirect, MovzSubChainRewrite) {
+    const std::string in = join({
+        "    movz x13, #4992",
+        "    sub x13, x29, x13",
+        "    str w9, [x13]",
+        "    movz x13, #4992",
+        "    sub x13, x29, x13",
+        "    ldr w9, [x13]",
+    });
+    EXPECT_EQ(eliminateRedundantSlotTrafficAArch64(in), "    mov w9, w9\n");
+}
+
+// 47. 尾部栈调整前有 movz 定义（纯读 x13）：仍消除
+TEST(PeepholeSlotArm64Indirect, TailRematerializedStackAdjustStillEliminates) {
+    const std::string in = join({
+        "    sub x13, x29, #300",
+        "    str x0, [x13]",
+        "    sub x13, x29, #300",
+        "    ldr x1, [x13]",
+        "    movz x13, #8",
+        "    sub sp, sp, x13",
+    });
+    EXPECT_EQ(eliminateRedundantSlotTrafficAArch64(in),
+              join({"    mov x1, x0", "    movz x13, #8", "    sub sp, sp, x13"}));
+}
+
+// 48. 尾部地址计算前有 movz 定义（纯读 x13）：仍消除
+TEST(PeepholeSlotArm64Indirect, TailRematerializedAddrCalcStillEliminates) {
+    const std::string in = join({
+        "    sub x13, x29, #300",
+        "    str x0, [x13]",
+        "    sub x13, x29, #300",
+        "    ldr x1, [x13]",
+        "    movz x13, #28000",
+        "    add x9, x29, x13",
+    });
+    EXPECT_EQ(eliminateRedundantSlotTrafficAArch64(in),
+              join({"    mov x1, x0", "    movz x13, #28000", "    add x9, x29, x13"}));
+}

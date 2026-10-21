@@ -332,6 +332,7 @@ add_library(cn_compiler_codegen STATIC
     src/cn_compiler/codegen/parallel_codegen.cpp
     src/cn_compiler/codegen/reg_alloc.cpp
     src/cn_compiler/codegen/peephole_slot.cpp
+    src/cn_compiler/codegen/peephole_slot_arm64.cpp
     src/cn_compiler/codegen/debug_info.cpp
     src/cn_compiler/codegen/judgement.cpp
     src/cn_compiler/codegen/x64/x64_codegen.cpp
