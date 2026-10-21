@@ -15,6 +15,7 @@
 #include "cn_compiler/model/type_system.hpp"
 
 using cn_compiler::Diagnostics;
+using cn_compiler::cn::Optional;
 using cn_compiler::Lexer;
 using cn_compiler::Parser;
 using cn_compiler::Program;
@@ -75,8 +76,10 @@ TEST(I128SemanticTest, TextExceedsInt64Boundary) {
 
 // 小值：低64位即值，高64位为0
 TEST(I128SemanticTest, SplitI128SmallValue) {
-    const std::string s = splitI128Text("42");
-    ASSERT_FALSE(s.empty());
+    // 1303 结果化: 返回 cn::Optional——has_value 断言后 value 取文本
+    const Optional<std::string> opt = splitI128Text("42");
+    ASSERT_TRUE(opt.has_value());
+    const std::string& s = opt.value();
     // 格式 "LO:HI"（十六进制，%llX 大写）
     const std::size_t colon = s.find(':');
     ASSERT_NE(colon, std::string::npos);
@@ -84,10 +87,24 @@ TEST(I128SemanticTest, SplitI128SmallValue) {
     EXPECT_EQ(s.substr(colon + 1), "0");           // 高64位 0
 }
 
+// 大写十六进制字面量：A-F 位计算锁路（1303 一期审查 P0 回归·c-'A'+10 曾被误改为 c-'a'+10）
+TEST(I128SemanticTest, SplitI128UppercaseHex) {
+    const Optional<std::string> opt =
+        splitI128Text("0x8AC7230489E80000");  // 10^19·含大写 A/C/E
+    ASSERT_TRUE(opt.has_value());
+    const std::string& s = opt.value();
+    const std::size_t colon = s.find(':');
+    ASSERT_NE(colon, std::string::npos);
+    EXPECT_EQ(s.substr(0, colon), "8AC7230489E80000");  // 低64位
+    EXPECT_EQ(s.substr(colon + 1), "0");                 // 高64位 0
+}
+
 // 2^64 边界：低64位0，高64位1
 TEST(I128SemanticTest, SplitI128TwoPow64) {
-    const std::string s = splitI128Text("18446744073709551616");  // 2^64
-    ASSERT_FALSE(s.empty());
+    const Optional<std::string> opt =
+        splitI128Text("18446744073709551616");  // 2^64
+    ASSERT_TRUE(opt.has_value());
+    const std::string& s = opt.value();
     const std::size_t colon = s.find(':');
     ASSERT_NE(colon, std::string::npos);
     EXPECT_EQ(s.substr(0, colon), "0");            // 低64位 0
@@ -96,8 +113,10 @@ TEST(I128SemanticTest, SplitI128TwoPow64) {
 
 // 最大边界 2^127-1
 TEST(I128SemanticTest, SplitI128Max) {
-    const std::string s = splitI128Text("170141183460469231731687303715884105727");
-    ASSERT_FALSE(s.empty());
+    const Optional<std::string> opt =
+        splitI128Text("170141183460469231731687303715884105727");
+    ASSERT_TRUE(opt.has_value());
+    const std::string& s = opt.value();
     const std::size_t colon = s.find(':');
     ASSERT_NE(colon, std::string::npos);
     EXPECT_EQ(s.substr(0, colon), "FFFFFFFFFFFFFFFF");     // 低64位全1

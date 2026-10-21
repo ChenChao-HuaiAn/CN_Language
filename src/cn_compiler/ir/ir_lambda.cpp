@@ -326,7 +326,7 @@ void IRGenerator::buildClosureTrampoline943(
         callArgs.insert(callArgs.begin(), buf);  // 隐藏返回指针=第一参数（rcx）
         emit(ir::Opcode::Call, callArgs, ir::IRValue(), calleeName, "void", loc);
         endReturn(buf.toString());
-    } else {  // 静默豁免业务值: 转发直调发射末支（标量返回透传·无默认值语义）
+    } else {  // 标量返回：直调结果透传
         ir::IRValue result = emitResult(ir::Opcode::Call, callArgs, returnIrType,
                                         calleeName, loc);
         endReturn(result.toString());

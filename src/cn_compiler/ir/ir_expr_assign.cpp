@@ -216,12 +216,9 @@ bool IRGenerator::memberClassFieldAssign(AssignmentExpr* node, MemberExpr* membe
 //   判定=纯查询零发射（lvalueAddress 含空检查发射·调用方须先判后发防双发）。
 bool IRGenerator::canEmitClassFieldHandleCopy(const std::string& fieldCanon,
                                               Expr* valueNode) {
-    // 静默豁免闭集穷举: 915-b 参数防御（语义层/调用点已保证·防御零发射）
     if (semantic_ == nullptr || valueNode == nullptr) return false;
-    // 静默豁免闭集穷举: 915-b 形态判定（非类字段=非本通道·落原路径）
     if (!semantic_->isClassType(types::canonical(fieldCanon))) return false;
     if (valueNode->getType() != NodeType::IdentifierExpr) return false;
-    // 静默豁免闭集穷举: 915-b 无拷贝构造类=走 728x 合成拷贝通道（形态枚举）
     if (semantic_->findCopyConstructor(types::canonical(fieldCanon)) == nullptr) {
         return false;   // 无拷贝构造类字段走 emitStructWholeAssign 728x 合成拷贝
     }
@@ -235,19 +232,35 @@ bool IRGenerator::emitClassFieldHandleCopy(const ir::IRValue& fieldAddr,
                                            const SourceLocation& loc) {
     const std::string canon = types::canonical(fieldCanon);
     const ClassMemberInfo* copyCtor = semantic_->findCopyConstructor(canon);
-    // 静默豁免闭集穷举: 915-b 发射防御（调用方已判定非空·零发射）
-    if (copyCtor == nullptr) return false;   // 调用方已判定（防御·零发射）
+    // 1303 甄别（不可达断言·882 处置①）：三个调用点（memberWholeStructAssign
+    //   :303 / handleClassMemberAssign:518 / ir_oop_field_assign.cpp:174）均先经
+    //   canEmitClassFieldHandleCopy——其内 findCopyConstructor 非空判定
+    //   （ir_expr_assign.cpp:225）已保证本查询非空；且本函数返回值在三调用点
+    //   均被忽略（发射单点·false 无分流消费面），到达即编译器内部缺陷，报内部
+    //   错误显形；返回 false 维持原控制流（driver generate() 后 hasErrors()
+    //   中止，产物不落地）。
+    if (copyCtor == nullptr) {
+        diagnostics_.report(DiagnosticLevel::Error, loc,
+            "内部错误: 类字段句柄深拷收到无拷贝构造类 '" + canon + "'（#1303）");
+        return false;
+    }
     const std::string srcName = static_cast<IdentifierExpr*>(valueNode)->name;
     const std::string srcUnique = lookupVarName(srcName);
-    // 静默豁免闭集穷举: 915-b 源槽防御（同调用方已判定）
-    if (srcUnique.empty()) return false;     // 同上（防御）
+    // 1303 甄别（不可达断言·882 处置①）：canEmitClassFieldHandleCopy 尾行
+    //   `return !lookupVarName(srcName).empty()`（ir_expr_assign.cpp:229）已
+    //   保证源槽名非空；判定与发射之间为纯查询零状态变更，同名查询结果稳定，
+    //   到达即内部缺陷（报内部错误显形·收尾同上）。
+    if (srcUnique.empty()) {
+        diagnostics_.report(DiagnosticLevel::Error, loc,
+            "内部错误: 类字段句柄深拷源槽 '" + srcName + "' 未登记（#1303）");
+        return false;
+    }
     ir::IRValue srcRef;
     if (isByRefCapture(srcName)) {
         // 引用参数：槽内存=被引用对象槽地址（Load 槽·identifierClassCopyAssign
         //   :59 同款）
         srcRef = emitResult(ir::Opcode::Load, {ir::IRValue::var(srcUnique, "ptr")},
                             "ptr", srcUnique, loc);
-    // 静默豁免业务值: 915-b 源地址形态分支（引用捕获=Load 槽/普通=AddrOf·两形态闭集）
     } else {
         srcRef = emitResult(ir::Opcode::AddrOf,
                             {ir::IRValue::var(srcUnique, "i64")}, "ptr",
@@ -499,7 +512,6 @@ bool IRGenerator::memberClassCallProductAssign(Expr* valueExpr,
                                                const ir::IRValue& fieldAddr,
                                                const std::string& fieldCanon,
                                                const SourceLocation& loc) {
-    // 静默豁免闭集穷举: 629 发射守卫（判定单点已含全形态·防御）
     if (!canMemberClassCallProductAssign(valueExpr, fieldCanon)) return false;
     // 源求值（产物=新堆对象句柄——所有权随返回值移交调用方）
     ir::IRValue newObj = genExpr(valueExpr);

@@ -239,11 +239,9 @@ void IRGenerator::emitNoDtorFieldCascade(const ir::IRValue& objPtr,
 //       （深度限 4 防环·与 emitNoDtorFieldCascade 同限）。
 bool IRGenerator::classHasReleasableFields(const std::string& classCanon,
                                            int depth) const {
-    // 静默豁免业务值: 空依赖/深度上限（防环）——无更深资源可判（判定终止·非查表 miss）
     if (semantic_ == nullptr || depth > 4) return false;
     const std::string canon = types::canonical(classCanon);
     const ClassInfo* ci = semantic_->findClass(canon);
-    // 静默豁免业务值: findClass miss=非类名（无字段可释放·业务分流）
     if (ci == nullptr) return false;
     for (const auto& fn : ci->fieldOrder) {
         const auto f = ci->fields.find(fn);
@@ -255,7 +253,6 @@ bool IRGenerator::classHasReleasableFields(const std::string& classCanon,
         const std::string fcanonNorm = canonicalizeSyntheticArgText(fcanon);
         if (fcanonNorm.rfind("可选$", 0) == 0 ||
             fcanonNorm.rfind("结果$", 0) == 0) {
-            // 静默豁免业务值: 收集器非空=含串载荷——判定为真（正判据·非失败路径）
             if (!ownedStrFieldsOf(ftype).empty()) return true;
             continue;
         }

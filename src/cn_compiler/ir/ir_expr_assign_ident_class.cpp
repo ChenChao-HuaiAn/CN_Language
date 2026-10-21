@@ -375,8 +375,12 @@ bool IRGenerator::globalStaticClassCallProductAssign(AssignmentExpr* node,
 // 类字段左值地址：返回 实例字段地址（对象指针+偏移）或静态字段地址。
 // 供 对象.字段 = v 赋值、&对象.字段 取地址 使用。
 bool IRGenerator::handleClassMemberLvalue(MemberExpr* node, ir::IRValue& outAddr) {
-    // 静默豁免闭集穷举: 915-b 族搬迁（自 ir_oop_field.cpp 机械搬迁·零行为变更）——类成员左值形态判定守卫
-    if (semantic_ == nullptr) return false;
+    // 语义视图可空=IRGenerator 允许构造形态（单元测试无语义层直驱 IR 在用）：
+    //   空=非本通道回原路（契约分流·非缺陷）；后续语义结果查询在
+    //   semantic_ 非空前提下才有意义。
+    if (semantic_ == nullptr) {
+        return false;
+    }
     std::string objName;
     if (node->object->getType() == NodeType::IdentifierExpr) {
         objName = static_cast<IdentifierExpr*>(node->object.get())->name;
@@ -385,10 +389,17 @@ bool IRGenerator::handleClassMemberLvalue(MemberExpr* node, ir::IRValue& outAddr
     const std::string canonObj = types::canonical(objSrcType);
 
     // 静态字段
-    // 静默豁免闭集穷举: 915-b 族搬迁——静态字段形态判定（非静态落实例通道）
     if (!objName.empty() && semantic_->isClassType(objName)) {
-        // 静默豁免闭集穷举: 915-b 族搬迁——静态字段存在性守卫（miss=非本通道落原路径）
-        if (classFieldType(objName, node->memberName).empty()) return false;
+        // 1303 甄别（不可达断言·882 处置①）：字段存在性由语义层保证——成员
+        //   访问检查（semantic_expr_access.cpp:244-248）对「类没有成员」报错
+        //   中止，语义有错的程序不进 IR 阶段（driver.cpp:64）；到达即内部
+        //   缺陷（查询面漂移），报内部错误显形；返回 false 维持原控制流。
+        if (classFieldType(objName, node->memberName).empty()) {
+            diagnostics_.report(DiagnosticLevel::Error, node->location,
+                "内部错误: 静态字段 '" + node->memberName + "' 未登记于类 '" +
+                    objName + "'（#1303）");
+            return false;
+        }
         outAddr = genStaticFieldAddr(objName, node->memberName, node->location);
         return true;
     }
@@ -404,14 +415,31 @@ bool IRGenerator::handleClassMemberLvalue(MemberExpr* node, ir::IRValue& outAddr
     if (!semantic_->isClassType(canonObjField) && types::isPointer(canonObjField)) {
         canonObjField = types::canonical(types::pointeeOf(canonObjField));
     }
-    // 静默豁免闭集穷举: 915-b 族搬迁——实例对象类型判定（非类落原路径）
     if (!semantic_->isClassType(canonObjField)) return false;
     const std::string fieldType = classFieldType(canonObjField, node->memberName);
-    // 静默豁免闭集穷举: 915-b 族搬迁——字段存在性守卫（miss=非本通道）
-    if (fieldType.empty()) return false;
+    // 1303 甄别（不可达断言·882 处置①）：同静态面——语义层成员访问检查
+    //   （semantic_expr_access.cpp:244-248）对「类没有成员」报错中止，语义
+    //   有错的程序不进 IR；到达即内部缺陷，报内部错误显形；返回 false 维持
+    //   原控制流（driver hasErrors() 中止·产物不落地）。
+    if (fieldType.empty()) {
+        diagnostics_.report(DiagnosticLevel::Error, node->location,
+            "内部错误: 字段 '" + node->memberName + "' 未登记于类 '" +
+                canonObjField + "'（#1303）");
+        return false;
+    }
     const int offset = semantic_->classFieldOffset(canonObjField, node->memberName);
-    // 静默豁免闭集穷举: 915-b 族搬迁——字段偏移登记守卫（miss=未登记防御·上游已诊断）
-    if (offset < 0) return false;
+    // 1303 甄别（不可达断言·882 处置①）：偏移 miss 不可达——①语义层拒绝
+    //   「实例.静态成员」（semantic_expr_access.cpp:272-278 报错），进 IR 的
+    //   实例路径字段必非静态；②classFieldType（ir_oop_field.cpp:20-30）与
+    //   classFieldOffset（class_resolver.cpp:340-372）沿同一继承链、同名字
+    //   匹配、同「首个命中」语义（后者仅跳过静态字段，而①已排除），故查询
+    //   命中 ⇒ 偏移必命中。到达即双查询面漂移缺陷，报内部错误显形。
+    if (offset < 0) {
+        diagnostics_.report(DiagnosticLevel::Error, node->location,
+            "内部错误: 字段 '" + node->memberName + "' 偏移未登记（类 '" +
+                canonObjField + "'·#1303）");
+        return false;
+    }
     // 622 统一助手（622 守卫 Deref→lvalueAddress ∪ 728g 守卫 IndexExpr→
     //   lvalueAddress 已收编于助手·教训 #164 双守卫合流）：对象=指针下标
     //   （名单[0].字段 = v 写侧对称）目标地址=元素地址+字段偏移（内联域写·
@@ -456,10 +484,13 @@ ir::IRValue IRGenerator::classMemberBasePtr(Expr* object) {
 bool IRGenerator::handleClassMemberAssign(MemberExpr* target, Expr* valueExpr,
                                           Operator op, const SourceLocation& loc) {
     ir::IRValue addr;
-    // 静默豁免闭集穷举: 915-b 族搬迁——左值解析失败=非类字段目标落原路径
     if (!handleClassMemberLvalue(target, addr)) return false;
-    // 静默豁免闭集穷举: 915-b 族搬迁——语义视图防御（driver 装配保证）
-    if (semantic_ == nullptr) return false;
+    // 语义视图可空=IRGenerator 允许构造形态（单元测试无语义层直驱 IR 在用）：
+    //   空=非本通道回原路（契约分流·非缺陷）；后续语义结果查询在
+    //   semantic_ 非空前提下才有意义。
+    if (semantic_ == nullptr) {
+        return false;
+    }
     std::string objName;
     if (target->object->getType() == NodeType::IdentifierExpr) {
         objName = static_cast<IdentifierExpr*>(target->object.get())->name;
@@ -724,12 +755,10 @@ bool IRGenerator::classElemInlineAssign(const ir::IRValue& dstAddr, Expr* valueN
                                         const std::string& elemCanon,
                                         const SourceLocation& loc,
                                         bool allowPreFree) {
-    // 静默豁免闭集穷举: 编译器上下文不变量守卫（调用点保证非空/合法元素地址）；非本通道=哨兵 false 显式分流（消费点检查回退原路径），非查表 miss
     if (semantic_ == nullptr || valueNode == nullptr || dstAddr.id < 0) {
         return false;
     }
     const std::string canon = types::canonical(elemCanon);
-    // 静默豁免闭集穷举: 非类元素目标=通道形态外（上游专属通道管辖）；哨兵 false 分流非查表 miss
     if (!semantic_->isClassType(canon)) return false;
     const NodeType valueKind = valueNode->getType();
     if (valueKind != NodeType::IdentifierExpr &&
@@ -739,11 +768,32 @@ bool IRGenerator::classElemInlineAssign(const ir::IRValue& dstAddr, Expr* valueN
         return false;
     }
     const ClassInfo* ci = semantic_->findClass(canon);
-    // 静默豁免闭集穷举: 类名已由语义层登记（isClassType 已真）=布局表必存在·此处不可达；哨兵 false=非本通道分流
-    if (ci == nullptr) return false;
+    // 1303 甄别（不可达断言·882 处置①）：isClassType ≡ findClass != nullptr
+    //   机械等价（class_resolver.cpp:163-165 直定义），上方 isClassType 判定
+    //   已真 ⇒ 本查询必非空；到达即内部缺陷，报内部错误显形；返回 false
+    //   维持原控制流（driver hasErrors() 中止·产物不落地）。
+    if (ci == nullptr) {
+        diagnostics_.report(DiagnosticLevel::Error, loc,
+            "内部错误: 类元素内联赋值类布局表缺失 '" + canon + "'（#1303）");
+        return false;
+    }
     const ir::IRValue srcBody = genExpr(valueNode);
-    // 静默豁免上游已诊断: 求值异常（非法形态）由 IR 层 [ir2] 纪律收口不产可信产物；哨兵 false=非本通道分流
-    if (srcBody.id < 0) return false;
+    // 1303（miss 不可静默·882 处置①）：此分支在合法编译路径不可达——
+    //   ①driver.cpp:64 语义分析失败即中止，语义有错的程序不进 IR 阶段；
+    //   ②语义层 visitAssignmentExpr（semantic/semantic_expr_op.cpp:149）对
+    //     类型不兼容赋值报「无法隐式转换」，方法值绑定位仅限标识符目标
+    //     （943：成员/下标/解引用目标按非法位置编译拒绝）；
+    //   ③四形态源的 visit 全部出口均发有效寄存器（visitIdentifierExpr 查无
+    //     变量也发 FuncAddr 占位·visitIndexExpr/visitTernaryExpr 恒 emitResult；
+    //     visitMemberExpr 唯一 id<0 出口=031 方法值产物 IRValue::var，其经②
+    //     已被拒）。到达即编译器内部缺陷（visit 回归漏设 lastExpr_ 等），
+    //     报内部错误显形；driver generate() 后 hasErrors() 中止，产物不落地。
+    //     返回 false 维持原控制流（此时 IR 将被整体丢弃·无产物影响面）。
+    if (srcBody.id == -1) {  // -1=非寄存器（IRValue 唯一负值·闭集等值判定）
+        diagnostics_.report(DiagnosticLevel::Error, loc,
+            "内部错误: 类元素内联赋值源求值产物无效（#1303）");
+        return false;
+    }
     const std::string skipLabel = beginSelfAssignGuard(dstAddr, srcBody, loc);
     // 旧值释放仅限「局部数组标识符元素」面（调用点判定——声明零初始化保证
     //   槽内旧值为安全本体·923 v2 侧「数组对象923」同口径）：指针数据区/容器

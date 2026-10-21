@@ -553,7 +553,7 @@ void cnStrbufOomAbort(const char* detailFmt, unsigned long long amount) {
 //   always_inline/__forceinline 强制内联消除每次追加的函数调用税。
 #if defined(_MSC_VER)
 #define CN_STRBUF_HOT __forceinline
-#else   // 静默豁免闭集穷举: 编译器闭集（MSC/非MSC）热属性宏二分支
+#else   // 非 MSVC 编译器统一走 always_inline 属性（与 __forceinline 强制内联语义等价）
 #define CN_STRBUF_HOT inline __attribute__((always_inline))
 #endif
 CN_STRBUF_HOT CnStrbufSlot* cnStrbufResolve(void* h, const char* op) {
@@ -590,7 +590,7 @@ CnStrbufTakeResult cnStrbufTakeSlotLocked() {
     CnStrbufSlot* s = t.freeHead;
     if (s != nullptr) {
         t.freeHead = s->nextFree;   // 重发已终结槽（代际在下方统一 +1）
-} else {   // 静默豁免业务值: 空闲链空→惰性建块；槽耗尽走确定性失败（不静默）
+} else {
         if (t.nextSlot >= kStrbufMaxSlots) {
             cnStrbufOomAbort("[cnrt] 字符串构建器槽表耗尽（%llu 个句柄未收尾）\n",
                              kStrbufMaxSlots);

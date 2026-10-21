@@ -313,7 +313,8 @@ static bool compileRuntime(const std::string& target, const std::string& vcvarsB
         if (isWinX64(target)) {
             cmdLine = "cl /nologo /c /std:c++17 /utf-8 /O2 /I\"src\" "
                       "/Fo\"" + obj + "\" \"" + src + "\"";
-        // 静默豁免闭集穷举: win/linux 平台二分（compileRuntime 运行时编译命令分派·isWinX64 闭集且平台集闭合·另一平台命令行构建属正当分派非业务兜底·登记 miss_registry）
+        // 非 win-x64 即 linux 双平台（linux-arm64/linux-x86_64）：--target 入口
+        // 已闭集校验（cn_main.cpp 选项解析仅放行三合法值），linux 两平台编译命令同构
         } else {
             cmdLine = linuxCxxTool() + " -c -std=c++17 -fno-exceptions -fno-rtti -O2 "
                       "-DCNRT_LINUX_MAIN -I\"src\" -o \"" + obj + "\" \"" + src + "\"";
@@ -355,7 +356,8 @@ static bool linkExe(const std::string& target, const std::string& vcvarsBat,
             "/DEFAULTLIB:libcmt.lib /DEFAULTLIB:libucrt.lib /DEFAULTLIB:kernel32.lib "
             "/DEFAULTLIB:shell32.lib "  // Task 6.5 系统库：CommandLineToArgvW（Unicode 命令行解析）
             "/OUT:\"" + exePath + "\" \"" + userObj + "\"";
-    // 静默豁免闭集穷举: win/linux 平台二分（isWinX64 闭集·另一平台命令行构建属正当分派·登记 miss_registry）
+    // 非 win-x64 即 linux 双平台（同 compileRuntime：--target 入口闭集校验后，
+    // else 可达值域仅 linux-arm64/linux-x86_64，链接命令同构）
     } else {
         cmdLine = linuxCxxTool() + " -no-pie -o \"" + exePath + "\" \"" + userObj + "\"";
     }
@@ -377,7 +379,7 @@ static bool linkExe(const std::string& target, const std::string& vcvarsBat,
             }
             cmdLine += " \"" + libAnsi + "\"";
         }
-    // 静默豁免闭集穷举: win/linux 平台二分（isWinX64 闭集·另一平台命令行构建属正当分派·登记 miss_registry）
+    // 非 win-x64 即 linux 双平台：追加 -lpthread（996 入链配套·336 实录）与附加库直拼
     } else {
         cmdLine += " -lpthread";
         for (const auto& lib : extraLibs) {

@@ -620,7 +620,7 @@ void writeProgram(Writer& w, const Program* p) {
 
 bool serializeProgram(const Program* program, std::vector<char>& out, std::string& error) {
     out.clear();
-    // 静默豁免业务值: 空输入守卫（false=语义结果·error 消息已写·调用方按未缓存处置）
+    // 空 AST=序列化失败（error 通道显形·调用方按未缓存处置）
     if (program == nullptr) {
         error = "序列化失败：AST 根节点为空";
         return false;

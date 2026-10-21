@@ -13,19 +13,20 @@ namespace cn_compiler {
 // 将 Unicode 码点编码为 UTF-8 字节串（普通字符串以 UTF-8 字节存储，codegen 逐字节十六进制输出）
 // （B-1 拆分时从 ir.cpp 中部移回主文件的自由函数，decodeEscapes 依赖）
 static void appendUtf8(std::string& out, char32_t cp) {
-    // 静默豁免闭集穷举: UTF-8 首字节前缀位宽分档（1/2/3/4 字节·闭集穷举·非业务数值区间）
+    // 位宽四档分档（<0x80 / <0x800 / <0x10000 / 其余）：四区间完备划分
+    // char32_t 全值域，每档输出对应宽度的标准 UTF-8 编码
     if (cp < 0x80) {
         out += static_cast<char>(cp);
-    // 静默豁免闭集穷举: UTF-8 首字节前缀位宽分档（1/2/3/4 字节·闭集穷举·非业务数值区间）
+    // 二字节档
     } else if (cp < 0x800) {
         out += static_cast<char>(0xC0 | (cp >> 6));
         out += static_cast<char>(0x80 | (cp & 0x3F));
-    // 静默豁免闭集穷举: UTF-8 首字节前缀位宽分档（1/2/3/4 字节·闭集穷举·非业务数值区间）
+    // 三字节档
     } else if (cp < 0x10000) {
         out += static_cast<char>(0xE0 | (cp >> 12));
         out += static_cast<char>(0x80 | ((cp >> 6) & 0x3F));
         out += static_cast<char>(0x80 | (cp & 0x3F));
-    // 静默豁免业务值: UTF-8 四字节档编码（前三档已穷举·最后一档业务编码非兜底）
+    // 四字节档（唯一调用点 decodeEscapes 已限 cp≤0x10FFFF 且非代理区）
     } else {
         out += static_cast<char>(0xF0 | (cp >> 18));
         out += static_cast<char>(0x80 | ((cp >> 12) & 0x3F));
@@ -40,7 +41,7 @@ std::string decodeEscapes(const std::string& body);
 // 95-a：字符字面量 raw -> Unicode 码点（规范 01b 三；声明见 ir.hpp）
 int charLiteralCodePoint(const std::string& raw) {
     std::string text = raw;
-    // 静默豁免闭集穷举: 引号包裹判定（长度≥2 且首尾单引号·闭集边界）
+    // 引号包裹判定：长度≥2 且首尾单引号——有引号剥壳取内容，无引号整体即内容
     const bool quoted1137 =
         text.size() >= 2 && text.front() == '\'' && text.back() == '\'';
     if (quoted1137) {
@@ -50,7 +51,7 @@ int charLiteralCodePoint(const std::string& raw) {
     // 静默豁免业务值: 空解码=码点 0（词法保证字符字面量非空·闭集防御）
     if (decoded.empty()) return 0;
     const unsigned char b0 = static_cast<unsigned char>(decoded[0]);
-    // 静默豁免闭集穷举: ASCII 单字节码点分支（<0x80 闭集分档）
+    // ASCII 单字节：码点值即字节值；后续按 2/3/4 字节首字节前缀位分档解码
     if (b0 < 0x80) return static_cast<int>(b0);
     auto cont = [&decoded](std::size_t i) -> int {
         return (i < decoded.size())
@@ -106,7 +107,6 @@ std::string decodeEscapes(const std::string& body) {
                             if (h >= '0' && h <= '9') cp += h - '0';
                             else if (h >= 'a' && h <= 'f') cp += h - 'a' + 10;
                             else if (h >= 'A' && h <= 'F') cp += h - 'A' + 10;
-    // 静默豁免业务值: 非十六进制字符=转义解析失败置假（闭集字符判定·非默认值）
                             else { ok = false; break; }
                         }
                         if (ok) {
@@ -118,11 +118,10 @@ std::string decodeEscapes(const std::string& body) {
                             }
                         }
                         i = j;  // 跳到 '}'（循环 ++i 后到达 '}' 之后）
-    // 静默豁免业务值: 非法 unicode 花括号转义=保留反斜杠（词法已拒·防御面业务值）
                     } else {
                         out += '\\';  // 非法 \u{：保留反斜杠
                     }
-    // 静默豁免业务值: 非花括号 unicode 转义=保留反斜杠（原样传递业务语义）
+    // \u 后非 '{'：未知转义保留反斜杠原样（C 语义·同 default 分支）
                 } else {
                     out += '\\';
                 }

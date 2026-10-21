@@ -174,7 +174,7 @@ void IRGenerator::visitIdentifierExpr(IdentifierExpr* node) {
                 } else if (constText.find_first_of(".eE") != std::string::npos) {
                     lastExpr_ = emitResult(ir::Opcode::ConstFloat, {}, "f64", constText,
                                            node->location);
-                } else {  // 静默豁免业务值: 整数常量引用发射（域内 i64 直存/超承载 128 双半·1073 单点——910/919 常数发射面）
+                } else {  // 整数常量引用发射（域内 i64 直存/超承载 128 双半·1073 单点）
                     emitConstRefIntLiteral(constText, node->location);
                 }
                 return;
@@ -404,7 +404,7 @@ bool IRGenerator::genStringCompareBinary(BinaryExpr* node, const ir::IRValue& le
 //   ptrElemStride 的 648 内部错误显形（不静默取默认值）。与 v2 指针值表达式
 //   元素1064 结构面同构（v2 面合判可+元素，本处仅源类型回溯）。
 std::string IRGenerator::ptrOperandSrcType(const Expr* e) const {
-    if (e == nullptr) return "";  // 静默豁免业务值: 空节点=非指针形态缺省判空谓词语义（调用点恒传 node->left/right 子树非空·防御面不可达），非静默默认值
+    if (e == nullptr) return "";  // 空节点=非指针形态（判空谓词·调用点恒传非空子树）
     if (e->getType() == NodeType::IdentifierExpr) {
         return lookupSrcType(static_cast<const IdentifierExpr*>(e)->name);
     }

@@ -79,7 +79,8 @@ void IRGenerator::loadMethodValuePair(const std::string& unique,
 bool IRGenerator::tryMethodValueAssign(const std::string& targetUnique,
                                        const Expr* src,
                                        const SourceLocation& loc) {
-    // 静默豁免闭集穷举: 非方法值源/防御入参=回原路契约（try 前缀语义·调用方判定保证）
+    // 语义视图可空=IRGenerator 允许构造形态（单元测试无语义层直驱 IR 在用）：
+    //   空=回原路交通用赋值通道（契约分流·非缺陷）；三分量的非空判定同为此意。
     if (semantic_ == nullptr || src == nullptr || targetUnique.empty()) {
         return false;
     }
@@ -97,7 +98,6 @@ bool IRGenerator::tryMethodValueAssign(const std::string& targetUnique,
     } else if (src->getType() == NodeType::IdentifierExpr) {
         const std::string& srcName =
             static_cast<const IdentifierExpr*>(src)->name;
-        // 静默豁免业务值: 源标识符非方法值变量=回原路（非方法值语义）
         if (!isMethodValueVar(srcName)) return false;
         srcUnique = lookupVarName(srcName);
         // 静默豁免上游已诊断: 已报内部错误（槽未登记）·返回回原路
@@ -121,9 +121,7 @@ bool IRGenerator::tryMethodValueAssign(const std::string& targetUnique,
 // 声明位钩子（genExprInitializer 消费·须在通用单槽 Store 之前 return）：
 //   目标声明类型=方法值（ctx.srcType 由 resolveDeclTypesAndAlloc 回填）。
 bool IRGenerator::tryGenMethodValueInit(VarDecl* node, const DeclGenCtx& ctx) {
-    // 静默豁免业务值: 无初值=非本通道（调用方正常路径）
     if (node->initializer == nullptr) return false;
-    // 静默豁免业务值: 目标声明类型非方法值=非本通道
     if (!types::isMethodValueType(types::canonical(ctx.srcType))) return false;
     return tryMethodValueAssign(ctx.unique, node->initializer.get(),
                                 node->location);
@@ -134,10 +132,12 @@ bool IRGenerator::tryGenMethodValueInit(VarDecl* node, const DeclGenCtx& ctx) {
 bool IRGenerator::identifierMethodValueAssign(AssignmentExpr* node,
                                               const IdentifierExpr* ident,
                                               const std::string& unique) {
-    // 静默豁免闭集穷举: 赋值位入口防御（ident 必非空·语义层保证）
-    if (semantic_ == nullptr || ident == nullptr) return false;
+    // 语义视图可空=IRGenerator 允许构造形态（单元测试无语义层直驱 IR 在用）：
+    //   空/入参不齐=非本通道，回原路（契约分流·非缺陷）。
+    if (semantic_ == nullptr || ident == nullptr) {
+        return false;
+    }
     if (node->op != Operator::Assign) return false;
-    // 静默豁免业务值: 目标非方法值变量=回原路
     if (unique.empty() || !isMethodValueVar(ident->name)) return false;
     // 右值求值（表达式源=物化临时；变量源=多余单 Load 但正确——后续优化可省）
     genExpr(node->value.get());

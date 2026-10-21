@@ -212,7 +212,6 @@ bool loadProgramCache(const std::string& dir, const std::string& entryFilePath,
     entry = ProgramCacheEntry();
     const std::string cacheFile = cacheFilePath(dir, entryFilePath, options);
     std::vector<char> buf;
-    // 静默豁免业务值: 读缓存失败=未命中信号（missNew 计数·回退完整编译=唯一正确路径）
     if (!cacheReadWholeFile(cacheFile, buf, kMaxFileBytes)) {
         g_stats.missNew += 1;
         return false;

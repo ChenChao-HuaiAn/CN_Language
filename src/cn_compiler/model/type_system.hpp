@@ -14,6 +14,8 @@
 #include <optional>
 #include <vector>
 
+#include "cn_compiler/common/optional_safe.hpp"
+
 namespace cn_compiler {
 namespace types {
 
@@ -230,14 +232,16 @@ bool textExceedsU64(const std::string& text);
 // 910：整数字面量文本归一化——任意进制（十进制/0x/0b/0o·大小写前缀）+
 //   可选前导符号 + L/l/U/u 后缀（十六进制面 F 不剥·与 stripLiteralSuffix
 //   同守卫）→ 规范十进制文本 "[-]digits"（去前导零·保留至少一位）。
-//   返回空串哨兵 = 超 u128 域（> 2^128-1·任意进制）或非法（无有效数字——
-//   词法层已拒·防御面）。
+//   无值（nullopt）= 超 u128 域（> 2^128-1·任意进制）或非法（无有效数字/
+//   进制外字符——词法层已拒·错误恢复路径）；1303 结果化：原空串哨兵改
+//   cn::Optional——调用方以 has_value() 分流或 value_or(显形默认) 处置，
+//   空串值不再承担失败语义（空串与无值两态分离）。
 //   存在意义：textExceedsInt64/textExceedsU32/U64 按「十进制文本长度」判域，
 //   对 hex/oct/bin 文本误判（`0x8000000000000000` 18 字符 <19 判不超——759
 //   探针实锚）；parseIntValue 走 stoll 对超承载文本抛异常静默回 0。本工具把
 //   一切字面量文本先归一为十进制文本，后续「长度+字典序」判定大数安全且
 //   单点（宿主语义/IR 两侧消费）。
-std::string normalizeIntLiteralToDecimal(const std::string& raw);
+cn::Optional<std::string> normalizeIntLiteralToDecimal(const std::string& raw);
 
 // 910：规范十进制文本（可带 '-'/'+'）是否在有符号域 [-negBound, posBound]——
 //   负号形态按 |digits| ≤ negBound（-2147483648=整32::MIN 域内合法）、正值
@@ -300,8 +304,10 @@ bool foldIntLiteralText(const std::string& raw, std::string& out);
 
 // 将 i128 字面量文本拆分为 低64位:高64位 十六进制文本（如 "10000000000000000000" -> "0:8AC7230489E80000"）
 // 支持 十进制/0x十六进制/0b二进制/0o八进制 前缀（文本已剥后缀）
-// 解析失败返回空串（词法层已保证合法，防御性）
-std::string splitI128Text(const std::string& raw);
+// 无值（nullopt）=解析失败（无有效数字/非法数字字符——词法层已保证合法，
+// 1303 结果化：原空串哨兵改 cn::Optional——失败不再与 "0:0" 等合法输出
+// 形态共用值域，调用方 has_value()/value_or 显形处置）
+cn::Optional<std::string> splitI128Text(const std::string& raw);
 
 // ==================== 919：十进制文本大数四则（超承载常量表达式求值底座） ====================
 

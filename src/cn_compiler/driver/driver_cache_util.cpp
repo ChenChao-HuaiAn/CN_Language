@@ -146,7 +146,7 @@ bool cacheDirExists(const std::string& path) {
 }
 
 bool cacheEnsureDir(const std::string& path) {
-    // 静默豁免闭集穷举: 空路径守卫（无目录可建·返回 false 由调用方计 storeFail）
+    // 空路径=无目录可建：显式失败返回（调用方计入 storeFail），不做创建尝试
     if (path.empty()) return false;
     if (cacheDirExists(path)) return true;
     std::string cur;
@@ -154,8 +154,10 @@ bool cacheEnsureDir(const std::string& path) {
         cur += path[i];
         const bool isSep = (path[i] == '/' || path[i] == '\\');
         if (!isSep) continue;
-        // 静默豁免闭集穷举: 根 "/" 段跳过（逐级 mkdir 的段守卫·非业务数值区间）
-        if (cur.size() <= 1) continue;  // 根 "/"
+        // 根段跳过（"/" 或 "\\"）：整条路径即根本身，无需创建。循环每轮先
+        // 追加字符再判分隔符，走到此处 cur 末字符必为分隔符且非空，
+        // 长度 1 即根段——显式枚举两形态，不用长度单边比较
+        if (cur == "/" || cur == "\\") continue;
         if (cacheDirExists(cur)) continue;
 #ifdef _WIN32
         _mkdir(cur.c_str());
@@ -181,7 +183,8 @@ bool cacheReadWholeFile(const std::string& path, std::vector<char>& out,
     std::fseek(fp, 0, SEEK_END);
     const long size = std::ftell(fp);
     std::fseek(fp, 0, SEEK_SET);
-    // 静默豁免闭集穷举: 文件尺寸合法性守卫（非正=空文件/超限=损坏·false 由调用方按未命中处置）
+    // 尺寸合法域 (0, maxBytes]：空文件/ftell 失败/超上限一律显式失败返回，
+    // 调用方按缓存未命中处置（回退重编译），不做部分读取
     if (size <= 0 || static_cast<std::size_t>(size) > maxBytes) {
         std::fclose(fp);
         return false;

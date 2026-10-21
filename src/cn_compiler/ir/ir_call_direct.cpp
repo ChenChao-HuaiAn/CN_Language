@@ -420,9 +420,9 @@ ir::IRValue IRGenerator::evalDefaultExpr(Expr* expr,
             const std::string type =
                 types::integerLiteralRuntimeType(lit->raw, &st910);
             const std::string irType = mapType(type);
-            const std::string dec910 =
+            const cn::Optional<std::string> decOpt910 =
                 types::normalizeIntLiteralToDecimal(lit->raw);
-            if (st910 != 0 || dec910.empty()) {
+            if (st910 != 0 || !decOpt910.has_value()) {
                 // 超域形态：语义层已诊断（诊断即错误闭环）——按目标类型零占位
                 const std::string zeroType = target.empty() ? irType : target;
                 base = ir::IRValue::constant(
@@ -430,10 +430,12 @@ ir::IRValue IRGenerator::evalDefaultExpr(Expr* expr,
                 zeroPlaceholder = true;
                 break;
             }
+            const std::string dec910 = decOpt910.value();
             if (is128IrTypeText(irType)) {
-                const std::string split = types::splitI128Text(dec910);
-                base = ir::IRValue::constant(split.empty() ? dec910 : split,
-                                             irType);
+                // 1303 结果化: 无值时显形回退原文十进制（128 位通道解析原文）
+                const std::string split =
+                    types::splitI128Text(dec910).value_or(dec910);
+                base = ir::IRValue::constant(split, irType);
                 break;
             }
             base = ir::IRValue::constant(dec910, irType);
@@ -524,14 +526,14 @@ ir::IRValue IRGenerator::evalDefaultExpr(Expr* expr,
     if (is128IrTypeText(target)) {
         // 目标 128：整数常量统一为 "低64:高64" 双半（codegen 双槽契约）。
         if (!is128IrTypeText(base.type) || text.find(':') == std::string::npos) {
-            const std::string split = types::splitI128Text(text);
-            if (split.empty()) {
+            const cn::Optional<std::string> split = types::splitI128Text(text);
+            if (!split.has_value()) {
                 diagnostics_.report(DiagnosticLevel::Error, expr->location,
                     "内部错误: 默认参数常量 '" + text +
                         "' 无法拆分为 128 位双半——补零（#1150）");
                 return ir::IRValue::constant("0:0", target);
             }
-            text = split;
+            text = split.value();
         }
         return ir::IRValue::constant(text, target);
     }

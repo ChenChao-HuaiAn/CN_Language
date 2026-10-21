@@ -529,8 +529,10 @@ std::string caseCompareOperandText1137(const CaseLabel* label,
                                        const std::string& selType) {
     if (label->decValue.empty()) return std::to_string(label->value);
     if (selType == "i128" || selType == "u128") {
-        const std::string split = types::splitI128Text(label->decValue);
-        if (!split.empty()) return split;
+        // 1303 结果化: 无值时落下方原文回退（decValue 十进制文本恒可解析）
+        const cn::Optional<std::string> split =
+            types::splitI128Text(label->decValue);
+        if (split.has_value()) return split.value();
     }
     return label->decValue;
 }

@@ -88,15 +88,16 @@ bool SemanticAnalyzer::intLiteralFitsType(const Expr* e, const std::string& to) 
             types::integerLiteralTextNonZero(lit->raw)) {
             return false;
         }
-        dec = types::normalizeIntLiteralToDecimal(lit->raw);
+        // 1303 结果化: 无值显形转空串——下方 131 统一空串分支（超 u128 域拒）口径不变
+        dec = types::normalizeIntLiteralToDecimal(lit->raw).value_or(std::string());
     } else if (!enumDec756.empty()) {
         // 756 枚举成员常量命中：走下方统一判域（不经 919 承载内放行——
         //   枚举槽 i32 域判据须对成员值生效，值域门槛 756 语义。）
         dec = enumDec756;
     } else if (isEnumType(to)) {
-        // 静默豁免业务值: 枚举槽非常量直存形态=756 判据面外放行（表达式/标识符/调用交 canConvert 主链·与 v2 枚举槽分支同口径）
+
         return true;
-    } else {  // 静默豁免业务值: 919 轮非常量形态判定（返回真=交既有转换主链判定·非静默默认）
+    } else {
         // 919（超承载字面量参与表达式求值双侧静默分叉根治·640 侦察副产品）：
         //   常量表达式形态扩展——全字面量算术表达式（+ - * / %·一元 ±）经
         //   cnEvalConstIntExprText919 文本级大数安全折叠求值，数学值与目标
@@ -121,7 +122,7 @@ bool SemanticAnalyzer::intLiteralFitsType(const Expr* e, const std::string& to) 
                 })) {
             return false;
         }
-        if (!cnEvalConstIntExprText919(e, dec)) return true;  // 静默豁免业务值: 919 轮非常量形态判定（返回真=交既有转换主链判定·非静默默认）
+        if (!cnEvalConstIntExprText919(e, dec)) return true;
         // 承载内值（int64 域内）：交既有折叠/溢出预演链（族④a 防双报）
         if (!dec.empty() &&
             types::decTextFitsSignedRange(dec, "9223372036854775808",
@@ -129,7 +130,6 @@ bool SemanticAnalyzer::intLiteralFitsType(const Expr* e, const std::string& to) 
             return true;
         }
     }
-    // 静默豁免业务值: 910 轮整数字面量文本超 u128 域（归一化空串）⇒ 一切整型目标超域 → 拒（业务判定非 miss 默认）
     if (dec.empty()) return false;  // 超 u128 域：一切整型目标皆超（910/919）
     const bool rawNeg = (dec[0] == '-');
     if (rawNeg) dec.erase(0, 1);
@@ -196,8 +196,8 @@ CaseLabelCheck1137 checkCaseLabel1137(const CaseLabel* caseNode,
 static bool scanSubtreeLiteralBeyond919(
     const Expr* e, const std::string& to, int depth,
     const std::function<bool(const Expr*, const std::string&)>& fits) {
-    // 静默豁免业务值: 919-final 扫描入口守卫（空节点/深度超限=非扫描面
-    // 判定·谓词语义非静默默认；深度上限防病态深嵌套栈溢出）
+    // 入口守卫：空节点/深度超限=非扫描面判定（谓词语义·
+    // 深度上限防病态深嵌套栈溢出）
     if (e == nullptr || depth > 64) {
         return false;
     }
@@ -226,15 +226,17 @@ static bool scanSubtreeLiteralBeyond919(
             types::integerLiteralTextNonZero(lit->raw)) {
             return true;
         }
-        std::string dec = types::normalizeIntLiteralToDecimal(lit->raw);
-        // 静默豁免业务值: 919-final 超 u128 域哨兵（空串=超一切整型域·按超域命中拒·910 口径非静默默认）
+        // 1303 结果化: 无值显形转空串（超 u128 域哨兵·下方判式与 910 口径不变）
+        std::string dec =
+            types::normalizeIntLiteralToDecimal(lit->raw).value_or(std::string());
+
         if (dec.empty()) return true;
         // 64 位承载门槛（含负号：负值按 |值| ≤ 2^63）；承载内=非本扫描面
         if (negShell) dec.insert(dec.begin(), '-');
         if (types::decTextFitsSignedRange(dec, "9223372036854775808",
                                           "9223372036854775807")) {
-            // 静默豁免业务值: 919-final 承载内字面量（既有链管辖·285 拉窄/
-            // T36 值域面·判定语义非静默默认）
+            // 承载内字面量=既有链管辖（285 拉窄/
+            // T36 值域面）
             return false;
         }
         return !fits(e, to);
@@ -258,7 +260,7 @@ static bool scanSubtreeLiteralBeyond919(
         const AssignmentExpr* a = static_cast<const AssignmentExpr*>(e);
         return scanSubtreeLiteralBeyond919(a->value.get(), to, depth + 1, fits);
     }
-    // 静默豁免业务值: 919-final 扫描闭集穷举（显式转换/调用/标识符/下标/
+    // 扫描闭集穷举（显式转换/调用/标识符/下标/
     // 成员访问=非本扫描面·各自通道独立判域或运行期值）
     return false;
 }

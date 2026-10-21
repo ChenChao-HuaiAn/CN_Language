@@ -285,7 +285,6 @@ std::string IRGenerator::lookupSrcType(const std::string& name) const {
 }
 std::vector<std::string> IRGenerator::funcPtrParamsOfCallee(Expr* callee) const {
     const std::optional<std::string> substType = funcPtrTypeOfCallee(callee);
-    // 静默豁免业务值: 非函数指针被调=空形参表（无间接调用签名·业务否定语义）
     if (!substType.has_value()) return {};
     return types::funcPtrParamsOf(*substType);
 }

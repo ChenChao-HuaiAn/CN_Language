@@ -53,16 +53,16 @@ void IRGenerator::visitUnaryExpr(UnaryExpr* node) {
             //   （闭集穷举：两者皆非），此处恒产出非空双半文本。
             std::string maskText = "-1";
             if (operand.type == "i128" || operand.type == "u128") {
-                const std::string split = types::splitI128Text("-1");
-                if (split.empty()) {
-                    // miss 三选一①（648/110 同规）：硬编码 "-1" 拆分为空=编译器
+                const cn::Optional<std::string> split = types::splitI128Text("-1");
+                if (!split.has_value()) {
+                    // miss 三选一①（648/110 同规）：硬编码 "-1" 拆分无值=编译器
                     //   内部缺陷，显形于此（driver 见 hasErrors 中止，产物不落地）；
                     //   掩码保留 "-1"（控制流零变更，不再降级）。
                     diagnostics_.report(DiagnosticLevel::Error, node->location,
                         "内部错误: 128 位取反掩码常量文本拆分失败——'-1' 为合法"
-                        "十进制文本（splitI128Text 契约应恒非空），静默降级已废除（#1102）");
+                        "十进制文本（splitI128Text 契约应有值），静默降级已废除（#1102）");
                 }
-                if (!split.empty()) maskText = split;
+                if (split.has_value()) maskText = split.value();
             }
             ir::IRValue minusOne = emitResult(ir::Opcode::ConstInt, {}, operand.type,
                                               maskText, node->location);

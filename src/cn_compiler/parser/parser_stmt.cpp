@@ -361,8 +361,9 @@ bool normalizeCaseIntText(const std::string& raw, bool negForm,
         decOut.clear();
         return false;  // 超语言承载族（整128/正128 域）→ 调用方报错
     }
-    decOut = types::normalizeIntLiteralToDecimal(text);
-    // 归一空串=非法文本（词法不可达防御面；超域已由 runtimeType status 承担）
+    // 1303 结果化: 无值显形转空串（非法文本防御面·超域已由 runtimeType
+    //   status 承担）——decOut 空串口径与返回判定不变
+    decOut = types::normalizeIntLiteralToDecimal(text).value_or(std::string());
     return !decOut.empty();
 }
 
@@ -442,7 +443,6 @@ bool Parser::parseCaseIntLabel(std::int64_t& outValue, std::string& outRaw,
     // 折叠求值全文本级（919 十进制文本加减·大数安全）。结构：无括号 或
     //   括号已闭合 → 求值取值（提前 return 扣住合法区间）；余下=括号未闭合
     //   的非简单折叠形态 → 回退通用路径（将报错）。
-    // 静默豁免业务值: 括号未闭合=非简单折叠形态判定（回退通用路径后由「情况标签必须是整型/字符/字符串常量」诊断收口·非静默默认值）
     if (hasParen && !match(TokenType::RightParen)) {
         pos_ = save;  // 非简单折叠形态——回退通用路径（将报错）
         handled = false;

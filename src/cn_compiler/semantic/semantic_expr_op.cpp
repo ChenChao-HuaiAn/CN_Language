@@ -68,9 +68,7 @@ bool rewritePointerCompoundAssign(AssignmentExpr* node, const std::string& targe
                                   const std::string& valueType) {
     if (node->op != Operator::PlusAssign && node->op != Operator::MinusAssign)
         return false;
-    // 静默豁免业务值: 改写试判谓词——目标非指针=本通道不适用，return false 交调用方（唯一调用点紧随其后报「复合赋值要求数值操作数」，非静默取默认值·543/943 同族先例）。
     if (!types::isPointer(targetType)) return false;
-    // 静默豁免业务值: 改写试判谓词——右值非整数=本通道不适用，return false 交调用方（同上；「未知」=上游已诊断面交二元兜底）。
     if (valueType != "未知" && !types::isInteger(valueType)) return false;
     const Operator baseOp =
         (node->op == Operator::PlusAssign) ? Operator::Add : Operator::Subtract;

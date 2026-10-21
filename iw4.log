@@ -1,0 +1,93 @@
+Switched to a new branch 'batch/1303'
+[batch/1303 9ffc9e364] 〔1303 四期全量治理·squash 重建〕兜底登记全量过堂+cn::Optional 结果化基建（基于 develop 顶 65d94796 重建·含 #1243 立法对齐）
+ Date: Wed Oct 21 23:41:36 2026 +0800
+ 120 files changed, 3237 insertions(+), 10167 deletions(-)
+ create mode 100644 src/cn_compiler/common/optional_safe.hpp
+ create mode 100644 tests/unit/common/test_optional_safe.cpp
+[账实检查] 🟡 黄（知情放行）：
+  #1277 台账待办(⬜)但远端已有分支——疑似认领未流转（wt.py create 1277 补 🏃）
+  #357 台账已完成(✅)缺收口 sha——021 迁移旧账（226 立规前旧格式✅行本无 sha·知情放行）
+  #228 台账已完成(✅)缺收口 sha——021 迁移旧账（226 立规前旧格式✅行本无 sha·知情放行）
+  #234 台账已完成(✅)缺收口 sha——021 迁移旧账（226 立规前旧格式✅行本无 sha·知情放行）
+  #289 台账已完成(✅)缺收口 sha——021 迁移旧账（226 立规前旧格式✅行本无 sha·知情放行）
+  #292 台账已完成(✅)缺收口 sha——021 迁移旧账（226 立规前旧格式✅行本无 sha·知情放行）
+  #293 台账已完成(✅)缺收口 sha——021 迁移旧账（226 立规前旧格式✅行本无 sha·知情放行）
+  #209 台账已完成(✅)缺收口 sha——021 迁移旧账（226 立规前旧格式✅行本无 sha·知情放行）
+[gate_lock] 已获得（2026-10-22 00:24:18）
+== L1 快速门禁（920·提交前）==
+  $ C:\Users\ChenChao\AppData\Local\Python\pythoncore-3.14-64\python.exe scripts/check_ascii_idents.py
+[ASCII门禁] 合规：359 个 C++ 文件代码区全 ASCII ✓
+[check_ascii_idents] ✓
+  $ C:\Users\ChenChao\AppData\Local\Python\pythoncore-3.14-64\python.exe scripts/check_keywords_sync.py
+[关键字同步] 宿主=46 规范=46 v2=25（白名单 24）
+  ✓ 四处清单一致（单一事实源成立）
+[check_keywords_sync] ✓
+  $ C:\Users\ChenChao\AppData\Local\Python\pythoncore-3.14-64\python.exe scripts/check_registry_audit.py
+[清单审计] PASS ✓（注册 30 件·check_* glob 27 件全注册·ci.ps1 调用面无绕过）
+[check_registry_audit] ✓
+  $ C:\Users\ChenChao\AppData\Local\Python\pythoncore-3.14-64\python.exe scripts/check_case_numbers.py
+=== E2E 用例编号唯一性门禁（554 建·577 台账核验·AGENTS §4 条文执行面）===
+目录 1146·唯一编号 1084·多目录编号 60 组（豁免 4 号·成对与豁免之外的组=真撞号）
+[PASS] 本地无真撞号（成对与豁免之外的组=0）。
+  [黄] #880 「方法内继承聚合字段链读」台账已领号未配名（补录：board_cli 补用例名 880 <用例名>·811 通道）
+  [黄] #907 「传参位串临时释放」台账已领号未配名（补录：board_cli 补用例名 907 <用例名>·811 通道）
+  [黄] #909 「编译期除零常量传播」台账已领号未配名（补录：board_cli 补用例名 909 <用例名>·811 通道）
+  [陈旧] 台账 #887「浮转字符钳制」本树无对应用例目录——他分支在用则忽略；若为改号遗留=陈旧残留（处置见 tests/e2e/README.md 用例改号流程）
+  [陈旧] 台账 #891「静态槽超域字面量顶层静态拒」本树无对应用例目录——他分支在用则忽略；若为改号遗留=陈旧残留（处置见 tests/e2e/README.md 用例改号流程）
+  [陈旧] 台账 #892「静态槽超域字面量函数内静态拒」本树无对应用例目录——他分支在用则忽略；若为改号遗留=陈旧残留（处置见 tests/e2e/README.md 用例改号流程）
+  [陈旧] 台账 #893「静态槽超域字面量类字段拒」本树无对应用例目录——他分支在用则忽略；若为改号遗留=陈旧残留（处置见 tests/e2e/README.md 用例改号流程）
+  [陈旧] 台账 #894「静态槽超域字面量负号进制拒」本树无对应用例目录——他分支在用则忽略；若为改号遗留=陈旧残留（处置见 tests/e2e/README.md 用例改号流程）
+  [陈旧] 台账 #895「静态槽域内直存对照」本树无对应用例目录——他分支在用则忽略；若为改号遗留=陈旧残留（处置见 tests/e2e/README.md 用例改号流程）
+  [陈旧] 台账 #897「容器元素返回类赋值位」本树无对应用例目录——他分支在用则忽略；若为改号遗留=陈旧残留（处置见 tests/e2e/README.md 用例改号流程）
+  [陈旧] 台账 #898「容器元素返回类两异常」本树无对应用例目录——他分支在用则忽略；若为改号遗留=陈旧残留（处置见 tests/e2e/README.md 用例改号流程）
+  …（另 258 条陈旧行略）
+[PASS] 台账核验一致（或无对应行/断网降级）。
+[check_case_numbers] ✓
+  $ C:\Users\ChenChao\AppData\Local\Python\pythoncore-3.14-64\python.exe scripts/check_miss_gate.py
+== 静默值登记制硬拦门禁（check_miss_gate.py·882·648 立法精确化）==
+扫描面：src/ + CN语言编译器v2/（文件 374·读取失败 0）；登记表条目 168 条；协议注释点 149 处
+【1238 批准制】已批 32 · 存量过渡 136 · 已毙 0 · 未批准 0（未批准/已毙条=红通道·存量过渡=逐条呈报宽限·批完翻开关）
+【面级统计】面 | 现测 | 基线 | 新增 | 豁免放行 | 红 | 消减
+  静默形态 | 901 | 901 | 0 | 0 | 0 | 0
+  else业务 | 1237 | 1242 | 0 | 0 | 0 | 5
+  单边比较 | 2224 | 2227 | 0 | 0 | 0 | 3
+  红旗词面 | 11 | 11 | 0 | 0 | 0 | 0
+  [↓] else业务 基线位置消失 5 处（自动消减·确认无误报后跑 --update-baseline 收基线）：['src/cn_compiler/codegen/arm64/arm64_instructions_cast.cpp::}else{│constboolwide=(cmpType=="i64"||cmpType=="u64")', 'src/cn_compiler/codegen/x64/x64_instructions_alu.cpp::}else{│if(wide){writer.line("movrcx,"+op2);writer.line("testrcx,rcx");}', 'src/cn_compiler/codegen/x64/x64_instructions_alu.cpp::}else{│w=widthFor(srcType,"rax")']…
+  [↓] 单边比较 基线位置消失 3 处（自动消减·确认无误报后跑 --update-baseline 收基线）：['src/cn_compiler/codegen/x64/x64_instructions.cpp::if((!is8&&!is16)||op.size()<2||op[0]!=)returnop;', 'src/cn_compiler/codegen/x64/x64_instructions.cpp::if(op.size()<2||op[0]!=)returnop;', 'src/cn_compiler/codegen/x64/x64_instructions_cast.cpp::if(w==||w==||(w.size()>1&&w.back()==&&w!=)){']…
+
+【红清单】（1 条·L1 硬拦）
+  [×] (陈旧) src/cn_compiler/driver/driver_program_cache.cpp
+      锚：if(!lengthOk)returnid;
+      处置：登记条目锚文本在代码中消失——改代码须同步修表（改锚或删条）
+
+[门禁·红] 1 条——L1 硬拦（无逃生门 flag）；唯一合法通道=登记表补条+代码协议注释，或原地清偿。
+[check_miss_gate] ✗ rc=1
+[gate_lock] 已释放
+Your branch is up to date with 'gitcode/任务/1303'.
+Switched to branch '任务/1303'
+Deleted branch batch/1303 (was 9ffc9e364).
+== 合并队列（协议 v3·bors 批量集成）｜平台=win｜分支=任务/1303｜模式=集成 ==
+  [警告] 未跟踪文件不阻塞集成（不入提交）：['iw3.log', 'iw4.log']
+[1] 前置自检通过（分支已推远端·工作树干净）
+  $ git fetch gitcode
+  $ git fetch gitcode
+[2] 报名入队：任务/1303 @ 10-22 00:24:10（120 文件·触全量面）｜服务端✓
+  [并行] 立即组链入池（不等其他批·池有空闲实例即被认领·830 并行模型）
+  [队列服务] 已标集成中（服务端·零 git 提交——920 治乒乓）
+[3] 组链（单人并行·任务=任务/1303）
+  $ git fetch gitcode
+  $ git checkout -B batch/1303 dfa4b552cd7b8700609bdb84318fe03019d105fa
+  [组链] 叠入 任务/1303（1 提交）
+  $ git cherry-pick 9ffc9e364f1fb56c05efb6faf7344a76034abd6f
+[4] 批门禁（成员 1·写集 120 文件·全量）
+  $ C:\Users\ChenChao\AppData\Local\Python\pythoncore-3.14-64\python.exe scripts/task_board.py --check
+[5] 全量门禁（平台=win·跑在合并结果上）
+  [快速通道·920 用户裁决] 本机 L1（gate_quick：静态三检查+增量构建+全量单测）——全量由 TX_02 云端对 develop 事后自动兜底（红灯治理适用）
+  $ C:\Users\ChenChao\AppData\Local\Python\pythoncore-3.14-64\python.exe scripts/gate_quick.py
+  [归因辅助] 批成员×写集（对照失败日志定位破坏者后 --drop 踢出重验）：
+    - 任务/1303：['CN语言编译器v2/IR/IR初值解析.cn', 'CN语言编译器v2/IR/IR字面量域.cn', 'CN语言编译器v2/IR/IR容器尾.cn', 'CN语言编译器v2/IR/IR容器签名.cn', 'CN语言编译器v2/IR/IR容器释放.cn', 'CN语言编译器v2/IR/IR布局中.cn', 'CN语言编译器v2/IR/IR布局尾.cn', 'CN语言编译器v2/IR/IR常量求值.cn', 'CN语言编译器v2/IR/IR情况标签.cn', 'CN语言编译器v2/IR/IR生成.cn', 'CN语言编译器v2/IR/IR生成中.cn', 'CN语言编译器v2/IR/IR生成尾.cn', 'CN语言编译器v2/IR/IR生成类型.cn', 'CN语言编译器v2/IR/IR生成类型辅助.cn', 'CN语言编译器v2/IR/IR签名.cn', 'CN语言编译器v2/IR/IR类.cn', 'CN语言编译器v2/IR/IR类中.cn', 'CN语言编译器v2/IR/IR类尾.cn', 'CN语言编译器v2/IR/IR类抽象.cn', 'CN语言编译器v2/IR/接口表.cn', 'CN语言编译器v2/IR/生成声明.cn', 'CN语言编译器v2/IR/生成声明中.cn', 'CN语言编译器v2/IR/生成类中.cn', 'CN语言编译器v2/IR/生成类尾.cn', 'CN语言编译器v2/IR/生成类注入.cn', 'CN语言编译器v2/IR/生成类返回接管.cn', 'CN语言编译器v2/IR/生成表达式.cn', 'CN语言编译器v2/IR/生成表达式下标.cn', 'CN语言编译器v2/IR/生成表达式中.cn', 'CN语言编译器v2/IR/生成表达式字段.cn', 'CN语言编译器v2/IR/生成表达式求值尾.cn', 'CN语言编译器v2/IR/生成表达式装箱.cn', 'CN语言编译器v2/IR/生成表达式运算.cn', 'CN语言编译器v2/IR/生成表达式运算327.cn', 'CN语言编译器v2/IR/生成表达式连接.cn', 'CN语言编译器v2/IR/生成语句中.cn', 'CN语言编译器v2/IR/生成语句结构体赋值.cn', 'CN语言编译器v2/IR/生成语句赋值.cn', 'CN语言编译器v2/IR/生成语句赋值中.cn', 'CN语言编译器v2/IR/生成语句辅助.cn', 'CN语言编译器v2/IR/生成蹦床.cn', 'CN语言编译器v2/代码生成/代码生成.cn', 'CN语言编译器v2/代码生成/代码生成ARM64.cn', 'CN语言编译器v2/代码生成/代码生成ARM64中.cn', 'CN语言编译器v2/代码生成/代码生成ARM64尾.cn', 'CN语言编译器v2/代码生成/代码生成X64Linux.cn', 'CN语言编译器v2/代码生成/代码生成X64Linux中.cn', 'CN语言编译器v2/代码生成/代码生成X64Linux尾.cn', 'CN语言编译器v2/代码生成/代码生成X64Linux窥孔.cn', 'CN语言编译器v2/代码生成/代码生成共用.cn', 'CN语言编译器v2/代码生成/代码生成尾.cn', 'CN语言编译器v2/协议常量/协议常量.cn', 'CN语言编译器v2/词法/预处理.cn', 'CN语言编译器v2/语义/语义分析.cn', 'CN语言编译器v2/语义/语义分析中.cn', 'CN语言编译器v2/语义/语义分析尾.cn', 'CN语言编译器v2/语义/语义检查.cn', 'CN语言编译器v2/语义/语义检查lambda.cn', 'CN语言编译器v2/语义/语义检查初始化.cn', 'CN语言编译器v2/语义/语义检查字面量域.cn', 'CN语言编译器v2/语义/语义检查实参.cn', 'CN语言编译器v2/语义/语义检查容器方法.cn', 'CN语言编译器v2/语义/语义检查尾.cn', 'CN语言编译器v2/语义/语义检查溢出474.cn', 'CN语言编译器v2/语义/语义检查类.cn', 'CN语言编译器v2/语义/语义检查表达式.cn', 'CN语言编译器v2/语义/语义检查表达式中.cn', 'CN语言编译器v2/语义/语义检查表达式尾.cn', 'CN语言编译器v2/语义/语义检查语句.cn', 'CN语言编译器v2/语义/语义检查赋值.cn', 'CN语言编译器v2/语义/语义检查转换推导.cn', 'CN语言编译器v2/语义/语义检查运算.cn', 'CN语言编译器v2/语义/语义检查逃逸.cn', 'CN语言编译器v2/语法/解析基础.cn', 'CN语言编译器v2/语法/解析类辅助.cn', 'CN语言编译器v2/语法/解析表达式.cn', 'CN语言编译器v2/语法/解析表达式中.cn', 'CN语言编译器v2/语法/解析表达式尾.cn', 'CN语言编译器v2/语法/解析语句中.cn', 'CN语言编译器v2/货舱解析/货舱解析.cn', 'scripts/miss_freeze_baseline.json', 'scripts/miss_registry.json', 'src/cn_compiler/codegen/peephole_slot.cpp', 'src/cn_compiler/common/optional_safe.hpp', 'src/cn_compiler/driver/driver_ast_cache.cpp', 'src/cn_compiler/driver/driver_cache_util.cpp', 'src/cn_compiler/driver/driver_program_cache.cpp', 'src/cn_compiler/ir/ir.cpp', 'src/cn_compiler/ir/ir_call_direct.cpp', 'src/cn_compiler/ir/ir_decl_extra.cpp', 'src/cn_compiler/ir/ir_expr.cpp', 'src/cn_compiler/ir/ir_expr_assign.cpp', 'src/cn_compiler/ir/ir_expr_assign_ident_class.cpp', 'src/cn_compiler/ir/ir_expr_assign_ident_string.cpp', 'src/cn_compiler/ir/ir_expr_concat.cpp', 'src/cn_compiler/ir/ir_expr_unary.cpp', 'src/cn_compiler/ir/ir_lambda.cpp', 'src/cn_compiler/ir/ir_method_value.cpp', 'src/cn_compiler/ir/ir_oop_container.cpp', 'src/cn_compiler/ir/ir_oop_field.cpp', 'src/cn_compiler/ir/ir_stmt.cpp', 'src/cn_compiler/ir/ir_stmt_decl_raii.cpp', 'src/cn_compiler/model/ast_serialize.cpp', 'src/cn_compiler/model/ast_serialize_impl.hpp', 'src/cn_compiler/model/char_literal.cpp', 'src/cn_compiler/model/semantic_helpers.hpp', 'src/cn_compiler/model/type_system.hpp', 'src/cn_compiler/model/type_system_int_text.cpp', 'src/cn_compiler/parser/parser_stmt.cpp', 'src/cn_compiler/parser/parser_type.cpp', 'src/cn_compiler/semantic/semantic_expr_binary.cpp', 'src/cn_compiler/semantic/semantic_expr_op.cpp', 'src/cn_compiler/semantic/semantic_literal_domain.cpp', 'src/cn_compiler/semantic/semantic_method_value_943.cpp', 'src/cn_compiler/semantic/semantic_sig.cpp', 'src/cn_main_toolchain.cpp', 'src/runtime/string_api.cpp', 'tests/unit/CMakeLists.txt', 'tests/unit/common/test_optional_safe.cpp', 'tests/unit/semantic/test_i128_semantic.cpp']
+
+[集成失败] L1 快速门禁未过（gate_quick.py——修复后重试）。（批门禁红——修复后重跑本命令续推）
+  $ git checkout 任务/1303
+  $ git branch -D batch/1303
+  [队列服务] 失败恢复：队列行回「排队」——修复后重跑本命令续推（已入池的预验结果按内容键复用·不重跑）

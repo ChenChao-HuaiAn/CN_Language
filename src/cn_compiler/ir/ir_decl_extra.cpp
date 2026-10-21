@@ -35,13 +35,22 @@ ir::IRValue IRGenerator::emitIntLiteralConst(const std::string& raw,
                 "范围");
         return emitResult(ir::Opcode::ConstInt, {}, mapType(type), "0:0", loc);
     }
-    const std::string dec = types::normalizeIntLiteralToDecimal(raw);
-    if (types::isI128(type)) {
-        const std::string split = types::splitI128Text(dec);
-        return emitResult(ir::Opcode::ConstInt, {}, mapType(type),
-                          split.empty() ? dec : split, loc);
+    const cn::Optional<std::string> decOpt = types::normalizeIntLiteralToDecimal(raw);
+    if (!decOpt.has_value()) {
+        // 1303 结果化: st910==0 与归一无值同源互斥（integerLiteralRuntimeType
+        //   单点判定）——此支=内部不一致缺陷显形（对齐 #1150 内部错误诊断
+        //   先例），按零占位收尾控制流
+        diagnostics_.report(DiagnosticLevel::Error, loc,
+                            "内部错误: 字面量承载域内但十进制归一无值");
+        return emitResult(ir::Opcode::ConstInt, {}, mapType(type), "0:0", loc);
     }
-    // 静默豁免业务值: 910 收口非 128 常量发射分支（规范十进制文本直存 ConstInt·910 登记条目迁移至本单点）
+    const std::string dec = decOpt.value();
+    if (types::isI128(type)) {
+        // 1303 结果化: 无值时显形回退原文十进制（128 位通道解析原文）
+        const std::string split = types::splitI128Text(dec).value_or(dec);
+        return emitResult(ir::Opcode::ConstInt, {}, mapType(type), split, loc);
+    }
+    // 非 128 整型：规范十进制文本直存 ConstInt（910 收口）
     return emitResult(ir::Opcode::ConstInt, {}, mapType(type), dec, loc);
 }
 
@@ -215,9 +224,9 @@ void IRGenerator::emitConstRefIntLiteral(const std::string& decText,
     }
     if (types::isI128(rt)) {
         // i128/正128：常量文本存 低64位:高64位 十六进制（codegen 拆双槽加载）
-        const std::string split = types::splitI128Text(decText);
-        lastExpr_ = emitResult(ir::Opcode::ConstInt, {}, mapType(rt),
-                               split.empty() ? decText : split, loc);
+        // 1303 结果化: 无值时显形回退原文十进制（128 位通道解析原文）
+        const std::string split = types::splitI128Text(decText).value_or(decText);
+        lastExpr_ = emitResult(ir::Opcode::ConstInt, {}, mapType(rt), split, loc);
         return;
     }
     lastExpr_ = emitResult(ir::Opcode::ConstInt, {}, "i64", decText, loc);

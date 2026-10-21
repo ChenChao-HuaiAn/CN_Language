@@ -86,7 +86,7 @@ bool unifyUnsuffixedLiteralOperand728(const Expr* leftExpr, const Expr* rightExp
 //   等）=不可判——维持既拒文案「两个指针不能做算术运算」，与 v2 指针值
 //   表达式元素1064 边界一致（双侧同拒·立法收窄不放松）。
 bool isJudgedPtrDiffOperand1040(const Expr* e) {
-    if (e == nullptr) return false;  // 静默豁免业务值: 空节点=非该形态缺省判假谓词语义（调用点 node->left/right 恒非空·防御面不可达），非静默默认值
+    if (e == nullptr) return false;
     if (e->getType() == NodeType::IdentifierExpr) return true;
     if (e->getType() == NodeType::BinaryExpr) {
         const BinaryExpr* b = static_cast<const BinaryExpr*>(e);
@@ -755,7 +755,9 @@ bool SemanticAnalyzer::checkStringConcatAndPtrArithmetic(BinaryExpr* node,
             node->resolvedType = "整64";   // IR 侧 genPointerArithmetic 双指针分支识别
             return true;
         }
-        // 静默豁免闭集穷举: 指针差形态三分穷举——op=减 且 异型（同型/异型/非减 闭集判定·本分支内显式诊断「指针差要求两个指针同型」后终止），非静默取默认值。
+        // 指针差三分支的显式拒绝档：减且异型→报「要求同型」；同型但形态
+        // 不可判（成员/取地址/调用/下标）落入下方「不能做算术」档。
+        // 三档均有显式终态（合法置整64/错误诊断后终止），无静默取值。
         if (node->op == Operator::Subtract && !sameTypeDiff1040) {
             diagnostics_.report(DiagnosticLevel::Error, node->location,
                                 "指针差要求两个指针同型");

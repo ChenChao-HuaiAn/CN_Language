@@ -178,11 +178,11 @@ inline std::string canonicalType(const std::string& type) {
         //   INT64_MIN-1 / INT64_MAX+1 / INT64_MIN*-1 静默回绕错值）——按
         //   cnFoldConstIntExpr505 同判据溢出预检，失败=空串哨兵交诊断通道。
         case Operator::Add:
-            if ((b > 0 && a > INT64_MAX - b) || (b < 0 && a < INT64_MIN - b)) return "";  // 静默豁免业务值: 溢出折叠失败哨兵（调用方诊断通道）
+            if ((b > 0 && a > INT64_MAX - b) || (b < 0 && a < INT64_MIN - b)) return "";
             c = a + b;
             break;
         case Operator::Subtract:
-            if ((b < 0 && a > INT64_MAX + b) || (b > 0 && a < INT64_MIN + b)) return "";  // 静默豁免业务值: 溢出折叠失败哨兵（调用方诊断通道）
+            if ((b < 0 && a > INT64_MAX + b) || (b > 0 && a < INT64_MIN + b)) return "";
             c = a - b;
             break;
         case Operator::Multiply: {
@@ -210,13 +210,13 @@ inline std::string canonicalType(const std::string& type) {
             // 1016（审查 P1-2·存量崩溃）：INT64_MIN / -1 在 x86 idiv 溢出
             //   （0xC0000409 无诊断脏崩）——折叠层按不可折叠失败返回，交调用方
             //   诊断通道（与 cnFoldConstIntExpr505 同口径）。
-            if (a == INT64_MIN && b == -1) return "";  // 静默豁免业务值: 折叠失败哨兵（调用方诊断通道）
+            if (a == INT64_MIN && b == -1) return "";
             c = a / b;
             break;
         case Operator::Modulo:
             if (b == 0) return "";
             // 1016：INT64_MIN % -1 同族（数学值 0，但 idiv 指令先溢出）
-            if (a == INT64_MIN && b == -1) return "";  // 静默豁免业务值: 折叠失败哨兵（调用方诊断通道）
+            if (a == INT64_MIN && b == -1) return "";
             c = a % b;
             break;
         default: return "";
@@ -604,19 +604,22 @@ std::unique_ptr<Stmt> cloneStmt(Stmt* node);
 //   编译期拒」判据底座。
 [[maybe_unused]] inline bool cnEvalConstIntExprText919(
     const Expr* e, std::string& out, int depth = 0) {
-    if (e == nullptr || depth > 64) return false;   // 静默豁免业务值: 919 轮求值器入口判定（空节点/深度超限=非常量形态缺省判假·谓词语义非静默默认；深度守卫防病态深嵌套同步在位）
+    if (e == nullptr || depth > 64) return false;
     if (e->getType() == NodeType::IntegerLiteral) {
+        // 1303 结果化: 无值=超 u128 域哨兵（词法已拒非法文本·上游已诊断）
+        //   ——显形转空串交下游既有空串口径（910 哨兵语义不变）
         out = types::normalizeIntLiteralToDecimal(
-            static_cast<const IntegerLiteral*>(e)->raw);
-        return true;   // 空串=超 u128 域哨兵（词法已拒非法文本·上游已诊断）
+            static_cast<const IntegerLiteral*>(e)->raw)
+                  .value_or(std::string());
+        return true;
     }
     if (e->getType() == NodeType::UnaryExpr) {
         const UnaryExpr* u = static_cast<const UnaryExpr*>(e);
         if (u->postfix) return false;
         if (u->op != Operator::Subtract && u->op != Operator::Add) return false;
         std::string v;
-        if (!cnEvalConstIntExprText919(u->operand.get(), v, depth + 1)) return false;  // 静默豁免业务值: 919 轮求值器非常量形态传播（子节点不可折叠=整体非常量·谓词语义）
-        if (v.empty()) {  // 静默豁免业务值: 919 轮求值器超 u128 域哨兵传播（空串=显式哨兵·调用方按超域拒）
+        if (!cnEvalConstIntExprText919(u->operand.get(), v, depth + 1)) return false;
+        if (v.empty()) {  // 超域哨兵传播（910 空串口径）
             out.clear();
             return true;
         }
@@ -626,9 +629,9 @@ std::unique_ptr<Stmt> cloneStmt(Stmt* node);
     if (e->getType() != NodeType::BinaryExpr) return false;
     const BinaryExpr* b = static_cast<const BinaryExpr*>(e);
     std::string l, r;
-    if (!cnEvalConstIntExprText919(b->left.get(), l, depth + 1)) return false;  // 静默豁免业务值: 919 轮求值器非常量形态传播（子节点不可折叠=整体非常量·谓词语义）
-    if (!cnEvalConstIntExprText919(b->right.get(), r, depth + 1)) return false;  // 静默豁免业务值: 919 轮求值器非常量形态传播（子节点不可折叠=整体非常量·谓词语义）
-    if (l.empty() || r.empty()) {  // 静默豁免业务值: 919 轮求值器超 u128 域哨兵传播（空串=显式哨兵·调用方按超域拒）
+    if (!cnEvalConstIntExprText919(b->left.get(), l, depth + 1)) return false;
+    if (!cnEvalConstIntExprText919(b->right.get(), r, depth + 1)) return false;
+    if (l.empty() || r.empty()) {  // 超域哨兵传播（910 空串口径）
         out.clear();
         return true;
     }
@@ -662,8 +665,8 @@ std::unique_ptr<Stmt> cloneStmt(Stmt* node);
 //   完成「字面量∪常量表达式→含字面量的任意形态」适用范围扩展。
 [[maybe_unused]] inline bool cnExprHasIntLiteral919(const Expr* e,
                                                     int depth = 0) {
-    // 静默豁免业务值: 919-final 谓词入口守卫（空节点/深度超限=非扫描面
-    // 判定·谓词语义非静默默认；深度上限防病态深嵌套栈溢出）
+    // 入口守卫：空节点/深度超限=非扫描面判定（谓词语义·
+    // 深度上限防病态深嵌套栈溢出）
     if (e == nullptr || depth > 64) {
         return false;
     }
@@ -690,8 +693,8 @@ std::unique_ptr<Stmt> cloneStmt(Stmt* node);
             return cnExprHasIntLiteral919(a->value.get(), depth + 1);
         }
         default:
-            // 静默豁免业务值: 919-final 谓词闭集穷举（显式转换/调用/标识符/
-            // 下标/成员=非本扫描面·各自通道独立判域）
+            // 显式转换/调用/标识符/
+            // 下标/成员=非本扫描面（各自通道独立判域）
             return false;
     }
 }
@@ -704,35 +707,38 @@ std::unique_ptr<Stmt> cloneStmt(Stmt* node);
 [[maybe_unused]] inline bool cnEvalConstIntExprText919WithVals(
     const std::unordered_map<std::string, std::string>& vals,
     const std::string& curMod, const Expr* e, std::string& out, int depth = 0) {
-    if (e == nullptr || depth > 64) return false;  // 静默豁免业务值: 919 轮求值器入口判定（空节点/深度超限=非常量形态缺省判假·谓词语义非静默默认）
+    if (e == nullptr || depth > 64) return false;
     if (e->getType() == NodeType::IdentifierExpr) {
         const std::string n = static_cast<const IdentifierExpr*>(e)->name;
         auto it = vals.find(n);
         if (it == vals.end() && !curMod.empty()) it = vals.find(curMod + "$" + n);
-        if (it == vals.end()) return false;  // 静默豁免业务值: 未登记/前向引用常量=非常量形态判假（声明序依赖·与旧链终态一致）
+        if (it == vals.end()) return false;  // 未登记/前向引用常量=非常量形态（声明序依赖·与旧链终态一致）
         const std::string& t = it->second;
-        if (t.empty()) return false;  // 静默豁免业务值: 常量表空串值不可达（注册链空串=超域拒不入表）——防御判假
+        if (t.empty()) return false;  // 空串值不可达（注册链超域拒·不入表）
         std::size_t i = 0;
         if (t[0] == '-' || t[0] == '+') i = 1;
-        if (i >= t.size()) return false;  // 静默豁免业务值: 仅有符号无数字的非法文本=非常量形态判假（词法已拒形态·防御）
+        if (i >= t.size()) return false;  // 仅有符号无数字=词法已拒非法形态
         for (; i < t.size(); ++i) {
-            if (t[i] < '0' || t[i] > '9') return false;  // 静默豁免业务值: 非整数常量文本（字符串/浮点/布尔=非常量形态判假·与旧链终态一致）
+            if (t[i] < '0' || t[i] > '9') return false;  // 非整数常量文本=非常量形态（与旧链终态一致）
         }
         out = t;
         return true;
     }
     if (e->getType() == NodeType::IntegerLiteral) {
+        // 1303 结果化: 无值=超 u128 域哨兵（词法已拒非法文本·上游已诊断）
+        //   ——显形转空串交下游既有空串口径（910 哨兵语义不变）
         out = types::normalizeIntLiteralToDecimal(
-            static_cast<const IntegerLiteral*>(e)->raw);
-        return true;  // 空串=超 u128 域哨兵（词法已拒非法文本·上游已诊断）
+            static_cast<const IntegerLiteral*>(e)->raw)
+                  .value_or(std::string());
+        return true;
     }
     if (e->getType() == NodeType::UnaryExpr) {
         const UnaryExpr* u = static_cast<const UnaryExpr*>(e);
         if (u->postfix) return false;
         if (u->op != Operator::Subtract && u->op != Operator::Add) return false;
         std::string v;
-        if (!cnEvalConstIntExprText919WithVals(vals, curMod, u->operand.get(), v, depth + 1)) return false;  // 静默豁免业务值: 919 轮求值器非常量形态传播（子节点不可折叠=整体非常量·谓词语义）
-        if (v.empty()) {  // 静默豁免业务值: 919 轮求值器超 u128 域哨兵传播（空串=显式哨兵·调用方按超域拒）
+        if (!cnEvalConstIntExprText919WithVals(vals, curMod, u->operand.get(), v, depth + 1)) return false;
+        if (v.empty()) {  // 超域哨兵传播（910 空串口径）
             out.clear();
             return true;
         }
@@ -742,9 +748,9 @@ std::unique_ptr<Stmt> cloneStmt(Stmt* node);
     if (e->getType() != NodeType::BinaryExpr) return false;
     const BinaryExpr* b = static_cast<const BinaryExpr*>(e);
     std::string l, r;
-    if (!cnEvalConstIntExprText919WithVals(vals, curMod, b->left.get(), l, depth + 1)) return false;  // 静默豁免业务值: 919 轮求值器非常量形态传播（子节点不可折叠=整体非常量·谓词语义）
-    if (!cnEvalConstIntExprText919WithVals(vals, curMod, b->right.get(), r, depth + 1)) return false;  // 静默豁免业务值: 919 轮求值器非常量形态传播（子节点不可折叠=整体非常量·谓词语义）
-    if (l.empty() || r.empty()) {  // 静默豁免业务值: 919 轮求值器超 u128 域哨兵传播（空串=显式哨兵·调用方按超域拒）
+    if (!cnEvalConstIntExprText919WithVals(vals, curMod, b->left.get(), l, depth + 1)) return false;
+    if (!cnEvalConstIntExprText919WithVals(vals, curMod, b->right.get(), r, depth + 1)) return false;
+    if (l.empty() || r.empty()) {  // 超域哨兵传播（910 空串口径）
         out.clear();
         return true;
     }

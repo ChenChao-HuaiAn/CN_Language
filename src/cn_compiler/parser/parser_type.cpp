@@ -118,7 +118,6 @@ int Parser::methodValueAngleCloseOffset(int ltOff) const {
     int i = ltOff + 1;  // 已跳过 '<'
     // 段1：类名
     const TokenType t0 = peek(i).getType();
-    // 静默豁免业务值: 段形态不匹配=探测语义（-1 哨兵·调用方回退）
     if (!isTypeKeyword(t0) && t0 != TokenType::Identifier) return -1;
     i++;
     // 逗号
@@ -126,7 +125,6 @@ int Parser::methodValueAngleCloseOffset(int ltOff) const {
     i++;
     // 段2：返回类型（可带 * & 后缀）
     const TokenType t1 = peek(i).getType();
-    // 静默豁免业务值: 段形态不匹配=探测语义（-1 哨兵·调用方回退）
     if (!isTypeKeyword(t1) && t1 != TokenType::Identifier) return -1;
     i++;
     while (true) {
@@ -160,7 +158,6 @@ int Parser::methodValueAngleCloseOffset(int ltOff) const {
 bool Parser::methodValueDeclAhead() const {
     if (current().getValue() != "方法值") return false;
     const int after = methodValueAngleCloseOffset(1);
-    // 静默豁免业务值: 哨兵 -1 精确匹配=探测不匹配语义（调用方回退）
     if (after == -1) return false;
     // 闭合 '>' 后须为变量名（标识符）
     return peek(after).getType() == TokenType::Identifier;

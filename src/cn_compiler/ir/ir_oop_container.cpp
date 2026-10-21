@@ -172,8 +172,6 @@ bool IRGenerator::injectClassElemDestroy(const std::string& canonClass,
     //   对象基址·级联自带释放+清槽幂等）；**纯标量/无资源类仍直接返回=零注入
     //   零运行期税**（性能红线：判定面精确化 classHasReleasableFields）。
     const bool cascadeMode = dtorSig.empty();
-    // 静默豁免业务值: 无用户析构且无可释放字段（字符串/容器/盒载荷/类字段递归）=元素
-    //   无释放义务（业务分流·非查表 miss）——性能红线：纯标量/无资源类零注入零运行期税
     if (cascadeMode && !classHasReleasableFields(elemCanon)) return true;
     const std::string thisUnique = lookupVarName("自身");
     if (thisUnique.empty()) return true;

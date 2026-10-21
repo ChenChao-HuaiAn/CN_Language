@@ -41,7 +41,7 @@ bool IRGenerator::callReceiverExempt880(VarDecl* node, const DeclGenCtx& ctx) {
         // 880/879 共用判据（879 方法面扩展后两处消费·提炼于此）：
         //   体内首个 return 表达式搜索（块/如果 基本形态递归）。
         std::function<Expr*(Stmt*)> findReturnExpr880 = [&](Stmt* s) -> Expr* {
-            if (s == nullptr) return nullptr;   // 静默豁免业务值: 空节点=非该形态（递归出口哨兵）
+            if (s == nullptr) return nullptr;   // 空节点=非该形态（递归出口）
             switch (s->getType()) {
             case NodeType::ReturnStmt:
                 return static_cast<ReturnStmt*>(s)->value.get();
@@ -65,7 +65,7 @@ bool IRGenerator::callReceiverExempt880(VarDecl* node, const DeclGenCtx& ctx) {
         auto returnSourceExempt880 =
             [&](BlockStmt* body,
                 const std::vector<std::unique_ptr<ParamDecl>>& params) -> bool {
-            if (body == nullptr) return true;   // 静默豁免业务值: AST 不可达=保守豁免（两调用点非空守卫下不可达·留防未来）
+            if (body == nullptr) return true;   // 函数体缺省=无 return 可查（缺省形态豁免登记·两调用点非空守卫）
             Expr* rv = findReturnExpr880(body);
             if (rv != nullptr && rv->getType() == NodeType::IdentifierExpr) {
                 const std::string rn = static_cast<IdentifierExpr*>(rv)->name;

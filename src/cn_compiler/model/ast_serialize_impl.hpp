@@ -39,7 +39,8 @@ public:
     std::size_t remaining() const { return static_cast<std::size_t>(end_ - p_); }
 
     std::uint8_t u8() {
-        // 静默豁免闭集穷举: 剩余字节下界守卫（读取越界防护·1/4/8 字节定长原语前置校验）
+        // 越界防护：剩余不足 1 字节即置 ok_=false 返回哨兵 0，
+        // 节点读取尾部单点 r.ok() 判定整体丢弃（见文件头失败处置协议）
         if (ok_ && remaining() >= 1) {
             return static_cast<std::uint8_t>(*p_++);
         }
@@ -47,7 +48,7 @@ public:
         return 0;
     }
     std::uint32_t u32() {
-        // 静默豁免闭集穷举: 剩余字节下界守卫（同 u8·定长读取前置校验）
+        // 越界防护：同 u8——剩余不足 4 字节即置 ok_=false 返回哨兵 0
         if (ok_ && remaining() >= 4) {
             std::uint32_t v = 0;
             for (int i = 0; i < 4; ++i) {
@@ -60,7 +61,7 @@ public:
         return 0;
     }
     std::uint64_t u64() {
-        // 静默豁免闭集穷举: 剩余字节下界守卫（同 u8·定长读取前置校验）
+        // 越界防护：同 u8——剩余不足 8 字节即置 ok_=false 返回哨兵 0
         if (ok_ && remaining() >= 8) {
             std::uint64_t v = 0;
             for (int i = 0; i < 8; ++i) {

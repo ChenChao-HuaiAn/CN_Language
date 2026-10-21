@@ -71,7 +71,6 @@ bool reportConvertReject(Diagnostics& diag, const std::string& from,
 //   嵌套形态（容器元素/嵌套实参）连同局部/形参位一并拒绝（生命周期不可证）。
 bool checkMethodValueNesting(Diagnostics& diag, const std::string& typeText,
                              const SourceLocation& loc) {
-    // 静默豁免业务值: 空类型文本=无检查面（无类型即无放置）
     if (typeText.empty()) return false;
     if (types::isMethodValueType(typeText)) return false;   // 前缀形态非嵌套
     if (typeText.find("方法值<") == std::string::npos) return false;
@@ -84,7 +83,6 @@ bool checkMethodValueNesting(Diagnostics& diag, const std::string& typeText,
 
 bool checkPlacement(Diagnostics& diag, const std::string& typeText,
                     const char* placeName, const SourceLocation& loc) {
-    // 静默豁免业务值: 空类型文本=无检查面（无类型即无放置）
     if (typeText.empty()) return false;
     if (types::isMethodValueType(typeText)) {
         diag.report(DiagnosticLevel::Error, loc,

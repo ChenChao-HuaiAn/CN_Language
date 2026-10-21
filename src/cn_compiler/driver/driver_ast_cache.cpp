@@ -145,7 +145,6 @@ void warnCorrupt(const std::string& why, const std::string& file) {
 bool tryLoadCache(const std::string& cacheFile, const CacheKey128& kContent,
                   const CacheKey128& kEnv, std::unique_ptr<Program>& ast) {
     std::vector<char> buf;
-    // 静默豁免业务值: 读缓存失败=未命中信号（missNew 计数·回退完整解析=唯一正确路径）
     if (!cacheReadWholeFile(cacheFile, buf, kMaxFileBytes)) {
         g_stats.missNew += 1;  // 文件缺失/不可读=首次构建常态（非损坏）
         return false;
@@ -293,7 +292,6 @@ bool parseModuleWithCache(const std::string& source, const std::string& filePath
         return true;
     }
     // 未命中/失效/损坏：完整解析（唯一正确路径；解析失败不缓存——诊断每次重建）
-    // 静默豁免上游已诊断: 解析失败 diags 已记录·error 由上层原样报出
     if (!module::parseSourceText(source, filePath, moduleName, ast, imports, diags, macros)) {
         return false;
     }

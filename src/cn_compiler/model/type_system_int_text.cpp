@@ -59,9 +59,7 @@ bool i128TextInRange(const std::string& text, bool isSigned) {
 // 十进制文本是否超出 int64 范围（正值 > 9223372036854775807）
 bool textExceedsInt64(const std::string& text) {
     // 字符串比较：长度大于19必超；长度等于19按字典序比较
-    // 静默豁免业务值: 910 轮十进制位数分档（10=u32/19=int64/20=u64 十进制位长界——长度比较替代数值比较保大数安全·相邻分支互补）
     if (text.size() < 19) return false;
-    // 静默豁免业务值: 910 轮十进制位数分档（10=u32/19=int64/20=u64 十进制位长界——长度比较替代数值比较保大数安全·相邻分支互补）
     if (text.size() > 19) return true;
     return text > "9223372036854775807";
 }
@@ -79,18 +77,14 @@ bool literalValueExceedsInt32Domain(long long value) {
 
 // 十进制文本是否超出 正32（无符号32位）范围（> 4294967295）
 bool textExceedsU32(const std::string& text) {
-    // 静默豁免业务值: 910 轮十进制位数分档（10=u32/19=int64/20=u64 十进制位长界——长度比较替代数值比较保大数安全·相邻分支互补）
     if (text.size() < 10) return false;
-    // 静默豁免业务值: 910 轮十进制位数分档（10=u32/19=int64/20=u64 十进制位长界——长度比较替代数值比较保大数安全·相邻分支互补）
     if (text.size() > 10) return true;
     return text > "4294967295";
 }
 
 // 十进制文本是否超出 正64（无符号64位）范围（> 18446744073709551615）
 bool textExceedsU64(const std::string& text) {
-    // 静默豁免业务值: 910 轮十进制位数分档（10=u32/19=int64/20=u64 十进制位长界——长度比较替代数值比较保大数安全·相邻分支互补）
     if (text.size() < 20) return false;
-    // 静默豁免业务值: 910 轮十进制位数分档（10=u32/19=int64/20=u64 十进制位长界——长度比较替代数值比较保大数安全·相邻分支互补）
     if (text.size() > 20) return true;
     return text > "18446744073709551615";
 }
@@ -134,7 +128,9 @@ std::string lit910TrimZeros(std::string d) {
 
 }  // namespace
 
-std::string normalizeIntLiteralToDecimal(const std::string& raw) {
+// 1303 结果化: 原空串哨兵改 cn::Optional——无值=超 u128 域或非法形态
+//   （词法层已拒·错误恢复路径），调用方 has_value()/value_or 显形处置。
+cn::Optional<std::string> normalizeIntLiteralToDecimal(const std::string& raw) {
     std::string s = raw;
     bool negative = false;
     if (!s.empty() && (s[0] == '-' || s[0] == '+')) {
@@ -161,22 +157,25 @@ std::string normalizeIntLiteralToDecimal(const std::string& raw) {
         if (!isSuffix) break;
         digits.pop_back();
     }
-    // 显式哨兵：无有效数字=非法文本（词法层已拒·防御面——调用方按超域拒处理）
-    // 静默豁免上游已诊断: 910 轮整数字面量无有效数字=词法层已拒非法字面量 token——空串哨兵供调用方按超域拒（错误恢复路径）
-    if (digits.empty()) return "";
+    // 显式哨兵：无有效数字=非法文本（词法层已拒·错误恢复路径——调用方按
+    // 超域分流处理）
+    // 1303 结果化: 无有效数字=词法层已拒非法字面量 token（上游已诊断错误
+    // 恢复路径）——无值交调用方按超域分流
+    if (digits.empty()) return std::nullopt;
     std::string dec = "0";
     for (const char c : digits) {
         const int d = lit910DigitValue(c);
-        // 静默豁免上游已诊断: 910 轮进制外字符承载（词法层已拒·错误恢复路径）——空串哨兵
-        if (d < 0 || d >= base) return "";  // 进制外字符（词法已拒·防御面）
+        // 1303 结果化: 进制外字符承载（词法层已拒·错误恢复路径）——无值
+        if (d < 0 || d >= base) return std::nullopt;  // 进制外字符（词法已拒·防御面）
         lit910DecMulAdd(dec, base, d);
         // 大数上界：u128 域上限 39 位十进制——超长即超 u128（继续乘加只会更大）
         const bool tooLongForU128 = dec.size() > 39;  // 位长 >39 必超 u128（位长界数学穷举）
-        // 静默豁免闭集穷举: 910 轮归一化十进制位长 >39 ⇒ 值必超 u128 域（u128 max 十进制位长 39·数学穷举）——空串哨兵供调用方按超域拒
-        if (tooLongForU128) return "";
+        // 位长 >39 必超 u128 域（u128 上限 39 位十进制·数学穷举）——
+        // 1303 结果化：返回无值，调用方按超域拒
+        if (tooLongForU128) return std::nullopt;
     }
     if (dec.size() == 39 && dec > "340282366920938463463374607431768211455") {
-        return "";  // 恰 39 位但超 u128 域
+        return std::nullopt;  // 恰 39 位但超 u128 域
     }
     if (negative && dec != "0") dec.insert(dec.begin(), '-');
     return dec;
@@ -190,8 +189,9 @@ bool decTextFitsSignedRange(const std::string& decText, const char* negBound,
         negative = (t[0] == '-');
         t.erase(0, 1);
     }
-    // 静默豁免闭集穷举: 910 轮 decTextFits* 空文本不可达（入参=normalizeIntLiteralToDecimal 输出恒非空）——防御分支显式拒
-    if (t.empty()) return false;  // 无数字（防御·归一化输出恒非空）
+    // 空文本=无值：1303 结果化后 value_or(空串) 口径沿 decText 合法传播
+    //（如 919 求值空串=超 u128 域），无值即不 fits、调用方按超域拒——业务分流
+    if (t.empty()) return false;  // 无值不 fits
     const std::string a = lit910TrimZeros(t);
     const std::string b = lit910TrimZeros(negative ? negBound : posBound);
     if (a.size() != b.size()) return a.size() < b.size();
@@ -200,11 +200,10 @@ bool decTextFitsSignedRange(const std::string& decText, const char* negBound,
 
 bool decTextFitsUnsignedRange(const std::string& decText, const char* bound) {
     std::string t = decText;
-    // 静默豁免业务值: 910 轮 decTextFitsUnsignedRange 负号形态恒不入无符号域（业务判定非 miss 默认）
     if (!t.empty() && t[0] == '-') return false;  // 负值不入无符号域
     if (!t.empty() && t[0] == '+') t.erase(0, 1);
-    // 静默豁免闭集穷举: 910 轮 decTextFits* 空文本不可达（入参=normalizeIntLiteralToDecimal 输出恒非空）——防御分支显式拒
-    if (t.empty()) return false;  // 无数字（防御）
+    // 空文本=无值（同 decTextFitsSignedRange 空串口径）：无值即不 fits
+    if (t.empty()) return false;  // 无值不 fits
     const std::string a = lit910TrimZeros(t);
     const std::string b = lit910TrimZeros(bound);
     if (a.size() != b.size()) return a.size() < b.size();
@@ -261,12 +260,13 @@ std::string integerLiteralRuntimeType(const std::string& raw, int* outStatus) {
     std::string type = literalTypeOf(raw, false);
     if (type.empty()) type = "整32";
     const bool unsignedFamily = (type == "正32" || type == "正64" || type == "正128");
-    const std::string dec = normalizeIntLiteralToDecimal(raw);
-    if (dec.empty()) {
+    const cn::Optional<std::string> decOpt = normalizeIntLiteralToDecimal(raw);
+    if (!decOpt.has_value()) {
         // 超 u128 域（或非法形态）：一切整型域皆超 → 按后缀符号族定诊断面
         if (outStatus != nullptr) *outStatus = unsignedFamily ? 2 : 1;
         return unsignedFamily ? "正128" : "整128";
     }
+    const std::string& dec = decOpt.value();
     if (type == "整32" &&
         !decTextFitsSignedRange(dec, "2147483648", "2147483647")) {
         type = "整64";
@@ -299,8 +299,9 @@ std::string integerLiteralRuntimeType(const std::string& raw, int* outStatus) {
 }
 
 // 将 128 位字面量文本拆为 低64位:高64位（十六进制）
-// 返回 "低十六进制:高十六进制"（如 "0:8AC7230489E80000"）；非法返回空串
-std::string splitI128Text(const std::string& raw) {
+// 返回 "低十六进制:高十六进制"（如 "0:8AC7230489E80000"）
+// 1303 结果化: 非法返回空串改 cn::Optional 无值（调用方显形处置）
+cn::Optional<std::string> splitI128Text(const std::string& raw) {
     // 323：负文本支持（parse 层一元负折叠后 raw 可带负号）——按绝对值拆半，
     //   16 字节整体二补码取负（全取反+1）得内存表示
     bool negative = false;
@@ -320,20 +321,23 @@ std::string splitI128Text(const std::string& raw) {
         else if (body[1] == 'o' || body[1] == 'O') { base = 8; start = 2; }
     }
     std::string digits = body.substr(start);
-    // 静默豁免上游已诊断: 910 轮整数字面量无有效数字=词法层已拒非法字面量 token——空串哨兵供调用方按超域拒（错误恢复路径）
-    if (digits.empty()) return "";
+    // 1303 结果化: 无有效数字=词法层已拒非法字面量 token（上游已诊断错误
+    // 恢复路径）——无值交调用方按超域分流
+    if (digits.empty()) return std::nullopt;
     // 128位字节数组（16字节，低位在前）。逐位乘 base 加 digit（128 位乘加）：
     //   每轮对全部 16 字节执行 bytes[i]*base+carry，carry 逐字节右移
     //   （bytes[i]≤255、base≤16、carry≤16，无 64 位溢出风险）
     unsigned char bytes[16] = {0};
     for (char c : digits) {
+        // 1303 结果化: 非法数字字符（词法层已拒·错误恢复路径）——显式拦截分支·无值
+        if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F'))) {
+            return std::nullopt;
+        }
         int d = -1;
         if (c >= '0' && c <= '9') d = c - '0';
         else if (c >= 'a' && c <= 'f') d = c - 'a' + 10;
         else if (c >= 'A' && c <= 'F') d = c - 'A' + 10;
-        // 静默豁免上游已诊断: 910 轮 splitI128Text 非法数字字符（词法层已拒·错误恢复路径）——空串哨兵
-        else return "";  // 非法数字字符（防御性）
-        if (d >= base) return "";
+        if (d >= base) return std::nullopt;
         std::uint64_t carry = static_cast<std::uint64_t>(d);
         for (int i = 0; i < 16; ++i) {
             const std::uint64_t cur =
@@ -352,14 +356,14 @@ std::string splitI128Text(const std::string& raw) {
         lo = ~lo;
         hi = ~hi;
         if (lo == 0xFFFFFFFFFFFFFFFFULL) { lo = 0; hi += 1; }
-        // 静默豁免业务值: 910 轮二补码取负常规路径（低位非全 1 时 lo+1 无向高进位）——补码算法分支
+        // 低位非全 1：lo+1 无向高进位
         else { lo += 1; }
     }
     char buf[48];
     std::snprintf(buf, sizeof(buf), "%llX:%llX",
                   static_cast<unsigned long long>(lo),
                   static_cast<unsigned long long>(hi));
-    return buf;
+    return std::string(buf);
 }
 
 // ==================== 919：十进制文本大数四则（超承载常量表达式求值底座） ====================
@@ -416,8 +420,8 @@ std::string lit919AbsAdd(const std::string& a, const std::string& b) {
     int j = static_cast<int>(b.size()) - 1;
     while (i >= 0 || j >= 0 || carry > 0) {
         int v = carry;
-        if (i >= 0) v += a[i--] - 48;  // 静默豁免业务值: 919 轮十进制串逐位加法索引递减控制流（i>=0=尚有位待加·算法边界非业务数值分段）
-        if (j >= 0) v += b[j--] - 48;  // 静默豁免业务值: 919 轮十进制串逐位对齐索引控制流（j>=0=被加/减数尚有位·算法边界非业务数值分段）
+        if (i >= 0) v += a[i--] - 48;
+        if (j >= 0) v += b[j--] - 48;
         out.push_back(static_cast<char>('0' + v % 10));
         carry = v / 10;
     }
@@ -433,11 +437,11 @@ std::string lit919AbsSub(const std::string& a, const std::string& b) {
     int j = static_cast<int>(b.size()) - 1;
     while (i >= 0) {
         int v = (a[i--] - '0') - borrow;
-        if (j >= 0) v -= (b[j--] - 48);  // 静默豁免业务值: 919 轮十进制串逐位对齐索引控制流（j>=0=被加/减数尚有位·算法边界非业务数值分段）
-        if (v < 0) {  // 静默豁免业务值: 919 轮逐位减法借位归一（v<0=本轮需借位·算法控制流）
+        if (j >= 0) v -= (b[j--] - 48);
+        if (v < 0) {
             v += 10;
             borrow = 1;
-        } else {  // 静默豁免业务值: 919 轮逐位减法借位归一 else 分支（v>=0=无需借位·与 v<0 分支互补·算法控制流）
+        } else {
             borrow = 0;
         }
         out.push_back(static_cast<char>('0' + v));
@@ -448,8 +452,8 @@ std::string lit919AbsSub(const std::string& a, const std::string& b) {
 
 // 919：无符号十进制串是否超 u128 域（39 位界 340282366920938463463374607431768211455）
 bool lit919OverU128(const std::string& d) {
-    if (d.size() > 39) return true;  // 静默豁免业务值: 919 轮十进制位长分档（39=u128 max 十进制位长界·长度比较替代数值比较保大数安全·相邻分支互补）
-    if (d.size() < 39) return false;  // 静默豁免业务值: 919 轮十进制位长分档（39=u128 max 十进制位长界·长度比较替代数值比较保大数安全·相邻分支互补）
+    if (d.size() > 39) return true;
+    if (d.size() < 39) return false;
     return d > "340282366920938463463374607431768211455";
 }
 
@@ -457,7 +461,7 @@ bool lit919OverU128(const std::string& d) {
 //   910 空串口径处置）。位数预检先行（结果 ≤ a+b 位·位数必超即免算）。
 std::string lit919AbsMul(const std::string& a, const std::string& b) {
     if (a == "0" || b == "0") return "0";
-    if (a.size() + b.size() - 1 > 39) return std::string();  // 静默豁免业务值: 919 轮乘法位数预检（长a+长b-1>39 ⇒ 积必超 u128 域·位数下界数学穷举·保大数安全）
+    if (a.size() + b.size() - 1 > 39) return std::string();
     std::vector<int> acc(a.size() + b.size(), 0);
     for (int i = static_cast<int>(a.size()) - 1; i >= 0; --i) {
         for (int j = static_cast<int>(b.size()) - 1; j >= 0; --j) {
@@ -524,13 +528,13 @@ std::string decTextAdd919(const std::string& a, const std::string& b) {
     if (x.neg == y.neg) {
         mag = lit919AbsAdd(x.digits, y.digits);
         neg = x.neg;
-    } else {  // 静默豁免业务值: 919 轮有符号加法异号幅值分派（lit919Cmp 三值闭集 {-1,0,1}·相邻分支互补·算法控制流）
+    } else {
         const int c = lit919Cmp(x.digits, y.digits);
         if (c == 0) return "0";
-        if (c > 0) {  // 静默豁免业务值: 919 轮有符号加法异号幅值分派（lit919Cmp 三值闭集 {-1,0,1}·相邻分支互补·算法控制流）
+        if (c > 0) {
             mag = lit919AbsSub(x.digits, y.digits);
             neg = x.neg;
-        } else {  // 静默豁免业务值: 919 轮有符号加法异号幅值分派（lit919Cmp 三值闭集 {-1,0,1}·相邻分支互补·算法控制流）
+        } else {
             mag = lit919AbsSub(y.digits, x.digits);
             neg = y.neg;
         }
@@ -549,7 +553,7 @@ std::string decTextMul919(const std::string& a, const std::string& b) {
     const Lit919Parts y = lit919Split(b);
     if (x.digits == "0" || y.digits == "0") return "0";
     const std::string mag = lit919AbsMul(x.digits, y.digits);
-    if (mag.empty()) return "";  // 静默豁免业务值: 919 轮四则哨兵传播（空串=超 u128 域显式哨兵·调用方按超域拒·非 miss 默认）
+    if (mag.empty()) return "";
     if (x.neg != y.neg) return "-" + mag;
     return mag;
 }
@@ -560,7 +564,7 @@ std::string decTextDiv919(const std::string& a, const std::string& b) {
     const Lit919Parts x = lit919Split(a);
     std::string q;
     std::string r;
-    if (!lit919AbsDivMod(x.digits, y.digits, q, r)) return "";  // 静默豁免业务值: 919 轮四则哨兵传播（空串=超 u128 域显式哨兵·调用方按超域拒·非 miss 默认）
+    if (!lit919AbsDivMod(x.digits, y.digits, q, r)) return "";
     if (q == "0") return "0";
     if (x.neg != y.neg) return "-" + q;
     return q;
@@ -572,7 +576,7 @@ std::string decTextMod919(const std::string& a, const std::string& b) {
     const Lit919Parts x = lit919Split(a);
     std::string q;
     std::string r;
-    if (!lit919AbsDivMod(x.digits, y.digits, q, r)) return "";  // 静默豁免业务值: 919 轮四则哨兵传播（空串=超 u128 域显式哨兵·调用方按超域拒·非 miss 默认）
+    if (!lit919AbsDivMod(x.digits, y.digits, q, r)) return "";
     if (r == "0") return "0";
     // 截断取余：符号随被除数（C/Rust 口径·与 cnFoldConstIntExpr505 % 同）
     if (x.neg) return "-" + r;

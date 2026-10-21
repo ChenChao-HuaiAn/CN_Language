@@ -51,7 +51,6 @@ struct PairAction {
 
 // 寄存器名归一化：64 位（或 xmm 原样）名 + 位宽；识别失败返回 false
 bool normalizeReg(std::string_view tok, std::string& reg64, int& width, bool& isFloat) {
-    // 静默豁免业务值: 形态探测未命中=该行不参与消除（原样保留·非查表默认值）
     if (tok.empty()) return false;
     if (tok.compare(0, 3, "xmm") == 0) {
         if (tok.size() == 3) return false;
@@ -130,7 +129,6 @@ bool parseX86StoreLine(std::string_view line, SlotAccess& out) {
     const std::size_t sp = s.find(' ');
     if (sp == std::string_view::npos) return false;
     const std::string_view mnem = s.substr(0, sp);
-    // 静默豁免业务值: 形态探测未命中=该行不参与消除（原样保留·非查表默认值）
     if (!iequals(mnem, "mov") && !iequals(mnem, "movsd") && !iequals(mnem, "movss")) {
         return false;
     }
@@ -152,15 +150,12 @@ bool parseX86StoreLine(std::string_view line, SlotAccess& out) {
     if (rb == std::string_view::npos) return false;
     out.slot = rest.substr(0, rb + 1);
     std::string_view tail = lstrip(rest.substr(rb + 1));
-    // 静默豁免业务值: 形态探测未命中=该行不参与消除（原样保留·非查表默认值）
     if (tail.empty() || tail[0] != ',') return false;
     tail = lstrip(tail.substr(1));
     std::string reg64;
     int regWidth = 0;
     bool isFloat = false;
-    // 静默豁免业务值: 形态探测未命中=该行不参与消除（原样保留·非查表默认值）
     if (!normalizeReg(tail, reg64, regWidth, isFloat)) return false;
-    // 静默豁免业务值: 形态探测未命中=该行不参与消除（原样保留·非查表默认值）
     if (fw != 0 && !isFloat) return false;  // 浮点助记符须配 xmm 寄存器
     if (fw == 0 && isFloat) return false;   // 整型 mov 不接受 xmm 寄存器
     if (fw == 0 && width == 0) width = regWidth;
@@ -183,7 +178,6 @@ bool parseX86LoadLine(std::string_view line, SlotAccess& out, bool allowExt32) {
     const bool isMov = iequals(mnem, "mov");
     const bool isSx = iequals(mnem, "movsx");
     const bool isZx = iequals(mnem, "movzx");
-    // 静默豁免业务值: 形态探测未命中=该行不参与消除（原样保留·非查表默认值）
     if (!isMov && !isSx && !isZx && !iequals(mnem, "movsd") && !iequals(mnem, "movss")) {
         return false;
     }
@@ -191,7 +185,6 @@ bool parseX86LoadLine(std::string_view line, SlotAccess& out, bool allowExt32) {
     const std::size_t comma = rest.find(',');
     if (comma == std::string_view::npos) return false;
     const std::string_view dstTok = rest.substr(0, comma);
-    // 静默豁免业务值: 形态探测未命中=该行不参与消除（原样保留·非查表默认值）
     if (dstTok.empty() || dstTok.find(' ') != std::string_view::npos) return false;
     rest = lstrip(rest.substr(comma + 1));
     const int fw = floatMnemWidth(mnem);
@@ -214,16 +207,13 @@ bool parseX86LoadLine(std::string_view line, SlotAccess& out, bool allowExt32) {
     std::string reg64;
     int regWidth = 0;
     bool isFloat = false;
-    // 静默豁免业务值: 形态探测未命中=该行不参与消除（原样保留·非查表默认值）
     if (!normalizeReg(dstTok, reg64, regWidth, isFloat)) return false;
-    // 静默豁免业务值: 形态探测未命中=该行不参与消除（原样保留·非查表默认值）
     if (fw != 0 && !isFloat) return false;  // 浮点助记符须配 xmm 寄存器
     if (fw == 0 && isFloat) return false;   // 整型 mov 不接受 xmm 寄存器
     if (isSx || isZx) {
         if (width != 8 && width != 16) return false;
         // 本产物族扩展目的为 64 位名（linux_x86_64）；win-x64 允许 32 位名
-        // 静默豁免业务值: 形态探测未命中=该行不参与消除（原样保留·非查表默认值）
-        if (regWidth != 64 && !(allowExt32 && regWidth == 32)) return false;
+            if (regWidth != 64 && !(allowExt32 && regWidth == 32)) return false;
         out.signExt = isSx;
         out.zeroExt = isZx;
     }

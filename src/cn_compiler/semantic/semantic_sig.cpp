@@ -291,8 +291,8 @@ std::string SemanticAnalyzer::resolveOverload(const std::string& name,
 // 1143：遍历改分桶索引（只走同名条目）；key 剥离取视图预解析字段（原逐条
 //   substr 现场构造）——按 name 含/不含 '$' 两形态选对应字段，规则逐字同原实现。
 bool SemanticAnalyzer::hasCurrentModuleDefinition(const std::string& name) {
-    // 静默豁免业务值: currentModuleName_ 空=无模块上下文（单文件管线/未入模块体），
-    //   「当前模块是否定义该名」语义恒假——业务定义非错误默认（调用方同守卫）
+    // currentModuleName_ 空=无模块上下文（单文件管线/未入模块体），
+    //   「当前模块是否定义该名」语义恒假（调用方同守卫）
     if (currentModuleName_.empty()) return false;
     const bool nameNoDollar = name.find('$') == std::string::npos;
     for (const FuncEntryView* view : funcNameBucket(name)) {
