@@ -191,3 +191,29 @@ TEST(FileApiTest, OpenInvalidMode) {
     handle = __cn_file_open((tempDir() + "/dummy.tmp").c_str(), 4);
     EXPECT_EQ(handle, nullptr);
 }
+
+// 创建目录（#1138）：多层递归 + 幂等（已存在=成功）
+TEST(FileApiTest, MkdirRecursive) {
+    namespace fs = std::filesystem;
+    static int mkdirCounter = 0;
+    const fs::path dir = fs::path(tempDir()) / ("mkdir_nested_" + std::to_string(mkdirCounter++))
+                         / "a" / "b" / "c";
+    std::error_code ec;
+    fs::remove_all(dir, ec);
+    EXPECT_EQ(__cn_file_mkdir(dir.string().c_str()), 1);
+    EXPECT_TRUE(fs::is_directory(dir));
+    EXPECT_EQ(__cn_file_mkdir(dir.string().c_str()), 1);  // 幂等：已存在仍成功
+    fs::remove_all(dir, ec);
+}
+
+// 创建目录失败面（#1138）：路径中段是已存在文件 → 0（显式失败，禁静默）
+TEST(FileApiTest, MkdirBlockedByFile) {
+    static int blockerCounter = 0;
+    const std::string blocker = tempDir() + "/mkdir_blocker_"
+                                + std::to_string(blockerCounter++) + ".tmp";
+    FILE* f = nullptr;
+    ASSERT_TRUE(TEST_FOPEN(blocker.c_str(), "wb", f));
+    std::fclose(f);
+    EXPECT_EQ(__cn_file_mkdir((blocker + "/child").c_str()), 0);
+    cleanup(blocker);
+}

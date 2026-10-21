@@ -198,13 +198,15 @@ void SemanticAnalyzer::registerBuiltins() {
     // 运行时符号：文件.打开文件 -> __cn_file_open、文件.读取文件 -> __cn_file_read、
     //   文件.写入文件 -> __cn_file_write、文件.读取文件行 -> __cn_file_read_line、
     //   文件.文件大小 -> __cn_file_size、文件.关闭文件 -> __cn_file_close、
-    //   文件.文件存在 -> __cn_file_exists（IR 层映射）。
+    //   文件.文件存在 -> __cn_file_exists、文件.创建目录 -> __cn_file_mkdir
+    //   （IR 层映射）。
     // 设计说明：
     //   - 句柄类型：空类型*（void*，C 层 FILE* 转换）
     //   - 打开文件：模式 整32（1=读/2=写/3=追加），返回 空类型*（失败 nullptr）
     //   - 读取文件/写入文件/文件大小：返回整64（实际字节数/大小，失败 -1）
     //   - 读取文件行：返回 字符串*（动态分配，EOF 返回 nullptr）——CN 层包装 结果<字符串,整32>
     //   - 文件存在：返回 布尔
+    //   - 创建目录：逐级递归创建（已存在=真），返回 布尔——false=失败须显式诊断
     const auto regFileFn = [this](const std::string& name, const std::string& retType,
                                   const std::vector<std::string>& paramTypes) {
         FunctionInfo info;
@@ -220,6 +222,7 @@ void SemanticAnalyzer::registerBuiltins() {
     regFileFn("文件::文件大小", "整64", {"空类型*"});
     regFileFn("文件::关闭文件", "空类型", {"空类型*"});
     regFileFn("文件::文件存在", "布尔", {"字符串"});
+    regFileFn("文件::创建目录", "布尔", {"字符串"});
 
     // 996（027 波 1·线程库）：线程:: 限定名注册（stdlib/线程.cn 包装的内置，
     //   对应运行时 thread_api.cpp）：线程::新/并入 -> __cn_thread_new/join、

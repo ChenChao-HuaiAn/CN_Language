@@ -260,7 +260,8 @@ void IRGenerator::mapBuiltinCalleeNameApi(std::string& calleeName) {
     //   文件::打开文件 -> __cn_file_open、文件::读取文件 -> __cn_file_read、
     //   文件::写入文件 -> __cn_file_write、文件::读取文件行 -> __cn_file_read_line、
     //   文件::文件大小 -> __cn_file_size、文件::关闭文件 -> __cn_file_close、
-    //   文件::文件存在 -> __cn_file_exists（file_api.cpp）
+    //   文件::文件存在 -> __cn_file_exists、文件::创建目录 -> __cn_file_mkdir
+    //   （file_api.cpp）
     else if (calleeName == "文件::打开文件" || calleeName == "文件.打开文件") calleeName = "__cn_file_open";
     else if (calleeName == "文件::读取文件" || calleeName == "文件.读取文件") calleeName = "__cn_file_read";
     else if (calleeName == "文件::写入文件" || calleeName == "文件.写入文件") calleeName = "__cn_file_write";
@@ -268,6 +269,7 @@ void IRGenerator::mapBuiltinCalleeNameApi(std::string& calleeName) {
     else if (calleeName == "文件::文件大小" || calleeName == "文件.文件大小") calleeName = "__cn_file_size";
     else if (calleeName == "文件::关闭文件" || calleeName == "文件.关闭文件") calleeName = "__cn_file_close";
     else if (calleeName == "文件::文件存在" || calleeName == "文件.文件存在") calleeName = "__cn_file_exists";
+    else if (calleeName == "文件::创建目录" || calleeName == "文件.创建目录") calleeName = "__cn_file_mkdir";
 }
 
 // 954（visitCallExpr 拆族）：内置名映射段二（线程/解析/时间/系统/内存/构建器）——
@@ -364,6 +366,8 @@ bool IRGenerator::resolveBuiltinCallResultType(const std::string& calleeName,
         resultType = "ptr";       // 读取文件行 -> 字符串（动态分配，EOF 返回 nullptr）
     } else if (calleeName == "__cn_file_exists") {
         resultType = "i1";        // 文件存在 -> 布尔
+    } else if (calleeName == "__cn_file_mkdir") {
+        resultType = "i1";        // 创建目录 -> 布尔（1=成功/已存在 0=失败）
     } else if (calleeName == "__cn_str_to_int") {
         resultType = "i64";       // 字符串扩展（Task 6.5）：转整数 -> 整64（成功标志经整32*）
     } else if (calleeName == "__cn_str_to_double") {

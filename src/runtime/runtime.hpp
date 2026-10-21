@@ -184,6 +184,7 @@ CNRT_EXPORT void __cn_print_bool(bool value);             // 打印布尔（不�
     CNRT_EXPORT long long __cn_file_size(void* handle);                      // 文件大小（文件.文件大小，失败 -1）
     CNRT_EXPORT void __cn_file_close(void* handle);                          // 关闭文件（文件.关闭文件）
     CNRT_EXPORT long long __cn_file_exists(const char* path);                // 文件存在（文件.文件存在，1=真 0=假）
+    CNRT_EXPORT long long __cn_file_mkdir(const char* path);                 // 递归创建目录（文件.创建目录，1=成功 0=失败）
 
     // 数学库 API（Task 6.3，规格书10.5 数学库；对应 CN 层 stdlib/数学.cn 函数）
     // 命名约定：运行时英文 API，CN 层中文函数名由编译器 IR 层映射到此符号

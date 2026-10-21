@@ -7,16 +7,24 @@
 //   __cn_file_size       文件大小（fseek end + ftell + 恢复原位置），失败返回 -1
 //   __cn_file_close      关闭文件（fclose，安全处理 nullptr）
 //   __cn_file_exists     文件是否存在（_wfopen_s 试读，成功即关闭返回真）
+//   __cn_file_mkdir      递归创建目录（逐级创建；已存在=成功；中段是文件/权限不足=失败）
 // 中文路径：UTF-8 窄路径经 MultiByteToWideChar(CP_UTF8) 转 UTF-16 宽路径，
 //   用 _wfopen_s 打开（lessons.md 已验证方案：std::filesystem::u8path 对中文路径挂起，弃用）。
 // 句柄类型：C 层 FILE* 强制转为 void* 传递；CN 层对应 空类型*。
 // 注意：__cn_file_read_line 返回的字符串由调用方负责用 __cn_str_free 释放。
 #include "runtime/runtime.hpp"
 
+#include <cerrno>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <string>
 #include <vector>
+
+#ifndef _WIN32
+#include <sys/stat.h>
+#include <sys/types.h>
+#endif
 
 #ifdef _WIN32
 #include <windows.h>
@@ -54,6 +62,92 @@ FILE* fileOpenImpl(const char* path, const char* mode) {
     return fp;
 #else
     return std::fopen(path, mode);
+#endif
+}
+
+// 递归创建目录（内部实现）：逐级创建，已存在且确为目录=成功。
+//   语义对齐宿主 cn_main.cpp ensureDirExists（#1138 双侧零分叉），但走进程内
+//   mkdir/CreateDirectoryW（不经 shell——路径含引号/空格安全，交叉构建不受
+//   `mkdir -p "..."` 引号规则影响）；中段同名文件/权限不足=false（显式失败，
+//   禁静默继续）。
+bool makeDirsImpl(const char* path) {
+    bool ok = path != nullptr && *path != '\0';
+    if (!ok) {
+        return ok;  // 空路径=失败哨兵（调用方 stdlib 创建目录 转 错误(错误码.文件)）
+    }
+#ifdef _WIN32
+    // UTF-8 -> UTF-16（中文路径；与 fileOpenImpl 同口径）；API 失败返回 0
+    const int wideLen = MultiByteToWideChar(CP_UTF8, 0, path, -1, nullptr, 0);
+    if (wideLen == 0) {
+        ok = false;
+        return ok;
+    }
+    std::wstring dir(static_cast<std::size_t>(wideLen), L'\0');
+    if (MultiByteToWideChar(CP_UTF8, 0, path, -1, &dir[0], wideLen) == 0) {
+        ok = false;
+        return ok;
+    }
+    dir.resize(static_cast<std::size_t>(wideLen - 1));  // 去掉结尾 NUL
+    // 去尾部多余分隔符（根路径保留）
+    while (dir.size() > 1 && (dir.back() == L'\\' || dir.back() == L'/')) dir.pop_back();
+    ok = !dir.empty();
+    if (!ok) {
+        return ok;
+    }
+    const auto isSep = [](wchar_t ch) { return ch == L'\\' || ch == L'/'; };
+    const auto makeOne = [](const std::wstring& one) {
+        if (CreateDirectoryW(one.c_str(), nullptr)) return true;
+        if (GetLastError() != ERROR_ALREADY_EXISTS) return false;
+        const DWORD attrs = GetFileAttributesW(one.c_str());
+        return attrs != INVALID_FILE_ATTRIBUTES && (attrs & FILE_ATTRIBUTE_DIRECTORY) != 0;
+    };
+    // 根前缀长度：盘符（C:\）/ UNC（\\server\share）/ POSIX 风格绝对路径
+    // （find==1/find_first_of==2 判据等价 size>=2/>=3 且字符位命中，避开单边区间）
+    std::size_t start = 0;
+    if (dir.find(L':') == 1) {
+        start = 2;
+        if (dir.find_first_of(L"\\/", 2) == 2) start = 3;
+    } else if (isSep(dir[0]) && dir.find_first_of(L"\\/", 1) == 1) {
+        std::size_t components = 0;
+        std::size_t i = 2;
+        while (i < dir.size() && components < 2) {  // server 与 share 两段
+            if (isSep(dir[i])) components++;
+            i++;
+        }
+        start = i;
+    } else if (isSep(dir[0])) {
+        start = 1;
+    }
+    if (start >= dir.size()) return makeOne(dir);  // 根本身：只核验目录身份
+    for (std::size_t i = start + 1; i < dir.size(); ++i) {
+        if (!isSep(dir[i])) continue;
+        if (!makeOne(dir.substr(0, i))) {
+            ok = false;
+            return ok;
+        }
+    }
+    return makeOne(dir);
+#else
+    std::string dir(path);
+    while (dir.size() > 1 && dir.back() == '/') dir.pop_back();
+    ok = !dir.empty();
+    if (!ok) {
+        return ok;
+    }
+    const auto makeOne = [](const std::string& one) {
+        if (::mkdir(one.c_str(), 0777) == 0) return true;
+        if (errno != EEXIST) return false;
+        struct stat st;
+        return ::stat(one.c_str(), &st) == 0 && S_ISDIR(st.st_mode);
+    };
+    for (std::size_t i = 1; i < dir.size(); ++i) {
+        if (dir[i] != '/') continue;
+        if (!makeOne(dir.substr(0, i))) {
+            ok = false;
+            return ok;
+        }
+    }
+    return makeOne(dir);
 #endif
 }
 
@@ -142,4 +236,11 @@ extern "C" long long __cn_file_exists(const char* path) {
     if (fp == nullptr) return 0;
     std::fclose(fp);
     return 1;
+}
+
+// 递归创建目录：逐级创建，成功（含已存在且确为目录）返回 1；失败返回 0。
+// 调用方（stdlib/文件.cn 创建目录 包装）据此返回 结果<空类型,整32>，
+// 失败路径不静默（#1138：v2 写 asm 前建输出目录失败须显式诊断中止）。
+extern "C" long long __cn_file_mkdir(const char* path) {
+    return makeDirsImpl(path) ? 1 : 0;
 }

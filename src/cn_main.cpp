@@ -325,12 +325,26 @@ int systemExitCode(int status) {
 bool ensureDirExists(const std::string& dir) {
     if (dir.empty()) return true;
 #ifdef _WIN32
-    // 逐级创建：按 '\\' 或 '/' 分割逐级 CreateDirectoryA（已存在时忽略失败）
+    // 逐级创建：按 '\\' 或 '/' 分割逐级 CreateDirectoryA（已存在时核验确为目录）
+    // 1138：原实现忽略 CreateDirectoryA 返回值恒返 true（失败晚到 ofstream 才
+    //   显形）；现失败/中段同名文件即 false，与 POSIX 分支及 v2 创建目录同语义。
     std::string current;
     for (std::size_t i = 0; i <= dir.size(); ++i) {
         if (i == dir.size() || dir[i] == '\\' || dir[i] == '/') {
-            if (!current.empty()) {
-                CreateDirectoryA(current.c_str(), nullptr);
+            // 根前缀（""、"\\"、"/"、"C:"、"\\\\server"）不是可创建目录
+            const bool isRootPrefix = current.empty() || current == "\\" || current == "/" ||
+                (current.size() == 2 && current[1] == ':') ||
+                (current.size() > 2 && current[0] == '\\' && current[1] == '\\' &&
+                 current.find_first_of("\\/", 2) == std::string::npos);
+            if (!isRootPrefix) {
+                if (!CreateDirectoryA(current.c_str(), nullptr)) {
+                    if (GetLastError() != ERROR_ALREADY_EXISTS) return false;
+                    const DWORD attrs = GetFileAttributesA(current.c_str());
+                    if (attrs == INVALID_FILE_ATTRIBUTES ||
+                        (attrs & FILE_ATTRIBUTE_DIRECTORY) == 0) {
+                        return false;  // 中段同名文件挡路
+                    }
+                }
             }
             if (i < dir.size()) {
                 current += dir[i];
@@ -525,11 +539,16 @@ static int runCompile(const CliOptions& options, const std::string& file) {
         : outputAnsi;
     // 默认桶目录与 --output 深层目录统一由本分支逐级创建（522：旧 ensureTargetDir
     //   单层兜底退役——默认路径必含 '/'，本分支覆盖全部创建需求）
+    // 1138：建目录失败显式拒绝（原返回值丢弃=失败后到 ofstream 才报「无法写入」，
+    //   诊断指错根因；与 v2 写 asm 前递归建目录同语义、失败诊断同显式）
     {
         size_t slash = asmPath.find_last_of("/\\");
         if (slash != std::string::npos) {
             std::string dir = asmPath.substr(0, slash + 1);
-            ensureDirExists(dir);
+            if (!ensureDirExists(dir)) {
+                std::cerr << "错误: 无法创建汇编输出目录 " << dir << "\n";
+                return 1;
+            }
         }
     }
     {
