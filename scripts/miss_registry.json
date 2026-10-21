@@ -652,18 +652,6 @@
   },
   {
    "文件": "CN语言编译器v2/IR/IR布局中.cn",
-   "函数": "（1075 v2 对称新增守卫）",
-   "锚文本": "如果 (!是方法值类型文本(文本)) { 返回 \"\"; }",
-   "来源": "1075",
-   "类别": "业务值",
-   "静默风险": "低",
-   "原因": "形态探测/合法性判定的空串·假返回=语义结果（调用方按未命中处理·非查表默认值）",
-   "登记人": "AI（1075 v2 对称轮·逐条读过代码）",
-   "登记日": "2026-10-18",
-   "批准": "存量过渡"
-  },
-  {
-   "文件": "CN语言编译器v2/IR/IR布局中.cn",
    "函数": "字面量十进制文本",
    "锚文本": "如果 (!有数字790) { 返回 0; }",
    "来源": "790",
@@ -5316,18 +5304,6 @@
    "批准": "存量过渡"
   },
   {
-   "文件": "CN语言编译器v2/语法/解析表达式尾.cn",
-   "函数": "（1075 v2 对称新增守卫）",
-   "锚文本": "如果 (深度 <= 0) {",
-   "来源": "1075",
-   "类别": "闭集穷举",
-   "静默风险": "低",
-   "原因": "索引/长度守卫单边形态（非空判定·哨兵比较·算术偏移操作数的越界守卫——无静态上界常量可双边界化）",
-   "登记人": "AI（1075 v2 对称轮·逐条读过代码）",
-   "登记日": "2026-10-18",
-   "批准": "存量过渡"
-  },
-  {
    "文件": "CN语言编译器v2/语法/解析语句中.cn",
    "函数": "",
    "锚文本": "如果 (偏移查c.正常) { 偏移c = 偏移查c.值; } 否则 { }\r",
@@ -5738,18 +5714,6 @@
   {
    "文件": "src/cn_compiler/driver/driver_ast_cache.cpp",
    "函数": "tryLoadCache",
-   "锚文本": "if (!readWholeFile(cacheFile, buf)) {",
-   "来源": "1142",
-   "类别": "业务值",
-   "静默风险": "低",
-   "原因": "读缓存失败=未命中信号（missNew 计数·回退完整解析=唯一正确路径）",
-   "登记人": "AI（1142 模块级 AST 缓存轮·逐条读过代码）",
-   "登记日": "2026-10-19",
-   "批准": "存量过渡"
-  },
-  {
-   "文件": "src/cn_compiler/driver/driver_ast_cache.cpp",
-   "函数": "tryLoadCache",
    "锚文本": "if (ast == nullptr) {",
    "来源": "1142",
    "类别": "上游已诊断",
@@ -5760,7 +5724,7 @@
    "批准": "存量过渡"
   },
   {
-   "文件": "src/cn_compiler/driver/driver_ast_cache.cpp",
+   "文件": "src/cn_compiler/driver/driver_cache_util.cpp",
    "函数": "ensureDirRecursive",
    "锚文本": "if (cur.size() <= 1) continue;",
    "来源": "1142",
@@ -5772,7 +5736,7 @@
    "批准": "存量过渡"
   },
   {
-   "文件": "src/cn_compiler/driver/driver_ast_cache.cpp",
+   "文件": "src/cn_compiler/driver/driver_cache_util.cpp",
    "函数": "readWholeFile",
    "锚文本": "if (fp == nullptr) return false;",
    "来源": "1142",
@@ -5784,7 +5748,7 @@
    "批准": "存量过渡"
   },
   {
-   "文件": "src/cn_compiler/driver/driver_ast_cache.cpp",
+   "文件": "src/cn_compiler/driver/driver_cache_util.cpp",
    "函数": "ensureDirRecursive",
    "锚文本": "if (path.empty()) return false;",
    "来源": "1142",
@@ -5796,9 +5760,9 @@
    "批准": "存量过渡"
   },
   {
-   "文件": "src/cn_compiler/driver/driver_ast_cache.cpp",
-   "函数": "readWholeFile",
-   "锚文本": "if (size <= 0 || static_cast<std::size_t>(size) > kMaxFileBytes) {",
+   "文件": "src/cn_compiler/driver/driver_cache_util.cpp",
+   "函数": "cacheReadWholeFile",
+   "锚文本": "if (size <= 0 || static_cast<std::size_t>(size) > maxBytes) {",
    "来源": "1142",
    "类别": "闭集穷举",
    "静默风险": "低",
@@ -6192,18 +6156,6 @@
   },
   {
    "文件": "src/cn_compiler/ir/ir_method_value.cpp",
-   "函数": "tryMethodValueAssign",
-   "锚文本": "if (srcUnique.empty()) {",
-   "来源": "1075",
-   "类别": "上游已诊断",
-   "静默风险": "低",
-   "原因": "变量槽未登记：先报内部错误再回原路（语义层保证方法值变量已登记槽位）。",
-   "登记人": "AI（1075 轮·逐条读过代码）",
-   "登记日": "2026-10-18",
-   "批准": "存量过渡"
-  },
-  {
-   "文件": "src/cn_compiler/ir/ir_method_value.cpp",
    "函数": "expandMethodValueArg",
    "锚文本": "if (srcUnique.empty()) {",
    "来源": "1075",
@@ -6448,30 +6400,6 @@
    "类别": "业务值",
    "静默风险": "低",
    "原因": "1137 第三轮审查 P0-2 下沉搬迁（自 ir/ir_decl_extra.cpp 逐字搬移·原位置在冻结基线内放行·新文件位置按登记制留痕）：非花括号 unicode 转义=保留反斜杠（原样传递业务语义）",
-   "登记人": "AI（1137 第三轮审查轮·逐处实读）",
-   "登记日": "2026-10-19",
-   "批准": "存量过渡"
-  },
-  {
-   "文件": "src/cn_compiler/model/char_literal.cpp",
-   "函数": "appendUtf8/charLiteralCodePoint/decodeEscapes",
-   "锚文本": "} else {",
-   "来源": "1137",
-   "类别": "业务值",
-   "静默风险": "低",
-   "原因": "1137 第三轮审查 P0-2 下沉搬迁（自 ir/ir_decl_extra.cpp 逐字搬移·原位置在冻结基线内放行·新文件位置按登记制留痕）：非法 unicode 花括号转义=保留反斜杠（词法已拒·防御面业务值）",
-   "登记人": "AI（1137 第三轮审查轮·逐处实读）",
-   "登记日": "2026-10-19",
-   "批准": "存量过渡"
-  },
-  {
-   "文件": "src/cn_compiler/model/char_literal.cpp",
-   "函数": "appendUtf8/charLiteralCodePoint/decodeEscapes",
-   "锚文本": "} else {",
-   "来源": "1137",
-   "类别": "业务值",
-   "静默风险": "低",
-   "原因": "1137 第三轮审查 P0-2 下沉搬迁（自 ir/ir_decl_extra.cpp 逐字搬移·原位置在冻结基线内放行·新文件位置按登记制留痕）：UTF-8 四字节档编码（前三档已穷举·最后一档业务编码非兜底）",
    "登记人": "AI（1137 第三轮审查轮·逐处实读）",
    "登记日": "2026-10-19",
    "批准": "存量过渡"
@@ -7497,16 +7425,28 @@
    "批准": "已批"
   },
   {
-   "文件": "src/cn_compiler/driver/driver_program_cache.cpp",
-   "函数": "loadProgramCache",
+   "文件": "src/cn_compiler/driver/driver_ast_cache.cpp",
+   "函数": "tryLoadCache",
    "锚文本": "if (!cacheReadWholeFile(cacheFile, buf, kMaxFileBytes)) {",
    "来源": "1156",
    "类别": "业务值",
    "静默风险": "低",
-   "原因": "读缓存失败=未命中信号（missNew 计数·回退完整编译=唯一正确路径）",
-   "登记人": "AI（1156 程序级预编译缓存轮·逐条读过代码）",
+   "原因": "缓存文件读取失败=缓存不可用（显形回退完整编译·非默认值继续）；miss 统计计数",
+   "登记人": "AI（1156 门禁红清偿）",
    "登记日": "2026-10-20",
-   "批准": "已批"
+   "批准": "存量过渡"
+  },
+  {
+   "文件": "src/cn_compiler/driver/driver_program_cache.cpp",
+   "函数": "tryLoadProgramCache",
+   "锚文本": "if (!cacheReadWholeFile(cacheFile, buf, kMaxFileBytes)) {",
+   "来源": "1156",
+   "类别": "业务值",
+   "静默风险": "低",
+   "原因": "缓存文件读取失败=缓存不可用（显形回退完整编译·非默认值继续）；miss 统计计数",
+   "登记人": "AI（1156 门禁红清偿）",
+   "登记日": "2026-10-20",
+   "批准": "存量过渡"
   }
  ]
 }
