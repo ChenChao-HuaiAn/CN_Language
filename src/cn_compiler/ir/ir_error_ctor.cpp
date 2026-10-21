@@ -342,7 +342,7 @@ void IRGenerator::emitResultCtorValue(CallExpr* node, const std::string& name,
     //   全空）。借用装箱（污染名单内）不清零——指针共享随源存活。
     if ((name == "正常" || name == "某些") && !node->arguments.empty() &&
         node->arguments[0]->getType() == NodeType::IdentifierExpr &&
-        types::canonical(valueType) == "字符串") {
+        types::canonicalEquals(valueType, "字符串")) {
         const std::string srcName = static_cast<const IdentifierExpr*>(
             node->arguments[0].get())->name;
         if (stringTainted_.count(srcName) == 0) {

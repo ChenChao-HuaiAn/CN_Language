@@ -403,7 +403,7 @@ void SemanticAnalyzer::clearBorrowViewState() {
 //   字符串复制(...)（落堆）或改返回类型 字符*（借用视图）。泛型单态化体内豁免（A2）：
 //   实例化类方法体的 T 来源字符串=借用语义（Rust Vec::get -> &T 同款）。
 void SemanticAnalyzer::checkReturnBorrowA2(ReturnStmt* node, const std::string& valueType) {
-    if (types::canonical(currentReturnType_) == "字符串" &&
+    if (types::canonicalEquals(currentReturnType_, "字符串") &&
         genericTypeParams_.empty()) {
         const NodeType retKindA2 = node->value->getType();
         bool borrowRetA2 = false;

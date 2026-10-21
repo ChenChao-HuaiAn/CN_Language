@@ -521,7 +521,7 @@ ir::IRValue IRGenerator::calibrateCallArgABI(
         //   按形参逐位判定。
         bool promoteF32 = true;
         if (ai < effectiveParamTypes.size()) {
-            promoteF32 = (types::canonical(effectiveParamTypes[ai]) == "浮64");
+            promoteF32 = (types::canonicalEquals(effectiveParamTypes[ai], "浮64"));
         }
         if (promoteF32) {
             argVal = emitResult(ir::Opcode::Cast, {argVal}, "f64", "",

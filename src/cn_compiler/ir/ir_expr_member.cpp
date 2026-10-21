@@ -391,7 +391,7 @@ void IRGenerator::emitStructInitTo(StructInitExpr* init, const ir::IRValue& targ
         }
         // 79-a：字符串字段写入归一化（来源分级——借用来源复制落堆，字段独立
         //   拥有；字面量驻留；拥有返回接管；转移() move）——与赋值位同款
-        if (types::canonical(fieldSrcTypeName) == "字符串") {
+        if (types::canonicalEquals(fieldSrcTypeName, "字符串")) {
             ir::IRValue normalized =
                 normalizeContainerInsertArg(fieldPair.second.get(), loc);
             emit(ir::Opcode::StorePtr, {fieldAddr, normalized}, ir::IRValue(), "",

@@ -387,18 +387,18 @@ void IRGenerator::injectMapElemDestroy(const std::string& canonClass,
         if (vit != genericTypeParams_.end()) vType = vit->second;
         // 960（131 甲'）：键类型写死的 字符串映射<V> 无 K 泛型参数——按键数组
         //   字段实际声明类型判定（对 泛型<K=字符串> 实例等价；两判据任一命中）。
-        bool kStr = (types::canonical(kType) == "字符串");
+        bool kStr = (types::canonicalEquals(kType, "字符串"));
         if (!kStr) {
             const ClassInfo* ci = semantic_->findClass(canonClass);
             if (ci != nullptr) {
                 auto fit = ci->fields.find("键数组");
                 if (fit != ci->fields.end() &&
-                    types::canonical(fit->second.type) == "字符串*") {
+                    types::canonicalEquals(fit->second.type, "字符串*")) {
                     kStr = true;
                 }
             }
         }
-        const bool vStr = (types::canonical(vType) == "字符串");
+        const bool vStr = (types::canonicalEquals(vType, "字符串"));
         if (!kStr && !vStr) return;
         const std::string thisUniqueM = lookupVarName("自身");
         if (thisUniqueM.empty()) return;

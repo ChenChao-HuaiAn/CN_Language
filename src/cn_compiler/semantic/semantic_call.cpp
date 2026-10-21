@@ -334,7 +334,7 @@ bool SemanticAnalyzer::checkTransferCall(CallExpr* node) {
         markMovedVar(ident->name, node->location.getLine());
         // 102 甲案（2026-09-29 用户裁决·〔基准=019〕）：转移(字符串形参)＝消耗
         //   （move 发射会清零形参槽＝清掉调用方缓冲区句柄——IR 层须先深拷）。
-        if (types::canonical(varType) == "字符串") {
+        if (types::canonicalEquals(varType, "字符串")) {
             markStringParamConsumed(ident->name);
         }
         node->resolvedType = varType;  // IR 层展开识别（ir_call 特判）
@@ -600,7 +600,7 @@ bool SemanticAnalyzer::checkBuiltinCtorCall(CallExpr* node) {
             if ((builtinName == "正常" || builtinName == "某些") &&
                 node->arguments.size() == 1 &&
                 node->arguments[0]->getType() == NodeType::IdentifierExpr &&
-                types::canonical(argType) == "字符串") {
+                types::canonicalEquals(argType, "字符串")) {
                 const std::string& srcName =
                     static_cast<const IdentifierExpr*>(node->arguments[0].get())
                         ->name;
@@ -927,7 +927,7 @@ bool SemanticAnalyzer::checkDirectCall(CallExpr* node, const std::string& callee
                 static_cast<IdentifierExpr*>(node->arguments[0].get());
             std::string relVarType;
             if (lookupVar(relArg->name, relVarType) &&
-                types::canonical(relVarType) == "字符串") {
+                types::canonicalEquals(relVarType, "字符串")) {
                 markStringParamConsumed(relArg->name);
             }
         }

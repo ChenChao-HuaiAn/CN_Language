@@ -163,6 +163,55 @@ std::string canonical(const std::string& type) {
     return type;
 }
 
+namespace {
+
+// canonical 的视图级等值判定（无分配）：与 canonical(type) == expected 逐值等价。
+//   规则顺序逐条复刻 canonical：别名 → '&' 剥除递归 → '*' 递归追加 →
+//   数组 [纯数字] 递归追加 → 原样比较。
+bool canonicalEqualsView(std::string_view type, std::string_view expected) {
+    if (type == "整数") return expected == "整32";
+    if (type == "小数") return expected == "浮64";
+    if (type == "指针") return expected == "空类型*";
+    // 引用：canonical 递归剥除尾部 '&'（多个连续 '&' 迭代剥完）
+    if (!type.empty() && type.back() == '&') {
+        while (!type.empty() && type.back() == '&') type.remove_suffix(1);
+        return canonicalEqualsView(type, expected);
+    }
+    // 指针：canonical(前缀) + "*"（expected 同以 '*' 结尾才可能相等）
+    if (!type.empty() && type.back() == '*') {
+        if (!expected.empty() && expected.back() == '*') {
+            return canonicalEqualsView(type.substr(0, type.size() - 1),
+                                       expected.substr(0, expected.size() - 1));
+        }
+    }
+    // 数组：canonical(前缀) + "[纯数字]"（尾部 [N] 逐层剥离比对）
+    const std::size_t lb = type.rfind('[');
+    const std::size_t rb = type.rfind(']');
+    if (lb != std::string_view::npos && rb != std::string_view::npos &&
+        rb == type.size() - 1) {
+        const std::string_view len = type.substr(lb + 1, rb - lb - 1);
+        if (!len.empty() &&
+            len.find_first_not_of("0123456789") == std::string_view::npos) {
+            const std::string_view tail = type.substr(lb);  // "[N]"
+            if (expected.size() >= tail.size() &&
+                expected.substr(expected.size() - tail.size()) == tail) {
+                return canonicalEqualsView(
+                    type.substr(0, lb),
+                    expected.substr(0, expected.size() - tail.size()));
+            }
+        }
+    }
+    // 兜底等价于 canonical(type) == expected：别名/后缀已在上述分支处理；
+    //   指针/数组分支的「expected 形态不符」必然在末字符/末段处不等。
+    return type == expected;
+}
+
+} // namespace
+
+bool canonicalEquals(const std::string& type, std::string_view expected) {
+    return canonicalEqualsView(type, expected);
+}
+
 // 是否引用类型（类型名以 & 结尾，如 整32& / 账户& / T&）
 bool isReference(const std::string& type) {
     return !type.empty() && type.back() == '&';
@@ -785,6 +834,33 @@ void splitTypeSuffix(const std::string& type, std::string& coreOut,
             const std::string len = type.substr(lb + 1, end - lb - 2);
             if (len.empty() ||
                 len.find_first_not_of("0123456789") != std::string::npos) {
+                break;
+            }
+            end = lb;
+            continue;
+        }
+        break;
+    }
+    coreOut = type.substr(0, end);
+    suffixOut = type.substr(end);
+}
+
+// #1215：splitTypeSuffix 的无分配视图版（切分规则逐字复刻·见上）。
+void splitTypeSuffixView(std::string_view type, std::string_view& coreOut,
+                         std::string_view& suffixOut) {
+    std::size_t end = type.size();
+    while (end > 0) {
+        const char c = type[end - 1];
+        if (c == '*' || c == '&') {
+            end--;
+            continue;
+        }
+        if (c == ']') {
+            const std::size_t lb = type.rfind('[', end - 1);
+            if (lb == std::string_view::npos) break;
+            const std::string_view len = type.substr(lb + 1, end - lb - 2);
+            if (len.empty() ||
+                len.find_first_not_of("0123456789") != std::string_view::npos) {
                 break;
             }
             end = lb;

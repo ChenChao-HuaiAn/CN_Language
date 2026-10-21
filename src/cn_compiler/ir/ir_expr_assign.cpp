@@ -453,7 +453,7 @@ bool IRGenerator::memberStringFieldAssign(AssignmentExpr* node, MemberExpr* memb
             }
             return "";
         }();
-        if (types::canonical(fieldFieldType) == "字符串") {
+        if (types::canonicalEquals(fieldFieldType, "字符串")) {
             // 顺序（自赋值安全）：值已由上方 genExpr 求值（勿二次求值——
             //   二次求值=多余分配泄漏，P6/P7 探针实证）；此处按来源分级
             //   归一化（复制落堆/接管/move），新值独立于旧值内存后才 drop 旧值
@@ -710,7 +710,7 @@ std::string IRGenerator::indexAssignElemType(AssignmentExpr* node) {
             }
             // 648 豁免：字符串变量下标写=内置字节视图面（genGenericIndexAddress
             //   写路径有 emitStrBoundsCheck 防线），非静默 miss。
-            else if (types::canonical(st) == "字符串") {
+            else if (types::canonicalEquals(st, "字符串")) {
                 elemResolved648 = true;
             }
             // A-3（2026-08）：隐式类字段对象（向量 数据[位置] = 值）——

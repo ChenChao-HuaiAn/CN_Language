@@ -192,7 +192,7 @@ void IRGenerator::registerClosureIfNeeded(VarDecl* node) {
                     //   （双侧同规：v2 局部槽快照同不释放，零分叉）。
                     info.captureArgs.push_back(dstAddr);
                 } else if (semantic_ != nullptr &&
-                           (types::canonical(capSrc) == "字符串" ||
+                           (types::canonicalEquals(capSrc, "字符串") ||
                             semantic_->isClassType(types::canonical(capSrc)))) {
                     // 940：字符串/容器/类值捕获=定义处深拷独立副本（字符串
                     //   __cn_str_copy 落堆·容器/类 NewObject+拷贝构造）——

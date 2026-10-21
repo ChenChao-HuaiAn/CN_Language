@@ -257,7 +257,7 @@ void IRGenerator::visitReturnStmt(ReturnStmt* node) {
         //   原直传借用句柄：被引用局部对象析构（free 字段串）后返回值悬垂
         //   （933 探针：返回读出空/比较恒假）。
         if (function_ != nullptr &&
-            types::canonical(function_->returnTypeSrc) == "字符串") {
+            types::canonicalEquals(function_->returnTypeSrc, "字符串")) {
             bool needOwnCopy933 =
                 node->value->getType() == NodeType::StringLiteral;
             if (!needOwnCopy933 &&

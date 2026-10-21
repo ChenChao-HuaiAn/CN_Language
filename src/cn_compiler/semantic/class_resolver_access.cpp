@@ -317,7 +317,7 @@ void SemanticAnalyzer::checkSingleMethodBody(ClassInfo& info, ClassMemberInfo& m
             //   句柄=写穿调用方变量，探针实测 片 内容被改写丢失）。引用/函数
             //   指针参数不适用（槽存地址）。
             if (!p->funcPtr.isFunctionPtr() &&
-                types::canonical(ptype) == "字符串" &&
+                types::canonicalEquals(ptype, "字符串") &&
                 !types::isReference(ptype)) {
                 curStringParamDecls_.emplace_back(p->name, p);
             }

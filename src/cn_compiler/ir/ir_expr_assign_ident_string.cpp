@@ -72,7 +72,7 @@ bool IRGenerator::identifierStringByRefAssign(AssignmentExpr* node, IdentifierEx
                                               const std::string& targetType,
                                               const std::string& ownTargetSrcType,
                                               ir::IRValue& value) {
-    if (types::canonical(ownTargetSrcType) == "字符串" && targetType == "ptr" &&
+    if (types::canonicalEquals(ownTargetSrcType, "字符串") && targetType == "ptr" &&
         !isCompoundAssignOp(node->op) &&
         stringTainted_.count(ident->name) == 0 &&
         isByRefCapture(ident->name) &&

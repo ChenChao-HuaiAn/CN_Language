@@ -142,7 +142,7 @@ void IRGenerator::visitIndexExpr(IndexExpr* node) {
         //   （checkConstIdentifier/IR 常量内联 938 同源判据）；基址=genExpr
         //   (object)=常量内联 @strN 地址，同款越界检查+i8 装载（与变量串
         //   单路径）。
-        bool isStrObj938 = !unique.empty() && types::canonical(srcType) == "字符串";
+        bool isStrObj938 = !unique.empty() && types::canonicalEquals(srcType, "字符串");
         if (!isStrObj938 && semantic_ != nullptr) {
             const std::string cvStr938 = semantic_->globalConstValue(ident->name);
             if (!cvStr938.empty() &&
@@ -241,7 +241,7 @@ void IRGenerator::visitIndexExpr(IndexExpr* node) {
                     }
                     stride = 8;
                 }
-            } else if (types::canonical(fieldType) == "字符串") {
+            } else if (types::canonicalEquals(fieldType, "字符串")) {
                 // 自举前置 A-1：字符串字段（自身.源码[i]）——字符* 字节视图
                 // D30 根治（255-a）：加载宽=i8——原走 mapType("字符")="i32"
                 //   -> 4 字节打包读（内容[0]="ax" 得 30817）；mapType 无 "i8"
@@ -304,7 +304,7 @@ void IRGenerator::visitIndexExpr(IndexExpr* node) {
             stride = semantic_->typeSizeOf(elemSrc244);
             if (stride <= 0) stride = 8;
             emitBoundsCheck(index, types::arrayLenOf(callRetType244), node->location);
-        } else if (types::canonical(callRetType244) == "字符串") {
+        } else if (types::canonicalEquals(callRetType244, "字符串")) {
             // 字符串返回临时（取串()[i]）：字符* 字节视图步进 1（A-1/D30 口径；
             //   越界检查由下方 elemIrType=="i8"&&stride==1 统一面挂）
             stride = 1;
@@ -344,7 +344,7 @@ void IRGenerator::visitIndexExpr(IndexExpr* node) {
                     break;
                 }
                 // 自举前置 A-1：字符串成员（点.名[i]）——字符* 字节步进 1
-                if (f.name == inner->memberName && types::canonical(f.type) == "字符串") {
+                if (f.name == inner->memberName && types::canonicalEquals(f.type, "字符串")) {
                     stride = 1;
                     break;
                 }
@@ -356,7 +356,7 @@ void IRGenerator::visitIndexExpr(IndexExpr* node) {
             const std::string ftype = memberFieldSrcType(inner);
             if (types::isPointer(ftype)) {
                 stride = ptrElemStride(ftype);
-            } else if (types::canonical(ftype) == "字符串") {
+            } else if (types::canonicalEquals(ftype, "字符串")) {
                 // D30 根治（255-a）：拥有型字符串字段下标——字符* 字节视图步进 1
                 //   （与 IdentifierExpr 分支的「字符串变量兜底」对称；原兜底 8
                 //   -> 内容[i] 地址偏移 i*8=打包/越界读）
@@ -397,7 +397,7 @@ void IRGenerator::visitIndexExpr(IndexExpr* node) {
             elemIsStruct = true;
         }
     } else if (!callRetType244.empty() &&
-               types::canonical(callRetType244) == "字符串") {
+               types::canonicalEquals(callRetType244, "字符串")) {
         elemIrType = "i8";
         elemTyped648 = true;
     } else if (!callRetType244.empty() && types::isPointer(callRetType244)) {
@@ -421,7 +421,7 @@ void IRGenerator::visitIndexExpr(IndexExpr* node) {
                     break;
                 }
                 // 自举前置 A-1：字符串成员元素类型 字符（i8）
-                if (f.name == inner->memberName && types::canonical(f.type) == "字符串") {
+                if (f.name == inner->memberName && types::canonicalEquals(f.type, "字符串")) {
                     elemIrType = "i8";
                     elemTyped648 = true;
                     break;
@@ -460,7 +460,7 @@ void IRGenerator::visitIndexExpr(IndexExpr* node) {
                      semantic_->isClassType(elemCanon1059))) {
                     elemIsStruct = true;
                 }
-            } else if (types::canonical(ftype) == "字符串") {
+            } else if (types::canonicalEquals(ftype, "字符串")) {
                 // D30 根治（255-a）：字符串字段元素=i8（字节视图·与字符串变量
                 //   兜底及「字符串成员 i8」分支对称；原默认 i64 -> 4/8 字节打包读）
                 elemIrType = "i8";
@@ -487,7 +487,7 @@ void IRGenerator::visitIndexExpr(IndexExpr* node) {
                 (semantic_->isStructType(elemCanon) || semantic_->isClassType(elemCanon))) {
                 elemIsStruct = true;
             }
-        } else if (types::canonical(st) == "字符串") {
+        } else if (types::canonicalEquals(st, "字符串")) {
             // 自举前置 A-1：字符串变量兜底（i8 字节视图）
             elemIrType = "i8";
             elemTyped648 = true;
@@ -599,6 +599,9 @@ ir::IRValue IRGenerator::genGenericIndexAddress(IndexExpr* idx) {
                     //   **写**路径检查（s[i]='x' 形态经此族——读侧 visitIndexExpr 字符串
                     //   分支已有、写侧缺失=防线不对称：w2 探针 s[9]='x' 静默越界堆写
                     //   实证；错误码 2 与读侧/数组防线同码）。
+                    // #1215：此处保留 canonical 比较（不再改为无分配判定）——
+                    //   本 else 块文本是 miss 门禁 else业务 的存量基线锚点，改动
+                    //   块内文本会使存量豁免失配（门禁=只减不增，禁新增位置）。
                     if (types::canonical(st) == "字符串") {
                         emitStrBoundsCheck(index, obj, idx->location);
                     }

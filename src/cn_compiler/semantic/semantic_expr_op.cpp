@@ -258,7 +258,7 @@ void SemanticAnalyzer::visitAssignmentExpr(AssignmentExpr* node) {
             std::string tgtSrcType;
             if (currentRefParams_.count(tgtName) > 0 &&
                 lookupVar(tgtName, tgtSrcType) &&
-                types::canonical(tgtSrcType) == "字符串" &&
+                types::canonicalEquals(tgtSrcType, "字符串") &&
                 !isStrTainted(srcName) && !isCurrentClassFieldName(srcName)) {
                 markMovedVar(srcName, node->location.getLine());
             }
@@ -295,7 +295,7 @@ void SemanticAnalyzer::visitAssignmentExpr(AssignmentExpr* node) {
                     std::string elemType;
                     if (types::isArray(objType)) elemType = types::arrayElemOf(objType);
                     else if (types::isPointer(objType)) elemType = types::pointeeOf(objType);
-                    if (types::canonical(elemType) == "字符串") {
+                    if (types::canonicalEquals(elemType, "字符串")) {
                         markStrTainted(
                             static_cast<const IdentifierExpr*>(node->value.get())
                                 ->name);
@@ -315,7 +315,7 @@ void SemanticAnalyzer::visitAssignmentExpr(AssignmentExpr* node) {
                 static_cast<const IdentifierExpr*>(node->target.get())->name;
             std::string tgtSrcType;
             if (lookupVar(tgtName, tgtSrcType) &&
-                types::canonical(tgtSrcType) == "字符串" &&
+                types::canonicalEquals(tgtSrcType, "字符串") &&
                 !types::isReference(tgtSrcType) &&
                 !isOwnedStrRvalue(node->value.get())) {
                 markStrTainted(tgtName);
@@ -429,7 +429,7 @@ void SemanticAnalyzer::checkIdentifierAssignTarget(AssignmentExpr* node,
         // 102 甲案（2026-09-29 用户裁决·〔基准=019〕）：对字符串形参的赋值＝
         //   消耗标记（IR 层 prologue 深拷兑现「默认=值副本」——原借用直传下
         //   此赋值会释放调用方缓冲区）。非字符串形参名不命中，零影响。
-        if (types::canonical(varType) == "字符串") {
+        if (types::canonicalEquals(varType, "字符串")) {
             markStringParamConsumed(ident->name);
         }
         // 188-a（D6 B11 变量常量传播）：赋值位登记——RHS 形态分级（`无` 字面量=
@@ -502,7 +502,7 @@ void SemanticAnalyzer::checkIndexMemberAssignTarget(AssignmentExpr* node,
             //   字符 数组或不安全区指针·069 同语义家族）。原静默无效写（s[1]='x'
             //   读回原值·rc=0）——v2 拒绝既有（174_v2 锚）·本补丁宿主对齐同拒。
             if (lookupVar(static_cast<const IdentifierExpr*>(iobj)->name, iot) &&
-                types::canonical(iot) == "字符串") {
+                types::canonicalEquals(iot, "字符串")) {
                 diagnostics_.report(
                     DiagnosticLevel::Error, node->target->location,
                     "下标左值赋值未支持（字符串下标只读）——字符串为不可变"

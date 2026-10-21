@@ -685,7 +685,7 @@ void IRGenerator::visitCastExpr(CastExpr* node) {
     //   语义·win EXTERN 经 Call extra 自动收集）。整源→字符维持通用 Cast
     //   位模式互通（§3.7 字符↔整数·本轮不扩面）。
     if ((operand.type == "f32" || operand.type == "f64") &&
-        types::canonical(node->targetType) == "字符") {
+        types::canonicalEquals(node->targetType, "字符")) {
         lastExpr_ = emitResult(ir::Opcode::Call, {operand}, "i32",
                                (operand.type == "f64") ? "__cn_f64_to_char"
                                                        : "__cn_f32_to_char",

@@ -11,6 +11,7 @@
 // 规范：英文API命名（GCC 7 不支持中文标识符），中文仅用于注释/字符串/输出
 #pragma once
 #include <string>
+#include <string_view>
 #include <optional>
 #include <vector>
 
@@ -25,6 +26,13 @@ namespace types {
 // 语义/IR层所有类型比较前必须先规范化，否则别名误报类型不匹配
 // Task 2.4：递归规范化复合类型（指针 整数* -> 整32*、数组 整数[10] -> 整32[10]）
 std::string canonical(const std::string& type);
+
+// #1215：非分配 canonical 等值判定——语义等价 canonical(type) == expected，
+//   但不构造临时 std::string（IR/codegen 每指令数十处「规范后等于某字面量」
+//   判定：原实现每次 canonical 拷贝 + 比较，命中长类型名还会堆分配）。
+//   expected 传入字面量或 string_view；内部按 canonical 的改写规则
+//   （别名/尾部 & 递归剥除/* 递归追加/数组 [N] 递归追加）逐段比对。
+bool canonicalEquals(const std::string& type, std::string_view expected);
 
 // 是否整数类型（整8~整128/正8~正128/整数，规范后判断）
 bool isInteger(const std::string& type);
@@ -142,6 +150,12 @@ cn::Optional<int> arrayLenOf(const std::string& type);
 //   尾缀，带后缀形态被重组覆盖（数组维度/指针形态丢失，061 P3-a/d2 实测）。
 void splitTypeSuffix(const std::string& type, std::string& coreOut,
                      std::string& suffixOut);
+
+// #1215：splitTypeSuffix 的无分配视图版（语义逐字节等价）：core/suffix 为
+//   type 的子串视图，不构造临时 std::string。供 isResultType/isOptionalType
+//   等高频判定点使用（原实现每次双串拷贝，命中模板前缀时必然分配）。
+void splitTypeSuffixView(std::string_view type, std::string_view& coreOut,
+                         std::string_view& suffixOut);
 
 // ==================== 引用类型（A-1 引用参数，2026-08） ====================
 

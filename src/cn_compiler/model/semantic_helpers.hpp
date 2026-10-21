@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <functional>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <vector>
 
@@ -307,11 +308,13 @@ inline std::string canonicalType(const std::string& type) {
     //   「结果<」开头时 core 也不可能以它开头。原实现无条件 splitTypeSuffix
     //   （每次两个 std::string 拷贝；实际调用绝大多数是非模板类型）。
     if (type.rfind("结果<", 0) != 0) return false;
-    std::string core, suffix;
-    types::splitTypeSuffix(type, core, suffix);
+    // #1215：视图切分（无分配）——前缀命中后原实现 splitTypeSuffix 仍双串拷贝。
+    std::string_view core;
+    std::string_view suffix;
+    types::splitTypeSuffixView(type, core, suffix);
     if (!suffix.empty()) return false;
     if (core.rfind("结果<", 0) != 0) return false;
-    if (core.find('>') == std::string::npos) return false;
+    if (core.find('>') == std::string_view::npos) return false;
     // 067-002 治本（嵌套合成体同族）：顶层逗号判据须平衡扫描（<> 深度）——
     //   原 find(',') 见任意逗号即真，「结果<映射<整64,整64>>」（仅内层逗号）
     //   误判为结果类型。合法结果恒含顶层逗号，本判据等价收紧。
@@ -365,11 +368,13 @@ inline std::string canonicalType(const std::string& type) {
 [[maybe_unused]] inline bool isOptionalType(const std::string& type) {
     // #1154 前缀门（与 isResultType 同构）
     if (type.rfind("可选<", 0) != 0) return false;
-    std::string core, suffix;
-    types::splitTypeSuffix(type, core, suffix);
+    // #1215：视图切分（无分配·与 isResultType 同构）
+    std::string_view core;
+    std::string_view suffix;
+    types::splitTypeSuffixView(type, core, suffix);
     if (!suffix.empty()) return false;
     if (core.rfind("可选<", 0) != 0) return false;
-    if (core.find('>') == std::string::npos) return false;
+    if (core.find('>') == std::string_view::npos) return false;
     // 067-002 治本（嵌套合成体同族·m1 最小复现）：原 find(',')==npos 见任意
     //   逗号即假——内层实参「结果<整32,整32>」的逗号被误判为「可选有两参」，
     //   「可选<结果<整32,整32>>」不被识别（成员访问报「不是结构体/联合体/

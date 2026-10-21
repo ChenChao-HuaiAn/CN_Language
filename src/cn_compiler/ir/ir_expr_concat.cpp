@@ -199,7 +199,7 @@ bool IRGenerator::chainStringOperand(Expr* node) const {
             const std::string st = types::canonical(lookupSrcType(
                 static_cast<IdentifierExpr*>(idx->object.get())->name));
             if (types::isArray(st)) {
-                return types::canonical(types::arrayElemOf(st)) == "字符串";
+                return types::canonicalEquals(types::arrayElemOf(st), "字符串");
             }
         }
         return false;

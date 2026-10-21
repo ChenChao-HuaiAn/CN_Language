@@ -502,7 +502,7 @@ void IRGenerator::identifierGenericAssign(AssignmentExpr* node, IdentifierExpr* 
         //   （字面量/调用产物/拼接/转移）——72-a 通道只覆盖「源=标识符」
         //   （identifierStringByRefAssign 先行 return 不到此·其内已 drop）；
         //   实测泄漏：`出 = 字符串复制("新")` 三次覆盖净泄 3 块（内存账探针）。
-        if (types::canonical(lookupSrcType(ident->name)) == "字符串") {
+        if (types::canonicalEquals(lookupSrcType(ident->name), "字符串")) {
             ir::IRValue oldPtr = emitResult(ir::Opcode::LoadPtr, {capAddr},
                                             "ptr", "", node->location);
             emit(ir::Opcode::Call, {oldPtr}, ir::IRValue(), "__cn_str_free",

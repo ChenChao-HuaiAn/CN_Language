@@ -236,7 +236,7 @@ void SemanticAnalyzer::visitVarDecl(VarDecl* node) {
             {
                 std::string moveParamType616;
                 if (lookupVar(srcIdent->name, moveParamType616) &&
-                    types::canonical(moveParamType616) == "字符串") {
+                    types::canonicalEquals(moveParamType616, "字符串")) {
                     markStringParamConsumed(srcIdent->name);
                 }
             }
@@ -261,7 +261,7 @@ void SemanticAnalyzer::visitVarDecl(VarDecl* node) {
     //   与 v2 同判：e 形态双侧同为「引用返回不能返回局部变量的地址（'y'）」）。
     if (node->initializer != nullptr && !varType.empty() &&
         !node->funcPtr.isFunctionPtr() &&
-        types::canonical(varType) == "字符串" &&
+        types::canonicalEquals(varType, "字符串") &&
         !types::isReference(varType)) {
         const NodeType initKindA1 = node->initializer->getType();
         bool borrowInitA1 = initKindA1 == NodeType::IndexExpr ||
@@ -430,7 +430,7 @@ void SemanticAnalyzer::visitVarDecl(VarDecl* node) {
             //   String 的 to_string 显式哲学：分配成本可见）。A1 拦下标/成员/
             //   解引用借出；此处拦类型层字符*（驻留文本/借用返回函数/字符*
             //   变量）。拥有→借用方向（字符串 → 字符*）自动放行（安全方向）。
-            if (types::canonical(varType) == "字符串" && initType == "字符*") {
+            if (types::canonicalEquals(varType, "字符串") && initType == "字符*") {
                 diagnostics_.report(
                     DiagnosticLevel::Error, node->location,
                     "字符串变量 '" + node->name +
@@ -627,7 +627,7 @@ void SemanticAnalyzer::visitVarDecl(VarDecl* node) {
     //   装箱照常清零→语义同不登记保持两边一致。消费点=checkBuiltinCtorCall
     //   装箱 move 判定（污染=借用装箱源可用，不 markMovedVar）。
     if (node->initializer != nullptr && !node->funcPtr.isFunctionPtr() &&
-        types::canonical(varType) == "字符串" &&
+        types::canonicalEquals(varType, "字符串") &&
         node->initializer->getType() == NodeType::CallExpr) {
         const CallExpr* initCall =
             static_cast<const CallExpr*>(node->initializer.get());
@@ -771,7 +771,7 @@ void SemanticAnalyzer::checkFunctionBody(FunctionDecl* node) {
         // 102 甲案（2026-09-29 用户裁决·〔基准=019〕）：收集字符串**值**形参供
         //   消耗标记（引用参数 字符串& 槽存地址·不适用；函数指针参数同）。
         if (!param->funcPtr.isFunctionPtr() &&
-            types::canonical(paramType) == "字符串" &&
+            types::canonicalEquals(paramType, "字符串") &&
             !types::isReference(paramType)) {
             curStringParamDecls_.emplace_back(param->name, param.get());
         }

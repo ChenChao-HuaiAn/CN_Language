@@ -41,7 +41,7 @@ bool IRGenerator::handleClassFieldAssign(IdentifierExpr* ident, Expr* value,
                 //   本分支（normalize 对拼接产物=直存接管——732 同口径）；
                 //   非 += 的复合符对字符串已被语义层拒绝（不可拼接右值），
                 //   复合段字符串不可达——数值复合原路径保留不动。
-                if (types::canonical(fieldType) == "字符串" &&
+                if (types::canonicalEquals(fieldType, "字符串") &&
                     !isCompoundAssignOp(op)) {
                     ir::IRValue strVal = genExpr(value);
                     strVal = normalizeStringValueSource(value, strVal, loc);
@@ -246,7 +246,7 @@ bool IRGenerator::handleClassFieldAssign(IdentifierExpr* ident, Expr* value,
     //   幂等清槽（重赋值语义·字段槽 calloc 零初始化+空安全双保险）；构造内=
     //   初始化语义豁免（145-a 同规：目标槽未初始化不 preFree）。归一化在释放
     //   前——自赋值 新值已独立于旧句柄。
-    if (!isCompoundAssignOp(op) && types::canonical(fieldType) == "字符串") {
+    if (!isCompoundAssignOp(op) && types::canonicalEquals(fieldType, "字符串")) {
         val = normalizeStringValueSource(value, val, loc);
         ir::IRValue strFieldAddr = genInstanceFieldAddr(ident->name, loc);
         if (!currentMethodIsCtor_) {
