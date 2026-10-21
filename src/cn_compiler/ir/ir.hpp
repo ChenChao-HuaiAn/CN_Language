@@ -172,6 +172,8 @@ inline bool parseVirtualRegIdText(const std::string& text, int& id) {
     return true;
 }
 
+// 只读纯函数：每次按当前 IR 实测最大编号——任何 opt pass 改写 IR 后无需维护缓存值；
+//   空函数/无寄存器返回 -1（调用方以 max+1 作为新编号起点）。
 inline int maxVirtualRegId(const IRFunction& function) {
     int maxId = -1;
     const auto seeValue = [&maxId](const IRValue& value) {
