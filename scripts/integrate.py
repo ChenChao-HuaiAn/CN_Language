@@ -1294,9 +1294,9 @@ def solo流程(平台: str, 参数: argparse.Namespace) -> int:
             已验基准 = 基准
         if 成功:
             if not 参数.dry_run:
-                镜像 = 运行(["git", "push", 镜像远程, f"HEAD:{集成分支}"])
-                if 镜像.returncode != 0:
-                    print("  [警告] github 镜像补推失败——按惯例下次提交补推（不影响集成有效性）。")
+                # 1403：镜像补推抽 integrate_mirror（恒推 tip:develop·失败给分叉诊断）
+                import integrate_mirror
+                integrate_mirror.补推镜像(输出(["git", "rev-parse", "HEAD"]))
             分支 = 输出(["git", "branch", "--show-current"])
             if 分支.startswith("任务/") and not 参数.dry_run:
                 # 392：删远端分支前收伞批销账登记（引用删后提交历史不可达）
@@ -1541,9 +1541,9 @@ def 批流程(参数: argparse.Namespace) -> int:
         伞批并集 = sorted({号 for 分支, 们 in 伞批销账.items()
                           if 分支 in 实际分支们 for 号 in 们})
         总账收口([行["分支"] for 行 in 实际成员], 新tip, 额外号们=伞批并集)
-        镜像 = 运行(["git", "push", 镜像远程, f"{集成分支}"])
-        if 镜像.returncode != 0:
-            print("  [警告] github 镜像补推失败——按惯例下次提交补推（不影响集成有效性）。")
+        # 1403：原推本地 develop 引用（陈旧·非当前 tip）→ 恒推新tip:develop
+        import integrate_mirror
+        integrate_mirror.补推镜像(新tip)
     print(f"\n[批集成成功] 成员 {len(实际成员)}：")
     for 行 in 实际成员:
         print(f"    - {行['分支']}（{行['摘要']}）")
@@ -1648,7 +1648,9 @@ def 主流程() -> int:
 
     if 参数.selftest:
         import integrate_selftest   # 637：自测面拆出·函数内延迟导入（彼时本模块已加载完毕·无循环）
-        return integrate_selftest.自测()
+        码 = integrate_selftest.自测()
+        import integrate_mirror     # 1403：镜像补推纯函数面自测（正反例）
+        return 码 or integrate_mirror.selftest()
     if 参数.status:
         队列 = 队列读(参数.remote)                      # 920：服务端优先（双源合并）
         if 队列 is None:
