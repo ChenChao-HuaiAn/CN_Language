@@ -4,12 +4,12 @@
 #   微基准族（tests/bench/b1~b8，b4 v2 挂起）：宿主 cn 与 v2 自举编译器（v2p）
 #   双编译同测——双测铁律性能版（369 行同款纪律）。数字=优化验收基线
 #   （#366/#368 对拍锚），报告落 target/bench/stdlib基线报告.md
-#   （gitignore·数字入册=誊进 plans/004）。
+#   （gitignore·数字入册=誊进 plans/032 规定的提交证据块）。
 #   用法: python scripts/bench_stdlib.py [--runs 3] [--only b1,b2] [--host-only]
 #         --host-only = 仅宿主侧（win 无 as/g++ linux 链时开发自测；v2 列=挂，
 #         默认双测行为不变·linux CI 照跑 v2）。
 #   判据（防假绿）：每用例编译 rc=0 + 校验行断言（终串长/两和相等/尾块和/错误码），
-#   耗时数字只收集不判优——优化对拍由人按 plans/004 规程执行。
+#   耗时数字只收集不判优——优化对拍由人按 plans/032 规程执行。
 
 import argparse
 import os
@@ -261,7 +261,7 @@ def 主程序() -> int:
             行们.append(f"| {用例} | {名} | {h[i]:.0f} | {v[i] if isinstance(v[i], str) else f'{v[i]:.0f}'} |")
     行们 += ["", "> 校验断言全过（终串长/两和相等/尾块和/错误码）·耗时只收数字不判优——",
             "> 「挂」=v2 侧被在案缺陷阻断（见 v2挂起 注册表）或 --host-only 未跑 v2·单机口径",
-            "> 优化对拍按 plans/004「优化验收规程」执行（改前改后同机同负载）。", ""]
+            "> 优化对拍按 plans/032「性能优化验收规程」执行（改前改后交替≥3轮·指令数口径）。", ""]
     报告.write_text("\n".join(行们), encoding="utf-8")
     print(f"\n报告: {报告}")
     return 0
