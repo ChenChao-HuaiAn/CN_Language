@@ -6,7 +6,7 @@
 //   __cn_file_read_line  按行读取（fgets 动态分配，含换行；EOF 返回 nullptr，调用方负责释放）
 //   __cn_file_size       文件大小（fseek end + ftell + 恢复原位置），失败返回 -1
 //   __cn_file_close      关闭文件（fclose，安全处理 nullptr）
-//   __cn_file_exists     文件是否存在（_wfopen_s 试读，成功即关闭返回真）
+//   __cn_file_exists     路径是否存在（含目录；属性查询，不试读——见实现注）
 //   __cn_file_mkdir      递归创建目录（逐级创建；已存在=成功；中段是文件/权限不足=失败）
 // 中文路径：UTF-8 窄路径经 MultiByteToWideChar(CP_UTF8) 转 UTF-16 宽路径，
 //   用 _wfopen_s 打开（lessons.md 已验证方案：std::filesystem::u8path 对中文路径挂起，弃用）。
@@ -45,6 +45,26 @@ const char* modeToFopen(int mode) {
         default: return nullptr;
     }
 }
+
+#ifdef _WIN32
+// UTF-8 -> UTF-16 宽路径（MB_ERR_INVALID_CHARS）；失败返回 false=调用方窄路径兜底
+bool utf8ToWidePath(const char* text, std::wstring& out) {
+    if (text != nullptr) {
+        const int len = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, text, -1,
+                                            nullptr, 0);
+        if (len != 0) {
+            out.resize(static_cast<std::size_t>(len));
+            if (MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, text, -1, &out[0],
+                                    len) != 0) {
+                out.resize(static_cast<std::size_t>(len - 1));  // 去掉结尾 NUL
+                return true;
+            }
+            out.clear();
+        }
+    }
+    return false;
+}
+#endif
 
 // 打开文件（内部实现）：UTF-8 路径 -> 宽路径（_wfopen_s），失败返回 nullptr
 // Windows：MultiByteToWideChar(CP_UTF8) 转 UTF-16 后 _wfopen_s（中文路径可靠）；
@@ -262,13 +282,26 @@ extern "C" void __cn_file_close(void* handle) {
     }
 }
 
-// 文件是否存在：fileOpenImpl 试读（模式"rb"，UTF-8 宽路径优先——与打开同编码
-//   口径，见文件头注释），成功即关闭返回真；失败返回假。
+// 文件是否存在：**路径存在**（含目录）返回真——不通过打开试读判定。
+//   #1273 回归口径：缓存条目被目录占位时必须「存在但不可读」→ 读路径进入
+//   损坏回退并显式告警；若用 fileOpenImpl 试读，_wfopen_s 对目录失败会被
+//   误判为「不存在」→ 落普通 miss（首建）静默跳过，丢失损坏告警。
+//   Windows：合法 UTF-8 走 GetFileAttributesW（宽路径），非 UTF-8 走 A 兜底；
+//   两者均不做 U+FFFD 替换/不走窄解释合法 UTF-8。
 extern "C" long long __cn_file_exists(const char* path) {
-    FILE* fp = fileOpenImpl(path, "rb");
-    if (fp == nullptr) return 0;
-    std::fclose(fp);
-    return 1;
+    if (path != nullptr && *path != '\0') {
+#ifdef _WIN32
+        std::wstring wide;
+        if (utf8ToWidePath(path, wide)) {
+            return GetFileAttributesW(wide.c_str()) != INVALID_FILE_ATTRIBUTES ? 1 : 0;
+        }
+        return GetFileAttributesA(path) != INVALID_FILE_ATTRIBUTES ? 1 : 0;
+#else
+        struct stat st;
+        return ::stat(path, &st) == 0 ? 1 : 0;
+#endif
+    }
+    return 0;
 }
 
 // 递归创建目录：逐级创建，成功（含已存在且确为目录）返回 1；失败返回 0。

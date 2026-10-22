@@ -306,9 +306,9 @@ TEST(FileApiTest, MkdirRecursive) {
                          / "a" / "b" / "c";
     std::error_code ec;
     fs::remove_all(dir, ec);
-    EXPECT_EQ(__cn_file_mkdir(dir.string().c_str()), 1);
+    EXPECT_EQ(__cn_file_mkdir(dir.u8string().c_str()), 1);
     EXPECT_TRUE(fs::is_directory(dir));
-    EXPECT_EQ(__cn_file_mkdir(dir.string().c_str()), 1);  // 幂等：已存在仍成功
+    EXPECT_EQ(__cn_file_mkdir(dir.u8string().c_str()), 1);  // 幂等：已存在仍成功
     fs::remove_all(dir, ec);
 }
 
