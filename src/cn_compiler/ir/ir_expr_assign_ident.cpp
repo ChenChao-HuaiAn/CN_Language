@@ -118,7 +118,17 @@ bool IRGenerator::assignToIdentifierTarget(AssignmentExpr* node, IdentifierExpr*
         lastExpr_ = val;   // 赋值表达式值=所赋值
         return true;
     }
-    if (assignToGlobalStatic(node, ident)) return true;
+    // 1337（遮蔽写路径错位·P1）：局部优先序先于全局静态——普通局部/参数遮蔽
+    //   全局时，assignToGlobalStatic 的 isGlobalStatic(名) 名字直查截胡=写
+    //   ?gstatic_ 全局槽而读走局部槽（读写错位静默错值·M1/M4/M5 三样本实证·
+    //   v2 发射全对），且安全区「静态变量写」挂点连带误拦合法局部直写（1338
+    //   同根两面）。对齐读路径 85-a 先例（ir_expr.cpp:123「放在 lookupVar
+    //   失败后 防止同名遮蔽误读全局」）：lookupVarName 命中（局部/参数登记
+    //   在案）=跳过全局静态分支走普通变量路径；静态局部在上方 isStaticLocal
+    //   分支已消费、不达此处。
+    const std::string localUnique = lookupVarName(ident->name);
+    if (localUnique.size() == 0 && assignToGlobalStatic(node, ident))
+        return true;
     // 目标变量唯一内部名（后续 普通赋值/类深拷贝 均需，提前计算避免重复查找）
     const std::string unique = lookupVarName(ident->name);
     // 031（#1075）：方法值变量赋值（cb = 对象.方法 / cb2 = cb）——两槽值整拷

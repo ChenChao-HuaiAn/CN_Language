@@ -818,11 +818,12 @@ ir::IRValue IRGenerator::genIdentifierLvalue(Expr* node) {
         //   存储位置本身（与 &静态 分支同款，plans/018 根治口径）。原实现直接
         //   AddrOf(局部槽)：静态变量不在 varStack_（lookupVarName 空），结构体
         //   整体赋值/成员链基址落到无效槽——静态聚合左值地址单一事实源。
-        if (semantic_ != nullptr && semantic_->isGlobalStatic(ident->name)) {
+        //   1337：守卫=局部优先（遮蔽时基址走局部·读写错位 m7 实证·85-a 同序）。
+        const std::string unique = lookupVarName(ident->name);
+        if (semantic_ != nullptr && unique.size() == 0 && semantic_->isGlobalStatic(ident->name)) {
             return emitResult(ir::Opcode::ConstString, {}, "ptr",
                               "?gstatic_" + ident->name, node->location);
         }
-        const std::string unique = lookupVarName(ident->name);
         const std::string srcType = lookupSrcType(ident->name);
         // 缺陷修复（[&] 引用捕获左值）：参数槽存被捕获变量地址，取地址 = Load 参数槽
         //   （而非 AddrOf 参数槽——否则 &捕获变量 取到的是参数槽自身的地址）

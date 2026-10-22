@@ -303,6 +303,7 @@ private:
     void computeEnumValues(EnumDecl* decl);
     // 从内到外查找变量类型（未找到返回false）
     bool lookupVar(const std::string& name, std::string& type) const;
+    bool hitsNonStaticLocal(const std::string& name) const;  // 1337 遮蔽写豁免判据（函数内非静态局部）
     // 缺陷②配套（2026-09-03 用户裁决）：名字在作用域链解析处是否为常量（局部=
     //   scopeConsts_·顶层=globalConstValues_ 裸名；同序遮蔽）·供赋值/自增拒绝。
     bool isConstVarName(const std::string& name) const;
@@ -831,8 +832,7 @@ private:
     std::string currentModuleName_;
     std::unordered_set<std::string> typeNames_;    // 结构体/枚举类型名表（Task 2.7）
     std::vector<std::unordered_map<std::string, std::string>> scopes_; // 变量作用域栈
-    // 缺陷②配套（2026-09-03）：各作用域常量名集合（与 scopes_ 平行，push/popScope
-    //   同步维护；visitVarDecl 登记 isConst 局部）。isConstVarName 据此判定。
+    // 缺陷②配套（2026-09-03）：各作用域常量名集合（与 scopes_ 平行，push/popScope 同步维护；visitVarDecl 登记 isConst 局部）。isConstVarName 据此判定。
     std::vector<std::unordered_set<std::string>> scopeConsts_;
     // plans/019 阶段1（2026-09-10）：各作用域已转移变量表（名 -> 转移点行号；
     //   与 scopes_ 平行，push/popScope 同步）。转移(变量) 后源变量禁用（E0382 对标）。

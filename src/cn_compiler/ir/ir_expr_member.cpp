@@ -132,7 +132,11 @@ bool IRGenerator::emitStructWholeAssign(const ir::IRValue& dstAddr,
         //   即源存储位置（与 lvalueAddress 静态分支同口径）。原实现取局部槽
         //   （lookupVarName 对静态名空）→ AddrOf 无效槽 → 结构体整体赋值静默
         //   错源（静态→局部/静态→静态赋值面）。
-        if (semantic_->isGlobalStatic(srcName)) {
+        // 1337（遮蔽写路径错位·P1）：顶层静态分支加 varStack miss 守卫——普通
+        //   局部/参数遮蔽全局时名字直查截胡=源取 ?gstatic_ 全局槽（应为局部源
+        //   ·m7 实证），对齐读路径 85-a「局部优先、miss 才查全局」遮蔽序。
+        if (semantic_->isGlobalStatic(srcName) &&
+            findVarEntry(srcName) == nullptr) {
             srcAddr = emitResult(ir::Opcode::ConstString, {}, "ptr",
                                  "?gstatic_" + srcName, loc);
         } else if (const VarEntry* veStatic = findVarEntry(srcName);

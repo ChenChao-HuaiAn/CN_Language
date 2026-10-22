@@ -298,8 +298,13 @@ void SemanticAnalyzer::checkIncDecUnary(UnaryExpr* node,
                 // 480（473 采样轮 p9·001 §747 表第 8 行整族执法）：静态变量写
                 //   自增自减形态——顶层静态（原漏网·x 探针）与函数内静态局部
                 //   （原双侧均放行·p9）同受安全区边界约束；不安全函数内豁免。
-                if (isGlobalStatic(ident->name) ||
-                    staticguard::isStaticLocal(ident->name)) {
+                // 1337/1338（遮蔽写路径错位·P1）：加「非静态局部命中」豁免
+                //   （hitsNonStaticLocal 单点判据）——普通局部/参数遮蔽全局时
+                //   名字直查误拦合法局部自增，对齐读路径 85-a 遮蔽序；静态
+                //   局部自身（480 面）保持拦截。
+                if ((isGlobalStatic(ident->name) ||
+                     staticguard::isStaticLocal(ident->name)) &&
+                    !hitsNonStaticLocal(ident->name)) {
                     reportUnsafeBoundary(node->location, "静态变量写",
                                          "静态变量自增自减");
                 }

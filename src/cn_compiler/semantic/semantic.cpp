@@ -13,6 +13,7 @@
 #include <utility>
 
 #include "cn_compiler/semantic/semantic.hpp"
+#include "cn_compiler/semantic/semantic_staticguard.hpp"
 #include "cn_compiler/model/type_system.hpp"
 #include "cn_compiler/model/semantic_helpers.hpp"
 #include "cn_compiler/semantic/semantic_lambda_escape.hpp"
@@ -321,6 +322,18 @@ bool SemanticAnalyzer::lookupVar(const std::string& name, std::string& type) con
         if (found != it->end()) {
             type = found->second;
             return true;
+        }
+    }
+    return false;
+}
+// 1337/1338：名字是否命中「函数内非静态局部/参数」作用域（scopes_[1..] 内层
+//   链；scopes_[0]=全局作用域不算）且该名非函数内静态局部（480 静态写执法面
+//   保持）——遮蔽写路径安全区豁免判据单点（标识符直写/下标成员链根名/自增
+//   自减三挂点共用；lookupVar 会落全局作用域命中·不能直接作豁免判据）。
+bool SemanticAnalyzer::hitsNonStaticLocal(const std::string& name) const {
+    for (std::size_t i = scopes_.size(); i-- > 1; ) {
+        if (scopes_[i].find(name) != scopes_[i].end()) {
+            return !staticguard::isStaticLocal(name);
         }
     }
     return false;

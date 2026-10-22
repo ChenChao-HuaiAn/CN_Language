@@ -418,11 +418,16 @@ void SemanticAnalyzer::checkIdentifierAssignTarget(AssignmentExpr* node,
     // 480（473 采样轮 p9）：函数内静态局部写同族执法——静态局部与顶层静态
     //   同属静态存储期变量（001 §747 表第 8 行「可变静态变量写」无顶层限定；
     //   函数内静态写原双侧均放行=整族逃逸）。判定源=staticguard 记账。
-    if (isGlobalStatic(ident->name) ||
-        staticguard::isStaticLocal(ident->name)) {
+    // 1337/1338（遮蔽写路径错位·P1）：加「非静态局部命中」豁免（hitsNonStaticLocal
+    //   单点判据）——普通局部/参数遮蔽全局时 isGlobalStatic 名字直查误拦合法
+    //   局部直写（m8/m9 实证·编译不过），对齐读路径 85-a 遮蔽序；静态局部
+    //   自身（480 面）保持拦截。
+    std::string varType;
+    if ((isGlobalStatic(ident->name) ||
+         staticguard::isStaticLocal(ident->name)) &&
+        !hitsNonStaticLocal(ident->name)) {
         reportUnsafeBoundary(node->location, "静态变量写", "静态变量赋值");
     }
-    std::string varType;
     if (lookupVar(ident->name, varType)) {
         targetType = varType;
         lvalueOk = true;
@@ -566,8 +571,10 @@ void SemanticAnalyzer::checkIndexMemberAssignTarget(AssignmentExpr* node,
     //   （reportUnsafeBoundary 内建豁免）。诊断文案与直写形态一致。
     const std::string rootName =
         staticguard::writeTargetRootName(node->target.get());
-    if (!rootName.empty() && (isGlobalStatic(rootName) ||
-                              staticguard::isStaticLocal(rootName))) {
+    // 1337/1338（遮蔽写路径错位·P1）：同款「非静态局部命中」豁免——根名被
+    //   普通局部/参数遮蔽时误拦合法成员/下标写（m7 实证形态）。
+    if (!rootName.empty() && !hitsNonStaticLocal(rootName) &&
+        (isGlobalStatic(rootName) || staticguard::isStaticLocal(rootName))) {
         reportUnsafeBoundary(node->location, "静态变量写", "静态变量赋值");
     }
     assignmentTargetDepth_++;  // 150-a：抑制 target 求值中的 B6/B8/B9 读判

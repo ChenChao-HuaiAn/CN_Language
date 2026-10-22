@@ -291,8 +291,14 @@ void IRGenerator::visitUnaryExpr(UnaryExpr* node) {
                 break;
             }
             // 第 9 层 Debug（P3-8）：顶层静态变量自增/自减——全局符号"读-算-写回"。
+            // 1337（遮蔽写路径错位）：isGlobalStatic 名字直查前先查 varStack——
+            //   普通局部/参数遮蔽全局时截胡=++/-- 落全局槽（应为局部自增·M5 实
+            //   证），对齐上方静态局部分支的「varStack 命中优先」遮蔽序。
             if (node->operand->getType() == NodeType::IdentifierExpr &&
-                semantic_ != nullptr) {
+                semantic_ != nullptr &&
+                findVarEntry(
+                    static_cast<IdentifierExpr*>(node->operand.get())->name) ==
+                    nullptr) {
                 IdentifierExpr* gsIdent = static_cast<IdentifierExpr*>(node->operand.get());
                 if (semantic_->isGlobalStatic(gsIdent->name)) {
                     const std::string stType = semantic_->globalStaticType(gsIdent->name);
