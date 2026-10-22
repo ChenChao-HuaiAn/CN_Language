@@ -928,14 +928,26 @@ def _1392断言(断言) -> None:
         文件 = 根 / "scripts" / "ci_daemon.py"
         文件.write_text("# 1392 指纹桩\n", encoding="utf-8")
         指 = ci_shard.实例指纹(根)
-        期望 = hashlib.sha256(文件.read_bytes()).hexdigest()[:10]
-        断言("1392 指纹：daemon指纹=文件内容 sha256 前 10（同内容同指纹）",
+        期望 = hashlib.sha256(
+            文件.read_text(encoding="utf-8").replace("\r\n", "\n").encode("utf-8")
+        ).hexdigest()[:10]
+        断言("1392 指纹：daemon指纹=文件内容 sha256 前 10（同内容同指纹·文本归一化）",
              指["daemon指纹"] == 期望 and len(指["daemon指纹"]) == 10)
         断言("1392 指纹：非 git 目录树头=空串显式（不猜不编·前端显示 —）",
              指["树头"] == "")
         文件.write_text("# 内容变→指纹变（scp 直更同样反映）\n", encoding="utf-8")
         断言("1392 指纹：内容变更=指纹变更（旧版实例可被众数比对抓出）",
              ci_shard.实例指纹(根)["daemon指纹"] != 期望)
+        # #1418：CRLF/LF 同内容同指纹（win 池树 checkout 为 CRLF·linux 为 LF——
+        #   同提交同代码不得因行尾被判「版本不一致」跨平台假警）
+        with 文件.open("w", encoding="utf-8", newline="") as f:
+            f.write("# 行尾桩\r\n第二行\r\n")
+        指CRLF = ci_shard.实例指纹(根)["daemon指纹"]
+        with 文件.open("w", encoding="utf-8", newline="") as f:
+            f.write("# 行尾桩\n第二行\n")
+        指LF = ci_shard.实例指纹(根)["daemon指纹"]
+        断言("#1418 指纹：CRLF/LF 同内容同指纹（跨平台行尾不再假警）",
+             指CRLF == 指LF and len(指CRLF) == 10)
 
 
 def 自测(主模块) -> int:

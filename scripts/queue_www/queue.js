@@ -210,16 +210,23 @@ function 秒前(时戳) {
   return Math.round(差 / 3600) + " 小时前";
 }
 
-/* 版本众数派：daemon指纹 计数取最多者——与众数不同（且指纹非空）=「版本不一致」
-   （服务端无权威最新版本源·多数派比对是抓旧版实例的实用信号；仅 1 台有指纹时
-   无不一致）。返回 {众数指纹, 不一致(r)=>bool}；快照无指纹数据=全部 false。 */
+/* 版本一致性（#1418）：树头优先——同树头=同提交（跨平台行尾差异不影响）；
+   树头与众数不同（且非空）=真旧版（红）；同树头但指纹不同=文件字节差异
+   （黄提示·非旧版）。服务端无权威最新版本源，多数派比对是抓旧版的实用信号。 */
 function 版本众数(们) {
-  const 计数 = {};
-  们.forEach((r) => { const f = r["daemon指纹"]; if (f) 计数[f] = (计数[f] || 0) + 1; });
-  const 条目 = Object.entries(计数).sort((a, b) => b[1] - a[1])[0] || null;
-  return { 众数指纹: 条目 ? 条目[0] : null,
-           不一致: (r) => 条目 !== null && Boolean(r["daemon指纹"])
-                          && r["daemon指纹"] !== 条目[0] };
+  const 头计数 = {};
+  们.forEach((r) => { const h = r["树头"]; if (h) 头计数[h] = (头计数[h] || 0) + 1; });
+  const 头条目 = Object.entries(头计数).sort((a, b) => b[1] - a[1])[0] || null;
+  const 指计数 = {};
+  们.forEach((r) => { const f = r["daemon指纹"]; if (f) 指计数[f] = (指计数[f] || 0) + 1; });
+  const 指条目 = Object.entries(指计数).sort((a, b) => b[1] - a[1])[0] || null;
+  return { 树头众数: 头条目 ? 头条目[0] : null,
+           真旧版: (r) => 头条目 !== null && Boolean(r["树头"])
+                          && r["树头"] !== 头条目[0],
+           指纹差异: (r) => 头条目 !== null && r["树头"] === 头条目[0]
+                            && Boolean(r["daemon指纹"]) && 指条目 !== null
+                            && r["daemon指纹"] !== 指条目[0],
+           有版本: (r) => Boolean(r["树头"]) || Boolean(r["daemon指纹"]) };
 }
 
 function 渲染实例统计条(们) {
@@ -228,17 +235,21 @@ function 渲染实例统计条(们) {
   const 计 = {};
   们.forEach((r) => { 计[r["状态"]] = (计[r["状态"]] || 0) + 1; });
   const 众 = 版本众数(们);
-  const 不一致数 = 们.filter((r) => 众.不一致(r)).length;
-  const 有指纹 = 们.some((r) => Boolean(r["daemon指纹"]));
+  const 真旧数 = 们.filter((r) => 众.真旧版(r)).length;
+  const 指纹异数 = 们.filter((r) => 众.指纹差异(r)).length;
+  const 有版本 = 们.some((r) => 众.有版本(r));
   条.hidden = false;
   条.innerHTML = `实例 <b class="mono">${们.length}</b> · 执行中 <b class="mono">${计["执行中"] || 0}</b> · `
     + `心跳超时 <b class="mono">${计["心跳超时"] || 0}</b> · 疑似离线 <b class="mono">${计["疑似离线"] || 0}</b> · `
     + `空闲 <b class="mono">${计["空闲"] || 0}</b> ｜ `
-    + (不一致数
-      ? `<span class="签 阶段红">版本不一致 ${不一致数} 台</span> <span class="淡">daemon 指纹与众数派不同——疑似旧版未更新</span>`
-      : (有指纹
-        ? `<span class="签 完成">版本一致</span>`
-        : `<span class="签 挂起">版本未上报</span> <span class="淡">全部实例尚无 daemon 指纹（旧版进程未发 instance_ping）——升级重启后出现</span>`));
+    + (真旧数
+      ? `<span class="签 阶段红">版本不一致 ${真旧数} 台</span> <span class="淡">树头与众数不同——疑似旧版未更新</span>`
+      : (!有版本
+        ? `<span class="签 挂起">版本未上报</span> <span class="淡">全部实例尚无树头/指纹（旧版进程未发 instance_ping）——升级重启后出现</span>`
+        : `<span class="签 完成">版本一致</span>`
+          + (指纹异数
+            ? ` <span class="签 挂起">指纹差异 ${指纹异数} 台</span> <span class="淡">同提交但文件字节不同（跨平台行尾）——非旧版</span>`
+            : "")));
 }
 
 function 渲染实例() {
@@ -254,7 +265,8 @@ function 渲染实例() {
   const 行 = 们.map((r) => {
     const 任 = r["当前任务"];
     const 完 = r["最近完成"];
-    const 不一致 = 众.不一致(r);
+    const 真旧 = 众.真旧版(r);
+    const 指纹异 = 众.指纹差异(r);
     const 已跑 = 任 ? 等分(任["认领时刻"]) : null;
     const 片签 = 任 && 任["形态"] === "分片"
       ? ` <span class="签 队列中">分片 #${转义(String(任["片序"] ?? "?"))}/${转义(String(任["片数"] ?? "?"))}</span>`
@@ -274,9 +286,10 @@ function 渲染实例() {
       <span class="mono">${当前}</span>
       <span class="mono">${已跑 === null ? "—" : 已跑 + " 分"}</span>
       <span class="时间列">${秒前(r["最近活跃时戳"])}</span>
-      <span class="mono${不一致 ? " 版本警" : ""}" title="树头（跑轮随被验分支变化·参考面）+ daemon 指纹（进程启动版）${
-        不一致 ? " · ⚠ 与多数实例指纹不一致——疑似旧版 daemon 未更新" : ""}">${
-        转义(r["树头"] || "—")} · ${转义(r["daemon指纹"] || "—")}${不一致 ? " ⚠" : ""}</span>
+      <span class="mono${真旧 ? " 版本警" : ""}" title="树头（同提交判定主依据）+ daemon 指纹（进程启动版）${
+        真旧 ? " · ⚠ 树头与众数不同——疑似旧版 daemon 未更新"
+             : (指纹异 ? " · 同提交但指纹不同（跨平台行尾差异·非旧版）" : "")}">${
+        转义(r["树头"] || "—")} · ${转义(r["daemon指纹"] || "—")}${真旧 ? " ⚠" : ""}</span>
       <span>${完成列}</span>
     </div>`;
   }).join("");

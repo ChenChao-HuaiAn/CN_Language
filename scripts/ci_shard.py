@@ -568,8 +568,12 @@ def 实例指纹(仓库根: Path) -> dict:
     取不到=空串显式（前端显示 —·不猜不编；服务端空串不覆盖已有值）。"""
     指纹 = ""
     try:
-        指纹 = hashlib.sha256(
-            (仓库根 / "scripts" / "ci_daemon.py").read_bytes()).hexdigest()[:10]
+        # #1418：按文本读（通用换行归一化 CRLF→LF）再哈希——win/linux 同提交同代码
+        #   同指纹。此前 read_bytes 直接吃到行尾差异（win 池树 checkout 为 CRLF），
+        #   导致同树头的 win/linux 被判「版本不一致」跨平台假警。
+        内容 = (仓库根 / "scripts" / "ci_daemon.py").read_text(
+            encoding="utf-8", errors="replace").replace("\r\n", "\n")
+        指纹 = hashlib.sha256(内容.encode("utf-8")).hexdigest()[:10]
     except OSError:
         pass
     头 = ""
