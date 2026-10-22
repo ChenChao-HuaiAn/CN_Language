@@ -300,7 +300,7 @@ def 静态门禁与e2e段(步骤们: dict, 步骤, cn: Path | None, 日志, sha:
             #   CN_SHARD_RECV_TIMEOUT_SEC（默认 1800s），未齐片只报缺失=诚实红
             #   （门禁不放宽：e2e 仍必须全量跑完·红仍红）。编排单点=
             #   ci_shard.主实例分片段（步骤/明细/片心跳注入，本段只写回聚合明细）。
-            聚合rc, 聚合秒, 合并明细, _形态 = ci_shard.主实例分片段(
+            聚合rc, 聚合秒, 合并明细, _分片行们, _形态 = ci_shard.主实例分片段(
                 轮分支=轮分支, 片数=分片, 召唤时刻=分片召唤时刻, e2e基=e2e基,
                 明细参=e2e明细参, 步骤=步骤, 步骤们=步骤们, 日志=日志, sha=sha,
                 日志目录=日志目录, e2e并行=e2e并行, e2e超时秒=e2e整轮超时秒,
@@ -707,8 +707,10 @@ def 池跑任务(任务: dict) -> None:
             #   路径（ssh 直发）非 develop 主循环——此处只对池认领的 ci/预验-* 生效。
             #   1369：召唤时刻锚定认领宽限窗（CN_SHARD_GRACE_SEC）——构建耗时已覆盖
             #   大部分宽限，进 e2e 段时快照一次即可判「无认领→立即退化」。
-            分片n = (ci_shard.分片数默认
-                     if (任务分支.startswith("ci/预验-") and ci_shard.分片数默认 > 1) else 0)
+            #   #1401：分片度按池空闲实例/执行中预验任务数自适应（CN_SHARD_N 可固定）。
+            分片n = 0
+            if 任务分支.startswith("ci/预验-") and ci_shard.分片启用():
+                分片n = ci_shard.计算分片数(配置["池地址"])
             召唤时刻 = time.time() if 分片n > 1 else None
             if 分片n > 1:
                 ci_shard.召唤从片(lambda o, d: 池调用(配置, o, d),
@@ -788,7 +790,7 @@ def 主(常驻: bool, 强制: bool, 等锁: bool = False) -> int:
         if 分支 == "develop":
             # ── 1297 从实例优先领片：分片开启时先看有无缺口片（空闲实例自主补位——
             #    召唤只登记不指派，谁空闲谁领；无缺口再领整任务=池忙时行为与现状一致）
-            if ci_shard.分片数默认 > 1:
+            if ci_shard.分片启用():
                 池c = 池配置()
                 片任务 = ci_shard.领片(lambda o, d: 池调用(池c, o, d), runner标识, 平台)
                 if 片任务:

@@ -22,6 +22,9 @@ import time
 # instance_ping 周期（daemon 侧 60s）×3——超此秒数未报活=疑似离线。
 # 仅对「发过版本上报」的实例判定（旧版 daemon 空闲不报活·不误标）。
 报活在线秒 = 180
+# 旧版 daemon（从未上报版本）空闲不报活：按最后活动时刻给 30 分钟宽限，超时=疑似离线。
+# 此前对其完全豁免导致关机实例永远显示「空闲」（用户 10-23 报深度机/单位机四台关机）。
+离线宽限秒 = 1800
 
 
 def 建实例表(con) -> None:
@@ -37,22 +40,64 @@ def 建实例表(con) -> None:
         版本上报时刻 TEXT)           -- 最近一次带指纹上报时刻（NULL=旧版 daemon 未上报过）""")
 
 
+def _时刻文本转戳(文本: str):
+    """预验任务.更新时刻（"MM-DD HH:MM:SS"）→ epoch；解析失败=None（调用方兜底·
+    不静默编造）。跨年边界（1 月读取 12 月文本=比现在晚）按「晚 1 天以上=去年」修正。"""
+    try:
+        结构 = time.strptime(str(文本), "%m-%d %H:%M:%S")
+    except (TypeError, ValueError):
+        return None
+    今年 = time.localtime().tm_year
+    戳 = int(time.mktime((今年,) + 结构[1:]))
+    if 戳 - time.time() > 86400:
+        戳 = int(time.mktime((今年 - 1,) + 结构[1:]))
+    return 戳
+
+
 def 回填种子(con, 时刻函数) -> None:
     """部署首屏种子（服务启动·建实例表 后调用一次）：从 预验任务 现存认领者回填
     实例行（INSERT OR IGNORE——已有行不动）。执行中行=唯一可靠在跑信号（活跃时戳
-    取其心跳时戳）；完成行认领者=历史实例（活跃时戳取现在=种子近似·该实例下次
-    活动即修正）。回填行 平台/版本 NULL 显式——等该实例下次 claim/ping 自报补全。"""
+    取其心跳时戳）；完成行认领者=历史实例（活跃时戳取该实例最后一次完成时刻——
+    此前用「现在」作种子近似，把早已关机的实例显示成刚活跃过（用户 10-23 报深度机/
+    单位机关机仍显示空闲）。回填行 平台/版本 NULL 显式——等该实例下次 claim/ping 自报。"""
     现在 = int(time.time())
     for 认领者, 心跳 in con.execute(
             "SELECT 认领者, max(心跳时戳) FROM 预验任务 "
             "WHERE 状态='执行中' AND 认领者 IS NOT NULL GROUP BY 认领者").fetchall():
         con.execute("INSERT OR IGNORE INTO 实例(名称,注册时刻,最近活跃时戳) VALUES(?,?,?)",
                     (认领者, 时刻函数(), 心跳 or 现在))
-    for (认领者,) in con.execute(
-            "SELECT DISTINCT 认领者 FROM 预验任务 "
-            "WHERE 状态='完成' AND 认领者 IS NOT NULL").fetchall():
+    for 认领者, 活跃 in _最近完成时戳(con).items():
         con.execute("INSERT OR IGNORE INTO 实例(名称,注册时刻,最近活跃时戳) VALUES(?,?,?)",
-                    (认领者, 时刻函数(), 现在))
+                    (认领者, 时刻函数(), 活跃))
+
+
+def _最近完成时戳(con) -> dict:
+    """每实例最后一次完成时刻（预验任务.更新时刻 文本→epoch·取最大）。"""
+    最近: dict = {}
+    for 认领者, 更新时刻 in con.execute(
+            "SELECT 认领者, 更新时刻 FROM 预验任务 "
+            "WHERE 状态='完成' AND 认领者 IS NOT NULL").fetchall():
+        戳 = _时刻文本转戳(更新时刻)
+        if 戳 and 戳 > 最近.get(认领者, 0):
+            最近[认领者] = 戳
+    return 最近
+
+
+def 校正种子活跃(con) -> None:
+    """存量修正（服务启动·回填种子 后调用）：旧版 daemon 无报活，实例表活跃时戳若
+    比其最后完成时刻晚 10 分钟以上，说明是旧种子回填的「现在」虚值——按最后完成
+    时刻修正，否则关机实例永远显示「刚活跃」（用户 10-23 报四台关机仍空闲）。
+    只动 无执行中任务 且 从未上报版本 的行：在跑/新版报活=真信号，不覆盖。"""
+    执行中 = {r[0] for r in con.execute(
+        "SELECT DISTINCT 认领者 FROM 预验任务 "
+        "WHERE 状态='执行中' AND 认领者 IS NOT NULL").fetchall()}
+    最近 = _最近完成时戳(con)
+    for 名称, 活跃, 版时 in con.execute(
+            "SELECT 名称,最近活跃时戳,版本上报时刻 FROM 实例").fetchall():
+        完成戳 = 最近.get(名称)
+        if (名称 not in 执行中 and 版时 is None and 完成戳
+                and (活跃 or 0) - 完成戳 > 600):
+            con.execute("UPDATE 实例 SET 最近活跃时戳=? WHERE 名称=?", (完成戳, 名称))
 
 
 def 实例认领(con, 时刻函数, runner: str, 平台: str) -> None:
@@ -113,20 +158,25 @@ def 实例报活(con, 时刻函数, 数据: dict) -> dict:
 def 实例动态快照(con, 心跳超时秒值: int) -> list[dict]:
     """实例动态派生（/api/state「实例动态」字段·须持写锁）。
     状态四分：
-      执行中  =持有执行中任务行且其心跳时戳距今<心跳超时秒（跑轮心跳 60s/次）；
+      执行中  =持有执行中整任务/分片且其心跳时戳距今<心跳超时秒（跑轮心跳 60s/次）；
       心跳超时=持有执行中行但心跳≥心跳超时秒（等下次任意 claim 触发回收重派的
               窗口期·警示红——300s 后第一个认领动作会回收该行）；
-      疑似离线=空闲且发过版本上报（新版 daemon）但最近活跃距今>报活在线秒
-              （空闲报活断流——真关机/daemon 挂·黄警）；
-      空闲    =其余（含旧版 daemon 空闲——旧 daemon 空闲不报活·最后活动时刻
-              仅参考不判离线·不误标）。
-    当前任务/最近完成 均从 预验任务 派生（任务行=唯一权威·实例表不存任务）。
+      疑似离线=空闲（无执行中任务/片）且最后活动距今超过判定阈值——发过版本上报
+              的新版 daemon 阈值=报活在线秒（180s·应每 60s 报活）；从未上报的旧版
+              daemon 阈值=离线宽限秒（1800s·空闲不报活，但关闭/挂死也会停更）；
+      空闲    =其余（含旧版 daemon 30 分钟内活跃——最后活动时刻仅参考不判离线）。
+    当前任务：整任务优先，其次从实例领的预验分片（#1402——此前只读父任务认领者，
+    从实例跑片期间显示「空闲」，看板看不出多实例并行）。分片行带 片序/片数/形态。
+    最近完成 从 预验任务 派生（任务行=唯一权威·实例表不存任务）。
     排序：心跳超时→执行中→疑似离线→空闲（同级按名称稳定序）。"""
     现在 = int(time.time())
     行们 = con.execute("SELECT 名称,平台,注册时刻,最近活跃时戳,树头,daemon指纹,版本上报时刻 "
                        "FROM 实例").fetchall()
     当前 = {r[0]: r for r in con.execute(
         "SELECT 认领者,分支,sha,源分支,认领时刻,心跳时戳 FROM 预验任务 "
+        "WHERE 状态='执行中' AND 认领者 IS NOT NULL").fetchall()}
+    当前片 = {r[0]: r for r in con.execute(
+        "SELECT 认领者,分支,sha,片序,片数,心跳时戳,认领时刻 FROM 预验分片 "
         "WHERE 状态='执行中' AND 认领者 IS NOT NULL").fetchall()}
     # max(序号) 聚合配裸列=SQLite 文档保证取自命中行（每实例最近一条完成）
     最近完成们 = {r[0]: r for r in con.execute(
@@ -135,13 +185,21 @@ def 实例动态快照(con, 心跳超时秒值: int) -> list[dict]:
     出 = []
     for 名称, 平台, 注册, 活跃, 树头, 指纹, 版时 in 行们:
         任务 = 当前.get(名称)
+        片 = 当前片.get(名称)
         当前任务 = None
         if 任务 is not None:
             心跳 = 任务[5] or 0
             状态 = "执行中" if (现在 - 心跳) < 心跳超时秒值 else "心跳超时"
             当前任务 = {"分支": 任务[1], "sha": 任务[2],
                         "源分支": 任务[3], "认领时刻": 任务[4]}
-        elif 版时 is not None and 活跃 and (现在 - 活跃) > 报活在线秒:
+        elif 片 is not None:
+            心跳 = 片[5] or 0
+            活跃 = max(活跃 or 0, 心跳)      # 片心跳也是活信号（task_shard_heartbeat）
+            状态 = "执行中" if (现在 - 心跳) < 心跳超时秒值 else "心跳超时"
+            当前任务 = {"分支": 片[1], "sha": 片[2], "源分支": None,
+                        "认领时刻": 片[6], "片序": 片[3], "片数": 片[4],
+                        "形态": "分片"}
+        elif 活跃 and (现在 - 活跃) > (报活在线秒 if 版时 is not None else 离线宽限秒):
             状态 = "疑似离线"
         else:
             状态 = "空闲"

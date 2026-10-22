@@ -5,9 +5,10 @@
 #   从实例（领片/交片）共用的协议原语在此单点；真跑（构建/e2e 步骤执行/步骤封装）留在
 #   ci_daemon（依赖单向：ci_daemon → 本模块，本模块禁 import ci_daemon——步骤记录器/
 #   读明细/片心跳由调用方注入）。
-# 分片模型：片 0=主实例自带（含 78/79 重型独立面·run_e2e 新分片语义），片 1..n-1
-#   服务端登记缺口由空闲实例自主认领；主实例收片时缺口抢补（服务端 CAS 防双跑）；
-#   任一片红=整轮红（红即停 902·不等待剩余片）。
+# 分片模型：重型组各占一片（片 0=78_v2 自举链由主实例跑、片 1=79_v2 自举闭环由
+#   从实例领——#1401 拆重型面），普通用例分片 组数..n-1 由空闲实例自主认领；主实例
+#   收片时缺口抢补（服务端 CAS 防双跑）；任一片红=整轮红（红即停 902·不等待剩余片）。
+#   #1401 自适应分片度：n 按池空闲实例/执行中预验任务数动态定（CN_SHARD_N 可固定覆盖）。
 # 1369（2026-10-21·集成通道阻塞根治）：召唤后 CN_SHARD_GRACE_SEC（默认 90s）内无任何
 #   从片认领（片快照无 执行中/完成）→主实例立即退化单实例序列（已完成的从片照收、
 #   未完成的片本机补跑；不再空等 5400s 收片窗）；收片窗独立为 CN_SHARD_RECV_TIMEOUT_SEC
@@ -42,10 +43,75 @@ def _env整数(名: str, 默认: int, 下限: int) -> int:
         print("[分片配置] %s=%r 非整数——改用默认 %ds" % (名, 原, 默认), flush=True)
         return 默认
 
-分片数默认 = max(1, int(os.environ.get("CN_SHARD_N", "3")))   # 1=不分片（现状）；现网推荐 3
+分片数上界 = 12        # #1401：自适应分片度上限（池空闲多时一个任务吃满实例）
+分片数默认兜底 = 3     # 池状态不可达/旧服务端无实例动态时的保守值（现网既有口径）
 收片轮询秒 = 30        # 主实例收片轮询周期
 认领宽限秒 = _env整数("CN_SHARD_GRACE_SEC", 90, 0)            # 1369：首片认领宽限窗
 收片窗秒 = _env整数("CN_SHARD_RECV_TIMEOUT_SEC", 1800, 60)    # 1369：收片总窗（旧=5400）
+
+
+def 显式分片数():
+    """CN_SHARD_N 显式覆盖：None=自适应分片度；1=强制不分片；≥2=固定片数。
+    非法值告警后按自适应（配置面非编译器语义面·不静默吞键）。"""
+    原 = os.environ.get("CN_SHARD_N")
+    if 原 is None or not str(原).strip():
+        return None
+    try:
+        return max(1, int(原))
+    except ValueError:
+        print("[分片配置] CN_SHARD_N=%r 非整数——改用自适应分片度" % 原, flush=True)
+        return None
+
+
+def 分片启用() -> bool:
+    """分片总开关（从实例据此「先领片后领任务」）：未设 CN_SHARD_N=自适应
+    （池闲则分片）；显式 1=不分片；显式 ≥2=固定片数。"""
+    固 = 显式分片数()
+    return True if 固 is None else 固 > 1
+
+
+def 池状态(池地址: str):
+    """GET /api/state（免令牌·与看板同源）——不可达/坏 JSON=None（调用方用兜底）。"""
+    try:
+        with urllib.request.urlopen(池地址.rstrip("/") + "/api/state", timeout=10) as r:
+            return json.loads(r.read().decode("utf-8"))
+    except Exception:
+        return None
+
+
+def 估算分片数(状态, 上界: int = 分片数上界, 兜底: int = 分片数默认兜底) -> int:
+    """#1401 纯函数：/api/state 快照 → 分片度（ci_daemon_selftest 直调·单一事实源）。
+    n = 1 + 可领片空闲实例 // 执行中预验任务数（任务少时一个任务吃满空闲实例；
+    多任务时按任务数均分）。可领片空闲优先用实例动态（状态=空闲且 30 分钟内活跃
+    ——排除服务端回填种子的离线旧实例）；无该字段→池忙闲(注册-执行中)。
+    下限 1=无空闲即不分片（跳过召唤·避免空等宽限窗）；上限防滥用。"""
+    if not isinstance(状态, dict):
+        return 兜底
+    忙闲 = 状态.get("池忙闲") or {}
+    执行中 = int(忙闲.get("执行中") or 0)
+    动态们 = 状态.get("实例动态") or []
+    现在 = int(time.time())
+    if 动态们:
+        可用 = sum(1 for r in 动态们
+                 if r.get("状态") == "空闲"
+                 and 现在 - int(r.get("最近活跃时戳") or 0) < 1800)
+    else:
+        可用 = max(0, int(忙闲.get("注册实例") or 0) - 执行中)
+    预验执行中 = sum(1 for t in (状态.get("预验任务") or [])
+                 if t.get("状态") == "执行中"
+                 and str(t.get("分支", "")).startswith("ci/预验-"))
+    n = 1 + 可用 // max(1, 预验执行中)
+    return max(1, min(上界, n))
+
+
+def 计算分片数(池地址: str) -> int:
+    """#1401 分片度：显式 CN_SHARD_N 优先（1=不分片）；否则按池快照自适应
+    （池不可达=保守 3·与现网既有 n=3 等价）。n 只决定召唤的片数：多派无人领的
+    片由主实例收片时抢补，正确性不受影响。"""
+    固 = 显式分片数()
+    if 固 is not None:
+        return max(1, min(固, 分片数上界))
+    return 估算分片数(池状态(池地址))
 
 
 def 池配置() -> dict:

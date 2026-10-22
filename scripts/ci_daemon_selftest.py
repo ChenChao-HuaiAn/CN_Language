@@ -706,6 +706,25 @@ def _1297断言(断言) -> None:
          ci_shard.片步骤值([0, 0, 0], [10, 300, 200]) == {"rc": 0, "秒": 300})
     断言("1297 片步骤值：任一红=首个非 0 诚实红（不吞片红）",
          ci_shard.片步骤值([0, 1, 2], [10, 20])["rc"] == 1)
+    # 结构锁（10-23 P0 实录）：ci_daemon 调用点解包数量必须=ci_shard.主实例分片段
+    #   返回元组数量（5=rc/秒/明细/片行/形态）。池实例重启后从被验树加载代码——
+    #   4 元解包×5 元返回=ValueError: too many values to unpack 崩轮→任务回收重派
+    #   （1394 预验四度重派根因·home-wsl-2 journal 实证）。
+    import ast as _ast
+    import inspect as _inspect
+    源 = (Path(__file__).resolve().parent / "ci_daemon.py").read_text(encoding="utf-8")
+    解包 = None
+    for 节点 in _ast.walk(_ast.parse(源)):
+        if (isinstance(节点, _ast.Assign) and isinstance(节点.value, _ast.Call)
+                and "主实例分片段" in _ast.unparse(节点.value.func)):
+            if 节点.targets and isinstance(节点.targets[0], _ast.Tuple):
+                解包 = len(节点.targets[0].elts)
+    函数树 = _ast.parse(_inspect.getsource(ci_shard.主实例分片段))
+    返回们 = [len(n.value.elts) for n in _ast.walk(函数树)
+            if isinstance(n, _ast.Return) and isinstance(n.value, _ast.Tuple)]
+    断言("1297 结构锁：ci_daemon 解包数=主实例分片段返回数（解包 %s·返回 %s）"
+         % (解包, 返回们),
+         解包 is not None and bool(返回们) and all(r == 解包 for r in 返回们))
 
 
 def _1369断言(主模块, 断言) -> None:
@@ -853,6 +872,49 @@ def _1369断言(主模块, 断言) -> None:
             setattr(ci_shard, 名, 件)
 
 
+def _1401断言(断言) -> None:
+    """#1401 自适应分片度：任务少时一个任务吃满空闲实例、多任务按任务数均分；
+    旧服务端无实例动态退回池忙闲；零空闲=1（跳过召唤·不空等宽限窗）；CN_SHARD_N
+    显式覆盖。纯函数直调（零网络·真实池快照路径由 计算分片数 单点拼接）。"""
+    import os
+    import time
+    import ci_shard
+
+    def 状态(执行中=0, 注册=0, 预验=0, 空闲活跃=None):
+        d = {"池忙闲": {"注册实例": 注册, "执行中": 执行中},
+             "预验任务": [{"分支": "ci/预验-%d" % i, "状态": "执行中"}
+                        for i in range(预验)]}
+        if 空闲活跃 is not None:
+            现在 = int(time.time())
+            d["实例动态"] = [{"状态": "空闲", "最近活跃时戳": 现在 - 60}] * 空闲活跃
+        return d
+
+    断言("1401 自适应：池不可达=保守 3（与现网既有 n=3 等价）",
+         ci_shard.估算分片数(None) == 3)
+    断言("1401 自适应：3 预验任务/9 空闲→n=4（均分空闲·每任务 1 主 3 从）",
+         ci_shard.估算分片数(状态(执行中=3, 注册=12, 预验=3, 空闲活跃=9)) == 4)
+    断言("1401 自适应：1 预验任务/9 空闲→n=10（一个任务吃满空闲实例）",
+         ci_shard.估算分片数(状态(执行中=1, 注册=10, 预验=1, 空闲活跃=9)) == 10)
+    断言("1401 自适应：上限 clamp 12（1 任务/30 空闲）",
+         ci_shard.估算分片数(状态(执行中=1, 注册=31, 预验=1, 空闲活跃=30)) == 12)
+    断言("1401 自适应：零空闲→n=1（不召唤·不空等宽限窗）",
+         ci_shard.估算分片数(状态(执行中=3, 注册=3, 预验=2, 空闲活跃=0)) == 1)
+    断言("1401 自适应：旧服务端无实例动态→注册-执行中退化估算",
+         ci_shard.估算分片数(状态(执行中=2, 注册=8, 预验=2)) == 4)
+    旧 = os.environ.get("CN_SHARD_N")
+    try:
+        os.environ["CN_SHARD_N"] = "1"
+        断言("1401 显式 CN_SHARD_N=1=分片关闭", not ci_shard.分片启用())
+        os.environ["CN_SHARD_N"] = "5"
+        断言("1401 显式 CN_SHARD_N=5=固定片数（池状态不参与）",
+             ci_shard.分片启用() and ci_shard.计算分片数("") == 5)
+    finally:
+        if 旧 is None:
+            os.environ.pop("CN_SHARD_N", None)
+        else:
+            os.environ["CN_SHARD_N"] = 旧
+
+
 def _1392断言(断言) -> None:
     """1392 实例空闲报活：实例指纹纯函数（daemon指纹=ci_daemon.py 内容 sha256 前 10
     ——同内容同指纹·内容变即变=scp 直更同样可感知；树头非 git 目录=空串显式不猜，
@@ -877,7 +939,7 @@ def _1392断言(断言) -> None:
 
 
 def 自测(主模块) -> int:
-    """--selftest 入口（断言集 523+637+657+660+728t+770+842+935+973+975+1297+1299+1369+1392）——CI 式：逐条打印，任一红退出 1。"""
+    """--selftest 入口（断言集 523+637+657+660+728t+770+842+935+973+975+1297+1299+1369+1392+1401）——CI 式：逐条打印，任一红退出 1。"""
     断言们: list[tuple[str, bool]] = []
 
     def 断言(名: str, 条件: bool) -> None:
@@ -896,9 +958,10 @@ def 自测(主模块) -> int:
     _1299断言(主模块, 断言)
     _1369断言(主模块, 断言)
     _1392断言(断言)
+    _1401断言(断言)
     _行数断言(断言)
     for 名, ok in 断言们:
         print("  [%s] %s" % ("OK" if ok else "×", 名))
     红 = sum(1 for _, ok in 断言们 if not ok)
-    print("== ci_daemon 自测（523+637+657+660+728t+770+842+935+973+975+1297+1299+1369+1392）：%d 断言，%s ==" % (len(断言们), "全绿" if 红 == 0 else "红 %d" % 红))
+    print("== ci_daemon 自测（523+637+657+660+728t+770+842+935+973+975+1297+1299+1369+1392+1401）：%d 断言，%s ==" % (len(断言们), "全绿" if 红 == 0 else "红 %d" % 红))
     return 0 if 红 == 0 else 1

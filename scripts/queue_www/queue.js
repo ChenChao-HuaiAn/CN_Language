@@ -229,13 +229,16 @@ function 渲染实例统计条(们) {
   们.forEach((r) => { 计[r["状态"]] = (计[r["状态"]] || 0) + 1; });
   const 众 = 版本众数(们);
   const 不一致数 = 们.filter((r) => 众.不一致(r)).length;
+  const 有指纹 = 们.some((r) => Boolean(r["daemon指纹"]));
   条.hidden = false;
   条.innerHTML = `实例 <b class="mono">${们.length}</b> · 执行中 <b class="mono">${计["执行中"] || 0}</b> · `
     + `心跳超时 <b class="mono">${计["心跳超时"] || 0}</b> · 疑似离线 <b class="mono">${计["疑似离线"] || 0}</b> · `
     + `空闲 <b class="mono">${计["空闲"] || 0}</b> ｜ `
     + (不一致数
       ? `<span class="签 阶段红">版本不一致 ${不一致数} 台</span> <span class="淡">daemon 指纹与众数派不同——疑似旧版未更新</span>`
-      : `<span class="签 完成">版本一致</span>`);
+      : (有指纹
+        ? `<span class="签 完成">版本一致</span>`
+        : `<span class="签 挂起">版本未上报</span> <span class="淡">全部实例尚无 daemon 指纹（旧版进程未发 instance_ping）——升级重启后出现</span>`));
 }
 
 function 渲染实例() {
@@ -253,8 +256,11 @@ function 渲染实例() {
     const 完 = r["最近完成"];
     const 不一致 = 众.不一致(r);
     const 已跑 = 任 ? 等分(任["认领时刻"]) : null;
+    const 片签 = 任 && 任["形态"] === "分片"
+      ? ` <span class="签 队列中">分片 #${转义(String(任["片序"] ?? "?"))}/${转义(String(任["片数"] ?? "?"))}</span>`
+      : "";
     const 当前 = 任
-      ? `${转义(任["源分支"] || 任["分支"])}<span class="淡"> · ${转义((任["sha"] || "").slice(0, 10))}</span>`
+      ? `${转义(任["源分支"] || 任["分支"])}${片签}<span class="淡"> · ${转义((任["sha"] || "").slice(0, 10))}</span>`
       : "—";
     const 完成列 = 完
       ? `${完["绿"] ? "✅" : "❌"} <span class="mono">${转义((完["sha"] || "").slice(0, 10))}</span>

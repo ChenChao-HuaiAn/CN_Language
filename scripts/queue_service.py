@@ -214,6 +214,7 @@ def 建库() -> sqlite3.Connection:
     queue_shard.建表(con)   # 1297：预验分片表（独立新表·不碰父表结构）
     queue_instances.建实例表(con)   # 1392：实例动态表（独立新表·不碰既有表结构）
     queue_instances.回填种子(con, 时区时刻)   # 1392：部署首屏种子（存量认领者回填·服务启动一次）
+    queue_instances.校正种子活跃(con)        # #1402：存量种子「现在」虚值按最后完成时刻修正
     con.commit()
     return con
 
@@ -627,6 +628,14 @@ def 处理写(名: str, 数据: dict) -> dict:
                 回s = queue_shard.心跳(con, 时区时刻, 数据)     # 片心跳续约
             else:
                 回s = queue_shard.完成(con, 时区时刻, 数据)     # 片结果上报（认领者校验同 task_complete）
+            # 1392/#1402：从实例领片/片心跳也是活信号——注册实例并刷平台/活跃。此前只在
+            #   整任务 claim/heartbeat/complete 落实例表，从实例跑片期间不在实例表→页签
+            #   显示「空闲」且看不到分片（用户 10-22 质问「还是一个实例一个任务」成因之一）。
+            if 名 == "task_shard_claim" and 回s.get("ok") and 回s.get("片"):
+                queue_instances.实例认领(con, 时区时刻, str(数据.get("runner", "")),
+                                          str(数据.get("平台", "")))
+            elif 名 == "task_shard_heartbeat" and 回s.get("ok"):
+                queue_instances.实例心跳(con, 时区时刻, str(数据.get("runner", "")))
             con.commit()
             return 回s
         else:
