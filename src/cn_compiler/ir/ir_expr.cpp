@@ -31,7 +31,8 @@ void IRGenerator::visitIntegerLiteral(IntegerLiteral* node) {
     lastExpr_ = emitIntLiteralConst(node->raw, node->location);
 }
 void IRGenerator::visitFloatLiteral(FloatLiteral* node) {
-    std::string type = types::literalTypeOf(node->raw, true);
+    // 1360 结果化：浮点面无后缀契约态=浮64（001 §4.3·显形默认）
+    std::string type = types::literalTypeOf(node->raw, true).value_or("浮64");
     lastExpr_ = emitResult(ir::Opcode::ConstFloat, {}, mapType(type),
                            types::stripLiteralSuffix(node->raw), node->location);
 }

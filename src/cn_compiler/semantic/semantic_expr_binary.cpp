@@ -53,8 +53,10 @@ bool isUnsuffixedIntLiteral728(const Expr* e) {
     if (e == nullptr || e->getType() != NodeType::IntegerLiteral) return false;
     const IntegerLiteral* lit = static_cast<const IntegerLiteral*>(e);
     if (!lit->raw.empty() && lit->raw[0] == '-') return false;  // 负号字面量不随侧
-    const std::string lt = types::literalTypeOf(lit->raw, false);
-    return lt == "整32" || lt.empty();
+    // 1360 结果化：无值（非法后缀·词法已限回退面）与 整32 同按「无后缀」处置
+    //   （与语义层字面量恒定级整32 同口径——原空串分支语义保持）
+    const cn::Optional<std::string> lt = types::literalTypeOf(lit->raw, false);
+    return !lt.has_value() || lt.value() == "整32";
 }
 
 // 无后缀字面量随另一侧替换（左优先·单侧触发——两侧均无后缀时不替换，杜绝
@@ -235,13 +237,13 @@ void SemanticAnalyzer::checkConstIntExprSafety(BinaryExpr* node, const std::stri
             //   （数学=1）误报「编译期除零」拒合法程序（1137 探针实证·值级
             //   消费点的毒化出口）。919 判定不了（含变量/常量名）回落 505+
             //   resolver 既有通道（548 面保留·判定口径展开不改文案）。
-            std::string r919;
+            cn::Optional<std::string> r919;
             bool zeroR = false;
             const bool textFoldable1137 =
                 cnEvalConstIntExprText919(node->right.get(), r919);
             if (textFoldable1137) {
-                // 空串=超 u128 域哨兵（数学值必非零·不报除零）
-                zeroR = (r919 == "0");
+                // 无值=超 u128 域（数学值必非零·不报除零）
+                zeroR = r919.has_value() && r919.value() == "0";
             }
             if (!textFoldable1137) {
                 std::int64_t foldR = 0;
@@ -297,8 +299,12 @@ void SemanticAnalyzer::reportConstOverflow(BinaryExpr* node, std::int64_t vL,
                 if (e->getType() == NodeType::IntegerLiteral) {
                     const IntegerLiteral* lit =
                         static_cast<const IntegerLiteral*>(e);
-                    const std::string lt = types::literalTypeOf(lit->raw, false);
-                    if (lt != "整32") return lt;  // 带后缀/其他：按后缀类型
+                    const cn::Optional<std::string> lt =
+                        types::literalTypeOf(lit->raw, false);
+                    // 1360 结果化：无值（非法后缀回退面）落「无后缀」通道
+                    if (!lt.has_value() || lt.value() != "整32") {
+                        return lt.value_or("整32");  // 带后缀/其他：按后缀类型
+                    }
                     // 无后缀：按值提升（超 int32 -> 整64；超 int64 -> 整128）
                     if (types::textExceedsInt64(types::stripLiteralSuffix(lit->raw))) {
                         return "整128";

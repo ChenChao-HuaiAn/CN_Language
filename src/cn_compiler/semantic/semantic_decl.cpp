@@ -91,13 +91,13 @@ void SemanticAnalyzer::visitVarDecl(VarDecl* node) {
         varType = core;
     }
     if (isResultType(varType)) {
-        const std::vector<std::string> rargs = resultTypeArgs(varType);
+        const std::vector<std::string> rargs = resultTypeArgs(varType).value_or((std::vector<std::string>()));
         if (rargs.size() == 2) {
             varType = "结果<" + resolveGenericTypeName(rargs[0], node->location) +
                       ", " + resolveGenericTypeName(rargs[1], node->location) + ">";
         }
     } else if (isOptionalType(varType)) {
-        const std::string oarg = optionalTypeArg(varType);
+        const std::string oarg = optionalTypeArg(varType).value_or(std::string());
         if (!oarg.empty()) {
             varType = "可选<" + resolveGenericTypeName(oarg, node->location) + ">";
         }
@@ -382,7 +382,8 @@ void SemanticAnalyzer::visitVarDecl(VarDecl* node) {
             types::isArray(varType)) {
             InitListExpr* initList = static_cast<InitListExpr*>(node->initializer.get());
             const std::string elemType = types::arrayElemOf(varType);
-            const int arrayLen = types::arrayLenOf(varType);
+            // 1360 结果化：isArray 守卫下恒有值（value_or 显形默认 0=不限）
+            const int arrayLen = types::arrayLenOf(varType).value_or(0);
             // 每个元素须可隐式转换为数组元素类型（55-c 方案A：字面量元素豁免——
             //   `正32[2] a = { 5, 6 }` 等形态保留）
             for (auto& elem : initList->elements) {
@@ -460,7 +461,8 @@ void SemanticAnalyzer::visitVarDecl(VarDecl* node) {
                 const bool isIntLiteral =
                     (((node->initializer->getType() == NodeType::IntegerLiteral) &&
                      types::literalTypeOf(
-                         static_cast<IntegerLiteral*>(node->initializer.get())->raw, false) == "整32" &&
+                         static_cast<IntegerLiteral*>(node->initializer.get())->raw,
+                         false).value_or(std::string()) == "整32" &&
                      types::isInteger(varType)) ||
                     canConvertWithLiteral(node->initializer.get(), initType, varType)) &&
                     // 319-a（T36·方案甲）：值域门槛——裸字面量与豁免面统一

@@ -327,11 +327,14 @@ void IRGenerator::resolveDeclTypesAndAlloc(VarDecl* node, DeclGenCtx& ctx) {
         // Task 2.3：按初始值类型推断（字面量后缀决定位宽）
         if (node->initializer->getType() == NodeType::IntegerLiteral) {
             IntegerLiteral* lit = static_cast<IntegerLiteral*>(node->initializer.get());
-            std::string litType = types::literalTypeOf(lit->raw, false);
-            irType = mapType(litType.empty() ? "整32" : litType);
+            // 1360 结果化：非法后缀（词法已限·错误恢复面）按显形默认 整32
+            irType = mapType(types::literalTypeOf(lit->raw, false)
+                                 .value_or("整32"));
         } else if (node->initializer->getType() == NodeType::FloatLiteral) {
             FloatLiteral* lit = static_cast<FloatLiteral*>(node->initializer.get());
-            irType = mapType(types::literalTypeOf(lit->raw, true));
+            // 1360 结果化：浮点面无后缀契约态=浮64（001 §4.3·显形默认）
+            irType = mapType(types::literalTypeOf(lit->raw, true)
+                                 .value_or("浮64"));
         } else if (node->initializer->getType() == NodeType::StringLiteral) {
             irType = "ptr";
         } else if (node->initializer->getType() == NodeType::BoolLiteral) {
@@ -566,7 +569,8 @@ bool IRGenerator::genArrayInitListDecl(VarDecl* node, const DeclGenCtx& ctx) {
         InitListExpr* initList = static_cast<InitListExpr*>(node->initializer.get());
         const std::string elemSrc = types::arrayElemOf(ctx.srcType);
         const std::string elemIrType = mapType(elemSrc);
-        const int arrayLen = types::arrayLenOf(ctx.srcType);
+        // 1360 结果化：isArray 守卫下恒有值（value_or 显形默认 0=零填充界外）
+        const int arrayLen = types::arrayLenOf(ctx.srcType).value_or(0);
         // 元素间距：按元素类型大小（缺陷③根治统一 C 布局——typeSizeOf 含
         //   结构体总大小（Task 2.7）/i128=16（BUG #5）/标量 4/2/1；原标量
         //   兜底 8 与数组 8 槽布局互洽，见 ir.cpp registerVarSlots 注）

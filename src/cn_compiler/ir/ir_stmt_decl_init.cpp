@@ -416,12 +416,12 @@ void IRGenerator::registerPendingBoxVar(VarDecl* node, const std::string& declCa
                 std::string payload280;
                 if (isResultType(declCanon)) {
                     const std::vector<std::string> rargs280 =
-                        resultTypeArgs(declCanon);
+                        resultTypeArgs(declCanon).value_or((std::vector<std::string>()));
                     if (rargs280.size() == 2)
                         payload280 = types::canonical(rargs280[0]);
                 } else {
                     payload280 = types::canonical(
-                        optionalTypeArg(declCanon));
+                        optionalTypeArg(declCanon).value_or(std::string()));
                 }
                 const ClassInfo* pci280 = payload280.empty()
                     ? nullptr : semantic_->findClass(payload280);

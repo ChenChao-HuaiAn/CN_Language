@@ -172,7 +172,7 @@ void IRGenerator::boxNullOptionalArgs(CallExpr* node,
         const std::string canonParam = types::canonical(paramTypes[ai]);
         std::string t;
         if (isOptionalType(canonParam)) {
-            t = types::canonical(optionalTypeArg(canonParam));
+            t = types::canonical(optionalTypeArg(canonParam).value_or(std::string()));
         } else {
             // $ 合成名形态（可选$整32·7 字节前缀「可选$」）；带后缀不豁免
             std::string core, suffix;
@@ -361,10 +361,13 @@ std::vector<std::string> IRGenerator::resolveEffectiveParamTypes(
                 semantic_->funcParamTypesOf(node->resolvedSignature);
         }
     } else if (!calleeFnPtrType442.empty()) {
-        std::vector<std::string> fnPtrParams442 =
+        // 1360 结果化：无值=非函数指针串不采用；空表=合法零参（size 比对
+        //   0==0 自然成立·与直接调用形参表同语义）
+        const cn::Optional<std::vector<std::string>> fnPtrParams442 =
             types::funcPtrParamsOf(calleeFnPtrType442);
-        if (fnPtrParams442.size() == node->arguments.size()) {
-            effectiveParamTypes = std::move(fnPtrParams442);
+        if (fnPtrParams442.has_value() &&
+            fnPtrParams442.value().size() == node->arguments.size()) {
+            effectiveParamTypes = fnPtrParams442.value();
         }
     }
     // 648 miss 不可静默：直接调用形参表 miss=终态（128 定标/浮点提升/引用宽化

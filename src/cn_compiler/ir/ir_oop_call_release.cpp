@@ -581,8 +581,10 @@ void IRGenerator::emitStrArrayElemFreesFor(const std::string& unique) {
                 dtor955->ownerClass.empty() ? elemCanon955 : dtor955->ownerClass;
             dtorSym955 = methodSymbolKey(owner955, dtor955->sigKey);
         }
-        const int len955 = types::arrayLenOf(srcType);
-        if (len955 <= 0) return;
+        // 1360 结果化：守卫面恒有值——无值/零长即早退（保持原 len<=0 口径）
+        const cn::Optional<int> len955Opt = types::arrayLenOf(srcType);
+        if (!len955Opt.has_value() || len955Opt.value() <= 0) return;
+        const int len955 = len955Opt.value();
         int stride955 = semantic_->typeSizeOf(elemCanon955);
         if (stride955 <= 0) stride955 = 8;
         const SourceLocation loc955;
@@ -622,8 +624,9 @@ void IRGenerator::emitStrArrayElemFreesFor(const std::string& unique) {
         return;
     }
     if (types::arrayElemOf(srcType) != "字符串") return;
-    const int len = types::arrayLenOf(srcType);
-    if (len <= 0) return;
+    const cn::Optional<int> lenOpt = types::arrayLenOf(srcType);
+    if (!lenOpt.has_value() || lenOpt.value() <= 0) return;
+    const int len = lenOpt.value();
     int elemStride = semantic_->typeSizeOf(types::arrayElemOf(srcType));
     if (elemStride <= 0) elemStride = 8;
     const SourceLocation loc;

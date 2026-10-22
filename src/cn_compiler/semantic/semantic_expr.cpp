@@ -50,7 +50,7 @@ void SemanticAnalyzer::adjustLiteralArgTypes(
     for (std::size_t i = 0; i < args.size() && i < argTypes.size(); ++i) {
         const auto* lit = dynamic_cast<const IntegerLiteral*>(args[i].get());
         if (lit != nullptr && argTypes[i] == "整32" &&
-            types::literalTypeOf(lit->raw, false) == "整32") {
+            types::literalTypeOf(lit->raw, false).value_or(std::string()) == "整32") {
             // 910：无后缀字面量实参按数学值域提升收口单点
             //   types::integerLiteralRuntimeType（原 intLiteralFitsType 单查
             //   超整32域只升整64——hex 超 int64 大值/负号超域漏升 128；提升
@@ -71,8 +71,9 @@ void SemanticAnalyzer::visitIntegerLiteral(IntegerLiteral* node) {
     //   整32——638甲/788 三分法的随侧豁免与 1004/1005 锁面依赖此契约，不得
     //   改为值域提升类型）；**求值域/物化域**提升链在 IR 层与
     //   integerLiteralRuntimeType 单点（标记域 vs 求值域分离=851 轮既有立法）。
-    lastType_ = types::literalTypeOf(node->raw, false);
-    if (lastType_.empty()) lastType_ = "整32";  // 非法后缀防御性回退
+    // 1360 结果化：无值=非法后缀（词法已限·错误恢复面）按显形默认 整32
+    //   （语义层字面量标记域恒定级整32 契约·638甲/788 口径不变）
+    lastType_ = types::literalTypeOf(node->raw, false).value_or("整32");
     // Task 完善A：i128/正128 字面量越界检查（规格书4.3 字面量范围）——
     //   整128（有符号）合法域 [-2^127, 2^127-1]（负界 2^127 允许）、
     //   正128（无符号）上限 2^128-1。超限立即报错（IR 层同样防御性检查，
@@ -90,7 +91,8 @@ void SemanticAnalyzer::visitIntegerLiteral(IntegerLiteral* node) {
     }
 }
 void SemanticAnalyzer::visitFloatLiteral(FloatLiteral* node) {
-    lastType_ = types::literalTypeOf(node->raw, true);
+    // 1360 结果化：浮点面无后缀契约态=浮64（001 §4.3·显形默认）
+    lastType_ = types::literalTypeOf(node->raw, true).value_or("浮64");
     (void)node;
 }
 void SemanticAnalyzer::visitStringLiteral(StringLiteral* node) {
@@ -128,7 +130,7 @@ void SemanticAnalyzer::visitIdentifierExpr(IdentifierExpr* node) {
         //   转移改写豁免窗口同 reportMovedUse。
         if (!inTransferRewrite_ && !inAddrOfCtx_ && assignmentTargetDepth_ == 0) {
             if (isDefInitTrackedType(varType)) {
-                if (types::arrayLenOf(varType) >= 0) {
+                if (types::arrayLenOf(varType).has_value()) {
                     if (inAddrBaseCtx_) {
                         // 下标/成员对象侧——精确判定由 IndexExpr/MemberExpr 负责
                     } else if (inAggregateReadCtx_) {
@@ -753,7 +755,7 @@ void SemanticAnalyzer::visitSizeofExpr(SizeofExpr* node) {
             genericTypeParams_.find(resolved) == genericTypeParams_.end()) {
             const std::string canon = types::canonical(resolved);
             const bool known = canon == "字符串" ||  // 字符串=指针别名（types::typeSize 不含，99-a 口径）
-                           types::typeSize(canon) > 0 ||  // 基本类型（含指针）
+                           types::typeSize(canon).has_value() ||  // 基本类型（含指针）
                                canon.find('*') != std::string::npos ||
                                canon.find('[') != std::string::npos ||
                                isStructType(canon) || isEnumType(canon) ||

@@ -73,10 +73,10 @@ void IRGenerator::collectOwnedStrFields(const std::string& canonRaw, int base, i
                 //   退化为裸位拷（571 首版实测：条件守卫未恢复）。canonRaw=模板
                 //   文本（用户代码/字段表常态）直接可解；canonRaw=$ 名（泛型实例
                 //   化克隆场）维持既有空收集边界（宁漏勿错）。
-                const std::vector<std::string> args = resultTypeArgs(canonRaw);
+                const std::vector<std::string> args = resultTypeArgs(canonRaw).value_or((std::vector<std::string>()));
                 if (args.size() == 2) valueType = types::canonical(args[0]);
             } else {
-                valueType = types::canonical(optionalTypeArg(canonRaw));
+                valueType = types::canonical(optionalTypeArg(canonRaw).value_or(std::string()));
             }
             if (valueType == "字符串") {
                 const int vo = semantic_->fieldOffsetOf(decl, "值");
@@ -137,8 +137,10 @@ void IRGenerator::collectOwnedStrFields(const std::string& canonRaw, int base, i
                 types::arrayElemOf(fieldCanon));
             int stride = semantic_->typeSizeOf(elemCanon);
             if (stride <= 0) stride = 8;
-            int len = types::arrayLenOf(fieldCanon);
-            if (len > 0) {
+            // 1360 结果化：无值/零长不入登记表（保持原 len>0 口径）
+            const cn::Optional<int> lenOpt = types::arrayLenOf(fieldCanon);
+            if (lenOpt.has_value() && lenOpt.value() > 0) {
+                const int len = lenOpt.value();
                 OwnedStrField fld;
                 fld.offset = base + f.offset;
                 fld.condOffset = cond;

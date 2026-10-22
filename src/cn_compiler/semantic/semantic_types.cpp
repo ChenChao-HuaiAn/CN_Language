@@ -248,7 +248,7 @@ bool SemanticAnalyzer::isTriviallyCopyable(const std::string& type,
     }
     // 结果/可选：递归判定实参（值/错误两侧）
     if (isResultType(canon)) {
-        const std::vector<std::string> args = resultTypeArgs(canon);
+        const std::vector<std::string> args = resultTypeArgs(canon).value_or((std::vector<std::string>()));
         if (args.size() != 2) return false;
         visiting.push_back(canon);
         const bool ok = isTriviallyCopyable(args[0], visiting) &&
@@ -257,7 +257,7 @@ bool SemanticAnalyzer::isTriviallyCopyable(const std::string& type,
         return ok;
     }
     if (isOptionalType(canon)) {
-        const std::string arg = optionalTypeArg(canon);
+        const std::string arg = optionalTypeArg(canon).value_or(std::string());
         if (arg.empty()) return false;
         visiting.push_back(canon);
         const bool ok = isTriviallyCopyable(arg, visiting);
@@ -308,14 +308,14 @@ bool SemanticAnalyzer::isPortableType(const std::string& type, std::string& offe
     }
     // 条文②：结果<T,E>/可选<T> 随载荷（$ 合成形态由谓词识别）
     if (isResultType(canon)) {
-        const std::vector<std::string> args = resultTypeArgs(canon);
+        const std::vector<std::string> args = resultTypeArgs(canon).value_or((std::vector<std::string>()));
         for (const auto& a : args) {
             if (!a.empty() && !isPortableType(a, offender, depth + 1)) return false;
         }
         return true;
     }
     if (isOptionalType(canon)) {
-        const std::string arg = optionalTypeArg(canon);
+        const std::string arg = optionalTypeArg(canon).value_or(std::string());
         return arg.empty() ? true : isPortableType(arg, offender, depth + 1);
     }
     // 容器实例（$ 形态：向量$X/映射$K$V/集合$X…）：随全部实参（条文②）
@@ -413,7 +413,7 @@ bool SemanticAnalyzer::isStructType(const std::string& type) const {
     //   isResultType/isOptionalType（splitTypeSuffix 双串分配）；前缀判定等价
     //   （splitTypeSuffix 只剥尾部后缀，不会改变前缀）。
     if (type.rfind("结果<", 0) == 0 && isResultType(type)) {
-        const std::vector<std::string> args = resultTypeArgs(type);
+        const std::vector<std::string> args = resultTypeArgs(type).value_or((std::vector<std::string>()));
         if (args.size() == 2) {
             const std::string sname =
                 resultStructName(types::canonical(args[0]), types::canonical(args[1]));
@@ -422,7 +422,7 @@ bool SemanticAnalyzer::isStructType(const std::string& type) const {
         return false;  // 结果<...> 形态但实参拆分失败=非合成体（原实现同落空）
     }
     if (type.rfind("可选<", 0) == 0 && isOptionalType(type)) {
-        const std::string t = types::canonical(optionalTypeArg(type));
+        const std::string t = types::canonical(optionalTypeArg(type).value_or(std::string()));
         if (!t.empty()) {
             const std::string sname = optionalStructName(t);
             return idx.structByName.count(std::string_view(sname)) != 0;
@@ -472,7 +472,7 @@ const StructDecl* SemanticAnalyzer::findStruct(const std::string& name) const {
     if (found != nullptr) return found;
     // 1155：合成体前缀门（同 isStructType——避免普通类型的解析分配）
     if (name.rfind("结果<", 0) == 0 && isResultType(name)) {
-        const std::vector<std::string> args = resultTypeArgs(name);
+        const std::vector<std::string> args = resultTypeArgs(name).value_or((std::vector<std::string>()));
         if (args.size() == 2) {
             const std::string sname =
                 resultStructName(types::canonical(args[0]), types::canonical(args[1]));
@@ -482,7 +482,7 @@ const StructDecl* SemanticAnalyzer::findStruct(const std::string& name) const {
         return nullptr;  // 结果<...> 形态但实参拆分失败=非合成体（原实现同落空）
     }
     if (name.rfind("可选<", 0) == 0 && isOptionalType(name)) {
-        const std::string t = types::canonical(optionalTypeArg(name));
+        const std::string t = types::canonical(optionalTypeArg(name).value_or(std::string()));
         if (!t.empty()) {
             const std::string sname = optionalStructName(t);
             const auto it = idx.structByName.find(std::string_view(sname));
@@ -536,7 +536,9 @@ int SemanticAnalyzer::typeSizeOf(const std::string& typeRaw) const {
     //   数组是容器后缀：凡带 [N] 后缀先按元素递归展开（isPointer 尾字符判定
     //   与 ']' 无交集，顺序无涉；枚举/结构体/类名带后缀本就走不到，行为不变）。
     if (types::isArray(type)) {
-        return typeSizeOf(types::arrayElemOf(type)) * types::arrayLenOf(type);
+        // 1360 结果化：isArray 守卫下恒有值（value() 坏值=内部缺陷响亮终止）
+        return typeSizeOf(types::arrayElemOf(type)) *
+               types::arrayLenOf(type).value();
     }
     if (types::isPointer(type)) return 8;
     // 040（001 §5.8 甲案）：函数指针=8 字节指针槽（显式分支——原靠未知类型
@@ -565,7 +567,7 @@ int SemanticAnalyzer::typeSizeOf(const std::string& typeRaw) const {
                 "' 被查询尺寸时尚未降级注册（067-001 布局时机无关化后不应到达）"
                 "——请报告此错误");
         if (isResultType(type)) return 16;
-        return typeSizeOf(optionalTypeArg(type)) + 1;
+        return typeSizeOf(optionalTypeArg(type).value_or(std::string())) + 1;
     }
     const StructDecl* decl = findStruct(type);
     if (decl != nullptr) return decl->totalSize;
@@ -581,8 +583,9 @@ int SemanticAnalyzer::typeSizeOf(const std::string& typeRaw) const {
     //   plans/031 §二·①）。第一版放置骨架禁字段/全局/静态/容器，本登记服务
     //   错误恢复路径的布局查询（防「尺寸未登记」级联噪音）+ 类型元数据完备。
     if (types::isMethodValueType(type)) return 16;
-    const int baseSize = types::typeSize(type);
-    if (baseSize > 0) return baseSize;
+    // 1360 结果化：has_value() 即命中（有值域 1..16 恒正）
+    const cn::Optional<int> baseSize = types::typeSize(type);
+    if (baseSize.has_value()) return baseSize.value();
     // 字符串 = 指针（8字节）；未知类型防御性返回8
     if (type == "字符串") return 8;
     // 648 豁免两态（合法查询·非 miss，原 8 兜底保留）：
@@ -769,7 +772,7 @@ void SemanticAnalyzer::computeLayout(StructDecl* decl) {
                 const std::string fc280 = types::canonical(f.type);
                 int fs280 = 8;
                 if (findClass(fc280) == nullptr &&
-                    (findStruct(fc280) != nullptr || types::typeSize(fc280) > 0)) {
+                    (findStruct(fc280) != nullptr || types::typeSize(fc280).has_value())) {
                     fs280 = typeSizeOf(f.type);   // 结构体/内置标量=真值（整128 16B 面）
                 }
                 const int rounded280 = (fs280 + 7) / 8 * 8;
@@ -792,7 +795,7 @@ void SemanticAnalyzer::computeLayout(StructDecl* decl) {
                 const std::string fc280 = types::canonical(f.type);
                 int fs280 = 8;
                 if (findClass(fc280) == nullptr &&
-                    (findStruct(fc280) != nullptr || types::typeSize(fc280) > 0)) {
+                    (findStruct(fc280) != nullptr || types::typeSize(fc280).has_value())) {
                     fs280 = typeSizeOf(f.type);   // 结构体/内置标量=真值
                 }
                 const int rounded280 = (fs280 + 7) / 8 * 8;

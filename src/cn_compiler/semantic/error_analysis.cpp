@@ -343,13 +343,13 @@ void SemanticAnalyzer::lowerResultOptionalTypes(Program* node) {
         // 递归展开实参（ensureLoweredType 内部已递归降级嵌套；此处入队为保证
         //   扫描面完备——实参本身可能是预降级趟需独立登记的新顶层形态）
         if (isResultType(type)) {
-            const std::vector<std::string> args = resultTypeArgs(type);
+            const std::vector<std::string> args = resultTypeArgs(type).value_or((std::vector<std::string>()));
             if (args.size() == 2) {
                 queue.push_back(types::canonical(args[0]));
                 queue.push_back(types::canonical(args[1]));
             }
         } else if (isOptionalType(type)) {
-            const std::string t = types::canonical(optionalTypeArg(type));
+            const std::string t = types::canonical(optionalTypeArg(type).value_or(std::string()));
             if (!t.empty()) queue.push_back(t);
         }
     }
@@ -369,7 +369,7 @@ void SemanticAnalyzer::ensureLoweredType(const std::string& typeRaw) {
     if (program_ == nullptr) return;
     const std::string type = types::canonical(typeRaw);
     if (isResultType(type)) {
-        const std::vector<std::string> args = resultTypeArgs(type);
+        const std::vector<std::string> args = resultTypeArgs(type).value_or((std::vector<std::string>()));
         if (args.size() == 2) {
             const std::string t = types::canonical(args[0]);
             const std::string e = types::canonical(args[1]);
@@ -423,7 +423,7 @@ void SemanticAnalyzer::ensureLoweredType(const std::string& typeRaw) {
             }
         }
     } else if (isOptionalType(type)) {
-        const std::string t = types::canonical(optionalTypeArg(type));
+        const std::string t = types::canonical(optionalTypeArg(type).value_or(std::string()));
         if (!t.empty()) {
             const std::string sname = optionalStructName(t);
             if (loweredStructNames_.insert(sname).second) {

@@ -89,20 +89,22 @@ TEST(TypeSystemTest, FloatClassification) {
 
 // 整数后缀：无后缀->整32、f->浮32、L->整64、LL->整128、U->正32、UL->正64、ULL->正128
 TEST(TypeSystemTest, LiteralSuffixInteger) {
-    EXPECT_EQ(literalTypeOf("42", false), "整32");
-    EXPECT_EQ(literalTypeOf("42f", false), "浮32");
-    EXPECT_EQ(literalTypeOf("42L", false), "整64");
-    EXPECT_EQ(literalTypeOf("42LL", false), "整128");
-    EXPECT_EQ(literalTypeOf("42U", false), "正32");
-    EXPECT_EQ(literalTypeOf("42UL", false), "正64");
-    EXPECT_EQ(literalTypeOf("42ULL", false), "正128");
+    // 1360 结果化：value_or 显形断言（无值=非法后缀面）
+    EXPECT_EQ(literalTypeOf("42", false).value_or(""), "整32");
+    EXPECT_EQ(literalTypeOf("42f", false).value_or(""), "浮32");
+    EXPECT_EQ(literalTypeOf("42L", false).value_or(""), "整64");
+    EXPECT_EQ(literalTypeOf("42LL", false).value_or(""), "整128");
+    EXPECT_EQ(literalTypeOf("42U", false).value_or(""), "正32");
+    EXPECT_EQ(literalTypeOf("42UL", false).value_or(""), "正64");
+    EXPECT_EQ(literalTypeOf("42ULL", false).value_or(""), "正128");
 }
 
 // 浮点后缀：无后缀->浮64、f->浮32
 TEST(TypeSystemTest, LiteralSuffixFloat) {
-    EXPECT_EQ(literalTypeOf("3.14", true), "浮64");
-    EXPECT_EQ(literalTypeOf("3.14f", true), "浮32");
-    EXPECT_EQ(literalTypeOf("3.14F", true), "浮32");
+    // 1360 结果化：value_or 显形断言
+    EXPECT_EQ(literalTypeOf("3.14", true).value_or(""), "浮64");
+    EXPECT_EQ(literalTypeOf("3.14f", true).value_or(""), "浮32");
+    EXPECT_EQ(literalTypeOf("3.14F", true).value_or(""), "浮32");
 }
 
 // ==================== 隐式转换链（规格书3.7） ====================

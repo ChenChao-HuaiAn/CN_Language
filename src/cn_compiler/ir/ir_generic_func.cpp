@@ -165,7 +165,7 @@ void IRGenerator::emitGenericFuncInstance(const GenericFuncInstance& gfi) {
         //   与 ir_decl/ir_oop/ir_expr 各登记点同口径）——原取 param->typeName
         //   （函数指针形态下为空）→ 实例体内间接调用解析不出形参、i128 形参
         //   字面量实参不宽化（探针 n_generic_fnptr）。
-        const std::string paramSrcRaw = paramSrcTypeOf(param);
+        const std::string paramSrcRaw = paramSrcTypeOf(*param);
         const std::string paramSrc = resolveGenericInstanceType(
             substGenericType(paramSrcRaw));
         // A-1（引用参数 泛型 T& -> 整32&）：参数槽存被引用左值地址，

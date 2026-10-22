@@ -698,12 +698,13 @@ bool SemanticAnalyzer::checkCompoundAssign(AssignmentExpr* node,
             //   求值判零（大数安全·超整64 承载字面量值级折叠毒化 0 误报
             //   除零/误报拒合法程序的根因消除）；非常量形态回落 505+
             //   resolver 既有通道（548 常量名面保留）。
-            std::string r919op;
+            cn::Optional<std::string> r919op;
             bool zeroR548 = false;
             const bool textFoldable1137 =
                 cnEvalConstIntExprText919(node->value.get(), r919op);
             if (textFoldable1137) {
-                zeroR548 = (r919op == "0");
+                // 无值=超 u128 域（数学值必非零·不报除零）
+                zeroR548 = r919op.has_value() && r919op.value() == "0";
             }
             if (!textFoldable1137) {
                 std::int64_t foldR548 = 0;

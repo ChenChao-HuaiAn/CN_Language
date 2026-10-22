@@ -148,8 +148,11 @@ bool SemanticAnalyzer::checkMethodValueCall(CallExpr* node,
         lastType_ = "未知";
         return true;
     }
-    const std::string retType = funcPtrReturnOf(*fnPtr);
-    const std::vector<std::string> paramTypes = funcPtrParamsOf(*fnPtr);
+    // 1360 结果化：内嵌函数指针串由 makeMethodValueType 单点构造·规范形态
+    //   恒有值；显形默认（空返回/零参）=内部缺陷显形后的保守继续面
+    const std::string retType = funcPtrReturnOf(*fnPtr).value_or(std::string());
+    const std::vector<std::string> paramTypes =
+        funcPtrParamsOf(*fnPtr).value_or(std::vector<std::string>());
     // 参数数量检查
     if (node->arguments.size() != paramTypes.size()) {
         diagnostics_.report(DiagnosticLevel::Error, node->location,

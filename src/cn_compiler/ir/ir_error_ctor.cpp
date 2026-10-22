@@ -161,11 +161,11 @@ bool IRGenerator::resolveResultCtorTargetType(CallExpr* node, const std::string&
                 std::string storeType;
                 if (retIsResult) {
                     const std::vector<std::string> layerArgs =
-                        resultTypeArgs(retCanon);
+                        resultTypeArgs(retCanon).value_or((std::vector<std::string>()));
                     if (layerArgs.size() == 2)
                         storeType = (name == "错误") ? layerArgs[1] : layerArgs[0];
                 } else {
-                    storeType = optionalTypeArg(retCanon);
+                    storeType = optionalTypeArg(retCanon).value_or(std::string());
                 }
                 if (!storeType.empty() &&
                     semantic_->isStructType(types::canonical(storeType))) {
@@ -199,7 +199,8 @@ bool IRGenerator::resolveResultCtorTargetType(CallExpr* node, const std::string&
     bool isOptional = isOptionalType(node->resolvedType);
     if (isResult) {
         const std::vector<std::string> args =
-            resultTypeArgs(node->resolvedType);
+            resultTypeArgs(node->resolvedType)
+                .value_or((std::vector<std::string>()));
         if (args.size() != 2) return false;
         const std::string t = types::canonical(args[0]);
         const std::string e = types::canonical(args[1]);
@@ -210,7 +211,8 @@ bool IRGenerator::resolveResultCtorTargetType(CallExpr* node, const std::string&
         valueType = (name == "错误") ? e : t;
     } else if (isOptional) {
         const std::string t =
-            types::canonical(optionalTypeArg(node->resolvedType));
+            types::canonical(optionalTypeArg(node->resolvedType)
+                                 .value_or(std::string()));
         if (t.empty()) return false;
         structName = optionalStructName(t);
         valueType = t;

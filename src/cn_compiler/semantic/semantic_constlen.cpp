@@ -25,10 +25,10 @@ void SemanticAnalyzer::registerConstValues(Program* node, bool quiet) {
             //   不足（大数字面量算术/负号壳经 cnParseInt 溢出返回假）；文本链
             //   + - * / %·一元负号·常量引用一源（对偶 v2 常量末至十进制919）。
             //   空串=超 u128 域哨兵（超一切整型域→拒·专文诊断）。
-            std::string text919;
+            cn::Optional<std::string> text919;
             const bool foldOk919 = cnEvalConstIntExprText919WithVals(
                 globalConstValues_, g->moduleName, init, text919);
-            if (!foldOk919 || text919.empty()) {
+            if (!foldOk919 || !text919.has_value()) {
                 if (!quiet) {
                     if (foldOk919) {
                         diagnostics_.report(DiagnosticLevel::Error, init->location,
@@ -42,7 +42,7 @@ void SemanticAnalyzer::registerConstValues(Program* node, bool quiet) {
                 }
                 continue;
             }
-            constText = text919;
+            constText = text919.value();
         }
         // A-2（常量 crate 分桶）：多模块同名常量各自登记限定键（模块$名），
         // 引用经语义层按当前模块解析并重写节点名；裸名仅保留首定义

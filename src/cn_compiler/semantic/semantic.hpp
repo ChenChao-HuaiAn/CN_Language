@@ -682,9 +682,9 @@ private:
     // 判断类型字符串是否为函数指针类型（函数指针<返回>(参数,...)）
     static bool isFuncPtrType(const std::string& type);
     // 从函数指针类型字符串提取返回类型（空串表示非法输入）
-    static std::string funcPtrReturnOf(const std::string& type);
+    static cn::Optional<std::string> funcPtrReturnOf(const std::string& type);
     // 从函数指针类型字符串提取参数类型列表
-    static std::vector<std::string> funcPtrParamsOf(const std::string& type);
+    static cn::Optional<std::vector<std::string>> funcPtrParamsOf(const std::string& type);
     // 函数指针类型兼容性检查（返回/参数类型逐个 canConvert）
     static bool funcPtrCompatible(const std::string& from, const std::string& to);
 

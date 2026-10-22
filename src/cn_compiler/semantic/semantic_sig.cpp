@@ -180,7 +180,9 @@ int SemanticAnalyzer::conversionLevel(const std::string& argTypeRaw,
         const bool argUnsigned = types::isUnsigned(arg);
         const bool paramUnsigned = types::isUnsigned(param);
         if (argUnsigned == paramUnsigned) {
-            if (types::intRank(arg) <= types::intRank(param)) return 1;  // 同符号向宽
+            if (types::intRank(arg).value() <= types::intRank(param).value()) {
+                return 1;  // 同符号向宽
+            }
         }
         // 符号混合：一律按隐式转换（保守，避免有符号->无符号宽化的值域陷阱）
         return 2;
@@ -471,8 +473,8 @@ bool SemanticAnalyzer::canConvertType(const std::string& fromRaw,
     const bool fromResult = (from.rfind("结果<", 0) == 0) && isResultType(from);
     const bool toResult = (to.rfind("结果<", 0) == 0) && isResultType(to);
     if (fromResult && toResult) {
-        const std::vector<std::string> fa = resultTypeArgs(from);
-        const std::vector<std::string> ta = resultTypeArgs(to);
+        const std::vector<std::string> fa = resultTypeArgs(from).value_or((std::vector<std::string>()));
+        const std::vector<std::string> ta = resultTypeArgs(to).value_or((std::vector<std::string>()));
         if (fa.size() == 2 && ta.size() == 2) {
             return canConvertType(fa[0], ta[0]) && canConvertType(fa[1], ta[1]);
         }
@@ -481,8 +483,8 @@ bool SemanticAnalyzer::canConvertType(const std::string& fromRaw,
     const bool fromOpt = (from.rfind("可选<", 0) == 0) && isOptionalType(from);
     const bool toOpt = (to.rfind("可选<", 0) == 0) && isOptionalType(to);
     if (fromOpt && toOpt) {
-        const std::string fa = optionalTypeArg(from);
-        const std::string ta = optionalTypeArg(to);
+        const std::string fa = optionalTypeArg(from).value_or(std::string());
+        const std::string ta = optionalTypeArg(to).value_or(std::string());
         return !fa.empty() && !ta.empty() && canConvertType(fa, ta);
     }
     // 空指针常量 -> 可选<T>：视为空可选值（无）（Task 3.5，规格书07-三）

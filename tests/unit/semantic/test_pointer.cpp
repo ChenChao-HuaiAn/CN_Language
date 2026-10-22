@@ -73,19 +73,23 @@ TEST(PointerSemanticTest, CompositeTools) {
     EXPECT_FALSE(isArray("整32"));
     EXPECT_EQ(pointeeOf("整32*"), "整32");
     EXPECT_EQ(arrayElemOf("整32[5]"), "整32");
-    EXPECT_EQ(arrayLenOf("整32[5]"), 5);
-    EXPECT_EQ(arrayLenOf("整32"), -1);
+    // 1360 结果化：has_value()/value() 显形断言
+    ASSERT_TRUE(arrayLenOf("整32[5]").has_value());
+    EXPECT_EQ(arrayLenOf("整32[5]").value(), 5);
+    EXPECT_FALSE(arrayLenOf("整32").has_value());
 }
 
 // typeSize：基本类型字节大小
 TEST(PointerSemanticTest, TypeSize) {
-    EXPECT_EQ(typeSize("整8"), 1);
-    EXPECT_EQ(typeSize("整16"), 2);
-    EXPECT_EQ(typeSize("整32"), 4);
-    EXPECT_EQ(typeSize("整64"), 8);
-    EXPECT_EQ(typeSize("浮64"), 8);
-    EXPECT_EQ(typeSize("布尔"), 1);
-    EXPECT_EQ(typeSize("整32*"), 8);  // 指针恒8字节
+    // 1360 结果化：has_value()/value() 显形断言
+    ASSERT_TRUE(typeSize("整8").has_value());
+    EXPECT_EQ(typeSize("整8").value(), 1);
+    EXPECT_EQ(typeSize("整16").value(), 2);
+    EXPECT_EQ(typeSize("整32").value(), 4);
+    EXPECT_EQ(typeSize("整64").value(), 8);
+    EXPECT_EQ(typeSize("浮64").value(), 8);
+    EXPECT_EQ(typeSize("布尔").value(), 1);
+    EXPECT_EQ(typeSize("整32*").value(), 8);  // 指针恒8字节
 }
 
 // ==================== 隐式转换 ====================

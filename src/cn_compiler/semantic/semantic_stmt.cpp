@@ -604,14 +604,16 @@ void SemanticAnalyzer::desugarRangeForIterable(RangeForStmt* node,
     if (types::isArray(containerType)) {
         // 数组：长度编译期已知，元素 = 容器[索引]
         elemType = types::arrayElemOf(containerType);
-        const int len = types::arrayLenOf(containerType);
-        if (len <= 0) {
+        // 1360 结果化：has_value() 显形分流（无值/零长=迭代长度非法）
+        const cn::Optional<int> lenOpt = types::arrayLenOf(containerType);
+        if (!lenOpt.has_value() || lenOpt.value() <= 0) {
             diagnostics_.report(DiagnosticLevel::Error, node->location,
                                 "'遍历...中每个' 迭代数组长度必须为正（实际 '" +
                                     containerType + "'）");
             desugarOk = false;
         } else {
-            lenExpr = std::make_unique<IntegerLiteral>(len, std::to_string(len));
+            lenExpr = std::make_unique<IntegerLiteral>(
+                lenOpt.value(), std::to_string(lenOpt.value()));
             elemExpr = std::make_unique<IndexExpr>(
                 cloneNameExpr(node->iterable.get()),
                 std::make_unique<IdentifierExpr>(idxName));

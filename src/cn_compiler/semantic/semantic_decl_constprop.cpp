@@ -138,14 +138,14 @@ void SemanticAnalyzer::noteZeroAssign(const std::string& name, const Expr* value
     //   被误 seed 为零初值 → 后续 `10/甲` 误报「变量持常量零初值」拒合法
     //   程序（双侧分叉实锚）。非常量形态（变量/常量名）回落 505+resolver
     //   既有通道（548 常量名面保留）。
-    std::string d919;
+    cn::Optional<std::string> d919;
     if (cnEvalConstIntExprText919(value, d919)) {
-        // 文本级判定：0=零初值种子；非零（含超 u128 域空串哨兵=数学值
+        // 文本级判定：0=零初值种子；非零（含超 u128 域无值=数学值
         //   超承载必非零）→ 失格。两 if 分流（避免 else 承载业务代码）。
-        if (d919 == "0") {
+        if (d919.has_value() && d919.value() == "0") {
             zp548_.seeded.insert(name);
         }
-        if (d919 != "0") {
+        if (!d919.has_value() || d919.value() != "0") {
             zp548_.disqualified.insert(name);
         }
         return;

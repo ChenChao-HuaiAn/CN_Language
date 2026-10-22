@@ -211,7 +211,7 @@ void SemanticAnalyzer::checkPropagateUnary(UnaryExpr* node,
                 //   IR 层读侧偏移/类型按操作数类型、写侧按 propagateType 分别取。
                 node->propagateType = currentReturnType_;
                 if (isResultType(operandType) || isOptionalType(operandType)) {
-                    const std::vector<std::string> args = resultTypeArgs(operandType);
+                    const std::vector<std::string> args = resultTypeArgs(operandType).value_or((std::vector<std::string>()));
                     if (isResultType(operandType) && args.size() == 2) {
                         // 结果<T,E>：返回类型须为 结果<T,E2>（E2 与 E 可转换）
                         lastType_ = canonicalType(args[0]);
@@ -225,7 +225,7 @@ void SemanticAnalyzer::checkPropagateUnary(UnaryExpr* node,
                                     currentReturnType_ + "'）");
                         } else {
                             const std::vector<std::string> retArgs =
-                                resultTypeArgs(currentReturnType_);
+                                resultTypeArgs(currentReturnType_).value_or((std::vector<std::string>()));
                             // 值类型须精确一致（IR 层按操作数 T 直接取 .值，
                             //   不自动转换；与 Rust ? 同型传播一致）
                             if (retArgs.size() == 2 &&
@@ -247,7 +247,7 @@ void SemanticAnalyzer::checkPropagateUnary(UnaryExpr* node,
                         }
                     } else if (isOptionalType(operandType)) {
                         // 可选<T>：返回类型须为 可选<T>
-                        lastType_ = canonicalType(optionalTypeArg(operandType));
+                        lastType_ = canonicalType(optionalTypeArg(operandType).value_or(std::string()));
                         if (currentReturnType_.empty() ||
                             currentReturnType_ != "可选<" + lastType_ + ">") {
                             diagnostics_.report(

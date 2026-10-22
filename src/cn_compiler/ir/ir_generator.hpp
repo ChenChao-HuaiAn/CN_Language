@@ -2,6 +2,7 @@
 //   ir.hpp 保留 IR 数据结构（Opcode/指令/函数IR）并 include 本头，下游透明。
 #pragma once
 #include "cn_compiler/ir/ir.hpp"
+#include "cn_compiler/common/optional_safe.hpp"
 #include <optional>
 // 865：生成期状态数据类型外迁头（ClosureInfo/VarEntry/LoopContext/SwitchContext/
 //   OwnedStrField——纯数据结构可外迁·ir_generator_types.hpp 先例=DeclGenCtx）， 类内成员声明处类型名直呼，签名零改动。
@@ -214,7 +215,9 @@ private:
     void genArrayZeroInit(VarDecl* node, const DeclGenCtx& ctx);   // ⑬缺陷B 数组兜底
     void genScalarZeroInit(VarDecl* node, const DeclGenCtx& ctx);  // ⑭344 标量/串/函数指针零初始化兜底
     // 数组越界检查插桩（Task 2.4）：index < 0 || index >= len 时调用运行时错误(2)
-    void emitBoundsCheck(const ir::IRValue& index, int arrayLen,
+    // 1360 结果化：arrayLen 改 cn::Optional<int>（无值=非数组·不插桩）——
+    //   调用点 types::arrayLenOf 结果直传
+    void emitBoundsCheck(const ir::IRValue& index, const cn::Optional<int>& arrayLen,
                          const SourceLocation& loc);    // T4（306-a 波次2）：字符串下标越界检查（运行时长度版）——
     //   len=__cn_str_len(ptr)；idx<0||idx>=len -> __cn_runtime_error(2) （与数组编译期长度版同错误通道=防线对称）
     void emitStrBoundsCheck(const ir::IRValue& indexRaw, const ir::IRValue& strPtr,

@@ -183,8 +183,9 @@ void IRGenerator::registerVarSlots(const std::string& unique, const std::string&
         return;
     }
     if (types::isArray(srcType)) {
-        const int len = types::arrayLenOf(srcType);
-        if (len <= 0) {
+        // 1360 结果化：isArray 守卫下恒有值——无值分流=内部口径漂移显形
+        const cn::Optional<int> len = types::arrayLenOf(srcType);
+        if (!len.has_value() || len.value() <= 0) {
             function_->varSlots[unique] = 1;
             return;
         }
@@ -208,7 +209,7 @@ void IRGenerator::registerVarSlots(const std::string& unique, const std::string&
         } else if (types::isI128(types::canonical(elemSrc))) {
             elemSlots = 2;
         }
-        function_->varSlots[unique] = len * elemSlots;
+        function_->varSlots[unique] = len.value() * elemSlots;
     } else if (semantic_ != nullptr && semantic_->isStructType(types::canonical(srcType))) {
         // 结构体/联合体变量：按总大小分配 8 字节槽（ceil(总大小/8)）
         const int size = semantic_->typeSizeOf(srcType);
@@ -286,7 +287,10 @@ std::string IRGenerator::lookupSrcType(const std::string& name) const {
 std::vector<std::string> IRGenerator::funcPtrParamsOfCallee(Expr* callee) const {
     const std::optional<std::string> substType = funcPtrTypeOfCallee(callee);
     if (!substType.has_value()) return {};
-    return types::funcPtrParamsOf(*substType);
+    // 1360 结果化：无值=非函数指针串（显形默认=空表回落，保持原行为）
+    const cn::Optional<std::vector<std::string>> params =
+        types::funcPtrParamsOf(*substType);
+    return params.value_or(std::vector<std::string>());
 }
 // 485（间接调用返回面·337-a 同族提炼）：callee 表达式是函数指针时返回其
 //   **规范化后的源码类型串**（`函数指针<返回>(参数,...)`·泛型已单态化）；
@@ -572,12 +576,12 @@ std::string IRGenerator::memberObjStructType(MemberExpr* node) const {
             const std::string canonInner = types::canonical(innerType);
             if (isResultType(canonInner)) {
                 const std::vector<std::string> rargs =
-                    resultTypeArgs(canonInner);
+                    resultTypeArgs(canonInner).value_or((std::vector<std::string>()));
                 if (inner->memberName == "值" && rargs.size() == 2) objType = rargs[0];
                 else if (inner->memberName == "错误" && rargs.size() == 2) objType = rargs[1];
                 else if (inner->memberName == "正常") objType = "布尔";
             } else if (isOptionalType(canonInner)) {
-                if (inner->memberName == "值") objType = optionalTypeArg(canonInner);
+                if (inner->memberName == "值") objType = optionalTypeArg(canonInner).value_or(std::string());
                 else if (inner->memberName == "有值") objType = "布尔";
             }
         }
@@ -688,9 +692,15 @@ std::string IRGenerator::memberIndexObjElemType(IndexExpr* idx) const {
     }
     return objType;
 }
-void IRGenerator::emitBoundsCheck(const ir::IRValue& indexRaw, int arrayLen,
+void IRGenerator::emitBoundsCheck(const ir::IRValue& indexRaw,
+                                  const cn::Optional<int>& arrayLen,
                                   const SourceLocation& loc) {
-    if (arrayLen <= 0 || currentBlock_ == nullptr) return;
+    // 1360 结果化：无值=非数组形态（调用方 arrayLenOf 结果直传）不插桩；
+    //   有值≤0（零长数组）同不插桩（保持原 arrayLen<=0 口径）
+    if (!arrayLen.has_value() || arrayLen.value() <= 0 ||
+        currentBlock_ == nullptr) {
+        return;
+    }
     // 下标先 Cast 到 i64（比较按64位无符号/有符号语义）
     ir::IRValue idx = indexRaw;
     if (idx.type != "i64") {
@@ -701,7 +711,7 @@ void IRGenerator::emitBoundsCheck(const ir::IRValue& indexRaw, int arrayLen,
     ir::IRValue ltZero = emitResult(ir::Opcode::Lt, {idx, zero}, "i1", "", loc);
     // index >= len：按有符号比较（上界越界；数组长度为正，有符号安全）
     ir::IRValue lenConst = emitResult(ir::Opcode::ConstInt, {}, "i64",
-                                      std::to_string(arrayLen), loc);
+                                      std::to_string(arrayLen.value()), loc);
     ir::IRValue geLen = emitResult(ir::Opcode::Ge, {idx, lenConst}, "i1", "", loc);
     // 合并：bad = (index<0) || (index>=len)
     ir::IRValue bad = emitResult(ir::Opcode::Or, {ltZero, geLen}, "i1", "", loc);

@@ -184,12 +184,12 @@ std::string IRGenerator::exprSrcType(Expr* node) const {
             const std::string canonObj = types::canonical(objType);
             if (isResultType(canonObj)) {
                 const std::vector<std::string> rargs =
-                    resultTypeArgs(canonObj);
+                    resultTypeArgs(canonObj).value_or((std::vector<std::string>()));
                 if (mem->memberName == "值" && rargs.size() == 2) return rargs[0];
                 if (mem->memberName == "错误" && rargs.size() == 2) return rargs[1];
                 if (mem->memberName == "正常") return "布尔";
             } else if (isOptionalType(canonObj)) {
-                if (mem->memberName == "值") return optionalTypeArg(canonObj);
+                if (mem->memberName == "值") return optionalTypeArg(canonObj).value_or(std::string());
                 if (mem->memberName == "有值") return "布尔";
             }
             // 363 根治（2026-10-10·与 v2 321 同构）：链上指针字段中间跳——

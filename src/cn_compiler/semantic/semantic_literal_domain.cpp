@@ -122,13 +122,17 @@ bool SemanticAnalyzer::intLiteralFitsType(const Expr* e, const std::string& to) 
                 })) {
             return false;
         }
-        if (!cnEvalConstIntExprText919(e, dec)) return true;
+        cn::Optional<std::string> dec919;
+        if (!cnEvalConstIntExprText919(e, dec919)) return true;
         // 承载内值（int64 域内）：交既有折叠/溢出预演链（族④a 防双报）
-        if (!dec.empty() &&
-            types::decTextFitsSignedRange(dec, "9223372036854775808",
+        if (dec919.has_value() &&
+            types::decTextFitsSignedRange(dec919.value(), "9223372036854775808",
                                           "9223372036854775807")) {
             return true;
         }
+        // 1360 结果化：无值=超 u128 域（dec 保持空→下方统一超域分支拒）；
+        //   超 int64 承载但在 u128 域内=落 dec 继续域判
+        dec = dec919.value_or(std::string());
     }
     if (dec.empty()) return false;  // 超 u128 域：一切整型目标皆超（910/919）
     const bool rawNeg = (dec[0] == '-');

@@ -103,11 +103,15 @@ namespace cn_compiler {
 }
 // 计算数组总字节大小（元素大小 × 长度）
 // GCC -Wunused-function 下标记 maybe_unused（MSVC 不报，GCC 严格）
-[[maybe_unused]] inline int arrayTotalSize(const std::string& type) {
-    const int len = types::arrayLenOf(type);
-    const int elemSize = types::typeSize(types::arrayElemOf(type));
-    if (len <= 0 || elemSize <= 0) return 0;
-    return len * elemSize;
+// 1360 结果化：无值=非数组或元素大小未知（非基本类型元素——原 0 哨兵
+//   「零长数组合法值」与「元素大小未知」双态合并；现三态显形——
+//   有值含 0=合法零长数组总大小）
+[[maybe_unused]] inline cn::Optional<int> arrayTotalSize(const std::string& type) {
+    const cn::Optional<int> len = types::arrayLenOf(type);
+    if (!len.has_value()) return std::nullopt;  // 非数组
+    const cn::Optional<int> elemSize = types::typeSize(types::arrayElemOf(type));
+    if (!elemSize.has_value()) return std::nullopt;  // 元素大小未知
+    return len.value() * elemSize.value();
 }
 
 // 类型别名规范化：整数 -> 整32、小数 -> 浮64（规格书02-类型系统：默认类型别名）
@@ -123,19 +127,18 @@ inline std::string canonicalType(const std::string& type) {
     return type.rfind("函数指针<", 0) == 0;
 }
 
-// 从函数指针类型字符串提取返回类型（"函数指针<整32>(整32,整32)" -> "整32"）
-[[maybe_unused]] inline std::string funcPtrReturn(const std::string& type) {
-    std::size_t lt = type.find('<');
-    std::size_t gt = type.find('>');
-    if (lt == std::string::npos || gt == std::string::npos || gt <= lt) return "";
-    return type.substr(lt + 1, gt - lt - 1);
-}
+// 1360 结果化（#485 唯一实现立法收口）：funcPtrReturn 浅版（find('>') 无深度
+//   计数，嵌套返回类型截断）与 types::funcPtrReturnTypeOf（'<' '>' 深度计数
+//   配对·唯一实现）同语义双份实现已合并删除——原消费点改调深版（顺带修复
+//   浅版对嵌套返回类型的截断误并面）。
 
 // 从函数指针类型字符串提取参数类型列表
 // "函数指针<整32>(整32,整32)" -> ["整32","整32"]
 // 337-a（T53 家系）：实现下沉 types::funcPtrParamsOf（唯一实现）——本函数保留
 //   为语义层内部名（调用点零改动），与 IR 层间接调用点共用同一份解析逻辑。
-[[maybe_unused]] inline std::vector<std::string> funcPtrParams(const std::string& type) {
+//   1360 结果化：签名随 types::funcPtrParamsOf 改 cn::Optional（无值=非函数
+//   指针串·空表=合法零参）
+[[maybe_unused]] inline cn::Optional<std::vector<std::string>> funcPtrParams(const std::string& type) {
     return types::funcPtrParamsOf(type);
 }
 
@@ -149,7 +152,10 @@ inline std::string canonicalType(const std::string& type) {
 }
 
 // 折叠二元常量：整数/浮点算术 + 字符串字面量拼接
-[[maybe_unused]] inline std::string cnFoldConstBinary(Operator op, const std::string& l, const std::string& r) {
+// 1360 结果化：原空串哨兵（除零/取余于浮点/非算术运算符/非数值非字符串/
+//   整数溢出/INT64_MIN÷-1 等 10 处失败面）改 cn::Optional 无值——合法输出
+//   恒非空（数值文本/拼接结果），失败与合法值域不再共用通道
+[[maybe_unused]] inline cn::Optional<std::string> cnFoldConstBinary(Operator op, const std::string& l, const std::string& r) {
     if (cnIsFloatText(l) || cnIsFloatText(r)) {
         const double a = std::atof(cnStripLiteralSuffix(l).c_str());
         const double b = std::atof(cnStripLiteralSuffix(r).c_str());
@@ -158,9 +164,9 @@ inline std::string canonicalType(const std::string& type) {
             case Operator::Add: c = a + b; break;
             case Operator::Subtract: c = a - b; break;
             case Operator::Multiply: c = a * b; break;
-            case Operator::Divide: if (b == 0) return ""; c = a / b; break;
-            case Operator::Modulo: return "";
-            default: return "";
+            case Operator::Divide: if (b == 0) return std::nullopt; c = a / b; break;
+            case Operator::Modulo: return std::nullopt;
+            default: return std::nullopt;
         }
         return cnFormatDouble(c);
     }
@@ -170,7 +176,7 @@ inline std::string canonicalType(const std::string& type) {
         if (!l.empty() && !r.empty() && l.front() == '"' && r.front() == '"') {
             return l.substr(0, l.size() - 1) + r.substr(1);
         }
-        return "";
+        return std::nullopt;
     }
     long long c = 0;
     switch (op) {
@@ -178,11 +184,11 @@ inline std::string canonicalType(const std::string& type) {
         //   INT64_MIN-1 / INT64_MAX+1 / INT64_MIN*-1 静默回绕错值）——按
         //   cnFoldConstIntExpr505 同判据溢出预检，失败=空串哨兵交诊断通道。
         case Operator::Add:
-            if ((b > 0 && a > INT64_MAX - b) || (b < 0 && a < INT64_MIN - b)) return "";
+            if ((b > 0 && a > INT64_MAX - b) || (b < 0 && a < INT64_MIN - b)) return std::nullopt;
             c = a + b;
             break;
         case Operator::Subtract:
-            if ((b < 0 && a > INT64_MAX + b) || (b > 0 && a < INT64_MIN + b)) return "";
+            if ((b < 0 && a > INT64_MAX + b) || (b > 0 && a < INT64_MIN + b)) return std::nullopt;
             c = a - b;
             break;
         case Operator::Multiply: {
@@ -198,7 +204,7 @@ inline std::string canonicalType(const std::string& type) {
                 negResult ? static_cast<std::uint64_t>(INT64_MAX) + 1
                           : static_cast<std::uint64_t>(INT64_MAX);
             if (magL != 0 && magR != 0 &&
-                (magL > magHi / magR || magL * magR > magHi)) return "";
+                (magL > magHi / magR || magL * magR > magHi)) return std::nullopt;
             c = negResult
                     ? static_cast<std::int64_t>(
                           ~static_cast<std::uint64_t>(magL * magR) + 1)
@@ -206,20 +212,20 @@ inline std::string canonicalType(const std::string& type) {
             break;
         }
         case Operator::Divide:
-            if (b == 0) return "";
+            if (b == 0) return std::nullopt;
             // 1016（审查 P1-2·存量崩溃）：INT64_MIN / -1 在 x86 idiv 溢出
             //   （0xC0000409 无诊断脏崩）——折叠层按不可折叠失败返回，交调用方
             //   诊断通道（与 cnFoldConstIntExpr505 同口径）。
-            if (a == INT64_MIN && b == -1) return "";
+            if (a == INT64_MIN && b == -1) return std::nullopt;
             c = a / b;
             break;
         case Operator::Modulo:
-            if (b == 0) return "";
+            if (b == 0) return std::nullopt;
             // 1016：INT64_MIN % -1 同族（数学值 0，但 idiv 指令先溢出）
-            if (a == INT64_MIN && b == -1) return "";
+            if (a == INT64_MIN && b == -1) return std::nullopt;
             c = a % b;
             break;
-        default: return "";
+        default: return std::nullopt;
     }
     return std::to_string(c);
 }
@@ -283,8 +289,11 @@ inline std::string canonicalType(const std::string& type) {
             std::string l, r;
             if (!cnEvalConstExpr(vals, curMod, b->left.get(), l)) return false;
             if (!cnEvalConstExpr(vals, curMod, b->right.get(), r)) return false;
-            out = cnFoldConstBinary(b->op, l, r);
-            return !out.empty();
+            // 1360 结果化：折叠失败（无值）=不可折叠（非常量闭包），交调用方
+            const auto folded = cnFoldConstBinary(b->op, l, r);
+            if (!folded.has_value()) return false;
+            out = folded.value();
+            return true;
         }
         default:
             return false;
@@ -315,12 +324,15 @@ inline std::string canonicalType(const std::string& type) {
     return false;
 }
 
-[[maybe_unused]] inline std::vector<std::string> resultTypeArgs(const std::string& type) {
-    std::vector<std::string> result;
-    if (!isResultType(type)) return result;
+// 1360 结果化：无值=非结果类型/残缺形态；有值=恒两参 [T, E]
+//   （原空 vector 纯失败哨兵与合法输出通道分离——Optional 显形）
+[[maybe_unused]] inline cn::Optional<std::vector<std::string>> resultTypeArgs(const std::string& type) {
+    if (!isResultType(type)) return std::nullopt;
     const std::size_t lt = type.find('<');
     const std::size_t gt = type.rfind('>');
-    if (lt == std::string::npos || gt == std::string::npos || gt <= lt) return result;
+    if (lt == std::string::npos || gt == std::string::npos || gt <= lt) {
+        return std::nullopt;  // 残缺（isResultType 已保证·穷举显形）
+    }
     const std::string inner = type.substr(lt + 1, gt - lt - 1);
     // 2026-08-30 根治：嵌套泛型实参（结果<映射<整64, 整64>, 整32>）的逗号
     //   须平衡扫描——原 find(',') 在 映射<整64, 整64> 内部逗号处误切，
@@ -334,7 +346,7 @@ inline std::string canonicalType(const std::string& type) {
             else if (inner[i] == ',' && depth == 0) { comma = i; break; }
         }
     }
-    if (comma == std::string::npos) return result;
+    if (comma == std::string::npos) return std::nullopt;  // 残缺显形
     const std::string t = inner.substr(0, comma);
     const std::string e = inner.substr(comma + 1);
     // 去除首尾空白
@@ -344,6 +356,7 @@ inline std::string canonicalType(const std::string& type) {
         std::size_t en = s.find_last_not_of(" \t");
         return s.substr(b, en - b + 1);
     };
+    std::vector<std::string> result;
     result.push_back(trim(t));
     result.push_back(trim(e));
     return result;
@@ -370,14 +383,18 @@ inline std::string canonicalType(const std::string& type) {
     return true;
 }
 
-[[maybe_unused]] inline std::string optionalTypeArg(const std::string& type) {
-    if (!isOptionalType(type)) return "";
+// 1360 结果化：无值=非可选类型/残缺形态（原空串哨兵退役——可选实参
+//   类型名恒非空，空串纯失败哨兵与合法值域不再共用通道）
+[[maybe_unused]] inline cn::Optional<std::string> optionalTypeArg(const std::string& type) {
+    if (!isOptionalType(type)) return std::nullopt;
     const std::size_t lt = type.find('<');
     const std::size_t gt = type.rfind('>');
-    if (lt == std::string::npos || gt == std::string::npos || gt <= lt) return "";
+    if (lt == std::string::npos || gt == std::string::npos || gt <= lt) {
+        return std::nullopt;  // 残缺（isOptionalType 已保证·穷举显形）
+    }
     std::string t = type.substr(lt + 1, gt - lt - 1);
     std::size_t b = t.find_first_not_of(" \t");
-    if (b == std::string::npos) return "";
+    if (b == std::string::npos) return std::nullopt;
     std::size_t en = t.find_last_not_of(" \t");
     return t.substr(b, en - b + 1);
 }
@@ -394,15 +411,16 @@ inline std::string canonicalType(const std::string& type) {
     std::string core, suffix;
     types::splitTypeSuffix(type, core, suffix);
     if (isResultType(core)) {
-        const std::vector<std::string> args = resultTypeArgs(core);
-        if (args.size() == 2) {
-            return resultStructName(types::canonical(args[0]),
-                                    types::canonical(args[1])) + suffix;
+        // 1360 结果化：has_value() 显形分流（合法恒两参）
+        const auto argsOpt = resultTypeArgs(core);
+        if (argsOpt.has_value() && argsOpt.value().size() == 2) {
+            return resultStructName(types::canonical(argsOpt.value()[0]),
+                                    types::canonical(argsOpt.value()[1])) + suffix;
         }
     } else if (isOptionalType(core)) {
-        const std::string arg = optionalTypeArg(core);
-        if (!arg.empty()) {
-            return optionalStructName(types::canonical(arg)) + suffix;
+        const auto argOpt = optionalTypeArg(core);
+        if (argOpt.has_value()) {
+            return optionalStructName(types::canonical(argOpt.value())) + suffix;
         }
     }
     return type;
@@ -460,9 +478,10 @@ inline std::string canonicalType(const std::string& type) {
                                                         const std::string& typeName) {
     return funcPtr.isFunctionPtr() ? funcPtr.toSymbolType() : typeName;
 }
-[[maybe_unused]] inline std::string paramSrcTypeOf(const ParamDecl* param) {
-    if (param == nullptr) return "";
-    return funcPtrAwareSrcType(param->funcPtr, param->typeName);
+// 1360 结果化：原 const ParamDecl* 空指针防御返空串（死分支——3 消费点
+//   全部来自 params 容器遍历，元素必非 null）改引用入参，失败通道消除
+[[maybe_unused]] inline std::string paramSrcTypeOf(const ParamDecl& param) {
+    return funcPtrAwareSrcType(param.funcPtr, param.typeName);
 }
 std::string methodSymbolKey(const std::string& className, const std::string& sigKey);
 int charLiteralCodePoint(const std::string& raw);
@@ -592,61 +611,66 @@ std::unique_ptr<Stmt> cloneStmt(Stmt* node);
 //   value——parser parseIntValue 对超 int64 承载文本 std::stoll 溢出静默回
 //   0 的毒化值；1034 教训 #232 毒化值多消费点同源）。
 //   语义边界（与 001 §506甲/558/638/640 立法链口径一致）：
-//     ① 返回 true + out 非空 = 折叠成功（out=规范十进制文本·可带 '-'）；
-//     ② 返回 true + out 空串 = 命中超 u128 域哨兵（沿 910
-//        normalizeIntLiteralToDecimal 空串口径——中间值或最终值任一超
-//        2^128-1 即哨兵）；消费方判「超一切整型域」；
+//     ① 返回 true + out 有值 = 折叠成功（out=规范十进制文本·可带 '-'）；
+//     ② 返回 true + out 无值 = 命中超 u128 域（沿 910
+//        normalizeIntLiteralToDecimal 口径——中间值或最终值任一超
+//        2^128-1 即无值）；消费方判「超一切整型域」；
 //     ③ 返回 false = 非常量形态（变量/调用/除零/移位/位运算/比较等）——消费
 //        方维持既有链（编译期除零/溢出预演/移位量域各专诊断不动）。
+//   1360 结果化：out 原string 承载空串哨兵（true+空串=超域双态编码）改
+//   cn::Optional<std::string>——三态显形（真+有值/真+无值/假）。
 //   节点覆盖面：整数字面量（raw 全文归一·含负号折叠 raw）+ 一元 ± 负号链
 //   + 二元 + - * / %。消费点=语义层 intLiteralFitsType 表达式扩展
 //   （semantic_literal_domain.cpp）——「表达式常量数学值超目标类型域 →
 //   编译期拒」判据底座。
 [[maybe_unused]] inline bool cnEvalConstIntExprText919(
-    const Expr* e, std::string& out, int depth = 0) {
+    const Expr* e, cn::Optional<std::string>& out, int depth = 0) {
     if (e == nullptr || depth > 64) return false;
     if (e->getType() == NodeType::IntegerLiteral) {
-        // 1303 结果化: 无值=超 u128 域哨兵（词法已拒非法文本·上游已诊断）
-        //   ——显形转空串交下游既有空串口径（910 哨兵语义不变）
+        // 919 求值面：字面量归一文本（无值=超 u128 域·词法已拒非法文本同归
+        //   此分流）；true=是常量字面量形态
         out = types::normalizeIntLiteralToDecimal(
-            static_cast<const IntegerLiteral*>(e)->raw)
-                  .value_or(std::string());
+            static_cast<const IntegerLiteral*>(e)->raw);
         return true;
     }
     if (e->getType() == NodeType::UnaryExpr) {
         const UnaryExpr* u = static_cast<const UnaryExpr*>(e);
         if (u->postfix) return false;
         if (u->op != Operator::Subtract && u->op != Operator::Add) return false;
-        std::string v;
+        cn::Optional<std::string> v;
         if (!cnEvalConstIntExprText919(u->operand.get(), v, depth + 1)) return false;
-        if (v.empty()) {  // 超域哨兵传播（910 空串口径）
-            out.clear();
+        if (!v.has_value()) {  // 超域传播（910 口径）
+            out = std::nullopt;
             return true;
         }
-        out = (u->op == Operator::Subtract) ? types::decTextNegate919(v) : v;
+        if (u->op == Operator::Subtract) {
+            out = types::decTextNegate919(v.value());
+        } else {
+            out = v.value();
+        }
         return true;
     }
     if (e->getType() != NodeType::BinaryExpr) return false;
     const BinaryExpr* b = static_cast<const BinaryExpr*>(e);
-    std::string l, r;
+    cn::Optional<std::string> l, r;
     if (!cnEvalConstIntExprText919(b->left.get(), l, depth + 1)) return false;
     if (!cnEvalConstIntExprText919(b->right.get(), r, depth + 1)) return false;
-    if (l.empty() || r.empty()) {  // 超域哨兵传播（910 空串口径）
-        out.clear();
+    if (!l.has_value() || !r.has_value()) {  // 超域传播（910 口径）
+        out = std::nullopt;
         return true;
     }
     switch (b->op) {
-        case Operator::Add: out = types::decTextAdd919(l, r); return true;
-        case Operator::Subtract: out = types::decTextSub919(l, r); return true;
-        case Operator::Multiply: out = types::decTextMul919(l, r); return true;
+        case Operator::Add: out = types::decTextAdd919(l.value(), r.value()); return true;
+        case Operator::Subtract: out = types::decTextSub919(l.value(), r.value()); return true;
+        case Operator::Multiply: out = types::decTextMul919(l.value(), r.value()); return true;
         case Operator::Divide:
             // 除零=不可折叠交既有编译期除零诊断链（503·此处 return false）
-            if (r == "0") return false;
-            out = types::decTextDiv919(l, r);
+            if (r.value() == "0") return false;
+            out = types::decTextDiv919(l.value(), r.value());
             return true;
         case Operator::Modulo:
-            if (r == "0") return false;
-            out = types::decTextMod919(l, r);
+            if (r.value() == "0") return false;
+            out = types::decTextMod919(l.value(), r.value());
             return true;
         default:
             // 移位/位运算/比较/逻辑不进本族（547 巨移位量/474 位宽域各现有通道）
@@ -702,11 +726,13 @@ std::unique_ptr<Stmt> cloneStmt(Stmt* node);
 // 1073：128 域常量折叠放行——919 文本级大数求值 + 顶层常量引用（对偶
 //   cnEvalConstIntExprText919：递归骨架逐支同构，仅增 IdentifierExpr 分支；
 //   宿主常量注册回退链专用=需要 vals 上下文）。语义同 919 版：真=常量表达式
-//   （out=规范十进制文本·空串=超 u128 域哨兵）；假=非常量（未登记常量引用/
+//   （out 有值=规范十进制文本·无值=超 u128 域）；假=非常量（未登记常量引用/
 //   非整数常量文本——字符串/浮点/布尔文本经整数文本校验落假，交既有链终态）。
+//   1360 结果化：out 同改 cn::Optional<std::string>（三态显形·见上函数注释）。
 [[maybe_unused]] inline bool cnEvalConstIntExprText919WithVals(
     const std::unordered_map<std::string, std::string>& vals,
-    const std::string& curMod, const Expr* e, std::string& out, int depth = 0) {
+    const std::string& curMod, const Expr* e, cn::Optional<std::string>& out,
+    int depth = 0) {
     if (e == nullptr || depth > 64) return false;
     if (e->getType() == NodeType::IdentifierExpr) {
         const std::string n = static_cast<const IdentifierExpr*>(e)->name;
@@ -725,47 +751,50 @@ std::unique_ptr<Stmt> cloneStmt(Stmt* node);
         return true;
     }
     if (e->getType() == NodeType::IntegerLiteral) {
-        // 1303 结果化: 无值=超 u128 域哨兵（词法已拒非法文本·上游已诊断）
-        //   ——显形转空串交下游既有空串口径（910 哨兵语义不变）
+        // 919 求值面：字面量归一文本（无值=超 u128 域·词法已拒非法文本同归
+        //   此分流）；true=是常量字面量形态
         out = types::normalizeIntLiteralToDecimal(
-            static_cast<const IntegerLiteral*>(e)->raw)
-                  .value_or(std::string());
+            static_cast<const IntegerLiteral*>(e)->raw);
         return true;
     }
     if (e->getType() == NodeType::UnaryExpr) {
         const UnaryExpr* u = static_cast<const UnaryExpr*>(e);
         if (u->postfix) return false;
         if (u->op != Operator::Subtract && u->op != Operator::Add) return false;
-        std::string v;
+        cn::Optional<std::string> v;
         if (!cnEvalConstIntExprText919WithVals(vals, curMod, u->operand.get(), v, depth + 1)) return false;
-        if (v.empty()) {  // 超域哨兵传播（910 空串口径）
-            out.clear();
+        if (!v.has_value()) {  // 超域传播（910 口径）
+            out = std::nullopt;
             return true;
         }
-        out = (u->op == Operator::Subtract) ? types::decTextNegate919(v) : v;
+        if (u->op == Operator::Subtract) {
+            out = types::decTextNegate919(v.value());
+        } else {
+            out = v.value();
+        }
         return true;
     }
     if (e->getType() != NodeType::BinaryExpr) return false;
     const BinaryExpr* b = static_cast<const BinaryExpr*>(e);
-    std::string l, r;
+    cn::Optional<std::string> l, r;
     if (!cnEvalConstIntExprText919WithVals(vals, curMod, b->left.get(), l, depth + 1)) return false;
     if (!cnEvalConstIntExprText919WithVals(vals, curMod, b->right.get(), r, depth + 1)) return false;
-    if (l.empty() || r.empty()) {  // 超域哨兵传播（910 空串口径）
-        out.clear();
+    if (!l.has_value() || !r.has_value()) {  // 超域传播（910 口径）
+        out = std::nullopt;
         return true;
     }
     switch (b->op) {
-        case Operator::Add: out = types::decTextAdd919(l, r); return true;
-        case Operator::Subtract: out = types::decTextSub919(l, r); return true;
-        case Operator::Multiply: out = types::decTextMul919(l, r); return true;
+        case Operator::Add: out = types::decTextAdd919(l.value(), r.value()); return true;
+        case Operator::Subtract: out = types::decTextSub919(l.value(), r.value()); return true;
+        case Operator::Multiply: out = types::decTextMul919(l.value(), r.value()); return true;
         case Operator::Divide:
             // 除零=不可折叠交既有编译期除零诊断链（503·此处 return false）
-            if (r == "0") return false;
-            out = types::decTextDiv919(l, r);
+            if (r.value() == "0") return false;
+            out = types::decTextDiv919(l.value(), r.value());
             return true;
         case Operator::Modulo:
-            if (r == "0") return false;
-            out = types::decTextMod919(l, r);
+            if (r.value() == "0") return false;
+            out = types::decTextMod919(l.value(), r.value());
             return true;
         default:
             // 移位/位运算/比较/逻辑不进本族（547 巨移位量/474 位宽域各现有通道）

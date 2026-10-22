@@ -91,13 +91,13 @@ void IRGenerator::visitUnaryExpr(UnaryExpr* node) {
             std::string retValSrc;
             std::string retErrSrc;
             if (isResultType(ptype)) {
-                const std::vector<std::string> args = resultTypeArgs(ptype);
+                const std::vector<std::string> args = resultTypeArgs(ptype).value_or((std::vector<std::string>()));
                 if (args.size() == 2) {
                     retValSrc = args[0];
                     retErrSrc = args[1];
                 }
             } else if (isOptionalType(ptype)) {
-                retValSrc = optionalTypeArg(ptype);
+                retValSrc = optionalTypeArg(ptype).value_or(std::string());
                 retErrSrc = "";  // 可选：失败 = 无值（结构体无错误字段）
             }
             if (retValSrc.empty()) {
@@ -110,10 +110,10 @@ void IRGenerator::visitUnaryExpr(UnaryExpr* node) {
             std::string errSrc = retErrSrc;
             if (isResultType(operandType)) {
                 const std::vector<std::string> oargs =
-                    resultTypeArgs(operandType);
+                    resultTypeArgs(operandType).value_or((std::vector<std::string>()));
                 if (oargs.size() == 2) { valSrc = oargs[0]; errSrc = oargs[1]; }
             } else if (isOptionalType(operandType)) {
-                valSrc = optionalTypeArg(operandType);
+                valSrc = optionalTypeArg(operandType).value_or(std::string());
             }
             // 合成结构体名（结果$T$E / 可选$T，按返回类型），失败分支分配临时槽
             std::string structName;
@@ -163,14 +163,14 @@ void IRGenerator::visitUnaryExpr(UnaryExpr* node) {
                 std::string opStruct;
                 if (isResultType(operandType)) {
                     const std::vector<std::string> oargs =
-                        resultTypeArgs(operandType);
+                        resultTypeArgs(operandType).value_or((std::vector<std::string>()));
                     if (oargs.size() == 2) {
                         opStruct = resultStructName(
                             types::canonical(oargs[0]), types::canonical(oargs[1]));
                     }
                 } else if (isOptionalType(operandType)) {
                     opStruct = optionalStructName(
-                        types::canonical(optionalTypeArg(operandType)));
+                        types::canonical(optionalTypeArg(operandType).value_or(std::string())));
                 }
                 const StructDecl* opdecl =
                     (!opStruct.empty()) ? semantic_->findStruct(opStruct) : nullptr;

@@ -93,12 +93,13 @@ bool textExceedsU64(const std::string& text) {
 
 namespace {
 
-// 910：有效数字字符 → 数值（0~15）；非法返回 -1
-int lit910DigitValue(char c) {
+// 910：有效数字字符 → 数值（0~15）；非法=无值
+// 1360 结果化：原哨兵 -1 与合法值域（0..15）重叠，改 cn::Optional
+cn::Optional<int> lit910DigitValue(char c) {
     if (c >= '0' && c <= '9') return c - '0';
     if (c >= 'a' && c <= 'f') return c - 'a' + 10;
     if (c >= 'A' && c <= 'F') return c - 'A' + 10;
-    return -1;
+    return std::nullopt;
 }
 
 // 910：十进制字符串乘加（大数安全）——out = out*base + d（base ≤ 16·d < base）。
@@ -164,10 +165,10 @@ cn::Optional<std::string> normalizeIntLiteralToDecimal(const std::string& raw) {
     if (digits.empty()) return std::nullopt;
     std::string dec = "0";
     for (const char c : digits) {
-        const int d = lit910DigitValue(c);
-        // 1303 结果化: 进制外字符承载（词法层已拒·错误恢复路径）——无值
-        if (d < 0 || d >= base) return std::nullopt;  // 进制外字符（词法已拒·防御面）
-        lit910DecMulAdd(dec, base, d);
+        const cn::Optional<int> d = lit910DigitValue(c);
+        // 1360 结果化：无值=非数字字符（进制外字符，词法层已拒·错误恢复路径）
+        if (!d.has_value() || d.value() >= base) return std::nullopt;
+        lit910DecMulAdd(dec, base, d.value());
         // 大数上界：u128 域上限 39 位十进制——超长即超 u128（继续乘加只会更大）
         const bool tooLongForU128 = dec.size() > 39;  // 位长 >39 必超 u128（位长界数学穷举）
         // 位长 >39 必超 u128 域（u128 上限 39 位十进制·数学穷举）——
@@ -257,8 +258,8 @@ bool decTextFitsTypeDomain(const std::string& decText,
 // 910：整数字面量 IR 运行时类型（提升链单点）——见头文件声明注释。
 std::string integerLiteralRuntimeType(const std::string& raw, int* outStatus) {
     if (outStatus != nullptr) *outStatus = 0;
-    std::string type = literalTypeOf(raw, false);
-    if (type.empty()) type = "整32";
+    // 1360 结果化：非法后缀（词法层已限·错误恢复面）按显形默认 整32 处置
+    std::string type = literalTypeOf(raw, false).value_or("整32");
     const bool unsignedFamily = (type == "正32" || type == "正64" || type == "正128");
     const cn::Optional<std::string> decOpt = normalizeIntLiteralToDecimal(raw);
     if (!decOpt.has_value()) {
@@ -457,11 +458,12 @@ bool lit919OverU128(const std::string& d) {
     return d > "340282366920938463463374607431768211455";
 }
 
-// 919：无符号乘——结果规范无前导零；超 u128 域=空串（显式哨兵，调用方按
-//   910 空串口径处置）。位数预检先行（结果 ≤ a+b 位·位数必超即免算）。
-std::string lit919AbsMul(const std::string& a, const std::string& b) {
+// 919：无符号乘——结果规范无前导零；超 u128 域=无值（1360 结果化：原空串
+//   哨兵退役，消费点 has_value() 显形分流）。位数预检先行（结果 ≤ a+b 位·
+//   位数必超即免算）。
+cn::Optional<std::string> lit919AbsMul(const std::string& a, const std::string& b) {
     if (a == "0" || b == "0") return "0";
-    if (a.size() + b.size() - 1 > 39) return std::string();
+    if (a.size() + b.size() - 1 > 39) return std::nullopt;  // 位数必超=免算
     std::vector<int> acc(a.size() + b.size(), 0);
     for (int i = static_cast<int>(a.size()) - 1; i >= 0; --i) {
         for (int j = static_cast<int>(b.size()) - 1; j >= 0; --j) {
@@ -481,7 +483,7 @@ std::string lit919AbsMul(const std::string& a, const std::string& b) {
     for (; st < acc.size(); ++st) {
         out.push_back(static_cast<char>('0' + acc[st]));
     }
-    if (lit919OverU128(out)) return "";
+    if (lit919OverU128(out)) return std::nullopt;  // 超 u128 域
     return out;
 }
 
@@ -510,8 +512,12 @@ bool lit919AbsDivMod(const std::string& dividend, const std::string& divisor,
 
 }  // namespace
 
-std::string decTextNegate919(std::string t) {
-    if (t.empty() || t == "0") return t;  // 空串哨兵透传·零归一
+// 1360 结果化：六函数原空串哨兵（超 u128 域/除零/空串透传）全部改
+//   cn::Optional 无值——空串不再承担失败语义，消费点 has_value() 显形分流
+//   （口径见 type_system.hpp 919 族声明注释）。
+cn::Optional<std::string> decTextNegate919(std::string t) {
+    if (t.empty()) return std::nullopt;  // 空串输入=契约外（超域文本无取负语义）
+    if (t == "0") return t;  // 零归一
     if (t[0] == '-') {
         t.erase(0, 1);
         return t;
@@ -520,7 +526,7 @@ std::string decTextNegate919(std::string t) {
     return "-" + t;
 }
 
-std::string decTextAdd919(const std::string& a, const std::string& b) {
+cn::Optional<std::string> decTextAdd919(const std::string& a, const std::string& b) {
     const Lit919Parts x = lit919Split(a);
     const Lit919Parts y = lit919Split(b);
     std::string mag;
@@ -539,44 +545,46 @@ std::string decTextAdd919(const std::string& a, const std::string& b) {
             neg = y.neg;
         }
     }
-    if (lit919OverU128(mag)) return "";  // 919 哨兵：超 u128 域
+    if (lit919OverU128(mag)) return std::nullopt;  // 超 u128 域
     if (mag == "0") return "0";
     return neg ? "-" + mag : mag;
 }
 
-std::string decTextSub919(const std::string& a, const std::string& b) {
-    return decTextAdd919(a, decTextNegate919(b));
+cn::Optional<std::string> decTextSub919(const std::string& a, const std::string& b) {
+    const cn::Optional<std::string> negated = decTextNegate919(b);
+    if (!negated.has_value()) return std::nullopt;
+    return decTextAdd919(a, negated.value());
 }
 
-std::string decTextMul919(const std::string& a, const std::string& b) {
+cn::Optional<std::string> decTextMul919(const std::string& a, const std::string& b) {
     const Lit919Parts x = lit919Split(a);
     const Lit919Parts y = lit919Split(b);
     if (x.digits == "0" || y.digits == "0") return "0";
-    const std::string mag = lit919AbsMul(x.digits, y.digits);
-    if (mag.empty()) return "";
-    if (x.neg != y.neg) return "-" + mag;
-    return mag;
+    const cn::Optional<std::string> mag = lit919AbsMul(x.digits, y.digits);
+    if (!mag.has_value()) return std::nullopt;  // 超 u128 域
+    if (x.neg != y.neg) return "-" + mag.value();
+    return mag.value();
 }
 
-std::string decTextDiv919(const std::string& a, const std::string& b) {
+cn::Optional<std::string> decTextDiv919(const std::string& a, const std::string& b) {
     const Lit919Parts y = lit919Split(b);
-    if (y.digits == "0") return "";  // 除零哨兵（求值器先行分流·防御同判）
+    if (y.digits == "0") return std::nullopt;  // 除零（求值器先行分流交诊断链）
     const Lit919Parts x = lit919Split(a);
     std::string q;
     std::string r;
-    if (!lit919AbsDivMod(x.digits, y.digits, q, r)) return "";
+    if (!lit919AbsDivMod(x.digits, y.digits, q, r)) return std::nullopt;  // 商超 u128 域
     if (q == "0") return "0";
     if (x.neg != y.neg) return "-" + q;
     return q;
 }
 
-std::string decTextMod919(const std::string& a, const std::string& b) {
+cn::Optional<std::string> decTextMod919(const std::string& a, const std::string& b) {
     const Lit919Parts y = lit919Split(b);
-    if (y.digits == "0") return "";  // 除零哨兵（同 Div·求值器先行分流）
+    if (y.digits == "0") return std::nullopt;  // 除零（同 Div·求值器先行分流）
     const Lit919Parts x = lit919Split(a);
     std::string q;
     std::string r;
-    if (!lit919AbsDivMod(x.digits, y.digits, q, r)) return "";
+    if (!lit919AbsDivMod(x.digits, y.digits, q, r)) return std::nullopt;  // 商超 u128 域
     if (r == "0") return "0";
     // 截断取余：符号随被除数（C/Rust 口径·与 cnFoldConstIntExpr505 % 同）
     if (x.neg) return "-" + r;

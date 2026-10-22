@@ -34,28 +34,32 @@ std::string_view stripRefSuffix(std::string_view t) {
     return t;
 }
 
-// 整型名秩（整8/正8=1 ... 整128/正128=5；整数别名=整32→3）；非整型名=0
-int intRankOfName(std::string_view t) {
+// 整型名秩（整8/正8=1 ... 整128/正128=5；整数别名=整32→3）；非整型名=无值
+// 1360 结果化：原哨兵 0 与秩值域（1..5）相邻，改 cn::Optional——消费点
+//   has_value() 显形分流（本函数为文件内私有单点，公共 intRank 转发）
+cn::Optional<int> intRankOfName(std::string_view t) {
     const std::size_t n = t.size();
     if (n == 4) {  // 整8 / 正8
-        if (t[3] != '8') return 0;
-        return (t.compare(0, 3, "整") == 0 || t.compare(0, 3, "正") == 0) ? 1 : 0;
+        if (t[3] != '8') return std::nullopt;
+        if (t.compare(0, 3, "整") == 0 || t.compare(0, 3, "正") == 0) return 1;
+        return std::nullopt;
     }
     if (n == 5) {  // 整16 / 整32 / 整64 / 正16 / 正32 / 正64
-        if (t.compare(0, 3, "整") != 0 && t.compare(0, 3, "正") != 0) return 0;
+        if (t.compare(0, 3, "整") != 0 && t.compare(0, 3, "正") != 0) return std::nullopt;
         const char d1 = t[3];
         const char d2 = t[4];
         if (d1 == '1' && d2 == '6') return 2;
         if (d1 == '3' && d2 == '2') return 3;
         if (d1 == '6' && d2 == '4') return 4;
-        return 0;
+        return std::nullopt;
     }
     if (n == 6) {  // 整128 / 正128 / 整数（别名→整32）
         if (t == "整数") return 3;
-        if (t.compare(0, 3, "整") != 0 && t.compare(0, 3, "正") != 0) return 0;
-        return t.compare(3, 3, "128") == 0 ? 5 : 0;
+        if (t.compare(0, 3, "整") != 0 && t.compare(0, 3, "正") != 0) return std::nullopt;
+        if (t.compare(3, 3, "128") == 0) return 5;
+        return std::nullopt;
     }
-    return 0;
+    return std::nullopt;
 }
 
 // 浮点名判定（浮32/浮64/小数别名→浮64）
@@ -76,17 +80,16 @@ ScalarKind scalarKindOf(std::string_view t) {
     if (t == "字符") return ScalarKind::Char;
     if (t == "布尔") return ScalarKind::Bool;
     if (isFloatName(t)) return t == "浮32" ? ScalarKind::Float32 : ScalarKind::Float64;
-    const int rank = intRankOfName(t);
-    // 双边界闭区间（miss 门禁单边比较禁令）：rank 合法域=1..5，域外返回 Other
-    if (rank >= 1 && rank <= 5) {
+    const cn::Optional<int> rank = intRankOfName(t);
+    // 1360 结果化：has_value() 分流（秩值域=1..5，无值=非整数名）
+    if (rank.has_value()) {
         const bool isUnsignedName = t.compare(0, 3, "正") == 0;
-        switch (rank) {
+        switch (rank.value()) {
             case 1: return isUnsignedName ? ScalarKind::UInt8 : ScalarKind::Int8;
             case 2: return isUnsignedName ? ScalarKind::UInt16 : ScalarKind::Int16;
             case 3: return isUnsignedName ? ScalarKind::UInt32 : ScalarKind::Int32;
             case 4: return isUnsignedName ? ScalarKind::UInt64 : ScalarKind::Int64;
             case 5: return isUnsignedName ? ScalarKind::UInt128 : ScalarKind::Int128;
-            default: return ScalarKind::Other;  // 不可达：区间 1..5 已穷举
         }
     }
     return ScalarKind::Other;
@@ -179,8 +182,9 @@ std::string canonicalParam(const std::string& type) {
 }
 
 // 是否整数类型（整8~整128/正8~正128/整数）——#1154：免 canonical 拷贝快路径
+// （1360 结果化：isInteger 是谓词保持 bool 签名，内部以 has_value() 判定）
 bool isInteger(const std::string& type) {
-    return intRankOfName(stripRefSuffix(type)) > 0;
+    return intRankOfName(stripRefSuffix(type)).has_value();
 }
 
 // 静态标量初值可否直存 .data（331-a·T50 根治·三后端单一归属）——见头文件说明。
@@ -188,9 +192,8 @@ bool isInteger(const std::string& type) {
 //   #1154：免 canonical 拷贝快路径（与 canonical 后查表逐值等价）。
 bool isStaticScalarInitType(const std::string& type) {
     const std::string_view t = stripRefSuffix(type);
-    const int rank = intRankOfName(t);
-    // 中文整数族（整8..正128/整数）：双边界闭区间（miss 门禁单边比较禁令）
-    if (rank >= 1 && rank <= 5) return true;
+    // 中文整数族（整8..正128/整数）：1360 结果化 has_value() 即命中
+    if (intRankOfName(t).has_value()) return true;
     if (t == "字符" || t == "布尔") return true;
     // IR 标量整型名：i1/i8/u8/i16/u16/i32/u32/i64/u64（i128/u128 走双 quad 分支）
     if (t.size() == 2) return t == "i1" || t == "i8" || t == "u8";
@@ -217,12 +220,13 @@ bool isInt128Signed(const std::string& type) {
 
 namespace {
 
-// parseInt128InitText 的单字符 digit 值（0~15；非法字符返回 -1）
-int p128DigitValue(char ch) {
+// parseInt128InitText 的单字符 digit 值（0~15）；非十六进制数字字符=无值
+// 1360 结果化：原哨兵 -1 与合法值域（0..15）重叠，改 cn::Optional
+cn::Optional<int> p128DigitValue(char ch) {
     if (ch >= '0' && ch <= '9') return ch - '0';
     if (ch >= 'a' && ch <= 'f') return ch - 'a' + 10;
     if (ch >= 'A' && ch <= 'F') return ch - 'A' + 10;
-    return -1;
+    return std::nullopt;
 }
 
 } // namespace
@@ -266,19 +270,20 @@ bool parseInt128InitText(const std::string& text, bool isSigned,
     if (s.empty()) return false;
     unsigned long long lo = 0, hi = 0;
     for (const char ch : s) {
-        const int d = p128DigitValue(ch);
+        const cn::Optional<int> d = p128DigitValue(ch);
+        // 1360 结果化：无值=非十六进制数字字符
         // 478（473 采样轮）：类型后缀 L/l/U/u 自断（词法原样存 raw 文本，
         //   顶层静态直存通道 initText=raw 未剥后缀——`正128 顶 = …ULL;` 实测
         //   解析失败回退零占位读出 0）；其余非法字符仍拒绝。与 v2 拆半
         //   解析128位初值文本 810 注释「后缀 L/l/U/u 自断」同构对齐。
-        if (d < 0) {
+        if (!d.has_value()) {
             if (ch == 'L' || ch == 'l' || ch == 'U' || ch == 'u') break;
             return false;
         }
-        if (static_cast<unsigned long long>(d) >= base) return false;
+        if (static_cast<unsigned long long>(d.value()) >= base) return false;
         // (hi:lo) = (hi:lo)*base + d —— lo 半字分解乘法：
         const unsigned long long loLo = lo & 0xFFFFFFFFULL, loHi = lo >> 32;
-        const unsigned long long t = loLo * base + static_cast<unsigned long long>(d);
+        const unsigned long long t = loLo * base + static_cast<unsigned long long>(d.value());
         unsigned long long carry = t >> 32;
         unsigned long long newLo = t & 0xFFFFFFFFULL;
         const unsigned long long t2 = loHi * base + carry;
@@ -330,14 +335,15 @@ bool isNumeric(const std::string& type) {
 }
 
 // 是否无符号整数类型（正N）——#1154：免 canonical 拷贝快路径
+// （1360 结果化：谓词保持 bool 签名，内部以 has_value() 判定）
 bool isUnsigned(const std::string& type) {
     const std::string_view t = stripRefSuffix(type);
-    return intRankOfName(t) > 0 && t.compare(0, 3, "正") == 0;
+    return intRankOfName(t).has_value() && t.compare(0, 3, "正") == 0;
 }
 
-// 整型位宽秩（整8=1 ... 整128=5；整数别名=3）；非整数类型返回0
-// #1154：免 canonical 拷贝快路径
-int intRank(const std::string& type) {
+// 整型位宽秩（整8=1 ... 整128=5，整数别名=3）；非整数类型=无值
+// #1154：免 canonical 拷贝快路径；1360 结果化见头文件声明注释
+cn::Optional<int> intRank(const std::string& type) {
     return intRankOfName(stripRefSuffix(type));
 }
 
@@ -350,12 +356,16 @@ bool isFuncPtr(const std::string& type) {
 //   semantic_internal.hpp 的 funcPtrParams——随本函数下沉为 types:: 唯一实现，
 //   语义层内部工具与 IR 层间接调用点共用一份，消除「同解析两份实现」分叉）。
 //   取首个 '(' 到末个 ')' 之间按顶层逗号切分（函数指针形参为类型名，无嵌套逗号；
-//   嵌套形态如 函数指针<空类型>(整32*) 亦正确）；首尾空白剔除；空列表=非函数指针串。
-std::vector<std::string> funcPtrParamsOf(const std::string& type) {
-    std::vector<std::string> result;
+//   嵌套形态如 函数指针<空类型>(整32*) 亦正确）；首尾空白剔除。
+//   1360 结果化：无值=非函数指针串/无参数列表括号配对；空表=合法零参
+//   `函数指针<整32>()`（原空 vector 双语义两态合并消除）。
+cn::Optional<std::vector<std::string>> funcPtrParamsOf(const std::string& type) {
     const std::size_t lp = type.find('(');
     const std::size_t rp = type.rfind(')');
-    if (lp == std::string::npos || rp == std::string::npos || rp <= lp) return result;
+    if (lp == std::string::npos || rp == std::string::npos || rp <= lp) {
+        return std::nullopt;  // 非函数指针串/无参数列表括号
+    }
+    std::vector<std::string> result;
     const std::string inner = type.substr(lp + 1, rp - lp - 1);
     std::size_t pos = 0;
     while (pos <= inner.size()) {
@@ -374,10 +384,11 @@ std::vector<std::string> funcPtrParamsOf(const std::string& type) {
 
 // 函数指针类型串 -> 返回类型（485·对称 funcPtrParamsOf）：取首个 '<' 后至其
 //   配对 '>'（深度计数——返回类型可嵌套函数指针/泛型，'<' '>' 计数配对）；
-//   首尾空白剔除；无 '<' 或无配对 '>' 返回空串（非函数指针串防御）。
-std::string funcPtrReturnTypeOf(const std::string& type) {
+//   首尾空白剔除。1360 结果化：无 '<' / 无配对 '>' / 返回类型空白=无值
+//   （原空串哨兵退役——非函数指针串防御面显形化）。
+cn::Optional<std::string> funcPtrReturnTypeOf(const std::string& type) {
     const std::size_t lt = type.find('<');
-    if (lt == std::string::npos) return "";
+    if (lt == std::string::npos) return std::nullopt;
     int depth = 1;
     for (std::size_t i = lt + 1; i < type.size(); ++i) {
         if (type[i] == '<') {
@@ -386,13 +397,13 @@ std::string funcPtrReturnTypeOf(const std::string& type) {
             if (--depth == 0) {
                 const std::string raw = type.substr(lt + 1, i - lt - 1);
                 const std::size_t b = raw.find_first_not_of(" \t");
-                if (b == std::string::npos) return "";
+                if (b == std::string::npos) return std::nullopt;
                 const std::size_t e = raw.find_last_not_of(" \t");
                 return raw.substr(b, e - b + 1);
             }
         }
     }
-    return "";
+    return std::nullopt;
 }
 
 // ==================== 绑定方法值类型（031·#1075·一等公民化） ====================
@@ -473,9 +484,10 @@ bool canConvert(const std::string& fromRaw, const std::string& toRaw) {
     if ((from == "字符" && isInteger(to)) || (isInteger(from) && to == "字符")) return true;
     // 整型宽化：小位宽 -> 大位宽
     if (isInteger(from) && isInteger(to)) {
-        const int rankFrom = intRank(from);
-        const int rankTo = intRank(to);
-        if (rankFrom == 0 || rankTo == 0) return false;
+        // 1360 结果化：has_value() 分流（isInteger 已前置，无值=内部口径漂移）
+        const cn::Optional<int> rankFrom = intRank(from);
+        const cn::Optional<int> rankTo = intRank(to);
+        if (!rankFrom.has_value() || !rankTo.has_value()) return false;
         // 55-c 方案A（2026-09-10 用户裁决，Rust E0308 对齐）：跨符号（同秩/异秩）
         // 一律拒绝隐式——隐式宽化在混合符号下静默改变值语义，须显式构造转换；
         // 字面量由调用点豁免（canConvertWithLiteral）
@@ -483,7 +495,7 @@ bool canConvert(const std::string& fromRaw, const std::string& toRaw) {
         // 128位 -> 64位窄化特例（方案C 2026-08-14）：限定同符号
         if ((from == "整128" && to == "整64") ||
             (from == "正128" && to == "正64")) return true;
-        return rankFrom < rankTo;
+        return rankFrom.value() < rankTo.value();
     }
     // 浮点宽化：浮32 -> 浮64
     if (from == "浮32" && to == "浮64") return true;
@@ -530,13 +542,13 @@ std::string commonNumericType(const std::string& aRaw, const std::string& bRaw) 
         if (aFloat64 || bFloat64) return "浮64";
         return "浮32";
     }
-    // 均为整型：取秩高者（宽化）
-    const int rankA = intRank(a);
-    const int rankB = intRank(b);
-    if (rankA > 0 && rankB > 0) {
-        return (rankA >= rankB) ? a : b;
+    // 均为整型：取秩高者（宽化）——1360 结果化 has_value() 分流
+    const cn::Optional<int> rankA = intRank(a);
+    const cn::Optional<int> rankB = intRank(b);
+    if (rankA.has_value() && rankB.has_value()) {
+        return (rankA.value() >= rankB.value()) ? a : b;
     }
-    return "整32";  // 未知类型回退
+    return "整32";  // 未知类型回退（#1238 呈报面·维持既有语义）
 }
 
 // 剥离字面量文本的后缀，返回纯数字文本
@@ -668,7 +680,9 @@ bool foldIntLiteralText(const std::string& raw, std::string& out) {
 }
 
 // 解析字面量原始文本的后缀，返回推断的 CN 源码类型名
-std::string literalTypeOf(const std::string& raw, bool isFloat) {
+// 「无后缀」是 001 §4.3 合法契约态（恒定级 整32/浮64·独立分支返回）；
+// 1360 结果化：非法后缀（词法层已限·理论不可达的错误恢复面）=无值
+cn::Optional<std::string> literalTypeOf(const std::string& raw, bool isFloat) {
     if (isFloat) {
         // 浮点字面量：f/F -> 浮32；无后缀 -> 浮64
         if (!raw.empty() && (raw.back() == 'f' || raw.back() == 'F')) return "浮32";
@@ -691,14 +705,14 @@ std::string literalTypeOf(const std::string& raw, bool isFloat) {
         if (!isSuffix) break;  // 非后缀字符=收集终止（显式中断·非业务分支）
         suffix = static_cast<char>(std::toupper(static_cast<unsigned char>(c))) + suffix;
     }
-    if (suffix.empty()) return "整32";       // 无后缀 -> 整32（规格书默认）
+    if (suffix.empty()) return "整32";       // 无后缀 -> 整32（规格书默认·合法契约态）
     if (suffix == "F") return "浮32";        // 123f -> 浮32
     if (suffix == "L") return "整64";
     if (suffix == "LL") return "整128";
     if (suffix == "U") return "正32";
     if (suffix == "UL") return "正64";
     if (suffix == "ULL") return "正128";
-    return "";  // 非法后缀（词法层已限制，防御性返回空串）
+    return std::nullopt;  // 非法后缀（词法层已限·错误恢复面）=无值
 }
 
 
@@ -710,8 +724,9 @@ bool isPointer(const std::string& type) {
 }
 
 // 是否数组类型（类型名形如 元素类型[长度]，长度部分为十进制数字）
+// （1360 结果化：谓词保持 bool 签名，内部以 arrayLenOf has_value() 判定）
 bool isArray(const std::string& type) {
-    return arrayLenOf(type) >= 0;
+    return arrayLenOf(type).has_value();
 }
 
 // 提取指针所指元素类型（整32* -> 整32；非指针类型原样返回）
@@ -729,22 +744,24 @@ std::string arrayElemOf(const std::string& type) {
     return type;
 }
 
-// 提取数组长度（整32[10] -> 10；非数组类型返回 -1）
-int arrayLenOf(const std::string& type) {
+// 提取数组长度（整32[10] -> 10）；非数组类型/下标非纯数字/超 int 承载=无值
+// 1360 结果化：原哨兵 -1 与合法长度值域重叠，改 cn::Optional——
+//   消费点 .has_value() 强制分流
+cn::Optional<int> arrayLenOf(const std::string& type) {
     const std::size_t lb = type.rfind('[');
     const std::size_t rb = type.rfind(']');
     if (lb == std::string::npos || rb == std::string::npos ||
         rb != type.size() - 1 || lb + 1 >= rb) {
-        return -1;
+        return std::nullopt;  // 非数组形态
     }
     const std::string len = type.substr(lb + 1, rb - lb - 1);
     if (len.empty() || len.find_first_not_of("0123456789") != std::string::npos) {
-        return -1;
+        return std::nullopt;  // 下标非纯数字=非本族数组后缀
     }
     try {
         return std::stoi(len);
     } catch (...) {
-        return -1;
+        return std::nullopt;  // 超 int 承载（std::out_of_range）=长度不可承载
     }
 }
 
@@ -779,8 +796,9 @@ void splitTypeSuffix(const std::string& type, std::string& coreOut,
     suffixOut = type.substr(end);
 }
 
-// 基本类型字节大小（规格书3.x类型表）
-int typeSize(const std::string& typeRaw) {
+// 基本类型字节大小（规格书3.x类型表）；1360 结果化：非基本类型=无值
+//   （原哨兵 0 与合法大小值域相邻，消费点 .has_value() 强制分流）
+cn::Optional<int> typeSize(const std::string& typeRaw) {
     const std::string t = canonical(typeRaw);
     if (t == "整8" || t == "正8" || t == "布尔") return 1;
     if (t == "整16" || t == "正16") return 2;
@@ -788,7 +806,7 @@ int typeSize(const std::string& typeRaw) {
     if (t == "整64" || t == "正64" || t == "浮64") return 8;
     if (t == "整128" || t == "正128") return 16;
     if (isPointer(t)) return 8;  // 指针恒为8字节（64位平台）
-    return 0;  // 数组/结构体/其他：由调用方递归计算
+    return std::nullopt;  // 数组/结构体/其他：由调用方递归计算
 }
 
 // ==================== 字符串元素容器/映射判定（语义与IR共用） ====================

@@ -443,7 +443,8 @@ ir::IRValue IRGenerator::evalDefaultExpr(Expr* expr,
         }
         case NodeType::FloatLiteral: {
             FloatLiteral* lit = static_cast<FloatLiteral*>(expr);
-            std::string type = types::literalTypeOf(lit->raw, true);
+            // 1360 结果化：浮点面无后缀契约态=浮64（001 §4.3·显形默认）
+            std::string type = types::literalTypeOf(lit->raw, true).value_or("浮64");
             base = ir::IRValue::constant(types::stripLiteralSuffix(lit->raw),
                                          mapType(type));
             break;

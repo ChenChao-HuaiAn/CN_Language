@@ -59,7 +59,7 @@ bool SemanticAnalyzer::isDefInitTrackedType(const std::string& type) const {
     // 1155：isClassType 恒等于 findClass(type)!=nullptr——原双调用在未命中路径
     //   做两次相同索引查询，删去重复。
     if (isClassType(type)) return false;  // 类/容器实例
-    if (types::arrayLenOf(type) >= 0) return true;        // 数组
+    if (types::arrayLenOf(type).has_value()) return true;  // 数组
     // 结构体/联合体豁免：局部结构体裸声明=编译器入口零初始化注入（257 形二
     //   「字段数组零初始化」断言 r.分数[0]==0 实锤·两侧既有防御）——字段读有
     //   定义行为，不入 def-init 登记面（与拥有型同通道）
@@ -76,8 +76,10 @@ int SemanticAnalyzer::defInitLookupDepth(const std::string& name) const {
 
 void SemanticAnalyzer::defInitCollectLeaves(const std::string& type, const std::string& key,
                                             std::vector<std::string>& out) const {
-    const int len = types::arrayLenOf(type);
-    if (len >= 0) {
+    // 1360 结果化：has_value() 显形分流
+    const cn::Optional<int> lenOpt = types::arrayLenOf(type);
+    if (lenOpt.has_value()) {
+        const int len = lenOpt.value();
         const std::string elem = types::arrayElemOf(type);
         for (int i = 0; i < len; ++i) {
             defInitCollectLeaves(elem, key + "[" + std::to_string(i) + "]", out);

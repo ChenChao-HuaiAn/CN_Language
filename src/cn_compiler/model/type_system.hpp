@@ -64,24 +64,30 @@ bool isNumeric(const std::string& type);
 // 是否无符号整数类型（正N）
 bool isUnsigned(const std::string& type);
 
-// 整型位宽秩（整8=1 ... 整128=5）；非整数类型返回0
-int intRank(const std::string& type);
+// 整型位宽秩（整8=1 ... 整128=5，整数别名=3）；非整数类型=无值
+// 1360 结果化：原哨兵 0 与秩值域重叠（漏检即静默错秩），改 cn::Optional——
+//   消费点 .has_value() 强制分流或 .value_or(显形默认)
+cn::Optional<int> intRank(const std::string& type);
 
 // 是否函数指针类型（函数指针<返回>(参数,...)，Task 2.2 规范化字符串）
 bool isFuncPtr(const std::string& type);
 
 // 从函数指针类型字符串提取形参类型列表（337-a·T53 家系）：
 //   "函数指针<整32>(整32,整128)" -> ["整32","整128"]；非函数指针串/
-//   无参数列表返回空列表。**唯一实现**——语义层内部工具 funcPtrParams 与
-//   IR 层间接调用点（funcPtrParamsOfCallee）均转发至此（消除同解析两份实现）。
-std::vector<std::string> funcPtrParamsOf(const std::string& type);
+//   无参数列表括号配对=无值；空表=合法零参函数指针 `函数指针<整32>()`。
+//   **唯一实现**——语义层内部工具 funcPtrParams 与 IR 层间接调用点
+//   （funcPtrParamsOfCallee）均转发至此（消除同解析两份实现）。
+//   1360 结果化：原空 vector 双语义（非函数指针 vs 合法零参）两态合并，
+//   改 cn::Optional 三态显形——无值=非函数指针串·空表=合法零参·非空=形参表。
+cn::Optional<std::vector<std::string>> funcPtrParamsOf(const std::string& type);
 
 // 从函数指针类型字符串提取返回类型（485·对称 funcPtrParamsOf）：
 //   "函数指针<整128>(整32)" -> "整128"；返回类型可嵌套函数指针/泛型
 //   （如 函数指针<函数指针<整32>(整32)>()），按 '<' '>' 深度计数取首
-//   '<' 的配对 '>'；非函数指针串/无配对返回空串。与 funcPtrParamsOf
-//   同为**唯一实现**——IR 层间接调用点 funcPtrRetTypeOfCallee 转发至此。
-std::string funcPtrReturnTypeOf(const std::string& type);
+//   '<' 的配对 '>'；非函数指针串/无配对 '>'/返回类型空白=无值。
+//   与 funcPtrParamsOf 同为**唯一实现**——IR 层间接调用点
+//   funcPtrRetTypeOfCallee 转发至此。1360 结果化：原空串哨兵改 cn::Optional。
+cn::Optional<std::string> funcPtrReturnTypeOf(const std::string& type);
 
 // ==================== 绑定方法值类型（031·#1075·第一等民化） ====================
 // 内部串形态：`方法值<类名,函数指针<返回类型>(参数表)>`（类名=方法符号 owner 类；
@@ -98,11 +104,11 @@ std::string makeMethodValueType(const std::string& className,
                                 const std::string& fnPtrType);
 
 // 提取绑定方法值的类名（`方法值<X,函数指针<...>(...)>` -> "X"；
-//   非方法值串/无首个逗号返回空串）
+//   非方法值串/残缺=无值）
 std::optional<std::string> methodValueClassOf(const std::string& type);
 
 // 提取绑定方法值内嵌的签名函数指针串（`方法值<X,函数指针<...>(...)>` ->
-//   "函数指针<...>(...)"；非方法值串返回空串）。返回空串=调用方按未登记
+//   "函数指针<...>(...)"；非方法值串/残缺=无值）。无值=调用方按未登记
 //   处置（miss 不可静默纪律——031 内部串由 makeMethodValueType 单一构造）。
 std::optional<std::string> methodValueFnPtrOf(const std::string& type);
 
@@ -121,8 +127,10 @@ std::string pointeeOf(const std::string& type);
 // 提取数组元素类型（整32[10] -> 整32；数组类型中最后一个 '[' 之前的部分）
 std::string arrayElemOf(const std::string& type);
 
-// 提取数组长度（整32[10] -> 10；非数组类型返回 -1）
-int arrayLenOf(const std::string& type);
+// 提取数组长度（整32[10] -> 10）；非数组类型=无值
+// 1360 结果化：原哨兵 -1 与合法长度值域重叠，改 cn::Optional——
+//   消费点 .has_value() 分流；isArray 内部同以 has_value() 判定
+cn::Optional<int> arrayLenOf(const std::string& type);
 
 // 剥离尾部复合后缀（061-a 合成体消费面收口）：类型文本 = 核心 + 后缀，
 //   后缀 = 结尾连续的 *（指针）、&（引用）、[N]（N 为纯十进制数字）组合——
@@ -148,8 +156,10 @@ std::string stripRef(const std::string& type);
 std::string canonicalParam(const std::string& type);
 
 // 基本类型字节大小（整8/布尔=1、整16=2、整32/浮32/字符=4、整64/浮64/指针=8、
-// 整128/正128=16）；其他类型返回0（数组/结构体等由调用方递归计算）
-int typeSize(const std::string& type);
+// 整128/正128=16）；其他类型（数组/结构体等由调用方递归计算）=无值
+// 1360 结果化：原哨兵 0 与合法大小值域（最小 1）相邻易混，改 cn::Optional——
+//   消费点 .has_value() 强制分流
+cn::Optional<int> typeSize(const std::string& type);
 
 // ==================== 隐式转换 ====================
 
@@ -166,8 +176,11 @@ std::string commonNumericType(const std::string& a, const std::string& b);
 // 整数字面量：无后缀 -> 整32；f -> 浮32；L -> 整64；LL -> 整128；
 //            U -> 正32；UL -> 正64；ULL -> 正128
 // 浮点字面量：无后缀 -> 浮64；f/F -> 浮32
-// 返回 CN 源码类型名（整32/浮64 等），非法后缀返回空串
-std::string literalTypeOf(const std::string& raw, bool isFloat);
+// 返回 CN 源码类型名（整32/浮64 等）。「无后缀」是 001 §4.3 合法契约态
+//   （恒定级 整32/浮64，本函数内独立分支返回，与失败态无重叠）；
+//   1360 结果化：非法后缀（词法层已限·理论不可达的错误恢复面）原空串哨兵
+//   改 cn::Optional 无值——消费点 .has_value() 显形分流
+cn::Optional<std::string> literalTypeOf(const std::string& raw, bool isFloat);
 
 // 剥离字面量文本的后缀，返回纯数字文本（"123ULL" -> "123"，"3.5f" -> "3.5"）
 std::string stripLiteralSuffix(const std::string& raw);
@@ -316,21 +329,23 @@ cn::Optional<std::string> splitI128Text(const std::string& raw);
 //   semantic_helpers.hpp cnEvalConstIntExprText919 常量表达式文本级求值消费。
 //   输入约定=规范十进制文本（与 normalizeIntLiteralToDecimal 输出同形：
 //   可带 '-'·无前导零·"0" 表零）；输出同形。
-//   返回空串 = 显式哨兵双语义：①超 u128 域（> 2^128-1·沿 910 空串哨兵
-//   口径——中间与最终结果同判）；②除数为零（调用方求值器先判除零交既有
-//   编译期除零诊断链，不达本族）。调用方按 910 空串口径处置（超一切整型
-//   域拒）。
+//   1360 结果化：原空串哨兵双语义（①超 u128 域 > 2^128-1·沿 910 口径——
+//   中间与最终结果同判；②除数为零）改 cn::Optional 无值——空串不再承担
+//   失败语义，消费点 .has_value() 强制分流（按 910 口径超一切整型域拒；
+//   除零由求值器先行分流交既有编译期除零诊断链）。
 //   存在意义：解析/折叠链（parseIntValue stoll 静默回 0、cnFoldConstIntExpr505
 //   值级 int64 域）对超承载字面量（20 位十进制 99999999999999999999+0）输出
 //   静默错值/回绕；文本级四则为常量表达式值域判定（intLiteralFitsType 表达式
 //   扩展）提供大数安全的数学值。
-std::string decTextAdd919(const std::string& a, const std::string& b);
-std::string decTextSub919(const std::string& a, const std::string& b);
-std::string decTextMul919(const std::string& a, const std::string& b);
-std::string decTextDiv919(const std::string& a, const std::string& b);
-std::string decTextMod919(const std::string& a, const std::string& b);
+cn::Optional<std::string> decTextAdd919(const std::string& a, const std::string& b);
+cn::Optional<std::string> decTextSub919(const std::string& a, const std::string& b);
+cn::Optional<std::string> decTextMul919(const std::string& a, const std::string& b);
+cn::Optional<std::string> decTextDiv919(const std::string& a, const std::string& b);
+cn::Optional<std::string> decTextMod919(const std::string& a, const std::string& b);
 // 919：规范十进制文本取负（"0" → "0" 归一·"5"→"-5"·"-5"→"5"）
-std::string decTextNegate919(std::string t);
+//   1360 结果化：空串输入=契约外（超域文本无取负语义）→ 无值；
+//   合法输入恒有值（纯变换无失败面）
+cn::Optional<std::string> decTextNegate919(std::string t);
 
 } // namespace types
 } // namespace cn_compiler

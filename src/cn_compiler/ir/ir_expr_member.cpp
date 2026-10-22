@@ -307,16 +307,18 @@ void IRGenerator::emitStructInitTo(StructInitExpr* init, const ir::IRValue& targ
             }
             const std::string elemSrc = types::arrayElemOf(fieldSrcType);
             const std::string elemIrType = mapType(elemSrc);
-            std::int64_t elemStride = types::typeSize(elemSrc);
-            if (elemStride <= 0) {
+            // 1360 结果化：无值=元素宽度未登记（下方 #648 内部错误显形面）；
+            //   显形默认 8=原防御终态（控制流零变更）
+            const cn::Optional<int> elemSizeKnown = types::typeSize(elemSrc);
+            std::int64_t elemStride = elemSizeKnown.value_or(8);
+            if (!elemSizeKnown.has_value()) {
                 // 648（miss 不可静默·110 同族）：数组字段元素类型宽度未登记=
                 //   编译器内部缺陷（语义层对非数组字段列表初始化不拦·合法程序
                 //   可走到），显形于此；driver 在 generate() 后 hasErrors() 统一
-                //   中止，产物不落地。原 8 字节兜底保留（控制流零变更）。
+                //   中止，产物不落地。原 8 字节步进保留（控制流零变更）。
                 diagnostics_.report(DiagnosticLevel::Error, loc,
                     "内部错误: 数组字段 '" + fieldName + "' 元素类型 '" + elemSrc +
                         "' 宽度未登记 ——静默步进8兜底已废除（#648）");
-                elemStride = 8;  // 防御：未知类型按 8 字节
             }
             if (semantic_->isStructType(types::canonical(elemSrc))) {
                 elemStride = semantic_->typeSizeOf(elemSrc);
@@ -648,7 +650,7 @@ std::string IRGenerator::resolveNestedMemberObjSrcType(MemberExpr* inner) {
             const std::string canonInner = types::canonical(innerObjType);
             if (isResultType(canonInner)) {
                 const std::vector<std::string> rargs =
-                    resultTypeArgs(canonInner);
+                    resultTypeArgs(canonInner).value_or((std::vector<std::string>()));
                 if (inner->memberName == "值" && rargs.size() == 2) {
                     objSrcType = rargs[0];
                 } else if (inner->memberName == "错误" && rargs.size() == 2) {
@@ -658,7 +660,7 @@ std::string IRGenerator::resolveNestedMemberObjSrcType(MemberExpr* inner) {
                 }
             } else if (isOptionalType(canonInner)) {
                 if (inner->memberName == "值") {
-                    objSrcType = optionalTypeArg(canonInner);
+                    objSrcType = optionalTypeArg(canonInner).value_or(std::string());
                 } else if (inner->memberName == "有值") {
                     objSrcType = "布尔";
                 }
@@ -716,7 +718,7 @@ std::string IRGenerator::resolveMemberFieldSrcType(MemberExpr* node,
     std::string fieldSrcType = "";
     const std::string& srcObjType = types::canonical(objSrcType);
     if (isResultType(srcObjType)) {
-        const std::vector<std::string> rargs = resultTypeArgs(srcObjType);
+        const std::vector<std::string> rargs = resultTypeArgs(srcObjType).value_or((std::vector<std::string>()));
         if (node->memberName == "正常") {
             fieldSrcType = "布尔";
         } else if (node->memberName == "值" && rargs.size() == 2) {
@@ -728,7 +730,7 @@ std::string IRGenerator::resolveMemberFieldSrcType(MemberExpr* node,
         if (node->memberName == "有值") {
             fieldSrcType = "布尔";
         } else if (node->memberName == "值") {
-            fieldSrcType = optionalTypeArg(srcObjType);
+            fieldSrcType = optionalTypeArg(srcObjType).value_or(std::string());
         }
     }
     if (fieldSrcType.empty()) {

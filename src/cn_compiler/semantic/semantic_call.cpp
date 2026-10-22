@@ -557,24 +557,24 @@ bool SemanticAnalyzer::checkBuiltinCtorCall(CallExpr* node) {
             if (!ctorTargetStack_.empty()) {
                 const std::string& target = ctorTargetStack_.back();
                 if (isResultType(target)) {
-                    const std::vector<std::string> targs = resultTypeArgs(target);
+                    const std::vector<std::string> targs = resultTypeArgs(target).value_or((std::vector<std::string>()));
                     if (targs.size() == 2) {
                         ctxT = targs[0];
                         ctxE = targs[1];
                     }
                 } else if (isOptionalType(target)) {
-                    ctxT = optionalTypeArg(target);
+                    ctxT = optionalTypeArg(target).value_or(std::string());
                 }
             }
             if (ctxT.empty() && ctxE.empty() &&
                 !currentReturnType_.empty() && isResultType(currentReturnType_)) {
-                const std::vector<std::string> args = resultTypeArgs(currentReturnType_);
+                const std::vector<std::string> args = resultTypeArgs(currentReturnType_).value_or((std::vector<std::string>()));
                 if (args.size() == 2) {
                     ctxT = args[0];
                     ctxE = args[1];
                 }
             } else if (!currentReturnType_.empty() && isOptionalType(currentReturnType_)) {
-                ctxT = optionalTypeArg(currentReturnType_);
+                ctxT = optionalTypeArg(currentReturnType_).value_or(std::string());
             }
             if (builtinName == "正常") {
                 const std::string e = (ctxE.empty() ? "整32" : ctxE);
@@ -620,8 +620,12 @@ bool SemanticAnalyzer::checkBuiltinCtorCall(CallExpr* node) {
 // 族3：函数指针间接调用（回调(10, 20)；原 visitCallExpr 949~981 段）——参数数量/类型检查。
 bool SemanticAnalyzer::checkFuncPtrCall(CallExpr* node, const std::string& calleeType) {
     if (isFuncPtrType(calleeType)) {
-        std::string retType = funcPtrReturnOf(calleeType);
-        std::vector<std::string> paramTypes = funcPtrParamsOf(calleeType);
+        // 1360 结果化：calleeType 已过 isFuncPtrType 前缀守卫·规范形态恒有值；
+        //   显形默认（空返回/零参）=原残缺回落行为
+        const std::string retType =
+            funcPtrReturnOf(calleeType).value_or(std::string());
+        const std::vector<std::string> paramTypes =
+            funcPtrParamsOf(calleeType).value_or(std::vector<std::string>());
         // 参数数量检查
         if (node->arguments.size() != paramTypes.size()) {
             diagnostics_.report(DiagnosticLevel::Error, node->location,

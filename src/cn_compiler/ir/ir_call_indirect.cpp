@@ -61,9 +61,13 @@ bool IRGenerator::emitFnPtrCall(CallExpr* node,
             ir::IRValue thisVal, codeVal;
             loadMethodValuePair(unique, thisVal, codeVal, node->location);
             args.insert(args.begin(), thisVal);   // 参数位 0（this 注入）
-            const std::string retSrcMV =
+            // 1360 结果化：方法值内嵌函数指针串由 makeMethodValueType 单点
+            //   构造·恒有值；无值=内部缺陷显形（不进聚合返回分支）
+            const cn::Optional<std::string> retSrcMVOpt =
                 types::funcPtrReturnTypeOf(calleeFnPtrType);
-            if (!retSrcMV.empty() && semantic_ != nullptr &&
+            const bool retSrcMVValid = retSrcMVOpt.has_value();
+            const std::string retSrcMV = retSrcMVOpt.value_or(std::string());
+            if (retSrcMVValid && semantic_ != nullptr &&
                 (semantic_->isStructType(types::canonical(retSrcMV)) ||
                  types::isArray(retSrcMV))) {
                 const std::string temp = "__retbuf" + std::to_string(varCounter_++);
@@ -91,17 +95,22 @@ bool IRGenerator::emitFnPtrCall(CallExpr* node,
         }
     }
     if (!calleeFnPtrType.empty()) {
-        const std::vector<std::string> fnPtrParams =
+        // 1360 结果化：空表=合法零参（size 比对自然成立）；无值=非函数
+        //   指针串形态不宽化
+        const cn::Optional<std::vector<std::string>> fnPtrParamsOpt =
             types::funcPtrParamsOf(calleeFnPtrType);
-        if (!fnPtrParams.empty() && fnPtrParams.size() == args.size()) {
-            widenI128Args(args, fnPtrParams, node->location);
+        if (fnPtrParamsOpt.has_value() &&
+            fnPtrParamsOpt.value().size() == args.size()) {
+            widenI128Args(args, fnPtrParamsOpt.value(), node->location);
         }
         // 结构体/数组返回 fnptr：形态A同构（直接调用 087 同款）——retbuf 预插，
         //   operands=[fnptr, retbuf, 实参...]（operand[0]=call 目标·operand[1]=
         //   隐藏返回指针落 rcx），result=void，lastExpr_=retbuf 地址（调用方
         //   CopyStruct 消费与直接调用同链）。
-        const std::string retSrc = types::funcPtrReturnTypeOf(calleeFnPtrType);
-        if (retSrc.empty()) {
+        const cn::Optional<std::string> retSrcOpt =
+            types::funcPtrReturnTypeOf(calleeFnPtrType);
+        const std::string retSrc = retSrcOpt.value_or(std::string());
+        if (!retSrcOpt.has_value()) {
             // 648 miss 不可静默：函数指针类型串已解析但返回类型未登记——原静默
             //   落终态 "i32"（上方 801 行注释自认保守兜底；485 修的本链已登记
             //   面，此报错收口未登记面）。报诊断后保留 i32 兜底与控制流
@@ -110,7 +119,7 @@ bool IRGenerator::emitFnPtrCall(CallExpr* node,
                 DiagnosticLevel::Error, node->location,
                 "内部错误: 函数指针返回类型未登记 '" + calleeFnPtrType + "'（#648）");
         }
-        if (!retSrc.empty() && semantic_ != nullptr &&
+        if (retSrcOpt.has_value() && semantic_ != nullptr &&
             (semantic_->isStructType(types::canonical(retSrc)) ||
              types::isArray(retSrc))) {
             ir::IRValue calleeVal = genExpr(node->callee.get());

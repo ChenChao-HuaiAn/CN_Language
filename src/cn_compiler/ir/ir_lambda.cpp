@@ -104,7 +104,7 @@ void IRGenerator::buildClosureParams943(
                     : reg.type;
         // 337-a（T53 家系）：lambda 形参同款——函数指针取完整规范串
         //   （paramSrcTypeOf 单一归属，与 ir_decl/ir_generic_func 登记点同口径）。
-        entry.srcType = paramSrcTypeOf(param);
+        entry.srcType = paramSrcTypeOf(*param);
         entry.byRef = isRefParam;
         varStack_.back()[param->name] = entry;
     }

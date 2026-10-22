@@ -87,7 +87,7 @@ void IRGenerator::visitReturnStmt(ReturnStmt* node) {
             node->value->getType() == NodeType::NullLiteral &&
             isOptionalType(types::canonical(function_->returnTypeSrc))) {
             const std::string optSrc = types::canonical(function_->returnTypeSrc);
-            const std::string t = types::canonical(optionalTypeArg(optSrc));
+            const std::string t = types::canonical(optionalTypeArg(optSrc).value_or(std::string()));
             if (!t.empty()) {
                 const std::string structName = optionalStructName(t);
                 const StructDecl* decl = semantic_->findStruct(structName);

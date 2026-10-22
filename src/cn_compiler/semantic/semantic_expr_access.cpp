@@ -110,7 +110,7 @@ void SemanticAnalyzer::visitMemberExpr(MemberExpr* node) {
         // 推导成员类型：结果.正常 -> 布尔；可选.有值 -> 布尔；结果.值 -> T；可选.值 -> T；
         // 结果.错误 -> E
         if (isResultType(objectType)) {
-            const std::vector<std::string> args = resultTypeArgs(objectType);
+            const std::vector<std::string> args = resultTypeArgs(objectType).value_or((std::vector<std::string>()));
             if (memberName == "正常") {
                 lastType_ = "布尔";
                 return;
@@ -130,7 +130,7 @@ void SemanticAnalyzer::visitMemberExpr(MemberExpr* node) {
                 return;
             }
             if (memberName == "值") {
-                lastType_ = canonicalType(optionalTypeArg(objectType));
+                lastType_ = canonicalType(optionalTypeArg(objectType).value_or(std::string()));
                 return;
             }
         }
@@ -435,8 +435,11 @@ void SemanticAnalyzer::visitIndexExpr(IndexExpr* node) {
         //   确定性错误无条件）；常量传播面（变量持有常量初值）属后续
         //   常量折叠波。rustc 对照：`a[5]`（len 3）常量下标 deny，unsafe
         //   块内同样报。
-        const int arrLen114 = types::arrayLenOf(objectType);
-        if (arrLen114 > 0 && isIntLiteralExpr(node->index.get())) {
+        // 1360 结果化：has_value() 显形分流（无值=非数组·不进编译期拦截）
+        const cn::Optional<int> arrLen114Opt = types::arrayLenOf(objectType);
+        if (arrLen114Opt.has_value() && arrLen114Opt.value() > 0 &&
+            isIntLiteralExpr(node->index.get())) {
+            const int arrLen114 = arrLen114Opt.value();
             const Expr* idxE = node->index.get();
             std::int64_t idxVal = 0;
             if (idxE->getType() == NodeType::IntegerLiteral) {

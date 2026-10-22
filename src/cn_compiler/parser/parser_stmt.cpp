@@ -448,7 +448,8 @@ bool Parser::parseCaseIntLabel(std::int64_t& outValue, std::string& outRaw,
         handled = false;
         return false;
     }
-    std::string acc = dec1;
+    // 1360 结果化：无值=超 u128 域（919 口径）——carryOk1137 判定自然落假
+    cn::Optional<std::string> acc = dec1;
     if (folded2) {
         acc = subOp ? types::decTextSub919(dec1, dec2)
                     : types::decTextAdd919(dec1, dec2);
@@ -461,29 +462,34 @@ bool Parser::parseCaseIntLabel(std::int64_t& outValue, std::string& outRaw,
     const auto isUnsignedLit1137 = [](const std::string& t) {
         return t == "正32" || t == "正64" || t == "正128";
     };
+    const cn::Optional<std::string> lt1137a = types::literalTypeOf(raw1, false);
     bool unsignedCarry1137 =
-        !neg1 && isUnsignedLit1137(types::literalTypeOf(raw1, false));
-    if (folded2 && !neg2 &&
-        isUnsignedLit1137(types::literalTypeOf(raw2, false))) {
-        unsignedCarry1137 = true;
+        !neg1 && lt1137a.has_value() && isUnsignedLit1137(lt1137a.value());
+    if (folded2 && !neg2) {
+        const cn::Optional<std::string> lt1137b =
+            types::literalTypeOf(raw2, false);
+        if (lt1137b.has_value() && isUnsignedLit1137(lt1137b.value())) {
+            unsignedCarry1137 = true;
+        }
     }
     const bool carryOk1137 =
-        !acc.empty() &&
+        acc.has_value() &&
         (unsignedCarry1137
              ? types::decTextFitsUnsignedRange(
-                   acc, "340282366920938463463374607431768211455")
+                   acc.value(), "340282366920938463463374607431768211455")
              : types::decTextFitsSignedRange(
-                   acc, "170141183460469231731687303715884105728",
+                   acc.value(), "170141183460469231731687303715884105728",
                    "170141183460469231731687303715884105727"));
     // 静默豁免上游已诊断: 折叠结果超承载族（超 u128/超整128/超正128）已报错误——return false=解析失败中止信号
     if (!carryOk1137) {
         reportCaseCarryError(unsignedCarry1137 ? 2 : 1);
         return false;
     }
-    outDecValue = acc;
-    outValue = caseIntValueIfFits(acc);
+    // carryOk1137 已通过=acc 恒有值（无值在 carryOk1137 分支早退）
+    outDecValue = acc.value();
+    outValue = caseIntValueIfFits(acc.value());
     // 括号形态 outRaw=折叠后值文本（320-a 原行为）；直取形态=原文
-    outRaw = hasParen ? acc : (neg1 ? "-" : "") + raw1;
+    outRaw = hasParen ? acc.value() : (neg1 ? "-" : "") + raw1;
     return true;
 }
 

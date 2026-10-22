@@ -727,7 +727,7 @@ void IRGenerator::registerFunctionParams(FunctionDecl* node, ir::IRFunction& fun
         //   泛型实例体：T→实参类型替换（`函数指针<整32>(T,T)` → `...<整32>(整128,整128)`）
         //   ——否则实例体内间接调用解析出形参 "T"、128 位判定落空（探针 n 实证：
         //   泛型实例体 应用$整128 的形参未替换，字面量实参仍窄传）。
-        entryInfo.srcType = substGenericType(paramSrcTypeOf(param.get()));
+        entryInfo.srcType = substGenericType(paramSrcTypeOf(*param.get()));
         entryInfo.byRef = isRefParam;         // A-1：引用参数按 byRef 语义读写
         varStack_.back()[param->name] = entryInfo;
     }
