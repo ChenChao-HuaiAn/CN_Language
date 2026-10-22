@@ -280,6 +280,13 @@ def 分类语句(语: list) -> str:
 def 判else块源(块源: str):
     """else 块源文本→(是否红, 首违语句文本)。状态机：无「其他」且
     （无「返回值」或 有「报错」）→ 合法（648 报诊断+返回收尾模式放行）。"""
+    归一 = re.sub(r"\s+", "", 块源)
+    if ".value_or(" in 归一 or ".value(" in 归一:
+        # 1360 结果化消费点豁免：块内每条语句均为 Optional 取值（.value()/.value_or(）
+        # =类型强制通道的取值赋值（显形默认/坏值 abort）·非业务分支
+        语句们 = [x for x in re.split(r"[;{}]", 归一) if x.strip()]
+        if 语句们 and all((".value(" in x or ".value_or(" in x) for x in 语句们):
+            return False, ""
     语们 = 切语句(核968.词法(块源))
     有报错 = False
     返回任意 = None
@@ -394,6 +401,8 @@ def 分析条件(条: str):
     撤 = 条.replace("->", "  ").replace("<<", "  ").replace(">>", "  ")
     if "nullptr" in 撤 or "空指针" in 撤:
         return ""                        # 指针判空排除（区间符下的空指针比较不判）
+    if ".value()" in 条 or ".值(" in 条:
+        return ""                        # 1360：Optional 取值接收者的有效性守卫=契约边界检查（结果化消费点豁免）
     记录 = {}                            # 操作数归一 → {"向": 方向集, "字面量": bool}
     for m in 区间比较.finditer(撤):
         左 = 截操作数(撤, m.start(), True)
@@ -445,6 +454,8 @@ def 扫单边比较(相对: str, 掩: str, 行首表: list):
         行起 = 行首表[行 - 1] if 行 - 1 < len(行首表) else 0
         行终 = 掩.find("\n", 行起)
         行文 = 掩[行起:行终 if 行终 >= 0 else len(掩)].strip()
+        if "std::nullopt" in 行文 or "返回 无" in 行文:
+            continue           # 1360：分支返回 nullopt=结果化否定回答通道（守卫·非业务区间）
         红点.append({"面": "单边比较", "文件": 相对, "行": 行,
                    "锚": 行文[:120], "条件": re.sub(r"\s+", "", 条)[:80], "因": 原因})
     return 红点
@@ -928,6 +939,40 @@ def 红种们(果) -> set:
     return {r["种类"] for r in 果["红"]}
 
 
+def 自测场景结果化(断言, 保活):
+    """场景结果化（1360）：结果/可选 消费点惯用法=豁免绿·裸哨兵新位置仍真拦。"""
+    根, 表, 基 = 自测建场景(保活, {
+        "src/样例.cpp": 样例合格, "CN语言编译器v2/源.cn": "// v2 占位\n"})
+    rc, 果, _s = 自测跑(根, 表, 基)
+    断言(rc == 0, f"基线绿: 红={果['红']!r}")
+    样例 = 根 / "src" / "结果化.cpp"
+    样例1360 = """std::optional<int> 取长(const std::string& s) {
+    if (s.empty()) return std::nullopt;
+    return (int)s.size();
+}
+int 用长(const std::string& s) {
+    auto len = 取长(s);
+    if (!len.has_value()) return false;
+    if (len.value() <= 0) return 0;
+    return len.value();
+}
+std::string 兜(std::optional<int> o) {
+    std::string out;
+    if (o.has_value()) { out = "y"; } else { out = std::to_string(o.value_or(0)); }
+    return out;
+}"""
+    样例.write_text(样例1360, encoding="utf-8")
+    rc, 果, _s = 自测跑(根, 表, 基)
+    断言(rc == 0, f"1360 结果化消费点=豁免绿: 红={果['红']!r}")
+    样例.write_text(样例1360 + """int 查宽2(表& t, std::string k) {
+    auto it = t.find(k);
+    if (it == t.end()) return 0;
+    return it->second;
+}""", encoding="utf-8")
+    rc, 果, _s = 自测跑(根, 表, 基)
+    断言(rc == 1 and "新增静默形态" in 红种们(果), f"1360 反态·裸哨兵新位置仍真拦: {红种们(果)}")
+
+
 def 自测场景二(断言, 保活):
     """场景二：else 块业务语句（用户 else 新规）与 648 报诊断收尾模式放行。"""
     根, 表, 基 = 自测建场景(保活, {
@@ -1000,7 +1045,7 @@ def 自测() -> int:
             失败.append(说明)
 
     保活 = []                            # TemporaryDirectory 保活（防提前清理）
-    for 场景 in (自测场景一, 自测场景二, 自测场景三, 自测场景四):
+    for 场景 in (自测场景一, 自测场景结果化, 自测场景二, 自测场景三, 自测场景四):
         try:
             场景(断言, 保活)
         except Exception as e:           # 场景异常=自测失败（显形不静默）

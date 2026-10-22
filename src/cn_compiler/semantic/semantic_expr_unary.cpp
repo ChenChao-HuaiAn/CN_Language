@@ -223,6 +223,7 @@ void SemanticAnalyzer::checkPropagateUnary(UnaryExpr* node,
                                     canonicalType(args[0]) + ", " +
                                     canonicalType(args[1]) + "> 类型（实际返回 '" +
                                     currentReturnType_ + "'）");
+                        // 静默豁免业务值: 1360 结果化取值路径——?传播错误分流后正常取两参·非兜底
                         } else {
                             const std::vector<std::string> retArgs =
                                 resultTypeArgs(currentReturnType_).value_or((std::vector<std::string>()));

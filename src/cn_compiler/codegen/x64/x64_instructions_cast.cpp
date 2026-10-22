@@ -623,6 +623,12 @@ bool X64CodeGenerator::emitCastIntWidth(AsmWriter& writer, const ir::IRInstructi
                 //   movsx 语义等价（写 eax 清高 32=32 位补码形态，cdqe 继续
                 //   符号扩展到 64 位）；对齐 linux/arm64 后端统一常量装载器。
                 writer.line("mov eax, " + src);
+            } else if (isRegisterOperandText(src)) {
+                // 1360：源已分配物理寄存器——窄寄存器名扩展（r13→r13b/r13w）。
+                //   结果化轮实录：批1 类型判定 Optional 化后 IR 临时分配微变，
+                //   本 cast 源落寄存器而非槽·原 mp+src 直拼出 byte ptr r13
+                //   =A2032（546/730/826 三用例云端 ml64 红实锚）。对齐 1159 惯用法。
+                writer.line("movsx eax, " + narrowOperand(from, src));
             } else {
                 writer.line("movsx eax, " + memSizePtr(from) + src);
             }
@@ -632,6 +638,8 @@ bool X64CodeGenerator::emitCastIntWidth(AsmWriter& writer, const ir::IRInstructi
                 // 077 同款常量源适配：无符号常量非负，mov eax 清高 32=零扩展
                 //   （movzx 同构）。
                 writer.line("mov eax, " + src);
+            } else if (isRegisterOperandText(src)) {
+                writer.line("movzx eax, " + narrowOperand(from, src));
             } else {
                 writer.line("movzx eax, " + memSizePtr(from) + src);
             }

@@ -123,6 +123,8 @@ bool SemanticAnalyzer::intLiteralFitsType(const Expr* e, const std::string& to) 
             return false;
         }
         cn::Optional<std::string> dec919;
+        // 静默豁免业务值: 1360 结果化轮——919 求值器 bool+可选出参双通道否定回答
+        //   （false=非常量→返回 真=超域命中·消费点据此跳过判域）·类型强制消费点·非兜底
         if (!cnEvalConstIntExprText919(e, dec919)) return true;
         // 承载内值（int64 域内）：交既有折叠/溢出预演链（族④a 防双报）
         if (dec919.has_value() &&

@@ -85,6 +85,11 @@ sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="repla
         "未命中", "查找失败", "查表失败", "容错")
 
 # miss 信号（判定条件文本内匹配·收紧口径：显式「查无效/查不到」判定）
+# 1360 结果化消费点通道（哨兵禁令全面化·终态立法 96b86f64）：has_value 分流/nullopt
+# 返回/value_or 显形默认=类型强制的检查动作本身·非「默认值顶替」——三形态扫描器豁免。
+结果化通道 = re.compile(
+    r"\.has_value\s*\(\s*\)|std::nullopt|\.value_or\s*\("
+    r"|\.有值|返回\s*无")
 miss信号 = re.compile(
     r"==\s*nullptr|!\s*[\w\u4e00-\u9fff(]|\.empty\s*\(\s*\)|\.end\s*\(\s*\)"
     r"|==\s*-1\b|<\s*0\b|>=\s*[\w.]+\.size\s*\(|>=\s*[\w.]+\.大小\s*\(|miss\b"
@@ -378,6 +383,8 @@ def 扫形态宿主(文件: str, 行们: list, 头们: list, 弱: list):
             值, 哨兵 = 取默认值(rm.group(1))
             if not 值:
                 continue
+            if 结果化通道.search(条件) or (次 and 结果化通道.search(次[1])):
+                continue
             if not miss信号.search(条件):
                 弱[0] += 1
                 continue
@@ -432,6 +439,8 @@ def 扫形态v2(文件: str, 行们: list, 头们: list, 弱: list):
                 continue
             值, 哨兵 = 取默认值(rm.group(1))
             if not 值:
+                continue
+            if 结果化通道.search(条件) or (次 and 结果化通道.search(次[1])):
                 continue
             if not miss信号.search(条件):
                 弱[0] += 1

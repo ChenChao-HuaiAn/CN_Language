@@ -611,6 +611,7 @@ void SemanticAnalyzer::desugarRangeForIterable(RangeForStmt* node,
                                 "'遍历...中每个' 迭代数组长度必须为正（实际 '" +
                                     containerType + "'）");
             desugarOk = false;
+        // 静默豁免业务值: 1360 结果化取值路径——长度守卫分流后正常构建·非兜底
         } else {
             lenExpr = std::make_unique<IntegerLiteral>(
                 lenOpt.value(), std::to_string(lenOpt.value()));

@@ -195,6 +195,7 @@ target_link_libraries(cn_compiler_model PUBLIC cn_compiler_common)
 #   按职责拆分子模块：class_resolver/error_analysis/generics，供编译器与单元测试共用）
 add_library(cn_compiler_semantic STATIC
     src/cn_compiler/semantic/semantic.cpp
+    src/cn_compiler/semantic/semantic_funcptr.cpp  # 1360：函数指针类型族（自 semantic.cpp 拆分）
     src/cn_compiler/semantic/semantic_constlen.cpp
     src/cn_compiler/semantic/semantic_view_forwarders.cpp
     src/cn_compiler/semantic/semantic_types.cpp

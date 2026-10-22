@@ -18,6 +18,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <optional>
+#include <type_traits>
 #include <utility>
 
 namespace cn_compiler {
@@ -30,7 +31,13 @@ public:
     //   `Optional<std::string> o = "文本";` 自然书写）
     Optional() = default;
     Optional(std::nullopt_t) {}
-    Optional(T v) : storage_(std::move(v)) {}
+    // 转发构造：U 直接构造 T 于 storage 内（一次转换）——容许 `return "文本";`
+    //   （const char*→string 单跳完成·双用户转换是 GCC 拒/MSVC 放的双编译差异面·
+    //   1360 实录）与任意可构造 T 的形态；std::optional 自身 SFINAE 约束防误吞。
+    template <typename U, typename = std::enable_if_t<
+        std::is_constructible_v<std::optional<T>, U&&> &&
+        !std::is_same_v<std::decay_t<U>, std::nullopt_t>>>
+    Optional(U&& v) : storage_(std::forward<U>(v)) {}
 
     // 显形通道①：是否有值——消费点分流的第一判据
     bool has_value() const { return storage_.has_value(); }

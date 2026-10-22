@@ -137,8 +137,8 @@ bool scalarCanConvert(ScalarKind from, ScalarKind to) {
 // Task 2.4：递归规范化复合类型——指针（整数* -> 整32*）与数组（整数[10] -> 整32[10]）
 // Task 2.10：`指针` 为通用指针别名（空类型*），用于 指针(地址) 强制转换与 指针 x 声明
 std::string canonical(const std::string& type) {
-    if (type == "整数") return "整32";
-    if (type == "小数") return "浮64";
+    if (type == "整数") return std::string("整32");
+    if (type == "小数") return std::string("浮64");
     if (type == "指针") return "空类型*";
     // 引用类型：尾字符 '&'（账户& / T&），引用是别名，剥除后等价其基础类型
     //   （缺陷5 修复：友元引用参数 账户& 账 经 canonical 剥 & 后 findClass 命中，
@@ -539,8 +539,8 @@ std::string commonNumericType(const std::string& aRaw, const std::string& bRaw) 
     if (isFloat(a) || isFloat(b)) {
         const bool aFloat64 = (a == "浮64");
         const bool bFloat64 = (b == "浮64");
-        if (aFloat64 || bFloat64) return "浮64";
-        return "浮32";
+        if (aFloat64 || bFloat64) return std::string("浮64");
+        return std::string("浮32");
     }
     // 均为整型：取秩高者（宽化）——1360 结果化 has_value() 分流
     const cn::Optional<int> rankA = intRank(a);
@@ -548,7 +548,7 @@ std::string commonNumericType(const std::string& aRaw, const std::string& bRaw) 
     if (rankA.has_value() && rankB.has_value()) {
         return (rankA.value() >= rankB.value()) ? a : b;
     }
-    return "整32";  // 未知类型回退（#1238 呈报面·维持既有语义）
+    return std::string("整32");  // 未知类型回退（#1238 呈报面·维持既有语义）
 }
 
 // 剥离字面量文本的后缀，返回纯数字文本
@@ -685,8 +685,8 @@ bool foldIntLiteralText(const std::string& raw, std::string& out) {
 cn::Optional<std::string> literalTypeOf(const std::string& raw, bool isFloat) {
     if (isFloat) {
         // 浮点字面量：f/F -> 浮32；无后缀 -> 浮64
-        if (!raw.empty() && (raw.back() == 'f' || raw.back() == 'F')) return "浮32";
-        return "浮64";
+        if (!raw.empty() && (raw.back() == 'f' || raw.back() == 'F')) return std::string("浮32");
+        return std::string("浮64");
     }
     // 整数字面量后缀（规格书4.3）：f/L/LL/U/UL/ULL
     // 注意：后缀大小写不敏感（l/lL/uL 等），统一转大写匹配
@@ -705,13 +705,13 @@ cn::Optional<std::string> literalTypeOf(const std::string& raw, bool isFloat) {
         if (!isSuffix) break;  // 非后缀字符=收集终止（显式中断·非业务分支）
         suffix = static_cast<char>(std::toupper(static_cast<unsigned char>(c))) + suffix;
     }
-    if (suffix.empty()) return "整32";       // 无后缀 -> 整32（规格书默认·合法契约态）
-    if (suffix == "F") return "浮32";        // 123f -> 浮32
-    if (suffix == "L") return "整64";
-    if (suffix == "LL") return "整128";
-    if (suffix == "U") return "正32";
-    if (suffix == "UL") return "正64";
-    if (suffix == "ULL") return "正128";
+    if (suffix.empty()) return std::string("整32");       // 无后缀 -> 整32（规格书默认·合法契约态）
+    if (suffix == "F") return std::string("浮32");        // 123f -> 浮32
+    if (suffix == "L") return std::string("整64");
+    if (suffix == "LL") return std::string("整128");
+    if (suffix == "U") return std::string("正32");
+    if (suffix == "UL") return std::string("正64");
+    if (suffix == "ULL") return std::string("正128");
     return std::nullopt;  // 非法后缀（词法层已限·错误恢复面）=无值
 }
 
