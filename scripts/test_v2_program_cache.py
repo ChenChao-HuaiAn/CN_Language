@@ -67,6 +67,7 @@ from v2_program_cache_testlib import (  # noqa: E402
     统计行特征, 条目名正则, 计数器, 去统计, 摘要128, 是祖先,
     构建v2p, 建工作区, 运行v2p, 缓存目录, 缓存条目们, asm路径, 唯一条目,
     解析并校验条目, 重构条目, 简单源, 警告源, 货舱源, 写货舱, 建立基线,
+    默认源组, 源指纹需重建,
 )
 
 
@@ -562,6 +563,8 @@ def 用例_读写失败(t: 计数器, v2p, 目标: str, 根: pathlib.Path) -> No
     (条目 / "占位子文件").write_text("x", encoding="utf-8")
     r1 = 运行v2p(v2p, 区, "src/主.cn", 目标, (), 环境统计)
     t.断言(r1.returncode == 0, "条目被目录占位=回退后 rc=0", f"rc={r1.returncode}")
+    # #1215（4a6307ce）起 __cn_file_exists 按路径属性判定（目录=存在），
+    #   目录占位在三平台统一走「读失败=损坏回退」，不再需要平台分支。
     t.统计断言(r1, "条目被目录占位=读取失败+写入失败", 损坏回退=1, 写失败=1)
     t.断言("缓存条目无效（文件不可读）" in (r1.stderr or ""),
            "条目被目录占位=读取失败显式告警")
@@ -645,6 +648,37 @@ def 用例_货舱键(t: 计数器, v2p, 目标: str, 根: pathlib.Path) -> None:
            f"{len(缓存条目们(区))} 个")
 
 
+def 用例_货舱无末换行与无货舱(t: 计数器, v2p, 目标: str, 根: pathlib.Path) -> None:
+    t.段("⑪b 货舱 TOCTOU 同源：无末尾换行/无货舱.toml 均正常命中")
+    # 无末尾换行货舱.toml（扫描 读源文件 会补换行符；写前复核必须同源，否则永不写缓存）
+    区 = 建工作区(根 / "货舱无末换行", 目标, 货舱源())
+    NL = chr(10)
+    (区 / "货舱.toml").write_text(
+        '[货舱]' + NL + '名称 = "缓存自测"' + NL + '版本 = "1.0"' + NL +
+        '[特性]' + NL + '启用 = ["甲"]', encoding="utf-8")
+    入口 = str(区 / "主.cn")
+    基 = 建立基线(t, v2p, 区, 入口, 目标, "无末尾换行货舱")
+    if 基 is None:
+        return
+    r2 = 运行v2p(v2p, 区, 入口, 目标, (), 环境统计)
+    t.统计断言(r2, "无末尾换行货舱二次命中", 命中=1)
+    t.断言("输入发生变化" not in (r2.stderr or ""),
+           "无末尾换行货舱不误报 TOCTOU", (r2.stderr or "")[-200:])
+    t.断言(asm路径(区, 目标).read_bytes() == 基["产物"],
+           "无末尾换行货舱命中产物一致")
+
+    # 无货舱.toml：键形态稳定（空头字段），冷/热均正常
+    区2 = 建工作区(根 / "无货舱", 目标, 货舱源())
+    入口2 = str(区2 / "主.cn")
+    基2 = 建立基线(t, v2p, 区2, 入口2, 目标, "无货舱.toml")
+    if 基2 is None:
+        return
+    r2b = 运行v2p(v2p, 区2, 入口2, 目标, (), 环境统计)
+    t.统计断言(r2b, "无货舱.toml 二次命中", 命中=1)
+    t.断言("输入发生变化" not in (r2b.stderr or ""),
+           "无货舱.toml 不误报 TOCTOU", (r2b.stderr or "")[-200:])
+
+
 def 用例_无临时残留(t: 计数器, 根: pathlib.Path) -> None:
     t.段("⑨ 无 *.tmp* 残留 + 缓存目录仅含 .cnvpc 条目")
     根 = 根.resolve()
@@ -707,9 +741,36 @@ def 自测() -> int:
     无统 = 统计行特征.search("[警告] x\n") is None
     空摘要 = 摘要128(b"") == (14695981039346656037, 1469598103934665603, 0)
     判据 = 汇总退出码(t) == 1 and 汇总退出码(计数器()) == 0
-    ok = 正 and not 负 and 统计成 and 去 and 无统 and 空摘要 and 判据
+    # 指纹正反自测：全旧=复用；runtime/v2/stdlib 任一更新=需重建
+    import tempfile
+    fp根 = pathlib.Path(tempfile.mkdtemp(prefix="fp_", dir=str(仓库根 / "target")))
+    try:
+        fpv2p = fp根 / "v2p"
+        fpv2p.write_bytes(b"x")
+        now = time.time()
+        os.utime(fpv2p, (now, now))
+        groups = []
+        for name, pat, suffix in (("cn", "*.cn", ".cn"), ("rt", "*.cpp", ".cpp"),
+                                  ("std", "*.cn", ".cn")):
+            root = fp根 / name
+            root.mkdir()
+            f = root / ("a" + suffix)
+            f.write_text("x", encoding="utf-8")
+            os.utime(f, (now - 100, now - 100))
+            groups.append((root, (pat,)))
+        fpok = not 源指纹需重建(fpv2p, groups)
+        for name, pat, suffix in (("rt", "*.cpp", ".cpp"), ("cn", "*.cn", ".cn"),
+                                  ("std", "*.cn", ".cn")):
+            f = fp根 / name / ("a" + suffix)
+            os.utime(f, (now + 100, now + 100))
+            if not 源指纹需重建(fpv2p, groups):
+                fpok = False
+            os.utime(f, (now - 100, now - 100))
+    finally:
+        shutil.rmtree(fp根, ignore_errors=True)
+    ok = 正 and not 负 and 统计成 and 去 and 无统 and 空摘要 and 判据 and fpok
     print(f"自测：{'PASS' if ok else 'FAIL'}（负样本被计数={not 负}·"
-          f"空串摘要={空摘要}·退出码判据={判据}）")
+          f"空串摘要={空摘要}·退出码判据={判据}·指纹={fpok}）")
     return 0 if ok else 1
 
 
@@ -748,6 +809,9 @@ def 主流程() -> int:
         if not v2p.exists():
             print(f"错误: 指定 v2p 不存在: {v2p}")
             return 2
+        if 源指纹需重建(v2p):
+            print(f"错误: 指定 v2p 落后于 v2/runtime/stdlib 源（陈旧产物会测不到新代码）: {v2p}")
+            return 2
     else:
         v2p = 根 / "v2p"
         ok, 错误 = 构建v2p(cn, 参数.目标, v2p)
@@ -768,6 +832,7 @@ def 主流程() -> int:
         用例_统计字段(t, v2p, 参数.目标, 根)
         用例_读写失败(t, v2p, 参数.目标, 根)
         用例_货舱键(t, v2p, 参数.目标, 根)
+        用例_货舱无末换行与无货舱(t, v2p, 参数.目标, 根)
         用例_无临时残留(t, 根)
         if 参数.自举:
             运行自举(t, v2p, 参数.目标, 根)

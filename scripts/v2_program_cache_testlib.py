@@ -318,3 +318,28 @@ def 建立基线(t: 计数器, v2p, 区: pathlib.Path, 入口: str, 目标: str,
             "条目字节": 条目.read_bytes()}
 
 
+
+
+def 默认源组():
+    """v2p 输入源组（新鲜度指纹）：v2 全树 + runtime + stdlib。"""
+    return [
+        (仓库根 / "CN语言编译器v2", ("*.cn",)),
+        (仓库根 / "src" / "runtime", ("*.cpp", "*.hpp")),
+        (仓库根 / "stdlib", ("*.cn",)),
+    ]
+
+
+def 源指纹需重建(v2p: pathlib.Path, 组=None) -> bool:
+    """指定 v2p 是否落后于任一输入源（缺失=需重建）。供 --v2p 复用面防陈旧。"""
+    v2p = pathlib.Path(v2p)
+    if not v2p.exists():
+        return True
+    for root, pats in (组 if 组 is not None else 默认源组()):
+        root = pathlib.Path(root)
+        if not root.exists():
+            continue
+        for pat in pats:
+            for f in root.rglob(pat):
+                if f.stat().st_mtime > v2p.stat().st_mtime:
+                    return True
+    return False
