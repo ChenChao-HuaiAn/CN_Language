@@ -32,8 +32,10 @@ bool IRGenerator::assignToIdentifierTarget(AssignmentExpr* node, IdentifierExpr*
     //   写面完备（T41 半截机制回补）：复合赋值须读旧值再运算写回（原无条件
     //   StorePtr(右值) 把 桩+=1 降级为 *桩=1——272 用例死循环实锤）；
     //   自增自减见 ir_expr_unary.cpp 同键分支。
-    if (const VarEntry* ve = findVarEntry(ident->name);
-        ve != nullptr && ve->isStaticLocal) {
+    // 1360 结果化：无值=非静态局部（has_value 分流·原 nullptr 判定显形）
+    if (const cn::Optional<const VarEntry*> veOpt = findVarEntry(ident->name);
+        veOpt.has_value() && veOpt.value()->isStaticLocal) {
+        const VarEntry* ve = veOpt.value();
         ir::IRValue dstAddr = emitResult(
             ir::Opcode::ConstString, {}, "ptr",
             "?gstatic_" + ve->uniqueName, node->location);
@@ -126,11 +128,12 @@ bool IRGenerator::assignToIdentifierTarget(AssignmentExpr* node, IdentifierExpr*
     //   失败后 防止同名遮蔽误读全局」）：lookupVarName 命中（局部/参数登记
     //   在案）=跳过全局静态分支走普通变量路径；静态局部在上方 isStaticLocal
     //   分支已消费、不达此处。
-    const std::string localUnique = lookupVarName(ident->name);
-    if (localUnique.size() == 0 && assignToGlobalStatic(node, ident))
+    const cn::Optional<std::string> localUnique = lookupVarName(ident->name);
+    if (!localUnique.has_value() && assignToGlobalStatic(node, ident))
         return true;
     // 目标变量唯一内部名（后续 普通赋值/类深拷贝 均需，提前计算避免重复查找）
-    const std::string unique = lookupVarName(ident->name);
+    // 1360 结果化：value_or("") 显形（未登记=空槽名原语义·族函数签名不动）
+    const std::string unique = lookupVarName(ident->name).value_or("");
     // 031（#1075）：方法值变量赋值（cb = 对象.方法 / cb2 = cb）——两槽值整拷
     //   （须先于类深拷/通用单槽形态判定——单槽写会把两槽值截半）
     if (identifierMethodValueAssign(node, ident, unique)) return true;
@@ -295,7 +298,8 @@ bool IRGenerator::globalStaticClassAssign(AssignmentExpr* node, IdentifierExpr* 
         node->value->getType() == NodeType::IdentifierExpr) {
         const std::string rhsName =
             static_cast<IdentifierExpr*>(node->value.get())->name;
-        std::string rhsSrc = lookupSrcType(rhsName);
+        // 1360 结果化：value_or("") 显形（miss=空→静态回落链·原语义）
+        std::string rhsSrc = lookupSrcType(rhsName).value_or("");
         const bool rhsIsStatic =
             rhsSrc.empty() && semantic_->isGlobalStatic(rhsName);
         if (rhsIsStatic) rhsSrc = semantic_->globalStaticType(rhsName);
@@ -323,8 +327,10 @@ bool IRGenerator::globalStaticClassAssign(AssignmentExpr* node, IdentifierExpr* 
                             ir::Opcode::ConstString, {}, "ptr",
                             "?gstatic_" + rhsName, node->location);
                     } else {
-                        const std::string srcUnique = lookupVarName(rhsName);
-                        if (!srcUnique.empty()) {
+                        const cn::Optional<std::string> srcUniqueOpt =
+                            lookupVarName(rhsName);
+                        if (srcUniqueOpt.has_value()) {
+                            const std::string& srcUnique = srcUniqueOpt.value();
                             if (isByRefCapture(rhsName)) {
                                 srcAddr = emitResult(
                                     ir::Opcode::Load,
@@ -428,7 +434,8 @@ bool IRGenerator::identifierStructLiteralAssign(AssignmentExpr* node, Identifier
     if (semantic_ != nullptr && !unique.empty() && !isCompoundAssignOp(node->op) &&
         node->value->getType() == NodeType::StructInitExpr) {
         StructInitExpr* init = static_cast<StructInitExpr*>(node->value.get());
-        const std::string tgtCanon = types::canonical(lookupSrcType(ident->name));
+        const std::string tgtCanon =
+            types::canonical(lookupSrcType(ident->name).value_or(""));
         if (semantic_->isStructType(tgtCanon)) {
             // A-1（引用参数）：目标为引用参数时目标地址 = Load 槽（槽内存被引用对象地址）
             ir::IRValue dstAddr;
@@ -459,7 +466,8 @@ void IRGenerator::identifierGenericAssign(AssignmentExpr* node, IdentifierExpr* 
     updateCarrierOnAssign482(ident->name, node->value.get(), node->location,
                              lastLambdaName_, /*fromPlainAssign=*/true);
     // 查找变量类型（唯一内部名 unique 已在上方类深拷贝分支前计算）
-    std::string targetType = lookupVarType(ident->name);
+    // 1360 结果化：value_or("") 显形（miss=回落 value.type 原语义）
+    std::string targetType = lookupVarType(ident->name).value_or("");
     if (targetType.empty()) targetType = value.type;
     // ---- 结构体整体赋值（Task 完善A）：b = a（C 语义逐字段拷贝 = 内存拷贝） ----
     // 目标/源均为结构体变量（源码类型是自定义结构体）时，生成 CopyStruct 指令：
@@ -512,7 +520,7 @@ void IRGenerator::identifierGenericAssign(AssignmentExpr* node, IdentifierExpr* 
         //   （字面量/调用产物/拼接/转移）——72-a 通道只覆盖「源=标识符」
         //   （identifierStringByRefAssign 先行 return 不到此·其内已 drop）；
         //   实测泄漏：`出 = 字符串复制("新")` 三次覆盖净泄 3 块（内存账探针）。
-        if (types::canonicalEquals(lookupSrcType(ident->name), "字符串")) {
+        if (types::canonicalEquals(lookupSrcType(ident->name).value_or(""), "字符串")) {
             ir::IRValue oldPtr = emitResult(ir::Opcode::LoadPtr, {capAddr},
                                             "ptr", "", node->location);
             emit(ir::Opcode::Call, {oldPtr}, ir::IRValue(), "__cn_str_free",
@@ -534,13 +542,14 @@ bool IRGenerator::identifierStructWholeAssign(AssignmentExpr* node, IdentifierEx
                                               const std::string& unique,
                                               const ir::IRValue& value) {
     if (semantic_ == nullptr) return false;
-    const std::string targetSrcType = lookupSrcType(ident->name);
+    // 1360 结果化：value_or("") 显形（miss=非聚合判定假·原语义）
+    const std::string targetSrcType = lookupSrcType(ident->name).value_or("");
     // 右值：标识符（b = a）或成员/下标（b = 名单[0]）或 链式赋值（b = c = a）
     //   或 结构体返回调用（读取结果 = 数据.读取(99)，Task 6.1 修复）
     bool isChainedAssign = false;
     bool isStructReturnCall = false;
     const std::string valueSrcType = assignValueSrcType(
-        node, targetSrcType, isChainedAssign, isStructReturnCall);
+        node, targetSrcType, isChainedAssign, isStructReturnCall).value_or("");
     // 252（2026-10-07·p1006_02 实录）：数组整体赋值（乙 = 甲·整32[3]）同走本
     //   分支——原判定仅 isStructType，数组落通用 Store 把退化基址写槽[0]（asm
     //   直证 mov eax 低32截断+movsxd·乙[1]/乙[2] 保持初值）。001 §3.5 数组=值
@@ -574,8 +583,9 @@ bool IRGenerator::identifierStructWholeAssign(AssignmentExpr* node, IdentifierEx
         if (isChainedAssign || isStructReturnCall) {
             srcAddr = value;  // 内层 CopyStruct 返回/调用返回的结构体地址
         } else if (node->value->getType() == NodeType::IdentifierExpr) {
+            // 1360 结果化：value_or("") 显形（未登记=空槽名原语义）
             const std::string srcUnique = lookupVarName(
-                static_cast<IdentifierExpr*>(node->value.get())->name);
+                static_cast<IdentifierExpr*>(node->value.get())->name).value_or("");
             // A-1（引用参数）：源为引用参数时源地址 = Load 槽（槽内存地址）
             if (isByRefCapture(
                     static_cast<IdentifierExpr*>(node->value.get())->name)) {
@@ -629,7 +639,8 @@ bool IRGenerator::identifierStructWholeAssign(AssignmentExpr* node, IdentifierEx
 }
 
 // 右值源码类型推导（标识符/成员/下标/链式赋值/结构体返回调用/三元；原 765~805 段）。
-std::string IRGenerator::assignValueSrcType(AssignmentExpr* node,
+// 1360 结果化：内部空串=未推导状态机，出口空串→无值（原空串哨兵不外泄）。
+cn::Optional<std::string> IRGenerator::assignValueSrcType(AssignmentExpr* node,
                                             const std::string& targetSrcType,
                                             bool& isChainedAssign,
                                             bool& isStructReturnCall) {
@@ -638,14 +649,15 @@ std::string IRGenerator::assignValueSrcType(AssignmentExpr* node,
     isStructReturnCall = false;  // 结构体返回调用：右值为结构体返回函数/方法调用
     if (node->value->getType() == NodeType::IdentifierExpr) {
         valueSrcType = lookupSrcType(
-            static_cast<IdentifierExpr*>(node->value.get())->name);
+            static_cast<IdentifierExpr*>(node->value.get())->name).value_or("");
     } else if (node->value->getType() == NodeType::MemberExpr) {
-        valueSrcType = memberObjStructType(static_cast<MemberExpr*>(node->value.get()));
+        valueSrcType = memberObjStructType(
+            static_cast<MemberExpr*>(node->value.get())).value_or("");
     } else if (node->value->getType() == NodeType::IndexExpr) {
         IndexExpr* ix = static_cast<IndexExpr*>(node->value.get());
         if (ix->object->getType() == NodeType::IdentifierExpr) {
             const std::string st = lookupSrcType(
-                static_cast<IdentifierExpr*>(ix->object.get())->name);
+                static_cast<IdentifierExpr*>(ix->object.get())->name).value_or("");
             if (types::isArray(st)) valueSrcType = types::arrayElemOf(st);
             else if (types::isPointer(st)) valueSrcType = types::pointeeOf(st);
         }
@@ -672,7 +684,7 @@ std::string IRGenerator::assignValueSrcType(AssignmentExpr* node,
         //   （visitTernaryExpr 聚合约定：分支 Store 地址、汇合 Load 地址），
         //   与成员/下标来源同构 → 后续 emitStructCopyWithFields 深拷（源非
         //   调用返回）正确落堆。
-        valueSrcType = exprSrcType(node->value.get());
+        valueSrcType = exprSrcType(node->value.get()).value_or("");
     } else if (node->value->getType() == NodeType::BinaryExpr ||
                node->value->getType() == NodeType::UnaryExpr) {
         // 936 同族（运算符重载返回结构体·TernaryExpr 86-a 先例同构）：
@@ -683,13 +695,14 @@ std::string IRGenerator::assignValueSrcType(AssignmentExpr* node,
         //   exprSrcType 非结构体 → 上层 targetAgg 守卫 return false=行为不变。
         //   原缺此分支：valueSrcType 空 → 落标量 Store 只写 8 字节指针
         //   （p9 探针『差 = 甲 - 乙』读出指针低 32 位垃圾·非确定性实录）。
-        const std::string binRet = exprSrcType(node->value.get());
+        const std::string binRet = exprSrcType(node->value.get()).value_or("");
         if (semantic_ != nullptr &&
             semantic_->isStructType(types::canonical(binRet))) {
             valueSrcType = binRet;
             isStructReturnCall = true;  // 一次性返回物化壳语义（同调用返回）
         }
     }
+    if (valueSrcType.empty()) return std::nullopt;
     return valueSrcType;
 }
 

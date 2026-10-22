@@ -153,9 +153,11 @@ bool IRGenerator::callReceiverExempt880(VarDecl* node, const DeclGenCtx& ctx) {
                     mem->memberName == "复制" || mem->memberName == "转移";
                 if (!cloneOrMoveCallM) {
                     std::string owner;
-                    const ClassMemberInfo* m =
+                    // 1360 结果化：无值=非方法（has_value 分流）
+                    const cn::Optional<const ClassMemberInfo*> mOpt =
                         findClassMethod(objCanon, mem->memberName, owner);
-                    if (m != nullptr && !m->isStatic) {
+                    if (mOpt.has_value() && !mOpt.value()->isStatic) {
+                        const ClassMemberInfo* m = mOpt.value();
                         if (!m->isRefReturn) {
                             BlockStmt* mBody880 = (m->ast != nullptr)
                                                       ? m->ast->body.get()

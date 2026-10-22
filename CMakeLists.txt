@@ -279,6 +279,10 @@ target_link_libraries(cn_compiler_semantic PUBLIC cn_compiler_model cn_compiler_
 #   声明仍在 ir_generator.hpp）
 add_library(cn_compiler_ir STATIC
     src/cn_compiler/ir/ir.cpp
+    # 1360 批2（>1000 冻结线拆分）：ir_vartable.cpp——变量表查询族五函数
+    #   （lookupVarName/lookupVarType/lookupVar/findVarEntry/lookupSrcType）
+    #   自 ir.cpp 逐字搬移零语义变化；声明仍在 ir_generator.hpp
+    src/cn_compiler/ir/ir_vartable.cpp
     src/cn_compiler/ir/ir_decl_extra.cpp
     src/cn_compiler/ir/ir_expr.cpp
     src/cn_compiler/ir/ir_expr_concat.cpp

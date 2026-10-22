@@ -25,7 +25,8 @@ bool IRGenerator::identifierStringAssign(AssignmentExpr* node, IdentifierExpr* i
     //   （字面量/标识符经 __cn_str_copy 落堆，调用返回直存）；**其余形态
     //   （解引用/成员等）整变量污染（stringTainted_）退出 RAII**——来源静态
     //   不可保证恒为堆串，free 只读段=UB，宁可放弃自动释放保安全。
-    const std::string ownTargetSrcType = lookupSrcType(ident->name);
+    // 1360 结果化：value_or("") 显形（miss=空类型串原语义）
+    const std::string ownTargetSrcType = lookupSrcType(ident->name).value_or("");
     // 72-a 根治（2026-09-11 第七十二轮，UAF 级别）：赋值位显式转移
     //   目标 = 转移(源) —— 真 move（Rust 对照：`a = b` 对 String 即 move=
     //   句柄移交 + 源失效；CN 默认深拷贝，显式 转移() 才 move）。原实现把
@@ -79,9 +80,10 @@ bool IRGenerator::identifierStringByRefAssign(AssignmentExpr* node, IdentifierEx
         node->value->getType() == NodeType::IdentifierExpr) {
         const std::string rpSrcName =
             static_cast<const IdentifierExpr*>(node->value.get())->name;
-        const std::string rpSrcUnique = lookupVarName(rpSrcName);
+        const cn::Optional<std::string> rpSrcUniqueOpt = lookupVarName(rpSrcName);
         const bool rpSrcTainted = stringTainted_.count(rpSrcName) > 0;
-        if (!rpSrcUnique.empty() && !rpSrcTainted) {
+        if (rpSrcUniqueOpt.has_value() && !rpSrcTainted) {
+            const std::string& rpSrcUnique = rpSrcUniqueOpt.value();
             ir::IRValue byRefAddr = emitResult(
                 ir::Opcode::Load, {ir::IRValue::var(unique, "ptr")}, "ptr",
                 unique, node->location);
@@ -139,8 +141,9 @@ bool IRGenerator::identifierStringTransferAssign(AssignmentExpr* node, Identifie
             tr->arguments[0]->getType() == NodeType::IdentifierExpr) {
             const std::string srcName =
                 static_cast<const IdentifierExpr*>(tr->arguments[0].get())->name;
-            const std::string srcUnique = lookupVarName(srcName);
-            if (!srcUnique.empty() && srcUnique != unique) {
+            const cn::Optional<std::string> srcUniqueOpt = lookupVarName(srcName);
+            if (srcUniqueOpt.has_value() && srcUniqueOpt.value() != unique) {
+                const std::string& srcUnique = srcUniqueOpt.value();
                 const bool srcTainted = stringTainted_.count(srcName) > 0;
                 // drop 旧目标（拥有链维护下旧值必为堆串；空安全）——Rust 赋值
                 //   语义=旧值在移交前析构
@@ -203,10 +206,12 @@ bool IRGenerator::identifierClassTransferAssign(AssignmentExpr* node, Identifier
     }
     if (srcIdent543 != nullptr) {
         const std::string srcName = srcIdent543->name;
-        const std::string srcUnique = lookupVarName(srcName);
-        if (!srcUnique.empty() && srcUnique == unique) return false;   // 自转移=无操作
+        const cn::Optional<std::string> srcUniqueOpt = lookupVarName(srcName);
+        // 1360 结果化：无值=未登记（has_value 分流·自转移=无操作判定同义）
+        if (srcUniqueOpt.has_value() && srcUniqueOpt.value() == unique) return false;
     }
-    const std::string canonTarget = types::canonical(lookupSrcType(ident->name));
+    const std::string canonTarget =
+        types::canonical(lookupSrcType(ident->name).value_or(""));
     if (!semantic_->isClassType(canonTarget)) return false;
     if (isByRefCapture(ident->name)) {
         // A-1（引用参数）：目标槽存被引用类槽地址——旧句柄两跳读、写回经指针

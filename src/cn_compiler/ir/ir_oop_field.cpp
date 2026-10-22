@@ -16,38 +16,39 @@
 
 namespace cn_compiler {
 
-// 查询类字段源码类型（沿继承链；未找到返回空串）
-std::string IRGenerator::classFieldType(const std::string& className,
+// 查询类字段源码类型（沿继承链；1360 结果化：无值=未找到——原空串哨兵退役）
+cn::Optional<std::string> IRGenerator::classFieldType(const std::string& className,
                                         const std::string& fieldName) const {
-    if (semantic_ == nullptr) return "";
+    if (semantic_ == nullptr) return std::nullopt;
     const ClassInfo* ci = semantic_->findClass(types::canonical(className)).value_or(nullptr);
     while (ci != nullptr) {
         auto f = ci->fields.find(fieldName);
         if (f != ci->fields.end()) return f->second.type;
         ci = ci->baseName.empty() ? nullptr : semantic_->findClass(ci->baseName).value_or(nullptr);
     }
-    return "";
+    return std::nullopt;
 }
 
 // 成员字段源码类型（结构体/类对象统一；宿主缺陷1'根治 2026-09-02）：
 //   下标 MemberExpr 分支原只查 StructDecl（类对象查不到 -> 步长兜底 8），
 //   致 拷贝构造 其他.数据[索引]（T*>8字节）读源错位（p9 实证重叠写入形态）。
-std::string IRGenerator::memberFieldSrcType(MemberExpr* node) const {
-    if (semantic_ == nullptr || node == nullptr) return "";
-    const std::string objType = memberObjStructType(node);
-    if (objType.empty()) return "";
+//   1360 结果化：无值=无法推导（原空串哨兵退役）。
+cn::Optional<std::string> IRGenerator::memberFieldSrcType(MemberExpr* node) const {
+    if (semantic_ == nullptr || node == nullptr) return std::nullopt;
+    const std::string objType = memberObjStructType(node).value_or("");
+    if (objType.empty()) return std::nullopt;
     const std::string canon = types::canonical(objType);
     const StructDecl* decl = semantic_->findStruct(canon).value_or(nullptr);
     if (decl != nullptr) {
         for (const auto& f : decl->fields) {
             if (f.name == node->memberName) return f.type;
         }
-        return "";
+        return std::nullopt;
     }
     if (semantic_->isClassType(canon)) {
         return classFieldType(canon, node->memberName);
     }
-    return "";
+    return std::nullopt;
 }
 
 // 缺陷3 根治（2026-09-02）：类字段级联析构注入（571 轮自 ir_oop.cpp 机械搬移——
@@ -68,12 +69,14 @@ void IRGenerator::injectFieldCascadeDestroy(const ClassMember* member) {
     setCurrentBlock(last);
     const ClassInfo* ci = semantic_->findClass(currentClass_).value_or(nullptr);
     if (ci == nullptr) return;
-    const std::string thisUnique = lookupVarName("自身");
-    if (thisUnique.empty()) return;
+    // 1360 结果化：无值=this 槽未登记（保持原空串分流语义）
+    const cn::Optional<std::string> thisUniqueOpt = lookupVarName("自身");
+    if (!thisUniqueOpt.has_value()) return;
+    const std::string& thisUnique = thisUniqueOpt.value();
     for (auto it = ci->fieldOrder.rbegin(); it != ci->fieldOrder.rend(); ++it) {
         const auto f = ci->fields.find(*it);
         if (f == ci->fields.end() || f->second.isStatic) continue;
-        const std::string ftype = classFieldType(currentClass_, *it);
+        const std::string ftype = classFieldType(currentClass_, *it).value_or("");
         const std::string fcanon = types::canonical(ftype);
         // 100（939·008 收官总攻）：**字符串字段清理注入**——结构体串字段
         //   三件套（79-a）对类不对称缺失（类字段串=编译器不管→tracked 串
@@ -187,8 +190,10 @@ void IRGenerator::emitNoDtorFieldCascade(const ir::IRValue& objPtr,
     for (auto it = ci->fieldOrder.rbegin(); it != ci->fieldOrder.rend(); ++it) {
         const auto f = ci->fields.find(*it);
         if (f == ci->fields.end() || f->second.isStatic) continue;
-        const std::string ftype = classFieldType(types::canonical(classCanon), *it);
-        if (ftype.empty()) continue;
+        const cn::Optional<std::string> ftypeOpt =
+            classFieldType(types::canonical(classCanon), *it);
+        if (!ftypeOpt.has_value()) continue;
+        const std::string& ftype = ftypeOpt.value();
         const std::string fcanon = types::canonical(ftype);
         const int offset = semantic_->classFieldOffset(
             types::canonical(classCanon), *it).value_or(-1);
@@ -213,7 +218,7 @@ void IRGenerator::emitNoDtorFieldCascade(const ir::IRValue& objPtr,
         }
         // 类字段：有析构=DeleteObject（其体内级联自含）；无析构=递归级联
         if (ftype.empty() || !semantic_->isClassType(fcanon)) continue;
-        if (classDestructorSymbolKey(fcanon).empty()) {
+        if (!classDestructorSymbolKey(fcanon).has_value()) {
             ir::IRValue innerPtr = emitResult(ir::Opcode::LoadPtr, {addr}, "ptr",
                                               "", loc);
             emitNoDtorFieldCascade(innerPtr, fcanon, loc, depth + 1);
@@ -246,8 +251,9 @@ bool IRGenerator::classHasReleasableFields(const std::string& classCanon,
     for (const auto& fn : ci->fieldOrder) {
         const auto f = ci->fields.find(fn);
         if (f == ci->fields.end() || f->second.isStatic) continue;
-        const std::string ftype = classFieldType(canon, fn);
-        if (ftype.empty()) continue;
+        const cn::Optional<std::string> ftypeOpt = classFieldType(canon, fn);
+        if (!ftypeOpt.has_value()) continue;
+        const std::string& ftype = ftypeOpt.value();
         const std::string fcanon = types::canonical(ftype);
         if (fcanon == "字符串") return true;
         const std::string fcanonNorm = canonicalizeSyntheticArgText(fcanon);
@@ -257,7 +263,7 @@ bool IRGenerator::classHasReleasableFields(const std::string& classCanon,
             continue;
         }
         if (!semantic_->isClassType(fcanon)) continue;
-        if (classDestructorSymbolKey(fcanon).empty()) {
+        if (!classDestructorSymbolKey(fcanon).has_value()) {
             if (classHasReleasableFields(fcanon, depth + 1)) return true;
             continue;
         }
@@ -272,9 +278,11 @@ bool IRGenerator::classHasReleasableFields(const std::string& classCanon,
 // 语义层 classFieldOffset 已含虚表指针偏移调整（实例首地址起算）。
 ir::IRValue IRGenerator::genInstanceFieldAddr(const std::string& fieldName,
                                               const SourceLocation& loc) {
-    const std::string unique = lookupVarName("自身");
+    // 1360 结果化：无值=this 槽未登记（静态方法/字段缺失面，落 ConstInt 0 原行为）
+    const cn::Optional<std::string> uniqueOpt = lookupVarName("自身");
     ir::IRValue thisPtr;
-    if (!unique.empty() && !currentMethodStatic_) {
+    if (uniqueOpt.has_value() && !currentMethodStatic_) {
+        const std::string& unique = uniqueOpt.value();
         thisPtr = emitResult(ir::Opcode::Load,
                              {ir::IRValue::var(unique, "ptr")},
                              "ptr", unique, loc);
@@ -310,7 +318,8 @@ bool IRGenerator::isInstanceField(const std::string& name) const {
     for (auto it = varStack_.rbegin(); it != varStack_.rend(); ++it) {
         if (it->find(name) != it->end()) return false;
     }
-    return !classFieldType(currentClass_, name).empty();
+    // 1360 结果化：has_value()=命中（isInstanceField 已先行判定·原 .empty() 反判改显形）
+    return classFieldType(currentClass_, name).has_value();
 }
 
 // ==================== 方法体内直接字段访问 ====================
@@ -340,7 +349,9 @@ bool IRGenerator::handleClassFieldRead(IdentifierExpr* node) {
         }
     }
     if (!isInstanceField(node->name)) return false;
-    const std::string fieldType = classFieldType(currentClass_, node->name);
+    // 1360 结果化：isInstanceField 已判定命中，value_or("") 仅形态兜面（类型串
+    //   空串时的 mapType/判定行为与原空串完全一致）
+    const std::string fieldType = classFieldType(currentClass_, node->name).value_or("");
     ir::IRValue addr = genInstanceFieldAddr(node->name, node->location);
     // 数组字段退化：返回字段地址（供 字段[i] 下标访问）
     if (types::isArray(fieldType)) {
@@ -390,7 +401,9 @@ bool IRGenerator::handleClassMemberExpr(MemberExpr* node) {
     if (node->object->getType() == NodeType::IdentifierExpr) {
         objName = static_cast<IdentifierExpr*>(node->object.get())->name;
     }
-    const std::string objSrcType = memberObjectSrcType(node->object.get());  // 622：支持 (*类指针)
+    // 1360 结果化：无值=对象类型无法推导（原空串哨兵消费点显形默认）
+    const std::string objSrcType =
+        memberObjectSrcType(node->object.get()).value_or("");  // 622：支持 (*类指针)
     const std::string canonObj = types::canonical(objSrcType);
 
     // P3-23：静态方法作值（类名.静态方法 用作函数指针值）→ FuncAddr 方法链接符号
@@ -410,8 +423,11 @@ bool IRGenerator::handleClassMemberExpr(MemberExpr* node) {
 
     // ---- 静态字段：类名.字段（对象是类类型名，非变量） ----
     if (!objName.empty() && semantic_->isClassType(objName)) {
-        const std::string fieldType = classFieldType(objName, node->memberName);
-        if (fieldType.empty()) return false;  // 非字段（静态方法等，交给调用钩子）
+        // 1360 结果化：无值=非字段（静态方法等，交给调用钩子）——has_value 分流
+        const cn::Optional<std::string> fieldTypeOpt =
+            classFieldType(objName, node->memberName);
+        if (!fieldTypeOpt.has_value()) return false;
+        const std::string& fieldType = fieldTypeOpt.value();
         ir::IRValue addr = genStaticFieldAddr(objName, node->memberName, node->location);
         if (types::isArray(fieldType)) {
             lastExpr_ = addr;  // 数组字段退化：返回地址
@@ -460,8 +476,11 @@ bool IRGenerator::handleClassMemberExpr(MemberExpr* node) {
         canonObjField = types::canonical(types::pointeeOf(canonObjField));
     }
     if (!semantic_->isClassType(canonObjField)) return false;
-    const std::string fieldType = classFieldType(canonObjField, node->memberName);
-    if (fieldType.empty()) return false;
+    // 1360 结果化：无值=字段未命中（has_value 分流）
+    const cn::Optional<std::string> fieldTypeOpt =
+        classFieldType(canonObjField, node->memberName);
+    if (!fieldTypeOpt.has_value()) return false;
+    const std::string& fieldType = fieldTypeOpt.value();
     ir::IRValue base = classMemberBasePtr(node->object.get());  // 对象指针（622 统一助手·内含 728g 指针下标分支）
     const int offset = semantic_->classFieldOffset(canonObjField, node->memberName).value_or(-1);
     if (offset < 0) return false;

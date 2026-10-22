@@ -88,9 +88,10 @@ bool IRGenerator::memberStructLiteralAssign(AssignmentExpr* node, MemberExpr* me
         node->value->getType() == NodeType::StructInitExpr) {
         StructInitExpr* init = static_cast<StructInitExpr*>(node->value.get());
         // 对象所属结构体（memberObjStructType 递归+指针解引用剥离）-> 字段类型
-        const std::string ownerStruct = memberObjStructType(member);
+        // 1360 结果化：value_or("") 显形（无值=推导失败→字段查询 miss 原语义）
+        const std::string ownerStruct = memberObjStructType(member).value_or("");
         const std::string fieldStruct =
-            structOrClassFieldType(ownerStruct, member->memberName);  // 973（104）统一查询
+            structOrClassFieldType(ownerStruct, member->memberName).value_or("");  // 973（104）统一查询
         if (!fieldStruct.empty() && semantic_->isStructType(fieldStruct)) {
             ir::IRValue fieldAddr = lvalueAddress(node->target.get());
             emitStructInitTo(init, fieldAddr, node->location);
@@ -113,9 +114,10 @@ bool IRGenerator::memberClassFieldAssign(AssignmentExpr* node, MemberExpr* membe
     //   原路径经 46-a 通道对 8 字节指针槽做整块 CopyStruct（越界写+浅拷共享
     //   双删——形四 0xC0000374 实证）。
     if (semantic_ != nullptr && !isCompoundAssignOp(node->op)) {
-        const std::string ownerStructC = memberObjStructType(member);
+        // 1360 结果化：value_or("") 显形（无值=推导失败→后续容器判定 miss 原语义）
+        const std::string ownerStructC = memberObjStructType(member).value_or("");
         const std::string fieldCanonC =
-            structOrClassFieldType(ownerStructC, member->memberName);  // 973（104）统一查询
+            structOrClassFieldType(ownerStructC, member->memberName).value_or("");  // 973（104）统一查询
         // 142-a（泛化尝试→回退）：用户类场景实测 0xC0000374（用户类拷贝构造的
         //   this 字段初值/类析构字段级联与新设施交互未明）——按纪律回退，保留
         //   四族收窄；**泛化=专项**（plans/020 第五十四节）。
@@ -126,8 +128,9 @@ bool IRGenerator::memberClassFieldAssign(AssignmentExpr* node, MemberExpr* membe
             (headC == "向量" || headC == "栈" || headC == "链表" ||
              headC == "队列") &&
             semantic_->isClassType(fieldCanonC)) {
-                const std::string dtorKeyC = classDestructorSymbolKey(fieldCanonC);
-                if (!dtorKeyC.empty()) {
+                // 1360 结果化：无值=无析构（has_value 分流）
+                const cn::Optional<std::string> dtorKeyC = classDestructorSymbolKey(fieldCanonC);
+                if (dtorKeyC.has_value()) {
                     ir::IRValue fieldAddrC = lvalueAddress(node->target.get());
                     // 145-a+543 判据（2026-10-14·459 批甲临时合流计数实证）：
                     //   preFree ⇔ 非 this 接收者 || 非拷贝构造体内——
@@ -161,8 +164,9 @@ bool IRGenerator::memberClassFieldAssign(AssignmentExpr* node, MemberExpr* membe
                     }
                 const bool srcIsCtorC =
                     node->value->getType() == NodeType::CallExpr;
-                const std::string copyKeyC = classCopyCtorSymbolKey(fieldCanonC);
-                if (srcIsCtorC || copyKeyC.empty()) {
+                // 1360 结果化：无值=无拷贝构造（!has_value 分流·有值时 .value() 作符号键）
+                const cn::Optional<std::string> copyKeyC = classCopyCtorSymbolKey(fieldCanonC);
+                if (srcIsCtorC || !copyKeyC.has_value()) {
                     ir::IRValue srcPtrC = genExpr(node->value.get());
                     emit(ir::Opcode::StorePtr, {fieldAddrC, srcPtrC}, ir::IRValue(),
                          "", "ptr", node->location);
@@ -186,7 +190,7 @@ bool IRGenerator::memberClassFieldAssign(AssignmentExpr* node, MemberExpr* membe
                         {ir::IRValue::constant(fieldCanonC, "ptr")}, "ptr", extraC,
                         node->location);
                     emit(ir::Opcode::Call, {newObjC, srcRefC}, ir::IRValue(),
-                         copyKeyC, "void", node->location);
+                         copyKeyC.value(), "void", node->location);
                     emit(ir::Opcode::StorePtr, {fieldAddrC, newObjC}, ir::IRValue(),
                          "", "ptr", node->location);
                 }
@@ -223,7 +227,8 @@ bool IRGenerator::canEmitClassFieldHandleCopy(const std::string& fieldCanon,
         return false;   // 无拷贝构造类字段走 emitStructWholeAssign 728x 合成拷贝
     }
     const std::string srcName = static_cast<IdentifierExpr*>(valueNode)->name;
-    return !lookupVarName(srcName).empty();   // 静态源等无局部槽形态维持原路径
+    // 1360 结果化：has_value=已登记（原 .empty() 反判改显形）
+    return lookupVarName(srcName).has_value();   // 静态源等无局部槽形态维持原路径
 }
 
 bool IRGenerator::emitClassFieldHandleCopy(const ir::IRValue& fieldAddr,
@@ -245,16 +250,17 @@ bool IRGenerator::emitClassFieldHandleCopy(const ir::IRValue& fieldAddr,
         return false;
     }
     const std::string srcName = static_cast<IdentifierExpr*>(valueNode)->name;
-    const std::string srcUnique = lookupVarName(srcName);
+    const cn::Optional<std::string> srcUniqueOpt = lookupVarName(srcName);
     // 1303 甄别（不可达断言·882 处置①）：canEmitClassFieldHandleCopy 尾行
-    //   `return !lookupVarName(srcName).empty()`（ir_expr_assign.cpp:229）已
-    //   保证源槽名非空；判定与发射之间为纯查询零状态变更，同名查询结果稳定，
+    //   `return lookupVarName(srcName).has_value()`（ir_expr_assign.cpp）已
+    //   保证源槽名已登记；判定与发射之间为纯查询零状态变更，同名查询结果稳定，
     //   到达即内部缺陷（报内部错误显形·收尾同上）。
-    if (srcUnique.empty()) {
+    if (!srcUniqueOpt.has_value()) {
         diagnostics_.report(DiagnosticLevel::Error, loc,
             "内部错误: 类字段句柄深拷源槽 '" + srcName + "' 未登记（#1303）");
         return false;
     }
+    const std::string& srcUnique = srcUniqueOpt.value();
     ir::IRValue srcRef;
     if (isByRefCapture(srcName)) {
         // 引用参数：槽内存=被引用对象槽地址（Load 槽·identifierClassCopyAssign
@@ -267,7 +273,8 @@ bool IRGenerator::emitClassFieldHandleCopy(const ir::IRValue& fieldAddr,
                             srcUnique, loc);
     }
     const std::string skipLabel = beginSelfAssignGuard(fieldAddr, srcRef, loc);
-    if (!classDestructorSymbolKey(canon).empty()) {
+    // 1360 结果化：无值=无析构（has_value 分流）
+    if (classDestructorSymbolKey(canon).has_value()) {
         ir::IRValue oldObj = emitResult(ir::Opcode::LoadPtr, {fieldAddr}, "ptr",
                                         "", loc);
         emitContainerElemFreeFor(canon, oldObj, loc);
@@ -300,9 +307,10 @@ bool IRGenerator::memberWholeStructAssign(AssignmentExpr* node, MemberExpr* memb
     //   类型检查前置（与 D2 同型）：非结构体/类字段零冗余落回标量路径
     //   （lvalueAddress 有发射副作用，落回即双发）。
     if (semantic_ != nullptr && !isCompoundAssignOp(node->op)) {
-        const std::string ownerStructW = memberObjStructType(member);
+        // 1360 结果化：value_or("") 显形（无值=推导失败→字段查询 miss 原语义）
+        const std::string ownerStructW = memberObjStructType(member).value_or("");
         const std::string fieldStructW =
-            structOrClassFieldType(ownerStructW, member->memberName);  // 973（104）统一查询
+            structOrClassFieldType(ownerStructW, member->memberName).value_or("");  // 973（104）统一查询
         if (!fieldStructW.empty() &&
             (semantic_->isStructType(fieldStructW) ||
              semantic_->isClassType(fieldStructW))) {
@@ -336,7 +344,8 @@ bool IRGenerator::memberWholeStructAssign(AssignmentExpr* node, MemberExpr* memb
 //   字符串字段归一化（独立拥有）+ 复合赋值 + StorePtr。
 bool IRGenerator::memberGenericAssign(AssignmentExpr* node, MemberExpr* member) {
     ir::IRValue value = genExpr(node->value.get());
-    const std::string objSrcType = memberAssignObjSrcType(member);
+    // 1360 结果化：value_or("") 显形（无值=推导失败→findStruct("") miss 原语义）
+    const std::string objSrcType = memberAssignObjSrcType(member).value_or("");
     std::string targetType = "i64";
     const StructDecl* decl = (semantic_ != nullptr)
                                  ? semantic_->findStruct(types::canonical(objSrcType)).value_or(nullptr)
@@ -350,7 +359,7 @@ bool IRGenerator::memberGenericAssign(AssignmentExpr* node, MemberExpr* member) 
     std::string classFieldSrc1059;
     if (decl == nullptr && ownerIsClass1059) {
         classFieldSrc1059 =
-            classFieldType(types::canonical(objSrcType), member->memberName);
+            classFieldType(types::canonical(objSrcType), member->memberName).value_or("");
     }
     if (decl != nullptr) {
         bool fieldFound648 = false;
@@ -412,7 +421,8 @@ bool IRGenerator::memberGenericAssign(AssignmentExpr* node, MemberExpr* member) 
 //   类字段链/局部链/泛型实例/this 直访四路全中）。重复实现漂移=病根结构：
 //   读面 memberObjStructType 已全形态而写面副本 118/208 两轮各补一支仍
 //   追不平——归一后新对象形态只补 memberObjStructType 一处。
-std::string IRGenerator::memberAssignObjSrcType(MemberExpr* member) {
+// 1360 结果化：纯委托薄包装随族改（无值=无法推导）。
+cn::Optional<std::string> IRGenerator::memberAssignObjSrcType(MemberExpr* member) {
     // 622 接棒 rebase 裁决（2026-10-14·合并两修）：保留 597 整体委托归一
     //   （单一实现·新对象形态只补 memberObjStructType 一处），弃深度机分支
     //   的漂移副本升级版——其 Deref 面增强（derefPointeeSrcType 递归剥层）
@@ -447,8 +457,9 @@ bool IRGenerator::memberStringFieldAssign(AssignmentExpr* node, MemberExpr* memb
             // 类实例字段（对象.字段，class 路径）
             if (semantic_ != nullptr && !objSrcType.empty() &&
                 semantic_->isClassType(types::canonical(objSrcType))) {
+                // 1360 结果化：value_or("") 显形（miss 落末尾 return "" 原语义）
                 const std::string ft = classFieldType(
-                    types::canonical(objSrcType), member->memberName);
+                    types::canonical(objSrcType), member->memberName).value_or("");
                 if (!ft.empty()) return ft;
             }
             return "";
@@ -461,8 +472,9 @@ bool IRGenerator::memberStringFieldAssign(AssignmentExpr* node, MemberExpr* memb
                 node->value.get(), value, node->location);
             std::string objUnique;
             if (member->object->getType() == NodeType::IdentifierExpr) {
+                // 1360 结果化：value_or("") 显形（未登记=空槽名原语义）
                 objUnique = lookupVarName(
-                    static_cast<IdentifierExpr*>(member->object.get())->name);
+                    static_cast<IdentifierExpr*>(member->object.get())->name).value_or("");
             }
             // 164-a（A4·plans/023 §十二 方案A/D）：**目标对象类型为联合体**时
             //   跳过旧值释放——联合体成员共享偏移+无 tag，「旧值」身份不可判
@@ -506,7 +518,8 @@ bool IRGenerator::canMemberClassCallProductAssign(Expr* valueExpr,
     if (isTransferCall(call)) return false;
     if (call->isRefReturnCall) return false;
     // 右值调用返回类型严格等于字段类（异型/引用返回后缀自然不等=保守面）
-    return types::canonical(exprSrcType(valueExpr)) == fieldCanon;
+    // 1360 结果化：value_or("") 显形（无法推导=不等→false 原语义）
+    return types::canonical(exprSrcType(valueExpr).value_or("")) == fieldCanon;
 }
 
 bool IRGenerator::memberClassCallProductAssign(Expr* valueExpr,
@@ -546,7 +559,8 @@ bool IRGenerator::assignToIndexTarget(AssignmentExpr* node) {
         if (tgt959->object->getType() == NodeType::IdentifierExpr) {
             const std::string arrName959 =
                 static_cast<IdentifierExpr*>(tgt959->object.get())->name;
-            const std::string arrSrc959 = lookupSrcType(arrName959);
+            // 1360 结果化：value_or("") 显形（miss=非数组形态判定假·原语义）
+            const std::string arrSrc959 = lookupSrcType(arrName959).value_or("");
             const CallExpr* tr959 =
                 static_cast<CallExpr*>(node->value.get());
             const bool srcIsIdent959 =
@@ -556,14 +570,15 @@ bool IRGenerator::assignToIndexTarget(AssignmentExpr* node) {
                 const std::string srcName959 =
                     static_cast<IdentifierExpr*>(tr959->arguments[0].get())
                         ->name;
-                const std::string srcSrc959 = lookupSrcType(srcName959);
+                const std::string srcSrc959 = lookupSrcType(srcName959).value_or("");
                 const std::string elemCanon959 =
                     types::canonical(types::arrayElemOf(arrSrc959));
                 if (semantic_->isClassType(elemCanon959) &&
                     types::canonical(srcSrc959) == elemCanon959) {
-                    const std::string srcUnique959 =
+                    const cn::Optional<std::string> srcUniqueOpt959 =
                         lookupVarName(srcName959);
-                    if (!srcUnique959.empty()) {
+                    if (srcUniqueOpt959.has_value()) {
+                        const std::string& srcUnique959 = srcUniqueOpt959.value();
                         const int bytes959 =
                             semantic_->typeSizeOf(elemCanon959);
                         if (bytes959 > 0) {
@@ -581,11 +596,12 @@ bool IRGenerator::assignToIndexTarget(AssignmentExpr* node) {
                             //   injectClassElemDestroy 单元素析构同形态）；首写
                             //   零初始化槽/无析构类=空安全跳过。顺序=源求值后、
                             //   搬迁前（Rust 求值序；源=独立变量无别名）。
-                            const std::string dtorSym959 =
+                            // 1360 结果化：无值=无析构（has_value 分流）
+                            const cn::Optional<std::string> dtorSymOpt959 =
                                 classDestructorSymbolKey(elemCanon959);
-                            if (!dtorSym959.empty()) {
+                            if (dtorSymOpt959.has_value()) {
                                 emit(ir::Opcode::Call, {addr959}, ir::IRValue(),
-                                     dtorSym959, "void", node->location);
+                                     dtorSymOpt959.value(), "void", node->location);
                             }
                             emit(ir::Opcode::CopyStruct,
                                  {addr959, handle959}, ir::IRValue(),
@@ -640,12 +656,13 @@ bool IRGenerator::assignToIndexTarget(AssignmentExpr* node) {
     //   （可能含条件块）再算目标地址（纯地址计算）——原序致调用块插在 addr
     //   发射之后（234-a 285 失败根因）。守卫不满足则零行为变更落原路径。
     {
-        const std::string tElemSrcS = indexTargetElemSrcType(node);
-        if (!tElemSrcS.empty() &&
-            (semantic_->isStructType(types::canonical(tElemSrcS)) ||
-             semantic_->isClassType(types::canonical(tElemSrcS))) &&
+        // 1360 结果化：无值=非结构体/类目标（has_value 分流·原空串判定显形）
+        const cn::Optional<std::string> tElemSrcS = indexTargetElemSrcType(node);
+        if (tElemSrcS.has_value() &&
+            (semantic_->isStructType(types::canonical(tElemSrcS.value())) ||
+             semantic_->isClassType(types::canonical(tElemSrcS.value()))) &&
             structWholeAssignSrcFirst(node->target.get(), node->value.get(),
-                                      types::canonical(tElemSrcS),
+                                      types::canonical(tElemSrcS.value()),
                                       node->location)) {
             return true;
         }
@@ -678,8 +695,9 @@ void IRGenerator::markIndexStringElemTainted(AssignmentExpr* node) {
             ? static_cast<IndexExpr*>(node->target.get()) : nullptr;
     if (idxX != nullptr &&
         idxX->object->getType() == NodeType::IdentifierExpr) {
+        // 1360 结果化：value_or("") 显形（miss=非数组/指针判定假·原语义）
         const std::string stX = lookupSrcType(
-            static_cast<IdentifierExpr*>(idxX->object.get())->name);
+            static_cast<IdentifierExpr*>(idxX->object.get())->name).value_or("");
         std::string elemX;
         if (types::isArray(stX)) elemX = types::arrayElemOf(stX);
         else if (types::isPointer(stX)) elemX = types::pointeeOf(stX);
@@ -700,8 +718,9 @@ std::string IRGenerator::indexAssignElemType(AssignmentExpr* node) {
     if (node->target->getType() == NodeType::IndexExpr) {
         IndexExpr* idx = static_cast<IndexExpr*>(node->target.get());
         if (idx->object->getType() == NodeType::IdentifierExpr) {
+            // 1360 结果化：value_or("") 显形（miss 串查链·原语义）
             const std::string st = lookupSrcType(
-                static_cast<IdentifierExpr*>(idx->object.get())->name);
+                static_cast<IdentifierExpr*>(idx->object.get())->name).value_or("");
             if (types::isArray(st)) {
                 targetType = mapType(types::arrayElemOf(st));
                 elemResolved648 = true;
@@ -720,7 +739,7 @@ std::string IRGenerator::indexAssignElemType(AssignmentExpr* node) {
                      isInstanceField(static_cast<IdentifierExpr*>(idx->object.get())->name)) {
                 const std::string ft = classFieldType(
                     currentClass_,
-                    static_cast<IdentifierExpr*>(idx->object.get())->name);
+                    static_cast<IdentifierExpr*>(idx->object.get())->name).value_or("");
                 if (types::isArray(ft)) {
                     targetType = mapType(types::arrayElemOf(ft));
                     elemResolved648 = true;
@@ -737,9 +756,10 @@ std::string IRGenerator::indexAssignElemType(AssignmentExpr* node) {
             //   仅**数组字段**放行——非数组（指针/标量）字段下标写=v2 语义层现行
             //   拒绝面（97-a 非数组不可写），维持 648 拒绝（指针字段下标写族另立案）。
             MemberExpr* inner = static_cast<MemberExpr*>(idx->object.get());
-            const std::string ftype1059 = memberFieldSrcType(inner);
+            // 1360 结果化：value_or("") 显形（miss 落 648 显形·原语义）
+            const std::string ftype1059 = memberFieldSrcType(inner).value_or("");
             const std::string canonOwner1059 =
-                types::canonical(memberObjStructType(inner));
+                types::canonical(memberObjStructType(inner).value_or(""));
             const bool ownerIsClass1059 =
                 semantic_ != nullptr && !canonOwner1059.empty() &&
                 semantic_->isClassType(canonOwner1059);
@@ -758,7 +778,7 @@ std::string IRGenerator::indexAssignElemType(AssignmentExpr* node) {
         UnaryExpr* un = static_cast<UnaryExpr*>(node->target.get());
         if (un->operand->getType() == NodeType::IdentifierExpr) {
             const std::string st = lookupSrcType(
-                static_cast<IdentifierExpr*>(un->operand.get())->name);
+                static_cast<IdentifierExpr*>(un->operand.get())->name).value_or("");
             if (types::isPointer(st)) {
                 targetType = mapType(types::pointeeOf(st));
                 elemResolved648 = true;
@@ -770,7 +790,7 @@ std::string IRGenerator::indexAssignElemType(AssignmentExpr* node) {
             //   标识符操作数 -> 合法成员链写被 648 显形诊断误伤（宿主拒绝 vs
             //   v2 放行分叉·v2 侧同轮已修 解引用所指宽度码813 单点）。
             const std::string fieldType = memberFieldSrcType(
-                static_cast<MemberExpr*>(un->operand.get()));
+                static_cast<MemberExpr*>(un->operand.get())).value_or("");
             if (types::isPointer(fieldType)) {
                 targetType = mapType(types::pointeeOf(fieldType));
                 elemResolved648 = true;
@@ -794,34 +814,37 @@ std::string IRGenerator::indexAssignElemType(AssignmentExpr* node) {
 // 下标目标元素为结构体/类：emitStructWholeAssign 整体赋值（原 397~437 段，H8 补完）。
 // 348-a（纯提取·行为等价）：下标目标元素源码类型推导——自
 //   indexStructElemAssign 首段机械搬移，供「源优先序」挂点在 addr 计算前判型。
-std::string IRGenerator::indexTargetElemSrcType(AssignmentExpr* node) {
-    if (semantic_ == nullptr || node == nullptr) return "";
+// 1360 结果化：无值=非结构体/类可判面（原空串哨兵退役）。
+cn::Optional<std::string> IRGenerator::indexTargetElemSrcType(AssignmentExpr* node) {
+    if (semantic_ == nullptr || node == nullptr) return std::nullopt;
     // 208 病面③（2026-10-06·615 实证）：解引用目标（*结构体指针 = 结构体值）
     //   与下标目标同构——目标元素源码类型=指针元素类型。原仅认 IndexExpr，
     //   UnaryExpr 目标两守卫（structWholeAssignSrcFirst/indexStructElemAssign）
     //   全弹 → 兜底 StorePtr 只写 8 字节（12 字节结构体 静默垃圾·样本 p1005_01c）。
     if (node->target->getType() == NodeType::UnaryExpr) {
         const UnaryExpr* derefTgt = static_cast<UnaryExpr*>(node->target.get());
-        if (derefTgt->op != Operator::Deref) return "";
-        const std::string pt = exprSrcType(derefTgt->operand.get());
-        return types::isPointer(pt) ? types::pointeeOf(pt) : "";
+        if (derefTgt->op != Operator::Deref) return std::nullopt;
+        const cn::Optional<std::string> pt = exprSrcType(derefTgt->operand.get());
+        return (pt.has_value() && types::isPointer(pt.value()))
+                   ? cn::Optional<std::string>(types::pointeeOf(pt.value()))
+                   : std::nullopt;
     }
-    if (node->target->getType() != NodeType::IndexExpr) return "";
+    if (node->target->getType() != NodeType::IndexExpr) return std::nullopt;
     IndexExpr* tIdx = static_cast<IndexExpr*>(node->target.get());
     if (tIdx->object->getType() == NodeType::MemberExpr) {
         // 1059：类/结构体对象的**数组字段**元素源码类型（c.组[0]/t.两行[0] 的
         //   整体赋值 CopyStruct 与类元素调用产物接管〔923 通道〕消费）——字段
         //   类型查询经 memberFieldSrcType（findStruct+findClass 双路径·973 同源）。
         //   仅数组字段：非数组（指针/标量）字段下标写=v2 语义层现行拒绝面，
-        //   返回空串落 648 拒绝（与 indexAssignElemType 同口径零分叉）。
+        //   返回无值落 648 拒绝（与 indexAssignElemType 同口径零分叉）。
         const std::string ftype1059 = memberFieldSrcType(
-            static_cast<MemberExpr*>(tIdx->object.get()));
+            static_cast<MemberExpr*>(tIdx->object.get())).value_or("");
         if (types::isArray(ftype1059)) return types::arrayElemOf(ftype1059);
-        return "";
+        return std::nullopt;
     }
-    if (tIdx->object->getType() != NodeType::IdentifierExpr) return "";
+    if (tIdx->object->getType() != NodeType::IdentifierExpr) return std::nullopt;
     const std::string st = lookupSrcType(
-        static_cast<IdentifierExpr*>(tIdx->object.get())->name);
+        static_cast<IdentifierExpr*>(tIdx->object.get())->name).value_or("");
     if (types::isArray(st)) return types::arrayElemOf(st);
     if (types::isPointer(st)) return types::pointeeOf(st);
     // A-3（2026-08）：隐式类字段对象——结构体元素整体赋值（CopyStruct）
@@ -829,11 +852,11 @@ std::string IRGenerator::indexTargetElemSrcType(AssignmentExpr* node) {
         isInstanceField(static_cast<IdentifierExpr*>(tIdx->object.get())->name)) {
         const std::string ft = classFieldType(
             currentClass_,
-            static_cast<IdentifierExpr*>(tIdx->object.get())->name);
+            static_cast<IdentifierExpr*>(tIdx->object.get())->name).value_or("");
         if (types::isArray(ft)) return types::arrayElemOf(ft);
         if (types::isPointer(ft)) return types::pointeeOf(ft);
     }
-    return "";
+    return std::nullopt;
 }
 bool IRGenerator::indexStructElemAssign(AssignmentExpr* node, const ir::IRValue& addr) {
     // 集成验证修复 Bug：下标/解引用目标的结构体整体赋值——
@@ -847,7 +870,8 @@ bool IRGenerator::indexStructElemAssign(AssignmentExpr* node, const ir::IRValue&
         //   整体赋值·indexTargetElemSrcType 已补 UnaryExpr 分支）——原仅认
         //   IndexExpr，解引用目标落兜底 StorePtr 8 字节静默垃圾。
         // 348-a：类型推导提取至 indexTargetElemSrcType（纯提取·行为等价）
-        const std::string tElemSrc = indexTargetElemSrcType(node);
+        // 1360 结果化：value_or("") 显形（miss 落 648 拒绝面·原语义）
+        const std::string tElemSrc = indexTargetElemSrcType(node).value_or("");
         const std::string tElemCanon = types::canonical(tElemSrc);
         // H8 补完（2026-08-25）：类类型元素整体赋值（向量<映射<...>> 追加
         //   的 数据[元素数量] = 值）同样走 CopyStruct（56 字节）——原只处理
@@ -877,7 +901,7 @@ bool IRGenerator::indexStructElemAssign(AssignmentExpr* node, const ir::IRValue&
                 types::isArray(lookupSrcType(
                     static_cast<IdentifierExpr*>(
                         static_cast<IndexExpr*>(node->target.get())
-                            ->object.get())->name));
+                            ->object.get())->name).value_or(""));
             if (semantic_->isClassType(tElemCanon) &&
                 (!semantic_->findCopyConstructor(tElemCanon).has_value() ||
                  node->value->getType() != NodeType::IdentifierExpr) &&
@@ -926,21 +950,23 @@ bool IRGenerator::assignToCallTarget(AssignmentExpr* node) {
             node->value->getType() == NodeType::CallExpr) {
             const CallExpr* vcall923 =
                 static_cast<const CallExpr*>(node->value.get());
+            // 1360 结果化：value_or("") 显形（无法推导=非类判定假/不等·原语义）
             const std::string refCanon923 = types::canonical(
-                types::stripRef(exprSrcType(node->target.get())));
+                types::stripRef(exprSrcType(node->target.get()).value_or("")));
             if (semantic_->isClassType(refCanon923) &&
                 !isTransferCall(vcall923) && !vcall923->isRefReturnCall &&
                 !isCopyBuiltinCall(node->value.get()) &&
-                types::canonical(exprSrcType(node->value.get())) ==
+                types::canonical(exprSrcType(node->value.get()).value_or("")) ==
                     refCanon923) {
                 const ClassInfo* ciRef923 = semantic_->findClass(refCanon923).value_or(nullptr);
                 if (ciRef923 != nullptr && ciRef923->totalSize > 0) {
                     ir::IRValue obj923 = genExpr(node->value.get());
-                    const std::string dtorSym923 =
+                    // 1360 结果化：无值=无析构（has_value 分流）
+                    const cn::Optional<std::string> dtorSymOpt923 =
                         classDestructorSymbolKey(refCanon923);
-                    if (!dtorSym923.empty()) {
+                    if (dtorSymOpt923.has_value()) {
                         emit(ir::Opcode::Call, {tgtAddr}, ir::IRValue(),
-                             dtorSym923, "void", node->location);
+                             dtorSymOpt923.value(), "void", node->location);
                     }
                     emit(ir::Opcode::CopyStruct, {tgtAddr, obj923},
                          ir::IRValue(),

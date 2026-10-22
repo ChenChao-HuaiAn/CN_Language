@@ -45,13 +45,17 @@ bool IRGenerator::handleOperatorOverload(BinaryExpr* node, const ir::IRValue& le
     if (semantic_ == nullptr) return false;
     const std::string opSym = operatorSymText(node->op);
     if (opSym.empty()) return false;
-    const std::string leftSrcType = exprSrcType(node->left.get());
+    // 1360 结果化：value_or("") 显形（无法推导=非类判定假·原语义）
+    const std::string leftSrcType = exprSrcType(node->left.get()).value_or("");
     const std::string canonLeft = types::canonical(leftSrcType);
     if (!semantic_->isClassType(canonLeft)) return false;
     // 查 运算符X 成员（沿继承链）
     std::string owner;
-    const ClassMemberInfo* m = findClassMethod(canonLeft, opSym, owner);
-    if (m == nullptr) return false;
+    // 1360 结果化：无值=非重载（has_value 分流）
+    const cn::Optional<const ClassMemberInfo*> mOpt =
+        findClassMethod(canonLeft, opSym, owner);
+    if (!mOpt.has_value()) return false;
+    const ClassMemberInfo* m = mOpt.value();
     // 调用：this=左操作数指针（left 已是类实例地址/对象指针），实参=右操作数
     std::vector<ir::IRValue> args;
     args.push_back(left);
@@ -100,13 +104,17 @@ bool IRGenerator::handleUnaryOperatorOverload(UnaryExpr* node, const ir::IRValue
     if (semantic_ == nullptr || node->postfix) return false;
     const std::string opSym = operatorSymText(node->op);
     if (opSym.empty()) return false;
-    const std::string srcType = exprSrcType(node->operand.get());
+    // 1360 结果化：value_or("") 显形（无法推导=非类判定假·原语义）
+    const std::string srcType = exprSrcType(node->operand.get()).value_or("");
     const std::string canon = types::canonical(srcType);
     if (!semantic_->isClassType(canon)) return false;
     // 查 运算符X 成员（沿继承链，0 参数单目）
     std::string owner;
-    const ClassMemberInfo* m = findClassMethod(canon, opSym, owner);
-    if (m == nullptr) return false;
+    // 1360 结果化：无值=非重载（has_value 分流）
+    const cn::Optional<const ClassMemberInfo*> mOpt =
+        findClassMethod(canon, opSym, owner);
+    if (!mOpt.has_value()) return false;
+    const ClassMemberInfo* m = mOpt.value();
     // 单目调用：this=操作数指针，无右实参
     std::vector<ir::IRValue> args;
     args.push_back(operand);

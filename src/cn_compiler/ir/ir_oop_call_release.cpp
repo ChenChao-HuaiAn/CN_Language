@@ -383,8 +383,9 @@ void IRGenerator::genClassDestructorCalls() {
         const bool hasNoDtorVar = [&]() {
             if (semantic_ == nullptr) return false;
             for (const auto& ov : objVars) {
-                if (classDestructorSymbolKey(
-                        types::canonical(ov.srcType)).empty()) {
+                // 1360 结果化：无值=无析构（!has_value 即原空串判定）
+                if (!classDestructorSymbolKey(
+                        types::canonical(ov.srcType)).has_value()) {
                     return true;
                 }
             }
@@ -417,8 +418,9 @@ void IRGenerator::genClassDestructorCalls() {
             //   声明路径槽=0——级联 FieldAddr/LoadPtr 无判空，空槽直入=空指针
             //   解引用 rc=3·探针 658 实锤）；DeleteObject 自带 codegen test/je
             //   空安全不在此列。
+            // 1360 结果化：无值=无析构（!has_value 即原空串判定）
             if (semantic_ != nullptr &&
-                classDestructorSymbolKey(canonSrc).empty()) {
+                !classDestructorSymbolKey(canonSrc).has_value()) {
                 ir::IRValue nonNull = emitResult(
                     ir::Opcode::Ne,
                     {objPtr, ir::IRValue::constant("0", "ptr")}, "i1", "",
@@ -484,8 +486,9 @@ void IRGenerator::emitClassDeleteFor(const std::string& unique,
     //   槽=零初始化空指针——级联 FieldAddr/LoadPtr 无判空（析构体内 this 恒
     //   有效语境不同），空槽直入=空指针解引用 rc=3（探针 658 实锤）；
     //   DeleteObject 自带 codegen test/je 空安全不在此列。
-    if (semantic_ != nullptr && classDestructorSymbolKey(
-            types::canonical(canon)).empty()) {
+    // 1360 结果化：无值=无析构（!has_value 即原空串判定）
+    if (semantic_ != nullptr && !classDestructorSymbolKey(
+            types::canonical(canon)).has_value()) {
         ir::IRValue nonNull = emitResult(
             ir::Opcode::Ne,
             {objPtr, ir::IRValue::constant("0", "ptr")}, "i1", "",
@@ -700,7 +703,8 @@ void IRGenerator::emitOwnedRecvTempDestruct662(Expr* recvObj,
         return;
     }
     CallExpr* rc662 = static_cast<CallExpr*>(recvObj);
-    const std::string rt662 = types::canonical(memberObjectSrcType(rc662));
+    // 1360 结果化：value_or("") 显形（无法推导=非类判定假·原语义）
+    const std::string rt662 = types::canonical(memberObjectSrcType(rc662).value_or(""));
     if (rt662.empty() || !semantic_->isClassType(rt662)) return;
     if (rc662->callee == nullptr ||
         rc662->callee->getType() != NodeType::IdentifierExpr) {
@@ -722,7 +726,8 @@ void IRGenerator::emitOwnedRecvTempDestruct662(Expr* recvObj,
     }
     if (!recvOwned662) return;
     if (!semantic_->findClass(rt662).has_value()) return;   // 非类类型无析构面（miss 显形跳过）
-    if (classDestructorSymbolKey(rt662).empty()) {
+    // 1360 结果化：无值=无析构（!has_value 即原空串判定）
+    if (!classDestructorSymbolKey(rt662).has_value()) {
         ir::IRValue nonNull662 = emitResult(
             ir::Opcode::Ne, {thisArg, ir::IRValue::constant("0", "ptr")}, "i1",
             "", loc);

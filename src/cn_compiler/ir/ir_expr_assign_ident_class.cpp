@@ -27,10 +27,11 @@ bool IRGenerator::identifierClassCopyAssign(AssignmentExpr* node, IdentifierExpr
     //   同类虚表指针相同，覆盖后语义不变）。
     if (semantic_ != nullptr &&
         node->value->getType() == NodeType::IdentifierExpr) {
-        const std::string targetSrcType = lookupSrcType(ident->name);
+        // 1360 结果化：value_or("") 显形（miss=非类判定假·原语义）
+        const std::string targetSrcType = lookupSrcType(ident->name).value_or("");
         const std::string canonTarget = types::canonical(targetSrcType);
         const std::string valueSrcType = lookupSrcType(
-            static_cast<IdentifierExpr*>(node->value.get())->name);
+            static_cast<IdentifierExpr*>(node->value.get())->name).value_or("");
         const std::string canonValue = types::canonical(valueSrcType);
         if (semantic_->isClassType(canonTarget) &&
             semantic_->isClassType(canonValue)) {
@@ -58,7 +59,8 @@ bool IRGenerator::identifierClassCopyAssign(AssignmentExpr* node, IdentifierExpr
                                                       : copyCtor->ownerClass;
                     const std::string valueName =
                         static_cast<IdentifierExpr*>(node->value.get())->name;
-                    const std::string srcUnique = lookupVarName(valueName);
+                    // 1360 结果化：value_or("") 显形（miss=空槽名原语义）
+                    const std::string srcUnique = lookupVarName(valueName).value_or("");
                     ir::IRValue srcAddr;
                     if (isByRefCapture(valueName)) {
                         // 源为引用参数：槽内存被引用对象地址（Load 槽）
@@ -142,8 +144,9 @@ bool IRGenerator::identifierRefReturnClassCopyAssign(
     }
     if (node->value->getType() != NodeType::CallExpr) return false;
     const CallExpr* call = static_cast<const CallExpr*>(node->value.get());
+    // 1360 结果化：value_or("") 显形（miss=非类判定假·原语义）
     const std::string canonTarget =
-        types::canonical(lookupSrcType(ident->name));
+        types::canonical(lookupSrcType(ident->name).value_or(""));
     if (!isRefReturnClassValueCall(call, canonTarget)) return false;
     const ClassInfo* ci = semantic_->findClass(canonTarget).value_or(nullptr);
     if (ci == nullptr || ci->totalSize <= 0) return false;
@@ -212,7 +215,9 @@ bool IRGenerator::isClassOverloadProductRhs(AssignmentExpr* node,
     if (valueKind != NodeType::BinaryExpr && valueKind != NodeType::UnaryExpr) {
         return false;
     }
-    const std::string canonValue = types::canonical(exprSrcType(node->value.get()));
+    // 1360 结果化：value_or("") 显形（无法推导=空串→empty 判定假·原语义）
+    const std::string canonValue =
+        types::canonical(exprSrcType(node->value.get()).value_or(""));
     if (canonValue.empty() || canonValue != canonTarget) return false;
     const Operator op = (valueKind == NodeType::BinaryExpr)
                             ? static_cast<BinaryExpr*>(node->value.get())->op
@@ -240,7 +245,9 @@ bool IRGenerator::identifierClassOverloadProductAssign(
     if (semantic_ == nullptr || unique.empty() || isCompoundAssignOp(node->op)) {
         return false;
     }
-    const std::string canonTarget = types::canonical(lookupSrcType(ident->name));
+    // 1360 结果化：value_or("") 显形（miss=非类判定假·原语义）
+    const std::string canonTarget =
+        types::canonical(lookupSrcType(ident->name).value_or(""));
     if (!isClassOverloadProductRhs(node, canonTarget)) return false;
     // 产物求值（重载调用·被调方 NewObject 返回新对象指针）
     ir::IRValue newObj = genExpr(node->value.get());
@@ -304,11 +311,14 @@ bool IRGenerator::identifierClassCallProductAssign(AssignmentExpr* node,
     const CallExpr* call = static_cast<const CallExpr*>(node->value.get());
     if (isTransferCall(call)) return false;      // 转移=专用通道（源槽清零在彼）
     if (call->isRefReturnCall) return false;     // 引用返回=借用产物（目标不得 drop）
-    const std::string canonTarget = types::canonical(lookupSrcType(ident->name));
+    // 1360 结果化：value_or("") 显形（miss=非类判定假·原语义）
+    const std::string canonTarget =
+        types::canonical(lookupSrcType(ident->name).value_or(""));
     if (!semantic_->isClassType(canonTarget)) return false;
     // 右值调用返回类型严格等于目标类（异型赋值语义层已拦·此处保守面：
     //   返回类型推导 miss/引用返回后缀自然不等 → 零行为变更落原路径）
-    if (types::canonical(exprSrcType(node->value.get())) != canonTarget) {
+    // 1360 结果化：value_or("") 显形（无法推导=不等落原路径·原语义）
+    if (types::canonical(exprSrcType(node->value.get()).value_or("")) != canonTarget) {
         return false;
     }
     // 右值求值（产物=新堆对象句柄：LUE 类返回/容器返回/构造 NewObject/
@@ -355,7 +365,8 @@ bool IRGenerator::globalStaticClassCallProductAssign(AssignmentExpr* node,
     if (call->isRefReturnCall) return false;
     const std::string canonTarget = types::canonical(stType);
     if (!semantic_->isClassType(canonTarget)) return false;
-    if (types::canonical(exprSrcType(node->value.get())) != canonTarget) {
+    // 1360 结果化：value_or("") 显形（无法推导=不等落原路径·原语义）
+    if (types::canonical(exprSrcType(node->value.get()).value_or("")) != canonTarget) {
         return false;
     }
     ir::IRValue slotAddr = emitResult(ir::Opcode::ConstString, {}, "ptr",
@@ -385,7 +396,8 @@ bool IRGenerator::handleClassMemberLvalue(MemberExpr* node, ir::IRValue& outAddr
     if (node->object->getType() == NodeType::IdentifierExpr) {
         objName = static_cast<IdentifierExpr*>(node->object.get())->name;
     }
-    const std::string objSrcType = memberObjectSrcType(node->object.get());  // 622：支持 (*类指针)
+    // 1360 结果化：value_or("") 显形（无法推导=非类判定假·原语义）// 622：支持 (*类指针)
+    const std::string objSrcType = memberObjectSrcType(node->object.get()).value_or("");
     const std::string canonObj = types::canonical(objSrcType);
 
     // 静态字段
@@ -394,7 +406,8 @@ bool IRGenerator::handleClassMemberLvalue(MemberExpr* node, ir::IRValue& outAddr
         //   访问检查（semantic_expr_access.cpp:244-248）对「类没有成员」报错
         //   中止，语义有错的程序不进 IR 阶段（driver.cpp:64）；到达即内部
         //   缺陷（查询面漂移），报内部错误显形；返回 false 维持原控制流。
-        if (classFieldType(objName, node->memberName).empty()) {
+        // 1360 结果化：无值=字段未登记（!has_value 即原空串判定）
+        if (!classFieldType(objName, node->memberName).has_value()) {
             diagnostics_.report(DiagnosticLevel::Error, node->location,
                 "内部错误: 静态字段 '" + node->memberName + "' 未登记于类 '" +
                     objName + "'（#1303）");
@@ -416,7 +429,8 @@ bool IRGenerator::handleClassMemberLvalue(MemberExpr* node, ir::IRValue& outAddr
         canonObjField = types::canonical(types::pointeeOf(canonObjField));
     }
     if (!semantic_->isClassType(canonObjField)) return false;
-    const std::string fieldType = classFieldType(canonObjField, node->memberName);
+    // 1360 结果化：value_or("") 显形（miss 落 1303 甄别·原语义）
+    const std::string fieldType = classFieldType(canonObjField, node->memberName).value_or("");
     // 1303 甄别（不可达断言·882 处置①）：同静态面——语义层成员访问检查
     //   （semantic_expr_access.cpp:244-248）对「类没有成员」报错中止，语义
     //   有错的程序不进 IR；到达即内部缺陷，报内部错误显形；返回 false 维持
@@ -495,7 +509,8 @@ bool IRGenerator::handleClassMemberAssign(MemberExpr* target, Expr* valueExpr,
     if (target->object->getType() == NodeType::IdentifierExpr) {
         objName = static_cast<IdentifierExpr*>(target->object.get())->name;
     }
-    const std::string objSrcType = memberObjectSrcType(target->object.get());  // 622：支持 (*类指针)
+    // 1360 结果化：value_or("") 显形（无法推导=剥星链 miss·原语义）// 622：支持 (*类指针)
+    const std::string objSrcType = memberObjectSrcType(target->object.get()).value_or("");
     // 390（win x64 指针字段写截断根治·与 handleClassMemberLvalue 351 剥星同构）：
     //   字段类型查询须用**剥星后类名**——类指针对象（节点* 头.下个 = 甲）原查
     //   classFieldType("节点*", …)=空 → mapType("")="void"（非空·i64 回退失效）
@@ -508,9 +523,10 @@ bool IRGenerator::handleClassMemberAssign(MemberExpr* target, Expr* valueExpr,
         types::isPointer(canonObjForFieldType)) {
         canonObjForFieldType = types::canonical(types::pointeeOf(canonObjForFieldType));
     }
-    std::string fieldType = classFieldType(canonObjForFieldType, target->memberName);
+    // 1360 结果化：value_or("") 显形（两级查询链·miss 落 648 显形原语义）
+    std::string fieldType = classFieldType(canonObjForFieldType, target->memberName).value_or("");
     if (fieldType.empty() && !objName.empty()) {
-        fieldType = classFieldType(objName, target->memberName);
+        fieldType = classFieldType(objName, target->memberName).value_or("");
     }
     std::string targetIrType = mapType(fieldType);
     if (targetIrType.empty() || targetIrType == "void") {
@@ -531,9 +547,11 @@ bool IRGenerator::handleClassMemberAssign(MemberExpr* target, Expr* valueExpr,
         //   实现行为（390/458 v2 面红·该面=聚合字段整体赋值路径切换·非本案
         //   指针字段写落位最小面）——按单一职责回退，聚合指针面归 #364 独立
         //   清偿轮（须带 v2p dual 全量验证）。
+        // 1360 结果化：value_or("") 显形（miss=非聚合判定假·原语义）
         const std::string fieldType974 =
-            structOrClassFieldType(memberObjectSrcType(target->object.get()),
-                                   target->memberName);
+            structOrClassFieldType(
+                memberObjectSrcType(target->object.get()).value_or(""),
+                target->memberName).value_or("");
         const std::string canon974 = types::canonical(fieldType974);
         if (!canon974.empty() &&
             (semantic_->isStructType(canon974) ||
@@ -700,12 +718,14 @@ bool IRGenerator::indexClassCallProductAssign(AssignmentExpr* node) {
     if (isTransferCall(call)) return false;     // 转移=959 专用通道
     if (call->isRefReturnCall) return false;    // 引用返回=借用产物（另行处理）
     if (isCopyBuiltinCall(node->value.get())) return false;  // 复制=234-a 分支
+    // 1360 结果化：value_or("") 显形（miss=非类判定假·原语义）
     const std::string elemCanon =
-        types::canonical(indexTargetElemSrcType(node));
+        types::canonical(indexTargetElemSrcType(node).value_or(""));
     if (elemCanon.empty() || !semantic_->isClassType(elemCanon)) return false;
     // 右值调用返回类型严格等于元素类（异型赋值语义层已拦·推导 miss/引用
     //   返回后缀自然不等=保守面零行为变更）
-    if (types::canonical(exprSrcType(node->value.get())) != elemCanon) {
+    // 1360 结果化：value_or("") 显形（无法推导=不等落原路径·原语义）
+    if (types::canonical(exprSrcType(node->value.get()).value_or("")) != elemCanon) {
         return false;
     }
     const ClassInfo* ci = semantic_->findClass(elemCanon).value_or(nullptr);
@@ -716,9 +736,10 @@ bool IRGenerator::indexClassCallProductAssign(AssignmentExpr* node) {
     // ② 目标元素地址
     ir::IRValue dstAddr = lvalueAddress(node->target.get());
     // ③ 旧值析构（重赋值安全——首写零初始化槽=空句柄空安全）
-    const std::string dtorSym = classDestructorSymbolKey(elemCanon);
-    if (!dtorSym.empty()) {
-        emit(ir::Opcode::Call, {dstAddr}, ir::IRValue(), dtorSym, "void",
+    // 1360 结果化：无值=无析构（has_value 分流）
+    const cn::Optional<std::string> dtorSymOpt = classDestructorSymbolKey(elemCanon);
+    if (dtorSymOpt.has_value()) {
+        emit(ir::Opcode::Call, {dstAddr}, ir::IRValue(), dtorSymOpt.value(), "void",
              node->location);
     }
     // ④ 内容搬迁（产物本体 → 元素内联体·类布局大小整块）
@@ -799,9 +820,11 @@ bool IRGenerator::classElemInlineAssign(const ir::IRValue& dstAddr, Expr* valueN
     //   槽内旧值为安全本体·923 v2 侧「数组对象923」同口径）：指针数据区/容器
     //   数据区元素=分配区未初始化槽，dtor(垃圾) 即崩（961 v2p 构建实录：
     //   映射值数组追加位 dtor 释放垃圾指针 free 崩·B1 二分实证）。
-    const std::string dtorKey = classDestructorSymbolKey(canon);
-    if (allowPreFree && !dtorKey.empty()) {
-        emit(ir::Opcode::Call, {dstAddr}, ir::IRValue(), dtorKey, "void", loc);
+    // 1360 结果化：无值=无析构（has_value 分流）
+    const cn::Optional<std::string> dtorKeyOpt = classDestructorSymbolKey(canon);
+    if (allowPreFree && dtorKeyOpt.has_value()) {
+        emit(ir::Opcode::Call, {dstAddr}, ir::IRValue(), dtorKeyOpt.value(), "void",
+             loc);
     }
     const ClassMemberInfo* copyCtor = semantic_->findCopyConstructor(canon).value_or(nullptr);
     if (copyCtor != nullptr) {

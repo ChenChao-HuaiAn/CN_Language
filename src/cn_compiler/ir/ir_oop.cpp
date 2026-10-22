@@ -38,13 +38,14 @@ std::string methodSymbolKey(const std::string& className, const std::string& sig
 // 查询类方法成员（沿继承链；ownerClass 输出所属类。声明在 ir_generator.hpp——
 //   936 拆分：原 ir_oop_call.cpp 文件级 static 上提，运算符重载族拆出
 //   ir_oop_op_overload.cpp 后跨文件共用；语义零变更=lookupClassMember 薄包装）。
-const ClassMemberInfo* IRGenerator::findClassMethod(const std::string& className,
+//   1360 结果化：无值=未找到（原 nullptr 哨兵退役）。
+cn::Optional<const ClassMemberInfo*> IRGenerator::findClassMethod(const std::string& className,
                                                     const std::string& methodName,
                                                     std::string& ownerClass) {
-    if (semantic_ == nullptr) return nullptr;
-    // 1360 结果化批3A：语义层 lookupClassMember 已 Optional 化——本薄包装保持
-    //   ir 层既有指针签名（消费面已在批2 收口），value_or(nullptr) 显形透传
-    return semantic_->lookupClassMember(className, methodName, ownerClass).value_or(nullptr);
+    if (semantic_ == nullptr) return std::nullopt;
+    // 1360 结果化批3A+批2 叠加：语义层 lookupClassMember 已 Optional 化——
+    //   本薄包装签名批2 已 Optional 化，Optional 直通透传（消费面批2 已收口）
+    return semantic_->lookupClassMember(className, methodName, ownerClass);
 }
 
 // 118（929）：引用返回方法的读值分叉判据（semantic 判定聚合内联）——聚合 T
@@ -261,10 +262,12 @@ void IRGenerator::emitClassMethod(const std::string& className, const ClassMembe
             }
             if (!parentCtorSig.empty()) {
                 std::vector<ir::IRValue> ctorArgs;
-                const std::string thisUnique = lookupVarName("自身");
+                // 1360 结果化：无值=this 槽未登记（原空串→reg(-1) 分派同义）
+                const cn::Optional<std::string> thisUniqueOpt = lookupVarName("自身");
                 ctorArgs.push_back(
-                    thisUnique.empty() ? ir::IRValue::reg(-1, "ptr")
-                                       : ir::IRValue::var(thisUnique, "ptr"));
+                    !thisUniqueOpt.has_value()
+                        ? ir::IRValue::reg(-1, "ptr")
+                        : ir::IRValue::var(thisUniqueOpt.value(), "ptr"));
                 for (auto& argExpr : member->ctorInitArgs) {
                     ctorArgs.push_back(genExpr(argExpr.get()));
                 }
@@ -303,9 +306,11 @@ void IRGenerator::emitClassMethod(const std::string& className, const ClassMembe
              member->ctorInitBase.empty() && semantic_ != nullptr &&
              (mi.ownerClass.empty() ? currentClass_ : mi.ownerClass) ==
                  currentClass_) {
-        const std::string thisUnique = lookupVarName("自身");
-        if (!thisUnique.empty()) {
-            emitBaseCtorChain(currentClass_, ir::IRValue::var(thisUnique, "ptr"),
+        // 1360 结果化：无值=this 槽未登记（has_value 分流）
+        const cn::Optional<std::string> thisUniqueOpt = lookupVarName("自身");
+        if (thisUniqueOpt.has_value()) {
+            emitBaseCtorChain(currentClass_,
+                              ir::IRValue::var(thisUniqueOpt.value(), "ptr"),
                               member->body->location);
         }
     }
@@ -470,10 +475,13 @@ void IRGenerator::emitBaseCopyChain(const ClassMember* member) {
     }
     const ClassInfo* ci = semantic_->findClass(currentClass_).value_or(nullptr);
     if (ci == nullptr || ci->baseName.empty()) return;
-    const std::string thisUnique = lookupVarName("自身");
-    const std::string otherUnique =
+    // 1360 结果化：无值=槽未登记（has_value 分流）
+    const cn::Optional<std::string> thisUniqueOpt = lookupVarName("自身");
+    const cn::Optional<std::string> otherUniqueOpt =
         lookupVarName(member->params[0]->name);
-    if (thisUnique.empty() || otherUnique.empty()) return;
+    if (!thisUniqueOpt.has_value() || !otherUniqueOpt.has_value()) return;
+    const std::string& thisUnique = thisUniqueOpt.value();
+    const std::string& otherUnique = otherUniqueOpt.value();
     const SourceLocation& loc = member->body->location;
     // 对象指针：自身槽一层 Load（genClassFieldAddr 同款）；源形参（类名&）槽
     //   存被引用槽地址——须再解一层 LoadPtr 得源对象指针（asm 实证：函数体
@@ -539,8 +547,9 @@ void IRGenerator::emitOwnedFieldsCopy(const ir::IRValue& thisPtr,
         if (fOwner != ownerClass) continue;
         const int off = semantic_->classFieldOffset(className, fname).value_or(-1);
         if (off < 0) continue;
+        // 1360 结果化：value_or("") 显形（miss=非字符串判定假·原语义）
         const std::string canon =
-            types::canonical(classFieldType(className, fname));
+            types::canonical(classFieldType(className, fname).value_or(""));
         ir::IRValue dstF = emitResult(ir::Opcode::FieldAddr, {thisPtr}, "ptr",
                                       std::to_string(off), loc);
         ir::IRValue srcF = emitResult(ir::Opcode::FieldAddr, {srcObj}, "ptr",
@@ -553,8 +562,9 @@ void IRGenerator::emitOwnedFieldsCopy(const ir::IRValue& thisPtr,
             emit(ir::Opcode::StorePtr, {dstF, copy}, ir::IRValue(), "", "ptr",
                  loc);
         } else if (semantic_->isClassType(canon)) {
-            const std::string copyKey = classCopyCtorSymbolKey(canon);
-            if (!copyKey.empty()) {
+            // 1360 结果化：无值=无拷贝构造（has_value 分流）
+            const cn::Optional<std::string> copyKeyOpt = classCopyCtorSymbolKey(canon);
+            if (copyKeyOpt.has_value()) {
                 // 深拷：NewObject + 拷贝构造（引用实参=源字段槽地址）
                 const ClassInfo* fci = semantic_->findClass(canon).value_or(nullptr);
                 const std::string extra =
@@ -563,7 +573,8 @@ void IRGenerator::emitOwnedFieldsCopy(const ir::IRValue& thisPtr,
                 ir::IRValue newObj = emitResult(
                     ir::Opcode::NewObject,
                     {ir::IRValue::constant(canon, "ptr")}, "ptr", extra, loc);
-                emit(ir::Opcode::Call, {newObj, srcF}, ir::IRValue(), copyKey,
+                emit(ir::Opcode::Call, {newObj, srcF}, ir::IRValue(),
+                     copyKeyOpt.value(),
                      "void", loc);
                 emit(ir::Opcode::StorePtr, {dstF, newObj}, ir::IRValue(), "",
                      "ptr", loc);
@@ -601,8 +612,10 @@ void IRGenerator::injectFieldCascadeConstruct(const ClassMember* member) {
     if (fn == nullptr || fn->blocks.empty()) return;
     const ClassInfo* ci = semantic_->findClass(currentClass_).value_or(nullptr);
     if (ci == nullptr) return;
-    const std::string thisUnique = lookupVarName("自身");
-    if (thisUnique.empty()) return;
+    // 1360 结果化：无值=this 槽未登记（has_value 分流）
+    const cn::Optional<std::string> thisUniqueOpt = lookupVarName("自身");
+    if (!thisUniqueOpt.has_value()) return;
+    const std::string& thisUnique = thisUniqueOpt.value();
     // #283（2026-10-08 甲案）：单字段发射抽至 cascadeConstructFields（与无构造
     //   类实例化点共用）——本函数保序行为逐指令不变（this 槽 Load 一次在外）
     ir::IRValue thisPtr = emitResult(
@@ -630,7 +643,8 @@ void IRGenerator::cascadeConstructFields(const std::string& className,
         const std::string fOwner =
             f->second.ownerClass.empty() ? className : f->second.ownerClass;
         if (fOwner != className) continue;
-        const std::string ftype = classFieldType(className, fname);
+        // 1360 结果化：value_or("") 显形（miss=非类字段判定假·原语义）
+        const std::string ftype = classFieldType(className, fname).value_or("");
         const std::string fcanon = types::canonical(ftype);
         if (ftype.empty() || !semantic_->isClassType(fcanon)) continue;
         const ClassInfo* fci = semantic_->findClass(fcanon).value_or(nullptr);
@@ -698,8 +712,10 @@ void IRGenerator::visitClassMember(ClassMember* node) {
 // 自身表达式：加载 this 指针（方法第一个参数 自身 的栈槽）。
 // this 是对象指针（NewObject 结果），codegen 参数装载时 rcx -> 参数槽。
 void IRGenerator::visitSelfExpr(SelfExpr* node) {
-    const std::string unique = lookupVarName("自身");
-    if (!unique.empty() && !currentMethodStatic_) {
+    // 1360 结果化：无值=this 槽未登记（has_value 分流·静态/非类方法落 0 指针）
+    const cn::Optional<std::string> uniqueOpt = lookupVarName("自身");
+    if (uniqueOpt.has_value() && !currentMethodStatic_) {
+        const std::string& unique = uniqueOpt.value();
         lastExpr_ = emitResult(ir::Opcode::Load,
                                {ir::IRValue::var(unique, "ptr")},
                                "ptr", unique, node->location);
@@ -713,8 +729,10 @@ void IRGenerator::visitSelfExpr(SelfExpr* node) {
 // 虚表指针在首、父类成员区紧随其后，父类子对象地址 == 实例地址）。
 // 后续 父类.方法() 由 handleClassCallExpr 直接调用父类方法符号（非虚分派）。
 void IRGenerator::visitSuperExpr(SuperExpr* node) {
-    const std::string unique = lookupVarName("自身");
-    if (!unique.empty() && !currentMethodStatic_) {
+    // 1360 结果化：无值=this 槽未登记（has_value 分流·静态/非类方法落 0 指针）
+    const cn::Optional<std::string> uniqueOpt = lookupVarName("自身");
+    if (uniqueOpt.has_value() && !currentMethodStatic_) {
+        const std::string& unique = uniqueOpt.value();
         lastExpr_ = emitResult(ir::Opcode::Load,
                                {ir::IRValue::var(unique, "ptr")},
                                "ptr", unique, node->location);
@@ -731,7 +749,8 @@ bool IRGenerator::isContainerElementView(Expr* init) const {
     if (call->callee->getType() != NodeType::MemberExpr) return false;
     const MemberExpr* mem = static_cast<const MemberExpr*>(call->callee.get());
     if (mem->memberName != "元素") return false;
-    const std::string objSrc = exprSrcType(mem->object.get());
+    // 1360 结果化：value_or("") 显形（无法推导=非容器判定假·原语义）
+    const std::string objSrc = exprSrcType(mem->object.get()).value_or("");
     const std::string canon = types::canonical(objSrc);
     return canon.rfind("向量$", 0) == 0 || canon.rfind("链表$", 0) == 0 ||
            canon.rfind("栈$", 0) == 0 || canon.rfind("队列$", 0) == 0;

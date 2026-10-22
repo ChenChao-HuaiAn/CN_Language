@@ -50,14 +50,15 @@ bool IRGenerator::emitFnPtrCall(CallExpr* node,
         const std::string mvName =
             static_cast<IdentifierExpr*>(node->callee.get())->name;
         if (isMethodValueVar(mvName)) {
-            const std::string unique = lookupVarName(mvName);
+            const cn::Optional<std::string> uniqueOpt = lookupVarName(mvName);
             // 静默豁免上游已诊断: 已报内部错误·return true=已消费占位（控制流不变）
-            if (unique.empty()) {
+            if (!uniqueOpt.has_value()) {
                 // miss 不可静默：语义层保证方法值变量已登记槽位
                 diagnostics_.report(DiagnosticLevel::Error, node->location,
                     "内部错误: 方法值变量 '" + mvName + "' 槽未登记（#1075）");
                 return true;
             }
+            const std::string& unique = uniqueOpt.value();
             ir::IRValue thisVal, codeVal;
             loadMethodValuePair(unique, thisVal, codeVal, node->location);
             args.insert(args.begin(), thisVal);   // 参数位 0（this 注入）

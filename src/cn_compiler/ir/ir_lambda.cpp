@@ -47,9 +47,10 @@ ir::IRValue IRGenerator::evalValueCaptureCopy(const std::string& capName,
         return emitResult(ir::Opcode::Call, {val}, "ptr", "__cn_str_copy", loc);
     }
     if (semantic_->isClassType(canon)) {
-        const std::string copyKey = classCopyCtorSymbolKey(canon);
-        if (copyKey.empty()) return val;  // 语义层已拒绝（无拷贝构造负测面）
-        const std::string capUnique = lookupVarName(capName);
+        // 1360 结果化：无值=无拷贝构造（has_value 分流·语义层已拒绝负测面）
+        const cn::Optional<std::string> copyKeyOpt = classCopyCtorSymbolKey(canon);
+        if (!copyKeyOpt.has_value()) return val;
+        const std::string capUnique = lookupVarName(capName).value_or("");
         ir::IRValue srcSlot = emitResult(
             ir::Opcode::AddrOf,
             {ir::IRValue::var(capUnique, "i64")}, "ptr", capUnique, loc);
@@ -59,7 +60,8 @@ ir::IRValue IRGenerator::evalValueCaptureCopy(const std::string& capName,
         ir::IRValue newObj = emitResult(
             ir::Opcode::NewObject, {ir::IRValue::constant(canon, "ptr")}, "ptr",
             extra, loc);
-        emit(ir::Opcode::Call, {newObj, srcSlot}, ir::IRValue(), copyKey, "void",
+        emit(ir::Opcode::Call, {newObj, srcSlot}, ir::IRValue(), copyKeyOpt.value(),
+             "void",
              loc);
         return newObj;
     }
@@ -126,8 +128,9 @@ void IRGenerator::emitLambdaSnapshotStores(
     for (std::size_t ci = 0; ci < capturedNames.size(); ++ci) {
         const std::string& cap = capturedNames[ci];
         const bool byRef = captureRefs[ci] != 0;
-        const std::string capSrc = lookupSrcType(cap);
-        const std::string capIrType = lookupVarType(cap);
+        // 1360 结果化：value_or("") 显形（miss 落 648 显形/宽度回退链·原语义）
+        const std::string capSrc = lookupSrcType(cap).value_or("");
+        const std::string capIrType = lookupVarType(cap).value_or("");
         if (capIrType.empty()) {
             // 648（miss 不可静默·110 同族）：捕获变量 IR 类型未登记=编译器内部
             //   缺陷（语义层回填捕获列表必对应 varStack 已登记变量），显形于此；
@@ -149,7 +152,7 @@ void IRGenerator::emitLambdaSnapshotStores(
         if (byRef) {
             // 引用捕获：槽存被捕获变量地址（AddrOf 取变量槽地址——数组/结构体/
             //   标量统一地址形态，蹦床 LoadPtr 还原=引用实参）
-            const std::string capUnique = lookupVarName(cap);
+            const std::string capUnique = lookupVarName(cap).value_or("");
             ir::IRValue srcAddr = emitResult(
                 ir::Opcode::AddrOf,
                 {ir::IRValue::var(capUnique,
@@ -172,10 +175,12 @@ void IRGenerator::emitLambdaSnapshotStores(
             //   闭包值生命周期（CN 闭包值=裸函数指针无析构语义·语言级缺口）
             //   → 挂账独立任务。悬垂（安全目标②）优先于残留（性能面）。
             const std::string canon = types::canonical(capSrc);
+            // 1360 结果化：value_or("") 显形（语义层保证捕获已登记·形态兜面）
+            const std::string capUniqueS = lookupVarName(cap).value_or("");
             ir::IRValue srcAddr = emitResult(
                 ir::Opcode::AddrOf,
-                {ir::IRValue::var(lookupVarName(cap), "i64")},
-                "ptr", lookupVarName(cap), loc);
+                {ir::IRValue::var(capUniqueS, "i64")},
+                "ptr", capUniqueS, loc);
             emitStructCopyWithFields(slotAddr, srcAddr, canon, loc,
                                      /*preFree=*/false, /*deepCopy=*/true);
         } else {
@@ -253,8 +258,9 @@ void IRGenerator::buildClosureTrampoline943(
         ir::IRValue slotAddr = emitResult(
             ir::Opcode::ConstString, {}, "ptr",
             "?gstatic_" + lambdaSlotKey(closureId, cap), loc);
-        const std::string capSrc = lookupSrcType(cap);
-        const std::string capIrType = lookupVarType(cap);
+        // 1360 结果化：value_or("") 显形（miss 落 648 显形/宽度回退链·原语义）
+        const std::string capSrc = lookupSrcType(cap).value_or("");
+        const std::string capIrType = lookupVarType(cap).value_or("");
         if (capIrType.empty()) {
             // 648（miss 不可静默·110 同族）：捕获变量 IR 类型未登记=编译器内部
             //   缺陷（与 emitLambdaSnapshotStores 同源 miss 的蹦床侧独立防御点），
@@ -285,8 +291,10 @@ void IRGenerator::buildClosureTrampoline943(
     //   是占位寄存器 id，codegen 会把该寄存器分到普通栈槽而非参数槽
     //   （面2 实弹：trap 读 [rbp-80] 未初始化垃圾·参数槽在 [rbp-112]））
     for (const auto* param : params) {
-        const VarEntry* pe = findVarEntry(param->name);
-        if (pe != nullptr) {
+        // 1360 结果化：has_value=条目已登记（原 nullptr 判定显形）
+        const cn::Optional<const VarEntry*> peOpt = findVarEntry(param->name);
+        if (peOpt.has_value()) {
+            const VarEntry* pe = peOpt.value();
             // 943：按「槽内实际内容宽度」装载转发——引用形参/地址透传形参
             //   （结构体/数组）槽值=地址（ptr 宽），按声明窄宽装载会把地址
             //   截断（457 捕码截断 SEGV 同族）；其余按值宽装载。
@@ -297,7 +305,9 @@ void IRGenerator::buildClosureTrampoline943(
                 {ir::IRValue::var(pe->uniqueName, pe->type)},
                 loadType, pe->uniqueName, loc));
         } else {
-            callArgs.push_back(lookupVar(param->name));
+            // 1360 结果化：pe 与 lookupVar 同栈遍历——此分支 lookupVar 恒无值
+            //   （原返回哨兵 reg(-1,"")·形态等价直写）
+            callArgs.push_back(ir::IRValue::reg(-1, ""));
         }
     }
     // 转发直调被调（返回=透传）
@@ -413,8 +423,9 @@ void IRGenerator::visitLambdaExpr(LambdaExpr* node) {
     for (std::size_t ci = 0; ci < capturedNames.size(); ++ci) {
         const std::string& cap = capturedNames[ci];
         const bool byRef = captureRefs[ci] != 0;
-        const std::string capType = lookupVarType(cap);
-        const std::string capSrc = lookupSrcType(cap);
+        // 1360 结果化：value_or("") 显形（miss 落 648 显形/宽度回退链·原语义）
+        const std::string capType = lookupVarType(cap).value_or("");
+        const std::string capSrc = lookupSrcType(cap).value_or("");
         capturedSrcTypes482.push_back(capSrc);
         if (capType.empty()) {
             // 648（miss 不可静默·110 同族）：捕获变量 IR 类型未登记=编译器内部
@@ -543,11 +554,15 @@ void IRGenerator::visitLambdaExpr(LambdaExpr* node) {
 //   ④ 来源解析（resolveLambdaOrigin482）：lambda 字面量/登记变量/直接调用
 //      （函数返回来源表）——来源未知=清除登记退化蹦床通道（共享槽=最近实例，
 //      与现状同界不再更差；数组/字段/参数等载体另域）。
-int IRGenerator::captureBytes482(const std::string& capSrc) {
+cn::Optional<int> IRGenerator::captureBytes482(const std::string& capSrc) {
     // 641-fix 静态槽宽度口径：lambda 捕获槽恒 8 字节槽宽（固化/还原走
     //   T_整64 全宽——641 记述「lambda/捕获路径不经静态值码」）；i128=16、
     //   结构体/数组=typeSizeOf（CopyStruct 整块拷，浅字节口径与
     //   emitLambdaSnapshotStores 结构体快照一致）。
+    // 1360 结果化（边界件·报告标注）：查表 miss=无值——但原哨兵 8 与合法
+    //   「标量/字符串捕获槽宽恰为 8」值域重叠，Optional 无法分离两面；
+    //   消费点 value_or(8) 显形（8=静态槽缺省宽·语义在调用点写出），
+    //   查表命中面（i128=16/结构体/数组）行为逐点不变。
     if (semantic_ != nullptr && !capSrc.empty()) {
         if (types::isI128(types::canonical(capSrc))) return 16;
         const std::string canon = types::canonical(capSrc);
@@ -556,7 +571,7 @@ int IRGenerator::captureBytes482(const std::string& capSrc) {
             if (bytes > 0) return bytes;
         }
     }
-    return 8;
+    return std::nullopt;  // 查表 miss=无值（非 128/结构体/数组形态）
 }
 
 void IRGenerator::recordLambdaCaptureMeta482(
@@ -603,7 +618,9 @@ void IRGenerator::emitSharedToCarrier482(
                               ? slots.size() : metaIt->second.names.size();
     for (std::size_t ci = 0; ci < n; ++ci) {
         const std::string& cap = metaIt->second.names[ci];
-        const int bytes = captureBytes482(slots[ci].srcType);
+        // 1360 结果化：value_or(8) 显形——8=静态槽缺省宽（641-fix 口径·
+        //   查表 miss 与标量捕获同落 8，行为逐点不变）
+        const int bytes = captureBytes482(slots[ci].srcType).value_or(8);
         ir::IRValue srcAddr = emitResult(
             ir::Opcode::ConstString, {}, "ptr",
             "?gstatic_" + lambdaSlotKey(lambdaName, cap), loc);
@@ -625,7 +642,9 @@ void IRGenerator::emitCarrierToShared482(
                               ? slots.size() : metaIt->second.names.size();
     for (std::size_t ci = 0; ci < n; ++ci) {
         const std::string& cap = metaIt->second.names[ci];
-        const int bytes = captureBytes482(slots[ci].srcType);
+        // 1360 结果化：value_or(8) 显形——8=静态槽缺省宽（641-fix 口径·
+        //   查表 miss 与标量捕获同落 8，行为逐点不变）
+        const int bytes = captureBytes482(slots[ci].srcType).value_or(8);
         ir::IRValue dstAddr = emitResult(
             ir::Opcode::ConstString, {}, "ptr",
             "?gstatic_" + lambdaSlotKey(lambdaName, cap), loc);
@@ -644,7 +663,8 @@ void IRGenerator::emitCarrierToCarrier482(
     const std::size_t n = srcSlots.size() < dstSlots.size()
                               ? srcSlots.size() : dstSlots.size();
     for (std::size_t ci = 0; ci < n; ++ci) {
-        const int bytes = captureBytes482(dstSlots[ci].srcType);
+        // 1360 结果化：value_or(8) 显形——8=静态槽缺省宽（641-fix 口径）
+        const int bytes = captureBytes482(dstSlots[ci].srcType).value_or(8);
         ir::IRValue srcAddr = emitResult(
             ir::Opcode::AddrOf, {ir::IRValue::var(srcSlots[ci].unique, "i64")},
             "ptr", srcSlots[ci].unique, loc);
@@ -656,19 +676,24 @@ void IRGenerator::emitCarrierToCarrier482(
     }
 }
 
-std::string IRGenerator::resolveLambdaOrigin482(Expr* rhs,
+// 1360 结果化：无值=来源未知（原空串哨兵退役·出口空串→无值单点转换）。
+cn::Optional<std::string> IRGenerator::resolveLambdaOrigin482(Expr* rhs,
                                                 const std::string& literalName) {
-    if (rhs == nullptr) return "";
+    if (rhs == nullptr) return std::nullopt;
     switch (rhs->getType()) {
         case NodeType::LambdaExpr:
             // 调用者须在 genExpr(rhs) 之后立即调用（lastLambdaName_ 尚未被
             //   消费清空——registerClosureIfNeeded 场景由调用方先行快照）。
-            return !literalName.empty() ? literalName : lastLambdaName_;
+            // 1360 结果化：两侧空串→无值（原空串=来源未知同义）。
+            if (!literalName.empty()) return literalName;
+            if (lastLambdaName_.empty()) return std::nullopt;
+            return lastLambdaName_;
         case NodeType::IdentifierExpr: {
             const std::string& name = static_cast<IdentifierExpr*>(rhs)->name;
             auto it = closureInfo_.find(name);
-            return it != closureInfo_.end() ? it->second.lambdaName
-                                            : std::string();
+            if (it == closureInfo_.end()) return std::nullopt;
+            if (it->second.lambdaName.empty()) return std::nullopt;
+            return it->second.lambdaName;
         }
         case NodeType::CallExpr: {
             const CallExpr* call = static_cast<const CallExpr*>(rhs);
@@ -680,12 +705,14 @@ std::string IRGenerator::resolveLambdaOrigin482(Expr* rhs,
                               call->callee.get())->name;
                 }
                 auto it = funcReturnLambda482_.find(key);
-                if (it != funcReturnLambda482_.end()) return it->second;
+                if (it != funcReturnLambda482_.end() && !it->second.empty()) {
+                    return it->second;
+                }
             }
-            return "";
+            return std::nullopt;
         }
         default:
-            return "";
+            return std::nullopt;
     }
 }
 
@@ -705,8 +732,9 @@ void IRGenerator::updateCarrierOnAssign482(const std::string& varName, Expr* rhs
     //   改以「右值来源 / 历史登记」判定——origin 非空=lambda 来源（建/复用
     //   载体槽）；origin 空但有历史登记=清除陈旧；普通变量（整型/普通 fnptr
     //   无历史登记）零介入=零行为变化。
-    const std::string origin = resolveLambdaOrigin482(rhs, literalName);
-    if (origin.empty()) {
+    // 1360 结果化：无值=来源未知（has_value 分流）
+    const cn::Optional<std::string> originOpt = resolveLambdaOrigin482(rhs, literalName);
+    if (!originOpt.has_value()) {
         // 来源未知：清除陈旧登记（p482 根因：重赋值后调用仍展开旧定义点）；
         //   lambdaVarNames_ 留痕保留（间接调用诊断判据用·655 返工）。
         if (closureInfo_.erase(varName) > 0 && fromPlainAssign) {
@@ -714,6 +742,7 @@ void IRGenerator::updateCarrierOnAssign482(const std::string& varName, Expr* rhs
         }
         return;
     }
+    const std::string& origin = originOpt.value();
     auto metaIt = lambdaCaptureMeta482_.find(origin);
     if (metaIt == lambdaCaptureMeta482_.end()) {
         // 元数据缺失（非 lambda 定义点来源——方法值符号等）：保持既有登记不动。
@@ -775,13 +804,15 @@ void IRGenerator::updateCarrierOnAssign482(const std::string& varName, Expr* rhs
 
 void IRGenerator::emitReturnOriginSnapshot482(Expr* rhs) {
     if (rhs == nullptr) return;
-    const std::string origin = resolveLambdaOrigin482(rhs);
-    if (origin.empty()) {
+    // 1360 结果化：无值=来源未知（has_value 分流）
+    const cn::Optional<std::string> originOpt = resolveLambdaOrigin482(rhs);
+    if (!originOpt.has_value()) {
         // 未知来源返回：已有已知痕迹即置冲突哨兵（同一函数多返回路径
         //   来源不一致=接收点静态解析不可信）。
         if (!currentReturnOrigin482_.empty()) currentReturnOrigin482_ = "?";
         return;
     }
+    const std::string& origin = originOpt.value();
     // 槽式载体来源：载体槽→共享槽整拷（保证接收方按返回来源拷到当前实例）。
     if (rhs->getType() == NodeType::IdentifierExpr) {
         const std::string& name = static_cast<IdentifierExpr*>(rhs)->name;

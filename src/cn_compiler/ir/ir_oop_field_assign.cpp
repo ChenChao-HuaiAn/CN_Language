@@ -80,7 +80,8 @@ bool IRGenerator::handleClassFieldAssign(IdentifierExpr* ident, Expr* value,
         }
     }
     if (!isInstanceField(ident->name)) return false;
-    const std::string fieldType = classFieldType(currentClass_, ident->name);
+    // 1360 结果化：value_or("") 显形（isInstanceField 已先行判定·空串落 648 显形原语义）
+    const std::string fieldType = classFieldType(currentClass_, ident->name).value_or("");
     std::string targetIrType = mapType(fieldType);
     if (targetIrType.empty()) {
         // 648（miss 不可静默·110 同族）：类字段类型未登记=内部缺陷显形；driver hasErrors 统一中止。
@@ -101,7 +102,7 @@ bool IRGenerator::handleClassFieldAssign(IdentifierExpr* ident, Expr* value,
         const bool isOwnedContainer =
             (head == "向量" || head == "栈" || head == "链表" || head == "队列") &&
             semantic_->isClassType(fieldCanon) &&
-            !classDestructorSymbolKey(fieldCanon).empty();
+            classDestructorSymbolKey(fieldCanon).has_value();
         if (isOwnedContainer) {
             ir::IRValue fieldAddr = genInstanceFieldAddr(ident->name, loc);
             // 543 预释放判据（2026-10-14·459 批甲临时合流计数实证；初版撤尽
@@ -131,8 +132,10 @@ bool IRGenerator::handleClassFieldAssign(IdentifierExpr* ident, Expr* value,
             // 源分级（形态 b 同款）：构造调用/临时=新对象直接接管（零拷贝）；
             //   值来源=NewObject + 拷贝构造（引用实参=源左值槽地址〔发现二〕）。
             const bool srcIsCtor = value->getType() == NodeType::CallExpr;
-            const std::string copyKey = classCopyCtorSymbolKey(fieldCanon);
-            if (srcIsCtor || copyKey.empty()) {
+            // 1360 结果化：无值=无拷贝构造（has_value 分流）
+            const cn::Optional<std::string> copyKeyOpt =
+                classCopyCtorSymbolKey(fieldCanon);
+            if (srcIsCtor || !copyKeyOpt.has_value()) {
                 ir::IRValue srcPtr = genExpr(value);
                 emit(ir::Opcode::StorePtr, {fieldAddr, srcPtr}, ir::IRValue(), "",
                      "ptr", loc);
@@ -154,7 +157,7 @@ bool IRGenerator::handleClassFieldAssign(IdentifierExpr* ident, Expr* value,
                         {ir::IRValue::constant(fieldCanon, "ptr")}, "ptr", extra,
                         loc);
                     emit(ir::Opcode::Call, {newObj, srcRef}, ir::IRValue(),
-                         copyKey, "void", loc);
+                         copyKeyOpt.value(), "void", loc);
                     emit(ir::Opcode::StorePtr, {fieldAddr, newObj}, ir::IRValue(),
                          "", "ptr", loc);
                 }
@@ -315,7 +318,8 @@ bool IRGenerator::handleClassFieldIncDec(IdentifierExpr* ident, Operator op,
         }
     }
     if (!isInstanceField(ident->name)) return false;
-    const std::string fieldType = classFieldType(currentClass_, ident->name);
+    // 1360 结果化：value_or("") 显形（isInstanceField 已先行判定·空串落 648 显形原语义）
+    const std::string fieldType = classFieldType(currentClass_, ident->name).value_or("");
     std::string targetIrType = mapType(fieldType);
     if (targetIrType.empty()) {
         // 648（miss 不可静默·110 同族）：类字段类型未登记=内部缺陷显形；driver hasErrors 统一中止。

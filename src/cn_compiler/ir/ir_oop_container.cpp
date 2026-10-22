@@ -173,8 +173,10 @@ bool IRGenerator::injectClassElemDestroy(const std::string& canonClass,
     //   零运行期税**（性能红线：判定面精确化 classHasReleasableFields）。
     const bool cascadeMode = dtorSig.empty();
     if (cascadeMode && !classHasReleasableFields(elemCanon)) return true;
-    const std::string thisUnique = lookupVarName("自身");
-    if (thisUnique.empty()) return true;
+    // 1360 结果化：无值=this 槽未登记（has_value 分流）
+    const cn::Optional<std::string> thisUniqueOpt = lookupVarName("自身");
+    if (!thisUniqueOpt.has_value()) return true;
+    const std::string& thisUnique = thisUniqueOpt.value();
     // 容器字段：数组（T*）/ 元素数量（整64）
     const int arrayOff = semantic_->classFieldOffset(canonClass, arrayField).value_or(-1);
     const int countOff = semantic_->classFieldOffset(canonClass, "元素数量").value_or(-1);
@@ -228,8 +230,10 @@ void IRGenerator::injectOwnedStrFieldElemDestroy(const std::string& canonClass,
                                                       const std::string& indexParam,
                                                       const std::string& indexField) {
     if (isOwnedStrFieldElemContainer(canonClass)) {
-        const std::string thisUniqueE = lookupVarName("自身");
-        if (thisUniqueE.empty()) return;
+        // 1360 结果化：无值=this 槽未登记（has_value 分流）
+        const cn::Optional<std::string> thisUniqueOptE = lookupVarName("自身");
+        if (!thisUniqueOptE.has_value()) return;
+        const std::string& thisUniqueE = thisUniqueOptE.value();
         const int arrayOffE = semantic_->classFieldOffset(canonClass, arrayField).value_or(-1);
         const int countOffE = semantic_->classFieldOffset(canonClass, "元素数量").value_or(-1);
         const int strideE = semantic_->typeSizeOf(elemCanon);
@@ -275,8 +279,10 @@ void IRGenerator::injectStrElemDestroy(const std::string& canonClass,
                                             bool strOwnedSlot, const std::string& indexParam,
                                             const std::string& indexField) {
     if (elemCanon == "字符串") {
-        const std::string thisUniqueS = lookupVarName("自身");
-        if (thisUniqueS.empty()) return;
+        // 1360 结果化：无值=this 槽未登记（has_value 分流）
+        const cn::Optional<std::string> thisUniqueOptS = lookupVarName("自身");
+        if (!thisUniqueOptS.has_value()) return;
+        const std::string& thisUniqueS = thisUniqueOptS.value();
         ir::IRValue selfPtrS = emitResult(ir::Opcode::Load,
                                           {ir::IRValue::var(thisUniqueS, "ptr")},
                                           "ptr", thisUniqueS, loc);
@@ -294,8 +300,10 @@ void IRGenerator::injectStrElemDestroy(const std::string& canonClass,
         //   注入在方法体前，字段仍是删除前旧值）
         ir::IRValue posS;
         if (!indexParam.empty()) {
-            const std::string posUniqueS = lookupVarName(indexParam);
-            if (posUniqueS.empty()) return;
+            // 1360 结果化：无值=索引槽未登记（has_value 分流）
+            const cn::Optional<std::string> posUniqueOptS = lookupVarName(indexParam);
+            if (!posUniqueOptS.has_value()) return;
+            const std::string& posUniqueS = posUniqueOptS.value();
             posS = emitResult(ir::Opcode::Load,
                               {ir::IRValue::var(posUniqueS, "i64")},
                               "i64", posUniqueS, loc);
@@ -327,10 +335,15 @@ void IRGenerator::injectMoveElemDestroy(const std::string& canonClass,
                                              const std::string& arrayField,
                                              const std::string& elemCanon) {
     if (mi.name == "移动元素") {
-        const std::string dstUniqueM = lookupVarName("目标");
-        const std::string srcUniqueM = lookupVarName("源");
-        const std::string thisUniqueMv = lookupVarName("自身");
-        if (dstUniqueM.empty() || srcUniqueM.empty() || thisUniqueMv.empty()) return;
+        // 1360 结果化：无值=槽未登记（has_value 分流）
+        const cn::Optional<std::string> dstUniqueOptM = lookupVarName("目标");
+        const cn::Optional<std::string> srcUniqueOptM = lookupVarName("源");
+        const cn::Optional<std::string> thisUniqueOptMv = lookupVarName("自身");
+        if (!dstUniqueOptM.has_value() || !srcUniqueOptM.has_value() ||
+            !thisUniqueOptMv.has_value()) return;
+        const std::string& dstUniqueM = dstUniqueOptM.value();
+        const std::string& srcUniqueM = srcUniqueOptM.value();
+        const std::string& thisUniqueMv = thisUniqueOptMv.value();
         const int arrayOffM = semantic_->classFieldOffset(canonClass, arrayField).value_or(-1);
         const int strideM = semantic_->typeSizeOf(elemCanon);
         if (arrayOffM < 0 || strideM <= 0) return;
@@ -401,8 +414,10 @@ void IRGenerator::injectMapElemDestroy(const std::string& canonClass,
         }
         const bool vStr = (types::canonicalEquals(vType, "字符串"));
         if (!kStr && !vStr) return;
-        const std::string thisUniqueM = lookupVarName("自身");
-        if (thisUniqueM.empty()) return;
+        // 1360 结果化：无值=this 槽未登记（has_value 分流）
+        const cn::Optional<std::string> thisUniqueOptM = lookupVarName("自身");
+        if (!thisUniqueOptM.has_value()) return;
+        const std::string& thisUniqueM = thisUniqueOptM.value();
         const int keysOff = semantic_->classFieldOffset(canonClass, "键数组").value_or(-1);
         const int valsOff = semantic_->classFieldOffset(canonClass, "值数组").value_or(-1);
         const int cntOffM = semantic_->classFieldOffset(canonClass, "元素数量").value_or(-1);
@@ -428,8 +443,10 @@ void IRGenerator::injectMapElemDestroy(const std::string& canonClass,
             return;   // 映射不参与「有析构类元素循环」注入（元素是 K/V 值，非 T）
         }
         // ---- 单槽释放（析构键值/析构值）----
-        const std::string posUniqueM = lookupVarName("索引");
-        if (posUniqueM.empty()) return;
+        // 1360 结果化：无值=索引槽未登记（has_value 分流）
+        const cn::Optional<std::string> posUniqueOptM = lookupVarName("索引");
+        if (!posUniqueOptM.has_value()) return;
+        const std::string& posUniqueM = posUniqueOptM.value();
         ir::IRValue posM = emitResult(ir::Opcode::Load,
                                       {ir::IRValue::var(posUniqueM, "i64")},
                                       "i64", posUniqueM, loc);
@@ -460,23 +477,25 @@ void IRGenerator::injectMapElemDestroy(const std::string& canonClass,
 // 不变量：循环计数器用可变 Alloca 槽（每次迭代 Load/Store）；数组==无 守卫跳过；
 //   body 内的释放体自身「释放+清槽」幂等（多路径共享槽，plans/020 移植纪律 7）。
 
-// 容器元素类型（实例化实参 canonical；非容器/无实参返回空串）
-std::string IRGenerator::containerElemTypeOf(const std::string& canonClass) const {
+// 容器元素类型（实例化实参 canonical；1360 结果化：非容器/无实参=无值——
+//   原空串哨兵退役）。
+cn::Optional<std::string> IRGenerator::containerElemTypeOf(const std::string& canonClass) const {
     const std::size_t dl = canonClass.find('$');
-    if (dl == std::string::npos) return std::string();
+    if (dl == std::string::npos) return std::nullopt;
     const std::string head = canonClass.substr(0, dl);
     if (head != "向量" && head != "链表" && head != "栈" && head != "队列" &&
         head != "集合") {
-        return std::string();  // 映射=双实参 K$V，非单元素数组模型（另路径）
+        return std::nullopt;  // 映射=双实参 K$V，非单元素数组模型（另路径）
     }
     return types::canonical(canonClass.substr(dl + 1));
 }
 
 // 元素含拥有型串字段判定（结构体/结果/可选，递归展开；字符串元素走既有路径）
 bool IRGenerator::isOwnedStrFieldElemContainer(const std::string& canonClass) const {
-    const std::string elem = containerElemTypeOf(canonClass);
-    if (elem.empty() || elem == "字符串") return false;
-    return !ownedStrFieldsOf(elem).empty();
+    // 1360 结果化：无值=非容器（has_value+空串判定同义面显形）
+    const cn::Optional<std::string> elem = containerElemTypeOf(canonClass);
+    if (!elem.has_value() || elem.value().empty() || elem.value() == "字符串") return false;
+    return !ownedStrFieldsOf(elem.value()).empty();
 }
 
 // 元素遍历循环（全量释放路径单点事实源；body 由调用方发射）
@@ -581,8 +600,10 @@ void IRGenerator::emitSingleElemRelease(
     if (stride <= 0 || semantic_ == nullptr) return;
     ir::IRValue pos;
     if (!indexParam.empty()) {
-        const std::string posUnique = lookupVarName(indexParam);
-        if (posUnique.empty()) return;
+        // 1360 结果化：无值=索引槽未登记（has_value 分流）
+        const cn::Optional<std::string> posUniqueOpt = lookupVarName(indexParam);
+        if (!posUniqueOpt.has_value()) return;
+        const std::string& posUnique = posUniqueOpt.value();
         pos = emitResult(ir::Opcode::Load, {ir::IRValue::var(posUnique, "i64")},
                          "i64", posUnique, loc);
     // 静默豁免业务值: 1360 批3A 结果化取值路径——索引字段偏移 miss 即显形返回·非兜底

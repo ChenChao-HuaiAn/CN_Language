@@ -26,11 +26,11 @@ bool IRGenerator::isContainerInsertMethod(const std::string& name) {
 }
 
 // 值实参下标：插入(位置,值)/设置(位置,值) 的值在 1；其余（追加/压入/入队/
-//   头部追加/添加）值在 0。返回 -1 表示非入容器位方法。
-int IRGenerator::containerInsertValueArgIndex(const std::string& name) {
+//   头部追加/添加）值在 0。1360 结果化：无值=非入容器位方法（原 -1 哨兵退役）。
+cn::Optional<int> IRGenerator::containerInsertValueArgIndex(const std::string& name) {
     if (name == "插入" || name == "设置") return 1;
     if (isContainerInsertMethod(name)) return 0;
-    return -1;
+    return std::nullopt;
 }
 
 bool IRGenerator::isStringElemContainer(const std::string& canonClass) {
@@ -48,19 +48,21 @@ bool IRGenerator::isStringValuedMap(const std::string& canonClass) {
 }
 
 // 容器元素数组字段名：向量/栈=数据（平铺数组）；链表/队列=值表（槽+下一索引链）
-std::string IRGenerator::containerElemArrayField(const std::string& canonClass) {
+// 1360 结果化：无值=非容器（原空串哨兵退役）。
+cn::Optional<std::string> IRGenerator::containerElemArrayField(const std::string& canonClass) {
     const std::size_t dl = canonClass.find('$');
-    if (dl == std::string::npos) return std::string();
+    if (dl == std::string::npos) return std::nullopt;
     const std::string head = canonClass.substr(0, dl);
     if (head == "向量" || head == "栈") return "数据";
     if (head == "链表" || head == "队列") return "值表";
     if (head == "集合") return "数据数组";   // 76-a（元素独立平铺数组）
-    return std::string();
+    return std::nullopt;
 }
 
-// 容器元素串释放辅助函数名（按容器模型分派）——非字符串元素容器返回空串
-std::string IRGenerator::containerElemFreeFn(const std::string& canonClass) const {
-    if (!isStringElemContainer(canonClass)) return std::string();
+// 容器元素串释放辅助函数名（按容器模型分派）——1360 结果化：非字符串元素
+//   容器=无值（原空串哨兵退役）。
+cn::Optional<std::string> IRGenerator::containerElemFreeFn(const std::string& canonClass) const {
+    if (!isStringElemContainer(canonClass)) return std::nullopt;
     const std::string head = canonClass.substr(0, canonClass.find('$'));
     if (head == "向量" || head == "栈") return "__cn_vector_free_strings";
     if (head == "集合") return "__cn_vector_free_strings";   // 76-a 平铺同款
@@ -72,12 +74,13 @@ std::string IRGenerator::containerElemFreeFn(const std::string& canonClass) cons
 void IRGenerator::emitContainerElemFreeFor(const std::string& canonClass,
                                           const ir::IRValue& objPtr,
                                           const SourceLocation& loc) {
-    const std::string freeFn = containerElemFreeFn(canonClass);
-    if (freeFn.empty() || semantic_ == nullptr) return;
+    // 1360 结果化：无值=非字符串元素容器（has_value 分流）
+    const cn::Optional<std::string> freeFn = containerElemFreeFn(canonClass);
+    if (!freeFn.has_value() || semantic_ == nullptr) return;
     const std::string head = canonClass.substr(0, canonClass.find('$'));
     const bool chainModel = (head == "链表" || head == "队列");
     const int dataOff =
-        semantic_->classFieldOffset(canonClass, containerElemArrayField(canonClass))
+        semantic_->classFieldOffset(canonClass, containerElemArrayField(canonClass).value_or(""))
             .value_or(-1);
     const int countOff = semantic_->classFieldOffset(canonClass, "元素数量").value_or(-1);
     if (dataOff < 0 || countOff < 0) return;
@@ -94,7 +97,7 @@ void IRGenerator::emitContainerElemFreeFor(const std::string& canonClass,
         args.push_back(ir::IRValue::constant(std::to_string(dataOff), "整64"));
         args.push_back(ir::IRValue::constant(std::to_string(countOff), "整64"));
     }
-    emit(ir::Opcode::Call, args, ir::IRValue(), freeFn, "void", loc);
+    emit(ir::Opcode::Call, args, ir::IRValue(), freeFn.value(), "void", loc);
 }
 
 // 槽是否为本函数拥有串局部（真 move 判据）：登记在拥有名单且未被污染
@@ -123,7 +126,8 @@ ir::IRValue IRGenerator::normalizeStringValueSource(Expr* arg,
             ce->arguments[0]->getType() == NodeType::IdentifierExpr) {
             const std::string srcName =
                 static_cast<IdentifierExpr*>(ce->arguments[0].get())->name;
-            const std::string srcUnique = lookupVarName(srcName);
+            // 1360 结果化：value_or("") 显形（miss=非拥有槽判定假·原语义）
+            const std::string srcUnique = lookupVarName(srcName).value_or("");
             if (isOwnedStringSlot(srcUnique, srcName)) {
                 // ③ 真 move：源槽清零（源 RAII 出口 free(nullptr) 空安全）
                 ir::IRValue zero = emitResult(ir::Opcode::ConstInt, {}, "i64", "0",
@@ -182,12 +186,14 @@ std::vector<ir::IRValue> IRGenerator::buildCallArgsForMethod(
     std::vector<ir::IRValue> out;
     const bool ownsStrElem = isStringElemContainer(canonObj) ||
                              isStringValuedMap(canonObj);
-    const int valueIdx = ownsStrElem ? containerInsertValueArgIndex(methodName) : -1;
-    if (valueIdx < 0 ||
-        static_cast<std::size_t>(valueIdx) >= node->arguments.size()) {
+    // 1360 结果化：无值=非入容器位（has_value 分流·原 -1 哨兵判定显形）
+    const cn::Optional<int> valueIdxOpt =
+        ownsStrElem ? containerInsertValueArgIndex(methodName) : cn::Optional<int>();
+    if (!valueIdxOpt.has_value() ||
+        static_cast<std::size_t>(valueIdxOpt.value()) >= node->arguments.size()) {
         return buildCallArgsOop(node->arguments, node->location);
     }
-    const std::size_t vi = static_cast<std::size_t>(valueIdx);
+    const std::size_t vi = static_cast<std::size_t>(valueIdxOpt.value());
     // 81-a：结构体元素容器（含拥有型串字段的结构体）**不在此归一化**——元素槽
     //   字段串的独立性由 stdlib 容器方法体的 `数据[n] = 值` 结构体写入深拷（79-a
     for (std::size_t i = 0; i < node->arguments.size(); ++i) {
@@ -291,9 +297,11 @@ bool IRGenerator::emitConstructorCall(CallExpr* node) {
                                      "ptr", extra, node->location);
 
     // 构造函数查找（isConstructor 成员；无构造函数 -> 默认构造（仅分配））：
-    const ClassMemberInfo* ctor = findCtorMember(ci, className, node);
-    if (ctor != nullptr) {
-        emitCtorInvoke(node, className, ctor, obj);
+    // 1360 结果化：无值=无显式构造（has_value 分流）
+    const cn::Optional<const ClassMemberInfo*> ctorOpt =
+        findCtorMember(ci, className, node);
+    if (ctorOpt.has_value()) {
+        emitCtorInvoke(node, className, ctorOpt.value(), obj);
     } else {
         // 117：类自身无构造的实例化点——NewObject 零初始化后基类构造链仍须跑
         //   （C++ 隐式默认构造语义；B1 形态：子类不写构造时基类构造原被整跳）。
@@ -391,7 +399,8 @@ std::string IRGenerator::resolveGenericCtorInstanceName(std::string className) c
 
 // 构造函数查找（原情形A 内联段迁移）——以下策略注释为原文：
         // 查找构造函数（isConstructor 成员）；无构造函数 -> 默认构造（仅分配）。
-const ClassMemberInfo* IRGenerator::findCtorMember(const ClassInfo* ci,
+        // 1360 结果化：无值=未找到（原 nullptr 哨兵退役·内部指针状态机不变）。
+cn::Optional<const ClassMemberInfo*> IRGenerator::findCtorMember(const ClassInfo* ci,
                                                    const std::string& className,
                                                    CallExpr* node) {
     const ClassMemberInfo* ctor = nullptr;
@@ -454,6 +463,7 @@ const ClassMemberInfo* IRGenerator::findCtorMember(const ClassInfo* ci,
         }
         ctor = fallback;
     }
+    if (ctor == nullptr) return std::nullopt;
     return ctor;
 }
 
@@ -512,7 +522,8 @@ void IRGenerator::emitCtorInvoke(CallExpr* node, const std::string& className,
 bool IRGenerator::emitMemberMethodCall(CallExpr* node) {
     MemberExpr* mem = static_cast<MemberExpr*>(node->callee.get());
     const std::string methodName = mem->memberName;
-    const std::string objSrcType = memberObjectSrcType(mem->object.get());  // 622：支持 (*类指针).方法()
+    // 1360 结果化：value_or("") 显形（无法推导=canonical("") miss 链·原语义）// 622：支持 (*类指针).方法()
+    const std::string objSrcType = memberObjectSrcType(mem->object.get()).value_or("");
     const std::string canonObj = types::canonical(objSrcType);
 
     const int stat = emitStaticMethodCall(node, mem, methodName);
@@ -533,9 +544,11 @@ int IRGenerator::emitStaticMethodCall(CallExpr* node, MemberExpr* mem,
     }
     if (!staticClassName.empty()) {
         std::string owner;
-        const ClassMemberInfo* m =
+        // 1360 结果化：无值=非方法（has_value 分流）
+        const cn::Optional<const ClassMemberInfo*> mOpt =
             findClassMethod(staticClassName, methodName, owner);
-        if (m == nullptr) return 0;  // 非方法（静态字段等，交回原路径）
+        if (!mOpt.has_value()) return 0;  // 非方法（静态字段等，交回原路径）
+        const ClassMemberInfo* m = mOpt.value();
         if (!m->isStatic) return 0;  // 语义层已报错，防御跳过
         std::vector<ir::IRValue> args =
             buildCallArgsOop(node->arguments, node->location);
@@ -606,8 +619,11 @@ bool IRGenerator::emitInstanceMethodCall(CallExpr* node, MemberExpr* mem,
     }
     // 查方法成员（沿继承链；owner=声明类）
     std::string owner;
-    const ClassMemberInfo* m = findClassMethod(canonObjForMethod, methodName, owner);
-    if (m == nullptr) return false;  // 非方法（字段访问等，交回原路径）
+    // 1360 结果化：无值=非方法（has_value 分流）
+    const cn::Optional<const ClassMemberInfo*> mOpt =
+        findClassMethod(canonObjForMethod, methodName, owner);
+    if (!mOpt.has_value()) return false;  // 非方法（字段访问等，交回原路径）
+    const ClassMemberInfo* m = mOpt.value();
     if (m->isStatic) return false;   // 实例.静态方法 语义允许，但走静态路径（防御）
 
     // this 实参：自身/父类 -> this 指针；类变量 -> 变量值（对象指针）

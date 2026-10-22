@@ -105,7 +105,8 @@ void IRGenerator::visitUnaryExpr(UnaryExpr* node) {
                 break;
             }
             // 读侧类型：操作数自身类型（值/错误读取宽度）；未知时回退返回类型
-            const std::string operandType = exprSrcType(node->operand.get());
+            // 1360 结果化：value_or("") 显形（未知→isResultType/isOptionalType 假·原语义）
+            const std::string operandType = exprSrcType(node->operand.get()).value_or("");
             std::string valSrc = retValSrc;
             std::string errSrc = retErrSrc;
             if (isResultType(operandType)) {
@@ -264,9 +265,11 @@ void IRGenerator::visitUnaryExpr(UnaryExpr* node) {
             //   置于类字段/顶层静态分支之前=varStack 命中优先（遮蔽语义对齐读路径：
             //   同名局部静态遮蔽顶层静态/类字段）。
             if (node->operand->getType() == NodeType::IdentifierExpr) {
-                const VarEntry* slVe = findVarEntry(
+                // 1360 结果化：无值=非静态局部（has_value 分流）
+                const cn::Optional<const VarEntry*> slVeOpt = findVarEntry(
                     static_cast<IdentifierExpr*>(node->operand.get())->name);
-                if (slVe != nullptr && slVe->isStaticLocal) {
+                if (slVeOpt.has_value() && slVeOpt.value()->isStaticLocal) {
+                    const VarEntry* slVe = slVeOpt.value();
                     const std::string irT = slVe->type;
                     ir::IRValue gsAddr = emitResult(
                         ir::Opcode::ConstString, {}, "ptr",
@@ -300,9 +303,9 @@ void IRGenerator::visitUnaryExpr(UnaryExpr* node) {
             //   证），对齐上方静态局部分支的「varStack 命中优先」遮蔽序。
             if (node->operand->getType() == NodeType::IdentifierExpr &&
                 semantic_ != nullptr &&
-                findVarEntry(
-                    static_cast<IdentifierExpr*>(node->operand.get())->name) ==
-                    nullptr) {
+                !findVarEntry(
+                    static_cast<IdentifierExpr*>(node->operand.get())->name)
+                    .has_value()) {
                 IdentifierExpr* gsIdent = static_cast<IdentifierExpr*>(node->operand.get());
                 if (semantic_->isGlobalStatic(gsIdent->name)) {
                     const std::string stType = semantic_->globalStaticType(gsIdent->name);
@@ -342,13 +345,14 @@ void IRGenerator::visitUnaryExpr(UnaryExpr* node) {
                 //   MemberExpr 分支（字段指针类型=memberFieldSrcType），与
                 //   funcPtrTypeOfCallee 成员链同口径；解引用自增（*p++）走
                 //   LoadPtr 值语义不经此分支（探针 p655-④b 实证零依赖）。
+                // 1360 结果化：value_or("") 显形（miss→ptrElemStride 内部错误显形·原语义）
                 std::string srcType = "";
                 if (node->operand->getType() == NodeType::IdentifierExpr) {
                     srcType = lookupSrcType(
-                        static_cast<IdentifierExpr*>(node->operand.get())->name);
+                        static_cast<IdentifierExpr*>(node->operand.get())->name).value_or("");
                 } else if (node->operand->getType() == NodeType::MemberExpr) {
                     srcType = memberFieldSrcType(
-                        static_cast<MemberExpr*>(node->operand.get()));
+                        static_cast<MemberExpr*>(node->operand.get())).value_or("");
                 }
                 deltaText = std::to_string(ptrElemStride(srcType));
             }
@@ -365,12 +369,13 @@ void IRGenerator::visitUnaryExpr(UnaryExpr* node) {
             // 仅当操作数为变量引用时写回（用唯一内部名定位槽）
             if (node->operand->getType() == NodeType::IdentifierExpr) {
                 IdentifierExpr* ident = static_cast<IdentifierExpr*>(node->operand.get());
-                ir::IRValue slot = lookupVar(ident->name);
-                if (slot.id >= 0) {
+                // 1360 结果化：has_value=可写回（原 slot.id>=0 守卫同义）
+                const cn::Optional<VarEntry> slotVar = lookupVar(ident->name);
+                if (slotVar.has_value()) {
                     // 缺陷修复（[&] 引用捕获自增自减）：参数槽存被捕获变量地址，
                     //   写回经 StorePtr（更新外部变量）；值捕获走本地 Store
                     if (isByRefCapture(ident->name)) {
-                        const std::string unique = lookupVarName(ident->name);
+                        const std::string unique = lookupVarName(ident->name).value_or("");
                         ir::IRValue capAddr = emitResult(
                             ir::Opcode::Load, {ir::IRValue::var(unique, "ptr")},
                             "ptr", unique, node->location);
@@ -378,7 +383,8 @@ void IRGenerator::visitUnaryExpr(UnaryExpr* node) {
                              ir::IRValue(), "", operand.type, node->location);
                     } else {
                         emit(ir::Opcode::Store, {result}, ir::IRValue(),
-                             lookupVarName(ident->name), operand.type, node->location);
+                             lookupVarName(ident->name).value_or(""), operand.type,
+                             node->location);
                     }
                 }
             }
@@ -417,8 +423,10 @@ void IRGenerator::visitUnaryExpr(UnaryExpr* node) {
                 node->operand->getType() == NodeType::IdentifierExpr
                     ? static_cast<IdentifierExpr*>(node->operand.get())->name
                     : "";
-            const std::string unique = lookupVarName(operandName);
-            if (node->operand->getType() == NodeType::IdentifierExpr && !unique.empty()) {
+            const cn::Optional<std::string> uniqueOpt = lookupVarName(operandName);
+            if (node->operand->getType() == NodeType::IdentifierExpr &&
+                uniqueOpt.has_value()) {
+                const std::string& unique = uniqueOpt.value();
                 // 缺陷修复（[&] 引用捕获 &变量）：参数槽存被捕获变量地址，
                 //   &捕获变量 = Load 参数槽（取被捕获变量地址，而非参数槽自身地址）
                 if (node->refWrapAddr) {
@@ -447,8 +455,8 @@ void IRGenerator::visitUnaryExpr(UnaryExpr* node) {
                     //   形态根治点（&引用形参 存指针字段→指针成员调用 this=
                     //   堆对象地址·大小=2）；闭包捕获（非引用类型）单跳槽地址
                     //   语义字节级保持（[&] 契约）。
-                    const std::string capSrc =
-                        types::canonical(types::stripRef(lookupSrcType(operandName)));
+                    const std::string capSrc = types::canonical(types::stripRef(
+                        lookupSrcType(operandName).value_or("")));
                     const bool capIsObj =
                         (semantic_ != nullptr &&
                          (semantic_->isClassType(capSrc) ||
@@ -474,7 +482,7 @@ void IRGenerator::visitUnaryExpr(UnaryExpr* node) {
                                              "ptr", "", node->location);
                     }
                     lastExpr_ = capAddr;
-                } else if (types::isReference(lookupSrcType(operandName))) {
+                } else if (types::isReference(lookupSrcType(operandName).value_or(""))) {
                     // T94（550-a）：引用变量取地址（&引用参数/&引用局部）=目标地址——
                     //   引用槽存目标地址（别名语义），&v = Load 槽内容（Rust 对照：
                     //   引用为首类指针，&alias 得目标地址而非槽地址）；若走 AddrOf
@@ -498,7 +506,7 @@ void IRGenerator::visitUnaryExpr(UnaryExpr* node) {
                                //   Load 槽即对象地址·C++/Rust &container 同构）。
                                const std::string addrSrc =
                                    types::canonical(types::stripRef(
-                                       lookupSrcType(operandName)));
+                                       lookupSrcType(operandName).value_or("")));
                                if (semantic_->isClassType(addrSrc)) return true;
                                return addrSrc.rfind("向量$", 0) == 0 ||
                                       addrSrc.rfind("映射$", 0) == 0 ||
@@ -585,9 +593,11 @@ void IRGenerator::visitUnaryExpr(UnaryExpr* node) {
             //   把数组相邻 4 字节栈残留垃圾一并读入（指针算术结果错误）。
             //   统一经 pointerPointeeSrcType 递归推导所指元素类型。
             std::string elemType = "i64";  // 默认按64位（指针所指值存8字节槽）
-            const std::string pointeeSrc = pointerPointeeSrcType(node->operand.get());
-            if (!pointeeSrc.empty()) {
-                elemType = mapType(pointeeSrc);
+            // 1360 结果化：无值=解析缺口（!has_value 分流落 648 显形·原语义）
+            const cn::Optional<std::string> pointeeSrcOpt =
+                pointerPointeeSrcType(node->operand.get());
+            if (pointeeSrcOpt.has_value()) {
+                elemType = mapType(pointeeSrcOpt.value());
             } else {
                 // 648（miss 不可静默·110 同族）：解引用目标所指元素类型未解析
                 //   （复合指针表达式递归推导缺口·合法程序可走到）=编译器内部

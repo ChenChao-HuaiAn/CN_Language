@@ -28,7 +28,8 @@ namespace cn_compiler {
 bool IRGenerator::resolveCalleeDirectness(CallExpr* node,
                                           std::string& calleeName) {
     bool isDirect = false;
-    if (lookupVar(calleeName).id < 0) {
+    // 1360 结果化：无值=不在变量表（!has_value 即原 id<0 判定）
+    if (!lookupVar(calleeName).has_value()) {
         isDirect = true;  // 不在变量表 -> 函数名
         // 040（001 §5.8 甲案·2026-10-05）：静态槽函数指针调用——lookupVar 只查
         //   函数局部表，静态槽 miss 曾误判直调（LNK2019 静态回调 实证）；静态
@@ -243,9 +244,10 @@ bool IRGenerator::emitVoidBuiltinCall(CallExpr* node, const std::string& calleeN
         //   注册表兜底侥幸安全）。消耗形参体内显式释放后出口释放同理受益。
         if (calleeName == "__cn_str_free" && !node->arguments.empty() &&
             node->arguments[0]->getType() == NodeType::IdentifierExpr) {
-            const std::string freedUnique = lookupVarName(
+            const cn::Optional<std::string> freedUniqueOpt = lookupVarName(
                 static_cast<IdentifierExpr*>(node->arguments[0].get())->name);
-            if (!freedUnique.empty()) {
+            if (freedUniqueOpt.has_value()) {
+                const std::string& freedUnique = freedUniqueOpt.value();
                 ir::IRValue zero616 = emitResult(
                     ir::Opcode::ConstInt, {}, "i64", "0", node->location);
                 emit(ir::Opcode::Store, {zero616}, ir::IRValue(),

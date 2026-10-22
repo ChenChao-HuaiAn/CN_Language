@@ -286,10 +286,13 @@ void IRGenerator::visitReturnStmt(ReturnStmt* node) {
                 types::canonical(function_->returnTypeSrc);
             if (isResultType(retCanon273) ||
                 isOptionalType(retCanon273)) {
-                if (const VarEntry* ve273 =
+                // 1360 结果化：无值=未登记（has_value 分流）
+                if (const cn::Optional<const VarEntry*> veOpt273 =
                         findVarEntry(static_cast<IdentifierExpr*>(
                                          node->value.get())
-                                         ->name)) {
+                                         ->name);
+                    veOpt273.has_value()) {
+                    const VarEntry* ve273 = veOpt273.value();
                     for (auto& ent273 : pendingBoxVars_) {
                         if (std::get<3>(ent273) == ve273->uniqueName) {
                             std::get<4>(ent273) = true;

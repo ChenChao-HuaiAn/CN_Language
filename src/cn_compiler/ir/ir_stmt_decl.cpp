@@ -410,7 +410,8 @@ void IRGenerator::resolveDeclTypesAndAlloc(VarDecl* node, DeclGenCtx& ctx) {
     }
     // 分配变量槽（数组自动多槽：registerVarSlots 按数组长度预留）
     allocVar(node->name, irType, srcType, node->location);
-    ctx.unique = lookupVarName(node->name);
+    // 1360 结果化：value_or("") 显形（allocVar 刚登记·必命中，形态兜面）
+    ctx.unique = lookupVarName(node->name).value_or("");
     ctx.srcType = srcType;
     ctx.irType = irType;
 }
@@ -629,10 +630,11 @@ void IRGenerator::storeArrayInitElements(VarDecl* node, InitListExpr* initList,
                 ctorName = resolveGenericCtorInstanceName(ctorName);
                 const ClassInfo* ciC = semantic_->findClass(ctorName).value_or(nullptr);
                 if (ciC != nullptr && !ciC->isAbstract) {
-                    const ClassMemberInfo* ctorC =
+                    // 1360 结果化：无值=无显式构造（has_value 分流）
+                    const cn::Optional<const ClassMemberInfo*> ctorOptC =
                         findCtorMember(ciC, ctorName, elemCall);
-                    if (ctorC != nullptr) {
-                        emitCtorInvoke(elemCall, ctorName, ctorC, addr);
+                    if (ctorOptC.has_value()) {
+                        emitCtorInvoke(elemCall, ctorName, ctorOptC.value(), addr);
                     } else {
                         emitBaseCtorChain(ctorName, addr, node->location);
                     }

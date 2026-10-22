@@ -36,7 +36,8 @@ bool IRGenerator::isMethodValueExpr(const Expr* e) {
 }
 
 bool IRGenerator::isMethodValueVar(const std::string& name) const {
-    return types::isMethodValueType(lookupSrcType(name));
+    // 1360 结果化：value_or("") 显形（miss=非方法值类型·原语义）
+    return types::isMethodValueType(lookupSrcType(name).value_or(""));
 }
 
 bool IRGenerator::isMethodValueArg(const Expr* arg) const {
@@ -99,14 +100,16 @@ bool IRGenerator::tryMethodValueAssign(const std::string& targetUnique,
         const std::string& srcName =
             static_cast<const IdentifierExpr*>(src)->name;
         if (!isMethodValueVar(srcName)) return false;
-        srcUnique = lookupVarName(srcName);
+        // 1360 结果化：srcUnique 改 Optional（无值=槽未登记，分流保持原报错）
+        cn::Optional<std::string> srcUniqueOpt = lookupVarName(srcName);
         // 静默豁免上游已诊断: 已报内部错误（槽未登记）·返回回原路
-        if (srcUnique.empty()) {
+        if (!srcUniqueOpt.has_value()) {
             // miss 不可静默：语义层保证方法值变量已登记槽位
             diagnostics_.report(DiagnosticLevel::Error, loc,
                 "内部错误: 方法值变量 '" + srcName + "' 槽未登记（#1075）");
             return false;
         }
+        srcUnique = srcUniqueOpt.value();
     } else {
         return false;
     }
@@ -160,8 +163,9 @@ void IRGenerator::expandMethodValueArg(Expr* arg, std::vector<ir::IRValue>& args
     if (isMethodValueExpr(arg)) {
         srcUnique = lastExpr_.extra;   // 物化临时基名
     } else if (arg->getType() == NodeType::IdentifierExpr) {
+        // 1360 结果化：value_or("") 显形（下方空串分流保持原报错语义）
         srcUnique = lookupVarName(
-            static_cast<IdentifierExpr*>(arg)->name);
+            static_cast<IdentifierExpr*>(arg)->name).value_or("");
     }
     // 静默豁免上游已诊断: 已报内部错误（槽未登记）·返回回原路
     if (srcUnique.empty()) {

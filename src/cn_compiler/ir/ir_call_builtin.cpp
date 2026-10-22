@@ -50,10 +50,11 @@ void IRGenerator::emitTransferCallExpand(CallExpr* node) {
     if (node->arguments[0]->getType() == NodeType::IdentifierExpr) {
         const std::string srcName =
             static_cast<IdentifierExpr*>(node->arguments[0].get())->name;
-        const std::string srcUnique = lookupVarName(srcName);
-        if (!srcUnique.empty()) {
+        const cn::Optional<std::string> srcUniqueOpt = lookupVarName(srcName);
+        if (srcUniqueOpt.has_value()) {
+            const std::string& srcUnique = srcUniqueOpt.value();
             const std::string srcCanon =
-                types::canonical(lookupSrcType(srcName));
+                types::canonical(lookupSrcType(srcName).value_or(""));
             // 结构体源=先物化副本再清零源(族体见 emitTransferStructSourceCopy·096)
             if (semantic_ != nullptr && semantic_->isStructType(srcCanon)) {
                 emitTransferStructSourceCopy(node, srcUnique, srcCanon);
@@ -64,8 +65,11 @@ void IRGenerator::emitTransferCallExpand(CallExpr* node) {
             //   转移(组) 后读 0·撤改动基线同崩=459-a 既有缺陷）；数组传参
             //   本就退化为按址共享（零拷贝天然成立·转移 无额外增益·语义
             //   层 459-a 放行面维持统一语法）。
+            // 096（937）：数组源跳过清零（数组名=退化借用指针·清首槽=破坏
+            //   栈聚合内容）。1360 结果化：value_or("") 显形（miss=非数组·原语义）
             if (semantic_ != nullptr &&
-                types::isArray(types::canonical(lookupSrcType(srcName)))) {
+                types::isArray(types::canonical(
+                    lookupSrcType(srcName).value_or("")))) {
                 return;
             }
             ir::IRValue zero = emitResult(ir::Opcode::ConstInt, {}, "i64", "0",

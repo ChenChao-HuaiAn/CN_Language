@@ -68,8 +68,10 @@ void IRGenerator::visitIdentifierExpr(IdentifierExpr* node) {
     //   局部/顶层静态）读取之后（下方 reg.id<0 分支内）——块内同名变量/参数
     //   遮蔽顶层常量时读点取变量（346 锚：块内 整32 上限 遮蔽 常量 上限，读点
     //   读变量槽而非内联 10）；无同名遮蔽的常量引用仍走常量内联（行为零变化）。
-    ir::IRValue reg = lookupVar(node->name);
-    if (reg.id < 0) {
+    // 1360 结果化：lookupVar 无值=未登记（含 regId<0 静态局部——原哨兵
+    //   reg(-1,"") 的 id<0 判定同义）
+    const cn::Optional<VarEntry> regVar = lookupVar(node->name);
+    if (!regVar.has_value()) {
         // 320-a（T41）：函数内静态局部读取——varStack 命中但 regId=-1（无栈槽，
         //   存储为 .data 全局符号）；按 varStack 层级查 isStaticLocal 标志走
         //   ?gstatic_键 LoadPtr（局部优先序不变——同名遮蔽由层级天然处理）。
@@ -194,8 +196,14 @@ void IRGenerator::visitIdentifierExpr(IdentifierExpr* node) {
         lastExpr_ = emitResult(ir::Opcode::FuncAddr, {}, "ptr", funcSym, node->location);
         return;
     }
-    const std::string unique = lookupVarName(node->name);
-    const std::string srcType = lookupSrcType(node->name);
+    // 1360 结果化：命中路径——变量必已登记（与 lookupVar 同栈查询），value_or("")
+    //   显形（登记 srcType/uniqueName 为空串的合法面行为不变）
+    const std::string unique = lookupVarName(node->name).value_or("");
+    const std::string srcType = lookupSrcType(node->name).value_or("");
+    // 1360 结果化：命中路径重建 IR 形态（regId/type 自条目——原 lookupVar 返回
+    //   IRValue::reg(regId,type) 同构）
+    const ir::IRValue reg =
+        ir::IRValue::reg(regVar.value().regId, regVar.value().type);
     // 缺陷修复（[&] 引用捕获读取，规格书04-一D）：参数槽存被捕获变量地址——
     //   数组/结构体：[&] 捕获时存的是变量地址（AddrOf 值），读取 = 取出该地址
     //   （地址形态，供下标/字段/按值传参使用）；
@@ -401,31 +409,32 @@ bool IRGenerator::genStringCompareBinary(BinaryExpr* node, const ir::IRValue& le
 //     全文，ptrElemStride 数组分支自管元素宽——425 同源）；
 //   ②二元 ±（指针在左为主（p±n/p-q）——右指针形态（n+p）语义层已拒；仍
 //     对称回溯，仅当回溯结果确为指针/数组形态才采信，防错采整数侧源文本）。
-//   其余（成员链/取地址/调用返回/下标等不可判面）返回空串——调用方交给
+//   其余（成员链/取地址/调用返回/下标等不可判面）无值——调用方交给
 //   ptrElemStride 的 648 内部错误显形（不静默取默认值）。与 v2 指针值表达式
 //   元素1064 结构面同构（v2 面合判可+元素，本处仅源类型回溯）。
-std::string IRGenerator::ptrOperandSrcType(const Expr* e) const {
-    if (e == nullptr) return "";  // 空节点=非指针形态（判空谓词·调用点恒传非空子树）
+//   1360 结果化：无值=不可判面（原空串哨兵退役）。
+cn::Optional<std::string> IRGenerator::ptrOperandSrcType(const Expr* e) const {
+    if (e == nullptr) return std::nullopt;  // 空节点=非指针形态（判空谓词·调用点恒传非空子树）
     if (e->getType() == NodeType::IdentifierExpr) {
         return lookupSrcType(static_cast<const IdentifierExpr*>(e)->name);
     }
     if (e->getType() == NodeType::BinaryExpr) {
         const BinaryExpr* b = static_cast<const BinaryExpr*>(e);
         if (b->op == Operator::Add || b->op == Operator::Subtract) {
-            const std::string left = ptrOperandSrcType(b->left.get());
-            if (!left.empty() &&
-                (types::isPointer(left) || types::isArray(left))) {
+            const cn::Optional<std::string> left = ptrOperandSrcType(b->left.get());
+            if (left.has_value() && !left.value().empty() &&
+                (types::isPointer(left.value()) || types::isArray(left.value()))) {
                 return left;
             }
-            const std::string right = ptrOperandSrcType(b->right.get());
-            if (!right.empty() &&
-                (types::isPointer(right) || types::isArray(right))) {
+            const cn::Optional<std::string> right = ptrOperandSrcType(b->right.get());
+            if (right.has_value() && !right.value().empty() &&
+                (types::isPointer(right.value()) || types::isArray(right.value()))) {
                 return right;
             }
         }
-        return "";
+        return std::nullopt;
     }
-    return "";
+    return std::nullopt;
 }
 
 bool IRGenerator::genPointerArithmetic(BinaryExpr* node, const ir::IRValue& left,
@@ -441,11 +450,12 @@ bool IRGenerator::genPointerArithmetic(BinaryExpr* node, const ir::IRValue& left
         // 非减法（指针比较 ==/!= 等）交上层原路径处理（比较段/数值段自管）——
         //   原双 ptr 在 genPointerArithmetic 恒 return false，此处保持零回归。
         if (node->op != Operator::Subtract) return false;
-        std::string ptrSrcType = ptrOperandSrcType(node->left.get());
-        if (ptrSrcType.empty()) {
-            ptrSrcType = ptrOperandSrcType(node->right.get());
+        // 1360 结果化：无值/空串回落另一侧（原空串检查同义·形态等价）
+        cn::Optional<std::string> ptrSrcTypeOpt = ptrOperandSrcType(node->left.get());
+        if (!ptrSrcTypeOpt.has_value() || ptrSrcTypeOpt.value().empty()) {
+            ptrSrcTypeOpt = ptrOperandSrcType(node->right.get());
         }
-        const std::int64_t stride = ptrElemStride(ptrSrcType);
+        const std::int64_t stride = ptrElemStride(ptrSrcTypeOpt.value_or(""));
         ir::IRValue bytes = emitResult(ir::Opcode::Sub, {left, right}, "i64", "",
                                        node->location);
         lastExpr_ = emitResult(
@@ -470,10 +480,12 @@ bool IRGenerator::genPointerArithmetic(BinaryExpr* node, const ir::IRValue& left
             delta = emitResult(ir::Opcode::Cast, {delta}, "i64", "", node->location);
         }
         // 指针操作数的源码类型（1064：经 ptrOperandSrcType 回溯——标识符直查；
-        //   ± 链（(p+1)+1 等）回溯根指针；成员/取地址等不可判面返空串 →
+        //   ± 链（(p+1)+1 等）回溯根指针；成员/取地址等不可判面无值 →
         //   ptrElemStride 内部错误显形（648 纪律·不静默取默认值））
+        //   1360 结果化：value_or("") 显形（不可判面=空串入 stride 报错通道·原语义）
         const std::string ptrSrcType =
-            ptrOperandSrcType(ptrLeft ? node->left.get() : node->right.get());
+            ptrOperandSrcType(ptrLeft ? node->left.get() : node->right.get())
+                .value_or("");
         const std::int64_t stride = ptrElemStride(ptrSrcType);
         ir::IRValue scaled = emitResult(
             ir::Opcode::Mul,

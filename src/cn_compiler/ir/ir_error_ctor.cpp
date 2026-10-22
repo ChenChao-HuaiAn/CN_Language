@@ -171,7 +171,7 @@ bool IRGenerator::resolveResultCtorTargetType(CallExpr* node, const std::string&
                 if (!storeType.empty() &&
                     semantic_->isStructType(types::canonical(storeType))) {
                     const std::string argType =
-                        types::canonical(exprSrcType(node->arguments[0].get()));
+                        types::canonical(exprSrcType(node->arguments[0].get()).value_or(""));
                     if (argType.empty() ||
                         !semantic_->isStructType(argType)) {
                         abandonOverride = true;
@@ -347,8 +347,9 @@ void IRGenerator::emitResultCtorValue(CallExpr* node, const std::string& name,
         const std::string srcName = static_cast<const IdentifierExpr*>(
             node->arguments[0].get())->name;
         if (stringTainted_.count(srcName) == 0) {
-            const std::string slot = lookupVarName(srcName);
-            if (!slot.empty()) {
+            const cn::Optional<std::string> slotOpt = lookupVarName(srcName);
+            if (slotOpt.has_value()) {
+                const std::string& slot = slotOpt.value();
                 emit(ir::Opcode::Store, {ir::IRValue::constant("0", "i64")},
                      ir::IRValue(), slot, "ptr", node->location);
             }

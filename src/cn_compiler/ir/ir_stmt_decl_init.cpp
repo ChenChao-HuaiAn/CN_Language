@@ -136,8 +136,9 @@ void IRGenerator::registerClosureIfNeeded(VarDecl* node) {
             const bool byRef = (ci < refCount) && lastLambdaCaptureRefs_[ci] != 0;
             if (byRef) {
                 // 引用捕获：&变量（AddrOf 取变量槽地址）
-                const std::string capUnique = lookupVarName(cap);
-                const std::string capIrType = lookupVarType(cap);
+                // 1360 结果化：value_or("") 显形（miss 落 648 显形/回退链·原语义）
+                const std::string capUnique = lookupVarName(cap).value_or("");
+                const std::string capIrType = lookupVarType(cap).value_or("");
                 if (capIrType.empty()) {
                     // 648（miss 不可静默·110 同族）：捕获变量 IR 类型未登记=
                     //   编译器内部缺陷（语义层回填捕获列表必对应 varStack 已登记
@@ -151,7 +152,8 @@ void IRGenerator::registerClosureIfNeeded(VarDecl* node) {
                     {ir::IRValue::var(capUnique, capIrType.empty() ? "i64" : capIrType)},
                     "ptr", capUnique, node->location));
             } else {
-                const std::string capSrc = lookupSrcType(cap);
+                // 1360 结果化：value_or("") 显形（miss=非结构体判定假·原语义）
+                const std::string capSrc = lookupSrcType(cap).value_or("");
                 // 缺陷修复（[=] 结构体值捕获快照）：结构体是值类型，值捕获须
                 //   在"定义处"深拷贝快照到临时缓冲区——不能仅存 AddrOf 指针：
                 //   指针指向原变量，定义后修改会破坏快照；且闭包参数槽被当
@@ -176,10 +178,12 @@ void IRGenerator::registerClosureIfNeeded(VarDecl* node) {
                     ir::IRValue dstAddr = emitResult(
                         ir::Opcode::AddrOf, {ir::IRValue::var(temp, "i64")},
                         "ptr", temp, node->location);
+                    // 1360 结果化：value_or("") 显形（语义层保证已登记·形态兜面）
+                    const std::string capUniqueS = lookupVarName(cap).value_or("");
                     ir::IRValue srcAddr = emitResult(
                         ir::Opcode::AddrOf,
-                        {ir::IRValue::var(lookupVarName(cap), "i64")},
-                        "ptr", lookupVarName(cap), node->location);
+                        {ir::IRValue::var(capUniqueS, "i64")},
+                        "ptr", capUniqueS, node->location);
                     emitStructCopyWithFields(dstAddr, srcAddr, capCanon,
                                              node->location,
                                              /*preFree=*/false,
@@ -236,7 +240,8 @@ bool IRGenerator::tryGenTransferInit(VarDecl* node, const ir::IRValue& value,
         node->initializer->getType() == NodeType::IdentifierExpr &&
         semantic_->isTransferDecl(static_cast<const void*>(node),
                                   transferSrcNameIr)) {
-        const std::string srcUnique = lookupVarName(transferSrcNameIr);
+        // 1360 结果化：value_or("") 显形（miss=空槽名·后续空判守卫同原语义）
+        const std::string srcUnique = lookupVarName(transferSrcNameIr).value_or("");
         const std::string tgtCanon = types::canonical(node->typeName);
         if (semantic_->isStructType(tgtCanon)) {
             ir::IRValue dstAddr = emitResult(
@@ -476,9 +481,10 @@ bool IRGenerator::tryGenClassCopyInit(VarDecl* node, const ir::IRValue& value,
         node->initializer->getType() == NodeType::IdentifierExpr) {
         const std::string initName =
             static_cast<IdentifierExpr*>(node->initializer.get())->name;
-        std::string initSrcType = lookupSrcType(initName);
+        // 1360 结果化：value_or("") 显形（miss=空→静态回落链·原语义）
+        std::string initSrcType = lookupSrcType(initName).value_or("");
         // 宿主根治（2026-09-01）：源为顶层类静态（不在 varStack_，lookupSrcType
-        //   为空）——类型取 globalStaticType；拷贝构造 byRef 传静态槽地址
+        //   无值）——类型取 globalStaticType；拷贝构造 byRef 传静态槽地址
         //   （&?gstatic_名，解引用即对象指针——指针槽模型与局部变量槽同构）。
         //   原实现漏此分支：浅 Store 共享指针，RAII 析构双释放堆损坏（0xC0000374）。
         const bool initIsStatic =
@@ -511,7 +517,8 @@ bool IRGenerator::tryGenClassCopyInit(VarDecl* node, const ir::IRValue& value,
                     const std::string copyOwner =
                         copyCtor->ownerClass.empty() ? canonTgt
                                                      : copyCtor->ownerClass;
-                    const std::string srcUnique = lookupVarName(initName);
+                    // 1360 结果化：value_or("") 显形（miss=空槽名原语义）
+                    const std::string srcUnique = lookupVarName(initName).value_or("");
                     ir::IRValue srcAddr;
                     if (initIsStatic) {
                         // 源为顶层类静态：槽地址 = ?gstatic_名 符号地址
@@ -593,8 +600,9 @@ bool IRGenerator::tryGenUnwrapBindInit(VarDecl* node, const ir::IRValue& value,
                                   : nullptr;
     if (semantic_ != nullptr && value.type == "ptr" && unwrapSrc != nullptr &&
         unwrapSrc->memberName == "值") {
+        // 1360 结果化：value_or("") 显形（无法推导=非结果/可选·原语义）
         const std::string baseTypeSrc =
-            exprSrcType(unwrapSrc->object.get());
+            exprSrcType(unwrapSrc->object.get()).value_or("");
         const std::string baseCanon = types::canonical(baseTypeSrc);
         const bool isUnwrapSlot =
             isResultType(baseCanon) || isOptionalType(baseCanon);

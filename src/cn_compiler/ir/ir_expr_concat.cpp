@@ -61,7 +61,7 @@ ir::IRValue IRGenerator::emitConcatNumToStr(Expr* operandAst,
         } else if (operandAst != nullptr &&
                    operandAst->getType() == NodeType::IdentifierExpr) {
             const std::string st = types::canonical(lookupSrcType(
-                static_cast<IdentifierExpr*>(operandAst)->name));
+                static_cast<IdentifierExpr*>(operandAst)->name).value_or(""));
             isChar = (st == "字符");
         }
         if (isChar) {
@@ -197,7 +197,7 @@ bool IRGenerator::chainStringOperand(Expr* node) const {
         if (idx->object != nullptr &&
             idx->object->getType() == NodeType::IdentifierExpr) {
             const std::string st = types::canonical(lookupSrcType(
-                static_cast<IdentifierExpr*>(idx->object.get())->name));
+                static_cast<IdentifierExpr*>(idx->object.get())->name).value_or(""));
             if (types::isArray(st)) {
                 return types::canonicalEquals(types::arrayElemOf(st), "字符串");
             }
@@ -273,7 +273,7 @@ bool IRGenerator::isStringTypedExpr(Expr* node) const {
             return true;
         case NodeType::IdentifierExpr: {
             const std::string st = types::canonical(lookupSrcType(
-                static_cast<IdentifierExpr*>(node)->name));
+                static_cast<IdentifierExpr*>(node)->name).value_or(""));
             return (st == "字符串" || st == "字符*");
         }
         case NodeType::BinaryExpr: {
@@ -289,7 +289,7 @@ bool IRGenerator::isStringTypedExpr(Expr* node) const {
             IndexExpr* idx = static_cast<IndexExpr*>(node);
             if (idx->object->getType() == NodeType::IdentifierExpr) {
                 const std::string st = types::canonical(lookupSrcType(
-                    static_cast<IdentifierExpr*>(idx->object.get())->name));
+                    static_cast<IdentifierExpr*>(idx->object.get())->name).value_or(""));
                 if (types::isArray(st)) {
                     const std::string elem = types::canonical(types::arrayElemOf(st));
                     return (elem == "字符串" || elem == "字符");
@@ -299,7 +299,8 @@ bool IRGenerator::isStringTypedExpr(Expr* node) const {
         }
         case NodeType::CallExpr: {
             // 933：调用返回类型经 exprSrcType 推导（含引用返回），剥尾 '&' 判定
-            std::string ct = exprSrcType(node);
+            // 1360 结果化：value_or("") 显形（无法推导=非字符串判定假·原语义）
+            std::string ct = exprSrcType(node).value_or("");
             if (!ct.empty() && ct.back() == '&') ct.pop_back();
             const std::string ccanon = types::canonical(ct);
             return (ccanon == "字符串" || ccanon == "字符*");

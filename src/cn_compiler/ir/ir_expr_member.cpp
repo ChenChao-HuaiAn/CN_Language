@@ -87,7 +87,8 @@ bool IRGenerator::emitStructWholeAssign(const ir::IRValue& dstAddr,
     //   IdentifierExpr -> 结构体 AddrOf 槽 / 类 Load 槽（槽存对象指针，
     //   AddrOf 槽会取到指向指针的指针——CopyStruct 读到指针值+栈垃圾）。
     ir::IRValue srcAddr;
-    std::string srcUniqueId;  // 标识符源唯一名（拷贝构造 byRef 传参用）
+    // 1360 结果化：Optional 贯穿（无值=非标识符源或未登记——原空串哨兵退役）
+    cn::Optional<std::string> srcUniqueId;  // 标识符源唯一名（拷贝构造 byRef 传参用）
     if (valueNode->getType() == NodeType::IndexExpr ||
         valueNode->getType() == NodeType::MemberExpr ||
         valueNode->getType() == NodeType::TernaryExpr) {
@@ -120,7 +121,9 @@ bool IRGenerator::emitStructWholeAssign(const ir::IRValue& dstAddr,
         //   StorePtr（p11 静态位『静态和 = 甲 + 乙』读出垃圾实录）。非重载
         //   （普通算术）resolvedType 非结构体 → return false 原路径零变更；
         //   类目标排除（重载类对象产物经 414/821 专门通道，不经本函数）。
-        const std::string binRet = exprSrcType(valueNode);
+        // 1360 结果化：value_or("") 显形（非重载普通算术=空串→isStructType 假
+        //   →return false 原路径·原语义）
+        const std::string binRet = exprSrcType(valueNode).value_or("");
         if (!semantic_->isStructType(types::canonical(binRet))) {
             return false;  // 非重载结构体产物——交回调用方原路径
         }
@@ -136,27 +139,27 @@ bool IRGenerator::emitStructWholeAssign(const ir::IRValue& dstAddr,
         //   局部/参数遮蔽全局时名字直查截胡=源取 ?gstatic_ 全局槽（应为局部源
         //   ·m7 实证），对齐读路径 85-a「局部优先、miss 才查全局」遮蔽序。
         if (semantic_->isGlobalStatic(srcName) &&
-            findVarEntry(srcName) == nullptr) {
+            !findVarEntry(srcName).has_value()) {
             srcAddr = emitResult(ir::Opcode::ConstString, {}, "ptr",
                                  "?gstatic_" + srcName, loc);
-        } else if (const VarEntry* veStatic = findVarEntry(srcName);
-                   veStatic != nullptr && veStatic->isStaticLocal) {
+        } else if (const cn::Optional<const VarEntry*> veStatic = findVarEntry(srcName);
+                   veStatic.has_value() && veStatic.value()->isStaticLocal) {
             // 852（2026-10-16）：源为函数内静态局部——存储在 ?gstatic_key .data
             //   符号（varStack uniqueName=key·无 varSlot），AddrOf(var) 取的是
             //   无效栈槽=错源。修=320-a 读路径同口径符号地址直引。
             srcAddr = emitResult(ir::Opcode::ConstString, {}, "ptr",
-                                 "?gstatic_" + veStatic->uniqueName, loc);
+                                 "?gstatic_" + veStatic.value()->uniqueName, loc);
         } else {
             srcUniqueId = lookupVarName(srcName);
-            const std::string srcST = lookupSrcType(srcName);
+            const std::string srcST = lookupSrcType(srcName).value_or("");
             if (semantic_->isClassType(types::canonical(types::stripRef(srcST)))) {
                 srcAddr = emitResult(ir::Opcode::Load,
-                                     {ir::IRValue::var(srcUniqueId, "ptr")},
-                                     "ptr", srcUniqueId, loc);
+                                     {ir::IRValue::var(srcUniqueId.value_or(""), "ptr")},
+                                     "ptr", srcUniqueId.value_or(""), loc);
             } else {
                 srcAddr = emitResult(ir::Opcode::AddrOf,
-                                     {ir::IRValue::var(srcUniqueId, "i64")},
-                                     "ptr", srcUniqueId, loc);
+                                     {ir::IRValue::var(srcUniqueId.value_or(""), "i64")},
+                                     "ptr", srcUniqueId.value_or(""), loc);
             }
         }
     }
@@ -166,12 +169,14 @@ bool IRGenerator::emitStructWholeAssign(const ir::IRValue& dstAddr,
     //   （浅拷贝共享指针 + RAII 双释放 0xC0000374）。源为成员/下标元素
     //   （byRef 无法引用内联元素）保持 CopyStruct 浅拷贝。
     const ClassMemberInfo* copyCtor = semantic_->findCopyConstructor(dstElemCanon).value_or(nullptr);
-    if (copyCtor != nullptr && !srcUniqueId.empty()) {
+    // 1360 结果化：有值且非空（原 !empty 判定同义面·登记空串形态同归原路径）
+    if (copyCtor != nullptr && srcUniqueId.has_value() && !srcUniqueId.value().empty()) {
+        const std::string& srcUniq = srcUniqueId.value();
         const std::string copyOwner =
             copyCtor->ownerClass.empty() ? dstElemCanon : copyCtor->ownerClass;
         const ir::IRValue srcRef = emitResult(
-            ir::Opcode::AddrOf, {ir::IRValue::var(srcUniqueId, "i64")},
-            "ptr", srcUniqueId, loc);
+            ir::Opcode::AddrOf, {ir::IRValue::var(srcUniq, "i64")},
+            "ptr", srcUniq, loc);
         emit(ir::Opcode::Call, {dstAddr, srcRef}, ir::IRValue(),
              methodSymbolKey(copyOwner, copyCtor->sigKey), "void", loc);
     } else if (semantic_->isClassType(dstElemCanon) && copyCtor != nullptr &&
@@ -190,10 +195,11 @@ bool IRGenerator::emitStructWholeAssign(const ir::IRValue& dstAddr,
         //   透传〔86-a〕同构）。有析构∧有拷贝构造双条件与收集面 183-a 泛化
         //   口径一致；无拷贝构造类不进本通道（浅拷共享下加释放=双删，发现三；
         //   无析构类不发射 DeleteObject=无释放面维持现状）。
-        const std::string dtorKey = classDestructorSymbolKey(dstElemCanon);
+        // 1360 结果化：无值=无析构（跳过旧值释放·has_value 分流）
+        const cn::Optional<std::string> dtorKey = classDestructorSymbolKey(dstElemCanon);
         const std::string skipLabelW =
             beginSelfAssignGuard(dstAddr, srcAddr, loc);
-        if (!dtorKey.empty()) {
+        if (dtorKey.has_value()) {
             ir::IRValue oldObj = emitResult(ir::Opcode::LoadPtr, {dstAddr}, "ptr",
                                             "", loc);
             emitContainerElemFreeFor(dstElemCanon, oldObj, loc);
@@ -230,8 +236,9 @@ bool IRGenerator::emitStructWholeAssign(const ir::IRValue& dstAddr,
         //   串==0 同口径；容器类恒有容器拷贝构造走上方 183-a/分支1 不受影响；
         //   源=调用返回不进本分支——句柄接管直存走调用方原路径 843-a 口径）。
         const std::string skipLabelX = beginSelfAssignGuard(dstAddr, srcAddr, loc);
-        const std::string dtorKeyX = classDestructorSymbolKey(dstElemCanon);
-        if (!dtorKeyX.empty()) {
+        // 1360 结果化：无值=无析构（has_value 分流）
+        const cn::Optional<std::string> dtorKeyX = classDestructorSymbolKey(dstElemCanon);
+        if (dtorKeyX.has_value()) {
             ir::IRValue oldObjX = emitResult(ir::Opcode::LoadPtr, {dstAddr}, "ptr",
                                              "", loc);
             emitContainerElemFreeFor(dstElemCanon, oldObjX, loc);
@@ -464,31 +471,32 @@ void IRGenerator::visitMemberExpr(MemberExpr* node) {
     // 179-a：原 246~367 的 objSrcType 手写推导链提取为 resolveMemberObjSrcType
     //   （嵌套成员/下标两子族再分 resolveNestedMemberObjSrcType / resolveIndexObjSrcType）；
     //   原 382~411 的字段类型映射提取为 resolveMemberFieldSrcType（纯搬运零行为变更）。
-    std::string objSrcType = resolveMemberObjSrcType(node);
-    // 82-d（2026-09-12 第八十四轮后续）：**成员链嵌套深度兜底**——上方手写推理只
+    // 1360 结果化：无值=推导链未命中（回落 memberObjStructType/exprSrcType 原语义）
+    cn::Optional<std::string> objSrcType = resolveMemberObjSrcType(node);
+    // 82-d（2026-09-12 第八十四轮后续）：**成员链嵌套深度补全**——上方手写推理只
     //   覆盖「一层嵌套」（inner->object 须为标识符）：三级链 `丙.d.b.a` 的 objSrcType
     //   退化空 → decl==nullptr → **字段读降级常量 0**（静默错行为；探针 P29/P30 实证：
     //   三级链读 0、二级/一级正常）。以既有递归辅助 `memberObjStructType`（成员链任意
-    //   深度 + 下标 + 指针剥离 + 结果/可选成员映射）兜底填空。Rust 对照：rustc 字段
+    //   深度 + 下标 + 指针剥离 + 结果/可选成员映射）填空。Rust 对照：rustc 字段
     //   访问按 base 类型递归解析（field.ty()），深度不限。
-    if (objSrcType.empty()) {
+    if (!objSrcType.has_value()) {
         objSrcType = memberObjStructType(node);
     }
     // 936 同族（运算符重载返回结构体·成员链消费位）：对象=二元/单目表达式
     //   （重载命中→产物=结构体；语义层 resolvedType 写回→exprSrcType 单一
     //   事实源）。原两推导链不认重载表达式 → 落 648 内部错误（p11 探针
-    //   『(甲 + 乙).x』实录——与 82-d 三级链兜底同层级补全）。
-    if (objSrcType.empty() &&
+    //   『(甲 + 乙).x』实录——与 82-d 三级链同层级补全）。
+    if (!objSrcType.has_value() &&
         (node->object->getType() == NodeType::BinaryExpr ||
          node->object->getType() == NodeType::UnaryExpr)) {
         objSrcType = exprSrcType(node->object.get());
     }
-    const std::string canonObjSrc1059 = types::canonical(objSrcType);
+    const std::string canonObjSrc1059 = types::canonical(objSrcType.value_or(""));
     const bool ownerIsClass1059 = semantic_->isClassType(canonObjSrc1059);
     const StructDecl* decl = semantic_->findStruct(canonObjSrc1059).value_or(nullptr);
-    std::string fieldSrcType;
+    cn::Optional<std::string> fieldSrcType;
     if (decl != nullptr) {
-        fieldSrcType = resolveMemberFieldSrcType(node, objSrcType, decl);
+        fieldSrcType = resolveMemberFieldSrcType(node, objSrcType.value_or(""), decl);
     }
     // 1059：类宿主回退——类不入结构体表（findStruct 恒 miss → 原 648 误伤类
     //   对象成员读：b.组[0].数 等类字段元素对象位多形态；v2 放行=宿主单侧拒绝
@@ -498,14 +506,14 @@ void IRGenerator::visitMemberExpr(MemberExpr* node) {
     if (decl == nullptr && ownerIsClass1059) {
         fieldSrcType = classFieldType(canonObjSrc1059, node->memberName);
     }
-    // 648（miss 不可静默·110 同族）：对象结构体类型推导 miss（且非类宿主）=合法
+    // 648（miss 不可静默·110 同族）：对象结构体类型推导无值（且非类宿主）=合法
     //   程序内部缺陷（82-d 三级链/1014 调用链等四次复发实录），上游无错误短路，
     //   显形于此；driver 在 generate() 后 hasErrors() 统一中止，产物不落地。
     //   原常量 0 兜底保留（控制流零变更）。
     if (decl == nullptr && !ownerIsClass1059) {
         diagnostics_.report(DiagnosticLevel::Error, node->location,
             "内部错误: 成员 '" + node->memberName + "' 所属结构体类型未解析（对象类型 '" +
-                objSrcType + "'）——静默常量0兜底已废除（#648）");
+                objSrcType.value_or("") + "'）——静默常量0兜底已废除（#648）");
         lastExpr_ = emitResult(ir::Opcode::ConstInt, {}, "i32", "0", node->location);
         return;
     }
@@ -517,9 +525,9 @@ void IRGenerator::visitMemberExpr(MemberExpr* node) {
     //   返回字段地址（值语义）——原 LoadPtr 只读首 8 字节当值，内联结构体数据
     //   拷贝给调用方时 CopyStruct(首字段值) 崩（地址 7 读取 0xC0000005）；
     //   嵌套 查.值.名ID 也依赖字段地址作基址。
-    if (types::isArray(fieldSrcType) ||
+    if (types::isArray(fieldSrcType.value_or("")) ||
         (semantic_ != nullptr &&
-         semantic_->isStructType(types::canonical(fieldSrcType)))) {
+         semantic_->isStructType(types::canonical(fieldSrcType.value_or(""))))) {
         lastExpr_ = fieldAddr;
         return;
     }
@@ -528,17 +536,17 @@ void IRGenerator::visitMemberExpr(MemberExpr* node) {
     //   指针槽模型，与类字段 A-4/byRef 机制一致——缺陷2 根治 2026-09-02 定案：
     //   结构体容器字段=typeSizeOf 保留区+首槽指针，构造赋值 Store 指针、
     //   读取 LoadPtr、方法 this=对象指针；结构体局部零初始化保未构造槽为 null）。
-    // 655（648 余量④-c 显形·648 立法同款）：字段源码类型串 miss（空串）时
+    // 655（648 余量④-c 显形·648 立法同款）：字段源码类型串无值/空串时
     //   mapType 空串→"void"——LoadPtr 以 void 宽装载=静默错型面。结构体对象
     //   已解析而字段类型串未解析=内部缺陷，报诊断后保留原发射（控制流零
     //   变更·driver hasErrors() 中止）。
-    if (fieldSrcType.empty()) {
+    if (!fieldSrcType.has_value() || fieldSrcType.value().empty()) {
         diagnostics_.report(DiagnosticLevel::Error, node->location,
             "内部错误: 成员 '" + node->memberName + "' 字段类型串未解析（对象类型 '" +
-                objSrcType + "'），LoadPtr void 宽兜底已不可静默（#655）");
+                objSrcType.value_or("") + "'），LoadPtr void 宽兜底已不可静默（#655）");
     }
     lastExpr_ = emitResult(ir::Opcode::LoadPtr, {fieldAddr},
-                           mapType(fieldSrcType), "", node->location);
+                           mapType(fieldSrcType.value_or("")), "", node->location);
 }
 
 // ==================== 179-a 族子方法（原 visitMemberExpr 246~411 段） ====================
@@ -547,13 +555,15 @@ void IRGenerator::visitMemberExpr(MemberExpr* node) {
 //   标识符（变量源码类型）/ 嵌套成员（resolveNestedMemberObjSrcType）/
 //   显式解引用（*q).x / 下标（resolveIndexObjSrcType）/ 指针算术结果 /
 //   调用返回（exprSrcType）；末尾 isDerefAccess 剥指针一级。
-std::string IRGenerator::resolveMemberObjSrcType(MemberExpr* node) {
+// 1360 结果化：内部空串=未推导状态机，出口空串→无值（原空串哨兵不外泄）。
+cn::Optional<std::string> IRGenerator::resolveMemberObjSrcType(MemberExpr* node) {
     std::string objSrcType = "";
     if (node->object->getType() == NodeType::IdentifierExpr) {
-        objSrcType = lookupSrcType(static_cast<IdentifierExpr*>(node->object.get())->name);
+        objSrcType = lookupSrcType(
+            static_cast<IdentifierExpr*>(node->object.get())->name).value_or("");
     } else if (node->object->getType() == NodeType::MemberExpr) {
         objSrcType = resolveNestedMemberObjSrcType(
-            static_cast<MemberExpr*>(node->object.get()));
+            static_cast<MemberExpr*>(node->object.get())).value_or("");
     } else if (node->object->getType() == NodeType::UnaryExpr) {
         // 显式解引用成员 (*q).x —— 对象经 * 解引用后为所指结构体，类型=所指类型。
         //   宿主缺陷根治（2026-09-03，E2E 134 第四节当场揪出）：原分支表不认
@@ -565,7 +575,7 @@ std::string IRGenerator::resolveMemberObjSrcType(MemberExpr* node) {
         //   （(*(具.双重)).字段）miss 落空；现与地址层/宽度层同源全形态覆盖。
         UnaryExpr* u = static_cast<UnaryExpr*>(node->object.get());
         if (u->op == Operator::Deref) {
-            objSrcType = derefPointeeSrcType(u->operand.get());
+            objSrcType = derefPointeeSrcType(u->operand.get()).value_or("");
         }
         // 448（2026-10-11·425 遗留①根治）：取址表达式成员 (&表[i]).x ——
         //   &表[i] 的类型=下标元素类型（visitUnaryExpr AddressOf+IndexExpr
@@ -576,10 +586,11 @@ std::string IRGenerator::resolveMemberObjSrcType(MemberExpr* node) {
         else if (u->op == Operator::AddressOf &&
                  u->operand->getType() == NodeType::IndexExpr) {
             objSrcType = resolveIndexObjSrcType(
-                static_cast<IndexExpr*>(u->operand.get()));
+                static_cast<IndexExpr*>(u->operand.get())).value_or("");
         }
     } else if (node->object->getType() == NodeType::IndexExpr) {
-        objSrcType = resolveIndexObjSrcType(static_cast<IndexExpr*>(node->object.get()));
+        objSrcType = resolveIndexObjSrcType(
+            static_cast<IndexExpr*>(node->object.get())).value_or("");
     } else if (node->isDerefAccess && node->object->getType() == NodeType::BinaryExpr) {
         // 指针算术结果成员：(名单 + (n-1)).分数 — 从左操作数（指针变量）
         // 推导元素类型（Task 2.7 集成修复：此前 decl==nullptr 返回占位0，
@@ -591,7 +602,7 @@ std::string IRGenerator::resolveMemberObjSrcType(MemberExpr* node) {
         BinaryExpr* bin = static_cast<BinaryExpr*>(node->object.get());
         if (bin->left->getType() == NodeType::IdentifierExpr) {
             const std::string ptrType = lookupSrcType(
-                static_cast<IdentifierExpr*>(bin->left.get())->name);
+                static_cast<IdentifierExpr*>(bin->left.get())->name).value_or("");
             if (types::isArray(ptrType)) {
                 objSrcType = types::arrayElemOf(ptrType);
             } else if (types::isPointer(ptrType)) {
@@ -603,29 +614,31 @@ std::string IRGenerator::resolveMemberObjSrcType(MemberExpr* node) {
         //   （向量.元素(i).字段）——原只认 变量/嵌套成员/下标，CallExpr 推导空
         //   -> decl==nullptr -> 字段读取降级常量 0。补经 exprSrcType 解析返回
         //   类型（与 lvalueAddress 的同款补丁配套：地址层 + 类型/宽度层双修复）。
-        objSrcType = exprSrcType(node->object.get());
+        objSrcType = exprSrcType(node->object.get()).value_or("");
     }
     if (node->isDerefAccess && types::isPointer(objSrcType)) {
         objSrcType = types::pointeeOf(objSrcType);
     }
+    if (objSrcType.empty()) return std::nullopt;
     return objSrcType;
 }
 
 // 族②：嵌套成员对象类型推导（原 252~299 段）——r.左上 的类型 = 外层结构体
 //   "矩形"的字段"左上"类型；含结果/可选 成员映射与指针剥离。
-std::string IRGenerator::resolveNestedMemberObjSrcType(MemberExpr* inner) {
+// 1360 结果化：出口空串→无值（原空串哨兵不外泄）。
+cn::Optional<std::string> IRGenerator::resolveNestedMemberObjSrcType(MemberExpr* inner) {
     std::string objSrcType = "";
         // 嵌套成员：r.左上 的类型 = 外层结构体"矩形"的字段"左上"类型
         std::string innerObjType = "";
         if (inner->object->getType() == NodeType::IdentifierExpr) {
             innerObjType = lookupSrcType(
-                static_cast<IdentifierExpr*>(inner->object.get())->name);
+                static_cast<IdentifierExpr*>(inner->object.get())->name).value_or("");
             // 宿主缺陷根治（2026-09-03，E2E 134 当场揪出）：嵌套成员链第一层为
             //   指针变量（外层* wq; wq.内.x）——findStruct("外层*") 不剥指针 ->
             //   innerDecl==null -> objSrcType 空 -> decl==null -> 字段读降级常量 0
             //   （比较恒真/打印恒 0，静默错行为）。原 -> 语法同形态同缺陷（旧用例
             //   嵌套链均隔下标层走 IndexExpr 分支未踩中）。修：剥指针一级再查
-            //   （与下方 1995 行 memberObjStructType 内 isDerefAccess 剥法一致）。
+            //   （与下方 memberObjStructType 内 isDerefAccess 剥法一致）。
             if (types::isPointer(innerObjType)) {
                 innerObjType = types::pointeeOf(innerObjType);
             }
@@ -636,7 +649,7 @@ std::string IRGenerator::resolveNestedMemberObjSrcType(MemberExpr* inner) {
             //   -> IR 静默丢字段访问（rc=0 坏产物·与 86-a「类型推导失败→静默
             //   降级」同族第四次复发）。经 exprSrcType（CallExpr 分支 2026-08-25
             //   已支持）解析调用返回类型。
-            innerObjType = exprSrcType(inner->object.get());
+            innerObjType = exprSrcType(inner->object.get()).value_or("");
         }
         const StructDecl* innerDecl = semantic_->findStruct(types::canonical(innerObjType)).value_or(nullptr);
         if (innerDecl != nullptr) {
@@ -670,17 +683,19 @@ std::string IRGenerator::resolveNestedMemberObjSrcType(MemberExpr* inner) {
                 }
             }
         }
+    if (objSrcType.empty()) return std::nullopt;
     return objSrcType;
 }
 
 // 族③：下标对象元素类型推导（原 315~345 段）——数组元素成员：点数组[1].x —
 //   元素类型 = 数组元素类型（结构体）；含指针下标与数组字段元素形态。
-std::string IRGenerator::resolveIndexObjSrcType(IndexExpr* idx) {
+// 1360 结果化：出口空串→无值（原空串哨兵不外泄）。
+cn::Optional<std::string> IRGenerator::resolveIndexObjSrcType(IndexExpr* idx) {
     std::string objSrcType = "";
         // 数组元素成员：点数组[1].x — 元素类型 = 数组元素类型（结构体）
         if (idx->object->getType() == NodeType::IdentifierExpr) {
             const std::string arrType = lookupSrcType(
-                static_cast<IdentifierExpr*>(idx->object.get())->name);
+                static_cast<IdentifierExpr*>(idx->object.get())->name).value_or("");
             if (types::isArray(arrType)) {
                 objSrcType = types::arrayElemOf(arrType);
             } else if (types::isPointer(arrType)) {
@@ -694,7 +709,7 @@ std::string IRGenerator::resolveIndexObjSrcType(IndexExpr* idx) {
             // 修复10/10b（数组字段元素成员读取）：方形.顶点[0].x /
             //   方形指针->顶点[0].x — 内层成员是数组字段，元素类型 = 字段数组元素类型（坐标）
             MemberExpr* inner = static_cast<MemberExpr*>(idx->object.get());
-            const std::string innerType = memberObjStructType(inner);
+            const std::string innerType = memberObjStructType(inner).value_or("");
             const StructDecl* innerDecl =
                 semantic_->findStruct(types::canonical(innerType)).value_or(nullptr);
             if (innerDecl != nullptr) {
@@ -707,12 +722,14 @@ std::string IRGenerator::resolveIndexObjSrcType(IndexExpr* idx) {
                 }
             }
         }
+    if (objSrcType.empty()) return std::nullopt;
     return objSrcType;
 }
 
 // 族④：字段源码类型映射（原 382~411 段）——结果/可选 合成结构体成员名映射
 //   （与 fieldOffsetOf 一致）+ 普通字段查表。
-std::string IRGenerator::resolveMemberFieldSrcType(MemberExpr* node,
+// 1360 结果化：出口空串→无值（原空串哨兵不外泄）。
+cn::Optional<std::string> IRGenerator::resolveMemberFieldSrcType(MemberExpr* node,
                                                    const std::string& objSrcType,
                                                    const StructDecl* decl) {
     // 字段类型（IR类型）
@@ -745,6 +762,7 @@ std::string IRGenerator::resolveMemberFieldSrcType(MemberExpr* node,
             }
         }
     }
+    if (fieldSrcType.empty()) return std::nullopt;
     return fieldSrcType;
 }
 } // namespace cn_compiler
