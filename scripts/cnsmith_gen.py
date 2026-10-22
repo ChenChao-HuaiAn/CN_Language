@@ -5,6 +5,10 @@
 按规范文法生成随机但合法的 CN 程序（确定性种子可复现）。
 首期生成面：整32/整64 变量、算术（+ - * / %）、位运算（& | ^ << >>）、
 比较（== != < <= > >=）、逻辑（&& || !）、三元、打印行。
+1022 扩面（#1398）：`--族 混合`（默认）按 seed 轮转「枚举数组/重载后缀/
+默认参数/转义字符串」四族——每 5 个 seed 覆盖标量面+四族。四族用于让
+#1393~#1397（v2 枚举宽度/重载后缀/默认参数/NUL 转义）在自动对拍轨道显形，
+修复前对拍与矩阵轨道对这些族预期红（红在明处·勿误判工具回归）。
 
 「只生成合法程序」契约（847 收口）由二层保护承担：
   ①移位量域保护：移位量=操作数类型位宽域内小字面量（474 立法）；
@@ -67,8 +71,126 @@ def _域断言(值):
     return 值
 
 
+# =====================================================================
+# 1022 扩面（#1398）：四族结构程序生成
+#   背景（2026-10-22 采样轮实证）：原随机面只产 主() 内整32/整64 标量语句，
+#   枚举数组/重载后缀/默认参数表达式/转义字符串四族零覆盖——自动三轨道全绿
+#   而 22 项红全靠手写探针。本段按 seed 轮转四族（每 5 个 seed 覆盖标量面+四族）。
+#   合法性契约=宿主编译通过；v2 侧分叉=对拍轨道命中面（#1393~#1397 锁面）。
+#   ⚠ 修复前对拍/矩阵轨道对这些族预期红（红在明处，勿误判工具回归 revert）。
+# =====================================================================
+族名们 = ("枚举数组", "重载后缀", "默认参数", "转义字符串")
+
+
+def 族程序(族名, seed):
+    """四族完整程序生成（确定性：族内 rng=seed*1009+族序）。
+
+    返回源码带 `// 族=<名>` 标记（selftest 覆盖断言消费）。每族两变体，
+    全部为宿主可编译的合法程序；值取小域确定形态，避免常量折叠/移位保护面。
+    """
+    rng = random.Random(seed * 1009 + 族名们.index(族名))
+    if 族名 == "枚举数组":
+        if rng.random() < 0.5:
+            return r'''// 族=枚举数组
+枚举 颜色 { 红, 绿, 蓝 }
+函数 枚举和(颜色[3] 表) -> 整32 {
+    返回 整32(表[0]) + 整32(表[1]) + 整32(表[2]);
+}
+函数 主() -> 整32 {
+    颜色[3] 表 = {颜色.红, 颜色.绿, 颜色.蓝};
+    打印(整32(表[0]), " ", 整32(表[1]), " ", 整32(表[2]));
+    打印(枚举和(表));
+    返回 0;
+}
+'''
+        return r'''// 族=枚举数组
+枚举 方向 { 上 = -1, 中 = 0, 下 = 1 }
+函数 主() -> 整32 {
+    方向[3] 表;
+    表[0] = 方向.上;
+    表[1] = 方向.中;
+    表[2] = 方向.下;
+    循环 (整32 i = 0; i < 3; i++) {
+        打印(整32(表[i]), " ");
+    }
+    返回 0;
+}
+'''
+    if 族名 == "重载后缀":
+        if rng.random() < 0.5:
+            return r'''// 族=重载后缀
+函数 取(整32 x) -> 整32 { 返回 x + 1; }
+函数 取(整64 x) -> 整64 { 返回 x + 2L; }
+函数 述(浮32 x) -> 整32 { 返回 1; }
+函数 述(浮64 x) -> 整32 { 返回 2; }
+函数 主() -> 整32 {
+    打印(取(1), " ", 取(1L));
+    打印(述(1.5f), " ", 述(1.5));
+    返回 0;
+}
+'''
+        return r'''// 族=重载后缀
+函数 选(正32 x) -> 整32 { 返回 1; }
+函数 选(正64 x) -> 整32 { 返回 2; }
+函数 取(整32 x) -> 整32 { 返回 x + 1; }
+函数 取(整64 x) -> 整64 { 返回 x + 2L; }
+函数 主() -> 整32 {
+    打印(选(1U), " ", 选(1UL));
+    打印(取(1), " ", 取(1L));
+    返回 0;
+}
+'''
+    if 族名 == "默认参数":
+        if rng.random() < 0.5:
+            return r'''// 族=默认参数
+常量 基 = 5;
+函数 算(整32 a = 1 + 2, 整32 b = 基) -> 整32 {
+    返回 a + b;
+}
+函数 主() -> 整32 {
+    打印(算());
+    打印(算(10));
+    返回 0;
+}
+'''
+        return r'''// 族=默认参数
+类 盒 {
+公开:
+    整32 值;
+    函数 盒(整32 n = 2 + 3) { 值 = n; }
+}
+函数 主() -> 整32 {
+    盒 b = 盒();
+    打印(b.值);
+    返回 0;
+}
+'''
+    if 族名 == "转义字符串":
+        if rng.random() < 0.5:
+            return r'''// 族=转义字符串
+函数 主() -> 整32 {
+    字符串 s = "a\0b";
+    打印(字符串长度(s), " ", s[0]);
+    字符串 r = 原始"a\tb";
+    打印(字符串长度(r));
+    返回 0;
+}
+'''
+        return r'''// 族=转义字符串
+函数 主() -> 整32 {
+    字符串 甲 = 多行"""第一行
+第二行""";
+    字符串 乙 = 原始多行"""甲\n乙""";
+    打印(字符串长度(甲), " ", 字符串长度(乙));
+    返回 0;
+}
+'''
+    raise AssertionError("闭集外族名：%s" % 族名)   # 穷举断言（miss 不可静默）
+
+
 class Gen:
     def __init__(self, seed):
+        self.seed = seed
         self.rng = random.Random(seed)
         self.vars = []          # (名称, 类型) 整32/整64
         self.flt_vars = []      # (名称,) 浮64（1306 推断声明面产物·供后续语句复用）
@@ -177,6 +299,16 @@ class Gen:
         out.append("    返回 0;")
         out.append("}")
         return NL.join(out)
+
+    def program_mixed(self, stmt_n=14):
+        """混合面（1022·#1398）：seed%5==0 用原标量面，1~4 依次四族。
+
+        连续 5 个 seed 覆盖「标量+枚举数组+重载后缀+默认参数+转义字符串」；
+        全部面均遵守「只生成合法程序」契约（合法性=宿主编译通过）。"""
+        序 = self.seed % 5
+        if 序 == 0:
+            return self.program(stmt_n)
+        return 族程序(族名们[序 - 1], self.seed)
 
     def statement(self):
         if self.rng.random() < 0.2:
@@ -319,16 +451,24 @@ def inject_error(src, rng):
 
 
 def _尝试注入(lines, kind, rng):
-    """单类型注入尝试：返回 (新行列表, 注入行号) 或 None（无可注入行）。"""
+    """单类型注入尝试：返回 (新行列表, 注入行号) 或 None（无可注入行）。
+
+    1022（#1398 随批根治）：候选行一律排除注释行（`//`）与预处理行（`#`）——
+    原实现只按「非空」选行，族程序首行 `// 族=…` 使「非法字符」注入追加进
+    注释（样本仍合法 → 宿主误接受假命中）；「截断文件」也可能只删末尾空行。
+    注入契约=必真破坏语法：候选必须落在代码行。"""
     out = list(lines)
+    代码行 = [i for i, l in enumerate(out)
+              if l.strip() and not l.strip().startswith("//")
+              and not l.strip().startswith("#")]
     if kind == "删分号":
-        cand = [i for i, l in enumerate(out) if ";" in l]
+        cand = [i for i in 代码行 if ";" in out[i]]
         if not cand:
             return None
         i = rng.choice(cand)
         out[i] = out[i].replace(";", "", 1)
     elif kind == "缺右括号":
-        cand = [i for i, l in enumerate(out) if ")" in l]
+        cand = [i for i in 代码行 if ")" in out[i]]
         if not cand:
             return None
         i = rng.choice(cand)
@@ -341,15 +481,16 @@ def _尝试注入(lines, kind, rng):
         i = rng.choice(cand)
         out.pop(i)
     elif kind == "非法字符":
-        cand = [i for i, l in enumerate(out) if l.strip()]
+        if not 代码行:
+            return None
+        i = rng.choice(代码行)
+        out[i] = out[i] + " @@"
+    elif kind == "截断文件":
+        # 截断点=后半段代码行（排除注释/空行——只删空串不算截断）
+        cand = [i for i in 代码行 if i >= len(out) // 2]
         if not cand:
             return None
         i = rng.choice(cand)
-        out[i] = out[i] + " @@"
-    elif kind == "截断文件":
-        if len(out) < 4:
-            return None
-        i = rng.randrange(len(out) // 2, len(out))   # 截断点 ≤ 末行索引：末行 `}` 必被删
         out = out[:i]
     else:
         return None
@@ -424,6 +565,39 @@ def selftest(编译路径=None, 目标=None):
        and bool(re.search(r"变量 \S+ = \(\S+ > 0\) \? 1 : 2\.5", 文本全集)),
        "三型缺一")
 
+    # 1022 四族扩面锁（#1398）：混合面 20 seed 覆盖四族+标量回退；族结构完整
+    #   （删族=自动面重新致盲 → 本轮 #1393~#1397 永不再显形）
+    混合样本 = [(seed, Gen(seed).program_mixed(语句数)) for seed in range(1, 21)]
+    混合文本 = NL.join(src for _s, src in 混合样本)
+    缺族 = [族 for 族 in 族名们 if ("// 族=" + 族) not in 混合文本]
+    签("1022 四族生成面覆盖（%d/4）" % (len(族名们) - len(缺族)), not 缺族,
+       "缺 %s" % 缺族)
+    签("1022 混合面保留标量回退（seed%%5==0）",
+       any("=== CN-Smith 采样 ===" in src and "// 族=" not in src
+           for _s, src in 混合样本))
+    族样本 = [(s, src) for s, src in 混合样本 if "// 族=" in src]
+    签("1022 族程序结构完整（主函数唯一·%d 件）" % len(族样本),
+       len(族样本) == 16 and all(src.count("函数 主()") == 1
+                                 for _s, src in 族样本))
+    # 1022 注入器候选行锁（#1398 随批）：族程序首行注释不得吞掉注入；
+    #   截断点必须是代码行（原实现两缺陷=样本实际仍合法→宿主误接受假命中）
+    注入坏 = []
+    for seed in range(1, 5):
+        基 = Gen(seed).program_mixed(语句数)
+        基行们 = 基.split(NL)
+        for k in range(8):
+            注入, kind, 行号 = inject_error(基, random.Random(seed * 7 + k))
+            if 注入 is None:
+                注入坏.append((seed, kind, "跳过"))
+                continue
+            原行 = 基行们[行号 - 1] if 0 < 行号 <= len(基行们) else ""
+            if kind == "非法字符" and 原行.strip().startswith("//"):
+                注入坏.append((seed, kind, "注释行"))
+            if kind == "截断文件" and not 原行.strip():
+                注入坏.append((seed, kind, "空行"))
+    签("1022 注入器候选行锁（注释不吞注入·截断必删代码行）", not 注入坏,
+       str(注入坏[:5]))
+
     if 编译路径 is not None:
         目标 = 目标 or ("win-x64" if os.name == "nt" else "linux-x64")
         临时 = os.path.join("target", "cnsmith_selftest_tmp")
@@ -444,6 +618,22 @@ def selftest(编译路径=None, 目标=None):
                     坏.append(seed)
             签("样本全部编译通过（%d/%d）" % (过, len(样本们)),
                过 == len(样本们), "被拒 seed=%s" % 坏)
+
+            # 1022 四族面编译锁：seed 1~4 各命中一族（宿主对默认参数常量算式
+            #   放行但值错——合法性契约只要求编译通过，值错由对拍轨道显形）
+            族坏 = []
+            for seed in range(1, 5):
+                源 = os.path.join(临时, "f%d.cn" % seed)
+                with open(源, "w", encoding="utf-8", newline="") as f:
+                    f.write(Gen(seed).program_mixed(语句数))
+                r = subprocess.run(
+                    [编译路径, "build", 源, "--target", 目标, "-O0",
+                     "--output", 源[:-3] + ".exe"],
+                    capture_output=True, timeout=120)
+                if r.returncode != 0:
+                    族坏.append(seed)
+            签("1022 四族混合样本编译通过（%d/4）" % (4 - len(族坏)), not 族坏,
+               "被拒 seed=%s" % 族坏)
 
             帽子 = list(dict.fromkeys(审计))   # 去重（多样本可能同式）
             拒 = 0
@@ -478,6 +668,9 @@ def main():
     ap.add_argument("--count", type=int, default=10)
     ap.add_argument("--out", default="target/cnsmith")
     ap.add_argument("--stmts", type=int, default=14)
+    ap.add_argument("--族", choices=("混合", "标量"), default="混合",
+                    help="程序面：混合=每5个seed覆盖标量+四族（1022扩面·默认）；"
+                         "标量=原整32/整64面")
     ap.add_argument("--negative", action="store_true",
                     help="负向注入模式：生成非法程序（验证必有诊断不崩溃）")
     ap.add_argument("--selftest", action="store_true",
@@ -495,7 +688,7 @@ def main():
     for i in range(a.count):
         seed = a.seed + i
         g = Gen(seed)
-        src = g.program(a.stmts)
+        src = g.program(a.stmts) if a.族 == "标量" else g.program_mixed(a.stmts)
         if a.negative:
             rng = random.Random(seed * 31 + 7)
             src, kind, 行号 = inject_error(src, rng)
