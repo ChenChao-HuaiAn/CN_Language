@@ -49,12 +49,46 @@ ir::IRValue IRGenerator::evalValueCaptureCopy(const std::string& capName,
     if (semantic_->isClassType(canon)) {
         // 1360 结果化：无值=无拷贝构造（has_value 分流·语义层已拒绝负测面）
         const cn::Optional<std::string> copyKeyOpt = classCopyCtorSymbolKey(canon);
-        if (!copyKeyOpt.has_value()) return val;
+        const ClassInfo* ciC = semantic_->findClass(canon).value_or(nullptr);
+        bool srcHasDtor = false;
+        if (ciC != nullptr) {
+            for (const auto& mk : ciC->methods) {
+                if (mk.second.isDestructor) { srcHasDtor = true; break; }
+            }
+        }
+        // 1367（940 残面·768 对称）：带析构且无拷贝构造的类值捕获——位拷贝
+        //   快照在析构面双放行（源与快照各自析构共享资源=悬垂/双放行），拒绝
+        //   （v2 生成类尾/值捕获段同判据同文案·零分叉）。
+        if (!copyKeyOpt.has_value() && srcHasDtor) {
+            diagnostics_.report(
+                DiagnosticLevel::Error, loc,
+                "类 '" + canon +
+                    "' 带析构且无拷贝构造，不能作值捕获快照（位拷贝=析构双放"
+                    "行悬垂）；为类补拷贝构造，或改用显式复制后捕获");
+            return val;
+        }
+        // 1367（768 双分·无析构纯数据类）：位拷贝快照回退——原 copyKey 空
+        //   直取原句柄浅共享（快照独立性与多字段读面双缺口；旧注释「语义层
+        //   已拒绝」与实测不符已更正——语义层无此拒绝面）。无析构=无用户
+        //   释放面，浅位拷与 C++ 隐式拷贝语义同（拥有字段以 拷贝构造/析构
+        //   成对声明承担）；NewObject 堆副本句柄单槽（拷贝构造路径同模型）。
+        if (!copyKeyOpt.has_value()) {
+            const int totalBytes = ciC != nullptr ? ciC->totalSize : 0;
+            ir::IRValue newObj = emitResult(
+                ir::Opcode::NewObject, {ir::IRValue::constant(canon, "ptr")}, "ptr",
+                canon + "|" + std::to_string(totalBytes), loc);
+            if (totalBytes != 0) {  // 空类（totalSize 0）跳过位拷（NewObject 空壳即快照）
+                // val=类标识符读=对象句柄（类=句柄语义·槽存堆对象指针）——
+                //   位拷源=对象地址本体（槽地址=存句柄的槽·拷出句柄位模式=垃圾）。
+                emit(ir::Opcode::CopyStruct, {newObj, val},
+                     ir::IRValue(), std::to_string(totalBytes), "void", loc);
+            }
+            return newObj;
+        }
         const std::string capUnique = lookupVarName(capName).value_or("");
         ir::IRValue srcSlot = emitResult(
             ir::Opcode::AddrOf,
             {ir::IRValue::var(capUnique, "i64")}, "ptr", capUnique, loc);
-        const ClassInfo* ciC = semantic_->findClass(canon).value_or(nullptr);
         const std::string extra =
             canon + "|" + std::to_string(ciC != nullptr ? ciC->totalSize : 0);
         ir::IRValue newObj = emitResult(
