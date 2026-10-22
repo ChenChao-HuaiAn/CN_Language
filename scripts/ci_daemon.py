@@ -98,9 +98,12 @@ e2e并行 = int(os.environ.get("CN_E2E_JOBS", "6" if 是win else "3"))
 构建并行 = int(os.environ.get("CN_BUILD_JOBS", "2"))    # 首验实锤：全核 Make 编译 cc1plus 叠加 OOM
                                                         # （9daba·10-01）——TX_02 限 2；家机 8G/实例=4
 单轮总超时秒 = 3 * 3600    # 防挂死（构建+单测+E2E+串行复验的理论上界）
-e2e整轮超时秒 = int(os.environ.get("CN_E2E_TIMEOUT_SEC", "5400"))
-# 935（2026-10-17）：E2E 步骤专用整轮看门狗（默认 90 分钟=实测 win 全量 ~33 分钟+
+e2e整轮超时秒 = int(os.environ.get("CN_E2E_TIMEOUT_SEC", "10800"))
+# 935（2026-10-17）：E2E 步骤专用整轮看门狗（原默认 90 分钟=win 全量 ~33 分钟+
 # 重负载长尾余量）——超时=整树回收+步骤 rc=-99 诚实红，不再悬空 3h 僵轮。
+# 1404（2026-10-23·P0 前置）：大写集批（1360 批2 ir 31 文件/批3A semantic 50 文件）
+#   全量分片集实测 5577~5603s 收不齐·四连红零用例失败（纯收片超时）——默认窗
+#   90→180 分钟（env 可覆盖·单轮总超时 3h 上限兜底防挂死不变）。
 远端名 = "origin"
 分支 = os.environ.get("CN_CI_BRANCH", "develop")   # 常规盯 develop；任务分支预验=PR CI 同款用法
 角色 = os.environ.get("CN_CI_ROLE", "")            # 770 起不再区分（统一池·env 仅供 run_e2e CI 识别与旧部署兼容）
