@@ -853,8 +853,31 @@ def _1369断言(主模块, 断言) -> None:
             setattr(ci_shard, 名, 件)
 
 
+def _1392断言(断言) -> None:
+    """1392 实例空闲报活：实例指纹纯函数（daemon指纹=ci_daemon.py 内容 sha256 前 10
+    ——同内容同指纹·内容变即变=scp 直更同样可感知；树头非 git 目录=空串显式不猜，
+    服务端空串不覆盖已有值）。报活写入口（服务端 instance_ping）与四态派生由
+    queue_selftest 1392 段覆盖（端到端·此处只测客户端指纹面）。"""
+    import hashlib
+    import ci_shard
+    with tempfile.TemporaryDirectory() as 临时:
+        根 = Path(临时)
+        (根 / "scripts").mkdir()
+        文件 = 根 / "scripts" / "ci_daemon.py"
+        文件.write_text("# 1392 指纹桩\n", encoding="utf-8")
+        指 = ci_shard.实例指纹(根)
+        期望 = hashlib.sha256(文件.read_bytes()).hexdigest()[:10]
+        断言("1392 指纹：daemon指纹=文件内容 sha256 前 10（同内容同指纹）",
+             指["daemon指纹"] == 期望 and len(指["daemon指纹"]) == 10)
+        断言("1392 指纹：非 git 目录树头=空串显式（不猜不编·前端显示 —）",
+             指["树头"] == "")
+        文件.write_text("# 内容变→指纹变（scp 直更同样反映）\n", encoding="utf-8")
+        断言("1392 指纹：内容变更=指纹变更（旧版实例可被众数比对抓出）",
+             ci_shard.实例指纹(根)["daemon指纹"] != 期望)
+
+
 def 自测(主模块) -> int:
-    """--selftest 入口（断言集 523+637+657+660+728t+770+842+935+973+975+1297+1299+1369）——CI 式：逐条打印，任一红退出 1。"""
+    """--selftest 入口（断言集 523+637+657+660+728t+770+842+935+973+975+1297+1299+1369+1392）——CI 式：逐条打印，任一红退出 1。"""
     断言们: list[tuple[str, bool]] = []
 
     def 断言(名: str, 条件: bool) -> None:
@@ -872,9 +895,10 @@ def 自测(主模块) -> int:
     _1297断言(断言)
     _1299断言(主模块, 断言)
     _1369断言(主模块, 断言)
+    _1392断言(断言)
     _行数断言(断言)
     for 名, ok in 断言们:
         print("  [%s] %s" % ("OK" if ok else "×", 名))
     红 = sum(1 for _, ok in 断言们 if not ok)
-    print("== ci_daemon 自测（523+637+657+660+728t+770+842+935+973+975+1297+1299+1369）：%d 断言，%s ==" % (len(断言们), "全绿" if 红 == 0 else "红 %d" % 红))
+    print("== ci_daemon 自测（523+637+657+660+728t+770+842+935+973+975+1297+1299+1369+1392）：%d 断言，%s ==" % (len(断言们), "全绿" if 红 == 0 else "红 %d" % 红))
     return 0 if 红 == 0 else 1

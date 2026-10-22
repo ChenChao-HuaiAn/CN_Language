@@ -1,8 +1,10 @@
 "use strict";
 /* CN 门禁窗口前端（842·队列服务 8300·仿 CN 任务看板 board.js 模式）——
-   三页签（最新门禁/验证池/集成队列）+ 每页 20 条分页 + 详情滑出面板：
+   页签（最新门禁/验证池/实例〔1392〕/集成队列）+ 每页 20 条分页 + 详情滑出面板：
    ①失败用例明细（名称+原因·含期望/实际 diff）②红步骤 ③develop 红灯归因
-   （「自上次绿以来并入」的提交·〔任务号〕高亮）④日志尾部。
+   （「自上次绿以来并入」的提交·〔任务号〕高亮）④日志尾部
+   ⑤实例页（1392）：逐实例 执行中/心跳超时/疑似离线/空闲 + 当前任务 + 版本
+   （树头·daemon指纹；指纹与众数派不同=⚠ 旧版嫌疑·众数比对在前端）。
    数据面：GET api/state 聚合；详情按需 api/gate_result / api/task_result
    （相对路径——直连 :8300 与 Caddy /queue/ 反代两态同源）。
    所有插值经 转义() 防 XSS；渲染=innerHTML 字符串拼接（与看板同法）。 */
@@ -12,7 +14,7 @@ const 每页条数 = 20;
 
 const 状态 = {
   页: "门禁",
-  页码: { 门禁: 1, 池: 1, 队列: 1 },
+  页码: { 门禁: 1, 池: 1, 实例: 1, 队列: 1 },
   只看红: false,
   仅活跃: false,
   自动刷新: localStorage.getItem("cn_queue_autorefresh") === "1",
@@ -190,7 +192,95 @@ function 渲染池() {
     ${行}</div>${控件}`;
 }
 
-/* —— 页签三：集成队列 —— */
+/* —— 页签三：实例（1392·云端实例实时动态）—— */
+const 实例状态签 = (s) => ({
+  "执行中": '<span class="签 队列中">执行中</span>',
+  "心跳超时": '<span class="签 阶段红">心跳超时</span>',
+  "疑似离线": '<span class="签 挂起">疑似离线</span>',
+  "空闲": '<span class="签 完成">空闲</span>',
+}[s] || `<span class="签 待办">${转义(s)}</span>`);
+
+/* epoch 秒 → 「X 前」（相对时刻·负差/缺失=刚刚/—·不编）。 */
+function 秒前(时戳) {
+  if (!时戳) return "—";
+  const 差 = Math.round(Date.now() / 1000 - Number(时戳));
+  if (差 < 0) return "刚刚";
+  if (差 < 60) return 差 + " 秒前";
+  if (差 < 3600) return Math.round(差 / 60) + " 分钟前";
+  return Math.round(差 / 3600) + " 小时前";
+}
+
+/* 版本众数派：daemon指纹 计数取最多者——与众数不同（且指纹非空）=「版本不一致」
+   （服务端无权威最新版本源·多数派比对是抓旧版实例的实用信号；仅 1 台有指纹时
+   无不一致）。返回 {众数指纹, 不一致(r)=>bool}；快照无指纹数据=全部 false。 */
+function 版本众数(们) {
+  const 计数 = {};
+  们.forEach((r) => { const f = r["daemon指纹"]; if (f) 计数[f] = (计数[f] || 0) + 1; });
+  const 条目 = Object.entries(计数).sort((a, b) => b[1] - a[1])[0] || null;
+  return { 众数指纹: 条目 ? 条目[0] : null,
+           不一致: (r) => 条目 !== null && Boolean(r["daemon指纹"])
+                          && r["daemon指纹"] !== 条目[0] };
+}
+
+function 渲染实例统计条(们) {
+  const 条 = $("实例统计条");
+  if (!们.length) { 条.hidden = true; return; }
+  const 计 = {};
+  们.forEach((r) => { 计[r["状态"]] = (计[r["状态"]] || 0) + 1; });
+  const 众 = 版本众数(们);
+  const 不一致数 = 们.filter((r) => 众.不一致(r)).length;
+  条.hidden = false;
+  条.innerHTML = `实例 <b class="mono">${们.length}</b> · 执行中 <b class="mono">${计["执行中"] || 0}</b> · `
+    + `心跳超时 <b class="mono">${计["心跳超时"] || 0}</b> · 疑似离线 <b class="mono">${计["疑似离线"] || 0}</b> · `
+    + `空闲 <b class="mono">${计["空闲"] || 0}</b> ｜ `
+    + (不一致数
+      ? `<span class="签 阶段红">版本不一致 ${不一致数} 台</span> <span class="淡">daemon 指纹与众数派不同——疑似旧版未更新</span>`
+      : `<span class="签 完成">版本一致</span>`);
+}
+
+function 渲染实例() {
+  const 根 = $("实例区");
+  const 们 = 快照["实例动态"] || [];
+  渲染实例统计条(们);
+  $("实例计数").textContent = `共 ${们.length} 台`;
+  if (!们.length) {
+    根.innerHTML = `<div class="空态">暂无注册实例（runner 认领任务或空闲报活后出现在此）</div>`;
+    return;
+  }
+  const 众 = 版本众数(们);
+  const 行 = 们.map((r) => {
+    const 任 = r["当前任务"];
+    const 完 = r["最近完成"];
+    const 不一致 = 众.不一致(r);
+    const 已跑 = 任 ? 等分(任["认领时刻"]) : null;
+    const 当前 = 任
+      ? `${转义(任["源分支"] || 任["分支"])}<span class="淡"> · ${转义((任["sha"] || "").slice(0, 10))}</span>`
+      : "—";
+    const 完成列 = 完
+      ? `${完["绿"] ? "✅" : "❌"} <span class="mono">${转义((完["sha"] || "").slice(0, 10))}</span>
+         <span class="时间列">${转义(完["时刻"] || "")}</span>`
+      : "—";
+    return `
+    <div class="数据行 实例行">
+      <span class="mono" title="${转义(r["注册时刻"] ? "注册于 " + r["注册时刻"] : "")}">${转义(r["名称"])}</span>
+      <span class="mono 淡">${转义(r["平台"] || "—")}</span>
+      <span>${实例状态签(r["状态"])}</span>
+      <span class="mono">${当前}</span>
+      <span class="mono">${已跑 === null ? "—" : 已跑 + " 分"}</span>
+      <span class="时间列">${秒前(r["最近活跃时戳"])}</span>
+      <span class="mono${不一致 ? " 版本警" : ""}" title="树头（跑轮随被验分支变化·参考面）+ daemon 指纹（进程启动版）${
+        不一致 ? " · ⚠ 与多数实例指纹不一致——疑似旧版 daemon 未更新" : ""}">${
+        转义(r["树头"] || "—")} · ${转义(r["daemon指纹"] || "—")}${不一致 ? " ⚠" : ""}</span>
+      <span>${完成列}</span>
+    </div>`;
+  }).join("");
+  根.innerHTML = `<div class="表槽">
+    <div class="数据行 表头 实例行"><span>实例</span><span>平台</span><span>状态</span>
+      <span>当前任务</span><span>已跑</span><span>最近报活</span><span>版本（树头·指纹）</span><span>最近完成</span></div>
+    ${行}</div>`;
+}
+
+/* —— 页签四：集成队列 —— */
 const 活跃态们 = new Set(["排队", "集成中", "冲突出批", "归因出批"]);
 
 function 渲染队列() {
@@ -225,6 +315,7 @@ function 渲染激活页() {
   if (!快照) return;
   if (状态.页 === "门禁") 渲染门禁();
   else if (状态.页 === "池") 渲染池();
+  else if (状态.页 === "实例") 渲染实例();
   else 渲染队列();
 }
 
@@ -399,7 +490,7 @@ document.addEventListener("click", (e) => {
       b.classList.toggle("活", b === 页钮);
       b.setAttribute("aria-selected", b === 页钮 ? "true" : "false");
     });
-    ["门禁", "池", "队列"].forEach((名) => { $("页-" + 名).hidden = 名 !== 状态.页; });
+    ["门禁", "池", "实例", "队列"].forEach((名) => { $("页-" + 名).hidden = 名 !== 状态.页; });
     渲染激活页();
     return;
   }

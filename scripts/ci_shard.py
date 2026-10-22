@@ -13,9 +13,12 @@
 #   未完成的片本机补跑；不再空等 5400s 收片窗）；收片窗独立为 CN_SHARD_RECV_TIMEOUT_SEC
 #   （默认 1800s），未齐片只报缺失=诚实红（门禁面不放宽：e2e 仍必须全量跑完）。
 
+import hashlib
 import json
 import os
+import subprocess
 import sys
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -481,3 +484,51 @@ def 片步骤值(rc们: list, 秒们: list) -> dict:
     非零 = next((rc for rc in rc们 if rc != 0), 0)
     秒值 = max([s for s in 秒们 if isinstance(s, (int, float))] or [0])
     return {"rc": 非零, "秒": round(秒值)}
+
+
+# ═══════════════ 1392 实例空闲报活（池协议客户端同域·服务端 /api/instance_ping） ═══════════════
+# daemon 空闲也每 60s 报活+版本指纹——服务端实例表「最近活跃」由此实时（此前只在
+# 跑轮期间有心跳·空闲实例活着还是关机服务端不可判）；旧版 daemon 不发=渐进部署，
+# 服务端照常（活跃度退化为最后 claim/complete 时刻·疑似离线判定对其豁免）。
+
+报活间隔秒 = 60   # 与 task_heartbeat 周期一致（服务端疑似离线阈值 180s=3 个周期）
+
+
+def 实例指纹(仓库根: Path) -> dict:
+    """实例版本指纹（启动时算一次·进程内不变=「这个 daemon 进程是什么版本」）——
+    daemon指纹=ci_daemon.py 内容 sha256 前 10（不依赖 git·scp 直更同样反映真实
+    版本；常驻进程代码=启动时加载版，跑轮 reset 改磁盘不影响运行中进程·故以启动
+    时磁盘版为准）；树头=实例仓 HEAD 前 10（跑轮 checkout 被验分支会变·参考面）。
+    取不到=空串显式（前端显示 —·不猜不编；服务端空串不覆盖已有值）。"""
+    指纹 = ""
+    try:
+        指纹 = hashlib.sha256(
+            (仓库根 / "scripts" / "ci_daemon.py").read_bytes()).hexdigest()[:10]
+    except OSError:
+        pass
+    头 = ""
+    try:
+        r = subprocess.run(["git", "rev-parse", "HEAD"], cwd=仓库根,
+                           capture_output=True, text=True, timeout=10)
+        if r.returncode == 0:
+            头 = r.stdout.strip()[:10]
+    except Exception:
+        pass
+    return {"树头": 头, "daemon指纹": 指纹}
+
+
+def 启动实例报活(runner: str, 平台: str, 仓库根: Path) -> None:
+    """空闲报活后台线程（ci_daemon.主 启动挂载·daemon=True 随进程退出）：每
+    报活间隔秒 POST instance_ping（忙闲都发·池不可达静默——与 task_heartbeat
+    同口径）。未配置池地址=不启动（纯本地面无服务端可报）。"""
+    配置 = 池配置()
+    if not 配置["池地址"]:
+        return
+    指纹 = 实例指纹(仓库根)
+
+    def 跑():
+        while True:
+            池调用(配置, "instance_ping", {"runner": runner, "平台": 平台, **指纹})
+            time.sleep(报活间隔秒)
+
+    threading.Thread(target=跑, daemon=True).start()

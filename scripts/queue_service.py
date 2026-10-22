@@ -36,6 +36,11 @@
 #                                                 不限或白名单含本平台的任务·旧客户端不报=空串只领不限任务·不会错跑）
 #   POST /api/task_heartbeat {runner,分支}        心跳续约
 #   POST /api/task_complete {runner,分支,绿,结果}  完成上报（校验认领者·防回收后旧 runner 复活覆盖）
+#   POST /api/instance_ping {runner,平台?,树头?,daemon指纹?}  1392：实例空闲报活+版本指纹
+#                                                 （daemon 空闲也每 60s 报·旧 daemon 不发=渐进
+#                                                 部署服务端照常——活跃度退化为最后 claim/complete）
+#   GET  /api/state「实例动态」=1392 实例页签数据源（逐实例 执行中/心跳超时/疑似离线/空闲
+#                                                 +当前任务+最近完成+版本·实现在 queue_instances）。
 #       975（87 篇反思①·863 五连静默机械化）：结果含认领失败形状（步骤.同步.rc 非零
 #       =fetch 预验分支失败/轮内同步异常）→ 行级「连续同类失败计数」+达阈值（默认 3）
 #       journal 播报 `[975 预验失败告警]`；计数字段随 /api/state 预验任务行与
@@ -61,9 +66,11 @@ from urllib.parse import urlparse
 
 # 1297：结果解析面（975/825）与分片面外迁——本文件加分片协议时守 900 警戒线
 #   （「先拆再加」·973 外迁 ci_build 同款）；预验失败告警阈值 常量随迁 queue_result
-#   （该功能专属配置·单一事实源）。依赖单向：本文件 → 二者（二者禁反引本文件）。
+#   （该功能专属配置·单一事实源）。依赖单向：本文件 → 三者（三者禁反引本文件）。
+# 1392：实例动态面（实例表/空闲报活/动态快照）外迁 queue_instances——同款先拆再加。
 import queue_result
 import queue_shard
+import queue_instances
 
 # ===== 可调常量 =====
 端口 = int(os.environ.get("CN_QUEUE_PORT", "8300"))
@@ -96,10 +103,10 @@ db路径 = os.environ.get("CN_QUEUE_DB",
 
 写锁 = threading.Lock()          # SQLite 写串行化（读靠 WAL 并发）
 时区时刻 = lambda: datetime.now().strftime("%m-%d %H:%M:%S")   # 911 教训：秒级戳
-# 770：兜底轮转游标（内存态·重启从头轮起无妨）与实例注册表（runner→平台·claim 自报刷新·
-#   服务重启重建——冷启动平台有空闲保守 True 不阻塞轮转，限制领不上由阈值放宽兜底）。
+# 770：兜底轮转游标（内存态·重启从头轮起无妨）。1392：实例注册表由内存 dict 改
+#   queue_instances 实例表持久承载（重启不丢·claim/ping 双入口写入）——平台忙闲
+#   判定与池忙闲快照改读表（旧内存版服务重启即归零=轮转限制放宽误触发）。
 兜底轮转游标 = {"i": 0}
-实例注册: dict[str, str] = {}
 
 
 def 行龄秒(更新: str) -> float | None:
@@ -114,9 +121,11 @@ def 行龄秒(更新: str) -> float | None:
 
 
 def 平台有空闲(平台: str) -> bool:
-    """770：该平台注册实例数 > 该平台执行中行数=有空闲；注册表无该平台实例（冷启动/
-    从未 claim）→保守 True（不阻塞轮转——限制照打，领不上由阈值放宽兜底）。须持写锁。"""
-    们 = [r for r, p in 实例注册.items() if p == 平台]
+    """770：该平台注册实例数 > 该平台执行中行数=有空闲；实例表无该平台实例
+    （冷启动/从未 claim·1392 起为持久表重启不丢）→保守 True（不阻塞轮转——
+    限制照打，领不上由阈值放宽兜底）。须持写锁。"""
+    们 = [r[0] for r in con.execute(
+        "SELECT 名称 FROM 实例 WHERE 平台=?", (平台,)).fetchall()]
     if not 们:
         return True
     占用 = {行[0] for 行 in con.execute(
@@ -133,7 +142,7 @@ def 池忙闲快照() -> dict:
         "SELECT COUNT(*) FROM 预验任务 WHERE 状态='执行中'").fetchone()[0]
     排队 = con.execute(
         "SELECT COUNT(*) FROM 预验任务 WHERE 状态='排队'").fetchone()[0]
-    注册 = len(实例注册)
+    注册 = con.execute("SELECT COUNT(*) FROM 实例").fetchone()[0]   # 1392：持久实例表（重启不归零）
     return {"注册实例": 注册, "执行中": 执行中, "排队": 排队,
             "池全忙": bool(注册 and 执行中 >= 注册)}
 
@@ -203,6 +212,8 @@ def 建库() -> sqlite3.Connection:
     except sqlite3.OperationalError:
         pass
     queue_shard.建表(con)   # 1297：预验分片表（独立新表·不碰父表结构）
+    queue_instances.建实例表(con)   # 1392：实例动态表（独立新表·不碰既有表结构）
+    queue_instances.回填种子(con, 时区时刻)   # 1392：部署首屏种子（存量认领者回填·服务启动一次）
     con.commit()
     return con
 
@@ -469,9 +480,10 @@ def 处理写(名: str, 数据: dict) -> dict:
                 return {"ok": False, "说明": "runner 标识缺失"}
             # 337 认领限制：runner 自报平台（win-x64/linux-x86_64/linux-arm64·294 三分）——
             #   只领「不限」或白名单含本平台的任务；旧客户端不报=空串→只领不限任务（不会错跑限制任务）。
+            #   1392：自报平台随 claim 写入持久实例表（领到/领空都注册——daemon 每 90s
+            #   轮询领空也是「活着」的信号·实例页可见；平台空串不覆盖已有自报值）。
             平台337 = str(数据.get("平台", ""))
-            if 平台337:
-                实例注册[runner] = 平台337   # 770：注册表刷新（平台忙闲判定与池全忙快照的数据源）
+            queue_instances.实例认领(con, 时区时刻, runner, 平台337)
             现在 = int(time.time())
             回收们 = [r[0] for r in con.execute(
                 "SELECT 分支 FROM 预验任务 WHERE 状态='执行中' AND 心跳时戳 IS NOT NULL "
@@ -559,6 +571,7 @@ def 处理写(名: str, 数据: dict) -> dict:
                               (int(time.time()), 时区时刻(), 分支, runner))
             if cur.rowcount == 0:
                 return {"ok": False, "说明": "任务不在执行中或认领者不匹配 " + 分支}
+            queue_instances.实例心跳(con, 时区时刻, runner)   # 1392：实例最近活跃刷新
         elif 名 == "task_cancel":
             # 1026 降级竞态治理：integrate 池空 300s 降级 ssh 前调用——删「排队」行，
             #   防止后来 runner 认领到已被降级路径接手的任务=双跑浪费+池红记录误挂。
@@ -580,6 +593,7 @@ def 处理写(名: str, 数据: dict) -> dict:
                                时区时刻(), 分支, runner))
             if cur.rowcount == 0:
                 return {"ok": False, "说明": "任务不在执行中或认领者不匹配（可能已被回收重派）" + 分支}
+            queue_instances.实例完成(con, 时区时刻, runner)   # 1392：实例最近活跃刷新
             # 975（87 篇反思①·863 五连静默机械化）：认领失败计数+阈值告警——真实红/绿
             #   （同步 rc=0）清零连续链（基础设施恢复证据），不告警；告警行走服务端
             #   journal（print）+ 行字段（快照/详情流出）。1297：实现外迁 queue_result.py。
@@ -593,6 +607,14 @@ def 处理写(名: str, 数据: dict) -> dict:
                         (任务历史保留,))
             # 1297：片行随父任务裁剪联动（孤儿片不堆积·父行已滚出保留窗口者删）
             queue_shard.清孤儿分片(con, 任务历史保留)
+        elif 名 == "instance_ping":
+            # 1392 空闲报活：UPSERT 实例行+版本指纹（daemon 空闲也每 60s 报·旧 daemon
+            #   不发=渐进部署服务端照常）。参数缺失（runner 空）=ok False 显式拒（无写入·
+            #   回收死行 已自提交）——成功写入落本函数底部统一 commit（同 1297 教训：
+            #   提前 return 跳过 commit=WAL 下他连接读不到写入）。
+            回p = queue_instances.实例报活(con, 时区时刻, 数据)
+            if not 回p.get("ok"):
+                return 回p
         elif 名 in ("task_shard_enqueue", "task_shard_claim",
                     "task_shard_heartbeat", "task_shard_complete"):
             # 1297：分片协议委托 queue_shard（写锁内·统一落下方 commit 后返回富响应——
@@ -746,7 +768,8 @@ class 处理器(BaseHTTPRequestHandler):
                 回收死行()   # 456+562：批主/报名会话死亡后无写活动，靠轮询/网页查看触发回收
                 return self.回JSON({"队列": 队列快照(), "门禁最近": 门禁快照(),
                                     "预验任务": 预验任务快照(),
-                                    "池忙闲": 池忙闲快照()})   # 770：integrate 拼车窗口/巡检判定源
+                                    "池忙闲": 池忙闲快照(),   # 770：integrate 拼车窗口/巡检判定源
+                                    "实例动态": queue_instances.实例动态快照(con, 心跳超时秒)})   # 1392：实例页签数据源
         if 路径 == "/api/task_result":
             # 按 sha10 查（分支=ci/预验-/ci/兜底-<sha10>·URL 保持纯 ASCII 免编码坑·
             # 842 通用化：双前缀）

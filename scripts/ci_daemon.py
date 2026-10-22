@@ -45,6 +45,9 @@
 #   修=fetch 后仅 rev-parse FETCH_HEAD 与任务 sha 比对，不等即过期跳过（零构建零副作用）。
 # 973 对账工具周期化挂载（2026-10-17）：兜底/develop 面轮静态段后挂「对账周检段」
 #   （ci_reconcile.py·每周到期跑两对账工具 --strict·红步骤播报不拖轮绿）；构建链外迁 ci_build。
+# 1392 实例空闲报活（2026-10-22）：daemon 空闲也每 60s POST instance_ping+版本指纹
+#   （树头+ci_daemon.py 内容 sha256·启动时算一次）——8300 实例页签实时动态数据源；
+#   实现在 ci_shard（池协议客户端同域单点·本文件零实现）。
 # 兼容 python3.8：注解泛型下标/联合字符串化（287·同 gate_quick 修复缘由）。
 from __future__ import annotations
 
@@ -760,6 +763,7 @@ def 池跑分片(片任务: dict) -> None:
 
 def 主(常驻: bool, 强制: bool, 等锁: bool = False) -> int:
     日志目录.mkdir(exist_ok=True)
+    ci_shard.启动实例报活(runner标识, 平台, 仓库根)   # 1392：空闲报活+版本指纹（忙闲都发·池未配置=不启动）
     锁 = (锁文件.open("a+"))
     已入池: set[str] = set()   # 770：本轮常驻期已入池的头（幂等防重——服务端幂等兜底·此处省每轮空 POST）
     # 184 锁模型治本（1021 饿死实录）：锁从「进程生命周期级」改「轮次级」——常驻每轮

@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <!-- CN 门禁窗口（842 重构：队列服务 8300 结果页·墨韵 UI）——仿 CN 任务看板：
-     顶栏 + 三页签（最新门禁/验证池/集成队列）+ 表内分页 + 详情滑出面板
+     顶栏 + 页签（最新门禁/验证池/实例〔1392〕/集成队列）+ 表内分页 + 详情滑出面板
      （失败用例明细 + develop 红灯「自上次绿以来并入」归因）。
      资源相对引用（tokens.css/queue.css/queue.js）——直连 :8300 与 Caddy /queue/
      反代两态同源；部署面 deploy_queue.sh 另行内联打包为单文件 index.html。 -->
@@ -34,6 +34,7 @@
 <nav class="页签栏" id="页签栏" role="tablist" aria-label="门禁窗口分区">
   <button class="页签 活" data-页="门禁" role="tab" aria-selected="true">🔒 最新门禁</button>
   <button class="页签" data-页="池" role="tab" aria-selected="false">🧪 验证池</button>
+  <button class="页签" data-页="实例" role="tab" aria-selected="false">🖥 实例</button>
   <button class="页签" data-页="队列" role="tab" aria-selected="false">📥 集成队列</button>
 </nav>
 
@@ -56,6 +57,13 @@
     <div id="池忙闲条" class="池忙闲条" hidden></div>
     <div class="工具行"><span class="弹性"></span><span id="池计数" class="行时刻"></span></div>
     <div id="池区"><div class="骨架行"></div><div class="骨架行"></div></div>
+  </section>
+
+  <section id="页-实例" class="页" role="tabpanel" hidden>
+    <div class="区题">实例 — 云端实例实时动态 <span class="淡">（1392·正在验什么任务 / 心跳健康 / 版本指纹；指纹与众数派不同 = ⚠ 旧版 daemon 嫌疑）</span></div>
+    <div id="实例统计条" class="池忙闲条" hidden></div>
+    <div class="工具行"><span class="弹性"></span><span id="实例计数" class="行时刻"></span></div>
+    <div id="实例区"><div class="骨架行"></div><div class="骨架行"></div></div>
   </section>
 
   <section id="页-队列" class="页" role="tabpanel" hidden>
