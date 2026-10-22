@@ -114,27 +114,8 @@ runner标识 = os.environ.get("CN_RUNNER_ID", socket.gethostname())   # 池内�
 
 
 def 物理内存MB() -> int:
-    """max-mem 保险丝按物理内存适配用（924）——posix 读 /proc/meminfo；win=GlobalMemoryStatusEx。"""
-    if 是win:
-        import ctypes
-
-        class 内存状态(ctypes.Structure):
-            _fields_ = [("长度", ctypes.c_ulong), ("负载", ctypes.c_ulong),
-                        ("总物理", ctypes.c_ulonglong), ("可用物理", ctypes.c_ulonglong),
-                        ("总页文件", ctypes.c_ulonglong), ("可用页文件", ctypes.c_ulonglong),
-                        ("总虚拟", ctypes.c_ulonglong), ("可用虚拟", ctypes.c_ulonglong),
-                        ("可用扩展虚拟", ctypes.c_ulonglong)]
-        状态 = 内存状态(长度=ctypes.sizeof(内存状态))
-        if ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(状态)):
-            return int(状态.总物理 // (1024 * 1024))
-        return 4096
-    try:
-        for 行 in open("/proc/meminfo"):
-            if 行.startswith("MemTotal:"):
-                return int(行.split()[1]) // 1024
-    except Exception:
-        pass
-    return 4096
+    """924/1369：max-mem 物理内存探测——实现外迁 ci_report（守 900 警戒线·薄壳保调用面）。"""
+    return ci_report.物理内存MB(是win)
 
 
 def 取远端SHA() -> str | None:
@@ -204,85 +185,21 @@ def linux构建链(步骤们: dict, 步骤, 日志=None) -> None:
 
 def e2e命令基(cn: Path, 保内存: int) -> list:
     """1297 提取：e2e 命令公共段（主实例全量/分片与从实例片轮三处共用·纪律二）——
-    --target/--cn/--max-mem/--heavy-ci/--full-reason 一致口径；--json/--shard/--jobs
-    由调用方按形态追加。566 注释原文见 静态门禁与e2e段（放行通道语义不变）。"""
-    return ([] if 是win else ["nice", "-n", "10"]) + [
-        sys.executable, "tests/e2e/run_e2e.py",
-        "--target", 平台, "--cn", str(cn),
-        "--max-mem-mb", str(保内存),
-        "--heavy-ci",
-        "--full-reason", "ci_daemon 云端全量门禁（TX_02/池 runner）"]
+    1369 起实现外迁 ci_shard（分片编排同域单点）；本薄壳保调用面零改。
+    566 注释原文见 静态门禁与e2e段（放行通道语义不变）。"""
+    return ci_shard.e2e命令基(cn, 保内存, 平台, 是win)
 
 
 def e2e明细参(明细路径) -> list:
     """1297 提取：--json 明细参数（跨版本兼容窗口防护·e2e支持json 探测）——
-    分片形态下各片写各自临时明细（主实例聚合后写回主明细路径）。"""
-    return ["--json", str(明细路径)] if e2e支持json() else []
-
-
-def 主实例收片(轮分支: str, 片数: int, e2e基: list, 步骤, 步骤们: dict, 日志, sha: str,
-               自己秒: int, 片0明细路径: Path) -> tuple:
-    """1297 主实例收片循环：轮询片状态→缺口抢补（服务端 CAS 认领后本机补跑·构建
-    产物在位零构建成本）→任一片红=整轮红即停（902·不等剩余片）→全片绿且收齐→
-    拉从片明细聚合。返回 (聚合rc, 整轮e2e秒=max片秒, 合并明细, 分片行们)。
-    收片窗上限=e2e整轮超时秒（超时未齐=未齐片诚实红·不挂死整轮）。"""
-    配置 = 池配置()
-    注入 = lambda o, d: 池调用(配置, o, d)   # noqa: E731  ci_shard 协议函数的池调用注入
-    rc们 = [0]            # 片 0（自己）已绿才进本函数
-    秒们 = [自己秒]
-    片明细们 = [读e2e明细(片0明细路径)]
-    截限 = time.time() + e2e整轮超时秒
-    while time.time() < 截限:
-        状态们 = ci_shard.片状态们(配置["池地址"], 配置["池令牌"], 轮分支)
-        if 状态们 is None:   # 池抖动——轮询重试（不可达≠全绿·不静默当齐）
-            time.sleep(ci_shard.收片轮询秒)
-            continue
-        红片 = next((s for s in 状态们 if s["状态"] == "完成" and s["绿"] == 0), None)
-        if 红片 is not None:
-            print("  [红即停] 从片 #%s 红——整轮红即停（902·其余片不再等待）"
-                  % 红片["片序"], file=日志, flush=True)
-            rc们.append(1)
-            break
-        for s in [x for x in 状态们 if x["状态"] == "缺口"]:
-            抢 = ci_shard.抢补片(注入, runner标识, 轮分支, s["片序"])
-            if not 抢.get("ok"):
-                continue   # 已被从实例抢走——下轮轮询见执行中（CAS 仲裁）
-            k = s["片序"]
-            片明细k = 日志目录 / ("e2e明细_片%d_%s.json" % (k, sha[:10]))
-            okk = 步骤("e2e片%d" % k,
-                       e2e基 + e2e明细参(片明细k)
-                       + ["--shard", "%d/%d" % (k, 片数), "--jobs", str(e2e并行)],
-                       e2e整轮超时秒)
-            片秒 = 步骤们["e2e片%d" % k].get("秒", 0)
-            ci_shard.交片(注入, runner标识, 轮分支, k, okk,
-                          读e2e明细(片明细k), 片秒)   # 抢补片结果同样留档服务端
-            rc们.append(0 if okk else 1)
-            秒们.append(片秒)
-            片明细们.append(读e2e明细(片明细k))
-            if not okk:
-                print("  [红即停] 抢补片 #%d 红——整轮红即停（902）" % k, file=日志, flush=True)
-                return 1, max(秒们), ci_shard.合并e2e明细(片明细们, []), []
-        状态们 = ci_shard.片状态们(配置["池地址"], 配置["池令牌"], 轮分支)
-        if (状态们 is not None and len(rc们) == 片数
-                and all(s["状态"] == "完成" for s in 状态们)
-                and all(s["绿"] != 0 for s in 状态们)):
-            for s in 状态们:   # 从实例片：秒与明细从服务端收（绿已核·红片上方早退）
-                秒们.append(s["秒"] or 0)
-                回 = ci_shard.片结果(配置["池地址"], 配置["池令牌"], 轮分支, s["片序"])
-                片明细们.append(回.get("结果") if 回 else None)
-            break
-        time.sleep(ci_shard.收片轮询秒)
-    else:
-        print("  [分片超时] 收片窗 %ds 未齐——未齐片诚实红（不挂死整轮）"
-              % e2e整轮超时秒, file=日志, flush=True)
-        rc们.append(1)
-    分片行们 = ci_shard.片状态们(配置["池地址"], 配置["池令牌"], 轮分支) or []
-    聚合rc = 0 if all(rc == 0 for rc in rc们) else 1
-    return 聚合rc, max(秒们), ci_shard.合并e2e明细(片明细们, 分片行们), 分片行们
+    分片形态下各片写各自临时明细（主实例聚合后写回主明细路径）。
+    1369 起实现外迁 ci_shard（薄壳保调用面）。"""
+    return ci_shard.e2e明细参(明细路径)
 
 
 def 静态门禁与e2e段(步骤们: dict, 步骤, cn: Path | None, 日志, sha: str,
-                    轮分支: str = "", 分片: int = 0) -> None:
+                    轮分支: str = "", 分片: int = 0,
+                    分片召唤时刻: float | None = None) -> None:
     """③.5 静态门禁面+④ E2E（242/447-a/924 原内联于 跑一轮·523 抽出=跑一轮
     拆函数回 ≤100 行）——两平台公共段；cn 产物定位必须先于本段（原赋值在 ④ 段
     晚于引用=UnboundLocalError 必崩·259 修）。逻辑逐行保持原样。
@@ -297,7 +214,10 @@ def 静态门禁与e2e段(步骤们: dict, 步骤, cn: Path | None, 日志, sha:
     语法必须同步官网数据）——本地 L1 仅写集触发，云端全量面为唯一恒覆盖点；
     平台=gen_docs 运行时原生探测（交叉模拟实例不参与 qemu 面——示例验证非平台
     覆盖职责）；不传 env（假步骤冒烟桩三参签名兼容·产物经 找编译器 的
-    target/cn(.exe) 定位）。"""
+    target/cn(.exe) 定位）。
+    1369（2026-10-21）：分片召唤时刻=宽限窗锚点（池跑任务注入）——召唤后
+    CN_SHARD_GRACE_SEC 内无认领立即退化单实例序列（详见 ci_shard.主实例分片段）。
+    """
     for 名, 参 in (("check_spec_coverage", []),   # 243：非 strict（TX_02「指针有效性」存量红=244 修·红不拦兜底轮）
                   # 1013（2026-10-17 用户裁决）：--strict 挂云端兜底轮——基线零（1013 归零）
                   # 即等价棘轮·只拦新增（新 E2E 用例须 doc_coverage 台账归类·豁免理由必填），
@@ -370,32 +290,29 @@ def 静态门禁与e2e段(步骤们: dict, 步骤, cn: Path | None, 日志, sha:
             pass
         e2e基 = e2e命令基(cn, 保内存)
         if 分片 > 1:
-            # ── 1297 主实例分片形态：片 0=本机（重型独立面·run_e2e 新分片语义）──
-            #   召唤已在 池跑任务（构建前·从实例并行构建跑片）；本机跑完片 0 进
-            #   收片循环（缺口抢补/从片红即停/超时诚实红），聚合版明细写回主路径。
-            片0明细 = 日志目录 / ("e2e明细_片0_%s.json" % sha[:10])
-            if 步骤("e2e并行", e2e基 + e2e明细参(片0明细)
-                    + ["--shard", "0/%d" % 分片, "--jobs", str(e2e并行)],
-                    e2e整轮超时秒):
-                聚合rc, 聚合秒, 合并明细, _行们 = 主实例收片(
-                    轮分支, 分片, e2e基, 步骤, 步骤们, 日志, sha,
-                    步骤们["e2e并行"].get("秒", 0), 片0明细)
-                步骤们["e2e并行"]["秒"] = 聚合秒
-                步骤们["e2e"] = {"rc": 聚合rc}
-                if 合并明细 is not None:
-                    try:
-                        e2e明细路径.write_text(
-                            json.dumps(合并明细, ensure_ascii=False, indent=1),
-                            encoding="utf-8")
-                    except OSError as e:
-                        print("  [警告] 聚合明细写回失败（%s）——门禁详情降级单片" % e,
-                              file=日志, flush=True)
-            else:
-                # 902 红即停：主片 0 红=整轮红·不等剩余片（红例在片 0 明细/日志——
-                #   其余片交由各自实例跑完留档，主实例不等待不聚合=红轮零多余等待）
-                print("  [红即停] 主片 0 发现失败用例——中止该轮（用户令 2026-10-16·"
-                      "#902·分片红即停·其余片不再等待）", file=日志, flush=True)
-                步骤们["e2e"] = {"rc": 步骤们["e2e并行"]["rc"]}
+            # ── 1297/1369 主实例分片形态：片 0=本机（重型独立面·run_e2e 新分片语义）──
+            #   召唤已在 池跑任务（构建前·从实例并行构建跑片）；1369：宽限窗
+            #   （CN_SHARD_GRACE_SEC 默认 90s）内无任何从片认领→立即退化单实例序列
+            #   （已完成从片照收·缺失片本机补跑·不空等 5400s）；收片窗独立为
+            #   CN_SHARD_RECV_TIMEOUT_SEC（默认 1800s），未齐片只报缺失=诚实红
+            #   （门禁不放宽：e2e 仍必须全量跑完·红仍红）。编排单点=
+            #   ci_shard.主实例分片段（步骤/明细/片心跳注入，本段只写回聚合明细）。
+            聚合rc, 聚合秒, 合并明细, _形态 = ci_shard.主实例分片段(
+                轮分支=轮分支, 片数=分片, 召唤时刻=分片召唤时刻, e2e基=e2e基,
+                明细参=e2e明细参, 步骤=步骤, 步骤们=步骤们, 日志=日志, sha=sha,
+                日志目录=日志目录, e2e并行=e2e并行, e2e超时秒=e2e整轮超时秒,
+                runner=runner标识, 读明细=读e2e明细,
+                片心跳=lambda k: 启动心跳(轮分支, k))
+            步骤们["e2e并行"]["秒"] = 聚合秒
+            步骤们["e2e"] = {"rc": 聚合rc}
+            if 合并明细 is not None:
+                try:
+                    e2e明细路径.write_text(
+                        json.dumps(合并明细, ensure_ascii=False, indent=1),
+                        encoding="utf-8")
+                except OSError as e:
+                    print("  [警告] 聚合明细写回失败（%s）——门禁详情降级单片" % e,
+                          file=日志, flush=True)
         elif 步骤("e2e并行", e2e基 + e2e明细参(e2e明细路径)
                   + ["--jobs", str(e2e并行)], e2e整轮超时秒):
             步骤们["e2e"] = {"rc": 0}
@@ -411,25 +328,10 @@ def 静态门禁与e2e段(步骤们: dict, 步骤, cn: Path | None, 日志, sha:
             步骤们["e2e"] = {"rc": 步骤们["e2e并行"]["rc"]}
 
 
-def e2e支持json() -> bool:
-    """842：run_e2e.py 是否已带 --json——跨版本兼容窗口防护（daemon 自更新先于
-    工作树 reset 到含本改动的 sha 时，向旧版 run_e2e 传未知参数=argparse 报错=
-    e2e 假红）。传参前探源码：探测失败/旧版=不传（结果无 e2e明细·页面降级提示）。"""
-    try:
-        return "--json" in (仓库根 / "tests" / "e2e" / "run_e2e.py").read_text(
-            encoding="utf-8", errors="replace")
-    except OSError:
-        return False
-
-
-def 读e2e明细(路径: Path):
-    """842：读 run_e2e --json 明细（失败用例/期望实际 diff）——缺文件/坏 JSON=None
-    （e2e 未跑/旧版 run_e2e/未传参三态统一降级：页面显示「无明细」·不炸轮不谎报；
-    明细是附加信息，非测量本体）。"""
-    try:
-        return json.loads(路径.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return None
+# 842：e2e 明细读写/探测 → 1369 起实现外迁 ci_shard（分片编排同域单点），
+#   本薄壳别名保调用面与 842 自测零改。
+e2e支持json = ci_shard.e2e支持json
+读e2e明细 = ci_shard.读e2e明细
 
 
 # 取提交历史/提交时刻 → 1297 薄壳别名（见文件头部拆分薄壳区·实现外迁 ci_report.py）
@@ -561,11 +463,13 @@ def 聚合绿(步骤们: dict) -> bool:
                if k in ("同步", "清产物", "配置", "构建", "单测", "e2e", "网站示例verify"))
 
 
-def 跑一轮(sha: str, 轮分支: str = "", 分片: int = 0) -> dict:
+def 跑一轮(sha: str, 轮分支: str = "", 分片: int = 0,
+          分片召唤时刻: float | None = None) -> dict:
     """对给定 SHA 跑全量门禁三段，返回结构化结果（口径=integrate.py Linux 分支）。
     轮分支空=全局 分支（develop 轮询/点名分支）；池任务传认领的预验分支（1021）。
     1297：分片>1=主实例分片形态（本机跑片 0 重型独立面+收片聚合·仅 ci/预验-* 由
-    池跑任务 传入；develop/兜底轮恒 0=全量不变）。"""
+    池跑任务 传入；develop/兜底轮恒 0=全量不变）。1369：分片召唤时刻=认领宽限窗
+    锚点（池跑任务 召唤后记录·缺省=进 e2e 段时起算）。"""
     轮分支 = 轮分支 or 分支
     开始 = time.time()
     轮时刻 = datetime.now().strftime("%m%d_%H%M%S")
@@ -618,7 +522,8 @@ def 跑一轮(sha: str, 轮分支: str = "", 分片: int = 0) -> dict:
             cn = next((p for p in ([仓库根 / "target/cn.exe", 仓库根 / "target/cn"] if 是win
                                    else [仓库根 / "target/build/cn", 仓库根 / "target/cn"])
                        if p.exists()), None)
-            静态门禁与e2e段(步骤们, 步骤, cn, 日志, sha, 轮分支=轮分支, 分片=分片)
+            静态门禁与e2e段(步骤们, 步骤, cn, 日志, sha, 轮分支=轮分支, 分片=分片,
+                            分片召唤时刻=分片召唤时刻)
             # 973：对账周检段（仅 develop 面轮·周期到期才跑·分支/周期自判在模块内）
             ci_reconcile.对账周检段(步骤们, 步骤, 日志, 轮分支, sha)
         尾部 = []
@@ -797,14 +702,18 @@ def 池跑任务(任务: dict) -> None:
             # 1297 分片召唤：预验任务且分片开启→构建前召唤从片（空闲实例并行构建跑片；
             #   召唤失败=退化单实例全量·加速面不是正确性面）。CN_CI_BRANCH 点名降级
             #   路径（ssh 直发）非 develop 主循环——此处只对池认领的 ci/预验-* 生效。
+            #   1369：召唤时刻锚定认领宽限窗（CN_SHARD_GRACE_SEC）——构建耗时已覆盖
+            #   大部分宽限，进 e2e 段时快照一次即可判「无认领→立即退化」。
             分片n = (ci_shard.分片数默认
                      if (任务分支.startswith("ci/预验-") and ci_shard.分片数默认 > 1) else 0)
+            召唤时刻 = time.time() if 分片n > 1 else None
             if 分片n > 1:
                 ci_shard.召唤从片(lambda o, d: 池调用(配置, o, d),
                                   任务分支, runner标识, 分片n)
             结果 = 带门禁锁跑(
                 sha, 任务分支,
-                跑器=(lambda s, b: 跑一轮(s, b, 分片n)) if 分片n > 1 else None)
+                跑器=((lambda s, b: 跑一轮(s, b, 分片n, 召唤时刻))
+                     if 分片n > 1 else None))
             if 结果 is None:      # 291 让出（gate_lock 互忙）——不 complete·心跳停由服务端回收重派
                 print("[池] 本轮让出（gate_lock）——任务将被回收重派", flush=True)
                 return

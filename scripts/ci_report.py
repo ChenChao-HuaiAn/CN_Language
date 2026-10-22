@@ -37,6 +37,32 @@ def 执行机字段(runner: str, 构建并行: int, 是win: bool) -> dict:
     return 字段
 
 
+def 物理内存MB(是win: bool) -> int:
+    """max-mem 保险丝按物理内存适配用（924·1369 自 ci_daemon 外迁守 900 警戒线）——
+    posix 读 /proc/meminfo；win=GlobalMemoryStatusEx。探测失败=4096 兜底
+    （只影响重负载用例保险丝，非测量值）。"""
+    if 是win:
+        import ctypes
+
+        class 内存状态(ctypes.Structure):
+            _fields_ = [("长度", ctypes.c_ulong), ("负载", ctypes.c_ulong),
+                        ("总物理", ctypes.c_ulonglong), ("可用物理", ctypes.c_ulonglong),
+                        ("总页文件", ctypes.c_ulonglong), ("可用页文件", ctypes.c_ulonglong),
+                        ("总虚拟", ctypes.c_ulonglong), ("可用虚拟", ctypes.c_ulonglong),
+                        ("可用扩展虚拟", ctypes.c_ulonglong)]
+        状态 = 内存状态(长度=ctypes.sizeof(内存状态))
+        if ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(状态)):
+            return int(状态.总物理 // (1024 * 1024))
+        return 4096
+    try:
+        for 行 in open("/proc/meminfo"):
+            if 行.startswith("MemTotal:"):
+                return int(行.split()[1]) // 1024
+    except Exception:
+        pass
+    return 4096
+
+
 def 上报(结果: dict) -> None:
     """可选上报 TX_01 队列服务——URL/token 从环境变量或 ci_config.json 读；不可达仅警告。"""
     配置 = {}

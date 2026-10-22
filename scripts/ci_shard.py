@@ -1,25 +1,48 @@
 #!/usr/bin/env python3
-# 预验分片 runner 侧（1297·2026-10-21 用户令「多实例并行跑一个任务·最大化云端算力」）：
-#   池协议客户端 + 聚合纯函数——主实例（召唤/收片/抢补/聚合）与从实例（领片/交片）
-#   共用的协议原语在此单点；真跑（构建/e2e 命令/步骤封装）留在 ci_daemon（依赖单向：
-#   ci_daemon → 本模块，本模块禁 import ci_daemon·池调用函数由调用方注入）。
+# 预验分片 runner 侧（1297·2026-10-21 用户令「多实例并行跑一个任务·最大化云端算力」；
+#   1369 退化策略）：
+#   池协议客户端 + 聚合纯函数 + 主实例分片编排——主实例（召唤/宽限/收片/抢补/聚合）与
+#   从实例（领片/交片）共用的协议原语在此单点；真跑（构建/e2e 步骤执行/步骤封装）留在
+#   ci_daemon（依赖单向：ci_daemon → 本模块，本模块禁 import ci_daemon——步骤记录器/
+#   读明细/片心跳由调用方注入）。
 # 分片模型：片 0=主实例自带（含 78/79 重型独立面·run_e2e 新分片语义），片 1..n-1
 #   服务端登记缺口由空闲实例自主认领；主实例收片时缺口抢补（服务端 CAS 防双跑）；
 #   任一片红=整轮红（红即停 902·不等待剩余片）。
+# 1369（2026-10-21·集成通道阻塞根治）：召唤后 CN_SHARD_GRACE_SEC（默认 90s）内无任何
+#   从片认领（片快照无 执行中/完成）→主实例立即退化单实例序列（已完成的从片照收、
+#   未完成的片本机补跑；不再空等 5400s 收片窗）；收片窗独立为 CN_SHARD_RECV_TIMEOUT_SEC
+#   （默认 1800s），未齐片只报缺失=诚实红（门禁面不放宽：e2e 仍必须全量跑完）。
 
 import json
 import os
+import sys
 import time
 import urllib.error
 import urllib.request
 from pathlib import Path
+from urllib.parse import quote
 
 
 def _仓库根():
     return Path(__file__).resolve().parent.parent
 
+
+def _env整数(名: str, 默认: int, 下限: int) -> int:
+    """1369：分片时序环境变量解析——未设=默认；非法值打告警后用默认（配置面
+    非编译器语义面·不静默吞键）。"""
+    原 = os.environ.get(名)
+    if 原 is None or not 原.strip():
+        return 默认
+    try:
+        return max(下限, int(原))
+    except ValueError:
+        print("[分片配置] %s=%r 非整数——改用默认 %ds" % (名, 原, 默认), flush=True)
+        return 默认
+
 分片数默认 = max(1, int(os.environ.get("CN_SHARD_N", "3")))   # 1=不分片（现状）；现网推荐 3
 收片轮询秒 = 30        # 主实例收片轮询周期
+认领宽限秒 = _env整数("CN_SHARD_GRACE_SEC", 90, 0)            # 1369：首片认领宽限窗
+收片窗秒 = _env整数("CN_SHARD_RECV_TIMEOUT_SEC", 1800, 60)    # 1369：收片总窗（旧=5400）
 
 
 def 池配置() -> dict:
@@ -100,10 +123,12 @@ def 交片(池调用, runner: str, 分支: str, 片序: int, 绿: bool, 结果, 
 
 def 片状态们(池地址: str, 池令牌: str, 分支: str):
     """GET 片状态快照（免令牌·同 /api/state 口径）——不可达/异常=None（调用方
-    轮询重试·不静默当空集：空集与不可达语义不同，None=本轮不可判）。"""
+    轮询重试·不静默当空集：空集与不可达语义不同，None=本轮不可判）。
+    1369：分支名含中文（ci/预验-*）须 percent-encode——旧直拼 URL 触发
+    UnicodeEncodeError 被吞成 None=主实例永不抢补/永不判齐（5400s 超时病根之一）。"""
     try:
-        with urllib.request.urlopen(池地址.rstrip("/") + "/api/task_shards?branch=" + 分支,
-                                    timeout=10) as r:
+        with urllib.request.urlopen(池地址.rstrip("/") + "/api/task_shards?branch="
+                                    + quote(分支, safe=""), timeout=10) as r:
             回 = json.loads(r.read().decode("utf-8"))
         return 回.get("分片") if 回.get("ok") else None
     except Exception:
@@ -111,14 +136,307 @@ def 片状态们(池地址: str, 池令牌: str, 分支: str):
 
 
 def 片结果(池地址: str, 池令牌: str, 分支: str, 片序: int):
-    """GET 单片结果详情——不可达/无此片=None（调用方显式分流·648）。"""
+    """GET 单片结果详情——不可达/无此片=None（调用方显式分流·648）。
+    1369：同 片状态们 的 URL 编码修复（中文分支）。"""
     try:
         with urllib.request.urlopen(池地址.rstrip("/") + "/api/task_shard_result?branch="
-                                    + 分支 + "&i=" + str(片序), timeout=15) as r:
+                                    + quote(分支, safe="") + "&i=" + str(片序),
+                                    timeout=15) as r:
             回 = json.loads(r.read().decode("utf-8"))
         return 回 if 回.get("ok") else None
     except Exception:
         return None
+
+
+def 首片认领(状态们) -> bool:
+    """1369 纯函数：快照中出现任一片「执行中/完成」=已有从片接手（召唤有响应）。
+    空表=召唤未登记片行（无实例可领）；None=池不可达（不可判·语义见 等待首认领）。"""
+    return any(s.get("状态") in ("执行中", "完成") for s in (状态们 or []))
+
+
+def 等待首认领(读状态, 截止时刻: float, 轮询秒: float | None = None) -> bool:
+    """1369：召唤后宽限窗——返回 True=首片已认领（正常分片/收片）；False=退化
+    单实例序列。语义分三态（不静默混淆）：
+    ①有「执行中/完成」片→True；②空表=召唤无任何登记行→立即 False（不等满窗，
+      无实例可领）；③None（池不可达）=不可判→窗内重试，截止仍无证据=False
+      （单实例全量仍完整覆盖门禁面，绝不空等 5400s）。"""
+    轮询 = 收片轮询秒 if 轮询秒 is None else max(0.01, 轮询秒)
+    while True:
+        状态们 = 读状态()
+        if 状态们:
+            if 首片认领(状态们):
+                return True
+        elif 状态们 is not None:
+            return False
+        剩 = 截止时刻 - time.time()
+        if 剩 <= 0:
+            return False
+        time.sleep(min(轮询, 剩))
+
+
+def _歇(截止: float, 轮询: float | None = None) -> None:
+    """1369：收片轮询睡眠——不越过截止时刻（窗到即判，不空转一轮）。"""
+    轮询 = 收片轮询秒 if 轮询 is None else max(0.01, 轮询)
+    time.sleep(min(轮询, max(0.01, 截止 - time.time())))
+
+
+def _跑片本地(语境: dict, k: int) -> tuple:
+    """1369：主实例本机跑片 k（--shard k/n·明细临时文件）→(绿, 秒, 明细)。
+    片心跳注入：本机补跑可能超过服务端 300s 回收阈值——不续约=从实例可抢走双跑
+    （1369 不重复跑要求的机械保证）；无行片的心跳服务端拒绝=无害。"""
+    片明细 = 语境["日志目录"] / ("e2e明细_片%d_%s.json" % (k, 语境["sha"][:10]))
+    try:
+        片明细.unlink()   # 清残留：本轮未跑到时读侧不误读旧明细
+    except OSError:
+        pass
+    名 = "e2e片%d" % k
+    停 = 语境["片心跳"](k) if 语境["片心跳"] else None
+    try:
+        绿 = 语境["步骤"](
+            名, 语境["e2e基"] + 语境["明细参"](片明细)
+            + ["--shard", "%d/%d" % (k, 语境["片数"]), "--jobs", str(语境["e2e并行"])],
+            语境["e2e超时秒"])
+        秒 = (语境["步骤们"].get(名) or {}).get("秒", 0)
+    finally:
+        if 停 is not None:
+            停.set()
+    return 绿, 秒, 语境["读明细"](片明细)
+
+
+def _领并跑(语境: dict, k: int):
+    """1369：CAS 抢补片 k 并本机补跑（交片归档）——返回 (绿, 秒, 明细)；
+    None=片已被从实例领走/服务端拒绝（调用方等待其完成，绝不双跑）。"""
+    抢 = 抢补片(语境["注入"], 语境["runner"], 语境["轮分支"], k)
+    if not 抢.get("ok"):
+        return None
+    绿, 秒, 明细 = _跑片本地(语境, k)
+    交片(语境["注入"], 语境["runner"], 语境["轮分支"], k, 绿, 明细, 秒)
+    return 绿, 秒, 明细
+
+
+def _收从片(语境: dict, 行: dict) -> tuple:
+    """1369：收从片完成结果（秒/明细从服务端拉·绿已由快照核）→(秒, 明细)。"""
+    回 = 片结果(语境["配置"]["池地址"], 语境["配置"]["池令牌"],
+             语境["轮分支"], 行.get("片序"))
+    return (行.get("秒") or 0), (回.get("结果") if 回 else None)
+
+
+def _分片收片(语境: dict) -> tuple:
+    """1297/1369 正常分片收片：轮询快照→非完成片 CAS 抢补（对 执行中 也发起——
+    服务端先按 300s 心跳回收再 CAS：活片拒绝无副作用，死片由此复活，防收片窗空等）
+    →全片完成收从片明细。返回 (聚合rc, e2e秒=max片秒, 明细们, 片行们)。"""
+    秒们 = [语境["自己秒"]]
+    明细们 = [语境["自己明细"]]
+    已跑 = {0}
+    截止 = time.time() + 收片窗秒
+    while time.time() < 截止:
+        状态们 = 语境["读快照"]()
+        if 状态们 is None:      # 池抖动——轮询重试（不可达≠全绿·不静默当齐）
+            _歇(截止)
+            continue
+        红片 = next((s for s in 状态们
+                     if s.get("状态") == "完成" and s.get("绿") == 0), None)
+        if 红片 is not None:
+            print("  [红即停] 从片 #%s 红——整轮红即停（902·其余片不再等待）"
+                  % 红片.get("片序"), file=语境["日志"], flush=True)
+            return 1, max(秒们), 明细们, 状态们
+        行序 = {s.get("片序") for s in 状态们}
+        for s in 状态们:        # 缺口+心跳超时执行中：CAS 抢补本机补跑
+            k = s.get("片序")
+            if k in 已跑 or s.get("状态") == "完成":
+                continue
+            回 = _领并跑(语境, k)
+            if 回 is None:
+                continue        # 已被从实例领走——下轮快照见其执行中/完成
+            已跑.add(k)
+            绿, 秒, 明细 = 回
+            秒们.append(秒)
+            明细们.append(明细)
+            if not 绿:
+                print("  [红即停] 抢补片 #%d 红——整轮红即停（902）" % k,
+                      file=语境["日志"], flush=True)
+                return 1, max(秒们), 明细们, 语境["读快照"]() or 状态们
+        for k in range(1, 语境["片数"]):   # 台账无行片=无实例可领→本机补跑（不重复）
+            if k in 已跑 or k in 行序:
+                continue
+            绿, 秒, 明细 = _跑片本地(语境, k)
+            已跑.add(k)
+            秒们.append(秒)
+            明细们.append(明细)
+            if not 绿:
+                print("  [红即停] 补跑片 #%d 红——整轮红即停（902）" % k,
+                      file=语境["日志"], flush=True)
+                return 1, max(秒们), 明细们, 语境["读快照"]() or 状态们
+        状态们 = 语境["读快照"]()
+        if 状态们 is not None:
+            完成集 = {s.get("片序") for s in 状态们 if s.get("状态") == "完成"}
+            # 片账收齐判据=1..n-1 每片「本机已跑」或「服务端完成」——不依赖行数
+            #   （召唤登记缺行时本机已补跑也算齐·1369 防「全跑完仍空等超时」）。
+            if all(k in 已跑 or k in 完成集 for k in range(1, 语境["片数"])):
+                if all(s.get("绿") == 1 for s in 状态们 if s.get("状态") == "完成"):
+                    for s in 状态们:   # 从片片：秒与明细从服务端收（已跑片不重复计）
+                        if s.get("片序") in 已跑 or s.get("状态") != "完成":
+                            continue
+                        秒, 明细 = _收从片(语境, s)
+                        秒们.append(秒)
+                        明细们.append(明细)
+                    return 0, max(秒们), 明细们, 状态们
+                return 1, max(秒们), 明细们, 状态们
+        _歇(截止)
+    状态们 = 语境["读快照"]() or []
+    完成集 = {s.get("片序") for s in 状态们 if s.get("状态") == "完成"}
+    缺片 = [k for k in range(1, 语境["片数"]) if k not in 已跑 and k not in 完成集]
+    print("  [分片缺失] 收片窗 %ds 到期——已完成 %d/%d 片，缺失片 %s"
+          "（诚实红·不挂死整轮）"
+          % (收片窗秒, 语境["片数"] - 1 - len(缺片), 语境["片数"] - 1, 缺片 or "无"),
+          file=语境["日志"], flush=True)
+    return 1, max(秒们), 明细们, 状态们
+
+
+def _单实例补跑(语境: dict) -> tuple:
+    """1369 退化路径（片 0 已跑）：逐片 1..n-1——
+    完成片收服务端结果（已由从片跑完→不重跑）；执行中片等其完成（宽限后仍有从片
+    接手=不抢跑不重复）；缺口/无行片 CAS 抢补或本机补跑。收片窗同 CN_SHARD_RECV_
+    TIMEOUT_SEC；未齐片只报缺失=红（不放宽门禁）。返回 (聚合rc, e2e秒, 明细们)。"""
+    秒们 = [语境["自己秒"]]
+    明细们 = [语境["自己明细"]]
+    缺片: list[int] = []
+    红 = False
+    截止 = time.time() + 收片窗秒
+    for k in range(1, 语境["片数"]):
+        while True:
+            状态们 = 语境["读快照"]()
+            行 = next((s for s in (状态们 or []) if s.get("片序") == k), None)
+            if 行 is not None and 行.get("状态") == "完成":
+                if 行.get("绿") != 1:
+                    print("  [红即停] 从片 #%d 红——整轮红即停（902·不放宽门禁）" % k,
+                          file=语境["日志"], flush=True)
+                    红 = True
+                    break
+                秒, 明细 = _收从片(语境, 行)
+                秒们.append(秒)
+                明细们.append(明细)
+                break
+            if 状态们 is None:      # 池不可达——窗内重试
+                if time.time() >= 截止:
+                    缺片.append(k)
+                    红 = True
+                    break
+                _歇(截止)
+                continue
+            if 行 is not None:      # 执行中/缺口：CAS（活片拒绝=等待；死片回收后得手）
+                回 = _领并跑(语境, k)
+                if 回 is None:
+                    if time.time() >= 截止:
+                        缺片.append(k)
+                        红 = True
+                        break
+                    _歇(截止)
+                    continue
+                绿, 秒, 明细 = 回
+            else:                   # 无行=无实例可领→本机补跑
+                绿, 秒, 明细 = _跑片本地(语境, k)
+            秒们.append(秒)
+            明细们.append(明细)
+            if not 绿:
+                print("  [红即停] 补跑片 #%d 红——整轮红即停（902）" % k,
+                      file=语境["日志"], flush=True)
+                红 = True
+            break
+        if 红:
+            break
+    if 缺片:
+        print("  [分片缺失] 收片窗 %ds 到期——缺失片 %s（诚实红·不挂死整轮）"
+              % (收片窗秒, 缺片), file=语境["日志"], flush=True)
+    # 退化=各片串行补跑，e2e 墙钟近似=各片步骤秒之和（正常分片=并行取 max）
+    总秒 = round(sum(s for s in 秒们 if isinstance(s, (int, float))))
+    return (1 if (红 or 缺片) else 0), 总秒, 明细们
+
+
+def 主实例分片段(*, 轮分支: str, 片数: int, 召唤时刻, e2e基: list, 明细参, 步骤,
+                步骤们: dict, 日志, sha: str, 日志目录, e2e并行: int, e2e超时秒: int,
+                runner: str, 读明细, 片心跳=None) -> tuple:
+    """1369 主实例分片编排（ci_daemon 静态门禁与e2e段 调用·步骤/明细/心跳注入）：
+    ①宽限窗等待首片认领（CN_SHARD_GRACE_SEC·默认 90s）——无认领立即退化；
+    ②片 0 本机跑（重型独立面·run_e2e 语义）；
+    ③正常=按片收（已认领片收结果/缺口抢补/红即停/收片窗诚实红）；
+      退化=单实例序列（完成片照收不重跑、缺失片本机补跑·明细与单实例轮同格式）。
+    返回 (聚合rc, 整轮e2e秒, 合并明细, 分片行们, 形态)；形态=「分片」/「退化单实例」
+    ——退化时合并明细不含「分片」键（与现有单实例 --json 格式一致·看板/门禁照常解析）。
+    片 0 红=902 红即停：返回片 0 明细（调用方仍写回主明细路径供 8300 页面归因）。"""
+    配置 = 池配置()
+    读快照 = lambda: 片状态们(配置["池地址"], 配置["池令牌"], 轮分支)
+    截止 = (召唤时刻 or time.time()) + 认领宽限秒
+    首认领 = bool(配置["池地址"]) and 等待首认领(读快照, 截止)
+    形态 = "分片" if 首认领 else "退化单实例"
+    if not 首认领:
+        print("  [分片退化] 召唤后 %ds 内无任何从片认领——主实例转单实例序列"
+              "（完成片照收·缺失片本机补跑·不再空等从片；收片窗 %ds）"
+              % (认领宽限秒, 收片窗秒), file=日志, flush=True)
+    语境 = {"轮分支": 轮分支, "片数": 片数, "e2e基": e2e基, "明细参": 明细参,
+            "步骤": 步骤, "步骤们": 步骤们, "日志": 日志, "sha": sha,
+            "日志目录": 日志目录, "e2e并行": e2e并行, "e2e超时秒": e2e超时秒,
+            "runner": runner, "读明细": 读明细, "配置": 配置,
+            "注入": lambda o, d: 池调用(配置, o, d), "读快照": 读快照,
+            "片心跳": 片心跳}
+    片0明细 = 日志目录 / ("e2e明细_片0_%s.json" % sha[:10])
+    try:
+        片0明细.unlink()
+    except OSError:
+        pass
+    if not 步骤("e2e并行", e2e基 + 明细参(片0明细)
+                + ["--shard", "0/%d" % 片数, "--jobs", str(e2e并行)], e2e超时秒):
+        print("  [红即停] 主片 0 发现失败用例——中止该轮（用户令 2026-10-16·#902·"
+              "分片红即停·其余片不再等待）", file=日志, flush=True)
+        return (步骤们["e2e并行"]["rc"], 步骤们["e2e并行"].get("秒", 0),
+                读明细(片0明细), [], 形态)
+    语境["自己秒"] = 步骤们["e2e并行"].get("秒", 0)
+    语境["自己明细"] = 读明细(片0明细)
+    if 形态 == "退化单实例":
+        rc, 秒, 明细们 = _单实例补跑(语境)
+        return rc, 秒, 合并e2e明细(明细们, []), [], 形态
+    rc, 秒, 明细们, 行们 = _分片收片(语境)
+    return rc, 秒, 合并e2e明细(明细们, 行们), 行们, 形态
+
+
+def e2e支持json() -> bool:
+    """842：run_e2e.py 是否已带 --json——跨版本兼容窗口防护（daemon 自更新先于
+    工作树 reset 到含本改动的 sha 时，向旧版 run_e2e 传未知参数=argparse 报错=
+    e2e 假红）。传参前探源码：探测失败/旧版=不传（结果无 e2e明细·页面降级提示）。
+    1369 自 ci_daemon 外迁（分片编排同域单点·ci_daemon 薄壳别名）。"""
+    try:
+        return "--json" in (_仓库根() / "tests" / "e2e" / "run_e2e.py").read_text(
+            encoding="utf-8", errors="replace")
+    except OSError:
+        return False
+
+
+def e2e明细参(明细路径) -> list:
+    """1297：--json 明细参数（跨版本兼容窗口防护·e2e支持json 探测）——分片形态下
+    各片写各自临时明细（主实例聚合后写回主明细路径）。"""
+    return ["--json", str(明细路径)] if e2e支持json() else []
+
+
+def 读e2e明细(路径: Path):
+    """842：读 run_e2e --json 明细（失败用例/期望实际 diff）——缺文件/坏 JSON=None
+    （e2e 未跑/旧版 run_e2e/未传参三态统一降级：页面显示「无明细」·不炸轮不谎报；
+    明细是附加信息，非测量本体）。"""
+    try:
+        return json.loads(Path(路径).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+
+
+def e2e命令基(cn: Path, 保内存: int, 平台: str, 是win: bool) -> list:
+    """1297 提取：e2e 命令公共段（主实例全量/分片与从实例片轮三处共用·纪律二）——
+    --target/--cn/--max-mem/--heavy-ci/--full-reason 一致口径；--json/--shard/--jobs
+    由调用方按形态追加。566 注释原文见 ci_daemon 静态门禁与e2e段（放行通道语义不变）。"""
+    return ([] if 是win else ["nice", "-n", "10"]) + [
+        sys.executable, "tests/e2e/run_e2e.py",
+        "--target", 平台, "--cn", str(cn),
+        "--max-mem-mb", str(保内存),
+        "--heavy-ci",
+        "--full-reason", "ci_daemon 云端全量门禁（TX_02/池 runner）"]
 
 
 def 合并e2e明细(明细们: list, 分片行们: list):
