@@ -82,7 +82,7 @@ void SemanticAnalyzer::visitMemberExpr(MemberExpr* node) {
     //   v2 放行=分叉；静态面已在 visitSelfExpr 精确拒绝，此处豁免安全）。
     const bool thisMemberAccess =
         node->object->getType() == NodeType::SelfExpr &&
-        currentContextClass() != nullptr;
+        currentContextClass().has_value();
     if (node->isDerefAccess && assignmentTargetDepth_ == 0 &&
         !isStringSemanticType(objectType) && !thisMemberAccess) {
         reportUnsafeBoundary(node->location, "指针成员访问", "指针成员访问（p.字段）");
@@ -95,7 +95,7 @@ void SemanticAnalyzer::visitMemberExpr(MemberExpr* node) {
                                     ? types::pointeeOf(objectType)
                                     : objectType;
         if (!probeType.empty()) {
-            const StructDecl* sd = findStruct(types::canonical(probeType));
+            const StructDecl* sd = findStruct(types::canonical(probeType)).value_or(nullptr);
             if (sd != nullptr && sd->isUnion) {
                 reportUnsafeBoundary(node->location, "联合体字段访问",
                                    probeType + "." + memberName);
@@ -135,7 +135,7 @@ void SemanticAnalyzer::visitMemberExpr(MemberExpr* node) {
             }
         }
         // 其他成员：走降级结构体字段查找（防御）
-        const StructDecl* lowered = findStruct(canonicalType(objectType));
+        const StructDecl* lowered = findStruct(canonicalType(objectType)).value_or(nullptr);
         if (lowered != nullptr) {
             for (const auto& f : lowered->fields) {
                 if (f.name == memberName) {
@@ -189,7 +189,7 @@ void SemanticAnalyzer::visitMemberExpr(MemberExpr* node) {
     //   泛型<类型 T> 类 盒子 + 盒子<整64*> b; b.值，探针打印实证 varType 全程
     //   正确、丢点在此消费侧）。修复：先按**全名**查类命中即用原名（真指针
     //   盒子$整64** 不会命中类表，自然落入下方解引用分支——行为不回退）。
-    if (findClass(objectType) != nullptr) {
+    if (findClass(objectType).has_value()) {
         structType = canonicalType(objectType);
     } else if (types::isPointer(objectType)) {
         const std::string pointee = types::pointeeOf(objectType);
@@ -211,17 +211,17 @@ void SemanticAnalyzer::visitMemberExpr(MemberExpr* node) {
     //   （p2 探针：返回 v.元素() 报「无法将 '未知' 隐式转换为返回类型」）。
     //   类表未命中时先 resolveGenericTypeName 物化为合成名（向量$整64）再查
     //   （幂等：非泛型/已物化/类表已命中路径零行为变化）。
-    if (findClass(structType) == nullptr) {
+    if (!findClass(structType).has_value()) {
         // 588-a 集成验收修（红灯治理 §8.3）：标识符改 ASCII（win ASCII 门禁拦截
         //   非ASCII 标识符——551-a linux 绿/win 红=跨平台静补偿漏面·语义零变化）
         const std::string materializedType = resolveGenericTypeName(structType, node->location);
         if (materializedType != structType) structType = materializedType;
     }
     // 类成员访问（Task 3.1）：对象为类类型 或 类名.静态成员（标识符且是类类型名）
-    const ClassInfo* cls = findClass(structType);
+    const ClassInfo* cls = findClass(structType).value_or(nullptr);
     if (cls != nullptr) {
         std::string ownerClass;
-        const ClassMemberInfo* member = lookupClassMember(structType, memberName, ownerClass);
+        const ClassMemberInfo* member = lookupClassMember(structType, memberName, ownerClass).value_or(nullptr);
         // 122（928·用户裁决乙）：限定构造访问统一拒绝——命中形态（无参构造
         //   signatureKey 空参=纯名·按名查找巧合命中）与构造意图 miss 形态
         //   （memberName==类名=带参构造键带 # 后缀 miss）统一引导初始化列表。
@@ -298,7 +298,7 @@ void SemanticAnalyzer::visitMemberExpr(MemberExpr* node) {
                                              ? ""
                                              : contextClassStack_.back();
         // 实例成员访问控制（自身.私有字段 在子类访问父类私有 -> 报错）
-        const ClassInfo* ownerInfo = findClass(ownerClass);
+        const ClassInfo* ownerInfo = findClass(ownerClass).value_or(nullptr);
         if (ownerInfo != nullptr) {
             checkAccess(*ownerInfo, *member, contextClass, node->location,
                         member->isConstructor || member->isDestructor ? "方法" : "成员");
@@ -346,7 +346,7 @@ void SemanticAnalyzer::visitMemberExpr(MemberExpr* node) {
         const std::string ifaceName = types::isPointer(objectType)
             ? canonicalType(types::pointeeOf(objectType))
             : canonicalType(objectType);
-        const InterfaceInfo* iface = findInterface(ifaceName);
+        const InterfaceInfo* iface = findInterface(ifaceName).value_or(nullptr);
         if (iface != nullptr) {
             const auto imit = iface->methods.find(memberName);
             if (imit == iface->methods.end()) {
@@ -363,7 +363,7 @@ void SemanticAnalyzer::visitMemberExpr(MemberExpr* node) {
         }
     }
     // 结构体/联合体字段访问（Task 2.7）
-    const StructDecl* decl = findStruct(structType);
+    const StructDecl* decl = findStruct(structType).value_or(nullptr);
     if (decl == nullptr) {
         diagnostics_.report(DiagnosticLevel::Error, node->location,
                             "类型 '" + structType + "' 不是结构体/联合体/类类型，无法访问成员 '" +
@@ -372,7 +372,7 @@ void SemanticAnalyzer::visitMemberExpr(MemberExpr* node) {
         return;
     }
     // 字段存在性检查
-    int offset = fieldOffsetOf(decl, memberName);
+    int offset = fieldOffsetOf(decl, memberName).value_or(-1);
     if (offset < 0) {
         diagnostics_.report(DiagnosticLevel::Error, node->location,
                             "结构体 '" + decl->name + "' 没有成员 '" + memberName + "'");

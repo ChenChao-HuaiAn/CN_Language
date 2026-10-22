@@ -102,7 +102,7 @@ bool SemanticAnalyzer::checkUnaryOperatorOverload(UnaryExpr* node,
                                   (node->op == Operator::Subtract) ? "-" : "";
         if (!opSym.empty()) {
             const ClassMemberInfo* mi = resolveOperatorOverload(
-                opSym, operandType, {}, node->location);
+                opSym, operandType, {}, node->location).value_or(nullptr);
             if (mi != nullptr) {
                 lastType_ = mi->type;
                 // 465（2026-10-12）：写回重载方法返回类型（与 BinaryExpr::

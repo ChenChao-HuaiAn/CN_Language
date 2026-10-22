@@ -20,11 +20,11 @@ namespace cn_compiler {
 std::string IRGenerator::classFieldType(const std::string& className,
                                         const std::string& fieldName) const {
     if (semantic_ == nullptr) return "";
-    const ClassInfo* ci = semantic_->findClass(types::canonical(className));
+    const ClassInfo* ci = semantic_->findClass(types::canonical(className)).value_or(nullptr);
     while (ci != nullptr) {
         auto f = ci->fields.find(fieldName);
         if (f != ci->fields.end()) return f->second.type;
-        ci = ci->baseName.empty() ? nullptr : semantic_->findClass(ci->baseName);
+        ci = ci->baseName.empty() ? nullptr : semantic_->findClass(ci->baseName).value_or(nullptr);
     }
     return "";
 }
@@ -37,7 +37,7 @@ std::string IRGenerator::memberFieldSrcType(MemberExpr* node) const {
     const std::string objType = memberObjStructType(node);
     if (objType.empty()) return "";
     const std::string canon = types::canonical(objType);
-    const StructDecl* decl = semantic_->findStruct(canon);
+    const StructDecl* decl = semantic_->findStruct(canon).value_or(nullptr);
     if (decl != nullptr) {
         for (const auto& f : decl->fields) {
             if (f.name == node->memberName) return f.type;
@@ -66,7 +66,7 @@ void IRGenerator::injectFieldCascadeDestroy(const ClassMember* member) {
     ir::IRBlock* last = fn->blocks.back().get();
     if (last->terminated) return;  // 体尾已终止（提前 返回）：不注入（见上边界）
     setCurrentBlock(last);
-    const ClassInfo* ci = semantic_->findClass(currentClass_);
+    const ClassInfo* ci = semantic_->findClass(currentClass_).value_or(nullptr);
     if (ci == nullptr) return;
     const std::string thisUnique = lookupVarName("自身");
     if (thisUnique.empty()) return;
@@ -80,7 +80,7 @@ void IRGenerator::injectFieldCascadeDestroy(const ClassMember* member) {
         //   泄漏·p104 定性：副本串差 1；驻留句柄/空句柄 free=忽略/空安全）。
         //   纯增益：类串字段无既有自动清理路径（容器字段=级联析构在下）。
         if (fcanon == "字符串") {
-            const int offS = semantic_->classFieldOffset(currentClass_, *it);
+            const int offS = semantic_->classFieldOffset(currentClass_, *it).value_or(-1);
             if (offS >= 0) {
                 ir::IRValue thisS = emitResult(
                     ir::Opcode::Load, {ir::IRValue::var(thisUnique, "ptr")},
@@ -109,7 +109,7 @@ void IRGenerator::injectFieldCascadeDestroy(const ClassMember* member) {
             const std::string fcanonNorm = canonicalizeSyntheticArgText(fcanon);
             if (fcanonNorm.rfind("可选$", 0) == 0 ||
                 fcanonNorm.rfind("结果$", 0) == 0) {
-                const int offB = semantic_->classFieldOffset(currentClass_, *it);
+                const int offB = semantic_->classFieldOffset(currentClass_, *it).value_or(-1);
                 if (offB >= 0 && !ownedStrFieldsOf(ftype).empty()) {
                     ir::IRValue thisB = emitResult(
                         ir::Opcode::Load, {ir::IRValue::var(thisUnique, "ptr")},
@@ -124,7 +124,7 @@ void IRGenerator::injectFieldCascadeDestroy(const ClassMember* member) {
             }
         }
         if (ftype.empty() || !semantic_->isClassType(fcanon)) continue;
-        const ClassInfo* fci = semantic_->findClass(fcanon);
+        const ClassInfo* fci = semantic_->findClass(fcanon).value_or(nullptr);
         bool hasDtor = false;
         if (fci != nullptr) {
             for (const auto& mk : fci->methods) {
@@ -136,7 +136,7 @@ void IRGenerator::injectFieldCascadeDestroy(const ClassMember* member) {
         // （字符串/盒载荷/类字段级联·v2 发射资源字段释放于地址 用户类分支
         // 同轮同案）。原 continue=嵌套无析构类字段 tracked 泄漏面。
         if (!hasDtor) {
-            const int offN = semantic_->classFieldOffset(currentClass_, *it);
+            const int offN = semantic_->classFieldOffset(currentClass_, *it).value_or(-1);
             if (offN >= 0) {
                 ir::IRValue thisN = emitResult(
                     ir::Opcode::Load, {ir::IRValue::var(thisUnique, "ptr")},
@@ -150,7 +150,7 @@ void IRGenerator::injectFieldCascadeDestroy(const ClassMember* member) {
             }
             continue;
         }
-        const int offset = semantic_->classFieldOffset(currentClass_, *it);
+        const int offset = semantic_->classFieldOffset(currentClass_, *it).value_or(-1);
         if (offset < 0) continue;
         ir::IRValue thisPtr = emitResult(
             ir::Opcode::Load, {ir::IRValue::var(thisUnique, "ptr")},
@@ -182,7 +182,7 @@ void IRGenerator::emitNoDtorFieldCascade(const ir::IRValue& objPtr,
                                          const std::string& classCanon,
                                          const SourceLocation& loc, int depth) {
     if (semantic_ == nullptr || depth > 4) return;
-    const ClassInfo* ci = semantic_->findClass(types::canonical(classCanon));
+    const ClassInfo* ci = semantic_->findClass(types::canonical(classCanon)).value_or(nullptr);
     if (ci == nullptr) return;
     for (auto it = ci->fieldOrder.rbegin(); it != ci->fieldOrder.rend(); ++it) {
         const auto f = ci->fields.find(*it);
@@ -191,7 +191,7 @@ void IRGenerator::emitNoDtorFieldCascade(const ir::IRValue& objPtr,
         if (ftype.empty()) continue;
         const std::string fcanon = types::canonical(ftype);
         const int offset = semantic_->classFieldOffset(
-            types::canonical(classCanon), *it);
+            types::canonical(classCanon), *it).value_or(-1);
         if (offset < 0) continue;
         ir::IRValue addr = emitResult(ir::Opcode::FieldAddr, {objPtr}, "ptr",
                                       std::to_string(offset), loc);
@@ -241,7 +241,7 @@ bool IRGenerator::classHasReleasableFields(const std::string& classCanon,
                                            int depth) const {
     if (semantic_ == nullptr || depth > 4) return false;
     const std::string canon = types::canonical(classCanon);
-    const ClassInfo* ci = semantic_->findClass(canon);
+    const ClassInfo* ci = semantic_->findClass(canon).value_or(nullptr);
     if (ci == nullptr) return false;
     for (const auto& fn : ci->fieldOrder) {
         const auto f = ci->fields.find(fn);
@@ -281,8 +281,10 @@ ir::IRValue IRGenerator::genInstanceFieldAddr(const std::string& fieldName,
     } else {
         thisPtr = emitResult(ir::Opcode::ConstInt, {}, "ptr", "0", loc);
     }
-    const int offset = (semantic_ != nullptr)
-        ? semantic_->classFieldOffset(currentClass_, fieldName) : -1;
+    const int offset =
+        (semantic_ != nullptr)
+            ? semantic_->classFieldOffset(currentClass_, fieldName).value_or(-1)
+            : -1;
     if (offset < 0) return thisPtr;
     return emitResult(ir::Opcode::FieldAddr, {thisPtr}, "ptr",
                       std::to_string(offset), loc);
@@ -319,7 +321,7 @@ bool IRGenerator::isInstanceField(const std::string& name) const {
 bool IRGenerator::handleClassFieldRead(IdentifierExpr* node) {
     // 静态字段直接访问（静态方法/普通方法内均可，Task 3.9）：字段名在类字段表且 isStatic
     if (semantic_ != nullptr && !currentClass_.empty()) {
-        const ClassInfo* ci = semantic_->findClass(currentClass_);
+        const ClassInfo* ci = semantic_->findClass(currentClass_).value_or(nullptr);
         while (ci != nullptr) {
             auto f = ci->fields.find(node->name);
             if (f != ci->fields.end() && f->second.isStatic) {
@@ -334,7 +336,7 @@ bool IRGenerator::handleClassFieldRead(IdentifierExpr* node) {
                                        mapType(fieldType), "", node->location);
                 return true;
             }
-            ci = ci->baseName.empty() ? nullptr : semantic_->findClass(ci->baseName);
+            ci = ci->baseName.empty() ? nullptr : semantic_->findClass(ci->baseName).value_or(nullptr);
         }
     }
     if (!isInstanceField(node->name)) return false;
@@ -393,7 +395,7 @@ bool IRGenerator::handleClassMemberExpr(MemberExpr* node) {
 
     // P3-23：静态方法作值（类名.静态方法 用作函数指针值）→ FuncAddr 方法链接符号
     if (!objName.empty() && semantic_->isClassType(objName)) {
-        const ClassInfo* ciStatic = semantic_->findClass(objName);
+        const ClassInfo* ciStatic = semantic_->findClass(objName).value_or(nullptr);
         if (ciStatic != nullptr) {
             auto smit = ciStatic->methods.find(node->memberName);
             if (smit != ciStatic->methods.end() && smit->second.isStatic) {
@@ -432,7 +434,7 @@ bool IRGenerator::handleClassMemberExpr(MemberExpr* node) {
     if (node->isMethodValue && semantic_->isClassType(canonObj)) {
         std::string owner;
         const ClassMemberInfo* method =
-            semantic_->lookupClassMember(canonObj, node->memberName, owner);
+            semantic_->lookupClassMember(canonObj, node->memberName, owner).value_or(nullptr);
         if (method != nullptr && !method->isStatic) {
             const std::string ownerSym = owner.empty() ? canonObj : owner;
             const std::string methodSym = methodSymbolKey(ownerSym, method->sigKey);
@@ -461,7 +463,7 @@ bool IRGenerator::handleClassMemberExpr(MemberExpr* node) {
     const std::string fieldType = classFieldType(canonObjField, node->memberName);
     if (fieldType.empty()) return false;
     ir::IRValue base = classMemberBasePtr(node->object.get());  // 对象指针（622 统一助手·内含 728g 指针下标分支）
-    const int offset = semantic_->classFieldOffset(canonObjField, node->memberName);
+    const int offset = semantic_->classFieldOffset(canonObjField, node->memberName).value_or(-1);
     if (offset < 0) return false;
     ir::IRValue addr = emitResult(ir::Opcode::FieldAddr, {base}, "ptr",
                                   std::to_string(offset), node->location);
@@ -515,7 +517,7 @@ void IRGenerator::emitClassFieldDefaults(const std::string& layerClass,
                                           const ir::IRValue& objPtr,
                                           const SourceLocation& loc) {
     if (semantic_ == nullptr) return;
-    const ClassInfo* ci = semantic_->findClass(layerClass);
+    const ClassInfo* ci = semantic_->findClass(layerClass).value_or(nullptr);
     if (ci == nullptr) {
         // 648（miss 不可静默·110 同族）：调用点=类创建路径（上游语义已保证
         //   类已注册）——此 miss=内部缺陷显形（与 v2 登记内部未登记 同构）；
@@ -533,7 +535,7 @@ void IRGenerator::emitClassFieldDefaults(const std::string& layerClass,
         if (!fm.ownerClass.empty() && fm.ownerClass != layerClass) continue;
         const std::string irType = mapType(fm.type);
         if (irType.empty()) continue;   // 648：类型未登记面在字段访问处显形·注入保守跳过
-        const int offset = semantic_->classFieldOffset(objClass, fn);
+        const int offset = semantic_->classFieldOffset(objClass, fn).value_or(-1);
         if (offset < 0) continue;
         ir::IRValue addr = emitResult(ir::Opcode::FieldAddr, {objPtr}, "ptr",
                                       std::to_string(offset), loc);

@@ -621,16 +621,16 @@ void SemanticAnalyzer::desugarRangeForIterable(RangeForStmt* node,
         }
     } else if (isClassType(containerType) ||
                (!containerType.empty() && !types::isArray(containerType) &&
-                findClass(resolveGenericTypeName(containerType, node->location)) != nullptr)) {
+                findClass(resolveGenericTypeName(containerType, node->location)).has_value())) {
         // 类容器：须提供 大小() 与 元素(整64)（对标 C++ 迭代器接口约定；
         //   P3-24：容器类型含泛型参数（向量<整32>）时按实例化名解析）
         std::string lookupName = containerType;
-        if (findClass(lookupName) == nullptr) {
+        if (!findClass(lookupName).has_value()) {
             const std::string inst =
                 resolveGenericTypeName(containerType, node->location);
-            if (!inst.empty() && findClass(inst) != nullptr) lookupName = inst;
+            if (!inst.empty() && findClass(inst).has_value()) lookupName = inst;
         }
-        const ClassInfo* ci = findClass(lookupName);
+        const ClassInfo* ci = findClass(lookupName).value_or(nullptr);
         if (ci == nullptr) {
             diagnostics_.report(DiagnosticLevel::Error, node->location,
                                 "'遍历...中每个' 无法解析迭代对象类 '" + containerType + "'");

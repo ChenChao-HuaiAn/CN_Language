@@ -44,10 +44,10 @@ bool IRGenerator::handleResultCtor(CallExpr* node) {
     // 合成结构体须已注册（语义层 lowerResultOptionalTypes 已加入 program->structs）
     // Task 6.1（泛型类实例化方法体）：实例化后类型（结果$整32$整32）可能在
     //   lowerResultOptionalTypes 之后才出现——查不到时触发 ensureLoweredType 再查。
-    const StructDecl* decl = semantic_->findStruct(structName);
+    const StructDecl* decl = semantic_->findStruct(structName).value_or(nullptr);
     if (decl == nullptr) {
         semantic_->ensureLoweredType(node->resolvedType);
-        decl = semantic_->findStruct(structName);
+        decl = semantic_->findStruct(structName).value_or(nullptr);
         if (decl == nullptr) return false;
     }
     const int structSize = semantic_->typeSizeOf(structName);
@@ -106,9 +106,10 @@ bool IRGenerator::handleResultCtor(CallExpr* node) {
     const bool isResult = isResultType(node->resolvedType);
     for (const auto& f : decl->fields) {
         if (isResult) {
-            if (f.name == "错误值联合") { valueOffset = semantic_->fieldOffsetOf(decl, f.name); }
+            if (f.name == "错误值联合") { valueOffset = semantic_->fieldOffsetOf(decl, f.name).value_or(-1); }
+        // 静默豁免业务值: 1360 批3A 结果化取值路径——结果/值联合两形态的字段偏移分流·非兜底
         } else {
-            if (f.name == "值") { valueOffset = semantic_->fieldOffsetOf(decl, f.name); }
+            if (f.name == "值") { valueOffset = semantic_->fieldOffsetOf(decl, f.name).value_or(-1); }
         }
     }
     // 宿主缺陷根治（2026-08-25）：valueOffset 取真实布局（computeLayout）——
@@ -254,7 +255,7 @@ void IRGenerator::emitResultCtorValue(CallExpr* node, const std::string& name,
         if (semantic_ != nullptr &&
             semantic_->isClassType(types::canonical(valueType))) {
             const std::string clsCanon = types::canonical(valueType);
-            const ClassInfo* ci = semantic_->findClass(clsCanon);
+            const ClassInfo* ci = semantic_->findClass(clsCanon).value_or(nullptr);
             bool hasDtor = false;
             if (ci != nullptr) {
                 for (const auto& mk : ci->methods) {
@@ -262,7 +263,7 @@ void IRGenerator::emitResultCtorValue(CallExpr* node, const std::string& name,
                 }
             }
             const ClassMemberInfo* copyCtor =
-                semantic_->findCopyConstructor(clsCanon);
+                semantic_->findCopyConstructor(clsCanon).value_or(nullptr);
             if (hasDtor && copyCtor != nullptr) {
                 const std::string copyOwner = copyCtor->ownerClass.empty()
                                                   ? clsCanon

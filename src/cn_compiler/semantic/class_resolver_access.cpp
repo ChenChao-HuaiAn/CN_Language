@@ -39,10 +39,10 @@ bool SemanticAnalyzer::checkAccess(const ClassInfo& owner, const ClassMemberInfo
         // 自身类访问
         if (contextClass == owner.name) return true;
         // 子类访问（沿 contextClass 的继承链向上找 owner）
-        const ClassInfo* ctx = findClass(contextClass);
+        const ClassInfo* ctx = findClass(contextClass).value_or(nullptr);
         while (ctx != nullptr) {
             if (ctx->baseName == owner.name) break;
-            ctx = ctx->baseName.empty() ? nullptr : findClass(ctx->baseName);
+            ctx = ctx->baseName.empty() ? nullptr : findClass(ctx->baseName).value_or(nullptr);
         }
         if (ctx != nullptr) {
             // 子类可访问保护成员；私有成员子类不可
@@ -68,9 +68,10 @@ bool SemanticAnalyzer::checkAccess(const ClassInfo& owner, const ClassMemberInfo
     return false;
 }
 
-// 查询当前上下文所属类（方法体内解析 this/自身 用；空=非类上下文）
-const ClassInfo* SemanticAnalyzer::currentContextClass() const {
-    if (contextClassStack_.empty()) return nullptr;
+// 查询当前上下文所属类（方法体内解析 this/自身 用）
+// 1360 结果化批3A：无值=非类上下文（合法缺失——原 nullptr 哨兵退役）
+cn::Optional<const ClassInfo*> SemanticAnalyzer::currentContextClass() const {
+    if (contextClassStack_.empty()) return std::nullopt;
     return findClass(contextClassStack_.back());
 }
 
@@ -78,7 +79,7 @@ const ClassInfo* SemanticAnalyzer::currentContextClass() const {
 // 由调用方（visitMemberExpr 的 自身.成员 / 直接成员引用）在静态方法上下文调用
 void SemanticAnalyzer::checkStaticMethodAccess(const std::string& className,
                                                const SourceLocation& loc) const {
-    const ClassInfo* info = findClass(className);
+    const ClassInfo* info = findClass(className).value_or(nullptr);
     if (info == nullptr) return;
     (void)info;
     (void)loc;
@@ -92,11 +93,11 @@ bool SemanticAnalyzer::isConstMethodContext() const {
 // 检查类字段是否静态（沿继承链）
 bool SemanticAnalyzer::isStaticField(const std::string& className,
                                      const std::string& fieldName) const {
-    const ClassInfo* info = findClass(className);
+    const ClassInfo* info = findClass(className).value_or(nullptr);
     while (info != nullptr) {
         auto f = info->fields.find(fieldName);
         if (f != info->fields.end()) return f->second.isStatic;
-        info = info->baseName.empty() ? nullptr : findClass(info->baseName);
+        info = info->baseName.empty() ? nullptr : findClass(info->baseName).value_or(nullptr);
     }
     return false;
 }
@@ -104,12 +105,13 @@ bool SemanticAnalyzer::isStaticField(const std::string& className,
 // ==================== 运算符重载（Task 3.7） ====================
 
 // 运算符重载：查找左操作数类型的成员 运算符X（重载决议顺序②）
-//   返回匹配的成员（未找到返回nullptr）；校验参数个数与类型
-const ClassMemberInfo* SemanticAnalyzer::resolveOperatorOverload(
+//   校验参数个数与类型。1360 结果化批3A：无值=无重载（原 nullptr 哨兵退役；
+//   参数不匹配仍返回有值成员——诊断后调用方按原语义继续）
+cn::Optional<const ClassMemberInfo*> SemanticAnalyzer::resolveOperatorOverload(
     const std::string& opSym, const std::string& leftType,
     const std::vector<std::string>& rightArgTypes, const SourceLocation& loc) {
     // 运算符符号名（运算符+ -> "+"）；查左操作数类型的成员表（沿继承链）
-    const ClassInfo* cur = findClass(types::canonical(leftType));
+    const ClassInfo* cur = findClass(types::canonical(leftType)).value_or(nullptr);
     const ClassMemberInfo* mi = nullptr;
     while (cur != nullptr) {
         auto it = cur->methods.find(opSym);
@@ -117,9 +119,9 @@ const ClassMemberInfo* SemanticAnalyzer::resolveOperatorOverload(
             mi = &it->second;
             break;
         }
-        cur = cur->baseName.empty() ? nullptr : findClass(cur->baseName);
+        cur = cur->baseName.empty() ? nullptr : findClass(cur->baseName).value_or(nullptr);
     }
-    if (mi == nullptr) return nullptr;
+    if (mi == nullptr) return std::nullopt;
     const ClassMemberInfo& miRef = *mi;
     // 参数个数校验：双目运算符须 1 个右操作数；单目运算符（- ! ~）0 个
     if (miRef.paramTypes.size() != rightArgTypes.size()) {
@@ -164,7 +166,7 @@ void SemanticAnalyzer::checkClassMethods(ClassInfo& info) {
             const auto f = info.fields.find(fn);
             if (f == info.fields.end() || f->second.isStatic) continue;
             const std::string fcanon = types::canonical(f->second.type);
-            const ClassInfo* fci = findClass(fcanon);
+            const ClassInfo* fci = findClass(fcanon).value_or(nullptr);
             if (fci == nullptr) continue;
             bool fHasDtor = false;
             for (const auto& mk : fci->methods) {
@@ -230,7 +232,7 @@ void SemanticAnalyzer::checkSingleMethodBody(ClassInfo& info, ClassMemberInfo& m
         const std::size_t dollar = info.name.find('$');
         if (dollar != std::string::npos) {
             const std::string genName = info.name.substr(0, dollar);
-            const GenericInfo* ginfo = findGeneric(genName);
+            const GenericInfo* ginfo = findGeneric(genName).value_or(nullptr);
             if (ginfo != nullptr) {
                 for (std::size_t ti = 0;
                      ti < ginfo->typeParams.size() && ti < info.typeArgs.size();
@@ -353,7 +355,7 @@ void SemanticAnalyzer::checkSingleMethodBody(ClassInfo& info, ClassMemberInfo& m
             //   仅对相符形态做父构造实参匹配检查（个数/类型——类型信息此层独有）。
             if (member->ctorInitBase == info.baseName) {
                 const ClassInfo* parentI = info.baseName.empty()
-                    ? nullptr : findClass(info.baseName);
+                    ? nullptr : findClass(info.baseName).value_or(nullptr);
                 const ClassMemberInfo* pc = nullptr;
                 if (parentI != nullptr) {
                     // D23（248-a）：父构造匹配按「实参个数 + defaultCount 可补全」

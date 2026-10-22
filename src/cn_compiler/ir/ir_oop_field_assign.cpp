@@ -16,7 +16,7 @@ bool IRGenerator::handleClassFieldAssign(IdentifierExpr* ident, Expr* value,
                                          Operator op, const SourceLocation& loc) {
     // 静态字段直接赋值（静态方法/普通方法内均可，Task 3.9）
     if (semantic_ != nullptr && !currentClass_.empty()) {
-        const ClassInfo* ci = semantic_->findClass(currentClass_);
+        const ClassInfo* ci = semantic_->findClass(currentClass_).value_or(nullptr);
         while (ci != nullptr) {
             auto f = ci->fields.find(ident->name);
             if (f != ci->fields.end() && f->second.isStatic) {
@@ -76,7 +76,7 @@ bool IRGenerator::handleClassFieldAssign(IdentifierExpr* ident, Expr* value,
                 lastExpr_ = val;
                 return true;
             }
-            ci = ci->baseName.empty() ? nullptr : semantic_->findClass(ci->baseName);
+            ci = ci->baseName.empty() ? nullptr : semantic_->findClass(ci->baseName).value_or(nullptr);
         }
     }
     if (!isInstanceField(ident->name)) return false;
@@ -143,8 +143,9 @@ bool IRGenerator::handleClassFieldAssign(IdentifierExpr* ident, Expr* value,
                     ir::IRValue srcPtr = genExpr(value);
                     emit(ir::Opcode::StorePtr, {fieldAddr, srcPtr}, ir::IRValue(),
                          "", "ptr", loc);
+                // 静默豁免业务值: 1360 批3A 结果化取值路径——类查找 miss 即非类字段回落·非兜底
                 } else {
-                    const ClassInfo* ci = semantic_->findClass(fieldCanon);
+                    const ClassInfo* ci = semantic_->findClass(fieldCanon).value_or(nullptr);
                     const std::string extra =
                         fieldCanon + "|" +
                         std::to_string(ci != nullptr ? ci->totalSize : 0);
@@ -284,7 +285,7 @@ bool IRGenerator::handleClassFieldIncDec(IdentifierExpr* ident, Operator op,
                                          bool postfix) {
     // 静态字段直接访问（静态方法/普通方法内均可，Task 3.9）
     if (semantic_ != nullptr && !currentClass_.empty()) {
-        const ClassInfo* ci = semantic_->findClass(currentClass_);
+        const ClassInfo* ci = semantic_->findClass(currentClass_).value_or(nullptr);
         while (ci != nullptr) {
             auto f = ci->fields.find(ident->name);
             if (f != ci->fields.end() && f->second.isStatic) {
@@ -310,7 +311,7 @@ bool IRGenerator::handleClassFieldIncDec(IdentifierExpr* ident, Operator op,
                 lastExpr_ = postfix ? cur : result;
                 return true;
             }
-            ci = ci->baseName.empty() ? nullptr : semantic_->findClass(ci->baseName);
+            ci = ci->baseName.empty() ? nullptr : semantic_->findClass(ci->baseName).value_or(nullptr);
         }
     }
     if (!isInstanceField(ident->name)) return false;

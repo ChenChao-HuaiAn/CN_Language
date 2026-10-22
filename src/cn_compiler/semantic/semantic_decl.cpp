@@ -151,7 +151,7 @@ void SemanticAnalyzer::visitVarDecl(VarDecl* node) {
     //   分配未初始化对象是安全隐患，须在语义层拦截（H7 根治补完）。
     if (node->initializer == nullptr && !node->funcPtr.isFunctionPtr() &&
         !varType.empty() && isClassType(varType)) {
-        const ClassInfo* ci = findClass(varType);
+        const ClassInfo* ci = findClass(varType).value_or(nullptr);
         if (ci != nullptr) {
             // 193：抽象类（含无实现体抽象方法·class_resolver isAbstract 标记）
             //   值形态裸声明拒绝——先于 H7 默认构造检查（抽象类构造个数恒 0

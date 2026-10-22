@@ -26,15 +26,18 @@ bool qualifiesForVirtualSlot(const ClassMemberInfo& mi) {
 
 }  // namespace
 
-// 查询类虚函数表槽位（方法名 -> 槽位索引；非虚/未找到返回-1）
-int SemanticAnalyzer::classVtableIndex(const std::string& className,
+// 查询类虚函数表槽位（方法名 -> 槽位索引）。
+// 1360 结果化批3A：无值=类不存在/成员不存在/非虚（原 -1 哨兵退役——与合法
+//   槽位 0 重叠面消除）
+cn::Optional<int> SemanticAnalyzer::classVtableIndex(const std::string& className,
                                        const std::string& methodName) const {
-    const ClassInfo* info = findClass(className);
-    if (info == nullptr) return -1;
+    const ClassInfo* info = findClass(className).value_or(nullptr);
+    if (info == nullptr) return std::nullopt;
     std::string owner;
-    const ClassMemberInfo* member = lookupClassMember(className, methodName, owner);
-    if (member == nullptr) return -1;
-    return member->vtableIndex;
+    const ClassMemberInfo* member = lookupClassMember(className, methodName, owner).value_or(nullptr);
+    if (member == nullptr) return std::nullopt;
+    if (member->vtableIndex < 0) return std::nullopt;
+    return cn::Optional<int>(member->vtableIndex);
 }
 
 // 分配虚函数表槽位（父类槽位 + 重写覆盖 + 新虚函数追加）
@@ -49,7 +52,7 @@ void SemanticAnalyzer::assignVtable(ClassInfo& info) {
     info.vtableOrder.clear();
     // 从父类继承槽位
     if (!info.baseName.empty()) {
-        const ClassInfo* parentPtr = findClass(info.baseName);
+        const ClassInfo* parentPtr = findClass(info.baseName).value_or(nullptr);
         if (parentPtr != nullptr) {
             const ClassInfo& parent = *parentPtr;
             info.vtableOrder = parent.vtableOrder;
@@ -67,7 +70,7 @@ void SemanticAnalyzer::assignVtable(ClassInfo& info) {
         bool overrideParent = false;
         int parentSlot = -1;
         if (!info.baseName.empty()) {
-            const ClassInfo* parent = findClass(info.baseName);
+            const ClassInfo* parent = findClass(info.baseName).value_or(nullptr);
             while (parent != nullptr) {
                 auto pm = parent->methods.find(mname);
                 if (pm != parent->methods.end() && qualifiesForVirtualSlot(pm->second)) {
@@ -75,21 +78,21 @@ void SemanticAnalyzer::assignVtable(ClassInfo& info) {
                     overrideParent = true;
                     break;
                 }
-                parent = parent->baseName.empty() ? nullptr : findClass(parent->baseName);
+                parent = parent->baseName.empty() ? nullptr : findClass(parent->baseName).value_or(nullptr);
             }
         }
 
         if (overrideParent) {
             // 重写父类虚函数：覆盖同槽位（编译期校验签名匹配）
             const ClassMemberInfo* pm = nullptr;
-            const ClassInfo* parent = findClass(info.baseName);
+            const ClassInfo* parent = findClass(info.baseName).value_or(nullptr);
             while (parent != nullptr) {
                 auto f = parent->methods.find(mname);
                 if (f != parent->methods.end() && qualifiesForVirtualSlot(f->second)) {
                     pm = &f->second;
                     break;
                 }
-                parent = parent->baseName.empty() ? nullptr : findClass(parent->baseName);
+                parent = parent->baseName.empty() ? nullptr : findClass(parent->baseName).value_or(nullptr);
             }
             if (pm != nullptr) {
                 if (pm->type != mi.type || pm->paramTypes != mi.paramTypes) {

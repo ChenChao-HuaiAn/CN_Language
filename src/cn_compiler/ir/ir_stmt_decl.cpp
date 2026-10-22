@@ -268,7 +268,7 @@ void IRGenerator::rewriteGenericInstanceTypeName(VarDecl* node) {
                 if (comma == std::string::npos) break;
                 pos = comma + 1;
             }
-            if (semantic_->findClass(inst) != nullptr) {
+            if (semantic_->findClass(inst).has_value()) {
                 node->typeName = inst;
             }
         }
@@ -433,7 +433,7 @@ void IRGenerator::registerOwnedArrayElems(const DeclGenCtx& ctx) {
         const std::string elemCanon955 =
             types::canonical(types::arrayElemOf(types::canonical(ctx.srcType)));
         if (semantic_->isClassType(elemCanon955)) {
-            const ClassInfo* eci955 = semantic_->findClass(elemCanon955);
+            const ClassInfo* eci955 = semantic_->findClass(elemCanon955).value_or(nullptr);
             if (eci955 != nullptr) {
                 // 942（#942）：无用户析构但含可释放字段的类元素同登记（容器元素
                 //   同案·数组载体面——原仅「有析构」登记使无析构类数组元素资源
@@ -627,7 +627,7 @@ void IRGenerator::storeArrayInitElements(VarDecl* node, InitListExpr* initList,
                 std::string ctorName = static_cast<IdentifierExpr*>(
                     elemCall->callee.get())->name;
                 ctorName = resolveGenericCtorInstanceName(ctorName);
-                const ClassInfo* ciC = semantic_->findClass(ctorName);
+                const ClassInfo* ciC = semantic_->findClass(ctorName).value_or(nullptr);
                 if (ciC != nullptr && !ciC->isAbstract) {
                     const ClassMemberInfo* ctorC =
                         findCtorMember(ciC, ctorName, elemCall);
@@ -708,7 +708,7 @@ bool IRGenerator::genStructInitListDecl(VarDecl* node, const DeclGenCtx& ctx) {
         semantic_ != nullptr) {
         StructInitExpr* init = static_cast<StructInitExpr*>(node->initializer.get());
         const std::string structType = types::canonical(node->typeName);
-        const StructDecl* decl = semantic_->findStruct(structType);
+        const StructDecl* decl = semantic_->findStruct(structType).value_or(nullptr);
         if (decl != nullptr) {
             // 结构体基址 = 变量槽地址
             ir::IRValue base = emitResult(ir::Opcode::AddrOf,
@@ -731,7 +731,7 @@ void IRGenerator::genClassDefaultConstruct(VarDecl* node, const DeclGenCtx& ctx)
     if (node->initializer == nullptr && !node->funcPtr.isFunctionPtr() &&
         semantic_ != nullptr) {
         const std::string canonSrc = types::canonical(ctx.srcType);
-        const ClassInfo* ci = semantic_->findClass(canonSrc);
+        const ClassInfo* ci = semantic_->findClass(canonSrc).value_or(nullptr);
         if (ci != nullptr && !ci->isAbstract) {
             // NewObject：extra = "类名|大小字节"（与 ir_oop_call.cpp 构造调用一致）
             const std::string extra = canonSrc + "|" + std::to_string(ci->totalSize);
@@ -750,7 +750,7 @@ void IRGenerator::genClassDefaultConstruct(VarDecl* node, const DeclGenCtx& ctx)
                 for (const ClassInfo* p = ci; p != nullptr;
                      p = p->baseName.empty()
                              ? nullptr
-                             : semantic_->findClass(p->baseName)) {
+                             : semantic_->findClass(p->baseName).value_or(nullptr)) {
                     layerChain.push_back(p->name);
                 }
                 for (auto rit = layerChain.rbegin(); rit != layerChain.rend();
@@ -800,7 +800,7 @@ void IRGenerator::genStructZeroInit(VarDecl* node, const DeclGenCtx& ctx) {
         //   （拷贝=memcpy 共享空句柄无害·级联活句柄+浅拷共享=双主·142-a 两次泛化
         //   回退教训——不越域）。构造字面量初始化（S{...}）不走本分支。
         const std::string structCanon = types::canonical(ctx.srcType);
-        const StructDecl* sdecl = semantic_->findStruct(structCanon);
+        const StructDecl* sdecl = semantic_->findStruct(structCanon).value_or(nullptr);
         if (sdecl != nullptr && !ctx.unique.empty()) {
             ir::IRValue base = emitResult(
                 ir::Opcode::AddrOf,
@@ -809,14 +809,14 @@ void IRGenerator::genStructZeroInit(VarDecl* node, const DeclGenCtx& ctx) {
             for (const auto& f : sdecl->fields) {
                 const std::string fcanon = types::canonical(f.type);
                 if (!semantic_->isClassType(fcanon)) continue;
-                const ClassInfo* fci = semantic_->findClass(fcanon);
+                const ClassInfo* fci = semantic_->findClass(fcanon).value_or(nullptr);
                 if (fci == nullptr || fci->isAbstract) continue;
                 bool hasDtor = false;
                 for (const auto& mk : fci->methods) {
                     if (mk.second.isDestructor) { hasDtor = true; break; }
                 }
                 if (!hasDtor) continue;                       // 释放链闭合条件
-                if (semantic_->findCopyConstructor(fcanon) == nullptr) continue;
+                if (!semantic_->findCopyConstructor(fcanon).has_value()) continue;
                 const ClassMemberInfo* defCtor = nullptr;     // 构造链闭合条件
                 for (const auto& mk : fci->methods) {
                     if (mk.second.isConstructor && mk.second.hasBody &&

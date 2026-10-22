@@ -177,7 +177,7 @@ bool IRGenerator::memberClassFieldAssign(AssignmentExpr* node, MemberExpr* membe
                         lastExpr_ = fieldAddrC;
                         return true;
                     }
-                    const ClassInfo* ciC = semantic_->findClass(fieldCanonC);
+                    const ClassInfo* ciC = semantic_->findClass(fieldCanonC).value_or(nullptr);
                     const std::string extraC =
                         fieldCanonC + "|" +
                         std::to_string(ciC != nullptr ? ciC->totalSize : 0);
@@ -219,7 +219,7 @@ bool IRGenerator::canEmitClassFieldHandleCopy(const std::string& fieldCanon,
     if (semantic_ == nullptr || valueNode == nullptr) return false;
     if (!semantic_->isClassType(types::canonical(fieldCanon))) return false;
     if (valueNode->getType() != NodeType::IdentifierExpr) return false;
-    if (semantic_->findCopyConstructor(types::canonical(fieldCanon)) == nullptr) {
+    if (!semantic_->findCopyConstructor(types::canonical(fieldCanon)).has_value()) {
         return false;   // 无拷贝构造类字段走 emitStructWholeAssign 728x 合成拷贝
     }
     const std::string srcName = static_cast<IdentifierExpr*>(valueNode)->name;
@@ -231,7 +231,7 @@ bool IRGenerator::emitClassFieldHandleCopy(const ir::IRValue& fieldAddr,
                                            Expr* valueNode,
                                            const SourceLocation& loc) {
     const std::string canon = types::canonical(fieldCanon);
-    const ClassMemberInfo* copyCtor = semantic_->findCopyConstructor(canon);
+    const ClassMemberInfo* copyCtor = semantic_->findCopyConstructor(canon).value_or(nullptr);
     // 1303 甄别（不可达断言·882 处置①）：三个调用点（memberWholeStructAssign
     //   :303 / handleClassMemberAssign:518 / ir_oop_field_assign.cpp:174）均先经
     //   canEmitClassFieldHandleCopy——其内 findCopyConstructor 非空判定
@@ -277,7 +277,7 @@ bool IRGenerator::emitClassFieldHandleCopy(const ir::IRValue& fieldAddr,
     }
     const std::string copyOwner =
         copyCtor->ownerClass.empty() ? canon : copyCtor->ownerClass;
-    const ClassInfo* ci = semantic_->findClass(canon);
+    const ClassInfo* ci = semantic_->findClass(canon).value_or(nullptr);
     const std::string newObjExtra =
         canon + "|" + std::to_string(ci != nullptr ? ci->totalSize : 0);
     ir::IRValue newObj = emitResult(
@@ -339,7 +339,7 @@ bool IRGenerator::memberGenericAssign(AssignmentExpr* node, MemberExpr* member) 
     const std::string objSrcType = memberAssignObjSrcType(member);
     std::string targetType = "i64";
     const StructDecl* decl = (semantic_ != nullptr)
-                                 ? semantic_->findStruct(types::canonical(objSrcType))
+                                 ? semantic_->findStruct(types::canonical(objSrcType)).value_or(nullptr)
                                  : nullptr;
     // 1059：类宿主回退——类字段（b.组[0].数 = v 的成员目标 数 属类 件）不入
     //   结构体表（findStruct 恒 miss → 原 648 误伤；v2 放行=宿主单侧拒绝分叉）。
@@ -470,7 +470,8 @@ bool IRGenerator::memberStringFieldAssign(AssignmentExpr* node, MemberExpr* memb
             //   归一化，旧值释放=用户责任（手动释放 标注成员在 不安全 函数 内
             //   显式处理）。新值写入/来源归一化保留（值仍须可写）。
             const StructDecl* objDeclU = semantic_ != nullptr
-                ? semantic_->findStruct(types::canonical(objSrcType)) : nullptr;
+                ? semantic_->findStruct(types::canonical(objSrcType)).value_or(nullptr)
+                : nullptr;
             const bool unionTarget = objDeclU != nullptr && objDeclU->isUnion;
             if (!unionTarget && isOwnedFieldSlot(objUnique)) {
                 emitFieldStringFreeAt(addr, node->location);  // 旧值幂等释放+清槽
@@ -878,7 +879,7 @@ bool IRGenerator::indexStructElemAssign(AssignmentExpr* node, const ir::IRValue&
                         static_cast<IndexExpr*>(node->target.get())
                             ->object.get())->name));
             if (semantic_->isClassType(tElemCanon) &&
-                (semantic_->findCopyConstructor(tElemCanon) == nullptr ||
+                (!semantic_->findCopyConstructor(tElemCanon).has_value() ||
                  node->value->getType() != NodeType::IdentifierExpr) &&
                 classElemInlineAssign(addr, node->value.get(), tElemCanon,
                                       node->location, allowPreFree961)) {
@@ -932,7 +933,7 @@ bool IRGenerator::assignToCallTarget(AssignmentExpr* node) {
                 !isCopyBuiltinCall(node->value.get()) &&
                 types::canonical(exprSrcType(node->value.get())) ==
                     refCanon923) {
-                const ClassInfo* ciRef923 = semantic_->findClass(refCanon923);
+                const ClassInfo* ciRef923 = semantic_->findClass(refCanon923).value_or(nullptr);
                 if (ciRef923 != nullptr && ciRef923->totalSize > 0) {
                     ir::IRValue obj923 = genExpr(node->value.get());
                     const std::string dtorSym923 =

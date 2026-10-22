@@ -64,7 +64,7 @@ void LinuxX64CodeGenerator::collectClassRefs(
                     const std::size_t dot = inst.extra.find('.');
                     if (dot == std::string::npos) continue;
                     const std::string className = inst.extra.substr(0, dot);
-                    const ClassInfo* ci = semantic_->findClass(className);
+                    const ClassInfo* ci = semantic_->findClass(className).value_or(nullptr);
                     if (ci != nullptr && ci->hasVtable) {
                         vtableSymbols.insert(vtableSymbol(className));
                     }
@@ -72,12 +72,12 @@ void LinuxX64CodeGenerator::collectClassRefs(
                     const std::size_t bar = inst.extra.find('|');
                     const std::string className =
                         (bar == std::string::npos) ? inst.extra : inst.extra.substr(0, bar);
-                    const ClassInfo* ci = semantic_->findClass(className);
+                    const ClassInfo* ci = semantic_->findClass(className).value_or(nullptr);
                     if (ci != nullptr && ci->hasVtable) {
                         vtableSymbols.insert(vtableSymbol(className));
                     }
                 } else if (inst.opcode == ir::Opcode::VtableAddr) {
-                    const ClassInfo* ci = semantic_->findClass(inst.extra);
+                    const ClassInfo* ci = semantic_->findClass(inst.extra).value_or(nullptr);
                     if (ci != nullptr && ci->hasVtable) {
                         vtableSymbols.insert(vtableSymbol(inst.extra));
                     }
@@ -111,7 +111,7 @@ void LinuxX64CodeGenerator::emitNewObject(LinuxX64AsmWriter& writer,
     writer.line("call __cn_object_new");
     // 2. 初始化虚表指针（对象首地址，规格书06-五）
     if (semantic_ != nullptr) {
-        const ClassInfo* ci = semantic_->findClass(className);
+        const ClassInfo* ci = semantic_->findClass(className).value_or(nullptr);
         if (ci != nullptr && ci->hasVtable) {
             emitLoadSymbolAddr(writer, "r10", vtableSymbol(className));
             writer.line("mov qword ptr [rax], r10");
@@ -181,7 +181,7 @@ void LinuxX64CodeGenerator::emitDeleteObject(LinuxX64AsmWriter& writer,
     if (semantic_ != nullptr && !className.empty()) {
         std::string level = className;
         while (!level.empty()) {
-            const ClassInfo* ci = semantic_->findClass(level);
+            const ClassInfo* ci = semantic_->findClass(level).value_or(nullptr);
             if (ci == nullptr) break;
             const ClassMemberInfo* levelDtor = nullptr;
             std::string levelDtorKey;
@@ -234,7 +234,7 @@ void LinuxX64CodeGenerator::emitVirtualCall(LinuxX64AsmWriter& writer,
     }
     int slot = -1;
     if (semantic_ != nullptr) {
-        slot = semantic_->classVtableIndex(className, methodName);
+        slot = semantic_->classVtableIndex(className, methodName).value_or(-1);
     }
     const std::size_t thisIdx = vcFormA ? 1 : 0;
     const std::size_t argCount = inst.operands.size() - thisIdx - 1;

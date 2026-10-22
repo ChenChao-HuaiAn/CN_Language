@@ -53,7 +53,7 @@ ir::IRValue IRGenerator::evalValueCaptureCopy(const std::string& capName,
         ir::IRValue srcSlot = emitResult(
             ir::Opcode::AddrOf,
             {ir::IRValue::var(capUnique, "i64")}, "ptr", capUnique, loc);
-        const ClassInfo* ciC = semantic_->findClass(canon);
+        const ClassInfo* ciC = semantic_->findClass(canon).value_or(nullptr);
         const std::string extra =
             canon + "|" + std::to_string(ciC != nullptr ? ciC->totalSize : 0);
         ir::IRValue newObj = emitResult(

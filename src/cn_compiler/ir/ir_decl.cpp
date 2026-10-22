@@ -407,7 +407,7 @@ void IRGenerator::emitStaticInitsAtEntry() {
             // 无初始化表达式：NewObject + 无参构造（this=新对象），
             //   StorePtr 指针入 .data 槽（指针槽模型，与局部类变量一致）
             if (!semantic_->isClassType(canonStatic)) continue;  // 非类静态无构造需求
-            const ClassInfo* ci = semantic_->findClass(canonStatic);
+            const ClassInfo* ci = semantic_->findClass(canonStatic).value_or(nullptr);
             if (ci != nullptr) {
                 const std::string extra =
                     canonStatic + "|" + std::to_string(ci->totalSize);

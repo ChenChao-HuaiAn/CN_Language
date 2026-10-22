@@ -158,7 +158,7 @@ bool IRGenerator::injectClassElemDestroy(const std::string& canonClass,
     //   76-a：析构被移除（唯一持有者槽）只服务字符串——有析构类该槽的析构由
     //   析构元素 链（向量 删除循环首步）/删除头部/删除尾部 原路径负责，零行为变化
     if (mi.name == "析构被移除") return true;
-    const ClassInfo* eci = semantic_->findClass(elemCanon);
+    const ClassInfo* eci = semantic_->findClass(elemCanon).value_or(nullptr);
     if (eci == nullptr) return true;
     std::string dtorSig;
     for (const auto& mk : eci->methods) {
@@ -176,8 +176,8 @@ bool IRGenerator::injectClassElemDestroy(const std::string& canonClass,
     const std::string thisUnique = lookupVarName("自身");
     if (thisUnique.empty()) return true;
     // 容器字段：数组（T*）/ 元素数量（整64）
-    const int arrayOff = semantic_->classFieldOffset(canonClass, arrayField);
-    const int countOff = semantic_->classFieldOffset(canonClass, "元素数量");
+    const int arrayOff = semantic_->classFieldOffset(canonClass, arrayField).value_or(-1);
+    const int countOff = semantic_->classFieldOffset(canonClass, "元素数量").value_or(-1);
     if (arrayOff < 0 || countOff < 0) return true;
     const int stride = semantic_->typeSizeOf(elemCanon);
     if (stride <= 0) return true;
@@ -230,8 +230,8 @@ void IRGenerator::injectOwnedStrFieldElemDestroy(const std::string& canonClass,
     if (isOwnedStrFieldElemContainer(canonClass)) {
         const std::string thisUniqueE = lookupVarName("自身");
         if (thisUniqueE.empty()) return;
-        const int arrayOffE = semantic_->classFieldOffset(canonClass, arrayField);
-        const int countOffE = semantic_->classFieldOffset(canonClass, "元素数量");
+        const int arrayOffE = semantic_->classFieldOffset(canonClass, arrayField).value_or(-1);
+        const int countOffE = semantic_->classFieldOffset(canonClass, "元素数量").value_or(-1);
         const int strideE = semantic_->typeSizeOf(elemCanon);
         if (arrayOffE < 0 || countOffE < 0 || strideE <= 0) return;
         ir::IRValue selfPtrE = emitResult(ir::Opcode::Load,
@@ -299,14 +299,15 @@ void IRGenerator::injectStrElemDestroy(const std::string& canonClass,
             posS = emitResult(ir::Opcode::Load,
                               {ir::IRValue::var(posUniqueS, "i64")},
                               "i64", posUniqueS, loc);
+        // 静默豁免业务值: 1360 批3A 结果化取值路径——索引字段偏移 miss 即显形返回·非兜底
         } else {
-            const int idxOffS = semantic_->classFieldOffset(canonClass, indexField);
+            const int idxOffS = semantic_->classFieldOffset(canonClass, indexField).value_or(-1);
             if (idxOffS < 0) return;
             ir::IRValue idxAddrS = emitResult(ir::Opcode::FieldAddr, {selfPtrS}, "ptr",
                                               std::to_string(idxOffS), loc);
             posS = emitResult(ir::Opcode::LoadPtr, {idxAddrS}, "i64", "", loc);
         }
-        const int arrayOffS = semantic_->classFieldOffset(canonClass, arrayField);
+        const int arrayOffS = semantic_->classFieldOffset(canonClass, arrayField).value_or(-1);
         if (arrayOffS < 0) return;
         emit(ir::Opcode::Call,
              {selfPtrS,
@@ -330,7 +331,7 @@ void IRGenerator::injectMoveElemDestroy(const std::string& canonClass,
         const std::string srcUniqueM = lookupVarName("源");
         const std::string thisUniqueMv = lookupVarName("自身");
         if (dstUniqueM.empty() || srcUniqueM.empty() || thisUniqueMv.empty()) return;
-        const int arrayOffM = semantic_->classFieldOffset(canonClass, arrayField);
+        const int arrayOffM = semantic_->classFieldOffset(canonClass, arrayField).value_or(-1);
         const int strideM = semantic_->typeSizeOf(elemCanon);
         if (arrayOffM < 0 || strideM <= 0) return;
         ir::IRValue selfPtrMv = emitResult(ir::Opcode::Load,
@@ -389,7 +390,7 @@ void IRGenerator::injectMapElemDestroy(const std::string& canonClass,
         //   字段实际声明类型判定（对 泛型<K=字符串> 实例等价；两判据任一命中）。
         bool kStr = (types::canonicalEquals(kType, "字符串"));
         if (!kStr) {
-            const ClassInfo* ci = semantic_->findClass(canonClass);
+            const ClassInfo* ci = semantic_->findClass(canonClass).value_or(nullptr);
             if (ci != nullptr) {
                 auto fit = ci->fields.find("键数组");
                 if (fit != ci->fields.end() &&
@@ -402,9 +403,9 @@ void IRGenerator::injectMapElemDestroy(const std::string& canonClass,
         if (!kStr && !vStr) return;
         const std::string thisUniqueM = lookupVarName("自身");
         if (thisUniqueM.empty()) return;
-        const int keysOff = semantic_->classFieldOffset(canonClass, "键数组");
-        const int valsOff = semantic_->classFieldOffset(canonClass, "值数组");
-        const int cntOffM = semantic_->classFieldOffset(canonClass, "元素数量");
+        const int keysOff = semantic_->classFieldOffset(canonClass, "键数组").value_or(-1);
+        const int valsOff = semantic_->classFieldOffset(canonClass, "值数组").value_or(-1);
+        const int cntOffM = semantic_->classFieldOffset(canonClass, "元素数量").value_or(-1);
         if (keysOff < 0 || valsOff < 0 || cntOffM < 0) return;
         ir::IRValue selfPtrM = emitResult(ir::Opcode::Load,
                                           {ir::IRValue::var(thisUniqueM, "ptr")},
@@ -490,8 +491,8 @@ void IRGenerator::emitContainerElemWalk(
     ir::IRValue nextPtr = ir::IRValue::reg(-1, "ptr");
     ir::IRValue headIdx = ir::IRValue::reg(-1, "i64");
     if (chain) {
-        const int nextOff = semantic_->classFieldOffset(canonClass, "下一索引");
-        const int headOff = semantic_->classFieldOffset(canonClass, "头索引");
+        const int nextOff = semantic_->classFieldOffset(canonClass, "下一索引").value_or(-1);
+        const int headOff = semantic_->classFieldOffset(canonClass, "头索引").value_or(-1);
         if (nextOff < 0 || headOff < 0) return;
         ir::IRValue nextAddr = emitResult(ir::Opcode::FieldAddr, {selfPtr}, "ptr",
                                           std::to_string(nextOff), loc);
@@ -584,8 +585,9 @@ void IRGenerator::emitSingleElemRelease(
         if (posUnique.empty()) return;
         pos = emitResult(ir::Opcode::Load, {ir::IRValue::var(posUnique, "i64")},
                          "i64", posUnique, loc);
+    // 静默豁免业务值: 1360 批3A 结果化取值路径——索引字段偏移 miss 即显形返回·非兜底
     } else {
-        const int idxOff = semantic_->classFieldOffset(canonClass, indexField);
+        const int idxOff = semantic_->classFieldOffset(canonClass, indexField).value_or(-1);
         if (idxOff < 0) return;
         ir::IRValue idxAddr = emitResult(ir::Opcode::FieldAddr, {selfPtr}, "ptr",
                                          std::to_string(idxOff), loc);

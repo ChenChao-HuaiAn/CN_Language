@@ -47,7 +47,7 @@ std::string SemanticAnalyzer::funcReturnTypeOf(const std::string& funcName) cons
             std::string methodPart = funcName.substr(lastDollar + 1);
             const std::size_t hash = methodPart.find('#');
             if (hash != std::string::npos) methodPart = methodPart.substr(0, hash);
-            const ClassInfo* ci = findClass(classPart);
+            const ClassInfo* ci = findClass(classPart).value_or(nullptr);
             if (ci != nullptr) {
                 const auto mit = ci->methods.find(methodPart);
                 if (mit != ci->methods.end()) return mit->second.type;
@@ -146,7 +146,9 @@ std::string SemanticAnalyzer::funcFirstSigKey(const std::string& name) const {
     }
     return best;
 }
-int SemanticAnalyzer::conversionLevel(const std::string& argTypeRaw,
+// 实参类型到参数类型的转换等级：0=精确 1=宽化 2=隐式转换。
+// 1360 结果化批3A：无值=不可转换（原 -1 哨兵退役——与 0 级「精确」同值域面消除）
+cn::Optional<int> SemanticAnalyzer::conversionLevel(const std::string& argTypeRaw,
                                       const std::string& paramTypeRaw,
                                       bool argIsLiteral) {
     // A-1（引用参数）：按值/按引用双方均剥 & 后比较——引用参数绑定左值实参，
@@ -171,7 +173,7 @@ int SemanticAnalyzer::conversionLevel(const std::string& argTypeRaw,
             isDerivedFrom(arg, param)) {
             return 1;
         }
-        return -1;
+        return std::nullopt;
     }
     // 枚举 -> 整数：按宽化处理（枚举本质为整32，值域不损失）
     if (isEnumType(arg) && !isEnumType(param) && types::isInteger(param)) return 1;
@@ -231,9 +233,11 @@ std::string SemanticAnalyzer::resolveOverload(const std::string& name,
         for (int i = 0; i < given; ++i) {
             const bool lit = argIsLiteral.size() > static_cast<std::size_t>(i) &&
                              argIsLiteral[static_cast<std::size_t>(i)];
-            const int level = conversionLevel(argTypes[i], info.paramTypes[i], lit);
-            if (level < 0) { ok = false; break; }
-            total += level;
+            // 1360 结果化批3A：无值=不可转（has_value 分流）
+            const cn::Optional<int> level =
+                conversionLevel(argTypes[i], info.paramTypes[i], lit);
+            if (!level.has_value()) { ok = false; break; }
+            total += level.value();
         }
         if (!ok) continue;
         if (bestKey.empty() || total < bestTotal) {
@@ -686,7 +690,7 @@ std::string SemanticAnalyzer::genericClassInstanceName(const std::string& typeRa
     const std::string head = core.substr(0, lt);
     // 仅自定义泛型类（向量/映射/链表/栈/队列 等）参与统一；结果/可选 是
     //   合成模板（另有降级路径），函数指针/其他 名<...> 形态不在此列
-    if (findGeneric(head) == nullptr || findGeneric(head)->ast->innerClass == nullptr) {
+    if (!findGeneric(head).has_value() || findGeneric(head).value()->ast->innerClass == nullptr) {
         return type;
     }
     std::string instance = head;

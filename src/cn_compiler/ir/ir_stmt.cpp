@@ -90,7 +90,7 @@ void IRGenerator::visitReturnStmt(ReturnStmt* node) {
             const std::string t = types::canonical(optionalTypeArg(optSrc).value_or(std::string()));
             if (!t.empty()) {
                 const std::string structName = optionalStructName(t);
-                const StructDecl* decl = semantic_->findStruct(structName);
+                const StructDecl* decl = semantic_->findStruct(structName).value_or(nullptr);
                 if (decl != nullptr) {
                     const std::string temp = "__rctor" + std::to_string(varCounter_++);
                     emit(ir::Opcode::Alloca, {}, ir::IRValue::reg(regCounter_++, "ptr"),
@@ -107,7 +107,7 @@ void IRGenerator::visitReturnStmt(ReturnStmt* node) {
                     // 值字段 = 0（可选<T> 值字段偏移 8；按类型写 0）
                     int valOff = 8;
                     for (const auto& f : decl->fields) {
-                        if (f.name == "值") { valOff = semantic_->fieldOffsetOf(decl, f.name); }
+                        if (f.name == "值") { valOff = semantic_->fieldOffsetOf(decl, f.name).value_or(-1); }
                     }
                     ir::IRValue valAddr = emitResult(ir::Opcode::FieldAddr, {base}, "ptr",
                                                      std::to_string(valOff), node->location);
@@ -175,7 +175,7 @@ void IRGenerator::visitReturnStmt(ReturnStmt* node) {
             const std::string elemCanon =
                 types::canonical(function_->returnTypeSrc);
             std::string copyKey;
-            const ClassInfo* eci = semantic_->findClass(elemCanon);
+            const ClassInfo* eci = semantic_->findClass(elemCanon).value_or(nullptr);
             if (eci != nullptr) {
                 for (const auto& mk : eci->methods) {
                     if (mk.second.isCopyConstructor) {

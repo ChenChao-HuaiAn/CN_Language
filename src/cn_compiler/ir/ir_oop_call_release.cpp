@@ -82,7 +82,7 @@ void IRGenerator::genStringFrees() {
                 const std::string elemCanon2 = types::canonical(
                     types::arrayElemOf(st2));
                 if (semantic_->isClassType(elemCanon2)) {
-                    const ClassInfo* eci2 = semantic_->findClass(elemCanon2);
+                    const ClassInfo* eci2 = semantic_->findClass(elemCanon2).value_or(nullptr);
                     if (eci2 != nullptr) {
                         for (const auto& mk : eci2->methods) {
                             if (mk.second.isDestructor) {
@@ -301,7 +301,7 @@ void IRGenerator::genClassDestructorCalls() {
             auto srcIt = oopVarSrcTypes_.find(unique);
             if (srcIt == oopVarSrcTypes_.end()) continue;
             const std::string canon = types::canonical(srcIt->second);
-            const ClassInfo* ci = semantic_->findClass(canon);
+            const ClassInfo* ci = semantic_->findClass(canon).value_or(nullptr);
             if (ci == nullptr) continue;
             // 658②（2026-10-14·#658）：无析构类纳入函数级兜底——原 `!hasDtor
             //   continue` 使无析构类局部在 返回 终止块路径（块出口析构不覆盖）
@@ -561,7 +561,7 @@ void IRGenerator::emitStrArrayElemFreesFor(const std::string& unique) {
     //   空数据指针跳过——p2d 泄漏面收口）。
     const std::string elemCanon955 = types::canonical(types::arrayElemOf(srcType));
     if (semantic_->isClassType(elemCanon955)) {
-        const ClassInfo* eci955 = semantic_->findClass(elemCanon955);
+        const ClassInfo* eci955 = semantic_->findClass(elemCanon955).value_or(nullptr);
         if (eci955 == nullptr) return;
         const ClassMemberInfo* dtor955 = nullptr;
         for (const auto& mk : eci955->methods) {
@@ -721,7 +721,7 @@ void IRGenerator::emitOwnedRecvTempDestruct662(Expr* recvObj,
         }
     }
     if (!recvOwned662) return;
-    if (semantic_->findClass(rt662) == nullptr) return;   // 类查询兜底（不静默析构）
+    if (!semantic_->findClass(rt662).has_value()) return;   // 非类类型无析构面（miss 显形跳过）
     if (classDestructorSymbolKey(rt662).empty()) {
         ir::IRValue nonNull662 = emitResult(
             ir::Opcode::Ne, {thisArg, ir::IRValue::constant("0", "ptr")}, "i1",

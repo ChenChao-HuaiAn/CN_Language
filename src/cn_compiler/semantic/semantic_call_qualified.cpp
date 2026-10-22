@@ -62,8 +62,8 @@ bool SemanticAnalyzer::collectQualifiedCallInfo(const MemberExpr& mem,
     info.qualified = info.moduleName + "::" + info.pathPrefix + mem.memberName;
     // isTypeName：首段是类型名（结构体/枚举/类）→ 对象构造/枚举访问面，非模块调用
     info.isTypeName = isStructType(info.moduleName) || isEnumType(info.moduleName) ||
-                      findClass(info.moduleName) != nullptr ||
-                      findInterface(info.moduleName) != nullptr;
+                      findClass(info.moduleName).has_value() ||
+                      findInterface(info.moduleName).has_value();
     // 先取函数名到 info（重写面将销毁旧 MemberExpr，mem 悬垂，不可再取！）
     // Task 6.1：模块限定泛型调用 核心.交换<整32>(...)——memberName
     //   已含泛型实参（交换<整32>），限定名携带 <...> 供下方单态化识别。
@@ -105,7 +105,7 @@ bool SemanticAnalyzer::collectQualifiedCallInfo(const MemberExpr& mem,
     //   模块归属过滤由 resolveOverload 按 moduleFilter 完成——符号不属
     //   该模块时决议失败报「未找到匹配的函数」，归属校验单一归属）
     info.userFuncExists =
-        hasFunctionName(funcBaseName) || findGeneric(funcBaseName) != nullptr;
+        hasFunctionName(funcBaseName) || findGeneric(funcBaseName).has_value();
     // prelude 例外（第 4 层）：内置限定名（数学::平方根 等 24 个）无需
     //   显式导入即可用（核心 包 prelude）；用户模块公开函数优先。
     info.builtinQualified = hasFunctionName(info.qualified) ||

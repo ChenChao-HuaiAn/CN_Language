@@ -42,7 +42,9 @@ const ClassMemberInfo* IRGenerator::findClassMethod(const std::string& className
                                                     const std::string& methodName,
                                                     std::string& ownerClass) {
     if (semantic_ == nullptr) return nullptr;
-    return semantic_->lookupClassMember(className, methodName, ownerClass);
+    // 1360 结果化批3A：语义层 lookupClassMember 已 Optional 化——本薄包装保持
+    //   ir 层既有指针签名（消费面已在批2 收口），value_or(nullptr) 显形透传
+    return semantic_->lookupClassMember(className, methodName, ownerClass).value_or(nullptr);
 }
 
 // 118（929）：引用返回方法的读值分叉判据（semantic 判定聚合内联）——聚合 T
@@ -110,8 +112,8 @@ void IRGenerator::emitClassMethod(const std::string& className, const ClassMembe
     const std::size_t dollar = className.find('$');
     if (dollar != std::string::npos && semantic_ != nullptr) {
         const std::string genName = className.substr(0, dollar);
-        const GenericInfo* ginfo = semantic_->findGeneric(genName);
-        const ClassInfo* ci = semantic_->findClass(className);
+        const GenericInfo* ginfo = semantic_->findGeneric(genName).value_or(nullptr);
+        const ClassInfo* ci = semantic_->findClass(className).value_or(nullptr);
         if (ginfo != nullptr && ci != nullptr) {
             genericTypeParams_.clear();
             // H8 根治（2026-08-25）：读 instantiateGeneric 存储的实参列表
@@ -232,7 +234,7 @@ void IRGenerator::emitClassMethod(const std::string& className, const ClassMembe
     // P3-20：父类构造初始化列表（函数 子(...) : 父(实参)）——在构造体首部调用父构造
     //   （this=自身指针；父构造符号 = 父类名$父构造sigKey，与定义侧一致）
     if (mi.isConstructor && !member->ctorInitBase.empty() && semantic_ != nullptr) {
-        const ClassInfo* parentI = semantic_->findClass(member->ctorInitBase);
+        const ClassInfo* parentI = semantic_->findClass(member->ctorInitBase).value_or(nullptr);
         if (parentI != nullptr) {
             // D23（248-a）：父构造匹配按「实参个数 + defaultCount 可补全」——
             //   带默认参数的父构造少参初始化列表（: 甲() 匹配 甲(整32 n = 9)）
@@ -394,9 +396,9 @@ void IRGenerator::emitBaseCtorChain(const std::string& className,
                                     const ir::IRValue& thisVal,
                                     const SourceLocation& loc) {
     if (semantic_ == nullptr) return;
-    const ClassInfo* ci = semantic_->findClass(className);
+    const ClassInfo* ci = semantic_->findClass(className).value_or(nullptr);
     if (ci == nullptr || ci->baseName.empty()) return;
-    const ClassInfo* anc = semantic_->findClass(ci->baseName);
+    const ClassInfo* anc = semantic_->findClass(ci->baseName).value_or(nullptr);
     while (anc != nullptr) {
         bool hasOwnCtor = false;
         const ClassMemberInfo* zeroArg = nullptr;
@@ -446,7 +448,7 @@ void IRGenerator::emitBaseCtorChain(const std::string& className,
             return;  // 首个自有构造祖先负责更上层（其序言递归注入）
         }
         anc = anc->baseName.empty() ? nullptr
-                                    : semantic_->findClass(anc->baseName);
+                                    : semantic_->findClass(anc->baseName).value_or(nullptr);
     }
 }
 
@@ -466,7 +468,7 @@ void IRGenerator::emitBaseCopyChain(const ClassMember* member) {
     if (semantic_ == nullptr || member == nullptr || member->params.empty()) {
         return;
     }
-    const ClassInfo* ci = semantic_->findClass(currentClass_);
+    const ClassInfo* ci = semantic_->findClass(currentClass_).value_or(nullptr);
     if (ci == nullptr || ci->baseName.empty()) return;
     const std::string thisUnique = lookupVarName("自身");
     const std::string otherUnique =
@@ -484,7 +486,7 @@ void IRGenerator::emitBaseCopyChain(const ClassMember* member) {
                                      "ptr", otherUnique, loc);
     ir::IRValue srcObj = emitResult(ir::Opcode::LoadPtr, {srcSlot}, "ptr", "",
                                     loc);
-    const ClassInfo* anc = semantic_->findClass(ci->baseName);
+    const ClassInfo* anc = semantic_->findClass(ci->baseName).value_or(nullptr);
     while (anc != nullptr) {
         const ClassMemberInfo* cctor = nullptr;
         for (const auto& mk : anc->methods) {
@@ -511,7 +513,7 @@ void IRGenerator::emitBaseCopyChain(const ClassMember* member) {
         // 无自有拷贝构造：拷该祖先自有字段（派生上下文偏移）并继续上溯
         emitOwnedFieldsCopy(thisPtr, srcObj, currentClass_, anc->name, loc);
         anc = anc->baseName.empty() ? nullptr
-                                    : semantic_->findClass(anc->baseName);
+                                    : semantic_->findClass(anc->baseName).value_or(nullptr);
     }
 }
 
@@ -524,7 +526,9 @@ void IRGenerator::emitOwnedFieldsCopy(const ir::IRValue& thisPtr,
                                       const std::string& ownerClass,
                                       const SourceLocation& loc) {
     const ClassInfo* ci =
-        semantic_ != nullptr ? semantic_->findClass(className) : nullptr;
+        semantic_ != nullptr
+            ? semantic_->findClass(className).value_or(nullptr)
+            : nullptr;
     if (ci == nullptr) return;
     for (const auto& fname : ci->fieldOrder) {
         const auto f = ci->fields.find(fname);
@@ -533,7 +537,7 @@ void IRGenerator::emitOwnedFieldsCopy(const ir::IRValue& thisPtr,
                                        ? className
                                        : f->second.ownerClass;
         if (fOwner != ownerClass) continue;
-        const int off = semantic_->classFieldOffset(className, fname);
+        const int off = semantic_->classFieldOffset(className, fname).value_or(-1);
         if (off < 0) continue;
         const std::string canon =
             types::canonical(classFieldType(className, fname));
@@ -552,7 +556,7 @@ void IRGenerator::emitOwnedFieldsCopy(const ir::IRValue& thisPtr,
             const std::string copyKey = classCopyCtorSymbolKey(canon);
             if (!copyKey.empty()) {
                 // 深拷：NewObject + 拷贝构造（引用实参=源字段槽地址）
-                const ClassInfo* fci = semantic_->findClass(canon);
+                const ClassInfo* fci = semantic_->findClass(canon).value_or(nullptr);
                 const std::string extra =
                     canon + "|" +
                     std::to_string(fci != nullptr ? fci->totalSize : 0);
@@ -595,7 +599,7 @@ void IRGenerator::injectFieldCascadeConstruct(const ClassMember* member) {
     if (semantic_ == nullptr || member == nullptr) return;
     ir::IRFunction* fn = function_;
     if (fn == nullptr || fn->blocks.empty()) return;
-    const ClassInfo* ci = semantic_->findClass(currentClass_);
+    const ClassInfo* ci = semantic_->findClass(currentClass_).value_or(nullptr);
     if (ci == nullptr) return;
     const std::string thisUnique = lookupVarName("自身");
     if (thisUnique.empty()) return;
@@ -617,7 +621,7 @@ void IRGenerator::cascadeConstructFields(const std::string& className,
                                          const ir::IRValue& obj,
                                          const SourceLocation& loc) {
     if (semantic_ == nullptr) return;
-    const ClassInfo* ci = semantic_->findClass(className);
+    const ClassInfo* ci = semantic_->findClass(className).value_or(nullptr);
     if (ci == nullptr) return;
     for (const auto& fname : ci->fieldOrder) {
         const auto f = ci->fields.find(fname);
@@ -629,7 +633,7 @@ void IRGenerator::cascadeConstructFields(const std::string& className,
         const std::string ftype = classFieldType(className, fname);
         const std::string fcanon = types::canonical(ftype);
         if (ftype.empty() || !semantic_->isClassType(fcanon)) continue;
-        const ClassInfo* fci = semantic_->findClass(fcanon);
+        const ClassInfo* fci = semantic_->findClass(fcanon).value_or(nullptr);
         if (fci == nullptr || fci->isAbstract) continue;
         // 严格无参构造=默认构造（与 genVarDecl H7 链同判定口径）
         const ClassMemberInfo* defCtor = nullptr;
@@ -642,7 +646,7 @@ void IRGenerator::cascadeConstructFields(const std::string& className,
             }
         }
         if (defCtor == nullptr) continue;  // 无默认构造：字段=空句柄（现状语义）
-        const int offset = semantic_->classFieldOffset(className, fname);
+        const int offset = semantic_->classFieldOffset(className, fname).value_or(-1);
         if (offset < 0) continue;
         ir::IRValue addr = emitResult(ir::Opcode::FieldAddr, {obj}, "ptr",
                                       std::to_string(offset), loc);
@@ -675,7 +679,7 @@ void IRGenerator::visitClassDecl(ClassDecl* node) {
     // P2-16：按 模块::类 限定键解析（跨模块同名类各自取自己；裸名会被基地回退误中前者）
     const ClassInfo* ci = semantic_->findClass(
         node->moduleName.empty() ? node->name
-                                 : node->moduleName + "::" + node->name);
+                                 : node->moduleName + "::" + node->name).value_or(nullptr);
     if (ci == nullptr) return;
     for (const auto& mk : ci->methods) {
         const ClassMemberInfo& mi = mk.second;

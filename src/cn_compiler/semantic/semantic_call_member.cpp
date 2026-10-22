@@ -52,7 +52,7 @@ bool SemanticAnalyzer::checkInterfaceMethodCall(CallExpr* node, MemberExpr* mem,
                                                 const std::string& methodName) {
             const std::string ifaceName = canonicalType(
                 types::isPointer(objType) ? types::pointeeOf(objType) : objType);
-            const InterfaceInfo* iface = findInterface(ifaceName);
+            const InterfaceInfo* iface = findInterface(ifaceName).value_or(nullptr);
             if (iface != nullptr) {
                 // 缺陷根治（第九十三轮，2026-09-13 B2 同族扫面）：接口名.方法()
                 //   ——接口方法须经接口对象调用（receiver 为接口类型名时无对象
@@ -161,7 +161,7 @@ bool SemanticAnalyzer::checkMemberCallCore(CallExpr* node, MemberExpr* mem,
         //   星号（盒子$整64*——合成名保留尾 *），尾 * 非对象指针语义——原名
         //   查类命中即用原名；真指针（盒子$整64**）不命中类表自然落入剥分支。
         clsName =
-            (findClass(objTypeForClass) != nullptr)
+            (findClass(objTypeForClass).has_value())
                 ? canonicalType(objTypeForClass)
                 : (types::isPointer(objTypeForClass)
                        ? canonicalType(types::pointeeOf(objTypeForClass))
@@ -173,12 +173,12 @@ bool SemanticAnalyzer::checkMemberCallCore(CallExpr* node, MemberExpr* mem,
         //   表查找类型ID 消费同一物化名=全绿·宿主单侧拒）。与 visitMemberExpr
         //   T95/551-a 同款物化步行（先例对齐；幂等：非泛型/已物化/类表已命中
         //   路径零行为变化）。
-        if (findClass(clsName) == nullptr) {
+        if (!findClass(clsName).has_value()) {
             const std::string materialized =
                 resolveGenericTypeName(clsName, node->location);
             if (materialized != clsName) clsName = canonicalType(materialized);
         }
-        method = lookupClassMember(clsName, methodName, ownerClass);
+        method = lookupClassMember(clsName, methodName, ownerClass).value_or(nullptr);
         // 122（928·用户裁决乙）：父类.构造名()/自身.构造名() 限定构造调用统一
         //   拒绝——构造函数不是方法成员（规格 06§七 父类. 仅限方法）；无参构造
         //   因 signatureKey 空参形态（键=纯名）按名查找巧合命中曾被放行、带参
@@ -316,8 +316,10 @@ bool SemanticAnalyzer::checkInstanceMethodCall(CallExpr* node, MemberExpr* mem,
             const std::string contextClass = contextClassStack_.empty()
                                                  ? ""
                                                  : contextClassStack_.back();
-            checkAccess(*findClass(ownerClass), *method, contextClass, node->location,
-                        "方法");
+            // 1360 结果化批3A：ownerClass=lookupClassMember 回填的成员所属类名，
+            //   必在类表（内部一致性）；无值=编译器缺陷显形（value 坏值响亮终止）
+            checkAccess(*findClass(ownerClass).value(), *method, contextClass,
+                        node->location, "方法");
             lastType_ = method->type;
             // A2：泛型实例化类成员（ownerClass 含 $，如 向量$字符串）不置位
             //   ——T 来源返回=借用（容器元素访问），保守不登记

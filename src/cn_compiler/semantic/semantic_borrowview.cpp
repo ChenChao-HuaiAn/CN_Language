@@ -112,7 +112,8 @@ bool SemanticAnalyzer::resolveContainerRef(const Expr* e, std::string& outKey,
     if (t == NodeType::IdentifierExpr) {
         outKey = static_cast<const IdentifierExpr*>(e)->name;
         if (outKey.empty()) return false;
-        outVarId = lookupVarId(outKey, nullptr);
+        // 1360 结果化批3A：nullopt（不可见）→ -1 显形回落三态编码（outVarId 下游协议不变）
+        outVarId = lookupVarId(outKey, nullptr).value_or(-1);
         return true;
     }
     if (t == NodeType::MemberExpr || t == NodeType::IndexExpr ||
@@ -124,41 +125,44 @@ bool SemanticAnalyzer::resolveContainerRef(const Expr* e, std::string& outKey,
         buildPathText(e, path);
         if (path.empty() || path.find('?') != std::string::npos) return false;
         outKey = path;
-        outVarId = lookupVarId(base, nullptr);
+        // 1360 结果化批3A：nullopt（不可见）→ -1 显形回落三态编码（outVarId 下游协议不变）
+        outVarId = lookupVarId(base, nullptr).value_or(-1);
         return true;
     }
     return false;
 }
 
 // 按名解析活跃借出登记（与 lookupVar 同序：从内到外第一层含该名的层——内层同名的
-//   重新声明=新变量，遮蔽语义正确）。SIZE_MAX=未命中。
-std::size_t SemanticAnalyzer::findActiveBorrowView(const std::string& name) const {
+//   重新声明=新变量，遮蔽语义正确）。
+// 1360 结果化批3A：无值=未命中（原 SIZE_MAX 哨兵退役——与合法索引值域重叠面消除）
+cn::Optional<std::size_t> SemanticAnalyzer::findActiveBorrowView(const std::string& name) const {
     if (borrowViews_.empty() || borrowViewScopes_.empty()) {
-        return static_cast<std::size_t>(-1);
+        return std::nullopt;
     }
     for (std::size_t i = borrowViewScopes_.size(); i-- > 0;) {
         auto it = borrowViewScopes_[i].find(name);
         if (it != borrowViewScopes_[i].end()) return it->second;
     }
-    return static_cast<std::size_t>(-1);
+    return std::nullopt;
 }
 
 // 变量身份 ID：沿作用域链解析（与 lookupVar 同序——内层遮蔽正确）。
-//   返回 -1=不可见（未声明/已出作用域），0=可见但无 ID（未追踪绑定，如全局层），
-//   >0=身份 ID。ID 由 declareVar 分配（同名不同声明=不同 ID，防跨作用域误配）。
-int SemanticAnalyzer::lookupVarId(const std::string& name,
+// 1360 结果化批3A（三态显形）：无值=不可见（未声明/已出作用域——原 -1 档），
+//   0=可见但无 ID（未追踪绑定，如全局层——原 0 档保留显形），>0=身份 ID。
+//   ID 由 declareVar 分配（同名不同声明=不同 ID，防跨作用域误配）。
+cn::Optional<int> SemanticAnalyzer::lookupVarId(const std::string& name,
                                   int* outScopeIndex) const {
     for (std::size_t i = scopes_.size(); i-- > 0;) {
         if (scopes_[i].count(name) == 0) continue;
         if (outScopeIndex != nullptr) *outScopeIndex = static_cast<int>(i);
         if (i < scopeVarIds_.size()) {
             auto it = scopeVarIds_[i].find(name);
-            if (it != scopeVarIds_[i].end()) return it->second;
+            if (it != scopeVarIds_[i].end()) return cn::Optional<int>(it->second);
         }
-        return 0;
+        return cn::Optional<int>(0);
     }
     if (outScopeIndex != nullptr) *outScopeIndex = -1;
-    return -1;
+    return std::nullopt;
 }
 
 // 方法调用点登记（visitCallExpr 方法分支）：
@@ -206,7 +210,8 @@ void SemanticAnalyzer::registerBorrowView(const std::string& viewVar,
                                          const SourceLocation& loc) {
     if (!lastExprIsBorrowView_) return;
     int layerIdx = -1;
-    lookupVarId(viewVar, &layerIdx);
+    // 1360 结果化批3A：登记面只取出参层索引（返回值原语义丢弃——(void) 显式化）
+    (void)lookupVarId(viewVar, &layerIdx);
     if (layerIdx < 0 ||
         static_cast<std::size_t>(layerIdx) >= borrowViewScopes_.size()) {
         layerIdx = static_cast<int>(scopes_.size()) - 1;   // 兜底：当前层
@@ -243,9 +248,10 @@ void SemanticAnalyzer::registerBorrowView(const std::string& viewVar,
 //     = 容器先亡（析构已释放元素），立即报错（位置=使用点，体验优于函数尾）。
 void SemanticAnalyzer::noteBorrowViewUse(const std::string& name,
                                         const SourceLocation& loc) {
-    const std::size_t idx = findActiveBorrowView(name);
-    if (idx == static_cast<std::size_t>(-1) || idx >= borrowViews_.size()) return;
-    BorrowViewInfo& bv = borrowViews_[idx];
+    // 1360 结果化批3A：无值=未命中（has_value 分流）
+    const cn::Optional<std::size_t> idx = findActiveBorrowView(name);
+    if (!idx.has_value() || idx.value() >= borrowViews_.size()) return;
+    BorrowViewInfo& bv = borrowViews_[idx.value()];
     if (loc.getLine() > bv.lastUseLine) bv.lastUseLine = loc.getLine();
     if (bv.reported) return;
     // 容器可见性判定：全局静态=进程生命周期（永远可见，豁免）；
@@ -258,7 +264,8 @@ void SemanticAnalyzer::noteBorrowViewUse(const std::string& name,
         globalStatics_.count(bv.container) > 0 ||
         globalStaticsQualified_.count(bv.container) > 0;
     if (!isGlobalStatic) {
-        const int curId = lookupVarId(bv.container, nullptr);
+        // 1360 结果化批3A：nullopt（不可见）→ -1 显形回落（「容器先亡」判定保序）
+        const int curId = lookupVarId(bv.container, nullptr).value_or(-1);
         if (curId == -1) {
             bv.reported = true;
             diagnostics_.report(
@@ -299,11 +306,11 @@ void SemanticAnalyzer::checkBorrowViewCallArgs(CallExpr* node) {
         if (a == nullptr || a->getType() != NodeType::IdentifierExpr) continue;
         const std::string viewName =
             static_cast<const IdentifierExpr*>(a)->name;
-        const std::size_t vi = findActiveBorrowView(viewName);
-        if (vi == static_cast<std::size_t>(-1) || vi >= borrowViews_.size()) {
+        const cn::Optional<std::size_t> vi = findActiveBorrowView(viewName);
+        if (!vi.has_value() || vi.value() >= borrowViews_.size()) {
             continue;
         }
-        if (borrowViews_[vi].reported) continue;
+        if (borrowViews_[vi.value()].reported) continue;
         // 同调用其他实参中查找同源容器
         for (std::size_t j = 0; j < node->arguments.size(); ++j) {
             if (j == i) continue;
@@ -312,17 +319,17 @@ void SemanticAnalyzer::checkBorrowViewCallArgs(CallExpr* node) {
             if (!resolveContainerRef(node->arguments[j].get(), ckey, cid)) {
                 continue;
             }
-            if (ckey != borrowViews_[vi].container) continue;
-            if (borrowViews_[vi].containerVarId > 0 && cid > 0 &&
-                cid != borrowViews_[vi].containerVarId) {
+            if (ckey != borrowViews_[vi.value()].container) continue;
+            if (borrowViews_[vi.value()].containerVarId > 0 && cid > 0 &&
+                cid != borrowViews_[vi.value()].containerVarId) {
                 continue;
             }
-            borrowViews_[vi].reported = true;
+            borrowViews_[vi.value()].reported = true;
             diagnostics_.report(
                 DiagnosticLevel::Error, node->location,
-                "实参 '" + viewName + "' 是容器 '" + borrowViews_[vi].container +
+                "实参 '" + viewName + "' 是容器 '" + borrowViews_[vi.value()].container +
                     "' 的借出视图（绑定 行" +
-                    std::to_string(borrowViews_[vi].bindLine) +
+                    std::to_string(borrowViews_[vi.value()].bindLine) +
                     "），与该容器同时作为实参传入——被调函数若修改容器该视图即悬垂；"
                     "须先 字符串复制(...) 取拥有副本"
                     "（Rust 借用检查器同类拒绝：同调用容器与其视图不可并存）");
@@ -453,10 +460,10 @@ void SemanticAnalyzer::checkReturnAddressEscape(ReturnStmt* node) {
     //   （与 v2 遮蔽判据 是当前类实例字段名633 等效）。
     auto isCurClassField633 = [&](const std::string& nm) -> bool {
         if (nm.empty() || contextClassStack_.empty()) return false;
-        const ClassInfo* ci = findClass(contextClassStack_.back());
+        const ClassInfo* ci = findClass(contextClassStack_.back()).value_or(nullptr);
         while (ci != nullptr) {
             if (ci->fields.find(nm) != ci->fields.end()) return true;
-            ci = ci->baseName.empty() ? nullptr : findClass(ci->baseName);
+            ci = ci->baseName.empty() ? nullptr : findClass(ci->baseName).value_or(nullptr);
         }
         return false;
     };

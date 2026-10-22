@@ -140,7 +140,7 @@ void SemanticAnalyzer::visitIdentifierExpr(IdentifierExpr* node) {
                         // （出参惯用法：填充(数组,数) 后读元素放行；38_tool 铁证）
                         defInitMarkInitPlace(node->name, "");
                     }
-                } else if (findStruct(varType) != nullptr) {
+                } else if (findStruct(varType).has_value()) {
                     // 结构体：实参=引用语义（可能被写——初始化函数信息字段(函数信息)
                     //   填充形态铁证）→ 裸引用=地址逃逸通道，保守整体置位；
                     //   对象侧（s.横 的 s）由成员读精确判定。返回位值消费=漏报
@@ -319,7 +319,7 @@ bool SemanticAnalyzer::checkGenericInstantiation(IdentifierExpr* node) {
     if (genLt != std::string::npos && genGt != std::string::npos &&
         genGt > genLt) {
         const std::string head = node->name.substr(0, genLt);
-        const GenericInfo* gi = findGeneric(head);
+        const GenericInfo* gi = findGeneric(head).value_or(nullptr);
         if (gi != nullptr) {
             const std::string inner =
                 node->name.substr(genLt + 1, genGt - genLt - 1);
@@ -455,7 +455,7 @@ void SemanticAnalyzer::visitStructInitExpr(StructInitExpr* node) {
     // A-2（crate 分桶）：结构体初始化类型名按当前模块解析（多模块同名 -> 限定键）
     node->typeName = resolveTypeName(node->typeName, currentModuleName_, node->location);
     const std::string structType = canonicalType(node->typeName);
-    const StructDecl* decl = findStruct(structType);
+    const StructDecl* decl = findStruct(structType).value_or(nullptr);
     if (decl == nullptr) {
         diagnostics_.report(DiagnosticLevel::Error, node->location,
                             "结构体初始化引用了未声明的类型 '" + structType + "'");
@@ -467,7 +467,7 @@ void SemanticAnalyzer::visitStructInitExpr(StructInitExpr* node) {
     for (auto& fieldPair : node->fields) {
         const std::string& fieldName = fieldPair.first;
         // 字段存在性
-        int offset = fieldOffsetOf(decl, fieldName);
+        int offset = fieldOffsetOf(decl, fieldName).value_or(-1);
         if (offset < 0) {
             diagnostics_.report(DiagnosticLevel::Error, node->location,
                                 "结构体 '" + decl->name + "' 没有字段 '" + fieldName + "'");
@@ -538,7 +538,7 @@ void SemanticAnalyzer::visitStructInitExpr(StructInitExpr* node) {
     lastType_ = structType;
 }
 void SemanticAnalyzer::visitSelfExpr(SelfExpr* node) {
-    const ClassInfo* cls = currentContextClass();
+    const ClassInfo* cls = currentContextClass().value_or(nullptr);
     if (cls == nullptr) {
         diagnostics_.report(DiagnosticLevel::Error, node->location,
                             "'自身' 只能出现在类方法体内");
@@ -556,7 +556,7 @@ void SemanticAnalyzer::visitSelfExpr(SelfExpr* node) {
     lastType_ = cls->name + "*";
 }
 void SemanticAnalyzer::visitSuperExpr(SuperExpr* node) {
-    const ClassInfo* cls = currentContextClass();
+    const ClassInfo* cls = currentContextClass().value_or(nullptr);
     if (cls == nullptr || cls->baseName.empty()) {
         diagnostics_.report(DiagnosticLevel::Error, node->location,
                             "'父类' 只能出现在有父类的类方法体内");
@@ -759,7 +759,7 @@ void SemanticAnalyzer::visitSizeofExpr(SizeofExpr* node) {
                                canon.find('*') != std::string::npos ||
                                canon.find('[') != std::string::npos ||
                                isStructType(canon) || isEnumType(canon) ||
-                               findClass(canon) != nullptr ||
+                               findClass(canon).has_value() ||
                                canon.rfind("结果<", 0) == 0 ||
                                canon.rfind("可选<", 0) == 0;
             if (!known) {

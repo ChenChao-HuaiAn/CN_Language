@@ -31,7 +31,7 @@ void SemanticAnalyzer::reportAbstractArrayValueDecl(const std::string& type,
                                 "——请以实现类实例初始化");
         return;
     }
-    const ClassInfo* ci = findClass(elem);
+    const ClassInfo* ci = findClass(elem).value_or(nullptr);
     if (ci != nullptr && ci->isAbstract) {
         diagnostics_.report(DiagnosticLevel::Error, loc,
                             "不能实例化抽象类 '" + elem + "'（含未实现抽象方法·数组 '" +
@@ -67,7 +67,7 @@ void SemanticAnalyzer::reportAbstractValueDecl(const std::string& type,
                                 "为值形态复制构造）——请以实现类实例初始化");
         return;
     }
-    const ClassInfo* ci = findClass(type);
+    const ClassInfo* ci = findClass(type).value_or(nullptr);
     if (ci != nullptr && ci->isAbstract) {
         diagnostics_.report(DiagnosticLevel::Error, loc,
                             "不能实例化抽象类 '" + type + "'（含未实现抽象方法·" +

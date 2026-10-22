@@ -301,7 +301,7 @@ bool IRGenerator::globalStaticClassAssign(AssignmentExpr* node, IdentifierExpr* 
         if (rhsIsStatic) rhsSrc = semantic_->globalStaticType(rhsName);
         if (semantic_->isClassType(types::canonical(rhsSrc))) {
             const std::string canonTgt = types::canonical(stType);
-            const ClassInfo* ci = semantic_->findClass(canonTgt);
+            const ClassInfo* ci = semantic_->findClass(canonTgt).value_or(nullptr);
             if (ci != nullptr) {
                 const std::string extra = canonTgt + "|" +
                                           std::to_string(ci->totalSize);
@@ -310,7 +310,7 @@ bool IRGenerator::globalStaticClassAssign(AssignmentExpr* node, IdentifierExpr* 
                     {ir::IRValue::constant(canonTgt, "ptr")},
                     "ptr", extra, node->location);
                 const ClassMemberInfo* copyCtor =
-                    semantic_->findCopyConstructor(canonTgt);
+                    semantic_->findCopyConstructor(canonTgt).value_or(nullptr);
                 bool copied = false;
                 if (copyCtor != nullptr) {
                     const std::string copyOwner = copyCtor->ownerClass.empty()
@@ -356,7 +356,7 @@ bool IRGenerator::globalStaticClassAssign(AssignmentExpr* node, IdentifierExpr* 
                     for (const ClassInfo* lvl = ci; lvl != nullptr;
                          lvl = lvl->baseName.empty()
                                    ? nullptr
-                                   : semantic_->findClass(lvl->baseName)) {
+                                   : semantic_->findClass(lvl->baseName).value_or(nullptr)) {
                         emitOwnedFieldsCopy(newObj, value, canonTgt, lvl->name,
                                             node->location);
                     }
@@ -595,7 +595,7 @@ bool IRGenerator::identifierStructWholeAssign(AssignmentExpr* node, IdentifierEx
         //   而非 CopyStruct 浅拷贝（含裸指针结构体浅拷贝析构双释放 0xC0000374）。
         //   无拷贝构造的纯值结构体保持 CopyStruct 浅拷贝（零开销）。
         const ClassMemberInfo* copyCtor =
-            semantic_->findCopyConstructor(types::canonical(targetSrcType));
+            semantic_->findCopyConstructor(types::canonical(targetSrcType)).value_or(nullptr);
         if (copyCtor != nullptr) {
             std::string copyOwner;
             // 沿继承链找到拷贝构造的所属类（ownerClass）

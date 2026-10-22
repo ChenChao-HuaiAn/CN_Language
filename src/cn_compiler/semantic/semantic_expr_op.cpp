@@ -361,11 +361,11 @@ void SemanticAnalyzer::checkConstMethodMemberAssign(AssignmentExpr* node) {
             // （字段已入方法作用域，故不能用 lookupVar 失败判断；直接查类字段表）
             const std::string& name =
                 static_cast<IdentifierExpr*>(node->target.get())->name;
-            const ClassInfo* cls = currentContextClass();
+            const ClassInfo* cls = currentContextClass().value_or(nullptr);
             if (cls != nullptr) {
                 std::string owner;
                 const ClassMemberInfo* member =
-                    lookupClassMember(cls->name, name, owner);
+                    lookupClassMember(cls->name, name, owner).value_or(nullptr);
                 if (member != nullptr && !member->isStatic) {
                     diagnostics_.report(
                         DiagnosticLevel::Error, node->location,

@@ -61,10 +61,11 @@ void SemanticAnalyzer::registerGenerics(Program* node) {
     }
 }
 
-// 查询泛型声明（未找到返回nullptr）
-const GenericInfo* SemanticAnalyzer::findGeneric(const std::string& name) const {
+// 查询泛型声明（1360 结果化批3A：无值=未命中——原 nullptr 哨兵退役）
+cn::Optional<const GenericInfo*> SemanticAnalyzer::findGeneric(const std::string& name) const {
     auto it = generics_.find(name);
-    return (it == generics_.end()) ? nullptr : &it->second;
+    return (it == generics_.end()) ? cn::Optional<const GenericInfo*>(std::nullopt)
+                                   : cn::Optional<const GenericInfo*>(&it->second);
 }
 
 // 303 泛型实参推导：混合形态逐参数对齐（317-a 纯 T 参判据的放宽——293 呈报#5）。
@@ -170,7 +171,7 @@ std::string SemanticAnalyzer::resolveGenericTypeName(const std::string& typeName
         return typeName;
     }
     const std::string head = typeName.substr(0, lt);
-    if (findGeneric(head) == nullptr) {
+    if (!findGeneric(head).has_value()) {
         // Task 6.1（栈<T> 方法体内 结果<T,整32> 局部变量）：模板类型内部类型参数
         //   替换——head 非泛型类（结果/可选 等合成模板），但内部实参 T 是当前
         //   泛型上下文的类型参数，须替换为实参（整32）后返回（结果<整32,整32>）。
@@ -367,7 +368,7 @@ void SemanticAnalyzer::checkGenericConstraint(const std::string& argType,
                             "泛型约束引用了未声明的接口 '" + constraint + "'");
         return;
     }
-    const ClassInfo* cls = findClass(types::canonical(argType));
+    const ClassInfo* cls = findClass(types::canonical(argType)).value_or(nullptr);
     if (cls == nullptr) {
         diagnostics_.report(DiagnosticLevel::Error, loc,
                             "泛型类型实参 '" + argType + "' 不是类类型，无法满足接口约束 '" +
@@ -380,7 +381,7 @@ void SemanticAnalyzer::checkGenericConstraint(const std::string& argType,
         for (const auto& iface : cur->interfaces) {
             if (iface == constraint) return;  // 已实现
         }
-        cur = cur->baseName.empty() ? nullptr : findClass(cur->baseName);
+        cur = cur->baseName.empty() ? nullptr : findClass(cur->baseName).value_or(nullptr);
     }
     diagnostics_.report(DiagnosticLevel::Error, loc,
                         "类 '" + cls->name + "' 未实现接口 '" + constraint +
@@ -400,7 +401,7 @@ void SemanticAnalyzer::checkGenericConstraint(const std::string& argType,
 std::string SemanticAnalyzer::instantiateGeneric(
     const std::string& className, std::vector<std::string> args,
     const SourceLocation& loc) {
-    const GenericInfo* gen = findGeneric(className);
+    const GenericInfo* gen = findGeneric(className).value_or(nullptr);
     if (gen == nullptr) return "";  // 非泛型（由调用方决定是否报错）
 
     // A-2（crate 分桶）：类型实参按当前模块解析——多模块同名类型实参（记录）
@@ -581,7 +582,7 @@ std::string SemanticAnalyzer::instantiateGeneric(
         }
         // 继承并入（父类字段/方法；父类须已解析）
         if (!info.baseName.empty()) {
-            const ClassInfo* parentPtr = findClass(info.baseName);
+            const ClassInfo* parentPtr = findClass(info.baseName).value_or(nullptr);
             if (parentPtr != nullptr) {
                 const ClassInfo& parent = *parentPtr;
                 for (const auto& fname : parent.fieldOrder) {

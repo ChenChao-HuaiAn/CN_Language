@@ -109,37 +109,41 @@ const TypeLookupIndex& SemanticAnalyzer::ensureTypeLookupIndex() const {
     idx.classesSize = classesSize;
     return idx;
 }
-const StructDecl* SemanticAnalyzer::findStructInModule(const std::string& module,
+// 1360 结果化批3A：无值=未命中（原 nullptr 哨兵退役）
+cn::Optional<const StructDecl*> SemanticAnalyzer::findStructInModule(const std::string& module,
                                                        const std::string& name) const {
-    if (program_ == nullptr) return nullptr;
+    if (program_ == nullptr) return std::nullopt;
     const TypeLookupIndex& idx = ensureTypeLookupIndex();
     const std::string_view nameView(name);
     if (module.empty()) {
         const auto it = idx.structByName.find(nameView);
-        return (it == idx.structByName.end()) ? nullptr : it->second;
+        return (it == idx.structByName.end()) ? cn::Optional<const StructDecl*>(std::nullopt)
+                                              : cn::Optional<const StructDecl*>(it->second);
     }
     const auto mit = idx.structByModule.find(std::string_view(module));
     if (mit != idx.structByModule.end()) {
         const auto it = mit->second.find(nameView);
         if (it != mit->second.end()) return it->second;
     }
-    return nullptr;
+    return std::nullopt;
 }
-const EnumDecl* SemanticAnalyzer::findEnumInModule(const std::string& module,
+// 1360 结果化批3A：无值=未命中（原 nullptr 哨兵退役）
+cn::Optional<const EnumDecl*> SemanticAnalyzer::findEnumInModule(const std::string& module,
                                                    const std::string& name) const {
-    if (program_ == nullptr) return nullptr;
+    if (program_ == nullptr) return std::nullopt;
     const TypeLookupIndex& idx = ensureTypeLookupIndex();
     const std::string_view nameView(name);
     if (module.empty()) {
         const auto it = idx.enumByName.find(nameView);
-        return (it == idx.enumByName.end()) ? nullptr : it->second;
+        return (it == idx.enumByName.end()) ? cn::Optional<const EnumDecl*>(std::nullopt)
+                                            : cn::Optional<const EnumDecl*>(it->second);
     }
     const auto mit = idx.enumByModule.find(std::string_view(module));
     if (mit != idx.enumByModule.end()) {
         const auto it = mit->second.find(nameView);
         if (it != mit->second.end()) return it->second;
     }
-    return nullptr;
+    return std::nullopt;
 }
 
 namespace {
@@ -266,7 +270,7 @@ bool SemanticAnalyzer::isTriviallyCopyable(const std::string& type,
     }
     if (isClassType(canon)) return false;   // 类对象（析构/拷贝构造语义=拥有型）
     if (isStructType(canon)) {
-        const StructDecl* decl = findStruct(canon);
+        const StructDecl* decl = findStruct(canon).value_or(nullptr);
         if (decl == nullptr) return false;
         visiting.push_back(canon);
         for (const auto& f : decl->fields) {
@@ -345,7 +349,7 @@ bool SemanticAnalyzer::isPortableType(const std::string& type, std::string& offe
     }
     // 条文③④：结构体/联合体=全字段递归（显式「不安全 可搬运」豁免放行）
     if (isStructType(canon)) {
-        const StructDecl* decl = findStruct(canon);
+        const StructDecl* decl = findStruct(canon).value_or(nullptr);
         if (decl == nullptr) return true;   // 未识别 → 保守放行（豁免窗口）
         if (decl->explicitPortable) return true;
         for (const auto& f : decl->fields) {
@@ -365,7 +369,7 @@ bool SemanticAnalyzer::isPortableType(const std::string& type, std::string& offe
     }
     // 条文③④：类=全字段递归（含继承并入字段·ClassInfo.fields；豁免读声明 AST）
     if (isClassType(canon)) {
-        const ClassInfo* ci = findClass(canon);
+        const ClassInfo* ci = findClass(canon).value_or(nullptr);
         if (ci == nullptr) return true;   // 未识别 → 保守放行（豁免窗口）
         if (ci->ast != nullptr && ci->ast->explicitPortable) return true;
         for (const auto& f : ci->fieldOrder) {
@@ -447,8 +451,9 @@ bool SemanticAnalyzer::isEnumType(const std::string& type) const {
     const std::string_view lookupName = leadingSepForm ? nameView.substr(2) : nameView;
     return idx.enumByName.count(lookupName) != 0;
 }
-const StructDecl* SemanticAnalyzer::findStruct(const std::string& name) const {
-    if (program_ == nullptr) return nullptr;
+// 1360 结果化批3A：无值=未命中（原 nullptr 哨兵退役）
+cn::Optional<const StructDecl*> SemanticAnalyzer::findStruct(const std::string& name) const {
+    if (program_ == nullptr) return std::nullopt;
     // A-2：限定键（甲::记录）按模块精确匹配；裸名匹配任一模块（既有行为）
     const TypeLookupIndex& idx = ensureTypeLookupIndex();
     const std::string_view nameView(name);
@@ -469,7 +474,7 @@ const StructDecl* SemanticAnalyzer::findStruct(const std::string& name) const {
         const auto it = idx.structByName.find(lookupName);
         if (it != idx.structByName.end()) found = it->second;
     }
-    if (found != nullptr) return found;
+    if (found != nullptr) return cn::Optional<const StructDecl*>(found);
     // 1155：合成体前缀门（同 isStructType——避免普通类型的解析分配）
     if (name.rfind("结果<", 0) == 0 && isResultType(name)) {
         const std::vector<std::string> args = resultTypeArgs(name).value_or((std::vector<std::string>()));
@@ -479,7 +484,7 @@ const StructDecl* SemanticAnalyzer::findStruct(const std::string& name) const {
             const auto it = idx.structByName.find(std::string_view(sname));
             if (it != idx.structByName.end()) return it->second;
         }
-        return nullptr;  // 结果<...> 形态但实参拆分失败=非合成体（原实现同落空）
+        return std::nullopt;  // 结果<...> 形态但实参拆分失败=非合成体（原实现同落空）
     }
     if (name.rfind("可选<", 0) == 0 && isOptionalType(name)) {
         const std::string t = types::canonical(optionalTypeArg(name).value_or(std::string()));
@@ -489,10 +494,11 @@ const StructDecl* SemanticAnalyzer::findStruct(const std::string& name) const {
             if (it != idx.structByName.end()) return it->second;
         }
     }
-    return nullptr;
+    return std::nullopt;
 }
-const EnumDecl* SemanticAnalyzer::findEnum(const std::string& name) const {
-    if (program_ == nullptr) return nullptr;
+// 1360 结果化批3A：无值=未命中（原 nullptr 哨兵退役）
+cn::Optional<const EnumDecl*> SemanticAnalyzer::findEnum(const std::string& name) const {
+    if (program_ == nullptr) return std::nullopt;
     // A-2：限定键（甲::颜色）按模块精确匹配；裸名匹配任一模块（既有行为）
     const TypeLookupIndex& idx = ensureTypeLookupIndex();
     const std::string_view nameView(name);
@@ -506,15 +512,16 @@ const EnumDecl* SemanticAnalyzer::findEnum(const std::string& name) const {
             const auto it = mit->second.find(nameView.substr(sep + 2));
             if (it != mit->second.end()) return it->second;
         }
-        return nullptr;
+        return std::nullopt;
     }
     const std::string_view lookupName = leadingSepForm ? nameView.substr(2) : nameView;
     const auto it = idx.enumByName.find(lookupName);
-    return (it == idx.enumByName.end()) ? nullptr : it->second;
+    return (it == idx.enumByName.end()) ? cn::Optional<const EnumDecl*>(std::nullopt)
+                                        : cn::Optional<const EnumDecl*>(it->second);
 }
 bool SemanticAnalyzer::enumValueOf(const std::string& enumName, const std::string& memberName,
                                    std::int64_t& outValue) const {
-    const EnumDecl* decl = findEnum(enumName);
+    const EnumDecl* decl = findEnum(enumName).value_or(nullptr);
     if (decl == nullptr) return false;
     for (const auto& m : decl->members) {
         if (m.name == memberName) {
@@ -546,7 +553,7 @@ int SemanticAnalyzer::typeSizeOf(const std::string& typeRaw) const {
     if (isFuncPtrType(type)) return 8;
     // 阶段3（Task 3.5）：结果<T,E>/可选<T> 已降级为合成结构体，按结构体布局
     if (isResultType(type) || isOptionalType(type)) {
-        const StructDecl* lowered = findStruct(type);
+        const StructDecl* lowered = findStruct(type).value_or(nullptr);
         if (lowered != nullptr) {
             // Task 6.1（ensureLoweredType 布局时机缺陷）：合成结构体 totalSize 可能
             //   因联合体布局未及计算而错（1 字节）——结果 最小 12 字节（布尔1+对齐+
@@ -569,7 +576,7 @@ int SemanticAnalyzer::typeSizeOf(const std::string& typeRaw) const {
         if (isResultType(type)) return 16;
         return typeSizeOf(optionalTypeArg(type).value_or(std::string())) + 1;
     }
-    const StructDecl* decl = findStruct(type);
+    const StructDecl* decl = findStruct(type).value_or(nullptr);
     if (decl != nullptr) return decl->totalSize;
     // 类类型（Task 3.1）：实例大小（对象实宽口径——NewObject 堆块/类内联布局
     //   消费面依赖）。「类作为值=8 字节句柄」的口径**只在结构体布局的字段放置
@@ -577,7 +584,7 @@ int SemanticAnalyzer::typeSizeOf(const std::string& typeRaw) const {
     //   体前缀，因与 793「映射字段偏移双表二义」域耦合引发 91/94 回归而回退；
     //   793 随 798/799 销项后推广为全部结构体。typeSizeOf(类) 本身保持实宽
     //   口径不动——NewObject 分配/类内联布局消费面依赖）。
-    const ClassInfo* cls = findClass(type);
+    const ClassInfo* cls = findClass(type).value_or(nullptr);
     if (cls != nullptr) return cls->totalSize;
     // 031（#1075）：绑定方法值=栈上两槽 {this, code}（16 字节·对齐 8——
     //   plans/031 §二·①）。第一版放置骨架禁字段/全局/静态/容器，本登记服务
@@ -623,15 +630,15 @@ int SemanticAnalyzer::typeAlignOf(const std::string& typeRaw) const {
     if (types::isMethodValueType(type)) return 8;
     // 阶段3（Task 3.5/3.1）：结果/可选 合成结构体、类类型
     if (isResultType(type) || isOptionalType(type)) {
-        const StructDecl* lowered = findStruct(type);
+        const StructDecl* lowered = findStruct(type).value_or(nullptr);
         if (lowered != nullptr) return lowered->align;
         return 8;  // 防御：未降级按8对齐
     }
     // 类类型：对象实宽口径（与 typeSizeOf 类分派同步恢复——句柄口径只在
     //   结果/可选合成结构体布局处特判·058-ⅡA 缩面·详见 computeLayout 注）。
-    const ClassInfo* cls = findClass(type);
+    const ClassInfo* cls = findClass(type).value_or(nullptr);
     if (cls != nullptr) return cls->align;
-    const StructDecl* decl = findStruct(type);
+    const StructDecl* decl = findStruct(type).value_or(nullptr);
     if (decl != nullptr) return decl->align;
     if (type == "整128" || type == "正128") return 16;
     if (type == "整64" || type == "正64" || type == "浮64" || type == "字符串") return 8;
@@ -639,10 +646,11 @@ int SemanticAnalyzer::typeAlignOf(const std::string& typeRaw) const {
     if (type == "整16" || type == "正16") return 2;
     return 1;  // 整8/正8/布尔
 }
-int SemanticAnalyzer::fieldOffsetOf(const StructDecl* decl, const std::string& fieldName) const {
+// 1360 结果化批3A：无值=无此字段（原 -1 哨兵退役）
+cn::Optional<int> SemanticAnalyzer::fieldOffsetOf(const StructDecl* decl, const std::string& fieldName) const {
     for (const auto& f : decl->fields) {
         if (f.name == fieldName) {
-            return decl->isUnion ? 0 : f.offset;
+            return decl->isUnion ? cn::Optional<int>(0) : cn::Optional<int>(f.offset);
         }
     }
     // 合成结构体（结果$T$E / 可选$T）：映射源码成员名到合成字段名
@@ -661,18 +669,19 @@ int SemanticAnalyzer::fieldOffsetOf(const StructDecl* decl, const std::string& f
                 // 宿主缺陷根治（2026-08-25）：联合体偏移按真实布局（computeLayout
                 //   ——整64/结构体 联合体偏移 8、整32 偏移 4），不再强制 8——原强制
                 //   8 使 结果<整32,整32>（联合体真实偏移 4）写/读偏移错位（坏.错误 读 0）。
-                return decl->isUnion ? 0 : f.offset;
+                return decl->isUnion ? cn::Optional<int>(0) : cn::Optional<int>(f.offset);
             }
         }
     }
-    return -1;
+    return std::nullopt;
 }
-StructDecl* SemanticAnalyzer::findMutableStruct(const std::string& name) {
-    if (program_ == nullptr) return nullptr;
+// 1360 结果化批3A：无值=未命中（原 nullptr 哨兵退役）
+cn::Optional<StructDecl*> SemanticAnalyzer::findMutableStruct(const std::string& name) {
+    if (program_ == nullptr) return std::nullopt;
     for (auto& s : program_->structs) {
         if (s && s->name == name) return s.get();
     }
-    return nullptr;
+    return std::nullopt;
 }
 
 void SemanticAnalyzer::computeLayout(StructDecl* decl) {
@@ -726,7 +735,7 @@ void SemanticAnalyzer::computeLayout(StructDecl* decl) {
                 continue;  // 指针/函数指针/空类型：typeSizeOf 恒真值
             }
             if (isEnumType(t280)) continue;  // 枚举恒 4
-            const StructDecl* sd280 = findStruct(t280);
+            const StructDecl* sd280 = findStruct(t280).value_or(nullptr);
             if (sd280 != nullptr && !sd280->layoutComputed) {
                 // 920（任务 920·丙案「合成体就绪化递归」）：依赖「已注册未布局」时
                 //   先递归就绪化依赖闭包（载荷结构体/嵌套合成体/联合体——声明序
@@ -739,7 +748,7 @@ void SemanticAnalyzer::computeLayout(StructDecl* decl) {
                 //   同结构体拷贝仍按真值 16/24 宽度写 12 步长槽=越界写邻槽
                 //   （内存安全面）。就绪化后消费点查到真值，与 v2 8+max 模型
                 //   零分叉对齐。
-                if (StructDecl* fm280 = findMutableStruct(sd280->name)) {
+                if (StructDecl* fm280 = findMutableStruct(sd280->name).value_or(nullptr)) {
                     computeLayout(fm280);
                 }
                 if (!sd280->layoutComputed) {
@@ -771,8 +780,8 @@ void SemanticAnalyzer::computeLayout(StructDecl* decl) {
                 //   无该面：>8B 载荷必经 findStruct 真值分支·兜 8 无错布局可能）。
                 const std::string fc280 = types::canonical(f.type);
                 int fs280 = 8;
-                if (findClass(fc280) == nullptr &&
-                    (findStruct(fc280) != nullptr || types::typeSize(fc280).has_value())) {
+                if (!findClass(fc280).has_value() &&
+                    (findStruct(fc280).has_value() || types::typeSize(fc280).has_value())) {
                     fs280 = typeSizeOf(f.type);   // 结构体/内置标量=真值（整128 16B 面）
                 }
                 const int rounded280 = (fs280 + 7) / 8 * 8;
@@ -794,8 +803,8 @@ void SemanticAnalyzer::computeLayout(StructDecl* decl) {
                 // 658 伞批：载荷槽类句柄特判的降级期豁免（同联合体分支·774 红根治）
                 const std::string fc280 = types::canonical(f.type);
                 int fs280 = 8;
-                if (findClass(fc280) == nullptr &&
-                    (findStruct(fc280) != nullptr || types::typeSize(fc280).has_value())) {
+                if (!findClass(fc280).has_value() &&
+                    (findStruct(fc280).has_value() || types::typeSize(fc280).has_value())) {
                     fs280 = typeSizeOf(f.type);   // 结构体/内置标量=真值
                 }
                 const int rounded280 = (fs280 + 7) / 8 * 8;
@@ -822,7 +831,7 @@ void SemanticAnalyzer::computeLayout(StructDecl* decl) {
         //   ready280 判定的数组剥离口径（types::arrayElemOf）保持同一。
         std::string fieldCore = canonicalType(field.type);
         while (types::isArray(fieldCore)) fieldCore = types::arrayElemOf(fieldCore);
-        if (const StructDecl* fd = findStruct(fieldCore)) {
+        if (const StructDecl* fd = findStruct(fieldCore).value_or(nullptr)) {
             if (layoutVisiting_.count(fd->name)) {
                 diagnostics_.report(
                     DiagnosticLevel::Error, decl->location,
@@ -833,7 +842,7 @@ void SemanticAnalyzer::computeLayout(StructDecl* decl) {
                 continue;  // 本字段大小按 0 处理：错误已报，防连锁误报
             }
             if (!fd->layoutComputed) {
-                if (StructDecl* fm = findMutableStruct(fd->name)) {
+                if (StructDecl* fm = findMutableStruct(fd->name).value_or(nullptr)) {
                     computeLayout(fm);
                 }
             }

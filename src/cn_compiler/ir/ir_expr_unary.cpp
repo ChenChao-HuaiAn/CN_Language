@@ -130,14 +130,16 @@ void IRGenerator::visitUnaryExpr(UnaryExpr* node) {
             int valueOff = 8;
             bool valueOffFound648 = false;  // 648：偏移查表命中置真
             const StructDecl* pdecl =
-                (semantic_ != nullptr) ? semantic_->findStruct(structName) : nullptr;
+                (semantic_ != nullptr)
+                    ? semantic_->findStruct(structName).value_or(nullptr)
+                    : nullptr;
             if (pdecl != nullptr) {
                 for (const auto& pf : pdecl->fields) {
                     const bool want = isResultType(ptype)
                                           ? (pf.name == "错误值联合")
                                           : (pf.name == "值");
                     if (want) {
-                        valueOff = semantic_->fieldOffsetOf(pdecl, pf.name);
+                        valueOff = semantic_->fieldOffsetOf(pdecl, pf.name).value_or(-1);
                         valueOffFound648 = valueOff >= 0;
                         break;
                     }
@@ -173,14 +175,16 @@ void IRGenerator::visitUnaryExpr(UnaryExpr* node) {
                         types::canonical(optionalTypeArg(operandType).value_or(std::string())));
                 }
                 const StructDecl* opdecl =
-                    (!opStruct.empty()) ? semantic_->findStruct(opStruct) : nullptr;
+                    (!opStruct.empty())
+                        ? semantic_->findStruct(opStruct).value_or(nullptr)
+                        : nullptr;
                 if (opdecl != nullptr) {
                     for (const auto& pf : opdecl->fields) {
                         const bool want = isResultType(operandType)
                                               ? (pf.name == "错误值联合")
                                               : (pf.name == "值");
                         if (want) {
-                            readOff = semantic_->fieldOffsetOf(opdecl, pf.name);
+                            readOff = semantic_->fieldOffsetOf(opdecl, pf.name).value_or(-1);
                             readOffFound648 = readOff >= 0;
                             break;
                         }
@@ -214,7 +218,7 @@ void IRGenerator::visitUnaryExpr(UnaryExpr* node) {
             emit(ir::Opcode::Alloca, {}, temp, tempName, "ptr", node->location);
             // 按结果/可选合成结构体实际大小登记槽（ensureLoweredType 防御：
             //   泛型实例化方法体内首次出现的类型可能在 lower 后才注册）
-            if (semantic_ != nullptr && semantic_->findStruct(structName) == nullptr) {
+            if (semantic_ != nullptr && !semantic_->findStruct(structName).has_value()) {
                 semantic_->ensureLoweredType(ptype);
             }
             registerVarSlots(tempName, structName);

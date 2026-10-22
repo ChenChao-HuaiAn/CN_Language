@@ -63,7 +63,7 @@ void IRGenerator::collectOwnedStrFields(const std::string& canonRaw, int base, i
     const bool isOptional = canon.rfind("可选$", 0) == 0;
     if (isResult || isOptional) {
         if (cond >= 0) return;  // 嵌套条件（外层已有条件）不展开（诚实边界，宁漏勿错）
-        const StructDecl* decl = semantic_->findStruct(canon);
+        const StructDecl* decl = semantic_->findStruct(canon).value_or(nullptr);
         if (decl != nullptr) {
             std::string valueType;
             if (isResult) {
@@ -79,9 +79,9 @@ void IRGenerator::collectOwnedStrFields(const std::string& canonRaw, int base, i
                 valueType = types::canonical(optionalTypeArg(canonRaw).value_or(std::string()));
             }
             if (valueType == "字符串") {
-                const int vo = semantic_->fieldOffsetOf(decl, "值");
+                const int vo = semantic_->fieldOffsetOf(decl, "值").value_or(-1);
                 const int co =
-                    semantic_->fieldOffsetOf(decl, isResult ? "正常" : "有值");
+                    semantic_->fieldOffsetOf(decl, isResult ? "正常" : "有值").value_or(-1);
                 if (vo >= 0 && co >= 0) {
                     OwnedStrField fld{base + vo, base + co};
                     fld.viaUnion = viaUnion;
@@ -99,7 +99,7 @@ void IRGenerator::collectOwnedStrFields(const std::string& canonRaw, int base, i
     }
     // 类类型：不展开（类对象字段归 ~类 级联/容器 RAII——本轮面外）
     if (semantic_->isClassType(canon)) return;
-    const StructDecl* decl = semantic_->findStruct(canon);
+    const StructDecl* decl = semantic_->findStruct(canon).value_or(nullptr);
     if (decl == nullptr) return;
 
     visiting.push_back(canon);
@@ -184,7 +184,7 @@ void IRGenerator::collectOwnedStrFields(const std::string& canonRaw, int base, i
             if (unionScope || decl->isUnion) {
                 continue;
             }
-            const ClassInfo* fci = semantic_->findClass(fieldCanon);
+            const ClassInfo* fci = semantic_->findClass(fieldCanon).value_or(nullptr);
             bool hasDtor = false;
             if (fci != nullptr) {
                 for (const auto& mk : fci->methods) {
@@ -195,7 +195,7 @@ void IRGenerator::collectOwnedStrFields(const std::string& canonRaw, int base, i
                 }
             }
             if (!hasDtor) continue;
-            if (semantic_->findCopyConstructor(fieldCanon) == nullptr) continue;
+            if (!semantic_->findCopyConstructor(fieldCanon).has_value()) continue;
             OwnedStrField fld;
             fld.offset = base + f.offset;
             fld.condOffset = cond;
@@ -615,7 +615,9 @@ void IRGenerator::emitOwnedStrFieldPostCopy(const ir::IRValue& dstBase,
                                                       "ptr", std::to_string(f.offset),
                                                       loc);
                 const ClassInfo* ci =
-                    semantic_ != nullptr ? semantic_->findClass(f.classCanon) : nullptr;
+                    semantic_ != nullptr
+                        ? semantic_->findClass(f.classCanon).value_or(nullptr)
+                        : nullptr;
                 const std::string extra =
                     f.classCanon + "|" +
                     std::to_string(ci != nullptr ? ci->totalSize : 0);
@@ -795,7 +797,7 @@ void IRGenerator::genCopyBuiltin(CallExpr* node, const SourceLocation& loc) {
         }
         const std::string copyKey = classCopyCtorSymbolKey(type);
         if (copyKey.empty()) return;  // 语义层已拒绝，防御
-        const ClassInfo* ciC = semantic_->findClass(type);
+        const ClassInfo* ciC = semantic_->findClass(type).value_or(nullptr);
         const std::string extra =
             type + "|" + std::to_string(ciC != nullptr ? ciC->totalSize : 0);
         ir::IRValue newObj = emitResult(
@@ -832,7 +834,7 @@ void IRGenerator::genCopyBuiltin(CallExpr* node, const SourceLocation& loc) {
 //   codegen 的解析口径一致）。
 std::string IRGenerator::classDestructorSymbolKey(const std::string& canon) const {
     if (semantic_ == nullptr) return "";
-    const ClassInfo* ci = semantic_->findClass(canon);
+    const ClassInfo* ci = semantic_->findClass(canon).value_or(nullptr);
     if (ci == nullptr) return "";
     for (const auto& mk : ci->methods) {
         if (mk.second.isDestructor) {
@@ -847,7 +849,7 @@ std::string IRGenerator::classDestructorSymbolKey(const std::string& canon) cons
 // 拷贝构造符号键（findCopyConstructor；空=无拷贝构造——收集面已排除，防御空返回）
 std::string IRGenerator::classCopyCtorSymbolKey(const std::string& canon) const {
     if (semantic_ == nullptr) return "";
-    const ClassMemberInfo* cc = semantic_->findCopyConstructor(canon);
+    const ClassMemberInfo* cc = semantic_->findCopyConstructor(canon).value_or(nullptr);
     if (cc == nullptr) return "";
     const std::string owner = cc->ownerClass.empty() ? canon : cc->ownerClass;
     return methodSymbolKey(owner, cc->sigKey);

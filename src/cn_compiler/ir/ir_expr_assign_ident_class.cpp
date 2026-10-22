@@ -34,7 +34,7 @@ bool IRGenerator::identifierClassCopyAssign(AssignmentExpr* node, IdentifierExpr
         const std::string canonValue = types::canonical(valueSrcType);
         if (semantic_->isClassType(canonTarget) &&
             semantic_->isClassType(canonValue)) {
-            const ClassInfo* ci = semantic_->findClass(canonTarget);
+            const ClassInfo* ci = semantic_->findClass(canonTarget).value_or(nullptr);
             if (ci != nullptr && !isCompoundAssignOp(node->op)) {
                 // 源对象指针 = Load 源变量槽（类变量槽存对象指针）
                 ir::IRValue srcObj = genExpr(node->value.get());
@@ -51,7 +51,7 @@ bool IRGenerator::identifierClassCopyAssign(AssignmentExpr* node, IdentifierExpr
                 //   初始化路径、结构体赋值路径一致；byRef ABI：源为标识符变量
                 //   时传 源变量槽地址（&甲），体内经 byRef 解引用得源对象指针。
                 const ClassMemberInfo* copyCtor =
-                    semantic_->findCopyConstructor(canonTarget);
+                    semantic_->findCopyConstructor(canonTarget).value_or(nullptr);
                 if (copyCtor != nullptr) {
                     const std::string copyOwner = copyCtor->ownerClass.empty()
                                                       ? canonTarget
@@ -87,7 +87,7 @@ bool IRGenerator::identifierClassCopyAssign(AssignmentExpr* node, IdentifierExpr
                     for (const ClassInfo* lvl = ci; lvl != nullptr;
                          lvl = lvl->baseName.empty()
                                    ? nullptr
-                                   : semantic_->findClass(lvl->baseName)) {
+                                   : semantic_->findClass(lvl->baseName).value_or(nullptr)) {
                         emitOwnedFieldsCopy(newObj, srcObj, canonTarget,
                                             lvl->name, node->location);
                     }
@@ -145,7 +145,7 @@ bool IRGenerator::identifierRefReturnClassCopyAssign(
     const std::string canonTarget =
         types::canonical(lookupSrcType(ident->name));
     if (!isRefReturnClassValueCall(call, canonTarget)) return false;
-    const ClassInfo* ci = semantic_->findClass(canonTarget);
+    const ClassInfo* ci = semantic_->findClass(canonTarget).value_or(nullptr);
     if (ci == nullptr || ci->totalSize <= 0) return false;
     ir::IRValue newObj = genRefReturnClassDeepCopy(node->value.get(),
                                                    canonTarget, ci);
@@ -224,7 +224,7 @@ bool IRGenerator::isClassOverloadProductRhs(AssignmentExpr* node,
     //   的 findClassMethod(canonLeft, opSym) 同口径）
     std::string owner;
     const ClassMemberInfo* m =
-        semantic_->lookupClassMember(canonTarget, opSym, owner);
+        semantic_->lookupClassMember(canonTarget, opSym, owner).value_or(nullptr);
     return m != nullptr && !m->isRefReturn;
 }
 
@@ -427,7 +427,7 @@ bool IRGenerator::handleClassMemberLvalue(MemberExpr* node, ir::IRValue& outAddr
                 canonObjField + "'（#1303）");
         return false;
     }
-    const int offset = semantic_->classFieldOffset(canonObjField, node->memberName);
+    const int offset = semantic_->classFieldOffset(canonObjField, node->memberName).value_or(-1);
     // 1303 甄别（不可达断言·882 处置①）：偏移 miss 不可达——①语义层拒绝
     //   「实例.静态成员」（semantic_expr_access.cpp:272-278 报错），进 IR 的
     //   实例路径字段必非静态；②classFieldType（ir_oop_field.cpp:20-30）与
@@ -642,7 +642,7 @@ bool IRGenerator::handleClassMemberAssign(MemberExpr* target, Expr* valueExpr,
     if (!isCompoundAssignOp(op) && semantic_->isClassType(
         types::canonical(fieldType))) {
         const ClassInfo* fci543 = semantic_->findClass(
-            types::canonical(fieldType));
+            types::canonical(fieldType)).value_or(nullptr);
         bool fHasDtor543 = false;
         if (fci543 != nullptr) {
             for (const auto& mk543 : fci543->methods) {
@@ -708,7 +708,7 @@ bool IRGenerator::indexClassCallProductAssign(AssignmentExpr* node) {
     if (types::canonical(exprSrcType(node->value.get())) != elemCanon) {
         return false;
     }
-    const ClassInfo* ci = semantic_->findClass(elemCanon);
+    const ClassInfo* ci = semantic_->findClass(elemCanon).value_or(nullptr);
     if (ci == nullptr || ci->totalSize <= 0) return false;
     // ① 产物求值（新堆对象句柄：LUE 类返回/构造 NewObject——所有权随返回值
     //    移交调用方；自用引用右值 表[0] = 取(表[0]) 由引用返回面排除）
@@ -767,7 +767,7 @@ bool IRGenerator::classElemInlineAssign(const ir::IRValue& dstAddr, Expr* valueN
         valueKind != NodeType::TernaryExpr) {
         return false;
     }
-    const ClassInfo* ci = semantic_->findClass(canon);
+    const ClassInfo* ci = semantic_->findClass(canon).value_or(nullptr);
     // 1303 甄别（不可达断言·882 处置①）：isClassType ≡ findClass != nullptr
     //   机械等价（class_resolver.cpp:163-165 直定义），上方 isClassType 判定
     //   已真 ⇒ 本查询必非空；到达即内部缺陷，报内部错误显形；返回 false
@@ -803,7 +803,7 @@ bool IRGenerator::classElemInlineAssign(const ir::IRValue& dstAddr, Expr* valueN
     if (allowPreFree && !dtorKey.empty()) {
         emit(ir::Opcode::Call, {dstAddr}, ir::IRValue(), dtorKey, "void", loc);
     }
-    const ClassMemberInfo* copyCtor = semantic_->findCopyConstructor(canon);
+    const ClassMemberInfo* copyCtor = semantic_->findCopyConstructor(canon).value_or(nullptr);
     if (copyCtor != nullptr) {
         const std::string copyOwner =
             copyCtor->ownerClass.empty() ? canon : copyCtor->ownerClass;

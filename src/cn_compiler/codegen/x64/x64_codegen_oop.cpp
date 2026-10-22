@@ -66,7 +66,7 @@ void X64CodeGenerator::collectClassRefs(
                     const std::size_t dot = inst.extra.find('.');
                     if (dot == std::string::npos) continue;
                     const std::string className = inst.extra.substr(0, dot);
-                    const ClassInfo* ci = semantic_->findClass(className);
+                    const ClassInfo* ci = semantic_->findClass(className).value_or(nullptr);
                     if (ci != nullptr && ci->hasVtable) {
                         vtableSymbols.insert(vtableSymbol(className));
                     }
@@ -75,13 +75,13 @@ void X64CodeGenerator::collectClassRefs(
                     const std::size_t bar = inst.extra.find('|');
                     const std::string className =
                         (bar == std::string::npos) ? inst.extra : inst.extra.substr(0, bar);
-                    const ClassInfo* ci = semantic_->findClass(className);
+                    const ClassInfo* ci = semantic_->findClass(className).value_or(nullptr);
                     if (ci != nullptr && ci->hasVtable) {
                         vtableSymbols.insert(vtableSymbol(className));
                     }
                 } else if (inst.opcode == ir::Opcode::VtableAddr) {
                     // extra = 类名（直接加载虚表地址）
-                    const ClassInfo* ci = semantic_->findClass(inst.extra);
+                    const ClassInfo* ci = semantic_->findClass(inst.extra).value_or(nullptr);
                     if (ci != nullptr && ci->hasVtable) {
                         vtableSymbols.insert(vtableSymbol(inst.extra));
                     }
@@ -112,7 +112,7 @@ void X64CodeGenerator::emitNewObject(AsmWriter& writer, const ir::IRInstruction&
     writer.line("add rsp, 32");
     // 2. 初始化虚表指针（对象首地址，规格书06-五）
     if (semantic_ != nullptr) {
-        const ClassInfo* ci = semantic_->findClass(className);
+        const ClassInfo* ci = semantic_->findClass(className).value_or(nullptr);
         if (ci != nullptr && ci->hasVtable && !ci->vtableOrder.empty()) {
             writer.line("lea rcx, " + vtableSymbol(className));
             writer.line("mov [rax], rcx");
@@ -169,7 +169,7 @@ void X64CodeGenerator::emitDeleteObject(AsmWriter& writer, const ir::IRInstructi
     if (semantic_ != nullptr && !className.empty()) {
         std::string level = className;
         while (!level.empty()) {
-            const ClassInfo* ci = semantic_->findClass(level);
+            const ClassInfo* ci = semantic_->findClass(level).value_or(nullptr);
             if (ci == nullptr) break;
             const ClassMemberInfo* levelDtor = nullptr;
             std::string levelDtorKey;
@@ -224,7 +224,7 @@ void X64CodeGenerator::emitVirtualCall(AsmWriter& writer, const ir::IRInstructio
     // 槽位索引（语义层 classVtableIndex；未找到 -1 时防御性直接调用）
     int slot = -1;
     if (semantic_ != nullptr) {
-        slot = semantic_->classVtableIndex(className, methodName);
+        slot = semantic_->classVtableIndex(className, methodName).value_or(-1);
     }
     // 实参个数（形态A：operand[0]=retbuf·operand[1]=this；否则 operand[0]=this）
     const std::size_t thisIdx = vcFormA ? 1 : 0;

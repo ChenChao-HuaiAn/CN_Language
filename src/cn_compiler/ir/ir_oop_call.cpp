@@ -77,13 +77,14 @@ void IRGenerator::emitContainerElemFreeFor(const std::string& canonClass,
     const std::string head = canonClass.substr(0, canonClass.find('$'));
     const bool chainModel = (head == "链表" || head == "队列");
     const int dataOff =
-        semantic_->classFieldOffset(canonClass, containerElemArrayField(canonClass));
-    const int countOff = semantic_->classFieldOffset(canonClass, "元素数量");
+        semantic_->classFieldOffset(canonClass, containerElemArrayField(canonClass))
+            .value_or(-1);
+    const int countOff = semantic_->classFieldOffset(canonClass, "元素数量").value_or(-1);
     if (dataOff < 0 || countOff < 0) return;
     std::vector<ir::IRValue> args{objPtr};
     if (chainModel) {
-        const int nextOff = semantic_->classFieldOffset(canonClass, "下一索引");
-        const int headOff = semantic_->classFieldOffset(canonClass, "头索引");
+        const int nextOff = semantic_->classFieldOffset(canonClass, "下一索引").value_or(-1);
+        const int headOff = semantic_->classFieldOffset(canonClass, "头索引").value_or(-1);
         if (nextOff < 0 || headOff < 0) return;
         args.push_back(ir::IRValue::constant(std::to_string(dataOff), "整64"));
         args.push_back(ir::IRValue::constant(std::to_string(nextOff), "整64"));
@@ -279,7 +280,7 @@ bool IRGenerator::emitConstructorCall(CallExpr* node) {
     std::string className =
         static_cast<IdentifierExpr*>(node->callee.get())->name;
     className = resolveGenericCtorInstanceName(className);
-        const ClassInfo* ci = semantic_->findClass(className);
+        const ClassInfo* ci = semantic_->findClass(className).value_or(nullptr);
         if (ci == nullptr) return false;
         // 抽象类不可实例化（语义层已报错，防御跳过）
         if (ci->isAbstract) return false;
@@ -383,7 +384,7 @@ std::string IRGenerator::resolveGenericCtorInstanceName(std::string className) c
             inst += "$" + types::canonical(a);
         }
         // 语义层实例化类符号名 = 类名$实参（instantiateGeneric mangling）
-        if (semantic_->findClass(inst) != nullptr) className = inst;
+        if (semantic_->findClass(inst).has_value()) className = inst;
     }
     return className;
 }
@@ -667,8 +668,9 @@ bool IRGenerator::emitInstanceMethodCall(CallExpr* node, MemberExpr* mem,
     // ---- 虚调用：方法在虚表中有槽位（虚拟 或 重写，vtableIndex>=0）且非 父类. 限定调用 ----
     // 重写方法 isVirtual=false 但 vtableIndex>=0（覆盖父类槽位），同样须虚分派。
     const bool isSuperCall = (mem->object->getType() == NodeType::SuperExpr);
-    const int vtableSlot = isSuperCall
-        ? -1 : semantic_->classVtableIndex(canonObjForMethod, methodName);
+    const int vtableSlot =
+        isSuperCall ? -1
+                    : semantic_->classVtableIndex(canonObjForMethod, methodName).value_or(-1);
     if (vtableSlot >= 0) {
         emitVirtualMethodCall(node, m, owner, methodName, thisArg);
     } else {

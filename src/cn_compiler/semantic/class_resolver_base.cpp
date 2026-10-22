@@ -21,7 +21,9 @@ namespace cn_compiler {
 //     第一趟，currentModuleName_ 尚未设置，不能用它判本模块）；否则统计其余
 //     模块同名类，≥2=歧义显式诊断（与类型使用点 resolveTypeName 同口径/文案风格）。
 //   未声明/歧义均在此报诊断并返回 nullptr——调用方不得再兜底解析（防双报/静默）。
-const ClassInfo* SemanticAnalyzer::resolveBaseClass(const ClassDecl* node) {
+// 1360 结果化批3A：无值=未声明/歧义已报诊断（原 nullptr 哨兵退役；
+//   本文件头立法保持——调用方不得再兜底解析）
+cn::Optional<const ClassInfo*> SemanticAnalyzer::resolveBaseClass(const ClassDecl* node) {
     const std::string& name = node->baseName;
     std::string mod, base;
     splitQualifiedType(name, mod, base);
@@ -34,7 +36,7 @@ const ClassInfo* SemanticAnalyzer::resolveBaseClass(const ClassDecl* node) {
         if (it != classes_.end()) return &it->second;
         diagnostics_.report(DiagnosticLevel::Error, node->location,
                             "类 '" + node->name + "' 的父类/接口 '" + name + "' 未声明");
-        return nullptr;
+        return std::nullopt;
     }
     if (!modCtx.empty()) {
         auto it = classes_.find(classKey(modCtx, base));
@@ -73,7 +75,7 @@ const ClassInfo* SemanticAnalyzer::resolveBaseClass(const ClassDecl* node) {
     } else if (count == 1) {
         return hits.front();
     }
-    return nullptr;  // 未声明/歧义已报诊断——调用方不得再兜底解析
+    return std::nullopt;  // 未声明/歧义已报诊断——调用方不得再兜底解析
 }
 
 }  // namespace cn_compiler

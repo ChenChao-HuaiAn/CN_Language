@@ -13,7 +13,7 @@ void SemanticAnalyzer::resolveGenericCtorName(CallExpr* node, std::string& class
         if (genLt != std::string::npos && genGt != std::string::npos &&
             genGt > genLt) {
             const std::string head = className.substr(0, genLt);
-            if (findGeneric(head) != nullptr) {
+            if (findGeneric(head).has_value()) {
                 const std::string inner =
                     className.substr(genLt + 1, genGt - genLt - 1);
                 std::vector<std::string> args;
@@ -69,7 +69,7 @@ bool SemanticAnalyzer::checkCtorCall(CallExpr* node, const std::string& classNam
                                 "——请以实现类实例初始化接口变量");
             return true;
         }
-        const ClassInfo* ctorCls = findClass(className);
+        const ClassInfo* ctorCls = findClass(className).value_or(nullptr);
         if (ctorCls != nullptr) {
             // 193：抽象类（含无实现体抽象方法）构造调用拒绝
             // 728j（2026-10-14）：诊断补未实现方法名清单（多层继承指路·
@@ -102,16 +102,20 @@ bool SemanticAnalyzer::checkCtorCall(CallExpr* node, const std::string& classNam
                     argTypes.size() > mi.paramTypes.size()) continue;
                 bool ok = true;
                 for (std::size_t i = 0; i < argTypes.size(); ++i) {
-                    if (conversionLevel(argTypes[i], mi.paramTypes[i],
-                                        isIntLiteralExpr(node->arguments[i].get())) < 0) { ok = false; break; }
+                    // 1360 结果化批3A：无值=不可转
+                    if (!conversionLevel(argTypes[i], mi.paramTypes[i],
+                                        isIntLiteralExpr(node->arguments[i].get())).has_value()) { ok = false; break; }
                 }
                 if (!ok) continue;
                 ctor = &mi;
                 // 精确类型匹配（全部 0 级转换）优先
                 bool exact = true;
                 for (std::size_t i = 0; i < argTypes.size(); ++i) {
-                    if (conversionLevel(argTypes[i], mi.paramTypes[i],
-                                        isIntLiteralExpr(node->arguments[i].get())) != 0) { exact = false; break; }
+                    // 1360 结果化批3A：非精确（含不可转无值）→ exact=false（原 !=0 判定同义面）
+                    const cn::Optional<int> lvCtor =
+                        conversionLevel(argTypes[i], mi.paramTypes[i],
+                                        isIntLiteralExpr(node->arguments[i].get()));
+                    if (!lvCtor.has_value() || lvCtor.value() != 0) { exact = false; break; }
                 }
                 if (exact) { ctorExact = &mi; break; }
             }

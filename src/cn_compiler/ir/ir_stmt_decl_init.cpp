@@ -400,8 +400,9 @@ void IRGenerator::registerPendingBoxVar(VarDecl* node, const std::string& declCa
         //   （表达式面 LoadPtr=0 幂等跳过）——布局归一后值槽 @8·273 v1 回归根因已消。
         if (declIsBox && node->initializer != nullptr) {
             if (ctorInitCovered) {
-                const StructDecl* sdZ = semantic_->findStruct(declCanon);
-                const int voZ = sdZ ? semantic_->fieldOffsetOf(sdZ, "值") : -1;
+                const StructDecl* sdZ = semantic_->findStruct(declCanon).value_or(nullptr);
+                const int voZ =
+                    sdZ ? semantic_->fieldOffsetOf(sdZ, "值").value_or(-1) : -1;
                 if (voZ >= 0) {
                     ir::IRValue srcField280 = emitResult(
                         ir::Opcode::FieldAddr, {value}, "ptr",
@@ -424,21 +425,21 @@ void IRGenerator::registerPendingBoxVar(VarDecl* node, const std::string& declCa
                         optionalTypeArg(declCanon).value_or(std::string()));
                 }
                 const ClassInfo* pci280 = payload280.empty()
-                    ? nullptr : semantic_->findClass(payload280);
+                    ? nullptr : semantic_->findClass(payload280).value_or(nullptr);
                 bool pDtor280 = false;
                 if (pci280 != nullptr) {
                     for (const auto& mk : pci280->methods) {
                         if (mk.second.isDestructor) { pDtor280 = true; break; }
                     }
                 }
-                if (pDtor280 && semantic_->findCopyConstructor(payload280) != nullptr) {
-                    const StructDecl* sd280 = semantic_->findStruct(declCanon);
+                if (pDtor280 && semantic_->findCopyConstructor(payload280).has_value()) {
+                    const StructDecl* sd280 = semantic_->findStruct(declCanon).value_or(nullptr);
                     const int vo280 =
-                        sd280 ? semantic_->fieldOffsetOf(sd280, "值") : -1;
+                        sd280 ? semantic_->fieldOffsetOf(sd280, "值").value_or(-1) : -1;
                     const int co280 =
                         sd280 ? semantic_->fieldOffsetOf(
                                  sd280, isResultType(declCanon)
-                                 ? "正常" : "有值") : -1;
+                                 ? "正常" : "有值").value_or(-1) : -1;
                     if (vo280 >= 0 && co280 >= 0) {
                         ir::IRValue tagAddr280 =
                             co280 == 0 ? dstAddr
@@ -489,7 +490,7 @@ bool IRGenerator::tryGenClassCopyInit(VarDecl* node, const ir::IRValue& value,
         const std::string canonTgt = types::canonical(srcType);
         if (semantic_->isClassType(canonTgt) &&
             semantic_->isClassType(canonSrc)) {
-            const ClassInfo* ci = semantic_->findClass(canonTgt);
+            const ClassInfo* ci = semantic_->findClass(canonTgt).value_or(nullptr);
             if (ci != nullptr) {
                 // value 即源对象指针（Load 源变量槽 / LoadPtr 静态槽）
                 const std::string extra = canonTgt + "|" +
@@ -505,7 +506,7 @@ bool IRGenerator::tryGenClassCopyInit(VarDecl* node, const ir::IRValue& value,
                 //   源为标识符变量时传 源变量槽地址（&甲），体内经 byRef
                 //   解引用得源对象指针（与 ir_expr.cpp 类赋值路径一致）。
                 const ClassMemberInfo* copyCtor =
-                    semantic_->findCopyConstructor(canonTgt);
+                    semantic_->findCopyConstructor(canonTgt).value_or(nullptr);
                 if (copyCtor != nullptr) {
                     const std::string copyOwner =
                         copyCtor->ownerClass.empty() ? canonTgt
@@ -537,13 +538,13 @@ bool IRGenerator::tryGenClassCopyInit(VarDecl* node, const ir::IRValue& value,
                     //   （探针 e1 b.y=0 vs C++ b.y=7）。逐层补拷「祖先构造所
                     //   在层之下」的全部层（中间层+本类层·value=源对象指针）。
                     if (copyOwner != canonTgt) {
-                        const ClassInfo* lvl = semantic_->findClass(canonTgt);
+                        const ClassInfo* lvl = semantic_->findClass(canonTgt).value_or(nullptr);
                         while (lvl != nullptr && lvl->name != copyOwner) {
                             emitOwnedFieldsCopy(newObj, value, canonTgt,
                                                 lvl->name, node->location);
                             lvl = lvl->baseName.empty()
                                       ? nullptr
-                                      : semantic_->findClass(lvl->baseName);
+                                      : semantic_->findClass(lvl->baseName).value_or(nullptr);
                         }
                     }
                 } else {
@@ -561,7 +562,7 @@ bool IRGenerator::tryGenClassCopyInit(VarDecl* node, const ir::IRValue& value,
                     for (const ClassInfo* lvl = ci; lvl != nullptr;
                          lvl = lvl->baseName.empty()
                                    ? nullptr
-                                   : semantic_->findClass(lvl->baseName)) {
+                                   : semantic_->findClass(lvl->baseName).value_or(nullptr)) {
                         emitOwnedFieldsCopy(newObj, value, canonTgt, lvl->name,
                                             node->location);
                     }
@@ -599,7 +600,7 @@ bool IRGenerator::tryGenUnwrapBindInit(VarDecl* node, const ir::IRValue& value,
             isResultType(baseCanon) || isOptionalType(baseCanon);
         const std::string canonTgt = types::canonical(srcType);
         if (isUnwrapSlot && semantic_->isClassType(canonTgt)) {
-            const ClassInfo* ci = semantic_->findClass(canonTgt);
+            const ClassInfo* ci = semantic_->findClass(canonTgt).value_or(nullptr);
             if (ci != nullptr) {
                 const std::string extra =
                     canonTgt + "|" + std::to_string(ci->totalSize);
@@ -608,7 +609,7 @@ bool IRGenerator::tryGenUnwrapBindInit(VarDecl* node, const ir::IRValue& value,
                     {ir::IRValue::constant(canonTgt, "ptr")},
                     "ptr", extra, node->location);
                 const ClassMemberInfo* copyCtor =
-                    semantic_->findCopyConstructor(canonTgt);
+                    semantic_->findCopyConstructor(canonTgt).value_or(nullptr);
                 if (copyCtor != nullptr) {
                     const std::string copyOwner =
                         copyCtor->ownerClass.empty() ? canonTgt
@@ -659,7 +660,7 @@ bool IRGenerator::tryGenRefReturnClassCopyInit(VarDecl* node, const DeclGenCtx& 
     const CallExpr* call = static_cast<const CallExpr*>(node->initializer.get());
     const std::string declCanon = types::canonical(node->typeName);
     if (!isRefReturnClassValueCall(call, declCanon)) return false;
-    const ClassInfo* ci = semantic_->findClass(declCanon);
+    const ClassInfo* ci = semantic_->findClass(declCanon).value_or(nullptr);
     if (ci == nullptr || ci->totalSize <= 0) return false;
     ir::IRValue newObj = genRefReturnClassDeepCopy(node->initializer.get(),
                                                    declCanon, ci);
@@ -722,7 +723,7 @@ bool IRGenerator::isRefReturnClassValueCall(const CallExpr* call,
         head == "向量" || head == "栈" || head == "链表" ||
         head == "队列" || head == "集合" || head == "映射";
     if (isContainerFamily &&
-        semantic_->findCopyConstructor(declCanon) == nullptr) {
+        !semantic_->findCopyConstructor(declCanon).has_value()) {
         return false;
     }
     // 直接调用形态：被调返回类型（剥 &/*）须严格等于声明类
@@ -772,7 +773,7 @@ ir::IRValue IRGenerator::genRefReturnClassDeepCopy(Expr* rhs,
     ir::IRValue newObj = emitResult(
         ir::Opcode::NewObject, {ir::IRValue::constant(declCanon, "ptr")}, "ptr",
         extra, rhs->location);
-    const ClassMemberInfo* copyCtor = semantic_->findCopyConstructor(declCanon);
+    const ClassMemberInfo* copyCtor = semantic_->findCopyConstructor(declCanon).value_or(nullptr);
     if (copyCtor != nullptr) {
         const std::string copyOwner =
             copyCtor->ownerClass.empty() ? declCanon : copyCtor->ownerClass;

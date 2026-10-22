@@ -292,10 +292,10 @@ bool SemanticAnalyzer::isOwnedStrRvalue(const Expr* rhs) const {
 
 bool SemanticAnalyzer::isCurrentClassFieldName(const std::string& name) const {
     if (contextClassStack_.empty()) return false;
-    const ClassInfo* cls = currentContextClass();
+    const ClassInfo* cls = currentContextClass().value_or(nullptr);
     if (cls == nullptr) return false;
     std::string owner;
-    const ClassMemberInfo* member = lookupClassMember(cls->name, name, owner);
+    const ClassMemberInfo* member = lookupClassMember(cls->name, name, owner).value_or(nullptr);
     return member != nullptr && !member->isStatic;
 }
 

@@ -27,7 +27,7 @@ bool IRGenerator::tryInterfaceMethodCall(CallExpr* node) {
             ifaceName = types::canonical(types::pointeeOf(ifaceName));
         }
         if (!ifaceName.empty() && semantic_->isInterfaceType(ifaceName)) {
-            const InterfaceInfo* iface = semantic_->findInterface(ifaceName);
+            const InterfaceInfo* iface = semantic_->findInterface(ifaceName).value_or(nullptr);
             if (iface != nullptr) {
                 const auto imit = iface->methods.find(mem->memberName);
                 if (imit != iface->methods.end()) {
@@ -39,7 +39,7 @@ bool IRGenerator::tryInterfaceMethodCall(CallExpr* node) {
                     if (impls.size() == 1) {
                         std::string owner;
                         const ClassMemberInfo* m =
-                            semantic_->lookupClassMember(impls[0], mem->memberName, owner);
+                            semantic_->lookupClassMember(impls[0], mem->memberName, owner).value_or(nullptr);
                         if (m != nullptr && !m->isStatic) {
                             ir::IRValue objVal = genExpr(mem->object.get());
                             // 552（接口方法 × 128 形参双侧同案·宿主侧）：接口调用
@@ -65,7 +65,7 @@ bool IRGenerator::tryInterfaceMethodCall(CallExpr* node) {
                             return true;
                         }
                     }
-                    const int slot = semantic_->interfaceSlot(ifaceName, mem->memberName);
+                    const int slot = semantic_->interfaceSlot(ifaceName, mem->memberName).value_or(-1);
                     if (slot >= 0) {
                         ir::IRValue objVal = genExpr(mem->object.get());
                         const int dispOffset = 8 + slot * 8;  // 8=强制虚表指针
@@ -120,7 +120,7 @@ void IRGenerator::emitCfiCheck(const ir::IRValue& target,
     ir::IRValue valid = emitResult(ir::Opcode::ConstBool, {}, "i1", "假", loc);
     for (const auto& cls : impls) {
         std::string owner;
-        const ClassMemberInfo* m = semantic_->lookupClassMember(cls, methodName, owner);
+        const ClassMemberInfo* m = semantic_->lookupClassMember(cls, methodName, owner).value_or(nullptr);
         if (m == nullptr) continue;
         const std::string ownerSym = owner.empty() ? cls : owner;
         ir::IRValue implAddr = emitResult(

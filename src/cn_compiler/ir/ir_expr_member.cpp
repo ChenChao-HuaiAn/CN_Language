@@ -165,7 +165,7 @@ bool IRGenerator::emitStructWholeAssign(const ir::IRValue& dstAddr,
     //   地址，实参=&源槽 byRef 解引用得源对象），元素独立拥有内部数组
     //   （浅拷贝共享指针 + RAII 双释放 0xC0000374）。源为成员/下标元素
     //   （byRef 无法引用内联元素）保持 CopyStruct 浅拷贝。
-    const ClassMemberInfo* copyCtor = semantic_->findCopyConstructor(dstElemCanon);
+    const ClassMemberInfo* copyCtor = semantic_->findCopyConstructor(dstElemCanon).value_or(nullptr);
     if (copyCtor != nullptr && !srcUniqueId.empty()) {
         const std::string copyOwner =
             copyCtor->ownerClass.empty() ? dstElemCanon : copyCtor->ownerClass;
@@ -202,7 +202,7 @@ bool IRGenerator::emitStructWholeAssign(const ir::IRValue& dstAddr,
         }
         const std::string copyOwner =
             copyCtor->ownerClass.empty() ? dstElemCanon : copyCtor->ownerClass;
-        const ClassInfo* ciW = semantic_->findClass(dstElemCanon);
+        const ClassInfo* ciW = semantic_->findClass(dstElemCanon).value_or(nullptr);
         const std::string newObjExtra =
             dstElemCanon + "|" +
             std::to_string(ciW != nullptr ? ciW->totalSize : 0);
@@ -242,7 +242,7 @@ bool IRGenerator::emitStructWholeAssign(const ir::IRValue& dstAddr,
             emit(ir::Opcode::StorePtr, {dstAddr, zeroX}, ir::IRValue(), "", "ptr",
                  loc);
         }
-        const ClassInfo* ciX = semantic_->findClass(dstElemCanon);
+        const ClassInfo* ciX = semantic_->findClass(dstElemCanon).value_or(nullptr);
         const std::string newObjExtraX =
             dstElemCanon + "|" +
             std::to_string(ciX != nullptr ? ciX->totalSize : 0);
@@ -286,11 +286,11 @@ void IRGenerator::emitStructInitTo(StructInitExpr* init, const ir::IRValue& targ
                                    const SourceLocation& loc) {
     if (semantic_ == nullptr || init == nullptr) return;
     const std::string structType = types::canonical(init->typeName);
-    const StructDecl* decl = semantic_->findStruct(structType);
+    const StructDecl* decl = semantic_->findStruct(structType).value_or(nullptr);
     if (decl == nullptr) return;
     for (auto& fieldPair : init->fields) {
         const std::string& fieldName = fieldPair.first;
-        const int offset = semantic_->fieldOffsetOf(decl, fieldName);
+        const int offset = semantic_->fieldOffsetOf(decl, fieldName).value_or(-1);
         if (offset < 0) continue;  // 语义层已报错
         // 字段地址 = 基址 + 偏移（FieldAddr）
         ir::IRValue fieldAddr = emitResult(ir::Opcode::FieldAddr, {targetBase}, "ptr",
@@ -485,7 +485,7 @@ void IRGenerator::visitMemberExpr(MemberExpr* node) {
     }
     const std::string canonObjSrc1059 = types::canonical(objSrcType);
     const bool ownerIsClass1059 = semantic_->isClassType(canonObjSrc1059);
-    const StructDecl* decl = semantic_->findStruct(canonObjSrc1059);
+    const StructDecl* decl = semantic_->findStruct(canonObjSrc1059).value_or(nullptr);
     std::string fieldSrcType;
     if (decl != nullptr) {
         fieldSrcType = resolveMemberFieldSrcType(node, objSrcType, decl);
@@ -638,7 +638,7 @@ std::string IRGenerator::resolveNestedMemberObjSrcType(MemberExpr* inner) {
             //   已支持）解析调用返回类型。
             innerObjType = exprSrcType(inner->object.get());
         }
-        const StructDecl* innerDecl = semantic_->findStruct(types::canonical(innerObjType));
+        const StructDecl* innerDecl = semantic_->findStruct(types::canonical(innerObjType)).value_or(nullptr);
         if (innerDecl != nullptr) {
             for (const auto& f : innerDecl->fields) {
                 if (f.name == inner->memberName) {
@@ -696,7 +696,7 @@ std::string IRGenerator::resolveIndexObjSrcType(IndexExpr* idx) {
             MemberExpr* inner = static_cast<MemberExpr*>(idx->object.get());
             const std::string innerType = memberObjStructType(inner);
             const StructDecl* innerDecl =
-                semantic_->findStruct(types::canonical(innerType));
+                semantic_->findStruct(types::canonical(innerType)).value_or(nullptr);
             if (innerDecl != nullptr) {
                 for (const auto& f : innerDecl->fields) {
                     if (f.name == inner->memberName) {

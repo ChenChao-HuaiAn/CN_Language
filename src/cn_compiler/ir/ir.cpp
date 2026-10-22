@@ -502,7 +502,7 @@ std::string IRGenerator::structOrClassFieldType(const std::string& ownerType,
                                                 const std::string& fieldName) const {
     if (semantic_ == nullptr) return "";
     const StructDecl* decl =
-        semantic_->findStruct(types::canonical(ownerType));
+        semantic_->findStruct(types::canonical(ownerType)).value_or(nullptr);
     if (decl != nullptr) {
         for (const auto& f : decl->fields) {
             if (f.name == fieldName) return f.type;
@@ -511,14 +511,14 @@ std::string IRGenerator::structOrClassFieldType(const std::string& ownerType,
     }
     // 类表回退：沿继承链（父类在前——对齐 classFieldOffset 链遍历）
     const ClassInfo* ci =
-        semantic_->findClass(types::canonical(ownerType));
+        semantic_->findClass(types::canonical(ownerType)).value_or(nullptr);
     while (ci != nullptr) {
         auto it = ci->fields.find(fieldName);
         if (it != ci->fields.end() && !it->second.isStatic) {
             return it->second.type;
         }
         ci = ci->baseName.empty() ? nullptr
-                                  : semantic_->findClass(ci->baseName);
+                                  : semantic_->findClass(ci->baseName).value_or(nullptr);
     }
     return "";
 }
@@ -980,9 +980,9 @@ ir::IRValue IRGenerator::genMemberLvalueAddress(Expr* node) {
                 }
             }
         }
-        const StructDecl* decl = semantic_->findStruct(types::canonical(objSrcType));
+        const StructDecl* decl = semantic_->findStruct(types::canonical(objSrcType)).value_or(nullptr);
         if (decl == nullptr) return base;
-        const int offset = semantic_->fieldOffsetOf(decl, member->memberName);
+        const int offset = semantic_->fieldOffsetOf(decl, member->memberName).value_or(-1);
         if (offset < 0) return base;
         return emitResult(ir::Opcode::FieldAddr, {base}, "ptr",
                           std::to_string(offset), member->location);

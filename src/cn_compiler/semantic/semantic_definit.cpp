@@ -63,15 +63,16 @@ bool SemanticAnalyzer::isDefInitTrackedType(const std::string& type) const {
     // 结构体/联合体豁免：局部结构体裸声明=编译器入口零初始化注入（257 形二
     //   「字段数组零初始化」断言 r.分数[0]==0 实锤·两侧既有防御）——字段读有
     //   定义行为，不入 def-init 登记面（与拥有型同通道）
-    if (findStruct(type) != nullptr) return false;
+    if (findStruct(type).has_value()) return false;
     return isDefInitScalarType(type);                     // 标量
 }
 
-int SemanticAnalyzer::defInitLookupDepth(const std::string& name) const {
+// 1360 结果化批3A：无值=未声明（原 -1 哨兵退役）
+cn::Optional<int> SemanticAnalyzer::defInitLookupDepth(const std::string& name) const {
     for (std::size_t i = scopes_.size(); i-- > 0;) {
         if (scopes_[i].count(name) > 0) return static_cast<int>(i);
     }
-    return -1;
+    return std::nullopt;
 }
 
 void SemanticAnalyzer::defInitCollectLeaves(const std::string& type, const std::string& key,
@@ -86,7 +87,7 @@ void SemanticAnalyzer::defInitCollectLeaves(const std::string& type, const std::
         }
         return;
     }
-    if (const StructDecl* sd = findStruct(type)) {
+    if (const StructDecl* sd = findStruct(type).value_or(nullptr)) {
         if (sd->isUnion) { out.push_back(key); return; }  // 联合体一次一活跃成员=单键
         for (const auto& field : sd->fields) {
             defInitCollectLeaves(field.type, key + "." + field.name, out);
@@ -98,7 +99,7 @@ void SemanticAnalyzer::defInitCollectLeaves(const std::string& type, const std::
 
 void SemanticAnalyzer::defInitRegisterDecl(const std::string& name, const std::string& type) {
     if (!isDefInitTrackedType(type)) return;
-    const int depth = defInitLookupDepth(name);
+    const int depth = defInitLookupDepth(name).value_or(-1);  // 1360 结果化批3A：无值(未声明)→-1 显形回落，下方 <0 分流保持
     if (depth < 0) return;
     const std::string base = std::to_string(depth) + ":" + name + "\x01";
     std::vector<std::string> leaves;
@@ -107,7 +108,7 @@ void SemanticAnalyzer::defInitRegisterDecl(const std::string& name, const std::s
 }
 
 void SemanticAnalyzer::defInitMarkInitPlace(const std::string& name, const std::string& suffix) {
-    const int depth = defInitLookupDepth(name);
+    const int depth = defInitLookupDepth(name).value_or(-1);  // 1360 结果化批3A：无值(未声明)→-1 显形回落，下方 <0 分流保持
     if (depth < 0) return;
     const std::string base = std::to_string(depth) + ":" + name + "\x01";
     // 非常量下标写（后缀含 "[]"）=该基数整体置位（循环填充惯用法放行）
@@ -122,7 +123,7 @@ void SemanticAnalyzer::defInitMarkInitPlace(const std::string& name, const std::
 
 void SemanticAnalyzer::defInitCheckReadPlace(const std::string& name, const std::string& suffix,
                                              const SourceLocation& loc) {
-    const int depth = defInitLookupDepth(name);
+    const int depth = defInitLookupDepth(name).value_or(-1);  // 1360 结果化批3A：无值(未声明)→-1 显形回落，下方 <0 分流保持
     if (depth < 0) return;
     const std::string base = std::to_string(depth) + ":" + name + "\x01";
     std::string place = name + suffix;

@@ -72,7 +72,7 @@ std::string IRGenerator::exprSrcType(Expr* node) const {
         }
         case NodeType::SuperExpr:
             if (semantic_ != nullptr && !currentClass_.empty()) {
-                const ClassInfo* ci = semantic_->findClass(currentClass_);
+                const ClassInfo* ci = semantic_->findClass(currentClass_).value_or(nullptr);
                 if (ci != nullptr) return ci->baseName;
             }
             return "";
@@ -97,7 +97,7 @@ std::string IRGenerator::exprSrcType(Expr* node) const {
                 semantic_ != nullptr) {
                 const std::string ctorName = resolveGenericCtorInstanceName(
                     static_cast<const IdentifierExpr*>(call->callee.get())->name);
-                if (!ctorName.empty() && semantic_->findClass(ctorName) != nullptr) {
+                if (!ctorName.empty() && semantic_->findClass(ctorName).has_value()) {
                     return ctorName;
                 }
             }
@@ -129,7 +129,7 @@ std::string IRGenerator::exprSrcType(Expr* node) const {
                 if (!objType.empty()) {
                     std::string owner;
                     const ClassMemberInfo* m = semantic_->lookupClassMember(
-                        types::canonical(objType), mem->memberName, owner);
+                        types::canonical(objType), mem->memberName, owner).value_or(nullptr);
                     // 845：方法返回文本同款物化（容器读方法返回 T 替换后已为
                     //   实例名；泛型文本残余形态兜底归一——幂等）
                     if (m != nullptr && !m->type.empty()) {
@@ -207,7 +207,7 @@ std::string IRGenerator::exprSrcType(Expr* node) const {
             if (!fieldType.empty()) return fieldType;
             if (semantic_ != nullptr) {
                 const StructDecl* decl =
-                    semantic_->findStruct(types::canonical(lookupType363));
+                    semantic_->findStruct(types::canonical(lookupType363)).value_or(nullptr);
                 if (decl != nullptr) {
                     for (const auto& f : decl->fields) {
                         // 宿主缺陷根治（2026-08-25）：结构体字段为泛型容器

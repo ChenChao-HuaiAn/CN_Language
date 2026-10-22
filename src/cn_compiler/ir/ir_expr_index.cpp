@@ -331,7 +331,7 @@ void IRGenerator::visitIndexExpr(IndexExpr* node) {
         // 修复10/10b/10c：数组字段元素步进 + 越界检查（memberObjStructType 递归处理 arrow）
         MemberExpr* inner = static_cast<MemberExpr*>(node->object.get());
         const std::string innerType = memberObjStructType(inner);
-        const StructDecl* innerDecl = semantic_->findStruct(types::canonical(innerType));
+        const StructDecl* innerDecl = semantic_->findStruct(types::canonical(innerType)).value_or(nullptr);
         if (innerDecl != nullptr) {
             for (const auto& f : innerDecl->fields) {
                 if (f.name == inner->memberName && types::isArray(f.type)) {
@@ -407,7 +407,7 @@ void IRGenerator::visitIndexExpr(IndexExpr* node) {
     else if (node->object->getType() == NodeType::MemberExpr) {
         MemberExpr* inner = static_cast<MemberExpr*>(node->object.get());
         const std::string innerType = memberObjStructType(inner);
-        const StructDecl* innerDecl = semantic_->findStruct(types::canonical(innerType));
+        const StructDecl* innerDecl = semantic_->findStruct(types::canonical(innerType)).value_or(nullptr);
         if (innerDecl != nullptr) {
             for (const auto& f : innerDecl->fields) {
                 if (f.name == inner->memberName && types::isArray(f.type)) {
@@ -613,7 +613,7 @@ ir::IRValue IRGenerator::genGenericIndexAddress(IndexExpr* idx) {
             //   越界检查 = 字段数组长度（错误码2，修复10c）
             MemberExpr* inner = static_cast<MemberExpr*>(idx->object.get());
             const std::string innerType = memberObjStructType(inner);
-            const StructDecl* innerDecl = semantic_->findStruct(types::canonical(innerType));
+            const StructDecl* innerDecl = semantic_->findStruct(types::canonical(innerType)).value_or(nullptr);
             if (innerDecl != nullptr) {
                 for (const auto& f : innerDecl->fields) {
                     if (f.name == inner->memberName && types::isArray(f.type)) {

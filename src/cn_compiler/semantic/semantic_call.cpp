@@ -366,7 +366,7 @@ bool SemanticAnalyzer::checkCopyBuiltinCall(CallExpr* node) {
     // 类实参：须有拷贝构造（克隆契约——无拷贝构造类型无法独立拥有副本）
     if (!lastType_.empty() && !types::isArray(lastType_) &&
         isClassType(types::canonical(lastType_)) &&
-        findCopyConstructor(types::canonical(lastType_)) == nullptr) {
+        !findCopyConstructor(types::canonical(lastType_)).has_value()) {
         diagnostics_.report(DiagnosticLevel::Error, node->location,
                             "类型 '" + lastType_ + "' 未定义拷贝构造，无法 复制");
         lastType_ = "未知";
@@ -724,7 +724,7 @@ void SemanticAnalyzer::rewriteGenericFuncCall(CallExpr* node, std::string& calle
         //   推导·固定类型位可转换即可·函数指针位不参与；全部类型参数被约束且
         //   一致才单态化，否则放弃——显式 <> 仍可用）。
         if (calleeName.find('<') == std::string::npos && !node->arguments.empty()) {
-            const GenericInfo* gi = findGeneric(calleeName);
+            const GenericInfo* gi = findGeneric(calleeName).value_or(nullptr);
             if (gi != nullptr && gi->ast->innerFunc != nullptr) {
                 const FunctionDecl* src = gi->ast->innerFunc.get();
                 std::vector<std::string> infArgs;
@@ -752,8 +752,8 @@ void SemanticAnalyzer::rewriteGenericFuncCall(CallExpr* node, std::string& calle
         if (genLt != std::string::npos && genGt != std::string::npos &&
             genGt > genLt) {
             const std::string head = calleeName.substr(0, genLt);
-            if (findGeneric(head) != nullptr &&
-                findGeneric(head)->ast->innerFunc != nullptr) {
+            if (findGeneric(head).has_value() &&
+                findGeneric(head).value()->ast->innerFunc != nullptr) {
                 const std::string inner =
                     calleeName.substr(genLt + 1, genGt - genLt - 1);
                 std::vector<std::string> args;
@@ -795,7 +795,7 @@ void SemanticAnalyzer::rewriteGenericFuncCall(CallExpr* node, std::string& calle
                     calleeName = instName;
                     // 登记泛型函数实例化记录（供 IR 层生成函数体）：
                     //   记录 实例化名 + 原泛型声明 + 类型实参（替换类型参数用）
-                    const GenericInfo* ginfo = findGeneric(head);
+                    const GenericInfo* ginfo = findGeneric(head).value_or(nullptr);
                     if (ginfo != nullptr && ginfo->ast->innerFunc != nullptr) {
                         registerGenericFuncInstance(instName, ginfo, args);
                     }

@@ -16,6 +16,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "cn_compiler/common/optional_safe.hpp"
 #include "cn_compiler/common/source_location.hpp"
 #include "cn_compiler/model/symbols.hpp"
 #include "cn_compiler/model/semantic_helpers.hpp"
@@ -36,18 +37,20 @@ public:
     virtual int typeSizeOf(const std::string& type) const = 0;
 
     // ---- 类/结构体/接口布局 ----
-    virtual const ClassInfo* findClass(const std::string& name) const = 0;
-    virtual const StructDecl* findStruct(const std::string& name) const = 0;
-    virtual const InterfaceInfo* findInterface(const std::string& name) const = 0;
-    virtual const GenericInfo* findGeneric(const std::string& name) const = 0;
-    virtual const ClassMemberInfo* lookupClassMember(const std::string& className,
+    // 1360 结果化（批3A）：查表 miss 无值（原 nullptr 哨兵退役——消费点
+    //   has_value() 分流，类型强制检查·漏检=编译期拒绝）
+    virtual cn::Optional<const ClassInfo*> findClass(const std::string& name) const = 0;
+    virtual cn::Optional<const StructDecl*> findStruct(const std::string& name) const = 0;
+    virtual cn::Optional<const InterfaceInfo*> findInterface(const std::string& name) const = 0;
+    virtual cn::Optional<const GenericInfo*> findGeneric(const std::string& name) const = 0;
+    virtual cn::Optional<const ClassMemberInfo*> lookupClassMember(const std::string& className,
                                                      const std::string& memberName,
                                                      std::string& ownerClass) const = 0;
-    virtual const ClassMemberInfo* findCopyConstructor(const std::string& className) const = 0;
-    virtual int classFieldOffset(const std::string& className, const std::string& fieldName) const = 0;
-    virtual int fieldOffsetOf(const StructDecl* decl, const std::string& fieldName) const = 0;
-    virtual int classVtableIndex(const std::string& className, const std::string& methodName) const = 0;
-    virtual int interfaceSlot(const std::string& ifaceName, const std::string& methodName) const = 0;
+    virtual cn::Optional<const ClassMemberInfo*> findCopyConstructor(const std::string& className) const = 0;
+    virtual cn::Optional<int> classFieldOffset(const std::string& className, const std::string& fieldName) const = 0;
+    virtual cn::Optional<int> fieldOffsetOf(const StructDecl* decl, const std::string& fieldName) const = 0;
+    virtual cn::Optional<int> classVtableIndex(const std::string& className, const std::string& methodName) const = 0;
+    virtual cn::Optional<int> interfaceSlot(const std::string& ifaceName, const std::string& methodName) const = 0;
     virtual std::vector<std::string> interfaceImplClasses(const std::string& ifaceName) const = 0;
     virtual bool enumValueOf(const std::string& enumName, const std::string& memberName,
                              std::int64_t& outValue) const = 0;

@@ -183,9 +183,9 @@ void IRGenerator::boxNullOptionalArgs(CallExpr* node,
         }
         if (t.empty()) continue;
         const std::string structName = optionalStructName(t);
-        if (semantic_->findStruct(structName) == nullptr) {
+        if (!semantic_->findStruct(structName).has_value()) {
             semantic_->ensureLoweredType(structName);
-            if (semantic_->findStruct(structName) == nullptr) continue;
+            if (!semantic_->findStruct(structName).has_value()) continue;
         }
         const int size = semantic_->typeSizeOf(structName);
         if (size <= 0) continue;

@@ -628,7 +628,7 @@ bool SemanticAnalyzer::checkArithmeticBinary(BinaryExpr* node, std::string& left
             }();
             if (!opSym.empty()) {
                 const ClassMemberInfo* mi = resolveOperatorOverload(
-                    opSym, leftType, {rightType}, node->location);
+                    opSym, leftType, {rightType}, node->location).value_or(nullptr);
                 if (mi != nullptr) {
                     lastType_ = mi->type;
                     // 缺陷2 修复：写回重载结果类型，供 IR 层链式运算符重载识别
@@ -804,7 +804,7 @@ bool SemanticAnalyzer::checkClassOperatorOverload(BinaryExpr* node, const std::s
         }();
         if (!opSym.empty()) {
             const ClassMemberInfo* mi = resolveOperatorOverload(
-                opSym, leftType, {rightType}, node->location);
+                opSym, leftType, {rightType}, node->location).value_or(nullptr);
             if (mi != nullptr) {
                 // 运算符重载命中：结果为重载方法返回类型
                 lastType_ = mi->type;

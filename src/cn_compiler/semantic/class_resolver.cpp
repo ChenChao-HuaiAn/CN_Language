@@ -161,7 +161,7 @@ std::string foldClassInstanceInit(const Expr* init, const std::string& fieldType
 
 // 是否类类型名（P2-16：模块感知，含 模块::类 限定名）
 bool SemanticAnalyzer::isClassType(const std::string& type) const {
-    return findClass(type) != nullptr;
+    return findClass(type).has_value();
 }
 
 // 是否接口类型名
@@ -174,6 +174,9 @@ bool SemanticAnalyzer::isInterfaceType(const std::string& type) const {
 //   键规则——原 static cclassKey 在此删除，调用点改用 classKey）。
 
 // 查找类符号（P2-16 模块感知：限定名直查；裸名先当前模块、再任意模块末段匹配）
+// 1360 结果化（批3A）：无值=未命中（原 nullptr 哨兵退役——消费点 has_value()
+//   分流·类型强制检查）；索引/缓存内部仍持裸指针（nullptr=负缓存），
+//   出口处统一 Optional 包装。
 // 1155：改查 TypeLookupIndex（原实现：splitQualifiedType 双串分配 + 当前模块
 //   classKey 拼接 + 未命中全 classes_ 扫描逐条 rfind/substr；classes_ 含全部
 //   泛型实例，回退代价随实例数线性增长）。三面等价性：
@@ -182,7 +185,7 @@ bool SemanticAnalyzer::isInterfaceType(const std::string& type) const {
 //     "::"，嵌套模块名 "甲::乙" 亦落在模块前缀侧）⇒ (模块,裸名) 精确命中；
 //   ③裸名回退：原 rfind("::") 取末段、按 classes_ 遍历序首命中 ⇒ classByBase
 //     以同序 emplace 先到先得。
-const ClassInfo* SemanticAnalyzer::findClass(const std::string& name) const {
+cn::Optional<const ClassInfo*> SemanticAnalyzer::findClass(const std::string& name) const {
     const TypeLookupIndex& idx = ensureTypeLookupIndex();
     const std::string_view nameView(name);
     const std::size_t sep = nameView.find("::");
@@ -191,14 +194,16 @@ const ClassInfo* SemanticAnalyzer::findClass(const std::string& name) const {
     const bool leadingSepForm = hasSep && sep == 0;  // "::类"=原 mod 空分支
     if (qualifiedForm) {
         const auto it = idx.classByFullKey.find(nameView);
-        return (it == idx.classByFullKey.end()) ? nullptr : it->second;
+        return (it == idx.classByFullKey.end()) ? std::nullopt
+                                                : cn::Optional<const ClassInfo*>(it->second);
     }
     // 1155：裸名解析缓存（同一类型串反复查询的高频面——IR 生成期尤甚）。
     //   命中条件=该条目解析时的当前模块与本次相同（模块上下文切换可改变裸名
     //   解析结果）；类表规模变化在 ensureTypeLookupIndex 中清空缓存。
     const auto cacheIt = idx.classCache.find(name);
     if (cacheIt != idx.classCache.end() && cacheIt->second.module == currentModuleName_) {
-        return cacheIt->second.result;
+        if (cacheIt->second.result == nullptr) return std::nullopt;
+        return cn::Optional<const ClassInfo*>(cacheIt->second.result);
     }
     const std::string_view baseView =
         leadingSepForm ? nameView.substr(2) : nameView;
@@ -215,24 +220,26 @@ const ClassInfo* SemanticAnalyzer::findClass(const std::string& name) const {
         if (it != idx.classByBase.end()) result = it->second;
     }
     idx.classCache[name] = TypeLookupIndex::ClassLookupCacheEntry{currentModuleName_, result};
-    return result;
+    if (result == nullptr) return std::nullopt;
+    return cn::Optional<const ClassInfo*>(result);
 }
 
-// 查找接口符号（未找到返回nullptr）
-const InterfaceInfo* SemanticAnalyzer::findInterface(const std::string& name) const {
+// 查找接口符号（1360 结果化批3A：无值=未命中——原 nullptr 哨兵退役）
+cn::Optional<const InterfaceInfo*> SemanticAnalyzer::findInterface(const std::string& name) const {
     auto it = interfaces_.find(name);
-    return (it == interfaces_.end()) ? nullptr : &it->second;
+    return (it == interfaces_.end()) ? cn::Optional<const InterfaceInfo*>(std::nullopt)
+                                     : cn::Optional<const InterfaceInfo*>(&it->second);
 }
 
 // P3-19：类（含继承链）是否实现指定接口（自身 interfaces + 各基类）
 bool SemanticAnalyzer::classImplementsInterface(const std::string& className,
                                                 const std::string& ifaceName) const {
-    const ClassInfo* cur = findClass(types::canonical(className));
+    const ClassInfo* cur = findClass(types::canonical(className)).value_or(nullptr);
     while (cur != nullptr) {
         for (const auto& im : cur->interfaces) {
             if (im == ifaceName) return true;
         }
-        cur = cur->baseName.empty() ? nullptr : findClass(cur->baseName);
+        cur = cur->baseName.empty() ? nullptr : findClass(cur->baseName).value_or(nullptr);
     }
     return false;
 }
@@ -243,27 +250,29 @@ bool SemanticAnalyzer::isDerivedFrom(const std::string& sub,
                                      const std::string& base) const {
     const std::string s = types::canonical(sub);
     const std::string b = types::canonical(base);
-    const ClassInfo* cur = findClass(s);
+    const ClassInfo* cur = findClass(s).value_or(nullptr);
     while (cur != nullptr) {
         if (cur->name == b) return true;
-        cur = cur->baseName.empty() ? nullptr : findClass(cur->baseName);
+        cur = cur->baseName.empty() ? nullptr : findClass(cur->baseName).value_or(nullptr);
     }
     return false;
 }
 
-// P3-19：接口成员全局槽位（未登记返回 -1）
-int SemanticAnalyzer::interfaceSlot(const std::string& ifaceName,
+// P3-19：接口成员全局槽位。
+// 1360 结果化批3A：无值=未登记（原 -1 哨兵退役——与合法槽位 0 重叠面消除）
+cn::Optional<int> SemanticAnalyzer::interfaceSlot(const std::string& ifaceName,
                                     const std::string& methodName) const {
     const auto it = interfaceSlot_.find(ifaceName + "::" + methodName);
-    return (it == interfaceSlot_.end()) ? -1 : it->second;
+    return (it == interfaceSlot_.end()) ? std::nullopt : cn::Optional<int>(it->second);
 }
 
-// 沿继承链查找类成员（含父类；未找到返回nullptr）
+// 沿继承链查找类成员（含父类）
 // ownerClass 输出实际所属类名（访问控制检查用：子类访问保护成员允许）
-const ClassMemberInfo* SemanticAnalyzer::lookupClassMember(
+// 1360 结果化批3A：无值=未命中（原 nullptr 哨兵退役）
+cn::Optional<const ClassMemberInfo*> SemanticAnalyzer::lookupClassMember(
     const std::string& className, const std::string& memberName,
     std::string& ownerClass) const {
-    const ClassInfo* info = findClass(className);
+    const ClassInfo* info = findClass(className).value_or(nullptr);
     while (info != nullptr) {
         auto f = info->fields.find(memberName);
         if (f != info->fields.end()) {
@@ -280,17 +289,18 @@ const ClassMemberInfo* SemanticAnalyzer::lookupClassMember(
             return &m->second;
         }
         // 沿继承链向上
-        info = info->baseName.empty() ? nullptr : findClass(info->baseName);
+        info = info->baseName.empty() ? nullptr : findClass(info->baseName).value_or(nullptr);
     }
-    return nullptr;
+    return std::nullopt;
 }
 
 // 2026-08-25 方案A：查类的拷贝构造（单参同类型引用 类名(类名& 其他)）。
 //   有析构的结构体按值拷贝须走拷贝构造（深拷贝），否则浅拷贝析构双释放。
-//   返回拷贝构造方法（ownerClass=所属类）；无则 nullptr。
-const ClassMemberInfo* SemanticAnalyzer::findCopyConstructor(
+//   返回拷贝构造方法（ownerClass=所属类）。1360 结果化批3A：无值=无拷贝构造
+//   （原 nullptr 哨兵退役）。
+cn::Optional<const ClassMemberInfo*> SemanticAnalyzer::findCopyConstructor(
     const std::string& className) const {
-    const ClassInfo* info = findClass(className);
+    const ClassInfo* info = findClass(className).value_or(nullptr);
     while (info != nullptr) {
         // 构造/析构 methods 按 sigKey 存储（构造 key = 名#参数串）
         // 123（930）：每层只认**自有**拷贝构造（ownerClass）——类方法表含沿链
@@ -304,9 +314,9 @@ const ClassMemberInfo* SemanticAnalyzer::findCopyConstructor(
                                              : mk.second.ownerClass;
             if (own == info->name) return &mk.second;
         }
-        info = info->baseName.empty() ? nullptr : findClass(info->baseName);
+        info = info->baseName.empty() ? nullptr : findClass(info->baseName).value_or(nullptr);
     }
-    return nullptr;
+    return std::nullopt;
 }
 
 // 2026-08-25 方案A 强制规则：有析构类按值拷贝（初始化/赋值）须有拷贝构造
@@ -315,38 +325,40 @@ const ClassMemberInfo* SemanticAnalyzer::findCopyConstructor(
 //   调用方仅在确认发生"类对象拷贝"时调用（标识符初始化/标识符赋值）。
 void SemanticAnalyzer::checkCopyRequiresCtor(const std::string& className,
                                              const SourceLocation& loc) {
-    const ClassInfo* info = findClass(className);
+    const ClassInfo* info = findClass(className).value_or(nullptr);
     if (info == nullptr) return;
     bool hasDtor = false;
     for (const auto& mk : info->methods) {
         if (mk.second.isDestructor) { hasDtor = true; break; }
     }
     if (!hasDtor) return;  // 无析构：保持浅拷贝
-    if (findCopyConstructor(className) != nullptr) return;  // 有拷贝构造：深拷贝
+    if (findCopyConstructor(className).has_value()) return;  // 有拷贝构造：深拷贝
     diagnostics_.report(DiagnosticLevel::Error, loc,
                         "有析构类 '" + className + "' 按值拷贝须有拷贝构造（函数 " +
                             className + "(" + className + "& 其他)）");
 }
 
-// 查询类布局：实例总大小
-int SemanticAnalyzer::classTotalSize(const std::string& className) const {
-    const ClassInfo* info = findClass(className);
-    return (info == nullptr) ? 0 : info->totalSize;
+// 查询类布局：实例总大小。
+// 1360 结果化批3A：无值=类不存在（原 0 哨兵退役——0 与空类合法大小重叠面消除）
+cn::Optional<int> SemanticAnalyzer::classTotalSize(const std::string& className) const {
+    const ClassInfo* info = findClass(className).value_or(nullptr);
+    return (info == nullptr) ? std::nullopt : cn::Optional<int>(info->totalSize);
 }
 
 // 查询类字段偏移（沿继承链；含虚表指针偏移调整，Task 3.1 布局约定）
 // 布局：实例首地址 = vtable指针（8字节，若有虚函数），其后按继承链（父类在前）
 // 依次排布各层字段。返回值为"从实例首地址起的字节偏移"（codegen 层按此寻址）。
-int SemanticAnalyzer::classFieldOffset(const std::string& className,
+// 1360 结果化批3A：无值=类不存在或无此字段（原 -1 哨兵退役）
+cn::Optional<int> SemanticAnalyzer::classFieldOffset(const std::string& className,
                                        const std::string& fieldName) const {
-    const ClassInfo* info = findClass(className);
-    if (info == nullptr) return -1;
+    const ClassInfo* info = findClass(className).value_or(nullptr);
+    if (info == nullptr) return std::nullopt;
     // 收集继承链（父类在前）
     std::vector<const ClassInfo*> chain;
     const ClassInfo* c = info;
     while (c != nullptr) {
         chain.push_back(c);
-        c = c->baseName.empty() ? nullptr : findClass(c->baseName);
+        c = c->baseName.empty() ? nullptr : findClass(c->baseName).value_or(nullptr);
     }
     std::reverse(chain.begin(), chain.end());
     // 精确偏移：虚表指针占位 + 接口分派区（P3-19）+ 沿继承链累加字段大小。 860-a（058 挂账①全局口径·双表归一）：本函数曾为独立第二实现——无对齐
@@ -364,11 +376,11 @@ int SemanticAnalyzer::classFieldOffset(const std::string& className,
             const int fieldAlign = handleField ? 8 : typeAlignOf(f->second.type);
             const int fieldSize = handleField ? 8 : typeSizeOf(f->second.type);
             acc = (acc + fieldAlign - 1) / fieldAlign * fieldAlign;
-            if (fname == fieldName) return acc;
+            if (fname == fieldName) return cn::Optional<int>(acc);
             acc += fieldSize;
         }
     }
-    return -1;
+    return std::nullopt;
 }
 
 // ==================== 类/接口注册（Task 3.1） ====================
@@ -448,7 +460,7 @@ void SemanticAnalyzer::resolveClass(ClassDecl* node) {
         if (interfaces_.find(node->baseName) != interfaces_.end()) {
             // 冒号后是接口名：作为接口实现
             info.interfaces.push_back(node->baseName);
-        } else if (const ClassInfo* parent = resolveBaseClass(node)) {
+        } else if (const ClassInfo* parent = resolveBaseClass(node).value_or(nullptr)) {
             // #1252（#1210 派生）：父类身份由 resolveBaseClass 唯一裁定（歧义/
             //   未声明已显式诊断，不再兜底）。baseName 记真实符号名（跨模块同名
             //   冲突时=模块::类），hasVtable 与后续布局/虚表/构造析构链沿同一
@@ -495,7 +507,7 @@ void SemanticAnalyzer::resolveClass(ClassDecl* node) {
 
     // 父类成员并入（字段在前、方法随后；父类自身已 resolve）
     if (!info.baseName.empty()) {
-        const ClassInfo* parentPtr = findClass(info.baseName);
+        const ClassInfo* parentPtr = findClass(info.baseName).value_or(nullptr);
         if (parentPtr != nullptr) {
             const ClassInfo& parent = *parentPtr;
             // 字段：父类字段在前
@@ -602,8 +614,8 @@ void SemanticAnalyzer::resolveClass(ClassDecl* node) {
             }
             curD = curD->baseName.empty()
                        ? nullptr
-                       : (findClass(curD->baseName) != nullptr
-                              ? findClass(curD->baseName)->ast
+                       : (findClass(curD->baseName).has_value()
+                              ? findClass(curD->baseName).value()->ast
                               : nullptr);
         }
         // P3/D3A：登记本类实现的全部接口名（含继承链并入）——供 接口→实现类集合
@@ -613,10 +625,10 @@ void SemanticAnalyzer::resolveClass(ClassDecl* node) {
             info.hasVtable = true;  // 强制虚表指针：接口区统一置于对象首 8 字节后
             int maxSlot = -1;
             for (const auto& ifn : ifaceNames) {
-                const InterfaceInfo* iface = findInterface(ifn);
+                const InterfaceInfo* iface = findInterface(ifn).value_or(nullptr);
                 if (iface == nullptr) continue;
                 for (const auto& mk : iface->methods) {
-                    const int slot = interfaceSlot(ifn, mk.first);
+                    const int slot = interfaceSlot(ifn, mk.first).value_or(-1);
                     if (slot < 0) continue;
                     bool dup = false;
                     for (const auto& pr : info.ifaceDisp) {
@@ -870,7 +882,7 @@ void SemanticAnalyzer::computeClassLayout(ClassInfo& info) {
     const ClassInfo* c = &info;
     while (c != nullptr) {
         chain.push_back(c);
-        c = c->baseName.empty() ? nullptr : findClass(c->baseName);
+        c = c->baseName.empty() ? nullptr : findClass(c->baseName).value_or(nullptr);
     }
     std::reverse(chain.begin(), chain.end());
 
