@@ -531,6 +531,22 @@ def 跑一轮(sha: str, 轮分支: str = "", 分片: int = 0,
         # ② 平台构建段（1297 提取 构建段执行：win=vcvars+Ninja 指纹清建链·linux=cmake 链
         #    ——跑一轮 与 跑分片轮 共用；历史细节注释见 构建段执行/ci_build.py）
         构建段执行(排, 步骤们, 步骤, 日志)
+        # #1468 兜底轮过期早退：构建后·静态门禁/E2E 前核对 develop 头——已前进则本
+        #   sha 已被新头隐含覆盖（189 同口径·git 树=快照·新头绿⇒含旧提交内容绿），
+        #   e2e 占整轮 60~80% 直接跳过省算力（实测：半小时连推 5 头期间 2 台在跑兜底
+        #   被淘汰·白跑 36/46 分钟）。预验轮（ci/预验-*）不查——验证对象是任务分支，
+        #   与 develop 前进无关。返回带「早退新头」标记，池跑任务 据此按过期语义闭环
+        #   （绿=True 防重派·不落盘防 latest 污染，与 过期跳过结果 同口径）。
+        if 轮分支 == "develop":
+            现头 = 取远端SHA()
+            if 现头 and 现头 != sha:
+                print("  [过期早退] develop 已前进 %s→%s——跳过静态门禁/E2E（节省算力）"
+                      % (sha[:10], 现头[:10]), file=日志, flush=True)
+                步骤们["e2e"] = {"rc": 0, "说明": "过期早退（develop 已前进 %s）" % 现头[:10]}
+                return {"sha": sha, "分支": 轮分支, "平台": 平台, "步骤": 步骤们,
+                        "绿": True, "总秒": round(time.time() - 开始),
+                        "时刻": datetime.now().isoformat(timespec="seconds"),
+                        "日志": 轮日志路径.name, "日志尾部": [], "早退新头": 现头}
         # ③.5 静态门禁面+④ E2E（242/447-a·两平台公共段——291 曾因缩进挂在 else 体内被
         #    win 分支整体跳过〔绿=缺键误判〕；523 抽 静态门禁与e2e段·跑一轮 拆函数回 ≤100 行）
         if 排["静态段"]:
@@ -718,13 +734,19 @@ def 池跑任务(任务: dict) -> None:
                 #   develop 前进→reset 到的是新头≠任务 sha——该 sha 的树已由新头轮隐含覆盖
                 #   （git 树=快照·新头绿⇒含旧提交内容绿）。过期轮不落盘（防 latest 被非
                 #   任务 sha 污染）·complete 绿=True 闭环（服务端不重派·详情留审计）。
-                头 = 运行限时(["git", "rev-parse", "HEAD"], 30,
-                              capture_output=True, text=True, cwd=仓库根).stdout.strip()
-                if 头 != sha:
-                    结果 = 过期跳过结果(sha, 任务分支, 头)
-                    print("[池] 兜底任务过期跳过（跑后复查·develop 已前进）：%s" % sha[:10], flush=True)
+                # #1468：构建后 E2E 前已早退（结果带 早退新头）=过期（此时 HEAD 仍=任务
+                #   sha，不能靠 rev-parse 判）——按过期语义闭环，不落盘。
+                if 结果.get("早退新头"):
+                    结果 = 过期跳过结果(sha, 任务分支, 结果["早退新头"])
+                    print("[池] 兜底任务过期跳过（构建后早退·develop 已前进）：%s" % sha[:10], flush=True)
                 else:
-                    落盘(结果)
+                    头 = 运行限时(["git", "rev-parse", "HEAD"], 30,
+                                  capture_output=True, text=True, cwd=仓库根).stdout.strip()
+                    if 头 != sha:
+                        结果 = 过期跳过结果(sha, 任务分支, 头)
+                        print("[池] 兜底任务过期跳过（跑后复查·develop 已前进）：%s" % sha[:10], flush=True)
+                    else:
+                        落盘(结果)
         else:
             # 1297 分片召唤：预验任务且分片开启→构建前召唤从片（空闲实例并行构建跑片；
             #   召唤失败=退化单实例全量·加速面不是正确性面）。CN_CI_BRANCH 点名降级
