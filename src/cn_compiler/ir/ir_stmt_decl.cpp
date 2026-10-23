@@ -450,6 +450,20 @@ void IRGenerator::registerOwnedArrayElems(const DeclGenCtx& ctx) {
             }
         }
     }
+    // 1415（#1415 P1-1·零分叉）：结果/可选 **元素数组**同登记——元素=内联
+    //   合成体（tag+载荷联合体），串/结构体/类载荷须逐元素条件释放（释放面=
+    //   emitStrArrayElemFreesFor 结果/可选分支·emitOwnedStrFieldFreesAt 单点）。
+    //   判据=元素是结果/可选且拥有型字段非空（ownedStrFieldsOf·与释放面同源）；
+    //   与上方 genStringFrees 收集面同判（两处并列·事不过三留标记）。
+    //   原缺=宿主可选/结果数组元素串载荷全漏（1466 探针宿主残留 2/2）。
+    if (semantic_ != nullptr && types::isArray(ctx.srcType) && !ctx.unique.empty()) {
+        const std::string elemRaw1415 = types::arrayElemOf(ctx.srcType);
+        // 1415（复审 P3）：结果/可选 文本判定单点（isResultOrOptionalText）
+        if (isResultOrOptionalText(elemRaw1415) &&
+            !ownedStrFieldsOf(elemRaw1415).empty()) {
+            ownedStrArrayOrder_.push_back(ctx.unique);
+        }
+    }
 }
 
 // ---- 族⑥：P3-18 引用变量绑定（整32& r = x）----
@@ -640,6 +654,47 @@ void IRGenerator::storeArrayInitElements(VarDecl* node, InitListExpr* initList,
                     }
                     continue;
                 }
+            }
+        }
+        // 1415（#1415 P1-2·零分叉）：结果/可选 **合成体元素**=内联体（tag+
+        //   载荷联合体）——genExpr 返回物化槽地址（ptr）；原落下方「普通元素」
+        //   StorePtr 8 字节把地址写入元素槽首 8 字节（tag=地址低位、载荷=栈
+        //   残值：组[0].值 读垃圾 / 可选<字符串>[2] 初始化列表 C0000005）。
+        //   整块拷贝（元素步进字节）与结构体元素同语义（v2 生成声明尾
+        //   合成体元素整块拷贝同形·1466 双编译锁）。
+        {
+            // 1415（复审 P3）：结果/可选 文本判定单点（isResultOrOptionalText）
+            if (isResultOrOptionalText(elemSrc)) {
+                // 1415（#1415 复审 P0·零分叉）：**无元素**（NullLiteral）=空可选值
+                //   （tag=0/载荷=0）——须零填充元素槽；原直接 genExpr(无)=常量 0
+                //   被当物化槽地址整块拷贝（从地址 0 读：可选<整32>/可选<字符串>
+                //   初始化列表 C0000005 fault=0·双侧同病）。逐 8 字节 StorePtr 0
+                //   （元素步进内含 tag+载荷，与 zeroFillArrayTail 全宽补零同规）。
+                if (initList->elements[i]->getType() == NodeType::NullLiteral) {
+                    ir::IRValue zero1415 = emitResult(
+                        ir::Opcode::ConstInt, {}, "i64", "0", node->location);
+                    for (std::int64_t sub1415 = 0; sub1415 < elemStride;
+                         sub1415 += 8) {
+                        ir::IRValue subAddr1415 = addr;
+                        if (sub1415 != 0) {
+                            ir::IRValue subOff1415 = emitResult(
+                                ir::Opcode::ConstInt, {}, "i64",
+                                std::to_string(static_cast<long long>(sub1415)),
+                                node->location);
+                            subAddr1415 = emitResult(
+                                ir::Opcode::Add, {addr, subOff1415}, "ptr", "",
+                                node->location);
+                        }
+                        emit(ir::Opcode::StorePtr, {subAddr1415, zero1415},
+                             ir::IRValue(), "", "i64", node->location);
+                    }
+                    continue;
+                }
+                ir::IRValue synthSrc1415 = genExpr(initList->elements[i].get());
+                emit(ir::Opcode::CopyStruct, {addr, synthSrc1415},
+                     ir::IRValue(), std::to_string(elemStride), "void",
+                     node->location);
+                continue;
             }
         }
         // 普通元素：生成值 + Cast + StorePtr

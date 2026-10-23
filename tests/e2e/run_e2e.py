@@ -694,6 +694,64 @@ def 扫描asm产物说明符(asm路径: pathlib.Path, 标签: str) -> str:
             f"（缺 qword/dword ptr → ml64 A2070；{asm路径.name}）:\n{例}")
 
 
+# 1415（#1415 复审 P2-4）：**汇编断言通道**——用例目录 汇编断言.txt（可选）对产物
+#   汇编做计数断言（防「泄漏修复被后续改动静默回退」：1472 主返回结果 wrapper 的
+#   返回前释放无法进程内观测，以 __cn_str_free 计数锚定；宿主/v2 双侧同校验）。
+#   格式（每行一条·# 注释/空行跳过；侧 ∈ v2|host|both）：
+#       v2:call __cn_str_free>=8      # v2 产物 asm 中子串出现次数 >= 8
+#       host:call __cn_str_free==8    # 支持 >= / <= / ==
+#   解析失败=显式抛错（禁静默跳过——门禁脚本纪律）。
+_汇编断言行模式 = re.compile(
+    r"^\s*(v2|host|both)\s*:\s*(\S.*?)\s*(>=|<=|==)\s*(\d+)\s*$")
+
+
+def 读取汇编断言(用例目录: pathlib.Path) -> list:
+    """返回 [(侧, 子串, 运算, 数)]；无文件=空表；非法行抛 ValueError。"""
+    f = 用例目录 / "汇编断言.txt"
+    if not f.exists():
+        return []
+    条们 = []
+    for 行 in f.read_text(encoding="utf-8").splitlines():
+        行 = 行.strip()
+        if not 行 or 行.startswith("#"):
+            continue
+        m = _汇编断言行模式.match(行)
+        if m is None:
+            raise ValueError(
+                f"汇编断言.txt 非法行（期望 侧:子串>=N / 侧:子串<=N / 侧:子串==N）: {行!r}")
+        条们.append((m.group(1), m.group(2), m.group(3), int(m.group(4))))
+    return 条们
+
+
+def 校验汇编断言(用例目录: pathlib.Path, 侧: str, asm路径: pathlib.Path,
+                编号: str) -> str:
+    """返回 ""=通过；非空=失败原因（含侧/实际计数/期望）。侧=host|v2（both 两侧都查）。
+
+    1415 复审 P3：断言文件存在但**本侧无任何条**（host-only 行在 v2 侧被静默
+    忽略）=显式失败——防「只给一侧写断言、另一侧回归无覆盖」的静默窟窿。"""
+    全部 = 读取汇编断言(用例目录)
+    if not 全部:
+        return ""
+    条们 = [t for t in 全部 if t[0] in (侧, "both")]
+    if not 条们:
+        return (f"{编号} 汇编断言未覆盖 {侧} 侧（汇编断言.txt 存在但无 {侧}/both 行）"
+                f"——补 both 或对应侧行（host-only 静默忽略已禁）")
+    if not asm路径.exists():
+        return f"{编号} 汇编断言缺少 {侧} 产物: {asm路径.name}"
+    文本 = asm路径.read_text(encoding="utf-8", errors="replace")
+    for _, 子串, 运, 期望 in 条们:
+        实际 = 文本.count(子串)
+        if 运 == ">=" and 实际 >= 期望:
+            continue
+        if 运 == "<=" and 实际 <= 期望:
+            continue
+        if 运 == "==" and 实际 == 期望:
+            continue
+        return (f"{编号} 汇编断言失败（{侧}）：{子串!r} 计数 {实际} 不满足 "
+                f"{运}{期望}（{asm路径.name}）")
+    return ""
+
+
 def 收集用例(过滤模式: str) -> list:
     """收集所有E2E用例目录（形如 NN_名称），支持 --filter 按名称过滤"""
     全部 = sorted(
@@ -1935,6 +1993,10 @@ def 执行v2闭环Linux(编译器路径: pathlib.Path, 目标平台: str, 详细
     asm内容 = v2asm路径.read_text(encoding="utf-8", errors="replace")
     if ".globl cn_main" not in asm内容:
         return "失败", f"{编号}-3.5 v2asm.s 缺少入口符号 cn_main（v2 代码生成入口未对齐宿主）"
+    # 1415 P2-4：v2 侧汇编断言（用例目录 汇编断言.txt；无文件=零开销）
+    断言错误 = 校验汇编断言(用例目录, "v2", v2asm路径, f"{编号} v2")
+    if 断言错误:
+        return "失败", 断言错误
 
     # ===== 步骤4：as 汇编 target/v2asm.s -> v2asm_<平台>.o =====
     v2obj = 审计目录 / f"v2asm_{隔离键值}_{产物后缀}.o"
@@ -2190,6 +2252,10 @@ def 执行v2闭环(编译器路径: pathlib.Path, 用例目录: pathlib.Path,
     扫描失败 = 扫描asm产物说明符(v2asm路径, f"{编号} v2 产物")
     if 扫描失败:
         return "失败", 扫描失败
+    # 1415 P2-4：v2 侧汇编断言（用例目录 汇编断言.txt；无文件=零开销）
+    断言错误 = 校验汇编断言(用例目录, "v2", v2asm路径, f"{编号} v2")
+    if 断言错误:
+        return "失败", 断言错误
 
     # ===== 步骤4：ml64 汇编 target/v2asm.asm -> v2asm.obj =====
     v2obj = 工作目录 / "v2asm.obj"
@@ -2443,6 +2509,14 @@ def 执行双编译对照(编译器路径: pathlib.Path, 用例目录: pathlib.P
         扫描失败 = 扫描asm产物说明符(宿主可执行.with_suffix(".asm"), f"{编号} 宿主侧")
         if 扫描失败:
             return "失败", 扫描失败
+    # 1415 P2-4：宿主侧汇编断言（用例目录 汇编断言.txt；无文件=零开销；
+    #   win 产物 .asm / linux 产物 .s——两侧同源校验防宿主-v2 分叉）
+    断言错误 = 校验汇编断言(
+        用例目录, "host",
+        宿主可执行.with_suffix(".asm" if 目标平台 == "win-x64" else ".s"),
+        f"{编号} host")
+    if 断言错误:
+        return "失败", 断言错误
 
     # ===== 步骤2：宿主侧运行取实测退出码（stdin/args 与普通编排同口径注入）=====
     宿主输入文件 = 查找输入文件(用例目录 / 源文件名们[0])

@@ -153,19 +153,14 @@ bool IRGenerator::assignToIndexTarget(AssignmentExpr* node) {
         lastExpr_ = emitResult(ir::Opcode::ConstInt, {}, "i32", "0", node->location);
         return true;
     }
-    ir::IRValue value = genExpr(node->value.get());
-    // plans/019 阶段4' 方案A：下标目标为字符串元素（字符串数组/字符串* 元素）
-    //   且右值为字符串变量标识符 -> 值被外部槽持有（指针逃逸模型，38_tool
-    //   姓名[]=$副本 形态）-> 右值变量污染退出 RAII（出口 free=悬垂源头）。
-    markIndexStringElemTainted(node);
-    const std::string targetType = indexAssignElemType(node);
-    if (value.type != targetType) {
-        value = emitResult(ir::Opcode::Cast, {value}, targetType, "",
-                           node->location);
-    }
     // 348-a（D11 甲方案·源优先序）：下标目标 = 一般结构体返回调用 → 先求值源
     //   （可能含条件块）再算目标地址（纯地址计算）——原序致调用块插在 addr
     //   发射之后（234-a 285 失败根因）。守卫不满足则零行为变更落原路径。
+    // 1415（#1415 审查 P1-1 同族·双重求值根治）：本通道须**先于**下方通用
+    //   genExpr——原序「先 genExpr 求值一次、随后本通道再 genExpr 一次」对
+    //   结果/可选 构造调用位产生**两份盒**（各携一份 __cn_str_copy），第一份
+    //   无接管者=每元素 orphan 1（1466 宿主下标赋值形态残留 2 实测；v2=0）。
+    //   源优先序本意即「源先于目标」，重排后单次求值、盒唯一（元素浅拷接管）。
     {
         // 1360 结果化：无值=非结构体/类目标（has_value 分流·原空串判定显形）
         const cn::Optional<std::string> tElemSrcS = indexTargetElemSrcType(node);
@@ -177,6 +172,16 @@ bool IRGenerator::assignToIndexTarget(AssignmentExpr* node) {
                                       node->location)) {
             return true;
         }
+    }
+    ir::IRValue value = genExpr(node->value.get());
+    // plans/019 阶段4' 方案A：下标目标为字符串元素（字符串数组/字符串* 元素）
+    //   且右值为字符串变量标识符 -> 值被外部槽持有（指针逃逸模型，38_tool
+    //   姓名[]=$副本 形态）-> 右值变量污染退出 RAII（出口 free=悬垂源头）。
+    markIndexStringElemTainted(node);
+    const std::string targetType = indexAssignElemType(node);
+    if (value.type != targetType) {
+        value = emitResult(ir::Opcode::Cast, {value}, targetType, "",
+                           node->location);
     }
     // 复合赋值（*p += 1 等）：先读当前值再运算（简化：直接读地址）
     ir::IRValue addr = lvalueAddress(node->target.get());

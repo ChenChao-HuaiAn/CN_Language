@@ -89,12 +89,29 @@ void IRGenerator::collectOwnedStrFields(const std::string& canonRaw, int base, i
                     return;
                 }
             }
-            // 571：T≠字符串（结果<结构体,E>/可选<结构体> 等）或偏移查询失败——
-            //   **落通用结构体递归**（值位联合体内部的串字段展开：读取() 返回
-            //   结果<盒子,整32> 的 值.名 等形态·245 实证基线行为）——不 return
-            //   （首版在此 return 丢失值位展开=245 校验和 231 回归）。通用循环
-            //   对「错误值联合」字段按结构体递归（结果联合$ 豁免 viaUnion·与
-            //   修复前口径一致）。
+            // 1415（#1415 复审 P2-1·零分叉）：**T=结构体/类 载荷带 tag 守卫**——
+            //   原落通用递归 cond=-1（无条件）：错误态值位=错误码整数（E=整32/
+            //   整64），无条件按载荷结构体释放字段=f r e e(错误码)/读垃圾指针
+            //   （UB；v2 侧 发射结果可选值字段释放于地址 在 tag 分支内释放
+            //   =零分叉）。修=值位字段按「正常/有值」偏移带条件递归（cond=
+            //   base+tag 偏移·释放面 emitFieldStringFreeIf 摘句柄守卫）；偏移
+            //   查询失败/载荷名不可解（$ 形态 canonRaw 空）仍落下方通用递归
+            //   （诚实边界·宁漏勿错）。
+            if (valueType != "字符串" && !valueType.empty()) {
+                const int vo1415 = semantic_->fieldOffsetOf(decl, "值").value_or(-1);
+                const int co1415 = semantic_->fieldOffsetOf(
+                    decl, isResult ? "正常" : "有值").value_or(-1);
+                // 偏移协议否定值 = -1（fieldOffsetOf miss）；精确哨兵比较
+                //   （非业务区间·双字段均有效才挂条件递归）。
+                if (vo1415 != -1 && co1415 != -1) {
+                    collectOwnedStrFields(valueType, base + vo1415, base + co1415,
+                                          out, visiting, viaUnion);
+                    return;
+                }
+            }
+            // T≠字符串且载荷名不可解或偏移失败——落通用结构体递归（值位联合体
+            //   内部的串字段展开：读取() 返回 结果<盒子,整32> 的 值.名 等形态
+            //   ·245 实证基线行为）。
         }
     }
     // 类类型：不展开（类对象字段归 ~类 级联/容器 RAII——本轮面外）

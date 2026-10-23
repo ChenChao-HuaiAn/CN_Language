@@ -93,6 +93,17 @@ void IRGenerator::genStringFrees() {
                     }
                 }
             }
+            // 1415（#1415 P1-1·零分叉）：结果/可选 元素数组入函数尾兜底——
+            //   收集判据与 registerOwnedArrayElems 同（两处并列·事不过三留标记）；
+            //   释放面=emitStrArrayElemFreesFor 结果/可选分支。
+            if (!ownedElem2) {
+                const std::string elemRaw1415 = types::arrayElemOf(st2);
+                // 1415（复审 P3）：结果/可选 文本判定单点（isResultOrOptionalText）
+                if (isResultOrOptionalText(elemRaw1415) &&
+                    !ownedStrFieldsOf(elemRaw1415).empty()) {
+                    ownedElem2 = true;
+                }
+            }
             if (ownedElem2) {
                 ownedStrArrays.push_back(unique);
             }
@@ -625,6 +636,43 @@ void IRGenerator::emitStrArrayElemFreesFor(const std::string& unique) {
                  ir::IRValue(), "cn_memset", "void", loc955);
         }
         return;
+    }
+    // 1415（#1415 P1-1·零分叉）：结果/可选 元素数组——逐元素经
+    //   emitOwnedStrFieldFreesAt（元素地址 + 元素类型；tag 条件守卫内释放
+    //   串/结构体/类载荷·清槽幂等，与聚合局部字段释放同设施）。元素寻址
+    //   步进=typeSizeOf(合成体)（布局已降级注册，<=0 即内部缺陷早退=不产
+    //   错误释放）。原缺=宿主残留 2/2（可选/结果两族）。
+    {
+        const std::string elemRaw1415 = types::arrayElemOf(srcType);
+        // 1415（复审 P3）：结果/可选 文本判定单点（isResultOrOptionalText）
+        if (isResultOrOptionalText(elemRaw1415)) {
+            if (ownedStrFieldsOf(elemRaw1415).empty()) return;
+            const cn::Optional<int> lenOpt1415 = types::arrayLenOf(srcType);
+            if (!lenOpt1415.has_value() || lenOpt1415.value() <= 0) return;
+            const int len1415 = lenOpt1415.value();
+            // 1360 结果化：typeSizeOf 返回 Optional（miss=尺寸未知·诊断已报？
+            //   合成体未降级等内部错误通道）——无值/0 一律早退（不产错误释放）。
+            const int stride1415 = semantic_->typeSizeOf(elemRaw1415).value_or(0);
+            if (stride1415 == 0) return;
+            const SourceLocation loc1415;
+            ir::IRValue base1415 = emitResult(
+                ir::Opcode::AddrOf, {ir::IRValue::var(unique, "ptr")}, "ptr",
+                unique, loc1415);
+            for (int i = 0; i < len1415; ++i) {
+                ir::IRValue addr1415 = base1415;
+                if (i != 0) {
+                    ir::IRValue off1415 = emitResult(
+                        ir::Opcode::ConstInt, {}, "i64",
+                        std::to_string(static_cast<long long>(i) * stride1415),
+                        loc1415);
+                    addr1415 = emitResult(ir::Opcode::Add,
+                                          {base1415, off1415}, "ptr", "",
+                                          loc1415);
+                }
+                emitOwnedStrFieldFreesAt(addr1415, elemRaw1415, loc1415);
+            }
+            return;
+        }
     }
     if (types::arrayElemOf(srcType) != "字符串") return;
     const cn::Optional<int> lenOpt = types::arrayLenOf(srcType);

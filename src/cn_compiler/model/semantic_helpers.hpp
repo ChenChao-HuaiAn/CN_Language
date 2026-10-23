@@ -404,6 +404,15 @@ inline std::string canonicalType(const std::string& type) {
     return t.substr(b, en - b + 1);
 }
 
+// 1415（#1415 复审 P3·三处重复归一）：结果/可选 文本判定单点——模板形态
+//   （结果<...>/可选<...>）与 $ 合成名（结果$.../可选$...）双态收口。
+//   消费=数组元素收集/释放面（ir_oop_call_release ×2 + ir_stmt_decl ×1）。
+[[maybe_unused]] inline bool isResultOrOptionalText(const std::string& type) {
+    if (isResultType(type) || isOptionalType(type)) return true;
+    const std::string canon = types::canonical(type);
+    return canon.rfind("结果$", 0) == 0 || canon.rfind("可选$", 0) == 0;
+}
+
 [[maybe_unused]] inline std::string optionalStructName(const std::string& t) {
     return "可选$" + types::canonical(t);
 }
