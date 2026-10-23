@@ -43,8 +43,8 @@
     <aside class="侧栏" aria-label="文档导航"><div class="侧栏-组"><p class="侧栏-组题">入门</p><a href="index.html">文档总览</a><a href="getting-started.html">快速开始</a></div><div class="侧栏-组"><p class="侧栏-组题">教程</p><a href="tutorial-syntax.html">语法基础</a><a href="tutorial-oop.html">类与泛型</a><a href="tutorial-safety.html">安全与并发</a><a href="tutorial-advanced.html">进阶篇</a></div><div class="侧栏-组"><p class="侧栏-组题">语言参考</p><a href="reference/index.html">参考总览</a><a href="reference/lexical.html">词法结构</a><a href="reference/types.html">类型系统</a><a href="reference/control-flow.html">控制流</a><a href="reference/functions.html">函数</a><a href="reference/oop.html">类与对象</a><a href="reference/errors.html">错误处理</a><a href="reference/concurrency.html">并发</a><a href="reference/modules.html">模块系统</a></div><div class="侧栏-组"><p class="侧栏-组题">标准库</p><a href="stdlib.html" aria-current="page">标准库总览</a><a href="stdlib/core.html">核心</a><a href="stdlib/container.html">容器</a><a href="stdlib/mapset.html">映射集合</a><a href="stdlib/string.html">字符串扩展</a><a href="stdlib/algorithm.html">算法</a><a href="stdlib/regex.html">正则</a><a href="stdlib/system.html">系统</a><a href="stdlib/io.html">IO</a><a href="stdlib/file.html">文件</a><a href="stdlib/time.html">时间</a><a href="stdlib/math.html">数学</a><a href="stdlib/random.html">随机数</a><a href="stdlib/thread.html">线程</a><a href="stdlib/builtin.html">内置函数</a></div><div class="侧栏-组"><p class="侧栏-组题">资源</p><a href="cli.html">命令行参考</a></div><div class="侧栏-组"><p class="侧栏-组题">资源</p><a href="https://gitcode.com/ChenChao_GitCode/CN_Language" target="_blank" rel="noopener">源码仓库 ↗</a></div></aside>
     <article class="正文"><nav class="面包屑" aria-label="面包屑"><a href="./">文档</a> / 标准库</nav>
 <h1>标准库</h1>
-<p style="color: var(--color-fg-muted); font-size: var(--text-lg); line-height: 2;">13 个模块、188 个函数与类方法，全部用 CN 语言写成——每个函数都有定义、用法与可运行的示例。标准库自身就是最好的进阶教程。</p>
-<div class="库卡排"><a class="库卡" href="stdlib/core.html"><span class="库卡-题">核心</span><span class="库卡-述">错误码枚举 + 交换/最小/最大/断言（泛型）</span><span class="库卡-数">5 个条目</span></a><a class="库卡" href="stdlib/container.html"><span class="库卡-题">容器</span><span class="库卡-述">向量&lt;T&gt; / 链表&lt;T&gt; / 栈&lt;T&gt; / 队列&lt;T&gt;（RAII 自动释放）</span><span class="库卡-数">44 个条目</span></a><a class="库卡" href="stdlib/mapset.html"><span class="库卡-题">映射集合</span><span class="库卡-述">映射&lt;K,V&gt;（哈希）/ 字符串映射&lt;V&gt; / 集合&lt;T&gt;</span><span class="库卡-数">30 个条目</span></a><a class="库卡" href="stdlib/string.html"><span class="库卡-题">字符串扩展</span><span class="库卡-述">字符串转整数/浮点/布尔 + 替换/填充左/填充右/分割</span><span class="库卡-数">7 个条目</span></a><a class="库卡" href="stdlib/algorithm.html"><span class="库卡-题">算法</span><span class="库卡-述">排序/线性查找/二分查找/逆序/变换/计数/最大元素</span><span class="库卡-数">10 个条目</span></a><a class="库卡" href="stdlib/regex.html"><span class="库卡-题">正则</span><span class="库卡-述">正则引擎类：字面量/./字符类/锚定/量词/分组/或/转义</span><span class="库卡-数">4 个条目</span></a><a class="库卡" href="stdlib/system.html"><span class="库卡-题">系统</span><span class="库卡-述">参数个数() / 参数(索引)</span><span class="库卡-数">2 个条目</span></a><a class="库卡" href="stdlib/io.html"><span class="库卡-题">IO</span><span class="库卡-述">读取行/读取整数/读取浮点/打印到错误</span><span class="库卡-数">4 个条目</span></a><a class="库卡" href="stdlib/file.html"><span class="库卡-题">文件</span><span class="库卡-述">打开/读取/写入/读取行/大小/关闭/存在</span><span class="库卡-数">7 个条目</span></a><a class="库卡" href="stdlib/time.html"><span class="库卡-题">时间</span><span class="库卡-述">当前时间戳/单调时钟毫秒/格式化时间</span><span class="库卡-数">3 个条目</span></a><a class="库卡" href="stdlib/math.html"><span class="库卡-题">数学</span><span class="库卡-述">平方根/幂/正弦/余弦/正切/绝对值/向上取整/向下取整</span><span class="库卡-数">8 个条目</span></a><a class="库卡" href="stdlib/random.html"><span class="库卡-题">随机数</span><span class="库卡-述">随机数生成器类（xoshiro256++）+ 播种扩散</span><span class="库卡-数">7 个条目</span></a><a class="库卡" href="stdlib/thread.html"><span class="库卡-题">线程</span><span class="库卡-述">新线程/并入线程 + 互斥锁&lt;T&gt;（类型化句柄）+ 六个过渡函数</span><span class="库卡-数">9 个条目</span></a><a class="库卡" href="stdlib/builtin.html"><span class="库卡-题">内置函数</span><span class="库卡-述">打印族/字符串族/内存族/驻留/类型大小/复制/转移（无需导入）</span><span class="库卡-数">48 个条目</span></a></div>
+<p style="color: var(--color-fg-muted); font-size: var(--text-lg); line-height: 2;">13 个模块、190 个函数与类方法，全部用 CN 语言写成——每个函数都有定义、用法与可运行的示例。标准库自身就是最好的进阶教程。</p>
+<div class="库卡排"><a class="库卡" href="stdlib/core.html"><span class="库卡-题">核心</span><span class="库卡-述">错误码枚举 + 交换/最小/最大/断言（泛型）</span><span class="库卡-数">5 个条目</span></a><a class="库卡" href="stdlib/container.html"><span class="库卡-题">容器</span><span class="库卡-述">向量&lt;T&gt; / 链表&lt;T&gt; / 栈&lt;T&gt; / 队列&lt;T&gt;（RAII 自动释放）</span><span class="库卡-数">44 个条目</span></a><a class="库卡" href="stdlib/mapset.html"><span class="库卡-题">映射集合</span><span class="库卡-述">映射&lt;K,V&gt;（哈希）/ 字符串映射&lt;V&gt; / 集合&lt;T&gt;</span><span class="库卡-数">31 个条目</span></a><a class="库卡" href="stdlib/string.html"><span class="库卡-题">字符串扩展</span><span class="库卡-述">字符串转整数/浮点/布尔 + 替换/填充左/填充右/分割</span><span class="库卡-数">7 个条目</span></a><a class="库卡" href="stdlib/algorithm.html"><span class="库卡-题">算法</span><span class="库卡-述">排序/线性查找/二分查找/逆序/变换/计数/最大元素</span><span class="库卡-数">10 个条目</span></a><a class="库卡" href="stdlib/regex.html"><span class="库卡-题">正则</span><span class="库卡-述">正则引擎类：字面量/./字符类/锚定/量词/分组/或/转义</span><span class="库卡-数">4 个条目</span></a><a class="库卡" href="stdlib/system.html"><span class="库卡-题">系统</span><span class="库卡-述">参数个数() / 参数(索引)</span><span class="库卡-数">2 个条目</span></a><a class="库卡" href="stdlib/io.html"><span class="库卡-题">IO</span><span class="库卡-述">读取行/读取整数/读取浮点/打印到错误</span><span class="库卡-数">4 个条目</span></a><a class="库卡" href="stdlib/file.html"><span class="库卡-题">文件</span><span class="库卡-述">打开/读取/写入/读取行/大小/关闭/存在/创建目录</span><span class="库卡-数">8 个条目</span></a><a class="库卡" href="stdlib/time.html"><span class="库卡-题">时间</span><span class="库卡-述">当前时间戳/单调时钟毫秒/格式化时间</span><span class="库卡-数">3 个条目</span></a><a class="库卡" href="stdlib/math.html"><span class="库卡-题">数学</span><span class="库卡-述">平方根/幂/正弦/余弦/正切/绝对值/向上取整/向下取整</span><span class="库卡-数">8 个条目</span></a><a class="库卡" href="stdlib/random.html"><span class="库卡-题">随机数</span><span class="库卡-述">随机数生成器类（xoshiro256++）+ 播种扩散</span><span class="库卡-数">7 个条目</span></a><a class="库卡" href="stdlib/thread.html"><span class="库卡-题">线程</span><span class="库卡-述">新线程/并入线程 + 互斥锁&lt;T&gt;（类型化句柄）+ 六个过渡函数</span><span class="库卡-数">9 个条目</span></a><a class="库卡" href="stdlib/builtin.html"><span class="库卡-题">内置函数</span><span class="库卡-述">打印族/字符串族/内存族/驻留/类型大小/复制/转移（无需导入）</span><span class="库卡-数">48 个条目</span></a></div>
 <h2 id="速查">全部函数速查</h2>
 <p>按模块列出全部公开 API（内部辅助以「内部」徽章标注）。点击函数名跳转到逐函数文档。</p>
 <table class="表"><thead><tr><th>模块</th><th>条目</th><th>一句话</th></tr></thead><tbody>
@@ -117,16 +117,17 @@
 <tr><td></td><td><a href="stdlib/mapset.html#字符串映射-删除"><code>删除</code></a></td><td>删除字符串键值</td></tr>
 <tr><td></td><td><a href="stdlib/mapset.html#字符串映射-清空拷贝"><code>清空 / 拷贝构造</code></a></td><td>清空与深拷构造（暂无 大小/为空 成员）</td></tr>
 <tr><td></td><td><a href="stdlib/mapset.html#字符串映射-内部"><code>析构键值 / 析构值 / 桶索引 / 链查找 / 释放内部数组</code></a> <span class="签 签-灰">内部</span></td><td>内部：挂点与散列辅助（勿调用）</td></tr>
-<tr><td></td><td><a href="stdlib/mapset.html#集合-构造"><code>集合()</code></a></td><td>构造空集合</td></tr>
-<tr><td></td><td><a href="stdlib/mapset.html#集合-添加"><code>添加</code></a></td><td>添加元素（幂等）</td></tr>
-<tr><td></td><td><a href="stdlib/mapset.html#集合-包含"><code>包含</code></a></td><td>是否包含值</td></tr>
-<tr><td></td><td><a href="stdlib/mapset.html#集合-删除"><code>删除</code></a></td><td>按值删除</td></tr>
+<tr><td></td><td><a href="stdlib/mapset.html#集合-构造"><code>集合()</code></a></td><td>构造空集合（惰性桶）</td></tr>
+<tr><td></td><td><a href="stdlib/mapset.html#集合-添加"><code>添加</code></a></td><td>添加元素（按位模式判等）</td></tr>
+<tr><td></td><td><a href="stdlib/mapset.html#集合-包含"><code>包含</code></a></td><td>是否包含值（位模式判等）</td></tr>
+<tr><td></td><td><a href="stdlib/mapset.html#集合-删除"><code>删除</code></a></td><td>按位模式删除</td></tr>
 <tr><td></td><td><a href="stdlib/mapset.html#集合-大小"><code>大小</code></a></td><td>元素个数</td></tr>
 <tr><td></td><td><a href="stdlib/mapset.html#集合-为空"><code>为空</code></a></td><td>是否为空</td></tr>
 <tr><td></td><td><a href="stdlib/mapset.html#集合-清空"><code>清空</code></a></td><td>清空集合</td></tr>
-<tr><td></td><td><a href="stdlib/mapset.html#集合-内部"><code>析构被移除 / 移动元素 / 数组前移</code></a> <span class="签 签-灰">内部</span></td><td>内部：挂点与前移辅助（勿调用）</td></tr>
+<tr><td></td><td><a href="stdlib/mapset.html#集合-内部"><code>析构被移除 / 移动元素 / 数组前移 / 元素位模式 / 元素相等 / 桶序号 / 链查找</code></a> <span class="签 签-灰">内部</span></td><td>内部：挂点与哈希辅助（勿调用）</td></tr>
 <tr><td></td><td><a href="stdlib/mapset.html#查找键位置"><code>查找键位置</code></a></td><td>键数组线性查找</td></tr>
 <tr><td></td><td><a href="stdlib/mapset.html#查找值位置"><code>查找值位置</code></a></td><td>数据数组线性查找</td></tr>
+<tr><td></td><td><a href="stdlib/mapset.html#散列桶序号"><code>散列桶序号</code></a></td><td>共享散列：Knuth 乘法 + 掩码</td></tr>
 <tr><td><a href="stdlib/string.html#解析">字符串扩展</a></td><td><a href="stdlib/string.html#字符串转整数"><code>字符串转整数</code></a></td><td>字符串 → 整64（失败返回错误）</td></tr>
 <tr><td></td><td><a href="stdlib/string.html#字符串转浮点"><code>字符串转浮点</code></a></td><td>字符串 → 浮64</td></tr>
 <tr><td></td><td><a href="stdlib/string.html#字符串转布尔"><code>字符串转布尔</code></a></td><td>字符串 → 布尔</td></tr>
@@ -136,7 +137,7 @@
 <tr><td></td><td><a href="stdlib/string.html#分割"><code>分割</code></a></td><td>按分隔符切分到调用方数组</td></tr>
 <tr><td><a href="stdlib/algorithm.html#数组算法">算法</a></td><td><a href="stdlib/algorithm.html#排序整32"><code>排序整32</code></a></td><td>整32 数组冒泡升序</td></tr>
 <tr><td></td><td><a href="stdlib/algorithm.html#排序整64"><code>排序整64</code></a></td><td>整64 数组冒泡升序</td></tr>
-<tr><td></td><td><a href="stdlib/algorithm.html#线性查找"><code>线性查找</code></a></td><td>泛型线性查找（未找到 -1）</td></tr>
+<tr><td></td><td><a href="stdlib/algorithm.html#线性查找"><code>线性查找</code></a></td><td>泛型线性查找（未找到=无）</td></tr>
 <tr><td></td><td><a href="stdlib/algorithm.html#二分查找整32"><code>二分查找整32</code></a></td><td>整32 二分查找（须已升序）</td></tr>
 <tr><td></td><td><a href="stdlib/algorithm.html#二分查找整64"><code>二分查找整64</code></a></td><td>整64 二分查找（须已升序）</td></tr>
 <tr><td></td><td><a href="stdlib/algorithm.html#逆序"><code>逆序</code></a></td><td>原地反转数组</td></tr>
@@ -161,6 +162,7 @@
 <tr><td></td><td><a href="stdlib/file.html#文件大小"><code>文件大小</code></a></td><td>查询文件字节数</td></tr>
 <tr><td></td><td><a href="stdlib/file.html#关闭文件"><code>关闭文件</code></a></td><td>关闭句柄</td></tr>
 <tr><td></td><td><a href="stdlib/file.html#文件存在"><code>文件存在</code></a></td><td>文件是否存在</td></tr>
+<tr><td></td><td><a href="stdlib/file.html#创建目录"><code>创建目录</code></a></td><td>递归创建目录（幂等）</td></tr>
 <tr><td><a href="stdlib/time.html#时间函数">时间</a></td><td><a href="stdlib/time.html#当前时间戳"><code>当前时间戳</code></a></td><td>Unix 纪元秒</td></tr>
 <tr><td></td><td><a href="stdlib/time.html#单调时钟毫秒"><code>单调时钟毫秒</code></a></td><td>单调毫秒时钟（测耗时用）</td></tr>
 <tr><td></td><td><a href="stdlib/time.html#格式化时间"><code>格式化时间</code></a></td><td>strftime 风格格式化（本地时区）</td></tr>
@@ -290,7 +292,7 @@
     </div>
     <div class="页脚-底">
       <span>© 2026 CN 语言项目</span>
-      <span>文档基线：任务/1096 703319b41·2026-10-21·示例经编译器实测</span>
+      <span>文档基线：任务/1373 8b4c8e426·2026-10-23·示例经编译器实测</span>
       <span>京ICP备00000000号（备案办理中·占位）</span>
     </div>
   </div>

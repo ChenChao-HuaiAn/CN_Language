@@ -78,7 +78,10 @@ void X64CodeGenerator::emitShift(AsmWriter& writer, const ir::IRInstruction& ins
         const cn::Optional<std::string> shAmtPhys = inst.operands[1].isConstant
                                           ? std::nullopt
                                           : physRegOf(inst.operands[1]);
-        const bool shiftSelfClobber = dstPhys.has_value() && shAmtPhys.value() == dstPhys.value();
+        // 1427 修复：shAmtPhys 常量移位量时无值（批4 前=空串参与比较恒假）——
+        //   消费点须自带 has_value 守卫（坏值访问=批4 Optional 移植漏检实录）
+        const bool shiftSelfClobber = dstPhys.has_value() && shAmtPhys.has_value()
+                                      && shAmtPhys.value() == dstPhys.value();
         std::string ew = "eax";
         if (dstPhys.has_value() && !shiftSelfClobber) ew = widthFor("i32", dstPhys.value());
         // 常量传播面守卫（#500·077 Cast 常量源适配同构）：op1 为立即数常量时
@@ -142,7 +145,10 @@ void X64CodeGenerator::emitShift(AsmWriter& writer, const ir::IRInstruction& ins
     const cn::Optional<std::string> amtPhys64 = inst.operands[1].isConstant
                                       ? std::nullopt
                                       : physRegOf(inst.operands[1]);
-    const bool direct64 = dstPhys64.has_value() && amtPhys64.value() != dstPhys64.value();
+    // 1427 修复：amtPhys64 常量移位量时无值（批4 前=空串 != 非空 dst 恒真→直写）——
+    //   无值等价旧空串语义：dst 已分配即可直写（消费点自带守卫·坏值访问=批4 漏检）
+    const bool direct64 = dstPhys64.has_value() &&
+                          (!amtPhys64.has_value() || amtPhys64.value() != dstPhys64.value());
     std::string w;
     if (direct64) {
         w = widthFor(srcType, dstPhys64.value());
@@ -261,7 +267,10 @@ void X64CodeGenerator::emitIntBinary(AsmWriter& writer, const ir::IRInstruction&
         const cn::Optional<std::string> nOp2Phys = inst.operands[1].isConstant
                                          ? std::nullopt
                                          : physRegOf(inst.operands[1]);
-        const bool narrowSelfClobber = dstPhys.has_value() && nOp2Phys.value() == dstPhys.value();
+        // 1427 修复：nOp2Phys 常量操作数时无值（批4 前=空串参与比较恒假）——
+        //   消费点须自带 has_value 守卫（坏值访问=批4 Optional 移植漏检实录）
+        const bool narrowSelfClobber = dstPhys.has_value() && nOp2Phys.has_value()
+                                       && nOp2Phys.value() == dstPhys.value();
         // P1（1281 返工）：needOvf=false（回绕内置/不安全函数）的窄型加/减结果
         //   是 32 位完整和差（u8 255+1=256、i8 100+100=200），必须按声明窄宽
         //   movsx/movzx 规范化后再落位——否则 32 位消费点（比较/除法等）读到
@@ -406,7 +415,10 @@ void X64CodeGenerator::emitIntMul(AsmWriter& writer, const ir::IRInstruction& in
         const cn::Optional<std::string> nOp2Phys = inst.operands[1].isConstant
                                          ? std::nullopt
                                          : physRegOf(inst.operands[1]);
-        const bool narrowSelfClobber = narrowPhys.has_value() && nOp2Phys.value() == narrowPhys.value();
+        // 1427 修复：nOp2Phys 常量操作数时无值（批4 前=空串参与比较恒假）——
+        //   消费点须自带 has_value 守卫（坏值访问=批4 Optional 移植漏检实录）
+        const bool narrowSelfClobber = narrowPhys.has_value() && nOp2Phys.has_value()
+                                       && nOp2Phys.value() == narrowPhys.value();
         const std::string acc = (!narrowPhys.has_value() || narrowSelfClobber)
                                     ? std::string("eax")
                                     : widthFor("i32", narrowPhys.value());
