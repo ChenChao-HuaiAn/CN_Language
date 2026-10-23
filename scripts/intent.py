@@ -55,42 +55,79 @@ def 服务地址() -> str:
     return os.environ.get("CN_BOARD_URL", 默认地址).rstrip("/")
 
 
+_主树目录缓存 = {"已算": False, "值": None}
+_令牌缓存 = {"键": None, "值": ""}
+_令牌锁 = threading.Lock()
+
+
 def 主树脚本目录() -> Path | None:
-    """556：worktree 反推主树 scripts 目录（git-common-dir）——本树即主树时返回自身。"""
+    """556：worktree 反推主树 scripts 目录（git-common-dir）——本树即主树时返回自身。
+    进程内缓存：每次 读令牌() 都跑 git rev-parse 子进程=每请求最多 4 次的浪费源头，
+    目录关系进程生命周期内稳定，只解析一次。"""
+    if _主树目录缓存["已算"]:
+        return _主树目录缓存["值"]
     try:
         r = subprocess.run(["git", "rev-parse", "--git-common-dir"], cwd=脚本目录,
                            capture_output=True, text=True, timeout=5)
         if r.returncode != 0:
-            return None
-        公共 = Path(r.stdout.strip())
-        if not 公共.is_absolute():
-            公共 = (脚本目录 / 公共).resolve()
-        return 公共.parent / "scripts"
+            结果 = None
+        else:
+            公共 = Path(r.stdout.strip())
+            if not 公共.is_absolute():
+                公共 = (脚本目录 / 公共).resolve()
+            结果 = 公共.parent / "scripts"
     except (OSError, ValueError, subprocess.SubprocessError):
-        return None
+        结果 = None
+    _主树目录缓存.update(已算=True, 值=结果)
+    return 结果
+
+
+def _令牌键(候选们: list[Path]) -> tuple:
+    """令牌缓存失效键：候选文件 mtime_ns + 环境变量令牌——文件轮换/环境变更即失效。
+    stat 是微秒级系统调用（不启子进程），每请求成本可忽略。"""
+    文件项 = []
+    for 候选 in 候选们:
+        try:
+            文件项.append((str(候选), 候选.stat().st_mtime_ns))
+        except OSError:
+            文件项.append((str(候选), None))
+    return (tuple(文件项), os.environ.get("CN_BOARD_TOKEN", "").strip(),
+            os.environ.get("CN_QUEUE_TOKEN", "").strip())
 
 
 def 读令牌() -> str:
     """556：令牌统一兜底链=本树 scripts/queue_client.json → 主树副本（git-common-dir
     反推·治令牌轮换后旧 worktree 静默 401）→ 环境变量 CN_BOARD_TOKEN/CN_QUEUE_TOKEN。
     全部落空返回空串——调用方「有令牌就带」语义不变。看板系读取点
-    （board_cli/wt/integrate/migrate_board_docs）统一走此实现·归纳零复制。"""
-    主 = 主树脚本目录()
-    候选们 = [脚本目录 / "queue_client.json"]
-    if 主 and 主 != 脚本目录:
-        候选们.append(主 / "queue_client.json")
-    for 候选 in 候选们:
-        try:
-            t = json.loads(候选.read_text(encoding="utf-8")).get("令牌", "")
-            if t:
-                return str(t)
-        except (OSError, ValueError):
-            continue
-    for 键 in ("CN_BOARD_TOKEN", "CN_QUEUE_TOKEN"):
-        t = os.environ.get(键, "").strip()
-        if t:
-            return t
-    return ""
+    （board_cli/wt/integrate/migrate_board_docs）统一走此实现·归纳零复制。
+
+    进程内缓存（1425 补强）：键=候选文件 mtime_ns+环境令牌，令牌轮换（文件重写）
+    即时失效；目录反推也只跑一次 git rev-parse——根治每请求最多 4 次子进程。"""
+    with _令牌锁:
+        主 = 主树脚本目录()
+        候选们 = [脚本目录 / "queue_client.json"]
+        if 主 and 主 != 脚本目录:
+            候选们.append(主 / "queue_client.json")
+        键 = _令牌键(候选们)
+        if _令牌缓存["键"] == 键:
+            return _令牌缓存["值"]
+        值 = ""
+        for 候选 in 候选们:
+            try:
+                t = json.loads(候选.read_text(encoding="utf-8")).get("令牌", "")
+                if t:
+                    值 = str(t)
+                    break
+            except (OSError, ValueError):
+                continue
+        if not 值:
+            for 键名 in ("CN_BOARD_TOKEN", "CN_QUEUE_TOKEN"):
+                t = os.environ.get(键名, "").strip()
+                if t:
+                    值 = t
+                    break
+        _令牌缓存.update(键=键, 值=值)
+        return 值
 
 
 def 鉴权头() -> dict:
@@ -287,16 +324,28 @@ def 落登记(在做: str, 计划: str, 备注: str) -> int:
     return 0
 
 
+_已收口鉴权告警: set[int] = set()
+
+
 def 已收口(号: str) -> bool:
     """316：在做任务是否已收口——382 起以服务端台账为准（GET /api/task/<号> 状态 ✅）。
     384：本地 021 降级段删除（021 文件已终局删除·服务不可达返回 False=不下板，
-    下次路过再查——漏删后果仅意图行滞留，492 起行永不自动清·人工 release 兜底）。"""
+    下次路过再查——漏删后果仅意图行滞留，492 起行永不自动清·人工 release 兜底）。
+    1425：401/403 不得静默当「未收口」——本进程每码提示一行（路过续约高频路径限频）。"""
     if not 号:
         return False
     try:
         t = (调服务("GET", f"/api/task/{号}") or {}).get("任务")
         if t is not None:
             return t.get("状态") == "✅"
+    except urllib.error.HTTPError as e:
+        if 鉴权失败码(e.code):
+            if e.code not in _已收口鉴权告警:
+                _已收口鉴权告警.add(e.code)
+                print(f"[黄] {鉴权失败文案('看板服务', e.code)}——已收口检查跳过"
+                      f"（本进程每码仅提示一次；意图行等候人工/心跳超时处理）",
+                      file=sys.stderr)
+        return False
     except (urllib.error.URLError, OSError, ValueError):
         pass
     return False

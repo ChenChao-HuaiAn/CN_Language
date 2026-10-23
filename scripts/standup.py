@@ -93,7 +93,8 @@ def _鉴权头() -> dict:
     try:
         import intent
         return intent.鉴权头()
-    except Exception:
+    except Exception as e:
+        print(f"[黄] intent 鉴权助手不可用，本次裸请求（诊断见上）：{e}", file=sys.stderr)
         return {}
 
 
@@ -157,7 +158,9 @@ def 教训高权重(上限: int = 10) -> list[str]:
         原因 = _失败文案(e)
         来源 = "本地缓存←" + 原因
     if not 条:
-        return [f"## 教训·高权重：{原因 or '服务端无数据'}且无缓存——恢复后自愈"]
+        if 原因:
+            return [f"## 教训·高权重：{原因}且无缓存——恢复后自愈"]
+        return ["## 教训·高权重：服务端无数据（请求成功·当前无高权重教训）"]
     行们 = [f"## 教训·高权重标题（前 {min(上限, len(条))} 条·{来源}·"
             f"全文=board_cli 教训看 <id>）"]
     行们 += [f"- {t['标题'][:88]}{'…' if len(t['标题']) > 88 else ''}" for t in 条[:上限]]
@@ -169,8 +172,13 @@ def 看板与裁决() -> list[str]:
     就绪 = 跑([sys.executable, "scripts/task_board.py", "--ready"])
     行们 += 就绪.strip().splitlines()[:14]
     try:
-        件 = json.loads(跑([sys.executable, "scripts/decision_brief.py", "--json"]))
-        行们.append(f"## 待裁决 {len(件)} 件（python scripts/decision_brief.py 看一页纸）")
+        数 = json.loads(跑([sys.executable, "scripts/decision_brief.py", "--json"]))
+        if isinstance(数, dict):      # 1485：{"来源": ..., "件们": [...]}
+            件, 源 = 数.get("件们", []), 数.get("来源", "")
+        else:                          # 兼容旧版纯数组输出
+            件, 源 = 数, ""
+        行们.append(f"## 待裁决 {len(件)} 件（源={源 or '未知'}·"
+                    f"python scripts/decision_brief.py 看一页纸）")
     except Exception:
         行们.append("## 待裁决：decision_brief 输出解析失败（脚本异常？）")
     return 行们
@@ -206,6 +214,17 @@ def 看板自动claim() -> list[str]:
         sys.path.insert(0, str(本树根 / "scripts"))
         import intent as 看板
         数据 = 看板.调服务("GET", "/api/board")
+    except urllib.error.HTTPError as e:
+        # 1425：401/403 不得静默当「无数据」——留一行鉴权诊断后降级（不阻断开工）。
+        try:
+            if 看板.鉴权失败码(e.code):
+                原因 = 看板.鉴权失败文案("看板服务", e.code)
+            else:
+                原因 = f"看板服务返回 HTTP {e.code}"
+        except Exception:
+            原因 = f"看板服务返回 HTTP {e.code}"
+        print(f"[黄] {原因}——看板意图无法读取，自动登记跳过（降级不阻断）", file=sys.stderr)
+        return 行们
     except Exception:
         return 行们                       # 服务不可达：降级不阻断（308j 口径）
     活主们 = [i["会话键"] for i in 数据.get("意图们", [])

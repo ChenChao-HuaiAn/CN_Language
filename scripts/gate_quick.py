@@ -144,6 +144,12 @@ if not 步("窥孔 sanitizer 锁自测",
           [sys.executable, "scripts/test_check_peephole_sanitizer.py"],
           超时秒=静态超时):
     raise SystemExit(1)
+# 1485（2026-10-24 审查返工）：看板只读 GET 全族鉴权自测挂 L1 静态段——零真实网络
+#    mock：正/反态令牌头、401/403 文案分流、写入口与 case_ledger 门禁不静默放行。
+#    1425 登录墙后 GET 亦须鉴权，本自测防「全族漏口」再退化（秒级）。
+if not 步("看板 GET 鉴权自测", [sys.executable, "scripts/test_board_auth_get.py"],
+         超时秒=静态超时):
+    raise SystemExit(1)
 # 1013（2026-10-17 用户裁决）：官网文档覆盖对照 --strict 挂 L1——基线零（61/61 已覆盖·
 #    未归类 0·1013 归类 943 轮新增 1068/1069 归零）即等价棘轮·只拦新增：新 E2E 用例
 #    须在 doc_coverage 台账归类（特性行或兜底桶），未归类/缺口/豁免理由空即红；

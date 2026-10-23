@@ -41,6 +41,7 @@ import urllib.error
 import urllib.request
 from html.parser import HTMLParser
 from pathlib import Path
+from urllib.parse import urlsplit
 
 # ---- 常量 ----
 
@@ -95,28 +96,34 @@ def _鉴权头() -> dict:
         sys.path.insert(0, str(Path(__file__).resolve().parent))
         import intent
         return intent.鉴权头()
-    except Exception:
+    except Exception as e:
+        print(f"[黄] intent 鉴权助手不可用，本次裸请求（诊断见上）：{e}", file=sys.stderr)
         return {}
 
 
 def _失败说明(码: int) -> str:
     """HTTP 非 200 的诊断分流（1425）：401/403=鉴权失败（点名令牌/登录墙），
-    其余=HTTP 码原文——不把鉴权问题冒充「服务不可达」。"""
-    if 码 in (401, 403):
-        try:
-            import intent
+    其余=HTTP 码原文——不把鉴权问题冒充「服务不可达」（判据走 intent 单点）。"""
+    try:
+        import intent
+        if intent.鉴权失败码(码):
             return intent.鉴权失败文案("看板/队列服务", 码)
-        except Exception:
-            return f"鉴权失败（{码}）——检查 scripts/queue_client.json 令牌/登录墙"
+    except Exception as e:
+        print(f"[黄] intent 鉴权助手不可用，按裸码诊断（诊断见上）：{e}", file=sys.stderr)
     return f"码={码 or '无响应'}"
 
 
-def 取地址(基址, 路径, 超时秒=默认超时秒):
+def 取地址(基址, 路径, 超时秒=默认超时秒, 同源基址=None):
     """GET 一个路径；返回 (码, 文本, 错因, 毫秒)。码=0 表示连接层失败（错因非空）。
-    HTTPError（4xx/5xx）按「正常响应」返回——错误码是检查判据的一部分。"""
+    HTTPError（4xx/5xx）按「正常响应」返回——错误码是检查判据的一部分。
+
+    1425 令牌外发防线：仅当目标与看板/队列同源（netloc 相同）才带 Authorization
+    ——外链/CDN 资源请求绝不携带看板令牌。同源基址=调用方显式传入（外链调用点传
+    看板基址）；缺省=基址本身。"""
     地址 = 基址.rstrip("/") + 路径
     头 = {"User-Agent": "cn-infra-healthcheck/728m"}
-    头.update(_鉴权头())   # 1425：有令牌就带 Bearer（登录墙后 GET 亦须鉴权）
+    if urlsplit(地址).netloc == urlsplit(同源基址 or 基址).netloc:
+        头.update(_鉴权头())   # 1425：同源 GET 有令牌就带 Bearer
     请求 = urllib.request.Request(地址, headers=头)
     起 = time.monotonic()
     try:
@@ -541,7 +548,7 @@ def _前端冒烟检查(基址, 超时秒, 解析, 板面数据, 体长, 结果�
         return
     脚本们 = list(解析.脚本们)
     for 源 in 解析.外链脚本:      # 外链脚本并入冒烟面（内联部署下为空）
-        源码, 源体, _, _ = 取地址(绝对值(基址, 源), "", 超时秒)
+        源码, 源体, _, _ = 取地址(绝对值(基址, 源), "", 超时秒, 同源基址=基址)
         if 源码 == 200:
             脚本们.append((f"外链 {源}", 源体))
     if not 脚本们:
@@ -572,7 +579,7 @@ def _外链资源检查(基址, 超时秒, 解析, 结果们):
         return
     坏 = []
     for 源 in 外链[:20]:
-        源码, _, 源错, _ = 取地址(绝对值(基址, 源), "", 超时秒)
+        源码, _, 源错, _ = 取地址(绝对值(基址, 源), "", 超时秒, 同源基址=基址)
         if 源码 != 200:
             坏.append(f"{源}(码={源码 or 源错})")
     if 坏:

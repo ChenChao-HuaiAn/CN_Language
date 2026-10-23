@@ -56,7 +56,8 @@ def 服务调(路径: str) -> tuple[dict | None, str]:
     try:
         import intent
         头 = intent.鉴权头()
-    except Exception:
+    except Exception as e:
+        print(f"[黄] intent 鉴权助手不可用，本次裸请求（诊断见上）：{e}", file=sys.stderr)
         头 = {}
     for 名, 值 in 头.items():
         请求.add_header(名, 值)
@@ -89,7 +90,14 @@ def 输出(命令):
 
 def 拉台账() -> tuple[list | None, str]:
     r, 错误 = 服务调("/api/tasks")
-    return (None if r is None else r.get("任务们")), 错误
+    if r is None:
+        return None, 错误
+    任务们 = r.get("任务们")
+    if 任务们 is None:
+        return None, "看板台账响应缺「任务们」字段（服务端版本不符或响应损坏）"
+    if not isinstance(任务们, list):
+        return None, f"看板台账「任务们」类型异常（{type(任务们).__name__}）"
+    return 任务们, ""
 
 
 def cmd_ready(机读: bool) -> int:

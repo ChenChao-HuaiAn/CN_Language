@@ -107,16 +107,16 @@ def 服务调(方法: str, 路径: str, 体=None) -> dict | None:
     """看板 API 统一调用（382）。GET/POST 有令牌就带 Bearer（1425 全站登录墙：
     GET 亦须鉴权）。服务不可达返回 None——调用方一律硬拒（382 立规：任务台账
     唯一权威在服务端，离线降级取号已废除，宁停不裂）。"""
-    令牌文 = ""
-    try:
-        import intent
-        令牌文 = intent.读令牌()    # 556：统一兜底链（本树→主树副本→环境变量）·治令牌轮换旧树静默 401
-    except Exception:
-        pass
     请求 = urllib.request.Request(板服务地址() + 路径, method=方法,
         data=json.dumps(体, ensure_ascii=False).encode("utf-8") if 体 is not None else None)
-    if 令牌文:
-        请求.add_header("Authorization", f"Bearer {令牌文}")
+    try:
+        import intent
+        头们 = intent.鉴权头()   # 1425 单点：GET/POST 有令牌就带 Bearer（兜底链）
+    except Exception as e:
+        print(f"[黄] intent 鉴权助手不可用，本次裸请求（诊断见上）：{e}", file=sys.stderr)
+        头们 = {}
+    for 名, 值 in 头们.items():
+        请求.add_header(名, 值)
     try:
         with urllib.request.urlopen(请求, timeout=10) as r:
             return json.loads(r.read().decode("utf-8"))
@@ -133,13 +133,14 @@ def 鉴权失败文案(响应: dict | None) -> str:
     """1425 登录墙：服务响应含 HTTP错误 401/403 → 统一鉴权失败文案（单点助手
     intent.鉴权失败文案）；其余返回空串。防 GET 401 被误读成「台账无任务」。"""
     码 = (响应 or {}).get("HTTP错误")
-    if 码 in (401, 403):
-        try:
-            import intent
+    if not 码:
+        return ""
+    try:
+        import intent
+        if intent.鉴权失败码(码):
             return intent.鉴权失败文案("看板服务", 码)
-        except Exception:
-            return (f"看板服务鉴权失败（{码}）——令牌缺失/轮换/不符：检查 "
-                    f"scripts/queue_client.json 或 CN_BOARD_TOKEN")
+    except Exception as e:
+        print(f"[黄] intent 鉴权助手不可用，按裸码诊断（诊断见上）：{e}", file=sys.stderr)
     return ""
 
 
@@ -336,6 +337,12 @@ def 建树(任务号: str = "", 无ninja: bool = False, 立行: str | None = Non
         if 鉴权错误:
             # 1425：GET 401/403 不得被下面「台账无任务」误读（真因=令牌/登录墙）。
             print(f"[失败] {鉴权错误}——无法核对台账 #{任务号}，create 硬拒")
+            return 1
+        码 = 任务.get("HTTP错误")
+        if 码:
+            # 非鉴权类 HTTP 错误（500/502/…）同样不能落「台账无任务+幽灵分支」——
+            # 服务端异常≠号不存在，必须先报真因并硬拒。
+            print(f"[失败] 看板服务返回 HTTP {码}——无法核对台账 #{任务号}，create 硬拒")
             return 1
         t = 任务.get("任务")
         if t is None:

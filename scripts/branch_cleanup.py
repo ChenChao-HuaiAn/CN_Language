@@ -71,7 +71,8 @@ def _鉴权头() -> dict:
     try:
         import intent
         return intent.鉴权头()
-    except Exception:
+    except Exception as e:
+        print(f"[黄] intent 鉴权助手不可用，本次裸请求（诊断见上）：{e}", file=sys.stderr)
         return {}
 
 

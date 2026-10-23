@@ -16,6 +16,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
@@ -30,7 +31,7 @@ def 调服务(url: str, 令牌: str, 方法: str, 路径: str, 体=None, 超时=
         url.rstrip("/") + 路径,
         data=json.dumps(体, ensure_ascii=False).encode("utf-8") if 体 is not None else None,
         method=方法)
-    if 令牌 and 方法 == "POST":
+    if 令牌:   # 1425 登录墙：GET 亦须鉴权——令牌非空即带 Bearer（不再限 POST）
         请求.add_header("Authorization", f"Bearer {令牌}")
     请求.add_header("Content-Type", "application/json")
     try:
@@ -41,6 +42,22 @@ def 调服务(url: str, 令牌: str, 方法: str, 路径: str, 体=None, 超时=
             return e.code, json.loads(e.read().decode("utf-8"))
         except (ValueError, UnicodeDecodeError):
             return e.code, {}
+    except (urllib.error.URLError, OSError, ValueError):
+        return 0, {}   # 连接层失败：失败原因() 报「不可达」而非崩栈
+
+
+def 失败原因(码: int, r: dict, url: str) -> str:
+    """迁移请求失败诊断（1425）：401/403=鉴权失败；0=连接层不可达；其余=HTTP 码。
+    单点判据走 intent.鉴权失败码/文案（助手不可用=stderr 一行诊断后按裸码）。"""
+    try:
+        import intent
+        if intent.鉴权失败码(码):
+            return intent.鉴权失败文案("看板服务", 码)
+    except Exception as e:
+        print(f"[黄] intent 鉴权助手不可用，按裸码诊断（诊断见上）：{e}", file=sys.stderr)
+    if 码 == 0:
+        return f"看板服务不可达 {url}"
+    return f"看板服务返回 HTTP {码}（{url}·{r.get('错误', r)}）"
 
 
 def 读(相对: str) -> str:
@@ -88,7 +105,7 @@ def main() -> int:
         令牌 = intent.读令牌()   # 556：统一兜底链（本树→主树副本→环境变量）·归纳零复制
     码, r = 调服务(url, 令牌, "GET", "/api/board")
     if 码 != 200:
-        print(f"[失败] 服务不可达 {url}（码 {码}）——先部署 384 版 board_service")
+        print(f"[失败] {失败原因(码, r, url)}——先部署 384 版 board_service 并核对令牌")
         return 1
 
     # 交接：按已有条目文本去重（幂等）

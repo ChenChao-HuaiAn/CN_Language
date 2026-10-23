@@ -97,12 +97,15 @@ def 读任务(号: str):
         码, 响应 = 服务调用("GET", f"/api/task/{号}")
     except (OSError, ValueError) as e:
         return None, False, str(e), False
-    if 码 in (401, 403):
-        try:
-            import intent
+    try:
+        import intent
+        鉴权失败 = intent.鉴权失败码(码)
+        if 鉴权失败:
             文案 = intent.鉴权失败文案("看板服务", 码)
-        except Exception:
-            文案 = f"看板服务鉴权失败（{码}）——检查令牌/登录墙"
+    except Exception as e:
+        print(f"[黄] intent 鉴权助手不可用，按裸码诊断（诊断见上）：{e}", file=sys.stderr)
+        鉴权失败 = False
+    if 鉴权失败:
         return None, True, 文案, True
     if 码 != 200:
         return None, True, str(响应.get("错误") or f"HTTP {码}"), False

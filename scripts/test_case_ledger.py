@@ -47,8 +47,9 @@ def 造树(目录名们: list) -> Path:
 
 
 def 注入(台账行们: list, 可用: bool = True) -> None:
-    """注入台账取回（隔绝真实服务与缓存）。"""
-    case_ledger.台账取回 = lambda 允许缓存=True: (台账行们, 可用)
+    """注入台账取回（隔绝真实服务与缓存；1485：四元组含原因/鉴权失败位）。"""
+    case_ledger.台账取回 = lambda 允许缓存=True: (
+        台账行们, 可用, "" if 可用 else "看板服务不可达（自测注入）", False)
 
 
 def 门禁(参数=()) -> int:

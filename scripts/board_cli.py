@@ -73,13 +73,31 @@ def _读失败文案(服务: str, 码: int, r: dict) -> str:
     return f"{服务}返回 HTTP {码}：{r.get('错误', r)}"
 
 
+def _写失败文案(服务: str, 码: int, r: dict) -> str:
+    """写入口失败诊断（1425）：401/403=鉴权失败（与读入口同文案口径），其余=
+    服务端错误码+响应体——写操作禁把鉴权问题打印成裸码。"""
+    try:
+        import intent
+        if intent.鉴权失败码(码):
+            return intent.鉴权失败文案(服务, 码)
+    except Exception as e:
+        print(f"[黄] intent 鉴权助手不可用，按裸码诊断（诊断见上）：{e}", file=sys.stderr)
+    return f"{服务}返回 HTTP {码}：{r.get('错误', r)}"
+
+
 def 调服务(方法: str, 路径: str, 体=None, 超时=15):
     """返回 (HTTP码, 响应dict)。GET/POST 有令牌就带 Bearer（1425 全站登录墙：
     GET 亦须鉴权·客户端统一「有令牌就带」口径）；服务不可达抛 OSError 由调用方兜底。"""
     请求 = urllib.request.Request(服务地址() + 路径, method=方法,
         data=json.dumps(体, ensure_ascii=False).encode("utf-8") if 体 is not None else None)
-    if 令牌():
-        请求.add_header("Authorization", f"Bearer {令牌()}")
+    try:
+        import intent
+        头们 = intent.鉴权头()   # 1425 单点：GET/POST 有令牌就带 Bearer（含兜底链）
+    except Exception as e:
+        print(f"[黄] intent 鉴权助手不可用，本次裸请求（诊断见上）：{e}", file=sys.stderr)
+        头们 = {}
+    for 名, 值 in 头们.items():
+        请求.add_header(名, 值)
     请求.add_header("Content-Type", "application/json")
     try:
         with urllib.request.urlopen(请求, timeout=超时) as r:
@@ -106,7 +124,7 @@ def cmd_收工(a) -> int:
     码, r = 调服务("POST", "/api/handoff_add", {"机器": 机器名(a.机器), "条目": a.行,
                                                 "来源": "board_cli收工"})
     if 码 not in (200, 201):
-        print(f"[失败] 交接写入：{码} {r.get('错误', r)}")
+        print(f"[失败] 交接写入：{_写失败文案('看板服务', 码, r)}")
         return 1
     print(f"[交接] 已登记（#{r.get('id')}）")
     # 会话注销（308i 会话粒度·与 intent.py 同键）
@@ -115,7 +133,8 @@ def cmd_收工(a) -> int:
         import intent
         码2, r2 = 调服务("POST", "/api/intent_release",
                         {"机器": intent.机器名(), "对话id": intent.会话id()})
-        print("[意图] 会话已注销" if 码2 == 200 else f"[意图] 注销跳过（{码2}）")
+        print("[意图] 会话已注销" if 码2 == 200
+              else f"[意图] 注销跳过（{_写失败文案('看板服务', 码2, r2)}）")
     except Exception as e:      # 注销失败不拦收工（看板 2h 惰性清兜底）
         print(f"[意图] 注销跳过（{e}）")
     return 0
@@ -128,7 +147,7 @@ def cmd_交接(a) -> int:
     码, r = 调服务("POST", "/api/handoff_add", {"机器": 机器名(a.机器), "条目": a.行,
                                                 "来源": "board_cli"})
     if 码 not in (200, 201):
-        print(f"[失败] {码} {r.get('错误', r)}")
+        print(f"[失败] {_写失败文案('看板服务', 码, r)}")
         return 1
     print(f"[交接] 已登记（#{r.get('id')}）")
     return 0
@@ -142,7 +161,7 @@ def cmd_教训(a) -> int:
                   {"标题": a.标题, "正文": a.正文 or "", "权重": a.权重,
                    "标注": a.标注 or "活跃", "来源": "board_cli"})
     if 码 not in (200, 201):
-        print(f"[失败] {码} {r.get('错误', r)}")
+        print(f"[失败] {_写失败文案('看板服务', 码, r)}")
         return 1
     动作 = "幂等跳过（同标题已在库）" if r.get("跳过") else f"已登记（#{r.get('id')}）"
     print(f"[教训] {动作}")
@@ -195,7 +214,7 @@ def cmd_用例(a) -> int:
     码, r = 调服务("POST", "/api/coverage_append",
                   {"单元ID": a.单元ID, "态": a.态, "用例名": 用例们})
     if 码 != 200:
-        print(f"[失败] {码} {r.get('错误', r)}（服务不可达时勿盲写）")
+        print(f"[失败] {_写失败文案('看板服务', 码, r)}（写操作宁停不撞）")
         return 1
     尾 = f"新增 {r.get('新增')}" + (f"·重复跳过 {r['重复跳过']}" if r.get("重复跳过") else "")
     print(f"[用例] 单元 {a.单元ID}·{a.态} 已追加（{尾}·该列现 {r.get('该列数')} 例）")
@@ -209,7 +228,7 @@ def cmd_豁免(a) -> int:
     码, r = 调服务("POST", "/api/coverage_exempt_add",
                   {"用例": a.用例名, "理由": a.理由})
     if 码 != 200:
-        print(f"[失败] {码} {r.get('错误', r)}")
+        print(f"[失败] {_写失败文案('看板服务', 码, r)}")
         return 1
     print(f"[豁免] 已登记 {r['登记数']} 例")
     return 0
@@ -223,7 +242,7 @@ def cmd_单元删(a) -> int:
         return 2
     码, r = 调服务("POST", "/api/coverage_delete", {"单元ID": a.单元ID})
     if 码 != 200:
-        print(f"[失败] {码} {r.get('错误', r)}")
+        print(f"[失败] {_写失败文案('看板服务', 码, r)}")
         return 1
     行 = r.get("单元", {})
     print(f"[单元删] {行.get('单元ID')}（{行.get('标题', '')}）已删除")
@@ -238,7 +257,7 @@ def cmd_豁免删(a) -> int:
         return 2
     码, r = 调服务("POST", "/api/coverage_exempt_delete", {"用例": a.用例名})
     if 码 != 200:
-        print(f"[失败] {码} {r.get('错误', r)}"
+        print(f"[失败] {_写失败文案('看板服务', 码, r)}"
               + (f"（未命中：{','.join(r.get('未命中', []))}）" if r.get('未命中') else ""))
         return 1
     print(f"[豁免删] 已删 {r['删除数']} 行：" + ",".join(r.get("删除", [])))
@@ -286,7 +305,7 @@ def cmd_领用例号(a) -> int:
         print("  处置：换用例名，或直接 `领用例号 <用例名>` 领服务端新号（勿复用他人号）")
         return 1
     if 码 != 201:
-        print(f"[失败] {码} {r.get('错误', r)}")
+        print(f"[失败] {_写失败文案('看板服务', 码, r)}——领号硬拒不降级")
         return 1
     号 = r["号"]
     print(f"[领用例号] {号} ← 「{用例名}」"
@@ -352,7 +371,7 @@ def cmd_补用例名(a) -> int:
         print(f"[拒配] {r.get('错误', '')}")
         return 1
     if 码 != 200:
-        print(f"[失败] {码} {r.get('错误', r)}")
+        print(f"[失败] {_写失败文案('看板服务', 码, r)}——补名硬拒不降级")
         return 1
     print(f"[补用例名] #{号} ← 「{用例名}」已锁定（号名配对唯一·台账真值）")
     print("  建目录/改名同步：tests/e2e 对应目录与覆盖矩阵登记名按 README 改号流程核对")
@@ -387,7 +406,7 @@ def cmd_裁决(a) -> int:
             print(f"[裁决] #{件.get('号')} 跳过（已裁决锁定）")
         else:
             败 += 1
-            print(f"[失败] #{件.get('号')} {码} {r.get('错误', r)}")
+            print(f"[失败] #{件.get('号')} {_写失败文案('看板服务', 码, r)}")
     print(f"[裁决] 登记 {登记}·跳过 {跳过}·失败 {败}")
     return 1 if 败 else 0
 
@@ -406,7 +425,7 @@ def cmd_裁决删(a) -> int:
         except OSError:
             pass
         return 0
-    print(f"[失败] {码} {r.get('错误', r)}")
+    print(f"[失败] {_写失败文案('看板服务', 码, r)}")
     return 1
 
 

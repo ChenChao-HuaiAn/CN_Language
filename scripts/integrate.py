@@ -251,14 +251,8 @@ def 板查询(路径: str):
     1425 全站登录墙：GET 亦须鉴权——有令牌就带 Bearer（intent.鉴权头 统一口径）。"""
     import urllib.request
     try:
-        头 = {}
-        try:
-            import intent
-            头 = intent.鉴权头()
-        except Exception:
-            pass
         with urllib.request.urlopen(urllib.request.Request(
-                板服务URL.rstrip("/") + 路径, headers=头), timeout=4) as 响应:
+                板服务URL.rstrip("/") + 路径, headers=_鉴权头们()), timeout=4) as 响应:
             return json.loads(响应.read().decode("utf-8"))
     except urllib.error.HTTPError as e:
         try:
@@ -1012,8 +1006,9 @@ def 远端看板文本(远程: str = 主远程) -> str:
 #   边界（报名/销账）双写（服务端为主+看板兼容未升级 920 版的他机——三机升级后看板段写入退役）。
 # 配置：环境变量 CN_QUEUE_URL，或 scripts/queue_client.json 的 "url"（gitignore·不入库）
 #   形如 {"url": "http://<TX_01>:8300", "令牌": "..."}。无配置=纯看板路径（现状行为）。
-# 556：令牌统一走 intent.读令牌()（本树→主树副本→环境变量 CN_BOARD_TOKEN/CN_QUEUE_TOKEN
-#   ——治令牌轮换后旧 worktree 静默 401）；url 仍=CN_QUEUE_URL 或本树文件（url 不轮换）。
+# 556/1425：令牌统一走 intent.鉴权头()（本树→主树副本→环境变量 CN_BOARD_TOKEN/
+#   CN_QUEUE_TOKEN·进程内缓存+mtime 失效；治令牌轮换后旧 worktree 静默 401）；
+#   url 仍=CN_QUEUE_URL 或本树文件（url 不轮换）。
 队列服务URL = os.environ.get("CN_QUEUE_URL", "")
 _客户端配置 = 仓库根 / "scripts" / "queue_client.json"
 if not 队列服务URL and _客户端配置.exists():
@@ -1021,11 +1016,16 @@ if not 队列服务URL and _客户端配置.exists():
         队列服务URL = str(json.loads(_客户端配置.read_text(encoding="utf-8")).get("url", ""))
     except Exception:
         pass
-try:
-    import intent
-    队列服务令牌 = intent.读令牌()
-except Exception:
-    队列服务令牌 = ""
+
+
+def _鉴权头们() -> dict:
+    """1425 单点鉴权头；助手不可用=stderr 一行诊断后裸请求（不静默丢鉴权）。"""
+    try:
+        import intent
+        return intent.鉴权头()
+    except Exception as e:
+        print(f"  [黄] intent 鉴权助手不可用，本次裸请求（诊断见上）：{e}", file=sys.stderr)
+        return {}
 
 
 def 服务调用(路径: str, 数据: dict | None = None) -> dict | None:
@@ -1034,19 +1034,24 @@ def 服务调用(路径: str, 数据: dict | None = None) -> dict | None:
         return None
     import urllib.request
     try:
+        头们 = _鉴权头们()
         if 数据 is None:
-            请求 = urllib.request.Request(队列服务URL.rstrip("/") + 路径,
-                                         headers={"Authorization": "Bearer " + 队列服务令牌})
+            请求 = urllib.request.Request(队列服务URL.rstrip("/") + 路径, headers=头们)
         else:
+            头们["Content-Type"] = "application/json"
             请求 = urllib.request.Request(队列服务URL.rstrip("/") + 路径,
                                          data=json.dumps(数据, ensure_ascii=False).encode("utf-8"),
-                                         headers={"Content-Type": "application/json",
-                                                  "Authorization": "Bearer " + 队列服务令牌})
+                                         headers=头们)
         with urllib.request.urlopen(请求, timeout=4) as 响应:
             return json.loads(响应.read().decode("utf-8"))
     except urllib.error.HTTPError as e:
         # 1425：鉴权失败与连接层失败分流——队列 GET/POST 401 不再静默成「未配置」。
-        if e.code in (401, 403):
+        try:
+            import intent
+            鉴权 = intent.鉴权失败码(e.code)
+        except Exception:
+            鉴权 = False
+        if 鉴权:
             try:
                 import intent
                 print(f"  [黄] {intent.鉴权失败文案('队列服务', e.code)}")
@@ -1140,10 +1145,11 @@ def 板调用(路径: str, 数据: dict) -> bool:
     """看板服务写操作（308h·意图生命周期联动）——失败仅返回 False 不阻断集成。"""
     import urllib.request
     try:
+        头们 = _鉴权头们()
+        头们["Content-Type"] = "application/json"
         请求 = urllib.request.Request(板服务URL.rstrip("/") + 路径,
                                      data=json.dumps(数据, ensure_ascii=False).encode("utf-8"),
-                                     headers={"Content-Type": "application/json",
-                                              "Authorization": "Bearer " + 队列服务令牌})
+                                     headers=头们)
         with urllib.request.urlopen(请求, timeout=4) as 响应:
             return bool(json.loads(响应.read().decode("utf-8")).get("好"))
     except Exception:

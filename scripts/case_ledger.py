@@ -16,6 +16,8 @@
     无对应目录，疑似改号旧行残留（613：改号漏同步），红消息附注该事实。
   - 台账无此号 / 号未配名 / 服务不可达 → 黄字提示不拦（历史号 554 前存量面·
     断网不堵本地；须拦形态=台账已配名冲突，硬拦截点在集成与云端全量）。
+  - 401/403（1425 登录墙鉴权失败）→ 硬红（核验/门禁不静默拿旧缓存放行——
+    真因=令牌缺失/轮换/不符，与 task_board --ready 同口径）。
     号未配名补录通道（811）：board_cli 补用例名 <号> <用例名>——服务端对「已发放
     且名空」的存量号补配名（744 收权不发新号·已配名 409 拒改防篡改）。
   - 陈旧行（613）：台账已配名 #N「M」在本树既无 #N 目录、M 也无任何匹配目录 →
@@ -27,7 +29,7 @@
   python scripts/case_ledger.py 核验        # 台账核验（门禁同源·独立可跑）
   python scripts/case_ledger.py 对照本地    # 只读对照：本地目录×台账差集报告（游离/黄/陈旧）
   python scripts/case_ledger.py 查 <用例名> # 台账按名查询（转发 board_cli 查用例号）
-退出码：核验=0 通过/提示·1 冲突；对照=0 无游离·1 有游离/台账不可达。
+退出码：核验=0 通过/提示·1 冲突/鉴权失败；对照=0 无游离·1 有游离/台账不可读。
 """
 from __future__ import annotations
 
@@ -42,13 +44,6 @@ from pathlib import Path
 本树根 = 脚本目录.parent
 E2E = 本树根 / "tests" / "e2e"
 缓存 = 脚本目录 / "case_ledger_cache.json"
-
-
-def 取服务():
-    """获取 (服务地址, 令牌)——复用 board_cli 实现（单一来源·延迟导入防环）。"""
-    sys.path.insert(0, str(脚本目录))
-    import board_cli
-    return board_cli.服务地址(), board_cli.令牌()
 
 
 def 调服务(方法: str, 路径: str, 体=None, 超时=15):
@@ -102,35 +97,62 @@ def 扫描本地用例() -> list:
     return 出
 
 
+def _读缓存行() -> list:
+    """本地最后一份台账缓存；缺失/损坏返回 []（556 容错口径）。"""
+    try:
+        旧 = json.loads(缓存.read_text(encoding="utf-8"))
+        return 旧.get("台账", [])
+    except (OSError, ValueError):
+        return []
+
+
 def 台账取回(允许缓存: bool = True):
-    """台账全量 → (行们, 可用)。服务不可达读缓存（556 原子写口径）；无缓存返回 ([], False)。"""
+    """台账全量 → (行们, 可用, 原因, 鉴权失败)。
+
+    服务不可达读缓存（556 原子写口径）；401/403=鉴权失败（与网络不可达分流·
+    intent.鉴权失败码/文案单点）——原因由调用方原样打印，鉴权失败位供门禁硬红。
+    200 但缺「台账」字段=响应损坏，同样给出真因（不冒充不可达）。"""
     try:
         码, r = 调服务("GET", "/api/case_numbers")
-    except OSError:
-        码, r = 0, {}
+    except (OSError, ValueError) as e:
+        旧 = _读缓存行() if 允许缓存 else []
+        return 旧, False, f"看板服务不可达（{e}）" + ("·读本地缓存" if 旧 else "·无缓存"), False
     if 码 == 200 and "台账" in r:
         try:
             缓存.write_text(json.dumps({"台账": r["台账"], "时戳": time.time()},
                                        ensure_ascii=False), encoding="utf-8")
         except OSError:
             pass
-        return r["台账"], True
-    if 允许缓存:
+        return r["台账"], True, "", False
+    鉴权失败 = False
+    try:
+        import intent
+        鉴权失败 = intent.鉴权失败码(码)
+    except Exception as e:
+        print(f"[黄] intent 鉴权助手不可用，按裸码诊断（诊断见上）：{e}", file=sys.stderr)
+    if 鉴权失败:
         try:
-            旧 = json.loads(缓存.read_text(encoding="utf-8"))
-            return 旧.get("台账", []), False
-        except (OSError, ValueError):
-            pass
-    return [], False
+            import intent
+            原因 = intent.鉴权失败文案("看板服务", 码)
+        except Exception:
+            原因 = f"看板服务鉴权失败（{码}）——检查 scripts/queue_client.json 令牌/登录墙"
+    elif 码 == 200:
+        原因 = "看板台账响应缺「台账」字段（服务端版本不符或响应损坏）"
+    else:
+        体 = (r or {}).get("错误", "")
+        原因 = f"看板服务返回 HTTP {码}" + (f"：{体}" if 体 else "")
+    旧 = _读缓存行() if 允许缓存 else []
+    return 旧, False, 原因 + ("·读本地缓存" if 旧 else "·无缓存"), 鉴权失败
 
 
 def 核验台账(取消豁免=()) -> dict:
-    """本地目录 × 服务端台账核验——返回 {冲突们, 台账可用, 未配名号数, 提示们, 陈旧们}。
+    """本地目录 × 服务端台账核验——返回 {冲突们, 台账可用, 原因, 鉴权失败,
+    未配名号数, 提示们, 陈旧们}。
     冲突形态（红·详见文件头）：同号异名/异号同名；提示形态（黄）：已领号未配名；
     陈旧形态（黄·613）：台账已配名行在本树无对应目录（他分支在用或改号残留）。
     豁免号（554 收编表）跳过。"""
     本地 = 扫描本地用例()
-    行们, 可用 = 台账取回()
+    行们, 可用, 原因, 鉴权失败 = 台账取回()
     号名图 = {str(x["号"]): x.get("用例名", "") for x in 行们}
     占名图 = {x["用例名"]: str(x["号"]) for x in 行们 if x.get("用例名")}
     本地号集 = {u["号"] for u in 本地}
@@ -165,7 +187,7 @@ def 核验台账(取消豁免=()) -> dict:
             continue        # 名在本树活着（他号面）——占名冲突已覆盖，不重复计陈旧
         陈旧们.append(f"台账 #{号}「{名}」本树无对应用例目录——他分支在用则忽略；"
                      f"若为改号遗留=陈旧残留（处置见 tests/e2e/README.md 用例改号流程）")
-    return {"冲突们": 冲突们, "台账可用": 可用,
+    return {"冲突们": 冲突们, "台账可用": 可用, "原因": 原因, "鉴权失败": 鉴权失败,
             "未配名号数": sum(1 for x in 行们 if not x.get("用例名")),
             "本地用例数": len(本地), "提示们": 提示们, "陈旧们": 陈旧们}
 
@@ -178,9 +200,9 @@ def 对照本地(打印=print) -> int:
     ② 台账已领号未配名（黄·补录走 board_cli 补用例名 <号> <名>——811 存量补配通道）；③ 台账有而本树无（陈旧·613）。
     返回游离数（>0=1 退出码·可作巡检信号）。"""
     本地 = 扫描本地用例()
-    行们, 可用 = 台账取回()
+    行们, 可用, 原因, _鉴权失败 = 台账取回()
     if not 可用:
-        打印("[case_ledger·对照] 台账不可达且无缓存——对照须以服务端台账为基准，联网后重试")
+        打印(f"[case_ledger·对照] {原因}——对照须以服务端台账为基准，修复后重试")
         return -1
     台账号集 = {str(x["号"]) for x in 行们}
     游离们 = [u for u in 本地 if u["号"] not in 台账号集]
@@ -205,9 +227,15 @@ def main() -> int:
         return 2
     if 参数[0] == "核验":
         结 = 核验台账()
-        可 = "可用" if 结["台账可用"] else "不可达·读缓存"
-        台账面 = f"台账{可}" if 结["台账可用"] else f"台账不可达（{结['未配名号数']} 未配名疑似）"
+        if 结["鉴权失败"]:
+            print(f"[FAIL] {结['原因']}——台账核验无法进行"
+                  "（401/403 不得静默降级；修复令牌后重跑）")
+            return 1
+        可 = "可用" if 结["台账可用"] else "不可读"
+        台账面 = f"台账{可}" if 结["台账可用"] else f"台账不可读（{结['未配名号数']} 未配名疑似）"
         print(f"[case_ledger] 本地 {结['本地用例数']} 用例·{台账面}")
+        if not 结["台账可用"]:
+            print(f"  [黄] {结['原因']}")
         for 提示 in 结["提示们"][:8]:
             print(f"  [黄] {提示}")
         if 结["提示们"][8:]:

@@ -108,8 +108,8 @@ def parse_map():
         try:
             import intent
             头 = intent.鉴权头()
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"[黄] intent 鉴权助手不可用，本次裸请求（诊断见上）：{e}", file=sys.stderr)
         with urllib.request.urlopen(urllib.request.Request(SRC_API, headers=头),
                                     timeout=8) as r:
             体 = json.loads(r.read().decode("utf-8"))
