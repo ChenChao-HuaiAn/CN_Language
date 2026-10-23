@@ -544,6 +544,7 @@ void IRGenerator::visitUnaryExpr(UnaryExpr* node) {
                 lastExpr_ = genExpr(static_cast<UnaryExpr*>(node->operand.get())->operand.get());
             } else if (node->operand->getType() == NodeType::IdentifierExpr &&
                        semantic_ != nullptr &&
+                       !findVarEntry(operandName).has_value() &&
                        semantic_->isGlobalStatic(operandName)) {
                 // plans/018 根治（2026-09-07，缺陷零容忍）：顶层静态变量取地址——
                 //   ?gstatic_名 符号地址即变量槽地址（.data 槽本身=存储位置），直接
@@ -554,6 +555,10 @@ void IRGenerator::visitUnaryExpr(UnaryExpr* node) {
                 //   读写容器对象头=静默错位）。v2self 语义分析多文件(6 个 & 静态
                 //   容器实参) 首次踩中。Rust 对照：&static mut 的引用恒指向存储
                 //   位置本身，绝不解引用重解释。
+                // 1340（联想面收编·1337 写基址族同款）：加局部优先守卫——普通
+                //   局部/参数遮蔽全局时名字直查截胡=&名 取全局槽地址（应取局部
+                //   地址·经指针读写全错位），对齐读路径 85-a 遮蔽序；局部命中落
+                //   下方 lvalueAddress 既有局部路径。
                 // 588-a（005 甲案）：用户显式 &静态**类**变量 与局部同口径语义
                 //   一致化——静态槽存句柄，LoadPtr 符号槽=对象地址（一级语义）；
                 //   包装节点（refWrapAddr）与非类静态维持符号地址（槽地址）不变。
