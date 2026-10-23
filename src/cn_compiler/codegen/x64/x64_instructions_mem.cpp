@@ -17,15 +17,14 @@ void X64CodeGenerator::emitLoadStore(AsmWriter& writer, const ir::IRInstruction&
         // i128/正128 变量加载（Task 完善A）：变量 x（低64位槽）+ x$s1（高64位槽）
         //   -> 结果双寄存器 %vN（高）+ %vN+1（低）
         if (inst.type == "i128" || inst.type == "u128") {
-            const int dstHiId = inst.result.id;
-            const int dstLoId = inst.result.id + 1;
             const std::string& varName = inst.operands[0].extra;
             std::string srcLo = operandText(ir::IRValue::var(varName, "i64"));
             std::string srcHi = operandText(ir::IRValue::var(varName + "$s1", "i64"));
+            // #1212 步骤 b：结果成对分配 -> 双 GPR 直装（未分配原双槽不变）
             writer.line("mov rax, " + srcLo);
-            writer.line("mov " + regSlot(dstLoId) + ", rax");
+            writer.line("mov " + i128LoText(inst.result) + ", rax");
             writer.line("mov rax, " + srcHi);
-            writer.line("mov " + regSlot(dstHiId) + ", rax");
+            writer.line("mov " + i128HiText(inst.result) + ", rax");
             return;
         }
         // operands[0] 为变量引用（var），type 为变量类型
@@ -34,8 +33,8 @@ void X64CodeGenerator::emitLoadStore(AsmWriter& writer, const ir::IRInstruction&
         if (isFloatType(inst.type)) {
             const std::string load = (inst.type == "f64") ? "movsd" : "movss";
             const std::string mp = (inst.type == "f64") ? "qword ptr " : "dword ptr ";
-            writer.line(load + " xmm0, " + mp + src);
-            writer.line(load + " " + mp + dst + ", xmm0");
+            writer.line(load + " xmm0, " + mp + src);   // 加载源恒为变量槽
+            emitFloatStore(writer, dst, "xmm0", load, mp);  // #1212：结果可能已分配 xmm
             return;
         }
         // D8（458-a）：dst 已分配 -> 扩展/装载直落分配寄存器（免 eax/rax 中转）；
@@ -114,11 +113,10 @@ void X64CodeGenerator::emitLoadStore(AsmWriter& writer, const ir::IRInstruction&
                 writer.line("mov " + hiSlot + ", rax");
                 return;
             }
-            const int srcHiId = inst.operands[0].id;
-            const int srcLoId = inst.operands[0].id + 1;
-            writer.line("mov rax, " + regSlot(srcLoId));
+            // #1212 步骤 b：源成对分配 -> 从双 GPR 搬运（未分配原双槽不变）
+            writer.line("mov rax, " + i128LoText(inst.operands[0]));
             writer.line("mov " + loSlot + ", rax");
-            writer.line("mov rax, " + regSlot(srcHiId));
+            writer.line("mov rax, " + i128HiText(inst.operands[0]));
             writer.line("mov " + hiSlot + ", rax");
             return;
         }
@@ -135,7 +133,8 @@ void X64CodeGenerator::emitLoadStore(AsmWriter& writer, const ir::IRInstruction&
         if (isFloatType(inst.type)) {
             const std::string store = (inst.type == "f64") ? "movsd" : "movss";
             const std::string mp = (inst.type == "f64") ? "qword ptr " : "dword ptr ";
-            writer.line(store + " xmm0, " + mp + src);
+            // #1212：值源可能已分配到 xmm（寄存器源无内存前缀）；目标为变量槽
+            writer.line(store + " xmm0, " + floatSourceText(src, mp));
             writer.line(store + " " + mp + slot + ", xmm0");
             return;
         }
@@ -361,7 +360,7 @@ void X64CodeGenerator::emitPtrLoadStore(AsmWriter& writer, const ir::IRInstructi
             const std::string load = (inst.type == "f64") ? "movsd" : "movss";
             const std::string mp = (inst.type == "f64") ? "qword ptr " : "dword ptr ";
             writer.line(load + " xmm0, " + mp + "[" + addrReg + "]");
-            writer.line(load + " " + mp + dst + ", xmm0");
+            emitFloatStore(writer, dst, "xmm0", load, mp);  // #1212：结果可能已分配 xmm
             return;
         }
         if (inst.type == "i8" || inst.type == "i16") {
@@ -423,10 +422,11 @@ void X64CodeGenerator::emitPtrLoadStore(AsmWriter& writer, const ir::IRInstructi
             //   原实现漏了 i128 分支，只读 8B 到结果槽高64位残留垃圾 -> 值错误。
             //   i128 双槽约定：%vN=高64、%vN+1=低64；小端内存 [rax]=低64、[rax+8]=高64
             //   （结果槽在寄存器区，regSlot(id) 为高64、regSlot(id+1) 为低64）
+            // #1212 步骤 b：结果成对分配 -> 双 GPR 直装内存低/高半
             writer.line("mov rcx, [" + addrReg + "]");        // 低64位
-            writer.line("mov " + regSlot(inst.result.id + 1) + ", rcx");
+            writer.line("mov " + i128LoText(inst.result) + ", rcx");
             writer.line("mov rcx, [" + addrReg + "+8]");      // 高64位
-            writer.line("mov " + regSlot(inst.result.id) + ", rcx");
+            writer.line("mov " + i128HiText(inst.result) + ", rcx");
             return;
         }
         // i64/ptr：64位读取
@@ -445,7 +445,8 @@ void X64CodeGenerator::emitPtrLoadStore(AsmWriter& writer, const ir::IRInstructi
     if (isFloatType(inst.type)) {
         const std::string store = (inst.type == "f64") ? "movsd" : "movss";
         const std::string mp = (inst.type == "f64") ? "qword ptr " : "dword ptr ";
-        writer.line(store + " xmm0, " + mp + value);
+        // #1212：值可能已分配到 xmm（寄存器源无内存前缀）；目标为指针地址内存
+        writer.line(store + " xmm0, " + floatSourceText(value, mp));
         writer.line(store + " " + mp + "[" + addrReg + "], xmm0");
         return;
     }
@@ -483,9 +484,10 @@ void X64CodeGenerator::emitPtrLoadStore(AsmWriter& writer, const ir::IRInstructi
             writer.line("mov qword ptr [" + addrReg + "+8], rcx");
             return;
         }
-        writer.line("mov rcx, " + regSlot(inst.operands[1].id + 1));  // 低64位
+        // #1212 步骤 b：值成对分配 -> 从双 GPR 直写内存低/高半
+        writer.line("mov rcx, " + i128LoText(inst.operands[1]));  // 低64位
         writer.line("mov [" + addrReg + "], rcx");
-        writer.line("mov rcx, " + regSlot(inst.operands[1].id));      // 高64位
+        writer.line("mov rcx, " + i128HiText(inst.operands[1]));  // 高64位
         // D8（483-a）漏点补修：高位段同样直读 addrReg（原漏改留 [rax+8]——
         //   addr 直读态 rax 为残留值=野写 8B，420/433/440 i128 字段写段错误实证）
         writer.line("mov [" + addrReg + "+8], rcx");

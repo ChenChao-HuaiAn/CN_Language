@@ -12,6 +12,7 @@
 // 注意：GCC 7 不支持中文标识符，测试名必须使用英文
 #include <gtest/gtest.h>
 #include <memory>
+#include <set>
 #include <string>
 #include <unordered_map>
 
@@ -557,8 +558,10 @@ TEST(RegAllocTest, AllocableTypeFilter) {
     EXPECT_TRUE(LinearScanAllocator::isAllocableType("u16"));
     // 1267 续：i1 布尔纳入可分配面（LinuxX64 起；win/arm64 由架构门控过滤）
     EXPECT_TRUE(LinearScanAllocator::isAllocableType("i1"));
-    EXPECT_FALSE(LinearScanAllocator::isAllocableType("f64"));
-    EXPECT_FALSE(LinearScanAllocator::isAllocableType("f32"));
+    // #1212：浮点进入独立寄存器类（win-x64 分配 xmm6~xmm15；其余架构后续步骤）
+    EXPECT_TRUE(LinearScanAllocator::isAllocableType("f64"));
+    EXPECT_TRUE(LinearScanAllocator::isAllocableType("f32"));
+    // #1212 步骤 b 开关（步骤 a 提交态关闭；b 提交翻转）
     EXPECT_FALSE(LinearScanAllocator::isAllocableType("i128"));
     EXPECT_FALSE(LinearScanAllocator::isAllocableType("u128"));
 }
@@ -687,5 +690,54 @@ TEST(RegAllocTest, ReservedR12) {
     for (const auto& kv : map) {
         EXPECT_NE(kv.second.assignedReg, "r12")
             << "保留寄存器 r12 不得被分配";
+    }
+}
+
+// ---- 7. #1212 浮点独立寄存器类 ----
+
+TEST(RegAllocTest, FloatUsesSsePoolOnWinX64) {
+    // f64 链：%v0=常量 %v1=常量 %v2=%v0+%v1 -> 返回 %v2
+    IRFunction func;
+    func.name = "float-chain";
+    func.returnType = "f64";
+    auto block = std::make_unique<IRBlock>();
+    block->label = "blk0";
+    for (int id = 0; id < 2; ++id) {
+        IRInstruction c;
+        c.opcode = Opcode::ConstFloat;
+        c.result = IRValue::reg(id, "f64");
+        c.type = "f64";
+        c.extra = id == 0 ? "1.5" : "2.5";
+        block->instructions.push_back(c);
+    }
+    IRInstruction add;
+    add.opcode = Opcode::Add;
+    add.result = IRValue::reg(2, "f64");
+    add.type = "f64";
+    add.operands = {IRValue::reg(0, "f64"), IRValue::reg(1, "f64")};
+    block->instructions.push_back(add);
+    block->terminated = true;
+    block->termKind = "返回";
+    block->termReturnValue = "%v2";
+    func.blocks.push_back(std::move(block));
+
+    LinearScanAllocator allocator(TargetArch::X64);
+    const RegAssignmentMap map = allocator.allocate(func);
+    for (int id = 0; id <= 2; ++id) {
+        auto it = map.find(id);
+        ASSERT_NE(it, map.end()) << "浮点 v" << id << " 应有分配记录";
+        EXPECT_EQ(it->second.regClass, cn_compiler::regalloc::RegClass::Float);
+        // win-x64 浮点池 = xmm6~xmm15（MS ABI 非易失）；不得落整数寄存器
+        EXPECT_EQ(it->second.assignedReg.compare(0, 3, "xmm"), 0)
+            << "浮点值应分配 xmm 寄存器，实际: " << it->second.assignedReg;
+        EXPECT_GE(it->second.assignedReg.size(), 4u);
+    }
+    // arm64 步骤 c 前浮点池为空：显式溢出面（assignedReg 空=按原栈槽）
+    LinearScanAllocator armAllocator(TargetArch::Arm64);
+    const RegAssignmentMap armMap = armAllocator.allocate(func);
+    for (const auto& kv : armMap) {
+        if (kv.second.regClass == cn_compiler::regalloc::RegClass::Float) {
+            EXPECT_TRUE(kv.second.assignedReg.empty());
+        }
     }
 }

@@ -215,6 +215,76 @@ std::string X64CodeGenerator::physRegOf(const ir::IRValue& value) const {
                                                        : std::string();
 }
 
+// ==================== #1212：浮点寄存器分配发射设施 ====================
+
+// 浮点物理寄存器名判定（xmm0~xmm15 闭集，SSE 寄存器）
+bool X64CodeGenerator::isXmmRegisterText(const std::string& text) {
+    // 长度域闭区间 [4,6]（"xmm0"~"xmm15"）
+    if (text.size() < 4 || text.size() > 6) return false;
+    if (text.compare(0, 3, "xmm") != 0) return false;
+    for (std::size_t i = 3; i < text.size(); ++i) {
+        if (text[i] < '0' || text[i] > '9') return false;
+    }
+    return true;
+}
+
+// 浮点源操作数：xmm 寄存器名原样（movsd xmm0, xmm6 合法）；其余保持原
+//   「内存前缀 + 槽文本」形态（未分配路径逐字节不变）。
+std::string X64CodeGenerator::floatSourceText(const std::string& text,
+                                              const std::string& mp) {
+    return isXmmRegisterText(text) ? text : mp + text;
+}
+
+// 浮点结果直写：目标已分配到 xmm -> 寄存器-寄存器 mov；否则按原内存前缀写槽。
+void X64CodeGenerator::emitFloatStore(AsmWriter& writer, const std::string& dst,
+                                      const std::string& srcXmm,
+                                      const std::string& store,
+                                      const std::string& mp) {
+    if (isXmmRegisterText(dst)) {
+        writer.line(store + " " + dst + ", " + srcXmm);
+        return;
+    }
+    writer.line(store + " " + mp + dst + ", " + srcXmm);
+}
+
+// ==================== #1212 步骤 b：i128 双半成对分配设施 ====================
+
+// 该虚拟寄存器是否成对分配到两个 GPR（i128/u128；高半=%vN、低半=%vN+1）
+bool X64CodeGenerator::hasI128Pair(int regId) const {
+    // 三目取映射（无早退分支）：负值=无映射，自然落 false
+    const regalloc::RegAssignment* ra =
+        (regId >= 0) ? regAllocOf(regId) : nullptr;
+    return ra != nullptr && !ra->assignedReg.empty() && !ra->assignedReg2.empty();
+}
+
+// i128 高半文本（寄存器或原栈槽）。仅对 id>=0 的虚拟寄存器调用。
+std::string X64CodeGenerator::i128HiText(const ir::IRValue& v) const {
+    if (hasI128Pair(v.id)) return regAllocOf(v.id)->assignedReg;
+    return regSlot(v.id);
+}
+
+// i128 低半文本（寄存器或原栈槽）
+std::string X64CodeGenerator::i128LoText(const ir::IRValue& v) const {
+    if (hasI128Pair(v.id)) return regAllocOf(v.id)->assignedReg2;
+    return regSlot(v.id + 1);
+}
+
+// 已分配双半溢出到原双槽（高半 -> regSlot(id)，低半 -> regSlot(id+1)）
+void X64CodeGenerator::spillI128Pair(AsmWriter& writer, const ir::IRValue& v) {
+    if (!hasI128Pair(v.id)) return;
+    const regalloc::RegAssignment* ra = regAllocOf(v.id);
+    writer.line("mov " + regSlot(v.id) + ", " + ra->assignedReg);       // 高
+    writer.line("mov " + regSlot(v.id + 1) + ", " + ra->assignedReg2);  // 低
+}
+
+// 结果双槽载回已分配双半（供内存实现后收尾）
+void X64CodeGenerator::reloadI128Pair(AsmWriter& writer, const ir::IRValue& result) {
+    if (!hasI128Pair(result.id)) return;
+    const regalloc::RegAssignment* ra = regAllocOf(result.id);
+    writer.line("mov " + ra->assignedReg2 + ", " + regSlot(result.id + 1));  // 低
+    writer.line("mov " + ra->assignedReg + ", " + regSlot(result.id));       // 高
+}
+
 // ==================== 常量加载 ====================
 
 // 常量加载：ConstInt/ConstBool 立即数mov；ConstString LEA取常量池地址；
@@ -229,10 +299,19 @@ void X64CodeGenerator::emitConstLoad(AsmWriter& writer, const ir::IRInstruction&
         // xmm0 = 常量（.data 段 @fpN，MASM 需显式内存类型前缀，
         // 否则 movss xmm0, @fp0 报 A2070 invalid instruction operands）；
         // 结果槽也是内存目标，需 dword/qword ptr（否则 A2070）
-        if (isDouble) {
+        // #1212：结果已分配到 xmm -> 常量池直装分配寄存器（单条，免 xmm0 中转）
+        const bool direct = isXmmRegisterText(dst);
+        if (isDouble && direct) {
+            writer.line("movsd " + dst + ", qword ptr " + label);
+        }
+        if (isDouble && !direct) {
             writer.line("movsd xmm0, qword ptr " + label);
             writer.line("movsd qword ptr " + dst + ", xmm0");
-        } else {
+        }
+        if (!isDouble && direct) {
+            writer.line("movss " + dst + ", dword ptr " + label);
+        }
+        if (!isDouble && !direct) {
             writer.line("movss xmm0, dword ptr " + label);
             writer.line("movss dword ptr " + dst + ", xmm0");
         }
@@ -301,12 +380,11 @@ void X64CodeGenerator::emitConstLoad(AsmWriter& writer, const ir::IRInstruction&
             }
             hiText = "0";
         }
-        const int dstHiId = inst.result.id;
-        const int dstLoId = inst.result.id + 1;
+        // #1212 步骤 b：结果成对分配时直装双 GPR（原双槽映射不变）
         writer.line("mov rax, " + loText);
-        writer.line("mov " + regSlot(dstLoId) + ", rax");
+        writer.line("mov " + i128LoText(inst.result) + ", rax");
         writer.line("mov rax, " + hiText);
-        writer.line("mov " + regSlot(dstHiId) + ", rax");
+        writer.line("mov " + i128HiText(inst.result) + ", rax");
         return;
     }
     // 整型/布尔常量：立即数 -> 寄存器 -> 结果槽
@@ -421,11 +499,12 @@ void X64CodeGenerator::emitCopy(AsmWriter& writer, const ir::IRInstruction& inst
     if (copySrcType == "i128" || copySrcType == "u128" ||
         inst.type == "i128" || inst.type == "u128") {
         if (inst.operands[0].id >= 0 && inst.result.id >= 0) {
-            // 寄存器 -> 寄存器：双半各一条
-            writer.line("mov rax, " + regSlot(inst.operands[0].id + 1));  // 低64
-            writer.line("mov " + regSlot(inst.result.id + 1) + ", rax");
-            writer.line("mov rax, " + regSlot(inst.operands[0].id));      // 高64
-            writer.line("mov " + regSlot(inst.result.id) + ", rax");
+            // 寄存器 -> 寄存器：双半各一条（#1212 步骤 b：成对分配时双 GPR 直搬，
+            //   未分配仍走原双槽；源/目可任一为寄存器）
+            writer.line("mov rax, " + i128LoText(inst.operands[0]));  // 低64
+            writer.line("mov " + i128LoText(inst.result) + ", rax");
+            writer.line("mov rax, " + i128HiText(inst.operands[0]));  // 高64
+            writer.line("mov " + i128HiText(inst.result) + ", rax");
             return;
         }
         if (inst.operands[0].id < 0 && inst.result.id < 0 &&
@@ -458,10 +537,14 @@ void X64CodeGenerator::emitCopy(AsmWriter& writer, const ir::IRInstruction& inst
         //   宽度→A2070；406 用例 -O3 浮点 Copy 经槽到槽路径 904/905 行实证）。
         const std::string fpOp = (copySrcType == "f32") ? "movss" : "movsd";
         const std::string fmp = (copySrcType == "f32") ? "dword ptr " : "qword ptr ";
-        const bool fSrcMem = !src.empty() && src[0] == '[';
-        const bool fDstMem = !dst.empty() && dst[0] == '[';
-        writer.line(fpOp + " xmm0, " + (fSrcMem ? fmp : "") + src);
-        writer.line(fpOp + " " + (fDstMem ? fmp : "") + dst + ", xmm0");
+        // #1212：源/目可能已分配到 xmm（寄存器类）——xmm 源/目原样，
+        //   内存槽保留原「仅 '[' 开头加前缀」逻辑（未分配路径逐字节不变）
+        const bool fSrcXmm = isXmmRegisterText(src);
+        const bool fDstXmm = isXmmRegisterText(dst);
+        const bool fSrcMem = !fSrcXmm && !src.empty() && src[0] == '[';
+        const bool fDstMem = !fDstXmm && !dst.empty() && dst[0] == '[';
+        writer.line(fpOp + " xmm0, " + (fSrcXmm ? "" : (fSrcMem ? fmp : "")) + src);
+        writer.line(fpOp + " " + (fDstXmm ? "" : (fDstMem ? fmp : "")) + dst + ", xmm0");
         return;
     }
     const bool srcMem = !src.empty() && src[0] == '[';

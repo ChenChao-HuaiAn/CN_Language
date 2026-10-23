@@ -30,15 +30,34 @@ namespace regalloc {
 
 namespace {
 
+// #1212 分步开关（提交粒度：a/b/c 三步各自可回退）：
+//   kI128AllocEnabled  = 步骤 b（x64 i128 双 GPR 成对分配）
+//   kArm64FloatEnabled = 步骤 c（arm64 v8~v15 浮点寄存器）
+// 关闭时对应区间不进入可分配面（保持原栈槽映射，产物与基线逐字节一致）。
+constexpr bool kI128AllocEnabled = false;
+constexpr bool kArm64FloatEnabled = false;
+
 // IR 类型是否参与寄存器分配（1281：64/32 位整型、指针与窄整型；三架构同面——
 //   1256 的架构门控已随 1159 合入退场）。1267 续：i1 布尔也进入本类型面——
 //   寄存器内按 32 位规范承载（低 32 位 0/1、高 32 位清零），由 allocate() 的
 //   i1 架构过滤限定在 LinuxX64（win-x64/arm64 的 i1 落位面未审计=后续任务，
-//   显式过滤保持其产物逐字节不变）。浮点/i128 不参与。
+//   显式过滤保持其产物逐字节不变）。#1212：浮点 f32/f64 进入独立浮点寄存器堆
+//   （isFloatAllocableType）；i128 双半成对分配见步骤 b。
 bool isAllocableIntType(const std::string& type) {
     return type == "i64" || type == "u64" || type == "ptr" ||
            type == "i32" || type == "u32" || type == "i1" ||
            type == "i8" || type == "u8" || type == "i16" || type == "u16";
+}
+
+// #1212：浮点类型（独立寄存器类）——f32/f64 进 SSE/V 寄存器堆
+bool isFloatAllocableType(const std::string& type) {
+    return type == "f32" || type == "f64";
+}
+
+// #1212 步骤 b：128 位整型（i128/u128）——%vN（高半）区间成对占用两个 GPR；
+//   %vN+1（低半）不是独立虚拟寄存器（无 def/use），由成对分配统一承载。
+bool isI128AllocableType(const std::string& type) {
+    return type == "i128" || type == "u128";
 }
 
 // 64 位整型/指针（所有架构的基础可分配面）
@@ -55,8 +74,11 @@ bool isWideIntType(const std::string& type) {
 
 // 活跃性参与面：活跃集只需含可分配寄存器（非可分配类型不参与传播——1256
 //   性能：v2 全树窄/32 位 id 数量使活跃集膨胀，过滤后编译期回到基线量级）。
+//   #1212：浮点始终参与（独立寄存器堆，与整数活跃集共享 id 空间但区间分离）。
 bool livenessAllowsType(const std::string& type, bool allowNarrow) {
-    return isWideIntType(type) || (allowNarrow && isAllocableIntType(type));
+    return isFloatAllocableType(type) ||
+           (kI128AllocEnabled && isI128AllocableType(type)) ||
+           isWideIntType(type) || (allowNarrow && isAllocableIntType(type));
 }
 
 
@@ -81,11 +103,17 @@ int instResultId(const ir::IRInstruction& inst) {
 
 } // namespace
 
-// 静态：判断 IR 类型是否可参与寄存器分配（i64/u64/ptr/i32/u32/i1/i8/u8/i16/u16；
-//   非浮点、非 i128）。1281 起三架构类型面统一；1267 续：i1 由 allocate()
-//   按 TargetArch 再过滤（仅 LinuxX64 分配，其余架构保持槽映射）。
+// 静态：判断 IR 类型是否可参与寄存器分配（i64/u64/ptr/i32/u32/i1/i8/u8/i16/u16
+//   + f32/f64）。1281 起三架构类型面统一；1267 续：i1 由 allocate() 按 TargetArch
+//   再过滤（仅 LinuxX64 分配，其余架构保持槽映射）。#1212：浮点独立寄存器类。
 bool LinearScanAllocator::isAllocableType(const std::string& type) {
-    return isAllocableIntType(type);
+    return isAllocableIntType(type) || isFloatAllocableType(type) ||
+           (kI128AllocEnabled && isI128AllocableType(type));
+}
+
+// #1212：浮点可分配类型（f32/f64）——独立寄存器类判据
+bool LinearScanAllocator::isAllocableFloatType(const std::string& type) {
+    return isFloatAllocableType(type);
 }
 
 // 构造函数：按平台配置被调用者保存寄存器集合，扣除保留寄存器
@@ -108,6 +136,23 @@ LinearScanAllocator::LinearScanAllocator(TargetArch arch,
     for (const auto& reg : base) {
         if (reserved.count(reg) == 0) {
             regs_.push_back(reg);
+        }
+    }
+    // #1212：浮点寄存器堆（独立寄存器类）。
+    //   win-x64：xmm6~xmm15 为 MS ABI 非易失寄存器（低 128 位被调用者保存），
+    //     序言/尾声按函数实际使用集合 movups 保存/恢复；xmm0~xmm5 为调用者
+    //     保存（发射器临时与参数位使用），不分配。
+    //   linux-x64/arm64：浮点分配后续步骤接入（此处空池=全走原栈槽，产物不变）。
+    if (arch == TargetArch::X64) {
+        for (int i = 6; i <= 15; ++i) {
+            fpRegs_.push_back("xmm" + std::to_string(i));
+        }
+    }
+    // arm64：v8~v15 低 64 位为 AAPCS64 非易失（d8~d15 视图）；f32 用 sN、
+    //   f64 用 dN 文本（同一物理寄存器的两种宽度视图——占用按 vN 基准名计）。
+    if (arch == TargetArch::Arm64 && kArm64FloatEnabled) {
+        for (int i = 8; i <= 15; ++i) {
+            fpRegs_.push_back("v" + std::to_string(i));
         }
     }
 }
@@ -325,6 +370,9 @@ std::unordered_map<int, LiveInterval> LinearScanAllocator::buildLiveIntervalMap(
                     li.start = point;
                     li.end = point;
                     li.type = inst.result.type;   // 1256：架构可分配面过滤用
+                    li.isFloat = isFloatAllocableType(inst.result.type);  // #1212
+                    li.is128 = kI128AllocEnabled &&
+                               isI128AllocableType(inst.result.type);  // #1212 步骤 b
                     intervalMap[inst.result.id] = li;
                 } else {
                     it->second.start = std::min(it->second.start, point);
@@ -342,6 +390,9 @@ std::unordered_map<int, LiveInterval> LinearScanAllocator::buildLiveIntervalMap(
                     li.start = point;
                     li.end = point;
                     li.type = op.type;            // 1256：架构可分配面过滤用
+                    li.isFloat = isFloatAllocableType(op.type);  // #1212
+                    li.is128 = kI128AllocEnabled &&
+                               isI128AllocableType(op.type);  // #1212 步骤 b
                     intervalMap[op.id] = li;
                 } else {
                     it->second.end = std::max(it->second.end, point);
@@ -383,17 +434,36 @@ std::unordered_map<int, LiveInterval> LinearScanAllocator::buildLiveIntervalMap(
 }
 
 // 线性扫描主循环：按 start 升序扫描，活跃集合按 end 小顶堆
+//  - #1212：整数/浮点按寄存器类拆成两条独立扫描——资源池、活跃集合与溢出
+//    通道各自独立（浮点区间不挤占 GPR，反之亦然）。
+void LinearScanAllocator::scan(const std::vector<LiveInterval>& intervals,
+                               RegAssignmentMap& out) {
+    std::vector<LiveInterval> intIntervals;
+    std::vector<LiveInterval> fpIntervals;
+    intIntervals.reserve(intervals.size());
+    fpIntervals.reserve(intervals.size());
+    for (const auto& li : intervals) {
+        // 三目选桶（无 else 业务块——检查点纪律）
+        std::vector<LiveInterval>& bucket = li.isFloat ? fpIntervals : intIntervals;
+        bucket.push_back(li);
+    }
+    scanPool(intIntervals, regs_, RegClass::Int, out);
+    scanPool(fpIntervals, fpRegs_, RegClass::Float, out);
+}
+
+// 单一寄存器堆的线性扫描（#1212：原 scan 主体，新增 class/pool 参数）
 //  - 活跃集合：仍在使用的区间（end >= 当前 start 或尚未结束）
 //  - 分配策略：区间开始时，先弹出已结束区间（end < start）回收寄存器；
 //    再检查是否有空闲物理寄存器（未被任何活跃区间占用），有则分配最早空闲的；
-//    无则溢出（spillSlot 递增）
-void LinearScanAllocator::scan(const std::vector<LiveInterval>& intervals,
-                               RegAssignmentMap& out) {
+//    无则溢出（spillSlot 递增，发射端按原栈槽映射处理）
+void LinearScanAllocator::scanPool(const std::vector<LiveInterval>& intervals,
+                                   const std::vector<std::string>& pool,
+                                   RegClass regClass, RegAssignmentMap& out) {
     // 活跃区间集合：按 end 升序（小顶堆，存区间索引）
-    // 注册表：regId -> 分配的物理寄存器名（活跃期间占用）
-    std::unordered_map<int, std::string> active;       // regId -> 物理寄存器
+    // 注册表：regId -> 分配的物理寄存器列表（普通值 1 个；i128 成对 2 个）
+    std::unordered_map<int, std::vector<std::string>> active;
     std::unordered_map<std::string, int> regOwner;     // 物理寄存器 -> regId（占用者）
-    std::set<std::string> freeRegs(regs_.begin(), regs_.end());  // 空闲寄存器
+    std::set<std::string> freeRegs(pool.begin(), pool.end());  // 空闲寄存器
     std::vector<std::pair<int, int>> activeEnds;       // (end, regId)，按 end 升序维护
     int nextSpillSlot = 0;
 
@@ -411,11 +481,12 @@ void LinearScanAllocator::scan(const std::vector<LiveInterval>& intervals,
         }
         for (int rid : expired) {
             auto ait = active.find(rid);
-            if (ait != active.end()) {
-                freeRegs.insert(ait->second);
-                regOwner.erase(ait->second);
-                active.erase(ait);
+            if (ait == active.end()) continue;
+            for (const std::string& reg : ait->second) {
+                freeRegs.insert(reg);
+                regOwner.erase(reg);
             }
+            active.erase(ait);
         }
     };
 
@@ -424,19 +495,39 @@ void LinearScanAllocator::scan(const std::vector<LiveInterval>& intervals,
         expire(point);
         // 已分配？跳过（理论上线性扫描每个寄存器一次）
         if (out.count(li.regId) != 0) continue;
-        // 尝试分配空闲寄存器
-        if (!freeRegs.empty()) {
-            const std::string reg = *freeRegs.begin();
-            freeRegs.erase(freeRegs.begin());
-            active[li.regId] = reg;
-            regOwner[reg] = li.regId;
+        // 尝试分配空闲寄存器（#1212 步骤 b：i128 成对占两个 GPR，禁单半捷径）
+        const int needCount = li.is128 ? 2 : 1;
+        if (static_cast<int>(freeRegs.size()) >= needCount) {
+            std::vector<std::string> taken;
+            taken.reserve(needCount);
+            for (int k = 0; k < needCount; ++k) {
+                const std::string reg = *freeRegs.begin();
+                freeRegs.erase(freeRegs.begin());
+                regOwner[reg] = li.regId;
+                taken.push_back(reg);
+            }
+            active[li.regId] = taken;
             RegAssignment ra;
-            ra.assignedReg = reg;
+            ra.assignedReg = taken[0];                       // i128：高半（%vN）
+            if (needCount == 2) ra.assignedReg2 = taken[1];  // i128：低半（%vN+1）
+            ra.regClass = regClass;
+            // arm64 浮点：vN 基准名 -> sN/dN 宽度视图（同物理寄存器；
+            //   占用/回收始终按 vN 基准名，宽度名仅供发射端操作数）
+            if constexpr (kArm64FloatEnabled) {
+                if (regClass == RegClass::Float &&
+                    arch_ == TargetArch::Arm64 &&
+                    ra.assignedReg.size() >= 2 && ra.assignedReg.size() <= 3 &&
+                    ra.assignedReg[0] == 'v') {
+                    const std::string num = ra.assignedReg.substr(1);
+                    ra.assignedReg = (li.type == "f32" ? "s" : "d") + num;
+                }
+            }
             out[li.regId] = ra;
         } else {
-            // 溢出：分配溢出槽（不占用物理寄存器）
+            // 溢出：分配溢出槽（不占用物理寄存器；i128 双半同时溢出）
             RegAssignment ra;
             ra.spillSlot = nextSpillSlot++;
+            ra.regClass = regClass;
             out[li.regId] = ra;
         }
         // 登记活跃（end 处）

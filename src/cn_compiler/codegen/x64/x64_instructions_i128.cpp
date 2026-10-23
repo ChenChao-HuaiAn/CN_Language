@@ -35,18 +35,34 @@ std::pair<std::string, std::string> X64CodeGenerator::splitI128(const ir::IRValu
             return {extra, "0"};
         }
     }
-    return {regSlot(v.id + 1), regSlot(v.id)};
+    // #1212 步骤 b：成对分配时高/低半为 GPR；否则原双槽
+    return {i128LoText(v), i128HiText(v)};
 }
 
 void X64CodeGenerator::emitInt128Binary(AsmWriter& writer, const ir::IRInstruction& inst) {
-    // 结果双槽：result.id 为高64位槽（%vN）、result.id+1 为低64位槽（%vN+1）
-    const int dstHiId = inst.result.id;
-    const int dstLoId = inst.result.id + 1;
-    std::string dstLo = regSlot(dstLoId);   // 低64位（较低地址）
-    std::string dstHi = regSlot(dstHiId);   // 高64位（较高地址）
+    // 结果双槽：result.id 为高64位（%vN）、result.id+1 为低64位（%vN+1）
+    // #1212 步骤 b：成对分配 -> 双 GPR；未分配 -> 原双槽
+    std::string dstLo = i128LoText(inst.result);   // 低64位
+    std::string dstHi = i128HiText(inst.result);   // 高64位
     // 302-a：splitI128 已提取为成员函数（Binary/Bitwise 共享·零行为变更）
-    const auto op1 = splitI128(inst.operands[0]);
-    const auto op2 = splitI128(inst.operands[1]);
+    auto op1 = splitI128(inst.operands[0]);
+    auto op2 = splitI128(inst.operands[1]);
+    // 寄存器复用别名：低半结果写入早于高半源读取——dstLo 与任一高半源同寄存器
+    //   时先溢出双槽走原内存路径（写完双槽后统一载回结果双 GPR）。
+    const bool pairDst = hasI128Pair(inst.result.id);
+    const bool alias = pairDst && (dstLo == op1.second || dstLo == op2.second);
+    if (alias) {
+        spillI128Pair(writer, inst.operands[0]);
+        spillI128Pair(writer, inst.operands[1]);
+        dstLo = regSlot(inst.result.id + 1);
+        dstHi = regSlot(inst.result.id);
+        if (!inst.operands[0].isConstant) {
+            op1 = {regSlot(inst.operands[0].id + 1), regSlot(inst.operands[0].id)};
+        }
+        if (!inst.operands[1].isConstant) {
+            op2 = {regSlot(inst.operands[1].id + 1), regSlot(inst.operands[1].id)};
+        }
+    }
     const bool isAdd = (inst.opcode == ir::Opcode::Add ||
                         inst.opcode == ir::Opcode::WrapAdd);
     // 任务 474：检查开关（Add/Sub 且安全函数；Wrap*/不安全 豁免）——高半
@@ -85,6 +101,7 @@ void X64CodeGenerator::emitInt128Binary(AsmWriter& writer, const ir::IRInstructi
         writer.raw(ok + ":");
     }
     writer.line("mov " + dstHi + ", rcx");
+    if (alias) reloadI128Pair(writer, inst.result);  // 别名溢出路径：结果双槽载回
 }
 
 // ==================== i128 乘/除/取余（Task 完善A：运行时辅助函数） ====================
@@ -129,10 +146,26 @@ void X64CodeGenerator::emitInt128Bitwise(AsmWriter& writer, const ir::IRInstruct
     const std::string m = (inst.opcode == ir::Opcode::BitAnd) ? "and"
                          : (inst.opcode == ir::Opcode::BitOr)  ? "or"
                                                                : "xor";
-    const std::string dstLo = regSlot(inst.result.id + 1);  // 低64位（较低地址）
-    const std::string dstHi = regSlot(inst.result.id);      // 高64位（较高地址）
-    const auto op1 = splitI128(inst.operands[0]);
-    const auto op2 = splitI128(inst.operands[1]);
+    // #1212 步骤 b：成对分配 -> 双 GPR；未分配 -> 原双槽
+    std::string dstLo = i128LoText(inst.result);  // 低64位
+    std::string dstHi = i128HiText(inst.result);  // 高64位
+    auto op1 = splitI128(inst.operands[0]);
+    auto op2 = splitI128(inst.operands[1]);
+    const bool pairDst = hasI128Pair(inst.result.id);
+    const bool alias = pairDst && (dstLo == op1.second || dstLo == op2.second);
+    if (alias) {
+        // 同 Binary：dstLo 早期写入会覆盖高半源 -> 溢出双槽走内存路径后载回
+        spillI128Pair(writer, inst.operands[0]);
+        spillI128Pair(writer, inst.operands[1]);
+        dstLo = regSlot(inst.result.id + 1);
+        dstHi = regSlot(inst.result.id);
+        if (!inst.operands[0].isConstant) {
+            op1 = {regSlot(inst.operands[0].id + 1), regSlot(inst.operands[0].id)};
+        }
+        if (!inst.operands[1].isConstant) {
+            op2 = {regSlot(inst.operands[1].id + 1), regSlot(inst.operands[1].id)};
+        }
+    }
     // 低 64 位：op1Lo and/or/xor op2Lo
     writer.line("mov rax, " + op1.first);
     writer.line(m + " rax, " + qwordMem(op2.first));
@@ -141,6 +174,7 @@ void X64CodeGenerator::emitInt128Bitwise(AsmWriter& writer, const ir::IRInstruct
     writer.line("mov rcx, " + op1.second);
     writer.line(m + " rcx, " + qwordMem(op2.second));
     writer.line("mov " + dstHi + ", rcx");
+    if (alias) reloadI128Pair(writer, inst.result);  // 别名溢出路径：结果双槽载回
 }
 
 // i128/u128 移位：完整 128 位（高低双半整体移位）——移位量按操作数位宽 128 取模
@@ -155,10 +189,23 @@ void X64CodeGenerator::emitInt128Shift(AsmWriter& writer, const ir::IRInstructio
     const bool isShl = (inst.opcode == ir::Opcode::Shl);
     const bool isUnsigned = (inst.type == "u128");
     const std::string rsh = isUnsigned ? "shr" : "sar";  // 右移助记符
-    const std::string dstLo = regSlot(inst.result.id + 1);
-    const std::string dstHi = regSlot(inst.result.id);
-    const std::string op1Hi = regSlot(inst.operands[0].id);      // %vN 高64位
-    const std::string op1Lo = regSlot(inst.operands[0].id + 1);  // %vN+1 低64位
+    // #1212 步骤 b：成对分配 -> 双 GPR；未分配 -> 原双槽
+    std::string dstLo = i128LoText(inst.result);
+    std::string dstHi = i128HiText(inst.result);
+    std::string op1Hi = i128HiText(inst.operands[0]);  // %vN 高64位
+    std::string op1Lo = i128LoText(inst.operands[0]);  // %vN+1 低64位
+    // 右移大路径先写 dstLo 再读 op1Hi（符号扩展）——dstLo 与 op1Hi 同寄存器
+    //   时溢出双槽走内存路径，结束处统一载回结果。
+    const bool pairDst = hasI128Pair(inst.result.id);
+    const bool pairOp = hasI128Pair(inst.operands[0].id);
+    const bool alias = pairDst && (dstLo == op1Hi);
+    if (alias) {
+        if (pairOp) spillI128Pair(writer, inst.operands[0]);
+        dstLo = regSlot(inst.result.id + 1);
+        dstHi = regSlot(inst.result.id);
+        op1Hi = regSlot(inst.operands[0].id);
+        op1Lo = regSlot(inst.operands[0].id + 1);
+    }
     if (inst.operands[1].isConstant) {
         const int rawK = shiftAmtOf128(inst.operands[1].extra);
         if (!currentFnUnsafe474_ && (rawK < 0 || rawK >= 128)) {
@@ -178,6 +225,7 @@ void X64CodeGenerator::emitInt128Shift(AsmWriter& writer, const ir::IRInstructio
             writer.line("mov " + dstLo + ", rax");
             writer.line("mov rax, " + op1Hi);
             writer.line("mov " + dstHi + ", rax");
+            if (alias) reloadI128Pair(writer, inst.result);
             return;
         }
         if (isShl) {
@@ -212,6 +260,7 @@ void X64CodeGenerator::emitInt128Shift(AsmWriter& writer, const ir::IRInstructio
                 writer.line("mov " + dstHi + ", rcx");
             }
         }
+        if (alias) reloadI128Pair(writer, inst.result);
         return;
     }
     // ---- 变量移位量：mod 128 + 大小分路 ----
@@ -223,7 +272,7 @@ void X64CodeGenerator::emitInt128Shift(AsmWriter& writer, const ir::IRInstructio
     //   （O0 复合赋值等形态移位量为单槽·误用双槽偏移会读到相邻寄存器）。
     const ir::IRValue& shOp = inst.operands[1];
     const std::string shSrc = (shOp.type == "i128" || shOp.type == "u128")
-        ? regSlot(shOp.id + 1) : operandText(shOp);
+        ? i128LoText(shOp) : operandText(shOp);
     writer.line("mov ecx, " + widthFor("i32", shSrc));
     if (currentFnUnsafe474_) {
         writer.line("and ecx, 127");  // 规范：k mod 128（不安全 域维持掩码回绕）
@@ -274,6 +323,7 @@ void X64CodeGenerator::emitInt128Shift(AsmWriter& writer, const ir::IRInstructio
         writer.line("mov " + dstHi + ", rcx");
     }
     writer.raw(endL + ":");
+    if (alias) reloadI128Pair(writer, inst.result);
 }
 
 void X64CodeGenerator::emitInt128MulDivMod(AsmWriter& writer, const ir::IRInstruction& inst) {
@@ -319,6 +369,9 @@ void X64CodeGenerator::emitInt128MulDivMod(AsmWriter& writer, const ir::IRInstru
         if (v.id >= 0) return regSlot(v.id + 1);  // 低64位槽地址
         return regSlot(v.id);  // 防御
     };
+    // #1212 步骤 b：指针型辅助要求双槽内存——已分配双半先溢出到原槽
+    spillI128Pair(writer, inst.operands[0]);
+    spillI128Pair(writer, inst.operands[1]);
     writer.line("sub rsp, 64");  // 32 影子空间 + 32 常量临时区
     const std::string aAddr = addrOfI128(inst.operands[0], writer);
     const std::string bAddr = addrOfI128(inst.operands[1], writer);
@@ -331,6 +384,7 @@ void X64CodeGenerator::emitInt128MulDivMod(AsmWriter& writer, const ir::IRInstru
     writer.line("lea r8, " + outAddr);
     writer.line("call " + helper);
     writer.line("add rsp, 64");
+    reloadI128Pair(writer, inst.result);
 }
 
 // ==================== i128 比较（Task 完善A：运行时辅助函数） ====================
@@ -378,6 +432,9 @@ void X64CodeGenerator::emitInt128Compare(AsmWriter& writer, const ir::IRInstruct
     //   改为先 sub rsp,64（32 字节影子空间 + 32 字节常量区）再写：
     //   a=[rsp+32]/[rsp+40]、b=[rsp+48]/[rsp+56]——常量区位于影子空间
     //   之上（callee 不写该区）。
+    // #1212 步骤 b：指针型辅助要求双槽内存——已分配双半先溢出到原槽
+    spillI128Pair(writer, inst.operands[0]);
+    spillI128Pair(writer, inst.operands[1]);
     writer.line("sub rsp, 64");
     const std::string aAddr = addrOfI128(inst.operands[0], writer);
     const std::string bAddr = addrOfI128(inst.operands[1], writer);

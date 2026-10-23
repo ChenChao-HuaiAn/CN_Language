@@ -23,11 +23,12 @@ void X64CodeGenerator::emitFloatBinary(AsmWriter& writer, const ir::IRInstructio
     const std::string suf = isDouble ? "sd" : "ss";
     const std::string load = isDouble ? "movsd" : "movss";
     const std::string mp = isDouble ? "qword ptr " : "dword ptr ";
-    // xmm0 = op1；xmm1 = op2；运算；xmm0 -> dst（内存操作数均需显式大小前缀）
-    writer.line(load + " xmm0, " + mp + op1);
-    writer.line(load + " xmm1, " + mp + op2);
+    // xmm0 = op1；xmm1 = op2；运算；xmm0 -> dst（内存操作数均需显式大小前缀）。
+    // #1212：op1/op2/dst 可能已分配到 xmm6~xmm15——源寄存器原样，结果直写。
+    writer.line(load + " xmm0, " + floatSourceText(op1, mp));
+    writer.line(load + " xmm1, " + floatSourceText(op2, mp));
     writer.line(mnemonic + suf + " xmm0, xmm1");
-    writer.line(load + " " + mp + dst + ", xmm0");
+    emitFloatStore(writer, dst, "xmm0", load, mp);
 }
 
 // 移位量常量文本解析（0x/0b/0o 前缀感知——std::stoi 对 "0x10" 返回 0 的潜伏

@@ -294,9 +294,34 @@ private:
     static bool isGeneralRegisterName(const std::string& text);
 
     // 源/目操作数按 8/16 位目标宽度对齐（A2022 收缩族·窄宽分支）：
-    //   64/32 位名 → 8 位名（r14/r14d→r14b·rax→al）或 16 位名（r14→r14w·rax→ax）；
+    //   64/32 位名 → 8 位名（r14/r14b→r14b·rax→al）或 16 位名（r14→r14w·rax→ax）；
     //   槽文本/立即数原样。仅 i8/u8/i16/u16 类型生效，其余原样。
     static std::string narrowOperand(const std::string& type, const std::string& op);
+
+    // ==================== #1212：浮点寄存器分配发射设施 ====================
+    // 浮点物理寄存器名判定（xmm0~xmm15）——分配结果落 SSE 寄存器后，浮点
+    //   装载/存储/搬运不再强制经栈槽。未分配路径产物逐字节不变。
+    static bool isXmmRegisterText(const std::string& text);
+    // 浮点源操作数：xmm 寄存器名原样；其余按原内存前缀拼接（qword/dword ptr）
+    static std::string floatSourceText(const std::string& text, const std::string& mp);
+    // 浮点结果直写：目标为 xmm 时寄存器-寄存器 mov，否则按内存前缀写槽。
+    //   srcXmm 为源寄存器文本（通常 "xmm0" 或分配寄存器）。
+    static void emitFloatStore(AsmWriter& writer, const std::string& dst,
+                               const std::string& srcXmm, const std::string& store,
+                               const std::string& mp);
+
+    // ==================== #1212 步骤 b：i128 双半成对分配设施 ====================
+    // 约定：%vN=高 64 位（RegAssignment::assignedReg）、%vN+1=低 64 位
+    //   （assignedReg2）；未成对分配时回落到原双槽映射（regSlot）。
+    bool hasI128Pair(int regId) const;
+    // i128 值高/低半文本（寄存器或栈槽；v.id<0 调用方先处理常量）
+    std::string i128HiText(const ir::IRValue& v) const;
+    std::string i128LoText(const ir::IRValue& v) const;
+    // 已分配双半溢出到原双槽（供指针型运行时辅助/移位等内存实现前置）；
+    //   未分配时为空操作。reloadI128Pair 反向载回。
+    void spillI128Pair(AsmWriter& writer, const ir::IRValue& v);
+    void reloadI128Pair(AsmWriter& writer, const ir::IRValue& result);
+
 
     // 文本是否为 64 位通用寄存器全名（rax/rbx/.../r15）——1159：窄位宽直写族
     //   判据（寄存器形态 vs 内存槽/立即数；决定 movsx/movzx 的操作数形态）。
@@ -422,6 +447,11 @@ private:
     regalloc::RegAssignmentMap regAllocMap_;
     // 本函数实际使用的被调用者保存寄存器（序言压栈/尾声恢复，按压栈顺序）
     std::vector<std::string> calleeSavedRegs_;
+    // #1212：本函数实际使用的浮点被调用者保存寄存器（win-x64 xmm6~xmm15）——
+    //   不能 push/pop，序言/尾声经 movups 存入帧内保存区/载回
+    std::vector<std::string> calleeSavedFpRegs_;
+    // #1212：浮点保存区各寄存器的帧内偏移（与 calleeSavedFpRegs_ 一一对应）
+    std::vector<int> fpSaveOffsets_;
     // 是否启用了寄存器分配（-O2 时 true；structReturn/i128 返回函数强制关闭）
     bool regAllocEnabled_ = false;
     // 本函数是否实际使用了物理寄存器（决定是否需要保存/恢复被调用者保存寄存器）

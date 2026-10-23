@@ -290,7 +290,8 @@ void X64CodeGenerator::emitVirtualCall(AsmWriter& writer, const ir::IRInstructio
             const std::string load = (argType == "f64") ? "movsd" : "movss";
             const std::string mp = (argType == "f64") ? "qword ptr " : "dword ptr ";
             const std::string xmm = "xmm" + std::to_string(regIdx);
-            writer.line(load + " " + xmm + ", " + mp + op);
+            // #1212：实参可能已分配到 xmm（寄存器源无内存前缀）
+            writer.line(load + " " + xmm + ", " + floatSourceText(op, mp));
             // 变参兼容：位模式复制到同参数位整型寄存器（MSVC 惯例）；栈传位 movq
             //   内存目标须带 qword ptr（A2070·431 汇编失败实证）
             if (regIdx >= 4) {
@@ -342,16 +343,15 @@ void X64CodeGenerator::emitVirtualCall(AsmWriter& writer, const ir::IRInstructio
         if (inst.result.type == "i128" || inst.result.type == "u128") {
             // 410：i128 返回——被调方写 retbuf 并经 rax 返回其指针（emitCall
             //   接收段同构·原 mov rax→dst=把缓冲地址当 i128 低半=垃圾）
-            const int vcHiId = inst.result.id;
-            const int vcLoId = inst.result.id + 1;
+            // #1212 步骤 b：结果成对分配 -> retbuf 低/高半直装双 GPR
             writer.line("mov rdx, [rax]");       // 低64位
-            writer.line("mov " + regSlot(vcLoId) + ", rdx");
+            writer.line("mov " + i128LoText(inst.result) + ", rdx");
             writer.line("mov rdx, [rax+8]");     // 高64位
-            writer.line("mov " + regSlot(vcHiId) + ", rdx");
+            writer.line("mov " + i128HiText(inst.result) + ", rdx");
         } else if (isFloatType(inst.result.type)) {
             const std::string store = (inst.result.type == "f64") ? "movsd" : "movss";
             const std::string mp = (inst.result.type == "f64") ? "qword ptr " : "dword ptr ";
-            writer.line(store + " " + mp + dst + ", xmm0");
+            emitFloatStore(writer, dst, "xmm0", store, mp);  // #1212：结果可能已分配 xmm
         } else {
             std::string w = widthFor(inst.result.type, "rax");
             writer.line("mov " + shrunkOperand(inst.result.type, dst) + ", " + w);

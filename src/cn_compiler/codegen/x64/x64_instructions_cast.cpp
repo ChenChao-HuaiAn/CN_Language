@@ -121,8 +121,9 @@ bool X64CodeGenerator::emitCompareFloat(AsmWriter& writer, const ir::IRInstructi
                            inst.opcode == ir::Opcode::Le);
         const std::string& leftText = swapped ? op2 : op1;
         const std::string& rightText = swapped ? op1 : op2;
-        writer.line(load + " xmm0, " + mp + leftText);
-        writer.line(load + " xmm1, " + mp + rightText);
+        // #1212：浮点源可能已分配到 xmm——寄存器源原样（movsd xmm0, xmm6 合法）
+        writer.line(load + " xmm0, " + floatSourceText(leftText, mp));
+        writer.line(load + " xmm1, " + floatSourceText(rightText, mp));
         writer.line(cmp + " xmm0, xmm1");
         switch (inst.opcode) {
             case ir::Opcode::Eq:
@@ -318,7 +319,8 @@ bool X64CodeGenerator::emitCastFloatFamily(AsmWriter& writer, const ir::IRInstru
     if (fromFloat && (to == "i128" || to == "u128")) {
         const std::string mp = (from == "f64") ? "qword ptr " : "dword ptr ";
         const std::string conv = (from == "f64") ? "movsd" : "movss";
-        writer.line(conv + " xmm0, " + mp + src);
+        // #1212：浮点源可能已分配到 xmm（寄存器源无内存前缀）
+        writer.line(conv + " xmm0, " + floatSourceText(src, mp));
         // 550（浮32→整128 读宽根治）：浮32 源须先按源浮宽宽化 f64 再进辅助——
         //   辅助 __cn_f64_to_i128 按 f64 读 xmm0，原直喂 f32 位模式（低 32 位）
         //   被当 f64 解释=非规格化垃圾（3.75f 截断恒 0·双侧同错）；与浮64 通道
@@ -330,7 +332,8 @@ bool X64CodeGenerator::emitCastFloatFamily(AsmWriter& writer, const ir::IRInstru
         writer.line("sub rsp, 32");
         writer.line(std::string("call ") + ((to == "u128") ? "__cn_f64_to_u128" : "__cn_f64_to_i128"));
         writer.line("add rsp, 32");
-        // 双槽由辅助函数写入；结果寄存器链正常（高64在 id、低64在 id+1）
+        // 双槽由辅助函数写入；#1212 步骤 b：成对分配时载回双 GPR
+        reloadI128Pair(writer, inst.result);
         return true;
     }
     // ---- 浮 -> 整（≤64 全宽）：528 饱和辅助族（475 甲案·Rust as 对齐） ----
@@ -342,7 +345,9 @@ bool X64CodeGenerator::emitCastFloatFamily(AsmWriter& writer, const ir::IRInstru
     //   宽度写低 32 位，读取侧窄读正确）。
     if (fromFloat && !toFloat) {
         const std::string mp = (from == "f64") ? "qword ptr " : "dword ptr ";
-        writer.line("mov" + std::string((from == "f64") ? "sd" : "ss") + " xmm0, " + mp + src);
+        // #1212：浮点源可能已分配到 xmm（寄存器源无内存前缀）
+        writer.line("mov" + std::string((from == "f64") ? "sd" : "ss") + " xmm0, " +
+                    floatSourceText(src, mp));
         writer.line("sub rsp, 32");
         writer.line("call " + judgement::floatToIntHelperName(from, to));
         writer.line("add rsp, 32");
@@ -371,13 +376,15 @@ bool X64CodeGenerator::emitCastFloatFamily(AsmWriter& writer, const ir::IRInstru
         //   __cn_i128_to_f64（低64位+高64位双槽 -> double，处理符号与2^64缩放）。
         //   原实现无此分支，落入默认 32 位 mov eax 读到槽中低32位垃圾 -> 输出 0。
         if (from == "i128" || from == "u128") {
+            // #1212 步骤 b：指针型辅助要求双槽内存——已分配双半先溢出到原槽
+            spillI128Pair(writer, inst.operands[0]);
             const int srcLoId = inst.operands[0].id + 1;  // 低64位槽
             const std::string helper = (from == "u128") ? "__cn_u128_to_f64" : "__cn_i128_to_f64";
             writer.line("lea rcx, " + regSlot(srcLoId));  // 双槽地址
             writer.line("sub rsp, 32");                   // 影子空间
             writer.line("call " + helper);
             writer.line("add rsp, 32");
-            writer.line(store + " " + mp + dst + ", xmm0");
+            emitFloatStore(writer, dst, "xmm0", store, mp);  // #1212：目标可能已分配 xmm
             return true;
         }
         // Task 2.10 核对：u64/u32 -> 浮 必须按"无符号"语义（cvtsi2sd 按有符号，
@@ -390,7 +397,7 @@ bool X64CodeGenerator::emitCastFloatFamily(AsmWriter& writer, const ir::IRInstru
             writer.line("sub rsp, 32");
             writer.line("call __cn_u64_to_f64");
             writer.line("add rsp, 32");
-            writer.line(store + " " + mp + dst + ", xmm0");
+            emitFloatStore(writer, dst, "xmm0", store, mp);  // #1212
             return true;
         }
         if (from == "u64" && to == "f32") {
@@ -400,7 +407,7 @@ bool X64CodeGenerator::emitCastFloatFamily(AsmWriter& writer, const ir::IRInstru
             writer.line("call __cn_u64_to_f64");
             writer.line("add rsp, 32");
             writer.line("cvtsd2ss xmm0, xmm0");
-            writer.line("movss dword ptr " + dst + ", xmm0");
+            emitFloatStore(writer, dst, "xmm0", "movss", "dword ptr ");  // #1212
             return true;
         }
         if (from == "u32") {
@@ -408,7 +415,7 @@ bool X64CodeGenerator::emitCastFloatFamily(AsmWriter& writer, const ir::IRInstru
             //（u32 值域 [0, 2^32)，有符号 32 位解释等价，因高 32 位为 0）
             writer.line("mov eax, " + shrunkOperand("i32", src));
             writer.line(conv + " xmm0, rax");
-            writer.line(store + " " + mp + dst + ", xmm0");
+            emitFloatStore(writer, dst, "xmm0", store, mp);  // #1212
             return true;
         }
         if (from == "i64" || from == "u64") {
@@ -418,7 +425,7 @@ bool X64CodeGenerator::emitCastFloatFamily(AsmWriter& writer, const ir::IRInstru
             writer.line("mov eax, " + shrunkOperand("i32", src));
             writer.line(conv + " xmm0, eax");
         }
-        writer.line(store + " " + mp + dst + ", xmm0");
+        emitFloatStore(writer, dst, "xmm0", store, mp);  // #1212
         return true;
     }
     return false;
@@ -469,18 +476,37 @@ bool X64CodeGenerator::emitCastPtrAndFloatPair(AsmWriter& writer,
         //   形式有 A2070 尺寸歧义（v2 110-a 教训）→ 经 rax 位模式直拷，
         //   对齐 v2 代码生成.cn「同码直拷」既有口径
         if (from == to) {
+            // #1212：源/目已分配到 xmm 时按同宽浮点 mov 搬运（f32/f64 位模式与
+            //   NaN 不变）；两者均为槽时保持原 rax 位模式直拷路径（逐字节不变）。
+            const bool srcXmm = isXmmRegisterText(src);
+            const bool dstXmm = isXmmRegisterText(dst);
+            if (srcXmm || dstXmm) {
+                const std::string mv = (from == "f32") ? "movss" : "movsd";
+                const std::string mp = (from == "f32") ? "dword ptr " : "qword ptr ";
+                if (srcXmm && dstXmm) {
+                    writer.line(mv + " " + dst + ", " + src);
+                }
+                if (srcXmm && !dstXmm) {
+                    writer.line(mv + " " + mp + dst + ", " + src);
+                }
+                if (!srcXmm && dstXmm) {
+                    writer.line(mv + " " + dst + ", " + mp + src);
+                }
+                return true;
+            }
             writer.line("mov rax, qword ptr " + src);
             writer.line("mov qword ptr " + dst + ", rax");
             return true;
         }
         if (from == "f32" && to == "f64") {
-            writer.line("movss xmm0, dword ptr " + src);
+            writer.line("movss xmm0, " + floatSourceText(src, "dword ptr "));
             writer.line("cvtss2sd xmm0, xmm0");
-            writer.line("movsd qword ptr " + dst + ", xmm0");
-        } else {
-            writer.line("movsd xmm0, qword ptr " + src);
+            emitFloatStore(writer, dst, "xmm0", "movsd", "qword ptr ");  // #1212
+        }
+        if (from == "f64" && to == "f32") {
+            writer.line("movsd xmm0, " + floatSourceText(src, "qword ptr "));
             writer.line("cvtsd2ss xmm0, xmm0");
-            writer.line("movss dword ptr " + dst + ", xmm0");
+            emitFloatStore(writer, dst, "xmm0", "movss", "dword ptr ");  // #1212
         }
         return true;
     }
@@ -566,9 +592,9 @@ bool X64CodeGenerator::emitCastIntWidth(AsmWriter& writer, const ir::IRInstructi
         (to == "i64" || to == "u64" || to == "ptr" || to == "i32" ||
          to == "u32" || to == "i16" || to == "u16" ||
          to == "i8" || to == "u8" || to == "i1")) {
-        const int srcLoId = inst.operands[0].id + 1;
         if (to == "i64" || to == "u64" || to == "ptr") {
-            writer.line("mov rax, " + regSlot(srcLoId));
+            // #1212 步骤 b：低半可能已分配到 GPR（成对分配）
+            writer.line("mov rax, " + i128LoText(inst.operands[0]));
             writer.line("mov " + dst + ", rax");
             return true;
         }
@@ -584,7 +610,7 @@ bool X64CodeGenerator::emitCastIntWidth(AsmWriter& writer, const ir::IRInstructi
                                                     : "eax";
             const bool narrowTarget = (to == "i8" || to == "u8" ||
                                        to == "i16" || to == "u16");
-            writer.line("mov rax, " + regSlot(srcLoId));
+            writer.line("mov rax, " + i128LoText(inst.operands[0]));  // #1212 步骤 b
             // 已分配且非窄目标才需把 eax 搬入分配寄存器；槽目标直接以 eax 为工作
             //   寄存器（P2-3：原 `mov eax, eax` 空指令——i32/u32/i1 槽目标同样
             //   虚增指令，1281 集成审查实测）；窄目标由下方 movsx/movzx 一步落位
@@ -662,13 +688,14 @@ bool X64CodeGenerator::emitCastIntWidth(AsmWriter& writer, const ir::IRInstructi
         } else {
             writer.line("mov rax, " + src);  // i64/u64：全宽槽 64 位装载
         }
-        writer.line("mov " + regSlot(inst.result.id + 1) + ", rax");  // 低64
+        // #1212 步骤 b：结果成对分配 -> 低/高半直写双 GPR（未分配原双槽不变）
+        writer.line("mov " + i128LoText(inst.result) + ", rax");  // 低64
         if (fromIsSigned) {
-            writer.line("cqo");                                        // 符号扩展高位
-            writer.line("mov " + regSlot(inst.result.id) + ", rdx");   // 高64
+            writer.line("cqo");                                   // 符号扩展高位
+            writer.line("mov " + i128HiText(inst.result) + ", rdx");  // 高64
         } else {
             writer.line("xor eax, eax");
-            writer.line("mov " + regSlot(inst.result.id) + ", rax");   // 高64=0
+            writer.line("mov " + i128HiText(inst.result) + ", rax");  // 高64=0
         }
         return true;
     }
@@ -677,10 +704,11 @@ bool X64CodeGenerator::emitCastIntWidth(AsmWriter& writer, const ir::IRInstructi
     //   32 位 mov 链=只搬**高半槽**到目标低半（`正128& v = 18446744073709551621`
     //   的 IR 常量 i128 [5:1]→Cast u128 读出 1 实证）。
     if ((from == "i128" && to == "u128") || (from == "u128" && to == "i128")) {
-        writer.line("mov rax, " + regSlot(inst.operands[0].id + 1));   // 低64
-        writer.line("mov " + regSlot(inst.result.id + 1) + ", rax");
-        writer.line("mov rax, " + regSlot(inst.operands[0].id));       // 高64
-        writer.line("mov " + regSlot(inst.result.id) + ", rax");
+        // #1212 步骤 b：双半文本经成对分配映射（寄存器或原槽）
+        writer.line("mov rax, " + i128LoText(inst.operands[0]));   // 低64
+        writer.line("mov " + i128LoText(inst.result) + ", rax");
+        writer.line("mov rax, " + i128HiText(inst.operands[0]));   // 高64
+        writer.line("mov " + i128HiText(inst.result) + ", rax");
         return true;
     }
     // 大 -> 小（截断）：按目标宽度取低 8/16 位并规范化为 32 位提升形态。
@@ -791,11 +819,11 @@ bool X64CodeGenerator::emitCastIntWidth(AsmWriter& writer, const ir::IRInstructi
     //   源已是双槽值，需双槽复制（mov 高/低64位）。原实现落默认 32 位 mov 读低32位
     //   垃圾（`整128(1234567890123456789LL)` 输出 0）。
     if ((from == "i128" && to == "i128") || (from == "u128" && to == "u128")) {
-        const int srcLoId = inst.operands[0].id + 1;
-        writer.line("mov rax, " + regSlot(srcLoId));
-        writer.line("mov " + regSlot(inst.result.id + 1) + ", rax");
-        writer.line("mov rax, " + regSlot(inst.operands[0].id));
-        writer.line("mov " + regSlot(inst.result.id) + ", rax");
+        // #1212 步骤 b：双半文本经成对分配映射（寄存器或原槽）
+        writer.line("mov rax, " + i128LoText(inst.operands[0]));
+        writer.line("mov " + i128LoText(inst.result) + ", rax");
+        writer.line("mov rax, " + i128HiText(inst.operands[0]));
+        writer.line("mov " + i128HiText(inst.result) + ", rax");
         return true;
     }
     // 316-a 已完整覆盖「整数 -> i128/u128」全部源类型（i8/i16/i32/i64/u8/u16/

@@ -40,13 +40,20 @@ enum class TargetArch {
     LinuxX64,   // Linux x86_64（被调用者保存：rbx/r12~r15；1256 起 32/窄整型接入）
 };
 
+// 寄存器类（#1212）：整数/浮点各自独立寄存器堆与生命周期，互不挤占。
+//   浮点类 = SSE xmm（win-x64）/ V 寄存器（arm64）/ SSE（linux-x64）。
+enum class RegClass {
+    Int,     // 通用寄存器（GPR）
+    Float,   // 浮点/向量寄存器堆（f32/f64）
+};
+
 // 活跃区间（live interval）：虚拟寄存器从定义点到最后一次使用的范围
 struct LiveInterval {
     int regId = -1;            // 虚拟寄存器编号
     int start = 0;             // 起始点（指令序数，函数级线性化）
     int end = 0;               // 结束点（最后一次使用，含）
-    bool isFloat = false;      // 是否浮点（当前不参与寄存器分配）
-    bool is128 = false;        // 是否 i128/u128 双槽（当前不参与寄存器分配）
+    bool isFloat = false;      // 是否浮点（#1212：进入独立浮点寄存器堆）
+    bool is128 = false;        // 是否 i128/u128 双槽（#1212 步骤 b：双 GPR 成对分配）
     std::string type;          // 值类型（可分配面判定：1281 全架构统一）
 
     bool overlaps(const LiveInterval& other) const {
@@ -55,11 +62,14 @@ struct LiveInterval {
 };
 
 // 分配结果：虚拟寄存器 -> 物理寄存器 或 溢出槽
-//  - assignedReg: 非空表示分配到物理寄存器（如 "rbx"/"x20"）
+//  - assignedReg: 非空表示分配到物理寄存器（如 "rbx"/"x20"/"xmm6"/"v8"）
+//  - assignedReg2: 128 位双半的第二半（高半寄存器；仅 i128/u128 成对分配时非空）
 //  - spillSlot:   溢出槽索引（>=0 表示溢出；-1 表示按原有栈槽映射）
 struct RegAssignment {
     std::string assignedReg;   // 物理寄存器名（空 = 未分配寄存器，走栈槽）
+    std::string assignedReg2;  // 128 位第二半寄存器（#1212 步骤 b；空 = 无）
     int spillSlot = -1;        // 溢出槽索引（>=0 表示溢出；-1 表示按原有栈槽映射）
+    RegClass regClass = RegClass::Int;  // 寄存器类（发射端选择指令族）
 };
 
 // 分配结果表：虚拟寄存器ID -> RegAssignment
@@ -113,16 +123,24 @@ public:
         int maxRegId);
 
     // 静态：判断 IR 类型是否可参与寄存器分配（i64/u64/ptr/i32/u32/i1/i8/u8/
-    //   i16/u16；非浮点、非 i128）。1281：三架构同面；1267 续：i1 由 allocate()
-    //   按 TargetArch 再过滤（仅 LinuxX64 分配）
+    //   i16/u16 + f32/f64）。#1212：浮点进入独立 SSE 寄存器堆（xmm），
+    //   整数面不变；i128 双半成对分配见步骤 b。
     static bool isAllocableType(const std::string& type);
+
+    // #1212：浮点可分配类型（f32/f64）——独立寄存器类判据
+    static bool isAllocableFloatType(const std::string& type);
 
 private:
     // 线性扫描主循环（区间按 start 升序，活跃集合按 end 升序）
     void scan(const std::vector<LiveInterval>& intervals, RegAssignmentMap& out);
+    // 单一寄存器堆扫描（#1212：整数/浮点各自独立调用，资源池与溢出通道隔离）
+    void scanPool(const std::vector<LiveInterval>& intervals,
+                  const std::vector<std::string>& pool, RegClass regClass,
+                  RegAssignmentMap& out);
 
     TargetArch arch_;                     // 目标架构
-    std::vector<std::string> regs_;       // 可用物理寄存器（被调用者保存，去保留）
+    std::vector<std::string> regs_;       // 可用整数物理寄存器（被调用者保存，去保留）
+    std::vector<std::string> fpRegs_;     // 可用浮点物理寄存器（#1212，独立寄存器堆）
     std::vector<LiveInterval> intervals_; // 活跃区间（排序后）
 };
 

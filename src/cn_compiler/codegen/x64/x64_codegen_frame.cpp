@@ -34,6 +34,13 @@ void X64CodeGenerator::emitPrologue(AsmWriter& writer, const ir::IRFunction& fun
     //   [新rsp+0..31]=[旧rsp-32..] 不冲突；递归同函数嵌套覆盖为已知限制）。
     frameSize += 16;
     retbufFrameOffset_ = -frameSize;
+    // #1212：浮点被调用者保存区（win-x64 xmm6~xmm15）——位于帧底返回缓冲之上，
+    //   每个寄存器 16 字节（movups 整宽保存；不改变 rsp，故不参与 push 奇偶
+    //   对齐修正）。computeFrameSize 已计入 16*N 字节。
+    fpSaveOffsets_.assign(calleeSavedFpRegs_.size(), 0);
+    for (std::size_t i = 0; i < calleeSavedFpRegs_.size(); ++i) {
+        fpSaveOffsets_[i] = retbufFrameOffset_ + 16 + 16 * static_cast<int>(i);
+    }
     // 2026-08（自举阶段7 修复）：大栈帧（>4KB）参数/返回指针的保存一律延后到
     //   call __chkstk 之后——参数槽 [rbp-offset] 深达帧底，__chkstk 之前写入
     //   会一次性越过 guard 页（未探测区域）直接访问违例（0xC0000005，构造
@@ -287,7 +294,8 @@ void X64CodeGenerator::emitEpilogue(AsmWriter& writer, const std::string& return
         } else if (currentReturnType_ == "f64" || currentReturnType_ == "f32") {
             const std::string load = (currentReturnType_ == "f64") ? "movsd" : "movss";
             const std::string mp = (currentReturnType_ == "f64") ? "qword ptr " : "dword ptr ";
-            writer.line(load + " xmm0, " + mp + returnReg);
+            // #1212：返回值可能已分配到 xmm（寄存器源无内存前缀）
+            writer.line(load + " xmm0, " + floatSourceText(returnReg, mp));
         } else if (currentReturnType_ == "i8" || currentReturnType_ == "u8" ||
                    currentReturnType_ == "i16" || currentReturnType_ == "u16" ||
                    currentReturnType_ == "i32" || currentReturnType_ == "u32" ||

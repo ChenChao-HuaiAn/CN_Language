@@ -296,14 +296,24 @@ std::vector<std::string> X64CodeGenerator::allocableCalleeSavedRegs(bool needR12
 }
 
 // 序言保存被调用者保存寄存器（本函数实际使用的，压栈顺序 = 分配顺序）
+//   #1212：浮点被调用者保存寄存器（win-x64 xmm6~xmm15）不能 push——经
+//   movups 存入帧内保存区（偏移由 emitPrologue 计算；movups 无对齐要求）。
 void X64CodeGenerator::emitSaveCalleeSaved(AsmWriter& writer) {
     for (const auto& reg : calleeSavedRegs_) {
         writer.line("push " + reg);
     }
+    for (std::size_t i = 0; i < calleeSavedFpRegs_.size(); ++i) {
+        writer.line("movups [rbp" + std::to_string(fpSaveOffsets_[i]) + "], " +
+                    calleeSavedFpRegs_[i]);
+    }
 }
 
-// 尾声恢复被调用者保存寄存器（逆序 pop，与压栈相反）
+// 尾声恢复被调用者保存寄存器（逆序 pop，与压栈相反；浮点先恢复再弹 GPR）
 void X64CodeGenerator::emitRestoreCalleeSaved(AsmWriter& writer) {
+    for (std::size_t i = calleeSavedFpRegs_.size(); i > 0; --i) {
+        writer.line("movups " + calleeSavedFpRegs_[i - 1] + ", [rbp" +
+                    std::to_string(fpSaveOffsets_[i - 1]) + "]");
+    }
     for (auto it = calleeSavedRegs_.rbegin(); it != calleeSavedRegs_.rend(); ++it) {
         writer.line("pop " + *it);
     }
@@ -315,6 +325,8 @@ int X64CodeGenerator::computeFrameSize(const ir::IRFunction& function) const {
     int regCount = ir::maxVirtualRegId(function) + 1;
     int regBytes = (regCount > 0) ? regCount * 8 : 0;
     int total = varBytes + regBytes;
+    // #1212：浮点被调用者保存区（每寄存器 16 字节 movups）
+    total += 16 * static_cast<int>(calleeSavedFpRegs_.size());
     // 16字节对齐（栈帧在 push rbp 后仍满足16对齐要求）
     return ((total + 15) / 16) * 16;
 }
@@ -435,6 +447,8 @@ std::string X64CodeGenerator::generateFunctionAssembly(const ir::IRFunction& fun
     //   - 其余函数在 regAllocEnabled_（-O2）时执行线性扫描分配
     regAllocMap_.clear();
     calleeSavedRegs_.clear();
+    calleeSavedFpRegs_.clear();
+    fpSaveOffsets_.clear();
     regAllocUsed_ = false;
     const bool forceDisable = function.structReturn ||
                               function.returnType == "i128" ||
@@ -446,17 +460,30 @@ std::string X64CodeGenerator::generateFunctionAssembly(const ir::IRFunction& fun
         regalloc::LinearScanAllocator allocator(regalloc::TargetArch::X64);
         regAllocMap_ = allocator.allocate(function);
         // 收集本函数实际使用的被调用者保存寄存器（序言压栈/尾声恢复）
+        //   #1212：整数 GPR 与浮点 xmm 分列——xmm 不能 push，走帧内保存区。
         for (const auto& kv : regAllocMap_) {
-            if (!kv.second.assignedReg.empty()) {
-                calleeSavedRegs_.push_back(kv.second.assignedReg);
+            if (kv.second.assignedReg.empty()) continue;
+            const bool isFp = kv.second.regClass == regalloc::RegClass::Float ||
+                              isXmmRegisterText(kv.second.assignedReg);
+            std::vector<std::string>& bucket = isFp ? calleeSavedFpRegs_
+                                                    : calleeSavedRegs_;
+            bucket.push_back(kv.second.assignedReg);
+            // #1212 步骤 b：i128 双半的第二半（低 64 位）同样占用 GPR，
+            //   必须一并保存/恢复（遗漏=被调者静默破坏调用者值，420 实锚）
+            if (!kv.second.assignedReg2.empty()) {
+                bucket.push_back(kv.second.assignedReg2);
             }
         }
-        // 去重 + 保持稳定顺序（rbx/r12/r13/r14/r15）
+        // 去重 + 保持稳定顺序（rbx/r12/r13/r14/r15；xmm 字典序）
         std::sort(calleeSavedRegs_.begin(), calleeSavedRegs_.end());
         calleeSavedRegs_.erase(
             std::unique(calleeSavedRegs_.begin(), calleeSavedRegs_.end()),
             calleeSavedRegs_.end());
-        regAllocUsed_ = !calleeSavedRegs_.empty();
+        std::sort(calleeSavedFpRegs_.begin(), calleeSavedFpRegs_.end());
+        calleeSavedFpRegs_.erase(
+            std::unique(calleeSavedFpRegs_.begin(), calleeSavedFpRegs_.end()),
+            calleeSavedFpRegs_.end());
+        regAllocUsed_ = !calleeSavedRegs_.empty() || !calleeSavedFpRegs_.empty();
     }
     // A-4（2026-08）：结构体/i128 返回函数——隐藏返回指针（rcx）保存到专用
     //   栈槽（须在 emitPrologue 计算帧大小之前登记）。不能用寄存器保存：

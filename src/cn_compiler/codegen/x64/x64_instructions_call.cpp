@@ -90,7 +90,10 @@ void X64CodeGenerator::emitCall(AsmWriter& writer, const ir::IRInstruction& inst
                     writer.line("mov rax, " + hiT);
                     writer.line("mov [rsp+56], rax");
                     addr = "[rsp+48]";
-                } else {
+                }
+                if (!av.isConstant) {
+                    // #1212 步骤 b：i128 实参 ABI=双槽地址——成对分配先溢出到原槽
+                    spillI128Pair(writer, av);
                     const int loId = av.id + 1;
                     writer.line("lea rax, " + regSlot(loId));
                     addr = "rax";
@@ -101,7 +104,8 @@ void X64CodeGenerator::emitCall(AsmWriter& writer, const ir::IRInstruction& inst
                 const std::string store = (argType == "f64") ? "movsd" : "movss";
                 const std::string mp = (argType == "f64") ? "qword ptr " : "dword ptr ";
                 const ir::IRValue& av = inst.operands[argBase + i];
-                writer.line(store + " xmm0, " + mp + floatArgText(av, argType, op));
+                // #1212：实参可能已分配到 xmm（floatSourceText 保留寄存器形态）
+                writer.line(store + " xmm0, " + floatSourceText(floatArgText(av, argType, op), mp));
                 writer.line(store + " " + mp + "[rsp+" + std::to_string(32 + (i + argOffset - 4) * 8) + "], xmm0");
             } else if (argType == "i32" || argType == "i1") {
                 // 32位值：eax 读 + 符号扩展 rax（C ABI int->long long 提升）
@@ -165,7 +169,10 @@ void X64CodeGenerator::emitCall(AsmWriter& writer, const ir::IRInstruction& inst
                 writer.line("mov rax, " + hiT);
                 writer.line("mov [rsp+56], rax");
                 writer.line("lea " + parameterRegister(regIdx) + ", [rsp+48]");
-            } else {
+            }
+            if (!av.isConstant) {
+                // #1212 步骤 b：i128 实参 ABI=双槽地址——成对分配先溢出到原槽
+                spillI128Pair(writer, av);
                 const int loId = av.id + 1;
                 writer.line("lea " + parameterRegister(regIdx) + ", " + regSlot(loId));
             }
@@ -181,7 +188,10 @@ void X64CodeGenerator::emitCall(AsmWriter& writer, const ir::IRInstruction& inst
             const std::string load = (argType == "f64") ? "movsd" : "movss";
             const std::string mp = (argType == "f64") ? "qword ptr " : "dword ptr ";
             const std::string xmm = "xmm" + std::to_string(regIdx);
-            writer.line(load + " " + xmm + ", " + mp + floatArgText(av, argType, op));
+            // #1212：实参可能已分配到 xmm（寄存器源无内存前缀；分配池 xmm6+
+            //   与 ABI 参数位 xmm0~xmm3 无交集）
+            writer.line(load + " " + xmm + ", " +
+                        floatSourceText(floatArgText(av, argType, op), mp));
             // 浮点位模式复制到同参数位整型寄存器（变参 va_arg 读取路径，MSVC 惯例）
             // 437-a（A2070 根治）：参数位 ≥4 = 栈传——parameterRegister 返回 [rbp+N]
             //   内存槽：movq 内存目标须带 qword ptr（缺=A2070·431 用例 win 专属红实证）
@@ -259,16 +269,15 @@ void X64CodeGenerator::emitCall(AsmWriter& writer, const ir::IRInstruction& inst
             // i128 返回（Task 完善A）：调用方在栈上分配 16 字节返回缓冲区，
             //   以隐藏指针（rcx）传给被调函数；被调方写入后返回缓冲区指针（rax）
             //   结果双寄存器：%vN（高64位）+ %vN+1（低64位），从缓冲区读回
-            const int hiId = inst.result.id;
-            const int loId = inst.result.id + 1;
+            // #1212 步骤 b：结果成对分配 -> retbuf 低/高半直装双 GPR
             writer.line("mov rdx, [rax]");       // 低64位
-            writer.line("mov " + regSlot(loId) + ", rdx");
+            writer.line("mov " + i128LoText(inst.result) + ", rdx");
             writer.line("mov rdx, [rax+8]");     // 高64位
-            writer.line("mov " + regSlot(hiId) + ", rdx");
+            writer.line("mov " + i128HiText(inst.result) + ", rdx");
         } else if (isFloatType(inst.result.type)) {
             const std::string store = (inst.result.type == "f64") ? "movsd" : "movss";
             const std::string mp = (inst.result.type == "f64") ? "qword ptr " : "dword ptr ";
-            writer.line(store + " " + mp + dst + ", xmm0");
+            emitFloatStore(writer, dst, "xmm0", store, mp);  // #1212：结果可能已分配 xmm
         } else {
             std::string w = widthFor(inst.result.type, "rax");
             writer.line("mov " + shrunkOperand(inst.result.type, dst) + ", " + w);
