@@ -62,6 +62,13 @@ void Arm64CodeGenerator::emitPrologue(Arm64AsmWriter& writer,
     if (frameSize > 0) {
         emitStackAdjust(writer, -frameSize);
     }
+    // #1212：浮点被调用者保存寄存器存入帧底保存区（str dN，低 64 位=全部
+    //   f32/f64 有效位；[x29] 为 sub sp 前的栈顶，偏移相对 x29 恒定）
+    for (std::size_t i = 0; i < calleeSavedFpRegs_.size(); ++i) {
+        const int off = -frameSize + 16 * static_cast<int>(i);
+        const std::string mem = stackMemText(off, writer);
+        writer.line("str " + calleeSavedFpRegs_[i] + ", " + mem);
+    }
 }
 
 // 尾声恢复被调用者保存寄存器（逆序弹出，与序言压栈相反）
@@ -258,7 +265,13 @@ if (currentStructReturn_ && !returnReg.empty()) {
         }
         if (currentReturnType_ == "f64" || currentReturnType_ == "f32") {
             const std::string vreg = (currentReturnType_ == "f64") ? "d0" : "s0";
-            if (isPhysRegName(returnReg)) {
+            const bool fpPhys = returnReg.size() >= 2 &&
+                (returnReg[0] == 'd' || returnReg[0] == 's') &&
+                returnReg.substr(1).find_first_not_of("0123456789") == std::string::npos;
+            if (fpPhys) {
+                // #1212：返回值为已分配浮点寄存器（sN/dN 宽度视图）
+                writer.line("fmov " + vreg + ", " + returnReg);
+            } else if (isPhysRegName(returnReg)) {
                 // F1-28：返回值为已分配虚拟寄存器（整型寄存器驻留的浮点位模式）
                 writer.line("fmov " + vreg + ", " + returnReg);
             } else if (returnReg.compare(0, 6, "[x29,#") == 0) {
@@ -285,6 +298,12 @@ if (currentStructReturn_ && !returnReg.empty()) {
             // 常量文本返回（如 "0"/"1"）：立即数装载
             emitMovImm(writer, "x0", static_cast<std::uint64_t>(std::stoll(returnReg)));
         }
+    }
+    // #1212：浮点被调用者保存寄存器恢复（帧底保存区，先于栈回收）
+    for (std::size_t i = 0; i < calleeSavedFpRegs_.size(); ++i) {
+        const int off = -currentFrameSize_ + 16 * static_cast<int>(i);
+        const std::string mem = stackMemText(off, writer);
+        writer.line("ldr " + calleeSavedFpRegs_[i] + ", " + mem);
     }
     emitStackAdjust(writer, currentFrameSize_);
     // 恢复顺序与压栈相反（x19 后压先弹）

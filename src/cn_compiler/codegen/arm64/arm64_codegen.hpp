@@ -468,6 +468,9 @@ private:
     std::vector<std::string> calleeSavedRegs_;
     // 被调用者保存寄存器压栈对数（每对 16 字节，补偿 stackParamBase）
     int calleeSavedPairs_ = 0;
+    // #1212：浮点被调用者保存寄存器（v8~v15 低 64 位 -> dN 规范名，升序去重）
+    //   序言 str dN 存入帧内保存区，尾声 ldr 恢复（不参与 GPR 成对压栈补偿）
+    std::vector<std::string> calleeSavedFpRegs_;
 
     // ---- 阶段C：调试信息（Task 4.4） ----
     debuginfo::DebugInfoCollector debugInfo_;  // 源码行号映射收集器

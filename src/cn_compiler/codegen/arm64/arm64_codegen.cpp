@@ -290,6 +290,24 @@ void Arm64CodeGenerator::storeVirtualResult(Arm64AsmWriter& writer, int resultId
                                             const std::string& type) {
     const std::string dst = allocRegOf(resultId);
     if (!dst.empty()) {
+        // #1212：浮点结果落位——sN/dN 目标必须 fmov（mov 不接受 FP 寄存器）；
+        //   宽度视图与目标类型一致（f32=sN、f64=dN）
+        if (isFloatType(type)) {
+            // 宽度视图不一致（如 i128->浮辅助返回 d0 而目标 f32=sN）用 fcvt
+            // 精确转换；其余同宽 fmov（位模式不变）
+            const std::string src = srcReg;
+            const bool widthMismatch = !src.empty() && !dst.empty() &&
+                                       src[0] != dst[0];
+            if (widthMismatch) {
+                writer.line("fcvt " + dst + ", " + src);
+            }
+            if (!widthMismatch) {
+                writer.line("fmov " + dst + ", " + src);
+            }
+            writer.comment("寄存器分配：浮点结果 %v" + std::to_string(resultId) +
+                           " -> " + dst);
+            return;
+        }
         std::string src = srcReg;
         // 源偶为 w 形态（32 位运算结果）时与 x 目标对齐（mov xN, wN 非法）
         if (!src.empty() && src[0] == 'w' && dst[0] == 'x') {
@@ -359,7 +377,9 @@ int Arm64CodeGenerator::computeFrameSize(const ir::IRFunction& function) const {
     const int varBytes = varSlotAreaSize();
     const int regCount = ir::maxVirtualRegId(function) + 1;
     const int regBytes = (regCount > 0) ? regCount * 8 : 0;
-    const int total = varBytes + regBytes;
+    int total = varBytes + regBytes;
+    // #1212：浮点被调用者保存区（每寄存器 16 字节，帧底）
+    total += 16 * static_cast<int>(calleeSavedFpRegs_.size());
     return ((total + 15) / 16) * 16;
 }
 
@@ -535,21 +555,35 @@ std::string Arm64CodeGenerator::generateFunctionAssembly(const ir::IRFunction& f
     //   • 只用被调用者保存寄存器 x19~x28（序言压栈/尾声恢复，调用点无需保存）
     regAllocMap_.clear();
     calleeSavedRegs_.clear();
+    calleeSavedFpRegs_.clear();
     calleeSavedPairs_ = 0;
     const bool useRegAlloc = regAllocEnabled_ && !currentNeedHiddenRet_;
     if (useRegAlloc) {
         regalloc::LinearScanAllocator allocator(regalloc::TargetArch::Arm64);
         regAllocMap_ = allocator.allocate(function);
         for (const auto& kv : regAllocMap_) {
-            if (!kv.second.assignedReg.empty()) {
-                calleeSavedRegs_.push_back(kv.second.assignedReg);
+            if (kv.second.assignedReg.empty()) continue;
+            const bool isFp = kv.second.regClass == regalloc::RegClass::Float;
+            // #1212：浮点值 sN/dN -> 物理保存名 dN（低 64 位）
+            const std::string saveName = isFp
+                ? "d" + kv.second.assignedReg.substr(1)
+                : kv.second.assignedReg;
+            std::vector<std::string>& bucket = isFp ? calleeSavedFpRegs_
+                                                    : calleeSavedRegs_;
+            bucket.push_back(saveName);
+            if (!isFp && !kv.second.assignedReg2.empty()) {
+                bucket.push_back(kv.second.assignedReg2);
             }
         }
-        // 去重 + 稳定升序（x19~x28）
+        // 去重 + 稳定升序（x19~x28 / d8~d15）
         std::sort(calleeSavedRegs_.begin(), calleeSavedRegs_.end());
         calleeSavedRegs_.erase(
             std::unique(calleeSavedRegs_.begin(), calleeSavedRegs_.end()),
             calleeSavedRegs_.end());
+        std::sort(calleeSavedFpRegs_.begin(), calleeSavedFpRegs_.end());
+        calleeSavedFpRegs_.erase(
+            std::unique(calleeSavedFpRegs_.begin(), calleeSavedFpRegs_.end()),
+            calleeSavedFpRegs_.end());
         // 成对压栈（每对 16 字节；奇数个时末位与 xzr 配对占位）
         calleeSavedPairs_ = (static_cast<int>(calleeSavedRegs_.size()) + 1) / 2;
     }

@@ -351,7 +351,15 @@ void Arm64CodeGenerator::loadOperandToV(Arm64AsmWriter& writer,
         //   但为与分配面解耦，命中时直接 fmov 到浮点寄存器
         const std::string src = allocRegOf(operand.id);
         if (!src.empty()) {
-            writer.line("fmov " + vreg + ", " + src);
+            // #1212：宽度视图不一致（sN<->dN）用 fcvt 精确转换，同宽 fmov
+            const bool widthMismatch = !src.empty() && !vreg.empty() &&
+                                       src[0] != vreg[0];
+            if (widthMismatch) {
+                writer.line("fcvt " + vreg + ", " + src);
+            }
+            if (!widthMismatch) {
+                writer.line("fmov " + vreg + ", " + src);
+            }
             return;
         }
         emitStackLoad(writer, regSlotOffset(operand.id), vreg, operand.type);

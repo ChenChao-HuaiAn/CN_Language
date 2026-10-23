@@ -732,14 +732,7 @@ TEST(RegAllocTest, FloatUsesSsePoolOnWinX64) {
             << "浮点值应分配 xmm 寄存器，实际: " << it->second.assignedReg;
         EXPECT_GE(it->second.assignedReg.size(), 4u);
     }
-    // arm64 步骤 c 前浮点池为空：显式溢出面（assignedReg 空=按原栈槽）
-    LinearScanAllocator armAllocator(TargetArch::Arm64);
-    const RegAssignmentMap armMap = armAllocator.allocate(func);
-    for (const auto& kv : armMap) {
-        if (kv.second.regClass == cn_compiler::regalloc::RegClass::Float) {
-            EXPECT_TRUE(kv.second.assignedReg.empty());
-        }
-    }
+    // arm64 浮点池（步骤 c）见 FloatUsesVRegPoolOnArm64 独立用例
 }
 
 // ---- 8. #1212 步骤 b：i128 双半成对分配 ----
@@ -790,4 +783,44 @@ TEST(RegAllocTest, I128PairAllocatesTwoRegisters) {
         used.insert(map.at(id).assignedReg2);
     }
     EXPECT_EQ(used.size(), 4u);
+}
+
+// ---- 9. #1212 步骤 c：arm64 浮点 v8~v15 宽度视图 ----
+
+TEST(RegAllocTest, FloatUsesVRegPoolOnArm64) {
+    IRFunction func;
+    func.name = "arm-float";
+    func.returnType = "f64";
+    auto block = std::make_unique<IRBlock>();
+    block->label = "blk0";
+    IRInstruction c;
+    c.opcode = Opcode::ConstFloat;
+    c.result = IRValue::reg(0, "f64");
+    c.type = "f64";
+    c.extra = "2.5";
+    block->instructions.push_back(c);
+    IRInstruction add;
+    add.opcode = Opcode::Add;
+    add.result = IRValue::reg(1, "f64");
+    add.type = "f64";
+    add.operands = {IRValue::reg(0, "f64"), IRValue::reg(0, "f64")};
+    block->instructions.push_back(add);
+    block->terminated = true;
+    block->termKind = "返回";
+    block->termReturnValue = "%v1";
+    func.blocks.push_back(std::move(block));
+
+    LinearScanAllocator allocator(TargetArch::Arm64);
+    const RegAssignmentMap map = allocator.allocate(func);
+    for (int id = 0; id <= 1; ++id) {
+        auto it = map.find(id);
+        ASSERT_NE(it, map.end());
+        ASSERT_EQ(it->second.regClass, cn_compiler::regalloc::RegClass::Float);
+        ASSERT_FALSE(it->second.assignedReg.empty());
+        // f64 视图 d8~d15；物理寄存器池占用按 vN 基准名（不得出现 x19~x28）
+        EXPECT_EQ(it->second.assignedReg[0], 'd');
+        const int n = std::stoi(it->second.assignedReg.substr(1));
+        EXPECT_GE(n, 8);
+        EXPECT_LE(n, 15);
+    }
 }
