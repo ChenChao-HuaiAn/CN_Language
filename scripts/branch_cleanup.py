@@ -33,6 +33,8 @@ develop 后远程分支原设计无删除步骤——7 天积压 367 条（9-18~
   python scripts/branch_cleanup.py --selftest  # 判据纯函数自测（不碰 git/网络）
 """
 
+from __future__ import annotations   # P1-1：3.8 注解惰性化（dict | None 等定义期不求值）
+
 import argparse
 import json
 import os

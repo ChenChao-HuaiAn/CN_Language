@@ -12,6 +12,8 @@
 # 「已集成」=push 之后——门禁轮验证 develop 顶·徽标挂 ✅ 行（验证红走红治理立新号）。
 # 现实时序：收工 → 预检前编排（编排队列：排队→组批→组链+本机全量门禁）→ 推
 # ci/预验- 分支 → 预检（池 runner 跑云端全量）→ 绿=集成（push+销账）→ 集成后验证。
+from __future__ import annotations   # P1-1：3.8 注解惰性化（float | None 等定义期不求值）
+
 import json
 import os
 import re

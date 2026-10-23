@@ -288,6 +288,9 @@ def 取覆盖登记面():
         return {}, False, 原因 or "覆盖服务不可用", 鉴权失败
     except OSError as e:
         return {}, False, "覆盖服务不可读（%s）" % e, False
+    except (ValueError, AttributeError) as e:
+        # P2-1 最后防线：响应畸形/非 dict 体任何漏网形态都不得炸报告面。
+        return {}, False, "覆盖服务响应异常（%s）" % e, False
     原因, 鉴权失败 = check_spec_coverage.失败诊断()
     名表 = {}
     for 单元, 列们 in 行们.items():

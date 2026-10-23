@@ -19,6 +19,8 @@
 #   独立物理机。只上报不决策：限流/让位权威在服务端（写锁内原子），旧服务端忽略
 #   多余字段=向后兼容。
 
+from __future__ import annotations   # P1-1：3.8 注解惰性化（float | None 等定义期不求值）
+
 import hashlib
 import json
 import os

@@ -8,6 +8,8 @@
 #   日志目录/远端名 由 ci_daemon 启动时 初始化() 注入（模块全局·daemon 单线程使用
 #   与原语义一致）。
 
+from __future__ import annotations   # P1-1：3.8 注解惰性化（int | None 等定义期不求值）
+
 import json
 import os
 import subprocess

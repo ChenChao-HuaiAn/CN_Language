@@ -149,9 +149,10 @@ def 测_GET带令牌() -> None:
         签("board_cli.调服务", 假.头().get("Authorization") == "Bearer selftest-token")
 
     with 环境(体='{"任务们": []}'):
-        数据, 错误, 鉴权失败 = task_board.服务调("/api/tasks")
+        数据, 错误, 鉴权失败, 连接失败 = task_board.服务调("/api/tasks")
         签("task_board.服务调", 假.头().get("Authorization") == "Bearer selftest-token"
-           and 数据 == {"任务们": []} and not 错误 and not 鉴权失败, f"{数据}/{错误}")
+           and 数据 == {"任务们": []} and not 错误 and not 鉴权失败 and not 连接失败,
+           f"{数据}/{错误}")
 
     with 环境(体='{"任务": {"号": "1485", "状态": "🏃"}}'):
         数据 = wt.服务调("GET", "/api/task/1485")
@@ -234,10 +235,10 @@ def 测_无令牌裸请求() -> None:
 def 测_401分流() -> None:
     print("[4] 401 鉴权失败与「服务不可达」文案分流")
     with 环境(模式="http错误"):
-        数据, 错误, 鉴权失败 = task_board.服务调("/api/tasks")
+        数据, 错误, 鉴权失败, 连接失败 = task_board.服务调("/api/tasks")
         签("task_board 401 → 鉴权失败（非不可达）",
-           数据 is None and 鉴权失败 and "鉴权失败（401）" in 错误 and "不可达" not in 错误,
-           错误)
+           数据 is None and 鉴权失败 and not 连接失败 and "鉴权失败（401）" in 错误
+           and "不可达" not in 错误, 错误)
 
     with 环境(模式="http错误"):
         集合, 错误 = branch_cleanup.台账在飞分支集()
@@ -324,10 +325,10 @@ class 假参数:
 def 测_403分流() -> None:
     print("[5] 403 同口径鉴权失败")
     with 环境(模式="http错误", 码=403):
-        数据, 错误, 鉴权失败 = task_board.服务调("/api/tasks")
+        数据, 错误, 鉴权失败, 连接失败 = task_board.服务调("/api/tasks")
         签("task_board 403 → 鉴权失败（403·权限不足）",
-           数据 is None and 鉴权失败 and "鉴权失败（403）" in 错误 and "权限不足" in 错误
-           and "不可达" not in 错误, 错误)
+           数据 is None and 鉴权失败 and not 连接失败 and "鉴权失败（403）" in 错误
+           and "权限不足" in 错误 and "不可达" not in 错误, 错误)
     with 环境(模式="http错误", 码=403):
         集合, 错误 = branch_cleanup.台账在飞分支集()
         签("branch_cleanup 403 → 鉴权失败（403）",
@@ -337,9 +338,9 @@ def 测_403分流() -> None:
 def 测_断网态() -> None:
     print("[5b] 连接层失败仍全部「不可达」（不冒充鉴权失败）")
     with 环境(模式="连接错误"):
-        数据, 错误, 鉴权失败 = task_board.服务调("/api/tasks")
-        签("task_board 断网 → 不可达", 数据 is None and not 鉴权失败 and "不可达" in 错误
-           and "鉴权失败" not in 错误, 错误)
+        数据, 错误, 鉴权失败, 连接失败 = task_board.服务调("/api/tasks")
+        签("task_board 断网 → 不可达", 数据 is None and not 鉴权失败 and 连接失败
+           and "不可达" in 错误 and "鉴权失败" not in 错误, 错误)
     with 环境(模式="连接错误"):
         集合, 错误 = branch_cleanup.台账在飞分支集()
         签("branch_cleanup 断网 → 不可达", 集合 is None and "不可达" in 错误
@@ -490,6 +491,92 @@ def 测_全入口401矩阵() -> None:
         standup._落缓存 = 原落
 
 
+def 测_py38语法面() -> None:
+    print("[0] Python 3.8 语法面/注解惰性化（P1-1）")
+    import ast
+    路径 = Path(__file__).resolve().parent / "task_board.py"
+    源 = 路径.read_text(encoding="utf-8")
+    try:
+        ast.parse(源, filename=str(路径), feature_version=(3, 8))
+        可解析, 详情 = True, ""
+    except SyntaxError as e:
+        可解析, 详情 = False, str(e)
+    签("task_board.py 3.8 语法面可解析", 可解析, 详情)
+    签("task_board.py 有 from __future__ import annotations（防 3.8 注解求值 TypeError）",
+       "from __future__ import annotations" in 源)
+
+
+def 测_响应畸形硬红() -> None:
+    print("[8d] task_board --check 200+畸形响应 → rc=1（P2-2）")
+    for 标签, 体, 标记 in (
+            ("HTML/非 JSON", "not-json", "响应非 JSON"),
+            ("空对象", "{}", "缺「任务们」"),
+            ("数组", "[1,2]", "响应非对象")):
+        with 环境(体=体):
+            输出 = io.StringIO()
+            with contextlib.redirect_stdout(输出), contextlib.redirect_stderr(输出):
+                返回 = task_board.cmd_check()
+            文本 = 输出.getvalue()
+            签(f"task_board --check 200+{标签} → rc=1 硬红",
+               返回 == 1 and 标记 in 文本 and "断网降级" not in 文本, 文本[-180:])
+
+
+def 测_覆盖响应畸形不落盘() -> None:
+    print("[8e] check_spec_coverage 非 dict/坏 JSON：不写缓存、有缓存降级、无缓存 exit 2（P2-1）")
+    临时 = Path(tempfile.mkdtemp(prefix="cov_nondict_")) / "cov.json"
+    原CACHE = check_spec_coverage.CACHE
+    check_spec_coverage.CACHE = str(临时)
+    try:
+        with 环境(体="[1,2,3]"):
+            错误流 = io.StringIO()
+            with contextlib.redirect_stderr(错误流):
+                try:
+                    check_spec_coverage.parse_map()
+                    码 = "未退出"
+                except SystemExit as e:
+                    码 = e.code
+        签("覆盖 200+数组 → 响应异常 exit 2 且不写缓存",
+           码 == 2 and "响应异常" in 错误流.getvalue() and not 临时.exists(),
+           f"码={码}·{错误流.getvalue()[-160:]}")
+
+        旧文 = ('{"单元们": [{"单元ID": "x", "正例": "a", "边界例": "", "负例": ""}],'
+                ' "豁免们": []}')
+        临时.write_text(旧文, encoding="utf-8")
+        with 环境(体="[1,2,3]"):
+            错误流 = io.StringIO()
+            with contextlib.redirect_stderr(错误流):
+                行们, 豁免 = check_spec_coverage.parse_map()
+        签("覆盖 200+数组 → 降级读合法缓存且坏体不覆盖",
+           "x" in 行们 and 临时.read_text(encoding="utf-8") == 旧文
+           and "响应异常" in 错误流.getvalue(), 错误流.getvalue()[-160:])
+
+        临时.write_text("[1,2,3]", encoding="utf-8")
+        with 环境(体="[1,2,3]"):
+            错误流 = io.StringIO()
+            with contextlib.redirect_stderr(错误流):
+                try:
+                    check_spec_coverage.parse_map()
+                    码2 = "未退出"
+                except SystemExit as e:
+                    码2 = e.code
+        签("覆盖 坏缓存 + 数组响应 → exit 2 不崩",
+           码2 == 2 and "响应异常" in 错误流.getvalue(), f"码={码2}")
+
+        原parse = check_spec_coverage.parse_map
+        错误流 = io.StringIO()
+        try:
+            check_spec_coverage.parse_map = lambda: (_ for _ in ()).throw(
+                ValueError("覆盖服务响应非对象（list）"))
+            with contextlib.redirect_stderr(错误流):
+                名表, 可用, 原因, 鉴权 = case_activity.取覆盖登记面()
+        finally:
+            check_spec_coverage.parse_map = 原parse
+        签("case_activity 覆盖响应异常兜底不崩",
+           not 可用 and "响应异常" in 原因, 原因)
+    finally:
+        check_spec_coverage.CACHE = 原CACHE
+
+
 def 测_check硬红() -> None:
     print("[8b] task_board --check 401 硬红 / 断网降级（P2-D）")
     with 环境(模式="http错误"):
@@ -498,7 +585,7 @@ def 测_check硬红() -> None:
             返回 = task_board.cmd_check()
         文本 = 输出.getvalue()
         签("task_board --check 401 → rc=1 硬红",
-           返回 == 1 and "401/403 硬红" in 文本 and "鉴权失败（401）" in 文本, 文本[-160:])
+           返回 == 1 and "硬红" in 文本 and "鉴权失败（401）" in 文本, 文本[-160:])
     with 环境(模式="连接错误"):
         输出 = io.StringIO()
         with contextlib.redirect_stdout(输出), contextlib.redirect_stderr(输出):
@@ -671,8 +758,9 @@ def 测_令牌缓存() -> None:
 def 测_诊断与来源() -> None:
     print("[10] 静默诊断/空响应真因/来源字段")
     with 环境(体="{}"):
-        _, 错误, 鉴权失败 = task_board.拉台账()
-        签("task_board 空响应 → 缺「任务们」真因", not 鉴权失败 and "缺「任务们」" in 错误, 错误)
+        _, 错误, 鉴权失败, 连接失败 = task_board.拉台账()
+        签("task_board 空响应 → 缺「任务们」真因",
+           not 鉴权失败 and not 连接失败 and "缺「任务们」" in 错误, 错误)
 
     with 环境(体='{"条目们": []}'):
         原落 = standup._落缓存
@@ -771,11 +859,24 @@ def 测_诊断与来源() -> None:
         builtins.__import__ = 坏import
         try:
             with contextlib.redirect_stderr(错误流):
-                数据, 错误, 鉴权 = task_board.服务调("/api/tasks")
+                数据, 错误, 鉴权, 连接失败 = task_board.服务调("/api/tasks")
         finally:
             builtins.__import__ = 原import
         签("P3-D intent 缺失时 401 本地兜底仍硬识别",
-           数据 is None and 鉴权 and "鉴权失败（401）" in 错误, 错误)
+           数据 is None and 鉴权 and not 连接失败 and "鉴权失败（401）" in 错误, 错误)
+
+    with 环境(有令牌=False):
+        错误流 = io.StringIO()
+        builtins.__import__ = 坏import
+        try:
+            with contextlib.redirect_stderr(错误流):
+                文案 = standup._失败文案(urllib.error.HTTPError(
+                    "http://x", 401, "Unauthorized", {}, io.BytesIO(b"{}")))
+        finally:
+            builtins.__import__ = 原import
+        签("P3-1 standup._失败文案 助手异常 → stderr 诊断 + 401 兜底",
+           "鉴权助手不可用" in 错误流.getvalue()
+           and "鉴权失败（401）" in 文案, f"{错误流.getvalue()}·{文案}")
 
     with 环境(体="not-json"):
         码, r = migrate_board_docs.调服务("http://selftest", "tok", "GET", "/x")
@@ -810,9 +911,9 @@ def 测_诊断与来源() -> None:
            "缺「条目们」" in 文本, 文本)
 
     with 环境(体="[]"):
-        _, 错误, 鉴权 = task_board.拉台账()
+        _, 错误, 鉴权, 连接失败 = task_board.拉台账()
         签("P3-C task_board 非 dict 响应不崩栈",
-           not 鉴权 and "响应非对象" in 错误, 错误)
+           not 鉴权 and not 连接失败 and "响应非对象" in 错误, 错误)
     签("P3-C board_cli 失败文案非 dict 归一不崩",
        "HTTP 500" in board_cli._读失败文案("看板服务", 500, ["x"]),
        board_cli._读失败文案("看板服务", 500, ["x"]))
@@ -894,6 +995,9 @@ def main() -> int:
     测_全入口401矩阵()
     测_case_activity分列()
     测_check硬红()
+    测_py38语法面()
+    测_响应畸形硬红()
+    测_覆盖响应畸形不落盘()
     测_令牌缓存()
     测_诊断与来源()
     测_wt_HTTP错误不误报()

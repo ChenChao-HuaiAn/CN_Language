@@ -105,6 +105,12 @@ def 失败诊断() -> tuple:
     return 最近失败.get("原因", ""), bool(最近失败.get("鉴权失败", False))
 
 
+def _缓存体():
+    """合法缓存 dict 或 None（非 dict 缓存=坏体·按无缓存处理，不继续崩读侧）。"""
+    体 = atomic_json.读(CACHE)
+    return 体 if isinstance(体, dict) else None
+
+
 def parse_map():
     """映射表 → (rows: ID→{三态:[用例]}, exempt: 用例→理由)。
     384：数据源=看板服务端 /api/coverage（coverage_map.md 已退位）。
@@ -121,7 +127,11 @@ def parse_map():
             print(f"[黄] intent 鉴权助手不可用，本次裸请求（诊断见上）：{e}", file=sys.stderr)
         with urllib.request.urlopen(请求, timeout=8) as r:
             体 = json.loads(r.read().decode("utf-8"))
-        atomic_json.写(CACHE, 体)   # 556：原子写（临时文件+os.replace·治半写损坏）
+        if not isinstance(体, dict):
+            raise ValueError(f"覆盖服务响应非对象（{type(体).__name__}）")
+        if "单元们" not in 体:
+            raise ValueError("覆盖服务响应缺「单元们」字段")
+        atomic_json.写(CACHE, 体)   # 556：仅在响应合法后原子写（P2-1：坏体不落盘）
     except urllib.error.HTTPError as e:
         # 1425：401/403=鉴权失败（令牌/登录墙），不得冒充「服务不可达」。
         鉴权失败 = e.code in (401, 403)   # P3-D：本地兜底（intent 助手坏掉仍识别）
@@ -135,7 +145,7 @@ def parse_map():
             原因 = (f"覆盖服务鉴权失败（{e.code}）——令牌校验失败（详见上方诊断）"
                     if 鉴权失败 else f"覆盖服务返回 HTTP {e.code}")
         最近失败.update(原因=原因, 鉴权失败=鉴权失败)
-        体 = atomic_json.读(CACHE)   # 556：坏缓存返回 None·不炸读侧
+        体 = _缓存体()   # 556：坏缓存返回 None·非 dict 缓存同样按无缓存处理
         if 体 is not None:
             print("[黄] %s——降级读最后缓存（可能陈旧）" % 原因, file=sys.stderr)
         else:
@@ -146,7 +156,18 @@ def parse_map():
         # 556：读走 atomic_json.读（坏缓存返回 None·原裸 json.load 坏缓存即炸读侧）
         原因 = f"覆盖服务不可达（{e}）"
         最近失败.update(原因=原因, 鉴权失败=False)
-        体 = atomic_json.读(CACHE)
+        体 = _缓存体()
+        if 体 is not None:
+            print("[黄] %s——降级读最后缓存（可能陈旧）" % 原因, file=sys.stderr)
+        else:
+            print("[FAIL] %s且无缓存（先用 board_cli 覆盖 验证服务）" % 原因,
+                  file=sys.stderr)
+            sys.exit(2)
+    except (ValueError, TypeError) as e:
+        # P2-1：非 JSON/非 dict/缺字段=响应异常（不得写缓存、不得冒充连接层不可达）。
+        原因 = f"覆盖服务响应异常（{e}）"
+        最近失败.update(原因=原因, 鉴权失败=False)
+        体 = _缓存体()
         if 体 is not None:
             print("[黄] %s——降级读最后缓存（可能陈旧）" % 原因, file=sys.stderr)
         else:

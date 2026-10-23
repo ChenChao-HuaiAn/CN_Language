@@ -68,6 +68,8 @@
 #   CN_WEB_USER/CN_WEB_PASS 网页凭据——未配置=网页登录全拒 fail-closed 1425）。
 # 自检：python3 queue_service.py --selftest（842 起实现体外迁=queue_selftest.py·惰性导入）。
 
+from __future__ import annotations   # P1-1：3.8 注解惰性化（float | None 等定义期不求值）
+
 import json
 import os
 import re

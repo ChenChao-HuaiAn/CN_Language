@@ -40,12 +40,12 @@ def 调服务(url: str, 令牌: str, 方法: str, 路径: str, 体=None, 超时=
     except urllib.error.HTTPError as e:
         try:
             return e.code, json.loads(e.read().decode("utf-8"))
-        except (ValueError, UnicodeDecodeError):
+        except (json.JSONDecodeError, UnicodeDecodeError):
             return e.code, {}
     except (urllib.error.URLError, OSError):
         return 0, {}   # 连接层失败：失败原因() 报「不可达」而非崩栈
-    except ValueError:
-        return -1, {}  # JSON 解析错误≠连接层失败（P3-A：真因单列，不冒充不可达）
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return -1, {}  # JSON/解码错误≠连接层失败（P3-A：真因单列，不冒充不可达）
 
 
 def 失败原因(码: int, r: dict, url: str) -> str:
@@ -119,9 +119,20 @@ def main() -> int:
         print(f"[失败] {失败原因(码, r, url)}——先部署 384 版 board_service 并核对令牌")
         return 1
 
-    # 交接：按已有条目文本去重（幂等）
+    # 交接：按已有条目文本去重（幂等）——P3-2：先校验码与响应形态，
+    # 401/-1/畸形响应不得当「无已有条目」继续 POST（否则会误写/重复写）。
     码, r = 调服务(url, 令牌, "GET", "/api/handoff?limit=200")
-    已有 = {t["条目"] for t in r.get("条目们", [])}
+    if 码 != 200:
+        print(f"[失败] 读取已有交接：{失败原因(码, r, url)}")
+        return 1
+    if not isinstance(r, dict):
+        print(f"[失败] 读取已有交接响应非对象（{type(r).__name__}）")
+        return 1
+    条目们 = r.get("条目们")
+    if not isinstance(条目们, list):
+        print("[失败] 读取已有交接响应缺「条目们」列表（服务端版本不符/响应损坏）")
+        return 1
+    已有 = {t["条目"] for t in 条目们 if isinstance(t, dict) and t.get("条目")}
     新交 = [x for x in 交 if x["条目"] not in 已有]
     跳交 = len(交) - len(新交)
     for i, x in enumerate(新交):
@@ -151,6 +162,9 @@ def main() -> int:
     码, r = 调服务(url, 令牌, "GET", "/api/coverage")
     if 码 != 200:
         print(f"[失败] 复核覆盖：{失败原因(码, r, url)}")
+        return 1
+    if not isinstance(r, dict):
+        print(f"[失败] 复核覆盖响应非对象（{type(r).__name__}）")
         return 1
     print(f"[复核] 覆盖单元在库 {len(r['单元们'])}·豁免在库 {len(r['豁免们'])}")
     return 0

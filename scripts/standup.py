@@ -101,12 +101,17 @@ def _失败文案(e: Exception) -> str:
     """看板读取失败分流（1425）：401/403=鉴权失败（令牌/登录墙），连接层失败=
     不可达——禁止把 401 冒充「服务不可达」（真因保留给简报读者）。"""
     if isinstance(e, urllib.error.HTTPError):
+        鉴权失败 = e.code in (401, 403)   # P3-D：本地兜底
         try:
             import intent
-            if intent.鉴权失败码(e.code):
+            鉴权失败 = intent.鉴权失败码(e.code)
+            if 鉴权失败:
                 return intent.鉴权失败文案("看板服务", e.code)
-        except Exception:
-            pass
+        except Exception as ex:
+            print(f"[黄] intent 鉴权助手不可用，按裸码兜底（诊断见上）：{ex}",
+                  file=sys.stderr)
+        if 鉴权失败:
+            return f"看板服务鉴权失败（{e.code}）——令牌校验失败（详见上方诊断）"
         return f"看板服务返回 HTTP {e.code}"
     if isinstance(e, OSError):
         return f"看板服务不可达（{e}）"
