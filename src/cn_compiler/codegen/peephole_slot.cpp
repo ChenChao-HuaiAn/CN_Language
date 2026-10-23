@@ -671,8 +671,11 @@ namespace detail {
 //   一次调用）。命中时 functionText 可能重分配，调用方持有的 view/引用随之失效。
 // 视图生命周期（1217 机械锁）：lines/槽计数键/改写文本中的 string_view 全部指向
 //   functionText 当次缓冲。本函数把「视图销毁」与「源存储替换」拆成两个作用域：
-//   扫描/渲染域内只读 functionText，域结束后视图已全部销毁，才执行替换——即使
-//   未来插入提前赋值，调试构建的 sourceData 断言也会立即显形（见域尾断言）。
+//   扫描/渲染域内只读 functionText，域结束后视图已全部销毁，才执行替换。
+//   域尾 Debug 断言只比较 data()/size()：能发现重分配/长度变化，但识别不了
+//   同地址同长度的原地改写，也识别不了同长度 SSO 拷贝赋值（两者都不改 data()/
+//   size()）——它是缓冲身份/尺寸的粗粒度护栏，不是内容不可变证明；新增写入点
+//   仍须按「先销毁视图、后替换存储」的结构约束接受审查。
 bool eliminateWithRulesInPlace(std::string& functionText, const SlotRules& rules) {
     if (functionText.find(rules.slotAnchor) == std::string::npos) return false;
 #ifndef NDEBUG
@@ -720,6 +723,8 @@ bool eliminateWithRulesInPlace(std::string& functionText, const SlotRules& rules
         }
     }  // ---- 视图销毁点：此后不再持有任何指向 functionText 缓冲的视图 ----
 #ifndef NDEBUG
+    // 粗粒度身份检查：仅 data()/size() 不变；同地址同长度原地改写与同长度 SSO
+    //   拷贝赋值不可见（边界见函数头生命周期说明）
     if (any) {
         assert(functionText.data() == sourceData && functionText.size() == sourceSize &&
                "窥孔视图存活期间源文本不得被改写（视图先销毁、后替换存储）");

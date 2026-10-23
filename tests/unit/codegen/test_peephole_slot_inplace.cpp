@@ -117,3 +117,26 @@ TEST(PeepholeSlotInPlace, DwordProofDeleteMatchesValueSemantics) {
     EXPECT_EQ(got, want);
     EXPECT_EQ(got, "    mov r10d, dword ptr [rbp-16]\n");
 }
+
+// 8. AArch64 两阶段同时命中（1217 审查 P3-4 定向锁）：第一阶段固定帧槽命中并
+//    以新缓冲替换 functionText（重分配），第二阶段在新缓冲上命中 [x13] 大偏移
+//    间接对——就地结果=值语义、二次应用稳定（产物 mov x9, x3 / mov x10, x4）。
+TEST(PeepholeSlotInPlace, Arm64TwoPhaseBothHitMatchesValueSemantics) {
+    const std::string in = join({
+        "    str x3, [x29,#-8]",
+        "    ldr x9, [x29,#-8]",
+        "    sub x13, x29, #300",
+        "    str x4, [x13]",
+        "    sub x13, x29, #300",
+        "    ldr x10, [x13]",
+    });
+    const std::string want = eliminateRedundantSlotTrafficAArch64(in);
+    EXPECT_EQ(want, join({"    mov x9, x3", "    mov x10, x4"}));
+    std::string got = in;
+    EXPECT_TRUE(eliminateRedundantSlotTrafficAArch64InPlace(got));
+    EXPECT_EQ(got, want);
+    // 二次应用：产物已无固定帧槽对与 [x13] 间接对，返回 false 且文本逐字节不动
+    std::string again = got;
+    EXPECT_FALSE(eliminateRedundantSlotTrafficAArch64InPlace(again));
+    EXPECT_EQ(again, got);
+}

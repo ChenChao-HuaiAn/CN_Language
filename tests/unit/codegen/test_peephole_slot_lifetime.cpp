@@ -6,8 +6,9 @@
 //   2. 确定性随机语料（混合三方言合法/非法行、LF/CRLF、有/无尾换行）跨入口一致，
 //      并做二次应用稳定性核对；
 //   3. 就地改写后旧视图失效：ASan 构建以 EXPECT_DEATH 检出 heap-use-after-free
-//      （正常路径=本文件其余用例全绿；非 ASan 构建显式跳过并指向机械锁脚本
-//      scripts/check_peephole_sanitizer.py）。
+//      （正常路径=本文件其余用例全绿）；死亡例口径仅 Linux/WSL 的 ASan 构建纳入，
+//      非 ASan 构建与 Windows（含 MSVC ASan 构建）显式跳过并指向机械锁脚本
+//      scripts/check_peephole_sanitizer.py。
 // 生命周期契约见 peephole_slot.hpp / peephole_slot_internal.hpp：行/令牌/槽视图
 //   一律指向调用期 functionText 缓冲；内核先销毁全部视图、后替换源存储。
 #include <gtest/gtest.h>
@@ -29,7 +30,7 @@ using cn_compiler::peephole::eliminateRedundantSlotTrafficInPlace;
 using cn_compiler::peephole::eliminateRedundantSlotTrafficMasm;
 using cn_compiler::peephole::eliminateRedundantSlotTrafficMasmInPlace;
 
-// ASan 检出宏：GCC/Clang 用内建宏；Windows 的 ASan 死亡例口径不纳入本锁
+// ASan 检出宏：GCC/Clang 用内建宏；Windows（含 MSVC ASan 构建）不纳入死亡例口径
 #if defined(__SANITIZE_ADDRESS__)
 #define CN_PEEPHOLE_ASAN 1
 #elif defined(__has_feature)
@@ -314,9 +315,11 @@ TEST(PeepholeSlotLifetime, OldViewAfterArm64IndirectInPlaceIsAsanRed) {
         "heap-use-after-free");
 }
 #else
-// 非 ASan 构建：显式登记诚实边界（不静默跳过），指向独立机械锁脚本。
+// 死亡例口径仅 Linux/WSL ASan 构建纳入：其他构建（含 Windows/MSVC 的 ASan 构建）
+//   显式登记诚实边界（不静默跳过），并指向独立机械锁脚本。
 TEST(PeepholeSlotLifetime, OldViewAfterInPlaceDetectableOnlyUnderAsan) {
-    GTEST_SKIP() << "旧视图 UAF 检出需 ASan 构建："
-                    "python scripts/check_peephole_sanitizer.py（WSL/Linux g++）";
+    GTEST_SKIP() << "旧视图 UAF 死亡例只在 Linux/WSL ASan 口径执行"
+                    "（Windows 含 MSVC ASan 构建不纳入本锁）；"
+                    "权威机械锁：python3 scripts/check_peephole_sanitizer.py";
 }
 #endif

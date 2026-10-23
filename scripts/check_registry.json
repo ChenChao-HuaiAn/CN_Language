@@ -262,7 +262,7 @@
    "脚本": "scripts/check_peephole_sanitizer.py",
    "组": "ci扩展",
    "检查网层": 9,
-   "说明": "1217 立（001 §1.1a① 悬垂零容忍）：Linux/WSL g++/clang++ 两口径独立编译 Peephole* 单测（窥孔两实现 TU+四单测 TU+随仓 gtest，不依赖完整工程）——①ASan+UBSan（-fsanitize=address,undefined -fno-sanitize-recover=all -D_GLIBCXX_ASSERTIONS）检出就地改写后旧视图 UAF（EXPECT_DEATH 匹配 heap-use-after-free）与边界/随机语料越界；②-D_GLIBCXX_DEBUG+_GLIBCXX_ASSERTIONS 跑 string_view/容器越界断言。Windows 口径=诚实边界（经 WSL 执行）",
+   "说明": "1217 立（001 §1.1a① 悬垂零容忍）：Linux/WSL g++/clang++ 两口径独立编译 Peephole* 单测（窥孔两实现 TU+四单测 TU+随仓 gtest，不依赖完整工程）——①ASan+UBSan（-fsanitize=address,undefined -fno-sanitize-recover=all -D_GLIBCXX_ASSERTIONS）检出就地改写后旧视图 UAF（EXPECT_DEATH 匹配 heap-use-after-free）与边界/随机语料越界；②-D_GLIBCXX_DEBUG+_GLIBCXX_ASSERTIONS 跑 string_view/容器越界断言。P2-1 加固：分口径精确计数（防用例静默消失）+ASan 口径 SKIP 零容忍+--gtest_list_tests 断言两条死亡例确实存在+FAILED 行零容忍——只断言「用例数>0」挡不住 CN_PEEPHOLE_ASAN_DEATH 宏失效导致死亡例被 SKIP 分支顶替；判别力自测=scripts/test_check_peephole_sanitizer.py（假输出负例必红）。Windows 口径=诚实边界（经 WSL 执行）",
    "v5执行面": "人工轮/专项（Linux/WSL g++）：python3 scripts/check_peephole_sanitizer.py"
   }
  ]
