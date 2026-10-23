@@ -1,0 +1,64 @@
+Switched to a new branch 'batch/1370'
+Auto-merging scripts/miss_registry.json
+CONFLICT (content): Merge conflict in scripts/miss_registry.json
+Auto-merging src/cn_compiler/ir/ir.cpp
+CONFLICT (content): Merge conflict in src/cn_compiler/ir/ir.cpp
+Auto-merging src/cn_compiler/ir/ir_error_ctor.cpp
+Auto-merging src/cn_compiler/ir/ir_expr_assign.cpp
+Auto-merging src/cn_compiler/ir/ir_expr_assign_ident.cpp
+Auto-merging src/cn_compiler/ir/ir_expr_assign_ident_class.cpp
+Auto-merging src/cn_compiler/ir/ir_expr_index.cpp
+CONFLICT (content): Merge conflict in src/cn_compiler/ir/ir_expr_index.cpp
+Auto-merging src/cn_compiler/ir/ir_expr_member.cpp
+CONFLICT (content): Merge conflict in src/cn_compiler/ir/ir_expr_member.cpp
+Auto-merging src/cn_compiler/ir/ir_expr_type.cpp
+CONFLICT (content): Merge conflict in src/cn_compiler/ir/ir_expr_type.cpp
+Auto-merging src/cn_compiler/ir/ir_expr_unary.cpp
+Auto-merging src/cn_compiler/ir/ir_fields.cpp
+CONFLICT (content): Merge conflict in src/cn_compiler/ir/ir_fields.cpp
+Auto-merging src/cn_compiler/ir/ir_lambda.cpp
+Auto-merging src/cn_compiler/ir/ir_oop.cpp
+CONFLICT (content): Merge conflict in src/cn_compiler/ir/ir_oop.cpp
+Auto-merging src/cn_compiler/ir/ir_oop_call.cpp
+CONFLICT (content): Merge conflict in src/cn_compiler/ir/ir_oop_call.cpp
+Auto-merging src/cn_compiler/ir/ir_oop_call_iface.cpp
+Auto-merging src/cn_compiler/ir/ir_oop_call_release.cpp
+CONFLICT (content): Merge conflict in src/cn_compiler/ir/ir_oop_call_release.cpp
+Auto-merging src/cn_compiler/ir/ir_oop_container.cpp
+CONFLICT (content): Merge conflict in src/cn_compiler/ir/ir_oop_container.cpp
+Auto-merging src/cn_compiler/ir/ir_oop_field.cpp
+CONFLICT (content): Merge conflict in src/cn_compiler/ir/ir_oop_field.cpp
+Auto-merging src/cn_compiler/ir/ir_oop_field_assign.cpp
+Auto-merging src/cn_compiler/ir/ir_stmt.cpp
+Auto-merging src/cn_compiler/ir/ir_stmt_decl.cpp
+Auto-merging src/cn_compiler/ir/ir_stmt_decl_init.cpp
+error: could not apply 7b956aad2... 〔1360 批2〕宿主 ir 层 32 函数哨兵结果化：变量表族+类型推导族+类方法+容器+lambda 全族 cn::Optional
+hint: After resolving the conflicts, mark them with
+hint: "git add/rm <pathspec>", then run
+hint: "git cherry-pick --continue".
+hint: You can instead skip this commit with "git cherry-pick --skip".
+hint: To abort and get back to the state before "git cherry-pick",
+hint: run "git cherry-pick --abort".
+hint: Disable this message with "git config set advice.mergeConflict false"
+Your branch is up to date with 'gitcode/任务/1370'.
+Switched to branch '任务/1370'
+Deleted branch batch/1370 (was ef03f3641).
+== 合并队列（协议 v3·bors 批量集成）｜平台=win｜分支=任务/1370｜模式=集成 ==
+  [警告] 未跟踪文件不阻塞集成（不入提交）：['iw1370r.log']
+[1] 前置自检通过（分支已推远端·工作树干净）
+  $ git fetch gitcode
+  $ git fetch gitcode
+[2] 报名入队：任务/1370 @ 10-23 08:17:40（42 文件·触全量面）｜服务端✓
+  [并行] 立即组链入池（不等其他批·池有空闲实例即被认领·830 并行模型）
+  [队列服务] 已标集成中（服务端·零 git 提交——920 治乒乓）
+[3] 组链（单人并行·任务=任务/1370）
+  $ git fetch gitcode
+  $ git checkout -B batch/1370 ef03f36412fdafcec967953bccbdb70ece32873c
+  [组链] 叠入 任务/1370（4 提交）
+  $ git cherry-pick 7b956aad22b710e07b560f5785a8d5433ed656f5
+  $ git cherry-pick --abort
+
+[集成失败] cherry-pick 冲突（任务/1370 第 1/4 提交）——本次集成立即中止·禁部分链推送 develop（1258 硬隔离·1157 实录根治）。已叠入成员：（无）——请在本机任务分支解完冲突后重跑本命令（已绿预验按内容键复用·不重跑；队列行回「排队」·批链删除）。
+  $ git checkout 任务/1370
+  $ git branch -D batch/1370
+  [队列服务] 失败恢复：队列行回「排队」——修复后重跑本命令续推（已入池的预验结果按内容键复用·不重跑）
