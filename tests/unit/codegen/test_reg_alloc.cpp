@@ -561,9 +561,9 @@ TEST(RegAllocTest, AllocableTypeFilter) {
     // #1212：浮点进入独立寄存器类（win-x64 分配 xmm6~xmm15；其余架构后续步骤）
     EXPECT_TRUE(LinearScanAllocator::isAllocableType("f64"));
     EXPECT_TRUE(LinearScanAllocator::isAllocableType("f32"));
-    // #1212 步骤 b 开关（步骤 a 提交态关闭；b 提交翻转）
-    EXPECT_FALSE(LinearScanAllocator::isAllocableType("i128"));
-    EXPECT_FALSE(LinearScanAllocator::isAllocableType("u128"));
+    // #1212 步骤 b：i128/u128 成对占两个 GPR（%vN 高 + %vN+1 低）
+    EXPECT_TRUE(LinearScanAllocator::isAllocableType("i128"));
+    EXPECT_TRUE(LinearScanAllocator::isAllocableType("u128"));
 }
 
 TEST(RegAllocTest, NarrowTypesAllocatedAllArch) {
@@ -740,4 +740,54 @@ TEST(RegAllocTest, FloatUsesSsePoolOnWinX64) {
             EXPECT_TRUE(kv.second.assignedReg.empty());
         }
     }
+}
+
+// ---- 8. #1212 步骤 b：i128 双半成对分配 ----
+
+TEST(RegAllocTest, I128PairAllocatesTwoRegisters) {
+    // %v0 = ConstInt(i128) ; %v1 = Add %v0, %v0 (i128) ; 返回 %v1
+    IRFunction func;
+    func.name = "i128-pair";
+    func.returnType = "i64";
+    auto block = std::make_unique<IRBlock>();
+    block->label = "blk0";
+    IRInstruction c;
+    c.opcode = Opcode::ConstInt;
+    c.result = IRValue::reg(0, "i128");
+    c.type = "i128";
+    c.extra = "1:0";
+    block->instructions.push_back(c);
+    IRInstruction add;
+    add.opcode = Opcode::Add;
+    add.result = IRValue::reg(1, "i128");
+    add.type = "i128";
+    add.operands = {IRValue::reg(0, "i128"), IRValue::reg(0, "i128")};
+    block->instructions.push_back(add);
+    IRInstruction narrow;
+    narrow.opcode = Opcode::Cast;
+    narrow.result = IRValue::reg(2, "i64");
+    narrow.type = "i64";
+    narrow.operands = {IRValue::reg(1, "i128")};
+    block->instructions.push_back(narrow);
+    block->terminated = true;
+    block->termKind = "返回";
+    block->termReturnValue = "%v2";
+    func.blocks.push_back(std::move(block));
+
+    LinearScanAllocator allocator(TargetArch::X64);
+    const RegAssignmentMap map = allocator.allocate(func);
+    for (int id = 0; id <= 1; ++id) {
+        auto it = map.find(id);
+        ASSERT_NE(it, map.end());
+        EXPECT_FALSE(it->second.assignedReg.empty()) << "i128 v" << id << " 高半应分配";
+        EXPECT_FALSE(it->second.assignedReg2.empty()) << "i128 v" << id << " 低半应成对分配";
+        EXPECT_NE(it->second.assignedReg, it->second.assignedReg2);
+    }
+    // 两半不得与其他活跃值共用物理寄存器（成对区间占用两个）
+    std::set<std::string> used;
+    for (int id = 0; id <= 1; ++id) {
+        used.insert(map.at(id).assignedReg);
+        used.insert(map.at(id).assignedReg2);
+    }
+    EXPECT_EQ(used.size(), 4u);
 }

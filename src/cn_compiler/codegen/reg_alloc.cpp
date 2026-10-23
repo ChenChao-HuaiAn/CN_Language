@@ -34,7 +34,7 @@ namespace {
 //   kI128AllocEnabled  = 步骤 b（x64 i128 双 GPR 成对分配）
 //   kArm64FloatEnabled = 步骤 c（arm64 v8~v15 浮点寄存器）
 // 关闭时对应区间不进入可分配面（保持原栈槽映射，产物与基线逐字节一致）。
-constexpr bool kI128AllocEnabled = false;
+constexpr bool kI128AllocEnabled = true;
 constexpr bool kArm64FloatEnabled = false;
 
 // IR 类型是否参与寄存器分配（1281：64/32 位整型、指针与窄整型；三架构同面——
