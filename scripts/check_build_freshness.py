@@ -52,6 +52,22 @@ _源后缀 = {".cpp", ".cc", ".cxx", ".c"}
 _产物后缀 = {".exe", ".lib", ".a", ".dll", ".so"}
 
 
+def 生效核心产物(名表) -> list:
+    """核心产物名过滤（批4 轮 2026-10-23 实录）：同基名 .exe 存在时无后缀名
+    （target/cn、target/cn_unit_tests）=历史残留（win 构建只链 .exe·无后缀是
+    linux 布局复制/旧工具残留），其 mtime 永滞后于新提交——参与判据即永久
+    误红（target/cn.exe 已新鲜仍被判「早于最近构建输入提交」）。.exe 存在
+    =平台权威产物，无后缀名跳过；.exe 不存在（linux 树）才由无后缀名承担。"""
+    出 = []
+    for 名 in 名表:
+        if not (仓库根 / "target" / 名).exists():
+            continue
+        if not 名.endswith(".exe") and (仓库根 / "target" / (名 + ".exe")).exists():
+            continue
+        出.append(名)
+    return 出
+
+
 def 规一(路径: Path) -> str:
     """路径归一键（normcase：win 大小写不敏感——防大小写差造成假游离/假缺输入）。"""
     try:
@@ -196,10 +212,19 @@ def 核验ninja图(构建目录: Path, 红: list, 黄: list) -> tuple[int, int, 
 
 
 def _链接脚本词表(link: Path) -> list[str]:
-    """link.txt → 词表（shlex 拆词·路径含空格时引号面同解）；读/解析失败=空表。"""
+    """link.txt → 词表（shlex 拆词·路径含空格时引号面同解）；读/解析失败=空表。
+    win 路径反斜杠会被 posix 拆词当转义吃掉（872 selftest 场景⑧ win 存量红
+    实录：-o 的 C:\\ 绝对路径失配→链接判据恒黄跳过）——反斜杠先双写为合法
+    posix 转义，拆词后还原原文；linux 文不含反斜杠=恒等零影响。"""
     try:
-        return shlex.split(link.read_text(encoding="utf-8", errors="replace"))
-    except (OSError, ValueError):
+        文 = link.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return []
+    if "\\" in 文:
+        文 = 文.replace("\\", "\\\\")
+    try:
+        return shlex.split(文)
+    except ValueError:
         return []
 
 
@@ -259,10 +284,8 @@ def 核验make布局(构建目录: Path, 红: list, 黄: list) -> tuple[int, int
             红.append(f"{短(obj)} 旧于源 {时分秒(差)}（{短(源)}）——漏编/假新鲜面")
     # 链接产物 vs 各自真实链接输入（1006 修复：旧法「构建目录内全部 obj 皆属每个
     #   产物输入」把 cn_unit_tests 的 obj 算进 target/cn——并行构建时序误报链接滞后）
-    for 名 in ("cn.exe", "cn", "cn_unit_tests.exe", "cn_unit_tests"):
+    for 名 in 生效核心产物(("cn.exe", "cn", "cn_unit_tests.exe", "cn_unit_tests")):
         产物 = 仓库根 / "target" / 名
-        if not 产物.exists():
-            continue
         输入们, 原因 = 找make链接输入(构建目录, 产物)
         if 输入们 is None:
             黄.append(f"target/{名}：{原因}")
@@ -294,9 +317,8 @@ def 核验HEAD判据(红: list, 黄: list) -> None:
     合体语义完整保留），输入未变→分界时刻为旧提交→绿。
     构建输入不可知（路径无历史/HEAD 不可知）=回退 HEAD 时刻旧口径（保守）。
     产物不存在=黄字跳过（gate_quick 构建后在 pipeline 里，此判据是兜底）。"""
-    产物们 = [仓库根 / "target" / 名 for 名 in
-             ("cn.exe", "cn_unit_tests.exe", "cn", "cn_unit_tests")]
-    存在们 = [p for p in 产物们 if p.exists()]
+    存在们 = [仓库根 / "target" / 名 for 名 in 生效核心产物(
+        ("cn.exe", "cn_unit_tests.exe", "cn", "cn_unit_tests"))]
     if not 存在们:
         黄.append("核心产物（target/cn*）不存在——HEAD 判据跳过")
         return

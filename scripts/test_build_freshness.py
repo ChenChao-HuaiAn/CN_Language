@@ -283,6 +283,27 @@ def 场景9_纯文档提交豁免(基础: str) -> None:
          f"场景⑨ 构建输入提交后未重建→红（完备化口径）\n{出2}")
 
 
+def 场景10_exe并存残留跳过(基础: str) -> None:
+    """批4 轮 2026-10-23 实录：win 树 target/cn.exe 新鲜、target/cn（无后缀·
+    linux 布局残留）旧于 HEAD 提交——旧法把残留当核心产物判→永久误红。
+    态1：.exe 新鲜+无后缀残留旧→rc=0（残留被跳过·本场景核心）；
+    态2：.exe 回拨到 HEAD 前→rc=1 且红名单指认 cn.exe（判据语义不放松）。"""
+    根 = 造ninja树(基础)
+    造obj们(根)
+    残留 = 根 / "target" / "cn"
+    残留.write_bytes(b"STALE")
+    头 = int(subprocess.run(["git", "log", "-1", "--format=%ct"], cwd=str(根),
+                           capture_output=True, text=True).stdout.strip())
+    触(残留, 头 - 9999)                          # 残留：早于 HEAD 提交
+    码, 出 = 跑核验(根)
+    断言(码 == 0, f"场景⑩a cn.exe 新鲜+无后缀残留旧→rc=0（残留不参与判据）\n{出}")
+    触(根 / "target" / "cn.exe", 头 - 600)       # rebase 后未重建形态
+    码2, 出2 = 跑核验(根)
+    断言(码2 == 1 and "cn.exe 早于" in 出2, "场景⑩b .exe 陈旧→仍红（不放松）")
+    断言("target\\cn 早于" not in 出2 and "target/cn 早于" not in 出2,
+         "场景⑩b 红名单只指认 .exe（无后缀残留不再牵连）")
+
+
 def main() -> int:
     with tempfile.TemporaryDirectory(prefix="cn_bf_") as 基础:
         print("== 场景① ninja 全新鲜（$: 转义回归） ==")
@@ -303,6 +324,8 @@ def main() -> int:
         场景8_Make链接归属(基础)
         print("== 场景⑨ 纯文档提交豁免（872 完备化·1060） ==")
         场景9_纯文档提交豁免(基础)
+        print("== 场景⑩ .exe 并存无后缀残留跳过（批4 轮实录） ==")
+        场景10_exe并存残留跳过(基础)
     print(f"\n[全部通过] {通过} 项断言")
     return 0
 
