@@ -333,6 +333,29 @@ if _跑缓存回归:
 else:
     print("[verify] 写集未触程序级缓存面——跳过缓存回归（云端全量兜底）", flush=True)
 
+# ②.8 已知长度快路径回归（#1310·2026-10-23 审查要求）：字符串字面量/顶层常量
+#   下标的越界检查必须使用编译期长度（不调 __cn_str_len）——行为用例证明不了
+#   「优化被回退」（结果仍对、只是变慢），本门禁按产物计数机械化：宿主 IR 与
+#   v2 产物 asm 各跑「1 字面量+1 变量」探针（期望 1）与「2 变量」对照（期望 2），
+#   另含 v2 源码链路断言。写集触及下标族/快路径实现或检查脚本时跑；写集取不到
+#   =fail-safe 照跑。v2p 未就绪时脚本黄字跳过产物段（L2/云端 v2p 预热后覆盖）。
+_快路径触发面 = (
+    "src/cn_compiler/ir/ir.cpp",
+    "src/cn_compiler/ir/ir_expr_index.cpp",
+    "src/cn_compiler/ir/ir_generator.hpp",
+    "CN语言编译器v2/IR/生成表达式下标.cn",
+    "scripts/check_knownlen_fastpath.py",
+)
+_跑快路径回归 = _写集 is None or any(p in _快路径触发面 for p in _写集)
+if _跑快路径回归:
+    if not 步("已知长度快路径回归",
+              [sys.executable, "scripts/check_knownlen_fastpath.py",
+               "--cn", str(单测.parent / ("cn.exe" if 是win else "cn"))],
+              超时秒=_超时("CN_GATE_KNOWNLEN_TIMEOUT", 600)):
+        raise SystemExit(1)
+else:
+    print("[verify] 写集未触字符串下标快路径面——跳过已知长度回归（云端全量兜底）", flush=True)
+
 if _跑示例验证:
     if not 步("官网示例验证", [sys.executable, "website/tools/gen_docs.py", "--verify"],
              超时秒=_超时("CN_GATE_VERIFY_TIMEOUT", 600),

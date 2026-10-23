@@ -13,11 +13,13 @@
 #include "cn_compiler/lexer/lexer.hpp"
 #include "cn_compiler/model/ast.hpp"
 #include "cn_compiler/parser/parser.hpp"
+#include "cn_compiler/semantic/semantic.hpp"
 
 using cn_compiler::Diagnostics;
 using cn_compiler::IRGenerator;
 using cn_compiler::Lexer;
 using cn_compiler::Parser;
+using cn_compiler::SemanticAnalyzer;
 using cn_compiler::ir::IRModule;
 using cn_compiler::ir::Opcode;
 
@@ -36,6 +38,21 @@ IRResult buildIR(const std::string& source) {
     Parser parser(result.diagnostics);
     auto program = parser.parse(tokens);
     IRGenerator generator(result.diagnostics);
+    result.module = generator.generate(program.get());
+    return result;
+}
+
+// #1310：全链路（词法→语法→语义→IR）——字符串下标长度快路径需要语义视图
+//   判定下标对象源码类型（字符串 vs 数组/指针），无语义视图时不会进入字符串分支。
+IRResult buildIRSemantic(const std::string& source) {
+    IRResult result;
+    Lexer lexer(source, "IR字符串测试.cn", result.diagnostics);
+    auto tokens = lexer.tokenize();
+    Parser parser(result.diagnostics);
+    auto program = parser.parse(tokens);
+    SemanticAnalyzer semantic(result.diagnostics);
+    if (!semantic.analyze(program.get())) return result;
+    IRGenerator generator(result.diagnostics, &semantic);
     result.module = generator.generate(program.get());
     return result;
 }
@@ -62,6 +79,29 @@ int countOpcode(IRModule& module, std::size_t funcIndex, Opcode opcode) {
         }
     }
     return count;
+}
+
+// #1310：统计指定符号的 Call 指令数（__cn_str_len 等运行时调用面）
+int countCallsTo(IRModule& module, std::size_t funcIndex, const std::string& callee) {
+    int count = 0;
+    if (funcIndex >= module.functions.size()) return 0;
+    for (auto& block : module.functions[funcIndex].blocks) {
+        for (auto& inst : block->instructions) {
+            if (inst.opcode == Opcode::Call && inst.extra == callee) count++;
+        }
+    }
+    return count;
+}
+
+// #1310：判断函数内是否存在指定文本的 ConstInt 指令（已知长度常量面）
+bool hasConstIntValue(IRModule& module, std::size_t funcIndex, const std::string& value) {
+    if (funcIndex >= module.functions.size()) return false;
+    for (auto& block : module.functions[funcIndex].blocks) {
+        for (auto& inst : block->instructions) {
+            if (inst.opcode == Opcode::ConstInt && inst.extra == value) return true;
+        }
+    }
+    return false;
 }
 
 } // namespace
@@ -297,4 +337,58 @@ TEST(IRStringTest, PrintLineSingleArgNoNewline) {
     }
     EXPECT_TRUE(hasPrintStr);     // 打印行 走不换行打印
     EXPECT_FALSE(hasNewline);     // 打印行 末尾不换行（新语义）
+}
+
+// ==================== 6. #1310 字符串下标长度快路径 ====================
+
+// 字符串字面量下标：编译期已知长度（UTF-8 字节数），越界检查用常量比较——
+//   不发射 __cn_str_len（可证明的重复 strlen 消除）；常量值=解码后字节数。
+TEST(IRStringTest, StringLiteralIndexUsesKnownLength) {
+    auto r = buildIRSemantic(R"CN(
+函数 主() -> 整32 {
+    整8 c = "ABCDE"[2];
+    返回 0;
+}
+)CN");
+    ASSERT_FALSE(r.diagnostics.hasErrors());
+    EXPECT_EQ(countCallsTo(r.module, 0, "__cn_str_len"), 0);
+    EXPECT_TRUE(hasConstIntValue(r.module, 0, "5"));
+}
+
+// 转义/多字节字面量：长度=解码后 UTF-8 字节数（a=1,\n=1,中=3 → 5）
+TEST(IRStringTest, StringLiteralIndexKnownLengthUtf8Bytes) {
+    auto r = buildIRSemantic(R"CN(
+函数 主() -> 整32 {
+    整8 c = "a\n中"[4];
+    返回 0;
+}
+)CN");
+    ASSERT_FALSE(r.diagnostics.hasErrors());
+    EXPECT_EQ(countCallsTo(r.module, 0, "__cn_str_len"), 0);
+    EXPECT_TRUE(hasConstIntValue(r.module, 0, "5"));
+}
+
+// 字符串变量下标：长度不可编译期证明 → 保留 __cn_str_len 运行时路径（不静默）
+TEST(IRStringTest, StringVariableIndexKeepsRuntimeLenCall) {
+    auto r = buildIRSemantic(R"CN(
+函数 主() -> 整32 {
+    字符串 s = "abc";
+    整8 c = s[1];
+    返回 0;
+}
+)CN");
+    ASSERT_FALSE(r.diagnostics.hasErrors());
+    EXPECT_EQ(countCallsTo(r.module, 0, "__cn_str_len"), 1);
+}
+
+// 字符串长度内建仍走 __cn_str_len（本次改动只作用于下标越界检查面）
+TEST(IRStringTest, StringLenBuiltinStillCallsRuntime) {
+    auto r = buildIRSemantic(R"CN(
+函数 主() -> 整32 {
+    整64 n = 字符串长度("hello");
+    返回 0;
+}
+)CN");
+    ASSERT_FALSE(r.diagnostics.hasErrors());
+    EXPECT_EQ(countCallsTo(r.module, 0, "__cn_str_len"), 1);
 }

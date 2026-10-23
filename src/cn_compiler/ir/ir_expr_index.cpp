@@ -148,12 +148,53 @@ void IRGenerator::visitIndexExpr(IndexExpr* node) {
         //   单路径）。
         bool isStrObj938 = !unique.empty() && types::canonicalEquals(srcType, "字符串");
         if (!isStrObj938 && semantic_ != nullptr) {
-            // 1360 结果化批3B：无值=非常量名——value_or 显形空串回落
-            const std::string cvStr938 =
-                semantic_->globalConstValue(ident->name).value_or(std::string());
-            if (!cvStr938.empty() &&
-                (cvStr938.front() == '"' || cvStr938.front() == '\'')) {
+            // #1310 审查 P0-A/B/P1-A（2026-10-23）：非局部标识符按**三态**解析
+            //   读点来源，再按「解析结果类型是否为字符串」决定字符串视图：
+            //   ① 实例字段（仅非静态方法·isInstanceField 已排除局部遮蔽）
+            //   ② 类静态字段（沿基类链·isStatic·查类基名同口径）
+            //   ③ 顶层静态变量（isGlobalStatic + globalStaticType）
+            //   ④ 以上皆非 → 顶层常量（值文本带引号）。
+            //   关键（P0）：解析结果**本身是字符串**时仍置 isStrObj938=true——
+            //   原实现无条件排除字段/静态导致静态方法内静态字符串字段（A-3
+            //   实例字段判定恒假）落入「其他对象」8 字节步进/无越界检查（探针
+            //   p_staticfield 垃圾读/p_inherit_static C0000005）。字段/静态槽
+            //   值可变，长度由 knownStringObjectLen 返回无值→运行时 strlen。
+            //   非字符串字段不得套用同名常量的字符串视图（反之亦然）。
+            std::string resolvedType938;
+            bool fieldOrStatic938 = false;
+            if (!currentClass_.empty() && !currentMethodStatic_ &&
+                isInstanceField(ident->name)) {
+                resolvedType938 =
+                    classFieldType(currentClass_, ident->name).value_or("");
+                fieldOrStatic938 = true;
+            }
+            if (!fieldOrStatic938 && !currentClass_.empty()) {
+                const cn::Optional<std::string> staticT938 =
+                    staticFieldTypeInClassChain(ident->name);
+                if (staticT938.has_value()) {
+                    resolvedType938 = staticT938.value();
+                    fieldOrStatic938 = true;
+                }
+            }
+            if (!fieldOrStatic938 && semantic_->isGlobalStatic(ident->name)) {
+                resolvedType938 =
+                    semantic_->globalStaticType(ident->name).value_or("");
+                fieldOrStatic938 = true;
+            }
+            // 显式二态枚举（非 else 兜底）：字段/静态来源按解析类型判定字符串
+            //   视图；非字段来源才查顶层常量（584-a 字段遮蔽常量）。
+            if (fieldOrStatic938 &&
+                types::canonicalEquals(resolvedType938, "字符串")) {
                 isStrObj938 = true;
+            }
+            if (!fieldOrStatic938) {
+                // 1360 结果化批3B：无值=非常量名——value_or 显形空串回落
+                const std::string cvStr938 =
+                    semantic_->globalConstValue(ident->name).value_or(std::string());
+                if (!cvStr938.empty() &&
+                    (cvStr938.front() == '"' || cvStr938.front() == '\'')) {
+                    isStrObj938 = true;
+                }
             }
         }
         if (isStrObj938) {
@@ -163,7 +204,10 @@ void IRGenerator::visitIndexExpr(IndexExpr* node) {
                 index = emitResult(ir::Opcode::Cast, {index}, "i64", "", node->location);
             }
             // T4（306-a）：越界检查（原「由调用方约束」=防线不对称·越界读 UB）
-            emitStrBoundsCheck(index, ptr, node->location);
+            // #1310：顶层字符串常量（938 判定命中）长度编译期已知——常量比较，
+            //   不调 __cn_str_len（knownStringObjectLen 与常量内联同源解码）。
+            emitStrBoundsCheck(index, ptr, node->location,
+                               knownStringObjectLen(node->object.get()));
             ir::IRValue addr = emitResult(ir::Opcode::Add, {ptr, index}, "ptr", "",
                                           node->location);
             lastExpr_ = emitResult(ir::Opcode::LoadPtr, {addr}, "i8", "",
@@ -524,8 +568,11 @@ void IRGenerator::visitIndexExpr(IndexExpr* node) {
     // T4（306-a）：字符串视图形态（成员链字符串/字符串变量兜底——elemIrType=i8
     //   且步进 1）统一越界检查；obj 即字符串指针值（字段槽存的 char*/变量值）。
     //   「字符* 指针」形态 elemIrType=i32（mapType 无 i8 直通）不进入=不误伤。
+    // #1310：字符串字面量对象（"ABCDE"[i]）长度编译期已知——常量比较不调
+    //   __cn_str_len；变量/成员/调用返回仍走运行时 strlen 原路径（显式分流）。
     if (elemIrType == "i8" && stride == 1) {
-        emitStrBoundsCheck(index, obj, node->location);
+        emitStrBoundsCheck(index, obj, node->location,
+                           knownStringObjectLen(node->object.get()));
     }
     ir::IRValue addr = emitResult(ir::Opcode::Add, {obj, scaled}, "ptr", "",
                                   node->location);
@@ -676,4 +723,128 @@ ir::IRValue IRGenerator::genGenericIndexAddress(IndexExpr* idx) {
         return emitResult(ir::Opcode::Add, {obj, scaled}, "ptr", "", idx->location);
 }
 
+// ==================== #1310 字符串下标越界检查（族内归属·自 ir.cpp 迁出） ====================
+// T4（306-a 波次2）：字符串下标越界检查（运行时长度版）。
+//   原字符串[i] 读无任何检查（注释自认「越界由调用方约束」），越界=UB 读垃圾；
+//   数组下标早有 rc=2 检查=防线不对称。长度经 __cn_str_len 运行时取（UTF-8 字节
+//   数·与 字符串长度 内置同源），错误通道与数组一致（__cn_runtime_error(2)）。
+// #1310（2026-10-23）：knownLen 快路径——下标对象为字符串字面量/顶层字符串常量
+//   时长度编译期已知，直接以 ConstInt 常量比较，**不调用 __cn_str_len**（消除
+//   可证明的重复 strlen；变量/字段/调用返回等运行时字符串仍走原路径）。
+//   安全面零变化：idx<0 || idx>=len 两条比较 + 错误通道完全保留，仅长度来源
+//   从运行时 strlen 换成编译期常量（同一 UTF-8 字节长度值）。
+void IRGenerator::emitStrBoundsCheck(const ir::IRValue& indexRaw,
+                                     const ir::IRValue& strPtr,
+                                     const SourceLocation& loc,
+                                     const cn::Optional<long long>& knownLen) {
+    if (currentBlock_ == nullptr) return;
+    ir::IRValue idx = indexRaw;
+    if (idx.type != "i64") {
+        idx = emitResult(ir::Opcode::Cast, {idx}, "i64", "", loc);
+    }
+    ir::IRValue len;
+    // 显式二态枚举（非 else 兜底）：已知长度=常量比较；未知=运行时 strlen。
+    const bool hasKnownLen = knownLen.has_value();
+    if (hasKnownLen) {
+        // 编译期已知长度：常量比较（字面量/常量的字节长度不可变·零运行时成本）
+        len = emitResult(ir::Opcode::ConstInt, {}, "i64",
+                         std::to_string(knownLen.value()), loc);
+    }
+    if (!hasKnownLen) {
+        // 未知长度（变量/字段/调用返回等不可证明形态）：原运行时 strlen 路径
+        len = emitResult(ir::Opcode::Call, {strPtr}, "i64",
+                         "__cn_str_len", loc);
+    }
+    ir::IRValue zero = emitResult(ir::Opcode::ConstInt, {}, "i64", "0", loc);
+    ir::IRValue ltZero = emitResult(ir::Opcode::Lt, {idx, zero}, "i1", "", loc);
+    ir::IRValue geLen = emitResult(ir::Opcode::Ge, {idx, len}, "i1", "", loc);
+    ir::IRValue bad = emitResult(ir::Opcode::Or, {ltZero, geLen}, "i1", "", loc);
+    const std::string errLabel = "bb" + std::to_string(blockCounter_);
+    const std::string okLabel = "bb" + std::to_string(blockCounter_ + 1);
+    endBranch(bad.toString(), errLabel, okLabel);
+    setCurrentBlock(newBlock(errLabel));
+    ir::IRValue errCode = emitResult(ir::Opcode::ConstInt, {}, "i64", "2", loc);
+    emitResult(ir::Opcode::Call, {errCode}, "i32", "__cn_runtime_error", loc);
+    endReturn("");
+    setCurrentBlock(newBlock(okLabel));
+}
+
+// #1310 审查 P0-A/B：当前类（沿基类链）**静态**字段类型——只认 isStatic
+//   （classFieldType 不区分实例/静态，实例字段由 isInstanceField 判定）。
+//   遍历序与 handleClassFieldRead 的静态字段分支一致（当前类 fields 含继承
+//   并入 + 继续沿 baseName 双保险）。无值=非当前类链静态字段。
+cn::Optional<std::string> IRGenerator::staticFieldTypeInClassChain(
+    const std::string& name) const {
+    if (semantic_ == nullptr || currentClass_.empty()) {
+        return cn::Optional<std::string>();
+    }
+    const ClassInfo* ci = semantic_->findClass(currentClass_).value_or(nullptr);
+    while (ci != nullptr) {
+        auto f = ci->fields.find(name);
+        if (f != ci->fields.end() && f->second.isStatic) {
+            return f->second.type;
+        }
+        ci = ci->baseName.empty()
+                 ? nullptr
+                 : semantic_->findClass(ci->baseName).value_or(nullptr);
+    }
+    return cn::Optional<std::string>();
+}
+
+// ==================== #1310 字符串下标已知长度（族内归属） ====================
+namespace {
+// #1310：解码文本的已知字节长度——嵌入 NUL 时运行期 __cn_str_len(strlen)
+//   在首个 NUL 处截断（"a\0b" 运行长度=1 而 std::string::size()=3），编译期
+//   长度与运行期不再是同一值 → 返回无值回落运行时原路径（显式分流·不猜测）。
+cn::Optional<long long> knownStringBytes(const std::string& decoded) {
+    if (decoded.find('\0') != std::string::npos) {
+        return cn::Optional<long long>();
+    }
+    return static_cast<long long>(decoded.size());
+}
+} // namespace
+
+// #1310：编译期已知字符串长度来源（字符串字面量 / 顶层字符串常量标识符）。
+//   返回解码后 UTF-8 字节数；其他一切形态（变量/类字段/调用返回/局部常量/
+//   嵌入 NUL 字面量）返回无值 → 调用方走 __cn_str_len 原路径（显式分流，
+//   不猜测、不静默取 0）。
+cn::Optional<long long> IRGenerator::knownStringObjectLen(Expr* object) {
+    if (object == nullptr) return cn::Optional<long long>();
+    if (object->getType() == NodeType::StringLiteral) {
+        StringLiteral* lit = static_cast<StringLiteral*>(object);
+        return knownStringBytes(decodeString(lit->raw));
+    }
+    if (object->getType() == NodeType::IdentifierExpr && semantic_ != nullptr) {
+        IdentifierExpr* ident = static_cast<IdentifierExpr*>(object);
+        // 584-a 遮蔽（安全前置）：局部变量/参数/局部常量（varStack 登记）或
+        //   顶层静态变量与常量同名时，读点是**变量槽**而非常量值——槽值可被
+        //   赋值/引用捕获改写，其长度不可用常量文本证明（否则陈旧长度→越界
+        //   判定错误）。此形态一律返回无值→运行时 __cn_str_len 原路径。
+        if (lookupVarName(ident->name).has_value()) {
+            return cn::Optional<long long>();
+        }
+        if (semantic_->isGlobalStatic(ident->name)) {
+            return cn::Optional<long long>();
+        }
+        // P0-1/P0-2（#1310 审查）：类字段（实例/静态/继承）与常量同名时读点是
+        //   **字段槽**——字段可被赋值/方法调用改写，且继承静态字段读路径存在
+        //   既有符号解析缺陷（读 ?static_子$名/写 ?static_基$名·另案根治）；
+        //   本任务对字段一律回落运行时 strlen（保留原 strlen 防线，不崩不错值）。
+        //   classFieldType 沿基类链且 ClassInfo::fields 含继承并入（实例/静态
+        //   统一覆盖，不使用 isInstanceField=静态字段判定面）。
+        if (!currentClass_.empty() &&
+            classFieldType(currentClass_, ident->name).has_value()) {
+            return cn::Optional<long long>();
+        }
+        // 与 genIdentifier 常量内联（938）同源判据：值文本为双引号包裹的字符串。
+        //   单引号=字符字面量形态，不属字符串常量，保持无值（不误算长度）。
+        const std::string cv =
+            semantic_->globalConstValue(ident->name).value_or(std::string());
+        if (cv.empty() || cv.size() == 1) return cn::Optional<long long>();
+        if (cv.front() == '"' && cv.back() == '"') {
+            return knownStringBytes(decodeString(cv));
+        }
+    }
+    return cn::Optional<long long>();
+}
 } // namespace cn_compiler

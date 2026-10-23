@@ -249,6 +249,10 @@ def 静态门禁与e2e段(步骤们: dict, 步骤, cn: Path | None, 日志, sha:
                   #   同步表=并行漏平移产物静默漂移。纯源码静态核对（缺失/陈旧/
                   #   未分类+接线），与 L1 gate_quick 静态段/win 全量 ci.ps1 同口径。
                   ("check_parallel_prefix", []),
+                  # #1310：字符串下标已知长度快路径回归（宿主 IR + v2 产物 asm
+                  #   双计数 1/2 正反对照 + v2 源码链路断言）——v2p 未就绪时脚本
+                  #   自黄跳产物段（源码断言照跑），v2p 路径按平台自动探测。
+                  ("check_knownlen_fastpath", ["--cn", str(cn)]),
                   ("check_matrix_coverage", []),
                   ("check_file_length", ["--freeze"])):
         if cn is None and "--cn" in 参:

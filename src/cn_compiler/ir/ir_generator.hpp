@@ -222,8 +222,19 @@ private:
     void emitBoundsCheck(const ir::IRValue& index, const cn::Optional<int>& arrayLen,
                          const SourceLocation& loc);    // T4（306-a 波次2）：字符串下标越界检查（运行时长度版）——
     //   len=__cn_str_len(ptr)；idx<0||idx>=len -> __cn_runtime_error(2) （与数组编译期长度版同错误通道=防线对称）
+    //   #1310：knownLen 有值=编译期已知字节长度（字符串字面量/顶层字符串常量）——
+    //   以常量替代 __cn_str_len 调用（越界/负下标检查一字不减）；无值=原运行时
+    //   strlen 路径（变量/字段/调用返回等一切不可证明形态·显式分流不静默）。
     void emitStrBoundsCheck(const ir::IRValue& indexRaw, const ir::IRValue& strPtr,
-                            const SourceLocation& loc);
+                            const SourceLocation& loc,
+                            const cn::Optional<long long>& knownLen = cn::Optional<long long>());
+    // #1310：下标对象为编译期字符串字面量/顶层字符串常量时返回其 UTF-8 字节长度；
+    //   其余形态（变量/字段/调用返回/未命中的标识符）返回无值=走运行时长度路径。
+    //   判据与 IR 常量内联同源（decodeString 解码后内容字节数）。
+    cn::Optional<long long> knownStringObjectLen(Expr* object);
+    // #1310 审查 P0-A/B：当前类（沿基类链）的**静态**字段类型（只查 isStatic；
+    //   与 handleClassFieldRead 的静态字段遍历同序）。无值=非当前类链静态字段。
+    cn::Optional<std::string> staticFieldTypeInClassChain(const std::string& name) const;
     // 计算左值地址（标识符/下标/解引用/成员访问 -> 地址值），供赋值使用（Task 2.4/2.7）
     ir::IRValue lvalueAddress(Expr* node);
     // ==================== i128 内存模型（Task 完善A） ====================

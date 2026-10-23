@@ -248,6 +248,14 @@
    "检查网层": 9,
    "说明": "1170 立（1145 并行 codegen 风险机械化防复发）：函数级并行发射让每函数从 0 局部编号标签，拼接期按前序函数标签总数平移（parallel_codegen::shiftLabelNumbers），平移范围=三后端 prefix 表（x64LabelPrefixes/linuxX64LabelPrefixes/arm64LabelPrefixes）。守卫扫描三后端发射源内「\"前缀\" + std::to_string(ptrCheckCounter_ 或其派生局部计数变量)」形态，与 prefix 表逐项对照三面：①缺失（发射点前缀未登记=并行漏平移→产物静默漂移·核心红线）；②陈旧（表项无对应发射点=脏表，会掩盖真漏登记）；③未分类（标签样式字面量参与拼接但既非计数派生又不在模块级数据标签白名单）。另核表函数以实参形态传入 generateFunctionBodies（接线缺失）。selftest=6 例正反两态夹具（新增直接/局部变量派生前缀必红·脏表必红·未分类必红·接线缺失必红·完整登记绿）",
    "v5执行面": "L1 gate_quick 静态段（1170 起·提交前）+win 全量 ci.ps1（0.92）+云端兜底（ci_daemon 静态门禁段）+--selftest 正反两态"
+  },
+  {
+   "名称": "已知长度快路径回归（#1310）",
+   "脚本": "scripts/check_knownlen_fastpath.py",
+   "组": "ci扩展",
+   "检查网层": 9,
+   "说明": "字符串字面量/顶层常量下标的越界检查不得回退为 __cn_str_len：宿主 IR 与 v2 产物 asm 双计数（快路径 1 / 对照 2 正反对照）+ v2 源码链路断言（v2p 未就绪时兜底）",
+   "v5执行面": "L1（宿主+源码段·写集触发）+L2/云端（v2 产物段·v2p 预热后）"
   }
  ]
 }
