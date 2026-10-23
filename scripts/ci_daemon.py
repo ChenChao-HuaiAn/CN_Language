@@ -718,7 +718,7 @@ def 池跑任务(任务: dict) -> None:
             #   #1401：分片度按池空闲实例/执行中预验任务数自适应（CN_SHARD_N 可固定）。
             分片n = 0
             if 任务分支.startswith("ci/预验-") and ci_shard.分片启用():
-                分片n = ci_shard.计算分片数(配置["池地址"])
+                分片n = ci_shard.计算分片数(配置["池地址"], 配置["池令牌"])
             召唤时刻 = time.time() if 分片n > 1 else None
             if 分片n > 1:
                 ci_shard.召唤从片(lambda o, d: 池调用(配置, o, d),
@@ -803,7 +803,7 @@ def 主(常驻: bool, 强制: bool, 等锁: bool = False) -> int:
             #   留给非 win；无非 linux 空闲（或池不可达）时 win 照常补位，不浪费算力。
             if 是win:
                 池c = 池配置()
-                if ci_shard.有非win空闲(ci_shard.池状态(池c["池地址"])):
+                if ci_shard.有非win空闲(ci_shard.池状态(池c["池地址"], 池c["池令牌"])):
                     print("[让位] 池内有空闲 linux 实例——win 本轮不领片/不领任务"
                           "（让算力·#1428）", flush=True)
                     if not 常驻:

@@ -859,8 +859,10 @@ def _1369断言(主模块, 断言) -> None:
                 return '{"ok": true, "分片": []}'.encode("utf-8")
 
         try:
-            ci_shard.urllib.request.urlopen = lambda 网址, timeout=10: (
-                捕获.__setitem__("url", 网址), 假响应())[1]
+            def 桩urlopen(网址, timeout=10, **kw):
+                捕获["url"] = getattr(网址, "full_url", 网址)
+                return 假响应()
+            ci_shard.urllib.request.urlopen = 桩urlopen
             快照回 = 真件["片状态们"]("http://tx01:8300", "", "ci/预验-abc123")
         finally:
             ci_shard.urllib.request.urlopen = 真urlopen
@@ -958,6 +960,10 @@ def _1428断言(断言) -> None:
     断言("#1428 让位反态：池状态不可判=None→False（不误让位）",
          not ci_shard.有非win空闲(None))
     源 = (Path(__file__).resolve().parent / "ci_daemon.py").read_text(encoding="utf-8")
+    import inspect as _inspect
+    源get = _inspect.getsource(ci_shard.池状态) + _inspect.getsource(ci_shard.片状态们)
+    断言("#1428 结构锁：GET（池状态/片状态）带 Bearer（#1425 登录墙·无令牌=401）",
+         "Authorization" in 源get)
     断言("#1428 结构锁：池循环含 win 让位判断（[让位] + 有非win空闲）",
          "[让位]" in 源 and "有非win空闲" in 源)
 

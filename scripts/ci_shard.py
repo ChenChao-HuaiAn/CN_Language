@@ -70,10 +70,14 @@ def 分片启用() -> bool:
     return True if 固 is None else 固 > 1
 
 
-def 池状态(池地址: str):
-    """GET /api/state（免令牌·与看板同源）——不可达/坏 JSON=None（调用方用兜底）。"""
+def 池状态(池地址: str, 池令牌: str = ""):
+    """GET /api/state——#1425 全站登录墙起机器通道须 Bearer 令牌（无令牌=401；
+    原「免令牌」口径已废）。不可达/坏 JSON/401=None（调用方按不可判兜底）。"""
     try:
-        with urllib.request.urlopen(池地址.rstrip("/") + "/api/state", timeout=10) as r:
+        请求 = urllib.request.Request(
+            池地址.rstrip("/") + "/api/state",
+            headers={"Authorization": "Bearer " + 池令牌} if 池令牌 else {})
+        with urllib.request.urlopen(请求, timeout=10) as r:
             return json.loads(r.read().decode("utf-8"))
     except Exception:
         return None
@@ -104,14 +108,14 @@ def 估算分片数(状态, 上界: int = 分片数上界, 兜底: int = 分片�
     return max(1, min(上界, n))
 
 
-def 计算分片数(池地址: str) -> int:
+def 计算分片数(池地址: str, 池令牌: str = "") -> int:
     """#1401 分片度：显式 CN_SHARD_N 优先（1=不分片）；否则按池快照自适应
     （池不可达=保守 3·与现网既有 n=3 等价）。n 只决定召唤的片数：多派无人领的
     片由主实例收片时抢补，正确性不受影响。"""
     固 = 显式分片数()
     if 固 is not None:
         return max(1, min(固, 分片数上界))
-    return 估算分片数(池状态(池地址))
+    return 估算分片数(池状态(池地址, 池令牌))
 
 
 def 池配置() -> dict:
@@ -191,13 +195,15 @@ def 交片(池调用, runner: str, 分支: str, 片序: int, 绿: bool, 结果, 
 
 
 def 片状态们(池地址: str, 池令牌: str, 分支: str):
-    """GET 片状态快照（免令牌·同 /api/state 口径）——不可达/异常=None（调用方
-    轮询重试·不静默当空集：空集与不可达语义不同，None=本轮不可判）。
+    """GET 片状态快照——#1425 起机器通道须 Bearer（无令牌=401=主实例收片瞎/空等）；
+    不可达/异常=None（调用方轮询重试·不静默当空集：空集与不可达语义不同）。
     1369：分支名含中文（ci/预验-*）须 percent-encode——旧直拼 URL 触发
     UnicodeEncodeError 被吞成 None=主实例永不抢补/永不判齐（5400s 超时病根之一）。"""
     try:
-        with urllib.request.urlopen(池地址.rstrip("/") + "/api/task_shards?branch="
-                                    + quote(分支, safe=""), timeout=10) as r:
+        请求 = urllib.request.Request(
+            池地址.rstrip("/") + "/api/task_shards?branch=" + quote(分支, safe=""),
+            headers={"Authorization": "Bearer " + 池令牌} if 池令牌 else {})
+        with urllib.request.urlopen(请求, timeout=10) as r:
             回 = json.loads(r.read().decode("utf-8"))
         return 回.get("分片") if 回.get("ok") else None
     except Exception:
@@ -205,12 +211,14 @@ def 片状态们(池地址: str, 池令牌: str, 分支: str):
 
 
 def 片结果(池地址: str, 池令牌: str, 分支: str, 片序: int):
-    """GET 单片结果详情——不可达/无此片=None（调用方显式分流·648）。
-    1369：同 片状态们 的 URL 编码修复（中文分支）。"""
+    """GET 单片结果详情——#1425 起须 Bearer（同 片状态们）；不可达/无此片=None
+    （调用方显式分流·648）。1369：同 片状态们 的 URL 编码修复（中文分支）。"""
     try:
-        with urllib.request.urlopen(池地址.rstrip("/") + "/api/task_shard_result?branch="
-                                    + quote(分支, safe="") + "&i=" + str(片序),
-                                    timeout=15) as r:
+        请求 = urllib.request.Request(
+            池地址.rstrip("/") + "/api/task_shard_result?branch="
+            + quote(分支, safe="") + "&i=" + str(片序),
+            headers={"Authorization": "Bearer " + 池令牌} if 池令牌 else {})
+        with urllib.request.urlopen(请求, timeout=15) as r:
             回 = json.loads(r.read().decode("utf-8"))
         return 回 if 回.get("ok") else None
     except Exception:
