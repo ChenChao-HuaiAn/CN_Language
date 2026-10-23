@@ -12,11 +12,15 @@
 # 入口：python3 queue_service.py --selftest（主入口不变·惰性导入本模块）；
 #   亦可直接 python3 queue_selftest.py（裸跑入口·等价）。
 
+import json
 import os
 import tempfile
+import threading
 import time
 import urllib.error
+import urllib.request
 from datetime import datetime, timedelta
+from http.server import ThreadingHTTPServer
 
 import queue_service as 服务
 import queue_shard        # 1297：分片协议自测（片心跳超时秒/快照/详情直读）
@@ -784,6 +788,76 @@ def 跑() -> None:
                 (int(time.time()) - 服务.心跳超时秒 * 2,))
     断言(实例动态()["从实例丁"]["状态"] == "心跳超时",
          "#1402 反态：片心跳断=心跳超时（与整任务同口径）")
+
+    # ── 1425 全站登录墙 HTTP 端到端（866 教训：对目标真实拦截的正反两态·照
+    #    board_selftest 模式起真服务）——人=用户名+密码会话（CN_WEB_USER/CN_WEB_PASS·
+    #    web_auth）·机器=Bearer 令牌；页面未鉴权→自包含登录页·API 未鉴权→401。──
+    os.environ["CN_WEB_USER"] = "自测员"
+    os.environ["CN_WEB_PASS"] = "自测·密码1"
+    旧令牌 = 服务.令牌
+    服务.令牌 = "selftest-token-1425"
+    实例1425 = ThreadingHTTPServer(("127.0.0.1", 0), 服务.处理器)
+    端1425 = 实例1425.server_address[1]
+    基址1425 = "http://127.0.0.1:%d" % 端1425
+    线程1425 = threading.Thread(target=实例1425.serve_forever, daemon=True)
+    线程1425.start()
+
+    def 调1425(方法, 路径, 体=None, 头=None):
+        def 动作():
+            请求 = urllib.request.Request(基址1425 + 路径, method=方法,
+                data=json.dumps(体).encode("utf-8") if 体 is not None else None,
+                headers=dict(头 or {}))
+            try:
+                with urllib.request.urlopen(请求, timeout=5) as r:
+                    return r.status, dict(r.headers), r.read().decode("utf-8")
+            except urllib.error.HTTPError as e:    # 错误态=正常响应面（401 断言面）
+                return e.code, dict(e.headers), e.read().decode("utf-8")
+        try:
+            return 动作()
+        except OSError:
+            time.sleep(0.2)   # 495：win ThreadingHTTPServer+urllib 连接层竞态·小退避重试一次
+            return 动作()
+
+    try:
+        码, 头, 体 = 调1425("GET", "/api/state")
+        断言(码 == 401, "1425 无凭证 GET /api/state 401（API 墙·原只读放行废除）")
+        码, 头, 体 = 调1425("GET", "/")
+        断言(码 == 200 and "api/login" in 体 and 'id="自动刷新"' not in 体
+             and "src=" not in 体,
+             "1425 无凭证 GET / →自包含登录页 200（有表单·无业务页·零外部资源）")
+        码, 头, 体 = 调1425("POST", "/api/join",
+                            {"分支": "任务/墙-1-x", "基线": "a", "写集摘要": ""})
+        断言(码 == 401, "1425 无凭证 POST /api/join 401（写通道照旧拦）")
+        码, 头, 体 = 调1425("POST", "/api/login",
+                            {"用户名": "自测员", "密码": "错的"})
+        断言(码 == 401, "1425 错凭据登录 401（反态）")
+        码, 头, 体 = 调1425("POST", "/api/login",
+                            {"用户名": "自测员", "密码": "自测·密码1"})
+        蛋糕 = next((v for k, v in 头.items() if k.lower() == "set-cookie"), "")
+        断言(码 == 200 and "cn_queue_session=" in 蛋糕 and "HttpOnly" in 蛋糕,
+             "1425 对凭据登录 200+cn_queue_session HttpOnly cookie（异名于看板·"
+             "Caddy /board/ 与 /queue/ 同域不互顶）")
+        会话条 = 蛋糕.split(";")[0]
+        码, 头, 体 = 调1425("GET", "/api/state", 头={"Cookie": 会话条})
+        断言(码 == 200, "1425 会话 cookie 过墙：GET /api/state 200")
+        码, 头, 体 = 调1425("GET", "/", 头={"Cookie": 会话条})
+        断言(码 == 200 and 'id="自动刷新"' in 体 and "api/login" not in 体,
+             "1425 会话 cookie 过墙：GET / →门禁窗口业务页")
+        码, 头, 体 = 调1425("GET", "/api/state",
+                            头={"Authorization": "Bearer selftest-token-1425"})
+        断言(码 == 200, "1425 Bearer 令牌过墙（机器通道不动·daemon/CLI/integrate）")
+        码, 头, 体 = 调1425("GET", "/api/me")
+        断言(码 == 200 and json.loads(体).get("已登录") is False,
+             "1425 /api/me 豁免：无凭证可查登录态（布尔·无敏感数据）")
+        码, 头, 体 = 调1425("POST", "/api/logout", 头={"Cookie": 会话条})
+        断言(码 == 200, "1425 登出 200")
+        码, 头, 体 = 调1425("GET", "/api/state", 头={"Cookie": 会话条})
+        断言(码 == 401, "1425 登出后会话失效 401（反态）")
+    finally:
+        实例1425.shutdown()
+        服务.令牌 = 旧令牌
+        os.environ.pop("CN_WEB_USER", None)
+        os.environ.pop("CN_WEB_PASS", None)
 
     print("selftest %d 项全过" % n绑定[0])
     raise SystemExit(0)

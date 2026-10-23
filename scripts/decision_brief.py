@@ -40,7 +40,14 @@ def 拉任务们() -> tuple[list[dict], str]:
     与 standup/board_cli 三写者并发可半写损坏·坏缓存裸 json.loads 炸读侧）。"""
     缓 = 本树根 / "scripts" / "board_cache.json"
     try:
-        with urllib.request.urlopen(f"{看板地址}/api/tasks", timeout=8) as r:
+        头 = {}   # 1425 全站登录墙：看板 GET 有令牌就带 Bearer
+        try:
+            import intent
+            头 = intent.鉴权头()
+        except Exception:
+            pass
+        with urllib.request.urlopen(urllib.request.Request(
+                f"{看板地址}/api/tasks", headers=头), timeout=8) as r:
             数据 = json.loads(r.read().decode("utf-8"))
         任务们 = 数据.get("任务们", [])
         atomic_json.合并写(缓, {"tasks": 任务们})

@@ -86,6 +86,16 @@ def hooks自检() -> list[str]:
     return [提示, "   修复（每机一次性）：git config core.hooksPath scripts/githooks"]
 
 
+def _鉴权头() -> dict:
+    """1425 全站登录墙：看板 GET 有令牌就带 Bearer（intent.鉴权头 统一口径；
+    import/读令牌失败=裸请求走降级缓存路径）。"""
+    try:
+        import intent
+        return intent.鉴权头()
+    except Exception:
+        return {}
+
+
 def 本机节(机: str, 主机: str = "") -> list[str]:
     """384：交接本机节改读看板服务端（交接.md 已退位删除）·降级读缓存。
     508：机器标识已指纹化（hostname·平台-架构·指纹6），服务端 machine=? 精确
@@ -93,9 +103,11 @@ def 本机节(机: str, 主机: str = "") -> list[str]:
     前缀过滤（新旧机器标识都以 hostname 开头·撞名机旧条目互认属撞名本质·滚动自愈）。"""
     import urllib.request
     前缀 = 主机 or 机.split("·")[0]
+    头 = _鉴权头()   # 1425：看板 GET 有令牌就带 Bearer
     try:
         with urllib.request.urlopen(
-                f"{看板地址()}/api/handoff?limit=50", timeout=8) as r:
+                urllib.request.Request(f"{看板地址()}/api/handoff?limit=50",
+                                       headers=头), timeout=8) as r:
             混流 = json.loads(r.read().decode("utf-8")).get("条目们", [])
         条 = [t for t in 混流 if str(t.get("机器", "")).startswith(前缀)][:2]
         _落缓存("handoff", {"机器": 机, "条目们": 条})
@@ -115,7 +127,8 @@ def 教训高权重(上限: int = 10) -> list[str]:
     条 = []
     try:
         with urllib.request.urlopen(
-                f"{看板地址()}/api/lessons?high_weight=8", timeout=8) as r:
+                urllib.request.Request(f"{看板地址()}/api/lessons?high_weight=8",
+                                       headers=_鉴权头()), timeout=8) as r:
             条 = json.loads(r.read().decode("utf-8")).get("条目们", [])
         _落缓存("lessons", {"条目们": 条})
     except Exception:

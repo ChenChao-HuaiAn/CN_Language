@@ -114,24 +114,26 @@ function 开登录() {
   }
   $("登录遮罩").hidden = false;
   $("登录错").textContent = "";
-  $("登录口令").value = "";
-  $("登录口令").focus();
+  $("登录用户名").value = "";
+  $("登录密码").value = "";
+  $("登录用户名").focus();
 }
 
 function 关登录() { $("登录遮罩").hidden = true; }
 
 async function 提交登录() {
-  const 口令 = $("登录口令").value;
-  if (!口令) { $("登录错").textContent = "口令必填"; return; }
+  const 用户名 = $("登录用户名").value.trim();
+  const 密码 = $("登录密码").value;
+  if (!用户名 || !密码) { $("登录错").textContent = "用户名与密码必填"; return; }
   $("登录提交").disabled = true;
   try {
-    await 调API("POST", "api/login", { 口令 });
+    await 调API("POST", "api/login", { 用户名, 密码 });   // 1425：网页凭据 CN_WEB_USER/CN_WEB_PASS
     已登录 = true;
     关登录();
     更新登录UI();
     提示("已登录——裁决与写操作已解锁", 3000);
   } catch (e) {
-    $("登录错").textContent = e.码 === 401 ? "口令不符" : "登录失败：" + e.message;
+    $("登录错").textContent = e.码 === 401 ? "用户名或密码不符" : "登录失败：" + e.message;
   } finally {
     $("登录提交").disabled = false;
   }
@@ -993,7 +995,9 @@ $("登录钮").addEventListener("click", 开登录);
 $("登录取消").addEventListener("click", 关登录);
 $("登录遮罩").addEventListener("click", (e) => { if (e.target === $("登录遮罩")) 关登录(); });
 $("登录提交").addEventListener("click", 提交登录);
-$("登录口令").addEventListener("keydown", (e) => { if (e.key === "Enter") 提交登录(); });
+for (const 输入框 of [$("登录用户名"), $("登录密码")]) {
+  输入框.addEventListener("keydown", (e) => { if (e.key === "Enter") 提交登录(); });
+}
 $("详情遮罩").addEventListener("click", 关详情);
 $("主题钮").addEventListener("click", () => {
   const 现 = document.documentElement.dataset.theme ||

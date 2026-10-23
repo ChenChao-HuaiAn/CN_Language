@@ -5,6 +5,11 @@
 #         队列部署面独立不依赖 board_www 在场）。
 # 用法: bash scripts/deploy_queue.sh [ssh别名]   默认 TX_01
 # 注意：本脚本只更代码+重启服务（SQLite 数据与 systemd 单元不动）。
+# ★1425 全站登录墙（2026-10-23 用户令）：systemd 单元须注入网页凭据（一次性·未配置=
+#   网页登录全拒 fail-closed）：
+#     sudo systemctl edit cn-queue  →  [Service] Environment=CN_WEB_USER=<用户名>
+#                                           Environment=CN_WEB_PASS=<密码>
+#   （机器通道 CN_QUEUE_TOKEN 照旧·daemon/CLI/integrate 不受影响；凭据不入 git）
 set -euo pipefail
 
 REMOTE="${1:-TX_01}"
@@ -12,7 +17,7 @@ REMOTE_DIR="/home/ubuntu"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
-for f in queue_service.py queue_selftest.py queue_result.py queue_shard.py queue_instances.py; do
+for f in queue_service.py queue_selftest.py queue_result.py queue_shard.py queue_instances.py web_auth.py; do
     if [ ! -f "$SCRIPT_DIR/$f" ]; then
         echo "错误: 找不到 $SCRIPT_DIR/$f" >&2
         exit 1
@@ -50,7 +55,7 @@ html = html.replace('<script src="queue.js"></script>',
                     "<script>\n" + js + "\n</script>")
 (dst / "index.html").write_text(html, encoding="utf-8")
 PY
-scp -q "$SCRIPT_DIR/queue_service.py" "$SCRIPT_DIR/queue_selftest.py" "$SCRIPT_DIR/queue_result.py" "$SCRIPT_DIR/queue_shard.py" "$SCRIPT_DIR/queue_instances.py" "$REMOTE:$REMOTE_DIR/"
+scp -q "$SCRIPT_DIR/queue_service.py" "$SCRIPT_DIR/queue_selftest.py" "$SCRIPT_DIR/queue_result.py" "$SCRIPT_DIR/queue_shard.py" "$SCRIPT_DIR/queue_instances.py" "$SCRIPT_DIR/web_auth.py" "$REMOTE:$REMOTE_DIR/"
 ssh "$REMOTE" "mkdir -p '$REMOTE_DIR/queue_www'"
 tar czf - -C "$SCRIPT_DIR/queue_www" . | ssh "$REMOTE" "tar xzf - -C '$REMOTE_DIR/queue_www'"
 scp -q "$SCRIPT_DIR/board_www/tokens.css" "$REMOTE:$REMOTE_DIR/queue_www/tokens.css"
@@ -61,12 +66,19 @@ echo "重启 cn-queue 服务 ..."
 ssh "$REMOTE" "sudo systemctl restart cn-queue"
 sleep 1.5
 
+# 1425 登录墙三态验证：页面未登录=登录页 200（含 api/login 标记）·API 无凭证=401·
+# Bearer（机器通道·令牌读本树 queue_client.json）=200
+TOKEN="$(python3 -c "import json,sys;print(json.load(open(sys.argv[1],encoding='utf-8')).get('令牌',''))" "$SCRIPT_DIR/queue_client.json" 2>/dev/null || true)"
 HTTP="$(ssh "$REMOTE" "curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8300/" || true)"
-STATE="$(ssh "$REMOTE" "curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8300/api/state" || true)"
-if [ "$HTTP" = "200" ] && [ "$STATE" = "200" ]; then
-    echo "✓ 已部署并验证（页面 200 + /api/state 200）—"
+WALL="$(ssh "$REMOTE" "curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8300/api/state" || true)"
+AUTH="$(ssh "$REMOTE" "curl -s -o /dev/null -w '%{http_code}' -H 'Authorization: Bearer $TOKEN' http://127.0.0.1:8300/api/state" || true)"
+LOGIN_MARK="$(ssh "$REMOTE" "curl -s http://127.0.0.1:8300/ | grep -c 'api/login'" || true)"
+if [ "$HTTP" = "200" ] && [ "$WALL" = "401" ] && [ "$AUTH" = "200" ] && [ "${LOGIN_MARK:-0}" != "0" ]; then
+    echo "✓ 已部署并验证（1425 登录墙三态：未登录页面=登录页 200·API 无凭证 401·Bearer 放行 200）"
     echo "  直连 http://124.222.106.84:8300/ · 网页 https://www.cn-language.com/queue/"
+    echo "  人工浏览器确认登录墙+三页签渲染（842 教训：200≠页面活着）。"
 else
-    echo "✗ 部署后本机回环探测异常（页面 ${HTTP:-无响应}·state ${STATE:-无响应}）——ssh $REMOTE 查 journalctl -u cn-queue -n 30" >&2
+    echo "✗ 部署后验证异常（页面 ${HTTP:-无}·墙 ${WALL:-无}·鉴权 ${AUTH:-无}·登录页标记 ${LOGIN_MARK:-无}）" >&2
+    echo "  期望：页面 200（登录页）·墙 401·鉴权 200·标记>0——ssh $REMOTE 查 journalctl -u cn-queue -n 30" >&2
     exit 1
 fi

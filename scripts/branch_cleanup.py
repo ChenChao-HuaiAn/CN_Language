@@ -126,12 +126,19 @@ def 台账在飞分支集() -> set | None:
 
     864 二轮：710 的看板文件在飞保护自 382 看板退位后空载（本轮实测恒 0 条），
     服务端台账 🏃 行=其正确替代数据源。地址复用 board_cli.服务地址() 权威实现
-    （CN_BOARD_URL 可覆盖）；GET 免令牌（board_cli 同口径）。
+    （CN_BOARD_URL 可覆盖）；1425 登录墙：GET 有令牌就带 Bearer。
     """
     try:
         import board_cli
         地址 = board_cli.服务地址()
-        请求 = urllib.request.Request(地址.rstrip("/") + "/api/tasks")
+        头 = {}
+        try:
+            令牌文 = board_cli.令牌()
+        except Exception:
+            令牌文 = ""
+        if 令牌文:
+            头["Authorization"] = "Bearer " + 令牌文
+        请求 = urllib.request.Request(地址.rstrip("/") + "/api/tasks", headers=头)
         with urllib.request.urlopen(请求, timeout=8) as 响应:
             数据 = json.loads(响应.read().decode("utf-8"))
         return 台账在飞分支集解析(数据.get("任务们") or [])

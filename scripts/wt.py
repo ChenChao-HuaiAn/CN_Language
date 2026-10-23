@@ -104,9 +104,9 @@ def 机名() -> str:
 
 
 def 服务调(方法: str, 路径: str, 体=None) -> dict | None:
-    """看板 API 统一调用（382）。GET 只读公开；POST 带 Bearer 令牌。
-    服务不可达返回 None——调用方一律硬拒（382 立规：任务台账唯一权威在服务端，
-    离线降级取号已废除，宁停不裂）。"""
+    """看板 API 统一调用（382）。GET/POST 有令牌就带 Bearer（1425 全站登录墙：
+    GET 亦须鉴权）。服务不可达返回 None——调用方一律硬拒（382 立规：任务台账
+    唯一权威在服务端，离线降级取号已废除，宁停不裂）。"""
     令牌文 = ""
     try:
         import intent
@@ -115,7 +115,7 @@ def 服务调(方法: str, 路径: str, 体=None) -> dict | None:
         pass
     请求 = urllib.request.Request(板服务地址() + 路径, method=方法,
         data=json.dumps(体, ensure_ascii=False).encode("utf-8") if 体 is not None else None)
-    if 令牌文 and 方法 == "POST":
+    if 令牌文:
         请求.add_header("Authorization", f"Bearer {令牌文}")
     try:
         with urllib.request.urlopen(请求, timeout=10) as r:

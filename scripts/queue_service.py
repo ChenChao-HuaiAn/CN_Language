@@ -14,7 +14,11 @@
 #   CN_DEVELOP_PLAT_SWITCH_SEC 仍无人领（平台饿死兜底）→claim 时惰性放宽 NULL。
 #   ②预验全池随机空闲（现状认领模型即语义）。③/api/state 增「池忙闲」=integrate 忙时
 #   拼车组链窗口与巡检的忙闲判定源。客户端对兜底任务传的认领限制一律忽略（服务端轮转唯一权威）。
-# API（POST 须 Bearer 令牌·GET 只读放行）：
+# API（1425 全站登录墙：GET/POST 一律须鉴权——Bearer 令牌（机器·daemon/CLI/integrate）
+#   ∨ 登录会话 cookie（网页人·用户名+密码 CN_WEB_USER/CN_WEB_PASS·web_auth 公共模块）。
+#   未鉴权 GET 页面→自包含登录页 200；未鉴权 API→401 JSON。豁免仅登录三件
+#   POST /api/login、POST /api/logout、GET /api/me。回环消费（源分支已并入→8301 台账）
+#   与全部出站已带 Bearer（1425 同批））：
 #   GET  /            门禁窗口（842 重构：queue_www 墨韵 UI·三页签+失败详情+归因）
 #   GET  /queue.css|/queue.js|/tokens.css  静态资源（回静态白名单·tokens 回退 board_www）
 #   GET  /api/state   {队列:[…], 门禁最近:[…], 预验任务:[…], 池忙闲:{…}}
@@ -39,6 +43,11 @@
 #   POST /api/instance_ping {runner,平台?,树头?,daemon指纹?}  1392：实例空闲报活+版本指纹
 #                                                 （daemon 空闲也每 60s 报·旧 daemon 不发=渐进
 #                                                 部署服务端照常——活跃度退化为最后 claim/complete）
+# 1425 网页登录（web_auth 公共模块·照看板 430/1425 口径）：
+#   POST /api/login {用户名,密码}  正确→签发 HttpOnly 会话 cookie（cn_queue_session·
+#                                  SQLite 持久·7 天）；错凭据 401+小睡防爆破
+#   POST /api/logout               注销当前会话+清 cookie
+#   GET  /api/me                   {已登录:bool}
 #   GET  /api/state「实例动态」=1392 实例页签数据源（逐实例 执行中/心跳超时/疑似离线/空闲
 #                                                 +当前任务+最近完成+版本·实现在 queue_instances）。
 #       975（87 篇反思①·863 五连静默机械化）：结果含认领失败形状（步骤.同步.rc 非零
@@ -47,7 +56,8 @@
 #       /api/task_result 详情流出（8300 门禁窗口池页签徽标面）。
 #       825 残余 A：完成红一律落「失败原因」=首因摘要（红步骤名+失败用例名——真实红
 #       显形：构建/单测/e2e 红不再只有 rc；绿=1/重置重跑清 NULL）。
-# 部署：/etc/systemd/system/cn-queue.service（Environment= 端口/令牌/DB 路径）。
+# 部署：/etc/systemd/system/cn-queue.service（Environment= 端口/令牌/DB 路径/
+#   CN_WEB_USER/CN_WEB_PASS 网页凭据——未配置=网页登录全拒 fail-closed 1425）。
 # 自检：python3 queue_service.py --selftest（842 起实现体外迁=queue_selftest.py·惰性导入）。
 
 import json
@@ -71,6 +81,7 @@ from urllib.parse import urlparse
 import queue_result
 import queue_shard
 import queue_instances
+import web_auth              # 网页登录墙公共模块（1425·凭据/会话/登录页）
 
 # ===== 可调常量 =====
 端口 = int(os.environ.get("CN_QUEUE_PORT", "8300"))
@@ -83,6 +94,8 @@ db路径 = os.environ.get("CN_QUEUE_DB",
 集成中超时秒 = int(os.environ.get("CN_QUEUE_INTEGRATE_STALE_SEC", "7200"))   # 集成中无更新超此秒数=降级已踢出（456·0=禁用）
 排队超时秒 = int(os.environ.get("CN_QUEUE_QUEUED_STALE_SEC", "3600"))   # 562：排队行无写活动超此秒数=降级已踢出（报名会话失联孤儿·0=禁用）
 看板服务地址 = os.environ.get("CN_BOARD_URL", "http://127.0.0.1:8301")   # 562：已并入检测数据源（任务台账·同机默认）
+会话cookie = web_auth.队列cookie名   # 1425：网页登录会话 cookie 名（与看板 8301 异名——
+                                     #   Caddy /board/ 与 /queue/ 同域同名 cookie 会互顶）
 # 562：并入检测退避窗口——覆盖「不可达」（URLError/timeout）与「HTTPError 非 404」（5xx/401
 #   等看板病态；404=任务不在台账的正常空结果免退避）。检测在 写锁 内同步调用（enqueue/claim
 #   热路径·562 修复审查 P2-2）——退避窗口内直接核不了=放行，防「端口在但持续 500」时
@@ -215,6 +228,7 @@ def 建库() -> sqlite3.Connection:
     queue_instances.建实例表(con)   # 1392：实例动态表（独立新表·不碰既有表结构）
     queue_instances.回填种子(con, 时区时刻)   # 1392：部署首屏种子（存量认领者回填·服务启动一次）
     queue_instances.校正种子活跃(con)        # #1402：存量种子「现在」虚值按最后完成时刻修正
+    web_auth.建会话表(con)   # 1425：网页登录会话表（同构 board_service 430 表）
     con.commit()
     return con
 
@@ -328,8 +342,12 @@ def 源分支已并入(源分支: str) -> bool | None:
     if time.time() - _并入检测上次失败[0] < 并入检测退避秒:
         return None   # 退避窗口（上一次故障）——直接放行
     try:
-        with urllib.request.urlopen(看板服务地址.rstrip("/") + "/api/task/" + m.group(1),
-                                    timeout=3) as 响应:
+        # 1425：看板全站登录墙后 GET 亦须鉴权——CN_QUEUE_TOKEN 与 CN_BOARD_TOKEN
+        # 同值（systemd 同源配置·430「queue_client.json 同源」先例），直接复用本服务令牌。
+        请求 = urllib.request.Request(
+            看板服务地址.rstrip("/") + "/api/task/" + m.group(1),
+            headers=({"Authorization": "Bearer " + 令牌} if 令牌 else {}))
+        with urllib.request.urlopen(请求, timeout=3) as 响应:
             任务 = json.loads(响应.read().decode("utf-8")).get("任务") or {}
     except Exception as e:
         if 并入检测退避否(e):   # 仅 404 免退避·其余全退避（审查 P2-2·见函数注释）
@@ -757,21 +775,64 @@ class 处理器(BaseHTTPRequestHandler):
     def log_message(self, fmt, *args):
         print("[%s] %s" % (时区时刻(), fmt % args), flush=True)
 
-    def 回JSON(self, obj: dict, 码: int = 200):
+    def 回JSON(self, obj: dict, 码: int = 200, 头们: list = None):
         体 = json.dumps(obj, ensure_ascii=False).encode("utf-8")
         self.send_response(码)
         self.send_header("Content-Type", "application/json; charset=utf-8")
+        for k, v in (头们 or []):    # 1425：登录/登出 Set-Cookie 头
+            self.send_header(k, v)
         self.send_header("Content-Length", str(len(体)))
         self.end_headers()
         self.wfile.write(体)
 
+    def 回HTML(self, 码: int, 文本: str, 头们: list = None):
+        """1425：登录页响应（自包含单文件·deny 嵌框防点击劫持）。"""
+        体 = 文本.encode("utf-8")
+        self.send_response(码)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("X-Frame-Options", "DENY")
+        for k, v in (头们 or []):
+            self.send_header(k, v)
+        self.send_header("Content-Length", str(len(体)))
+        self.end_headers()
+        self.wfile.write(体)
+
+    def _取会话id(self) -> str:
+        from http.cookies import SimpleCookie
+        蛋糕 = SimpleCookie(self.headers.get("Cookie", ""))
+        项 = 蛋糕.get(会话cookie)
+        return 项.value if 项 else ""
+
     def 鉴权通过(self) -> bool:
-        # 561：fail-closed（对齐看板 430）——令牌未配置=写操作全拒（旧址 令牌=="" 全放行）
-        return bool(令牌) and self.headers.get("Authorization", "") == "Bearer " + 令牌
+        """561：fail-closed（对齐看板 430）——令牌未配置=机器通道全拒（旧址 令牌==""
+        全放行）。1425：扩展双通道——Bearer 令牌（机器·daemon/CLI/integrate）
+        ∨ 登录会话 cookie（网页人·用户名+密码签发），GET/POST 同一套。"""
+        if 令牌 and self.headers.get("Authorization", "") == "Bearer " + 令牌:
+            return True
+        return web_auth.会话合法(con, 写锁, self._取会话id())
+
+    def _登录(self, 体: dict):
+        """网页登录（1425·web_auth.校验凭据：CN_WEB_USER/CN_WEB_PASS·fail-closed+
+        小睡防爆破+compare_digest 防时序）→签发 HttpOnly 会话 cookie。"""
+        if not web_auth.校验凭据(str(体.get("用户名", "")), str(体.get("密码", ""))):
+            return self.回JSON({"ok": False, "说明": "用户名或密码不符"}, 401)
+        sid = web_auth.签会话(con, 写锁)
+        return self.回JSON({"ok": True}, 头们=[web_auth.set_cookie头(sid, 会话cookie)])
+
+    def _登出(self):
+        web_auth.销会话(con, 写锁, self._取会话id())
+        return self.回JSON({"ok": True}, 头们=[web_auth.清_cookie头(会话cookie)])
 
     def do_GET(self):
         from urllib.parse import parse_qs
         路径 = urlparse(self.path).path
+        if 路径 == "/api/me":                       # 登录态查询豁免（无敏感数据）
+            return self.回JSON({"已登录": self.鉴权通过()})
+        if not self.鉴权通过():                     # 1425 全站登录墙（原「GET 只读放行」废除）
+            if 路径.startswith("/api/"):
+                return self.回JSON({"ok": False,
+                                    "说明": "未登录或令牌不符（1425 登录墙·GET 亦须鉴权）"}, 401)
+            return self.回HTML(200, web_auth.登录页HTML("CN · 门禁窗口"))
         if 路径 == "/api/state":
             with 写锁:
                 回收死行()   # 456+562：批主/报名会话死亡后无写活动，靠轮询/网页查看触发回收
@@ -836,8 +897,13 @@ class 处理器(BaseHTTPRequestHandler):
         self.回JSON({"ok": False, "说明": "未知路径"}, 404)
 
     def do_POST(self):
+        路径 = urlparse(self.path).path
+        if 路径 == "/api/login":                    # 登录豁免鉴权（1425·墙的钥匙）
+            return self._登录(self._读JSON体())
+        if 路径 == "/api/logout":                   # 登出无破坏性·同豁免
+            return self._登出()
         if not self.鉴权通过():
-            return self.回JSON({"ok": False, "说明": "令牌无效"}, 401)
+            return self.回JSON({"ok": False, "说明": "未登录或令牌不符（1425 登录墙）"}, 401)
         名 = urlparse(self.path).path.rsplit("/", 1)[-1]
         长度 = int(self.headers.get("Content-Length", "0"))
         try:
@@ -849,6 +915,15 @@ class 处理器(BaseHTTPRequestHandler):
         except Exception as e:
             self.回JSON({"ok": False, "说明": repr(e)}, 500)
 
+    def _读JSON体(self) -> dict:
+        长度 = int(self.headers.get("Content-Length", "0") or "0")
+        if 长度 <= 0 or 长度 > 1 << 20:
+            return {}
+        try:
+            return json.loads(self.rfile.read(长度).decode("utf-8"))
+        except (ValueError, UnicodeDecodeError):
+            return {}
+
 
 if __name__ == "__main__":
     # 842：自检实现体外迁 queue_selftest.py（先例=board_selftest.py 405/
@@ -857,7 +932,9 @@ if __name__ == "__main__":
         import queue_selftest
         queue_selftest.跑()
 
-    print("[启动] 端口=%d db=%s 令牌=%s 任务池心跳超时=%ds"
-          % (端口, db路径, "已设" if 令牌 else "未设（写操作全拒·fail-closed 561）", 心跳超时秒),
+    print("[启动] 端口=%d db=%s 令牌=%s 网页凭据=%s 任务池心跳超时=%ds"
+          % (端口, db路径, "已设" if 令牌 else "未设（机器通道全拒·fail-closed 561）",
+             "已设" if (os.environ.get("CN_WEB_USER") and os.environ.get("CN_WEB_PASS"))
+             else "未设（网页登录全拒·fail-closed 1425）", 心跳超时秒),
           flush=True)
     ThreadingHTTPServer(("0.0.0.0", 端口), 处理器).serve_forever()

@@ -245,10 +245,18 @@ def 冲突标记检查(文件们: list[str]) -> str | None:
 
 
 def 板查询(路径: str):
-    """看板服务只读查询（382）——失败返回 None 不阻断集成。"""
+    """看板服务只读查询（382）——失败返回 None 不阻断集成。
+    1425 全站登录墙：GET 亦须鉴权——有令牌就带 Bearer（intent.鉴权头 统一口径）。"""
     import urllib.request
     try:
-        with urllib.request.urlopen(板服务URL.rstrip("/") + 路径, timeout=4) as 响应:
+        头 = {}
+        try:
+            import intent
+            头 = intent.鉴权头()
+        except Exception:
+            pass
+        with urllib.request.urlopen(urllib.request.Request(
+                板服务URL.rstrip("/") + 路径, headers=头), timeout=4) as 响应:
             return json.loads(响应.read().decode("utf-8"))
     except Exception:
         return None

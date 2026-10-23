@@ -87,11 +87,28 @@ def 证据片段(文本, 上限=证据上限):
 
 # ---- HTTP 工具 ----
 
+def _鉴权头() -> dict:
+    """1425 全站登录墙：看板(8301)/队列(8300) GET 亦须鉴权——令牌链=环境变量
+    CN_BOARD_TOKEN → intent.鉴权头()（本树 queue_client.json·556 统一兜底链）；
+    皆空=裸请求（401 显形为检查红·不静默放行）。"""
+    t = os.environ.get("CN_BOARD_TOKEN", "").strip()
+    if t:
+        return {"Authorization": "Bearer " + t}
+    try:
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        import intent
+        return intent.鉴权头()
+    except Exception:
+        return {}
+
+
 def 取地址(基址, 路径, 超时秒=默认超时秒):
     """GET 一个路径；返回 (码, 文本, 错因, 毫秒)。码=0 表示连接层失败（错因非空）。
     HTTPError（4xx/5xx）按「正常响应」返回——错误码是检查判据的一部分。"""
     地址 = 基址.rstrip("/") + 路径
-    请求 = urllib.request.Request(地址, headers={"User-Agent": "cn-infra-healthcheck/728m"})
+    头 = {"User-Agent": "cn-infra-healthcheck/728m"}
+    头.update(_鉴权头())   # 1425：有令牌就带 Bearer（登录墙后 GET 亦须鉴权）
+    请求 = urllib.request.Request(地址, headers=头)
     起 = time.monotonic()
     try:
         with urllib.request.urlopen(请求, timeout=超时秒) as 响应:

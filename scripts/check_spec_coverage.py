@@ -101,7 +101,16 @@ def parse_map():
     拉取成功落本地缓存；服务不可达降级读最后缓存（黄字）；两者皆无退出 2。"""
     体 = None
     try:
-        with urllib.request.urlopen(SRC_API, timeout=8) as r:
+        # 1425 全站登录墙：GET 亦须鉴权——有令牌就带 Bearer（intent.鉴权头 统一口径·
+        # import 失败=裸请求走下方 401→降级缓存路径·L1 不红只黄）
+        头 = {}
+        try:
+            import intent
+            头 = intent.鉴权头()
+        except Exception:
+            pass
+        with urllib.request.urlopen(urllib.request.Request(SRC_API, headers=头),
+                                    timeout=8) as r:
             体 = json.loads(r.read().decode("utf-8"))
         atomic_json.写(CACHE, 体)   # 556：原子写（临时文件+os.replace·治半写损坏）
     except OSError as e:

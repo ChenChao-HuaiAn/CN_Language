@@ -12,6 +12,7 @@
 #   495 起亦可直接 python3 board_selftest.py（裸跑入口·等价）。
 
 import json
+import os
 import threading
 import time
 import urllib.request
@@ -83,6 +84,9 @@ def 自检() -> int:
     全局连接 = 服务.连接
     服务.连接 = 服务.建库(":memory:")
     服务.失联秒 = 60
+    # 1425：网页凭据进程内注入（web_auth 函数内现读环境变量·随设随生效）
+    os.environ["CN_WEB_USER"] = "自测员"
+    os.environ["CN_WEB_PASS"] = "自测·密码1"
     实例 = ThreadingHTTPServer(("127.0.0.1", 0), 服务.处理器)
     端 = 实例.server_address[1]
     线程 = threading.Thread(target=实例.serve_forever, daemon=True)
@@ -248,9 +252,11 @@ def 自检() -> int:
         同话 = [i for i in r["意图们"] if i["对话id"] == "c9"]
         签("561 注销精确到 (机器,对话id)：只销甲机行·乙机行留存",
            len(同话) == 1 and 同话[0]["机器"] == "乙机名")
-        好, 结果 = 取响应(基址 + "/", lambda r: (响应码(r), r.read().decode("utf-8")))
+        好, 结果 = 取响应(urllib.request.Request(
+            基址 + "/", headers={"Authorization": "Bearer test-token-308a"}),
+            lambda r: (响应码(r), r.read().decode("utf-8")))
         首页码, 页 = 结果 if 好 else (0, "")      # 495：断连=状态 0·签自然失败
-        签("看板页 200 且静态服务（board_www/index.html）",
+        签("看板页 200 且静态服务（board_www/index.html·1425 墙内带令牌）",
            首页码 == 200 and "任务看板" in 页)
         签("382 页面子页签+详情面板+新建表单齐备",
            all(k in 页 for k in ("当前在飞", "远端在飞分支", "可认领任务", "待裁决",
@@ -262,11 +268,13 @@ def 自检() -> int:
            'id="自动刷新"' in 页 and 'id="刷新钮"' in 页)
         签("388 三板块全文直读结构齐备（交接流/教训流/覆盖表）",
            all(k in 页 for k in ('id="交接流"', 'id="教训流"', 'id="覆盖流"', 'id="豁免流"')))
-        签("430 登录 UI 齐备（登录钮+口令窗+提交）",
-           all(k in 页 for k in ('id="登录钮"', 'id="登录遮罩"', 'id="登录口令"',
-                                 'id="登录提交"', 'type="password"')))
-        好, CSS码 = 取响应(基址 + "/board.css", 响应码)   # 495：连接层异常重试一次
-        签("静态 board.css 200", 好 and CSS码 == 200)
+        签("430/1425 登录 UI 齐备（登录钮+用户名/密码窗+提交）",
+           all(k in 页 for k in ('id="登录钮"', 'id="登录遮罩"', 'id="登录用户名"',
+                                 'id="登录密码"', 'id="登录提交"', 'type="password"')))
+        好, CSS码 = 取响应(urllib.request.Request(
+            基址 + "/board.css", headers={"Authorization": "Bearer test-token-308a"}),
+            响应码)   # 495：连接层异常重试一次
+        签("静态 board.css 200（1425 墙内带令牌）", 好 and CSS码 == 200)
         # 744 编号权威收权（2026-10-14 用户令）：claim_number 收缩为纯视野记账——
         # 发号/核对通道废除（发号只走 task_create/case_number·服务端顺序发放）
         码, r = 调("POST", "/api/claim_number", {"机器": "甲机", "上报者": "甲机-主树",
@@ -647,19 +655,37 @@ def 自检() -> int:
         签("471 已裁决件禁删 409（终态留痕）", 码 == 409)
         码, r = 调("POST", "/api/adjudication_delete", {"号": "802"})
         签("471 重复删除 404（反态）", 码 == 404)
-        # —— 430 登录鉴权：口令登录→会话 cookie→写放行→登出失效（正反两态）——
+        # —— 430/1425 登录鉴权：用户名+密码登录→会话 cookie→写放行→登出失效（正反两态）
         码, r = 调("POST", "/api/adjudicate", {"裁决们": []}, 带令牌=False)
         签("430 裁决接口无凭证 401（裁决仅作者·用户令）", 码 == 401)
-        码, r = 调("POST", "/api/login", {"口令": "错口令"}, 带令牌=False)
-        签("430 登录：错口令 401（反态）", 码 == 401)
+        # —— 1425 全站登录墙：GET 亦须鉴权（原「GET 只读放行」废除·正反两态）——
+        码, r = 调("GET", "/api/tasks", 带令牌=False)
+        签("1425 无凭证 GET API 401（API 墙）", 码 == 401)
+        好, 墙页 = 取响应(基址 + "/", lambda r: (响应码(r), r.read().decode("utf-8")))
+        墙码, 墙体 = 墙页 if 好 else (0, "")
+        签("1425 无凭证 GET / →自包含登录页 200（有表单·无业务数据·零外部资源）",
+           墙码 == 200 and "api/login" in 墙体 and "当前在飞" not in 墙体
+           and "src=" not in 墙体)
+        码, r = 调("POST", "/api/login", {"用户名": "自测员", "密码": "错的"},
+                  带令牌=False)
+        签("1425 登录：错密码 401（反态）", 码 == 401)
         登请求 = urllib.request.Request(基址 + "/api/login", method="POST",
-            data=json.dumps({"口令": "test-token-308a"}, ensure_ascii=False).encode("utf-8"))
+            data=json.dumps({"用户名": "自测员", "密码": "自测·密码1"},
+                            ensure_ascii=False).encode("utf-8"))
         服务.令牌 = "test-token-308a"
         好, 蛋糕 = 取响应(登请求, lambda r: r.headers.get("Set-Cookie", ""))
         蛋糕 = 蛋糕 if 好 else ""            # 495：断连=空 cookie·签自然失败
-        签("430 登录：正口令 200+HttpOnly 会话 cookie",
+        签("1425 登录：对凭据 200+HttpOnly 会话 cookie",
            "cn_board_session=" in 蛋糕 and "HttpOnly" in 蛋糕)
         会话id = 蛋糕.split(";")[0].split("=", 1)[-1]   # 495：空 cookie 兜底不索引炸
+        好, 内页 = 取响应(urllib.request.Request(
+            基址 + "/", headers={"Cookie": 蛋糕}),
+            lambda r: (响应码(r), r.read().decode("utf-8")))
+        内码, 内体 = 内页 if 好 else (0, "")
+        签("1425 会话 cookie 过墙：GET / →业务页（看板数据页）",
+           内码 == 200 and "当前在飞" in 内体 and "api/login" not in 内体)
+        码, r = 调("GET", "/api/tasks", 带令牌=False, cookie=蛋糕)
+        签("1425 会话 cookie 过墙：GET /api/tasks 200", 码 == 200)
         码, r = 调("POST", "/api/intent", {"机器": "网页客", "对话id": "w1"},
                   带令牌=False, cookie=蛋糕)
         签("430 会话 cookie 写操作放行（无 Bearer）", 码 == 200)
@@ -702,6 +728,8 @@ def 自检() -> int:
     finally:
         实例.shutdown()
         服务.连接 = 全局连接
+        os.environ.pop("CN_WEB_USER", None)    # 1425：凭据出栈还原进程环境
+        os.environ.pop("CN_WEB_PASS", None)
     print(f"自检 {len(失败们)} 失败" if 失败们 else "自检全绿")
     return 1 if 失败们 else 0
 

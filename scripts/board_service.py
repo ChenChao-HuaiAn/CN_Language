@@ -52,15 +52,17 @@
 #                              已裁决=终态留痕 409 禁删·成功打 journal 业务日志·470）
 #   GET  /api/adjudications   全量裁决项（附裁决记录·待裁决在前）
 # 430 登录鉴权（2026-10-11 用户令「必须只有作者才能裁决」·网页裁决系统安全收口）：
-#   POST /api/login   {口令}   网页管理员登录——口令与 CN_BOARD_TOKEN 同源（单一权威），
-#                              正确则签发 HttpOnly 会话 cookie（SameSite=Lax·7 天，
-#                              SQLite 持久·重启不掉登录态）；错口令 401+小睡防爆破
-#   POST /api/logout           注销当前会话+清 cookie
-#   GET  /api/me               {已登录:bool}——前端恢复登录态 UI
 #   写通道鉴权=Bearer 令牌（CLI/脚本·queue_client.json 同源）∨ 登录会话 cookie（网页）。
 #   ★令牌未配置=全部写操作拒绝（fail-closed）——根治旧「未配置则回环放行」：
 #     Caddy 反代下 client_address 恒为 127.0.0.1，来源判断在反代场景完全失真，
 #     一旦 systemd 环境丢失令牌即公网裸奔（430 立案根因）。
+# 1425 全站登录墙（2026-10-23 用户令「看板/云端测试网页不得外人可见」·web_auth 公共模块）：
+#   GET 亦须鉴权（原「GET 只读放行」废除）——Bearer 令牌（机器）∨ 会话 cookie（网页人）。
+#   网页人通道=用户名+密码（CN_WEB_USER/CN_WEB_PASS·systemd 注入不入 git·web_auth
+#   fail-closed：凭据未配置=登录全拒）；未鉴权 GET 页面→自包含登录页 200（web_auth）；
+#   未鉴权 GET /api/*→401 JSON。豁免仅登录三件：POST /api/login（{用户名,密码}签会话·
+#   不再收 430 旧「口令」）、GET /api/me、POST /api/logout。
+#   CLI/脚本 GET 已全面补 Bearer（1425 同批·有令牌就带）——CI daemon 零影响（只 POST 带令牌）。
 # 过期（492 多信号活跃·用户裁决）：活跃信号=会话心跳 ∨ 在做分支 sha 推进（TX_01 gitcron
 #   每 3 分钟 ls-remote 实测·同分支 sha 变化=有新提交=任务在动）。活跃断 CN_INTENT_STALE_SEC
 #   （默认 900s）→ 失联态（行保留·UI 灰显+失联徽章）；超 CN_INTENT_ZOMBIE_SEC（默认 24h）
@@ -93,6 +95,7 @@ import board_tasks as 台账   # 任务台账模块（382·发号/CRUD/状态机
 import board_ci as 阶段      # CI 阶段推导模块（814·生命周期徽标·直读 :8300 三源派生）
 import board_docs as 文档    # 交接/教训/规范覆盖模块（384·文档上服务器二期）
 import board_adjudication as 裁决  # 待裁决项模块（403·网页裁决系统）
+import web_auth              # 网页登录墙公共模块（1425·凭据/会话/登录页）
 
 # ===== 可调常量 =====
 端口 = int(os.environ.get("CN_BOARD_PORT", "8301"))
@@ -103,8 +106,8 @@ db路径 = os.environ.get("CN_BOARD_DB",
 僵尸疑秒 = int(os.environ.get("CN_INTENT_ZOMBIE_SEC", str(24 * 3600)))  # 静默超此秒数=僵尸疑（UI 沉底黄签·不删行·492 照 392 降权模式）
 快照保留秒 = 3600                                             # 在飞分支/021 快照超过此秒数不再展示（陈旧数据防误导）
 在飞保留条数 = 60                                             # 在飞分支表裁剪上限
-会话秒 = 7 * 24 * 3600                                        # 登录会话有效期（430·7 天后须重登）
-会话cookie = "cn_board_session"                               # 登录会话 cookie 名（HttpOnly·JS 不可读）
+会话秒 = web_auth.会话秒                                      # 登录会话有效期（430·1425 归一 web_auth）
+会话cookie = web_auth.看板cookie名                            # 登录会话 cookie 名（HttpOnly·JS 不可读）
 
 写锁 = threading.Lock()          # SQLite 写串行化（读靠 WAL 并发·同 queue_service）
 时刻 = lambda: datetime.now().strftime("%m-%d %H:%M:%S")
@@ -352,8 +355,10 @@ def 聚合视图() -> dict:
 
 
 class 处理器(BaseHTTPRequestHandler):
-    """GET 只读放行；POST 三类：login/logout 豁免鉴权，其余须 Bearer 令牌（CLI/脚本）
-    或登录会话 cookie（网页·430）；令牌未配置=全拒 fail-closed（不再按来源回环放行）。"""
+    """1425 全站登录墙：GET/POST 一律须鉴权（Bearer 令牌=机器通道 ∨ 登录会话
+    cookie=网页人通道）；豁免仅登录三件（POST /api/login、POST /api/logout、
+    GET /api/me）。未鉴权 GET 页面→自包含登录页 200；未鉴权 GET /api/*→401 JSON；
+    POST 其余→401。令牌未配置=机器通道全拒（fail-closed·430）。"""
 
     # 454：每请求读写超时 30s——慢客户端（网页自动刷新·网络切换 TCP 零窗口）写响应
     # 阻塞时该线程持全局 SQLite 连接锁，无超时=全服黑洞（Send-Q 102KB 堆积实证）；
@@ -394,6 +399,18 @@ class 处理器(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(体)
 
+    def _回HTML(self, 码: int, 文本: str, 头们: list = None):
+        """1425：登录页响应（自包含单文件·deny 嵌框防点击劫持）。"""
+        体 = 文本.encode("utf-8")
+        self.send_response(码)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("X-Frame-Options", "DENY")
+        for k, v in (头们 or []):
+            self.send_header(k, v)
+        self.send_header("Content-Length", str(len(体)))
+        self.end_headers()
+        self.wfile.write(体)
+
     def _读JSON体(self) -> dict:
         长度 = int(self.headers.get("Content-Length", "0") or "0")
         if 长度 <= 0 or 长度 > 1 << 20:
@@ -409,12 +426,7 @@ class 处理器(BaseHTTPRequestHandler):
         return 项.value if 项 else ""
 
     def _会话合法(self) -> bool:
-        sid = self._取会话id()
-        if not sid:
-            return False
-        with 写锁:
-            行 = 连接.execute("SELECT 时戳 FROM 会话 WHERE 会话id=?", (sid,)).fetchone()
-        return bool(行) and 行[0] >= time.time() - 会话秒
+        return web_auth.会话合法(连接, 写锁, self._取会话id())   # 1425：归一 web_auth
 
     def _已鉴权(self) -> bool:
         """写通道鉴权（430）：Bearer 令牌（CLI/脚本）∨ 登录会话 cookie（网页）。
@@ -427,32 +439,19 @@ class 处理器(BaseHTTPRequestHandler):
         return self._会话合法()
 
     def _登录(self, 体: dict):
-        """网页管理员登录（430）：口令与 CN_BOARD_TOKEN 同源（单一权威）→签发
-        HttpOnly 会话 cookie（JS 不可读·SameSite=Lax·SQLite 持久重启不掉）。
-        错口令小睡防在线爆破；compare_digest 防时序侧信道。"""
-        口令 = str(体.get("口令", ""))
-        # compare_digest 须比字节（str 版拒非 ASCII——口令含中文时原样比较会 TypeError 断连）
-        if not 令牌 or not secrets.compare_digest(口令.encode("utf-8"), 令牌.encode("utf-8")):
-            time.sleep(0.6)
-            return self._回JSON(401, {"错误": "口令不符"})
-        sid = secrets.token_urlsafe(32)
-        now = time.time()
-        with 写锁:
-            连接.execute("DELETE FROM 会话 WHERE 时戳<?", (now - 会话秒,))   # 过期惰性清
-            连接.execute("INSERT INTO 会话(会话id,时戳) VALUES(?,?)", (sid, now))
-            连接.commit()
-        return self._回JSON(200, {"好": True}, 头们=[(
-            "Set-Cookie",
-            f"{会话cookie}={sid}; Max-Age={会话秒}; Path=/; HttpOnly; SameSite=Lax")])
+        """网页登录（1425 改用户名+密码·web_auth.校验凭据：CN_WEB_USER/CN_WEB_PASS·
+        fail-closed+小睡防爆破+compare_digest 防时序）→签发 HttpOnly 会话 cookie
+        （JS 不可读·SameSite=Lax·SQLite 持久重启不掉·430 会话体系延续）。"""
+        用户名 = str(体.get("用户名", ""))
+        密码 = str(体.get("密码", ""))
+        if not web_auth.校验凭据(用户名, 密码):
+            return self._回JSON(401, {"错误": "用户名或密码不符"})
+        sid = web_auth.签会话(连接, 写锁)
+        return self._回JSON(200, {"好": True}, 头们=[web_auth.set_cookie头(sid)])
 
     def _登出(self):
-        sid = self._取会话id()
-        if sid:
-            with 写锁:
-                连接.execute("DELETE FROM 会话 WHERE 会话id=?", (sid,))
-                连接.commit()
-        return self._回JSON(200, {"好": True}, 头们=[(
-            "Set-Cookie", f"{会话cookie}=; Max-Age=0; Path=/; HttpOnly; SameSite=Lax")])
+        web_auth.销会话(连接, 写锁, self._取会话id())
+        return self._回JSON(200, {"好": True}, 头们=[web_auth.清_cookie头()])
 
     静态目录 = Path(__file__).resolve().parent / "board_www"
     静态类型 = {".html": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8",
@@ -473,12 +472,16 @@ class 处理器(BaseHTTPRequestHandler):
 
     def do_GET(self):
         路径 = urlparse(self.path).path
+        if 路径 == "/api/me":                       # 登录态查询豁免（前端恢复登录态·无敏感数据）
+            return self._回JSON(200, {"已登录": self._已鉴权()})
+        if not self._已鉴权():                      # 1425 全站登录墙（原「GET 只读放行」废除）
+            if 路径.startswith("/api/"):
+                return self._回JSON(401, {"错误": "未登录或令牌不符（GET 亦须登录·1425 登录墙）"})
+            return self._回HTML(200, web_auth.登录页HTML("CN · 任务看板"))
         if 路径 in ("/", "/board"):
             return self._回静态("index.html")
         if 路径 in ("/board.css", "/board.js", "/tokens.css"):
             return self._回静态(路径.lstrip("/"))
-        if 路径 == "/api/me":
-            return self._回JSON(200, {"已登录": self._已鉴权()})
         if 路径 == "/api/intents":
             with 写锁:
                 return self._回JSON(200, {"意图们": 全部意图(), "失联秒": 失联秒})
@@ -845,8 +848,11 @@ def main() -> int:
         import board_selftest    # 405 拆分：自检实现外迁（延迟导入避免环）
         return board_selftest.自检()
     if not 令牌:
-        print("警告：CN_BOARD_TOKEN 未配置——登录与全部写操作将被拒绝"
+        print("警告：CN_BOARD_TOKEN 未配置——机器通道（Bearer）全拒"
               "（fail-closed·430 根治回环放行）", flush=True)
+    if not (os.environ.get("CN_WEB_USER") and os.environ.get("CN_WEB_PASS")):
+        print("警告：CN_WEB_USER/CN_WEB_PASS 未配置——网页登录全拒（fail-closed·"
+              "1425 登录墙）", flush=True)
     服务 = ThreadingHTTPServer(("0.0.0.0", 端口), 处理器)
     print(f"board_service 监听 :{端口}（失联阈值 {失联秒}s·db={db路径}）", flush=True)
     服务.serve_forever()

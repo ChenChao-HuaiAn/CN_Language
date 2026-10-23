@@ -46,9 +46,17 @@ from board_tasks import 僵尸疑天数   # 392：僵尸疑阈值提示（与服
 
 
 def 服务调(路径: str):
-    """GET 只读查询——不可达返回 None（调用方按场景降级/报错）。"""
+    """GET 只读查询——不可达返回 None（调用方按场景降级/报错）。
+    1425 全站登录墙：GET 亦须鉴权——有令牌就带 Bearer（556 统一兜底链）。"""
     try:
         请求 = urllib.request.Request(板服务地址 + 路径, method="GET")
+        try:
+            import intent
+            令牌文 = intent.读令牌()
+        except Exception:
+            令牌文 = ""
+        if 令牌文:
+            请求.add_header("Authorization", f"Bearer {令牌文}")
         with urllib.request.urlopen(请求, timeout=8) as r:
             return json.loads(r.read().decode("utf-8"))
     except Exception:

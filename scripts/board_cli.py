@@ -62,10 +62,11 @@ def 机器名(显式: str = "") -> str:
 
 
 def 调服务(方法: str, 路径: str, 体=None, 超时=15):
-    """返回 (HTTP码, 响应dict)。写操作带 Bearer；服务不可达抛 OSError 由调用方兜底。"""
+    """返回 (HTTP码, 响应dict)。GET/POST 有令牌就带 Bearer（1425 全站登录墙：
+    GET 亦须鉴权·客户端统一「有令牌就带」口径）；服务不可达抛 OSError 由调用方兜底。"""
     请求 = urllib.request.Request(服务地址() + 路径, method=方法,
         data=json.dumps(体, ensure_ascii=False).encode("utf-8") if 体 is not None else None)
-    if 令牌() and 方法 == "POST":
+    if 令牌():
         请求.add_header("Authorization", f"Bearer {令牌()}")
     请求.add_header("Content-Type", "application/json")
     try:

@@ -69,12 +69,16 @@ def 调(操作, 数据, 期望ok=True):
 
 
 def 取(路径):
-    with urllib.request.urlopen(基址 + 路径, timeout=5) as r:
+    # 1425 全站登录墙：GET 亦须鉴权——测试实例凭 CN_QUEUE_TOKEN 走机器通道
+    请求 = urllib.request.Request(基址 + 路径,
+                                  headers={"Authorization": "Bearer " + 令牌})
+    with urllib.request.urlopen(请求, timeout=5) as r:
         return json.loads(r.read().decode("utf-8"))
 
 
 def main() -> int:
     环境 = dict(os.environ, CN_QUEUE_PORT=str(端口), CN_QUEUE_TOKEN=令牌,
+               CN_WEB_USER="池自测", CN_WEB_PASS="池自测·密码1",        # 1425：网页凭据（fail-closed 不缺配）
                CN_QUEUE_DB=db文件, CN_TASK_STALE_SEC="3",   # 心跳超时缩到 3s 便于测回收
                CN_QUEUE_QUEUED_STALE_SEC="3",               # 562：排队回收阈值缩到 3s
                CN_BOARD_URL=看板基址)                        # 562：已并入检测指向 mock 台账
@@ -107,7 +111,12 @@ def main() -> int:
         except urllib.error.HTTPError as e:
             断言(e.code == 401, "无令牌 POST 被拒 401")
         取("/api/state")
-        断言(True, "GET /api/state 无令牌仍放行（只读面不受影响）")
+        # 1425：GET 亦须鉴权（原「只读面无令牌放行」废除）——无令牌裸 GET=401
+        try:
+            urllib.request.urlopen(基址 + "/api/state", timeout=5)
+            断言(False, "无令牌 GET 应 401（1425 登录墙）")
+        except urllib.error.HTTPError as e:
+            断言(e.code == 401, "无令牌 GET /api/state 被拒 401（1425 登录墙·正反两态）")
         端口2 = 18301
         环境2 = dict(os.environ, CN_QUEUE_PORT=str(端口2), CN_QUEUE_DB=db文件 + ".2")
         环境2.pop("CN_QUEUE_TOKEN", None)
@@ -119,6 +128,8 @@ def main() -> int:
                 try:
                     urllib.request.urlopen("http://127.0.0.1:%d/api/state" % 端口2, timeout=2).read()
                     break
+                except urllib.error.HTTPError:
+                    break   # 1425：401=服务已起且登录墙在工作（无令牌服务·探活即成）
                 except Exception:
                     time.sleep(0.2)
             try:

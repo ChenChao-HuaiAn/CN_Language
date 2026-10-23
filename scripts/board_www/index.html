@@ -177,13 +177,17 @@
 <div id="错误条">服务连接中断，正在重试…</div>
 <div id="提示条"></div>
 
-<!-- 管理员登录弹窗（430·裁决与写操作仅作者·口令与服务端 CN_BOARD_TOKEN 同源） -->
+<!-- 登录弹窗（1425·用户名+密码与服务端 CN_WEB_USER/CN_WEB_PASS 校验·全站登录墙内
+     二次登录=管理员态重登；页面级登录墙由服务端 web_auth 自包含登录页承担） -->
 <div id="登录遮罩" hidden>
   <div class="新建窗" role="dialog" aria-label="管理员登录">
     <h2 class="窗题">管理员登录 <span class="淡">／ 裁决与写操作仅限作者</span></h2>
-    <label class="表单项">口令 <b class="必">*</b>
-      <input id="登录口令" type="password" autocomplete="current-password"
-             placeholder="看板口令（服务端 CN_BOARD_TOKEN 同源）"></label>
+    <label class="表单项">用户名 <b class="必">*</b>
+      <input id="登录用户名" autocomplete="username"
+             placeholder="内部用户名"></label>
+    <label class="表单项">密码 <b class="必">*</b>
+      <input id="登录密码" type="password" autocomplete="current-password"
+             placeholder="密码（服务端 CN_WEB_PASS）"></label>
     <div id="登录错" class="表单错"></div>
     <div class="窗脚">
       <span class="弹性"></span>

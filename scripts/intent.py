@@ -93,6 +93,15 @@ def 读令牌() -> str:
     return ""
 
 
+def 鉴权头() -> dict:
+    """1425 全站登录墙：看板/队列 GET/POST 统一「有令牌就带 Bearer」请求头——
+    令牌走 读令牌() 同一兜底链；落空返回 {}（裸请求·调用方走各自降级路径）。
+    客户端 GET 读取点（standup/decision_brief/check_spec_coverage/integrate 板查询
+    /branch_cleanup/infra_healthcheck）统一走此实现·归纳零复制。"""
+    t = 读令牌()
+    return {"Authorization": "Bearer " + t} if t else {}
+
+
 def 会话id() -> str:
     if not 会话文件.exists():
         会话文件.parent.mkdir(parents=True, exist_ok=True)
