@@ -71,6 +71,16 @@ def 失败原因(码: int, r: dict, url: str) -> str:
     return f"看板服务返回 HTTP {码}（{url}·{r.get('错误', r)}）"
 
 
+def 响应体(码: int, r, url: str, 场景: str):
+    """成功码（200/201）且响应为 dict → (体, "")；否则 (None, 错误文案)。
+    P3-5：成功路径也先校验形态，防 200+非 dict 在取字段处裸 Traceback。"""
+    if 码 not in (200, 201):
+        return None, f"{场景}：{失败原因(码, r, url)}"
+    if not isinstance(r, dict):
+        return None, f"{场景}响应非对象（{type(r).__name__}）"
+    return r, ""
+
+
 def 读(相对: str) -> str:
     return (本树根 / 相对).read_text(encoding="utf-8")
 
@@ -119,16 +129,14 @@ def main() -> int:
         print(f"[失败] {失败原因(码, r, url)}——先部署 384 版 board_service 并核对令牌")
         return 1
 
-    # 交接：按已有条目文本去重（幂等）——P3-2：先校验码与响应形态，
+    # 交接：按已有条目文本去重（幂等）——P3-2/P3-5：先校验码与响应形态，
     # 401/-1/畸形响应不得当「无已有条目」继续 POST（否则会误写/重复写）。
     码, r = 调服务(url, 令牌, "GET", "/api/handoff?limit=200")
-    if 码 != 200:
-        print(f"[失败] 读取已有交接：{失败原因(码, r, url)}")
+    体, 错误 = 响应体(码, r, url, "读取已有交接")
+    if 错误:
+        print(f"[失败] {错误}")
         return 1
-    if not isinstance(r, dict):
-        print(f"[失败] 读取已有交接响应非对象（{type(r).__name__}）")
-        return 1
-    条目们 = r.get("条目们")
+    条目们 = 体.get("条目们")
     if not isinstance(条目们, list):
         print("[失败] 读取已有交接响应缺「条目们」列表（服务端版本不符/响应损坏）")
         return 1
@@ -138,8 +146,9 @@ def main() -> int:
     for i, x in enumerate(新交):
         码, r = 调服务(url, 令牌, "POST", "/api/handoff_add",
                       {"机器": x["机器"], "条目": x["条目"], "来源": "迁移交接md"})
-        if 码 not in (200, 201):
-            print(f"[失败] 交接第 {i+1} 条：{失败原因(码, r, url)}")
+        _体, 错误 = 响应体(码, r, url, f"交接第 {i+1} 条")
+        if 错误:
+            print(f"[失败] {错误}")
             return 1
     # 教训：同标题服务端幂等跳过
     教跳 = 0
@@ -147,26 +156,29 @@ def main() -> int:
         码, r = 调服务(url, 令牌, "POST", "/api/lesson_add",
                       {"标题": t["标题"], "正文": t["正文"],
                        "权重": t["权重"], "来源": "迁移教训md"})
-        if 码 not in (200, 201):
-            print(f"[失败] 教训「{t['标题'][:30]}」：{失败原因(码, r, url)}")
+        体, 错误 = 响应体(码, r, url, f"教训「{t['标题'][:30]}」")
+        if 错误:
+            print(f"[失败] {错误}")
             return 1
-        教跳 += 1 if r.get("跳过") else 0
+        教跳 += 1 if 体.get("跳过") else 0
     # 覆盖：批量幂等导入（59 单元 231 行一次发）
     码, r = 调服务(url, 令牌, "POST", "/api/coverage_import", 覆)
-    if 码 != 200:
-        print(f"[失败] 覆盖导入：{失败原因(码, r, url)}")
+    体, 错误 = 响应体(码, r, url, "覆盖导入")
+    if 错误:
+        print(f"[失败] {错误}")
         return 1
     print(f"[迁移完成] 交接 新{len(新交)}/跳{跳交}·教训 新{len(教)-教跳}/跳{教跳}"
-          f"·覆盖 {r.get('导入')}+豁免{r.get('豁免导入')}"
-          f"（跳 {r.get('跳过')}+{r.get('豁免跳过')}）")
+          f"·覆盖 {体.get('导入')}+豁免{体.get('豁免导入')}"
+          f"（跳 {体.get('跳过')}+{体.get('豁免跳过')}）")
     码, r = 调服务(url, 令牌, "GET", "/api/coverage")
-    if 码 != 200:
-        print(f"[失败] 复核覆盖：{失败原因(码, r, url)}")
+    体, 错误 = 响应体(码, r, url, "复核覆盖")
+    if 错误:
+        print(f"[失败] {错误}")
         return 1
-    if not isinstance(r, dict):
-        print(f"[失败] 复核覆盖响应非对象（{type(r).__name__}）")
+    if not isinstance(体.get("单元们"), list) or not isinstance(体.get("豁免们"), list):
+        print("[失败] 复核覆盖响应缺「单元们」/「豁免们」列表")
         return 1
-    print(f"[复核] 覆盖单元在库 {len(r['单元们'])}·豁免在库 {len(r['豁免们'])}")
+    print(f"[复核] 覆盖单元在库 {len(体['单元们'])}·豁免在库 {len(体['豁免们'])}")
     return 0
 
 

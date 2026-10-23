@@ -19,6 +19,8 @@
 #   旧 daemon 不上报=空值显式（限流侧按独立机器保守放行+告警·不静默归并错配）。
 #   依赖单向：queue_service → 本模块（禁反引）；自测断言见 queue_selftest.py。
 
+from __future__ import annotations   # P1-1：3.8 注解惰性化（list[...] 定义期不求值）
+
 import sqlite3
 import time
 

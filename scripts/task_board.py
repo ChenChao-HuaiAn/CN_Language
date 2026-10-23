@@ -64,7 +64,10 @@ def 服务调(路径: str) -> tuple[dict | None, str, bool, bool]:
         print(f"[黄] intent 鉴权助手不可用，本次裸请求（诊断见上）：{e}", file=sys.stderr)
     try:
         with urllib.request.urlopen(请求, timeout=8) as r:
-            return json.loads(r.read().decode("utf-8")), "", False, False
+            数据 = json.loads(r.read().decode("utf-8"))
+        if 数据 is None:
+            return None, "看板服务响应为 null（期望 JSON 对象）", False, False
+        return 数据, "", False, False
     except urllib.error.HTTPError as e:
         鉴权失败 = e.code in (401, 403)   # P3-D：门禁路径本地兜底（intent 坏掉也拦）
         try:
@@ -105,6 +108,14 @@ def 拉台账() -> tuple[list | None, str, bool, bool]:
         return None, "看板台账响应缺「任务们」字段（服务端版本不符或响应损坏）", False, False
     if not isinstance(任务们, list):
         return None, f"看板台账「任务们」类型异常（{type(任务们).__name__}）", False, False
+    for i, t in enumerate(任务们):
+        if not isinstance(t, dict):
+            return None, f"看板台账元素畸形（任务们[{i}] 非对象）", False, False
+        缺 = [k for k in ("号", "状态", "标题", "优先级", "前置")
+              if not isinstance(t.get(k), str)]
+        if 缺 or not isinstance(t.get("就绪"), bool):
+            return (None, f"看板台账元素畸形（任务们[{i}] 缺/类型异常："
+                          f"{','.join(缺) or '就绪'}）", False, False)
     return 任务们, "", False, False
 
 

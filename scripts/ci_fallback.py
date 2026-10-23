@@ -6,6 +6,8 @@
 # 依赖方向：ci_daemon → 本模块（单向·禁反引）；池 HTTP 走 ci_shard（1297 池协议
 #   单点）；仓库根/平台/日志目录/远端名 由 ci_daemon 启动时 初始化() 注入。
 
+from __future__ import annotations   # P1-1：3.8 注解惰性化（str | None 等定义期不求值）
+
 import json
 import subprocess
 from datetime import datetime

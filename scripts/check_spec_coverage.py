@@ -105,10 +105,35 @@ def 失败诊断() -> tuple:
     return 最近失败.get("原因", ""), bool(最近失败.get("鉴权失败", False))
 
 
+def _结构问题(体) -> str:
+    """覆盖响应/缓存结构校验（P2-1）：返回空串=合法，否则返回问题描述。
+    合法=dict + 「单元们」list 且每元素 dict 含非空字符串「单元ID」 +
+    「豁免们」缺省或 list 且每元素 dict。"""
+    if not isinstance(体, dict):
+        return f"响应非对象（{type(体).__name__}）"
+    单元们 = 体.get("单元们")
+    if not isinstance(单元们, list):
+        return "缺「单元们」列表"
+    for i, u in enumerate(单元们):
+        if not isinstance(u, dict):
+            return f"单元们[{i}] 非对象（{type(u).__name__}）"
+        if not isinstance(u.get("单元ID"), str) or not u.get("单元ID"):
+            return f"单元们[{i}] 缺非空字符串「单元ID」"
+    豁免们 = 体.get("豁免们", [])
+    if not isinstance(豁免们, list):
+        return "「豁免们」非列表"
+    for i, e in enumerate(豁免们):
+        if not isinstance(e, dict):
+            return f"豁免们[{i}] 非对象（{type(e).__name__}）"
+    return ""
+
+
 def _缓存体():
-    """合法缓存 dict 或 None（非 dict 缓存=坏体·按无缓存处理，不继续崩读侧）。"""
+    """合法缓存 dict 或 None（非 dict/结构不合法缓存=坏体·按无缓存处理）。"""
     体 = atomic_json.读(CACHE)
-    return 体 if isinstance(体, dict) else None
+    if isinstance(体, dict) and not _结构问题(体):
+        return 体
+    return None
 
 
 def parse_map():
@@ -127,11 +152,10 @@ def parse_map():
             print(f"[黄] intent 鉴权助手不可用，本次裸请求（诊断见上）：{e}", file=sys.stderr)
         with urllib.request.urlopen(请求, timeout=8) as r:
             体 = json.loads(r.read().decode("utf-8"))
-        if not isinstance(体, dict):
-            raise ValueError(f"覆盖服务响应非对象（{type(体).__name__}）")
-        if "单元们" not in 体:
-            raise ValueError("覆盖服务响应缺「单元们」字段")
-        atomic_json.写(CACHE, 体)   # 556：仅在响应合法后原子写（P2-1：坏体不落盘）
+        结构问题 = _结构问题(体)
+        if 结构问题:
+            raise ValueError(f"覆盖服务响应结构异常：{结构问题}")
+        atomic_json.写(CACHE, 体)   # 556：仅在响应结构合法后原子写（P2-1：坏体不落盘）
     except urllib.error.HTTPError as e:
         # 1425：401/403=鉴权失败（令牌/登录墙），不得冒充「服务不可达」。
         鉴权失败 = e.code in (401, 403)   # P3-D：本地兜底（intent 助手坏掉仍识别）

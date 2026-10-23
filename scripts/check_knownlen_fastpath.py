@@ -24,6 +24,8 @@
         [--v2p target/audit2/v2p.exe]`（gate_quick 写集触发时自动调用）。
 """
 
+from __future__ import annotations   # P1-1：3.8 注解惰性化（list[str] 等定义期不求值）
+
 import argparse
 import pathlib
 import re

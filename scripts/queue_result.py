@@ -6,6 +6,8 @@
 # 依赖方向：queue_service → 本模块（单向·本模块禁 import queue_service）。
 # con/时戳函数 由调用方注入（写锁内单线程使用·与原语义一致）。
 
+from __future__ import annotations   # P1-1：3.8 注解惰性化（list/tuple 泛型定义期不求值）
+
 import re
 import os
 

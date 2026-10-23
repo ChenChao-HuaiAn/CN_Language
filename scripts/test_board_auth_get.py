@@ -491,27 +491,75 @@ def 测_全入口401矩阵() -> None:
         standup._落缓存 = 原落
 
 
-def 测_py38语法面() -> None:
-    print("[0] Python 3.8 语法面/注解惰性化（P1-1）")
+def _注解节点们(tree):
+    """收集全部注解位置节点（函数参数/返回/AnnAssign）——只看注解位，不看表达式位
+    （set 并集等非注解 `|` 不会误报）。"""
     import ast
-    路径 = Path(__file__).resolve().parent / "task_board.py"
-    源 = 路径.read_text(encoding="utf-8")
-    try:
-        ast.parse(源, filename=str(路径), feature_version=(3, 8))
-        可解析, 详情 = True, ""
-    except SyntaxError as e:
-        可解析, 详情 = False, str(e)
-    签("task_board.py 3.8 语法面可解析", 可解析, 详情)
-    签("task_board.py 有 from __future__ import annotations（防 3.8 注解求值 TypeError）",
-       "from __future__ import annotations" in 源)
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
+            a = node.args
+            for arg in list(a.posonlyargs) + list(a.args) + list(a.kwonlyargs):
+                if arg.annotation is not None:
+                    yield arg.annotation
+            for arg in (a.vararg, a.kwarg):
+                if arg is not None and arg.annotation is not None:
+                    yield arg.annotation
+            if getattr(node, "returns", None) is not None:
+                yield node.returns
+        elif isinstance(node, ast.AnnAssign) and node.annotation is not None:
+            yield node.annotation
+
+
+def _注解违规(ann) -> list:
+    """注解位内的 PEP604（`X | Y`）/PEP585（`list[...]` 等内建泛型）命中。"""
+    import ast
+    命中 = []
+    for n in ast.walk(ann):
+        if isinstance(n, ast.BinOp) and isinstance(n.op, ast.BitOr):
+            命中.append("PEP604")
+        elif (isinstance(n, ast.Subscript) and isinstance(n.value, ast.Name)
+              and n.value.id in {"list", "dict", "tuple", "set"}):
+            命中.append("PEP585:" + n.value.id)
+    return 命中
+
+
+def 测_py38兼容全扫描() -> None:
+    print("[0] Python 3.8 兼容全扫描（P1-1）")
+    # 注：ast.parse(feature_version=(3,8)) 只拦新语法，**不能**拦 PEP604 注解的
+    # 运行期求值（它是表达式）；后者由「注解位 AST 扫描 + future import 断言」负责。
+    import ast
+    语法坏, 违规们 = [], []
+    for 路径 in sorted(Path(__file__).resolve().parent.glob("*.py")):
+        源 = 路径.read_text(encoding="utf-8")
+        try:
+            tree = ast.parse(源, filename=str(路径), feature_version=(3, 8))
+        except SyntaxError as e:
+            语法坏.append(f"{路径.name}: {e}")
+            continue
+        if "from __future__ import annotations" in 源:
+            continue
+        命中 = []
+        for ann in _注解节点们(tree):
+            命中 += _注解违规(ann)
+        if 命中:
+            违规们.append(f"{路径.name}（{','.join(sorted(set(命中)))}）")
+    签("scripts/*.py 3.8 语法面全部可解析", not 语法坏, "；".join(语法坏[:6]))
+    签("scripts/*.py 注解位 PEP604/PEP585 均有 future annotations",
+       not 违规们, "；".join(违规们[:10]))
+    print(f"  扫描 scripts/*.py：语法坏 {len(语法坏)}·缺 future 违规 {len(违规们)}")
+    for x in 违规们:
+        print(f"   - 违规：{x}")
 
 
 def 测_响应畸形硬红() -> None:
     print("[8d] task_board --check 200+畸形响应 → rc=1（P2-2）")
     for 标签, 体, 标记 in (
             ("HTML/非 JSON", "not-json", "响应非 JSON"),
+            ("null", "null", "响应为 null"),
             ("空对象", "{}", "缺「任务们」"),
-            ("数组", "[1,2]", "响应非对象")):
+            ("数组", "[1,2]", "响应非对象"),
+            ("元素非对象", '{"任务们": [1]}', "元素畸形"),
+            ("元素空对象", '{"任务们": [{}]}', "元素畸形")):
         with 环境(体=体):
             输出 = io.StringIO()
             with contextlib.redirect_stdout(输出), contextlib.redirect_stderr(输出):
@@ -539,6 +587,21 @@ def 测_覆盖响应畸形不落盘() -> None:
            码 == 2 and "响应异常" in 错误流.getvalue() and not 临时.exists(),
            f"码={码}·{错误流.getvalue()[-160:]}")
 
+        for 标签, 坏体 in (("单元们字符串", '{"单元们": "abc"}'),
+                           ("单元们元素空对象", '{"单元们": [{}]}'),
+                           ("豁免们非列表", '{"单元们": [], "豁免们": "abc"}')):
+            with 环境(体=坏体):
+                错误流 = io.StringIO()
+                with contextlib.redirect_stderr(错误流):
+                    try:
+                        check_spec_coverage.parse_map()
+                        码x = "未退出"
+                    except SystemExit as e:
+                        码x = e.code
+            签(f"覆盖 200+{标签} → 结构异常 exit 2 且不写缓存",
+               码x == 2 and "结构异常" in 错误流.getvalue() and not 临时.exists(),
+               f"码={码x}·{错误流.getvalue()[-160:]}")
+
         旧文 = ('{"单元们": [{"单元ID": "x", "正例": "a", "边界例": "", "负例": ""}],'
                 ' "豁免们": []}')
         临时.write_text(旧文, encoding="utf-8")
@@ -561,6 +624,18 @@ def 测_覆盖响应畸形不落盘() -> None:
                     码2 = e.code
         签("覆盖 坏缓存 + 数组响应 → exit 2 不崩",
            码2 == 2 and "响应异常" in 错误流.getvalue(), f"码={码2}")
+
+        临时.write_text('{"其他": 1}', encoding="utf-8")
+        with 环境(体="[1,2,3]"):
+            错误流 = io.StringIO()
+            with contextlib.redirect_stderr(错误流):
+                try:
+                    check_spec_coverage.parse_map()
+                    码3 = "未退出"
+                except SystemExit as e:
+                    码3 = e.code
+        签("覆盖 结构不合法缓存（{其他:1}）按无缓存 → exit 2",
+           码3 == 2 and "响应异常" in 错误流.getvalue(), f"码={码3}")
 
         原parse = check_spec_coverage.parse_map
         错误流 = io.StringIO()
@@ -887,6 +962,13 @@ def 测_诊断与来源() -> None:
     签("P3-A 后续写失败走失败原因",
        "HTTP 409" in migrate_board_docs.失败原因(409, {"错误": "冲突"}, "http://x"),
        migrate_board_docs.失败原因(409, {"错误": "冲突"}, "http://x"))
+    体, 错误 = migrate_board_docs.响应体(200, [1], "http://x", "教训")
+    签("P3-5 migrate 成功码+非 dict → 明确错误不取字段",
+       体 is None and "响应非对象" in 错误, 错误)
+    体, 错误 = migrate_board_docs.响应体(200, {"跳过": 1}, "http://x", "教训")
+    签("P3-5 migrate 成功码+dict → 通过", 体 == {"跳过": 1} and not 错误, 错误)
+    体, 错误 = migrate_board_docs.响应体(401, {"错误": "x"}, "http://x", "教训")
+    签("P3-5 migrate 401 → 鉴权失败文案", 体 is None and "鉴权失败（401）" in 错误, 错误)
 
     with 环境(体='{"其他": []}'):
         原读 = decision_brief.atomic_json.读
@@ -995,7 +1077,7 @@ def main() -> int:
     测_全入口401矩阵()
     测_case_activity分列()
     测_check硬红()
-    测_py38语法面()
+    测_py38兼容全扫描()
     测_响应畸形硬红()
     测_覆盖响应畸形不落盘()
     测_令牌缓存()

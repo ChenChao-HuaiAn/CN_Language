@@ -25,6 +25,8 @@
 # 依赖方向：queue_service → 本模块（单向·本模块禁 import queue_service）；时刻解析
 #   复用 queue_instances.时刻秒（第三处解析点起提炼·不复制）。
 # con/时戳 由调用方注入（写锁内单线程使用·与 queue_service 既有语义一致）。
+from __future__ import annotations   # P1-1：3.8 注解惰性化（dict/list/set 泛型定义期不求值）
+
 import os
 import sqlite3
 import time

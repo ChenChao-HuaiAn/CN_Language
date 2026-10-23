@@ -11,6 +11,8 @@
 #   判据（防假绿）：每用例编译 rc=0 + 校验行断言（终串长/两和相等/尾块和/错误码），
 #   耗时数字只收集不判优——优化对拍由人按 plans/032 规程执行。
 
+from __future__ import annotations   # P1-1：3.8 注解惰性化（list[str] 定义期不求值）
+
 import argparse
 import os
 import pathlib
