@@ -182,9 +182,9 @@ void Arm64CodeGenerator::emitCast(Arm64AsmWriter& writer,
                                                 : "w" + resX.substr(1);
         // 1159：源已分配 -> 按源窄宽在寄存器内扩展（sxtb/sxth/uxtb/uxth 直接读
         //   低 8/16 位，避免 [x29] 弃用槽误读——regSlotOffset 已分配=0）
-        const std::string srcPhys = allocRegOf(inst.operands[0].id);
-        if (!srcPhys.empty()) {
-            const std::string srcW = "w" + srcPhys.substr(1);
+        const cn::Optional<std::string> srcPhys = allocRegOf(inst.operands[0].id);
+        if (srcPhys.has_value()) {
+            const std::string srcW = "w" + srcPhys.value().substr(1);
             if (signedSrc) {
                 writer.line(std::string(from == "i8" ? "sxtb " : "sxth ") +
                             resX + ", " + srcW);

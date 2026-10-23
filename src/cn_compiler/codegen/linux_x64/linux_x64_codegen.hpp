@@ -33,6 +33,7 @@
 #include "cn_compiler/codegen/debug_info.hpp"
 #include "cn_compiler/codegen/reg_alloc.hpp"
 #include "cn_compiler/common/diagnostics.hpp"
+#include "cn_compiler/common/optional_safe.hpp"
 
 namespace cn_compiler {
 
@@ -357,14 +358,14 @@ private:
 
     // ==================== 1256：寄存器分配消费面 ====================
 
-    // 虚拟寄存器ID -> 分配结果（未分配/未启用返回 nullptr）
-    const regalloc::RegAssignment* regAllocOf(int regId) const;
+    // 虚拟寄存器ID -> 分配结果（无值=未分配/未启用分配）
+    cn::Optional<const regalloc::RegAssignment*> regAllocOf(int regId) const;
 
     // 虚拟寄存器是否分配到物理寄存器（分配开启且映射非空）
     bool hasPhysReg(int regId) const;
 
-    // 值已分配的物理寄存器名（未分配返回空串）——直写族判据
-    std::string physRegOf(const ir::IRValue& value) const;
+    // 值已分配的物理寄存器名（无值=未分配）——直写族判据
+    cn::Optional<std::string> physRegOf(const ir::IRValue& value) const;
 
     // 本函数实际使用的被调用者保存寄存器：序言压栈 / 尾声逆序恢复
     void emitSaveCalleeSaved(LinuxX64AsmWriter& writer);
@@ -437,11 +438,12 @@ private:
     //   会先覆盖 op2 原值——命中时回退三段（r10 中转），由 storeCanonicalResult 收尾。
     bool hasRegisterConflict(const ir::IRInstruction& inst) const;
 
-    // 已分配源按类型规范化拷贝到指定寄存器（未分配返回空串，调用方走原装载）：
+    // 已分配源按类型规范化拷贝到指定寄存器（无值=未分配，调用方走原装载）：
     //   i8/i16 有符号 -> movsxd（64 位全值）；u8/u16/u32/i32/i1 -> 32 位写（清高）；
     //   i64/u64/ptr -> 64 位 mov。与 emitStackLoad 的扩展语义逐位一致。
-    std::string copyAllocatedTo(LinuxX64AsmWriter& writer, const ir::IRValue& operand,
-                                const std::string& reg);
+    cn::Optional<std::string> copyAllocatedTo(LinuxX64AsmWriter& writer,
+                                              const ir::IRValue& operand,
+                                              const std::string& reg);
 
 
     Diagnostics& diagnostics_;  // 诊断引擎（错误报告预留）

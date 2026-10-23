@@ -379,10 +379,10 @@ bool loadModuleTree(const std::string& filePath, const std::string& dir,
         // ---- 候选3：货舱.toml [依赖] 声明路径（第 5 层，规格书09 六 依赖解析流程）
         // 依赖首段（网络协议::HTTP -> 网络协议）作为包名查 [依赖]（pkgName 已提前计算）
         if (options.hasCargoConfig) {
-            const driver::CargoDependency* cargoDep =
+            const cn::Optional<const driver::CargoDependency*> cargoDep =
                 options.cargoConfig.findDependency(pkgName);
-            if (cargoDep != nullptr) {
-                if (cargoDep->version == "内置") {
+            if (cargoDep.has_value()) {
+                if (cargoDep.value()->version == "内置") {
                     // 内置依赖：编译器 stdlib 目录
                     if (!options.stdlibDir.empty()) {
                         const std::string candBuiltin = options.stdlibDir + "/" + pkgName + ".cn";

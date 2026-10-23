@@ -236,14 +236,15 @@ void LinuxX64CodeGenerator::emitInt128Shift(LinuxX64AsmWriter& writer,
         if (hasI128Pair(shOp.id)) {
             writer.line("mov r10d, " + x86Reg32(i128LoText(shOp)));
         } else if (!hasI128Pair(shOp.id)) {
+            // 静默豁免业务值: 1360 结果化取值路径（regAllocOf 无值=栈槽形态·emitStackLoad 显形）非兜底
             emitStackLoad(writer, regSlotOffset(shId), "r10", "i32", __LINE__);
         }
-    } else if (!physRegOf(shOp).empty()) {
+    } else if (physRegOf(shOp).has_value()) {
         // 1256：移位量已分配（i32/i64）——按类型规范化到 r10（原恒读
         //   regSlotOffset(shId)，分配后该槽为弃用槽=错值）
-        copyAllocatedTo(writer, shOp, "r10");
-    } else if (physRegOf(shOp).empty()) {
-        // 未分配：保持原 i32 窄读（产物逐字节不变）
+        (void)copyAllocatedTo(writer, shOp, "r10");  // 副作用发射；返回值已由分支判定保证有值·显形丢弃
+    } else {
+        // 未分配（前一分支已值化判定·此处为其补集）：保持原 i32 窄读（产物逐字节不变）
         emitStackLoad(writer, regSlotOffset(shId), "r10", "i32", __LINE__);
     }
     writer.line("mov ecx, r10d");

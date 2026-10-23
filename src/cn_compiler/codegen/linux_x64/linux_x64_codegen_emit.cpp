@@ -237,8 +237,8 @@ std::string LinuxX64CodeGenerator::loadOperandToX(LinuxX64AsmWriter& writer,
     // 1256：已分配物理寄存器——按类型规范化拷贝到目标（无需读槽；与槽装载
     //   扩展语义一致，未分配路径逐字节不变）
     if (!operand.isConstant) {
-        const std::string phys = copyAllocatedTo(writer, operand, reg);
-        if (!phys.empty()) return phys;
+        const cn::Optional<std::string> phys = copyAllocatedTo(writer, operand, reg);
+        if (phys.has_value()) return phys.value();
     }
     if (operand.isConstant) {
         // ptr 常量：@strN 字符串池标签 / 函数符号 -> 加载符号地址；
@@ -413,10 +413,10 @@ void LinuxX64CodeGenerator::emitConstLoad(LinuxX64AsmWriter& writer,
         } else if (sym.compare(0, 4, "@str") == 0) {
             sym = "L" + sym.substr(1);  // @strN -> LstrN
         }
-        const std::string phys = physRegOf(inst.result);
-        if (!phys.empty()) {
+        const cn::Optional<std::string> phys = physRegOf(inst.result);
+        if (phys.has_value()) {
             // 1256：直写分配寄存器（免 r10 中转）
-            emitLoadSymbolAddr(writer, phys, sym);
+            emitLoadSymbolAddr(writer, phys.value(), sym);
             return;
         }
         emitLoadSymbolAddr(writer, "r10", sym);
@@ -425,9 +425,9 @@ void LinuxX64CodeGenerator::emitConstLoad(LinuxX64AsmWriter& writer,
     }
     if (inst.opcode == ir::Opcode::FuncAddr) {
         // 函数地址：lea rip 相对加载函数链接符号地址
-        const std::string phys = physRegOf(inst.result);
-        if (!phys.empty()) {
-            emitLoadSymbolAddr(writer, phys, symbolName(inst.extra));
+        const cn::Optional<std::string> phys = physRegOf(inst.result);
+        if (phys.has_value()) {
+            emitLoadSymbolAddr(writer, phys.value(), symbolName(inst.extra));
             return;
         }
         emitLoadSymbolAddr(writer, "r10", symbolName(inst.extra));
@@ -466,8 +466,9 @@ void LinuxX64CodeGenerator::emitConstLoad(LinuxX64AsmWriter& writer,
     // 任务 119（927）：双层解析全失败（空/非法文本）同样硬错误——原兜底
     //   mov r10, 0 属静默错值通道（与空文本同族），一并根治。
     // 1256：结果已分配 -> 立即数直落分配寄存器（按类型宽度：窄/32 位写 32 位名）
-    const std::string phys = physRegOf(inst.result);
-    const std::string dst = phys.empty() ? "r10" : widthFor(inst.type, phys);
+    const cn::Optional<std::string> phys = physRegOf(inst.result);
+    const std::string dst = phys.has_value() ? widthFor(inst.type, phys.value())
+                                             : std::string("r10");
     try {
         const long long v = std::stoll(value);
         writer.line("mov " + dst + ", " + std::to_string(v));
@@ -484,7 +485,7 @@ void LinuxX64CodeGenerator::emitConstLoad(LinuxX64AsmWriter& writer,
             return;
         }
     }
-    if (phys.empty()) {
+    if (!phys.has_value()) {
         emitStackStore(writer, regSlotOffset(inst.result.id), "r10", inst.type);
     }
 }

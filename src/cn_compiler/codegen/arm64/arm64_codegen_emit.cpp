@@ -302,8 +302,9 @@ std::string Arm64CodeGenerator::loadOperandToX(Arm64AsmWriter& writer,
     if (operand.id >= 0) {
         // 寄存器分配（F1-28）：已分配到物理寄存器 -> mov reg, 物理寄存器
         //   （同名零指令；物理寄存器被调用者保存，调用点无需再保存）
-        const std::string src = allocRegOf(operand.id);
-        if (!src.empty()) {
+        const cn::Optional<std::string> srcOpt = allocRegOf(operand.id);
+        if (srcOpt.has_value()) {
+            const std::string& src = srcOpt.value();
             // #1212 审查 P2：浮点源（sN/dN）不能走 mov xN,sN——fmov 位模式分流；
             //   目标整型宽度按指令视图对齐（d 源配 x 目标、s 源配 w 目标）。
             const bool fpSrc = (src[0] == 's' || src[0] == 'd');
@@ -347,8 +348,8 @@ std::string Arm64CodeGenerator::loadOperandToX(Arm64AsmWriter& writer,
 std::string Arm64CodeGenerator::operandSourceReg(Arm64AsmWriter& writer,
                                                  const ir::IRValue& operand,
                                                  const std::string& fallback) {
-    const std::string phys = allocRegOf(operand.id);
-    if (!phys.empty()) return phys;
+    const cn::Optional<std::string> phys = allocRegOf(operand.id);
+    if (phys.has_value()) return phys.value();
     loadOperandToX(writer, operand, fallback);
     return fallback;
 }
@@ -367,8 +368,9 @@ void Arm64CodeGenerator::loadOperandToV(Arm64AsmWriter& writer,
     if (operand.id >= 0) {
         // 寄存器分配（F1-28）：整型虚拟寄存器不参与浮点装载（分配面仅 i64/u64/ptr），
         //   但为与分配面解耦，命中时直接 fmov 到浮点寄存器
-        const std::string src = allocRegOf(operand.id);
-        if (!src.empty()) {
+        const cn::Optional<std::string> srcOpt = allocRegOf(operand.id);
+        if (srcOpt.has_value()) {
+            const std::string& src = srcOpt.value();
             // #1212：宽度视图不一致（sN<->dN）用 fcvt 精确转换，同宽 fmov
             const bool widthMismatch = !src.empty() && !vreg.empty() &&
                                        src[0] != vreg[0];

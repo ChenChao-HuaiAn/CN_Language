@@ -8,6 +8,8 @@
 //            i1 比较结果用 al + setcc；浮点用 SSE（movss/movsd/addss/addsd）
 // 规范：英文API命名，中文仅注释；函数<=100行
 #include <cstdint>
+#include <cstdio>
+#include <cstdlib>
 #include <string>
 
 #include "cn_compiler/codegen/x64/x64_codegen.hpp"
@@ -58,9 +60,15 @@ const GprAliases kGprAliases[] = {
 } // namespace
 
 // 任意宽度通用寄存器名 -> 目标位宽别名；槽/立即数/符号文本原样（非寄存器不猜宽度）。
-//   bits ∉ {64,32,16,8} 返回空串=内部错误哨兵（调用方必须检查并报诊断）。
+//   bits 闭集={64,32,16,8}——全部消费点为字面量（32/8/16）或经 judgement::
+//   intOpWidthBits 判零守卫（cast 249/257/271/275 到此必为 64/32），越界分支
+//   穷举不可达；直接终止显形（882 处置③·原「空串哨兵+调用方必须检查」面废除）。
 std::string X64CodeGenerator::regAtWidth(const std::string& text, int bits) {
-    if (bits != 64 && bits != 32 && bits != 16 && bits != 8) return std::string();
+    if (bits != 64 && bits != 32 && bits != 16 && bits != 8) {
+        std::fprintf(stderr,
+                     "内部错误: regAtWidth 位宽 %d 不在闭集 {64,32,16,8}\n", bits);
+        std::abort();
+    }
     for (const auto& g : kGprAliases) {
         if (text == g.r64 || text == g.r32 || text == g.r16 || text == g.r8) {
             if (bits == 64) return g.r64;
@@ -192,9 +200,9 @@ std::string X64CodeGenerator::operandText(const ir::IRValue& operand) {
         return operand.extra;
     }
     if (operand.id >= 0) {
-        const regalloc::RegAssignment* ra = regAllocOf(operand.id);
-        if (ra != nullptr && !ra->assignedReg.empty()) {
-            return ra->assignedReg;  // 物理寄存器
+        const cn::Optional<const regalloc::RegAssignment*> ra = regAllocOf(operand.id);
+        if (ra.has_value() && !ra.value()->assignedReg.empty()) {
+            return ra.value()->assignedReg;  // 物理寄存器
         }
         return regSlot(operand.id);  // 虚拟寄存器 -> 栈槽
     }
@@ -205,19 +213,21 @@ std::string X64CodeGenerator::operandText(const ir::IRValue& operand) {
 
 // 结果寄存器 -> 目的操作数文本（寄存器槽 / 物理寄存器）
 std::string X64CodeGenerator::resultText(const ir::IRValue& result) {
-    const regalloc::RegAssignment* ra = regAllocOf(result.id);
-    if (ra != nullptr && !ra->assignedReg.empty()) {
-        return ra->assignedReg;  // 物理寄存器
+    const cn::Optional<const regalloc::RegAssignment*> ra = regAllocOf(result.id);
+    if (ra.has_value() && !ra.value()->assignedReg.empty()) {
+        return ra.value()->assignedReg;  // 物理寄存器
     }
     return regSlot(result.id);
 }
 
-// D8（458-a）：结果已分配的物理寄存器名（未分配返回空串）——发射方法据此把
+// D8（458-a）：结果已分配的物理寄存器名（无值=未分配）——发射方法据此把
 //   计算寄存器从固定临时 rax 换成分配寄存器（免尾部 mov dst, rax 中转）。
-std::string X64CodeGenerator::physRegOf(const ir::IRValue& value) const {
-    const regalloc::RegAssignment* ra = regAllocOf(value.id);
-    return (ra != nullptr && !ra->assignedReg.empty()) ? ra->assignedReg
-                                                       : std::string();
+cn::Optional<std::string> X64CodeGenerator::physRegOf(const ir::IRValue& value) const {
+    const cn::Optional<const regalloc::RegAssignment*> ra = regAllocOf(value.id);
+    if (ra.has_value() && !ra.value()->assignedReg.empty()) {
+        return ra.value()->assignedReg;
+    }
+    return std::nullopt;
 }
 
 // ==================== #1212：浮点寄存器分配发射设施 ====================
@@ -343,9 +353,9 @@ void X64CodeGenerator::emitConstLoad(AsmWriter& writer, const ir::IRInstruction&
             sym = gstaticPrefix + nameMangle(sym.substr(gstaticPrefix.size()));
         }
         // D8（458-a）：结果已分配 -> LEA 直装分配寄存器（免 mov dst, rax 中转）
-        const std::string symPhys = physRegOf(inst.result);
-        if (!symPhys.empty()) {
-            writer.line("lea " + symPhys + ", " + sym);
+        const cn::Optional<std::string> symPhys = physRegOf(inst.result);
+        if (symPhys.has_value()) {
+            writer.line("lea " + symPhys.value() + ", " + sym);
         } else {
             writer.line("lea rax, " + sym);
             writer.line("mov " + dst + ", rax");
@@ -355,9 +365,9 @@ void X64CodeGenerator::emitConstLoad(AsmWriter& writer, const ir::IRInstruction&
     if (inst.opcode == ir::Opcode::FuncAddr) {
         // 函数地址：LEA 加载函数链接符号地址（回调 = 加）
         // 注意：MASM 取 PROC 地址用 OFFSET 符号（与常量标签一致）
-        const std::string fnPhys = physRegOf(inst.result);
-        if (!fnPhys.empty()) {
-            writer.line("lea " + fnPhys + ", " + symbolName(inst.extra));
+        const cn::Optional<std::string> fnPhys = physRegOf(inst.result);
+        if (fnPhys.has_value()) {
+            writer.line("lea " + fnPhys.value() + ", " + symbolName(inst.extra));
         } else {
             writer.line("lea rax, " + symbolName(inst.extra));
             writer.line("mov " + dst + ", rax");
@@ -458,9 +468,9 @@ void X64CodeGenerator::emitConstLoad(AsmWriter& writer, const ir::IRInstruction&
             }
         }
         // D8（458-a）：结果已分配 -> 立即数直装分配寄存器（免 mov dst, rax 中转）
-        const std::string immPhys = physRegOf(inst.result);
-        if (!immPhys.empty()) {
-            writer.line("mov " + immPhys + ", " + value);
+        const cn::Optional<std::string> immPhys = physRegOf(inst.result);
+        if (immPhys.has_value()) {
+            writer.line("mov " + immPhys.value() + ", " + value);
         } else {
             writer.line("mov rax, " + value);
             writer.line("mov " + dst + ", rax");
@@ -614,9 +624,9 @@ void X64CodeGenerator::emitTerminator(AsmWriter& writer, const ir::IRBlock& bloc
             std::string s = block.termReturnValue;
             if (s.size() > 2 && s[0] == '%' && s[1] == 'v') {
                 int id = std::stoi(s.substr(2));
-                const regalloc::RegAssignment* ra = regAllocOf(id);
-                if (ra != nullptr && !ra->assignedReg.empty()) {
-                    returnReg = ra->assignedReg;  // 物理寄存器
+                const cn::Optional<const regalloc::RegAssignment*> ra = regAllocOf(id);
+                if (ra.has_value() && !ra.value()->assignedReg.empty()) {
+                    returnReg = ra.value()->assignedReg;  // 物理寄存器
                 } else {
                     returnReg = regSlot(id);
                 }
@@ -633,7 +643,7 @@ void X64CodeGenerator::emitTerminator(AsmWriter& writer, const ir::IRBlock& bloc
         std::string condReg = "0";
         // D8（483-a）：条件 vreg 已分配物理寄存器 -> test 直读（免 mov eax
         //   装载中转）；槽/常量条件保持 mov eax + test 原路径。
-        std::string condPhys;
+        cn::Optional<std::string> condPhys;
         const std::string& cond = block.termCondition;
         if (!cond.empty()) {
             if (cond.size() > 2 && cond[0] == '%' && cond[1] == 'v') {
@@ -646,11 +656,11 @@ void X64CodeGenerator::emitTerminator(AsmWriter& writer, const ir::IRBlock& bloc
                 condReg = operandText(ir::IRValue::constant(cond, "i1"));
             }
         }
-        if (!condPhys.empty()) {
+        if (condPhys.has_value()) {
             // 320-a（A2022·258-a cast 收缩同族）：按 32 位名直测（i1 布尔值
             //   分配器写 32 位名；test reg,reg 只设标志不改条件值——分配器
             //   死点复用安全）
-            const std::string cw = widthFor("i32", condPhys);
+            const std::string cw = widthFor("i32", condPhys.value());
             writer.line("test " + cw + ", " + cw);
         } else {
             // 320-a（A2022·258-a cast 收缩同族）：条件源为分配的物理寄存器

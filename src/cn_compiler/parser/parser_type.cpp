@@ -107,25 +107,25 @@ bool Parser::isTemplateAngleOpen() const {
 //   签名段的括号为方法值专有形态，通用模板探测不放宽（防 `a < b(1), c > d`
 //   表达式误判）。
 bool Parser::isMethodValueAngleOpen() const {
-    return methodValueAngleCloseOffset(0) >= 0;
+    return methodValueAngleCloseOffset(0).has_value();
 }
 
 // 031：方法值尖括号内核——ltOff='<' 相对 current 的 peek 偏移（0=current 即
 //   '<'；1=current 为「方法值」名——声明 guard 用）。返回闭合 '>' 之后的
-//   peek 偏移（调用方据以查后续 token）；-1=不匹配。
-int Parser::methodValueAngleCloseOffset(int ltOff) const {
-    if (peek(ltOff).getType() != TokenType::Less) return -1;
+//   peek 偏移（调用方据以查后续 token）；无值=不匹配。
+cn::Optional<int> Parser::methodValueAngleCloseOffset(int ltOff) const {
+    if (peek(ltOff).getType() != TokenType::Less) return std::nullopt;
     int i = ltOff + 1;  // 已跳过 '<'
     // 段1：类名
     const TokenType t0 = peek(i).getType();
-    if (!isTypeKeyword(t0) && t0 != TokenType::Identifier) return -1;
+    if (!isTypeKeyword(t0) && t0 != TokenType::Identifier) return std::nullopt;
     i++;
     // 逗号
-    if (peek(i).getType() != TokenType::Comma) return -1;
+    if (peek(i).getType() != TokenType::Comma) return std::nullopt;
     i++;
     // 段2：返回类型（可带 * & 后缀）
     const TokenType t1 = peek(i).getType();
-    if (!isTypeKeyword(t1) && t1 != TokenType::Identifier) return -1;
+    if (!isTypeKeyword(t1) && t1 != TokenType::Identifier) return std::nullopt;
     i++;
     while (true) {
         const TokenType t = peek(i).getType();
@@ -133,7 +133,7 @@ int Parser::methodValueAngleCloseOffset(int ltOff) const {
         break;
     }
     // 参数表：'(' ... ')' 平衡扫描
-    if (peek(i).getType() != TokenType::LeftParen) return -1;
+    if (peek(i).getType() != TokenType::LeftParen) return std::nullopt;
     int depth = 0;
     while (true) {
         const TokenType t = peek(i).getType();
@@ -143,24 +143,24 @@ int Parser::methodValueAngleCloseOffset(int ltOff) const {
             depth--;
             if (depth == 0) { i++; break; }
         } else if (t == TokenType::EndOfFile) {
-            return -1;
+            return std::nullopt;
         }
         i++;
     }
     // 闭合 '>'
     const TokenType te = peek(i).getType();
     if (te == TokenType::Greater || te == TokenType::GreaterGreater) return i + 1;
-    return -1;
+    return std::nullopt;
 }
 
 // 031：顶层/静态声明 guard——`方法值<类, 返回(参数表)> 名` 形态（
 //   genericDeclAhead 白名单不含签名段括号；本函数为方法值专用前瞻）。
 bool Parser::methodValueDeclAhead() const {
     if (current().getValue() != "方法值") return false;
-    const int after = methodValueAngleCloseOffset(1);
-    if (after == -1) return false;
+    const cn::Optional<int> after = methodValueAngleCloseOffset(1);
+    if (!after.has_value()) return false;
     // 闭合 '>' 后须为变量名（标识符）
-    return peek(after).getType() == TokenType::Identifier;
+    return peek(after.value()).getType() == TokenType::Identifier;
 }
 
 // 031：参数表文本消费（'(' 至配对 ')' 逐 token 无空格拼接——与语义层内建

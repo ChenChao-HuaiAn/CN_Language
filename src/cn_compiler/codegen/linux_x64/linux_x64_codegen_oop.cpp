@@ -140,9 +140,9 @@ void LinuxX64CodeGenerator::emitNewObject(LinuxX64AsmWriter& writer,
         }
     }
     // 3. 结果槽 = 对象指针（1256：已分配 -> 直写物理寄存器）
-    const std::string newObjDst = physRegOf(inst.result);
-    if (!newObjDst.empty()) {
-        writer.line("mov " + newObjDst + ", rax");
+    const cn::Optional<std::string> newObjDst = physRegOf(inst.result);
+    if (newObjDst.has_value()) {
+        writer.line("mov " + newObjDst.value() + ", rax");
         return;
     }
     emitStackStore(writer, dstOff, "rax", "ptr");
@@ -161,9 +161,9 @@ void LinuxX64CodeGenerator::emitDeleteObject(LinuxX64AsmWriter& writer,
     const std::string skipLabel = "Lobjdel_ok" + std::to_string(skipId);
     // 1256：对象指针可能已分配——按需搬入 rdi（调用后重装；未分配原槽装载）
     auto loadObjToRdi = [&]() {
-        const std::string phys = physRegOf(inst.operands[0]);
-        if (!phys.empty()) {
-            if (phys != "rdi") writer.line("mov rdi, " + phys);
+        const cn::Optional<std::string> phys = physRegOf(inst.operands[0]);
+        if (phys.has_value()) {
+            if (phys.value() != "rdi") writer.line("mov rdi, " + phys.value());
             return;
         }
         if (inst.operands[0].id >= 0) {
@@ -373,9 +373,9 @@ void LinuxX64CodeGenerator::emitVirtualCall(LinuxX64AsmWriter& writer,
         } else if (!isFloatType(inst.result.type) &&
                    inst.result.type != "i128" && inst.result.type != "u128") {
             // 1256：结果已分配 -> 返回值直写物理寄存器
-            const std::string vcDst = physRegOf(inst.result);
-            if (!vcDst.empty()) {
-                writer.line("mov " + widthFor(inst.result.type, vcDst) + ", " +
+            const cn::Optional<std::string> vcDst = physRegOf(inst.result);
+            if (vcDst.has_value()) {
+                writer.line("mov " + widthFor(inst.result.type, vcDst.value()) + ", " +
                             widthFor(inst.result.type, "rax"));
             } else {
                 emitStackStore(writer, dstOff, "rax", inst.result.type);
@@ -402,25 +402,27 @@ void LinuxX64CodeGenerator::emitOopInstruction(LinuxX64AsmWriter& writer,
             break;
         case ir::Opcode::VtableAddr: {
             const int dstOff = regSlotOffset(inst.result.id);
-            const std::string vDst = physRegOf(inst.result);
+            const cn::Optional<std::string> vDst = physRegOf(inst.result);
             const bool hasObjOperand =
                 !inst.operands.empty() && inst.operands[0].id >= 0;
             if (hasObjOperand) {
                 // 取对象虚表指针：结果寄存器（或 r10）= [对象首地址]
-                const std::string objPhys = physRegOf(inst.operands[0]);
-                const std::string objReg = objPhys.empty()
-                                               ? loadOperandToX(writer, inst.operands[0], "r10")
-                                               : objPhys;
-                const std::string dstReg = vDst.empty() ? "r10" : vDst;
+                const cn::Optional<std::string> objPhys = physRegOf(inst.operands[0]);
+                // 三目惰性求值：loadOperandToX 有发射副作用，无值时才装载
+                //（禁 value_or——其实参无条件求值会重复发射装载指令）
+                const std::string objReg = objPhys.has_value()
+                                               ? objPhys.value()
+                                               : loadOperandToX(writer, inst.operands[0], "r10");
+                const std::string dstReg = vDst.value_or("r10");
                 writer.line("mov " + dstReg + ", qword ptr [" + objReg + "]");
-                if (vDst.empty()) {
+                if (!vDst.has_value()) {
                     emitStackStore(writer, dstOff, "r10", "ptr");
                 }
             } else if (!hasObjOperand) {
                 // 加载类虚表地址：lea rip 相对
-                emitLoadSymbolAddr(writer, vDst.empty() ? "r10" : vDst,
+                emitLoadSymbolAddr(writer, vDst.value_or("r10"),
                                    vtableSymbol(inst.extra));
-                if (vDst.empty()) {
+                if (!vDst.has_value()) {
                     emitStackStore(writer, dstOff, "r10", "ptr");
                 }
             }

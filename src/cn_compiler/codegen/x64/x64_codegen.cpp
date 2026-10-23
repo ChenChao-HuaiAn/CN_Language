@@ -269,18 +269,18 @@ int X64CodeGenerator::varSlotAreaSize() const {
 
 // ==================== 阶段C：寄存器分配 + 调试信息辅助（Task 4.3/4.4） ====================
 
-// 虚拟寄存器ID -> 寄存器分配结果（未分配或未启用返回 nullptr）
-const regalloc::RegAssignment* X64CodeGenerator::regAllocOf(int regId) const {
-    if (regId < 0) return nullptr;
+// 虚拟寄存器ID -> 寄存器分配结果（无值=未分配或未启用分配）
+cn::Optional<const regalloc::RegAssignment*> X64CodeGenerator::regAllocOf(int regId) const {
+    if (regId < 0) return std::nullopt;
     auto it = regAllocMap_.find(regId);
-    if (it == regAllocMap_.end()) return nullptr;
+    if (it == regAllocMap_.end()) return std::nullopt;
     return &it->second;
 }
 
 // 虚拟寄存器是否分配到物理寄存器（regAlloc 开启且映射存在且非空）
 bool X64CodeGenerator::hasPhysReg(int regId) const {
-    const regalloc::RegAssignment* ra = regAllocOf(regId);
-    return ra != nullptr && !ra->assignedReg.empty();
+    const cn::Optional<const regalloc::RegAssignment*> ra = regAllocOf(regId);
+    return ra.has_value() && !ra.value()->assignedReg.empty();
 }
 
 // 寄存器分配器可分配的物理寄存器名（被调用者保存，去保留）

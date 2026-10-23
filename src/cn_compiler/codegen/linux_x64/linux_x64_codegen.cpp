@@ -292,27 +292,29 @@ int LinuxX64CodeGenerator::varSlotAreaSize() const {
 
 // ==================== 1256：寄存器分配消费辅助 ====================
 
-// 虚拟寄存器ID -> 寄存器分配结果（未分配或未启用返回 nullptr）
-const regalloc::RegAssignment* LinuxX64CodeGenerator::regAllocOf(int regId) const {
+// 虚拟寄存器ID -> 寄存器分配结果（无值=未分配或未启用分配）
+cn::Optional<const regalloc::RegAssignment*> LinuxX64CodeGenerator::regAllocOf(int regId) const {
     // 1256：regId 合法域=[0, 虚拟寄存器ID上限]（闭集双边界；越界=无分配结果）
     if (regId >= 0 && regId <= kMaxVirtualRegId1256) {
         auto it = regAllocMap_.find(regId);
         if (it != regAllocMap_.end()) return &it->second;
     }
-    return nullptr;
+    return std::nullopt;
 }
 
 // 虚拟寄存器是否分配到物理寄存器
 bool LinuxX64CodeGenerator::hasPhysReg(int regId) const {
-    const regalloc::RegAssignment* ra = regAllocOf(regId);
-    return ra != nullptr && !ra->assignedReg.empty();
+    const cn::Optional<const regalloc::RegAssignment*> ra = regAllocOf(regId);
+    return ra.has_value() && !ra.value()->assignedReg.empty();
 }
 
-// 值已分配的物理寄存器名（未分配返回空串）
-std::string LinuxX64CodeGenerator::physRegOf(const ir::IRValue& value) const {
-    const regalloc::RegAssignment* ra = regAllocOf(value.id);
-    return (ra != nullptr && !ra->assignedReg.empty()) ? ra->assignedReg
-                                                       : std::string();
+// 值已分配的物理寄存器名（无值=未分配）
+cn::Optional<std::string> LinuxX64CodeGenerator::physRegOf(const ir::IRValue& value) const {
+    const cn::Optional<const regalloc::RegAssignment*> ra = regAllocOf(value.id);
+    if (ra.has_value() && !ra.value()->assignedReg.empty()) {
+        return ra.value()->assignedReg;
+    }
+    return std::nullopt;
 }
 
 // 序言保存被调用者保存寄存器（压栈顺序 = 排序后的分配寄存器顺序）
@@ -391,9 +393,9 @@ void LinuxX64CodeGenerator::storeResult(LinuxX64AsmWriter& writer,
                                         const std::string& srcReg,
                                         const std::string& type,
                                         bool narrowStoreAs64) {
-    const std::string phys = physRegOf(result);
-    if (!phys.empty()) {
-        writer.line("mov " + widthFor(type, phys) + ", " +
+    const cn::Optional<std::string> phys = physRegOf(result);
+    if (phys.has_value()) {
+        writer.line("mov " + widthFor(type, phys.value()) + ", " +
                     widthFor(type, srcReg));
         return;
     }
@@ -401,24 +403,25 @@ void LinuxX64CodeGenerator::storeResult(LinuxX64AsmWriter& writer,
                    narrowStoreAs64 ? "i64" : type);
 }
 
-// 已分配源的规范化拷贝（与 emitStackLoad 扩展语义一致）；未分配返回空串。
-std::string LinuxX64CodeGenerator::copyAllocatedTo(LinuxX64AsmWriter& writer,
-                                                   const ir::IRValue& operand,
-                                                   const std::string& reg) {
+// 已分配源的规范化拷贝（与 emitStackLoad 扩展语义一致）；无值=未分配。
+cn::Optional<std::string> LinuxX64CodeGenerator::copyAllocatedTo(
+    LinuxX64AsmWriter& writer, const ir::IRValue& operand,
+    const std::string& reg) {
     const bool hasPhys = (!operand.isConstant && operand.id >= 0 &&
                           operand.id <= kMaxVirtualRegId1256);
-    const std::string phys = hasPhys ? physRegOf(operand) : std::string();
-    if (!phys.empty()) {
-        if (phys == reg) return reg;
+    const cn::Optional<std::string> phys =
+        hasPhys ? physRegOf(operand) : std::nullopt;
+    if (phys.has_value()) {
+        if (phys.value() == reg) return reg;
         const std::string& t = operand.type;
         if (t == "i8" || t == "i16") {
-            writer.line("movsxd " + reg + ", " + x86Reg32(phys));
+            writer.line("movsxd " + reg + ", " + x86Reg32(phys.value()));
         } else if (t == "u8" || t == "u16" || t == "i32" || t == "u32" ||
                    t == "i1") {
             // 1267 续：i1 与 32 位整型同款（寄存器内低 32 位规范承载）
-            writer.line("mov " + x86Reg32(reg) + ", " + x86Reg32(phys));
+            writer.line("mov " + x86Reg32(reg) + ", " + x86Reg32(phys.value()));
         } else if (t == "i64" || t == "u64" || t == "ptr") {
-            writer.line("mov " + reg + ", " + phys);
+            writer.line("mov " + reg + ", " + phys.value());
         } else {
             // 不可达：本函数仅对已分配（可分配整型/指针/i1）值调用——其余类型闭集排除
             diagnostics_.report(Diagnostic::error(
@@ -426,7 +429,7 @@ std::string LinuxX64CodeGenerator::copyAllocatedTo(LinuxX64AsmWriter& writer,
         }
         return reg;
     }
-    return std::string();
+    return std::nullopt;
 }
 
 // 计算后结果落位（三段路径专用）：按结果类型规范化（窄型取低 8/16 位扩展，
@@ -435,16 +438,16 @@ void LinuxX64CodeGenerator::storeCanonicalResult(LinuxX64AsmWriter& writer,
                                                  const ir::IRValue& result,
                                                  const std::string& srcReg,
                                                  const std::string& type) {
-    const std::string phys = physRegOf(result);
-    if (!phys.empty()) {
+    const cn::Optional<std::string> phys = physRegOf(result);
+    if (phys.has_value()) {
         if (type == "i8" || type == "i16") {
-            writer.line("movsx " + x86Reg32(phys) + ", " + narrowOperand(type, srcReg));
+            writer.line("movsx " + x86Reg32(phys.value()) + ", " + narrowOperand(type, srcReg));
         } else if (type == "u8" || type == "u16") {
-            writer.line("movzx " + x86Reg32(phys) + ", " + narrowOperand(type, srcReg));
+            writer.line("movzx " + x86Reg32(phys.value()) + ", " + narrowOperand(type, srcReg));
         } else if (type == "i32" || type == "u32" || type == "i1") {
-            writer.line("mov " + x86Reg32(phys) + ", " + x86Reg32(srcReg));
+            writer.line("mov " + x86Reg32(phys.value()) + ", " + x86Reg32(srcReg));
         } else if (type == "i64" || type == "u64" || type == "ptr") {
-            writer.line("mov " + phys + ", " + srcReg);
+            writer.line("mov " + phys.value() + ", " + srcReg);
         } else {
             // 不可达：已分配结果只可能是可分配整型/指针（浮点/i128 恒走槽）
             diagnostics_.report(Diagnostic::error(
@@ -458,11 +461,12 @@ void LinuxX64CodeGenerator::storeCanonicalResult(LinuxX64AsmWriter& writer,
 // 结果物理寄存器是否与某操作数同寄存器（分配器死点复用）：两地址直写会先
 //   覆盖 op2 原值——命中时回退三段（r10 中转）。
 bool LinuxX64CodeGenerator::hasRegisterConflict(const ir::IRInstruction& inst) const {
-    const std::string phys = physRegOf(inst.result);
-    if (!phys.empty()) {
+    const cn::Optional<std::string> phys = physRegOf(inst.result);
+    if (phys.has_value()) {
         for (const auto& op : inst.operands) {
             if (op.isConstant || op.id == inst.result.id) continue;
-            if (physRegOf(op) == phys) return true;
+            const cn::Optional<std::string> opPhys = physRegOf(op);
+            if (opPhys.has_value() && opPhys.value() == phys.value()) return true;
         }
     }
     return false;

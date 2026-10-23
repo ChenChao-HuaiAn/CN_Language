@@ -9,6 +9,8 @@
 #include <string>
 #include <vector>
 
+#include "cn_compiler/common/optional_safe.hpp"
+
 namespace cn_compiler {
 namespace driver {
 
@@ -29,8 +31,8 @@ struct CargoConfig {
     //   声明并启用的特性名集合（条件编译旗标，编译期并入注入宏集合）
     std::vector<std::string> features;
 
-    // 按依赖名查找（未找到返回 nullptr）
-    const CargoDependency* findDependency(const std::string& depName) const;
+    // 按依赖名查找（无值=未声明该依赖）
+    cn::Optional<const CargoDependency*> findDependency(const std::string& depName) const;
 };
 
 // 解析 货舱.toml 文本（TOML 子集）：

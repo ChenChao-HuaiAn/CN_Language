@@ -62,12 +62,13 @@ bool parseQuotedValue(const std::string& line, std::string& out, std::string& er
 
 } // namespace
 
-// 按依赖名查找（未找到返回 nullptr）
-const CargoDependency* CargoConfig::findDependency(const std::string& depName) const {
+// 按依赖名查找（无值=未声明该依赖）
+cn::Optional<const CargoDependency*> CargoConfig::findDependency(
+    const std::string& depName) const {
     for (const auto& dep : deps) {
         if (dep.name == depName) return &dep;
     }
-    return nullptr;
+    return std::nullopt;
 }
 
 // 解析 TOML 字符串数组值：["名1", "名2"]（239-a [特性] 启用 用）。

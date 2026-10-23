@@ -194,9 +194,9 @@ void LinuxX64CodeGenerator::emitCall(LinuxX64AsmWriter& writer,
                    inst.result.type != "i128" && inst.result.type != "u128") {
             // 1256：结果已分配 -> 返回值直写物理寄存器（窄/32 位用 32 位名，
             //   写 eax 清高 32 位；被调方 epilogue 已按返回类型扩展 rax）
-            const std::string dstPhys = physRegOf(inst.result);
-            if (!dstPhys.empty()) {
-                writer.line("mov " + widthFor(inst.result.type, dstPhys) + ", " +
+            const cn::Optional<std::string> dstPhys = physRegOf(inst.result);
+            if (dstPhys.has_value()) {
+                writer.line("mov " + widthFor(inst.result.type, dstPhys.value()) + ", " +
                             widthFor(inst.result.type, "rax"));
             } else {
                 emitStackStore(writer, dstOff, "rax", inst.result.type);

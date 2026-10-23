@@ -42,15 +42,18 @@ public:
     // 显形通道①：是否有值——消费点分流的第一判据
     bool has_value() const { return storage_.has_value(); }
 
-    // 显形通道②：取值（只读）。坏值=打印原因并 std::abort 响亮终止——
+    // 显形通道②：取值（只读）。坏值=打印原因并退出（退出码 3）——
     //   编译器内部检查缺失即缺陷显形（fail-loud·对齐 Rust unwrap panic
-    //   语义·禁 UB；留痕先例=string_intern::text 非法 ID 中止）。
+    //   语义·禁 UB）。1360 实录：Windows 下 std::abort() 会弹 CRT 模态
+    //   对话框阻塞自动化（E2E 弹窗风暴）——改 std::exit(3)（无弹窗直接
+    //   退出·E2E/门禁以非零退出码抓坏值访问·fail-loud 语义不变）。
     const T& value() const {
         if (!storage_.has_value()) {
             std::fprintf(stderr,
                          "内部错误: cn::Optional 坏值访问（消费点检查缺失——"
                          "应先 has_value() 分流或用 value_or(默认)）\n");
-            std::abort();
+            std::fflush(stderr);
+            std::exit(3);
         }
         return *storage_;
     }

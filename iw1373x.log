@@ -1,0 +1,103 @@
+Switched to a new branch 'batch/1373'
+[batch/1373 2cdf46390] 〔通告〕@三机〔1360 批4·宿主 parser/driver/lexer/codegen 9 函数哨兵结果化〕
+ Date: Fri Oct 23 11:36:45 2026 +0800
+ 33 files changed, 563 insertions(+), 496 deletions(-)
+[batch/1373 99d839887] 〔1427·1360 批4 漏检修复〕宿主 x64 移位/窄型算术 4 处 cn::Optional 非对称守卫 + 官网示例 9 处补 否则 错误分支（verify 53/53·解除 1360 批4 集成阻断）
+ Date: Fri Oct 23 15:26:52 2026 +0800
+ 35 files changed, 720 insertions(+), 246 deletions(-)
+[batch/1373 7a58849d1] wip: 批4 rebase 前工作区固化
+ Date: Fri Oct 23 17:05:33 2026 +0800
+ 5 files changed, 107284 insertions(+), 2 deletions(-)
+ create mode 100644 iw1373g.log
+ create mode 100644 iw1373w.log
+ create mode 100644 iw1373z.log
+[账实检查] 🟡 黄（知情放行）：
+  #1277 台账待办(⬜)但远端已有分支——疑似认领未流转（wt.py create 1277 补 🏃）
+  #357 台账已完成(✅)缺收口 sha——021 迁移旧账（226 立规前旧格式✅行本无 sha·知情放行）
+  #228 台账已完成(✅)缺收口 sha——021 迁移旧账（226 立规前旧格式✅行本无 sha·知情放行）
+  #234 台账已完成(✅)缺收口 sha——021 迁移旧账（226 立规前旧格式✅行本无 sha·知情放行）
+  #289 台账已完成(✅)缺收口 sha——021 迁移旧账（226 立规前旧格式✅行本无 sha·知情放行）
+  #292 台账已完成(✅)缺收口 sha——021 迁移旧账（226 立规前旧格式✅行本无 sha·知情放行）
+  #293 台账已完成(✅)缺收口 sha——021 迁移旧账（226 立规前旧格式✅行本无 sha·知情放行）
+  #209 台账已完成(✅)缺收口 sha——021 迁移旧账（226 立规前旧格式✅行本无 sha·知情放行）
+[gate_lock] 已获得（2026-10-23 17:13:37）
+== L1 快速门禁（920·提交前）==
+  $ C:\Users\ChenChao\AppData\Local\Python\pythoncore-3.14-64\python.exe scripts/check_ascii_idents.py
+[ASCII门禁] 合规：369 个 C++ 文件代码区全 ASCII ✓
+[check_ascii_idents] ✓
+  $ C:\Users\ChenChao\AppData\Local\Python\pythoncore-3.14-64\python.exe scripts/check_keywords_sync.py
+[关键字同步] 宿主=46 规范=46 v2=25（白名单 24）
+  ✓ 三处清单一致（单一事实源成立；E2E 串/v1 表已随 #1215 退位）
+[check_keywords_sync] ✓
+  $ C:\Users\ChenChao\AppData\Local\Python\pythoncore-3.14-64\python.exe scripts/check_registry_audit.py
+[清单审计] PASS ✓（注册 30 件·check_* glob 27 件全注册·ci.ps1 调用面无绕过）
+[check_registry_audit] ✓
+  $ C:\Users\ChenChao\AppData\Local\Python\pythoncore-3.14-64\python.exe scripts/check_case_numbers.py
+=== E2E 用例编号唯一性门禁（554 建·577 台账核验·AGENTS §4 条文执行面）===
+目录 1164·唯一编号 1101·多目录编号 61 组（豁免 4 号·成对与豁免之外的组=真撞号）
+[PASS] 本地无真撞号（成对与豁免之外的组=0）。
+  [黄] #880 「方法内继承聚合字段链读」台账已领号未配名（补录：board_cli 补用例名 880 <用例名>·811 通道）
+  [黄] #907 「传参位串临时释放」台账已领号未配名（补录：board_cli 补用例名 907 <用例名>·811 通道）
+  [黄] #909 「编译期除零常量传播」台账已领号未配名（补录：board_cli 补用例名 909 <用例名>·811 通道）
+  [陈旧] 台账 #887「浮转字符钳制」本树无对应用例目录——他分支在用则忽略；若为改号遗留=陈旧残留（处置见 tests/e2e/README.md 用例改号流程）
+  [陈旧] 台账 #891「静态槽超域字面量顶层静态拒」本树无对应用例目录——他分支在用则忽略；若为改号遗留=陈旧残留（处置见 tests/e2e/README.md 用例改号流程）
+  [陈旧] 台账 #892「静态槽超域字面量函数内静态拒」本树无对应用例目录——他分支在用则忽略；若为改号遗留=陈旧残留（处置见 tests/e2e/README.md 用例改号流程）
+  [陈旧] 台账 #893「静态槽超域字面量类字段拒」本树无对应用例目录——他分支在用则忽略；若为改号遗留=陈旧残留（处置见 tests/e2e/README.md 用例改号流程）
+  [陈旧] 台账 #894「静态槽超域字面量负号进制拒」本树无对应用例目录——他分支在用则忽略；若为改号遗留=陈旧残留（处置见 tests/e2e/README.md 用例改号流程）
+  [陈旧] 台账 #895「静态槽域内直存对照」本树无对应用例目录——他分支在用则忽略；若为改号遗留=陈旧残留（处置见 tests/e2e/README.md 用例改号流程）
+  [陈旧] 台账 #897「容器元素返回类赋值位」本树无对应用例目录——他分支在用则忽略；若为改号遗留=陈旧残留（处置见 tests/e2e/README.md 用例改号流程）
+  [陈旧] 台账 #898「容器元素返回类两异常」本树无对应用例目录——他分支在用则忽略；若为改号遗留=陈旧残留（处置见 tests/e2e/README.md 用例改号流程）
+  …（另 268 条陈旧行略）
+[PASS] 台账核验一致（或无对应行/断网降级）。
+[check_case_numbers] ✓
+  $ C:\Users\ChenChao\AppData\Local\Python\pythoncore-3.14-64\python.exe scripts/check_miss_gate.py
+== 静默值登记制硬拦门禁（check_miss_gate.py·882·648 立法精确化）==
+扫描面：src/ + CN语言编译器v2/（文件 384·读取失败 0）；登记表条目 235 条；协议注释点 213 处
+【1238 批准制】已批 31 · 存量过渡 204 · 已毙 0 · 未批准 0（未批准/已毙条=红通道·存量过渡=逐条呈报宽限·批完翻开关）
+【面级统计】面 | 现测 | 基线 | 新增 | 豁免放行 | 红 | 消减
+  静默形态 | 821 | 821 | 0 | 0 | 0 | 0
+  else业务 | 1224 | 1222 | 2 | 0 | 2 | 0
+  单边比较 | 2173 | 2173 | 0 | 0 | 0 | 0
+  红旗词面 | 11 | 11 | 0 | 0 | 0 | 0
+
+【红清单】（2 条·L1 硬拦）
+  [×] (新增位置缺协议注释) CN语言编译器v2/IR/IR容器.cn:603
+      锚：否则 { 返回 错误(1); } │ 返回错误(1)
+      处置：else业务：登记条目在但代码无协议注释——补「// 静默豁免<类别>: 原因」
+  [×] (新增位置缺协议注释) CN语言编译器v2/IR/IR容器.cn:610
+      锚：否则 { 返回 错误(1); } │ 返回错误(1)
+      处置：else业务：登记条目在但代码无协议注释——补「// 静默豁免<类别>: 原因」
+
+[门禁·红] 2 条——L1 硬拦（无逃生门 flag）；唯一合法通道=登记表补条+代码协议注释，或原地清偿。
+[check_miss_gate] ✗ rc=1
+[gate_lock] 已释放
+Your branch is up to date with 'gitcode/任务/1373'.
+Switched to branch '任务/1373'
+Deleted branch batch/1373 (was 7a58849d1).
+== 合并队列（协议 v3·bors 批量集成）｜平台=win｜分支=任务/1373｜模式=集成 ==
+  [警告] 未跟踪文件不阻塞集成（不入提交）：['iw1373x.log']
+[1] 前置自检通过（分支已推远端·工作树干净）
+  $ git fetch gitcode
+  $ git fetch gitcode
+[2] 报名入队：任务/1373 @ 10-23 17:13:27（71 文件·触全量面）｜服务端✓
+  [并行] 立即组链入池（不等其他批·池有空闲实例即被认领·830 并行模型）
+  [队列服务] 已标集成中（服务端·零 git 提交——920 治乒乓）
+[3] 组链（单人并行·任务=任务/1373）
+  $ git fetch gitcode
+  $ git checkout -B batch/1373 798784424fb80388decbcfef9ca659744667860d
+  [组链] 叠入 任务/1373（3 提交）
+  $ git cherry-pick 2cdf46390393859f9f4f697f2f3fa680d3dfc06f
+  $ git cherry-pick 99d8398870b0037ac269817dd6ccca8770a4c25c
+  $ git cherry-pick 7a58849d18996661fc38e3ceaa0351942e5c9152
+[4] 批门禁（成员 1·写集 71 文件·全量）
+  $ C:\Users\ChenChao\AppData\Local\Python\pythoncore-3.14-64\python.exe scripts/task_board.py --check
+[5] 全量门禁（平台=win·跑在合并结果上）
+  [快速通道·920 用户裁决] 本机 L1（gate_quick：静态三检查+增量构建+全量单测）——全量由 TX_02 云端对 develop 事后自动兜底（红灯治理适用）
+  $ C:\Users\ChenChao\AppData\Local\Python\pythoncore-3.14-64\python.exe scripts/gate_quick.py
+  [归因辅助] 批成员×写集（对照失败日志定位破坏者后 --drop 踢出重验）：
+    - 任务/1373：['CN语言编译器v2/IR/IR容器.cn', 'iw1373g.log', 'iw1373w.log', 'iw1373z.log', 'scripts/miss_freeze_baseline.json', 'scripts/miss_registry.json', 'src/cn_compiler/codegen/arm64/arm64_codegen.cpp', 'src/cn_compiler/codegen/arm64/arm64_codegen.hpp', 'src/cn_compiler/codegen/arm64/arm64_codegen_dispatch.cpp', 'src/cn_compiler/codegen/arm64/arm64_codegen_emit.cpp', 'src/cn_compiler/codegen/arm64/arm64_instructions.cpp', 'src/cn_compiler/codegen/arm64/arm64_instructions_cast.cpp', 'src/cn_compiler/codegen/linux_x64/linux_x64_codegen.cpp', 'src/cn_compiler/codegen/linux_x64/linux_x64_codegen.hpp', 'src/cn_compiler/codegen/linux_x64/linux_x64_codegen_dispatch.cpp', 'src/cn_compiler/codegen/linux_x64/linux_x64_codegen_emit.cpp', 'src/cn_compiler/codegen/linux_x64/linux_x64_codegen_i128.cpp', 'src/cn_compiler/codegen/linux_x64/linux_x64_codegen_oop.cpp', 'src/cn_compiler/codegen/linux_x64/linux_x64_instructions.cpp', 'src/cn_compiler/codegen/linux_x64/linux_x64_instructions_call.cpp', 'src/cn_compiler/codegen/linux_x64/linux_x64_instructions_cast.cpp', 'src/cn_compiler/codegen/linux_x64/linux_x64_instructions_mem.cpp', 'src/cn_compiler/codegen/x64/x64_codegen.cpp', 'src/cn_compiler/codegen/x64/x64_codegen.hpp', 'src/cn_compiler/codegen/x64/x64_instructions.cpp', 'src/cn_compiler/codegen/x64/x64_instructions_alu.cpp', 'src/cn_compiler/codegen/x64/x64_instructions_cast.cpp', 'src/cn_compiler/codegen/x64/x64_instructions_mem.cpp', 'src/cn_compiler/common/optional_safe.hpp', 'src/cn_compiler/driver/cargo_parser.cpp', 'src/cn_compiler/driver/cargo_parser.hpp', 'src/cn_compiler/driver/driver_module.cpp', 'src/cn_compiler/lexer/lexer.cpp', 'src/cn_compiler/lexer/lexer.hpp', 'src/cn_compiler/parser/parser.hpp', 'src/cn_compiler/parser/parser_type.cpp', 'tests/unit/driver/test_cargo_parser.cpp', 'website/docs/cli.html', 'website/docs/getting-started.html', 'website/docs/index.html', 'website/docs/reference/concurrency.html', 'website/docs/reference/control-flow.html', 'website/docs/reference/errors.html', 'website/docs/reference/functions.html', 'website/docs/reference/index.html', 'website/docs/reference/lexical.html', 'website/docs/reference/modules.html', 'website/docs/reference/oop.html', 'website/docs/reference/types.html', 'website/docs/stdlib.html', 'website/docs/stdlib/algorithm.html', 'website/docs/stdlib/builtin.html', 'website/docs/stdlib/container.html', 'website/docs/stdlib/core.html', 'website/docs/stdlib/file.html', 'website/docs/stdlib/io.html', 'website/docs/stdlib/mapset.html', 'website/docs/stdlib/math.html', 'website/docs/stdlib/random.html', 'website/docs/stdlib/regex.html', 'website/docs/stdlib/string.html', 'website/docs/stdlib/system.html', 'website/docs/stdlib/thread.html', 'website/docs/stdlib/time.html', 'website/docs/tutorial-advanced.html', 'website/docs/tutorial-oop.html', 'website/docs/tutorial-safety.html', 'website/docs/tutorial-syntax.html', 'website/tools/docs_data_io.py', 'website/tools/docs_data_mapset.py', 'website/tools/docs_data_text.py']
+
+[集成失败] L1 快速门禁未过（gate_quick.py——修复后重试）。（批门禁红——修复后重跑本命令续推）
+  $ git checkout 任务/1373
+  $ git branch -D batch/1373
+  [队列服务] 失败恢复：队列行回「排队」——修复后重跑本命令续推（已入池的预验结果按内容键复用·不重跑）

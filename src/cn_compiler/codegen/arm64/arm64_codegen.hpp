@@ -29,6 +29,7 @@
 #include "cn_compiler/codegen/judgement.hpp"
 #include "cn_compiler/codegen/reg_alloc.hpp"
 #include "cn_compiler/common/diagnostics.hpp"
+#include "cn_compiler/common/optional_safe.hpp"
 
 namespace cn_compiler {
 
@@ -277,14 +278,15 @@ private:
 
     // ==================== 操作数与寄存器分配 ====================
 
-    // 虚拟寄存器ID -> 分配到的物理寄存器名（未分配/未启用返回空串）
-    std::string allocRegOf(int regId) const;
+    // 虚拟寄存器ID -> 分配到的物理寄存器名（无值=未分配或未启用分配；
+    //   三后端统一形态：x64/linux 指针·arm64 空串，全部收敛为 cn::Optional）
+    cn::Optional<std::string> allocRegOf(int regId) const;
 
     // 文本是否为被调用者保存物理寄存器名（x19~x28）——返回位/取值位的形态判据
     static bool isPhysRegName(const std::string& text);
 
     // 虚拟寄存器是否分配到物理寄存器（值流走寄存器，栈槽弃用）
-    bool hasPhysReg(int regId) const { return !allocRegOf(regId).empty(); }
+    bool hasPhysReg(int regId) const { return allocRegOf(regId).has_value(); }
 
     // D8（451-a）结果写入目标寄存器：已分配 -> 物理寄存器名（发射方法直写，
     //   免「固定临时 x9/x10 中转 + storeVirtualResult 搬运」的冗余 mov）；

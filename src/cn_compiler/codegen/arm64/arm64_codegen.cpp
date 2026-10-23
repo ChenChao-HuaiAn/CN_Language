@@ -194,21 +194,20 @@ std::string Arm64CodeGenerator::selectInstruction(ir::Opcode opcode,
 
 // ==================== 栈槽分配 ====================
 
-// 虚拟寄存器ID -> 分配到的物理寄存器名（未分配/未启用返回空串）
-std::string Arm64CodeGenerator::allocRegOf(int regId) const {
-    if (regId < 0 || !regAllocEnabled_) return std::string();
+// 虚拟寄存器ID -> 分配到的物理寄存器名（无值=未分配或未启用分配）
+cn::Optional<std::string> Arm64CodeGenerator::allocRegOf(int regId) const {
+    if (regId < 0 || !regAllocEnabled_) return std::nullopt;
     auto it = regAllocMap_.find(regId);
-    if (it == regAllocMap_.end()) return std::string();
+    if (it == regAllocMap_.end()) return std::nullopt;
     return it->second.assignedReg;
 }
 
 // D8（451-a）：结果写入目标寄存器——已分配返回物理寄存器（发射方法直写，
 //   免「固定临时 x9/x10 中转 + storeVirtualResult 搬运」的冗余 mov）；
-//   未分配/未启用返回 fallback（原默认写入槽，未分配路径产物逐字节不变）。
+//   未分配/未启用回落 fallback（原默认写入槽，未分配路径产物逐字节不变）。
 std::string Arm64CodeGenerator::resultTargetReg(int regId,
                                                 const std::string& fallback) const {
-    const std::string phys = allocRegOf(regId);
-    return phys.empty() ? fallback : phys;
+    return allocRegOf(regId).value_or(fallback);
 }
 
 // 文本是否为被调用者保存物理寄存器名（x19~x28）
@@ -277,9 +276,9 @@ void Arm64CodeGenerator::canonicalizeNarrowResult(Arm64AsmWriter& writer,
 void Arm64CodeGenerator::canonicalizeNarrowResultOf(Arm64AsmWriter& writer,
                                                     int resultId,
                                                     const std::string& type) {
-    const std::string reg = allocRegOf(resultId);
-    if (reg.empty()) return;
-    canonicalizeNarrowResult(writer, reg, type);
+    const cn::Optional<std::string> reg = allocRegOf(resultId);
+    if (!reg.has_value()) return;
+    canonicalizeNarrowResult(writer, reg.value(), type);
 }
 
 // 虚拟寄存器结果落位：已分配到物理寄存器时 mov 物理寄存器, srcReg（同名跳过）；
@@ -288,8 +287,9 @@ void Arm64CodeGenerator::canonicalizeNarrowResultOf(Arm64AsmWriter& writer,
 void Arm64CodeGenerator::storeVirtualResult(Arm64AsmWriter& writer, int resultId,
                                             const std::string& srcReg,
                                             const std::string& type) {
-    const std::string dst = allocRegOf(resultId);
-    if (!dst.empty()) {
+    const cn::Optional<std::string> dstOpt = allocRegOf(resultId);
+    if (dstOpt.has_value()) {
+        const std::string& dst = dstOpt.value();
         // #1212：浮点结果落位——sN/dN 目标必须 fmov（mov 不接受 FP 寄存器）；
         //   宽度视图与目标类型一致（f32=sN、f64=dN）
         if (isFloatType(type)) {
@@ -352,8 +352,9 @@ void Arm64CodeGenerator::storeVirtualResult(Arm64AsmWriter& writer, int resultId
 void Arm64CodeGenerator::storeVirtualResultFp(Arm64AsmWriter& writer, int resultId,
                                               const std::string& srcFp,
                                               const std::string& type) {
-    const std::string dst = allocRegOf(resultId);
-    if (!dst.empty()) {
+    const cn::Optional<std::string> dstOpt = allocRegOf(resultId);
+    if (dstOpt.has_value()) {
+        const std::string& dst = dstOpt.value();
         // #1212 审查 P2：目标 s/d 断言 + 宽度视图对齐——s/d 源与目标视图不同
         //   时 fcvt（精准转换）；非 s/d 源仅位模式 fmov（宽度对齐后）；fcvt
         //   永不接受非 s/d 源。

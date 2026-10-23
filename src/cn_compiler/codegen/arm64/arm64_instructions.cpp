@@ -121,8 +121,8 @@ std::string Arm64CodeGenerator::operandText(const ir::IRValue& operand) {
     }
     if (operand.id >= 0) {
         // 寄存器分配（F1-28）：已分配 -> 物理寄存器名（可直接作寄存器操作数）
-        const std::string phys = allocRegOf(operand.id);
-        if (!phys.empty()) return phys;
+        const cn::Optional<std::string> phys = allocRegOf(operand.id);
+        if (phys.has_value()) return phys.value();
         return regSlotMem(operand.id);
     }
     return "[x29,#" + std::to_string(varSlotOf(operand.extra)) + "]";
@@ -130,8 +130,8 @@ std::string Arm64CodeGenerator::operandText(const ir::IRValue& operand) {
 
 // 结果寄存器 -> 目的操作数文本（寄存器槽 / 物理寄存器）
 std::string Arm64CodeGenerator::resultText(const ir::IRValue& result) {
-    const std::string phys = allocRegOf(result.id);
-    if (!phys.empty()) return phys;
+    const cn::Optional<std::string> phys = allocRegOf(result.id);
+    if (phys.has_value()) return phys.value();
     return regSlotMem(result.id);
 }
 
@@ -308,10 +308,12 @@ void Arm64CodeGenerator::emitCopy(Arm64AsmWriter& writer,
     //   结果已分配 -> mov dst, phys（必要结果写入·同寄存器零发射）；
     //   结果未分配 -> 以源物理寄存器直写结果槽（窄结果转 w 形态）；
     //   源未分配 -> fallback 原路径（装载 xr + 写回·产物逐字节不变）。
-    const std::string phys = allocRegOf(inst.operands[0].id);
-    if (!phys.empty()) {
-        const std::string dst = allocRegOf(inst.result.id);
-        if (!dst.empty()) {
+    const cn::Optional<std::string> physOpt = allocRegOf(inst.operands[0].id);
+    if (physOpt.has_value()) {
+        const std::string& phys = physOpt.value();
+        const cn::Optional<std::string> dstOpt = allocRegOf(inst.result.id);
+        if (dstOpt.has_value()) {
+            const std::string& dst = dstOpt.value();
             if (dst != phys) {
                 writer.line("mov " + dst + ", " + phys);
             }

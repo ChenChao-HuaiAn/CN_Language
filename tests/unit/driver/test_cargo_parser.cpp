@@ -104,13 +104,15 @@ TEST(CargoParserTest, FindDependency) {
     const CargoConfig config = parseOk(
         "[货舱]\n名称 = \"x\"\n版本 = \"1\"\n"
         "[依赖]\n核心 = \"内置\"\n网络库 = \"1.2\"\n");
-    const cn_compiler::driver::CargoDependency* core = config.findDependency("核心");
-    ASSERT_NE(core, nullptr);
-    EXPECT_EQ(core->version, "内置");
-    const cn_compiler::driver::CargoDependency* net = config.findDependency("网络库");
-    ASSERT_NE(net, nullptr);
-    EXPECT_EQ(net->version, "1.2");
-    EXPECT_EQ(config.findDependency("不存在"), nullptr);
+    const cn_compiler::cn::Optional<const cn_compiler::driver::CargoDependency*> core =
+        config.findDependency("核心");
+    ASSERT_TRUE(core.has_value());
+    EXPECT_EQ(core.value()->version, "内置");
+    const cn_compiler::cn::Optional<const cn_compiler::driver::CargoDependency*> net =
+        config.findDependency("网络库");
+    ASSERT_TRUE(net.has_value());
+    EXPECT_EQ(net.value()->version, "1.2");
+    EXPECT_FALSE(config.findDependency("不存在").has_value());
 }
 
 // 错误路径：缺右引号 -> 解析失败且 error 非空

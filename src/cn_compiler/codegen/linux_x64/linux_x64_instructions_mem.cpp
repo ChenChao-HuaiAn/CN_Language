@@ -44,18 +44,18 @@ void LinuxX64CodeGenerator::emitLoadStore(LinuxX64AsmWriter& writer,
                                  inst.type == "i32" || inst.type == "u32" ||
                                  inst.type == "i1");
         // 1256：结果已分配 -> 扩展装载直落分配寄存器（免 r10 中转）
-        const std::string dst = physRegOf(inst.result);
-        if (!dst.empty()) {
-            if (copyAllocatedTo(writer, inst.operands[0], dst).empty()) {
+        const cn::Optional<std::string> dst = physRegOf(inst.result);
+        if (dst.has_value()) {
+            if (!copyAllocatedTo(writer, inst.operands[0], dst.value()).has_value()) {
                 const int off = (inst.operands[0].id >= 0)
                                     ? regSlotOffset(inst.operands[0].id)
                                     : varSlotOf(inst.operands[0].extra);
-                emitStackLoad(writer, off, dst, inst.type, __LINE__);
+                emitStackLoad(writer, off, dst.value(), inst.type, __LINE__);
             }
             return;
         }
         // 源可能已分配 -> 规范化拷贝到 r10（未分配即原槽装载，产物不变）
-        if (copyAllocatedTo(writer, inst.operands[0], "r10").empty()) {
+        if (!copyAllocatedTo(writer, inst.operands[0], "r10").has_value()) {
             if (inst.operands[0].id >= 0) {
                 // 寄存器到寄存器（复制槽）
                 emitStackLoad(writer, regSlotOffset(inst.operands[0].id), "r10", inst.type, __LINE__);
@@ -90,8 +90,8 @@ void LinuxX64CodeGenerator::emitLoadStore(LinuxX64AsmWriter& writer,
         }
         // 1256：值已分配 -> 单条直写变量槽（免 r10 中转）；未分配保持原路径
         if (!inst.operands[0].isConstant) {
-            const std::string stPhys = physRegOf(inst.operands[0]);
-            if (!stPhys.empty()) {
+            const cn::Optional<std::string> stPhys = physRegOf(inst.operands[0]);
+            if (stPhys.has_value()) {
                 const std::string mp =
                     (inst.type == "i8" || inst.type == "u8") ? "byte ptr " :
                     (inst.type == "i16" || inst.type == "u16") ? "word ptr " :
@@ -99,11 +99,11 @@ void LinuxX64CodeGenerator::emitLoadStore(LinuxX64AsmWriter& writer,
                      inst.type == "i1") ? "dword ptr " :
                     "qword ptr ";
                 const std::string regW =
-                    (inst.type == "i8" || inst.type == "u8") ? x86Reg8(stPhys) :
-                    (inst.type == "i16" || inst.type == "u16") ? x86Reg16(stPhys) :
+                    (inst.type == "i8" || inst.type == "u8") ? x86Reg8(stPhys.value()) :
+                    (inst.type == "i16" || inst.type == "u16") ? x86Reg16(stPhys.value()) :
                     (inst.type == "i32" || inst.type == "u32" ||
-                     inst.type == "i1") ? x86Reg32(stPhys) :
-                    stPhys;
+                     inst.type == "i1") ? x86Reg32(stPhys.value()) :
+                    stPhys.value();
                 writer.line("mov " + mp + stackMemText(varSlotOf(inst.extra)) + ", " + regW);
                 return;
             }
@@ -120,9 +120,9 @@ void LinuxX64CodeGenerator::emitAddrOf(LinuxX64AsmWriter& writer,
                                        const ir::IRInstruction& inst) {
     const int off = varSlotOf(inst.extra);
     // 1256：结果已分配 -> lea 直落分配寄存器
-    const std::string dst = physRegOf(inst.result);
-    if (!dst.empty()) {
-        writer.line("lea " + dst + ", " + stackMemText(off));
+    const cn::Optional<std::string> dst = physRegOf(inst.result);
+    if (dst.has_value()) {
+        writer.line("lea " + dst.value() + ", " + stackMemText(off));
         return;
     }
     writer.line("lea r10, " + stackMemText(off));
@@ -134,10 +134,10 @@ void LinuxX64CodeGenerator::emitFieldAddr(LinuxX64AsmWriter& writer,
                                           const ir::IRInstruction& inst) {
     // 1256：基址可能已分配——直接读物理寄存器（勿 add 修改：分配值可能后续
     //   仍被使用）；未分配沿用 r10 装载原路径
-    const std::string basePhys = physRegOf(inst.operands[0]);
-    const std::string base = basePhys.empty()
-                                 ? loadOperandToX(writer, inst.operands[0], "r10")
-                                 : basePhys;
+    const cn::Optional<std::string> basePhys = physRegOf(inst.operands[0]);
+    const std::string base = basePhys.has_value()
+                                 ? basePhys.value()
+                                 : loadOperandToX(writer, inst.operands[0], "r10");
     const long long fieldOffset = std::stoll(inst.extra);
     const int checkId = ptrCheckCounter_++;
     const std::string okLabel = "Lfield_ok" + std::to_string(checkId);
@@ -148,13 +148,13 @@ void LinuxX64CodeGenerator::emitFieldAddr(LinuxX64AsmWriter& writer,
     writer.line("call __cn_runtime_error");
     writer.line("ret");
     writer.raw(okLabel + ":");
-    const std::string dst = physRegOf(inst.result);
-    if (!dst.empty()) {
+    const cn::Optional<std::string> dst = physRegOf(inst.result);
+    if (dst.has_value()) {
         // 字段地址 = 基址 + 偏移（lea 不破坏基址寄存器）
         if (fieldOffset != 0) {
-            writer.line("lea " + dst + ", [" + base + "+" + std::to_string(fieldOffset) + "]");
+            writer.line("lea " + dst.value() + ", [" + base + "+" + std::to_string(fieldOffset) + "]");
         } else if (fieldOffset == 0) {
-            writer.line("mov " + dst + ", " + base);
+            writer.line("mov " + dst.value() + ", " + base);
         }
         return;
     }
@@ -174,17 +174,17 @@ void LinuxX64CodeGenerator::emitFieldAddr(LinuxX64AsmWriter& writer,
 //   串句柄 0=空串（运行时串函数已容错），不触发错误码 3。
 void LinuxX64CodeGenerator::emitStrFieldAddr(LinuxX64AsmWriter& writer,
                                              const ir::IRInstruction& inst) {
-    const std::string basePhys = physRegOf(inst.operands[0]);
-    const std::string base = basePhys.empty()
-                                 ? loadOperandToX(writer, inst.operands[0], "r10")
-                                 : basePhys;
+    const cn::Optional<std::string> basePhys = physRegOf(inst.operands[0]);
+    const std::string base = basePhys.has_value()
+                                 ? basePhys.value()
+                                 : loadOperandToX(writer, inst.operands[0], "r10");
     const long long fieldOffset = std::stoll(inst.extra);
-    const std::string dst = physRegOf(inst.result);
-    if (!dst.empty()) {
+    const cn::Optional<std::string> dst = physRegOf(inst.result);
+    if (dst.has_value()) {
         if (fieldOffset != 0) {
-            writer.line("lea " + dst + ", [" + base + "+" + std::to_string(fieldOffset) + "]");
+            writer.line("lea " + dst.value() + ", [" + base + "+" + std::to_string(fieldOffset) + "]");
         } else if (fieldOffset == 0) {
-            writer.line("mov " + dst + ", " + base);
+            writer.line("mov " + dst.value() + ", " + base);
         }
         return;
     }
@@ -203,10 +203,10 @@ void LinuxX64CodeGenerator::emitStrFieldAddr(LinuxX64AsmWriter& writer,
 void LinuxX64CodeGenerator::emitPtrLoadStore(LinuxX64AsmWriter& writer,
                                              const ir::IRInstruction& inst) {
     // 1256：地址操作数可能已分配——直读物理寄存器（不改写）；未分配原 r10 路径
-    const std::string addrPhys = physRegOf(inst.operands[0]);
-    const std::string addr = addrPhys.empty()
-                                 ? loadOperandToX(writer, inst.operands[0], "r10")
-                                 : addrPhys;
+    const cn::Optional<std::string> addrPhys = physRegOf(inst.operands[0]);
+    const std::string addr = addrPhys.has_value()
+                                 ? addrPhys.value()
+                                 : loadOperandToX(writer, inst.operands[0], "r10");
     const int checkId = ptrCheckCounter_++;
     const std::string okLabel = "Lptr_ok" + std::to_string(checkId);
     writer.line("test " + addr + ", " + addr);
@@ -227,7 +227,7 @@ void LinuxX64CodeGenerator::emitPtrLoad(LinuxX64AsmWriter& writer,
                                         const ir::IRInstruction& inst,
                                         const std::string& addr,
                                         const std::string& type) {
-    const std::string dstPhys = physRegOf(inst.result);
+    const cn::Optional<std::string> dstPhys = physRegOf(inst.result);
     if (isFloatType(type)) {
         // #1212 d：结果已分配到 xmm -> 直装（免槽写）；未分配原 xmm0 + 槽
         const std::string vreg = isXmmName(dstPhys) ? dstPhys : "xmm0";
@@ -248,19 +248,19 @@ void LinuxX64CodeGenerator::emitPtrLoad(LinuxX64AsmWriter& writer,
         return;
     }
     // 1256：结果已分配 -> 按宽度直装分配寄存器（免 r9 中转）
-    if (!dstPhys.empty()) {
+    if (dstPhys.has_value()) {
         if (type == "i8" || type == "i16") {
-            writer.line("movsx " + x86Reg32(dstPhys) + ", " +
+            writer.line("movsx " + x86Reg32(dstPhys.value()) + ", " +
                         ((type == "i8") ? "byte ptr [" : "word ptr [") + addr + "]");
         } else if (type == "u8" || type == "u16") {
-            writer.line("movzx " + x86Reg32(dstPhys) + ", " +
+            writer.line("movzx " + x86Reg32(dstPhys.value()) + ", " +
                         ((type == "u8") ? "byte ptr [" : "word ptr [") + addr + "]");
         } else if (type == "i32" || type == "u32") {
-            writer.line("mov " + x86Reg32(dstPhys) + ", dword ptr [" + addr + "]");
+            writer.line("mov " + x86Reg32(dstPhys.value()) + ", dword ptr [" + addr + "]");
         } else if (type == "i1") {
-            writer.line("movzx " + x86Reg32(dstPhys) + ", byte ptr [" + addr + "]");
+            writer.line("movzx " + x86Reg32(dstPhys.value()) + ", byte ptr [" + addr + "]");
         } else if (type == "i64" || type == "u64" || type == "ptr") {
-            writer.line("mov " + dstPhys + ", qword ptr [" + addr + "]");
+            writer.line("mov " + dstPhys.value() + ", qword ptr [" + addr + "]");
         }
         return;
     }
@@ -329,17 +329,17 @@ void LinuxX64CodeGenerator::emitPtrStore(LinuxX64AsmWriter& writer,
     }
     // 1256：值已分配 -> 单条直写内存（按类型宽度）；未分配原 r9 中转路径
     if (!inst.operands[1].isConstant) {
-        const std::string stPhys = physRegOf(inst.operands[1]);
-        if (!stPhys.empty()) {
+        const cn::Optional<std::string> stPhys = physRegOf(inst.operands[1]);
+        if (stPhys.has_value()) {
             const std::string mem = "[" + addr + "]";
             if (type == "i8" || type == "u8" || type == "i1") {
-                writer.line("mov byte ptr " + mem + ", " + x86Reg8(stPhys));
+                writer.line("mov byte ptr " + mem + ", " + x86Reg8(stPhys.value()));
             } else if (type == "i16" || type == "u16") {
-                writer.line("mov word ptr " + mem + ", " + x86Reg16(stPhys));
+                writer.line("mov word ptr " + mem + ", " + x86Reg16(stPhys.value()));
             } else if (type == "i32" || type == "u32") {
-                writer.line("mov dword ptr " + mem + ", " + x86Reg32(stPhys));
+                writer.line("mov dword ptr " + mem + ", " + x86Reg32(stPhys.value()));
             } else if (type == "i64" || type == "u64" || type == "ptr") {
-                writer.line("mov qword ptr " + mem + ", " + stPhys);
+                writer.line("mov qword ptr " + mem + ", " + stPhys.value());
             }
             return;
         }

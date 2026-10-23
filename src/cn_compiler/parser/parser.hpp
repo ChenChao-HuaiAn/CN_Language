@@ -13,6 +13,7 @@
 #include <vector>
 
 #include "cn_compiler/common/diagnostics.hpp"
+#include "cn_compiler/common/optional_safe.hpp"
 #include "cn_compiler/lexer/token.hpp"
 #include "cn_compiler/model/ast.hpp"
 
@@ -210,8 +211,8 @@ private:
     //   不放宽防表达式 a < b(1), c > d 误判）。
     bool isMethodValueAngleOpen() const;
     // 031：方法值尖括号内核——ltOff='<' 相对 current 的 peek 偏移；返回闭合
-    //   '>' 后的 peek 偏移（调用方据以查后续 token）、-1=不匹配。
-    int methodValueAngleCloseOffset(int ltOff) const;
+    //   '>' 后的 peek 偏移（调用方据以查后续 token）、无值=形态不匹配。
+    cn::Optional<int> methodValueAngleCloseOffset(int ltOff) const;
     // 031：顶层/静态/字段声明 guard——`方法值<类, 返回(参数表)> 名` 前瞻
     //   （genericDeclAhead 白名单不含签名段括号，方法值专用前瞻）。
     bool methodValueDeclAhead() const;

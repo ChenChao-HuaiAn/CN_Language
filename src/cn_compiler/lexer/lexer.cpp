@@ -347,8 +347,12 @@ char32_t Lexer::peekNext(int n) const {
     return cp;
 }
 
-// 返回当前位置字符的UTF-8字节串（不前进；越界返回空串）
+// 返回当前位置字符的UTF-8字节串（不前进；无值=已到源码末尾——全部消费点
+//   均有 isAtEnd/字符判定守卫先行，坏值访问=守卫遗漏缺陷显形）
 std::string Lexer::currentUtf8() const {
+    // 1360 批4 回退（弹窗风暴实证）：Optional+.value() fail-loud 在高频
+    //   token 收集循环产生 abort 弹窗风暴——越界空串=推进语义（非失败通道）·
+    //   本函数不属结果化对象（批4 甄别「全有守卫」被运行时推翻）。
     if (isAtEnd()) return "";
     int len = 1;
     decodeUtf8(source_, pos_, len);
@@ -785,7 +789,9 @@ Token Lexer::readChar() {
             advance(); // 消费 u
             if (peek() != U'{') {
                 reportError(loc, "无效的Unicode转义：缺少 {");
-            } else {
+            }
+            // 静默豁免业务值: 1360 批4 结果化取值路径（isAtEnd 守卫先行·value 显形 fail-loud）非兜底
+            else {
                 text += currentUtf8();
                 advance(); // 消费 {
                 const std::size_t hexStart = text.size();

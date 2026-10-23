@@ -80,8 +80,8 @@ std::string LinuxX64CodeGenerator::operandText(const ir::IRValue& operand) {
         return operand.extra;
     }
     if (operand.id >= 0) {
-        const std::string phys = physRegOf(operand);
-        if (!phys.empty()) return phys;  // 物理寄存器
+        const cn::Optional<std::string> phys = physRegOf(operand);
+        if (phys.has_value()) return phys.value();  // 物理寄存器
         return regSlotMem(operand.id);
     }
     return stackMemText(varSlotOf(operand.extra));
@@ -89,8 +89,8 @@ std::string LinuxX64CodeGenerator::operandText(const ir::IRValue& operand) {
 
 // 结果寄存器 -> 目的操作数文本（寄存器槽 / 物理寄存器）
 std::string LinuxX64CodeGenerator::resultText(const ir::IRValue& result) {
-    const std::string phys = physRegOf(result);
-    if (!phys.empty()) return phys;  // 物理寄存器
+    const cn::Optional<std::string> phys = physRegOf(result);
+    if (phys.has_value()) return phys.value();  // 物理寄存器
     return regSlotMem(result.id);
 }
 
@@ -149,8 +149,9 @@ bool LinuxX64CodeGenerator::emitIntBinaryDirect(LinuxX64AsmWriter& writer,
                                                 const std::string& w, bool needOvf,
                                                 bool isSigned, const std::string& trap) {
     const std::string& ty = inst.type;
-    const std::string dstPhys = physRegOf(inst.result);
-    if (!dstPhys.empty() && !hasRegisterConflict(inst)) {
+    const cn::Optional<std::string> dstPhysOpt = physRegOf(inst.result);
+    if (dstPhysOpt.has_value() && !hasRegisterConflict(inst)) {
+        const std::string& dstPhys = dstPhysOpt.value();
         const std::string regW = w.empty() ? dstPhys
                  : (w == "d" ? x86Reg32(dstPhys) : narrowOperand(ty, dstPhys));
         // 操作数宽度名：i8/i16 窄名、i32/u32 32 位名、i64/u64 全名（同型取自操作数）
@@ -185,9 +186,9 @@ bool LinuxX64CodeGenerator::emitIntBinaryDirect(LinuxX64AsmWriter& writer,
             // op2 已分配且与 dst 不同：直接读物理寄存器（免 r9 中转）；
             //   同寄存器（分配器死点复用）退回 r9 装载——两地址 op 先覆盖
             //   op2 原值会错。
-            const std::string op2Phys = physRegOf(inst.operands[1]);
-            if (!op2Phys.empty() && op2Phys != dstPhys) {
-                writer.line(mnemonic + " " + regW + ", " + opW(op2Phys));
+            const cn::Optional<std::string> op2Phys = physRegOf(inst.operands[1]);
+            if (op2Phys.has_value() && op2Phys.value() != dstPhys) {
+                writer.line(mnemonic + " " + regW + ", " + opW(op2Phys.value()));
             } else {
                 loadOperandToX(writer, inst.operands[1], "r9");
                 writer.line(mnemonic + " " + regW + ", " + opW("r9"));
@@ -287,22 +288,22 @@ bool LinuxX64CodeGenerator::emitIntMulDirect(LinuxX64AsmWriter& writer,
                                              const ir::IRInstruction& inst,
                                              const std::string& ty, bool needOvf,
                                              bool isSigned, const std::string& trap) {
-    const std::string dstPhys = physRegOf(inst.result);
-    if (!dstPhys.empty() && !hasRegisterConflict(inst)) {
+    const cn::Optional<std::string> dstPhys = physRegOf(inst.result);
+    if (dstPhys.has_value() && !hasRegisterConflict(inst)) {
         // 1267 审查 P1-2：逐类型显式发射并返回真；未列举类型（如 i1）返回假
         //   交通用路径（与未分配路径同款）。原实现未列举类型也 return true 且
         //   零发射=静默返回成功；i1 已被 1267 纳入可分配面，必须显式分流。
         if (ty == "u64") {
-            emitIntMulDirectU64(writer, inst, dstPhys, needOvf, trap);
+            emitIntMulDirectU64(writer, inst, dstPhys.value(), needOvf, trap);
             return true;
         }
         if (ty == "u32") {
-            emitIntMulDirectU32(writer, inst, dstPhys, needOvf, trap);
+            emitIntMulDirectU32(writer, inst, dstPhys.value(), needOvf, trap);
             return true;
         }
         if (ty == "i8" || ty == "i16" || ty == "i32" || ty == "i64" ||
             ty == "u8" || ty == "u16") {
-            emitIntMulDirectWide(writer, inst, ty, dstPhys, needOvf, isSigned, trap);
+            emitIntMulDirectWide(writer, inst, ty, dstPhys.value(), needOvf, isSigned, trap);
             return true;
         }
     }
@@ -354,10 +355,10 @@ void LinuxX64CodeGenerator::emitIntMulDirectU32(LinuxX64AsmWriter& writer,
             writer.line("imul " + dstPhys + ", r9");
         }
     } else if (!op2ConstD) {
-        const std::string op2Phys = physRegOf(inst.operands[1]);
-        if (!op2Phys.empty() && op2Phys != dstPhys) {
-            writer.line("imul " + dstPhys + ", " + op2Phys);
-        } else if (op2Phys.empty() || op2Phys == dstPhys) {
+        const cn::Optional<std::string> op2Phys = physRegOf(inst.operands[1]);
+        if (op2Phys.has_value() && op2Phys.value() != dstPhys) {
+            writer.line("imul " + dstPhys + ", " + op2Phys.value());
+        } else if (!op2Phys.has_value() || op2Phys.value() == dstPhys) {
             loadOperandToX(writer, inst.operands[1], "r9");
             writer.line("imul " + dstPhys + ", r9");
         }
@@ -398,11 +399,11 @@ void LinuxX64CodeGenerator::emitIntMulDirectWide(LinuxX64AsmWriter& writer,
             writer.line("imul " + acc + ", " + (acc == dstPhys ? "r9" : "r9d"));
         }
     } else if (!op2ConstD) {
-        const std::string op2Phys = physRegOf(inst.operands[1]);
-        if (!op2Phys.empty() && op2Phys != dstPhys) {
+        const cn::Optional<std::string> op2Phys = physRegOf(inst.operands[1]);
+        if (op2Phys.has_value() && op2Phys.value() != dstPhys) {
             writer.line("imul " + acc + ", " +
-                        (acc == dstPhys ? op2Phys : x86Reg32(op2Phys)));
-        } else if (op2Phys.empty() || op2Phys == dstPhys) {
+                        (acc == dstPhys ? op2Phys.value() : x86Reg32(op2Phys.value())));
+        } else if (!op2Phys.has_value() || op2Phys.value() == dstPhys) {
             loadOperandToX(writer, inst.operands[1], "r9");
             writer.line("imul " + acc + ", " + (acc == dstPhys ? "r9" : "r9d"));
         }
@@ -812,9 +813,9 @@ void LinuxX64CodeGenerator::emitShift(LinuxX64AsmWriter& writer,
     const int widthBits = shiftMask + 1;  // 任务 474：类型位宽（检查上界）
     // 1256：结果已分配 -> 计算落分配寄存器（acc=dstPhys）；未分配 acc=r10
     //   （既有产物逐字节不变）
-    const std::string dstPhys = physRegOf(inst.result);
-    const bool direct = !dstPhys.empty() && !hasRegisterConflict(inst);
-    const std::string acc = direct ? dstPhys : "r10";
+    const cn::Optional<std::string> dstPhys = physRegOf(inst.result);
+    const bool direct = dstPhys.has_value() && !hasRegisterConflict(inst);
+    const std::string acc = direct ? dstPhys.value() : "r10";
     loadOperandToX(writer, inst.operands[0], acc);
     // 287-a（M3 采样 s2026091705·asm 三件套定案）：i32 源补 movsxd 符号扩展——
     //   同 270-a T14（emitCast 整→浮）零扩展家族：i32 槽装载（mov r10d）天然
@@ -831,11 +832,11 @@ void LinuxX64CodeGenerator::emitShift(LinuxX64AsmWriter& writer,
             storeCanonicalResult(writer, inst.result, acc, inst.type);
             return;
         }
-        const std::string r32 = x86Reg32(dstPhys);
+        const std::string r32 = x86Reg32(dstPhys.value());
         if (inst.type == "i8" || inst.type == "i16") {
-            writer.line("movsx " + r32 + ", " + narrowOperand(inst.type, dstPhys));
+            writer.line("movsx " + r32 + ", " + narrowOperand(inst.type, dstPhys.value()));
         } else if (inst.type == "u8" || inst.type == "u16") {
-            writer.line("movzx " + r32 + ", " + narrowOperand(inst.type, dstPhys));
+            writer.line("movzx " + r32 + ", " + narrowOperand(inst.type, dstPhys.value()));
         } else if (inst.type == "i32" || inst.type == "u32") {
             writer.line("mov " + r32 + ", " + r32);  // 清高 32（low32 即值）
         }

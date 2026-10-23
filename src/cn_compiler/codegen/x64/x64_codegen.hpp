@@ -22,6 +22,7 @@
 #include "cn_compiler/codegen/debug_info.hpp"
 #include "cn_compiler/codegen/reg_alloc.hpp"
 #include "cn_compiler/common/diagnostics.hpp"
+#include "cn_compiler/common/optional_safe.hpp"
 
 namespace cn_compiler {
 
@@ -295,7 +296,8 @@ private:
     // 1281：通用寄存器别名换算（宽度唯一权威·全文件共用一张 16 项 GPR 表）。
     //   text 为任一宽度通用寄存器名（64/32/16/8 位别名）时返回目标位宽（64/32/16/8）
     //   的别名；槽文本（[rbp-X]）/立即数/符号文本原样返回（非寄存器不猜宽度）。
-    //   bits 非 {64,32,16,8} 返回空串=内部错误哨兵（调用方必须报诊断中止）。
+    //   bits 闭集={64,32,16,8}（消费点均为字面量或经 intOpWidthBits 判零守卫），
+    //   越界=内部缺陷直接终止显形（882 处置③）。
     static std::string regAtWidth(const std::string& text, int bits);
     // text 是否为任意宽度的通用寄存器名（ra~r15b 闭集）
     static bool isGeneralRegisterName(const std::string& text);
@@ -383,14 +385,14 @@ private:
     // 结果寄存器 -> 目的操作数文本（寄存器槽 / 物理寄存器）
     std::string resultText(const ir::IRValue& result);
 
-    // D8（458-a）结果已分配的物理寄存器名（r12~r15；未分配返回空串）——
+    // D8（458-a）结果已分配的物理寄存器名（r12~r15；无值=未分配）——
     //   发射方法「计算寄存器=dst 直写」判据（免尾部 mov dst, rax 中转）
-    std::string physRegOf(const ir::IRValue& value) const;
+    cn::Optional<std::string> physRegOf(const ir::IRValue& value) const;
 
     // ==================== 阶段C：寄存器分配 + 调试信息 ====================
 
-    // 虚拟寄存器ID -> 寄存器分配结果（未分配返回空映射项）
-    const regalloc::RegAssignment* regAllocOf(int regId) const;
+    // 虚拟寄存器ID -> 寄存器分配结果（无值=未分配或未启用分配）
+    cn::Optional<const regalloc::RegAssignment*> regAllocOf(int regId) const;
 
     // 寄存器分配器可分配的物理寄存器名（被调用者保存，去保留）
     static std::vector<std::string> allocableCalleeSavedRegs(bool needR12Reserved);

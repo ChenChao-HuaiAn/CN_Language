@@ -74,13 +74,13 @@ void X64CodeGenerator::emitShift(AsmWriter& writer, const ir::IRInstruction& ins
         // D8（458-a）：dst 已分配时计算寄存器=dst 的 32 位形态（cl 固定约束不冲突）
         // 1281：移位量寄存器与结果分配寄存器相同=两地址自吞（先写 dst 再读移位
         //   量读到新值）——回退 eax 计算，尾部再写 dst。
-        const std::string dstPhys = physRegOf(inst.result);
-        const std::string shAmtPhys = inst.operands[1].isConstant
-                                          ? std::string()
+        const cn::Optional<std::string> dstPhys = physRegOf(inst.result);
+        const cn::Optional<std::string> shAmtPhys = inst.operands[1].isConstant
+                                          ? std::nullopt
                                           : physRegOf(inst.operands[1]);
-        const bool shiftSelfClobber = !dstPhys.empty() && shAmtPhys == dstPhys;
+        const bool shiftSelfClobber = dstPhys.has_value() && shAmtPhys.value() == dstPhys.value();
         std::string ew = "eax";
-        if (!dstPhys.empty() && !shiftSelfClobber) ew = widthFor("i32", dstPhys);
+        if (dstPhys.has_value() && !shiftSelfClobber) ew = widthFor("i32", dstPhys.value());
         // 常量传播面守卫（#500·077 Cast 常量源适配同构）：op1 为立即数常量时
         //   movsx/movzx 不接受立即数操作数（word ptr 32767 → ml64 A2070）——
         //   mov 直载（写 32 位寄存器清高位=窄值全值，值域 ≤65535 在 imm32 内）。
@@ -128,7 +128,7 @@ void X64CodeGenerator::emitShift(AsmWriter& writer, const ir::IRInstruction& ins
         const bool signedShift = (srcType == "i8" || srcType == "i16");
         writer.line(std::string(signedShift ? "movsx " : "movzx ") + ew + ", " +
                     narrowOperand(srcType, ew));
-        if (dstPhys.empty() || shiftSelfClobber) {
+        if (!dstPhys.has_value() || shiftSelfClobber) {
             writer.line("mov " + shrunkOperand("i32", dst) + ", eax");
         }
         return;
@@ -136,16 +136,16 @@ void X64CodeGenerator::emitShift(AsmWriter& writer, const ir::IRInstruction& ins
     // 32/64位
     // D8（458-a）：dst 已分配且移位量寄存器（cl）不冲突 -> 计算落 dst 免尾部中转
     //   （cl=rcx 低 8 位·rcx 非分配池寄存器·与 dst 无冲突面）
-    const std::string dstPhys64 = physRegOf(inst.result);
+    const cn::Optional<std::string> dstPhys64 = physRegOf(inst.result);
     // 1281：移位量寄存器与结果分配寄存器相同=两地址自吞（先写 dst 再读移位量
     //   读到新值）——回退 rax 计算，尾部再写 dst（窄型分支同判据）。
-    const std::string amtPhys64 = inst.operands[1].isConstant
-                                      ? std::string()
+    const cn::Optional<std::string> amtPhys64 = inst.operands[1].isConstant
+                                      ? std::nullopt
                                       : physRegOf(inst.operands[1]);
-    const bool direct64 = !dstPhys64.empty() && amtPhys64 != dstPhys64;
+    const bool direct64 = dstPhys64.has_value() && amtPhys64.value() != dstPhys64.value();
     std::string w;
     if (direct64) {
-        w = widthFor(srcType, dstPhys64);
+        w = widthFor(srcType, dstPhys64.value());
     }
     if (!direct64) {
         w = widthFor(srcType, "rax");
@@ -218,8 +218,8 @@ void X64CodeGenerator::emitIntBinary(AsmWriter& writer, const ir::IRInstruction&
     //   mov dst, rax 中转）；未分配保持 rax 三段（内存槽不可作运算目的）。
     //   任务 474：溢出检查面强制三段（尾 store 为正常路径实体指令——错误块
     //   垫底布局要求 jCC 与 trap 之间存在顺序执行路径）
-    const std::string dstPhys =
-        needOvf ? std::string() : physRegOf(inst.result);
+    const cn::Optional<std::string> dstPhys =
+        needOvf ? std::nullopt : physRegOf(inst.result);
     // 窄域 cmp 检查辅助（8/16 位经 32 位运算模型——win 侧硬件标志只反映 32 位
     //   溢出，窄域溢出按结果域 cmp 检查·发射器域 cmp 与语义窄域模型一致）。
     //   只发分支（trap 块由调用方垫底——正常路径存储之后）
@@ -258,10 +258,10 @@ void X64CodeGenerator::emitIntBinary(AsmWriter& writer, const ir::IRInstruction&
         srcType == "u8" || srcType == "u16") {
         // 1281：op2 与结果同物理寄存器=两地址自吞（写 dst 覆盖未读的 op2）——
         //   回退 eax/ecx 三段（与 32/64 位直写判据同构）。
-        const std::string nOp2Phys = inst.operands[1].isConstant
-                                         ? std::string()
+        const cn::Optional<std::string> nOp2Phys = inst.operands[1].isConstant
+                                         ? std::nullopt
                                          : physRegOf(inst.operands[1]);
-        const bool narrowSelfClobber = !dstPhys.empty() && nOp2Phys == dstPhys;
+        const bool narrowSelfClobber = dstPhys.has_value() && nOp2Phys.value() == dstPhys.value();
         // P1（1281 返工）：needOvf=false（回绕内置/不安全函数）的窄型加/减结果
         //   是 32 位完整和差（u8 255+1=256、i8 100+100=200），必须按声明窄宽
         //   movsx/movzx 规范化后再落位——否则 32 位消费点（比较/除法等）读到
@@ -276,9 +276,9 @@ void X64CodeGenerator::emitIntBinary(AsmWriter& writer, const ir::IRInstruction&
             writer.line(std::string(signedNarrow ? "movsx " : "movzx ") + acc +
                         ", " + narrowOperand(srcType, acc));
         };
-        if (!dstPhys.empty() && !narrowSelfClobber) {
+        if (dstPhys.has_value() && !narrowSelfClobber) {
             // 直写：计算寄存器=dst 的 32 位形态（ecx 是固定临时·与 dst 无冲突面）
-            const std::string dw = widthFor("i32", dstPhys);
+            const std::string dw = widthFor("i32", dstPhys.value());
             // 1159：op1 源三分（常量直载/寄存器窄宽名/内存 byte·word ptr）
             emitNarrowOperandTo32(writer, srcType, op1,
                                   inst.operands[0].isConstant, dw);
@@ -352,9 +352,9 @@ void X64CodeGenerator::emitIntBinary(AsmWriter& writer, const ir::IRInstruction&
     // D8（458-a）：直写判据=dst 已分配 且 op2 不与 dst 同物理寄存器（分配器
     //   死点复用 op2 死于本指令时可能同寄存器——两地址 op dst, dst 会先覆盖
     //   op2 原值=错，退回原三段）
-    if (!dstPhys.empty() && op2Text != dstPhys &&
-        shrunkOperand(inst.type, op2Text) != widthFor(inst.type, dstPhys)) {
-        const std::string dw = widthFor(inst.type, dstPhys);
+    if (dstPhys.has_value() && op2Text != dstPhys.value() &&
+        shrunkOperand(inst.type, op2Text) != widthFor(inst.type, dstPhys.value())) {
+        const std::string dw = widthFor(inst.type, dstPhys.value());
         // mov dst, op1 -> 运算 dst, op2（免尾部中转·A2022 收缩族同口径）
         writer.line("mov " + dw + ", " + shrunkOperand(inst.type, op1));
         writer.line(mnemonic + " " + dw + ", " + shrunkOperand(inst.type, op2Text));
@@ -401,15 +401,15 @@ void X64CodeGenerator::emitIntMul(AsmWriter& writer, const ir::IRInstruction& in
         // D8（369 波1·乘法族直写）：结果已分配且无溢出检查面（WrapMul/不安全）
         //   时计算落 dst 的 32 位名（emitIntBinary 458-a 直写同构·免尾部 mov
         //   中转）；needOvf 时强制三段（481 域 cmp 错误块在中间·垫底布局）。
-        const std::string narrowPhys = needOvf ? std::string() : physRegOf(inst.result);
+        const cn::Optional<std::string> narrowPhys = needOvf ? std::nullopt : physRegOf(inst.result);
         // 1281：op2 与结果同物理寄存器=两地址自吞（见 emitIntBinary 同判据）
-        const std::string nOp2Phys = inst.operands[1].isConstant
-                                         ? std::string()
+        const cn::Optional<std::string> nOp2Phys = inst.operands[1].isConstant
+                                         ? std::nullopt
                                          : physRegOf(inst.operands[1]);
-        const bool narrowSelfClobber = !narrowPhys.empty() && nOp2Phys == narrowPhys;
-        const std::string acc = (narrowPhys.empty() || narrowSelfClobber)
+        const bool narrowSelfClobber = narrowPhys.has_value() && nOp2Phys.value() == narrowPhys.value();
+        const std::string acc = (!narrowPhys.has_value() || narrowSelfClobber)
                                     ? std::string("eax")
-                                    : widthFor("i32", narrowPhys);
+                                    : widthFor("i32", narrowPhys.value());
         // 1159：op1 源三分（常量/寄存器窄宽名/内存 byte·word ptr）
         emitNarrowOperandTo32(writer, ty, op1, inst.operands[0].isConstant, acc);
         if (inst.operands[1].isConstant) {
@@ -511,10 +511,10 @@ void X64CodeGenerator::emitIntMul(AsmWriter& writer, const ir::IRInstruction& in
     // D8（369 波1·乘法族直写）：判据同 emitIntBinary 458-a——结果已分配 且
     //   op2 不与 dst 同物理寄存器（分配器死点复用同寄存器面：两地址 op 先覆盖
     //   op2=错，退回三段）且无溢出检查面（needOvf 强制三段）时计算直接落 dst。
-    const std::string mulPhys = needOvf ? std::string() : physRegOf(inst.result);
-    if (!mulPhys.empty() && op2Text != mulPhys &&
-        shrunkOperand(ty, op2Text) != widthFor(ty, mulPhys)) {
-        const std::string dw = widthFor(ty, mulPhys);
+    const cn::Optional<std::string> mulPhys = needOvf ? std::nullopt : physRegOf(inst.result);
+    if (mulPhys.has_value() && op2Text != mulPhys.value() &&
+        shrunkOperand(ty, op2Text) != widthFor(ty, mulPhys.value())) {
+        const std::string dw = widthFor(ty, mulPhys.value());
         writer.line("mov " + dw + ", " + shrunkOperand(ty, op1));
         writer.line("imul " + dw + ", " + shrunkOperand(ty, op2Text));
         return;

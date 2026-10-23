@@ -57,9 +57,9 @@ void LinuxX64CodeGenerator::emitCast(LinuxX64AsmWriter& writer,
         });
         // 1256：结果已分配 -> 直写物理寄存器（按目标宽度；窄型 32 位名保留
         //   辅助返回的符号/零扩展位模式），未分配保持 rax -> r10 -> 槽原路径
-        const std::string phys = physRegOf(inst.result);
-        if (!phys.empty()) {
-            writer.line("mov " + widthFor(to, phys) + ", " + widthFor(to, "rax"));
+        const cn::Optional<std::string> phys = physRegOf(inst.result);
+        if (phys.has_value()) {
+            writer.line("mov " + widthFor(to, phys.value()) + ", " + widthFor(to, "rax"));
             return;
         }
         writer.line("mov r10, rax");
@@ -176,23 +176,23 @@ void LinuxX64CodeGenerator::emitCast(LinuxX64AsmWriter& writer,
     // ---- 整数扩展（i8/i16/u8/u16 源）：装载即扩展，64 位存槽 ----
     case judgement::CastKind::NarrowSourceExtend: {
         const std::string src = loadOperandToX(writer, inst.operands[0], "r10");
-        const std::string dst = physRegOf(inst.result);
-        if (dst.empty()) {
+        const cn::Optional<std::string> dst = physRegOf(inst.result);
+        if (!dst.has_value()) {
             emitStackStore(writer, dstOff, src, "i64");
             return;
         }
         // 1256：结果已分配——按目标类型规范化写入（与槽值消费者逐位一致：
         //   窄目标按目标符号性规范化；宽目标 64 位扩展；32 位目标 32 位写）
         if (to == "i8" || to == "i16") {
-            writer.line("movsx " + x86Reg32(dst) + ", " + narrowOperand(from, src));
+            writer.line("movsx " + x86Reg32(dst.value()) + ", " + narrowOperand(from, src));
         } else if (to == "u8" || to == "u16") {
-            writer.line("movzx " + x86Reg32(dst) + ", " + narrowOperand(from, src));
+            writer.line("movzx " + x86Reg32(dst.value()) + ", " + narrowOperand(from, src));
         } else if (to == "i32" || to == "u32" || to == "i1") {
-            writer.line("mov " + x86Reg32(dst) + ", " + x86Reg32(src));
+            writer.line("mov " + x86Reg32(dst.value()) + ", " + x86Reg32(src));
         } else if (from == "i8" || from == "i16") {
-            writer.line("movsxd " + dst + ", " + x86Reg32(src));
+            writer.line("movsxd " + dst.value() + ", " + x86Reg32(src));
         } else if (from == "u8" || from == "u16") {
-            writer.line("mov " + x86Reg32(dst) + ", " + x86Reg32(src));
+            writer.line("mov " + x86Reg32(dst.value()) + ", " + x86Reg32(src));
         }
         return;
     }
@@ -203,24 +203,24 @@ void LinuxX64CodeGenerator::emitCast(LinuxX64AsmWriter& writer,
     case judgement::CastKind::I128ToNarrow: {
         // #1212 d：源成对分配 -> 低半寄存器直读；未分配 -> 原低半槽
         loadI128Half(writer, inst.operands[0], false, "r10");
-        const std::string dst = physRegOf(inst.result);
-        if (dst.empty()) {
+        const cn::Optional<std::string> dst = physRegOf(inst.result);
+        if (!dst.has_value()) {
             emitStackStore(writer, dstOff, "r10", to);
             return;
         }
         if (to == "i8" || to == "i16") {
-            writer.line("movsx " + x86Reg32(dst) + ", " + narrowOperand(to, "r10"));
+            writer.line("movsx " + x86Reg32(dst.value()) + ", " + narrowOperand(to, "r10"));
         } else if (to == "u8" || to == "u16") {
-            writer.line("movzx " + x86Reg32(dst) + ", " + narrowOperand(to, "r10"));
+            writer.line("movzx " + x86Reg32(dst.value()) + ", " + narrowOperand(to, "r10"));
         } else if (to == "i32" || to == "u32") {
-            writer.line("mov " + x86Reg32(dst) + ", r10d");
+            writer.line("mov " + x86Reg32(dst.value()) + ", r10d");
         } else if (to == "i64" || to == "u64" || to == "ptr") {
             // 1267 复审 P0：ptr 目标不可漏——judgement.cpp 的 I128ToNarrow 域
             //   显式含 to=="ptr"（655 归档：128→ptr 取低 64 位、win 后端 mov
             //   64 位同语义）。原已分配分支只列 i64/u64，ptr 落零发射 return
             //   →结果寄存器残留前序值（大函数 RA 开时实测指针错值/野指针）。
             //   ptr 与 i64/u64 同款 64 位搬运（不影响 win/arm 产物）。
-            writer.line("mov " + dst + ", r10");
+            writer.line("mov " + dst.value() + ", r10");
         } else if (to == "i1") {
             // 1267 审查 P1-1：to=i1 在本分支不可达（judgement.cpp「整→i1（布尔
             //   目标）」归档：语义层 isNumeric 不含布尔，显式转换「无法将…转换为
@@ -238,16 +238,16 @@ void LinuxX64CodeGenerator::emitCast(LinuxX64AsmWriter& writer,
     case judgement::CastKind::TruncateTo8:
     case judgement::CastKind::TruncateTo16: {
         const std::string src = loadOperandToX(writer, inst.operands[0], "r10");
-        const std::string dst = physRegOf(inst.result);
-        if (dst.empty()) {
+        const cn::Optional<std::string> dst = physRegOf(inst.result);
+        if (!dst.has_value()) {
             emitStackStore(writer, dstOff, src, to);
             return;
         }
         // 1256：截断直写——按目标符号性规范化到 32 位（寄存器内约定）
         if (to == "i8" || to == "i16") {
-            writer.line("movsx " + x86Reg32(dst) + ", " + narrowOperand(to, src));
+            writer.line("movsx " + x86Reg32(dst.value()) + ", " + narrowOperand(to, src));
         } else if (to == "u8" || to == "u16") {
-            writer.line("movzx " + x86Reg32(dst) + ", " + narrowOperand(to, src));
+            writer.line("movzx " + x86Reg32(dst.value()) + ", " + narrowOperand(to, src));
         }
         return;
     }
@@ -264,9 +264,9 @@ void LinuxX64CodeGenerator::emitCast(LinuxX64AsmWriter& writer,
     case judgement::CastKind::I32ToI64:
     case judgement::CastKind::I32ToU64: {
         const std::string src = loadOperandToX(writer, inst.operands[0], "r10");
-        const std::string dst = physRegOf(inst.result);
-        if (!dst.empty()) {
-            writer.line("movsxd " + dst + ", " + x86Reg32(src));
+        const cn::Optional<std::string> dst = physRegOf(inst.result);
+        if (dst.has_value()) {
+            writer.line("movsxd " + dst.value() + ", " + x86Reg32(src));
             return;
         }
         writer.line("movsx r10, r10d");

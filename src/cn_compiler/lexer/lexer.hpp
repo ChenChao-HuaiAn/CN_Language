@@ -10,6 +10,7 @@
 #include <unordered_set>
 
 #include "cn_compiler/common/diagnostics.hpp"
+#include "cn_compiler/common/optional_safe.hpp"
 #include "cn_compiler/common/source_location.hpp"
 #include "cn_compiler/lexer/preprocessor.hpp"
 #include "cn_compiler/lexer/token.hpp"
@@ -39,7 +40,7 @@ private:
     char32_t advance();                      // 前进一个UTF-8字符，返回其Unicode码点（更新行/列）
     char32_t peek() const;                   // 查看当前字符（不前进）
     char32_t peekNext(int n) const;          // 查看向后第n个字符（不前进，n>=1）
-    std::string currentUtf8() const;         // 返回当前位置字符的UTF-8字节串（不前进）
+    std::string currentUtf8() const;  // 返回当前位置字符的UTF-8字节串（不前进；越界=空串·推进语义）
     SourceLocation currentLocation() const;  // 当前行列位置
 
     // ---- 读取辅助 ----
