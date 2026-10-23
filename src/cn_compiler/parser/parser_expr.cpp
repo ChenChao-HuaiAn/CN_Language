@@ -498,6 +498,9 @@ std::unique_ptr<Expr> Parser::parseCallOrMember(std::unique_ptr<Expr> expr) {
         auto call = std::make_unique<CallExpr>(std::move(expr));
         call->location = loc;
         if (!check(TokenType::RightParen)) {
+            // 1216：实参表预分配——常见 1-4 个实参，一次 reserve 替代 vector
+            //   1→2→4 的几何增长多次分配（零实参调用不分配）
+            call->arguments.reserve(4);
             do {
                 call->arguments.push_back(parseExpr());
             } while (match(TokenType::Comma));

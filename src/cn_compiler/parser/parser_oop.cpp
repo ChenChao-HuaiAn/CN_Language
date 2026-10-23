@@ -255,6 +255,8 @@ std::unique_ptr<InterfaceDecl> Parser::parseInterfaceDecl() {
     advance();
     consume(TokenType::LeftBrace, "'{'");
     // 方法签名列表（直到 }）
+    // 1216：接口成员表预分配（常见 2-8 个签名）——替代几何增长多次分配
+    decl->members.reserve(4);
     while (!check(TokenType::RightBrace) && !check(TokenType::EndOfFile)) {
         // 跳过标签分隔（分号/逗号）
         while (check(TokenType::Semicolon) || check(TokenType::Comma)) advance();
@@ -282,6 +284,8 @@ std::unique_ptr<InterfaceDecl> Parser::parseInterfaceDecl() {
         advance();
         consume(TokenType::LeftParen, "'('");
         if (!check(TokenType::RightParen)) {
+            // 1216：形参表预分配（常见 1-4 个参数）
+            member.params.reserve(4);
             do {
                 member.params.push_back(parseParamDecl());
             } while (match(TokenType::Comma));
@@ -348,6 +352,8 @@ std::unique_ptr<ClassDecl> Parser::parseClassDecl() {
     const std::string savedClassBase = currentClassBaseName_;
     currentClassBaseName_ = decl->baseName;
     AccessSpecifier currentAccess = AccessSpecifier::Private;
+    // 1216：类成员表预分配（常见 4-12 个成员）——替代几何增长多次分配
+    decl->members.reserve(8);
     while (!check(TokenType::RightBrace) && !check(TokenType::EndOfFile)) {
         // 访问标签：公开: / 保护: / 私有:
         if (checkText("公开") && peek(1).getType() == TokenType::Colon) {  // 162-a
@@ -441,6 +447,8 @@ bool Parser::parseFriendMember(ClassMember& out) {
                 if (check(TokenType::LeftParen)) {
                     advance();
                     if (!check(TokenType::RightParen)) {
+                        // 1216：形参表预分配（常见 1-4 个参数）
+                        out.params.reserve(4);
                         do {
                             out.params.push_back(parseParamDecl());
                         } while (match(TokenType::Comma));
@@ -561,6 +569,8 @@ bool Parser::parseFunctionMember(ClassMember& out) {
         // 参数列表：(参数1, 参数2, ...)
         consume(TokenType::LeftParen, "'('");
         if (!check(TokenType::RightParen)) {
+            // 1216：形参表预分配（常见 1-4 个参数）
+            out.params.reserve(4);
             do {
                 out.params.push_back(parseParamDecl());
             } while (match(TokenType::Comma));

@@ -113,6 +113,8 @@ std::unique_ptr<FunctionDecl> Parser::parseFunctionDecl() {
     consume(TokenType::LeftParen, "'('");
     // 参数列表（可空）
     if (!check(TokenType::RightParen)) {
+        // 1216：形参表预分配（常见 1-4 个参数）——替代几何增长多次分配
+        func->params.reserve(4);
         do {
             func->params.push_back(parseParamDecl());
         } while (match(TokenType::Comma));
@@ -155,6 +157,8 @@ std::unique_ptr<StructDecl> Parser::parseStructDecl(bool isUnion) {
     advance();
     consume(TokenType::LeftBrace, "'{'");
     // 字段列表：类型 字段名（换行/分号分隔，直到 }
+    // 1216：字段表预分配（常见 2-6 字段）——替代几何增长多次分配
+    decl->fields.reserve(4);
     while (!check(TokenType::RightBrace) && !check(TokenType::EndOfFile)) {
         // 跳过字段分隔（换行已被lexer跳过；分号/逗号为显式分隔）
         while (check(TokenType::Semicolon) || check(TokenType::Comma)) advance();
@@ -293,6 +297,8 @@ std::unique_ptr<EnumDecl> Parser::parseEnumDecl() {
     advance();
     consume(TokenType::LeftBrace, "'{'");
     // 成员列表：成员 [= 值]（逗号分隔，可带尾逗号）
+    // 1216：成员表预分配（枚举成员常 3-10 个）——替代几何增长多次分配
+    decl->members.reserve(8);
     while (!check(TokenType::RightBrace) && !check(TokenType::EndOfFile)) {
         if (!check(TokenType::Identifier)) {
             reportErrorHere("枚举成员预期名称");
@@ -344,6 +350,8 @@ std::unique_ptr<Expr> Parser::parseStructInit(const std::string& typeName) {
     auto init = std::make_unique<StructInitExpr>(typeName);
     init->location = current().getLocation();
     consume(TokenType::LeftBrace, "'{'");
+    // 1216：字段初始化表预分配（常见 2-4 项）——替代几何增长多次分配
+    init->fields.reserve(4);
     while (!check(TokenType::RightBrace) && !check(TokenType::EndOfFile)) {
         // 位置初始化形态：标识符 后跟 , 或 }（无 =）→ 位置元素
         if (check(TokenType::Identifier) &&

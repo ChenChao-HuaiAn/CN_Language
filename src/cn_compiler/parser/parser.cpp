@@ -267,6 +267,8 @@ std::unique_ptr<Expr> Parser::parseInitList() {
     auto list = std::make_unique<InitListExpr>();
     list->location = current().getLocation();
     consume(TokenType::LeftBrace, "'{'");
+    // 1216：初始化列表预分配（常见 1-8 元素）——替代几何增长多次分配
+    list->elements.reserve(4);
     while (!check(TokenType::RightBrace) && !check(TokenType::EndOfFile)) {
         list->elements.push_back(parseExpr());
         if (!match(TokenType::Comma)) break;
@@ -447,6 +449,9 @@ std::unique_ptr<BlockStmt> Parser::parseBlockStmt() {
     }
     consume(TokenType::LeftBrace, "'{'");
     while (!check(TokenType::RightBrace) && !check(TokenType::EndOfFile)) {
+        // 1216：语句列表预分配（常见 1-4 条）——首次插入前一次 reserve，
+        //   替代 vector 1→2→4 几何增长；空块不分配（capacity 保持 0）。
+        if (block->statements.capacity() == 0) block->statements.reserve(4);
         const std::size_t before = pos_;
         block->statements.push_back(parseStmt());
         if (pos_ == before) {

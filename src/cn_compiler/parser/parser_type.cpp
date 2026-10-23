@@ -214,6 +214,8 @@ bool Parser::isModulePathSegmentAhead() const {
 // v2.0 将 v1.0 的 `.` 路径分隔改为 `::`（规格书08-三），`::` 为独立 ColonColon token。
 std::vector<std::string> Parser::parseModulePath() {
     std::vector<std::string> segments;
+    // 1216：路径段预分配（常见 1-2 段：数学::平方根）
+    segments.reserve(2);
     if (isModulePathSegment()) {
         segments.push_back(current().getValue());
         advance();
