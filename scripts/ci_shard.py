@@ -80,9 +80,9 @@ def 池状态(池地址: str, 池令牌: str = ""):
     """GET /api/state——#1425 全站登录墙起机器通道须 Bearer 令牌（无令牌=401；
     原「免令牌」口径已废）。不可达/坏 JSON/401=None（调用方按不可判兜底）。"""
     try:
-        请求 = urllib.request.Request(
-            池地址.rstrip("/") + "/api/state",
-            headers={"Authorization": "Bearer " + 池令牌} if 池令牌 else {})
+        请求 = urllib.request.Request(池地址.rstrip("/") + "/api/state")
+        if 池令牌:   # P2-A：Bearer 写不可重定向头（跨源跳转不转发）
+            请求.add_unredirected_header("Authorization", "Bearer " + 池令牌)
         with urllib.request.urlopen(请求, timeout=10) as r:
             return json.loads(r.read().decode("utf-8"))
     except Exception:
@@ -147,8 +147,10 @@ def 池调用(配置: dict, 操作: str, 数据: dict, 超时秒: int = 10):
         请求 = urllib.request.Request(
             配置["池地址"].rstrip("/") + "/api/" + 操作,
             data=json.dumps(数据, ensure_ascii=False).encode("utf-8"),
-            headers={"Content-Type": "application/json",
-                     "Authorization": "Bearer " + 配置.get("池令牌", "")})
+            headers={"Content-Type": "application/json"})
+        池令牌 = 配置.get("池令牌", "")
+        if 池令牌:   # P2-A：Bearer 写不可重定向头（跨源跳转不转发）
+            请求.add_unredirected_header("Authorization", "Bearer " + 池令牌)
         with urllib.request.urlopen(请求, timeout=超时秒) as r:
             return json.loads(r.read().decode("utf-8"))
     except urllib.error.HTTPError as e:
@@ -235,8 +237,9 @@ def 片状态们(池地址: str, 池令牌: str, 分支: str):
     UnicodeEncodeError 被吞成 None=主实例永不抢补/永不判齐（5400s 超时病根之一）。"""
     try:
         请求 = urllib.request.Request(
-            池地址.rstrip("/") + "/api/task_shards?branch=" + quote(分支, safe=""),
-            headers={"Authorization": "Bearer " + 池令牌} if 池令牌 else {})
+            池地址.rstrip("/") + "/api/task_shards?branch=" + quote(分支, safe=""))
+        if 池令牌:   # P2-A：Bearer 写不可重定向头（跨源跳转不转发）
+            请求.add_unredirected_header("Authorization", "Bearer " + 池令牌)
         with urllib.request.urlopen(请求, timeout=10) as r:
             回 = json.loads(r.read().decode("utf-8"))
         return 回.get("分片") if 回.get("ok") else None
@@ -250,8 +253,9 @@ def 片结果(池地址: str, 池令牌: str, 分支: str, 片序: int):
     try:
         请求 = urllib.request.Request(
             池地址.rstrip("/") + "/api/task_shard_result?branch="
-            + quote(分支, safe="") + "&i=" + str(片序),
-            headers={"Authorization": "Bearer " + 池令牌} if 池令牌 else {})
+            + quote(分支, safe="") + "&i=" + str(片序))
+        if 池令牌:   # P2-A：Bearer 写不可重定向头（跨源跳转不转发）
+            请求.add_unredirected_header("Authorization", "Bearer " + 池令牌)
         with urllib.request.urlopen(请求, timeout=15) as r:
             回 = json.loads(r.read().decode("utf-8"))
         return 回 if 回.get("ok") else None

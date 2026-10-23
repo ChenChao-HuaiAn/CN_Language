@@ -102,8 +102,8 @@ def 自检() -> int:
     def 调(方法: str, 路径: str, 体=None, 带令牌=True, cookie=None):
         请求 = urllib.request.Request(基址 + 路径, method=方法,
             data=json.dumps(体, ensure_ascii=False).encode("utf-8") if 体 is not None else None)
-        if 带令牌:
-            请求.add_header("Authorization", "Bearer test-token-308a")
+        if 带令牌:   # P2-A：Bearer 写不可重定向头（跨源跳转不转发）
+            请求.add_unredirected_header("Authorization", "Bearer test-token-308a")
         if cookie:
             请求.add_header("Cookie", cookie)
         服务.令牌 = "test-token-308a"
@@ -252,9 +252,9 @@ def 自检() -> int:
         同话 = [i for i in r["意图们"] if i["对话id"] == "c9"]
         签("561 注销精确到 (机器,对话id)：只销甲机行·乙机行留存",
            len(同话) == 1 and 同话[0]["机器"] == "乙机名")
-        好, 结果 = 取响应(urllib.request.Request(
-            基址 + "/", headers={"Authorization": "Bearer test-token-308a"}),
-            lambda r: (响应码(r), r.read().decode("utf-8")))
+        请求 = urllib.request.Request(基址 + "/")
+        请求.add_unredirected_header("Authorization", "Bearer test-token-308a")
+        好, 结果 = 取响应(请求, lambda r: (响应码(r), r.read().decode("utf-8")))
         首页码, 页 = 结果 if 好 else (0, "")      # 495：断连=状态 0·签自然失败
         签("看板页 200 且静态服务（board_www/index.html·1425 墙内带令牌）",
            首页码 == 200 and "任务看板" in 页)
@@ -271,9 +271,9 @@ def 自检() -> int:
         签("430/1425 登录 UI 齐备（登录钮+用户名/密码窗+提交）",
            all(k in 页 for k in ('id="登录钮"', 'id="登录遮罩"', 'id="登录用户名"',
                                  'id="登录密码"', 'id="登录提交"', 'type="password"')))
-        好, CSS码 = 取响应(urllib.request.Request(
-            基址 + "/board.css", headers={"Authorization": "Bearer test-token-308a"}),
-            响应码)   # 495：连接层异常重试一次
+        请求 = urllib.request.Request(基址 + "/board.css")
+        请求.add_unredirected_header("Authorization", "Bearer test-token-308a")
+        好, CSS码 = 取响应(请求, 响应码)   # 495：连接层异常重试一次
         签("静态 board.css 200（1425 墙内带令牌）", 好 and CSS码 == 200)
         # 744 编号权威收权（2026-10-14 用户令）：claim_number 收缩为纯视野记账——
         # 发号/核对通道废除（发号只走 task_create/case_number·服务端顺序发放）

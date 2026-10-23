@@ -61,28 +61,33 @@ def 机器名(显式: str = "") -> str:
     return intent.机器名()
 
 
-def _读失败文案(服务: str, 码: int, r: dict) -> str:
-    """GET 失败诊断（1425）：401/403=鉴权失败（点名令牌/登录墙），其余=服务端
-    错误码+响应体——读通道禁止把 401 打印成裸码或静默成空列表（真因不吞）。"""
+def _失败文案(服务: str, 码: int, r: dict) -> str:
+    """读/写入口统一失败诊断（1425）：401/403=鉴权失败（点名令牌/登录墙），
+    其余=服务端错误码+响应体。非 dict 响应归一 {} 不崩栈；助手坏掉时本地
+    码兜底仍识别 401/403（P3-D·门禁/写入口不降级）。"""
+    if not isinstance(r, dict):
+        r = {}
+    鉴权失败 = 码 in (401, 403)
     try:
         import intent
-        if intent.鉴权失败码(码):
+        鉴权失败 = intent.鉴权失败码(码)
+        if 鉴权失败:
             return intent.鉴权失败文案(服务, 码)
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"[黄] intent 鉴权助手不可用，按裸码兜底（诊断见上）：{e}", file=sys.stderr)
+    if 鉴权失败:
+        return f"{服务}鉴权失败（{码}）——令牌校验失败（详见上方诊断）"
     return f"{服务}返回 HTTP {码}：{r.get('错误', r)}"
+
+
+def _读失败文案(服务: str, 码: int, r: dict) -> str:
+    """GET 失败诊断（1425）——与写入口同文案口径（单点 _失败文案）。"""
+    return _失败文案(服务, 码, r)
 
 
 def _写失败文案(服务: str, 码: int, r: dict) -> str:
-    """写入口失败诊断（1425）：401/403=鉴权失败（与读入口同文案口径），其余=
-    服务端错误码+响应体——写操作禁把鉴权问题打印成裸码。"""
-    try:
-        import intent
-        if intent.鉴权失败码(码):
-            return intent.鉴权失败文案(服务, 码)
-    except Exception as e:
-        print(f"[黄] intent 鉴权助手不可用，按裸码诊断（诊断见上）：{e}", file=sys.stderr)
-    return f"{服务}返回 HTTP {码}：{r.get('错误', r)}"
+    """写入口失败诊断（1425）——与读入口同文案口径（单点 _失败文案）。"""
+    return _失败文案(服务, 码, r)
 
 
 def 调服务(方法: str, 路径: str, 体=None, 超时=15):
@@ -92,12 +97,9 @@ def 调服务(方法: str, 路径: str, 体=None, 超时=15):
         data=json.dumps(体, ensure_ascii=False).encode("utf-8") if 体 is not None else None)
     try:
         import intent
-        头们 = intent.鉴权头()   # 1425 单点：GET/POST 有令牌就带 Bearer（含兜底链）
+        intent.加鉴权头(请求)   # 1425/P2-A：Bearer 写不可重定向头（跨源跳转不外发）
     except Exception as e:
         print(f"[黄] intent 鉴权助手不可用，本次裸请求（诊断见上）：{e}", file=sys.stderr)
-        头们 = {}
-    for 名, 值 in 头们.items():
-        请求.add_header(名, 值)
     请求.add_header("Content-Type", "application/json")
     try:
         with urllib.request.urlopen(请求, timeout=超时) as r:

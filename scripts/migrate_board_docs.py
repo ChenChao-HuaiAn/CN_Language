@@ -31,8 +31,8 @@ def 调服务(url: str, 令牌: str, 方法: str, 路径: str, 体=None, 超时=
         url.rstrip("/") + 路径,
         data=json.dumps(体, ensure_ascii=False).encode("utf-8") if 体 is not None else None,
         method=方法)
-    if 令牌:   # 1425 登录墙：GET 亦须鉴权——令牌非空即带 Bearer（不再限 POST）
-        请求.add_header("Authorization", f"Bearer {令牌}")
+    if 令牌:   # 1425/P2-A：GET 亦须鉴权；Bearer 写不可重定向头（跨源跳转不转发）
+        请求.add_unredirected_header("Authorization", f"Bearer {令牌}")
     请求.add_header("Content-Type", "application/json")
     try:
         with urllib.request.urlopen(请求, timeout=超时) as r:
@@ -42,21 +42,32 @@ def 调服务(url: str, 令牌: str, 方法: str, 路径: str, 体=None, 超时=
             return e.code, json.loads(e.read().decode("utf-8"))
         except (ValueError, UnicodeDecodeError):
             return e.code, {}
-    except (urllib.error.URLError, OSError, ValueError):
+    except (urllib.error.URLError, OSError):
         return 0, {}   # 连接层失败：失败原因() 报「不可达」而非崩栈
+    except ValueError:
+        return -1, {}  # JSON 解析错误≠连接层失败（P3-A：真因单列，不冒充不可达）
 
 
 def 失败原因(码: int, r: dict, url: str) -> str:
-    """迁移请求失败诊断（1425）：401/403=鉴权失败；0=连接层不可达；其余=HTTP 码。
+    """迁移请求失败诊断（1425）：401/403=鉴权失败；0=连接层不可达；
+    -1=响应非 JSON（P3-A：不得当连接层失败）；其余=HTTP 码。
     单点判据走 intent.鉴权失败码/文案（助手不可用=stderr 一行诊断后按裸码）。"""
+    if not isinstance(r, dict):
+        r = {}
+    鉴权失败 = 码 in (401, 403)   # P3-D：本地兜底
     try:
         import intent
-        if intent.鉴权失败码(码):
+        鉴权失败 = intent.鉴权失败码(码)
+        if 鉴权失败:
             return intent.鉴权失败文案("看板服务", 码)
     except Exception as e:
-        print(f"[黄] intent 鉴权助手不可用，按裸码诊断（诊断见上）：{e}", file=sys.stderr)
+        print(f"[黄] intent 鉴权助手不可用，按裸码兜底（诊断见上）：{e}", file=sys.stderr)
+    if 鉴权失败:
+        return f"看板服务鉴权失败（{码}）——令牌校验失败（详见上方诊断）"
     if 码 == 0:
         return f"看板服务不可达 {url}"
+    if 码 == -1:
+        return f"看板服务响应非 JSON（{url}）"
     return f"看板服务返回 HTTP {码}（{url}·{r.get('错误', r)}）"
 
 
@@ -117,7 +128,7 @@ def main() -> int:
         码, r = 调服务(url, 令牌, "POST", "/api/handoff_add",
                       {"机器": x["机器"], "条目": x["条目"], "来源": "迁移交接md"})
         if 码 not in (200, 201):
-            print(f"[失败] 交接第 {i+1} 条：{码} {r}")
+            print(f"[失败] 交接第 {i+1} 条：{失败原因(码, r, url)}")
             return 1
     # 教训：同标题服务端幂等跳过
     教跳 = 0
@@ -126,18 +137,21 @@ def main() -> int:
                       {"标题": t["标题"], "正文": t["正文"],
                        "权重": t["权重"], "来源": "迁移教训md"})
         if 码 not in (200, 201):
-            print(f"[失败] 教训「{t['标题'][:30]}」：{码} {r}")
+            print(f"[失败] 教训「{t['标题'][:30]}」：{失败原因(码, r, url)}")
             return 1
         教跳 += 1 if r.get("跳过") else 0
     # 覆盖：批量幂等导入（59 单元 231 行一次发）
     码, r = 调服务(url, 令牌, "POST", "/api/coverage_import", 覆)
     if 码 != 200:
-        print(f"[失败] 覆盖导入：{码} {r}")
+        print(f"[失败] 覆盖导入：{失败原因(码, r, url)}")
         return 1
     print(f"[迁移完成] 交接 新{len(新交)}/跳{跳交}·教训 新{len(教)-教跳}/跳{教跳}"
           f"·覆盖 {r.get('导入')}+豁免{r.get('豁免导入')}"
           f"（跳 {r.get('跳过')}+{r.get('豁免跳过')}）")
     码, r = 调服务(url, 令牌, "GET", "/api/coverage")
+    if 码 != 200:
+        print(f"[失败] 复核覆盖：{失败原因(码, r, url)}")
+        return 1
     print(f"[复核] 覆盖单元在库 {len(r['单元们'])}·豁免在库 {len(r['豁免们'])}")
     return 0
 

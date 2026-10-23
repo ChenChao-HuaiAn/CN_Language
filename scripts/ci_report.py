@@ -77,9 +77,11 @@ def 上报(结果: dict) -> None:
         return
     令牌 = os.environ.get("CN_CI_TOKEN") or 配置.get("令牌", "")
     try:
-        请求 = urllib.request.Request(url, data=json.dumps(结果, ensure_ascii=False).encode("utf-8"),
-                                      headers={"Content-Type": "application/json",
-                                               "Authorization": "Bearer " + 令牌})
+        请求 = urllib.request.Request(
+            url, data=json.dumps(结果, ensure_ascii=False).encode("utf-8"),
+            headers={"Content-Type": "application/json"})
+        if 令牌:   # P2-A：Bearer 写不可重定向头（跨源跳转不转发）
+            请求.add_unredirected_header("Authorization", "Bearer " + 令牌)
         urllib.request.urlopen(请求, timeout=10)
     except Exception as e:
         print("[警告] 上报失败（不影响本地结果）：%s" % e, flush=True)

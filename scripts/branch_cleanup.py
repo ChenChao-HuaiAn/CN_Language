@@ -66,25 +66,30 @@ def 读服务配置() -> dict:
         return json.load(f)
 
 
-def _鉴权头() -> dict:
-    """1425 全站登录墙：队列/看板 GET 有令牌就带 Bearer（intent 兜底链单点）。"""
+def _加鉴权头(请求) -> None:
+    """1425/P2-A 全站登录墙：队列/看板 GET Bearer 写不可重定向头（跨源跳转不转发）；
+    intent 助手不可用=stderr 一行诊断后裸请求。"""
     try:
         import intent
-        return intent.鉴权头()
+        intent.加鉴权头(请求)
     except Exception as e:
         print(f"[黄] intent 鉴权助手不可用，本次裸请求（诊断见上）：{e}", file=sys.stderr)
-        return {}
 
 
 def _失败文案(服务: str, e: Exception) -> str:
     """读取失败文案分流（1425）：401/403=鉴权失败；连接层失败才叫「不可达」。"""
     if isinstance(e, urllib.error.HTTPError):
+        鉴权失败 = e.code in (401, 403)   # P3-D：本地兜底
         try:
             import intent
-            if intent.鉴权失败码(e.code):
+            鉴权失败 = intent.鉴权失败码(e.code)
+            if 鉴权失败:
                 return intent.鉴权失败文案(服务, e.code)
-        except Exception:
-            pass
+        except Exception as ex:
+            print(f"[黄] intent 鉴权助手不可用，按裸码兜底（诊断见上）：{ex}",
+                  file=sys.stderr)
+        if 鉴权失败:
+            return f"{服务}鉴权失败（{e.code}）——令牌校验失败（详见上方诊断）"
         return f"{服务}返回 HTTP {e.code}"
     if isinstance(e, OSError):
         return f"{服务}不可达（{e}）"
@@ -103,8 +108,8 @@ def 预验服务端状态表() -> dict | None:
         print(f"[预验段] 队列服务配置不可读（scripts/queue_client.json）：{e}——保守跳过")
         return None
     try:
-        请求 = urllib.request.Request(
-            配置["url"].rstrip("/") + "/api/state", headers=_鉴权头())
+        请求 = urllib.request.Request(配置["url"].rstrip("/") + "/api/state")
+        _加鉴权头(请求)
         with urllib.request.urlopen(请求, timeout=8) as 响应:
             态 = json.loads(响应.read().decode("utf-8"))
         return {行.get("分支", ""): 行.get("状态", "") for 行 in (态.get("预验任务") or [])}
@@ -126,8 +131,8 @@ def 预验历史状态(短名: str):
     try:
         配置 = 读服务配置()
         请求 = urllib.request.Request(
-            配置["url"].rstrip("/") + "/api/task_result?sha=" + sha10,
-            headers=_鉴权头())
+            配置["url"].rstrip("/") + "/api/task_result?sha=" + sha10)
+        _加鉴权头(请求)
         with urllib.request.urlopen(请求, timeout=8) as 响应:
             详情 = json.loads(响应.read().decode("utf-8"))
         if not 详情.get("ok", True):   # 服务端 404 显式无此任务（648 miss 不静默·这里=合法查无）
@@ -171,8 +176,8 @@ def 台账在飞分支集() -> tuple[set | None, str]:
     """
     try:
         import board_cli
-        请求 = urllib.request.Request(
-            board_cli.服务地址().rstrip("/") + "/api/tasks", headers=_鉴权头())
+        请求 = urllib.request.Request(board_cli.服务地址().rstrip("/") + "/api/tasks")
+        _加鉴权头(请求)
         with urllib.request.urlopen(请求, timeout=8) as 响应:
             数据 = json.loads(响应.read().decode("utf-8"))
         return 台账在飞分支集解析(数据.get("任务们") or []), ""

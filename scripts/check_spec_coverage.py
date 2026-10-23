@@ -96,32 +96,45 @@ def parse_units():
     return units, order
 
 
+# 1485/P2-C：最近一次拉取失败诊断（case_activity 报告面按「鉴权失败/不可达」分列）
+最近失败 = {"原因": "", "鉴权失败": False}
+
+
+def 失败诊断() -> tuple:
+    """→ (最近失败原因, 是否鉴权失败)。成功/未失败时 ("", False)。"""
+    return 最近失败.get("原因", ""), bool(最近失败.get("鉴权失败", False))
+
+
 def parse_map():
     """映射表 → (rows: ID→{三态:[用例]}, exempt: 用例→理由)。
     384：数据源=看板服务端 /api/coverage（coverage_map.md 已退位）。
     拉取成功落本地缓存；服务不可达降级读最后缓存（黄字）；两者皆无退出 2。"""
     体 = None
+    最近失败.update(原因="", 鉴权失败=False)
     try:
-        # 1425 全站登录墙：GET 亦须鉴权——有令牌就带 Bearer（intent.鉴权头 统一口径·
-        # import 失败=裸请求走下方 401→降级缓存路径·L1 不红只黄）
-        头 = {}
+        # 1425/P2-A 全站登录墙：GET 亦须鉴权——Bearer 写不可重定向头（跨源跳转不转发）
+        请求 = urllib.request.Request(SRC_API)
         try:
             import intent
-            头 = intent.鉴权头()
+            intent.加鉴权头(请求)
         except Exception as e:
             print(f"[黄] intent 鉴权助手不可用，本次裸请求（诊断见上）：{e}", file=sys.stderr)
-        with urllib.request.urlopen(urllib.request.Request(SRC_API, headers=头),
-                                    timeout=8) as r:
+        with urllib.request.urlopen(请求, timeout=8) as r:
             体 = json.loads(r.read().decode("utf-8"))
         atomic_json.写(CACHE, 体)   # 556：原子写（临时文件+os.replace·治半写损坏）
     except urllib.error.HTTPError as e:
         # 1425：401/403=鉴权失败（令牌/登录墙），不得冒充「服务不可达」。
+        鉴权失败 = e.code in (401, 403)   # P3-D：本地兜底（intent 助手坏掉仍识别）
         try:
             import intent
-            原因 = (intent.鉴权失败文案("覆盖服务", e.code) if intent.鉴权失败码(e.code)
+            鉴权失败 = intent.鉴权失败码(e.code)
+            原因 = (intent.鉴权失败文案("覆盖服务", e.code) if 鉴权失败
                     else f"覆盖服务返回 HTTP {e.code}")
-        except Exception:
-            原因 = f"覆盖服务返回 HTTP {e.code}"
+        except Exception as ex:
+            print(f"[黄] intent 鉴权助手不可用，按裸码兜底（诊断见上）：{ex}", file=sys.stderr)
+            原因 = (f"覆盖服务鉴权失败（{e.code}）——令牌校验失败（详见上方诊断）"
+                    if 鉴权失败 else f"覆盖服务返回 HTTP {e.code}")
+        最近失败.update(原因=原因, 鉴权失败=鉴权失败)
         体 = atomic_json.读(CACHE)   # 556：坏缓存返回 None·不炸读侧
         if 体 is not None:
             print("[黄] %s——降级读最后缓存（可能陈旧）" % 原因, file=sys.stderr)
@@ -131,11 +144,13 @@ def parse_map():
             sys.exit(2)
     except OSError as e:
         # 556：读走 atomic_json.读（坏缓存返回 None·原裸 json.load 坏缓存即炸读侧）
+        原因 = f"覆盖服务不可达（{e}）"
+        最近失败.update(原因=原因, 鉴权失败=False)
         体 = atomic_json.读(CACHE)
         if 体 is not None:
-            print("[黄] 覆盖服务不可达（%s）——降级读最后缓存（可能陈旧）" % e, file=sys.stderr)
+            print("[黄] %s——降级读最后缓存（可能陈旧）" % 原因, file=sys.stderr)
         else:
-            print("[FAIL] 覆盖服务不可达且无缓存：%s（先用 board_cli 覆盖 验证服务）" % e,
+            print("[FAIL] %s且无缓存（先用 board_cli 覆盖 验证服务）" % 原因,
                   file=sys.stderr)
             sys.exit(2)
     rows, exempt = {}, {}

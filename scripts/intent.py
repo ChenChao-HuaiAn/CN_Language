@@ -139,6 +139,15 @@ def 鉴权头() -> dict:
     return {"Authorization": "Bearer " + t} if t else {}
 
 
+def 加鉴权头(请求) -> None:
+    """P2-A（2026-10-24 安全复审）：把鉴权头写入**不可重定向**头区——
+    Python HTTPRedirectHandler 会复制普通 headers 到 302/303/307 跳转目标，
+    跨端口/跨源重定向即把 Bearer 外发；add_unredirected_header 首请求照发、
+    重定向不转发，令牌零外泄。所有出站请求统一走此助手。"""
+    for 名, 值 in 鉴权头().items():
+        请求.add_unredirected_header(名, 值)
+
+
 def 鉴权失败码(码: int) -> bool:
     """1425 全站登录墙：401/403=鉴权失败（令牌缺失/轮换/不符或权限不足）——
     与连接层失败（服务不可达）严格分流的单点判据（客户端文案统一走此函数）。"""
@@ -147,8 +156,10 @@ def 鉴权失败码(码: int) -> bool:
 
 def 鉴权失败文案(服务: str, 码: int) -> str:
     """鉴权失败统一诊断（1425 登录墙·禁止冒充「服务不可达」）：点名令牌兜底链
-    与登录墙，便于一眼定位 scripts/queue_client.json / 环境变量令牌。"""
-    return (f"{服务}鉴权失败（{码}）——令牌缺失/轮换/不符：检查 "
+    与登录墙，便于一眼定位 scripts/queue_client.json / 环境变量令牌。
+    P3-J：403 明确「权限不足」而非笼统令牌不符。"""
+    缘由 = "权限不足" if 码 == 403 else "令牌缺失/轮换/不符"
+    return (f"{服务}鉴权失败（{码}）——{缘由}：检查 "
             f"scripts/queue_client.json 的「令牌」或 CN_BOARD_TOKEN/CN_QUEUE_TOKEN"
             f"（1425 登录墙·GET 亦须鉴权）")
 
@@ -221,8 +232,7 @@ def 机器名() -> str:
 def 调服务(方法: str, 路径: str, 体=None, 超时=8):
     请求 = urllib.request.Request(服务地址() + 路径, method=方法,
         data=json.dumps(体, ensure_ascii=False).encode("utf-8") if 体 is not None else None)
-    for 名, 值 in 鉴权头().items():   # 1425：GET/POST 一律有令牌就带 Bearer（单点助手）
-        请求.add_header(名, 值)
+    加鉴权头(请求)   # 1425/P2-A：GET/POST 有令牌就带 Bearer·且不被重定向转发
     with urllib.request.urlopen(请求, timeout=超时) as r:
         return json.loads(r.read().decode("utf-8"))
 

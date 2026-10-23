@@ -111,18 +111,16 @@ def 服务调(方法: str, 路径: str, 体=None) -> dict | None:
         data=json.dumps(体, ensure_ascii=False).encode("utf-8") if 体 is not None else None)
     try:
         import intent
-        头们 = intent.鉴权头()   # 1425 单点：GET/POST 有令牌就带 Bearer（兜底链）
+        intent.加鉴权头(请求)   # 1425/P2-A：Bearer 写不可重定向头（跨源跳转不外发）
     except Exception as e:
         print(f"[黄] intent 鉴权助手不可用，本次裸请求（诊断见上）：{e}", file=sys.stderr)
-        头们 = {}
-    for 名, 值 in 头们.items():
-        请求.add_header(名, 值)
     try:
         with urllib.request.urlopen(请求, timeout=10) as r:
             return json.loads(r.read().decode("utf-8"))
     except urllib.error.HTTPError as e:
         try:
-            return {"HTTP错误": e.code, **json.loads(e.read().decode("utf-8"))}
+            体 = json.loads(e.read().decode("utf-8"))
+            return {"HTTP错误": e.code, **(体 if isinstance(体, dict) else {"响应": 体})}
         except (ValueError, UnicodeDecodeError):
             return {"HTTP错误": e.code}
     except (urllib.error.URLError, OSError, ValueError):
@@ -132,15 +130,21 @@ def 服务调(方法: str, 路径: str, 体=None) -> dict | None:
 def 鉴权失败文案(响应: dict | None) -> str:
     """1425 登录墙：服务响应含 HTTP错误 401/403 → 统一鉴权失败文案（单点助手
     intent.鉴权失败文案）；其余返回空串。防 GET 401 被误读成「台账无任务」。"""
-    码 = (响应 or {}).get("HTTP错误")
+    if not isinstance(响应, dict):
+        return ""
+    码 = 响应.get("HTTP错误")
     if not 码:
         return ""
+    鉴权失败 = 码 in (401, 403)   # P3-D：本地兜底（intent 助手坏掉仍识别）
     try:
         import intent
-        if intent.鉴权失败码(码):
+        鉴权失败 = intent.鉴权失败码(码)
+        if 鉴权失败:
             return intent.鉴权失败文案("看板服务", 码)
     except Exception as e:
-        print(f"[黄] intent 鉴权助手不可用，按裸码诊断（诊断见上）：{e}", file=sys.stderr)
+        print(f"[黄] intent 鉴权助手不可用，按裸码兜底（诊断见上）：{e}", file=sys.stderr)
+    if 鉴权失败:
+        return f"看板服务鉴权失败（{码}）——令牌校验失败（详见上方诊断）"
     return ""
 
 

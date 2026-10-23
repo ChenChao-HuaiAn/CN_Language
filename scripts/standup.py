@@ -87,15 +87,14 @@ def hooks自检() -> list[str]:
     return [提示, "   修复（每机一次性）：git config core.hooksPath scripts/githooks"]
 
 
-def _鉴权头() -> dict:
-    """1425 全站登录墙：看板 GET 有令牌就带 Bearer（intent.鉴权头 统一口径；
-    import/读令牌失败=裸请求走降级缓存路径）。"""
+def _加鉴权头(请求) -> None:
+    """1425/P2-A 全站登录墙：Bearer 写不可重定向头（跨源 302 不转发）；
+    import/读令牌失败=裸请求走降级缓存路径（stderr 一行诊断）。"""
     try:
         import intent
-        return intent.鉴权头()
+        intent.加鉴权头(请求)
     except Exception as e:
         print(f"[黄] intent 鉴权助手不可用，本次裸请求（诊断见上）：{e}", file=sys.stderr)
-        return {}
 
 
 def _失败文案(e: Exception) -> str:
@@ -121,12 +120,16 @@ def 本机节(机: str, 主机: str = "") -> list[str]:
     前缀过滤（新旧机器标识都以 hostname 开头·撞名机旧条目互认属撞名本质·滚动自愈）。"""
     import urllib.request
     前缀 = 主机 or 机.split("·")[0]
-    头 = _鉴权头()   # 1425：看板 GET 有令牌就带 Bearer
+    请求 = urllib.request.Request(f"{看板地址()}/api/handoff?limit=50")
+    _加鉴权头(请求)   # 1425/P2-A：Bearer 不可重定向
     try:
-        with urllib.request.urlopen(
-                urllib.request.Request(f"{看板地址()}/api/handoff?limit=50",
-                                       headers=头), timeout=8) as r:
-            混流 = json.loads(r.read().decode("utf-8")).get("条目们", [])
+        with urllib.request.urlopen(请求, timeout=8) as r:
+            数据 = json.loads(r.read().decode("utf-8"))
+        if not isinstance(数据, dict):
+            raise ValueError(f"看板交接响应非对象（{type(数据).__name__}）")
+        if "条目们" not in 数据:
+            raise ValueError("看板交接响应缺「条目们」字段")
+        混流 = 数据["条目们"]
         条 = [t for t in 混流 if str(t.get("机器", "")).startswith(前缀)][:2]
         _落缓存("handoff", {"机器": 机, "条目们": 条})
     except Exception as e:
@@ -147,11 +150,16 @@ def 教训高权重(上限: int = 10) -> list[str]:
     import urllib.request
     条 = []
     来源, 原因 = "服务端", ""
+    请求 = urllib.request.Request(f"{看板地址()}/api/lessons?high_weight=8")
+    _加鉴权头(请求)   # 1425/P2-A：Bearer 不可重定向
     try:
-        with urllib.request.urlopen(
-                urllib.request.Request(f"{看板地址()}/api/lessons?high_weight=8",
-                                       headers=_鉴权头()), timeout=8) as r:
-            条 = json.loads(r.read().decode("utf-8")).get("条目们", [])
+        with urllib.request.urlopen(请求, timeout=8) as r:
+            数据 = json.loads(r.read().decode("utf-8"))
+        if not isinstance(数据, dict):
+            raise ValueError(f"看板教训响应非对象（{type(数据).__name__}）")
+        if "条目们" not in 数据:
+            raise ValueError("看板教训响应缺「条目们」字段")
+        条 = 数据["条目们"]
         _落缓存("lessons", {"条目们": 条})
     except Exception as e:
         条 = (_读缓存("lessons") or {}).get("条目们", [])

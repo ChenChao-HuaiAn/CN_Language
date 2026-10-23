@@ -41,36 +41,58 @@ def 拉任务们() -> tuple[list[dict], str]:
     556：缓存读写统一走 atomic_json（原子写·读容错——原裸 write_text/read_text
     与 standup/board_cli 三写者并发可半写损坏·坏缓存裸 json.loads 炸读侧）。"""
     缓 = 本树根 / "scripts" / "board_cache.json"
+
+    def 缓存任务们() -> list:
+        旧 = atomic_json.读(缓)
+        return 旧.get("tasks", []) if isinstance(旧, dict) else []
+
     try:
-        头 = {}   # 1425 全站登录墙：看板 GET 有令牌就带 Bearer
+        请求 = urllib.request.Request(f"{看板地址}/api/tasks")
         try:
             import intent
-            头 = intent.鉴权头()
+            intent.加鉴权头(请求)   # 1425/P2-A：Bearer 不可重定向
         except Exception as e:
             print(f"[黄] intent 鉴权助手不可用，本次裸请求（诊断见上）：{e}", file=sys.stderr)
-        with urllib.request.urlopen(urllib.request.Request(
-                f"{看板地址}/api/tasks", headers=头), timeout=8) as r:
+        with urllib.request.urlopen(请求, timeout=8) as r:
             数据 = json.loads(r.read().decode("utf-8"))
-        任务们 = 数据.get("任务们", [])
+        if not isinstance(数据, dict):
+            raise ValueError(f"看板任务响应非对象（{type(数据).__name__}）")
+        if "任务们" not in 数据:
+            raise ValueError("看板任务响应缺「任务们」字段（服务端版本不符或响应损坏）")
+        任务们 = 数据["任务们"]
+        if not isinstance(任务们, list):
+            raise ValueError(f"看板任务「任务们」类型异常（{type(任务们).__name__}）")
         atomic_json.合并写(缓, {"tasks": 任务们})
         return 任务们, "服务端台账"
     except urllib.error.HTTPError as e:
         # 1425：401/403=鉴权失败（令牌/登录墙），不得冒充「服务不可达」。
+        鉴权失败 = e.code in (401, 403)   # P3-D：本地兜底
         try:
             import intent
-            原因 = (intent.鉴权失败文案("看板服务", e.code) if intent.鉴权失败码(e.code)
+            鉴权失败 = intent.鉴权失败码(e.code)
+            原因 = (intent.鉴权失败文案("看板服务", e.code) if 鉴权失败
                     else f"看板服务返回 HTTP {e.code}")
-        except Exception:
-            原因 = f"看板服务返回 HTTP {e.code}"
-        任务们 = (atomic_json.读(缓) or {}).get("tasks", [])
+        except Exception as ex:
+            print(f"[黄] intent 鉴权助手不可用，按裸码兜底（诊断见上）：{ex}", file=sys.stderr)
+            原因 = (f"看板服务鉴权失败（{e.code}）——令牌校验失败（详见上方诊断）"
+                    if 鉴权失败 else f"看板服务返回 HTTP {e.code}")
+        任务们 = 缓存任务们()
         if 任务们:
             return 任务们, f"本地缓存（{原因}·可能是旧快照）"
         print(f"[失败] {原因}且无缓存——裁决面暂不可知（恢复后重跑）", file=sys.stderr)
     except OSError as e:
-        任务们 = (atomic_json.读(缓) or {}).get("tasks", [])
+        任务们 = 缓存任务们()
         if 任务们:
             return 任务们, f"本地缓存（看板服务不可达：{e}·可能是旧快照）"
         print(f"[失败] 看板服务不可达且无缓存（{e}）——裁决面暂不可知（恢复后重跑）",
+              file=sys.stderr)
+    except ValueError as e:
+        # P3-B/P3-C：缺字段/非 dict/坏 JSON=响应异常，不得冒充连接层不可达。
+        原因 = f"看板任务响应异常（{e}）"
+        任务们 = 缓存任务们()
+        if 任务们:
+            return 任务们, f"本地缓存（{原因}·可能是旧快照）"
+        print(f"[失败] {原因}且无缓存——裁决面暂不可知（修复服务后重跑）",
               file=sys.stderr)
     return [], ""
 

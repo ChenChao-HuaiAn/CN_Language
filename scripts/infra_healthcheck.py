@@ -88,43 +88,58 @@ def 证据片段(文本, 上限=证据上限):
 
 # ---- HTTP 工具 ----
 
-def _鉴权头() -> dict:
-    """1425 全站登录墙：看板(8301)/队列(8300) GET 有令牌就带 Bearer——令牌兜底链
-    单点复用 intent.鉴权头()（本树 queue_client.json → 主树副本 → CN_BOARD_TOKEN/
-    CN_QUEUE_TOKEN）；皆空=裸请求（401 显形为检查红·不静默放行）。"""
+def _加鉴权头(请求) -> None:
+    """1425/P2-A：看板(8301)/队列(8300) GET Bearer 写不可重定向头（跨源跳转不转发）；
+    令牌兜底链单点复用 intent（本树 queue_client.json → 主树副本 → 环境变量）。
+    皆空=裸请求（401 显形为检查红·不静默放行）。"""
     try:
         sys.path.insert(0, str(Path(__file__).resolve().parent))
         import intent
-        return intent.鉴权头()
+        intent.加鉴权头(请求)
     except Exception as e:
         print(f"[黄] intent 鉴权助手不可用，本次裸请求（诊断见上）：{e}", file=sys.stderr)
-        return {}
 
 
 def _失败说明(码: int) -> str:
     """HTTP 非 200 的诊断分流（1425）：401/403=鉴权失败（点名令牌/登录墙），
     其余=HTTP 码原文——不把鉴权问题冒充「服务不可达」（判据走 intent 单点）。"""
+    鉴权失败 = 码 in (401, 403)   # P3-D：本地兜底（intent 助手坏掉仍识别）
     try:
         import intent
-        if intent.鉴权失败码(码):
+        鉴权失败 = intent.鉴权失败码(码)
+        if 鉴权失败:
             return intent.鉴权失败文案("看板/队列服务", 码)
     except Exception as e:
-        print(f"[黄] intent 鉴权助手不可用，按裸码诊断（诊断见上）：{e}", file=sys.stderr)
+        print(f"[黄] intent 鉴权助手不可用，按裸码兜底（诊断见上）：{e}", file=sys.stderr)
+    if 鉴权失败:
+        return f"看板/队列服务鉴权失败（{码}）——令牌校验失败（详见上方诊断）"
     return f"码={码 or '无响应'}"
+
+
+def _源三元组(url: str) -> tuple:
+    """P2-A 同源判据：(scheme, host, port) 三元组——防 https→http 明文降级、
+    防跨端口跳转（netloc 单判据会放过 scheme 降级/默认端口差异）。"""
+    p = urlsplit(url)
+    try:
+        端口 = p.port
+    except ValueError:
+        端口 = None
+    if 端口 is None:
+        端口 = 443 if p.scheme.lower() == "https" else 80
+    return (p.scheme.lower(), (p.hostname or "").lower(), 端口)
 
 
 def 取地址(基址, 路径, 超时秒=默认超时秒, 同源基址=None):
     """GET 一个路径；返回 (码, 文本, 错因, 毫秒)。码=0 表示连接层失败（错因非空）。
     HTTPError（4xx/5xx）按「正常响应」返回——错误码是检查判据的一部分。
 
-    1425 令牌外发防线：仅当目标与看板/队列同源（netloc 相同）才带 Authorization
-    ——外链/CDN 资源请求绝不携带看板令牌。同源基址=调用方显式传入（外链调用点传
-    看板基址）；缺省=基址本身。"""
+    1425/P2-A 令牌外发防线：仅当目标与看板/队列 (scheme, host, port) 全同源才带
+    Authorization——外链/CDN/跨端口/https→http 降级请求绝不携带看板令牌。
+    同源基址=调用方显式传入（外链调用点传看板基址）；缺省=基址本身。"""
     地址 = 基址.rstrip("/") + 路径
-    头 = {"User-Agent": "cn-infra-healthcheck/728m"}
-    if urlsplit(地址).netloc == urlsplit(同源基址 or 基址).netloc:
-        头.update(_鉴权头())   # 1425：同源 GET 有令牌就带 Bearer
-    请求 = urllib.request.Request(地址, headers=头)
+    请求 = urllib.request.Request(地址, headers={"User-Agent": "cn-infra-healthcheck/728m"})
+    if _源三元组(地址) == _源三元组(同源基址 or 基址):
+        _加鉴权头(请求)   # 1425：同源 GET 有令牌就带 Bearer（不可重定向头）
     起 = time.monotonic()
     try:
         with urllib.request.urlopen(请求, timeout=超时秒) as 响应:

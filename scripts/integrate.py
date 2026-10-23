@@ -250,9 +250,10 @@ def 板查询(路径: str):
     401/403=鉴权失败（点名令牌/登录墙），连接层失败才叫「不可达」。
     1425 全站登录墙：GET 亦须鉴权——有令牌就带 Bearer（intent.鉴权头 统一口径）。"""
     import urllib.request
+    请求 = urllib.request.Request(板服务URL.rstrip("/") + 路径)
+    _加鉴权头(请求)
     try:
-        with urllib.request.urlopen(urllib.request.Request(
-                板服务URL.rstrip("/") + 路径, headers=_鉴权头们()), timeout=4) as 响应:
+        with urllib.request.urlopen(请求, timeout=4) as 响应:
             return json.loads(响应.read().decode("utf-8"))
     except urllib.error.HTTPError as e:
         try:
@@ -1018,14 +1019,14 @@ if not 队列服务URL and _客户端配置.exists():
         pass
 
 
-def _鉴权头们() -> dict:
-    """1425 单点鉴权头；助手不可用=stderr 一行诊断后裸请求（不静默丢鉴权）。"""
+def _加鉴权头(请求) -> None:
+    """1425/P2-A 单点鉴权头：Bearer 写不可重定向头（跨源跳转不转发）；
+    助手不可用=stderr 一行诊断后裸请求（不静默丢鉴权）。"""
     try:
         import intent
-        return intent.鉴权头()
+        intent.加鉴权头(请求)
     except Exception as e:
         print(f"  [黄] intent 鉴权助手不可用，本次裸请求（诊断见上）：{e}", file=sys.stderr)
-        return {}
 
 
 def 服务调用(路径: str, 数据: dict | None = None) -> dict | None:
@@ -1034,23 +1035,25 @@ def 服务调用(路径: str, 数据: dict | None = None) -> dict | None:
         return None
     import urllib.request
     try:
-        头们 = _鉴权头们()
         if 数据 is None:
-            请求 = urllib.request.Request(队列服务URL.rstrip("/") + 路径, headers=头们)
+            请求 = urllib.request.Request(队列服务URL.rstrip("/") + 路径)
         else:
-            头们["Content-Type"] = "application/json"
-            请求 = urllib.request.Request(队列服务URL.rstrip("/") + 路径,
-                                         data=json.dumps(数据, ensure_ascii=False).encode("utf-8"),
-                                         headers=头们)
+            请求 = urllib.request.Request(
+                队列服务URL.rstrip("/") + 路径,
+                data=json.dumps(数据, ensure_ascii=False).encode("utf-8"),
+                headers={"Content-Type": "application/json"})
+        _加鉴权头(请求)   # 1425/P2-A：Bearer 不可重定向
         with urllib.request.urlopen(请求, timeout=4) as 响应:
             return json.loads(响应.read().decode("utf-8"))
     except urllib.error.HTTPError as e:
         # 1425：鉴权失败与连接层失败分流——队列 GET/POST 401 不再静默成「未配置」。
+        鉴权 = e.code in (401, 403)   # P3-D：本地兜底
         try:
             import intent
             鉴权 = intent.鉴权失败码(e.code)
-        except Exception:
-            鉴权 = False
+        except Exception as ex:
+            print(f"  [黄] intent 鉴权助手不可用，按裸码兜底（诊断见上）：{ex}",
+                  file=sys.stderr)
         if 鉴权:
             try:
                 import intent
@@ -1145,11 +1148,11 @@ def 板调用(路径: str, 数据: dict) -> bool:
     """看板服务写操作（308h·意图生命周期联动）——失败仅返回 False 不阻断集成。"""
     import urllib.request
     try:
-        头们 = _鉴权头们()
-        头们["Content-Type"] = "application/json"
-        请求 = urllib.request.Request(板服务URL.rstrip("/") + 路径,
-                                     data=json.dumps(数据, ensure_ascii=False).encode("utf-8"),
-                                     headers=头们)
+        请求 = urllib.request.Request(
+            板服务URL.rstrip("/") + 路径,
+            data=json.dumps(数据, ensure_ascii=False).encode("utf-8"),
+            headers={"Content-Type": "application/json"})
+        _加鉴权头(请求)   # 1425/P2-A：Bearer 不可重定向
         with urllib.request.urlopen(请求, timeout=4) as 响应:
             return bool(json.loads(响应.read().decode("utf-8")).get("好"))
     except Exception:

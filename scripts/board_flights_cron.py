@@ -64,12 +64,13 @@ def 主要() -> int:
                            "时刻": datetime.now().strftime("%m-%d %H:%M:%S"),
                            "已并入": False})
     体 = {"上报者": "TX_01-gitcron", "分支们": 分支们}
-    头 = {"Content-Type": "application/json"}
+    请求 = urllib.request.Request(
+        板地址 + "/api/report_flights", method="POST",
+        data=json.dumps(体, ensure_ascii=False).encode("utf-8"),
+        headers={"Content-Type": "application/json"})
     令牌 = 取令牌()
-    if 令牌:
-        头["Authorization"] = "Bearer " + 令牌
-    请求 = urllib.request.Request(板地址 + "/api/report_flights", method="POST",
-        data=json.dumps(体, ensure_ascii=False).encode("utf-8"), headers=头)
+    if 令牌:   # P2-A：Bearer 写不可重定向头（跨源跳转不转发）
+        请求.add_unredirected_header("Authorization", "Bearer " + 令牌)
     with urllib.request.urlopen(请求, timeout=10) as resp:
         结果 = json.loads(resp.read().decode("utf-8"))
     print(f"{datetime.now():%m-%d %H:%M:%S} 上报 {len(分支们)} 支在飞分支：{结果}")

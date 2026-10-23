@@ -41,6 +41,8 @@ import time
 from pathlib import Path
 
 脚本目录 = Path(__file__).resolve().parent
+sys.path.insert(0, str(脚本目录))
+import atomic_json   # P3-H：台账缓存原子写（与 556 注释口径一致）
 本树根 = 脚本目录.parent
 E2E = 本树根 / "tests" / "e2e"
 缓存 = 脚本目录 / "case_ledger_cache.json"
@@ -98,12 +100,12 @@ def 扫描本地用例() -> list:
 
 
 def _读缓存行() -> list:
-    """本地最后一份台账缓存；缺失/损坏返回 []（556 容错口径）。"""
+    """本地最后一份台账缓存；缺失/损坏/非 dict 返回 []（556 容错口径·不崩栈）。"""
     try:
         旧 = json.loads(缓存.read_text(encoding="utf-8"))
-        return 旧.get("台账", [])
     except (OSError, ValueError):
         return []
+    return 旧.get("台账", []) if isinstance(旧, dict) else []
 
 
 def 台账取回(允许缓存: bool = True):
@@ -117,19 +119,17 @@ def 台账取回(允许缓存: bool = True):
     except (OSError, ValueError) as e:
         旧 = _读缓存行() if 允许缓存 else []
         return 旧, False, f"看板服务不可达（{e}）" + ("·读本地缓存" if 旧 else "·无缓存"), False
+    if not isinstance(r, dict):
+        r = {}
     if 码 == 200 and "台账" in r:
-        try:
-            缓存.write_text(json.dumps({"台账": r["台账"], "时戳": time.time()},
-                                       ensure_ascii=False), encoding="utf-8")
-        except OSError:
-            pass
+        atomic_json.写(缓存, {"台账": r["台账"], "时戳": time.time()})
         return r["台账"], True, "", False
-    鉴权失败 = False
+    鉴权失败 = 码 in (401, 403)   # P3-D：本地兜底（intent 助手坏掉仍识别）
     try:
         import intent
         鉴权失败 = intent.鉴权失败码(码)
     except Exception as e:
-        print(f"[黄] intent 鉴权助手不可用，按裸码诊断（诊断见上）：{e}", file=sys.stderr)
+        print(f"[黄] intent 鉴权助手不可用，按裸码兜底（诊断见上）：{e}", file=sys.stderr)
     if 鉴权失败:
         try:
             import intent

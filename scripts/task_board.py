@@ -46,40 +46,42 @@ from board_tasks import 僵尸疑天数   # 392：僵尸疑阈值提示（与服
 板服务地址 = os.environ.get("CN_BOARD_URL", "http://124.222.106.84:8301").rstrip("/")
 
 
-def 服务调(路径: str) -> tuple[dict | None, str]:
-    """GET 只读查询 → (数据|None, 错误文案)。
+def 服务调(路径: str) -> tuple[dict | None, str, bool]:
+    """GET 只读查询 → (数据|None, 错误文案, 鉴权失败)。
 
-    1425 全站登录墙：GET 亦须鉴权——请求头统一走 intent.鉴权头()（556 令牌兜底链
-    单点实现）。错误文案分流：401/403=鉴权失败（不冒充不可达），连接层失败才叫
-    「不可达」——调用方按原场景降级/报错，真因不吞。"""
+    1425 全站登录墙：GET 亦须鉴权——请求头统一走 intent.加鉴权头()（556 令牌兜底链
+    单点实现 + P2-A 不可重定向头）。错误文案分流：401/403=鉴权失败（不冒充不可达），
+    连接层失败才叫「不可达」——调用方按原场景降级/报错，真因不吞。"""
     请求 = urllib.request.Request(板服务地址 + 路径, method="GET")
     try:
         import intent
-        头 = intent.鉴权头()
+        intent.加鉴权头(请求)
     except Exception as e:
         print(f"[黄] intent 鉴权助手不可用，本次裸请求（诊断见上）：{e}", file=sys.stderr)
-        头 = {}
-    for 名, 值 in 头.items():
-        请求.add_header(名, 值)
     try:
         with urllib.request.urlopen(请求, timeout=8) as r:
-            return json.loads(r.read().decode("utf-8")), ""
+            return json.loads(r.read().decode("utf-8")), "", False
     except urllib.error.HTTPError as e:
+        鉴权失败 = e.code in (401, 403)   # P3-D：门禁路径本地兜底（intent 坏掉也拦）
         try:
             import intent
-            if intent.鉴权失败码(e.code):
-                return None, intent.鉴权失败文案("看板服务", e.code)
-        except Exception:
-            pass
+            鉴权失败 = intent.鉴权失败码(e.code)
+            if 鉴权失败:
+                return None, intent.鉴权失败文案("看板服务", e.code), True
+        except Exception as ex:
+            print(f"[黄] intent 鉴权助手不可用，按裸码兜底（诊断见上）：{ex}", file=sys.stderr)
         try:
             详情 = e.read().decode("utf-8", "replace")[:160]
         except OSError:
             详情 = ""
-        return None, f"看板服务返回 HTTP {e.code}" + (f"：{详情}" if 详情 else "")
+        错误 = f"看板服务返回 HTTP {e.code}" + (f"：{详情}" if 详情 else "")
+        if 鉴权失败:
+            错误 = f"看板服务鉴权失败（{e.code}）——令牌校验失败（详见上方诊断）"
+        return None, 错误, 鉴权失败
     except (urllib.error.URLError, OSError) as e:
-        return None, f"看板服务不可达（{板服务地址}）：{e}"
+        return None, f"看板服务不可达（{板服务地址}）：{e}", False
     except ValueError as e:
-        return None, f"看板服务响应非 JSON：{e}"
+        return None, f"看板服务响应非 JSON：{e}", False
 
 
 def 输出(命令):
@@ -88,20 +90,22 @@ def 输出(命令):
     return (结果.stdout or "").strip()
 
 
-def 拉台账() -> tuple[list | None, str]:
-    r, 错误 = 服务调("/api/tasks")
+def 拉台账() -> tuple[list | None, str, bool]:
+    r, 错误, 鉴权失败 = 服务调("/api/tasks")
     if r is None:
-        return None, 错误
+        return None, 错误, 鉴权失败
+    if not isinstance(r, dict):
+        return None, f"看板台账响应非对象（{type(r).__name__}）", False
     任务们 = r.get("任务们")
     if 任务们 is None:
-        return None, "看板台账响应缺「任务们」字段（服务端版本不符或响应损坏）"
+        return None, "看板台账响应缺「任务们」字段（服务端版本不符或响应损坏）", False
     if not isinstance(任务们, list):
-        return None, f"看板台账「任务们」类型异常（{type(任务们).__name__}）"
-    return 任务们, ""
+        return None, f"看板台账「任务们」类型异常（{type(任务们).__name__}）", False
+    return 任务们, "", False
 
 
 def cmd_ready(机读: bool) -> int:
-    任务们, 错误 = 拉台账()
+    任务们, 错误, _鉴权失败 = 拉台账()
     if 任务们 is None:
         print(f"[失败] {错误}——就绪队列需服务端台账（382）", file=sys.stderr)
         return 1
@@ -151,8 +155,13 @@ def cmd_ready(机读: bool) -> int:
 
 
 def cmd_check() -> int:
-    任务们, 错误 = 拉台账()
+    任务们, 错误, 鉴权失败 = 拉台账()
     if 任务们 is None:
+        if 鉴权失败:
+            # P2-D：401/403=鉴权失败硬红（宁停不裂）；只有连接层失败才黄字降级。
+            print(f"[FAIL] {错误}——账实对账无法进行（401/403 硬红·宁停不裂）",
+                  file=sys.stderr)
+            return 1
         print(f"[黄] {错误}——账实对账跳过（门禁降级放行·恢复后补查）")
         return 0
     远端任务分支 = set()

@@ -353,8 +353,9 @@ def 源分支已并入(源分支: str) -> bool | None:
         # 1425：看板全站登录墙后 GET 亦须鉴权——CN_QUEUE_TOKEN 与 CN_BOARD_TOKEN
         # 同值（systemd 同源配置·430「queue_client.json 同源」先例），直接复用本服务令牌。
         请求 = urllib.request.Request(
-            看板服务地址.rstrip("/") + "/api/task/" + m.group(1),
-            headers=({"Authorization": "Bearer " + 令牌} if 令牌 else {}))
+            看板服务地址.rstrip("/") + "/api/task/" + m.group(1))
+        if 令牌:   # P2-A：Bearer 写不可重定向头（跨源跳转不转发）
+            请求.add_unredirected_header("Authorization", "Bearer " + 令牌)
         with urllib.request.urlopen(请求, timeout=3) as 响应:
             任务 = json.loads(响应.read().decode("utf-8")).get("任务") or {}
     except Exception as e:

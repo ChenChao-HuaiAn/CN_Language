@@ -152,12 +152,14 @@ def 推导阶段(队列行们: list, 预验行们: list, 门禁行们: list, 任
 _阶段缓存 = {"时刻": 0.0, "图": {}}
 
 
-def _队列鉴权头() -> dict:
-    """1425 全站登录墙：队列服务（8300）GET 亦须鉴权——CN_QUEUE_TOKEN 与
+def _套队列鉴权头(请求) -> None:
+    """1425/P2-A 全站登录墙：队列服务（8300）GET 亦须鉴权——CN_QUEUE_TOKEN 与
     CN_BOARD_TOKEN 同值（systemd 同源配置·430「queue_client.json 同源」先例），
-    本进程（cn-board）注入的是 CN_BOARD_TOKEN，任一在即用；皆空=裸请求（降级面）。"""
+    本进程（cn-board）注入的是 CN_BOARD_TOKEN，任一在即用；皆空=裸请求（降级面）。
+    Bearer 写不可重定向头——跨源跳转不转发令牌（安全复审 P2-A）。"""
     t = os.environ.get("CN_QUEUE_TOKEN") or os.environ.get("CN_BOARD_TOKEN", "")
-    return {"Authorization": "Bearer " + t} if t else {}
+    if t:
+        请求.add_unredirected_header("Authorization", "Bearer " + t)
 
 
 def 阶段图(任务们: list) -> dict:
@@ -171,8 +173,9 @@ def 阶段图(任务们: list) -> dict:
     图 = {}
     try:
         地址 = os.environ.get("CN_QUEUE_STATUS_URL", "http://127.0.0.1:8300/api/state")
-        with urllib.request.urlopen(urllib.request.Request(地址, headers=_队列鉴权头()),
-                                    timeout=2) as r:
+        请求 = urllib.request.Request(地址)
+        _套队列鉴权头(请求)
+        with urllib.request.urlopen(请求, timeout=2) as r:
             态 = json.loads(r.read().decode("utf-8"))
         图 = 推导阶段(态.get("队列", []), 态.get("预验任务", []),
                       态.get("门禁最近", []), 任务们)
@@ -189,9 +192,10 @@ def 取预检详情(sha: str):
     import urllib.parse
     地址 = os.environ.get("CN_QUEUE_BASE_URL", "http://127.0.0.1:8300").rstrip("/")
     try:
-        with urllib.request.urlopen(urllib.request.Request(
-                f"{地址}/api/task_result?sha={urllib.parse.quote(sha)}",
-                headers=_队列鉴权头()), timeout=5) as r:
+        请求 = urllib.request.Request(
+            f"{地址}/api/task_result?sha={urllib.parse.quote(sha)}")
+        _套队列鉴权头(请求)
+        with urllib.request.urlopen(请求, timeout=5) as r:
             return json.loads(r.read().decode("utf-8"))
     except (OSError, ValueError):
         return None
@@ -206,10 +210,11 @@ def 取门禁详情(sha: str, 平台: str):
     import urllib.parse
     地址 = os.environ.get("CN_QUEUE_BASE_URL", "http://127.0.0.1:8300").rstrip("/")
     try:
-        with urllib.request.urlopen(urllib.request.Request(
-                f"{地址}/api/gate_result?sha={urllib.parse.quote(sha)}"
-                f"&plat={urllib.parse.quote(平台)}",
-                headers=_队列鉴权头()), timeout=5) as r:
+        请求 = urllib.request.Request(
+            f"{地址}/api/gate_result?sha={urllib.parse.quote(sha)}"
+            f"&plat={urllib.parse.quote(平台)}")
+        _套队列鉴权头(请求)
+        with urllib.request.urlopen(请求, timeout=5) as r:
             return json.loads(r.read().decode("utf-8"))
     except (OSError, ValueError):
         return None

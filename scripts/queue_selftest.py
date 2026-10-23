@@ -969,8 +969,12 @@ def 跑() -> None:
     def 调1425(方法, 路径, 体=None, 头=None):
         def 动作():
             请求 = urllib.request.Request(基址1425 + 路径, method=方法,
-                data=json.dumps(体).encode("utf-8") if 体 is not None else None,
-                headers=dict(头 or {}))
+                data=json.dumps(体).encode("utf-8") if 体 is not None else None)
+            for 名, 值 in (头 or {}).items():
+                if 名.lower() == "authorization":   # P2-A：Bearer 不可重定向
+                    请求.add_unredirected_header(名, 值)
+                else:
+                    请求.add_header(名, 值)
             try:
                 with urllib.request.urlopen(请求, timeout=5) as r:
                     return r.status, dict(r.headers), r.read().decode("utf-8")

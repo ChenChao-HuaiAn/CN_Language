@@ -60,7 +60,8 @@ class 假看板(BaseHTTPRequestHandler):
 def 调(操作, 数据, 期望ok=True):
     请求 = urllib.request.Request(
         基址 + "/api/" + 操作, data=json.dumps(数据, ensure_ascii=False).encode("utf-8"),
-        headers={"Content-Type": "application/json", "Authorization": "Bearer " + 令牌})
+        headers={"Content-Type": "application/json"})
+    请求.add_unredirected_header("Authorization", "Bearer " + 令牌)   # P2-A
     with urllib.request.urlopen(请求, timeout=5) as r:
         回 = json.loads(r.read().decode("utf-8"))
     if 期望ok:
@@ -70,8 +71,8 @@ def 调(操作, 数据, 期望ok=True):
 
 def 取(路径):
     # 1425 全站登录墙：GET 亦须鉴权——测试实例凭 CN_QUEUE_TOKEN 走机器通道
-    请求 = urllib.request.Request(基址 + 路径,
-                                  headers={"Authorization": "Bearer " + 令牌})
+    请求 = urllib.request.Request(基址 + 路径)
+    请求.add_unredirected_header("Authorization", "Bearer " + 令牌)   # P2-A
     with urllib.request.urlopen(请求, timeout=5) as r:
         return json.loads(r.read().decode("utf-8"))
 
@@ -136,7 +137,8 @@ def main() -> int:
                 请求 = urllib.request.Request(
                     "http://127.0.0.1:%d/api/task_claim" % 端口2,
                     data=json.dumps({"runner": "x"}).encode("utf-8"),
-                    headers={"Content-Type": "application/json", "Authorization": "Bearer whatever"})
+                    headers={"Content-Type": "application/json"})
+                请求.add_unredirected_header("Authorization", "Bearer whatever")   # P2-A
                 urllib.request.urlopen(请求, timeout=5)
                 断言(False, "未配置令牌服务 POST 应 401")
             except urllib.error.HTTPError as e:
