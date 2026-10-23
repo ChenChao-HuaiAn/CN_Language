@@ -2038,7 +2038,12 @@
    "src/runtime/mem_pool.cpp::elsehi=mid;│hi=mid",
    "src/runtime/mem_pool.cpp::}else{│poolInvariantFail(\"TLS链槽归属丢失\")",
    "src/runtime/string_api.cpp::}else{│buf[len++]=static_cast<char>(0xF0|(cp>>18))",
-   "src/runtime/string_api.cpp::}else{│if(t.nextSlot>=kStrbufMaxSlots){cnStrbufOomAbort(\"[cnrt]字符串构建器槽表耗尽（%llu个句柄未收尾）"
+   "src/runtime/string_api.cpp::}else{│if(t.nextSlot>=kStrbufMaxSlots){cnStrbufOomAbort(\"[cnrt]字符串构建器槽表耗尽（%llu个句柄未收尾）",
+   "CN语言编译器v2/IR/IR容器释放.cn::如果(找串槽.正常){串槽=找串槽.值;}否则{串槽=0;}│串槽=0",
+   "CN语言编译器v2/IR/IR类嵌套推导.cn::}否则{│结果<空类型,整32>设推415=推导们415.设置(整32(名k415),推导值415)",
+   "CN语言编译器v2/IR/IR类嵌套推导.cn::}否则{中断;}│中断",
+   "CN语言编译器v2/IR/生成语句尾.cn::}否则{│块清单登记(变量名ID)",
+   "CN语言编译器v2/IR/生成语句尾.cn::}否则{│块清单登记(变量名ID)"
   ],
   "单边比较": [
    "CN语言编译器v2/IR/IR初值解析.cn::如果(d<0){返回假;}",
@@ -4207,7 +4212,14 @@
    "src/runtime/system_api.cpp::if(MultiByteToWideChar(CP_UTF8,0,name,-1,wideName.data(),nameLen)<=0){",
    "src/runtime/system_api.cpp::if(nameLen<=0)return2;",
    "src/runtime/system_api.cpp::if(valueLen<=0)return2;",
-   "src/runtime/time_api.cpp::if(ts<0)returnnullptr;"
+   "src/runtime/time_api.cpp::if(ts<0)returnnullptr;",
+   "CN语言编译器v2/IR/IR容器释放.cn::如果(初末s.子起点>=0){",
+   "CN语言编译器v2/IR/IR类嵌套推导.cn::如果(字符串长度(推导们415.元素(整32(名k415)))>0){",
+   "CN语言编译器v2/IR/IR类嵌套推导.cn::如果(尾长415>0&&",
+   "CN语言编译器v2/IR/IR类嵌套推导.cn::如果(整64(嵌套声明415.附加)>0){",
+   "CN语言编译器v2/IR/IR类嵌套推导.cn::如果(深度>16){",
+   "CN语言编译器v2/IR/IR类嵌套推导.cn::如果(调用s.类型==节点_调用&&整64(调用s.子起点)>0){",
+   "CN语言编译器v2/IR/IR类嵌套推导.cn::如果(调用起点415<=0){返回;}"
   ],
   "红旗词面": [
    "CN语言编译器v2/IR/IR生成类型辅助.cn:://登记缺=保守回退原路径（诊断由下游发）",
