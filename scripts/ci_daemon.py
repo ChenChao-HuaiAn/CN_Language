@@ -662,6 +662,17 @@ def 启动心跳(任务分支: str, 片序: int | None = None) -> threading.Even
     return 停
 
 
+def 跑完对齐(仓库根) -> None:
+    """#1463 任务收尾树头回 develop（池跑任务/池跑分片 finally 调用）：此前跑完树
+    停在任务分支头——空闲实例面板版本列恒显任务 sha =「版本不一致」误报（用户
+    10-23 实报 TX_03 红标·实际树已是 develop）。失败仅告警：任务结果已上报，
+    树头停留只影响面板参考值，不影响门禁正确性。"""
+    try:
+        ci_shard.对齐树头(仓库根, 远端名, "develop")
+    except RuntimeError as e:
+        print("[警告] 跑完对齐 develop 失败（树头停留任务分支）：%s" % e, flush=True)
+
+
 def 池跑任务(任务: dict) -> None:
     """执行认领到的池任务（189 起两类）：预验任务 fetch 预验分支→跑一轮→落盘；
     兜底任务（ci/兜底-*·非真分支）fetch develop→跑一轮(develop)→落盘（660：fetch 后
@@ -749,6 +760,7 @@ def 池跑任务(任务: dict) -> None:
         print("[池完成] %s 绿=%s 总秒=%s" % (任务分支, 结果.get("绿"), 结果.get("总秒")), flush=True)
     finally:
         停.set()
+        跑完对齐(仓库根)       # #1463：树头回 develop（面板版本列=真实树状态）
 
 
 def 池跑分片(片任务: dict) -> None:
@@ -774,6 +786,7 @@ def 池跑分片(片任务: dict) -> None:
               % (分支s, 片序, 片数, 结果.get("绿"), 结果.get("总秒")), flush=True)
     finally:
         停.set()
+        跑完对齐(仓库根)       # #1463：树头回 develop（面板版本列=真实树状态）
 
 
 def 主(常驻: bool, 强制: bool, 等锁: bool = False) -> int:

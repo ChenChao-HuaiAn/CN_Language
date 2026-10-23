@@ -606,12 +606,25 @@ def 本机门禁锁忙(锁目录: Path | None = None) -> bool:
         return False
 
 
+def 取树头(仓库根: Path) -> str:
+    """实例仓 HEAD sha 前 10（#1463 自 实例指纹 抽出）：报活线程每轮实时调用——
+    刷新对齐/任务 checkout 后的树头变化面板即见（此前启动算一次=面板恒显启动
+    快照，用户 10-23 实报「点击更新没变化」根因）。取不到=空串显式（服务端
+    空串不覆盖已有值·前端显示 —）。"""
+    try:
+        r = subprocess.run(["git", "rev-parse", "HEAD"], cwd=仓库根,
+                           capture_output=True, text=True, timeout=10)
+    except Exception:
+        return ""
+    return r.stdout.strip()[:10] if r.returncode == 0 else ""
+
+
 def 实例指纹(仓库根: Path) -> dict:
-    """实例版本指纹（启动时算一次·进程内不变=「这个 daemon 进程是什么版本」）——
-    daemon指纹=ci_daemon.py 内容 sha256 前 10（不依赖 git·scp 直更同样反映真实
-    版本；常驻进程代码=启动时加载版，跑轮 reset 改磁盘不影响运行中进程·故以启动
-    时磁盘版为准）；树头=实例仓 HEAD 前 10（跑轮 checkout 被验分支会变·参考面）。
-    取不到=空串显式（前端显示 —·不猜不编；服务端空串不覆盖已有值）。"""
+    """实例版本指纹——daemon指纹=ci_daemon.py 内容 sha256 前 10（不依赖 git·scp
+    直更同样反映真实版本；报活启动时算一次固定=「这个 daemon 进程是什么版本」——
+    常驻进程代码=启动时加载版，跑轮 reset 改磁盘不影响运行中进程·故以启动时
+    磁盘版为准）；树头=实时 rev-parse（#1463·每轮报活重算）。取不到=空串显式
+    （前端显示 —·不猜不编；服务端空串不覆盖已有值）。"""
     指纹 = ""
     try:
         # #1418：按文本读（通用换行归一化 CRLF→LF）再哈希——win/linux 同提交同代码
@@ -622,15 +635,7 @@ def 实例指纹(仓库根: Path) -> dict:
         指纹 = hashlib.sha256(内容.encode("utf-8")).hexdigest()[:10]
     except OSError:
         pass
-    头 = ""
-    try:
-        r = subprocess.run(["git", "rev-parse", "HEAD"], cwd=仓库根,
-                           capture_output=True, text=True, timeout=10)
-        if r.returncode == 0:
-            头 = r.stdout.strip()[:10]
-    except Exception:
-        pass
-    return {"树头": 头, "daemon指纹": 指纹}
+    return {"树头": 取树头(仓库根), "daemon指纹": 指纹}
 
 
 def 启动实例报活(runner: str, 平台: str, 仓库根: Path) -> dict:
@@ -638,16 +643,19 @@ def 启动实例报活(runner: str, 平台: str, 仓库根: Path) -> dict:
     报活间隔秒 POST instance_ping（忙闲都发·池不可达静默——与 task_heartbeat
     同口径）。未配置池地址=不启动（纯本地面无服务端可报）。
     #1460：返回共享刷新状态 {"请求":float,"已执行":float}——响应携服务端「更新
-    实例」广播戳（只记最新），由主循环空闲点 处理刷新请求 消费。"""
-    状态 = {"请求": 0.0, "已执行": 0.0}
+    实例」广播戳（只记最新），由主循环空闲点 处理刷新请求 消费。
+    #1463：树头每轮实时取（daemon指纹启动固定）；"立即报活" Event——刷新对齐
+    成功后置位，线程提前发一次（不必等满 60s 周期·面板尽快见新树头）。"""
+    状态 = {"请求": 0.0, "已执行": 0.0, "立即报活": threading.Event()}
     配置 = 池配置()
     if not 配置["池地址"]:
         return 状态
-    指纹 = 实例指纹(仓库根)
+    固定 = {"daemon指纹": 实例指纹(仓库根)["daemon指纹"]}
 
     def 跑():
         while True:
-            回 = 池调用(配置, "instance_ping", {"runner": runner, "平台": 平台, **指纹})
+            回 = 池调用(配置, "instance_ping",
+                       {"runner": runner, "平台": 平台, "树头": 取树头(仓库根), **固定})
             # #1460：取广播戳——旧服务端无此字段按 0.0「无请求」（协议向后兼容的
             #   合法语义值·非错误兜底）；非数值脏值同按无请求并显式告警（不阻断报活）。
             try:
@@ -658,7 +666,8 @@ def 启动实例报活(runner: str, 平台: str, 仓库根: Path) -> dict:
                 请求 = 0.0
             if 请求 > 状态["请求"]:
                 状态["请求"] = 请求
-            time.sleep(报活间隔秒)
+            状态["立即报活"].wait(报活间隔秒)
+            状态["立即报活"].clear()
 
     threading.Thread(target=跑, daemon=True).start()
     return 状态
@@ -703,4 +712,7 @@ def 处理刷新请求(状态: dict, 仓库根: Path, 远端: str, 分支: str) 
         return ""
     新头 = 对齐树头(仓库根, 远端, 分支)
     状态["已执行"] = 状态.get("请求") or 0.0
+    事件 = 状态.get("立即报活")     # #1463：对齐成功后提前发一次报活（面板尽快见新树头）
+    if 事件 is not None:
+        事件.set()
     return 新头

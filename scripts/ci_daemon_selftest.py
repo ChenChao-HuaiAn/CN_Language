@@ -1089,8 +1089,39 @@ def _1460断言(断言) -> None:
              失败显式)
 
 
+def _1463断言(主模块, 断言) -> None:
+    """#1463 面板版本列失真根治两态：①树头实时——取树头 每次重算（启动快照缺陷
+    根治·刷新/任务 checkout 后面板即见）；②结构锁——池跑任务/池跑分片 收尾均
+    跑完对齐（树头回 develop·防跑完停在任务分支头致恒红）。"""
+    import ci_shard
+    with tempfile.TemporaryDirectory() as 临时:
+        根 = Path(临时)
+        环境 = {**os.environ, "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t",
+                "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@t",
+                "GIT_CONFIG_GLOBAL": str(Path(临时) / "gitconfig"),
+                "GIT_CONFIG_SYSTEM": os.devnull}
+
+        def 跑(*参):
+            return subprocess.run(["git", *参], cwd=str(根), capture_output=True,
+                                  text=True, env=环境)
+        跑("init", "-q", "-b", "develop")
+        (根 / "a.txt").write_text("1", encoding="utf-8")
+        跑("add", ".")
+        跑("commit", "-q", "-m", "一")
+        头一 = ci_shard.取树头(根)
+        (根 / "a.txt").write_text("2", encoding="utf-8")
+        跑("commit", "-qam", "二")
+        头二 = ci_shard.取树头(根)
+        断言("#1463 树头实时：二次取树头随 HEAD 变化（面板不再恒显启动快照）",
+             头一 != 头二 and len(头一) == 10
+             and 头二 == 跑("rev-parse", "HEAD").stdout.strip()[:10])
+    源码 = inspect.getsource(主模块.池跑任务) + inspect.getsource(主模块.池跑分片)
+    断言("#1463 结构锁：池跑任务/池跑分片 收尾均 跑完对齐（树头回 develop·防恒红）",
+         源码.count("跑完对齐(仓库根)") == 2)
+
+
 def 自测(主模块) -> int:
-    """--selftest 入口（断言集 523+637+657+660+728t+770+842+935+973+975+1297+1299+1369+1392+1401+1423+1424+1428+1460）——CI 式：逐条打印，任一红退出 1。"""
+    """--selftest 入口（断言集 523+637+657+660+728t+770+842+935+973+975+1297+1299+1369+1392+1401+1423+1424+1428+1460+1463）——CI 式：逐条打印，任一红退出 1。"""
     断言们: list[tuple[str, bool]] = []
 
     def 断言(名: str, 条件: bool) -> None:
@@ -1114,9 +1145,10 @@ def 自测(主模块) -> int:
     _1424断言(主模块, 断言)
     _1428断言(断言)
     _1460断言(断言)
+    _1463断言(主模块, 断言)
     _行数断言(断言)
     for 名, ok in 断言们:
         print("  [%s] %s" % ("OK" if ok else "×", 名))
     红 = sum(1 for _, ok in 断言们 if not ok)
-    print("== ci_daemon 自测（523+637+657+660+728t+770+842+935+973+975+1297+1299+1369+1392+1401+1423+1424+1428+1460）：%d 断言，%s ==" % (len(断言们), "全绿" if 红 == 0 else "红 %d" % 红))
+    print("== ci_daemon 自测（523+637+657+660+728t+770+842+935+973+975+1297+1299+1369+1392+1401+1423+1424+1428+1460+1463）：%d 断言，%s ==" % (len(断言们), "全绿" if 红 == 0 else "红 %d" % 红))
     return 0 if 红 == 0 else 1
