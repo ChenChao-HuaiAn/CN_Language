@@ -11,17 +11,17 @@
 （故意 use-after-free 的负例必须红、正常读正例必须绿），防工具链未实际启用假绿。
 被编译面=窥孔两实现 TU + 四个单测 TU + 系统/随仓 gtest；不依赖完整工程构建。
 
-防假绿三重机械断言（审查 P2-1）：
-  1. 分口径精确计数：总数/通过/跳过逐项与「期望口径」比对——只断言「用例数>0」
-     挡不住筛选名失效或尾部用例成批消失（例如死亡例被 SKIP 分支顶替）；
-  2. 跳过零容忍：ASan 口径出现任何 [  SKIPPED ] 即红（死亡例消失的典型形态）；
-     _GLIBCXX_DEBUG 口径只允许恰好 1 条并核对用例名；
-  3. --gtest_list_tests 存在性：ASan 口径必须列出两条 UAF 死亡例
-     （OldViewAfterGasInPlaceIsAsanRed / OldViewAfterArm64IndirectInPlaceIsAsanRed），
-     _GLIBCXX_DEBUG 口径必须不列出它们——CN_PEEPHOLE_ASAN_DEATH 判别宏失效即红。
-计数锚与新增用例联动：本文件「期望口径」是刻意硬编码的哨兵，新增/删除 Peephole
-  用例时必须同步改这里（改不动=测试面已被静默改变，先查明原因）。
-判别力自测=scripts/test_check_peephole_sanitizer.py（假输出正反例，不需编译器）。
+防假绿机械断言（审查 P2-1/P2-2/P2-3）：
+  1. 源码推导差集：正则提取测试源码的 TEST 集合 S，与 --gtest_list_tests 集合 L
+     比对——ASan 面 S-L 恰好={SKIP 例}、debug 面 S-L 恰好={两条死亡例}，L-S 空；
+     用例静默消失立即显形，新增/删除用例无需手工改计数锚；
+  2. 关键名双向检查：ASan 清单必须含两条 UAF 死亡例（OldViewAfterGasInPlaceIsAsanRed /
+     OldViewAfterArm64IndirectInPlaceIsAsanRed），debug 清单不得含且必须含 SKIP 例
+     ——CN_PEEPHOLE_ASAN_DEATH 宏失效或同数顶替即红；
+  3. 汇总自洽：通过+跳过==总数、运行总数==清单数、FAILED 行零容忍；
+  4. 跳过零容忍：ASan 口径出现任何 SKIPPED 即红；debug 口径恰好 1 条并核对用例名。
+判别力自测=scripts/test_check_peephole_sanitizer.py（假输出正反例，不需编译器；
+  显式失败分支，PYTHONOPTIMIZE=1/-O 下仍真实执行）。
 
 用法：
     python3 scripts/check_peephole_sanitizer.py [--cxx g++] [--verbose]
@@ -43,13 +43,12 @@ from pathlib import Path
 构建根 = 仓库根 / "target" / "peephole-sanitizer"
 测试过滤 = "Peephole*"
 
-# 分口径精确计数锚（2026-10-23 审查 P2-1 实测；新增用例须同步更新并写进提交说明）：
-#   asan+ubsan   = 全部用例（含两条 EXPECT_DEATH 死亡例）
-#   glibcxx-debug= 全部用例 - 2 死亡例 + 1 条 ASan 边界显式 SKIP 例
-期望口径 = {
-    "asan+ubsan": {"总数": 147, "通过": 147, "跳过": 0},
-    "glibcxx-debug": {"总数": 146, "通过": 145, "跳过": 1},
-}
+# 口径锚（2026-10-23 复审 P2-2/P2-3：源码推导 + 关键名 + 自洽，不硬编码总数）：
+#   源码 TEST 集合 S 由 tests/unit/codegen/test_peephole_slot*.cpp 正则提取（含
+#   #if/#else 两支：2 条 ASan 死亡例 + 1 条非 ASan 显式 SKIP 例）；
+#   ASan 口径清单 L 必须 = S - {跳过例名}；_GLIBCXX_DEBUG 口径 L 必须 = S - 死亡例名集。
+#   运行汇总只做自洽（通过+跳过==总数、总数==清单数），用例消失/同数顶替由差集
+#   与关键名断言抓；新增/删除用例不再需要手工改计数锚。
 # 死亡例在 ASan 口径必须实际存在（宏失效时会被 SKIP 分支顶替而不报警）
 死亡例名 = (
     "PeepholeSlotLifetime.OldViewAfterGasInPlaceIsAsanRed",
@@ -80,49 +79,70 @@ def 源文件清单() -> list[Path]:
     return 测试 + 实现
 
 
+def 源码用例集() -> set[str]:
+    """正则提取全部测试源文件的 TEST(套件, 用例)（与预处理分支无关：两支都算）。"""
+    模式 = re.compile(r"\bTEST\s*\(\s*([A-Za-z_]\w*)\s*,\s*([A-Za-z_]\w*)\s*\)")
+    用例: set[str] = set()
+    for 源 in sorted((仓库根 / "tests" / "unit" / "codegen").glob("test_peephole_slot*.cpp")):
+        文本 = 源.read_text(encoding="utf-8", errors="replace")
+        用例.update(f"{命中.group(1)}.{命中.group(2)}" for 命中 in 模式.finditer(文本))
+    return 用例
+
+
 def 运行(命令: list[str], 环境: dict | None = None) -> subprocess.CompletedProcess:
-    return subprocess.run(命令, capture_output=True, text=True, env=环境)
+    # 复审 P3-⑤：统一超时，防构建/链接/单测卡死拖住门禁（600s 远大于实测 1 分钟）
+    return subprocess.run(命令, capture_output=True, text=True, env=环境, timeout=600)
 
 
 def 解析汇总(输出: str) -> dict:
-    """从 gtest 运行输出提取 总数/通过/跳过（缺失= None；跳过行缺失视为 0）。"""
+    """从 gtest 运行输出提取 总数/通过/跳过（缺失= None；跳过行缺失视为 0）。
+
+    兼容 gtest 1.8/1.9 的 test cases 旧称与 suites 新称（复审 P3-①）。
+    """
     def 取(模式: str) -> int | None:
         命中 = re.search(模式, 输出)
         return int(命中.group(1)) if 命中 else None
 
     return {
-        "总数": 取(r"(\d+) tests? from \d+ test suites? ran"),
+        "总数": 取(r"(\d+) tests? from \d+ test (?:suites?|cases?) ran"),
         "通过": 取(r"\[  PASSED  \] (\d+) tests?"),
         "跳过": 取(r"\[  SKIPPED \] (\d+) tests?") or 0,
     }
 
 
 def 跳过用例名(输出: str) -> list[str]:
-    return re.findall(r"^\[  SKIPPED \] (Peephole[A-Za-z0-9_.]+)$", 输出, re.MULTILINE)
+    # 参数化套件名形如 Suite/Param（复审 P3-②：允许 '/'）
+    return re.findall(r"^\[  SKIPPED \] (Peephole[A-Za-z0-9_./]+)$", 输出, re.MULTILINE)
 
 
-def 核对汇总(模式: str, 输出: str) -> list[str]:
-    """分口径计数断言：任一数字不符/出现 FAILED/跳过面不符=返回错误清单。"""
-    期望 = 期望口径[模式]
+def 核对汇总(模式: str, 输出: str, 清单数: int | None = None) -> list[str]:
+    """运行汇总自洽断言（复审 P2-2/P2-3）：不自洽/清单数不符/跳过面不符/FAILED=红。
+
+    不硬编码总数：用例损失由 核对用例清单 的源码差集显形；这里只要求 gtest 自报
+    数字内部自洽（通过+跳过==总数）且与已核清单数一致。
+    """
     实际 = 解析汇总(输出)
     错: list[str] = []
     for 键 in ("总数", "通过"):
         if 实际[键] is None:
             错.append(f"{模式}：输出缺少「{键}」汇总行（gtest 未正常跑完？）")
-        elif 实际[键] != 期望[键]:
-            错.append(f"{模式}：{键} {实际[键]} != 期望 {期望[键]}")
+    if 实际["总数"] is not None and 实际["通过"] is not None:
+        if 实际["通过"] + 实际["跳过"] != 实际["总数"]:
+            错.append(f"{模式}：汇总不自洽 通过{实际['通过']}"
+                     f"+跳过{实际['跳过']} != 总数{实际['总数']}")
+        if 清单数 is not None and 实际["总数"] != 清单数:
+            错.append(f"{模式}：运行总数 {实际['总数']} != 清单用例数 {清单数}")
     if "[  FAILED  ]" in 输出:
         错.append(f"{模式}：出现 [  FAILED  ] 行")
-    if 实际["跳过"] != 期望["跳过"]:
-        错.append(f"{模式}：跳过 {实际['跳过']} != 期望 {期望['跳过']}")
     if 模式 == "asan+ubsan":
-        # ASan 口径死亡例必须真正执行：任何 SKIP（含 [  SKIPPED ] 字面）即红
-        if "[  SKIPPED ]" in 输出 or 实际["跳过"] != 0:
+        # ASan 口径死亡例必须真正执行：任何 SKIP（含 SKIPPED 字面）即红（复审 P3-①）
+        if "SKIPPED" in 输出 or 实际["跳过"] != 0:
             错.append("asan+ubsan：出现 SKIPPED（死亡例被 SKIP 分支顶替？）")
     else:
         名单 = 跳过用例名(输出)
-        if 名单 != [跳过例名]:
-            错.append(f"{模式}：跳过用例清单 {名单} != [{跳过例名}]")
+        if 实际["跳过"] != 1 or 名单 != [跳过例名]:
+            错.append(f"{模式}：跳过 {实际['跳过']} 例 {名单}，"
+                     f"应恰好 1 例 [{跳过例名}]")
     return 错
 
 
@@ -144,28 +164,41 @@ def 解析用例清单(输出: str) -> list[str]:
     return 清单
 
 
-def 核对用例清单(模式: str, 输出: str) -> list[str]:
-    """--gtest_list_tests 存在性断言：死亡例/跳过例必须落在正确口径。"""
-    清单 = 解析用例清单(输出)
-    集合 = set(清单)
-    期望 = 期望口径[模式]
+def 核对用例清单(模式: str, 输出: str, 源码集: set[str] | None = None) -> list[str]:
+    """源码 TEST 集合 S 与 --gtest_list_tests 集合 L 的差集断言（复审 P2-2/P2-3）。
+
+    ASan：S-L 必须恰好={跳过例名}、L-S 必须为空（死亡例两条实际参与构建）；
+    debug：S-L 必须恰好=死亡例名集、L-S 必须为空（死亡例被 #else 排除）。
+    另保留关键名双向检查：总数不变但死亡例被普通用例同数顶替时，差集为空而
+    关键名缺失——必须红。源码集参数仅供自测注入合成源集合。
+    """
+    if 源码集 is None:
+        源码集 = 源码用例集()
+    集合 = set(解析用例清单(输出))
     错: list[str] = []
-    if len(清单) != 期望["总数"]:
-        错.append(f"{模式}：清单用例数 {len(清单)} != 期望 {期望['总数']}")
+    if not 源码集:
+        错.append(f"{模式}：未能从测试源码提取任何 TEST（正则/路径失效？）")
+        return 错
     if 模式 == "asan+ubsan":
-        for 名 in 死亡例名:
-            if 名 not in 集合:
-                错.append(f"asan+ubsan：死亡例缺失 {名}"
-                         "（CN_PEEPHOLE_ASAN_DEATH 判别宏失效？）")
-        if 跳过例名 in 集合:
-            错.append(f"asan+ubsan：清单出现非 ASan 分支用例 {跳过例名}")
+        期望遗漏 = {跳过例名}
+        应含 = 死亡例名
+        不应含 = (跳过例名,)
     else:
-        for 名 in 死亡例名:
-            if 名 in 集合:
-                错.append(f"{模式}：清单出现 ASan 死亡例 {名}"
-                         "（CN_PEEPHOLE_ASAN_DEATH 判别宏未按口径生效）")
-        if 跳过例名 not in 集合:
-            错.append(f"{模式}：缺少 ASan 边界显式 SKIP 例 {跳过例名}")
+        期望遗漏 = set(死亡例名)
+        应含 = (跳过例名,)
+        不应含 = 死亡例名
+    遗漏 = 源码集 - 集合
+    多余 = 集合 - 源码集
+    if 遗漏 != 期望遗漏:
+        错.append(f"{模式}：源码有而清单无 {sorted(遗漏)} != 期望 {sorted(期望遗漏)}")
+    if 多余:
+        错.append(f"{模式}：清单有而源码无 {sorted(多余)}")
+    for 名 in 应含:
+        if 名 not in 集合:
+            错.append(f"{模式}：关键用例缺失 {名}（判别宏失效或被同数顶替？）")
+    for 名 in 不应含:
+        if 名 in 集合:
+            错.append(f"{模式}：清单不应含 {名}（口径分支未按宏生效）")
     return 错
 
 
@@ -233,10 +266,11 @@ def 编译并运行(模式: str, 编译旗标: list[str], 链接旗标: list[str
         for 条 in 清单错:
             print(f"[红] {条}", flush=True)
         return False
+    清单数 = len(解析用例清单(清单结果.stdout))
 
     结果 = 运行([str(可执行), f"--gtest_filter={测试过滤}"], 环境)
     print(结果.stdout, flush=True)
-    汇总错 = 核对汇总(模式, 结果.stdout)
+    汇总错 = 核对汇总(模式, 结果.stdout, 清单数)
     if 汇总错:
         for 条 in 汇总错:
             print(f"[红] {条}", flush=True)
@@ -328,7 +362,7 @@ def main() -> int:
         if not 编译并运行(模式, 编译旗标, 链接旗标, cxx, gtest, 参数.verbose):
             return 1
     print("全绿：ASan+UBSan 与 _GLIBCXX_DEBUG 两口径 Peephole 单测通过"
-          "（精确计数 + 死亡例存在性 + 跳过零容忍）", flush=True)
+          "（源码差集 + 关键名 + 汇总自洽 + 跳过零容忍）", flush=True)
     return 0
 
 

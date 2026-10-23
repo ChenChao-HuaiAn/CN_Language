@@ -119,8 +119,9 @@ TEST(PeepholeSlotInPlace, DwordProofDeleteMatchesValueSemantics) {
 }
 
 // 8. AArch64 两阶段同时命中（1217 审查 P3-4 定向锁）：第一阶段固定帧槽命中并
-//    以新缓冲替换 functionText（重分配），第二阶段在新缓冲上命中 [x13] 大偏移
-//    间接对——就地结果=值语义、二次应用稳定（产物 mov x9, x3 / mov x10, x4）。
+//    替换文本存储（ASan 面跨阶段复用旧视图即红），第二阶段在替换后的文本上命中
+//    [x13] 大偏移间接对——就地结果=值语义、二次应用稳定（产物 mov x9, x3 /
+//    mov x10, x4）。
 TEST(PeepholeSlotInPlace, Arm64TwoPhaseBothHitMatchesValueSemantics) {
     const std::string in = join({
         "    str x3, [x29,#-8]",

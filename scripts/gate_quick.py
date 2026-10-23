@@ -136,6 +136,14 @@ for 名 in ("check_ascii_idents", "check_keywords_sync", "check_registry_audit",
 if not 步("ci_daemon 自测", [sys.executable, "scripts/ci_daemon.py", "--selftest"],
          超时秒=静态超时):
     raise SystemExit(1)
+# 1217 返工（2026-10-23 增量复审 P2-4）：窥孔 sanitizer 机械锁的判别力自测挂 L1
+#    静态段——纯合成 gtest 输出、零编译器、秒级；防自测自身退化（计数/源码差集/
+#    关键名/SKIP 断言空转）。完整 sanitizer 编译跑仍留 #1486（不挂 L1，避免每次
+#    提交多约 1 分钟）。自测用显式 if 失败（非 assert），PYTHONOPTIMIZE=1 下照样红。
+if not 步("窥孔 sanitizer 锁自测",
+          [sys.executable, "scripts/test_check_peephole_sanitizer.py"],
+          超时秒=静态超时):
+    raise SystemExit(1)
 # 1013（2026-10-17 用户裁决）：官网文档覆盖对照 --strict 挂 L1——基线零（61/61 已覆盖·
 #    未归类 0·1013 归类 943 轮新增 1068/1069 归零）即等价棘轮·只拦新增：新 E2E 用例
 #    须在 doc_coverage 台账归类（特性行或兜底桶），未归类/缺口/豁免理由空即红；

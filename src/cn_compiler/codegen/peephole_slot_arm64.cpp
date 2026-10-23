@@ -872,9 +872,9 @@ IndirectPairAction tryEliminateIndirectPair(
 //   （视图销毁）后才替换源存储。renderLines 的 original 参数同样在域内读取，
 //   保证「最后一位视图使用者」出现在任何写入之前。
 //   域尾 Debug 断言只比较 data()/size()：能发现重分配/长度变化，但识别不了
-//   同地址同长度的原地改写，也识别不了同长度 SSO 拷贝赋值（两者都不改 data()/
-//   size()）——它是缓冲身份/尺寸的粗粒度护栏，不是内容不可变证明；新增写入点
-//   仍须按「先销毁视图、后替换存储」的结构约束接受审查。
+//   同地址同长度的原地改写，也识别不了原文本亦为 SSO 时的同长度 SSO 拷贝赋值
+//   （两者都不改 data()/size()）——它是缓冲身份/尺寸的粗粒度护栏，不是内容
+//   不可变证明；新增写入点仍须按「先销毁视图、后替换存储」的结构约束接受审查。
 bool eliminateArmIndirectPairsInPlace(std::string& functionText) {
     if (functionText.find("[x13]") == std::string::npos) return false;
 #ifndef NDEBUG
@@ -912,8 +912,8 @@ bool eliminateArmIndirectPairsInPlace(std::string& functionText) {
         }
     }  // ---- 视图销毁点：此后不再持有任何指向 functionText 缓冲的视图 ----
 #ifndef NDEBUG
-    // 粗粒度身份检查：仅 data()/size() 不变；同地址同长度原地改写与同长度 SSO
-    //   拷贝赋值不可见（边界见函数头生命周期说明）
+    // 粗粒度身份检查：仅 data()/size() 不变；同地址同长度原地改写与原文本亦为
+    //   SSO 时的同长度 SSO 拷贝赋值不可见（边界见函数头生命周期说明）
     if (any) {
         assert(functionText.data() == sourceData && functionText.size() == sourceSize &&
                "窥孔视图存活期间源文本不得被改写（视图先销毁、后替换存储）");
