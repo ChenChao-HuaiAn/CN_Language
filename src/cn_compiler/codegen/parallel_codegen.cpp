@@ -36,16 +36,18 @@ bool codegenStatsEnabled() {
     return env != nullptr && env[0] == '1' && env[1] == '\0';
 }
 
-// 输出决策摘要（labels=并行标签平移总量；串行/回退路径无局部标签计数故记 0）。
-void reportDecision(bool parallel, std::size_t functions, int threads,
-                    long long labels, const char* reason) {
+// 输出决策摘要（workers=实际参与生成的 worker 数；labels=全部函数标签总数；
+//   shifted=index>0 函数的标签数之和=真正进入平移面的标签量；串行/回退路径
+//   无局部标签计数，三值均记 0）。
+void reportDecision(bool parallel, std::size_t functions, int threads, int workers,
+                    long long labels, long long shifted, const char* reason) {
     if (codegenStatsEnabled()) {
         std::fprintf(stderr,
                      "[codegen-parallel] parallel=%s functions=%llu threads=%d "
-                     "labels=%lld reason=%s\n",
+                     "workers=%d labels=%lld shifted=%lld reason=%s\n",
                      parallel ? "yes" : "no",
-                     static_cast<unsigned long long>(functions), threads, labels,
-                     reason);
+                     static_cast<unsigned long long>(functions), threads, workers,
+                     labels, shifted, reason);
     }
 }
 
@@ -87,8 +89,10 @@ bool isLabelBoundaryAfter(const std::string& text, std::size_t pos) {
 
 // 固定线程池执行 taskCount 个独立任务：原子队列取号，结果按下标写回（确定性）。
 //   task(workerIndex, taskIndex)。线程创建失败时由主线程+已建线程完成全部任务。
-void runTasksParallel(std::size_t taskCount, int threads,
-                      const std::function<void(std::size_t, std::size_t)>& task) {
+//   返回实际参与 worker 数（主线程 + 成功创建的线程）——门禁据 workers 断言
+//   并行执行真实发生（线程创建失败退化=workers 变小，诚实暴露而非按决策值谎报）。
+int runTasksParallel(std::size_t taskCount, int threads,
+                     const std::function<void(std::size_t, std::size_t)>& task) {
     std::atomic<std::size_t> nextTask{0};
     const auto worker = [&](std::size_t workerIndex) {
         for (;;) {
@@ -109,6 +113,7 @@ void runTasksParallel(std::size_t taskCount, int threads,
     }
     worker(0);  // 主线程作为 worker 0 参与，减少一次空转
     for (std::thread& thread : pool) thread.join();
+    return 1 + static_cast<int>(pool.size());
 }
 
 // 计算每函数标签编号基址（前序函数标签总数，复刻模块级串行计数器）。
@@ -226,7 +231,7 @@ bool generateFunctionBodies(
     if (parallelWanted == false) {
         // 1219：串行决策显形——门禁据此断言串行基线确实未走并行（threads-serial/
         //   函数数未达阈值二因可辨）；观测开关关闭时本行零输出。
-        reportDecision(false, taskCount, requestedThreads, 0,
+        reportDecision(false, taskCount, requestedThreads, 0, 0, 0,
                        requestedThreads <= 1 ? "threads-serial" : "below-threshold");
         return false;
     }
@@ -246,7 +251,8 @@ bool generateFunctionBodies(
     }
     std::vector<FunctionOutput> outputs(taskCount);
     std::atomic<bool> poolMiss{false};
-    runTasksParallel(taskCount, threads, [&](std::size_t workerIndex, std::size_t index) {
+    const int workers = runTasksParallel(taskCount, threads,
+                                         [&](std::size_t workerIndex, std::size_t index) {
         IGenerator& generator = *generators[workerIndex];
         Diagnostics& local = *localDiagnostics[workerIndex];
         const Diagnostics::Snapshot snapshot = local.takeSnapshot();
@@ -263,7 +269,7 @@ bool generateFunctionBodies(
     if (poolMiss.load(std::memory_order_relaxed)) {
         // 1219：常量池回退显形——并行让位串行（产物仍确定，但门禁必须看见
         //   「本次并行未生效」，禁止静默回退被误当作并行通过）
-        reportDecision(false, taskCount, threads, 0, "constant-pool-miss");
+        reportDecision(false, taskCount, threads, workers, 0, 0, "constant-pool-miss");
         return false;
     }
     // 标签编号平移：基址=前缀和；平移按函数并行（文本互相独立），再按原序输出。
@@ -271,7 +277,14 @@ bool generateFunctionBodies(
     shiftFunctionLabels(outputs, bases, threads, labelPrefixes);
     long long labelTotal = 0;
     for (const FunctionOutput& output : outputs) labelTotal += output.labelCount;
-    reportDecision(true, taskCount, threads, labelTotal, "eligible");
+    // shifted=index>0 函数的标签数之和（首函数 base=0 不平移，不计入——
+    //   门禁据此证明「平移真实发生」而非仅存在标签）
+    long long shiftedTotal = 0;
+    for (std::size_t index = 1; index < outputs.size(); ++index) {
+        shiftedTotal += outputs[index].labelCount;
+    }
+    reportDecision(true, taskCount, threads, workers, labelTotal, shiftedTotal,
+                   "eligible");
     outTexts.assign(taskCount, std::string());
     for (std::size_t index = 0; index < taskCount; ++index) {
         outTexts[index] = std::move(outputs[index].text);

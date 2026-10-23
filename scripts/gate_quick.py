@@ -381,15 +381,19 @@ else:
     print("[verify] 写集未触字符串下标快路径面——跳过已知长度回归（云端全量兜底）", flush=True)
 
 # ③.46 并行 codegen 产物确定性对照（1219·1145 逐字节一致承诺的常态门禁）：
-#   同输入并行跑两遍（CN_CODEGEN_THREADS=4）+ 串行跑一遍（=1），并行==串行且
-#   并行两遍互相逐字节一致；观测通道（CN_CODEGEN_STATS=1）断言并行真实生效
-#   且标签平移量>0；4 个 tests/e2e 样本 × 三后端（win-x64/linux-x86_64/
-#   linux-arm64）共 36 次 compile，实测 ~9s。触发面=写集触 codegen/ir/并行
-#   相关文件（含驱动模块函数序合并）或脚本自身；云端 CI 环境变量在设=恒跑；
-#   写集取不到=fail-safe 照跑。红线无逃生门：任何 diff/决策不符=红。
-_并行触发面前缀 = ("src/cn_compiler/codegen/", "src/cn_compiler/ir/")
-_并行触发文件 = ("scripts/check_parallel_determinism.py",
-                  "src/cn_compiler/driver/driver_module.cpp")
+#   同输入五口径——并行 4/4（同口径复跑=自一致）、并行 2（不同线程数=交错面/
+#   线程数敏感性）、自动（不注入变量=生产默认 hardware_concurrency；单核显式
+#   跳过）、串行 1（=1）；全部与串行逐字节一致且并行互相一致。观测通道
+#   （CN_CODEGEN_STATS=1）断言 parallel=yes、workers>=2（实际启动数）、
+#   labels>0、shifted>0（index>0 函数标签数=平移真实发生）；自动口径另断言
+#   threads>=2；串行断言 parallel=no reason=threads-serial。4 个 tests/e2e
+#   样本 × 三后端（win-x64/linux-x86_64/linux-arm64）共 60 次 compile，
+#   实测 ~15s（全局 300s deadline）。触发面=写集触 codegen/ir/driver 或脚本
+#   自身；云端 CI 环境变量在设=恒跑；写集取不到=fail-safe 照跑。红线无
+#   逃生门：任何 diff/决策不符=红。
+_并行触发面前缀 = ("src/cn_compiler/codegen/", "src/cn_compiler/ir/",
+                  "src/cn_compiler/driver/")
+_并行触发文件 = ("scripts/check_parallel_determinism.py",)
 _CI环境 = any(os.environ.get(名) for 名 in
               ("CN_RUNNER_ID", "CN_CI_ROLE", "CN_CI_BRANCH"))
 _跑并行确定性 = (_写集 is None or _CI环境

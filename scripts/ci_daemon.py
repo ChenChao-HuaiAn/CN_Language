@@ -473,13 +473,17 @@ def 同步后编排(同步rc: int, 轮分支: str, 是win: bool) -> dict:
 
 def 聚合绿(步骤们: dict) -> bool:
     """657（2026-10-14）：轮绿聚合口径（自 跑一轮 结果尾部抽出·逐行等价）——
-    六键（同步/清产物/配置/构建/单测/e2e）中存在的键全 rc==0 才绿；缺键不计
+    白名单键（同步/清产物/配置/构建/单测/e2e/网站示例verify/
+    check_parallel_determinism）中存在的键全 rc==0 才绿；缺键不计
     （未执行段不拖红）；清产物 rc=-1（target/ 残留·预验前置②不满足）即轮必红
     ——--selftest 锁定该口径（648-b 复核结论：清产物失败时后续段照跑，但总绿
     必 False·integrate 只凭「绿」字段放行=无假绿面）。
-    992：加「网站示例verify」键（文档示例漂移=真红·必须进绿聚合防假绿）。"""
+    992：加「网站示例verify」键（文档示例漂移=真红·必须进绿聚合防假绿）。
+    1219：加 check_parallel_determinism（并行产物确定性红=真红；云端全量恒跑
+    该门禁，若不入聚合则 rc=1 仍轮绿并可合入——假绿通道）。"""
     return all(s.get("rc") == 0 for k, s in 步骤们.items()
-               if k in ("同步", "清产物", "配置", "构建", "单测", "e2e", "网站示例verify"))
+               if k in ("同步", "清产物", "配置", "构建", "单测", "e2e",
+                        "网站示例verify", "check_parallel_determinism"))
 
 
 def 跑一轮(sha: str, 轮分支: str = "", 分片: int = 0,
