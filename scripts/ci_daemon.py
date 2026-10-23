@@ -343,14 +343,14 @@ e2e支持json = ci_shard.e2e支持json
 # 取提交历史/提交时刻 → 1297 薄壳别名（见文件头部拆分薄壳区·实现外迁 ci_report.py）
 
 
-def 带门禁锁跑(sha: str, 轮分支: str = "", 跑器=None) -> dict | None:
+def 带门禁锁跑(sha: str, 轮分支: str = "", 跑器=None, 分片轮: bool = False) -> dict | None:
     """291 win 三段外套 gate_lock：家机同机有人工开发全量门禁（与 TX_02 独占 CI 场景
     不同）——win 池实例三段与主树门禁全机互斥（AGENTS §7 本机全量每机 ≤1；池树经
     CN_GATE_LOCK_DIR 指向主树锁目录·跨树共享）。30 分钟未获得=让出（返回 None）：
     调用方不落盘不 complete——心跳停由服务端 300s 回收重派（本机忙让给别人=随机池本义）。
     linux 零开销直通（TX_02/WSL 行为不变·原注释口径「独占 CI 不套锁」保持）。
     566（审查 P0-2）：持锁期间向本进程环境注入 CN_GATE_LOCK_HELD=1——嵌套链子进程
-    （run_e2e --allow-heavy / gate_lock acquire·run 等）见之即豁免跳过取机器锁，
+    （run_e2e --allow-heavy / gate_lock acquire·run 等）见之即跳过取机器锁，
     防「父进程已持锁·子进程再取同一把」无限自死锁（子进程经 os.environ 继承）；
     finally 恢复原值（长期驻留 daemon 的环境不被污染）。
     578（任务 #578）：获取登记「轮心跳」（owner=常驻 daemon 永活使 917 锚判据对
@@ -358,10 +358,15 @@ def 带门禁锁跑(sha: str, 轮分支: str = "", 跑器=None) -> dict | None:
     子进程+主线程进度续约；轮卡死/僵死（子进程消失等）停续约→排队方按 gate_lock
     判据③ 分钟级接管（实录：win1 daemon 僵死 55 分钟锁无可清判据）。
     1297：跑器=sha,轮分支 二参 callable（缺省 跑一轮）——从实例片轮传
-    lambda s, b: 跑分片轮(...)，锁语义/轮心跳/豁免注入与全量轮完全一致。"""
+    lambda s, b: 跑分片轮(...)。
+    #1424：分片轮=True → 取**本实例树锁**（gate_lock.树锁目录()=本池树 target/tree.lock，
+    wt1/2/3 各自独立）而非主树共享 gate.lock——片=构建+~192 例轻负载、各树 target 独立，
+    同机三 win 可并行跑片（治「只有 win 有锁竞争」）；整任务/兜底全量仍取主树共享锁
+    （923 OOM 防线保留）。"""
     跑器 = 跑器 or 跑一轮
+    锁目录 = gate_lock.树锁目录() if (是win and 分片轮) else None
     门禁锁 = gate_lock.获取(1800, 形态="acquire", owner_pid=os.getpid(),
-                          轮心跳=True) if 是win else None
+                          轮心跳=True, 锁=锁目录) if 是win else None
     if 是win and 门禁锁 is None:
         print("[让出] gate_lock 30 分钟未获得（本机门禁互忙）——本轮放弃，任务由服务端回收重派", flush=True)
         return None
@@ -754,7 +759,8 @@ def 池跑分片(片任务: dict) -> None:
     停 = 启动心跳(分支s, 片序)
     try:
         结果 = 带门禁锁跑(sha, 分支s,
-                          跑器=lambda s, b: 跑分片轮(s, b, 片序, 片数))
+                          跑器=lambda s, b: 跑分片轮(s, b, 片序, 片数),
+                          分片轮=True)   # #1424：分片轮走本实例树锁·同机可并行
         if 结果 is None:
             print("[分片] 本轮让出（gate_lock）——片心跳停由服务端回收回缺口", flush=True)
             return
@@ -791,21 +797,10 @@ def 主(常驻: bool, 强制: bool, 等锁: bool = False) -> int:
         #    （923 OOM 铁律——家机各实例各持各的锁文件）。770：所有实例统一此路径
         #    （角色区分废止——预验与 develop 验证同池认领，派发语义在服务端）。
         if 分支 == "develop":
-            # #1423：本机共享门禁锁被同机实例持有→跳过本轮领片/领任务。win 三实例共用
-            #   一把 CN_GATE_LOCK_DIR（923 OOM 铁律=同机全量互斥）：同机同时领片只有先
-            #   拿锁的能真跑，其余排队 15~30 分钟（1420 实录片7 等锁 29.5 分钟·实际只跑
-            #   367s）。跳过=片让给其他机器/主实例收片补跑，不空等把整轮拉长。
-            if ci_shard.本机门禁锁忙():
-                print("[本机锁忙] 共享门禁锁被同机实例持有——本轮不领片/不领任务（避免排队）",
-                      flush=True)
-                if not 常驻:
-                    return 0
-                放锁(锁)
-                time.sleep(轮询间隔秒)
-                重抢锁(锁)
-                continue
             # ── 1297 从实例优先领片：分片开启时先看有无缺口片（空闲实例自主补位——
             #    召唤只登记不指派，谁空闲谁领；无缺口再领整任务=池忙时行为与现状一致）
+            #    #1424：领片**不受本机锁忙影响**——分片轮走本实例树锁（#1424），同机
+            #    三 win 可并行跑片（1423 的锁忙跳过只针对整任务/兜底轮的共享主树锁）。
             if ci_shard.分片启用():
                 池c = 池配置()
                 片任务 = ci_shard.领片(lambda o, d: 池调用(池c, o, d), runner标识, 平台)
@@ -817,6 +812,17 @@ def 主(常驻: bool, 强制: bool, 等锁: bool = False) -> int:
                     time.sleep(轮询间隔秒)
                     重抢锁(锁)
                     continue
+            # #1423：整任务/兜底轮取共享主树锁——同机已有实例持锁时跳过（领了也排队
+            #   15~30 分钟）。分片轮已由上面独立树锁分流，不受此限。
+            if ci_shard.本机门禁锁忙():
+                print("[本机锁忙] 共享门禁锁被同机实例持有——本轮不领整任务（避免排队）",
+                      flush=True)
+                if not 常驻:
+                    return 0
+                放锁(锁)
+                time.sleep(轮询间隔秒)
+                重抢锁(锁)
+                continue
             任务 = 池认领任务()
             if 任务:
                 池跑任务(任务)

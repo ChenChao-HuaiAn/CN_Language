@@ -896,6 +896,42 @@ def _1423断言(断言) -> None:
              not ci_shard.本机门禁锁忙(锁))
 
 
+def _1424断言(主模块, 断言) -> None:
+    """#1424 分片轮独立树锁：带门禁锁跑(分片轮=True) 取本实例树锁目录（各池树独立·
+    同机三 win 可并行），整任务/兜底轮仍取主树共享锁（923 OOM 防线）。桩 gate_lock
+    获取记录 锁 参数 + 桩释放（零真锁·跨平台强制 是win=True 走 win 分支）。"""
+    import gate_lock
+    记录 = []
+    原件获取, 原件释放 = gate_lock.获取, gate_lock.释放
+    原win = getattr(主模块, "是win", None)
+    with tempfile.TemporaryDirectory() as 临时:
+        假锁 = Path(临时) / "gate.lock"
+        假锁.mkdir()
+
+        def 桩获取(超时秒, 形态="run", owner_pid=None, 锁=None,
+                 轮心跳=False, 清护=False):
+            记录.append(锁)
+            return 假锁
+
+        gate_lock.获取 = 桩获取
+        gate_lock.释放 = lambda *a, **k: None
+        主模块.是win = True
+        try:
+            主模块.带门禁锁跑("a" * 40, "develop",
+                             跑器=lambda s, b: {"绿": True}, 分片轮=True)
+            主模块.带门禁锁跑("a" * 40, "develop", 跑器=lambda s, b: {"绿": True})
+        finally:
+            gate_lock.获取, gate_lock.释放 = 原件获取, 原件释放
+            主模块.是win = 原win
+    断言("#1424 分片轮：取本实例树锁目录（各池树独立·同机可并行）",
+         len(记录) == 2 and 记录[0] == gate_lock.树锁目录())
+    断言("#1424 整任务/兜底轮：仍取主树共享锁（923 OOM 防线）",
+         len(记录) == 2 and 记录[1] is None)
+    源 = (Path(__file__).resolve().parent / "ci_daemon.py").read_text(encoding="utf-8")
+    断言("#1424 结构锁：池跑分片 调用带门禁锁跑时传 分片轮=True",
+         "分片轮=True" in 源)
+
+
 def _1401断言(断言) -> None:
     """#1401 自适应分片度：任务少时一个任务吃满空闲实例、多任务按任务数均分；
     旧服务端无实例动态退回池忙闲；零空闲=1（跳过召唤·不空等宽限窗）；CN_SHARD_N
@@ -975,7 +1011,7 @@ def _1392断言(断言) -> None:
 
 
 def 自测(主模块) -> int:
-    """--selftest 入口（断言集 523+637+657+660+728t+770+842+935+973+975+1297+1299+1369+1392+1401+1423）——CI 式：逐条打印，任一红退出 1。"""
+    """--selftest 入口（断言集 523+637+657+660+728t+770+842+935+973+975+1297+1299+1369+1392+1401+1423+1424）——CI 式：逐条打印，任一红退出 1。"""
     断言们: list[tuple[str, bool]] = []
 
     def 断言(名: str, 条件: bool) -> None:
@@ -996,9 +1032,10 @@ def 自测(主模块) -> int:
     _1392断言(断言)
     _1401断言(断言)
     _1423断言(断言)
+    _1424断言(主模块, 断言)
     _行数断言(断言)
     for 名, ok in 断言们:
         print("  [%s] %s" % ("OK" if ok else "×", 名))
     红 = sum(1 for _, ok in 断言们 if not ok)
-    print("== ci_daemon 自测（523+637+657+660+728t+770+842+935+973+975+1297+1299+1369+1392+1401+1423）：%d 断言，%s ==" % (len(断言们), "全绿" if 红 == 0 else "红 %d" % 红))
+    print("== ci_daemon 自测（523+637+657+660+728t+770+842+935+973+975+1297+1299+1369+1392+1401+1423+1424）：%d 断言，%s ==" % (len(断言们), "全绿" if 红 == 0 else "红 %d" % 红))
     return 0 if 红 == 0 else 1
