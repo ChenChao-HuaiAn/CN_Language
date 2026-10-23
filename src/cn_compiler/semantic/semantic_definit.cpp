@@ -59,6 +59,18 @@ bool SemanticAnalyzer::isDefInitTrackedType(const std::string& type) const {
     // 1155：isClassType 恒等于 findClass(type)!=nullptr——原双调用在未命中路径
     //   做两次相同索引查询，删去重复。
     if (isClassType(type)) return false;  // 类/容器实例
+    // 953：函数指针（含数组）=指针族豁免（§3.9 豁免面·换防条款同指针：声明点
+    //   零初始化+间接调用点判空防线 093/§5.8）——C 风格签名声明的类型文本统一为
+    //   「函数指针<…>」形态（探针 p1 实证），带数组后缀（[2]）时 isFuncPtrType
+    //   不命中=曾被数组面误纳入登记面（循环填充后读取 E0381 误拒·v2 放行=分叉）。
+    //   剥数组后缀后判定；嵌套数组逐层剥。
+    {
+        std::string probe = type;
+        while (types::arrayLenOf(probe).has_value()) {
+            probe = types::arrayElemOf(probe);
+        }
+        if (probe != type && isFuncPtrType(probe)) return false;
+    }
     if (types::arrayLenOf(type).has_value()) return true;  // 数组
     // 结构体/联合体豁免：局部结构体裸声明=编译器入口零初始化注入（257 形二
     //   「字段数组零初始化」断言 r.分数[0]==0 实锤·两侧既有防御）——字段读有
@@ -189,7 +201,8 @@ bool SemanticAnalyzer::defInitPlaceOf(const Expr* e, std::string& name,
 
 void SemanticAnalyzer::defInitMarkAssignTarget(Expr* target) {
     std::string name, suffix;
-    if (!defInitPlaceOf(target, name, suffix)) return;
+    bool ok = defInitPlaceOf(target, name, suffix);
+    if (!ok) return;
     defInitMarkInitPlace(name, suffix);
 }
 
