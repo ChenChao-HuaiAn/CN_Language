@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cstdio>
 #include <cstdlib>
 #include <thread>
 #include <utility>
@@ -25,6 +26,28 @@ constexpr std::size_t kMinFunctionsForParallel = 8;
 
 // 线程数上限（防异常环境变量制造过量线程；真实收益在此之前早已饱和）
 constexpr int kMaxThreads = 64;
+
+// 任务 1219：并行决策观测通道（CN_CODEGEN_STATS=1 时每次代码生成向 stderr 输出
+//   一行机器可读摘要——产物确定性门禁据此断言「并行确实生效/串行确实串行/
+//   未发生常量池静默回退」。本通道只写诊断：不参与任何决策、不改任意产物字节。
+//   功能开关未设/非 "1"=不输出（观测功能未启用，非查表或判定 miss）。
+bool codegenStatsEnabled() {
+    const char* env = std::getenv("CN_CODEGEN_STATS");
+    return env != nullptr && env[0] == '1' && env[1] == '\0';
+}
+
+// 输出决策摘要（labels=并行标签平移总量；串行/回退路径无局部标签计数故记 0）。
+void reportDecision(bool parallel, std::size_t functions, int threads,
+                    long long labels, const char* reason) {
+    if (codegenStatsEnabled()) {
+        std::fprintf(stderr,
+                     "[codegen-parallel] parallel=%s functions=%llu threads=%d "
+                     "labels=%lld reason=%s\n",
+                     parallel ? "yes" : "no",
+                     static_cast<unsigned long long>(functions), threads, labels,
+                     reason);
+    }
+}
 
 // 十进制整数解析：整串须为数字（允许前置 +/-，不允许空白/尾随字符）
 bool parseEnvInt(const char* text, long& value) {
@@ -199,8 +222,15 @@ bool generateFunctionBodies(
     std::vector<std::string>& outTexts) {
     const std::size_t taskCount = module.functions.size();
     const bool parallelWanted = shouldParallelize(taskCount);
-    if (parallelWanted == false) return false;
-    int threads = threadCount();
+    const int requestedThreads = threadCount();
+    if (parallelWanted == false) {
+        // 1219：串行决策显形——门禁据此断言串行基线确实未走并行（threads-serial/
+        //   函数数未达阈值二因可辨）；观测开关关闭时本行零输出。
+        reportDecision(false, taskCount, requestedThreads, 0,
+                       requestedThreads <= 1 ? "threads-serial" : "below-threshold");
+        return false;
+    }
+    int threads = requestedThreads;
     if (static_cast<std::size_t>(threads) > taskCount) {
         threads = static_cast<int>(taskCount);
     }
@@ -230,10 +260,18 @@ bool generateFunctionBodies(
             produced.end());
         local.restoreTo(snapshot);  // 增量已搬运；清空避免下个任务重复计入
     });
-    if (poolMiss.load(std::memory_order_relaxed)) return false;
+    if (poolMiss.load(std::memory_order_relaxed)) {
+        // 1219：常量池回退显形——并行让位串行（产物仍确定，但门禁必须看见
+        //   「本次并行未生效」，禁止静默回退被误当作并行通过）
+        reportDecision(false, taskCount, threads, 0, "constant-pool-miss");
+        return false;
+    }
     // 标签编号平移：基址=前缀和；平移按函数并行（文本互相独立），再按原序输出。
     const std::vector<int> bases = computeLabelBases(outputs);
     shiftFunctionLabels(outputs, bases, threads, labelPrefixes);
+    long long labelTotal = 0;
+    for (const FunctionOutput& output : outputs) labelTotal += output.labelCount;
+    reportDecision(true, taskCount, threads, labelTotal, "eligible");
     outTexts.assign(taskCount, std::string());
     for (std::size_t index = 0; index < taskCount; ++index) {
         outTexts[index] = std::move(outputs[index].text);

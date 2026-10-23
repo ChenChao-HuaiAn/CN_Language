@@ -263,6 +263,16 @@ def 写集推导() -> tuple[list[str] | None, str]:
 if 单测 is None:
     print("✗ 未找到单测产物（target/cn_unit_tests）——构建是否成功？")
     raise SystemExit(1)
+# ③.4 并行 codegen 确定性门禁自测（1219）：无条件跑——合成夹具正反两态
+#   （逐字节差异/并行两遍不一致/并行未生效/标签平移空转/决策摘要缺失/阈值
+#   空转/编译失败/产物缺失）+ 真实编译器一组三后端正例（9 次 compile·实测
+#   ~1s）；证明门禁自身判别力不随代码演进退化。真实全量对照（4 样本×3 后端
+#   ·实测 ~9s）在下方 ③.46 按写集条件步挂载。
+if not 步("并行确定性门禁自测",
+          [sys.executable, "scripts/check_parallel_determinism.py",
+           "--selftest", "--cn", str(单测.parent / ("cn.exe" if 是win else "cn"))],
+          超时秒=静态超时):
+    raise SystemExit(1)
 if not 步("单测", [单测], 超时秒=单测超时):
     raise SystemExit(1)
 
@@ -369,6 +379,31 @@ if _跑快路径回归:
         raise SystemExit(1)
 else:
     print("[verify] 写集未触字符串下标快路径面——跳过已知长度回归（云端全量兜底）", flush=True)
+
+# ③.46 并行 codegen 产物确定性对照（1219·1145 逐字节一致承诺的常态门禁）：
+#   同输入并行跑两遍（CN_CODEGEN_THREADS=4）+ 串行跑一遍（=1），并行==串行且
+#   并行两遍互相逐字节一致；观测通道（CN_CODEGEN_STATS=1）断言并行真实生效
+#   且标签平移量>0；4 个 tests/e2e 样本 × 三后端（win-x64/linux-x86_64/
+#   linux-arm64）共 36 次 compile，实测 ~9s。触发面=写集触 codegen/ir/并行
+#   相关文件（含驱动模块函数序合并）或脚本自身；云端 CI 环境变量在设=恒跑；
+#   写集取不到=fail-safe 照跑。红线无逃生门：任何 diff/决策不符=红。
+_并行触发面前缀 = ("src/cn_compiler/codegen/", "src/cn_compiler/ir/")
+_并行触发文件 = ("scripts/check_parallel_determinism.py",
+                  "src/cn_compiler/driver/driver_module.cpp")
+_CI环境 = any(os.environ.get(名) for 名 in
+              ("CN_RUNNER_ID", "CN_CI_ROLE", "CN_CI_BRANCH"))
+_跑并行确定性 = (_写集 is None or _CI环境
+               or any(p.startswith(_并行触发面前缀) or p in _并行触发文件
+                      for p in _写集))
+if _跑并行确定性:
+    if not 步("并行 codegen 确定性对照",
+              [sys.executable, "scripts/check_parallel_determinism.py",
+               "--cn", str(单测.parent / ("cn.exe" if 是win else "cn"))],
+              超时秒=_超时("CN_GATE_PARALLEL_DET_TIMEOUT", 300)):
+        raise SystemExit(1)
+else:
+    print("[verify] 写集未触 codegen/ir/并行相关面——跳过并行确定性对照"
+          "（云端全量恒跑兜底）", flush=True)
 
 if _跑示例验证:
     if not 步("官网示例验证", [sys.executable, "website/tools/gen_docs.py", "--verify"],

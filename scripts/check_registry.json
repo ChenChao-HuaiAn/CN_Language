@@ -250,6 +250,15 @@
    "v5执行面": "L1 gate_quick 静态段（1170 起·提交前）+win 全量 ci.ps1（0.92）+云端兜底（ci_daemon 静态门禁段）+--selftest 正反两态"
   },
   {
+   "名称": "并行 codegen 产物确定性门禁（1219）",
+   "脚本": "scripts/check_parallel_determinism.py",
+   "需构建产物": "--cn target/Debug/cn.exe（win）/ target/cn（linux）",
+   "组": "ci常规",
+   "检查网层": 9,
+   "说明": "1219 立（1145「并行产物与串行逐字节一致」设计承诺的常态门禁）：同输入并行跑两遍（CN_CODEGEN_THREADS=4）+串行跑一遍（=1）——①并行==串行逐字节（承诺面）；②并行两遍互相逐字节（自一致/非确定性抓捕）；③观测通道 CN_CODEGEN_STATS=1 断言并行两遍 parallel=yes 且 labels>0（证明并行路径与标签编号平移真实执行，常量池静默回退/线程数决策失效/阈值空转必红）；④样本非空转机械核验=`cn ir` 函数数 >= 源码 kMinFunctionsForParallel（从 parallel_codegen.cpp 机械读取，读不到/样本低于阈值=红）；⑤三后端全覆盖（win-x64/linux-x86_64/linux-arm64 各自并行实现）。抽样=4 个 tests/e2e 代表例（多函数/类/泛型容器/字符串/lambda/结构体）×3 后端×3 次编译=36 次，实测 ~9s（≤30s 预算）。缓存隔离 CN_NO_PROGRAM_CACHE=1（程序缓存命中跳过 codegen=假绿）+CN_NO_AST_CACHE=1；无 --allow 类放行参数。selftest=合成夹具九态正反两态（逐字节差异/并行两遍不一致/并行未生效/标签空转/决策摘要缺失/阈值空转/编译失败/产物缺失/正常绿）+真实编译器三后端正例",
+   "v5执行面": "L1 gate_quick：③.4 无条件 selftest（真实编译器三后端正例·~1s）+③.46 写集条件步（触 src/cn_compiler/codegen//ir/、driver_module.cpp、脚本自身或 CI 环境变量在设·~9s）+win 全量 ci.ps1（3.57）+云端全量 ci_daemon 静态门禁段恒跑"
+  },
+  {
    "名称": "已知长度快路径回归（#1310）",
    "脚本": "scripts/check_knownlen_fastpath.py",
    "组": "ci扩展",
