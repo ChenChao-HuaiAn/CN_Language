@@ -203,7 +203,7 @@ bool Parser::isModulePathSegment() const {
 bool Parser::isModulePathSegmentAhead() const {
     const Token& t = peek(1);
     if (t.getType() == TokenType::Identifier) {
-        return t.getValue() != "作为";  // 162-a 上下文化：文本排除语法分隔位
+        return std::string_view(t.getValue()) != "作为";  // 162-a 上下文化：文本排除语法分隔位
     }
     return Token::isKeyword(t.getType());
 }
@@ -271,10 +271,13 @@ std::string Parser::parseTypeNameEx() {
             if (check(TokenType::IntegerLiteral) || check(TokenType::Identifier)) {
                 lenText = current().getValue();
                 if (check(TokenType::IntegerLiteral)) {
-                    std::string s = lenText;
-                    while (!s.empty() && (s.back() == 'L' || s.back() == 'l' ||
-                                          s.back() == 'U' || s.back() == 'u')) s.pop_back();
-                    lenText = s;
+                    // 1216：原地剥整数后缀（原实现再拷贝一份 s 后回写）
+                    while (!lenText.empty() && (lenText.back() == 'L' ||
+                                                lenText.back() == 'l' ||
+                                                lenText.back() == 'U' ||
+                                                lenText.back() == 'u')) {
+                        lenText.pop_back();
+                    }
                 }
                 advance();
             }

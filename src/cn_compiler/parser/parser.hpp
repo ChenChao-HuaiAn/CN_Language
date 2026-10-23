@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "cn_compiler/common/diagnostics.hpp"
@@ -27,18 +28,61 @@ inline constexpr const char* kFieldInitRejectDiag =
 
 // 判断Token是否为类型关键字（阶段一基本类型 + 阶段三 结果/可选 模板类型名）
 // 声明于此供 parser.cpp 与 parser_oop.cpp 共用（原为 parser.cpp 匿名命名空间内静态函数）
-bool isTypeKeyword(TokenType type);
+// 1216：定义内联进头（原 parser.cpp 定义·跨 TU 高频调用：parseStmt/parsePrimary/
+//   parseTypeName 等每个 token 多次判定）——语义逐字不变。
+inline bool isTypeKeyword(TokenType type) {
+    switch (type) {
+        case TokenType::Kw_Int: case TokenType::Kw_Double:
+        case TokenType::Kw_Int8: case TokenType::Kw_Int16: case TokenType::Kw_Int32:
+        case TokenType::Kw_Int64: case TokenType::Kw_Int128:
+        case TokenType::Kw_UInt8: case TokenType::Kw_UInt16: case TokenType::Kw_UInt32:
+        case TokenType::Kw_UInt64: case TokenType::Kw_UInt128:
+        case TokenType::Kw_Float32: case TokenType::Kw_Float64:
+        case TokenType::Kw_Bool: case TokenType::Kw_Char:
+        case TokenType::Kw_String: case TokenType::Kw_Void:
+        case TokenType::Kw_Result: case TokenType::Kw_Optional:  // Task 3.5 结果<T,E>/可选<T>
+            return true;
+        default:
+            return false;
+    }
+}
 
 // 判断Token是否为赋值运算符（= += -= *= /= %= 等11个，parser_expr.cpp 使用）
-bool isAssignOp(TokenType type);
-// TokenType -> 赋值运算符映射（parser_expr.cpp 使用）
-Operator toAssignOp(TokenType type);
+// 1216：内联进头（同上·Pratt 每个表达式起点一次判定）
+inline bool isAssignOp(TokenType type) {
+    switch (type) {
+        case TokenType::Equal: case TokenType::PlusEqual: case TokenType::MinusEqual:
+        case TokenType::StarEqual: case TokenType::SlashEqual: case TokenType::PercentEqual:
+        case TokenType::AmpEqual: case TokenType::PipeEqual: case TokenType::CaretEqual:
+        case TokenType::LessLessEqual: case TokenType::GreaterGreaterEqual:
+            return true;
+        default:
+            return false;
+    }
+}
+// TokenType -> 赋值运算符映射（parser_expr.cpp 使用；1216 内联）
+inline Operator toAssignOp(TokenType type) {
+    switch (type) {
+        case TokenType::Equal: return Operator::Assign;
+        case TokenType::PlusEqual: return Operator::PlusAssign;
+        case TokenType::MinusEqual: return Operator::MinusAssign;
+        case TokenType::StarEqual: return Operator::StarAssign;
+        case TokenType::SlashEqual: return Operator::SlashAssign;
+        case TokenType::PercentEqual: return Operator::PercentAssign;
+        case TokenType::AmpEqual: return Operator::AmpAssign;
+        case TokenType::PipeEqual: return Operator::PipeAssign;
+        case TokenType::CaretEqual: return Operator::CaretAssign;
+        case TokenType::LessLessEqual: return Operator::LessLessAssign;
+        default: return Operator::GreaterGreaterAssign;
+    }
+}
 // 解析整数字面量文本为数值（支持 10/16/2/8 进制、整数后缀；parser_expr.cpp/parser_stmt.cpp 使用）
 std::int64_t parseIntValue(const std::string& text);
 // 解析浮点字面量文本为数值（剥离浮点后缀；parser_expr.cpp 使用）
 double parseFloatValue(const std::string& text);
 // 判断标识符是否可作为强制转换的目标类型名（内置类型关键字/指针；parser_expr.cpp 使用）
-bool isCastableTypeName(const std::string& name);
+// 1216：键改 string_view（免调用点临时串/哈希构造；19 项长度分组线性判定）
+bool isCastableTypeName(std::string_view name);
 
 // 语法分析器：递归下降 + Pratt表达式解析
 // 语法规则（阶段一子集，依据 CN语言规范 [03] 语句与控制流、[04] 函数与函数指针）：
@@ -85,19 +129,45 @@ private:
     std::unique_ptr<Expr> parseTernaryRec();
     std::unique_ptr<Expr> parseUnaryRec();
 
-    const Token& current() const;                     // 当前Token（永不越界，末尾为EOF）
-    TokenType currentType() const;                    // 当前Token类型（便捷访问）
-    void advance();                                   // 前进一个Token（不越过EOF）
-    bool check(TokenType type) const;                 // 当前是否为目标类型
-    bool match(TokenType type);                       // 匹配并前进（匹配成功返回true）
-    const Token& peek(int offset) const;              // 向前看第offset个Token（0=当前，不越界）
-    bool checkText(const char* text) const;           // 当前Token文本是否等于指定文本
+    // ---- 1216：基础辅助内联化 ----
+    // 原实现在 parser.cpp，跨编译单元（parser_expr/stmt/decl/oop/type）每次
+    //   check/peek/current 都是真实函数调用——Pratt 链每个 token 过 13 层
+    //   check，是解析期最高频的调用面。定义搬入头文件后由编译器内联
+    //   （语义逐字不变：越界钳制/EOF 终止口径与原实现一致）。
+    const Token& current() const { return (*tokens_)[pos_]; }  // 当前Token（永不越界，末尾为EOF）
+    TokenType currentType() const { return current().getType(); }  // 当前Token类型
+    // 前进一个Token（不越过EOF）
+    void advance() {
+        if (pos_ < tokens_->size() - 1) pos_++;
+    }
+    // 当前是否为目标类型
+    bool check(TokenType type) const { return currentType() == type; }
+    // 匹配并前进（匹配成功返回true）
+    bool match(TokenType type) {
+        if (check(type)) {
+            advance();
+            return true;
+        }
+        return false;
+    }
+    // 向前看第offset个Token（0=当前，不越界；越界时返回最后一个Token=EOF）
+    const Token& peek(int offset) const {
+        std::size_t idx = pos_ + static_cast<std::size_t>(offset);
+        if (idx >= tokens_->size()) idx = tokens_->size() - 1;
+        return (*tokens_)[idx];
+    }
+    // 当前Token文本是否等于指定文本（string_view 比较：免临时 std::string）
+    bool checkText(std::string_view text) const {
+        return std::string_view(current().getValue()) == text;
+    }
     void reportError(const SourceLocation& loc, const std::string& message); // 报告语法错误
     void reportErrorHere(const std::string& message); // 报告当前Token位置错误
     // 536：顶层声明体尾随分号拒绝（001 §4.6 规则1/5——体以 '}' 自终结后
     //   不加分号；专属诊断+消费防「预期顶层声明」级联错位；v2 同款零分叉）
     void rejectBodyTrailingSemicolon(const std::string& kind);
-    void consume(TokenType type, const std::string& expected); // 匹配并前进，失败报错
+    // 匹配并前进，失败报错（1216：expected 改 string_view——调用点字面量免
+    //   临时 std::string 构造；错误文案拼装口径逐字不变）
+    void consume(TokenType type, std::string_view expected);
     void consumeSemicolon();                          // 消费可选分号（分号可选，规范示例无分号）
     void synchronize();                               // 错误恢复：同步到下一个语句边界
     bool atStatementBoundary() const;                 // 是否处于语句边界（} ; EOF 等）

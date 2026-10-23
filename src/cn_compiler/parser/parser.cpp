@@ -10,48 +10,18 @@
 //   5. &/* 一元二元歧义（规格书4.4）：操作数位置（parseUnary前缀）解析为
 //      取地址/解引用（一元），二元位置（parseBitAnd/parseMultiplicative）解析为
 //      位与/乘法。lexer 统一产出 Amp/Star Token，由调用上下文区分
+#include <charconv>
 #include <cstdint>
 #include <memory>
 #include <cstdio>
 #include <string>
-#include <unordered_set>
+#include <system_error>
 #include <utility>
 
 #include "cn_compiler/parser/parser.hpp"
 #include "cn_compiler/model/type_system.hpp"
 
 namespace cn_compiler {
-
-// 判断Token是否为赋值运算符（= += -= *= /= %= 等11个；声明见 parser.hpp）
-// 供 parser_expr.cpp（parseAssignment）与 parser.cpp 共用
-bool isAssignOp(TokenType type) {
-    switch (type) {
-        case TokenType::Equal: case TokenType::PlusEqual: case TokenType::MinusEqual:
-        case TokenType::StarEqual: case TokenType::SlashEqual: case TokenType::PercentEqual:
-        case TokenType::AmpEqual: case TokenType::PipeEqual: case TokenType::CaretEqual:
-        case TokenType::LessLessEqual: case TokenType::GreaterGreaterEqual:
-            return true;
-        default:
-            return false;
-    }
-}
-
-// TokenType -> 赋值运算符映射（声明见 parser.hpp；parser_expr.cpp 使用）
-Operator toAssignOp(TokenType type) {
-    switch (type) {
-        case TokenType::Equal: return Operator::Assign;
-        case TokenType::PlusEqual: return Operator::PlusAssign;
-        case TokenType::MinusEqual: return Operator::MinusAssign;
-        case TokenType::StarEqual: return Operator::StarAssign;
-        case TokenType::SlashEqual: return Operator::SlashAssign;
-        case TokenType::PercentEqual: return Operator::PercentAssign;
-        case TokenType::AmpEqual: return Operator::AmpAssign;
-        case TokenType::PipeEqual: return Operator::PipeAssign;
-        case TokenType::CaretEqual: return Operator::CaretAssign;
-        case TokenType::LessLessEqual: return Operator::LessLessAssign;
-        default: return Operator::GreaterGreaterAssign;
-    }
-}
 
 // 解析整数字面量文本为数值（支持 10/16/2/8 进制、整数后缀；声明见 parser.hpp）
 //   1137：失败面=超 int64 承载文本——词法层只拒进制外字符/格式、不拒超域
@@ -66,7 +36,10 @@ Operator toAssignOp(TokenType type) {
 //   （收口 types::integerLiteralRuntimeType/910 单点·不再经此静默面——双编译
 //   对照实测原宿主 11 vs v2 22 分叉已修）。
 std::int64_t parseIntValue(const std::string& text) {
-    std::string s = text;
+    // 1216：零临时串——原 `std::string s = text` 全串拷贝 + substr 后 pop_back
+    //   两次构造；改为只读原文 + 一次区间构造 digits（截取与后缀剥离合并）。
+    //   语义逐字不变：前缀识别/后缀剥离规则/畸形文本回退口径完全同原实现。
+    const std::string& s = text;
     int base = 10;
     std::size_t start = 0;
     // 识别进制前缀：0x / 0b / 0o
@@ -75,21 +48,28 @@ std::int64_t parseIntValue(const std::string& text) {
         else if (s[1] == 'b' || s[1] == 'B') { base = 2; start = 2; }
         else if (s[1] == 'o' || s[1] == 'O') { base = 8; start = 2; }
     }
-    std::string digits = s.substr(start);
-    // 剥离后缀：L/U 组合（十六进制中 F 是数字，不能剥）
-    while (!digits.empty()) {
-        char c = digits.back();
+    // 剥离后缀：L/U 组合（十六进制中 F 是数字，不能剥）——先定有效区间尾
+    std::size_t end = s.size();
+    while (end > start) {
+        char c = s[end - 1];
         bool isSuffix = (c == 'L' || c == 'l' || c == 'U' || c == 'u');
         if (base != 16) isSuffix = isSuffix || (c == 'F' || c == 'f');
         if (!isSuffix) break;
-        digits.pop_back();
+        --end;
     }
-    try {
-        return std::stoll(digits, nullptr, base);
-    } catch (...) {
-        // 静默豁免闭集穷举: catch 可达面=超 i64 承载的合法字面量（invalid_argument=非法文本词法不可达）；值级毒化面经 910 家族文本级判域/物化接管·调用点全集证据链见 miss_registry 来源 1137 条
-        return 0;
-    }
+    std::string digits = s.substr(start, end - start);
+    // 1216：std::from_chars 替代 std::stoll——零 locale/无异常路径；可达文本
+    //   （词法保证的十进制/0x/0b/0o + 已剥后缀）解析值与 stoll 逐位一致。
+    //   失败口径同原 catch：超整64 承载（原 out_of_range）与畸形文本（原
+    //   invalid_argument·词法不可达）一律返回 0；部分消费文本（stoll 返回
+    //   前缀值）在本实现返回 0——该形态词法不可达，值级消费链已由 910 家族
+    //   文本级判域接管（证据链=miss_registry 来源 1137 条）。
+    std::int64_t value = 0;
+    const char* const first = digits.data();
+    const char* const last = first + digits.size();
+    const std::from_chars_result res = std::from_chars(first, last, value, base);
+    if (res.ec != std::errc() || res.ptr != last) return 0;
+    return value;
 }
 
 // 解析浮点字面量文本为数值（剥离浮点后缀；声明见 parser.hpp）
@@ -98,8 +78,10 @@ std::int64_t parseIntValue(const std::string& text) {
 //   FloatLiteral.value 消费点=clone 两处值传递（semantic_stmt.cpp:55/151）
 //   ——value 无产物性消费点。登记见 miss_registry 来源 1137 条。
 double parseFloatValue(const std::string& text) {
-    std::string s = text;
-    while (!s.empty() && (s.back() == 'F' || s.back() == 'f')) s.pop_back();
+    // 1216：按有效区间一次构造（原全串拷贝 + 逐字符 pop_back）
+    std::size_t end = text.size();
+    while (end > 0 && (text[end - 1] == 'F' || text[end - 1] == 'f')) --end;
+    std::string s = text.substr(0, end);
     try {
         return std::stod(s);
     } catch (...) {
@@ -115,77 +97,23 @@ double parseFloatValue(const std::string& text) {
 // 自定义类型名（结构体/枚举名）的转换：parser 无法访问语义符号表，
 //   保守按普通标识符处理（后续 parseCallOrMember 成调用，语义层报错）；
 //   结构体名(...) 转换暂不支持（与既有 结构体{...} 初始化语法不冲突）。
-bool isCastableTypeName(const std::string& name) {
-    static const std::unordered_set<std::string> kTypes = {
+bool isCastableTypeName(std::string_view name) {
+    // 1216：string_view 键 + 长度分组线性判定——原 static unordered_set<string>
+    //   每次调用构造键串并计算全串哈希；19 个短名线性扫描（先比长度，命中
+    //   同长才逐字节比较）免分配且更快（表为静态常量·零初始化开销）。
+    static constexpr std::string_view kTypes[] = {
         "整数", "小数", "整8", "整16", "整32", "整64", "整128",
         "正8", "正16", "正32", "正64", "正128",
         "浮32", "浮64", "布尔", "字符", "字符串", "空类型",
         "指针",   // Task 2.10：通用指针别名（空类型*）
     };
-    return kTypes.count(name) > 0;
-}
-
-// 判断Token是否为类型关键字（声明见 parser.hpp；供 parser.cpp 与 parser_oop.cpp 共用）
-// 覆盖：阶段一基本类型 + 阶段三 结果/可选 模板类型名（Task 3.5）
-bool isTypeKeyword(TokenType type) {
-    switch (type) {
-        case TokenType::Kw_Int: case TokenType::Kw_Double:
-        case TokenType::Kw_Int8: case TokenType::Kw_Int16: case TokenType::Kw_Int32:
-        case TokenType::Kw_Int64: case TokenType::Kw_Int128:
-        case TokenType::Kw_UInt8: case TokenType::Kw_UInt16: case TokenType::Kw_UInt32:
-        case TokenType::Kw_UInt64: case TokenType::Kw_UInt128:
-        case TokenType::Kw_Float32: case TokenType::Kw_Float64:
-        case TokenType::Kw_Bool: case TokenType::Kw_Char:
-        case TokenType::Kw_String: case TokenType::Kw_Void:
-        case TokenType::Kw_Result: case TokenType::Kw_Optional:  // Task 3.5 结果<T,E>/可选<T>
-            return true;
-        default:
-            return false;
-    }
-}
-
-// ==================== 基础辅助 ====================
-
-// 当前Token（pos_ 不越过末尾EOF，永不越界）
-const Token& Parser::current() const {
-    return (*tokens_)[pos_];
-}
-
-// 当前Token类型
-TokenType Parser::currentType() const {
-    return current().getType();
-}
-
-// 前进一个Token（不越过EOF）
-void Parser::advance() {
-    if (pos_ < tokens_->size() - 1) pos_++;
-}
-
-// 当前是否为目标类型
-bool Parser::check(TokenType type) const {
-    return currentType() == type;
-}
-
-// 向前看第offset个Token（0=当前；越界时返回最后一个Token，即EOF，永不越界）
-const Token& Parser::peek(int offset) const {
-    std::size_t idx = pos_ + static_cast<std::size_t>(offset);
-    if (idx >= tokens_->size()) idx = tokens_->size() - 1;
-    return (*tokens_)[idx];
-}
-
-// 匹配目标类型并前进（成功返回true）
-bool Parser::match(TokenType type) {
-    if (check(type)) {
-        advance();
-        return true;
+    for (const std::string_view t : kTypes) {
+        if (t.size() == name.size() && t == name) return true;
     }
     return false;
 }
 
-// 当前Token文本是否等于指定文本（用于非关键字标记如 常量/静态）
-bool Parser::checkText(const char* text) const {
-    return current().getValue() == text;
-}
+// ==================== 基础辅助 ====================
 
 // 1216：token 改写前的写时复制——嵌套泛型闭合 '>>' 需拆成两个 '>'（parser_expr/
 //   parser_type 两处），只有走到该路径才拷贝整条流（绝大多数源文件不触发）。
@@ -207,9 +135,11 @@ void Parser::reportErrorHere(const std::string& message) {
 }
 
 // 匹配并前进，失败报告错误（期望描述如 "')'"）
-void Parser::consume(TokenType type, const std::string& expected) {
+//   1216：expected 改 string_view——命中路径零构造；错误路径才拼文案（逐字不变）
+void Parser::consume(TokenType type, std::string_view expected) {
     if (match(type)) return;
-    reportErrorHere("预期 " + expected + "，实际为 '" + current().getValue() + "'");
+    reportErrorHere("预期 " + std::string(expected) + "，实际为 '" +
+                    current().getValue() + "'");
 }
 
 // 消费语句终结分号（plans/015 方案B 强制分号，2026-09-04 用户裁决）：
@@ -602,7 +532,7 @@ std::unique_ptr<Program> Parser::parse(const std::vector<Token>& tokens) {
         //   仅「不安全+可搬运+类型声明字」三词组合触发，其余语境照常标识符。
         if (check(TokenType::Kw_Unsafe) &&
             peek(1).getType() == TokenType::Identifier &&
-            peek(1).getValue() == "可搬运" &&
+            std::string_view(peek(1).getValue()) == "可搬运" &&
             (peek(2).getType() == TokenType::Kw_Struct ||
              peek(2).getType() == TokenType::Kw_Union ||
              peek(2).getType() == TokenType::Kw_Class)) {
@@ -648,7 +578,7 @@ std::unique_ptr<Program> Parser::parse(const std::vector<Token>& tokens) {
         // C-3（2026-08）FFI 最小集：外部 函数 名(参数) -> 类型 ——
         //   上下文关键字探测（外部 为普通标识符，仅"外部 + 函数"组合触发），
         //   声明 C 链接外部函数（无函数体，链接期解析符号）
-        if (check(TokenType::Identifier) && current().getValue() == "外部" &&
+        if (check(TokenType::Identifier) && checkText("外部") &&
             peek(1).getType() == TokenType::Kw_Function) {
             advance();  // 消费 外部
             auto func = parseFunctionDecl();

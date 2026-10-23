@@ -4,6 +4,7 @@
 // 语法依据：CN语言规范 [04] 函数与函数指针（优先级13级）、[06] OOP、[07] 错误处理
 #include <memory>
 #include <string>
+#include <utility>
 
 #include "cn_compiler/model/type_system.hpp"
 #include "cn_compiler/parser/parser.hpp"
@@ -512,7 +513,9 @@ std::unique_ptr<Expr> Parser::parseCallOrMember(std::unique_ptr<Expr> expr) {
     const SourceLocation loc = expr->location;
     const bool viaCC = check(TokenType::ColonColon);  // #284④：源码分隔符形态
     advance();
-    std::string memberName = current().getValue();
+    // 1216：按引用取 token 文本（advance 后仍有效；其间无解析调用/无 >> 拆分），
+    //   由 MemberExpr 构造拷贝一次（原实现临时 string + 构造拷贝两次）。
+    const std::string& memberName = current().getValue();
     advance();
     // 第 4 层：:: 限定路径折叠为 MemberExpr（isDerefAccess=false 与 . 同路径），
     //   供语义层 use 导入表重写（模块::符号 限定调用）；memberName 可能为
@@ -553,28 +556,32 @@ std::unique_ptr<Expr> Parser::parsePrimary() {
         case TokenType::IntegerLiteral: {
             std::string raw = current().getValue();
             advance();
-            auto lit = std::make_unique<IntegerLiteral>(parseIntValue(raw), raw);
+            // 1216：raw 移入节点（原实现按值接收再拷贝一次——长字面量每处一次堆分配）
+            const std::int64_t value = parseIntValue(raw);
+            auto lit = std::make_unique<IntegerLiteral>(value, std::move(raw));
             lit->location = loc;
             return lit;
         }
         case TokenType::FloatLiteral: {
             std::string raw = current().getValue();
             advance();
-            auto lit = std::make_unique<FloatLiteral>(parseFloatValue(raw), raw);
+            const double value = parseFloatValue(raw);
+            auto lit = std::make_unique<FloatLiteral>(value, std::move(raw));
             lit->location = loc;
             return lit;
         }
         case TokenType::StringLiteral: {
             std::string raw = current().getValue();
             advance();
-            auto lit = std::make_unique<StringLiteral>(raw);
+            // 1216：raw 移入节点（字符串字面量常超 SSO 阈值：原实现多一次堆分配）
+            auto lit = std::make_unique<StringLiteral>(std::move(raw));
             lit->location = loc;
             return lit;
         }
         case TokenType::CharLiteral: {
             std::string raw = current().getValue();
             advance();
-            auto lit = std::make_unique<CharLiteral>(raw);
+            auto lit = std::make_unique<CharLiteral>(std::move(raw));
             lit->location = loc;
             return lit;
         }
@@ -604,12 +611,16 @@ std::unique_ptr<Expr> Parser::parsePrimary() {
             advance();
             return std::make_unique<SuperExpr>(loc);
         case TokenType::Identifier: {
-            std::string name = current().getValue();
+            // 1216：token 文本按引用取用（免逐标识符一次临时 string 拷贝）——
+            //   只有跨过 parseExpr 的转换分支才在解析前显式拷贝（实参解析可能
+            //   经 >> 写时复制使 token 存储整体搬迁，引用不可跨过该点）。
+            const std::string& name = current().getValue();
             advance();
             const SourceLocation idLoc = loc;  // 标识符位置
             // 结构体初始化：类型名{ 字段 = 值, ... }（Task 2.7，规格书05）
             // C-2：遍历...中每个 迭代对象解析期间抑制本探测（{ 属循环体块）
             if (check(TokenType::LeftBrace) && !suppressStructInit_) {
+                // parseStructInit 构造 StructInitExpr 时立即拷贝类型名，安全
                 return parseStructInit(name);
             }
             // 类型名(表达式) 强制转换（Task 2.10，规格书04-一E）：
@@ -620,10 +631,11 @@ std::unique_ptr<Expr> Parser::parsePrimary() {
             // 自定义类型（结构体名）的转换依赖语义层，此处先按普通标识符
             //   （parseCallOrMember 成函数调用，语义层见到类型名报未声明函数）。
             if (check(TokenType::LeftParen) && isCastableTypeName(name)) {
+                std::string castType = name;  // 先拷贝：parseExpr 可能触发 >> 写时复制
                 advance();
                 auto operand = parseExpr();
                 consume(TokenType::RightParen, "')'");
-                auto cast = std::make_unique<CastExpr>(name, std::move(operand));
+                auto cast = std::make_unique<CastExpr>(castType, std::move(operand));
                 cast->location = idLoc;
                 return cast;
             }

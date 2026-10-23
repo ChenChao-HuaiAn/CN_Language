@@ -51,7 +51,7 @@ std::unique_ptr<Stmt> Parser::parseStmt() {
     //   声明探测）——形态：遍历 <迭代对象> 中 每个 <变量名>。宽容扫描：从"遍历"
     //   起向前找"中 每个 标识符"连续形态（终止符 { ; = EOF 前）；迭代对象可为任意
     //   表达式形态（函数调用等非名称式由语义层拒绝并给出准确错误）。
-    if (check(TokenType::Identifier) && current().getValue() == "遍历") {
+    if (check(TokenType::Identifier) && checkText("遍历")) {
         int k = 1;  // 探测游标（peek 参数为 int）
         while (true) {
             const TokenType t = peek(k).getType();
@@ -59,9 +59,9 @@ std::unique_ptr<Stmt> Parser::parseStmt() {
                 t == TokenType::Semicolon || t == TokenType::Equal) {
                 break;
             }
-            if (t == TokenType::Identifier && peek(k).getValue() == "中" &&
+            if (t == TokenType::Identifier && std::string_view(peek(k).getValue()) == "中" &&
                 peek(k + 1).getType() == TokenType::Identifier &&
-                peek(k + 1).getValue() == "每个" &&
+                std::string_view(peek(k + 1).getValue()) == "每个" &&
                 peek(k + 2).getType() == TokenType::Identifier) {
                 return parseRangeForStmt();
             }
@@ -190,12 +190,12 @@ std::unique_ptr<Stmt> Parser::parseRangeForStmt() {
     suppressStructInit_ = true;
     stmt->iterable = parseExpr();  // 迭代对象（名称式，解析止于 中）
     suppressStructInit_ = savedSuppress;
-    if (!check(TokenType::Identifier) || current().getValue() != "中") {
+    if (!check(TokenType::Identifier) || !checkText("中")) {
         reportErrorHere("'遍历' 语句须为：遍历 容器 中 每个 变量名 { 循环体 }");
     } else {
         advance();  // 消费 中
     }
-    if (!check(TokenType::Identifier) || current().getValue() != "每个") {
+    if (!check(TokenType::Identifier) || !checkText("每个")) {
         reportErrorHere("'遍历' 语句须为：遍历 容器 中 每个 变量名 { 循环体 }");
     } else {
         advance();  // 消费 每个
