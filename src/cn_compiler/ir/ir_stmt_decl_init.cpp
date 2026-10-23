@@ -135,22 +135,16 @@ void IRGenerator::registerClosureIfNeeded(VarDecl* node) {
             const std::string& cap = lastLambdaCaptures_[ci];
             const bool byRef = (ci < refCount) && lastLambdaCaptureRefs_[ci] != 0;
             if (byRef) {
-                // 引用捕获：&变量（AddrOf 取变量槽地址）
-                // 1360 结果化：value_or("") 显形（miss 落 648 显形/回退链·原语义）
-                const std::string capUnique = lookupVarName(cap).value_or("");
-                const std::string capIrType = lookupVarType(cap).value_or("");
-                if (capIrType.empty()) {
-                    // 648（miss 不可静默·110 同族）：捕获变量 IR 类型未登记=
-                    //   编译器内部缺陷（语义层回填捕获列表必对应 varStack 已登记
-                    //   变量），显形于此；driver 在 generate() 后 hasErrors() 统一
-                    //   中止，产物不落地。原 i64 兜底保留（控制流零变更）。
-                    diagnostics_.report(DiagnosticLevel::Error, node->location,
-                        "内部错误: 捕获变量 '" + cap + "' IR 类型未登记 ——静默宽度兜底已废除（#648）");
-                }
-                info.captureArgs.push_back(emitResult(
-                    ir::Opcode::AddrOf,
-                    {ir::IRValue::var(capUnique, capIrType.empty() ? "i64" : capIrType)},
-                    "ptr", capUnique, node->location));
+                // 引用捕获：固化地址走 genIdentifierLvalue 四分流单点
+                //   （1321·与 emitLambdaSnapshotStores 同修同构）——被捕获
+                //   变量自身是引用变量（引用形参/局部引用，VarEntry.byRef）
+                //   时 Load(槽)=被引用左值地址，原 AddrOf(槽)=别名槽自身
+                //   地址（快径实参错位：体内读=别名槽内容当值·写=毁外层
+                //   别名槽）；普通变量/静态分支与原 AddrOf 逐字等价。
+                //   1360 结果化：value_or("") 显形（miss 落 648 显形/回退
+                //   链——genIdentifierLvalue 内部同序兜面）。
+                info.captureArgs.push_back(genIdentifierLvalue(
+                    std::make_unique<IdentifierExpr>(cap).get()));
             } else {
                 // 1360 结果化：value_or("") 显形（miss=非结构体判定假·原语义）
                 const std::string capSrc = lookupSrcType(cap).value_or("");
@@ -178,12 +172,13 @@ void IRGenerator::registerClosureIfNeeded(VarDecl* node) {
                     ir::IRValue dstAddr = emitResult(
                         ir::Opcode::AddrOf, {ir::IRValue::var(temp, "i64")},
                         "ptr", temp, node->location);
-                    // 1360 结果化：value_or("") 显形（语义层保证已登记·形态兜面）
-                    const std::string capUniqueS = lookupVarName(cap).value_or("");
-                    ir::IRValue srcAddr = emitResult(
-                        ir::Opcode::AddrOf,
-                        {ir::IRValue::var(capUniqueS, "i64")},
-                        "ptr", capUniqueS, node->location);
+                    // 1321：深拷源地址同走 genIdentifierLvalue 单点——被捕获
+                    //   变量是结构体引用（点& r）时 Load(槽)=被引用对象基址
+                    //   （原 AddrOf(槽)=引用槽自身地址，位拷把「目标地址值」
+                    //   当结构体字段=静默错值）；普通结构体与原等价。1360
+                    //   结果化：value_or("") 显形（语义层保证已登记·形态兜面）。
+                    ir::IRValue srcAddr = genIdentifierLvalue(
+                        std::make_unique<IdentifierExpr>(cap).get());
                     emitStructCopyWithFields(dstAddr, srcAddr, capCanon,
                                              node->location,
                                              /*preFree=*/false,

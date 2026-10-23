@@ -72,23 +72,25 @@ ir::IRValue IRGenerator::evalValueCaptureCopy(const std::string& capName,
         //   已拒绝」与实测不符已更正——语义层无此拒绝面）。无析构=无用户
         //   释放面，浅位拷与 C++ 隐式拷贝语义同（拥有字段以 拷贝构造/析构
         //   成对声明承担）；NewObject 堆副本句柄单槽（拷贝构造路径同模型）。
+        //   位拷源=val（类标识符读=对象句柄·槽存堆对象指针——1321 引用源
+        //   透明化由读路径承担）。
         if (!copyKeyOpt.has_value()) {
             const int totalBytes = ciC != nullptr ? ciC->totalSize : 0;
             ir::IRValue newObj = emitResult(
                 ir::Opcode::NewObject, {ir::IRValue::constant(canon, "ptr")}, "ptr",
                 canon + "|" + std::to_string(totalBytes), loc);
             if (totalBytes != 0) {  // 空类（totalSize 0）跳过位拷（NewObject 空壳即快照）
-                // val=类标识符读=对象句柄（类=句柄语义·槽存堆对象指针）——
-                //   位拷源=对象地址本体（槽地址=存句柄的槽·拷出句柄位模式=垃圾）。
                 emit(ir::Opcode::CopyStruct, {newObj, val},
                      ir::IRValue(), std::to_string(totalBytes), "void", loc);
             }
             return newObj;
         }
+        // 1321：拷贝构造源地址走 genIdentifierLvalue 单点——被捕获变量是
+        //   类引用（计数器& c）时 Load(槽)=对象地址（原 AddrOf(槽)=引用槽
+        //   自身地址，构造从别名槽读字段=错值）；普通类变量行为与原等价。
         const std::string capUnique = lookupVarName(capName).value_or("");
-        ir::IRValue srcSlot = emitResult(
-            ir::Opcode::AddrOf,
-            {ir::IRValue::var(capUnique, "i64")}, "ptr", capUnique, loc);
+        ir::IRValue srcSlot = genIdentifierLvalue(
+            std::make_unique<IdentifierExpr>(capName).get());
         const std::string extra =
             canon + "|" + std::to_string(ciC != nullptr ? ciC->totalSize : 0);
         ir::IRValue newObj = emitResult(
@@ -184,14 +186,17 @@ void IRGenerator::emitLambdaSnapshotStores(
         ir::IRValue slotAddr = emitResult(ir::Opcode::ConstString, {}, "ptr",
                                           slotSym, loc);
         if (byRef) {
-            // 引用捕获：槽存被捕获变量地址（AddrOf 取变量槽地址——数组/结构体/
-            //   标量统一地址形态，蹦床 LoadPtr 还原=引用实参）
-            const std::string capUnique = lookupVarName(cap).value_or("");
-            ir::IRValue srcAddr = emitResult(
-                ir::Opcode::AddrOf,
-                {ir::IRValue::var(capUnique,
-                                  capIrType.empty() ? "i64" : capIrType)},
-                "ptr", capUnique, loc);
+            // 引用捕获：槽存被捕获变量地址（数组/结构体/标量统一地址形态，蹦床
+            //   LoadPtr 还原=引用实参）。1321：固化地址取 genIdentifierLvalue
+            //   四分流单点（#1023 同理念）——被捕获变量自身是引用变量（引用
+            //   形参/局部引用，VarEntry.byRef=true）时 Load(槽)=被引用左值
+            //   地址（别名透明），原无条件 AddrOf(槽) 固化外层帧别名槽自身
+            //   地址：蹦床还原后体内读=别名槽内容当值（静默错值）、写=毁外层
+            //   别名槽（m13/s4 错值·s6 段错误实录）；普通变量/静态兜底分支
+            //   行为与原 AddrOf 逐字等价。1360 结果化：value_or("") 显形
+            //   （语义层保证捕获已登记·形态兜面）。
+            ir::IRValue srcAddr = genIdentifierLvalue(
+                std::make_unique<IdentifierExpr>(cap).get());
             emit(ir::Opcode::StorePtr, {slotAddr, srcAddr}, ir::IRValue(), "",
                  "ptr", loc);
         } else if (isStructValCap) {
@@ -209,12 +214,13 @@ void IRGenerator::emitLambdaSnapshotStores(
             //   闭包值生命周期（CN 闭包值=裸函数指针无析构语义·语言级缺口）
             //   → 挂账独立任务。悬垂（安全目标②）优先于残留（性能面）。
             const std::string canon = types::canonical(capSrc);
-            // 1360 结果化：value_or("") 显形（语义层保证捕获已登记·形态兜面）
-            const std::string capUniqueS = lookupVarName(cap).value_or("");
-            ir::IRValue srcAddr = emitResult(
-                ir::Opcode::AddrOf,
-                {ir::IRValue::var(capUniqueS, "i64")},
-                "ptr", capUniqueS, loc);
+            // 1321：深拷源地址同走 genIdentifierLvalue 单点——被捕获变量是
+            //   结构体引用（点& r）时 Load(槽)=被引用对象基址（原 AddrOf(槽)
+            //   =引用槽自身地址，位拷把「目标地址值」当结构体字段=静默错值
+            //   s1 实录）；普通结构体变量行为与原 AddrOf 等价。1360 结果化：
+            //   value_or("") 显形（语义层保证捕获已登记·形态兜面）。
+            ir::IRValue srcAddr = genIdentifierLvalue(
+                std::make_unique<IdentifierExpr>(cap).get());
             emitStructCopyWithFields(slotAddr, srcAddr, canon, loc,
                                      /*preFree=*/false, /*deepCopy=*/true);
         } else {
