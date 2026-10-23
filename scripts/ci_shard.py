@@ -560,6 +560,25 @@ def 片步骤值(rc们: list, 秒们: list) -> dict:
 报活间隔秒 = 60   # 与 task_heartbeat 周期一致（服务端疑似离线阈值 180s=3 个周期）
 
 
+def 有非win空闲(状态) -> bool:
+    """#1428：池内是否存在空闲的 **linux** 实例（状态=空闲且 30 分钟内活跃）。
+    win 三实例与 WSL/xsim 同处一台物理机：win 参与分片会与它们抢 CPU——实测普通片
+    192 例从 5~8 分钟拖到 1893s（1419），让位后同型轮 827s（1417）。判断口径保守：
+    只认明确 linux-* 平台的空闲实例（平台空/未知的旧 daemon 不计，不误让位）；
+    状态不可判（None/池不可达）=False → win 照常补位，不浪费算力。"""
+    if not isinstance(状态, dict):
+        return False
+    现在 = int(time.time())
+    for r in 状态.get("实例动态") or []:
+        if r.get("状态") != "空闲":
+            continue
+        if not str(r.get("平台", "")).startswith("linux"):
+            continue
+        if 现在 - int(r.get("最近活跃时戳") or 0) < 1800:
+            return True
+    return False
+
+
 def 本机门禁锁忙(锁目录: Path | None = None) -> bool:
     """#1423：本机共享门禁锁（CN_GATE_LOCK_DIR/主树锁目录）是否被其他活进程持有。
     win 三实例共用一把锁（923 OOM 铁律=同机全量互斥）：同机同时领片时只有先拿锁的
