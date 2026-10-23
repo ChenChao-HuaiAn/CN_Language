@@ -897,9 +897,11 @@ void LinuxX64CodeGenerator::emitCopy(LinuxX64AsmWriter& writer,
     // #1212 d：浮点 Copy——源/结果已分配到 xmm 时走 SSE 寄存器通道；
     //   两端均未分配保持原位模式搬运（--no-regalloc 产物逐字节不变）
     if (isFloatType(inst.type)) {
-        const bool dstFp = isXmmName(physRegOf(inst.result));
-        const bool srcFp = !inst.operands[0].isConstant &&
-                           isXmmName(physRegOf(inst.operands[0]));
+        const cn::Optional<std::string> dstPhysOpt = physRegOf(inst.result);
+        cn::Optional<std::string> srcPhysOpt;
+        if (!inst.operands[0].isConstant) srcPhysOpt = physRegOf(inst.operands[0]);
+        const bool dstFp = dstPhysOpt.has_value() && isXmmName(dstPhysOpt.value());
+        const bool srcFp = srcPhysOpt.has_value() && isXmmName(srcPhysOpt.value());
         if (dstFp || srcFp) {
             loadOperandToV(writer, inst.operands[0], "xmm0");
             storeFloatResult(writer, inst.result, "xmm0", inst.type);

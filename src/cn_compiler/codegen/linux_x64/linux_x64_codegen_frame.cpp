@@ -215,13 +215,14 @@ void LinuxX64CodeGenerator::emitEpilogue(LinuxX64AsmWriter& writer,
                 emitStackLoad(writer, off, vreg, currentReturnType_);
             } else if (returnReg.size() > 2 && returnReg[0] == '%' && returnReg[1] == 'v') {
                 const int id = std::stoi(returnReg.substr(2));
-                const std::string phys = physRegOf(ir::IRValue::reg(id, currentReturnType_));
+                const cn::Optional<std::string> physOpt =
+                    physRegOf(ir::IRValue::reg(id, currentReturnType_));
                 // #1212 d：返回值已分配到 xmm -> 寄存器直搬（原槽装载仅未分配面）
-                if (isXmmName(phys)) {
-                    writer.line(mnem + " " + vreg + ", " + phys);
-                } else if (!isXmmName(phys)) {
-                    emitStackLoad(writer, regSlotOffset(id), vreg, currentReturnType_);
+                if (physOpt.has_value() && isXmmName(physOpt.value())) {
+                    writer.line(mnem + " " + vreg + ", " + physOpt.value());
+                    return;
                 }
+                emitStackLoad(writer, regSlotOffset(id), vreg, currentReturnType_);
             } else if (isXmmName(returnReg)) {
                 // #1212 d：terminator 直传的已分配浮点返回寄存器（xmmN）
                 writer.line(mnem + " " + vreg + ", " + returnReg);

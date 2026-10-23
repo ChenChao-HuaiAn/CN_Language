@@ -325,11 +325,11 @@ void LinuxX64CodeGenerator::loadOperandToV(LinuxX64AsmWriter& writer,
     }
     if (operand.id >= 0) {
         // #1212 d：浮点类已分配源（池 = xmm6、xmm8~xmm15；xmm 名闭集判定）
-        const std::string phys = physRegOf(operand);
-        if (isXmmName(phys)) {
-            if (phys != vreg) {
+        const cn::Optional<std::string> physOpt = physRegOf(operand);
+        if (physOpt.has_value() && isXmmName(physOpt.value())) {
+            if (physOpt.value() != vreg) {
                 writer.line("mov" + std::string(isDouble ? "sd" : "ss") + " " +
-                            vreg + ", " + phys);
+                            vreg + ", " + physOpt.value());
             }
             return;
         }
@@ -387,11 +387,11 @@ void LinuxX64CodeGenerator::emitConstLoad(LinuxX64AsmWriter& writer,
         const std::string label = registerFloatConstant(inst.extra, isDouble);
         emitLoadSymbolAddr(writer, "rax", label);
         // #1212 d：结果已分配到 xmm -> 常量池直装（免 xmm7 中转 + 槽写）
-        const std::string phys = physRegOf(inst.result);
+        const cn::Optional<std::string> physOpt = physRegOf(inst.result);
         const std::string mnem = (isDouble ? "movsd" : "movss");
         const std::string width = (isDouble ? "qword ptr " : "dword ptr ");
-        if (isXmmName(phys)) {
-            writer.line(mnem + " " + phys + ", " + width + "[rax]");
+        if (physOpt.has_value() && isXmmName(physOpt.value())) {
+            writer.line(mnem + " " + physOpt.value() + ", " + width + "[rax]");
             writer.comment("浮点常量 " + inst.extra);
             return;
         }

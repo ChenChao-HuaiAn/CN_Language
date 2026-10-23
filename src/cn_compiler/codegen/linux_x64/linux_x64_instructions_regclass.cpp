@@ -14,20 +14,22 @@ namespace cn_compiler {
 // 该虚拟寄存器是否成对分配到两个 GPR（i128/u128；高半=%vN、低半=%vN+1）
 //   ——win-x64 步骤 b 的 LinuxX64 镜像实现（禁单半捷径）。
 bool LinuxX64CodeGenerator::hasI128Pair(int regId) const {
-    const regalloc::RegAssignment* ra =
-        (regId >= 0) ? regAllocOf(regId) : nullptr;
-    return ra != nullptr && !ra->assignedReg.empty() && !ra->assignedReg2.empty();
+    const cn::Optional<const regalloc::RegAssignment*> ra =
+        (regId >= 0) ? regAllocOf(regId)
+                     : cn::Optional<const regalloc::RegAssignment*>(std::nullopt);
+    return ra.has_value() && ra.value() != nullptr &&
+           !ra.value()->assignedReg.empty() && !ra.value()->assignedReg2.empty();
 }
 
 // i128 高半文本（寄存器或原栈槽）。仅对 id>=0 的虚拟寄存器调用。
 std::string LinuxX64CodeGenerator::i128HiText(const ir::IRValue& v) const {
-    if (hasI128Pair(v.id)) return regAllocOf(v.id)->assignedReg;
+    if (hasI128Pair(v.id)) return regAllocOf(v.id).value()->assignedReg;
     return regSlotMem(v.id);
 }
 
 // i128 低半文本（寄存器或原栈槽）
 std::string LinuxX64CodeGenerator::i128LoText(const ir::IRValue& v) const {
-    if (hasI128Pair(v.id)) return regAllocOf(v.id)->assignedReg2;
+    if (hasI128Pair(v.id)) return regAllocOf(v.id).value()->assignedReg2;
     return regSlotMem(v.id + 1);
 }
 
@@ -37,7 +39,7 @@ std::string LinuxX64CodeGenerator::i128LoText(const ir::IRValue& v) const {
 void LinuxX64CodeGenerator::spillI128Pair(LinuxX64AsmWriter& writer,
                                           const ir::IRValue& v) {
     if (!hasI128Pair(v.id)) return;
-    const regalloc::RegAssignment* ra = regAllocOf(v.id);
+    const regalloc::RegAssignment* ra = regAllocOf(v.id).value();
     writer.line("mov " + regSlotMem(v.id) + ", " + ra->assignedReg);       // 高
     writer.line("mov " + regSlotMem(v.id + 1) + ", " + ra->assignedReg2);  // 低
 }
@@ -46,7 +48,7 @@ void LinuxX64CodeGenerator::spillI128Pair(LinuxX64AsmWriter& writer,
 void LinuxX64CodeGenerator::reloadI128Pair(LinuxX64AsmWriter& writer,
                                            const ir::IRValue& result) {
     if (!hasI128Pair(result.id)) return;
-    const regalloc::RegAssignment* ra = regAllocOf(result.id);
+    const regalloc::RegAssignment* ra = regAllocOf(result.id).value();
     writer.line("mov " + ra->assignedReg2 + ", " + regSlotMem(result.id + 1));  // 低
     writer.line("mov " + ra->assignedReg + ", " + regSlotMem(result.id));       // 高
 }
@@ -97,10 +99,10 @@ void LinuxX64CodeGenerator::storeFloatResult(LinuxX64AsmWriter& writer,
                                              const ir::IRValue& result,
                                              const std::string& srcXmm,
                                              const std::string& type) {
-    const std::string phys = physRegOf(result);
+    const cn::Optional<std::string> physOpt = physRegOf(result);
     const std::string mnem = (type == "f64") ? "movsd" : "movss";
-    if (!phys.empty()) {
-        writer.line(mnem + " " + phys + ", " + srcXmm);
+    if (physOpt.has_value()) {
+        writer.line(mnem + " " + physOpt.value() + ", " + srcXmm);
         return;
     }
     emitStackStore(writer, regSlotOffset(result.id), srcXmm, type);

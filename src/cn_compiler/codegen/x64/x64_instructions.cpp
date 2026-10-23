@@ -269,27 +269,29 @@ void X64CodeGenerator::emitFloatStore(AsmWriter& writer, const std::string& dst,
 // 该虚拟寄存器是否成对分配到两个 GPR（i128/u128；高半=%vN、低半=%vN+1）
 bool X64CodeGenerator::hasI128Pair(int regId) const {
     // 三目取映射（无早退分支）：负值=无映射，自然落 false
-    const regalloc::RegAssignment* ra =
-        (regId >= 0) ? regAllocOf(regId) : nullptr;
-    return ra != nullptr && !ra->assignedReg.empty() && !ra->assignedReg2.empty();
+    const cn::Optional<const regalloc::RegAssignment*> ra =
+        (regId >= 0) ? regAllocOf(regId)
+                     : cn::Optional<const regalloc::RegAssignment*>(std::nullopt);
+    return ra.has_value() && ra.value() != nullptr &&
+           !ra.value()->assignedReg.empty() && !ra.value()->assignedReg2.empty();
 }
 
 // i128 高半文本（寄存器或原栈槽）。仅对 id>=0 的虚拟寄存器调用。
 std::string X64CodeGenerator::i128HiText(const ir::IRValue& v) const {
-    if (hasI128Pair(v.id)) return regAllocOf(v.id)->assignedReg;
+    if (hasI128Pair(v.id)) return regAllocOf(v.id).value()->assignedReg;
     return regSlot(v.id);
 }
 
 // i128 低半文本（寄存器或原栈槽）
 std::string X64CodeGenerator::i128LoText(const ir::IRValue& v) const {
-    if (hasI128Pair(v.id)) return regAllocOf(v.id)->assignedReg2;
+    if (hasI128Pair(v.id)) return regAllocOf(v.id).value()->assignedReg2;
     return regSlot(v.id + 1);
 }
 
 // 已分配双半溢出到原双槽（高半 -> regSlot(id)，低半 -> regSlot(id+1)）
 void X64CodeGenerator::spillI128Pair(AsmWriter& writer, const ir::IRValue& v) {
     if (!hasI128Pair(v.id)) return;
-    const regalloc::RegAssignment* ra = regAllocOf(v.id);
+    const regalloc::RegAssignment* ra = regAllocOf(v.id).value();
     writer.line("mov " + regSlot(v.id) + ", " + ra->assignedReg);       // 高
     writer.line("mov " + regSlot(v.id + 1) + ", " + ra->assignedReg2);  // 低
 }
@@ -297,7 +299,7 @@ void X64CodeGenerator::spillI128Pair(AsmWriter& writer, const ir::IRValue& v) {
 // 结果双槽载回已分配双半（供内存实现后收尾）
 void X64CodeGenerator::reloadI128Pair(AsmWriter& writer, const ir::IRValue& result) {
     if (!hasI128Pair(result.id)) return;
-    const regalloc::RegAssignment* ra = regAllocOf(result.id);
+    const regalloc::RegAssignment* ra = regAllocOf(result.id).value();
     writer.line("mov " + ra->assignedReg2 + ", " + regSlot(result.id + 1));  // 低
     writer.line("mov " + ra->assignedReg + ", " + regSlot(result.id));       // 高
 }

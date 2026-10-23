@@ -28,9 +28,11 @@ void LinuxX64CodeGenerator::emitLoadStore(LinuxX64AsmWriter& writer,
         // #1212 d：浮点 Load——源或结果已分配到 xmm 时走 SSE 寄存器通道；
         //   两端均未分配保持原位模式搬运（--no-regalloc 产物逐字节不变）
         if (isFloatType(inst.type)) {
-            const bool dstFp = isXmmName(physRegOf(inst.result));
-            const bool srcFp = !inst.operands[0].isConstant &&
-                               isXmmName(physRegOf(inst.operands[0]));
+            const cn::Optional<std::string> dstPhysOpt = physRegOf(inst.result);
+            cn::Optional<std::string> srcPhysOpt;
+            if (!inst.operands[0].isConstant) srcPhysOpt = physRegOf(inst.operands[0]);
+            const bool dstFp = dstPhysOpt.has_value() && isXmmName(dstPhysOpt.value());
+            const bool srcFp = srcPhysOpt.has_value() && isXmmName(srcPhysOpt.value());
             if (dstFp || srcFp) {
                 loadOperandToV(writer, inst.operands[0], "xmm0");
                 storeFloatResult(writer, inst.result, "xmm0", inst.type);
@@ -79,12 +81,12 @@ void LinuxX64CodeGenerator::emitLoadStore(LinuxX64AsmWriter& writer,
         // #1212 d：浮点 Store——源已分配到 xmm 时直写变量槽；未分配保持原位
         //   模式路径（loadOperandToX 64 位读 + emitStackStore 位模式，字节不变）
         if (isFloatType(inst.type) && !inst.operands[0].isConstant) {
-            const std::string srcFp = physRegOf(inst.operands[0]);
-            if (isXmmName(srcFp)) {
+            const cn::Optional<std::string> srcFpOpt = physRegOf(inst.operands[0]);
+            if (srcFpOpt.has_value() && isXmmName(srcFpOpt.value())) {
                 writer.line("mov" + std::string(inst.type == "f64" ? "sd" : "ss") +
                             std::string(inst.type == "f64" ? " qword ptr "
                                                            : " dword ptr ") +
-                            stackMemText(varSlotOf(inst.extra)) + ", " + srcFp);
+                            stackMemText(varSlotOf(inst.extra)) + ", " + srcFpOpt.value());
                 return;
             }
         }
@@ -230,10 +232,11 @@ void LinuxX64CodeGenerator::emitPtrLoad(LinuxX64AsmWriter& writer,
     const cn::Optional<std::string> dstPhys = physRegOf(inst.result);
     if (isFloatType(type)) {
         // #1212 d：结果已分配到 xmm -> 直装（免槽写）；未分配原 xmm0 + 槽
-        const std::string vreg = isXmmName(dstPhys) ? dstPhys : "xmm0";
+        const bool dstIsXmm = dstPhys.has_value() && isXmmName(dstPhys.value());
+        const std::string vreg = dstIsXmm ? dstPhys.value() : "xmm0";
         writer.line("mov" + std::string(type == "f64" ? "sd" : "ss") + " " + vreg +
                     ", " + (type == "f64" ? "qword ptr" : "dword ptr") + " [" + addr + "]");
-        if (vreg != dstPhys) {
+        if (!dstIsXmm) {
             emitStackStore(writer, regSlotOffset(inst.result.id), vreg, type);
         }
         return;
