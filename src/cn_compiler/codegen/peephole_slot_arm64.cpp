@@ -6,6 +6,7 @@
 // 共享契约见 peephole_slot_internal.hpp；公开 API 见 peephole_slot.hpp。
 #include "cn_compiler/codegen/peephole_slot_internal.hpp"
 
+#include <cassert>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -867,33 +868,52 @@ IndirectPairAction tryEliminateIndirectPair(
 
 // 大偏移间接寻址主扫描（整体消除·就地：命中返回 true 并替换文本；
 //   未命中返回 false 且文本不动——1248 就地入口，代码生成热路径免无命中复制）
+// 视图生命周期（1217 机械锁）：lines 全部指向 functionText 当次缓冲；渲染域结束
+//   （视图销毁）后才替换源存储。renderLines 的 original 参数同样在域内读取，
+//   保证「最后一位视图使用者」出现在任何写入之前。
 bool eliminateArmIndirectPairsInPlace(std::string& functionText) {
     if (functionText.find("[x13]") == std::string::npos) return false;
-    const std::vector<std::string_view> lines = splitLines(functionText);
-    const auto offsetOcc = collectArmFrameOffsetCounts(lines);
-    const std::vector<char> safe = computeArmTailSafety(lines, false);
-    std::vector<char> drop(lines.size(), 0);
-    std::vector<std::string> repl(lines.size());
+#ifndef NDEBUG
+    // 视图存活期源存储身份快照：替换点核对缓冲未被提前改写（release 零开销）
+    const char* const sourceData = functionText.data();
+    const std::size_t sourceSize = functionText.size();
+#endif
     bool any = false;
-    // 最短形态 = store 后 1 行块② + 1 行 load（块①在 store 之前）
-    for (std::size_t i = 0; i + 2 < lines.size(); ++i) {
-        const IndirectPairAction act =
-            tryEliminateIndirectPair(lines, offsetOcc, safe, i, drop, repl);
-        if (!act.hit) continue;
-        for (int k = 0; k < act.blockLen; ++k) {
-            drop[static_cast<std::size_t>(act.blockStart + k)] = 1;  // 地址物化块①
-            drop[i + 1 + static_cast<std::size_t>(k)] = 1;          // 地址物化块②
+    std::string rendered;  // 域内产出；域外替换（不含任何指向源文本的视图）
+    {
+        // ---- 视图生命周期域：以下所有视图只在域内使用，域尾统一销毁 ----
+        const std::vector<std::string_view> lines = splitLines(functionText);
+        const auto offsetOcc = collectArmFrameOffsetCounts(lines);
+        const std::vector<char> safe = computeArmTailSafety(lines, false);
+        std::vector<char> drop(lines.size(), 0);
+        std::vector<std::string> repl(lines.size());
+        // 最短形态 = store 后 1 行块② + 1 行 load（块①在 store 之前）
+        for (std::size_t i = 0; i + 2 < lines.size(); ++i) {
+            const IndirectPairAction act =
+                tryEliminateIndirectPair(lines, offsetOcc, safe, i, drop, repl);
+            if (!act.hit) continue;
+            for (int k = 0; k < act.blockLen; ++k) {
+                drop[static_cast<std::size_t>(act.blockStart + k)] = 1;  // 地址物化块①
+                drop[i + 1 + static_cast<std::size_t>(k)] = 1;          // 地址物化块②
+            }
+            drop[i] = 1;  // store
+            const std::size_t li = static_cast<std::size_t>(act.loadIndex);
+            repl[li] = act.rewrittenLoad;  // 全删时为空串（drop 优先于 repl）
+            if (act.dropLoad) drop[li] = 1;
+            any = true;
+            i = static_cast<std::size_t>(act.loadIndex);  // 跳过已消费的 load 行
         }
-        drop[i] = 1;  // store
-        const std::size_t li = static_cast<std::size_t>(act.loadIndex);
-        repl[li] = act.rewrittenLoad;  // 全删时为空串（drop 优先于 repl）
-        if (act.dropLoad) drop[li] = 1;
-        any = true;
-        i = static_cast<std::size_t>(act.loadIndex);  // 跳过已消费的 load 行
-    }
+        if (any) {
+            rendered = renderLines(lines, drop, repl, functionText);
+        }
+    }  // ---- 视图销毁点：此后不再持有任何指向 functionText 缓冲的视图 ----
+#ifndef NDEBUG
     if (any) {
-        functionText = renderLines(lines, drop, repl, functionText);
+        assert(functionText.data() == sourceData && functionText.size() == sourceSize &&
+               "窥孔视图存活期间源文本不得被改写（视图先销毁、后替换存储）");
     }
+#endif
+    if (any) functionText = std::move(rendered);  // 就地替换（视图已全部销毁）
     return any;
 }
 

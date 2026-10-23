@@ -13,6 +13,9 @@ namespace peephole {
 namespace detail {
 
 // 单行槽访问解析结果
+//   生命周期契约（1217）：slot 是非拥有视图，指向解析入参行，最终指向调用期
+//   functionText 缓冲。SlotAccess 只能在源文本存活期内使用；禁止跨阶段保存、
+//   禁止在缓冲替换后读取（跨阶段需要的文本字段一律为 std::string 复制）。
 struct SlotAccess {
     std::string_view slot;  // 槽文本（"[rbp-N]" / "[x29,#-N]" / "[x13]"）
     std::string reg64;      // x86：归一化 64 位名（r10/xmm0）；ARM：规范名（x10/d0）
@@ -38,6 +41,7 @@ struct RegEffect {
 
 // 方言规则束：解析/改写由各方言注入，扫描与消除内核共用
 struct SlotRules {
+    // 静态字面量锚（"[rbp"/"[x29"）：程序生命周期，非调用期视图（1217 审计项）
     std::string_view slotAnchor;                                 // 槽文本起始锚（"[rbp"/"[x29"）
     bool (*parseStore)(std::string_view, SlotAccess&);           // store 行解析
     bool (*parseLoad)(std::string_view, SlotAccess&);            // load 行解析
@@ -64,6 +68,9 @@ inline std::string_view trimView(std::string_view s) {
 }
 
 // 切行（string_view 零拷贝·入参文本调用期存活；与 1144 原切法逐字节一致）
+//   生命周期契约（1217）：返回值中每个视图都指向 text 的缓冲；调用方若改写该缓冲
+//   （例如就地入口替换 functionText），必须先销毁整个返回值。就地内核以作用域
+//   固化此顺序（视图域结束→替换文本），不得把 lines 保存到源文本替换之后。
 inline std::vector<std::string_view> splitLines(std::string_view text) {
     std::vector<std::string_view> lines;
     std::size_t start = 0;
@@ -239,6 +246,9 @@ inline bool parseImmOperand(std::string_view op, long long& value) {
 }
 
 // 有效行文本：已改写行取改写文本，否则原文（删除行由调用方跳过）
+//   生命周期契约（1217）：repl[i] 分支返回的视图指向 repl 元素缓冲——只允许在
+//   本次调用链（分类/立即数解析）内同步读取；禁止保存。repl 元素在扫描推进后
+//   仍可能被赋值（本内核只在证明扫描完成后才写入下一元素，故调用期安全）。
 inline std::string_view effectiveText(const std::vector<std::string_view>& lines,
                                       const std::vector<std::string>& repl,
                                       std::size_t i) {

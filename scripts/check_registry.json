@@ -256,6 +256,14 @@
    "检查网层": 9,
    "说明": "字符串字面量/顶层常量下标的越界检查不得回退为 __cn_str_len：宿主 IR 与 v2 产物 asm 双计数（快路径 1 / 对照 2 正反对照）+ v2 源码链路断言（v2p 未就绪时兜底）",
    "v5执行面": "L1（宿主+源码段·写集触发）+L2/云端（v2 产物段·v2p 预热后）"
+  },
+  {
+   "名称": "窥孔 string_view 生命周期 sanitizer 锁（1217）",
+   "脚本": "scripts/check_peephole_sanitizer.py",
+   "组": "ci扩展",
+   "检查网层": 9,
+   "说明": "1217 立（001 §1.1a① 悬垂零容忍）：Linux/WSL g++/clang++ 两口径独立编译 Peephole* 单测（窥孔两实现 TU+四单测 TU+随仓 gtest，不依赖完整工程）——①ASan+UBSan（-fsanitize=address,undefined -fno-sanitize-recover=all -D_GLIBCXX_ASSERTIONS）检出就地改写后旧视图 UAF（EXPECT_DEATH 匹配 heap-use-after-free）与边界/随机语料越界；②-D_GLIBCXX_DEBUG+_GLIBCXX_ASSERTIONS 跑 string_view/容器越界断言。Windows 口径=诚实边界（经 WSL 执行）",
+   "v5执行面": "人工轮/专项（Linux/WSL g++）：python3 scripts/check_peephole_sanitizer.py"
   }
  ]
 }

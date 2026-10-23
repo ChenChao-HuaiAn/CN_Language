@@ -71,7 +71,13 @@ std::string eliminateRedundantSlotTrafficAArch64(const std::string& functionText
 
 // 就地入口（任务 1248·代码生成热路径）：命中返回 true 并原地替换文本；
 //   未命中返回 false，不复制/不替换文本（仅锚点存在时构建扫描结构）。
-//   命中时 functionText 可能重分配，调用方持有的 view/迭代器/引用随之失效。
+//   string_view 生命周期契约（1217·001 §1.1a① 悬垂零容忍）：
+//     · 调用前已取得的任何指向 functionText 的 view/引用/迭代器在命中后一律失效
+//       （命中可能重分配缓冲；内核内部行/令牌视图不逃逸单次调用）；
+//     · 未命中时文本内容与存储均不做任何修改（不复制、不重排）；
+//     · 内核内部先销毁全部视图、后替换源缓冲（作用域顺序 + 调试断言机械锁）。
+//   AArch64 入口两阶段（固定帧槽→大偏移间接寻址）顺序执行：第一阶段命中后的新
+//   缓冲即第二阶段输入，调用方旧视图同样在两阶段结束后统一失效。
 //   产物与值语义入口逐字节一致。
 bool eliminateRedundantSlotTrafficInPlace(std::string& functionText);
 bool eliminateRedundantSlotTrafficMasmInPlace(std::string& functionText);

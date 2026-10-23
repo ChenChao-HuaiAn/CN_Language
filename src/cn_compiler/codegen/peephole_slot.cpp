@@ -28,6 +28,7 @@
 #include "cn_compiler/codegen/peephole_slot_internal.hpp"
 
 #include <algorithm>
+#include <cassert>
 #include <cstdint>
 #include <functional>
 #include <string>
@@ -668,47 +669,63 @@ namespace detail {
 // 方言无关主扫描（就地）：命中返回 true 并原地替换 functionText；未命中返回
 //   false，不复制/不替换文本（仅锚点存在时构建扫描结构；代码生成热路径每函数
 //   一次调用）。命中时 functionText 可能重分配，调用方持有的 view/引用随之失效。
+// 视图生命周期（1217 机械锁）：lines/槽计数键/改写文本中的 string_view 全部指向
+//   functionText 当次缓冲。本函数把「视图销毁」与「源存储替换」拆成两个作用域：
+//   扫描/渲染域内只读 functionText，域结束后视图已全部销毁，才执行替换——即使
+//   未来插入提前赋值，调试构建的 sourceData 断言也会立即显形（见域尾断言）。
 bool eliminateWithRulesInPlace(std::string& functionText, const SlotRules& rules) {
     if (functionText.find(rules.slotAnchor) == std::string::npos) return false;
-    // 切行（string_view 零拷贝·入参文本调用期存活）：复用共享实现，
-    //   防 CRLF/尾随换行规则在本文件内漂移（1248 审查 P2-4）
-    std::vector<std::string_view> lines = detail::splitLines(functionText);
-    std::vector<char> hasAnchor;
-    const auto slotOcc = collectSlotCounts(lines, rules.slotAnchor, hasAnchor);
-    std::vector<char> drop(lines.size(), 0);
-    // 逐行改写表（1279：高位零证明按行号回读改写后文本，须为稠密表；
-    //   空串=该行原样保留。MSVC string 空态 SSO，不产生逐行堆分配）
-    std::vector<std::string> repl(lines.size());
+#ifndef NDEBUG
+    // 视图存活期源存储身份快照：替换点核对缓冲未被提前改写（release 零开销）
+    const char* const sourceData = functionText.data();
+    const std::size_t sourceSize = functionText.size();
+#endif
     bool any = false;
-    for (std::size_t i = 0; i + 1 < lines.size(); ++i) {
-        if (!hasAnchor[i]) continue;
-        PairAction act = tryEliminatePair(lines, slotOcc, static_cast<int>(i), drop,
-                                          repl, rules);
-        if (!act.hit) continue;
-        drop[i] = 1;
-        const bool fullDelete = act.dropLoad;
-        if (fullDelete) {
-            drop[i + 1] = 1;  // 全删：drop 优先于 repl（输出时跳过该行）
+    std::string rewritten;  // 域内产出；域外替换（不含任何指向源文本的视图）
+    {
+        // ---- 视图生命周期域：以下所有视图只在域内使用，域尾统一销毁 ----
+        std::vector<std::string_view> lines = detail::splitLines(functionText);
+        std::vector<char> hasAnchor;
+        const auto slotOcc = collectSlotCounts(lines, rules.slotAnchor, hasAnchor);
+        std::vector<char> drop(lines.size(), 0);
+        // 逐行改写表（1279：高位零证明按行号回读改写后文本，须为稠密表；
+        //   空串=该行原样保留。MSVC string 空态 SSO，不产生逐行堆分配）
+        std::vector<std::string> repl(lines.size());
+        for (std::size_t i = 0; i + 1 < lines.size(); ++i) {
+            if (!hasAnchor[i]) continue;
+            PairAction act = tryEliminatePair(lines, slotOcc, static_cast<int>(i), drop,
+                                              repl, rules);
+            if (!act.hit) continue;
+            drop[i] = 1;
+            const bool fullDelete = act.dropLoad;
+            if (fullDelete) {
+                drop[i + 1] = 1;  // 全删：drop 优先于 repl（输出时跳过该行）
+            }
+            if (!fullDelete) {
+                repl[i + 1] = std::move(act.rewrittenLoad);  // load 行改写为寄存器搬运
+            }
+            any = true;
+            ++i;  // 跳过已消费的 load 行
         }
-        if (!fullDelete) {
-            repl[i + 1] = std::move(act.rewrittenLoad);  // load 行改写为寄存器搬运
+        if (any) {
+            rewritten.reserve(functionText.size());
+            for (std::size_t i = 0; i < lines.size(); ++i) {
+                if (drop[i]) continue;
+                rewritten += repl[i].empty() ? lines[i] : repl[i];
+                rewritten += '\n';
+            }
+            if (!rewritten.empty() && functionText.back() != '\n') {
+                rewritten.pop_back();  // 原文本无尾随换行：去掉补加的
+            }
         }
-        any = true;
-        ++i;  // 跳过已消费的 load 行
-    }
+    }  // ---- 视图销毁点：此后不再持有任何指向 functionText 缓冲的视图 ----
+#ifndef NDEBUG
     if (any) {
-        std::string out;
-        out.reserve(functionText.size());
-        for (std::size_t i = 0; i < lines.size(); ++i) {
-            if (drop[i]) continue;
-            out += repl[i].empty() ? lines[i] : repl[i];
-            out += '\n';
-        }
-        if (!out.empty() && functionText.back() != '\n') {
-            out.pop_back();  // 原文本无尾随换行：去掉补加的
-        }
-        functionText = std::move(out);  // 就地替换（行视图已用毕·指向旧缓冲安全失效）
+        assert(functionText.data() == sourceData && functionText.size() == sourceSize &&
+               "窥孔视图存活期间源文本不得被改写（视图先销毁、后替换存储）");
     }
+#endif
+    if (any) functionText = std::move(rewritten);  // 就地替换（视图已全部销毁）
     return any;
 }
 
