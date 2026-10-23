@@ -51,6 +51,26 @@ public:
                                                      std::string& ownerClass) const = 0;
     virtual cn::Optional<const ClassMemberInfo*> findCopyConstructor(const std::string& className) const = 0;
     virtual cn::Optional<int> classFieldOffset(const std::string& className, const std::string& fieldName) const = 0;
+    // 1472 根治：带名字查找起点限定的类字段偏移——layoutClass=对象布局类
+    //   （偏移沿其继承链布局累加），resolveFrom=字段名查找起点类（从它沿继承
+    //   链向上第一个含该字段的层为命中条目——C++ 名字隐藏：最派生遮蔽条目
+    //   优先）。方法体内裸字段访问须传方法声明所属类作起点：基类方法体内的
+    //   v 永远是 基::v（声明类作用域解析），禁解析到派生类遮蔽字段（错槽/
+    //   错类型）。缺省实现=忽略起点退化为按布局类查找（供测试替身回退）。
+    virtual cn::Optional<int> classFieldOffsetFrom(const std::string& layoutClass,
+                                                   const std::string& fieldName,
+                                                   const std::string& resolveFrom) const {
+        (void)resolveFrom;
+        return classFieldOffset(layoutClass, fieldName);
+    }
+    // 1472：sub 是否为 base 的派生类（同类=真）——emitClassMethod 校验方法
+    //   声明类在发射类继承链上（不在=异常形态，置空回退发射类同原行为）。
+    //   缺省实现=false（替身未覆盖派生关系时消费方按发射类解析，行为明确）。
+    virtual bool isDerivedFrom(const std::string& sub, const std::string& base) const {
+        (void)sub;
+        (void)base;
+        return false;
+    }
     virtual cn::Optional<int> fieldOffsetOf(const StructDecl* decl, const std::string& fieldName) const = 0;
     virtual cn::Optional<int> classVtableIndex(const std::string& className, const std::string& methodName) const = 0;
     virtual cn::Optional<int> interfaceSlot(const std::string& ifaceName, const std::string& methodName) const = 0;

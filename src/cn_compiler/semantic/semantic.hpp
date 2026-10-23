@@ -861,6 +861,13 @@ private:
     std::unordered_map<std::string, std::string> genericTypeParams_;
     // 当前上下文类名栈（方法体内解析 自身/父类/访问控制；空=非类上下文）
     std::vector<std::string> contextClassStack_;
+    // 1472 根治（#1472 采样 H07）：当前方法体**字段作用域类**=方法声明所属类
+    //   （mi.ownerClass，空=非方法体/回退类上下文栈顶）——继承并入的父类方法
+    //   在派生类语境再检查（桥接再发射）时，体内裸字段名仍按声明类链解析
+    //   （C++ 名字隐藏：基类方法体内的 v 永远是 基::v）。消费点=
+    //   isCurrentClassFieldName（094 字符串借用豁免判据），与字段作用域注入
+    //   （checkSingleMethodBody 按声明类链收集）同锚。
+    std::string currentFieldScopeClass_;
     // 当前方法是否常量成员函数（常量 修饰，Task 3.9 修改成员检查）
     bool constMethodContext_ = false;
     // #282（2026-10-08）：当前方法是否静态成员函数——静态方法体无 this，

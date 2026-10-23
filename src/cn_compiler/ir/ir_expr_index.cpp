@@ -165,7 +165,7 @@ void IRGenerator::visitIndexExpr(IndexExpr* node) {
             if (!currentClass_.empty() && !currentMethodStatic_ &&
                 isInstanceField(ident->name)) {
                 resolvedType938 =
-                    classFieldType(currentClass_, ident->name).value_or("");
+                    classFieldType(fieldScopeClass(), ident->name).value_or("");  // 1472 同锚
                 fieldOrStatic938 = true;
             }
             if (!fieldOrStatic938 && !currentClass_.empty()) {
@@ -225,7 +225,7 @@ void IRGenerator::visitIndexExpr(IndexExpr* node) {
         const std::string st2 = lookupSrcType(ident2->name).value_or("");
         if (st2.empty() && isInstanceField(ident2->name)) {
             const std::string fieldTypeRaw =
-                classFieldType(currentClass_, ident2->name).value_or("");
+                classFieldType(fieldScopeClass(), ident2->name).value_or("");  // 1472 同锚
             ir::IRValue ptr = genExpr(node->object.get());  // 字段指针值
             ir::IRValue index = genExpr(node->index.get());
             if (index.type != "i64") {
@@ -375,7 +375,7 @@ void IRGenerator::visitIndexExpr(IndexExpr* node) {
         // 1360 结果化：value_or("") 显形（miss=空→类字段回落链·原语义）
         std::string st = lookupSrcType(objName).value_or("");
         if (st.empty() && isInstanceField(objName)) {
-            st = classFieldType(currentClass_, objName).value_or("");
+            st = classFieldType(fieldScopeClass(), objName).value_or("");  // 1472 同锚
             if (types::isPointer(st)) {
                 stride = ptrElemStride(st);
             }
@@ -533,7 +533,7 @@ void IRGenerator::visitIndexExpr(IndexExpr* node) {
         // H8 补完（2026-08-25）：隐式类字段对象（向量 数据 T* 的 数据[位置]）——
         //   lookupSrcType 无值，按字段源码类型推导元素形态（类元素返回地址）
         if (st.empty() && isInstanceField(objName)) {
-            st = classFieldType(currentClass_, objName).value_or("");
+            st = classFieldType(fieldScopeClass(), objName).value_or("");  // 1472 同锚
         }
         if (types::isPointer(st)) {
             const std::string elemSrc = types::pointeeOf(st);
@@ -607,8 +607,8 @@ ir::IRValue IRGenerator::genGenericIndexAddress(IndexExpr* idx) {
             //   结构体元素 24 字节，此前固定 8 导致元素错位/越界）
             if (st.empty() && isInstanceField(
                     static_cast<IdentifierExpr*>(idx->object.get())->name)) {
-                st = classFieldType(currentClass_,
-                                    static_cast<IdentifierExpr*>(idx->object.get())->name).value_or("");
+                st = classFieldType(fieldScopeClass(),
+                                    static_cast<IdentifierExpr*>(idx->object.get())->name).value_or("");  // 1472 同锚
                 if (types::isArray(st)) {
                     // 数组字段：按 C 布局元素大小（与成员数组字段同规则）
                     const std::string elemSrc = types::arrayElemOf(st);

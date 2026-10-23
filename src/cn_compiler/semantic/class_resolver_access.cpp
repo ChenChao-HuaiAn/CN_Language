@@ -206,6 +206,9 @@ void SemanticAnalyzer::checkSingleMethodBody(ClassInfo& info, ClassMemberInfo& m
 
         // 设置方法上下文（自身类名 + 常量成员标记）
         contextClassStack_.push_back(info.name);
+        // 1472：方法体字段判定上下文（声明类）本位保存/恢复（嵌套安全）——
+        //   设置点在下方字段作用域注入处（与注入同锚），此处先保存旧值。
+        const std::string savedFieldScope1472 = currentFieldScopeClass_;
         const bool savedConst = constMethodContext_;
         constMethodContext_ = mi.isConstMethod;
         // #282（2026-10-08）：静态标志随方法体进出——visitSelfExpr 据此拒绝
@@ -334,12 +337,40 @@ void SemanticAnalyzer::checkSingleMethodBody(ClassInfo& info, ClassMemberInfo& m
         // 类字段并入方法作用域（直接字段访问，Task 3.1）：
         //   方法体内 字段名 = 值 与 字段名 读取 直接解析为实例字段。
         //   参数同名时参数优先（先声明已占用）。
-        for (const auto& fname : info.fieldOrder) {
-            auto f = info.fields.find(fname);
-            if (f == info.fields.end()) continue;
-            std::string t;
-            if (lookupVar(fname, t)) continue;
-            declareVar(fname, f->second.type, member->location);
+        //   1472 根治（#1472 采样 H07）：字段作用域按方法**声明所属类**
+        //   （mi.ownerClass，空=本类）沿继承链向上收集——继承并入的父类方法
+        //   在派生类语境再检查（桥接再发射架构）时，体内裸字段名仍须绑定
+        //   声明类链字段（C++ 名字隐藏：基类方法体内的 v 永远是 基::v，与
+        //   调用对象静态类型无关）；原实现按提升目标类 info.fieldOrder 注入，
+        //   遮蔽字段时基类方法体误绑派生类条目（错类型→B 件误拒「无法将
+        //   浮64 隐式转换为整32」/同类型→错槽静默错值）。声明类层先于祖先
+        //   层声明，同名时声明类条目优先（遮蔽语义与 IR 侧
+        //   classFieldOffsetFrom 最派生命中同锚）。泛型实例方法
+        //   （mi.ownerClass=实例名）声明类即 info.name，零行为变化。
+        {
+            std::string declClass1472 =
+                mi.ownerClass.empty() ? info.name : mi.ownerClass;
+            if (declClass1472 != info.name &&
+                !isDerivedFrom(info.name, declClass1472)) {
+                declClass1472 = info.name;  // 声明类不在本类继承链→按本类（防御）
+            }
+            // 1472：字段判定上下文同步（isCurrentClassFieldName 094 豁免判据
+            //   与注入同锚——按声明类链，非提升目标类）
+            currentFieldScopeClass_ = declClass1472;
+            for (const ClassInfo* ci1472 =
+                     findClass(declClass1472).value_or(nullptr);
+                 ci1472 != nullptr;
+                 ci1472 = ci1472->baseName.empty()
+                              ? nullptr
+                              : findClass(ci1472->baseName).value_or(nullptr)) {
+                for (const auto& fname : ci1472->fieldOrder) {
+                    auto f = ci1472->fields.find(fname);
+                    if (f == ci1472->fields.end()) continue;
+                    std::string t;
+                    if (lookupVar(fname, t)) continue;
+                    declareVar(fname, f->second.type, member->location);
+                }
+            }
         }
         // P3-20：父类构造初始化列表（函数 子(...) : 父(实参)）——校验父类名与实参类型
         // D22 根治（248-a）：校验仅限**自身构造**（构造方法名=所属类名）。继承并入
@@ -461,6 +492,7 @@ void SemanticAnalyzer::checkSingleMethodBody(ClassInfo& info, ClassMemberInfo& m
         currentFnUnsafe_ = savedUnsafe;  // plans/019 阶段4
         genericTypeParams_ = savedTypeParams;
         currentMethodIsStatic_ = savedStatic;
+        currentFieldScopeClass_ = savedFieldScope1472;  // 1472：声明类上下文恢复
         contextClassStack_.pop_back();
 }
 
@@ -494,4 +526,34 @@ void SemanticAnalyzer::recheckGenericMethodBody(const std::string& instanceName,
         return;
     }
 }
+
+// 1472 轮自 semantic.cpp 机械迁入（该文件 1004 过 1000 冻结线「先拆再加」；
+//   字段名判定语义归属=类成员访问解析域·本文件 checkSingleMethodBody 同域，
+//   纯搬迁零行为变更）。
+bool SemanticAnalyzer::isCurrentClassFieldName(const std::string& name) const {
+    // 1472 根治（#1472 采样 H07）：方法体内字段判定按**声明类**作用域——
+    //   继承并入的父类方法在派生类语境再检查时，contextClassStack_ 顶是提升
+    //   目标类（派生），按它查字段表会命中派生类遮蔽条目（与字段作用域注入
+    //   /IR 侧 classFieldOffsetFrom 声明类锚不同步）；非方法体上下文（空）
+    //   回退类上下文栈顶（自由函数无类上下文 → false，原行为）。
+    const std::string scopeName = currentFieldScopeClass_.empty()
+                                      ? (contextClassStack_.empty()
+                                             ? std::string()
+                                             : contextClassStack_.back())
+                                      : currentFieldScopeClass_;
+    // 下面两处否定分支的定性（1472）：非类上下文（自由函数/顶层）或上下文
+    //   类名查表 miss 时，「该名是否为类实例字段」的答案恒为否——这是判定
+    //   语义的合法否定回答（否定回答≠错误），调用方按布尔分流借用豁免宽严，
+    //   不产生错值产物；非查表 miss 取默认值继续编译的静默形态。
+    // 静默豁免业务值: 无类上下文=实例字段可见性不存在，判定恒否（语义本身）
+    if (scopeName.empty()) return false;
+    // 静默豁免业务值: 上下文类名查表 miss=否定分支应答，非静默默认续译
+    const ClassInfo* cls = findClass(scopeName).value_or(nullptr);
+    // 静默豁免业务值: cls 空分流=同上否定分支（miss 应答否·语义本身非兜底）
+    if (cls == nullptr) return false;
+    std::string owner;
+    const ClassMemberInfo* member = lookupClassMember(cls->name, name, owner).value_or(nullptr);
+    return member != nullptr && !member->isStatic;
+}
+
 } // namespace cn_compiler

@@ -290,14 +290,9 @@ bool SemanticAnalyzer::isOwnedStrRvalue(const Expr* rhs) const {
     return false;
 }
 
-bool SemanticAnalyzer::isCurrentClassFieldName(const std::string& name) const {
-    if (contextClassStack_.empty()) return false;
-    const ClassInfo* cls = currentContextClass().value_or(nullptr);
-    if (cls == nullptr) return false;
-    std::string owner;
-    const ClassMemberInfo* member = lookupClassMember(cls->name, name, owner).value_or(nullptr);
-    return member != nullptr && !member->isStatic;
-}
+// 注：isCurrentClassFieldName 已迁至 class_resolver_access.cpp（1472 轮·
+//   semantic.cpp 1004 过 1000 冻结线「先拆再加」；字段名判定语义归属=类
+//   成员访问解析域，机械搬迁零行为变更）。
 
 
 bool SemanticAnalyzer::declareVar(const std::string& name, const std::string& type,

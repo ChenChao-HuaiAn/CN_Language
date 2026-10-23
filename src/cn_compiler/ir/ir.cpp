@@ -501,7 +501,7 @@ cn::Optional<std::string> IRGenerator::memberObjStructType(MemberExpr* node) con
         //   isInstanceField 已含遮蔽判据）。原 miss → objType 空 → decl==nullptr
         //   → 成员读**静默降级常量 0**（探针 `盒$读x` 产物 `mov $0x0,%r10` 铁证）。
         if (objType.empty() && isInstanceField(objName)) {
-            objType = classFieldType(currentClass_, objName).value_or("");
+            objType = classFieldType(fieldScopeClass(), objName).value_or("");  // 1472 同锚
         }
     } else if (node->object->getType() == NodeType::CallExpr) {
         // 1014（链式访问根治）：对象为函数/方法调用（lvalueAddress/取宽度消费面

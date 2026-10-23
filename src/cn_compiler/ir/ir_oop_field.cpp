@@ -291,7 +291,8 @@ ir::IRValue IRGenerator::genInstanceFieldAddr(const std::string& fieldName,
     }
     const int offset =
         (semantic_ != nullptr)
-            ? semantic_->classFieldOffset(currentClass_, fieldName).value_or(-1)
+            ? semantic_->classFieldOffsetFrom(currentClass_, fieldName,
+                                              fieldScopeClass()).value_or(-1)
             : -1;
     if (offset < 0) return thisPtr;
     return emitResult(ir::Opcode::FieldAddr, {thisPtr}, "ptr",
@@ -312,6 +313,9 @@ ir::IRValue IRGenerator::genStaticFieldAddr(const std::string& className,
 // 判定：当前方法非静态 且 名称在类字段表（沿继承链）且 不在当前方法作用域。
 // 说明：语义层把类字段并入方法作用域（checkClassMethods declareVar），
 //   IR 层 setupMethodParams 未并入字段，故用"不在 varStack_ 但命中字段表"判定。
+// 1472 根治：字段表查询按方法声明所属类（fieldScopeClass）——继承并入的
+//   父类方法在派生类语境发射时，体内裸字段名沿声明类链向上解析（C++ 名字
+//   隐藏：基类方法体内的 v 永远是 基::v），禁命中派生类遮蔽字段。
 bool IRGenerator::isInstanceField(const std::string& name) const {
     if (currentMethodStatic_ || currentClass_.empty()) return false;
     if (semantic_ == nullptr) return false;
@@ -319,7 +323,7 @@ bool IRGenerator::isInstanceField(const std::string& name) const {
         if (it->find(name) != it->end()) return false;
     }
     // 1360 结果化：has_value()=命中（isInstanceField 已先行判定·原 .empty() 反判改显形）
-    return classFieldType(currentClass_, name).has_value();
+    return classFieldType(fieldScopeClass(), name).has_value();
 }
 
 // ==================== 方法体内直接字段访问 ====================
@@ -351,7 +355,8 @@ bool IRGenerator::handleClassFieldRead(IdentifierExpr* node) {
     if (!isInstanceField(node->name)) return false;
     // 1360 结果化：isInstanceField 已判定命中，value_or("") 仅形态兜面（类型串
     //   空串时的 mapType/判定行为与原空串完全一致）
-    const std::string fieldType = classFieldType(currentClass_, node->name).value_or("");
+    // 1472：类型查询与 isInstanceField 同锚（方法声明类链·最派生命中）
+    const std::string fieldType = classFieldType(fieldScopeClass(), node->name).value_or("");
     ir::IRValue addr = genInstanceFieldAddr(node->name, node->location);
     // 数组字段退化：返回字段地址（供 字段[i] 下标访问）
     if (types::isArray(fieldType)) {
@@ -554,7 +559,10 @@ void IRGenerator::emitClassFieldDefaults(const std::string& layerClass,
         if (!fm.ownerClass.empty() && fm.ownerClass != layerClass) continue;
         const std::string irType = mapType(fm.type);
         if (irType.empty()) continue;   // 648：类型未登记面在字段访问处显形·注入保守跳过
-        const int offset = semantic_->classFieldOffset(objClass, fn).value_or(-1);
+        // 1472：默认值按 layerClass 层条目写槽（查找起点=layerClass）——布局类
+        //   仍是 objClass（发射类布局）；起点默认（最派生命中）会把基层同名
+        //   遮蔽字段的默认值误写派生层槽。
+        const int offset = semantic_->classFieldOffsetFrom(objClass, fn, layerClass).value_or(-1);
         if (offset < 0) continue;
         ir::IRValue addr = emitResult(ir::Opcode::FieldAddr, {objPtr}, "ptr",
                                       std::to_string(offset), loc);

@@ -81,7 +81,8 @@ bool IRGenerator::handleClassFieldAssign(IdentifierExpr* ident, Expr* value,
     }
     if (!isInstanceField(ident->name)) return false;
     // 1360 结果化：value_or("") 显形（isInstanceField 已先行判定·空串落 648 显形原语义）
-    const std::string fieldType = classFieldType(currentClass_, ident->name).value_or("");
+    // 1472：类型查询与 isInstanceField 同锚（方法声明类链·最派生命中）
+    const std::string fieldType = classFieldType(fieldScopeClass(), ident->name).value_or("");
     std::string targetIrType = mapType(fieldType);
     if (targetIrType.empty()) {
         // 648（miss 不可静默·110 同族）：类字段类型未登记=内部缺陷显形；driver hasErrors 统一中止。
@@ -319,7 +320,8 @@ bool IRGenerator::handleClassFieldIncDec(IdentifierExpr* ident, Operator op,
     }
     if (!isInstanceField(ident->name)) return false;
     // 1360 结果化：value_or("") 显形（isInstanceField 已先行判定·空串落 648 显形原语义）
-    const std::string fieldType = classFieldType(currentClass_, ident->name).value_or("");
+    // 1472：类型查询与 isInstanceField 同锚（方法声明类链·最派生命中）
+    const std::string fieldType = classFieldType(fieldScopeClass(), ident->name).value_or("");
     std::string targetIrType = mapType(fieldType);
     if (targetIrType.empty()) {
         // 648（miss 不可静默·110 同族）：类字段类型未登记=内部缺陷显形；driver hasErrors 统一中止。

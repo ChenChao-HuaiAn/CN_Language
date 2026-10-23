@@ -48,7 +48,8 @@ cn::Optional<std::string> IRGenerator::exprSrcType(Expr* node) const {
             //   isClassType 判定 false -> 走通用间接调用路径，生成空取地址）。
             if (!currentClass_.empty() && !currentMethodStatic_ &&
                 isInstanceField(name)) {
-                return optOfSrc(classFieldType(currentClass_, name).value_or(""));
+                // 1472：与 isInstanceField 同锚（方法声明类链·最派生命中）
+                return optOfSrc(classFieldType(fieldScopeClass(), name).value_or(""));
             }
             return std::nullopt;
         }

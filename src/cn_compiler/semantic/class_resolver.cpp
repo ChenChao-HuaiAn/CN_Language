@@ -349,11 +349,58 @@ cn::Optional<int> SemanticAnalyzer::classTotalSize(const std::string& className)
 // 布局：实例首地址 = vtable指针（8字节，若有虚函数），其后按继承链（父类在前）
 // 依次排布各层字段。返回值为"从实例首地址起的字节偏移"（codegen 层按此寻址）。
 // 1360 结果化批3A：无值=类不存在或无此字段（原 -1 哨兵退役）
+// 1472 根治：两参版等价于 classFieldOffsetFrom(类名, 字段名, 类名)——名字解析
+//   自布局类沿链向上最派生命中（与 lookupClassMember/classFieldType 同锚）。
 cn::Optional<int> SemanticAnalyzer::classFieldOffset(const std::string& className,
                                        const std::string& fieldName) const {
-    const ClassInfo* info = findClass(className).value_or(nullptr);
+    return classFieldOffsetFrom(className, fieldName, className);
+}
+
+// 1472 根治（#1472 采样 H07·宿主类方法体字段解析被派生类同名遮蔽污染）：
+//   布局类 layoutClass 决定内存布局（实例首地址=虚表指针+接口分派区，其后沿
+//   继承链父前子后逐层排布各层字段——遮蔽同名字段各层各占槽，与
+//   computeClassLayout 同一遍历口径）；名字查找起点 resolveFrom 决定字段名
+//   解析到哪一层条目——从起点类沿继承链向上第一个含该实例字段的层=命中层
+//   （C++ 名字隐藏：派生类同名声明遮蔽祖先条目，成员访问按最派生命中）。
+//   修复前缺陷：遍历继承链父在前、同名遮蔽时恒命中最基层条目——派生对象
+//   p.v 写到基类同名字段槽（写穿/静默错值），且与类型查询
+//   （lookupClassMember=最派生命中）不一致；方法体内裸字段（声明类语境）
+//   传 resolveFrom=声明类即可锁定声明作用域（基::读 内 v 恒=基::v）。
+cn::Optional<int> SemanticAnalyzer::classFieldOffsetFrom(
+    const std::string& layoutClass, const std::string& fieldName,
+    const std::string& resolveFrom) const {
+    const ClassInfo* info = findClass(layoutClass).value_or(nullptr);
     if (info == nullptr) return std::nullopt;
-    // 收集继承链（父类在前）
+    // ① 名字解析：从查找起点沿继承链向上，第一个含该非静态字段的层=命中层
+    //   （静态字段不占实例布局，视同不含——与原遍历跳过静态同口径）
+    const ClassInfo* start = resolveFrom.empty()
+                                 ? info
+                                 : findClass(resolveFrom).value_or(nullptr);
+    if (start == nullptr) return std::nullopt;
+    const ClassInfo* hitLayer = nullptr;
+    std::string ownerLayoutName;  // 命中条目的布局层类名（ownerClass，空=命中层自身）
+    for (const ClassInfo* c = start; c != nullptr;) {
+        auto f = c->fields.find(fieldName);
+        if (f != c->fields.end() && !f->second.isStatic) {
+            hitLayer = c;
+            // fields 为合并表（继承并入的祖先条目同表共存，ownerClass=来源类）：
+            // 布局按各层自身 fieldOrder 排（computeClassLayout），故命中条目的
+            // **布局层=条目 ownerClass**（自有条目空=命中层；并入条目=祖先层）。
+            // 漏此映射：并入条目在派生层遍历中永不出现在本层 fieldOrder →
+            // 累加到底 miss（H02 实录：d.腿数=4 写 -1 丢弃，读恒 0）。
+            ownerLayoutName = f->second.ownerClass.empty() ? c->name
+                                                           : f->second.ownerClass;
+            break;
+        }
+        c = c->baseName.empty() ? nullptr : findClass(c->baseName).value_or(nullptr);
+    }
+    if (hitLayer == nullptr) return std::nullopt;
+    const ClassInfo* ownerLayer =
+        ownerLayoutName == hitLayer->name
+            ? hitLayer
+            : findClass(ownerLayoutName).value_or(nullptr);
+    if (ownerLayer == nullptr) return std::nullopt;
+    // ② 布局累加：父在前逐层逐字段对齐放置，到达布局层的命中字段即返回
     std::vector<const ClassInfo*> chain;
     const ClassInfo* c = info;
     while (c != nullptr) {
@@ -377,7 +424,7 @@ cn::Optional<int> SemanticAnalyzer::classFieldOffset(const std::string& classNam
             const int fieldAlign = handleField ? 8 : typeAlignOf(f->second.type).value_or(8);
             const int fieldSize = handleField ? 8 : typeSizeOf(f->second.type).value_or(8);
             acc = (acc + fieldAlign - 1) / fieldAlign * fieldAlign;
-            if (fname == fieldName) return cn::Optional<int>(acc);
+            if (ci == ownerLayer && fname == fieldName) return cn::Optional<int>(acc);
             acc += fieldSize;
         }
     }

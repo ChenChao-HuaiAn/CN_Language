@@ -254,7 +254,7 @@ std::string IRGenerator::indexAssignElemType(AssignmentExpr* node) {
             else if (st.empty() &&
                      isInstanceField(static_cast<IdentifierExpr*>(idx->object.get())->name)) {
                 const std::string ft = classFieldType(
-                    currentClass_,
+                    fieldScopeClass(),  // 1472 同锚
                     static_cast<IdentifierExpr*>(idx->object.get())->name).value_or("");
                 if (types::isArray(ft)) {
                     targetType = mapType(types::arrayElemOf(ft));
@@ -367,7 +367,7 @@ cn::Optional<std::string> IRGenerator::indexTargetElemSrcType(AssignmentExpr* no
     if (st.empty() &&
         isInstanceField(static_cast<IdentifierExpr*>(tIdx->object.get())->name)) {
         const std::string ft = classFieldType(
-            currentClass_,
+            fieldScopeClass(),  // 1472 同锚
             static_cast<IdentifierExpr*>(tIdx->object.get())->name).value_or("");
         if (types::isArray(ft)) return types::arrayElemOf(ft);
         if (types::isPointer(ft)) return types::pointeeOf(ft);

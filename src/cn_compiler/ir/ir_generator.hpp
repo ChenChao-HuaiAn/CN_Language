@@ -916,6 +916,22 @@ private:
     cn::Optional<std::string> classFieldType(const std::string& className, const std::string& fieldName) const;
     // 当前方法所属类名（visitClassDecl 设置；方法体内 自身/父类 解析用）
     std::string currentClass_ = "";
+    // 1472 根治（#1472 采样 H07）：当前方法**声明**所属类（mi.ownerClass，
+    //   emitClassMethod 设置；空=非方法体/回退 currentClass_）。继承并入的
+    //   父类方法在派生类语境发射（桥接再发射架构）时，体内裸字段名仍须按
+    //   声明类沿继承链向上解析（C++ 名字隐藏：基类方法体内的 v 永远是
+    //   基::v，与调用对象静态类型无关）——禁解析到派生类遮蔽字段（错槽/
+    //   错类型）。偏移按发射类布局（classFieldOffsetFrom 布局类=currentClass_
+    //   +起点=fieldScopeClass()，布局前缀兼容同值）。泛型实例方法
+    //   （mi.ownerClass=实例名，generics.cpp 重写）=发射类，零行为变化。
+    //   消费面=字段直访族（isInstanceField/handleClassFieldRead/Assign/
+    //   IncDec/genInstanceFieldAddr）与下标·类型推导的 isInstanceField 配对
+    //   查询（ir_expr_index/ir_expr_type/ir.cpp/ir_expr_assign）。
+    std::string methodDeclClass_;
+    // 方法体字段解析作用域类（1472）：声明类优先，空回退发射类
+    const std::string& fieldScopeClass() const {
+        return methodDeclClass_.empty() ? currentClass_ : methodDeclClass_;
+    }
     // 当前方法是否静态（静态方法体内 自身 非法，字段访问解析用）
     bool currentMethodStatic_ = false;
     // 当前方法是否常量成员函数（常量方法体内禁止修改成员，Task 3.9 语义已检查）

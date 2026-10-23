@@ -98,7 +98,7 @@
                                   const std::string& ifaceName) const;
     // 234（2026-10-06·91303）：sub 是否为 base 的派生类（沿 baseName 链上溯·
     //   同类也算真=调用方按需排除）
-    bool isDerivedFrom(const std::string& sub, const std::string& base) const;
+    bool isDerivedFrom(const std::string& sub, const std::string& base) const override;
     // 234：类→基类值形态切片拒绝专用诊断（报了返回 true·立法 234 防切片）
     bool reportSliceReject(const std::string& from, const std::string& to,
                            const SourceLocation& loc);
@@ -120,6 +120,11 @@
     cn::Optional<int> classTotalSize(const std::string& className) const;
     // 查询类字段偏移（沿继承链，-1表示无此字段；含虚表指针偏移调整）
     cn::Optional<int> classFieldOffset(const std::string& className, const std::string& fieldName) const override ;
+    // 1472 根治：带名字查找起点限定的类字段偏移（语义见 semantic_view.hpp——
+    //   布局按 layoutClass，名字解析自 resolveFrom 沿链向上最派生命中条目）
+    cn::Optional<int> classFieldOffsetFrom(const std::string& layoutClass,
+                                           const std::string& fieldName,
+                                           const std::string& resolveFrom) const override ;
     // 查询泛型声明（1360 结果化批3A：无值=未命中）。Debug 子任务修复（泛型
     //   类方法体提升需解析 实例化类名$实参 的类型参数映射）——公开转发供 IR 层访问。
     cn::Optional<const GenericInfo*> findGeneric(const std::string& name) const override ;
