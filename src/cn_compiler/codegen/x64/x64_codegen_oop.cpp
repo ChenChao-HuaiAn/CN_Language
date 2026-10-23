@@ -17,6 +17,9 @@
 
 namespace cn_compiler {
 
+// #1212：虚调用参数位合法上界（双边界判据用；实际 CN 参数个数远小于此）
+constexpr int kMaxCallArgSlots1212 = 1 << 20;
+
 // ==================== 符号生成辅助（Task 3.1/3.2/3.9） ====================
 
 // 类方法链接符号：类名 + 方法签名 key（名#参数串）-> 修饰符号
@@ -196,6 +199,60 @@ void X64CodeGenerator::emitDeleteObject(AsmWriter& writer, const ir::IRInstructi
     writer.raw(skipLabel + ":");
 }
 
+// #1212 审查 P1-2：虚调用 i128/u128 实参装载（ABI=双槽地址）。
+//   coff>0：常量双半先写 [rsp+coff]/[rsp+coff+8]（调用方一次性分配区内），
+//     再取该地址；coff=0：非常量成对分配先溢出到原双槽，再取低半槽地址。
+//   rax 在虚调用中保存函数指针（call rax），装载一律经 r10 中转。
+void X64CodeGenerator::emitVirtualI128Arg(AsmWriter& writer, const ir::IRValue& av,
+                                          int coff, int regIdx,
+                                          const std::string& paramSlot) {
+    std::string addr;
+    if (coff != 0) {
+        // 常量：parse "LO:HI"（十六进制）或十进制小值 -> 双 8 字节写入
+        const std::string& ex = av.extra;
+        const std::size_t colon = ex.find(':');
+        std::string loT, hiT;
+        if (colon != std::string::npos) {
+            loT = uint64HexText(static_cast<std::uint64_t>(
+                std::stoull(ex.substr(0, colon), nullptr, 16)));
+            hiT = uint64HexText(static_cast<std::uint64_t>(
+                std::stoull(ex.substr(colon + 1), nullptr, 16)));
+        } else if (colon == std::string::npos) {
+            loT = uint64HexText(static_cast<std::uint64_t>(std::stoull(ex)));
+            hiT = "0";
+        }
+        writer.line("mov r10, " + loT);
+        writer.line("mov [rsp+" + std::to_string(coff) + "], r10");
+        writer.line("mov r10, " + hiT);
+        writer.line("mov [rsp+" + std::to_string(coff + 8) + "], r10");
+        addr = "[rsp+" + std::to_string(coff) + "]";
+    } else if (!av.isConstant) {
+        // 成对分配 -> 先成对溢出到原双槽（禁单半），再取低半槽地址
+        spillI128Pair(writer, av);
+        writer.line("lea r10, " + regSlot(av.id + 1));
+        addr = "r10";
+    }
+    if (addr.empty()) {
+        // #1212 复审 P3：非常量且无寄存器/变量来源=IR 缺陷（静默空操作数
+        //   会生成非法汇编/垃圾实参）
+        diagnostics_.report(Diagnostic::error(
+            SourceLocation(),
+            "内部错误: 虚调用 i128 实参无地址来源（id=-1 且非常量）"));
+        return;
+    }
+    if (regIdx >= 4 && regIdx <= kMaxCallArgSlots1212) {
+        // 栈参数位：常量地址经 r10 中转（mov mem,mem 非法）；非常量已是 r10
+        if (coff != 0) {
+            writer.line("lea r10, " + addr);
+        }
+        writer.line("mov " + paramSlot + ", r10");
+    } else if (coff != 0) {
+        writer.line("lea " + paramSlot + ", " + addr);
+    } else if (coff == 0) {
+        writer.line("mov " + paramSlot + ", " + addr);
+    }
+}
+
 // ==================== 虚调用（VirtualCall） ====================
 
 // VirtualCall：operand[0] = 对象指针（this），operand[1..] = 实参
@@ -235,14 +292,27 @@ void X64CodeGenerator::emitVirtualCall(AsmWriter& writer, const ir::IRInstructio
     const std::string thisReg = (vcFormA || vcBigRet) ? "rdx" : "rcx";
     // 分配 32 字节影子空间 + 栈参数区（实参 + this，共 argCount+1 个参数位；
     //   this 占第 0 位，总参数位 = argCount + 1）
-    const std::size_t totalParams = argCount + 1;  // 含 this
-    if (totalParams > 4) {
-        const std::size_t stackArgs = totalParams - 4;
-        const int total = static_cast<int>(32 + stackArgs * 8);
+    // #1212 复审 P1-2：参数位总数 = 实参 + this，且 vcFormA/vcBigRet 的 retbuf
+    //   占参数位 0（this 后移一位）——原 argCount+1 少算一位，末栈位越界 8B。
+    const std::size_t totalParams =
+        argCount + ((vcFormA || vcBigRet) ? 2 : 1);
+    // #1212 审查 P1-2：i128 常量实参 16 字节数据区纳入一次性分配（栈参数区
+    //   之后按需预留 k*16；原固定 [rsp+48]/[rsp+56] 参数少时越界=写穿调用者栈帧）
+    const std::size_t vcStackArgs = (totalParams > 4) ? (totalParams - 4) : 0;
+    const int i128ConstBase = static_cast<int>(32 + vcStackArgs * 8);
+    std::vector<int> i128ConstOffsets(argCount, 0);
+    int i128ConstArgs = 0;
+    for (std::size_t i = 0; i < argCount; ++i) {
+        const ir::IRValue& av = inst.operands[thisIdx + 1 + i];
+        if ((av.type == "i128" || av.type == "u128") && av.isConstant) {
+            i128ConstOffsets[i] = i128ConstBase + (i128ConstArgs++) * 16;
+        }
+    }
+    const int i128ConstPad = i128ConstArgs * 16;
+    {
+        const int total = i128ConstBase + i128ConstPad;
         const int alignPad = (total % 16 == 0) ? 0 : (16 - total % 16);
         writer.line("sub rsp, " + std::to_string(total + alignPad));
-    } else {
-        writer.line("sub rsp, 32");
     }
     // 1. 对象指针（this）入 rcx（形态A/i128 时 rdx——retbuf 占 rcx）
     writer.line("mov " + thisReg + ", " + objOp);
@@ -294,11 +364,15 @@ void X64CodeGenerator::emitVirtualCall(AsmWriter& writer, const ir::IRInstructio
             writer.line(load + " " + xmm + ", " + floatSourceText(op, mp));
             // 变参兼容：位模式复制到同参数位整型寄存器（MSVC 惯例）；栈传位 movq
             //   内存目标须带 qword ptr（A2070·431 汇编失败实证）
-            if (regIdx >= 4) {
+            if (regIdx >= 4 && regIdx <= kMaxCallArgSlots1212) {
                 writer.line("movq qword ptr " + paramSlot + ", " + xmm);
             } else {
                 writer.line("movq " + paramSlot + ", " + xmm);
             }
+        } else if (argType == "i128" || argType == "u128") {
+            // #1212 审查 P1-2：i128 实参 ABI=双槽地址（与 emitCall/Linux 同构）
+            const ir::IRValue& av = inst.operands[thisIdx + 1 + i];
+            emitVirtualI128Arg(writer, av, i128ConstOffsets[i], regIdx, paramSlot);
         } else if (argType == "i32" || argType == "i1") {
             // 437-a（T67 根治·win 带参虚调用段错误真根因）：i32 装载**不可经 eax**——
             //   `mov eax, src` 写 eax=清零 rax 高 32 位，而 rax 正保存着函数指针
@@ -306,7 +380,7 @@ void X64CodeGenerator::emitVirtualCall(AsmWriter& writer, const ir::IRInstructio
             //   实证：V11 浮点参（xmm0·不碰 rax）绿 vs 整数参（rdx）崩；0 参绿（无装载）。
             //   经 **r10d** 中转（volatile·不涉 rax）——寄存器位/栈位统一。
             writer.line("mov r10d, " + shrunkOperand("i32", op));
-            if (regIdx >= 4) {
+            if (regIdx >= 4 && regIdx <= kMaxCallArgSlots1212) {
                 writer.line("movsxd r10, r10d");
                 writer.line("mov " + paramSlot + ", r10");
             } else {
@@ -316,26 +390,40 @@ void X64CodeGenerator::emitVirtualCall(AsmWriter& writer, const ir::IRInstructio
             // 437-a：同上·经 r10d 零扩展（写 r10d 清零高 32=无符号语义）
             writer.line("mov r10d, " + shrunkOperand("i32", op));
             writer.line("mov " + paramSlot + ", r10");
-        } else {
-            // i64/ptr：64 位直接 mov（指针常量 lea 取地址）
-            const ir::IRValue& av = inst.operands[1 + i];
-            if (av.isConstant && argType == "ptr") {
+        } else if (argType == "i64" || argType == "u64" || argType == "ptr" ||
+                   argType == "i8" || argType == "u8" ||
+                   argType == "i16" || argType == "u16") {
+            // #1212 复审 P1-1：栈参数位禁止 mem-to-mem（mov [rsp+N], [rbp-M]
+            //   = A2070）——未分配 vreg/变量源一律经 r10 中转；寄存器位保留
+            //   直接 mov/lea（单条，产物不变）。
+            const ir::IRValue& av = inst.operands[thisIdx + 1 + i];
+            const bool stackSlot = (regIdx >= 4 && regIdx <= kMaxCallArgSlots1212);
+            if (stackSlot) {
+                if (av.isConstant && argType == "ptr") {
+                    writer.line("lea r10, " + op);
+                } else if (!(av.isConstant && argType == "ptr")) {
+                    writer.line("mov r10, " + op);
+                }
+                writer.line("mov " + paramSlot + ", r10");
+            } else if (av.isConstant && argType == "ptr") {
                 writer.line("lea " + paramSlot + ", " + op);
             } else {
                 writer.line("mov " + paramSlot + ", " + op);
             }
+        } else {
+            // 闭集外类型=IR 分派缺陷显形（静默漏装载会传垃圾实参）
+            diagnostics_.report(Diagnostic::error(
+                inst.loc, "内部错误: 虚调用实参类型未覆盖 '" + argType +
+                              "'（#1212 审查 P2）"));
         }
     }
     // 5. 间接调用：rax 保存函数指针（参数装载未破坏 rax）
     writer.line("call rax");
     // 恢复栈（与分配对称）
-    if (totalParams > 4) {
-        const std::size_t stackArgs = totalParams - 4;
-        const int total = static_cast<int>(32 + stackArgs * 8);
+    {
+        const int total = i128ConstBase + i128ConstPad;
         const int alignPad = (total % 16 == 0) ? 0 : (16 - total % 16);
         writer.line("add rsp, " + std::to_string(total + alignPad));
-    } else {
-        writer.line("add rsp, 32");
     }
     // 6. 返回值 -> 结果槽（浮点 xmm0，整型 rax；410：i128 经 rax=retbuf 读回双半）
     if (inst.result.id >= 0) {

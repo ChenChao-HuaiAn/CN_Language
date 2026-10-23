@@ -103,12 +103,15 @@ void LinuxX64CodeGenerator::emitNewObject(LinuxX64AsmWriter& writer,
         (bar == std::string::npos) ? "0" : inst.extra.substr(bar + 1);
     const int dstOff = regSlotOffset(inst.result.id);
     // 1. 堆分配：rdi = size；call __cn_object_new -> rax（对象指针）
-    try {
-        writer.line("mov rdi, " + std::to_string(std::stoll(sizeText)));
-    } catch (...) {
-        writer.line("mov rdi, 0");
-    }
-    writer.line("call __cn_object_new");
+    // 审查 P1-1：分配辅助 call 统一浮点活跃值保护（结果在 rax，restore 不碰）
+    emitCallClobberingXmm(writer, [&]() {
+        try {
+            writer.line("mov rdi, " + std::to_string(std::stoll(sizeText)));
+        } catch (...) {
+            writer.line("mov rdi, 0");
+        }
+        writer.line("call __cn_object_new");
+    });
     // 2. 初始化虚表指针（对象首地址，规格书06-五）
     if (semantic_ != nullptr) {
         const ClassInfo* ci = semantic_->findClass(className).value_or(nullptr);
@@ -193,14 +196,22 @@ void LinuxX64CodeGenerator::emitDeleteObject(LinuxX64AsmWriter& writer,
                 }
             }
             if (levelDtor != nullptr) {
-                writer.line("call " + classMethodSymbol(level, levelDtorKey, {}));
+                // 审查 P1-1：用户析构函数 call 统一浮点活跃值保护（每级一次）
+                const std::string dtorSym =
+                    classMethodSymbol(level, levelDtorKey, {});
+                emitCallClobberingXmm(writer, [&]() {
+                    writer.line("call " + dtorSym);
+                });
             }
             level = ci->baseName;
         }
     }
     // 3. 释放内存（对象指针重新装载——call 会破坏 rdi）
-    loadObjToRdi();
-    writer.line("call __cn_object_delete");
+    // 审查 P1-1：释放辅助 call 统一浮点活跃值保护
+    emitCallClobberingXmm(writer, [&]() {
+        loadObjToRdi();
+        writer.line("call __cn_object_delete");
+    });
     writer.raw(skipLabel + ":");
 }
 
@@ -241,6 +252,9 @@ void LinuxX64CodeGenerator::emitVirtualCall(LinuxX64AsmWriter& writer,
     const bool vcBigRet = (!vcFormA && (inst.result.type == "i128" ||
                                         inst.result.type == "u128"));
     const char* thisReg = (vcFormA || vcBigRet) ? "rsi" : "rdi";
+    // #1212 d：SysV xmm 全为调用者保存——虚调用点同样保护活跃浮点值
+    //   （必须在实参装载之前：浮点参数位 xmm0~xmm7 含池内 xmm6）
+    saveLiveFpForCall(writer);
     // 1. this 入 rdi（形态A/i128 时 rsi——retbuf 占 rdi）
     //    1256：操作数可能已分配（loadOperandToX 直读物理寄存器）
     loadOperandToX(writer, inst.operands[thisIdx], thisReg);
@@ -312,6 +326,8 @@ void LinuxX64CodeGenerator::emitVirtualCall(LinuxX64AsmWriter& writer,
             writer.line("mov" + std::string(av.type == "f64" ? "sd" : "ss") +
                         " qword ptr " + mem + ", xmm0");
         } else if (av.type == "i128" || av.type == "u128") {
+            // #1212 d：成对分配实参先成对溢出到原双槽，再取低半槽地址
+            spillI128Pair(writer, av);
             writer.line("lea r10, " + stackMemText(regSlotOffset(av.id + 1)));
             writer.line("mov qword ptr " + mem + ", r10");
         } else {
@@ -326,6 +342,8 @@ void LinuxX64CodeGenerator::emitVirtualCall(LinuxX64AsmWriter& writer,
         if (argKind[i] == 1) {
             loadOperandToV(writer, av, "xmm" + std::to_string(argPos[i]));
         } else if (av.type == "i128" || av.type == "u128") {
+            // #1212 d：成对分配实参先成对溢出到原双槽，再取低半槽地址
+            spillI128Pair(writer, av);
             writer.line("lea " + intParameterRegister(argPos[i]) + ", " +
                         stackMemText(regSlotOffset(av.id + 1)));
         } else {
@@ -337,19 +355,21 @@ void LinuxX64CodeGenerator::emitVirtualCall(LinuxX64AsmWriter& writer,
     if (totalAlloc > 0) {
         writer.line("add rsp, " + std::to_string(totalAlloc));
     }
+    // #1212 d：恢复调用点活跃浮点值（池不含 xmm0，不覆盖返回值）
+    restoreLiveFpAfterCall(writer);
     // 6. 返回值 -> 结果槽（浮点 xmm0，整型 rax；410：i128 经 rax=retbuf 读回双半）
     if (inst.result.id >= 0) {
         const int dstOff = regSlotOffset(inst.result.id);
         if (inst.result.type == "i128" || inst.result.type == "u128") {
-            // 410：i128 返回——被调方写 retbuf 并经 rax 返回其指针（emitCall
-            //   接收段同构·原 emitStackStore(rax)=把缓冲地址当 i128 低半=垃圾）
-            const int vcLoId = inst.result.id + 1;
+            // 410：i128 返回——被调方写 retbuf 并经 rax 返回其指针
+            //   #1212 d：结果成对分配 -> 双半直装（成对，禁单半）
             writer.line("mov r9, qword ptr [rax]");
-            emitStackStore(writer, regSlotOffset(vcLoId), "r9", "i64");
+            storeI128Half(writer, inst.result, false, "r9");
             writer.line("mov r9, qword ptr [rax+8]");
-            emitStackStore(writer, dstOff, "r9", "i64");
+            storeI128Half(writer, inst.result, true, "r9");
         } else if (isFloatType(inst.result.type)) {
-            emitStackStore(writer, dstOff, "xmm0", inst.result.type);
+            // #1212 d：结果已分配到 xmm -> 返回值直写
+            storeFloatResult(writer, inst.result, "xmm0", inst.result.type);
         } else if (!isFloatType(inst.result.type) &&
                    inst.result.type != "i128" && inst.result.type != "u128") {
             // 1256：结果已分配 -> 返回值直写物理寄存器

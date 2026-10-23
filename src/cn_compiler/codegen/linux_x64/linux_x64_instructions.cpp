@@ -761,6 +761,8 @@ void LinuxX64CodeGenerator::emitDivMod(LinuxX64AsmWriter& writer,
 // ==================== 浮点运算 ====================
 
 // 浮点二元运算：dst = op1 op op2（xmm0/xmm1；addsd/addss 系列按 f64/f32）
+// #1212 d：源/结果均可已分配到 xmm（loadOperandToV / storeFloatResult 判别）；
+//   未分配路径逐字节不变。
 void LinuxX64CodeGenerator::emitFloatBinary(LinuxX64AsmWriter& writer,
                                             const ir::IRInstruction& inst,
                                             const std::string& mnemonic) {
@@ -769,7 +771,7 @@ void LinuxX64CodeGenerator::emitFloatBinary(LinuxX64AsmWriter& writer,
     loadOperandToV(writer, inst.operands[0], "xmm0");
     loadOperandToV(writer, inst.operands[1], "xmm1");
     writer.line(mnemonic + suffix + " xmm0, xmm1");
-    emitStackStore(writer, regSlotOffset(inst.result.id), "xmm0", inst.type);
+    storeFloatResult(writer, inst.result, "xmm0", inst.type);
 }
 
 // 移位量常量文本解析（0x/0b/0o 前缀感知——std::stoi 对 "0x10" 返回 0 的潜伏
@@ -891,6 +893,18 @@ void LinuxX64CodeGenerator::emitCopy(LinuxX64AsmWriter& writer,
     // 271-a/275-b T12 根治：常量源支持——短路链 false 分支的装槽=Copy(「假」→
     //   __sc$ 槽)，源为常量「假」时原实现走变量路径（varSlotOf(「假」)=0→
     //   [rbp] 裸读 saved rbp=左假恒真）——常量源改立即数装载
+    // #1212 d：浮点 Copy——源/结果已分配到 xmm 时走 SSE 寄存器通道；
+    //   两端均未分配保持原位模式搬运（--no-regalloc 产物逐字节不变）
+    if (isFloatType(inst.type)) {
+        const bool dstFp = isXmmName(physRegOf(inst.result));
+        const bool srcFp = !inst.operands[0].isConstant &&
+                           isXmmName(physRegOf(inst.operands[0]));
+        if (dstFp || srcFp) {
+            loadOperandToV(writer, inst.operands[0], "xmm0");
+            storeFloatResult(writer, inst.result, "xmm0", inst.type);
+            return;
+        }
+    }
     if (inst.operands[0].isConstant) {
         loadOperandToX(writer, inst.operands[0], "r10");
         storeResult(writer, inst.result, "r10",
@@ -907,14 +921,11 @@ void LinuxX64CodeGenerator::emitCopy(LinuxX64AsmWriter& writer,
         if (inst.type == "i128" || inst.type == "u128" ||
             copySrcType == "i128" || copySrcType == "u128") {
             if (inst.operands[0].id >= 0 && inst.result.id >= 0) {
-                const int srcLoId = inst.operands[0].id + 1;
-                const int srcHiId = inst.operands[0].id;
-                const int dstLoId = inst.result.id + 1;
-                const int dstHiId = inst.result.id;
-                emitStackLoad(writer, regSlotOffset(srcLoId), "r10", "i64", __LINE__);
-                emitStackStore(writer, regSlotOffset(dstLoId), "r10", "i64");
-                emitStackLoad(writer, regSlotOffset(srcHiId), "r10", "i64", __LINE__);
-                emitStackStore(writer, regSlotOffset(dstHiId), "r10", "i64");
+                // #1212 d：源/目标各自可为成对分配 -> 半值统一入口（双半同进同出）
+                loadI128Half(writer, inst.operands[0], false, "r10");
+                storeI128Half(writer, inst.result, false, "r10");
+                loadI128Half(writer, inst.operands[0], true, "r10");
+                storeI128Half(writer, inst.result, true, "r10");
                 return;
             }
             if (inst.operands[0].id < 0 && inst.result.id < 0 &&
@@ -928,8 +939,30 @@ void LinuxX64CodeGenerator::emitCopy(LinuxX64AsmWriter& writer,
                                "i64");
                 return;
             }
-            // 混合形态（寄存器<->变量）：走下方通用中转按单 64 位搬（128 位
-            //   语义面不产生此形态——IR 层 Load/Store 已拆双半·防御性兜底）
+            // #1212 d：混合形态（变量<->虚拟寄存器）——双半逐个搬运，禁单半
+            //   （变量源/目标与成对分配的结果/源各自成对处理）
+            if (!inst.operands[0].isConstant && inst.operands[0].id == -1 &&
+                inst.result.id >= 0 &&
+                inst.result.id <= kMaxVirtualRegId1256 &&
+                !inst.operands[0].extra.empty()) {
+                emitStackLoad(writer, varSlotOf(inst.operands[0].extra), "r10", "i64",
+                              __LINE__);
+                storeI128Half(writer, inst.result, false, "r10");
+                emitStackLoad(writer, varSlotOf(inst.operands[0].extra + "$s1"), "r10",
+                              "i64", __LINE__);
+                storeI128Half(writer, inst.result, true, "r10");
+                return;
+            }
+            if (!inst.result.isConstant && inst.operands[0].id >= 0 &&
+                inst.operands[0].id <= kMaxVirtualRegId1256 &&
+                inst.result.id == -1 && !inst.result.extra.empty()) {
+                loadI128Half(writer, inst.operands[0], false, "r10");
+                emitStackStore(writer, varSlotOf(inst.result.extra), "r10", "i64");
+                loadI128Half(writer, inst.operands[0], true, "r10");
+                emitStackStore(writer, varSlotOf(inst.result.extra + "$s1"), "r10",
+                               "i64");
+                return;
+            }
         }
     }
     const bool narrowType = (inst.type == "i8" || inst.type == "i16" ||

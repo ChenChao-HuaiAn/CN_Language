@@ -27,6 +27,10 @@ void LinuxX64CodeGenerator::emitCall(LinuxX64AsmWriter& writer,
     const std::string callee = inst.extra;
     const std::size_t argBase = isIndirect ? 1 : 0;
     const std::size_t argCount = inst.operands.size() - argBase;
+    // #1212 d：SysV xmm 全为调用者保存——call 前把所有在调用点活跃的已分配
+    //   浮点值保存到各自原槽（必须在浮点实参装载之前：xmm0~xmm7 参数位含池内
+    //   xmm6），call 返回后恢复（call-clobber spill，镜像 LLVM 策略）。
+    saveLiveFpForCall(writer);
     // 隐藏返回指针（i128/u128/struct* 结果类型）——三路判定，对齐 ARM64 后端。
     //   IR 契约（ir_call.cpp「隐藏返回指针作为第一个参数」）：用户结构体返回调用
     //   由 IR 层预插 retbuf 地址为 operands[0]、result.type=void——本后端原样
@@ -100,7 +104,9 @@ void LinuxX64CodeGenerator::emitCall(LinuxX64AsmWriter& writer,
             // i128 栈参数：传双槽地址指针（常量 -> 全局池；寄存器 -> 低64位槽地址）
             if (av.isConstant) {
                 emitLoadSymbolAddr(writer, "r10", i128ConstLabel(av));
-            } else {
+            } else if (!av.isConstant) {
+                // #1212 d：成对分配实参先成对溢出到原双槽，再取低半槽地址
+                spillI128Pair(writer, av);
                 writer.line("lea r10, " + stackMemText(regSlotOffset(av.id + 1)));
             }
             writer.line("mov qword ptr " + mem + ", r10");
@@ -125,7 +131,9 @@ void LinuxX64CodeGenerator::emitCall(LinuxX64AsmWriter& writer,
             const std::string reg = intParameterRegister(argPos[i]);
             if (av.isConstant) {
                 emitLoadSymbolAddr(writer, reg, i128ConstLabel(av));
-            } else {
+            } else if (!av.isConstant) {
+                // #1212 d：成对分配实参先成对溢出到原双槽，再取低半槽地址
+                spillI128Pair(writer, av);
                 writer.line("lea " + reg + ", " + stackMemText(regSlotOffset(av.id + 1)));
             }
         } else {
@@ -168,18 +176,20 @@ void LinuxX64CodeGenerator::emitCall(LinuxX64AsmWriter& writer,
     if (totalAlloc > 0) {
         writer.line("add rsp, " + std::to_string(totalAlloc));
     }
+    // #1212 d：恢复调用点活跃浮点值（call 已返回；池不含 xmm0，不覆盖返回值）
+    restoreLiveFpAfterCall(writer);
     // 返回值 -> 结果槽（浮点 xmm0，整型/指针 rax；i128/结构体经 rax=retbuf 读回）
     if (inst.result.id >= 0) {
         const int dstOff = regSlotOffset(inst.result.id);
         if (inst.result.type == "i128" || inst.result.type == "u128") {
-            // i128 返回：缓冲区指针在 rax，读回双槽
-            const int loId = inst.result.id + 1;
+            // i128 返回：缓冲区指针在 rax，读回双半（#1212 d：成对分配 -> 双 GPR）
             writer.line("mov r9, qword ptr [rax]");
-            emitStackStore(writer, regSlotOffset(loId), "r9", "i64");
+            storeI128Half(writer, inst.result, false, "r9");
             writer.line("mov r9, qword ptr [rax+8]");
-            emitStackStore(writer, dstOff, "r9", "i64");
+            storeI128Half(writer, inst.result, true, "r9");
         } else if (isFloatType(inst.result.type)) {
-            emitStackStore(writer, dstOff, "xmm0", inst.result.type);
+            // #1212 d：结果已分配到 xmm -> 返回值直写（免槽往返）
+            storeFloatResult(writer, inst.result, "xmm0", inst.result.type);
         } else if (!isFloatType(inst.result.type) &&
                    inst.result.type != "i128" && inst.result.type != "u128") {
             // 1256：结果已分配 -> 返回值直写物理寄存器（窄/32 位用 32 位名，

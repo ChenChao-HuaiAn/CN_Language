@@ -30,12 +30,19 @@ namespace regalloc {
 
 namespace {
 
-// #1212 分步开关（提交粒度：a/b/c 三步各自可回退）：
-//   kI128AllocEnabled  = 步骤 b（x64 i128 双 GPR 成对分配）
-//   kArm64FloatEnabled = 步骤 c（arm64 v8~v15 浮点寄存器）
+// #1212 分步开关（提交粒度：a/b/c/d 三步各自可回退）：
+//   kI128AllocEnabled   = 步骤 b/d（x64 与 linux_x64 的 i128 双 GPR 成对分配）
+//   kArm64FloatEnabled  = 步骤 c（arm64 v8~v15 浮点寄存器）
+//   kLinuxX64FloatEnabled = 步骤 d（linux_x64 xmm6/xmm8~xmm15 浮点寄存器）
 // 关闭时对应区间不进入可分配面（保持原栈槽映射，产物与基线逐字节一致）。
 constexpr bool kI128AllocEnabled = true;
 constexpr bool kArm64FloatEnabled = true;
+constexpr bool kLinuxX64FloatEnabled = true;
+// arm64 i128 双半发射面尚未实现（步骤 c 仅浮点）：区间显式按架构剔除——
+//   arm64 regSlotOffset 对已分配寄存器返回 0，若 i128 分配后仍按槽消费会读写
+//   [x29] 帧指针（错值/崩溃）。此为安全门控，不是「放行」：arm64 保持原栈槽
+//   映射=产物与基线逐字节一致；待 arm64 双半发射面落地后与 X64/LinuxX64 同开。
+constexpr bool kArm64I128Enabled = false;
 
 // IR 类型是否参与寄存器分配（1281：64/32 位整型、指针与窄整型；三架构同面——
 //   1256 的架构门控已随 1159 合入退场）。1267 续：i1 布尔也进入本类型面——
@@ -142,9 +149,18 @@ LinearScanAllocator::LinearScanAllocator(TargetArch arch,
     //   win-x64：xmm6~xmm15 为 MS ABI 非易失寄存器（低 128 位被调用者保存），
     //     序言/尾声按函数实际使用集合 movups 保存/恢复；xmm0~xmm5 为调用者
     //     保存（发射器临时与参数位使用），不分配。
-    //   linux-x64/arm64：浮点分配后续步骤接入（此处空池=全走原栈槽，产物不变）。
+    //   linux-x64：SysV 下 xmm0~xmm15 全为调用者保存——分配池 xmm6、xmm8~xmm15
+    //     （避开 xmm0/xmm1 运算临时、xmm7 常量池装载临时）；跨 call 的活跃值
+    //     由发射端在调用点保存/恢复（call-clobber spill，见 saveLiveFpForCall），
+    //     序言/尾声不需要保存（调用者对 xmm 无保存期望）。
     if (arch == TargetArch::X64) {
         for (int i = 6; i <= 15; ++i) {
+            fpRegs_.push_back("xmm" + std::to_string(i));
+        }
+    }
+    if (arch == TargetArch::LinuxX64 && kLinuxX64FloatEnabled) {
+        fpRegs_.push_back("xmm6");
+        for (int i = 8; i <= 15; ++i) {
             fpRegs_.push_back("xmm" + std::to_string(i));
         }
     }
@@ -462,7 +478,6 @@ void LinearScanAllocator::scanPool(const std::vector<LiveInterval>& intervals,
     // 活跃区间集合：按 end 升序（小顶堆，存区间索引）
     // 注册表：regId -> 分配的物理寄存器列表（普通值 1 个；i128 成对 2 个）
     std::unordered_map<int, std::vector<std::string>> active;
-    std::unordered_map<std::string, int> regOwner;     // 物理寄存器 -> regId（占用者）
     std::set<std::string> freeRegs(pool.begin(), pool.end());  // 空闲寄存器
     std::vector<std::pair<int, int>> activeEnds;       // (end, regId)，按 end 升序维护
     int nextSpillSlot = 0;
@@ -484,7 +499,6 @@ void LinearScanAllocator::scanPool(const std::vector<LiveInterval>& intervals,
             if (ait == active.end()) continue;
             for (const std::string& reg : ait->second) {
                 freeRegs.insert(reg);
-                regOwner.erase(reg);
             }
             active.erase(ait);
         }
@@ -503,7 +517,6 @@ void LinearScanAllocator::scanPool(const std::vector<LiveInterval>& intervals,
             for (int k = 0; k < needCount; ++k) {
                 const std::string reg = *freeRegs.begin();
                 freeRegs.erase(freeRegs.begin());
-                regOwner[reg] = li.regId;
                 taken.push_back(reg);
             }
             active[li.regId] = taken;
@@ -537,7 +550,6 @@ void LinearScanAllocator::scanPool(const std::vector<LiveInterval>& intervals,
                   [](const std::pair<int, int>& a, const std::pair<int, int>& b) {
                       return a.first < b.first;
                   });
-        (void)regOwner;
     }
 }
 
@@ -558,6 +570,16 @@ RegAssignmentMap LinearScanAllocator::allocate(const ir::IRFunction& function,
         intervals_.erase(
             std::remove_if(intervals_.begin(), intervals_.end(),
                            [](const LiveInterval& li) { return li.type == "i1"; }),
+            intervals_.end());
+    }
+    // #1212 步骤 b/d：i128 双半仅对已实现成对发射面的架构启用（X64/LinuxX64）。
+    //   arm64 双半发射面未落地 → 显式剔除区间，保持原双槽映射（产物逐字节
+    //   不变）；若误启用，arm64 的 regSlotOffset 对已分配寄存器返回 0，i128
+    //   槽消费会读写 [x29] 帧指针 = 错值/崩溃（安全门控，非静默兜底）。
+    if (arch_ == TargetArch::Arm64 && !kArm64I128Enabled) {
+        intervals_.erase(
+            std::remove_if(intervals_.begin(), intervals_.end(),
+                           [](const LiveInterval& li) { return li.is128; }),
             intervals_.end());
     }
     RegAssignmentMap out;

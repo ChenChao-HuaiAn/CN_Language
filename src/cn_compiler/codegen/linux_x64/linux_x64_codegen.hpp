@@ -36,6 +36,11 @@
 
 namespace cn_compiler {
 
+// 1256：虚拟寄存器 ID 合法上限（双边界判据用；IR 侧 id 为 int 且远小于此——
+//   越界 id 只可能来自损坏输入，视为无分配结果）。头文件归属（#1212 d）：
+//   instructions.cpp 的 i128 混合形态双边界判据与 codegen.cpp 消费点共用。
+constexpr int kMaxVirtualRegId1256 = 1 << 24;
+
 // 语义分析器前向声明（类布局/虚表槽位/静态字段查询，供 codegen OOP 展开）
 class ISemanticView;  // 语义只读视图（346 重构D·model 层接口·实现在 semantic.hpp）
 
@@ -373,6 +378,43 @@ private:
     // 8/16 位目标的窄名（r12 -> r12b/r12w；32 位名同样可窄化）
     static std::string narrowOperand(const std::string& type, const std::string& op);
 
+    // ==================== #1212 d：i128 双半成对分配消费面 ====================
+    // 该虚拟寄存器是否成对分配到两个 GPR（i128/u128；高半=%vN、低半=%vN+1）
+    bool hasI128Pair(int regId) const;
+    // i128 高/低半文本（成对分配 -> 物理寄存器；否则原双槽地址文本）
+    std::string i128HiText(const ir::IRValue& v) const;
+    std::string i128LoText(const ir::IRValue& v) const;
+    // 成对分配值溢出到原双槽（高半 -> regSlot(id)，低半 -> regSlot(id+1)）
+    void spillI128Pair(LinuxX64AsmWriter& writer, const ir::IRValue& v);
+    // 原双槽载回成对分配的双半（内存实现后收尾）
+    void reloadI128Pair(LinuxX64AsmWriter& writer, const ir::IRValue& result);
+    // 半值装载：成对分配 -> mov reg, 半寄存器；否则 emitStackLoad 原槽
+    //   （仅对 id>=0 的非常量值调用；常量由调用方按双立即数处理）
+    void loadI128Half(LinuxX64AsmWriter& writer, const ir::IRValue& v, bool isHi,
+                      const std::string& reg);
+    // 半值落位：成对分配 -> mov 半寄存器, src；否则 emitStackStore 原槽
+    void storeI128Half(LinuxX64AsmWriter& writer, const ir::IRValue& result,
+                       bool isHi, const std::string& src);
+    // ==================== #1212 d：浮点 SSE 寄存器类消费面 ====================
+    // 文本是否为 xmm 寄存器名（xmm0~xmm15 闭集）
+    static bool isXmmName(const std::string& text);
+    // 浮点结果落位：目标已分配到 xmm -> movss/movsd 寄存器直写；否则原槽
+    void storeFloatResult(LinuxX64AsmWriter& writer, const ir::IRValue& result,
+                          const std::string& srcXmm, const std::string& type);
+    // 调用点浮点活跃值保护（SysV xmm 全易失）：call 前保存所有在调用点活跃的
+    //   已分配 xmm 到各自原槽，call 后恢复（禁单半/禁跳过；按区间活跃集精确）
+    void saveLiveFpForCall(LinuxX64AsmWriter& writer);
+    void restoreLiveFpAfterCall(LinuxX64AsmWriter& writer);
+    // 审查 P1-1：运行时辅助/间接 call 点统一保护包装——body 内含「参数准备 +
+    //   call」（参数准备可能写 xmm0~xmm7，其中 xmm6 在池内，故保存先于 body）。
+    //   不返回路径（__cn_runtime_error 族错误块：call 后即 ret）豁免：无恢复语义。
+    template <typename Body>
+    void emitCallClobberingXmm(LinuxX64AsmWriter& writer, Body&& body) {
+        saveLiveFpForCall(writer);
+        body();
+        restoreLiveFpAfterCall(writer);
+    }
+
     // 结果落位（1256 直写统一出口）：
     //   已分配 -> 按类型宽度写入物理寄存器（窄型写 32 位名，清高 32 位且保
     //   留符号/零扩展位模式——寄存器内约定与槽装载语义一致）；
@@ -483,6 +525,14 @@ private:
     bool regAllocEnabled_ = false;
     // 本函数是否实际使用了物理寄存器（决定序言/尾声保存恢复）
     bool regAllocUsed_ = false;
+    // #1212 d：活跃区间快照（浮点调用点保护用；allocate 后复制，函数局部）
+    std::vector<regalloc::LiveInterval> regIntervals_;
+    // #1212 d：块起始指令序数（与 reg_alloc 的 computeBlockRanges 同口径）
+    std::vector<std::pair<int, int>> regBlockRanges_;
+    // #1212 d：当前发射指令的全局序数（-1=非指令发射期）
+    int currentInstPoint_ = -1;
+    // #1212 d：当前基本块的起始指令序数（与 reg_alloc 块线性化同口径）
+    int blockStartPoint_ = 0;
 
     // ---- 阶段C：调试信息（Task 4.4） ----
     debuginfo::DebugInfoCollector debugInfo_;  // 源码行号映射收集器

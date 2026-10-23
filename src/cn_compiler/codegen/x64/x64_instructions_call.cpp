@@ -4,10 +4,14 @@
 //   纯重构：函数体自原文件逐字节搬移（成员声明仍在 x64_codegen.hpp）。
 #include <cstdint>
 #include <string>
+#include <vector>
 
 #include "cn_compiler/codegen/x64/x64_codegen.hpp"
 
 namespace cn_compiler {
+
+// #1212：调用参数个数合法上界（双边界判据用；实际 CN 参数个数远小于此）
+constexpr std::size_t kMaxCallArgs1212 = 1u << 20;
 
 // ==================== 类型转换（Cast，Task 2.3） ====================
 
@@ -50,12 +54,27 @@ void X64CodeGenerator::emitCall(AsmWriter& writer, const ir::IRInstruction& inst
     // 否则被调函数（如运行时 printLine）将影子空间写入栈顶，踩坏调用方栈帧。
     // 影子空间始终预留；仅当 argCount>4 时额外分配栈参数区
     const std::size_t totalArgs = argCount + (hasBigRet ? 1 : 0);
-    if (totalArgs > 4) {
-        const std::size_t stackArgs = totalArgs - 4;
-        const int total = static_cast<int>(32 + bigRetPad + stackArgs * 8);
+    // #1212 审查 P1-2（同族越界一并根治）：i128 常量实参的 16 字节数据区不再
+    //   固定写 [rsp+48]/[rsp+56]（参数少时越出 sub rsp 分配区 = 写穿调用者
+    //   栈帧），改为在栈参数区之后按需预留 k*16 字节，按实参顺序分配偏移。
+    const std::size_t stackArgCount = (totalArgs > 4) ? (totalArgs - 4) : 0;
+    const int i128ConstBase =
+        static_cast<int>(32 + bigRetPad + stackArgCount * 8);
+    std::vector<int> i128ConstOffsets(argCount, 0);
+    int i128ConstArgs = 0;
+    for (std::size_t i = 0; i < argCount; ++i) {
+        const ir::IRValue& av = inst.operands[argBase + i];
+        if ((av.type == "i128" || av.type == "u128") && av.isConstant) {
+            i128ConstOffsets[i] = i128ConstBase + (i128ConstArgs++) * 16;
+        }
+    }
+    const int i128ConstPad = i128ConstArgs * 16;
+    // 分配段：影子空间 + 返回缓冲区 + 栈参数区 + i128 常量区（统一一次 sub；
+    //   参数≤4 时栈参数循环不执行——无 if/else 双份分配，避免 else 业务分支）
+    {
+        const int total = i128ConstBase + i128ConstPad;
         const int alignPad = (total % 16 == 0) ? 0 : (16 - total % 16);
         writer.line("sub rsp, " + std::to_string(total + alignPad));
-        // i128/结构体返回缓冲区：位于 [rsp+32+stackArgs*8]（16字节，返回指针区下方）
         if (hasBigRet) {
             // 2026-08 自举检查修复：返回缓冲用帧内固定区（[rbp+retbufFrameOffset_]）
             //   ——rsp 临时区在 add rsp 后失效（悬垂）；帧内区持久，跨调用读 .值 安全
@@ -64,9 +83,7 @@ void X64CodeGenerator::emitCall(AsmWriter& writer, const ir::IRInstruction& inst
         }
         // 写入栈参数（第5参数 [rsp+32]，第6 [rsp+40]...；隐藏返回指针占第1参数位）
         const std::size_t argOffset = hasBigRet ? 1 : 0;  // 参数寄存器位置后移
-        for (std::size_t i = 0; i < argCount && i + argOffset < 4; ++i) {
-            // 前4参数在寄存器，栈参数从第5起
-        }
+        if (totalArgs >= 5 && totalArgs <= kMaxCallArgs1212) {
         for (std::size_t i = 4 - argOffset; i < argCount; ++i) {
             const std::string& op = operandText(inst.operands[argBase + i]);
             const std::string& argType = inst.operands[argBase + i].type;
@@ -85,11 +102,12 @@ void X64CodeGenerator::emitCall(AsmWriter& writer, const ir::IRInstruction& inst
                         hiT = uint64HexText(static_cast<std::uint64_t>(
                             std::stoull(ex.substr(colon + 1), nullptr, 16)));
                     } else { loT = uint64HexText(static_cast<std::uint64_t>(std::stoull(ex))); hiT = "0"; }
+                    const int coff = i128ConstOffsets[i];
                     writer.line("mov rax, " + loT);
-                    writer.line("mov [rsp+48], rax");
+                    writer.line("mov [rsp+" + std::to_string(coff) + "], rax");
                     writer.line("mov rax, " + hiT);
-                    writer.line("mov [rsp+56], rax");
-                    addr = "[rsp+48]";
+                    writer.line("mov [rsp+" + std::to_string(coff + 8) + "], rax");
+                    addr = "[rsp+" + std::to_string(coff) + "]";
                 }
                 if (!av.isConstant) {
                     // #1212 步骤 b：i128 实参 ABI=双槽地址——成对分配先溢出到原槽
@@ -128,13 +146,14 @@ void X64CodeGenerator::emitCall(AsmWriter& writer, const ir::IRInstruction& inst
                 writer.line("mov [rsp+" + std::to_string(32 + (i + argOffset - 4) * 8) + "], rax");
             }
         }
-    } else {
-        // 参数<=4（含隐藏返回指针）：预留 32 字节影子空间 + 16 字节返回缓冲区（如需）
-        const int total = 32 + bigRetPad;
-        writer.line("sub rsp, " + std::to_string(total));
-        if (hasBigRet) {
-            writer.line("lea rax, [rbp" + std::to_string(retbufFrameOffset_) + "]");
-            writer.line("mov rcx, rax");  // 隐藏返回指针（rcx）
+        } else if (totalArgs >= kMaxCallArgs1212 + 1 &&
+                   totalArgs <= static_cast<std::size_t>(-1)) {
+            // #1212 复审 P3：参数个数超上限=编译器内部缺陷显形（静默跳过
+            //   栈参数写入会传垃圾实参）
+            diagnostics_.report(Diagnostic::error(
+                inst.loc, "内部错误: 调用实参个数超过上限（" +
+                              std::to_string(totalArgs) + " > " +
+                              std::to_string(kMaxCallArgs1212) + "）（#1212）"));
         }
     }
     // 前4参数寄存器（rcx/rdx/r8/r9 整型；xmm0-3 浮点，Task 2.3）。
@@ -164,11 +183,13 @@ void X64CodeGenerator::emitCall(AsmWriter& writer, const ir::IRInstruction& inst
                     hiT = uint64HexText(static_cast<std::uint64_t>(
                         std::stoull(ex.substr(colon + 1), nullptr, 16)));
                 } else { loT = uint64HexText(static_cast<std::uint64_t>(std::stoull(ex))); hiT = "0"; }
+                const int coff = i128ConstOffsets[i];
                 writer.line("mov rax, " + loT);
-                writer.line("mov [rsp+48], rax");
+                writer.line("mov [rsp+" + std::to_string(coff) + "], rax");
                 writer.line("mov rax, " + hiT);
-                writer.line("mov [rsp+56], rax");
-                writer.line("lea " + parameterRegister(regIdx) + ", [rsp+48]");
+                writer.line("mov [rsp+" + std::to_string(coff + 8) + "], rax");
+                writer.line("lea " + parameterRegister(regIdx) + ", [rsp+" +
+                            std::to_string(coff) + "]");
             }
             if (!av.isConstant) {
                 // #1212 步骤 b：i128 实参 ABI=双槽地址——成对分配先溢出到原槽
@@ -254,13 +275,10 @@ void X64CodeGenerator::emitCall(AsmWriter& writer, const ir::IRInstruction& inst
         writer.line("call " + symbolName(callee));
     }
     // 恢复栈（与分配对称：totalArgs>4 恢复 影子空间+返回缓冲区+栈参数区，否则仅恢复 影子空间+返回缓冲区）
-    if (totalArgs > 4) {
-        const std::size_t stackArgs = totalArgs - 4;
-        const int total = static_cast<int>(32 + bigRetPad + stackArgs * 8);
+    {
+        const int total = i128ConstBase + i128ConstPad;
         const int alignPad = (total % 16 == 0) ? 0 : (16 - total % 16);
         writer.line("add rsp, " + std::to_string(total + alignPad));
-    } else {
-        writer.line("add rsp, " + std::to_string(32 + bigRetPad));
     }
     // 返回值 -> 结果槽（浮点 xmm0，整型 rax，Task 2.3）
     if (inst.result.id >= 0) {

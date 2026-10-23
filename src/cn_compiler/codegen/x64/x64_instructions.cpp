@@ -174,6 +174,11 @@ std::string X64CodeGenerator::setccMnemonic(ir::Opcode opcode) {
     }
 }
 
+namespace {
+// #1212 审查 P2：虚拟寄存器 ID 合法上限（双边界判据用；IR id 为 int 且远小于此）
+constexpr int kMaxVirtualRegId1212 = 1 << 24;
+}  // namespace
+
 // ==================== 操作数文本 ====================
 
 // 操作数 -> 源操作数文本（常量立即数 / 寄存器槽 / 变量槽 / 物理寄存器）
@@ -222,10 +227,12 @@ bool X64CodeGenerator::isXmmRegisterText(const std::string& text) {
     // 长度域闭区间 [4,6]（"xmm0"~"xmm15"）
     if (text.size() < 4 || text.size() > 6) return false;
     if (text.compare(0, 3, "xmm") != 0) return false;
+    int num = 0;
     for (std::size_t i = 3; i < text.size(); ++i) {
         if (text[i] < '0' || text[i] > '9') return false;
+        num = num * 10 + (text[i] - '0');
     }
-    return true;
+    return num >= 0 && num <= 15;  // SSE 寄存器闭集 xmm0~xmm15
 }
 
 // 浮点源操作数：xmm 寄存器名原样（movsd xmm0, xmm6 合法）；其余保持原
@@ -524,8 +531,35 @@ void X64CodeGenerator::emitCopy(AsmWriter& writer, const ir::IRInstruction& inst
             writer.line("mov " + dstHi + ", rax");
             return;
         }
-        // 混合形态（寄存器<->变量）：走下方通用中转按单 64 位搬（128 位
-        //   语义面不产生此形态——IR 层 Load/Store 已拆双半，防御性兜底）
+        // #1212 步骤 b 补全：混合形态（变量<->虚拟寄存器）——双半逐个搬运，
+        //   禁单半捷径（原走通用单 64 位中转=高/低半丢失；IR 层虽不主动产生，
+        //   优化链 SSA 使用点重写可注入，必须成对覆盖）。-1=非寄存器哨兵。
+        if (!inst.operands[0].isConstant && inst.operands[0].id == -1 &&
+            inst.result.id >= 0 && inst.result.id <= kMaxVirtualRegId1212 &&
+            !inst.operands[0].extra.empty()) {
+            const std::string srcLo = "[rbp" + std::to_string(
+                varSlotOf(inst.operands[0].extra)) + "]";
+            const std::string srcHi = "[rbp" + std::to_string(
+                varSlotOf(inst.operands[0].extra + "$s1")) + "]";
+            writer.line("mov rax, " + srcLo);
+            writer.line("mov " + i128LoText(inst.result) + ", rax");
+            writer.line("mov rax, " + srcHi);
+            writer.line("mov " + i128HiText(inst.result) + ", rax");
+            return;
+        }
+        if (!inst.result.isConstant && inst.operands[0].id >= 0 &&
+            inst.operands[0].id <= kMaxVirtualRegId1212 &&
+            inst.result.id == -1 && !inst.result.extra.empty()) {
+            const std::string dstLo = "[rbp" + std::to_string(
+                varSlotOf(inst.result.extra)) + "]";
+            const std::string dstHi = "[rbp" + std::to_string(
+                varSlotOf(inst.result.extra + "$s1")) + "]";
+            writer.line("mov rax, " + i128LoText(inst.operands[0]));
+            writer.line("mov " + dstLo + ", rax");
+            writer.line("mov rax, " + i128HiText(inst.operands[0]));
+            writer.line("mov " + dstHi + ", rax");
+            return;
+        }
     }
     if (isFloatType(copySrcType)) {
         // 浮点 Copy（T25 win 侧根治·297-b）：xmm 中转完整宽度搬运——

@@ -28,10 +28,8 @@ namespace cn_compiler {
 //   冷路径；Wrap* 回绕内置/不安全 函数体内不插检查。
 void LinuxX64CodeGenerator::emitInt128Binary(LinuxX64AsmWriter& writer,
                                              const ir::IRInstruction& inst) {
-    // 结果双槽：result.id 为高64位槽（%vN）、result.id+1 为低64位槽（%vN+1）
-    const int dstHiId = inst.result.id;
-    const int dstLoId = inst.result.id + 1;
-    // 操作数低/高64位装载辅助：i128 常量拆双立即数；i128 寄存器取双槽
+    // 操作数低/高64位装载辅助：i128 常量拆双立即数；成对分配 -> 半寄存器直读；
+    //   未分配 -> 原双槽装载（#1212 d）
     auto loadI128Part = [this, &writer](const ir::IRValue& v, bool isHi,
                                         const std::string& reg) {
         if (v.isConstant) {
@@ -50,9 +48,7 @@ void LinuxX64CodeGenerator::emitInt128Binary(LinuxX64AsmWriter& writer,
             writer.line("mov " + reg + ", " + uint64HexText(part));
             return;
         }
-        // 寄存器：isHi 取 %vN（高64位）、否则取 %vN+1（低64位）
-        const int id = isHi ? v.id : v.id + 1;
-        emitStackLoad(writer, regSlotOffset(id), reg, "i64", __LINE__);
+        loadI128Half(writer, v, isHi, reg);
     };
     const bool isAdd = (inst.opcode == ir::Opcode::Add ||
                         inst.opcode == ir::Opcode::WrapAdd);
@@ -64,7 +60,7 @@ void LinuxX64CodeGenerator::emitInt128Binary(LinuxX64AsmWriter& writer,
     loadI128Part(inst.operands[0], false, "r10");
     loadI128Part(inst.operands[1], false, "r9");
     writer.line(std::string(isAdd ? "add" : "sub") + " r10, r9");
-    emitStackStore(writer, regSlotOffset(dstLoId), "r10", "i64");
+    storeI128Half(writer, inst.result, false, "r10");
     // 高64位：adc/sbb r10 = hi1 +/- hi2（带进位/借位）
     loadI128Part(inst.operands[0], true, "r10");
     loadI128Part(inst.operands[1], true, "r9");
@@ -78,7 +74,7 @@ void LinuxX64CodeGenerator::emitInt128Binary(LinuxX64AsmWriter& writer,
         emitOverflowErrorBody(writer);
         writer.raw(ok + ":");
     }
-    emitStackStore(writer, regSlotOffset(dstHiId), "r10", "i64");
+    storeI128Half(writer, inst.result, true, "r10");
 }
 
 // ==================== i128 乘/除/取余（Task 完善A：运行时辅助函数） ====================
@@ -132,19 +128,19 @@ void LinuxX64CodeGenerator::emitInt128Bitwise(LinuxX64AsmWriter& writer,
             writer.line("mov " + reg + ", " + uint64HexText(part));
             return;
         }
-        const int id = isHi ? v.id : v.id + 1;
-        emitStackLoad(writer, regSlotOffset(id), reg, "i64", __LINE__);
+        // #1212 d：成对分配 -> 半寄存器直读；未分配 -> 原双槽装载
+        loadI128Half(writer, v, isHi, reg);
     };
     // 低 64 位
     loadPart(inst.operands[0], false, "r10");
     loadPart(inst.operands[1], false, "r9");
     writer.line(m + " r10, r9");
-    emitStackStore(writer, regSlotOffset(inst.result.id + 1), "r10", "i64");
+    storeI128Half(writer, inst.result, false, "r10");
     // 高 64 位
     loadPart(inst.operands[0], true, "r10");
     loadPart(inst.operands[1], true, "r9");
     writer.line(m + " r10, r9");
-    emitStackStore(writer, regSlotOffset(inst.result.id), "r10", "i64");
+    storeI128Half(writer, inst.result, true, "r10");
 }
 
 // i128/u128 移位：完整 128 位——移位量按位宽 128 取模（plans/001:289）。
@@ -156,10 +152,13 @@ void LinuxX64CodeGenerator::emitInt128Shift(LinuxX64AsmWriter& writer,
     const bool isShl = (inst.opcode == ir::Opcode::Shl);
     const bool isUnsigned = (inst.type == "u128");
     const std::string rsh = isUnsigned ? "shr" : "sar";
-    const int hiId = inst.operands[0].id;        // %vN 高64位
-    const int loId = inst.operands[0].id + 1;    // %vN+1 低64位
-    const int dstHiId = inst.result.id;
-    const int dstLoId = inst.result.id + 1;
+    // #1212 d：半值装载/落位统一入口（成对分配走寄存器，未分配保持原双槽）
+    auto loadOpHalf = [this, &writer, &inst](bool isHi, const std::string& reg) {
+        loadI128Half(writer, inst.operands[0], isHi, reg);
+    };
+    auto storeResHalf = [this, &writer, &inst](bool isHi, const std::string& src) {
+        storeI128Half(writer, inst.result, isHi, src);
+    };
     if (inst.operands[1].isConstant) {
         const int rawK = shiftAmtOf128l(inst.operands[1].extra);
         if (!currentFnUnsafe474_ && (rawK < 0 || rawK >= 128)) {
@@ -172,42 +171,42 @@ void LinuxX64CodeGenerator::emitInt128Shift(LinuxX64AsmWriter& writer,
             writer.raw(trap + ":");
             emitOverflowErrorBody(writer);
             writer.raw(ok + ":");
-            emitStackLoad(writer, regSlotOffset(hiId), "r10", "i64", __LINE__);
-            emitStackLoad(writer, regSlotOffset(loId), "r11", "i64", __LINE__);
-            emitStackStore(writer, regSlotOffset(dstHiId), "r10", "i64");
-            emitStackStore(writer, regSlotOffset(dstLoId), "r11", "i64");
+            loadOpHalf(true, "r10");
+            loadOpHalf(false, "r11");
+            storeResHalf(true, "r10");
+            storeResHalf(false, "r11");
             return;
         }
         const int k = rawK & 127;
         if (k == 0) {
-            emitStackLoad(writer, regSlotOffset(hiId), "r10", "i64", __LINE__);
-            emitStackLoad(writer, regSlotOffset(loId), "r11", "i64", __LINE__);
-            emitStackStore(writer, regSlotOffset(dstHiId), "r10", "i64");
-            emitStackStore(writer, regSlotOffset(dstLoId), "r11", "i64");
+            loadOpHalf(true, "r10");
+            loadOpHalf(false, "r11");
+            storeResHalf(true, "r10");
+            storeResHalf(false, "r11");
             return;
         }
         if (isShl) {
             if (k < 64) {
-                emitStackLoad(writer, regSlotOffset(hiId), "r10", "i64", __LINE__);
-                emitStackLoad(writer, regSlotOffset(loId), "r11", "i64", __LINE__);
+                loadOpHalf(true, "r10");
+                loadOpHalf(false, "r11");
                 writer.line("shld r10, r11, " + std::to_string(k));  // 新高位
                 writer.line("shl r11, " + std::to_string(k));        // 新低位
-            } else {
-                emitStackLoad(writer, regSlotOffset(loId), "r11", "i64", __LINE__);
+            } else if (k >= 64 && k <= 127) {
+                loadOpHalf(false, "r11");
                 writer.line("shl r11, " + std::to_string(k - 64));
                 writer.line("mov r10, r11");
                 writer.line("xor r11, r11");
             }
-        } else {
+        } else if (!isShl) {
             if (k < 64) {
-                emitStackLoad(writer, regSlotOffset(loId), "r10", "i64", __LINE__);
-                emitStackLoad(writer, regSlotOffset(hiId), "r11", "i64", __LINE__);
+                loadOpHalf(false, "r10");
+                loadOpHalf(true, "r11");
                 writer.line("shrd r10, r11, " + std::to_string(k));  // 新低位
                 writer.line(rsh + " r11, " + std::to_string(k));     // 新高位
-            } else {
-                emitStackLoad(writer, regSlotOffset(hiId), "r10", "i64", __LINE__);
+            } else if (k >= 64 && k <= 127) {
+                loadOpHalf(true, "r10");
                 writer.line(rsh + " r10, " + std::to_string(k - 64));
-                emitStackLoad(writer, regSlotOffset(hiId), "r11", "i64", __LINE__);
+                loadOpHalf(true, "r11");
                 writer.line(isUnsigned ? "xor r11, r11" : "sar r11, 63");
             }
         }
@@ -215,11 +214,11 @@ void LinuxX64CodeGenerator::emitInt128Shift(LinuxX64AsmWriter& writer,
         //   r10=新低半/r11=新高半（寄存器角色相反）——原共用存储行致右移双半写反
         //   （x64l 运行级复验捕获：大>>1 输出 INT128_MIN=低半真值落高槽）。
         if (isShl) {
-            emitStackStore(writer, regSlotOffset(dstHiId), "r10", "i64");
-            emitStackStore(writer, regSlotOffset(dstLoId), "r11", "i64");
-        } else {
-            emitStackStore(writer, regSlotOffset(dstLoId), "r10", "i64");
-            emitStackStore(writer, regSlotOffset(dstHiId), "r11", "i64");
+            storeResHalf(true, "r10");
+            storeResHalf(false, "r11");
+        } else if (!isShl) {
+            storeResHalf(false, "r10");
+            storeResHalf(true, "r11");
         }
         return;
     }
@@ -233,7 +232,12 @@ void LinuxX64CodeGenerator::emitInt128Shift(LinuxX64AsmWriter& writer,
     const std::string bigL = "Lsh128_b" + std::to_string(cid);
     const std::string endL = "Lsh128_e" + std::to_string(cid);
     if (shOp.type == "i128" || shOp.type == "u128") {
-        emitStackLoad(writer, regSlotOffset(shId), "r10", "i32", __LINE__);
+        // #1212 d：移位量 i128 若成对分配 -> 低半寄存器（32 位视图）；否则原槽
+        if (hasI128Pair(shOp.id)) {
+            writer.line("mov r10d, " + x86Reg32(i128LoText(shOp)));
+        } else if (!hasI128Pair(shOp.id)) {
+            emitStackLoad(writer, regSlotOffset(shId), "r10", "i32", __LINE__);
+        }
     } else if (!physRegOf(shOp).empty()) {
         // 1256：移位量已分配（i32/i64）——按类型规范化到 r10（原恒读
         //   regSlotOffset(shId)，分配后该槽为弃用槽=错值）
@@ -262,45 +266,45 @@ void LinuxX64CodeGenerator::emitInt128Shift(LinuxX64AsmWriter& writer,
         writer.line("jae " + bigL);
     }
     if (isShl) {
-        emitStackLoad(writer, regSlotOffset(hiId), "r10", "i64", __LINE__);
-        emitStackLoad(writer, regSlotOffset(loId), "r11", "i64", __LINE__);
+        loadOpHalf(true, "r10");
+        loadOpHalf(false, "r11");
         writer.line("shld r10, r11, cl");
         writer.line("shl r11, cl");
-    } else {
-        emitStackLoad(writer, regSlotOffset(loId), "r10", "i64", __LINE__);
-        emitStackLoad(writer, regSlotOffset(hiId), "r11", "i64", __LINE__);
+    } else if (!isShl) {
+        loadOpHalf(false, "r10");
+        loadOpHalf(true, "r11");
         writer.line("shrd r10, r11, cl");
         writer.line(rsh + " r11, cl");
     }
     // 303-a 根治：右移 r10=新低半/r11=新高半（与左移相反）——存储分派
     if (isShl) {
-        emitStackStore(writer, regSlotOffset(dstHiId), "r10", "i64");
-        emitStackStore(writer, regSlotOffset(dstLoId), "r11", "i64");
-    } else {
-        emitStackStore(writer, regSlotOffset(dstLoId), "r10", "i64");
-        emitStackStore(writer, regSlotOffset(dstHiId), "r11", "i64");
+        storeResHalf(true, "r10");
+        storeResHalf(false, "r11");
+    } else if (!isShl) {
+        storeResHalf(false, "r10");
+        storeResHalf(true, "r11");
     }
     writer.line("jmp " + endL);
     writer.raw(bigL + ":");
     writer.line("sub cl, 64");
     if (isShl) {
-        emitStackLoad(writer, regSlotOffset(loId), "r11", "i64", __LINE__);
+        loadOpHalf(false, "r11");
         writer.line("shl r11, cl");
         writer.line("mov r10, r11");
         writer.line("xor r11, r11");
-    } else {
-        emitStackLoad(writer, regSlotOffset(hiId), "r10", "i64", __LINE__);
+    } else if (!isShl) {
+        loadOpHalf(true, "r10");
         writer.line(rsh + " r10, cl");
-        emitStackLoad(writer, regSlotOffset(hiId), "r11", "i64", __LINE__);
+        loadOpHalf(true, "r11");
         writer.line(isUnsigned ? "xor r11, r11" : "sar r11, 63");
     }
     // 303-a 根治：大路存储同款分派（右移 r10=新低半/r11=新高半）
     if (isShl) {
-        emitStackStore(writer, regSlotOffset(dstHiId), "r10", "i64");
-        emitStackStore(writer, regSlotOffset(dstLoId), "r11", "i64");
-    } else {
-        emitStackStore(writer, regSlotOffset(dstLoId), "r10", "i64");
-        emitStackStore(writer, regSlotOffset(dstHiId), "r11", "i64");
+        storeResHalf(true, "r10");
+        storeResHalf(false, "r11");
+    } else if (!isShl) {
+        storeResHalf(false, "r10");
+        storeResHalf(true, "r11");
     }
     writer.raw(endL + ":");
 }
@@ -335,19 +339,27 @@ void LinuxX64CodeGenerator::emitInt128MulDivMod(LinuxX64AsmWriter& writer,
             emitLoadSymbolAddr(writer, reg, registerI128Constant(lo, hi));
             return reg;
         }
-        // 低64位槽地址
+        // #1212 d：成对分配到双 GPR 的值先溢出到原双槽（辅助 ABI=双槽地址，
+        //   成对溢出双半，禁单半），再取低64位槽地址
+        spillI128Pair(writer, v);
         writer.line("lea " + reg + ", " + stackMemText(regSlotOffset(v.id + 1)));
         return reg;
     };
     const std::string aAddr = addrOfI128(inst.operands[0], "r9");
     const std::string bAddr = addrOfI128(inst.operands[1], "r10");
-    // 结果双槽：%vN（高）+ %vN+1（低），lea 低64位槽
-    const int dstLoId = inst.result.id + 1;
-    // SysV：rdi = a、rsi = b、rdx = out（均为指针）
-    writer.line("mov rdi, " + aAddr);
-    writer.line("mov rsi, " + bAddr);
-    writer.line("lea rdx, " + stackMemText(regSlotOffset(dstLoId)));
-    writer.line("call " + helper);
+    // 审查 P1-1：乘除/取余辅助 call 统一浮点活跃值保护（call 点可能破坏全部
+    //   xmm——辅助实现升级后不得静默错值）
+    emitCallClobberingXmm(writer, [&]() {
+        // 结果双槽：%vN（高）+ %vN+1（低），lea 低64位槽
+        const int dstLoId = inst.result.id + 1;
+        // SysV：rdi = a、rsi = b、rdx = out（均为指针）
+        writer.line("mov rdi, " + aAddr);
+        writer.line("mov rsi, " + bAddr);
+        writer.line("lea rdx, " + stackMemText(regSlotOffset(dstLoId)));
+        writer.line("call " + helper);
+    });
+    // #1212 d：结果成对分配 -> 辅助写内存后成对载回双半（禁单半）
+    reloadI128Pair(writer, inst.result);
 }
 
 // ==================== i128 比较（Task 完善A：运行时辅助函数） ====================
@@ -379,14 +391,19 @@ void LinuxX64CodeGenerator::emitInt128Compare(LinuxX64AsmWriter& writer,
             emitLoadSymbolAddr(writer, reg, registerI128Constant(lo, hi));
             return reg;
         }
+        // #1212 d：成对分配 -> 先成对溢出到原双槽（比较辅助 ABI=双槽地址）
+        spillI128Pair(writer, v);
         writer.line("lea " + reg + ", " + stackMemText(regSlotOffset(v.id + 1)));
         return reg;
     };
     const std::string aAddr = addrOfI128(inst.operands[0], "r9");
     const std::string bAddr = addrOfI128(inst.operands[1], "r10");
-    writer.line("mov rdi, " + aAddr);
-    writer.line("mov rsi, " + bAddr);
-    writer.line("call " + helper);
+    // 审查 P1-1：比较辅助 call 统一浮点活跃值保护
+    emitCallClobberingXmm(writer, [&]() {
+        writer.line("mov rdi, " + aAddr);
+        writer.line("mov rsi, " + bAddr);
+        writer.line("call " + helper);
+    });
     // 返回值在 eax（int，SysV：32 位返回值高 32 位 rax 未定义）——
     //   必须用 32 位 eax 比较：若用 64 位 rax，返回 -1 时高 32 位残留垃圾会把
     //   0xFFFFFFFF 读成正数导致"小于"被误判为"大于"（ARM64 后端同款教训）

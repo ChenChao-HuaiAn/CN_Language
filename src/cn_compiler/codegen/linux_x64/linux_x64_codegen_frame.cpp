@@ -209,12 +209,22 @@ void LinuxX64CodeGenerator::emitEpilogue(LinuxX64AsmWriter& writer,
         }
         if (currentReturnType_ == "f64" || currentReturnType_ == "f32") {
             const std::string vreg = "xmm0";
+            const std::string mnem = (currentReturnType_ == "f64") ? "movsd" : "movss";
             if (returnReg.compare(0, 1, "[") == 0) {
                 const int off = parseStackOffset(returnReg);
                 emitStackLoad(writer, off, vreg, currentReturnType_);
             } else if (returnReg.size() > 2 && returnReg[0] == '%' && returnReg[1] == 'v') {
                 const int id = std::stoi(returnReg.substr(2));
-                emitStackLoad(writer, regSlotOffset(id), vreg, currentReturnType_);
+                const std::string phys = physRegOf(ir::IRValue::reg(id, currentReturnType_));
+                // #1212 d：返回值已分配到 xmm -> 寄存器直搬（原槽装载仅未分配面）
+                if (isXmmName(phys)) {
+                    writer.line(mnem + " " + vreg + ", " + phys);
+                } else if (!isXmmName(phys)) {
+                    emitStackLoad(writer, regSlotOffset(id), vreg, currentReturnType_);
+                }
+            } else if (isXmmName(returnReg)) {
+                // #1212 d：terminator 直传的已分配浮点返回寄存器（xmmN）
+                writer.line(mnem + " " + vreg + ", " + returnReg);
             } else {
                 // 常量文本返回（如 "0"/"1"）：浮点常量池加载
                 loadOperandToV(writer, ir::IRValue::constant(returnReg, currentReturnType_), vreg);

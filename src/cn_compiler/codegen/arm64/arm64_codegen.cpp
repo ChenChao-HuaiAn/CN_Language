@@ -293,15 +293,37 @@ void Arm64CodeGenerator::storeVirtualResult(Arm64AsmWriter& writer, int resultId
         // #1212：浮点结果落位——sN/dN 目标必须 fmov（mov 不接受 FP 寄存器）；
         //   宽度视图与目标类型一致（f32=sN、f64=dN）
         if (isFloatType(type)) {
-            // 宽度视图不一致（如 i128->浮辅助返回 d0 而目标 f32=sN）用 fcvt
-            // 精确转换；其余同宽 fmov（位模式不变）
-            const std::string src = srcReg;
-            const bool widthMismatch = !src.empty() && !dst.empty() &&
-                                       src[0] != dst[0];
-            if (widthMismatch) {
-                writer.line("fcvt " + dst + ", " + src);
+            // #1212 审查 P2：宽度断言——浮点寄存器类目标必须是 s/d 视图
+            //   （池名由 scanPool 按类型转换；非 s/d=内部缺陷显形）
+            if (dst.empty() || (dst[0] != 's' && dst[0] != 'd')) {
+                diagnostics_.report(Diagnostic::error(
+                    SourceLocation(),
+                    "内部错误: 浮点结果目标非 s/d 视图 '" + dst + "'（#1212 P2）"));
+                return;
             }
-            if (!widthMismatch) {
+            std::string src = srcReg;
+            const bool fpSrc = !src.empty() && (src[0] == 's' || src[0] == 'd');
+            if (!fpSrc) {
+                // 整数寄存器/空源：位模式搬运（fmov 支持 x<->d / w<->s），
+                //   视图宽度对齐后发射——绝不进 fcvt（fcvt 仅接受 s/d 源）
+                if (!src.empty() && src[0] == 'x' && dst[0] == 's') {
+                    src = "w" + src.substr(1);
+                }
+                if (!src.empty() && src[0] == 'w' && dst[0] == 'd') {
+                    src = "x" + src.substr(1);
+                }
+                if (!src.empty() && src != dst) {
+                    writer.line("fmov " + dst + ", " + src);
+                }
+                writer.comment("寄存器分配：位模式结果 %v" +
+                               std::to_string(resultId) + " -> " + dst);
+                return;
+            }
+            // s/d 源：宽度视图不一致（如 i128->浮辅助返回 d0 而目标 f32=sN）
+            //   用 fcvt 精确转换；同宽 fmov（位模式不变）
+            if (src[0] != dst[0]) {
+                writer.line("fcvt " + dst + ", " + src);
+            } else if (src != dst) {
                 writer.line("fmov " + dst + ", " + src);
             }
             writer.comment("寄存器分配：浮点结果 %v" + std::to_string(resultId) +
@@ -332,7 +354,28 @@ void Arm64CodeGenerator::storeVirtualResultFp(Arm64AsmWriter& writer, int result
                                               const std::string& type) {
     const std::string dst = allocRegOf(resultId);
     if (!dst.empty()) {
-        writer.line("fmov " + dst + ", " + srcFp);
+        // #1212 审查 P2：目标 s/d 断言 + 宽度视图对齐——s/d 源与目标视图不同
+        //   时 fcvt（精准转换）；非 s/d 源仅位模式 fmov（宽度对齐后）；fcvt
+        //   永不接受非 s/d 源。
+        if (dst.empty() || (dst[0] != 's' && dst[0] != 'd')) {
+            diagnostics_.report(Diagnostic::error(
+                SourceLocation(),
+                "内部错误: 浮点结果目标非 s/d 视图 '" + dst + "'（#1212 P2）"));
+            return;
+        }
+        std::string src = srcFp;
+        const bool fpSrc = !src.empty() && (src[0] == 's' || src[0] == 'd');
+        if (fpSrc) {
+            if (src[0] != dst[0]) {
+                writer.line("fcvt " + dst + ", " + src);
+            } else if (src != dst) {
+                writer.line("fmov " + dst + ", " + src);
+            }
+        } else if (!src.empty()) {
+            if (src[0] == 'x' && dst[0] == 's') src = "w" + src.substr(1);
+            if (src[0] == 'w' && dst[0] == 'd') src = "x" + src.substr(1);
+            writer.line("fmov " + dst + ", " + src);
+        }
         writer.comment("寄存器分配：浮点结果 %v" + std::to_string(resultId) +
                        " -> " + dst);
         return;

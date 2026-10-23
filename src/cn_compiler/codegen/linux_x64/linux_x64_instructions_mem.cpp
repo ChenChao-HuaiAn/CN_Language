@@ -17,14 +17,25 @@ void LinuxX64CodeGenerator::emitLoadStore(LinuxX64AsmWriter& writer,
     if (inst.opcode == ir::Opcode::Load) {
         // i128/正128 变量加载：x（低64位槽）+ x$s1（高64位槽）
         if (inst.type == "i128" || inst.type == "u128") {
-            const int dstHiId = inst.result.id;
-            const int dstLoId = inst.result.id + 1;
             const std::string& varName = inst.operands[0].extra;
+            // #1212 d：结果成对分配 -> 双半直写（低半/高半成对，禁单半）
             emitStackLoad(writer, varSlotOf(varName), "r10", "i64", __LINE__);
-            emitStackStore(writer, regSlotOffset(dstLoId), "r10", "i64");
+            storeI128Half(writer, inst.result, false, "r10");
             emitStackLoad(writer, varSlotOf(varName + "$s1"), "r10", "i64", __LINE__);
-            emitStackStore(writer, regSlotOffset(dstHiId), "r10", "i64");
+            storeI128Half(writer, inst.result, true, "r10");
             return;
+        }
+        // #1212 d：浮点 Load——源或结果已分配到 xmm 时走 SSE 寄存器通道；
+        //   两端均未分配保持原位模式搬运（--no-regalloc 产物逐字节不变）
+        if (isFloatType(inst.type)) {
+            const bool dstFp = isXmmName(physRegOf(inst.result));
+            const bool srcFp = !inst.operands[0].isConstant &&
+                               isXmmName(physRegOf(inst.operands[0]));
+            if (dstFp || srcFp) {
+                loadOperandToV(writer, inst.operands[0], "xmm0");
+                storeFloatResult(writer, inst.result, "xmm0", inst.type);
+                return;
+            }
         }
         // 窄类型（i8/i16/u8/u16/i32/u32/i1）装载已扩展，用64位存储避免
         // 高字节残留垃圾（对齐 ARM64 的 narrowType 纪律）
@@ -55,16 +66,27 @@ void LinuxX64CodeGenerator::emitLoadStore(LinuxX64AsmWriter& writer,
         }
         emitStackStore(writer, regSlotOffset(inst.result.id), "r10",
                        narrowType ? "i64" : inst.type);
-    } else {
+    } else if (inst.opcode == ir::Opcode::Store) {
         // Store：operands[0] 值，extra 变量名
         if (inst.type == "i128" || inst.type == "u128") {
-            const int srcHiId = inst.operands[0].id;
-            const int srcLoId = inst.operands[0].id + 1;
-            emitStackLoad(writer, regSlotOffset(srcLoId), "r10", "i64", __LINE__);
+            // #1212 d：源成对分配 -> 双半直读（成对，禁单半）
+            loadI128Half(writer, inst.operands[0], false, "r10");
             emitStackStore(writer, varSlotOf(inst.extra), "r10", "i64");
-            emitStackLoad(writer, regSlotOffset(srcHiId), "r10", "i64", __LINE__);
+            loadI128Half(writer, inst.operands[0], true, "r10");
             emitStackStore(writer, varSlotOf(inst.extra + "$s1"), "r10", "i64");
             return;
+        }
+        // #1212 d：浮点 Store——源已分配到 xmm 时直写变量槽；未分配保持原位
+        //   模式路径（loadOperandToX 64 位读 + emitStackStore 位模式，字节不变）
+        if (isFloatType(inst.type) && !inst.operands[0].isConstant) {
+            const std::string srcFp = physRegOf(inst.operands[0]);
+            if (isXmmName(srcFp)) {
+                writer.line("mov" + std::string(inst.type == "f64" ? "sd" : "ss") +
+                            std::string(inst.type == "f64" ? " qword ptr "
+                                                           : " dword ptr ") +
+                            stackMemText(varSlotOf(inst.extra)) + ", " + srcFp);
+                return;
+            }
         }
         // 1256：值已分配 -> 单条直写变量槽（免 r10 中转）；未分配保持原路径
         if (!inst.operands[0].isConstant) {
@@ -207,18 +229,22 @@ void LinuxX64CodeGenerator::emitPtrLoad(LinuxX64AsmWriter& writer,
                                         const std::string& type) {
     const std::string dstPhys = physRegOf(inst.result);
     if (isFloatType(type)) {
-        const std::string vreg = "xmm0";
+        // #1212 d：结果已分配到 xmm -> 直装（免槽写）；未分配原 xmm0 + 槽
+        const std::string vreg = isXmmName(dstPhys) ? dstPhys : "xmm0";
         writer.line("mov" + std::string(type == "f64" ? "sd" : "ss") + " " + vreg +
                     ", " + (type == "f64" ? "qword ptr" : "dword ptr") + " [" + addr + "]");
-        emitStackStore(writer, regSlotOffset(inst.result.id), vreg, type);
+        if (vreg != dstPhys) {
+            emitStackStore(writer, regSlotOffset(inst.result.id), vreg, type);
+        }
         return;
     }
     if (type == "i128" || type == "u128") {
-        // i128 指针加载：低64位 [addr]、高64位 [addr+8]（结果恒双槽）
+        // i128 指针加载：低64位 [addr]、高64位 [addr+8]
+        //   #1212 d：结果成对分配 -> 双半直写（成对，禁单半）
         writer.line("mov r9, qword ptr [" + addr + "]");
-        emitStackStore(writer, regSlotOffset(inst.result.id + 1), "r9", "i64");
+        storeI128Half(writer, inst.result, false, "r9");
         writer.line("mov r9, qword ptr [" + addr + "+8]");
-        emitStackStore(writer, regSlotOffset(inst.result.id), "r9", "i64");
+        storeI128Half(writer, inst.result, true, "r9");
         return;
     }
     // 1256：结果已分配 -> 按宽度直装分配寄存器（免 r9 中转）
@@ -294,11 +320,10 @@ void LinuxX64CodeGenerator::emitPtrStore(LinuxX64AsmWriter& writer,
             writer.line("mov qword ptr [" + addr + "+8], r9");
             return;
         }
-        const int srcHiId = inst.operands[1].id;
-        const int srcLoId = inst.operands[1].id + 1;
-        emitStackLoad(writer, regSlotOffset(srcLoId), "r9", "i64", __LINE__);
+        // #1212 d：源成对分配 -> 双半直读（成对，禁单半）
+        loadI128Half(writer, inst.operands[1], false, "r9");
         writer.line("mov qword ptr [" + addr + "], r9");
-        emitStackLoad(writer, regSlotOffset(srcHiId), "r9", "i64", __LINE__);
+        loadI128Half(writer, inst.operands[1], true, "r9");
         writer.line("mov qword ptr [" + addr + "+8], r9");
         return;
     }

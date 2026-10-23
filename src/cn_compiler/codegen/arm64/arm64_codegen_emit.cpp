@@ -304,6 +304,24 @@ std::string Arm64CodeGenerator::loadOperandToX(Arm64AsmWriter& writer,
         //   （同名零指令；物理寄存器被调用者保存，调用点无需再保存）
         const std::string src = allocRegOf(operand.id);
         if (!src.empty()) {
+            // #1212 审查 P2：浮点源（sN/dN）不能走 mov xN,sN——fmov 位模式分流；
+            //   目标整型宽度按指令视图对齐（d 源配 x 目标、s 源配 w 目标）。
+            const bool fpSrc = (src[0] == 's' || src[0] == 'd');
+            if (fpSrc) {
+                std::string dstText = reg;
+                if (!dstText.empty() && (dstText[0] == 'x' || dstText[0] == 'w')) {
+                    if (src[0] == 'd' && dstText[0] == 'w') {
+                        dstText = "x" + dstText.substr(1);
+                    }
+                    if (src[0] == 's' && dstText[0] == 'x') {
+                        dstText = "w" + dstText.substr(1);
+                    }
+                }
+                if (dstText != src) {
+                    writer.line("fmov " + dstText + ", " + src);
+                }
+                return reg;
+            }
             if (src != reg) {
                 // 1159：目标寄存器宽度与源形态对齐——调用方要 w 形态（32 位装载/
                 //   零扩展）时源取同号 w 名（mov w9, x21 非法；mov w9, w21 语义=

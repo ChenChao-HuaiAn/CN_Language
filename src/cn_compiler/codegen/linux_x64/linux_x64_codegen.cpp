@@ -29,10 +29,6 @@
 
 namespace cn_compiler {
 
-// 1256：虚拟寄存器 ID 合法上限（双边界判据用；IR 侧 id 为 int 且远小于此——
-//   越界 id 只可能来自损坏输入，视为无分配结果）。
-constexpr int kMaxVirtualRegId1256 = 1 << 24;
-
 // 1256：小函数分配门槛（实测护栏）——虚拟寄存器数 < 本值时，被调用者保存寄存器
 //   的序言/尾声 push/pop 开销 ≥ 槽访问收益（v2p 全树指令数 +1% → 持平）。
 constexpr int kRegAllocMinVregs1256 = 128;
@@ -661,6 +657,9 @@ void LinuxX64CodeGenerator::prepareRegisterAllocation(const ir::IRFunction& func
     regAllocMap_.clear();
     calleeSavedRegs_.clear();
     regAllocUsed_ = false;
+    regIntervals_.clear();
+    regBlockRanges_.clear();
+    currentInstPoint_ = -1;
     // 小函数门槛（1256 性能护栏）：虚拟寄存器极少时槽访问收益 < 被调用者保存
     //   寄存器的序言/尾声 push/pop 开销（实测 v2p 指令数回归的主因）。
     const bool tooSmall =
@@ -670,9 +669,19 @@ void LinuxX64CodeGenerator::prepareRegisterAllocation(const ir::IRFunction& func
         regalloc::LinearScanAllocator allocator(regalloc::TargetArch::LinuxX64);
         // regSlotCount_ 已由 ir::maxVirtualRegId 实测（= 最大ID+1）——传最大ID免二次扫描
         regAllocMap_ = allocator.allocate(function, regSlotCount_ - 1);
+        // #1212 d：活跃区间快照（浮点调用点保护按区间活跃集精确判定）
+        regIntervals_ = allocator.intervals();
+        regBlockRanges_ = regalloc::LinearScanAllocator::computeBlockRanges(function);
         for (const auto& kv : regAllocMap_) {
+            // #1212 d：i128 双半的第二半同样占用被调用者保存 GPR，必须一并
+            //   保存/恢复（遗漏=被调者静默破坏调用者值）；浮点 xmm 一律跳过
+            //   （SysV 全易失，序言无需保存，跨 call 由调用点保护）。
+            if (kv.second.regClass == regalloc::RegClass::Float) continue;
             if (!kv.second.assignedReg.empty()) {
                 calleeSavedRegs_.push_back(kv.second.assignedReg);
+            }
+            if (!kv.second.assignedReg2.empty()) {
+                calleeSavedRegs_.push_back(kv.second.assignedReg2);
             }
         }
         std::sort(calleeSavedRegs_.begin(), calleeSavedRegs_.end());
@@ -796,8 +805,10 @@ std::string LinuxX64CodeGenerator::generateFunctionAssembly(const ir::IRFunction
     emitPrologue(writer, function);
     emitParamSetup(writer, function);
     for (auto& block : function.blocks) {
+        blockStartPoint_ = currentInstPoint_ + 1;
         emitBlock(writer, *block);
     }
+    currentInstPoint_ = -1;
     const std::string sym = symbolName(
         function.mangledName.empty() ? function.name : function.mangledName);
     writer.raw(".size " + sym + ", .-" + sym);
@@ -817,7 +828,11 @@ std::string LinuxX64CodeGenerator::generateFunctionAssembly(const ir::IRFunction
 // 标签带函数级前缀（currentBlockPrefix_），避免多函数同名"块0"标签冲突
 void LinuxX64CodeGenerator::emitBlock(LinuxX64AsmWriter& writer, const ir::IRBlock& block) {
     writer.raw(currentBlockPrefix_ + labelMangle(block.label) + ":");
+    int idx = 0;
     for (auto& inst : block.instructions) {
+        // #1212 d：发射序数（与 reg_alloc computeBlockRanges 同口径）——浮点
+        //   调用点保护按此判定活跃区间（call 前保存/call 后恢复）。
+        currentInstPoint_ = blockStartPoint_ + idx++;
         // 阶段C（Task 4.4）：源码位置注释（调试信息）
         if (debugInfoEnabled_ && debuginfo::DebugInfoCollector::isValidLoc(inst.loc)) {
             const std::string c = debugInfo_.commentFor(inst.loc, ++asmLineCounter_);
@@ -828,6 +843,9 @@ void LinuxX64CodeGenerator::emitBlock(LinuxX64AsmWriter& writer, const ir::IRBlo
         emitInstruction(writer, inst);
     }
     if (block.terminated) {
+        // 终止指令不占序数：与活跃区间计算同口径（块末最后一条指令的序数）
+        currentInstPoint_ = blockStartPoint_ +
+                            static_cast<int>(block.instructions.size()) - 1;
         emitTerminator(writer, block);
     }
 }

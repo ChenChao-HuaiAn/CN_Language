@@ -670,3 +670,95 @@ TEST(LinuxX64CodegenTest, AllocatedBoolEmitsCanonicalRegisters) {
     EXPECT_EQ(asmText.find("dword ptr [rbp"), std::string::npos);
     EXPECT_EQ(asmText.find("mov r10d, dword ptr [rbp"), std::string::npos);
 }
+
+// ==================== #1212 审查 P1-1：call-clobber 保护 ====================
+
+// 浮点活跃值跨 i128 乘/除运行时辅助 call：SysV xmm 全易失，call 前须保存、
+//   call 后须恢复（包装 emitCallClobberingXmm）。构造 ≥128 虚拟寄存器的大函数
+//   触发分配（小函数门槛），浮点值在 Mul 辅助 call 之后仍被使用=活跃。
+TEST(LinuxX64CodegenTest, FloatLiveAcrossRuntimeHelperProtected) {
+    Diagnostics diagnostics;
+    LinuxX64CodeGenerator generator(diagnostics);
+    generator.setRegAllocEnabled(true);
+
+    IRModule module;
+    IRFunction func;
+    func.name = "f";
+    func.returnType = "i64";
+    auto block = std::make_unique<IRBlock>();
+    block->label = "块0";
+    for (int i = 0; i < 130; ++i) {
+        IRInstruction c;
+        c.opcode = Opcode::ConstInt;
+        c.result = IRValue::reg(i, "i64");
+        c.type = "i64";
+        c.extra = std::to_string(i);
+        block->instructions.push_back(c);
+    }
+    IRInstruction cf;
+    cf.opcode = Opcode::ConstFloat;
+    cf.result = IRValue::reg(130, "f64");
+    cf.type = "f64";
+    cf.extra = "1.5";
+    block->instructions.push_back(cf);
+    IRInstruction fadd;
+    fadd.opcode = Opcode::Add;
+    fadd.result = IRValue::reg(131, "f64");
+    fadd.type = "f64";
+    fadd.operands = {IRValue::reg(130, "f64"), IRValue::reg(130, "f64")};
+    block->instructions.push_back(fadd);
+    IRInstruction c128;
+    c128.opcode = Opcode::ConstInt;
+    c128.result = IRValue::reg(132, "i128");
+    c128.type = "i128";
+    c128.extra = "3:0";
+    block->instructions.push_back(c128);
+    IRInstruction mul;
+    mul.opcode = Opcode::Mul;
+    mul.result = IRValue::reg(134, "i128");
+    mul.type = "i128";
+    mul.operands = {IRValue::reg(132, "i128"), IRValue::reg(132, "i128")};
+    block->instructions.push_back(mul);
+    IRInstruction fadd2;
+    fadd2.opcode = Opcode::Add;
+    fadd2.result = IRValue::reg(136, "f64");
+    fadd2.type = "f64";
+    fadd2.operands = {IRValue::reg(131, "f64"), IRValue::reg(131, "f64")};
+    block->instructions.push_back(fadd2);
+    IRInstruction add;
+    add.opcode = Opcode::Add;
+    add.result = IRValue::reg(137, "i64");
+    add.type = "i64";
+    add.operands = {IRValue::reg(0, "i64"), IRValue::reg(1, "i64")};
+    block->instructions.push_back(add);
+    block->terminated = true;
+    block->termKind = "返回";
+    block->termReturnValue = "%v137";
+    func.blocks.push_back(std::move(block));
+    module.functions.push_back(std::move(func));
+
+    const std::string asmText = generator.generateAssembly(module);
+    const std::size_t callPos = asmText.find("call __cn_mul_i128");
+    ASSERT_NE(callPos, std::string::npos) << "i128 乘法须走运行时辅助";
+    const std::size_t winStart = (callPos > 400) ? callPos - 400 : 0;
+    const std::string before = asmText.substr(winStart, callPos - winStart);
+    EXPECT_NE(before.find("movsd [rbp-"), std::string::npos)
+        << "call 前须保存活跃浮点值（SysV xmm 全易失）";
+    const std::string after = asmText.substr(callPos, 200);
+    EXPECT_NE(after.find("movsd xmm"), std::string::npos)
+        << "call 后须恢复活跃浮点值";
+    // 复审加强：保存/恢复必须成对且同槽同寄存器（禁「存 A 恢复 B」）。
+    const std::size_t savePos = asmText.rfind("movsd [rbp-", callPos);
+    ASSERT_NE(savePos, std::string::npos);
+    const std::size_t saveEnd = asmText.find_first_of("\r\n", savePos);
+    const std::string saveLine =
+        asmText.substr(savePos, saveEnd - savePos);  // movsd [rbp-N], xmmM
+    const std::size_t close = saveLine.find(']');
+    ASSERT_NE(close, std::string::npos);
+    const std::string slot = saveLine.substr(6, close - 5);  // [rbp-N]
+    const std::string reg = saveLine.substr(close + 3);      // xmmM
+    EXPECT_FALSE(reg.empty()) << "保存行缺源寄存器: " << saveLine;
+    const std::string expectedRestore = "movsd " + reg + ", " + slot;
+    EXPECT_NE(asmText.find(expectedRestore, callPos), std::string::npos)
+        << "call 后须以同一寄存器恢复同一槽（成对）: " << expectedRestore;
+}

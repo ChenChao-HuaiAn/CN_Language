@@ -824,3 +824,49 @@ TEST(RegAllocTest, FloatUsesVRegPoolOnArm64) {
         EXPECT_LE(n, 15);
     }
 }
+
+// ---- 10. #1212 步骤 b/d 门控：arm64 i128 无成对发射面 -> 不分配 ----
+
+// arm64 的 regSlotOffset 对已分配寄存器返回 0（弃用槽），而 i128 双半发射面
+//   尚未落地——allocate 必须显式剔除 i128 区间（无分配记录=保持原双槽映射），
+//   否则 i128 槽消费会读写 [x29] 帧指针。X64 对照=成对分配。
+TEST(RegAllocTest, Arm64I128GateKeepsStackSlots) {
+    IRFunction func;
+    func.name = "i128-gate";
+    func.returnType = "i64";
+    auto block = std::make_unique<IRBlock>();
+    block->label = "blk0";
+    IRInstruction c;
+    c.opcode = Opcode::ConstInt;
+    c.result = IRValue::reg(0, "i128");
+    c.type = "i128";
+    c.extra = "1:0";
+    block->instructions.push_back(c);
+    IRInstruction add;
+    add.opcode = Opcode::Add;
+    add.result = IRValue::reg(1, "i128");
+    add.type = "i128";
+    add.operands = {IRValue::reg(0, "i128"), IRValue::reg(0, "i128")};
+    block->instructions.push_back(add);
+    IRInstruction narrow;
+    narrow.opcode = Opcode::Cast;
+    narrow.result = IRValue::reg(2, "i64");
+    narrow.type = "i64";
+    narrow.operands = {IRValue::reg(1, "i128")};
+    block->instructions.push_back(narrow);
+    block->terminated = true;
+    block->termKind = "返回";
+    block->termReturnValue = "%v2";
+    func.blocks.push_back(std::move(block));
+
+    LinearScanAllocator arm(TargetArch::Arm64);
+    const RegAssignmentMap armMap = arm.allocate(func);
+    EXPECT_EQ(armMap.find(0), armMap.end()) << "arm64 i128 区间须被门控剔除";
+    EXPECT_EQ(armMap.find(1), armMap.end()) << "arm64 i128 区间须被门控剔除";
+
+    LinearScanAllocator x64(TargetArch::X64);
+    const RegAssignmentMap x64Map = x64.allocate(func);
+    auto it = x64Map.find(1);
+    ASSERT_NE(it, x64Map.end());
+    EXPECT_FALSE(it->second.assignedReg2.empty()) << "x64 对照须成对分配";
+}

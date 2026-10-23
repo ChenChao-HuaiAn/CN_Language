@@ -107,6 +107,11 @@ private:
     void emitOopInstruction(AsmWriter& writer, const ir::IRInstruction& inst);
     // 生成虚调用：经对象虚表指针 + 槽位偏移间接 call（this 参数经 paramOffset 后移）
     void emitVirtualCall(AsmWriter& writer, const ir::IRInstruction& inst);
+    // #1212 审查 P1-2：虚调用 i128/u128 实参装载（ABI=双槽地址，与 emitCall 同构）。
+    //   coff>0 时常量双半写入 [rsp+coff]/[rsp+coff+8]；否则成对溢出到原双槽。
+    //   rax 在虚调用中保存函数指针，装载一律经 r10 中转；栈参数位写 [rsp+...]。
+    void emitVirtualI128Arg(AsmWriter& writer, const ir::IRValue& av, int coff,
+                            int regIdx, const std::string& paramSlot);
     // 生成新建对象：堆分配 + 写入虚表指针（对象首地址）
     void emitNewObject(AsmWriter& writer, const ir::IRInstruction& inst);
     // 生成删除对象：调用析构 + 释放内存

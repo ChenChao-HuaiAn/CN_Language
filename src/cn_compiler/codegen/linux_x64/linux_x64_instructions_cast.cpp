@@ -26,17 +26,22 @@ void LinuxX64CodeGenerator::emitCast(LinuxX64AsmWriter& writer,
     //   f32 源先 cvtss2sd 精确提升——辅助形参 double，movss 裸载位模式误读） ----
     // SysV：out 指针 rdi（第1整型参数）、double 值 xmm0
     case judgement::CastKind::FloatToI128Helper: {
-        loadOperandToV(writer, inst.operands[0], "xmm0");
-        // 550（浮32→整128 读宽根治·win 同构）：f32 源须先宽化 f64 再进辅助——
-        //   __cn_f64_to_i128 按 f64 读 xmm0（SysV），原直喂 f32 位模式=非规格化
-        //   垃圾（3.75f 截断恒 0）；f32→f64 宽化无损，截断/NaN/饱和随 464/475 不变。
-        if (from == "f32") {
-            writer.line("cvtss2sd xmm0, xmm0");
-        }
-        const int loOff = regSlotOffset(inst.result.id + 1);
-        writer.line("lea rdi, " + stackMemText(loOff));
-        writer.line(std::string("call ") +
-                    ((to == "u128") ? "__cn_f64_to_u128" : "__cn_f64_to_i128"));
+        // 审查 P1-1：运行时辅助 call 统一浮点活跃值保护（保存先于参数准备）
+        emitCallClobberingXmm(writer, [&]() {
+            loadOperandToV(writer, inst.operands[0], "xmm0");
+            // 550（浮32→整128 读宽根治·win 同构）：f32 源须先宽化 f64 再进辅助——
+            //   __cn_f64_to_i128 按 f64 读 xmm0（SysV），原直喂 f32 位模式=非规格化
+            //   垃圾（3.75f 截断恒 0）；f32→f64 宽化无损，截断/NaN/饱和随 464/475 不变。
+            if (from == "f32") {
+                writer.line("cvtss2sd xmm0, xmm0");
+            }
+            const int loOff = regSlotOffset(inst.result.id + 1);
+            writer.line("lea rdi, " + stackMemText(loOff));
+            writer.line(std::string("call ") +
+                        ((to == "u128") ? "__cn_f64_to_u128" : "__cn_f64_to_i128"));
+        });
+        // #1212 d：结果成对分配 -> 辅助写原双槽后成对载回（禁单半）
+        reloadI128Pair(writer, inst.result);
         return;
     }
     // ---- 浮 -> 整（≤64 全宽）：528 饱和辅助族（475 甲案·Rust as 对齐） ----
@@ -45,8 +50,11 @@ void LinuxX64CodeGenerator::emitCast(LinuxX64AsmWriter& writer,
     //   464 浮→i128 通道同构收族·名字单源 judgement::floatToIntHelperName）。
     //   返回统一 64 位 rax（emitStackStore 按目标宽度写低 8/16/32/64 位）。
     case judgement::CastKind::FloatToInt: {
-        loadOperandToV(writer, inst.operands[0], "xmm0");
-        writer.line("call " + judgement::floatToIntHelperName(from, to));
+        // 审查 P1-1：饱和辅助 call 统一浮点活跃值保护
+        emitCallClobberingXmm(writer, [&]() {
+            loadOperandToV(writer, inst.operands[0], "xmm0");
+            writer.line("call " + judgement::floatToIntHelperName(from, to));
+        });
         // 1256：结果已分配 -> 直写物理寄存器（按目标宽度；窄型 32 位名保留
         //   辅助返回的符号/零扩展位模式），未分配保持 rax -> r10 -> 槽原路径
         const std::string phys = physRegOf(inst.result);
@@ -63,16 +71,24 @@ void LinuxX64CodeGenerator::emitCast(LinuxX64AsmWriter& writer,
         // i128/正128 -> 浮：运行时辅助（SysV：a 指针 rdi，返回 xmm0）
         const std::string helper = (from == "u128") ? "__cn_u128_to_f64" : "__cn_i128_to_f64";
         const int srcLoId = inst.operands[0].id + 1;
-        writer.line("lea rdi, " + stackMemText(regSlotOffset(srcLoId)));
-        writer.line("call " + helper);
-        emitStackStore(writer, dstOff, "xmm0", to);
+        // 审查 P1-1：i128→浮辅助 call 统一浮点活跃值保护（扩展域，含本结果位）
+        emitCallClobberingXmm(writer, [&]() {
+            // #1212 d：源成对分配 -> 先成对溢出到原双槽（辅助 ABI=双槽地址）
+            spillI128Pair(writer, inst.operands[0]);
+            writer.line("lea rdi, " + stackMemText(regSlotOffset(srcLoId)));
+            writer.line("call " + helper);
+        });
+        storeFloatResult(writer, inst.result, "xmm0", to);
         return;
     }
     case judgement::CastKind::IntToFloatU64Helper: {
         // u64 -> 浮：运行时辅助（无符号语义；SysV：值 rdi，返回 xmm0）
-        loadOperandToX(writer, inst.operands[0], "rdi");
-        writer.line("call __cn_u64_to_f64");
-        emitStackStore(writer, dstOff, "xmm0", to);
+        // 审查 P1-1：u64→浮辅助 call 统一浮点活跃值保护
+        emitCallClobberingXmm(writer, [&]() {
+            loadOperandToX(writer, inst.operands[0], "rdi");
+            writer.line("call __cn_u64_to_f64");
+        });
+        storeFloatResult(writer, inst.result, "xmm0", to);
         return;
     }
     case judgement::CastKind::IntToFloat: {
@@ -86,7 +102,7 @@ void LinuxX64CodeGenerator::emitCast(LinuxX64AsmWriter& writer,
             writer.line("movsxd r10, r10d");
         }
         writer.line(std::string("cvtsi2") + (to == "f64" ? "sd" : "ss") + " xmm0, r10");
-        emitStackStore(writer, dstOff, "xmm0", to);
+        storeFloatResult(writer, inst.result, "xmm0", to);
         return;
     }
     // ---- 浮32 <-> 浮64 ----
@@ -96,7 +112,7 @@ void LinuxX64CodeGenerator::emitCast(LinuxX64AsmWriter& writer,
         //   深度机浮点矩阵立案）；真降精度（f64→f32）保留 cvtsd2ss
         {
             loadOperandToV(writer, inst.operands[0], "xmm0");
-            emitStackStore(writer, dstOff, "xmm0", to);
+            storeFloatResult(writer, inst.result, "xmm0", to);
             return;
         }
     }
@@ -108,7 +124,7 @@ void LinuxX64CodeGenerator::emitCast(LinuxX64AsmWriter& writer,
             loadOperandToV(writer, inst.operands[0], "xmm0");
             writer.line("cvtsd2ss xmm0, xmm0");
         }
-        emitStackStore(writer, dstOff, "xmm0", to);
+        storeFloatResult(writer, inst.result, "xmm0", to);
         return;
     }
     // ---- 指针 <-> 整数（位重解释） + 64 位整互转（原分支合并域）----
@@ -128,12 +144,11 @@ void LinuxX64CodeGenerator::emitCast(LinuxX64AsmWriter& writer,
     // 同类型 i128 -> i128：双槽复制（须在 普通整数->i128 分支之前，
     //   否则 i128 常量/寄存器被 loadOperandToX 当 64 位数值装载出错）
     case judgement::CastKind::I128SameCopy: {
-        const int srcLoId = inst.operands[0].id + 1;
-        const int dstLoId = inst.result.id + 1;
-        emitStackLoad(writer, regSlotOffset(srcLoId), "r10", "i64", __LINE__);
-        emitStackStore(writer, regSlotOffset(dstLoId), "r10", "i64");
-        emitStackLoad(writer, regSlotOffset(inst.operands[0].id), "r10", "i64", __LINE__);
-        emitStackStore(writer, regSlotOffset(inst.result.id), "r10", "i64");
+        // #1212 d：源/目标各自可为成对分配 -> 半值统一入口（双半同进同出）
+        loadI128Half(writer, inst.operands[0], false, "r10");
+        storeI128Half(writer, inst.result, false, "r10");
+        loadI128Half(writer, inst.operands[0], true, "r10");
+        storeI128Half(writer, inst.result, true, "r10");
         return;
     }
     // 普通整数 -> i128：扩展为 128 位（低64 = 源值；高64 = 符号位/0）
@@ -148,14 +163,14 @@ void LinuxX64CodeGenerator::emitCast(LinuxX64AsmWriter& writer,
         //   实锤·m27_02 O0=-2147483648=(-2^63)/4294967295 数学反验证吻合）；
         //   i8/i16 经 emitStackLoad movsx 已 64 位符号扩展·i64/u32/u64 无需求。
         if (from == "i32") writer.line("movsxd r10, r10d");
-        emitStackStore(writer, regSlotOffset(inst.result.id + 1), "r10", "i64");  // 低64位
+        storeI128Half(writer, inst.result, false, "r10");  // 低64位
         if (signedSrc) {
             writer.line("mov r9, r10");
             writer.line("sar r9, 63");
         } else {
             writer.line("mov r9, 0");
         }
-        emitStackStore(writer, regSlotOffset(inst.result.id), "r9", "i64");  // 高64位
+        storeI128Half(writer, inst.result, true, "r9");  // 高64位
         return;
     }
     // ---- 整数扩展（i8/i16/u8/u16 源）：装载即扩展，64 位存槽 ----
@@ -186,8 +201,8 @@ void LinuxX64CodeGenerator::emitCast(LinuxX64AsmWriter& writer,
     //   原仅 i64/u64，窄目标落通用窄截断分支读高半槽（`整16(整128(100))`=0）；
     //   归域已固化：I128ToNarrow 先于通用窄截断）
     case judgement::CastKind::I128ToNarrow: {
-        const int srcLoId = inst.operands[0].id + 1;
-        emitStackLoad(writer, regSlotOffset(srcLoId), "r10", "i64", __LINE__);
+        // #1212 d：源成对分配 -> 低半寄存器直读；未分配 -> 原低半槽
+        loadI128Half(writer, inst.operands[0], false, "r10");
         const std::string dst = physRegOf(inst.result);
         if (dst.empty()) {
             emitStackStore(writer, dstOff, "r10", to);

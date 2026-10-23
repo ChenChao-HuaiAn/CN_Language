@@ -309,6 +309,8 @@ std::string LinuxX64CodeGenerator::loadOperandToX(LinuxX64AsmWriter& writer,
 }
 
 // 从任意操作数加载到浮点寄存器 vreg（浮点常量池 / 寄存器槽 / 变量槽）
+// #1212 d：已分配到 xmm 的源直接寄存器-寄存器搬运（免槽往返）；
+//   目标与源同一寄存器时省略（movsd xmm,xmm 无害但无意义）。
 void LinuxX64CodeGenerator::loadOperandToV(LinuxX64AsmWriter& writer,
                                            const ir::IRValue& operand,
                                            const std::string& vreg) {
@@ -322,6 +324,15 @@ void LinuxX64CodeGenerator::loadOperandToV(LinuxX64AsmWriter& writer,
         return;
     }
     if (operand.id >= 0) {
+        // #1212 d：浮点类已分配源（池 = xmm6、xmm8~xmm15；xmm 名闭集判定）
+        const std::string phys = physRegOf(operand);
+        if (isXmmName(phys)) {
+            if (phys != vreg) {
+                writer.line("mov" + std::string(isDouble ? "sd" : "ss") + " " +
+                            vreg + ", " + phys);
+            }
+            return;
+        }
         emitStackLoad(writer, regSlotOffset(operand.id), vreg, operand.type, __LINE__);
         return;
     }
@@ -360,12 +371,11 @@ void LinuxX64CodeGenerator::emitConst128Load(LinuxX64AsmWriter& writer,
                 lo = 0;
             }
         }
-        const int dstHiId = inst.result.id;
-        const int dstLoId = inst.result.id + 1;
         writer.line("mov r10, " + uint64HexText(lo));
-        emitStackStore(writer, regSlotOffset(dstLoId), "r10", "i64");
+        // #1212 d：结果成对分配到双 GPR -> 双半直写（禁单半）；未分配保持原双槽
+        storeI128Half(writer, inst.result, false, "r10");
         writer.line("mov r10, " + uint64HexText(hi));
-        emitStackStore(writer, regSlotOffset(dstHiId), "r10", "i64");
+        storeI128Half(writer, inst.result, true, "r10");
         return;
     }
 }
@@ -376,10 +386,18 @@ void LinuxX64CodeGenerator::emitConstLoad(LinuxX64AsmWriter& writer,
         const bool isDouble = (inst.type == "f64");
         const std::string label = registerFloatConstant(inst.extra, isDouble);
         emitLoadSymbolAddr(writer, "rax", label);
+        // #1212 d：结果已分配到 xmm -> 常量池直装（免 xmm7 中转 + 槽写）
+        const std::string phys = physRegOf(inst.result);
+        const std::string mnem = (isDouble ? "movsd" : "movss");
+        const std::string width = (isDouble ? "qword ptr " : "dword ptr ");
+        if (isXmmName(phys)) {
+            writer.line(mnem + " " + phys + ", " + width + "[rax]");
+            writer.comment("浮点常量 " + inst.extra);
+            return;
+        }
         const std::string vreg = "xmm7";
         // 宽度前缀按类型：movsd=qword / movss=dword（movss 配 qword 汇编报错）
-        writer.line("mov" + std::string(isDouble ? "sd" : "ss") + " " + vreg + ", " +
-                    std::string(isDouble ? "qword ptr" : "dword ptr") + " [rax]");
+        writer.line(mnem + " " + vreg + ", " + width + "[rax]");
         emitStackStore(writer, regSlotOffset(inst.result.id), vreg, inst.type);
         writer.comment("浮点常量 " + inst.extra);
         return;
