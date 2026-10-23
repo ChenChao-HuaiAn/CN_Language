@@ -425,11 +425,11 @@ void Arm64CodeGenerator::emitDataSection(Arm64AsmWriter& writer,
         // 259（2026-10-07·#259 静态数组）：数组按元素大小×长度分配值本体
         std::size_t bytes = 8;
         if (semantic_ != nullptr && types::isArray(canonStatic)) {
-            const int sz = semantic_->typeSizeOf(stType);
+            const int sz = semantic_->typeSizeOf(stType).value_or(8);
             if (sz > 8) bytes = static_cast<std::size_t>((sz + 7) / 8) * 8;
         } else if (semantic_ != nullptr && !types::isPointer(canonStatic) &&
             semantic_->isStructType(canonStatic)) {
-            const int sz = semantic_->typeSizeOf(stType);
+            const int sz = semantic_->typeSizeOf(stType).value_or(8);
             if (sz > 8) bytes = static_cast<std::size_t>((sz + 7) / 8) * 8;
         }
         writer.raw(".align 3");

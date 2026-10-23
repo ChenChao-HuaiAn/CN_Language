@@ -588,7 +588,7 @@ void IRGenerator::emitStrArrayElemFreesFor(const std::string& unique) {
         const cn::Optional<int> len955Opt = types::arrayLenOf(srcType);
         if (!len955Opt.has_value() || len955Opt.value() <= 0) return;
         const int len955 = len955Opt.value();
-        int stride955 = semantic_->typeSizeOf(elemCanon955);
+        int stride955 = semantic_->typeSizeOf(elemCanon955).value_or(8);
         if (stride955 <= 0) stride955 = 8;
         const SourceLocation loc955;
         ir::IRValue base955 = emitResult(ir::Opcode::AddrOf,
@@ -630,7 +630,7 @@ void IRGenerator::emitStrArrayElemFreesFor(const std::string& unique) {
     const cn::Optional<int> lenOpt = types::arrayLenOf(srcType);
     if (!lenOpt.has_value() || lenOpt.value() <= 0) return;
     const int len = lenOpt.value();
-    int elemStride = semantic_->typeSizeOf(types::arrayElemOf(srcType));
+    int elemStride = semantic_->typeSizeOf(types::arrayElemOf(srcType)).value_or(8);
     if (elemStride <= 0) elemStride = 8;
     const SourceLocation loc;
     ir::IRValue base = emitResult(ir::Opcode::AddrOf,

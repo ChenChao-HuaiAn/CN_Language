@@ -543,8 +543,9 @@ private:
     // 从函数名查询全部已注册签名（含默认参数补全的签名，返回 nullptr 表示无此名函数）
     bool hasFunctionName(const std::string& name) const;
     // 重载决议：实参类型列表 -> 匹配的签名（精确>宽化>隐式转换；默认参数补全参与）。
-    // 返回匹配的签名 key（未匹配返回空串；歧义时报告错误）
-    std::string resolveOverload(const std::string& name,
+    // 返回匹配的签名 key（1360 结果化批3B：无值=未匹配/歧义，两种均已报错误
+    //   诊断——原空串哨兵退役）
+    cn::Optional<std::string> resolveOverload(const std::string& name,
                                 const std::vector<std::string>& argTypes,
                                 const SourceLocation& loc,
                                 const std::string& moduleFilter = "",
@@ -634,8 +635,8 @@ private:
     //   markChecked 对应检查类型（取反翻转 正常↔错误）；命中记入 marked 供成对
     //   unmark。&& 复合条件左右两侧递归收集（右侧在左侧为真下短路求值，状态传导）。
     void collectGuardMarks(Expr* cond, std::vector<std::string>& marked);
-    // 变量名提取（成员访问对象为标识符时返回变量名；否则空串）
-    static std::string objectVarName(Expr* object);
+    // 变量名提取（1360 结果化批3B：无值=对象非守卫可跟踪形态——原空串哨兵退役）
+    static cn::Optional<std::string> objectVarName(Expr* object);
     // 将变量标记为已检查（进入 if 真分支时）
     void markChecked(const std::string& varName, const std::string& kind);
     // 清除变量的已检查标记（离开 if 分支时）
@@ -648,7 +649,8 @@ private:
     void registerGenerics(Program* node);
     // 泛型类/函数实例化：为 类型名<实参> 生成单态化副本
     //   className 为泛型类名，args 为类型实参（如 ["整32"]）；返回实例化后的类符号名
-    std::string instantiateGeneric(const std::string& className,
+    //   （1360 结果化批3B：无值=非泛型名/实参个数错/非类非函数——原空串哨兵退役）
+    cn::Optional<std::string> instantiateGeneric(const std::string& className,
                                    std::vector<std::string> args,
                                    const SourceLocation& loc);
     // 替换类型参数（AST 深拷贝时把 T 替换为实参类型）

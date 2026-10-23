@@ -185,7 +185,7 @@ void IRGenerator::visitReturnStmt(ReturnStmt* node) {
                 }
             }
             if (!copyKey.empty()) {
-                const int objBytes = semantic_->typeSizeOf(elemCanon);
+                const int objBytes = semantic_->typeSizeOf(elemCanon).value_or(8);
                 if (objBytes > 0) {
                     const std::string extra =
                         elemCanon + "|" + std::to_string(objBytes);

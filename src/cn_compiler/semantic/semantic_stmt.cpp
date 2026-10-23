@@ -434,8 +434,11 @@ void SemanticAnalyzer::visitExprStmt(ExprStmt* node) {
     //   延续标记存活到块尾，无此清除=延续守卫误留漏报·p301c 实测；复合赋值
     //   同此口径——需读旧值即依赖检查，一并失效）
     if (node->expr->getType() == NodeType::AssignmentExpr) {
+        // 1360 结果化批3B：无值=非守卫可跟踪形态——value_or 显形空串回落
+        //   （unmarkChecked 空键守卫原语义保持）
         unmarkChecked(objectVarName(
-            static_cast<AssignmentExpr*>(node->expr.get())->target.get()));
+            static_cast<AssignmentExpr*>(node->expr.get())->target.get())
+                          .value_or(std::string()));
     }
 }
 void SemanticAnalyzer::visitIfStmt(IfStmt* node) {

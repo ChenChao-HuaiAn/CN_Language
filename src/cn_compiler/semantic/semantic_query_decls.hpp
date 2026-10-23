@@ -34,24 +34,29 @@
     // 查找枚举定义（1360 结果化批3A：无值=未命中）
     cn::Optional<const EnumDecl*> findEnum(const std::string& name) const;
     // 计算类型大小（字节）：基本类型/指针/数组/结构体/枚举/结果/可选/类
-    int typeSizeOf(const std::string& type) const override ;
-    // 计算类型对齐（字节）
-    int typeAlignOf(const std::string& type) const;
+    //   （1360 结果化批3B：无值=尺寸未登记 miss——原终态 return 8 哨兵退役）
+    cn::Optional<int> typeSizeOf(const std::string& type) const override ;
+    // 计算类型对齐（字节）（1360 结果化批3B：无值=对齐未登记 miss——原终态
+    //   return 1 哨兵退役·#1238 布局兜底显形）
+    cn::Optional<int> typeAlignOf(const std::string& type) const;
     // 查找结构体字段偏移（-1表示无此字段）
     cn::Optional<int> fieldOffsetOf(const StructDecl* decl, const std::string& fieldName) const override ;
     // 查找枚举成员值（未找到返回false）
     bool enumValueOf(const std::string& enumName, const std::string& memberName,
                      std::int64_t& outValue) const override ;
-    // 查询函数返回类型（未注册返回空串；供IR层推导调用结果类型，Task 2.7 集成修复）
-    std::string funcReturnTypeOf(const std::string& funcName) const override ;
+    // 查询函数返回类型（1360 结果化批3B：无值=未注册 miss——原空串哨兵退役；
+    //   供IR层推导调用结果类型，Task 2.7 集成修复）
+    cn::Optional<std::string> funcReturnTypeOf(const std::string& funcName) const override ;
     // P3-18 补完（2026-08）：函数返回类型是否为引用（T&）——调用点将结果当"左值地址"
     bool funcReturnsRef(const std::string& funcName) const override ;
     // 662：函数返回类对象「拥有形态」查询（IR 调用点析构判定·键域同 funcReturnTypeOf）。
     bool funcReturnOwnsClassOf(const std::string& funcName) const override ;
-    // 返回该函数名的第一个签名 key（函数名作值/取地址用，Task 2.10；无此名返回空串）
-    std::string funcFirstSigKey(const std::string& name) const override ;
-    // 查询函数参数类型列表（未注册返回空；供IR层推导结构体按值实参传递，Task 完善A）
-    std::vector<std::string> funcParamTypesOf(const std::string& funcName) const override ;
+    // 返回该函数名的第一个签名 key（函数名作值/取地址用，Task 2.10；
+    //   1360 结果化批3B：无值=无同名条目——原空串哨兵退役）
+    cn::Optional<std::string> funcFirstSigKey(const std::string& name) const override ;
+    // 查询函数参数类型列表（1360 结果化批3B：无值=未注册 miss；有值空表=已登记
+    //   无参函数·110 同族双语义显形消除；供IR层推导结构体按值实参传递，Task 完善A）
+    cn::Optional<std::vector<std::string>> funcParamTypesOf(const std::string& funcName) const override ;
     // C-3：是否 外部 函数（链接符号=纯名，IR 调用侧按此映射）
     bool isExternFunc(const std::string& sigKey) const override ;
     // 程序AST（供结构体/枚举符号表查询）
@@ -134,10 +139,12 @@
     std::string resolveGenericTypeName(const std::string& typeName,
                                        const SourceLocation& loc)override ;
     // ---- 第 4 层（v2.0 决策9，P1-4）：顶层常量查询（IR 层编译期折叠）----
-    // 查询顶层常量值文本（未注册返回空串；值为字面量 raw 文本）
+    // 查询顶层常量值文本（1360 结果化批3B：无值=非常量名——原空串哨兵退役；
+    //   值为字面量 raw 文本）
     //   （548 行数门禁腾挪：原类内 inline 体机械迁移 semantic.cpp·零语义变化）
-    std::string globalConstValue(const std::string& name) const override;
+    cn::Optional<std::string> globalConstValue(const std::string& name) const override;
     // 是否顶层静态变量名（IR 层生成全局存储）；查询顶层静态变量源码类型
-    //   （未注册返回空串·IR 层映射全局存储类型）——同上腾挪 semantic.cpp
+    //   （1360 结果化批3B：无值=未登记——原空串哨兵退役·IR 层映射全局存储类型）
+    //   ——同上腾挪 semantic.cpp
     bool isGlobalStatic(const std::string& name) const override;
-    std::string globalStaticType(const std::string& name) const override;
+    cn::Optional<std::string> globalStaticType(const std::string& name) const override;

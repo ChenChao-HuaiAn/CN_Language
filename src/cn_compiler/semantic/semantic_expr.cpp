@@ -355,18 +355,18 @@ bool SemanticAnalyzer::checkGenericInstantiation(IdentifierExpr* node) {
             //   -> 赋值转换拒绝。分叉：innerClass 走原类类型路径；innerFunc
             //   构造函数指针类型（与 checkFunctionNameValue 同构，按注册签名）。
             if (gi->ast->innerFunc != nullptr) {
-                const std::string instName =
+                const cn::Optional<std::string> instName =
                     instantiateGeneric(head, args, node->location);
-                if (!instName.empty()) {
+                if (instName.has_value()) {
                     // 重写标识符名为实例名（IR 的 FuncAddr 按 name 取符号——
                     //   原文 加一<整32> 的 mangle 与实例函数 加一$整32 不匹配
                     //   = 链接爆 LNK2019）
-                    node->name = instName;
+                    node->name = instName.value();
                     // 登记实例化记录（IR 层生成函数体）——值使用点不经
                     //   rewriteGenericFuncCall（调用点专用），此处不登记则
                     //   函数体无人生成 = 链接爆（v1 实锤）。
-                    registerGenericFuncInstance(instName, gi, args);
-                    const auto fit = functions_.find(instName);
+                    registerGenericFuncInstance(instName.value(), gi, args);
+                    const auto fit = functions_.find(instName.value());
                     if (fit != functions_.end()) {
                         const FunctionInfo& info = fit->second;
                         std::string fpt = "函数指针<" + info.returnType + ">(";
@@ -377,15 +377,15 @@ bool SemanticAnalyzer::checkGenericInstantiation(IdentifierExpr* node) {
                         lastType_ = fpt + ")";
                         return true;
                     }
-                    lastType_ = instName;  // 注册缺失（防御）
+                    lastType_ = instName.value();  // 注册缺失（防御）
                     return true;
                 }
                 return false;
             }
-            const std::string instName =
+            const cn::Optional<std::string> instName =
                 instantiateGeneric(head, args, node->location);
-            if (!instName.empty()) {
-                lastType_ = instName;
+            if (instName.has_value()) {
+                lastType_ = instName.value();
                 return true;
             }
         }
@@ -405,11 +405,13 @@ bool SemanticAnalyzer::checkFunctionNameValue(IdentifierExpr* node) {
         // 318-a（T19③）：泛型实例名（加一$整32）是纯名键（instantiateGeneric
         //   函数分支注册 functions_["名$实参"]·无 名#参数串 形态），
         //   funcFirstSigKey 按 base 名遍历查不到（泛型原名不注册）——先直查。
-        const std::string sig = (functions_.find(node->name) != functions_.end())
-                                    ? node->name
-                                    : funcFirstSigKey(node->name);
-        if (!sig.empty()) {
-            const auto it = functions_.find(sig);
+        //   1360 结果化批3B：funcFirstSigKey 无值=无同名条目（原空串哨兵退役）。
+        const cn::Optional<std::string> sig =
+            (functions_.find(node->name) != functions_.end())
+                ? cn::Optional<std::string>(node->name)
+                : funcFirstSigKey(node->name);
+        if (sig.has_value()) {
+            const auto it = functions_.find(sig.value());
             if (it != functions_.end()) {
                 const FunctionInfo& info = it->second;
                 std::string funcPtrType = "函数指针<" + info.returnType + ">(";
@@ -714,7 +716,9 @@ void SemanticAnalyzer::visitSizeofExpr(SizeofExpr* node) {
         node->typeName.find(' ') == std::string::npos) {
         std::string varType;
         if (lookupVar(node->typeName, varType)) {
-            node->size = typeSizeOf(types::canonical(varType));
+            // 1360 结果化批3B：miss value_or 显形 8 回落（变量已声明类型已知·
+            //   miss 面=上游已诊断的恢复查询）
+            node->size = typeSizeOf(types::canonical(varType)).value_or(8);
             node->isVarForm = true;   // 305：IR 层直用 size（跳过类型名重解析）
             lastType_ = "整64";
             return;
@@ -770,7 +774,9 @@ void SemanticAnalyzer::visitSizeofExpr(SizeofExpr* node) {
             }
         }
     }
-    node->size = typeSizeOf(resolved);
+    // 1360 结果化批3B：miss value_or 显形 8 回落（241-a 存在性守卫已在上游
+    //   拒未知类型·此处 miss 面=上游已诊断的恢复查询）
+    node->size = typeSizeOf(resolved).value_or(8);
     lastType_ = "整64";
 }
 void SemanticAnalyzer::visitCastExpr(CastExpr* node) {

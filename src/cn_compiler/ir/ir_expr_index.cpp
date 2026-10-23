@@ -66,7 +66,7 @@ void IRGenerator::visitIndexExpr(IndexExpr* node) {
             std::int64_t elemStride = 8;
             {
                 const int size =
-                    (semantic_ != nullptr) ? semantic_->typeSizeOf(elemSrc) : 0;
+                    (semantic_ != nullptr) ? semantic_->typeSizeOf(elemSrc).value_or(8) : 0;
                 if (size > 0) {
                     elemStride = size;
                 } else if (semantic_ == nullptr) {
@@ -148,7 +148,9 @@ void IRGenerator::visitIndexExpr(IndexExpr* node) {
         //   单路径）。
         bool isStrObj938 = !unique.empty() && types::canonicalEquals(srcType, "字符串");
         if (!isStrObj938 && semantic_ != nullptr) {
-            const std::string cvStr938 = semantic_->globalConstValue(ident->name);
+            // 1360 结果化批3B：无值=非常量名——value_or 显形空串回落
+            const std::string cvStr938 =
+                semantic_->globalConstValue(ident->name).value_or(std::string());
             if (!cvStr938.empty() &&
                 (cvStr938.front() == '"' || cvStr938.front() == '\'')) {
                 isStrObj938 = true;
@@ -209,7 +211,7 @@ void IRGenerator::visitIndexExpr(IndexExpr* node) {
                 //   typeSizeOf miss=编译器内部缺陷（字段数组已登记而元素宽度
                 //   查表 miss·静默 8 步进=错位读写面）——报诊断后保留 8 兜底
                 //   （控制流零变更·driver hasErrors() 中止）。
-                stride = (semantic_ != nullptr) ? semantic_->typeSizeOf(elemSrc) : 8;
+                stride = (semantic_ != nullptr) ? semantic_->typeSizeOf(elemSrc).value_or(8) : 8;
                 if (stride <= 0) {
                     if (semantic_ != nullptr) {
                         diagnostics_.report(DiagnosticLevel::Error, node->location,
@@ -234,7 +236,7 @@ void IRGenerator::visitIndexExpr(IndexExpr* node) {
                 // 655（648 余量④-a 显形·同上）：指针字段元素宽度 miss 静默
                 //   8 兜底显形（isI128 静态可判 16 保留·其余 miss 报诊断）。
                 const int elemSize = (semantic_ != nullptr)
-                                         ? semantic_->typeSizeOf(elemSrc) : 0;
+                                         ? semantic_->typeSizeOf(elemSrc).value_or(8) : 0;
                 if (elemSize > 0) {
                     stride = elemSize;
                 } else if (types::isI128(elemCanon)) {
@@ -258,7 +260,7 @@ void IRGenerator::visitIndexExpr(IndexExpr* node) {
                 // T4（306-a）：越界检查（ptr=112 行的字符串指针值）
                 emitStrBoundsCheck(index, ptr, node->location);
             } else if (elemIsStruct) {
-                stride = semantic_->typeSizeOf(fieldType);
+                stride = semantic_->typeSizeOf(fieldType).value_or(8);
             }
             ir::IRValue scaled = emitResult(
                 ir::Opcode::Mul,
@@ -308,7 +310,7 @@ void IRGenerator::visitIndexExpr(IndexExpr* node) {
         if (types::isArray(callRetType244)) {
             // 数组返回临时：元素大小步进 + 静态长度越界检查（与数组变量同防线）
             const std::string elemSrc244 = types::arrayElemOf(callRetType244);
-            stride = semantic_->typeSizeOf(elemSrc244);
+            stride = semantic_->typeSizeOf(elemSrc244).value_or(8);
             if (stride <= 0) stride = 8;
             emitBoundsCheck(index, types::arrayLenOf(callRetType244), node->location);
         } else if (types::canonicalEquals(callRetType244, "字符串")) {
@@ -347,7 +349,7 @@ void IRGenerator::visitIndexExpr(IndexExpr* node) {
                     const std::string elemSrc = types::arrayElemOf(f.type);
                     // H4 根治（99-a）：统一 typeSizeOf（字符串元素=8；原 typeSize=0
                     //   -> 读侧下标不缩放）
-                    stride = semantic_->typeSizeOf(elemSrc);
+                    stride = semantic_->typeSizeOf(elemSrc).value_or(8);
                     if (stride <= 0) stride = 8;
                     emitBoundsCheck(index, types::arrayLenOf(f.type), node->location);
                     break;
@@ -374,7 +376,7 @@ void IRGenerator::visitIndexExpr(IndexExpr* node) {
             } else if (types::isArray(ftype)) {
                 const std::string elemSrc = types::arrayElemOf(ftype);
                 // H4 根治（99-a）：统一 typeSizeOf（同 ②）
-                stride = semantic_->typeSizeOf(elemSrc);
+                stride = semantic_->typeSizeOf(elemSrc).value_or(8);
                 if (stride <= 0) {
                     // 648（miss 不可静默·110 同族）：字段数组元素类型宽度未登记=
                     //   编译器内部缺陷，显形于此；driver 在 generate() 后
@@ -573,7 +575,7 @@ ir::IRValue IRGenerator::genGenericIndexAddress(IndexExpr* idx) {
                     // 655（648 余量④-b 显形·同 ④-a 写法）：实例字段数组元素
                     //   宽度 typeSizeOf miss=内部缺陷，报诊断后保留 8 兜底。
                     stride = (semantic_ != nullptr)
-                                 ? semantic_->typeSizeOf(elemSrc) : 8;
+                                 ? semantic_->typeSizeOf(elemSrc).value_or(8) : 8;
                     if (stride <= 0) {
                         if (semantic_ != nullptr) {
                             diagnostics_.report(DiagnosticLevel::Error,
@@ -596,7 +598,7 @@ ir::IRValue IRGenerator::genGenericIndexAddress(IndexExpr* idx) {
                     const std::string elemSrc259 = types::arrayElemOf(st);
                     // 655（648 余量④-b 显形·同上）：静态数组元素宽度 miss 显形。
                     stride = (semantic_ != nullptr)
-                                 ? semantic_->typeSizeOf(elemSrc259) : 8;
+                                 ? semantic_->typeSizeOf(elemSrc259).value_or(8) : 8;
                     if (stride <= 0) {
                         if (semantic_ != nullptr) {
                             diagnostics_.report(DiagnosticLevel::Error,
@@ -637,7 +639,7 @@ ir::IRValue IRGenerator::genGenericIndexAddress(IndexExpr* idx) {
                         //   原 types::typeSize 对字符串=0 -> 步进 0）
                         // 655（648 余量④-b 显形·同上）：成员对象数组字段元素
                         //   宽度 miss 显形。
-                        stride = semantic_->typeSizeOf(elemSrc);
+                        stride = semantic_->typeSizeOf(elemSrc).value_or(8);
                         if (stride <= 0) {
                             diagnostics_.report(DiagnosticLevel::Error,
                                 idx->location,
@@ -662,7 +664,7 @@ ir::IRValue IRGenerator::genGenericIndexAddress(IndexExpr* idx) {
                 } else if (types::isArray(ftype)) {
                     const std::string elemSrc = types::arrayElemOf(ftype);
                     // H4 根治（99-a）：同 ①/②——统一 typeSizeOf
-                    stride = semantic_->typeSizeOf(elemSrc);
+                    stride = semantic_->typeSizeOf(elemSrc).value_or(8);
                     if (stride <= 0) stride = 8;
                     emitBoundsCheck(index, types::arrayLenOf(ftype), idx->location);
                 }

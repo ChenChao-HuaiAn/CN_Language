@@ -74,7 +74,8 @@ bool IRGenerator::callReceiverExempt880(VarDecl* node, const DeclGenCtx& ctx) {
                 }
                 if (semantic_ != nullptr) {
                     if (semantic_->isGlobalStatic(rn) ||
-                        !semantic_->globalStaticType(rn).empty()) {
+                        // 1360 结果化批3B：has_value=类型已登记（原 !empty() 等价）
+                        semantic_->globalStaticType(rn).has_value()) {
                         return true;   // 全局
                     }
                 }

@@ -171,11 +171,11 @@ void X64CodeGenerator::emitDataSection(AsmWriter& writer, const ir::IRModule& mo
         //   （原恒 1 quad 装 12B 数组=写越界邻槽·与读侧基址语义配套）
         int qwords = 1;
         if (semantic_ != nullptr && types::isArray(canonStatic)) {
-            const int sz = semantic_->typeSizeOf(stType);
+            const int sz = semantic_->typeSizeOf(stType).value_or(8);
             if (sz > 8) qwords = (sz + 7) / 8;
         } else if (semantic_ != nullptr &&
             semantic_->isStructType(canonStatic) && !types::isPointer(canonStatic)) {
-            const int sz = semantic_->typeSizeOf(stType);
+            const int sz = semantic_->typeSizeOf(stType).value_or(8);
             if (sz > 8) qwords = (sz + 7) / 8;
         }
         writer.raw("ALIGN 8");

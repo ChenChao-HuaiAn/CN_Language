@@ -176,13 +176,13 @@ void IRGenerator::emitClassMethod(const std::string& className, const ClassMembe
         //   ABI、零 sret）——structReturn 豁免，否则 retbuf+this 双装载错位
         if (!mi.isRefReturn && semantic_->isStructType(canon)) {
             func.structReturn = true;
-            func.structReturnSize = semantic_->typeSizeOf(canon);
+            func.structReturnSize = semantic_->typeSizeOf(canon).value_or(8);
         }
         // 087b 捎带（宿主方法返回面·ir_decl 087 sret isArray 同构）：方法数组
         //   返回=隐藏指针协议（structReturnSize=数组字节数·typeSizeOf 数组折叠）
         if (!mi.isRefReturn && types::isArray(canon)) {
             func.structReturn = true;
-            func.structReturnSize = semantic_->typeSizeOf(canon);
+            func.structReturnSize = semantic_->typeSizeOf(canon).value_or(8);
         }
     }
     function_ = &func;
@@ -596,9 +596,10 @@ void IRGenerator::emitOwnedFieldsCopy(const ir::IRValue& thisPtr,
             //   可清）；deepCopy=true：源保持拥有（与拷贝构造字段面同口径）。
             emitStructCopyWithFields(dstF, srcF, canon, loc,
                                      /*preFree=*/false, /*deepCopy=*/true);
+        // 静默豁免业务值: 1360 结果化取值路径（typeSizeOf 无值=内部错误已诊断·
+        //   value_or(8) 显形回落·非兜底）
         } else {
-            // 标量：逐字段字节拷（地址对 + 字段宽）
-            const int size = semantic_->typeSizeOf(canon);
+            const int size = semantic_->typeSizeOf(canon).value_or(8);
             if (size > 0) {
                 emit(ir::Opcode::CopyStruct, {dstF, srcF}, ir::IRValue(),
                      std::to_string(size), "void", loc);

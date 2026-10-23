@@ -194,7 +194,7 @@ void IRGenerator::registerVarSlots(const std::string& unique, const std::string&
         //   元素固定 8 槽/元素（非 C 布局），与「指针步进兜底 8」双错互洽；结构体
         //   数组元素间预留超量槽（len*ceil(大小/8) ≥ C 总大小）同批收口。
         if (semantic_ != nullptr) {
-            const int bytes = semantic_->typeSizeOf(srcType);
+            const int bytes = semantic_->typeSizeOf(srcType).value_or(0);
             if (bytes > 0) {
                 function_->varSlots[unique] = (bytes + 7) / 8;
                 return;
@@ -204,7 +204,7 @@ void IRGenerator::registerVarSlots(const std::string& unique, const std::string&
         const std::string elemSrc = types::arrayElemOf(srcType);
         int elemSlots = 1;
         if (semantic_ != nullptr && semantic_->isStructType(types::canonical(elemSrc))) {
-            const int size = semantic_->typeSizeOf(elemSrc);
+            const int size = semantic_->typeSizeOf(elemSrc).value_or(0);
             elemSlots = (size + 7) / 8;
         } else if (types::isI128(types::canonical(elemSrc))) {
             elemSlots = 2;
@@ -212,7 +212,7 @@ void IRGenerator::registerVarSlots(const std::string& unique, const std::string&
         function_->varSlots[unique] = len.value() * elemSlots;
     } else if (semantic_ != nullptr && semantic_->isStructType(types::canonical(srcType))) {
         // 结构体/联合体变量：按总大小分配 8 字节槽（ceil(总大小/8)）
-        const int size = semantic_->typeSizeOf(srcType);
+        const int size = semantic_->typeSizeOf(srcType).value_or(0);
         function_->varSlots[unique] = (size + 7) / 8;
     } else {
         function_->varSlots[unique] = 1;
@@ -263,7 +263,7 @@ std::optional<std::string> IRGenerator::funcPtrTypeOfCallee(Expr* callee) const 
         //   （442）/返回类型/结构体 retbuf（485）三消费点同受益。
         if (fnPtrType.empty() && semantic_ != nullptr &&
             semantic_->isGlobalStatic(name655)) {
-            const std::string stType655 = semantic_->globalStaticType(name655);
+            const std::string stType655 = semantic_->globalStaticType(name655).value_or("");
             if (stType655.rfind("函数指针<", 0) == 0) fnPtrType = stType655;
         }
     } else if (callee->getType() == NodeType::MemberExpr) {
@@ -299,10 +299,10 @@ std::optional<std::string> IRGenerator::funcPtrTypeOfCallee(Expr* callee) const 
             innerCall927->callee->getType() == NodeType::IdentifierExpr) {
             const std::string& innerName927 = static_cast<IdentifierExpr*>(
                 innerCall927->callee.get())->name;
-            std::string ret927 = semantic_->funcReturnTypeOf(innerName927);
+            std::string ret927 = semantic_->funcReturnTypeOf(innerName927).value_or("");
             if (ret927.empty() && !innerCall927->resolvedSignature.empty()) {
                 ret927 = semantic_->funcReturnTypeOf(
-                    innerCall927->resolvedSignature);
+                    innerCall927->resolvedSignature).value_or("");
             }
             if (!ret927.empty() &&
                 types::isFuncPtr(types::canonical(ret927))) {
@@ -340,7 +340,7 @@ std::int64_t IRGenerator::ptrElemStride(const std::string& srcType) const {
     //   10 次/整8[5] 迭代 40 次=恒 8 字节步进）。
     if (semantic_ != nullptr && types::isArray(srcType)) {
         const std::string elem = types::arrayElemOf(srcType);
-        const int size = semantic_->typeSizeOf(elem);
+        const int size = semantic_->typeSizeOf(elem).value_or(0);
         if (size > 0) return size;
     }
     if (semantic_ != nullptr && types::isPointer(srcType)) {
@@ -356,7 +356,7 @@ std::int64_t IRGenerator::ptrElemStride(const std::string& srcType) const {
         //   原实现仅特判 结构体/类/i128、其余兜底 8——标量指针（整32*/整16*/
         //   整8*）步进错 8：指向结构体紧凑字段的指针 p[1] 跨字段错位读脏值
         //   （130 用例实锤），与「数组局部 8 槽布局」互洽的历史欠账一并统一。
-        const int size = semantic_->typeSizeOf(elem);
+        const int size = semantic_->typeSizeOf(elem).value_or(0);
         if (size > 0) return size;
     }
     // 648 miss 不可静默：终态 8 有实证错步进史（上方 297-300 行 425 数组案：
@@ -493,7 +493,7 @@ cn::Optional<std::string> IRGenerator::memberObjStructType(MemberExpr* node) con
         //   同族，静态聚合面）。
         if (objType.empty() && semantic_ != nullptr &&
             semantic_->isGlobalStatic(objName)) {
-            objType = semantic_->globalStaticType(objName);
+            objType = semantic_->globalStaticType(objName).value_or("");
         }
         // 513-a（T80-host 读路径·与 87-a 静态回退同族）：方法体内**实例字段裸名**
         //   作成员访问对象（`内.x`·无 自身. 前缀）——既非局部/参数（lookupSrcType
@@ -858,7 +858,7 @@ bool IRGenerator::genArrayVarElemAddress(IndexExpr* idx, ir::IRValue& result) {
                 std::int64_t elemStride = 8;
                 if (semantic_ != nullptr) {
                     const std::string elemSrc = types::arrayElemOf(srcType);
-                    const int size = semantic_->typeSizeOf(elemSrc);
+                    const int size = semantic_->typeSizeOf(elemSrc).value_or(0);
                     if (size > 0) elemStride = size;
                 }
                 ir::IRValue scaled = emitResult(

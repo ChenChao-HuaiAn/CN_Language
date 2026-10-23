@@ -40,7 +40,7 @@ cn::Optional<std::string> IRGenerator::exprSrcType(Expr* node) const {
             //   （无值 -> isClassType 判定 false -> 走通用间接调用路径，callee
             //   MemberExpr 被当字段访问生成空 extra 的 AddrOf -> [rbp0] A2006）。
             if (semantic_ != nullptr && semantic_->isGlobalStatic(name)) {
-                return optOfSrc(semantic_->globalStaticType(name));
+                return semantic_->globalStaticType(name);
             }
             // Task 6.1（泛型嵌套容器 栈<T> 组合 向量<T>）：方法体内直接字段名
             //   （数据）——exprSrcType 需返回字段源码类型（向量$整32），否则
@@ -114,7 +114,7 @@ cn::Optional<std::string> IRGenerator::exprSrcType(Expr* node) const {
                 semantic_ != nullptr) {
                 const std::string fn =
                     static_cast<const IdentifierExpr*>(call->callee.get())->name;
-                const std::string sig = semantic_->funcFirstSigKey(fn);
+                const std::string sig = semantic_->funcFirstSigKey(fn).value_or("");
                 // 845（零分叉·569 采样轮）：函数返回泛型容器实例（造() ->
                 //   向量<整32>）的返回文本=canonicalType 形态（含 '<'，未转 $
                 //   实例名）——变量声明路径 lookupSrcType 取物化名，调用路径
@@ -124,7 +124,7 @@ cn::Optional<std::string> IRGenerator::exprSrcType(Expr* node) const {
                 //   v2 全绿）。此处与变量路径对齐物化（resolveGenericInstanceType
                 //   幂等：非泛型/已物化原样返回）。
                 return optOfSrc(resolveGenericInstanceType(
-                    semantic_->funcReturnTypeOf(sig.empty() ? fn : sig)));
+                    semantic_->funcReturnTypeOf(sig.empty() ? fn : sig).value_or("")));
             }
             // 宿主缺陷根治（2026-08-25）：对象.方法() 调用——解析方法返回类型
             //   （表.元素(0) -> 映射$整64$整64）。原缺此分支导致链式方法调用
@@ -161,7 +161,7 @@ cn::Optional<std::string> IRGenerator::exprSrcType(Expr* node) const {
                     const std::string an =
                         static_cast<const IdentifierExpr*>(ie->object.get())->name;
                     if (semantic_->isGlobalStatic(an)) {
-                        arrSrc = semantic_->globalStaticType(an);
+                        arrSrc = semantic_->globalStaticType(an).value_or("");
                     }
                 }
                 if (!arrSrc.empty() && types::isArray(arrSrc)) {

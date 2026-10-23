@@ -157,7 +157,9 @@ bool IRGenerator::assignToIdentifierTarget(AssignmentExpr* node, IdentifierExpr*
 bool IRGenerator::assignToGlobalStatic(AssignmentExpr* node, IdentifierExpr* ident) {
     // 第 9 层 Debug（P3-8）：顶层静态变量赋值——全局 .data 符号 StorePtr。
     if (semantic_ != nullptr && semantic_->isGlobalStatic(ident->name)) {
-        const std::string stType = semantic_->globalStaticType(ident->name);
+        // 1360 结果化批3B：无值=未登记——value_or 显形空串回落
+        const std::string stType =
+            semantic_->globalStaticType(ident->name).value_or(std::string());
         const std::string canonStatic = types::canonical(stType);
         const std::string irT = mapType(stType.empty() ? "整64" : stType);
         // 87-a（2026-09-12 第八十七轮）：静态聚合目标——结构体/字符串按值整体写。
@@ -302,7 +304,10 @@ bool IRGenerator::globalStaticClassAssign(AssignmentExpr* node, IdentifierExpr* 
         std::string rhsSrc = lookupSrcType(rhsName).value_or("");
         const bool rhsIsStatic =
             rhsSrc.empty() && semantic_->isGlobalStatic(rhsName);
-        if (rhsIsStatic) rhsSrc = semantic_->globalStaticType(rhsName);
+        if (rhsIsStatic) {
+            // 1360 结果化批3B：无值=未登记——value_or 显形空串回落
+            rhsSrc = semantic_->globalStaticType(rhsName).value_or(std::string());
+        }
         if (semantic_->isClassType(types::canonical(rhsSrc))) {
             const std::string canonTgt = types::canonical(stType);
             const ClassInfo* ci = semantic_->findClass(canonTgt).value_or(nullptr);

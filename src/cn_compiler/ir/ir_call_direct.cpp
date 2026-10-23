@@ -36,7 +36,9 @@ bool IRGenerator::resolveCalleeDirectness(CallExpr* node,
         //   类型为 fnptr 时保持间接（genExpr 标识符=静态槽 LoadPtr→CallIndirect
         //   与局部 fnptr 同链）
         if (semantic_ != nullptr && semantic_->isGlobalStatic(calleeName) &&
-            semantic_->globalStaticType(calleeName).rfind("函数指针<", 0) == 0) {
+            semantic_->globalStaticType(calleeName)
+                    .value_or(std::string())
+                    .rfind("函数指针<", 0) == 0) {
             isDirect = false;
         }
     }
@@ -76,7 +78,11 @@ void IRGenerator::prepareDefaultArgValues(const CallExpr* node, bool isDirect) {
             if (totIt != funcDefaultTotal_.end()) {
                 totalParams = totIt->second;
             } else if (semantic_ != nullptr) {
-                totalParams = semantic_->funcParamTypesOf(node->resolvedSignature).size();
+                // 1360 结果化批3B：无值=未注册 miss——value_or 显形空表回落
+                totalParams =
+                    semantic_->funcParamTypesOf(node->resolvedSignature)
+                        .value_or(std::vector<std::string>())
+                        .size();
             }
             if (totalParams == 0) totalParams = given;
             // 缺省个数 = 参数总数 - 实参个数（0 ~ defaults.size()）
@@ -98,7 +104,12 @@ void IRGenerator::finalizeCallArgs(CallExpr* node, const std::string& calleeName
     // 106：实参位「无 → 可选<T>」空可选装箱（canConvert 豁免面 IR 配套——
     //   内置名映射后 funcParamTypesOf 查无=no-op；「无→可选」仅用户函数形参面）
     if (isDirect && semantic_ != nullptr) {
-        boxNullOptionalArgs(node, semantic_->funcParamTypesOf(calleeName), args);
+        // 1360 结果化批3B：无值=未注册 miss——value_or 显形空表回落（no-op 原语义）
+        boxNullOptionalArgs(
+            node,
+            semantic_->funcParamTypesOf(calleeName)
+                .value_or(std::vector<std::string>()),
+            args);
     }
     // 追加默认实参（Task 2.10）：缺省参数在实参之后按参数顺序补全。
     // 1150：默认值常量须物化为虚拟寄存器（与显式实参同通道）——常量直作
@@ -156,7 +167,9 @@ std::string IRGenerator::resolveUserFuncCallResultType(CallExpr* node,
                                                        const std::string& calleeName) {
     if (semantic_->funcReturnsRef(calleeName)) return "ptr";
     std::string resultType = "i32";
-    std::string ret = semantic_->funcReturnTypeOf(calleeName);
+    // 1360 结果化批3B：无值=查询 miss——value_or 显形空串回落（原 empty()
+    //   判据与 648 终态诊断逻辑保持）
+    std::string ret = semantic_->funcReturnTypeOf(calleeName).value_or(std::string());
     // 110（外部 函数 整64 返回值塌缩根治）：外部 函数 调用符号=纯名
     //   （C 符号无 mangling·上方 FFI 分支改写 calleeName），而语义层
     //   functions_ 表键=签名 key（名#参数串）——纯名 miss 回退 i32，
@@ -168,7 +181,8 @@ std::string IRGenerator::resolveUserFuncCallResultType(CallExpr* node,
     //   缀·#435 fnptr 间接调用返回类型同族根治先例：IR 层一处修，
     //   三后端 emitCall 按 result.type 分派同受益）。
     if (ret.empty() && !node->resolvedSignature.empty()) {
-        ret = semantic_->funcReturnTypeOf(node->resolvedSignature);
+        ret = semantic_->funcReturnTypeOf(node->resolvedSignature)
+                  .value_or(std::string());
     }
     if (ret.empty() && calleeName.rfind("__cn_", 0) != 0) {
         // 648 miss 不可静默（2026-10-14 立法·110 同族终态）：纯名+签名
@@ -202,21 +216,21 @@ bool IRGenerator::emitAggStructReturnCall(CallExpr* node,
     //   原 isStructType 判定不含数组=retbuf 不预插→被调读空 retbuf 段错误
     //   （m85c 实录 RAX=0）。resultType 显式升 ptr（mapType 数组塌缩 i32·
     //   不动 mapType 本体——数组名退化=元素指针模型全树依赖元素类型）。
-    const std::string retSrc087 = semantic_ != nullptr
-                                      ? semantic_->funcReturnTypeOf(calleeName)
-                                      : std::string();
+    // 1360 结果化批3B：无值=查询 miss——value_or 显形空串回落（原空串语义：
+    //   miss 不触发聚合返回通道）。原三处重复查询合并为单查复用（确定性查询等价）。
+    const std::string retSrc087 =
+        semantic_ != nullptr
+            ? semantic_->funcReturnTypeOf(calleeName).value_or(std::string())
+            : std::string();
     const bool isArrayRet087 = semantic_ != nullptr && types::isArray(retSrc087);
     if (isArrayRet087) resultType = "ptr";
     if (resultType == "ptr" && semantic_ != nullptr &&
-        (semantic_->isStructType(types::canonical(
-             semantic_->funcReturnTypeOf(calleeName))) ||
-         isArrayRet087)) {
+        (semantic_->isStructType(types::canonical(retSrc087)) || isArrayRet087)) {
         // 缓冲构造=allocAggRetbufBuf（936 提炼·公共单点）：槽数经
         //   registerVarSlots 按源码类型实际大小登记（原「64 字节 8 槽」
         //   固定假设=被调 epilogue 精确大小拷贝（structReturnSize）时代
         //   的安全面欠账，936 归纳时统一为多槽登记）。
-        ir::IRValue buf = allocAggRetbufBuf(
-            semantic_->funcReturnTypeOf(calleeName), node->location);
+        ir::IRValue buf = allocAggRetbufBuf(retSrc087, node->location);
         // 隐藏返回指针作为第一个参数（rcx）
         std::vector<ir::IRValue> hiddenArgs = args;
         hiddenArgs.insert(hiddenArgs.begin(), buf);
@@ -283,7 +297,9 @@ bool IRGenerator::needsRefReturnDeref(const std::string& calleeName,
 //   修复=解引用输入显式取 Call 结果寄存器（不再依赖 lastExpr_ 状态巧合）。
 void IRGenerator::emitRefReturnDeref(CallExpr* node, const std::string& calleeName,
                                      const ir::IRValue& callResult) {
-    std::string baseRet = semantic_->funcReturnTypeOf(calleeName);
+    // 1360 结果化批3B：无值=查询 miss——value_or 显形空串回落
+    std::string baseRet =
+        semantic_->funcReturnTypeOf(calleeName).value_or(std::string());
     if (!baseRet.empty() && baseRet.back() == '&') {
         baseRet.pop_back();
     }

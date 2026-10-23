@@ -228,8 +228,9 @@ bool IRGenerator::chainCallReturnsString(CallExpr* node) const {
         const std::string keys[2] = {node->resolvedSignature, name};
         for (const std::string& key : keys) {
             if (key.empty()) continue;
-            const std::string rt =
-                types::canonical(semantic_->funcReturnTypeOf(key));
+            // 1360 结果化批3B：无值=查询 miss——value_or 显形空串回落
+            const std::string rt = types::canonical(
+                semantic_->funcReturnTypeOf(key).value_or(std::string()));
             if (!rt.empty()) return rt == "字符串";
         }
     }

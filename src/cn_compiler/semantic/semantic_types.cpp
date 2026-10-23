@@ -531,7 +531,12 @@ bool SemanticAnalyzer::enumValueOf(const std::string& enumName, const std::strin
     }
     return false;
 }
-int SemanticAnalyzer::typeSizeOf(const std::string& typeRaw) const {
+// 1360 结果化批3B：无值=尺寸未登记 miss（原终态 return 8 哨兵退役）。
+//   miss 语义裁决（#648 先例对齐）：函数内保留报内部错误诊断（显形面不丢）+
+//   返回无值——消费点 value_or(8) 显形回落保持「错误已报编译必失败不产物，
+//   只影响级联诊断质量」的原控制流；递归面（数组元素/可选实参）miss 无值
+//   直接传播（诊断已在递归内报，不重复）。
+cn::Optional<int> SemanticAnalyzer::typeSizeOf(const std::string& typeRaw) const {
     const std::string type = canonicalType(typeRaw);
     if (isEnumType(type)) return 4;  // 枚举按整32存储
     // 任务#249 分支序根治（2026-10-07）：数组展开必须先于一切元素类型特判——
@@ -543,9 +548,13 @@ int SemanticAnalyzer::typeSizeOf(const std::string& typeRaw) const {
     //   数组是容器后缀：凡带 [N] 后缀先按元素递归展开（isPointer 尾字符判定
     //   与 ']' 无交集，顺序无涉；枚举/结构体/类名带后缀本就走不到，行为不变）。
     if (types::isArray(type)) {
-        // 1360 结果化：isArray 守卫下恒有值（value() 坏值=内部缺陷响亮终止）
-        return typeSizeOf(types::arrayElemOf(type)) *
-               types::arrayLenOf(type).value();
+        // 1360 结果化批3B：元素尺寸 miss=数组尺寸未知（无值传播·诊断已报）；
+        //   arrayLenOf 在 isArray 守卫下恒有值（value() 坏值=内部缺陷响亮终止）
+        const cn::Optional<int> elem = typeSizeOf(types::arrayElemOf(type));
+        if (!elem.has_value()) return std::nullopt;
+        // 1360 结果化：arrayLenOf 无值=后缀数字超 int 域解析失败（isArray 守卫仅保证
+        //   有后缀·批1 已知面）——value_or(0) 回落原 -1 哨兵的非正语义（消费点 >0 分流）
+        return elem.value() * types::arrayLenOf(type).value_or(0);
     }
     if (types::isPointer(type)) return 8;
     // 040（001 §5.8 甲案）：函数指针=8 字节指针槽（显式分支——原靠未知类型
@@ -566,20 +575,24 @@ int SemanticAnalyzer::typeSizeOf(const std::string& typeRaw) const {
         //   先于布局·lowerResultOptionalTypes 第一趟扫描）此分支不可达——到达即
         //   布局时机回归。Rust ICE 同构：不再静默猜尺寸（原防御公式
         //   typeSizeOf(T)+1 正是 p0927_01 静默错值的直接源头——把未降级内层
-        //   猜成 5B 真实 16B → CopyStruct 截断/越界写）。报内部错误后仍按
-        //   原防御值返回（只影响后续级联诊断质量·错误已报编译必失败不产物）。
+        //   猜成 5B 真实 16B → CopyStruct 截断/越界写）。报内部错误后按
+        //   原防御公式回落（1360 结果化批3B：递归实参尺寸 miss=无值传播；
+        //   有值时 +1 显形——只影响后续级联诊断质量·错误已报编译必失败不产物）。
         diagnostics_.report(
             DiagnosticLevel::Error, SourceLocation(),
             "编译器内部错误：合成体 '" + type +
                 "' 被查询尺寸时尚未降级注册（067-001 布局时机无关化后不应到达）"
                 "——请报告此错误");
         if (isResultType(type)) return 16;
-        return typeSizeOf(optionalTypeArg(type).value_or(std::string())) + 1;
+        const cn::Optional<int> argSize =
+            typeSizeOf(optionalTypeArg(type).value_or(std::string()));
+        if (!argSize.has_value()) return std::nullopt;
+        return argSize.value() + 1;
     }
     const StructDecl* decl = findStruct(type).value_or(nullptr);
     if (decl != nullptr) return decl->totalSize;
     // 类类型（Task 3.1）：实例大小（对象实宽口径——NewObject 堆块/类内联布局
-    //   消费面依赖）。「类作为值=8 字节句柄」的口径**只在结构体布局的字段放置
+    // 消费面依赖）。「类作为值=8 字节句柄」的口径**只在结构体布局的字段放置
     //   处特判**（computeLayout·058-ⅡA 860 轮全局口径——此前缩面版只命中合成
     //   体前缀，因与 793「映射字段偏移双表二义」域耦合引发 91/94 回归而回退；
     //   793 随 798/799 销项后推广为全部结构体。typeSizeOf(类) 本身保持实宽
@@ -593,9 +606,9 @@ int SemanticAnalyzer::typeSizeOf(const std::string& typeRaw) const {
     // 1360 结果化：has_value() 即命中（有值域 1..16 恒正）
     const cn::Optional<int> baseSize = types::typeSize(type);
     if (baseSize.has_value()) return baseSize.value();
-    // 字符串 = 指针（8字节）；未知类型防御性返回8
+    // 字符串 = 指针（8字节）
     if (type == "字符串") return 8;
-    // 648 豁免两态（合法查询·非 miss，原 8 兜底保留）：
+    // 648 豁免两态（合法查询·非 miss）：
     //   ①空类型：无值类型本无尺寸（结果<空类型,…> 错误载荷布局等合法形态）；
     //   ②泛型形参：单态化前无具体尺寸（泛型类定义体检查期合法查询——
     //     实例化期经归一/单态化后不再以形参名到达此终态）。
@@ -605,24 +618,25 @@ int SemanticAnalyzer::typeSizeOf(const std::string& typeRaw) const {
             if (p == type) return 8;
         }
     }
-    // 648 miss 不可静默：终态 return 8 有实证错布局史（本文件上方
-    //   registerGenericsAndComputeLayout 注释·p3 段错误实录：容器类未实例化时
-    //   字段 24B 被兜底成 8B → 槽区错位）——消费面（布局/槽分配/CopyStruct）
-    //   按 8B 静默继续=错值产物面。上游已逐点根治（sizeof 241-a 存在性守卫、
-    //   布局前泛型归一+068 预降级、IR 单态化 331-a），到达此终态=归一/降级
-    //   遗漏（编译器内部缺陷）或上游已报错的恢复查询。报内部错误后仍按 8
-    //   兜底返回（上方 440 合成体未降级先例同款：错误已报编译必失败不产物，
-    //   只影响级联诊断质量）。
+    // 1360 结果化批3B（#648 终态显形收口）：到达此终态=归一/降级遗漏（编译器
+    //   内部缺陷）或上游已报错的恢复查询——报内部错误后返回无值（消费点
+    //   value_or(8) 显形回落，原「报错后按 8 继续」语义保持）。
     diagnostics_.report(
         DiagnosticLevel::Error, SourceLocation(),
         "内部错误: 类型 '" + type + "' 尺寸未登记，终态 8 兜底已不可静默（#648）");
-    return 8;
+    return std::nullopt;
 }
-int SemanticAnalyzer::typeAlignOf(const std::string& typeRaw) const {
+// 1360 结果化批3B：无值=对齐未登记 miss（原终态 return 1 哨兵退役——#1238
+//   布局兜底重点面：任意未知类型曾按对齐 1 静默继续）。miss 裁决=typeSizeOf
+//   同款：函数内报内部错误诊断 + 无值返回，消费点 value_or 显形回落；
+//   合法查询（整8/正8/布尔=对齐 1·空类型/泛型形参与 typeSizeOf 豁免两态对齐）
+//   显式枚举返回有值。
+cn::Optional<int> SemanticAnalyzer::typeAlignOf(const std::string& typeRaw) const {
     const std::string type = canonicalType(typeRaw);
     if (isEnumType(type)) return 4;
     // 任务#249 同分支序根治：数组先展开取元素对齐（原 isFuncPtrType 前缀判定
-    //   截胡函数指针数组——对齐侥幸等价 8 未爆，与 typeSizeOf 同步修正防复发）
+    //   截胡函数指针数组——对齐侥幸等价 8 未爆，与 typeSizeOf 同步修正防复发）；
+    //   1360 结果化批3B：元素对齐 miss=整体 miss（Optional 自然传播）
     if (types::isArray(type)) return typeAlignOf(types::arrayElemOf(type));
     if (types::isPointer(type)) return 8;
     if (isFuncPtrType(type)) return 8;  // 040：函数指针=指针族对齐 8（与 typeSizeOf 同步）
@@ -632,7 +646,12 @@ int SemanticAnalyzer::typeAlignOf(const std::string& typeRaw) const {
     if (isResultType(type) || isOptionalType(type)) {
         const StructDecl* lowered = findStruct(type).value_or(nullptr);
         if (lowered != nullptr) return lowered->align;
-        return 8;  // 防御：未降级按8对齐
+        // 未降级=内部缺陷（067-001 同面）——报错显形后按原防御值回落
+        diagnostics_.report(
+            DiagnosticLevel::Error, SourceLocation(),
+            "编译器内部错误：合成体 '" + type +
+                "' 被查询对齐时尚未降级注册（067-001 同面）——请报告此错误");
+        return 8;
     }
     // 类类型：对象实宽口径（与 typeSizeOf 类分派同步恢复——句柄口径只在
     //   结果/可选合成结构体布局处特判·058-ⅡA 缩面·详见 computeLayout 注）。
@@ -644,7 +663,21 @@ int SemanticAnalyzer::typeAlignOf(const std::string& typeRaw) const {
     if (type == "整64" || type == "正64" || type == "浮64" || type == "字符串") return 8;
     if (type == "整32" || type == "正32" || type == "浮32" || type == "字符") return 4;
     if (type == "整16" || type == "正16") return 2;
-    return 1;  // 整8/正8/布尔
+    if (type == "整8" || type == "正8" || type == "布尔") return 1;
+    // 豁免两态（与 typeSizeOf 同面对齐·合法查询非 miss；原走终态 1 等价）：
+    //   空类型（无值类型布局面）/泛型形参（单态化前定义体检查期）
+    if (type == "空类型") return 1;
+    for (const auto& kv : generics_) {
+        for (const std::string& p : kv.second.typeParams) {
+            if (p == type) return 1;
+        }
+    }
+    // 1360 结果化批3B：未知类型终态——报内部错误后无值（消费点 value_or(1)
+    //   显形回落保持原控制流；禁静默按 1 继续）
+    diagnostics_.report(
+        DiagnosticLevel::Error, SourceLocation(),
+        "内部错误: 类型 '" + type + "' 对齐未登记（#1238 布局兜底显形）");
+    return std::nullopt;
 }
 // 1360 结果化批3A：无值=无此字段（原 -1 哨兵退役）
 cn::Optional<int> SemanticAnalyzer::fieldOffsetOf(const StructDecl* decl, const std::string& fieldName) const {
@@ -782,7 +815,8 @@ void SemanticAnalyzer::computeLayout(StructDecl* decl) {
                 int fs280 = 8;
                 if (!findClass(fc280).has_value() &&
                     (findStruct(fc280).has_value() || types::typeSize(fc280).has_value())) {
-                    fs280 = typeSizeOf(f.type);   // 结构体/内置标量=真值（整128 16B 面）
+                    // 1360 结果化批3B：miss（=280 门外的意外面）value_or 显形 8 回落
+                    fs280 = typeSizeOf(f.type).value_or(8);  // 结构体/内置标量=真值（整128 16B 面）
                 }
                 const int rounded280 = (fs280 + 7) / 8 * 8;
                 if (rounded280 > wide280) wide280 = rounded280;
@@ -805,7 +839,8 @@ void SemanticAnalyzer::computeLayout(StructDecl* decl) {
                 int fs280 = 8;
                 if (!findClass(fc280).has_value() &&
                     (findStruct(fc280).has_value() || types::typeSize(fc280).has_value())) {
-                    fs280 = typeSizeOf(f.type);   // 结构体/内置标量=真值
+                    // 1360 结果化批3B：miss（=280 门外的意外面）value_or 显形 8 回落
+                    fs280 = typeSizeOf(f.type).value_or(8);  // 结构体/内置标量=真值
                 }
                 const int rounded280 = (fs280 + 7) / 8 * 8;
                 if (rounded280 > payload280) payload280 = rounded280;
@@ -847,8 +882,10 @@ void SemanticAnalyzer::computeLayout(StructDecl* decl) {
                 }
             }
         }
-        const int fieldAlign = typeAlignOf(field.type);
-        const int fieldSize = typeSizeOf(field.type);
+        // 1360 结果化批3B：miss value_or 显形回落（对齐 1/尺寸 8=原终态语义；
+        //   miss 时诊断已在 typeSizeOf/typeAlignOf 内报，此处显形回落值）
+        const int fieldAlign = typeAlignOf(field.type).value_or(1);
+        const int fieldSize = typeSizeOf(field.type).value_or(8);
         // 058-ⅡA（2026-09-26 795 轮缩面→860 轮全局口径·793 双表归一已销项）：
         //   类字段=句柄宽 8/8——类是引用语义，字段槽运行时装的是 NewObject 返回
         //   的堆对象指针（k 探针 IR 实锤类字段访问=指针加载）。原按

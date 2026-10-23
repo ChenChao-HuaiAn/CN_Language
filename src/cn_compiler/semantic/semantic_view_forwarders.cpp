@@ -20,16 +20,22 @@ bool SemanticAnalyzer::isTransferDecl(const void* varDeclNode, std::string& outS
 const std::vector<GenericFuncInstance>& SemanticAnalyzer::genericFuncInstances() const {
     return genericFuncInstances_;
 }
-std::string SemanticAnalyzer::globalConstValue(const std::string& name) const {
-    auto it = globalConstValues_.find(name);
-    return (it == globalConstValues_.end()) ? "" : it->second;
+// 1360 结果化批3B：无值=非常量名（原空串哨兵退役——表内值文本恒非空，
+//   空串字面量常量的值文本含引号亦非空）。
+cn::Optional<std::string> SemanticAnalyzer::globalConstValue(const std::string& name) const {
+    const auto it = globalConstValues_.find(name);
+    if (it == globalConstValues_.end()) return std::nullopt;
+    return it->second;
 }
 bool SemanticAnalyzer::isGlobalStatic(const std::string& name) const {
     return globalStatics_.count(name) > 0;
 }
-std::string SemanticAnalyzer::globalStaticType(const std::string& name) const {
-    auto it = globalStatics_.find(name);
-    return (it == globalStatics_.end()) ? "" : it->second;
+// 1360 结果化批3B：无值=未登记（原空串哨兵退役——登记面 ggType/stType 恒非空，
+//   typeName 空时归一"自动"）。
+cn::Optional<std::string> SemanticAnalyzer::globalStaticType(const std::string& name) const {
+    const auto it = globalStatics_.find(name);
+    if (it == globalStatics_.end()) return std::nullopt;
+    return it->second;
 }
 bool SemanticAnalyzer::canConvert(const std::string& from, const std::string& to) {
     return types::canConvert(from, to);

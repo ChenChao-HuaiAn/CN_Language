@@ -397,8 +397,10 @@ bool SemanticAnalyzer::checkCopyBuiltinCall(CallExpr* node) {
 //   维持标记域口径·420 预演域预演体独立），故驻本文件匿名/静态域不动 .hpp。
 //   1068：判定本体已切 types::integerLiteralRuntimeType 单点（见函数内注释·
 //   进制文本/带后缀超域形态收口·910 五面同判据）。
-std::string wrapLiteralOperandType(const Expr* e) {
-    if (e == nullptr) return "";
+//   1360 结果化批3B：无值=非整数字面量形态（原空串哨兵退役）；有值=运行时
+//   参与域类型文本（值恒非空）。调用方 value_or 显形回落保持原类型。
+cn::Optional<std::string> wrapLiteralOperandType(const Expr* e) {
+    if (e == nullptr) return std::nullopt;
     const IntegerLiteral* lit = nullptr;
     bool outerNeg = false;
     if (e->getType() == NodeType::IntegerLiteral) {
@@ -412,7 +414,7 @@ std::string wrapLiteralOperandType(const Expr* e) {
             outerNeg = true;
         }
     }
-    if (lit == nullptr) return "";
+    if (lit == nullptr) return std::nullopt;
     // 一元负号非折叠形态（parser 323 折叠后不可达·防御面）：负号归一进文本，
     //   与 323 折叠的符号归一规则同构（-(-5) 取负抵消等）。
     std::string raw = lit->raw;
@@ -482,10 +484,12 @@ bool SemanticAnalyzer::checkWrapBuiltinCall(CallExpr* node) {
     //   字面量自身诊断拒）。变量实参不受影响（wrapLiteralOperandType 非字面量
     //   返回 ""，保持 checkExpr 原类型——791 变量矩阵零变化）。
     {
-        const std::string pL = wrapLiteralOperandType(node->arguments[0].get());
-        if (!pL.empty()) leftType = pL;
-        const std::string pR = wrapLiteralOperandType(node->arguments[1].get());
-        if (!pR.empty()) rightType = pR;
+        // 1360 结果化批3B：无值=非字面量形态（保持 checkExpr 原类型——has_value
+        //   分流取代原 empty() 判断）
+        const cn::Optional<std::string> pL = wrapLiteralOperandType(node->arguments[0].get());
+        if (pL.has_value()) leftType = pL.value();
+        const cn::Optional<std::string> pR = wrapLiteralOperandType(node->arguments[1].get());
+        if (pR.has_value()) rightType = pR.value();
     }
     // 混合符号拒绝对齐 + - *（2026-09-10 方案A·字面量豁免，Rust 对齐）
     if (types::isUnsigned(leftType) != types::isUnsigned(rightType) &&
@@ -730,12 +734,12 @@ void SemanticAnalyzer::rewriteGenericFuncCall(CallExpr* node, std::string& calle
                 std::vector<std::string> infArgs;
                 if (src->params.size() == node->arguments.size() &&
                     inferGenericArgs(gi, src, node, infArgs)) {
-                    const std::string instName =
+                    const cn::Optional<std::string> instName =
                         instantiateGeneric(calleeName, infArgs, node->location);
-                    if (!instName.empty()) {
-                        registerGenericFuncInstance(instName, gi, infArgs);
-                        node->callee = std::make_unique<IdentifierExpr>(instName);
-                        calleeName = instName;
+                    if (instName.has_value()) {
+                        registerGenericFuncInstance(instName.value(), gi, infArgs);
+                        node->callee = std::make_unique<IdentifierExpr>(instName.value());
+                        calleeName = instName.value();
                     }
                 }
             }
@@ -787,17 +791,17 @@ void SemanticAnalyzer::rewriteGenericFuncCall(CallExpr* node, std::string& calle
                         a = resolveGenericTypeName(a, node->location);
                     }
                 }
-                const std::string instName =
+                const cn::Optional<std::string> instName =
                     instantiateGeneric(head, args, node->location);
-                if (!instName.empty()) {
+                if (instName.has_value()) {
                     // 重写 callee 为实例化函数名（名$实参），直接函数调用路径命中
-                    node->callee = std::make_unique<IdentifierExpr>(instName);
-                    calleeName = instName;
+                    node->callee = std::make_unique<IdentifierExpr>(instName.value());
+                    calleeName = instName.value();
                     // 登记泛型函数实例化记录（供 IR 层生成函数体）：
                     //   记录 实例化名 + 原泛型声明 + 类型实参（替换类型参数用）
                     const GenericInfo* ginfo = findGeneric(head).value_or(nullptr);
                     if (ginfo != nullptr && ginfo->ast->innerFunc != nullptr) {
-                        registerGenericFuncInstance(instName, ginfo, args);
+                        registerGenericFuncInstance(instName.value(), ginfo, args);
                     }
                 }
             }
@@ -894,8 +898,13 @@ bool SemanticAnalyzer::checkDirectCall(CallExpr* node, const std::string& callee
         for (const auto& a : node->arguments) {
             argLitFlags.push_back(isIntLiteralExpr(a.get()));
         }
-        std::string sigKey = resolveOverload(calleeName, argTypes, node->location,
-                                             node->moduleFilter, argLitFlags);
+        // 1360 结果化批3B：决议失败/歧义（已报诊断）无值——value_or 显形空串
+        //   回落保持「决议失败恢复兼容」原控制流（checkDirectCallFallback 空
+        //   key 判据）。
+        const cn::Optional<std::string> sigKeyOpt =
+            resolveOverload(calleeName, argTypes, node->location,
+                            node->moduleFilter, argLitFlags);
+        const std::string sigKey = sigKeyOpt.value_or(std::string());
     if (checkDirectCallFallback(node, calleeName, sigKey)) return true;
         // plans/018 呈报二 A′（2026-09-07 用户裁决）：resolvedSignature = 注册键。
         //   注册键在 registerFunction 已按函数链接键公式生成（模块条目自带

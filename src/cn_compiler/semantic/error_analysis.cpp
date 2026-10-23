@@ -468,48 +468,54 @@ void SemanticAnalyzer::checkResultDiscard(const std::string& exprType,
                         "结果<正常,错误> 返回值被丢弃未检查（须用 结果.正常 检查后处理两个分支）");
 }
 
-// 变量名提取（成员访问对象为标识符时返回变量名；否则空串）
 // 下标键文本（守卫跟踪键的精确性优先）：标识符名 / 整数字面量原文；
-//   其余形态（表达式/调用/嵌套下标）返回空串 = 该左值不参与守卫跟踪。
-//   保守方向：宁可少跟踪（多报"未检查"）也不误跟踪（放过"未检查"）——安全面优先。
-static std::string indexKeyText(Expr* index) {
-    if (index == nullptr) return "";
+//   1360 结果化批3B：无值=其余形态（表达式/调用/嵌套下标）=该左值不参与守卫
+//   跟踪（原空串哨兵退役）。保守方向：宁可少跟踪（多报"未检查"）也不误跟踪
+//   （放过"未检查"）——安全面优先。
+static cn::Optional<std::string> indexKeyText(Expr* index) {
+    if (index == nullptr) return std::nullopt;
     if (index->getType() == NodeType::IdentifierExpr) {
-        return static_cast<IdentifierExpr*>(index)->name;
+        const std::string& name = static_cast<IdentifierExpr*>(index)->name;
+        if (name.empty()) return std::nullopt;  // 空名=不跟踪（原空串判定等价）
+        return name;
     }
     if (index->getType() == NodeType::IntegerLiteral) {
-        return static_cast<IntegerLiteral*>(index)->raw;
+        const std::string& raw = static_cast<IntegerLiteral*>(index)->raw;
+        if (raw.empty()) return std::nullopt;  // 空原文=不跟踪（原空串判定等价）
+        return raw;
     }
-    return "";
+    return std::nullopt;
 }
 
-std::string SemanticAnalyzer::objectVarName(Expr* object) {
-    if (object == nullptr) return "";
+cn::Optional<std::string> SemanticAnalyzer::objectVarName(Expr* object) {
+    if (object == nullptr) return std::nullopt;
     if (object->getType() == NodeType::IdentifierExpr) {
-        return static_cast<IdentifierExpr*>(object)->name;
+        const std::string& name = static_cast<IdentifierExpr*>(object)->name;
+        if (name.empty()) return std::nullopt;  // 空名=不跟踪（原空串判定等价）
+        return name;
     }
     // 067-002 治本（守卫检查归属·p0927_03 误报）：下标/成员链左值形态纳入
-    //   守卫跟踪键——原仅标识符（其余返回空串）→ markChecked("") 空转 +
+    //   守卫跟踪键——原仅标识符（其余不跟踪）→ markChecked("") 空转 +
     //   isChecked("") 恒假 → `如果 (组[0].正常) { 打印行(组[0].值); }` 合法代码
     //   被误拒（假阳性「访问 结果.值 前必须检查 结果.正常（在 如果 真分支内访问）」）。
-    //   键文本须精确（下标=标识符名/整数字面量原文·其余形态空串不跟踪）；
+    //   键文本须精确（下标=标识符名/整数字面量原文·其余形态不跟踪）；
     //   同源消费点：visitMemberExpr 守卫查询 + 赋值语句守卫失效（`组[0]=x` 清
     //   "组[0]" 标记——扩展后语义一致且更安全）。
     if (object->getType() == NodeType::IndexExpr) {
         auto* idx = static_cast<IndexExpr*>(object);
-        const std::string base = objectVarName(idx->object.get());
-        if (base.empty()) return "";
-        const std::string sub = indexKeyText(idx->index.get());
-        if (sub.empty()) return "";
-        return base + "[" + sub + "]";
+        const cn::Optional<std::string> base = objectVarName(idx->object.get());
+        if (!base.has_value()) return std::nullopt;
+        const cn::Optional<std::string> sub = indexKeyText(idx->index.get());
+        if (!sub.has_value()) return std::nullopt;
+        return base.value() + "[" + sub.value() + "]";
     }
     if (object->getType() == NodeType::MemberExpr) {
         auto* mem = static_cast<MemberExpr*>(object);
-        const std::string base = objectVarName(mem->object.get());
-        if (base.empty()) return "";
-        return base + "." + mem->memberName;
+        const cn::Optional<std::string> base = objectVarName(mem->object.get());
+        if (!base.has_value()) return std::nullopt;
+        return base.value() + "." + mem->memberName;
     }
-    return "";
+    return std::nullopt;
 }
 
 // 将变量标记为已检查（进入 if 真分支时）
@@ -605,7 +611,10 @@ void SemanticAnalyzer::trackIfCheck(IfStmt* node) {
     }
     if (condExpr == nullptr || condExpr->getType() != NodeType::MemberExpr) return;
     MemberExpr* cond = static_cast<MemberExpr*>(condExpr);
-    const std::string varName = objectVarName(cond->object.get());
+    // 1360 结果化批3B：无值=非守卫可跟踪形态——value_or 显形空串回落
+    //   （markChecked/isChecked 空键守卫原语义保持）
+    const std::string varName =
+        objectVarName(cond->object.get()).value_or(std::string());
     const std::string memberName = cond->memberName;
     // 条件对象类型（结果<T,E> 或 可选<T>；已由 visitIfStmt 前置判断）
     const std::string condType = checkExpr(cond->object.get());
@@ -717,19 +726,19 @@ void SemanticAnalyzer::collectGuardMarks(Expr* cond, std::vector<std::string>& m
     }
     if (cond->getType() != NodeType::MemberExpr) return;
     auto* m = static_cast<MemberExpr*>(cond);
-    const std::string varName = objectVarName(m->object.get());
-    if (varName.empty()) return;
+    const cn::Optional<std::string> varName = objectVarName(m->object.get());
+    if (!varName.has_value()) return;
     // 已标记则不重复（a.正常 && a.正常 幂等）
     for (const auto& v : marked) {
-        if (v == varName) return;
+        if (v == varName.value()) return;
     }
     const std::string objType = checkExpr(m->object.get());
     if (isResultType(objType) && m->memberName == "正常") {
-        markChecked(varName, negated ? "错误" : "正常");
-        marked.push_back(varName);
+        markChecked(varName.value(), negated ? "错误" : "正常");
+        marked.push_back(varName.value());
     } else if (isOptionalType(objType) && m->memberName == "有值" && !negated) {
-        markChecked(varName, "有值");
-        marked.push_back(varName);
+        markChecked(varName.value(), "有值");
+        marked.push_back(varName.value());
     }
 }
 

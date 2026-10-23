@@ -49,7 +49,10 @@ bool indexTextExceedsI64(const std::string& text) {
 
 void SemanticAnalyzer::visitMemberExpr(MemberExpr* node) {
     const std::string memberName = node->memberName;
-    const std::string objectVar = objectVarName(node->object.get());
+    // 1360 结果化批3B：无值=非守卫可跟踪形态——value_or 显形空串回落
+    //   （isChecked/markChecked 空键守卫原语义保持）
+    const std::string objectVar =
+        objectVarName(node->object.get()).value_or(std::string());
     // 188-a（D6·plans/023 B11 变量常量传播）：`无.字段` 字面量形态（编译期常量
     //   空指针成员访问）——硬错误（plans/023 §九 负例 `点* q = 无; 返回 q.x;` 的
     //   字面量孪生形态；原实现只报「类型 '空类型' 不是结构体…」间接错误）。

@@ -56,7 +56,7 @@ cn::Optional<std::string> IRGenerator::lookupSrcType(const std::string& name) co
     //   静态与标量/结构体静态不经过本段（容器静态下标=指针语义走 ptrElem
     //   通道·全局面行为零变化——v2p 全树编译回归实证缩窄必要性）。
     if (semantic_ != nullptr && semantic_->isGlobalStatic(name)) {
-        const std::string stType = semantic_->globalStaticType(name);
+        const std::string stType = semantic_->globalStaticType(name).value_or("");
         if (!stType.empty() && types::isArray(types::canonical(stType))) {
             return stType;
         }

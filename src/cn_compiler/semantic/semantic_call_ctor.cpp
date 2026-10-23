@@ -47,9 +47,9 @@ void SemanticAnalyzer::resolveGenericCtorName(CallExpr* node, std::string& class
                         a = resolveGenericTypeName(a, node->location);
                     }
                 }
-                const std::string instName =
+                const cn::Optional<std::string> instName =
                     instantiateGeneric(head, args, node->location);
-                if (!instName.empty()) className = instName;
+                if (instName.has_value()) className = instName.value();
             }
         }
 }

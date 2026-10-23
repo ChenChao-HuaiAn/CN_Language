@@ -373,8 +373,9 @@ cn::Optional<int> SemanticAnalyzer::classFieldOffset(const std::string& classNam
             auto f = ci->fields.find(fname);
             if (f == ci->fields.end() || f->second.isStatic) continue;  // 静态不入实例
             const bool handleField = isClassType(types::canonical(f->second.type));
-            const int fieldAlign = handleField ? 8 : typeAlignOf(f->second.type);
-            const int fieldSize = handleField ? 8 : typeSizeOf(f->second.type);
+            // 1360 结果化批3B：miss value_or 显形回落（8/8=原终态语义）
+            const int fieldAlign = handleField ? 8 : typeAlignOf(f->second.type).value_or(8);
+            const int fieldSize = handleField ? 8 : typeSizeOf(f->second.type).value_or(8);
             acc = (acc + fieldAlign - 1) / fieldAlign * fieldAlign;
             if (fname == fieldName) return cn::Optional<int>(acc);
             acc += fieldSize;
@@ -901,8 +902,9 @@ void SemanticAnalyzer::computeClassLayout(ClassInfo& info) {
             //   高半——IR/asm 双实锤 rc=139）；宽于 8B 的容器字段=16B 空洞浪费。
             //   布局与运行时内容一致（058 挂账①全局口径·类布局侧）。
             const bool handleField = isClassType(types::canonical(f->second.type));
-            const int fieldAlign = handleField ? 8 : typeAlignOf(f->second.type);
-            const int fieldSize = handleField ? 8 : typeSizeOf(f->second.type);
+            // 1360 结果化批3B：miss value_or 显形回落（8/8=原终态语义）
+            const int fieldAlign = handleField ? 8 : typeAlignOf(f->second.type).value_or(8);
+            const int fieldSize = handleField ? 8 : typeSizeOf(f->second.type).value_or(8);
             if (fieldAlign > maxAlign) maxAlign = fieldAlign;
             offset = (offset + fieldAlign - 1) / fieldAlign * fieldAlign;
             offset += fieldSize;

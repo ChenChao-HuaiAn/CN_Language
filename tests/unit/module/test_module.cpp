@@ -767,7 +767,8 @@ TEST(ModuleTest, TopLevelStaticDecl) {
     cn_compiler::SemanticAnalyzer analyzer(diags);
     EXPECT_TRUE(analyzer.analyze(&merged)) << diags.format();
     EXPECT_TRUE(analyzer.isGlobalStatic("计数器"));
-    EXPECT_EQ(analyzer.globalStaticType("计数器"), "整64");
+    // 1360 结果化批3B：globalStaticType 无值=未登记——value_or 显形回落比对
+    EXPECT_EQ(analyzer.globalStaticType("计数器").value_or(std::string()), "整64");
 }
 
 // 可见性交集：模块私有类不跨模块导入（导入 甲::隐藏类 -> 报错）

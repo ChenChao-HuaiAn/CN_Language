@@ -91,7 +91,7 @@ bool IRGenerator::assignToIndexTarget(AssignmentExpr* node) {
                     if (srcUniqueOpt959.has_value()) {
                         const std::string& srcUnique959 = srcUniqueOpt959.value();
                         const int bytes959 =
-                            semantic_->typeSizeOf(elemCanon959);
+                            semantic_->typeSizeOf(elemCanon959).value_or(8);
                         if (bytes959 > 0) {
                             ir::IRValue addr959 =
                                 lvalueAddress(node->target.get());

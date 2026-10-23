@@ -24,10 +24,12 @@ const std::vector<const FuncEntryView*>& emptyFuncNameBucket() {
 }
 }  // namespace
 
-// 648：miss 返回空串是接口信号（消费点遍布全树），禁止在本函数改报错；
-//   消费点须按「miss 不可静默」立法处置（先例=ir_call.cpp 用户函数返回类型
-//   两级查询收口·内置/泛型回退命中不涉）。
-std::string SemanticAnalyzer::funcReturnTypeOf(const std::string& funcName) const {
+// 1360 结果化批3B：无值=查询 miss（原空串哨兵退役——消费点 value_or 显形回落
+//   或 has_value() 分流，类型强制检查）。表内 returnType 注册面恒非空
+//   （registerFunction 空声明归一"空类型"、内置占位"自动"亦非空）；唯一空串
+//   来源=泛型函数单态化直存 AST 无返回类型声明的空串，与 miss 在全部消费点
+//   同一 empty() 分支处理——此处归一显形为无值（命中值恒非空）。
+cn::Optional<std::string> SemanticAnalyzer::funcReturnTypeOf(const std::string& funcName) const {
     // 第 4 层（P2-6）：支持 模块名$签名key（resolvedSignature 带 crate 前缀）
     auto it = functions_.find(funcName);
     if (it == functions_.end()) {
@@ -50,17 +52,21 @@ std::string SemanticAnalyzer::funcReturnTypeOf(const std::string& funcName) cons
             const ClassInfo* ci = findClass(classPart).value_or(nullptr);
             if (ci != nullptr) {
                 const auto mit = ci->methods.find(methodPart);
-                if (mit != ci->methods.end()) return mit->second.type;
+                if (mit != ci->methods.end() && !mit->second.type.empty()) {
+                    return mit->second.type;
+                }
                 for (const auto& mk : ci->methods) {
-                    if (mk.first == methodPart || mk.first.rfind(methodPart, 0) == 0) {
+                    if ((mk.first == methodPart || mk.first.rfind(methodPart, 0) == 0) &&
+                        !mk.second.type.empty()) {
                         return mk.second.type;
                     }
                 }
             }
         }
-        return "";
+        return std::nullopt;
     }
-    return it->second.returnType;
+    const std::string& rt = it->second.returnType;
+    return rt.empty() ? std::nullopt : cn::Optional<std::string>(rt);
 }
 // 662（方法链消费位）：函数返回类对象拥有形态查询——键域=funcReturnTypeOf 同款
 //   （含 模块$前缀 剥离回退）；miss（含泛型类方法面）=保守 false（不析构）。
@@ -86,17 +92,16 @@ bool SemanticAnalyzer::funcReturnsRef(const std::string& funcName) const {
     if (it == functions_.end()) return false;
     return it->second.isRefReturn;
 }
-// 648：miss 返回空表是接口信号（已登记无参函数的空形参表与未登记 miss 双义，
-//   消费点须以 funcFirstSigKey 等区分——先例=ir_call.cpp 形参表收口豁免③），
-//   禁止在本函数改报错；消费点须按「miss 不可静默」立法处置。
-std::vector<std::string> SemanticAnalyzer::funcParamTypesOf(const std::string& funcName) const {
+// 1360 结果化批3B：无值=函数未注册 miss（原空表哨兵退役）；有值=形参类型表
+//   （空表=已登记无参函数·110 同族「空表双语义」显形消除）。
+cn::Optional<std::vector<std::string>> SemanticAnalyzer::funcParamTypesOf(const std::string& funcName) const {
     // 第 4 层（P2-6）：支持 模块名$签名key（resolvedSignature 带 crate 前缀）
     auto it = functions_.find(funcName);
     if (it == functions_.end()) {
         const std::size_t dollar = funcName.find('$');
         if (dollar != std::string::npos) it = functions_.find(funcName.substr(dollar + 1));
     }
-    if (it == functions_.end()) return {};
+    if (it == functions_.end()) return std::nullopt;
     return it->second.paramTypes;
 }
 std::string SemanticAnalyzer::signatureKey(const std::string& name,
@@ -130,7 +135,9 @@ bool SemanticAnalyzer::hasFunctionName(const std::string& name) const {
     }
     return false;
 }
-std::string SemanticAnalyzer::funcFirstSigKey(const std::string& name) const {
+// 1360 结果化批3B：无值=无同名函数条目（原空串哨兵退役；命中键恒非空——
+//   functions_ 键为 名#签名 形态至少含函数名一字）。
+cn::Optional<std::string> SemanticAnalyzer::funcFirstSigKey(const std::string& name) const {
     std::string best;
     // 1143：分桶索引——最小键选取与遍历顺序无关（纯 min 运算），过滤等价
     const bool nameNoDollar = name.find('$') == std::string::npos;
@@ -144,6 +151,7 @@ std::string SemanticAnalyzer::funcFirstSigKey(const std::string& name) const {
         //   泛型实例键（排序$整32·name 含 '$'）不剥离，与 hasFunctionName 判据一致。
         if (best.empty() || key < best) best = key;
     }
+    if (best.empty()) return std::nullopt;
     return best;
 }
 // 实参类型到参数类型的转换等级：0=精确 1=宽化 2=隐式转换。
@@ -197,7 +205,9 @@ cn::Optional<int> SemanticAnalyzer::conversionLevel(const std::string& argTypeRa
     // 整数 -> 浮点 / 字符 -> 整数 等：隐式转换
     return 2;
 }
-std::string SemanticAnalyzer::resolveOverload(const std::string& name,
+// 1360 结果化批3B：无值=未匹配/歧义（两终态均已报错误诊断——原空串哨兵退役，
+//   消费点 value_or 显形回落保持「决议失败恢复兼容」原控制流）。
+cn::Optional<std::string> SemanticAnalyzer::resolveOverload(const std::string& name,
                                               const std::vector<std::string>& argTypes,
                                               const SourceLocation& loc,
                                               const std::string& moduleFilter,
@@ -253,7 +263,7 @@ std::string SemanticAnalyzer::resolveOverload(const std::string& name,
         diagnostics_.report(DiagnosticLevel::Error, loc,
                             "函数 '" + name + "' 调用存在歧义（" + ambiguousDetail +
                             " 均可匹配），请使用显式类型转换消除歧义");
-        return "";
+        return std::nullopt;
     }
     if (bestKey.empty()) {
         // 031（#1075）：含方法值实参的调用决议失败——优先报专用文案（指路
@@ -278,13 +288,13 @@ std::string SemanticAnalyzer::resolveOverload(const std::string& name,
                 if (types::isMethodValueType(argTypes[ai])) {
                     diagnostics_.report(DiagnosticLevel::Error, loc,
                                         method_value_943::fnPtrConvertDiag());
-                    return "";
+                    return std::nullopt;
                 }
             }
         }
         diagnostics_.report(DiagnosticLevel::Error, loc,
                             "未找到匹配的函数 '" + name + "'（参数个数或类型不匹配）");
-        return "";
+        return std::nullopt;
     }
     return bestKey;
 }

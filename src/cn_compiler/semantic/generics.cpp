@@ -244,12 +244,12 @@ std::string SemanticAnalyzer::resolveGenericTypeName(const std::string& typeName
         auto pit = genericTypeParams_.find(a);
         if (pit != genericTypeParams_.end()) a = pit->second;
     }
-    const std::string instName = instantiateGeneric(head, args, loc);
-    if (instName.empty()) return typeName;
+    const cn::Optional<std::string> instName = instantiateGeneric(head, args, loc);
+    if (!instName.has_value()) return typeName;
     // 保留类型名后缀（* 指针 / [N] 数组）：名<实参>* -> 名$实参*——
     //   原实现直接返回 名$实参 丢掉 *，导致 节点<T>* 变 节点$整32（非指针）。
     std::string suffix = typeName.substr(gt + 1);
-    return instName + suffix;
+    return instName.value() + suffix;
 }
 
 // ==================== 类型参数替换（Task 3.8） ====================
@@ -392,17 +392,13 @@ void SemanticAnalyzer::checkGenericConstraint(const std::string& argType,
 
 // 泛型类/函数实例化：为 类型名<实参> 生成单态化副本
 //   className 为泛型类名，args 为类型实参（如 ["整32"]）；返回实例化后的类符号名
-// 实现：
-//   1. 查泛型声明（generics_），未找到返回空串
-//   2. 参数个数校验（与 typeParams 等长）
-//   3. 接口约束校验（实参须实现约束接口）
-//   4. 生成实例化类符号名：类名$整32（mangling 编码扩展）
-//   5. 深拷贝泛型类成员，替换类型参数，注册到 classes_（单态化）
-std::string SemanticAnalyzer::instantiateGeneric(
+//   1360 结果化批3B：无值=非泛型名/实参个数错（已报诊断）/非类非函数声明
+//   （原空串哨兵退役——实例名恒非空，消费点 has_value 分流）。
+cn::Optional<std::string> SemanticAnalyzer::instantiateGeneric(
     const std::string& className, std::vector<std::string> args,
     const SourceLocation& loc) {
     const GenericInfo* gen = findGeneric(className).value_or(nullptr);
-    if (gen == nullptr) return "";  // 非泛型（由调用方决定是否报错）
+    if (gen == nullptr) return std::nullopt;  // 非泛型（由调用方决定是否报错）
 
     // A-2（crate 分桶）：类型实参按当前模块解析——多模块同名类型实参（记录）
     //   改写为限定键（甲::记录），实例化名/类型替换用限定键保持模块隔离
@@ -426,7 +422,7 @@ std::string SemanticAnalyzer::instantiateGeneric(
                             "泛型 '" + className + "' 期望 " +
                                 std::to_string(gen->typeParams.size()) + " 个类型实参，实际提供 " +
                                 std::to_string(args.size()) + " 个");
-        return "";
+        return std::nullopt;
     }
 
     // 接口约束校验
@@ -651,7 +647,7 @@ std::string SemanticAnalyzer::instantiateGeneric(
         functions_[instanceName] = info;
         return instanceName;
     }
-    return "";
+    return std::nullopt;
 }
 
 

@@ -124,7 +124,9 @@ void IRGenerator::visitIdentifierExpr(IdentifierExpr* node) {
         //   静态变量不在函数局部 varStack_，须按全局符号地址读取（?gstatic_名）；
         //   放在 lookupVar 失败后（局部变量优先，防止同名遮蔽误读全局）。
         if (semantic_ != nullptr && semantic_->isGlobalStatic(node->name)) {
-            const std::string stType = semantic_->globalStaticType(node->name);
+            // 1360 结果化批3B：无值=未登记——value_or 显形空串回落
+            const std::string stType =
+                semantic_->globalStaticType(node->name).value_or(std::string());
             const std::string canonStatic = types::canonical(stType);
             ir::IRValue addr = emitResult(
                 ir::Opcode::ConstString, {}, "ptr", "?gstatic_" + node->name, node->location);
@@ -157,7 +159,9 @@ void IRGenerator::visitIdentifierExpr(IdentifierExpr* node) {
         //   常量名 -> 字面量值文本（语义层 globalConstValue 查询），直接生成
         //   常量加载（ConstInt/ConstFloat/ConstString），避免按变量生成栈槽。
         if (semantic_ != nullptr) {
-            const std::string constText = semantic_->globalConstValue(node->name);
+            // 1360 结果化批3B：无值=非常量名——value_or 显形空串回落（empty 判据保持）
+            const std::string constText =
+                semantic_->globalConstValue(node->name).value_or(std::string());
             if (!constText.empty()) {
                 if (constText.size() >= 2 &&
                     (constText.front() == '"' || constText.front() == '\'')) {
@@ -190,8 +194,10 @@ void IRGenerator::visitIdentifierExpr(IdentifierExpr* node) {
         //   无参函数/单版本函数 sigKey 即纯名，行为不变
         std::string funcSym = node->name;
         if (semantic_ != nullptr) {
-            const std::string sig = semantic_->funcFirstSigKey(node->name);
-            if (!sig.empty()) funcSym = sig;
+            // 1360 结果化批3B：无值=无同名条目——保持原名回落
+            const cn::Optional<std::string> sig =
+                semantic_->funcFirstSigKey(node->name);
+            if (sig.has_value()) funcSym = sig.value();
         }
         lastExpr_ = emitResult(ir::Opcode::FuncAddr, {}, "ptr", funcSym, node->location);
         return;
@@ -672,7 +678,7 @@ void IRGenerator::visitSizeofExpr(SizeofExpr* node) {
         const std::string t = substGenericType(node->typeName);
         const std::string resolved =
             semantic_->resolveGenericTypeName(t, node->location);
-        size = semantic_->typeSizeOf(resolved);
+        size = semantic_->typeSizeOf(resolved).value_or(8);
     }
     lastExpr_ = emitResult(ir::Opcode::ConstInt, {}, "i64",
                            std::to_string(size), node->location);

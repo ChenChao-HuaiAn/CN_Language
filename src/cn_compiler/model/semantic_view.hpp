@@ -34,7 +34,10 @@ public:
     virtual bool isStructType(const std::string& type) const = 0;
     virtual bool isEnumType(const std::string& type) const = 0;
     virtual bool isInterfaceType(const std::string& type) const = 0;
-    virtual int typeSizeOf(const std::string& type) const = 0;
+    // 1360 结果化批3B：无值=尺寸未登记 miss（原终态 return 8 哨兵退役——
+    //   #648 显形链收口：miss 时函数内已报内部错误诊断，消费点 value_or(8)
+    //   显形回落保持原「报错后按安全值继续」控制流）
+    virtual cn::Optional<int> typeSizeOf(const std::string& type) const = 0;
 
     // ---- 类/结构体/接口布局 ----
     // 1360 结果化（批3A）：查表 miss 无值（原 nullptr 哨兵退役——消费点
@@ -57,7 +60,9 @@ public:
     virtual const std::unordered_map<std::string, ClassInfo>& classes() const = 0;
 
     // ---- 函数/全局符号 ----
-    virtual std::string funcReturnTypeOf(const std::string& funcName) const = 0;
+    // 1360 结果化批3B：无值=查询 miss（原空串哨兵退役——消费点 value_or 显形
+    //   回落或 has_value() 分流，类型强制检查·漏检=编译期拒绝）
+    virtual cn::Optional<std::string> funcReturnTypeOf(const std::string& funcName) const = 0;
     // 662（方法链消费位）：函数返回类对象是否为「拥有形态」（本地移交/构造新建）
     //   ——IR 调用点对「调用返回对象」临时做析构的判定（借用返回共享对象不释放）。
     //   非纯虚+默认保守 false（未覆盖实现=不析构=现状行为·零风险安全默认）。
@@ -65,13 +70,18 @@ public:
         (void)funcName;
         return false;
     }
-    virtual std::vector<std::string> funcParamTypesOf(const std::string& funcName) const = 0;
+    // 1360 结果化批3B：无值=函数未注册 miss；有值=形参类型表（空表=已登记
+    //   无参函数·合法形态与 miss 显形可分——110 同族双语义消除）
+    virtual cn::Optional<std::vector<std::string>> funcParamTypesOf(const std::string& funcName) const = 0;
     virtual bool funcReturnsRef(const std::string& funcName) const = 0;
-    virtual std::string funcFirstSigKey(const std::string& name) const = 0;
+    // 1360 结果化批3B：无值=无同名函数条目（原空串哨兵退役）
+    virtual cn::Optional<std::string> funcFirstSigKey(const std::string& name) const = 0;
     virtual bool isExternFunc(const std::string& sigKey) const = 0;
     virtual bool isGlobalStatic(const std::string& name) const = 0;
-    virtual std::string globalStaticType(const std::string& name) const = 0;
-    virtual std::string globalConstValue(const std::string& name) const = 0;
+    // 1360 结果化批3B：无值=未登记（原空串哨兵退役）
+    virtual cn::Optional<std::string> globalStaticType(const std::string& name) const = 0;
+    // 1360 结果化批3B：无值=非常量名（原空串哨兵退役）
+    virtual cn::Optional<std::string> globalConstValue(const std::string& name) const = 0;
     virtual bool isTransferDecl(const void* varDeclNode, std::string& outSrcName) const = 0;
     virtual const std::vector<GenericFuncInstance>& genericFuncInstances() const = 0;
 

@@ -250,7 +250,7 @@ bool IRGenerator::tryGenTransferInit(VarDecl* node, const ir::IRValue& value,
             ir::IRValue srcAddr = emitResult(
                 ir::Opcode::AddrOf, {ir::IRValue::var(srcUnique, "i64")},
                 "ptr", srcUnique, node->location);
-            const int bytes = semantic_->typeSizeOf(tgtCanon);
+            const int bytes = semantic_->typeSizeOf(tgtCanon).value_or(8);
             if (bytes > 0) {
                 emit(ir::Opcode::CopyStruct, {dstAddr, srcAddr},
                      ir::IRValue(), std::to_string(bytes), "void",
@@ -296,7 +296,7 @@ bool IRGenerator::tryGenArrayRetbufInit(VarDecl* node, const ir::IRValue& value,
             ir::Opcode::AddrOf, {ir::IRValue::var(unique, "i64")}, "ptr",
             unique, node->location);
         const int bytes087 =
-            semantic_->typeSizeOf(types::canonical(node->typeName));
+            semantic_->typeSizeOf(types::canonical(node->typeName)).value_or(8);
         if (bytes087 > 0) {
             emit(ir::Opcode::CopyStruct, {dstAddr, value},
                  ir::IRValue(), std::to_string(bytes087), "void",
@@ -490,7 +490,9 @@ bool IRGenerator::tryGenClassCopyInit(VarDecl* node, const ir::IRValue& value,
         const bool initIsStatic =
             initSrcType.empty() && semantic_->isGlobalStatic(initName);
         if (initIsStatic) {
-            initSrcType = semantic_->globalStaticType(initName);
+            // 1360 结果化批3B：无值=未登记——value_or 显形空串回落
+            initSrcType =
+                semantic_->globalStaticType(initName).value_or(std::string());
         }
         const std::string canonSrc = types::canonical(initSrcType);
         const std::string canonTgt = types::canonical(srcType);
@@ -739,9 +741,12 @@ bool IRGenerator::isRefReturnClassValueCall(const CallExpr* call,
         call->callee->getType() == NodeType::IdentifierExpr) {
         const std::string& cname =
             static_cast<const IdentifierExpr*>(call->callee.get())->name;
-        std::string ret = semantic_->funcReturnTypeOf(cname);
+        // 1360 结果化批3B：无值=查询 miss——value_or 显形空串回落（两级回退判据保持）
+        std::string ret =
+            semantic_->funcReturnTypeOf(cname).value_or(std::string());
         if (ret.empty() && !call->resolvedSignature.empty()) {
-            ret = semantic_->funcReturnTypeOf(call->resolvedSignature);
+            ret = semantic_->funcReturnTypeOf(call->resolvedSignature)
+                      .value_or(std::string());
         }
         if (ret.empty()) return false;
         while (!ret.empty() && (ret.back() == '&' || ret.back() == '*')) {

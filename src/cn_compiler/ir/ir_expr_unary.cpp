@@ -308,7 +308,10 @@ void IRGenerator::visitUnaryExpr(UnaryExpr* node) {
                     .has_value()) {
                 IdentifierExpr* gsIdent = static_cast<IdentifierExpr*>(node->operand.get());
                 if (semantic_->isGlobalStatic(gsIdent->name)) {
-                    const std::string stType = semantic_->globalStaticType(gsIdent->name);
+                    // 1360 结果化批3B：无值=未登记——value_or 显形空串回落
+                    const std::string stType =
+                        semantic_->globalStaticType(gsIdent->name)
+                            .value_or(std::string());
                     const std::string irT = mapType(stType.empty() ? "整64" : stType);
                     ir::IRValue gsAddr = emitResult(
                         ir::Opcode::ConstString, {}, "ptr", "?gstatic_" + gsIdent->name,
@@ -562,7 +565,10 @@ void IRGenerator::visitUnaryExpr(UnaryExpr* node) {
                 // 588-a（005 甲案）：用户显式 &静态**类**变量 与局部同口径语义
                 //   一致化——静态槽存句柄，LoadPtr 符号槽=对象地址（一级语义）；
                 //   包装节点（refWrapAddr）与非类静态维持符号地址（槽地址）不变。
-                const std::string stSrc = semantic_->globalStaticType(operandName);
+                // 1360 结果化批3B：无值=未登记——value_or 显形空串回落
+                const std::string stSrc =
+                    semantic_->globalStaticType(operandName)
+                        .value_or(std::string());
                 const std::string stCanon =
                     types::canonical(types::stripRef(stSrc));
                 if (!node->refWrapAddr &&

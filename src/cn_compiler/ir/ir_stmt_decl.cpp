@@ -577,7 +577,7 @@ bool IRGenerator::genArrayInitListDecl(VarDecl* node, const DeclGenCtx& ctx) {
         //   兜底 8 与数组 8 槽布局互洽，见 ir.cpp registerVarSlots 注）
         std::int64_t elemStride = 8;
         if (semantic_ != nullptr) {
-            const int size = semantic_->typeSizeOf(elemSrc);
+            const int size = semantic_->typeSizeOf(elemSrc).value_or(8);
             if (size > 0) elemStride = size;
         }
         storeArrayInitElements(node, initList, elemSrc, elemIrType, elemStride,
@@ -786,7 +786,7 @@ void IRGenerator::genStructZeroInit(VarDecl* node, const DeclGenCtx& ctx) {
     if (node->initializer == nullptr && !node->funcPtr.isFunctionPtr() &&
         semantic_ != nullptr &&
         semantic_->isStructType(types::canonical(ctx.srcType))) {
-        const int size = semantic_->typeSizeOf(types::canonical(ctx.srcType));
+        const int size = semantic_->typeSizeOf(types::canonical(ctx.srcType)).value_or(8);
         const int slots = (size + 7) / 8;
         for (int s = 0; s < slots; ++s) {
             const std::string slotName =

@@ -103,7 +103,7 @@ void IRGenerator::emitTransferStructSourceCopy(CallExpr* node,
     ir::IRValue tmpAddr = emitResult(
         ir::Opcode::AddrOf, {ir::IRValue::var(tmp, "i64")},
         "ptr", tmp, node->location);
-    const int bytes = semantic_->typeSizeOf(srcCanon);
+    const int bytes = semantic_->typeSizeOf(srcCanon).value_or(8);
     if (bytes > 0) {
         emit(ir::Opcode::CopyStruct, {tmpAddr, srcAddr},
              ir::IRValue(), std::to_string(bytes), "void",

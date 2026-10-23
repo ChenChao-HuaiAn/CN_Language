@@ -235,7 +235,7 @@ void IRGenerator::buildClosureTrampoline943(
         (semantic_->isStructType(types::canonical(returnSrcType)) ||
          types::isArray(returnSrcType))) {
         trap.structReturn = true;
-        trap.structReturnSize = semantic_->typeSizeOf(returnSrcType);
+        trap.structReturnSize = semantic_->typeSizeOf(returnSrcType).value_or(8);
     }
     // 保存外层生成状态（trap 构建独立于当前生成上下文·visitLambdaExpr 同框架）
     ir::IRFunction* outerFunction = function_;
@@ -394,7 +394,7 @@ void IRGenerator::visitLambdaExpr(LambdaExpr* node) {
                                   types::isArray(node->returnType));
     const int structRetSize =
         structRetLambda && semantic_ != nullptr
-            ? semantic_->typeSizeOf(node->returnType) : 0;
+            ? semantic_->typeSizeOf(node->returnType).value_or(8) : 0;
     ir::IRFunction func;
     func.name = lambdaName;
     func.returnType = returnIrType;
@@ -567,7 +567,7 @@ cn::Optional<int> IRGenerator::captureBytes482(const std::string& capSrc) {
         if (types::isI128(types::canonical(capSrc))) return 16;
         const std::string canon = types::canonical(capSrc);
         if (semantic_->isStructType(canon) || types::isArray(capSrc)) {
-            const int bytes = semantic_->typeSizeOf(capSrc);
+            const int bytes = semantic_->typeSizeOf(capSrc).value_or(8);
             if (bytes > 0) return bytes;
         }
     }

@@ -83,7 +83,9 @@ ir::IRValue IRGenerator::genArgValueWithCleanup(Expr* arg,
         const std::string keys[2] = {ce->resolvedSignature, nm};
         for (const std::string& key : keys) {
             if (key.empty()) continue;
-            const std::string rt = types::canonical(semantic_->funcReturnTypeOf(key));
+            // 1360 结果化批3B：无值=查询 miss——value_or 显形空串回落
+            const std::string rt = types::canonical(
+                semantic_->funcReturnTypeOf(key).value_or(std::string()));
             if (!rt.empty()) { retCanon = rt; break; }
         }
         if (retCanon.empty() && nm.rfind("__cn_", 0) != 0) {
@@ -187,7 +189,7 @@ void IRGenerator::boxNullOptionalArgs(CallExpr* node,
             semantic_->ensureLoweredType(structName);
             if (!semantic_->findStruct(structName).has_value()) continue;
         }
-        const int size = semantic_->typeSizeOf(structName);
+        const int size = semantic_->typeSizeOf(structName).value_or(8);
         if (size <= 0) continue;
         // 空可选临时槽（多槽登记）——与「返回 无」/「可选<T> o = 无」声明位同构
         const std::string temp = "__argopt" + std::to_string(varCounter_++);
@@ -255,8 +257,9 @@ bool IRGenerator::argIsOwnedStringTemp(const Expr* arg) const {
         const std::string keys[2] = {ce->resolvedSignature, nm};
         for (const std::string& key : keys) {
             if (key.empty()) continue;
-            const std::string rt =
-                types::canonical(semantic_->funcReturnTypeOf(key));
+            // 1360 结果化批3B：无值=查询 miss——value_or 显形空串回落
+            const std::string rt = types::canonical(
+                semantic_->funcReturnTypeOf(key).value_or(std::string()));
             if (!rt.empty()) { retCanon = rt; break; }
         }
     }
@@ -348,7 +351,11 @@ std::vector<std::string> IRGenerator::resolveEffectiveParamTypes(
     const std::string& calleeFnPtrType442) {
     std::vector<std::string> effectiveParamTypes;
     if (isDirect && semantic_ != nullptr) {
-        effectiveParamTypes = semantic_->funcParamTypesOf(calleeName);
+        // 1360 结果化批3B：无值=未注册 miss——value_or 显形空表回落
+        //   （648 终态诊断按下方 funcFirstSigKey 判据保持）
+        effectiveParamTypes =
+            semantic_->funcParamTypesOf(calleeName)
+                .value_or(std::vector<std::string>());
         // 655（648 余量①·712 返回类型两级查询同构）：外部 函数（FFI）调用符号
         //   =纯名（C 符号无 mangling），而 functions_ 表键=签名 key（名#参数串）
         //   ——纯名 miss 曾止步于此（648 豁免④只免报不回填），128 定标/浮点
@@ -358,7 +365,8 @@ std::vector<std::string> IRGenerator::resolveEffectiveParamTypes(
         //   712 返回类型查询（ir_call.cpp resolvedSignature 回退）完全同构。
         if (effectiveParamTypes.empty() && !node->resolvedSignature.empty()) {
             effectiveParamTypes =
-                semantic_->funcParamTypesOf(node->resolvedSignature);
+                semantic_->funcParamTypesOf(node->resolvedSignature)
+                    .value_or(std::vector<std::string>());
         }
     } else if (!calleeFnPtrType442.empty()) {
         // 1360 结果化：无值=非函数指针串不采用；空表=合法零参（size 比对
@@ -383,7 +391,9 @@ std::vector<std::string> IRGenerator::resolveEffectiveParamTypes(
     if (isDirect && semantic_ != nullptr && effectiveParamTypes.empty() &&
         calleeName.rfind("__cn_", 0) != 0 &&
         calleeName.find('$') == std::string::npos) {
-        const bool knownFunc = !semantic_->funcFirstSigKey(calleeName).empty();
+        // 1360 结果化批3B：has_value=有同名函数条目（原 !empty() 判据等价）
+        const bool knownFunc =
+            semantic_->funcFirstSigKey(calleeName).has_value();
         if (!knownFunc) {
             diagnostics_.report(
                 DiagnosticLevel::Error, node->location,

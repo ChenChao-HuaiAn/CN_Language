@@ -555,11 +555,11 @@ void LinuxX64CodeGenerator::emitDataSection(LinuxX64AsmWriter& writer,
         //   （原恒 8 字节装 12B 数组=写越界邻槽·与读侧基址语义配套）
         std::size_t bytes = 8;
         if (semantic_ != nullptr && types::isArray(canonStatic)) {
-            const int sz = semantic_->typeSizeOf(stType);
+            const int sz = semantic_->typeSizeOf(stType).value_or(8);
             if (sz > 8) bytes = static_cast<std::size_t>((sz + 7) / 8) * 8;
         } else if (semantic_ != nullptr && !types::isPointer(canonStatic) &&
             semantic_->isStructType(canonStatic)) {
-            const int sz = semantic_->typeSizeOf(stType);
+            const int sz = semantic_->typeSizeOf(stType).value_or(8);
             if (sz > 8) bytes = static_cast<std::size_t>((sz + 7) / 8) * 8;
         }
         writer.raw(".align 8");

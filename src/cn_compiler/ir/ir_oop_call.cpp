@@ -655,7 +655,7 @@ bool IRGenerator::emitInstanceMethodCall(CallExpr* node, MemberExpr* mem,
                                          ? elemMem794->semanticType
                                          : elemMem794->semanticType);
                 const int elemSize794 =
-                    semantic_->typeSizeOf(types::canonical(canonObjForMethod));
+                    semantic_->typeSizeOf(types::canonical(canonObjForMethod)).value_or(8);
                 const std::int64_t stride794 =
                     elemSize794 > 0 ? elemSize794 : 8;
                 // 任务 119（927）：ConstInt 值文本必须走 extra（与全库其他发射点

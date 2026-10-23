@@ -181,7 +181,7 @@ bool IRGenerator::injectClassElemDestroy(const std::string& canonClass,
     const int arrayOff = semantic_->classFieldOffset(canonClass, arrayField).value_or(-1);
     const int countOff = semantic_->classFieldOffset(canonClass, "元素数量").value_or(-1);
     if (arrayOff < 0 || countOff < 0) return true;
-    const int stride = semantic_->typeSizeOf(elemCanon);
+    const int stride = semantic_->typeSizeOf(elemCanon).value_or(8);
     if (stride <= 0) return true;
     const std::string dtorSym =
         cascadeMode ? std::string() : methodSymbolKey(elemCanon, dtorSig);
@@ -236,7 +236,7 @@ void IRGenerator::injectOwnedStrFieldElemDestroy(const std::string& canonClass,
         const std::string& thisUniqueE = thisUniqueOptE.value();
         const int arrayOffE = semantic_->classFieldOffset(canonClass, arrayField).value_or(-1);
         const int countOffE = semantic_->classFieldOffset(canonClass, "元素数量").value_or(-1);
-        const int strideE = semantic_->typeSizeOf(elemCanon);
+        const int strideE = semantic_->typeSizeOf(elemCanon).value_or(8);
         if (arrayOffE < 0 || countOffE < 0 || strideE <= 0) return;
         ir::IRValue selfPtrE = emitResult(ir::Opcode::Load,
                                           {ir::IRValue::var(thisUniqueE, "ptr")},
@@ -345,7 +345,7 @@ void IRGenerator::injectMoveElemDestroy(const std::string& canonClass,
         const std::string& srcUniqueM = srcUniqueOptM.value();
         const std::string& thisUniqueMv = thisUniqueOptMv.value();
         const int arrayOffM = semantic_->classFieldOffset(canonClass, arrayField).value_or(-1);
-        const int strideM = semantic_->typeSizeOf(elemCanon);
+        const int strideM = semantic_->typeSizeOf(elemCanon).value_or(8);
         if (arrayOffM < 0 || strideM <= 0) return;
         ir::IRValue selfPtrMv = emitResult(ir::Opcode::Load,
                                            {ir::IRValue::var(thisUniqueMv, "ptr")},

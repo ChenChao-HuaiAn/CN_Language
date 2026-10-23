@@ -135,7 +135,7 @@ void IRGenerator::collectOwnedStrFields(const std::string& canonRaw, int base, i
             //   元素步进=元素类型真实大小（typeSizeOf 单点——H4 教训）。
             const std::string elemCanon = types::canonical(
                 types::arrayElemOf(fieldCanon));
-            int stride = semantic_->typeSizeOf(elemCanon);
+            int stride = semantic_->typeSizeOf(elemCanon).value_or(8);
             if (stride <= 0) stride = 8;
             // 1360 结果化：无值/零长不入登记表（保持原 len>0 口径）
             const cn::Optional<int> lenOpt = types::arrayLenOf(fieldCanon);
@@ -675,7 +675,7 @@ void IRGenerator::emitStructCopyWithFields(const ir::IRValue& dstAddr,
     if (semantic_ == nullptr) return;
     const std::vector<OwnedStrField> fields = ownedStrFieldsOf(canon);
     if (fields.empty()) {
-        const int size = semantic_->typeSizeOf(types::canonical(canon));
+        const int size = semantic_->typeSizeOf(types::canonical(canon)).value_or(8);
         emit(ir::Opcode::CopyStruct, {dstAddr, srcAddr}, ir::IRValue(),
              std::to_string(size), "void", loc);
         return;
@@ -686,7 +686,7 @@ void IRGenerator::emitStructCopyWithFields(const ir::IRValue& dstAddr,
     //   编译期 no-op）。纯值路径（上方 empty 分支）不包裹=零开销。
     const std::string skipLabel = beginSelfAssignGuard(dstAddr, srcAddr, loc);
     if (preFree) emitOwnedStrFieldPreFree(dstAddr, canon, loc);
-    const int size = semantic_->typeSizeOf(types::canonical(canon));
+    const int size = semantic_->typeSizeOf(types::canonical(canon)).value_or(8);
     emit(ir::Opcode::CopyStruct, {dstAddr, srcAddr}, ir::IRValue(),
          std::to_string(size), "void", loc);
     // 深拷（源保持拥有）：标识符/成员来源——目标独立拥有副本；
@@ -748,7 +748,7 @@ void IRGenerator::genCopyBuiltin(CallExpr* node, const SourceLocation& loc) {
                 ir::IRValue tmpAddr = emitResult(
                     ir::Opcode::AddrOf, {ir::IRValue::var(tmp, "i64")}, "ptr", tmp,
                     loc);
-                const int bytes = semantic_->typeSizeOf(type);
+                const int bytes = semantic_->typeSizeOf(type).value_or(8);
                 if (bytes > 0) {
                     emit(ir::Opcode::CopyStruct, {tmpAddr, srcAddr}, ir::IRValue(),
                          std::to_string(bytes), "void", loc);

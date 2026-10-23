@@ -332,7 +332,7 @@ void IRGenerator::emitStructInitTo(StructInitExpr* init, const ir::IRValue& targ
                         "' 宽度未登记 ——静默步进8兜底已废除（#648）");
             }
             if (semantic_->isStructType(types::canonical(elemSrc))) {
-                elemStride = semantic_->typeSizeOf(elemSrc);
+                elemStride = semantic_->typeSizeOf(elemSrc).value_or(8);
             } else if (types::isI128(types::canonical(elemSrc))) {
                 elemStride = 16;
             }

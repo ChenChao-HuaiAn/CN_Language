@@ -147,11 +147,11 @@ void IRGenerator::emitGenericFuncInstance(const GenericFuncInstance& gfi) {
     if (semantic_ != nullptr && !retSrc.empty() &&
         semantic_->isStructType(types::canonical(retSrc))) {
         func.structReturn = true;
-        func.structReturnSize = semantic_->typeSizeOf(retSrc);
+        func.structReturnSize = semantic_->typeSizeOf(retSrc).value_or(8);
     }
     if (semantic_ != nullptr && !retSrc.empty() && types::isArray(retSrc)) {
         func.structReturn = true;
-        func.structReturnSize = semantic_->typeSizeOf(retSrc);
+        func.structReturnSize = semantic_->typeSizeOf(retSrc).value_or(8);
     }
     function_ = &func;
 

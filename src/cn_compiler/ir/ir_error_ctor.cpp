@@ -50,7 +50,7 @@ bool IRGenerator::handleResultCtor(CallExpr* node) {
         decl = semantic_->findStruct(structName).value_or(nullptr);
         if (decl == nullptr) return false;
     }
-    const int structSize = semantic_->typeSizeOf(structName);
+    const int structSize = semantic_->typeSizeOf(structName).value_or(8);
 
     // ---- 分配临时结构体槽（多槽登记：类型大小 -> 槽数）----
     const std::string temp = "__rctor" + std::to_string(varCounter_++);
@@ -317,7 +317,7 @@ void IRGenerator::emitResultCtorValue(CallExpr* node, const std::string& name,
         //   嵌套 查.值.名ID 把地址当字段值（打印地址 实测）、直接拷贝读地址字节。
         //   Result<结构体> 的 值 字段 = 结构体数据本体（值语义，与布局 totalSize 一致）。
         if (semantic_ != nullptr && semantic_->isStructType(types::canonical(valueType))) {
-            const int size = semantic_->typeSizeOf(valueType);
+            const int size = semantic_->typeSizeOf(valueType).value_or(8);
             emit(ir::Opcode::CopyStruct, {valAddr, val}, ir::IRValue(),
                  std::to_string(size), "void", node->location);
         } else {

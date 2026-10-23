@@ -38,7 +38,9 @@ void IRGenerator::visitProgram(Program* node) {
             //   初始化器）；三后端消费 module.globalStatics/globalStaticInits
             //   零改动。语义层已同表登记（globalStaticType 可查）。
             if (!g->isConst && !g->name.empty()) {
-                const std::string stType = semantic_->globalStaticType(g->name);
+                // 1360 结果化批3B：无值=未登记——value_or 显形空串回落（empty 判据保持）
+                const std::string stType =
+                    semantic_->globalStaticType(g->name).value_or(std::string());
                 if (!stType.empty()) {
                     module_->globalStatics[g->name] = stType;
                 }
@@ -306,7 +308,9 @@ void IRGenerator::emitStaticInitsAtEntry() {
     //   构造（v2 侧全树合并模型同款）。原 C4 登记「仅入口模块注入」在现架构下
     //   不成立（反证 B 实证：回退尝试仍通过）；**真实缺陷=H5**（见下 ④ 分支）。
     for (const auto& sname : module_->staticCtorNames) {
-        const std::string stType = semantic_->globalStaticType(sname);
+        // 1360 结果化批3B：无值=未登记——value_or 显形空串回落
+        const std::string stType =
+            semantic_->globalStaticType(sname).value_or(std::string());
         const std::string canonStatic = types::canonical(stType);
         Expr* initExpr = nullptr;
         auto initIt = staticCtorInit_.find(sname);
@@ -560,7 +564,7 @@ void IRGenerator::visitFunctionDecl(FunctionDecl* node) {
         func.structReturn = true;
         // 记录精确大小（字节）：epilogue 按此拷贝到隐藏返回缓冲区（避免 64 字节
         //   硬编码越界写破坏相邻栈变量——班级 16 字节被写 64 字节越界 48 字节）
-        func.structReturnSize = semantic_->typeSizeOf(node->returnType);
+        func.structReturnSize = semantic_->typeSizeOf(node->returnType).value_or(8);
     }
     // Task 完善A：提前绑定 function_，使 registerVarSlots（参数多槽登记）
     //   在参数循环内即可生效（此前 function_ 在循环后设置，结构体参数
