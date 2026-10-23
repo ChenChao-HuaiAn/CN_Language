@@ -288,6 +288,10 @@ add_library(cn_compiler_ir STATIC
     src/cn_compiler/ir/ir_expr_concat.cpp
     src/cn_compiler/ir/ir_expr_unary.cpp
     src/cn_compiler/ir/ir_expr_assign.cpp
+    # 1360 批2（>1000 冻结线拆分）：ir_expr_assign_member.cpp——赋值·成员左值族
+    #   （assignToMemberTarget 及其十个子方法）自 ir_expr_assign.cpp 逐字搬移
+    #   零语义变化；声明仍在 ir.hpp
+    src/cn_compiler/ir/ir_expr_assign_member.cpp
     src/cn_compiler/ir/ir_expr_assign_ident.cpp
     src/cn_compiler/ir/ir_expr_assign_ident_string.cpp
     src/cn_compiler/ir/ir_expr_assign_ident_class.cpp
