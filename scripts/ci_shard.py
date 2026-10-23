@@ -560,6 +560,25 @@ def 片步骤值(rc们: list, 秒们: list) -> dict:
 报活间隔秒 = 60   # 与 task_heartbeat 周期一致（服务端疑似离线阈值 180s=3 个周期）
 
 
+def 本机门禁锁忙(锁目录: Path | None = None) -> bool:
+    """#1423：本机共享门禁锁（CN_GATE_LOCK_DIR/主树锁目录）是否被其他活进程持有。
+    win 三实例共用一把锁（923 OOM 铁律=同机全量互斥）：同机同时领片时只有先拿锁的
+    能真跑，其余排队 15~30 分钟（1420 实录：win2 片7 等锁 29.5 分钟·实际只跑 367s）。
+    调用方见忙即跳过本轮领片/领任务=片让给其他机器或主实例收片补跑，不空等。
+    锁不存在/陈锁（持有进程已死）=不忙；探测异常=不忙（不阻塞正常领任务）。
+    锁目录参数供自测注入（缺省=gate_lock 主树锁目录·win 池经 CN_GATE_LOCK_DIR 覆盖）。"""
+    try:
+        import gate_lock
+        锁 = Path(锁目录) if 锁目录 is not None else gate_lock.主树锁目录()
+        if not 锁.exists() or gate_lock.是陈锁(锁):
+            return False
+        信息 = gate_lock.读信息(锁)
+        pid = 信息.get("pid")
+        return bool(pid) and gate_lock.pid存活(pid)
+    except Exception:
+        return False
+
+
 def 实例指纹(仓库根: Path) -> dict:
     """实例版本指纹（启动时算一次·进程内不变=「这个 daemon 进程是什么版本」）——
     daemon指纹=ci_daemon.py 内容 sha256 前 10（不依赖 git·scp 直更同样反映真实
