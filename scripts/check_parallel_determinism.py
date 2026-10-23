@@ -123,6 +123,14 @@ def 找编译器(显式路径):
     return None
 
 
+def 核数信息():
+    """返回 (可用于判定的核数, 说明)。os.cpu_count()=None → 按单核处理并注明。"""
+    核数 = os.cpu_count()
+    if 核数 is None:
+        return 1, "无法判定核数（按单核跳过）"
+    return 核数, "本机 os.cpu_count()=%d" % 核数
+
+
 def 读并行阈值():
     """从并行实现源码机械读取函数数阈值；返回 (阈值|None, 错误)。"""
     if not 并行实现源.exists():
@@ -199,23 +207,26 @@ class 真编译器:
         return 环境
 
     def _运行(self, 命令, 环境):
+        """返回 (CompletedProcess|None, 错误说明)。超时/不可执行=显式错误，不抛裸异常。"""
         if 超全局截止():
-            return None
+            return None, "全局超时（%ds）" % 全局超时秒
         try:
             return subprocess.run(命令, cwd=str(项目根), env=环境,
                                   capture_output=True,
                                   text=True, encoding="utf-8", errors="replace",
-                                  timeout=剩余超时秒())
+                                  timeout=剩余超时秒()), ""
         except subprocess.TimeoutExpired:
-            return None
+            return None, "超时（剩余 deadline=%ds）" % 剩余超时秒()
+        except OSError as 异常:
+            return None, "无法执行编译器 %s: %s" % (self.路径, 异常)
 
     def 函数数(self, 入口):
         if 入口 in self.函数数缓存:
             return self.函数数缓存[入口]
-        结果 = self._运行([str(self.路径), "ir", str(入口),
-                          "--stdlib", str(标准库)], self._环境(None))
-        if 结果 is None:
-            值 = (0, "cn ir 超时（剩余 deadline=%ds）" % 剩余超时秒())
+        结果, 运行错误 = self._运行([str(self.路径), "ir", str(入口),
+                                    "--stdlib", str(标准库)], self._环境(None))
+        if 运行错误:
+            值 = (0, "cn ir 执行失败：%s" % 运行错误)
         elif 结果.returncode != 0:
             值 = (0, "cn ir 失败 rc=%d: %s" % (
                 结果.returncode, (结果.stderr or 结果.stdout).strip()[:300]))
@@ -226,11 +237,11 @@ class 真编译器:
         return 值
 
     def 编译(self, 入口, 目标, 输出, 线程口径):
-        结果 = self._运行([str(self.路径), "compile", str(入口),
-                          "--target", 目标, "--output", str(输出),
-                          "--stdlib", str(标准库)], self._环境(线程口径))
-        if 结果 is None:
-            return -99, "[超时] 编译超过剩余 deadline（全局 %ds）" % 全局超时秒
+        结果, 运行错误 = self._运行([str(self.路径), "compile", str(入口),
+                                    "--target", 目标, "--output", str(输出),
+                                    "--stdlib", str(标准库)], self._环境(线程口径))
+        if 运行错误:
+            return -99, "[执行失败] " + 运行错误
         return 结果.returncode, (结果.stderr or "") + (
             "" if 结果.returncode == 0 else (结果.stdout or ""))
 
@@ -252,9 +263,20 @@ def 并行口径断言(名, 目标, 标签, 决策, 函数数, 期望线程):
         错误.append("%s/%s/%s: 线程数决策不符（期望 %s，实得 %s）"
                     % (名, 目标, 标签, 期望线程, 决策["threads"]))
     实际workers = 解析整数(决策["workers"])
-    if 实际workers is None or 实际workers < 2:
-        错误.append("%s/%s/%s: 实际 worker 数=%s（期望 >=2）——线程创建失败退化"
-                    "被吞掉，并行未真实发生" % (名, 目标, 标签, 决策["workers"]))
+    if 实际线程 is None:
+        # threads 本身已在上方判红；workers 无法按 threads 对照，只保留下限
+        if 实际workers is None or 实际workers < 2:
+            错误.append("%s/%s/%s: 实际 worker 数=%s（期望 >=2；threads 不可解析）"
+                        "——线程创建失败退化被吞掉，并行未真实发生"
+                        % (名, 目标, 标签, 决策["workers"]))
+    elif 实际workers is None or 实际workers < 2:
+        错误.append("%s/%s/%s: 实际 worker 数=%s（期望 == threads=%s 且 >=2）"
+                    "——线程创建失败退化被吞掉，并行未真实发生"
+                    % (名, 目标, 标签, 决策["workers"], 决策["threads"]))
+    elif 实际workers != 实际线程:
+        错误.append("%s/%s/%s: 实际 worker 数=%d != threads=%d——少建线程/"
+                    "线程创建失败退化被吞掉，并行未按决策线程数真实发生"
+                    % (名, 目标, 标签, 实际workers, 实际线程))
     if 决策["functions"] != str(函数数):
         错误.append("%s/%s/%s: 函数数不符（IR=%d，决策=%s）"
                     % (名, 目标, 标签, 函数数, 决策["functions"]))
@@ -263,15 +285,16 @@ def 并行口径断言(名, 目标, 标签, 决策, 函数数, 期望线程):
         错误.append("%s/%s/%s: labels 字段非整数: %s"
                     % (名, 目标, 标签, 决策["labels"]))
     elif 标签数 <= 0:
-        错误.append("%s/%s/%s: 标签平移量=%s（期望 >0）——标签编号平移面未被"
+        错误.append("%s/%s/%s: 标签总量=%s（期望 >0）——标签编号平移面未被"
                     "本次样本覆盖" % (名, 目标, 标签, 决策["labels"]))
     平移量 = 解析整数(决策["shifted"])
     if 平移量 is None:
         错误.append("%s/%s/%s: shifted 字段非整数: %s"
                     % (名, 目标, 标签, 决策["shifted"]))
     elif 平移量 <= 0:
-        错误.append("%s/%s/%s: 平移覆盖量=%s（期望 >0）——index>0 函数无标签，"
-                    "平移未真实发生" % (名, 目标, 标签, 决策["shifted"]))
+        错误.append("%s/%s/%s: 平移面覆盖量=%s（期望 >0）——无 bases!=0 的函数"
+                    "进入平移面（首函数/前序无标签均不计）"
+                    % (名, 目标, 标签, 决策["shifted"]))
     return 错误
 
 
@@ -296,7 +319,7 @@ def 执行对照(编译器, 目标们_, 样本清单, 阈值, 自动口径可用
     统计 = {"编译次数": 0, "标签合计": 0, "平移合计": 0,
             "自动线程": None, "自动worker": None}
     if 自动口径可用 is None:
-        自动口径可用 = (os.cpu_count() or 1) >= 2
+        自动口径可用 = 核数信息()[0] >= 2
     统计["自动跳过"] = not 自动口径可用
     运行们 = [("并行1", 并行线程数, 并行线程数),
               ("并行2", 并行线程数, 并行线程数),
@@ -391,10 +414,11 @@ def 主检查(编译器, 目标们_):
     if not 标准库.is_dir():
         打印错误(["标准库目录不存在: %s" % 标准库])
         return 1
-    自动口径可用 = (os.cpu_count() or 1) >= 2
+    核数, 核数说明 = 核数信息()
+    自动口径可用 = 核数 >= 2
     if not 自动口径可用:
-        print("[并行确定性] 跳过自动口径：本机 os.cpu_count()<2——无法验证生产"
-              "默认硬件并发（显式线程数 4/2/1 仍全覆盖；不假装通过）", flush=True)
+        print("[并行确定性] 跳过自动口径：%s——无法验证生产默认硬件并发"
+              "（显式线程数 4/2/1 仍全覆盖；不假装通过）" % 核数说明, flush=True)
     清单 = [{"名": 样本["名"],
              "入口路径": 项目根 / "tests" / "e2e" / 样本["名"] / 样本["入口"],
              "覆盖": 样本["覆盖"]} for 样本 in 样本们]
@@ -402,7 +426,7 @@ def 主检查(编译器, 目标们_):
     错误, 统计 = 执行对照(编译器, 目标们_, 清单, 阈值, 自动口径可用)
     耗时 = time.time() - 起点
     if 统计.get("自动跳过"):
-        自动摘要 = "跳过（单核 os.cpu_count()<2）"
+        自动摘要 = "跳过（%s）" % 核数说明
     else:
         自动摘要 = "threads=%s/workers=%s" % (统计["自动线程"], 统计["自动worker"])
     if 错误:
@@ -459,16 +483,10 @@ def 固定内容(内容=b"ASM\n"):
     return 写
 
 
-def 自测用例():
-    """返回 [(用例名, 假编译器, 期望错误子串|None)]；None=期望绿。"""
+def 并行夹具():
+    """并行口径正/反夹具（正常/非确定性/未生效/自动退化/标签/线程/函数/worker）。"""
     返回 = []
     返回.append(("正常并行（正例）", 假编译器(固定内容(), 正常决策()), None))
-    # 串行产物单字节差异
-    def 串行差异(序号, 线程口径, 路径):
-        路径.write_bytes(b"ASX\n" if 线程口径 == "1" else b"ASM\n")
-        return 0, ""
-    返回.append(("串行产物单字节差异", 假编译器(串行差异, 正常决策()),
-                 "并行与串行产物不一致"))
     # 两次并行不一致（第 2 遍不同）
     def 两遍不一致(序号, 线程口径, 路径):
         路径.write_bytes(b"ASM1\n" if 序号 == 1 or 线程口径 == "1" else b"ASM2\n")
@@ -496,34 +514,11 @@ def 自测用例():
         return 正常决策()(序号, 线程口径)
     返回.append(("自动口径退化为串行", 假编译器(固定内容(), 决策自动退化),
                  "自动口径"))
-    # 标签/平移空转
-    返回.append(("标签平移空转（labels=0）",
-                 假编译器(固定内容(), 正常决策(标签数="0")), "标签平移量=0"))
-    返回.append(("平移覆盖空转（shifted=0）",
-                 假编译器(固定内容(), 正常决策(平移量="0")), "平移覆盖量=0"))
-    # 决策摘要缺失
-    def 无决策(序号, 线程口径):
-        return ""
-    返回.append(("决策摘要缺失", 假编译器(固定内容(), 无决策), "决策摘要行数=0"))
-    # 阈值空转
-    返回.append(("函数数低于并行阈值", 假编译器(固定内容(), 正常决策(), 函数数=3),
-                 "样本无法覆盖并行路径"))
-    # 串行决策不符 / 串行 reason 不符
-    def 串行决策不符(序号, 线程口径):
-        if 线程口径 == "1":
-            return ("%s parallel=yes functions=20 threads=1 workers=2 labels=42 "
-                    "shifted=17 reason=eligible\n" % 决策前缀)
-        return 正常决策()(序号, 线程口径)
-    返回.append(("串行决策不符", 假编译器(固定内容(), 串行决策不符),
-                 "串行决策不符"))
-
-    def 串行reason不符(序号, 线程口径):
-        if 线程口径 == "1":
-            return ("%s parallel=no functions=20 threads=1 workers=0 labels=0 "
-                    "shifted=0 reason=below-threshold\n" % 决策前缀)
-        return 正常决策()(序号, 线程口径)
-    返回.append(("串行 reason 不符", 假编译器(固定内容(), 串行reason不符),
-                 "串行 reason"))
+    # 标签/平移面空转
+    返回.append(("标签总量空转（labels=0）",
+                 假编译器(固定内容(), 正常决策(标签数="0")), "标签总量=0"))
+    返回.append(("平移面覆盖空转（shifted=0）",
+                 假编译器(固定内容(), 正常决策(平移量="0")), "平移面覆盖量=0"))
     # 并行线程数不符（显式 4 报 2）
     def 决策线程不符(序号, 线程口径):
         if 线程口径 == "4":
@@ -558,6 +553,50 @@ def 自测用例():
                 "shifted=17 reason=eligible\n" % (决策前缀, 线程口径))
     返回.append(("worker 数不足", 假编译器(固定内容(), 决策worker不足),
                  "实际 worker 数=1"))
+    # 少建一线程（threads=4 实启动 3）
+    def 决策worker少建(序号, 线程口径):
+        if 线程口径 == "1":
+            return 正常决策()(序号, 线程口径)
+        return ("%s parallel=yes functions=20 threads=%s workers=3 labels=42 "
+                "shifted=17 reason=eligible\n" % (决策前缀, 线程口径))
+    返回.append(("少建线程（workers=3/threads=4）",
+                 假编译器(固定内容(), 决策worker少建),
+                 "实际 worker 数=3 != threads=4"))
+    return 返回
+
+
+def 串行边界夹具():
+    """串行边界、决策摘要通道与基础设施反例夹具。"""
+    返回 = []
+    # 串行产物单字节差异
+    def 串行差异(序号, 线程口径, 路径):
+        路径.write_bytes(b"ASX\n" if 线程口径 == "1" else b"ASM\n")
+        return 0, ""
+    返回.append(("串行产物单字节差异", 假编译器(串行差异, 正常决策()),
+                 "并行与串行产物不一致"))
+    # 决策摘要缺失
+    def 无决策(序号, 线程口径):
+        return ""
+    返回.append(("决策摘要缺失", 假编译器(固定内容(), 无决策), "决策摘要行数=0"))
+    # 阈值空转
+    返回.append(("函数数低于并行阈值", 假编译器(固定内容(), 正常决策(), 函数数=3),
+                 "样本无法覆盖并行路径"))
+    # 串行决策不符 / 串行 reason 不符
+    def 串行决策不符(序号, 线程口径):
+        if 线程口径 == "1":
+            return ("%s parallel=yes functions=20 threads=1 workers=2 labels=42 "
+                    "shifted=17 reason=eligible\n" % 决策前缀)
+        return 正常决策()(序号, 线程口径)
+    返回.append(("串行决策不符", 假编译器(固定内容(), 串行决策不符),
+                 "串行决策不符"))
+
+    def 串行reason不符(序号, 线程口径):
+        if 线程口径 == "1":
+            return ("%s parallel=no functions=20 threads=1 workers=0 labels=0 "
+                    "shifted=0 reason=below-threshold\n" % 决策前缀)
+        return 正常决策()(序号, 线程口径)
+    返回.append(("串行 reason 不符", 假编译器(固定内容(), 串行reason不符),
+                 "串行 reason"))
     # 编译失败 / 产物缺失
     def 编译失败(序号, 线程口径, 路径):
         return 1, "夹具编译失败"
@@ -567,6 +606,11 @@ def 自测用例():
         return 0, ""
     返回.append(("产物缺失", 假编译器(无产物, 正常决策()), "未生成汇编产物"))
     return 返回
+
+
+def 自测用例():
+    """返回全部合成夹具（并行面 + 串行边界面）；None=期望绿。"""
+    return 并行夹具() + 串行边界夹具()
 
 
 def 跑自测(显式cn):
@@ -597,6 +641,21 @@ def 跑自测(显式cn):
         if not 通过:
             失败 += 1
 
+    # 单核模拟：自动口径必须显式跳过（4/2/1 三口径仍跑），不得把跳过当通过
+    错误, 统计 = 执行对照(假编译器(固定内容(), 正常决策()), ["win-x64"],
+                        [基准样本], 阈值, 自动口径可用=False)
+    通过 = not 错误 and bool(统计.get("自动跳过"))
+    print("[selftest] %s 单核模拟：自动口径跳过（4/2/1 三口径）%s"
+          % ("✓" if 通过 else "✗",
+             "：绿" if 通过 else "：%s" % 错误), flush=True)
+    if not 通过:
+        失败 += 1
+
+    核数, 核数说明 = 核数信息()
+    自动可用 = 核数 >= 2
+    if not 自动可用:
+        print("[selftest] 自动口径跳过：%s——真实段按 4/2/1 三口径"
+              % 核数说明, flush=True)
     编译器 = 找编译器(显式cn)
     真实段已跑 = False
     if 编译器 is None:
@@ -608,23 +667,29 @@ def 跑自测(显式cn):
                     "入口路径": 项目根 / "tests" / "e2e" / 样本们[0]["名"] /
                                样本们[0]["入口"],
                     "覆盖": 样本们[0]["覆盖"]}
-        错误, 统计 = 执行对照(真编译器(编译器), list(目标们), [真实样本], 阈值)
+        错误, 统计 = 执行对照(真编译器(编译器), list(目标们), [真实样本], 阈值,
+                            自动口径可用=自动可用)
         if 错误:
             失败 += 1
             print("[selftest] ✗ 真实编译正例（%s×三后端）FAIL：" % 编译器, flush=True)
             for 项 in 错误:
                 print("  - " + 项, flush=True)
         else:
-            print("[selftest] ✓ 真实编译正例（%s×三后端·编译 %d 次·自动口径 "
-                  "threads=%s/workers=%s）"
-                  % (编译器, 统计["编译次数"], 统计["自动线程"],
-                     统计["自动worker"]), flush=True)
+            自动摘要 = ("自动口径 threads=%s/workers=%s"
+                        % (统计["自动线程"], 统计["自动worker"])) \
+                if 自动可用 else "自动口径跳过"
+            print("[selftest] ✓ 真实编译正例（%s×三后端·编译 %d 次·%s）"
+                  % (编译器, 统计["编译次数"], 自动摘要), flush=True)
 
     if 失败:
         print("[selftest] FAIL：%d 项" % 失败, flush=True)
         return 1
-    结尾 = "合成正反两态 + 真实编译正例" if 真实段已跑 else \
-        "仅合成正反两态；真实编译正例未跑——未找到 cn 产物"
+    if 真实段已跑:
+        结尾 = "合成正反两态 + 真实编译正例"
+        if not 自动可用:
+            结尾 += "（4/2/1 三口径；自动口径跳过）"
+    else:
+        结尾 = "仅合成正反两态；真实编译正例未跑——未找到 cn 产物"
     print("[selftest] PASS ✓（%s）" % 结尾, flush=True)
     return 0
 

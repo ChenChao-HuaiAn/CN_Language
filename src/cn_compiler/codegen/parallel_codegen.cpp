@@ -36,9 +36,11 @@ bool codegenStatsEnabled() {
     return env != nullptr && env[0] == '1' && env[1] == '\0';
 }
 
-// 输出决策摘要（workers=实际参与生成的 worker 数；labels=全部函数标签总数；
-//   shifted=index>0 函数的标签数之和=真正进入平移面的标签量；串行/回退路径
-//   无局部标签计数，三值均记 0）。
+// 输出决策摘要（workers=实际参与生成的 worker 数=主线程+成功创建线程；
+//   labels=全部函数标签总数；shifted=真正进入平移面的标签量——只累加
+//   bases[index]!=0 的 index>0 函数；串行路径 workers/labels/shifted 均 0；
+//   常量池回退保留实际 workers（线程确实跑过），但 labels/shifted 记 0=本次
+//   未进入平移面）。
 void reportDecision(bool parallel, std::size_t functions, int threads, int workers,
                     long long labels, long long shifted, const char* reason) {
     if (codegenStatsEnabled()) {
@@ -277,11 +279,14 @@ bool generateFunctionBodies(
     shiftFunctionLabels(outputs, bases, threads, labelPrefixes);
     long long labelTotal = 0;
     for (const FunctionOutput& output : outputs) labelTotal += output.labelCount;
-    // shifted=index>0 函数的标签数之和（首函数 base=0 不平移，不计入——
-    //   门禁据此证明「平移真实发生」而非仅存在标签）
+    // shifted=真正进入平移面的标签量：仅 bases[index]!=0 的 index>0 函数
+    //   （首函数 base=0 不平移；前序函数全无标签时后续 base 仍为 0 亦不平移，
+    //   此两形态均不计入——门禁据此断言平移面确有覆盖）
     long long shiftedTotal = 0;
     for (std::size_t index = 1; index < outputs.size(); ++index) {
-        shiftedTotal += outputs[index].labelCount;
+        if (bases[index] != 0) {
+            shiftedTotal += outputs[index].labelCount;
+        }
     }
     reportDecision(true, taskCount, threads, workers, labelTotal, shiftedTotal,
                    "eligible");

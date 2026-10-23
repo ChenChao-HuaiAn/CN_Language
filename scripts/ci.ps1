@@ -79,7 +79,7 @@ Write-Host "[CI] 3.55/4 交叉汇编守卫序列对照门禁（887·835 病根�
 python scripts/check_cross_asm_guards.py --cn target/Debug/cn.exe
 if ($LASTEXITCODE -ne 0) { Write-Host "[CI] 交叉汇编守卫序列对照门禁失败" -ForegroundColor Red; exit 1 }
 
-Write-Host "[CI] 3.57/4 并行 codegen 产物确定性门禁（1219·1145 逐字节一致承诺常态对照：并行两遍+串行一遍×三后端·观测通道断言并行真实生效·4 样本 ~9s）..." -ForegroundColor Cyan
+Write-Host "[CI] 3.57/4 并行 codegen 产物确定性门禁（1219·1145 逐字节一致承诺常态对照：并行4/4/2+自动+串行五口径×三后端·workers 实际数/shifted 平移面覆盖观测·4 样本 60 次 compile ~15s）..." -ForegroundColor Cyan
 python scripts/check_parallel_determinism.py --cn target/Debug/cn.exe
 if ($LASTEXITCODE -ne 0) { Write-Host "[CI] 并行 codegen 产物确定性门禁失败" -ForegroundColor Red; exit 1 }
 

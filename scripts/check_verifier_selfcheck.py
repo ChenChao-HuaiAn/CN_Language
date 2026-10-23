@@ -48,6 +48,7 @@ a 面（阴性对照轮）设计/运行手册=plans/028 §十六（周期标本�
 from __future__ import annotations
 
 import atexit
+import ast
 import inspect
 import io
 import json
@@ -55,6 +56,7 @@ import os
 import shutil
 import sys
 import tempfile
+import textwrap
 from pathlib import Path
 
 try:  # 控制台编码（中文诊断防 GBK 崩——与 check_cross_asm_guards 同口径）
@@ -88,6 +90,28 @@ import ci_report          # noqa: E402  1297：落盘/上报 实现外迁（隔�
 附键 = "网站示例verify"
 静态键 = "check_parallel_determinism"   # 1219：并行确定性门禁 rc=1 必须拖红
 聚合白名单 = 轮键 + (附键, 静态键)
+
+
+def 白名单键集(函数) -> set[str]:
+    """AST 解析实现源码：取 `k in (字面量元组...)` 里的字符串常量集合。
+
+    1219 复审：`inspect.getsource` 子串匹配会命中 docstring 里的同名字符串
+    （注释/说明提到本键也算「在位」=假锚）；AST 只看代码表达式，docstring
+    与注释不参与——白名单漏项即红。"""
+    树 = ast.parse(textwrap.dedent(inspect.getsource(函数)))
+    键集 = set()
+    for 节点 in ast.walk(树):
+        if not isinstance(节点, ast.Compare):
+            continue
+        if not any(isinstance(操作, ast.In) for 操作 in 节点.ops):
+            continue
+        for 比较 in 节点.comparators:
+            if not isinstance(比较, ast.Tuple):
+                continue
+            for 元素 in 比较.elts:
+                if isinstance(元素, ast.Constant) and isinstance(元素.value, str):
+                    键集.add(元素.value)
+    return 键集
 
 
 def 断言收集器(面前缀: str):
@@ -157,9 +181,13 @@ def 聚合面断言(聚合绿) -> list[tuple[str, bool]]:
         查("白名单键 %s rc=1 拖红" % 键, 聚合绿(步骤) is False)
     查("白名单含 check_parallel_determinism（1219 云端并行确定性红必拖轮红）",
         静态键 in 聚合白名单)
-    查("实现锚：ci_daemon.聚合绿 源码白名单含 check_parallel_determinism"
-        "（自检别名与单一事实源同步，防只改一侧）",
-        "check_parallel_determinism" in inspect.getsource(聚合绿))
+    实现白名单 = 白名单键集(聚合绿)
+    查("实现锚：ci_daemon.聚合绿 AST 白名单 == 自检别名（单一事实源同步）",
+        实现白名单 == set(聚合白名单))
+    查("实现锚：聚合绿 AST 白名单含 check_parallel_determinism",
+        静态键 in 实现白名单)
+    查("实现锚：ci_daemon.静态门禁与e2e段 源码含本键（云端静态段确实调度）",
+        "check_parallel_determinism" in inspect.getsource(ci_daemon.静态门禁与e2e段))
     查("负例构造键不在白名单（非白名单不拖红断言不得复用白名单键）",
         "负测期望对账" not in 聚合白名单)
     查("973 登记语义：非白名单键（对账周检步骤）rc=1 不拖轮绿（有意设计防误改）",
