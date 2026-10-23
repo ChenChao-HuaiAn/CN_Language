@@ -31,6 +31,7 @@ import re
 import socket
 import subprocess
 import sys
+import urllib.error
 import urllib.request
 from datetime import datetime
 from pathlib import Path
@@ -45,22 +46,39 @@ from board_tasks import 僵尸疑天数   # 392：僵尸疑阈值提示（与服
 板服务地址 = os.environ.get("CN_BOARD_URL", "http://124.222.106.84:8301").rstrip("/")
 
 
-def 服务调(路径: str):
-    """GET 只读查询——不可达返回 None（调用方按场景降级/报错）。
-    1425 全站登录墙：GET 亦须鉴权——有令牌就带 Bearer（556 统一兜底链）。"""
+def 服务调(路径: str) -> tuple[dict | None, str]:
+    """GET 只读查询 → (数据|None, 错误文案)。
+
+    1425 全站登录墙：GET 亦须鉴权——请求头统一走 intent.鉴权头()（556 令牌兜底链
+    单点实现）。错误文案分流：401/403=鉴权失败（不冒充不可达），连接层失败才叫
+    「不可达」——调用方按原场景降级/报错，真因不吞。"""
+    请求 = urllib.request.Request(板服务地址 + 路径, method="GET")
     try:
-        请求 = urllib.request.Request(板服务地址 + 路径, method="GET")
+        import intent
+        头 = intent.鉴权头()
+    except Exception:
+        头 = {}
+    for 名, 值 in 头.items():
+        请求.add_header(名, 值)
+    try:
+        with urllib.request.urlopen(请求, timeout=8) as r:
+            return json.loads(r.read().decode("utf-8")), ""
+    except urllib.error.HTTPError as e:
         try:
             import intent
-            令牌文 = intent.读令牌()
+            if intent.鉴权失败码(e.code):
+                return None, intent.鉴权失败文案("看板服务", e.code)
         except Exception:
-            令牌文 = ""
-        if 令牌文:
-            请求.add_header("Authorization", f"Bearer {令牌文}")
-        with urllib.request.urlopen(请求, timeout=8) as r:
-            return json.loads(r.read().decode("utf-8"))
-    except Exception:
-        return None
+            pass
+        try:
+            详情 = e.read().decode("utf-8", "replace")[:160]
+        except OSError:
+            详情 = ""
+        return None, f"看板服务返回 HTTP {e.code}" + (f"：{详情}" if 详情 else "")
+    except (urllib.error.URLError, OSError) as e:
+        return None, f"看板服务不可达（{板服务地址}）：{e}"
+    except ValueError as e:
+        return None, f"看板服务响应非 JSON：{e}"
 
 
 def 输出(命令):
@@ -69,16 +87,15 @@ def 输出(命令):
     return (结果.stdout or "").strip()
 
 
-def 拉台账():
-    r = 服务调("/api/tasks")
-    return None if r is None else r.get("任务们")
+def 拉台账() -> tuple[list | None, str]:
+    r, 错误 = 服务调("/api/tasks")
+    return (None if r is None else r.get("任务们")), 错误
 
 
 def cmd_ready(机读: bool) -> int:
-    任务们 = 拉台账()
+    任务们, 错误 = 拉台账()
     if 任务们 is None:
-        print(f"[失败] 看板服务不可达（{板服务地址}）——就绪队列需服务端台账（382）",
-              file=sys.stderr)
+        print(f"[失败] {错误}——就绪队列需服务端台账（382）", file=sys.stderr)
         return 1
     if 机读:
         就绪们 = [{"号": t["号"], "标题": t["标题"], "优先级": t["优先级"],
@@ -126,9 +143,9 @@ def cmd_ready(机读: bool) -> int:
 
 
 def cmd_check() -> int:
-    任务们 = 拉台账()
+    任务们, 错误 = 拉台账()
     if 任务们 is None:
-        print(f"[黄] 看板服务不可达（{板服务地址}）——账实对账跳过（门禁降级放行·恢复后补查）")
+        print(f"[黄] {错误}——账实对账跳过（门禁降级放行·恢复后补查）")
         return 0
     远端任务分支 = set()
     for 引用 in 输出(["git", "ls-remote", "--heads", "gitcode"]).splitlines():

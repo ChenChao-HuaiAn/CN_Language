@@ -19,6 +19,7 @@ import json
 import os
 import re
 import sys
+import urllib.error
 import urllib.request
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -113,6 +114,21 @@ def parse_map():
                                     timeout=8) as r:
             体 = json.loads(r.read().decode("utf-8"))
         atomic_json.写(CACHE, 体)   # 556：原子写（临时文件+os.replace·治半写损坏）
+    except urllib.error.HTTPError as e:
+        # 1425：401/403=鉴权失败（令牌/登录墙），不得冒充「服务不可达」。
+        try:
+            import intent
+            原因 = (intent.鉴权失败文案("覆盖服务", e.code) if intent.鉴权失败码(e.code)
+                    else f"覆盖服务返回 HTTP {e.code}")
+        except Exception:
+            原因 = f"覆盖服务返回 HTTP {e.code}"
+        体 = atomic_json.读(CACHE)   # 556：坏缓存返回 None·不炸读侧
+        if 体 is not None:
+            print("[黄] %s——降级读最后缓存（可能陈旧）" % 原因, file=sys.stderr)
+        else:
+            print("[FAIL] %s且无缓存（先用 board_cli 覆盖 验证服务）" % 原因,
+                  file=sys.stderr)
+            sys.exit(2)
     except OSError as e:
         # 556：读走 atomic_json.读（坏缓存返回 None·原裸 json.load 坏缓存即炸读侧）
         体 = atomic_json.读(CACHE)

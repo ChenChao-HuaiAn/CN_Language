@@ -102,6 +102,20 @@ def 鉴权头() -> dict:
     return {"Authorization": "Bearer " + t} if t else {}
 
 
+def 鉴权失败码(码: int) -> bool:
+    """1425 全站登录墙：401/403=鉴权失败（令牌缺失/轮换/不符或权限不足）——
+    与连接层失败（服务不可达）严格分流的单点判据（客户端文案统一走此函数）。"""
+    return 码 in (401, 403)
+
+
+def 鉴权失败文案(服务: str, 码: int) -> str:
+    """鉴权失败统一诊断（1425 登录墙·禁止冒充「服务不可达」）：点名令牌兜底链
+    与登录墙，便于一眼定位 scripts/queue_client.json / 环境变量令牌。"""
+    return (f"{服务}鉴权失败（{码}）——令牌缺失/轮换/不符：检查 "
+            f"scripts/queue_client.json 的「令牌」或 CN_BOARD_TOKEN/CN_QUEUE_TOKEN"
+            f"（1425 登录墙·GET 亦须鉴权）")
+
+
 def 会话id() -> str:
     if not 会话文件.exists():
         会话文件.parent.mkdir(parents=True, exist_ok=True)
@@ -170,8 +184,8 @@ def 机器名() -> str:
 def 调服务(方法: str, 路径: str, 体=None, 超时=8):
     请求 = urllib.request.Request(服务地址() + 路径, method=方法,
         data=json.dumps(体, ensure_ascii=False).encode("utf-8") if 体 is not None else None)
-    if 读令牌():
-        请求.add_header("Authorization", f"Bearer {读令牌()}")
+    for 名, 值 in 鉴权头().items():   # 1425：GET/POST 一律有令牌就带 Bearer（单点助手）
+        请求.add_header(名, 值)
     with urllib.request.urlopen(请求, timeout=超时) as r:
         return json.loads(r.read().decode("utf-8"))
 
@@ -201,6 +215,13 @@ def 核对号(号: str):
             print(f"[黄] ⚠ 台账已有 #{号}（状态 {t.get('状态')}·{t.get('标题', '')[:40]}）"
                   f"——接棒用 wt.py create {号}（认领态以台账为准）")
         return False
+    except urllib.error.HTTPError as e:
+        # 401/403 与网络不可达分流（1425 登录墙）：台账核对是 GET，令牌问题须点名。
+        if 鉴权失败码(e.code):
+            print(f"[黄] {鉴权失败文案('看板服务', e.code)}——台账核对跳过（意图登记继续）")
+        else:
+            print(f"[黄] 看板台账查询失败（HTTP {e.code}）——核对跳过")
+        return None
     except (urllib.error.URLError, OSError, ValueError):
         return None
 
@@ -251,6 +272,12 @@ def 落登记(在做: str, 计划: str, 备注: str) -> int:
         调服务("POST", "/api/intent", 体)
         上报在飞分支()
         登记缓存.write_text(json.dumps(体, ensure_ascii=False), encoding="utf-8")
+    except urllib.error.HTTPError as e:
+        原因 = (鉴权失败文案("看板服务", e.code) if 鉴权失败码(e.code)
+                else f"看板服务返回 HTTP {e.code}")
+        print(f"[黄] {原因}——意图未上板，"
+              f"分支存在=认领仍是有效兜底（降级不阻断）")
+        return 0
     except (urllib.error.URLError, OSError, ValueError) as e:
         print(f"[黄] 看板服务不可达（{服务地址()}）：{e}——意图未上板，"
               f"分支存在=认领仍是有效兜底（降级不阻断）")
@@ -321,6 +348,15 @@ def 命令续约(_参数) -> int:
 def 命令注销(_参数) -> int:
     try:
         调服务("POST", "/api/intent_release", {"机器": 机器名(), "对话id": 会话id()})
+    except urllib.error.HTTPError as e:
+        try:
+            登记缓存.unlink()
+        except OSError:
+            pass
+        原因 = (鉴权失败文案("看板服务", e.code) if 鉴权失败码(e.code)
+                else f"看板服务返回 HTTP {e.code}")
+        print(f"[黄] {原因}——本地缓存已清，服务端行等心跳超时自然失联灰显")
+        return 0
     except (urllib.error.URLError, OSError, ValueError) as e:
         try:
             登记缓存.unlink()    # 556：断网分支同样清缓存（原漏——文案称「已清」实未清，
@@ -337,6 +373,13 @@ def 命令注销(_参数) -> int:
 def 命令查看(_参数) -> int:
     try:
         数据 = 调服务("GET", "/api/board")
+    except urllib.error.HTTPError as e:
+        # 1425：GET 鉴权失败（401/403）与网络不可达跳不同文案——不吞真因。
+        if 鉴权失败码(e.code):
+            print(f"[失败] {鉴权失败文案('看板服务', e.code)}")
+        else:
+            print(f"[失败] 看板服务返回 HTTP {e.code}")
+        return 1
     except (urllib.error.URLError, OSError, ValueError) as e:
         print(f"[失败] 看板服务不可达（{服务地址()}）：{e}")
         return 1

@@ -39,6 +39,7 @@ import os
 import re
 import subprocess
 import sys
+import urllib.error
 import urllib.request
 
 主远程 = "gitcode"
@@ -58,10 +59,35 @@ def 输出(命令: list) -> str:
 
 
 def 读服务配置() -> dict:
-    """queue_client.json = 队列服务地址+令牌（与 integrate.py 同源）。"""
+    """queue_client.json = 队列服务地址（与 integrate.py 同源）；令牌不从此读——
+    统一走 intent.鉴权头() 兜底链（本树→主树副本→环境变量·1425 单点）。"""
     配置路径 = os.path.join(os.path.dirname(os.path.abspath(__file__)), "queue_client.json")
     with open(配置路径, encoding="utf-8") as f:
         return json.load(f)
+
+
+def _鉴权头() -> dict:
+    """1425 全站登录墙：队列/看板 GET 有令牌就带 Bearer（intent 兜底链单点）。"""
+    try:
+        import intent
+        return intent.鉴权头()
+    except Exception:
+        return {}
+
+
+def _失败文案(服务: str, e: Exception) -> str:
+    """读取失败文案分流（1425）：401/403=鉴权失败；连接层失败才叫「不可达」。"""
+    if isinstance(e, urllib.error.HTTPError):
+        try:
+            import intent
+            if intent.鉴权失败码(e.code):
+                return intent.鉴权失败文案(服务, e.code)
+        except Exception:
+            pass
+        return f"{服务}返回 HTTP {e.code}"
+    if isinstance(e, OSError):
+        return f"{服务}不可达（{e}）"
+    return f"{服务}响应异常（{type(e).__name__}: {e}）"
 
 
 def 预验服务端状态表() -> dict | None:
@@ -72,13 +98,17 @@ def 预验服务端状态表() -> dict | None:
     """
     try:
         配置 = 读服务配置()
+    except (OSError, ValueError, KeyError) as e:
+        print(f"[预验段] 队列服务配置不可读（scripts/queue_client.json）：{e}——保守跳过")
+        return None
+    try:
         请求 = urllib.request.Request(
-            配置["url"].rstrip("/") + "/api/state",
-            headers={"Authorization": "Bearer " + 配置.get("令牌", "")})
+            配置["url"].rstrip("/") + "/api/state", headers=_鉴权头())
         with urllib.request.urlopen(请求, timeout=8) as 响应:
             态 = json.loads(响应.read().decode("utf-8"))
         return {行.get("分支", ""): 行.get("状态", "") for 行 in (态.get("预验任务") or [])}
-    except Exception:
+    except Exception as e:
+        print(f"[预验段] {_失败文案('队列服务', e)}——保守跳过（一条不删）")
         return None
 
 
@@ -96,13 +126,23 @@ def 预验历史状态(短名: str):
         配置 = 读服务配置()
         请求 = urllib.request.Request(
             配置["url"].rstrip("/") + "/api/task_result?sha=" + sha10,
-            headers={"Authorization": "Bearer " + 配置.get("令牌", "")})
+            headers=_鉴权头())
         with urllib.request.urlopen(请求, timeout=8) as 响应:
             详情 = json.loads(响应.read().decode("utf-8"))
         if not 详情.get("ok", True):   # 服务端 404 显式无此任务（648 miss 不静默·这里=合法查无）
             return None
         return 详情.get("状态")
-    except Exception:
+    except Exception as e:
+        # 401/403 不得静默成「查无记录」——点名鉴权失败后仍按无记录保守保留（安全方向）；
+        # 404=正常查无、连接层失败=快照段已整段跳过，均不重复刷屏。
+        if isinstance(e, urllib.error.HTTPError):
+            try:
+                import intent
+                if intent.鉴权失败码(e.code):
+                    print(f"[预验段] 历史查询 {intent.鉴权失败文案('队列服务', e.code)}"
+                          f"——按无记录保守保留")
+            except Exception:
+                pass
         return None
 
 
@@ -121,29 +161,22 @@ def 台账在飞分支集解析(任务们: list) -> set:
     return 保护
 
 
-def 台账在飞分支集() -> set | None:
-    """GET 8301 /api/tasks → 在飞（🏃）分支名集合；服务不可达返回 None。
+def 台账在飞分支集() -> tuple[set | None, str]:
+    """GET 8301 /api/tasks → (在飞分支集合, 失败文案)；失败时集合=None。
 
     864 二轮：710 的看板文件在飞保护自 382 看板退位后空载（本轮实测恒 0 条），
     服务端台账 🏃 行=其正确替代数据源。地址复用 board_cli.服务地址() 权威实现
-    （CN_BOARD_URL 可覆盖）；1425 登录墙：GET 有令牌就带 Bearer。
+    （CN_BOARD_URL 可覆盖）；1425 登录墙：GET 有令牌就带 Bearer（intent 单点）。
     """
     try:
         import board_cli
-        地址 = board_cli.服务地址()
-        头 = {}
-        try:
-            令牌文 = board_cli.令牌()
-        except Exception:
-            令牌文 = ""
-        if 令牌文:
-            头["Authorization"] = "Bearer " + 令牌文
-        请求 = urllib.request.Request(地址.rstrip("/") + "/api/tasks", headers=头)
+        请求 = urllib.request.Request(
+            board_cli.服务地址().rstrip("/") + "/api/tasks", headers=_鉴权头())
         with urllib.request.urlopen(请求, timeout=8) as 响应:
             数据 = json.loads(响应.read().decode("utf-8"))
-        return 台账在飞分支集解析(数据.get("任务们") or [])
-    except Exception:
-        return None
+        return 台账在飞分支集解析(数据.get("任务们") or []), ""
+    except Exception as e:
+        return None, _失败文案("看板台账（8301）", e)
 
 
 def 预验可删判定(记录状态, 已并入: bool) -> tuple:
@@ -174,8 +207,8 @@ def 预验段分类(全部预验: list) -> tuple:
     可删, 保留 = [], []
     状态表 = 预验服务端状态表()
     if 状态表 is None:
-        print("[预验段] 队列服务不可达——保守跳过（一条不删）")
-        return [], [(b, "服务不可达·保守跳过") for b in 全部预验]
+        print("[预验段] 保守跳过（一条不删）")
+        return [], [(b, "服务不可读·保守跳过") for b in 全部预验]
     print(f"[预验段] 远程预验分支 {len(全部预验)} 条｜服务端预验快照 {len(状态表)} 行")
     历史查数 = 0
     for b in 全部预验:
@@ -267,10 +300,10 @@ def 主流程() -> int:
     # 710 的看板文件在飞保护自 382 看板退位后空载（实测恒 0 条·一轮实录 731/777 等
     # 在飞分支漏保护被误删），8301 服务端台账 🏃 行=其正确替代数据源；服务不可达=
     # 任务段整体保守跳过（一条不删——宁少删不误删）。
-    在飞集 = 台账在飞分支集()
+    在飞集, 台账错误 = 台账在飞分支集()
     if 在飞集 is None:
-        print("[任务段] 看板台账（8301）不可达——保守跳过（一条不删）")
-        保留 += [(b, "台账不可达·保守跳过") for b in 全部]
+        print(f"[任务段] {台账错误}——保守跳过（一条不删）")
+        保留 += [(b, "台账不可读·保守跳过") for b in 全部]
     else:
         develop头 = 输出(["git", "rev-parse", f"{主远程}/{集成分支}"])
         print(f"[任务段] 远程任务分支 {len(全部)} 条｜台账在飞（🏃）保护 {len(在飞集)} 条")

@@ -14,6 +14,7 @@ import json
 import socket
 import subprocess
 import sys
+import urllib.error
 import urllib.parse
 from pathlib import Path
 
@@ -96,6 +97,22 @@ def _鉴权头() -> dict:
         return {}
 
 
+def _失败文案(e: Exception) -> str:
+    """看板读取失败分流（1425）：401/403=鉴权失败（令牌/登录墙），连接层失败=
+    不可达——禁止把 401 冒充「服务不可达」（真因保留给简报读者）。"""
+    if isinstance(e, urllib.error.HTTPError):
+        try:
+            import intent
+            if intent.鉴权失败码(e.code):
+                return intent.鉴权失败文案("看板服务", e.code)
+        except Exception:
+            pass
+        return f"看板服务返回 HTTP {e.code}"
+    if isinstance(e, OSError):
+        return f"看板服务不可达（{e}）"
+    return f"看板服务响应异常（{type(e).__name__}: {e}）"
+
+
 def 本机节(机: str, 主机: str = "") -> list[str]:
     """384：交接本机节改读看板服务端（交接.md 已退位删除）·降级读缓存。
     508：机器标识已指纹化（hostname·平台-架构·指纹6），服务端 machine=? 精确
@@ -111,11 +128,14 @@ def 本机节(机: str, 主机: str = "") -> list[str]:
             混流 = json.loads(r.read().decode("utf-8")).get("条目们", [])
         条 = [t for t in 混流 if str(t.get("机器", "")).startswith(前缀)][:2]
         _落缓存("handoff", {"机器": 机, "条目们": 条})
-    except Exception:
+    except Exception as e:
+        原因 = _失败文案(e)
         缓 = _读缓存("handoff") or {}
         条 = 缓.get("条目们", []) if 缓.get("机器") == 机 else []
         if not 条:
-            return [f"（交接：服务不可达且无「{机}」缓存——board_cli 交接 可写·恢复后自愈）"]
+            return [f"（交接：{原因}且无「{机}」缓存——board_cli 交接 可写·恢复后自愈）"]
+        行们 = [f"## 交接·{机}节（最近 {len(条)} 条·本地缓存←{原因}）"]
+        return 行们 + [f"- {t['条目']}" for t in 条]
     行们 = [f"## 交接·{机}节（最近 {len(条)} 条·服务端）"]
     行们 += [f"- {t['条目']}" for t in 条]
     return 行们
@@ -125,17 +145,21 @@ def 教训高权重(上限: int = 10) -> list[str]:
     """384：教训高权重改读看板服务端（教训.md 已退位删除）·降级读缓存。"""
     import urllib.request
     条 = []
+    来源, 原因 = "服务端", ""
     try:
         with urllib.request.urlopen(
                 urllib.request.Request(f"{看板地址()}/api/lessons?high_weight=8",
                                        headers=_鉴权头()), timeout=8) as r:
             条 = json.loads(r.read().decode("utf-8")).get("条目们", [])
         _落缓存("lessons", {"条目们": 条})
-    except Exception:
+    except Exception as e:
         条 = (_读缓存("lessons") or {}).get("条目们", [])
+        原因 = _失败文案(e)
+        来源 = "本地缓存←" + 原因
     if not 条:
-        return ["## 教训·高权重：服务不可达且无缓存——恢复后自愈"]
-    行们 = [f"## 教训·高权重标题（前 {min(上限, len(条))} 条·全文=board_cli 教训看 <id>）"]
+        return [f"## 教训·高权重：{原因 or '服务端无数据'}且无缓存——恢复后自愈"]
+    行们 = [f"## 教训·高权重标题（前 {min(上限, len(条))} 条·{来源}·"
+            f"全文=board_cli 教训看 <id>）"]
     行们 += [f"- {t['标题'][:88]}{'…' if len(t['标题']) > 88 else ''}" for t in 条[:上限]]
     return 行们
 

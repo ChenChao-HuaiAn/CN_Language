@@ -88,18 +88,27 @@ def 证据片段(文本, 上限=证据上限):
 # ---- HTTP 工具 ----
 
 def _鉴权头() -> dict:
-    """1425 全站登录墙：看板(8301)/队列(8300) GET 亦须鉴权——令牌链=环境变量
-    CN_BOARD_TOKEN → intent.鉴权头()（本树 queue_client.json·556 统一兜底链）；
-    皆空=裸请求（401 显形为检查红·不静默放行）。"""
-    t = os.environ.get("CN_BOARD_TOKEN", "").strip()
-    if t:
-        return {"Authorization": "Bearer " + t}
+    """1425 全站登录墙：看板(8301)/队列(8300) GET 有令牌就带 Bearer——令牌兜底链
+    单点复用 intent.鉴权头()（本树 queue_client.json → 主树副本 → CN_BOARD_TOKEN/
+    CN_QUEUE_TOKEN）；皆空=裸请求（401 显形为检查红·不静默放行）。"""
     try:
         sys.path.insert(0, str(Path(__file__).resolve().parent))
         import intent
         return intent.鉴权头()
     except Exception:
         return {}
+
+
+def _失败说明(码: int) -> str:
+    """HTTP 非 200 的诊断分流（1425）：401/403=鉴权失败（点名令牌/登录墙），
+    其余=HTTP 码原文——不把鉴权问题冒充「服务不可达」。"""
+    if 码 in (401, 403):
+        try:
+            import intent
+            return intent.鉴权失败文案("看板/队列服务", 码)
+        except Exception:
+            return f"鉴权失败（{码}）——检查 scripts/queue_client.json 令牌/登录墙"
+    return f"码={码 or '无响应'}"
 
 
 def 取地址(基址, 路径, 超时秒=默认超时秒):
@@ -458,10 +467,10 @@ def 查看板(基址, 超时秒, 结果们, quickjs模块):
     码, 体, 错, 毫秒 = 取地址(基址, "/", 超时秒)
     if 码 != 200:
         结果们.append(检查结果("A1", "看板页面可达", "FAIL",
-                              f"GET {基址}/ 未返回 200（码={码 or '无响应'}·{毫秒}ms）",
+                              f"GET {基址}/ 未返回 200（{_失败说明(码)}·{毫秒}ms）",
                               证据=证据片段(错 or 体)))
         for 编号, 名 in _A组跳过项:
-            结果们.append(检查结果(编号, 名, "INFO", "跳过（A1 页面不可达）"))
+            结果们.append(检查结果(编号, 名, "INFO", "跳过（A1 未通过）"))
         return
     结果们.append(检查结果("A1", "看板页面可达", "PASS", f"HTTP 200·{毫秒}ms·{len(体)} 字节"))
     解析 = _页面结构检查(体, 结果们)
@@ -496,7 +505,7 @@ def _板面结构检查(基址, 超时秒, 结果们):
     码, 体, 错, _ = 取地址(基址, "/api/board", 超时秒)
     if 码 != 200:
         结果们.append(检查结果("A3", "/api/board 结构", "FAIL",
-                              f"GET {基址}/api/board 未返回 200（码={码 or '无响应'}）",
+                              f"GET {基址}/api/board 未返回 200（{_失败说明(码)}）",
                               证据=证据片段(错 or 体)))
         return None
     try:
@@ -580,10 +589,10 @@ def 检队列(基址, 超时秒, 结果们):
     码, 体, 错, 毫秒 = 取地址(基址, "/api/state", 超时秒)
     if 码 != 200:
         结果们.append(检查结果("B1", "队列 /api/state 可达", "FAIL",
-                              f"GET {基址}/api/state 未返回 200（码={码 or '无响应'}·{毫秒}ms）",
+                              f"GET {基址}/api/state 未返回 200（{_失败说明(码)}·{毫秒}ms）",
                               证据=证据片段(错 or 体)))
-        结果们.append(检查结果("B2", "队列结构", "INFO", "跳过（B1 不可达）"))
-        结果们.append(检查结果("B3", "验证池摘要", "INFO", "跳过（B1 不可达）"))
+        结果们.append(检查结果("B2", "队列结构", "INFO", "跳过（B1 未通过）"))
+        结果们.append(检查结果("B3", "验证池摘要", "INFO", "跳过（B1 未通过）"))
         return
     结果们.append(检查结果("B1", "队列 /api/state 可达", "PASS", f"HTTP 200·{毫秒}ms"))
     try:

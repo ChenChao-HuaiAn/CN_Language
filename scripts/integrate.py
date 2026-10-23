@@ -56,6 +56,7 @@ import re
 import subprocess
 import sys
 import threading
+import urllib.error
 from datetime import datetime
 from pathlib import Path
 
@@ -245,7 +246,8 @@ def 冲突标记检查(文件们: list[str]) -> str | None:
 
 
 def 板查询(路径: str):
-    """看板服务只读查询（382）——失败返回 None 不阻断集成。
+    """看板服务只读查询（382）——失败返回 None 不阻断集成，但真因不静默：
+    401/403=鉴权失败（点名令牌/登录墙），连接层失败才叫「不可达」。
     1425 全站登录墙：GET 亦须鉴权——有令牌就带 Bearer（intent.鉴权头 统一口径）。"""
     import urllib.request
     try:
@@ -258,7 +260,17 @@ def 板查询(路径: str):
         with urllib.request.urlopen(urllib.request.Request(
                 板服务URL.rstrip("/") + 路径, headers=头), timeout=4) as 响应:
             return json.loads(响应.read().decode("utf-8"))
-    except Exception:
+    except urllib.error.HTTPError as e:
+        try:
+            import intent
+            原因 = (intent.鉴权失败文案("看板服务", e.code) if intent.鉴权失败码(e.code)
+                    else f"看板服务返回 HTTP {e.code}")
+        except Exception:
+            原因 = f"看板服务返回 HTTP {e.code}"
+        print(f"  [黄] {原因}——查询 {路径} 跳过（降级不阻断）")
+        return None
+    except (urllib.error.URLError, OSError, ValueError) as e:
+        print(f"  [黄] 看板服务不可达（{e}）——查询 {路径} 跳过（降级不阻断）")
         return None
 
 
@@ -1032,7 +1044,16 @@ def 服务调用(路径: str, 数据: dict | None = None) -> dict | None:
                                                   "Authorization": "Bearer " + 队列服务令牌})
         with urllib.request.urlopen(请求, timeout=4) as 响应:
             return json.loads(响应.read().decode("utf-8"))
-    except Exception:
+    except urllib.error.HTTPError as e:
+        # 1425：鉴权失败与连接层失败分流——队列 GET/POST 401 不再静默成「未配置」。
+        if e.code in (401, 403):
+            try:
+                import intent
+                print(f"  [黄] {intent.鉴权失败文案('队列服务', e.code)}")
+            except Exception:
+                print(f"  [黄] 队列服务鉴权失败（{e.code}）——检查令牌/登录墙")
+        return None
+    except (OSError, ValueError):
         return None
 
 

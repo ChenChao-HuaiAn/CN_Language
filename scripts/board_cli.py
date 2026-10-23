@@ -61,6 +61,18 @@ def 机器名(显式: str = "") -> str:
     return intent.机器名()
 
 
+def _读失败文案(服务: str, 码: int, r: dict) -> str:
+    """GET 失败诊断（1425）：401/403=鉴权失败（点名令牌/登录墙），其余=服务端
+    错误码+响应体——读通道禁止把 401 打印成裸码或静默成空列表（真因不吞）。"""
+    try:
+        import intent
+        if intent.鉴权失败码(码):
+            return intent.鉴权失败文案(服务, 码)
+    except Exception:
+        pass
+    return f"{服务}返回 HTTP {码}：{r.get('错误', r)}"
+
+
 def 调服务(方法: str, 路径: str, 体=None, 超时=15):
     """返回 (HTTP码, 响应dict)。GET/POST 有令牌就带 Bearer（1425 全站登录墙：
     GET 亦须鉴权·客户端统一「有令牌就带」口径）；服务不可达抛 OSError 由调用方兜底。"""
@@ -141,11 +153,16 @@ def cmd_教训索引(a) -> int:
     try:
         键 = f"high_weight={a.高权重}" if a.高权重 else "index=1"
         码, r = 调服务("GET", f"/api/lessons?{键}")
-        落缓存("lessons", r)
     except OSError as e:
         print(f"[黄] 服务不可达（{e}）——读本地缓存")
         # 556：读侧走 atomic_json.读（坏缓存返回 None 黄字·原裸 json.loads 坏缓存即炸）
         r = (atomic_json.读(脚本目录 / "board_cache.json") or {}).get("lessons", {})
+    else:
+        if 码 != 200:
+            print(f"[黄] {_读失败文案('看板服务', 码, r)}——读本地缓存")
+            r = (atomic_json.读(脚本目录 / "board_cache.json") or {}).get("lessons", {})
+        else:
+            落缓存("lessons", r)
     for t in r.get("条目们", []):
         尾 = f"〔{t['标注']}〕" if t.get("标注", "活跃") != "活跃" else ""
         print(f"- #{t['id']} {t['标题']}（权重 {t['权重']}）{尾}")
@@ -154,6 +171,9 @@ def cmd_教训索引(a) -> int:
 
 def cmd_教训看(a) -> int:
     码, r = 调服务("GET", "/api/lessons")
+    if 码 != 200:
+        print(f"[失败] {_读失败文案('看板服务', 码, r)}")
+        return 1
     目 = next((t for t in r.get("条目们", []) if t["id"] == a.id), None)
     if not 目:
         print(f"[失败] 无 id={a.id}")
@@ -229,10 +249,10 @@ def cmd_豁免删(a) -> int:
 
 def cmd_覆盖(a) -> int:
     码, r = 调服务("GET", "/api/coverage")
-    落缓存("coverage", r)
     if 码 != 200:
-        print(f"[失败] {码}")
+        print(f"[失败] {_读失败文案('看板服务', 码, r)}")
         return 1
+    落缓存("coverage", r)
     们 = r["单元们"]
     print(f"覆盖单元 {len(们)}·豁免 {len(r['豁免们'])}")
     for u in 们:
@@ -282,7 +302,7 @@ def cmd_查用例号(a) -> int:
         查询 = urllib.parse.urlencode({"name": a.用例名})
         码, r = 调服务("GET", "/api/case_numbers?" + 查询)
         if 码 != 200:
-            print(f"[失败] {码} {r.get('错误', r)}")
+            print(f"[失败] {_读失败文案('看板服务', 码, r)}")
             return 1
         们 = r.get("命中们", [])
         if not 们:
@@ -295,7 +315,7 @@ def cmd_查用例号(a) -> int:
         return 0
     码, r = 调服务("GET", "/api/case_numbers")
     if 码 != 200:
-        print(f"[失败] {码} {r.get('错误', r)}")
+        print(f"[失败] {_读失败文案('看板服务', 码, r)}")
         return 1
     们 = r.get("台账", [])
     配名数 = sum(1 for x in 们 if x.get("用例名"))
@@ -379,8 +399,10 @@ def cmd_裁决删(a) -> int:
     码, r = 调服务("POST", "/api/adjudication_delete", {"号": a.号})
     if 码 == 200:
         print(f"[裁决删] {r.get('动作', '已删除')}")
-        try:    # 删后刷新缓存（列表已变）——失败不掩盖删除成功
-            落缓存("adjudications", 调服务("GET", "/api/adjudications")[1])
+        try:    # 删后刷新缓存（列表已变）——失败不掩盖删除成功；非 200 不落缓存
+            码2, r2 = 调服务("GET", "/api/adjudications")
+            if 码2 == 200:
+                落缓存("adjudications", r2)
         except OSError:
             pass
         return 0
@@ -390,10 +412,10 @@ def cmd_裁决删(a) -> int:
 
 def cmd_裁决看(a) -> int:
     码, r = 调服务("GET", "/api/adjudications")
-    落缓存("adjudications", r)
     if 码 != 200:
-        print(f"[失败] {码}")
+        print(f"[失败] {_读失败文案('看板服务', 码, r)}")
         return 1
+    落缓存("adjudications", r)
     们 = r["裁决项们"]
     if not a.全部:
         们 = [x for x in 们 if x["状态"] == "待裁决"]

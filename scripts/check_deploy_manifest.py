@@ -310,8 +310,9 @@ _镜像文件 = ("deploy_board.sh", "deploy_queue.sh", "deploy_website.sh",
             "board_service.py", "board_tasks.py", "board_ci.py", "board_docs.py",
             "board_adjudication.py", "board_selftest.py", "queue_service.py",
             "queue_selftest.py", "queue_result.py", "queue_shard.py",
-            "queue_instances.py")   # 1392：镜像靶场补齐 deploy_queue 清单面（1297 起
-            # queue_result/queue_shard 入清单未同步此处=镜像树正例存量红·今日根治）
+            "queue_instances.py", "web_auth.py")   # 1392：镜像靶场补齐 deploy_queue 清单面
+            # （1297 起 queue_result/queue_shard 入清单未同步此处=镜像树正例存量红·今日根治）；
+            # 1425 登录墙 web_auth.py 同病（部署清单已加、镜像漏拷=selftest 7/14 假红·1485 补）
 _镜像目录 = ("board_www", "queue_www")
 
 

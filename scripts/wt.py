@@ -129,6 +129,20 @@ def 服务调(方法: str, 路径: str, 体=None) -> dict | None:
         return None
 
 
+def 鉴权失败文案(响应: dict | None) -> str:
+    """1425 登录墙：服务响应含 HTTP错误 401/403 → 统一鉴权失败文案（单点助手
+    intent.鉴权失败文案）；其余返回空串。防 GET 401 被误读成「台账无任务」。"""
+    码 = (响应 or {}).get("HTTP错误")
+    if 码 in (401, 403):
+        try:
+            import intent
+            return intent.鉴权失败文案("看板服务", 码)
+        except Exception:
+            return (f"看板服务鉴权失败（{码}）——令牌缺失/轮换/不符：检查 "
+                    f"scripts/queue_client.json 或 CN_BOARD_TOKEN")
+    return ""
+
+
 def 服务立项(描述: str, 前置: str, 优先级: str) -> dict | None:
     """382：立项走服务端唯一权威（号唯一=任务表主键+事务·根治撞号/跳号）。
     744 编号权威收权（2026-10-14 用户令）：客户端禁带号——编号一律服务端按顺序发放。"""
@@ -296,7 +310,9 @@ def 建树(任务号: str = "", 无ninja: bool = False, 立行: str | None = Non
                   "离线取号已废除；恢复网络/核对 CN_BOARD_URL 后重试）")
             return 1
         if not 结.get("号"):
-            print(f"[失败] 立项被拒：{结.get('错误', 结)}")
+            鉴权错误 = 鉴权失败文案(结)
+            print(f"[失败] {鉴权错误 or '立项被拒：' + str(结.get('错误', 结))}"
+                  + ("" if not 鉴权错误 else "——立项硬拒（离线取号已废除）"))
             return 1
         任务号 = str(结["号"])
         新立项 = True
@@ -315,6 +331,11 @@ def 建树(任务号: str = "", 无ninja: bool = False, 立行: str | None = Non
         任务 = 服务调("GET", f"/api/task/{任务号}")
         if 任务 is None:
             print("[失败] 看板服务不可达——无法核对台账，create 硬拒（382 立规）")
+            return 1
+        鉴权错误 = 鉴权失败文案(任务)
+        if 鉴权错误:
+            # 1425：GET 401/403 不得被下面「台账无任务」误读（真因=令牌/登录墙）。
+            print(f"[失败] {鉴权错误}——无法核对台账 #{任务号}，create 硬拒")
             return 1
         t = 任务.get("任务")
         if t is None:
@@ -344,7 +365,9 @@ def 建树(任务号: str = "", 无ninja: bool = False, 立行: str | None = Non
                 print("[失败] 看板服务不可达——认领硬拒（树未建·零半成品）")
                 return 1
             if 认领.get("HTTP错误"):
-                print(f"[失败] 认领被拒：{认领.get('错误', 认领)}")
+                鉴权错误 = 鉴权失败文案(认领)
+                print(f"[失败] {鉴权错误 or '认领被拒：' + str(认领.get('错误', 认领))}"
+                      + ("" if not 鉴权错误 else "——认领硬拒（树未建·零半成品）"))
                 return 1
             print(f"[认领] 台账 #{任务号} {t['状态']}→🏃（归属 {机名()}-wt{任务号}）")
     if 接棒 and not 远端分支在:
@@ -434,6 +457,10 @@ def 建树(任务号: str = "", 无ninja: bool = False, 立行: str | None = Non
         认领 = 服务认领(任务号)
         if 认领 and not 认领.get("HTTP错误"):
             print(f"[6] 台账 #{任务号} 已置 🏃（归属 {机名()}-wt{任务号}）")
+        elif 认领:
+            鉴权错误 = 鉴权失败文案(认领)
+            if 鉴权错误:
+                print(f"[黄] {鉴权错误}——台账未置 🏃（分支已推=认领仍有效）")
     print(f"""
 [完成] {树路径}（分支 {分支}·{模式}）
   下一步（382 看板 v2）：①直接开发——任务台账已服务端记账（plans/021 已退位·勿再改它）

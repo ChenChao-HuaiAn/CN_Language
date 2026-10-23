@@ -22,6 +22,7 @@ import json
 import os
 import re
 import sys
+import urllib.error
 import urllib.request
 from pathlib import Path
 
@@ -52,11 +53,24 @@ def 拉任务们() -> tuple[list[dict], str]:
         任务们 = 数据.get("任务们", [])
         atomic_json.合并写(缓, {"tasks": 任务们})
         return 任务们, "服务端台账"
-    except OSError:
+    except urllib.error.HTTPError as e:
+        # 1425：401/403=鉴权失败（令牌/登录墙），不得冒充「服务不可达」。
+        try:
+            import intent
+            原因 = (intent.鉴权失败文案("看板服务", e.code) if intent.鉴权失败码(e.code)
+                    else f"看板服务返回 HTTP {e.code}")
+        except Exception:
+            原因 = f"看板服务返回 HTTP {e.code}"
         任务们 = (atomic_json.读(缓) or {}).get("tasks", [])
         if 任务们:
-            return 任务们, "本地缓存（服务不可达·可能是旧快照）"
-    print("[失败] 看板服务不可达且无缓存——裁决面暂不可知（恢复后重跑）", file=sys.stderr)
+            return 任务们, f"本地缓存（{原因}·可能是旧快照）"
+        print(f"[失败] {原因}且无缓存——裁决面暂不可知（恢复后重跑）", file=sys.stderr)
+    except OSError as e:
+        任务们 = (atomic_json.读(缓) or {}).get("tasks", [])
+        if 任务们:
+            return 任务们, f"本地缓存（看板服务不可达：{e}·可能是旧快照）"
+        print(f"[失败] 看板服务不可达且无缓存（{e}）——裁决面暂不可知（恢复后重跑）",
+              file=sys.stderr)
     return [], ""
 
 
