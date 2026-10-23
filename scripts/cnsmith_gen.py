@@ -290,11 +290,33 @@ class Gen:
         return str(v), v
 
     def program(self, stmt_n=14):
+        # 1339 扩轴（#1337/#1338 遮蔽族+1390 备注证据链）：全局变量声明带+辅助
+        #   读/改函数+主函数内同名遮蔽+循环/如果控制流——覆盖「全局交互/遮蔽
+        #   写读/跨函数可见性/Mem2Reg 跨块 φ」结构性盲区。门控=self.seed 奇偶
+        #   （偶=新轴·奇=原路径 rng 消费序逐字节不变=旧面零回归）。
+        新轴 = (self.seed % 2 == 0)
         out = []
+        if 新轴:
+            for gi in range(1, self.rng.randint(2, 4)):
+                out.append("整32 全%d = %d;" % (gi, self.rng.randint(0, 100)))
+            out.append("函数 读全1() -> 整32 { 返回 全1; }")
+            out.append("不安全 函数 改全1(整32 v) -> 空类型 { 全1 = v; }")
         out.append("函数 主() -> 整32 {")
         out.append('    打印行("=== CN-Smith 采样 ===");')
+        if 新轴:
+            out.append("    整32 全1 = %d;" % self.rng.randint(200, 300))
+            out.append('    打印行("遮蔽局部全1 = ", 全1);')
         for _ in range(stmt_n):
             out.append(self.statement())
+        if 新轴:
+            out.append("    循环 (整32 轮 = 0; 轮 < 3; 轮 += 1) {")
+            out.append("        改全1(读全1() + 轮);")
+            out.append("        如果 (轮 == 1) {")
+            out.append('            打印行("轮1 读全1 = ", 读全1());')
+            out.append("        } 否则 {")
+            out.append('            打印行("轮非1 跳过");')
+            out.append("        }")
+            out.append("    }")
         out.append('    打印行("done");')
         out.append("    返回 0;")
         out.append("}")
