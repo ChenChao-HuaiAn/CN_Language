@@ -214,9 +214,9 @@ bool Parser::isModulePathSegmentAhead() const {
 // v2.0 将 v1.0 的 `.` 路径分隔改为 `::`（规格书08-三），`::` 为独立 ColonColon token。
 std::vector<std::string> Parser::parseModulePath() {
     std::vector<std::string> segments;
-    // 1216：路径段预分配（常见 1-2 段：数学::平方根）
-    segments.reserve(2);
     if (isModulePathSegment()) {
+        // 1216：首段前预分配（常见 1-2 段：数学::平方根；报错空路径=零分配）
+        segments.reserve(2);
         segments.push_back(current().getValue());
         advance();
     } else {
@@ -338,7 +338,7 @@ std::string Parser::parseTypeNameEx() {
             // 2026-08-25 缺陷修复（H3 嵌套泛型）：词法器把连续 '>>' 合并为右移
             // 运算符 GreaterGreater（贪婪最长匹配）——嵌套泛型闭合 向量<映射<整64,整64>>
             // 的结尾 '>>' 无法逐个消耗。此处把 GreaterGreater 拆为两个单 Greater：
-            //   在 tokens_ 的当前位插入一个 '>'，本层 consume 一个，剩余一个供外层消费。
+            //   写时复制后在当前位替换/插入 '>'，本层 consume 一个，剩余一个供外层消费。
             if (check(TokenType::Greater)) {
                 advance();  // 普通单 '>'
             } else if (check(TokenType::GreaterGreater)) {

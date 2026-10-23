@@ -255,12 +255,12 @@ std::unique_ptr<InterfaceDecl> Parser::parseInterfaceDecl() {
     advance();
     consume(TokenType::LeftBrace, "'{'");
     // 方法签名列表（直到 }）
-    // 1216：接口成员表预分配（常见 2-8 个签名）——替代几何增长多次分配
-    decl->members.reserve(4);
     while (!check(TokenType::RightBrace) && !check(TokenType::EndOfFile)) {
         // 跳过标签分隔（分号/逗号）
         while (check(TokenType::Semicolon) || check(TokenType::Comma)) advance();
         if (check(TokenType::RightBrace)) break;
+        // 1216：首成员前预分配（常见 2-8 个签名；空接口=零分配）
+        if (decl->members.capacity() == 0) decl->members.reserve(4);
         ClassMember member;
         member.location = current().getLocation();
         member.access = AccessSpecifier::Public;
@@ -352,8 +352,6 @@ std::unique_ptr<ClassDecl> Parser::parseClassDecl() {
     const std::string savedClassBase = currentClassBaseName_;
     currentClassBaseName_ = decl->baseName;
     AccessSpecifier currentAccess = AccessSpecifier::Private;
-    // 1216：类成员表预分配（常见 4-12 个成员）——替代几何增长多次分配
-    decl->members.reserve(8);
     while (!check(TokenType::RightBrace) && !check(TokenType::EndOfFile)) {
         // 访问标签：公开: / 保护: / 私有:
         if (checkText("公开") && peek(1).getType() == TokenType::Colon) {  // 162-a
@@ -380,6 +378,8 @@ std::unique_ptr<ClassDecl> Parser::parseClassDecl() {
             continue;
         }
         // 解析一个类成员
+        // 1216：首成员前预分配（常见 4-12 个成员；空类=零分配）
+        if (decl->members.capacity() == 0) decl->members.reserve(8);
         ClassMember member;
         member.location = current().getLocation();
         member.access = currentAccess;

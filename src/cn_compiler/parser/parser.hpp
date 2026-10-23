@@ -27,9 +27,10 @@ inline constexpr const char* kFieldInitRejectDiag =
     "见 §5.6 支持）——请在构造函数或函数体中赋值";
 
 // 判断Token是否为类型关键字（阶段一基本类型 + 阶段三 结果/可选 模板类型名）
-// 声明于此供 parser.cpp 与 parser_oop.cpp 共用（原为 parser.cpp 匿名命名空间内静态函数）
-// 1216：定义内联进头（原 parser.cpp 定义·跨 TU 高频调用：parseStmt/parsePrimary/
-//   parseTypeName 等每个 token 多次判定）——语义逐字不变。
+// 1216：定义内联于此，供六个解析 TU 共用（parser.cpp/parser_expr/
+//   parser_stmt/parser_decl/parser_oop/parser_type；原为 parser.cpp 导出
+//   符号——跨 TU 高频调用：parseStmt/parsePrimary/parseTypeName 等每个 token
+//   多次判定）——语义逐字不变。
 inline bool isTypeKeyword(TokenType type) {
     switch (type) {
         case TokenType::Kw_Int: case TokenType::Kw_Double:
@@ -316,8 +317,6 @@ private:
     //   局部 vector，覆盖 Parser 生命期）。
     const std::vector<Token>* tokens_ = nullptr;
     std::vector<Token> tokensOwned_;  // 写时复制副本（仅在 >> 拆分路径落成）
-    // 当前 token 流（零拷贝视图；parse() 前未绑定，调用方不得提前访问）
-    const std::vector<Token>& tokens() const { return *tokens_; }
     // 1216：改写 token（>> 拆分）前确保拥有独立副本（写时复制·首个拆分点才付拷贝）
     void ensureTokensOwned();
     std::size_t pos_ = 0;        // 当前Token索引

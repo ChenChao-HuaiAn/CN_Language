@@ -68,6 +68,7 @@ std::int64_t parseIntValue(const std::string& text) {
     const char* const first = digits.data();
     const char* const last = first + digits.size();
     const std::from_chars_result res = std::from_chars(first, last, value, base);
+    // 静默豁免闭集穷举: from_chars 失败面=超 i64 承载/词法不可达畸形文本（值级消费已由 910 文本级判域接管·miss_registry 1137）
     if (res.ec != std::errc() || res.ptr != last) return 0;
     return value;
 }
@@ -197,9 +198,9 @@ std::unique_ptr<Expr> Parser::parseInitList() {
     auto list = std::make_unique<InitListExpr>();
     list->location = current().getLocation();
     consume(TokenType::LeftBrace, "'{'");
-    // 1216：初始化列表预分配（常见 1-8 元素）——替代几何增长多次分配
-    list->elements.reserve(4);
     while (!check(TokenType::RightBrace) && !check(TokenType::EndOfFile)) {
+        // 1216：首元素前预分配（常见 1-8 元素；空列表 {} 不进循环=零分配）
+        if (list->elements.capacity() == 0) list->elements.reserve(4);
         list->elements.push_back(parseExpr());
         if (!match(TokenType::Comma)) break;
     }
