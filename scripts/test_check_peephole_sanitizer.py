@@ -15,6 +15,8 @@ gtest 输出，证明以下假绿形态必红（审查 P2-1/P2-2/P2-3「保留�
   PYTHONOPTIMIZE=1 下仍真实执行，不会出现「assert 被移除→假绿」。
 用法：python scripts/test_check_peephole_sanitizer.py   （rc=0=全绿）
 """
+from __future__ import annotations
+
 import sys
 from pathlib import Path
 

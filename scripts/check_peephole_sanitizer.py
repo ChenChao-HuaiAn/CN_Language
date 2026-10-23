@@ -31,6 +31,8 @@
 退出码：0=全绿；1=构建/测试/计数/用例清单红；2=环境缺失（非 Linux 或未找到
 编译器/gtest 源码）。
 """
+from __future__ import annotations
+
 import argparse
 import os
 import re
