@@ -747,6 +747,20 @@ def 跑() -> None:
          "1392 完成上报：执行中行清→空闲派生+最近完成可见（sha/绿/时刻）")
     断言(not 处理写("instance_ping", {"平台": "win-x64"})["ok"],
          "1392 反态：instance_ping runner 缺失=ok False 显式拒（miss 纪律·不静默）")
+    # #1460 实例刷新广播（「更新实例」按钮）：戳持久化→ping 响应搭车下发→重复广播前进
+    断言(实例面.取刷新请求(con) == 0.0,
+         "#1460 初始无反：从未广播=0（daemon 侧「请求>已执行」不动作）")
+    回刷 = 处理写("instance_refresh", {})
+    断言(bool(回刷.get("ok")) and float(回刷["刷新请求"]) > 0,
+         "#1460 instance_refresh：广播成功并返回戳（实例面板「更新实例」写入口）")
+    戳一 = float(回刷["刷新请求"])
+    回活 = 处理写("instance_ping", {"runner": "实例乙", "树头": "ab" * 5,
+                                    "daemon指纹": "cd" * 5})
+    断言(float(回活.get("刷新请求") or 0) == 戳一,
+         "#1460 ping 响应携广播戳（报活搭车下发·旧 daemon 忽略多余字段=兼容）")
+    回刷2 = 处理写("instance_refresh", {})
+    断言(float(回刷2["刷新请求"]) >= 戳一,
+         "#1460 重复广播=戳前进（幂等覆盖·再次点击全体重新对齐）")
     处理写("task_enqueue", {"分支": "ci/预验-13920000002", "sha": "2" * 40})
     处理写("task_claim", {"runner": "种子乙"})
     con.execute("DELETE FROM 实例 WHERE 名称='种子乙'")

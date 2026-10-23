@@ -29,7 +29,9 @@ import time
 
 def 建实例表(con) -> None:
     """实例表建表（建库 时调用·须在 queue_service.建库 的 commit 前）。
-    版本上报时刻 NULL=旧版 daemon 从未上报指纹（疑似离线判定对其豁免）。"""
+    版本上报时刻 NULL=旧版 daemon 从未上报指纹（疑似离线判定对其豁免）。
+    #1460：另建 池设置 KV 表（「更新实例」广播戳持久化——服务重启/实例重启后
+    仍知上次广播时刻，daemon 据此判「是否已执行过本次对齐」）。"""
     con.execute("""CREATE TABLE IF NOT EXISTS 实例(
         名称 TEXT PRIMARY KEY,
         平台 TEXT,                  -- win-x64/linux-x86_64/linux-arm64（claim/ping 自报）
@@ -38,6 +40,9 @@ def 建实例表(con) -> None:
         树头 TEXT,                  -- 实例仓 HEAD sha 前 10（daemon 启动时自报·跑轮会变·参考面）
         daemon指纹 TEXT,            -- ci_daemon.py 内容 sha256 前 10（进程启动版·版本稳定指标）
         版本上报时刻 TEXT)           -- 最近一次带指纹上报时刻（NULL=旧版 daemon 未上报过）""")
+    con.execute("""CREATE TABLE IF NOT EXISTS 池设置(
+        键 TEXT PRIMARY KEY,
+        值 TEXT)""")
 
 
 def _时刻文本转戳(文本: str):
@@ -132,7 +137,9 @@ def 实例报活(con, 时刻函数, 数据: dict) -> dict:
     """POST /api/instance_ping 写入口（处理写 委托·须持写锁）：UPSERT 实例行+
     版本指纹。runner 必填（缺=ok False 显式拒·不静默）；平台/树头/daemon指纹
     可选（空串不覆盖已有值）。带任一指纹字段=刷 版本上报时刻（区分「旧版
-    daemon 从未上报」与「上报过」——疑似离线判定只对后者生效）。"""
+    daemon 从未上报」与「上报过」——疑似离线判定只对后者生效）。
+    #1460：响应携 刷新请求 广播戳（实例面板「更新实例」按钮的下发通道——
+    旧 daemon 忽略多余字段=向后兼容；每周期 60s 一次，一次广播即全员可见）。"""
     runner = str(数据.get("runner", ""))
     if not runner:
         return {"ok": False, "说明": "runner 标识缺失"}
@@ -152,7 +159,39 @@ def 实例报活(con, 时刻函数, 数据: dict) -> dict:
         "版本上报时刻=COALESCE(excluded.版本上报时刻,实例.版本上报时刻)",
         (runner, 平台 or None, 时刻函数(), int(time.time()),
          树头 or None, 指纹 or None, 版时))
-    return {"ok": True}
+    return {"ok": True, "刷新请求": 取刷新请求(con)}
+
+
+# #1460「更新实例」广播（实例面板按钮→全池空闲实例对齐 develop 树头）：
+#   服务端只存一个全局戳（池设置 表），下发靠 instance_ping 响应搭车（daemon 已
+#   每 60s 报活·零新增轮询）；客户端空闲点见新戳即 fetch+reset，树头变化后下次
+#   报活自然带新指纹（版本列对齐）。重复点击=戳前进（幂等覆盖·无需撤销）。
+刷新键 = "实例刷新请求"
+
+
+def 置刷新请求(con, 时区时刻) -> float:
+    """POST /api/instance_refresh 写入口（须持写锁）：记录广播时刻并返回该戳。
+    时区时刻 参数与同模块写入口签名对齐（本值需机器可比序=epoch float，非展示文本）。"""
+    戳 = time.time()
+    con.execute("INSERT INTO 池设置(键,值) VALUES(?,?) "
+                "ON CONFLICT(键) DO UPDATE SET 值=excluded.值",
+                (刷新键, repr(戳)))
+    return 戳
+
+
+def 取刷新请求(con) -> float:
+    """读最新广播戳（须持写锁/同连接）。0.0=从未广播——与 daemon 侧「请求>已执行
+    才动作」合取后语义为「无请求无动作」；表值被人工破坏=显式告警按无请求处理
+    （不阻断报活主流程，也不静默改值）。"""
+    行 = con.execute("SELECT 值 FROM 池设置 WHERE 键=?", (刷新键,)).fetchone()
+    if 行 is None:
+        return 0.0
+    try:
+        return float(行[0])
+    except (TypeError, ValueError):
+        print("[警告] 池设置.%s 值非法（%r）——按无刷新请求处理" % (刷新键, 行[0]),
+              flush=True)
+        return 0.0
 
 
 def 实例动态快照(con, 心跳超时秒值: int) -> list[dict]:

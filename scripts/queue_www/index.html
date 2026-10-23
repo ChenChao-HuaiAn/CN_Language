@@ -62,7 +62,11 @@
   <section id="页-实例" class="页" role="tabpanel" hidden>
     <div class="区题">实例 — 云端实例实时动态 <span class="淡">（1392·正在验什么任务 / 心跳健康 / 版本指纹；指纹与众数派不同 = ⚠ 旧版 daemon 嫌疑）</span></div>
     <div id="实例统计条" class="池忙闲条" hidden></div>
-    <div class="工具行"><span class="弹性"></span><span id="实例计数" class="行时刻"></span></div>
+    <div class="工具行">
+      <button id="更新实例钮" class="钮 次 窄" title="向全池空闲实例广播：对齐 develop 最新树头（执行中的实例跑完自动跟随；旧版 daemon 升级后生效）">⟳ 更新实例</button>
+      <span id="实例刷新提示" class="行时刻"></span>
+      <span class="弹性"></span><span id="实例计数" class="行时刻"></span>
+    </div>
     <div id="实例区"><div class="骨架行"></div><div class="骨架行"></div></div>
   </section>
 

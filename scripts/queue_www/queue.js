@@ -27,11 +27,11 @@ function 转义(v) {
     (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 }
 
-async function 调API(路径) {
+async function 调API(路径, 选项 = {}) {
   const 控 = new AbortController();
   const 计 = setTimeout(() => 控.abort(), 20000);
   try {
-    const 响 = await fetch(路径, { signal: 控.signal, cache: "no-store" });
+    const 响 = await fetch(路径, { signal: 控.signal, cache: "no-store", ...选项 });
     if (!响.ok) throw new Error("HTTP " + 响.status);
     return await 响.json();
   } finally {
@@ -256,6 +256,9 @@ function 渲染实例() {
   const 根 = $("实例区");
   const 们 = 快照["实例动态"] || [];
   渲染实例统计条(们);
+  /* #1460：上次「更新实例」广播时刻（0/缺=从未广播——旧服务端无此字段亦显示空） */
+  $("实例刷新提示").textContent = 快照["刷新请求"]
+    ? "上次更新广播 " + 秒前(快照["刷新请求"]) : "";
   $("实例计数").textContent = `共 ${们.length} 台`;
   if (!们.length) {
     根.innerHTML = `<div class="空态">暂无注册实例（runner 认领任务或空闲报活后出现在此）</div>`;
@@ -553,6 +556,24 @@ document.addEventListener("click", (e) => {
 document.addEventListener("keydown", (e) => { if (e.key === "Escape") 面板关闭(); });
 
 $("刷新钮").addEventListener("click", 拉取);
+
+/* —— #1460 更新实例：广播「对齐 develop 树头」——空闲实例下次报活（≤60s）携走戳、
+   轮间空闲点（≤90s）执行 fetch+reset；执行中实例跑完自动跟随。旧版 daemon 需升级
+   （旧进程忽略该戳·页面提示「上次更新广播」照常记录）。 */
+$("更新实例钮").addEventListener("click", async () => {
+  const 钮 = $("更新实例钮");
+  钮.disabled = true;
+  try {
+    await 调API("api/instance_refresh",
+      { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+    await 拉取();
+  } catch (e) {
+    $("实例刷新提示").textContent =
+      "广播失败（" + e.message + "）——服务端未升级或登录已过期";
+  } finally {
+    钮.disabled = false;
+  }
+});
 
 /* —— 主题（墨韵双主题·localStorage·默认跟随系统）—— */
 $("主题钮").addEventListener("click", () => {

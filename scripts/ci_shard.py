@@ -633,18 +633,74 @@ def 实例指纹(仓库根: Path) -> dict:
     return {"树头": 头, "daemon指纹": 指纹}
 
 
-def 启动实例报活(runner: str, 平台: str, 仓库根: Path) -> None:
+def 启动实例报活(runner: str, 平台: str, 仓库根: Path) -> dict:
     """空闲报活后台线程（ci_daemon.主 启动挂载·daemon=True 随进程退出）：每
     报活间隔秒 POST instance_ping（忙闲都发·池不可达静默——与 task_heartbeat
-    同口径）。未配置池地址=不启动（纯本地面无服务端可报）。"""
+    同口径）。未配置池地址=不启动（纯本地面无服务端可报）。
+    #1460：返回共享刷新状态 {"请求":float,"已执行":float}——响应携服务端「更新
+    实例」广播戳（只记最新），由主循环空闲点 处理刷新请求 消费。"""
+    状态 = {"请求": 0.0, "已执行": 0.0}
     配置 = 池配置()
     if not 配置["池地址"]:
-        return
+        return 状态
     指纹 = 实例指纹(仓库根)
 
     def 跑():
         while True:
-            池调用(配置, "instance_ping", {"runner": runner, "平台": 平台, **指纹})
+            回 = 池调用(配置, "instance_ping", {"runner": runner, "平台": 平台, **指纹})
+            # #1460：取广播戳——旧服务端无此字段按 0.0「无请求」（协议向后兼容的
+            #   合法语义值·非错误兜底）；非数值脏值同按无请求并显式告警（不阻断报活）。
+            try:
+                请求 = float((回 or {}).get("刷新请求") or 0.0)
+            except (TypeError, ValueError):
+                print("[警告] instance_ping 响应 刷新请求 字段非法——按无请求处理",
+                      flush=True)
+                请求 = 0.0
+            if 请求 > 状态["请求"]:
+                状态["请求"] = 请求
             time.sleep(报活间隔秒)
 
     threading.Thread(target=跑, daemon=True).start()
+    return 状态
+
+
+# ═══════════════ #1460 实例树头对齐（服务端「更新实例」广播消费端） ═══════════════
+# 语义：按钮广播一个全局戳 → 各实例 ping 响应携走 → 空闲实例在「持门禁锁且无任务
+#   在跑」的点执行 fetch+reset 对齐 develop 树头（执行中的实例只记戳，跑完回到
+#   空闲点自动跟随）；树头变化后下一次报活自然带新指纹（版本列对齐·无需额外上报）。
+
+def 需刷新(状态: dict) -> bool:
+    """判定：服务端广播戳比本实例已执行戳新（纯函数·自测两态）。None/缺键按 0.0
+    ——「从未广播」与「从未执行」不可分但语义同为无动作（显式约定·非兜底）。"""
+    return float(状态.get("请求") or 0.0) > float(状态.get("已执行") or 0.0)
+
+
+def 对齐树头(仓库根: Path, 远端: str, 分支: str) -> str:
+    """git fetch+reset --hard 到远端分支头（#1460）——返回新 HEAD sha。
+    失败=RuntimeError 显式抛出（跳过下步·调用方告警下轮重试；不静默、不吞错误）。"""
+    取 = subprocess.run(["git", "fetch", 远端, 分支], cwd=str(仓库根),
+                       capture_output=True, text=True, timeout=300)
+    if 取.returncode != 0:
+        raise RuntimeError("fetch 失败 rc=%d：%s"
+                           % (取.returncode, (取.stderr or "").strip()[:200]))
+    重 = subprocess.run(["git", "reset", "--hard", "FETCH_HEAD"], cwd=str(仓库根),
+                       capture_output=True, text=True, timeout=120)
+    if 重.returncode != 0:
+        raise RuntimeError("reset 失败 rc=%d：%s"
+                           % (重.returncode, (重.stderr or "").strip()[:200]))
+    头 = subprocess.run(["git", "rev-parse", "HEAD"], cwd=str(仓库根),
+                       capture_output=True, text=True, timeout=30)
+    if 头.returncode != 0:
+        raise RuntimeError("rev-parse 失败 rc=%d" % 头.returncode)
+    return 头.stdout.strip()
+
+
+def 处理刷新请求(状态: dict, 仓库根: Path, 远端: str, 分支: str) -> str:
+    """空闲点消费广播（调用方=ci_daemon 主循环 develop 分支·持门禁锁·无任务在跑）。
+    需刷新 → 对齐树头；成功才推进已执行戳（失败抛 RuntimeError·下轮重试）。
+    返回新 HEAD sha（未执行=空串·调用方据此决定是否打日志）。"""
+    if not 需刷新(状态):
+        return ""
+    新头 = 对齐树头(仓库根, 远端, 分支)
+    状态["已执行"] = 状态.get("请求") or 0.0
+    return 新头

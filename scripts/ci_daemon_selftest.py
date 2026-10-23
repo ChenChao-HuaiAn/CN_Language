@@ -20,6 +20,8 @@ from __future__ import annotations
 
 import ast
 import inspect
+import os
+import subprocess
 import tempfile
 import threading
 from pathlib import Path
@@ -1046,8 +1048,49 @@ def _1392断言(断言) -> None:
              指CRLF == 指LF and len(指CRLF) == 10)
 
 
+def _1460断言(断言) -> None:
+    """#1460 实例刷新（「更新实例」按钮）：需刷新判定两态 + 对齐树头真实 git 两态
+    （成功=reset 到远端头并返回新 sha；失败=RuntimeError 显式，不静默吞）。
+    服务端广播戳存取与 ping 搭车下发由 queue_selftest #1460 段覆盖（协议端到端）。"""
+    import ci_shard
+    断言("#1460 需刷新正：请求戳>已执行戳 → 应对齐",
+         ci_shard.需刷新({"请求": 200.0, "已执行": 100.0}) is True)
+    断言("#1460 需刷新反：请求≤已执行/键缺失（从未广播）=不动作",
+         ci_shard.需刷新({"请求": 100.0, "已执行": 100.0}) is False
+         and ci_shard.需刷新({}) is False)
+    with tempfile.TemporaryDirectory() as 临时:
+        源, 克 = Path(临时) / "源", Path(临时) / "克"
+        源.mkdir()
+        环境 = {**os.environ, "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t",
+                "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@t",
+                "GIT_CONFIG_GLOBAL": str(Path(临时) / "gitconfig"),
+                "GIT_CONFIG_SYSTEM": os.devnull}
+
+        def 跑(目录, *参):
+            return subprocess.run(["git", *参], cwd=str(目录), capture_output=True,
+                                  text=True, env=环境)
+        跑(源, "init", "-q", "-b", "develop")
+        (源 / "a.txt").write_text("2", encoding="utf-8")
+        跑(源, "add", ".")
+        跑(源, "commit", "-q", "-m", "一")
+        跑(Path(临时), "clone", "-q", str(源), str(克))
+        (源 / "a.txt").write_text("3", encoding="utf-8")
+        跑(源, "commit", "-q", "-am", "二")
+        新头 = ci_shard.对齐树头(克, str(源), "develop")
+        断言("#1460 对齐树头正：fetch+reset 到远端头并返回新 HEAD（树内容同步）",
+             新头 == 跑(源, "rev-parse", "HEAD").stdout.strip()
+             and (克 / "a.txt").read_text(encoding="utf-8") == "3")
+        try:
+            ci_shard.对齐树头(克, str(Path(临时) / "不存在"), "develop")
+            失败显式 = False
+        except RuntimeError:
+            失败显式 = True
+        断言("#1460 对齐树头反：无效远端=RuntimeError 显式（不静默吞·下轮重试）",
+             失败显式)
+
+
 def 自测(主模块) -> int:
-    """--selftest 入口（断言集 523+637+657+660+728t+770+842+935+973+975+1297+1299+1369+1392+1401+1423+1424+1428）——CI 式：逐条打印，任一红退出 1。"""
+    """--selftest 入口（断言集 523+637+657+660+728t+770+842+935+973+975+1297+1299+1369+1392+1401+1423+1424+1428+1460）——CI 式：逐条打印，任一红退出 1。"""
     断言们: list[tuple[str, bool]] = []
 
     def 断言(名: str, 条件: bool) -> None:
@@ -1070,9 +1113,10 @@ def 自测(主模块) -> int:
     _1423断言(断言)
     _1424断言(主模块, 断言)
     _1428断言(断言)
+    _1460断言(断言)
     _行数断言(断言)
     for 名, ok in 断言们:
         print("  [%s] %s" % ("OK" if ok else "×", 名))
     红 = sum(1 for _, ok in 断言们 if not ok)
-    print("== ci_daemon 自测（523+637+657+660+728t+770+842+935+973+975+1297+1299+1369+1392+1401+1423+1424+1428）：%d 断言，%s ==" % (len(断言们), "全绿" if 红 == 0 else "红 %d" % 红))
+    print("== ci_daemon 自测（523+637+657+660+728t+770+842+935+973+975+1297+1299+1369+1392+1401+1423+1424+1428+1460）：%d 断言，%s ==" % (len(断言们), "全绿" if 红 == 0 else "红 %d" % 红))
     return 0 if 红 == 0 else 1

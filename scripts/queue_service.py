@@ -41,6 +41,8 @@
 #   POST /api/task_heartbeat {runner,分支}        心跳续约
 #   POST /api/task_complete {runner,分支,绿,结果}  完成上报（校验认领者·防回收后旧 runner 复活覆盖）
 #   POST /api/instance_ping {runner,平台?,树头?,daemon指纹?}  1392：实例空闲报活+版本指纹
+#   POST /api/instance_refresh {}  #1460：实例面板「更新实例」——广播刷新戳（下随
+#                                  instance_ping 响应下发·空闲 daemon 对齐 develop 树头）
 #                                                 （daemon 空闲也每 60s 报·旧 daemon 不发=渐进
 #                                                 部署服务端照常——活跃度退化为最后 claim/complete）
 # 1425 网页登录（web_auth 公共模块·照看板 430/1425 口径）：
@@ -629,11 +631,21 @@ def 处理写(名: str, 数据: dict) -> dict:
         elif 名 == "instance_ping":
             # 1392 空闲报活：UPSERT 实例行+版本指纹（daemon 空闲也每 60s 报·旧 daemon
             #   不发=渐进部署服务端照常）。参数缺失（runner 空）=ok False 显式拒（无写入·
-            #   回收死行 已自提交）——成功写入落本函数底部统一 commit（同 1297 教训：
-            #   提前 return 跳过 commit=WAL 下他连接读不到写入）。
+            #   回收死行 已自提交）。#1460：响应携刷新广播戳——须本分支自行 commit 后直返
+            #   （落底统一 commit 的返回只含 ok·同 1297 教训：提前 return 跳过 commit=
+            #   WAL 下他连接读不到写入）。
             回p = queue_instances.实例报活(con, 时区时刻, 数据)
             if not 回p.get("ok"):
                 return 回p
+            con.commit()
+            return 回p
+        elif 名 == "instance_refresh":
+            # #1460 实例面板「更新实例」按钮：广播全局刷新戳（各实例下次 instance_ping
+            #   响应携走·空闲 daemon fetch+reset 对齐 develop 树头）——薄路由委托实例面。
+            #   写后自行 commit 再直返（同上一分支 WAL 口径）。
+            戳 = queue_instances.置刷新请求(con, 时区时刻)
+            con.commit()
+            return {"ok": True, "刷新请求": 戳}
         elif 名 in ("task_shard_enqueue", "task_shard_claim",
                     "task_shard_heartbeat", "task_shard_complete"):
             # 1297：分片协议委托 queue_shard（写锁内·统一落下方 commit 后返回富响应——
@@ -839,6 +851,8 @@ class 处理器(BaseHTTPRequestHandler):
                 return self.回JSON({"队列": 队列快照(), "门禁最近": 门禁快照(),
                                     "预验任务": 预验任务快照(),
                                     "池忙闲": 池忙闲快照(),   # 770：integrate 拼车窗口/巡检判定源
+                                    # #1460：「更新实例」上次广播戳（实例页按钮旁显示·0=从未）
+                                    "刷新请求": queue_instances.取刷新请求(con),
                                     "实例动态": queue_instances.实例动态快照(con, 心跳超时秒)})   # 1392：实例页签数据源
         if 路径 == "/api/task_result":
             # 按 sha10 查（分支=ci/预验-/ci/兜底-<sha10>·URL 保持纯 ASCII 免编码坑·
