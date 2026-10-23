@@ -238,7 +238,18 @@ private:
 
     // ==================== 成员状态 ====================
 
-    std::vector<Token> tokens_;  // Token流
+    // 1216：Token 流只读视图——parse() 直接引用调用方向量，不再深拷贝整条
+    //   流（原 `tokens_ = tokens` 每次解析复制 47 万 Token：每 Token 的
+    //   std::string 拷贝 + 约 19MB 内存搬运）。仅嵌套泛型闭合 '>>' 拆分
+    //   需要改写 token 时经 ensureTokensOwned() 写时复制一次。
+    //   生命周期契约：parse() 期间调用方 tokens 必须存活（全体调用点均为
+    //   局部 vector，覆盖 Parser 生命期）。
+    const std::vector<Token>* tokens_ = nullptr;
+    std::vector<Token> tokensOwned_;  // 写时复制副本（仅在 >> 拆分路径落成）
+    // 当前 token 流（零拷贝视图；parse() 前未绑定，调用方不得提前访问）
+    const std::vector<Token>& tokens() const { return *tokens_; }
+    // 1216：改写 token（>> 拆分）前确保拥有独立副本（写时复制·首个拆分点才付拷贝）
+    void ensureTokensOwned();
     std::size_t pos_ = 0;        // 当前Token索引
     Diagnostics& diagnostics_;   // 诊断引擎引用
     // C-2（2026-08）：遍历...中每个 迭代对象解析期间抑制 结构体初始化探测

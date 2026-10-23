@@ -148,7 +148,7 @@ bool isTypeKeyword(TokenType type) {
 
 // 当前Token（pos_ 不越过末尾EOF，永不越界）
 const Token& Parser::current() const {
-    return tokens_[pos_];
+    return (*tokens_)[pos_];
 }
 
 // 当前Token类型
@@ -158,7 +158,7 @@ TokenType Parser::currentType() const {
 
 // 前进一个Token（不越过EOF）
 void Parser::advance() {
-    if (pos_ < tokens_.size() - 1) pos_++;
+    if (pos_ < tokens_->size() - 1) pos_++;
 }
 
 // 当前是否为目标类型
@@ -169,8 +169,8 @@ bool Parser::check(TokenType type) const {
 // 向前看第offset个Token（0=当前；越界时返回最后一个Token，即EOF，永不越界）
 const Token& Parser::peek(int offset) const {
     std::size_t idx = pos_ + static_cast<std::size_t>(offset);
-    if (idx >= tokens_.size()) idx = tokens_.size() - 1;
-    return tokens_[idx];
+    if (idx >= tokens_->size()) idx = tokens_->size() - 1;
+    return (*tokens_)[idx];
 }
 
 // 匹配目标类型并前进（成功返回true）
@@ -185,6 +185,15 @@ bool Parser::match(TokenType type) {
 // 当前Token文本是否等于指定文本（用于非关键字标记如 常量/静态）
 bool Parser::checkText(const char* text) const {
     return current().getValue() == text;
+}
+
+// 1216：token 改写前的写时复制——嵌套泛型闭合 '>>' 需拆成两个 '>'（parser_expr/
+//   parser_type 两处），只有走到该路径才拷贝整条流（绝大多数源文件不触发）。
+//   拷贝后 pos_ 索引语义与原全量拷贝实现完全一致（同序同长）。
+void Parser::ensureTokensOwned() {
+    if (tokens_ == &tokensOwned_) return;
+    tokensOwned_ = *tokens_;
+    tokens_ = &tokensOwned_;
 }
 
 // 报告语法错误（按指定位置）
@@ -211,7 +220,7 @@ void Parser::consume(TokenType type, const std::string& expected) {
 // 声明体成员分隔）一律用 match(TokenType::Semicolon) 表达可选语义。
 void Parser::consumeSemicolon() {
     if (match(TokenType::Semicolon)) return;
-    const SourceLocation loc = pos_ > 0 ? tokens_[pos_ - 1].getLocation()
+    const SourceLocation loc = pos_ > 0 ? (*tokens_)[pos_ - 1].getLocation()
                                         : current().getLocation();
     reportError(loc, "语句缺少分号 ';'");
 }
@@ -542,10 +551,13 @@ std::unique_ptr<Stmt> Parser::parseTypePrefixVarDecl() {
 
 // 分析Token流，返回程序AST（错误恢复后仍尽力构建部分AST）
 std::unique_ptr<Program> Parser::parse(const std::vector<Token>& tokens) {
-    tokens_ = tokens;
+    // 1216：零拷贝绑定（原 `tokens_ = tokens` 深拷贝全流）；写时复制副本复位。
+    //   此前的 Parser 复用/二次 parse 同样正确：每次 parse 重新指向入参流。
+    tokens_ = &tokens;
+    tokensOwned_.clear();
     pos_ = 0;
     auto program = std::make_unique<Program>();
-    if (!tokens_.empty()) program->location = tokens_[0].getLocation();
+    if (!tokens_->empty()) program->location = (*tokens_)[0].getLocation();
 
     // 模块级可见性标签（Task 3.6，规格书08-四 标签式）：公开: / 私有:
     // 与类内访问标签（parseClassDecl 内维护）同语法不同作用域：

@@ -302,10 +302,13 @@ std::string Parser::parseTypeNameEx() {
             if (check(TokenType::Greater)) {
                 advance();
             } else if (check(TokenType::GreaterGreater)) {
-                tokens_[pos_] = Token(TokenType::Greater, ">", tokens_[pos_].getLocation());
-                tokens_.insert(tokens_.begin() + static_cast<std::ptrdiff_t>(pos_ + 1),
-                               Token(TokenType::Greater, ">",
-                                     tokens_[pos_].getLocation()));
+                // 1216：改写 token 前写时复制（首个拆分点才拷贝整条流）
+                ensureTokensOwned();
+                tokensOwned_[pos_] =
+                    Token(TokenType::Greater, ">", tokensOwned_[pos_].getLocation());
+                tokensOwned_.insert(
+                    tokensOwned_.begin() + static_cast<std::ptrdiff_t>(pos_ + 1),
+                    Token(TokenType::Greater, ">", tokensOwned_[pos_].getLocation()));
                 advance();
             } else {
                 reportErrorHere("方法值类型缺少闭合 '>'");
@@ -334,12 +337,15 @@ std::string Parser::parseTypeNameEx() {
             if (check(TokenType::Greater)) {
                 advance();  // 普通单 '>'
             } else if (check(TokenType::GreaterGreater)) {
-                // 把 tokens_[pos_] 由 '>>' 替换为 '>'（本层闭合），
+                // 把 tokensOwned_[pos_] 由 '>>' 替换为 '>'（本层闭合），
                 // 并在其后插入另一个 '>'（外层闭合）
-                tokens_[pos_] = Token(TokenType::Greater, ">", tokens_[pos_].getLocation());
-                tokens_.insert(tokens_.begin() + static_cast<std::ptrdiff_t>(pos_ + 1),
-                               Token(TokenType::Greater, ">",
-                                     tokens_[pos_].getLocation()));
+                // 1216：改写 token 前写时复制（首个拆分点才拷贝整条流）
+                ensureTokensOwned();
+                tokensOwned_[pos_] =
+                    Token(TokenType::Greater, ">", tokensOwned_[pos_].getLocation());
+                tokensOwned_.insert(
+                    tokensOwned_.begin() + static_cast<std::ptrdiff_t>(pos_ + 1),
+                    Token(TokenType::Greater, ">", tokensOwned_[pos_].getLocation()));
                 advance();  // 吃本层的 '>'
             } else {
                 consume(TokenType::Greater, "'>'");

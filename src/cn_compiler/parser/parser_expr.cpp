@@ -410,10 +410,13 @@ std::unique_ptr<Expr> Parser::parsePostfix() {
                 newName += ">";
             } else if (check(TokenType::GreaterGreater)) {
                 // 嵌套泛型调用闭合：'>>' 拆为两个 '>' 并全部消费（两层闭合）
-                tokens_[pos_] = Token(TokenType::Greater, ">", tokens_[pos_].getLocation());
-                tokens_.insert(tokens_.begin() + static_cast<std::ptrdiff_t>(pos_ + 1),
-                               Token(TokenType::Greater, ">",
-                                     tokens_[pos_].getLocation()));
+                // 1216：改写 token 前写时复制（首个拆分点才拷贝整条流）
+                ensureTokensOwned();
+                tokensOwned_[pos_] =
+                    Token(TokenType::Greater, ">", tokensOwned_[pos_].getLocation());
+                tokensOwned_.insert(
+                    tokensOwned_.begin() + static_cast<std::ptrdiff_t>(pos_ + 1),
+                    Token(TokenType::Greater, ">", tokensOwned_[pos_].getLocation()));
                 advance();  // 吃内层 '>'
                 if (check(TokenType::Greater)) advance();  // 吃外层 '>'
                 newName += ">>";
