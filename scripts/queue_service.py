@@ -40,6 +40,12 @@
 #                                                 不限或白名单含本平台的任务·旧客户端不报=空串只领不限任务·不会错跑）
 #   POST /api/task_heartbeat {runner,分支}        心跳续约
 #   POST /api/task_complete {runner,分支,绿,结果}  完成上报（校验认领者·防回收后旧 runner 复活覆盖）
+#   POST /api/task_shard_claim {runner,平台?,物理机?}  #1426：从实例领缺口片——服务端按
+#                                 物理机键（hostname·平台-架构·指纹6）限并发（默认同机
+#                                 1 片·CN_SHARD_PER_MACHINE 可配 2）；超限/让位返回
+#                                 片=None+限流 说明（不领片·不阻塞主实例召唤）。主实例
+#                                 抢补（带 分支+片序）不受限=正确性补偿路径。旧 daemon
+#                                 不报物理机=按 runner 独立机器保守放行+显式告警。
 #   POST /api/instance_ping {runner,平台?,树头?,daemon指纹?}  1392：实例空闲报活+版本指纹
 #   POST /api/instance_refresh {}  #1460：实例面板「更新实例」——广播刷新戳（下随
 #                                  instance_ping 响应下发·空闲 daemon 对齐 develop 树头）
@@ -504,7 +510,8 @@ def 处理写(名: str, 数据: dict) -> dict:
             #   1392：自报平台随 claim 写入持久实例表（领到/领空都注册——daemon 每 90s
             #   轮询领空也是「活着」的信号·实例页可见；平台空串不覆盖已有自报值）。
             平台337 = str(数据.get("平台", ""))
-            queue_instances.实例认领(con, 时区时刻, runner, 平台337)
+            queue_instances.实例认领(con, 时区时刻, runner, 平台337,
+                                     str(数据.get("物理机", "")))   # #1426 物理机键落表
             现在 = int(time.time())
             回收们 = [r[0] for r in con.execute(
                 "SELECT 分支 FROM 预验任务 WHERE 状态='执行中' AND 心跳时戳 IS NOT NULL "
@@ -653,6 +660,13 @@ def 处理写(名: str, 数据: dict) -> dict:
             if 名 == "task_shard_enqueue":
                 回s = queue_shard.召唤(con, 时区时刻, 数据)     # 主实例召唤从片（幂等登记缺口）
             elif 名 == "task_shard_claim":
+                # #1426：领片请求先落实例+物理机键——被限流拒绝也要登记（让位判定必须
+                #   看到各机空闲实例；空 runner 由 认领 显式拒，此处不落空名行）。
+                领runner = str(数据.get("runner", ""))
+                if 领runner:
+                    queue_instances.实例认领(con, 时区时刻, 领runner,
+                                              str(数据.get("平台", "")),
+                                              str(数据.get("物理机", "")))
                 回s = queue_shard.认领(con, 时区时刻, 数据)     # 从实例领缺口片 / 主实例抢补指定片
             elif 名 == "task_shard_heartbeat":
                 回s = queue_shard.心跳(con, 时区时刻, 数据)     # 片心跳续约
@@ -661,10 +675,9 @@ def 处理写(名: str, 数据: dict) -> dict:
             # 1392/#1402：从实例领片/片心跳也是活信号——注册实例并刷平台/活跃。此前只在
             #   整任务 claim/heartbeat/complete 落实例表，从实例跑片期间不在实例表→页签
             #   显示「空闲」且看不到分片（用户 10-22 质问「还是一个实例一个任务」成因之一）。
-            if 名 == "task_shard_claim" and 回s.get("ok") and 回s.get("片"):
-                queue_instances.实例认领(con, 时区时刻, str(数据.get("runner", "")),
-                                          str(数据.get("平台", "")))
-            elif 名 == "task_shard_heartbeat" and 回s.get("ok"):
+            #   #1426：认领入口的实例登记已前移到领片调用前（限流拒绝也要登记——让位判定
+            #   需要空闲实例可见），此处只剩片心跳续活跃。
+            if 名 == "task_shard_heartbeat" and 回s.get("ok"):
                 queue_instances.实例心跳(con, 时区时刻, str(数据.get("runner", "")))
             con.commit()
             return 回s

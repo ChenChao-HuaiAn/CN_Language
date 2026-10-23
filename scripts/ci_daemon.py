@@ -636,7 +636,8 @@ def 池认领任务() -> dict | None:
     配置 = 池配置()
     if not 配置["池地址"]:
         return None
-    回 = 池调用(配置, "task_claim", {"runner": runner标识, "平台": 平台})
+    回 = 池调用(配置, "task_claim", {"runner": runner标识, "平台": 平台,
+                                     "物理机": ci_shard.物理机标识()})
     if 回 and 回.get("ok"):
         return 回.get("任务")
     return None

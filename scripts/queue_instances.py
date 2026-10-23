@@ -14,8 +14,12 @@
 #   版本口径：树头=实例仓 HEAD（跑轮 checkout 被验分支会变·参考面）；daemon指纹
 #   =ci_daemon.py 内容 sha256 前 10（进程启动版·scp 直更同样反映·版本稳定指标）。
 #   「版本不一致」判定在前端按众数派比对（服务端无权威最新版本源·不冒充权威）。
+#   #1426（2026-10-23 用户令「同机最多 1~2 个分片轮 + 优先独立机」）：实例表与
+#   分片表记录物理机键（hostname·平台-架构·指纹6·508 标识），服务端按物理机限流。
+#   旧 daemon 不上报=空值显式（限流侧按独立机器保守放行+告警·不静默归并错配）。
 #   依赖单向：queue_service → 本模块（禁反引）；自测断言见 queue_selftest.py。
 
+import sqlite3
 import time
 
 
@@ -39,7 +43,12 @@ def 建实例表(con) -> None:
         最近活跃时戳 INTEGER,       -- epoch·服务端盖章：claim/heartbeat/complete/ping 四点刷新
         树头 TEXT,                  -- 实例仓 HEAD sha 前 10（daemon 启动时自报·跑轮会变·参考面）
         daemon指纹 TEXT,            -- ci_daemon.py 内容 sha256 前 10（进程启动版·版本稳定指标）
+        物理机 TEXT,                -- #1426 物理机键（hostname·平台-架构·指纹6·NULL=旧 daemon）
         版本上报时刻 TEXT)           -- 最近一次带指纹上报时刻（NULL=旧版 daemon 未上报过）""")
+    try:   # #1426 物理机指纹列：存量库 ALTER 补（列已在=重复列错吞掉·同 queue_service 先例）
+        con.execute("ALTER TABLE 实例 ADD COLUMN 物理机 TEXT")
+    except sqlite3.OperationalError:
+        pass
     con.execute("""CREATE TABLE IF NOT EXISTS 池设置(
         键 TEXT PRIMARY KEY,
         值 TEXT)""")
@@ -57,6 +66,12 @@ def _时刻文本转戳(文本: str):
     if 戳 - time.time() > 86400:
         戳 = int(time.mktime((今年 - 1,) + 结构[1:]))
     return 戳
+
+
+def 时刻秒(文本: str):
+    """#1426 归纳公共面：秒级戳文本（MM-DD HH:MM:SS）→ epoch；坏串=None（不猜）。
+    实例聚合与分片让位宽限共用（第三处解析点起提炼·单一事实源）。"""
+    return _时刻文本转戳(文本)
 
 
 def 回填种子(con, 时刻函数) -> None:
@@ -105,14 +120,16 @@ def 校正种子活跃(con) -> None:
             con.execute("UPDATE 实例 SET 最近活跃时戳=? WHERE 名称=?", (完成戳, 名称))
 
 
-def 实例认领(con, 时刻函数, runner: str, 平台: str) -> None:
-    """task_claim 认领成功点挂钩（须持写锁·调用方 commit）：注册/刷平台+最近活跃。
-    平台空串（旧客户端不报）不覆盖已有平台（COALESCE 保最近一次自报）。"""
+def 实例认领(con, 时刻函数, runner: str, 平台: str, 物理机: str = "") -> None:
+    """task_claim/task_shard_claim 认领点挂钩（须持写锁·调用方 commit）：注册/刷
+    平台+物理机指纹+最近活跃。平台/物理机空串（旧客户端不报）不覆盖已有值
+    （COALESCE 保最近一次自报）。#1426：物理机键=分片限流分组数据源。"""
     con.execute(
-        "INSERT INTO 实例(名称,平台,注册时刻,最近活跃时戳) VALUES(?,?,?,?) "
+        "INSERT INTO 实例(名称,平台,物理机,注册时刻,最近活跃时戳) VALUES(?,?,?,?,?) "
         "ON CONFLICT(名称) DO UPDATE SET 最近活跃时戳=excluded.最近活跃时戳,"
-        "平台=COALESCE(NULLIF(excluded.平台,''),实例.平台)",
-        (runner, 平台 or None, 时刻函数(), int(time.time())))
+        "平台=COALESCE(NULLIF(excluded.平台,''),实例.平台),"
+        "物理机=COALESCE(NULLIF(excluded.物理机,''),实例.物理机)",
+        (runner, 平台 or None, 物理机 or None, 时刻函数(), int(time.time())))
 
 
 def 实例心跳(con, 时刻函数, runner: str) -> None:
@@ -146,18 +163,20 @@ def 实例报活(con, 时刻函数, 数据: dict) -> dict:
     平台 = str(数据.get("平台", "")).strip()
     树头 = str(数据.get("树头", "")).strip()
     指纹 = str(数据.get("daemon指纹", "")).strip()
+    物理机 = str(数据.get("物理机", "")).strip()   # #1426：空闲实例也落物理机键（让位判定源）
     带指纹 = bool(树头 or 指纹)
     版时 = 时刻函数() if 带指纹 else None
     con.execute(
-        "INSERT INTO 实例(名称,平台,注册时刻,最近活跃时戳,树头,daemon指纹,版本上报时刻) "
-        "VALUES(?,?,?,?,?,?,?) "
+        "INSERT INTO 实例(名称,平台,物理机,注册时刻,最近活跃时戳,树头,daemon指纹,版本上报时刻) "
+        "VALUES(?,?,?,?,?,?,?,?) "
         "ON CONFLICT(名称) DO UPDATE SET "
         "最近活跃时戳=excluded.最近活跃时戳,"
         "平台=COALESCE(NULLIF(excluded.平台,''),实例.平台),"
+        "物理机=COALESCE(NULLIF(excluded.物理机,''),实例.物理机),"
         "树头=COALESCE(NULLIF(excluded.树头,''),实例.树头),"
         "daemon指纹=COALESCE(NULLIF(excluded.daemon指纹,''),实例.daemon指纹),"
         "版本上报时刻=COALESCE(excluded.版本上报时刻,实例.版本上报时刻)",
-        (runner, 平台 or None, 时刻函数(), int(time.time()),
+        (runner, 平台 or None, 物理机 or None, 时刻函数(), int(time.time()),
          树头 or None, 指纹 or None, 版时))
     return {"ok": True, "刷新请求": 取刷新请求(con)}
 
@@ -207,10 +226,11 @@ def 实例动态快照(con, 心跳超时秒值: int) -> list[dict]:
     当前任务：整任务优先，其次从实例领的预验分片（#1402——此前只读父任务认领者，
     从实例跑片期间显示「空闲」，看板看不出多实例并行）。分片行带 片序/片数/形态。
     最近完成 从 预验任务 派生（任务行=唯一权威·实例表不存任务）。
-    排序：心跳超时→执行中→空闲→疑似离线（离线沉底·#1461 用户令·同级按名称稳定序）。"""
+    排序：心跳超时→执行中→空闲→疑似离线（离线沉底·#1461 用户令·同级按名称稳定序）。
+    #1426：输出物理机键（限流分组观测面·旧 daemon 空串显示 —）。"""
     现在 = int(time.time())
-    行们 = con.execute("SELECT 名称,平台,注册时刻,最近活跃时戳,树头,daemon指纹,版本上报时刻 "
-                       "FROM 实例").fetchall()
+    行们 = con.execute("SELECT 名称,平台,物理机,注册时刻,最近活跃时戳,树头,daemon指纹,"
+                       "版本上报时刻 FROM 实例").fetchall()
     当前 = {r[0]: r for r in con.execute(
         "SELECT 认领者,分支,sha,源分支,认领时刻,心跳时戳 FROM 预验任务 "
         "WHERE 状态='执行中' AND 认领者 IS NOT NULL").fetchall()}
@@ -222,7 +242,7 @@ def 实例动态快照(con, 心跳超时秒值: int) -> list[dict]:
         "SELECT 认领者,分支,sha,绿,更新时刻,max(序号) FROM 预验任务 "
         "WHERE 状态='完成' AND 认领者 IS NOT NULL GROUP BY 认领者").fetchall()}
     出 = []
-    for 名称, 平台, 注册, 活跃, 树头, 指纹, 版时 in 行们:
+    for 名称, 平台, 物理机, 注册, 活跃, 树头, 指纹, 版时 in 行们:
         任务 = 当前.get(名称)
         片 = 当前片.get(名称)
         当前任务 = None
@@ -243,8 +263,8 @@ def 实例动态快照(con, 心跳超时秒值: int) -> list[dict]:
         else:
             状态 = "空闲"
         完成 = 最近完成们.get(名称)
-        出.append({"名称": 名称, "平台": 平台 or "", "状态": 状态,
-                   "注册时刻": 注册, "最近活跃时戳": 活跃,
+        出.append({"名称": 名称, "平台": 平台 or "", "物理机": 物理机 or "",
+                   "状态": 状态, "注册时刻": 注册, "最近活跃时戳": 活跃,
                    "树头": 树头 or "", "daemon指纹": 指纹 or "", "版本上报时刻": 版时,
                    "当前任务": 当前任务,
                    "最近完成": ({"分支": 完成[1], "sha": 完成[2], "绿": bool(完成[3]),

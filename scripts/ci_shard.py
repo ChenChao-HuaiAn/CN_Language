@@ -13,10 +13,16 @@
 #   从片认领（片快照无 执行中/完成）→主实例立即退化单实例序列（已完成的从片照收、
 #   未完成的片本机补跑；不再空等 5400s 收片窗）；收片窗独立为 CN_SHARD_RECV_TIMEOUT_SEC
 #   （默认 1800s），未齐片只报缺失=诚实红（门禁面不放宽：e2e 仍必须全量跑完）。
+# #1426（2026-10-23 用户令「同机最多 1~2 个分片轮 + 优先独立机」）：分片认领/实例
+#   报活携带物理机键（508 三要素 hostname·平台-架构·指纹6）——服务端按物理机限流
+#   （默认同机 1 片·CN_SHARD_PER_MACHINE 可配 2）并把额外槽位优先让给更空闲的
+#   独立物理机。只上报不决策：限流/让位权威在服务端（写锁内原子），旧服务端忽略
+#   多余字段=向后兼容。
 
 import hashlib
 import json
 import os
+import socket
 import subprocess
 import sys
 import threading
@@ -154,6 +160,29 @@ def 池调用(配置: dict, 操作: str, 数据: dict, 超时秒: int = 10):
         return None
 
 
+物理机缓存: list[str] = []
+
+
+def 物理机标识() -> str:
+    """#1426 物理机键（508 标识三要素：hostname·平台-架构·机器指纹6）——服务端按
+    此分组限流（同一物理机同时执行的分片轮上限，默认 1·可配 2）。
+    刻意不读 CN_MACHINE_NAME：实例级命名覆盖会把同机实例拆成不同组=限流失效；
+    hostname 撞名（家机/深度机同 ChenChao-PC）由机器指纹区分。探测失败返回空串
+    显式降级——服务端按 runner 独立机器保守放行并告警（不静默错配）。
+    结果进程内缓存（machine-id/hostname 不热变·每 60s 报活/领片不重复探测）。"""
+    if 物理机缓存:
+        return 物理机缓存[0]
+    机 = ""
+    try:
+        import intent   # 508 权威原语（平台段/机器指纹）·归纳零复制
+        机 = "%s·%s·%s" % (socket.gethostname(), intent.平台段(), intent.机器指纹())
+    except Exception as e:   # 旧树缺 intent/读 machine-id 异常——显式降级不猜
+        print("[分片配置] 物理机指纹探测失败（%s）——认领不带指纹，服务端按独立机器"
+              "保守放行（#1426）" % e, flush=True)
+    物理机缓存.append(机)
+    return 机
+
+
 def 召唤从片(池调用, 分支: str, runner: str, 片数: int) -> bool:
     """主实例召唤：为执行中任务登记 片1..n-1 缺口（幂等）。失败仅告警不抛——
     分片是加速面不是正确性面，召唤失败=退化为单实例全量（主实例照样跑片 0 +
@@ -168,8 +197,11 @@ def 召唤从片(池调用, 分支: str, runner: str, 片数: int) -> bool:
 
 
 def 领片(池调用, runner: str, 平台: str):
-    """从实例领缺口片（无缺口/池不可达 → None·调用方落回领整任务路径）。"""
-    回 = 池调用("task_shard_claim", {"runner": runner, "平台": 平台})
+    """从实例领缺口片（无缺口/池不可达 → None·调用方落回领整任务路径）。
+    #1426：认领体携带物理机指纹——服务端按物理机限并发；超限/让位返回 片=None
+    （不领片·不阻塞主实例召唤），调用方自然落回整任务路径。"""
+    回 = 池调用("task_shard_claim", {"runner": runner, "平台": 平台,
+                                     "物理机": 物理机标识()})
     if 回 and 回.get("ok"):
         return 回.get("片")
     return None
@@ -177,8 +209,10 @@ def 领片(池调用, runner: str, 平台: str):
 
 def 抢补片(池调用, runner: str, 分支: str, 片序: int) -> dict:
     """主实例抢补指定缺口片（服务端 CAS：仅缺口态可抢·防与从实例认领双跑）。
+    #1426：携带物理机指纹仅供片行审计——抢补=正确性补偿路径，服务端不受限。
     返回服务端响应（ok=False=已被别人领走·放弃该片由认领者跑）。"""
-    return 池调用("task_shard_claim", {"runner": runner, "分支": 分支, "片序": 片序}) or {"ok": False}
+    return 池调用("task_shard_claim", {"runner": runner, "分支": 分支, "片序": 片序,
+                                       "物理机": 物理机标识()}) or {"ok": False}
 
 
 def 交片(池调用, runner: str, 分支: str, 片序: int, 绿: bool, 结果, 秒) -> bool:
@@ -650,7 +684,8 @@ def 启动实例报活(runner: str, 平台: str, 仓库根: Path) -> dict:
     配置 = 池配置()
     if not 配置["池地址"]:
         return 状态
-    固定 = {"daemon指纹": 实例指纹(仓库根)["daemon指纹"]}
+    固定 = {"daemon指纹": 实例指纹(仓库根)["daemon指纹"],
+            "物理机": 物理机标识()}   # #1426：空闲实例也报物理机键（让位判定源）
 
     def 跑():
         while True:
