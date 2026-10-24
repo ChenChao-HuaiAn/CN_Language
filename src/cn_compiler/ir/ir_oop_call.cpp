@@ -285,6 +285,43 @@ ir::IRValue IRGenerator::genTransferClassArgWithCleanup966(Expr* arg,
             return v;
         }
     }
+    // 1501（966 派生）：方法调用返回类临时入容器位（表.追加(w.造())）——
+    //   临时壳深拷独立拥有（630）后无人持有必须释放（662 接收者临时析构只
+    //   覆盖方法链接收位·入容器位本分支补）。判定=实参被调=成员（方法调用
+    //   非转移）+接收对象=类实例+方法返回类型=用户类且非引用返回（借用返回
+    //   共享对象不析构）——retCanon 对方法调用恒空（语义层 resolvedType 不
+    //   写回）→81-a 面不登记=无重复。flush 侧 "966壳$" DeleteObject 级联
+    //   （整壳含字段·比串字段逐项更彻底）。
+    if (arg->getType() == NodeType::CallExpr && semantic_ != nullptr) {
+        CallExpr* ce1501 = static_cast<CallExpr*>(arg);
+        if (ce1501->callee->getType() == NodeType::MemberExpr &&
+            !isTransferCall(ce1501)) {
+            const MemberExpr* mem1501 =
+                static_cast<const MemberExpr*>(ce1501->callee.get());
+            if (mem1501->object->getType() == NodeType::IdentifierExpr) {
+                const std::string objT1501 = types::canonical(
+                    lookupSrcType(
+                        static_cast<const IdentifierExpr*>(mem1501->object.get())
+                            ->name)
+                        .value_or(""));
+                const ClassInfo* ci1501 =
+                    semantic_->findClass(objT1501).value_or(nullptr);
+                if (ci1501 != nullptr) {
+                    auto mit1501 = ci1501->methods.find(mem1501->memberName);
+                    if (mit1501 != ci1501->methods.end() &&
+                        semantic_->isClassType(
+                            types::canonical(mit1501->second.type)) &&
+                        !mit1501->second.isRefReturn) {
+                        const ir::IRValue v = genExprForOop(arg);
+                        pendingArgCleanups_.emplace_back(
+                            v, "966壳$" + types::canonical(mit1501->second.type),
+                            nullptr);
+                        return v;
+                    }
+                }
+            }
+        }
+    }
     // 234（云端预验红实录·⑥校验位 32 丢）：其余形态**必须回
     //   genArgValueWithCleanup**（81-a 返回结构体临时串字段登记/644 串临时/
     //   662 拥有契约面全在此）——裸 genExprForOop 绕过登记=返回结构体临时
