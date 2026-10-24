@@ -675,10 +675,15 @@ bool X64CodeGenerator::emitFunctionBodiesParallel(const ir::IRModule& module,
             std::move(generate), std::move(poolMiss), generator);
     };
     std::vector<std::string> texts;
-    if (!parallel_codegen::generateFunctionBodies(
-            module, x64LabelPrefixes(), makeGenerator, diagnostics_, texts)) {
-        return false;
+    parallel_codegen::BodyGenFailure failure;
+    const parallel_codegen::BodyGenStatus status = parallel_codegen::generateFunctionBodies(
+        module, x64LabelPrefixes(), makeGenerator, diagnostics_, texts, failure);
+    if (status == parallel_codegen::BodyGenStatus::kFailure) {
+        // 1220：工作线程异常/空产出=编译器内部 bug——报错中止，禁串行重试
+        parallel_codegen::reportBodyGenFailure(diagnostics_, failure);
+        return true;  // 已处置：driver 见诊断错误即 rc=1，部分文本不落盘
     }
+    if (status == parallel_codegen::BodyGenStatus::kFallback) return false;
     for (std::string& text : texts) writer.raw(text);
     return true;
 }

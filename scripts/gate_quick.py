@@ -130,6 +130,13 @@ for 名 in ("check_ascii_idents", "check_keywords_sync", "check_registry_audit",
            "check_parallel_prefix"):
     if not 步(名, [sys.executable, f"scripts/{名}.py"], 超时秒=静态超时):
         raise SystemExit(1)
+# 1220：并行 codegen 工作线程失败传播断言器自测（纯合成夹具·零编译器·秒级）——
+#   真实负测（注入任务异常/空文本/线程创建失败）由 ③.46 并行确定性门禁链式执行；
+#   此处锁断言器判别力（正例必绿/每类违约必红），防自测自身退化。
+if not 步("并行失败传播自测",
+          [sys.executable, "scripts/check_parallel_failure.py", "--selftest"],
+         超时秒=静态超时):
+    raise SystemExit(1)
 # 1299（2026-10-22 审查裁决）：ci_daemon 自测挂 L1 静态段——缓存配置解析（off/auto/
 #    显式/非法值/引号/分号/路径存在）+ linux 构建链行为级（假步骤）+执行机归因字段
 #    每次提交机械复核；纯本机零构建零池依赖（秒级·--selftest 惰性导入自测体）。
@@ -395,7 +402,8 @@ else:
 #   逃生门：任何 diff/决策不符=红。
 _并行触发面前缀 = ("src/cn_compiler/codegen/", "src/cn_compiler/ir/",
                   "src/cn_compiler/driver/")
-_并行触发文件 = ("scripts/check_parallel_determinism.py",)
+_并行触发文件 = ("scripts/check_parallel_determinism.py",
+                "scripts/check_parallel_failure.py")
 _CI环境 = any(os.environ.get(名) for 名 in
               ("CN_RUNNER_ID", "CN_CI_ROLE", "CN_CI_BRANCH"))
 _跑并行确定性 = (_写集 is None or _CI环境

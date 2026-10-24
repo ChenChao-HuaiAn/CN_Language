@@ -91,6 +91,7 @@ add_executable(cn_unit_tests
     codegen/test_x64_i128.cpp
     codegen/test_x64_i128_struct.cpp
     codegen/test_audit_regressions.cpp
+    codegen/test_parallel_codegen_failure.cpp
     codegen/test_x64_oop.cpp
     codegen/test_x64_vtable.cpp
     codegen/test_reg_alloc.cpp

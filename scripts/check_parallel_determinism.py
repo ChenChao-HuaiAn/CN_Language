@@ -22,14 +22,19 @@
      kMinFunctionsForParallel（从 parallel_codegen.cpp 机械读取；读不到=红）。
   ④ 三后端全覆盖：win-x64 / linux-x86_64 / linux-arm64 各有独立并行实现。
   ⑤ 全局 300s deadline：超时 rc=1（防单步挂死拖垮门禁轮）。
+  ⑥ 失败传播负测链（1220）：确定性对照通过后链式执行
+     scripts/check_parallel_failure.py（真实编译器注入任务异常/未知异常/空文本/
+     线程创建失败，断言 rc 契约、诊断含函数名、无残留产物、workers 观测）；
+     该脚本 rc 即本门禁 rc（同一触发面/云端恒跑自动覆盖本面）。
 
-红线：逐字节差异/决策不符/样本失格/观测缺失/全局超时=FAIL；不提供 --allow
-类放行参数。缓存隔离：CN_NO_PROGRAM_CACHE=1（程序缓存命中会跳过代码生成，
-使对照假绿）+ CN_NO_AST_CACHE=1。
+红线：逐字节差异/决策不符/样本失格/观测缺失/全局超时/失败传播违约=FAIL；
+不提供 --allow 类放行参数。缓存隔离：CN_NO_PROGRAM_CACHE=1（程序缓存命中会跳过
+代码生成，使对照假绿）+ CN_NO_AST_CACHE=1。
 自测（--selftest）：合成夹具正反两态（逐字节差异/并行两遍不一致/并行未生效/
 自动口径退化/标签或平移空转/决策摘要缺失/阈值空转/串行决策或 reason 不符/
 并行线程数或函数数不符/labels 非整数/worker 数不足/编译失败/产物缺失），
-另用真实编译器跑一组三后端正例；显式 --cn 不存在=rc 2。
+另用真实编译器跑一组三后端正例；链式执行 1220 失败传播断言器自测；
+显式 --cn 不存在=rc 2。
 
 用法：
   python scripts/check_parallel_determinism.py [--cn target/cn.exe]
@@ -684,6 +689,16 @@ def 跑自测(显式cn):
     if 失败:
         print("[selftest] FAIL：%d 项" % 失败, flush=True)
         return 1
+    # 1220：链式失败传播门禁的断言器自测（纯合成·无需编译器）——判别力不随演进退化
+    失败脚本 = 项目根 / "scripts" / "check_parallel_failure.py"
+    if not 失败脚本.exists():
+        print("[selftest] ✗ 1220 失败传播脚本缺失: %s" % 失败脚本, flush=True)
+        return 1
+    if subprocess.run([sys.executable, str(失败脚本), "--selftest"],
+                      cwd=str(项目根)).returncode != 0:
+        print("[selftest] ✗ 1220 失败传播断言器自测 FAIL", flush=True)
+        return 1
+    print("[selftest] ✓ 1220 失败传播断言器自测", flush=True)
     if 真实段已跑:
         结尾 = "合成正反两态 + 真实编译正例"
         if not 自动可用:
@@ -708,7 +723,17 @@ def main():
         print("[并行确定性] FAIL：未找到 cn 编译器（--cn 指定或先构建 target/cn）",
               flush=True)
         return 2
-    return 主检查(真编译器(编译器), list(目标们))
+    rc = 主检查(真编译器(编译器), list(目标们))
+    if rc != 0:
+        return rc
+    # 1220：错误传播负测（同一真实编译器；注入关闭时零行为）——rc 合并进本门禁
+    失败脚本 = 项目根 / "scripts" / "check_parallel_failure.py"
+    if not 失败脚本.exists():
+        print("[并行确定性] FAIL：1220 失败传播脚本缺失: %s" % 失败脚本, flush=True)
+        return 1
+    print("[并行确定性] 链式执行 1220 工作线程失败传播负测……", flush=True)
+    return subprocess.run([sys.executable, str(失败脚本), "--cn", str(编译器)],
+                          cwd=str(项目根)).returncode
 
 
 if __name__ == "__main__":
