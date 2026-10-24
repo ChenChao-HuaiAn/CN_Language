@@ -654,21 +654,18 @@ def 有非win空闲(状态) -> bool:
     return False
 
 
-def 有win兜底待领(状态) -> bool:
-    """#1545：服务端平台轮转已把某个 develop/兜底头指派给 win-x64 时，win 不得让位。
-    否则 linux 池长期有空闲 → win 三实例每轮都让位 → develop 的
-    WIN→LINUX→ARM64 轮转退化为 linux-only（win 事实排除在验证之外：
-    门禁表 24h 无 win 行、win 树头停在旧提交）。只认排队行且认领限制含
-    win-x64；状态不可判=False（不改变原让位语义）。"""
+def 有win可领任务(状态) -> bool:
+    """#1545/#1559：存在 win-x64 可领的排队任务时，win 不得让位。
+    否则 linux 池长期有空闲 → win 三实例每轮都让位 → win 平台事实排除在
+    验证之外（#1428 让位只应省算力，不应否决 win 的认领资格）。
+    扫描 /api/state 的「预验任务」（排队行所在表）与「队列」历史快照；
+    只认 状态=排队 且 认领限制含 win-x64（任意分支，含预验/兜底）；
+    状态不可判=False（不改变原让位语义）。"""
     if not isinstance(状态, dict):
         return False
-    # 兜底排队行在 /api/state 的「预验任务」表；「队列」是历史行快照——
-    #   两处都扫（预验任务优先），否则读错键会让本判断恒 False、win 继续让位。
     行们 = list(状态.get("预验任务") or []) + list(状态.get("队列") or [])
     for r in 行们:
         if r.get("状态") != "排队":
-            continue
-        if not str(r.get("分支", "")).startswith("ci/兜底-"):
             continue
         if "win-x64" in str(r.get("认领限制") or ""):
             return True

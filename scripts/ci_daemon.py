@@ -857,7 +857,7 @@ def 主(常驻: bool, 强制: bool, 等锁: bool = False) -> int:
                 池c = 池配置()
                 池态 = ci_shard.池状态(池c["池地址"], 池c["池令牌"])
                 if (ci_shard.有非win空闲(池态)
-                        and not ci_shard.有win兜底待领(池态)):
+                        and not ci_shard.有win可领任务(池态)):
                     print("[让位] 池内有空闲 linux 实例——win 本轮不领片/不领任务"
                           "（让算力·#1428）", flush=True)
                     if not 常驻:
