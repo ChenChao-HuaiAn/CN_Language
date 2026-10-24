@@ -94,13 +94,18 @@ def 宿主检查(cn: pathlib.Path, 工作目录: pathlib.Path) -> list[str]:
 def v2产物检查(v2p: pathlib.Path, 工作目录: pathlib.Path) -> list[str]:
     错误 = []
     # v2p 的 stdlib 按 cwd 相对读 stdlib/<名>.cn（run_e2e 同口径）——临时工作目录
-    #   内复制 stdlib 树，产物 target/v2asm.asm 落临时目录不污染本树。
+    #   内复制 stdlib 树，产物 target/v2asm.asm|.s 落临时目录不污染本树。
+    #   1528 同族（linux 门禁必红根治）：产物名随平台——win 后端=v2asm.asm·
+    #   GAS 后端（linux/arm64）=v2asm.s（1485 终审在 win 机验收写死 .asm·
+    #   linux 机器 L1 恒红「未生成」实录·1479 批集成被卡顺手根治）。
     工作目录.mkdir(parents=True, exist_ok=True)
     标准库 = 工作目录 / "stdlib"
     if not 标准库.exists():
         shutil.copytree(项目根 / "stdlib", 标准库)
-    平台参数 = "win-x64" if sys.platform == "win32" else "linux-x86_64"
-    asm路径 = 工作目录 / "target" / "v2asm.asm"
+    是win本机 = sys.platform == "win32"
+    平台参数 = "win-x64" if 是win本机 else "linux-x86_64"
+    asm名 = "v2asm.asm" if 是win本机 else "v2asm.s"
+    asm路径 = 工作目录 / "target" / asm名
     for 名称, 源码, 期望 in (("快路径样本", 快路径样本, 1),
                            ("对照样本", 对照样本, 2)):
         源 = 工作目录 / f"{名称}.cn"
