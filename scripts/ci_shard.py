@@ -654,6 +654,24 @@ def 有非win空闲(状态) -> bool:
     return False
 
 
+def 有win兜底待领(状态) -> bool:
+    """#1545：服务端平台轮转已把某个 develop/兜底头指派给 win-x64 时，win 不得让位。
+    否则 linux 池长期有空闲 → win 三实例每轮都让位 → develop 的
+    WIN→LINUX→ARM64 轮转退化为 linux-only（win 事实排除在验证之外：
+    门禁表 24h 无 win 行、win 树头停在旧提交）。只认排队行且认领限制含
+    win-x64；状态不可判=False（不改变原让位语义）。"""
+    if not isinstance(状态, dict):
+        return False
+    for r in 状态.get("队列") or []:
+        if r.get("状态") != "排队":
+            continue
+        if not str(r.get("分支", "")).startswith("ci/兜底-"):
+            continue
+        if "win-x64" in str(r.get("认领限制") or ""):
+            return True
+    return False
+
+
 def 本机门禁锁忙(锁目录: Path | None = None) -> bool:
     """#1423：本机共享门禁锁（CN_GATE_LOCK_DIR/主树锁目录）是否被其他活进程持有。
     win 三实例共用一把锁（923 OOM 铁律=同机全量互斥）：同机同时领片时只有先拿锁的

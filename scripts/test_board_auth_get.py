@@ -892,6 +892,7 @@ def 测_诊断与来源() -> None:
 
     with 环境(模式="http错误"):
         原跑 = standup.跑
+        原根 = standup.本树根
 
         def 假跑(命令, cwd=None):
             if 命令[:2] == ["git", "branch"]:
@@ -901,12 +902,16 @@ def 测_诊断与来源() -> None:
             return ""
 
         standup.跑 = 假跑
+        # 本断言走「树名 wt<号>」接棒分支；worktree 实际名可能不是 wt<数字>
+        #（如 wt-red/批次树），只把名称替换为规范 wt1485，避免测试依赖检出目录名。
+        standup.本树根 = 原根.parent / "wt1485"
         错误流 = io.StringIO()
         try:
             with contextlib.redirect_stderr(错误流):
                 standup.看板自动claim()
         finally:
             standup.跑 = 原跑
+            standup.本树根 = 原根
         签("standup 看板自动登记 401 → 一行鉴权诊断",
            "鉴权失败（401）" in 错误流.getvalue(), 错误流.getvalue())
 

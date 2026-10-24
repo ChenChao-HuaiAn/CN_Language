@@ -199,6 +199,10 @@ cn::Optional<std::string> Arm64CodeGenerator::allocRegOf(int regId) const {
     if (regId < 0 || !regAllocEnabled_) return std::nullopt;
     auto it = regAllocMap_.find(regId);
     if (it == regAllocMap_.end()) return std::nullopt;
+    // #1544：assignedReg 为空=分配器未真正落位（regAllocMap_ 含空名条目），
+    //   必须按未分配处理——否则空名会被当已分配：'w'+substr(1) 抛
+    //   basic_string::substr(pos1>size0)，浮点目标则报「非 s/d 视图 ''」。
+    if (it->second.assignedReg.empty()) return std::nullopt;
     return it->second.assignedReg;
 }
 

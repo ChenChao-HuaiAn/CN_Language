@@ -60,7 +60,9 @@ PY
 scp -q "$SCRIPT_DIR/board_service.py" "$SCRIPT_DIR/board_tasks.py" \
     "$SCRIPT_DIR/board_ci.py" \
     "$SCRIPT_DIR/board_docs.py" "$SCRIPT_DIR/board_adjudication.py" \
-    "$SCRIPT_DIR/board_selftest.py" "$SCRIPT_DIR/web_auth.py" \n    "$SCRIPT_DIR/queue_result.py" "$SCRIPT_DIR/queue_shard.py" \n    "$SCRIPT_DIR/queue_instances.py" "$REMOTE:$REMOTE_DIR/"
+    "$SCRIPT_DIR/board_selftest.py" "$SCRIPT_DIR/web_auth.py" \
+    "$SCRIPT_DIR/queue_result.py" "$SCRIPT_DIR/queue_shard.py" \
+    "$SCRIPT_DIR/queue_instances.py" "$REMOTE:$REMOTE_DIR/"
 ssh "$REMOTE" "mkdir -p '$REMOTE_DIR/board_www'"
 tar czf - -C "$SCRIPT_DIR/board_www" . | ssh "$REMOTE" "tar xzf - -C '$REMOTE_DIR/board_www'"
 scp -q "$DIST_TMP/index.html" "$REMOTE:$REMOTE_DIR/board_www/index.html"

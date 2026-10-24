@@ -852,9 +852,12 @@ def 主(常驻: bool, 强制: bool, 等锁: bool = False) -> int:
             #   win 三实例与 WSL/xsim 同处一台物理机：win 参与分片=同机 CPU 饱和
             #   （1419 普通片 192 例 1893s/整轮 37 分钟 vs 1417 全轮 827s）。让位把算力
             #   留给非 win；无非 linux 空闲（或池不可达）时 win 照常补位，不浪费算力。
+            # #1545：服务端轮转已把 develop/兜底头指派给 win-x64 时不让位（否则 win 档永不认领）。
             if 是win:
                 池c = 池配置()
-                if ci_shard.有非win空闲(ci_shard.池状态(池c["池地址"], 池c["池令牌"])):
+                池态 = ci_shard.池状态(池c["池地址"], 池c["池令牌"])
+                if (ci_shard.有非win空闲(池态)
+                        and not ci_shard.有win兜底待领(池态)):
                     print("[让位] 池内有空闲 linux 实例——win 本轮不领片/不领任务"
                           "（让算力·#1428）", flush=True)
                     if not 常驻:

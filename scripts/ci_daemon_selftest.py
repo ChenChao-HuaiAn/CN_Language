@@ -973,6 +973,18 @@ def _1428断言(断言) -> None:
              {"状态": "空闲", "平台": "", "最近活跃时戳": now - 30}])))
     断言("#1428 让位反态：池状态不可判=None→False（不误让位）",
          not ci_shard.有非win空闲(None))
+    # #1545：develop/兜底轮被服务端轮转指派给 win-x64 时不得让位（否则 win 事实排除）。
+    断言("#1545 win 兜底待领：排队行认领限制含 win-x64→True（不让位）",
+         ci_shard.有win兜底待领({"队列": [
+             {"状态": "排队", "分支": "ci/兜底-7fb3b1bd64", "认领限制": "win-x64"}]}))
+    断言("#1545 win 兜底待领反态：限制=linux/不限/已取消→False",
+         not ci_shard.有win兜底待领({"队列": [
+             {"状态": "排队", "分支": "ci/兜底-a", "认领限制": "linux-x86_64"},
+             {"状态": "排队", "分支": "ci/兜底-b", "认领限制": None},
+             {"状态": "执行中", "分支": "ci/兜底-c", "认领限制": "win-x64"},
+             {"状态": "排队", "分支": "ci/预验-d", "认领限制": "win-x64"}]}))
+    断言("#1545 win 兜底待领反态：池状态不可判=None→False",
+         not ci_shard.有win兜底待领(None))
     源 = (Path(__file__).resolve().parent / "ci_daemon.py").read_text(encoding="utf-8")
     import inspect as _inspect
     源get = _inspect.getsource(ci_shard.池状态) + _inspect.getsource(ci_shard.片状态们)
@@ -980,6 +992,8 @@ def _1428断言(断言) -> None:
          "Authorization" in 源get)
     断言("#1428 结构锁：池循环含 win 让位判断（[让位] + 有非win空闲）",
          "[让位]" in 源 and "有非win空闲" in 源)
+    断言("#1545 结构锁：让位条件含 win 兜底待领排除（不让位）",
+         "有win兜底待领" in 源)
 
 
 def _1426断言(主模块, 断言) -> None:
