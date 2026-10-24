@@ -568,4 +568,108 @@ ir::IRValue IRGenerator::calibrateCallArgABI(
     return argVal;
 }
 
+ir::IRValue IRGenerator::genTransferClassArgWithCleanup966(Expr* arg,
+                                                           const SourceLocation& loc) {
+    (void)loc;   // 预留 648 实参清理 miss 诊断归属（与 genArgValueWithCleanup 同口径）
+    if (arg == nullptr) return ir::IRValue();
+    // 643（云端预验红实录）：构造字面量实参=materializeStructInitArg 专用通道
+    //   （与 buildCallArgsOop 同款特判）——落通用值发射=648 显形拒。
+    if (arg->getType() == NodeType::StructInitExpr) {
+        StructInitExpr* init = static_cast<StructInitExpr*>(arg);
+        const std::string argStruct = types::canonical(init->typeName);
+        if (semantic_ != nullptr && semantic_->isStructType(argStruct)) {
+            return materializeStructInitArg(init, loc);
+        }
+    }
+    if (arg->getType() == NodeType::CallExpr &&
+        isTransferCall(static_cast<const CallExpr*>(arg)) &&
+        semantic_ != nullptr) {
+        Expr* xferSrc = static_cast<CallExpr*>(arg)->arguments[0].get();
+        if (xferSrc != nullptr && xferSrc->getType() == NodeType::IdentifierExpr) {
+            const std::string srcT = types::canonical(
+                lookupSrcType(static_cast<IdentifierExpr*>(xferSrc)->name)
+                    .value_or(""));
+            const ir::IRValue v = genExprForOop(arg);
+            if (semantic_->isClassType(srcT)) {
+                // 966：转移已清源槽（459-a 句柄交接）+容器元素=深拷独立拥有
+                //   （630）→深拷完成后源壳无人持有·flush DeleteObject 级联。
+                pendingArgCleanups_.emplace_back(v, "966壳$" + srcT, nullptr);
+                return v;
+            }
+            return v;
+        }
+    }
+    // 1501（966 派生）：方法调用返回类临时入容器位（表.追加(w.造())）——
+    //   临时壳深拷独立拥有（630）后无人持有必须释放（662 接收者临时析构只
+    //   覆盖方法链接收位·入容器位本分支补）。判定=实参被调=成员（方法调用
+    //   非转移）+接收对象=类实例+方法返回类型=用户类且非引用返回（借用返回
+    //   共享对象不析构）——retCanon 对方法调用恒空（语义层 resolvedType 不
+    //   写回）→81-a 面不登记=无重复。flush 侧 "966壳$" DeleteObject 级联
+    //   （整壳含字段·比串字段逐项更彻底）。
+    if (arg->getType() == NodeType::CallExpr && semantic_ != nullptr) {
+        CallExpr* ce1501 = static_cast<CallExpr*>(arg);
+        if (ce1501->callee->getType() == NodeType::MemberExpr &&
+            !isTransferCall(ce1501)) {
+            const MemberExpr* mem1501 =
+                static_cast<const MemberExpr*>(ce1501->callee.get());
+            if (mem1501->object->getType() == NodeType::IdentifierExpr) {
+                const std::string objT1501 = types::canonical(
+                    lookupSrcType(
+                        static_cast<const IdentifierExpr*>(mem1501->object.get())
+                            ->name)
+                        .value_or(""));
+                const ClassInfo* ci1501 =
+                    semantic_->findClass(objT1501).value_or(nullptr);
+                if (ci1501 != nullptr) {
+                    auto mit1501 = ci1501->methods.find(mem1501->memberName);
+                    if (mit1501 != ci1501->methods.end() &&
+                        semantic_->isClassType(
+                            types::canonical(mit1501->second.type)) &&
+                        !mit1501->second.isRefReturn) {
+                        const ir::IRValue v = genExprForOop(arg);
+                        pendingArgCleanups_.emplace_back(
+                            v, "966壳$" + types::canonical(mit1501->second.type),
+                            nullptr);
+                        return v;
+                    }
+                }
+            }
+        }
+    }
+    // 234（云端预验红实录·⑥校验位 32 丢）：其余形态**必须回
+    //   genArgValueWithCleanup**（81-a 返回结构体临时串字段登记/644 串临时/
+    //   662 拥有契约面全在此）——裸 genExprForOop 绕过登记=返回结构体临时
+    //   入容器的串字段泄漏。
+    return genArgValueWithCleanup(arg, loc);
+}
+
+// ==================== 辅助：实参提升与实参装载 ====================
+
+// 生成调用实参（与 visitCallExpr 的整参扩展逻辑一致：<64位整型 Cast i64、
+// f32 -> f64、i128/u128 实参传给 i128 参数不截断）。
+std::vector<ir::IRValue> IRGenerator::buildCallArgsOop(
+    const std::vector<std::unique_ptr<Expr>>& args, const SourceLocation& loc) {
+    (void)loc;  // loc 保留给后续实参类型扩展（与 visitCallExpr 整参提升对齐）
+    std::vector<ir::IRValue> out;
+    for (auto& arg : args) {
+        if (arg != nullptr && arg->getType() == NodeType::StructInitExpr) {
+            StructInitExpr* init = static_cast<StructInitExpr*>(arg.get());
+            const std::string argStruct = types::canonical(init->typeName);
+            if (semantic_ != nullptr && semantic_->isStructType(argStruct)) {
+                out.push_back(materializeStructInitArg(init, loc));
+                continue;
+            }
+        }
+        out.push_back(genArgValueWithCleanup(arg.get(), loc));
+    }
+    return out;
+}
+
+// i128/u128 形参的窄整实参统一宽化（331-a·T53 根治）——见 ir.hpp 声明。
+// 442（判据统一·421 审查 P2-2/P2-3）：与 ir_call.cpp 实参循环同判据——按值 128
+//   形参位驱动定标、引用位不宽化、不排除浮点实参（走 Cast 浮→128 转换通道，
+//   v2 物化128位操作数 浮域分支同构·语义层本就拒绝浮→整 隐式转换=IR 层安全网）、
+//   扩展口径=实参源符号性（正系零扩展/其余符号扩展·发射层 emitCastIntWidth
+//   按源类型分派）。
+
 } // namespace cn_compiler
