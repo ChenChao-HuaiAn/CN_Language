@@ -662,7 +662,10 @@ def 有win兜底待领(状态) -> bool:
     win-x64；状态不可判=False（不改变原让位语义）。"""
     if not isinstance(状态, dict):
         return False
-    for r in 状态.get("队列") or []:
+    # 兜底排队行在 /api/state 的「预验任务」表；「队列」是历史行快照——
+    #   两处都扫（预验任务优先），否则读错键会让本判断恒 False、win 继续让位。
+    行们 = list(状态.get("预验任务") or []) + list(状态.get("队列") or [])
+    for r in 行们:
         if r.get("状态") != "排队":
             continue
         if not str(r.get("分支", "")).startswith("ci/兜底-"):
