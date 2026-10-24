@@ -30,14 +30,18 @@ def 编译器() -> pathlib.Path:
     sys.exit(2)
 
 
-def 编译(cn: pathlib.Path, 源: pathlib.Path, 产物: pathlib.Path) -> None:
+def 编译(cn: pathlib.Path, 源: pathlib.Path, 产物: pathlib.Path,
+         允许失败: bool = False) -> bool:
     r = subprocess.run([str(cn), "build", str(源), "--target", "win-x64",
                         "--output", str(产物)], cwd=str(根),
                        capture_output=True, text=True, encoding="utf-8", errors="replace")
     if r.returncode != 0 or not 产物.exists():
+        if 允许失败:
+            return False
         print(f"错误：编译失败 {源.name} rc={r.returncode}")
         print((r.stdout or "") + (r.stderr or ""))
         sys.exit(1)
+    return True
 
 
 def 跑(产物: pathlib.Path) -> str:
@@ -69,7 +73,11 @@ def 主程序() -> int:
         json_cn.write_bytes(旧)
         for 名 in ("probe751err", "probe751leak"):
             产物 = 临时目录 / f"{名}.before.exe"
-            编译(cn, 探针目录 / f"{名}.cn", 产物)
+            # #1523：probe751err 已改用 JSON 查询 可选 API，旧基线不兼容该源码——
+            #   基线侧编译失败则跳过该探针的对拍（泄漏探针不受影响）。
+            if not 编译(cn, 探针目录 / f"{名}.cn", 产物, 允许失败=(名 == "probe751err")):
+                print(f"[对拍·跳过] {名} 基线侧不兼容（#1523 查询 API 结果化后源码不匹配）")
+                continue
             结果[(名, "before")] = 跑(产物)
 
         # ---- 当前侧：拆分+硬化版 ----
@@ -83,6 +91,8 @@ def 主程序() -> int:
 
     失败 = 0
     for 名, 题 in (("probe751err", "20 例负例"), ("probe751leak", "泄漏 4×2000 轮")):
+        if (名, "before") not in 结果:
+            continue
         前 = 结果[(名, "before")]
         后 = 结果[(名, "after")]
         if 前 == 后:
