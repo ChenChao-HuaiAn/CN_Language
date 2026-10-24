@@ -146,6 +146,33 @@ void IRGenerator::flushPendingArgCleanups(std::size_t base) {
             }
             continue;
         }
+        // 966：转移源壳整壳析构（登记 canon="966壳$"+类名）——662 接收者临时
+        //   析构同款序列（判空+无析构类字段级联+DeleteObject·运行时调析构）。
+        //   与 81-a 串字段聚合面（emitOwnedStrFieldFreesAt）分道：壳面=DeleteObject
+        //   级联·聚合面=字段偏移逐项。
+        if (canon.rfind("966壳$", 0) == 0) {
+            const std::string srcT966 = canon.substr(std::string("966壳$").size());
+            const ir::IRValue& v966 = std::get<0>(pendingArgCleanups_[i]);
+            if (semantic_ != nullptr &&
+                semantic_->findClass(srcT966).has_value() &&
+                !classDestructorSymbolKey(srcT966).has_value()) {
+                ir::IRValue nonNull966 = emitResult(
+                    ir::Opcode::Ne, {v966, ir::IRValue::constant("0", "ptr")},
+                    "i1", "", SourceLocation());
+                const std::string casc966 =
+                    "bb" + std::to_string(blockCounter_++);
+                const std::string merge966 =
+                    "bb" + std::to_string(blockCounter_++);
+                endBranch(nonNull966.toString(), casc966, merge966);
+                setCurrentBlock(newBlock(casc966));
+                emitNoDtorFieldCascade(v966, srcT966, SourceLocation());
+                if (!currentBlock_->terminated) endJump(merge966);
+                setCurrentBlock(newBlock(merge966));
+            }
+            emit(ir::Opcode::DeleteObject, {v966}, ir::IRValue(), srcT966,
+                 "void", SourceLocation());
+            continue;
+        }
         emitOwnedStrFieldFreesAt(std::get<0>(pendingArgCleanups_[i]), canon,
                                  SourceLocation());
     }

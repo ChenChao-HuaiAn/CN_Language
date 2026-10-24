@@ -175,6 +175,31 @@ ir::IRValue IRGenerator::normalizeStringValueSource(Expr* arg,
 ir::IRValue IRGenerator::normalizeContainerInsertArg(Expr* arg,
                                                      const SourceLocation& loc) {
     if (arg == nullptr) return ir::IRValue();
+    // 966：转移实参入容器位（表.追加(转移(甲))）——元素深拷（stdlib 容器
+    //   方法体 数据[n] = 值 写入深拷·运行期）完成后源句柄=孤儿壳：转移展开
+    //   已清源槽（句柄交接语义·459-a）+容器元素=深拷独立拥有（630）→源无
+    //   人持有必须释放（v2 净 0 对齐面·探针斜率 泄1壳/调用 实录）。登记
+    //   pendingArgCleanups（用户类）→ArgCleanupGuard 在追加调用发射完成后
+    //   flush DeleteObject 级联全清（时序=元素已拷毕·安全）。转移源=标识符
+    //   主形态；成员源（959 形态 h.桶）/结构体值语义源不在本面（挂账）。
+    if (arg->getType() == NodeType::CallExpr &&
+        isTransferCall(static_cast<const CallExpr*>(arg)) &&
+        semantic_ != nullptr) {
+        Expr* xferSrc = static_cast<CallExpr*>(arg)->arguments[0].get();
+        if (xferSrc != nullptr && xferSrc->getType() == NodeType::IdentifierExpr) {
+            const std::string srcT = types::canonical(
+                lookupSrcType(static_cast<IdentifierExpr*>(xferSrc)->name)
+                    .value_or(""));
+            const ir::IRValue v = genExprForOop(arg);
+            if (semantic_->isClassType(srcT)) {
+                pendingArgCleanups_.emplace_back(v, "966壳$" + srcT, nullptr);
+                // 966：类源直接返回句柄——不得落 normalizeStringValueSource
+                //   （串归一对非串槽源走 __cn_str_copy 借用复制=对类句柄做
+                //   串拷贝·错误码 3 实录）。
+                return v;
+            }
+        }
+    }
     const ir::IRValue v = genExprForOop(arg);
     return normalizeStringValueSource(arg, v, loc);
 }
@@ -182,13 +207,18 @@ ir::IRValue IRGenerator::normalizeContainerInsertArg(Expr* arg,
 // 方法调用实参构建：入容器位（对象类型=字符串元素容器 或 字符串值映射 且 方法∈
 //   入容器位）时对值实参做所有权归一化，其余实参/其余调用等价 buildCallArgsOop。
 std::vector<ir::IRValue> IRGenerator::buildCallArgsForMethod(
-    CallExpr* node, const std::string& canonObj, const std::string& methodName) {
+    CallExpr* node, const std::string& canonObj,
+    const std::string& methodName) {
     std::vector<ir::IRValue> out;
+    // 966 返工②：入容器位逐参两分——串容器（ownsStrElem）=串面归一化原域
+    //   （76-a 原判据·normalizeStringValueSource 对类句柄走 __cn_str_copy=毁·
+    //   不得扩域）；非串容器=类面 966 独立入口（只对 转移(类源) 登记释放·
+    //   其余 genExprForOop 原样零变化）——向量<货品>.追加(转移(甲)) 原 走
+    //   buildCallArgsOop 旁路=966 登记永不可达（斜率 3→151 不变实录）。
     const bool ownsStrElem = isStringElemContainer(canonObj) ||
                              isStringValuedMap(canonObj);
     // 1360 结果化：无值=非入容器位（has_value 分流·原 -1 哨兵判定显形）
-    const cn::Optional<int> valueIdxOpt =
-        ownsStrElem ? containerInsertValueArgIndex(methodName) : cn::Optional<int>();
+    const cn::Optional<int> valueIdxOpt = containerInsertValueArgIndex(methodName);
     if (!valueIdxOpt.has_value() ||
         static_cast<std::size_t>(valueIdxOpt.value()) >= node->arguments.size()) {
         return buildCallArgsOop(node->arguments, node->location);
@@ -197,15 +227,52 @@ std::vector<ir::IRValue> IRGenerator::buildCallArgsForMethod(
     // 81-a：结构体元素容器（含拥有型串字段的结构体）**不在此归一化**——元素槽
     //   字段串的独立性由 stdlib 容器方法体的 `数据[n] = 值` 结构体写入深拷（79-a
     for (std::size_t i = 0; i < node->arguments.size(); ++i) {
-        if (i == vi) {
+        // 966 返工②显式三分（else 新规：业务分支禁 else 兜底——三区间闭式枚举）
+        const bool valStrFace = (i == vi) && ownsStrElem;
+        const bool valClassFace = (i == vi) && !ownsStrElem;
+        if (valStrFace) {
             out.push_back(normalizeContainerInsertArg(node->arguments[i].get(),
                                                       node->location));
-        } else {
+        }
+        if (valClassFace) {
+            out.push_back(
+                genTransferClassArgWithCleanup966(node->arguments[i].get(),
+                                                  node->location));
+        }
+        if (i != vi) {
             out.push_back(genArgValueWithCleanup(node->arguments[i].get(),
                                                  node->location));
         }
     }
     return out;
+}
+
+// 966：非串容器的入容器位类面入口——只对 转移(类标识符源) 登记源壳释放
+//   （pendingArgCleanups "966壳$" 打标·flush 侧 662 同款整壳析构）；其余
+//   形态（临时/拷贝/非类）genExprForOop 原样零变化。
+ir::IRValue IRGenerator::genTransferClassArgWithCleanup966(Expr* arg,
+                                                           const SourceLocation& loc) {
+    (void)loc;   // 预留 648 实参清理 miss 诊断归属（与 genArgValueWithCleanup 同口径）
+    if (arg == nullptr) return ir::IRValue();
+    if (arg->getType() == NodeType::CallExpr &&
+        isTransferCall(static_cast<const CallExpr*>(arg)) &&
+        semantic_ != nullptr) {
+        Expr* xferSrc = static_cast<CallExpr*>(arg)->arguments[0].get();
+        if (xferSrc != nullptr && xferSrc->getType() == NodeType::IdentifierExpr) {
+            const std::string srcT = types::canonical(
+                lookupSrcType(static_cast<IdentifierExpr*>(xferSrc)->name)
+                    .value_or(""));
+            const ir::IRValue v = genExprForOop(arg);
+            if (semantic_->isClassType(srcT)) {
+                // 966：转移已清源槽（459-a 句柄交接）+容器元素=深拷独立拥有
+                //   （630）→深拷完成后源壳无人持有·flush DeleteObject 级联。
+                pendingArgCleanups_.emplace_back(v, "966壳$" + srcT, nullptr);
+                return v;
+            }
+            return v;
+        }
+    }
+    return genExprForOop(arg);
 }
 
 // ==================== 辅助：实参提升与实参装载 ====================

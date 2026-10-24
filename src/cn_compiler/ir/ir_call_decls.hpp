@@ -89,6 +89,8 @@
                                     const SourceLocation& loc);
     // 调用发射后统一清理本次调用新增的实参临时（base=进入本次调用时的列表基准， 嵌套调用各自持基准——内层清理只覆盖内层新增项）
     void flushPendingArgCleanups(std::size_t base);
+    // 966：非串容器入容器位类面入口（转移(类源) 源壳释放登记·其余原样）
+    ir::IRValue genTransferClassArgWithCleanup966(Expr* arg, const SourceLocation& loc);
     // 实参临时清理项：{值寄存器, 返回类型, 来源 AST（三元条件释放用·其余形态可空）}
     std::vector<std::tuple<ir::IRValue, std::string, const Expr*>> pendingArgCleanups_;
     // 入容器位实参所有权归一化：按来源分级发 __cn_str_copy / 源槽清零（返回值实参值）
