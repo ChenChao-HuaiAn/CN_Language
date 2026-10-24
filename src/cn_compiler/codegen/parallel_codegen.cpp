@@ -49,6 +49,8 @@ bool codegenStatsEnabled() {
 //   1501：readonly=并行生成段的语义只读冻结观测（sealed=已封存只读；
 //   off=未进入/未封存；prewarmed=预热缓存条目数）——门禁据此机械断言
 //   「并行路径确实经过只读冻结」，防未来改动静默绕过并发防护。
+//   1499：prewarmed 口径=封存后 classCache.size()，含语义/IR 阶段遗留条目与
+//   负缓存（不是本轮新增预热数）；门禁只断言 >0（预热通道真实执行）。
 void reportDecision(bool parallel, std::size_t functions, int threads, int workers,
                     long long labels, long long shifted, const char* reason,
                     bool readonlySealed = false, std::size_t prewarmed = 0) {
@@ -510,7 +512,7 @@ void shiftLabelNumbers(std::string& text, int base,
     text.swap(shifted);
 }
 
-// 1501：并行生成段只读冻结入口（主线程，先于线程创建）——失败填 failure。
+// 1499：并行生成段只读冻结入口（主线程，先于线程创建）——失败填 failure。
 //   语义视图为空=合成测试模块（无共享缓存写面）——此时不冻结（无操作）。
 bool beginSealedGeneration(ISemanticView* semantic, std::size_t& prewarmed,
                            BodyGenFailure& failure) {
@@ -525,20 +527,53 @@ bool beginSealedGeneration(ISemanticView* semantic, std::size_t& prewarmed,
     return true;
 }
 
-// 1501：解除冻结并检查未预热 miss——有值=内部错误（预热不完整/只读期类表变化）。
+// 1499：解除冻结并检查未预热 miss——有值=内部错误（预热不完整/只读期类表变化）。
+//   尾句「已中止编译，不产出部分汇编」由 reportBodyGenFailure 统一追加（去重）。
 bool endSealedGeneration(ISemanticView* semantic, BodyGenFailure& failure) {
     if (semantic != nullptr) {
         const cn::Optional<std::string> miss = semantic->endReadonlyCodegenLookup();
         if (miss.has_value()) {
             failure.message =
                 "并行 codegen 语义只读缓存未预热命中（类名 '" + miss.value() +
-                "'）——预热清单不完整或只读冻结期发生类表变化（编译器内部错误）；"
-                "已中止编译，不产出部分汇编";
+                "'）——预热清单不完整或只读冻结期发生类表变化（编译器内部错误）";
             return false;
         }
     }
     return true;
 }
+
+// 1499 审查 P2-1：只读冻结 RAII 守卫——析构必解封（runGenerationTasks 内分配/
+//   线程池 reserve 抛 bad_alloc 等异常路径亦不遗留永久封存；正常路径显式 Finish
+//   取回 miss）。Begin 失败=内部错误（调用点 reason=readonly-error）。
+class SealGuard {
+public:
+    SealGuard(ISemanticView* semantic, std::size_t& prewarmed, BodyGenFailure& failure)
+        : semantic_(semantic) {
+        entered_ = beginSealedGeneration(semantic_, prewarmed, failure);
+    }
+    ~SealGuard() {
+        if (entered_) {
+            BodyGenFailure ignored;  // 异常展开路径：只解封（原异常继续传播）
+            static_cast<void>(endSealedGeneration(semantic_, ignored));
+        }
+    }
+    SealGuard(const SealGuard&) = delete;
+    SealGuard& operator=(const SealGuard&) = delete;
+
+    bool entered() const { return entered_; }
+    // 正常路径显式解封并检查 miss；返回 false=冻结期未预热命中（内部错误）
+    bool Finish(BodyGenFailure& failure) {
+        if (entered_) {
+            entered_ = false;
+            return endSealedGeneration(semantic_, failure);
+        }
+        return true;  // 已解封/从未封存（begin 失败）：无二次动作
+    }
+
+private:
+    ISemanticView* semantic_ = nullptr;
+    bool entered_ = false;
+};
 
 // 决策行观测：标签总数 + 真正进入平移面的标签量（bases[index]!=0 的 index>0 函数）
 struct LabelTotals {
@@ -554,6 +589,21 @@ LabelTotals countLabelTotals(const std::vector<FunctionOutput>& outputs) {
         if (bases[index] != 0) totals.shifted += outputs[index].labelCount;
     }
     return totals;
+}
+
+// 1499：非并行路径决策——注入已设却未进入并行=显式内部错误（负测假绿源），
+//   否则正常串行回退并显形 reason（threads-serial/below-threshold）。
+BodyGenStatus decideSerialPath(const InjectionParse& injection,
+                               std::size_t taskCount, int requestedThreads,
+                               BodyGenFailure& failure) {
+    if (injection.spec.active()) {
+        failure.message = "测试故障注入已设置但本次未进入并行路径"
+                          "（函数数低于阈值或 CN_CODEGEN_THREADS=1）";
+        return BodyGenStatus::kFailure;
+    }
+    reportDecision(false, taskCount, requestedThreads, 0, 0, 0,
+                   requestedThreads <= 1 ? "threads-serial" : "below-threshold");
+    return BodyGenStatus::kFallback;
 }
 
 BodyGenStatus generateFunctionBodies(
@@ -573,17 +623,9 @@ BodyGenStatus generateFunctionBodies(
     const bool parallelWanted = shouldParallelize(taskCount);
     const int requestedThreads = threadCount();
     if (parallelWanted == false) {
-        // 注入已设却未进入并行路径=注入未生效（负测假绿源）：显式内部错误，防静默
-        if (injection.spec.active()) {
-            failure.message = "测试故障注入已设置但本次未进入并行路径"
-                              "（函数数低于阈值或 CN_CODEGEN_THREADS=1）";
-            return BodyGenStatus::kFailure;
-        }
-        // 1219：串行决策显形——门禁据此断言串行基线确实未走并行（threads-serial/
-        //   函数数未达阈值二因可辨）；观测开关关闭时本行零输出。
-        reportDecision(false, taskCount, requestedThreads, 0, 0, 0,
-                       requestedThreads <= 1 ? "threads-serial" : "below-threshold");
-        return BodyGenStatus::kFallback;
+        // 注入已设却未进入并行路径=注入未生效（负测假绿源）：显式内部错误，防静默；
+        //   正常串行：显形 reason（threads-serial/函数数未达阈值二因可辨）。
+        return decideSerialPath(injection, taskCount, requestedThreads, failure);
     }
     if (injection.spec.threadCreation == false && injection.spec.kind != InjectKind::kNone &&
         injection.spec.functionIndex >= taskCount) {
@@ -599,9 +641,10 @@ BodyGenStatus generateFunctionBodies(
     createGenerators(threads, makeGenerator, generators, localDiagnostics);
     std::vector<FunctionOutput> outputs(taskCount);
     std::atomic<bool> poolMiss{false};
-    // 1501：spawn 前预热+封存语义只读（worker 期 findClass 零写；失败=内部错误）
+    // 1499：spawn 前预热+封存语义只读（RAII：异常路径亦必解封）；失败=内部错误
     std::size_t prewarmed = 0;
-    if (beginSealedGeneration(semantic, prewarmed, failure) == false) {
+    SealGuard seal(semantic, prewarmed, failure);
+    if (seal.entered() == false) {
         reportDecision(true, taskCount, threads, 0, 0, 0, "readonly-error");
         return BodyGenStatus::kFailure;
     }
@@ -610,7 +653,7 @@ BodyGenStatus generateFunctionBodies(
         module, threads, injection.spec, semantic, generators, localDiagnostics,
         outputs, poolMiss, generation, failure);
     // 先解封再分流（失败/回退/成功三路都必须解除冻结）；miss 有值=内部错误中止
-    if (endSealedGeneration(semantic, failure) == false) {
+    if (seal.Finish(failure) == false) {
         reportDecision(true, taskCount, threads, generation.workers, 0, 0,
                        "readonly-miss", true, prewarmed);
         return BodyGenStatus::kFailure;

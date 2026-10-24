@@ -1,6 +1,7 @@
 // 语义分析器：遍历AST进行符号收集与类型检查（Task 1.5 + 阶段3 OOP/错误处理）
 // 设计要点：
 #pragma once
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <string>

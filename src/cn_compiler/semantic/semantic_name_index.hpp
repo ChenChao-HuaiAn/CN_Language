@@ -12,6 +12,7 @@
 //   剥离规则精确复刻原实现（overloadEntryMatch / hasFunctionName 家族）：
 //   两形态（查询名含/不含 '$'）——仅「含 '$' 且无 '#'」的 key 两形态不同。
 #pragma once
+#include <atomic>
 #include <cstddef>
 #include <deque>
 #include <mutex>
@@ -95,19 +96,20 @@ struct TypeLookupIndex {
     };
     mutable std::unordered_map<std::string, ClassLookupCacheEntry> classCache;
 
-    // ==================== 1501：并行 codegen 只读冻结 ====================
+    // ==================== 1499：并行 codegen 只读冻结 ====================
     // 背景（1145 函数级并行发射）：多 worker 共享同一 SemanticAnalyzer 视图；
     //   findClass 为 const 却在裸名未命中时写 mutable classCache——多线程并发
     //   find/insert 同一 unordered_map = 数据竞争（UB；2026-10-23 TSan 实证：
     //   class_resolver.cpp findClass 的 unordered_map::find 与写者竞态）。
-    // 方案（安全第一、性能第二）：主线程 spawn 前预热全部类基名并封存只读
+    // 方案（安全第一、性能第二）：主线程 spawn 前预热全部类符号名并封存只读
     //   （SemanticAnalyzer::beginReadonlyCodegenLookup）；封存期 findClass **不再
     //   写缓存**（只读索引映射照常解析），任何未预热查询记入本结构，主线程
     //   join 后统一报内部错误中止编译（miss 不可静默）。零锁开销：正常路径
-    //   只有一次 bool 读；互斥仅异常路径使用。
-    // 线程纪律：readonlySealed 只在 spawn 前 / join 后由主线程写，worker 只读
-    //   （线程创建与 join 建立 happens-before）；miss 计数与首名由互斥保护。
-    bool readonlySealed = false;
+    //   只有一次 acquire 读；互斥仅异常路径使用。
+    // 线程纪律：readonlySealed 为 atomic（spawn 前 release store、worker acquire
+    //   load、join 后 release store）——不依赖线程创建/join 的隐式顺序；miss
+    //   计数与首名由互斥保护。
+    std::atomic<bool> readonlySealed{false};
     mutable std::mutex readonlyMissMutex;
     mutable std::size_t readonlyMissCount = 0;
     mutable std::string firstReadonlyMissName;

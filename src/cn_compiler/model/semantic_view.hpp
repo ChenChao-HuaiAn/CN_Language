@@ -44,13 +44,19 @@ public:
     // 1360 结果化（批3A）：查表 miss 无值（原 nullptr 哨兵退役——消费点
     //   has_value() 分流，类型强制检查·漏检=编译期拒绝）
     virtual cn::Optional<const ClassInfo*> findClass(const std::string& name) const = 0;
-    // ---- 1501：并行 codegen 语义只读冻结（1145 多 worker 共享视图的并发契约）----
+    // ---- 1499：并行 codegen 语义只读冻结（1145 多 worker 共享视图的并发契约）----
     // 背景：findClass 为 const 但惰性写 classCache（裸名解析缓存）；并行发射时
     //   多 worker 共享同一视图，首查写路径 = 共享 unordered_map 并发 find/insert
-    //   （数据竞争 UB）。契约=并行 spawn 前主线程调用本方法：预热全部类基名到
-    //   只读缓存并封存（此后 findClass 只读、禁止写缓存）；预热计数经
-    //   prewarmedCount 回填（调用方观测/门禁）。返回 false=errorOut 已填（如重入），
-    //   调用方必须中止而非按成功继续。默认实现=替身无惰性缓存，直接放行。
+    //   （数据竞争 UB）。契约=并行 spawn 前主线程调用本方法：预热全部类符号名
+    //   （ClassInfo.name）到只读缓存并封存（此后 findClass 只读、禁止写缓存）；
+    //   预热计数经 prewarmedCount 回填（调用方观测/门禁）。返回 false=errorOut
+    //   已填（如重入），调用方必须中止而非按成功继续。默认实现=替身无惰性缓存，
+    //   直接放行。
+    // 查询面白名单（1499 审查 P2-3）：worker 可查询的类名=已注册类符号名
+    //   （Classes_ 中 ClassInfo.name：裸名/跨模块冲突限定全键）。合法负探测
+    //   （查询不存在的类）不在白名单——封存期会登记 miss 并判内部错误中止；
+    //   如未来需支持，须显式设计只读负缓存通道而非放宽本契约。限定名
+    //   （"模块::类"）走 classByFullKey 直查、不经 classCache，不在 miss 契约内。
     virtual bool beginReadonlyCodegenLookup(std::size_t& prewarmedCount,
                                             std::string& errorOut) {
         prewarmedCount = 0;

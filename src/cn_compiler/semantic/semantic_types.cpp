@@ -56,15 +56,8 @@ const TypeLookupIndex& SemanticAnalyzer::ensureTypeLookupIndex() const {
     const std::size_t structsSize = (prog == nullptr) ? 0 : prog->structs.size();
     const std::size_t enumsSize = (prog == nullptr) ? 0 : prog->enums.size();
     const std::size_t classesSize = classes_.size();
-    if (idx.builtProgram == prog && idx.structsSize == structsSize &&
-        idx.enumsSize == enumsSize && idx.classesSize == classesSize) {
-        return idx;
-    }
-    if (idx.readonlySealed) {
-        // 1501：只读冻结期（并行 codegen worker）禁止重建/写索引——类表在语义
-        //   阶段已定稿；此处出现规模变化=只读契约破坏（内部错误）。不写、不重建
-        //   （并发写=数据竞争），返回现有只读索引并由主线程 join 后统一中止。
-        idx.recordReadonlyMiss("<类表在只读冻结期发生变化>");
+    // 1499：复用/冻结判定单点（实现见 semantic_parallel_readonly.cpp）
+    if (typeLookupIndexReusable(prog, structsSize, enumsSize, classesSize)) {
         return idx;
     }
     const bool programChanged = idx.builtProgram != prog;

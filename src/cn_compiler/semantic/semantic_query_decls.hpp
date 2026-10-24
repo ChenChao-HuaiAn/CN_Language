@@ -77,13 +77,22 @@
     //   名字拼装统一经此，消除 尖括号原文 vs $ 形态 两套注册/查询键
     // 查找类符号（1360 结果化批3A：无值=未命中——原 nullptr 哨兵退役）
     cn::Optional<const ClassInfo*> findClass(const std::string& name) const override ;
-    // 1501：并行 codegen 语义只读冻结（主线程 spawn 前预热全部类基名+封存；
-    //   实现=semantic_parallel_readonly.cpp；并发契约见 model/semantic_view.hpp）
+    // 1499：并行 codegen 语义只读冻结（主线程 spawn 前预热全部类符号名+封存；
+    //   实现=semantic_parallel_readonly.cpp；并发契约/白名单见 model/semantic_view.hpp）
     bool beginReadonlyCodegenLookup(std::size_t& prewarmedCount,
                                     std::string& errorOut) override;
-    // 1501：解除冻结；有值=冻结期出现未预热查询（首个类名）——消费点必须
+    // 1499：解除冻结；有值=冻结期出现未预热查询（首个类名）——消费点必须
     //   以内部错误中止编译（miss 不可静默）
     cn::Optional<std::string> endReadonlyCodegenLookup() override;
+    // 1499：类查询缓存兜底（封存期只读+miss 登记；非封存期写 classCache）——
+    //   实现抽至 semantic_parallel_readonly.cpp（行数纪律：class_resolver.cpp 零净增）
+    cn::Optional<const ClassInfo*> cacheOrRecordClassLookup(
+        const TypeLookupIndex& idx, const std::string& name,
+        const ClassInfo* result) const;
+    // 1499：类型索引可复用判定（尺寸一致=复用；封存期规模变化=登记 miss 后复用
+    //   旧只读索引，禁止重建写面）——实现抽至 semantic_parallel_readonly.cpp
+    bool typeLookupIndexReusable(const Program* prog, std::size_t structsSize,
+                                 std::size_t enumsSize, std::size_t classesSize) const;
     // 全部类符号表只读访问（Task 3.1，供 codegen 遍历生成虚表/静态字段/类方法符号）
     const std::unordered_map<std::string, ClassInfo>& classes() const override { return classes_; }
     // 全部泛型函数实例化记录只读访问（Task 6.1，供 IR 层生成函数体）
