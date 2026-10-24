@@ -187,8 +187,10 @@ def 聚合面断言(聚合绿) -> list[tuple[str, bool]]:
         实现白名单 == set(聚合白名单))
     查("实现锚：聚合绿 AST 白名单含 check_parallel_determinism",
         静态键 in 实现白名单)
-    查("实现锚：ci_daemon.静态门禁与e2e段 源码含本键（云端静态段确实调度）",
-        "check_parallel_determinism" in inspect.getsource(ci_daemon.静态门禁与e2e段))
+    _静态源 = (inspect.getsource(ci_daemon.静态门禁与e2e段)
+               + inspect.getsource(ci_daemon.静态门禁清单))   # #1221 P2：清单外迁后两段合看
+    查("实现锚：ci_daemon 静态段源码含本键（云端静态段确实调度）",
+        "check_parallel_determinism" in _静态源)
     查("负例构造键不在白名单（非白名单不拖红断言不得复用白名单键）",
         "负测期望对账" not in 聚合白名单)
     查("973 登记语义：非白名单键（对账周检步骤）rc=1 不拖轮绿（有意设计防误改）",

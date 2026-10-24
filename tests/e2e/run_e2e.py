@@ -223,12 +223,15 @@ def 是M6用例(名称: str) -> bool:
 #      交叉模拟 cn-arm64@.service / 单位机 cn-runner@.service——2026-10-13 实机
 #      `systemctl show`/启动器文件只读核验全部在设）；
 #   ② CN_CI_ROLE：池角色（同上部署面·TX_02 之外全在设）；
-#   ③ CN_CI_BRANCH：点名/本职分支（028 模板与现网多数实例在设·保留兼容 215 原判据）。
+#   ③ CN_CI_BRANCH：点名/本职分支（028 模板与现网多数实例在设·保留兼容 215 原判据）；
+#   ④ GITHUB_ACTIONS：#1221 复审 P2——GitHub Actions 工作流（windows-latest）不注入
+#      CN_* 三变量，旧口径把它当本地开发会话（78/79 永不跑 + 裸全量护栏 exit 2）；
+#      补此后 GH 工作流按 CI 通道放行（重负载/裸全量由 CI 语义覆盖）。
 #   旧判据仅 CN_CI_BRANCH 的病根：TX_02 cn-ci.service 实机三变量全空（ssh 只读核验
 #   2026-10-13）→ 云端放行通道在该主力 runner 上永不成立（78/79 零验证），且旧
-#   daemon 的 --allow-heavy 在 win 池触发机器锁自死锁。AI 开发会话三变量皆无·
+#   daemon 的 --allow-heavy 在 win 池触发机器锁自死锁。AI 开发会话无这些变量·
 #   识别不误放。返回命中变量名（空串=非 CI 环境）。
-CI识别变量们 = ("CN_RUNNER_ID", "CN_CI_ROLE", "CN_CI_BRANCH")
+CI识别变量们 = ("CN_RUNNER_ID", "CN_CI_ROLE", "CN_CI_BRANCH", "GITHUB_ACTIONS")
 
 
 def CI环境识别() -> str:
@@ -1500,6 +1503,7 @@ def 置M6上下文(上下文) -> None:
 
 
 def 取M6上下文() -> dict:
+    """读取本进程 M6 审计上下文（主进程设·随任务项注入 spawn worker）。"""
     return dict(M6上下文)
 
 
@@ -1545,11 +1549,6 @@ def 取HEAD短SHA() -> str:
         return (结果.stdout or "").strip() if 结果.returncode == 0 else ""
     except Exception:
         return ""
-
-
-def 取M6上下文() -> dict:
-    """读取本进程 M6 审计上下文（主进程设·随任务项注入 worker）。"""
-    return dict(M6上下文)
 
 
 def 置M6记录(记录) -> None:
@@ -1912,17 +1911,20 @@ def _MSVC版本键(目录: pathlib.Path):
 def 扫描MSVC安装根(安装根: pathlib.Path) -> tuple:
     """#1221 P1-3：扫描任意 VS Edition/版本布局下的 MSVC x64 工具链。
 
-    支持两种根：① `<VS 安装根>`（Microsoft Visual Studio，含 <年份>/<Edition>
-    如 2022/Community、2022/BuildTools、2019/Enterprise 等任意布局）；② 直接
-    `<...>/VC/Tools/MSVC`。布局：
-      <根>/<年份>/<Edition>/VC/Tools/MSVC/<版本>/bin/Hostx64/x64/{ml64,link}.exe
+    支持三种根（#1221 复审 P1-3）：
+      ① VS 安装根（Microsoft Visual Studio）——<年份>/<Edition>/VC/Tools/MSVC/...；
+      ② MSVC 根（vswhere installationPath + /VC/Tools/MSVC，或工具集父目录）——
+         <版本>/bin/Hostx64/x64/...；
+      ③ 版本目录（VCToolsInstallDir）——直接 <根>/bin/Hostx64/x64/...
     多版本按版本号降序取最高（VS 默认为最新工具集）。返回 (ml64, link)；
     未命中=(None, None)。纯文件系统面（本地模拟目录可自测·不依赖 vswhere）。"""
     候选 = []
     if 安装根.is_dir():
         for 模式 in ("*/*/VC/Tools/MSVC/*/bin/Hostx64/x64",
                      "*/VC/Tools/MSVC/*/bin/Hostx64/x64",
-                     "VC/Tools/MSVC/*/bin/Hostx64/x64"):
+                     "VC/Tools/MSVC/*/bin/Hostx64/x64",
+                     "*/bin/Hostx64/x64",       # ② <版本>/bin/...（vswhere/MSVC 根）
+                     "bin/Hostx64/x64"):        # ③ VCToolsInstallDir 版本目录
             候选.extend(安装根.glob(模式))
     for 目录 in sorted(set(候选), key=_MSVC版本键, reverse=True):
         甲, 乙 = 目录 / "ml64.exe", 目录 / "link.exe"
@@ -1945,7 +1947,11 @@ def 找MSVC工具链(环境=None, 运行=None) -> tuple:
     候选根 = []
     工具目录 = (环境.get("VCToolsInstallDir") or "").strip()
     if 工具目录:
-        候选根.append(pathlib.Path(工具目录))
+        # VCToolsInstallDir 本身=版本目录（...\MSVC\<ver>\）——直接查 <根>/bin/...；
+        # 也把其父目录（...\MSVC）加入候选（`*/bin/...` 可匹配兄弟版本·P1-3）。
+        版本根 = pathlib.Path(工具目录)
+        候选根.append(版本根)
+        候选根.append(版本根.parent)
     vswhere = pathlib.Path(环境.get("ProgramFiles(x86)")
                            or r"C:\Program Files (x86)") / "Microsoft Visual Studio" \
         / "Installer" / "vswhere.exe"
@@ -3499,9 +3505,11 @@ def M6自检() -> int:
                                       "479_v2_主返回非整错误值拒绝",
                                       "78_v2_自举链构建"))),
     ]
-    # P1-3：MSVC 发现——非 Community 布局（BuildTools/Enterprise 混排·取最高版本）
+    # P1-3：MSVC 发现三布局自测——①VS 安装根（年份/Edition 混排）②vswhere 给的
+    #   MSVC 根（<版本>/bin/...）③VCToolsInstallDir 版本目录（直接 <根>/bin/...）
     with tempfile.TemporaryDirectory() as 临时:
-        根 = pathlib.Path(临时) / "Microsoft Visual Studio"
+        基 = pathlib.Path(临时)
+        根 = 基 / "Microsoft Visual Studio"
         for 版, 工具集 in (("2022/BuildTools", "14.99.1"),
                           ("2019/Enterprise", "14.29.30133")):
             目录 = 根 / 版 / "VC" / "Tools" / "MSVC" / 工具集 / "bin" / "Hostx64" / "x64"
@@ -3509,11 +3517,43 @@ def M6自检() -> int:
             (目录 / "ml64.exe").write_text("", encoding="utf-8")
             (目录 / "link.exe").write_text("", encoding="utf-8")
         甲, 乙 = 扫描MSVC安装根(根)
-        断言们.append(("MSVC 发现：非 Community 布局命中且取最高版本",
+        断言们.append(("MSVC 布局①：VS 安装根（年份/Edition 混排）命中且取最高版本",
                     甲 is not None and 乙 is not None and "14.99.1" in str(甲)))
         (根 / "Empty" / "2022").mkdir(parents=True)
         断言们.append(("MSVC 发现：空布局=显式 miss（不猜路径）",
                     扫描MSVC安装根(根 / "Empty") == (None, None)))
+
+        # 布局②：vswhere 返回 .../VC/Tools/MSVC → 版本目录列表（<ver>/bin/...）
+        MSVC根 = 基 / "vswhere" / "VC" / "Tools" / "MSVC"
+        版本目录 = MSVC根 / "14.88.1"
+        工具目录 = 版本目录 / "bin" / "Hostx64" / "x64"
+        工具目录.mkdir(parents=True)
+        (工具目录 / "ml64.exe").write_text("", encoding="utf-8")
+        (工具目录 / "link.exe").write_text("", encoding="utf-8")
+        甲2, 乙2 = 扫描MSVC安装根(MSVC根)
+        断言们.append(("MSVC 布局②：vswhere 的 MSVC 根（<版本>/bin/...）命中",
+                    甲2 is not None and "14.88.1" in str(甲2)))
+        # vswhere 端到端：桩返回 installationPath（其下 /VC/Tools/MSVC）
+        假PF86 = 基 / "PF86"
+        (假PF86 / "Microsoft Visual Studio" / "Installer").mkdir(parents=True)
+        (假PF86 / "Microsoft Visual Studio" / "Installer" / "vswhere.exe").write_text(
+            "", encoding="utf-8")
+        安装根桩 = 基 / "vswhere"
+        甲3, 乙3 = 找MSVC工具链(
+            环境={"ProgramFiles(x86)": str(假PF86), "ProgramFiles": str(基 / "PF")},
+            运行=lambda 命令: __import__("types").SimpleNamespace(
+                returncode=0, stdout=str(安装根桩), stderr=""))
+        断言们.append(("MSVC 布局②端到端：vswhere installationPath → 命中工具链",
+                    甲3 is not None and "14.88.1" in str(甲3)))
+        # 布局③：VCToolsInstallDir=版本目录（...\MSVC\<ver>\）→ 直接 <根>/bin/...
+        甲4, 乙4 = 找MSVC工具链(
+            环境={"VCToolsInstallDir": str(版本目录),
+                  "ProgramFiles(x86)": str(基 / "PF86空"),
+                  "ProgramFiles": str(基 / "PF空")},
+            运行=lambda 命令: __import__("types").SimpleNamespace(
+                returncode=1, stdout="", stderr=""))
+        断言们.append(("MSVC 布局③：VCToolsInstallDir 版本目录直接命中",
+                    甲4 is not None and "14.88.1" in str(甲4)))
     # P2：审计文件——失败/跳过记录补 sha/触发/命中；跳过覆盖上一轮「通过」防假残留
     with tempfile.TemporaryDirectory() as 临时:
         置M6上下文({"sha": "deadbeef", "触发": "--require-m6",

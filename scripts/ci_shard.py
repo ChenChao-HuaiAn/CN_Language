@@ -529,6 +529,22 @@ def e2e支持json() -> bool:
         return False
 
 
+def e2e支持m6(源: str = None) -> bool:
+    """#1221：run_e2e.py 是否已带 --require-m6（跨版本兼容窗口防护）。
+
+    daemon 自更新先于工作树 reset 到含本改动的 sha 时，向旧版 run_e2e 传未知参数=
+    argparse 报错=e2e 假红；更危险的是旧版无 M6 门禁被当绿。故须M6 前探源码：
+    探测失败/旧版=False→调用方 fail-closed 判红（显式「版本过旧」原因），不传参数
+    也不放行。源=可注入（selftest 零文件系统）。"""
+    if 源 is not None:
+        return "--require-m6" in 源
+    try:
+        return "--require-m6" in (_仓库根() / "tests" / "e2e" / "run_e2e.py").read_text(
+            encoding="utf-8", errors="replace")
+    except OSError:
+        return False
+
+
 def e2e明细参(明细路径) -> list:
     """1297：--json 明细参数（跨版本兼容窗口防护·e2e支持json 探测）——分片形态下
     各片写各自临时明细（主实例聚合后写回主明细路径）。"""

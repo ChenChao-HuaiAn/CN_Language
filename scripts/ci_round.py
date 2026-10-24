@@ -62,27 +62,60 @@ def 轮结果构造(sha: str, 轮分支: str, 步骤们: dict, 开始: float,
             "提交时刻": ci_report.提交时刻(sha)}
 
 
-def 直跑过期因(sha: str, 结果: dict, 头查=None, 仓库根: Path | None = None) -> str:
-    """直跑轮过期判定——早退新头 或 跑后 HEAD≠任务 sha；空串=未过期。
+def 轮M6不可验结果(sha: str, 轮分支: str, 步骤们: dict, 开始: float,
+                  轮日志路径: Path, m6计划: dict, *, 平台: str) -> dict:
+    """#1221 复审 P1-4①：M6 触发但平台不可原生验——**构建前**早退判红。
 
-    头查=可注入（selftest 零 git）；仓库根=git 工作目录（缺省=当前目录）。"""
+    交叉模拟 arm64 等平台无法原生跑 79_v2：原先要跑完整 E2E 才转红（白烧 60~80%
+    算力）。本结果不落 latest（红轮规则），步骤标「平台不可验」与代码红分流
+    （红治理按类别归因，不与编译器缺陷混为一谈）。"""
+    步骤们["M6平台保障"] = {
+        "rc": -1, "类别": "平台不可验",
+        "说明": "平台不可验：" + str(m6计划.get("说明") or "M6 无法原生运行")}
+    尾部 = ["[M6·平台不可验] %s——构建前早退（不跑 E2E；原生平台轮承担）"
+            % m6计划.get("说明", "")]
+    return {"sha": sha, "分支": 轮分支, "平台": 平台, "步骤": 步骤们,
+            "绿": False, "总秒": round(time.time() - 开始),
+            "时刻": datetime.now().isoformat(timespec="seconds"),
+            "日志": 轮日志路径.name, "日志尾部": 尾部,
+            "M6": dict(m6计划, 处置="平台不可验")}
+
+
+def 直跑过期因(sha: str, 结果: dict, 头查=None, 仓库根: Path | None = None,
+              轮分支: str = "develop") -> str:
+    """直跑轮过期判定；空串=未过期。
+
+    #1221 复审 P1-2：
+      · develop 轮：早退新头 或 跑后 HEAD≠任务 sha → 过期（不落盘防 latest 污染）；
+      · 预验/点名轮：**不按 HEAD 判**——同步失败（分支删/网络抖）时 HEAD 是旧树头，
+        若按过期不落盘，ssh 轮询要等满 240 分钟；预验轮只认「早退新头」标记，同步
+        失败的高绿=False 结果照常落盘→ ssh 5 分钟内拿到红结论。
+      · git rev-parse 空输出（失败）=不可判 → 按过期收口（不落盘+显式提示），
+        不得当「未过期」fail-open。
+    头查=可注入（selftest 零 git）；仓库根=git 工作目录。"""
     if 结果.get("早退新头"):
         return "构建后早退（develop 已前进 %s）" % str(结果["早退新头"])[:10]
+    if (轮分支 or "develop") != "develop":
+        return ""
     if 头查 is not None:
         头 = 头查()
     else:
         头 = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True,
                           text=True, encoding="utf-8", errors="replace",
                           timeout=30, cwd=仓库根).stdout.strip()
-    if 头 and 头 != sha:
+    if not 头:
+        return "HEAD 不可判（git rev-parse 无输出）——按过期收口（不落盘·防 latest 污染）"
+    if 头 != sha:
         return "跑后复查（HEAD 已前进 %s）" % 头[:10]
     return ""
 
 
 def 直跑收口(sha: str, 结果: dict, 落盘函数, 仓库根: Path | None = None,
-            头查=None) -> None:
-    """直跑轮收口：过期不落盘（新头轮承担），否则落盘并打印完成行。头查=可注入。"""
-    过期因 = 直跑过期因(sha, 结果, 头查=头查, 仓库根=仓库根)
+            头查=None, 轮分支: str = "develop") -> None:
+    """直跑轮收口：过期不落盘（新头轮承担），否则落盘并打印完成行。
+    #1221 复审 P1-2：轮分支=预验/点名分支时不做 HEAD≠sha 判定（同步失败也要落盘
+    红结果，ssh 轮询快速失败）。"""
+    过期因 = 直跑过期因(sha, 结果, 头查=头查, 仓库根=仓库根, 轮分支=轮分支)
     if 过期因:
         print("[过期] %s——本轮不落盘（防 latest 污染；新头轮承担）" % 过期因, flush=True)
         return

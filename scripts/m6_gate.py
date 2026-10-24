@@ -53,7 +53,9 @@ M6写集前缀 = (
     "stdlib/",
 )
 
-# 预验认领限制的原生 M6 平台（交叉模拟 arm64 无法原生跑 79_v2）
+# 预验认领限制的原生 M6 平台（#1221 复审 P1-4④：真机 arm64 **可以**原生跑 M6，
+# 但服务端平台字段无法区分「真机 arm64」与「交叉模拟 arm64」（同报 linux-arm64），
+# 故预验派发缺省限 win-x64/linux-x86_64；arm64 覆盖由 develop 轮转的真机轮承担。
 M6预验原生平台 = ("win-x64", "linux-x86_64")
 
 # 可原生跑 M6 的平台（三平台后端均有 as/g++ 或 ml64/link 闭环编排）；arm64 需真机
@@ -86,9 +88,10 @@ def 判定写集(文件们) -> dict:
                 break
     命中们 = sorted(命中)
     if 命中们:
-        说明 = "写集命中 %d 文件（codegen/opt/ir）" % len(命中们)
+        说明 = ("写集命中 %d 文件（编译器产物面 codegen/opt/ir/model/协议常量/stdlib）"
+                % len(命中们))
     else:
-        说明 = "写集不含 codegen/opt/ir——M6 豁免"
+        说明 = "写集不含编译器产物面（codegen/opt/ir/model/协议常量/stdlib）——M6 豁免"
     return {"触发": bool(命中们), "命中": 命中们, "说明": 说明}
 
 
@@ -170,7 +173,8 @@ def 误放行检查(点名清单) -> str | None:
     违规 = [n for n in (点名清单 or []) if _是M6名(n)]
     if 违规:
         return ("M6（%s·自举固定点）红不得以 --allow-known-red/--allow-pool-red 放行"
-                "——点名 %s；请修复 codegen/opt/ir 后重跑（#1221 机械保证）。"
+                "——点名 %s；请修复编译器产物面（codegen/opt/ir/model/协议常量/stdlib）"
+                "后重跑（#1221 机械保证）。"
                 % (M6用例名, "、".join(str(n) for n in 违规)))
     return None
 
@@ -208,8 +212,8 @@ def 预验认领限制(须M6: bool, 用户限制) -> tuple[list[str], str]:
         return 限制, ""
     if not 限制:
         return list(M6预验原生平台), (
-            "M6 触发——预验认领限原生平台 win-x64/linux-x86_64"
-            "（交叉模拟 arm64 无法原生跑 79_v2）")
+            "M6 触发——预验认领限 win-x64/linux-x86_64（真机 arm64 可跑，但平台字段"
+            "无法区分交叉模拟；arm64 覆盖由 develop 轮转真机轮承担）")
     if "linux-arm64" in 限制:
         return 限制, ("注意：--pool-limit 含 linux-arm64——若认领者为交叉模拟实例，"
                      "预验轮会因 M6 无法原生运行而判红（真机 arm64 可跑）")

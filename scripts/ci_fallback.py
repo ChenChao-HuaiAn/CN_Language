@@ -45,11 +45,15 @@ def 纯文档变更(基线sha: str, 新sha: str) -> tuple[bool, str]:
     一律判假=照跑。返回 (判定, 缘由/文件摘要)。"""
     try:
         取 = subprocess.run(["git", "fetch", _远端名, "develop"], capture_output=True,
-                            text=True, cwd=_仓库根, timeout=120)
+                            text=True, encoding="utf-8", errors="replace",
+                            cwd=_仓库根, timeout=120)
         if 取.returncode != 0:
             return False, "fetch 失败照跑：%s" % (取.stderr or "").strip()[:120]
-        diff = subprocess.run(["git", "diff", "--name-only", "%s..%s" % (基线sha, 新sha)],
-                              capture_output=True, text=True, cwd=_仓库根, timeout=120)
+        diff = subprocess.run(["git", "-c", "core.quotepath=false", "diff",
+                               "--no-renames", "--name-only",
+                               "%s..%s" % (基线sha, 新sha)],
+                              capture_output=True, text=True, encoding="utf-8",
+                              errors="replace", cwd=_仓库根, timeout=120)
         if diff.returncode != 0:
             return False, "diff 失败照跑：%s" % (diff.stderr or "").strip()[:120]
         文件们 = [l for l in diff.stdout.splitlines() if l.strip()]

@@ -43,7 +43,7 @@ from integrate import (board_closeout, 解析队列, 队列段标题, 临时用�
                        解析预验结果, 池轮询预验, 已并入收场, 池行龄分, 打印验证池状态,
                        批写集, 预验前置检查, 云端预验门禁, 已入池哨兵,
                        解析E2E红用例行, 构造预验入队载荷, 三点间改动, 全量门禁,
-                       预验分支名, 预验绿含M6)
+                       预验分支名, 预验绿含M6, 预验降级前取消)
 
 
 def 自测() -> int:
@@ -164,6 +164,8 @@ def 自测() -> int:
                                      stdout=链顶信息818["文"], stderr="")
 
     try:
+        结果查询: list = []
+
         def 造假服务池(状态序列, 详情=None, 台账=None):
             def 假服务池(路径, 数据=None):
                 if "task_enqueue" in 路径 or "task_cancel" in 路径:
@@ -171,6 +173,7 @@ def 自测() -> int:
                         台账.append({"路径": 路径, "数据": 数据})
                     return {"ok": True}
                 if "task_result" in 路径:
+                    结果查询.append(路径)
                     return {"详情": 详情}
                 return next(状态序列)   # 耗尽应抛 StopIteration=未预期轮次（测试显形非静默）
             return 假服务池
@@ -179,6 +182,8 @@ def 自测() -> int:
         integrate.服务调用 = 造假服务池(iter([{"预验任务": 完成行, "池忙闲": {}}]), 绿详情)
         拿到c, 原因c = 池轮询预验(预验支, "a" * 40, [], 轮询间隔=0)
         断言(拿到c and 原因c is None, "池轮询：完成行+详情绿=拿到结论放行（绿链）")
+        断言(结果查询 and "branch=" in 结果查询[0],
+             "#1221 P1-1 池轮询详情查询携带 branch=本轮精确分支（服务端先按名命中·旧行不遮蔽）")
         # #1221 P0-1：须M6 时绿结论必须带 M6 通过证据——旧绿（无 M6 键）硬拦重跑
         integrate.服务调用 = 造假服务池(
             iter([{"预验任务": 完成行, "池忙闲": {}}]), 绿详情)
@@ -351,6 +356,7 @@ def 自测() -> int:
                ("运行", "输出", "服务调用", "读CI配置", "查可复用预验绿",
                 "池轮询预验", "subprocess", "运行捕获", "预验轮询间隔秒")}
     调用账: list = []
+    服务账: list = []
     面 = {"复用绿": False, "池轮询": (True, None), "入队": {"ok": True}, "推失败": False,
          "ssh红JSON": None}
     绿JSON门禁 = json.dumps({"绿": True, "总秒": 800, "日志": "b.log",
@@ -383,9 +389,15 @@ def 自测() -> int:
 
         integrate.运行 = 假运行
         integrate.输出 = lambda 命令: 假SHA
-        integrate.服务调用 = lambda 路径, 数据=None: (
-            (dict(面["入队"]) if 面["入队"] else None) if "task_enqueue" in 路径
-            else {"预验任务": [], "池忙闲": {}})
+        def 假服务调用门禁(路径, 数据=None):
+            服务账.append((路径, 数据))
+            if "task_enqueue" in 路径:
+                return dict(面["入队"]) if 面["入队"] else None
+            if "task_cancel" in 路径:
+                return {"ok": True, "取消": 0}
+            return {"预验任务": [], "池忙闲": {}}
+
+        integrate.服务调用 = 假服务调用门禁
         integrate.读CI配置 = lambda: {"ssh": "假机", "目录": "/tmp"}
         integrate.查可复用预验绿 = lambda 源, 键, 状态查=None: 面["复用绿"]
         integrate.池轮询预验 = lambda *a, **kw: 面["池轮询"]
@@ -402,6 +414,7 @@ def 自测() -> int:
                       "推失败": False, "ssh红JSON": None})
             链顶信息门禁818["文"] = "〔点名放行〕红例 501_某用例（818 披露面注入）。"
             调用账.clear()
+            服务账.clear()
 
         # —— ⑧ 863 六例（删除时机回归锚·原样保留）——
         回值 = 云端预验门禁(假SHA, 造参数(False), 源分支="任务/863", 等待=False)
@@ -441,8 +454,27 @@ def 自测() -> int:
         面["池轮询"] = (False, None)
         回值 = 云端预验门禁(假SHA, 造参数(True), 源分支="任务/863", 等待=True)
         断言(回值 is None, "⑨ 901 降级：池超时→ssh 直发拿到绿=放行")
+        断言(any("task_cancel" in p for p, _d in 服务账),
+             "#1221 P0 降级前取消：池超时转 ssh 前调用 task_cancel（防残留排队行/双跑）")
         断言(not any("--delete" in c for c in 调用账),
              "⑨ 901 降级：池行可能仍活（未确认终态）——预验分支保留不删（863 同族消除）")
+        # #1221 P2：ssh 绿路径 M6 两态——须M6 时无证据=拒、有证据=放行
+        复位面()
+        面["池轮询"] = (False, None)
+        面["ssh红JSON"] = 绿JSON门禁
+        回值 = 云端预验门禁(假SHA, 造参数(True), 源分支="任务/863", 等待=True,
+                          须M6=True)
+        断言(回值 is not None and "无 M6 通过证据" in 回值,
+             "#1221 P0-1 ssh 绿路径：须M6+旧绿无证据=硬拦（与池路径同判据）")
+        复位面()
+        面["池轮询"] = (False, None)
+        绿带M6 = json.dumps({**json.loads(绿JSON门禁),
+                           "M6": {"执行": {"状态": "通过", "fix_p_md5": "x"}}},
+                         ensure_ascii=False)
+        面["ssh红JSON"] = 绿带M6
+        回值 = 云端预验门禁(假SHA, 造参数(True), 源分支="任务/863", 等待=True,
+                          须M6=True)
+        断言(回值 is None, "#1221 P0-1 ssh 绿路径：须M6+带通过证据=放行")
         复位面()
         面["池轮询"] = (False, None)
         面["入队"] = None
@@ -506,6 +538,18 @@ def 自测() -> int:
     载荷k = 构造预验入队载荷("ci/预验-a", "s" * 40, "任务/9", "win-x64", "k" * 40)
     断言(载荷k["认领限制"] == "win-x64" and 载荷k["内容键"] == "k" * 40 and len(载荷k) == 5,
          "⑩ 入队载荷：337 认领限制+830 内容键随行")
+    取消账 = []
+    断言(预验降级前取消("ci/预验-x", 服务调用函数=lambda p, d=None:
+                       取消账.append((p, d)) or {"ok": True}) is True
+         and 取消账[0][0].endswith("task_cancel")
+         and 取消账[0][1] == {"分支": "ci/预验-x"},
+         "#1221 P0 降级前取消：task_cancel 携本轮分支（best-effort 纯函数面）")
+    断言(预验降级前取消("x", 服务调用函数=lambda p, d=None: (_ for _ in ()).throw(OSError()))
+         is False,
+         "#1221 P0 降级前取消：服务异常=False 不阻断 ssh 降级")
+    断言(构造预验入队载荷("ci/预验-a", "s" * 40, "任务/9", 须M6=True).get("M6必跑") is True
+         and "M6必跑" not in 构造预验入队载荷("ci/预验-a", "s" * 40, "任务/9"),
+         "#1221 P1-4② 入队载荷：须M6 带 M6必跑（普通轮不带·旧服务端忽略未知字段）")
 
     # ⑪ 868 复验面空清单守卫（全量门禁 win/linux 分步复验·722「空集合恒真」残留加固回归锚）：
     #   注入假 运行/运行捕获（假 rc/stdout·零真进程·单测路径仅 exists 只读）——串行 rc 非零

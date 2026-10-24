@@ -60,6 +60,7 @@ import time
 import urllib.error
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import quote
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import board_closeout   # 392：伞批销账号解析（登记制·提交信息 [销账:号,…] 行）
@@ -384,7 +385,7 @@ def 全量门禁(平台: str, 已知红们: list[str] | None = None, 快速通�
         print("  [快速通道·920 用户裁决] 本机 L1（gate_quick：静态三检查+增量构建+全量单测）"
               "——全量由 TX_02 云端对 develop 事后自动兜底（红灯治理适用）")
         if 须M6:
-            print("  [M6·#1221] 写集含 codegen/opt/ir——本机 L1 不含 M6，云端预验轮由"
+            print("  [M6·#1221] 写集含编译器产物面（codegen/opt/ir/model/协议常量/stdlib）——本机 L1 不含 M6，云端预验轮由"
                   "ci_daemon 写集判定强制 79_v2（--require-m6·交叉模拟平台预验判红）")
         r = 运行([sys.executable, "scripts/gate_quick.py"])
         return None if r.returncode == 0 else "L1 快速门禁未过（gate_quick.py——修复后重试）。"
@@ -397,7 +398,7 @@ def 全量门禁(平台: str, 已知红们: list[str] | None = None, 快速通�
             环境["CN_M6_REQUIRE"] = "1"
             if m6命中:
                 环境["CN_M6_HITS"] = ",".join(str(x) for x in m6命中)
-            print("  [M6·#1221] 写集含 codegen/opt/ir——ci.ps1 E2E 强制跑 79_v2"
+            print("  [M6·#1221] 写集含编译器产物面（codegen/opt/ir/model/协议常量/stdlib）——ci.ps1 E2E 强制跑 79_v2"
                   "（CN_M6_REQUIRE=1·跳过/失败=本轮红）")
         结果 = 运行(["powershell", "-ExecutionPolicy", "Bypass", "-File", "scripts/ci.ps1"],
                     env=环境)
@@ -433,7 +434,7 @@ def 全量门禁(平台: str, 已知红们: list[str] | None = None, 快速通�
                         "·868）——禁止集成；本机重跑 E2E 复核失败清单后重试。")
             if m6_gate.红例含M6(失败们):
                 return ("M6（79_v2 自举固定点）红——禁止 --allow-known-red 放行（#1221）："
-                        f"{失败们}；修复 codegen/opt/ir 后重跑集成。")
+                        f"{失败们}；修复编译器产物面（codegen/opt/ir/model/协议常量/stdlib）后重跑集成。")
             未点名 = [f for f in 失败们 if f not in (已知红们 or [])]
             if 未点名:
                 return "E2E 串行复验仍未全绿（非并行互踩——真红，禁止集成）。"
@@ -489,7 +490,7 @@ def 全量门禁(平台: str, 已知红们: list[str] | None = None, 快速通�
                  " --jobs 8" + (" --require-m6" if 须M6 else "")
                  + " --full-reason 'integrate linux 分步全量门禁（gate_lock 锁内）'"])
     if 须M6:
-        print("  [M6·#1221] 写集含 codegen/opt/ir——E2E 带 --require-m6（79_v2 必跑·跳过/失败=本轮红）")
+        print("  [M6·#1221] 写集含编译器产物面（codegen/opt/ir/model/协议常量/stdlib）——E2E 带 --require-m6（79_v2 必跑·跳过/失败=本轮红）")
     if e2e.returncode == 0:
         return None
     print("  [复验] E2E 并行未全绿——串行复验区分真红与并行互踩（447-a 机制·gate_lock 锁内）")
@@ -513,7 +514,7 @@ def 全量门禁(平台: str, 已知红们: list[str] | None = None, 快速通�
                     f"·868·--target {目标}）——禁止集成；重跑 E2E 复核失败清单后重试。")
         if m6_gate.红例含M6(失败们):
             return ("M6（79_v2 自举固定点）红——禁止 --allow-known-red 放行（#1221）："
-                    f"{失败们}；修复 codegen/opt/ir 后重跑集成。")
+                    f"{失败们}；修复编译器产物面（codegen/opt/ir/model/协议常量/stdlib）后重跑集成。")
         未点名 = [f for f in 失败们 if f not in (已知红们 or [])]
         if 已知红们 and not 未点名:
             # 818 披露闸门：known-red 放行前核链顶提交〔点名放行〕披露段（无则拒）
@@ -617,7 +618,7 @@ def 已并入收场(链顶: str, 已含链顶查=None) -> tuple[bool, str | None
 
 
 def 构造预验入队载荷(预验分支: str, 链顶: str, 源分支: str,
-                    认领限制: str = "", 内容键: str = "") -> dict:
+                    认领限制: str = "", 内容键: str = "", 须M6: bool = False) -> dict:
     """task_enqueue 载荷（服务端契约：分支/sha 必带·源分支 222·认领限制 337·内容键 830）。
 
     976 归纳：主入队（云端预验门禁）与池行 miss 防御性重入队（池轮询预验）两处
@@ -628,6 +629,9 @@ def 构造预验入队载荷(预验分支: str, 链顶: str, 源分支: str,
         载荷["内容键"] = 内容键
     if 认领限制:
         载荷["认领限制"] = 认领限制
+    if 须M6:
+        # #1221 复审 P1-4②：M6 必跑标记——服务端 task_claim 按实例 M6原生 能力位过滤
+        载荷["M6必跑"] = True
     return 载荷
 
 
@@ -665,7 +669,8 @@ def 池轮询预验(预验分支: str, 链顶: str, 点名清单: list, 源分�
             # 任务行不在（服务重启丢表/异常裁剪）——重新入队防御（337：认领限制随行补带；
             #   830：内容键随行补带——防重入队后预验复用键丢失）
             服务调用("/api/task_enqueue",
-                     构造预验入队载荷(预验分支, 链顶, 源分支, 认领限制, 内容键))
+                     构造预验入队载荷(预验分支, 链顶, 源分支, 认领限制, 内容键,
+                                    须M6=须M6))
             continue
         if 行.get("状态") == "已取消":
             # 562 修复（审查 P1-1）：runner 认领时服务端核出源分支已并入 develop（他批
@@ -706,7 +711,11 @@ def 池轮询预验(预验分支: str, 链顶: str, 点名清单: list, 源分�
             余分 = int((截止 - _time.time()) // 60)
             print(f"  [预验] 池任务 {行.get('状态')}（认领者={行.get('认领者') or '待派'}·余约 {余分} 分钟）……")
             continue
-        详情回 = 服务调用("/api/task_result?sha=" + 链顶[:10])
+        # #1221 复审 P1-1：带本轮精确分支名查详情——服务端先按 branch 命中（M6 轮
+        #   的 -m6<hex> 行），旧 ci/预验-<sha10> 完成行不得遮蔽（否则旧绿无 M6 证据
+        #   →硬拦→永久重跑死锁）。
+        详情回 = 服务调用("/api/task_result?sha=" + 链顶[:10]
+                          + "&branch=" + quote(预验分支, safe=""))
         文本 = json.dumps(详情回.get("详情"), ensure_ascii=False) if (详情回 and 详情回.get("详情")) else ""
         绿, 摘要 = 解析预验结果(文本)
         if 绿:
@@ -714,7 +723,7 @@ def 池轮询预验(预验分支: str, 链顶: str, 点名清单: list, 源分�
             #   非原生平台/平台跳过都不会有）→ 缺失即硬拦重跑（分支名非幂等，重跑新任务）。
             if 须M6 and not 预验绿含M6(文本):
                 return True, ("预验绿结论无 M6 通过证据（旧绿/未跑 M6）——硬拦重跑"
-                              "（#1221：写集含 codegen/opt/ir 必须 fix_p≡fix_s；"
+                              "（#1221：写集含编译器产物面（codegen/opt/ir/model/协议常量/stdlib） 必须 fix_p≡fix_s；"
                               "本轮已用非幂等分支名，重跑本命令即新任务）。")
             print(f"  [预验] ✓ 池绿（{摘要}）——放行 push develop（develop 轮按池绿/本地档跳过·零重复算力）")
             return True, None
@@ -729,7 +738,7 @@ def 池轮询预验(预验分支: str, 链顶: str, 点名清单: list, 源分�
         if m6_gate.红例含M6(红用例们216):
             print("  [预验] M6（79_v2 自举固定点）红——禁止 --allow-pool-red 放行（#1221）")
             return True, ("M6（79_v2 自举固定点）红——禁止 --allow-pool-red 点名放行"
-                          "（#1221）：%s；修复 codegen/opt/ir 后重跑集成。"
+                          "（#1221）：%s；修复编译器产物面（codegen/opt/ir/model/协议常量/stdlib）后重跑集成。"
                           % "、".join(红用例们216))
         未点名216 = [u for u in 红用例们216 if u not in 点名清单]
         if 红用例们216 and not 未点名216:
@@ -792,6 +801,20 @@ def 预验前置检查(链顶: str, 最新develop: str,
 #   None（放行 push develop）| str（拦截原因·调用方失败退出）| 已入池哨兵（仅非 --wait
 #   路径；批流程转「已入池待续」早退 exit 0——solo 恒 --wait 语义·不产生哨兵）。
 已入池哨兵 = "__已入池待续推__"
+
+
+def 预验降级前取消(预验分支: str, 服务调用函数=None) -> bool:
+    """#1221 复审 P0：降级 ssh 直发前先取消池内「排队」行（与池空路径同规）。
+
+    背景：M6 非幂等分支名每次重跑唯一，残留排队行无人消费=永久排队行与白跑
+    （服务端另有 6h reaper 兜底）。task_cancel 只删「排队」行，执行中不动
+    （不干扰真跑 runner）。best-effort：服务不可达返回 False（sshd 降级仍继续）。
+    服务调用函数=可注入（selftest 零网络）。"""
+    try:
+        (服务调用函数 or 服务调用)("/api/task_cancel", {"分支": 预验分支})
+        return True
+    except Exception:
+        return False
 
 
 def 预验分支名(链顶: str, 须M6: bool, 尝试标记: str = "") -> str:
@@ -874,7 +897,7 @@ def 云端预验门禁(链顶: str, 参数: argparse.Namespace,
              if 源分支.startswith("任务/") else "")
     if 查可复用预验绿(源分支, 内容键):
         if 须M6:
-            # #1221：写集含 codegen/opt/ir——历史绿记录无 M6 证据（或非原生平台），
+            # #1221：写集含编译器产物面（codegen/opt/ir/model/协议常量/stdlib）——历史绿记录无 M6 证据（或非原生平台），
             #   不复用，本轮重跑云端全量（M6 机械保证优先于算力复用）。
             print(f"  [M6·#1221] 写集触发 M6——不复用 {源分支} 的历史绿记录"
                   "（M6 证据缺失/平台不明），本轮重跑云端全量")
@@ -910,7 +933,8 @@ def 云端预验门禁(链顶: str, 参数: argparse.Namespace,
             print("  [M6·#1221] " + 限制提示)
         认领限制 = ",".join(认领限制们)
         入队 = 服务调用("/api/task_enqueue",
-                        构造预验入队载荷(预验分支, 链顶, 源分支, 认领限制, 内容键))
+                        构造预验入队载荷(预验分支, 链顶, 源分支, 认领限制, 内容键,
+                                        须M6=须M6))
         if 入队 is not None and 入队.get("ok"):
             print(f"  [预验] 已入 TX_01 任务池（{预验分支}·源 {源分支}·认领限制 {认领限制 or '不限'}）")
             if not 等待:
@@ -955,6 +979,10 @@ def 云端预验门禁(链顶: str, 参数: argparse.Namespace,
                 #   误删=runner fetch fatal·975 告警；保留=残留由收口面兜底）
                 保留预验分支 = True
             print("  [预验] TX_01 池不可用——降级 ssh 直发 TX_02（028 §四）……")
+        # #1221 复审 P0：降级 ssh 前取消池内「排队」行（M6 唯一分支名残留=永久
+        #   排队行/白跑；执行中行不删）。池超时/入队响应丢失/明确拒绝三路同规。
+        if 预验降级前取消(预验分支):
+            print("  [预验] 已取消池内排队行（降级前防双跑·task_cancel）")
         # ── ② ssh 直发降级（1008 原路径原样保留）
         # rm 旧预验结果（同 sha 二次预验=CAS 竞争重试路径·旧文件不可当本轮结果）
         # 1019 缺陷修复（两轮实验定音）：真根因=链尾 `&` 使整条 `cd && rm && nohup` 链异步化，
@@ -989,7 +1017,7 @@ def 云端预验门禁(链顶: str, 参数: argparse.Namespace,
                     # #1221 复审 P0-1：ssh 降级路径同样强制 M6 证据（旧绿/未跑=硬拦）
                     if 须M6 and not 预验绿含M6(取.stdout):
                         return ("预验绿结论无 M6 通过证据（旧绿/未跑 M6）——硬拦重跑"
-                                "（#1221：写集含 codegen/opt/ir 必须 fix_p≡fix_s；"
+                                "（#1221：写集含编译器产物面（codegen/opt/ir/model/协议常量/stdlib） 必须 fix_p≡fix_s；"
                                 "本轮已用非幂等分支名，重跑本命令即新任务）。")
                     print(f"  [预验] ✓ 绿（{摘要}）——放行 push develop（daemon 已写 latest·轮询轮免重跑）")
                     return None
@@ -999,7 +1027,7 @@ def 云端预验门禁(链顶: str, 参数: argparse.Namespace,
                 # #1221 复审 P1-9：M6 红禁止点名放行（ssh 消费点硬拦）
                 if m6_gate.红例含M6(红用例们216b):
                     return ("M6（79_v2 自举固定点）红——禁止 --allow-pool-red 点名放行"
-                            "（#1221）：%s；修复 codegen/opt/ir 后重跑集成。"
+                            "（#1221）：%s；修复编译器产物面（codegen/opt/ir/model/协议常量/stdlib）后重跑集成。"
                             % "、".join(红用例们216b))
                 未点名216b = [u for u in 红用例们216b if u not in 参数.allow_pool_red]
                 if 红用例们216b and not 未点名216b:
@@ -1389,11 +1417,11 @@ def 单次集成尝试(平台: str, 上次已验基准: str | None, 参数: argp
     if not 文件们:
         return False, "分支相对 develop 无任何改动（空集成）。", None
     须全量 = 分类写集(文件们)
-    # #1221：M6 写集触发（codegen/opt/ir）——本轮必须真跑 79_v2 自举固定点；
+    # #1221：M6 写集触发（编译器产物面 codegen/opt/ir/model/协议常量/stdlib）——本轮必须真跑 79_v2 自举固定点；
     #   纯前端/文档/脚本轮豁免（零重负载成本）。
     m6判定 = m6_gate.判定写集(文件们)
     if m6判定["触发"]:
-        print(f"[M6·#1221] 写集命中 {len(m6判定['命中'])} 文件（codegen/opt/ir）"
+        print(f"[M6·#1221] 写集命中 {len(m6判定['命中'])} 文件（编译器产物面 codegen/opt/ir/model/协议常量/stdlib）"
               "——本轮必须真跑 79_v2 自举固定点（跳过/失败=红）")
 
     # 门禁跑在合并结果上；重试时仅当 develop 增量（上轮已验 tip→本轮最新）触及 src/tests 才重跑全量门禁
@@ -1406,7 +1434,10 @@ def 单次集成尝试(平台: str, 上次已验基准: str | None, 参数: argp
     问题 = 快速门禁(文件们)
     if 问题:
         return False, 问题, None
-    if 须全量 and (上次已验基准 is None or 增量须全量):
+    # #1221 复审 P2：M6 触发轮不再受「develop 增量纯文档」短路——写集含编译器
+    #   产物面就必须过全量/云预验（内容不等价：链顶树含 codegen 改动，增量面只描述
+    #   develop 侧变化）。
+    if 须全量 and (上次已验基准 is None or 增量须全量 or m6判定["触发"]):
         print(f"[4] 全量门禁（平台={平台}·跑在合并结果上）")
         问题 = 全量门禁(平台, 参数.allow_known_red, 参数.fast_lane,
                       须M6=m6判定["触发"], m6命中=m6判定["命中"])
@@ -1572,7 +1603,7 @@ def 批流程(参数: argparse.Namespace) -> int:
             # #1221：批写集 M6 触发（任一成员动 codegen/opt/ir ⇒ 本轮必跑固定点）
             m6判定 = m6_gate.判定写集(批文件们)
             if m6判定["触发"]:
-                print(f"[M6·#1221] 批写集命中 {len(m6判定['命中'])} 文件（codegen/opt/ir）"
+                print(f"[M6·#1221] 批写集命中 {len(m6判定['命中'])} 文件（编译器产物面 codegen/opt/ir/model/协议常量/stdlib）"
                       "——本轮必须真跑 79_v2 自举固定点（跳过/失败=红）")
                 _免验冲突 = m6_gate.等价免验冲突(True, bool(参数.verified_same_content))
                 if _免验冲突:
@@ -1607,7 +1638,9 @@ def 批流程(参数: argparse.Namespace) -> int:
             #   gate_quick·分钟级·不占池）——不再重跑云端全量（预验绿复用/内容键判据）；
             #   真全量模式（--no-fast-lane）沿用增量判定避免重复跑全量。
             重组轮 = 已验基准 is not None
-            if 须全量 and not 等价免验 and (参数.fast_lane or 增量须全量):
+            # #1221 复审 P2：M6 触发轮恒进入该块（fast_lane 只决定本机跑 L1 还是全量；
+            #   云端预验由 m6_gate.需重新云端预验 保证不被「首批已绿」短路）。
+            if 须全量 and not 等价免验 and (参数.fast_lane or 增量须全量 or m6判定["触发"]):
                 if 重组轮:
                     print("[5] 重组后 L1 自检（830：链路已重新接到新 develop——分钟级编译+单测·"
                           "不重跑云端全量·预验绿按内容键复用）")

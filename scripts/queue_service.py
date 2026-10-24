@@ -103,6 +103,9 @@ db路径 = os.environ.get("CN_QUEUE_DB",
 心跳超时秒 = int(os.environ.get("CN_TASK_STALE_SEC", "300"))   # 心跳断此秒数=回收重派（家机睡眠不黑洞）
 集成中超时秒 = int(os.environ.get("CN_QUEUE_INTEGRATE_STALE_SEC", "7200"))   # 集成中无更新超此秒数=降级已踢出（456·0=禁用）
 排队超时秒 = int(os.environ.get("CN_QUEUE_QUEUED_STALE_SEC", "3600"))   # 562：排队行无写活动超此秒数=降级已踢出（报名会话失联孤儿·0=禁用）
+# #1221 复审 P0：预验任务「排队」行 reaper——M6 非幂等分支每次重跑唯一，残留排队行
+#   无人消费=永久排队行与白跑（branch_cleanup 只清远端分支·不清任务行）。默认 6h。
+预验排队回收秒 = int(os.environ.get("CN_QUEUE_TASK_REAP_SEC", "21600"))
 看板服务地址 = os.environ.get("CN_BOARD_URL", "http://127.0.0.1:8301")   # 562：已并入检测数据源（任务台账·同机默认）
 会话cookie = web_auth.队列cookie名   # 1425：网页登录会话 cookie 名（与看板 8301 异名——
                                      #   Caddy /board/ 与 /queue/ 同域同名 cookie 会互顶）
@@ -191,6 +194,7 @@ def 建库() -> sqlite3.Connection:
         失败类别 TEXT, 失败摘要 TEXT,   -- 975：最近一次认领失败类别（同步失败…）与原因摘要
         告警时刻 TEXT,                  -- 975：最近一次达阈值告警的时戳（NULL=未告警）
         失败原因 TEXT,                  -- 825：最近一次完成红首因（红步骤名+失败用例名·绿/重跑清 NULL）
+        M6必跑 INTEGER,                -- #1221：本轮写集触发 M6（派发按实例 M6原生 能力位过滤）
         入队时刻 TEXT, 更新时刻 TEXT)""")
     try:   # 222 旧库兼容：表已存在时 CREATE IF NOT EXISTS 不加列·ALTER 补（列已在=重复列错吞掉）
         con.execute("ALTER TABLE 预验任务 ADD COLUMN 源分支 TEXT")
@@ -202,6 +206,10 @@ def 建库() -> sqlite3.Connection:
         pass
     try:   # 830 内容键：任务分支 tip sha（预验绿复用键·integrate 传·旧行/旧客户端 NULL）
         con.execute("ALTER TABLE 预验任务 ADD COLUMN 内容键 TEXT")
+    except sqlite3.OperationalError:
+        pass
+    try:   # #1221 M6 必跑位：1=本轮必须原生跑 79_v2（task_claim 按实例 M6原生 过滤）
+        con.execute("ALTER TABLE 预验任务 ADD COLUMN M6必跑 INTEGER")
     except sqlite3.OperationalError:
         pass
     try:   # 975 连续同类认领失败计数（863 五连静默机械化·真实验证红/绿清零·重跑保留）
@@ -325,6 +333,20 @@ def 回收死行() -> None:
             con.commit()
             print("[回收] 排队超时 %s（更新 %s·静默 %.0f 分钟）→已踢出降权（562 孤儿回收）"
                   % (分支, 更新, 差 / 60), flush=True)
+    # #1221 复审 P0：预验任务排队行 reaper（>6h→已取消）——只清 ci/预验-*（兜底任务
+    #   是 develop 验证保底，不在此列）；片行随父取消作废。防 M6 纳秒分支永久排队/白跑。
+    if 预验排队回收秒 > 0:
+        for 分支r, 更新r in con.execute(
+                "SELECT 分支,更新时刻 FROM 预验任务 WHERE 状态='排队' "
+                "AND 分支 LIKE 'ci/预验-%'").fetchall():
+            龄 = 行龄秒(更新r)
+            if 龄 is not None and 龄 > 预验排队回收秒:
+                con.execute("UPDATE 预验任务 SET 状态='已取消',更新时刻=? WHERE 分支=?",
+                            (时区时刻(), 分支r))
+                con.commit()
+                queue_shard.清父分片(con, 分支r)
+                print("[回收] 预验排队超 %.1f 小时 %s →已取消（M6 非幂等分支防永久排队/白跑）"
+                      % (龄 / 3600.0, 分支r), flush=True)
 
 
 _并入检测上次失败 = [0.0]   # 562：看板故障退避戳（time.time()）——退避窗口内核不了=放行
@@ -462,6 +484,8 @@ def 处理写(名: str, 数据: dict) -> dict:
             认领限制 = str(数据.get("认领限制", "")).strip() or None
             # 830 内容键：任务分支 tip sha（预验绿复用键·integrate 传·旧客户端 NULL/空）
             内容键 = str(数据.get("内容键", "")).strip() or None
+            # #1221：M6 必跑位（integrate 写集触发轮传 true）——task_claim 按实例能力位过滤
+            M6必跑 = 1 if 数据.get("M6必跑") else 0
             # 189 兜底入池：放宽 ci/兜底- 前缀（develop 兜底任务经池派发·非真 git 分支）
             if not (分支.startswith("ci/预验-") or 分支.startswith("ci/兜底-")) or len(sha) < 7:
                 return {"ok": False, "说明": "分支须 ci/预验-/ci/兜底- 开头且 sha 合法"}
@@ -492,17 +516,18 @@ def 处理写(名: str, 数据: dict) -> dict:
                     if cur.rowcount:
                         print("[兜底去重] 新头 %s 入池——取消更老的排队兜底行 %d 条（只验最新头·830）"
                               % (分支, cur.rowcount), flush=True)
-                con.execute("INSERT INTO 预验任务(分支,sha,源分支,认领限制,内容键,状态,入队时刻,更新时刻) "
-                            "VALUES(?,?,?,?,?,'排队',?,?)",
-                            (分支, sha, 源分支, 认领限制, 内容键, 时区时刻(), 时区时刻()))
+                con.execute("INSERT INTO 预验任务(分支,sha,源分支,认领限制,内容键,M6必跑,"
+                            "状态,入队时刻,更新时刻) VALUES(?,?,?,?,?,?,'排队',?,?)",
+                            (分支, sha, 源分支, 认领限制, 内容键, M6必跑,
+                             时区时刻(), 时区时刻()))
             elif 已有[0] == "完成" and not 已有[1] and not 分支.startswith("ci/兜底-"):
                 # 189：兜底任务完成红=终态（红结果已上门禁表·不重置）——防池内死循环重跑
                 #   （TX_02 下一周期 enqueue 幂等直达、runner 不再被派）；预验维持红=重置重跑
                 #   （同 sha CAS 重试路径·给 flaky 一次机会）。337：认领限制随重发刷新（发起方最新意图为准）。
                 con.execute("UPDATE 预验任务 SET 状态='排队',认领者=NULL,心跳时戳=NULL,"
                             "绿=NULL,详情=NULL,失败原因=NULL,源分支=COALESCE(?,源分支),认领限制=?,"
-                            "内容键=COALESCE(?,内容键),更新时刻=? WHERE 分支=?",
-                            (源分支, 认领限制, 内容键, 时区时刻(), 分支))
+                            "内容键=COALESCE(?,内容键),M6必跑=?,更新时刻=? WHERE 分支=?",
+                            (源分支, 认领限制, 内容键, M6必跑, 时区时刻(), 分支))
         elif 名 == "task_claim":
             # 认领（写锁内原子）：①回收心跳超时的执行中任务→重置排队；②取最旧排队任务置执行中。
             runner = str(数据.get("runner", ""))
@@ -544,6 +569,11 @@ def 处理写(名: str, 数据: dict) -> dict:
             #   （兜底限制=770 服务端轮转平台·全忙/超阈值放宽 NULL）。
             认领过滤337 = ("AND (认领限制 IS NULL OR 认领限制='' "
                            "OR ','||认领限制||',' LIKE '%,'||?||',%')")
+            # #1221 复审 P1-4②：M6 必跑任务只派给「M6 原生可跑」实例——实例在 claim
+            #   载荷自报 M6原生（false/0=交叉模拟）。旧 daemon 不报=None→按未知放行
+            #   （保持向后兼容；若实为交叉模拟则轮内 fail-closed 判红兜底）。
+            可领M6 = 0 if 数据.get("M6原生") in (False, 0) else 1
+            认领M6过滤 = " AND (M6必跑 IS NULL OR M6必跑=0 OR ?=1)"
             # 830 兜底饥饿保底（2026-10-15 用户裁决·并行化配套）：兜底排队行年龄超阈值 →
             #   本次认领先派兜底（develop 平台轮转验证保底——防任务级预验长期占满池把
             #   develop 权威验证无限饿死）。阈值内维持「预验优先」两级保序（189/770 语义不变）。
@@ -577,12 +607,12 @@ def 处理写(名: str, 数据: dict) -> dict:
             #   认领/不复活（enqueue 见已存在不动）·随完成行裁剪清理（防堆积）。
             for _ in range(64):   # 防呆上限：极端全取消场景不空转
                 行 = con.execute("SELECT 分支,sha,源分支 FROM 预验任务 WHERE 状态='排队' AND 分支 LIKE 'ci/预验-%' "
-                                 + 认领过滤337 + " ORDER BY 序号 LIMIT 1",
-                                 (平台337,)).fetchone()
+                                 + 认领过滤337 + 认领M6过滤 + " ORDER BY 序号 LIMIT 1",
+                                 (平台337, 可领M6)).fetchone()
                 if 行 is None:
                     行 = con.execute("SELECT 分支,sha,源分支 FROM 预验任务 WHERE 状态='排队' "
-                                     + 认领过滤337 + " ORDER BY 序号 LIMIT 1",
-                                     (平台337,)).fetchone()
+                                     + 认领过滤337 + 认领M6过滤 + " ORDER BY 序号 LIMIT 1",
+                                     (平台337, 可领M6)).fetchone()
                 if 行 is None:
                     break
                 if 源分支已并入(行[2]) is True:
@@ -750,20 +780,34 @@ def _包任务行(行):
             "失败摘要": 行[5], "告警时刻": 行[6], "失败原因": 行[7]}
 
 
-def 任务详情查(sha10: str):
-    """842：预验/兜底任务详情按 sha10 查——①分支名契约（ci/预验- 优先·旧契约·
-    integrate/看板代理在用），miss 再试 ci/兜底-；②均无再按 sha 前缀查（842
-    鲁棒兜底：分支名与 sha 不一致的异常/历史行也可达；同前缀多点取最新序号）。
+def 任务详情查(sha10: str, branch: str = ""):
+    """842：预验/兜底任务详情查（#1221 复审 P1-1：旧同名行不得遮蔽新 M6 行）。
+
+    查询序（命中即返）：
+      ① branch 非空 → 按分支名精确查（客户端传本轮 `ci/预验-<sha10>-m6<hex>`，
+         与 integrate 池轮询的等待分支完全一致——旧普通行永不遮蔽）；
+      ② 按 sha 前缀取**最新序号**行（M6 非幂等分支与旧行同 sha 时取新行；看板/旧
+         客户端不传 branch 也正确）；
+      ③ 旧契约分支名精确查（ci/预验-<sha10>/ci/兜底-<sha10>——仅当 ② 无行）；
     miss=None（调用点 404 显式——648 miss 不可静默）。"""
     列 = "状态,绿,详情,COALESCE(失败计数,0),失败类别,失败摘要,告警时刻,失败原因"   # 975/825：单点列清单
+    if branch:
+        行 = con.execute("SELECT " + 列 + " FROM 预验任务 WHERE 分支=?",
+                        (branch,)).fetchone()
+        if 行 is not None:
+            return _包任务行(行)
+    # #1221 P1-1：sha 前缀最新序号优先于旧分支名精确查——否则旧 ci/预验-<sha10>
+    #   已完成行会遮蔽新 -m6 行（integrate 拿到旧绿无 M6 证据→硬拦→永久重跑死锁）。
+    行 = con.execute("SELECT " + 列 + " FROM 预验任务 WHERE sha LIKE ? "
+                    "ORDER BY 序号 DESC LIMIT 1", (sha10 + "%",)).fetchone()
+    if 行 is not None:
+        return _包任务行(行)
     for 前缀 in ("ci/预验-", "ci/兜底-"):
         行 = con.execute("SELECT " + 列 + " FROM 预验任务 WHERE 分支=?",
                         (前缀 + sha10,)).fetchone()
         if 行 is not None:
             return _包任务行(行)
-    行 = con.execute("SELECT " + 列 + " FROM 预验任务 WHERE sha LIKE ? "
-                    "ORDER BY 序号 DESC LIMIT 1", (sha10 + "%",)).fetchone()
-    return _包任务行(行) if 行 is not None else None
+    return None
 
 
 def 归因截取(sha: str, 平台: str, 详情) -> dict:
@@ -876,9 +920,12 @@ class 处理器(BaseHTTPRequestHandler):
                                     "实例动态": queue_instances.实例动态快照(con, 心跳超时秒)})   # 1392：实例页签数据源
         if 路径 == "/api/task_result":
             # 按 sha10 查（分支=ci/预验-/ci/兜底-<sha10>·URL 保持纯 ASCII 免编码坑·
-            # 842 通用化：双前缀）
-            sha10 = (parse_qs(urlparse(self.path).query).get("sha") or [""])[0]
-            详情 = 任务详情查(sha10) if sha10 else None
+            # 842 通用化：双前缀）；#1221 复审 P1-1：客户端可另传 branch=本轮精确分支名
+            # （M6 轮为 ci/预验-<sha10>-m6<hex>）——先按 branch 精确查，旧同名行不遮蔽。
+            参q = parse_qs(urlparse(self.path).query)
+            sha10 = (参q.get("sha") or [""])[0]
+            branch参 = (参q.get("branch") or [""])[0]
+            详情 = 任务详情查(sha10, branch参) if sha10 else None
             if 详情 is None:
                 return self.回JSON({"ok": False,
                                     "说明": "无此任务（ci/预验-/ci/兜底-" + sha10 + " 均无）"}, 404)

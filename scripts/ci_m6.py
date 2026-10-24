@@ -72,9 +72,15 @@ def 轮写集(轮分支: str, sha: str, 仓库根: Path,
     跑 = 运行 or (lambda 命令: subprocess.run(
         命令, capture_output=True, text=True, encoding="utf-8", errors="replace",
         cwd=仓库根, timeout=120))
-    # #1221 复审 P2：刷新 develop ref（超时 120s·失败不阻断——陈旧 ref 多算不漏算）
+    # #1221 复审 P2：刷新 develop ref（fetch 专用 30s 超时·失败不阻断——陈旧 ref
+    #   只会多算不漏算；分片从片不计算计划=零 fetch）
     try:
-        跑(["git", "fetch", 远端, "develop"])
+        if 运行 is None:
+            subprocess.run(["git", "fetch", 远端, "develop"], capture_output=True,
+                           text=True, encoding="utf-8", errors="replace",
+                           cwd=仓库根, timeout=30)
+        else:
+            跑(["git", "fetch", 远端, "develop"])
     except Exception:
         pass   # 网络/超时——沿用已有远端 ref（下面 diff 失败仍会 fail-safe 触发）
     基线 = ""
@@ -134,13 +140,23 @@ def e2e段(步骤们: dict, 步骤, cn: Path, 日志, sha: str, 轮分支: str, 
     触发 = bool(计划.get("触发"))
     可跑 = bool(计划.get("平台可跑"))
     须M6 = 触发 and 可跑
+    if 须M6 and not ci_shard.e2e支持m6():
+        # 跨版本窗口：旧版 run_e2e 无 --require-m6（传参=argparse 假红·不传=假绿）——
+        # fail-closed 判红并给明确原因（升级 runner 树/部署后重跑）。
+        步骤们["M6平台保障"] = {"rc": -1, "类别": "版本不支持",
+                               "说明": "run_e2e 版本过旧无 --require-m6——M6 无法机械验证"
+                                       "（fail-closed；更新 runner 树后重跑）"}
+        print("  [M6·版本不支持] 本树 run_e2e 无 --require-m6——轮判红（fail-closed）",
+              file=日志, flush=True)
+        return
     if 触发:
         if 可跑:
             步骤们["M6平台保障"] = {"rc": 0, "说明": "M6 必跑（--require-m6·#1221）"}
             print("  [M6] %s——e2e 带 --require-m6（79_v2 跳过/失败=本轮红）"
                   % m6_gate.摘要(计划), file=日志, flush=True)
         else:
-            步骤们["M6平台保障"] = {"rc": -1, "说明": m6_gate.摘要(计划) + "（fail-closed）"}
+            步骤们["M6平台保障"] = {"rc": -1, "类别": "平台不可验",
+                                   "说明": "平台不可验：" + m6_gate.摘要(计划) + "（fail-closed）"}
             print("  [M6·红] %s——fail-closed（该平台无法原生验证固定点；本轮不落 "
                   "latest，下一轮写集仍含改动→由原生平台重验）" % m6_gate.摘要(计划),
                   file=日志, flush=True)

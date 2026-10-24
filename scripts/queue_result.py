@@ -94,6 +94,9 @@ def 真实红首因(结果) -> str:
         if (isinstance(rc, int) and rc != 0) or 步.get("超时"):
             if str(名) == "e2e" and 用例们:
                 return "e2e：失败 %d 例（%s）" % (len(用例们), 用例名串(用例们))
+            if str(名) == "M6平台保障":
+                # #1221：平台不可验与代码红分流（红治理按类别归因·不复用编译器缺陷口径）
+                return "M6平台保障：%s" % (str(步.get("说明") or "平台不可验")[:200])
             return "%s（rc=%s%s）" % (名, rc, "·超时" if 步.get("超时") else "")
     if 用例们:   # 红在聚合面外/步骤 rc 形态缺失——用例清单仍为首因证据
         return "e2e：失败 %d 例（%s）" % (len(用例们), 用例名串(用例们))

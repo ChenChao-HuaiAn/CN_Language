@@ -43,6 +43,7 @@ import subprocess
 import sys
 import urllib.error
 import urllib.request
+from urllib.parse import quote
 
 主远程 = "gitcode"
 集成分支 = "develop"
@@ -120,20 +121,35 @@ def 预验服务端状态表() -> dict | None:
         return None
 
 
-def 预验历史状态(短名: str):
-    """快照 miss 后按分支名 sha10 查历史行（/api/task_result·服务端全表保留 200 行）。
+def 预验sha10(短名: str) -> str:
+    """分支名 → sha10（#1221 复审 P0）：先剥 -m6<hex> 非幂等后缀再取前 10 位。
 
-    分支名契约 ci/预验-<sha10> 本身携带 sha10（服务端 842 按 sha10 全表查·不受
-    快照 LIMIT 50 裁剪）。返回状态字符串；None=查无记录/服务异常（调用方落 git
+    复用 ci_round.预验分支sha10 单点解析；旧树无该模块（渐进部署）=本地同规则
+    兜底。纯函数（selftest 面）。"""
+    try:
+        from ci_round import 预验分支sha10
+        return 预验分支sha10(短名)
+    except Exception:
+        return re.sub(r"-m6[0-9a-f]+$", "", str(短名 or "")[len(预验前缀):])[:10]
+
+
+def 预验历史状态(短名: str):
+    """快照 miss 后按分支名查历史行（/api/task_result·服务端全表保留 200 行）。
+
+    分支名契约 ci/预验-<sha10>[-m6<hex>]（#1221 复审 P0：#1519 同族——M6 非幂等
+    后缀必须先剥掉再取 sha10，否则正则不匹配→历史证据恒 None→只能走 git 判据）。
+    复用 ci_round.预验分支sha10 单点解析；并带 branch=精确分支名（服务端先按名查，
+    多 M6 重试行不串）。返回状态字符串；None=查无记录/服务异常（调用方落 git
     证据判据·不视为错误——历史保留窗口外的更老分支本就该保守）。
     """
-    sha10 = 短名[len(预验前缀):]
+    sha10 = 预验sha10(短名)
     if not re.fullmatch(r"[0-9a-f]{7,40}", sha10 or ""):
         return None
     try:
         配置 = 读服务配置()
         请求 = urllib.request.Request(
-            配置["url"].rstrip("/") + "/api/task_result?sha=" + sha10)
+            配置["url"].rstrip("/") + "/api/task_result?sha=" + sha10
+            + "&branch=" + quote(短名, safe=""))
         _加鉴权头(请求)
         with urllib.request.urlopen(请求, timeout=8) as 响应:
             详情 = json.loads(响应.read().decode("utf-8"))
@@ -256,6 +272,15 @@ def 自测() -> int:
         通过 = 可删 == 期望可删
         失败 += 0 if 通过 else 1
         print(f"  [{'PASS' if 通过 else 'FAIL'}] 状态={状态!r} 并入={并入} → 可删={可删}｜{说明}")
+
+    # #1221 复审 P0：M6 非幂等分支名 sha10 解析（旧普通名/新 -m6 名/非法名）
+    for 名, 期望 in (("ci/预验-abcdef0123", "abcdef0123"),
+                     ("ci/预验-abcdef0123-m6ab12cd", "abcdef0123"),
+                     ("develop", "")):
+        实 = 预验sha10(名)
+        通过 = 实 == 期望
+        失败 += 0 if 通过 else 1
+        print(f"  [{'PASS' if 通过 else 'FAIL'}] sha10({名!r})={实!r}｜#1221 M6 后缀剥离")
 
     # 台账在飞解析（864 二轮·mock 8301 /api/tasks 响应行）
     台账用例们 = [
