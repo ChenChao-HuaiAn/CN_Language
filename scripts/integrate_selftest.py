@@ -684,5 +684,29 @@ def 自测() -> int:
         if 沙箱根1258 is not None:
             _sh.rmtree(沙箱根1258, ignore_errors=True)
 
+    # ⑭ #1221 M6 自举固定点机械触发器：判定单点（m6_gate）+ integrate 接线结构锁
+    import inspect
+    import m6_gate
+    断言(m6_gate.判定写集(["src/cn_compiler/codegen/x64/a.cpp"])["触发"]
+         and not m6_gate.判定写集(["src/cn_compiler/lexer/a.cpp"])["触发"],
+         "#1221 触发判定：codegen 命中/纯前端豁免（单点纯函数）")
+    断言(m6_gate.误放行检查(["79_v2_自举闭环"]) is not None,
+         "#1221 M6 红禁点名放行（误放行检查=参数解析面单点）")
+    断言(m6_gate.红例含M6(["79_v2_自举闭环: 固定点不一致"]),
+         "#1221 失败清单含 M6=硬拦（放行消费点双挂）")
+    _全量参 = inspect.signature(全量门禁).parameters
+    _预验参 = inspect.signature(云端预验门禁).parameters
+    断言("须M6" in _全量参 and "须M6" in _预验参,
+         "#1221 门禁接线：全量门禁/云端预验门禁均接 须M6（写集触发深度）")
+    _集成源 = inspect.getsource(integrate.单次集成尝试)
+    断言("m6_gate.判定写集" in _集成源 and "须M6=m6判定" in _集成源,
+         "#1221 接线锁：单次集成尝试 写集判定→全量/预验门禁传参（无旁路）")
+    _全量源 = inspect.getsource(全量门禁)
+    断言("--require-m6" in _全量源 and "CN_M6_REQUIRE" in _全量源,
+         "#1221 执行面锁：linux 命令 --require-m6 / win 环境 CN_M6_REQUIRE")
+    _预验源 = inspect.getsource(云端预验门禁)
+    断言("不复用" in _预验源 and "win-x64" in _预验源,
+         "#1221 预验面锁：M6 触发不复用历史绿 + 缺省认领限原生平台")
+
     print(f"\n[selftest] {案例数} 例全过 ✓")
     return 0

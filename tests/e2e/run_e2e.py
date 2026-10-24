@@ -1021,7 +1021,8 @@ def 并行用例任务(项):
     看门狗.刷心跳("用例完成")   # 978：判挂诊断可辨「完成但结果未回」形态（pool 通信挂）
     # 1297：四元组尾差=逐用例秒（worker 纯耗时·不含池内排队）——分片均衡/加权分片
     #   与 8300 观测的数据源；收端以星号解包兼容（旧返回三元组时尾差为空）。
-    return (用例目录.name, 状态, 原因, 耗时秒)
+    # #1221：五元组尾差再挂 M6 审计记录（仅 79_v2 非空）——主进程摘要/--json 消费。
+    return (用例目录.name, 状态, 原因, 耗时秒, 取M6记录())
 
 
 def 执行单个用例(编译器路径: pathlib.Path, 用例目录: pathlib.Path,
@@ -1031,6 +1032,8 @@ def 执行单个用例(编译器路径: pathlib.Path, 用例目录: pathlib.Path
     返回 (状态, 说明)；状态取值: "通过" / "失败" / "未实现" / "跳过"
     """
     名称 = 用例目录.name
+    # #1221：M6 审计记录每次用例执行重置——worker 进程复用，记录不得跨用例残留
+    置M6记录(None)
     # ============ 平台限制跳过检查 ============
     # 检查当前平台是否在跳过列表中（用例名匹配前缀）
     # 任务399：交叉模拟激活时合并 交叉模拟跳过（78/79 自举链模拟性能深坑·
@@ -1040,7 +1043,12 @@ def 执行单个用例(编译器路径: pathlib.Path, 用例目录: pathlib.Path
         有效跳过 = 有效跳过 + 交叉.交叉模拟跳过
     for 跳过前缀 in 有效跳过:
         if 名称.endswith(跳过前缀) or 名称 == 跳过前缀:
-            return "跳过", f"平台限制（{目标平台}）：{跳过前缀}"
+            跳过原因 = f"平台限制（{目标平台}）：{跳过前缀}"
+            if "79_v2" in 名称:
+                # #1221：M6 被平台跳过不得静默——结构化记录进摘要/--json/门禁轮记录
+                置M6记录({"用例": 名称, "平台": 目标平台, "状态": "未跑",
+                          "原因": 跳过原因 + "（M6 未跑·平台/环境限制）"})
+            return "跳过", 跳过原因
 
     # ============ 906：通道选择器并存闸（互斥配置显式拒绝）============
     # 下方分派链首命中即 return——并存配置原会被静默取首个（855 呈报 107 案：
@@ -1271,10 +1279,9 @@ def 锚定链编译v2全树(exe, 工作目录: pathlib.Path, 主入口: str, 目
     return "通过", "", 内容.count("\n") + 1
 
 
-def 执行v2锚定链(编译器路径: pathlib.Path, 用例目录: pathlib.Path,
-                 输出目录: pathlib.Path, 详细: bool, 目标平台: str) -> tuple:
+def _执行v2锚定链(编译器路径: pathlib.Path, 用例目录: pathlib.Path,
+                  输出目录: pathlib.Path, 详细: bool, 目标平台: str) -> tuple:
     """执行 v2 锚定链用例（78_v2 自举链构建 / 79_v2 自举闭环）——详见上方编排注释。"""
-    import filecmp
     名称 = 用例目录.name
     编号 = 提取用例编号(名称)
     隔离键值 = 隔离键(名称)  # 329-a：隔离目录键（编号前缀+名哈希·防同前缀撞车）
@@ -1421,12 +1428,20 @@ def 执行v2锚定链(编译器路径: pathlib.Path, 用例目录: pathlib.Path,
         return 状态, 说明
 
     # ===== [7] 固定点判定：fix_p ≡ fix_s 逐字节一致 =====
-    if filecmp.cmp(str(fixp), str(fixs), shallow=False):
+    # #1221：判定升级为「逐字节 + md5 + 首个差异偏移」三面——通过轮 md5 可审计
+    #   （历史固定点漂移可见），失败轮首个差异字节/行号直接可定位（不再只给行号集）。
+    字节p = fixp.read_bytes()
+    字节s = fixs.read_bytes()
+    md5p = hashlib.md5(字节p).hexdigest()
+    md5s = hashlib.md5(字节s).hexdigest()
+    if 字节p == 字节s:
         return "通过", (f"v2 自举闭环成立：fix_p ≡ fix_s 逐字节一致（{行数p} 行；"
-                        f"{归属说明}；{目标平台}）")
-    内容p = fixp.read_text(encoding="utf-8", errors="replace").splitlines()
-    内容s = fixs.read_text(encoding="utf-8", errors="replace").splitlines()
+                        f"md5={md5p}；{归属说明}；{目标平台}）")
+    内容p = 字节p.decode("utf-8", errors="replace").splitlines()
+    内容s = 字节s.decode("utf-8", errors="replace").splitlines()
     差异行 = [i for i, (x, y) in enumerate(zip(内容p, 内容s)) if x != y]
+    首个字节 = 首个差异字节偏移(字节p, 字节s)
+    首个行 = (字节p[:首个字节].count(b"\n") + 1) if 首个字节 is not None else None
     # 255（2026-10-07）：固定点不一致≠必然代码生成分叉——v2p.exe/v2p.obj 混合态
     #   （cn_self 链接借链 v2p.obj·两者不同批=fix_s 为混合体产物·236 轮假红 12K 行差
     #   实录）与编译器版本错位同征。失败信息附产物时间线+差异样本，三类根因
@@ -1442,7 +1457,106 @@ def 执行v2锚定链(编译器路径: pathlib.Path, 用例目录: pathlib.Path,
             f"cn_self={_mt(cn_self_exe)}（exe/obj 时差大=混合态嫌疑·应删 "
             f"{v2p.name}+{v2pobj.name}+缓存键重建）；差异样本 {样本}")
     return "失败", (f"{编号}-7 固定点不一致！fix_p={len(内容p)} 行 fix_s={len(内容s)} 行，"
+                    f"fix_p md5={md5p} fix_s md5={md5s}，"
+                    f"首个差异字节偏移={首个字节}（第 {首个行} 行），"
                     f"首个差异行号={差异行[:5]}（v2 编译确定性/代码生成分叉或环境混合态）。{诊断}")
+
+
+# ============ M6 自举固定点审计记录（任务 #1221·执行面复用 79_v2）============
+# 覆盖对账缺口：79_v2 通过时只报行数（md5 不落盘=固定点漂移不可审计）；被
+#   平台/交叉模拟/重负载开关跳过时只打印一行 SKIP（轮次照绿=静默）。本段把
+#   「跑没跑/一致否/钉在哪个 md5/首个差异在哪」变成结构化记录：
+#     · 通过/失败/跳过 → M6记录（摘要行 + --json 明细「M6」键）
+#     · 通过/失败 → target/audit2/selfwork<隔离键>/m6_record.json（产物同生命周期）
+#     · --require-m6 / CN_M6_REQUIRE=1 → 选集含 79_v2 而记录非通过 = exit 1
+#   worker 进程各自持模块全局，记录随 并行用例任务 五元组回传主进程汇总。
+M6记录: dict | None = None
+M6_JSON键 = "M6"
+
+
+def 置M6记录(记录) -> None:
+    """设置本进程 M6 审计记录（None=重置）。worker 内单用例粒度使用。"""
+    global M6记录
+    M6记录 = 记录
+
+
+def 取M6记录() -> dict | None:
+    """读取本进程 M6 审计记录（并行用例任务 回传用）。"""
+    return M6记录
+
+
+def 首个差异字节偏移(字节甲: bytes, 字节乙: bytes) -> int | None:
+    """逐字节比较取首个差异偏移（None=完全一致；长度差=较短长度处）。
+    分块切片比较（C 层字节串比较）——全树产物 10MB+ 不给 Python 逐字节循环交税。"""
+    上限 = min(len(字节甲), len(字节乙))
+    块 = 65536
+    for 基 in range(0, 上限, 块):
+        甲块 = 字节甲[基:基 + 块]
+        乙块 = 字节乙[基:基 + 块]
+        if 甲块 != 乙块:
+            公共 = min(len(甲块), len(乙块))
+            for 偏移 in range(公共):
+                if 甲块[偏移] != 乙块[偏移]:
+                    return 基 + 偏移
+            # 块内公共前缀全同、块长度不同（较短数组在本块内结束）——差异=较短长度处
+            return 基 + 公共
+    return None if len(字节甲) == len(字节乙) else 上限
+
+
+def _m6产物摘要(用例目录: pathlib.Path, 目标平台: str) -> dict:
+    """从锚定链隔离工作目录取 fix_p/fix_s 的 md5/行数/首个差异（缺产物=None 不炸）。"""
+    工作目录 = (项目根目录 / "target" / "audit2"
+                / ("selfwork%s" % 隔离键(用例目录.name)))
+    记录: dict = {"用例": 用例目录.name, "平台": 目标平台}
+    数据: dict = {}
+    for 键, 文件名 in (("fix_p", "fix_p.asm"), ("fix_s", "fix_s.asm")):
+        try:
+            数据[键] = (工作目录 / 文件名).read_bytes()
+        except OSError:
+            数据[键] = None
+        内容 = 数据[键]
+        记录[键 + "_md5"] = hashlib.md5(内容).hexdigest() if 内容 is not None else None
+        记录[键 + "_行数"] = (内容.count(b"\n") + 1) if 内容 else 0
+        记录[键 + "_字节"] = len(内容) if 内容 is not None else 0
+    if 数据.get("fix_p") is not None and 数据.get("fix_s") is not None:
+        偏移 = 首个差异字节偏移(数据["fix_p"], 数据["fix_s"])
+        记录["首个差异字节"] = 偏移
+        记录["首个差异行"] = (数据["fix_p"][:偏移].count(b"\n") + 1
+                              if 偏移 is not None else None)
+    return 记录
+
+
+def 执行v2锚定链(编译器路径: pathlib.Path, 用例目录: pathlib.Path,
+                 输出目录: pathlib.Path, 详细: bool, 目标平台: str) -> tuple:
+    """锚定链执行 + M6 审计包装（#1221）——78_v2 原样透传；79_v2 落记录/审计文件。
+
+    记录三态：通过（fix_p ≡ fix_s + md5）/失败（md5+首个差异字节）/未跑（提前失败
+    或平台跳过——平台跳过在 执行单个用例 的跳过分支记录）。"""
+    if "79_v2" not in 用例目录.name:
+        return _执行v2锚定链(编译器路径, 用例目录, 输出目录, 详细, 目标平台)
+    起始 = time.time()
+    置M6记录(None)
+    try:
+        状态, 说明 = _执行v2锚定链(编译器路径, 用例目录, 输出目录, 详细, 目标平台)
+    except Exception as 异常:
+        置M6记录({"用例": 用例目录.name, "平台": 目标平台, "状态": "失败",
+                  "原因": "执行异常：%r" % (异常,), "耗时秒": round(time.time() - 起始, 1)})
+        raise
+    记录 = _m6产物摘要(用例目录, 目标平台)
+    记录["状态"] = "通过" if 状态 == "通过" else ("未跑" if 状态 == "跳过" else "失败")
+    记录["原因"] = (说明 or "")[:600]
+    记录["耗时秒"] = round(time.time() - 起始, 1)
+    记录["审计时刻"] = time.strftime("%Y-%m-%d %H:%M:%S")
+    工作目录 = (项目根目录 / "target" / "audit2"
+                / ("selfwork%s" % 隔离键(用例目录.name)))
+    try:
+        (工作目录 / "m6_record.json").write_text(
+            json.dumps(记录, ensure_ascii=False, indent=1), encoding="utf-8")
+    except OSError as 异常:
+        # 审计落盘失败不改结论（附加输出面）——但必须显形（miss 不静默）
+        print(红色(f"警告: M6 审计记录写入失败（{异常}）——结论不受影响"))
+    置M6记录(记录)
+    return 状态, 说明
 
 
 # v2 闭环用例配置解析（数据驱动，2026-09-11 用户裁决去硬编码）：用例目录的
@@ -2559,12 +2673,25 @@ def 执行双编译对照(编译器路径: pathlib.Path, 用例目录: pathlib.P
     return "通过", 返回说明
 
 
-def 打印汇总(总数: int, 通过数: int, 失败数: int, 未实现数: int, 跳过数: int = 0) -> None:
-    """打印E2E结果汇总与颜色标记"""
+def 打印汇总(总数: int, 通过数: int, 失败数: int, 未实现数: int, 跳过数: int = 0,
+            M6记录=None) -> None:
+    """打印E2E结果汇总与颜色标记；#1221 追加 M6 自举固定点单行（未跑必带原因）。"""
     print(粗体("E2E结果汇总"))
     print(f"  总计: {总数}  通过: {绿色(str(通过数))}  "
           f"失败: {红色(str(失败数))}  未实现: {黄色(str(未实现数))}  "
           f"跳过: {青色(str(跳过数))}")
+    if M6记录:
+        状态 = M6记录.get("状态")
+        if 状态 == "通过":
+            行 = (f"M6 自举固定点: 通过（fix_p md5={M6记录.get('fix_p_md5')}·"
+                  f"{M6记录.get('耗时秒')}s·{M6记录.get('平台')}）")
+            print("  " + 绿色(行))
+        elif 状态 == "未跑":
+            print("  " + 黄色(f"M6 自举固定点: 未跑（{M6记录.get('原因')}）"))
+        elif 状态 == "未选":
+            print("  " + 青色(f"M6 自举固定点: 未选（{M6记录.get('原因')}）"))
+        else:
+            print("  " + 红色(f"M6 自举固定点: 失败（{M6记录.get('原因', '')[:300]}）"))
 
 
 def 打印详情(失败列表: list, 未实现列表: list, 详细: bool) -> None:
@@ -2580,12 +2707,13 @@ def 打印详情(失败列表: list, 未实现列表: list, 详细: bool) -> Non
 
 
 def 写结果JSON(路径, 目标平台, 总数, 通过数, 失败列表, 未实现列表, 跳过数,
-               用例耗时=None) -> None:
+               用例耗时=None, M6记录=None) -> None:
     """842：机器可读结果落盘（ci_daemon 云端门禁上报 → 8300 页面失败详情数据源）——
     失败用例含原因全文（编译/运行退出码、期望与实际 diff 逐行）；路径空=不写
     （缺省行为与无本参数完全一致）。写失败仅警告不改结论（附加输出面·不影响测量）。
     1297：用例耗时（名称→worker 纯耗时秒）非空时附「用例耗时」键——分片均衡/加权
-    分片与观测数据源（此前只有失败清单无耗时=均衡盲区）。"""
+    分片与观测数据源（此前只有失败清单无耗时=均衡盲区）。
+    #1221：M6 记录（通过=md5/耗时；未跑/未选=显式原因）——门禁结果与看板可审计。"""
     if not 路径:
         return
     内容 = {
@@ -2598,6 +2726,8 @@ def 写结果JSON(路径, 目标平台, 总数, 通过数, 失败列表, 未实�
     }
     if 用例耗时:
         内容["用例耗时"] = 用例耗时
+    if M6记录:
+        内容[M6_JSON键] = M6记录
     try:
         pathlib.Path(路径).write_text(json.dumps(内容, ensure_ascii=False, indent=1),
                                      encoding="utf-8")
@@ -2774,6 +2904,12 @@ def 主程序() -> int:
                              "完全一致（--jobs/--shard/锁/内存保护全不动·仅放行）；与本参数"
                              "等价的环境判据=CI环境识别三变量（CN_RUNNER_ID/CN_CI_ROLE/"
                              "CN_CI_BRANCH 任一非空）。本地开发勿用（无并发收敛）")
+    解析器.add_argument("--require-m6", action="store_true",
+                        help="#1221 自举固定点必跑（写集含 codegen/opt/ir 时的机械保证）："
+                             "本选集含 79_v2 而未真跑/未通过=exit 1（跳过不静默）——等效放行"
+                             "重负载（CI 通道语义），并强制落 M6 审计记录（md5/首个差异字节）。"
+                             "等价环境变量=CN_M6_REQUIRE=1（ci.ps1 等不可改命令行调用面透传）；"
+                             "不含 79_v2 的分片显式记录「未选」不判红（由含重型的片承担）")
     解析器.add_argument("--json", dest="json路径", metavar="路径", default=None,
                         help="机器可读结果写入该 JSON 文件（含失败用例明细·期望/实际 diff）"
                              "——ci_daemon 云端门禁上报 8300 失败详情用（842）；"
@@ -2916,18 +3052,32 @@ def 主程序() -> int:
     #   注：--full-reason 裸全量（ci.ps1/integrate 本机全量门禁·用户明令）不在
     #   豁免之列——本机全量同样默认跳过留云端，确需重型须再加 --allow-heavy。
     ci识别 = CI环境识别()
+    # #1221：选集（分片/过滤后）是否含 M6 用例——重负载跳过前定值（跳过也算选集内，
+    #   --require-m6 下跳过=红；分片未含=显式「未选」不判红，由含重型的片承担）。
+    M6在选集 = any("79_v2" in d.name for d in 用例目录们)
+    # #1221：M6 必跑通道——integrate 写集命中 codegen/opt/ir 时经 --require-m6（或
+    #   ci.ps1 经环境变量 CN_M6_REQUIRE=1 透传）强制 79_v2 真跑：本通道等同 CI 放行
+    #   （外层已持机器锁/独占机），但额外要求记录必须为「通过」，跳过/失败=exit 1。
+    要求M6 = bool(getattr(参数, "require_m6", False)
+                or os.environ.get("CN_M6_REQUIRE", "").strip() == "1")
     重型跳过们 = []
     重型们 = [d for d in 用例目录们
              if any(前缀 in d.name for 前缀 in 内存保护用例前缀)]
     if 重型们:
+        # #1221：通道优先级=CI 识别/--heavy-ci（云端池化并行语义）> --allow-heavy
+        #   （开发者本地显式=并发 1+机器锁，require 同时给出时仍按本地严格语义）
+        #   > --require-m6/CN_M6_REQUIRE（integrate/ci.ps1 触发面·外层已持锁）。
         if ci识别 or 参数.heavy_ci:
-            来源 = f"CI 环境 {ci识别} 在设" if ci识别 else "--heavy-ci 显式"
-            print(青色(f"重型放行: CI 通道（{来源}·566 修复）——78/79 照跑·"
-                       f"并发/锁行为与立法前完全一致"))
+            print(青色(f"重型放行: {'CI 环境 %s 在设' % ci识别 if ci识别 else '--heavy-ci 显式'}"
+                       "——78/79 照跑·并发/锁行为与既有通道一致"))
+            if 要求M6:
+                print(青色("M6 门禁: 79_v2 必须真跑且通过（跳过/失败=本轮红·#1221）"))
         elif 参数.allow_heavy:
             参数.jobs = 1
             print(青色("重型放行: --allow-heavy（566·2026-10-13 裁决乙案）——"
                        "并发强制=1（--jobs 覆盖）"))
+            if 要求M6:
+                print(青色("M6 门禁: 79_v2 必须真跑且通过（跳过/失败=本轮红·#1221）"))
             if os.environ.get("CN_GATE_LOCK_HELD"):
                 print("[gate_lock] 继承外层机器锁（CN_GATE_LOCK_HELD=1·不另取锁防自死锁）")
             else:
@@ -2943,15 +3093,29 @@ def 主程序() -> int:
                 #   防误删主进程（真正持锁者）的锁=全机互斥静默失效。
                 atexit.register(_机器锁.释放, 机器锁路径, True, os.getpid())
                 print("[gate_lock] 机器域锁已持（全机一把·跨树互斥=全机并发 1·566）")
+        elif 要求M6:
+            # 触发通道（integrate linux 在 gate_lock run 内 / ci.ps1 已持机器锁）——
+            #   并发保持调用方口径；只要求 79_v2 真跑且通过。
+            print(青色("重型放行: --require-m6 / CN_M6_REQUIRE=1（写集触发）"
+                       "——79_v2 必跑（跳过/失败=本轮红·#1221）"))
         else:
             重型跳过们 = 重型们
             print(黄色(f"重型跳过: {len(重型跳过们)} 例重负载用例默认留云端"
                        f"（566·2026-10-13 裁决乙案·云端收口全量已含）——"))
             for _d in 重型跳过们:
                 print(f"  {青色('SKIP')} {_d.name}（云端全量照验·本地默认不跑）")
+                if "79_v2" in _d.name:
+                    # #1221：M6 审计记录落「未跑」+原因（摘要/JSON 显式，禁静默）
+                    置M6记录({"用例": _d.name, "平台": 目标平台, "状态": "未跑",
+                              "原因": "重负载本地默认跳过（566）——未带 --heavy-ci / "
+                                      "--allow-heavy / --require-m6 / CI 环境放行"})
             print("  本地确需跑（改动触及 v2 自举链关键路径）请带 "
                   + 青色("--allow-heavy") + "（强制并发=1·机器域锁内·防多会话并行饱和）")
             用例目录们 = [d for d in 用例目录们 if d not in 重型跳过们]
+    elif 要求M6:
+        print(黄色("M6 门禁: 本片用例集不含 79_v2（--filter/--shard）——M6 由含重型的片/轮承担"))
+        置M6记录({"用例": "79_v2_自举闭环", "平台": 目标平台, "状态": "未选",
+                  "原因": "本片用例集不含 79_v2（--filter/--shard）——非静默豁免·由重型的片承担"})
 
     # 逐个执行并统计（--jobs>1 并行模式，2026-09-11 用户裁决「E2E 太慢」提速：
     #   非 v2 用例并行池 + v2 用例单线程池**并发**执行——v2 用例共享 target/v2asm.s
@@ -3039,6 +3203,8 @@ def 主程序() -> int:
     最近进展时刻 = time.monotonic()
     下次静默扫描 = time.monotonic() + 静默扫描间隔秒
     挂死数 = 0
+    # #1221：父进程 M6 记录初值=重型跳过/未选分支所置；worker 结果到达后覆盖。
+    M6汇总记录 = 取M6记录()
     try:
         while 待收们:
             就绪们 = [项 for 项 in 待收们 if 项[1].ready()]
@@ -3048,6 +3214,9 @@ def 主程序() -> int:
                         _名称, 状态, 原因, *耗时附 = 异步结果.get()
                         if 耗时附:
                             用例耗时表[_名称] = 耗时附[0]
+                        # #1221：worker 五元组尾差=M6 审计记录（仅 79_v2 非空）
+                        if len(耗时附) > 1 and isinstance(耗时附[1], dict):
+                            M6汇总记录 = 耗时附[1]
                     except Exception as 异常:
                         # 978：带异常文本（教训 #205：笼统「worker 进程崩溃」掩盖真因）
                         状态, 原因 = "失败", f"worker 进程崩溃/结果取回异常: {异常!r}"
@@ -3114,16 +3283,63 @@ def 主程序() -> int:
     总数 = len(用例目录们) + len(重型跳过们)  # 566：含本地默认跳过的重负载用例
     未实现数 = len(未实现列表)
     失败数 = len(失败列表)
-    打印汇总(总数, 通过数, 失败数, 未实现数, 跳过数)
+    # #1221：M6 记录兜底——选集含 79_v2 却无记录（worker 崩溃/看门狗判挂）=未跑显形
+    if M6在选集 and M6汇总记录 is None:
+        M6汇总记录 = {"用例": "79_v2_自举闭环", "平台": 目标平台, "状态": "未跑",
+                      "原因": "未取得执行记录（worker 崩溃/看门狗判挂等）——M6 未跑"}
+    打印汇总(总数, 通过数, 失败数, 未实现数, 跳过数, M6记录=M6汇总记录)
     打印详情(失败列表, 未实现列表, 参数.verbose)
     写结果JSON(参数.json路径, 目标平台, 总数, 通过数, 失败列表, 未实现列表, 跳过数,
-               用例耗时=用例耗时表)
+               用例耗时=用例耗时表, M6记录=M6汇总记录)
 
     if 失败数 > 0:
         return 1
     if 参数.strict and 未实现数 > 0:
         return 1
+    # #1221：M6 门禁——触发轮选集含 79_v2 而记录非通过=红（跳过/未跑不静默放行）；
+    #   分片未含=「未选」显式记录不判红（由含重型的片承担，聚合面由 ci_daemon 核）。
+    if 要求M6 and M6在选集:
+        M6状态 = (M6汇总记录 or {}).get("状态")
+        if M6状态 != "通过":
+            print(红色(f"M6 门禁失败：79_v2 自举固定点未通过（状态={M6状态}）"
+                       f"——{(M6汇总记录 or {}).get('原因', '无记录')}"))
+            print(红色("  修复：本轮写集含 codegen/opt/ir，M6 必须真跑且 fix_p ≡ fix_s"
+                       "（#1221 机械保证·禁用 --allow 类放行）"))
+            print(f"  {红色('✗')} 79_v2_自举闭环: M6 未跑/未通过（{(M6汇总记录 or {}).get('原因', '')}）")
+            return 1
+        print(青色(f"M6 门禁通过：fix_p ≡ fix_s（md5={(M6汇总记录 or {}).get('fix_p_md5')}）"))
+    elif 要求M6:
+        print(青色("M6 门禁：本片不含 79_v2——显式未选记录已写入（由含重型的片承担）"))
     return 0
+
+
+def M6自检() -> int:
+    """#1221：M6 审计记录纯函数面自检（零真编译）——差异偏移/长度差/JSON 落盘三面。
+    入口：python tests/e2e/run_e2e.py --selftest-m6（CI 式；红 exit 1）。"""
+    import tempfile
+    断言们 = [
+        ("首字节差异=0", 首个差异字节偏移(b"abc", b"xbc") == 0),
+        ("中段差异=偏移", 首个差异字节偏移(b"abcdef", b"abcxef") == 3),
+        ("一致=无差异（None）", 首个差异字节偏移(b"abc", b"abc") is None),
+        ("长度差=较短长度", 首个差异字节偏移(b"ab", b"abc") == 2
+         and 首个差异字节偏移(b"abc", b"ab") == 2),
+        ("大文件分块比较（>64KB 块边界后差异）",
+         首个差异字节偏移(b"a" * 70000 + b"X", b"a" * 70000 + b"Y") == 70000),
+    ]
+    with tempfile.TemporaryDirectory() as 临时:
+        路径 = pathlib.Path(临时) / "r.json"
+        写结果JSON(str(路径), "win-x64", 1, 0, [("79_v2_自举闭环", "固定点不一致")], [], 0,
+                   M6记录={"状态": "失败", "fix_p_md5": "a" * 32, "fix_s_md5": "b" * 32,
+                           "首个差异字节": 7, "首个差异行": 2})
+        内容 = json.loads(路径.read_text(encoding="utf-8"))
+        断言们.append(("--json 带 M6 键（md5/首个差异字节）",
+                    内容.get("M6", {}).get("fix_p_md5") == "a" * 32
+                    and 内容["M6"].get("首个差异字节") == 7))
+    for 说明, 过 in 断言们:
+        print("  [%s] %s" % ("✓" if 过 else "✗", 说明))
+    失败 = sum(1 for _, 过 in 断言们 if not 过)
+    print("\n[M6 自检] %d 例·失败 %d" % (len(断言们), 失败))
+    return 1 if 失败 else 0
 
 
 if __name__ == "__main__":
@@ -3131,6 +3347,9 @@ if __name__ == "__main__":
     #   宣称的「--selftest 面校验守恒」此前实无该入口（注释失实），本次补真。
     if "--selftest" in sys.argv:
         sys.exit(分片守恒自检())
+    # #1221：M6 审计记录纯函数面自检（零真编译·先于树锁）
+    if "--selftest-m6" in sys.argv:
+        sys.exit(M6自检())
     # 555 树锁薄接入（唯一入口改动·逻辑全部归纳进 scripts/gate_lock.py 树锁运行入口）：
     #   整运行期持本树 target/tree.lock——同树并发 E2E 互踩（v2p 缓存双写/清场互杀
     #   rc=143）根治；同树后来者排队等待（进度 30s 一打印），跨树不受影响。

@@ -63,6 +63,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import board_closeout   # 392：伞批销账号解析（登记制·提交信息 [销账:号,…] 行）
 import integrate_disclosure   # 818：点名放行披露机械化（known-red 放行路径强制披露闸门·纯函数）
+import m6_gate          # #1221：M6 自举固定点写集触发器（纯函数判定单点）
 
 仓库根 = Path(__file__).resolve().parent.parent
 主远程 = "gitcode"
@@ -355,7 +356,8 @@ def 链顶提交信息披露检查(红例们: list[str]) -> str | None:
     return integrate_disclosure.点名放行披露检查(信息, 红例们)
 
 
-def 全量门禁(平台: str, 已知红们: list[str] | None = None, 快速通道: bool = False) -> str | None:
+def 全量门禁(平台: str, 已知红们: list[str] | None = None, 快速通道: bool = False,
+           须M6: bool = False) -> str | None:
     """全量门禁：零警告构建 + 单测 + E2E 全量（平台相关；win=ci.ps1 一步到位）。
 
     快速通道（920·用户裁决 2026-10-01「快速集即集成·全量云端事后兜底」）：
@@ -372,11 +374,22 @@ def 全量门禁(平台: str, 已知红们: list[str] | None = None, 快速通�
     if 快速通道:
         print("  [快速通道·920 用户裁决] 本机 L1（gate_quick：静态三检查+增量构建+全量单测）"
               "——全量由 TX_02 云端对 develop 事后自动兜底（红灯治理适用）")
+        if 须M6:
+            print("  [M6·#1221] 写集含 codegen/opt/ir——本机 L1 不含 M6，云端预验轮由"
+                  "ci_daemon 写集判定强制 79_v2（--require-m6·交叉模拟平台预验判红）")
         r = 运行([sys.executable, "scripts/gate_quick.py"])
         return None if r.returncode == 0 else "L1 快速门禁未过（gate_quick.py——修复后重试）。"
     if 平台 == "win":
         # 449-a：gate_lock 串行锁在 ci.ps1 内部（acquire/finally-release）——此处勿再嵌套（死锁）。
-        结果 = 运行(["powershell", "-ExecutionPolicy", "Bypass", "-File", "scripts/ci.ps1"])
+        # #1221：须M6 → 环境变量透传给 ci.ps1 内的 run_e2e（CN_M6_REQUIRE=1 触发
+        #   --require-m6 语义=必跑 79_v2·跳过即红）；ci.ps1 已持机器锁，重负载放行安全。
+        环境 = dict(os.environ)
+        if 须M6:
+            环境["CN_M6_REQUIRE"] = "1"
+            print("  [M6·#1221] 写集含 codegen/opt/ir——ci.ps1 E2E 强制跑 79_v2"
+                  "（CN_M6_REQUIRE=1·跳过/失败=本轮红）")
+        结果 = 运行(["powershell", "-ExecutionPolicy", "Bypass", "-File", "scripts/ci.ps1"],
+                    env=环境)
         if 结果.returncode == 0:
             return None
         print("  [复验] ci.ps1 未过——分步复验区分真红与并行互踩（447-a 机制）")
@@ -388,6 +401,7 @@ def 全量门禁(平台: str, 已知红们: list[str] | None = None, 快速通�
             return "单元测试未全过。"
         串行 = 运行捕获([sys.executable, "tests/e2e/run_e2e.py",
                      "--cn", str(仓库根 / "target/Debug/cn.exe"), "--jobs", "1",
+                     *(["--require-m6"] if 须M6 else []),
                      "--full-reason", "integrate win 分步串行复验（447-a）"])
         if 串行.returncode != 0:
             # 591-a（T100·170 集成实测）：win 分支补接 --allow-known-red 点名消费
@@ -400,6 +414,9 @@ def 全量门禁(平台: str, 已知红们: list[str] | None = None, 快速通�
                 #   解析失败=硬红（原逻辑空清单落「未点名为空」=披露放行——放红漏洞）。
                 return ("E2E 串行复验 rc 非零但失败清单解析为空（✗ 行未取得——解析失败=硬红"
                         "·868）——禁止集成；本机重跑 E2E 复核失败清单后重试。")
+            if m6_gate.红例含M6(失败们):
+                return ("M6（79_v2 自举固定点）红——禁止 --allow-known-red 放行（#1221）："
+                        f"{失败们}；修复 codegen/opt/ir 后重跑集成。")
             未点名 = [f for f in 失败们 if f not in (已知红们 or [])]
             if 未点名:
                 return "E2E 串行复验仍未全绿（非并行互踩——真红，禁止集成）。"
@@ -452,7 +469,10 @@ def 全量门禁(平台: str, 已知红们: list[str] | None = None, 快速通�
                  "exec " + sys.executable + " " +
                  str(仓库根 / "scripts/gate_lock.py") + " run -- " + sys.executable +
                  " tests/e2e/run_e2e.py --target " + 目标 + " --cn " + str(cn路径) +
-                 " --jobs 8 --full-reason 'integrate linux 分步全量门禁（gate_lock 锁内）'"])
+                 " --jobs 8" + (" --require-m6" if 须M6 else "")
+                 + " --full-reason 'integrate linux 分步全量门禁（gate_lock 锁内）'"])
+    if 须M6:
+        print("  [M6·#1221] 写集含 codegen/opt/ir——E2E 带 --require-m6（79_v2 必跑·跳过/失败=本轮红）")
     if e2e.returncode == 0:
         return None
     print("  [复验] E2E 并行未全绿——串行复验区分真红与并行互踩（447-a 机制·gate_lock 锁内）")
@@ -460,7 +480,8 @@ def 全量门禁(平台: str, 已知红们: list[str] | None = None, 快速通�
                   "exec " + sys.executable + " " +
                   str(仓库根 / "scripts/gate_lock.py") + " run -- " + sys.executable +
                   " tests/e2e/run_e2e.py --target " + 目标 + " --cn " + str(cn路径) +
-                  " --jobs 1 --full-reason 'integrate linux 串行复验（447-a·gate_lock 锁内）'"])
+                  " --jobs 1" + (" --require-m6" if 须M6 else "")
+                  + " --full-reason 'integrate linux 串行复验（447-a·gate_lock 锁内）'"])
     if 串行.returncode != 0:
         # 564-a（过渡机制·fdef8ae9 P1「v2p 构建确定性缺失」根治前）：--allow-known-red
         #   显式点名机制——串行红若【全部】命中点名清单=「三平台已定性已知红」披露放行；
@@ -473,6 +494,9 @@ def 全量门禁(平台: str, 已知红们: list[str] | None = None, 快速通�
             #   且未点名空」在空清单时恒真=点名流放红漏洞；未点名时靠尾行兜底不暴露）。
             return (f"E2E 串行复验 rc 非零但失败清单解析为空（✗ 行未取得——解析失败=硬红"
                     f"·868·--target {目标}）——禁止集成；重跑 E2E 复核失败清单后重试。")
+        if m6_gate.红例含M6(失败们):
+            return ("M6（79_v2 自举固定点）红——禁止 --allow-known-red 放行（#1221）："
+                    f"{失败们}；修复 codegen/opt/ir 后重跑集成。")
         未点名 = [f for f in 失败们 if f not in (已知红们 or [])]
         if 已知红们 and not 未点名:
             # 818 披露闸门：known-red 放行前核链顶提交〔点名放行〕披露段（无则拒）
@@ -761,7 +785,7 @@ def 查可复用预验绿(源分支: str, 内容键: str, 状态查=None) -> boo
 
 
 def 云端预验门禁(链顶: str, 参数: argparse.Namespace,
-                 源分支: str = "", 等待: bool = True) -> str | None:
+                 源分支: str = "", 等待: bool = True, 须M6: bool = False) -> str | None:
     """链顶（=合并结果）推预验分支触发全量（linux-x86_64 面），绿放行 push develop、红拦截。
     1021 执行器池化两层降级：①TX_01 任务池（多 runner 认领·谁空闲谁跑·一个任务一个实例）→
     ②池不可达/超时=ssh 直发 TX_02（1008 原路径保留·仍为预验非绕过）。
@@ -790,9 +814,15 @@ def 云端预验门禁(链顶: str, 参数: argparse.Namespace,
     内容键 = (输出(["git", "rev-parse", f"{参数.remote}/{源分支}"])
              if 源分支.startswith("任务/") else "")
     if 查可复用预验绿(源分支, 内容键):
-        print(f"  [预验·复用] {源分支}（内容键 {内容键[:10]}）已有完成·绿记录——"
-              "免重跑云端全量（830 复用面：内容未变·绿照用·组合由 develop 轮转权威守护）")
-        return None
+        if 须M6:
+            # #1221：写集含 codegen/opt/ir——历史绿记录无 M6 证据（或非原生平台），
+            #   不复用，本轮重跑云端全量（M6 机械保证优先于算力复用）。
+            print(f"  [M6·#1221] 写集触发 M6——不复用 {源分支} 的历史绿记录"
+                  "（M6 证据缺失/平台不明），本轮重跑云端全量")
+        else:
+            print(f"  [预验·复用] {源分支}（内容键 {内容键[:10]}）已有完成·绿记录——"
+                  "免重跑云端全量（830 复用面：内容未变·绿照用·组合由 develop 轮转权威守护）")
+            return None
     配置 = 读CI配置()
     预验分支 = 预验远程分支前缀 + 链顶[:10]
     sha10 = 链顶[:10]
@@ -814,7 +844,19 @@ def 云端预验门禁(链顶: str, 参数: argparse.Namespace,
         #   830：board_ci 归类/562 已并入检测/预验复用键均按「任务/<号>」形态消费（批流程传参）
         # 337 认领限制：--pool-limit 平台白名单——任务只被白名单内平台 runner 认领，
         #   定向规避已知环境红平台（335 单位机 arm64 老工具链）；缺省不限=291 混合池默认不变
-        认领限制 = ",".join(参数.pool_limit)
+        # #1221：写集触发 M6 时缺省限制原生固定点平台 win-x64/linux-x86_64——交叉
+        #   模拟 arm64（CN_CI_PLATFORM=linux-arm64·x86_64 宿主 qemu）在 ci_daemon
+        #   预验轮会 fail-closed 判红（无法原生跑 79_v2），此处从派发面直接避开；
+        #   用户显式 --pool-limit 优先（含 arm64 且为真机时仍可跑，交叉模拟实例会红）。
+        认领限制们 = list(参数.pool_limit)
+        if 须M6 and not 认领限制们:
+            认领限制们 = ["win-x64", "linux-x86_64"]
+            print("  [M6·#1221] 预验认领限原生平台 win-x64/linux-x86_64"
+                  "（交叉模拟 arm64 无法原生跑 79_v2·由 develop 轮转真机覆盖 arm64）")
+        elif 须M6 and "linux-arm64" in 认领限制们:
+            print("  [M6·#1221·注意] --pool-limit 含 linux-arm64——若认领者为交叉模拟"
+                  "实例，预验轮会因 M6 未跑判红（真机 arm64 可跑；或改用原生平台重试）")
+        认领限制 = ",".join(认领限制们)
         入队 = 服务调用("/api/task_enqueue",
                         构造预验入队载荷(预验分支, 链顶, 源分支, 认领限制, 内容键))
         if 入队 is not None and 入队.get("ok"):
@@ -1284,6 +1326,12 @@ def 单次集成尝试(平台: str, 上次已验基准: str | None, 参数: argp
     if not 文件们:
         return False, "分支相对 develop 无任何改动（空集成）。", None
     须全量 = 分类写集(文件们)
+    # #1221：M6 写集触发（codegen/opt/ir）——本轮必须真跑 79_v2 自举固定点；
+    #   纯前端/文档/脚本轮豁免（零重负载成本）。
+    m6判定 = m6_gate.判定写集(文件们)
+    if m6判定["触发"]:
+        print(f"[M6·#1221] 写集命中 {len(m6判定['命中'])} 文件（codegen/opt/ir）"
+              "——本轮必须真跑 79_v2 自举固定点（跳过/失败=红）")
 
     # 门禁跑在合并结果上；重试时仅当 develop 增量（上轮已验 tip→本轮最新）触及 src/tests 才重跑全量门禁
     if 上次已验基准 is None or 上次已验基准 == 最新:
@@ -1297,12 +1345,14 @@ def 单次集成尝试(平台: str, 上次已验基准: str | None, 参数: argp
         return False, 问题, None
     if 须全量 and (上次已验基准 is None or 增量须全量):
         print(f"[4] 全量门禁（平台={平台}·跑在合并结果上）")
-        问题 = 全量门禁(平台, 参数.allow_known_red, 参数.fast_lane)
+        问题 = 全量门禁(平台, 参数.allow_known_red, 参数.fast_lane,
+                      须M6=m6判定["触发"])
         if 问题:
             return False, 问题, None
         if 参数.cloud_gate:
             print("[4.5] 云端预验门禁（1008·链顶=合并结果·绿才 push develop）")
-            问题 = 云端预验门禁(输出(["git", "rev-parse", "HEAD"]), 参数)
+            问题 = 云端预验门禁(输出(["git", "rev-parse", "HEAD"]), 参数,
+                              须M6=m6判定["触发"])
             if 问题:
                 return False, 问题, None
     elif 须全量:
@@ -1456,6 +1506,11 @@ def 批流程(参数: argparse.Namespace) -> int:
             实际成员 = [行 for 行 in 实际成员 if 行["分支"] not in 踢出名们]
             批文件们 = 批写集(实际成员, 最新)
             须全量 = 分类写集(批文件们)
+            # #1221：批写集 M6 触发（任一成员动 codegen/opt/ir ⇒ 本轮必跑固定点）
+            m6判定 = m6_gate.判定写集(批文件们)
+            if m6判定["触发"]:
+                print(f"[M6·#1221] 批写集命中 {len(m6判定['命中'])} 文件（codegen/opt/ir）"
+                      "——本轮必须真跑 79_v2 自举固定点（跳过/失败=红）")
             print(f"[4] 批门禁（成员 {len(实际成员)}·写集 {len(批文件们)} 文件"
                   f"{'·全量' if 须全量 else '·快速'}）"
                   + (f"（踢出：{'、'.join(f'{b}[{因}]' for b, 因 in 踢出们)}）" if 踢出们 else ""))
@@ -1492,7 +1547,8 @@ def 批流程(参数: argparse.Namespace) -> int:
                           "不重跑云端全量·预验绿按内容键复用）")
                 else:
                     print(f"[5] 全量门禁（平台={平台}·跑在合并结果上）")
-                问题 = 全量门禁(平台, 参数.allow_known_red, 参数.fast_lane)
+                问题 = 全量门禁(平台, 参数.allow_known_red, 参数.fast_lane,
+                              须M6=m6判定["触发"])
                 if 问题:
                     print("  [归因辅助] 批成员×写集（对照失败日志定位破坏者后 --drop 踢出重验）：")
                     for 行 in 实际成员:
@@ -1501,7 +1557,8 @@ def 批流程(参数: argparse.Namespace) -> int:
                     return 失败(问题 + "（批门禁红——修复后重跑本命令续推）")
                 if 参数.cloud_gate and not 云端首批已绿:
                     print(f"[5.5] 云端预验门禁（1008·链顶 {链顶[:8]}·绿才 push develop）")
-                    问题 = 云端预验门禁(链顶, 参数, 源分支=当前分支, 等待=参数.wait)
+                    问题 = 云端预验门禁(链顶, 参数, 源分支=当前分支, 等待=参数.wait,
+                                    须M6=m6判定["触发"])
                     if 问题 == 已入池哨兵:
                         已入池待续 = True
                         break   # 830 非 --wait：入池成功·不 push（重跑续推）
@@ -1680,6 +1737,12 @@ def 主流程() -> int:
     if 参数.try_build_done or 参数.win_verified:
         print("[v3] --try-build-done/--win-verified 已随协议 v3 废除（接受即忽略）——"
               "本机门禁绿即集成，跨平台由集成后异步验收保障（AGENTS.md §7）。")
+    # #1221：M6（79_v2 自举固定点）红禁放行——点名清单含 79_v2 直接拒绝（解析面
+    #   单点拦截；消费点 m6_gate.红例含M6 双挂，防「点名清单」形态绕过）。
+    M6点名拒 = m6_gate.误放行检查(list(参数.allow_known_red or [])
+                                + list(参数.allow_pool_red or []))
+    if M6点名拒:
+        return 失败(M6点名拒)
     if 参数.gather or 参数.seal_now or 参数.takeover:
         print("[830] --gather/--seal-now/--takeover 已随并行化退役（接受即忽略）——"
               "新模型每个任务独立组链入池·无批主无拼车·失败重跑本命令即续推（AGENTS.md §5）。")

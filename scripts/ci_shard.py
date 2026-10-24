@@ -544,16 +544,21 @@ def 读e2e明细(路径: Path):
         return None
 
 
-def e2e命令基(cn: Path, 保内存: int, 平台: str, 是win: bool) -> list:
+def e2e命令基(cn: Path, 保内存: int, 平台: str, 是win: bool,
+              须M6: bool = False) -> list:
     """1297 提取：e2e 命令公共段（主实例全量/分片与从实例片轮三处共用·纪律二）——
     --target/--cn/--max-mem/--heavy-ci/--full-reason 一致口径；--json/--shard/--jobs
-    由调用方按形态追加。566 注释原文见 ci_daemon 静态门禁与e2e段（放行通道语义不变）。"""
-    return ([] if 是win else ["nice", "-n", "10"]) + [
+    由调用方按形态追加。566 注释原文见 ci_daemon 静态门禁与e2e段（放行通道语义不变）。
+    #1221：须M6=True 追加 --require-m6（写集命中 codegen/opt/ir 的轮——79_v2 未跑/
+    未通过=本轮红）；从片（片序≥1）不含 79_v2，调用方不传=「未选」不误红。"""
+    基 = ([] if 是win else ["nice", "-n", "10"]) + [
         sys.executable, "tests/e2e/run_e2e.py",
         "--target", 平台, "--cn", str(cn),
         "--max-mem-mb", str(保内存),
-        "--heavy-ci",
-        "--full-reason", "ci_daemon 云端全量门禁（TX_02/池 runner）"]
+        "--heavy-ci"]
+    if 须M6:
+        基.append("--require-m6")
+    return 基 + ["--full-reason", "ci_daemon 云端全量门禁（TX_02/池 runner）"]
 
 
 def 合并e2e明细(明细们: list, 分片行们: list):
@@ -589,6 +594,11 @@ def 合并e2e明细(明细们: list, 分片行们: list):
                 合并["未实现用例"].append(例)
     if 分片行们:
         合并["分片"] = 分片行们
+    # #1221：M6 审计记录跨片合并——优先取「通过」（片 0 含 79_v2），否则首个有效
+    #   记录（未跑/未选原因同样上聚合明细，8300 可见）。旧版明细无该键=不写（不编造）。
+    M6们 = [m.get("M6") for m in 有效们 if isinstance(m.get("M6"), dict)]
+    if M6们:
+        合并["M6"] = next((m for m in M6们 if m.get("状态") == "通过"), M6们[0])
     return 合并
 
 

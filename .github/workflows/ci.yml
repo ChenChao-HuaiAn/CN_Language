@@ -1,5 +1,9 @@
 # CN 语言编译器 CI（B-2 2026-08）
 # 门禁：构建（/W4 /WX 零警告）+ 全量单测 + 全量 E2E
+# #1221（2026-10-23）：写集含 codegen/opt/ir ⇒ 本轮必须跑 M6（79_v2 自举固定点）——
+#   触发判定复用 scripts/m6_gate.py（判定单点），CN_M6_REQUIRE=1 令 run_e2e 放行
+#   重负载并强制 79_v2（跳过/失败=红）；纯前端/文档/脚本轮不付 M6 成本。
+#   同时补 --full-reason（354 裸全量护栏的 CI 调用面显式理由——原工作流缺失会 exit 2）。
 name: CI
 
 on:
@@ -13,6 +17,18 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0          # M6 写集 diff 需要基线提交对象
+
+      - name: M6 写集触发判定（codegen/opt/ir ⇒ 本轮必跑 79_v2）
+        shell: bash
+        run: |
+          BASE="${{ github.event.before }}"
+          if [ -z "$BASE" ] || [ "$BASE" = "0000000000000000000000000000000000000000" ]; then
+            BASE="${{ github.event.pull_request.base.sha }}"
+          fi
+          if [ -z "$BASE" ]; then BASE="HEAD~1"; fi
+          python scripts/m6_gate.py --changed-since "$BASE" --gh-env >> "$GITHUB_ENV"
 
       - name: 配置 CMake
         run: cmake -S . -B target/build
@@ -24,4 +40,4 @@ jobs:
         run: target/Debug/cn_unit_tests.exe
 
       - name: E2E 测试
-        run: python tests/e2e/run_e2e.py --cn target/Debug/cn.exe
+        run: python tests/e2e/run_e2e.py --cn target/Debug/cn.exe --full-reason "GitHub Actions 全量门禁（#1221 M6 写集触发）"
