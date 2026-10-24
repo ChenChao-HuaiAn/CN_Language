@@ -254,6 +254,15 @@ ir::IRValue IRGenerator::genTransferClassArgWithCleanup966(Expr* arg,
                                                            const SourceLocation& loc) {
     (void)loc;   // 预留 648 实参清理 miss 诊断归属（与 genArgValueWithCleanup 同口径）
     if (arg == nullptr) return ir::IRValue();
+    // 643（云端预验红实录）：构造字面量实参=materializeStructInitArg 专用通道
+    //   （与 buildCallArgsOop 同款特判）——落通用值发射=648 显形拒。
+    if (arg->getType() == NodeType::StructInitExpr) {
+        StructInitExpr* init = static_cast<StructInitExpr*>(arg);
+        const std::string argStruct = types::canonical(init->typeName);
+        if (semantic_ != nullptr && semantic_->isStructType(argStruct)) {
+            return materializeStructInitArg(init, loc);
+        }
+    }
     if (arg->getType() == NodeType::CallExpr &&
         isTransferCall(static_cast<const CallExpr*>(arg)) &&
         semantic_ != nullptr) {
@@ -272,7 +281,11 @@ ir::IRValue IRGenerator::genTransferClassArgWithCleanup966(Expr* arg,
             return v;
         }
     }
-    return genExprForOop(arg);
+    // 234（云端预验红实录·⑥校验位 32 丢）：其余形态**必须回
+    //   genArgValueWithCleanup**（81-a 返回结构体临时串字段登记/644 串临时/
+    //   662 拥有契约面全在此）——裸 genExprForOop 绕过登记=返回结构体临时
+    //   入容器的串字段泄漏。
+    return genArgValueWithCleanup(arg, loc);
 }
 
 // ==================== 辅助：实参提升与实参装载 ====================
