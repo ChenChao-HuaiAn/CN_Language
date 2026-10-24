@@ -120,6 +120,18 @@ def 轮计划(轮分支: str, sha: str, 平台: str, 是win: bool, 仓库根: Pa
     return 计划
 
 
+def 不可验处置(轮分支: str, m6计划: dict, 日志) -> bool:
+    """#1570：M6 触发且本平台不可原生跑时的处置。True=早退判红（预验轮）；
+    False=develop/兜底备份轮记转派并继续 E2E（M6 由原生平台/预验承担）。"""
+    if 轮分支 == "develop" or 轮分支.startswith("ci/兜底-"):
+        print("  [M6·转派] %s——develop 备份轮继续 E2E（不早退）"
+              % m6计划.get("说明", ""), file=日志, flush=True)
+        return False
+    print("  [M6·平台不可验] %s——构建前早退（不跑 E2E）"
+          % m6计划.get("说明", ""), file=日志, flush=True)
+    return True
+
+
 def e2e段(步骤们: dict, 步骤, cn: Path, 日志, sha: str, 轮分支: str, 分片: int,
           分片召唤时刻, 计划: dict, *, 是win: bool, 平台: str, 日志目录: Path,
           e2e并行: int, e2e超时秒: int, runner标识: str, 启动心跳,
@@ -154,14 +166,21 @@ def e2e段(步骤们: dict, 步骤, cn: Path, 日志, sha: str, 轮分支: str, 
             步骤们["M6平台保障"] = {"rc": 0, "说明": "M6 必跑（--require-m6·#1221）"}
             print("  [M6] %s——e2e 带 --require-m6（79_v2 跳过/失败=本轮红）"
                   % m6_gate.摘要(计划), file=日志, flush=True)
+        elif 轮分支 == "develop" or 轮分支.startswith("ci/兜底-"):
+            # #1570：develop/兜底轮是**合入后**的备份验证——合入前的预验轮已原生
+            #   跑过 M6（integrate 门禁），本平台不可原生时记「转派」并继续 E2E，
+            #   不再让平台能力差异造红行；M6 义务由原生平台轮/预验承担。
+            步骤们["M6平台保障"] = {"rc": 0, "类别": "转派",
+                                   "说明": "转派原生平台：" + m6_gate.摘要(计划)}
+            计划["执行"] = {"状态": "转派", "说明": "平台不可原生验——转派原生轮"}
+            print("  [M6·转派] %s——develop 备份轮记转派（M6 由原生平台/预验承担）"
+                  % m6_gate.摘要(计划), file=日志, flush=True)
         else:
-            # 正常路径不可达（跑一轮/片0 已在构建前早退）——防御性第二道：未来调用面
-            # 若绕过早退（计划被重算/新编排），仍不得让不可原生平台轮判绿。
+            # 预验轮 fail-closed（唯一合法入 develop 通道）：不可原生平台不得给绿。
             步骤们["M6平台保障"] = {"rc": -1, "类别": "平台不可验",
                                    "说明": "平台不可验：" + m6_gate.摘要(计划) + "（fail-closed）"}
-            print("  [M6·红] %s——fail-closed（该平台无法原生验证固定点；本轮不落 "
-                  "latest，下一轮写集仍含改动→由原生平台重验）" % m6_gate.摘要(计划),
-                  file=日志, flush=True)
+            print("  [M6·红] %s——fail-closed（预验轮不可原生平台不得给绿）"
+                  % m6_gate.摘要(计划), file=日志, flush=True)
     保内存 = min(4096, int(ci_report.物理内存MB(是win) * 0.8))
     e2e基 = ci_shard.e2e命令基(cn, 保内存, 平台, 是win, 须M6=须M6)
     # #1221 复审 P2：命中清单随环境进 run_e2e 审计记录（子进程继承；轮后恢复）

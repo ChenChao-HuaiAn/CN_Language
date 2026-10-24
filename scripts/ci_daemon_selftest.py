@@ -1297,7 +1297,7 @@ def _1221断言(主模块, 断言) -> None:
         明细 = Path(临时) / "e2e明细.json"
         日志 = io.StringIO()
 
-        def 跑一段(计划, 明细内容=None):
+        def 跑一段(计划, 明细内容=None, 轮分支="ci/预验-x"):
             步骤们: dict = {"构建": {"rc": 0}}
             命令们: list = []
             if 明细内容 is None:
@@ -1310,7 +1310,7 @@ def _1221断言(主模块, 断言) -> None:
                 命令们.append((名, list(命令)))
                 步骤们[名] = {"rc": 0}
                 return True
-            ci_m6.e2e段(步骤们, 假步骤, 假cn, 日志, "a" * 40, "ci/预验-x", 0, None,
+            ci_m6.e2e段(步骤们, 假步骤, 假cn, 日志, "a" * 40, 轮分支, 0, None,
                         计划, 是win=True, 平台="win-x64", 日志目录=Path(临时),
                         e2e并行=4, e2e超时秒=60, runner标识="selftest",
                         启动心跳=lambda 分支, 片=None: None, e2e明细路径=明细)
@@ -1329,9 +1329,14 @@ def _1221断言(主模块, 断言) -> None:
              步们无证.get("M6平台保障", {}).get("rc") == -1
              and not 主模块.聚合绿(步们无证))
         步们2, _ = 跑一段(dict(交叉, 处置="未跑-转派"), None)
-        断言("#1221 E2E 段：交叉模拟→fail-closed rc=-1（develop/预验同规·P1-7）",
+        断言("#1221 E2E 段：预验轮交叉模拟→fail-closed rc=-1（P1-7）",
              步们2.get("M6平台保障", {}).get("rc") == -1
              and not 主模块.聚合绿(步们2))
+        步们转, _ = 跑一段(dict(交叉, 处置="未跑-转派"), None, 轮分支="develop")
+        断言("#1570 develop 备份轮交叉模拟→转派 rc=0（M6 由原生平台/预验承担）",
+             步们转.get("M6平台保障", {}).get("rc") == 0
+             and 步们转.get("M6平台保障", {}).get("类别") == "转派"
+             and 主模块.聚合绿(步们转))
         步们缺, 命令缺 = 跑一段(None, None)
         断言("#1221 E2E 段：计划缺失→fail-closed（capable 面仍带 require 且无证据必红）",
              any("--require-m6" in c for _, c in 命令缺)
