@@ -11,6 +11,7 @@
 // 签名纪律：与 SemanticAnalyzer 对应方法逐字一致（override 校验）；
 //   返回的 ClassInfo/StructDecl 等指针为语义表只读别名，禁止下游变更。
 #pragma once
+#include <cstddef>
 #include <cstdint>
 #include <string>
 #include <unordered_map>
@@ -43,6 +44,25 @@ public:
     // 1360 结果化（批3A）：查表 miss 无值（原 nullptr 哨兵退役——消费点
     //   has_value() 分流，类型强制检查·漏检=编译期拒绝）
     virtual cn::Optional<const ClassInfo*> findClass(const std::string& name) const = 0;
+    // ---- 1501：并行 codegen 语义只读冻结（1145 多 worker 共享视图的并发契约）----
+    // 背景：findClass 为 const 但惰性写 classCache（裸名解析缓存）；并行发射时
+    //   多 worker 共享同一视图，首查写路径 = 共享 unordered_map 并发 find/insert
+    //   （数据竞争 UB）。契约=并行 spawn 前主线程调用本方法：预热全部类基名到
+    //   只读缓存并封存（此后 findClass 只读、禁止写缓存）；预热计数经
+    //   prewarmedCount 回填（调用方观测/门禁）。返回 false=errorOut 已填（如重入），
+    //   调用方必须中止而非按成功继续。默认实现=替身无惰性缓存，直接放行。
+    virtual bool beginReadonlyCodegenLookup(std::size_t& prewarmedCount,
+                                            std::string& errorOut) {
+        prewarmedCount = 0;
+        (void)errorOut;
+        return true;
+    }
+    // 解除只读冻结（主线程 join 后调用）。返回有值=冻结期出现未预热查询
+    //   （首个查询名）——调用方必须以内部错误中止编译（miss 不可静默）；
+    //   无值=全部命中预热缓存（正常路径）。
+    virtual cn::Optional<std::string> endReadonlyCodegenLookup() {
+        return std::nullopt;
+    }
     virtual cn::Optional<const StructDecl*> findStruct(const std::string& name) const = 0;
     virtual cn::Optional<const InterfaceInfo*> findInterface(const std::string& name) const = 0;
     virtual cn::Optional<const GenericInfo*> findGeneric(const std::string& name) const = 0;

@@ -200,6 +200,10 @@ cn::Optional<const ClassInfo*> SemanticAnalyzer::findClass(const std::string& na
     // 1155：裸名解析缓存（同一类型串反复查询的高频面——IR 生成期尤甚）。
     //   命中条件=该条目解析时的当前模块与本次相同（模块上下文切换可改变裸名
     //   解析结果）；类表规模变化在 ensureTypeLookupIndex 中清空缓存。
+    // 1501：只读冻结（并行 codegen worker）——写缓存=共享 unordered_map 并发
+    //   find/insert（数据竞争 UB·TSan 实证）；封存期只读索引映射照常解析，
+    //   未命中仅登记（主线程 join 后统一报内部错误），绝不静默写。
+    const bool readonly = idx.readonlySealed;
     const auto cacheIt = idx.classCache.find(name);
     if (cacheIt != idx.classCache.end() && cacheIt->second.module == currentModuleName_) {
         if (cacheIt->second.result == nullptr) return std::nullopt;
@@ -218,6 +222,13 @@ cn::Optional<const ClassInfo*> SemanticAnalyzer::findClass(const std::string& na
     if (result == nullptr) {
         const auto it = idx.classByBase.find(baseView);
         if (it != idx.classByBase.end()) result = it->second;
+    }
+    if (readonly) {
+        // 只读冻结：登记未预热查询（主线程 join 后报内部错误）；结果照常返回，
+        //   调用方在诊断中止前仍可拿到正确布局（缓存条目本就该由 prewarm 提供）
+        idx.recordReadonlyMiss(name);
+        if (result == nullptr) return std::nullopt;
+        return cn::Optional<const ClassInfo*>(result);
     }
     idx.classCache[name] = TypeLookupIndex::ClassLookupCacheEntry{currentModuleName_, result};
     if (result == nullptr) return std::nullopt;

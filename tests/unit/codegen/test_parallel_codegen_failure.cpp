@@ -124,7 +124,8 @@ using MakeFn = std::function<std::unique_ptr<IGenerator>(Diagnostics&)>;
 
 BodyGenStatus GenerateBodies(Harness& harness, const MakeFn& make) {
     return cn_compiler::parallel_codegen::generateFunctionBodies(
-        harness.module, {}, make, harness.diagnostics, harness.texts, harness.failure);
+        harness.module, {}, make, /*semantic=*/nullptr, harness.diagnostics,
+        harness.texts, harness.failure);
 }
 
 MakeFn Touching(std::string throwName, std::string emptyName, bool unknownThrow) {

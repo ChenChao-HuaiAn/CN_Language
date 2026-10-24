@@ -18,6 +18,7 @@
 #include <utility>
 
 #include "cn_compiler/ir/ir.hpp"
+#include "cn_compiler/model/semantic_view.hpp"
 
 namespace cn_compiler {
 namespace parallel_codegen {
@@ -45,15 +46,22 @@ bool codegenStatsEnabled() {
 //   bases[index]!=0 的 index>0 函数；串行路径 workers/labels/shifted 均 0；
 //   常量池回退保留实际 workers（线程确实跑过），但 labels/shifted 记 0=本次
 //   未进入平移面）。
+//   1501：readonly=并行生成段的语义只读冻结观测（sealed=已封存只读；
+//   off=未进入/未封存；prewarmed=预热缓存条目数）——门禁据此机械断言
+//   「并行路径确实经过只读冻结」，防未来改动静默绕过并发防护。
 void reportDecision(bool parallel, std::size_t functions, int threads, int workers,
-                    long long labels, long long shifted, const char* reason) {
+                    long long labels, long long shifted, const char* reason,
+                    bool readonlySealed = false, std::size_t prewarmed = 0) {
     if (codegenStatsEnabled()) {
         std::fprintf(stderr,
                      "[codegen-parallel] parallel=%s functions=%llu threads=%d "
-                     "workers=%d labels=%lld shifted=%lld reason=%s\n",
+                     "workers=%d labels=%lld shifted=%lld reason=%s readonly=%s "
+                     "prewarmed=%llu\n",
                      parallel ? "yes" : "no",
                      static_cast<unsigned long long>(functions), threads, workers,
-                     labels, shifted, reason);
+                     labels, shifted, reason,
+                     readonlySealed ? "sealed" : "off",
+                     static_cast<unsigned long long>(prewarmed));
     }
 }
 
@@ -98,9 +106,12 @@ bool isLabelBoundaryAfter(const std::string& text, std::size_t pos) {
 //                            =throw-unknown:<序号> 指定序号抛非 std 异常（验 catch(...)）
 //                            =empty-text:<序号>    指定序号产出空文本（验空产物拦截）
 //                            =thread-create        模拟线程创建失败（验确定性降级）
+//   1501                     =unwarmed-class:<序号> 指定序号的任务查询未预热类名
+//                            （验只读冻结 miss 显形：修复前=静默写缓存，修复后=
+//                             内部错误中止——miss 不可静默的机械负测）
 //   取值非法/注入未生效（未进入并行路径/序号越界）=显式内部错误，绝不静默放过——
 //   注入设施本身失静默会让负测假绿（门禁脚本另断言决策行 workers/functions）。
-enum class InjectKind { kNone, kThrowStd, kThrowUnknown, kEmptyText };
+enum class InjectKind { kNone, kThrowStd, kThrowUnknown, kEmptyText, kUnwarmedClass };
 
 struct FailureInjection {
     InjectKind kind = InjectKind::kNone;
@@ -190,6 +201,12 @@ InjectionParse parseFailureInjection() {
         parsed.ok = true;
         return parsed;
     }
+    if (mode == "unwarmed-class") {
+        parsed.spec.kind = InjectKind::kUnwarmedClass;
+        parsed.spec.functionIndex = *index;
+        parsed.ok = true;
+        return parsed;
+    }
     parsed.error = "非法 CN_CODEGEN_FAILURE_INJECT 模式: " + mode;
     return parsed;
 }
@@ -202,6 +219,21 @@ void injectBeforeTask(std::size_t index, const FailureInjection& injection) {
     if (injection.kind == InjectKind::kThrowUnknown && injection.functionIndex == index) {
         throw 42;  // 非 std::exception：验证 catch (...) 通道（测试专用）
     }
+}
+
+// 1501：只读冻结 miss 注入——指定序号任务查询必然未预热的类名（门禁负测）。
+//   正常生产未设注入=零调用。semantic 为空=注入配置错误（显式抛，走失败槽）。
+void injectUnwarmedClassLookup(std::size_t index, const FailureInjection& injection,
+                               ISemanticView* semantic) {
+    if (injection.kind != InjectKind::kUnwarmedClass ||
+        injection.functionIndex != index) {
+        return;
+    }
+    if (semantic == nullptr) {
+        throw std::runtime_error(
+            "注入 unwarmed-class 需要语义视图（测试配置错误：并行发射未绑定语义）");
+    }
+    static_cast<void>(semantic->findClass("__1499_未预热类__"));
 }
 
 // 任务后置注入：指定序号产出空文本（与真实「发射器零产出」走同一拦截路径）
@@ -331,6 +363,7 @@ void createGenerators(
 //   失败槽/停止标志/异常捕获全部在 runTasksParallel 内（线程异常绝不逃逸）。
 std::optional<std::size_t> runGenerationTasks(
     const ir::IRModule& module, int threads, const FailureInjection& injection,
+    ISemanticView* semantic,
     const std::vector<std::unique_ptr<IGenerator>>& generators,
     const std::vector<std::unique_ptr<Diagnostics>>& localDiagnostics,
     std::vector<FunctionOutput>& outputs, std::atomic<bool>& poolMiss,
@@ -343,6 +376,7 @@ std::optional<std::size_t> runGenerationTasks(
             Diagnostics& local = *localDiagnostics[workerIndex];
             const Diagnostics::Snapshot snapshot = local.takeSnapshot();
             injectBeforeTask(index, injection);
+            injectUnwarmedClassLookup(index, injection, semantic);
             generator.generateFunction(module.functions[index], outputs[index]);
             if (injectionEmptiesText(index, injection)) outputs[index].text.clear();
             if (outputs[index].text.empty()) {
@@ -476,10 +510,57 @@ void shiftLabelNumbers(std::string& text, int base,
     text.swap(shifted);
 }
 
+// 1501：并行生成段只读冻结入口（主线程，先于线程创建）——失败填 failure。
+//   语义视图为空=合成测试模块（无共享缓存写面）——此时不冻结（无操作）。
+bool beginSealedGeneration(ISemanticView* semantic, std::size_t& prewarmed,
+                           BodyGenFailure& failure) {
+    prewarmed = 0;
+    if (semantic != nullptr) {
+        std::string error;
+        if (semantic->beginReadonlyCodegenLookup(prewarmed, error) == false) {
+            failure.message = error;
+            return false;
+        }
+    }
+    return true;
+}
+
+// 1501：解除冻结并检查未预热 miss——有值=内部错误（预热不完整/只读期类表变化）。
+bool endSealedGeneration(ISemanticView* semantic, BodyGenFailure& failure) {
+    if (semantic != nullptr) {
+        const cn::Optional<std::string> miss = semantic->endReadonlyCodegenLookup();
+        if (miss.has_value()) {
+            failure.message =
+                "并行 codegen 语义只读缓存未预热命中（类名 '" + miss.value() +
+                "'）——预热清单不完整或只读冻结期发生类表变化（编译器内部错误）；"
+                "已中止编译，不产出部分汇编";
+            return false;
+        }
+    }
+    return true;
+}
+
+// 决策行观测：标签总数 + 真正进入平移面的标签量（bases[index]!=0 的 index>0 函数）
+struct LabelTotals {
+    long long labels = 0;
+    long long shifted = 0;
+};
+
+LabelTotals countLabelTotals(const std::vector<FunctionOutput>& outputs) {
+    LabelTotals totals;
+    for (const FunctionOutput& output : outputs) totals.labels += output.labelCount;
+    const std::vector<int> bases = computeLabelBases(outputs);
+    for (std::size_t index = 1; index < outputs.size(); ++index) {
+        if (bases[index] != 0) totals.shifted += outputs[index].labelCount;
+    }
+    return totals;
+}
+
 BodyGenStatus generateFunctionBodies(
     const ir::IRModule& module,
     const std::vector<std::string>& labelPrefixes,
     const std::function<std::unique_ptr<IGenerator>(Diagnostics&)>& makeGenerator,
+    ISemanticView* semantic,
     Diagnostics& diagnostics,
     std::vector<std::string>& outTexts,
     BodyGenFailure& failure) {
@@ -518,14 +599,26 @@ BodyGenStatus generateFunctionBodies(
     createGenerators(threads, makeGenerator, generators, localDiagnostics);
     std::vector<FunctionOutput> outputs(taskCount);
     std::atomic<bool> poolMiss{false};
+    // 1501：spawn 前预热+封存语义只读（worker 期 findClass 零写；失败=内部错误）
+    std::size_t prewarmed = 0;
+    if (beginSealedGeneration(semantic, prewarmed, failure) == false) {
+        reportDecision(true, taskCount, threads, 0, 0, 0, "readonly-error");
+        return BodyGenStatus::kFailure;
+    }
     TaskRunResult generation;
     const std::optional<std::size_t> failedIndex = runGenerationTasks(
-        module, threads, injection.spec, generators, localDiagnostics, outputs,
-        poolMiss, generation, failure);
+        module, threads, injection.spec, semantic, generators, localDiagnostics,
+        outputs, poolMiss, generation, failure);
+    // 先解封再分流（失败/回退/成功三路都必须解除冻结）；miss 有值=内部错误中止
+    if (endSealedGeneration(semantic, failure) == false) {
+        reportDecision(true, taskCount, threads, generation.workers, 0, 0,
+                       "readonly-miss", true, prewarmed);
+        return BodyGenStatus::kFailure;
+    }
     if (failedIndex.has_value()) {
         // 失败显形（workers=实际启动数；reason=worker-error 与正常 eligible 可辨）
         reportDecision(true, taskCount, threads, generation.workers, 0, 0,
-                       "worker-error");
+                       "worker-error", true, prewarmed);
         failure.functionIndex = *failedIndex;
         failure.functionName = module.functions[*failedIndex].name;
         return BodyGenStatus::kFailure;
@@ -534,7 +627,7 @@ BodyGenStatus generateFunctionBodies(
         // 1219：常量池回退显形——并行让位串行（产物仍确定，但门禁必须看见
         //   「本次并行未生效」，禁止静默回退被误当作并行通过）
         reportDecision(false, taskCount, threads, generation.workers, 0, 0,
-                       "constant-pool-miss");
+                       "constant-pool-miss", true, prewarmed);
         return BodyGenStatus::kFallback;
     }
     // 标签编号平移：基址=前缀和；平移按函数并行（文本互相独立），再按原序输出。
@@ -542,7 +635,7 @@ BodyGenStatus generateFunctionBodies(
     if (shiftBodiesOrFail(module, outputs, threads, labelPrefixes, injection.spec,
                           shifting, failure) == false) {
         reportDecision(true, taskCount, threads, shifting.workers, 0, 0,
-                       "worker-error");
+                       "worker-error", true, prewarmed);
         return BodyGenStatus::kFailure;
     }
     const int workers = std::min(generation.workers, shifting.workers);
@@ -556,20 +649,9 @@ BodyGenStatus generateFunctionBodies(
                 "/" + std::to_string(threads) +
                 "（任务由主线程+已建线程完成，产物确定性不变）"));
     }
-    long long labelTotal = 0;
-    for (const FunctionOutput& output : outputs) labelTotal += output.labelCount;
-    // shifted=真正进入平移面的标签量：仅 bases[index]!=0 的 index>0 函数
-    //   （首函数 base=0 不平移；前序函数全无标签时后续 base 仍为 0 亦不平移，
-    //   此两形态均不计入——门禁据此断言平移面确有覆盖）
-    const std::vector<int> bases = computeLabelBases(outputs);
-    long long shiftedTotal = 0;
-    for (std::size_t index = 1; index < outputs.size(); ++index) {
-        if (bases[index] != 0) {
-            shiftedTotal += outputs[index].labelCount;
-        }
-    }
-    reportDecision(true, taskCount, threads, workers, labelTotal, shiftedTotal,
-                   "eligible");
+    const LabelTotals totals = countLabelTotals(outputs);
+    reportDecision(true, taskCount, threads, workers, totals.labels, totals.shifted,
+                   "eligible", true, prewarmed);
     publishOutputs(outputs, diagnostics, outTexts);
     return BodyGenStatus::kSuccess;
 }

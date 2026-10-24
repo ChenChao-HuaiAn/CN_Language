@@ -90,9 +90,10 @@ except Exception:
 全局超时秒 = 300        # 整轮门禁 deadline（秒）
 决策前缀 = "[codegen-parallel]"
 必需决策字段 = ("parallel", "functions", "threads", "workers", "labels",
-                "shifted", "reason")
+                "shifted", "reason", "readonly", "prewarmed")
 # reason 白名单（解析期校验：未知原因=决策通道语义漂移，拒绝静默放过）
-允许原因 = {"eligible", "threads-serial", "below-threshold", "constant-pool-miss"}
+允许原因 = {"eligible", "threads-serial", "below-threshold", "constant-pool-miss",
+            "readonly-miss", "readonly-error"}
 
 全局截止时刻 = None
 
@@ -300,6 +301,20 @@ def 并行口径断言(名, 目标, 标签, 决策, 函数数, 期望线程):
         错误.append("%s/%s/%s: 平移面覆盖量=%s（期望 >0）——无 bases!=0 的函数"
                     "进入平移面（首函数/前序无标签均不计）"
                     % (名, 目标, 标签, 决策["shifted"]))
+    # 1501：并行路径必须经过语义只读冻结（防 classCache 并发写回归）。
+    #   readonly=sealed + prewarmed>0 = 预热+封存真实发生；缺失/off=防护被绕过。
+    if 决策["readonly"] != "sealed":
+        错误.append("%s/%s/%s: 语义只读冻结未生效（readonly=%s，期望 sealed）"
+                    "——并行 classCache 写路径可能回归（1501）"
+                    % (名, 目标, 标签, 决策["readonly"]))
+    预热数 = 解析整数(决策["prewarmed"])
+    if 预热数 is None:
+        错误.append("%s/%s/%s: prewarmed 字段非整数: %s"
+                    % (名, 目标, 标签, 决策["prewarmed"]))
+    elif 预热数 <= 0:
+        错误.append("%s/%s/%s: 预热条目数=%s（期望 >0）——只读缓存为空，"
+                    "并行首查将 miss（1501 预热通道失效）"
+                    % (名, 目标, 标签, 决策["prewarmed"]))
     return 错误
 
 
@@ -315,6 +330,11 @@ def 串行口径断言(名, 目标, 决策):
     if 决策["workers"] != "0":
         错误.append("%s/%s/串行: workers=%s（期望 0）"
                     % (名, 目标, 决策["workers"]))
+    # 1501：串行路径不进入冻结（单线程无共享写面）——readonly=off prewarmed=0
+    if 决策["readonly"] != "off" or 决策["prewarmed"] != "0":
+        错误.append("%s/%s/串行: 只读冻结观测不符（readonly=%s prewarmed=%s，"
+                    "期望 off/0）——串行基线混入了并行冻结路径"
+                    % (名, 目标, 决策["readonly"], 决策["prewarmed"]))
     return 错误
 
 
@@ -483,10 +503,11 @@ def 正常决策(标签数="42", 平移量="17"):
     def 决策(序号, 线程口径):
         if 线程口径 == "1":
             return ("%s parallel=no functions=20 threads=1 workers=0 labels=0 "
-                    "shifted=0 reason=threads-serial\n" % 决策前缀)
+                    "shifted=0 reason=threads-serial readonly=off prewarmed=0\n"
+                    % 决策前缀)
         线程 = "20" if 线程口径 is None else str(线程口径)
         return ("%s parallel=yes functions=20 threads=%s workers=%s labels=%s "
-                "shifted=%s reason=eligible\n"
+                "shifted=%s reason=eligible readonly=sealed prewarmed=8\n"
                 % (决策前缀, 线程, 线程, 标签数, 平移量))
     return 决策
 
@@ -512,9 +533,10 @@ def 并行夹具():
     def 决策未生效(序号, 线程口径):
         if 线程口径 == "1":
             return ("%s parallel=no functions=20 threads=1 workers=0 labels=0 "
-                    "shifted=0 reason=threads-serial\n" % 决策前缀)
+                    "shifted=0 reason=threads-serial readonly=off prewarmed=0\n"
+                    % 决策前缀)
         return ("%s parallel=no functions=20 threads=%s workers=1 labels=0 "
-                "shifted=0 reason=below-threshold\n"
+                "shifted=0 reason=below-threshold readonly=off prewarmed=0\n"
                 % (决策前缀, 线程口径))
     返回.append(("并行未生效（决策=no）", 假编译器(固定内容(), 决策未生效),
                  "并行未生效"))
@@ -522,10 +544,12 @@ def 并行夹具():
     def 决策自动退化(序号, 线程口径):
         if 线程口径 == "1":
             return ("%s parallel=no functions=20 threads=1 workers=0 labels=0 "
-                    "shifted=0 reason=threads-serial\n" % 决策前缀)
+                    "shifted=0 reason=threads-serial readonly=off prewarmed=0\n"
+                    % 决策前缀)
         if 线程口径 is None:
             return ("%s parallel=no functions=20 threads=1 workers=1 labels=0 "
-                    "shifted=0 reason=threads-serial\n" % 决策前缀)
+                    "shifted=0 reason=threads-serial readonly=off prewarmed=0\n"
+                    % 决策前缀)
         return 正常决策()(序号, 线程口径)
     返回.append(("自动口径退化为串行", 假编译器(固定内容(), 决策自动退化),
                  "自动口径"))
@@ -538,7 +562,8 @@ def 并行夹具():
     def 决策线程不符(序号, 线程口径):
         if 线程口径 == "4":
             return ("%s parallel=yes functions=20 threads=2 workers=2 labels=42 "
-                    "shifted=17 reason=eligible\n" % 决策前缀)
+                    "shifted=17 reason=eligible readonly=sealed prewarmed=8\n"
+                    % 决策前缀)
         return 正常决策()(序号, 线程口径)
     返回.append(("并行线程数决策不符", 假编译器(固定内容(), 决策线程不符),
                  "线程数决策不符"))
@@ -547,7 +572,7 @@ def 并行夹具():
         if 线程口径 == "1":
             return 正常决策()(序号, 线程口径)
         return ("%s parallel=yes functions=19 threads=%s workers=%s labels=42 "
-                "shifted=17 reason=eligible\n"
+                "shifted=17 reason=eligible readonly=sealed prewarmed=8\n"
                 % (决策前缀, 线程口径, 线程口径))
     返回.append(("并行函数数不符", 假编译器(固定内容(), 决策函数数不符),
                  "函数数不符"))
@@ -556,7 +581,7 @@ def 并行夹具():
         if 线程口径 == "1":
             return 正常决策()(序号, 线程口径)
         return ("%s parallel=yes functions=20 threads=%s workers=%s labels=abc "
-                "shifted=17 reason=eligible\n"
+                "shifted=17 reason=eligible readonly=sealed prewarmed=8\n"
                 % (决策前缀, 线程口径, 线程口径))
     返回.append(("labels 非整数", 假编译器(固定内容(), 决策标签非整),
                  "labels 字段非整数"))
@@ -565,7 +590,8 @@ def 并行夹具():
         if 线程口径 == "1":
             return 正常决策()(序号, 线程口径)
         return ("%s parallel=yes functions=20 threads=%s workers=1 labels=42 "
-                "shifted=17 reason=eligible\n" % (决策前缀, 线程口径))
+                "shifted=17 reason=eligible readonly=sealed prewarmed=8\n"
+                % (决策前缀, 线程口径))
     返回.append(("worker 数不足", 假编译器(固定内容(), 决策worker不足),
                  "实际 worker 数=1"))
     # 少建一线程（threads=4 实启动 3）
@@ -573,10 +599,16 @@ def 并行夹具():
         if 线程口径 == "1":
             return 正常决策()(序号, 线程口径)
         return ("%s parallel=yes functions=20 threads=%s workers=3 labels=42 "
-                "shifted=17 reason=eligible\n" % (决策前缀, 线程口径))
+                "shifted=17 reason=eligible readonly=sealed prewarmed=8\n"
+                % (决策前缀, 线程口径))
     返回.append(("少建线程（workers=3/threads=4）",
                  假编译器(固定内容(), 决策worker少建),
                  "实际 worker 数=3 != threads=4"))
+    # 1501：并行路径未经过语义只读冻结（防护被绕过/回归）
+    def 决策冻结缺失(序号, 线程口径):
+        return 正常决策()(序号, 线程口径).replace("readonly=sealed", "readonly=off")
+    返回.append(("并行只读冻结缺失", 假编译器(固定内容(), 决策冻结缺失),
+                 "只读冻结未生效"))
     return 返回
 
 
@@ -600,7 +632,8 @@ def 串行边界夹具():
     def 串行决策不符(序号, 线程口径):
         if 线程口径 == "1":
             return ("%s parallel=yes functions=20 threads=1 workers=2 labels=42 "
-                    "shifted=17 reason=eligible\n" % 决策前缀)
+                    "shifted=17 reason=eligible readonly=off prewarmed=0\n"
+                    % 决策前缀)
         return 正常决策()(序号, 线程口径)
     返回.append(("串行决策不符", 假编译器(固定内容(), 串行决策不符),
                  "串行决策不符"))
@@ -608,10 +641,20 @@ def 串行边界夹具():
     def 串行reason不符(序号, 线程口径):
         if 线程口径 == "1":
             return ("%s parallel=no functions=20 threads=1 workers=0 labels=0 "
-                    "shifted=0 reason=below-threshold\n" % 决策前缀)
+                    "shifted=0 reason=below-threshold readonly=off prewarmed=0\n"
+                    % 决策前缀)
         return 正常决策()(序号, 线程口径)
     返回.append(("串行 reason 不符", 假编译器(固定内容(), 串行reason不符),
                  "串行 reason"))
+    # 1501：串行基线混入并行冻结观测（readonly=sealed）
+    def 串行混入冻结(序号, 线程口径):
+        if 线程口径 == "1":
+            return ("%s parallel=no functions=20 threads=1 workers=0 labels=0 "
+                    "shifted=0 reason=threads-serial readonly=sealed "
+                    "prewarmed=8\n" % 决策前缀)
+        return 正常决策()(序号, 线程口径)
+    返回.append(("串行混入冻结观测", 假编译器(固定内容(), 串行混入冻结),
+                 "只读冻结观测不符"))
     # 编译失败 / 产物缺失
     def 编译失败(序号, 线程口径, 路径):
         return 1, "夹具编译失败"

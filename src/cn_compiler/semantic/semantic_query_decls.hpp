@@ -77,6 +77,13 @@
     //   名字拼装统一经此，消除 尖括号原文 vs $ 形态 两套注册/查询键
     // 查找类符号（1360 结果化批3A：无值=未命中——原 nullptr 哨兵退役）
     cn::Optional<const ClassInfo*> findClass(const std::string& name) const override ;
+    // 1501：并行 codegen 语义只读冻结（主线程 spawn 前预热全部类基名+封存；
+    //   实现=semantic_parallel_readonly.cpp；并发契约见 model/semantic_view.hpp）
+    bool beginReadonlyCodegenLookup(std::size_t& prewarmedCount,
+                                    std::string& errorOut) override;
+    // 1501：解除冻结；有值=冻结期出现未预热查询（首个类名）——消费点必须
+    //   以内部错误中止编译（miss 不可静默）
+    cn::Optional<std::string> endReadonlyCodegenLookup() override;
     // 全部类符号表只读访问（Task 3.1，供 codegen 遍历生成虚表/静态字段/类方法符号）
     const std::unordered_map<std::string, ClassInfo>& classes() const override { return classes_; }
     // 全部泛型函数实例化记录只读访问（Task 6.1，供 IR 层生成函数体）

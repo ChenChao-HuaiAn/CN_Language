@@ -799,7 +799,8 @@ bool Arm64CodeGenerator::emitFunctionBodiesParallel(const ir::IRModule& module,
     std::vector<std::string> texts;
     parallel_codegen::BodyGenFailure failure;
     const parallel_codegen::BodyGenStatus status = parallel_codegen::generateFunctionBodies(
-        module, arm64LabelPrefixes(), makeGenerator, diagnostics_, texts, failure);
+        module, arm64LabelPrefixes(), makeGenerator, semantic_, diagnostics_, texts,
+        failure);
     bool emitTexts = false;
     const bool handled = parallel_codegen::applyBodyGenStatus(
         status, diagnostics_, failure, emitTexts);

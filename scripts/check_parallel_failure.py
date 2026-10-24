@@ -22,10 +22,15 @@
   ⑧ --json 两态（P2-2）：失败=单个诊断数组含错误项（函数名/序号可见）；
      降级=单个数组含 1 条警告且 0 错误项（driver 在代码生成后统一冲刷；
      human 补差量、JSON 单数组；compile 成功行在 --json 模式抑制）。
+  ⑨ 只读冻结 miss（1501）：unwarmed-class:<序号> 注入使指定任务查询未预热类名
+     ——修复前=worker 静默写共享 classCache（并发写 UB 假绿）；修复后=冻结期零写
+     + miss 登记 → join 后主线程报内部错误、rc=1、无残留产物、决策
+     reason=readonly-miss 且 readonly=sealed（预热真实发生）。
 
 注入点（生产未设=零行为）：CN_CODEGEN_FAILURE_INJECT=throw-std:<序号> /
-throw-unknown:<序号> / empty-text:<序号> / thread-create。注入失效（未进并行路径/
-序号越界/取值非法/2^64 回绕）由编译器显式报内部错误，本门禁另断言注入确实命中。
+throw-unknown:<序号> / empty-text:<序号> / thread-create / unwarmed-class:<序号>。
+注入失效（未进并行路径/序号越界/取值非法/2^64 回绕）由编译器显式报内部错误，
+本门禁另断言注入确实命中。
 
 挂载：`check_parallel_determinism.py` 主检查通过后链式调用本脚本（同一编译器、
 同一触发面），故 L1 写集条件步与云端恒跑门禁自动覆盖本面；selftest 另由
@@ -62,7 +67,7 @@ except Exception:
 
 决策前缀 = "[codegen-parallel]"
 必需决策字段 = ("parallel", "functions", "threads", "workers", "labels",
-                "shifted", "reason")
+                "shifted", "reason", "readonly", "prewarmed")
 注入变量 = "CN_CODEGEN_FAILURE_INJECT"
 并行线程 = "4"
 编译超时 = 120
@@ -293,6 +298,43 @@ def 检查失败配置结果(结果, 消息片段):
     return 错误
 
 
+def 检查未预热注入结果(结果):
+    """1501：并行期未预热类查询=只读冻结 miss 显形断言（真实编译器注入）。
+
+    修复前：worker 首次查询静默写共享 classCache（并发写 UB，rc=0 假绿）；
+    修复后：冻结期零写 + miss 登记 → join 后主线程报内部错误、rc=1、无产物、
+    决策 reason=readonly-miss 且 readonly=sealed（预热真实发生）。"""
+    错误 = []
+    stderr = 结果["stderr"]
+    if 结果["rc"] != 1:
+        错误.append("rc=%s（契约=1：未预热查询必须中止编译，禁静默继续）"
+                    % 结果["rc"])
+    if "内部错误" not in stderr:
+        错误.append("诊断未含「内部错误」（只读冻结 miss 未显形）")
+    if "__1499_未预热类__" not in stderr:
+        错误.append("诊断未含未预热类名（miss 名丢失）")
+    if "未预热" not in stderr:
+        错误.append("诊断未含「未预热」原因片段")
+    if 结果["产物存在"]:
+        错误.append("未预热 miss 失败后残留汇编产物（部分产物必须不落盘）")
+    决策, 决策错误 = 解析决策(stderr)
+    if 决策错误:
+        错误.append(决策错误)
+    else:
+        if 决策["parallel"] != "yes":
+            错误.append("未预热 miss 决策 parallel=%s（期望 yes）"
+                        % 决策["parallel"])
+        if 决策["reason"] != "readonly-miss":
+            错误.append("未预热 miss 决策 reason=%s（期望 readonly-miss）"
+                        % 决策["reason"])
+        if 决策["readonly"] != "sealed":
+            错误.append("未预热 miss 决策 readonly=%s（期望 sealed=冻结真实发生）"
+                        % 决策["readonly"])
+        if 决策["prewarmed"] == "0":
+            错误.append("未预热 miss 决策 prewarmed=0（预热通道未执行）")
+    return 错误
+
+
 def 检查json失败结果(结果, 序号, 函数名, 消息片段):
     """--json 失败态：单数组、错误计数=1、消息含函数名/序号（P2-2）。"""
     错误 = []
@@ -374,6 +416,14 @@ def 主检查(编译器):
                 错误.extend(["%s/%s: %s" % (目标, 模式, 项)
                              for 项 in 检查失败结果(结果, 序号,
                                                     函数名们[序号], 片段)])
+            # 1501：未预热类查询=只读冻结 miss 显形（修复前静默写共享缓存=假绿）
+            未预热输出 = 临时 / "unwarmed-class.asm"
+            未预热结果 = 编译器.编译(入口, 目标, 未预热输出, 并行线程,
+                                     "unwarmed-class:%d" % 中段)
+            统计["编译"] += 1
+            统计["失败用例"] += 1
+            错误.extend(["%s/unwarmed-class: %s" % (目标, 项)
+                         for 项 in 检查未预热注入结果(未预热结果)])
             # 已有产物不得被失败路径截断/覆盖（写盘调用必须根本不发生）
             哨兵 = 临时 / "sentinel.asm"
             哨兵.write_bytes(b"OLD-ASM-MUST-STAY")
@@ -450,7 +500,7 @@ def 主检查(编译器):
             print("  - " + 项, flush=True)
         return 1
     print("[并行失败传播] PASS ✓ 目标=%d 编译=%d（异常/未知异常/空文本/哨兵/"
-          "降级/配置错误×3/--json 两态）"
+          "降级/配置错误×3/只读冻结 miss/--json 两态）"
           % (len(目标们), 统计["编译"]), flush=True)
     return 0
 
@@ -458,8 +508,10 @@ def 主检查(编译器):
 # ============ 自测（合成夹具正反两态，无需编译器） ============
 
 def _成功决策(workers="4", reason="worker-error"):
+    # 1501：并行路径决策行新增语义只读冻结观测字段（readonly/prewarmed）
     return ("%s parallel=yes functions=20 threads=%s workers=%s labels=0 shifted=0 "
-            "reason=%s\n" % (决策前缀, 并行线程, workers, reason))
+            "reason=%s readonly=sealed prewarmed=8\n"
+            % (决策前缀, 并行线程, workers, reason))
 
 
 def _正例文本(序号, 函数名, 片段="注入故障"):
@@ -558,6 +610,36 @@ def 自测():
         if not 通过:
             失败 += 1
 
+    # 1501：只读冻结 miss 显形断言正反两态（未预热查询必须中止编译）
+    未预热基 = {"rc": 1,
+              "stderr": ("未知位置: 错误: 内部错误: 并行代码生成中止: "
+                         "并行 codegen 语义只读缓存未预热命中（类名 "
+                         "'__1499_未预热类__'）——预热清单不完整；已中止编译，"
+                         "不产出部分汇编\n" + _成功决策(reason="readonly-miss")),
+              "产物存在": False, "函数数": 20}
+    未预热用例 = [
+        ("只读冻结 miss 显形（正例）", dict(未预热基), ""),
+        ("miss 静默继续", dict(未预热基, rc=0), "rc="),
+        ("miss 未含类名", dict(未预热基, stderr=未预热基["stderr"].replace(
+            "__1499_未预热类__", "某类")), "未预热类名"),
+        ("miss 残留产物", dict(未预热基, 产物存在=True), "残留"),
+        ("miss 决策 reason 不符", dict(未预热基, stderr=未预热基["stderr"].replace(
+            "reason=readonly-miss", "reason=eligible")), "期望 readonly-miss"),
+        ("miss 决策未冻结", dict(未预热基, stderr=未预热基["stderr"].replace(
+            "readonly=sealed", "readonly=off")), "readonly="),
+    ]
+    for 名称, 结果, 期望 in 未预热用例:
+        错误 = 检查未预热注入结果(结果)
+        if 期望 == "":
+            通过 = not 错误
+            说明 = "绿" if 通过 else "期望绿实红: %s" % 错误
+        else:
+            通过 = any(期望 in 项 for 项 in 错误)
+            说明 = "红（命中「%s」）" % 期望 if 通过 else "期望红未命中: %s" % 错误
+        print("[selftest] %s %s：%s" % ("✓" if 通过 else "✗", 名称, 说明), flush=True)
+        if not 通过:
+            失败 += 1
+
     # --json 失败态/降级态断言（P2-2）：单数组/计数/警告可见
     def _json项(level, message):
         return {"level": level, "file": "", "line": 0, "column": 0, "message": message}
@@ -618,8 +700,8 @@ def 自测():
         print("[selftest] FAIL：%d 项" % 失败, flush=True)
         return 1
     print("[selftest] PASS ✓（失败传播 %d 态 + 降级 %d 态 + 配置错误 %d 态 + "
-          "--json %d 态）"
-          % (len(用例们), len(降级用例), len(配置用例),
+          "只读冻结 %d 态 + --json %d 态）"
+          % (len(用例们), len(降级用例), len(配置用例), len(未预热用例),
              len(json失败用例) + len(json降级用例)), flush=True)
     return 0
 
