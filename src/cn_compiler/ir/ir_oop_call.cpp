@@ -190,6 +190,9 @@ ir::IRValue IRGenerator::normalizeContainerInsertArg(Expr* arg,
             const std::string srcT = types::canonical(
                 lookupSrcType(static_cast<IdentifierExpr*>(xferSrc)->name)
                     .value_or(""));
+            // 218（云端预验红实录）：求值**恒一次**提分支外——分支内先行求值+
+            //   串源不命中类面再落分支外二次 genExprForOop=转移展开两遍（第一
+            //   遍清源槽·第二遍读 0=元素空串·bit4 丢实录）。
             const ir::IRValue v = genExprForOop(arg);
             if (semantic_->isClassType(srcT)) {
                 pendingArgCleanups_.emplace_back(v, "966壳$" + srcT, nullptr);
@@ -198,6 +201,7 @@ ir::IRValue IRGenerator::normalizeContainerInsertArg(Expr* arg,
                 //   串拷贝·错误码 3 实录）。
                 return v;
             }
+            return normalizeStringValueSource(arg, v, loc);
         }
     }
     const ir::IRValue v = genExprForOop(arg);
