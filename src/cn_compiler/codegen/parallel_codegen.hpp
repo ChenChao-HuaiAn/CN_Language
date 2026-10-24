@@ -29,7 +29,7 @@
 
 namespace cn_compiler {
 
-class ISemanticView;  // 语义只读视图（1501：并行期只读冻结契约见 semantic_view.hpp）
+class ISemanticView;  // 语义只读视图（1499：并行期只读冻结契约见 semantic_view.hpp）
 
 namespace ir {
 struct IRFunction;
@@ -114,7 +114,7 @@ bool applyBodyGenStatus(BodyGenStatus status, Diagnostics& diagnostics,
 
 // 并行生成全部函数体。
 //   makeGenerator：为每个 worker 创建独立后端实例（诊断写入 runner 提供的局部 Diagnostics）
-//   semantic：共享语义只读视图（1501）——并行段前预热+封存只读（零锁），
+//   semantic：共享语义只读视图（1499）——并行段前预热+封存只读（零锁），
 //     并行结束解封；冻结期出现未预热类查询=内部错误中止（miss 不可静默）。
 //     传 nullptr=无语义视图（合成测试模块），跳过冻结（无线程共享语义写面）。
 //   返回 kFailure 时 failure 已填充；调用方禁止串行重试（重跑必再命中同一内部 bug）。

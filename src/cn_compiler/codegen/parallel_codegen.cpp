@@ -46,7 +46,7 @@ bool codegenStatsEnabled() {
 //   bases[index]!=0 的 index>0 函数；串行路径 workers/labels/shifted 均 0；
 //   常量池回退保留实际 workers（线程确实跑过），但 labels/shifted 记 0=本次
 //   未进入平移面）。
-//   1501：readonly=并行生成段的语义只读冻结观测（sealed=已封存只读；
+//   1499：readonly=并行生成段的语义只读冻结观测（sealed=已封存只读；
 //   off=未进入/未封存；prewarmed=预热缓存条目数）——门禁据此机械断言
 //   「并行路径确实经过只读冻结」，防未来改动静默绕过并发防护。
 //   1499：prewarmed 口径=封存后 classCache.size()，含语义/IR 阶段遗留条目与
@@ -108,7 +108,7 @@ bool isLabelBoundaryAfter(const std::string& text, std::size_t pos) {
 //                            =throw-unknown:<序号> 指定序号抛非 std 异常（验 catch(...)）
 //                            =empty-text:<序号>    指定序号产出空文本（验空产物拦截）
 //                            =thread-create        模拟线程创建失败（验确定性降级）
-//   1501                     =unwarmed-class:<序号> 指定序号的任务查询未预热类名
+//   1499                     =unwarmed-class:<序号> 指定序号的任务查询未预热类名
 //                            （验只读冻结 miss 显形：修复前=静默写缓存，修复后=
 //                             内部错误中止——miss 不可静默的机械负测）
 //   取值非法/注入未生效（未进入并行路径/序号越界）=显式内部错误，绝不静默放过——
@@ -223,7 +223,7 @@ void injectBeforeTask(std::size_t index, const FailureInjection& injection) {
     }
 }
 
-// 1501：只读冻结 miss 注入——指定序号任务查询必然未预热的类名（门禁负测）。
+// 1499：只读冻结 miss 注入——指定序号任务查询必然未预热的类名（门禁负测）。
 //   正常生产未设注入=零调用。semantic 为空=注入配置错误（显式抛，走失败槽）。
 void injectUnwarmedClassLookup(std::size_t index, const FailureInjection& injection,
                                ISemanticView* semantic) {

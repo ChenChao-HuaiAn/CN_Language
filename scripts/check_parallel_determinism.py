@@ -301,11 +301,11 @@ def 并行口径断言(名, 目标, 标签, 决策, 函数数, 期望线程):
         错误.append("%s/%s/%s: 平移面覆盖量=%s（期望 >0）——无 bases!=0 的函数"
                     "进入平移面（首函数/前序无标签均不计）"
                     % (名, 目标, 标签, 决策["shifted"]))
-    # 1501：并行路径必须经过语义只读冻结（防 classCache 并发写回归）。
+    # 1499：并行路径必须经过语义只读冻结（防 classCache 并发写回归）。
     #   readonly=sealed + prewarmed>0 = 预热+封存真实发生；缺失/off=防护被绕过。
     if 决策["readonly"] != "sealed":
         错误.append("%s/%s/%s: 语义只读冻结未生效（readonly=%s，期望 sealed）"
-                    "——并行 classCache 写路径可能回归（1501）"
+                    "——并行 classCache 写路径可能回归（1499）"
                     % (名, 目标, 标签, 决策["readonly"]))
     预热数 = 解析整数(决策["prewarmed"])
     if 预热数 is None:
@@ -313,7 +313,7 @@ def 并行口径断言(名, 目标, 标签, 决策, 函数数, 期望线程):
                     % (名, 目标, 标签, 决策["prewarmed"]))
     elif 预热数 <= 0:
         错误.append("%s/%s/%s: 预热条目数=%s（期望 >0）——只读缓存为空，"
-                    "并行首查将 miss（1501 预热通道失效）"
+                    "并行首查将 miss（1499 预热通道失效）"
                     % (名, 目标, 标签, 决策["prewarmed"]))
     return 错误
 
@@ -330,7 +330,7 @@ def 串行口径断言(名, 目标, 决策):
     if 决策["workers"] != "0":
         错误.append("%s/%s/串行: workers=%s（期望 0）"
                     % (名, 目标, 决策["workers"]))
-    # 1501：串行路径不进入冻结（单线程无共享写面）——readonly=off prewarmed=0
+    # 1499：串行路径不进入冻结（单线程无共享写面）——readonly=off prewarmed=0
     if 决策["readonly"] != "off" or 决策["prewarmed"] != "0":
         错误.append("%s/%s/串行: 只读冻结观测不符（readonly=%s prewarmed=%s，"
                     "期望 off/0）——串行基线混入了并行冻结路径"
@@ -604,7 +604,7 @@ def 并行夹具():
     返回.append(("少建线程（workers=3/threads=4）",
                  假编译器(固定内容(), 决策worker少建),
                  "实际 worker 数=3 != threads=4"))
-    # 1501：并行路径未经过语义只读冻结（防护被绕过/回归）
+    # 1499：并行路径未经过语义只读冻结（防护被绕过/回归）
     def 决策冻结缺失(序号, 线程口径):
         return 正常决策()(序号, 线程口径).replace("readonly=sealed", "readonly=off")
     返回.append(("并行只读冻结缺失", 假编译器(固定内容(), 决策冻结缺失),
@@ -646,7 +646,7 @@ def 串行边界夹具():
         return 正常决策()(序号, 线程口径)
     返回.append(("串行 reason 不符", 假编译器(固定内容(), 串行reason不符),
                  "串行 reason"))
-    # 1501：串行基线混入并行冻结观测（readonly=sealed）
+    # 1499：串行基线混入并行冻结观测（readonly=sealed）
     def 串行混入冻结(序号, 线程口径):
         if 线程口径 == "1":
             return ("%s parallel=no functions=20 threads=1 workers=0 labels=0 "

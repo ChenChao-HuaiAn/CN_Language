@@ -22,7 +22,7 @@
   ⑧ --json 两态（P2-2）：失败=单个诊断数组含错误项（函数名/序号可见）；
      降级=单个数组含 1 条警告且 0 错误项（driver 在代码生成后统一冲刷；
      human 补差量、JSON 单数组；compile 成功行在 --json 模式抑制）。
-  ⑨ 只读冻结 miss（1501）：unwarmed-class:<序号> 注入使指定任务查询未预热类名
+  ⑨ 只读冻结 miss（1499）：unwarmed-class:<序号> 注入使指定任务查询未预热类名
      ——修复前=worker 静默写共享 classCache（并发写 UB 假绿）；修复后=冻结期零写
      + miss 登记 → join 后主线程报内部错误、rc=1、无残留产物、决策
      reason=readonly-miss 且 readonly=sealed（预热真实发生）。
@@ -299,7 +299,7 @@ def 检查失败配置结果(结果, 消息片段):
 
 
 def 检查未预热注入结果(结果):
-    """1501：并行期未预热类查询=只读冻结 miss 显形断言（真实编译器注入）。
+    """1499：并行期未预热类查询=只读冻结 miss 显形断言（真实编译器注入）。
 
     修复前：worker 首次查询静默写共享 classCache（并发写 UB，rc=0 假绿）；
     修复后：冻结期零写 + miss 登记 → join 后主线程报内部错误、rc=1、无产物、
@@ -416,7 +416,7 @@ def 主检查(编译器):
                 错误.extend(["%s/%s: %s" % (目标, 模式, 项)
                              for 项 in 检查失败结果(结果, 序号,
                                                     函数名们[序号], 片段)])
-            # 1501：未预热类查询=只读冻结 miss 显形（修复前静默写共享缓存=假绿）
+            # 1499：未预热类查询=只读冻结 miss 显形（修复前静默写共享缓存=假绿）
             未预热输出 = 临时 / "unwarmed-class.asm"
             未预热结果 = 编译器.编译(入口, 目标, 未预热输出, 并行线程,
                                      "unwarmed-class:%d" % 中段)
@@ -508,7 +508,7 @@ def 主检查(编译器):
 # ============ 自测（合成夹具正反两态，无需编译器） ============
 
 def _成功决策(workers="4", reason="worker-error"):
-    # 1501：并行路径决策行新增语义只读冻结观测字段（readonly/prewarmed）
+    # 1499：并行路径决策行新增语义只读冻结观测字段（readonly/prewarmed）
     return ("%s parallel=yes functions=20 threads=%s workers=%s labels=0 shifted=0 "
             "reason=%s readonly=sealed prewarmed=8\n"
             % (决策前缀, 并行线程, workers, reason))
@@ -610,7 +610,7 @@ def 自测():
         if not 通过:
             失败 += 1
 
-    # 1501：只读冻结 miss 显形断言正反两态（未预热查询必须中止编译）
+    # 1499：只读冻结 miss 显形断言正反两态（未预热查询必须中止编译）
     未预热基 = {"rc": 1,
               "stderr": ("未知位置: 错误: 内部错误: 并行代码生成中止: "
                          "并行 codegen 语义只读缓存未预热命中（类名 "

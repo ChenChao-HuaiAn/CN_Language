@@ -42,7 +42,7 @@ add_executable(cn_unit_tests
     semantic/test_cast_expr.cpp
     semantic/test_lambda.cpp
     semantic/test_semantic_oop.cpp
-    semantic/test_semantic_parallel_readonly.cpp  # 1501：并行 codegen 语义只读冻结
+    semantic/test_semantic_parallel_readonly.cpp  # 1499：并行 codegen 语义只读冻结
     semantic/test_semantic_error.cpp
     semantic/test_lvalue_check.cpp
     semantic/test_definit_check.cpp

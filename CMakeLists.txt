@@ -220,7 +220,7 @@ add_library(cn_compiler_semantic STATIC
     src/cn_compiler/semantic/class_resolver.cpp
     src/cn_compiler/semantic/class_resolver_base.cpp
     src/cn_compiler/semantic/class_resolver_access.cpp
-    # 1501：并行 codegen 语义只读冻结（预热+封存+miss 显形；防 classCache 并发写）
+    # 1499：并行 codegen 语义只读冻结（预热+封存+miss 显形；防 classCache 并发写）
     src/cn_compiler/semantic/semantic_parallel_readonly.cpp
     src/cn_compiler/semantic/class_vtable.cpp
     src/cn_compiler/semantic/error_analysis.cpp
