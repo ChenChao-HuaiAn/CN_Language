@@ -399,7 +399,8 @@ static bool linkExe(const std::string& target, const std::string& vcvarsBat,
 // 参数: options 选项、file 源文件、exePath 输出exe路径（引用）、error 错误消息
 // 返回: 0 成功；非0 失败（错误消息已写入 error 或已打印诊断）
 int buildExe(const CliOptions& options, const std::string& file,
-                    std::string& exePath, std::string& error) {
+                    std::string& exePath, std::string& error,
+                    bool printStartupHint) {
     // 支持平台：win-x64（MASM + MSVC）/ linux-arm64 / linux-x86_64（GAS + as/g++）
     if (!isWinX64(options.target) && !isGnuToolchain(options.target)) {
         error = "该命令不支持目标平台 " + options.target +
@@ -435,6 +436,12 @@ int buildExe(const CliOptions& options, const std::string& file,
     if (!toDriverOptions(options, file, dopts, error)) {
         if (error.empty()) error = "加载 货舱.toml 配置失败";
         return 1;
+    }
+    // 750（复审5/6）：真关启动提示（仅 build 命令·printStartupHint 由 runBuild
+    //   传 true；runRun/compile 同开关由 driver 单点设置但不打印，避免噪音）
+    if (printStartupHint && dopts.disableStrAccum) {
+        std::fputs("[cn] 循环累积提升已全局关闭（CN_NO_STR_ACCUM=1；程序缓存已同步禁用）", stderr);
+        std::fputc('\n', stderr);
     }
     cn_compiler::driver::PipelineOutput output;
     // 242-a（D13）：build 强制入口 主 函数（编译期诊断）

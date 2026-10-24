@@ -286,6 +286,9 @@ add_library(cn_compiler_ir STATIC
     src/cn_compiler/ir/ir_decl_extra.cpp
     src/cn_compiler/ir/ir_expr.cpp
     src/cn_compiler/ir/ir_expr_concat.cpp
+    # 750（循环累积拼接提升）：ir_string_accum.cpp——`s = s + x` 跨迭代累积识别
+    #   与构建器序列发射（段追加复用 728o emitChainSegAppend 单点）
+    src/cn_compiler/ir/ir_string_accum.cpp
     src/cn_compiler/ir/ir_expr_unary.cpp
     src/cn_compiler/ir/ir_expr_assign.cpp
     # 1360 批2（>1000 冻结线拆分）：ir_expr_assign_member.cpp——赋值·成员左值族

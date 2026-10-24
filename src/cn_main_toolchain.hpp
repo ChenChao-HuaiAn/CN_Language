@@ -42,8 +42,11 @@ struct CliOptions {
 };
 
 // ---- cn_main_toolchain.cpp 提供（buildExe 被子命令 runBuild/runRun 调用·签名不变）----
+// 750（复审6 P2-A）：printStartupHint——真关启动提示仅在 build 命令打印
+//   （runBuild 传 true；runRun 默认 false 避免 run 输出污染）。
 int buildExe(const CliOptions& options, const std::string& file,
-             std::string& exePath, std::string& error);
+             std::string& exePath, std::string& error,
+             bool printStartupHint = false);
 bool isWinX64(const std::string& target);
 bool isGnuToolchain(const std::string& target);
 std::string asmSuffix(const std::string& target);

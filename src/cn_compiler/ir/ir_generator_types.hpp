@@ -125,4 +125,14 @@ struct LambdaStaticInfo482 {
     std::vector<std::string> paramTypes;
 };
 
+// 750（循环累积拼接提升）：`s = s + x` 循环内唯一累积赋值 → 构建器提升上下文。
+//   识别通过后在循环前 new+append(初值)；循环体内该赋值 AST 节点改写为 append；
+//   循环出口块 finish + free 旧值 + 回写 s（001 §10.3 构建器模型·Rust push_str）。
+//   判据与语义等价论证见 ir_string_accum.cpp 文件头（识别失败=原路径零变更）。
+struct StringAccumCtx {
+    const AssignmentExpr* assign = nullptr;  // 被改写的累积赋值节点（AST 指针同一性）
+    std::string unique;                      // s 的 IR 槽唯一名
+    ir::IRValue handle;                      // 构建器句柄（整64 不透明句柄）
+};
+
 } // namespace cn_compiler

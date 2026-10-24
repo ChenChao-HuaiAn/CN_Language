@@ -117,7 +117,19 @@ bool SemanticAnalyzer::checkInterfaceMethodCall(CallExpr* node, MemberExpr* mem,
                 //   判定归属=wrapRefArgs 单一归属（左值判定+AddressOf 包装，
                 //   与实例/静态/构造/普通函数四路径同构）；接口方法 constParams
                 //   已随签名注册（class_resolver 阶段B 填充）。
-                wrapRefArgs(node, imit->second.paramTypes);
+                // 750 复审4 P0-1（零分叉）：接口路径补借用纪律检查——原仅
+                //   wrapRefArgs，缺 checkConstRefBorrowDiscipline（实例/静态/
+                //   普通/构造四路径均有）→ `口.取(s,s)` 双可变借用 v2 拒宿主放行
+                //   分叉。位置与实例路径同序（wrapRefArgs 之前）。
+                // 750 复审5/6 P1-3：借用纪律与实参取址包装**一并**仅在实参个数
+                //   相符时执行——与 v2（借用位扫描202 仅个数相符时执行）同口径；
+                //   wrapRefArgs 亦须门控（原在门外按 min(arguments,paramTypes)
+                //   对字面量报「引用参数要求左值」→ 宿主 3 条 vs v2 1 条分叉）。
+                if (argTypes.size() == imit->second.paramTypes.size()) {
+                    checkConstRefBorrowDiscipline(node, imit->second.paramTypes,
+                                                  imit->second.constParams);
+                    wrapRefArgs(node, imit->second.paramTypes);
+                }
                 lastType_ = imit->second.type;
                 // A2：接口方法拥有契约。933（任务 933·双侧零分叉）：引用返回
                 //   方法（-> T&）不置位——type 注册剥 & 后为「字符串」致原判定

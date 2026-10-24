@@ -26,6 +26,8 @@ public:
         const std::vector<std::unique_ptr<Expr>>& args, const SourceLocation& loc);
     // P3/D4（2026-08）：接口间接调用 CFI 校验开关（--cfi 透传，默认关保性能）
     void setCfiEnabled(bool enabled) { cfiEnabled_ = enabled; }
+    // 750（复审4 P2-5）：循环累积提升全局关闭开关——driver 单点判定后经此下发（真关对照/排障）
+    void setStrAccumDisabled(bool disabled) { accumDisabled_ = disabled; }
 
     // ==================== AstVisitor 接口实现 ==================== 声明节点
     void visitProgram(Program* node) override;
@@ -567,6 +569,28 @@ private:
     //   ——调用方按 648 miss 纪律显形（ptrElemStride 内部报告内部错误）；语义层
     //   1040 判可面已先行收窄（isJudgedPtrDiffOperand1040），合法程序恒可解析。
     cn::Optional<std::string> ptrOperandSrcType(const Expr* e) const;
+    // ---- 750：循环累积拼接提升（判据/铁律/序列见 ir_string_accum.cpp 文件头·001 §10.3 构建器模型）----
+    //   三者成对：tryBegin（循环前 new+append 初值·成功才接管）/ emitStringAccumAssign
+    //   （循环体内累积赋值改写 append）/ finish（出口块 finish+free+回写）；识别失败=零发射原路径。
+    bool tryBeginStringAccum(const Stmt* body, const Expr* cond,
+                             const Stmt* init, const Expr* update,
+                             const SourceLocation& loc);
+    bool beginStringAccumScan(const Stmt* body, const Expr* cond,
+                              const Stmt* init, const Expr* update,
+                              const SourceLocation& loc);
+    bool emitStringAccumAssign(AssignmentExpr* node);
+    bool emitStringAccumAssignInner(AssignmentExpr* node);
+    void finishStringAccum(const SourceLocation& loc);
+    // 750 复审返工（P0-1/P0-2/P0-3）：函数级别名逃逸/lambda 预扫描——自由函数/类方法/泛型实例/lambda 体入口调用
+    void beginAccumScope(Stmt* body);
+    // 提升上下文栈（条目 StringAccumCtx·types 头外迁）；遍历降级循环不优化（v2 同口径）
+    std::vector<StringAccumCtx> strAccumCtxs_;
+    bool strAccumSuppress_ = false;
+    std::vector<std::string> stringAliasEscaped_;
+    bool funcHasLambda_ = false;
+    bool funcHasAlias_ = false;
+    // 750：全局关闭开关——driver 单点判定（CN_NO_STR_ACCUM=="1"）经 setStrAccumDisabled 下发；生产默认关闭
+    bool accumDisabled_ = false;
     // 循环控制流：中断/继续跳转目标栈（条目 LoopContext·865 外迁见 ir_generator_types.hpp）
     std::vector<LoopContext> loopStack_;
     // 选择控制流：中断跳出目标栈（条目 SwitchContext·865 外迁见 ir_generator_types.hpp）

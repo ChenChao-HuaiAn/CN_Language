@@ -489,6 +489,15 @@ void IRGenerator::genWhile(WhileStmt* node) {
     std::string condLabel = "bb" + std::to_string(blockCounter_++);
     std::string bodyLabel = "bb" + std::to_string(blockCounter_++);
     std::string endLabel = "bb" + std::to_string(blockCounter_++);
+    // 750：循环累积拼接提升（`s = s + x` 跨迭代累积 -> 构建器）——循环前块
+    //   发射 new+append(初值)；识别失败=零发射（原路径零变更·判据与语义等价
+    //   论证见 ir_string_accum.cpp 文件头）。抑制标志一次性消费：仅抑制遍历
+    //   降级循环自身，其体内嵌套循环照常独立判定（v2 生成遍历 同口径）。
+    const bool accumSuppress750 = strAccumSuppress_;
+    strAccumSuppress_ = false;
+    const bool accum750 = !accumSuppress750 && tryBeginStringAccum(
+        node->body.get(), node->condition.get(), nullptr, nullptr,
+        node->location);
     // 无条件跳入条件块
     endJump(condLabel);
     setCurrentBlock(newBlock(condLabel));
@@ -508,6 +517,8 @@ void IRGenerator::genWhile(WhileStmt* node) {
     if (!currentBlock_->terminated) endJump(condLabel);
     // 出口块
     setCurrentBlock(newBlock(endLabel));
+    // 750：出口块 finish 出串 + free 旧值 + 回写 s（与 tryBegin 成对）
+    if (accum750) finishStringAccum(node->location);
 }
 void IRGenerator::genFor(ForStmt* node) {
     // 916-a（任务 085·宿主侧）：循环头声明作用域=整条循环语句（C++ for-init
@@ -524,6 +535,14 @@ void IRGenerator::genFor(ForStmt* node) {
             return;
         }
     }
+    // 750：循环累积拼接提升（init 之后、循环前块发射 new+append 初值）——
+    //   识别失败=零发射（原路径零变更·判据见 ir_string_accum.cpp 文件头）。
+    //   抑制标志一次性消费：仅抑制遍历降级循环自身（体内嵌套循环照常判定）。
+    const bool accumSuppress750 = strAccumSuppress_;
+    strAccumSuppress_ = false;
+    const bool accum750 = !accumSuppress750 && tryBeginStringAccum(
+        node->body.get(), node->condition.get(), node->init.get(),
+        node->update.get(), node->location);
     std::string condLabel = "bb" + std::to_string(blockCounter_++);
     std::string bodyLabel = "bb" + std::to_string(blockCounter_++);
     std::string updLabel = "bb" + std::to_string(blockCounter_++);
@@ -557,6 +576,8 @@ void IRGenerator::genFor(ForStmt* node) {
     if (!currentBlock_->terminated) endJump(condLabel);
     // 出口块
     setCurrentBlock(newBlock(endLabel));
+    // 750：出口块 finish 出串 + free 旧值 + 回写 s（与 tryBegin 成对）
+    if (accum750) finishStringAccum(node->location);
     varStack_.pop_back();   // 916-a：循环头声明作用域弹出
 }
 namespace {
@@ -720,7 +741,12 @@ void IRGenerator::genStmt(Stmt* node) {
         case NodeType::RangeForStmt:
             // C-2（2026-08）：遍历...中每个 已在语义层降级为 循环（desugared）
             if (static_cast<RangeForStmt*>(node)->desugared != nullptr) {
+                // 750：遍历降级循环不接累积提升——v2 生成遍历 为独立发射面
+                //   （不经 生成循环），双侧覆盖面对齐（语义本就等价于原路径）
+                const bool savedSuppress750 = strAccumSuppress_;
+                strAccumSuppress_ = true;
                 genStmt(static_cast<RangeForStmt*>(node)->desugared.get());
+                strAccumSuppress_ = savedSuppress750;
             }
             break;
         case NodeType::SwitchStmt:

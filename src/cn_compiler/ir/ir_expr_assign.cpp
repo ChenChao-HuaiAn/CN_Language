@@ -18,6 +18,10 @@ namespace cn_compiler {
 
 // 赋值表达式入口：按目标左值形态分派（成员 / 下标·解引用 / 调用 / 标识符）。
 void IRGenerator::visitAssignmentExpr(AssignmentExpr* node) {
+    // 750（循环累积拼接提升）：命中识别阶段登记的累积赋值节点（`s = s + x`
+    //   跨迭代累积）→ 改写为构建器段追加（零整串拷贝·判据与语义等价见
+    //   ir_string_accum.cpp 文件头）；未命中=原路径零变更。
+    if (emitStringAccumAssign(node)) return;
     if (node->target->getType() == NodeType::MemberExpr) {
         assignToMemberTarget(node);
         return;

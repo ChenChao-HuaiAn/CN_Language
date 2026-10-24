@@ -34,6 +34,7 @@
 #include "cn_compiler/common/diagnostics.hpp"
 #include "cn_compiler/driver/cargo_parser.hpp"
 #include "cn_compiler/driver/driver.hpp"
+#include "cn_compiler/driver/driver_cache_util.hpp"   // 750 P2-5：真关开关单点判定
 #include "cn_compiler/lexer/lexer.hpp"
 #include "cn_compiler/parser/parser.hpp"
 
@@ -472,6 +473,9 @@ bool toDriverOptions(const CliOptions& options, const std::string& file,
     dopts.verifyIr = options.verifyIr;
     // P3/D4（2026-08）：接口间接调用 CFI 校验
     dopts.useCfi = options.useCfi;
+    // 750（复审4/5/6）：真关开关单点判定（driver_cache_util）下发 IRGenerator；
+    //   启动提示仅在 build 命令打印（buildExe printStartupHint·避免 run/check/ast/ir 噪音）
+    dopts.disableStrAccum = cn_compiler::driver::strAccumDisabledByEnv();
     // F2-35（556-a）：诊断 JSON 机器可读输出透传
     dopts.jsonDiagnostics = options.jsonDiagnostics;
     // 模块系统 v2.0 第 5 层：货舱.toml + stdlib 目录
@@ -486,7 +490,7 @@ bool toDriverOptions(const CliOptions& options, const std::string& file,
 static int runBuild(const CliOptions& options, const std::string& file) {
     std::string exePath;
     std::string error;
-    if (buildExe(options, file, exePath, error) != 0) {
+    if (buildExe(options, file, exePath, error, /*printStartupHint=*/true) != 0) {
         if (!error.empty()) std::cerr << "错误: " << error << "\n";
         return 1;
     }

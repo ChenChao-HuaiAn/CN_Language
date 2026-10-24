@@ -296,5 +296,23 @@ const std::string& cacheLeafDir(const DriverOptions& options, const char* leaf,
     return probe.emplace(leaf, dir).first->second;
 }
 
+// 750（复审4 P2-5）：CN_NO_STR_ACCUM 环境开关（精确 =="1"）
+bool strAccumDisabledByEnv() {
+#ifdef _WIN32
+    char* value = nullptr;
+    std::size_t len = 0;
+    // 静默豁免运行时API: 环境变量未设置/读取失败=开关不生效（false·非默认值继续）
+    if (_dupenv_s(&value, &len, "CN_NO_STR_ACCUM") != 0 || value == nullptr) {
+        return false;
+    }
+    const bool on = std::string(value) == "1";
+    std::free(value);
+    return on;
+#else
+    const char* v = std::getenv("CN_NO_STR_ACCUM");
+    return v != nullptr && std::string(v) == "1";
+#endif
+}
+
 }  // namespace driver
 }  // namespace cn_compiler

@@ -233,6 +233,8 @@ void IRGenerator::emitGenericFuncInstance(const GenericFuncInstance& gfi) {
         }
     }
     if (node->body != nullptr) {
+        // 750 复审返工：泛型实例函数级别名逃逸/lambda 预扫描（P0-1/P0-2/P0-3）
+        beginAccumScope(node->body.get());
         genBlock(node->body.get());
     }
     if (!function_->blocks.empty()) {

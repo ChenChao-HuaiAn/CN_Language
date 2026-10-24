@@ -420,6 +420,15 @@ void IRGenerator::visitLambdaExpr(LambdaExpr* node) {
     currentReturnOrigin482_.clear();
     const std::unordered_set<std::string> outerAssigned482 = carrierAssigned482_;
     carrierAssigned482_.clear();
+    // 750 复审返工：lambda 体=独立函数上下文——三枚累积提升函数级状态在入口
+    //   save（随后 beginAccumScope 清空+按 lambda 体扫描），出口 restore：
+    //   不清空则体内扫描结果污染外层（外层 lambda 先于循环出现 → 后续循环误用
+    //   体内结果=错值）；不恢复则外层逃逸/别名面丢失=死循环。保存声明置于函数
+    //   外层作用域（恢复点在函数尾）。
+    std::vector<std::string> outerAliasEscaped750 =
+        std::move(stringAliasEscaped_);
+    const bool outerHasLambda750 = funcHasLambda_;
+    const bool outerHasAlias750 = funcHasAlias_;
     const std::string lambdaName = "?lambda" + std::to_string(lambdaCounter_++);
     const std::string returnIrType = mapType(node->returnType.empty()
                                                  ? "空类型" : node->returnType);
@@ -511,6 +520,9 @@ void IRGenerator::visitLambdaExpr(LambdaExpr* node) {
     ir::IRBlock* entry = newBlock("bb0");
     (void)entry;
     if (node->body != nullptr) {
+        // 750 复审返工：lambda 体函数级别名逃逸/lambda 预扫描（P0-1/P0-3）。
+        //   三枚状态 save 在函数入口、restore 在函数尾（见入口注释）。
+        beginAccumScope(node->body.get());
         genBlock(node->body.get());
     }
     if (!function_->blocks.empty()) {
@@ -538,6 +550,10 @@ void IRGenerator::visitLambdaExpr(LambdaExpr* node) {
     // 482：恢复外层函数返回来源跟踪（lambda 体内返回不污染外层·见入口注释）。
     currentReturnOrigin482_ = outerReturnOrigin482;
     carrierAssigned482_ = outerAssigned482;
+    // 750 复审返工：恢复外层累积提升函数级状态（与入口 save 成对·见 genBlock 前注释）。
+    stringAliasEscaped_ = std::move(outerAliasEscaped750);
+    funcHasLambda_ = outerHasLambda750;
+    funcHasAlias_ = outerHasAlias750;
     // 482：捕获元数据落表（载体快照槽布局单一事实源——名/引用/源类型）。
     recordLambdaCaptureMeta482(lambdaName, capturedNames, captureRefs,
                                capturedSrcTypes482);

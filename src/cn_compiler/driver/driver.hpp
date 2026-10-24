@@ -43,6 +43,9 @@ struct DriverOptions {
     // B-4（2026-08，规格书9.3）：--验证-ir 开启 IR 结构验证（CFG 终止/跳转目标/
     //   寄存器 def-before-use），验证失败输出错误并中止编译
     bool verifyIr = false;           // 是否验证 IR 结构不变量
+    // 750（复审4 P2-5）：循环累积提升全局关闭（CN_NO_STR_ACCUM=="1"）——driver
+    //   侧单点判定（driver_cache_util）下发 IRGenerator；程序缓存同开关禁用。
+    bool disableStrAccum = false;
     // P3/D4（2026-08）：--cfi 开启接口间接调用控制流完整性（目标∈已知实现表）
     bool useCfi = false;
     // F2-35（556-a）：--json 开启诊断 JSON 机器可读输出（LSP 后端铺路）——

@@ -346,6 +346,8 @@ void IRGenerator::emitClassMethod(const std::string& className, const ClassMembe
     //   入口块生成后、原方法体生成前注入元素析构（~类名/清空 全量循环、
     //   向量 删除/链表 删除头部/删除尾部 单元素，仅当实例化元素 T 为有析构类时）。
     injectContainerElemDestroy(className, mi, member->body->location);
+    // 750 复审返工：方法体函数级别名逃逸/lambda 预扫描（P0-1/P0-2/P0-3）
+    beginAccumScope(member->body.get());
     genBlock(member->body.get());
     // 缺陷3 根治（2026-09-02）：类字段级联析构注入——析构体后按字段逆序析构
     //   「有析构类」字段（对标 C++ 成员析构语义；详见 injectFieldCascadeDestroy）

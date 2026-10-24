@@ -740,6 +740,8 @@ int runModulePipeline(const std::string& entryFile, const DriverOptions& options
 
     // 5. IR 生成（绑定语义引用：类布局/虚表/结构体布局查询）
     IRGenerator irGen(diagnostics, &semantic);
+    // 750 P2-5：真关开关下发（driver 单点判定·CN_NO_STR_ACCUM=="1"）
+    irGen.setStrAccumDisabled(options.disableStrAccum);
     output.module = irGen.generate(program.get());
     output.hasModule = true;
     if (diagnostics.hasErrors()) {

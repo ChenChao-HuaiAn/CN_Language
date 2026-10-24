@@ -1,3 +1,5 @@
+// MSVC /W4 /WX：getenv 等 CRT 传统函数视为 C4996（项目既有文件同款处置）
+#define _CRT_SECURE_NO_WARNINGS
 // CN-IR生成器实现：AST -> 三地址码IR（Task 1.6）
 // 实现要点：
 //   1. 表达式生成：字面量 -> ConstInt/ConstFloat/ConstBool/ConstString
@@ -482,6 +484,8 @@ void IRGenerator::emitStaticInitsAtEntry() {
 ir::IRModule IRGenerator::generate(Program* program) {
     ir::IRModule module;
     module_ = &module;
+    // 750（复审4 P2-5）：循环累积提升全局关闭开关由 driver 单点判定后经
+    //   setStrAccumDisabled 下发（消除本文件 getenv 双事实源；默认=false 优化开）。
     regCounter_ = 0;
     blockCounter_ = 0;
     varCounter_ = 0;
@@ -505,6 +509,10 @@ void IRGenerator::visitFunctionDecl(FunctionDecl* node) {
     //   被展开为无捕获实参的直调）。闭包变量本就是函数局部概念，入口清空
     //   即隔离；lambda 体上下文由 visitLambdaExpr 入口同样清空。
     closureInfo_.clear();
+    // 750：循环累积提升上下文按函数复位——正常路径由 genFor/genWhile 出口块
+    //   成对弹出；本行防「识别成功后生成中途中止（诊断收尾）」跨函数残留误改
+    //   写同名赋值（驻留名跨函数同 ID）。
+    strAccumCtxs_.clear();
     // 482：返回来源跟踪按函数复位（上一函数残留零泄漏；lambda 体由
     //   visitLambdaExpr save/restore 另行隔离）。
     currentReturnOrigin482_.clear();
@@ -631,6 +639,8 @@ void IRGenerator::visitFunctionDecl(FunctionDecl* node) {
     }
     // 函数体
     if (node->body != nullptr) {
+        // 750 复审返工：函数级别名逃逸/lambda 预扫描（P0-1/P0-2/P0-3）
+        beginAccumScope(node->body.get());
         genBlock(node->body.get());
     }
     // 无终止指令：补充默认返回（空类型函数 / 原型声明）

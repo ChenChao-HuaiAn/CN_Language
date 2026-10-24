@@ -176,6 +176,9 @@ bool programCacheActive(const DriverOptions& options) {
     // 静默豁免业务值: 功能开关不启用（调用方按命令语义显式声明·非查表默认值）
     if (!options.useProgramCache) return false;
     if (cacheDisabledByEnv()) return false;
+    // 750 P1-A：真关开关影响产物且未入缓存键 → 禁用缓存
+    //   （判定单点=driver_cache_util strAccumDisabledByEnv·P2-5 合并）
+    if (strAccumDisabledByEnv()) return false;
     // --验证-ir 的验证副作用不可省：显式旁路缓存（保留旧行为）
     if (options.verifyIr) return false;
     // 静默豁免闭集穷举: 项目根不可推导=缓存目录为空（缓存禁用·直连编译）

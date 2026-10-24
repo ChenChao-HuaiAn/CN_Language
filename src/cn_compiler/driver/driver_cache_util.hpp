@@ -91,5 +91,11 @@ bool cacheWriteFileAtomic(const std::string& path, const std::vector<char>& data
 const std::string& cacheLeafDir(const DriverOptions& options, const char* leaf,
                                 const char* envOverride);
 
+// 750（复审4 P2-5）：CN_NO_STR_ACCUM 环境开关判定（精确 =="1" 生效；空串/0/其它
+//   不生效）。driver 侧唯一事实源：programCacheActive 据此禁用缓存（开关改变产物
+//   且未入缓存键）+ toDriverOptions 据此下发 DriverOptions.disableStrAccum 至
+//   IRGenerator（消除双 getenv 读取）。
+bool strAccumDisabledByEnv();
+
 }  // namespace driver
 }  // namespace cn_compiler
