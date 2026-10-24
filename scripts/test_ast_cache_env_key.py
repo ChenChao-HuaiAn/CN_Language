@@ -310,6 +310,11 @@ def 场景4_编译器身份(编译器, 工作目录, 源文件, 缓存目录):
     # 内容变→身份变，验证「改解析行为但没递增格式版本」不会误命中旧 AST。
     副本 = 工作目录 / ("cn_identity_copy" + (".exe" if sys.platform.startswith("win") else ""))
     shutil.copyfile(编译器, 副本)
+    # 1566（1553 批补漏·家机 1540 批修了 invalidation_matrix 同病漏本件）：
+    #   copyfile 不保留权限位——POSIX 副本 0644 无执行位，subprocess 执行
+    #   Permission denied（本自测写集触发面首次显形·本机 131 断言实证）。
+    #   副本须可执行。
+    副本.chmod(0o755)
     with open(副本, "ab") as 文件:
         文件.write(b"CN1271-IDENTITY-PROBE")
     原1 = 编译(编译器, 工作目录, 源文件, 工作目录 / "身份_原1.asm", ["甲"], 缓存目录)
