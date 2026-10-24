@@ -42,19 +42,28 @@ def 执行机字段(runner: str, 构建并行: int, 是win: bool) -> dict:
 def 物理内存MB(是win: bool) -> int:
     """max-mem 保险丝按物理内存适配用（924·1369 自 ci_daemon 外迁守 900 警戒线）——
     posix 读 /proc/meminfo；win=GlobalMemoryStatusEx。探测失败=4096 兜底
-    （只影响重负载用例保险丝，非测量值）。"""
+    （只影响重负载用例保险丝，非测量值）。
+    1528：win 分支同样受「探测失败=4096 兜底」契约辖——selftest 在 linux 上以
+    是win=True 走 win 语义命令构造（1221 断言），ctypes.windll 属性不存在=
+    探测失败的一种（AttributeError 原样外抛把整个 e2e段 炸红·linux 机器 L1/
+    批门禁必红阻断集成）。兜底后本函数在任意平台恒返正数。"""
     if 是win:
-        import ctypes
+        try:
+            import ctypes
 
-        class 内存状态(ctypes.Structure):
-            _fields_ = [("长度", ctypes.c_ulong), ("负载", ctypes.c_ulong),
-                        ("总物理", ctypes.c_ulonglong), ("可用物理", ctypes.c_ulonglong),
-                        ("总页文件", ctypes.c_ulonglong), ("可用页文件", ctypes.c_ulonglong),
-                        ("总虚拟", ctypes.c_ulonglong), ("可用虚拟", ctypes.c_ulonglong),
-                        ("可用扩展虚拟", ctypes.c_ulonglong)]
-        状态 = 内存状态(长度=ctypes.sizeof(内存状态))
-        if ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(状态)):
-            return int(状态.总物理 // (1024 * 1024))
+            class 内存状态(ctypes.Structure):
+                _fields_ = [("长度", ctypes.c_ulong), ("负载", ctypes.c_ulong),
+                            ("总物理", ctypes.c_ulonglong), ("可用物理", ctypes.c_ulonglong),
+                            ("总页文件", ctypes.c_ulonglong), ("可用页文件", ctypes.c_ulonglong),
+                            ("总虚拟", ctypes.c_ulonglong), ("可用虚拟", ctypes.c_ulonglong),
+                            ("可用扩展虚拟", ctypes.c_ulonglong)]
+            状态 = 内存状态(长度=ctypes.sizeof(内存状态))
+            if ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(状态)):
+                return int(状态.总物理 // (1024 * 1024))
+        except Exception:
+            pass   # 静默豁免运行时API: 平台探测不可用（linux 模拟 win 语义/无
+                   # kernel32）——docstring 契约「探测失败=4096 兜底」·只影响
+                   # 保险丝非测量值（1528）
         return 4096
     try:
         for 行 in open("/proc/meminfo"):
