@@ -8,8 +8,11 @@
 
 from __future__ import annotations   # P1-1：3.8 注解惰性化（list/tuple 泛型定义期不求值）
 
+import json
 import re
 import os
+
+import queue_shard   # #1221：父任务取消/收割=片行作废（与回收路径对称）
 
 # 975 预验失败计数告警（87 篇反思①·863 五连静默机械化）：runner 认领失败（同步异常）
 #   连续同类达此阈值 → journal 播报 `[975 预验失败告警]` + 行上告警时刻（页面可见）。
@@ -130,3 +133,132 @@ def 记认领失败并告警(con, 时戳, 分支: str, 类别: str, 摘要: str)
     con.execute("UPDATE 预验任务 SET 告警时刻=? WHERE 分支=?", (时戳(), 分支))
     return ("[975 预验失败告警] %s sha=%s 连续同类认领失败 %d 次（阈值 %d）：类别=%s 原因=%s"
             % (分支, sha[:10], 新计数, 预验失败告警阈值, 类别, (摘要 or "")[:200]))
+
+
+# ═══════════ #1221 复审 P2-6：协议查询面与排队收割（自 queue_service 外迁） ═══════════
+# 外迁动机=queue_service 加 M6 必跑/能力位/详情 branch 后越 1000 行红线（AGENTS §3
+#   「先拆再加」）。con/时区时刻/行龄函数 由调用方注入（写锁内单线程语义不变）。
+
+
+def 门禁详情查(con, sha: str, 平台: str):
+    """842：门禁表详情查询（8300 红/绿行点开看失败用例+归因）——sha 前缀匹配
+    （页面持前 10 位/完整皆可）+平台精确；同前缀多点取最新（时刻 DESC LIMIT 1）。
+    miss=None（调用点 404 显式——648 miss 不可静默）。详情坏 JSON= None 容错。"""
+    行 = con.execute("SELECT 绿,总秒,时刻,详情 FROM 门禁 WHERE sha LIKE ? AND 平台=? "
+                    "ORDER BY 时刻 DESC LIMIT 1", (sha + "%", 平台)).fetchone()
+    if 行 is None:
+        return None
+    try:
+        详情 = json.loads(行[3]) if 行[3] else None
+    except ValueError:
+        详情 = None
+    return {"绿": bool(行[0]) if 行[0] is not None else None, "总秒": 行[1],
+            "时刻": 行[2], "详情": 详情}
+
+
+def 包任务行(行):
+    """任务行→dict（详情坏 JSON=None 容错·同 门禁详情查 口径）。
+    975：补 失败计数/失败类别/失败摘要/告警时刻；825：补 失败原因。"""
+    try:
+        详情 = json.loads(行[2]) if 行[2] else None
+    except ValueError:
+        详情 = None
+    return {"状态": 行[0], "绿": bool(行[1]) if 行[1] is not None else None,
+            "详情": 详情, "失败计数": int(行[3] or 0), "失败类别": 行[4],
+            "失败摘要": 行[5], "告警时刻": 行[6], "失败原因": 行[7]}
+
+
+def 任务详情查(con, sha10: str, branch: str = ""):
+    """842：预验/兜底任务详情查（#1221 P1-1：旧同名行不得遮蔽新 M6 行）。
+
+    查询序（命中即返）：① branch 精确（本轮 `ci/预验-<sha10>-m6<hex>`）；
+    ② sha 前缀最新序号（看板/旧客户端无 branch 也取新行）；③ 旧契约分支名精确。
+    miss=None（调用点 404 显式——648 miss 不可静默）。"""
+    列 = "状态,绿,详情,COALESCE(失败计数,0),失败类别,失败摘要,告警时刻,失败原因"
+    if branch:
+        行 = con.execute("SELECT " + 列 + " FROM 预验任务 WHERE 分支=?",
+                        (branch,)).fetchone()
+        if 行 is not None:
+            return 包任务行(行)
+    行 = con.execute("SELECT " + 列 + " FROM 预验任务 WHERE sha LIKE ? "
+                    "ORDER BY 序号 DESC LIMIT 1", (sha10 + "%",)).fetchone()
+    if 行 is not None:
+        return 包任务行(行)
+    for 前缀 in ("ci/预验-", "ci/兜底-"):
+        行 = con.execute("SELECT " + 列 + " FROM 预验任务 WHERE 分支=?",
+                        (前缀 + sha10,)).fetchone()
+        if 行 is not None:
+            return 包任务行(行)
+    return None
+
+
+def 预验排队收割(con, 时区时刻, 回收秒: int, 行龄函数) -> list[str]:
+    """#1221 P0：预验任务「排队」行 reaper（>回收秒→已取消·仅 ci/预验-*）。
+
+    M6 非幂等分支每次重跑唯一，残留排队行无人消费=永久排队行与白跑。兜底任务
+    是 develop 验证保底，不在此列。返回被取消分支清单（审计/测试面）。"""
+    收割: list[str] = []
+    if 回收秒 <= 0:
+        return 收割
+    for 分支, 更新 in con.execute(
+            "SELECT 分支,更新时刻 FROM 预验任务 WHERE 状态='排队' "
+            "AND 分支 LIKE 'ci/预验-%'").fetchall():
+        龄 = 行龄函数(更新)
+        if 龄 is not None and 龄 > 回收秒:
+            con.execute("UPDATE 预验任务 SET 状态='已取消',更新时刻=? WHERE 分支=?",
+                        (时区时刻(), 分支))
+            con.commit()
+            queue_shard.清父分片(con, 分支)
+            收割.append(分支)
+            print("[回收] 预验排队超 %.1f 小时 %s →已取消（M6 非幂等分支防永久排队/白跑）"
+                  % (龄 / 3600.0, 分支), flush=True)
+    return 收割
+
+
+def 门禁快照(con, 限: int = 200) -> list[dict]:
+    """814/1070：门禁最近行快照（提交序 DESC + 平台轮转序；旧行沉底）。"""
+    行们 = con.execute(
+        "SELECT sha,平台,绿,总秒,时刻,提交时刻 FROM 门禁 "
+        "ORDER BY COALESCE(提交时刻,0) DESC, "
+        "CASE 平台 WHEN 'win-x64' THEN 0 WHEN 'linux-x86_64' THEN 1 "
+        "WHEN 'linux-arm64' THEN 2 ELSE 9 END, 时刻 DESC LIMIT ?", (限,)).fetchall()
+    return [dict(zip(("sha", "平台", "绿", "总秒", "时刻", "提交时刻"), r)) for r in 行们]
+
+
+def 预验任务快照(con) -> list[dict]:
+    """预验任务池快照（不含 详情 大字段；975/825 失败字段随行）。"""
+    行们 = con.execute("SELECT 序号,分支,sha,源分支,状态,认领者,绿,认领限制,入队时刻,更新时刻,内容键,"
+                       "COALESCE(失败计数,0),失败类别,失败摘要,告警时刻,失败原因,认领时刻 "
+                       "FROM 预验任务 ORDER BY 序号 DESC LIMIT 50").fetchall()
+    return [dict(zip(("序号", "分支", "sha", "源分支", "状态", "认领者", "绿", "认领限制",
+                      "入队时刻", "更新时刻", "内容键", "失败计数", "失败类别", "失败摘要",
+                      "告警时刻", "失败原因", "认领时刻"), r))
+            for r in 行们]
+
+
+def 归因截取(con, sha: str, 平台: str, 详情) -> dict:
+    """1070：develop 红灯归因（提交区间）——边界=详情.提交历史中红提交之后第一条
+    门禁绿行 sha；降级两态=全列+遇边 False（宁多勿缺）。"""
+    最近 = 门禁快照(con)
+    前10 = sha[:10]
+    绿行 = {}
+    for r in 最近:
+        if r["绿"] == 1:
+            绿行.setdefault(str(r["sha"]), r)
+    历史 = ((详情 or {}).get("提交历史") or []) if isinstance(详情, dict) else []
+    红位 = next((i for i, 条 in enumerate(历史)
+                if str(条.get("sha", "")).startswith(前10)), None)
+    边界行 = None
+    出 = list(历史)
+    if 红位 is not None:
+        for 位 in range(红位 + 1, len(历史)):
+            if str(历史[位].get("sha", "")) in 绿行:
+                边界行 = 绿行[str(历史[位]["sha"])]
+                出 = 历史[:位]
+                break
+    return {"提交们": 出,
+            "边界sha": str(边界行["sha"]) if 边界行 else None,
+            "边界平台": 边界行["平台"] if 边界行 else None,
+            "边界时刻": 边界行["时刻"] if 边界行 else None,
+            "遇边": 边界行 is not None,
+            "历史条数": len(历史)}

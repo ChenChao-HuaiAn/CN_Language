@@ -671,7 +671,7 @@ function 渲染流水线() {
    预检红走 /api/ci_result（预验任务详情代理）；验证红走 /api/gate_result
    （门禁行详情代理·带归因·归因算法单点在 8300 queue_service）。 */
 
-async function 开红详情(号, sha, 源, 平台) {
+async function 开红详情(号, sha, 源, 平台, 分支) {
   const 区 = $("红详情区");
   if (!区) { 提示("请从任务详情面板查看失败详情", 3000); 开详情(号); return; }
   if (!sha) { 区.innerHTML = '<div class="备注行">无 sha（相关行已清理）</div>'; return; }
@@ -681,7 +681,8 @@ async function 开红详情(号, sha, 源, 平台) {
     const r = 验
       ? await 调API("GET", "api/gate_result?sha=" + encodeURIComponent(sha)
                     + "&plat=" + encodeURIComponent(平台 || ""))
-      : await 调API("GET", "api/ci_result?sha=" + encodeURIComponent(sha));
+      : await 调API("GET", "api/ci_result?sha=" + encodeURIComponent(sha) +
+                    (分支 ? "&branch=" + encodeURIComponent(分支) : ""));
     const 结 = (r && r.结果) || null;
     const 详 = 结 && 结.详情;
     if (!详) { 区.innerHTML = '<div class="备注行">无详情（行已清理 / 旧版上报 / 队列服务不可达）</div>'; return; }
@@ -772,6 +773,7 @@ function 开详情(号) {
       (t.runner ? "·runner " + 转义(t.runner) : "") + "</span>" +
       (红检 && t.sha ? '<button class="钮 次" data-红详情-sha="' + 转义(t.sha) +
         '" data-红源="' + 红源 + '" data-红平台="' + 转义(t.平台 || "") +
+        '" data-红支="' + 转义(t.分支 || "") +
         '">失败用例</button>' : "") +
       "</div>" + '<div id="红详情区"></div>'
     : '<div class="备注行">无 CI 阶段信号（' +
@@ -1041,7 +1043,8 @@ document.addEventListener("click", (e) => {
   if (红钮) {
     // 842：属性尾用 ASCII（data-红源/data-红平台）——dataset 对「连字符+中文」键名
     //   保留连字符（dataset.红详情-源 而非 红详情源）易踩坑，ASCII 尾无歧义。
-    开红详情(当前详情, 红钮.dataset.红详情Sha, 红钮.dataset.红源, 红钮.dataset.红平台);
+    开红详情(当前详情, 红钮.dataset.红详情Sha, 红钮.dataset.红源, 红钮.dataset.红平台,
+            红钮.dataset.红支);
     return;
   }
   const 红签 = e.target.closest("[data-红详情]");
@@ -1050,7 +1053,8 @@ document.addEventListener("click", (e) => {
     const t = 行 && (数据.任务们 || []).find((x) => x.号 === 行.dataset.详);
     if (t && t.sha) {
       开详情(t.号);
-      开红详情(t.号, t.sha, t.阶段 === "已集成·验证红" ? "验证" : "预检", t.平台);
+      开红详情(t.号, t.sha, t.阶段 === "已集成·验证红" ? "验证" : "预检", t.平台,
+             t.分支 || "");
     }
     return;
   }

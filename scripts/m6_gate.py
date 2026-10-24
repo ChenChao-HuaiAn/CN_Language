@@ -4,10 +4,10 @@
 
 背景（#1221 覆盖对账结论）：M6=79_v2 自举闭环（fix_p ≡ fix_s 逐字节），此前只有
 「云端全量每轮都跑、本地/CI 调用面靠自觉」：纯文档/前端轮白付 ~20 分钟重负载是
-浪费面；反向更危险——写集动了 codegen/opt/ir 时，若本轮落在不能原生跑 M6 的平台
+浪费面；反向更危险——写集动了编译器产物面（codegen/opt/ir/model/协议常量/stdlib）时，若本轮落在不能原生跑 M6 的平台
 （交叉模拟 arm64 的 78/79 登记跳过）或调用面未开重负载（integrate 本地全量经
 ci.ps1/run_e2e 默认跳过 78/79·GitHub Actions 工作流同样未带 --heavy-ci），79_v2
-被计入「跳过」而轮次照绿=流程自觉而非机械保证。本模块把「动 codegen/opt/ir ⇒
+被计入「跳过」而轮次照绿=流程自觉而非机械保证。本模块把「动编译器产物面（codegen/opt/ir/model/协议常量/stdlib）⇒
 本轮必须跑 M6」做成单点判定；执行面复用 run_e2e 79_v2（--require-m6 跳过即红 +
 md5/首个差异字节审计记录）。
 
@@ -109,7 +109,7 @@ def 判定轮(文件们, 平台: str, 交叉模拟: bool = False) -> dict:
     """纯函数：一轮（develop/预验/兜底）的 M6 计划。
 
     处置三态：
-      未触发   = 写集不含 codegen/opt/ir（纯文档/脚本/前端轮零成本）
+      未触发   = 写集不含编译器产物面（codegen/opt/ir/model/协议常量/stdlib）（纯文档/脚本/前端轮零成本）
       必跑     = 触发且本平台可原生跑（执行面须 --require-m6：跳过即红）
       未跑-转派 = 触发但本平台不可原生跑（预验轮判红；develop 轮由平台轮转承担）
     """
@@ -144,7 +144,7 @@ def 摘要(计划: dict) -> str:
     """计划→单行摘要（M6 未跑必须带原因——静默豁免即缺陷）。"""
     处置 = (计划 or {}).get("处置")
     if 处置 == "未触发":
-        return "M6 未触发（写集不含 codegen/opt/ir）"
+        return "M6 未触发（写集不含编译器产物面（codegen/opt/ir/model/协议常量/stdlib））"
     if 处置 == "必跑":
         return ("M6 必跑（写集命中 %d 文件：%s）"
                 % (len(计划.get("命中") or []),
@@ -190,8 +190,9 @@ def 等价免验冲突(触发: bool, 开关: bool) -> str | None:
     等价免验=整体跳过全量+云预验；M6 触发轮必须真跑固定点——两者不可并存。
     返回 None=允许；非 None=拒绝原因（批流程消费）。"""
     if 触发 and 开关:
-        return ("--verified-same-content 与 M6 写集触发互斥（#1221）：codegen/opt/ir "
-                "改动轮不得以等价免验跳过全量/云预验——去掉该开关后重跑集成。")
+        return ("--verified-same-content 与 M6 写集触发互斥（#1221）："
+                "编译器产物面（codegen/opt/ir/model/协议常量/stdlib）改动轮不得以"
+                "等价免验跳过全量/云预验——去掉该开关后重跑集成。")
     return None
 
 

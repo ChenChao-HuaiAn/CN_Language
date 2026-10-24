@@ -896,6 +896,25 @@ def 跑() -> None:
     旧端领 = 处理写("task_claim", {"runner": "1221旧端戊", "平台": "win-x64"})
     断言(旧端领.get("任务") is not None and 旧端领["任务"]["分支"] == "ci/预验-12210000003",
          "#1221 派发：旧客户端不报能力位（None）=按未知放行（向后兼容）")
+    # #1221 P3 防御：能力位/必跑位显式类型校验（"false" 字符串 truthy 不得误派）
+    坏必跑 = 处理写("task_enqueue", {"分支": "ci/预验-1221type01", "sha": "5" * 40,
+                                   "M6必跑": "false"})
+    坏原生 = 处理写("task_claim", {"runner": "1221坏型乙", "平台": "win-x64",
+                                "M6原生": "false"})
+    断言(坏必跑.get("ok") is False and "M6必跑" in 坏必跑.get("说明", "")
+        and 坏原生.get("ok") is False and "M6原生" in 坏原生.get("说明", ""),
+         "#1221 P3：M6必跑/M6原生 字符串 \"false\" 显式拒绝（不按 truthy 误判）")
+    # COALESCE 安全网：载荷缺省→回查实例表已存能力位
+    处理写("task_claim", {"runner": "1221表内存", "平台": "linux-arm64", "M6原生": False})
+    con.execute("UPDATE 预验任务 SET 状态='已取消' WHERE 状态='排队'")
+    con.commit()
+    处理写("task_enqueue", {"分支": "ci/预验-1221type02", "sha": "6" * 40, "M6必跑": True})
+    表内领 = 处理写("task_claim", {"runner": "1221表内存", "平台": "linux-arm64"})
+    断言(表内领.get("任务") is None,
+         "#1221 P3：claim 载荷缺省时回查实例表 M6原生=false→不领 M6必跑任务（COALESCE 安全网）")
+    # 清场：本测试遗留的排队行不得干扰后续 1392 派生断言（claim 按最旧排队派发）
+    con.execute("UPDATE 预验任务 SET 状态='已取消' WHERE 状态='排队'")
+    con.commit()
 
     处理写("task_enqueue", {"分支": "ci/预验-13920000001", "sha": "1" * 40})
     处理写("task_claim", {"runner": "实例甲", "平台": "win-x64"})
@@ -1029,6 +1048,51 @@ def 跑() -> None:
     断言(收割态.get("ci/兜底-1221reap0003") == "排队",
          "#1221 排队 reaper：兜底任务不在此列（develop 验证保底不误收）")
 
+    # #1221 复审 P1-A：已取消行可复活——reaper 取消后同一幂等分支再入队→排队→可认领
+    con.execute("UPDATE 预验任务 SET 状态='已取消' WHERE 状态='排队'")
+    con.commit()
+    处理写("task_enqueue", {"分支": "ci/预验-1221reap0001-m6aa", "sha": "7" * 40,
+                          "M6必跑": True})
+    复活态 = con.execute("SELECT 状态 FROM 预验任务 WHERE 分支=?",
+                       ("ci/预验-1221reap0001-m6aa",)).fetchone()[0]
+    断言(复活态 == "排队", "#1221 P1-A：reaper 取消后同分支再入队→复活排队（不再挂 240 分钟）")
+    复活领 = 处理写("task_claim", {"runner": "1221复活己", "平台": "win-x64",
+                                "M6原生": True})
+    断言(复活领.get("任务") is not None
+        and 复活领["任务"]["分支"] == "ci/预验-1221reap0001-m6aa",
+        "#1221 P1-A：复活行可被认领（幂等分支重跑自愈）")
+    # P1-A 反态：源分支已并入 develop=维持取消（562 语义）
+    con.execute("INSERT INTO 预验任务(分支,sha,源分支,状态,入队时刻,更新时刻) "
+                "VALUES(?,?,?,'已取消',?,?)",
+                ("ci/预验-1221reap0009-m6cc", "c" * 40, "任务/已并入", 新时1221, 新时1221))
+    con.commit()
+    真并入 = 服务.源分支已并入
+    try:
+        服务.源分支已并入 = lambda 源: True
+        处理写("task_enqueue", {"分支": "ci/预验-1221reap0009-m6cc", "sha": "c" * 40,
+                              "源分支": "任务/已并入"})
+        并入态 = con.execute("SELECT 状态 FROM 预验任务 WHERE 分支=?",
+                           ("ci/预验-1221reap0009-m6cc",)).fetchone()[0]
+    finally:
+        服务.源分支已并入 = 真并入
+    断言(并入态 == "已取消", "#1221 P1-A：已并入源分支的取消行不复活（562 语义保持）")
+
+    # #1221 复审 P2-3：task_cancel 删父行同时清片行（与回收路径对称）
+    处理写("task_enqueue", {"分支": "ci/预验-1221cancel01", "sha": "e" * 40})
+    # 直接挂两条片行（模拟回收竞态残留：父行已回排队但片行仍在）
+    for 序 in (1, 2):
+        con.execute("INSERT INTO 预验分片(分支,sha,片序,片数,状态,更新时刻) "
+                    "VALUES(?,?,?,?,'缺口',?)",
+                    ("ci/预验-1221cancel01", "e" * 40, 序, 3, 新时1221))
+    con.commit()
+    片有前 = len(queue_shard.快照(con, "ci/预验-1221cancel01"))
+    处理写("task_cancel", {"分支": "ci/预验-1221cancel01"})
+    片有后 = len(queue_shard.快照(con, "ci/预验-1221cancel01"))
+    父有后 = con.execute("SELECT COUNT(*) FROM 预验任务 WHERE 分支=?",
+                       ("ci/预验-1221cancel01",)).fetchone()[0]
+    断言(片有前 == 2 and 片有后 == 0 and 父有后 == 0,
+         "#1221 P2-3：task_cancel 删父排队行+清父分片（无孤儿片行）")
+
     # ── 1425 全站登录墙 HTTP 端到端（866 教训：对目标真实拦截的正反两态·照
     #    board_selftest 模式起真服务）——人=用户名+密码会话（CN_WEB_USER/CN_WEB_PASS·
     #    web_auth）·机器=Bearer 令牌；页面未鉴权→自包含登录页·API 未鉴权→401。──
@@ -1090,6 +1154,13 @@ def 跑() -> None:
         码, 头, 体 = 调1425("GET", "/api/state",
                             头={"Authorization": "Bearer selftest-token-1425"})
         断言(码 == 200, "1425 Bearer 令牌过墙（机器通道不动·daemon/CLI/integrate）")
+        # #1221 P3 防御：task_result sha/branch 入参校验（HTTP 面 400 显式）
+        _令牌头 = {"Authorization": "Bearer selftest-token-1425"}
+        码坏sha, _h, _b = 调1425("GET", "/api/task_result?sha=zz", 头=_令牌头)
+        码坏支, _h, _b = 调1425("GET", "/api/task_result?sha=" + "a" * 10
+                               + "&branch=not-a-branch", 头=_令牌头)
+        断言(码坏sha == 400 and 码坏支 == 400,
+             "#1221 P3：task_result 非 hex sha / 非法 branch=400（与 board_service 同规）")
         码, 头, 体 = 调1425("GET", "/api/me")
         断言(码 == 200 and json.loads(体).get("已登录") is False,
              "1425 /api/me 豁免：无凭证可查登录态（布尔·无敏感数据）")

@@ -128,18 +128,24 @@ def 推导阶段(队列行们: list, 预验行们: list, 门禁行们: list, 任
         if 预 is not None:
             状态 = str(预.get("状态") or "")
             sha10 = str(预.get("sha") or "")[:10]   # 预检详情代理查询键（ci/预验-<sha10>）
+            # #1221 复审 P2-4：预检详情带精确分支名（M6 轮 -m6<hex>），页面透传
+            #   /api/task_result?sha&branch——同 sha10 的旧普通行不得遮住新预验行。
+            支 = str(预.get("分支") or "")
             if 状态 == "完成" and 预.get("绿") == 0:
-                出[号] = {"阶段": 阶段_预检红, "阶段时刻": str(预.get("更新时刻") or ""), "sha": sha10}
+                出[号] = {"阶段": 阶段_预检红, "阶段时刻": str(预.get("更新时刻") or ""),
+                          "sha": sha10, "分支": 支}
                 continue
             if 状态 == "完成" and 预.get("绿") == 1:
-                出[号] = {"阶段": 阶段_预检绿, "阶段时刻": str(预.get("更新时刻") or ""), "sha": sha10}
+                出[号] = {"阶段": 阶段_预检绿, "阶段时刻": str(预.get("更新时刻") or ""),
+                          "sha": sha10, "分支": 支}
                 continue
             if 状态 == "执行中":
                 出[号] = {"阶段": 阶段_预检中, "阶段时刻": str(预.get("更新时刻") or ""),
-                          "runner": str(预.get("认领者") or ""), "sha": sha10}
+                          "runner": str(预.get("认领者") or ""), "sha": sha10, "分支": 支}
                 continue
             if 状态 == "排队":
-                出[号] = {"阶段": 阶段_预检排队, "阶段时刻": str(预.get("更新时刻") or ""), "sha": sha10}
+                出[号] = {"阶段": 阶段_预检排队, "阶段时刻": str(预.get("更新时刻") or ""),
+                          "sha": sha10, "分支": 支}
                 continue
         队 = 队列态.get(号)
         if 队 is not None:
@@ -187,15 +193,18 @@ def 阶段图(任务们: list) -> dict:
     return 图
 
 
-def 取预检详情(sha: str):
+def 取预检详情(sha: str, branch: str = ""):
     """代理 8300 /api/task_result（内网回环·前端免跨端口暴露）——预检红徽标点开
     看失败用例清单。sha=预验任务 sha（非台账收口 sha）。不可达/无记录=None。"""
     import urllib.request
     import urllib.parse
     地址 = os.environ.get("CN_QUEUE_BASE_URL", "http://127.0.0.1:8300").rstrip("/")
     try:
-        请求 = urllib.request.Request(
-            f"{地址}/api/task_result?sha={urllib.parse.quote(sha)}")
+        # #1221 P2-4：branch 透传（精确预验分支名·M6 轮防旧行遮蔽）
+        地址尾 = f"/api/task_result?sha={urllib.parse.quote(sha)}"
+        if branch:
+            地址尾 += "&branch=" + urllib.parse.quote(branch)
+        请求 = urllib.request.Request(地址 + 地址尾)
         _套队列鉴权头(请求)
         with urllib.request.urlopen(请求, timeout=5) as r:
             return json.loads(r.read().decode("utf-8"))

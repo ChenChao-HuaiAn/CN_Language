@@ -183,7 +183,8 @@ function 渲染池() {
       <span class="淡">${转义(r["认领限制"] || "不限")}</span>
       <span class="时间列" title="${转义(r["状态"] === "排队" ? 排队因(r) : "")}">${时}</span>
       <span><button class="钮 次 窄" data-详池="${转义((r.sha || "").slice(0, 10))}"
-        data-源="${转义(源)}" data-态="${转义(r["状态"])}">详情</button></span>
+        data-源="${转义(源)}" data-支="${转义(r["分支"] || "")}"
+        data-态="${转义(r["状态"])}">详情</button></span>
     </div>`;
   }).join("");
   根.innerHTML = `<div class="表槽">
@@ -467,12 +468,13 @@ async function 开门禁详情(原索引) {
           : `<div class="空态">此轮无详情数据（旧行 / 免跑轮）</div>`));
 }
 
-async function 开池详情(sha10, 源分支) {
+async function 开池详情(sha10, 源分支, 分支) {
   面板打开(`<div class="详号 mono">${转义(sha10)}</div>
     <div class="详题">${转义(源分支 || "验证池任务")}</div>`);
   let r = null;
   try {
-    r = await 调API("api/task_result?sha=" + encodeURIComponent(sha10));
+    r = await 调API("api/task_result?sha=" + encodeURIComponent(sha10) +
+                    (分支 ? "&branch=" + encodeURIComponent(分支) : ""));
   } catch (e) { /* 无详情 */ }
   if ($("详情面板").hidden) return;
   面板去骨架();
@@ -552,7 +554,7 @@ document.addEventListener("click", (e) => {
   if (详门) { 开门禁详情(parseInt(详门.dataset.详门, 10)); return; }
   const 详池 = e.target.closest("[data-详池]");
   if (详池) {
-    开池详情(详池.dataset.详池, 详池.dataset.源);
+    开池详情(详池.dataset.详池, 详池.dataset.源, 详池.dataset.支);
     return;
   }
   if (e.target.closest("[data-关]") || e.target === $("详情遮罩")) { 面板关闭(); return; }

@@ -62,6 +62,19 @@ def 轮结果构造(sha: str, 轮分支: str, 步骤们: dict, 开始: float,
             "提交时刻": ci_report.提交时刻(sha)}
 
 
+def ls远程失败红结果(分支: str, 平台: str, sha10: str) -> dict:
+    """#1221 复审 P2-1：点名预验 ls-remote 失败时的合成红结果（按分支内嵌 sha10）。
+
+    落盘后文件名=预验_<sha10>.json，ssh 轮询 60s 内收口（否则守满 240 分钟总超时）。
+    真实完整 sha 不可知——用 sha10+补零占位（仅作文件名/审计键，不参与任何验证结论）。"""
+    合成sha = (sha10 + "0" * 40)[:40]
+    return {"sha": 合成sha, "分支": 分支, "平台": 平台, "绿": False,
+            "步骤": {"同步": {"rc": -1, "说明": "ls-remote 失败（无法解析分支头）"}},
+            "总秒": 0, "时刻": datetime.now().isoformat(timespec="seconds"),
+            "日志": "", "日志尾部": ["[ls-remote 失败] 按分支内嵌 sha10 合成红结果"
+                                 "供 ssh 轮询快速收口"]}
+
+
 def 轮M6不可验结果(sha: str, 轮分支: str, 步骤们: dict, 开始: float,
                   轮日志路径: Path, m6计划: dict, *, 平台: str) -> dict:
     """#1221 复审 P1-4①：M6 触发但平台不可原生验——**构建前**早退判红。

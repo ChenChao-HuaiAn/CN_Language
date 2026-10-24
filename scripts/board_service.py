@@ -507,7 +507,11 @@ class 处理器(BaseHTTPRequestHandler):
             sha = unquote(参数.get("sha", "")).strip()
             if not re.fullmatch(r"[0-9a-f]{7,40}", sha):
                 return self._回JSON(400, {"错误": "sha 须为 7~40 位 hex"})
-            return self._回JSON(200, {"结果": 阶段.取预检详情(sha), "时刻": 时刻()})
+            # #1221 P2-4：精确预验分支透传（M6 轮 ci/预验-<sha10>-m6<hex>）
+            支 = unquote(参数.get("branch", "")).strip()
+            if 支 and not re.fullmatch(r"ci/(?:预验|兜底)-[0-9a-f]{7,40}(?:-m6[0-9a-f]+)?", 支):
+                return self._回JSON(400, {"错误": "branch 须为 ci/预验-|ci/兜底-<sha10>[-m6<hex>]"})
+            return self._回JSON(200, {"结果": 阶段.取预检详情(sha, 支), "时刻": 时刻()})
         if 路径 == "/api/gate_result":             # 842：验证红详情代理（失败用例+归因）
             q = urlparse(self.path).query
             参数 = dict(p.split("=", 1) for p in q.split("&") if "=" in p)

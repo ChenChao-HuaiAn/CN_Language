@@ -3061,7 +3061,7 @@ def 主程序() -> int:
                              "等价的环境判据=CI环境识别三变量（CN_RUNNER_ID/CN_CI_ROLE/"
                              "CN_CI_BRANCH 任一非空）。本地开发勿用（无并发收敛）")
     解析器.add_argument("--require-m6", action="store_true",
-                        help="#1221 自举固定点必跑（写集含 codegen/opt/ir 时的机械保证）："
+                        help="#1221 自举固定点必跑（写集含编译器产物面（codegen/opt/ir/model/协议常量/stdlib）时的机械保证）："
                              "本选集含 79_v2 而未真跑/未通过=exit 1（跳过不静默）——等效放行"
                              "重负载（CI 通道语义），并强制落 M6 审计记录（md5/首个差异字节）。"
                              "等价环境变量=CN_M6_REQUIRE=1（ci.ps1 等不可改命令行调用面透传）；"
@@ -3211,7 +3211,7 @@ def 主程序() -> int:
     # #1221：选集（分片/过滤后）是否含 M6 用例——重负载跳过前定值（跳过也算选集内，
     #   --require-m6 下跳过=红；分片未含=显式「未选」不判红，由含重型的片承担）。
     M6在选集 = any(是M6用例(d.name) for d in 用例目录们)
-    # #1221：M6 必跑通道——integrate 写集命中 codegen/opt/ir 时经 --require-m6（或
+    # #1221：M6 必跑通道——integrate 写集命中编译器产物面（codegen/opt/ir/model/协议常量/stdlib）时经 --require-m6（或
     #   ci.ps1 经环境变量 CN_M6_REQUIRE=1 透传）强制 79_v2 真跑：本通道等同 CI 放行
     #   （外层已持机器锁/独占机），但额外要求记录必须为「通过」，跳过/失败=exit 1。
     要求M6 = bool(getattr(参数, "require_m6", False)
@@ -3473,7 +3473,7 @@ def 主程序() -> int:
         if M6状态 != "通过":
             print(红色(f"M6 门禁失败：79_v2 自举固定点未通过（状态={M6状态}）"
                        f"——{(M6汇总记录 or {}).get('原因', '无记录')}"))
-            print(红色("  修复：本轮写集含 codegen/opt/ir，M6 必须真跑且 fix_p ≡ fix_s"
+            print(红色("  修复：本轮写集含编译器产物面（codegen/opt/ir/model/协议常量/stdlib），M6 必须真跑且 fix_p ≡ fix_s"
                        "（#1221 机械保证·禁用 --allow 类放行）"))
             print(f"  {红色('✗')} 79_v2_自举闭环: M6 未跑/未通过（{(M6汇总记录 or {}).get('原因', '')}）")
             return 1

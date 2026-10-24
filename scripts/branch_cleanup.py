@@ -129,7 +129,7 @@ def 预验sha10(短名: str) -> str:
     try:
         from ci_round import 预验分支sha10
         return 预验分支sha10(短名)
-    except Exception:
+    except ImportError:   # 旧树无 ci_round（渐进部署）——本地同规则兜底
         return re.sub(r"-m6[0-9a-f]+$", "", str(短名 or "")[len(预验前缀):])[:10]
 
 
