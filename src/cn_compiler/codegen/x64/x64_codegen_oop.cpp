@@ -360,15 +360,16 @@ void X64CodeGenerator::emitVirtualCall(AsmWriter& writer, const ir::IRInstructio
             const std::string load = (argType == "f64") ? "movsd" : "movss";
             const std::string mp = (argType == "f64") ? "qword ptr " : "dword ptr ";
             const std::string xmm = "xmm" + std::to_string(regIdx);
-            // #1212：实参可能已分配到 xmm（寄存器源无内存前缀）
-            writer.line(load + " " + xmm + ", " + floatSourceText(op, mp));
-            // 变参兼容：位模式复制到同参数位整型寄存器（MSVC 惯例）；栈传位 movq
-            //   内存目标须带 qword ptr（A2070·431 汇编失败实证）
-            if (regIdx >= 4 && regIdx <= kMaxCallArgSlots1212) {
-                writer.line("movq qword ptr " + paramSlot + ", " + xmm);
-            } else {
-                writer.line("movq " + paramSlot + ", " + xmm);
-            }
+            // #1565 根治：栈传位 staging 禁用 xmm{参数位}——xmm6/xmm7/xmm8 是
+            //   浮点分配池（承载后续实参值），写入即覆盖尚未装载的源，级联
+            //   把 7/8/9 参读成 6 参（431 浮九 285→235 实录）。与普通调用
+            //   路径同口径改用 xmm0 中转（xmm0 不在分配池，纯 scratch）。
+            //   寄存器位保持 xmm{参数位}（#1212 实参可能已在 xmm，源无内存前缀）；
+            //   栈传位 movq 内存目标须带 qword ptr（A2070·431 汇编失败实证）。
+            const bool stackFloat = (regIdx >= 4 && regIdx <= kMaxCallArgSlots1212);
+            const std::string stage = stackFloat ? "xmm0" : xmm;
+            writer.line(load + " " + stage + ", " + floatSourceText(op, mp));
+            writer.line((stackFloat ? "movq qword ptr " : "movq ") + paramSlot + ", " + stage);
         } else if (argType == "i128" || argType == "u128") {
             // #1212 审查 P1-2：i128 实参 ABI=双槽地址（与 emitCall/Linux 同构）
             const ir::IRValue& av = inst.operands[thisIdx + 1 + i];
