@@ -75,7 +75,20 @@ def 兜底入池(sha: str) -> bool:
     配置 = ci_shard.池配置()
     if not 配置["池地址"]:
         return False
-    回 = ci_shard.池调用(配置, "task_enqueue", {"分支": "ci/兜底-%s" % sha[:10], "sha": sha})
+    # #1569：写集触发 M6 时随入队上报——服务端据此把 M6 轮限定原生平台
+    #   （交叉模拟 arm64 无法原生跑 79_v2，派过去会 fail-closed 造红）。
+    try:
+        差 = subprocess.run(["git", "diff", "--name-only", "-z", "%s~1" % sha, sha],
+                            capture_output=True, text=True, encoding="utf-8",
+                            errors="replace", timeout=30)
+        文件们 = [x for x in (差.stdout or "").split(chr(0)) if x]
+        须M6 = bool(m6_gate.判定写集(文件们).get("触发")) if 差.returncode == 0 else True
+    except Exception:
+        须M6 = True   # 写集不可判=fail-safe 按 M6 处理（限原生平台·不造 arm64 假红）
+    载荷 = {"分支": "ci/兜底-%s" % sha[:10], "sha": sha}
+    if 须M6:
+        载荷["M6必跑"] = True
+    回 = ci_shard.池调用(配置, "task_enqueue", 载荷)
     if 回 and 回.get("ok"):
         print("[兜底入池] ci/兜底-%s（runner 池接手）" % sha[:10], flush=True)
         return True

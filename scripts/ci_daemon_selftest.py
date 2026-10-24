@@ -674,7 +674,8 @@ def _770断言(主模块, 断言) -> None:
     # 1297：兜底入池 实现外迁 ci_fallback.py——文本锁跟实现走
     兜底源 = (Path(__file__).resolve().parent / "ci_fallback.py").read_text(encoding="utf-8")
     断言("770 文本锁：兜底入池零认领限制实参（服务端轮转唯一权威·1297 起=ci_fallback）",
-         '"task_enqueue", {"分支": "ci/兜底-%s" % sha[:10], "sha": sha}' in 兜底源)
+         '"task_enqueue"' in 兜底源 and "认领限制" not in 兜底源
+         and "M6必跑" in 兜底源)   # #1569：M6 必跑随入队上报（服务端限原生平台）
     断言("770 修复锁：头已交池（sha in 已入池）分支在位且先于开跑——本机不重复直跑"
          "（三平台同验实录 2026-10-14 深夜）",
          "if sha in 已入池 or list(日志目录.glob" in 源

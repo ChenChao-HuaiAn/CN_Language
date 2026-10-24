@@ -491,7 +491,16 @@ def 处理写(名: str, 数据: dict) -> dict:
                     #   打标仅在新建行时（幂等重发不空推游标）。
                     轮平台 = 兜底轮转平台序[兜底轮转游标["i"] % len(兜底轮转平台序)]
                     兜底轮转游标["i"] += 1
-                    认领限制 = 轮平台 if 平台有空闲(轮平台) else None
+                    if M6必跑:
+                        # #1569：M6 触发轮只派原生可跑平台（交叉模拟 arm64
+                        #   无法原生跑 79_v2——派过去 fail-closed 造红）。限制
+                        #   恒非空，避免 claim 的跳平台放宽把行放给 arm64。
+                        原生们 = ("win-x64", "linux-x86_64")
+                        轮平台 = next((p for p in 原生们 if 平台有空闲(p)),
+                                     原生们[兜底轮转游标["i"] % len(原生们)])
+                        认领限制 = 轮平台
+                    else:
+                        认领限制 = 轮平台 if 平台有空闲(轮平台) else None
                     print("[兜底轮转] %s → %s（%s）" % (分支, 轮平台,
                           "指派" if 认领限制 else "全忙放宽不限"), flush=True)
                     # 830 陈头去重：新头入池=更老的「排队中」兜底行直接取消——最新头内容
@@ -569,7 +578,7 @@ def 处理写(名: str, 数据: dict) -> dict:
             #   的运行期兜底形态；入池时的即时放宽是快路径，此处是慢路径保险）。坏串行龄 None=不动。
             for 分支770, 更新770 in con.execute(
                     "SELECT 分支,更新时刻 FROM 预验任务 WHERE 状态='排队' AND 分支 LIKE 'ci/兜底-%' "
-                    "AND 认领限制 IS NOT NULL AND 认领限制!=''").fetchall():
+                    "AND 认领限制 IS NOT NULL AND 认领限制!='' AND COALESCE(M6必跑,0)=0").fetchall():
                 龄 = 行龄秒(更新770)
                 if 龄 is not None and 龄 > 兜底跳平台阈值秒:
                     con.execute("UPDATE 预验任务 SET 认领限制=NULL,更新时刻=? WHERE 分支=?",
