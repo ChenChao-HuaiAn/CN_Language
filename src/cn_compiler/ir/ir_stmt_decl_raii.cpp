@@ -17,6 +17,32 @@
 
 namespace cn_compiler {
 
+namespace {
+
+// 880/879 共用判据（1479 提炼为成员函数 returnSourceBorrowed880 后的扫描内核
+//   同源保留于此）：体内首个 return 表达式搜索（块/如果 基本形态递归）。
+Expr* findReturnExpr880raii(Stmt* s) {
+    if (s == nullptr) return nullptr;   // 空节点=非该形态（递归出口）
+    switch (s->getType()) {
+    case NodeType::ReturnStmt:
+        return static_cast<ReturnStmt*>(s)->value.get();
+    case NodeType::BlockStmt:
+        for (auto& st : static_cast<BlockStmt*>(s)->statements) {
+            if (Expr* e = findReturnExpr880raii(st.get())) return e;
+        }
+        return nullptr;
+    case NodeType::IfStmt: {
+        auto* ifs = static_cast<IfStmt*>(s);
+        if (Expr* e = findReturnExpr880raii(ifs->thenBranch.get())) return e;
+        return findReturnExpr880raii(ifs->elseBranch.get());
+    }
+    default:
+        return nullptr;
+    }
+}
+
+}  // namespace
+
 // 980 红治理 v2（2026-10-16·880·第三轮判据收窄）：**初值=用户函数调用接收
 //   → 按被调返回来源三分**——引用写穿立法（plans/001 §5.3·056 甲）下：
 //   · 返回「形参/全局」=写穿别名（接收槽非拥有者）→ 豁免登记（980：
@@ -33,56 +59,37 @@ namespace cn_compiler {
 //   「接收槽一律登记」：被调返回形参（写穿别名）时接收槽与实参槽双删
 //   C0000374。对象类型=语义层写回 semanticType（指针剥一层·v2.1 统一 . 模型）。
 //   返回 true=接收槽豁免登记（写穿别名/保守面）；false=登记回收（拥有/转移）。
+// 880 判据源成员函数（1479 提炼：原 callReceiverExempt880 内 lambda 显形为
+//   声明位/实参位共用单一判据源——语义逐字保留零变更）。扫描内核
+//   findReturnExpr880raii 见文件头匿名命名空间。
+// 返回 true=借用（形参/全局写穿别名·非标识符 return 保守面）→ 豁免登记；
+// 返回 false=拥有（局部/新建标识符=句柄转移）→ 登记/释放。
+bool IRGenerator::returnSourceBorrowed880(
+    BlockStmt* body, const std::vector<std::unique_ptr<ParamDecl>>& params) const {
+    if (body == nullptr) return true;   // 函数体缺省=无 return 可查（缺省形态豁免登记·两调用点非空守卫）
+    Expr* rv = findReturnExpr880raii(body);
+    if (rv != nullptr && rv->getType() == NodeType::IdentifierExpr) {
+        const std::string rn = static_cast<IdentifierExpr*>(rv)->name;
+        for (auto& p : params) {
+            if (p != nullptr && p->name == rn) return true;   // 形参
+        }
+        if (semantic_ != nullptr) {
+            if (semantic_->isGlobalStatic(rn) ||
+                // 1360 结果化批3B：has_value=类型已登记（原 !empty() 等价）
+                semantic_->globalStaticType(rn).has_value()) {
+                return true;   // 全局
+            }
+        }
+        return false;           // 局部/新建标识符=转移→登记
+    }
+    return true;                // 非标识符 return：保守豁免
+}
+
 bool IRGenerator::callReceiverExempt880(VarDecl* node, const DeclGenCtx& ctx) {
     bool callTransferInit = false;
     if (node->initializer != nullptr &&
         node->initializer->getType() == NodeType::CallExpr) {
         auto* initCall = static_cast<CallExpr*>(node->initializer.get());
-        // 880/879 共用判据（879 方法面扩展后两处消费·提炼于此）：
-        //   体内首个 return 表达式搜索（块/如果 基本形态递归）。
-        std::function<Expr*(Stmt*)> findReturnExpr880 = [&](Stmt* s) -> Expr* {
-            if (s == nullptr) return nullptr;   // 空节点=非该形态（递归出口）
-            switch (s->getType()) {
-            case NodeType::ReturnStmt:
-                return static_cast<ReturnStmt*>(s)->value.get();
-            case NodeType::BlockStmt:
-                for (auto& st : static_cast<BlockStmt*>(s)->statements) {
-                    if (Expr* e = findReturnExpr880(st.get())) return e;
-                }
-                return nullptr;
-            case NodeType::IfStmt: {
-                auto* ifs = static_cast<IfStmt*>(s);
-                if (Expr* e = findReturnExpr880(ifs->thenBranch.get())) return e;
-                return findReturnExpr880(ifs->elseBranch.get());
-            }
-            default:
-                return nullptr;
-            }
-        };
-        // 返回来源三分（880 自由函数/879 方法面共用）：
-        //   1=借用豁免（形参/全局标识符=写穿别名；非标识符 return=保守豁免）；
-        //   0=登记（局部/新建标识符=句柄转移）。
-        auto returnSourceExempt880 =
-            [&](BlockStmt* body,
-                const std::vector<std::unique_ptr<ParamDecl>>& params) -> bool {
-            if (body == nullptr) return true;   // 函数体缺省=无 return 可查（缺省形态豁免登记·两调用点非空守卫）
-            Expr* rv = findReturnExpr880(body);
-            if (rv != nullptr && rv->getType() == NodeType::IdentifierExpr) {
-                const std::string rn = static_cast<IdentifierExpr*>(rv)->name;
-                for (auto& p : params) {
-                    if (p != nullptr && p->name == rn) return true;   // 形参
-                }
-                if (semantic_ != nullptr) {
-                    if (semantic_->isGlobalStatic(rn) ||
-                        // 1360 结果化批3B：has_value=类型已登记（原 !empty() 等价）
-                        semantic_->globalStaticType(rn).has_value()) {
-                        return true;   // 全局
-                    }
-                }
-                return false;           // 局部/新建标识符=转移→登记
-            }
-            return true;                // 非标识符 return：保守豁免
-        };
         std::string calleeName;
         bool isMemberCall880 = false;
         if (initCall->callee != nullptr &&
@@ -122,7 +129,7 @@ bool IRGenerator::callReceiverExempt880(VarDecl* node, const DeclGenCtx& ctx) {
             if (astOk880) {
                 FunctionDecl* fn = it->second;
                 if (fn->returnType.find('&') == std::string::npos) {
-                    callTransferInit = returnSourceExempt880(fn->body.get(),
+                    callTransferInit = returnSourceBorrowed880(fn->body.get(),
                                                              fn->params);
                 }
                 // 引用返回：调用点已走专用深拷路径物化副本→登记（不置位）。
@@ -167,7 +174,7 @@ bool IRGenerator::callReceiverExempt880(VarDecl* node, const DeclGenCtx& ctx) {
                                 callTransferInit = true;   // AST 不可达：保守豁免
                             }
                             if (mBody880 != nullptr) {
-                                callTransferInit = returnSourceExempt880(
+                                callTransferInit = returnSourceBorrowed880(
                                     mBody880, m->ast->params);
                             }
                         }
@@ -177,6 +184,162 @@ bool IRGenerator::callReceiverExempt880(VarDecl* node, const DeclGenCtx& ctx) {
         }
     }
     return callTransferInit;
+}
+
+// 1479：方法调用返回类型回退（接收对象剥星归一+方法表命中→返回类型 canonical；
+//   miss=空串——与 genTransferClassArgWithCleanup966 的 1501 判定段重复·待归纳）。
+std::string IRGenerator::methodReturnCanon1479(const CallExpr& ce) {
+    if (ce.callee == nullptr || ce.callee->getType() != NodeType::MemberExpr ||
+        semantic_ == nullptr) {
+        return "";
+    }
+    const auto* mem = static_cast<const MemberExpr*>(ce.callee.get());
+    std::string objCanon = types::canonical(mem->object->semanticType);
+    // 880 方法面同款剥星（对象类型=语义层写回 semanticType·指针剥一层）
+    if (!objCanon.empty() && !semantic_->isClassType(objCanon) &&
+        types::isPointer(objCanon)) {
+        objCanon = types::canonical(types::pointeeOf(objCanon));
+    }
+    // 静默豁免业务值: 空实参形态守卫=否定回答（两调用点均非空·守卫面）
+    if (objCanon.empty() || !semantic_->isClassType(objCanon)) return "";
+    std::string owner;
+    // 1360 结果化：无值=方法表 miss
+    const cn::Optional<const ClassMemberInfo*> mOpt =
+        findClassMethod(objCanon, mem->memberName, owner);
+    if (!mOpt.has_value()) return "";
+    return types::canonical(mOpt.value()->type);
+}
+
+// 1479：调用返回类型 canon 单点解析（实参位 81-a/语句位 645 扩展共用）——
+//   resolvedType → 签名键/裸名两级回退 → 方法面回退（methodReturnCanon1479）；
+//   miss=空串（648 miss 诊断归属保持在 genArgValueWithCleanup 调用方）。
+std::string IRGenerator::callReturnCanonOf(const CallExpr* ce) {
+    // 静默豁免业务值: 对象类型未写回/非类=非方法面形态的否定回答（甄别器保守分流）
+    if (ce == nullptr || ce->callee == nullptr) return "";
+    std::string retCanon = types::canonical(ce->resolvedType);
+    if (!retCanon.empty()) return retCanon;
+    if (ce->callee->getType() == NodeType::IdentifierExpr) {
+        const std::string nm =
+            static_cast<IdentifierExpr*>(ce->callee.get())->name;
+        const std::string keys[2] = {ce->resolvedSignature, nm};
+        for (const std::string& key : keys) {
+            if (key.empty()) continue;
+            // 1360 结果化批3B：无值=查询 miss——value_or 显形空串回落
+            const std::string rt = types::canonical(
+                semantic_->funcReturnTypeOf(key).value_or(std::string()));
+            if (!rt.empty()) return rt;
+        }
+        return "";
+    }
+    return methodReturnCanon1479(*ce);
+}
+
+// 1479：类临时整壳析构发射（判空+无析构类字段级联+DeleteObject·运行时调析构
+//   ——实参位 flush "966壳$"/"1479壳$" 与语句位共用单点·966 flush 序列提炼）。
+void IRGenerator::emitClassTempDelete1479(const ir::IRValue& v,
+                                          const std::string& clsT) {
+    if (semantic_ != nullptr && semantic_->findClass(clsT).has_value() &&
+        !classDestructorSymbolKey(clsT).has_value()) {
+        ir::IRValue nonNull = emitResult(
+            ir::Opcode::Ne, {v, ir::IRValue::constant("0", "ptr")}, "i1", "",
+            SourceLocation());
+        const std::string casc = "bb" + std::to_string(blockCounter_++);
+        const std::string merge = "bb" + std::to_string(blockCounter_++);
+        endBranch(nonNull.toString(), casc, merge);
+        setCurrentBlock(newBlock(casc));
+        emitNoDtorFieldCascade(v, clsT, SourceLocation());
+        if (!currentBlock_->terminated) endJump(merge);
+        setCurrentBlock(newBlock(merge));
+    }
+    emit(ir::Opcode::DeleteObject, {v}, ir::IRValue(), clsT, "void",
+         SourceLocation());
+}
+
+// 1479（2026-10-24·965 前置机制）：「调用返回类对象临时」实参位拥有性甄别——
+//   880/879 返回来源三分判据的实参位复用（单一判据源=returnSourceBorrowed880）。
+//   965 四报实录：实参位缺登记面（消费(仓1.造货架()) 每调用泄 1·声明位 880
+//   判据净 0=分叉）；三版未甄别修复全破（DeleteObject 误释借用句柄=删调用方
+//   对象·1052 段错误 -11）。谱系与处置：
+//   · 拥有 Owned：返回局部/新建标识符（句柄移交）·构造调用（NewObject 产物）
+//     ·容器接收者方法返回用户类元素（630 堆副本·快照语义 plans/001 §052 甲）
+//     → 实参位登记整壳释放（"1479壳$" 通道）；
+//   · 借用 Borrowed：返回形参/全局标识符（写穿别名 plans/001 §5.3·056 甲）
+//     ·引用返回（尾 &·isRefReturn）→ 禁释放（误释=删调用方对象）；
+//   · 保守 Conservative：AST 不可达（预收集表 miss/无体）·静态方法·方法表
+//     miss·非标识符 return（表达式/多路 return）·非用户类被调形态
+//     → 不登记（宁漏勿崩·880 同口径——漏放=继续现状泄漏面，误放=崩溃面）。
+IRGenerator::ClassReturnOwnership IRGenerator::classReturnOwnership1479(const CallExpr* ce) {
+    if (ce == nullptr || ce->callee == nullptr || semantic_ == nullptr) {
+        return ClassReturnOwnership::Conservative;
+    }
+    if (ce->callee->getType() == NodeType::IdentifierExpr) {
+        const std::string nm =
+            static_cast<IdentifierExpr*>(ce->callee.get())->name;
+        // 构造调用识别（类名/泛型实例文本 剥 <…> 基名）——NewObject 产物句柄
+        //   =拥有（880 登记面「构造调用→登记（770）」同判据）。
+        const std::size_t lt = nm.find('<');
+        const std::string ctorBase = (lt == std::string::npos) ? nm : nm.substr(0, lt);
+        if (semantic_->findClass(ctorBase).has_value()) {
+            return ClassReturnOwnership::Owned;
+        }
+        auto it = freeFuncDecls880_.find(nm);
+        if (it == freeFuncDecls880_.end() || it->second == nullptr ||
+            it->second->body == nullptr) {
+            return ClassReturnOwnership::Conservative;   // 预收集表 miss/无体
+        }
+        FunctionDecl* fn = it->second;
+        if (fn->returnType.find('&') != std::string::npos) {
+            return ClassReturnOwnership::Borrowed;   // 引用返回=借用
+        }
+        return returnSourceBorrowed880(fn->body.get(), fn->params)
+                   ? ClassReturnOwnership::Borrowed
+                   : ClassReturnOwnership::Owned;
+    }
+    if (ce->callee->getType() == NodeType::MemberExpr) {
+        const auto* mem = static_cast<const MemberExpr*>(ce->callee.get());
+        std::string objCanon = types::canonical(mem->object->semanticType);
+        // 880 方法面同款剥星（对象类型=语义层写回 semanticType·指针剥一层）
+        if (!objCanon.empty() && !semantic_->isClassType(objCanon) &&
+            types::isPointer(objCanon)) {
+            objCanon = types::canonical(types::pointeeOf(objCanon));
+        }
+        const std::size_t dlObj = objCanon.find('$');
+        const std::string objHead =
+            (dlObj == std::string::npos) ? objCanon : objCanon.substr(0, dlObj);
+        const bool objIsContainer1479 =
+            objHead == "向量" || objHead == "栈" || objHead == "链表" ||
+            objHead == "队列" || objHead == "集合" || objHead == "映射";
+        if (objCanon.empty() || !semantic_->isClassType(objCanon)) {
+            return ClassReturnOwnership::Conservative;   // 对象类型未写回/非类
+        }
+        if (objIsContainer1479) {
+            // 容器方法返回用户类元素=堆副本句柄（630·宿主 元素() = NewObject+
+            //   拷贝构造 asm 权威·快照语义）→ 副本唯一新生产物=拥有。
+            return ClassReturnOwnership::Owned;
+        }
+        std::string owner;
+        // 1360 结果化：无值=方法表 miss
+        const cn::Optional<const ClassMemberInfo*> mOpt =
+            findClassMethod(objCanon, mem->memberName, owner);
+        if (!mOpt.has_value()) {
+            return ClassReturnOwnership::Conservative;   // 方法表 miss
+        }
+        const ClassMemberInfo* m = mOpt.value();
+        if (m->isStatic) {
+            return ClassReturnOwnership::Conservative;   // 880 同款只辖非静态
+        }
+        if (m->isRefReturn) {
+            return ClassReturnOwnership::Borrowed;   // 引用返回=借用
+        }
+        BlockStmt* mBody = (m->ast != nullptr) ? m->ast->body.get() : nullptr;
+        if (mBody == nullptr) {
+            return ClassReturnOwnership::Conservative;   // AST 不可达
+        }
+        return returnSourceBorrowed880(mBody, m->ast->params)
+                   ? ClassReturnOwnership::Borrowed
+                   : ClassReturnOwnership::Owned;
+    }
+    return ClassReturnOwnership::Conservative;   // 其余被调形态（内置/间接等）
 }
 
 }  // namespace cn_compiler

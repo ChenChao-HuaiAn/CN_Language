@@ -61,6 +61,10 @@ void IRGenerator::visitExprStmt(ExprStmt* node) {
     if (node->expr->getType() != NodeType::CallExpr) return;
     const CallExpr* call = static_cast<const CallExpr*>(node->expr.get());
     if (discarded.type != "ptr") return;   // 串句柄寄存器形态守卫（空类型/标量直退）
+    // 1479（965 同族·语句位扩展）：语句位「调用返回类对象临时」拥有性甄别释放
+    //   ——命中（Owned）即发射整壳析构并终结（与 645 串面分流：类面 DeleteObject
+    //   级联·串面 __cn_str_free；借用/保守面放行落 645 原判定）。
+    if (emitExprStmtClassTemp1479(node, discarded)) return;
     bool ownRet = call->retOwnedString;
     const IdentifierExpr* calleeId =
         call->callee->getType() == NodeType::IdentifierExpr
@@ -73,6 +77,38 @@ void IRGenerator::visitExprStmt(ExprStmt* node) {
     if (!ownRet) return;
     // 645：语句位弃串释放直写（emitRegStringFree 成员壳随 hpp 腾行降级·663 提炼点回收直写）
     emit(ir::Opcode::Call, {discarded}, ir::IRValue(), "__cn_str_free", "void", node->location);
+}
+
+// 语句位类面（1479）抽出为独立函数：visitExprStmt 已 76 行（100 行函数红线警戒），
+//   类面判定+发射 ~40 行独立成员（先拆再加）。返回 true=已发射整壳析构（调用方
+//   终结）；false=非类形态/借用/保守面（调用方落 645 串面原判定）。
+bool IRGenerator::emitExprStmtClassTemp1479(ExprStmt* node,
+                                            const ir::IRValue& discarded) {
+    // 静默豁免业务值: 生成器未就绪/非指针产物=非本通道形态（否定分流非默认值续译）
+    if (semantic_ == nullptr || discarded.type != "ptr") return false;
+    if (node->expr->getType() != NodeType::CallExpr) return false;
+    const CallExpr* call = static_cast<const CallExpr*>(node->expr.get());
+    // 转移 显式排除（源清零句柄交接特判族——双删防线同 645 串面口径）
+    if (call->callee != nullptr &&
+        call->callee->getType() == NodeType::IdentifierExpr &&
+        static_cast<const IdentifierExpr*>(call->callee.get())->name == "转移") {
+        return false;
+    }
+    const std::string retCanon = callReturnCanonOf(call);
+    // 静默豁免业务值: 返回类型非类=非本通道形态的否定回答（落 645 串面原判定）
+    if (retCanon.empty() || !semantic_->isClassType(retCanon)) return false;
+    const std::size_t dlStmt = retCanon.find('$');
+    const std::string headStmt =
+        (dlStmt == std::string::npos) ? retCanon : retCanon.substr(0, dlStmt);
+    const bool isContainerStmt =
+        headStmt == "向量" || headStmt == "栈" || headStmt == "链表" ||
+        headStmt == "队列" || headStmt == "集合" || headStmt == "映射";
+    if (isContainerStmt) return false;   // 容器返回=sret 物化栈槽·禁 DeleteObject
+    if (classReturnOwnership1479(call) != IRGenerator::ClassReturnOwnership::Owned) {
+        return false;   // 借用/保守面不释放（宁漏勿崩·880 同口径）
+    }
+    emitClassTempDelete1479(discarded, retCanon);
+    return true;
 }
 // 判据与发射实现降级注记（758 附属）：isConcatResultReg/freeIfConcatTemp/emitRegStringFree
 //   三个成员壳随 hpp 1000 冻结线腾行降级删除——判据=ir_string_temp_util.hpp 纯自由

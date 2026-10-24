@@ -186,6 +186,31 @@ private:
     //   豁免三分判据——true=接收槽豁免登记（形参/全局写穿别名·保守面）；
     //   false=登记回收（局部/新建转移·引用返回·复制/转移内置·构造·容器）。
     bool callReceiverExempt880(VarDecl* node, const DeclGenCtx& ctx);
+    // ⑦-b 880 判据源（1479 提炼·声明位与实参位共用）：被调体内「首个 return
+    //   表达式」来源三分——true=借用（形参/全局写穿别名·非标识符 return 保守
+    //   面）；false=拥有（局部/新建句柄转移）。
+    bool returnSourceBorrowed880(BlockStmt* body,
+                                 const std::vector<std::unique_ptr<ParamDecl>>& params) const;
+    // ⑦-c 1479（965 前置机制·实现迁 ir_stmt_decl_raii.cpp）：「调用返回类对象
+    //   临时」实参位拥有性甄别——拥有=登记整壳释放；借用/保守=不登记
+    //   （宁漏勿崩·误释借用句柄=删调用方对象）。
+    enum class ClassReturnOwnership { Owned, Borrowed, Conservative };
+    ClassReturnOwnership classReturnOwnership1479(const CallExpr* ce);
+    // ⑦-d 1479：方法调用返回类型回退（语义层 resolvedType 不写回的方法面——
+    //   接收对象剥星归一+方法表命中→返回类型 canonical；miss=空串）。
+    std::string methodReturnCanon1479(const CallExpr& ce);
+    // ⑦-e 1479：调用返回类型 canon 单点解析（实参位 81-a/语句位 645 扩展共用）
+    //   ——resolvedType → 签名键/裸名两级回退 → 方法面回退；miss=空串。
+    std::string callReturnCanonOf(const CallExpr* ce);
+    // ⑦-f 1479：类临时整壳析构发射（判空+无析构类字段级联+DeleteObject——
+    //   实参位 flush "966壳$"/"1479壳$" 与语句位共用单点）。
+    void emitClassTempDelete1479(const ir::IRValue& v, const std::string& clsT);
+    // ⑦-h 1479：类面甄别登记单点（容器族排除+Owned 甄别+登记；两被调面共用）。
+    void classFaceRegister1479(const CallExpr* ce, const ir::IRValue& v,
+                               const std::string& retCanon);
+    // ⑦-g 1479：语句位「调用返回类对象临时」甄别释放（645 串面同族扩展）——
+    //   true=已发射整壳析构（调用方终结）；false=非类/借用/保守面落原判定。
+    bool emitExprStmtClassTemp1479(ExprStmt* node, const ir::IRValue& discarded);
     bool genArrayInitListDecl(VarDecl* node, const DeclGenCtx& ctx);  // ⑧数组初始化列表
     void storeArrayInitElements(VarDecl* node, InitListExpr* initList,
                                 const std::string& elemSrc, const std::string& elemIrType,

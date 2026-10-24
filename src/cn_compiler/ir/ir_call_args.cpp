@@ -73,22 +73,16 @@ ir::IRValue IRGenerator::genArgValueWithCleanup(Expr* arg,
     if (arg->getType() != NodeType::CallExpr) return v;
     // 结构体字面量实参走 materializeStructInitArg（已物化，无临时泄漏面）
     CallExpr* ce = static_cast<CallExpr*>(arg);
-    std::string retCanon = types::canonical(ce->resolvedType);
-    if (retCanon.empty() && ce->callee != nullptr &&
+    const bool methodFace1479 = ce->callee != nullptr &&
+                                ce->callee->getType() == NodeType::MemberExpr;
+    // 1479 提炼：返回类型 canon 单点解析（resolvedType → 签名键/裸名两级 →
+    //   方法面回退——原 IdentifierExpr 回退链内联段迁 callReturnCanonOf 共享）
+    std::string retCanon = callReturnCanonOf(ce);
+    if (retCanon.empty() && !methodFace1479 && ce->callee != nullptr &&
         ce->callee->getType() == NodeType::IdentifierExpr) {
-        // 语义层 resolvedType 只对内置构造器写回——普通调用按「重载决议签名键 /
-        //   裸名」两路回退查返回类型（functions_ 键为 名#签名）
         const std::string nm =
             static_cast<IdentifierExpr*>(ce->callee.get())->name;
-        const std::string keys[2] = {ce->resolvedSignature, nm};
-        for (const std::string& key : keys) {
-            if (key.empty()) continue;
-            // 1360 结果化批3B：无值=查询 miss——value_or 显形空串回落
-            const std::string rt = types::canonical(
-                semantic_->funcReturnTypeOf(key).value_or(std::string()));
-            if (!rt.empty()) { retCanon = rt; break; }
-        }
-        if (retCanon.empty() && nm.rfind("__cn_", 0) != 0) {
+        if (nm.rfind("__cn_", 0) != 0) {
             // 648 miss 不可静默：重载决议签名/裸名两级键均查不到返回类型=终态——
             //   原静默跳过实参清理登记（调用返回结构体实参的串字段泄漏面）。
             //   报诊断后保留跳过现状（控制流零变更）。豁免 "__cn_" 前缀：
@@ -100,6 +94,18 @@ ir::IRValue IRGenerator::genArgValueWithCleanup(Expr* arg,
         }
     }
     if (retCanon.empty()) return v;
+    // 1479 方法面口径隔离（v2 树卷入实测返工）：方法面回退 canon **仅服务类面
+    //   甄别**——串/串字段面（644/81-a）维持基线口径不登记。方法返回串的拥有性
+    //   须 retOwnedString 契约闸（645 语句位同款），方法面回退无此契约面：返回
+    //   字段/驻留文本=借用串，按 644 无条件 __cn_str_free=释放借用串（v2p 类表
+    //   名串被毁→「未声明的类型」级联·965 第一版崩形同款·v2 树 IR diff 15 处
+    //   新增 __cn_str_free 实录）。
+    if (methodFace1479) {
+        if (semantic_->isClassType(retCanon)) {
+            classFaceRegister1479(ce, v, retCanon);
+        }
+        return v;
+    }
     // 644（2026-10-14·P1）：实参位「返回字符串的调用」=无主拥有串临时——调用
     //   发射后收下句柄（__cn_str_free·空安全幂等）。此前仅含串字段聚合临时入
     //   清理名单（81-a），纯串临时每调用净泄 1（探针⑩实锤·v2 同构缺口同修）。
@@ -110,9 +116,41 @@ ir::IRValue IRGenerator::genArgValueWithCleanup(Expr* arg,
         pendingArgCleanups_.emplace_back(v, retCanon, nullptr);
         return v;
     }
+    // 1479（2026-10-24·965 前置机制）：实参位「调用返回类对象临时」拥有性甄别
+    //   登记——965 四报实录：缺登记面 消费(仓1.造货架()) 每调用泄 1（声明位
+    //   880 判据净 0=分叉）。甄别谱系见 classReturnOwnership1479（ir_stmt_
+    //   decl_raii.cpp）：拥有（返回局部/新建·构造·容器元素堆副本）=登记整壳
+    //   释放（"1479壳$"→flush DeleteObject 级联）；借用（返回形参/全局·引用
+    //   返回）与保守面（AST 不可达等）不登记——宁漏勿崩（880 同口径：误释
+    //   借用句柄=删调用方对象·1052 段错误实录）。类类型在此拦截不再落 81-a
+    //   字段面：Owned 整壳析构级联已覆盖字段串释放；借用形态若走 81-a 字段
+    //   偏移释放=误释调用方对象字段（类句柄语义错位）。
+    if (semantic_->isClassType(retCanon)) {
+        classFaceRegister1479(ce, v, retCanon);
+        return v;
+    }
     if (ownedStrFieldsOf(retCanon).empty()) return v;
     pendingArgCleanups_.emplace_back(v, retCanon, nullptr);
     return v;
+}
+
+// 1479：类面甄别登记单点（IdentifierExpr 面与方法面共用——容器族排除+Owned
+//   甄别+"1479壳$" 登记；借用/保守面不登记=宁漏勿崩）。
+void IRGenerator::classFaceRegister1479(const CallExpr* ce, const ir::IRValue& v,
+                                        const std::string& retCanon) {
+    // 容器族返回临时=922 面（聚合返回 ABI 物化到调用方帧内栈槽·非堆句柄）
+    //   ——DeleteObject 栈槽=段错误，排除在整壳释放谱系外（现状不登记）。
+    const std::size_t dl1479 = retCanon.find('$');
+    const std::string head1479 =
+        (dl1479 == std::string::npos) ? retCanon : retCanon.substr(0, dl1479);
+    const bool isContainerRet1479 =
+        head1479 == "向量" || head1479 == "栈" || head1479 == "链表" ||
+        head1479 == "队列" || head1479 == "集合" || head1479 == "映射";
+    if (isContainerRet1479) return;
+    if (classReturnOwnership1479(ce) != IRGenerator::ClassReturnOwnership::Owned) {
+        return;
+    }
+    pendingArgCleanups_.emplace_back(v, "1479壳$" + retCanon, nullptr);
 }
 
 // 644：寄存器值形态拥有串释放（实参位串临时专用；__cn_str_free 空安全——
@@ -146,31 +184,20 @@ void IRGenerator::flushPendingArgCleanups(std::size_t base) {
             }
             continue;
         }
-        // 966：转移源壳整壳析构（登记 canon="966壳$"+类名）——662 接收者临时
-        //   析构同款序列（判空+无析构类字段级联+DeleteObject·运行时调析构）。
-        //   与 81-a 串字段聚合面（emitOwnedStrFieldFreesAt）分道：壳面=DeleteObject
-        //   级联·聚合面=字段偏移逐项。
-        if (canon.rfind("966壳$", 0) == 0) {
-            const std::string srcT966 = canon.substr(std::string("966壳$").size());
-            const ir::IRValue& v966 = std::get<0>(pendingArgCleanups_[i]);
-            if (semantic_ != nullptr &&
-                semantic_->findClass(srcT966).has_value() &&
-                !classDestructorSymbolKey(srcT966).has_value()) {
-                ir::IRValue nonNull966 = emitResult(
-                    ir::Opcode::Ne, {v966, ir::IRValue::constant("0", "ptr")},
-                    "i1", "", SourceLocation());
-                const std::string casc966 =
-                    "bb" + std::to_string(blockCounter_++);
-                const std::string merge966 =
-                    "bb" + std::to_string(blockCounter_++);
-                endBranch(nonNull966.toString(), casc966, merge966);
-                setCurrentBlock(newBlock(casc966));
-                emitNoDtorFieldCascade(v966, srcT966, SourceLocation());
-                if (!currentBlock_->terminated) endJump(merge966);
-                setCurrentBlock(newBlock(merge966));
-            }
-            emit(ir::Opcode::DeleteObject, {v966}, ir::IRValue(), srcT966,
-                 "void", SourceLocation());
+        // 966/1479：类临时整壳析构（"966壳$"=转移源壳·入容器位方法返回临时
+        //   [1501]；"1479壳$"=实参位调用返回类临时·拥有性甄别通过者[1479·
+        //   965 根治]）——同款序列已提炼 emitClassTempDelete1479 单点（判空+
+        //   无析构类字段级联+DeleteObject·运行时调析构）。与 81-a 串字段聚合
+        //   面（emitOwnedStrFieldFreesAt）分道：壳面=DeleteObject 级联·聚合
+        //   面=字段偏移逐项。
+        const bool shell966 = canon.rfind("966壳$", 0) == 0;
+        const bool shell1479 = canon.rfind("1479壳$", 0) == 0;
+        if (shell966 || shell1479) {
+            const std::size_t shellPrefixLen =
+                shell966 ? std::string("966壳$").size()
+                         : std::string("1479壳$").size();
+            const std::string srcT966 = canon.substr(shellPrefixLen);
+            emitClassTempDelete1479(std::get<0>(pendingArgCleanups_[i]), srcT966);
             continue;
         }
         emitOwnedStrFieldFreesAt(std::get<0>(pendingArgCleanups_[i]), canon,
