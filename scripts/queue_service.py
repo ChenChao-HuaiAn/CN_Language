@@ -100,6 +100,7 @@ import queue_result
 import queue_shard
 import queue_instances
 import web_auth              # 网页登录墙公共模块（1425·凭据/会话/登录页）
+import ci_duration           # 1385：耗时滚动基线（门禁写入即评估·快照/详情徽标数据源）
 
 # ===== 可调常量 =====
 端口 = int(os.environ.get("CN_QUEUE_PORT", "8300"))
@@ -248,6 +249,7 @@ def 建库() -> sqlite3.Connection:
     except sqlite3.OperationalError:
         pass
     queue_shard.建表(con)   # 1297：预验分片表（独立新表·不碰父表结构）
+    ci_duration.建表(con)   # 1385：耗时样本表 + 门禁.耗时告警列（幂等迁移·须在门禁表之后）
     queue_instances.建实例表(con)   # 1392：实例动态表（独立新表·不碰既有表结构）
     queue_instances.回填种子(con, 时区时刻)   # 1392：部署首屏种子（存量认领者回填·服务启动一次）
     queue_instances.校正种子活跃(con)        # #1402：存量种子「现在」虚值按最后完成时刻修正
@@ -435,18 +437,33 @@ def 处理写(名: str, 数据: dict) -> dict:
             #   另一监控域）。
             是执行中 = str(数据.get("状态", "完成")) == "执行中"
             提交时刻 = 数据.get("提交时刻")
-            con.execute("INSERT OR REPLACE INTO 门禁(sha,平台,绿,总秒,时刻,详情,提交时刻) "
-                        "VALUES(?,?,?,?,?,?,?)",
+            时戳 = 时区时刻()
+            # 1385：门禁结果写入即做耗时滚动基线评估（执行中行无步骤=不评估·列 NULL 表示
+            #   「未评估」，与「已评估无告警=[]」显式区分）；样本表随本轮合格步骤累积。
+            #   评估异常=显式错误对象（记录并评估安全），门禁结果照常入库。
+            耗时评估 = (None if 是执行中 else
+                        ci_duration.记录并评估安全(con, 平台, sha, 数据, 时戳))
+            if 耗时评估 and 耗时评估.get("告警"):
+                for 条 in 耗时评估["告警"]:
+                    print("[耗时告警] %s %s %s 秒=%s 中位=%s（%s×·样本 %s·口径 %s）"
+                          % (sha[:10], 平台, 条.get("步骤"), 条.get("秒"),
+                             条.get("中位"), 条.get("倍数"), 条.get("样本数"),
+                             条.get("口径")), flush=True)
+            con.execute("INSERT OR REPLACE INTO 门禁(sha,平台,绿,总秒,时刻,详情,提交时刻,耗时告警) "
+                        "VALUES(?,?,?,?,?,?,?,?)",
                         (sha, 平台,
                          None if 是执行中 else (1 if 数据.get("绿") else 0),
                          None if 是执行中 else int(数据.get("总秒", 0)),
-                         时区时刻(),
+                         时戳,
                          # 842：上限 20000→500000——失败用例明细+提交历史（归因）随
                          #   详情入库（20000 在 40+ 失败用例或长 diff 时截断致页面缺明细）
                          json.dumps(数据, ensure_ascii=False)[:500000],
                          # 1070：提交时刻（epoch·排序键）——旧版 daemon 不带/非法类型=None
                          #   显式哨兵（门禁快照 COALESCE 分流沉底·不静默错排）
-                         int(提交时刻) if isinstance(提交时刻, (int, float)) else None))
+                         int(提交时刻) if isinstance(提交时刻, (int, float)) else None,
+                         # 1385：耗时基线评估对象（执行中/未评估=NULL·显式可区分）
+                         json.dumps(耗时评估, ensure_ascii=False)
+                         if 耗时评估 is not None else None))
             con.execute("DELETE FROM 门禁 WHERE (sha,平台) NOT IN "
                         "(SELECT sha,平台 FROM 门禁 ORDER BY 时刻 DESC LIMIT ?)",
                         (门禁历史保留,))

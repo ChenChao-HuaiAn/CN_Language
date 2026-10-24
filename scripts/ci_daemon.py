@@ -89,6 +89,7 @@ import ci_shard         # 1297：预验分片协议+池 HTTP 客户端单点（�
 import ci_m6            # #1221：M6 写集触发+E2E 段（判定/编排外迁·守 900 行警戒线）
 import ci_round         # #1221 复审：轮结果组装/直跑收口（外迁守 1000 行）
 import ci_fallback      # 1297：develop 兜底面（189/660/770 外迁·薄壳见下）
+import ci_duration      # 1385：步骤口径元信息（脚本→daemon 回传·耗时基线分桶）
 import ci_report        # 1297：报告与留档面（落盘/上报/提交历史 外迁·薄壳见下）
 
 # ===== 可调常量（集中区·911 先例） =====
@@ -373,12 +374,13 @@ def 带门禁锁跑(sha: str, 轮分支: str = "", 跑器=None, 分片轮: bool 
 
 def 步骤记录器(步骤们: dict, 日志):
     """1297 提取：步骤封装工厂（跑一轮 与 跑分片轮 共用·纪律二）——流式日志运行+
-    rc/秒记录+超时 rc=-99 诚实红（297/578/935 口径原样·逻辑逐行保持）。"""
+    rc/秒记录+超时 rc=-99 诚实红（297/578/935 口径原样·逐行保持·1385 并入脚本口径元信息）。"""
     def 步骤(名: str, 命令: list[str], 超时秒: int):
         t0 = time.time()
         try:
             r = 运行(命令, 日志, 超时秒)
-            步骤们[名] = {"rc": r.returncode, "秒": round(time.time() - t0)}
+            步骤们[名] = {"rc": r.returncode, "秒": round(time.time() - t0),
+                          **ci_duration.读步骤元信息(名, t0)}
         except subprocess.TimeoutExpired:
             步骤们[名] = {"rc": -99, "秒": 超时秒, "超时": True}
         return 步骤们[名]["rc"] == 0
@@ -554,7 +556,7 @@ def 跑一轮(sha: str, 轮分支: str = "", 分片: int = 0,
         尾部 = []
     return ci_round.轮结果构造(sha, 轮分支, 步骤们, 开始, 轮日志路径, m6计划,
                              平台=平台, 日志目录=日志目录, runner标识=runner标识,
-                             构建并行=构建并行, 是win=是win, 聚合绿=聚合绿)
+                             构建并行=构建并行, 是win=是win, 聚合绿=聚合绿, 分片数=分片)
 
 
 def 跑分片轮(sha: str, 轮分支: str, 片序: int = 0, 片数: int = 1) -> dict:

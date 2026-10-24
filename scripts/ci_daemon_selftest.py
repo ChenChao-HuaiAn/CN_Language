@@ -1415,8 +1415,47 @@ def _1221断言(主模块, 断言) -> None:
          m6早退["M6"].get("处置") == "过期早退" and "未执行 M6" in m6早退["M6"].get("说明", ""))
 
 
+def _1385断言(主模块, 断言) -> None:
+    """1385：步骤口径元信息并入（脚本→记录器）+ 轮结果分片数（耗时基线分桶键）。"""
+    import ci_duration
+    with tempfile.TemporaryDirectory() as 临时:
+        真运行 = 主模块.运行
+        主模块.运行 = lambda 命令, 日志, 超时: SimpleNamespace(returncode=0)
+        原元目录 = os.environ.get("CN_STEP_META_DIR")
+        os.environ["CN_STEP_META_DIR"] = 临时
+        try:
+            ci_duration.写步骤元信息("check_asm_width", {"口径": "全扫·冷缓存"})
+            步骤们 = {}
+            主模块.步骤记录器(步骤们, None)("check_asm_width", ["x"], 10)
+            断言("1385 步骤记录器：脚本口径元信息并入步骤记录（耗时基线分桶键）",
+                 步骤们["check_asm_width"].get("口径") == "全扫·冷缓存")
+            步骤们2 = {}
+            主模块.步骤记录器(步骤们2, None)("构建", ["x"], 10)
+            断言("1385 步骤记录器：无元信息步骤不虚造口径键（评估层按语义推导）",
+                 "口径" not in 步骤们2["构建"] and 步骤们2["构建"]["rc"] == 0)
+        finally:
+            主模块.运行 = 真运行
+            if 原元目录 is None:
+                os.environ.pop("CN_STEP_META_DIR", None)
+            else:
+                os.environ["CN_STEP_META_DIR"] = 原元目录
+    with tempfile.TemporaryDirectory() as 临时:
+        日志路径 = Path(临时) / "r.log"
+        日志路径.write_text("x\n", encoding="utf-8")
+        结果 = ci_round.轮结果构造(
+            "a" * 40, "ci/预验-aaaa", {}, 0.0, 日志路径, {},
+            平台="win-x64", 日志目录=Path(临时), runner标识="r1",
+            构建并行=2, 是win=False, 聚合绿=lambda 步骤们: True, 分片数=3)
+        断言("1385 轮结果：分片数随结果上报（e2e 耗时口径分桶）", 结果.get("分片数") == 3)
+        结果单 = ci_round.轮结果构造(
+            "a" * 40, "develop", {}, 0.0, 日志路径, {},
+            平台="win-x64", 日志目录=Path(临时), runner标识="r1",
+            构建并行=2, 是win=False, 聚合绿=lambda 步骤们: True)
+        断言("1385 轮结果：未传分片数=0（单实例口径·不猜测）", 结果单.get("分片数") == 0)
+
+
 def 自测(主模块) -> int:
-    """--selftest 入口（断言集 523+637+657+660+728t+770+842+935+973+975+1297+1299+1369+1392+1401+1423+1424+1426+1428+1460+1463）——CI 式：逐条打印，任一红退出 1。"""
+    """--selftest 入口（断言集 523+637+657+660+728t+770+842+935+973+975+1297+1299+1369+1392+1401+1423+1424+1426+1428+1460+1463+1385）——CI 式：逐条打印，任一红退出 1。"""
     断言们: list[tuple[str, bool]] = []
 
     def 断言(名: str, 条件: bool) -> None:
@@ -1444,6 +1483,7 @@ def 自测(主模块) -> int:
     _1463断言(主模块, 断言)
     _1468断言(主模块, 断言)
     _1221断言(主模块, 断言)
+    _1385断言(主模块, 断言)
     _行数断言(断言)
     for 名, ok in 断言们:
         print("  [%s] %s" % ("OK" if ok else "×", 名))

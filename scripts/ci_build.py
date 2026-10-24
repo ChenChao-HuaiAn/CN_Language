@@ -116,7 +116,8 @@ def win构建链(步骤们: dict, 步骤, 日志, vcvars: Path, 当前头: str,
     973 外迁：单轮总超时秒 由调用方注入（daemon 常量单源·911）。"""
     清建, 缘由 = 需指纹清建(当前头)
     print("  [523] %s" % 缘由, file=日志, flush=True)
-    if 清建 or not (仓库根 / "target/build-ninja/build.ninja").exists():
+    冷建本轮 = 清建 or not (仓库根 / "target/build-ninja/build.ninja").exists()
+    if 冷建本轮:
         配置脚本 = 日志目录 / "win_configure.cmd"
         配置脚本.write_text("\r\n".join(win配置行(vcvars, 清建)) + "\r\n", encoding="ascii")
         步骤("配置", ["cmd", "/c", str(配置脚本)], 900)
@@ -127,6 +128,11 @@ def win构建链(步骤们: dict, 步骤, 日志, vcvars: Path, 当前头: str,
     构建脚本 = 日志目录 / "win_build.cmd"
     构建脚本.write_text("\r\n".join(win构建行(vcvars)) + "\r\n", encoding="ascii")
     步骤("构建", ["cmd", "/c", str(构建脚本)], 单轮总超时秒)
+    # 1385：指纹清建/首次配置=冷建——配置/构建耗时基线按冷暖分桶（温建 60s 对
+    #   冷建 300s 不误报；linux 侧冷建由预验「清产物」步骤识别·本标记为 win 专属补充）。
+    if 冷建本轮:
+        步骤们.setdefault("配置", {})["冷建"] = True
+        步骤们.setdefault("构建", {})["冷建"] = True
     # 单测（产物落 target/ 根=CMAKE_RUNTIME_OUTPUT_DIRECTORY·exe 后缀）
     单测 = next((p for p in [仓库根 / "target/cn_unit_tests.exe",
                              仓库根 / "target/build/cn_unit_tests.exe",

@@ -143,6 +143,12 @@ if not 步("并行失败传播自测",
 if not 步("ci_daemon 自测", [sys.executable, "scripts/ci_daemon.py", "--selftest"],
          超时秒=静态超时):
     raise SystemExit(1)
+# 1385（2026-10-23）：耗时滚动基线自测挂 L1——四态（正常/3×超时/样本不足/冷启动）+
+#    口径分桶（冷温/分片/执行机）+服务端样本滚动/幂等+runner 本地降级；纯内存库/
+#    临时目录·零网络秒级（观测面退化=告警失明·与门禁结果同链复核）。
+if not 步("ci_duration 自测", [sys.executable, "scripts/ci_duration.py", "--selftest"],
+         超时秒=静态超时):
+    raise SystemExit(1)
 # 1217 返工（2026-10-23 增量复审 P2-4）：窥孔 sanitizer 机械锁的判别力自测挂 L1
 #    静态段——纯合成 gtest 输出、零编译器、秒级；防自测自身退化（计数/源码差集/
 #    关键名/SKIP 断言空转）。完整 sanitizer 编译跑仍留 #1486（不挂 L1，避免每次

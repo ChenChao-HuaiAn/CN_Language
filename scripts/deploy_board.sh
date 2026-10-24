@@ -26,7 +26,7 @@ REMOTE_DIR="/home/ubuntu"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
-for f in board_service.py board_tasks.py board_ci.py board_docs.py board_adjudication.py board_selftest.py web_auth.py queue_result.py queue_shard.py queue_instances.py; do
+for f in board_service.py board_tasks.py board_ci.py board_docs.py board_adjudication.py board_selftest.py web_auth.py queue_result.py queue_shard.py queue_instances.py ci_duration.py atomic_json.py; do
     if [ ! -f "$SCRIPT_DIR/$f" ]; then
         echo "错误: 找不到 $SCRIPT_DIR/$f" >&2
         exit 1
@@ -62,7 +62,8 @@ scp -q "$SCRIPT_DIR/board_service.py" "$SCRIPT_DIR/board_tasks.py" \
     "$SCRIPT_DIR/board_docs.py" "$SCRIPT_DIR/board_adjudication.py" \
     "$SCRIPT_DIR/board_selftest.py" "$SCRIPT_DIR/web_auth.py" \
     "$SCRIPT_DIR/queue_result.py" "$SCRIPT_DIR/queue_shard.py" \
-    "$SCRIPT_DIR/queue_instances.py" "$REMOTE:$REMOTE_DIR/"
+    "$SCRIPT_DIR/queue_instances.py" \
+    "$SCRIPT_DIR/ci_duration.py" "$SCRIPT_DIR/atomic_json.py" "$REMOTE:$REMOTE_DIR/"
 ssh "$REMOTE" "mkdir -p '$REMOTE_DIR/board_www'"
 tar czf - -C "$SCRIPT_DIR/board_www" . | ssh "$REMOTE" "tar xzf - -C '$REMOTE_DIR/board_www'"
 scp -q "$DIST_TMP/index.html" "$REMOTE:$REMOTE_DIR/board_www/index.html"

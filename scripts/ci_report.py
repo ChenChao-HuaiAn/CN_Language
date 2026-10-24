@@ -17,6 +17,8 @@ import urllib.request
 from datetime import datetime
 from pathlib import Path
 
+import ci_duration   # 1385：落盘前补本机耗时基线（断网降级面·服务端可达时以服务端为准）
+
 _仓库根: Path = Path(__file__).resolve().parent.parent
 _平台 = ""
 _日志目录 = _仓库根 / "ci-logs"
@@ -24,9 +26,12 @@ _远端名 = "origin"
 
 
 def 初始化(仓库根: Path, 平台: str, 日志目录: Path, 远端名: str) -> None:
-    """ci_daemon 启动时注入运行环境（原模块全局引用改经本模块全局）。"""
+    """ci_daemon 启动时注入运行环境（原模块全局引用改经本模块全局）。
+    1385：同时准备步骤口径元信息目录（CN_STEP_META_DIR·子进程继承；daemon 主流程外
+    的调用方=自测桩，目录创建幂等无副作用）。"""
     global _仓库根, _平台, _日志目录, _远端名
     _仓库根, _平台, _日志目录, _远端名 = 仓库根, 平台, 日志目录, 远端名
+    ci_duration.准备步骤元信息目录(日志目录)
 
 
 def 执行机字段(runner: str, 构建并行: int, 是win: bool) -> dict:
@@ -109,7 +114,10 @@ def 落盘(结果: dict) -> None:
         770 起 develop 面仍复验·此处 latest 语义=「最近被验证的头」供免跑判据）；
       · ci/预验-* 且红 → 不写 latest 不上报（develop 未收到该提交——latest 必须保持 develop 语义）；
       · 任务分支预验（028 §三·PR CI 同款）→ 上报（带 分支 字段·结果页可区分），不写 latest。
+    1385：落盘前补本机耗时基线（ci-logs/耗时基线.json 滚动样本·结果带「耗时告警」），
+      runner 断网/上报失败时本地仍可见；服务端可达时以服务端跨 runner 汇总为准。
     """
+    ci_duration.本地补充(结果, _日志目录)   # 1385：断网降级耗时基线（评估+样本累积）
     文本 = json.dumps(结果, ensure_ascii=False, indent=1)
     sha10 = 结果["sha"][:10]
     当前分支 = 结果.get("分支", "develop")

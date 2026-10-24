@@ -47,6 +47,8 @@ import sys
 import tempfile
 import time
 
+import ci_duration   # 1385：扫描口径回传（耗时基线按 全扫/目录扫N·缓存冷热 分桶）
+
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
 sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
 
@@ -165,6 +167,17 @@ def self_check() -> None:
     模式, 们 = 写集扫描面(["tests/e2e/01_hello/主.cn", "scripts/x.py"])
     if 模式 != "目录" or 们 != ["01_hello"]:
         raise SystemExit(f"自检失败：用例+scripts 混合应目录扫，得 {模式} {们}")
+    # 1385：耗时基线口径串正反态（全扫冷缓存/目录扫部分命中/跳过/零任务）
+    if 扫描口径("全", [], 0, 300) != "全扫·冷缓存":
+        raise SystemExit("自检失败：全扫冷缓存口径错")
+    if 扫描口径("目录", ["a", "b"], 3, 10) != "目录扫2·部分命中":
+        raise SystemExit("自检失败：目录扫部分命中口径错")
+    if 扫描口径("跳过", [], 0, 0) != "跳过":
+        raise SystemExit("自检失败：写集跳过口径错")
+    if 扫描口径("全", [], 10, 10) != "全扫·全命中":
+        raise SystemExit("自检失败：全命中口径错")
+    if 扫描口径("全", [], 0, 0) != "全扫·零任务":
+        raise SystemExit("自检失败：零任务口径错")
 
 
 def read_case_flags(case_dir: pathlib.Path) -> list:
@@ -186,6 +199,24 @@ def read_case_flags(case_dir: pathlib.Path) -> list:
 编译器面文件 = ("CMakeLists.txt",)
 明确无关前缀 = ("website/", "docs/", "plans/", "scripts/", "项目记忆/", ".zcode/",
                 ".github/")
+
+
+def 扫描口径(模式: str, 目录们: list, 命中: int, 任务数: int) -> str:
+    """1385：耗时基线口径串（daemon 经 CN_STEP_META_DIR 回读）——
+    扫描面（全扫/目录扫N/跳过）× 缓存状态（冷/部分/全命中/零任务）。
+    645s 全扫冷缓存 vs 秒级跳过/全命中不混算基线，避免每次写集变化都误报。"""
+    if 模式 == "跳过":
+        return "跳过"
+    面 = "全扫" if 模式 == "全" else "目录扫%d" % len(目录们)
+    if 任务数 <= 0:
+        缓存 = "零任务"
+    elif 命中 <= 0:
+        缓存 = "冷缓存"
+    elif 命中 >= 任务数:
+        缓存 = "全命中"
+    else:
+        缓存 = "部分命中"
+    return 面 + "·" + 缓存
 
 
 def 写集扫描面(变更文件们: list) -> tuple:
@@ -303,6 +334,9 @@ def main() -> int:
                 集 = set(扫描目录们)
                 cases = [c for c in cases if c[0] in 集]
             elif 扫描模式 == "跳过":
+                ci_duration.写步骤元信息("check_asm_width",
+                                        {"口径": 扫描口径("跳过", [], 0, 0),
+                                         "说明": "写集基线无编译器面/用例面变更"})
                 print(f"== check_asm_width（D31/D32·258-a/260-a）==\n"
                       f"写集基线 {args.基线[:10]} 无编译器面/用例面变更"
                       f"（纯无关面 {len(变更们)} 文件）——跳过扫描（1300 增量·"
@@ -374,6 +408,10 @@ def main() -> int:
     模式说明 = ("全扫" if 扫描模式 == "全"
                else "目录扫（%d 个：%s）" % (len(扫描目录们), "、".join(扫描目录们[:5])
                                             + ("…" if len(扫描目录们) > 5 else "")))
+    ci_duration.写步骤元信息(
+        "check_asm_width",
+        {"口径": 扫描口径(扫描模式, 扫描目录们, 命中缓存数[0], len(tasks)),
+         "说明": 模式说明})
     print(f"扫描面 {模式说明}{f'（1300 写集基线 {args.基线[:10]}）' if args.基线 else ''}"
           f" ｜ 缓存命中 {命中缓存数[0]}/{len(tasks)}")
     print(f"用例 {len(cases)}×3 后端 ｜ 并行 {jobs}"

@@ -42,13 +42,17 @@ def 轮早退结果(sha: str, 轮分支: str, 步骤们: dict, 开始: float,
 
 def 轮结果构造(sha: str, 轮分支: str, 步骤们: dict, 开始: float,
               轮日志路径: Path, m6计划: dict, *, 平台: str, 日志目录: Path,
-              runner标识: str, 构建并行: int, 是win: bool, 聚合绿) -> dict:
-    """跑一轮 尾部结果组装（日志尾部/归因/e2e 明细/M6 计划/提交历史）。"""
+              runner标识: str, 构建并行: int, 是win: bool, 聚合绿,
+              分片数: int = 0) -> dict:
+    """跑一轮 尾部结果组装（日志尾部/归因/e2e 明细/M6 计划/提交历史）。
+    1385：分片数随结果上报——耗时基线 e2e 口径按分片数分桶（分片变化不混算）。"""
     with 轮日志路径.open("r", encoding="utf-8", errors="replace") as f:
         尾部 = f.readlines()[-40:]
     return {"sha": sha, "分支": 轮分支, "平台": 平台, "步骤": 步骤们,
             # 1299：执行机归因字段（win 不写不适用项）
             **ci_report.执行机字段(runner标识, 构建并行, 是win),
+            # 1385：分片数（>1=分片形态·e2e 耗时口径分桶依据；0/缺省=单实例）
+            "分片数": 分片数 if isinstance(分片数, int) and 分片数 > 1 else 0,
             "绿": 聚合绿(步骤们),
             "总秒": round(time.time() - 开始),
             "时刻": datetime.now().isoformat(timespec="seconds"),

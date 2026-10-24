@@ -13,6 +13,7 @@ import re
 import os
 
 import queue_shard   # #1221：父任务取消/收割=片行作废（与回收路径对称）
+import ci_duration   # 1385：门禁快照/详情的耗时基线列解析（纯解析·无反向依赖）
 
 # 975 预验失败计数告警（87 篇反思①·863 五连静默机械化）：runner 认领失败（同步异常）
 #   连续同类达此阈值 → journal 播报 `[975 预验失败告警]` + 行上告警时刻（页面可见）。
@@ -153,8 +154,9 @@ def 记认领失败并告警(con, 时戳, 分支: str, 类别: str, 摘要: str)
 def 门禁详情查(con, sha: str, 平台: str):
     """842：门禁表详情查询（8300 红/绿行点开看失败用例+归因）——sha 前缀匹配
     （页面持前 10 位/完整皆可）+平台精确；同前缀多点取最新（时刻 DESC LIMIT 1）。
-    miss=None（调用点 404 显式——648 miss 不可静默）。详情坏 JSON= None 容错。"""
-    行 = con.execute("SELECT 绿,总秒,时刻,详情 FROM 门禁 WHERE sha LIKE ? AND 平台=? "
+    miss=None（调用点 404 显式——648 miss 不可静默）。详情坏 JSON= None 容错。
+    1385：附耗时基线评估（NULL=未评估·坏列=显式错误对象，不静默当正常）。"""
+    行 = con.execute("SELECT 绿,总秒,时刻,详情,耗时告警 FROM 门禁 WHERE sha LIKE ? AND 平台=? "
                     "ORDER BY 时刻 DESC LIMIT 1", (sha + "%", 平台)).fetchone()
     if 行 is None:
         return None
@@ -163,7 +165,9 @@ def 门禁详情查(con, sha: str, 平台: str):
     except ValueError:
         详情 = None
     return {"绿": bool(行[0]) if 行[0] is not None else None, "总秒": 行[1],
-            "时刻": 行[2], "详情": 详情}
+            "时刻": 行[2], "详情": 详情,
+            # 1385：门禁.耗时告警列（对象；None=未评估·错误对象=列损坏显式）
+            "耗时告警": ci_duration.解析列(行[4])}
 
 
 def 包任务行(行):
@@ -226,13 +230,16 @@ def 预验排队收割(con, 时区时刻, 回收秒: int, 行龄函数) -> list[
 
 
 def 门禁快照(con, 限: int = 200) -> list[dict]:
-    """814/1070：门禁最近行快照（提交序 DESC + 平台轮转序；旧行沉底）。"""
+    """814/1070：门禁最近行快照（提交序 DESC + 平台轮转序；旧行沉底）。
+    1385：附 `耗时告警` 列表（徽标数据源）——None=未评估（旧行/执行中/旧服务端），
+    [] =已评估无告警；坏列=显式一条异常条目（不静默当正常）。"""
     行们 = con.execute(
-        "SELECT sha,平台,绿,总秒,时刻,提交时刻 FROM 门禁 "
+        "SELECT sha,平台,绿,总秒,时刻,提交时刻,耗时告警 FROM 门禁 "
         "ORDER BY COALESCE(提交时刻,0) DESC, "
         "CASE 平台 WHEN 'win-x64' THEN 0 WHEN 'linux-x86_64' THEN 1 "
         "WHEN 'linux-arm64' THEN 2 ELSE 9 END, 时刻 DESC LIMIT ?", (限,)).fetchall()
-    return [dict(zip(("sha", "平台", "绿", "总秒", "时刻", "提交时刻"), r)) for r in 行们]
+    return [dict(zip(("sha", "平台", "绿", "总秒", "时刻", "提交时刻"), tuple(r)[:6]),
+                 耗时告警=ci_duration.列告警(r[6])) for r in 行们]
 
 
 def 预验任务快照(con) -> list[dict]:
