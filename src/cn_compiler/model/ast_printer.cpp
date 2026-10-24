@@ -3,6 +3,11 @@
 //   1. 每行输出：缩进 + 节点类型 + 源码位置 + 关键字段（值/名/运算符）
 //   2. 递归访问子节点前 depth_ 递增，输出后递减（树形缩进）
 //   3. 运算符映射输出中文符号文本，便于阅读
+//   4. #1555 验证面补打：凡「序列化写侧有、打印无」的解析期字段一律注记补打
+//      （前缀注记风格同 [常量]/[静态] 先例），使 CN_AST_CACHE_VERIFY 打印比对
+//      通道能抓缓存命中后的字段漂移；语义回填字段（缓存写入点=解析后语义前，
+//      两侧同为默认值）不打——豁免边界与完整清单登记于 ast_serialize_impl.hpp
+//      文件头（#1555）；可选注记统一「非默认值才打」，默认值两侧同构无漂移面。
 #include "cn_compiler/model/ast_printer.hpp"
 
 #include <memory>
@@ -104,22 +109,33 @@ void AstPrinter::visitProgram(Program* node) {
 }
 
 void AstPrinter::visitStructDecl(StructDecl* node) {
-    printHeader(node->isUnion ? "联合体声明" : "结构体声明", node->location,
-                node->name + " 字段数=" + std::to_string(node->fields.size()));
+    std::string detail = node->name + " 字段数=" + std::to_string(node->fields.size());
+    // #1555：explicitPortable（217 便携豁免声明位·解析期）+ 公开可见性注记补打
+    if (node->explicitPortable) detail += " [可搬运]";
+    if (node->access == AccessSpecifier::Public) detail += " [公开]";
+    printHeader(node->isUnion ? "联合体声明" : "结构体声明", node->location, detail);
     ++depth_;
     for (const auto& field : node->fields) {
-        printHeader("字段", node->location, field.type + " " + field.name);
+        // #1555：manualRelease（164-a 联合体手动释放标注）+ 字段自身声明位置
+        //   （field.location·164-a 诊断精确位置，原误用声明节点位置）补打
+        std::string fieldDetail = field.type + " " + field.name;
+        if (field.manualRelease) fieldDetail += " [手动释放]";
+        printHeader("字段", field.location, fieldDetail);
     }
     --depth_;
 }
 
 void AstPrinter::visitEnumDecl(EnumDecl* node) {
-    printHeader("枚举声明", node->location,
-                node->name + " 成员数=" + std::to_string(node->members.size()));
+    std::string detail = node->name + " 成员数=" + std::to_string(node->members.size());
+    if (node->access == AccessSpecifier::Public) detail += " [公开]";  // #1555
+    printHeader("枚举声明", node->location, detail);
     ++depth_;
     for (const auto& member : node->members) {
-        printHeader("成员", node->location,
-                    member.name + " = " + std::to_string(member.value));
+        // #1555：explicitValue（解析期显式赋值标记）补打——自动递增与显式赋值
+        //   在缓存命中丢失时会静默互混，VERIFY 通道须可见
+        std::string memberDetail = member.name + " = " + std::to_string(member.value);
+        if (member.explicitValue) memberDetail += " [显式值]";
+        printHeader("成员", node->location, memberDetail);
     }
     --depth_;
 }
@@ -127,6 +143,13 @@ void AstPrinter::visitEnumDecl(EnumDecl* node) {
 void AstPrinter::visitFunctionDecl(FunctionDecl* node) {
     std::string detail = "函数 " + node->name;
     if (!node->returnType.empty()) detail += " -> " + node->returnType;
+    // #1555：解析期声明位注记补打（外部/不安全/公开可见性）；sigKey 实测为语义层
+    //   写回字段（签名注册时填·解析后两侧同空），非空才打=VERIFY 无噪音、
+    //   语义阶段后调试可见
+    if (node->isExtern) detail += " [外部]";
+    if (node->isUnsafe) detail += " [不安全]";
+    if (node->access == AccessSpecifier::Public) detail += " [公开]";
+    if (!node->sigKey.empty()) detail += " 签名=" + node->sigKey;
     printHeader("函数声明", node->location, detail);
     ++depth_;
     for (const auto& param : node->params) {
@@ -139,7 +162,21 @@ void AstPrinter::visitFunctionDecl(FunctionDecl* node) {
 }
 
 void AstPrinter::visitParamDecl(ParamDecl* node) {
-    printHeader("参数", node->location, node->typeName + " " + node->name);
+    std::string detail = node->typeName + " " + node->name;
+    // #1555：注记补打——hasDefault/isConstParam 解析期实弹面；ownedConsumed 为
+    //   语义层消耗置位（102 甲案）、funcPtr 非空表示函数指针参数（解析期），
+    //   后两者非默认才打（解析后同默认=VERIFY 无噪音）
+    if (node->hasDefault) detail += " [有默认]";
+    if (node->isConstParam) detail += " [常量引用]";
+    if (node->ownedConsumed) detail += " [消耗]";
+    if (node->funcPtr.isFunctionPtr()) detail += " [函数指针 " + node->funcPtr.toString() + "]";
+    printHeader("参数", node->location, detail);
+    // #1555：defaultExpr 子树遍历（解析期默认值表达式·缓存命中丢失即显形）
+    if (node->defaultExpr != nullptr) {
+        ++depth_;
+        node->defaultExpr->accept(*this);
+        --depth_;
+    }
 }
 
 void AstPrinter::visitVarDecl(VarDecl* node) {
@@ -147,6 +184,11 @@ void AstPrinter::visitVarDecl(VarDecl* node) {
     if (!node->typeName.empty()) detail += " : " + node->typeName;
     if (node->isConst) detail += " [常量]";
     if (node->isStatic) detail += " [静态]";
+    // #1555：注记补打——access/funcPtr 解析期实弹面；constInitText 为语义层
+    //   回填（569 顶层常量求值文本·解析后两侧同空），非空才打
+    if (node->access == AccessSpecifier::Public) detail += " [公开]";
+    if (node->funcPtr.isFunctionPtr()) detail += " [函数指针 " + node->funcPtr.toString() + "]";
+    if (!node->constInitText.empty()) detail += " 常量初始=" + node->constInitText;
     printHeader("变量声明", node->location, detail);
     if (node->initializer != nullptr) {
         ++depth_;
@@ -212,6 +254,14 @@ void AstPrinter::visitRangeForStmt(RangeForStmt* node) {
     }
     if (node->body != nullptr) {
         node->body->accept(*this);
+    }
+    // #1555：desugared 子树遍历（语义层降级树·解析后恒空非空才打=VERIFY 无噪音，
+    //   语义阶段后调试可见）
+    if (node->desugared != nullptr) {
+        printHeader("降级树", node->desugared->location);
+        ++depth_;
+        node->desugared->accept(*this);
+        --depth_;
     }
     --depth_;
 }
@@ -281,7 +331,14 @@ void AstPrinter::visitSwitchStmt(SwitchStmt* node) {
 }
 
 void AstPrinter::visitCaseLabel(CaseLabel* node) {
-    printHeader("情况标签", node->location, node->rawValue);
+    // #1554/#1555：value/decValue/isString/strValue/isEnumMember 补打——
+    //   decValue（1137 规范十进制文本·超 i64 标签权威值）解析期非空才打；
+    //   strValue 为语义层解码回填（仅字符串情况打·解析后同空=VERIFY 无噪音）
+    std::string detail = node->rawValue + " 值=" + std::to_string(node->value);
+    if (!node->decValue.empty()) detail += " 十进制=" + node->decValue;
+    if (node->isString) detail += " [字符串 串值=" + node->strValue + "]";
+    if (node->isEnumMember) detail += " [枚举成员]";
+    printHeader("情况标签", node->location, detail);
     ++depth_;
     for (const auto& stmt : node->statements) {
         stmt->accept(*this);
@@ -384,7 +441,11 @@ void AstPrinter::visitCastExpr(CastExpr* node) {
 }
 
 void AstPrinter::visitSizeofExpr(SizeofExpr* node) {
-    printHeader("类型大小", node->location, node->typeName);
+    // #1555：isVarForm（解析期变量形态）/size（语义层布局回填·解析后 0 两侧同值
+    //   恒打=无 VERIFY 噪音，语义阶段后调试可见）补打
+    std::string detail = node->typeName + " 大小=" + std::to_string(node->size);
+    if (node->isVarForm) detail += " [变量形态]";
+    printHeader("类型大小", node->location, detail);
 }
 
 void AstPrinter::visitLambdaExpr(LambdaExpr* node) {
@@ -469,7 +530,13 @@ void AstPrinter::visitCallExpr(CallExpr* node) {
 }
 
 void AstPrinter::visitMemberExpr(MemberExpr* node) {
-    printHeader("成员访问", node->location, "." + node->memberName);
+    std::string detail = "." + node->memberName;
+    // #1555：注记补打——isDerefAccess/viaColonColon 解析期实弹面；isMethodValue
+    //   实测语义层置位（方法值化·解析后同默认），true 才打=VERIFY 无噪音
+    if (node->isDerefAccess) detail += " [解引用]";
+    if (node->viaColonColon) detail += " [双冒号]";
+    if (node->isMethodValue) detail += " [方法值]";
+    printHeader("成员访问", node->location, detail);
     ++depth_;
     if (node->object != nullptr) {
         node->object->accept(*this);
@@ -483,11 +550,22 @@ void AstPrinter::visitType(Type* node) {
 
 // ==================== 阶段3 OOP/错误处理/模块/泛型 节点打印 ====================
 
+// #1555：导入声明注记补打（模块声明/导入声明两分支共用）——importPath/access
+//   解析期实弹面（公开 导入 前缀置位）；fromImport 恒 false 兼容字段；
+//   ownerModule 为 mergeModules 合并期写入（缓存写入点同空=VERIFY 无噪音）
+static void appendImportNotes(std::string& detail, ImportDecl* node) {
+    if (node->access == AccessSpecifier::Public) detail += " [公开]";
+    if (!node->importPath.empty()) detail += " 路径=" + node->importPath;
+    if (node->fromImport) detail += " [从导入]";
+    if (!node->ownerModule.empty()) detail += " 归属=" + node->ownerModule;
+}
+
 void AstPrinter::visitImportDecl(ImportDecl* node) {
     std::string detail;
     if (node->isModuleDecl) {
         // 模块声明：模块 标识符（v2.0）
         detail = "模块 " + node->importPath;
+        appendImportNotes(detail, node);
         printHeader("模块声明", node->location, detail);
         return;
     }
@@ -512,12 +590,14 @@ void AstPrinter::visitImportDecl(ImportDecl* node) {
         }
         detail += "}";
     }
+    appendImportNotes(detail, node);
     printHeader("导入声明", node->location, detail);
 }
 
 void AstPrinter::visitInterfaceDecl(InterfaceDecl* node) {
-    printHeader("接口声明", node->location,
-                node->name + " 方法数=" + std::to_string(node->members.size()));
+    std::string detail = node->name + " 方法数=" + std::to_string(node->members.size());
+    if (node->access == AccessSpecifier::Public) detail += " [公开]";  // #1555
+    printHeader("接口声明", node->location, detail);
     ++depth_;
     for (const auto& member : node->members) {
         member->accept(*this);
@@ -532,6 +612,9 @@ void AstPrinter::visitClassDecl(ClassDecl* node) {
         detail += ", " + itf;
     }
     detail += " 成员数=" + std::to_string(node->members.size());
+    // #1555：explicitPortable（217 便携豁免·与 StructDecl 同构）+ 公开可见性补打
+    if (node->explicitPortable) detail += " [可搬运]";
+    if (node->access == AccessSpecifier::Public) detail += " [公开]";
     printHeader("类声明", node->location, detail);
     ++depth_;
     for (const auto& member : node->members) {
@@ -582,11 +665,24 @@ void AstPrinter::visitClassMember(ClassMember* node) {
     if (node->isAbstract) detail += " [抽象]";
     if (node->isConstMethod) detail += " [常量]";
     if (node->isStatic) detail += " [静态]";
+    if (node->isUnsafe) detail += " [不安全]";  // #1555：解析期修饰（019 安全区边界）
+    // #1555：ctorInitBase/ctorInitArgs（P3-20 父类构造初始化列表·解析期实弹面）
+    if (!node->ctorInitBase.empty()) detail += " [基类初始化=" + node->ctorInitBase + "]";
     if (!node->returnType.empty()) detail += " -> " + node->returnType;
     printHeader("类成员", node->location, detail);
     ++depth_;
     for (const auto& param : node->params) {
         param->accept(*this);
+    }
+    // #1555：父类构造实参子树（解析期·缓存命中丢失即显形）
+    if (!node->ctorInitArgs.empty()) {
+        printHeader("基类构造实参", node->location,
+                    "个数=" + std::to_string(node->ctorInitArgs.size()));
+        ++depth_;
+        for (const auto& arg : node->ctorInitArgs) {
+            arg->accept(*this);
+        }
+        --depth_;
     }
     if (node->body != nullptr) {
         node->body->accept(*this);

@@ -49,6 +49,9 @@ static std::unique_ptr<CaseLabel> readCaseLabelFields(Reader& r, const SourceLoc
     auto n = std::make_unique<CaseLabel>(value);
     n->location = loc;
     r.str(n->rawValue);
+    // #1554：与写侧 ast_serialize.cpp CaseLabel 分支对称（rawValue 之后）——
+    //   漏读=后续字段整体错位（读侧失败显形），且 decValue 丢失=超 i64 标签退化
+    r.str(n->decValue);
     readStmtVec(r, n->statements);
     n->isString = r.boolean();
     r.str(n->strValue);
@@ -394,6 +397,14 @@ std::unique_ptr<Stmt> readStmt(Reader& r) {
             if (r.plausibleCount(count)) {
                 n->cases.reserve(count);
                 for (std::uint32_t i = 0; i < count && r.ok(); ++i) {
+                    // 写侧 cases 元素走 writeStmtPtr 同款形态（present 标志+条件节点），
+                    // 读侧必须先消费该标志再读节点——漏读=首元素起逐字节错位
+                    bool elemPresent = false;
+                    readPresentFlag(r, elemPresent);
+                    if (!elemPresent || !r.ok()) {
+                        n->cases.push_back(nullptr);
+                        continue;
+                    }
                     std::unique_ptr<CaseLabel> c = readCaseLabelNode(r);
                     n->cases.push_back(std::move(c));
                 }

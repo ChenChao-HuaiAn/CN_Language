@@ -75,6 +75,9 @@ void writeNodeHead(Writer& w, const AstNode* n) {
 }
 
 // 表达式头：通用头 + 语义类型注记（559-a 写回字段，照存）
+// 静默豁免<闭集穷举>: 语义回填字段缓存写入点两侧同默认值·A 类盲区登记见 #1555
+// （本函数的 semanticType 为 21 种表达式节点语义回填字段的共同写入单点；
+//   完整豁免清单=ast_serialize_impl.hpp 文件头登记）
 void writeExprHead(Writer& w, const Expr* e) {
     writeNodeHead(w, e);
     w.str(e->semanticType);
@@ -408,6 +411,9 @@ void writeStmt(Writer& w, const Stmt* s) {
             const auto* n = static_cast<const CaseLabel*>(s);
             w.i64(n->value);
             w.str(n->rawValue);
+            // #1554：decValue（1137 规范十进制文本·超 i64 标签权威值）漏写会导致
+            //   缓存命中后语义域判/去重键与 IR 比较常量退化占位 0——必须照存照还原
+            w.str(n->decValue);
             writeStmtVec(w, n->statements);
             w.boolean(n->isString);
             w.str(n->strValue);

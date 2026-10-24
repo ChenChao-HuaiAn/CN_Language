@@ -189,6 +189,11 @@ bool tryLoadCache(const std::string& cacheFile, const CacheKey128& kContent,
 
 // 验证模式：反序列化 AST 与「重新解析」AST 的打印文本比对——抓序列化漏字段/
 //   反序列化漂移（仅在 CN_AST_CACHE_VERIFY=1 时启用）。比对不符=显形+回退解析。
+// #1555：比对面=AST 打印文本 + imports 依赖表（命中路径 collectImportDeps 重建 vs
+//   重新解析产出·parseSourceText 内部同走 collectImportDeps 故口径一致；排序后
+//   逐条比对，不符=损坏条目回退）。语义回填字段豁免边界见 ast_serialize_impl.hpp
+//   文件头闭集穷举登记（缓存写入点两侧同默认值·打印通道对其结构性失明=当前良性）。
+// 静默豁免<闭集穷举>: 语义回填字段缓存写入点两侧同默认值·A 类盲区登记见 #1555
 bool verifyAgainstParse(Program& cachedAst, const std::string& source,
                         const std::string& filePath, const std::string& moduleName,
                         const std::unordered_set<std::string>& macros) {
@@ -198,6 +203,21 @@ bool verifyAgainstParse(Program& cachedAst, const std::string& source,
     if (!module::parseSourceText(source, filePath, moduleName, fresh, vimports, vdiags, macros)) {
         std::fprintf(stderr,
                      "错误: [AST 缓存验证] 命中条目可反序列化但重新解析失败（缓存可疑）: %s\n",
+                     filePath.c_str());
+        g_stats.corrupt += 1;
+        return false;
+    }
+    // #1555：imports 表比对——对反序列化 AST 按 collectImportDeps 同规则重建，
+    //   与重新解析表排序比对（顺序无关·内容必须全等；不符=导入声明字段序列化
+    //   漂移=损坏回退）
+    std::vector<std::string> cachedSorted;
+    module::collectImportDeps(cachedAst, moduleName, cachedSorted);
+    std::sort(cachedSorted.begin(), cachedSorted.end());
+    std::vector<std::string> freshSorted = vimports;
+    std::sort(freshSorted.begin(), freshSorted.end());
+    if (cachedSorted != freshSorted) {
+        std::fprintf(stderr,
+                     "错误: [AST 缓存验证] imports 依赖表与重新解析不一致（回退解析结果）: %s\n",
                      filePath.c_str());
         g_stats.corrupt += 1;
         return false;

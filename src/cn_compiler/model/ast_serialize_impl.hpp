@@ -10,6 +10,28 @@
 //   会被尾部判定整体丢弃，行为与早退等价；哨兵比较/哨兵值散写一律不经手）。
 // 对称纪律：与 ast_serialize.cpp 的写入侧逐字段对称，布局变更须同步两侧
 // 并递增 ast_serialize.hpp 的 CACHE_FORMAT_VERSION。
+//
+// ==================== #1555 VERIFY 通道语义回填字段豁免边界（闭集穷举登记） ====================
+// CN_AST_CACHE_VERIFY 打印比对通道对「写侧有、打印无」字段结构性失明（A 类盲区）。
+// 处置分层：解析期即有值（实弹面）→ AstPrinter 补打（见 ast_printer.cpp 文件头）；
+// 语义回填字段 → 缓存写入点=解析后语义前，缓存命中重建与重新解析两侧同为字段
+// 默认值=当前良性，不打（恒打默认值注记=噪音），以本清单闭集穷举登记为豁免边界：
+//   · Expr::semanticType（21 种表达式节点·writeExprHead 单点·559-a 写回）
+//   · BinaryExpr.resolvedType；UnaryExpr.propagateType/resolvedType
+//   · CallExpr.resolvedSignature/resolvedType/isRefReturnCall/retOwnedString/
+//     moduleFilter/lueMove
+//   · MemberExpr.methodValueDiag943（943 诊断去重标记）；MemberExpr.isMethodValue
+//     （102 语义层方法值化·打印器 true 才打）
+//   · FunctionDecl.sigKey（语义层签名注册写回·打印器非空才打）
+//   · VarDecl.constInitText（569 语义层回填·打印器非空才打）
+//   · ParamDecl.ownedConsumed（102 语义层消耗置位·打印器 true 才打）
+//   · CaseLabel.strValue（语义层解码回填·打印器 isString 时才打）
+//   · RangeForStmt.desugared（语义层降级树·打印器非空才遍历）
+//   · StructField.offset/StructDecl.totalSize/align/layoutComputed（语义层布局回填）
+//   · 各声明节点 moduleName（VarDecl/FunctionDecl/StructDecl/EnumDecl/ClassDecl/
+//     InterfaceDecl/GenericDecl·mergeModules 合并期写入）与 ImportDecl.ownerModule
+// 风险面：若未来缓存写入点移到语义后（或语义回填前移到解析期），两侧不再同默认，
+// 本豁免即失效——届时必须把对应字段转实弹面补打或拆除缓存写入点前移。
 #pragma once
 #include <cstdint>
 #include <cstring>

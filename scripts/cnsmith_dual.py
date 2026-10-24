@@ -9,10 +9,11 @@
 stdout + 退出码（stderr 按需），差异即「分叉候选」——建议立案清单随报告产出
 （不自动写服务端台账，人类/编排者据此立项）。
 
-模块分工（1130 审查拆分支债·1109 体量红线再拆）：
+模块分工（1130 审查拆分支债·1109 体量红线再拆·#1556 缓存轴再拆）：
   cnsmith_dual.py          判定 + 单样本双编译 + 轨道入口 + CLI（本文件）
   cnsmith_dual_samples.py  样本准备（随机/矩阵/内置/目录批量 + 用例配置）
   cnsmith_dual_report.py   判定/原因词表 + 差异报告 + 建议立案 + 种子派生提示
+  cnsmith_dual_cache.py    缓存对拍轴（#1556·宿主 AST 缓存二次编译对拍·v2 不参与）
   cnsmith_dual_selftest.py 自校验（判定层正/反例 + 报告结构 + 可选端到端）
 
 判定（闭集·miss 不可静默）：
@@ -95,6 +96,9 @@ from cnsmith_dual_samples import (  # noqa: E402,F401
     内置对拍样本, 对拍随机种子偏移, 对拍矩阵种子偏移, 负向种子偏移, 随机种子偏移,
     种子派生表, 净化名, 随机样本, 矩阵样本, 内置样本, 读取用例配置, 目录样本, 准备样本,
 )
+# 缓存对拍轴（#1556）：循环导入安全——本模块与 cnsmith_dual_cache 顶层互不取
+#   对方属性（缓存轴的 核心.xxx 只在其函数体内解析），运行期属性已完整。
+import cnsmith_dual_cache as 缓存轴  # noqa: E402,F401  （轨道_对拍 挂轴+re-export）
 
 
 # =====================================================================
@@ -322,8 +326,12 @@ def 配置对齐问题(样本, 登记):
     return ""
 
 
-def 宿主一侧(ctx, 登记, 名, 入口名):
-    """宿主编译+运行（真实生产链路 + 用例编译选项）。返回明细 dict。"""
+def 宿主一侧(ctx, 登记, 名, 入口名, 环境变量=None):
+    """宿主编译+运行（真实生产链路 + 用例编译选项）。返回明细 dict。
+
+    环境变量（#1556 缓存对拍轴注入面·None=不注入）：透传 run_e2e 运行命令的
+    env 合并点（{**os.environ, **注入}）——缓存轴以独立 CN_AST_CACHE_DIR/
+    CN_AST_CACHE_STATS/CN_AST_CACHE_VERIFY 驱动同一生产编译链路。"""
     运行器, 平台 = ctx["运行器"], ctx["平台"]
     后缀 = ".exe" if 平台 == "win-x64" else ""
     exe = ctx["用例输出"] / (名 + ".宿主" + 后缀)
@@ -331,9 +339,12 @@ def 宿主一侧(ctx, 登记, 名, 入口名):
     选项 = 运行器.查找编译选项文件(登记)              # 审查 P2-10：与 v2 侧对齐
     编译 = 运行器.运行命令(
         [str(ctx["cn"]), "build", str(入口), "--target", 平台, "--output", str(exe)]
-        + 选项, 根, 超时秒数=运行器.编译超时秒数)
+        + 选项, 根, 超时秒数=运行器.编译超时秒数, 环境变量=环境变量)
     明细 = {"编译rc": 编译.returncode,
-            "编译输出": 截断((编译.stdout or "") + (编译.stderr or ""), 2000)}
+            "编译输出": 截断((编译.stdout or "") + (编译.stderr or ""), 2000),
+            # #1556：编译期 stderr 原文单独保留（[AST 缓存] 统计行/验证行的解析源——
+            #   编译输出 键是 stdout+stderr 截断混合面，正则须对未混流原文解析）
+            "编译stderr": 编译.stderr or ""}
     if 编译.returncode != 0:
         return 明细
     if not exe.exists():
@@ -599,9 +610,24 @@ def 轨道_对拍(a, 轮目录, 种子, 运行器, v2p, 平台):
         print("  [对拍] 进度 %d/%d（%.1fs）" % (完成数, len(样本们), time.time() - t0),
               flush=True)
     结果们.sort(key=lambda r: r["样本"])
+    # ===== 缓存对拍轴（#1556）：宿主 AST 缓存「二次编译对拍」——同源码同编译器
+    #   连跑两次 build+运行（独立 CN_AST_CACHE_DIR·首编写缓存→命中跑挂
+    #   CN_AST_CACHE_VERIFY）。v2p 不参与本轴（另一套编译链·无 CN_AST_CACHE_*
+    #   环境面——边界见 cnsmith_dual_cache 模块 docstring）；分叉候选与跳过
+    #   计入本轨道统一判定面（跳过>0=无效·禁当绿）。
+    缓存汇总 = {"启用": False, "说明": "缓存对拍=关"}
+    if getattr(a, "缓存对拍", "开") != "关":
+        ctx["缓存根"] = 轮目录 / "对拍缓存"
+        ctx["缓存根"].mkdir(parents=True, exist_ok=True)
+        ctx["并发"] = 并发
+        缓存记录们, 缓存汇总 = 缓存轴.轨道_缓存对拍(
+            ctx, 样本们, 结果们, 上限=getattr(a, "缓存对拍样本", 12),
+            截止=截止, 预算=预算)
+        结果们.extend(缓存记录们)      # 缓存轴记录排尾部（主轴已 sort·不混序）
     参数 = {"随机": a.对拍样本, "矩阵": a.对拍矩阵, "内置": a.对拍内置,
             "目录": a.对拍目录 or "", "预算秒": 预算, "并发": 并发,
             "比stderr": bool(a.对拍比stderr),
+            "缓存对拍": 缓存汇总,
             "主种子": 种子,
             "种子来源": ("命令行 --seed" if getattr(a, "seed", 0)
                        else "时间戳（默认）"),
@@ -624,6 +650,7 @@ def 轨道_对拍(a, 轮目录, 种子, 运行器, v2p, 平台):
         "命中数": len(候选), "跳过数": len(跳过),
         "清单": 候选, "结果明细": 结果们,
         "差异报告": json相对, "差异报告md": md相对,
+        "缓存对拍": 缓存汇总,
         "建议立案": [r["建议立案"] for r in 候选 if r.get("建议立案")],
         "说明": 说明,
     }
@@ -686,6 +713,9 @@ def main():
     ap.add_argument("--对拍目录", default="")
     ap.add_argument("--对拍预算秒", type=int, default=1800)
     ap.add_argument("--对拍比stderr", action="store_true")
+    # 缓存对拍轴（#1556·与 cnsmith_run 同构：默认开·纯文档轮可关）
+    ap.add_argument("--缓存对拍", choices=("开", "关"), default="开")
+    ap.add_argument("--缓存对拍样本", type=int, default=12)
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--cn", default="target/cn")
     ap.add_argument("--归档", default=str(默认归档根))
@@ -700,7 +730,7 @@ def main():
         pass
     参 = 轨道参数()
     for 键 in ("对拍样本", "对拍矩阵", "对拍内置", "对拍目录", "对拍预算秒",
-              "对拍比stderr", "jobs"):
+              "对拍比stderr", "缓存对拍", "缓存对拍样本", "jobs"):
         setattr(参, 键, getattr(a, 键))
     参.seed = a.seed                       # 种子来源进报告（#1109 派生区间提示）
     参.历史种子们 = None                   # 独立 CLI 无归档上下文（主报告面才扫描）
