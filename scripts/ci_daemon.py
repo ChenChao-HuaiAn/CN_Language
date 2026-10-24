@@ -87,6 +87,7 @@ import ci_build         # 973：win/linux 构建链（523/657 原样外迁·薄�
 import ci_reconcile     # 973：对账周检段（兜底轮周期对账·周检挂载点）
 import ci_shard         # 1297：预验分片协议+池 HTTP 客户端单点（依赖单向）
 import ci_m6            # #1221：M6 写集触发+E2E 段（判定/编排外迁·守 900 行警戒线）
+import ci_round         # #1221 复审：轮结果组装/直跑收口（外迁守 1000 行）
 import ci_fallback      # 1297：develop 兜底面（189/660/770 外迁·薄壳见下）
 import ci_report        # 1297：报告与留档面（落盘/上报/提交历史 外迁·薄壳见下）
 
@@ -274,7 +275,9 @@ def 静态门禁与e2e段(步骤们: dict, 步骤, cn: Path | None, 日志, sha:
         #   tip·diff 基线..HEAD=本任务提交集）；develop/兜底轮不带=恒全扫（权威面铁律）。
         #   纯用例/文档轮由此从全扫 ~645s 降至目录扫/跳过（秒级）；编译器面轮仍全扫。
         if 名 == "check_asm_width" and 轮分支.startswith("ci/预验-"):
-            参 = 参 + ["--基线", 轮分支.split("-", 1)[1]]
+            分支sha10 = ci_round.预验分支sha10(轮分支)
+            if 分支sha10:
+                参 = 参 + ["--基线", 分支sha10]
         if 步骤(名, [sys.executable, f"scripts/{名}.py"] + 参, 900):
             pass
     # ③.6 网站示例 verify（992）：文档示例包壳编译+运行+stdout 比对（239 例实测
@@ -526,13 +529,8 @@ def 跑一轮(sha: str, 轮分支: str = "", 分片: int = 0,
                 print("  [过期早退] develop 已前进 %s→%s——跳过静态门禁/E2E（节省算力）"
                       % (sha[:10], 现头[:10]), file=日志, flush=True)
                 步骤们["e2e"] = {"rc": 0, "说明": "过期早退（develop 已前进 %s）" % 现头[:10]}
-                return {"sha": sha, "分支": 轮分支, "平台": 平台, "步骤": 步骤们,
-                        "绿": True, "总秒": round(time.time() - 开始),
-                        "时刻": datetime.now().isoformat(timespec="seconds"),
-                        "日志": 轮日志路径.name, "日志尾部": [], "早退新头": 现头,
-                        # #1221：早退轮未验 M6（非静默——新头轮承担；触发面显式）
-                        "M6": dict(m6计划, 处置="过期早退",
-                                   说明="develop 已前进——本轮未执行 M6（新头轮承担）")}
+                return ci_round.轮早退结果(sha, 轮分支, 步骤们, 开始, 轮日志路径,
+                                            现头, m6计划, 平台=平台)
         # ③.5 静态门禁面+④ E2E（242/447-a·两平台公共段——291 曾因缩进挂在 else 体内被
         #    win 分支整体跳过〔绿=缺键误判〕；523 抽 静态门禁与e2e段·跑一轮 拆函数回 ≤100 行）
         if 排["静态段"]:
@@ -544,24 +542,9 @@ def 跑一轮(sha: str, 轮分支: str = "", 分片: int = 0,
             # 973：对账周检段（仅 develop 面轮·周期到期才跑·分支/周期自判在模块内）
             ci_reconcile.对账周检段(步骤们, 步骤, 日志, 轮分支, sha)
         尾部 = []
-    # 日志尾部摘录进结果（供 TX_01 结果页直显；完整日志在 run_*.log）
-    with 轮日志路径.open("r", encoding="utf-8", errors="replace") as f:
-        尾部 = f.readlines()[-40:]
-    结果 = {"sha": sha, "分支": 轮分支, "平台": 平台, "步骤": 步骤们,
-            # 1299：执行机归因字段（helper 在 ci_report·win 不写不适用项）
-            **ci_report.执行机字段(runner标识, 构建并行, 是win),
-            "绿": 聚合绿(步骤们),
-            "总秒": round(time.time() - 开始), "时刻": datetime.now().isoformat(timespec="seconds"),
-            "日志": 轮日志路径.name, "日志尾部": "".join(尾部).splitlines()[-20:],
-            # 842：失败详情与归因数据（8300 页面红行详情面板）——e2e 未跑/旧版
-            #   run_e2e=null（页面降级提示）；提交历史取不到=[]（归因区降级提示）。
-            "e2e明细": 读e2e明细(日志目录 / ("e2e明细_%s.json" % sha[:10])),
-            # #1221：M6 计划+执行记录（md5/首个差异字节）——触发/未跑原因/转派全显式
-            "M6": m6计划,
-            "提交历史": 取提交历史(),
-            # 1070：提交时刻（门禁排序键·8300 提交序展示）
-            "提交时刻": 提交时刻(sha)}
-    return 结果
+    return ci_round.轮结果构造(sha, 轮分支, 步骤们, 开始, 轮日志路径, m6计划,
+                             平台=平台, 日志目录=日志目录, runner标识=runner标识,
+                             构建并行=构建并行, 是win=是win, 聚合绿=聚合绿)
 
 
 def 跑分片轮(sha: str, 轮分支: str, 片序: int = 0, 片数: int = 1) -> dict:
@@ -647,7 +630,9 @@ def 池认领任务() -> dict | None:
     if not 配置["池地址"]:
         return None
     回 = 池调用(配置, "task_claim", {"runner": runner标识, "平台": 平台,
-                                     "物理机": ci_shard.物理机标识()})
+                                     "物理机": ci_shard.物理机标识(),
+                                     # #1221：M6 原生可跑能力位（实例表观测/派发数据源）
+                                     "M6原生": ci_m6.M6原生可跑(平台, 机架)})
     if 回 and 回.get("ok"):
         return 回.get("任务")
     return None
@@ -809,7 +794,8 @@ def 池跑分片(片任务: dict) -> None:
 def 主(常驻: bool, 强制: bool, 等锁: bool = False) -> int:
     日志目录.mkdir(exist_ok=True)
     # 1392：空闲报活+版本指纹（忙闲都发·池未配置=不启动）；#1460：返回刷新广播状态
-    刷新状态 = ci_shard.启动实例报活(runner标识, 平台, 仓库根)
+    刷新状态 = ci_shard.启动实例报活(runner标识, 平台, 仓库根,
+                                    M6原生=ci_m6.M6原生可跑(平台, 机架))
     锁 = (锁文件.open("a+"))
     已入池: set[str] = set()   # 770：本轮常驻期已入池的头（幂等防重——服务端幂等兜底·此处省每轮空 POST）
     # 184 锁模型治本（1021 饿死实录）：锁从「进程生命周期级」改「轮次级」——常驻每轮
@@ -863,7 +849,8 @@ def 主(常驻: bool, 强制: bool, 等锁: bool = False) -> int:
             #    三 win 可并行跑片（1423 的锁忙跳过只针对整任务/兜底轮的共享主树锁）。
             if ci_shard.分片启用():
                 池c = 池配置()
-                片任务 = ci_shard.领片(lambda o, d: 池调用(池c, o, d), runner标识, 平台)
+                片任务 = ci_shard.领片(lambda o, d: 池调用(池c, o, d), runner标识, 平台,
+                                      M6原生=ci_m6.M6原生可跑(平台, 机架))
                 if 片任务:
                     池跑分片(片任务)
                     if not 常驻:
@@ -939,8 +926,7 @@ def 主(常驻: bool, 强制: bool, 等锁: bool = False) -> int:
             上报执行中(sha, 分支, 平台)
             结果 = 带门禁锁跑(sha)
             if 结果 is not None:     # None=291 让出（gate_lock 互忙）——不落盘·下轮再战
-                落盘(结果)
-                print("[完成] 绿=%s 总秒=%s 详情=%s" % (结果["绿"], 结果["总秒"], 结果["日志"]), flush=True)
+                ci_round.直跑收口(sha, 结果, 落盘, 仓库根=仓库根)   # #1221 P1-10：过期不落盘
         else:
             # ── CN_CI_BRANCH 点名预验 / --force 每日兜底（770：直跑仅剩的两条非轮转路径） ──
             print("[开跑] %s @ %s（分支=%s%s）" % (sha[:10],
@@ -950,8 +936,7 @@ def 主(常驻: bool, 强制: bool, 等锁: bool = False) -> int:
                 上报执行中(sha, 分支, 平台)   # 190：在跑轮实时可见（细节见函数）
             结果 = 带门禁锁跑(sha)
             if 结果 is not None:     # None=291 让出（gate_lock 互忙）——不落盘·下轮再战
-                落盘(结果)
-                print("[完成] 绿=%s 总秒=%s 详情=%s" % (结果["绿"], 结果["总秒"], 结果["日志"]), flush=True)
+                ci_round.直跑收口(sha, 结果, 落盘, 仓库根=仓库根)   # #1221 P1-10：过期不落盘
         if not 常驻:
             return 0
         放锁(锁)                                      # 184：轮间释放·点名可插队

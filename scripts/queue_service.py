@@ -514,7 +514,9 @@ def 处理写(名: str, 数据: dict) -> dict:
             #   轮询领空也是「活着」的信号·实例页可见；平台空串不覆盖已有自报值）。
             平台337 = str(数据.get("平台", ""))
             queue_instances.实例认领(con, 时区时刻, runner, 平台337,
-                                     str(数据.get("物理机", "")))   # #1426 物理机键落表
+                                     str(数据.get("物理机", "")),
+                                     # #1221：M6 原生可跑能力位（旧客户端缺省=None 不覆盖）
+                                     数据.get("M6原生"))   # #1426 物理机键落表
             现在 = int(time.time())
             回收们 = [r[0] for r in con.execute(
                 "SELECT 分支 FROM 预验任务 WHERE 状态='执行中' AND 心跳时戳 IS NOT NULL "
@@ -669,7 +671,9 @@ def 处理写(名: str, 数据: dict) -> dict:
                 if 领runner:
                     queue_instances.实例认领(con, 时区时刻, 领runner,
                                               str(数据.get("平台", "")),
-                                              str(数据.get("物理机", "")))
+                                              str(数据.get("物理机", "")),
+                                              # #1221：M6 原生可跑能力位
+                                              数据.get("M6原生"))
                 回s = queue_shard.认领(con, 时区时刻, 数据)     # 从实例领缺口片 / 主实例抢补指定片
             elif 名 == "task_shard_heartbeat":
                 回s = queue_shard.心跳(con, 时区时刻, 数据)     # 片心跳续约

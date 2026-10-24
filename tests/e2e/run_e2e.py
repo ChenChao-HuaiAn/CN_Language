@@ -206,6 +206,17 @@ def 建stdlib软链(工作目录: pathlib.Path, 目标平台: str) -> None:
 #   仅保留 v2 自举链重载面（全树编译 OOM 防线·与用例共存亡）。
 内存保护用例前缀 = ("78_v2_自举链构建", "79_v2_自举闭环")
 
+# #1221 复审 P1-1：M6 用例精确识别——禁 "79_v2" 子串（179/279/479_v2 会误命中）。
+#   与 scripts/m6_gate._是M6名 同口径：精确名或 "79_v2_" 前缀。
+M6用例名 = "79_v2_自举闭环"
+M6用例名前缀 = "79_v2_"
+
+
+def 是M6用例(名称: str) -> bool:
+    """M6 用例判定（精确名/前缀·失败清单条目先按 ':' 截名）。"""
+    文本 = str(名称 or "").split(":", 1)[0].strip()
+    return 文本 == M6用例名 or 文本.startswith(M6用例名前缀)
+
 # CI runner 环境识别（566 修复·审查 P0-1；215/354 识别同源统一）：三判据任一非空
 #   即认定云端 runner 环境。判据变量=现网全部 runner 部署面必然注入的组合——
 #   ① CN_RUNNER_ID：池实例身份（win 池 start-runner.cmd / 家机 WSL cn-runner@.service /
@@ -1008,9 +1019,10 @@ def 并行用例任务(项):
     内存上限随任务项传递（605-a）：win spawn 模式 worker 重新 import 本模块，
     主进程 main() 对 内存上限MB默认 的 --max-mem-mb 覆盖不会进入 worker——
     CLI 覆盖值必须显式传参，worker 侧还原为模块全局后方才对 752/819 等消费点生效。"""
-    用例目录, 编译器路径, 输出目录, 详细, 目标平台, 内存上限 = 项
+    用例目录, 编译器路径, 输出目录, 详细, 目标平台, 内存上限, M6上下文入 = 项
     global 内存上限MB默认
     内存上限MB默认 = 内存上限
+    置M6上下文(M6上下文入)   # #1221：sha/触发/命中随任务项进入 worker（spawn 不继承全局）
     # 978：孤儿监控双保险（顶层 __mp_main__ 已挂·幂等）+ 用例心跳开启（worker 侧）
     看门狗.起孤儿监控()
     看门狗.设当前心跳路径(看门狗.心跳路径(输出目录, 用例目录.name))
@@ -1044,10 +1056,15 @@ def 执行单个用例(编译器路径: pathlib.Path, 用例目录: pathlib.Path
     for 跳过前缀 in 有效跳过:
         if 名称.endswith(跳过前缀) or 名称 == 跳过前缀:
             跳过原因 = f"平台限制（{目标平台}）：{跳过前缀}"
-            if "79_v2" in 名称:
-                # #1221：M6 被平台跳过不得静默——结构化记录进摘要/--json/门禁轮记录
-                置M6记录({"用例": 名称, "平台": 目标平台, "状态": "未跑",
-                          "原因": 跳过原因 + "（M6 未跑·平台/环境限制）"})
+            if 是M6用例(名称):
+                # #1221：M6 被平台跳过不得静默——结构化记录进摘要/--json/门禁轮记录；
+                #   同时覆盖审计文件（防上一轮「通过」残留被误读）。
+                置M6记录(_补全M6上下文(
+                    {"用例": 名称, "平台": 目标平台, "状态": "未跑",
+                     "原因": 跳过原因 + "（M6 未跑·平台/环境限制）"}))
+                写M6跳过审计(名称, 目标平台,
+                            跳过原因 + "（M6 未跑·平台/环境限制）",
+                            编译器=编译器路径)
             return "跳过", 跳过原因
 
     # ============ 906：通道选择器并存闸（互斥配置显式拒绝）============
@@ -1472,6 +1489,67 @@ def _执行v2锚定链(编译器路径: pathlib.Path, 用例目录: pathlib.Path
 #   worker 进程各自持模块全局，记录随 并行用例任务 五元组回传主进程汇总。
 M6记录: dict | None = None
 M6_JSON键 = "M6"
+# #1221 复审 P2：审计上下文（sha/触发来源/写集命中）——主进程算一次随任务项注入
+#   worker（spawn 不继承模块全局，必须显式传参），记录里可追溯「为何跑/跑在哪棵树」。
+M6上下文: dict = {}
+
+
+def 置M6上下文(上下文) -> None:
+    global M6上下文
+    M6上下文 = dict(上下文 or {})
+
+
+def 取M6上下文() -> dict:
+    return dict(M6上下文)
+
+
+def _补全M6上下文(记录: dict, 编译器路径=None) -> dict:
+    """审计记录补 sha/触发/命中前 5/编译器路径（缺上下文=空串，不编造）。"""
+    记录.setdefault("sha", str(M6上下文.get("sha") or ""))
+    记录.setdefault("触发", str(M6上下文.get("触发") or ""))
+    记录.setdefault("命中", list(M6上下文.get("命中") or [])[:5])
+    if 编译器路径 is not None:
+        记录.setdefault("编译器", str(编译器路径))
+    return 记录
+
+
+def 写M6审计文件(用例名: str, 记录: dict, 根目录=None) -> None:
+    """落 target/audit2/selfwork<隔离键>/m6_record.json（gitignore·产物同生命周期）。
+    写失败仅警告不改结论（审计面附加输出）。根目录=可注入（selftest 临时目录隔离）。"""
+    工作目录 = ((pathlib.Path(根目录) if 根目录 is not None else
+               项目根目录 / "target" / "audit2")
+                / ("selfwork%s" % 隔离键(用例名)))
+    try:
+        工作目录.mkdir(parents=True, exist_ok=True)
+        (工作目录 / "m6_record.json").write_text(
+            json.dumps(记录, ensure_ascii=False, indent=1), encoding="utf-8")
+    except OSError as 异常:
+        # 审计落盘失败不改结论（附加输出面）——但必须显形（miss 不静默）
+        print(红色(f"警告: M6 审计记录写入失败（{异常}）——结论不受影响"))
+
+
+def 写M6跳过审计(用例名: str, 平台: str, 原因: str, 根目录=None, 编译器=None) -> None:
+    """跳过分支写「未跑」审计——覆盖上一轮可能残留的「通过」记录（防假通过残留）。"""
+    记录 = _补全M6上下文({
+        "用例": 用例名, "平台": 平台, "状态": "未跑", "原因": 原因,
+        "审计时刻": time.strftime("%Y-%m-%d %H:%M:%S")}, 编译器路径=编译器)
+    写M6审计文件(用例名, 记录, 根目录=根目录)
+
+
+def 取HEAD短SHA() -> str:
+    """best-effort HEAD sha（M6 审计记录用；git 不可用=空串·不阻断测试）。"""
+    try:
+        结果 = subprocess.run(["git", "rev-parse", "HEAD"], cwd=项目根目录,
+                             capture_output=True, text=True, encoding="utf-8",
+                             errors="replace", timeout=10)
+        return (结果.stdout or "").strip() if 结果.returncode == 0 else ""
+    except Exception:
+        return ""
+
+
+def 取M6上下文() -> dict:
+    """读取本进程 M6 审计上下文（主进程设·随任务项注入 worker）。"""
+    return dict(M6上下文)
 
 
 def 置M6记录(记录) -> None:
@@ -1532,29 +1610,24 @@ def 执行v2锚定链(编译器路径: pathlib.Path, 用例目录: pathlib.Path,
 
     记录三态：通过（fix_p ≡ fix_s + md5）/失败（md5+首个差异字节）/未跑（提前失败
     或平台跳过——平台跳过在 执行单个用例 的跳过分支记录）。"""
-    if "79_v2" not in 用例目录.name:
+    if not 是M6用例(用例目录.name):
         return _执行v2锚定链(编译器路径, 用例目录, 输出目录, 详细, 目标平台)
     起始 = time.time()
     置M6记录(None)
     try:
         状态, 说明 = _执行v2锚定链(编译器路径, 用例目录, 输出目录, 详细, 目标平台)
     except Exception as 异常:
-        置M6记录({"用例": 用例目录.name, "平台": 目标平台, "状态": "失败",
-                  "原因": "执行异常：%r" % (异常,), "耗时秒": round(time.time() - 起始, 1)})
+        置M6记录(_补全M6上下文(
+            {"用例": 用例目录.name, "平台": 目标平台, "状态": "失败",
+             "原因": "执行异常：%r" % (异常,), "耗时秒": round(time.time() - 起始, 1)},
+            编译器路径))
         raise
-    记录 = _m6产物摘要(用例目录, 目标平台)
+    记录 = _补全M6上下文(_m6产物摘要(用例目录, 目标平台), 编译器路径)
     记录["状态"] = "通过" if 状态 == "通过" else ("未跑" if 状态 == "跳过" else "失败")
     记录["原因"] = (说明 or "")[:600]
     记录["耗时秒"] = round(time.time() - 起始, 1)
     记录["审计时刻"] = time.strftime("%Y-%m-%d %H:%M:%S")
-    工作目录 = (项目根目录 / "target" / "audit2"
-                / ("selfwork%s" % 隔离键(用例目录.name)))
-    try:
-        (工作目录 / "m6_record.json").write_text(
-            json.dumps(记录, ensure_ascii=False, indent=1), encoding="utf-8")
-    except OSError as 异常:
-        # 审计落盘失败不改结论（附加输出面）——但必须显形（miss 不静默）
-        print(红色(f"警告: M6 审计记录写入失败（{异常}）——结论不受影响"))
+    写M6审计文件(用例目录.name, 记录)
     置M6记录(记录)
     return 状态, 说明
 
@@ -1828,6 +1901,87 @@ def 确保v2p与运行时就绪(编译器路径: pathlib.Path, 目标平台: str
     return v2p, v2pobj, 运行时objs, as工具, cxx工具
 
 
+def _MSVC版本键(目录: pathlib.Path):
+    """.../<版本>/bin/Hostx64/x64 → 版本号元组（非数字=0·排序用不炸）。"""
+    try:
+        return tuple(int(x) for x in 目录.parents[2].name.split("."))
+    except (ValueError, IndexError):
+        return (0,)
+
+
+def 扫描MSVC安装根(安装根: pathlib.Path) -> tuple:
+    """#1221 P1-3：扫描任意 VS Edition/版本布局下的 MSVC x64 工具链。
+
+    支持两种根：① `<VS 安装根>`（Microsoft Visual Studio，含 <年份>/<Edition>
+    如 2022/Community、2022/BuildTools、2019/Enterprise 等任意布局）；② 直接
+    `<...>/VC/Tools/MSVC`。布局：
+      <根>/<年份>/<Edition>/VC/Tools/MSVC/<版本>/bin/Hostx64/x64/{ml64,link}.exe
+    多版本按版本号降序取最高（VS 默认为最新工具集）。返回 (ml64, link)；
+    未命中=(None, None)。纯文件系统面（本地模拟目录可自测·不依赖 vswhere）。"""
+    候选 = []
+    if 安装根.is_dir():
+        for 模式 in ("*/*/VC/Tools/MSVC/*/bin/Hostx64/x64",
+                     "*/VC/Tools/MSVC/*/bin/Hostx64/x64",
+                     "VC/Tools/MSVC/*/bin/Hostx64/x64"):
+            候选.extend(安装根.glob(模式))
+    for 目录 in sorted(set(候选), key=_MSVC版本键, reverse=True):
+        甲, 乙 = 目录 / "ml64.exe", 目录 / "link.exe"
+        if 甲.exists() and 乙.exists():
+            return 甲, 乙
+    return None, None
+
+
+def 找MSVC工具链(环境=None, 运行=None) -> tuple:
+    """#1221 P1-3：MSVC x64 工具链发现（GH windows-latest / 任意 VS Edition）。
+
+    顺序：① VCToolsInstallDir 环境；② vswhere（-latest -products * -requires
+    VC.Tools.x86.x64，覆盖 BuildTools/Preview/非默认安装路径）；③ 常见 VS 安装根
+    扫描（Program Files / Program Files (x86) 的 Microsoft Visual Studio）。
+    返回 (ml64, link)；全 miss=(None,None)=调用方显式报错（不静默猜路径）。"""
+    环境 = dict(os.environ if 环境 is None else 环境)
+    跑 = 运行 or (lambda 命令: subprocess.run(
+        命令, capture_output=True, text=True, encoding="utf-8", errors="replace",
+        timeout=30))
+    候选根 = []
+    工具目录 = (环境.get("VCToolsInstallDir") or "").strip()
+    if 工具目录:
+        候选根.append(pathlib.Path(工具目录))
+    vswhere = pathlib.Path(环境.get("ProgramFiles(x86)")
+                           or r"C:\Program Files (x86)") / "Microsoft Visual Studio" \
+        / "Installer" / "vswhere.exe"
+    if vswhere.exists():
+        try:
+            结果 = 跑([str(vswhere), "-latest", "-products", "*",
+                      "-requires", "Microsoft.VisualStudio.Component.VC.Tools.x86.x64",
+                      "-property", "installationPath"])
+            if getattr(结果, "returncode", 1) == 0:
+                for 行 in (结果.stdout or "").splitlines():
+                    行 = 行.strip()
+                    if 行:
+                        候选根.append(pathlib.Path(行) / "VC" / "Tools" / "MSVC")
+        except Exception as 异常:
+            print(黄色(f"[MSVC] vswhere 探测失败（{异常}）——转安装根扫描"))
+    for 基 in (环境.get("ProgramFiles") or r"C:\Program Files",
+             环境.get("ProgramFiles(x86)") or r"C:\Program Files (x86)"):
+        候选根.append(pathlib.Path(基) / "Microsoft Visual Studio")
+    for 根 in 候选根:
+        甲, 乙 = 扫描MSVC安装根(根)
+        if 甲 is not None:
+            return 甲, 乙
+    return None, None
+
+
+def 找WindowsKitsLib根(环境=None) -> pathlib.Path | None:
+    """Windows Kits 10 lib 根发现（Program Files 与 Program Files (x86) 双面）。"""
+    环境 = dict(os.environ if 环境 is None else 环境)
+    for 基 in (环境.get("ProgramFiles(x86)") or r"C:\Program Files (x86)",
+             环境.get("ProgramFiles") or r"C:\Program Files"):
+        根 = pathlib.Path(基) / "Windows Kits" / "10" / "lib"
+        if 根.is_dir():
+            return 根
+    return None
+
+
 def 确保v2p就绪win(编译器路径: pathlib.Path, 详细: bool, 编号: str = "PRE"):
     """win-x64 侧 v2p 就绪（111-a：自 执行v2闭环 原内联步骤0/1 提取，供预热与各用例共用）：
     工具链探测（ml64/link + MSVC/Kits LIB 路径）→ 运行时 .obj 存在性 → v2p 构建缓存
@@ -1843,24 +1997,20 @@ def 确保v2p就绪win(编译器路径: pathlib.Path, 详细: bool, 编号: str 
     v2p = 审计目录 / "v2p.exe"
     v2pobj = 审计目录 / "v2p.obj"
 
-    # 工具链绝对路径（VS 2022，与79同源探测）
-    MSVC根 = r"C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC"
-    ML64 = None
-    LINK = None
-    for 版本 in ("14.44.35207", "14.38.33130"):
-        候选ml64 = pathlib.Path(MSVC根) / 版本 / "bin" / "Hostx64" / "x64" / "ml64.exe"
-        候选link = pathlib.Path(MSVC根) / 版本 / "bin" / "Hostx64" / "x64" / "link.exe"
-        if 候选ml64.exists() and ML64 is None:
-            ML64 = 候选ml64
-        if 候选link.exists() and LINK is None:
-            LINK = 候选link
+    # 工具链绝对路径（#1221 P1-3：vswhere + 任意 Edition/版本安装根扫描——
+    #   原硬编码 Community/固定版本在 GH windows-latest（Enterprise/BuildTools）
+    #   与 VS 小版本升级后必 miss，触发轮稳定假红）
+    ML64, LINK = 找MSVC工具链()
     if ML64 is None or LINK is None:
-        return None, "未找到 ml64/link（VS 2022 MSVC 工具链）"
+        return None, ("未找到 ml64/link（vswhere + VS 安装根扫描均未命中——"
+                      "请确认 Visual Studio C++ 生成工具已安装）")
 
     # LIB 路径（MSVC + Windows Kits）
     msvc版本目录 = ML64.parent.parent.parent.parent
-    kits根 = pathlib.Path(r"C:\Program Files (x86)\Windows Kits\10\lib")
-    kits版 = sorted((p for p in kits根.glob("10.*") if p.is_dir()), reverse=True) if kits根.exists() else []
+    kits根 = 找WindowsKitsLib根()
+    if kits根 is None:
+        return None, "未找到 Windows Kits 10 lib 目录（请确认 Win10/11 SDK 安装）"
+    kits版 = sorted((p for p in kits根.glob("10.*") if p.is_dir()), reverse=True)
     if not kits版:
         return None, f"未找到 Windows Kits lib 目录: {kits根}\\10.*（请确认 Win10 SDK 安装）"
     LIB路径们 = [
@@ -3054,12 +3204,22 @@ def 主程序() -> int:
     ci识别 = CI环境识别()
     # #1221：选集（分片/过滤后）是否含 M6 用例——重负载跳过前定值（跳过也算选集内，
     #   --require-m6 下跳过=红；分片未含=显式「未选」不判红，由含重型的片承担）。
-    M6在选集 = any("79_v2" in d.name for d in 用例目录们)
+    M6在选集 = any(是M6用例(d.name) for d in 用例目录们)
     # #1221：M6 必跑通道——integrate 写集命中 codegen/opt/ir 时经 --require-m6（或
     #   ci.ps1 经环境变量 CN_M6_REQUIRE=1 透传）强制 79_v2 真跑：本通道等同 CI 放行
     #   （外层已持机器锁/独占机），但额外要求记录必须为「通过」，跳过/失败=exit 1。
     要求M6 = bool(getattr(参数, "require_m6", False)
                 or os.environ.get("CN_M6_REQUIRE", "").strip() == "1")
+    # #1221 复审 P2：审计上下文（sha/触发来源/写集命中前 N）——主进程设一次，
+    #   随任务项进 worker；调用方（integrate/ci_m6）用 CN_M6_HITS 传命中清单。
+    _触发来源们 = []
+    if getattr(参数, "require_m6", False):
+        _触发来源们.append("--require-m6")
+    if os.environ.get("CN_M6_REQUIRE", "").strip() == "1":
+        _触发来源们.append("CN_M6_REQUIRE=1")
+    _命中 = [x.strip() for x in os.environ.get("CN_M6_HITS", "")
+             .replace(";", ",").split(",") if x.strip()]
+    置M6上下文({"sha": 取HEAD短SHA(), "触发": "+".join(_触发来源们), "命中": _命中})
     重型跳过们 = []
     重型们 = [d for d in 用例目录们
              if any(前缀 in d.name for 前缀 in 内存保护用例前缀)]
@@ -3104,11 +3264,15 @@ def 主程序() -> int:
                        f"（566·2026-10-13 裁决乙案·云端收口全量已含）——"))
             for _d in 重型跳过们:
                 print(f"  {青色('SKIP')} {_d.name}（云端全量照验·本地默认不跑）")
-                if "79_v2" in _d.name:
-                    # #1221：M6 审计记录落「未跑」+原因（摘要/JSON 显式，禁静默）
-                    置M6记录({"用例": _d.name, "平台": 目标平台, "状态": "未跑",
-                              "原因": "重负载本地默认跳过（566）——未带 --heavy-ci / "
-                                      "--allow-heavy / --require-m6 / CI 环境放行"})
+                if 是M6用例(_d.name):
+                    # #1221：M6 审计记录落「未跑」+原因（摘要/JSON 显式，禁静默）；
+                    #   同步覆盖审计文件防残留假「通过」。
+                    原因 = ("重负载本地默认跳过（566）——未带 --heavy-ci / "
+                          "--allow-heavy / --require-m6 / CI 环境放行")
+                    置M6记录(_补全M6上下文(
+                        {"用例": _d.name, "平台": 目标平台, "状态": "未跑",
+                         "原因": 原因}))
+                    写M6跳过审计(_d.name, 目标平台, 原因, 编译器=编译器路径)
             print("  本地确需跑（改动触及 v2 自举链关键路径）请带 "
                   + 青色("--allow-heavy") + "（强制并发=1·机器域锁内·防多会话并行饱和）")
             用例目录们 = [d for d in 用例目录们 if d not in 重型跳过们]
@@ -3194,7 +3358,7 @@ def 主程序() -> int:
     待收们 = [
         (d.name, 池.apply_async(并行用例任务,
                                 ((d, 编译器路径, 输出目录, 参数.verbose, 目标平台,
-                                  内存上限MB默认),)))
+                                  内存上限MB默认, 取M6上下文()),)))
         for d in 用例目录们
     ]
     停摆秒数 = max(0, 参数.stall_timeout)
@@ -3314,7 +3478,8 @@ def 主程序() -> int:
 
 
 def M6自检() -> int:
-    """#1221：M6 审计记录纯函数面自检（零真编译）——差异偏移/长度差/JSON 落盘三面。
+    """#1221：M6 审计记录纯函数面自检（零真编译）——表驱动：
+    差异偏移/精确名/MSVC 发现布局/审计记录补全与跳过覆盖/JSON 落盘。
     入口：python tests/e2e/run_e2e.py --selftest-m6（CI 式；红 exit 1）。"""
     import tempfile
     断言们 = [
@@ -3325,7 +3490,43 @@ def M6自检() -> int:
          and 首个差异字节偏移(b"abc", b"ab") == 2),
         ("大文件分块比较（>64KB 块边界后差异）",
          首个差异字节偏移(b"a" * 70000 + b"X", b"a" * 70000 + b"Y") == 70000),
+        # P1-1：精确名（179/279/479 不误伤）
+        ("精确名：79_v2_自举闭环命中", 是M6用例("79_v2_自举闭环")),
+        ("精确名：失败条目按冒号截名命中", 是M6用例("79_v2_自举闭环: 固定点不一致")),
+        ("精确名：179/279/479_v2 不命中",
+         not any(是M6用例(n) for n in ("179_v2_构造字面量穷举负测",
+                                      "279_v2_空指针常量传播",
+                                      "479_v2_主返回非整错误值拒绝",
+                                      "78_v2_自举链构建"))),
     ]
+    # P1-3：MSVC 发现——非 Community 布局（BuildTools/Enterprise 混排·取最高版本）
+    with tempfile.TemporaryDirectory() as 临时:
+        根 = pathlib.Path(临时) / "Microsoft Visual Studio"
+        for 版, 工具集 in (("2022/BuildTools", "14.99.1"),
+                          ("2019/Enterprise", "14.29.30133")):
+            目录 = 根 / 版 / "VC" / "Tools" / "MSVC" / 工具集 / "bin" / "Hostx64" / "x64"
+            目录.mkdir(parents=True)
+            (目录 / "ml64.exe").write_text("", encoding="utf-8")
+            (目录 / "link.exe").write_text("", encoding="utf-8")
+        甲, 乙 = 扫描MSVC安装根(根)
+        断言们.append(("MSVC 发现：非 Community 布局命中且取最高版本",
+                    甲 is not None and 乙 is not None and "14.99.1" in str(甲)))
+        (根 / "Empty" / "2022").mkdir(parents=True)
+        断言们.append(("MSVC 发现：空布局=显式 miss（不猜路径）",
+                    扫描MSVC安装根(根 / "Empty") == (None, None)))
+    # P2：审计文件——失败/跳过记录补 sha/触发/命中；跳过覆盖上一轮「通过」防假残留
+    with tempfile.TemporaryDirectory() as 临时:
+        置M6上下文({"sha": "deadbeef", "触发": "--require-m6",
+                   "命中": ["src/cn_compiler/ir/a.cpp", "stdlib/字符串.cn"]})
+        写M6审计文件("79_v2_自举闭环", {"状态": "通过"}, 根目录=临时)
+        写M6跳过审计("79_v2_自举闭环", "linux-arm64", "平台限制（交叉模拟）", 根目录=临时)
+        审计路径 = pathlib.Path(临时) / ("selfwork%s" % 隔离键("79_v2_自举闭环")) / "m6_record.json"
+        审计 = json.loads(审计路径.read_text(encoding="utf-8"))
+        断言们.append(("跳过审计覆盖旧通过记录（状态=未跑）", 审计.get("状态") == "未跑"))
+        断言们.append(("审计记录补 sha/触发/命中前 N",
+                    审计.get("sha") == "deadbeef" and 审计.get("触发") == "--require-m6"
+                    and 审计.get("命中") == ["src/cn_compiler/ir/a.cpp", "stdlib/字符串.cn"]))
+        置M6上下文({})
     with tempfile.TemporaryDirectory() as 临时:
         路径 = pathlib.Path(临时) / "r.json"
         写结果JSON(str(路径), "win-x64", 1, 0, [("79_v2_自举闭环", "固定点不一致")], [], 0,

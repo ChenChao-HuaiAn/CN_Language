@@ -21,6 +21,7 @@ ci_shard（E2E 命令/分片）+ ci_fallback（基线）+ ci_report（物理内�
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 from pathlib import Path
 
@@ -46,6 +47,12 @@ def 交叉模拟态(平台: str, 机架: str) -> bool:
     return 平台 == "linux-arm64" and (机架 or "").lower() not in ("aarch64", "arm64")
 
 
+def M6原生可跑(平台: str, 机架: str) -> bool:
+    """实例「M6 原生可跑」能力位（池协议上报·#1221 复审 P1-7）：
+    真机 win/linux-x64/arm64=True，交叉模拟 arm64=False。"""
+    return m6_gate.平台可跑M6(平台, 交叉模拟态(平台, 机架))
+
+
 def 轮写集(轮分支: str, sha: str, 仓库根: Path,
            远端: str = "origin", 基线查=None,
            运行=None) -> tuple[list[str] | None, str]:
@@ -55,23 +62,33 @@ def 轮写集(轮分支: str, sha: str, 仓库根: Path,
       预验轮（ci/预验-*）：<远端>/develop...<sha>——链顶=在最新 develop 上叠的
         任务提交集；中文路径用 core.quotepath=false（586-a 同族：路径转义会令
         前缀判定静默失效）。
-      develop/兜底轮：上次已验绿 sha..本轮 sha（latest.json）；缺失/等于本轮
-        → sha~1；仍失败 → 不可判。
+      develop/兜底轮：上次已验绿 sha..本轮 sha（latest.json）；基线缺失=不可判
+        （fail-safe 触发·#1221 复审 P2——不再拿 sha~1 猜）；基线==本轮 sha 才退
+        sha~1。
+    diff 前先 `git fetch <远端> develop`（带超时；失败不阻断，沿用已有远端 ref——
+    陈旧 ref 只会多算不漏算）。`--no-renames`：重命名拆成删除+新增，前缀判定不漏。
     返回 (文件们|None, 原因)。运行=可注入 subprocess.run（selftest 零 git）。
     """
     跑 = 运行 or (lambda 命令: subprocess.run(
-        命令, capture_output=True, text=True, cwd=仓库根, timeout=120))
+        命令, capture_output=True, text=True, encoding="utf-8", errors="replace",
+        cwd=仓库根, timeout=120))
+    # #1221 复审 P2：刷新 develop ref（超时 120s·失败不阻断——陈旧 ref 多算不漏算）
+    try:
+        跑(["git", "fetch", 远端, "develop"])
+    except Exception:
+        pass   # 网络/超时——沿用已有远端 ref（下面 diff 失败仍会 fail-safe 触发）
     基线 = ""
     原因 = ""
     if 轮分支.startswith(预验分支前缀):
         基线 = "%s/develop" % 远端
     else:
         基线 = (基线查() if 基线查 is not None else ci_fallback.上次已验SHA()) or ""
-        if not 基线 or 基线 == sha:
+        if not 基线:
+            return None, "基线缺失（latest.json 无上次已验绿 sha）——写集不可判"
+        if 基线 == sha:
             基线 = "%s~1" % sha
-    if not 基线:
-        return None, "基线缺失（无法判定本轮改动面）"
-    命令 = ["git", "-c", "core.quotepath=false", "diff", "--name-only",
+    命令 = ["git", "-c", "core.quotepath=false", "diff", "--no-renames",
+            "--name-only",
             ("%s...%s" if 轮分支.startswith(预验分支前缀) else "%s..%s") % (基线, sha)]
     try:
         结果 = 跑(命令)
@@ -101,65 +118,89 @@ def e2e段(步骤们: dict, 步骤, cn: Path, 日志, sha: str, 轮分支: str, 
           分片召唤时刻, 计划: dict, *, 是win: bool, 平台: str, 日志目录: Path,
           e2e并行: int, e2e超时秒: int, runner标识: str, 启动心跳,
           e2e明细路径: Path) -> None:
-    """④ E2E 段（原 ci_daemon 内联逐行搬移 + M6 门禁三态）。
+    """④ E2E 段（原 ci_daemon 内联逐行搬移 + M6 门禁）。
 
-    M6 三态（计划来自 轮计划）：
-      必跑  → e2e 命令带 --require-m6（选集含 79_v2 而未跑/未通过=exit 1）
-      转派  → 预验轮置「M6平台保障」rc=-1（该轮红·不得静默进 develop）；
-              develop/兜底轮 rc=0 且原因显式（由平台轮转的原生轮承担）
-      未触发→ 不写 M6 步骤（零成本）
+    M6 门禁（#1221 + 复审 P1-7/8/计划缺失）：
+      必跑  → e2e 命令带 --require-m6（选集含 79_v2 而未跑/未通过=exit 1）；
+              跑完强制核 `--json` 明细 M6.状态=="通过"（缺失/非通过=rc -1 拖红）。
+      不可跑（交叉模拟 arm64 等）→ 一律「M6平台保障」rc=-1（fail-closed·预验与
+              develop/兜底同规——该轮不落 latest，下一轮写集仍含改动→原生平台重验）。
+      计划缺失/形态坏 → 按不可判 fail-closed 处理（不静默当未触发）。
+      未触发 → 不写 M6 步骤（零成本）。
     分片：片 0 恒含 79_v2（#1420 重者留主）——主实例 e2e基 带 require，从片不带。
     """
-    触发 = bool((计划 or {}).get("触发"))
-    可跑 = bool((计划 or {}).get("平台可跑"))
+    计划 = 计划 if isinstance(计划, dict) and 计划.get("处置") else \
+        m6_gate.判定未知写集("M6 计划缺失/形态坏", 平台, 交叉模拟态(平台, ""))
+    触发 = bool(计划.get("触发"))
+    可跑 = bool(计划.get("平台可跑"))
     须M6 = 触发 and 可跑
     if 触发:
         if 可跑:
             步骤们["M6平台保障"] = {"rc": 0, "说明": "M6 必跑（--require-m6·#1221）"}
             print("  [M6] %s——e2e 带 --require-m6（79_v2 跳过/失败=本轮红）"
                   % m6_gate.摘要(计划), file=日志, flush=True)
-        elif 轮分支.startswith(预验分支前缀):
-            步骤们["M6平台保障"] = {"rc": -1, "说明": m6_gate.摘要(计划) + "（预验判红）"}
-            print("  [M6·红] %s——预验轮 fail-closed（该平台无法原生验证固定点，"
-                  "改由 win/linux-x64/arm64 真机实例重验）" % m6_gate.摘要(计划),
-                  file=日志, flush=True)
         else:
-            步骤们["M6平台保障"] = {"rc": 0, "说明": m6_gate.摘要(计划)}
-            print("  [M6·转派] %s——develop 轮显式记录，由平台轮转的原生轮承担"
-                  % m6_gate.摘要(计划), file=日志, flush=True)
+            步骤们["M6平台保障"] = {"rc": -1, "说明": m6_gate.摘要(计划) + "（fail-closed）"}
+            print("  [M6·红] %s——fail-closed（该平台无法原生验证固定点；本轮不落 "
+                  "latest，下一轮写集仍含改动→由原生平台重验）" % m6_gate.摘要(计划),
+                  file=日志, flush=True)
     保内存 = min(4096, int(ci_report.物理内存MB(是win) * 0.8))
     e2e基 = ci_shard.e2e命令基(cn, 保内存, 平台, 是win, 须M6=须M6)
-    if 分片 > 1:
-        # ── 1297/1369 主实例分片形态：片 0=本机（重型独立面·run_e2e 分片语义）──
-        #   1369：宽限窗内无任何从片认领→立即退化单实例序列（已完成从片照收·缺失
-        #   片本机补跑·不空等）；收片窗独立，未齐片只报缺失=诚实红（门禁不放宽）。
-        聚合rc, 聚合秒, 合并明细, _分片行们, _形态 = ci_shard.主实例分片段(
-            轮分支=轮分支, 片数=分片, 召唤时刻=分片召唤时刻, e2e基=e2e基,
-            明细参=ci_shard.e2e明细参, 步骤=步骤, 步骤们=步骤们, 日志=日志, sha=sha,
-            日志目录=日志目录, e2e并行=e2e并行, e2e超时秒=e2e超时秒,
-            runner=runner标识, 读明细=ci_shard.读e2e明细,
-            片心跳=lambda k: 启动心跳(轮分支, k))
-        步骤们["e2e并行"]["秒"] = 聚合秒
-        步骤们["e2e"] = {"rc": 聚合rc}
-        if 合并明细 is not None:
-            try:
-                e2e明细路径.write_text(
-                    json.dumps(合并明细, ensure_ascii=False, indent=1),
-                    encoding="utf-8")
-            except OSError as e:
-                print("  [警告] 聚合明细写回失败（%s）——门禁详情降级单片" % e,
-                      file=日志, flush=True)
-    elif 步骤("e2e并行", e2e基 + ci_shard.e2e明细参(e2e明细路径)
-              + ["--jobs", str(e2e并行)], e2e超时秒):
-        步骤们["e2e"] = {"rc": 0}
-    else:
-        # 2026-10-16 用户令「红即停」（#902）：并行主轮一旦出现失败用例→立即中止该轮，
-        #   不再跑串行复验（复验整轮对确定性缺陷必红=纯浪费时间）；447-a 口径废止。
-        print("  [红即停] 并行主轮发现失败用例——中止该轮（用户令 2026-10-16·"
-              "#902·不再串行复验；红例见 e2e明细/日志）", file=日志, flush=True)
-        步骤们["e2e"] = {"rc": 步骤们["e2e并行"]["rc"]}
+    # #1221 复审 P2：命中清单随环境进 run_e2e 审计记录（子进程继承；轮后恢复）
+    原命中 = os.environ.get("CN_M6_HITS")
+    if 须M6:
+        os.environ["CN_M6_HITS"] = ",".join(计划.get("命中") or [])
+    try:
+        if 分片 > 1:
+            # ── 1297/1369 主实例分片形态：片 0=本机（重型独立面·run_e2e 分片语义）──
+            #   1369：宽限窗内无任何从片认领→立即退化单实例序列（已完成从片照收·缺失
+            #   片本机补跑·不空等）；收片窗独立，未齐片只报缺失=诚实红（门禁不放宽）。
+            聚合rc, 聚合秒, 合并明细, _分片行们, _形态 = ci_shard.主实例分片段(
+                轮分支=轮分支, 片数=分片, 召唤时刻=分片召唤时刻, e2e基=e2e基,
+                明细参=ci_shard.e2e明细参, 步骤=步骤, 步骤们=步骤们, 日志=日志, sha=sha,
+                日志目录=日志目录, e2e并行=e2e并行, e2e超时秒=e2e超时秒,
+                runner=runner标识, 读明细=ci_shard.读e2e明细,
+                片心跳=lambda k: 启动心跳(轮分支, k))
+            步骤们["e2e并行"]["秒"] = 聚合秒
+            步骤们["e2e"] = {"rc": 聚合rc}
+            if 合并明细 is not None:
+                try:
+                    e2e明细路径.write_text(
+                        json.dumps(合并明细, ensure_ascii=False, indent=1),
+                        encoding="utf-8")
+                except OSError as e:
+                    print("  [警告] 聚合明细写回失败（%s）——门禁详情降级单片" % e,
+                          file=日志, flush=True)
+        elif 步骤("e2e并行", e2e基 + ci_shard.e2e明细参(e2e明细路径)
+                  + ["--jobs", str(e2e并行)], e2e超时秒):
+            步骤们["e2e"] = {"rc": 0}
+        else:
+            # 2026-10-16 用户令「红即停」（#902）：并行主轮一旦出现失败用例→立即中止该轮，
+            #   不再跑串行复验（复验整轮对确定性缺陷必红=纯浪费时间）；447-a 口径废止。
+            print("  [红即停] 并行主轮发现失败用例——中止该轮（用户令 2026-10-16·"
+                  "#902·不再串行复验；红例见 e2e明细/日志）", file=日志, flush=True)
+            步骤们["e2e"] = {"rc": 步骤们["e2e并行"]["rc"]}
+    finally:
+        if 原命中 is None:
+            os.environ.pop("CN_M6_HITS", None)
+        else:
+            os.environ["CN_M6_HITS"] = 原命中
     # #1221：M6 执行记录（run_e2e --json 的「M6」键）回填进轮计划——md5/首个差异
-    #   字节随轮结果上 8300；缺键=旧版 run_e2e/未跑（计划里的处置与原因已显式）。
+    #   字节随轮结果上 8300；须M6 时**强制核验** `M6.状态=="通过"`（复审 P1-8）：
+    #   缺失/非通过=「M6平台保障」rc=-1 拖红（旧版 run_e2e 无该键同样红·不放行）。
     明细 = ci_shard.读e2e明细(e2e明细路径)
     if isinstance(明细, dict) and isinstance(明细.get("M6"), dict):
         计划["执行"] = 明细["M6"]
+    if 须M6:
+        执行记录 = 计划.get("执行") or {}
+        状态 = 执行记录.get("状态")
+        if 状态 != "通过":
+            md5段 = (" fix_p_md5=%s fix_s_md5=%s 首个差异字节=%s"
+                     % (执行记录.get("fix_p_md5"), 执行记录.get("fix_s_md5"),
+                        执行记录.get("首个差异字节"))) if 执行记录 else ""
+            步骤们["M6平台保障"] = {
+                "rc": -1,
+                "说明": ("M6 执行证据缺失/非通过（状态=%r）——本轮红（#1221 复审 P1-8）%s"
+                         % (状态, md5段))}
+            print("  [M6·红] 明细无有效 M6 通过记录（状态=%r）——轮判红%s"
+                  % (状态, md5段), file=日志, flush=True)

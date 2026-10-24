@@ -46,9 +46,14 @@ def 建实例表(con) -> None:
         树头 TEXT,                  -- 实例仓 HEAD sha 前 10（daemon 启动时自报·跑轮会变·参考面）
         daemon指纹 TEXT,            -- ci_daemon.py 内容 sha256 前 10（进程启动版·版本稳定指标）
         物理机 TEXT,                -- #1426 物理机键（hostname·平台-架构·指纹6·NULL=旧 daemon）
+        M6原生 INTEGER,             -- #1221：M6 原生可跑能力位（1=真机可跑·0=交叉模拟·NULL=旧 daemon）
         版本上报时刻 TEXT)           -- 最近一次带指纹上报时刻（NULL=旧版 daemon 未上报过）""")
     try:   # #1426 物理机指纹列：存量库 ALTER 补（列已在=重复列错吞掉·同 queue_service 先例）
         con.execute("ALTER TABLE 实例 ADD COLUMN 物理机 TEXT")
+    except sqlite3.OperationalError:
+        pass
+    try:   # #1221 M6 原生能力位列：存量库 ALTER 补（旧库升级不丢数据）
+        con.execute("ALTER TABLE 实例 ADD COLUMN M6原生 INTEGER")
     except sqlite3.OperationalError:
         pass
     con.execute("""CREATE TABLE IF NOT EXISTS 池设置(
@@ -122,16 +127,20 @@ def 校正种子活跃(con) -> None:
             con.execute("UPDATE 实例 SET 最近活跃时戳=? WHERE 名称=?", (完成戳, 名称))
 
 
-def 实例认领(con, 时刻函数, runner: str, 平台: str, 物理机: str = "") -> None:
+def 实例认领(con, 时刻函数, runner: str, 平台: str, 物理机: str = "",
+            M6原生=None) -> None:
     """task_claim/task_shard_claim 认领点挂钩（须持写锁·调用方 commit）：注册/刷
     平台+物理机指纹+最近活跃。平台/物理机空串（旧客户端不报）不覆盖已有值
-    （COALESCE 保最近一次自报）。#1426：物理机键=分片限流分组数据源。"""
+    （COALESCE 保最近一次自报）。#1426：物理机键=分片限流分组数据源。
+    #1221：M6原生=M6 原生可跑能力位（None=旧客户端不覆盖）。"""
+    值 = None if M6原生 is None else (1 if M6原生 else 0)
     con.execute(
-        "INSERT INTO 实例(名称,平台,物理机,注册时刻,最近活跃时戳) VALUES(?,?,?,?,?) "
+        "INSERT INTO 实例(名称,平台,物理机,M6原生,注册时刻,最近活跃时戳) VALUES(?,?,?,?,?,?) "
         "ON CONFLICT(名称) DO UPDATE SET 最近活跃时戳=excluded.最近活跃时戳,"
         "平台=COALESCE(NULLIF(excluded.平台,''),实例.平台),"
-        "物理机=COALESCE(NULLIF(excluded.物理机,''),实例.物理机)",
-        (runner, 平台 or None, 物理机 or None, 时刻函数(), int(time.time())))
+        "物理机=COALESCE(NULLIF(excluded.物理机,''),实例.物理机),"
+        "M6原生=COALESCE(excluded.M6原生,实例.M6原生)",
+        (runner, 平台 or None, 物理机 or None, 值, 时刻函数(), int(time.time())))
 
 
 def 实例心跳(con, 时刻函数, runner: str) -> None:
@@ -166,19 +175,24 @@ def 实例报活(con, 时刻函数, 数据: dict) -> dict:
     树头 = str(数据.get("树头", "")).strip()
     指纹 = str(数据.get("daemon指纹", "")).strip()
     物理机 = str(数据.get("物理机", "")).strip()   # #1426：空闲实例也落物理机键（让位判定源）
+    # #1221：M6 原生可跑能力位——bool/0/1 接受，缺失/坏形态=None（旧客户端不覆盖）
+    原M6 = 数据.get("M6原生")
+    M6原生 = (1 if 原M6 else 0) if isinstance(原M6, bool) else (
+        原M6 if isinstance(原M6, int) and 原M6 in (0, 1) else None)
     带指纹 = bool(树头 or 指纹)
     版时 = 时刻函数() if 带指纹 else None
     con.execute(
-        "INSERT INTO 实例(名称,平台,物理机,注册时刻,最近活跃时戳,树头,daemon指纹,版本上报时刻) "
-        "VALUES(?,?,?,?,?,?,?,?) "
+        "INSERT INTO 实例(名称,平台,物理机,M6原生,注册时刻,最近活跃时戳,树头,daemon指纹,版本上报时刻) "
+        "VALUES(?,?,?,?,?,?,?,?,?) "
         "ON CONFLICT(名称) DO UPDATE SET "
         "最近活跃时戳=excluded.最近活跃时戳,"
         "平台=COALESCE(NULLIF(excluded.平台,''),实例.平台),"
         "物理机=COALESCE(NULLIF(excluded.物理机,''),实例.物理机),"
+        "M6原生=COALESCE(excluded.M6原生,实例.M6原生),"
         "树头=COALESCE(NULLIF(excluded.树头,''),实例.树头),"
         "daemon指纹=COALESCE(NULLIF(excluded.daemon指纹,''),实例.daemon指纹),"
         "版本上报时刻=COALESCE(excluded.版本上报时刻,实例.版本上报时刻)",
-        (runner, 平台 or None, 物理机 or None, 时刻函数(), int(time.time()),
+        (runner, 平台 or None, 物理机 or None, M6原生, 时刻函数(), int(time.time()),
          树头 or None, 指纹 or None, 版时))
     return {"ok": True, "刷新请求": 取刷新请求(con)}
 
@@ -232,7 +246,7 @@ def 实例动态快照(con, 心跳超时秒值: int) -> list[dict]:
     #1426：输出物理机键（限流分组观测面·旧 daemon 空串显示 —）。"""
     现在 = int(time.time())
     行们 = con.execute("SELECT 名称,平台,物理机,注册时刻,最近活跃时戳,树头,daemon指纹,"
-                       "版本上报时刻 FROM 实例").fetchall()
+                       "版本上报时刻,M6原生 FROM 实例").fetchall()
     当前 = {r[0]: r for r in con.execute(
         "SELECT 认领者,分支,sha,源分支,认领时刻,心跳时戳 FROM 预验任务 "
         "WHERE 状态='执行中' AND 认领者 IS NOT NULL").fetchall()}
@@ -244,7 +258,7 @@ def 实例动态快照(con, 心跳超时秒值: int) -> list[dict]:
         "SELECT 认领者,分支,sha,绿,更新时刻,max(序号) FROM 预验任务 "
         "WHERE 状态='完成' AND 认领者 IS NOT NULL GROUP BY 认领者").fetchall()}
     出 = []
-    for 名称, 平台, 物理机, 注册, 活跃, 树头, 指纹, 版时 in 行们:
+    for 名称, 平台, 物理机, 注册, 活跃, 树头, 指纹, 版时, M6原生 in 行们:
         任务 = 当前.get(名称)
         片 = 当前片.get(名称)
         当前任务 = None
@@ -266,6 +280,8 @@ def 实例动态快照(con, 心跳超时秒值: int) -> list[dict]:
             状态 = "空闲"
         完成 = 最近完成们.get(名称)
         出.append({"名称": 名称, "平台": 平台 or "", "物理机": 物理机 or "",
+                   # #1221：M6 原生可跑能力位（None=旧版 daemon 未上报）
+                   "M6原生": (None if M6原生 is None else bool(M6原生)),
                    "状态": 状态, "注册时刻": 注册, "最近活跃时戳": 活跃,
                    "树头": 树头 or "", "daemon指纹": 指纹 or "", "版本上报时刻": 版时,
                    "当前任务": 当前任务,

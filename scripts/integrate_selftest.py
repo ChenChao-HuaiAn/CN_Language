@@ -42,7 +42,8 @@ import integrate_disclosure   # 818：点名放行披露机械化（纯函数矩
 from integrate import (board_closeout, 解析队列, 队列段标题, 临时用例检查,
                        解析预验结果, 池轮询预验, 已并入收场, 池行龄分, 打印验证池状态,
                        批写集, 预验前置检查, 云端预验门禁, 已入池哨兵,
-                       解析E2E红用例行, 构造预验入队载荷, 三点间改动, 全量门禁)
+                       解析E2E红用例行, 构造预验入队载荷, 三点间改动, 全量门禁,
+                       预验分支名, 预验绿含M6)
 
 
 def 自测() -> int:
@@ -178,6 +179,26 @@ def 自测() -> int:
         integrate.服务调用 = 造假服务池(iter([{"预验任务": 完成行, "池忙闲": {}}]), 绿详情)
         拿到c, 原因c = 池轮询预验(预验支, "a" * 40, [], 轮询间隔=0)
         断言(拿到c and 原因c is None, "池轮询：完成行+详情绿=拿到结论放行（绿链）")
+        # #1221 P0-1：须M6 时绿结论必须带 M6 通过证据——旧绿（无 M6 键）硬拦重跑
+        integrate.服务调用 = 造假服务池(
+            iter([{"预验任务": 完成行, "池忙闲": {}}]), 绿详情)
+        拿到m, 原因m = 池轮询预验(预验支, "a" * 40, [], 轮询间隔=0, 须M6=True)
+        断言(拿到m and 原因m is not None and "无 M6 通过证据" in 原因m,
+             "#1221 P0-1 池轮询：须M6+旧绿（无 M6 证据）=硬拦重跑")
+        绿详情M6 = dict(绿详情, M6={"执行": {"状态": "通过", "fix_p_md5": "x"}})
+        integrate.服务调用 = 造假服务池(iter([{"预验任务": 完成行, "池忙闲": {}}]), 绿详情M6)
+        拿到m2, 原因m2 = 池轮询预验(预验支, "a" * 40, [], 轮询间隔=0, 须M6=True)
+        断言(拿到m2 and 原因m2 is None,
+             "#1221 P0-1 池轮询：须M6+绿带 M6.执行.状态=通过=放行")
+        # #1221 P1-9：M6 红禁止 --allow-pool-red 点名放行（消费点硬拦）
+        红详情M6 = {"绿": False, "总秒": 900, "日志": "r.log",
+                   "步骤": {"e2e": {"rc": 1}},
+                   "日志尾部": ["✗ 79_v2_自举闭环: 固定点不一致（fix_p≠fix_s）"]}
+        integrate.服务调用 = 造假服务池(
+            iter([{"预验任务": 完成行, "池忙闲": {}}]), 红详情M6)
+        拿到m3, 原因m3 = 池轮询预验(预验支, "a" * 40, ["79_v2_自举闭环"], 轮询间隔=0)
+        断言(拿到m3 and 原因m3 is not None and "禁止 --allow-pool-red" in 原因m3,
+             "#1221 P1-9 池轮询：M6 红即使点名也硬拦（禁放行面消费点）")
         integrate.服务调用 = 造假服务池(iter([{"预验任务": 完成行, "池忙闲": {}}]), 红详情)
         拿到c, 原因c = 池轮询预验(预验支, "a" * 40, [], 轮询间隔=0)
         断言(拿到c and 原因c is not None and "云端预验红" in 原因c,
@@ -684,29 +705,67 @@ def 自测() -> int:
         if 沙箱根1258 is not None:
             _sh.rmtree(沙箱根1258, ignore_errors=True)
 
-    # ⑭ #1221 M6 自举固定点机械触发器：判定单点（m6_gate）+ integrate 接线结构锁
-    import inspect
+    # ⑭ #1221 自举固定点机械触发器（复审返工版·表驱动纯函数面，无源码子串锁）
+    import inspect as _inspect
+    import ci_shard
     import m6_gate
-    断言(m6_gate.判定写集(["src/cn_compiler/codegen/x64/a.cpp"])["触发"]
-         and not m6_gate.判定写集(["src/cn_compiler/lexer/a.cpp"])["触发"],
-         "#1221 触发判定：codegen 命中/纯前端豁免（单点纯函数）")
-    断言(m6_gate.误放行检查(["79_v2_自举闭环"]) is not None,
-         "#1221 M6 红禁点名放行（误放行检查=参数解析面单点）")
-    断言(m6_gate.红例含M6(["79_v2_自举闭环: 固定点不一致"]),
-         "#1221 失败清单含 M6=硬拦（放行消费点双挂）")
-    _全量参 = inspect.signature(全量门禁).parameters
-    _预验参 = inspect.signature(云端预验门禁).parameters
-    断言("须M6" in _全量参 and "须M6" in _预验参,
-         "#1221 门禁接线：全量门禁/云端预验门禁均接 须M6（写集触发深度）")
-    _集成源 = inspect.getsource(integrate.单次集成尝试)
-    断言("m6_gate.判定写集" in _集成源 and "须M6=m6判定" in _集成源,
-         "#1221 接线锁：单次集成尝试 写集判定→全量/预验门禁传参（无旁路）")
-    _全量源 = inspect.getsource(全量门禁)
-    断言("--require-m6" in _全量源 and "CN_M6_REQUIRE" in _全量源,
-         "#1221 执行面锁：linux 命令 --require-m6 / win 环境 CN_M6_REQUIRE")
-    _预验源 = inspect.getsource(云端预验门禁)
-    断言("不复用" in _预验源 and "win-x64" in _预验源,
-         "#1221 预验面锁：M6 触发不复用历史绿 + 缺省认领限原生平台")
+    写集表 = [
+        ("src/cn_compiler/codegen/x64/a.cpp", True),
+        ("src/cn_compiler/opt/窥孔.cpp", True),
+        ("src/cn_compiler/ir/ir.cpp", True),
+        ("src/cn_compiler/model/类型.h", True),
+        ("CN语言编译器v2/代码生成/代码生成.cn", True),
+        ("CN语言编译器v2/IR/优化.cn", True),
+        ("CN语言编译器v2/协议常量/协议常量.cn", True),
+        ("stdlib/字符串.cn", True),
+        ("src/cn_compiler/lexer/a.cpp", False),
+        ("src/cn_compiler/parser/a.cpp", False),
+        ("src/cn_compiler/semantic/a.cpp", False),
+        ("src/cn_compiler/irx/a.cpp", False),
+        ("src/cn_compiler/codegenx/a.cpp", False),
+        ("stdlibx/a.cn", False),
+        ("docs/a.md", False),
+    ]
+    for 路径, 期望 in 写集表:
+        断言("#1221 写集判定：%s → %s" % (路径, "触发" if 期望 else "豁免"),
+             m6_gate.判定写集([路径])["触发"] is 期望)
+    断言("#1221 点名：79_v2 拒·179/279/479_v2 不误拒",
+         m6_gate.误放行检查(["79_v2_自举闭环"]) is not None
+         and m6_gate.误放行检查(["179_v2_构造字面量穷举负测",
+                                  "279_v2_空指针常量传播",
+                                  "479_v2_主返回非整错误值拒绝"]) is None)
+    断言("#1221 红例：79_v2 硬拦·179_v2 不误拦",
+         m6_gate.红例含M6(["79_v2_自举闭环: 固定点不一致"])
+         and not m6_gate.红例含M6(["179_v2_构造字面量穷举负测: x"]))
+    基名 = 预验分支名("a" * 40, False)
+    带名1 = 预验分支名("a" * 40, True, "t1")
+    带名2 = 预验分支名("a" * 40, True, "t2")
+    断言("#1221 预验分支名：普通幂等·M6 轮非幂等后缀（P0-1）",
+         基名 == "ci/预验-" + "a" * 10 and 带名1 == 基名 + "-m6t1"
+         and 带名2 != 带名1)
+    绿证据表 = [
+        ('{"绿": true, "M6": {"执行": {"状态": "通过"}}}', True),
+        ('{"绿": true, "M6": {"状态": "通过"}}', True),
+        ('{"绿": true, "M6": {"执行": {"状态": "未跑"}}}', False),
+        ('{"绿": true, "M6": {"状态": "失败"}}', False),
+        ('{"绿": true}', False),
+        ("非JSON", False),
+        ("[1, 2]", False),
+    ]
+    for 文本, 期望 in 绿证据表:
+        断言("#1221 预验绿证据：%r → %s" % (文本[:36], "通过" if 期望 else "拒"),
+             预验绿含M6(文本) is 期望)
+    限, 提示 = m6_gate.预验认领限制(True, [])
+    断言("#1221 预验认领限制：M6 缺省=win-x64/linux-x86_64（原生固定点平台）",
+         限 == ["win-x64", "linux-x86_64"] and "M6 触发" in 提示)
+    _全量参 = _inspect.signature(全量门禁).parameters
+    _预验参 = _inspect.signature(云端预验门禁).parameters
+    断言("#1221 门禁接线：全量门禁(须M6,m6命中)/云端预验门禁(须M6)",
+         "须M6" in _全量参 and "m6命中" in _全量参 and "须M6" in _预验参)
+    _cmd = ci_shard.e2e命令基("cn", 4096, "linux-x86_64", False, 须M6=True)
+    _cmd2 = ci_shard.e2e命令基("cn", 4096, "linux-x86_64", False, 须M6=False)
+    断言("#1221 e2e 命令：须M6→--require-m6（不须=不带）",
+         "--require-m6" in _cmd and "--require-m6" not in _cmd2)
 
     print(f"\n[selftest] {案例数} 例全过 ✓")
     return 0

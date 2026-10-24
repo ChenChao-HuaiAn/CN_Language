@@ -269,6 +269,11 @@ def 落盘面断言(落盘实现) -> list[tuple[str, bool]]:
             f["预验档"] and f["result数"] == 1)
     f = 跑一次落盘(落盘实现, 造结果("绿", 分支="develop"))
     查("develop 绿：latest+上报（常规轮语义对照）", f["latest"] and f["上报"] == 1)
+    # #1221 复审 P1-7：develop 红轮不得更新 latest（免跑基线必须是已验证绿的头——
+    #   交叉模拟 M6 fail-closed 红轮不落基线，下一轮写集仍含改动→原生平台复验）
+    f = 跑一次落盘(落盘实现, 造结果("红", 分支="develop"))
+    查("develop 红：不得写 latest（免跑基线不得是红头·#1221 P1-7）", not f["latest"])
+    查("develop 红：result 留档+上报（红治理可见）", f["result数"] == 1 and f["上报"] == 1)
     f = 跑一次落盘(落盘实现, {})
     查("空结果：fail-fast 抛异常（不得静默落盘/产绿）", f["崩"] is not None)
     查("空结果：零产物零上报（异常前无副作用）", not f["latest"] and f["上报"] == 0)

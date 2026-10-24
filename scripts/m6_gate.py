@@ -39,13 +39,22 @@ M6用例名 = "79_v2_自举闭环"
 M6用例关键字 = "79_v2"
 
 # 写集触发前缀（守卫=产物语义：代码生成/优化/IR 变化才可能改变 fix_p/fix_s 逐字节面）
+# #1221 复审补：协议常量（v2 IR 节点/类型码契约）、stdlib（自举编译的源码级输入）、
+#   model（AST/类型系统→IR/代码生成的直接上游）一并纳入——按 include/导入依赖的
+#   超集口径（文件级闭包另立任务；超集只会多验不会漏验）。
 M6写集前缀 = (
     "src/cn_compiler/codegen/",
     "src/cn_compiler/opt/",
     "src/cn_compiler/ir/",
+    "src/cn_compiler/model/",
     "CN语言编译器v2/代码生成/",
     "CN语言编译器v2/IR/",
+    "CN语言编译器v2/协议常量/",
+    "stdlib/",
 )
+
+# 预验认领限制的原生 M6 平台（交叉模拟 arm64 无法原生跑 79_v2）
+M6预验原生平台 = ("win-x64", "linux-x86_64")
 
 # 可原生跑 M6 的平台（三平台后端均有 as/g++ 或 ml64/link 闭环编排）；arm64 需真机
 M6原生平台 = ("win-x64", "linux-arm64", "linux-x86_64")
@@ -144,22 +153,67 @@ def 摘要(计划: dict) -> str:
     return "M6 计划缺失（处置=%r）——按未跑处置" % (处置,)
 
 
+def _是M6名(名) -> bool:
+    """精确识别 M6 用例名（#1221 复审 P1-1）：只认 `79_v2_自举闭环` 或 `79_v2_` 前缀。
+
+    禁子串匹配——`179_v2_…/279_v2_…/479_v2_…` 含 "79_v2" 子串，旧口径会把它们
+    误判成 M6（误拦点名清单/误伤失败清单）。失败清单条目先按 `:` 截名再判。"""
+    文本 = str(名 or "").split(":", 1)[0].strip()
+    return 文本 == M6用例名 or 文本.startswith(M6用例关键字 + "_")
+
+
 def 误放行检查(点名清单) -> str | None:
     """M6 红禁放行：--allow-known-red/--allow-pool-red 点名含 79_v2 即拒。
 
     返回 None=点名清单不含 M6；非 None=拒绝原因。调用方在参数解析后与放行消费点
     双挂（单一事实源本函数）。"""
-    违规 = [n for n in (点名清单 or []) if M6用例关键字 in str(n)]
+    违规 = [n for n in (点名清单 or []) if _是M6名(n)]
     if 违规:
         return ("M6（%s·自举固定点）红不得以 --allow-known-red/--allow-pool-red 放行"
                 "——点名 %s；请修复 codegen/opt/ir 后重跑（#1221 机械保证）。"
-                % (M6用例名, "、".join(违规)))
+                % (M6用例名, "、".join(str(n) for n in 违规)))
     return None
 
 
 def 红例含M6(红例们) -> bool:
     """失败/红用例清单是否含 M6（79_v2）——放行消费点硬拦判据（点名说辞不可绕过）。"""
-    return any(M6用例关键字 in str(n) for n in (红例们 or []))
+    return any(_是M6名(n) for n in (红例们 or []))
+
+
+def 等价免验冲突(触发: bool, 开关: bool) -> str | None:
+    """#1221 复审 P1-4：--verified-same-content（等价免验）与 M6 触发互斥。
+
+    等价免验=整体跳过全量+云预验；M6 触发轮必须真跑固定点——两者不可并存。
+    返回 None=允许；非 None=拒绝原因（批流程消费）。"""
+    if 触发 and 开关:
+        return ("--verified-same-content 与 M6 写集触发互斥（#1221）：codegen/opt/ir "
+                "改动轮不得以等价免验跳过全量/云预验——去掉该开关后重跑集成。")
+    return None
+
+
+def 需重新云端预验(首批已绿: bool, 触发: bool) -> bool:
+    """#1221 复审 P1-5：重组轮是否仍需云端预验——M6 触发轮恒需要（链顶已变，
+    旧绿不适用于新链顶；普通轮沿用「首批已绿=免重跑」复用语义）。"""
+    return (not 首批已绿) or bool(触发)
+
+
+def 预验认领限制(须M6: bool, 用户限制) -> tuple[list[str], str]:
+    """预验任务认领平台白名单决策（#1221 P1-7·纯函数）。
+
+    须M6 且用户未显式限制 → 限原生 M6 平台 win-x64/linux-x86_64（交叉模拟 arm64
+    无法原生跑固定点）；用户显式限制优先（含 arm64 且为真机仍可跑，交叉模拟实例
+    会由 ci_daemon fail-closed 判红）。返回 (限制列表, 提示文本·空=无提示)。"""
+    限制 = [str(x).strip() for x in (用户限制 or []) if str(x).strip()]
+    if not 须M6:
+        return 限制, ""
+    if not 限制:
+        return list(M6预验原生平台), (
+            "M6 触发——预验认领限原生平台 win-x64/linux-x86_64"
+            "（交叉模拟 arm64 无法原生跑 79_v2）")
+    if "linux-arm64" in 限制:
+        return 限制, ("注意：--pool-limit 含 linux-arm64——若认领者为交叉模拟实例，"
+                     "预验轮会因 M6 无法原生运行而判红（真机 arm64 可跑）")
+    return 限制, ""
 
 
 def _自测() -> int:
@@ -175,8 +229,11 @@ def _自测() -> int:
         "src/cn_compiler/codegen/arm64/后端.cpp",
         "src/cn_compiler/opt/窥孔.cpp",
         "src/cn_compiler/ir/ir.cpp",
+        "src/cn_compiler/model/类型.h",
         "CN语言编译器v2/代码生成/代码生成ARM64.cn",
         "CN语言编译器v2/IR/优化.cn",
+        "CN语言编译器v2/协议常量/协议常量.cn",
+        "stdlib/字符串.cn",
     ]
     for 路径 in 正例:
         断 = 判定写集([路径])
@@ -194,6 +251,8 @@ def _自测() -> int:
         "CN语言编译器v2/语法/语法.cn",
         "CN语言编译器v2/语义/语义.cn",
         "CN语言编译器v2/主.cn",
+        "CN语言编译器v2/驱动/驱动.cn",
+        "stdlibx/不是标准库.cpp",                 # 前缀边界：stdlib/ ≠ stdlibx/
         "docs/README.md",
         "scripts/m6_gate.py",
         "tests/e2e/79_v2_自举闭环/v2锚定链.txt",
@@ -244,11 +303,36 @@ def _自测() -> int:
 
     # ── M6 红禁放行（点名清单）──
     断言("点名清单含 79_v2=拒", 误放行检查(["79_v2_自举闭环"]) is not None)
-    断言("点名清单含 79_v2 变体=拒", 误放行检查(["前缀-79_v2-后缀"]) is not None)
+    断言("点名清单含 79_v2 变体=拒", 误放行检查(["79_v2_其他后缀"]) is not None)
     断言("点名清单不含 M6=放行", 误放行检查(["113_某用例", "127_v2_某闭环"]) is None)
+    断言("179/279/479_v2 子串不误拒（P1-1 精确名）",
+         误放行检查(["179_v2_构造字面量穷举负测", "279_v2_空指针常量传播",
+                     "479_v2_主返回非整错误值拒绝"]) is None)
     断言("空点名清单=放行", 误放行检查([]) is None and 误放行检查(None) is None)
     断言("红例含 M6=硬拦", 红例含M6(["79_v2_自举闭环"]) and 红例含M6(["79_v2_自举闭环: 固定点不一致"]))
     断言("红例不含 M6=不拦", not 红例含M6(["78_v2_自举链构建"]) and not 红例含M6([]))
+    断言("179/279/479_v2 失败不误判为 M6",
+         not 红例含M6(["179_v2_构造字面量穷举负测: x", "279_v2_空指针常量传播: y",
+                      "479_v2_主返回非整错误值拒绝: z"]))
+
+    # ── 预验认领限制（P1-7 纯函数）──
+    限0, 提0 = 预验认领限制(False, [])
+    限1, 提1 = 预验认领限制(True, [])
+    限2, 提2 = 预验认领限制(True, ["linux-arm64"])
+    断言("认领限制：非 M6=用户限制原样", 限0 == [] and 提0 == "")
+    断言("认领限制：M6 触发缺省=原生平台白名单",
+         限1 == ["win-x64", "linux-x86_64"] and "M6 触发" in 提1)
+    断言("认领限制：用户显式含 arm64=保留+告警",
+         限2 == ["linux-arm64"] and "注意" in 提2)
+
+    # ── 等价免验/云端预验复用（P1-4/P1-5 纯函数）──
+    断言("等价免验：触发+开关=拒/触发+无开关=允许/未触发+开关=允许",
+         等价免验冲突(True, True) is not None
+         and 等价免验冲突(True, False) is None
+         and 等价免验冲突(False, True) is None)
+    断言("云端预验复用：触发轮恒需重跑/普通轮沿用首批已绿",
+         需重新云端预验(True, True) and 需重新云端预验(False, True)
+         and not 需重新云端预验(True, False) and 需重新云端预验(False, False))
 
     失败 = 0
     for 说明, 通过 in 断言们:
@@ -274,23 +358,29 @@ def _命令行(argv: list[str]) -> int:
             return 2
         try:
             结果 = subprocess.run(
-                ["git", "-c", "core.quotepath=false", "diff", "--name-only",
-                 "%s..HEAD" % 基线],
-                capture_output=True, text=True, timeout=120)
+                ["git", "-c", "core.quotepath=false", "diff", "--no-renames",
+                 "--name-only", "%s..HEAD" % 基线],
+                capture_output=True, text=True, encoding="utf-8", errors="replace",
+                timeout=120)
             文件们 = ([行.strip().strip('"') for 行 in (结果.stdout or "").splitlines()
                       if 行.strip()] if 结果.returncode == 0 else None)
             原因 = "" if 结果.returncode == 0 else (结果.stderr or "").strip()[:160]
         except Exception as 异常:                 # 超时/OSError 同样不可判
             文件们, 原因 = None, repr(异常)
         if 文件们 is None:
-            print("M6 fail-safe 触发（写集不可判：%s）" % 原因)
+            摘要 = "M6 fail-safe 触发（写集不可判：%s）" % 原因
             触发 = True
         else:
             判定 = 判定写集(文件们)
             触发 = 判定["触发"]
-            print(判定["说明"])
-        if 触发 and gh_env:
-            print("CN_M6_REQUIRE=1")
+            摘要 = 判定["说明"]
+        if gh_env:
+            # #1221 P1-2：$GITHUB_ENV 只接受 KEY=VALUE——摘要走 stderr，stdout 只出环境行
+            print(摘要, file=sys.stderr)
+            if 触发:
+                print("CN_M6_REQUIRE=1")
+        else:
+            print(摘要)
         return 0
     print("用法: python scripts/m6_gate.py --selftest | "
           "--changed-since <rev> [--gh-env]")

@@ -91,7 +91,9 @@ def 上报(结果: dict) -> None:
 
 def 落盘(结果: dict) -> None:
     """结果落盘+可选上报（1008·预验模式规则·770 修订）：
-    - develop 常规轮：latest.json + result_*.json + 上报（既有行为）。
+    - develop 常规轮：latest.json + result_*.json + 上报（既有行为）；#1221 复审 P1-7：
+      latest 仅在**绿**轮更新（红轮/未验 M6 的 develop 轮不得成为免跑基线——否则下一
+      纯文档轮会以红头为基线跳过，M6 改动失去原生平台复验机会）。
     - 非 develop 分支（CN_CI_BRANCH 预验）：
       · 恒写 预验_<sha10>.json（integrate.py 轮询取回的契约文件）+ result_*.json（历史档）；
       · ci/预验-* 且绿 → 额外写 latest.json+上报：链顶即将成为 develop 头（1008 方案甲；
@@ -103,7 +105,9 @@ def 落盘(结果: dict) -> None:
     sha10 = 结果["sha"][:10]
     当前分支 = 结果.get("分支", "develop")
     if 当前分支 == "develop":
-        (_日志目录 / "latest.json").write_text(文本, encoding="utf-8")
+        # #1221 复审 P1-7：红轮不更新 latest（免跑基线必须是已验证绿的头）
+        if 结果.get("绿"):
+            (_日志目录 / "latest.json").write_text(文本, encoding="utf-8")
         (_日志目录 / ("result_%s_%s.json" % (sha10,
                       datetime.now().strftime("%m%d_%H%M%S")))).write_text(
             文本, encoding="utf-8")

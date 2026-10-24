@@ -27,6 +27,8 @@ import threading
 from pathlib import Path
 from types import SimpleNamespace
 
+import ci_round   # #1221 复审：轮结果/直跑收口外迁件（1299 归因锚在其内）
+
 
 def 桩跑池(主模块, 任务sha: str, 预检头: str, 跑后头: "str | None" = None) -> dict:
     """660 行为级两态桩：猴补 运行限时/带门禁锁跑/落盘/启动心跳/池配置/池调用 后直调
@@ -288,7 +290,7 @@ def _728t断言(主模块, 断言) -> None:
     根 = Path(__file__).resolve().parent
     问题: list[str] = []
     # #1221：ci_m6.py=E2E 段/轮写集外迁件——同受漏参自由名锚约束（外迁不减防线）
-    for 文件 in ("ci_daemon.py", "ci_m6.py", "ci_daemon_selftest.py"):
+    for 文件 in ("ci_daemon.py", "ci_m6.py", "ci_round.py", "ci_daemon_selftest.py"):
         问题 += _文件自由名问题(根 / 文件)
     断言("728t 自由名锚：模块级函数零未定义自由名（抽函数漏参族防线%s）"
          % ("｜" + "；".join(问题) if 问题 else ""), not 问题)
@@ -634,9 +636,10 @@ def _1299断言(主模块, 断言) -> None:
     断言("1299 归因：win 不写不适用项（Ninja --parallel 全核·不虚报默认 2）",
          ci_report.执行机字段("CHENCHAO-PC-win1", 2, True) == {"runner": "CHENCHAO-PC-win1"})
     for 轮 in ("跑一轮", "跑分片轮"):
+        源 = (inspect.getsource(ci_round.轮结果构造) if 轮 == "跑一轮"
+              else inspect.getsource(getattr(主模块, 轮)))
         断言("1299 归因锁：%s 经 ci_report.执行机字段 组装（防回退为写死）" % 轮,
-             "ci_report.执行机字段(runner标识, 构建并行, 是win)"
-             in inspect.getsource(getattr(主模块, 轮)))
+             "ci_report.执行机字段(runner标识, 构建并行, 是win)" in 源)
 
 
 def _抛值错误(调用) -> bool:
@@ -1171,7 +1174,7 @@ def _1468断言(主模块, 断言) -> None:
     早退新头标记·顺序在构建段之后）；②池跑任务 据早退新头按过期语义闭环（不落盘）。"""
     跑源 = inspect.getsource(主模块.跑一轮)
     断言("#1468 结构锁：跑一轮 构建后核对 develop 头并早退（现头≠sha→跳过 e2e）",
-         "过期早退" in 跑源 and "早退新头" in 跑源
+         "过期早退" in 跑源 and "轮早退结果" in 跑源
          and 跑源.index("构建段执行") < 跑源.index("过期早退"))
     池源 = inspect.getsource(主模块.池跑任务)
     断言("#1468 结构锁：池跑任务 早退结果转过期语义（绿闭环·不落盘）",
@@ -1179,40 +1182,53 @@ def _1468断言(主模块, 断言) -> None:
 
 
 def _1221断言(主模块, 断言) -> None:
-    """#1221 自举固定点机械触发器：轮写集（git 胶水·注入运行）三态 + 轮计划
-    三态（触发/豁免/交叉模拟转派）+ E2E 段 M6 门禁三态（命令带 --require-m6 /
-    预验交叉模拟 fail-closed / develop 转派）+ 聚合绿 M6平台保障 红绿两态。
-    全部零真 git 零真构建（运行=桩·步骤=桩·临时 cn 与明细目录隔离）。"""
+    """#1221 自举固定点机械触发器（复审返工版·表驱动纯函数面）：
+    ①轮写集（fetch 前置/三点两点/基线缺失不可判/no-renames/quotepath）
+    ②轮计划三态与未知写集 fail-safe ③平台能力位 ④E2E 段 M6 门禁（必跑带
+    --require-m6 / 明细无 M6 通过=拖红 / 交叉模拟 fail-closed / 计划缺失
+    fail-closed / 未触发零成本）⑤轮结果/直跑收口/预验分支 sha10（ci_round）。
+    全部零真 git 零真构建（运行/步骤/头查/落盘 全桩·临时目录隔离）。"""
     import io
+    import json
     import tempfile
     import ci_m6
+    import ci_round
     import m6_gate
 
     class 桩结果:
         def __init__(self, rc=0, out="", err=""):
             self.returncode, self.stdout, self.stderr = rc, out, err
 
-    # ① 预验轮：三点 diff + quotepath=false（中文路径前缀判定不被转义静默击穿）
+    # ① 预验轮：先 fetch develop（P2），再三点 diff + quotepath 关 + no-renames
     记录: list = []
 
     def 桩运行(命令):
         记录.append(list(命令))
         return 桩结果(0, "src/cn_compiler/ir/ir.cpp\nCN语言编译器v2/代码生成/代码生成.cn\n")
 
-    文件们, 原因 = ci_m6.轮写集("ci/预验-abc123", "a" * 40, Path("."),
+    文件们, _原因 = ci_m6.轮写集("ci/预验-abc123", "a" * 40, Path("."),
                                  运行=桩运行, 基线查=lambda: "b" * 40)
-    断言("#1221 预验轮写集：三点 diff（origin/develop...sha）+ 中文路径 quotepath 关",
+    断言("#1221 预验轮写集：fetch develop 前置 + 三点 diff + quotepath/no-renames",
          文件们 == ["src/cn_compiler/ir/ir.cpp", "CN语言编译器v2/代码生成/代码生成.cn"]
-         and "-c" in 记录[0] and "core.quotepath=false" in 记录[0]
-         and 记录[0][-1] == "origin/develop..." + "a" * 40)
+         and 记录[0][:4] == ["git", "fetch", "origin", "develop"]
+         and "-c" in 记录[-1] and "core.quotepath=false" in 记录[-1]
+         and "--no-renames" in 记录[-1]
+         and 记录[-1][-1] == "origin/develop..." + "a" * 40)
 
-    # ② develop/兜底轮：基线=上次已验绿 sha（.. 两点）；基线=本轮 sha 时退 sha~1
+    # ② develop/兜底轮：基线=上次已验绿（两点）；同 sha 退 sha~1；基线缺失=不可判
     记录.clear()
     ci_m6.轮写集("develop", "a" * 40, Path("."), 运行=桩运行, 基线查=lambda: "c" * 40)
+    差1 = 记录[-1][-1]
+    记录.clear()
     ci_m6.轮写集("develop", "a" * 40, Path("."), 运行=桩运行, 基线查=lambda: "a" * 40)
-    断言("#1221 develop 轮写集：基线=上次已验绿（两点）；同 sha 退 sha~1",
-         记录[0][-1] == "c" * 40 + ".." + "a" * 40
-         and 记录[1][-1] == "a" * 40 + "~1.." + "a" * 40)
+    差2 = 记录[-1][-1]
+    记录.clear()
+    缺集, 缺因 = ci_m6.轮写集("develop", "a" * 40, Path("."), 运行=桩运行,
+                              基线查=lambda: "")
+    断言("#1221 develop 轮写集：上次已验绿两点/同 sha 退 sha~1",
+         差1 == "c" * 40 + ".." + "a" * 40 and 差2 == "a" * 40 + "~1.." + "a" * 40)
+    断言("#1221 develop 轮写集：基线缺失=不可判（不拿 sha~1 猜·fail-safe）",
+         缺集 is None and "基线缺失" in 缺因)
 
     # ③ git 失败=不可判（调用方 fail-safe 触发，禁静默当空写集）
     文件们错, 原因错 = ci_m6.轮写集("develop", "a" * 40, Path("."),
@@ -1221,42 +1237,53 @@ def _1221断言(主模块, 断言) -> None:
     断言("#1221 写集不可判：git 失败→None+原因（fail-safe 触发）",
         文件们错 is None and "git diff 失败" in 原因错)
 
-    # ④ 轮计划三态：codegen 触发/文档豁免/交叉模拟 arm64 转派
+    # ④ 轮计划三态 + 未知写集 fail-safe + 写集缺口
     码运行 = lambda 命令: 桩结果(0, "src/cn_compiler/codegen/x64/a.cpp\n")
     文运行 = lambda 命令: 桩结果(0, "docs/a.md\n")
     必跑 = ci_m6.轮计划("ci/预验-x", "a" * 40, "win-x64", True, Path("."), "origin",
                         "AMD64", 基线查=lambda: "b" * 40, 运行=码运行)
     豁免 = ci_m6.轮计划("ci/预验-x", "a" * 40, "win-x64", True, Path("."), "origin",
                         "AMD64", 基线查=lambda: "b" * 40, 运行=文运行)
-    转派 = ci_m6.轮计划("ci/预验-x", "a" * 40, "linux-arm64", False, Path("."),
+    交叉 = ci_m6.轮计划("ci/预验-x", "a" * 40, "linux-arm64", False, Path("."),
                         "origin", "x86_64", 基线查=lambda: "b" * 40, 运行=码运行)
     断言("#1221 轮计划：codegen 写集→必跑（win 原生）",
          必跑["处置"] == "必跑" and 必跑["平台可跑"] and 必跑["命中"])
     断言("#1221 轮计划：纯文档写集→未触发（零成本）", 豁免["处置"] == "未触发")
-    断言("#1221 轮计划：交叉模拟 arm64→未跑-转派（显式原因）",
-         转派["处置"] == "未跑-转派" and not 转派["平台可跑"])
+    断言("#1221 轮计划：交叉模拟 arm64→未跑（不可原生·fail-closed 面）",
+         交叉["处置"] == "未跑-转派" and not 交叉["平台可跑"])
     断言("#1221 轮计划：写集不可判→fail-safe 必跑",
          ci_m6.轮计划("develop", "a" * 40, "win-x64", True, Path("."), "origin", "AMD64",
                      基线查=lambda: "c" * 40,
                      运行=lambda 命令: 桩结果(1, "", "bad"))["处置"] == "必跑")
+    断言("#1221 写集缺口：model/协议常量/stdlib 正例触发",
+         m6_gate.判定写集(["src/cn_compiler/model/类型.h",
+                          "CN语言编译器v2/协议常量/协议常量.cn",
+                          "stdlib/字符串.cn"])["触发"])
 
-    # ⑤ 平台判据：真机 arm64 可跑/交叉模拟不可跑/win 原生
-    断言("#1221 平台判据：arm64 真机可跑·交叉模拟不可跑",
+    # ⑤ 平台判据/能力位
+    断言("#1221 平台判据：arm64 真机可跑·交叉模拟不可跑·能力位一致",
          ci_m6.原生平台(False, "aarch64") == "linux-arm64"
          and not ci_m6.交叉模拟态("linux-arm64", "aarch64")
          and ci_m6.交叉模拟态("linux-arm64", "x86_64")
-         and ci_m6.原生平台(True, "AMD64") == "win-x64")
+         and ci_m6.原生平台(True, "AMD64") == "win-x64"
+         and ci_m6.M6原生可跑("win-x64", "AMD64")
+         and not ci_m6.M6原生可跑("linux-arm64", "x86_64"))
 
-    # ⑥ E2E 段 M6 门禁三态（桩步骤·临时 cn/明细）
+    # ⑥ E2E 段 M6 门禁（桩步骤·临时 cn/明细；明细内容可注入=证据校验面）
     with tempfile.TemporaryDirectory() as 临时:
         假cn = Path(临时) / "cn.exe"
         假cn.write_text("x", encoding="utf-8")
         明细 = Path(临时) / "e2e明细.json"
         日志 = io.StringIO()
 
-        def 跑一段(计划):
+        def 跑一段(计划, 明细内容=None):
             步骤们: dict = {"构建": {"rc": 0}}
             命令们: list = []
+            if 明细内容 is None:
+                明细.unlink(missing_ok=True)
+            else:
+                明细.write_text(json.dumps(明细内容, ensure_ascii=False),
+                                encoding="utf-8")
 
             def 假步骤(名, 命令, 超时秒):
                 命令们.append((名, list(命令)))
@@ -1268,41 +1295,48 @@ def _1221断言(主模块, 断言) -> None:
                         启动心跳=lambda 分支, 片=None: None, e2e明细路径=明细)
             return 步骤们, 命令们
 
-        步们, 命令们 = 跑一段(dict(必跑))
-        断言("#1221 E2E 段：必跑→命令带 --require-m6 且 M6平台保障 rc=0",
+        通过证据 = {"M6": {"状态": "通过", "fix_p_md5": "abc", "fix_s_md5": "abc"}}
+        计划必跑 = dict(必跑)
+        步们, 命令们 = 跑一段(计划必跑, 通过证据)
+        断言("#1221 E2E 段：必跑→--require-m6 + 明细 M6 通过→rc=0 且轮绿",
              any("--require-m6" in c for _, c in 命令们)
              and 步们.get("M6平台保障", {}).get("rc") == 0
-             and 主模块.聚合绿(步们))
-        步们2, _ = 跑一段(dict(转派, 处置="未跑-转派"))
-        断言("#1221 E2E 段：预验×交叉模拟→M6平台保障 rc=-1 且轮红（fail-closed）",
+             and 主模块.聚合绿(步们)
+             and 计划必跑.get("执行", {}).get("状态") == "通过")
+        步们无证, _ = 跑一段(dict(必跑), None)
+        断言("#1221 E2E 段：必跑但明细无 M6 记录→M6平台保障 rc=-1 且轮红（P1-8）",
+             步们无证.get("M6平台保障", {}).get("rc") == -1
+             and not 主模块.聚合绿(步们无证))
+        步们2, _ = 跑一段(dict(交叉, 处置="未跑-转派"), None)
+        断言("#1221 E2E 段：交叉模拟→fail-closed rc=-1（develop/预验同规·P1-7）",
              步们2.get("M6平台保障", {}).get("rc") == -1
              and not 主模块.聚合绿(步们2))
-        步们3: dict = {"构建": {"rc": 0}}
-        ci_m6.e2e段(步们3, lambda 名, 命令, 秒: (步们3.__setitem__(名, {"rc": 0}), True)[1],
-                    假cn, 日志, "a" * 40, "develop", 0, None, dict(转派),
-                    是win=True, 平台="win-x64", 日志目录=Path(临时), e2e并行=4,
-                    e2e超时秒=60, runner标识="selftest",
-                    启动心跳=lambda 分支, 片=None: None, e2e明细路径=明细)
-        断言("#1221 E2E 段：develop×交叉模拟→转派 rc=0 且原因显式（不静默）",
-             步们3.get("M6平台保障", {}).get("rc") == 0
-             and "M6 未跑" in 步们3["M6平台保障"]["说明"]
-             and 主模块.聚合绿(步们3))
+        步们缺, 命令缺 = 跑一段(None, None)
+        断言("#1221 E2E 段：计划缺失→fail-closed（capable 面仍带 require 且无证据必红）",
+             any("--require-m6" in c for _, c in 命令缺)
+             and 步们缺.get("M6平台保障", {}).get("rc") == -1)
         断言("#1221 E2E 段：未触发→不写 M6平台保障（纯文档轮零成本）",
-             "M6平台保障" not in 跑一段(dict(豁免))[0])
-    # ⑦ 轮记录回填：明细「M6」键→计划["执行"]（md5 随轮结果上 8300）
-    with tempfile.TemporaryDirectory() as 临时:
-        假cn = Path(临时) / "cn.exe"
-        假cn.write_text("x", encoding="utf-8")
-        明细 = Path(临时) / "e2e明细.json"
-        明细.write_text('{"M6": {"状态": "通过", "fix_p_md5": "abc", '
-                        '"fix_s_md5": "abc"}}', encoding="utf-8")
-        计划 = dict(必跑)
-        ci_m6.e2e段({}, lambda 名, 命令, 秒: True, 假cn, io.StringIO(), "a" * 40,
-                    "develop", 0, None, 计划, 是win=True, 平台="win-x64",
-                    日志目录=Path(临时), e2e并行=4, e2e超时秒=60, runner标识="selftest",
-                    启动心跳=lambda 分支, 片=None: None, e2e明细路径=明细)
-        断言("#1221 明细回填：run_e2e --json M6 键→计划[执行]（md5 可审计）",
-             计划.get("执行", {}).get("fix_p_md5") == "abc")
+             "M6平台保障" not in 跑一段(dict(豁免), None)[0])
+
+    # ⑦ 轮结果/直跑收口/预验分支 sha10（ci_round）
+    断言("#1221 预验分支 sha10：M6 非幂等后缀兼容（P0-1）",
+         ci_round.预验分支sha10("ci/预验-abcdef0123-m61700123456") == "abcdef0123"
+         and ci_round.预验分支sha10("ci/预验-abcdef0123") == "abcdef0123"
+         and ci_round.预验分支sha10("develop") == "")
+    过期1 = ci_round.直跑过期因("a" * 40, {"早退新头": "b" * 40}, 头查=lambda: "a" * 40)
+    过期2 = ci_round.直跑过期因("a" * 40, {}, 头查=lambda: "b" * 40)
+    过期0 = ci_round.直跑过期因("a" * 40, {}, 头查=lambda: "a" * 40)
+    断言("#1221 直跑过期因：早退/HEAD≠sha=过期·一致=未过期（P1-10）",
+         过期1.startswith("构建后早退") and 过期2.startswith("跑后复查") and 过期0 == "")
+    落盘们: list = []
+    ci_round.直跑收口("a" * 40, {"早退新头": "b" * 40, "绿": True}, 落盘们.append)
+    ci_round.直跑收口("a" * 40, {"绿": True, "总秒": 1, "日志": "x"}, 落盘们.append,
+                      仓库根=Path("."), 头查=lambda: "a" * 40)
+    断言("#1221 直跑收口：过期不落盘·正常落盘一次（P1-10）", len(落盘们) == 1)
+    m6早退 = ci_round.轮早退结果("a" * 40, "develop", {}, 0.0, Path("x.log"),
+                                "b" * 40, {"触发": True}, 平台="win-x64")
+    断言("#1221 早退结果：M6 处置=过期早退+原因显式（新头轮承担）",
+         m6早退["M6"].get("处置") == "过期早退" and "未执行 M6" in m6早退["M6"].get("说明", ""))
 
 
 def 自测(主模块) -> int:

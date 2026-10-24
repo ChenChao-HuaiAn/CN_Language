@@ -840,6 +840,17 @@ def 跑() -> None:
     def 实例动态():
         return {r["名称"]: r for r in 实例面.实例动态快照(con, 服务.心跳超时秒)}
 
+    # #1221 复审 P1-7：M6 原生可跑能力位——claim/ping 双入口上报→实例表持久→动态可见
+    处理写("task_enqueue", {"分支": "ci/预验-12210000001", "sha": "2" * 40})
+    处理写("task_claim", {"runner": "1221能力甲", "平台": "linux-arm64",
+                         "物理机": "机C1", "M6原生": False})
+    处理写("instance_ping", {"runner": "1221能力乙", "平台": "win-x64",
+                           "物理机": "机C2", "M6原生": True})
+    能力态 = 实例动态()
+    断言(能力态["1221能力甲"]["M6原生"] is False
+        and 能力态["1221能力乙"]["M6原生"] is True,
+        "#1221 能力位：交叉模拟 arm64=False / 原生 win=True（claim/ping 双面落表）")
+
     处理写("task_enqueue", {"分支": "ci/预验-13920000001", "sha": "1" * 40})
     处理写("task_claim", {"runner": "实例甲", "平台": "win-x64"})
     动态 = 实例动态()

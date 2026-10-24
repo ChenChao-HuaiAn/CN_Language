@@ -200,12 +200,13 @@ def 召唤从片(池调用, 分支: str, runner: str, 片数: int) -> bool:
     return False
 
 
-def 领片(池调用, runner: str, 平台: str):
+def 领片(池调用, runner: str, 平台: str, M6原生=None):
     """从实例领缺口片（无缺口/池不可达 → None·调用方落回领整任务路径）。
     #1426：认领体携带物理机指纹——服务端按物理机限并发；超限/让位返回 片=None
-    （不领片·不阻塞主实例召唤），调用方自然落回整任务路径。"""
+    （不领片·不阻塞主实例召唤），调用方自然落回整任务路径。
+    #1221：M6原生=M6 原生可跑能力位（供服务端实例表观测/后续 M6 派发数据源）。"""
     回 = 池调用("task_shard_claim", {"runner": runner, "平台": 平台,
-                                     "物理机": 物理机标识()})
+                                     "物理机": 物理机标识(), "M6原生": M6原生})
     if 回 and 回.get("ok"):
         return 回.get("片")
     return None
@@ -688,7 +689,7 @@ def 实例指纹(仓库根: Path) -> dict:
     return {"树头": 取树头(仓库根), "daemon指纹": 指纹}
 
 
-def 启动实例报活(runner: str, 平台: str, 仓库根: Path) -> dict:
+def 启动实例报活(runner: str, 平台: str, 仓库根: Path, M6原生=None) -> dict:
     """空闲报活后台线程（ci_daemon.主 启动挂载·daemon=True 随进程退出）：每
     报活间隔秒 POST instance_ping（忙闲都发·池不可达静默——与 task_heartbeat
     同口径）。未配置池地址=不启动（纯本地面无服务端可报）。
@@ -701,7 +702,9 @@ def 启动实例报活(runner: str, 平台: str, 仓库根: Path) -> dict:
     if not 配置["池地址"]:
         return 状态
     固定 = {"daemon指纹": 实例指纹(仓库根)["daemon指纹"],
-            "物理机": 物理机标识()}   # #1426：空闲实例也报物理机键（让位判定源）
+            "物理机": 物理机标识(),
+            # #1221：M6 原生可跑能力位（None=旧部署不覆盖；真机/交叉模拟由调用方判定）
+            "M6原生": M6原生}   # #1426：空闲实例也报物理机键（让位判定源）
 
     def 跑():
         while True:
