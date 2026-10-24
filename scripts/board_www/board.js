@@ -773,7 +773,7 @@ function 开详情(号) {
       (t.runner ? "·runner " + 转义(t.runner) : "") + "</span>" +
       (红检 && t.sha ? '<button class="钮 次" data-红详情-sha="' + 转义(t.sha) +
         '" data-红源="' + 红源 + '" data-红平台="' + 转义(t.平台 || "") +
-        '" data-红支="' + 转义(t.分支 || "") +
+        '" data-红支="' + 转义(t.预验分支 || "") +
         '">失败用例</button>' : "") +
       "</div>" + '<div id="红详情区"></div>'
     : '<div class="备注行">无 CI 阶段信号（' +
@@ -1054,7 +1054,7 @@ document.addEventListener("click", (e) => {
     if (t && t.sha) {
       开详情(t.号);
       开红详情(t.号, t.sha, t.阶段 === "已集成·验证红" ? "验证" : "预检", t.平台,
-             t.分支 || "");
+             t.预验分支 || "");
     }
     return;
   }

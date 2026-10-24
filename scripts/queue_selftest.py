@@ -904,6 +904,10 @@ def 跑() -> None:
     断言(坏必跑.get("ok") is False and "M6必跑" in 坏必跑.get("说明", "")
         and 坏原生.get("ok") is False and "M6原生" in 坏原生.get("说明", ""),
          "#1221 P3：M6必跑/M6原生 字符串 \"false\" 显式拒绝（不按 truthy 误判）")
+    # #1221 复审 P2-2：坏载荷必须先拒、不得先污染实例表（原顺序表已写 1 的旁路）
+    污染行 = con.execute("SELECT COUNT(*) FROM 实例 WHERE 名称='1221坏型乙'").fetchone()[0]
+    断言(污染行 == 0,
+         "#1221 P2-2：M6原生 坏载荷不落实例表（校验前移·无 COALESCE 旁路）")
     # COALESCE 安全网：载荷缺省→回查实例表已存能力位
     处理写("task_claim", {"runner": "1221表内存", "平台": "linux-arm64", "M6原生": False})
     con.execute("UPDATE 预验任务 SET 状态='已取消' WHERE 状态='排队'")
@@ -1061,6 +1065,27 @@ def 跑() -> None:
     断言(复活领.get("任务") is not None
         and 复活领["任务"]["分支"] == "ci/预验-1221reap0001-m6aa",
         "#1221 P1-A：复活行可被认领（幂等分支重跑自愈）")
+    # #1221 P2-3：第二连接（独立 SQLite 连接）可见 claim 提交结果（WAL 耐久性）
+    import sqlite3 as _sqlite3
+    _备 = _sqlite3.connect(服务.db路径, check_same_thread=False)
+    try:
+        _行备 = _备.execute("SELECT 状态,认领者 FROM 预验任务 WHERE 分支=?",
+                          ("ci/预验-1221reap0001-m6aa",)).fetchone()
+    finally:
+        _备.close()
+    断言(_行备 is not None and _行备[0] == "执行中" and _行备[1] == "1221复活己",
+         "#1221 P2-3：第二连接可见 task_claim 结果（提前 return 已 commit·WAL 耐久）")
+    # P3：复活清认领时刻；-m6<hex> 分支缺省即 M6必跑=1（客户端漏传防御）
+    con.execute("UPDATE 预验任务 SET 认领时刻='01-01 00:00:00' WHERE 分支=?",
+                ("ci/预验-1221reap0001-m6aa",))
+    con.execute("UPDATE 预验任务 SET 状态='已取消' WHERE 分支=?",
+                ("ci/预验-1221reap0001-m6aa",))
+    con.commit()
+    处理写("task_enqueue", {"分支": "ci/预验-1221reap0001-m6aa", "sha": "7" * 40})
+    复归 = con.execute("SELECT 认领时刻,M6必跑 FROM 预验任务 WHERE 分支=?",
+                     ("ci/预验-1221reap0001-m6aa",)).fetchone()
+    断言(复归[0] is None and 复归[1] == 1,
+         "#1221 P3：复活清认领时刻 + -m6 分支缺省推断 M6必跑=1")
     # P1-A 反态：源分支已并入 develop=维持取消（562 语义）
     con.execute("INSERT INTO 预验任务(分支,sha,源分支,状态,入队时刻,更新时刻) "
                 "VALUES(?,?,?,'已取消',?,?)",
@@ -1092,6 +1117,16 @@ def 跑() -> None:
                        ("ci/预验-1221cancel01",)).fetchone()[0]
     断言(片有前 == 2 and 片有后 == 0 and 父有后 == 0,
          "#1221 P2-3：task_cancel 删父排队行+清父分片（无孤儿片行）")
+    _备2 = _sqlite3.connect(服务.db路径, check_same_thread=False)
+    try:
+        _父2 = _备2.execute("SELECT COUNT(*) FROM 预验任务 WHERE 分支=?",
+                          ("ci/预验-1221cancel01",)).fetchone()[0]
+        _片2 = _备2.execute("SELECT COUNT(*) FROM 预验分片 WHERE 分支=?",
+                          ("ci/预验-1221cancel01",)).fetchone()[0]
+    finally:
+        _备2.close()
+    断言(_父2 == 0 and _片2 == 0,
+         "#1221 P2-3：第二连接可见 task_cancel 结果（父/片删除已 commit·WAL 耐久）")
 
     # ── 1425 全站登录墙 HTTP 端到端（866 教训：对目标真实拦截的正反两态·照
     #    board_selftest 模式起真服务）——人=用户名+密码会话（CN_WEB_USER/CN_WEB_PASS·

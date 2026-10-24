@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 # CN 任务看板一键部署（382·照 deploy_website.sh 模式）
 # 部署面：board_service.py + board_selftest.py(405) + board_tasks.py + board_docs.py(384)
-#         + board_adjudication.py(403) + web_auth.py(1425 登录墙公共模块) + board_www/
+#         + board_adjudication.py(403) + web_auth.py(1425 登录墙公共模块)
+#         + queue_result.py + queue_shard.py + queue_instances.py（#1221：board_service 复用
+#           预验分支协议单点/归因查询面——queue_result→queue_shard→queue_instances 传递
+#           依赖须随看板整组部署） + board_www/
 #         静态目录 → TX_01:/home/ubuntu
 # 用法: bash scripts/deploy_board.sh [ssh别名]   默认 TX_01
 # 注意：本脚本只更代码+重启服务（SQLite 数据与 systemd 单元不动）；
@@ -23,7 +26,7 @@ REMOTE_DIR="/home/ubuntu"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
-for f in board_service.py board_tasks.py board_ci.py board_docs.py board_adjudication.py board_selftest.py web_auth.py; do
+for f in board_service.py board_tasks.py board_ci.py board_docs.py board_adjudication.py board_selftest.py web_auth.py queue_result.py queue_shard.py queue_instances.py; do
     if [ ! -f "$SCRIPT_DIR/$f" ]; then
         echo "错误: 找不到 $SCRIPT_DIR/$f" >&2
         exit 1
@@ -57,7 +60,7 @@ PY
 scp -q "$SCRIPT_DIR/board_service.py" "$SCRIPT_DIR/board_tasks.py" \
     "$SCRIPT_DIR/board_ci.py" \
     "$SCRIPT_DIR/board_docs.py" "$SCRIPT_DIR/board_adjudication.py" \
-    "$SCRIPT_DIR/board_selftest.py" "$SCRIPT_DIR/web_auth.py" "$REMOTE:$REMOTE_DIR/"
+    "$SCRIPT_DIR/board_selftest.py" "$SCRIPT_DIR/web_auth.py" \n    "$SCRIPT_DIR/queue_result.py" "$SCRIPT_DIR/queue_shard.py" \n    "$SCRIPT_DIR/queue_instances.py" "$REMOTE:$REMOTE_DIR/"
 ssh "$REMOTE" "mkdir -p '$REMOTE_DIR/board_www'"
 tar czf - -C "$SCRIPT_DIR/board_www" . | ssh "$REMOTE" "tar xzf - -C '$REMOTE_DIR/board_www'"
 scp -q "$DIST_TMP/index.html" "$REMOTE:$REMOTE_DIR/board_www/index.html"

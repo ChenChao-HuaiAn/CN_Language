@@ -133,19 +133,19 @@ def 推导阶段(队列行们: list, 预验行们: list, 门禁行们: list, 任
             支 = str(预.get("分支") or "")
             if 状态 == "完成" and 预.get("绿") == 0:
                 出[号] = {"阶段": 阶段_预检红, "阶段时刻": str(预.get("更新时刻") or ""),
-                          "sha": sha10, "分支": 支}
+                          "sha": sha10, "预验分支": 支}
                 continue
             if 状态 == "完成" and 预.get("绿") == 1:
                 出[号] = {"阶段": 阶段_预检绿, "阶段时刻": str(预.get("更新时刻") or ""),
-                          "sha": sha10, "分支": 支}
+                          "sha": sha10, "预验分支": 支}
                 continue
             if 状态 == "执行中":
                 出[号] = {"阶段": 阶段_预检中, "阶段时刻": str(预.get("更新时刻") or ""),
-                          "runner": str(预.get("认领者") or ""), "sha": sha10, "分支": 支}
+                          "runner": str(预.get("认领者") or ""), "sha": sha10, "预验分支": 支}
                 continue
             if 状态 == "排队":
                 出[号] = {"阶段": 阶段_预检排队, "阶段时刻": str(预.get("更新时刻") or ""),
-                          "sha": sha10, "分支": 支}
+                          "sha": sha10, "预验分支": 支}
                 continue
         队 = 队列态.get(号)
         if 队 is not None:

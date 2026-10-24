@@ -900,7 +900,8 @@ def 主(常驻: bool, 强制: bool, 等锁: bool = False) -> int:
                 重抢锁(锁)
                 continue
         # ── develop 轮询（770：所有实例统一——发现新头→入池派发；头变化必验不可跳过）
-        sha = 取远端SHA()
+        # #1221 P2-6：ls-remote 瞬时失败短间隔重试 2 次（网络抖动不直接判红）
+        sha = ci_round.带重试取远端SHA(取远端SHA)
         if sha is None:
             # #1221 复审 P2-1：点名预验（ci/预验-*）ls-remote 失败——按分支内嵌 sha10
             #   合成红结果落盘，ssh 轮询 60s 内收口（否则守满 240 分钟总超时）。

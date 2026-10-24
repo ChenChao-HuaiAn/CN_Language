@@ -62,6 +62,20 @@ def 轮结果构造(sha: str, 轮分支: str, 步骤们: dict, 开始: float,
             "提交时刻": ci_report.提交时刻(sha)}
 
 
+def 带重试取远端SHA(取函数, 重试: int = 2, 间隔秒: float = 2.0):
+    """#1221 P2-6：ls-remote 瞬时失败短间隔重试——网络抖动不直接判红。
+
+    取函数=零参 callable（返回 sha 或 None·可注入 selftest）。返回最后一次结果；
+    全失败=None（调用方按分支是否 ci/预验-* 决定合成红/下轮重试）。"""
+    sha = 取函数()
+    for _ in range(max(0, 重试)):
+        if sha:
+            break
+        time.sleep(间隔秒)
+        sha = 取函数()
+    return sha
+
+
 def ls远程失败红结果(分支: str, 平台: str, sha10: str) -> dict:
     """#1221 复审 P2-1：点名预验 ls-remote 失败时的合成红结果（按分支内嵌 sha10）。
 
@@ -69,6 +83,7 @@ def ls远程失败红结果(分支: str, 平台: str, sha10: str) -> dict:
     真实完整 sha 不可知——用 sha10+补零占位（仅作文件名/审计键，不参与任何验证结论）。"""
     合成sha = (sha10 + "0" * 40)[:40]
     return {"sha": 合成sha, "分支": 分支, "平台": 平台, "绿": False,
+            "失败类别": "同步失败", "失败摘要": "ls-remote 失败（无法解析分支头·已重试 2 次）",
             "步骤": {"同步": {"rc": -1, "说明": "ls-remote 失败（无法解析分支头）"}},
             "总秒": 0, "时刻": datetime.now().isoformat(timespec="seconds"),
             "日志": "", "日志尾部": ["[ls-remote 失败] 按分支内嵌 sha10 合成红结果"

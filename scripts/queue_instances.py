@@ -133,7 +133,14 @@ def 实例认领(con, 时刻函数, runner: str, 平台: str, 物理机: str = "
     平台+物理机指纹+最近活跃。平台/物理机空串（旧客户端不报）不覆盖已有值
     （COALESCE 保最近一次自报）。#1426：物理机键=分片限流分组数据源。
     #1221：M6原生=M6 原生可跑能力位（None=旧客户端不覆盖）。"""
-    值 = None if M6原生 is None else (1 if M6原生 else 0)
+    if M6原生 is None:
+        值 = None
+    elif isinstance(M6原生, bool):
+        值 = 1 if M6原生 else 0
+    elif isinstance(M6原生, int) and M6原生 in (0, 1):
+        值 = M6原生
+    else:
+        值 = None   # 坏类型不落表（#1221 P2-2：防 truthy 字符串被归一成 1）
     con.execute(
         "INSERT INTO 实例(名称,平台,物理机,M6原生,注册时刻,最近活跃时戳) VALUES(?,?,?,?,?,?) "
         "ON CONFLICT(名称) DO UPDATE SET 最近活跃时戳=excluded.最近活跃时戳,"

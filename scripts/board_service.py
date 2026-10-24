@@ -93,6 +93,7 @@ from urllib.parse import urlparse, unquote
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import board_tasks as 台账   # 任务台账模块（382·发号/CRUD/状态机/迁移）
 import board_ci as 阶段      # CI 阶段推导模块（814·生命周期徽标·直读 :8300 三源派生）
+import queue_result      # #1221：预验分支名协议单点（P3 正则单点）
 import board_docs as 文档    # 交接/教训/规范覆盖模块（384·文档上服务器二期）
 import board_adjudication as 裁决  # 待裁决项模块（403·网页裁决系统）
 import web_auth              # 网页登录墙公共模块（1425·凭据/会话/登录页）
@@ -375,9 +376,10 @@ class 处理器(BaseHTTPRequestHandler):
             super().handle_one_request()
         except OSError:
             self.close_connection = True      # 连接已废：写必再抛·静默
-        except Exception:
+        except Exception as e:
             # 仅当本次请求尚未发出完整响应时补 500（_headers_buffer=None/未建=
             # 从未发；非空=已备未发·丢弃防双状态行；空表=已 end_headers 发出）
+            print("[board] 服务端内部错误：%r" % (e,), flush=True)   # 不静默（journal 可查）
             if getattr(self, "_headers_buffer", None) != []:
                 self._headers_buffer = []
                 try:
@@ -509,7 +511,7 @@ class 处理器(BaseHTTPRequestHandler):
                 return self._回JSON(400, {"错误": "sha 须为 7~40 位 hex"})
             # #1221 P2-4：精确预验分支透传（M6 轮 ci/预验-<sha10>-m6<hex>）
             支 = unquote(参数.get("branch", "")).strip()
-            if 支 and not re.fullmatch(r"ci/(?:预验|兜底)-[0-9a-f]{7,40}(?:-m6[0-9a-f]+)?", 支):
+            if 支 and not queue_result.是预验分支名(支):
                 return self._回JSON(400, {"错误": "branch 须为 ci/预验-|ci/兜底-<sha10>[-m6<hex>]"})
             return self._回JSON(200, {"结果": 阶段.取预检详情(sha, 支), "时刻": 时刻()})
         if 路径 == "/api/gate_result":             # 842：验证红详情代理（失败用例+归因）

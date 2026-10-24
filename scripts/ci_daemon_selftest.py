@@ -1359,10 +1359,19 @@ def _1221断言(主模块, 断言) -> None:
                       轮分支="ci/预验-abcdef0123-m6t1")
     断言("#1221 直跑收口：过期不落盘·正常落盘·预验同步失败照落红（P1-10/P1-2）",
          len(落盘们) == 2)
+    试数 = [0]
+    def _时好时坏():
+        试数[0] += 1
+        return "d" * 40 if 试数[0] >= 3 else None
+    断言("#1221 P2-6 ls-remote 重试：第 3 次成功则不判红（瞬时抖动弹回）",
+         ci_round.带重试取远端SHA(_时好时坏, 重试=2, 间隔秒=0) == "d" * 40)
+    断言("#1221 P2-6 ls-remote 重试：全失败=None（调用方合成红/下轮重试）",
+         ci_round.带重试取远端SHA(lambda: None, 重试=2, 间隔秒=0) is None)
     LSR = ci_round.ls远程失败红结果("ci/预验-abcdef0123-m6aa", "linux-arm64", "abcdef0123")
     断言("#1221 P2-1 ls-remote 失败：按分支内嵌 sha10 合成红结果（落盘即 60s 内收口）",
          LSR["sha"][:10] == "abcdef0123" and LSR["绿"] is False
          and LSR["步骤"]["同步"]["rc"] == -1
+         and LSR.get("失败类别") == "同步失败"
          and "ls-remote" in LSR["步骤"]["同步"]["说明"])
     不可验 = ci_round.轮M6不可验结果(
         "a" * 40, "develop", {"同步": {"rc": 0}}, 0.0, Path("r.log"),
