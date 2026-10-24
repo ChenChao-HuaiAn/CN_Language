@@ -440,6 +440,16 @@ def 主检查(编译器, 目标们_):
               % (耗时, len(清单), len(目标们_), 统计["编译次数"], 自动摘要),
               flush=True)
         return 1
+    # 1220：链式失败传播负测先跑，全部通过后才打印唯一 PASS（避免「先 PASS 后 FAIL」）
+    失败脚本 = 项目根 / "scripts" / "check_parallel_failure.py"
+    if not 失败脚本.exists():
+        print("[并行确定性] FAIL：1220 失败传播脚本缺失: %s" % 失败脚本, flush=True)
+        return 1
+    print("[并行确定性] 链式执行 1220 工作线程失败传播负测……", flush=True)
+    if subprocess.run([sys.executable, str(失败脚本), "--cn", str(编译器.路径)],
+                      cwd=str(项目根)).returncode != 0:
+        print("[并行确定性] FAIL：失败传播负测未通过（明细见上方输出）", flush=True)
+        return 1
     print("[并行确定性] PASS ✓ 样本=%d 目标=%d 编译=%d 标签合计=%d 平移合计=%d "
           "自动口径=%s 耗时=%.2fs"
           % (len(清单), len(目标们_), 统计["编译次数"], 统计["标签合计"],
@@ -723,17 +733,7 @@ def main():
         print("[并行确定性] FAIL：未找到 cn 编译器（--cn 指定或先构建 target/cn）",
               flush=True)
         return 2
-    rc = 主检查(真编译器(编译器), list(目标们))
-    if rc != 0:
-        return rc
-    # 1220：错误传播负测（同一真实编译器；注入关闭时零行为）——rc 合并进本门禁
-    失败脚本 = 项目根 / "scripts" / "check_parallel_failure.py"
-    if not 失败脚本.exists():
-        print("[并行确定性] FAIL：1220 失败传播脚本缺失: %s" % 失败脚本, flush=True)
-        return 1
-    print("[并行确定性] 链式执行 1220 工作线程失败传播负测……", flush=True)
-    return subprocess.run([sys.executable, str(失败脚本), "--cn", str(编译器)],
-                          cwd=str(项目根)).returncode
+    return 主检查(真编译器(编译器), list(目标们))
 
 
 if __name__ == "__main__":

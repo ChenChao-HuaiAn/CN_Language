@@ -11,6 +11,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <exception>
+#include <limits>
 #include <optional>
 #include <stdexcept>
 #include <thread>
@@ -128,16 +129,20 @@ struct InjectionParse {
     std::string error;
 };
 
-// 测试注入函数序号解析：非空且全十进制；非法=无值（消费点 has_value 分流）
+// 测试注入函数序号解析：非空且全十进制；非法/溢出=无值（消费点 has_value 分流）
 std::optional<std::size_t> parseInjectionIndex(const std::string& text) {
     std::size_t value = 0;
-    std::size_t digits = 0;
     for (char c : text) {
         if (isDigit(c) == false) return std::nullopt;
-        value = value * 10 + static_cast<std::size_t>(c - '0');
-        ++digits;
+        const std::size_t digit = static_cast<std::size_t>(c - '0');
+        const std::size_t limit = std::numeric_limits<std::size_t>::max();
+        // 2^64 回绕防护：value*10+digit > limit 等价于 value > (limit-digit)/10；
+        //   溢出=显式非法序号（不得回绕成小序号误命中某函数）。
+        const bool overflow = value > (limit - digit) / 10;
+        if (overflow) return std::nullopt;
+        value = value * 10 + digit;
     }
-    if (digits == 0) return std::nullopt;
+    if (text.empty()) return std::nullopt;
     return value;
 }
 
@@ -204,11 +209,11 @@ bool injectionEmptiesText(std::size_t index, const FailureInjection& injection) 
     return injection.kind == InjectKind::kEmptyText && injection.functionIndex == index;
 }
 
-std::size_t firstFailureIndex(const std::vector<TaskFailure>& failures) {
+std::optional<std::size_t> firstFailureIndex(const std::vector<TaskFailure>& failures) {
     for (std::size_t index = 0; index < failures.size(); ++index) {
         if (failures[index].failed) return index;
     }
-    return static_cast<std::size_t>(-1);
+    return std::nullopt;
 }
 
 // 固定线程池执行 taskCount 个独立任务：原子队列取号，结果按下标写回（确定性）。
@@ -301,7 +306,7 @@ bool shiftFunctionLabels(std::vector<FunctionOutput>& outputs,
                 }
             },
             failures, injectThreadCreationFailure);
-        return firstFailureIndex(failures) == static_cast<std::size_t>(-1);
+        return firstFailureIndex(failures).has_value() == false;
     }
     return true;
 }
@@ -322,9 +327,9 @@ void createGenerators(
     }
 }
 
-// 执行全部函数生成任务；返回最小失败序号（无失败=size_t(-1)），run=实际 worker 实况。
+// 执行全部函数生成任务；返回最小失败序号（无失败=无值），run=实际 worker 实况。
 //   失败槽/停止标志/异常捕获全部在 runTasksParallel 内（线程异常绝不逃逸）。
-std::size_t runGenerationTasks(
+std::optional<std::size_t> runGenerationTasks(
     const ir::IRModule& module, int threads, const FailureInjection& injection,
     const std::vector<std::unique_ptr<IGenerator>>& generators,
     const std::vector<std::unique_ptr<Diagnostics>>& localDiagnostics,
@@ -354,9 +359,9 @@ std::size_t runGenerationTasks(
             local.restoreTo(snapshot);  // 增量已搬运；清空避免下个任务重复计入
         },
         failures, injection.threadCreation);
-    const std::size_t failed = firstFailureIndex(failures);
-    if (failed != static_cast<std::size_t>(-1)) {
-        failure.message = "函数生成失败: " + failures[failed].message;
+    const std::optional<std::size_t> failed = firstFailureIndex(failures);
+    if (failed.has_value()) {
+        failure.message = "函数生成失败: " + failures[*failed].message;
     }
     return failed;
 }
@@ -371,6 +376,32 @@ void publishOutputs(std::vector<FunctionOutput>& outputs, Diagnostics& diagnosti
             diagnostics.report(diagnostic);
         }
     }
+}
+
+// 标签平移阶段（1220）：成功 true；失败填 failure（最小序号/函数名/原因）并 false。
+bool shiftBodiesOrFail(const ir::IRModule& module,
+                       std::vector<FunctionOutput>& outputs, int threads,
+                       const std::vector<std::string>& labelPrefixes,
+                       const FailureInjection& injection, TaskRunResult& shifting,
+                       BodyGenFailure& failure) {
+    const std::vector<int> bases = computeLabelBases(outputs);
+    std::vector<TaskFailure> failures(outputs.size());
+    const bool shifted = shiftFunctionLabels(outputs, bases, threads, labelPrefixes,
+                                             failures, shifting,
+                                             injection.threadCreation);
+    const std::optional<std::size_t> index = firstFailureIndex(failures);
+    if (shifted == false && index.has_value()) {
+        failure.functionIndex = *index;
+        failure.functionName = module.functions[*index].name;
+        failure.message = "标签编号平移失败: " + failures[*index].message;
+        return false;
+    }
+    if (shifted == false) {
+        // 平移失败却无失败槽=内部矛盾（不得按成功继续产出可能未平移的汇编）
+        failure.message = "标签编号平移失败（失败槽缺失=内部状态矛盾）";
+        return false;
+    }
+    return true;
 }
 
 }  // namespace
@@ -488,15 +519,15 @@ BodyGenStatus generateFunctionBodies(
     std::vector<FunctionOutput> outputs(taskCount);
     std::atomic<bool> poolMiss{false};
     TaskRunResult generation;
-    const std::size_t failedIndex = runGenerationTasks(
+    const std::optional<std::size_t> failedIndex = runGenerationTasks(
         module, threads, injection.spec, generators, localDiagnostics, outputs,
         poolMiss, generation, failure);
-    if (failedIndex != static_cast<std::size_t>(-1)) {
+    if (failedIndex.has_value()) {
         // 失败显形（workers=实际启动数；reason=worker-error 与正常 eligible 可辨）
         reportDecision(true, taskCount, threads, generation.workers, 0, 0,
                        "worker-error");
-        failure.functionIndex = failedIndex;
-        failure.functionName = module.functions[failedIndex].name;
+        failure.functionIndex = *failedIndex;
+        failure.functionName = module.functions[*failedIndex].name;
         return BodyGenStatus::kFailure;
     }
     if (poolMiss.load(std::memory_order_relaxed)) {
@@ -507,33 +538,30 @@ BodyGenStatus generateFunctionBodies(
         return BodyGenStatus::kFallback;
     }
     // 标签编号平移：基址=前缀和；平移按函数并行（文本互相独立），再按原序输出。
-    const std::vector<int> bases = computeLabelBases(outputs);
     TaskRunResult shifting = generation;
-    std::vector<TaskFailure> shiftFailures(taskCount);
-    if (!shiftFunctionLabels(outputs, bases, threads, labelPrefixes, shiftFailures,
-                             shifting, injection.spec.threadCreation)) {
-        const std::size_t shiftIndex = firstFailureIndex(shiftFailures);
-        reportDecision(true, taskCount, threads, shifting.workers, 0, 0, "worker-error");
-        failure.functionIndex = shiftIndex;
-        failure.functionName = module.functions[shiftIndex].name;
-        failure.message = "标签编号平移失败: " + shiftFailures[shiftIndex].message;
+    if (shiftBodiesOrFail(module, outputs, threads, labelPrefixes, injection.spec,
+                          shifting, failure) == false) {
+        reportDecision(true, taskCount, threads, shifting.workers, 0, 0,
+                       "worker-error");
         return BodyGenStatus::kFailure;
     }
     const int workers = std::min(generation.workers, shifting.workers);
     if (generation.threadCreationFailed || shifting.threadCreationFailed) {
-        // 线程创建失败不是错误（产物确定），但并行度损失必须可见（不静默降级）。
-        //   直接写 stderr 而非 Diagnostics 警告：模块主管线在语义段后即收集警告，
-        //   代码生成段新增警告不会进入其输出（1220 实测——诊断通道会静默吞掉）。
-        std::fprintf(stderr,
-                     "警告: [codegen-parallel] 线程创建失败，实际 worker 数=%d/%d"
-                     "（任务由主线程+已建线程完成，产物确定性不变）\n",
-                     workers, threads);
+        // 线程创建失败不是错误（产物确定），但并行度损失必须进入诊断通道：
+        //   driver 在代码生成后统一冲刷（human 补差量、--json 单数组可见），
+        //   保证 --json 与诊断计数一致（P2-2）。
+        diagnostics.report(Diagnostic(
+            DiagnosticLevel::Warning, SourceLocation(),
+            "并行 codegen：线程创建失败，实际 worker 数=" + std::to_string(workers) +
+                "/" + std::to_string(threads) +
+                "（任务由主线程+已建线程完成，产物确定性不变）"));
     }
     long long labelTotal = 0;
     for (const FunctionOutput& output : outputs) labelTotal += output.labelCount;
     // shifted=真正进入平移面的标签量：仅 bases[index]!=0 的 index>0 函数
     //   （首函数 base=0 不平移；前序函数全无标签时后续 base 仍为 0 亦不平移，
     //   此两形态均不计入——门禁据此断言平移面确有覆盖）
+    const std::vector<int> bases = computeLabelBases(outputs);
     long long shiftedTotal = 0;
     for (std::size_t index = 1; index < outputs.size(); ++index) {
         if (bases[index] != 0) {
@@ -555,6 +583,28 @@ void reportBodyGenFailure(Diagnostics& diagnostics, const BodyGenFailure& failur
     message += ": " + failure.message +
                "——已中止编译，不产出部分汇编（任务 1220；工作线程异常=编译器 bug）";
     diagnostics.report(Diagnostic::error(SourceLocation(), message));
+}
+
+bool applyBodyGenStatus(BodyGenStatus status, Diagnostics& diagnostics,
+                        const BodyGenFailure& failure, bool& emitTexts) {
+    emitTexts = false;
+    // 枚举 switch 穷举（无 default）：未来新增状态未接线=编译期告警；
+    //   运行期未知值落到下方内部错误，绝不按成功继续写部分汇编。
+    switch (status) {
+        case BodyGenStatus::kSuccess:
+            emitTexts = true;  // 调用方成功路径才允许拼接 texts
+            return true;
+        case BodyGenStatus::kFallback:
+            return false;  // 调用方走原串行路径
+        case BodyGenStatus::kFailure:
+            reportBodyGenFailure(diagnostics, failure);
+            return true;  // 已报内部错误：禁串行重试，driver 见错误即 rc=1
+    }
+    diagnostics.report(Diagnostic::error(
+        SourceLocation(),
+        "内部错误: 并行代码生成返回未知状态（编译器内部错误，任务 1220）——"
+        "已中止编译，不产出部分汇编"));
+    return true;
 }
 
 }  // namespace parallel_codegen

@@ -260,7 +260,7 @@ def 诊断文本(文本: str) -> str:
 
 
 def 提取JSON(标准输出: bytes) -> str:
-    """--json 通道：stdout=[JSON 数组]（无换行）后接「编译成功: …」——取 JSON 段。"""
+    """--json 通道：stdout=单个 JSON 数组（1220 起成功行已抑制；兼容旧「数组+成功行」）。"""
     文本 = 标准输出.decode("utf-8", errors="replace")
     界 = 文本.find("编译成功")
     return (文本 if 界 < 0 else 文本[:界]).strip()

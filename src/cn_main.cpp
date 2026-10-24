@@ -563,7 +563,16 @@ static int runCompile(const CliOptions& options, const std::string& file) {
         }
         out << output.asmText;
     }
-    std::cout << "编译成功: " << asmPath << "\n";
+    // 1220·P2-2：--json 模式 stdout 保持纯 JSON 诊断流（成功行抑制，与 check 命令
+    //   「rc==0 输出 [] / 无 human 行」同口径）；流水线未输出诊断数组时补 []。
+    if (options.jsonDiagnostics) {
+        if (output.jsonDiagnosticsEmitted == false) {
+            std::cout << "[]\n";
+        }
+    }
+    if (options.jsonDiagnostics == false) {
+        std::cout << "编译成功: " << asmPath << "\n";
+    }
     return 0;
 }
 
@@ -605,10 +614,11 @@ static int runCheckCommand(const CliOptions& options, const std::string& file) {
     }
     cn_compiler::driver::PipelineOutput output;
     const int rc = cn_compiler::driver::runModulePipeline(file, dopts, output);
-    // F2-35（556-a）：--json 模式诊断已由流水线走 stdout JSON 通道；rc==0 时
-    //   输出零诊断空数组（纯 JSON 流·human「检查通过」行抑制）；rc 语义不变
+    // F2-35（556-a）：--json 模式诊断由流水线走 stdout JSON 通道；未输出诊断数组时
+    //   补零诊断空数组（纯 JSON 流·human「检查通过」行抑制）；rc 语义不变。
+    //   1220·P2-2：流水线已输出（警告数组）时不得再补 []（否则两个数组=非法 JSON）。
     if (options.jsonDiagnostics) {
-        if (rc == 0) {
+        if (rc == 0 && output.jsonDiagnosticsEmitted == false) {
             std::cout << "[]\n";
         }
         return rc;

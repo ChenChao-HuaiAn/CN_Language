@@ -71,6 +71,9 @@ struct PipelineOutput {
     ir::IRModule module;                                  // IR产物
     std::string asmText;                                  // 代码生成产物
     bool hasModule = false;                               // IR模块是否已生成
+    // 1220·P2-2：--json 模式是否已向 stdout 输出诊断数组（调用方据此决定是否补
+    //   "[]"；保证 stdout 始终是且仅是一个合法 JSON 数组）。
+    bool jsonDiagnosticsEmitted = false;
 };
 
 // 公共编译流水线：读取源文件 -> 词法 -> 语法 -> 语义 -> IR -> 代码生成

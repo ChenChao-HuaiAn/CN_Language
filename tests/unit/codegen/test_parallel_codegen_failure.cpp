@@ -5,8 +5,10 @@
 //   2. 任务内未知异常（非 std::exception）：catch (...) 通道同样收口
 //   3. 空函数文本：发射器零产出=内部失败，不得静默拼接
 //   4. 正常路径：并行成功、按原函数序输出（注入关闭零行为）
-//   5. 线程创建失败：确定性降级（成功+产出正确）、stderr 警告与 workers=1 观测
-//   6. 注入配置非法/序号越界：显式内部失败（注入失效不得静默假绿）
+//   5. 线程创建失败：确定性降级（成功+产出正确）、警告写入 Diagnostics（计数 1）、
+//      决策行 workers=1 观测
+//   6. 注入配置非法/序号越界/2^64 溢出：显式内部失败（注入失效不得静默假绿）
+//   7. 未知 BodyGenStatus：applyBodyGenStatus 报内部错误且不拼接部分汇编（P2-3）
 // 说明：本文件用合成 IRModule + 平凡生成器聚焦线程池契约；真实编译链路的
 //   rc/诊断/产物清理由 scripts/check_parallel_failure.py 覆盖（不 mock 编译器）。
 //   GCC 7 不支持中文标识符——测试名/变量名用英文，注释与数据文本可为中文。
@@ -213,12 +215,16 @@ TEST(ParallelCodegenFailureTest, FirstFailureIndexIsDeterministicMinimum) {
         };
         return std::make_unique<MultiGenerator>(first, second);
     };
-
-    const BodyGenStatus status = GenerateBodies(harness, combined);
-
-    EXPECT_EQ(status, BodyGenStatus::kFailure);
-    EXPECT_EQ(harness.failure.functionIndex, 4u);
-    EXPECT_EQ(harness.failure.functionName, first);
+    // 多轮复跑：线程抢号顺序每轮不同，最小失败序号必须恒定（判别力增强·P3）
+    for (int round = 0; round < 20; ++round) {
+        Harness roundHarness(12);
+        SCOPED_TRACE(::testing::Message() << "round=" << round);
+        const BodyGenStatus status = GenerateBodies(roundHarness, combined);
+        EXPECT_EQ(status, BodyGenStatus::kFailure);
+        EXPECT_EQ(roundHarness.failure.functionIndex, 4u);
+        EXPECT_EQ(roundHarness.failure.functionName, first);
+        EXPECT_NE(roundHarness.failure.message.find("多任务失败"), std::string::npos);
+    }
 }
 
 // ==================== 正常路径零回归 ====================
@@ -255,10 +261,13 @@ TEST(ParallelCodegenFailureTest, ThreadCreationFailureDegradesWithWarning) {
     EXPECT_EQ(status, BodyGenStatus::kSuccess);
     ASSERT_EQ(harness.texts.size(), 12u);
     EXPECT_EQ(harness.texts[0], "函数体:" + harness.module.functions[0].name + "\n");
-    EXPECT_NE(err.find("线程创建失败"), std::string::npos);
-    EXPECT_NE(err.find("worker 数=1/4"), std::string::npos);
+    // 降级警告进入 Diagnostics（P2-2：--json 可见、计数一致），决策行照旧观测 workers
     EXPECT_NE(err.find("workers=1"), std::string::npos);
-    EXPECT_EQ(err.find("内部错误"), std::string::npos);
+    EXPECT_EQ(harness.diagnostics.getWarningCount(), 1);
+    ASSERT_EQ(harness.diagnostics.getAll().size(), 1u);
+    const std::string& warning = harness.diagnostics.getAll()[0].message;
+    EXPECT_NE(warning.find("线程创建失败"), std::string::npos);
+    EXPECT_NE(warning.find("worker 数=1/4"), std::string::npos);
     EXPECT_FALSE(harness.diagnostics.hasErrors());
 }
 
@@ -286,6 +295,20 @@ TEST(ParallelCodegenFailureTest, InjectionIndexOutOfRangeFailsLoudly) {
     EXPECT_NE(harness.failure.message.find("越界"), std::string::npos);
 }
 
+TEST(ParallelCodegenFailureTest, InjectionIndexOverflowFailsLoudly) {
+    ScopedEnv threads("CN_CODEGEN_THREADS", "4");
+    // 2^64+1：必须显式非法序号（不得回绕成 1 号函数误命中·P2-1）
+    ScopedEnv inject("CN_CODEGEN_FAILURE_INJECT",
+                     "throw-std:18446744073709551617");
+    Harness harness(12);
+
+    const BodyGenStatus status = GenerateBodies(harness, Touching("", "", false));
+
+    EXPECT_EQ(status, BodyGenStatus::kFailure);
+    EXPECT_NE(harness.failure.message.find("非法"), std::string::npos);
+    EXPECT_EQ(harness.failure.functionName, "");
+}
+
 TEST(ParallelCodegenFailureTest, InjectionWithoutParallelPathFailsLoudly) {
     ScopedEnv threads("CN_CODEGEN_THREADS", "1");
     ScopedEnv inject("CN_CODEGEN_FAILURE_INJECT", "throw-std:5");
@@ -295,4 +318,19 @@ TEST(ParallelCodegenFailureTest, InjectionWithoutParallelPathFailsLoudly) {
 
     EXPECT_EQ(status, BodyGenStatus::kFailure);
     EXPECT_NE(harness.failure.message.find("未进入并行路径"), std::string::npos);
+}
+
+TEST(ParallelCodegenFailureTest, UnknownStatusIsInternalErrorNotSuccess) {
+    Diagnostics diagnostics;
+    BodyGenFailure failure;
+    bool emitTexts = true;
+    // 未来新增枚举值未接线：必须报内部错误且不得允许拼接部分汇编（P2-3）
+    const bool handled = cn_compiler::parallel_codegen::applyBodyGenStatus(
+        static_cast<BodyGenStatus>(99), diagnostics, failure, emitTexts);
+
+    EXPECT_TRUE(handled);
+    EXPECT_FALSE(emitTexts);
+    EXPECT_TRUE(diagnostics.hasErrors());
+    ASSERT_EQ(diagnostics.getAll().size(), 1u);
+    EXPECT_NE(diagnostics.getAll()[0].message.find("未知状态"), std::string::npos);
 }

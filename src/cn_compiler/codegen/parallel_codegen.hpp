@@ -103,6 +103,13 @@ struct BodyGenFailure {
 //   消息显式声明「已中止编译、不产出部分汇编」——driver 见错误即 rc=1 不落盘。
 void reportBodyGenFailure(Diagnostics& diagnostics, const BodyGenFailure& failure);
 
+// 后端统一处置三态（1220·P2-3）：switch 穷举，未知状态=内部错误显形（绝不按成功
+//   继续写部分汇编）。返回 false=调用方走串行回退；返回 true=已处置——
+//   emitTexts 仅 kSuccess 为 true（调用方据此拼接 texts）；kFailure/未知状态已报
+//   内部错误，调用方禁串行重试。
+bool applyBodyGenStatus(BodyGenStatus status, Diagnostics& diagnostics,
+                        const BodyGenFailure& failure, bool& emitTexts);
+
 // 并行生成全部函数体。
 //   makeGenerator：为每个 worker 创建独立后端实例（诊断写入 runner 提供的局部 Diagnostics）
 //   返回 kFailure 时 failure 已填充；调用方禁止串行重试（重跑必再命中同一内部 bug）。

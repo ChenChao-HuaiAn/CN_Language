@@ -594,6 +594,7 @@ int runModulePipeline(const std::string& entryFile, const DriverOptions& options
         // 命中重放该次编译的诊断警告（human/JSON 双通道按当前选项；空串零输出）
         if (options.jsonDiagnostics) {
             std::cout << cachedProgram.warningsJson;
+            output.jsonDiagnosticsEmitted = true;
         } else {
             std::cerr << cachedProgram.warningsHuman;
         }
@@ -728,8 +729,14 @@ int runModulePipeline(const std::string& entryFile, const DriverOptions& options
     if (!diagnostics.hasErrors() && diagnostics.getWarningCount() > 0) {
         warnHuman = diagnostics.format();
         warnJson = diagnostics.formatJson();
-        emitDiagnostics(diagnostics, options);
+        // 1220·P2-2：JSON 通道延迟到代码生成后统一输出——codegen 段可能新增警告
+        //   （并行线程创建失败降级等），两次 formatJson 拼接=两个数组=非法 JSON。
+        //   human 通道保持即时输出，codegen 新增警告在下方按差量补发。
+        if (options.jsonDiagnostics == false) {
+            emitDiagnostics(diagnostics, options);
+        }
     }
+    const Diagnostics::Snapshot postSemantic = diagnostics.takeSnapshot();
 
     // 5. IR 生成（绑定语义引用：类布局/虚表/结构体布局查询）
     IRGenerator irGen(diagnostics, &semantic);
@@ -801,6 +808,27 @@ int runModulePipeline(const std::string& entryFile, const DriverOptions& options
     if (diagnostics.hasErrors()) {
         emitDiagnostics(diagnostics, options);
         return 1;
+    }
+    // 1220·P2-2：代码生成段新增警告收口（线程创建失败降级等）——human 只补差量，
+    //   JSON 在此输出唯一一个完整数组（语义段已延迟），保证 --json 可见且计数一致。
+    const bool hasFreshWarnings =
+        diagnostics.getWarningCount() > postSemantic.warningCount;
+    if (options.jsonDiagnostics) {
+        if (diagnostics.getWarningCount() != 0) {
+            std::cout << diagnostics.formatJson();
+            output.jsonDiagnosticsEmitted = true;
+        }
+    } else if (hasFreshWarnings) {
+        Diagnostics freshWarnings;
+        const auto& produced = diagnostics.getAll();
+        for (std::size_t index = postSemantic.size; index < produced.size(); ++index) {
+            freshWarnings.report(produced[index]);
+        }
+        emitDiagnostics(freshWarnings, options);
+    }
+    if (hasFreshWarnings) {
+        warnHuman = diagnostics.format();
+        warnJson = diagnostics.formatJson();
     }
     // 6.5（1156）程序级缓存写入/验证：
     //   ①验证通道命中：与本次完整重编译产物逐字节比较（不符=显形+以重编译为准覆盖）；

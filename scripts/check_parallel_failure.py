@@ -13,13 +13,19 @@
   ② 未知异常（非 std::exception，catch (...) 通道）：同上。
   ③ 空函数文本（发射器零产出）：同上（诊断含「函数文本为空」）。
   ④ 已有产物不被截断/覆盖：失败编译后旧文件逐字节不变（不落盘=现有失败路径口径）。
-  ⑤ 线程创建失败：确定性降级——rc=0、产物与串行基线逐字节一致、stderr 警告含
-     「线程创建失败」与实际 worker 数、决策行 workers=1（诚实暴露并行度损失）。
+  ⑤ 线程创建失败：确定性降级——rc=0、产物与串行基线逐字节一致、警告在
+     Diagnostics（human stderr / --json stdout 数组）可见且计数=1、决策行
+     workers=1（诚实暴露并行度损失）。
   ⑥ 三后端全覆盖（win-x64 / linux-x86_64 / linux-arm64 各自并行实现）。
+  ⑦ 注入配置错误显式化（P2-1/P2-4）：非法模式、序号越界、2^64 整数回绕均
+     rc=1 + 内部错误，不得回绕成小序号误命中某函数、不得产生决策行/残留产物。
+  ⑧ --json 两态（P2-2）：失败=单个诊断数组含错误项（函数名/序号可见）；
+     降级=单个数组含 1 条警告且 0 错误项（driver 在代码生成后统一冲刷；
+     human 补差量、JSON 单数组；compile 成功行在 --json 模式抑制）。
 
 注入点（生产未设=零行为）：CN_CODEGEN_FAILURE_INJECT=throw-std:<序号> /
 throw-unknown:<序号> / empty-text:<序号> / thread-create。注入失效（未进并行路径/
-序号越界/取值非法）由编译器显式报内部错误，本门禁另断言注入确实命中。
+序号越界/取值非法/2^64 回绕）由编译器显式报内部错误，本门禁另断言注入确实命中。
 
 挂载：`check_parallel_determinism.py` 主检查通过后链式调用本脚本（同一编译器、
 同一触发面），故 L1 写集条件步与云端恒跑门禁自动覆盖本面；selftest 另由
@@ -35,6 +41,7 @@ from __future__ import annotations
 
 import argparse
 import io
+import json
 import os
 import pathlib
 import re
@@ -165,11 +172,12 @@ class 真编译器:
             return None, "cn ir 输出未含函数行"
         return 名们, ""
 
-    def 编译(self, 入口, 目标, 输出, 线程口径="4", 注入=None):
-        结果, 运行错误 = self._运行(
-            [str(self.路径), "compile", str(入口), "--target", 目标,
-             "--output", str(输出), "--stdlib", str(标准库)],
-            self._环境(线程口径, 注入))
+    def 编译(self, 入口, 目标, 输出, 线程口径="4", 注入=None, json诊断=False):
+        命令 = [str(self.路径), "compile", str(入口), "--target", 目标,
+                "--output", str(输出), "--stdlib", str(标准库)]
+        if json诊断:
+            命令.append("--json")
+        结果, 运行错误 = self._运行(命令, self._环境(线程口径, 注入))
         if 运行错误:
             return {"rc": -99, "stderr": "[执行失败] " + 运行错误,
                     "stdout": "", "产物存在": False, "函数数": 0}
@@ -219,8 +227,9 @@ def 检查失败结果(结果, 序号, 函数名, 消息片段, 期望无新产�
     return 错误
 
 
-def 检查降级结果(结果, 串行字节):
-    """线程创建失败降级断言（rc=0、产物==串行、警告与 workers 诚实）。"""
+def 检查降级结果(结果, 串行字节, 需要stderr警告=True):
+    """线程创建失败降级断言（rc=0、产物==串行、警告与 workers 诚实）。
+    --json 模式下诊断走 stdout（警告不在 stderr），需要stderr警告=False。"""
     错误 = []
     stderr = 结果["stderr"]
     if 结果["rc"] != 0:
@@ -231,10 +240,11 @@ def 检查降级结果(结果, 串行字节):
         return 错误
     if 结果["产物字节"] != 串行字节:
         错误.append("降级产物与串行基线不一致（确定性被破坏）")
-    if "线程创建失败" not in stderr or "警告" not in stderr:
-        错误.append("stderr 未含线程创建失败警告（并行度损失被静默吞掉）")
-    if ("worker 数=1/" + 并行线程) not in stderr:
-        错误.append("警告未含实际 worker 数=1/%s" % 并行线程)
+    if 需要stderr警告:
+        if "线程创建失败" not in stderr or "警告" not in stderr:
+            错误.append("stderr 未含线程创建失败警告（并行度损失被静默吞掉）")
+        if ("worker 数=1/" + 并行线程) not in stderr:
+            错误.append("警告未含实际 worker 数=1/%s" % 并行线程)
     if "内部错误" in stderr:
         错误.append("降级被误报为内部错误（应 rc=0 + 警告）")
     决策, 决策错误 = 解析决策(stderr)
@@ -247,6 +257,82 @@ def 检查降级结果(结果, 串行字节):
         if 决策["threads"] != 并行线程 or 决策["workers"] != "1":
             错误.append("降级决策 threads=%s workers=%s（期望 %s/1）"
                         % (决策["threads"], 决策["workers"], 并行线程))
+    return 错误
+
+
+def 解析json诊断(文本):
+    """解析 --json 诊断数组；返回 (列表|None, 错误)。多数组拼接/非数组=显式错误。"""
+    try:
+        诊断 = json.loads(文本)
+    except (ValueError, TypeError) as 异常:
+        return None, "stdout 不是合法 JSON（%s；尾部 %r）" % (异常, 文本[-200:])
+    if not isinstance(诊断, list):
+        return None, "stdout JSON 不是诊断数组（%s）" % type(诊断).__name__
+    for 项 in 诊断:
+        if not isinstance(项, dict) or "level" not in 项 or "message" not in 项:
+            return None, "诊断项缺 level/message: %r" % (项,)
+    return 诊断, ""
+
+
+def 检查失败配置结果(结果, 消息片段):
+    """注入配置错误断言（P2-4：非法值/序号越界/2^64 溢出必须显式报错，不得假绿）。"""
+    错误 = []
+    stderr = 结果["stderr"]
+    if 结果["rc"] != 1:
+        错误.append("rc=%s（配置错误契约=1）" % 结果["rc"])
+    if "内部错误" not in stderr:
+        错误.append("诊断未含「内部错误」")
+    if 消息片段 not in stderr:
+        错误.append("诊断未含原因片段 %r" % 消息片段)
+    if "（函数 #" in stderr:
+        错误.append("配置错误被伪装成某函数任务失败（不得回绕/误命中序号）")
+    if 决策前缀 in stderr:
+        错误.append("配置错误不应产生并行决策行（未进入执行阶段）")
+    if 结果["产物存在"]:
+        错误.append("配置错误后残留汇编产物")
+    return 错误
+
+
+def 检查json失败结果(结果, 序号, 函数名, 消息片段):
+    """--json 失败态：单数组、错误计数=1、消息含函数名/序号（P2-2）。"""
+    错误 = []
+    if 结果["rc"] != 1:
+        错误.append("rc=%s（契约=1）" % 结果["rc"])
+    if 结果["产物存在"]:
+        错误.append("失败后残留汇编产物")
+    诊断, 解析错误 = 解析json诊断(结果["stdout"])
+    if 解析错误:
+        return 错误 + [解析错误]
+    错误项 = [项 for 项 in 诊断 if 项.get("level") == "错误"]
+    if len(错误项) != 1:
+        错误.append("JSON 错误诊断数=%d（期望 1）" % len(错误项))
+        return 错误
+    消息 = 错误项[0].get("message", "")
+    for 片段 in ("内部错误", "#" + str(序号), 函数名, 消息片段):
+        if 片段 not in 消息:
+            错误.append("JSON 错误诊断缺片段 %r" % 片段)
+    return 错误
+
+
+def 检查json降级结果(结果, 串行字节):
+    """--json 降级态：警告在 stdout 单数组可见、计数=1、无错误项（P2-2）。"""
+    错误 = 检查降级结果(结果, 串行字节, 需要stderr警告=False)
+    诊断, 解析错误 = 解析json诊断(结果["stdout"])
+    if 解析错误:
+        return 错误 + [解析错误]
+    警告项 = [项 for 项 in 诊断 if 项.get("level") == "警告"]
+    错误项 = [项 for 项 in 诊断 if 项.get("level") == "错误"]
+    if len(警告项) != 1:
+        错误.append("JSON 警告诊断数=%d（期望 1——线程创建失败警告必须可见）"
+                    % len(警告项))
+    else:
+        消息 = 警告项[0].get("message", "")
+        if "线程创建失败" not in 消息:
+            错误.append("JSON 警告未含「线程创建失败」")
+        if ("worker 数=1/" + 并行线程) not in 消息:
+            错误.append("JSON 警告未含实际 worker 数=1/%s" % 并行线程)
+    if len(错误项) != 0:
+        错误.append("降级 JSON 出现 %d 条错误项（应仅警告）" % len(错误项))
     return 错误
 
 
@@ -274,7 +360,7 @@ def 主检查(编译器):
                 ("throw-unknown", 未知段, "未知异常"),
                 ("empty-text", 后段, "函数文本为空"))
     错误 = []
-    统计 = {"编译": 0, "失败用例": 0, "降级用例": 0}
+    统计 = {"编译": 0, "失败用例": 0, "降级用例": 0, "配置用例": 0}
     for 目标 in 目标们:
         with tempfile.TemporaryDirectory(prefix="cnpf_") as 临时目录:
             临时 = pathlib.Path(临时目录)
@@ -317,12 +403,54 @@ def 主检查(编译器):
             降级结果["产物字节"] = 降级输出.read_bytes() if 降级输出.exists() else b""
             错误.extend(["%s/thread-create: %s" % (目标, 项)
                          for 项 in 检查降级结果(降级结果, 串行输出.read_bytes())])
+    # 注入配置错误三态（P2-1/P2-4）：非法模式/序号越界/2^64 溢出——真实编译断言，
+    #   配置错误必须显式内部错误（不得回绕成小序号误命中某函数、不得静默假绿）。
+    with tempfile.TemporaryDirectory(prefix="cnpf_cfg_") as 临时目录:
+        临时 = pathlib.Path(临时目录)
+        配置用例 = (
+            ("bogus:5", "非法 CN_CODEGEN_FAILURE_INJECT 模式"),
+            ("throw-std:999999", "测试故障注入函数序号越界"),
+            ("throw-std:18446744073709551617",
+             "非法 CN_CODEGEN_FAILURE_INJECT 函数序号"),
+        )
+        for 注入值, 片段 in 配置用例:
+            输出 = 临时 / (注入值.replace(":", "_") + ".asm")
+            结果 = 编译器.编译(入口, 目标们[0], 输出, 并行线程, 注入值)
+            统计["编译"] += 1
+            统计["配置用例"] += 1
+            错误.extend(["配置/%s: %s" % (注入值, 项)
+                         for 项 in 检查失败配置结果(结果, 片段)])
+    # --json 两态（P2-2）：失败=单数组错误诊断；降级=警告在 stdout 可见、计数一致。
+    with tempfile.TemporaryDirectory(prefix="cnpf_json_") as 临时目录:
+        临时 = pathlib.Path(临时目录)
+        输出 = 临时 / "json-fail.asm"
+        结果 = 编译器.编译(入口, 目标们[0], 输出, 并行线程,
+                           "throw-std:%d" % 中段, json诊断=True)
+        统计["编译"] += 1
+        结果["函数数"] = len(函数名们)
+        错误.extend(["--json 失败: " + 项 for 项 in
+                     检查json失败结果(结果, 中段, 函数名们[中段], "注入故障")])
+        串行输出 = 临时 / "json-serial.asm"
+        串行结果 = 编译器.编译(入口, 目标们[0], 串行输出, "1", None)
+        统计["编译"] += 1
+        if 串行结果["rc"] != 0 or not 串行输出.exists():
+            错误.append("--json 降级基线: 串行编译失败 rc=%s" % 串行结果["rc"])
+        else:
+            降级输出 = 临时 / "json-thread-create.asm"
+            降级结果 = 编译器.编译(入口, 目标们[0], 降级输出, 并行线程,
+                                   "thread-create", json诊断=True)
+            统计["编译"] += 1
+            降级结果["产物字节"] = (降级输出.read_bytes()
+                                   if 降级输出.exists() else b"")
+            错误.extend(["--json 降级: " + 项 for 项 in
+                         检查json降级结果(降级结果, 串行输出.read_bytes())])
     if 错误:
         print("[并行失败传播] FAIL：%d 项" % len(错误), flush=True)
         for 项 in 错误:
             print("  - " + 项, flush=True)
         return 1
-    print("[并行失败传播] PASS ✓ 目标=%d 编译=%d（异常/未知异常/空文本/哨兵/降级）"
+    print("[并行失败传播] PASS ✓ 目标=%d 编译=%d（异常/未知异常/空文本/哨兵/"
+          "降级/配置错误×3/--json 两态）"
           % (len(目标们), 统计["编译"]), flush=True)
     return 0
 
@@ -379,8 +507,8 @@ def 自测():
         if not 通过:
             失败 += 1
 
-    # 降级断言正反两态
-    降级基 = {"rc": 0, "stderr": ("警告: [codegen-parallel] 线程创建失败，实际 "
+    # 降级断言正反两态（human 通道：警告来自 Diagnostics，格式=「未知位置: 警告:」）
+    降级基 = {"rc": 0, "stderr": ("未知位置: 警告: 并行 codegen：线程创建失败，实际 "
                                   "worker 数=1/4（任务由主线程+已建线程完成，"
                                   "产物确定性不变）\n" + _成功决策("1", "eligible")),
               "产物存在": True, "产物字节": b"ASM", "函数数": 20}
@@ -404,11 +532,95 @@ def 自测():
         if not 通过:
             失败 += 1
 
+    # 注入配置错误断言（P2-1/P2-4）：正例绿；伪装函数失败/决策行/残留=必红
+    配置基 = {"rc": 1,
+              "stderr": ("未知位置: 错误: 内部错误: 非法 "
+                         "CN_CODEGEN_FAILURE_INJECT 函数序号（须十进制非负整）: "
+                         "throw-std:18446744073709551617\n"),
+              "产物存在": False, "函数数": 20}
+    配置用例 = [
+        ("配置错误显式报错（正例）", dict(配置基), ""),
+        ("配置错误伪装函数失败", dict(配置基, stderr=配置基["stderr"] +
+                                    "（函数 #1 \"示例函数\"）\n"), "伪装"),
+        ("配置错误仍产决策行", dict(配置基, stderr=配置基["stderr"] +
+                                    _成功决策()), "决策行"),
+        ("配置错误残留产物", dict(配置基, 产物存在=True), "残留"),
+    ]
+    for 名称, 结果, 期望 in 配置用例:
+        错误 = 检查失败配置结果(结果, "非法 CN_CODEGEN_FAILURE_INJECT 函数序号")
+        if 期望 == "":
+            通过 = not 错误
+            说明 = "绿" if 通过 else "期望绿实红: %s" % 错误
+        else:
+            通过 = any(期望 in 项 for 项 in 错误)
+            说明 = "红（命中「%s」）" % 期望 if 通过 else "期望红未命中: %s" % 错误
+        print("[selftest] %s %s：%s" % ("✓" if 通过 else "✗", 名称, 说明), flush=True)
+        if not 通过:
+            失败 += 1
+
+    # --json 失败态/降级态断言（P2-2）：单数组/计数/警告可见
+    def _json项(level, message):
+        return {"level": level, "file": "", "line": 0, "column": 0, "message": message}
+
+    json失败基 = {"rc": 1, "stderr": "", "产物存在": False, "函数数": 20,
+                 "stdout": json.dumps([_json项(
+                     "错误", "内部错误: 并行代码生成中止（函数 #7 \"示例函数\"）: "
+                             "工作线程任务异常: 注入故障")], ensure_ascii=False)}
+    json失败用例 = [
+        ("--json 失败单数组（正例）", dict(json失败基), ""),
+        ("--json 两数组拼接", dict(json失败基, stdout=(
+            json失败基["stdout"] + "\n" + json失败基["stdout"])), "合法 JSON"),
+        ("--json 错误计数不符", dict(json失败基, stdout=json.dumps(
+            [_json项("错误", "内部错误 #7 示例函数 注入故障"),
+             _json项("错误", "重复错误")], ensure_ascii=False)), "错误诊断数=2"),
+        ("--json 缺函数名", dict(json失败基, stdout=json.dumps(
+            [_json项("错误", "内部错误（函数 #7）: 注入故障")],
+            ensure_ascii=False)), "示例函数"),
+    ]
+    for 名称, 结果, 期望 in json失败用例:
+        错误 = 检查json失败结果(结果, 序号, 函数名, "注入故障")
+        if 期望 == "":
+            通过 = not 错误
+            说明 = "绿" if 通过 else "期望绿实红: %s" % 错误
+        else:
+            通过 = any(期望 in 项 for 项 in 错误)
+            说明 = "红（命中「%s」）" % 期望 if 通过 else "期望红未命中: %s" % 错误
+        print("[selftest] %s %s：%s" % ("✓" if 通过 else "✗", 名称, 说明), flush=True)
+        if not 通过:
+            失败 += 1
+
+    json降级基 = {"rc": 0, "stderr": _成功决策("1", "eligible"),
+                 "产物存在": True, "产物字节": b"ASM", "函数数": 20,
+                 "stdout": json.dumps([_json项(
+                     "警告", "并行 codegen：线程创建失败，实际 worker 数=1/4"
+                             "（任务由主线程+已建线程完成，产物确定性不变）")],
+                     ensure_ascii=False)}
+    json降级用例 = [
+        ("--json 降级警告可见（正例）", dict(json降级基), ""),
+        ("--json 降级缺警告", dict(json降级基, stdout="[]"), "警告诊断数=0"),
+        ("--json 降级多错误项", dict(json降级基, stdout=json.dumps(
+            [json.loads(json降级基["stdout"])[0], _json项("错误", "多余错误")],
+            ensure_ascii=False)), "错误项"),
+    ]
+    for 名称, 结果, 期望 in json降级用例:
+        错误 = 检查json降级结果(结果, b"ASM")
+        if 期望 == "":
+            通过 = not 错误
+            说明 = "绿" if 通过 else "期望绿实红: %s" % 错误
+        else:
+            通过 = any(期望 in 项 for 项 in 错误)
+            说明 = "红（命中「%s」）" % 期望 if 通过 else "期望红未命中: %s" % 错误
+        print("[selftest] %s %s：%s" % ("✓" if 通过 else "✗", 名称, 说明), flush=True)
+        if not 通过:
+            失败 += 1
+
     if 失败:
         print("[selftest] FAIL：%d 项" % 失败, flush=True)
         return 1
-    print("[selftest] PASS ✓（失败传播正反 %d 态 + 降级正反 %d 态）"
-          % (len(用例们), len(降级用例)), flush=True)
+    print("[selftest] PASS ✓（失败传播 %d 态 + 降级 %d 态 + 配置错误 %d 态 + "
+          "--json %d 态）"
+          % (len(用例们), len(降级用例), len(配置用例),
+             len(json失败用例) + len(json降级用例)), flush=True)
     return 0
 
 
