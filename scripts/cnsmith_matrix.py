@@ -19,9 +19,13 @@
 """
 import argparse
 import os
+import pathlib
 import subprocess
 import sys
 import time
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+import cnsmith_dual  # noqa: E402  （#1617 复用：平台感知默认编译器+异平台魔数硬拒）
 
 # 312-b 同款 win 兼容（matrix 漏修·406 轮补齐）：resource 为 POSIX 专属模块，
 #   Windows 无且 subprocess preexec_fn 亦为 POSIX 专属参数——win 分支跳过内存
@@ -636,7 +640,9 @@ def 跑一例(cn, 源码路径, 产物路径, 仓库根):
 
 def main():
     ap = argparse.ArgumentParser(description="CN-Smith 构件组合模板矩阵")
-    ap.add_argument("--cn", default="target/cn")
+    ap.add_argument("--cn", default=cnsmith_dual.默认编译器相对路径(),
+                    help="宿主编译器路径（相对仓库根·#1617 平台感知默认："
+                         "win=target/cn.exe/其余=target/cn）")
     ap.add_argument("--out", default="target/cnsmith_matrix")
     ap.add_argument("--seed", type=int, default=1)
     ap.add_argument("--axes", default="类型,消费点")
@@ -648,6 +654,11 @@ def main():
 
     仓库根 = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
     cn = os.path.join(仓库根, args.cn)
+    # 1617 启动探测：异平台编译器（跨机同步 ELF/PE）硬拒——禁带错编译器跑完全轨
+    诊断, 允跑 = cnsmith_dual.编译器平台诊断(cn, 平台=cnsmith_dual.探测目标平台())
+    if not 允跑:
+        print(诊断)
+        return 2
     out = os.path.join(仓库根, args.out)
     os.makedirs(out, exist_ok=True)
 

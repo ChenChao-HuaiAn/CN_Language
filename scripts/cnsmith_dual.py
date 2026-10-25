@@ -133,6 +133,59 @@ def 解析编译器路径(路径文本):
     return p
 
 
+def 默认编译器相对路径(系统=None):
+    """平台感知默认宿主编译器相对路径（#1617）：win=target/cn.exe；其余=target/cn。
+
+    根因（1617 实证）：win 主树 target/ 下存在跨机同步回的 linux ELF `cn`，
+    旧默认 target/cn 使 CreateProcess 撞 WinError 193（%1 不是有效的 Win32
+    应用程序）四轨道全废。系统参数可注入——selftest 断言映射纯函数用。"""
+    import platform as _p
+    if (系统 or _p.system()) == "Windows":
+        return "target/cn.exe"
+    return "target/cn"
+
+
+def 编译器二进制格式(路径):
+    """读文件头判二进制格式（#1617 启动探测数据源）：'elf' / 'pe' / ''。
+
+    ''=不存在/不可读/不足 4 字节/无法识别（脚本壳等）——不拦，交由 OS
+    执行期自报错（不属本防线职责，miss 不静默的豁免面在调用方显形）。"""
+    try:
+        with open(路径, "rb") as f:
+            头 = f.read(4)
+    except OSError:
+        return ""
+    if 头 == b"\x7fELF":
+        return "elf"
+    if 头[:2] == b"MZ":
+        return "pe"
+    return ""
+
+
+def 编译器平台诊断(路径文本, 系统=None, 平台=None):
+    """#1617 启动探测：编译器二进制格式与当前平台不符 → (诊断, False)；否则 ("", True)。
+
+    禁止带着异平台编译器跑完全轨（win 撞 linux ELF=WinError 193 四轨道全废；
+    linux 侧 exec PE 同理废轮）。文件不存在交调用方既有「编译器不存在」分支显形；
+    格式无法识别不拦（OS 执行期自报错）。系统/平台可注入——selftest 正反例
+    纯函数断言用（平台缺省给通用字样，调用方传 探测目标平台() 更精确）。"""
+    import platform as _p
+    p = pathlib.Path(路径文本)
+    if not p.exists():
+        return "", True
+    格式 = 编译器二进制格式(p)
+    if not 格式:
+        return "", True
+    系统 = 系统 or _p.system()
+    if 系统 == "Windows" and 格式 == "elf":
+        return ("编译器 %s 是 ELF（linux 产物）与当前平台 %s 不符——请用 --cn 指定"
+                "本机构建产物（如 target/cn.exe）" % (p, 平台 or "win"), False)
+    if 系统 != "Windows" and 格式 == "pe":
+        return ("编译器 %s 是 PE（win 产物）与当前平台 %s 不符——请用 --cn 指定"
+                "本机构建产物（如 target/cn）" % (p, 平台 or "linux"), False)
+    return "", True
+
+
 def 加载e2e运行器():
     """惰性加载 tests/e2e/run_e2e.py——复用 v2p 就绪（指纹缓存）/运行防线（内存上限+
     进程树）/执行v2闭环（v2 编译→汇编→链接→运行→断言）与 E2E 双编译对照同源判据。
@@ -717,7 +770,9 @@ def main():
     ap.add_argument("--缓存对拍", choices=("开", "关"), default="开")
     ap.add_argument("--缓存对拍样本", type=int, default=12)
     ap.add_argument("--seed", type=int, default=0)
-    ap.add_argument("--cn", default="target/cn")
+    ap.add_argument("--cn", default=默认编译器相对路径(),
+                    help="宿主编译器路径（相对仓库根·#1617 平台感知默认："
+                         "win=target/cn.exe/其余=target/cn）")
     ap.add_argument("--归档", default=str(默认归档根))
     ap.add_argument("--jobs", type=int, default=8)
     ap.add_argument("--详细", action="store_true")
@@ -739,6 +794,11 @@ def main():
         print("编译器不存在：%s（先构建 target/cn）" % 参.cn)
         return 2
     平台 = 探测目标平台()
+    # 1617 启动探测：异平台编译器（跨机同步 ELF/PE）硬拒——禁带错编译器跑完全轨
+    诊断, 允跑 = 编译器平台诊断(参.cn, 平台=平台)
+    if not 允跑:
+        print(诊断)
+        return 2
     try:
         运行器 = 加载e2e运行器()
     except Exception as e:

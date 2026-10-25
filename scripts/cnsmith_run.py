@@ -698,7 +698,9 @@ def main():
                     help="缓存对拍轴样本上限（对拍样本前 N 个中宿主编译通过者·默认 12·"
                          "性能护栏：避免全样本翻倍耗时）")
     ap.add_argument("--seed", type=int, default=0, help="种子（0=时间戳·默认）")
-    ap.add_argument("--cn", default="target/cn", help="宿主编译器路径（相对仓库根）")
+    ap.add_argument("--cn", default=cnsmith_dual.默认编译器相对路径(),
+                    help="宿主编译器路径（相对仓库根·#1617 平台感知默认："
+                         "win=target/cn.exe/其余=target/cn）")
     ap.add_argument("--归档", default=str(默认归档根), help="归档根目录（默认 target/cnsmith_runs）")
     ap.add_argument("--标签", default="手动", help="轮次名标签")
     ap.add_argument("--轮", type=int, default=1, help="循环轮数（按轮自动跑）")
@@ -725,6 +727,11 @@ def main():
         return 2
     # 编译器路径归一（Path + 相对根 + win .exe 探测·审查 P2-1 共同入口）
     a.cn = cnsmith_dual.解析编译器路径(a.cn)
+    # 1617 启动探测：异平台编译器（跨机同步 ELF/PE）硬拒——禁带错编译器跑完全轨
+    诊断, 允跑 = cnsmith_dual.编译器平台诊断(a.cn, 平台=cnsmith_dual.探测目标平台())
+    if not 允跑:
+        print(诊断)
+        return 2
     归档根 = pathlib.Path(a.归档)
     if not 归档根.is_absolute():
         归档根 = 根 / 归档根

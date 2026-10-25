@@ -17,6 +17,8 @@
   #1556 缓存对拍轴：统计行解析/缓存行剥离/双跑判定闭集正反例/建议立案标题/
        命中归档桶「缓存/」/轨道速记缓存段；--实跑 附加真实宿主缓存双跑端到端
        （首编写缓存→命中跑挂 CN_AST_CACHE_VERIFY·断言命中≥1）
+  #1617 编译器平台感知：默认映射 win→cn.exe/linux→cn（注入式纯函数）+
+       ELF/PE 魔数判格式 + 异平台硬拒正反例（跨机同步 ELF 撞 WinError 193 防线）
 """
 import json
 import pathlib
@@ -46,6 +48,7 @@ def selftest(编译路径=None, 实跑=False):
     _自测轨道与配置(签)
     _自测锁面与双条件(签)
     _自测种子派生(签)
+    _自测编译器平台感知(签)
     _自测报告结构(签)
     _自测缓存轴(签)
     _自测缓存轴汇总(签)
@@ -385,6 +388,52 @@ def _自测种子派生(签):
         数据2 = json.loads(核心.读文本(无种子[0]))
         签("对拍差异报告（1109）：无主种子参数时不给种子节（不编造）",
            "种子派生" not in 数据2 and "种子派生区间提示" not in 核心.读文本(无种子[1]))
+    finally:
+        shutil.rmtree(临时, ignore_errors=True)
+
+
+def _自测编译器平台感知(签):
+    """#1617：平台感知默认编译器映射 + ELF/PE 魔数判格式 + 异平台硬拒正反例。
+
+    正态：win→target/cn.exe、linux→target/cn（映射纯函数）；ELF 文件配
+          linux 允跑、PE 文件配 win 允跑；不存在/无法识别格式不拦（交
+          「编译器不存在」分支或 OS 执行期显形）。
+    反态：ELF 文件配 win 硬拒、PE 文件配 linux 硬拒（诊断含格式与「不符」）；
+          跨机同步 ELF 撞 WinError 193 的形态在本层被拦下（禁带错编译器跑完全轨）。"""
+    import tempfile
+    临时 = tempfile.mkdtemp(prefix="cnsmith1617_")
+    try:
+        签("默认编译器（#1617）：系统注入 Windows → target/cn.exe",
+           核心.默认编译器相对路径("Windows") == "target/cn.exe")
+        签("默认编译器（#1617）：系统注入 Linux → target/cn",
+           核心.默认编译器相对路径("Linux") == "target/cn")
+        elf = pathlib.Path(临时) / "cn_elf"
+        elf.write_bytes(b"\x7fELF" + b"\x00" * 8)
+        pe = pathlib.Path(临时) / "cn_pe.exe"
+        pe.write_bytes(b"MZ" + b"\x00" * 8)
+        脚本壳 = pathlib.Path(临时) / "cn_sh"
+        脚本壳.write_bytes(b"#!/bin/sh\n")
+        签("魔数判格式：ELF 头 → elf", 核心.编译器二进制格式(elf) == "elf")
+        签("魔数判格式：PE 头（MZ）→ pe", 核心.编译器二进制格式(pe) == "pe")
+        签("魔数判格式：脚本壳/无法识别 → ''（不拦）",
+           核心.编译器二进制格式(脚本壳) == "")
+        签("魔数判格式：文件不存在 → ''（不拦）",
+           核心.编译器二进制格式(pathlib.Path(临时) / "无此文件") == "")
+        诊, 允 = 核心.编译器平台诊断(elf, 系统="Windows", 平台="win-x64")
+        签("异平台硬拒（#1617）：ELF 配 win → 拒且诊断点名 ELF 与平台",
+           (not 允) and "ELF" in 诊 and "win-x64" in 诊 and "--cn" in 诊)
+        签("异平台放行：ELF 配 linux → 允跑",
+           核心.编译器平台诊断(elf, 系统="Linux", 平台="linux-x86_64") == ("", True))
+        诊, 允 = 核心.编译器平台诊断(pe, 系统="Linux", 平台="linux-x86_64")
+        签("异平台硬拒（#1617）：PE 配 linux → 拒且诊断点名 PE 与平台",
+           (not 允) and "PE" in 诊 and "linux-x86_64" in 诊 and "--cn" in 诊)
+        签("异平台放行：PE 配 win → 允跑",
+           核心.编译器平台诊断(pe, 系统="Windows", 平台="win-x64") == ("", True))
+        签("边界：路径不存在 → 允跑（交「编译器不存在」分支显形）",
+           核心.编译器平台诊断(pathlib.Path(临时) / "无此文件",
+                            系统="Windows", 平台="win-x64") == ("", True))
+        签("边界：无法识别格式 → 允跑（OS 执行期自报错）",
+           核心.编译器平台诊断(脚本壳, 系统="Windows", 平台="win-x64") == ("", True))
     finally:
         shutil.rmtree(临时, ignore_errors=True)
 
