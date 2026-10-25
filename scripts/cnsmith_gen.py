@@ -457,59 +457,265 @@ INJECTIONS = [
 ]
 
 
+# ---------------------------------------------------------------------
+# 1618 注入点字面量避让：轻量词法扫描（对齐宿主 lexer 词法面）
+#   缺陷实录（2026-10-25 采样轮 s20261259）：「非法字符」把 @@ 追加到
+#   `字符串 甲 = 多行"""第一行` 行尾——该行行尾处于未闭合三引号字面量
+#   体内，@@ 属字符串自由内容 → 样本仍合法 → 宿主 rc=0 放行被误判
+#   「负向防线失守」、v2 侧 rc=0 未产 asm 被误判「假绿」（无效负向样本）。
+#   修法：注入前先做一次轻量词法扫描，标出字符串/字符字面量 token 内部
+#   字符索引，五种注入的候选点一律剔除字面量内位置；某类型在字面量外
+#   无候选则按既有机制换类型，全类型不可注入返回 None（调用方跳过样本）。
+#   扫描器只服务「注入点避开字面量」判定：保守方向=宁可多剔除不误注入，
+#   不复刻宿主诊断细节（与 neg_expect_audit.字符串们 的「内容提取」用途
+#   不同——此处是「区间标记」，且须支持 原始/多行 前缀与跨行三引号）。
+# ---------------------------------------------------------------------
+
+# 字符串字面量前缀（plans/001 §2.1a·上下文识别非保留字：词后紧跟引号才成前缀）
+_字符串前缀们 = ("原始", "多行", "原始多行", "多行原始")
+
+
+def _是词字(ch):
+    """CN 标识符字符判定（中文/字母/数字/下划线——扫描器切词用）。"""
+    return ord(ch) > 127 or ch.isalnum() or ch == "_"
+
+
+def _消费unicode转义(文本, i, 内):
+    """消费 \\u{...} 结构（i 指向 'u' 且 文本[i+1]=='{'·调用方先行判定）。
+
+    把 u{...} 全部标入 `内`，含收尾 }（宿主 readStringBody/readChar 的
+    \\u 结构感知同构；缺 } 时消费到文本尾——宿主同款 while !isAtEnd）。"""
+    while i < len(文本):
+        内.add(i)
+        ch = 文本[i]
+        i += 1
+        if ch == "}":
+            break
+    return i
+
+
+def _扫转义(文本, i, 内):
+    """消费非 raw 字符串态的反斜杠转义（i 指向 \\ 本身·三引号/普通/字符三态共用）。
+
+    \\ 与转义体一并标入 `内`：\\u{...} 结构消费到 }（含）；其余两字符转义
+    （含 \\+换行跨行·宿主 readStringBody 同款）。返回新索引。"""
+    内.add(i)
+    i += 1
+    if 文本[i:i + 1] == "u" and 文本[i + 1:i + 2] == "{":
+        return _消费unicode转义(文本, i, 内)
+    if i < len(文本):
+        内.add(i)
+        return i + 1
+    return i
+
+
+def _扫代码态(文本, i, 内):
+    """代码态扫描：注释跳过/前缀词识别/引号起始。返回 (新i, 新态, raw)。
+
+    - 单行 // 与嵌套块注释 /* */ 整体跳过（宿主 skipWhitespaceAndComments
+      同构），注释内引号不参与字面量状态；
+    - 词∈前缀集（原始/多行/原始多行/多行原始）且词后紧跟引号才成前缀
+      （上下文识别·变量名 原始值 不触字符串态）；前缀字符不入 `内`
+      （注入点形态=行尾追加/删 ; ) } /整行截断，均落不到前缀中间）；
+    - 多行前缀+单引号=宿主降级普通字符串；无前缀 " 一律普通字符串态。"""
+    n = len(文本)
+    c = 文本[i]
+    if c == "/" and 文本[i + 1:i + 2] == "/":
+        while i < n and 文本[i] != "\n":          # 单行注释整体跳过
+            i += 1
+        return i, "代码", False
+    if c == "/" and 文本[i + 1:i + 2] == "*":
+        i += 2                                    # 块注释（嵌套）
+        深 = 1
+        while i < n and 深 > 0:
+            if 文本[i:i + 2] == "/*":
+                深 += 1
+                i += 2
+            elif 文本[i:i + 2] == "*/":
+                深 -= 1
+                i += 2
+            else:
+                i += 1
+        return i, "代码", False
+    if _是词字(c):
+        词起 = i
+        while i < n and _是词字(文本[i]):
+            i += 1
+        词 = 文本[词起:i]
+        if 词 in _字符串前缀们 and 文本[i:i + 1] == '"':
+            raw = "原始" in 词
+            if "多行" in 词 and 文本[i:i + 3] == '"""':
+                内.update(range(i, i + 3))
+                return i + 3, "三引号", raw
+            内.add(i)
+            return i + 1, "普通字符串", raw
+        return i, "代码", False
+    if c == '"':
+        内.add(i)
+        return i + 1, "普通字符串", False
+    if c == "'":
+        内.add(i)
+        return i + 1, "字符", False
+    return i + 1, "代码", False
+
+
+def _字面量内索引集(文本):
+    """轻量词法扫描：返回字符串/字符字面量 token 内部字符的一维索引集合。
+
+    对齐宿主 src/cn_compiler/lexer/lexer.cpp 词法面（readStringBody/readChar）：
+      - 前缀 原始/多行/原始多行/多行原始 后紧跟引号才成前缀（词∉前缀集或
+        词后非引号=普通标识符，如变量名 原始值 不触字符串态）；
+      - 三引号 \"\"\"...\"\"\" 可跨行；raw（前缀含 原始）不处理转义（多行原义），
+        非 raw 多行 \\ 转义消费两字符（\\u{...} 消费到 }）——对齐宿主
+        「转义优先于 \"\"\" 终止判定」的检查顺序；
+      - 普通 "..." 不跨行（遇裸换行 token 终止=宿主报「不能跨行」），
+        \\ 转义（含 \\+换行）继续；
+      - 字符 '...' 至多一个转义/普通字符即期待闭引号（宿主 readChar 同构）；
+      - 单行注释 // 与嵌套块注释 /* */ 整体跳过，不参与字面量状态。
+    跨行字面量把途经换行符一并标内：行尾索引∈集合 ⟺ 行尾处于未闭合
+    跨行字面量中间（正是 s20261259 缺陷判定式）；文件尾未闭合时补标
+    len(文本) 哨兵使末行行尾判定同式。"""
+    内 = set()
+    n = len(文本)
+    i = 0
+    态 = "代码"        # 代码 / 三引号 / 普通字符串 / 字符
+    raw = False
+    已有体 = False     # 字符字面量体已消费（'X' 的 X·宿主一体即闭语义）
+    while i < n:
+        c = 文本[i]
+        if 态 == "代码":
+            i, 态, raw = _扫代码态(文本, i, 内)
+            已有体 = False
+            continue
+        if 态 == "三引号":
+            if 文本[i:i + 3] == '"""':
+                内.update(range(i, i + 3))
+                i += 3
+                态 = "代码"
+                continue
+            if c == "\\" and not raw:
+                i = _扫转义(文本, i, 内)
+                continue
+            内.add(i)                             # 普通字符含换行——跨行
+            i += 1
+            continue
+        if 态 == "普通字符串":
+            if c == '"':
+                内.add(i)
+                i += 1
+                态 = "代码"
+                continue
+            if c == "\n":
+                态 = "代码"                       # 裸换行=宿主「不能跨行」终止
+                continue
+            if c == "\\" and not raw:
+                i = _扫转义(文本, i, 内)
+                continue
+            内.add(i)
+            i += 1
+            continue
+        # 态 == "字符"（宿主 readChar：'X'/'\\X'/'\\u{...}'，一体后即闭引号）
+        if c == "'":
+            内.add(i)
+            i += 1
+            态 = "代码"
+            continue
+        if 已有体:
+            态 = "代码"       # 宿主：闭引号不匹配=报「未闭合」token 终止
+            continue          # 当前字符不入字面量，回代码态重新处理
+        if c == "\\":
+            i = _扫转义(文本, i, 内)          # 字符态转义体（\\u 结构/单字符）
+        else:
+            内.add(i)
+            i += 1
+        已有体 = True
+    if 态 != "代码":
+        内.add(n)             # 未闭合字面量延伸到文件尾（末行行尾判定哨兵）
+    return 内
+
+
+def _行内字面量外位置(行, 行基, 内, 目标, 从后往前=False):
+    """行内目标字符的字面量外位置；无则 -1（-1=「未找到」哨兵，调用方分流）。
+
+    从后往前=False 取首个（删分号——对齐既有 replace(…,1) 语义）、
+    True 取末个（缺右括号——对齐既有 rfind 语义），仅限定字面量外。"""
+    列 = 行.rfind(目标) if 从后往前 else 行.find(目标)
+    while 列 >= 0:
+        if 行基 + 列 not in 内:
+            return 列
+        列 = 行.rfind(目标, 0, 列) if 从后往前 else 行.find(目标, 列 + 1)
+    return -1
+
+
 def inject_error(src, rng):
     """注入一个随机语法错误。返回 (源码|None, 注入类型|None, 注入行号 1 基|0)。
 
     必真注入保证：只在含目标特征的候选行中随机选（该行注入后必然语法非法）；
-    候选为空则换下一个注入类型（随机序）；全部类型不可注入返回 None（调用方跳过）。"""
+    候选为空则换下一个注入类型（随机序）；全部类型不可注入返回 None（调用方跳过）。
+    1618：候选点一律剔除字符串/字符字面量内部位置（先轻量词法扫描一次，
+    五类型共享区间集）——字面量内容自由，注入其中=样本仍合法（假注入）。"""
     kinds = INJECTIONS[:]
     rng.shuffle(kinds)
     lines = src.split(NL)
+    内 = _字面量内索引集(src)
+    行基 = [0]
+    for l in lines:
+        行基.append(行基[-1] + len(l) + 1)   # +1=行尾换行符（行基[i]..行基[i+1]-1）
     for kind in kinds:
-        out = _尝试注入(lines, kind, rng)
+        out = _尝试注入(lines, kind, rng, 内, 行基)
         if out is not None:
             return NL.join(out[0]), kind, out[1]
     return None, None, 0
 
 
-def _尝试注入(lines, kind, rng):
+def _尝试注入(lines, kind, rng, 内, 行基):
     """单类型注入尝试：返回 (新行列表, 注入行号) 或 None（无可注入行）。
 
     1022（#1398 随批根治）：候选行一律排除注释行（`//`）与预处理行（`#`）——
     原实现只按「非空」选行，族程序首行 `// 族=…` 使「非法字符」注入追加进
     注释（样本仍合法 → 宿主误接受假命中）；「截断文件」也可能只删末尾空行。
-    注入契约=必真破坏语法：候选必须落在代码行。"""
+    1618：候选点一律再剔除字符串/字符字面量内部位置（`内` 索引集·含跨行
+    三引号体与行尾未闭合判定）——s20261259 实录：@@ 追加进多行字符串体
+    =样本仍合法。注入契约=必真破坏语法：候选必须落在代码行+代码位。"""
     out = list(lines)
     代码行 = [i for i, l in enumerate(out)
               if l.strip() and not l.strip().startswith("//")
               and not l.strip().startswith("#")]
     if kind == "删分号":
-        cand = [i for i in 代码行 if ";" in out[i]]
+        cand = [(i, _行内字面量外位置(out[i], 行基[i], 内, ";"))
+                for i in 代码行]
+        cand = [(i, j) for i, j in cand if j >= 0]
         if not cand:
             return None
-        i = rng.choice(cand)
-        out[i] = out[i].replace(";", "", 1)
+        i, j = rng.choice(cand)
+        out[i] = out[i][:j] + out[i][j + 1:]
     elif kind == "缺右括号":
-        cand = [i for i in 代码行 if ")" in out[i]]
+        cand = [(i, _行内字面量外位置(out[i], 行基[i], 内, ")", 从后往前=True))
+                for i in 代码行]
+        cand = [(i, j) for i, j in cand if j >= 0]
         if not cand:
             return None
-        i = rng.choice(cand)
-        j = out[i].rfind(")")
+        i, j = rng.choice(cand)
         out[i] = out[i][:j] + out[i][j + 1:]
     elif kind == "缺右花括号":
-        cand = [i for i, l in enumerate(out) if l.strip() == "}"]
+        cand = [i for i, l in enumerate(out)
+                if l.strip() == "}"
+                and (行基[i] + l.index("}")) not in 内]
         if not cand:
             return None
         i = rng.choice(cand)
         out.pop(i)
     elif kind == "非法字符":
-        if not 代码行:
+        cand = [i for i in 代码行 if (行基[i] + len(out[i])) not in 内]
+        if not cand:
             return None
-        i = rng.choice(代码行)
+        i = rng.choice(cand)
         out[i] = out[i] + " @@"
     elif kind == "截断文件":
-        # 截断点=后半段代码行（排除注释/空行——只删空串不算截断）
-        cand = [i for i in 代码行 if i >= len(out) // 2]
+        # 截断点=后半段代码行（排除注释/空行——只删空串不算截断；
+        # 1618：行首在跨行字面量内的行=字符串体中行，截断它只会截开
+        # 字面量本身（未闭合报错），非「结构突然中断」，剔除）
+        cand = [i for i in 代码行 if i >= len(out) // 2 and 行基[i] not in 内]
         if not cand:
             return None
         i = rng.choice(cand)
@@ -619,6 +825,60 @@ def selftest(编译路径=None, 目标=None):
                 注入坏.append((seed, kind, "空行"))
     签("1022 注入器候选行锁（注释不吞注入·截断必删代码行）", not 注入坏,
        str(注入坏[:5]))
+
+    # 1618 注入点字面量避让锁：注入点必须落在代码位，禁落字符串/字符字面量内
+    #   （s20261259 实录：@@ 追加进多行字符串体内=样本仍合法→宿主误接受误报）。
+    #   最小样本四形态：①多行字符串体（行尾=未闭合三引号·缺陷形态+体中行）
+    #   ②普通字符串体内分号/括号 ③字符字面量 ④字面量外正常代码行——
+    #   断言注入点不落①②③、④正常注入；整体字面量样本全类型跳过（标注跳过）
+    避让样本 = (
+        "函数 主() -> 整32 {\n"
+        "    字符串 甲 = 多行\"\"\"第一行\n"          # ① 行尾=未闭合三引号体内
+        "体中行\n"                                     # ① 体中整行（截断/花括号面）
+        "第二行\"\"\";\n"
+        "    字符串 乙 = \"a;b)c';\";\n"               # ② 普通字符串体内 ; ) '
+        "    字符 c = ';';\n"                          # ③ 字符字面量
+        "    打印(字符串长度(乙));\n"                  # ④ 字面量外正常代码行
+        "    返回 0;\n"
+        "}\n"
+    )
+    避让行们 = 避让样本.split(NL)
+    避让内 = _字面量内索引集(避让样本)
+    避让基 = [0]
+    for l in 避让行们:
+        避让基.append(避让基[-1] + len(l) + 1)
+    避让坏 = []
+    for k in range(40):
+        注入, kind2, 行号2 = inject_error(避让样本, random.Random(k))
+        if 注入 is None:
+            避让坏.append((k, kind2, "全类型跳过（样本有充分代码位·不应发生）"))
+            continue
+        if kind2 == "截断文件":
+            if 避让基[行号2 - 1] in 避让内:
+                避让坏.append((k, kind2, "截断行首在字面量内"))
+            continue
+        原行 = 避让行们[行号2 - 1]
+        if kind2 == "缺右花括号":
+            if 避让基[行号2 - 1] + 原行.index("}") in 避让内:
+                避让坏.append((k, kind2, "}} 注入列在字面量内"))
+            continue
+        新行 = 注入.split(NL)[行号2 - 1]
+        if kind2 == "非法字符":
+            改列 = len(原行)            # 追加位置=行尾（s20261259 缺陷判定式）
+        else:
+            改列 = 0                    # 删字符：首差异列=被删字符列
+            while (改列 < len(原行) and 改列 < len(新行)
+                   and 原行[改列] == 新行[改列]):
+                改列 += 1
+        if 避让基[行号2 - 1] + 改列 in 避让内:
+            避让坏.append((k, kind2, "注入列在字面量内"))
+    签("1618 注入点字面量避让（多行/普通字符串体+字符字面量不吞注入·"
+       "正常代码行照常注入）", not 避让坏, str(避让坏[:5]))
+    纯体样本 = "多行\"\"\"体一\n体二\n体三\n"   # 未闭合三引号延伸到文件尾——
+    #   各行行尾/行首全部落在跨行字面量内（含文件尾哨兵）→ 全类型无代码位
+    纯注入, 纯kind, 纯行 = inject_error(纯体样本, random.Random(0))
+    签("1618 整体字面量样本跳过注入（标注跳过·不产假样本）", 纯注入 is None,
+       "kind=%s 行=%s" % (纯kind, 纯行))
 
     if 编译路径 is not None:
         目标 = 目标 or ("win-x64" if os.name == "nt" else "linux-x64")
