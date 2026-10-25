@@ -1,0 +1,7 @@
+# 1517（#1218 审查 P2-6）：融合路径真实发生锚定——每条 3+ 段连接链编译为
+#   「__cn_strbuf_new -> 逐段 append -> __cn_strbuf_finish」构建器序列。
+#   实测 win-x64：host 13 / v2 13（含 1 处 EXTERN 声明行；实际调用各 12）。
+#   阈值 12：融合整体退化回逐节 concat（只剩 EXTERN 行或大幅减少）必红。
+#   用助记符无关裸符号（win/x86_64 call / arm64 bl 均命中）。
+host:__cn_strbuf_new>=12
+v2:__cn_strbuf_new>=12
