@@ -87,6 +87,7 @@ import ci_build         # 973：win/linux 构建链（523/657 原样外迁·薄�
 import ci_reconcile     # 973：对账周检段（兜底轮周期对账·周检挂载点）
 import ci_shard         # 1297：预验分片协议+池 HTTP 客户端单点（依赖单向）
 import ci_m6            # #1221：M6 写集触发+E2E 段（判定/编排外迁·守 900 行警戒线）
+import ci_static_gates   # 1148：静态门禁清单外迁（660 行数红线·#1221 拆分先例同构）
 import ci_round         # #1221 复审：轮结果组装/直跑收口（外迁守 1000 行）
 import ci_fallback      # 1297：develop 兜底面（189/660/770 外迁·薄壳见下）
 import ci_duration      # 1385：步骤口径元信息（脚本→daemon 回传·耗时基线分桶）
@@ -205,45 +206,6 @@ def e2e明细参(明细路径) -> list:
     return ci_shard.e2e明细参(明细路径)
 
 
-def 静态门禁清单(cn, 平台) -> tuple:
-    """③.5 静态门禁清单（#1221 复审 P2：自 静态门禁与e2e段 抽出·守 ≤100 行）。"""
-    return (("check_spec_coverage", []),   # 243：非 strict（TX_02「指针有效性」存量红=244 修·红不拦兜底轮）
-                  # 1013（2026-10-17 用户裁决）：--strict 挂云端兜底轮——基线零（1013 归零）
-                  # 即等价棘轮·只拦新增（新 E2E 用例须 doc_coverage 台账归类·豁免理由必填），
-                  # 与 L1 gate_quick 静态段/win 全量 ci.ps1 同口径（防漂移·单一注册点=
-                  # check_registry.json）。纯本地文件 <1s。
-                  ("check_doc_coverage", ["--strict"]),
-                  # 896（2026-10-17）：部署清单一致性——deploy_*.sh 拷贝清单 ⊇ 服务运行
-                  # 依赖闭包+静态资源覆盖（406/824 漏部署类防复发）；纯本地文件秒级，
-                  # 与 L1 gate_quick 静态段/win 全量 ci.ps1 同口径。
-                  ("check_deploy_manifest", []),
-                  # 822（2026-10-15）：显式传验证面——交叉模拟实例（CN_CI_PLATFORM=linux-arm64·
-                  # CN_AS/CN_CXX=交叉工具链）不传则脚本自探=linux-x86_64 面，运行级格把
-                  # x86_64 汇编喂给 arm64 工具链必败（42/50 恒红 12 轮兜底存量实录）；传后
-                  # target=arm64≠本机运行时平台→运行级格 SKIP（红例三返工机制生效）。
-                  ("check_cli_contract", ["--cn", str(cn), "--target", 平台]),
-                  ("check_asm_width", ["--cn", str(cn)]),
-                  # 887：交叉汇编守卫序列对照（835 病根立法化·内嵌探针×三后端 -O0
-                  #   只产汇编不调 as/ld·秒级）——守备溢出/判零/移位域守卫序列的
-                  #   条件码级正确性机械对照。
-                  ("check_cross_asm_guards", ["--cn", str(cn)]),
-                  # 1170：并行 codegen 标签前缀表守卫——1145 并行发射按三后端
-                  #   prefix 表平移局部标签编号；新增 ptrCheckCounter_ 派生前缀未
-                  #   同步表=并行漏平移产物静默漂移。纯源码静态核对（缺失/陈旧/
-                  #   未分类+接线），与 L1 gate_quick 静态段/win 全量 ci.ps1 同口径。
-                  ("check_parallel_prefix", []),
-                  # 1219：并行 codegen 产物确定性常态门禁——并行4/4/2+自动+
-                  #   串行五口径逐字节对照（4 样本×三后端=60 次 compile），
-                  #   观测通道断言 parallel/workers 实际数/shifted 平移面覆盖；
-                  #   云端全量=唯一恒覆盖面（本地 L1 仅写集触发），实测 ~15s。
-                  ("check_parallel_determinism", ["--cn", str(cn)]),
-                  # #1310：字符串下标已知长度快路径回归（宿主 IR + v2 产物 asm
-                  #   双计数 1/2 正反对照 + v2 源码链路断言）——v2p 未就绪时脚本
-                  #   自黄跳产物段（源码断言照跑），v2p 路径按平台自动探测。
-                  ("check_knownlen_fastpath", ["--cn", str(cn)]),
-                  ("check_matrix_coverage", []),
-                  ("check_file_length", ["--freeze"]))
-
 
 def 静态门禁与e2e段(步骤们: dict, 步骤, cn: Path | None, 日志, sha: str,
                     轮分支: str = "", 分片: int = 0,
@@ -273,7 +235,7 @@ def 静态门禁与e2e段(步骤们: dict, 步骤, cn: Path | None, 日志, sha:
     #   origin/develop（三点·链顶=合并结果）；develop/兜底轮=上次已验绿 sha。
     #   调用方（跑一轮/跑分片轮）已算好则直用（结果记录与 e2e 命令同一计划）。
     m6计划 = m6计划 or ci_m6.轮计划(轮分支 or 分支, sha, 平台, 是win, 仓库根, 远端名, 机架)
-    for 名, 参 in 静态门禁清单(cn, 平台):
+    for 名, 参 in ci_static_gates.静态门禁清单(cn, 平台):
         if cn is None and "--cn" in 参:
             步骤们[名] = {"rc": -1, "说明": "未找到 cn 产物·跳过"}
             continue

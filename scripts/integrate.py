@@ -327,6 +327,13 @@ def 快速门禁(文件们: list[str]) -> str | None:
     结果 = 运行([sys.executable, "scripts/task_board.py", "--check"])
     if 结果.returncode != 0:
         return "task_board 账实检查未过——修复后重试（021 任务总账）。"
+    # 1148（2026-10-25·891 盘点§五）：miss 门禁挂快速门禁——组链 checkout 后的
+    #   **合并结果**上复跑（develop 顶+本批叠加的组合树·L1 只验任务分支单树）——
+    #   913/933 登记行丢行类（他分支改 miss_registry 与本批 rebase 组合后锚漂移）
+    #   云端静态段外的第二道本地复跑；秒级纯本地。
+    结果 = 运行([sys.executable, "scripts/check_miss_gate.py"])
+    if 结果.returncode != 0:
+        return "check_miss_gate 未过（合并结果静默值登记面红）——修复后重试（1148）。"
     return None
 
 

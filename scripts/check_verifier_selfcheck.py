@@ -78,7 +78,8 @@ os.environ["CN_QUEUE_DB"] = os.path.join(_隔离目录, "queue_selftest_894.db")
 os.environ["CN_BOARD_URL"] = "http://127.0.0.1:9"
 atexit.register(lambda: shutil.rmtree(_隔离目录, ignore_errors=True))
 
-import ci_daemon          # noqa: E402（导入顺序=上方隔离前置依赖）
+import ci_daemon
+import ci_static_gates          # noqa: E402（导入顺序=上方隔离前置依赖）
 import integrate          # noqa: E402
 import queue_service      # noqa: E402
 import queue_result       # noqa: E402  1297：认领失败分类 实现外迁 queue_result（queue_service 先拆再加）
@@ -188,7 +189,7 @@ def 聚合面断言(聚合绿) -> list[tuple[str, bool]]:
     查("实现锚：聚合绿 AST 白名单含 check_parallel_determinism",
         静态键 in 实现白名单)
     _静态源 = (inspect.getsource(ci_daemon.静态门禁与e2e段)
-               + inspect.getsource(ci_daemon.静态门禁清单))   # #1221 P2：清单外迁后两段合看
+               + inspect.getsource(ci_static_gates.静态门禁清单))   # #1221 P2：清单外迁后两段合看（1148 续外迁 ci_static_gates）
     查("实现锚：ci_daemon 静态段源码含本键（云端静态段确实调度）",
         "check_parallel_determinism" in _静态源)
     查("负例构造键不在白名单（非白名单不拖红断言不得复用白名单键）",

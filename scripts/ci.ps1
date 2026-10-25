@@ -44,6 +44,10 @@ Write-Host "[CI] 0.87/4 部署清单一致性门禁（896·deploy_*.sh 拷贝清
 python scripts/check_deploy_manifest.py
 if ($LASTEXITCODE -ne 0) { Write-Host "[CI] 部署清单一致性门禁失败" -ForegroundColor Red; exit 1 }
 
+Write-Host "[CI] 0.89/4 静默值登记制门禁（1148·891 盘点§五：check_miss_gate 上挂云端全量——修复批 rebase/组链后组合结果第二道复跑·913/933 丢行类云端不可见防复发；与 L1 同口径）..." -ForegroundColor Cyan
+python scripts/check_miss_gate.py
+if ($LASTEXITCODE -ne 0) { Write-Host "[CI] 静默值登记制门禁失败" -ForegroundColor Red; exit 1 }
+
 Write-Host "[CI] 0.88/4 E2E 用例 v2 覆盖通道守卫（930·306 轮 662/1025「自述 dual 实为探针」验收缺口立法化：用例须配 v2 通道（双编译对照/v2闭环/锚定链）或豁免登记（案号+理由·只减不增棘轮）——新用例静默 host-only 即红）..." -ForegroundColor Cyan
 python scripts/check_dual_coverage.py
 if ($LASTEXITCODE -ne 0) { Write-Host "[CI] E2E 用例 v2 覆盖通道守卫失败" -ForegroundColor Red; exit 1 }
