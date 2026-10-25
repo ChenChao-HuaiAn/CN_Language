@@ -3,7 +3,6 @@
 #define _CRT_SECURE_NO_WARNINGS
 #include <algorithm>
 #include <cstdint>
-#include <cstdio>
 #include <cstdlib>
 #include <string>
 #include <unordered_set>
@@ -119,11 +118,18 @@ void SemanticAnalyzer::visitMemberExpr(MemberExpr* node) {
                 return;
             }
             if (memberName == "值" && args.size() == 2) {
-                lastType_ = canonicalType(args[0]);
+                // #1562（零分叉）：载荷为泛型容器时 T 可能是模板文本（向量<整32>）
+                //   ——物化为实例名（向量$整32）再作成员链对象类型；否则下游
+                //   findClass 恒 miss 报「不是结构体/联合体/类类型」（r.值.大小()
+                //   实锚）。与下方结构体字段分支 resolveGenericTypeName 同法
+                //   （幂等：非泛型/已物化原样）。.错误 的 E 同族一并物化。
+                lastType_ = canonicalType(
+                    resolveGenericTypeName(args[0], node->location));
                 return;
             }
             if (memberName == "错误" && args.size() == 2) {
-                lastType_ = canonicalType(args[1]);
+                lastType_ = canonicalType(
+                    resolveGenericTypeName(args[1], node->location));
                 return;
             }
         }
@@ -133,7 +139,10 @@ void SemanticAnalyzer::visitMemberExpr(MemberExpr* node) {
                 return;
             }
             if (memberName == "值") {
-                lastType_ = canonicalType(optionalTypeArg(objectType).value_or(std::string()));
+                // #1562：可选<T> 载荷同法物化（泛型容器 T 模板文本 -> 实例名）
+                lastType_ = canonicalType(resolveGenericTypeName(
+                    optionalTypeArg(objectType).value_or(std::string()),
+                    node->location));
                 return;
             }
         }

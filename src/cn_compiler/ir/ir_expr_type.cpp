@@ -192,14 +192,28 @@ cn::Optional<std::string> IRGenerator::exprSrcType(Expr* node) const {
             //   （结果<类>.值.字段 / 结果.值.方法）的对象类型推导失败 -> 类字段
             //   访问/方法调用未识别 -> findStruct(类)=null 防御返回 0（打印 0 实测）。
             const std::string canonObj = types::canonical(objType.value());
+            // #1562（零分叉·与下方结构体字段分支同族先例）：结果/可选 载荷为
+            //   泛型容器时，T/E 取出的可能是**模板文本**（向量<整32>）而非物化
+            //   实例名（向量$整32）——下游 findClass/lookupClassMember 全 miss →
+            //   宿主报「不是结构体/联合体/类类型」误拒（r.值.大小() 实锚）。
+            //   与结构体字段面同法物化（resolveGenericTypeName 幂等：非泛型原样）。
+            auto payloadType = [&](const std::string& t) {
+                if (semantic_ == nullptr || t.empty()) return t;
+                return types::canonical(
+                    semantic_->resolveGenericTypeName(t, node->location));
+            };
             if (isResultType(canonObj)) {
                 const std::vector<std::string> rargs =
                     resultTypeArgs(canonObj).value_or((std::vector<std::string>()));
-                if (mem->memberName == "值" && rargs.size() == 2) return rargs[0];
-                if (mem->memberName == "错误" && rargs.size() == 2) return rargs[1];
+                if (mem->memberName == "值" && rargs.size() == 2)
+                    return payloadType(rargs[0]);
+                if (mem->memberName == "错误" && rargs.size() == 2)
+                    return payloadType(rargs[1]);
                 if (mem->memberName == "正常") return "布尔";
             } else if (isOptionalType(canonObj)) {
-                if (mem->memberName == "值") return optOfSrc(optionalTypeArg(canonObj).value_or(std::string()));
+                if (mem->memberName == "值")
+                    return optOfSrc(payloadType(
+                        optionalTypeArg(canonObj).value_or(std::string())));
                 if (mem->memberName == "有值") return "布尔";
             }
             // 363 根治（2026-10-10·与 v2 321 同构）：链上指针字段中间跳——
