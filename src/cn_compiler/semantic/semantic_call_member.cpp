@@ -365,12 +365,42 @@ bool SemanticAnalyzer::checkStaticMethodCall(CallExpr* node, const std::string& 
             // 静态方法调用（类名.静态方法(...)）
             std::vector<std::string> argTypes =
                 collectCallArgTypes(node->arguments, node->location);
+            adjustLiteralArgTypes(argTypes, node->arguments);
             if (argTypes.size() != method->paramTypes.size()) {
                 diagnostics_.report(DiagnosticLevel::Error, node->location,
                                     "静态方法 '" + methodName + "' 期望 " +
                                         std::to_string(method->paramTypes.size()) +
                                         " 个实参，实际提供 " +
                                         std::to_string(argTypes.size()) + " 个");
+            } else {
+                // #1593（#1588 审计相邻面）：静态方法实参类型检查——原仅校验个数，
+                //   类型不匹配静默放行（与实例方法/普通调用检查面分叉）。本段镜像
+                //   实例方法同源判定（canConvertWithLiteral/canConvertArgNarrow/
+                //   method_value_943 专用文案），不放宽不收紧。
+                for (std::size_t i = 0; i < argTypes.size(); ++i) {
+                    // 同实例方法：引用形参且实参已是 &x（二次检查已 wrap）→ 跳过
+                    bool refAlready =
+                        types::isReference(method->paramTypes[i]) &&
+                        node->arguments[i]->getType() == NodeType::UnaryExpr &&
+                        static_cast<UnaryExpr*>(node->arguments[i].get())->op ==
+                            Operator::AddressOf;
+                    if (!refAlready &&
+                        !canConvertWithLiteral(node->arguments[i].get(), argTypes[i],
+                                               method->paramTypes[i]) &&
+                        !canConvertArgNarrow(node->arguments[i].get(), argTypes[i],
+                                             method->paramTypes[i])) {
+                        if (!method_value_943::reportConvertReject(
+                                diagnostics_, argTypes[i], method->paramTypes[i],
+                                node->arguments[i]->location,
+                                node->arguments[i].get())) {
+                            diagnostics_.report(
+                                DiagnosticLevel::Error, node->arguments[i]->location,
+                                "静态方法 '" + methodName + "' 第 " + std::to_string(i + 1) +
+                                    " 个实参无法将 '" + argTypes[i] + "' 隐式转换为 '" +
+                                    method->paramTypes[i] + "'");
+                        }
+                    }
+                }
             }
             // A-1（引用参数）：静态方法引用形参的实参自动取地址
             checkConstRefBorrowDiscipline(node, method->paramTypes,
