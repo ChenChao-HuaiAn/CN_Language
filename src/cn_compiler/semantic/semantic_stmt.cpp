@@ -463,71 +463,60 @@ void SemanticAnalyzer::visitIfStmt(IfStmt* node) {
             return;
         }
     }
-    // 574-a（T99·231）：条件为「&& 且左侧=结果/可选检查形态」的短路守卫——
-    //   左侧为真所蕴含的检查状态传导到右侧与 then 块（!甲.正常 && 甲.错误==5
-    //   形态：此前落入普通路径被规则3 误拒——短路语义下检查状态应传导）。
-    if (node->condition->getType() == NodeType::BinaryExpr) {
-        auto* bin = static_cast<BinaryExpr*>(node->condition.get());
-        if (bin->op == Operator::AndAnd) {
-            // 301 守卫增强：传导面从「仅左侧」扩为「左右两侧递归收集」——右侧同为
-            //   守卫形态（`a.正常 && b.正常` / 右结合三连）时右侧变量同样 markChecked
-            //   （此前 then 块内访问 b.值 被规则3 误拒）；marked 记录全部命中变量，
-            //   分支收尾成对 unmark。
-            std::vector<std::string> marked;
-            collectGuardMarks(bin->left.get(), marked);
-            if (!marked.empty()) {
-                // 1583：预收集只作「链上有守卫」判定——撤销后按操作数顺序重做：
-                //   原实现预收集即终态=左子树从不 checkExpr（调用返回类型漏登记，
-                //   IR 报「未登记」），且右侧守卫标记会泄漏给左侧。真分支沿用 marked。
-                for (const auto& v : marked) { unmarkChecked(v); }
-                marked.clear();
-                checkGuardChainOperands1583(bin->left.get(), "'如果'", marked);
-                checkGuardChainOperands1583(bin->right.get(), "'如果'", marked);
-                // 010（def-init）：then/else 状态传播（手动归并——本路径
-                //   markChecked 配对顺序特殊，不走 defInitCheckIf 整体包装）
-                const std::unordered_set<std::string> diBase = uninitPlaces_;
-                // 980 波7（任务 007 NLL）：moved 集同趟快照-恢复-合流
-                const MovedSet mvBase = snapshotMoved();
-                if (node->thenBranch != nullptr) {
-                    checkBlock(node->thenBranch.get());
-                }
-                std::unordered_set<std::string> diAfterThen = uninitPlaces_;
-                const MovedSet mvAfterThen = snapshotMoved();
-                const bool diThenExits = node->thenBranch != nullptr &&
-                    stmtGuaranteesReturn(node->thenBranch.get());
-                uninitPlaces_ = diBase;
-                restoreMoved(mvBase);
-                for (const auto& v : marked) { unmarkChecked(v); }
-                if (node->elseBranch != nullptr) {
-                    checkStmt(node->elseBranch.get());
-                    std::unordered_set<std::string> diAfterElse = uninitPlaces_;
-                    const MovedSet mvAfterElse = snapshotMoved();
-                    const bool diElseExits =
-                        stmtGuaranteesReturn(node->elseBranch.get());
-                    if (diThenExits && !diElseExits) {
-                        uninitPlaces_ = diAfterElse;
-                        restoreMoved(mvAfterElse);
-                    } else if (diElseExits && !diThenExits) {
-                        uninitPlaces_ = std::move(diAfterThen);
-                        restoreMoved(mvAfterThen);
-                    } else if (!diThenExits && !diElseExits) {
-                        // 010：并集归并（must analysis——未初始化汇合=并集）
-                        std::unordered_set<std::string> diMerged = diAfterElse;
-                        for (const auto& k : diAfterThen) {
-                            diMerged.insert(k);
-                        }
-                        uninitPlaces_ = std::move(diMerged);
-                        // moved=may 合流（Rust E0382 同款）
-                        restoreMoved(mvAfterElse);
-                        mergeMovedOr(mvAfterThen);
-                    }
-                } else {
-                    // 无否则：真支可能不执行——置位不外溢
-                    restoreMoved(mvBase);
-                }
-                return;
-            }
+    // #1584（T99·231/574-a/301 守卫族统一）：条件树含 结果.正常/可选.有值 守卫时
+    //   按**短路求值顺序**检查并传导——`&&` 左真→右/整体真、`||` 左假→右、
+    //   `!` 纯守卫取反、三元显式不传导（checkConditionTree 判据单点）。原实现
+    //   只认「顶层 && 左守卫」且不检查左侧子树：多守卫链/嵌套 && 误拒（v2 分叉）
+    //   + 左侧子树内他变量无守卫 .值 漏检（过松），本路径一并纠正。
+    if (conditionContainsGuard(node->condition.get())) {
+        const ErrorCheckState guardBase = errorCheckState_;
+        const std::string condType = checkConditionTree(node->condition.get());
+        checkCondition(condType, node->condition->location, "'如果'");
+        // 010（def-init）：then/else 状态传播（手动归并——本路径 markChecked
+        //   配对顺序特殊，不走 defInitCheckIf 整体包装）
+        const std::unordered_set<std::string> diBase = uninitPlaces_;
+        // 980 波7（任务 007 NLL）：moved 集同趟快照-恢复-合流
+        const MovedSet mvBase = snapshotMoved();
+        if (node->thenBranch != nullptr) {
+            checkBlock(node->thenBranch.get());
         }
+        std::unordered_set<std::string> diAfterThen = uninitPlaces_;
+        const MovedSet mvAfterThen = snapshotMoved();
+        const bool diThenExits = node->thenBranch != nullptr &&
+            stmtGuaranteesReturn(node->thenBranch.get());
+        uninitPlaces_ = diBase;
+        restoreMoved(mvBase);
+        // #1584：条件真保证回滚到入口（多变量/多类别——原 marked 列表只覆盖
+        //   左右守卫变量且短路款否则支语义与 v2 同口径）
+        errorCheckState_ = guardBase;
+        if (node->elseBranch != nullptr) {
+            checkStmt(node->elseBranch.get());
+            std::unordered_set<std::string> diAfterElse = uninitPlaces_;
+            const MovedSet mvAfterElse = snapshotMoved();
+            const bool diElseExits =
+                stmtGuaranteesReturn(node->elseBranch.get());
+            if (diThenExits && !diElseExits) {
+                uninitPlaces_ = diAfterElse;
+                restoreMoved(mvAfterElse);
+            } else if (diElseExits && !diThenExits) {
+                uninitPlaces_ = std::move(diAfterThen);
+                restoreMoved(mvAfterThen);
+            } else if (!diThenExits && !diElseExits) {
+                // 010：并集归并（must analysis——未初始化汇合=并集）
+                std::unordered_set<std::string> diMerged = diAfterElse;
+                for (const auto& k : diAfterThen) {
+                    diMerged.insert(k);
+                }
+                uninitPlaces_ = std::move(diMerged);
+                // moved=may 合流（Rust E0382 同款）
+                restoreMoved(mvAfterElse);
+                mergeMovedOr(mvAfterThen);
+            }
+        } else {
+            // 无否则：真支可能不执行——置位不外溢
+            restoreMoved(mvBase);
+        }
+        return;
     }
     checkCondition(checkExpr(node->condition.get()), node->condition->location, "'如果'");
     // 010（def-init）：then/else 状态 clone+交集归并（终止支/无否则口径见实现）

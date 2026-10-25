@@ -632,14 +632,19 @@ private:
     //   推导出的类型实参（typeParams 同序）。
     bool inferGenericArgs(const GenericInfo* gi, const FunctionDecl* src,
                           CallExpr* node, std::vector<std::string>& infArgs);
-    // 301 守卫传导：识别条件子表达式为 结果.正常/可选.有值 形态（可含 ! 前缀）并
-    //   markChecked 对应检查类型（取反翻转 正常↔错误）；命中记入 marked 供成对
-    //   unmark。&& 复合条件左右两侧递归收集（右侧在左侧为真下短路求值，状态传导）。
-    void collectGuardMarks(Expr* cond, std::vector<std::string>& marked);
-    // 1583：&& 链「逐操作数检查-打标」——全量 checkExpr（补原守卫路径跳过左子树
-    //   致调用返回类型漏登记）+ 布尔域校验；命中守卫即打标（只向右传导）。
-    void checkGuardChainOperands1583(Expr* cond, const std::string& ctx,
-                                     std::vector<std::string>& marked);
+    // #1584 守卫传导（宿主/v2 同判据·短路求值顺序）：检查条件表达式树并按
+    //   「&& 左真→右 / || 左假→右 / ! 取反 / 三元显式不传导」施加已查标记；
+    //   返回条件根类型（调用方 checkCondition 严格布尔校验）。
+    std::string checkConditionTree(Expr* cond);
+    // 条件表达式是否含可跟踪守卫形态（X.正常/X.有值·对象=可跟踪左值名）——
+    //   判定是否走条件树路径（无守卫条件零行为变化）。
+    bool conditionContainsGuard(Expr* cond);
+    // 施加「表达式为真/为假」的检查保证（#1584）：X.正常/X.有值 直接映射；
+    //   `!纯守卫` 真假互换；`&&` 真=两侧真、`||` 假=两侧假；其余显式无传导。
+    void applyTrueGuards(Expr* cond);
+    void applyFalseGuards(Expr* cond);
+    // 纯守卫形态（守卫成员或嵌套取反）——真假保证互换的可定义面。
+    bool pureGuard(Expr* cond);
     // 变量名提取（1360 结果化批3B：无值=对象非守卫可跟踪形态——原空串哨兵退役）
     static cn::Optional<std::string> objectVarName(Expr* object);
     // 将变量标记为已检查（进入 if 真分支时）

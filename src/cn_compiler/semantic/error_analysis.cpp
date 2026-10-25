@@ -669,6 +669,10 @@ void SemanticAnalyzer::trackIfCheck(IfStmt* node) {
             markChecked(varName, "有值");
             checkBlock(node->thenBranch.get());
             mv.thenEnd();
+            // #1584 过松根治：否则支=无值分支——须先清除「有值」标再检查
+            //   （原缺此步=否则支访问 .值 漏检；结果款否则以「错误」标覆盖
+            //   同位置无此缺陷·v2 检查如果 条件树回滚同口径）
+            unmarkChecked(varName);
             if (node->elseBranch != nullptr) {
                 checkStmt(node->elseBranch.get());
                 mv.elseEnd(mvThenExits, mvElseExits);
@@ -700,74 +704,179 @@ void SemanticAnalyzer::trackIfCheck(IfStmt* node) {
     }
 }
 
-// 301 守卫增强：条件子表达式的守卫识别与状态传导（&& 复合条件左右两侧递归）。
-//   命中「[!]结果.正常 / 可选.有值」形态 → markChecked 对应检查类型（取反翻转
-//   正常↔错误）并记入 marked（供调用方成对 unmark）；短路语义下 && 右侧在左侧
-//   为真时求值，左侧守卫状态对右侧与 then 块均成立（574-a 左侧传导的对称补全：
-//   此前仅左侧传导，右侧守卫变量在 then 块被规则3 误拒）。
-void SemanticAnalyzer::collectGuardMarks(Expr* cond, std::vector<std::string>& marked) {
+// #1584 守卫传导（宿主/v2 同判据·plans/001 §5.4 规则3）：
+//   条件表达式按**短路求值顺序**检查并施加已查标记——修复原 574-a/301 短路面
+//   只识别「顶层 && 左守卫」、嵌套 && 链误拒（v2 同族）与「短路路径不检查
+//   左侧子树」过松面（左子树内他变量无守卫 .值 漏检）。
+//   判据（显式枚举，禁其余情况放行）：
+//     ① X.正常（结果）/X.有值（可选）求值后，真语境证明 X 已检查；
+//     ② A && B：A 先求值（入口保证）；B 在「A 为真」保证下求值；整体真保证
+//       = A真 ∪ B真（任意深度左结合链同判据）；
+//     ③ A || B：B 在「A 为假」保证下求值（!X.有值 || X.值 惯用法）；整体真
+//       不传导（无法确定哪侧为真）；
+//     ④ !E：仅纯守卫/嵌套取反按真假互换；复合操作数普通检查（显式不传导）；
+//     ⑤ 三元：整树显式不传导（visitTernaryExpr 同判据）；
+//     ⑥ 其他形态：普通检查，无传导。
+//   标记回滚由调用方 errorCheckState_ 快照/恢复（visitIfStmt 真支后恢复入口）。
+bool SemanticAnalyzer::pureGuard(Expr* cond) {
+    // 空表达式=调用方语义上的「无传导面」（条件树递归的边界值），非查表 miss
+    bool hit = false;
+    if (cond != nullptr && cond->getType() == NodeType::MemberExpr) {
+        auto* m = static_cast<MemberExpr*>(cond);
+        if (m->memberName == "正常" || m->memberName == "有值") {
+            hit = objectVarName(m->object.get()).has_value();
+            if (hit) {
+                const std::string objType = checkExpr(m->object.get());
+                if (m->memberName == "正常") {
+                    hit = isResultType(objType) && !isOptionalType(objType);
+                }
+                if (m->memberName == "有值") {
+                    hit = isOptionalType(objType);
+                }
+            }
+        }
+    }
+    if (cond != nullptr && cond->getType() == NodeType::UnaryExpr) {
+        auto* u = static_cast<UnaryExpr*>(cond);
+        hit = u->op == Operator::Bang && pureGuard(u->operand.get());
+    }
+    return hit;
+}
+
+void SemanticAnalyzer::applyTrueGuards(Expr* cond) {
     if (cond == nullptr) return;
-    if (cond->getType() == NodeType::BinaryExpr) {
-        auto* bin = static_cast<BinaryExpr*>(cond);
-        if (bin->op == Operator::AndAnd) {
-            collectGuardMarks(bin->left.get(), marked);
-            collectGuardMarks(bin->right.get(), marked);
-            return;
+    if (cond->getType() == NodeType::MemberExpr) {
+        auto* m = static_cast<MemberExpr*>(cond);
+        const cn::Optional<std::string> varName = objectVarName(m->object.get());
+        if (!varName.has_value()) return;
+        const std::string objType = checkExpr(m->object.get());
+        if (m->memberName == "正常" && isResultType(objType) &&
+            !isOptionalType(objType)) {
+            markChecked(varName.value(), "正常");
+        } else if (m->memberName == "有值" && isOptionalType(objType)) {
+            markChecked(varName.value(), "有值");
         }
         return;
     }
-    bool negated = false;
     if (cond->getType() == NodeType::UnaryExpr) {
         auto* u = static_cast<UnaryExpr*>(cond);
-        if (u->op == Operator::Bang) {
-            negated = true;
-            cond = u->operand.get();
+        // 显式枚举：仅纯守卫取反（!!X.有值 等）可互换；复合操作数不传导
+        if (u->op == Operator::Bang && pureGuard(u->operand.get())) {
+            applyFalseGuards(u->operand.get());   // !E 真 = E 假
         }
+        return;
     }
-    if (cond->getType() != NodeType::MemberExpr) return;
-    auto* m = static_cast<MemberExpr*>(cond);
-    const cn::Optional<std::string> varName = objectVarName(m->object.get());
-    if (!varName.has_value()) return;
-    // 已标记则不重复（a.正常 && a.正常 幂等）
-    for (const auto& v : marked) {
-        if (v == varName.value()) return;
-    }
-    const std::string objType = checkExpr(m->object.get());
-    if (isResultType(objType) && m->memberName == "正常") {
-        markChecked(varName.value(), negated ? "错误" : "正常");
-        marked.push_back(varName.value());
-    } else if (isOptionalType(objType) && m->memberName == "有值" && !negated) {
-        markChecked(varName.value(), "有值");
-        marked.push_back(varName.value());
-    }
-}
-
-// 1583：&& 短路条件链「逐操作数检查-打标」单点。
-//   现象：复合条件（甲 > 0 && 选项.有值 && 用户函数(...) 的守卫嵌套形态）内用户
-//   函数调用漏登记返回类型——IR 生成期 funcReturnTypeOf 查表 miss 报「内部错误:
-//   函数返回类型未登记」（宿主单侧红，v2 逐节点检查条件区无此缺陷）。
-//   根因：visitIfStmt 的 && 守卫短路路径只用 collectGuardMarks「收集」左子树标记、
-//   从不 checkExpr 左子树——左子树内的调用不经 visitCallExpr（resolvedSignature/
-//   resolvedType 不写回），参数检查/逻辑运算布尔域检查同被整段跳过。
-//   本函数按左→右操作数顺序：①全量 checkExpr（覆盖调用决议/参数检查/成员访问
-//   规则）；②逐操作数布尔域校验（等价整条条件 checkCondition 口径）；③命中守卫
-//   形态即 collectGuardMarks 打标——标记只向其右侧操作数传导（短路语义），
-//   真分支标记由调用方在链检查完毕后沿用 marked 维持。
-void SemanticAnalyzer::checkGuardChainOperands1583(
-    Expr* cond, const std::string& ctx, std::vector<std::string>& marked) {
-    // 入参非空=解析器恒建双操作数（checkExpr 链同款前置假设，无用户输入可达面）
     if (cond->getType() == NodeType::BinaryExpr) {
         auto* bin = static_cast<BinaryExpr*>(cond);
         if (bin->op == Operator::AndAnd) {
-            // 先左后右：右侧仅在左侧为真时求值，左链守卫标记先落再查右
-            checkGuardChainOperands1583(bin->left.get(), ctx, marked);
-            checkGuardChainOperands1583(bin->right.get(), ctx, marked);
-            return;
+            applyTrueGuards(bin->left.get());    // A && B 真 = 两侧皆真
+            applyTrueGuards(bin->right.get());
+        }
+        // || 整体真无法唯一确定（显式无传导）
+    }
+}
+
+void SemanticAnalyzer::applyFalseGuards(Expr* cond) {
+    if (cond == nullptr) return;
+    if (cond->getType() == NodeType::MemberExpr) {
+        auto* m = static_cast<MemberExpr*>(cond);
+        const cn::Optional<std::string> varName = objectVarName(m->object.get());
+        if (!varName.has_value()) return;
+        const std::string objType = checkExpr(m->object.get());
+        if (m->memberName == "正常" && isResultType(objType) &&
+            !isOptionalType(objType)) {
+            markChecked(varName.value(), "错误");   // 结果非正常 ⇒ 已错误
+        }
+        // 可选 .有值 为假=无值：无 .值 可访问（显式无标）
+        return;
+    }
+    if (cond->getType() == NodeType::UnaryExpr) {
+        auto* u = static_cast<UnaryExpr*>(cond);
+        if (u->op == Operator::Bang && pureGuard(u->operand.get())) {
+            applyTrueGuards(u->operand.get());    // !E 假 = E 真
+        }
+        return;
+    }
+    if (cond->getType() == NodeType::BinaryExpr) {
+        auto* bin = static_cast<BinaryExpr*>(cond);
+        if (bin->op == Operator::OrOr) {
+            applyFalseGuards(bin->left.get());    // A || B 假 = 两侧皆假
+            applyFalseGuards(bin->right.get());
+        }
+        // && 为假可能任一侧（显式无传导）
+    }
+}
+
+bool SemanticAnalyzer::conditionContainsGuard(Expr* cond) {
+    // 空表达式=无守卫（条件树递归边界值），非查表 miss
+    bool hasGuard = false;
+    if (cond != nullptr) {
+        switch (cond->getType()) {
+            case NodeType::MemberExpr: {
+                auto* m = static_cast<MemberExpr*>(cond);
+                hasGuard = (m->memberName == "正常" || m->memberName == "有值") &&
+                         objectVarName(m->object.get()).has_value();
+                break;
+            }
+            case NodeType::UnaryExpr: {
+                auto* u = static_cast<UnaryExpr*>(cond);
+                hasGuard = u->op == Operator::Bang &&
+                         conditionContainsGuard(u->operand.get());
+                break;
+            }
+            case NodeType::BinaryExpr: {
+                auto* bin = static_cast<BinaryExpr*>(cond);
+                // 三元显式不传导 = 非守卫面（visitTernaryExpr 同判据）
+                hasGuard = (bin->op == Operator::AndAnd ||
+                          bin->op == Operator::OrOr) &&
+                         (conditionContainsGuard(bin->left.get()) ||
+                          conditionContainsGuard(bin->right.get()));
+                break;
+            }
+            default:
+                break;
         }
     }
-    const std::string operandType = checkExpr(cond);
-    checkCondition(operandType, cond->location, ctx);
-    collectGuardMarks(cond, marked);
+    return hasGuard;
+}
+
+std::string SemanticAnalyzer::checkConditionTree(Expr* cond) {
+    if (cond == nullptr) return "未知";
+    if (cond->getType() == NodeType::BinaryExpr) {
+        auto* bin = static_cast<BinaryExpr*>(cond);
+        if (bin->op == Operator::AndAnd) {
+            const std::string lt = checkConditionTree(bin->left.get());
+            checkCondition(lt, bin->left->location, "'如果'");
+            const std::string rt = checkConditionTree(bin->right.get());
+            checkCondition(rt, bin->right->location, "'如果'");
+            lastType_ = "布尔";
+            return "布尔";
+        }
+        if (bin->op == Operator::OrOr) {
+            const std::unordered_map<std::string, std::string> base = errorCheckState_;
+            const std::string lt = checkConditionTree(bin->left.get());
+            checkCondition(lt, bin->left->location, "'如果'");
+            errorCheckState_ = base;
+            applyFalseGuards(bin->left.get());   // 左侧为假时的保证
+            const std::string rt = checkConditionTree(bin->right.get());
+            checkCondition(rt, bin->right->location, "'如果'");
+            errorCheckState_ = base;             // 整体真不传导（显式枚举）
+            lastType_ = "布尔";
+            return "布尔";
+        }
+        return checkExpr(cond);
+    }
+    if (cond->getType() == NodeType::UnaryExpr &&
+        static_cast<UnaryExpr*>(cond)->op == Operator::Bang) {
+        // 取反：操作数按普通表达式检查（复合形态显式不传导·纯守卫才映射）
+        const std::string ot = checkExpr(cond);
+        applyFalseGuards(static_cast<UnaryExpr*>(cond)->operand.get());
+        return ot;
+    }
+    // 三元/其他形态：普通检查 + 纯守卫真保证（三元显式不传导）
+    const std::string t = checkExpr(cond);
+    applyTrueGuards(cond);
+    return t;
 }
 
 } // namespace cn_compiler
