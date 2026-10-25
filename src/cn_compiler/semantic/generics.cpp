@@ -438,6 +438,25 @@ cn::Optional<std::string> SemanticAnalyzer::instantiateGeneric(
         instanceName += "$" + types::canonical(a);
     }
 
+    // 1612（1025 采样轮·双侧病根治）：泛型 映射<K,V> 的键消费链（== 相等 +
+    //   桶索引 整64(键) 位模式，stdlib/映射集合.cn 210 行）对字符串键无法承载
+    //   （字符串无 整64() 位模式转换）——此前实例化后在泛型体单态化路径炸
+    //   stdlib 内部行诊断（不指用户行·不可引导）；v2 侧同形态曾宽松放行
+    //   （宿主拒 v2 过=零分叉缺陷）。字符串键正道=字符串映射<V> 特化类
+    //   （960 轮用户裁决两步走第一步）。实例化时对 K=字符串 特判早拒：
+    //   诊断指用户实例化行+引导文案（与 v2 实例化注册 早拒同文案·零分叉）。
+    //   拒绝名入 instantiatedGenerics_ 去重（首报一次——068 预扫描路径无用户
+    //   位置先报「未知位置」，后续真实位置位静默不重复刷屏）。
+    if (className == "映射" && types::canonical(args[0]) == "字符串") {
+        if (instantiatedGenerics_.insert(instanceName).second) {
+            diagnostics_.report(
+                DiagnosticLevel::Error, loc,
+                "泛型 '映射' 不支持字符串键——字符串键请使用 '字符串映射<V>'"
+                "（导入 映射集合::字符串映射）");
+        }
+        return std::nullopt;
+    }
+
     // 已实例化：直接返回（去重）
     if (instantiatedGenerics_.count(instanceName)) return instanceName;
     instantiatedGenerics_.insert(instanceName);
