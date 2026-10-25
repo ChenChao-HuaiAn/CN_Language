@@ -348,8 +348,30 @@ bool IRGenerator::tryGenStructPtrInit(VarDecl* node, ir::IRValue value,
         }
         const bool srcIsCall = node->initializer != nullptr &&
                                node->initializer->getType() == NodeType::CallExpr;
+        // 1589/1592：源聚合类型（合成体异型隐式转换判据——同型=原整块拷贝）。
+        //   内置构造器 正常/错误/某些 的产物类型恒=目标类型——exprSrcType 对此
+        //   读 resolvedType 会被泛型/多实例检查覆盖（1478 实镜：组乙 正常(边界盒)
+        //   残留 结果<边界盒,整32>）→ 构造器形态不传源类型（同型原路径）。
+        std::string initSrcCanon;
+        bool ctorInit1589 = false;
+        if (node->initializer != nullptr &&
+            node->initializer->getType() == NodeType::CallExpr) {
+            const CallExpr* ice = static_cast<const CallExpr*>(node->initializer.get());
+            if (ice->callee != nullptr &&
+                ice->callee->getType() == NodeType::IdentifierExpr) {
+                const std::string& ctorName =
+                    static_cast<const IdentifierExpr*>(ice->callee.get())->name;
+                ctorInit1589 = (ctorName == "正常" || ctorName == "错误" ||
+                                ctorName == "某些");
+            }
+        }
+        if (node->initializer != nullptr && !ctorInit1589) {
+            initSrcCanon =
+                types::canonical(exprSrcType(node->initializer.get()).value_or(""));
+        }
         emitStructCopyWithFields(dstAddr, value, declCanon, node->location,
-                                 /*preFree=*/false, /*deepCopy=*/!srcIsCall);
+                                 /*preFree=*/false, /*deepCopy=*/!srcIsCall,
+                                 initSrcCanon);
         // 182（1019·008 树）：结果/可选<析构类> 局部变量盒亡登记（变量级·
         //   v2 946 变量模型同构）——调用返回接收盒（装盒() 形态）889 表达式面
         //   不盖（pendingBoxCopies 仅 正常(类值) 字面量位·返回位豁免）=盒亡

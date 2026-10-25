@@ -605,6 +605,22 @@ bool IRGenerator::identifierStructWholeAssign(AssignmentExpr* node, IdentifierEx
         } else {
             srcAddr = lvalueAddress(node->value.get());
         }
+        // 1589/1592：源聚合类型透传——结果/可选 异型隐式转换逐字段值保真；
+        //   内置构造器 正常/错误/某些 产物类型恒=目标类型（resolvedType 可能被
+        //   泛型多实例覆盖·1478 实镜）→ 不传源类型（同型原路径）。
+        std::string convSrcCanon = valueCanon;
+        if (node->value != nullptr &&
+            node->value->getType() == NodeType::CallExpr) {
+            const CallExpr* vcIce = static_cast<const CallExpr*>(node->value.get());
+            if (vcIce->callee != nullptr &&
+                vcIce->callee->getType() == NodeType::IdentifierExpr) {
+                const std::string& vcName =
+                    static_cast<const IdentifierExpr*>(vcIce->callee.get())->name;
+                if (vcName == "正常" || vcName == "错误" || vcName == "某些") {
+                    convSrcCanon.clear();
+                }
+            }
+        }
         // 2026-08-25 方案A：结构体拷贝构造语义——目标类型有拷贝构造
         //   （类名(类名& 其他)）时，按值拷贝改为调用拷贝构造（深拷贝），
         //   而非 CopyStruct 浅拷贝（含裸指针结构体浅拷贝析构双释放 0xC0000374）。
@@ -635,7 +651,8 @@ bool IRGenerator::identifierStructWholeAssign(AssignmentExpr* node, IdentifierEx
                                      node->location,
                                      /*preFree=*/isOwnedFieldSlot(unique),
                                      /*deepCopy=*/!isStructReturnCall &&
-                                         !isChainedAssign);
+                                         !isChainedAssign,
+                                     convSrcCanon);
         }
         lastExpr_ = value;
         return true;
@@ -679,7 +696,12 @@ cn::Optional<std::string> IRGenerator::assignValueSrcType(AssignmentExpr* node,
         //   落入默认 Store 只存 8 字节地址（读取结果 = retbuf 地址），
         //   .正常/.值 读到地址值导致越界判断失效（Task 6.1 E2E 发现）。
         isStructReturnCall = true;
-        valueSrcType = targetSrcType;
+        // 1589/1592：优先真实返回类型（合成体 结果<A,B> -> 结果<C,D> 调用返回
+        //   赋值须按真实源载荷转换）；不可推导时回落目标类型（既有同型假定）。
+        const cn::Optional<std::string> callSrc = exprSrcType(node->value.get());
+        valueSrcType = (callSrc.has_value() && !callSrc.value().empty())
+                           ? callSrc.value()
+                           : targetSrcType;
     } else if (node->value->getType() == NodeType::TernaryExpr) {
         // 86-a（2026-09-12 复审缺陷①）：三元聚合右值——类型递归两分支推导
         //   （exprSrcType 单一事实源，86-a 新增 TernaryExpr 分支）。原缺此

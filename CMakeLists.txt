@@ -327,6 +327,7 @@ add_library(cn_compiler_ir STATIC
     src/cn_compiler/ir/ir_oop_op_overload.cpp
     src/cn_compiler/ir/ir_error_ctor.cpp
     src/cn_compiler/ir/ir_fields.cpp
+    src/cn_compiler/ir/ir_synthetic_conv.cpp
     src/cn_compiler/ir/ir_generic_func.cpp
     src/cn_compiler/ir/ir_verify.cpp
 )

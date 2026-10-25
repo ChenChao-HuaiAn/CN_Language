@@ -686,11 +686,15 @@ private:
     void emitOwnedStrFieldPostCopy(const ir::IRValue& dstBase, const ir::IRValue& srcBase,
                                    const std::string& canon,
                                    const SourceLocation& loc);
-    // 结构体整体拷贝单一事实源：含串字段=preFree + memcpy + 深拷（postCopy）， 否则纯 memcpy（零开销——无串字段类型原路径不变）。
+    // 结构体整体拷贝单一事实源：含串字段=preFree + memcpy + 深拷（postCopy）， 否则纯 memcpy（零开销——无串字段类型原路径不变）；srcCanon=源聚合类型（1589/1592 异型合成体转换判据）。
     void emitStructCopyWithFields(const ir::IRValue& dstAddr, const ir::IRValue& srcAddr,
                                   const std::string& canon,
                                   const SourceLocation& loc, bool preFree,
-                                  bool deepCopy = true);
+                                  bool deepCopy = true, const std::string& srcCanon = std::string());
+    // 1589/1592：结果/可选 异型隐式转换——同型/等价载荷假（原路径），异型逐字段值保真（读源码/Cast/写目标码）；非标量载荷显形。
+    bool emitSyntheticConvCopyIfNeeded(const ir::IRValue& dstAddr, const ir::IRValue& srcAddr,
+                                       const std::string& dstCanonRaw, const std::string& srcCanonRaw,
+                                       const SourceLocation& loc, bool deepCopy);
     // 183-a：聚合自赋值运行时守卫（dst≡src → 拷贝段 no-op）——begin 发射 「Eq + Branch」并切入拷贝块，返回汇合块标签；end 在拷贝段尾发射跳转
     std::string beginSelfAssignGuard(const ir::IRValue& dstAddr, const ir::IRValue& srcAddr,
                                      const SourceLocation& loc);

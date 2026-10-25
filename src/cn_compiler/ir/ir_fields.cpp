@@ -688,8 +688,11 @@ void IRGenerator::emitStructCopyWithFields(const ir::IRValue& dstAddr,
                                            const ir::IRValue& srcAddr,
                                            const std::string& canon,
                                            const SourceLocation& loc,
-                                           bool preFree, bool deepCopy) {
+                                           bool preFree, bool deepCopy,
+                                           const std::string& srcCanon) {
     if (semantic_ == nullptr) return;
+    // 1589/1592：合成体异型隐式转换（同型/等价载荷=假 → 原路径；异型已接管）
+    if (emitSyntheticConvCopyIfNeeded(dstAddr, srcAddr, canon, srcCanon, loc, deepCopy)) return;
     const std::vector<OwnedStrField> fields = ownedStrFieldsOf(canon);
     if (fields.empty()) {
         const int size = semantic_->typeSizeOf(types::canonical(canon)).value_or(8);
