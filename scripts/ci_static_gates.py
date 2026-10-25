@@ -41,6 +41,11 @@ def 静态门禁清单(cn, 平台) -> tuple:
                   #   同步表=并行漏平移产物静默漂移。纯源码静态核对（缺失/陈旧/
                   #   未分类+接线），与 L1 gate_quick 静态段/win 全量 ci.ps1 同口径。
                   ("check_parallel_prefix", []),
+                  # 1376：程序缓存键输入面审计——1156 缓存键完备性机械化（登记表
+                  #   driver_program_cache_inputs.hpp ⇔ 实现/文档双向对账：新增编译
+                  #   输入/闭包字段/环境开关未登记=红；登记项消失/证据锚失效=红）。
+                  #   秒级纯源码，与 L1 gate_quick 静态段/win 全量 ci.ps1 同口径。
+                  ("check_program_cache_key_audit", []),
                   # 1219：并行 codegen 产物确定性常态门禁——并行4/4/2+自动+
                   #   串行五口径逐字节对照（4 样本×三后端=60 次 compile），
                   #   观测通道断言 parallel/workers 实际数/shifted 平移面覆盖；

@@ -22,6 +22,10 @@
 #include <string>
 #include <vector>
 
+// 1376：键输入面登记表=门禁单一事实源；此处 include 兼作编译期格式校验
+//   （表/角色/载体语法错误在本翻译单元直接暴露，而不是等门禁解析失败）。
+#include "cn_compiler/driver/driver_program_cache_inputs.hpp"
+
 namespace cn_compiler {
 namespace driver {
 namespace {
@@ -215,8 +219,15 @@ bool loadProgramCache(const std::string& dir, const std::string& entryFilePath,
     entry = ProgramCacheEntry();
     const std::string cacheFile = cacheFilePath(dir, entryFilePath, options);
     std::vector<char> buf;
-    if (!cacheReadWholeFile(cacheFile, buf, kMaxFileBytes)) {
+    // 1376/1431：路径不存在=正常未命中（首次构建）；存在但读不出（空文件/不可读/
+    //   超限）=损坏条目，必须显形回退。
+    // 静默豁免运行时API: stat 失败=条目不存在（正常未命中·按首建计数并回退完整编译）
+    if (!cacheEntryPathExists(cacheFile)) {
         g_stats.missNew += 1;
+        return false;
+    }
+    if (!cacheReadWholeFile(cacheFile, buf, kMaxFileBytes)) {
+        warnCorrupt("文件不可读或尺寸非法", cacheFile);
         return false;
     }
     if (buf.size() < kCacheHeaderBytes) {

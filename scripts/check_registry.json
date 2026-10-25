@@ -282,6 +282,14 @@
    "检查网层": 9,
    "说明": "1217 立（001 §1.1a① 悬垂零容忍）：Linux/WSL g++/clang++ 两口径独立编译 Peephole* 单测（窥孔两实现 TU+四单测 TU+随仓 gtest，不依赖完整工程）——①ASan+UBSan（-fsanitize=address,undefined -fno-sanitize-recover=all -D_GLIBCXX_ASSERTIONS）检出就地改写后旧视图 UAF（EXPECT_DEATH 匹配 heap-use-after-free）与边界/随机语料越界；②-D_GLIBCXX_DEBUG+_GLIBCXX_ASSERTIONS 跑 string_view/容器越界断言。P2 加固（增量复审）：源码 TEST 集合 S 与 --gtest_list_tests 集合 L 差集推导（ASan S-L={SKIP 例}、debug S-L={两条死亡例}、L-S 空）+关键名双向断言（防宏失效/同数顶替）+运行汇总自洽（通过+跳过==总数、总数==清单数）+SKIP 零容忍+FAILED 零容忍——不再硬编码总数；判别力自测=scripts/test_check_peephole_sanitizer.py（假输出正反例·显式失败·PYTHONOPTIMIZE=1 仍有效）已挂 gate_quick L1 静态段。Windows 口径=诚实边界（经 WSL 执行）",
    "v5执行面": "L1 静态段（仅判别力自测 scripts/test_check_peephole_sanitizer.py·秒级零编译器；2026-10-23 复审 P2-4）+人工轮/专项（完整 sanitizer 编译跑·Linux/WSL g++）：python3 scripts/check_peephole_sanitizer.py（完整跑挂 #1486）"
+  },
+  {
+   "名称": "程序缓存键输入面审计门禁",
+   "脚本": "scripts/check_program_cache_key_audit.py",
+   "组": "ci常规",
+   "检查网层": 9,
+   "说明": "1376：程序级缓存键（1156）输入面机械对账——结构化登记表（driver_program_cache_inputs.hpp）⇔ 实现代码/文档双向核对：DriverOptions/ProgramUnitKey/CargoDependency 新增字段、键构造新增 options.*/unit.* 引用、驱动层新增 CN_* 环境开关未登记=红；登记项在实现中消失/证据锚失效=红；--selftest 正反两态九例。",
+   "v5执行面": "L1 gate_quick 静态段+自测+云端静态段（ci_static_gates）+win全量"
   }
  ]
 }

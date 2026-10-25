@@ -838,12 +838,25 @@ int runModulePipeline(const std::string& entryFile, const DriverOptions& options
     if (programCacheOn) {
         bool needStore = true;
         if (programCacheHit) {
-            const bool matched = (cachedProgram.asmText == output.asmText);
+            // 1376/1431：比对面=汇编产物 + 两份警告文本（human/JSON）——与 v2 1273
+            //   验证通道同族。只比汇编会放行「校验和合法的伪造警告载荷」：命中后
+            //   重放出错误警告=stderr 面静默错输出（v2 已双面比对·宿主补齐零分叉）。
+            const bool asmMatched = (cachedProgram.asmText == output.asmText);
+            const bool warnMatched = (cachedProgram.warningsHuman == warnHuman) &&
+                                     (cachedProgram.warningsJson == warnJson);
+            const bool matched = asmMatched && warnMatched;
             noteProgramCacheVerifyResult(matched);
-            if (!matched) {
+            if (!asmMatched) {
                 std::fprintf(stderr,
                              "错误: [程序缓存验证] 命中产物与重编译产物不一致"
                              "（以重编译产物为准并覆盖缓存）\n");
+            }
+            if (!warnMatched) {
+                std::fprintf(stderr,
+                             "错误: [程序缓存验证] 命中警告与重编译警告不一致"
+                             "（以重编译产物为准并覆盖缓存）\n");
+            }
+            if (!matched) {
                 // 1213·P2-4：先删坏条目再写新产物——写入失败时也不留下「命中但
                 //   过期」的旧产物；删除失败无条件显形（重建写入若再失败则坏条目
                 //   残留，必须是可见告警而非 verbose 提示）。

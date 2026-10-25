@@ -45,6 +45,11 @@ std::string cacheKeyHex(const CacheKey128& key);
 bool cacheDirExists(const std::string& path);
 bool cacheEnsureDir(const std::string& path);
 
+// 缓存条目路径是否存在（任意文件类型·stat 判据）：用于区分「不存在=正常未命中」
+//   与「存在但不可读/为空/超限=损坏条目须显形」（1376/1431·空文件曾静默按未命中
+//   处理——与「损坏必须显形回退」契约不符）。
+bool cacheEntryPathExists(const std::string& path);
+
 // 整文件读取：文件缺失/不可读/尺寸非正/超过 maxBytes 均返回 false（调用方按未命中处置）
 bool cacheReadWholeFile(const std::string& path, std::vector<char>& out,
                         std::size_t maxBytes);

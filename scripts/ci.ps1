@@ -59,6 +59,10 @@ Write-Host "[CI] 0.92/4 并行 codegen 标签前缀表守卫（1170·1145 并行
 python scripts/check_parallel_prefix.py
 if ($LASTEXITCODE -ne 0) { Write-Host "[CI] 并行 codegen 标签前缀表守卫失败" -ForegroundColor Red; exit 1 }
 
+Write-Host "[CI] 0.93/4 程序缓存键输入面审计门禁（1376·1156 缓存键完备性机械化：登记表 driver_program_cache_inputs.hpp ⇔ 实现/文档双向对账——新增编译输入/闭包字段/环境开关未登记=红；登记项消失/证据锚失效=红）..." -ForegroundColor Cyan
+python scripts/check_program_cache_key_audit.py
+if ($LASTEXITCODE -ne 0) { Write-Host "[CI] 程序缓存键输入面审计门禁失败" -ForegroundColor Red; exit 1 }
+
 Write-Host "[CI] 1/4 构建（/W4 /WX 零警告门禁）..." -ForegroundColor Cyan
 & powershell -ExecutionPolicy Bypass -File build.ps1 -Config Debug
 if ($LASTEXITCODE -ne 0) { Write-Host "[CI] 构建失败" -ForegroundColor Red; exit 1 }

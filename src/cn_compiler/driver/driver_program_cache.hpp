@@ -2,13 +2,17 @@
 // 职责：对「完整编译输入」做产物级缓存——输入内容全哈希命中后直接复用汇编文本，
 //   跳过语义分析/IR/优化/代码生成（加载段仍走 AST 缓存），as/link 由调用方执行。
 // 缓存键完备性（任一遗漏=静默错产物，故逐项入键）：
-//   1. 编译器自身身份（可执行文件内容哈希）：源码/构建配置任何变化=键变
+//   1. 编译器身份（可执行文件内容哈希）：源码/构建配置任何变化=键变
 //   2. 缓存键格式版本（键组成本身变化须递增）
-//   3. 全模块闭包（拓扑序）：模块名 + 文件路径 + 源内容 128 位摘要 + moduleDir +
+//   3. 源闭包（拓扑序全模块）：模块名 + 文件路径 + 源内容 128 位摘要 + moduleDir +
 //      pkgRoot + isEntryUnit + cargoPkgRoot（源内容含 stdlib/导入闭包全部文件）
 //   4. 编译选项：target/optLevel/useRegAlloc/debugInfo/releaseMode/useCfi/
 //      requireEntryMain + 排序后的宏集合（-D 与货舱 [特性] 已并入）
 //   5. 货舱 [依赖] 包名清单（并入 program->loadedModules 影响语义判定）
+//   6. 条目身份（文件名签名）：入口路径 + 上述选项 + 排序宏集合
+// ★输入面唯一权威=driver_program_cache_inputs.hpp 的结构化登记表（任务 1376）：
+//   新增任何影响产物的输入必须登记，L1 门禁 check_program_cache_key_audit 与
+//   实现/本注释逐项对账（代码有表无=红·表有代码无=红·证据锚消失=红）。
 // 显式旁路：--验证-ir（保留验证副作用）；CN_NO_PROGRAM_CACHE=1 逃生门。
 // 存放：<项目根>/target/cache/program/<键32hex>.cnpg（gitignore 面）；
 //   CN_PROGRAM_CACHE_DIR 覆盖；tmp+rename 原子写；损坏/版本不符显形回退重编译。
@@ -55,7 +59,7 @@ bool computeProgramCacheKey(const std::vector<ProgramUnitKey>& units,
 
 // 命中读取：魔数/键/长度/校验和全部通过才返回 true（valid=true）；
 //   文件缺失=普通未命中（计数），键不符=陈旧（内容/编译器已变·正常重建），
-//   损坏=stderr 显形 + 未命中（回退重编译）。
+//   损坏（含空文件/不可读/版本不符）=stderr 显形 + 未命中（回退重编译）。
 //   dir=缓存目录；entryFilePath=入口文件（与选项签名共同决定条目文件名——同一
 //   入口的旧版产物被新版覆盖，磁盘占用按入口而非按内容版本累积）。
 bool loadProgramCache(const std::string& dir, const std::string& entryFilePath,

@@ -120,6 +120,10 @@ print("== L1 快速门禁（920·提交前）==", flush=True)
 #    1170 增并行 codegen 标签前缀表守卫——1145 并行发射按三后端 prefix 表平移函数内
 #    局部标签编号；新增 ptrCheckCounter_ 派生前缀未同步表=并行漏平移产物静默漂移。
 #    机械核对「发射源 ⇔ 前缀表」三面（缺失/陈旧/未分类）+并行入口接线。
+#    1376 增程序缓存键输入面审计——1156 缓存键完备性原靠人工逐项审计；结构化登记表
+#    （driver_program_cache_inputs.hpp）⇔ 实现/文档双向对账：新增编译输入/闭包字段/
+#    环境开关未登记=红（代码有表无），登记项在实现中消失/证据锚失效=红（表有代码无）。
+#    秒级纯源码，--selftest 正反两态（自测挂 L1 独立步骤·下方 ③.45 附近）。
 #    894 增验证机器自身考核——「考官被考」缺口（云端验证机器报绿是否可信）：坏结果
 #    注入四态（绿/红/超时/空结果）× 三端判定面（聚合/落盘上报/解析放行/服务端存储/
 #    跨端管线）+ 元断言（判别力自证·防自检空转）；a 面阴性对照轮设计=plans/028 §十六。
@@ -127,9 +131,16 @@ print("== L1 快速门禁（920·提交前）==", flush=True)
 for 名 in ("check_ascii_idents", "check_keywords_sync", "check_registry_audit",
            "check_case_numbers", "check_miss_gate", "check_deploy_manifest",
            "check_syntax_semantic_sync", "check_verifier_selfcheck",
-           "check_parallel_prefix"):
+           "check_parallel_prefix", "check_program_cache_key_audit"):
     if not 步(名, [sys.executable, f"scripts/{名}.py"], 超时秒=静态超时):
         raise SystemExit(1)
+# 1376：程序缓存键审计门禁判别力自测（纯 fixture 副本·零构建·秒级）——正反两态
+#   九例（基线绿/去登记红/新字段红/幽灵登记红/键构造新增红/新环境开关红/锚失效红/
+#   条目身份缺项红/文档缺类别红），防门禁自身退化（与 120/894 自测同哲学）。
+if not 步("程序缓存键审计自测",
+          [sys.executable, "scripts/check_program_cache_key_audit.py", "--selftest"],
+          超时秒=静态超时):
+    raise SystemExit(1)
 # 1220：并行 codegen 工作线程失败传播断言器自测（纯合成夹具·零编译器·秒级）——
 #   真实负测（注入任务异常/空文本/线程创建失败）由 ③.46 并行确定性门禁链式执行；
 #   此处锁断言器判别力（正例必绿/每类违约必红），防自测自身退化。
@@ -306,14 +317,20 @@ _写集, _写集失败 = 写集推导()
 #     写（3 轮）/编译器身份/键编码；
 #   ② test_cache_invalidation_matrix.py（1213）：AST+程序缓存双级六类失效键完备性
 #     （每类断言必失效且只失效对应条目）+ CN_AST_CACHE_VERIFY/CN_PROGRAM_CACHE_VERIFY
-#     双路径命中后完整重编译逐字节对照（含漂移注入真抓捕）。
+#     双路径命中后完整重编译逐字节对照（含漂移注入真抓捕）；
+#   ③ test_host_program_cache.py（1431）：宿主程序缓存七组场景回归（条目身份/内容键/
+#     宏集合/损坏五形态/编译器身份/VERIFY 伪造抓捕/警告重放·实测 ~20s）——复用 1273
+#     testlib 通用 harness（计数器/统计解析）+ 宿主 CNPGMC01 专有解析。
 _触及缓存面 = _写集 is None or any(
     p.startswith(("src/cn_compiler/driver/driver_ast_cache.",
                   "src/cn_compiler/driver/driver_program_cache.",
+                  "src/cn_compiler/driver/driver_program_cache_inputs.",
                   "src/cn_compiler/driver/driver_cache_util.",
                   "src/cn_compiler/model/ast_serialize",
                   "scripts/test_ast_cache_env_key.py",
-                  "scripts/test_cache_invalidation_matrix.py"))
+                  "scripts/test_cache_invalidation_matrix.py",
+                  "scripts/test_host_program_cache.py",
+                  "scripts/host_program_cache_testlib.py"))
     for p in _写集)
 if not _触及缓存面:
     print("[verify] 写集未触两级缓存实现面——跳过缓存正确性自测（云端全量兜底）", flush=True)
@@ -327,6 +344,13 @@ else:
             sys.executable, "scripts/test_cache_invalidation_matrix.py",
             "--cn", str(单测.parent / ("cn.exe" if 是win else "cn"))],
              超时秒=_超时("CN_GATE_STATIC_TIMEOUT", 600)):
+        raise SystemExit(1)
+    # 1431：宿主程序缓存七组场景回归（真实 cn.exe 全链·~20s）——与 v2 1273 同族
+    #   规模（220 断言），写集触缓存实现面才跑（云端全量兜底）。
+    if not 步("宿主程序缓存回归(七组)", [
+            sys.executable, "scripts/test_host_program_cache.py",
+            "--cn", str(单测.parent / ("cn.exe" if 是win else "cn"))],
+             超时秒=_超时("CN_GATE_CACHE_TEST_TIMEOUT", 900)):
         raise SystemExit(1)
 
 if _写集 is None:

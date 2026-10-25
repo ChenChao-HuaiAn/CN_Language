@@ -168,6 +168,16 @@ bool cacheDirExists(const std::string& path) {
 #endif
 }
 
+bool cacheEntryPathExists(const std::string& path) {
+#ifdef _WIN32
+    struct _stat st;
+    return _stat(path.c_str(), &st) == 0;
+#else
+    struct stat st;
+    return stat(path.c_str(), &st) == 0;
+#endif
+}
+
 bool cacheEnsureDir(const std::string& path) {
     // 空路径=无目录可建：显式失败返回（调用方计入 storeFail），不做创建尝试
     if (path.empty()) return false;
