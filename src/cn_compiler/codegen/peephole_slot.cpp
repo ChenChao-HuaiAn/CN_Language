@@ -611,7 +611,14 @@ SlotOccCounter collectSlotCounts(const std::vector<std::string_view>& lines,
         while ((pos = ln.find(anchor, pos)) != std::string_view::npos) {
             hasAnchor[li] = 1;
             const std::size_t rb = ln.find(']', pos);
-            if (rb == std::string_view::npos) break;
+            // #1582：右界缺失=该锚点之后本行再无 ']'——续扫后续锚点而非中断本行
+            //   （不留「每行至多一个执行槽」隐性前提；当前 find 语义下续扫与 break
+            //   统计等价，右界口径若收紧形态校验则中断会漏计同键后文槽→「槽仅
+            //   两处」误判→误删 store）。
+            if (rb == std::string_view::npos) {
+                pos += anchor.size();
+                continue;
+            }
             occ.add(ln.substr(pos, rb - pos + 1));
             pos = rb + 1;
         }
