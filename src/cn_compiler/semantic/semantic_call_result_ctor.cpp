@@ -170,6 +170,25 @@ bool SemanticAnalyzer::checkBuiltinCtorCall(CallExpr* node) {
             ctorTargetStack_.pop_back();
         }
         deriveCtorResultType(node, builtinName, argType);
+        // 任务 094（原 checkBuiltinCtorCall 逻辑·#1588 拆分时遗漏，回归修复）：
+        //   装箱 move 语义对齐——IR 层 emitResultCtorValue 对「正常/某些 + 标识符
+        //   实参 + 字符串值类型 + 非借用污染 + 局部槽」真 move 清源槽；语义层
+        //   同判据 markMovedVar 挂既有已转移拦截（reportMovedUse），根除「装箱后
+        //   旧名编译不禁用、运行静默读空串」（550 负测锁定）。判据逐条对齐 IR：
+        //   ①仅 正常/某些（错误() 不清零）②实参纯标识符 ③值类型字符串
+        //   ④非借用污染（污染=借用装箱指针共享随源存活）⑤排除类字段（字段走
+        //   this 寻址·IR lookupVarName 空=不清零，标记即误禁）。
+        if ((builtinName == "正常" || builtinName == "某些") &&
+            node->arguments.size() == 1 &&
+            node->arguments[0]->getType() == NodeType::IdentifierExpr &&
+            types::canonicalEquals(argType, "字符串")) {
+            const std::string& srcName =
+                static_cast<const IdentifierExpr*>(node->arguments[0].get())
+                    ->name;
+            if (!isCurrentClassFieldName(srcName) && !isStrTainted(srcName)) {
+                markMovedVar(srcName, node->location.getLine());
+            }
+        }
         // 写回推导类型（Task 3.5 E2E 24 修复）：IR 层按 resolvedType 降级为
         //   合成结构体构造（分配槽 + 写 是否正常/是否某些 + 值/错误值）
         node->resolvedType = lastType_;

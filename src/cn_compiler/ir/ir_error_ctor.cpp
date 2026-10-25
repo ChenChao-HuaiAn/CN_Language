@@ -318,6 +318,26 @@ void IRGenerator::emitResultCtorStructPayload(CallExpr* node, ir::IRValue valAdd
                 "'）——语义层漏检（共享 AST 残留/目标校准遗漏），已报编译器缺陷");
     }
     const int size = semantic_->typeSizeOf(valueType).value_or(8);
+    // #1588 回归修复（678）：正常(无) 且目标载荷=结构体/合成体（如
+    //   结果<可选<整32>,整32> 的外层 T=可选<整32>）——无 是 NullLiteral，
+    //   genExpr 产物=空指针值 0，不是结构体地址；按位 CopyStruct 会从地址 0
+    //   读 size 字节（实测 C0000005）。语义=空载荷（合成体判别位 0+载荷 0）
+    //   → 按目标宽度零写（与 错误() 构造端零初始化同一设施形态；合成体布局
+    //   按 8 字节槽圆整，逐槽 8 字节清零不越界）。
+    if (node->arguments[0]->getType() == NodeType::NullLiteral) {
+        for (int off = 0; off < size; off += 8) {
+            ir::IRValue zero = emitResult(ir::Opcode::ConstInt, {}, "i64", "0",
+                                          node->location);
+            ir::IRValue addr = valAddr;
+            if (off != 0) {
+                addr = emitResult(ir::Opcode::FieldAddr, {valAddr}, "ptr",
+                                  std::to_string(off), node->location);
+            }
+            emit(ir::Opcode::StorePtr, {addr, zero}, ir::IRValue(), "", "ptr",
+                 node->location);
+        }
+        return;
+    }
     emit(ir::Opcode::CopyStruct, {valAddr, val}, ir::IRValue(),
          std::to_string(size), "void", node->location);
 }
