@@ -742,4 +742,32 @@ void SemanticAnalyzer::collectGuardMarks(Expr* cond, std::vector<std::string>& m
     }
 }
 
+// 1583：&& 短路条件链「逐操作数检查-打标」单点。
+//   现象：复合条件（甲 > 0 && 选项.有值 && 用户函数(...) 的守卫嵌套形态）内用户
+//   函数调用漏登记返回类型——IR 生成期 funcReturnTypeOf 查表 miss 报「内部错误:
+//   函数返回类型未登记」（宿主单侧红，v2 逐节点检查条件区无此缺陷）。
+//   根因：visitIfStmt 的 && 守卫短路路径只用 collectGuardMarks「收集」左子树标记、
+//   从不 checkExpr 左子树——左子树内的调用不经 visitCallExpr（resolvedSignature/
+//   resolvedType 不写回），参数检查/逻辑运算布尔域检查同被整段跳过。
+//   本函数按左→右操作数顺序：①全量 checkExpr（覆盖调用决议/参数检查/成员访问
+//   规则）；②逐操作数布尔域校验（等价整条条件 checkCondition 口径）；③命中守卫
+//   形态即 collectGuardMarks 打标——标记只向其右侧操作数传导（短路语义），
+//   真分支标记由调用方在链检查完毕后沿用 marked 维持。
+void SemanticAnalyzer::checkGuardChainOperands1583(
+    Expr* cond, const std::string& ctx, std::vector<std::string>& marked) {
+    // 入参非空=解析器恒建双操作数（checkExpr 链同款前置假设，无用户输入可达面）
+    if (cond->getType() == NodeType::BinaryExpr) {
+        auto* bin = static_cast<BinaryExpr*>(cond);
+        if (bin->op == Operator::AndAnd) {
+            // 先左后右：右侧仅在左侧为真时求值，左链守卫标记先落再查右
+            checkGuardChainOperands1583(bin->left.get(), ctx, marked);
+            checkGuardChainOperands1583(bin->right.get(), ctx, marked);
+            return;
+        }
+    }
+    const std::string operandType = checkExpr(cond);
+    checkCondition(operandType, cond->location, ctx);
+    collectGuardMarks(cond, marked);
+}
+
 } // namespace cn_compiler

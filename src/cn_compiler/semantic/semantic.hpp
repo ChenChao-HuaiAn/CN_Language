@@ -636,6 +636,10 @@ private:
     //   markChecked 对应检查类型（取反翻转 正常↔错误）；命中记入 marked 供成对
     //   unmark。&& 复合条件左右两侧递归收集（右侧在左侧为真下短路求值，状态传导）。
     void collectGuardMarks(Expr* cond, std::vector<std::string>& marked);
+    // 1583：&& 链「逐操作数检查-打标」——全量 checkExpr（补原守卫路径跳过左子树
+    //   致调用返回类型漏登记）+ 布尔域校验；命中守卫即打标（只向右传导）。
+    void checkGuardChainOperands1583(Expr* cond, const std::string& ctx,
+                                     std::vector<std::string>& marked);
     // 变量名提取（1360 结果化批3B：无值=对象非守卫可跟踪形态——原空串哨兵退役）
     static cn::Optional<std::string> objectVarName(Expr* object);
     // 将变量标记为已检查（进入 if 真分支时）

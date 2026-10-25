@@ -476,9 +476,13 @@ void SemanticAnalyzer::visitIfStmt(IfStmt* node) {
             std::vector<std::string> marked;
             collectGuardMarks(bin->left.get(), marked);
             if (!marked.empty()) {
-                collectGuardMarks(bin->right.get(), marked);
-                const std::string rhsType = checkExpr(bin->right.get());
-                checkCondition(rhsType, bin->right->location, "'如果'");
+                // 1583：预收集只作「链上有守卫」判定——撤销后按操作数顺序重做：
+                //   原实现预收集即终态=左子树从不 checkExpr（调用返回类型漏登记，
+                //   IR 报「未登记」），且右侧守卫标记会泄漏给左侧。真分支沿用 marked。
+                for (const auto& v : marked) { unmarkChecked(v); }
+                marked.clear();
+                checkGuardChainOperands1583(bin->left.get(), "'如果'", marked);
+                checkGuardChainOperands1583(bin->right.get(), "'如果'", marked);
                 // 010（def-init）：then/else 状态传播（手动归并——本路径
                 //   markChecked 配对顺序特殊，不走 defInitCheckIf 整体包装）
                 const std::unordered_set<std::string> diBase = uninitPlaces_;
