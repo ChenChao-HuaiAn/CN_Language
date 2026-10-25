@@ -16,8 +16,15 @@
 //        直接作为 Call 的结果寄存器（Call 的 result 复用，无重命名）
 //      - 返回：内联函数体单块且无分支，返回指令删除；
 //        termReturnValue 引用的寄存器即结果
-//   3. 安全性：寄存器 id 全局唯一（IRGenerator regCounter_ 模块级递增），
-//      内联后无寄存器冲突；参数唯一内部名替换为实参后无槽冲突
+//   3. 安全性：**callee 寄存器必须重编号**（1447 根治）——IR 生成器的虚拟
+//      寄存器编号是「每函数独立」命名空间（并非模块级全局唯一，原注释据此
+//      免改号的假设错误）。若直接复制，callee 的 vreg 与 caller 同号：同一
+//      编号先后被 i32 常量与 i128 值定义（1040 -O3 实录：内联常量返回后
+//      `常量整数 %v0 (i32)[42]` 与 `转换 %v0 42 (i128)` 同号，i128 消费端按
+//      双槽读 v0/v0+1，i32 ConstInt 只写低 4 字节 → 高半读到残留 42，Linux
+//      输出 774763251095801167914）。复制时全部结果/引用经 regIdMap 改到
+//      caller 现有最大编号之上；返回寄存器映射到调用点结果寄存器。
+//      参数唯一内部名替换为实参后无槽冲突
 //   4. 幂等：内联后 Call 指令被删除（替换为函数体指令），不再匹配
 // 英文API命名（GCC 7 不支持中文标识符），中文仅用于注释
 #pragma once
@@ -49,9 +56,10 @@ private:
     static bool isInlineable(const ir::IRFunction& fn,
                              const ir::IRModule& module);
 
-    // 将 callee 内联到 callInst 所在块（调用点），返回是否内联
-    static bool inlineCall(ir::IRBlock& callerBlock, ir::IRInstruction& callInst,
-                           const ir::IRFunction& callee);
+    // 将 callee 内联到 callInst 所在块（调用点），返回是否内联。
+    //   caller 用于取当前最大 vreg 编号（callee 寄存器重编号起点·1447）
+    static bool inlineCall(const ir::IRFunction& caller, ir::IRBlock& callerBlock,
+                           ir::IRInstruction& callInst, const ir::IRFunction& callee);
 };
 
 } // namespace opt
