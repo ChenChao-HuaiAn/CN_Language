@@ -19,21 +19,10 @@
 #include <vector>
 
 #include "cn_compiler/opt/inline.hpp"
+#include "cn_compiler/opt/opt_common.hpp"  // 1600：parseRegText 收敛公共布尔出参版（原 -1 哨兵私有副本删除）
 
 namespace cn_compiler {
 namespace opt {
-
-// 解析 "%vN" 文本为寄存器 id；失败返回 -1
-static int parseRegText(const std::string& text) {
-    if (text.size() > 2 && text[0] == '%' && text[1] == 'v') {
-        try {
-            return std::stoi(text.substr(2));
-        } catch (...) {
-            return -1;
-        }
-    }
-    return -1;
-}
 
 // 函数是否可内联（单块、指令数阈值、非递归、非入口、非 OOP、
 //   无 Alloca、无参数 Store、必须单块返回）
@@ -97,8 +86,10 @@ bool InlinePass::inlineCall(ir::IRBlock& callerBlock, ir::IRInstruction& callIns
                                              : callee.params[i].first;
         paramMap[unique] = callInst.operands[i];
     }
-    // 2. 返回值寄存器 -> 调用点结果寄存器 映射
-    const int retReg = parseRegText(callee.blocks[0]->termReturnValue);
+    // 2. 返回值寄存器 -> 调用点结果寄存器 映射（termReturnValue 非 %vN 形态=无返回值改名）
+    int retReg = -1;
+    const bool retRegOk = parseRegText(callee.blocks[0]->termReturnValue, retReg) &&
+                          validRegId(retReg);
     const int callerResult = callInst.result.id;
 
     // 3. 复制函数体指令（参数 Load 折叠 + regMap 应用）
@@ -124,7 +115,7 @@ bool InlinePass::inlineCall(ir::IRBlock& callerBlock, ir::IRInstruction& callIns
             }
         }
         // ---- 返回值寄存器改名（结果映射到调用点结果） ----
-        if (retReg >= 0 && callerResult >= 0) {
+        if (retRegOk && validRegId(callerResult)) {
             if (copy.result.id == retReg) copy.result.id = callerResult;
         }
         // ---- 引用点替换（regMap：参数 Load 结果 -> 实参） ----

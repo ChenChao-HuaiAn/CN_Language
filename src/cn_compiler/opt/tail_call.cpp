@@ -21,25 +21,10 @@
 #include <vector>
 
 #include "cn_compiler/opt/tail_call.hpp"
+#include "cn_compiler/opt/opt_common.hpp"  // 1600：parseRegText 收敛公共布尔出参版（原 -1 哨兵私有副本删除）
 
 namespace cn_compiler {
 namespace opt {
-
-namespace {
-
-// 解析 "%vN" 文本为寄存器 id；失败返回 -1
-int parseRegText(const std::string& text) {
-    if (text.size() > 2 && text[0] == '%' && text[1] == 'v') {
-        try {
-            return std::stoi(text.substr(2));
-        } catch (...) {
-            return -1;
-        }
-    }
-    return -1;
-}
-
-} // namespace
 
 // 单函数尾调用优化：将尾递归调用改写为"参数槽更新 + 跳回入口"
 bool TailCallPass::runFunction(ir::IRFunction& fn) {
@@ -72,8 +57,8 @@ bool TailCallPass::runFunction(ir::IRFunction& fn) {
     for (auto& block : fn.blocks) {
         // 尾调用块：终止为返回，返回值为 %vN
         if (!block->terminated || block->termKind != "返回") continue;
-        const int retReg = parseRegText(block->termReturnValue);
-        if (retReg < 0) continue;
+        int retReg = -1;
+        if (!parseRegText(block->termReturnValue, retReg) || !validRegId(retReg)) continue;
         // 块内最后一条指令必须是 Call（其结果即返回值）
         if (block->instructions.empty()) continue;
         const ir::IRInstruction& last = block->instructions.back();

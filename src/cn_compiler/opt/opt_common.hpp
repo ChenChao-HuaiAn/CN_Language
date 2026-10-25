@@ -177,6 +177,10 @@ inline bool parseRegText(const std::string& c, int& id) {
     return true;
 }
 
+// 寄存器 id 有效性判定（1600 收敛配套·与 IRValue「id=-1=无寄存器」约定一致；
+//   parseRegText 对 "%v-3" 形态解析成功但 id 非法，消费点须用本谓词一并拦截）。
+inline bool validRegId(int id) { return id >= 0; }
+
 // 沿寄存器替换链解析最终寄存器 id（%v3->%v1->%v0 解析为 %v0）。
 //   单层查表会留下中间寄存器：登记链（如代数简化 x*1 链）必须直达最终定义，
 //   否则替换后仍引用可能被 DCE 删除的中间结果。防环上限 64。

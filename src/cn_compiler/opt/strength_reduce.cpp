@@ -40,15 +40,16 @@ bool StrengthReducePass::parseIntText(const std::string& text,
     }
 }
 
-// 计算 2^n 的 n（value 为 2 的幂），非 2 的幂返回 -1
-int StrengthReducePass::powerOfTwo(unsigned long long value) {
-    if (value == 0) return -1;
+// 计算 2^n 的 n（value 为 2 的幂）；非 2 的幂（含 0）返回空（1600 结果化·原 -1 哨兵）
+cn::Optional<int> StrengthReducePass::powerOfTwo(unsigned long long value) {
+    if (value == 0) return std::nullopt;
     int n = 0;
     while ((value & 1ULL) == 0) {
         value >>= 1ULL;
         ++n;
     }
-    return (value == 1ULL) ? n : -1;
+    if (value != 1ULL) return std::nullopt;
+    return n;
 }
 
 // 削减单条 Mul/Div 指令（原地改 opcode/操作数），成功返回 true
@@ -74,11 +75,11 @@ bool StrengthReducePass::reduceInstruction(ir::IRInstruction& inst, bool mulMayO
         if (reg == nullptr || reg->id < 0) return false;
         unsigned long long val = 0;
         if (!parseIntText(cnst->extra, val)) return false;
-        const int n = powerOfTwo(val);
-        if (n < 0 || n > 63) return false;
+        const cn::Optional<int> n = powerOfTwo(val);
+        if (!n.has_value() || n.value() > 63) return false;
         // Mul x, 2^n -> Shl x, n
         inst.opcode = ir::Opcode::Shl;
-        inst.operands = {*reg, ir::IRValue::constant(std::to_string(n), "i32")};
+        inst.operands = {*reg, ir::IRValue::constant(std::to_string(n.value()), "i32")};
         return true;
     }
 
@@ -93,11 +94,11 @@ bool StrengthReducePass::reduceInstruction(ir::IRInstruction& inst, bool mulMayO
         if (b.isConstant && a.id >= 0) {
             unsigned long long val = 0;
             if (!parseIntText(b.extra, val)) return false;
-            const int n = powerOfTwo(val);
-            if (n < 0 || n > 63) return false;
+            const cn::Optional<int> n = powerOfTwo(val);
+            if (!n.has_value() || n.value() > 63) return false;
             // Div x, 2^n -> Shr x, n（逻辑右移）
             inst.opcode = ir::Opcode::Shr;
-            inst.operands = {a, ir::IRValue::constant(std::to_string(n), "i32")};
+            inst.operands = {a, ir::IRValue::constant(std::to_string(n.value()), "i32")};
             return true;
         }
     }
@@ -126,9 +127,11 @@ bool StrengthReducePass::tryExpandSignedDiv(ir::IRInstruction& inst,
     if (a.isConstant || a.id < 0 || !b.isConstant) return false;
     unsigned long long val = 0;
     if (!parseIntText(b.extra, val)) return false;
-    const int n = powerOfTwo(val);
+    const cn::Optional<int> nOpt = powerOfTwo(val);
     const int bits = intBitWidth(type);
-    if (n <= 0 || bits <= 0 || n >= bits) return false;
+    // n=0（除 1）无收益、n≥bits 越位宽：均跳过（116 注释在案的边界，行为不变）
+    if (!nOpt.has_value() || nOpt.value() <= 0 || bits <= 0 || nOpt.value() >= bits) return false;
+    const int n = nOpt.value();
     const unsigned long long mask = (1ULL << n) - 1ULL;
     const int t1 = nextReg++;
     const int t2 = nextReg++;

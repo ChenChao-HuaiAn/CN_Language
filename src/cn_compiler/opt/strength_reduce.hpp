@@ -22,6 +22,7 @@
 #include <string>
 #include <vector>
 
+#include "cn_compiler/common/optional_safe.hpp"
 #include "cn_compiler/ir/ir.hpp"
 #include "cn_compiler/opt/pass.hpp"
 
@@ -58,8 +59,8 @@ private:
     // 解析整型常量文本为十进制（支持 0x/0b/0o 前缀），失败返回 false
     static bool parseIntText(const std::string& text, unsigned long long& out);
 
-    // 计算 2^n 的 n（value 为 2 的幂），非 2 的幂返回 -1
-    static int powerOfTwo(unsigned long long value);
+    // 计算 2^n 的 n（value 为 2 的幂）；非 2 的幂（含 0）返回空（1600 结果化·原 -1 哨兵）
+    static cn::Optional<int> powerOfTwo(unsigned long long value);
 
     // F1-29 开关（构造参数；默认 false=保守）
     bool signedDivEnabled_ = false;
