@@ -71,6 +71,12 @@ bool SemanticAnalyzer::checkCtorCall(CallExpr* node, const std::string& classNam
         }
         const ClassInfo* ctorCls = findClass(className).value_or(nullptr);
         if (ctorCls != nullptr) {
+            // #994：构造调用返回类型写回（resolvedType）——隐式默认构造
+            //   （类名() 无显式构造）此前只写 lastType_，IR 实参清理登记查返回
+            //   类型时 resolvedType/签名键/裸名三路全 miss → 内部错误「调用实参
+            //   返回类型未登记」。构造产物类型=类名（canonical 归一；显式/默认
+            //   两条成功路径同值，错误路径中止编译不受影响）。
+            node->resolvedType = types::canonical(className);
             // 193：抽象类（含无实现体抽象方法）构造调用拒绝
             // 728j（2026-10-14）：诊断补未实现方法名清单（多层继承指路·
             //   v2 语义检查表达式.cn 同文案逐字一致）
