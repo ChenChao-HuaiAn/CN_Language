@@ -18,6 +18,10 @@
 
 namespace cn_compiler {
 
+// #1588：内置构造器上下文目标解析结果（定义在 semantic_call_result_ctor.cpp——
+//   语义层内部实现细节，头文件仅前向声明供成员函数签名引用）。
+struct CtorTargetInfo;
+
 // 语义分析器：构建符号表并做类型检查，产出诊断
 class SemanticAnalyzer : public AstVisitor, public ISemanticView {
 public:
@@ -323,8 +327,23 @@ private:
     // 55-c 方案A（2026-09-10 用户裁决，Rust E0308 对齐）：canConvertType 拒绝时的整数字面量豁免（源/目标均整数族·值表达式为字面量形态·含一元负号）
     bool checkTransferCall(CallExpr* node);
     bool checkWrapBuiltinCall(CallExpr* node);  // 474: 回绕内置（显式回绕·溢出检查豁免面）
-    // 族2：内置构造器 正常/错误/某些（原 433~490 段）
+    // 族2：内置构造器 正常/错误/某些（#1588 迁 semantic_call_result_ctor.cpp）
     bool checkBuiltinCtorCall(CallExpr* node);
+    // #1588：构造器结果类型推导（目标校准优先；无目标=实参类型+缺失侧补全）
+    void deriveCtorResultType(CallExpr* node, const std::string& builtinName,
+                              const std::string& argType);
+    // #1588：当前权威构造器目标类型（栈顶优先——空串元素=显式遮蔽；栈空回退
+    //   当前函数返回类型；结果已归一尖括号形态，空串=无目标）
+    std::string currentCtorTargetType() const;
+    // #1588：按目标类型校准构造器 resolvedType（实参位：形参类型在重载决议后
+    //   已知时回填；载荷不可转换=报可行动诊断）。返回 true=已采用目标类型。
+    bool calibrateCtorTargetType(CallExpr* node, const std::string& targetRaw);
+    // #1588：构造器载荷兼容性检查 / 失配诊断（校准与推导两路共用单点）。
+    void calibrateCtorPayload(CallExpr* node, const std::string& ctorName,
+                              const CtorTargetInfo& info);
+    void reportCtorPayloadMismatch(CallExpr* node, const std::string& ctorName,
+                                   const std::string& argType,
+                                   const CtorTargetInfo& info);
     // 族3：函数指针间接调用（原 949~981 段）；031（#1075）：绑定方法值调用（冻结线承载·同行并声明）
     bool checkFuncPtrCall(CallExpr* node, const std::string& calleeType); bool checkMethodValueCall(CallExpr* node, const std::string& calleeType);
     // 子族A：use 导入绑定名重写（原 semantic_call.cpp 273~311 段）

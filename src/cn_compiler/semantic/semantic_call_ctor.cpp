@@ -85,8 +85,13 @@ bool SemanticAnalyzer::checkCtorCall(CallExpr* node, const std::string& classNam
             // 查找构造函数（函数名 == 类名）。Debug 子任务修复（构造函数重载）：
             //   methods 表构造条目 key=sigKey（名#参数串），遍历按 isConstructor +
             //   ownerClass（排除父类构造，阶段A-3）+ 实参个数 + 类型可转换 匹配最优。
+            // #1588：实参位求值期间遮蔽外层目标（就近原则——外层声明/赋值目标
+            //   不得透传给构造实参；形参类型在选中后经 calibrateCtorTargetType
+            //   回填构造器目标）。
+            ctorTargetStack_.push_back(std::string());
             std::vector<std::string> argTypes =
                 collectCallArgTypes(node->arguments, node->location);
+            ctorTargetStack_.pop_back();
             const ClassMemberInfo* ctor = nullptr;
             const ClassMemberInfo* ctorExact = nullptr;
             for (const auto& mk : ctorCls->methods) {
@@ -121,6 +126,16 @@ bool SemanticAnalyzer::checkCtorCall(CallExpr* node, const std::string& classNam
             }
             if (ctorExact != nullptr) ctor = ctorExact;
             if (ctor != nullptr) {
+                // #1588：构造器实参目标校准（形参类型权威；argTypes 同步为校准后
+                //   类型，转换检查按真实类型判定——原按实参窄类型发射=高位垃圾）
+                for (std::size_t i = 0;
+                     i < node->arguments.size() && i < ctor->paramTypes.size(); ++i) {
+                    auto* argCall = dynamic_cast<CallExpr*>(node->arguments[i].get());
+                    if (argCall == nullptr) continue;
+                    if (calibrateCtorTargetType(argCall, ctor->paramTypes[i])) {
+                        argTypes[i] = argCall->resolvedType;
+                    }
+                }
                 const int selRequired =
                     static_cast<int>(ctor->paramTypes.size()) - ctor->defaultCount;
                 if (static_cast<int>(argTypes.size()) < selRequired ||

@@ -6,44 +6,8 @@
 
 namespace cn_compiler {
 
-[[maybe_unused]] inline std::string syntheticNameToTemplate(const std::string& name) {
-
-    static const std::string kResult = "结果$";
-
-    static const std::string kOpt = "可选$";
-
-    if (name.rfind(kResult, 0) == 0) {
-
-        const std::string rest = name.substr(kResult.size());
-
-        const std::size_t pos = rest.find('$');
-
-        if (pos == std::string::npos) return name;
-
-        const std::string t = rest.substr(0, pos);
-
-        const std::string e = rest.substr(pos + 1);
-
-        if (t.find('$') != std::string::npos || e.find('$') != std::string::npos) {
-
-            return name;  // 歧义（T/E 含 $）——保守不转换
-
-        }
-
-        return "结果<" + t + ", " + e + ">";
-
-    }
-
-    if (name.rfind(kOpt, 0) == 0) {
-
-        return "可选<" + name.substr(kOpt.size()) + ">";
-
-    }
-
-    return name;
-
-}
-
+// #1588：syntheticNameToTemplate（$ 合成名→尖括号模板）已下沉
+//   model/semantic_helpers.hpp（第二使用点出现=当场归纳中立层）。
 
 // ===== 族C：成员方法调用 对象.方法(实参) / 类名.静态方法(实参)（原 visitCallExpr 407~622 段）=====
 // 族C1：接口对象方法调用（原 413~475 段，接口方法经全局槽位运行时分派）。true = 已处理。
@@ -78,8 +42,20 @@ bool SemanticAnalyzer::checkInterfaceMethodCall(CallExpr* node, MemberExpr* mem,
                     lastType_ = "未知";
                     return true;
                 }
+                // #1588：实参位求值遮蔽外层目标 + 形参类型已知后回填构造器目标
+                ctorTargetStack_.push_back(std::string());
                 std::vector<std::string> argTypes =
                     collectCallArgTypes(node->arguments, node->location);
+                ctorTargetStack_.pop_back();
+                for (std::size_t i = 0;
+                     i < node->arguments.size() &&
+                     i < imit->second.paramTypes.size(); ++i) {
+                    auto* argCall = dynamic_cast<CallExpr*>(node->arguments[i].get());
+                    if (argCall == nullptr) continue;
+                    if (calibrateCtorTargetType(argCall, imit->second.paramTypes[i])) {
+                        argTypes[i] = argCall->resolvedType;
+                    }
+                }
                 if (argTypes.size() != imit->second.paramTypes.size()) {
                     diagnostics_.report(
                         DiagnosticLevel::Error, node->location,
@@ -363,8 +339,16 @@ bool SemanticAnalyzer::checkStaticMethodCall(CallExpr* node, const std::string& 
                                             const ClassMemberInfo* method) {
         if (method != nullptr && method->isStatic) {
             // 静态方法调用（类名.静态方法(...)）
+            // #1588：实参位求值遮蔽外层目标 + 形参类型已知后回填构造器目标
+            //   （本路径缺实参类型检查=独立缺陷，已另行立项；构造器目标校准
+            //   不依赖该检查——按形参类型权威回填）。
+            ctorTargetStack_.push_back(std::string());
             std::vector<std::string> argTypes =
                 collectCallArgTypes(node->arguments, node->location);
+            // 并集解冲突（1593 静态实参类型检查 × 1588 构造器目标回填）：
+            //   #1588 的 ctorTargetStack_ 出栈复原 + #1593 的字面量实参类型调整
+            //   互不依赖，同点共存。
+            ctorTargetStack_.pop_back();
             adjustLiteralArgTypes(argTypes, node->arguments);
             if (argTypes.size() != method->paramTypes.size()) {
                 diagnostics_.report(DiagnosticLevel::Error, node->location,
@@ -403,6 +387,14 @@ bool SemanticAnalyzer::checkStaticMethodCall(CallExpr* node, const std::string& 
                 }
             }
             // A-1（引用参数）：静态方法引用形参的实参自动取地址
+            for (std::size_t i = 0;
+                 i < node->arguments.size() && i < method->paramTypes.size(); ++i) {
+                auto* argCall = dynamic_cast<CallExpr*>(node->arguments[i].get());
+                if (argCall == nullptr) continue;
+                if (calibrateCtorTargetType(argCall, method->paramTypes[i])) {
+                    argTypes[i] = argCall->resolvedType;
+                }
+            }
             checkConstRefBorrowDiscipline(node, method->paramTypes,
                                               method->constParams);  // plans/019 阶段3b
                 wrapRefArgs(node, method->paramTypes);

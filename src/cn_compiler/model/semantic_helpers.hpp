@@ -121,6 +121,32 @@ inline std::string canonicalType(const std::string& type) {
     return types::canonical(type);
 }
 
+// #1588：合成体名 → 尖括号模板形态（结果$整64$整32 → 结果<整64, 整32>；
+//   可选$整64 → 可选<整64>）。构造器目标类型上下文（ctorTargetStack_）与
+//   目标校准的消费点（isResultType/resultTypeArgs/optionalTypeArg）只认尖括号
+//   形态；容器/泛型实例形参类型为 $ 形态。结果 的 T/E 段含 $ 时歧义——保守
+//   原样返回（不猜切分）。原为 semantic_call_member.cpp 文件内 inline（第二处
+//   使用点出现=当场归纳下沉中立层，防第三份复制）。
+[[maybe_unused]] inline std::string syntheticNameToTemplate(const std::string& name) {
+    static const std::string kResult = "结果$";
+    static const std::string kOpt = "可选$";
+    if (name.rfind(kResult, 0) == 0) {
+        const std::string rest = name.substr(kResult.size());
+        const std::size_t pos = rest.find('$');
+        if (pos == std::string::npos) return name;
+        const std::string t = rest.substr(0, pos);
+        const std::string e = rest.substr(pos + 1);
+        if (t.find('$') != std::string::npos || e.find('$') != std::string::npos) {
+            return name;  // 歧义（T/E 含 $）——保守不转换
+        }
+        return "结果<" + t + ", " + e + ">";
+    }
+    if (name.rfind(kOpt, 0) == 0) {
+        return "可选<" + name.substr(kOpt.size()) + ">";
+    }
+    return name;
+}
+
 // ==================== 函数指针类型工具（Task 2.2） ====================
 
 // 判断类型字符串是否为函数指针类型（函数指针<返回>(参数,...)）

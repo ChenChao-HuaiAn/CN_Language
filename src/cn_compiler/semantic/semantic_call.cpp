@@ -521,106 +521,6 @@ bool SemanticAnalyzer::checkWrapBuiltinCall(CallExpr* node) {
     return true;
 }
 
-// 族2：内置构造器 正常(值)/错误(值)/某些(值)（Task 3.5；原 visitCallExpr 433~490 段）——
-//   按「参数类型 + 返回上下文」推导实际 结果<T,E>/可选<T> 类型。
-bool SemanticAnalyzer::checkBuiltinCtorCall(CallExpr* node) {
-    // ---- 阶段3：内置构造器 正常(值)/错误(值)/某些(值)（Task 3.5）----
-    // 这些函数已注册在 functions_（纯名 key），但返回类型含占位符"自动"；
-    // 此处按"参数类型 + 返回上下文"推导实际 结果<T,E>/可选<T> 类型。
-    if (node->callee->getType() == NodeType::IdentifierExpr) {
-        const std::string builtinName =
-            static_cast<IdentifierExpr*>(node->callee.get())->name;
-        auto bit = functions_.find(builtinName);
-        if (bit != functions_.end() &&
-            (builtinName == "正常" || builtinName == "错误" || builtinName == "某些")) {
-            // 参数类型检查：正常/错误/某些 期望 1 个实参；例外——正常() 无参数
-            //   用于 结果<空类型,E>（空类型正常值，容器库 追加/删除 等返回
-            //   结果<空类型,整32> 的 返回 正常()，Task 6.1）。
-            if (node->arguments.size() != 1 &&
-                !(builtinName == "正常" && node->arguments.empty())) {
-                diagnostics_.report(DiagnosticLevel::Error, node->location,
-                                    "内置构造器 '" + builtinName + "' 期望 1 个实参");
-            }
-            std::string argType = "未知";
-            for (auto& arg : node->arguments) {
-                argType = checkExpr(arg.get());
-            }
-            // 正常() 无参数：正常值类型 = 返回上下文 T（结果<空类型,E> -> 空类型）
-            if (builtinName == "正常" && node->arguments.empty()) {
-                argType = "空类型";
-            }
-            // 构造器返回类型推导：
-            //   正常(v) -> 结果<typeof(v), E>（E 由返回上下文/默认整32 决定）
-            //   错误(v) -> 结果<T, typeof(v)>（T 由返回上下文/默认整32 决定）
-            //   某些(v) -> 可选<typeof(v)>
-            // 返回上下文推断（Task 3.5 E2E 24 修复）：构造器用于 返回 语句时，
-            //   从当前函数返回类型 结果<T,E> 取缺失的 T/E（如 打开配置 返回
-            //   结果<字符串,整32>，`返回 错误(5)` 的 T 推断为 字符串）。
-            std::string ctxT = "";
-            std::string ctxE = "";
-            if (!ctorTargetStack_.empty()) {
-                const std::string& target = ctorTargetStack_.back();
-                if (isResultType(target)) {
-                    const std::vector<std::string> targs = resultTypeArgs(target).value_or((std::vector<std::string>()));
-                    if (targs.size() == 2) {
-                        ctxT = targs[0];
-                        ctxE = targs[1];
-                    }
-                } else if (isOptionalType(target)) {
-                    ctxT = optionalTypeArg(target).value_or(std::string());
-                }
-            }
-            if (ctxT.empty() && ctxE.empty() &&
-                !currentReturnType_.empty() && isResultType(currentReturnType_)) {
-                const std::vector<std::string> args = resultTypeArgs(currentReturnType_).value_or((std::vector<std::string>()));
-                if (args.size() == 2) {
-                    ctxT = args[0];
-                    ctxE = args[1];
-                }
-            } else if (!currentReturnType_.empty() && isOptionalType(currentReturnType_)) {
-                ctxT = optionalTypeArg(currentReturnType_).value_or(std::string());
-            }
-            if (builtinName == "正常") {
-                const std::string e = (ctxE.empty() ? "整32" : ctxE);
-                lastType_ = "结果<" + (argType == "未知" ? "整32" : argType) + "," + e + ">";
-            } else if (builtinName == "错误") {
-                const std::string t = (ctxT.empty() ? "整32" : ctxT);
-                lastType_ = "结果<" + t + "," + (argType == "未知" ? "整32" : argType) + ">";
-            } else {
-                lastType_ = "可选<" + (argType == "未知" ? "整32" : argType) + ">";
-            }
-            // 任务 094（2026-09-29·008 树波 4）：装箱 move 语义对齐——IR 层
-            //   emitResultCtorValue（ir_error_ctor.cpp 70-a 设施）对「正常/某些 +
-            //   标识符实参 + 字符串值类型 + 非借用污染 + 局部槽」真 move 清源槽；
-            //   语义层同判据 markMovedVar 挂既有已转移拦截（reportMovedUse·
-            //   semantic_expr.cpp 标识符读主路径），根除「装箱后旧名编译不禁用、
-            //   运行静默读空串」（探针 p5/p5b 实锤：源输出空行）。判据逐条对齐：
-            //   ①仅 正常/某些（错误() 不清零=浅共享既有边界）②实参纯标识符
-            //   （转移(s) 实参=CallExpr·既有 markMovedVar 路径已覆盖）③值类型
-            //   字符串 ④非借用污染（isStrTainted——污染=借用装箱指针共享随源
-            //   存活，源合法可用·q1/q3 实证）⑤排除类字段（字段走 this 寻址·
-            //   IR lookupVarName 空=不清零·p6 实证字段装箱后仍可用，标记即误禁）。
-            //   Rust 对照：Ok(s)/Some(s) 对 String 即 move——源失效编译期拦截。
-            if ((builtinName == "正常" || builtinName == "某些") &&
-                node->arguments.size() == 1 &&
-                node->arguments[0]->getType() == NodeType::IdentifierExpr &&
-                types::canonicalEquals(argType, "字符串")) {
-                const std::string& srcName =
-                    static_cast<const IdentifierExpr*>(node->arguments[0].get())
-                        ->name;
-                if (!isCurrentClassFieldName(srcName) && !isStrTainted(srcName)) {
-                    markMovedVar(srcName, node->location.getLine());
-                }
-            }
-            // 写回推导类型（Task 3.5 E2E 24 修复）：IR 层按 resolvedType 降级为
-            //   合成结构体构造（分配槽 + 写 是否正常/是否某些 + 值/错误值）
-            node->resolvedType = lastType_;
-            return true;
-        }
-    }
-    return false;
-}
-
 // 族3：函数指针间接调用（回调(10, 20)；原 visitCallExpr 949~981 段）——参数数量/类型检查。
 bool SemanticAnalyzer::checkFuncPtrCall(CallExpr* node, const std::string& calleeType) {
     if (isFuncPtrType(calleeType)) {
@@ -641,7 +541,10 @@ bool SemanticAnalyzer::checkFuncPtrCall(CallExpr* node, const std::string& calle
         }
         // 参数类型检查
         for (std::size_t i = 0; i < node->arguments.size(); i++) {
+            // #1588：实参位目标=形参类型（构造器按目标载荷宽度发射）
+            ctorTargetStack_.push_back(syntheticNameToTemplate(paramTypes[i]));
             std::string argType = checkExpr(node->arguments[i].get());
+            ctorTargetStack_.pop_back();
             const std::string& paramType = paramTypes[i];
             if (!canConvertWithLiteral(node->arguments[i].get(), argType, paramType) &&
                 !canConvertArgNarrow(node->arguments[i].get(), argType, paramType)) {
@@ -866,8 +769,12 @@ bool SemanticAnalyzer::checkDirectCallFallback(CallExpr* node, const std::string
 bool SemanticAnalyzer::checkDirectCall(CallExpr* node, const std::string& calleeName) {
     if (checkVariadicBuiltinCall(node, calleeName)) return true;
         // 非变参直接调用：重载决议（先检查实参类型）
+        // #1588：实参位求值期间遮蔽外层目标（就近原则——外层声明/赋值目标不得
+        //   透传给实参表达式；形参类型在决议后经 calibrateCtorTargetType 回填）
+        ctorTargetStack_.push_back(std::string());
         std::vector<std::string> argTypes =
             collectCallArgTypes(node->arguments, node->location);
+        ctorTargetStack_.pop_back();
         // 217（027 波2a·001 §5.8a）：新线程 实参位可搬运检查——按值拷贝进新线程的
         //   值须可搬运（§1.1a① 编译期硬错误·Rust Send 对照）。置于重载决议之前：
         //   可搬运诊断是实参槽语义（先于形参签名不匹配诊断·双侧诊断面同构）。
@@ -914,6 +821,18 @@ bool SemanticAnalyzer::checkDirectCall(CallExpr* node, const std::string& callee
         node->resolvedSignature = sigKey;
         auto it = functions_.find(sigKey);
         const FunctionInfo& info = it->second;
+        // #1588：构造器实参目标校准——形参类型为权威目标（原实现按实参窄类型
+        //   发射临时合成体，被调方按宽目标 CopyStruct = 高位栈垃圾静默错值；
+        //   校准后 IR 按目标载荷宽度 Cast 写满）。argTypes 同步为校准后类型，
+        //   转换检查按真实类型判定。
+        for (std::size_t i = 0;
+             i < node->arguments.size() && i < info.paramTypes.size(); ++i) {
+            auto* argCall = dynamic_cast<CallExpr*>(node->arguments[i].get());
+            if (argCall == nullptr) continue;
+            if (calibrateCtorTargetType(argCall, info.paramTypes[i])) {
+                argTypes[i] = argCall->resolvedType;
+            }
+        }
         // plans/019 阶段4（2026-09-10）：安全区边界观察期——外部 函数 调用
         //   （FFI=C 边界，类型安全不保证）与裸释放（释放=手动内存管理）应在
         //   不安全 函数 内

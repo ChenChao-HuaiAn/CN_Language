@@ -497,7 +497,10 @@ void SemanticAnalyzer::visitStructInitExpr(StructInitExpr* node) {
                 InitListExpr* list = static_cast<InitListExpr*>(fieldPair.second.get());
                 const std::string elemType = canonicalType(types::arrayElemOf(fieldType));
                 for (auto& elem : list->elements) {
+                    // #1588：元素位目标=元素类型（构造器按目标载荷宽度发射）
+                    ctorTargetStack_.push_back(elemType);
                     std::string elemValueType = checkExpr(elem.get());
+                    ctorTargetStack_.pop_back();
                     if (!elemValueType.empty() && elemValueType != "未知" &&
                         !canConvertWithLiteral(elem.get(), elemValueType, elemType)) {
                         diagnostics_.report(DiagnosticLevel::Error, elem->location,
@@ -509,7 +512,10 @@ void SemanticAnalyzer::visitStructInitExpr(StructInitExpr* node) {
             continue;
         }
         // 值类型检查（嵌套结构体初始化递归检查：checkExpr 返回内层类型）
+        // #1588：字段位目标=字段类型（构造器按目标载荷宽度发射）
+        ctorTargetStack_.push_back(fieldType);
         std::string valueType = checkExpr(fieldPair.second.get());
+        ctorTargetStack_.pop_back();
         // 756（2026-10-18 用户裁决·枚举值域门槛）：枚举字段 i32 域——字段初值
         //   超域常量（枚举成员常量/字面量直存形态）编译期拒；v2 侧结构体构造
         //   脱糖为字段赋值进 检查标量隐式转换 同拒（探针 p2 双侧对齐实证）。

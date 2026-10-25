@@ -387,7 +387,10 @@ void SemanticAnalyzer::visitVarDecl(VarDecl* node) {
             // 每个元素须可隐式转换为数组元素类型（55-c 方案A：字面量元素豁免——
             //   `正32[2] a = { 5, 6 }` 等形态保留）
             for (auto& elem : initList->elements) {
+                // #1588：元素位目标=元素类型（构造器按目标载荷宽度发射）
+                ctorTargetStack_.push_back(elemType);
                 std::string elemInitType = checkExpr(elem.get());
+                ctorTargetStack_.pop_back();
                 // 869（234 立法执法面收口·v2 侧 869 同轮对齐）：值形态类切片
                 //   （派生类值 → 基类数组元素类型）=专用切片诊断；切片判定真=
                 //   已报，不再叠加「数组元素无法将」通用诊断。

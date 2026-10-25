@@ -940,16 +940,18 @@ private:
     bool handleUnaryOperatorOverload(UnaryExpr* node, const ir::IRValue& operand);
     // 名称是否为当前类的实例字段（非静态方法内、未被局部变量/参数遮蔽）
     bool isInstanceField(const std::string& name) const;
-    // 内置构造器降级（visitCallExpr 钩子，Task 3.5）：正常(值)/错误(值)/某些(值)-> 分配结果/可选合成结构体临时槽 + 写 是否正常/是否某些 + 值/错误值，
-    //   返回结构体地址（ptr）。返回 true 表示已处理（lastExpr_ 已设置）。
+    // 内置构造器降级（visitCallExpr 钩子，Task 3.5）：正常/错误/某些 -> 结果/可选合成结构体临时槽 + 写判别位与值，返回结构体地址（ptr）；true=已处理。
     bool handleResultCtor(CallExpr* node);
-    // 209-a（D1 行数整改）：handleResultCtor 拆分的两个族方法（宿主纯重构零行为变更）。
-    // 解析构造器目标类型：resolvedType 修复（returnTypeSrc 优先）+ 结果/可选 推导 ——输出合成结构体名与值字段类型；false=非构造器语境（交回原路径）。
+    // 209-a：handleResultCtor 族方法——解析构造器目标类型（returnTypeSrc 优先 + 结果/可选 推导·输出合成结构体名与值字段类型；false=非构造器语境）。
     bool resolveResultCtorTargetType(CallExpr* node, const std::string& name,
                                      std::string& structName, std::string& valueType);
     // 实参值写入：结构体值 CopyStruct 内联 / 标量按自然宽度 Cast+StorePtr； 70-a 装箱 move（正常/某些 + 字符串值 + 非污染 → 源槽清零）。
     void emitResultCtorValue(CallExpr* node, const std::string& name,
                              ir::IRValue valAddr, const std::string& valueType);
+    // #1588：emitResultCtorValue 拆族（原 130 行超红线）——结构体载荷同型守卫+CopyStruct / 标量按目标宽度 Cast+StorePtr / 类值深拷（异型结构体=内部错误·禁按位拷贝静默垃圾）。
+    void emitResultCtorStructPayload(CallExpr* node, ir::IRValue valAddr, const std::string& valueType, ir::IRValue val);
+    void emitResultCtorScalarPayload(ir::IRValue valAddr, const std::string& valueType, ir::IRValue val, const SourceLocation& loc);
+    void emitResultCtorClassDeepCopy(CallExpr* node, const std::string& name, ir::IRValue valAddr, const std::string& valueType, ir::IRValue& val);
     // 生成 实例字段地址：this 指针（Load 自身参数槽）+ FieldAddr(类字段偏移)
     ir::IRValue genInstanceFieldAddr(const std::string& fieldName, const SourceLocation& loc);
     // 生成 静态字段地址：ConstString 常量携带 ?static_类名_字段名 链接符号

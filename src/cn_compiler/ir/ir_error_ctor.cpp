@@ -223,9 +223,11 @@ bool IRGenerator::resolveResultCtorTargetType(CallExpr* node, const std::string&
     return true;
 }
 
-// 209-a：族② 实参值写入——结构体值 CopyStruct 内联拷贝（2026-08-25 根治：地址当数据）/
-//   标量按值类型自然宽度 Cast+StorePtr（整32->i32 等）；70-a 装箱 move（正常/某些+
-//   字符串值+非污染 → 源槽清零，与 转移() 浅交接同模型）。
+// 209-a：族② 实参值写入入口——求值（结构体字面量物化/普通表达式）→ 类值深拷
+//   分叉 → 载荷按**目标载荷类型**宽度写入（结构体 CopyStruct / 标量 Cast+StorePtr）；
+//   70-a 装箱 move（正常/某些+字符串值+非污染 → 源槽清零，与 转移() 浅交接同模型）。
+//   #1588：原单函数 130 行超 100 行红线，按「先拆再加」拆出类深拷/结构体载荷/
+//   标量载荷三族；结构体载荷新增同型守卫（禁静默按位拷贝，见子函数注释）。
 void IRGenerator::emitResultCtorValue(CallExpr* node, const std::string& name,
                                       ir::IRValue valAddr, const std::string& valueType) {
     // 实参值（构造器单参数）
@@ -233,7 +235,7 @@ void IRGenerator::emitResultCtorValue(CallExpr* node, const std::string& name,
         ir::IRValue val;
         // 067-002 治本（合成体消费面同族·d3 最小复现）：结构体字面量实参须
         //   物化（复用 81-a materializeStructInitArg 单点设施）——原 genExpr
-        //   直通字面量节点返回空值 0 → 下方 CopyStruct 源=NULL 运行崩溃
+        //   直通字面量节点返回空值 0 → CopyStruct 源=NULL 运行崩溃
         //   （宿主 asm 铁证 `mov rsi,0` + `rep movsb`，d3/d2/546 实测
         //   0xC0000005）。普通调用（46-a D3）与方法调用（81-a）路径早已物化，
         //   内置构造器路径遗漏。Rust 对照：值上下文临时 place 物化。
@@ -244,94 +246,21 @@ void IRGenerator::emitResultCtorValue(CallExpr* node, const std::string& name,
         } else {
             val = genExpr(node->arguments[0].get());
         }
-        // 任务 100（2026-09-29·008 树波 4）：类值装箱**统一深拷**——有析构∧有
-        //   拷贝构造类实参：NewObject+拷贝构造（源=实参左值地址）产出独立副本
-        //   句柄存盒。原路径（genExpr 句柄浅存+源 RAII 析构照发）=盒携悬垂句柄
-        //   跨作用域（p8 IR 铁证：装箱→删除对象→返回悬垂）——深拷后盒恒独立
-        //   副本，收集面（collectOwnedStrFields 类值条件打开）配套盒亡条件
-        //   析构，别名/悬垂/泄漏三面同根除；〔基准=019〕第 1 句默认值语义
-        //   （未显式 转移() 不自动 move·源照常可用），热路径零拷由第 4 句
-        //   LUE/转移() 承接。无拷贝构造类=不纳管（收集面同条件·深拷无从起）。
-        if (semantic_ != nullptr &&
-            semantic_->isClassType(types::canonical(valueType))) {
-            const std::string clsCanon = types::canonical(valueType);
-            const ClassInfo* ci = semantic_->findClass(clsCanon).value_or(nullptr);
-            bool hasDtor = false;
-            if (ci != nullptr) {
-                for (const auto& mk : ci->methods) {
-                    if (mk.second.isDestructor) { hasDtor = true; break; }
-                }
-            }
-            const ClassMemberInfo* copyCtor =
-                semantic_->findCopyConstructor(clsCanon).value_or(nullptr);
-            if (hasDtor && copyCtor != nullptr) {
-                const std::string copyOwner = copyCtor->ownerClass.empty()
-                                                  ? clsCanon
-                                                  : copyCtor->ownerClass;
-                ir::IRValue newObj = emitResult(
-                    ir::Opcode::NewObject,
-                    {ir::IRValue::constant(clsCanon, "ptr")}, "ptr",
-                    clsCanon + "|" + std::to_string(ci->totalSize),
-                    node->location);
-                // 898（2026-09-30·116 红灯根治）：按实参形态分派源拷贝——拷贝构造
-                //   callee 契约=「其他=存句柄的槽地址」（callee 内两层 Load：[槽]
-                //   =句柄→[句柄]=字段）。①实参=类变量（Identifier）：lvalueAddress
-                //   产出=槽地址，直调拷贝构造 ✓（889 原路径）；②实参=下标/成员
-                //   （容器内联元素·类内联字段）：lvalueAddress 产出=**对象本体地址**
-                //   （一步即字段），直调=被调方 [对象]=首字段值再解引用=以字段值当
-                //   地址 C0000005（116 栈.弹出/队.出队 `正常(数据[i])` 崩点
-                //   fault=元素编号值实证）——改盒内字段拷（emitStructCopyWithFields
-                //   srcAddr=对象地址契约 ✓·拥有型串字段深拷）；类句柄字段浅拷=诚实
-                //   边界（随任务 096 拥有位统一解），较直调崩已纯改善。
-                const NodeType argKind = node->arguments[0]->getType();
-                if (argKind == NodeType::IndexExpr ||
-                    argKind == NodeType::MemberExpr) {
-                    ir::IRValue srcObj =
-                        lvalueAddress(node->arguments[0].get());
-                    emitStructCopyWithFields(newObj, srcObj, clsCanon,
-                                             node->location, /*preFree=*/false,
-                                             /*deepCopy=*/true);
-                } else {
-                    ir::IRValue srcAddr =
-                        lvalueAddress(node->arguments[0].get());
-                    emit(ir::Opcode::Call, {newObj, srcAddr}, ir::IRValue(),
-                         methodSymbolKey(copyOwner, copyCtor->sigKey), "void",
-                         node->location);
-                }
-                val = newObj;
-                // 100（939·008 收官总攻·泄漏面根治）：**实例级登记**——深拷分叉
-                //   的盒内独立副本（盒=唯一拥有者）登记块出口条件释放（tag 真
-                //   DeleteObject+清槽幂等）。绕开收集面（183-a 116 双删回退史：
-                //   898 容器内联元素浅拷分叉**不登记**=不误伤容器元素管理）。
-                //   valAddr=盒值字段地址（下方 StorePtr 同址·虚拟寄存器跨块恒定）。
-                // 登记条件=结果盒（正常(类值)）：可选盒由收集面外壳路径覆盖
-                //   （551 基线绿·双登记=双删）；返回表达式内豁免（盒移交调用方
-                //   ——浅拷共享句柄·被调方释放=悬垂）。
-                if (name == "正常" && !inReturnExpr_) {
-                    pendingBoxCopies_.push_back({valAddr, clsCanon});
-                }
-            }
+        const std::string canonValueType = types::canonical(valueType);
+        // 任务 100（008 树波 4）：类值装箱统一深拷（详见子函数注释）
+        if (semantic_ != nullptr && semantic_->isClassType(canonValueType)) {
+            emitResultCtorClassDeepCopy(node, name, valAddr, canonValueType, val);
         }
-        // 宿主缺陷根治（2026-08-25）：结构体值（正常(s)）须 CopyStruct 拷入联合体
-        //   内联存储——原 StorePtr 只存 8 字节地址，结果.值 读到地址而非结构体数据，
-        //   嵌套 查.值.名ID 把地址当字段值（打印地址 实测）、直接拷贝读地址字节。
-        //   Result<结构体> 的 值 字段 = 结构体数据本体（值语义，与布局 totalSize 一致）。
-        if (semantic_ != nullptr && semantic_->isStructType(types::canonical(valueType))) {
-            const int size = semantic_->typeSizeOf(valueType).value_or(8);
-            emit(ir::Opcode::CopyStruct, {valAddr, val}, ir::IRValue(),
-                 std::to_string(size), "void", node->location);
-        } else {
-            const std::string valIrType = mapType(valueType.empty() ? "整32" : valueType);
-            // 宿主缺陷根治（2026-08-25）：按值类型自然宽度存储——整32 -> i32（4 字节）、
-            //   整64/字符串/指针 -> i64/ptr（8 字节）、布尔 -> i8（1 字节）。原强制 i64
-            //   使 结果<整32,整32>（联合体 4 字节）写入越界（坏.错误 读 0 实测）。
-            std::string storeType = valIrType;
-            if (storeType == "i1") storeType = "i8";
-            if (val.type != storeType && !storeType.empty()) {
-                val = emitResult(ir::Opcode::Cast, {val}, storeType, "", node->location);
-            }
-            emit(ir::Opcode::StorePtr, {valAddr, val}, ir::IRValue(), "",
-                 storeType, node->location);
+        // 归属分派：结构体内联拷贝 / 标量按自然宽度（详见证型分派注释）——
+        //   两个显式互补分支（无 else 兜底：布尔枚举完备，门禁 else 业务新规）
+        const bool payloadIsStruct =
+            semantic_ != nullptr && semantic_->isStructType(canonValueType);
+        if (payloadIsStruct) {
+            emitResultCtorStructPayload(node, valAddr, canonValueType, val);
+        }
+        if (!payloadIsStruct) {
+            emitResultCtorScalarPayload(valAddr, canonValueType, val,
+                                        node->location);
         }
     }
 
@@ -354,6 +283,119 @@ void IRGenerator::emitResultCtorValue(CallExpr* node, const std::string& name,
                      ir::IRValue(), slot, "ptr", node->location);
             }
         }
+    }
+}
+
+// #1588：结构体载荷写入——CopyStruct 内联拷贝（2026-08-25 根治：原 StorePtr 只存
+//   8 字节地址，结果.值 读到地址而非结构体数据）。
+//   守卫（禁静默按位拷贝）：载荷=结构体时实参必须是**同一结构体类型**（canonical
+//   归一比较）——异型/标量实参按目标结构体大小 CopyStruct = 字段错位/越界读栈
+//   垃圾（1585 审计同族：窄载荷×宽目标）。语义层在目标已知时已按载荷可转换性
+//   报用户错误（载荷不可转换=单一可行动诊断，编译终止不产出可执行文件）；本
+//   守卫只在**无上游错误**时报内部错误（语义层漏标/共享 AST 残留=编译器 bug
+//   显形，#648 miss 不可静默）——有上游错误时保持原发射（产物不链接，无静默面）。
+//   结构体字面量实参（StructInitExpr 物化为盒）豁免：其类型即字面量类型名，
+//   语义层已按目标载荷检查（异型=已报错）。
+void IRGenerator::emitResultCtorStructPayload(CallExpr* node, ir::IRValue valAddr,
+                                             const std::string& valueType,
+                                             ir::IRValue val) {
+    const bool argIsStructInit =
+        node->arguments[0]->getType() == NodeType::StructInitExpr;
+    const std::string argSrc =
+        types::canonical(exprSrcType(node->arguments[0].get()).value_or(""));
+    const bool payloadSameStruct =
+        !argSrc.empty() && semantic_->isStructType(argSrc) &&
+        types::canonicalEquals(argSrc, valueType);
+    // 实参类型可解析且明确不匹配=编译器内部不一致（语义层漏检）；不可解析
+    //   （下标/成员/调用等 IR 层 exprSrcType 无值形态）=信任语义层载荷检查
+    //   （checkExpr 返回真实类型并已按目标载荷校验），不误报。
+    if (!argIsStructInit && !argSrc.empty() && !payloadSameStruct &&
+        !diagnostics_.hasErrors()) {
+        diagnostics_.report(
+            DiagnosticLevel::Error, node->location,
+            "内部错误: 内置构造器结构体载荷类型不一致（载荷 '" + valueType +
+                "'，实参 '" + (argSrc.empty() ? std::string("未知") : argSrc) +
+                "'）——语义层漏检（共享 AST 残留/目标校准遗漏），已报编译器缺陷");
+    }
+    const int size = semantic_->typeSizeOf(valueType).value_or(8);
+    emit(ir::Opcode::CopyStruct, {valAddr, val}, ir::IRValue(),
+         std::to_string(size), "void", node->location);
+}
+
+// #1588：标量/指针载荷写入——按值类型自然宽度存储（2026-08-25 根治：整32 -> i32
+//   4 字节、整64/字符串/指针 -> i64/ptr 8 字节、布尔 -> i8 1 字节；原强制 i64
+//   使 结果<整32,整32> 联合体 4 字节写入越界）。宽窄差异由 Cast 补齐（如
+//   某些(整32 字面量) 进 可选<整64>：i32 → i64 后写满 8 字节，#1588 主缺陷面）。
+void IRGenerator::emitResultCtorScalarPayload(ir::IRValue valAddr,
+                                             const std::string& valueType,
+                                             ir::IRValue val,
+                                             const SourceLocation& loc) {
+    const std::string valIrType = mapType(valueType.empty() ? "整32" : valueType);
+    std::string storeType = valIrType;
+    if (storeType == "i1") storeType = "i8";
+    if (val.type != storeType && !storeType.empty()) {
+        val = emitResult(ir::Opcode::Cast, {val}, storeType, "", loc);
+    }
+    emit(ir::Opcode::StorePtr, {valAddr, val}, ir::IRValue(), "",
+         storeType, loc);
+}
+
+// 任务 100（2026-09-29·008 树波 4）：类值装箱**统一深拷**——有析构∧有拷贝构造类
+//   实参：NewObject+拷贝构造（源=实参左值地址）产出独立副本句柄存盒。原路径
+//   （genExpr 句柄浅存+源 RAII 析构照发）=盒携悬垂句柄跨作用域（p8 IR 铁证：
+//   装箱→删除对象→返回悬垂）——深拷后盒恒独立副本，收集面
+//   （collectOwnedStrFields 类值条件打开）配套盒亡条件析构，别名/悬垂/泄漏三面
+//   同根除；〔基准=019〕第 1 句默认值语义（未显式 转移() 不自动 move·源照常
+//   可用），热路径零拷由第 4 句 LUE/转移() 承接。无拷贝构造类=不纳管。
+void IRGenerator::emitResultCtorClassDeepCopy(CallExpr* node, const std::string& name,
+                                             ir::IRValue valAddr,
+                                             const std::string& valueType,
+                                             ir::IRValue& val) {
+    const std::string& clsCanon = valueType;
+    const ClassInfo* ci = semantic_->findClass(clsCanon).value_or(nullptr);
+    bool hasDtor = false;
+    if (ci != nullptr) {
+        for (const auto& mk : ci->methods) {
+            if (mk.second.isDestructor) { hasDtor = true; break; }
+        }
+    }
+    const ClassMemberInfo* copyCtor =
+        semantic_->findCopyConstructor(clsCanon).value_or(nullptr);
+    if (!hasDtor || copyCtor == nullptr) return;
+    const std::string copyOwner =
+        copyCtor->ownerClass.empty() ? clsCanon : copyCtor->ownerClass;
+    ir::IRValue newObj = emitResult(
+        ir::Opcode::NewObject, {ir::IRValue::constant(clsCanon, "ptr")}, "ptr",
+        clsCanon + "|" + std::to_string(ci->totalSize), node->location);
+    // 898（2026-09-30·116 红灯根治）：按实参形态分派源拷贝——拷贝构造 callee
+    //   契约=「其他=存句柄的槽地址」（callee 内两层 Load：[槽]=句柄→[句柄]=字段）。
+    //   ①实参=类变量（Identifier）：lvalueAddress 产出=槽地址，直调拷贝构造 ✓；
+    //   ②实参=下标/成员（容器内联元素·类内联字段）：lvalueAddress 产出=**对象本体
+    //   地址**（一步即字段），直调=被调方 [对象]=首字段值再解引用=以字段值当地址
+    //   C0000005（116 栈.弹出/队.出队 `正常(数据[i])` 崩点实证）——改盒内字段拷
+    //   （emitStructCopyWithFields srcAddr=对象地址契约 ✓·拥有型串字段深拷）；
+    //   类句柄字段浅拷=诚实边界（随任务 096 拥有位统一解），较直调崩已纯改善。
+    const NodeType argKind = node->arguments[0]->getType();
+    if (argKind == NodeType::IndexExpr || argKind == NodeType::MemberExpr) {
+        ir::IRValue srcObj = lvalueAddress(node->arguments[0].get());
+        emitStructCopyWithFields(newObj, srcObj, clsCanon, node->location,
+                                 /*preFree=*/false, /*deepCopy=*/true);
+    } else {
+        ir::IRValue srcAddr = lvalueAddress(node->arguments[0].get());
+        emit(ir::Opcode::Call, {newObj, srcAddr}, ir::IRValue(),
+             methodSymbolKey(copyOwner, copyCtor->sigKey), "void",
+             node->location);
+    }
+    val = newObj;
+    // 100（939·008 收官总攻·泄漏面根治）：**实例级登记**——深拷分叉的盒内独立
+    //   副本（盒=唯一拥有者）登记块出口条件释放（tag 真 DeleteObject+清槽幂等）。
+    //   绕开收集面（183-a 116 双删回退史：898 容器内联元素浅拷分叉**不登记**=
+    //   不误伤容器元素管理）。valAddr=盒值字段地址（调用方 StorePtr 同址·虚拟
+    //   寄存器跨块恒定）。登记条件=结果盒（正常(类值)）：可选盒由收集面外壳路径
+    //   覆盖（551 基线绿·双登记=双删）；返回表达式内豁免（盒移交调用方——浅拷
+    //   共享句柄·被调方释放=悬垂）。
+    if (name == "正常" && !inReturnExpr_) {
+        pendingBoxCopies_.push_back({valAddr, clsCanon});
     }
 }
 
