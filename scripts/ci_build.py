@@ -113,14 +113,22 @@ def win构建行(vcvars: Path) -> list[str]:
 # ═══════════ 1385 构建缓存命中态/负载档（耗时基线口径维度） ═══════════
 缓存命中行 = re.compile(r"(?i)^\s*(?:cache\s+)?hits?\s*[:=]?\s*([\d,]+)")
 缓存未中行 = re.compile(r"(?i)^\s*(?:cache\s+)?miss(?:es)?\s*[:=]?\s*([\d,]+)")
+# ccache 3.x：无 Summary「Hits: n」行，命中拆成 direct/preprocessed 两行（求和）
+缓存3命中行 = re.compile(
+    r"(?i)^\s*cache\s+hit\s*\((?:direct|preprocessed)\)\s*[:=]?\s*([\d,]+)")
+缓存3未中行 = re.compile(r"(?i)^\s*cache\s+miss\s*[:=]?\s*([\d,]+)")
 
 
 def 读缓存计数(launcher, 执行=None) -> dict | None:
     """ccache -s / sccache --show-stats → {命中, 未中} 累计计数；不可用/解析失败=None。
 
-    命中行取首个匹配（ccache「Hits: n / m」/ sccache「Cache hits n」）——sccache
-    后续 rate 行不会覆盖计数。None=显式「缓存未知」（调用方落独立口径桶）。
-    执行=subprocess.run 可注入（selftest 零真实缓存工具）。"""
+    解析口径：优先 Summary 行（ccache 4.x「Hits: n / m」/ sccache「Cache hits n」）；
+    无 Summary 时回退 ccache 3.x 的「cache hit (direct)/(preprocessed)」求和。
+    sccache 后续 rate 行不会覆盖计数。None=显式「缓存未知」（调用方落独立口径桶）。
+    执行=subprocess.run 可注入（selftest 零真实缓存工具）。
+    边界（P2-4）：ccache/sccache 是宿主共享缓存——同宿主多实例共用统计文件，
+    构建前后差可能含他实例编译；档位只作粗粒度口径，跨实例污染时落相邻档，
+    不承诺精确归因（精确归因需 per-instance cache dir，另任务面）。"""
     if not launcher:
         return None
     名 = Path(str(launcher)).name.lower()
@@ -137,6 +145,7 @@ def 读缓存计数(launcher, 执行=None) -> dict | None:
     if r.returncode != 0:
         return None
     命中 = 未中 = None
+    旧命中 = 0
     for 行 in (r.stdout or "").splitlines():
         if 命中 is None:
             m = 缓存命中行.match(行)
@@ -146,6 +155,15 @@ def 读缓存计数(launcher, 执行=None) -> dict | None:
             m = 缓存未中行.match(行)
             if m:
                 未中 = int(m.group(1).replace(",", ""))
+        m = 缓存3命中行.match(行)
+        if m:
+            旧命中 += int(m.group(1).replace(",", ""))
+        if 未中 is None:
+            m = 缓存3未中行.match(行)
+            if m:
+                未中 = int(m.group(1).replace(",", ""))
+    if 命中 is None and 旧命中 > 0:
+        命中 = 旧命中   # ccache 3.x 兜底（Summary 行缺失）
     if 命中 is None or 未中 is None:
         return None
     return {"命中": 命中, "未中": 未中}

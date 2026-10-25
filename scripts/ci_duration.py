@@ -75,8 +75,20 @@ def _数值(名: str, 默认, 转换, 警告: list) -> object:
     return 值
 
 
+def _取界(名: str, 默认, 转换, 下限, 上限, 警告: list):
+    """读数值环境变量并按界校验：越界=黄字+默认（P2-7：不静默钳到边界值）。"""
+    值 = _数值(名, 默认, 转换, 警告)
+    if 值 < 下限 or 值 > 上限:
+        警告.append("环境变量 %s=%r 越界（允许 %r..%r）——按默认 %r"
+                    "（显式警告·不静默钳）" % (名, 值, 下限, 上限, 默认))
+        print("[黄] " + 警告[-1], file=sys.stderr, flush=True)
+        return 默认
+    return 值
+
+
 def 取配置() -> dict:
-    """惰性读 CN_DURATION_*（环境变化才重算）；非法值=黄字+默认并记警告。"""
+    """惰性读 CN_DURATION_*（环境变化才重算）；非法/越界=黄字+默认并记警告。
+    P2-7：SAMPLES 上限 100·RATIO 必须 >1·负值/越界一律显式回落默认（不静默钳）。"""
     键 = tuple(os.environ.get(名) for 名 in
               ("CN_DURATION_SAMPLES", "CN_DURATION_MIN_SAMPLES",
                "CN_DURATION_ALERT_RATIO", "CN_DURATION_ALERT_DELTA",
@@ -85,19 +97,32 @@ def 取配置() -> dict:
         return _配置缓存["值"]
     警告: list[str] = []
     配置 = {
-        "样本": max(1, int(_数值("CN_DURATION_SAMPLES", 默认配置["样本"], int, 警告))),
-        "最小": max(1, int(_数值("CN_DURATION_MIN_SAMPLES", 默认配置["最小"], int, 警告))),
-        "倍数": max(1.01, float(_数值("CN_DURATION_ALERT_RATIO",
-                                      默认配置["倍数"], float, 警告))),
-        "增量": max(0.0, float(_数值("CN_DURATION_ALERT_DELTA",
-                                     默认配置["增量"], float, 警告))),
-        "保留": max(1, int(_数值("CN_DURATION_DRIFT_SAMPLES",
-                                默认配置["保留"], int, 警告))),
-        "保留天": max(0, int(_数值("CN_DURATION_RETAIN_DAYS",
-                                  默认配置["保留天"], int, 警告))),
+        "样本": _取界("CN_DURATION_SAMPLES", 默认配置["样本"], int,
+                     1, 100, 警告),
+        "最小": _取界("CN_DURATION_MIN_SAMPLES", 默认配置["最小"], int,
+                     1, 100, 警告),
+        "倍数": _取界("CN_DURATION_ALERT_RATIO", 默认配置["倍数"], float,
+                     1.01, 100.0, 警告),
+        "增量": _取界("CN_DURATION_ALERT_DELTA", 默认配置["增量"], float,
+                     0.0, 86400.0, 警告),
+        "保留": _取界("CN_DURATION_DRIFT_SAMPLES", 默认配置["保留"], int,
+                     20, 1000, 警告),
+        "保留天": _取界("CN_DURATION_RETAIN_DAYS", 默认配置["保留天"], int,
+                       0, 3650, 警告),
         "警告": 警告,
     }
-    配置["保留"] = max(配置["保留"], 配置["样本"] + 15)   # 漂移需保留样本窗外 15 条
+    if 配置["最小"] > 配置["样本"]:
+        警告.append("CN_DURATION_MIN_SAMPLES(%d) > CN_DURATION_SAMPLES(%d)——"
+                    "按默认最小 %d（显式）"
+                    % (配置["最小"], 配置["样本"], min(默认配置["最小"], 配置["样本"])))
+        print("[黄] " + 警告[-1], file=sys.stderr, flush=True)
+        配置["最小"] = min(默认配置["最小"], 配置["样本"])
+    if 配置["保留"] < 配置["样本"] + 15:
+        新保留 = 配置["样本"] + 15
+        警告.append("CN_DURATION_DRIFT_SAMPLES(%d) < 样本窗+15——提升到 %d"
+                    "（漂移基准所需·显式）" % (配置["保留"], 新保留))
+        print("[黄] " + 警告[-1], file=sys.stderr, flush=True)
+        配置["保留"] = 新保留
     _配置缓存["键"], _配置缓存["值"] = 键, 配置
     return 配置
 
@@ -136,13 +161,21 @@ def 中位数(值们: list) -> float | None:
 
 
 def _有限正数(值) -> bool:
+    """样本严格正数（0 样本不入基线）。"""
     return (isinstance(值, (int, float)) and not isinstance(值, bool)
             and math.isfinite(float(值)) and float(值) > 0)
 
 
-def _漂移判定(有效: list, 样本窗: int) -> dict | None:
+def _有限非负(值) -> bool:
+    """当前秒可为零（<0.5s 取整）——0 是短步骤中性值，负数/NaN/Inf 才是形态坏。"""
+    return (isinstance(值, (int, float)) and not isinstance(值, bool)
+            and math.isfinite(float(值)) and float(值) >= 0)
+
+
+def _漂移判定(有效: list, 样本窗: int, 当前秒: float) -> dict | None:
     """慢漂：最近 5 次中位 vs 前 15 次（样本窗内）/更早 15 次（样本窗外）中位 >1.5×。
-    仅样本数≥样本窗（20）时评估；返回 {类型,最近中位,基准中位,倍数,原因} 或 None。"""
+    仅样本数≥样本窗（20）时评估；P2-1：另要求当前轮仍 >=1.2×基准——劣化恢复后
+    近期窗仍含高值时不残留黄签。返回 {类型,最近中位,基准中位,倍数,原因} 或 None。"""
     if len(有效) < 样本窗:
         return None
     最近 = 中位数(有效[-漂移窗:])
@@ -157,6 +190,8 @@ def _漂移判定(有效: list, 样本窗: int) -> dict | None:
             return None
         倍 = 最近 / 基准
         if 倍 <= 漂移倍数:
+            return None
+        if 当前秒 < 基准 * 1.2:   # 恢复抑制：当前轮已回落=不残留慢漂黄签
             return None
         return {"类型": 类型说明,
                 "最近中位": round(最近, 1), "基准中位": round(基准, 1),
@@ -175,13 +210,14 @@ def _漂移判定(有效: list, 样本窗: int) -> dict | None:
 def 评估数值(样本们: list, 当前秒: float, *, 配置: dict | None = None) -> dict:
     """单步骤评估（纯函数·selftest 四态锚）：返回
     {状态: 正常|告警|慢漂|不足, 中位, 倍数, 增量, 样本数, 原因?, 漂移?}。
-    告警/中位只用最近 N=20 次；慢漂用完整保留样本（默认 60）的近期/长期中位比较。"""
+    告警/中位只用最近 N=20 次；慢漂用完整保留样本（默认 60）的近期/长期中位比较。
+    P2-3：当前秒 0 合法（<0.5s 取整·短步骤中性），仅负数/NaN/Inf=形态坏。"""
     配置 = 配置 or 取配置()
     有效 = [float(x) for x in 样本们 if _有限正数(x)]
-    当前 = float(当前秒) if _有限正数(当前秒) else None
+    当前 = float(当前秒) if _有限非负(当前秒) else None
     if 当前 is None:
         return {"状态": "不足", "中位": None, "倍数": None, "增量": None,
-                "样本数": len(有效), "原因": "当前秒非有限正数（结果形态坏·显式）"}
+                "样本数": len(有效), "原因": "当前秒为负/NaN/Inf（结果形态坏·显式）"}
     窗口 = 有效[-配置["样本"]:]
     n = len(窗口)
     if n < 配置["最小"]:
@@ -201,7 +237,7 @@ def 评估数值(样本们: list, 当前秒: float, *, 配置: dict | None = Non
                 % (当前, 配置["倍数"], 中位, 增, ("%g" % 配置["增量"]))}
     结 = {"状态": "正常", "中位": round(中位, 1), "倍数": round(倍, 1),
           "增量": round(增, 1), "样本数": n}
-    漂 = _漂移判定(有效, 配置["样本"])
+    漂 = _漂移判定(有效, 配置["样本"], 当前)
     if 漂:
         结["状态"] = "慢漂"
         结["漂移"] = 漂
@@ -311,13 +347,20 @@ def 评估(结果: dict, 取样本, *, 取上次超阈=None, 来源: str = "服�
         if not isinstance(原秒, (int, float)) or isinstance(原秒, bool):
             continue   # 未计时步骤（同步/清产物/e2e 汇总键等）——不在耗时基线面
         秒 = float(原秒)
-        if not math.isfinite(秒):
+        if not math.isfinite(秒) or 秒 < 0:
             条 = {"步骤": 名, "口径": "—", "秒": None, "中位": None,
                   "倍数": None, "增量": None, "样本数": 0, "状态": "不足",
-                  "样本超阈": 0, "原因": "步骤秒含 NaN/Inf（结果形态坏·显式）"}
+                  "样本超阈": 0, "原因": "步骤秒为负/NaN/Inf（结果形态坏·显式）"}
             不足.append({"步骤": 名, "口径": "—", "样本数": 0,
                          "原因": 条["原因"]})
             步骤表.append(条)
+            continue
+        if 秒 == 0:
+            # P2-3：<0.5s 取整为 0=短步骤中性（未计入），不是形态坏、不入样本。
+            步骤表.append({"步骤": 名, "口径": "—", "秒": 0, "中位": None,
+                          "倍数": None, "增量": None, "样本数": 0,
+                          "状态": "未计入", "样本超阈": 0,
+                          "原因": "0 秒（<0.5s 取整·短步骤不参与基线）"})
             continue
         口径, 缺因 = 推导口径(名, 步, 结果)
         if 缺因:
@@ -359,6 +402,9 @@ def 评估(结果: dict, 取样本, *, 取上次超阈=None, 来源: str = "服�
             else:
                 告警.append(条)
         elif 评["状态"] == "慢漂":
+            # P3：徽标显示真实漂移倍数（近期/长期中位比），非当前/中位（回归后≈1）
+            条["漂移倍数"] = (评.get("漂移") or {}).get("倍数")
+            条["漂移原因"] = (评.get("漂移") or {}).get("原因")
             慢漂.append(条)
         elif 评["状态"] == "不足":
             不足.append({"步骤": 名, "口径": 口径, "样本数": 评["样本数"],
@@ -451,8 +497,9 @@ def 记录并评估(con: sqlite3.Connection, 平台: str, sha: str, 结果: dict
     """门禁结果写入前调用：评估（读旧样本）→ 收本轮合格样本 → 裁剪/过期清理。
 
     幂等：同键同 sha 重报先删后插；不同口径桶各自保留。平台空串=拒绝建桶（显式
-    错误对象·P2）。仅 rc=0 非超时且有限正数秒的步骤入样本；失败/超时步骤只落
-    「未计入」明细。构建/配置首轮超阈落「待确认」并以超阈=1 入样本（去抖）。"""
+    错误对象·P2）。仅 rc=0 非超时且有限正数秒的步骤入样本；失败/超时/0 秒步骤只落
+    「未计入」明细；缺因步骤（口径哨兵「—」）不入库（P2-6·防假基线桶）。
+    构建/配置首轮超阈落「待确认」并以超阈=1 入样本（去抖）。"""
     配置 = 配置 or 取配置()
     平台 = str(平台 or "").strip()
     if not 平台:
@@ -465,7 +512,8 @@ def 记录并评估(con: sqlite3.Connection, 平台: str, sha: str, 结果: dict
              配置=配置)
     步骤们 = 结果.get("步骤") if isinstance(结果.get("步骤"), dict) else {}
     for 条 in 评["步骤"]:
-        if 条.get("状态") == "未计入" or not 条.get("口径"):
+        if (条.get("状态") == "未计入" or not 条.get("口径")
+                or 条.get("口径") == "—"):
             continue
         步 = 步骤们.get(条["步骤"])
         if not isinstance(步, dict) or 步.get("rc") != 0 or 步.get("超时"):
@@ -550,6 +598,10 @@ def _列列表(文本, 键: str) -> list | None:
         return [{"步骤": "耗时告警数据异常", "原因": str(值["错误"]),
                  "秒": None, "中位": None, "倍数": None, "增量": None,
                  "样本数": None}]
+    if 键 not in 值:
+        # P2-2：v1 旧对象无 慢漂/待确认 键=无信号（空数组），不挂假异常徽标；
+        #   仅「键存在但类型错」才是列损坏。
+        return []
     列表 = 值.get(键)
     if not isinstance(列表, list):
         return [{"步骤": "耗时告警数据异常", "原因": "%s 字段形态非数组" % 键,
@@ -716,7 +768,8 @@ def _本地补充(结果: dict, 日志目录) -> dict:
     sha = str(结果.get("sha") or "")
     步骤们 = 结果.get("步骤") if isinstance(结果.get("步骤"), dict) else {}
     for 条 in 评["步骤"]:
-        if 条.get("状态") == "未计入" or not 条.get("口径"):
+        if (条.get("状态") == "未计入" or not 条.get("口径")
+                or 条.get("口径") == "—"):
             continue
         步 = 步骤们.get(条["步骤"])
         if not isinstance(步, dict) or 步.get("rc") != 0 or 步.get("超时"):

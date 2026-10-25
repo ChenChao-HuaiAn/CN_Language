@@ -1514,6 +1514,18 @@ def _1385断言(主模块, 断言) -> None:
         returncode=0, stdout="Cache hits 80\nCache hits rate 80.0 %\nCache misses 20\n")
     断言("1385 缓存计数解析：sccache 文本（Cache hits/misses·不被 rate 覆盖）",
          ci_build.读缓存计数("/usr/bin/sccache", 执行=假sccache) == {"命中": 80, "未中": 20})
+    # P2-4：ccache 3.x 无 Summary Hits 行，direct/preprocessed 两行求和
+    假ccache3 = lambda 命令, **kw: SimpleNamespace(
+        returncode=0,
+        stdout="cache hit (direct) 5\ncache hit (preprocessed) 3\ncache miss 2\n")
+    断言("P2-4 ccache 3.x：direct+preprocessed 命中求和",
+         ci_build.读缓存计数("/usr/bin/ccache", 执行=假ccache3) == {"命中": 8, "未中": 2})
+    假ccache4 = lambda 命令, **kw: SimpleNamespace(
+        returncode=0,
+        stdout="Summary:\n  Hits: 5 / 10 (50.00%)\n    Direct: 5 / 5 (100.0%)\n"
+               "    Preprocessed: 0 / 5 (0.00%)\n  Misses: 5\n")
+    断言("P2-4 ccache 4.x：Summary Hits 优先（Direct/Preprocessed 不重复计入）",
+         ci_build.读缓存计数("/usr/bin/ccache", 执行=假ccache4) == {"命中": 5, "未中": 5})
     断言("1385 负载档：值域显式（低/中/高/未知）",
          ci_report.负载档() in ("低负载", "中负载", "高负载", "负载未知"))
 
