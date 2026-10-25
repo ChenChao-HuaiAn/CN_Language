@@ -37,14 +37,18 @@ TEST(PeepholeSlot, DeadSlotSameReg64FullDelete) {
 }
 
 // 2. 槽死 + 异寄存器：删 store、load 改寄存器搬运
+//    （1320 起：末尾 store 若再无读即为死槽写，本用例追加读保持「改写」面独立）
 TEST(PeepholeSlot, DeadSlotDiffRegRewrite) {
     const std::string in = join({
         "    mov qword ptr [rbp-8], r10",
         "    mov r9, qword ptr [rbp-8]",
         "    mov qword ptr [rbp-16], r9",
+        "    add r9, 1",  // 打断 r9 的后续转发：-16 保持存活，只测 -8 的改写
+        "    mov r11, qword ptr [rbp-16]",
     });
     const std::string out = eliminateRedundantSlotTraffic(in);
-    EXPECT_EQ(out, join({"    mov r9, r10", "    mov qword ptr [rbp-16], r9"}));
+    EXPECT_EQ(out, join({"    mov r9, r10", "    mov qword ptr [rbp-16], r9",
+                         "    add r9, 1", "    mov r11, qword ptr [rbp-16]"}));
 }
 
 // 3a. dword/dword 异寄存器
@@ -152,21 +156,96 @@ TEST(PeepholeSlot, LabelBeforeStoreWithCommentEliminated) {
     EXPECT_EQ(out, join({"Lok:", "    // 说明", "    mov r9, r10"}));
 }
 
-// 4d. 不同槽：拒绝
+// 4d. 不同槽：不配对（1320 起补源寄存器改写阻断，防近邻转发误合并）
 TEST(PeepholeSlot, DifferentSlotsRejected) {
     const std::string in = join({
         "    mov qword ptr [rbp-8], r10",
         "    mov r9, qword ptr [rbp-16]",
+        "    add r10, 1",
+        "    mov r11, qword ptr [rbp-8]",
     });
     EXPECT_EQ(eliminateRedundantSlotTraffic(in), in);
 }
 
-// 4e. 非相邻（中间隔一条指令）：拒绝
-TEST(PeepholeSlot, NonAdjacentRejected) {
+// 4e. 非相邻（中间隔一条会写源寄存器的指令）：拒绝（1320 起近邻窗口内
+//     无寄存器改写才允许转发；此处 add 打断值传递 -> 原样保留）
+TEST(PeepholeSlot, NonAdjacentClobberRejected) {
     const std::string in = join({
         "    mov qword ptr [rbp-8], r10",
-        "    mov r9, 1",
+        "    add r10, 1",
         "    mov r11, qword ptr [rbp-8]",
+    });
+    EXPECT_EQ(eliminateRedundantSlotTraffic(in), in);
+}
+
+// 4e2. 1320 近邻转发正例：中间为中性行（不写源寄存器、无控制流）-> 删 store 改搬运
+TEST(PeepholeSlot, NearForwardWithinLimitEliminated) {
+    const std::string in = join({
+        "    mov qword ptr [rbp-8], r10",
+        "    sub rsp, 32",
+        "    mov r11, qword ptr [rbp-8]",
+    });
+    EXPECT_EQ(eliminateRedundantSlotTraffic(in), join({"    sub rsp, 32", "    mov r11, r10"}));
+}
+
+// 4e3. 1320 近邻窗口边界：行距 9 > 上限 8 -> 拒绝
+TEST(PeepholeSlot, NearForwardBeyondLimitRejected) {
+    std::vector<std::string> lines;
+    lines.push_back("    mov qword ptr [rbp-8], r10");
+    for (int k = 0; k < 8; ++k) lines.push_back("    nop");
+    lines.push_back("    mov r11, qword ptr [rbp-8]");
+    const std::string in = join(lines);
+    EXPECT_EQ(eliminateRedundantSlotTraffic(in), in);
+}
+
+// 4e4. 1320 死槽写：槽全函数仅一处 store -> 删除
+TEST(PeepholeSlot, DeadStoreSingleOccurrenceEliminated) {
+    const std::string in = join({
+        "    mov r10d, 7",
+        "    mov qword ptr [rbp-8], r10",
+        "    ret",
+    });
+    EXPECT_EQ(eliminateRedundantSlotTraffic(in), join({"    mov r10d, 7", "    ret"}));
+}
+
+// 4e5. 1320 死槽写三现扩展：两写之间无读、后写覆盖前写 -> 前写删除；
+//      存活两现（后写+读）按转发合并为寄存器搬运 -> 整链塌缩为一条搬运行
+TEST(PeepholeSlot, DeadStoreCoveredByLaterStoreEliminated) {
+    const std::string in = join({
+        "    mov qword ptr [rbp-8], r10",
+        "    mov qword ptr [rbp-8], r11",
+        "    mov r9, qword ptr [rbp-8]",
+    });
+    EXPECT_EQ(eliminateRedundantSlotTraffic(in), "    mov r9, r11\n");
+}
+
+// 4e7. 1320 取址聚合别名保护：lea 基址 16 字节窗口覆盖该槽 -> 保留
+//      （i128 双槽：lea [rbp-16] 指向聚合，[rbp-8] 是高半槽；删写会漏掉
+//       指针侧的读——324_整128极值边界 实录）
+TEST(PeepholeSlot, LeaAggregateAliasBlocksDeadStore) {
+    const std::string in = join({
+        "    lea rcx, [rbp-16]",
+        "    mov qword ptr [rbp-8], r10",
+        "    mov rax, [rbp-24]",
+    });
+    EXPECT_EQ(eliminateRedundantSlotTraffic(in), in);
+}
+
+// 4e8. 1320 取址聚合别名：同上，转发对（store+load）亦须保留
+TEST(PeepholeSlot, LeaAggregateAliasBlocksForwardPair) {
+    const std::string in = join({
+        "    lea rcx, [rbp-16]",
+        "    mov qword ptr [rbp-8], r10",
+        "    mov rax, qword ptr [rbp-8]",
+    });
+    EXPECT_EQ(eliminateRedundantSlotTraffic(in), in);
+}
+
+// 4e6. 1320 死槽写别名保护：16 字节整宽访存覆盖该槽 -> 保留
+TEST(PeepholeSlot, DeadStoreAliasedByWideAccessRejected) {
+    const std::string in = join({
+        "    movups [rbp-16], xmm0",  // 16 字节写覆盖 [rbp-16, rbp)
+        "    mov qword ptr [rbp-8], r10",
     });
     EXPECT_EQ(eliminateRedundantSlotTraffic(in), in);
 }
@@ -226,15 +305,18 @@ TEST(PeepholeSlot, LeaCountsAsAccessRejected) {
     EXPECT_EQ(eliminateRedundantSlotTraffic(in), in);
 }
 
-// 5d. 连续多对：各自独立消除
+// 5d. 连续多对：各自独立消除（1320 起 -8 对以源寄存器改写阻断保持存活）
 TEST(PeepholeSlot, MultiplePairsIndependent) {
     const std::string in = join({
         "    mov qword ptr [rbp-8], r10",
         "    mov qword ptr [rbp-16], r10",
         "    mov r10, qword ptr [rbp-16]",
+        "    add r10, 1",
+        "    mov r9, qword ptr [rbp-8]",
     });
     const std::string out = eliminateRedundantSlotTraffic(in);
-    EXPECT_EQ(out, "    mov qword ptr [rbp-8], r10\n");
+    EXPECT_EQ(out, join({"    mov qword ptr [rbp-8], r10", "    add r10, 1",
+                         "    mov r9, qword ptr [rbp-8]"}));
 }
 
 // ==================== 1279：32 位同槽同宽对（高位零证明） ====================

@@ -1,8 +1,10 @@
-// 发射后窥孔·冗余槽读写消除实现（任务 1144·波2；任务 1157 三语法面适配；
-//   任务 1243 AArch64 大偏移间接寻址面；任务 1248 解析/内核成本优化 + 就地入口）
-// 单一职责：对给定汇编函数文本做一遍行级扫描，消除「槽死」的
-//   store→load 相邻转发对（规则与安全条件见 peephole_slot.hpp 头注释）。
-// 三语法面（同一规则内核·解析/改写按方言注入）：
+// 发射后窥孔·x86 方言面实现（任务 1144·波2；任务 1157 三语法面适配；
+//   任务 1248 解析/内核成本优化 + 就地入口；任务 1320 判据扩展；1351 浮点高半）
+// 单一职责：linux_x86_64（GAS Intel 语法）与 win-x64（MASM）两个语法面的
+//   行解析/改写/寄存器效果分类与方言规则束（SlotRules）；扫描内核与安全判据
+//   已统一到 peephole_slot_forward.cpp（1320 单遍：死槽写 + 槽转发，规则与
+//   安全条件见 peephole_slot.hpp 头注释）。
+// 三语法面（同一内核·解析/改写按方言注入）：
 //   ① GasIntelX64（linux_x86_64）：mov qword ptr [rbp-8], r10 / mov r10, qword ptr [rbp-8]
 //   ② MasmX64（win-x64）：同上文本形态（组成器小写输出·MASM 大小写不敏感），
 //      另接受无 ptr 前缀（mov [rbp-8], rax / mov rax, [rbp-8]）与
@@ -14,16 +16,15 @@
 // 实现纪律：
 //   - 手写 token 解析（不用 std::regex——全树 90 万行级文本，正则开销不可接受）；
 //   - 行/槽/操作数为 std::string_view 零拷贝（指向入参文本·调用期存活）；
-//   - 只改「两行都完整识别」的对，识别失败即跳过（保守优先）；
+//   - 只改「形态完整识别」的行，识别失败即跳过（保守优先）；
 //   - 无匹配时返回原文（逐字节不变）。
 // 正确性论证（W1<=W2 时的寄存器搬运替换等价）：
-//   原 load 读到的位模式 = 槽内低 W1 位；槽由紧邻的 store 写入了源寄存器 rX 的
+//   原 load 读到的位模式 = 槽内低 W1 位；槽由 store 写入了源寄存器 rX 的
 //   低 W2 位，W1<=W2 ⇒ 低 W1 位来自 rX。改写为「从 rX 取低 W1 位 + 同款扩展」
 //   后位模式一致；W1>W2 时 load 高位来自槽内残留（不可复现）-> 拒绝。
 // 1248 成本优化（语义零变化·产物逐字节一致）：
 //   normalizeReg/regWithWidth/宽度前缀改 constexpr string_view 表 + 令牌键二分
-//   （免逐次 strlen/memcmp）；槽计数改开放寻址平表；锚点预扫描与主扫描合并；
-//   改写表稀疏化；新增就地入口（未命中零复制）供代码生成热路径调用。
+//   （免逐次 strlen/memcmp）；改写表稀疏化；就地入口（未命中零复制）。
 #include "cn_compiler/codegen/peephole_slot.hpp"
 #include "cn_compiler/codegen/peephole_slot_internal.hpp"
 
@@ -42,6 +43,8 @@ namespace {
 
 // 共享解析结果/规则束/文本助手来自 peephole_slot_internal.hpp（1243 拆分）
 using detail::AsmLine;
+using detail::decidePairAction;
+using detail::PairAction;
 using detail::RegEffect;
 using detail::SlotAccess;
 using detail::SlotRules;
@@ -49,21 +52,14 @@ using detail::asciiLower;
 using detail::controlEffect;
 using detail::lstrip;
 using detail::iequals;
+using detail::lineMentionsToken;
 using detail::noneEffect;
 using detail::parseImmOperand;
 using detail::readEffect;
 using detail::splitAsmLine;
-using detail::upperHalfZeroBefore;
 using detail::writeEffect;
 
 using namespace std::string_view_literals;  // 1248：字面量直接成 string_view（免 strlen 构造）
-
-struct PairAction {
-    bool hit = false;
-    bool dropStore = false;
-    bool dropLoad = false;
-    std::string rewrittenLoad;  // 非空时替换 load 行（dropLoad=false 时有效）
-};
 
 // ==================== x86 方言（GAS Intel / MASM 共用） ====================
 
@@ -514,266 +510,166 @@ bool fullDeleteX86NeedsProof(const SlotAccess& store, const SlotAccess& load) {
     return store.width == 32 && load.width == 32;
 }
 
+// ==================== 任务 1320/1351：x86 追加判据 ====================
+
+// 槽 token -> 帧偏移：[rbp-8] -> -8 / [rbp+48] -> 48 / [rbp] -> 0。
+//   契约形态仅本产物族（"[rbp" + 可选符号数字 + "]"）；其余一律拒绝（该槽
+//   不参与别名/死写判定，端到端保持原样）。
+bool parseX86SlotOffset(std::string_view slot, long long& offset) {
+    // 契约长度域双边界（最短 "[rbp]"=5 / 最长量级 40）；越域=非本产物族槽形态
+    constexpr std::size_t kMinSlotTokenLength = 5;
+    constexpr std::size_t kMaxSlotTokenLength = 40;
+    if (slot.size() < kMinSlotTokenLength || slot.size() > kMaxSlotTokenLength ||
+        slot.compare(0, 4, "[rbp"sv) != 0 || slot.back() != ']') {
+        return false;
+    }
+    const std::string_view num = slot.substr(4, slot.size() - 5);
+    // 静默豁免业务值: 无偏移形态 [rbp]=偏移 0（产物族不发射，防御性识别）
+    if (num.empty()) {
+        offset = 0;
+        return true;
+    }
+    // 静默豁免业务值: 无符号前缀=非本产物族槽形态（调用方按不参与处理）
+    //   偏移量级双边界：最少 1 位数字 / 超 32 位无符号域=非帧偏移形态
+    if (num.size() < 2 || num.size() > 16 || (num[0] != '+' && num[0] != '-')) return false;
+    long long mag = 0;
+    constexpr long long kMaxFrameOffset = 0xFFFFFFFFLL;
+    // 静默豁免业务值: 非纯数字/越帧偏移量级=非本产物族槽形态（调用方按不参与处理）
+    if (!parseImmOperand(num.substr(1), mag) || mag < 0 || mag > kMaxFrameOffset) return false;
+    offset = (num[0] == '-') ? -mag : mag;
+    return true;
+}
+
+// 标量浮点助记符（只读写低 32/64 位，不观察高半）：
+//   movss/movsd 的 load 形态清零高半、寄存器形态保持；四则/比较/转换/取整
+//   均只消费低元素。白名单外的一切 XMM 提及一律按「宽读观察」保守处理。
+bool isX86ScalarFloatMnemonic(const std::string& m) {
+    static constexpr std::string_view kScalar[] = {
+        "movss"sv,    "movsd"sv,    "addss"sv,   "addsd"sv,   "subss"sv,
+        "subsd"sv,    "mulss"sv,    "mulsd"sv,   "divss"sv,   "divsd"sv,
+        "minss"sv,    "minsd"sv,    "maxss"sv,   "maxsd"sv,   "sqrtss"sv,
+        "sqrtsd"sv,   "ucomiss"sv,  "ucomisd"sv, "comiss"sv,  "comisd"sv,
+        "cvtsi2ss"sv, "cvtsi2sd"sv, "cvttss2si"sv, "cvttsd2si"sv,
+        "cvtss2si"sv, "cvtsd2si"sv, "cvtss2sd"sv, "cvtsd2ss"sv,
+        "rcpss"sv,    "rsqrtss"sv,  "roundss"sv, "roundsd"sv,
+        "movd"sv,     "movq"sv,
+    };
+    for (const std::string_view s : kScalar) {
+        // 静默豁免业务值: 未命中白名单=非标量形态（调用方按宽读观察处理）
+        if (m == s) return true;
+    }
+    return false;
+}
+
+// 浮点高位观察谓词（1351·x86 面）：行内出现该 XMM 且助记符不在标量白名单内。
+//   semicolonComment：MASM 用 ';' 全行/尾注释（GAS 面不按 ';' 截断，防误吞指令）。
+bool x86FloatHighObserverImpl(std::string_view line, const std::string& reg64,
+                              bool semicolonComment) {
+    // 静默豁免业务值: 行内未出现该寄存器=非观察点（观察判定非查表默认值）
+    if (!lineMentionsToken(line, reg64)) return false;
+    std::string_view s = line;
+    if (semicolonComment) {
+        const std::size_t semi = s.find(';');
+        if (semi != std::string_view::npos) s = s.substr(0, semi);
+    }
+    const std::size_t cmt = s.find("//");
+    if (cmt != std::string_view::npos) s = s.substr(0, cmt);
+    s = detail::trimView(s);
+    // 静默豁免业务值: 纯注释行=不发射、不观察寄存器
+    if (s.empty()) return false;
+    const std::size_t sp = s.find_first_of(" \t");
+    const std::string m = asciiLower((sp == std::string_view::npos) ? s : s.substr(0, sp));
+    return !isX86ScalarFloatMnemonic(m);
+}
+
+bool x86FloatHighObserverGas(std::string_view line, const std::string& reg64) {
+    return x86FloatHighObserverImpl(line, reg64, false);
+}
+
+bool x86FloatHighObserverMasm(std::string_view line, const std::string& reg64) {
+    return x86FloatHighObserverImpl(line, reg64, true);
+}
+
+// 该行是否写归一化寄存器的任一位宽形态（1320 近邻转发窗口判据）：
+//   与 classifyReg 不同——这里 8/16 位部分写也算写（寄存器值被改写即失效）。
+//   控制流/隐式写（call/mul/div/rep/cmpxchg/xadd）沿用 isX86ControlMnemonic。
+bool writesX86Reg(std::string_view line, const std::string& reg64) {
+    const AsmLine al = splitAsmLine(line);
+    // 静默豁免业务值: 空行/纯注释=不写寄存器
+    if (!al.valid) return false;
+    // 静默豁免业务值: 标签=多前驱汇合点（调用方按控制流拒绝）
+    if (al.isLabel) return true;
+    // 静默豁免业务值: 伪指令=不写寄存器
+    if (al.directive) return false;
+    // 操作数超过三个：无法完整分类，保守按写
+    if (al.overflow) return true;
+    const std::string m = asciiLower(al.mnem);
+    if (isX86ControlMnemonic(m)) return true;
+    if (isX86ReadOnlyMnemonic(m)) return false;
+    // 目的操作数为该寄存器（任意位宽形态）：写
+    for (int k = 0; k < 1 && k < al.opCount; ++k) {
+        std::string dst;
+        int width = 0;
+        bool isFloat = false;
+        // 静默豁免业务值: 目的操作数非寄存器形态=非写（内存目的不写寄存器）
+        if (normalizeReg(al.ops[k], dst, width, isFloat) && dst == reg64) return true;
+    }
+    // 源操作数提及：只读（真正双写的 xadd/cmpxchg 等已并入控制流/隐式写表）
+    return false;
+}
+
 // ==================== 方言规则束 ====================
 
-const SlotRules kGasIntelX64 = {"[rbp", parseX86StoreLine, parseGasLoad,
-                                rewriteX86Load, fullDeleteX86,
-                                fullDeleteX86NeedsProof, classifyX86RegEffect};
-const SlotRules kMasmX64 = {"[rbp", parseX86StoreLine, parseMasmLoad,
-                            rewriteX86Load, fullDeleteX86,
-                            fullDeleteX86NeedsProof, classifyX86RegEffect};
-
-// ==================== 共享扫描内核 ====================
-
-// 槽 token 出现计数·开放寻址平表（线性探测·装载因子 1/2·string_view 键零拷贝）。
-//   旧 unordered_map 每出现一次分配一个节点（M1 采样 0.78%）；平表仅随容量翻倍
-//   重新分配，哈希/比较次数与哈希表相同。空槽以空 string_view 标记——槽 token
-//   恒以 '[' 开头且非空（collect 仅从非空锚点起截取），标记无歧义。
-class SlotOccCounter {
-public:
-    SlotOccCounter() {
-        table_.assign(kInitialCapacity, Entry{});
-        mask_ = kInitialCapacity - 1;
-    }
-
-    void add(std::string_view slot) {
-        if ((used_ + 1) * 2 > mask_ + 1) grow();
-        const std::uint32_t h = hashSlot(slot);
-        std::size_t idx = h & mask_;
-        while (!table_[idx].slot.empty()) {
-            if (table_[idx].hash == h && table_[idx].slot == slot) {
-                ++table_[idx].count;
-                return;
-            }
-            idx = (idx + 1) & mask_;
-        }
-        table_[idx].slot = slot;
-        table_[idx].hash = h;
-        table_[idx].count = 1;
-        ++used_;
-    }
-
-    // 返回槽出现次数；0 = 未出现（契约值，非「查表 miss 哨兵」——调用方按
-    //   slotOnlyInPair(0)=false 拒绝消除，即该行不参与优化、原样保留）
-    int count(std::string_view slot) const {
-        const std::uint32_t h = hashSlot(slot);
-        std::size_t idx = h & mask_;
-        while (!table_[idx].slot.empty()) {
-            if (table_[idx].hash == h && table_[idx].slot == slot) {
-                return table_[idx].count;
-            }
-            idx = (idx + 1) & mask_;
-        }
-        return 0;
-    }
-
-private:
-    struct Entry {
-        std::string_view slot;
-        std::uint32_t hash = 0;
-        int count = 0;
-    };
-    static constexpr std::size_t kInitialCapacity = 64;
-
-    static std::uint32_t hashSlot(std::string_view slot) {
-        return static_cast<std::uint32_t>(std::hash<std::string_view>{}(slot));
-    }
-
-    void grow() {
-        std::vector<Entry> old = std::move(table_);
-        const std::size_t newCapacity = old.size() * 2;
-        table_.assign(newCapacity, Entry{});
-        mask_ = newCapacity - 1;
-        used_ = 0;
-        for (const Entry& e : old) {
-            if (e.slot.empty()) continue;
-            std::size_t idx = e.hash & mask_;
-            while (!table_[idx].slot.empty()) idx = (idx + 1) & mask_;
-            table_[idx] = e;
-            ++used_;
-        }
-    }
-
-    std::vector<Entry> table_;
-    std::size_t mask_ = 0;
-    std::size_t used_ = 0;
-};
-
-// 收集槽 token 出现次数（string_view 键零拷贝；注释与任意指令行一律计入——保守口径）。
-//   同时输出逐行「含锚点」标记：主扫描复用之，免对每行再做一次 find(anchor)。
-SlotOccCounter collectSlotCounts(const std::vector<std::string_view>& lines,
-                                 std::string_view anchor, std::vector<char>& hasAnchor) {
-    SlotOccCounter occ;
-    hasAnchor.assign(lines.size(), 0);
-    for (std::size_t li = 0; li < lines.size(); ++li) {
-        const std::string_view ln = lines[li];
-        std::size_t pos = 0;
-        while ((pos = ln.find(anchor, pos)) != std::string_view::npos) {
-            hasAnchor[li] = 1;
-            const std::size_t rb = ln.find(']', pos);
-            // #1582：右界缺失=该锚点之后本行再无 ']'——续扫后续锚点而非中断本行
-            //   （不留「每行至多一个执行槽」隐性前提；当前 find 语义下续扫与 break
-            //   统计等价，右界口径若收紧形态校验则中断会漏计同键后文槽→「槽仅
-            //   两处」误判→误删 store）。
-            if (rb == std::string_view::npos) {
-                pos += anchor.size();
-                continue;
-            }
-            occ.add(ln.substr(pos, rb - pos + 1));
-            pos = rb + 1;
-        }
-    }
-    return occ;
-}
-
-// 槽是否「仅出现于本对两行」（槽死判定的严格口径）
-//   注意：不能用「本对之后无出现」——循环回边可从后文跳回前文再次读槽
-//   （文本行号=代码位置，非动态执行序），届时删除 store 会读到过期值。
-//   要求槽在整个函数文本中恰好出现两次（=本对两行）时，任何路径要执行 load
-//   行必先经 store 行（两行物理相邻且 load 行前无标签），循环跳转亦无第三处访问。
-bool slotOnlyInPair(int occCount) {
-    return occCount == 2;
-}
-
-// 尝试消除一对（store 行 i、load 行 i+1）
-//   drop/repl：已扫描前缀的删除/改写状态（1279 高位零证明跳过已删行、用改写后文本）
-PairAction tryEliminatePair(const std::vector<std::string_view>& lines,
-                            const SlotOccCounter& slotOcc, int i,
-                            const std::vector<char>& drop,
-                            const std::vector<std::string>& repl,
-                            const SlotRules& rules) {
-    PairAction act;
-    SlotAccess store;
-    SlotAccess load;
-    if (!rules.parseStore(lines[i], store)) return act;
-    if (!rules.parseLoad(lines[i + 1], load)) return act;
-    if (store.slot != load.slot) return act;
-    if (store.isFloat != load.isFloat) return act;
-    if (load.width > store.width) return act;  // 存窄读宽：槽内残留高位不可复现
-    if (!slotOnlyInPair(slotOcc.count(store.slot))) {
-        return act;  // 槽在本对之外还有访问/回边可达读：拒绝
-    }
-    act.hit = true;
-    act.dropStore = true;
-    // 全删：同寄存器且均为 64 位/同宽浮点（删除后寄存器保持值 = load 语义）；
-    //   32 位同槽同宽对需先证明高 32 位已为零（load 的零扩展语义由前态保证）
-    bool full = rules.fullDelete(store, load);
-    if (!full && rules.fullDeleteNeedsProof(store, load)) {
-        full = upperHalfZeroBefore(lines, drop, repl, i, store.reg64, rules);
-    }
-    if (full) {
-        act.dropLoad = true;
-        return act;
-    }
-    act.rewrittenLoad = rules.rewriteLoad(store.reg64, load);
-    return act;
-}
+const SlotRules kGasIntelX64 = {"[rbp",
+                                parseX86StoreLine,
+                                parseGasLoad,
+                                rewriteX86Load,
+                                fullDeleteX86,
+                                fullDeleteX86NeedsProof,
+                                classifyX86RegEffect,
+                                x86FloatHighObserverGas,
+                                false,  // movss/movsd 寄存器形态不清高半（1351）
+                                parseX86SlotOffset,
+                                writesX86Reg};
+const SlotRules kMasmX64 = {"[rbp",
+                            parseX86StoreLine,
+                            parseMasmLoad,
+                            rewriteX86Load,
+                            fullDeleteX86,
+                            fullDeleteX86NeedsProof,
+                            classifyX86RegEffect,
+                            x86FloatHighObserverMasm,
+                            false,  // movss/movsd 寄存器形态不清高半（1351）
+                            parseX86SlotOffset,
+                            writesX86Reg};
 
 } // namespace
 
-namespace detail {
-
-// 方言无关主扫描（就地）：命中返回 true 并原地替换 functionText；未命中返回
-//   false，不复制/不替换文本（仅锚点存在时构建扫描结构；代码生成热路径每函数
-//   一次调用）。命中时 functionText 可能重分配，调用方持有的 view/引用随之失效。
-// 视图生命周期（1217 机械锁）：lines/槽计数键/改写文本中的 string_view 全部指向
-//   functionText 当次缓冲。本函数把「视图销毁」与「源存储替换」拆成两个作用域：
-//   扫描/渲染域内只读 functionText，域结束后视图已全部销毁，才执行替换。
-//   域尾 Debug 断言只比较 data()/size()：能发现重分配/长度变化，但识别不了
-//   同地址同长度的原地改写，也识别不了原文本亦为 SSO 时的同长度 SSO 拷贝赋值
-//   （两者都不改 data()/size()）——它是缓冲身份/尺寸的粗粒度护栏，不是内容
-//   不可变证明；新增写入点仍须按「先销毁视图、后替换存储」的结构约束接受审查。
-bool eliminateWithRulesInPlace(std::string& functionText, const SlotRules& rules) {
-    if (functionText.find(rules.slotAnchor) == std::string::npos) return false;
-#ifndef NDEBUG
-    // 视图存活期源存储身份快照：替换点核对缓冲未被提前改写（release 零开销）
-    const char* const sourceData = functionText.data();
-    const std::size_t sourceSize = functionText.size();
-#endif
-    bool any = false;
-    std::string rewritten;  // 域内产出；域外替换（不含任何指向源文本的视图）
-    {
-        // ---- 视图生命周期域：以下所有视图只在域内使用，域尾统一销毁 ----
-        std::vector<std::string_view> lines = detail::splitLines(functionText);
-        std::vector<char> hasAnchor;
-        const auto slotOcc = collectSlotCounts(lines, rules.slotAnchor, hasAnchor);
-        std::vector<char> drop(lines.size(), 0);
-        // 逐行改写表（1279：高位零证明按行号回读改写后文本，须为稠密表；
-        //   空串=该行原样保留。MSVC string 空态 SSO，不产生逐行堆分配）
-        std::vector<std::string> repl(lines.size());
-        for (std::size_t i = 0; i + 1 < lines.size(); ++i) {
-            if (!hasAnchor[i]) continue;
-            PairAction act = tryEliminatePair(lines, slotOcc, static_cast<int>(i), drop,
-                                              repl, rules);
-            if (!act.hit) continue;
-            drop[i] = 1;
-            const bool fullDelete = act.dropLoad;
-            if (fullDelete) {
-                drop[i + 1] = 1;  // 全删：drop 优先于 repl（输出时跳过该行）
-            }
-            if (!fullDelete) {
-                repl[i + 1] = std::move(act.rewrittenLoad);  // load 行改写为寄存器搬运
-            }
-            any = true;
-            ++i;  // 跳过已消费的 load 行
-        }
-        if (any) {
-            rewritten.reserve(functionText.size());
-            for (std::size_t i = 0; i < lines.size(); ++i) {
-                if (drop[i]) continue;
-                rewritten += repl[i].empty() ? lines[i] : repl[i];
-                rewritten += '\n';
-            }
-            if (!rewritten.empty() && functionText.back() != '\n') {
-                rewritten.pop_back();  // 原文本无尾随换行：去掉补加的
-            }
-        }
-    }  // ---- 视图销毁点：此后不再持有任何指向 functionText 缓冲的视图 ----
-#ifndef NDEBUG
-    // 粗粒度身份检查：仅 data()/size() 不变；同地址同长度原地改写与原文本亦为
-    //   SSO 时的同长度 SSO 拷贝赋值不可见（边界见函数头生命周期说明）
-    if (any) {
-        assert(functionText.data() == sourceData && functionText.size() == sourceSize &&
-               "窥孔视图存活期间源文本不得被改写（视图先销毁、后替换存储）");
-    }
-#endif
-    if (any) functionText = std::move(rewritten);  // 就地替换（视图已全部销毁）
-    return any;
-}
-
-// 值语义包装：复制一次后走就地内核（单测/通用调用行为与原实现一致）
-std::string eliminateWithRules(const std::string& functionText, const SlotRules& rules) {
-    std::string out(functionText);
-    eliminateWithRulesInPlace(out, rules);
-    return out;
-}
-
-} // namespace detail
-
 // linux_x86_64（GAS Intel 语法）入口
 std::string eliminateRedundantSlotTraffic(const std::string& functionText) {
-    return detail::eliminateWithRules(functionText, kGasIntelX64);
+    return detail::eliminateForwardAndDeadStores(functionText, kGasIntelX64);
 }
 
 // win-x64（MASM 语法·组成器小写输出）入口
 std::string eliminateRedundantSlotTrafficMasm(const std::string& functionText) {
-    return detail::eliminateWithRules(functionText, kMasmX64);
+    return detail::eliminateForwardAndDeadStores(functionText, kMasmX64);
 }
 
-// linux-arm64（AArch64 GAS 语法）入口：固定帧槽（1157）→ 大偏移间接寻址（1243）
+// linux-arm64（AArch64 GAS 语法）入口：固定帧槽 + 大偏移间接寻址（1243）
 std::string eliminateRedundantSlotTrafficAArch64(const std::string& functionText) {
     return detail::eliminateAArch64Pass(functionText);
 }
 
-// linux_x86_64（GAS Intel 语法）就地入口
+// linux_x86_64（GAS Intel 语法）就地入口（单遍：死写消除 + 槽转发）
 bool eliminateRedundantSlotTrafficInPlace(std::string& functionText) {
-    return detail::eliminateWithRulesInPlace(functionText, kGasIntelX64);
+    return detail::eliminateForwardAndDeadStoresInPlace(functionText, kGasIntelX64);
 }
 
-// win-x64（MASM 语法·组成器小写输出）就地入口
+// win-x64（MASM 语法·组成器小写输出）就地入口（同一遍）
 bool eliminateRedundantSlotTrafficMasmInPlace(std::string& functionText) {
-    return detail::eliminateWithRulesInPlace(functionText, kMasmX64);
+    return detail::eliminateForwardAndDeadStoresInPlace(functionText, kMasmX64);
 }
+
 
 // linux-arm64（AArch64 GAS 语法）就地入口
 bool eliminateRedundantSlotTrafficAArch64InPlace(std::string& functionText) {

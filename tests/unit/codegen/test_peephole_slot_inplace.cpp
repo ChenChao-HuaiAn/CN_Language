@@ -37,8 +37,8 @@ TEST(PeepholeSlotInPlace, GasMatchesValueSemantics) {
     std::string got = in;
     EXPECT_TRUE(eliminateRedundantSlotTrafficInPlace(got));
     EXPECT_EQ(got, want);
-    EXPECT_EQ(got, join({"    push rbp", "    mov r9, r10",
-                         "    mov qword ptr [rbp-16], r9"}));
+    // 1320 起：末尾 -16 的写无读=死槽写，一并消除
+    EXPECT_EQ(got, join({"    push rbp", "    mov r9, r10"}));
 }
 
 // 2. win-x64（MASM 面）：同寄存器 64 位全删，就地结果 == 值语义结果
@@ -80,12 +80,16 @@ TEST(PeepholeSlotInPlace, FullDeleteMatchesValueSemantics) {
     EXPECT_EQ(got, "");
 }
 
-// 5. 锚点存在但无可消除对：返回 false 且文本逐字节不动
+// 5. 锚点存在但无可消除对（源寄存器被改写阻断转发、槽亦非死写）：返回 false
+//    且文本逐字节不动
 TEST(PeepholeSlotInPlace, MissKeepsTextUntouched) {
     const std::string in = join({
         "    mov qword ptr [rbp-8], r10",
-        "    mov qword ptr [rbp-16], r11",
         "    add r10, 1",
+        "    mov r9, qword ptr [rbp-8]",
+        "    mov qword ptr [rbp-16], r11",
+        "    add r11, 1",
+        "    mov r12, qword ptr [rbp-16]",
     });
     std::string got = in;
     EXPECT_FALSE(eliminateRedundantSlotTrafficInPlace(got));

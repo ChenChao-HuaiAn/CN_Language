@@ -143,14 +143,37 @@ TEST(PeepholeSlotMasm, LiveSlotRejected) {
     EXPECT_EQ(eliminateRedundantSlotTrafficMasm(in), in);
 }
 
-// 14. 非相邻（中间隔一条指令）：拒绝
-TEST(PeepholeSlotMasm, NonAdjacentRejected) {
+// 14. 非相邻（中间写源寄存器）：拒绝（1320 近邻窗口判据）
+TEST(PeepholeSlotMasm, NonAdjacentClobberRejected) {
     const std::string in = join({
         "    mov qword ptr [rbp-8], rax",
-        "    mov r9, 1",
+        "    add rax, 1",
         "    mov r11, qword ptr [rbp-8]",
     });
     EXPECT_EQ(eliminateRedundantSlotTrafficMasm(in), in);
+}
+
+// 14b. 1320 近邻转发：中间中性行（call 前 sub rsp）-> 删 store 改搬运
+TEST(PeepholeSlotMasm, NearForwardWithinLimitEliminated) {
+    const std::string in = join({
+        "    mov [rbp-8], rax",
+        "    sub rsp, 32",
+        "    mov rcx, [rbp-8]",
+        "    call __cn_str_free",
+    });
+    EXPECT_EQ(eliminateRedundantSlotTrafficMasm(in),
+              join({"    sub rsp, 32", "    mov rcx, rax", "    call __cn_str_free"}));
+}
+
+// 14c. 1320 死槽写：槽全函数仅一处 store（Load 结果槽写）-> 删除
+TEST(PeepholeSlotMasm, DeadStoreSingleOccurrenceEliminated) {
+    const std::string in = join({
+        "    mov [rbp-32], eax",
+        "    mov eax, [rbp-40]",
+        "    test eax, eax",
+    });
+    EXPECT_EQ(eliminateRedundantSlotTrafficMasm(in),
+              join({"    mov eax, [rbp-40]", "    test eax, eax"}));
 }
 
 // 15. 中间隔标签：拒绝（跨块路径可跳过 store）
@@ -163,11 +186,13 @@ TEST(PeepholeSlotMasm, LabelBetweenRejected) {
     EXPECT_EQ(eliminateRedundantSlotTrafficMasm(in), in);
 }
 
-// 16. 不同槽：拒绝
+// 16. 不同槽：不配对（1320 起补源寄存器改写阻断，防近邻转发误合并）
 TEST(PeepholeSlotMasm, DifferentSlotsRejected) {
     const std::string in = join({
         "    mov qword ptr [rbp-8], rax",
         "    mov r9, qword ptr [rbp-16]",
+        "    add rax, 1",
+        "    mov r11, qword ptr [rbp-8]",
     });
     EXPECT_EQ(eliminateRedundantSlotTrafficMasm(in), in);
 }
@@ -377,11 +402,13 @@ TEST(PeepholeSlotArm64, LabelBetweenRejected) {
     EXPECT_EQ(eliminateRedundantSlotTrafficAArch64(in), in);
 }
 
-// 18. 不同槽：拒绝
+// 18. 不同槽：不配对（1320 起补源寄存器改写阻断）
 TEST(PeepholeSlotArm64, DifferentSlotsRejected) {
     const std::string in = join({
         "    str x3, [x29,#-8]",
         "    ldr x9, [x29,#-16]",
+        "    add x3, x3, #1",
+        "    ldr x10, [x29,#-8]",
     });
     EXPECT_EQ(eliminateRedundantSlotTrafficAArch64(in), in);
 }
@@ -978,4 +1005,96 @@ TEST(PeepholeSlotArm64, DwordProofWindowExclusiveAt129) {
     for (int k = 0; k < 128; ++k) want += "    nop\n";
     want += "    mov w3, w3\n";
     EXPECT_EQ(out, want);
+}
+
+// ==================== 任务 1351：浮点同寄存器全删的高位清零语义 ====================
+// x86：movss(32)/movsd(64) 的 load 形态清零高 96/64 位——全删（同寄存器）或
+//   改写为寄存器搬运（异寄存器）都无法复现该清零，故须先证明高半从未被宽读
+//   观察；证明不成立时原样保留两行（x86 无等价改写）。
+// ARM64：LDR Sd/Dd 清零 V 寄存器上位；标量寄存器搬运（fmov）本身清零上位，
+//   故 D 宽全删证明不成立时回落 fmov（S 宽既有口径一致）。
+
+// 70. x86：movsd 同寄存器 + 全函数无宽读观察 -> 两行全删
+TEST(PeepholeSlotFloatHighHalf, MovsdSameRegFullDeleteWhenHighUnobserved) {
+    const std::string in = join({
+        "    movsd qword ptr [rbp-8], xmm2",
+        "    movsd xmm2, [rbp-8]",
+        "    movsd xmm1, xmm2",
+    });
+    EXPECT_EQ(eliminateRedundantSlotTrafficMasm(in), "    movsd xmm1, xmm2\n");
+}
+
+// 71. x86 反例：movsd 同寄存器 + 后续 128 位整宽读 -> 保留原两行（字节不变）
+TEST(PeepholeSlotFloatHighHalf, MovsdSameRegFullDeleteBlockedByWideObserver) {
+    const std::string in = join({
+        "    movsd qword ptr [rbp-8], xmm2",
+        "    movsd xmm2, [rbp-8]",
+        "    movups [rbp-24], xmm2",
+    });
+    EXPECT_EQ(eliminateRedundantSlotTrafficMasm(in), in);
+}
+
+// 72. x86：movss 异寄存器改写 + 目的寄存器高半未被观察 -> 改写为寄存器搬运
+TEST(PeepholeSlotFloatHighHalf, MovssDiffRegRewriteWhenHighUnobserved) {
+    const std::string in = join({
+        "    movss dword ptr [rbp-8], xmm0",
+        "    movss xmm1, dword ptr [rbp-8]",
+        "    movss xmm3, xmm1",
+    });
+    EXPECT_EQ(eliminateRedundantSlotTrafficMasm(in),
+              join({"    movss xmm1, xmm0", "    movss xmm3, xmm1"}));
+}
+
+// 73. x86 反例：movss 异寄存器改写 + 目的寄存器被 128 位宽读 -> 保留原两行
+//     （原 load 清零 xmm1 高 96 位，寄存器搬运保留旧值——语义不可替）
+TEST(PeepholeSlotFloatHighHalf, MovssDiffRegRewriteBlockedByWideObserver) {
+    const std::string in = join({
+        "    movss dword ptr [rbp-8], xmm0",
+        "    movss xmm1, dword ptr [rbp-8]",
+        "    movups [rbp-24], xmm1",
+    });
+    EXPECT_EQ(eliminateRedundantSlotTrafficMasm(in), in);
+}
+
+// 74. x86 反例：宽读观察点位于本对之前（循环回边可再次观察）-> 同样保留
+TEST(PeepholeSlotFloatHighHalf, MovsdSameRegBlockedByObserverBeforePair) {
+    const std::string in = join({
+        "Lloop:",
+        "    movups [rbp-24], xmm2",
+        "    movsd qword ptr [rbp-8], xmm2",
+        "    movsd xmm2, [rbp-8]",
+        "    jmp Lloop",
+    });
+    EXPECT_EQ(eliminateRedundantSlotTrafficMasm(in), in);
+}
+
+// 75. ARM64：str d0/ldr d0 同寄存器 + 无 q/v 宽读 -> 两行全删
+TEST(PeepholeSlotFloatHighHalf, ArmFloatDoubleSameRegFullDelete) {
+    const std::string in = join({
+        "    str d0, [x29,#-8]",
+        "    ldr d0, [x29,#-8]",
+        "    fmov d1, d0",
+    });
+    EXPECT_EQ(eliminateRedundantSlotTrafficAArch64(in), "    fmov d1, d0\n");
+}
+
+// 76. ARM64 反例：D 宽同寄存器 + 后续 q 整宽观察 -> 不全删，回落 fmov 自搬
+//     （fmov 标量写清零上位，与 LDR Dd 清零语义一致）
+TEST(PeepholeSlotFloatHighHalf, ArmFloatDoubleBlockedByQObserverKeepsFmov) {
+    const std::string in = join({
+        "    str d0, [x29,#-8]",
+        "    ldr d0, [x29,#-8]",
+        "    str q0, [x1]",
+    });
+    EXPECT_EQ(eliminateRedundantSlotTrafficAArch64(in),
+              join({"    fmov d0, d0", "    str q0, [x1]"}));
+}
+
+// 77. ARM64：S 宽同寄存器保持既有口径（fmov 自搬），即使无宽读也不全删
+TEST(PeepholeSlotFloatHighHalf, ArmFloatSingleSameRegKeepsFmov) {
+    const std::string in = join({
+        "    str s0, [x29,#-8]",
+        "    ldr s0, [x29,#-8]",
+    });
+    EXPECT_EQ(eliminateRedundantSlotTrafficAArch64(in), "    fmov s0, s0\n");
 }

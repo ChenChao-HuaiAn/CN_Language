@@ -49,6 +49,21 @@ struct SlotRules {
     bool (*fullDelete)(const SlotAccess&, const SlotAccess&);    // 两行全删判据（无需上下文）
     bool (*fullDeleteNeedsProof)(const SlotAccess&, const SlotAccess&);  // 形态可全删但需高位零证明
     RegEffect (*classifyReg)(std::string_view, const std::string&);  // 行对归一化寄存器的效果
+    // ---- 任务 1351：浮点同寄存器全删/寄存器搬运的「高半观察」判据 ----
+    // 宽读观察谓词：该行是否以 128 位/高半形式观察归一化寄存器的上位
+    //   （x86：标量助记符白名单外的 XMM 提及；ARM64：qN/vN 形态提及）。
+    bool (*floatHighHalfObserver)(std::string_view, const std::string&);
+    // 浮点寄存器搬运是否复现「load 清零高位」语义：ARM64 标量写清零上位=真；
+    //   x86 的 movss/movsd 寄存器形态保留上位=假（改写前须证明目的寄存器高半
+    //   从未被宽读观察，否则原样保留两行）。
+    bool floatMoveZeroesHigh;
+    // ---- 任务 1320：死槽写/近邻转发判定所需的帧偏移与寄存器写判据 ----
+    // 槽 token -> 帧偏移（[rbp-8] -> -8 / [x29,#-8] -> -8 / [x29] -> 0）；
+    //   仅用于同一函数内槽字节范围的别名判定（失败=该槽不参与本遍）。
+    bool (*parseSlotOffset)(std::string_view slot, long long& offset);
+    // 该行是否写归一化寄存器的任一位宽形态（含 8/16 位部分写、隐式写）；
+    //   与 classifyReg 不同：这里关心「值是否可能被改写」，部分写必须算写。
+    bool (*writesReg)(std::string_view line, const std::string& reg64);
 };
 
 // 去左侧空白（1248：手写扫描——寄存器/助记符分离前每行必经，避免
@@ -279,21 +294,135 @@ inline bool upperHalfZeroBefore(const std::vector<std::string_view>& lines,
     return false;
 }
 
-// 方言无关主扫描（定义在 peephole_slot.cpp）
-std::string eliminateWithRules(const std::string& functionText, const SlotRules& rules);
+// 方言无关主扫描（就地·任务 1248；1320 起为唯一内核）：命中返回 true 并原地
+//   替换文本；未命中返回 false，不复制/不替换文本（仅锚点存在时构建扫描结构）。
+//   命中时 functionText 可能重分配，调用方持有的 view/迭代器/引用失效。
+bool eliminateForwardAndDeadStoresInPlace(std::string& functionText, const SlotRules& rules);
 
-// 方言无关主扫描（就地·任务 1248）：命中返回 true 并原地替换文本；未命中返回
-//   false，不复制/不替换文本（仅锚点存在时构建扫描结构）。命中时 functionText
-//   可能重分配，调用方持有的 view/迭代器/引用失效。语义与值语义版逐字节一致。
-bool eliminateWithRulesInPlace(std::string& functionText, const SlotRules& rules);
+// 值语义包装：复制后走就地内核（单测/通用调用）
+std::string eliminateForwardAndDeadStores(const std::string& functionText,
+                                          const SlotRules& rules);
 
-// AArch64 面入口（定义在 peephole_slot_arm64.cpp）：固定帧槽（1157）→ 大偏移
-//   间接寻址（1243）
+// ==================== 任务 1320/1351 共用判据 ====================
+
+// 标识符字符（寄存器 token 边界判定）
+inline bool isIdentChar(char c) {
+    return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'z') ||
+           (c >= 'A' && c <= 'Z') || c == '_';
+}
+
+// 行内是否出现完整寄存器 token（前后边界均非标识符字符）：
+//   "xmm1" 不命中 "xmm10"；"d0" 不命中 "d01"；"v0" 命中 "v0.d[1]"（'.' 非标识符）。
+inline bool lineMentionsToken(std::string_view line, std::string_view tok) {
+    // 静默豁免业务值: 空 token=不构成提及（调用方恒传非空寄存器名）
+    if (tok.empty()) return false;
+    std::size_t pos = 0;
+    while ((pos = line.find(tok, pos)) != std::string_view::npos) {
+        const bool leftOk = (pos == 0) || !isIdentChar(line[pos - 1]);
+        const std::size_t end = pos + tok.size();
+        const bool rightOk = (end >= line.size()) || !isIdentChar(line[end]);
+        if (leftOk && rightOk) return true;
+        pos = end;
+    }
+    return false;
+}
+
+// 浮点高位观察证明（任务 1351·三方言单点）：整函数内该浮点寄存器是否从未被
+//   「宽读」观察。观察谓词由方言注入（x86 非标量 XMM 提及 / ARM64 qN·vN 形态）。
+//   正确性：x86 movss/movsd 的 load 形态清零高 96/64 位，删除或改写为寄存器
+//   搬运后该清零不再发生——只有「高半从未被任何宽读观察」时两者位模式等价。
+//   保守口径（不假设控制流可达性）：函数内只要存在一处观察即拒绝；已删除行
+//   （drop）不参与（其不再发射）。
+inline bool floatHighHalfUnobserved(const std::vector<std::string_view>& lines,
+                                    const std::vector<char>& drop,
+                                    const std::string& reg64,
+                                    bool (*observes)(std::string_view, const std::string&)) {
+    for (std::size_t i = 0; i < lines.size(); ++i) {
+        if (drop[i]) continue;
+        if (observes(lines[i], reg64)) return false;
+    }
+    return true;
+}
+
+// 近邻转发扫描窗口上限（含端点）：store 与 load 之间允许的最大行距。
+//   实测产物中 99%+ 的可合并对距离 <= 5（中间多为 call 前 sub rsp / 参数装载）；
+//   窗口限制同时封顶单次候选的扫描成本（防病态函数平方开销）。
+inline constexpr int kForwardScanLimit = 8;
+
+// 单对消除决策结果（两遍共用·任务 1320 抽为共享判据）
+struct PairAction {
+    bool hit = false;           // 命中：删 store 行
+    bool dropLoad = false;      // 同时删 load 行（同寄存器同宽全删）
+    std::string rewrittenLoad;  // 非空时替换 load 行（dropLoad=false 时有效）
+};
+
+// 槽转发对消除决策（第一遍相邻对 / 第二遍近邻长距对共用；调用方已保证
+//   store.slot==load.slot、读宽<=存宽、槽引用计数判据成立）。
+//   1351：浮点同寄存器全删/寄存器搬运须先证明寄存器高半从未被宽读观察——
+//   x86 的 movss/movsd load 清零高 96/64 位，删除/改写都无法复现该清零；
+//   ARM64 的标量寄存器搬运（fmov）本身清零上位，故只需在全删时回落即可。
+inline PairAction decidePairAction(const std::vector<std::string_view>& lines,
+                                   const std::vector<char>& drop,
+                                   const std::vector<std::string>& repl, int storeIdx,
+                                   const SlotAccess& store, const SlotAccess& load,
+                                   const SlotRules& rules) {
+    PairAction act;
+    if (store.isFloat != load.isFloat) return act;
+    if (load.width > store.width) return act;  // 存窄读宽：槽内残留高位不可复现
+    bool full = rules.fullDelete(store, load);
+    if (full && store.isFloat &&
+        !floatHighHalfUnobserved(lines, drop, store.reg64,
+                                 rules.floatHighHalfObserver)) {
+        // 高半被宽读观察：全删会保留旧高位（原 load 清零）——x86 无等价改写，保留两行
+        if (!rules.floatMoveZeroesHigh) return act;
+        full = false;  // ARM64：回落标量寄存器搬运（同样清零上位）
+    }
+    if (!full && rules.fullDeleteNeedsProof(store, load)) {
+        full = upperHalfZeroBefore(lines, drop, repl, storeIdx, store.reg64, rules);
+    }
+    if (full) {
+        act.hit = true;
+        act.dropLoad = true;
+        return act;
+    }
+    if (load.isFloat && !rules.floatMoveZeroesHigh &&
+        !floatHighHalfUnobserved(lines, drop, load.reg64, rules.floatHighHalfObserver)) {
+        // 改写为寄存器搬运不清零目的寄存器高位（原 load 清零）——保留两行
+        return act;
+    }
+    act.hit = true;
+    act.rewrittenLoad = rules.rewriteLoad(store.reg64, load);
+    return act;
+}
+
+// 方言无关第二遍（任务 1320，定义在 peephole_slot_forward.cpp）：
+//   ① 死槽写消除：槽 token 全函数恰好一次（=仅本 store）的 store 直接删除；
+//   ② 三/四次引用扩展：同一槽的连续两次 store 之间无读且后写覆盖前写 → 前写死；
+//   ③ 近邻转发：槽死（本遍存活引用恰好 = store+load 两处）且 store→load 行距
+//      ≤ kForwardScanLimit、中间无控制流/标签/源寄存器改写/槽别名访问时，
+//      删 store 行、load 行改写为寄存器搬运（同寄存器同宽按既有判据全删）。
+//   命中返回 true 并原地替换文本；未命中返回 false（不复制、不改文本）。
+bool eliminateForwardAndDeadStoresInPlace(std::string& functionText, const SlotRules& rules);
+
+// AArch64 面入口（定义在 peephole_slot_arm64.cpp）：固定帧槽单遍判据 →
+//   大偏移间接寻址（peephole_slot_arm64_indirect.cpp）
 std::string eliminateAArch64Pass(const std::string& functionText);
 
 // AArch64 面就地入口（任务 1248）：命中返回 true 并原地替换文本；未命中返回
 //   false，不复制/不替换文本（仅锚点存在时构建扫描结构）。命中时可重分配。
 bool eliminateAArch64PassInPlace(std::string& functionText);
+
+// ---- 1320 文件拆分：AArch64 固定帧槽方言共享原语（间接寻址面复用）----
+//   同一事实单点实现：解析/改写/高位零证明判据只在 peephole_slot_arm64.cpp 定义。
+bool armParseRegToken(std::string_view tok, char& form, int& num);
+bool armParseSlot(std::string_view rest, std::string_view base, SlotAccess& out);
+bool armParseStore(std::string_view line, std::string_view base, SlotAccess& out);
+bool armParseLoad(std::string_view line, std::string_view base, SlotAccess& out);
+bool armParseSlotOffset(std::string_view slot, long long& offset);
+const SlotRules& armFixedSlotRules();
+
+// AArch64 大偏移间接寻址面就地入口（定义在 peephole_slot_arm64_indirect.cpp）
+bool eliminateArmIndirectPairsInPlace(std::string& functionText);
 
 } // namespace detail
 } // namespace peephole

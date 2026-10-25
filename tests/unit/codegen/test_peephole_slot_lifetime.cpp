@@ -172,10 +172,15 @@ TEST(PeepholeSlotLifetime, BoundaryHitProductsExact) {
 }
 
 // 未命中：文本内容与存储均不动（未命中零复制契约；缓冲指针/容量不变）
+//   1320 起：单现槽写会被判死写，故以「源寄存器被改写阻断」的两对构造未命中面
 TEST(PeepholeSlotLifetime, MissKeepsStorageUntouched) {
     std::string text = joinEol({"    push rbp",
                                 "    mov qword ptr [rbp-8], r10",
+                                "    add r10, 1",
+                                "    mov r9, qword ptr [rbp-8]",
                                 "    mov qword ptr [rbp-16], r11",
+                                "    add r11, 1",
+                                "    mov r12, qword ptr [rbp-16]",
                                 "    ret"},
                                "\n", true);
     text.reserve(text.size() + 64);  // 强制堆缓冲（超 SSO），指针稳定可观测

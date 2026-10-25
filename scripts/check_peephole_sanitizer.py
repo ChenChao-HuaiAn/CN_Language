@@ -77,6 +77,8 @@ def 源文件清单() -> list[Path]:
     实现 = [
         仓库根 / "src" / "cn_compiler" / "codegen" / "peephole_slot.cpp",
         仓库根 / "src" / "cn_compiler" / "codegen" / "peephole_slot_arm64.cpp",
+        仓库根 / "src" / "cn_compiler" / "codegen" / "peephole_slot_forward.cpp",
+        仓库根 / "src" / "cn_compiler" / "codegen" / "peephole_slot_arm64_indirect.cpp",
     ]
     return 测试 + 实现
 
