@@ -10,6 +10,7 @@
 //   （如 结果<整32,整32>/可选<字符串>），本模块按此降级。
 // 规范：英文API命名，中文仅注释；函数<=100行
 #define _CRT_SECURE_NO_WARNINGS
+#include <algorithm>
 #include <cstdlib>
 #include <string>
 #include <vector>
@@ -263,6 +264,11 @@ bool IRGenerator::resolveResultCtorTargetType(CallExpr* node, const std::string&
 //   标量载荷三族；结构体载荷新增同型守卫（禁静默按位拷贝，见子函数注释）。
 void IRGenerator::emitResultCtorValue(CallExpr* node, const std::string& name,
                                       ir::IRValue valAddr, const std::string& valueType) {
+    // 1611（2026-10-25·1025 采样轮 d5 实锚）：载荷类名**先物化**再判定（声明
+    //   上提函数体层——1611 move 转交段[块外]与深拷判定[块内]共用）。
+    const std::string canonValueType =
+        resolveGenericInstanceType(types::canonical(valueType));
+    bool deepCopied100 = false;
     // 实参值（构造器单参数）
     if (!node->arguments.empty()) {
         ir::IRValue val;
@@ -279,10 +285,14 @@ void IRGenerator::emitResultCtorValue(CallExpr* node, const std::string& name,
         } else {
             val = genExpr(node->arguments[0].get());
         }
-        const std::string canonValueType = types::canonical(valueType);
-        // 任务 100（008 树波 4）：类值装箱统一深拷（详见子函数注释）
+        // 1611（2026-10-25·1025 采样轮 d5 实锚）：载荷类名**先物化**再判定——
+        //   valueType=载荷类型文本（字符串映射<整32>），canonical 不转 $ 实例名，
+        //   isClassType/findClass/findCopyConstructor 按精确实例名查表恒 miss →
+        // 任务 100（008 树波 4）：类值装箱统一深拷（详见子函数注释·1611 物化
+        //   与 deepCopied100 声明上提至函数体层——1611 move 转交段共用）。
         if (semantic_ != nullptr && semantic_->isClassType(canonValueType)) {
-            emitResultCtorClassDeepCopy(node, name, valAddr, canonValueType, val);
+            deepCopied100 =
+                emitResultCtorClassDeepCopy(node, name, valAddr, canonValueType, val);
         }
         // 归属分派：结构体内联拷贝 / 标量按自然宽度（详见证型分派注释）——
         //   两个显式互补分支（无 else 兜底：布尔枚举完备，门禁 else 业务新规）
@@ -317,6 +327,8 @@ void IRGenerator::emitResultCtorValue(CallExpr* node, const std::string& name,
             }
         }
     }
+    // 1611：无拷贝构造类返回位 move 转交（详注见函数体·子函数单点）
+    emitResultCtorReturnMoveForClass(node, name, deepCopied100, canonValueType);
 }
 
 // #1588：结构体载荷写入——CopyStruct 内联拷贝（2026-08-25 根治：原 StorePtr 只存
@@ -400,10 +412,10 @@ void IRGenerator::emitResultCtorScalarPayload(ir::IRValue valAddr,
 //   （collectOwnedStrFields 类值条件打开）配套盒亡条件析构，别名/悬垂/泄漏三面
 //   同根除；〔基准=019〕第 1 句默认值语义（未显式 转移() 不自动 move·源照常
 //   可用），热路径零拷由第 4 句 LUE/转移() 承接。无拷贝构造类=不纳管。
-void IRGenerator::emitResultCtorClassDeepCopy(CallExpr* node, const std::string& name,
-                                             ir::IRValue valAddr,
-                                             const std::string& valueType,
-                                             ir::IRValue& val) {
+bool IRGenerator::emitResultCtorClassDeepCopy(CallExpr* node, const std::string& name,
+                                              ir::IRValue valAddr,
+                                              const std::string& valueType,
+                                              ir::IRValue& val) {
     const std::string& clsCanon = valueType;
     const ClassInfo* ci = semantic_->findClass(clsCanon).value_or(nullptr);
     bool hasDtor = false;
@@ -414,7 +426,13 @@ void IRGenerator::emitResultCtorClassDeepCopy(CallExpr* node, const std::string&
     }
     const ClassMemberInfo* copyCtor =
         semantic_->findCopyConstructor(clsCanon).value_or(nullptr);
-    if (!hasDtor || copyCtor == nullptr) return;
+    // 1611：返回值=是否实际深拷——显式双值契约返回（非查表 miss 静默面）：
+    //   真=盒内独立副本·源照常可用照常析构；假=浅存路径**提前返回**（无析构
+    //   或无拷贝构造·深拷无从起），调用方 1611 返回位 move 转交段按契约接管。
+    const bool deepCopyApplicable = hasDtor && copyCtor != nullptr;
+    if (!deepCopyApplicable) {
+        return deepCopyApplicable;
+    }
     const std::string copyOwner =
         copyCtor->ownerClass.empty() ? clsCanon : copyCtor->ownerClass;
     ir::IRValue newObj = emitResult(
@@ -449,6 +467,39 @@ void IRGenerator::emitResultCtorClassDeepCopy(CallExpr* node, const std::string&
     //   共享句柄·被调方释放=悬垂）。
     if (name == "正常" && !inReturnExpr_) {
         pendingBoxCopies_.push_back({valAddr, clsCanon});
+    }
+    return true;
+}
+
+
+// 1611（2026-10-25·1025 采样轮 d5 实锚·与 70-a 同构）：**无拷贝构造类**
+//   返回位装箱=move 转交——深拷（任务 100）只覆盖「有析构∧有拷贝构造」类
+//   （独立副本·源照常可用）；无拷贝构造类（stdlib 字符串映射<整32> 实锚）
+//   原浅存源句柄，返回后源 RAII 析构（genClassDestructorCalls 返回块
+//   DeleteObject）=返回聚合携悬垂句柄，调用方 .值.方法() 读已释放对象
+//   （d5 取表() 返回 可选<字符串映射<整32>> 后 甲.值.获取 miss——落变量
+//   基线同缺=非链式专属·函数返回聚合+类载荷即中）。v2 侧同域立法=71-a
+//   「装箱（正常/某些(局部)）=move 转交，出口析构跳过」——宿主补齐同语义：
+//   返回表达式内（return 后源不可达·无 019 第 1 句「源照常可用」冲突）
+//   源槽清零，出口析构空安全跳过（codegen test/je 在案形态），所有权随
+//   聚合移交调用方。仅对 RAII 拥有面（ownedClassOrder_ 在册）生效——
+//   借用视图/非拥有句柄不在册，清零=破坏视图源，不清。
+void IRGenerator::emitResultCtorReturnMoveForClass(
+    CallExpr* node, const std::string& name, bool deepCopied100,
+    const std::string& canonValueType) {
+    if (!node->arguments.empty() && !deepCopied100 && inReturnExpr_ &&
+        (name == "正常" || name == "某些") &&
+        node->arguments[0]->getType() == NodeType::IdentifierExpr &&
+        semantic_ != nullptr && semantic_->isClassType(canonValueType)) {
+        const std::string srcName1611 = static_cast<const IdentifierExpr*>(
+            node->arguments[0].get())->name;
+        const cn::Optional<std::string> slotOpt1611 = lookupVarName(srcName1611);
+        if (slotOpt1611.has_value() &&
+            std::find(ownedClassOrder_.begin(), ownedClassOrder_.end(),
+                      slotOpt1611.value()) != ownedClassOrder_.end()) {
+            emit(ir::Opcode::Store, {ir::IRValue::constant("0", "i64")},
+                 ir::IRValue(), slotOpt1611.value(), "ptr", node->location);
+        }
     }
 }
 

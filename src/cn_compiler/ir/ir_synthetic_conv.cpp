@@ -128,9 +128,23 @@ bool IRGenerator::emitSyntheticConvCopyIfNeeded(const ir::IRValue& dstAddr,
     }
     const SyntheticShape& srcShape = srcShapeOpt.value();
     if (srcShape.isResult != dstShape.isResult) return false;  // 结果↔可选不放行
-    const bool tSame = srcShape.valueType == dstShape.valueType;
+    // 1611（2026-10-25·1025 采样轮 d4 实锚）：载荷等价判定前**物化归一**——
+    //   语义层返回类型已物化（结果<字符串映射$整32,整32>·1612 泛型实例化根治
+    //   面）而声明位类型文本保持源码形态（结果<字符串映射<整32>,整32>·
+    //   resolveGenericTypeName 对声明位在 46-c 回填写回前不触达），两形态同
+    //   一实例：不归一=等价实例误判「异型非标量载荷」被 1592 守卫拒（编译
+    //   失败·d4 实锚）。resolveGenericTypeName 幂等（实例名/标量原样返回）。
+    const auto materialized1611 = [this, &loc](const std::string& t) -> std::string {
+        if (semantic_ == nullptr || t.empty() || t.find('<') == std::string::npos) {
+            return t;
+        }
+        return semantic_->resolveGenericTypeName(t, loc);
+    };
+    const bool tSame =
+        materialized1611(srcShape.valueType) == materialized1611(dstShape.valueType);
     const bool eSame =
-        !dstShape.isResult || srcShape.errorType == dstShape.errorType;
+        !dstShape.isResult ||
+        materialized1611(srcShape.errorType) == materialized1611(dstShape.errorType);
     if (tSame && eSame) return false;  // 等价载荷：原整块拷贝（零开销）
     // 每侧独立：异型侧必须标量可转换（同型侧可聚合/资源——走原拷贝语义）
     const auto isConvScalar = [this](const std::string& t) -> bool {
