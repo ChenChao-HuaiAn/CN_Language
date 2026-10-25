@@ -13,6 +13,8 @@ from __future__ import annotations   # P1-1：3.8 注解惰性化（int | None �
 import json
 import os
 import subprocess
+import sys
+import time
 import urllib.request
 from datetime import datetime
 from pathlib import Path
@@ -37,11 +39,71 @@ def 初始化(仓库根: Path, 平台: str, 日志目录: Path, 远端名: str) 
 def 执行机字段(runner: str, 构建并行: int, 是win: bool) -> dict:
     """1299：门禁结果执行机归因字段（构建段 63s↔372s 查因必需——同 sha 同平台不同
     runner/作业数可差数倍；详情无执行机只能翻各机 ci-logs 考古）。
-    win 侧 Ninja `--parallel` 用全核，`CN_BUILD_JOBS` 不适用→不写入（不虚报默认 2）。"""
-    字段 = {"runner": runner}
+    1385 P1-3：win 侧补「构建并行度=全核N」（Ninja --parallel 用全核·原字段缺失）；
+    linux 侧 CN_BUILD_JOBS 保持（构建并行度=该值）。"""
+    并行度 = ("全核%d" % max(1, os.cpu_count() or 1)) if 是win else "%d" % 构建并行
+    字段 = {"runner": runner, "构建并行度": 并行度}
     if not 是win:
         字段["CN_BUILD_JOBS"] = 构建并行
     return 字段
+
+
+def _win忙比(采样秒: float = 0.2):
+    """Windows CPU 忙比采样（GetSystemTimes 前后差·默认 0.2s）——失败=None（显式未知档）。"""
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        class 文件时刻(ctypes.Structure):
+            _fields_ = [("低", wintypes.DWORD), ("高", wintypes.DWORD)]
+
+        def 取():
+            空闲, 内核, 用户 = 文件时刻(), 文件时刻(), 文件时刻()
+            if not ctypes.windll.kernel32.GetSystemTimes(
+                    ctypes.byref(空闲), ctypes.byref(内核), ctypes.byref(用户)):
+                return None
+
+            def 值(项):
+                return (项.高 << 32) | 项.低
+
+            return 值(空闲), 值(内核), 值(用户)
+
+        首 = 取()
+        if 首 is None:
+            return None
+        time.sleep(采样秒)
+        末 = 取()
+        if 末 is None:
+            return None
+        空闲差 = 末[0] - 首[0]
+        总差 = (末[1] - 首[1]) + (末[2] - 首[2])
+        if 总差 <= 0 or 空闲差 < 0:
+            return None
+        return max(0.0, min(1.0, 1.0 - float(空闲差) / float(总差)))
+    except (AttributeError, OSError, ValueError):
+        return None   # 静默豁免运行时API: 平台无 GetSystemTimes/采样失败=显式「负载未知」档（非测量值）
+
+
+def 负载档() -> str:
+    """1385 P1-3：构建起点宿主负载档（同宿主多实例抢 CPU 的可见面）——
+    posix=getloadavg/核数；win=GetSystemTimes 0.2s 忙比；探测失败=显式「负载未知」。"""
+    try:
+        cpu = max(1, os.cpu_count() or 1)
+        if hasattr(os, "getloadavg"):
+            比 = float(os.getloadavg()[0]) / cpu
+        elif sys.platform.startswith("win"):
+            比 = _win忙比()
+        else:
+            return "负载未知"
+    except (OSError, AttributeError, ValueError):
+        return "负载未知"
+    if 比 is None:
+        return "负载未知"
+    if 比 < 0.7:
+        return "低负载"
+    if 比 < 1.5:
+        return "中负载"
+    return "高负载"
 
 
 def 物理内存MB(是win: bool) -> int:

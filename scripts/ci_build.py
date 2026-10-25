@@ -24,8 +24,12 @@ ccache→sccache→不启用；off/0/false/no/关闭/否=显式关闭；其他�
 from __future__ import annotations
 
 import os
+import re
 import shutil
+import subprocess
 from pathlib import Path
+
+import ci_report   # 1385：构建起点宿主负载档（同宿主多实例可见面）
 
 仓库根 = Path(__file__).resolve().parent.parent
 日志目录 = 仓库根 / "ci-logs"
@@ -106,6 +110,76 @@ def win构建行(vcvars: Path) -> list[str]:
         "if errorlevel 1 (echo [FAIL] build & exit /b 1)"]
 
 
+# ═══════════ 1385 构建缓存命中态/负载档（耗时基线口径维度） ═══════════
+缓存命中行 = re.compile(r"(?i)^\s*(?:cache\s+)?hits?\s*[:=]?\s*([\d,]+)")
+缓存未中行 = re.compile(r"(?i)^\s*(?:cache\s+)?miss(?:es)?\s*[:=]?\s*([\d,]+)")
+
+
+def 读缓存计数(launcher, 执行=None) -> dict | None:
+    """ccache -s / sccache --show-stats → {命中, 未中} 累计计数；不可用/解析失败=None。
+
+    命中行取首个匹配（ccache「Hits: n / m」/ sccache「Cache hits n」）——sccache
+    后续 rate 行不会覆盖计数。None=显式「缓存未知」（调用方落独立口径桶）。
+    执行=subprocess.run 可注入（selftest 零真实缓存工具）。"""
+    if not launcher:
+        return None
+    名 = Path(str(launcher)).name.lower()
+    if "ccache" in 名:
+        命令 = [str(launcher), "-s"]
+    elif "sccache" in 名:
+        命令 = [str(launcher), "--show-stats"]
+    else:
+        return None
+    try:
+        r = (执行 or subprocess.run)(命令, capture_output=True, text=True, timeout=10)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if r.returncode != 0:
+        return None
+    命中 = 未中 = None
+    for 行 in (r.stdout or "").splitlines():
+        if 命中 is None:
+            m = 缓存命中行.match(行)
+            if m:
+                命中 = int(m.group(1).replace(",", ""))
+        if 未中 is None:
+            m = 缓存未中行.match(行)
+            if m:
+                未中 = int(m.group(1).replace(",", ""))
+    if 命中 is None or 未中 is None:
+        return None
+    return {"命中": 命中, "未中": 未中}
+
+
+def 缓存档(前: dict | None, 后: dict | None) -> str:
+    """构建前后累计计数差 → 命中率档（高命中≥80% / 部分≥30% / 低命中 / 无编译）。
+    计数回退（stats 重置）或缺失=「缓存未知」显式档（不猜测）。"""
+    if 前 is None or 后 is None:
+        return "缓存未知"
+    命中 = 后["命中"] - 前["命中"]
+    未中 = 后["未中"] - 前["未中"]
+    if 命中 < 0 or 未中 < 0:
+        return "缓存未知"
+    总 = 命中 + 未中
+    if 总 <= 0:
+        return "无编译"
+    比 = float(命中) / float(总)
+    if 比 >= 0.8:
+        return "高命中"
+    if 比 >= 0.3:
+        return "部分命中"
+    return "低命中"
+
+
+def 标记构建维度(步骤们: dict, 缓存态: str, 负载: str) -> None:
+    """构建步骤并入 缓存态/负载档（rc 失败也记录——评估层按 rc 分流为未计入）。"""
+    步 = 步骤们.get("构建")
+    if not isinstance(步, dict):
+        return
+    步["缓存态"] = 缓存态
+    步["负载档"] = 负载
+
+
 def win构建链(步骤们: dict, 步骤, 日志, vcvars: Path, 当前头: str,
               单轮总超时秒: int) -> None:
     """win 构建链整段（291 原内联于 跑一轮·523 抽出=跑一轮 拆函数+指纹挂点）：
@@ -127,7 +201,14 @@ def win构建链(步骤们: dict, 步骤, 日志, vcvars: Path, 当前头: str,
         return
     构建脚本 = 日志目录 / "win_build.cmd"
     构建脚本.write_text("\r\n".join(win构建行(vcvars)) + "\r\n", encoding="ascii")
+    # 1385 P1-3：构建前后 sccache 统计差 → 缓存命中档；构建起点宿主负载档。
+    #   win 侧 sccache 由 wt.py 配置注入；探测不到=「缓存未知」（不臆断无缓存）。
+    sccache = shutil.which("sccache")
+    前统计 = 读缓存计数(sccache) if sccache else None
+    负载 = ci_report.负载档()
     步骤("构建", ["cmd", "/c", str(构建脚本)], 单轮总超时秒)
+    后统计 = 读缓存计数(sccache) if sccache else None
+    标记构建维度(步骤们, 缓存档(前统计, 后统计) if sccache else "缓存未知", 负载)
     # 1385：指纹清建/首次配置=冷建——配置/构建耗时基线按冷暖分桶（温建 60s 对
     #   冷建 300s 不误报；linux 侧冷建由预验「清产物」步骤识别·本标记为 win 专属补充）。
     if 冷建本轮:
@@ -238,9 +319,14 @@ def linux构建链(步骤们: dict, 步骤, 构建并行: int, 单轮总超时�
         return  # 配置非法——不进入 cmake（防带病构建/静默降级）
     if not 步骤("配置", linux配置命令(决策["launcher"]), 600):
         return  # 配置红——步骤们 已记 rc，构建/单测不跑（原 pass 分支语义）
+    # 1385 P1-3：构建前后缓存统计差 → 命中档；构建起点宿主负载档（同宿主并行可见）
+    前统计 = 读缓存计数(决策["launcher"]) if 决策["launcher"] else None
+    负载 = ci_report.负载档()
     if not 步骤("构建", ["cmake", "--build", "target/build",
                         "--parallel", str(构建并行)], 单轮总超时秒):
         return  # 构建红——单测不跑（原 elif 语义）
+    后统计 = 读缓存计数(决策["launcher"]) if 决策["launcher"] else None
+    标记构建维度(步骤们, 缓存档(前统计, 后统计) if 决策["launcher"] else "无缓存", 负载)
     单测 = next((p for p in [仓库根 / "target/build/tests/unit/cn_unit_tests",
                              仓库根 / "target/build/cn_unit_tests",
                              仓库根 / "target/cn_unit_tests"] if p.exists()), None)

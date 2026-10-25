@@ -199,6 +199,8 @@ def e2e段(步骤们: dict, 步骤, cn: Path, 日志, sha: str, 轮分支: str, 
                 runner=runner标识, 读明细=ci_shard.读e2e明细,
                 片心跳=lambda k: 启动心跳(轮分支, k))
             步骤们["e2e并行"]["秒"] = 聚合秒
+            # 1385 P1-1：分片形态透传（分布式=并行取 max；退化单实例=串行总和不混算）
+            步骤们["e2e并行"]["分片形态"] = _形态
             步骤们["e2e"] = {"rc": 聚合rc}
             if 合并明细 is not None:
                 try:

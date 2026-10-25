@@ -3,38 +3,50 @@
 """ci_duration.py —— 门禁步骤耗时滚动基线（任务 #1385·「静默劣化」机械告警面）。
 
 背景（#1299 查因结论）：预验构建段 63s→372s 是靠人眼翻门禁表发现的，不是被告警抓到的；
-  同 sha 同平台在不同执行机/构建并行度下耗时可差数倍（1299 增设 runner/CN_BUILD_JOBS
-  归因字段正是为此），因此基线**必须按执行机与口径分桶**，否则换机即误报。
+  同 sha 同平台在不同执行机/构建并行度/编译器缓存命中态下耗时可差数倍（1299 增设
+  runner/CN_BUILD_JOBS 归因字段正是为此），因此基线**必须按执行机与口径分桶**。
 
-口径（单一事实源）：
-  · 样本=步骤记录里的 `秒` 字段（#1385 前的既有数据形状，runner 零协议新增）；
-  · 键=(平台, 步骤, 口径, 执行机)——口径按步骤语义分桶：
-      构建/配置 → 冷建/温建（含清产物 或 win 指纹清建标记「冷建」）；
-      e2e/e2e并行 → 单实例/分片N（分片数变化=耗时口径变化·不混算）；
-      check_asm_width → 脚本自报的扫描口径（全扫/目录扫N + 缓存冷热·1300 增量模式）；
-      其余 → 常规；
-  · 执行机维度=结果.runner（1299 归因字段）——同平台不同机不混算；
-  · 滚动窗口=近 20 次（CN_DURATION_SAMPLES）中位数；样本仅收 rc=0 且非超时的步骤
-    （失败步骤耗时由失败原因解释，不污染正常基线）；
-  · 告警=当前 > 3×中位 **且** 增量 > 10s（CN_DURATION_ALERT_RATIO/DELTA）；样本
-    < 5（CN_DURATION_MIN_SAMPLES）=显式「基线不足」，不静默放行也不误报；
-  · 中位/样本不可用一律落「不足」条目（648 miss 不可静默），前端按黄字展示。
+口径（单一事实源·键=(平台, 步骤, 口径, 执行机)）：
+  · 样本=步骤记录里的 `秒` 字段（runner 既有形状）+ #1385 起的增量字段（分片数/
+    分片形态/缓存态/负载档/构建并行度——全部可选·缺失落显式未知档）；仅收 rc=0、
+    非超时、有限正数样本；
+  · 构建/配置 → 冷建/温建（清产物成功或 win 指纹清建/首次配置）；构建另加
+    编译器缓存命中档（ccache -s / sccache --show-stats 的构建前后命中率）与
+    构建起点宿主负载档（同宿主多实例抢 CPU 可见面·#1385 P1-3）；
+  · e2e/e2e并行 → 单实例 / 分片N·分布式 / 分片N·退化单实例（P1-1：召唤失败退化为
+    串行总和与并行耗时不可混算；形态由 ci_shard 透传，缺失=形态未知独立桶）；
+  · check_asm_width → 脚本经 CN_STEP_META_DIR 回传「全扫/目录扫N·用例M·目录摘要H·
+    缓存冷热」（P1-2：目录数相同但用例/目录不同=不同成本，同桶会 15s↔1.5s 误报）；
+  · 其余步骤 → 常规·执行机。
+  · 执行机维度=结果.runner（linux 附 CN_BUILD_JOBS；win 报「全核N」并行度）。
+
+判据：
+  · 告警 = 当前 > 3×近 20 次中位 **且** 增量 > 10s（CN_DURATION_ALERT_RATIO/DELTA）；
+  · 慢漂 = 最近 5 次中位 ÷ 前 15 次中位 > 1.5×，或 ÷ 更早 15 次中位 > 1.5×
+    （P1-4：20 次滚动中位对 60→180s 分 40 轮爬升零告警——独立漂移判据补盲）；
+  · 去抖 = 构建/配置连续 2 轮超阈才告警；首轮超阈落「待确认」（P1-3；
+    冷建双峰/换机等一次性尖峰不升级为告警）；
+  · 样本 < 5（CN_DURATION_MIN_SAMPLES）=显式「基线不足」，不告警也不静默；
+  · 坏值（NaN/Inf）=显式「不足/形态坏」，不参与中位；落库 JSON 一律 allow_nan=False。
 
 数据面：
-  · 服务端（权威）：门禁表 `耗时告警` 列（JSON 对象）+ `耗时样本` 表（每键滚动样本）；
-    /api/report 写入门禁结果时计算并落库（queue_service 调用 `记录并评估安全`），
-    门禁快照/详情把告警徽标与基线详情带给 8300 门禁窗口与 8301 看板；
-  · runner 本地（断网降级）：ci_report.落盘 前调 `本地补充`——本树 ci-logs/耗时基线.json
-    原子累积样本，结果 JSON 带 `耗时告警`（来源=runner本机），上报不可达时本地仍可见。
-    服务端可达时以服务端对象为准（跨 runner 汇总），本地对象仅作降级面。
+  · 服务端（权威）：门禁表 `耗时告警` 列（JSON 对象）+ `耗时样本` 表（滚动样本·
+    超阈/epoch 列·30 天过期清理）；/api/report 写入时评估落库（门禁写入字段），
+    快照/详情把告警、慢漂、平台/时刻带给 8300 门禁窗口与 8301 看板；
+  · runner 本地（断网降级）：ci_report.落盘 前调 本地补充——本树 ci-logs/耗时基线.json
+    原子累积样本（坏文件先改名 .坏<时间戳> 留档再重建），结果 JSON 带 `耗时告警`
+    （来源=runner本机）；服务端可达时以服务端对象为准。
+  · 配置 CN_DURATION_* 惰性解析：非法值=stderr 黄字+文档默认并记入评估对象
+    「配置警告」（不拖垮服务/runner 启动·不静默）。
 
-边界：Python 脚本与 C++/v2 编译器实现分离（本模块只服务 CI 观测面，不参与编译产物）；
-  check_asm_width 的口径元信息经 CN_STEP_META_DIR 环境目录回传（daemon 步骤记录器读取），
+边界：Python 脚本与 C++/v2 编译器实现分离（本模块只服务 CI 观测面）；
+  check_asm_width 口径元信息经 CN_STEP_META_DIR 环境目录回传（daemon 步骤记录器读取），
   元信息缺失=口径不足显式条目，不猜测。
 """
 from __future__ import annotations
 
 import json
+import math
 import os
 import sqlite3
 import sys
@@ -43,31 +55,70 @@ from pathlib import Path
 
 import atomic_json   # 556：本机基线文件原子读写（半写损坏防护·读坏黄字）
 
-# ===== 可调常量（环境变量覆盖；非法值=启动期显式报错，拒绝静默取默认） =====
-def _环境数(名: str, 默认, 转换):
-    """读数值型环境变量；未设=文档默认；非法=ValueError（部署配置错须显式暴露）。"""
+# ===== 配置（惰性解析·非法值显式告警后用文档默认，不拖垮服务启动） =====
+默认配置 = {"样本": 20, "最小": 5, "倍数": 3.0, "增量": 10.0,
+            "保留": 60, "保留天": 30}
+_配置缓存 = {"键": None, "值": None}
+
+
+def _数值(名: str, 默认, 转换, 警告: list) -> object:
     原 = os.environ.get(名)
-    if 原 is None or str(原).strip() == "":
+    if 原 is None or not str(原).strip():
         return 默认
     try:
-        return 转换(原)
+        值 = 转换(原)
     except (TypeError, ValueError):
-        raise ValueError("环境变量 %s=%r 非法（期望数值）——拒绝静默取默认值" % (名, 原))
+        警告.append("环境变量 %s=%r 非法——按默认 %r（显式警告·不静默）"
+                    % (名, 原, 默认))
+        print("[黄] " + 警告[-1], file=sys.stderr, flush=True)
+        return 默认
+    return 值
 
 
-样本上限 = max(1, _环境数("CN_DURATION_SAMPLES", 20, int))
-最小样本 = max(1, _环境数("CN_DURATION_MIN_SAMPLES", 5, int))
-告警倍数 = max(1.01, _环境数("CN_DURATION_ALERT_RATIO", 3.0, float))
-告警增量秒 = max(0.0, _环境数("CN_DURATION_ALERT_DELTA", 10.0, float))
+def 取配置() -> dict:
+    """惰性读 CN_DURATION_*（环境变化才重算）；非法值=黄字+默认并记警告。"""
+    键 = tuple(os.environ.get(名) for 名 in
+              ("CN_DURATION_SAMPLES", "CN_DURATION_MIN_SAMPLES",
+               "CN_DURATION_ALERT_RATIO", "CN_DURATION_ALERT_DELTA",
+               "CN_DURATION_DRIFT_SAMPLES", "CN_DURATION_RETAIN_DAYS"))
+    if _配置缓存["键"] == 键 and _配置缓存["值"] is not None:
+        return _配置缓存["值"]
+    警告: list[str] = []
+    配置 = {
+        "样本": max(1, int(_数值("CN_DURATION_SAMPLES", 默认配置["样本"], int, 警告))),
+        "最小": max(1, int(_数值("CN_DURATION_MIN_SAMPLES", 默认配置["最小"], int, 警告))),
+        "倍数": max(1.01, float(_数值("CN_DURATION_ALERT_RATIO",
+                                      默认配置["倍数"], float, 警告))),
+        "增量": max(0.0, float(_数值("CN_DURATION_ALERT_DELTA",
+                                     默认配置["增量"], float, 警告))),
+        "保留": max(1, int(_数值("CN_DURATION_DRIFT_SAMPLES",
+                                默认配置["保留"], int, 警告))),
+        "保留天": max(0, int(_数值("CN_DURATION_RETAIN_DAYS",
+                                  默认配置["保留天"], int, 警告))),
+        "警告": 警告,
+    }
+    配置["保留"] = max(配置["保留"], 配置["样本"] + 15)   # 漂移需保留样本窗外 15 条
+    _配置缓存["键"], _配置缓存["值"] = 键, 配置
+    return 配置
 
-判据文本 = ("近 %d 次同平台同步骤同口径同执行机中位；超 %.1f×中位且增量>%ss 判「耗时异常」；"
-            "样本≥%d 才评估（不足=显式基线不足）；仅计 rc=0 非超时步骤"
-            % (样本上限, 告警倍数, ("%g" % 告警增量秒), 最小样本))
+
+def 判据文本(配置: dict | None = None) -> str:
+    配置 = 配置 or 取配置()
+    return ("告警=当前 > %.1f×近 %d 次中位且增量>%ss；慢漂=最近 5 次中位÷前 15 次"
+            "（或更早 15 次）中位 >1.5×；构建/配置连续 2 轮超阈才告警；"
+            "样本≥%d 才评估（不足=显式基线不足）；仅计 rc=0 非超时有限值步骤"
+            % (配置["倍数"], 配置["样本"], ("%g" % 配置["增量"]), 配置["最小"]))
+
 
 # 需脚本自报口径的步骤（耗时不只由代码决定·与写集/缓存态强相关）
 需元信息步骤 = frozenset(("check_asm_width",))
 冷建步骤 = frozenset(("配置", "构建"))
 分片步骤 = frozenset(("e2e", "e2e并行"))
+去抖步骤 = frozenset(("配置", "构建"))
+
+漂移窗 = 5          # 最近 5 次
+漂移基准 = 15       # 前 15 次 / 更早 15 次
+漂移倍数 = 1.5
 
 # 本机基线文件名（ci-logs/ 下·runner 私有）
 本地基文件名 = "耗时基线.json"
@@ -84,34 +135,78 @@ def 中位数(值们: list) -> float | None:
     return 排[mid] if n % 2 else (排[mid - 1] + 排[mid]) / 2.0
 
 
-def 评估数值(样本们: list, 当前秒: float, *, 最小: int | None = None,
-             倍数: float | None = None, 增量: float | None = None) -> dict:
+def _有限正数(值) -> bool:
+    return (isinstance(值, (int, float)) and not isinstance(值, bool)
+            and math.isfinite(float(值)) and float(值) > 0)
+
+
+def _漂移判定(有效: list, 样本窗: int) -> dict | None:
+    """慢漂：最近 5 次中位 vs 前 15 次（样本窗内）/更早 15 次（样本窗外）中位 >1.5×。
+    仅样本数≥样本窗（20）时评估；返回 {类型,最近中位,基准中位,倍数,原因} 或 None。"""
+    if len(有效) < 样本窗:
+        return None
+    最近 = 中位数(有效[-漂移窗:])
+    if 最近 is None or 最近 <= 0:
+        return None
+
+    def 比(基准们, 类型说明, 位置说明):
+        if len(基准们) < 漂移基准:
+            return None
+        基准 = 中位数(基准们)
+        if 基准 is None or 基准 <= 0:
+            return None
+        倍 = 最近 / 基准
+        if 倍 <= 漂移倍数:
+            return None
+        return {"类型": 类型说明,
+                "最近中位": round(最近, 1), "基准中位": round(基准, 1),
+                "倍数": round(倍, 2),
+                "原因": "最近 5 次中位 %.1fs > %s %.1fs 的 %.2f×（慢漂黄签·不升级红）"
+                        % (最近, 位置说明, 基准, 倍)}
+
+    窗内前 = 有效[-样本窗:-漂移窗]
+    结 = 比(窗内前, "近期", "前 15 次")
+    if 结:
+        return 结
+    更早 = 有效[:-样本窗][-漂移基准:]
+    return 比(更早, "长期", "更早 15 次")
+
+
+def 评估数值(样本们: list, 当前秒: float, *, 配置: dict | None = None) -> dict:
     """单步骤评估（纯函数·selftest 四态锚）：返回
-    {状态: 正常|告警|不足, 中位, 倍数, 增量, 样本数, 原因?}。
-    判据：当前 > 中位×倍数 **且** 当前-中位 > 增量；样本 < 最小=不足（不评估）。"""
-    最小 = 最小样本 if 最小 is None else 最小
-    倍数 = 告警倍数 if 倍数 is None else 倍数
-    增量 = 告警增量秒 if 增量 is None else 增量
-    有效 = [x for x in 样本们
-            if isinstance(x, (int, float)) and not isinstance(x, bool)]
-    n = len(有效)
-    if n < 最小:
+    {状态: 正常|告警|慢漂|不足, 中位, 倍数, 增量, 样本数, 原因?, 漂移?}。
+    告警/中位只用最近 N=20 次；慢漂用完整保留样本（默认 60）的近期/长期中位比较。"""
+    配置 = 配置 or 取配置()
+    有效 = [float(x) for x in 样本们 if _有限正数(x)]
+    当前 = float(当前秒) if _有限正数(当前秒) else None
+    if 当前 is None:
+        return {"状态": "不足", "中位": None, "倍数": None, "增量": None,
+                "样本数": len(有效), "原因": "当前秒非有限正数（结果形态坏·显式）"}
+    窗口 = 有效[-配置["样本"]:]
+    n = len(窗口)
+    if n < 配置["最小"]:
         return {"状态": "不足", "中位": None, "倍数": None, "增量": None,
                 "样本数": n, "原因": "样本 %d < 最小 %d（基线不足·显式不静默）"
-                % (n, 最小)}
-    中位 = 中位数(有效)
+                % (n, 配置["最小"])}
+    中位 = 中位数(窗口)
     if 中位 is None or 中位 <= 0:
         return {"状态": "不足", "中位": 中位, "倍数": None, "增量": None,
                 "样本数": n, "原因": "中位不可用（样本形态异常）"}
-    倍 = float(当前秒) / 中位
-    增 = float(当前秒) - 中位
-    if 倍 > 倍数 and 增 > 增量:
+    倍 = 当前 / 中位
+    增 = 当前 - 中位
+    if 倍 > 配置["倍数"] and 增 > 配置["增量"]:
         return {"状态": "告警", "中位": round(中位, 1), "倍数": round(倍, 1),
                 "增量": round(增, 1), "样本数": n,
                 "原因": "当前 %.1fs > %.1f×中位 %.1fs 且增量 %.1fs > %ss"
-                % (当前秒, 倍数, 中位, 增, ("%g" % 增量))}
-    return {"状态": "正常", "中位": round(中位, 1), "倍数": round(倍, 1),
-            "增量": round(增, 1), "样本数": n}
+                % (当前, 配置["倍数"], 中位, 增, ("%g" % 配置["增量"]))}
+    结 = {"状态": "正常", "中位": round(中位, 1), "倍数": round(倍, 1),
+          "增量": round(增, 1), "样本数": n}
+    漂 = _漂移判定(有效, 配置["样本"])
+    if 漂:
+        结["状态"] = "慢漂"
+        结["漂移"] = 漂
+        结["原因"] = 漂["原因"]
+    return 结
 
 
 def _有清产物(步骤们: dict) -> bool:
@@ -132,6 +227,15 @@ def 取分片数(结果: dict) -> int:
     return 0
 
 
+def _并行描述(结果: dict) -> str:
+    """执行机并行度：linux=CN_BUILD_JOBS；win=「全核N」构建并行度；缺失=并行未知。"""
+    jobs = 结果.get("CN_BUILD_JOBS")
+    if isinstance(jobs, int) and not isinstance(jobs, bool):
+        return "%d并行" % jobs
+    描述 = str(结果.get("构建并行度") or "").strip()
+    return 描述 or "并行未知"
+
+
 def 推导口径(步骤名: str, 步: dict, 结果: dict) -> tuple[str, str]:
     """→(口径串, 不足原因)。不足原因非空=该步骤无法分桶（如执行机/脚本口径缺失）。"""
     runner = str(结果.get("runner") or "").strip()
@@ -140,12 +244,25 @@ def 推导口径(步骤名: str, 步: dict, 结果: dict) -> tuple[str, str]:
     机 = "runner=" + runner
     if 步骤名 in 冷建步骤:
         冷 = bool(步.get("冷建")) or _有清产物(结果.get("步骤") or {})
-        jobs = 结果.get("CN_BUILD_JOBS")
-        尾 = "·%d并行" % jobs if isinstance(jobs, int) and not isinstance(jobs, bool) else ""
-        return ("冷建" if 冷 else "温建") + "·" + 机 + 尾, ""
+        前 = ("冷建" if 冷 else "温建") + "·" + 机 + "·" + _并行描述(结果)
+        if 步骤名 == "构建":
+            # P1-3：编译器缓存命中档 + 构建起点负载档（缺失=显式未知档·独立桶）
+            缓存 = str(步.get("缓存态") or "缓存未知").strip()
+            负载 = str(步.get("负载档") or "负载未知").strip()
+            return 前 + "·" + 缓存 + "·" + 负载, ""
+        return 前, ""
     if 步骤名 in 分片步骤:
         片 = 取分片数(结果)
-        return ("分片%d" % 片 if 片 > 1 else "单实例") + "·" + 机, ""
+        if 片 > 1:
+            形态 = str(结果.get("分片形态") or 步.get("分片形态") or "").strip()
+            if 形态 == "分片":
+                形态档 = "分布式"
+            elif 形态 == "退化单实例":
+                形态档 = "退化单实例"
+            else:
+                形态档 = "形态未知"   # 旧版/缺失·显式独立桶（不混算不误报）
+            return "分片%d·%s·%s" % (片, 形态档, 机), ""
+        return "单实例·" + 机, ""
     if 步骤名 in 需元信息步骤:
         口径 = str(步.get("口径") or "").strip()
         if not 口径:
@@ -154,25 +271,34 @@ def 推导口径(步骤名: str, 步: dict, 结果: dict) -> tuple[str, str]:
     return "常规·" + 机, ""
 
 
-def _错误对象(来源: str, 说明: str) -> dict:
+def _错误对象(来源: str, 说明: str, 配置: dict | None = None) -> dict:
     """显式错误评估对象（不静默——前端/详情按错误黄红文案展示）。"""
-    return {"版本": 1, "来源": 来源, "判据": 判据文本, "错误": 说明,
-            "告警": [], "不足": [], "步骤": []}
+    配置 = 配置 or 取配置()
+    出 = {"版本": 2, "来源": 来源, "判据": 判据文本(配置), "错误": 说明,
+          "告警": [], "慢漂": [], "待确认": [], "不足": [], "步骤": []}
+    if 配置.get("警告"):
+        出["配置警告"] = list(配置["警告"])
+    return 出
 
 
-def 评估(结果: dict, 取样本, *, 来源: str = "服务端汇总") -> dict:
+def 评估(结果: dict, 取样本, *, 取上次超阈=None, 来源: str = "服务端汇总",
+         配置: dict | None = None) -> dict:
     """评估一轮结果的全部可度量步骤（纯函数·取样本(步骤,口径)->[秒...] 注入）。
 
     返回对象（落库/前端共用）：
-      {版本, 来源, 判据, 告警:[...], 不足:[...], 步骤:[...]}；步骤=全部有 秒 字段的
-      步骤评估明细（含「未计入」「不足」态），告警=子集（徽标数据源），不足=子集
-      （基线不足/口径缺失/执行机缺失·显式面）。"""
+      {版本, 来源, 判据, 告警, 慢漂, 待确认, 不足, 步骤, [配置警告?/错误?/说明?]}。
+      步骤=全部有 秒 字段的评估明细（含「未计入/待确认/不足」态）；告警=3× 超阈
+      （去抖后）；慢漂=慢漂判据命中（黄签）；待确认=构建/配置首轮超阈（去抖）；
+      不足=样本不足/口径缺失/执行机缺失（显式面）。"""
+    配置 = 配置 or 取配置()
     if not isinstance(结果, dict):
-        return _错误对象(来源, "结果非对象——无法评估耗时基线（显式·不静默）")
+        return _错误对象(来源, "结果非对象——无法评估耗时基线（显式·不静默）", 配置)
     步骤们 = 结果.get("步骤")
     if not isinstance(步骤们, dict):
-        return _错误对象(来源, "结果缺步骤字段或形态非对象——无法评估耗时基线")
+        return _错误对象(来源, "结果缺步骤字段或形态非对象——无法评估耗时基线", 配置)
     告警: list[dict] = []
+    慢漂: list[dict] = []
+    待确认: list[dict] = []
     不足: list[dict] = []
     步骤表: list[dict] = []
     for 原名, 步 in 步骤们.items():
@@ -185,11 +311,19 @@ def 评估(结果: dict, 取样本, *, 来源: str = "服务端汇总") -> dict:
         if not isinstance(原秒, (int, float)) or isinstance(原秒, bool):
             continue   # 未计时步骤（同步/清产物/e2e 汇总键等）——不在耗时基线面
         秒 = float(原秒)
+        if not math.isfinite(秒):
+            条 = {"步骤": 名, "口径": "—", "秒": None, "中位": None,
+                  "倍数": None, "增量": None, "样本数": 0, "状态": "不足",
+                  "样本超阈": 0, "原因": "步骤秒含 NaN/Inf（结果形态坏·显式）"}
+            不足.append({"步骤": 名, "口径": "—", "样本数": 0,
+                         "原因": 条["原因"]})
+            步骤表.append(条)
+            continue
         口径, 缺因 = 推导口径(名, 步, 结果)
         if 缺因:
             条 = {"步骤": 名, "口径": 口径 or "—", "秒": round(秒, 1),
                   "中位": None, "倍数": None, "增量": None, "样本数": 0,
-                  "状态": "不足", "原因": 缺因}
+                  "状态": "不足", "原因": 缺因, "样本超阈": 0}
             不足.append({"步骤": 名, "口径": 口径 or "—", "样本数": 0, "原因": 缺因})
             步骤表.append(条)
             continue
@@ -197,25 +331,43 @@ def 评估(结果: dict, 取样本, *, 来源: str = "服务端汇总") -> dict:
         if not 可计:
             步骤表.append({"步骤": 名, "口径": 口径, "秒": round(秒, 1),
                           "中位": None, "倍数": None, "增量": None, "样本数": 0,
-                          "状态": "未计入",
+                          "状态": "未计入", "样本超阈": 0,
                           "原因": "rc=%s%s——失败/超时步骤不计入基线、不告警"
                           % (步.get("rc"), "·超时" if 步.get("超时") else "")})
             continue
         样本 = list(取样本(名, 口径) or [])
-        评 = 评估数值(样本, 秒)
+        评 = 评估数值(样本, 秒, 配置=配置)
         条 = {"步骤": 名, "口径": 口径, "秒": round(秒, 1),
               "中位": 评["中位"], "倍数": 评["倍数"], "增量": 评["增量"],
-              "样本数": 评["样本数"], "状态": 评["状态"]}
+              "样本数": 评["样本数"], "状态": 评["状态"],
+              "样本超阈": 1 if 评["状态"] == "告警" else 0}
         if 评.get("原因"):
             条["原因"] = 评["原因"]
+        if 评.get("漂移"):
+            条["漂移"] = 评["漂移"]
         if 评["状态"] == "告警":
-            告警.append(条)
+            上轮 = 0
+            if 名 in 去抖步骤 and 取上次超阈 is not None:
+                上轮 = int(取上次超阈(名, 口径) or 0)
+            if 名 in 去抖步骤 and 上轮 != 1:
+                条["状态"] = "待确认"
+                条["原因"] = "首轮超阈（%s）——连续 2 轮超阈才告警（去抖）" \
+                    % 条.get("原因", "超阈")
+                待确认.append({"步骤": 名, "口径": 口径, "秒": 条["秒"],
+                             "中位": 条["中位"], "倍数": 条["倍数"],
+                             "样本数": 条["样本数"], "原因": 条["原因"]})
+            else:
+                告警.append(条)
+        elif 评["状态"] == "慢漂":
+            慢漂.append(条)
         elif 评["状态"] == "不足":
             不足.append({"步骤": 名, "口径": 口径, "样本数": 评["样本数"],
                          "原因": 评.get("原因") or "基线不足"})
         步骤表.append(条)
-    出 = {"版本": 1, "来源": 来源, "判据": 判据文本,
-          "告警": 告警, "不足": 不足, "步骤": 步骤表}
+    出 = {"版本": 2, "来源": 来源, "判据": 判据文本(配置),
+          "告警": 告警, "慢漂": 慢漂, "待确认": 待确认, "不足": 不足, "步骤": 步骤表}
+    if 配置.get("警告"):
+        出["配置警告"] = list(配置["警告"])
     if not 步骤表:
         出["说明"] = "本轮无可度量步骤（免跑/早期退出/旧版结果）"
     return 出
@@ -232,41 +384,85 @@ def 建表(con: sqlite3.Connection) -> None:
     if "耗时告警" not in 列们:
         con.execute("ALTER TABLE 门禁 ADD COLUMN 耗时告警 TEXT")
     con.execute("""CREATE TABLE IF NOT EXISTS 耗时样本(
-        平台 TEXT, 步骤 TEXT, 口径 TEXT, 秒 REAL, 时刻 TEXT, sha TEXT)""")
+        平台 TEXT, 步骤 TEXT, 口径 TEXT, 秒 REAL, 时刻 TEXT, sha TEXT,
+        超阈 INTEGER DEFAULT 0, epoch INTEGER)""")
+    样本列 = {r[1] for r in con.execute("PRAGMA table_info(耗时样本)").fetchall()}
+    if "超阈" not in 样本列:
+        con.execute("ALTER TABLE 耗时样本 ADD COLUMN 超阈 INTEGER DEFAULT 0")
+    if "epoch" not in 样本列:
+        con.execute("ALTER TABLE 耗时样本 ADD COLUMN epoch INTEGER")
     con.execute("CREATE INDEX IF NOT EXISTS idx_耗时样本键 ON 耗时样本(平台,步骤,口径)")
+    con.execute("CREATE INDEX IF NOT EXISTS idx_耗时样本龄 ON 耗时样本(epoch)")
 
 
-def 读样本(con: sqlite3.Connection, 平台: str, 步骤: str, 口径: str) -> list:
-    """读某键最近 N 个样本（rowid 倒序取 N 再反转=时间升序）；空=[]（评估层落不足）。"""
+def 读样本(con: sqlite3.Connection, 平台: str, 步骤: str, 口径: str,
+          配置: dict | None = None) -> list:
+    """读某键最近「保留」条样本（rowid 倒序取 N 再反转=时间升序）；空=[]（评估层落不足）。"""
+    配置 = 配置 or 取配置()
     行们 = con.execute(
         "SELECT 秒 FROM 耗时样本 WHERE 平台=? AND 步骤=? AND 口径=? "
-        "ORDER BY rowid DESC LIMIT ?", (平台, 步骤, 口径, 样本上限)).fetchall()
+        "ORDER BY rowid DESC LIMIT ?", (平台, 步骤, 口径, 配置["保留"])).fetchall()
     return [r[0] for r in reversed(行们)]
 
 
+def _读上次超阈(con: sqlite3.Connection, 平台: str, 步骤: str, 口径: str,
+              当前sha: str = "") -> int:
+    """上一轮超阈标志（去抖链）；上一行同 sha=同轮重报→0（不把重试当第二轮）。"""
+    行 = con.execute("SELECT sha, 超阈 FROM 耗时样本 WHERE 平台=? AND 步骤=? AND 口径=? "
+                    "ORDER BY rowid DESC LIMIT 1", (平台, 步骤, 口径)).fetchone()
+    if not 行:
+        return 0
+    if 当前sha and str(行[0] or "") == 当前sha:
+        return 0
+    return int(行[1] or 0)
+
+
 def _记样本(con: sqlite3.Connection, 平台: str, 步骤: str, 口径: str,
-            秒: float, 时戳: str, sha: str) -> None:
+            秒: float, 时戳: str, sha: str, 超阈: int, epoch: float,
+            配置: dict) -> None:
     # 幂等口径=同键同 sha 先删后插（重报/同 sha 重验不重复计数）；不同口径桶
     #   （如预验冷建 vs develop 温建）互不删除——同 sha 的多口径测量各自保留。
     con.execute("DELETE FROM 耗时样本 WHERE 平台=? AND 步骤=? AND 口径=? AND sha=?",
                 (平台, 步骤, 口径, sha))
-    con.execute("INSERT INTO 耗时样本(平台,步骤,口径,秒,时刻,sha) VALUES(?,?,?,?,?,?)",
-                (平台, 步骤, 口径, 秒, 时戳, sha))
+    con.execute("INSERT INTO 耗时样本(平台,步骤,口径,秒,时刻,sha,超阈,epoch) "
+                "VALUES(?,?,?,?,?,?,?,?)",
+                (平台, 步骤, 口径, 秒, 时戳, sha, 1 if 超阈 else 0, epoch))
     con.execute(
         "DELETE FROM 耗时样本 WHERE 平台=? AND 步骤=? AND 口径=? AND rowid NOT IN "
         "(SELECT rowid FROM 耗时样本 WHERE 平台=? AND 步骤=? AND 口径=? "
         "ORDER BY rowid DESC LIMIT ?)",
-        (平台, 步骤, 口径, 平台, 步骤, 口径, 样本上限))
+        (平台, 步骤, 口径, 平台, 步骤, 口径, 配置["保留"]))
+
+
+def 清理过期样本(con: sqlite3.Connection, 现在: float,
+                配置: dict | None = None) -> int:
+    """删 epoch 早于「保留天」的样本（键过期清理·默认 30 天；0=禁用）。"""
+    配置 = 配置 or 取配置()
+    if 配置["保留天"] <= 0:
+        return 0
+    cur = con.execute("DELETE FROM 耗时样本 WHERE epoch IS NOT NULL AND epoch < ?",
+                      (现在 - 配置["保留天"] * 86400.0,))
+    return int(cur.rowcount or 0)
 
 
 def 记录并评估(con: sqlite3.Connection, 平台: str, sha: str, 结果: dict,
-              时戳: str) -> dict:
-    """门禁结果写入前调用：评估（读旧样本）→ 收本轮合格样本 → 裁剪至 N 条。
+              时戳: str, *, 现在: float | None = None,
+              配置: dict | None = None) -> dict:
+    """门禁结果写入前调用：评估（读旧样本）→ 收本轮合格样本 → 裁剪/过期清理。
 
-    幂等：同键同 sha 重报先删后插（上报重试/同 sha 重验不重复计数）；不同口径桶
-    各自保留（预验冷建样本不因随后 develop 温建同 sha 上报而被误删）。
-    仅 rc=0 非超时且 秒>0 的步骤入样本；失败/超时步骤只落「未计入」明细。"""
-    评 = 评估(结果, lambda 名, 口径: 读样本(con, 平台, 名, 口径))
+    幂等：同键同 sha 重报先删后插；不同口径桶各自保留。平台空串=拒绝建桶（显式
+    错误对象·P2）。仅 rc=0 非超时且有限正数秒的步骤入样本；失败/超时步骤只落
+    「未计入」明细。构建/配置首轮超阈落「待确认」并以超阈=1 入样本（去抖）。"""
+    配置 = 配置 or 取配置()
+    平台 = str(平台 or "").strip()
+    if not 平台:
+        return _错误对象("服务端汇总", "平台为空——拒绝建立耗时基线桶（显式）", 配置)
+    现在 = time.time() if 现在 is None else float(现在)
+    清理过期样本(con, 现在, 配置)
+    评 = 评估(结果,
+              lambda 名, 口径: 读样本(con, 平台, 名, 口径, 配置),
+             取上次超阈=lambda 名, 口径: _读上次超阈(con, 平台, 名, 口径, sha),
+             配置=配置)
     步骤们 = 结果.get("步骤") if isinstance(结果.get("步骤"), dict) else {}
     for 条 in 评["步骤"]:
         if 条.get("状态") == "未计入" or not 条.get("口径"):
@@ -275,20 +471,61 @@ def 记录并评估(con: sqlite3.Connection, 平台: str, sha: str, 结果: dict
         if not isinstance(步, dict) or 步.get("rc") != 0 or 步.get("超时"):
             continue
         秒 = 步.get("秒")
-        if isinstance(秒, (int, float)) and not isinstance(秒, bool) and 秒 > 0:
-            _记样本(con, 平台, 条["步骤"], 条["口径"], float(秒), 时戳, sha)
+        if _有限正数(秒):
+            _记样本(con, 平台, 条["步骤"], 条["口径"], float(秒), 时戳, sha,
+                    条.get("样本超阈", 0), 现在, 配置)
     return 评
 
 
-def 记录并评估安全(con: sqlite3.Connection, 平台: str, sha: str, 结果: dict,
-                  时戳: str) -> dict:
-    """记录并评估的 fail-open 壳：观测面异常不得拖垮门禁结果入库——
-    异常变成显式「错误」对象（前端黄红文案），并打印告警，不静默吞。"""
+def _详情文本(数据: dict) -> str:
+    """门禁.详情 列文本（严格 JSON·NaN/Inf 显式拒绝并落错误详情）。"""
     try:
-        return 记录并评估(con, 平台, sha, 结果, 时戳)
+        return json.dumps(数据, ensure_ascii=False, allow_nan=False)[:500000]
+    except ValueError as e:
+        print("[警告] 上报详情含 NaN/Inf——拒绝序列化（显式错误详情）：%r" % (e,),
+              flush=True)
+        步骤们 = 数据.get("步骤")
+        return json.dumps(
+            {"错误": "上报详情含 NaN/Inf，已拒绝序列化（%r）" % (e,),
+             "步骤名": sorted(str(k) for k in 步骤们) if isinstance(步骤们, dict) else None},
+            ensure_ascii=False, allow_nan=False)[:500000]
+
+
+def 门禁写入字段(con: sqlite3.Connection, 平台: str, sha: str, 数据: dict,
+                时戳: str, *, 是执行中: bool, 现在: float | None = None):
+    """queue_service /api/report 专用（P2 行数治理：写库评估/播报/序列化外迁）。
+
+    →(耗时告警列文本|None, 详情列文本, 播报行们)。执行中=列保留旧值（P2：
+    不覆盖已完成行旧告警）且不评估；异常=显式错误对象，门禁结果照常入库。"""
+    if 是执行中:
+        旧行 = con.execute("SELECT 耗时告警 FROM 门禁 WHERE sha=? AND 平台=?",
+                          (sha, 平台)).fetchone()
+        return (旧行[0] if 旧行 else None), _详情文本(数据), []
+    try:
+        评 = 记录并评估(con, 平台, sha, 数据, 时戳, 现在=现在)
     except Exception as e:   # noqa: BLE001 —— 观测面异常须显式留痕（非静默兜底）
         print("[耗时告警] 评估异常（门禁结果照常入库）：%r" % (e,), flush=True)
-        return _错误对象("服务端汇总", "耗时基线评估异常：%r（结果照常入库）" % (e,))
+        评 = _错误对象("服务端汇总", "耗时基线评估异常：%r（结果照常入库）" % (e,))
+    行们 = []
+    for 条 in 评.get("告警") or []:
+        行们.append("[耗时告警] %s %s %s 秒=%s 中位=%s（%s×·样本 %s·口径 %s）"
+                    % (sha[:10], 平台, 条.get("步骤"), 条.get("秒"),
+                       条.get("中位"), 条.get("倍数"), 条.get("样本数"),
+                       条.get("口径")))
+    for 条 in 评.get("慢漂") or []:
+        行们.append("[耗时慢漂] %s %s %s 秒=%s·%s"
+                    % (sha[:10], 平台, 条.get("步骤"), 条.get("秒"),
+                       条.get("原因") or "慢漂"))
+    try:
+        耗时列 = json.dumps(评, ensure_ascii=False, allow_nan=False)
+    except ValueError as e:
+        print("[耗时告警] 评估落库序列化失败（NaN/Inf·显式错误对象）：%r"
+              % (e,), flush=True)
+        耗时列 = json.dumps(
+            {"版本": 2, "错误": "耗时评估序列化失败：%r" % (e,),
+             "告警": [], "慢漂": [], "待确认": [], "不足": [], "步骤": []},
+            ensure_ascii=False, allow_nan=False)
+    return 耗时列, _详情文本(数据), 行们
 
 
 def 解析列(文本) -> dict | None:
@@ -305,19 +542,30 @@ def 解析列(文本) -> dict | None:
     return 值
 
 
-def 列告警(文本) -> list | None:
-    """门禁快照面：→告警列表（徽标数据源）；NULL=未评估→None；异常=显式一条。"""
+def _列列表(文本, 键: str) -> list | None:
     值 = 解析列(文本)
     if 值 is None:
         return None
     if 值.get("错误"):
         return [{"步骤": "耗时告警数据异常", "原因": str(值["错误"]),
-                 "秒": None, "中位": None, "倍数": None, "增量": None, "样本数": None}]
-    告警 = 值.get("告警")
-    if not isinstance(告警, list):
-        return [{"步骤": "耗时告警数据异常", "原因": "告警字段形态非数组",
-                 "秒": None, "中位": None, "倍数": None, "增量": None, "样本数": None}]
-    return 告警
+                 "秒": None, "中位": None, "倍数": None, "增量": None,
+                 "样本数": None}]
+    列表 = 值.get(键)
+    if not isinstance(列表, list):
+        return [{"步骤": "耗时告警数据异常", "原因": "%s 字段形态非数组" % 键,
+                 "秒": None, "中位": None, "倍数": None, "增量": None,
+                 "样本数": None}]
+    return 列表
+
+
+def 列告警(文本) -> list | None:
+    """门禁快照面：→告警列表（徽标数据源）；NULL=未评估→None；异常=显式一条。"""
+    return _列列表(文本, "告警")
+
+
+def 列慢漂(文本) -> list | None:
+    """门禁快照面：→慢漂列表（黄签数据源）；NULL=未评估→None；异常=显式一条。"""
+    return _列列表(文本, "慢漂")
 
 
 # ═══════════ 步骤口径元信息协议（脚本 → daemon 步骤记录器） ═══════════
@@ -352,7 +600,8 @@ def 写步骤元信息(步骤名: str, 元: dict) -> None:
         目录.mkdir(parents=True, exist_ok=True)
         目标 = 目录 / (步骤名 + ".json")
         临时 = 目标.with_name(目标.name + ".%d.tmp" % os.getpid())
-        临时.write_text(json.dumps(元, ensure_ascii=False), encoding="utf-8")
+        临时.write_text(json.dumps(元, ensure_ascii=False, allow_nan=False),
+                        encoding="utf-8")
         os.replace(临时, 目标)
     except OSError as e:
         print("[黄] 步骤元信息写入失败（%s）：%r" % (步骤名, e),
@@ -396,15 +645,28 @@ def 读步骤元信息(步骤名: str, 不早于: float) -> dict:
 
 # ═══════════ runner 本地降级面（ci_report.落盘 前调用） ═══════════
 
+def _坏档改名(路径: Path, 说明: str) -> str:
+    """坏基线文件改名留档（.坏<时间戳>·P2）；改名失败=返回含失败原因的显式说明。"""
+    备 = 路径.with_name(路径.name + ".坏" + time.strftime("%Y%m%d_%H%M%S"))
+    try:
+        os.replace(路径, 备)
+        return 说明 + "（已改名留档 %s）" % 备.name
+    except OSError as e:
+        return 说明 + "（改名留档失败 %r·原文件保留）" % (e,)
+
+
 def _读本地样本表(路径: Path) -> tuple[dict, str]:
-    """→({步骤\\x1f口径: [{"秒","sha"}...]}, 损坏说明)。缺文件=({}, "")。"""
+    """→({步骤\\x1f口径: [{"秒","sha","超阈","时戳"}...]}, 损坏说明)。缺文件=({}, "")。"""
+    损坏 = ""
+    if not 路径.exists():
+        return {}, ""
     旧 = atomic_json.读(路径)
     if 旧 is None:
-        损坏 = "本机耗时基线文件损坏（已重建·本轮样本从零累积·旧文件保留待人工）" \
-            if 路径.exists() else ""
-        return {}, 损坏
+        return ({}, _坏档改名(路径, "本机耗时基线文件损坏——已重建（本轮样本从零累积）"))
     if not isinstance(旧, dict):
-        return {}, "本机耗时基线文件形态非对象（已重建）"
+        return ({}, _坏档改名(路径, "本机耗时基线文件形态非对象——已重建"))
+    配置 = 取配置()
+    截止 = time.time() - 配置["保留天"] * 86400.0
     样本表: dict = {}
     for 条目 in 旧.get("样本") or []:
         if not isinstance(条目, dict):
@@ -412,26 +674,43 @@ def _读本地样本表(路径: Path) -> tuple[dict, str]:
         步, 口, 秒 = 条目.get("步骤"), 条目.get("口径"), 条目.get("秒")
         if not (isinstance(步, str) and 步 and isinstance(口, str) and 口):
             continue
-        if not (isinstance(秒, (int, float)) and not isinstance(秒, bool) and 秒 > 0):
+        if not _有限正数(秒):
             continue
+        时戳 = 条目.get("时戳")
+        if (配置["保留天"] > 0 and isinstance(时戳, (int, float))
+                and not isinstance(时戳, bool) and 时戳 < 截止):
+            continue   # 键过期清理（本机面·P2）
         样本表.setdefault(步 + _本机键分隔 + 口, []).append(
-            {"秒": float(秒), "sha": str(条目.get("sha") or "")})
-    return 样本表, ""
+            {"秒": float(秒), "sha": str(条目.get("sha") or ""),
+             "超阈": 1 if 条目.get("超阈") else 0,
+             "时戳": float(时戳) if isinstance(时戳, (int, float)) else 0.0})
+    return 样本表, 损坏
 
 
 def _本地补充(结果: dict, 日志目录) -> dict:
+    配置 = 取配置()
     路径 = Path(日志目录) / 本地基文件名
     样本表, 损坏 = _读本地样本表(路径)
     来源 = "runner本机（断网降级）"
     平台 = str(结果.get("平台") or "").strip()
     if not 平台:
-        结果["耗时告警"] = _错误对象(来源, "结果缺平台字段——无法评估耗时基线")
+        结果["耗时告警"] = _错误对象(来源, "结果缺平台字段——无法评估耗时基线", 配置)
         return 结果
 
     def 取样本(名: str, 口径: str) -> list:
         return [x["秒"] for x in 样本表.get(名 + _本机键分隔 + 口径, [])]
 
-    评 = 评估(结果, 取样本, 来源=来源)
+    def 取上次超阈(名: str, 口径: str) -> int:
+        值们 = 样本表.get(名 + _本机键分隔 + 口径, [])
+        if not 值们:
+            return 0
+        上 = 值们[-1]
+        # 同轮重报（上一行同 sha）=不把重试当第二轮（去抖链只看真正的新轮）
+        if 上.get("sha") and 上.get("sha") == str(结果.get("sha") or ""):
+            return 0
+        return int(上.get("超阈", 0))
+
+    评 = 评估(结果, 取样本, 取上次超阈=取上次超阈, 来源=来源, 配置=配置)
     if 损坏:
         评["错误"] = 损坏
     sha = str(结果.get("sha") or "")
@@ -443,18 +722,21 @@ def _本地补充(结果: dict, 日志目录) -> dict:
         if not isinstance(步, dict) or 步.get("rc") != 0 or 步.get("超时"):
             continue
         秒 = 步.get("秒")
-        if not (isinstance(秒, (int, float)) and not isinstance(秒, bool) and 秒 > 0):
+        if not _有限正数(秒):
             continue
         键 = 条["步骤"] + _本机键分隔 + 条["口径"]
         旧表 = [x for x in 样本表.get(键, []) if not sha or x.get("sha") != sha]
-        旧表.append({"秒": float(秒), "sha": sha})
-        样本表[键] = 旧表[-样本上限:]
+        旧表.append({"秒": float(秒), "sha": sha,
+                     "超阈": int(条.get("样本超阈", 0)), "时戳": time.time()})
+        样本表[键] = 旧表[-配置["保留"]:]
     条目们 = []
     for 键, 值们 in 样本表.items():
         步, 口 = 键.split(_本机键分隔, 1)
         for 值 in 值们:
-            条目们.append({"步骤": 步, "口径": 口, "秒": 值["秒"], "sha": 值["sha"]})
-    写成功 = atomic_json.写(路径, {"版本": 1,
+            条目们.append({"步骤": 步, "口径": 口, "秒": 值["秒"],
+                          "sha": 值["sha"], "超阈": 值.get("超阈", 0),
+                          "时戳": 值.get("时戳", 0.0)})
+    写成功 = atomic_json.写(路径, {"版本": 2,
                                   "更新时刻": time.strftime("%Y-%m-%d %H:%M:%S"),
                                   "样本": 条目们})
     if not 写成功:
@@ -474,198 +756,16 @@ def 本地补充(结果, 日志目录) -> dict:
     except Exception as e:   # noqa: BLE001 —— 观测面异常须显式留痕（非静默兜底）
         print("[警告] 本机耗时基线评估异常（落盘照常）：%r" % (e,), flush=True)
         结果["耗时告警"] = _错误对象("runner本机（断网降级）",
-                                    "本机耗时基线评估异常：%r（落盘照常）" % (e,))
+                                    "本机耗时基线评估异常：%r（落盘照常）" % (e,),
+                                    取配置())
         return 结果
 
 
-# ═══════════ 自测（四态：正常/3×超时/样本不足/冷启动） ═══════════
-
-def _自测结果(秒们: dict, *, sha: str = "a" * 40, 清产物: bool = True,
-              分片数: int = 0, runner: str = "TX_02", 绿: bool = True) -> dict:
-    """构造自测用门禁结果（步骤=秒们·清产物可控·分片数/执行机可控）。"""
-    步骤们: dict = {"同步": {"rc": 0}}
-    if 清产物:
-        步骤们["清产物"] = {"rc": 0}
-    for 名, 秒 in 秒们.items():
-        步骤们[名] = {"rc": 0, "秒": 秒}
-    return {"sha": sha, "平台": "linux-x86_64", "runner": runner,
-            "CN_BUILD_JOBS": 2, "步骤": 步骤们, "绿": 绿, "分片数": 分片数}
-
-
-def 自测() -> int:
-    """四态+口径分桶+幂等+本地降级 自测（零网络·内存库/临时目录）。"""
-    import tempfile
-    断言数 = [0]
-
-    def 断言(条件, 说明):
-        断言数[0] += 1
-        if not 条件:
-            print("✗ 失败: " + 说明)
-            raise SystemExit(1)
-        print("  ✓ " + 说明)
-
-    # ── 纯函数四态（评估数值）──
-    正常样本 = [60, 61, 59, 60, 62, 60, 61, 60, 59, 60]
-    断言(评估数值(正常样本, 62)["状态"] == "正常", "① 正常：62s 对中位 60s=正常（<3×）")
-    超时评 = 评估数值(正常样本, 200)
-    断言(超时评["状态"] == "告警" and 超时评["倍数"] == 3.3,
-         "② 3×超时：200s 对中位 60s=告警（3.3×·增量 140s）")
-    断言(评估数值([60, 60, 60], 200)["状态"] == "不足"
-         and 评估数值([60, 60, 60], 200)["样本数"] == 3,
-         "③ 样本不足：3 样本 < 5=显式不足（不告警不静默）")
-    断言(评估数值([], 200)["状态"] == "不足", "④ 冷启动：零样本=显式不足")
-    断言(评估数值([3, 3, 3, 3, 3], 9)["状态"] == "正常",
-         "阈值：恰 3× 且增量 6s≤10s=不误报（增量门槛生效）")
-    断言(评估数值([4, 4, 4, 4, 4], 20)["状态"] == "告警",
-         "阈值：5×且增量 16s>10s=告警")
-
-    # ── 口径分桶（冷/温、分片数、执行机、asm_width 元信息）──
-    冷结果 = _自测结果({"配置": 5, "构建": 300})
-    暖结果 = _自测结果({"配置": 2, "构建": 60}, 清产物=False)
-    构建步 = {"rc": 0, "秒": 300}
-    冷口 = 推导口径("构建", 构建步, 冷结果)[0]
-    暖口 = 推导口径("构建", 构建步, 暖结果)[0]
-    断言(冷口.startswith("冷建") and 暖口.startswith("温建") and 冷口 != 暖口,
-         "口径：清产物在场=冷建·不在场=温建（两桶不混算）")
-    断言("runner=TX_02" in 冷口 and "2并行" in 冷口,
-         "口径：执行机 runner+构建并行度入桶（1299 归因）")
-    片3 = 推导口径("e2e并行", {"rc": 0, "秒": 10}, _自测结果({}, 分片数=3))[0]
-    片1 = 推导口径("e2e并行", {"rc": 0, "秒": 10}, _自测结果({}))[0]
-    断言(片3.startswith("分片3") and 片1.startswith("单实例") and 片3 != 片1,
-         "口径：分片数变化=独立桶（分片 3 vs 单实例）")
-    缺因 = 推导口径("check_asm_width", {"rc": 0, "秒": 5}, _自测结果({}))[1]
-    断言("元信息" in 缺因, "口径：asm_width 无脚本自报口径=显式不足（不猜测）")
-    meta口 = 推导口径("check_asm_width", {"rc": 0, "秒": 5, "口径": "全扫·冷缓存"},
-                     _自测结果({}))[0]
-    断言(meta口.startswith("全扫·冷缓存"), "口径：asm_width 自报口径入桶")
-    无名runner = _自测结果({})
-    无名runner["runner"] = ""
-    断言("执行机未归因" in 推导口径("构建", {"rc": 0, "秒": 1}, 无名runner)[1],
-         "口径：执行机缺失=显式不足（旧版 runner 不混算）")
-
-    # ── 步骤元信息协议（脚本→daemon 口径回传·陈旧/损坏显式）──
-    with tempfile.TemporaryDirectory() as 元目录:
-        原元目录 = os.environ.get("CN_STEP_META_DIR")
-        os.environ["CN_STEP_META_DIR"] = 元目录
-        try:
-            写步骤元信息("check_asm_width", {"口径": "全扫·冷缓存"})
-            断言(读步骤元信息("check_asm_width", time.time() - 5).get("口径") == "全扫·冷缓存",
-                 "元信息协议：写读往返（口径回传入步骤记录）")
-            断言(读步骤元信息("check_asm_width", time.time() - 5) == {},
-                 "元信息协议：读取后删除（不跨轮残留）")
-            写步骤元信息("check_asm_width", {"口径": "旧轮口径"})
-            os.utime(Path(元目录) / "check_asm_width.json", (0, 0))
-            断言(读步骤元信息("check_asm_width", time.time()) == {},
-                 "元信息协议：mtime 早于步骤起点=陈旧→忽略")
-        finally:
-            if 原元目录 is None:
-                os.environ.pop("CN_STEP_META_DIR", None)
-            else:
-                os.environ["CN_STEP_META_DIR"] = 原元目录
-
-    # ── 服务端表：滚动/告警/幂等/裁剪（内存库）──
-    con = sqlite3.connect(":memory:")
-    con.execute("CREATE TABLE 门禁(sha TEXT, 平台 TEXT, 绿 INTEGER, 总秒 INTEGER, "
-                "时刻 TEXT, 详情 TEXT, PRIMARY KEY(sha, 平台))")
-    建表(con)
-    建表(con)   # 幂等
-    for i in range(1, 7):
-        评 = 记录并评估(con, "linux-x86_64", "%040d" % i,
-                        _自测结果({"配置": 5, "构建": 60}, sha="%040d" % i),
-                        "10-23 10:00:%02d" % i)
-        if i <= 5:
-            断言(any(x["步骤"] == "构建" for x in 评["不足"]) and not 评["告警"],
-                 "服务端：第 %d 轮构建样本<%d=基线不足且零告警" % (i, 最小样本))
-        else:
-            断言(not 评["告警"], "服务端：第 %d 轮构建 60s=正常（样本已足）" % i)
-    突评 = 记录并评估(con, "linux-x86_64", "f" * 40,
-                      _自测结果({"配置": 5, "构建": 200}, sha="f" * 40),
-                      "10-23 10:01:00")
-    断言(any(x["步骤"] == "构建" and x["状态"] == "告警" for x in 突评["告警"]),
-         "服务端：第 7 轮构建 200s=耗时告警（基线样本足）")
-    告警口径 = 突评["告警"][0]["口径"]
-    样本数前 = len(读样本(con, "linux-x86_64", "构建", 告警口径))
-    记录并评估(con, "linux-x86_64", "f" * 40,
-               _自测结果({"配置": 5, "构建": 200}, sha="f" * 40), "10-23 10:01:10")
-    断言(len(读样本(con, "linux-x86_64", "构建", 告警口径)) == 样本数前,
-         "服务端：同 sha 重报幂等（样本不重复计数）")
-    for i in range(1, 样本上限 + 6):
-        记录并评估(con, "linux-x86_64", "%040d" % (200 + i),
-                   _自测结果({"配置": 5, "构建": 60}, sha="%040d" % (200 + i)),
-                   "10-23 10:02:%02d" % (i % 60))
-    样本 = 读样本(con, "linux-x86_64", "构建", 告警口径)
-    断言(len(样本) == 样本上限, "服务端：样本裁剪至 %d 条（滚动窗）" % 样本上限)
-    # 冷/温分离：同一构建秒数在暖建桶够 5 样本后不因冷建样本少而告警
-    for i in range(1, 7):
-        记录并评估(con, "linux-x86_64", "%040d" % (100 + i),
-                   _自测结果({"配置": 5, "构建": 61}, sha="%040d" % (100 + i), 清产物=False),
-                   "10-23 10:02:%02d" % i)
-    暖评 = 记录并评估(con, "linux-x86_64", "e" * 40,
-                     _自测结果({"配置": 5, "构建": 62}, sha="e" * 40, 清产物=False),
-                     "10-23 10:03:00")
-    断言(not 暖评["告警"], "服务端：温建 62s 对温建中位 61s=正常（冷暖分离实锤）")
-    # 同 sha 双口径（预验冷建 → develop 温建）：幂等删除只管同键，冷样本不被温报删
-    同sha = "d" * 40
-    记录并评估(con, "linux-x86_64", 同sha,
-               _自测结果({"配置": 5, "构建": 300}, sha=同sha), "10-23 10:03:10")
-    记录并评估(con, "linux-x86_64", 同sha,
-               _自测结果({"配置": 5, "构建": 60}, sha=同sha, 清产物=False), "10-23 10:03:20")
-    双口径数 = con.execute("SELECT COUNT(*) FROM 耗时样本 WHERE 平台=? AND sha=?",
-                         ("linux-x86_64", 同sha)).fetchone()[0]
-    断言(双口径数 == 4,
-         "服务端：同 sha 冷/温双口径样本各自保留（幂等删除只管同键同 sha·冷样本不被温报误删）")
-    # 失败步骤不入样本
-    坏 = _自测结果({"配置": 5, "构建": 60}, sha="b" * 40)
-    坏["步骤"]["构建"] = {"rc": 1, "秒": 999}
-    坏评 = 记录并评估(con, "linux-x86_64", "b" * 40, 坏, "10-23 10:04:00")
-    断言(any(x["步骤"] == "构建" and x["状态"] == "未计入" for x in 坏评["步骤"]),
-         "服务端：rc≠0 步骤=未计入（失败耗时不清洗正常基线）")
-    断言(列告警(None) is None and 列告警('{"告警":[{"步骤":"构建"}]}') == [{"步骤": "构建"}],
-         "列解析：NULL=未评估（None）·正常 JSON=告警列表")
-    坏列 = 列告警("{坏 json")
-    断言(isinstance(坏列, list) and 坏列 and "损坏" in 坏列[0]["原因"],
-         "列解析：坏 JSON=显式告警条目（不静默当正常）")
-    断言(解析列(None) is None, "列解析：NULL 与「已评估无告警」可区分")
-
-    # ── runner 本地降级（临时目录）──
-    import tempfile
-    with tempfile.TemporaryDirectory() as 临时:
-        for i in range(1, 7):
-            结果 = _自测结果({"配置": 5, "构建": 60}, sha="%040d" % i)
-            本地补充(结果, 临时)
-        assert 结果.get("耗时告警")
-        本地突 = _自测结果({"配置": 5, "构建": 200}, sha="f" * 40)
-        本地补充(本地突, 临时)
-        断言(any(x["步骤"] == "构建" for x in 本地突["耗时告警"]["告警"]),
-             "本地降级：第 7 轮 200s=告警（断网轮仍可见）")
-        断言(本地突["耗时告警"]["来源"].startswith("runner本机"), "本地降级：来源标注本机口径")
-        路径 = Path(临时) / 本地基文件名
-        断言(路径.exists(), "本地降级：基线文件已落盘（ci-logs/耗时基线.json）")
-        本地突2 = _自测结果({"配置": 5, "构建": 200}, sha="f" * 40)
-        告警键 = "构建" + _本机键分隔 + 本地突["耗时告警"]["告警"][0]["口径"]
-        本地突前 = len(_读本地样本表(路径)[0][告警键])
-        本地补充(本地突2, 临时)
-        断言(len(_读本地样本表(路径)[0][告警键]) == 本地突前,
-             "本地降级：同 sha 重报幂等（样本不重复计数）")
-        with tempfile.TemporaryDirectory() as 空目录:
-            冷 = _自测结果({"构建": 60}, sha="c" * 40)
-            本地补充(冷, 空目录)
-            断言(any(x["步骤"] == "构建" for x in 冷["耗时告警"]["不足"]),
-                 "本地降级：空目录冷启动=显式基线不足")
-        坏目录 = Path(临时) / "坏"
-        坏目录.mkdir()
-        (坏目录 / 本地基文件名).write_text("{坏", encoding="utf-8")
-        坏结果 = _自测结果({"构建": 60}, sha="d" * 40)
-        本地补充(坏结果, 坏目录)
-        断言("损坏" in (坏结果["耗时告警"].get("错误") or ""),
-             "本地降级：坏基线文件=显式错误（保留待人工）")
-    print("ci_duration 自测：%d 例全过（正常/3×超时/样本不足/冷启动·口径分桶·服务端表·本地降级）"
-          % 断言数[0])
-    return 0
-
 
 if __name__ == "__main__":
+    # 自测体外迁 ci_duration_selftest（先拆再加·主模块守 1000 行红线）；入口不变。
     if len(sys.argv) > 1 and sys.argv[1] != "--selftest":
         print("用法：python scripts/ci_duration.py [--selftest]", flush=True)
         sys.exit(2)
-    sys.exit(自测())
+    import ci_duration_selftest
+    sys.exit(ci_duration_selftest.跑())

@@ -48,11 +48,16 @@ def 轮结果构造(sha: str, 轮分支: str, 步骤们: dict, 开始: float,
     1385：分片数随结果上报——耗时基线 e2e 口径按分片数分桶（分片变化不混算）。"""
     with 轮日志路径.open("r", encoding="utf-8", errors="replace") as f:
         尾部 = f.readlines()[-40:]
+    # 1385 P1-1：分片形态从 e2e 步骤透传（分布式=并行取 max；退化单实例=串行总和）；
+    #   缺失=空串（评估层落「形态未知」独立桶·不混算不误报）。
+    片步 = 步骤们.get("e2e并行") if isinstance(步骤们, dict) else None
+    分片形态 = str(片步.get("分片形态") or "") if isinstance(片步, dict) else ""
     return {"sha": sha, "分支": 轮分支, "平台": 平台, "步骤": 步骤们,
-            # 1299：执行机归因字段（win 不写不适用项）
+            # 1299：执行机归因字段（win 不写不适用项；1385 增构建并行度）
             **ci_report.执行机字段(runner标识, 构建并行, 是win),
-            # 1385：分片数（>1=分片形态·e2e 耗时口径分桶依据；0/缺省=单实例）
+            # 1385：分片数/形态（>1=分片形态·e2e 耗时口径分桶依据；0/空=单实例）
             "分片数": 分片数 if isinstance(分片数, int) and 分片数 > 1 else 0,
+            "分片形态": 分片形态,
             "绿": 聚合绿(步骤们),
             "总秒": round(time.time() - 开始),
             "时刻": datetime.now().isoformat(timespec="seconds"),

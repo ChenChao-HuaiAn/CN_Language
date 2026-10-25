@@ -630,11 +630,14 @@ def _1299断言(主模块, 断言) -> None:
          步骤们.get("配置", {}).get("rc") == -1 and not 记录
          and "不存在或不可执行" in 日志文)
 
-    断言("1299 归因：linux 字段含 runner/CN_BUILD_JOBS",
+    断言("1299 归因：linux 字段含 runner/CN_BUILD_JOBS/构建并行度",
          ci_report.执行机字段("home-wsl-1", 4, False)
-         == {"runner": "home-wsl-1", "CN_BUILD_JOBS": 4})
-    断言("1299 归因：win 不写不适用项（Ninja --parallel 全核·不虚报默认 2）",
-         ci_report.执行机字段("CHENCHAO-PC-win1", 2, True) == {"runner": "CHENCHAO-PC-win1"})
+         == {"runner": "home-wsl-1", "构建并行度": "4", "CN_BUILD_JOBS": 4})
+    字段win = ci_report.执行机字段("CHENCHAO-PC-win1", 2, True)
+    断言("1299/1385 归因：win 报全核并行度且不虚报 CN_BUILD_JOBS",
+         set(字段win) == {"runner", "构建并行度"}
+         and 字段win["构建并行度"].startswith("全核")
+         and "CN_BUILD_JOBS" not in 字段win)
     for 轮 in ("跑一轮", "跑分片轮"):
         源 = (inspect.getsource(ci_round.轮结果构造) if 轮 == "跑一轮"
               else inspect.getsource(getattr(主模块, 轮)))
@@ -1442,16 +1445,77 @@ def _1385断言(主模块, 断言) -> None:
     with tempfile.TemporaryDirectory() as 临时:
         日志路径 = Path(临时) / "r.log"
         日志路径.write_text("x\n", encoding="utf-8")
+        步骤们片 = {"e2e并行": {"rc": 0, "秒": 600, "分片形态": "退化单实例"}}
         结果 = ci_round.轮结果构造(
-            "a" * 40, "ci/预验-aaaa", {}, 0.0, 日志路径, {},
+            "a" * 40, "ci/预验-aaaa", 步骤们片, 0.0, 日志路径, {},
             平台="win-x64", 日志目录=Path(临时), runner标识="r1",
             构建并行=2, 是win=False, 聚合绿=lambda 步骤们: True, 分片数=3)
         断言("1385 轮结果：分片数随结果上报（e2e 耗时口径分桶）", 结果.get("分片数") == 3)
+        断言("1385 P1-1：分片形态从 e2e 步骤透传（退化单实例不混分布式桶）",
+             结果.get("分片形态") == "退化单实例")
         结果单 = ci_round.轮结果构造(
             "a" * 40, "develop", {}, 0.0, 日志路径, {},
             平台="win-x64", 日志目录=Path(临时), runner标识="r1",
             构建并行=2, 是win=False, 聚合绿=lambda 步骤们: True)
         断言("1385 轮结果：未传分片数=0（单实例口径·不猜测）", 结果单.get("分片数") == 0)
+    # 1385 P2：ci_report 落盘本地降级自测（临时目录·6 正常+2 超阈→去抖后告警）
+    import ci_report
+    原环境 = (ci_report._仓库根, ci_report._平台, ci_report._日志目录, ci_report._远端名)
+    原元目录2 = os.environ.get("CN_STEP_META_DIR")
+    with tempfile.TemporaryDirectory() as 临时:
+        ci_report.初始化(Path("."), "linux-x86_64", Path(临时), "origin")
+
+        def 落盘结果(n, 构建秒):
+            return {"sha": "%040d" % n, "分支": "ci/预验-cccc%06d" % n,
+                    "平台": "linux-x86_64", "runner": "落盘-runner",
+                    "CN_BUILD_JOBS": 2, "绿": True, "总秒": 构建秒 + 5,
+                    "时刻": "2026-10-23T10:00:00", "日志": "x.log", "日志尾部": [],
+                    "提交时刻": 1700000000 + n,
+                    "步骤": {"同步": {"rc": 0}, "清产物": {"rc": 0},
+                             "配置": {"rc": 0, "秒": 5},
+                             "构建": {"rc": 0, "秒": 构建秒, "缓存态": "高命中",
+                                      "负载档": "低负载"}}}
+        try:
+            for n in range(1, 7):
+                ci_report.落盘(落盘结果(n, 60))
+            落盘首超 = 落盘结果(7, 200)
+            ci_report.落盘(落盘首超)
+            落盘次超 = 落盘结果(8, 200)
+            ci_report.落盘(落盘次超)
+            断言("1385 落盘自测：首轮超阈=待确认（去抖）",
+                 any(x["步骤"] == "构建" for x in 落盘首超["耗时告警"]["待确认"]))
+            断言("1385 落盘自测：连续第 2 轮超阈=告警（本机降级面）",
+                 any(x["步骤"] == "构建" for x in 落盘次超["耗时告警"]["告警"]))
+            断言("1385 落盘自测：本机基线文件已落盘",
+                 (Path(临时) / "耗时基线.json").exists())
+        finally:
+            ci_report.初始化(*原环境)
+            if 原元目录2 is None:
+                os.environ.pop("CN_STEP_META_DIR", None)
+            else:
+                os.environ["CN_STEP_META_DIR"] = 原元目录2
+    # 1385 P1-3：缓存命中档/计数解析（纯函数+假 stats 输出·零真实缓存工具）
+    import ci_build
+    断言("1385 缓存档：高命中≥80%", ci_build.缓存档({"命中": 0, "未中": 0},
+                                                {"命中": 90, "未中": 10}) == "高命中")
+    断言("1385 缓存档：部分命中≥30%", ci_build.缓存档({"命中": 0, "未中": 0},
+                                                  {"命中": 50, "未中": 50}) == "部分命中")
+    断言("1385 缓存档：低命中<30%", ci_build.缓存档({"命中": 0, "未中": 0},
+                                                {"命中": 10, "未中": 90}) == "低命中")
+    断言("1385 缓存档：缺失/计数回退=缓存未知（显式档）",
+         ci_build.缓存档(None, {"命中": 1, "未中": 1}) == "缓存未知"
+         and ci_build.缓存档({"命中": 5, "未中": 0},
+                            {"命中": 1, "未中": 0}) == "缓存未知")
+    假ccache = lambda 命令, **kw: SimpleNamespace(
+        returncode=0, stdout="Summary:\n  Hits: 5 / 10 (50.00%)\n  Misses: 5\n")
+    断言("1385 缓存计数解析：ccache 文本（Hits/Misses）",
+         ci_build.读缓存计数("/usr/bin/ccache", 执行=假ccache) == {"命中": 5, "未中": 5})
+    假sccache = lambda 命令, **kw: SimpleNamespace(
+        returncode=0, stdout="Cache hits 80\nCache hits rate 80.0 %\nCache misses 20\n")
+    断言("1385 缓存计数解析：sccache 文本（Cache hits/misses·不被 rate 覆盖）",
+         ci_build.读缓存计数("/usr/bin/sccache", 执行=假sccache) == {"命中": 80, "未中": 20})
+    断言("1385 负载档：值域显式（低/中/高/未知）",
+         ci_report.负载档() in ("低负载", "中负载", "高负载", "负载未知"))
 
 
 def 自测(主模块) -> int:

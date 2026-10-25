@@ -17,7 +17,7 @@ REMOTE_DIR="/home/ubuntu"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
-for f in queue_service.py queue_selftest.py queue_result.py queue_shard.py queue_instances.py web_auth.py ci_duration.py atomic_json.py; do
+for f in queue_service.py queue_selftest.py queue_result.py queue_shard.py queue_instances.py web_auth.py ci_duration.py ci_duration_selftest.py atomic_json.py; do
     if [ ! -f "$SCRIPT_DIR/$f" ]; then
         echo "错误: 找不到 $SCRIPT_DIR/$f" >&2
         exit 1
@@ -55,7 +55,7 @@ html = html.replace('<script src="queue.js"></script>',
                     "<script>\n" + js + "\n</script>")
 (dst / "index.html").write_text(html, encoding="utf-8")
 PY
-scp -q "$SCRIPT_DIR/queue_service.py" "$SCRIPT_DIR/queue_selftest.py" "$SCRIPT_DIR/queue_result.py" "$SCRIPT_DIR/queue_shard.py" "$SCRIPT_DIR/queue_instances.py" "$SCRIPT_DIR/web_auth.py" "$SCRIPT_DIR/ci_duration.py" "$SCRIPT_DIR/atomic_json.py" "$REMOTE:$REMOTE_DIR/"
+scp -q "$SCRIPT_DIR/queue_service.py" "$SCRIPT_DIR/queue_selftest.py" "$SCRIPT_DIR/queue_result.py" "$SCRIPT_DIR/queue_shard.py" "$SCRIPT_DIR/queue_instances.py" "$SCRIPT_DIR/web_auth.py" "$SCRIPT_DIR/ci_duration.py" "$SCRIPT_DIR/ci_duration_selftest.py" "$SCRIPT_DIR/atomic_json.py" "$REMOTE:$REMOTE_DIR/"
 ssh "$REMOTE" "mkdir -p '$REMOTE_DIR/queue_www'"
 tar czf - -C "$SCRIPT_DIR/queue_www" . | ssh "$REMOTE" "tar xzf - -C '$REMOTE_DIR/queue_www'"
 scp -q "$SCRIPT_DIR/board_www/tokens.css" "$REMOTE:$REMOTE_DIR/queue_www/tokens.css"

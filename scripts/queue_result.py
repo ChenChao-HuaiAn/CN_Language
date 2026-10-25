@@ -231,15 +231,16 @@ def 预验排队收割(con, 时区时刻, 回收秒: int, 行龄函数) -> list[
 
 def 门禁快照(con, 限: int = 200) -> list[dict]:
     """814/1070：门禁最近行快照（提交序 DESC + 平台轮转序；旧行沉底）。
-    1385：附 `耗时告警` 列表（徽标数据源）——None=未评估（旧行/执行中/旧服务端），
-    [] =已评估无告警；坏列=显式一条异常条目（不静默当正常）。"""
+    1385：附 `耗时告警`/`耗时慢漂` 列表（徽标数据源）——None=未评估（旧行/执行中/
+    旧服务端），[] =已评估无告警；坏列=显式一条异常条目（不静默当正常）。"""
     行们 = con.execute(
         "SELECT sha,平台,绿,总秒,时刻,提交时刻,耗时告警 FROM 门禁 "
         "ORDER BY COALESCE(提交时刻,0) DESC, "
         "CASE 平台 WHEN 'win-x64' THEN 0 WHEN 'linux-x86_64' THEN 1 "
         "WHEN 'linux-arm64' THEN 2 ELSE 9 END, 时刻 DESC LIMIT ?", (限,)).fetchall()
     return [dict(zip(("sha", "平台", "绿", "总秒", "时刻", "提交时刻"), tuple(r)[:6]),
-                 耗时告警=ci_duration.列告警(r[6])) for r in 行们]
+                 耗时告警=ci_duration.列告警(r[6]),
+                 耗时慢漂=ci_duration.列慢漂(r[6])) for r in 行们]
 
 
 def 预验任务快照(con) -> list[dict]:
