@@ -10,12 +10,12 @@
 //   （如 结果<整32,整32>/可选<字符串>），本模块按此降级。
 // 规范：英文API命名，中文仅注释；函数<=100行
 #define _CRT_SECURE_NO_WARNINGS
-#include <cstdio>
 #include <cstdlib>
 #include <string>
 #include <vector>
 
 #include "cn_compiler/ir/ir.hpp"
+#include "cn_compiler/model/semantic_helpers.hpp"
 #include "cn_compiler/model/semantic_view.hpp"
 #include "cn_compiler/model/type_system.hpp"
 
@@ -174,6 +174,39 @@ bool IRGenerator::resolveResultCtorTargetType(CallExpr* node, const std::string&
                         types::canonical(exprSrcType(node->arguments[0].get()).value_or(""));
                     if (argType.empty() ||
                         !semantic_->isStructType(argType)) {
+                        abandonOverride = true;
+                    }
+                }
+            }
+            // ③#1588 回归修复（549_嵌套合成体跨函数返回·云端预验片3 红实证）：
+            //   语义层 resolvedType 已与实参**自洽**（当前目标的存储层类型 ==
+            //   实参类型）→ 放弃覆盖。覆盖源=函数返回类型只对「AST 共享残留/
+            //   缺失」兜底；声明/赋值位的目标类型由语义层标注权威。缺此条：
+            //   外层函数返回更深嵌套时（返回 可选<可选<可选<整32>>>，体内声明
+            //   可选<可选<整32>> 中 = 某些(某些(21))），外层构造器被覆盖成返回
+            //   类型 → 载荷层数比实参深一层 → 结构体载荷守卫误报内部错误。
+            if (!abandonOverride && !node->resolvedType.empty() &&
+                !node->arguments.empty()) {
+                // ⚠ 零实参构造器（正常()/错误()/无）必须在此早退——实参位
+                //   node->arguments[0] 越界=vector subscript out of range
+                //   （1371/1064 cn ir 调试断言实录·549 云预验未覆盖零参面）。
+                const std::string curCanon = types::canonical(node->resolvedType);
+                std::string curStore;
+                if (isResultType(curCanon)) {
+                    const std::vector<std::string> curArgs =
+                        resultTypeArgs(curCanon).value_or((std::vector<std::string>()));
+                    if (curArgs.size() == 2)
+                        curStore = (name == "错误") ? curArgs[1] : curArgs[0];
+                } else if (isOptionalType(curCanon)) {
+                    curStore = optionalTypeArg(curCanon).value_or(std::string());
+                } else {
+                    // 非合成体残留形态：交给原覆盖（保留泛型残留治理面）
+                }
+                if (!curStore.empty()) {
+                    const std::string argCanon = types::canonical(
+                        exprSrcType(node->arguments[0].get()).value_or(""));
+                    if (!argCanon.empty() &&
+                        types::canonicalEquals(types::canonical(curStore), argCanon)) {
                         abandonOverride = true;
                     }
                 }
