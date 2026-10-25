@@ -688,8 +688,7 @@ private:
                                    const SourceLocation& loc);
     // 结构体整体拷贝单一事实源：含串字段=preFree + memcpy + 深拷（postCopy）， 否则纯 memcpy（零开销——无串字段类型原路径不变）；srcCanon=源聚合类型（1589/1592 异型合成体转换判据）。
     void emitStructCopyWithFields(const ir::IRValue& dstAddr, const ir::IRValue& srcAddr,
-                                  const std::string& canon,
-                                  const SourceLocation& loc, bool preFree,
+                                  const std::string& canon, const SourceLocation& loc, bool preFree,
                                   bool deepCopy = true, const std::string& srcCanon = std::string());
     // 1589/1592：结果/可选 异型隐式转换——同型/等价载荷假（原路径），异型逐字段值保真（读源码/Cast/写目标码）；非标量载荷显形。
     bool emitSyntheticConvCopyIfNeeded(const ir::IRValue& dstAddr, const ir::IRValue& srcAddr,
@@ -944,9 +943,8 @@ private:
     bool handleUnaryOperatorOverload(UnaryExpr* node, const ir::IRValue& operand);
     // 名称是否为当前类的实例字段（非静态方法内、未被局部变量/参数遮蔽）
     bool isInstanceField(const std::string& name) const;
-    // 内置构造器降级（visitCallExpr 钩子，Task 3.5）：正常/错误/某些 -> 结果/可选合成结构体临时槽 + 写判别位与值，返回结构体地址（ptr）；true=已处理。
+    // 内置构造器降级（visitCallExpr 钩子·Task 3.5）：正常/错误/某些 -> 结果/可选合成结构体临时槽 + 判别位与值；209-a 目标类型解析（returnTypeSrc 优先 + 结果/可选 推导·输出合成结构体名与值字段类型；false=非构造器语境）。
     bool handleResultCtor(CallExpr* node);
-    // 209-a：handleResultCtor 族方法——解析构造器目标类型（returnTypeSrc 优先 + 结果/可选 推导·输出合成结构体名与值字段类型；false=非构造器语境）。
     bool resolveResultCtorTargetType(CallExpr* node, const std::string& name,
                                      std::string& structName, std::string& valueType);
     // 实参值写入：结构体值 CopyStruct 内联 / 标量按自然宽度 Cast+StorePtr； 70-a 装箱 move（正常/某些 + 字符串值 + 非污染 → 源槽清零）。
