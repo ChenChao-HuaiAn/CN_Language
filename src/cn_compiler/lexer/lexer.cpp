@@ -790,7 +790,7 @@ Token Lexer::readChar() {
             if (peek() != U'{') {
                 reportError(loc, "无效的Unicode转义：缺少 {");
             }
-            // 静默豁免业务值: 1360 批4 结果化取值路径（isAtEnd 守卫先行·value 显形 fail-loud）非兜底
+            // 静默豁免业务值: 缺 { 已在 if 分支报错·else=合法收集路径（isAtEnd/peek 守卫先行·currentUtf8 越界空串=推进语义非失败通道）
             else {
                 text += currentUtf8();
                 advance(); // 消费 {

@@ -18,6 +18,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -314,19 +315,22 @@ extern "C" long long __cn_file_mkdir(const char* path) {
 // ==================== 程序缓存支撑原语（任务 1272） ====================
 namespace {
 
-// UTF-8 窄路径 -> UTF-16 宽路径（Windows）。失败返回 false。
+// UTF-8 窄路径 -> UTF-16 宽路径（Windows）。无值=转换失败（空路径/平台转换失败）。
+//   1658 批9 结果化（#1360）：原 bool+出参两态改 std::optional——runtime 独立层
+//   （check_layer_deps 白名单=零外部依赖，不得引 cn_compiler/common 的 cn::Optional），
+//   故用标准库 optional 表达同一「可选结果」语义；三处消费点均显式 has_value 分流
+//   返回状态码，失败信号不再依赖人工记忆的 false 约定。
 #ifdef _WIN32
-bool utf8ToWide(const char* text, std::wstring& out) {
-    // 静默豁免运行时API: 空路径=转换失败信号（调用方禁用缓存/显式返回）
-    if (text == nullptr) return false;
+[[nodiscard]] std::optional<std::wstring> utf8ToWide(const char* text) {
+    if (text == nullptr) return std::nullopt;
     const int len = MultiByteToWideChar(CP_UTF8, 0, text, -1, nullptr, 0);
-    // 静默豁免运行时API: MultiByteToWideChar 失败（<=0）=平台错误信号
-    if (len <= 0) return false;
+    // MultiByteToWideChar 契约：0=失败，成功=写入字符数（非负）——0 是唯一失败值
+    if (len == 0) return std::nullopt;
     std::vector<wchar_t> buf(static_cast<std::size_t>(len));
-    // 静默豁免运行时API: 宽字符转换失败=平台错误信号（调用方显式分流）
-    if (MultiByteToWideChar(CP_UTF8, 0, text, -1, buf.data(), len) <= 0) return false;
-    out.assign(buf.data());  // 以 NUL 终止，构造时自然截断
-    return true;
+    if (MultiByteToWideChar(CP_UTF8, 0, text, -1, buf.data(), len) == 0) {
+        return std::nullopt;
+    }
+    return std::wstring(buf.data());  // 以 NUL 终止，构造时自然截断
 }
 #endif
 
@@ -334,19 +338,19 @@ bool utf8ToWide(const char* text, std::wstring& out) {
 long long ensureDirImpl(const char* path) {
     if (path == nullptr || path[0] == '\0') return 1;
 #ifdef _WIN32
-    std::wstring wide;
-    if (!utf8ToWide(path, wide)) return 1;
+    const std::optional<std::wstring> wide = utf8ToWide(path);
+    if (!wide.has_value()) return 1;  // 转换失败=目录创建失败（状态码 1）
     // 逐段 CreateDirectoryW：跳过盘符（"C:"）与重复分隔符；已存在=成功。
-    for (std::size_t i = 1; i < wide.size(); ++i) {
-        if (wide[i] == L'/' || wide[i] == L'\\') {
-            const std::wstring part = wide.substr(0, i);
+    for (std::size_t i = 1; i < wide->size(); ++i) {
+        if ((*wide)[i] == L'/' || (*wide)[i] == L'\\') {
+            const std::wstring part = wide->substr(0, i);
             if (!part.empty() && part.back() != L':') {
                 CreateDirectoryW(part.c_str(), nullptr);
             }
         }
     }
-    CreateDirectoryW(wide.c_str(), nullptr);
-    const DWORD attrs = GetFileAttributesW(wide.c_str());
+    CreateDirectoryW(wide->c_str(), nullptr);
+    const DWORD attrs = GetFileAttributesW(wide->c_str());
     return (attrs != INVALID_FILE_ATTRIBUTES &&
             (attrs & FILE_ATTRIBUTE_DIRECTORY) != 0) ? 0 : 1;
 #else
@@ -489,10 +493,10 @@ extern "C" long long __cn_process_id() {
 extern "C" long long __cn_file_rename_replace_utf8(const char* from, const char* to) {
     if (from == nullptr || to == nullptr) return 1;
 #ifdef _WIN32
-    std::wstring wideFrom;
-    std::wstring wideTo;
-    if (!utf8ToWide(from, wideFrom) || !utf8ToWide(to, wideTo)) return 1;
-    const BOOL ok = MoveFileExW(wideFrom.c_str(), wideTo.c_str(),
+    const std::optional<std::wstring> wideFrom = utf8ToWide(from);
+    const std::optional<std::wstring> wideTo = utf8ToWide(to);
+    if (!wideFrom.has_value() || !wideTo.has_value()) return 1;
+    const BOOL ok = MoveFileExW(wideFrom->c_str(), wideTo->c_str(),
                                 MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH);
     return ok ? 0 : 2;
 #else
@@ -504,9 +508,9 @@ extern "C" long long __cn_file_rename_replace_utf8(const char* from, const char*
 extern "C" long long __cn_file_delete_utf8(const char* path) {
     if (path == nullptr) return 1;
 #ifdef _WIN32
-    std::wstring wide;
-    if (!utf8ToWide(path, wide)) return 1;
-    if (DeleteFileW(wide.c_str()) != 0) return 0;
+    const std::optional<std::wstring> wide = utf8ToWide(path);
+    if (!wide.has_value()) return 1;
+    if (DeleteFileW(wide->c_str()) != 0) return 0;
     return GetLastError() == ERROR_FILE_NOT_FOUND ? 0 : 2;
 #else
     if (std::remove(path) == 0) return 0;

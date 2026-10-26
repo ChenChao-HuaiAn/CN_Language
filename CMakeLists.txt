@@ -486,7 +486,11 @@ if(MSVC)
         list(APPEND CNRT_79_OBJS ${_obj})
         add_custom_command(
             OUTPUT ${_obj}
-            COMMAND ${CMAKE_CXX_COMPILER} /nologo /c /EHsc /utf-8 /MT /O2
+            # 1658：/std:c++17 与 cn_runtime 目标（CMAKE_CXX_STANDARD 17）及
+            #   用户产物运行时链（cn_main_toolchain compileRuntime）同口径——
+            #   runtime 源已用 std::optional（#1360 结果化）；此前该手工命令默认
+            #   C++14，与库目标/用户产物链的编译标准不一致。
+            COMMAND ${CMAKE_CXX_COMPILER} /nologo /c /std:c++17 /EHsc /utf-8 /MT /O2
                     /I${CMAKE_SOURCE_DIR}/src
                     /Fo${_obj} ${CMAKE_SOURCE_DIR}/src/runtime/${_s}.cpp
             DEPENDS ${CMAKE_SOURCE_DIR}/src/runtime/${_s}.cpp
