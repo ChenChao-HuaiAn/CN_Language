@@ -724,6 +724,11 @@ void SemanticAnalyzer::checkFunctionBody(FunctionDecl* node) {
     currentIsRefReturn_ = info.isRefReturn;
     // plans/019 阶段4：不安全 函数 上下文（安全区边界观察期检查用）
     currentFnUnsafe_ = info.isUnsafe;
+    // #1674 丙案：析构函数上下文（体内对资源字段手动 字符串释放 执法用）——
+    //   析构名形态="~类名"（语法层统一按 Method 记录·parser_oop parseFunctionMember
+    //   Tilde 分支合成；v2 解析类.cn 析构名同构 "~"+类名=零分叉判据）
+    currentFnIsDestructor_ =
+        !node->name.empty() && node->name[0] == '~';
     // 435：lambda 引用捕获逃逸——当前函数传播表清空（跨函数互不污染·
     //   与 v2 检查函数 入口清空族同位；设计见 semantic_lambda_escape.hpp）
     lambda_escape::noteFunctionEntry();

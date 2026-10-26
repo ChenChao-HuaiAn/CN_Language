@@ -538,6 +538,13 @@ bool SemanticAnalyzer::enumValueOf(const std::string& enumName, const std::strin
 //   直接传播（诊断已在递归内报，不重复）。
 cn::Optional<int> SemanticAnalyzer::typeSizeOf(const std::string& typeRaw) const {
     const std::string type = canonicalType(typeRaw);
+    // #1674 乙案：手动释放<T> 透明单载荷——大小/对齐=T（ManuallyDrop 布局同构·
+    //   001 §5.6 ③）。字符串/类载荷=8 与槽宽一致；标量载荷按 T 实宽。
+    {
+        const cn::Optional<std::string> wrapPayload =
+            types::manuallyDroppedPayloadOf(type);
+        if (wrapPayload.has_value()) return typeSizeOf(wrapPayload.value());
+    }
     if (isEnumType(type)) return 4;  // 枚举按整32存储
     // 任务#249 分支序根治（2026-10-07）：数组展开必须先于一切元素类型特判——
     //   原序 isFuncPtrType（前缀判定）排在 isArray 之前，函数指针数组
@@ -633,6 +640,12 @@ cn::Optional<int> SemanticAnalyzer::typeSizeOf(const std::string& typeRaw) const
 //   显式枚举返回有值。
 cn::Optional<int> SemanticAnalyzer::typeAlignOf(const std::string& typeRaw) const {
     const std::string type = canonicalType(typeRaw);
+    // #1674 乙案：手动释放<T> 透明单载荷——对齐=T（与 typeSizeOf 同步剥壳）
+    {
+        const cn::Optional<std::string> wrapPayload =
+            types::manuallyDroppedPayloadOf(type);
+        if (wrapPayload.has_value()) return typeAlignOf(wrapPayload.value());
+    }
     if (isEnumType(type)) return 4;
     // 任务#249 同分支序根治：数组先展开取元素对齐（原 isFuncPtrType 前缀判定
     //   截胡函数指针数组——对齐侥幸等价 8 未爆，与 typeSizeOf 同步修正防复发）；

@@ -78,6 +78,10 @@ void IRGenerator::injectFieldCascadeDestroy(const ClassMember* member) {
         if (f == ci->fields.end() || f->second.isStatic) continue;
         const std::string ftype = classFieldType(currentClass_, *it).value_or("");
         const std::string fcanon = types::canonical(ftype);
+        // #1674 乙案：手动释放<T> 字段=用户接管释放权（ManuallyDrop 对应物）——
+        //   级联跳过（不注入任何释放），忘释放责任随声明移交用户（001 §5.6 ③）；
+        //   安全放手由用户在析构体内 摘除(名.值) 执行
+        if (types::manuallyDroppedPayloadOf(fcanon).has_value()) continue;
         // 100（939·008 收官总攻）：**字符串字段清理注入**——结构体串字段
         //   三件套（79-a）对类不对称缺失（类字段串=编译器不管→tracked 串
         //   泄漏·p104 定性：副本串差 1；驻留句柄/空句柄 free=忽略/空安全）。
@@ -198,6 +202,9 @@ void IRGenerator::emitNoDtorFieldCascade(const ir::IRValue& objPtr,
         const int offset = semantic_->classFieldOffset(
             types::canonical(classCanon), *it).value_or(-1);
         if (offset < 0) continue;
+        // #1674 乙案：手动释放<T> 字段级联跳过（与 injectFieldCascadeDestroy
+        //   同判据——递归路径同样尊重用户接管声明）
+        if (types::manuallyDroppedPayloadOf(fcanon).has_value()) continue;
         ir::IRValue addr = emitResult(ir::Opcode::FieldAddr, {objPtr}, "ptr",
                                       std::to_string(offset), loc);
         // 字符串字段：free+清槽（幂等——块出口/函数级兜底多路径共享槽）
@@ -255,6 +262,9 @@ bool IRGenerator::classHasReleasableFields(const std::string& classCanon,
         if (!ftypeOpt.has_value()) continue;
         const std::string& ftype = ftypeOpt.value();
         const std::string fcanon = types::canonical(ftype);
+        // #1674 乙案：手动释放<T> 字段=非资源（用户接管·级联跳过同判据——
+        //   含此字段的类不被视为「含可释放字段」，容器元素零注入）
+        if (types::manuallyDroppedPayloadOf(fcanon).has_value()) continue;
         if (fcanon == "字符串") return true;
         const std::string fcanonNorm = canonicalizeSyntheticArgText(fcanon);
         if (fcanonNorm.rfind("可选$", 0) == 0 ||

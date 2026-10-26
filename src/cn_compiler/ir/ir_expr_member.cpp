@@ -596,6 +596,20 @@ void IRGenerator::visitMemberExpr(MemberExpr* node) {
     if (decl == nullptr && ownerIsClass1059) {
         fieldSrcType = classFieldType(canonObjSrc1059, node->memberName);
     }
+    // #1674 乙案：手动释放<T> 包装对象——成员 .值=载荷（透明单载荷·地址=
+    //   对象地址本身·genMemberLvalueAddress 对未知布局 return base 恰好=载荷
+    //   槽地址同构）。其他成员名=语义层已拒（不可达·防御保持 648 显形）。
+    {
+        const cn::Optional<std::string> wrapPayload = types::manuallyDroppedPayloadOf(
+            types::canonical(objSrcType.value_or("")));
+        if (wrapPayload.has_value()) {
+            fieldSrcType = wrapPayload;   // 载荷类型（透明·T 原文）
+            lastExpr_ = emitResult(ir::Opcode::LoadPtr, {fieldAddr},
+                                   mapType(fieldSrcType.value_or("")), "",
+                                   node->location);
+            return;
+        }
+    }
     // 648（miss 不可静默·110 同族）：对象结构体类型推导无值（且非类宿主）=合法
     //   程序内部缺陷（82-d 三级链/1014 调用链等四次复发实录），上游无错误短路，
     //   显形于此；driver 在 generate() 后 hasErrors() 统一中止，产物不落地。
@@ -732,6 +746,10 @@ cn::Optional<std::string> IRGenerator::resolveNestedMemberObjSrcType(MemberExpr*
             if (types::isPointer(innerObjType)) {
                 innerObjType = types::pointeeOf(innerObjType);
             }
+        } else if (inner->object->getType() == NodeType::SelfExpr) {
+            // #1674 乙案：嵌套链中间段 自身.字段（析构体内 摘除(自身.缓存.值)/
+            //   字符串复制(自身.缓存.值) 的 .缓存）——对象=当前类实例
+            innerObjType = currentClass_;
         } else if (inner->object->getType() == NodeType::CallExpr) {
             // 1014（链式访问根治）：嵌套链内层为调用（造壳().芯.数 的 .芯——
             //   对象=CallExpr）——原只认 IdentifierExpr，innerObjType 空 ->
@@ -749,6 +767,10 @@ cn::Optional<std::string> IRGenerator::resolveNestedMemberObjSrcType(MemberExpr*
                     break;
                 }
             }
+        } else if (semantic_->isClassType(types::canonical(innerObjType))) {
+            // #1674 乙案：中间段对象=类实例（自身.缓存）——字段类型走类字段表
+            objSrcType = classFieldType(types::canonical(innerObjType),
+                                        inner->memberName).value_or("");
         }
         // 宿主缺陷根治（2026-08-25）：结果/可选 的 .值/.错误 不是合成结构体直接字段
         //   （在联合体内）——嵌套成员（查.值.名ID）须按结果/可选成员映射推导对象类型，
@@ -770,6 +792,15 @@ cn::Optional<std::string> IRGenerator::resolveNestedMemberObjSrcType(MemberExpr*
                     objSrcType = optionalTypeArg(canonInner).value_or(std::string());
                 } else if (inner->memberName == "有值") {
                     objSrcType = "布尔";
+                }
+            }
+            // #1674 乙案：手动释放<T> 中间段 .值=载荷（与 结果/可选 映射同构——
+            //   自身.缓存.值 的 .缓存 推导出载荷类型）
+            {
+                const cn::Optional<std::string> wrapPayload =
+                    types::manuallyDroppedPayloadOf(canonInner);
+                if (wrapPayload.has_value() && inner->memberName == "值") {
+                    objSrcType = wrapPayload.value();
                 }
             }
         }

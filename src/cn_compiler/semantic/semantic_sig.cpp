@@ -551,6 +551,21 @@ bool SemanticAnalyzer::canConvertType(const std::string& fromRaw,
         const std::string toSyn = canonicalizeSyntheticArgText(to);
         if (fromSyn != from || toSyn != to) return fromSyn == toSyn;
     }
+    // #1674 乙案：手动释放<T> 包装透明转换——载荷 T 可转则包装可转
+    //   （T→手动释放<T> 初始化/赋值接管·对标 ManuallyDrop ptr::write）。
+    //   反向（包装→裸T）不隐式——.值 显式读出（自动forget-forget 违接管语义）。
+    {
+        const cn::Optional<std::string> fromWrap =
+            types::manuallyDroppedPayloadOf(from);
+        const cn::Optional<std::string> toWrap =
+            types::manuallyDroppedPayloadOf(to);
+        if (fromWrap.has_value() && toWrap.has_value()) {
+            return canConvertType(fromWrap.value(), toWrap.value());
+        }
+        if (toWrap.has_value()) {
+            return canConvertType(from, toWrap.value());
+        }
+    }
     if (fromResult || toResult || fromOpt || toOpt) return false;  // 模板与非模板不可转
     const bool fromEnum = isEnumType(from);
     const bool toEnum = isEnumType(to);

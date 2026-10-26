@@ -163,6 +163,22 @@ std::string canonical(const std::string& type) {
     return type;
 }
 
+// #1674 乙案：手动释放<T> 包装类型判定（单一事实源）——两形态皆认：
+//   `手动释放$T`（合成名：泛型 < > 归一后）与 `手动释放<T>`（原文尖括号）。
+//   命中返回载荷 T。嵌套泛型载荷（手动释放<向量<整32>>）原文形态原样返回，
+//   由载荷消费点继续归一——本判定只剥一层壳。
+cn::Optional<std::string> manuallyDroppedPayloadOf(const std::string& type) {
+    const std::string syntheticPrefix = "手动释放$";
+    if (type.rfind(syntheticPrefix, 0) == 0) {
+        return type.substr(syntheticPrefix.size());
+    }
+    const std::string textPrefix = "手动释放<";
+    if (type.rfind(textPrefix, 0) == 0 && !type.empty() && type.back() == '>') {
+        return type.substr(textPrefix.size(), type.size() - textPrefix.size() - 1);
+    }
+    return std::nullopt;
+}
+
 namespace {
 
 // canonical 的视图级等值判定（无分配）：与 canonical(type) == expected 逐值等价。

@@ -165,6 +165,115 @@ bool IRGenerator::emitWrapBuiltinCall(CallExpr* node) {
     return false;
 }
 
+// ---- #1674 甲案（2026-10-26 用户批·001 §5.6 ①）：摘除(槽) 拥有槽一步「释放旧值+清槽」 ----
+// 语义层已验左值+槽类型（checkRemoveBuiltinCall）。发射=lvalueAddress 取槽地址
+// （全形态：变量/静态/引用捕获/类字段裸名 633/单层成员链）→ LoadPtr 读旧值 →
+// 字符串槽=__cn_str_free / 类槽=DeleteObject（extra=规范化类名·与级联/出口释放
+// 同款单发模型）→ StorePtr 清槽。空槽由运行时空安全吸收（__cn_str_free(nullptr)
+// 忽略 / DeleteObject test-je 跳过）——摘除后析构级联读到空槽自然跳过，双释放
+// 机械杜绝（与 转移 展开源槽清零 959 同构的「释放+清零幂等模型」）。
+// lastExpr_ 占位常量 0：空类型调用无产物（与打印族 emit 不分配结果寄存器同口径，
+// 表达式语句位丢弃 lastExpr_）。
+bool IRGenerator::emitRemoveBuiltinCall(CallExpr* node) {
+    if (node->callee->getType() != NodeType::IdentifierExpr) return false;
+    if (static_cast<IdentifierExpr*>(node->callee.get())->name != "摘除") return false;
+    // 静默豁免闭集穷举: 未处理哨兵（布尔返回=非摘除调用走主链·语义层已验形态）
+    if (node->arguments.size() != 1 || semantic_ == nullptr) return false;
+    const std::string slotTy = removeSlotSrcType(node->arguments[0].get());
+    if (slotTy.empty()) {
+        // 语义层已验（checkRemoveBuiltinCall 放行=左值+字符串/类槽）；推导 miss=
+        // 语义/IR 推导链分叉，显形内部错误不静默续译（648 同口径）
+        diagnostics_.report(DiagnosticLevel::Error, node->location,
+                            "内部错误：摘除 槽类型推导失败（语义/IR 分叉）");
+        return true;
+    }
+    ir::IRValue addr = lvalueAddress(node->arguments[0].get());
+    ir::IRValue oldVal = emitResult(ir::Opcode::LoadPtr, {addr}, "ptr", "",
+                                    node->location);
+    // #1674 乙案组合：手动释放$ 载荷槽剥壳（.值/包装变量槽=载荷槽透明）
+    std::string load = types::canonical(slotTy);
+    if (load.rfind("手动释放$", 0) == 0) {
+        load = load.substr(std::string("手动释放$").size());
+    }
+    if (load == "字符串") {
+        emit(ir::Opcode::Call, {oldVal}, ir::IRValue(), "__cn_str_free", "void",
+             node->location);
+    }
+    // 类槽分支（else 新规：显式否定式——非字符串槽=类槽 DeleteObject）
+    if (load != "字符串") {
+        emit(ir::Opcode::DeleteObject, {oldVal}, ir::IRValue(), load, "void",
+             node->location);
+    }
+    ir::IRValue zero = emitResult(ir::Opcode::ConstInt, {}, "i64", "0",
+                                  node->location);
+    emit(ir::Opcode::StorePtr, {addr, zero}, ir::IRValue(), "", "ptr",
+         node->location);
+    lastExpr_ = emitResult(ir::Opcode::ConstInt, {}, "i32", "0", node->location);
+    return true;
+}
+
+// #1674 甲案：摘除实参槽类型推导（单一事实源=语义视图）。
+//   标识符=lookupSrcType（miss=类字段裸名·633 同判据 classFieldType(currentClass_)）；
+//   单层成员（visitMemberExpr 495~508 同款两查）：基=自身 → classFieldType(当前类)；
+//   基=变量 → 结构体字段表 / 类字段表。空串=形态不在支持面（语义层已拒·防御显形）。
+std::string IRGenerator::removeSlotSrcType(Expr* arg) {
+    if (arg->getType() == NodeType::IdentifierExpr) {
+        const auto* ident = static_cast<const IdentifierExpr*>(arg);
+        cn::Optional<std::string> ty = lookupSrcType(ident->name);
+        if (ty.has_value()) return ty.value();
+        if (!currentClass_.empty()) {
+            return classFieldType(currentClass_, ident->name).value_or("");
+        }
+        return "";
+    }
+    if (arg->getType() != NodeType::MemberExpr) return "";
+    const auto* me = static_cast<const MemberExpr*>(arg);
+    // #1674 乙案组合：嵌套链（自身.缓存.值=包装载荷槽）——基类型经嵌套
+    //   推导（resolveNestedMemberObjSrcType 现成·深度不限与地址面同构）
+    std::string baseCanon;
+    if (me->object->getType() == NodeType::MemberExpr) {
+        baseCanon = types::canonical(resolveNestedMemberObjSrcType(
+                                         static_cast<MemberExpr*>(me->object.get()))
+                                         .value_or(""));
+    } else if (me->object->getType() == NodeType::SelfExpr) {
+        baseCanon = currentClass_;   // 自身.字段 → 当前类字段
+    } else if (me->object->getType() == NodeType::IdentifierExpr) {
+        const auto* base = static_cast<const IdentifierExpr*>(me->object.get());
+        if (base->name == "自身") {
+            baseCanon = currentClass_;
+        } else {
+            baseCanon = types::canonical(lookupSrcType(base->name).value_or(""));
+        }
+    }
+    if (!(me->object->getType() == NodeType::MemberExpr ||
+          me->object->getType() == NodeType::SelfExpr ||
+          me->object->getType() == NodeType::IdentifierExpr)) {
+        // 静默豁免上游已诊断: 形态不在支持面（语义层 checkRemoveBuiltinCall 已拒
+        // 左值外形态；发射侧 miss 由 emitRemoveBuiltinCall 内部错误显形）
+        return "";
+    }
+    // #1674 乙案：包装基座（手动释放<T> s; s.值）——载荷槽即 .值 槽（透明）
+    {
+        const cn::Optional<std::string> wrapPayload =
+            types::manuallyDroppedPayloadOf(baseCanon);
+        if (wrapPayload.has_value()) {
+            return me->memberName == "值" ? wrapPayload.value() : "";
+        }
+    }
+    // 静默豁免上游已诊断: 基类型不可判定=语义层已拒形态（发射侧内部错误显形·648）
+    if (baseCanon.empty()) return "";
+    if (semantic_->isClassType(baseCanon)) {
+        return classFieldType(baseCanon, me->memberName).value_or("");
+    }
+    const StructDecl* decl = semantic_->findStruct(baseCanon).value_or(nullptr);
+    // 静默豁免上游已诊断: 基非类/结构体=语义层已拒（摘除仅支持拥有槽·同上显形）
+    if (decl == nullptr) return "";
+    for (const auto& f : decl->fields) {
+        if (f.name == me->memberName) return f.type;
+    }
+    return "";
+}
+
 // ---- 打印 / 打印行 展开（Task 2.5 + Task 2.9 语义调整）----
 // 新语义（用户裁决，lessons.md 权重10.4）：
 //   打印   = println（末尾自动换行）——运行时 printLine/__cn_print_* + newline

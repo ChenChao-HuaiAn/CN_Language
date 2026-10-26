@@ -22,6 +22,8 @@
     void buildClosureCaptureArgs482(const ClosureInfo& info, CallExpr* node,
                                     std::vector<ir::IRValue>& closureArgs);  // 捕获装载（closure）
     bool emitWrapBuiltinCall(CallExpr* node);                        // 回绕内置（builtin）
+    bool emitRemoveBuiltinCall(CallExpr* node);                      // #1674 甲案：摘除 内置（builtin·001 §5.6 ①）
+    std::string removeSlotSrcType(Expr* arg);                        // 摘除实参槽类型推导（语义视图单点）
     bool tryEmitPrintLikeCall(CallExpr* node, bool isDirect,
                               const std::string& calleeName);        // 打印判定薄封装（builtin）
     bool isBuiltinStrConsumer617(const std::string& calleeName,

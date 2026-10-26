@@ -162,6 +162,20 @@ void SemanticAnalyzer::visitMemberExpr(MemberExpr* node) {
         lastType_ = "未知";
         return;
     }
+    // #1674 乙案：手动释放<T> 包装成员——唯一成员 .值 =载荷（透明单载荷·
+    //   布局=T·001 §5.6 ③）。其余成员名编译期拒（无隐藏成员）。
+    if (types::manuallyDroppedPayloadOf(objectType).has_value()) {
+        if (memberName != "值") {
+            diagnostics_.report(DiagnosticLevel::Error, node->location,
+                                "手动释放<T> 类型只有成员 '值'（透明单载荷）：没有成员 '" +
+                                    memberName + "'");
+            lastType_ = "未知";
+            return;
+        }
+        lastType_ = canonicalType(resolveGenericTypeName(
+            types::manuallyDroppedPayloadOf(objectType).value(), node->location));
+        return;
+    }
     // 枚举值引用：枚举名.成员（如 颜色.红，Task 2.7）
     // object 为标识符且其类型是枚举类型名 → 求值为枚举成员整数值
     // （v2.1：枚举类型名非指针，原 !isArrow 守卫随 -> 废除删除）

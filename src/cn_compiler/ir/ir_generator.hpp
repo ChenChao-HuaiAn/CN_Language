@@ -747,7 +747,6 @@ private:
                                const std::function<void(const ir::IRValue&)>& body);
     // ---- 954 调用族声明段外迁 ir_call_decls.hpp（1360 批2 行数门禁·类体片段头此处原位展开·零语义变化）
 #include "cn_compiler/ir/ir_call_decls.hpp"
-
     // ---- 阶段3 OOP 调用/析构（ir_oop_call.cpp 实现） ---- 函数收尾钩子：类类型局部变量（有析构函数）离开作用域 -> DeleteObject（RAII）
     void genClassDestructorCalls();
     // plans/019 阶段4'（2026-09-10 方案A）：拥有型字符串 RAII——收集 Alloca 字符串
@@ -945,6 +944,7 @@ private:
     bool isInstanceField(const std::string& name) const;
     // 内置构造器降级（visitCallExpr 钩子·Task 3.5）：正常/错误/某些 -> 结果/可选合成结构体临时槽 + 判别位与值；209-a 目标类型解析（returnTypeSrc 优先 + 结果/可选 推导·输出合成结构体名与值字段类型；false=非构造器语境）。
     bool handleResultCtor(CallExpr* node);
+
     bool resolveResultCtorTargetType(CallExpr* node, const std::string& name,
                                      std::string& structName, std::string& valueType);
     // 实参值写入：结构体值 CopyStruct 内联 / 标量按自然宽度 Cast+StorePtr； 70-a 装箱 move（正常/某些 + 字符串值 + 非污染 → 源槽清零）。

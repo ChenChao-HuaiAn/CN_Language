@@ -44,6 +44,8 @@ void IRGenerator::visitCallExpr(CallExpr* node) {
     }
     // ---- 任务 474：回绕内置（954 族体见 emitWrapBuiltinCall·ir_call_builtin.cpp）----
     if (emitWrapBuiltinCall(node)) return;
+    // ---- #1674 甲案：摘除 内置（954 族体见 emitRemoveBuiltinCall·ir_call_builtin.cpp）----
+    if (emitRemoveBuiltinCall(node)) return;
     // ---- 阶段3 OOP（Task 3.1/3.2）：构造调用/成员方法调用/虚调用 ----
     // 构造调用 类名(实参)：callee 为类类型名（NewObject + 构造体 Call）；
     // 成员方法调用 对象.方法(实参)：callee 为 MemberExpr（虚 -> VirtualCall，

@@ -34,6 +34,15 @@ std::string canonical(const std::string& type);
 //   （别名/尾部 & 递归剥除/* 递归追加/数组 [N] 递归追加）逐段比对。
 bool canonicalEquals(const std::string& type, std::string_view expected);
 
+// #1674 乙案（2026-10-26 用户批·001 §5.6 ③）：手动释放<T> 包装类型判定——
+//   单一事实源（语义/IR 的级联跳过/赋值忘旧值/布局透明/成员 .值 各消费点共用）。
+//   两形态皆认：合成名 `手动释放$T`（泛型 < > 归一后）与原文 `手动释放<T>`。
+//   命中返回载荷类型 T；未命中=nullopt。对标 Rust ManuallyDrop<T>：声明槽的
+//   释放权归用户（编译器级联跳过+赋值覆盖不释放旧值），与联合体成员「手动释放」
+//   标注（164-a·同语义修饰形式）和谐共存——标注形式（联合体成员）管联合体面，
+//   类型形式（本函数）管字段/变量面。
+cn::Optional<std::string> manuallyDroppedPayloadOf(const std::string& type);
+
 // 是否整数类型（整8~整128/正8~正128/整数，规范后判断）
 bool isInteger(const std::string& type);
 

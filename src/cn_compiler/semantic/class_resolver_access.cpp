@@ -172,6 +172,9 @@ void SemanticAnalyzer::checkClassMethods(ClassInfo& info) {
             const auto f = info.fields.find(fn);
             if (f == info.fields.end() || f->second.isStatic) continue;
             const std::string fcanon = types::canonical(f->second.type);
+            // #1674 乙案：手动释放<T> 字段=用户接管释放权（级联跳过同判据）——
+            //   不触发三法则强制（声明即「我不管」·ManuallyDrop Clone-not-Drop）
+            if (types::manuallyDroppedPayloadOf(fcanon).has_value()) continue;
             const ClassInfo* fci = findClass(fcanon).value_or(nullptr);
             if (fci == nullptr) continue;
             bool fHasDtor = false;
@@ -224,6 +227,9 @@ void SemanticAnalyzer::checkSingleMethodBody(ClassInfo& info, ClassMemberInfo& m
         // plans/019 阶段4 第二层第一批：不安全方法体内豁免安全区边界观察期警告
         const bool savedUnsafe = currentFnUnsafe_;
         currentFnUnsafe_ = mi.isUnsafe;
+        // #1674 丙案：析构函数上下文（体内对资源字段手动 字符串释放 执法用）
+        const bool savedIsDestructor1674 = currentFnIsDestructor_;
+        currentFnIsDestructor_ = mi.isDestructor;
         // 480：方法体入口清空函数内静态局部名表（函数级表·跨方法互不污染）
         staticguard::noteFunctionEntry();
         const std::string savedFuncName = currentFunctionName_;
@@ -496,6 +502,7 @@ void SemanticAnalyzer::checkSingleMethodBody(ClassInfo& info, ClassMemberInfo& m
         currentFunctionName_ = savedFuncName;
         constMethodContext_ = savedConst;
         currentFnUnsafe_ = savedUnsafe;  // plans/019 阶段4
+        currentFnIsDestructor_ = savedIsDestructor1674;  // #1674 丙案
         genericTypeParams_ = savedTypeParams;
         currentMethodIsStatic_ = savedStatic;
         currentFieldScopeClass_ = savedFieldScope1472;  // 1472：声明类上下文恢复

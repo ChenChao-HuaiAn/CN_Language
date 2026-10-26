@@ -444,7 +444,18 @@ bool IRGenerator::memberStringFieldAssign(AssignmentExpr* node, MemberExpr* memb
             }
             return "";
         }();
-        if (types::canonicalEquals(fieldFieldType, "字符串")) {
+        // #1674 乙案：手动释放<T> 字符串载荷字段同走来源归一化（新值复制落堆/
+        //   接管——调用方拥有临时的结算面不知槽已接管，浅直存=临时 free 后槽
+        //   悬垂·探针5 差值=1 实锤），但旧值释放跳过（覆盖即忘·ManuallyDrop
+        //   ptr::write 语义·001 §5.6 ③——忘旧责任随声明归用户）。
+        const std::string fieldCanon1674 = types::canonical(fieldFieldType);
+        const cn::Optional<std::string> wrapPayload1674 =
+            types::manuallyDroppedPayloadOf(fieldCanon1674);
+        const bool strLikeField1674 =
+            types::canonicalEquals(fieldFieldType, "字符串") ||
+            (wrapPayload1674.has_value() &&
+             types::canonical(wrapPayload1674.value()) == "字符串");
+        if (strLikeField1674) {
             // 顺序（自赋值安全）：值已由上方 genExpr 求值（勿二次求值——
             //   二次求值=多余分配泄漏，P6/P7 探针实证）；此处按来源分级
             //   归一化（复制落堆/接管/move），新值独立于旧值内存后才 drop 旧值
@@ -461,11 +472,14 @@ bool IRGenerator::memberStringFieldAssign(AssignmentExpr* node, MemberExpr* memb
             //   （把非活跃成员位当句柄 free=p13/p14 缺陷根因）；方案A 删除写入
             //   归一化，旧值释放=用户责任（手动释放 标注成员在 不安全 函数 内
             //   显式处理）。新值写入/来源归一化保留（值仍须可写）。
+            // #1674 乙案：手动释放<T> 目标槽旧值释放跳过（覆盖即忘——级联
+            //   跳过+忘旧同判据，释放由用户 摘除(槽.值) 执行）。
             const StructDecl* objDeclU = semantic_ != nullptr
                 ? semantic_->findStruct(types::canonical(objSrcType)).value_or(nullptr)
                 : nullptr;
             const bool unionTarget = objDeclU != nullptr && objDeclU->isUnion;
-            if (!unionTarget && isOwnedFieldSlot(objUnique)) {
+            if (!unionTarget && !wrapPayload1674.has_value() &&
+                isOwnedFieldSlot(objUnique)) {
                 emitFieldStringFreeAt(addr, node->location);  // 旧值幂等释放+清槽
             }
             emit(ir::Opcode::StorePtr, {addr, normalized}, ir::IRValue(), "",

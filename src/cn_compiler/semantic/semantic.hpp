@@ -334,6 +334,9 @@ private:
     // 55-c 方案A（2026-09-10 用户裁决，Rust E0308 对齐）：canConvertType 拒绝时的整数字面量豁免（源/目标均整数族·值表达式为字面量形态·含一元负号）
     bool checkTransferCall(CallExpr* node);
     bool checkWrapBuiltinCall(CallExpr* node);  // 474: 回绕内置（显式回绕·溢出检查豁免面）
+    // #1674 甲案：摘除(槽) 拥有槽一步「释放旧值+清槽」（001 §5.6 ①·2026-10-26 用户批）
+    //   ——对标 C++ reset/Rust take 释放侧内建化；IR 侧 emitRemoveBuiltinCall 同名对应
+    bool checkRemoveBuiltinCall(CallExpr* node);
     // 族2：内置构造器 正常/错误/某些（#1588 迁 semantic_call_result_ctor.cpp）
     bool checkBuiltinCtorCall(CallExpr* node);
     // #1588：构造器结果类型推导（目标校准优先；无目标=实参类型+缺失侧补全）
@@ -906,6 +909,10 @@ private:
     std::string currentFieldScopeClass_;
     // 当前方法是否常量成员函数（常量 修饰，Task 3.9 修改成员检查）
     bool constMethodContext_ = false;
+    // #1674 丙案（2026-10-26）：当前函数是否析构函数（~类名）——析构体内对
+    //   资源字段手动 字符串释放 = 编译期拒（级联将再 free 同句柄=双释放）。
+    //   赋值点=checkFunctionBody 入口（semantic_decl.cpp currentFnUnsafe_ 同位）。
+    bool currentFnIsDestructor_ = false;
     // #282（2026-10-08）：当前方法是否静态成员函数——静态方法体无 this，
     //   自身 表达式在 visitSelfExpr 精确拒绝；B9 安全区豁免据此不误放静态面。
     bool currentMethodIsStatic_ = false;
