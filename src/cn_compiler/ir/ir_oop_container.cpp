@@ -309,14 +309,33 @@ void IRGenerator::injectStrElemDestroy(const std::string& canonClass,
                               "i64", posUniqueS, loc);
         // 静默豁免业务值: 1360 批3A 结果化取值路径——索引字段偏移 miss 即显形返回·非兜底
         } else {
-            const int idxOffS = semantic_->classFieldOffset(canonClass, indexField).value_or(-1);
-            if (idxOffS < 0) return;
+            const cn::Optional<int> idxOffSOpt =
+                semantic_->classFieldOffset(canonClass, indexField);
+            // 1672 批10 甄别（#1360 处置①）：容器族内建方法注入面的索引字段名
+            //   为容器类布局固定字段（头索引/尾索引），无值=布局/注入面漂移的
+            //   内部缺陷——原静默 return 会把释放注入整段跳过（潜在泄漏无显形）；
+            //   has_value() 显式分流（负值哨兵退役），return 控制流不变（产物丢弃）。
+            if (!idxOffSOpt.has_value()) {
+                diagnostics_.report(DiagnosticLevel::Error, loc,
+                    "内部错误: 容器索引字段 '" + indexField + "' 偏移未登记（类 '" +
+                        canonClass + "'·#1360）");
+                return;
+            }
+            const int idxOffS = idxOffSOpt.value();
             ir::IRValue idxAddrS = emitResult(ir::Opcode::FieldAddr, {selfPtrS}, "ptr",
                                               std::to_string(idxOffS), loc);
             posS = emitResult(ir::Opcode::LoadPtr, {idxAddrS}, "i64", "", loc);
         }
-        const int arrayOffS = semantic_->classFieldOffset(canonClass, arrayField).value_or(-1);
-        if (arrayOffS < 0) return;
+        const cn::Optional<int> arrayOffSOpt =
+            semantic_->classFieldOffset(canonClass, arrayField);
+        // 1672 批10 同族收口：容器数组字段名同属布局固定字段，无值=内部缺陷显形
+        if (!arrayOffSOpt.has_value()) {
+            diagnostics_.report(DiagnosticLevel::Error, loc,
+                "内部错误: 容器数组字段 '" + arrayField + "' 偏移未登记（类 '" +
+                    canonClass + "'·#1360）");
+            return;
+        }
+        const int arrayOffS = arrayOffSOpt.value();
         emit(ir::Opcode::Call,
              {selfPtrS,
               ir::IRValue::constant(std::to_string(arrayOffS), "整64"),
@@ -608,8 +627,17 @@ void IRGenerator::emitSingleElemRelease(
                          "i64", posUnique, loc);
     // 静默豁免业务值: 1360 批3A 结果化取值路径——索引字段偏移 miss 即显形返回·非兜底
     } else {
-        const int idxOff = semantic_->classFieldOffset(canonClass, indexField).value_or(-1);
-        if (idxOff < 0) return;
+        const cn::Optional<int> idxOffOpt =
+            semantic_->classFieldOffset(canonClass, indexField);
+        // 1672 批10 甄别（#1360 处置①）：同 injectStrElemDestroy 索引字段面——
+        //   无值=布局/注入面漂移内部缺陷，has_value 分流显形，return 控制流不变。
+        if (!idxOffOpt.has_value()) {
+            diagnostics_.report(DiagnosticLevel::Error, loc,
+                "内部错误: 容器索引字段 '" + indexField + "' 偏移未登记（类 '" +
+                    canonClass + "'·#1360）");
+            return;
+        }
+        const int idxOff = idxOffOpt.value();
         ir::IRValue idxAddr = emitResult(ir::Opcode::FieldAddr, {selfPtr}, "ptr",
                                          std::to_string(idxOff), loc);
         pos = emitResult(ir::Opcode::LoadPtr, {idxAddr}, "i64", "", loc);

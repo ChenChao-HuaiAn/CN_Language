@@ -102,21 +102,32 @@ bool IRGenerator::handleResultCtor(CallExpr* node) {
     // ---- 写 值/错误值（联合体/值字段偏移 = 对齐后的偏移）----
     // 结果<T,E>：值/错误值 共用联合体，偏移 = 对齐(布尔=1)后 -> 8；
     // 可选<T>：值字段偏移 = 对齐(布尔=1)后 -> 8。
-    int valueOffset = -1;
+    // 1672 批10（#1360 处置①）：偏移查询用 Optional 贯穿——原 value_or(-1)+
+    //   `if (valueOffset < 0)` 的负值哨兵与「默认 8」双形态退役，has_value()
+    //   显式分流（无值=布局/降级漂移内部缺陷），value_or(8) 显形保留原控制流。
+    cn::Optional<int> valueOffsetOpt;   // 有值=结果/可选合成体字段偏移已登记
     // 209-a：值偏移段本地推导（isResult/isOptional 声明已随推导分支迁族①）
     const bool isResult = isResultType(node->resolvedType);
     for (const auto& f : decl->fields) {
         if (isResult) {
-            if (f.name == "错误值联合") { valueOffset = semantic_->fieldOffsetOf(decl, f.name).value_or(-1); }
+            if (f.name == "错误值联合") { valueOffsetOpt = semantic_->fieldOffsetOf(decl, f.name); }
         // 静默豁免业务值: 1360 批3A 结果化取值路径——结果/值联合两形态的字段偏移分流·非兜底
         } else {
-            if (f.name == "值") { valueOffset = semantic_->fieldOffsetOf(decl, f.name).value_or(-1); }
+            if (f.name == "值") { valueOffsetOpt = semantic_->fieldOffsetOf(decl, f.name); }
         }
     }
     // 宿主缺陷根治（2026-08-25）：valueOffset 取真实布局（computeLayout）——
     //   整64/结构体 联合体偏移 8、整32 偏移 4。原强制 8 使 结果<整32,整32>（联合体
     //   真实偏移 4）写/读偏移错位（坏.错误 读 0 实测）。仅未找到字段时防御用 8。
-    if (valueOffset < 0) valueOffset = 8;
+    // 1672 批10 甄别（#1360 处置①）：结果/可选合成体布局必含「错误值联合」/「值」
+    //   字段（lowerResultOptionalTypes 单点降级），无值=布局/降级漂移内部缺陷——
+    //   补内部错误显形，value_or(8) 控制流不变（driver hasErrors 丢弃产物）。
+    if (!valueOffsetOpt.has_value()) {
+        diagnostics_.report(DiagnosticLevel::Error, node->location,
+            "内部错误: 结果/可选构造器字段偏移未登记（'" + structName +
+                "'·构造器 '" + name + "'·#1360·1672）");
+    }
+    const int valueOffset = valueOffsetOpt.value_or(8);
     ir::IRValue valAddr = emitResult(ir::Opcode::FieldAddr, {base}, "ptr",
                                      std::to_string(valueOffset), node->location);
 

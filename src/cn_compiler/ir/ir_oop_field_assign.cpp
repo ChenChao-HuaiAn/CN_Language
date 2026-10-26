@@ -150,6 +150,17 @@ bool IRGenerator::handleClassFieldAssign(IdentifierExpr* ident, Expr* value,
                 // 静默豁免业务值: 1360 批3A 结果化取值路径——类查找 miss 即非类字段回落·非兜底
                 } else {
                     const ClassInfo* ci = semantic_->findClass(fieldCanon).value_or(nullptr);
+                    // 1672 批10 甄别（#1360 处置①·B 类：哨兵 0 与合法 totalSize=0
+                    //   重叠且消费点原未检查）：isOwnedContainer 判定已含
+                    //   isClassType(fieldCanon)（≡findClass 非空机械等价）——miss
+                    //   不可达；原三元 `ci != nullptr ? totalSize : 0` 把 miss 静默
+                    //   写成分配尺寸 0（NewObject 零尺寸=堆破坏面），补内部错误显形，
+                    //   extra 组装保持原控制流（产物丢弃）。
+                    if (ci == nullptr) {
+                        diagnostics_.report(DiagnosticLevel::Error, loc,
+                            "内部错误: 类字段深拷分配尺寸类布局表缺失 '" +
+                                fieldCanon + "'（#1360·1672）");
+                    }
                     const std::string extra =
                         fieldCanon + "|" +
                         std::to_string(ci != nullptr ? ci->totalSize : 0);

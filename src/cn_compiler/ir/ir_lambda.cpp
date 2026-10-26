@@ -347,6 +347,13 @@ void IRGenerator::buildClosureTrampoline943(
         } else {
             // 1360 结果化：pe 与 lookupVar 同栈遍历——此分支 lookupVar 恒无值
             //   （原返回哨兵 reg(-1,"")·形态等价直写）
+            // 1672 批10 甄别（#1360 处置①）：参数表由下方同一 params 经
+            //   buildClosureParams943 构建（同源同序），findVarEntry miss=内部
+            //   缺陷——原静默 push 空操作数实参（reg(-1,"")=渲染空串）会产出
+            //   不可信 IR；补内部错误显形，占位 push 保留（控制流/产物丢弃口径不变）。
+            diagnostics_.report(DiagnosticLevel::Error, loc,
+                "内部错误: 蹦床转发参数 '" + param->name +
+                    "' 条目未登记（#1360·1672）");
             callArgs.push_back(ir::IRValue::reg(-1, ""));
         }
     }
