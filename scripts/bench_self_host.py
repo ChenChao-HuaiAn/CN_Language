@@ -27,10 +27,25 @@
 #   采样数（默认 3·取中位）；超时/失败如实入报告（M2 失败=仅 M1 的部分基线）。
 #   --跳过M5：M4 后停止（qemu 下 M5 常需数小时——只取 M1~M4 时用；报告标注未执行）。
 #
+# 【1333 口径采集扩展（2026-10-25）】：
+#   --M1样本数 N  M1 采样 N 次取中位（默认 1=既有行为；plans/032 §2.1 要求 ≥3 样本）；
+#   --仅M1M2      M2 后停止（M3~M6 未执行·报告标注；win 缺借链 obj/预算不足时用）；
+#   --缓存 cold   cold 口径（禁用 CN_NO_AST_CACHE/CN_NO_PROGRAM_CACHE/
+#                 CN_NO_V2_PROGRAM_CACHE·plans/032 §2.3）；默认 asis 原样；
+#   --报告 <路径> 报告输出路径（默认 target/bench/性能基线报告.md）；
+#   --selftest    内置自测（纯本机零编译器·秒级·见 bench_self_host_selftest.py）。
+#   报告补机器/构建类型/缓存口径与「样本与离散度」表（中位/极差）。
+#
 # 用法: python scripts/bench_self_host.py [--platform linux-arm64] [--cn <编译器路径>]
-#       [--超时秒 1800] [--样本数 3]
-# 产物: target/bench/性能基线报告.md（报告）+ target/bench/selfwork/（中间产物，
-#       独立子路径——不与 E2E 的 target/audit2/selfwork78|79 互踩）
+#       [--超时秒 1800] [--样本数 3] [--M1样本数 3] [--仅M1M2] [--缓存 cold]
+#       [--报告 target/bench/自举耗时.md] [--selftest]
+# 产物: target/bench/性能基线报告.md（默认报告；--报告 可改写——
+#       #1333 v2 自举口径耗时采集落 target/bench/自举耗时.md）+ target/bench/selfwork/
+#       （中间产物，独立子路径——不与 E2E 的 target/audit2/selfwork78|79 互踩）
+
+# 1333：PEP604 注解（pathlib.Path | None）在 3.8 定义期会 TypeError——
+#   future import 使注解惰性化（对齐 bench_stdlib.py 的 P1-1 口径）。
+from __future__ import annotations
 
 import argparse
 import os
@@ -76,6 +91,26 @@ if hasattr(sys.stderr, "reconfigure"):
 交叉前缀 = []
 命令超时秒 = 1800
 样本数 = 3
+# 1333：M1 采样次数（默认 1=既有行为）与缓存口径（asis=原样/cold=禁用三级缓存）
+M1样本数 = 1
+缓存口径 = "asis"
+
+
+def 缓存环境() -> dict:
+    """缓存口径环境（plans/032 §2.3）：cold 同时禁用宿主 AST/程序缓存与 v2
+    程序缓存（三个开关都设=子进程确定性进入禁用态）；asis 原样（外部已设的
+    变量保留，不主动清/不预热）。"""
+    if 缓存口径 == "cold":
+        return {"CN_NO_AST_CACHE": "1", "CN_NO_PROGRAM_CACHE": "1",
+                "CN_NO_V2_PROGRAM_CACHE": "1"}
+    return {}
+
+
+def 缓存口径说明() -> str:
+    if 缓存口径 == "cold":
+        return ("cold（CN_NO_AST_CACHE=1 / CN_NO_PROGRAM_CACHE=1 / "
+                "CN_NO_V2_PROGRAM_CACHE=1）")
+    return "asis（原样：不主动清缓存/不预热·plans/032 §2.3）"
 
 # ============ 工具函数 ============
 
@@ -110,6 +145,7 @@ def 运行命令(命令列表: list, 工作目录: pathlib.Path) -> subprocess.C
         return subprocess.run(
             命令列表, cwd=str(工作目录), capture_output=True,
             text=True, encoding="utf-8", errors="replace",
+            env={**os.environ, **缓存环境()},
             timeout=命令超时秒 if 命令超时秒 > 0 else None)
     except subprocess.TimeoutExpired:
         return subprocess.CompletedProcess(
@@ -265,6 +301,21 @@ def 统计输入规模() -> dict:
     return 结果
 
 
+def 校验编译产物(asm路径: pathlib.Path, 目标平台: str) -> tuple:
+    """产物防假绿判定（#1333 抽出供 selftest）：产物存在 + 入口符号 cn_main +
+    行数下界。返回 (行数, 错误消息)；错误非空=不合格。"""
+    if not asm路径.exists():
+        return 0, "编译退出码 0 但未落盘 v2asm（防假绿）"
+    入口标记 = "cn_main PROC" if 目标平台 == "win-x64" else ".globl cn_main"
+    内容 = asm路径.read_text(encoding="utf-8", errors="replace")
+    if 入口标记 not in 内容:
+        return 0, "产物缺少入口符号 cn_main（v2 代码生成入口未对齐宿主·防假绿）"
+    行数 = 内容.count("\n") + 1
+    if 行数 < 行数下界:
+        return 0, f"产物 {行数} 行 < 下界 {行数下界}（近乎空产物·防假绿下界触发）"
+    return 行数, ""
+
+
 def 编译v2全树(exe: pathlib.Path, 目标平台: str) -> tuple:
     """[M2/M5 共用]：exe 编译 v2 全树自身 -> 工作目录/target/v2asm.{asm|s}。
     断言：退出码 0 + 产物存在 + 含入口符号 cn_main（防假绿·对齐锚定链）。
@@ -274,11 +325,9 @@ def 编译v2全树(exe: pathlib.Path, 目标平台: str) -> tuple:
     第二跳失败=家机 708-e 链在飞缺陷域，M1~M4 实测成果不该被一起吞掉）。"""
     if 目标平台 == "win-x64":
         asm路径 = 工作目录 / "target" / "v2asm.asm"
-        入口标记 = "cn_main PROC"
         命令 = [str(exe), str(源文件)]
     else:
         asm路径 = 工作目录 / "target" / "v2asm.s"
-        入口标记 = ".globl cn_main"
         命令 = [str(exe), str(源文件), 目标平台]  # GAS 后端分派（v2 驱动器第 2 参数）
     if asm路径.exists():
         asm路径.unlink()
@@ -290,14 +339,9 @@ def 编译v2全树(exe: pathlib.Path, 目标平台: str) -> tuple:
         错输出 = (结果.stderr or "").strip() or (结果.stdout or "").strip()
         return None, 0, (f"编译 v2 全树失败(退出码{结果.returncode}): "
                          f"{错输出[-300:]}")
-    if not asm路径.exists():
-        return None, 0, "编译退出码 0 但未落盘 v2asm（防假绿）"
-    内容 = asm路径.read_text(encoding="utf-8", errors="replace")
-    if 入口标记 not in 内容:
-        return None, 0, "产物缺少入口符号 cn_main（v2 代码生成入口未对齐宿主·防假绿）"
-    行数 = 内容.count("\n") + 1
-    if 行数 < 行数下界:
-        return None, 0, f"产物 {行数} 行 < 下界 {行数下界}（近乎空产物·防假绿下界触发）"
+    行数, 错误 = 校验编译产物(asm路径, 目标平台)
+    if 错误:
+        return None, 0, 错误
     return asm路径, 行数, ""
 
 
@@ -312,21 +356,29 @@ def 编译v2全树计时(exe: pathlib.Path, 目标平台: str) -> tuple:
 # ============ 测量点实现 ============
 
 
-def 测量M1(编译器路径: pathlib.Path, 目标平台: str, v2p: pathlib.Path) -> float:
-    """M1: C++版（宿主）build v2 全树时间（cn build CN语言编译器v2/主.cn -> v2p）"""
-    if v2p.exists():
-        v2p.unlink()
-    结果, 耗时 = 计时(运行命令, [str(编译器路径), "build", str(源文件),
-                              "--target", 目标平台, "--output", str(v2p)],
-                      项目根目录)
-    if 结果.returncode != 0:
-        print(f"错误: M1 编译失败(退出码{结果.returncode}): "
-              f"{(结果.stderr or 结果.stdout).strip()[:300]}")
-        sys.exit(1)
-    if not v2p.exists():
-        print("错误: M1 编译返回成功但未生成 v2p")
-        sys.exit(1)
-    return 耗时
+def 测量M1(编译器路径: pathlib.Path, 目标平台: str, v2p: pathlib.Path,
+           次数: int = 1) -> tuple:
+    """M1: C++版（宿主）build v2 全树时间（cn build CN语言编译器v2/主.cn -> v2p）。
+    #1333：次数≥1 支持多样本（plans/032 §2.1 至少 3 样本）；每轮前删 v2p 防
+    「产物已存在」空跑；缓存口径由 --缓存 控制（cold=每轮全量）。返回
+    (中位ms, 样本表ms·排序后)。"""
+    样本 = []
+    for _ in range(max(1, 次数)):
+        if v2p.exists():
+            v2p.unlink()
+        结果, 耗时 = 计时(运行命令, [str(编译器路径), "build", str(源文件),
+                                  "--target", 目标平台, "--output", str(v2p)],
+                          项目根目录)
+        if 结果.returncode != 0:
+            print(f"错误: M1 编译失败(退出码{结果.returncode}): "
+                  f"{(结果.stderr or 结果.stdout).strip()[:300]}")
+            sys.exit(1)
+        if not v2p.exists():
+            print("错误: M1 编译返回成功但未生成 v2p")
+            sys.exit(1)
+        样本.append(耗时)
+    样本.sort()
+    return 样本[len(样本) // 2], [round(v, 3) for v in 样本]
 
 
 def 测量M2(目标平台: str, v2p: pathlib.Path, fixp: pathlib.Path) -> tuple:
@@ -475,9 +527,29 @@ def 绑定自检(目标平台: str, map文件: pathlib.Path, cn_self_obj: pathli
 # ============ 报告生成 ============
 
 
+def 样本极差(样本: list) -> float:
+    """样本极差=最大-最小（空样本=0）。plans/032 §2.1 要求随中位一并报告。"""
+    return float(max(样本) - min(样本)) if 样本 else 0.0
+
+
+def 构建类型() -> str:
+    """宿主构建类型（Debug/Release）——plans/032 §2.1 报告必填字段。"""
+    for 缓存 in (项目根目录 / "target" / "build-ninja" / "CMakeCache.txt",
+                 项目根目录 / "target" / "build-quick" / "CMakeCache.txt",
+                 项目根目录 / "build" / "CMakeCache.txt"):
+        if 缓存.exists():
+            import re
+            m = re.search(r"^CMAKE_BUILD_TYPE:STRING=(\S+)",
+                          缓存.read_text(encoding="utf-8", errors="replace"), re.M)
+            if m:
+                return m.group(1)
+    return "未知（非 CMake 构建或未配置）"
+
+
 def 报告视图(测量结果: dict, M6一致: bool) -> dict:
     """计算报告展示值（失败/未执行分支在此单点收口），返回视图字典。"""
     m1 = 测量结果["M1"]
+    m1样本 = 测量结果.get("M1样本", [m1])
     m2 = 测量结果.get("M2", 0.0)
     m2错误 = 测量结果.get("M2错误", "")
     m3 = 测量结果.get("M3")
@@ -485,6 +557,8 @@ def 报告视图(测量结果: dict, M6一致: bool) -> dict:
     m5 = 测量结果.get("M5", 0.0)
     m5错误 = 测量结果.get("M5错误", "") if not m2错误 else ""
     m5跳过 = bool(测量结果.get("M5跳过", False)) and not m2错误
+    m2样本 = 测量结果.get("M2样本", [])
+    m5样本 = 测量结果.get("M5样本", [])
     比值vscpp = (m2 / m1) if (m1 > 0 and m2 > 0) else float("inf")
     比值自洽 = (m5 / m2) if (m2 > 0 and m5 > 0) else float("inf")
     if m2错误:
@@ -492,26 +566,41 @@ def 报告视图(测量结果: dict, M6一致: bool) -> dict:
                 "036 qemu 交叉模拟性能深坑或口径问题·详见末节）")
         m5显示 = "— 未执行（M2 失败）"
         m6显示 = "— 未执行（M2 失败）"
+        m3显示 = m4显示 = "— 未执行（M2 失败）"
+    elif 测量结果.get("仅M1M2"):
+        结论 = ("⚠️ 部分基线：M1/M2 有效（M3~M6 按 --仅M1M2 未执行——"
+                "自举耗时口径采集的显式范围）")
+        m5显示 = "— 跳过（--仅M1M2）"
+        m6显示 = "— 未执行（--仅M1M2）"
+        m3显示 = m4显示 = "— 跳过（--仅M1M2）"
     elif m5错误:
         结论 = ("⚠️ 部分基线：M1~M4 有效（M5/M6 未达成——cn_self 自身编译失败·"
                 "缺陷域非口径问题·详见末节）")
         m5显示 = "失败（降级·见末节）"
         m6显示 = "— 未执行（M5 失败）"
+        m3显示 = f"{m3:.1f}" if m3 is not None else "— 未执行"
+        m4显示 = f"{m4:.1f}" if m4 is not None else "— 未执行"
     elif m5跳过:
         结论 = ("⚠️ 部分基线：M1~M4 有效（M5/M6 按 --跳过M5 未执行——"
                 "qemu 下 M5 预算不足的显式口径）")
         m5显示 = "— 跳过（--跳过M5）"
         m6显示 = "— 未执行（M5 跳过）"
+        m3显示 = f"{m3:.1f}" if m3 is not None else "— 未执行"
+        m4显示 = f"{m4:.1f}" if m4 is not None else "— 未执行"
     else:
         结论 = ("✅ 自举固定点成立（fix_p ≡ fix_s 逐字节）·基线入库"
                 if M6一致 else "❌ 固定点不一致——性能对比无效（M6 失败）")
         m5显示 = f"{m5:.1f}"
         m6显示 = "✅ 一致" if M6一致 else "❌ 不一致"
+        m3显示 = f"{m3:.1f}" if m3 is not None else "— 未执行"
+        m4显示 = f"{m4:.1f}" if m4 is not None else "— 未执行"
     return {
-        "m1": m1, "m2": m2, "m2错误": m2错误, "m5错误": m5错误,
+        "m1": m1, "m2": m2, "m5": m5, "m2错误": m2错误, "m5错误": m5错误,
+        "m1样本": m1样本, "m2样本": m2样本, "m5样本": m5样本,
+        "m1极差": 样本极差(m1样本), "m2极差": 样本极差(m2样本),
+        "m5极差": 样本极差(m5样本),
         "m2显示": f"{m2:.1f}" if not m2错误 else "失败/超时（见末节）",
-        "m3显示": f"{m3:.1f}" if m3 is not None else "— 未执行",
-        "m4显示": f"{m4:.1f}" if m4 is not None else "— 未执行",
+        "m3显示": m3显示, "m4显示": m4显示,
         "m5显示": m5显示, "m6显示": m6显示, "结论": 结论,
         "比值vscpp显示": f"{比值vscpp:.2f}x" if 比值vscpp != float("inf") else "—",
         "比值自洽显示": f"{比值自洽:.3f}x" if 比值自洽 != float("inf") else "—",
@@ -520,28 +609,51 @@ def 报告视图(测量结果: dict, M6一致: bool) -> dict:
 
 def 报告正文行们(测量结果: dict, 视图: dict, 编译器路径: pathlib.Path,
                 输入规模: dict, 目标平台: str) -> list:
-    """报告头部与两张表（不含失败降级说明节）。"""
+    """报告头部与三张表（不含失败降级说明节）。"""
     cpu信息 = platform.processor() or platform.machine()
+    机器 = f"{platform.node()} {platform.machine()} {cpu信息}".strip()
     平台说明 = 目标平台
     if 交叉前缀:
         平台说明 += (f"（qemu 交叉模拟：宿主 {platform.machine()} + "
                     f"{' '.join(交叉前缀)}）")
+    离散度行们 = [
+        "",
+        "## 三、样本与离散度（#1333·plans/032 §2.1：≥3 样本/中位/极差）",
+        "",
+        "| 测量点 | 样本(ms·排序后) | 中位(ms) | 极差(ms) | 极差/中位 |",
+        "|--------|------------------|---------:|---------:|----------:|",
+    ]
+    for 点名, 样本, 中位, 极差 in (
+            ("M1", 视图["m1样本"], 视图["m1"], 视图["m1极差"]),
+            ("M2", 视图["m2样本"], 视图["m2"], 视图["m2极差"]),
+            ("M5", 视图["m5样本"], 视图["m5"], 视图["m5极差"])):
+        if not 样本:
+            离散度行们.append(f"| {点名} | — 未执行/失败 | — | — | — |")
+            continue
+        比值 = f"{(极差 / 中位 * 100.0):.1f}%" if 中位 > 0 else "—"
+        离散度行们.append(
+            f"| {点名} | {', '.join(f'{v:.3f}' for v in 样本)} | "
+            f"{中位:.1f} | {极差:.3f} | {比值} |")
     return [
-        "# CN 语言自举性能基线报告（plans/004 D-1 · 560-a v2 口径）",
+        "# CN 语言自举性能基线报告（plans/004 D-1 · 560-a v2 口径·#1333 扩样本）",
         "",
         f"- **生成时间**: {time.strftime('%Y-%m-%d %H:%M:%S')}",
         f"- **平台**: {平台说明}（本机自举基线·跨机比较无意义）",
+        f"- **机器**: {机器}",
+        f"- **构建类型（宿主）**: {构建类型()}",
         f"- **编译器（C++ 宿主）**: {编译器路径}",
-        f"- **CPU**: {cpu信息}",
         f"- **测量对象**: CN语言编译器v2 全树（{sum(输入规模.values())} 行·"
         f"{len(输入规模)} 文件）",
-        f"- **口径**: 单命令超时 {命令超时秒} 秒·M2/M5 样本数 {样本数}（取中位）",
+        f"- **缓存口径**: {缓存口径说明()}",
+        f"- **口径**: 单命令超时 {命令超时秒} 秒·M1 样本数 {M1样本数}·"
+        f"M2/M5 样本数 {样本数}（均取中位·样本表见第三节）",
         "",
         "## 一、各测量点耗时",
         "",
         "| 测量点 | 说明 | 耗时(ms) |",
         "|--------|------|---------:|",
-        f"| M1 | C++ 宿主 build v2 全树（cn build -> v2p） | {视图['m1']:.1f} |",
+        f"| M1 | C++ 宿主 build v2 全树（cn build -> v2p·{M1样本数} 次中位） | "
+        f"{视图['m1']:.1f} |",
         f"| M2 | CN 版编译 v2 全树 -> fix_p（{样本数} 次中位数·样本 "
         f"{测量结果.get('M2样本', [])}） | {视图['m2显示']} |",
         f"| M3 | as 汇编 fix_p -> cn_self.obj | {视图['m3显示']} |",
@@ -564,9 +676,14 @@ def 报告正文行们(测量结果: dict, 视图: dict, 编译器路径: pathli
         f"{测量结果.get('M5行数', 0)}（下界 {行数下界}）",
         f"- **结论**: {视图['结论']}",
         "",
+    ] + 离散度行们 + [
+        "",
         "> **口径说明**：M2/M5 计时含编译器进程启动；比值 M2/M1 为「CN 版 vs C++ 版",
         "> 编译同一棵 v2 全树」的性能比（plans/004「性能达 C -O0」里程碑口径）；",
         "> M5/M2 为自举两代编译器自洽比（固定点成立时应 ≈1.00，偏差大=产物不自洽）。",
+        "> **噪声带（plans/032 §2.1）**：差异 <2% 一律无结论；2%~4% 须指令数复核；",
+        "> >4% 仍须指令数/等价性证据——墙钟（本表）只是最低可信度口径，",
+        "> win 原生无 PMU 仅作参考，收益判定须 linux `perf instructions`/callgrind `Ir`。",
         "> 单机口径——跨机比较无意义（CPU/负载不同），仅作本平台纵向基线。",
         "> qemu 交叉模拟数值含指令转译开销，不等价于 arm64 真机性能。",
         "",
@@ -574,21 +691,32 @@ def 报告正文行们(测量结果: dict, 视图: dict, 编译器路径: pathli
 
 
 def 失败说明行们(测量结果: dict) -> list:
-    """M2 失败/超时或 M5 失败时的第三节说明（互斥）。"""
+    """失败/跳过说明第四节（互斥）。"""
     m2错误 = 测量结果.get("M2错误", "")
     m5错误 = 测量结果.get("M5错误", "")
     if m2错误:
         return [
-            "## 三、M2 失败/超时说明（036 交叉模拟）",
+            "## 四、M2 失败/超时说明（036 交叉模拟）",
             "",
             f"- **M2 错误**: {m2错误}",
             "- **性质**：M2 是基线核心指标；失败/超时=M3~M6 无输入，本报告仅 M1 有效。",
             "- **处置**：如实入册（禁伪造数字）；可放宽 `--超时秒` 或改真机复测。",
             "",
         ]
+    if 测量结果.get("仅M1M2"):
+        return [
+            "## 四、M3~M6 跳过说明（--仅M1M2）",
+            "",
+            "- **性质**：M1/M2 已完成且有效；M3~M6 按显式参数未执行（非失败）。",
+            "- **用途**：#1333 v2 自举口径耗时采集只需 M1/M2（win 原生无 as 链/",
+            "  缺 target/audit2/v2p.obj 借链对象时也可复跑）。",
+            "- **回填**：需要固定点验证时去掉 --仅M1M2 重跑（M3 需 as/ml64，",
+            "  M4 需借链 obj）。",
+            "",
+        ]
     if m5错误:
         return [
-            "## 三、M5 失败降级说明（720-a）",
+            "## 四、M5 失败降级说明（720-a）",
             "",
             f"- **M5 错误**: {m5错误}",
             "- **性质**：cn_self（v2 自举编译产物）自身编译 v2 全树失败——缺陷域",
@@ -599,7 +727,7 @@ def 失败说明行们(测量结果: dict) -> list:
         ]
     if 测量结果.get("M5跳过"):
         return [
-            "## 三、M5 跳过说明（--跳过M5）",
+            "## 四、M5 跳过说明（--跳过M5）",
             "",
             "- **性质**：M1~M4 已完成且有效；M5/M6 按显式参数未执行（非失败）。",
             "- **用途**：qemu 交叉模拟下 M5 常需数小时——预算不足时先取 M1~M4。",
@@ -610,10 +738,12 @@ def 失败说明行们(测量结果: dict) -> list:
 
 
 def 生成报告(测量结果: dict, 编译器路径: pathlib.Path, 输入规模: dict,
-             M6一致: bool, 目标平台: str) -> pathlib.Path:
-    """生成性能基线报告 target/bench/性能基线报告.md（036：支持 M2 失败/超时的
-    部分基线——M1 成果保留，未执行点如实标「—」而非伪造数字）"""
-    报告路径 = 基准目录 / "性能基线报告.md"
+             M6一致: bool, 目标平台: str,
+             报告路径: pathlib.Path | None = None) -> pathlib.Path:
+    """生成性能基线报告（默认 target/bench/性能基线报告.md；#1333 --报告 可改写）。
+    036：支持 M2 失败/超时的部分基线——M1 成果保留，未执行点如实标「—」而非
+    伪造数字。"""
+    报告路径 = 报告路径 or (基准目录 / "性能基线报告.md")
     视图 = 报告视图(测量结果, M6一致)
     行们 = 报告正文行们(测量结果, 视图, 编译器路径, 输入规模, 目标平台)
     行们 += 失败说明行们(测量结果)
@@ -626,31 +756,44 @@ def 生成报告(测量结果: dict, 编译器路径: pathlib.Path, 输入规模
 # ============ 主程序 ============
 
 
-def 解析参数() -> tuple:
-    """解析命令行并回写全局口径（超时/样本数），返回
-    (目标平台, 编译器路径, 跳过M5)。"""
+def 解析参数(参数表: list | None = None) -> argparse.Namespace:
+    """解析命令行并回写全局口径（超时/样本数/缓存）。#1333：只解析，
+    平台/编译器探测移到主程序（--selftest 不依赖编译器）。"""
     解析器 = argparse.ArgumentParser(
         description="CN语言自举性能基线测量（plans/004 D-1 · 560-a v2 口径三平台）",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="示例:\n"
                "  python scripts/bench_self_host.py\n"
                "  python scripts/bench_self_host.py --platform linux-arm64 --cn target/cn\n"
-               "  CN_AS=aarch64-linux-gnu-as CN_CXX=aarch64-linux-gnu-g++ \\\n"
-               "    python scripts/bench_self_host.py --platform linux-arm64 --样本数 1")
+               "  python scripts/bench_self_host.py --M1样本数 3 --样本数 3 --仅M1M2 \\\n"
+               "    --缓存 cold --报告 target/bench/自举耗时.md\n"
+               "  python scripts/bench_self_host.py --selftest")
     解析器.add_argument("--platform", help="目标平台（默认按宿主探测）")
     解析器.add_argument("--cn", help="cn编译器路径（默认自动探测 target/ 下）")
     解析器.add_argument("--超时秒", type=int, default=1800,
                         help="单条命令超时秒数（默认 1800·0=不限；超时如实入报告）")
     解析器.add_argument("--样本数", type=int, default=3,
                         help="M2/M5 采样次数（默认 3·取中位；qemu 模拟可设 1）")
+    解析器.add_argument("--M1样本数", type=int, default=1,
+                        help="M1 采样次数（默认 1=既有行为；plans/032 建议 ≥3）")
     解析器.add_argument("--跳过M5", action="store_true",
                         help="M4 后停止（qemu 下 M5 常需数小时·只取 M1~M4 时用）")
-    参数 = 解析器.parse_args()
+    解析器.add_argument("--仅M1M2", action="store_true",
+                        help="M2 后停止（M3~M6 未执行·报告标注）")
+    解析器.add_argument("--缓存", choices=("asis", "cold"), default="asis",
+                        help="缓存口径（asis=原样；cold=禁用 AST/程序/v2 程序缓存）")
+    解析器.add_argument("--报告", default="",
+                        help="报告输出路径（默认 target/bench/性能基线报告.md）")
+    解析器.add_argument("--selftest", action="store_true",
+                        help="内置自测（纯本机零编译器·秒级）")
+    参数 = 解析器.parse_args(参数表)
 
-    global 命令超时秒, 样本数
+    global 命令超时秒, 样本数, M1样本数, 缓存口径
     命令超时秒 = 参数.超时秒
     样本数 = max(1, 参数.样本数)
-    return 探测平台(参数.platform), 探测编译器(参数.cn), 参数.跳过M5
+    M1样本数 = max(1, 参数.M1样本数)
+    缓存口径 = 参数.缓存
+    return 参数
 
 
 def 准备工具链(目标平台: str) -> tuple:
@@ -714,16 +857,18 @@ def 准备借链对象(目标平台: str, cxx工具: str):
 
 
 def 执行测量(目标平台: str, 编译器路径: pathlib.Path, as工具, ML64, LINK,
-             LIB路径们, v2pobj, 跳过M5: bool = False) -> tuple:
+             LIB路径们, v2pobj, 跳过M5: bool = False,
+             仅M1M2: bool = False) -> tuple:
     """执行 M1~M6；返回 (测量结果, M6一致, 是否提前失败)。
     提前失败仅指 M2（核心指标缺失）——保留 M1 出部分报告。
-    跳过M5=True：M4 绑定自检后停止（报告标注 M5/M6 未执行）。"""
+    跳过M5=True：M4 绑定自检后停止（报告标注 M5/M6 未执行）。
+    仅M1M2=True：#1333 自举耗时口径采集——M2 后停止（M3~M6 未执行）。"""
     测量结果 = {}
     v2p = 工作目录 / ("v2p.exe" if 目标平台 == "win-x64" else "v2p")
-    print("[M1] C++ 宿主 build v2 全树 ...")
-    测量结果["M1"] = 测量M1(编译器路径, 目标平台, v2p)
-    print(f"      {测量结果['M1']:.1f} ms")
-    if v2pobj is None:  # linux：M1 的中间产物 v2p.o = M4 借链对象
+    print(f"[M1] C++ 宿主 build v2 全树（{M1样本数} 次取中位数）...")
+    测量结果["M1"], 测量结果["M1样本"] = 测量M1(编译器路径, 目标平台, v2p, M1样本数)
+    print(f"      样本: {测量结果['M1样本']} -> 中位数 {测量结果['M1']:.1f} ms")
+    if not 仅M1M2 and v2pobj is None:  # linux：M1 的中间产物 v2p.o = M4 借链对象
         v2pobj = 工作目录 / "v2p.o"
         if not v2pobj.exists():
             print(f"错误: M4 缺少借链 obj: {v2pobj}（cn build 中间产物未留存）")
@@ -738,6 +883,11 @@ def 执行测量(目标平台: str, 编译器路径: pathlib.Path, as工具, ML6
         return 测量结果, False, True
     print(f"      样本: {测量结果['M2样本']} -> 中位数 {测量结果['M2']:.1f} ms"
           f"（{测量结果['M2行数']} 行）")
+
+    if 仅M1M2:
+        测量结果["仅M1M2"] = True
+        print("[M3~M6] 跳过（--仅M1M2·报告标注未执行）")
+        return 测量结果, False, False
 
     cn_self_obj = 工作目录 / "cn_self.obj"
     print("[M3] 汇编 fix_p -> cn_self.obj ...")
@@ -775,7 +925,12 @@ def 执行测量(目标平台: str, 编译器路径: pathlib.Path, as工具, ML6
 
 
 def 主程序() -> int:
-    目标平台, 编译器路径, 跳过M5 = 解析参数()
+    参数 = 解析参数()
+    if 参数.selftest:
+        from bench_self_host_selftest import 自测
+        return 自测()
+    目标平台 = 探测平台(参数.platform)
+    编译器路径 = 探测编译器(参数.cn)
     as工具, cxx工具, ML64, LINK, LIB路径们 = 准备工具链(目标平台)
     准备工作目录()
 
@@ -784,16 +939,27 @@ def 主程序() -> int:
     print(f"  平台: {目标平台}")
     print(f"  编译器（C++ 宿主）: {编译器路径}")
     print(f"  输入规模: {sum(输入规模.values())} 行 / {len(输入规模)} 文件")
-    print(f"  单命令超时: {命令超时秒} 秒 | M2/M5 样本数: {样本数}"
-          f"{' | 跳过M5' if 跳过M5 else ''}")
+    print(f"  单命令超时: {命令超时秒} 秒 | M1 样本数: {M1样本数} | "
+          f"M2/M5 样本数: {样本数} | 缓存: {缓存口径说明()}"
+          f"{' | 跳过M5' if 参数.跳过M5 else ''}"
+          f"{' | 仅M1M2' if 参数.仅M1M2 else ''}")
     print()
 
-    v2pobj = 准备借链对象(目标平台, cxx工具)
+    # 仅M1M2：M3/M4 不执行，免借链 obj 前置（win 无 target/audit2/v2p.obj 也可复跑）
+    v2pobj = None if 参数.仅M1M2 else 准备借链对象(目标平台, cxx工具)
     测量结果, M6一致, 提前失败 = 执行测量(
-        目标平台, 编译器路径, as工具, ML64, LINK, LIB路径们, v2pobj, 跳过M5)
-    报告路径 = 生成报告(测量结果, 编译器路径, 输入规模, M6一致, 目标平台)
+        目标平台, 编译器路径, as工具, ML64, LINK, LIB路径们, v2pobj,
+        参数.跳过M5, 参数.仅M1M2)
+    报告路径 = None
+    if 参数.报告:
+        报告路径 = pathlib.Path(参数.报告)
+        if not 报告路径.is_absolute():
+            报告路径 = 项目根目录 / 报告路径
+    报告路径 = 生成报告(测量结果, 编译器路径, 输入规模, M6一致, 目标平台, 报告路径)
     print()
-    print(f"性能基线报告{'（部分）' if 提前失败 else ''}: {报告路径}")
+    print(f"性能基线报告{'（部分）' if 提前失败 or 参数.仅M1M2 else ''}: {报告路径}")
+    if 参数.仅M1M2 and not 提前失败:
+        return 0
     return 0 if (M6一致 and not 提前失败) else 1
 
 
