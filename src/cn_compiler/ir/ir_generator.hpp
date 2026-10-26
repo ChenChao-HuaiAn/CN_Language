@@ -296,8 +296,8 @@ private:
                                const SourceLocation& loc);
     // 结构体/联合体初始化展开（Task 2.7）：将 StructInitExpr 的字段逐个写入 targetBase（目标结构体基址，ptr）。嵌套结构体字段递归展开；
     //   普通字段 genExpr 后 Cast 到字段IR类型再 StorePtr。
-    void emitStructInitTo(StructInitExpr* init, const ir::IRValue& targetBase,
-                          const SourceLocation& loc);
+    void emitStructInitTo(StructInitExpr* init, const ir::IRValue& targetBase, const SourceLocation& loc);
+    void emitStructArrayFieldInit(const StructDecl* decl, const std::string& fieldName, const ir::IRValue& fieldAddr, InitListExpr* list, const SourceLocation& loc);  // 1602：结构体数组字段字面量初始化（步进=语义层布局·聚合元素整块写）
     // 结构体/类整体赋值发射（46-a 根治 2026-09-09 提取的单一事实源）： 目标地址 + 右值节点 + 目标类型(canonical)。右值三形态取源地址：
     bool emitStructWholeAssign(const ir::IRValue& dstAddr, Expr* valueNode,
                                         const std::string& dstElemCanon,

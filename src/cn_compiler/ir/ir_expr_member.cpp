@@ -309,54 +309,12 @@ void IRGenerator::emitStructInitTo(StructInitExpr* init, const ir::IRValue& targ
             continue;
         }
         // 数组字段初始化（Task 完善A）：字段值为 InitListExpr（如 分数 = { 80, 90, 70 }），
-        //   逐元素写入 字段地址 + i*元素大小（C 语义）
+        //   逐元素写入 字段地址 + i*元素大小（C 语义）——1602 按族外移（原内联段
+        //   贴 100 行红线+判据顺序倒置，见 emitStructArrayFieldInit 注释）。
         if (fieldPair.second->getType() == NodeType::InitListExpr) {
-            InitListExpr* list = static_cast<InitListExpr*>(fieldPair.second.get());
-            std::string fieldSrcType;
-            for (const auto& f : decl->fields) {
-                if (f.name == fieldName) { fieldSrcType = f.type; break; }
-            }
-            const std::string elemSrc = types::arrayElemOf(fieldSrcType);
-            const std::string elemIrType = mapType(elemSrc);
-            // 1360 结果化：无值=元素宽度未登记（下方 #648 内部错误显形面）；
-            //   显形默认 8=原防御终态（控制流零变更）
-            const cn::Optional<int> elemSizeKnown = types::typeSize(elemSrc);
-            std::int64_t elemStride = elemSizeKnown.value_or(8);
-            if (!elemSizeKnown.has_value()) {
-                // 648（miss 不可静默·110 同族）：数组字段元素类型宽度未登记=
-                //   编译器内部缺陷（语义层对非数组字段列表初始化不拦·合法程序
-                //   可走到），显形于此；driver 在 generate() 后 hasErrors() 统一
-                //   中止，产物不落地。原 8 字节步进保留（控制流零变更）。
-                diagnostics_.report(DiagnosticLevel::Error, loc,
-                    "内部错误: 数组字段 '" + fieldName + "' 元素类型 '" + elemSrc +
-                        "' 宽度未登记 ——静默步进8兜底已废除（#648）");
-            }
-            if (semantic_->isStructType(types::canonical(elemSrc))) {
-                elemStride = semantic_->typeSizeOf(elemSrc).value_or(8);
-            } else if (types::isI128(types::canonical(elemSrc))) {
-                elemStride = 16;
-            }
-            for (std::size_t i = 0; i < list->elements.size(); ++i) {
-                ir::IRValue elemOff = emitResult(
-                    ir::Opcode::ConstInt, {}, "i64",
-                    std::to_string(static_cast<long long>(i) * elemStride), loc);
-                ir::IRValue elemAddr = emitResult(ir::Opcode::Add, {fieldAddr, elemOff},
-                                                  "ptr", "", loc);
-                // 结构体数组元素（元素为 StructInitExpr）：递归展开
-                if (list->elements[i]->getType() == NodeType::StructInitExpr &&
-                    semantic_ != nullptr) {
-                    emitStructInitTo(
-                        static_cast<StructInitExpr*>(list->elements[i].get()),
-                        elemAddr, loc);
-                    continue;
-                }
-                ir::IRValue elem = genExpr(list->elements[i].get());
-                if (elem.type != elemIrType && !elemIrType.empty() && elem.type != "") {
-                    elem = emitResult(ir::Opcode::Cast, {elem}, elemIrType, "", loc);
-                }
-                emit(ir::Opcode::StorePtr, {elemAddr, elem}, ir::IRValue(), "",
-                     elemIrType, loc);
-            }
+            emitStructArrayFieldInit(
+                decl, fieldName, fieldAddr,
+                static_cast<InitListExpr*>(fieldPair.second.get()), loc);
             continue;
         }
         // 普通字段：生成值 + Cast + StorePtr
@@ -417,6 +375,98 @@ void IRGenerator::emitStructInitTo(StructInitExpr* init, const ir::IRValue& targ
              fieldIrType, loc);
     }
 }
+
+// 1602：结构体数组字段字面量初始化（`盒{ 组 = { e0, e1, … } }`）——逐元素写入
+//   fieldAddr + i*步进（C 语义）。本族自 emitStructInitTo 内联段外移（先拆再加：
+//   原函数已 128 行超 100 红线；搬迁同时根治两处判据缺陷）：
+//   ①步进唯一权威=语义层布局（结构体/联合体/**结果/可选合成体**真尺寸）；
+//     基本类型表 types::typeSize 只覆盖标量/指针/枚举；128 位整显式 16。
+//     原实现先按基本类型表取步进、miss 即报「宽度未登记」内部错误，**之后**才用
+//     isStructType 覆盖——判据顺序倒置把合法的「结构体数组字段字面量初始化」
+//     误判为编译器缺陷并中止编译（v2 同程序正常=宿主单侧分叉；1048 只查尺寸
+//     未写字面量初始化故未暴露）。
+//   ②聚合元素（含 结果/可选 合成体）整块写入——原实现只对 StructInitExpr 元素
+//     递归展开，其余聚合力形态落标量通道 StorePtr 8 字节（写地址而非内容=
+//     静默错值）；现按普通字段 86-a 同款来源分级：字面量递归展开 / 调用返回=
+//     浅拷接管临时物化槽 / 标识符·成员·下标·三元=值语义深拷 / 无=元素宽度
+//     零写（合成体空载荷：判别位 0+载荷零，与构造器 正常(无) 零初始化同型）。
+void IRGenerator::emitStructArrayFieldInit(const StructDecl* decl, const std::string& fieldName,
+                                           const ir::IRValue& fieldAddr, InitListExpr* list,
+                                           const SourceLocation& loc) {
+    std::string fieldSrcType;
+    for (const auto& f : decl->fields) {
+        if (f.name == fieldName) { fieldSrcType = f.type; break; }
+    }
+    // 字段名 miss=上游已诊断（visitStructInitExpr 报「结构体 'X' 没有字段 'Y'」）
+    //   恢复路径——不发射（与 emitStructInitTo 主循环 miss 短路同口径）
+    if (fieldSrcType.empty()) return;
+    const std::string elemSrc = types::arrayElemOf(fieldSrcType);
+    const std::string elemCanon = types::canonical(elemSrc);
+    const bool elemIsAggregate =
+        semantic_ != nullptr && semantic_->isStructType(elemCanon);
+    // 1360 结果化：无值=元素宽度未登记（下方 #648 内部错误显形面）；显形默认 8
+    cn::Optional<int> elemSizeKnown;
+    if (elemIsAggregate) {
+        elemSizeKnown = semantic_->typeSizeOf(elemCanon);
+    } else if (types::isI128(elemCanon)) {
+        elemSizeKnown = 16;
+    } else if (cn::Optional<int> baseSize = types::typeSize(elemCanon);
+               baseSize.has_value()) {
+        elemSizeKnown = baseSize;
+    }
+    if (!elemSizeKnown.has_value()) {
+        // 648（miss 不可静默·110 同族）：元素宽度未登记=编译器内部缺陷，显形于
+        //   此；driver 在 generate() 后 hasErrors() 统一中止，产物不落地。
+        diagnostics_.report(DiagnosticLevel::Error, loc,
+            "内部错误: 数组字段 '" + fieldName + "' 元素类型 '" + elemSrc +
+                "' 宽度未登记 ——静默步进8兜底已废除（#648）");
+    }
+    const std::int64_t elemStride = elemSizeKnown.value_or(8);
+    const std::string elemIrType = mapType(elemSrc);
+    for (std::size_t i = 0; i < list->elements.size(); ++i) {
+        Expr* elemNode = list->elements[i].get();
+        ir::IRValue elemOff = emitResult(
+            ir::Opcode::ConstInt, {}, "i64",
+            std::to_string(static_cast<long long>(i) * elemStride), loc);
+        ir::IRValue elemAddr = emitResult(ir::Opcode::Add, {fieldAddr, elemOff},
+                                          "ptr", "", loc);
+        if (elemIsAggregate) {
+            const NodeType ent = elemNode->getType();
+            if (ent == NodeType::StructInitExpr) {
+                emitStructInitTo(static_cast<StructInitExpr*>(elemNode), elemAddr, loc);
+                continue;
+            }
+            if (ent == NodeType::NullLiteral) {
+                // 合成体空载荷（可选 元素=无）：按元素宽度逐槽零写（8 字节槽圆整）
+                for (std::int64_t off = 0; off < elemStride; off += 8) {
+                    ir::IRValue zero =
+                        emitResult(ir::Opcode::ConstInt, {}, "i64", "0", loc);
+                    ir::IRValue dst = elemAddr;
+                    if (off != 0) {
+                        dst = emitResult(ir::Opcode::FieldAddr, {elemAddr}, "ptr",
+                                         std::to_string(off), loc);
+                    }
+                    emit(ir::Opcode::StorePtr, {dst, zero}, ir::IRValue(), "",
+                         "ptr", loc);
+                }
+                continue;
+            }
+            const bool srcIsCallE = (ent == NodeType::CallExpr);
+            ir::IRValue srcAddrE =
+                srcIsCallE ? genExpr(elemNode) : lvalueAddress(elemNode);
+            emitStructCopyWithFields(elemAddr, srcAddrE, elemCanon, loc,
+                                     /*preFree=*/false, /*deepCopy=*/!srcIsCallE);
+            continue;
+        }
+        ir::IRValue elem = genExpr(elemNode);
+        if (elem.type != elemIrType && !elemIrType.empty() && elem.type != "") {
+            elem = emitResult(ir::Opcode::Cast, {elem}, elemIrType, "", loc);
+        }
+        emit(ir::Opcode::StorePtr, {elemAddr, elem}, ir::IRValue(), "",
+             elemIrType, loc);
+    }
+}
+
 void IRGenerator::visitStructInitExpr(StructInitExpr* node) {
     // 648（miss 不可静默·110 同族）：构造字面量落入通用值发射桩=未被声明位/
     //   赋值位/字段位 emitStructInitTo 通道展开（合法程序应不可达），显形于此；

@@ -368,6 +368,18 @@ void SemanticAnalyzer::lowerResultOptionalTypes(Program* node) {
 void SemanticAnalyzer::ensureLoweredType(const std::string& typeRaw) {
     if (program_ == nullptr) return;
     const std::string type = types::canonical(typeRaw);
+    // 1602：数组后缀先剥再递归元素——「确保该类型的合成体已降级」对数组而言
+    //   只取决于**元素**类型（`可选<整64>[2]` 的布局查询=元素尺寸/对齐）。
+    //   原实现整串 isResultType/isOptionalType 判定对带 `[N]` 后缀文本恒假 →
+    //   lowerResultOptionalTypes 扫到的结构体/类字段（数组元素=合成体）不触发
+    //   降级 → 统一布局期 computeLayout 查元素尺寸/对齐报「尚未降级注册」内部
+    //   错误（067-001 时序回归显形）。宿主单侧：v2 同程序正常编译=分叉。
+    //   逐层剥（多维数组递归）；指针/引用元素不在本分支——指针宽度 8 与元素
+    //   布局无关，保持既有惰性降级面零变更（不引入用户错误路径的诊断噪音）。
+    if (types::isArray(type)) {
+        ensureLoweredType(types::arrayElemOf(type));
+        return;
+    }
     if (isResultType(type)) {
         const std::vector<std::string> args = resultTypeArgs(type).value_or((std::vector<std::string>()));
         if (args.size() == 2) {
