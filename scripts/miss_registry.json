@@ -5781,52 +5781,28 @@
       "替代依据": "业务缺省值"
     },
     {
-      "文件": "src/cn_compiler/opt/pass_manager.cpp",
-      "函数": "readDiagEnv",
-      "锚文本": "if (raw == nullptr) return false;",
       "来源": "1443",
       "类别": "运行时API",
       "静默风险": "低",
-      "原因": "诊断开关 CN_OPT_PASS_SKIP 的 getenv：未设置/读取失败=开关不启用（否定回答非错误·默认全量运行路径零变化）（driver_cache_util:314 同族）",
-      "登记人": "AI（1443 SSA 入口块 Phi 化根治轮·诊断通道新增面）",
+      "登记人": "AI（1443 env_query 归纳轮·1671 随批·三处收口 common/env_query.hpp）",
       "登记日": "2026-10-27",
-      "批准": "已批"
-    },
-    {
-      "文件": "src/cn_compiler/opt/pass_manager.cpp",
-      "函数": "readDiagEnv",
+      "批准": "已批",
+      "文件": "src/cn_compiler/common/env_query.hpp",
+      "函数": "cn::env_query::读取",
       "锚文本": "if (_dupenv_s(&raw, &len, name) != 0 || raw == nullptr) return false;",
+      "原因": "win 侧诊断开关读取的 _dupenv_s 失败分支：未设置/读取失败=开关不启用（否定回答非错误·默认全量路径零变化）（原 pass_manager/ssa 两份 static 归纳单点）"
+    },
+    {
       "来源": "1443",
       "类别": "运行时API",
       "静默风险": "低",
-      "原因": "同上条（win 侧 _dupenv_s 路径·语义同：未设置=开关不启用）",
-      "登记人": "AI（1443）",
+      "登记人": "AI（1443 env_query 归纳轮·1671 随批·三处收口 common/env_query.hpp）",
       "登记日": "2026-10-27",
-      "批准": "已批"
-    },
-    {
-      "文件": "src/cn_compiler/opt/ssa.cpp",
-      "函数": "readDiagEnvValue",
+      "批准": "已批",
+      "文件": "src/cn_compiler/common/env_query.hpp",
+      "函数": "cn::env_query::读取",
       "锚文本": "if (raw == nullptr) return false;",
-      "来源": "1443",
-      "类别": "运行时API",
-      "静默风险": "低",
-      "原因": "诊断开关 CN_OPT_SSA_ONLY_FILE 的 getenv：未设置/读取失败=全量运行（否定回答非错误·默认行为零变化）",
-      "登记人": "AI（1443 SSA 入口块 Phi 化根治轮·诊断通道新增面）",
-      "登记日": "2026-10-27",
-      "批准": "已批"
-    },
-    {
-      "文件": "src/cn_compiler/opt/ssa.cpp",
-      "函数": "readDiagEnvValue",
-      "锚文本": "if (_dupenv_s(&raw, &len, name) != 0 || raw == nullptr) return false;",
-      "来源": "1443",
-      "类别": "运行时API",
-      "静默风险": "低",
-      "原因": "同上条（win 侧 _dupenv_s 路径·语义同：未设置=全量运行）",
-      "登记人": "AI（1443）",
-      "登记日": "2026-10-27",
-      "批准": "已批"
+      "原因": "linux 侧诊断开关读取的 getenv 空分支：未设置=开关不启用（否定回答非错误·默认全量路径零变化）（原 pass_manager/ssa 两份 static 归纳单点）"
     }
   ]
 }

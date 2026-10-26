@@ -7,6 +7,7 @@
 //      阶段B（Task 4.1/4.2）：SSA/Phi、LICM、强度削减、内联、尾调用
 #include <cstdlib>
 
+#include "cn_compiler/common/env_query.hpp"
 #include "cn_compiler/opt/mem2reg.hpp"
 #include "cn_compiler/opt/algebraic_simplify.hpp"
 #include "cn_compiler/opt/const_fold.hpp"
@@ -26,23 +27,6 @@ namespace cn_compiler {
 namespace opt {
 
 // 诊断环境读取（MSVC 安全版：_dupenv_s；linux 同款 std::getenv）。未设置=无值。
-static bool readDiagEnv(const char* name, std::string& valueOut) {
-#ifdef _WIN32
-    char* raw = nullptr;
-    size_t len = 0;
-    // 静默豁免运行时API: 环境未设置/读取失败=诊断开关不启用（否定回答·默认全量）
-    if (_dupenv_s(&raw, &len, name) != 0 || raw == nullptr) return false;
-    valueOut.assign(raw);
-    std::free(raw);
-    return true;
-#else
-    const char* raw = std::getenv(name);
-    // 静默豁免运行时API: 环境未设置=诊断开关不启用（否定回答·默认全量）
-    if (raw == nullptr) return false;
-    valueOut.assign(raw);
-    return true;
-#endif
-}
 
 // 注册 Pass（按调用顺序加入执行列表）
 void PassManager::addPass(std::unique_ptr<Pass> pass) {
@@ -76,7 +60,7 @@ bool runOptLevel(ir::IRModule& module, int optLevel, bool useSlotPromotion) {
     //   命中的 Pass 整体跳过（仅跳过注册，不影响其余组合）——优化缺陷二分用；
     //   未设置/为空=全量运行（默认行为零变化）。
     std::string skipList;
-    if (!readDiagEnv("CN_OPT_PASS_SKIP", skipList)) skipList.clear();
+    if (!::cn::env_query::readValue("CN_OPT_PASS_SKIP", skipList)) skipList.clear();
     auto shouldSkip = [&skipList](const char* passName) {
         return !skipList.empty() &&
                skipList.find(passName) != std::string::npos;

@@ -21,6 +21,7 @@
 #include <tuple>
 #include <vector>
 
+#include "cn_compiler/common/env_query.hpp"
 #include "cn_compiler/opt/cfg.hpp"
 #include "cn_compiler/opt/ssa.hpp"
 
@@ -383,28 +384,11 @@ void SSAPass::lowerPhis(ir::IRFunction& fn) {
 //   仅对「name 含名单任一子串」的函数跑 SSA 构造，其余函数跳过（诊断二分用；
 //   未设置/文件不可读=全量运行，默认行为零变化）。
 // 诊断环境读取（MSVC 安全版 _dupenv_s 封装，同 pass_manager 惯例）。
-static bool readDiagEnvValue(const char* name, std::string& valueOut) {
-#ifdef _WIN32
-    char* raw = nullptr;
-    size_t len = 0;
-    // 静默豁免运行时API: 环境未设置/读取失败=诊断开关不启用（否定回答·默认全量）
-    if (_dupenv_s(&raw, &len, name) != 0 || raw == nullptr) return false;
-    valueOut.assign(raw);
-    std::free(raw);
-    return true;
-#else
-    const char* raw = std::getenv(name);
-    // 静默豁免运行时API: 环境未设置=诊断开关不启用（否定回答·默认全量）
-    if (raw == nullptr) return false;
-    valueOut.assign(raw);
-    return true;
-#endif
-}
 
 bool SSAPass::run(ir::IRModule& module) {
     std::vector<std::string> onlyNames;
     std::string listPath;
-    if (readDiagEnvValue("CN_OPT_SSA_ONLY_FILE", listPath)) {
+    if (::cn::env_query::readValue("CN_OPT_SSA_ONLY_FILE", listPath)) {
         std::FILE* f = nullptr;
 #ifdef _WIN32
         if (fopen_s(&f, listPath.c_str(), "rb") != 0) f = nullptr;

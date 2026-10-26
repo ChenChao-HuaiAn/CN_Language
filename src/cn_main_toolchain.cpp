@@ -31,6 +31,7 @@
 #include "cn_main_toolchain.hpp"
 
 #include <optional>
+#include "cn_compiler/common/env_query.hpp"
 #include "cn_compiler/driver/driver.hpp"
 
 // ==================== MSVC 工具链（build/run 命令共用） ====================
@@ -358,14 +359,13 @@ static bool linkExe(const std::string& target, const std::string& vcvarsBat,
             "/OUT:\"" + exePath + "\" \"" + userObj + "\"";
         // #1443 诊断通道：CN_LINK_MAP=1 时附加 /MAP（函数地址映射文件，配合
         //   __cn_runtime_error 的 CN_RUNTIME_BACKTRACE 栈地址人工定位坏函数）
+        //   读取走 common/env_query（跨平台·1671 随批：_dupenv_s 裸用致 linux
+        //   构建红 c1c49daa40 实证——MSVC 专有 g++ 无声明）
         {
-            char* mapFlag = nullptr;
-            size_t mapLen = 0;
-            if (_dupenv_s(&mapFlag, &mapLen, "CN_LINK_MAP") == 0 &&
-                mapFlag != nullptr) {
-                const bool mapOn = mapFlag[0] != '\0' && mapFlag[0] != '0';
-                std::free(mapFlag);
-                if (mapOn) cmdLine += " /MAP:\"" + exePath + ".map\"";
+            std::string mapValue;
+            if (::cn::env_query::readValue("CN_LINK_MAP", mapValue) &&
+                !mapValue.empty() && mapValue != "0") {
+                cmdLine += " /MAP:\"" + exePath + ".map\"";
             }
         }
     // 非 win-x64 即 linux 双平台（同 compileRuntime：--target 入口闭集校验后，
