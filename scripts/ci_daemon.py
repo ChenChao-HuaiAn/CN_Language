@@ -117,6 +117,15 @@ runner标识 = os.environ.get("CN_RUNNER_ID", socket.gethostname())   # 池内�
 日志目录 = 仓库根 / "ci-logs"
 锁文件 = 仓库根 / "ci-logs" / "daemon.lock"
 
+# #1665 平台如实上报 + 交叉模拟实例位（判定/说明单点外宿 ci_shard.启动平台信息）：
+#   交叉模拟实例随 task_claim/task_shard_claim/instance_ping 上报——服务端实例表落表、
+#   分片认领机械拒绝（qemu 下 i128 族错值假红）；客户端领片先行让路（ci_shard.领片）。
+#   设计面任务经 CN_XSIM_ALLOW_SHARD=1 显式放行。
+平台, 交叉模拟实例, _平台日志们 = ci_shard.启动平台信息(
+    平台, os.environ.get("CN_CI_PLATFORM", ""), 机架, runner标识)
+for _平台行 in _平台日志们:
+    print(_平台行, flush=True)
+
 
 # 抢锁/放锁 → 1297 薄壳别名（实现外迁 gate_lock.py 同域文件锁区·ci_daemon 守 1000 行）
 抢锁 = gate_lock.抢锁
@@ -614,7 +623,9 @@ def 池认领任务() -> dict | None:
     回 = 池调用(配置, "task_claim", {"runner": runner标识, "平台": 平台,
                                      "物理机": ci_shard.物理机标识(),
                                      # #1221：M6 原生可跑能力位（实例表观测/派发数据源）
-                                     "M6原生": ci_m6.M6原生可跑(平台, 机架)})
+                                     "M6原生": ci_m6.M6原生可跑(平台, 机架),
+                                     # #1665：交叉模拟能力位（服务端落表+分片拒绝数据源）
+                                     "交叉模拟": 交叉模拟实例})
     if 回 and 回.get("ok"):
         return 回.get("任务")
     return None
@@ -777,7 +788,9 @@ def 主(常驻: bool, 强制: bool, 等锁: bool = False) -> int:
     日志目录.mkdir(exist_ok=True)
     # 1392：空闲报活+版本指纹（忙闲都发·池未配置=不启动）；#1460：返回刷新广播状态
     刷新状态 = ci_shard.启动实例报活(runner标识, 平台, 仓库根,
-                                    M6原生=ci_m6.M6原生可跑(平台, 机架))
+                                    M6原生=ci_m6.M6原生可跑(平台, 机架),
+                                    # #1665：交叉模拟能力位（实例页签标记+分片拒绝数据源）
+                                    交叉模拟=交叉模拟实例)
     锁 = (锁文件.open("a+"))
     已入池: set[str] = set()   # 770：本轮常驻期已入池的头（幂等防重——服务端幂等兜底·此处省每轮空 POST）
     # 184 锁模型治本（1021 饿死实录）：锁从「进程生命周期级」改「轮次级」——常驻每轮
@@ -835,7 +848,9 @@ def 主(常驻: bool, 强制: bool, 等锁: bool = False) -> int:
             if ci_shard.分片启用():
                 池c = 池配置()
                 片任务 = ci_shard.领片(lambda o, d: 池调用(池c, o, d), runner标识, 平台,
-                                      M6原生=ci_m6.M6原生可跑(平台, 机架))
+                                      M6原生=ci_m6.M6原生可跑(平台, 机架),
+                                      # #1665：交叉模拟实例客户端让路（服务端机械拒绝兜底）
+                                      交叉模拟=交叉模拟实例)
                 if 片任务:
                     池跑分片(片任务)
                     if not 常驻:

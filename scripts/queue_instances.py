@@ -50,6 +50,7 @@ def 建实例表(con) -> None:
         daemon指纹 TEXT,            -- ci_daemon.py 内容 sha256 前 10（进程启动版·版本稳定指标）
         物理机 TEXT,                -- #1426 物理机键（hostname·平台-架构·指纹6·NULL=旧 daemon）
         M6原生 INTEGER,             -- #1221：M6 原生可跑能力位（1=真机可跑·0=交叉模拟·NULL=旧 daemon）
+        交叉模拟 INTEGER,           -- #1665：交叉模拟实例位（1=qemu 跑非宿主架构·0=原生·NULL=旧 daemon）
         物理内存MB INTEGER,         -- #1608 最近一次成功探测的物理内存（NULL=未知/探测失败·配合下列）
         物理内存探测 TEXT,          -- #1608 '成功'/'失败'（NULL=旧 daemon 从未上报——不冒充探测结果）
         版本上报时刻 TEXT)           -- 最近一次带指纹上报时刻（NULL=旧版 daemon 未上报过）""")
@@ -59,6 +60,10 @@ def 建实例表(con) -> None:
         pass
     try:   # #1221 M6 原生能力位列：存量库 ALTER 补（旧库升级不丢数据）
         con.execute("ALTER TABLE 实例 ADD COLUMN M6原生 INTEGER")
+    except sqlite3.OperationalError:
+        pass
+    try:   # #1665 交叉模拟能力位列：存量库 ALTER 补（NULL=旧 daemon 未报——分片侧按旧行为+显式告警）
+        con.execute("ALTER TABLE 实例 ADD COLUMN 交叉模拟 INTEGER")
     except sqlite3.OperationalError:
         pass
     try:   # #1608 物理内存MB 列：存量库 ALTER 补（旧 daemon 行保持 NULL=面板显示 —）
@@ -140,12 +145,43 @@ def 校正种子活跃(con) -> None:
             con.execute("UPDATE 实例 SET 最近活跃时戳=? WHERE 名称=?", (完成戳, 名称))
 
 
+def _能力位(原):
+    """#1665 能力位归一（交叉模拟·bool/0/1）：None/缺失=未知（旧客户端·不覆盖已存值）；
+    其余类型显式 ValueError（#1221 P2-2 同口径：truthy 字符串不得静默归一成 1）。
+    返回 0/1/None。"""
+    if 原 is None:
+        return None
+    if isinstance(原, bool):
+        return 1 if 原 else 0
+    if isinstance(原, int) and 原 in (0, 1):
+        return 原
+    raise ValueError("交叉模拟 类型非法（须 bool/0/1）：%r" % (原,))
+
+
+def 归一交叉模拟(数据: dict):
+    """#1665 协议载荷归一（queue_service 认领入口先校验·防坏载荷先污染实例表）：
+    返回 (值, 错误说明)——键缺失=(None, "")（旧 daemon 兼容·不覆盖已存值）；
+    bool/0/1=(0/1, "")；显式 null 或坏类型=(None, 说明)（调用方转 ok=False 显式拒）。"""
+    if "交叉模拟" not in 数据:
+        return None, ""
+    try:
+        值 = _能力位(数据.get("交叉模拟"))
+    except ValueError as e:
+        return None, str(e)
+    if 值 is None:
+        return None, "交叉模拟 类型非法（须 bool/0/1，不接受 null）"
+    return 值, ""
+
+
 def 实例认领(con, 时刻函数, runner: str, 平台: str, 物理机: str = "",
-            M6原生=None) -> None:
+            M6原生=None, 交叉模拟=None) -> None:
     """task_claim/task_shard_claim 认领点挂钩（须持写锁·调用方 commit）：注册/刷
     平台+物理机指纹+最近活跃。平台/物理机空串（旧客户端不报）不覆盖已有值
     （COALESCE 保最近一次自报）。#1426：物理机键=分片限流分组数据源。
-    #1221：M6原生=M6 原生可跑能力位（None=旧客户端不覆盖）。"""
+    #1221：M6原生=M6 原生可跑能力位（None=旧客户端不覆盖）。
+    #1665：交叉模拟=交叉模拟实例位（None=旧客户端不覆盖；坏类型 ValueError 显式拒，
+    调用方（queue_service 处理写）转 ok=False，不静默按 False 处理）。"""
+    交叉 = _能力位(交叉模拟)   # 坏类型先炸（校验前移·不污染实例表·#1221 P2-2 同口径）
     if M6原生 is None:
         值 = None
     elif isinstance(M6原生, bool):
@@ -155,12 +191,14 @@ def 实例认领(con, 时刻函数, runner: str, 平台: str, 物理机: str = "
     else:
         值 = None   # 坏类型不落表（#1221 P2-2：防 truthy 字符串被归一成 1）
     con.execute(
-        "INSERT INTO 实例(名称,平台,物理机,M6原生,注册时刻,最近活跃时戳) VALUES(?,?,?,?,?,?) "
+        "INSERT INTO 实例(名称,平台,物理机,M6原生,交叉模拟,注册时刻,最近活跃时戳) "
+        "VALUES(?,?,?,?,?,?,?) "
         "ON CONFLICT(名称) DO UPDATE SET 最近活跃时戳=excluded.最近活跃时戳,"
         "平台=COALESCE(NULLIF(excluded.平台,''),实例.平台),"
         "物理机=COALESCE(NULLIF(excluded.物理机,''),实例.物理机),"
-        "M6原生=COALESCE(excluded.M6原生,实例.M6原生)",
-        (runner, 平台 or None, 物理机 or None, 值, 时刻函数(), int(time.time())))
+        "M6原生=COALESCE(excluded.M6原生,实例.M6原生),"
+        "交叉模拟=COALESCE(excluded.交叉模拟,实例.交叉模拟)",
+        (runner, 平台 or None, 物理机 or None, 值, 交叉, 时刻函数(), int(time.time())))
 
 
 def 实例心跳(con, 时刻函数, runner: str) -> None:
@@ -201,6 +239,17 @@ def 实例报活(con, 时刻函数, 数据: dict) -> dict:
     原M6 = 数据.get("M6原生")
     M6原生 = (1 if 原M6 else 0) if isinstance(原M6, bool) else (
         原M6 if isinstance(原M6, int) and 原M6 in (0, 1) else None)
+    # #1665：交叉模拟实例位——bool/0/1 接受；键缺失=None（旧 daemon 不覆盖）；
+    #   显式 null/坏类型=显式拒（能力位是事实声明，null 无意义——不静默当未知）。
+    if "交叉模拟" in 数据:
+        try:
+            交叉模拟 = _能力位(数据.get("交叉模拟"))
+        except ValueError as e:
+            return {"ok": False, "说明": str(e)}
+        if 交叉模拟 is None:
+            return {"ok": False, "说明": "交叉模拟 类型非法（须 bool/0/1，不接受 null）"}
+    else:
+        交叉模拟 = None
     # #1608：物理内存探测结果——键存在=新版 daemon（None=探测失败·落「失败」并
     #   清旧值，防面板继续显示上一次的数字）；键缺失=旧 daemon（不覆盖已有上报）。
     if "物理内存MB" in 数据:
@@ -218,13 +267,14 @@ def 实例报活(con, 时刻函数, 数据: dict) -> dict:
     带指纹 = bool(树头 or 指纹)
     版时 = 时刻函数() if 带指纹 else None
     con.execute(
-        "INSERT INTO 实例(名称,平台,物理机,M6原生,物理内存MB,物理内存探测,注册时刻,"
-        "最近活跃时戳,树头,daemon指纹,版本上报时刻) VALUES(?,?,?,?,?,?,?,?,?,?,?) "
+        "INSERT INTO 实例(名称,平台,物理机,M6原生,交叉模拟,物理内存MB,物理内存探测,注册时刻,"
+        "最近活跃时戳,树头,daemon指纹,版本上报时刻) VALUES(?,?,?,?,?,?,?,?,?,?,?,?) "
         "ON CONFLICT(名称) DO UPDATE SET "
         "最近活跃时戳=excluded.最近活跃时戳,"
         "平台=COALESCE(NULLIF(excluded.平台,''),实例.平台),"
         "物理机=COALESCE(NULLIF(excluded.物理机,''),实例.物理机),"
         "M6原生=COALESCE(excluded.M6原生,实例.M6原生),"
+        "交叉模拟=COALESCE(excluded.交叉模拟,实例.交叉模拟),"
         "物理内存探测=COALESCE(excluded.物理内存探测,实例.物理内存探测),"
         # 探测结果非 NULL（成功/失败）才以本次为准：失败必须清旧值（不留假数字），
         # 成功写新值；旧 daemon 缺键（NULL）=保持原值不覆盖。
@@ -233,7 +283,7 @@ def 实例报活(con, 时刻函数, 数据: dict) -> dict:
         "树头=COALESCE(NULLIF(excluded.树头,''),实例.树头),"
         "daemon指纹=COALESCE(NULLIF(excluded.daemon指纹,''),实例.daemon指纹),"
         "版本上报时刻=COALESCE(excluded.版本上报时刻,实例.版本上报时刻)",
-        (runner, 平台 or None, 物理机 or None, M6原生, 物理内存MB, 内存探测,
+        (runner, 平台 or None, 物理机 or None, M6原生, 交叉模拟, 物理内存MB, 内存探测,
          时刻函数(), int(time.time()), 树头 or None, 指纹 or None, 版时))
     return {"ok": True, "刷新请求": 取刷新请求(con)}
 
@@ -289,7 +339,7 @@ def 实例动态快照(con, 心跳超时秒值: int) -> list[dict]:
     空串=旧 daemon 未上报显示 —）。"""
     现在 = int(time.time())
     行们 = con.execute("SELECT 名称,平台,物理机,注册时刻,最近活跃时戳,树头,daemon指纹,"
-                       "版本上报时刻,M6原生,物理内存MB,物理内存探测 FROM 实例").fetchall()
+                       "版本上报时刻,M6原生,物理内存MB,物理内存探测,交叉模拟 FROM 实例").fetchall()
     当前 = {r[0]: r for r in con.execute(
         "SELECT 认领者,分支,sha,源分支,认领时刻,心跳时戳 FROM 预验任务 "
         "WHERE 状态='执行中' AND 认领者 IS NOT NULL").fetchall()}
@@ -301,7 +351,7 @@ def 实例动态快照(con, 心跳超时秒值: int) -> list[dict]:
         "SELECT 认领者,分支,sha,绿,更新时刻,max(序号) FROM 预验任务 "
         "WHERE 状态='完成' AND 认领者 IS NOT NULL GROUP BY 认领者").fetchall()}
     出 = []
-    for 名称, 平台, 物理机, 注册, 活跃, 树头, 指纹, 版时, M6原生, 内存MB, 内存探测 in 行们:
+    for 名称, 平台, 物理机, 注册, 活跃, 树头, 指纹, 版时, M6原生, 内存MB, 内存探测, 交叉模拟 in 行们:
         任务 = 当前.get(名称)
         片 = 当前片.get(名称)
         当前任务 = None
@@ -325,6 +375,8 @@ def 实例动态快照(con, 心跳超时秒值: int) -> list[dict]:
         出.append({"名称": 名称, "平台": 平台 or "", "物理机": 物理机 or "",
                    # #1221：M6 原生可跑能力位（None=旧版 daemon 未上报）
                    "M6原生": (None if M6原生 is None else bool(M6原生)),
+                   # #1665：交叉模拟实例位（None=旧版 daemon 未上报——面板/分片侧显式未知）
+                   "交叉模拟": (None if 交叉模拟 is None else bool(交叉模拟)),
                    # #1608：物理内存探测态（''=旧 daemon 未上报·前端显示 —）
                    "物理内存MB": 内存MB, "物理内存探测": 内存探测 or "",
                    "状态": 状态, "注册时刻": 注册, "最近活跃时戳": 活跃,
@@ -337,3 +389,32 @@ def 实例动态快照(con, 心跳超时秒值: int) -> list[dict]:
     权 = {"心跳超时": 0, "执行中": 1, "空闲": 2, "疑似离线": 3}
     出.sort(key=lambda r: (权[r["状态"]], r["名称"]))
     return 出
+
+
+# ═══════════════ 770 池忙闲/平台空闲（#1665 自 queue_service 外迁·先拆再加守 1000 行） ═══════════════
+
+def 平台有空闲(con, 平台: str) -> bool:
+    """770：该平台注册实例数 > 该平台执行中行数=有空闲；实例表无该平台实例
+    （冷启动/从未 claim·1392 起为持久表重启不丢）→保守 True（不阻塞轮转——
+    限制照打，领不上由阈值放宽兜底）。须持写锁。"""
+    们 = [r[0] for r in con.execute(
+        "SELECT 名称 FROM 实例 WHERE 平台=?", (平台,)).fetchall()]
+    if not 们:
+        return True
+    占用 = {行[0] for 行 in con.execute(
+        "SELECT 认领者 FROM 预验任务 WHERE 状态='执行中' AND 认领者 IS NOT NULL").fetchall()}
+    return sum(1 for r in 们 if r in 占用) < len(们)
+
+
+def 池忙闲快照(con) -> dict:
+    """770：池忙闲（integrate 忙时拼车窗口与巡检的判定源）——注册实例数/执行中数/池全忙。
+    全忙=有注册实例且执行中数≥注册数（每台都在跑）；无注册（冷启动）=不算全忙。
+    825 残余 B（并行度观测）：补「排队」=排队任务数——池饱和排队可见性数据源
+    （8300 池页签摘要条/integrate --status 验证池段/巡检 B3）。须持写锁。"""
+    执行中 = con.execute(
+        "SELECT COUNT(*) FROM 预验任务 WHERE 状态='执行中'").fetchone()[0]
+    排队 = con.execute(
+        "SELECT COUNT(*) FROM 预验任务 WHERE 状态='排队'").fetchone()[0]
+    注册 = con.execute("SELECT COUNT(*) FROM 实例").fetchone()[0]   # 1392：持久实例表（重启不归零）
+    return {"注册实例": 注册, "执行中": 执行中, "排队": 排队,
+            "池全忙": bool(注册 and 执行中 >= 注册)}

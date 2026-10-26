@@ -15,7 +15,8 @@ __main__ 副本）；行为级桩对照经猴补/还原主模块属性实现（�
 对账周检段周期三态+段行为桩两态+挂载结构锁（973）｜runner↔服务端失败分类契约锁（975）｜
 linux 编译器缓存配置解析（auto/off/显式/非法值）+构建链行为级桩+执行机归因值/结构锁（1299）｜
 分片退化编排五态+中文分支 URL 编码（1369）｜物理内存真实探测平台分派+失败判红两态
-（#1608·废除 1528 的 4096 兜底）。
+（#1608·废除 1528 的 4096 兜底）｜交叉模拟实例识别/平台如实上报/领片让路与载荷能力位
+（#1665）。
 """
 from __future__ import annotations
 
@@ -1614,6 +1615,84 @@ def _1608断言(主模块, 断言) -> None:
          and "ci_report.物理内存MB()" in 源报活)
 
 
+def _1665断言(主模块, 断言) -> None:
+    """#1665 交叉模拟实例（xsim）不领普通 e2e 分片：四源判定/平台如实上报/
+    客户端让路与显式开关/载荷能力位结构锁。服务端机械拒绝见 queue_selftest 1665 段。"""
+    import ci_shard
+
+    空环 = {}
+    断言("1665 判定①：目标 arm64 + 宿主 x64 → 交叉模拟",
+         ci_shard.本实例交叉模拟("linux-arm64", "x86_64", "", 空环))
+    断言("1665 判定①反：arm64 真机（宿主 aarch64）→ 非交叉模拟",
+         not ci_shard.本实例交叉模拟("linux-arm64", "aarch64", "", 空环))
+    断言("1665 判定②：CN_XSIM=1 显式标记 → 交叉模拟",
+         ci_shard.本实例交叉模拟("linux-x86_64", "x86_64", "", {"CN_XSIM": "1"}))
+    断言("1665 判定②反：CN_XSIM=0 不按标记判定",
+         not ci_shard.本实例交叉模拟("linux-x86_64", "x86_64", "", {"CN_XSIM": "0"}))
+    断言("1665 判定③：CN_AS 指向 aarch64 交叉工具链 → 交叉模拟（平台漏配可识别）",
+         ci_shard.本实例交叉模拟("linux-x86_64", "x86_64", "",
+                                 {"CN_AS": "aarch64-linux-gnu-as"}))
+    断言("1665 判定④：runner 标识含 xsim → 交叉模拟（#1634 同源约定）",
+         ci_shard.本实例交叉模拟("linux-x64", "x86_64", "home-xsim-1", 空环))
+    断言("1665 判定反：普通 x64 机四源全否 → 非交叉模拟",
+         not ci_shard.本实例交叉模拟("linux-x86_64", "x86_64", "VM-0-12-ubuntu", 空环))
+
+    断言("1665 平台：显式 CN_CI_PLATFORM 优先（用户配置权威）",
+         ci_shard.规范平台("linux-x86_64", "x86_64",
+                          {"CN_AS": "aarch64-linux-gnu-as"}) == ("linux-x86_64", ""))
+    规一, 说明一 = ci_shard.规范平台("", "x86_64", {"CN_CXX": "aarch64-linux-gnu-g++"})
+    断言("1665 平台：未显式+交叉工具链 → linux-arm64 且显式说明（不静默改）",
+         规一 == "linux-arm64" and "linux-arm64" in 说明一)
+    断言("1665 平台：普通 x64 机 → 保持探测值（零行为变化）",
+         ci_shard.规范平台("", "x86_64", {}) == ("", ""))
+    平二, 叉二, 行二 = ci_shard.启动平台信息(
+        "linux-x86_64", "", "x86_64", "home-xsim-2",
+        {"CN_AS": "aarch64-linux-gnu-as"})
+    断言("1665 启动平台单点：未显式+交叉工具链 → 平台 linux-arm64·交叉模拟位 true·日志非空",
+         平二 == "linux-arm64" and 叉二 is True and len(行二) >= 2)
+    平三, 叉三, 行三 = ci_shard.启动平台信息(
+        "linux-x86_64", "", "x86_64", "VM-0-12-ubuntu", {})
+    断言("1665 启动平台单点：普通 x64 机 → 平台/能力位/日志均零变化",
+         平三 == "linux-x86_64" and 叉三 is False and 行三 == [])
+
+    记录 = {}
+
+    def 桩池调用(操作, 数据):
+        记录["操作"] = 操作
+        记录.update(数据)
+        return {"ok": True, "片": None}
+
+    旧开 = os.environ.pop("CN_XSIM_ALLOW_SHARD", None)
+    try:
+        断言("1665 让路：交叉模拟实例领片=直接 None（零请求·客户端自律）",
+             ci_shard.领片(桩池调用, "r1665x", "linux-arm64", 交叉模拟=True) is None
+             and "操作" not in 记录)
+        ci_shard.领片(桩池调用, "r1665n", "linux-x86_64", 交叉模拟=False)
+        断言("1665 载荷：普通实例领片携带 交叉模拟=False（服务端落表）",
+             记录.get("操作") == "task_shard_claim"
+             and 记录.get("交叉模拟") is False)
+        os.environ["CN_XSIM_ALLOW_SHARD"] = "1"
+        记录.clear()
+        ci_shard.领片(桩池调用, "r1665x2", "linux-arm64", 交叉模拟=True)
+        断言("1665 让路开关：CN_XSIM_ALLOW_SHARD=1 显式放行设计面领片",
+             记录.get("操作") == "task_shard_claim"
+             and 记录.get("交叉模拟") is True)
+    finally:
+        if 旧开 is None:
+            os.environ.pop("CN_XSIM_ALLOW_SHARD", None)
+        else:
+            os.environ["CN_XSIM_ALLOW_SHARD"] = 旧开
+
+    源 = inspect.getsource(主模块)
+    断言("1665 结构：daemon 平台推导/能力位单点调用 + 全局能力位在位",
+         "ci_shard.启动平台信息(" in 源 and "平台, 交叉模拟实例, _平台日志们" in 源)
+    断言("1665 结构：整任务认领载荷携带 交叉模拟 能力位",
+         '"交叉模拟": 交叉模拟实例' in inspect.getsource(主模块.池认领任务))
+    源报活 = inspect.getsource(ci_shard.启动实例报活)
+    断言("1665 结构：实例报活载荷携带 交叉模拟 能力位（None=键缺失·旧 daemon 语义）",
+         '固定["交叉模拟"]' in 源报活)
+
+
 def 自测(主模块) -> int:
     """--selftest 入口（断言集 523+637+657+660+728t+770+842+935+973+975+1297+1299+1369+1392+1401+1423+1424+1426+1428+1460+1463+1385）——CI 式：逐条打印，任一红退出 1。"""
     断言们: list[tuple[str, bool]] = []
@@ -1645,6 +1724,7 @@ def 自测(主模块) -> int:
     _1221断言(主模块, 断言)
     _1385断言(主模块, 断言)
     _1608断言(主模块, 断言)
+    _1665断言(主模块, 断言)
     _行数断言(断言)
     for 名, ok in 断言们:
         print("  [%s] %s" % ("OK" if ok else "×", 名))

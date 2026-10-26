@@ -13,6 +13,8 @@
 #   显式降级）——服务端认领路径直测（临时库·机器键桩）。
 #   #1608 增补：实例物理内存上报三态（成功数值/旧 daemon 缺键不覆盖/探测失败清旧值
 #   落「失败」）+坏类型显式拒+前端「探测失败」文案结构锁。
+#   #1665 增补：交叉模拟实例（xsim）不领普通 e2e 分片——能力位落表/服务端机械拒绝/
+#   旧 daemon 兼容放行/显式 xsim 限制邀请/坏类型三入口显式拒。
 # 入口：python3 queue_service.py --selftest（主入口不变·惰性导入本模块）；
 #   亦可直接 python3 queue_selftest.py（裸跑入口·等价）。
 
@@ -915,6 +917,93 @@ def 跑() -> None:
         os.environ.pop(queue_shard.让位宽限环境, None)
     else:
         os.environ[queue_shard.让位宽限环境] = 旧让位
+
+    # ── #1665 交叉模拟实例不领普通 e2e 分片：qemu 下 i128 族错值假红（ab16e8999e 片 4/6/8）──
+    #   规则：能力位 交叉模拟=true 仅领「认领限制显式含 xsim」的分片（显式邀请设计面）；
+    #   未报（旧 daemon/实例表 NULL）=旧行为+显式告警；普通实例零影响；主实例抢补不受限。
+    import queue_instances as 实例面1665
+
+    def 清1665():
+        con.execute("DELETE FROM 预验分片 WHERE 分支 LIKE 'ci/预验-1665%'")
+        con.execute("DELETE FROM 预验任务 WHERE 分支 LIKE 'ci/预验-1665%'")
+        con.execute("DELETE FROM 实例 WHERE 名称 LIKE '1665%'")
+        con.commit()
+
+    清1665()
+    # 前置：任务不限平台（复现 ab16e8999e 现场：父任务认领限制空 → xsim 领到普通片）
+    处理写("task_enqueue", {"分支": "ci/预验-16650000001", "sha": "d" * 40})
+    主1665 = 处理写("task_claim", {"runner": "1665主", "平台": "linux-x86_64",
+                                 "物理机": "机1665主"})
+    断言(主1665.get("任务") is not None
+         and 主1665["任务"]["分支"] == "ci/预验-16650000001",
+         "1665 前置：主实例领到不限平台任务（复现 ab16e8999e 现场）")
+    断言(处理写("task_shard_enqueue", {"runner": "1665主", "分支": "ci/预验-16650000001",
+                                     "片数": 5}).get("ok"),
+         "1665 前置：召唤 4 缺口片")
+    # 正：交叉模拟实例（能力位 true）不领普通 e2e 片（服务端机械拒绝）
+    回x = 处理写("task_shard_claim", {"runner": "1665xsim甲", "平台": "linux-arm64",
+                                    "物理机": "机1665x", "交叉模拟": True})
+    断言(回x.get("ok") and 回x.get("片") is None,
+         "#1665 正：交叉模拟实例不领普通 e2e 分片（片 None·qemu i128 族假红防线）")
+    态1665 = {r["名称"]: r for r in 实例面1665.实例动态快照(con, 服务.心跳超时秒)}
+    断言(态1665.get("1665xsim甲", {}).get("交叉模拟") is True,
+         "#1665 实例表：claim 请求能力位落表（实例页签标记可见）")
+    # 正：请求缺能力位但实例表已报 true（报活落表）→ 仍拒（不依赖每次自报）
+    处理写("instance_ping", {"runner": "1665xsim乙", "平台": "linux-arm64",
+                           "交叉模拟": True})
+    回乙 = 处理写("task_shard_claim", {"runner": "1665xsim乙", "平台": "linux-arm64"})
+    断言(回乙.get("ok") and 回乙.get("片") is None,
+         "#1665 正：请求缺能力位但实例表 true→仍拒（服务端落表机械保证）")
+    # 反：普通实例照常领片（规则不误伤）
+    片普 = 处理写("task_shard_claim", {"runner": "1665普通", "平台": "linux-x86_64",
+                                    "物理机": "机1665n", "交叉模拟": False}).get("片")
+    断言(片普 is not None and 片普["片序"] == 1,
+         "#1665 反：普通实例（交叉模拟=false）照常领片")
+    # 兼容：旧 daemon 未报且实例表 NULL → 旧行为放行（显式告警·不静默改变存量行为）
+    片旧 = 处理写("task_shard_claim", {"runner": "1665旧端", "平台": "linux-arm64",
+                                    "物理机": "机1665o"}).get("片")
+    断言(片旧 is not None,
+         "#1665 兼容：旧 daemon 未报能力位=按旧行为放行（渐进部署·告警可见）")
+    # 坏类型显式拒（能力位不按 truthy 归一·不污染实例表）
+    坏领 = 处理写("task_shard_claim", {"runner": "1665坏型", "平台": "linux-arm64",
+                                    "交叉模拟": "false"})
+    坏宣 = 处理写("task_claim", {"runner": "1665坏型2", "交叉模拟": "false"})
+    坏报 = 处理写("instance_ping", {"runner": "1665坏型3", "交叉模拟": None})
+    断言(坏领.get("ok") is False and "交叉模拟" in 坏领.get("说明", "")
+        and 坏宣.get("ok") is False and "交叉模拟" in 坏宣.get("说明", "")
+        and 坏报.get("ok") is False and "交叉模拟" in 坏报.get("说明", ""),
+         "#1665 P3：领片/整任务/报活 三入口坏类型显式拒（不按 truthy 误判）")
+    断言(con.execute("SELECT COUNT(*) FROM 实例 WHERE 名称 IN "
+                    "('1665坏型','1665坏型2','1665坏型3')").fetchone()[0] == 0,
+         "#1665 P2：坏载荷不落实例表（校验前移·无 COALESCE 旁路）")
+    # 显式邀请：限制含 xsim（如 --pool-limit linux-arm64,xsim）→ 交叉模拟实例可领设计面片
+    处理写("task_enqueue", {"分支": "ci/预验-16650000002", "sha": "e" * 40,
+                          "认领限制": "linux-arm64,xsim"})
+    主2 = 处理写("task_claim", {"runner": "1665主2", "平台": "linux-arm64",
+                              "物理机": "机1665m2"})
+    断言(主2.get("任务") is not None
+         and 主2["任务"]["分支"] == "ci/预验-16650000002",
+         "1665 显式邀请前置：arm64 主实例领到含 xsim 限制任务")
+    处理写("task_shard_enqueue", {"runner": "1665主2", "分支": "ci/预验-16650000002",
+                                 "片数": 4})
+    片邀 = 处理写("task_shard_claim", {"runner": "1665xsim丙", "平台": "linux-arm64",
+                                    "物理机": "机1665x3", "交叉模拟": True}).get("片")
+    断言(片邀 is not None,
+         "#1665 显式邀请：认领限制含 xsim 的设计面片交叉模拟实例可领")
+    片邀2 = 处理写("task_shard_claim", {"runner": "1665普通2", "平台": "linux-arm64",
+                                     "物理机": "机1665n2", "交叉模拟": False}).get("片")
+    断言(片邀2 is not None,
+         "#1665 显式邀请不排他：普通 arm64 实例照常领片（限制含 linux-arm64）")
+    # 主实例抢补不受交叉模拟规则限制（正确性补偿路径·缺片必由主实例补跑）
+    抢x = 处理写("task_shard_claim", {"runner": "1665xsim丙",
+                                    "分支": "ci/预验-16650000002", "片序": 3,
+                                    "物理机": "机1665x3"})
+    断言(抢x.get("ok"),
+         "#1665 主实例抢补不受限：交叉模拟实例可 CAS 抢补指定缺口片")
+
+    清1665()
+    con.execute("UPDATE 预验任务 SET 状态='已取消' WHERE 状态='排队'")
+    con.commit()
 
     # ── 1392 实例动态面：claim/ping 注册·四态派生·版本指纹上报·回填种子 ──
     #   （实例页签数据层：执行中/心跳超时/疑似离线/空闲 + 当前任务 + 最近完成 + 版本）

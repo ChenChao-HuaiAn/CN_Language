@@ -43,20 +43,26 @@
 #                                                 认领限制=平台白名单逗号串（337·如 win-x64,linux-x86_64）·缺省 NULL=不限；
 #                                                 M6必跑=true→本轮必须原生跑 79_v2·派发按实例 M6原生 过滤；
 #                                                 排队行 >CN_QUEUE_TASK_REAP_SEC（默认 6h）→reaper 已取消）
-#   POST /api/task_claim    {runner,平台?,物理机?,M6原生?}  认领最旧排队任务（含回收心跳超时任务·原子；
+#   POST /api/task_claim    {runner,平台?,物理机?,M6原生?,交叉模拟?}  认领最旧排队任务（含回收心跳超时任务·原子；
 #                                                 337 自报平台过滤；#1221：M6原生=false/0=交叉模拟→不领
-#                                                 M6必跑任务（旧客户端不报=None 按未知放行·轮内 fail-closed 兜底））
+#                                                 M6必跑任务（旧客户端不报=None 按未知放行·轮内 fail-closed 兜底）；
+#                                                 #1665：交叉模拟=true 落实例表（分片认领拒绝数据源））
 #   POST /api/task_heartbeat {runner,分支}        心跳续约
 #   POST /api/task_complete {runner,分支,绿,结果}  完成上报（校验认领者·防回收后旧 runner 复活覆盖）
-#   POST /api/task_shard_claim {runner,平台?,物理机?,M6原生?}  #1426：从实例领缺口片——服务端按
+#   POST /api/task_shard_claim {runner,平台?,物理机?,M6原生?,交叉模拟?}  #1426：从实例领缺口片——服务端按
 #                                 物理机键（hostname·平台-架构·指纹6）限并发（默认同机
 #                                 1 片·CN_SHARD_PER_MACHINE 可配 2）；超限/让位返回
 #                                 片=None+限流 说明（不领片·不阻塞主实例召唤）。主实例
 #                                 抢补（带 分支+片序）不受限=正确性补偿路径。旧 daemon
 #                                 不报物理机=按 runner 独立机器保守放行+显式告警。
-#   POST /api/instance_ping {runner,平台?,树头?,daemon指纹?,物理内存MB?}  1392：实例空闲
+#                                 #1665：交叉模拟=true 不领普通 e2e 片（qemu 下 i128 族
+#                                 错值假红）——仅父任务认领限制显式含 xsim 标记才可领；
+#                                 旧 daemon 未报该位=按旧行为放行+显式告警（渐进部署）。
+#   POST /api/instance_ping {runner,平台?,树头?,daemon指纹?,物理内存MB?,交叉模拟?}  1392：实例空闲
 #                                 报活+版本指纹；#1608 物理内存MB=正整数/null（null=探测
-#                                 失败·实例面板显示「探测失败」；键缺失=旧 daemon 显示 —）
+#                                 失败·实例面板显示「探测失败」；键缺失=旧 daemon 显示 —）；
+#                                 #1665 交叉模拟=bool（true=交叉模拟实例·实例面板标记+
+#                                 分片认领拒绝数据源；键缺失=旧 daemon 显式未知）
 #   POST /api/instance_refresh {}  #1460：实例面板「更新实例」——广播刷新戳（下随
 #                                  instance_ping 响应下发·空闲 daemon 对齐 develop 树头）
 #                                                 （daemon 空闲也每 60s 报·旧 daemon 不发=渐进
@@ -156,30 +162,13 @@ def 行龄秒(更新: str) -> float | None:
 
 
 def 平台有空闲(平台: str) -> bool:
-    """770：该平台注册实例数 > 该平台执行中行数=有空闲；实例表无该平台实例
-    （冷启动/从未 claim·1392 起为持久表重启不丢）→保守 True（不阻塞轮转——
-    限制照打，领不上由阈值放宽兜底）。须持写锁。"""
-    们 = [r[0] for r in con.execute(
-        "SELECT 名称 FROM 实例 WHERE 平台=?", (平台,)).fetchall()]
-    if not 们:
-        return True
-    占用 = {行[0] for 行 in con.execute(
-        "SELECT 认领者 FROM 预验任务 WHERE 状态='执行中' AND 认领者 IS NOT NULL").fetchall()}
-    return sum(1 for r in 们 if r in 占用) < len(们)
+    """770 薄壳：#1665 实现外迁 queue_instances（先拆再加守 1000 行·调用面零改）。"""
+    return queue_instances.平台有空闲(con, 平台)
 
 
 def 池忙闲快照() -> dict:
-    """770：池忙闲（integrate 忙时拼车窗口与巡检的判定源）——注册实例数/执行中数/池全忙。
-    全忙=有注册实例且执行中数≥注册数（每台都在跑）；无注册（冷启动）=不算全忙。
-    825 残余 B（并行度观测）：补「排队」=排队任务数——池饱和排队可见性数据源
-    （8300 池页签摘要条/integrate --status 验证池段/巡检 B3）。须持写锁。"""
-    执行中 = con.execute(
-        "SELECT COUNT(*) FROM 预验任务 WHERE 状态='执行中'").fetchone()[0]
-    排队 = con.execute(
-        "SELECT COUNT(*) FROM 预验任务 WHERE 状态='排队'").fetchone()[0]
-    注册 = con.execute("SELECT COUNT(*) FROM 实例").fetchone()[0]   # 1392：持久实例表（重启不归零）
-    return {"注册实例": 注册, "执行中": 执行中, "排队": 排队,
-            "池全忙": bool(注册 and 执行中 >= 注册)}
+    """770/825 薄壳：#1665 实现外迁 queue_instances（先拆再加守 1000 行·调用面零改）。"""
+    return queue_instances.池忙闲快照(con)
 
 
 def 建库() -> sqlite3.Connection:
@@ -575,9 +564,14 @@ def 处理写(名: str, 数据: dict) -> dict:
                 可领M6 = 原M6原生
             else:
                 return {"ok": False, "说明": "M6原生 类型非法（须 bool/0/1）"}
+            # #1665：交叉模拟能力位——键缺失=旧 daemon 不覆盖；坏类型/显式 null 显式拒
+            #   （归一在实例表写入前，坏载荷不污染实例行·#1221 P2-2 同口径）。
+            交叉模拟值, 交叉错误 = queue_instances.归一交叉模拟(数据)
+            if 交叉错误:
+                return {"ok": False, "说明": 交叉错误}
             queue_instances.实例认领(con, 时区时刻, runner, 平台337,
                                      str(数据.get("物理机", "")),
-                                     M6原生值)   # #1426 物理机键落表
+                                     M6原生值, 交叉模拟值)   # #1426 物理机键/#1665 能力位落表
             现在 = int(time.time())
             回收们 = [r[0] for r in con.execute(
                 "SELECT 分支 FROM 预验任务 WHERE 状态='执行中' AND 心跳时戳 IS NOT NULL "
@@ -745,12 +739,18 @@ def 处理写(名: str, 数据: dict) -> dict:
                 # #1426：领片请求先落实例+物理机键——被限流拒绝也要登记（让位判定必须
                 #   看到各机空闲实例；空 runner 由 认领 显式拒，此处不落空名行）。
                 领runner = str(数据.get("runner", ""))
+                # #1665：交叉模拟能力位校验/归一先于实例表写入（坏载荷不污染·#1221 P2-2）
+                交叉位, 交叉错误 = queue_instances.归一交叉模拟(数据)
+                if 交叉错误:
+                    return {"ok": False, "说明": 交叉错误}
                 if 领runner:
                     queue_instances.实例认领(con, 时区时刻, 领runner,
                                               str(数据.get("平台", "")),
                                               str(数据.get("物理机", "")),
                                               # #1221：M6 原生可跑能力位
-                                              数据.get("M6原生"))
+                                              数据.get("M6原生"),
+                                              # #1665：交叉模拟实例位（分片认领过滤数据源）
+                                              交叉位)
                 回s = queue_shard.认领(con, 时区时刻, 数据)     # 从实例领缺口片 / 主实例抢补指定片
             elif 名 == "task_shard_heartbeat":
                 回s = queue_shard.心跳(con, 时区时刻, 数据)     # 片心跳续约

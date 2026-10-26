@@ -340,7 +340,9 @@ function 渲染实例() {
     return `
     <div class="数据行 实例行">
       <span class="mono" title="${转义(r["注册时刻"] ? "注册于 " + r["注册时刻"] : "")}">${转义(r["名称"])}</span>
-      <span class="mono 淡">${转义(r["平台"] || "—")}</span>
+      <span class="mono 淡">${转义(r["平台"] || "—")}${r["交叉模拟"] === true
+        ? ' <span class="签 队列中" title="#1665 交叉模拟实例（qemu 跑非宿主架构）——不领普通 e2e 分片">交叉模拟</span>'
+        : ""}</span>
       <span>${物理内存列(r)}</span>
       <span>${实例状态签(r["状态"])}</span>
       <span class="mono">${当前}</span>

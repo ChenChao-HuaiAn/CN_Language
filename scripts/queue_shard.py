@@ -22,6 +22,14 @@
 #   正确性换限流；补偿由主实例仲裁单点跑）。整任务/兜底轮不经过本模块=不受限。
 #   旧 daemon 不报指纹=按「未报指纹:<runner>」独立键保守放行+显式告警（不把未知
 #   指纹归并成同一机器=不静默错配限流）。
+# #1665（2026-10-26 P1·预验污染治理）：交叉模拟实例（xsim·qemu-user 跑非宿主架构）
+#   不领普通 e2e 分片——qemu 下 i128 族用例错值（500/789/826/833 实录：期望
+#   111111111111 实际 0；arm64 真机同族全绿），分片红=整轮假红（902 红即停）。
+#   规则：能力位 交叉模拟=true 的实例只领「父任务认领限制显式含 xsim 标记」的片
+#   （显式邀请=可承担交叉模拟设计面；如 --pool-limit linux-arm64,xsim）；未报该位
+#   （旧 daemon/实例表 NULL）按旧行为放行+每 runner 一次显式告警（渐进部署不静默
+#   改变存量行为）。主实例抢补指定片不受此限（缺片必红=正确性补偿路径）。
+#   客户端自律另见 ci_shard.领片（交叉模拟实例直接不发领片请求）。
 # 依赖方向：queue_service → 本模块（单向·本模块禁 import queue_service）；时刻解析
 #   复用 queue_instances.时刻秒（第三处解析点起提炼·不复制）。
 # con/时戳 由调用方注入（写锁内单线程使用·与 queue_service 既有语义一致）。
@@ -49,6 +57,12 @@ import queue_instances
 空闲活跃秒 = 1800
 未报指纹前缀 = "未报指纹:"
 _未报指纹告警: set[str] = set()
+# #1665 交叉模拟认领过滤：显式邀请标记（认领限制任一段含 xsim 即视为邀请——
+#   integrate --pool-limit linux-arm64-xsim / xsim 均可）；显式平台段名。
+xsim限制标记 = "xsim"
+xsim显式平台 = "linux-arm64-xsim"
+_未报交叉模拟告警: set[str] = set()
+_交叉模拟让路告警: set[str] = set()
 
 
 def _环境整数(名: str, 默认: int, 下限: int) -> int:
@@ -203,10 +217,32 @@ def 召唤(con, 时戳, 数据: dict) -> dict:
     return {"ok": True, "缺口": 片数 - 1}
 
 
-def _片认领过滤() -> str:
-    """认领限制过滤（337 同款口径）：父任务白名单为空=不限；非空=含本平台才可领。"""
-    return (" AND (t.认领限制 IS NULL OR t.认领限制='' "
-            "OR ','||t.认领限制||',' LIKE '%,'||?||',%')")
+def _片认领过滤(交叉模拟: bool = False) -> str:
+    """337 认领限制过滤（平台白名单口径）+ #1665 交叉模拟规则：
+    普通实例=旧语义（限制空=不限；非空须含本平台）；
+    交叉模拟实例=仅显式邀请片（限制含 xsim 标记），且平台段按目标平台
+    linux-arm64 或显式 xsim 平台名匹配（xsim 平台字段仍如实报目标平台）。"""
+    if not 交叉模拟:
+        return (" AND (t.认领限制 IS NULL OR t.认领限制='' "
+                "OR ','||t.认领限制||',' LIKE '%,'||?||',%')")
+    return (" AND COALESCE(t.认领限制,'') LIKE '%" + xsim限制标记 + "%' "
+            "AND (','||t.认领限制||',' LIKE '%,'||?||',%' "
+            "OR ','||t.认领限制||',' LIKE '%," + xsim显式平台 + ",%')")
+
+
+def _认领者交叉模拟(con, runner: str, 数据: dict):
+    """#1665：认领者交叉模拟能力位三态 True/False/None（None=未知）。
+    请求值优先（bool/0/1·显式 null/坏类型 ValueError 显式拒）；未报→回查实例表
+    （instance_ping/task_claim 落表·服务端机械保证不依赖客户端每次自报）。"""
+    if "交叉模拟" in 数据:
+        值, 错误 = queue_instances.归一交叉模拟(数据)
+        if 错误:
+            raise ValueError(错误)
+        return bool(值)
+    行 = con.execute("SELECT 交叉模拟 FROM 实例 WHERE 名称=?", (runner,)).fetchone()
+    if 行 is None or 行[0] is None:
+        return None
+    return bool(行[0])
 
 
 def 认领(con, 时戳, 数据: dict) -> dict:
@@ -216,7 +252,8 @@ def 认领(con, 时戳, 数据: dict) -> dict:
       物理机。
     ② 主实例抢补指定片（{runner,分支,片序}）——仅 缺口（含刚回收的）可抢：防主实例
       补跑与从实例认领双跑（服务端 CAS 单点仲裁）。抢补=正确性补偿路径，**不受
-      物理机限流**（缺片必须由主实例补跑，否则整轮必红=用正确性换限流）。"""
+      物理机限流**（缺片必须由主实例补跑，否则整轮必红=用正确性换限流），也不受
+      #1665 交叉模拟过滤（主实例自己的补偿面）。"""
     runner = str(数据.get("runner", ""))
     if not runner:
         return {"ok": False, "说明": "runner 标识缺失"}
@@ -246,9 +283,22 @@ def 认领(con, 时戳, 数据: dict) -> dict:
                                    "片序": 片序, "片数": 行[1]}}
     # ① 从实例领任意缺口片——父任务执行中+认领限制平台过滤，最旧优先
     平台 = str(数据.get("平台", ""))
+    # #1665：交叉模拟实例不领普通 e2e 片（qemu 下 i128 族错值假红）；未知=旧行为+告警
+    try:
+        交叉 = _认领者交叉模拟(con, runner, 数据)
+    except ValueError as e:
+        return {"ok": False, "说明": str(e)}
+    if 交叉 is None and runner not in _未报交叉模拟告警:
+        _未报交叉模拟告警.add(runner)
+        print("[分片] %s 未报交叉模拟能力位——按旧行为放行（#1665 渐进部署：升级 runner 后自动生效）"
+              % runner, flush=True)
+    if 交叉 is True and runner not in _交叉模拟让路告警:
+        _交叉模拟让路告警.add(runner)
+        print("[分片让路] %s 为交叉模拟实例——不领普通 e2e 分片（#1665·qemu i128 族错值）；"
+              "仅认领限制显式含 xsim 的片" % runner, flush=True)
     行 = con.execute("SELECT s.分支,s.片序,s.片数,t.sha,s.更新时刻,t.认领限制 "
                      "FROM 预验分片 s JOIN 预验任务 t ON t.分支=s.分支 "
-                     "WHERE s.状态='缺口' AND t.状态='执行中'" + _片认领过滤() +
+                     "WHERE s.状态='缺口' AND t.状态='执行中'" + _片认领过滤(交叉 is True) +
                      " ORDER BY s.序号 LIMIT 1", (平台,)).fetchone()
     if 行 is None:
         return {"ok": True, "片": None}
