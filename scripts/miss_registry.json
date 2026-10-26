@@ -263,7 +263,7 @@
    "替代依据": "业务缺省值"
   },
   {
-   "文件": "src/cn_compiler/codegen/peephole_slot_arm64.cpp",
+   "文件": "src/cn_compiler/codegen/peephole_slot_arm64_indirect.cpp",
    "函数": "parseArmImmValue",
    "锚文本": "if (tok[0] != '#') return false;",
    "来源": "1243",
@@ -277,7 +277,7 @@
    "替代依据": "业务缺省值"
   },
   {
-   "文件": "src/cn_compiler/codegen/peephole_slot_arm64.cpp",
+   "文件": "src/cn_compiler/codegen/peephole_slot_arm64_indirect.cpp",
    "函数": "parseArmImmValue",
    "锚文本": "if (i >= tok.size()) return false;",
    "来源": "1243",
@@ -291,7 +291,7 @@
    "替代依据": "业务缺省值"
   },
   {
-   "文件": "src/cn_compiler/codegen/peephole_slot_arm64.cpp",
+   "文件": "src/cn_compiler/codegen/peephole_slot_arm64_indirect.cpp",
    "函数": "parseArmImmValue",
    "锚文本": "if (v > 100000000000000000ULL) return false;",
    "来源": "1243",
@@ -305,7 +305,7 @@
    "替代依据": "业务缺省值"
   },
   {
-   "文件": "src/cn_compiler/codegen/peephole_slot_arm64.cpp",
+   "文件": "src/cn_compiler/codegen/peephole_slot_arm64_indirect.cpp",
    "函数": "parseArmLslShift",
    "锚文本": "if (tok.size() < 5) return false;",
    "来源": "1243",
@@ -319,7 +319,7 @@
    "替代依据": "业务缺省值"
   },
   {
-   "文件": "src/cn_compiler/codegen/peephole_slot_arm64.cpp",
+   "文件": "src/cn_compiler/codegen/peephole_slot_arm64_indirect.cpp",
    "函数": "parseArmLslShift",
    "锚文本": "if (!iequals(tok.substr(0, 3), \"lsl\")) return false;",
    "来源": "1243",
@@ -333,7 +333,7 @@
    "替代依据": "业务缺省值"
   },
   {
-   "文件": "src/cn_compiler/codegen/peephole_slot_arm64.cpp",
+   "文件": "src/cn_compiler/codegen/peephole_slot_arm64_indirect.cpp",
    "函数": "parseArmLslShift",
    "锚文本": "if (!parseArmImmValue(trimView(tok.substr(3)), v)) return false;",
    "来源": "1243",
@@ -347,7 +347,7 @@
    "替代依据": "业务缺省值"
   },
   {
-   "文件": "src/cn_compiler/codegen/peephole_slot_arm64.cpp",
+   "文件": "src/cn_compiler/codegen/peephole_slot_arm64_indirect.cpp",
    "函数": "parseArmLslShift",
    "锚文本": "if (v < 0 || v > 48) return false;",
    "来源": "1243",
@@ -361,7 +361,7 @@
    "替代依据": "业务缺省值"
   },
   {
-   "文件": "src/cn_compiler/codegen/peephole_slot_arm64.cpp",
+   "文件": "src/cn_compiler/codegen/peephole_slot_arm64_indirect.cpp",
    "函数": "parseArmAddrLine",
    "锚文本": "if (sp == std::string_view::npos) return out;",
    "来源": "1243",
@@ -375,7 +375,7 @@
    "替代依据": "业务缺省值"
   },
   {
-   "文件": "src/cn_compiler/codegen/peephole_slot_arm64.cpp",
+   "文件": "src/cn_compiler/codegen/peephole_slot_arm64_indirect.cpp",
    "函数": "parseArmAddrLine",
    "锚文本": "if (n < 2) return out;",
    "来源": "1243",
@@ -389,9 +389,9 @@
    "替代依据": "业务缺省值"
   },
   {
-   "文件": "src/cn_compiler/codegen/peephole_slot_arm64.cpp",
+   "文件": "src/cn_compiler/codegen/peephole_slot_arm64_indirect.cpp",
    "函数": "parseArmAddrLine",
-   "锚文本": "if (!parseArmRegToken(ops[0], form, num) || form != 'x') return out;",
+   "锚文本": " form != 'x') return out;",
    "来源": "1243",
    "类别": "业务值",
    "静默风险": "低",
@@ -403,7 +403,7 @@
    "替代依据": "业务缺省值"
   },
   {
-   "文件": "src/cn_compiler/codegen/peephole_slot_arm64.cpp",
+   "文件": "src/cn_compiler/codegen/peephole_slot_arm64_indirect.cpp",
    "函数": "parseArmAddrLine",
    "锚文本": "if (n != 3 || ops[1] != \"x29\") return ArmAddrLine{};",
    "来源": "1243",
@@ -417,7 +417,7 @@
    "替代依据": "业务缺省值"
   },
   {
-   "文件": "src/cn_compiler/codegen/peephole_slot_arm64.cpp",
+   "文件": "src/cn_compiler/codegen/peephole_slot_arm64_indirect.cpp",
    "函数": "parseArmAddrLine",
    "锚文本": "if (!parseArmImmValue(ops[1], out.imm)) return ArmAddrLine{};",
    "来源": "1243",
@@ -431,7 +431,7 @@
    "替代依据": "业务缺省值"
   },
   {
-   "文件": "src/cn_compiler/codegen/peephole_slot_arm64.cpp",
+   "文件": "src/cn_compiler/codegen/peephole_slot_arm64_indirect.cpp",
    "函数": "parseArmAddrLine",
    "锚文本": "if (n != 3 || !parseArmLslShift(ops[2], out.shift)) return ArmAddrLine{};",
    "来源": "1243",
@@ -445,7 +445,7 @@
    "替代依据": "业务缺省值"
   },
   {
-   "文件": "src/cn_compiler/codegen/peephole_slot_arm64.cpp",
+   "文件": "src/cn_compiler/codegen/peephole_slot_arm64_indirect.cpp",
    "函数": "parseArmAddrLine",
    "锚文本": "if (n != 3 || !parseArmImmValue(ops[1], out.imm) ||",
    "来源": "1243",
@@ -459,7 +459,7 @@
    "替代依据": "业务缺省值"
   },
   {
-   "文件": "src/cn_compiler/codegen/peephole_slot_arm64.cpp",
+   "文件": "src/cn_compiler/codegen/peephole_slot_arm64_indirect.cpp",
    "函数": "findArmAddrBlock",
    "锚文本": "if (end <= 0) return blk;",
    "来源": "1243",
@@ -473,7 +473,7 @@
    "替代依据": "业务缺省值"
   },
   {
-   "文件": "src/cn_compiler/codegen/peephole_slot_arm64.cpp",
+   "文件": "src/cn_compiler/codegen/peephole_slot_arm64_indirect.cpp",
    "函数": "findArmAddrBlock",
    "锚文本": "if (last.kind != ArmAddrKind::SelfTail) return blk;",
    "来源": "1243",
@@ -487,7 +487,7 @@
    "替代依据": "业务缺省值"
   },
   {
-   "文件": "src/cn_compiler/codegen/peephole_slot_arm64.cpp",
+   "文件": "src/cn_compiler/codegen/peephole_slot_arm64_indirect.cpp",
    "函数": "findArmAddrBlock",
    "锚文本": "if (head < 0) return blk;",
    "来源": "1243",
@@ -501,7 +501,7 @@
    "替代依据": "业务缺省值"
   },
   {
-   "文件": "src/cn_compiler/codegen/peephole_slot_arm64.cpp",
+   "文件": "src/cn_compiler/codegen/peephole_slot_arm64_indirect.cpp",
    "函数": "findArmAddrBlock",
    "锚文本": "if (ln.kind != ArmAddrKind::MovkPart) return blk;",
    "来源": "1243",
@@ -529,7 +529,7 @@
    "替代依据": "业务缺省值"
   },
   {
-   "文件": "src/cn_compiler/codegen/peephole_slot_arm64.cpp",
+   "文件": "src/cn_compiler/codegen/peephole_slot_arm64_indirect.cpp",
    "函数": "armPlainMemBase",
    "锚文本": "if (mem.size() < 4) return false;",
    "来源": "1243",
@@ -543,7 +543,7 @@
    "替代依据": "业务缺省值"
   },
   {
-   "文件": "src/cn_compiler/codegen/peephole_slot_arm64.cpp",
+   "文件": "src/cn_compiler/codegen/peephole_slot_arm64_indirect.cpp",
    "函数": "armPlainMemBase",
    "锚文本": "if (mem.front() != '[' || mem.back() != ']') return false;",
    "来源": "1243",
@@ -557,9 +557,9 @@
    "替代依据": "业务缺省值"
   },
   {
-   "文件": "src/cn_compiler/codegen/peephole_slot_arm64.cpp",
+   "文件": "src/cn_compiler/codegen/peephole_slot_arm64_indirect.cpp",
    "函数": "armPlainMemBase",
-   "锚文本": "if (!parseArmRegToken(mem.substr(1, mem.size() - 2), form, num) || form != 'x') {",
+   "锚文本": " form != 'x') {",
    "来源": "1243",
    "类别": "业务值",
    "静默风险": "低",
@@ -599,7 +599,7 @@
    "替代依据": "业务缺省值"
   },
   {
-   "文件": "src/cn_compiler/codegen/peephole_slot_arm64.cpp",
+   "文件": "src/cn_compiler/codegen/peephole_slot_arm64_indirect.cpp",
    "函数": "lineDirectX29Offset",
    "锚文本": "if (lb == std::string_view::npos) return false;",
    "来源": "1243",
@@ -613,21 +613,7 @@
    "替代依据": "业务缺省值"
   },
   {
-   "文件": "src/cn_compiler/codegen/peephole_slot_arm64.cpp",
-   "函数": "lineDirectX29Offset",
-   "锚文本": "if (!parseArmSlot(s.substr(lb), \"x29\", acc)) return false;",
-   "来源": "1243",
-   "类别": "业务值",
-   "静默风险": "低",
-   "原因": "1243 AArch64 大偏移窥孔解析器形态探测：未命中=该行不参与消除（原样保留·非查表默认值·不改变编译产物；调用方按 false=跳过处理）。任务 1243 令明确「新增形态探测点须登记 miss_registry 并带批准字段」。",
-   "登记人": "AI（1243 轮·逐条读过代码）",
-   "登记日": "2026-10-21",
-   "批准": "存量过渡",
-   "替代": "不可替代",
-   "替代依据": "业务缺省值"
-  },
-  {
-   "文件": "src/cn_compiler/codegen/peephole_slot_arm64.cpp",
+   "文件": "src/cn_compiler/codegen/peephole_slot_arm64_indirect.cpp",
    "函数": "tryEliminateIndirectPair",
    "锚文本": "if (!armPlainMemBase(lines[i], base) || base != \"x13\") return act;",
    "来源": "1243",
@@ -641,21 +627,7 @@
    "替代依据": "业务缺省值"
   },
   {
-   "文件": "src/cn_compiler/codegen/peephole_slot_arm64.cpp",
-   "函数": "tryEliminateIndirectPair",
-   "锚文本": "if (!parseArmStoreLineBase(lines[i], base, store)) return act;",
-   "来源": "1243",
-   "类别": "业务值",
-   "静默风险": "低",
-   "原因": "1243 AArch64 大偏移窥孔解析器形态探测：未命中=该行不参与消除（原样保留·非查表默认值·不改变编译产物；调用方按 false=跳过处理）。任务 1243 令明确「新增形态探测点须登记 miss_registry 并带批准字段」。",
-   "登记人": "AI（1243 轮·逐条读过代码）",
-   "登记日": "2026-10-21",
-   "批准": "存量过渡",
-   "替代": "不可替代",
-   "替代依据": "业务缺省值"
-  },
-  {
-   "文件": "src/cn_compiler/codegen/peephole_slot_arm64.cpp",
+   "文件": "src/cn_compiler/codegen/peephole_slot_arm64_indirect.cpp",
    "函数": "tryEliminateIndirectPair",
    "锚文本": "if (!blk.ok || blk.reg != base) return act;",
    "来源": "1243",
@@ -669,7 +641,7 @@
    "替代依据": "业务缺省值"
   },
   {
-   "文件": "src/cn_compiler/codegen/peephole_slot_arm64.cpp",
+   "文件": "src/cn_compiler/codegen/peephole_slot_arm64_indirect.cpp",
    "函数": "tryEliminateIndirectPair",
    "锚文本": "if (loadIdx >= lines.size()) return act;",
    "来源": "1243",
@@ -683,7 +655,7 @@
    "替代依据": "业务缺省值"
   },
   {
-   "文件": "src/cn_compiler/codegen/peephole_slot_arm64.cpp",
+   "文件": "src/cn_compiler/codegen/peephole_slot_arm64_indirect.cpp",
    "函数": "tryEliminateIndirectPair",
    "锚文本": "if (lines[static_cast<std::size_t>(blk.start + k)] !=",
    "来源": "1243",
@@ -697,21 +669,7 @@
    "替代依据": "业务缺省值"
   },
   {
-   "文件": "src/cn_compiler/codegen/peephole_slot_arm64.cpp",
-   "函数": "tryEliminateIndirectPair",
-   "锚文本": "if (!parseArmLoadLineBase(lines[loadIdx], base, load)) return act;",
-   "来源": "1243",
-   "类别": "业务值",
-   "静默风险": "低",
-   "原因": "1243 AArch64 大偏移窥孔解析器形态探测：未命中=该行不参与消除（原样保留·非查表默认值·不改变编译产物；调用方按 false=跳过处理）。任务 1243 令明确「新增形态探测点须登记 miss_registry 并带批准字段」。",
-   "登记人": "AI（1243 轮·逐条读过代码）",
-   "登记日": "2026-10-21",
-   "批准": "存量过渡",
-   "替代": "不可替代",
-   "替代依据": "业务缺省值"
-  },
-  {
-   "文件": "src/cn_compiler/codegen/peephole_slot_arm64.cpp",
+   "文件": "src/cn_compiler/codegen/peephole_slot_arm64_indirect.cpp",
    "函数": "tryEliminateIndirectPair",
    "锚文本": "if (store.slot != load.slot || store.isFloat != load.isFloat) return act;",
    "来源": "1243",
@@ -725,7 +683,7 @@
    "替代依据": "业务缺省值"
   },
   {
-   "文件": "src/cn_compiler/codegen/peephole_slot_arm64.cpp",
+   "文件": "src/cn_compiler/codegen/peephole_slot_arm64_indirect.cpp",
    "函数": "tryEliminateIndirectPair",
    "锚文本": "if (load.width > store.width) return act;",
    "来源": "1243",
@@ -739,7 +697,7 @@
    "替代依据": "业务缺省值"
   },
   {
-   "文件": "src/cn_compiler/codegen/peephole_slot_arm64.cpp",
+   "文件": "src/cn_compiler/codegen/peephole_slot_arm64_indirect.cpp",
    "函数": "tryEliminateIndirectPair",
    "锚文本": "if (store.reg64 == base || load.reg64 == base) return act;",
    "来源": "1243",
@@ -753,7 +711,7 @@
    "替代依据": "业务缺省值"
   },
   {
-   "文件": "src/cn_compiler/codegen/peephole_slot_arm64.cpp",
+   "文件": "src/cn_compiler/codegen/peephole_slot_arm64_indirect.cpp",
    "函数": "tryEliminateIndirectPair",
    "锚文本": "if (occ == offsetOcc.end() || occ->second != 2) return act;",
    "来源": "1243",
@@ -767,7 +725,7 @@
    "替代依据": "业务缺省值"
   },
   {
-   "文件": "src/cn_compiler/codegen/peephole_slot_arm64.cpp",
+   "文件": "src/cn_compiler/codegen/peephole_slot_arm64_indirect.cpp",
    "函数": "tryEliminateIndirectPair",
    "锚文本": "if (!safeFromUndefined[loadIdx + 1]) return act;",
    "来源": "1243",
@@ -795,7 +753,7 @@
    "替代依据": "业务缺省值"
   },
   {
-   "文件": "src/cn_compiler/codegen/peephole_slot_arm64.cpp",
+   "文件": "src/cn_compiler/codegen/peephole_slot_arm64_indirect.cpp",
    "函数": "parseArmPureX13Read",
    "锚文本": "if (!iequals(mnem, \"sub\") && !iequals(mnem, \"add\")) return false;",
    "来源": "1243",
@@ -809,7 +767,7 @@
    "替代依据": "业务缺省值"
   },
   {
-   "文件": "src/cn_compiler/codegen/peephole_slot_arm64.cpp",
+   "文件": "src/cn_compiler/codegen/peephole_slot_arm64_indirect.cpp",
    "函数": "parseArmPureX13Read",
    "锚文本": "if (splitArmOperands(lstrip(s.substr(sp + 1)), ops, 4) != 3) return false;",
    "来源": "1243",
