@@ -28,7 +28,8 @@
 # 291 win 池实例（2026-10-08 用户裁决·混合随机平台池）：win 实例与 linux 实例同池认领
 #   同一任务集（任务不带平台标签·谁空闲谁认领）——任一平台红灯=平台差异缺陷暴露
 #   （预验位红=develop 进不去·拦截前移）；门禁表 PK=(sha,平台) 天然分平台显示，池协议零改动。
-#   win 侧差异全部收敛在平台分支内：msvcrt 锁/GlobalMemoryStatusEx/vcvars+Ninja 构建链/
+#   win 侧差异全部收敛在平台分支内：msvcrt 锁/物理内存探测（#1608
+#   GetPhysicallyInstalledSystemMemory·linux 见 ci_report）/vcvars+Ninja 构建链/
 #   E2E --target win-x64；三段外套 gate_lock（家机同机有人工开发·与 TX_02 独占场景不同）。
 #   平台身份一律运行时探测（sys.platform），不依赖任何静态配置——共享文档不指定本机类型。
 # 523 win 增量构建混合态治本（2026-10-13）：池每轮 reset+clean(-fdq 不带 -x) 保留 target/
