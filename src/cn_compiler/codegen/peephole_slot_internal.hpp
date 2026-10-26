@@ -297,7 +297,7 @@ inline bool upperHalfZeroBefore(const std::vector<std::string_view>& lines,
 // 方言无关主扫描（就地·任务 1248；1320 起为唯一内核）：命中返回 true 并原地
 //   替换文本；未命中返回 false，不复制/不替换文本（仅锚点存在时构建扫描结构）。
 //   命中时 functionText 可能重分配，调用方持有的 view/迭代器/引用失效。
-bool eliminateForwardAndDeadStoresInPlace(std::string& functionText, const SlotRules& rules);
+//   实现与重载声明见本文件末尾（SlotRange 定义之后）。
 
 // 值语义包装：复制后走就地内核（单测/通用调用）
 std::string eliminateForwardAndDeadStores(const std::string& functionText,
@@ -395,6 +395,15 @@ inline PairAction decidePairAction(const std::vector<std::string_view>& lines,
     return act;
 }
 
+// 地址被取（lea）的聚合槽区间（1320 云端回归修复·2026-10-26）：start=聚合基址槽
+//   偏移（最深处），bytes=聚合字节数（后端帧布局 varSlots 真实槽数×8）。聚合自基址
+//   向上扩展，候选槽与之相交即不得消除（结构体按值参数逐槽直接写 + 基址 lea 传递，
+//   可达数百字节——16 字节文本窗口无法覆盖）。
+struct SlotRange {
+    long long offset = 0;
+    long long bytes = 0;
+};
+
 // 方言无关第二遍（任务 1320，定义在 peephole_slot_forward.cpp）：
 //   ① 死槽写消除：槽 token 全函数恰好一次（=仅本 store）的 store 直接删除；
 //   ② 三/四次引用扩展：同一槽的连续两次 store 之间无读且后写覆盖前写 → 前写死；
@@ -403,6 +412,10 @@ inline PairAction decidePairAction(const std::vector<std::string_view>& lines,
 //      删 store 行、load 行改写为寄存器搬运（同寄存器同宽按既有判据全删）。
 //   命中返回 true 并原地替换文本；未命中返回 false（不复制、不改文本）。
 bool eliminateForwardAndDeadStoresInPlace(std::string& functionText, const SlotRules& rules);
+
+// 同上（带后端帧布局聚合区间：编译器调用面·单测可省略=仅文本 16 字节窗口兜底）
+bool eliminateForwardAndDeadStoresInPlace(std::string& functionText, const SlotRules& rules,
+                                          const std::vector<SlotRange>& aggregates);
 
 // AArch64 面入口（定义在 peephole_slot_arm64.cpp）：固定帧槽单遍判据 →
 //   大偏移间接寻址（peephole_slot_arm64_indirect.cpp）

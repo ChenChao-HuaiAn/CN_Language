@@ -43,6 +43,7 @@ namespace {
 
 using namespace std::string_view_literals;  // 助记符比较免 strlen 构造
 
+
 // 单槽引用跟踪上限（超出=overflow·不参与本遍：小窗口内无法证明无第三处读）
 constexpr int kMaxTrackedOcc = 4;
 // 计划缺省哨兵（pairStore/pairLoad 未登记）：显式哨兵+消费点检查（#1239）
@@ -311,7 +312,15 @@ struct SlotPlan {
 void planSlot(const std::vector<std::string_view>& lines, const std::vector<char>& drop,
               const std::vector<std::string>& repl, const SlotRules& rules,
               const SlotEntry& e, const std::vector<AccessRange>& ranges, long long offset,
-              SlotPlan& plan) {
+              const std::vector<SlotRange>& aggregates, SlotPlan& plan) {
+    // 聚合保护（1320 云端回归根因）：lea 取址的聚合（结构体按值参数逐槽直接写 +
+    //   基址 lea 传递，可达数百字节）自基址向上扩展；候选槽与之相交即不参与。
+    //   区间由后端帧布局注入（varSlots 真实槽数=类型布局字节数）；未注入时
+    //   仅靠文本侧 16 字节 lea 窗口（i128 双槽）兜底——调用方必须注入。
+    const int candBytes = (e.occ[0].bytes > 0) ? e.occ[0].bytes : 1;
+    for (const SlotRange& r : aggregates) {
+        if (offset < r.offset + r.bytes && r.offset < offset + candBytes) return;
+    }
     // ---- ① 死写判定 ----
     bool dead[4] = {false, false, false, false};
     for (int t = 0; t < e.count; ++t) {
@@ -354,6 +363,7 @@ void planSlot(const std::vector<std::string_view>& lines, const std::vector<char
     if (first.kind != OccKind::Store || second.kind != OccKind::Load) return;
     if (second.pos <= first.pos) return;
     if (second.pos - first.pos > kForwardScanLimit) return;
+
     SlotAccess store;
     SlotAccess load;
     // 静默豁免业务值: 形态复解析失败=该槽不参与本遍（原样保留）
@@ -381,6 +391,12 @@ void planSlot(const std::vector<std::string_view>& lines, const std::vector<char
 // 方言无关第二遍（就地）：死槽写消除 + 近邻槽转发。
 //   命中返回 true 并原地替换文本；未命中返回 false（不复制、不改文本）。
 bool eliminateForwardAndDeadStoresInPlace(std::string& functionText, const SlotRules& rules) {
+    static const std::vector<SlotRange> kNoAggregates;
+    return eliminateForwardAndDeadStoresInPlace(functionText, rules, kNoAggregates);
+}
+
+bool eliminateForwardAndDeadStoresInPlace(std::string& functionText, const SlotRules& rules,
+                                          const std::vector<SlotRange>& aggregates) {
     if (functionText.find(rules.slotAnchor) == std::string::npos) return false;
 #ifndef NDEBUG
     // 视图存活期源存储身份快照：替换点核对缓冲未被提前改写（release 零开销）
@@ -411,7 +427,7 @@ bool eliminateForwardAndDeadStoresInPlace(std::string& functionText, const SlotR
             // 静默豁免业务值: 槽偏移解析失败=该槽不参与（保持原样）
             if (!rules.parseSlotOffset(e.slot, offset)) continue;
             SlotPlan plan;
-            planSlot(lines, drop, repl, rules, e, ranges, offset, plan);
+            planSlot(lines, drop, repl, rules, e, ranges, offset, aggregates, plan);
             // 静默豁免业务值: 无任何动作=不登记计划（非查表默认值）
             if (plan.deadCount == 0 && plan.pairStore == kNoPlan) continue;
             plans.push_back(std::move(plan));

@@ -58,9 +58,11 @@
 //         两次 store 之间无读、后写位宽覆盖前写且两写之间为直线段（跳转不得绕过
 //         覆盖直接读前写）时可删前写。
 //      f. 槽字节别名（1320）：全函数任一其它槽访问与候选槽 [off, off+bytes) 相交
-//         即拒绝。整宽访存（x86 movups 族）按 16 字节；lea 取址按 16 字节聚合窗口
-//         （本产物族多槽变量中只有 i128 以 $s1 双槽直接寻址=16 字节；数组/结构体
-//         字段一律经 lea 基址 + 指针偏移访问、不出现在 [rbp±N] token 中）。
+//         即拒绝。整宽访存（x86 movups 族）按 16 字节；lea 取址按 16 字节聚合窗口。
+//         聚合真实大小（结构体按值参数逐槽直接写 + 基址 lea 传递，可达数百字节）
+//         由代码生成按帧布局 varSlots 真实槽数×8 注入（AggregateRange，三后端
+//         emitFunction 构造）：候选槽与任一聚合区间相交即拒绝——16 字节文本窗口
+//         只能覆盖 i128 双槽等 ≤16 字节聚合（79_v2 自举链云端回归根因）。
 //      g. 浮点高半（1351）：x86 浮点对（同寄存器全删/异寄存器改写）须先证明该
 //         寄存器高半从未被 128 位宽读观察（整函数扫描·保守不假设控制流）；不成立
 //         时原样保留两行。ARM64 标量寄存器搬运清零上位，全删被拒时回落 fmov。
@@ -76,9 +78,18 @@
 // 规范：英文API命名，中文仅注释；函数<=100行
 #pragma once
 #include <string>
+#include <vector>
 
 namespace cn_compiler {
 namespace peephole {
+
+// 帧布局聚合区间（1320 云端回归修复）：地址被取的多槽变量 [base, base+bytes)——
+//   结构体按值参数由后逐槽直接写 + 基址 lea 传递，字节数可达数百（文本不可知），
+//   候选槽与之相交即不得消除。由代码生成按 varSlots 真实槽数注入（×8 字节）。
+struct AggregateRange {
+    long long offset = 0;  // 聚合基址槽偏移（最深处）
+    long long bytes = 0;   // 聚合字节数
+};
 
 // 对单函数汇编文本做冗余槽读写消除，返回处理后文本（无命中时原样返回）。
 //   linux-x86_64 面（GAS Intel 语法·1144 原判据）
@@ -103,6 +114,14 @@ std::string eliminateRedundantSlotTrafficAArch64(const std::string& functionText
 bool eliminateRedundantSlotTrafficInPlace(std::string& functionText);
 bool eliminateRedundantSlotTrafficMasmInPlace(std::string& functionText);
 bool eliminateRedundantSlotTrafficAArch64InPlace(std::string& functionText);
+
+// 同上（带帧布局聚合区间：代码生成调用面；空表=仅文本侧 16 字节 lea 窗口兜底）。
+bool eliminateRedundantSlotTrafficInPlace(std::string& functionText,
+                                          const std::vector<AggregateRange>& aggregates);
+bool eliminateRedundantSlotTrafficMasmInPlace(std::string& functionText,
+                                              const std::vector<AggregateRange>& aggregates);
+bool eliminateRedundantSlotTrafficAArch64InPlace(std::string& functionText,
+                                                 const std::vector<AggregateRange>& aggregates);
 
 } // namespace peephole
 } // namespace cn_compiler

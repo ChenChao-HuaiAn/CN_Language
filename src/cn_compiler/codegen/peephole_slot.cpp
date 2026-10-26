@@ -670,10 +670,46 @@ bool eliminateRedundantSlotTrafficMasmInPlace(std::string& functionText) {
     return detail::eliminateForwardAndDeadStoresInPlace(functionText, kMasmX64);
 }
 
+namespace {
+
+// 公共 AggregateRange -> 内核 SlotRange（1320 云端回归修复：帧布局注入）
+std::vector<detail::SlotRange> toSlotRanges(const std::vector<AggregateRange>& aggregates) {
+    std::vector<detail::SlotRange> out;
+    out.reserve(aggregates.size());
+    for (const AggregateRange& r : aggregates) {
+        out.push_back(detail::SlotRange{r.offset, r.bytes});
+    }
+    return out;
+}
+
+} // namespace
+
+// 带帧布局聚合区间的就地入口（x86 两面）
+bool eliminateRedundantSlotTrafficInPlace(std::string& functionText,
+                                          const std::vector<AggregateRange>& aggregates) {
+    return detail::eliminateForwardAndDeadStoresInPlace(functionText, kGasIntelX64,
+                                                        toSlotRanges(aggregates));
+}
+
+bool eliminateRedundantSlotTrafficMasmInPlace(std::string& functionText,
+                                              const std::vector<AggregateRange>& aggregates) {
+    return detail::eliminateForwardAndDeadStoresInPlace(functionText, kMasmX64,
+                                                        toSlotRanges(aggregates));
+}
+
 
 // linux-arm64（AArch64 GAS 语法）就地入口
 bool eliminateRedundantSlotTrafficAArch64InPlace(std::string& functionText) {
     return detail::eliminateAArch64PassInPlace(functionText);
+}
+
+// linux-arm64 带聚合区间入口（区间经 detail 内核注入；间接寻址面不参与）
+bool eliminateRedundantSlotTrafficAArch64InPlace(std::string& functionText,
+                                                 const std::vector<AggregateRange>& aggregates) {
+    const bool fixedHit = detail::eliminateForwardAndDeadStoresInPlace(
+        functionText, detail::armFixedSlotRules(), toSlotRanges(aggregates));
+    const bool indirectHit = detail::eliminateArmIndirectPairsInPlace(functionText);
+    return fixedHit || indirectHit;
 }
 
 } // namespace peephole

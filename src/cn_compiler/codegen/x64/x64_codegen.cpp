@@ -613,8 +613,21 @@ std::string X64CodeGenerator::generateFunctionAssembly(const ir::IRFunction& fun
     //   --no-regalloc 的产物逐字节不变（与 1144/458 红线同口径）。MASM 面识别本
     //   后端实际产物（无 ptr 前缀的直写/直装、32 位目的 movsx/movzx）。
     std::string asmText = writer.str();
+    // 1320 云端回归修复：帧布局聚合区间注入（多槽变量=结构体按值参数/数组/i128，
+    //   由发射器逐槽直接写、随后 lea 基址整体传递——聚合大小文本不可知，必须按
+    //   varSlots 真实槽数保护；缺此注入时窥孔会误删聚合内槽写）。
     if (regAllocEnabled_) {
-        peephole::eliminateRedundantSlotTrafficMasmInPlace(asmText);
+        std::vector<peephole::AggregateRange> aggregates;
+        for (const auto& kv : function.varSlots) {
+            // 槽数域双边界：单槽变量无聚合面；超帧量级=非本产物族槽表（不注入）
+            if (kv.second < 2 || kv.second > 65536) continue;
+            // 静默豁免业务值: 未登记槽名（如 __retbuf 临时）= 不在本函数帧内（跳过注入）
+            const auto slotIt = varSlots_.find(kv.first);
+            if (slotIt == varSlots_.end()) continue;
+            aggregates.push_back(peephole::AggregateRange{
+                varSlotOffset(slotIt->second), static_cast<long long>(kv.second) * 8});
+        }
+        peephole::eliminateRedundantSlotTrafficMasmInPlace(asmText, aggregates);
     }
     return asmText;
 }

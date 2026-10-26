@@ -241,6 +241,46 @@ TEST(PeepholeSlot, LeaAggregateAliasBlocksForwardPair) {
     EXPECT_EQ(eliminateRedundantSlotTraffic(in), in);
 }
 
+
+// 4e9. 1320 云端回归修复：结构体按值参数聚合（4 槽逐槽直接写 + 基址 lea 传递，
+//      共 32 字节）——注入帧布局聚合区间后，聚合内第 4 槽写必须保留
+//      （16 字节文本窗口覆盖不到；未注入即云端 79_v2 fix_p 编译失败根因）。
+TEST(PeepholeSlot, AggregateRangeProtectsStructParamCopy) {
+    const std::string in = join({
+        "    mov qword ptr [rbp-200], r11",
+        "    mov qword ptr [rbp-192], r11",
+        "    mov qword ptr [rbp-184], r11",
+        "    mov qword ptr [rbp-176], r11",
+        "    lea r10, [rbp-200]",
+        "    mov qword ptr [rbp-8], r10",
+        "    mov r9, qword ptr [rbp-8]",
+        "    ret",
+    });
+    const std::vector<cn_compiler::peephole::AggregateRange> aggregates = {{-200, 32}};
+    std::string got = in;
+    cn_compiler::peephole::eliminateRedundantSlotTrafficInPlace(got, aggregates);
+    // 聚合内四槽写全部保留（第 4 槽 -176 是 16 字节窗口外的关键面）
+    EXPECT_NE(got.find("mov qword ptr [rbp-176], r11"), std::string::npos) << got;
+    EXPECT_NE(got.find("mov qword ptr [rbp-200], r11"), std::string::npos) << got;
+    // 聚合外可正常优化：[rbp-8] 的 store+load 转发为寄存器搬运
+    EXPECT_NE(got.find("mov r9, r10"), std::string::npos) << got;
+}
+
+// 4e10. 同上：聚合区间外的单现死写仍可删（区间注入不过度阻断）
+TEST(PeepholeSlot, AggregateRangeKeepsOutOfRangeOptimization) {
+    const std::string in = join({
+        "    mov qword ptr [rbp-56], rsi",
+        "    lea r10, [rbp-200]",
+        "    mov qword ptr [rbp-8], r10",
+        "    ret",
+    });
+    const std::vector<cn_compiler::peephole::AggregateRange> aggregates = {{-200, 32}};
+    std::string got = in;
+    cn_compiler::peephole::eliminateRedundantSlotTrafficInPlace(got, aggregates);
+    // -56 的写无读且不在聚合区间内 -> 删除
+    EXPECT_EQ(got.find("mov qword ptr [rbp-56], rsi"), std::string::npos) << got;
+}
+
 // 4e6. 1320 死槽写别名保护：16 字节整宽访存覆盖该槽 -> 保留
 TEST(PeepholeSlot, DeadStoreAliasedByWideAccessRejected) {
     const std::string in = join({
