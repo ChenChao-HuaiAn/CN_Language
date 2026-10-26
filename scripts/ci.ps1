@@ -48,6 +48,10 @@ Write-Host "[CI] 0.89/4 静默值登记制门禁（1148·891 盘点§五：check
 python scripts/check_miss_gate.py
 if ($LASTEXITCODE -ne 0) { Write-Host "[CI] 静默值登记制门禁失败" -ForegroundColor Red; exit 1 }
 
+Write-Host "[CI] 0.895/4 哨兵与侥幸模式门禁（1640·1360 结果化终态配套：负一哨兵/零重叠/目标尺寸拷贝/源型顶替四面机械识别+冻结基线只减不增——新代码写哨兵不再靠人眼；与 L1 同口径）..." -ForegroundColor Cyan
+python scripts/check_sentinel_gate.py
+if ($LASTEXITCODE -ne 0) { Write-Host "[CI] 哨兵与侥幸模式门禁失败" -ForegroundColor Red; exit 1 }
+
 Write-Host "[CI] 0.88/4 E2E 用例 v2 覆盖通道守卫（930·306 轮 662/1025「自述 dual 实为探针」验收缺口立法化：用例须配 v2 通道（双编译对照/v2闭环/锚定链）或豁免登记（案号+理由·只减不增棘轮）——新用例静默 host-only 即红）..." -ForegroundColor Cyan
 python scripts/check_dual_coverage.py
 if ($LASTEXITCODE -ne 0) { Write-Host "[CI] E2E 用例 v2 覆盖通道守卫失败" -ForegroundColor Red; exit 1 }

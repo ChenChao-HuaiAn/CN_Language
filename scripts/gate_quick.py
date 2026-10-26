@@ -128,12 +128,24 @@ print("== L1 快速门禁（920·提交前）==", flush=True)
 #    注入四态（绿/红/超时/空结果）× 三端判定面（聚合/落盘上报/解析放行/服务端存储/
 #    跨端管线）+ 元断言（判别力自证·防自检空转）；a 面阴性对照轮设计=plans/028 §十六。
 #    纯本机零池依赖秒级（临时 DB/目录隔离·零 HTTP）。
+#    1640 增哨兵与侥幸模式门禁——1360 结果化终态配套（存量结果化完成后新代码写哨兵
+#    仍靠人眼）：负一哨兵/零重叠/目标尺寸拷贝（#1592 同族）/源型顶替四面机械识别；
+#    协议注释+miss_registry 登记条复用 882 通道·冻结基线只减不增·新增位置即红。
 for 名 in ("check_ascii_idents", "check_keywords_sync", "check_registry_audit",
-           "check_case_numbers", "check_miss_gate", "check_deploy_manifest",
+           "check_case_numbers", "check_miss_gate", "check_sentinel_gate",
+           "check_deploy_manifest",
            "check_syntax_semantic_sync", "check_verifier_selfcheck",
            "check_parallel_prefix", "check_program_cache_key_audit"):
     if not 步(名, [sys.executable, f"scripts/{名}.py"], 超时秒=静态超时):
         raise SystemExit(1)
+# 1640：哨兵门禁判别力自测（纯合成临时树·零构建·秒级）——正反两态（新 -1/零重叠/
+#   目标尺寸 memcpy/IR 拷贝/源型顶替真拦；sizeof(源)/否定 end/sizeof 同型证明不误报）+
+#   三红（漏登记/登记无批准/已毙未清偿）+ 基线可复现与陈旧消减检测；防门禁自身退化
+#   （与 1376/1220 自测同哲学）。
+if not 步("哨兵门禁自测",
+          [sys.executable, "scripts/check_sentinel_gate.py", "--selftest"],
+          超时秒=静态超时):
+    raise SystemExit(1)
 # 1376：程序缓存键审计门禁判别力自测（纯 fixture 副本·零构建·秒级）——正反两态
 #   九例（基线绿/去登记红/新字段红/幽灵登记红/键构造新增红/新环境开关红/锚失效红/
 #   条目身份缺项红/文档缺类别红），防门禁自身退化（与 120/894 自测同哲学）。

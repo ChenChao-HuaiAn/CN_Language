@@ -1,0 +1,55 @@
+{
+ "版本": 1,
+ "工具": "scripts/check_sentinel_gate.py",
+ "任务": "1640",
+ "规则版本": "1640-v1",
+ "规则指纹": "be5c69b8e6aeeac1",
+ "说明": "#1640 哨兵/侥幸模式冻结基线（只减不增）：键=「文件::归一锚文本」，同键重复=计数。基线内=存量放行；新增位置=红（除非协议注释+miss_registry.json 登记条且批准=已批/存量过渡）；键消失=消减提示。手改基线=绕过门禁行为·禁（收账=--update-baseline·仅确认清偿后）。",
+ "生成sha": "456965982a4ece88dc76d2aefc03f837b23d587e",
+ "面": {
+  "负一哨兵": [
+   "src/cn_compiler/ir/ir_oop_call.cpp::return-1;",
+   "src/runtime/file_api.cpp::if(cur<0)return-1;",
+   "src/runtime/file_api.cpp::if(handle==nullptr)return-1;",
+   "src/runtime/file_api.cpp::if(std::fseek(fp,0,SEEK_END)!=0)return-1;",
+   "src/runtime/i128_api.cpp::if(aH<bH)return-1;",
+   "src/runtime/i128_api.cpp::if(a[0]<b[0])return-1;",
+   "src/runtime/i128_api.cpp::if(a[0]<b[0])return-1;",
+   "src/runtime/i128_api.cpp::if(a[1]<b[1])return-1;",
+   "src/runtime/mem_pool.cpp::if(idx>=b.nslots)return-1;",
+   "src/runtime/mem_pool.cpp::if(lo==0)return-1;",
+   "src/runtime/mem_pool.cpp::if(p>=b.begin+b.bytes)return-1;",
+   "src/runtime/mem_pool.cpp::if(ptr==nullptr)return-1;",
+   "src/runtime/mem_pool.cpp::if(static_cast<std::size_t>(p-b.begin)%slot!=0)return-1;",
+   "src/runtime/mem_pool.cpp::return-1;",
+   "src/runtime/mem_pool.cpp::return-1;",
+   "src/runtime/string_api.cpp::if(pos==nullptr)return-1;"
+  ],
+  "零重叠": [
+   "CN语言编译器v2/IR/IR布局.cn::如果(尾<0){返回0;}",
+   "CN语言编译器v2/IR/IR布局尾.cn::如果(常量值<0||常量值>2147483647){返回0;}",
+   "CN语言编译器v2/IR/IR类尾.cn::如果(序<0||序>=有虚类清单们.大小()){返回0;}",
+   "CN语言编译器v2/IR/接口表.cn::如果(槽<0||槽*2+1>=接口方法序们.大小()){返回0;}",
+   "CN语言编译器v2/IR/接口表.cn::如果(槽<0||槽*2+1>=接口方法序们.大小()){返回0;}",
+   "CN语言编译器v2/IR/生成表达式尾.cn::如果(左值偏移<0){│返回0;",
+   "CN语言编译器v2/语义/语义检查赋值.cn::如果(cur.子起点<0||整64(cur.子起点)>=池.大小()){返回0;}",
+   "CN语言编译器v2/语法/解析基础.cn::如果(位置<0||位置>=记号.大小()){返回0;}",
+   "src/cn_compiler/codegen/arm64/arm64_codegen.cpp::if(it==varSlots_.end()){│return0;",
+   "src/cn_compiler/codegen/linux_x64/linux_x64_codegen.cpp::if(it==varSlots_.end()){│return0;",
+   "src/cn_compiler/codegen/x64/x64_codegen.cpp::if(it==varSlots_.end()){│return0;",
+   "src/cn_compiler/opt/algebraic_simplify.cpp::if(a.isConstant||a.id<0)return0;",
+   "src/runtime/file_api.cpp::if(handle==nullptr||buffer==nullptr||count<0)return0;",
+   "src/runtime/mem_pool.cpp::if(cls<0||cls>=kPoolClassCount)return0;"
+  ],
+  "目标尺寸拷贝": [
+   "src/cn_compiler/model/ast_serialize.cpp::std::memcpy(&bits,&v,sizeof(bits));",
+   "src/cn_compiler/model/ast_serialize_impl.hpp::std::memcpy(&v,&bits,sizeof(v));"
+  ],
+  "源型顶替": [
+   "CN语言编译器v2/IR/生成语句结构体赋值.cn::源类型文本=目标类型文本;",
+   "CN语言编译器v2/IR/生成语句结构体赋值.cn::源类型文本=目标类型文本;",
+   "CN语言编译器v2/IR/生成语句结构体赋值.cn::源键=目标键;",
+   "src/cn_compiler/ir/ir_expr_assign_ident.cpp::valueSrcType=targetSrcType;"
+  ]
+ }
+}
