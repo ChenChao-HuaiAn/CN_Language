@@ -177,6 +177,22 @@ bool IRGenerator::assignToIndexTarget(AssignmentExpr* node) {
             return true;
         }
     }
+    // 1651（#1652 同族·赋值位）：`元素 = 无`（目标元素=结果/可选）——按元素
+    //   合成体布局零写（判别位 0+载荷零）；原落标量 StorePtr 只写 8 字节
+    //   （载荷残留，含串载荷重赋值后再释放=垃圾句柄）。零副作用：无 求值恒
+    //   常量 0，前置于 genExpr 不改变求值序。
+    if (!isCompoundAssignOp(node->op) &&
+        node->value->getType() == NodeType::NullLiteral) {
+        const cn::Optional<std::string> elemSrcNull = indexTargetElemSrcType(node);
+        if (elemSrcNull.has_value() &&
+            isResultOrOptionalText(elemSrcNull.value())) {
+            ir::IRValue nullAddr = lvalueAddress(node->target.get());
+            emitSyntheticNullWrite(nullAddr, elemSrcNull.value(), node->location,
+                                   /*preFree=*/true);
+            lastExpr_ = nullAddr;
+            return true;
+        }
+    }
     ir::IRValue value = genExpr(node->value.get());
     // plans/019 阶段4' 方案A：下标目标为字符串元素（字符串数组/字符串* 元素）
     //   且右值为字符串变量标识符 -> 值被外部槽持有（指针逃逸模型，38_tool

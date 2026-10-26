@@ -299,10 +299,10 @@ private:
     void emitStructInitTo(StructInitExpr* init, const ir::IRValue& targetBase, const SourceLocation& loc);
     void emitStructArrayFieldInit(const StructDecl* decl, const std::string& fieldName, const ir::IRValue& fieldAddr, InitListExpr* list, const SourceLocation& loc);  // 1602：结构体数组字段字面量初始化（步进=语义层布局·聚合元素整块写）
     // 结构体/类整体赋值发射（46-a 根治 2026-09-09 提取的单一事实源）： 目标地址 + 右值节点 + 目标类型(canonical)。右值三形态取源地址：
-    bool emitStructWholeAssign(const ir::IRValue& dstAddr, Expr* valueNode,
-                                        const std::string& dstElemCanon,
-                                        const SourceLocation& loc,
-                                        bool preFree = false);
+    bool emitStructWholeAssign(const ir::IRValue& dstAddr, Expr* valueNode, const std::string& dstElemCanon,
+                               const SourceLocation& loc, bool preFree = false);
+    // 1651/1602：合成体空值写入（无=判别位0+载荷零）+ 按地址逐 8 字节零写（零填单点）
+    void emitSyntheticNullWrite(const ir::IRValue& dstAddr, const std::string& canonRaw, const SourceLocation& loc, bool preFree); void emitZeroFillAt(const ir::IRValue& base, std::int64_t bytes, const SourceLocation& loc);
     // 961（914 探针边角·362 复验外溢）：类元素内联体写通道——下标/解引用元素
     //   （类元素数组元素=内联对象体·923/1052 模型）← 类源（标识符/成员/下标/
     //   三元）。目标=元素本体地址（读侧 [元素+字段偏移]）；写入=dtor(元素地址)

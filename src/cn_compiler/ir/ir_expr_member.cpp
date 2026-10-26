@@ -69,6 +69,47 @@ bool IRGenerator::structWholeAssignSrcFirst(Expr* targetExpr, Expr* valueNode,
     return true;
 }
 
+// 1651/1602：按地址逐 8 字节零写单点（合成体空载荷/数组元素空值/可选形参空装箱
+//   同型）。bytes=目标区域字节数——合成体与结构体布局恒 8 对齐，末槽 8 字节写不
+//   越出对齐区；base 无效（id<0，上游已诊断的恢复路径）时零发射返回。
+void IRGenerator::emitZeroFillAt(const ir::IRValue& base, std::int64_t bytes,
+                                 const SourceLocation& loc) {
+    // base.id==-1（IRValue 无效哨兵·上游已诊断）/字节数 0=无槽可写——零发射返回
+    if (base.id == -1 || bytes == 0) return;
+    ir::IRValue zero = emitResult(ir::Opcode::ConstInt, {}, "i64", "0", loc);
+    for (std::int64_t off = 0; off < bytes; off += 8) {
+        ir::IRValue dst = base;
+        if (off != 0) {
+            dst = emitResult(ir::Opcode::FieldAddr, {base}, "ptr",
+                             std::to_string(off), loc);
+        }
+        emit(ir::Opcode::StorePtr, {dst, zero}, ir::IRValue(), "", "ptr", loc);
+    }
+}
+
+// 1651（双侧同病根治）：`无` 赋给 结果/可选 目标（`字段 = 无` / `x = 无` /
+//   `元素 = 无`）——空载荷语义=判别位 0 + 载荷零。原聚合整体赋值通道把
+//   NullLiteral 的求值产物（常量 0）当**源地址**走 CopyStruct（16 字节从地址 0
+//   读=C0000005 fault=0·宿主与 v2 同崩）。preFree=真时先按 tag 守卫释放旧载荷
+//   （`可选<字符串>` 重赋值=无 不泄漏；无值态/错误态垃圾句柄经
+//   __cn_box_class_delete 免疫）。尺寸 miss=合法程序可达的编译器内部缺陷，显形
+//   不静默（#648）。
+void IRGenerator::emitSyntheticNullWrite(const ir::IRValue& dstAddr,
+                                         const std::string& canonRaw,
+                                         const SourceLocation& loc, bool preFree) {
+    if (semantic_ == nullptr || dstAddr.id < 0) return;
+    const std::string canon = types::canonical(canonRaw);
+    const cn::Optional<int> sizeOpt = semantic_->typeSizeOf(canon);
+    if (!sizeOpt.has_value() || sizeOpt.value() <= 0) {
+        diagnostics_.report(DiagnosticLevel::Error, loc,
+            "内部错误: 合成体空值写入尺寸未登记 '" + canonRaw +
+                "' ——静默零写宽度兜底已废除（#648/#1651）");
+        return;
+    }
+    if (preFree) emitOwnedStrFieldPreFree(dstAddr, canon, loc);
+    emitZeroFillAt(dstAddr, sizeOpt.value(), loc);
+}
+
 bool IRGenerator::emitStructWholeAssign(const ir::IRValue& dstAddr,
                                         Expr* valueNode,
                                         const std::string& dstElemCanon,
@@ -81,6 +122,15 @@ bool IRGenerator::emitStructWholeAssign(const ir::IRValue& dstAddr,
         !(semantic_->isStructType(dstElemCanon) ||
           semantic_->isClassType(dstElemCanon))) {
         return false;
+    }
+    // 1651：`无` → 结果/可选 目标=空载荷（判别位 0+载荷零）；必须先于下方
+    //   源地址形态分派——NullLiteral 无左值形态，原落 srcAddr.id<0 返回 false，
+    //   调用方退标量 StorePtr 只写 8 字节（判别位 0、载荷栈残留；含串载荷重赋值
+    //   再 preFree=释放垃圾句柄）。跨家族单点：成员/类字段/静态初始化位共用。
+    if (valueNode->getType() == NodeType::NullLiteral &&
+        isResultOrOptionalText(dstElemCanon)) {
+        emitSyntheticNullWrite(dstAddr, dstElemCanon, loc, preFree);
+        return true;
     }
     // 右值源地址三形态（与下标位既有机制逐点一致）：
     //   IndexExpr/MemberExpr -> 元素/字段内联地址（lvalueAddress）；
@@ -437,18 +487,8 @@ void IRGenerator::emitStructArrayFieldInit(const StructDecl* decl, const std::st
                 continue;
             }
             if (ent == NodeType::NullLiteral) {
-                // 合成体空载荷（可选 元素=无）：按元素宽度逐槽零写（8 字节槽圆整）
-                for (std::int64_t off = 0; off < elemStride; off += 8) {
-                    ir::IRValue zero =
-                        emitResult(ir::Opcode::ConstInt, {}, "i64", "0", loc);
-                    ir::IRValue dst = elemAddr;
-                    if (off != 0) {
-                        dst = emitResult(ir::Opcode::FieldAddr, {elemAddr}, "ptr",
-                                         std::to_string(off), loc);
-                    }
-                    emit(ir::Opcode::StorePtr, {dst, zero}, ir::IRValue(), "",
-                         "ptr", loc);
-                }
+                // 合成体空载荷（可选 元素=无）：按元素宽度逐槽零写（零填单点）
+                emitZeroFillAt(elemAddr, elemStride, loc);
                 continue;
             }
             const bool srcIsCallE = (ent == NodeType::CallExpr);

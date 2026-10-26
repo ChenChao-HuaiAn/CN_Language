@@ -253,18 +253,8 @@ void IRGenerator::boxNullOptionalArgs(CallExpr* node,
         ir::IRValue base = emitResult(ir::Opcode::AddrOf,
                                       {ir::IRValue::var(temp, "i64")}, "ptr",
                                       temp, node->location);
-        // 整槽 8 字节零写（覆盖 标志 与 值/填充；「无」=全零语义）
-        for (int off = 0; off < size; off += 8) {
-            ir::IRValue zero = emitResult(ir::Opcode::ConstInt, {}, "i64", "0",
-                                          node->location);
-            ir::IRValue addr = base;
-            if (off > 0) {
-                addr = emitResult(ir::Opcode::FieldAddr, {base}, "ptr",
-                                  std::to_string(off), node->location);
-            }
-            emit(ir::Opcode::StorePtr, {addr, zero}, ir::IRValue(), "", "ptr",
-                 node->location);
-        }
+        // 整槽 8 字节零写（覆盖 标志 与 值/填充；「无」=全零语义——零填单点）
+        emitZeroFillAt(base, size, node->location);
         args[ai] = base;
     }
 }

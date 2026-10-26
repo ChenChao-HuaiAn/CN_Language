@@ -223,6 +223,17 @@ bool IRGenerator::handleClassFieldAssign(IdentifierExpr* ident, Expr* value,
         if (semantic_ != nullptr && !fieldCanon2.empty() &&
             semantic_->isStructType(fieldCanon2)) {
             ir::IRValue fieldAddr2 = genInstanceFieldAddr(ident->name, loc);
+            // 1651：`字段 = 无`（结果/可选 空载荷）——按合成体布局零写；原落
+            //   下方整块拷贝（lvalueAddress(无)=常量 0 被当源地址→16 字节从地址
+            //   0 拷 C0000005 fault=0，宿主+v2 同病）。preFree=覆盖前释放旧载荷
+            //   （tag 守卫·与下方聚合整块赋值的 preFree 契约同口径）。
+            if (value->getType() == NodeType::NullLiteral &&
+                isResultOrOptionalText(fieldCanon2)) {
+                emitSyntheticNullWrite(fieldAddr2, fieldType, loc,
+                                       /*preFree=*/true);
+                lastExpr_ = fieldAddr2;
+                return true;
+            }
             ir::IRValue srcAddr2;
             if (value->getType() == NodeType::CallExpr) {
                 srcAddr2 = genExpr(value);

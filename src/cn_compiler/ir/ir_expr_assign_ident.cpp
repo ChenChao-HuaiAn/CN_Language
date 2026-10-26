@@ -549,6 +549,28 @@ bool IRGenerator::identifierStructWholeAssign(AssignmentExpr* node, IdentifierEx
     if (semantic_ == nullptr) return false;
     // 1360 结果化：value_or("") 显形（miss=非聚合判定假·原语义）
     const std::string targetSrcType = lookupSrcType(ident->name).value_or("");
+    // 1651：`x = 无`（目标=结果/可选 空载荷）——按合成体布局零写（判别位 0+
+    //   载荷零）；原落通用 Store 只写 8 字节（判别位 0、载荷残留；含串载荷
+    //   重赋值后再按 tag 释放=释放垃圾句柄）。preFree=拥有槽判据同 79-a
+    //   （局部槽零初始化/空安全——首赋无旧值可释）。
+    if (node->value->getType() == NodeType::NullLiteral &&
+        isResultOrOptionalText(targetSrcType)) {
+        ir::IRValue dstAddr1651;
+        if (isByRefCapture(ident->name)) {
+            dstAddr1651 = emitResult(ir::Opcode::Load,
+                                     {ir::IRValue::var(unique, "ptr")}, "ptr",
+                                     unique, node->location);
+        } else if (!isByRefCapture(ident->name)) {
+            // else 新规：显式枚举补集（引用捕获/普通槽两态穷举）
+            dstAddr1651 = emitResult(ir::Opcode::AddrOf,
+                                     {ir::IRValue::var(unique, "i64")}, "ptr",
+                                     unique, node->location);
+        }
+        emitSyntheticNullWrite(dstAddr1651, targetSrcType, node->location,
+                               /*preFree=*/isOwnedFieldSlot(unique));
+        lastExpr_ = value;
+        return true;
+    }
     // 右值：标识符（b = a）或成员/下标（b = 名单[0]）或 链式赋值（b = c = a）
     //   或 结构体返回调用（读取结果 = 数据.读取(99)，Task 6.1 修复）
     bool isChainedAssign = false;

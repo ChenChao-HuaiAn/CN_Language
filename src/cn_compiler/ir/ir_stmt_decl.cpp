@@ -669,25 +669,10 @@ void IRGenerator::storeArrayInitElements(VarDecl* node, InitListExpr* initList,
                 //   （tag=0/载荷=0）——须零填充元素槽；原直接 genExpr(无)=常量 0
                 //   被当物化槽地址整块拷贝（从地址 0 读：可选<整32>/可选<字符串>
                 //   初始化列表 C0000005 fault=0·双侧同病）。逐 8 字节 StorePtr 0
-                //   （元素步进内含 tag+载荷，与 zeroFillArrayTail 全宽补零同规）。
+                //   （元素步进内含 tag+载荷；1602/1651 起统一走零填单点
+                //   emitZeroFillAt，与 zeroFillArrayTail 全宽补零同规）。
                 if (initList->elements[i]->getType() == NodeType::NullLiteral) {
-                    ir::IRValue zero1415 = emitResult(
-                        ir::Opcode::ConstInt, {}, "i64", "0", node->location);
-                    for (std::int64_t sub1415 = 0; sub1415 < elemStride;
-                         sub1415 += 8) {
-                        ir::IRValue subAddr1415 = addr;
-                        if (sub1415 != 0) {
-                            ir::IRValue subOff1415 = emitResult(
-                                ir::Opcode::ConstInt, {}, "i64",
-                                std::to_string(static_cast<long long>(sub1415)),
-                                node->location);
-                            subAddr1415 = emitResult(
-                                ir::Opcode::Add, {addr, subOff1415}, "ptr", "",
-                                node->location);
-                        }
-                        emit(ir::Opcode::StorePtr, {subAddr1415, zero1415},
-                             ir::IRValue(), "", "i64", node->location);
-                    }
+                    emitZeroFillAt(addr, elemStride, node->location);
                     continue;
                 }
                 ir::IRValue synthSrc1415 = genExpr(initList->elements[i].get());
