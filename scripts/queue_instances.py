@@ -173,6 +173,71 @@ def 归一交叉模拟(数据: dict):
     return 值, ""
 
 
+# #1667：整任务认领面（预验整任务 + ci/兜底-* 轮同口径）共用能力位判定——
+#   与 #1665 分片面同一事实源（实例表 交叉模拟 列），避免两套识别漂移。
+未报交叉模拟告警: set[str] = set()
+
+
+def 首次未报交叉模拟(runner: str) -> bool:
+    """未知能力位的显式告警去重（每 runner 一次·整任务/分片两调用面共用）：
+    返回 True=首次（调用方打印「按旧行为放行」告警）。"""
+    if runner in 未报交叉模拟告警:
+        return False
+    未报交叉模拟告警.add(runner)
+    return True
+
+
+def 回查交叉模拟(con, runner: str):
+    """实例表能力位三态（True/False/None=未知/无行·不猜）。"""
+    行 = con.execute("SELECT 交叉模拟 FROM 实例 WHERE 名称=?", (runner,)).fetchone()
+    if 行 is None or 行[0] is None:
+        return None
+    return bool(行[0])
+
+
+def 认领者交叉模拟(con, runner: str, 数据: dict):
+    """#1665/#1667：认领者交叉模拟能力位三态 True/False/None（None=未知）。
+    请求值优先（bool/0/1；显式 null/坏类型 ValueError 显式拒）；未报→回查实例表
+    （instance_ping/task_claim 落表·服务端机械保证不依赖每次自报）。"""
+    if "交叉模拟" in 数据:
+        值, 错误 = 归一交叉模拟(数据)
+        if 错误:
+            raise ValueError(错误)
+        return bool(值)
+    return 回查交叉模拟(con, runner)
+
+
+def 整任务认领过滤(交叉模拟: bool | None) -> str:
+    """#1667：task_claim 认领限制过滤（337 平台白名单 + 交叉模拟规则）：
+    普通/未知=旧口径（未知=None 按旧行为放行=渐进部署，不静默改变存量语义）；
+    交叉模拟实例=仅显式邀请任务（认领限制字面含 xsim 标记），平台段按目标平台
+    linux-arm64 或显式 xsim 平台名匹配。返回 SQL 片段（1 个 ? = 平台）。"""
+    if not 交叉模拟:
+        return (" AND (认领限制 IS NULL OR 认领限制='' "
+                "OR ','||认领限制||',' LIKE '%,'||?||',%')")
+    return (" AND COALESCE(认领限制,'') LIKE '%xsim%' "
+            "AND (','||认领限制||',' LIKE '%,'||?||',%' "
+            "OR ','||认领限制||',' LIKE '%,linux-arm64-xsim,%')")
+
+
+def 整任务认领准备(con, 时刻函数, runner: str, 数据: dict, 平台: str,
+                物理机: str, M6原生):
+    """#1667：task_claim 入口统一准备（校验→落表→三态→未知告警）：
+    ① 能力位归一校验先于实例表写入（坏类型/显式 null 不污染实例行·#1221 P2-2）；
+    ② 实例认领落表（平台/物理机/M6原生/交叉模拟·COALESCE 不覆盖缺省）；
+    ③ 返回 (交叉位, 错误说明)——交叉位 True/False/None（None=旧 daemon 未知，
+       首次出现打印显式告警，调用方按旧行为放行）。"""
+    交叉值, 错误 = 归一交叉模拟(数据)
+    if 错误:
+        return None, 错误
+    实例认领(con, 时刻函数, runner, 平台, 物理机, M6原生, 交叉值)
+    交叉位 = bool(交叉值) if 交叉值 is not None else 回查交叉模拟(con, runner)
+    if 交叉位 is None and 首次未报交叉模拟(runner):
+        print("[任务让路] %s 未报交叉模拟能力位——整任务按旧行为放行（#1667 渐进部署："
+              "升级 runner 后自动生效）" % runner, flush=True)
+    return 交叉位, ""
+
+
 def 实例认领(con, 时刻函数, runner: str, 平台: str, 物理机: str = "",
             M6原生=None, 交叉模拟=None) -> None:
     """task_claim/task_shard_claim 认领点挂钩（须持写锁·调用方 commit）：注册/刷

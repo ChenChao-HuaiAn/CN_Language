@@ -16,7 +16,7 @@ __main__ 副本）；行为级桩对照经猴补/还原主模块属性实现（�
 linux 编译器缓存配置解析（auto/off/显式/非法值）+构建链行为级桩+执行机归因值/结构锁（1299）｜
 分片退化编排五态+中文分支 URL 编码（1369）｜物理内存真实探测平台分派+失败判红两态
 （#1608·废除 1528 的 4096 兜底）｜交叉模拟实例识别/平台如实上报/领片让路与载荷能力位
-（#1665）。
+（#1665）｜整任务/兜底轮让路判定+CN_XSIM_ALLOW_TASK 逃生门+ci_shard 行数红线（#1667）。
 """
 from __future__ import annotations
 
@@ -1765,6 +1765,54 @@ def _1665断言(主模块, 断言) -> None:
          '固定["交叉模拟"]' in 源报活)
 
 
+def _1667断言(主模块, 断言) -> None:
+    """#1667 交叉模拟实例不领全量 e2e 整任务（预验整任务 + ci/兜底-* 轮同口径）：
+    客户端让路判定/显式开关/每 runner 一次日志/结构锁 + ci_shard 行数红线
+    （#1665/#1667 识别面外迁 ci_xsim 后守 1000）。服务端机械拒绝见 queue_selftest 1667 段。"""
+    import ci_shard
+    import ci_xsim
+
+    断言("1667 让路：交叉模拟实例默认不可认领整任务",
+         ci_shard.整任务可认领(True) is False)
+    断言("1667 反：普通实例可认领整任务",
+         ci_shard.整任务可认领(False) is True)
+    断言("1667 兼容：未知（旧调用面 None）按旧行为可认领",
+         ci_shard.整任务可认领(None) is True)
+    旧 = os.environ.pop("CN_XSIM_ALLOW_TASK", None)
+    try:
+        os.environ["CN_XSIM_ALLOW_TASK"] = "1"
+        断言("1667 逃生门：CN_XSIM_ALLOW_TASK=1 显式放行",
+             ci_shard.整任务可认领(True) is True and ci_xsim.交叉模拟允许领任务())
+        os.environ["CN_XSIM_ALLOW_TASK"] = "abc"
+        断言("1667 非法开关值=告警+默认禁（不静默吞键）",
+             ci_shard.整任务可认领(True) is False)
+    finally:
+        if 旧 is None:
+            os.environ.pop("CN_XSIM_ALLOW_TASK", None)
+        else:
+            os.environ["CN_XSIM_ALLOW_TASK"] = 旧
+
+    可领甲, 行甲 = ci_shard.整任务认领判定(True, "r1667甲")
+    可领乙, 行乙 = ci_shard.整任务认领判定(True, "r1667甲")
+    可领丙, 行丙 = ci_shard.整任务认领判定(False, "r1667丙")
+    断言("1667 判定：让路=False+首见日志行（每 runner 一次）",
+         可领甲 is False and bool(行甲) and 可领乙 is False and 行乙 == "")
+    断言("1667 判定：普通实例=(True, 空日志)",
+         可领丙 is True and 行丙 == "")
+    # 结构锁：daemon 池认领走判定单点、载荷仍带能力位；develop 直跑让路在位
+    源认领 = inspect.getsource(主模块.池认领任务)
+    断言("1667 结构：池认领走整任务认领判定 + 载荷携带能力位",
+         "ci_shard.整任务认领判定(" in 源认领 and '"交叉模拟": 交叉模拟实例' in 源认领)
+    源daemon = inspect.getsource(主模块)
+    断言("1667 结构：develop 降级直跑让路在位（交叉模拟不直跑全量）",
+         "ci_shard.整任务可认领(交叉模拟实例)" in 源daemon
+         and "不直跑 develop 全量" in 源daemon)
+    # 拆分红线：ci_shard 曾 1026 行——#1665/#1667 识别面外迁 ci_xsim 后必须 <1000
+    源目录 = Path(__file__).resolve().parent
+    断言("1667 行数红线：ci_shard.py <1000（交叉模拟识别面外迁 ci_xsim 防回涨）",
+         len((源目录 / "ci_shard.py").read_text(encoding="utf-8").splitlines()) < 1000)
+
+
 def 自测(主模块) -> int:
     """--selftest 入口（断言集 523+637+657+660+728t+770+842+935+973+975+1297+1299+1369+1392+1401+1423+1424+1426+1428+1460+1463+1385+1632）——CI 式：逐条打印，任一红退出 1。"""
     断言们: list[tuple[str, bool]] = []
@@ -1799,6 +1847,7 @@ def 自测(主模块) -> int:
     _1385断言(主模块, 断言)
     _1608断言(主模块, 断言)
     _1665断言(主模块, 断言)
+    _1667断言(主模块, 断言)
     _行数断言(断言)
     for 名, ok in 断言们:
         print("  [%s] %s" % ("OK" if ok else "×", 名))

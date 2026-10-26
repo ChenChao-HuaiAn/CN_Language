@@ -42,6 +42,7 @@ from pathlib import Path
 from urllib.parse import quote
 
 import ci_report   # #1608：物理内存真实探测（报活携探测结果·失败=None 显式）
+import ci_xsim     # #1665/#1667：交叉模拟识别/平台推导/让路开关（先拆再加守 1000 行）
 
 
 def _仓库根():
@@ -262,104 +263,45 @@ def 物理机标识() -> str:
     return 机
 
 
-# ═══════════════ #1665 交叉模拟实例识别（xsim 不领普通 e2e 分片） ═══════════════
-# 背景：预验链顶 ab16e8999e 片 4/6/8 由 home-xsim-1/2/3 认领，i128 族 12 例红
-#   （500/789/826/833 期望 111111111111/18446744073709551621 实际 0）；arm64 真机
-#   同族全绿——qemu-user 模拟下错值（非编译器语义缺陷）。交叉模拟实例不得认领
-#   普通 e2e 分片（服务端 queue_shard 另有机械拒绝；此处客户端自律先行让路）。
-#   设计面保留：正式任务可用 --pool-limit linux-arm64,xsim 显式邀请（主实例由
-#   linux-arm64 认领、分片允许 xsim 参与），本机亦可 CN_XSIM_ALLOW_SHARD=1 显式
-#   放行客户端领片。
-交叉模拟环境键 = "CN_XSIM"          # tests/e2e/e2e交叉模拟.py 激活键（同源）
-交叉模拟领片开关 = "CN_XSIM_ALLOW_SHARD"
-交叉工具链环境键们 = ("CN_AS", "CN_CXX")
+# ═══════════════ #1665/#1667 交叉模拟识别面（实现外迁 ci_xsim·先拆再加） ═══════════════
+# #1665 分片让路（xsim 不领普通 e2e 片）与 #1667 整任务让路（不领全量 e2e 整任务/
+#   兜底轮）的识别/平台推导/开关单一事实源已外迁 ci_xsim.py（ci_shard 叠加
+#   #1632/#1634/#1640 后 1026 行超 1000 红线——先拆再加守线）。此处保留别名保
+#   调用面/自测零改；领片让路日志去重集合仍在本模块（分片专属）。
+交叉模拟环境键 = ci_xsim.交叉模拟环境键
+交叉模拟领片开关 = ci_xsim.交叉模拟领片开关
+交叉模拟领任务开关 = ci_xsim.交叉模拟领任务开关
+交叉工具链是arm64 = ci_xsim.交叉工具链是arm64
+本实例交叉模拟 = ci_xsim.本实例交叉模拟
+规范平台 = ci_xsim.规范平台
+启动平台信息 = ci_xsim.启动平台信息
+交叉模拟允许领片 = ci_xsim.交叉模拟允许领片
+交叉模拟允许领任务 = ci_xsim.交叉模拟允许领任务
 _交叉模拟告警: set[str] = set()
 
 
-def 交叉工具链是arm64(环境=None) -> bool:
-    """#1665：CN_AS/CN_CXX 指向 aarch64 交叉工具链=本实例做 arm64 交叉构建（028 §十
-    部署实证）。即使 CN_CI_PLATFORM 漏配也可识别（平台推导的数据源）；环境可注入
-    （selftest 零环境依赖）。"""
-    环 = os.environ if 环境 is None else 环境
-    for 键 in 交叉工具链环境键们:
-        值 = str(环.get(键, "") or "").strip().lower()
-        if "aarch64" in 值 or "arm64" in 值:
-            return True
-    return False
+def 整任务可认领(交叉模拟, 环境=None) -> bool:
+    """#1667：整任务认领面让路判定（预验整任务与 ci/兜底-* 轮同口径——两者都走
+    task_claim 且都会跑全量 e2e）。交叉模拟=True 默认不可认领（qemu 下 i128 族
+    错值假红·AI 裁决 239：arm64 全覆盖由单位机真机承担，xsim 全量绿无信息量）；
+    CN_XSIM_ALLOW_TASK=1 显式放行。None=未知（旧调用面）按旧行为可认领。"""
+    return not (交叉模拟 is True and not 交叉模拟允许领任务(环境))
 
 
-def 本实例交叉模拟(平台: str, 机架: str, runner: str = "", 环境=None) -> bool:
-    """#1665：本实例是否交叉模拟（qemu-user 跑非宿主架构目标）。四源任一为真：
-    ① 目标平台 linux-arm64 且宿主架构非 arm64（x64 宿主跑 arm64 目标·与
-       ci_m6.交叉模拟态 同构判据）；
-    ② CN_XSIM 环境非空且非 0/false/no/off（e2e 激活键·部署可显式标记）；
-    ③ CN_AS/CN_CXX 指向 aarch64 交叉工具链（028 部署实证·平台漏配亦可识别）；
-    ④ runner 标识含 xsim（#1634 同源识别·近期 arm64 轮执行机均 home-xsim-*）。
-    纯函数（环境可注入·selftest 直调），识别结果随池协议上报为能力位。"""
-    环 = os.environ if 环境 is None else 环境
-    标记 = str(环.get(交叉模拟环境键, "") or "").strip().lower()
-    if 标记 and 标记 not in ("0", "false", "no", "off"):
-        return True
-    机 = str(机架 or "").strip().lower()
-    if str(平台 or "").strip() == "linux-arm64" and 机 not in ("aarch64", "arm64"):
-        return True
-    if 交叉工具链是arm64(环) and 机 not in ("aarch64", "arm64"):
-        return True
-    return "xsim" in str(runner or "").lower()
+_整任务让路告警: set[str] = set()
 
 
-def 规范平台(显式平台: str, 机架: str, 环境=None) -> tuple:
-    """#1665 平台如实上报：显式 CN_CI_PLATFORM 优先（用户配置权威）；未显式时若
-    CN_AS/CN_CXX 指向 aarch64 交叉工具链且宿主非 arm64 → 目标平台按 linux-arm64
-    上报（真实目标平台，不冒充宿主平台）。返回 (平台, 说明)——平台空=保持原探测；
-    说明非空=调用方必须打印（显式推导，不静默改）。"""
-    显式 = str(显式平台 or "").strip()
-    if 显式:
-        return 显式, ""
-    机 = str(机架 or "").strip().lower()
-    if 机 not in ("aarch64", "arm64") and 交叉工具链是arm64(环境):
-        return "linux-arm64", ("检测到 aarch64 交叉工具链而 CN_CI_PLATFORM 未设——"
-                               "平台按目标平台 linux-arm64 上报（#1665 平台如实上报）")
-    return "", ""
-
-
-def 交叉模拟允许领片(环境=None) -> bool:
-    """#1665：交叉模拟实例默认不领普通 e2e 分片；CN_XSIM_ALLOW_SHARD=1/true/yes 显式
-    放行（承担交叉模拟设计面时用·默认禁）。非法值=按默认证实告警（不静默吞键）。"""
-    环 = os.environ if 环境 is None else 环境
-    原 = str(环.get(交叉模拟领片开关, "") or "").strip().lower()
-    if not 原:
-        return False
-    if 原 in ("1", "true", "yes", "on"):
-        return True
-    if 原 in ("0", "false", "no", "off"):
-        return False
-    print("[分片配置] %s=%r 非法——按默认（不放行交叉模拟领片）" % (交叉模拟领片开关, 原),
-          flush=True)
-    return False
-
-
-def 启动平台信息(探测平台: str, 显式平台: str, 机架: str, runner: str,
-                环境=None) -> tuple:
-    """#1665：daemon 启动平台信息单点（实现外宿住·ci_daemon 只打印日志行）——
-    返回 (平台, 交叉模拟, 日志行们)：
-      平台 = 显式 CN_CI_PLATFORM 优先；未显式且交叉工具链指向 aarch64 → linux-arm64
-             （真实目标平台·不冒充宿主）；其余保持运行时探测值（零行为变化）。
-      交叉模拟 = 本实例交叉模拟(平台, 机架, runner)（四源判定）。
-      日志行 = 推导说明 + 交叉模拟判定 + 配置矛盾告警（调用方逐条打印·不静默）。"""
-    规, 说明 = 规范平台(显式平台, 机架, 环境)
-    平台 = 规 or str(探测平台 or "")
-    交叉 = 本实例交叉模拟(平台, 机架, runner, 环境)
-    行们 = []
-    if 说明:
-        行们.append("[平台] " + 说明)
-    if 交叉:
-        行们.append("[平台] 本实例判定为交叉模拟（平台=%s·宿主=%s）——不领普通 e2e 分片（#1665）"
-                    % (平台, 机架))
-        if 平台 not in ("linux-arm64", "linux-arm64-xsim"):
-            行们.append("[平台警告] 交叉模拟检测为真但平台=%s（CN_CI_PLATFORM 与交叉工具链/"
-                        "命名矛盾）——按显式配置上报，分片侧已按能力位保护" % 平台)
-    return 平台, 交叉, 行们
+def 整任务认领判定(交叉模拟, runner: str, 环境=None) -> tuple:
+    """#1667：整任务让路判定+日志文案单点（ci_daemon 池认领/直跑两处共用）——
+    返回 (可认领, 日志行)。可认领=(True, "")；让路=(False, 首见日志行或 "")。
+    首见日志每 runner 一次（集合本模块持有·daemon 不再维护）。"""
+    if 整任务可认领(交叉模拟, 环境):
+        return True, ""
+    if runner in _整任务让路告警:
+        return False, ""
+    _整任务让路告警.add(runner)
+    return False, ("[整任务让路] %s 为交叉模拟实例——不认领全量 e2e 整任务/兜底轮"
+                   "（#1667·qemu i128 族错值；CN_XSIM_ALLOW_TASK=1 可显式放行）" % runner)
 
 
 def 召唤从片(池调用, 分支: str, runner: str, 片数: int) -> bool:

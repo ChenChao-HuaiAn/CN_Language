@@ -58,10 +58,9 @@ import queue_instances
 未报指纹前缀 = "未报指纹:"
 _未报指纹告警: set[str] = set()
 # #1665 交叉模拟认领过滤：显式邀请标记（认领限制任一段含 xsim 即视为邀请——
-#   integrate --pool-limit linux-arm64-xsim / xsim 均可）；显式平台段名。
+#   integrate --pool-limit linux-arm64,xsim 均可）；显式平台段名。
 xsim限制标记 = "xsim"
 xsim显式平台 = "linux-arm64-xsim"
-_未报交叉模拟告警: set[str] = set()
 _交叉模拟让路告警: set[str] = set()
 
 
@@ -231,18 +230,9 @@ def _片认领过滤(交叉模拟: bool = False) -> str:
 
 
 def _认领者交叉模拟(con, runner: str, 数据: dict):
-    """#1665：认领者交叉模拟能力位三态 True/False/None（None=未知）。
-    请求值优先（bool/0/1·显式 null/坏类型 ValueError 显式拒）；未报→回查实例表
-    （instance_ping/task_claim 落表·服务端机械保证不依赖客户端每次自报）。"""
-    if "交叉模拟" in 数据:
-        值, 错误 = queue_instances.归一交叉模拟(数据)
-        if 错误:
-            raise ValueError(错误)
-        return bool(值)
-    行 = con.execute("SELECT 交叉模拟 FROM 实例 WHERE 名称=?", (runner,)).fetchone()
-    if 行 is None or 行[0] is None:
-        return None
-    return bool(行[0])
+    """#1665：认领者交叉模拟能力位三态 True/False/None——实现外宿 queue_instances
+    （#1667 整任务/分片两面共用同一事实源·避免两套识别漂移）。"""
+    return queue_instances.认领者交叉模拟(con, runner, 数据)
 
 
 def 认领(con, 时戳, 数据: dict) -> dict:
@@ -288,8 +278,7 @@ def 认领(con, 时戳, 数据: dict) -> dict:
         交叉 = _认领者交叉模拟(con, runner, 数据)
     except ValueError as e:
         return {"ok": False, "说明": str(e)}
-    if 交叉 is None and runner not in _未报交叉模拟告警:
-        _未报交叉模拟告警.add(runner)
+    if 交叉 is None and queue_instances.首次未报交叉模拟(runner):
         print("[分片] %s 未报交叉模拟能力位——按旧行为放行（#1665 渐进部署：升级 runner 后自动生效）"
               % runner, flush=True)
     if 交叉 is True and runner not in _交叉模拟让路告警:

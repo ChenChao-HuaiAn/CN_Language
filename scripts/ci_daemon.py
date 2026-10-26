@@ -117,10 +117,11 @@ runner标识 = os.environ.get("CN_RUNNER_ID", socket.gethostname())   # 池内�
 日志目录 = 仓库根 / "ci-logs"
 锁文件 = 仓库根 / "ci-logs" / "daemon.lock"
 
-# #1665 平台如实上报 + 交叉模拟实例位（判定/说明单点外宿 ci_shard.启动平台信息）：
+# #1665/#1667 平台如实上报 + 交叉模拟实例位（判定/说明单点外宿 ci_shard.启动平台信息）：
 #   交叉模拟实例随 task_claim/task_shard_claim/instance_ping 上报——服务端实例表落表、
-#   分片认领机械拒绝（qemu 下 i128 族错值假红）；客户端领片先行让路（ci_shard.领片）。
-#   设计面任务经 CN_XSIM_ALLOW_SHARD=1 显式放行。
+#   分片/整任务认领机械拒绝（qemu 下 i128 族错值假红）；客户端领片与整任务先行让路
+#   （#1665 分片·#1667 预验整任务/兜底轮与 develop 降级直跑）。设计面任务经
+#   CN_XSIM_ALLOW_SHARD=1 / CN_XSIM_ALLOW_TASK=1 显式放行。
 平台, 交叉模拟实例, _平台日志们 = ci_shard.启动平台信息(
     平台, os.environ.get("CN_CI_PLATFORM", ""), 机架, runner标识)
 for _平台行 in _平台日志们:
@@ -616,15 +617,23 @@ def 跑分片轮(sha: str, 轮分支: str, 片序: int = 0, 片数: int = 1) -> 
 def 池认领任务() -> dict | None:
     """向池认领一个预验任务（服务端写锁内原子+心跳超时回收）。无任务/池不可达/未配置 → None。
     337：自报平台（win-x64/linux-x86_64/linux-arm64·294 三分运行时探测）——服务端按任务
-    认领限制过滤，只派给白名单含本平台的任务；缺省语义（不限任务）对旧/新 runner 完全一致。"""
+    认领限制过滤，只派给白名单含本平台的任务；缺省语义（不限任务）对旧/新 runner 完全一致。
+    #1667：交叉模拟实例默认不领整任务（预验整任务与 ci/兜底-* 轮都跑全量 e2e·qemu
+    i128 族错值假红；服务端能力位机械拒绝为权威，此处客户端先行让路省一次请求）；
+    CN_XSIM_ALLOW_TASK=1 显式放行。每 runner 一次显式日志（不静默空转）。"""
     配置 = 池配置()
     if not 配置["池地址"]:
+        return None
+    可领, 让路行 = ci_shard.整任务认领判定(交叉模拟实例, runner标识)
+    if 让路行:
+        print(让路行, flush=True)
+    if not 可领:
         return None
     回 = 池调用(配置, "task_claim", {"runner": runner标识, "平台": 平台,
                                      "物理机": ci_shard.物理机标识(),
                                      # #1221：M6 原生可跑能力位（实例表观测/派发数据源）
                                      "M6原生": ci_m6.M6原生可跑(平台, 机架),
-                                     # #1665：交叉模拟能力位（服务端落表+分片拒绝数据源）
+                                     # #1665：交叉模拟能力位（服务端落表+认领拒绝数据源）
                                      "交叉模拟": 交叉模拟实例})
     if 回 and 回.get("ok"):
         return 回.get("任务")
@@ -929,16 +938,22 @@ def 主(常驻: bool, 强制: bool, 等锁: bool = False) -> int:
                 time.sleep(轮询间隔秒)
                 重抢锁(锁)
                 continue
-            print("[降级] 兜底入池失败——本机直跑（门禁永不缺位）：%s" % sha[:10], flush=True)
-            # ── 降级直跑落到下方开跑（develop 分支照发「执行中」上报=观察面可见） ──
-            print("[开跑] %s @ %s（分支=%s%s）" % (sha[:10],
-                  datetime.now().strftime("%H:%M:%S"), 分支,
-                  "·预验" if 分支 != "develop" else ""), flush=True)
-            # 190（1035 轮）：开跑即上报「执行中」（细节见 上报执行中 函数）
-            上报执行中(sha, 分支, 平台)
-            结果 = 带门禁锁跑(sha)
-            if 结果 is not None:     # None=291 让出（gate_lock 互忙）——不落盘·下轮再战
-                ci_round.直跑收口(sha, 结果, 落盘, 仓库根=仓库根, 轮分支=分支)   # #1221 P1-10/P1-2：过期不落盘·预验轮照落红
+            if not ci_shard.整任务可认领(交叉模拟实例):
+                # #1667：交叉模拟实例不直跑全量 e2e（qemu i128 族错值假红无信息量）——
+                #   门禁由原生/真机实例承担；池不可达时该面等池恢复，不制造假红。
+                print("[整任务让路] 交叉模拟实例不直跑 develop 全量（#1667）——交由原生/真机实例",
+                      flush=True)
+            else:
+                print("[降级] 兜底入池失败——本机直跑（门禁永不缺位）：%s" % sha[:10], flush=True)
+                # ── 降级直跑落到下方开跑（develop 分支照发「执行中」上报=观察面可见） ──
+                print("[开跑] %s @ %s（分支=%s%s）" % (sha[:10],
+                      datetime.now().strftime("%H:%M:%S"), 分支,
+                      "·预验" if 分支 != "develop" else ""), flush=True)
+                # 190（1035 轮）：开跑即上报「执行中」（细节见 上报执行中 函数）
+                上报执行中(sha, 分支, 平台)
+                结果 = 带门禁锁跑(sha)
+                if 结果 is not None:     # None=291 让出（gate_lock 互忙）——不落盘·下轮再战
+                    ci_round.直跑收口(sha, 结果, 落盘, 仓库根=仓库根, 轮分支=分支)   # #1221 P1-10/P1-2：过期不落盘·预验轮照落红
         else:
             # ── CN_CI_BRANCH 点名预验 / --force 每日兜底（770：直跑仅剩的两条非轮转路径） ──
             print("[开跑] %s @ %s（分支=%s%s）" % (sha[:10],
