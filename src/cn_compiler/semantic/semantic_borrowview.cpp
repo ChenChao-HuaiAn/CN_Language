@@ -25,6 +25,7 @@
 #include <vector>
 
 #include "cn_compiler/semantic/semantic.hpp"
+#include "cn_compiler/semantic/semantic_staticguard.hpp"
 #include "cn_compiler/model/type_system.hpp"
 
 namespace cn_compiler {
@@ -409,6 +410,10 @@ void SemanticAnalyzer::clearBorrowViewState() {
 //   参数/全局/静态/类字段标识符）拒绝——调用方 free 借用指针=悬垂/UAF。拥有化须显式：
 //   字符串复制(...)（落堆）或改返回类型 字符*（借用视图）。泛型单态化体内豁免（A2）：
 //   实例化类方法体的 T 来源字符串=借用语义（Rust Vec::get -> &T 同款）。
+//   #1614（2026-10-26 用户批甲案）：标识符面补「函数内静态局部」分支——静态
+//   局部经 declareVar 入 scopes_，原 !isCurrentFnLocal 判定不可达=宿主放行
+//   （返回链搬空静态槽）vs v2 拒（865-a 解析期合成名落非局部）=双侧分叉；
+//   修后判据 staticguard::isStaticLocal、诊断名按 v2 合成名口径逐字一致。
 void SemanticAnalyzer::checkReturnBorrowA2(ReturnStmt* node, const std::string& valueType) {
     if (types::canonicalEquals(currentReturnType_, "字符串") &&
         genericTypeParams_.empty()) {
@@ -432,6 +437,19 @@ void SemanticAnalyzer::checkReturnBorrowA2(ReturnStmt* node, const std::string& 
             if (currentFnParamNames_.count(rn) > 0) {
                 borrowRetA2 = true;
                 whyA2 = "参数 '" + rn + "'（参数=借用）";
+            } else if (staticguard::isStaticLocal(rn)) {
+                // #1614（2026-10-26 用户批甲案·1025 采样轮探针 s4 分叉实锤）：
+                //   函数内静态局部=静态存储期借用（与顶层静态同族）——静态槽
+                //   不可经拥有返回链移出（修前宿主放行且返回链搬空静态槽·产物
+                //   实测输出 AB/空/空），禁静默隐式拷贝：须 字符串复制(...) 显式
+                //   落堆或改 字符* 借用视图。诊断名按 v2 865-a 解析期合成名口径
+                //   名$静态$函数名 拼接（双侧文案逐字一致·1566 用例固化）。
+                //   判据复用 480 staticguard 函数级表（recordStaticLocal 登记/
+                //   notePlainDecl 遮蔽移除·865-a 双侧同构），置于 isCurrentFnLocal
+                //   之前——静态局部已 declareVar 入 scopes_，非局部分支不可达。
+                borrowRetA2 = true;
+                whyA2 = "'" + rn + "$静态$" + currentFunctionName_ +
+                        "'（全局/静态/类字段=借用）";
             } else if (!isCurrentFnLocal(rn)) {
                 // 不在函数作用域=全局/静态/类字段（方法体裸字段名不在 scopes_
                 // 中，恰好落入此分支）——均借用
