@@ -191,6 +191,40 @@ std::unique_ptr<StructDecl> Parser::parseStructDecl(bool isUnion) {
                 field.type = parseTypeNameEx();
             }
         } else {
+            // 1616（乙案澄清·2026-10-26 用户批）：结构体体内 函数 声明位精确
+            //   指路——001 §4.4 乙案：结构体=纯数据聚合·成员函数仅限 运算符X
+            //   重载（通道欠账挂 #1635）·普通成员方法须用 类。文案共用
+            //   kStructMethodRejectDiag（parser.hpp·与 v2 逐字同串）。报错后
+            //   深度扫描同步跳过方法体回字段循环（与 v2 解析结构体声明 同构
+            //   恢复——防 synchronize 后 consume('}') 失败产生级联诊断；花括号
+            //   只出自运算符 token〔字符串/字符已词法单 token 化〕；分号=原型
+            //   声明边界；深度≤0 即止=残缺形态错误恢复·非业务数值区间分支）。
+            //   联合体面维持原诊断（乙案立法面=结构体·不扩面）；其余非法
+            //   token 维持「结构体字段预期类型」。Error 诊断使编译中止·
+            //   无静默放行。
+            if (!isUnion && check(TokenType::Kw_Function)) {
+                reportErrorHere(kStructMethodRejectDiag);
+                int syncDepth = 0;
+                while (!check(TokenType::EndOfFile)) {
+                    if (check(TokenType::LeftBrace)) {
+                        syncDepth++;
+                        advance();
+                        continue;
+                    }
+                    if (check(TokenType::RightBrace)) {
+                        // 非 0 减一；0 见 '}'=残缺形态（无方法体）直接收口。
+                        //   收尾判定=相等枚举（==0 匹配完/残缺归零两态合一）·
+                        //   非单边开区间（1238 配套 else 新规/单边禁令词面合规）。
+                        if (syncDepth != 0) syncDepth--;
+                        advance();
+                        if (syncDepth == 0) break;
+                        continue;
+                    }
+                    if (syncDepth == 0 && check(TokenType::Semicolon)) break;
+                    advance();
+                }
+                continue;  // 回字段循环——循环头正常收口结构体 '}'
+            }
             reportErrorHere("结构体字段预期类型");
             synchronize();
             break;

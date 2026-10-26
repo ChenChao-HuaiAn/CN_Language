@@ -27,6 +27,15 @@ inline constexpr const char* kFieldInitRejectDiag =
     "结构体字段声明初始化器未支持（001 §5.7 字段=裸声明·类实例字段初始化器"
     "见 §5.6 支持）——请在构造函数或函数体中赋值";
 
+// 1616（乙案澄清·2026-10-26 用户批·1025 采样轮）：结构体体内普通成员方法
+//   拒绝诊断统一文案——001 §4.4 乙案：结构体=纯数据聚合，成员函数仅限
+//   运算符X 重载（值语义运算符生态位·发射通道欠账挂 #1635），普通成员方法
+//   须用 类。与 v2 同串逐字一致（零分叉纪律·挂点=结构体/联合体体内 函数
+//   声明位·宿主 parser_decl parseStructDecl / v2 解析结构体声明 同点）。
+inline constexpr const char* kStructMethodRejectDiag =
+    "结构体不支持普通成员方法——结构体=纯数据聚合·需要行为请用 类"
+    "（结构体仅可定义 运算符X 成员·暂未实现）";
+
 // 判断Token是否为类型关键字（阶段一基本类型 + 阶段三 结果/可选 模板类型名）
 // 1216：定义内联于此，供六个解析 TU 共用（parser.cpp/parser_expr/
 //   parser_stmt/parser_decl/parser_oop/parser_type；原为 parser.cpp 导出
