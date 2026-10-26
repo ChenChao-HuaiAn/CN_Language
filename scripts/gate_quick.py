@@ -132,12 +132,27 @@ print("== L1 快速门禁（920·提交前）==", flush=True)
 #    仍靠人眼）：负一哨兵/零重叠/目标尺寸拷贝（#1592 同族）/源型顶替四面机械识别；
 #    协议注释+miss_registry 登记条复用 882 通道·冻结基线只减不增·新增位置即红。
 for 名 in ("check_ascii_idents", "check_keywords_sync", "check_registry_audit",
-           "check_case_numbers", "check_miss_gate", "check_sentinel_gate",
+           "check_case_numbers", "check_registry_sanity", "check_miss_gate", "check_sentinel_gate",
            "check_deploy_manifest",
            "check_syntax_semantic_sync", "check_verifier_selfcheck",
            "check_parallel_prefix", "check_program_cache_key_audit"):
     if not 步(名, [sys.executable, f"scripts/{名}.py"], 超时秒=静态超时):
         raise SystemExit(1)
+# 1259：高冲突单点 JSON 写后校验闸前置已入上方静态族（check_registry_sanity）——
+#   此处补 merge driver 安装态黄字提示（.gitattributes 声明了自定义 driver 而本机
+#   git config 未装=回退普通冲突无害·但失去自动并集——黄字提醒一次性安装，不卡门禁）。
+try:
+    import subprocess as _sp
+    _attrs = Path(".gitattributes").read_text(encoding="utf-8")
+    _缺失 = [d for d in ("miss-registry", "doc-coverage")
+            if f"merge={d}" in _attrs and _sp.run(
+                ["git", "config", "--get", f"merge.{d}.driver"],
+                capture_output=True).returncode != 0]
+    if _缺失:
+        print(f"[merge-drivers] ⚠ 本机未安装 merge driver：{'、'.join(_缺失)}"
+              f"（高冲突单点 JSON 回退普通冲突·一次性安装=bash scripts/setup_merge_drivers.sh）")
+except OSError:
+    pass
 # 1640：哨兵门禁判别力自测（纯合成临时树·零构建·秒级）——正反两态（新 -1/零重叠/
 #   目标尺寸 memcpy/IR 拷贝/源型顶替真拦；sizeof(源)/否定 end/sizeof 同型证明不误报）+
 #   三红（漏登记/登记无批准/已毙未清偿）+ 基线可复现与陈旧消减检测；防门禁自身退化

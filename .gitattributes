@@ -7,3 +7,12 @@
 *.cn text eol=lf
 *.expected text eol=lf
 *.meta text eol=lf
+
+# ===== 高冲突单点 JSON 三路并集合并驱动（#1259·方案③）=====
+# 背景：miss_registry/doc_coverage 为全任务共写单点·每任务补条/挂用例即整文件冲突
+#   （1144/1142/1157/1156 连环·10-27 深度机 1187 轮五度冲突实证）。本声明挂自定义
+#   driver 做条目级三路并集（fail-safe：JSON 损坏/结构不符回退普通冲突）。
+# 每机一次性安装（未安装=回退普通冲突·无害；安装后自动并集）：
+#   bash scripts/setup_merge_drivers.sh
+scripts/miss_registry.json merge=miss-registry
+website/tools/doc_coverage.json merge=doc-coverage

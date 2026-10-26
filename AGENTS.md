@@ -169,6 +169,11 @@
    ③pre-commit 拦**任何分支改 plans/021**（382 立规·384 起 021 文件已删除——拦截保留防复活；
    台账唯一权威=看板服务端）。
    hook 本体=scripts/githooks/（入库·他机 fetch 后 config 一次即生效）。
+   ⑪259 起**高冲突单点 JSON merge driver**（每机一次性安装 `bash scripts/setup_merge_drivers.sh`）：
+   scripts/miss_registry.json 与 website/tools/doc_coverage.json 挂三路并集自动合并
+   （.gitattributes 声明·条目级并集 fail-safe 回退冲突·1259 五度冲突实录根治）；
+   未安装=回退普通冲突无害（gate_quick 静态段黄字提醒）·写后机械校验=check_registry_sanity
+   （L1 静态族·冲突标记/损坏 JSON/批准枚举红）。
 1. **L1 本地快速**（每次提交前）：`python scripts/gate_quick.py`（静态+增量构建+全量单测·
    分钟级）；**L2 影响面子集**=同命令加 `--l2`（按写集自动推导 E2E 子集·收工验证面）。
    改检查工具类脚本（scripts/check_*、integrate.py 等门禁/协议脚本）不强制云端预验

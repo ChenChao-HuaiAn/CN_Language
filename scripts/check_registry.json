@@ -298,6 +298,14 @@
    "检查网层": 9,
    "说明": "1376：程序级缓存键（1156）输入面机械对账——结构化登记表（driver_program_cache_inputs.hpp）⇔ 实现代码/文档双向核对：DriverOptions/ProgramUnitKey/CargoDependency 新增字段、键构造新增 options.*/unit.* 引用、驱动层新增 CN_* 环境开关未登记=红；登记项在实现中消失/证据锚失效=红；--selftest 正反两态九例。",
    "v5执行面": "L1 gate_quick 静态段+自测+云端静态段（ci_static_gates）+win全量"
+  },
+  {
+   "名称": "高冲突单点 JSON 写后校验闸",
+   "脚本": "scripts/check_registry_sanity.py",
+   "组": "ci常规",
+   "检查网层": 9,
+   "说明": "#1259 方案④：miss_registry/doc_coverage 两高冲突单点 JSON 可解析+无冲突标记（1156 工具误提交半成品实录）+条目硬必填窄集+批准枚举合法（1238）",
+   "v5执行面": "L1+云端兜底+win全量"
   }
  ]
 }
