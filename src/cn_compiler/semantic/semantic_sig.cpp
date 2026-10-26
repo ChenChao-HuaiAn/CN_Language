@@ -490,6 +490,21 @@ bool SemanticAnalyzer::canConvertType(const std::string& fromRaw,
         const std::vector<std::string> fa = resultTypeArgs(from).value_or((std::vector<std::string>()));
         const std::vector<std::string> ta = resultTypeArgs(to).value_or((std::vector<std::string>()));
         if (fa.size() == 2 && ta.size() == 2) {
+            // 1607（1592 审计·P2·乙案语义收紧·AI 裁决留痕）：128 位宽型载荷
+            //   异型转换拒绝——IR 转换族（emitSyntheticConvCopyIfNeeded
+            //   isConvScalar）不含 128，语义层放行=整块错拷静默错值
+            //   （2^70+12345 经 结果<整128,整32>→结果<整64,整32> 实镜
+            //   140716013531193）。同型放行（emitPayloadConv 同型侧 isI128 走
+            //   聚合拷贝）；异型=编译期拒（用户错误·指路显式拆解或同型）。
+            //   128 ABI 转换通道属新增语义面须用户立法，本件只收紧不实现。
+            if (fa[0] != ta[0] &&
+                (types::isI128(fa[0]) || types::isI128(ta[0]))) {
+                return false;
+            }
+            if (fa[1] != ta[1] &&
+                (types::isI128(fa[1]) || types::isI128(ta[1]))) {
+                return false;
+            }
             return canConvertType(fa[0], ta[0]) && canConvertType(fa[1], ta[1]);
         }
         return false;
@@ -499,6 +514,11 @@ bool SemanticAnalyzer::canConvertType(const std::string& fromRaw,
     if (fromOpt && toOpt) {
         const std::string fa = optionalTypeArg(from).value_or(std::string());
         const std::string ta = optionalTypeArg(to).value_or(std::string());
+        // 1607：可选 面同款宽型异型拒（与结果面同口径）
+        if (!fa.empty() && !ta.empty() && fa != ta &&
+            (types::isI128(fa) || types::isI128(ta))) {
+            return false;
+        }
         return !fa.empty() && !ta.empty() && canConvertType(fa, ta);
     }
     // 空指针常量 -> 可选<T>：视为空可选值（无）（Task 3.5，规格书07-三）
