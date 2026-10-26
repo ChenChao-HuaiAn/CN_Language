@@ -356,6 +356,18 @@ static bool linkExe(const std::string& target, const std::string& vcvarsBat,
             "/DEFAULTLIB:libcmt.lib /DEFAULTLIB:libucrt.lib /DEFAULTLIB:kernel32.lib "
             "/DEFAULTLIB:shell32.lib "  // Task 6.5 系统库：CommandLineToArgvW（Unicode 命令行解析）
             "/OUT:\"" + exePath + "\" \"" + userObj + "\"";
+        // #1443 诊断通道：CN_LINK_MAP=1 时附加 /MAP（函数地址映射文件，配合
+        //   __cn_runtime_error 的 CN_RUNTIME_BACKTRACE 栈地址人工定位坏函数）
+        {
+            char* mapFlag = nullptr;
+            size_t mapLen = 0;
+            if (_dupenv_s(&mapFlag, &mapLen, "CN_LINK_MAP") == 0 &&
+                mapFlag != nullptr) {
+                const bool mapOn = mapFlag[0] != '\0' && mapFlag[0] != '0';
+                std::free(mapFlag);
+                if (mapOn) cmdLine += " /MAP:\"" + exePath + ".map\"";
+            }
+        }
     // 非 win-x64 即 linux 双平台（同 compileRuntime：--target 入口闭集校验后，
     // else 可达值域仅 linux-arm64/linux-x86_64，链接命令同构）
     } else {

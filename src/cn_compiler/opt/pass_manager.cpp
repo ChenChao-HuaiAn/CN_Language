@@ -5,6 +5,8 @@
 //      收集修改信号，直到一轮内无修改或达到上限轮次
 //   3. runOptLevel 按优化级别构建 Pass 组合（完善C + 阶段B 优化补全）
 //      阶段B（Task 4.1/4.2）：SSA/Phi、LICM、强度削减、内联、尾调用
+#include <cstdlib>
+
 #include "cn_compiler/opt/mem2reg.hpp"
 #include "cn_compiler/opt/algebraic_simplify.hpp"
 #include "cn_compiler/opt/const_fold.hpp"
@@ -22,6 +24,25 @@
 
 namespace cn_compiler {
 namespace opt {
+
+// 诊断环境读取（MSVC 安全版：_dupenv_s；linux 同款 std::getenv）。未设置=无值。
+static bool readDiagEnv(const char* name, std::string& valueOut) {
+#ifdef _WIN32
+    char* raw = nullptr;
+    size_t len = 0;
+    // 静默豁免运行时API: 环境未设置/读取失败=诊断开关不启用（否定回答·默认全量）
+    if (_dupenv_s(&raw, &len, name) != 0 || raw == nullptr) return false;
+    valueOut.assign(raw);
+    std::free(raw);
+    return true;
+#else
+    const char* raw = std::getenv(name);
+    // 静默豁免运行时API: 环境未设置=诊断开关不启用（否定回答·默认全量）
+    if (raw == nullptr) return false;
+    valueOut.assign(raw);
+    return true;
+#endif
+}
 
 // 注册 Pass（按调用顺序加入执行列表）
 void PassManager::addPass(std::unique_ptr<Pass> pass) {
@@ -51,20 +72,30 @@ bool PassManager::run(ir::IRModule& module) {
 bool runOptLevel(ir::IRModule& module, int optLevel, bool useSlotPromotion) {
     if (optLevel <= 0) return false;
     PassManager manager;
+    // 诊断通道（#1443 定位辅助）：CN_OPT_PASS_SKIP=逗号分隔 Pass 类名单，
+    //   命中的 Pass 整体跳过（仅跳过注册，不影响其余组合）——优化缺陷二分用；
+    //   未设置/为空=全量运行（默认行为零变化）。
+    std::string skipList;
+    if (!readDiagEnv("CN_OPT_PASS_SKIP", skipList)) skipList.clear();
+    auto shouldSkip = [&skipList](const char* passName) {
+        return !skipList.empty() &&
+               skipList.find(passName) != std::string::npos;
+    };
     // ---- 基础 Pass（-O1）：常量折叠 + 死代码消除 ----
-    manager.addPass(std::make_unique<ConstFoldPass>());
+    if (!shouldSkip("ConstFold")) manager.addPass(std::make_unique<ConstFoldPass>());
     // ---- 代数简化（-O1）：恒等变换（x+0/x*1/x*0...），产生新折叠机会 ----
     //      （F1-29 浮点恒等式面：判据需常量追踪〔浮点常量在 IR 为 ConstFloat
     //        寄存器而非内联常量〕——本轮登记 D9，见 plans/021） ----
     //      D9（228-a）：-O3 启用浮点恒等式面（仅 IEEE 恒真者·默认保守） ----
-    manager.addPass(std::make_unique<AlgebraicSimplifyPass>(optLevel >= 3));
+    if (!shouldSkip("AlgebraicSimplify"))
+        manager.addPass(std::make_unique<AlgebraicSimplifyPass>(optLevel >= 3));
     // ---- 复写传播（-O1）：块内 Store->Load 转发（别名保守） ----
-    manager.addPass(std::make_unique<CopyPropagationPass>());
+    if (!shouldSkip("CopyPropagation")) manager.addPass(std::make_unique<CopyPropagationPass>());
     if (optLevel >= 2) {
         // ---- 块内 CSE（-O2）：纯运算模式复用 + Load 复用（浮点启用） ----
-        manager.addPass(std::make_unique<CSEPass>(true));
+        if (!shouldSkip("CSE")) manager.addPass(std::make_unique<CSEPass>(true));
         // ---- 跨块 DCE 增强（-O2）：不可达块删除 + 常量条件跳转折叠 ----
-        manager.addPass(std::make_unique<CrossBlockDCEPass>());
+        if (!shouldSkip("CrossBlockDCE")) manager.addPass(std::make_unique<CrossBlockDCEPass>());
         // ---- 变量槽提升（1267·-O2 可开关）：Alloca/Load/Store 标量槽 ->
         //      虚拟寄存器（复用 1253/1255 的 DomTree+φ 设施，全槽提升后删
         //      Alloca）。开启条件=DriverOptions::useMem2Reg（linux-x86_64 +
@@ -72,36 +103,37 @@ bool runOptLevel(ir::IRModule& module, int optLevel, bool useSlotPromotion) {
         //      DCE 之后（不可达块先清）、LICM 之前（提升后循环值流更纯）。
         //      -O3 维持既有位次（SSAPass 之后，见下方 -O3 段），不在此重复。----
         if (optLevel == 2 && useSlotPromotion) {
-            manager.addPass(std::make_unique<Mem2RegPass>());
+            if (!shouldSkip("Mem2Reg")) manager.addPass(std::make_unique<Mem2RegPass>());
         }
         // ---- 循环不变量外提（-O2，阶段B Task 4.2）：循环内不变量移到循环前
         //      （规格书9.2：-O2 含循环优化；仅在循环外提后不改变执行次数语义） ----
-        manager.addPass(std::make_unique<LICMPass>());
+        if (!shouldSkip("LICM")) manager.addPass(std::make_unique<LICMPass>());
         // ---- 强度削减（-O2，阶段B Task 4.2）：乘/除 2 的幂 -> 移位
         //      （i*4/i*8 数组寻址核心场景；LICM 后循环内指令更纯净）
         //      F1-29（227-a）：-O3 启用激进面（有符号除法展开为无分支修正序列
         //      ——逐 pass 独立开关·默认保守保持既有行为） ----
-        manager.addPass(std::make_unique<StrengthReducePass>(optLevel >= 3));
+        if (!shouldSkip("StrengthReduce"))
+            manager.addPass(std::make_unique<StrengthReducePass>(optLevel >= 3));
         // ---- 尾调用优化（-O2，阶段B Task 4.2）：尾递归转为循环
         //      （函数级安全变换，节省栈帧；规格书9.2 TCO） ----
-        manager.addPass(std::make_unique<TailCallPass>());
+        if (!shouldSkip("TailCall")) manager.addPass(std::make_unique<TailCallPass>());
     }
     if (optLevel >= 3) {
         // ---- 全局值传播（-O3）：常量 Store->Load 安全子集 ----
-        manager.addPass(std::make_unique<GlobalValuePass>());
+        if (!shouldSkip("GlobalValue")) manager.addPass(std::make_unique<GlobalValuePass>());
         // ---- SSA 构造（-O3，阶段B Task 4.1）：汇合点 Phi 节点
         //      （codegen 对 Phi 输出"无汇编注释"，语义等价；为后续数据流
         //        分析（寄存器分配/全局值传播增强）铺路） ----
-        manager.addPass(std::make_unique<SSAPass>());
+        if (!shouldSkip("SSA")) manager.addPass(std::make_unique<SSAPass>());
         // ---- mem2reg 读侧跨块直递（-O3，F1-26 波1·479-a）：可提升槽的
         //      Load 沿支配树值流直递（逃逸判据守卫·Store 保留=波2）----
         manager.addPass(std::make_unique<Mem2RegPass>());
         // ---- 函数内联（-O3，阶段B Task 4.2）：小函数内联展开
         //      （规格书9.2：-O3 含激进内联；启发式阈值 kMaxInlineInsts） ----
-        manager.addPass(std::make_unique<InlinePass>());
+        if (!shouldSkip("Inline")) manager.addPass(std::make_unique<InlinePass>());
     }
     // DCE 最后运行：清理简化/CSE/LICM/内联/TCO 产生的死代码
-    manager.addPass(std::make_unique<DCEPass>());
+    if (!shouldSkip("DCE")) manager.addPass(std::make_unique<DCEPass>());
     const bool changed = manager.run(module);
     // D31 方案C①（258-a）：优化链出口位域归一化——fixpoint 收敛后统一收口，
     //   保证任何折叠/强度削减/传播/内联产物中的整型常量必在类型域内

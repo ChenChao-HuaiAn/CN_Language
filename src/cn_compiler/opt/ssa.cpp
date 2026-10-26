@@ -14,6 +14,7 @@
 //        实际值读取仍由原 Load 完成（Load 保留不动）——结果完全一致
 //      - Phi 仅供 SSA 形式标注/下游 Pass（LICM/强度削减）识别汇合语义
 //   4. 幂等：块头已有 result.id 相同的 Phi 则跳过
+#include <cstdio>
 #include <string>
 #include <unordered_map>
 #include <algorithm>
@@ -61,6 +62,15 @@ bool SSAPass::buildFunction(ir::IRFunction& fn) {
     for (int b = 0; b < n; ++b) {
         const std::vector<int>& preds = dom.predecessors(b);
         if (preds.size() < 2) continue;  // 非汇合点
+        // #1443 根治（D32 同族·「隐式前驱」特例）：入口块（blocks[0]）可以是
+        //   回边目标（尾调用转循环后普遍形态）——函数入口是隐式前驱：
+        //   ①IR 指令层入口无 Store（参数槽初值=prologue 在 asm 层直写，非 IR
+        //     指令），allPredsStored 判定对隐式前驱恒不可满足；②lowerPhis 的
+        //     「前驱块尾 Copy」机制对入口路径没有插入点（入口不是块）——Phi 化
+        //     后入口路径消费者读到未定义寄存器（垃圾值·v2 自举 -O3 数组越界
+        //     实证）。故入口块存在回边前驱时一律放弃 Phi 化（Load 保留槽语义，
+        //     每轮迭代重读=正确；少一次优化机会，不是妥协——错误 Phi 化才是）。
+        if (b == 0 && !preds.empty()) continue;
         const std::string& label = dom.labelOf(b);
         // 找到对应块
         ir::IRBlock* block = nullptr;
@@ -369,9 +379,58 @@ void SSAPass::lowerPhis(ir::IRFunction& fn) {
 }
 
 // 遍历模块全部函数：构建支配树 + 汇合点 Phi 插入
+// #1443 定位开关：CN_OPT_SSA_ONLY_FILE=名单文件路径（每行一个子串）——
+//   仅对「name 含名单任一子串」的函数跑 SSA 构造，其余函数跳过（诊断二分用；
+//   未设置/文件不可读=全量运行，默认行为零变化）。
+// 诊断环境读取（MSVC 安全版 _dupenv_s 封装，同 pass_manager 惯例）。
+static bool readDiagEnvValue(const char* name, std::string& valueOut) {
+#ifdef _WIN32
+    char* raw = nullptr;
+    size_t len = 0;
+    // 静默豁免运行时API: 环境未设置/读取失败=诊断开关不启用（否定回答·默认全量）
+    if (_dupenv_s(&raw, &len, name) != 0 || raw == nullptr) return false;
+    valueOut.assign(raw);
+    std::free(raw);
+    return true;
+#else
+    const char* raw = std::getenv(name);
+    // 静默豁免运行时API: 环境未设置=诊断开关不启用（否定回答·默认全量）
+    if (raw == nullptr) return false;
+    valueOut.assign(raw);
+    return true;
+#endif
+}
+
 bool SSAPass::run(ir::IRModule& module) {
+    std::vector<std::string> onlyNames;
+    std::string listPath;
+    if (readDiagEnvValue("CN_OPT_SSA_ONLY_FILE", listPath)) {
+        std::FILE* f = nullptr;
+#ifdef _WIN32
+        if (fopen_s(&f, listPath.c_str(), "rb") != 0) f = nullptr;
+#else
+        f = std::fopen(listPath.c_str(), "rb");
+#endif
+        if (f != nullptr) {
+            char line[512];
+            while (std::fgets(line, sizeof(line), f) != nullptr) {
+                std::string entry(line);
+                while (!entry.empty() && (entry.back() == '\n' || entry.back() == '\r')) entry.pop_back();
+                if (!entry.empty()) onlyNames.push_back(entry);
+            }
+            std::fclose(f);
+        }
+    }
+    const bool onlyMode = !onlyNames.empty();
     bool changed = false;
     for (auto& fn : module.functions) {
+        if (onlyMode) {
+            bool hit = false;
+            for (const auto& needle : onlyNames) {
+                if (fn.name.find(needle) != std::string::npos) { hit = true; break; }
+            }
+            if (!hit) continue;
+        }
         if (buildFunction(fn)) changed = true;
     }
     return changed;

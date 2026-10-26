@@ -81,8 +81,62 @@ extern "C" const char* __cn_error_message(long long errorCode) {
 // 运行时错误处理：打印错误信息（含错误码）后终止程序
 // 718：终止改 ExitProcess——std::exit 走 atexit/stdio flush 依赖堆锁，堆损坏
 //   场景 exit 内部死锁挂住（cn_self 第二跳「错误码 4 后挂住」实测）。
+// #1443 诊断增强：CN_RUNTIME_BACKTRACE=1 时打印捕获的返回地址链（原始地址，
+//   配合产物 asm/映射文件人工定位——SymFromAddr 需 DbgHelp 依赖，零依赖实现）。
 extern "C" void __cn_runtime_error(long long errorCode) {
     std::printf("运行时错误(错误码%lld): %s\n", errorCode, __cn_error_message(errorCode));
+#ifdef _WIN32
+    {
+        char* bt = nullptr;
+        size_t btLen = 0;
+        if (_dupenv_s(&bt, &btLen, "CN_RUNTIME_BACKTRACE") == 0 && bt != nullptr) {
+            const bool btOn = bt[0] != '\0' && bt[0] != '0';
+            std::free(bt);
+            if (btOn) {
+                void* frames[32];
+                const USHORT count = CaptureStackBackTrace(0, 32, frames, nullptr);
+                HMODULE hMod = nullptr;
+                GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+                                   GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                                   reinterpret_cast<LPCWSTR>(&__cn_runtime_error),
+                                   &hMod);
+                std::printf("[backtrace] 基址=0x%p 深度=%u\n",
+                            static_cast<void*>(hMod), static_cast<unsigned>(count));
+                for (USHORT i = 0; i < count; ++i) {
+                    std::printf("[backtrace] %02u 0x%p\n",
+                                static_cast<unsigned>(i), frames[i]);
+                }
+                // 栈扫描（#1443：产物无 unwind 信息时 CaptureStackBackTrace 断链——
+                //   从当前 RSP 向上扫描栈字，打印落在主模块映像内的值=候选返回地址，
+                //   配合 map 文件人工定位真实调用链）。
+                if (hMod != nullptr) {
+                    const auto* dos = reinterpret_cast<const IMAGE_DOS_HEADER*>(hMod);
+                    const auto* nt = reinterpret_cast<const IMAGE_NT_HEADERS*>(
+                        static_cast<const char*>(static_cast<const void*>(hMod)) +
+                        dos->e_lfanew);
+                    const ULONG64 imgBase =
+                        reinterpret_cast<ULONG64>(static_cast<const void*>(hMod));
+                    const ULONG64 imgEnd = imgBase + nt->OptionalHeader.SizeOfImage;
+                    const ULONG64 rspStart =
+                        reinterpret_cast<ULONG64>(_AddressOfReturnAddress());
+                    std::printf("[scan] 映像 0x%llX..0x%llX 栈起 0x%llX\n",
+                                static_cast<unsigned long long>(imgBase),
+                                static_cast<unsigned long long>(imgEnd),
+                                static_cast<unsigned long long>(rspStart));
+                    for (ULONG64 p = rspStart; p + 8 <= rspStart + 0x20000; p += 8) {
+                        const ULONG64 v = *reinterpret_cast<const ULONG64*>(p);
+                        if (v >= imgBase && v < imgEnd) {
+                            std::printf("[scan] 0x%llX: 0x%llX (RVA 0x%llX)\n",
+                                        static_cast<unsigned long long>(p),
+                                        static_cast<unsigned long long>(v),
+                                        static_cast<unsigned long long>(v - imgBase));
+                        }
+                    }
+                }
+            }
+        }
+    }
+#endif
     std::fflush(stdout);
     std::fflush(stderr);
 #ifdef _WIN32
