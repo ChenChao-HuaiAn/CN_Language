@@ -88,6 +88,11 @@ struct SwitchContext {
 struct OwnedStrField {
     int offset = 0;       // 相对聚合基址的字节偏移
     int condOffset = -1;  // -1=无条件释放；否则条件字段（布尔）偏移
+    // 1604（1592 审计·E=字符串 错误载荷条件释放）：条件取反——错误态（tag 槽
+    //   为 0）才摘句柄/深拷。结果<T,E> 的 E 载荷与 T 值共用联合体槽：正常态
+    //   该槽=T 数值载荷（摘句柄/深拷=UB），仅错误态槽内=E 拥有句柄；既有
+    //   condOffset 通道恒「tag 真→动作」，错误载荷面取反（tag 假→动作）。
+    bool condNegate = false;
     // 99-a（C11, 2026-09-13 第九十九轮）：**字符串数组字段**——arrayLen > 0 时
     //   该字段是「字符串[长度]」（元素=拥有串句柄）：释放=逐元素（fieldAddr +
     //   i×arrayStride -> LoadPtr -> __cn_str_free -> StorePtr 0），长度=arrayLen

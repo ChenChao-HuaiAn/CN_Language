@@ -3625,6 +3625,18 @@
       "批准": "存量过渡"
     },
     {
+      "文件": "src/runtime/mem_api.cpp",
+      "函数": "__cn_box_class_delete_err",
+      "锚文本": "if (tagAddr == nullptr || fieldAddr == nullptr) return nullptr;",
+      "来源": "1604",
+      "类别": "运行时API",
+      "静默风险": "低",
+      "原因": "发射侧恒发有效合成体基址与槽偏移（FieldAddr），null 只能=编译器 bug 面；空安全返回 nullptr 经调用方 __cn_str_free 空跳无害——与既有 __cn_box_class_delete 同形镜像（1604 E=字符串 错误载荷条件释放配套）",
+      "登记人": "AI（1604 结果异型错误载荷条件释放轮·逐行读过发射链）",
+      "登记日": "2026-10-26",
+      "批准": "已批"
+    },
+    {
       "文件": "src/cn_compiler/driver/driver_program_cache.cpp",
       "函数": "loadProgramCache",
       "锚文本": "if (!cacheEntryPathExists(cacheFile)) {",

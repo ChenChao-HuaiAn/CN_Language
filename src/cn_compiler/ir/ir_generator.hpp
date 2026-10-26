@@ -647,32 +647,32 @@ private:
     void emitOwnedRecvTempDestruct662(Expr* recvObj, const ir::IRValue& thisArg,
                                       const SourceLocation& loc);
 
-    // ---- 79-a（2026-09-12 第七十九轮）：聚合拥有型字符串字段 drop glue ---- 背景（探针 P1/P2 实证，plans/020 矩阵 #16/#17）：结构体/装箱（结果/可选）
-    //   字段释放描述载体 OwnedStrField·865 外迁见 ir_generator_types.hpp。 收集聚合类型（结构体/结果/可选，递归展开值语义嵌套）的拥有型字符串字段
+    // ---- 79-a：聚合拥有型字符串字段 drop glue（背景=P1/P2 探针实证·plans/020 矩阵
+    //   #16/#17；载体 OwnedStrField·865 外迁见 ir_generator_types.hpp）
     std::vector<OwnedStrField> ownedStrFieldsOf(const std::string& canon) const;
+    // 1604：condNeg=条件取反语义贯穿（E=结构体载荷嵌套展开挂「错误态」条件）
     void collectOwnedStrFields(const std::string& canon, int base, int cond,
                                std::vector<OwnedStrField>& out,
                                std::vector<std::string>& visiting,
-                               bool viaUnion = false) const;
+                               bool viaUnion = false,
+                               bool condNeg = false) const;
     // 139-a：ClassObj 字段的析构/拷贝构造符号键（1360 结果化：无值=不可用·
-    //   原空串哨兵退役；classDestructor 的 methods 项含继承并入——与 DeleteObject
-    //   codegen 解析口径一致）
+    //   与 DeleteObject codegen 解析口径一致）
     cn::Optional<std::string> classDestructorSymbolKey(const std::string& canon) const;
     cn::Optional<std::string> classCopyCtorSymbolKey(const std::string& canon) const;
-    // 单字段释放（无条件 / condAddr 非零时）+ 清槽——释放面单点事实源 99-a（C11）：字符串数组字段元素释放发射（基址 + i×步进 逐元素 free+清槽）
+    // 单字段释放（无条件 / condAddr 非零时）+ 清槽；99-a（C11）：字符串数组字段元素释放发射（基址 + i×步进 逐元素 free+清槽）
     void emitStrArrayElemFreesAt(const ir::IRValue& base, int len, int stride,
                                  const SourceLocation& loc);
-    // 100-a（C12）：字段数组元素=含串字段结构体——逐元素递归字段释放
     void emitStrArrayStructFreesAt(const ir::IRValue& base, int len, int stride,
                                    const std::string& elemCanon,
                                    const SourceLocation& loc);
     void emitFieldStringFreeAt(const ir::IRValue& fieldAddr, const SourceLocation& loc);
+    // 1604：negate=条件取反（tag 假=错误态才摘句柄——E 载荷面·runtime 反相单调用）
     void emitFieldStringFreeIf(const ir::IRValue& condAddr, const ir::IRValue& fieldAddr,
-                               const SourceLocation& loc);
-    // 聚合基址上的全部字段释放（字段地址 = 基址 + 偏移；条件字段经条件分支）
+                               const SourceLocation& loc, bool negate = false);
+    // 聚合基址上的全部字段释放（字段地址 = 基址 + 偏移；条件字段经条件分支）；98-a（C9）局部槽版本=emitStrArrayElemFreesFor（字符串元素数组逐元素释放·编译期展开 N 次）
     void emitOwnedStrFieldFreesAt(const ir::IRValue& base, const std::string& canon,
                                   const SourceLocation& loc);
-    // 局部槽版本（按名单 unique 取 AddrOf 基址） 98-a（C9）：字符串元素数组逐元素释放发射（编译期展开 N 次；元素槽清槽幂等）
     void emitStrArrayElemFreesFor(const std::string& unique);
     void emitPendingBoxCopiesRelease(std::size_t fromIndex);
     // 182（1019·008 树）：结果/可选<析构类> 局部变量盒亡条件析构（变量级· v2 946 发射盒类值载荷摘删 同构）——Call __cn_box_class_delete（tag 假=

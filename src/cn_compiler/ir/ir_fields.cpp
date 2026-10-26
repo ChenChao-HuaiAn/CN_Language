@@ -32,11 +32,12 @@ namespace cn_compiler {
 
 // ==================== ① 判定与收集 ====================
 
-// 递归收集（base=相对聚合基址字节偏移；cond=条件字段偏移，-1=无条件）
+// 递归收集（base=相对聚合基址字节偏移；cond=条件字段偏移，-1=无条件；
+//   condNeg=条件取反语义贯穿——1604 E 载荷嵌套展开·错误态才有效的载荷字段）
 void IRGenerator::collectOwnedStrFields(const std::string& canonRaw, int base, int cond,
                                         std::vector<OwnedStrField>& out,
                                         std::vector<std::string>& visiting,
-                                        bool viaUnion) const {
+                                        bool viaUnion, bool condNeg) const {
     if (semantic_ == nullptr) return;
     if (out.size() > 64) return;  // 防御：展开上限（值语义自包含=非法，环另防）
     // 571（2026-10-14·#571 根治）：**双形态归一（单点）**——模板文本
@@ -51,10 +52,11 @@ void IRGenerator::collectOwnedStrFields(const std::string& canonRaw, int base, i
     //   恢复 #280 契约；$ 形态归一恒等（重复归一零变化·调用方零改动）。
     const std::string canon = canonicalizeSyntheticArgText(canonRaw);
     if (std::find(visiting.begin(), visiting.end(), canon) != visiting.end()) return;
-    // 字符串本身：值语义字段
+    // 字符串本身：值语义字段（condNeg=外层 E 载荷嵌套展开传入·1604）
     if (canon == "字符串") {
         OwnedStrField fld{base, cond};
         fld.viaUnion = viaUnion;
+        fld.condNegate = condNeg;
         out.push_back(fld);
         return;
     }
@@ -66,6 +68,7 @@ void IRGenerator::collectOwnedStrFields(const std::string& canonRaw, int base, i
         const StructDecl* decl = semantic_->findStruct(canon).value_or(nullptr);
         if (decl != nullptr) {
             std::string valueType;
+            std::string errType;
             if (isResult) {
                 // 571：参数提取用 **canonRaw（源形态）**——optionalTypeArg/
                 //   resultTypeArgs 只认模板文本（可选<X>/结果<X,Y>），对 $ 合成名
@@ -74,44 +77,60 @@ void IRGenerator::collectOwnedStrFields(const std::string& canonRaw, int base, i
                 //   文本（用户代码/字段表常态）直接可解；canonRaw=$ 名（泛型实例
                 //   化克隆场）维持既有空收集边界（宁漏勿错）。
                 const std::vector<std::string> args = resultTypeArgs(canonRaw).value_or((std::vector<std::string>()));
-                if (args.size() == 2) valueType = types::canonical(args[0]);
+                if (args.size() == 2) {
+                    valueType = types::canonical(args[0]);
+                    // 1604（1592 审计·E=字符串 错误载荷漏收/误收根治）：E 载荷
+                    //   与 T 同源解析（模板文本第二实参）——原只解 T，E=字符串
+                    //   错误态句柄无人释放（模板形态泄漏面）或落通用递归被收为
+                    //   无条件字段（$ 形态·正常态错误槽=T 数值载荷 free 即 UB）。
+                    errType = types::canonical(args[1]);
+                }
             } else {
                 valueType = types::canonical(optionalTypeArg(canonRaw).value_or(std::string()));
             }
-            if (valueType == "字符串") {
-                const int vo = semantic_->fieldOffsetOf(decl, "值").value_or(-1);
-                const int co =
-                    semantic_->fieldOffsetOf(decl, isResult ? "正常" : "有值").value_or(-1);
-                if (vo >= 0 && co >= 0) {
+            const int vo = semantic_->fieldOffsetOf(decl, "值").value_or(-1);
+            const int co =
+                semantic_->fieldOffsetOf(decl, isResult ? "正常" : "有值").value_or(-1);
+            if (vo >= 0 && co >= 0) {
+                // 1604：T/E 两面统一收集后按 handled 收口——原 T 面 1415 分支
+                //   条件递归后直接 return，把 E 面（错误载荷）整体挡在门外。
+                //   四形态显式枚举（else 业务新规：无 else 兜底分支）。
+                bool handled = false;
+                if (valueType == "字符串") {
                     OwnedStrField fld{base + vo, base + co};
                     fld.viaUnion = viaUnion;
                     out.push_back(fld);
-                    return;
+                    handled = true;
                 }
-            }
-            // 1415（#1415 复审 P2-1·零分叉）：**T=结构体/类 载荷带 tag 守卫**——
-            //   原落通用递归 cond=-1（无条件）：错误态值位=错误码整数（E=整32/
-            //   整64），无条件按载荷结构体释放字段=f r e e(错误码)/读垃圾指针
-            //   （UB；v2 侧 发射结果可选值字段释放于地址 在 tag 分支内释放
-            //   =零分叉）。修=值位字段按「正常/有值」偏移带条件递归（cond=
-            //   base+tag 偏移·释放面 emitFieldStringFreeIf 摘句柄守卫）；偏移
-            //   查询失败/载荷名不可解（$ 形态 canonRaw 空）仍落下方通用递归
-            //   （诚实边界·宁漏勿错）。
-            if (valueType != "字符串" && !valueType.empty()) {
-                const int vo1415 = semantic_->fieldOffsetOf(decl, "值").value_or(-1);
-                const int co1415 = semantic_->fieldOffsetOf(
-                    decl, isResult ? "正常" : "有值").value_or(-1);
-                // 偏移协议否定值 = -1（fieldOffsetOf miss）；精确哨兵比较
-                //   （非业务区间·双字段均有效才挂条件递归）。
-                if (vo1415 != -1 && co1415 != -1) {
-                    collectOwnedStrFields(valueType, base + vo1415, base + co1415,
+                // 1415（#1415 复审 P2-1·零分叉）：**T=结构体/类 载荷带 tag 守卫**
+                //   ——错误态值位=错误码整数，无条件按载荷结构体释放字段=
+                //   free(错误码)/读垃圾指针（UB）；值位字段按「正常」偏移带
+                //   条件递归（释放面 emitFieldStringFreeIf 摘句柄守卫）。
+                if (!valueType.empty() && valueType != "字符串") {
+                    collectOwnedStrFields(valueType, base + vo, base + co,
                                           out, visiting, viaUnion);
-                    return;
+                    handled = true;
                 }
+                // 1604：E=字符串 错误载荷——tag 取反条件（错误态才摘句柄/深拷；
+                //   正常态该槽=T 数值载荷，摘句柄=UB）。可选$ 无错误载荷。
+                if (isResult && errType == "字符串") {
+                    OwnedStrField fld{base + vo, base + co};
+                    fld.viaUnion = viaUnion;
+                    fld.condNegate = true;
+                    out.push_back(fld);
+                    handled = true;
+                }
+                // 1604：E=结构体载荷——条件递归贯穿取反语义（载荷内串字段挂
+                //   「正常为假」条件；与 T 面 1415 同构镜像）。
+                if (isResult && !errType.empty() && errType != "字符串") {
+                    collectOwnedStrFields(errType, base + vo, base + co,
+                                          out, visiting, viaUnion, true);
+                    handled = true;
+                }
+                if (handled) return;
             }
-            // T≠字符串且载荷名不可解或偏移失败——落通用结构体递归（值位联合体
-            //   内部的串字段展开：读取() 返回 结果<盒子,整32> 的 值.名 等形态
-            //   ·245 实证基线行为）。
+            // T/E 载荷名不可解或偏移失败——落通用结构体递归（$ 形态边界·下方
+            //   合成联合体不展开守卫防错误槽无条件误收·1604）。
         }
     }
     // 类类型：不展开（类对象字段归 ~类 级联/容器 RAII——本轮面外）
@@ -135,12 +154,21 @@ void IRGenerator::collectOwnedStrFields(const std::string& canonRaw, int base, i
         if (fieldCanon == "字符串") {
             OwnedStrField fld{base + f.offset, cond};
             fld.viaUnion = unionScope;
+            fld.condNegate = condNeg;
             out.push_back(fld);
         } else if (fieldCanon.rfind("结果$", 0) == 0 ||
                    fieldCanon.rfind("可选$", 0) == 0 ||
                    semantic_->isStructType(fieldCanon)) {
+            // 1604：合成体内层联合（结果联合$T$E）禁展开——值/错误值共用联合
+            //   偏移，无条件展开其载荷=正常态把 T 数值当句柄释放/深拷（UB）或
+            //   错误载荷漏条件（泄漏）。载荷可解时专用分支已条件收集并收口；
+            //   走到这里=$ 形态载荷不可解（571 诚实边界·宁漏勿错），联合体
+            //   载荷一并宁漏（跳过）而非误收。
+            if (fieldCanon.rfind("结果联合$", 0) == 0) {
+                continue;
+            }
             collectOwnedStrFields(fieldCanon, base + f.offset, cond, out, visiting,
-                                  unionScope);
+                                  unionScope, condNeg);
         } else if (types::isArray(fieldCanon) &&
                    (types::arrayElemOf(fieldCanon) == "字符串" ||
                     (semantic_->isStructType(
@@ -161,6 +189,7 @@ void IRGenerator::collectOwnedStrFields(const std::string& canonRaw, int base, i
                 OwnedStrField fld;
                 fld.offset = base + f.offset;
                 fld.condOffset = cond;
+                fld.condNegate = condNeg;
                 fld.arrayLen = len;
                 fld.arrayStride = stride;
                 if (elemCanon != "字符串") { fld.elemCanon = elemCanon; }
@@ -216,6 +245,7 @@ void IRGenerator::collectOwnedStrFields(const std::string& canonRaw, int base, i
             OwnedStrField fld;
             fld.offset = base + f.offset;
             fld.condOffset = cond;
+            fld.condNegate = condNeg;
             fld.kind = OwnedStrField::Kind::ClassObj;
             fld.classCanon = fieldCanon;
             fld.viaUnion = unionScope;   // 164-a：联合体内类对象字段同标
@@ -390,10 +420,14 @@ void IRGenerator::emitFieldStringFreeAt(const ir::IRValue& fieldAddr,
 //   一致（#280 载荷真值守卫保持）。
 void IRGenerator::emitFieldStringFreeIf(const ir::IRValue& condAddr,
                                         const ir::IRValue& fieldAddr,
-                                        const SourceLocation& loc) {
+                                        const SourceLocation& loc, bool negate) {
+    // 1604：negate=错误载荷面（E=字符串）——tag 假（错误态）才摘句柄；反相
+    //   单调用 __cn_box_class_delete_err 与正相同形（摘句柄+调用方 __cn_str_free
+    //   空安全），语义=mem_api 镜像对。
+    const char* fn = negate ? "__cn_box_class_delete_err" : "__cn_box_class_delete";
     ir::IRValue handle = emitResult(ir::Opcode::Call,
                                     {condAddr, fieldAddr}, "ptr",
-                                    "__cn_box_class_delete", loc);
+                                    fn, loc);
     emit(ir::Opcode::Call, {handle}, ir::IRValue(), "__cn_str_free", "void",
          loc);
 }
@@ -442,7 +476,7 @@ void IRGenerator::emitOwnedStrFieldFreesAt(const ir::IRValue& base,
         } else {
             ir::IRValue condAddr = emitResult(ir::Opcode::FieldAddr, {base}, "ptr",
                                               std::to_string(f.condOffset), loc);
-            emitFieldStringFreeIf(condAddr, fieldAddr, loc);
+            emitFieldStringFreeIf(condAddr, fieldAddr, loc, f.condNegate);
         }
     }
 }
@@ -609,7 +643,7 @@ void IRGenerator::emitOwnedStrFieldPreFree(const ir::IRValue& dstBase,
         } else {
             ir::IRValue condAddr = emitResult(ir::Opcode::FieldAddr, {dstBase}, "ptr",
                                               std::to_string(f.condOffset), loc);
-            emitFieldStringFreeIf(condAddr, fieldAddr, loc);
+            emitFieldStringFreeIf(condAddr, fieldAddr, loc, f.condNegate);
         }
     }
 }
@@ -672,14 +706,19 @@ void IRGenerator::emitOwnedStrFieldPostCopy(const ir::IRValue& dstBase,
             //   __cn_box_field_str_copy（tag 真→dst=copy(src)·假→dst 不动：
             //   错误态 dst.值=错误码保留；dst 旧值=刚位拷入的共享句柄丢弃不
             //   free——非 dst 拥有·preFree 已清自己旧值）。
+            // 1604：condNegate=错误载荷面（E=字符串）——反相单调用
+            //   __cn_box_field_str_copy_err（tag 假=错误态才 copy 错误槽句柄；
+            //   正常态该槽=T 数值载荷 copy 即 UB）。
             ir::IRValue condAddr = emitResult(ir::Opcode::FieldAddr, {srcBase}, "ptr",
                                               std::to_string(f.condOffset), loc);
             ir::IRValue sAddr = emitResult(ir::Opcode::FieldAddr, {srcBase}, "ptr",
                                            std::to_string(f.offset), loc);
             ir::IRValue dAddr = emitResult(ir::Opcode::FieldAddr, {dstBase}, "ptr",
                                            std::to_string(f.offset), loc);
+            const char* copyFn = f.condNegate ? "__cn_box_field_str_copy_err"
+                                              : "__cn_box_field_str_copy";
             emit(ir::Opcode::Call, {condAddr, sAddr, dAddr}, ir::IRValue(),
-                 "__cn_box_field_str_copy", "void", loc);
+                 copyFn, "void", loc);
         }
     }
 }

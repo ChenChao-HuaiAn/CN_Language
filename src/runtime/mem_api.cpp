@@ -616,6 +616,35 @@ extern "C" void __cn_box_field_str_copy(void* tagAddr, void* srcFieldAddr,
         __cn_str_copy(*static_cast<char**>(srcFieldAddr));
 }
 
+// 1604（1592 审计·E=字符串 错误载荷条件释放）：__cn_box_class_delete 的错误
+//   载荷镜像——结果<T,E> 的 错误 载荷与 值 共用联合体槽：正常态该槽=T 数值
+//   载荷（摘句柄 free=UB），仅错误态（tag 槽=0）槽内=E 拥有句柄。语义：
+//   tag==0 → 摘 fieldAddr 句柄+清槽（幂等）返回；tag!=0（正常态）→ nullptr
+//   （调用方 __cn_str_free 空安全跳过）。
+extern "C" void* __cn_box_class_delete_err(void* tagAddr, void* fieldAddr) {
+    // 静默豁免运行时API: 调用契约空防御（发射侧恒发有效槽地址·null=编译器
+    //   bug 面；空安全返回=nullptr 经调用方 __cn_str_free 空跳无害）——与
+    //   __cn_box_class_delete 既有同形镜像
+    if (tagAddr == nullptr || fieldAddr == nullptr) return nullptr;
+    if (*static_cast<int*>(tagAddr) != 0) return nullptr;
+    void* handle = *static_cast<void**>(fieldAddr);
+    *static_cast<void**>(fieldAddr) = nullptr;
+    return handle;
+}
+
+// 1604：__cn_box_field_str_copy 的错误载荷镜像——tag==0（错误态）→
+//   dst = __cn_str_copy(src)（错误字符串独立副本·源保持拥有）；tag!=0
+//   （正常态·错误槽=T 数值载荷）→ no-op。
+extern "C" void __cn_box_field_str_copy_err(void* tagAddr, void* srcFieldAddr,
+                                            void* dstFieldAddr) {
+    if (tagAddr == nullptr || srcFieldAddr == nullptr || dstFieldAddr == nullptr) {
+        return;
+    }
+    if (*static_cast<int*>(tagAddr) != 0) return;
+    *static_cast<void**>(dstFieldAddr) =
+        __cn_str_copy(*static_cast<char**>(srcFieldAddr));
+}
+
 extern "C" void* __cn_object_new(long long size) {
     void* ptr = std::calloc(1, static_cast<std::size_t>(size > 0 ? size : 1));
     if (ptr == nullptr) {

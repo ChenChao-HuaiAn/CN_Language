@@ -313,7 +313,11 @@ void IRGenerator::emitResultCtorValue(CallExpr* node, const std::string& name,
     //   槽空安全跳过——根治「装箱浅共享×局部 RAII 释放=悬垂」家族第五实例
     //   （stdlib 文件/IO 读取行包装链实证：装箱值随源 free 悬垂，v2p 读源文件
     //   全空）。借用装箱（污染名单内）不清零——指针共享随源存活。
-    if ((name == "正常" || name == "某些") && !node->arguments.empty() &&
+    // 1604：扩 错误(拥有字符串局部)——E 载荷释放面接通后错误槽将摘句柄释放，
+    //   源不清零=借用共享+槽释放=提前释放源的串（UAF）；与 正常/某些 同款
+    //   move（错误() 的 valueType=E 载荷·resolveResultCtorTargetType 口径）。
+    if ((name == "正常" || name == "某些" || name == "错误") &&
+        !node->arguments.empty() &&
         node->arguments[0]->getType() == NodeType::IdentifierExpr &&
         types::canonicalEquals(valueType, "字符串")) {
         const std::string srcName = static_cast<const IdentifierExpr*>(
