@@ -187,6 +187,7 @@ add_library(cn_compiler_model STATIC
     src/cn_compiler/model/ast_serialize.cpp             # 1142：AST 二进制序列化（写侧）
     src/cn_compiler/model/ast_serialize_read.cpp        # 1142：AST 反序列化（表达式/语句族）
     src/cn_compiler/model/ast_serialize_read_decl.cpp   # 1142：AST 反序列化（声明族/Program 入口）
+    src/cn_compiler/model/ast_arena.cpp                 # 1482：AST 节点 arena（分段 bump 分配+AstNode new/delete）
 )
 target_include_directories(cn_compiler_model PUBLIC ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(cn_compiler_model PUBLIC cn_compiler_common)

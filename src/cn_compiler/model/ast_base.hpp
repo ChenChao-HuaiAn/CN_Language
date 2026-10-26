@@ -17,6 +17,7 @@
 #pragma once
 #include <cstdint>
 #include <memory>
+#include <new>
 #include <string>
 #include <utility>
 #include <vector>
@@ -257,6 +258,18 @@ class AstNode {
 public:
     explicit AstNode(NodeType type) : type_(type) {}
     virtual ~AstNode() = default;
+
+    // ---- 1482·AST arena：类专属 new/delete ----
+    // 全部节点分配走进程级分段 arena（model/ast_arena.cpp），节点本体内存
+    // 不逐个归还、随进程统一回收；unique_ptr 析构链照常执行（成员堆资源
+    // 正常释放）。生存期/所有权语义与线程安全论证见 ast_arena.hpp 文件头。
+    // 内存耗尽=抛 std::bad_alloc 显式失败（禁静默返回空继续编译）。
+    static void* operator new(std::size_t size);
+    static void* operator new(std::size_t size, std::align_val_t align);
+    static void operator delete(void* ptr) noexcept;
+    static void operator delete(void* ptr, std::size_t) noexcept;
+    static void operator delete(void* ptr, std::align_val_t) noexcept;
+    static void operator delete(void* ptr, std::size_t, std::align_val_t) noexcept;
 
     // 获取节点类型
     NodeType getType() const { return type_; }
