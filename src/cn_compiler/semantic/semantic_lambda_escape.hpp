@@ -10,6 +10,7 @@
 #pragma once
 #include <functional>
 #include <string>
+#include <vector>
 
 #include "cn_compiler/common/diagnostics.hpp"
 
@@ -57,6 +58,27 @@ void checkAssign(Diagnostics& diag, const Expr* target, const Expr* value,
 // 无需独立挂点。
 void checkCallArgs(Diagnostics& diag, const CallExpr* node, const SourceLocation& loc,
                    bool fnUnsafe);
+
+// ==================== #1677：lambda 显式捕获执法 ====================
+// [x] 显式捕获 lambda 体（含嵌套体）内引用解析自外层函数作用域的名字且该名
+//   不在显式捕获列表 → 编译错误（IR 层该名不在捕获集=闭包野读外层栈槽，
+//   运行输出垃圾值·h5 探针实证）。帧栈与 enterLambdaBody/exitLambdaBody 同款
+//   配对进出：visitLambdaExpr 参数作用域压栈后 enterLambdaFrame（体作用域
+//   深度=此时 scopes_ 尺寸·参数层索引=本值-1）、退出处 exitLambdaFrame；
+//   visitIdentifierExpr 变量命中后 checkExplicitCaptureRead（命中深度=
+//   defInitLookupDepth·与 lookupVar 同序）。
+//   口径：仅最近一层为显式捕获时拦（外层 [=]/[&]/[] 层保持 collectLambdaCaptures
+//   隐式收集放行=既有语义·C++ 对照：内层默认捕获可直接从更外层函数捕获）；
+//   命中层 0=全局作用域（顶层常量/静态/全局变量·编译期折叠或静态存储）免捕
+//   放行；命中层 ≥ 体作用域深度-1=本层参数/体内声明放行。
+//   帧栈生命周期与 g_lambdaVarSnapshots 同：noteFunctionEntry 全栈复位。
+void enterLambdaFrame(bool isExplicitCapture,
+                      const std::vector<std::string>& explicitCaptures,
+                      int bodyScopeDepth);
+void exitLambdaFrame();
+// 读位执法：命中未捕获外层局部 → 报错并返回 true（调用方照常回类型=最小级联）。
+bool checkExplicitCaptureRead(Diagnostics& diag, const std::string& name,
+                              int hitScopeDepth, const SourceLocation& loc);
 
 } // namespace lambda_escape
 } // namespace cn_compiler

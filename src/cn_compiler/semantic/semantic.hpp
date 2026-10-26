@@ -153,6 +153,10 @@ private:
     bool checkStringConcatAndPtrArithmetic(BinaryExpr* node, const std::string& leftType,
                                            const std::string& rightType);
     bool checkClassOperatorOverload(BinaryExpr* node, const std::string& leftType, const std::string& rightType);
+    // 1675 根修：运算符成员查表（沿继承链·只查不诊断）——族⑤比较分流判定与
+    //   resolveOperatorOverload 共用的单一查表点（无值=类无此运算符成员）
+    cn::Optional<const ClassMemberInfo*> findClassOperator(const std::string& opSym,
+                                                           const std::string& leftType);
     // ==================== 符号表管理 ====================
     void pushScope();                              // 进入新作用域
     void popScope();                               // 退出当前作用域
@@ -310,6 +314,9 @@ private:
     // A-1（引用参数）：实参自动取地址——引用参数按地址传递，调用点把实参重写为
     //   &左值（AddressOf UnaryExpr）；实参须为左值（变量/下标/解引用/字段）
     void wrapRefArgs(CallExpr* node, const std::vector<std::string>& paramTypes);
+    // 1675 根修：引用实参取地址包装的单实参核心（wrapRefArgs 循环体抽出）——
+    //   运算符重载决议命中点（族⑦算术/族⑧比较）对右操作数同口径包装
+    void wrapRefArg(std::unique_ptr<Expr>& arg, const std::string& paramType);
 
     // ==================== 类型工具（静态，委托 type_system 子模块 Task 2.3） ====================
     // 类型工具抽取到 semantic/type_system.hpp 子模块（types::命名空间），

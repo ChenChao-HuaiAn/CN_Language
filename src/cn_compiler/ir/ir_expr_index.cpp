@@ -95,9 +95,14 @@ void IRGenerator::visitIndexExpr(IndexExpr* node) {
             //   LoadPtr 把「首字段值」当地址读=多解一层：`槽[0].大小()` 的 this
             //   装配=数据指针→读错（p2c 打 0）；传值/赋值消费位同理。与 746-a
             //   「元素(i)=内联元素地址」契约对齐（消费位自行副本化/拷贝构造）。
-            if (semantic_ != nullptr &&
-                (semantic_->isStructType(types::canonical(elemSrc)) ||
-                 semantic_->isClassType(types::canonical(elemSrc)))) {
+            // #1688（2026-10-26·多维下标读链）：元素仍为数组（m[i] -> 整32[3]）
+            //   同结构体/类元素=**地址语义**（子数组左值首地址）——原 LoadPtr
+            //   (剥后=i32) 只读 4 字节标量，外层 [j] 把该标量值当地址=错误码 3
+            //   （样本6/9 实锚）；外层下标/整体传参消费该地址继续剥维寻址（C 语义）。
+            if (types::isArray(elemSrc) ||
+                (semantic_ != nullptr &&
+                 (semantic_->isStructType(types::canonical(elemSrc)) ||
+                  semantic_->isClassType(types::canonical(elemSrc))))) {
                 lastExpr_ = addr;
                 return;
             }
@@ -366,6 +371,28 @@ void IRGenerator::visitIndexExpr(IndexExpr* node) {
             stride = ptrElemStride(callRetType244);
         }
     }
+    // #1688（2026-10-26·嵌套下标读外层 m[i][j] 的 [j]）：对象=子数组地址（上方
+    //   地址语义产物）——步长按对象源码类型（exprSrcType 递归）剥维推导 + 外层
+    //   长度越界检查（m[i] -> 整32[3]：步长 4·界 3）；指针对象=元素步进。对象
+    //   无值/标量=上游已拒形态之恢复路径（既有归档口径），步长终态 8 保持原控制流。
+    if (callRetType244.empty() && semantic_ != nullptr &&
+        node->object->getType() == NodeType::IndexExpr) {
+        const cn::Optional<std::string> objT = exprSrcType(node->object.get());
+        if (objT.has_value() && types::isArray(objT.value())) {
+            const std::string elemSrcNest = types::arrayElemOf(objT.value());
+            stride = semantic_->typeSizeOf(elemSrcNest).value_or(0);
+            if (stride <= 0) {
+                // 648（miss 不可静默·110 同族）：元素宽度未登记=内部缺陷显形
+                diagnostics_.report(DiagnosticLevel::Error, node->location,
+                    "内部错误: 嵌套下标元素类型 '" + elemSrcNest +
+                        "' 宽度未登记 ——静默步进8兜底已废除（#648）");
+                stride = 8;
+            }
+            emitBoundsCheck(index, types::arrayLenOf(objT.value()), node->location);
+        } else if (objT.has_value() && types::isPointer(objT.value())) {
+            stride = ptrElemStride(objT.value());
+        }
+    }
     // H8 补完（2026-08-25）：隐式类字段对象（向量 数据 T* 的 数据[位置] 读取）——
     //   lookupSrcType 为空（字段不在 IR varStack），按字段源码类型推导步进
     //   （ptrElemStride：类元素按类总大小，原兜底 8 -> 元素错位）。
@@ -459,6 +486,23 @@ void IRGenerator::visitIndexExpr(IndexExpr* node) {
     } else if (!callRetType244.empty() && types::isPointer(callRetType244)) {
         elemIrType = mapType(types::pointeeOf(callRetType244));
         elemTyped648 = true;
+    }
+    else if (node->object->getType() == NodeType::IndexExpr) {
+        // #1688（嵌套下标读外层元素形态 m[i][j]）：元素源码类型=对象剥一维
+        //   （memberIndexObjElemType 单点·m[i] -> 整32[3] -> 整32）；元素为
+        //   结构体/类同既有地址语义。对象无值=恢复路径（交尾段全 miss 收口）。
+        const cn::Optional<std::string> elemNest =
+            memberIndexObjElemType(node);
+        if (elemNest.has_value()) {
+            elemIrType = mapType(elemNest.value());
+            elemTyped648 = true;
+            const std::string elemCanonNest = types::canonical(elemNest.value());
+            if (semantic_ != nullptr &&
+                (semantic_->isStructType(elemCanonNest) ||
+                 semantic_->isClassType(elemCanonNest))) {
+                elemIsStruct = true;
+            }
+        }
     }
     else if (node->object->getType() == NodeType::MemberExpr) {
         MemberExpr* inner = static_cast<MemberExpr*>(node->object.get());
@@ -687,6 +731,7 @@ ir::IRValue IRGenerator::genGenericIndexAddress(IndexExpr* idx) {
                         // 655（648 余量④-b 显形·同上）：成员对象数组字段元素
                         //   宽度 miss 显形。
                         stride = semantic_->typeSizeOf(elemSrc).value_or(8);
+                        // 静默豁免业务值: 单边守卫——宽度 miss 先报内部错误诊断（#655 显形）后步进终态 8，非静默默认值
                         if (stride <= 0) {
                             diagnostics_.report(DiagnosticLevel::Error,
                                 idx->location,
@@ -715,6 +760,30 @@ ir::IRValue IRGenerator::genGenericIndexAddress(IndexExpr* idx) {
                     if (stride <= 0) stride = 8;
                     emitBoundsCheck(index, types::arrayLenOf(ftype), idx->location);
                 }
+            }
+        } else if (idx->object->getType() == NodeType::IndexExpr) {
+            // #1687（2026-10-26·嵌套下标写 m[i][j] = v 地址面）：对象=子数组
+            //   首地址——步长按对象源码类型剥维推导 + 外层长度越界检查（m[i] ->
+            //   整32[3]：步长 4·界 3；写 基地址+i*12+j*4）。原落兜底 8=j*8 错位
+            //   写（样本1 648 拒编译的伴生地址面）。对象无值/标量=恢复路径。
+            const cn::Optional<std::string> objT = exprSrcType(idx->object.get());
+            if (objT.has_value() && types::isArray(objT.value())) {
+                const std::string elemSrcNest = types::arrayElemOf(objT.value());
+                stride = (semantic_ != nullptr)
+                             ? semantic_->typeSizeOf(elemSrcNest).value_or(0) : 0;
+                // 静默豁免业务值: 单边守卫——宽度 miss 先报内部错误诊断（#648 显形）后步进终态 8，非静默默认值
+                if (stride <= 0) {
+                    // 648（miss 不可静默）：宽度未登记=内部缺陷显形后按 8 兜底
+                    if (semantic_ != nullptr) {
+                        diagnostics_.report(DiagnosticLevel::Error, idx->location,
+                            "内部错误: 嵌套下标元素类型 '" + elemSrcNest +
+                                "' 宽度未登记 ——静默步进8兜底已废除（#648）");
+                    }
+                    stride = 8;
+                }
+                emitBoundsCheck(index, types::arrayLenOf(objT.value()), idx->location);
+            } else if (objT.has_value() && types::isPointer(objT.value())) {
+                stride = ptrElemStride(objT.value());
             }
         }
         ir::IRValue scaled = emitResult(

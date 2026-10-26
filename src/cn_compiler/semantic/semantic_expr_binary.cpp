@@ -494,6 +494,28 @@ void SemanticAnalyzer::checkShiftConstWidth(BinaryExpr* node,
 bool SemanticAnalyzer::checkComparisonBinary(BinaryExpr* node, const std::string& leftType,
                                              const std::string& rightType) {
     if (isComparisonOp(node->op)) {
+        // 1675 根修：类类型左操作数且类（沿继承链）有对应 运算符X 重载 ->
+        //   return false 交族⑧重载决议（族⑧命中后对引用形参右实参取地址包装）。
+        //   原无此分流：比较符在族⑤按普通比较放行（类实例=ptr 指针比较语义），
+        //   而 IR 层降级钩子独立改写为方法调用 -> 语义层零实参准备，调用方传
+        //   一级堆指针、被调方引用形参两级解引用差一层（o2/o5 探针 C0000005）。
+        //   无重载的类比较维持族⑤原语义（指针/同类放行面不变）。
+        if (isClassType(canonicalType(leftType))) {
+            const std::string opSym = [node]() -> std::string {
+                switch (node->op) {
+                    case Operator::EqualEqual: return "==";
+                    case Operator::BangEqual: return "!=";
+                    case Operator::Less: return "<";
+                    case Operator::Greater: return ">";
+                    case Operator::LessEqual: return "<=";
+                    case Operator::GreaterEqual: return ">=";
+                    default: return "";
+                }
+            }();
+            if (!opSym.empty() && findClassOperator(opSym, leftType).has_value()) {
+                return false;
+            }
+        }
         // 比较运算：要求可互相转换的同类操作数，结果为布尔
         if (leftType == "未知" || rightType == "未知") {
             lastType_ = "布尔";
@@ -630,6 +652,13 @@ bool SemanticAnalyzer::checkArithmeticBinary(BinaryExpr* node, std::string& left
                 const ClassMemberInfo* mi = resolveOperatorOverload(
                     opSym, leftType, {rightType}, node->location).value_or(nullptr);
                 if (mi != nullptr) {
+                    // 1675 根修：重载降级为成员方法调用，右操作数=实参——引用形参
+                    //   （类&）须与普通调用 wrapRefArgs 同口径自动取地址（缺此步
+                    //   则方法体内引用两级解引用与调用方传值差一层，运行期
+                    //   C0000005，o1/o3 探针实录）；形参数≠1 属已报错路径不掺和
+                    if (mi->paramTypes.size() == 1) {
+                        wrapRefArg(node->right, mi->paramTypes[0]);
+                    }
                     lastType_ = mi->type;
                     // 缺陷2 修复：写回重载结果类型，供 IR 层链式运算符重载识别
                     node->resolvedType = mi->type;
@@ -806,6 +835,13 @@ bool SemanticAnalyzer::checkClassOperatorOverload(BinaryExpr* node, const std::s
             const ClassMemberInfo* mi = resolveOperatorOverload(
                 opSym, leftType, {rightType}, node->location).value_or(nullptr);
             if (mi != nullptr) {
+                // 1675 根修：重载降级为成员方法调用，右操作数=实参——引用形参
+                //   （类&）须与普通调用 wrapRefArgs 同口径自动取地址（缺此步则
+                //   方法体内引用两级解引用与调用方传值差一层，运行期 C0000005，
+                //   o2/o5 探针实录）；形参数≠1 属已报错路径不掺和
+                if (mi->paramTypes.size() == 1) {
+                    wrapRefArg(node->right, mi->paramTypes[0]);
+                }
                 // 运算符重载命中：结果为重载方法返回类型
                 lastType_ = mi->type;
                 // 缺陷2 修复：写回重载结果类型，供 IR 层链式运算符重载识别

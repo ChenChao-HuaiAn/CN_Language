@@ -125,17 +125,20 @@ std::optional<std::string> methodValueFnPtrOf(const std::string& type);
 // 是否指针类型（类型名以 * 结尾，如 整32* / 空类型*）
 bool isPointer(const std::string& type);
 
-// 是否数组类型（类型名形如 元素类型[长度]，如 整32[10]）
-// 识别：最后一个 '[' 位于末尾 ']' 前，且下标部分为十进制数字
+// 是否数组类型（类型名形如 元素类型[长度]，如 整32[10]、整32[2][3]）
+// 识别：第一个 '[' 有配对 ']'、类型以 ']' 结尾，且第一维下标为十进制数字
 bool isArray(const std::string& type);
 
 // 提取指针所指元素类型（整32* -> 整32；非指针类型原样返回）
 std::string pointeeOf(const std::string& type);
 
-// 提取数组元素类型（整32[10] -> 整32；数组类型中最后一个 '[' 之前的部分）
+// 提取数组元素类型：删掉第一个 '[...]' 维度段（#1676 多维修正）——
+//   整32[10] -> 整32、整32[2][3] -> 整32[3]（保留剩余维度后缀）；
+//   非数组形态原样返回
 std::string arrayElemOf(const std::string& type);
 
-// 提取数组长度（整32[10] -> 10）；非数组类型=无值
+// 提取数组长度：取第一维（整32[10] -> 10、整32[2][3] -> 2·#1676 多维修正）；
+//   非数组类型/下标非纯数字/超 int 承载=无值
 // 1360 结果化：原哨兵 -1 与合法长度值域重叠，改 cn::Optional——
 //   消费点 .has_value() 分流；isArray 内部同以 has_value() 判定
 cn::Optional<int> arrayLenOf(const std::string& type);

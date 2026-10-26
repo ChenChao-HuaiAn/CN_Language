@@ -104,6 +104,21 @@ bool SemanticAnalyzer::isStaticField(const std::string& className,
 
 // ==================== 运算符重载（Task 3.7） ====================
 
+// 1675 根修：运算符成员查表（沿继承链·只查不诊断）——族⑤比较分流与
+//   resolveOperatorOverload 共用的单一查表点。无值=该类（含基类）无此运算符成员
+cn::Optional<const ClassMemberInfo*> SemanticAnalyzer::findClassOperator(
+    const std::string& opSym, const std::string& leftType) {
+    const ClassInfo* cur = findClass(types::canonical(leftType)).value_or(nullptr);
+    while (cur != nullptr) {
+        auto it = cur->methods.find(opSym);
+        if (it != cur->methods.end()) {
+            return &it->second;
+        }
+        cur = cur->baseName.empty() ? nullptr : findClass(cur->baseName).value_or(nullptr);
+    }
+    return std::nullopt;
+}
+
 // 运算符重载：查找左操作数类型的成员 运算符X（重载决议顺序②）
 //   校验参数个数与类型。1360 结果化批3A：无值=无重载（原 nullptr 哨兵退役；
 //   参数不匹配仍返回有值成员——诊断后调用方按原语义继续）
@@ -111,16 +126,7 @@ cn::Optional<const ClassMemberInfo*> SemanticAnalyzer::resolveOperatorOverload(
     const std::string& opSym, const std::string& leftType,
     const std::vector<std::string>& rightArgTypes, const SourceLocation& loc) {
     // 运算符符号名（运算符+ -> "+"）；查左操作数类型的成员表（沿继承链）
-    const ClassInfo* cur = findClass(types::canonical(leftType)).value_or(nullptr);
-    const ClassMemberInfo* mi = nullptr;
-    while (cur != nullptr) {
-        auto it = cur->methods.find(opSym);
-        if (it != cur->methods.end()) {
-            mi = &it->second;
-            break;
-        }
-        cur = cur->baseName.empty() ? nullptr : findClass(cur->baseName).value_or(nullptr);
-    }
+    const ClassMemberInfo* mi = findClassOperator(opSym, leftType).value_or(nullptr);
     if (mi == nullptr) return std::nullopt;
     const ClassMemberInfo& miRef = *mi;
     // 参数个数校验：双目运算符须 1 个右操作数；单目运算符（- ! ~）0 个

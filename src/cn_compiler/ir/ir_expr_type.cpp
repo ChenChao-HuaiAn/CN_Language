@@ -180,6 +180,18 @@ cn::Optional<std::string> IRGenerator::exprSrcType(Expr* node) const {
                     return types::pointeeOf(arrSrc);
                 }
             }
+            // #1688（2026-10-26·多维下标读寻址链）：嵌套下标——本下标表达式
+            //   类型 = 对象剥一维（memberIndexObjElemType 单点·ir.cpp 448 提炼，
+            //   #1687 轮补 object=IndexExpr 递归分支=剥维链闭合）。原缺此分支
+            //   恒无值 → 尾段步长 8/i64 兜底（内层子数组被打包读成标量值、外层
+            //   把该值当地址=错误码 3·样本6/9 实锚）。
+            if (ie->object->getType() == NodeType::IndexExpr) {
+                // memberIndexObjElemType 形参为非 const IndexExpr*（448 既有
+                //   签名）——本函数 node 为非 const Expr*（MemberExpr 分支同款
+                //   下沉），去 const 修饰直调；成员函数本体 const 不受影响。
+                return memberIndexObjElemType(
+                    const_cast<IndexExpr*>(ie));
+            }
             return std::nullopt;
         }
         case NodeType::MemberExpr: {

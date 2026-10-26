@@ -37,57 +37,67 @@ void SemanticAnalyzer::wrapRefArgs(CallExpr* node,
                                    const std::vector<std::string>& paramTypes) {
     const std::size_t n = std::min(node->arguments.size(), paramTypes.size());
     for (std::size_t i = 0; i < n; ++i) {
-        if (!types::isReference(paramTypes[i])) continue;
-        Expr* arg = node->arguments[i].get();
-        // 2026-08-25 H3 幂等：实参已是 &x（AddressOf）——共享 AST 重复检查时
-        //   二次 wrapRefArgs 不再包装（否则 前驱 -> &前驱 -> &(&前驱)=整64*）
-        if (arg->getType() == NodeType::UnaryExpr &&
-            static_cast<UnaryExpr*>(arg)->op == Operator::AddressOf) {
-            continue;
-        }
-        bool isLvalue = false;
-        switch (arg->getType()) {
-            case NodeType::IdentifierExpr: {
-                std::string vt;
-                isLvalue = lookupVar(static_cast<IdentifierExpr*>(arg)->name, vt);
-                // 188-a（D6 B11 变量常量传播）：引用实参=别名逃逸（被调方可能改写
-                //   该变量）→ 恒空判定失格（保守，防假阳性）
-                if (isLvalue) {
-                    noteNullEscape(static_cast<IdentifierExpr*>(arg)->name);
-                    // 548（编译期除零·常量传播）：引用实参=别名逃逸同款失格
-                    noteZeroDisqual(static_cast<IdentifierExpr*>(arg)->name);
-                }
-                break;
-            }
-            case NodeType::IndexExpr:
-            case NodeType::MemberExpr:
-            case NodeType::SelfExpr:
-                isLvalue = true;
-                break;
-            case NodeType::UnaryExpr:
-                // 2026-08-25 H3：Deref 与 AddressOf（已 wrap 过 &前驱）都是左值——
-                //   嵌套实例化共享 AST 二次检查时 &前驱 不应再报"非左值"
-                isLvalue = (static_cast<UnaryExpr*>(arg)->op == Operator::Deref ||
-                            static_cast<UnaryExpr*>(arg)->op == Operator::AddressOf);
-                break;
-            default:
-                isLvalue = false;
-                break;
-        }
-        if (!isLvalue) {
-            diagnostics_.report(DiagnosticLevel::Error, arg->location,
-                                "引用参数要求左值实参（不能对常量/字面量/临时值取地址）");
-            continue;
-        }
-        const SourceLocation loc = arg->location;
-        node->arguments[i] = std::make_unique<UnaryExpr>(
-            Operator::AddressOf, std::move(node->arguments[i]));
-        node->arguments[i]->location = loc;
-        // 588-a（005 甲案）：包装节点=内部引用机制形态（IR 层维持 AddrOf 槽——
-        //   A-1 契约"引用形参槽存被引用左值地址"，探针实证写回/读/方法/换绑
-        //   全链依赖此形态），与用户显式 &（类类型→Load 槽产对象地址）区分。
-        static_cast<UnaryExpr*>(node->arguments[i].get())->refWrapAddr = true;
+        wrapRefArg(node->arguments[i], paramTypes[i]);
     }
+}
+
+// 1675 根修：引用实参取地址包装的单实参核心（原 wrapRefArgs 循环体原样抽出）——
+//   调用面=普通调用（wrapRefArgs）与运算符重载决议命中点（族⑦算术/族⑧比较，
+//   见 semantic_expr_binary.cpp）：重载降级为成员方法调用后右操作数=实参，
+//   引用形参（类&）须与普通调用同口径取地址，否则方法体内引用两级解引用约定
+//   与调用方传值差一层（o2 探针 C0000005 实录：调用方传一级堆指针，被调方
+//   [o] 取首字段值当对象地址再解引用→读地址 1 崩溃）。
+void SemanticAnalyzer::wrapRefArg(std::unique_ptr<Expr>& arg,
+                                  const std::string& paramType) {
+    if (!types::isReference(paramType)) return;
+    Expr* raw = arg.get();
+    // 2026-08-25 H3 幂等：实参已是 &x（AddressOf）——共享 AST 重复检查时
+    //   二次包装不再套（否则 前驱 -> &前驱 -> &(&前驱)=整64*）
+    if (raw->getType() == NodeType::UnaryExpr &&
+        static_cast<UnaryExpr*>(raw)->op == Operator::AddressOf) {
+        return;
+    }
+    bool isLvalue = false;
+    switch (raw->getType()) {
+        case NodeType::IdentifierExpr: {
+            std::string vt;
+            isLvalue = lookupVar(static_cast<IdentifierExpr*>(raw)->name, vt);
+            // 188-a（D6 B11 变量常量传播）：引用实参=别名逃逸（被调方可能改写
+            //   该变量）→ 恒空判定失格（保守，防假阳性）
+            if (isLvalue) {
+                noteNullEscape(static_cast<IdentifierExpr*>(raw)->name);
+                // 548（编译期除零·常量传播）：引用实参=别名逃逸同款失格
+                noteZeroDisqual(static_cast<IdentifierExpr*>(raw)->name);
+            }
+            break;
+        }
+        case NodeType::IndexExpr:
+        case NodeType::MemberExpr:
+        case NodeType::SelfExpr:
+            isLvalue = true;
+            break;
+        case NodeType::UnaryExpr:
+            // 2026-08-25 H3：Deref 与 AddressOf（已 wrap 过 &前驱）都是左值——
+            //   嵌套实例化共享 AST 二次检查时 &前驱 不应再报"非左值"
+            isLvalue = (static_cast<UnaryExpr*>(raw)->op == Operator::Deref ||
+                        static_cast<UnaryExpr*>(raw)->op == Operator::AddressOf);
+            break;
+        default:
+            isLvalue = false;
+            break;
+    }
+    if (!isLvalue) {
+        diagnostics_.report(DiagnosticLevel::Error, raw->location,
+                            "引用参数要求左值实参（不能对常量/字面量/临时值取地址）");
+        return;
+    }
+    const SourceLocation loc = raw->location;
+    arg = std::make_unique<UnaryExpr>(Operator::AddressOf, std::move(arg));
+    arg->location = loc;
+    // 588-a（005 甲案）：包装节点=内部引用机制形态（IR 层维持 AddrOf 槽——
+    //   A-1 契约"引用形参槽存被引用左值地址"，探针实证写回/读/方法/换绑
+    //   全链依赖此形态），与用户显式 &（类类型→Load 槽产对象地址）区分。
+    static_cast<UnaryExpr*>(arg.get())->refWrapAddr = true;
 }
 // ==================== plans/019 阶段1（2026-09-10）：显式转移 转移() ====================
 

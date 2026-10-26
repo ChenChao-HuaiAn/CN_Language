@@ -264,13 +264,11 @@ std::string IRGenerator::indexAssignElemType(AssignmentExpr* node) {
                 targetType = mapType(types::pointeeOf(st));
                 elemResolved648 = true;
             }
-            // 648 豁免：字符串变量下标写=内置字节视图面（genGenericIndexAddress
-            //   写路径有 emitStrBoundsCheck 防线），非静默 miss。
+            // 648 豁免：字符串变量下标写=内置字节视图面（写路径有 emitStrBoundsCheck 防线），非静默 miss。
             else if (types::canonicalEquals(st, "字符串")) {
                 elemResolved648 = true;
             }
-            // A-3（2026-08）：隐式类字段对象（向量 数据[位置] = 值）——
-            //   目标类型按字段所指元素类型推导（此前回退 i64 只存 8 字节）
+            // A-3（2026-08）：隐式类字段对象（向量 数据[位置] = 值）按字段所指元素类型推导
             else if (st.empty() &&
                      isInstanceField(static_cast<IdentifierExpr*>(idx->object.get())->name)) {
                 const std::string ft = classFieldType(
@@ -285,12 +283,10 @@ std::string IRGenerator::indexAssignElemType(AssignmentExpr* node) {
                 }
             }
         } else if (idx->object->getType() == NodeType::MemberExpr) {
-            // 1059：对象为**类/结构体**的字段数组（出.分数[1] = v / b.数据[0] = v）
-            //   ——元素类型 = 字段数组元素类型；字段类型查询经 memberFieldSrcType
-            //   （findStruct+findClass 双路径·973 统一查询同源）。原仅 findStruct
-            //   → 类字段数组恒 miss → 648 误伤（v2 放行=宿主单侧拒绝分叉）。类宿主
-            //   仅**数组字段**放行——非数组（指针/标量）字段下标写=v2 语义层现行
-            //   拒绝面（97-a 非数组不可写），维持 648 拒绝（指针字段下标写族另立案）。
+            // 1059：类/结构体的字段数组（出.分数[1] = v）——元素类型=字段数组
+            //   元素类型（memberFieldSrcType：findStruct+findClass 双路径·973 同源）。
+            //   类宿主仅**数组字段**放行——非数组（指针/标量）字段下标写=v2 语义层
+            //   现行拒绝面（97-a），维持 648 拒绝（指针字段下标写族另立案）。
             MemberExpr* inner = static_cast<MemberExpr*>(idx->object.get());
             // 1360 结果化：value_or("") 显形（miss 落 648 显形·原语义）
             const std::string ftype1059 = memberFieldSrcType(inner).value_or("");
@@ -306,9 +302,18 @@ std::string IRGenerator::indexAssignElemType(AssignmentExpr* node) {
                 targetType = mapType(types::pointeeOf(ftype1059));
                 elemResolved648 = true;
             }
-            // 648 归档：字段名 miss=上游语义层已报「没有成员」；字段命中但非
-            //   数组/指针（标量下标）=语义层拒绝形态的错误恢复——i64 兜底仅为
-            //   恢复路径（真拒绝面由上游诊断+尾段 648 显形双承担）。
+            // 648 归档：字段名 miss=上游已报「没有成员」；命中但非数组/指针（标量下标）=语义层拒绝形态之恢复路径——i64 兜底仅为恢复路径（真拒绝面=上游诊断+尾段 648 显形双承担）。
+        } else if (idx->object->getType() == NodeType::IndexExpr) {
+            // #1687（2026-10-26·嵌套下标写 矩阵[i][j] = v）：元素类型=对象剥一维
+            //   （memberIndexObjElemType 单点·矩阵[i] -> 整32[3] -> 整32）；原缺
+            //   此分支=合法程序落 648 内部错误误伤（样本1 铁证 m[1][2]=6 拒编译）。
+            const cn::Optional<std::string> elemNest =
+                memberIndexObjElemType(idx);
+            if (elemNest.has_value()) {
+                targetType = mapType(elemNest.value());
+                elemResolved648 = true;
+            }
+            // 648 归档：对象无值=内层形态上游已拒之恢复路径，交尾段 648 显形收口。
         }
     } else if (node->target->getType() == NodeType::UnaryExpr) {
         UnaryExpr* un = static_cast<UnaryExpr*>(node->target.get());
@@ -321,10 +326,9 @@ std::string IRGenerator::indexAssignElemType(AssignmentExpr* node) {
             }
         } else if (un->operand->getType() == NodeType::MemberExpr) {
             // 813（2026-10-16·655 复核轮写面余量）：解引用写目标操作数=成员链
-            //   （*b.游标 = v）——元素类型=字段指针类型 pointee，与读侧 pointer
+            //   （*b.游标 = v）——元素类型=字段指针 pointee，与读侧 pointer
             //   PointeeSrcType MemberExpr 分支（655 ④d 同口径）对称；修前仅认
-            //   标识符操作数 -> 合法成员链写被 648 显形诊断误伤（宿主拒绝 vs
-            //   v2 放行分叉·v2 侧同轮已修 解引用所指宽度码813 单点）。
+            //   标识符操作数 -> 合法成员链写被 648 显形误伤（v2 侧同轮已修）。
             const std::string fieldType = memberFieldSrcType(
                 static_cast<MemberExpr*>(un->operand.get())).value_or("");
             if (types::isPointer(fieldType)) {
@@ -332,15 +336,12 @@ std::string IRGenerator::indexAssignElemType(AssignmentExpr* node) {
                 elemResolved648 = true;
             }
         }
-        // 648 归档：解引用目标操作数非指针/非标识符=上游语义层已报错之恢复路径，
-        //   不报错，i64 兜底仅为恢复路径。
+        // 648 归档：解引用操作数非指针/非标识符=上游已报错之恢复路径，i64 兜底仅为恢复路径。
     }
     if (!elemResolved648) {
-        // 648（miss 不可静默·110 同族）：下标/解引用赋值目标元素类型全 miss
-        //   （对象形态未覆盖·如下标对象的下标 矩阵[i][j] = v、复合指针表达式
-        //   解引用目标）=合法程序内部缺陷，显形于此；driver 在 generate() 后
-        //   hasErrors() 统一中止，产物不落地。原 i64 宽写兜底保留（控制流零
-        //   变更）。
+        // 648（miss 不可静默·110 同族）：目标元素类型全 miss（对象形态未覆盖·
+        //   复合指针表达式解引用等）=合法程序内部缺陷，显形于此；driver 在
+        //   generate() 后 hasErrors() 统一中止，产物不落地。
         diagnostics_.report(DiagnosticLevel::Error, node->location,
             "内部错误: 下标/解引用赋值目标元素类型未解析 ——静默按整64写兜底已废除（#648）");
     }
@@ -377,6 +378,12 @@ cn::Optional<std::string> IRGenerator::indexTargetElemSrcType(AssignmentExpr* no
             static_cast<MemberExpr*>(tIdx->object.get())).value_or("");
         if (types::isArray(ftype1059)) return types::arrayElemOf(ftype1059);
         return std::nullopt;
+    }
+    if (tIdx->object->getType() == NodeType::IndexExpr) {
+        // #1687（嵌套下标目标·矩阵[i][j] = 点{…}）：元素源码类型=对象剥一维
+        //   （memberIndexObjElemType 单点·与 indexAssignElemType 嵌套分支同源）。
+        //   非数组/指针形态=无值落 648 拒绝（同既有口径零分叉）。
+        return memberIndexObjElemType(tIdx);
     }
     if (tIdx->object->getType() != NodeType::IdentifierExpr) return std::nullopt;
     const std::string st = lookupSrcType(

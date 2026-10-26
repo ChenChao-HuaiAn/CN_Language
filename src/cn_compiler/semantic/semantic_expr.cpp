@@ -124,6 +124,15 @@ void SemanticAnalyzer::visitIdentifierExpr(IdentifierExpr* node) {
         //   失败；继续供级联诊断最小化）。转移改写豁免窗口内跳过（visitVarDecl
         //   改写产物的常规检查不是用户代码的使用）。
         if (!inTransferRewrite_) reportMovedUse(node->name, node->location);
+        // #1677（2026-10-26）：lambda 显式捕获执法——显式捕获 [x] lambda 体内
+        //   读未捕获的外层局部变量 = 编译错误（IR 层该名不在捕获集=闭包野读
+        //   外层栈槽·运行输出垃圾值）。命中深度与 lookupVar 同序（非 lambda
+        //   上下文帧栈空=零开销直通；转移改写豁免窗口同 reportMovedUse）。
+        if (!inTransferRewrite_) {
+            lambda_escape::checkExplicitCaptureRead(
+                diagnostics_, node->name, defInitLookupDepth(node->name).value_or(-1),
+                node->location);
+        }
         // 010（def-init·E0381）：未初始化读判定——标量/结构体直接判（对象侧
         //   inAddrBaseCtx_ 时结构体跳过，字段/元素读由 MemberExpr/IndexExpr 精确
         //   判定）；数组仅聚合值读语境判定（实参位=指针退化出参惯用法豁免）。
@@ -860,6 +869,13 @@ void SemanticAnalyzer::visitLambdaExpr(LambdaExpr* node) {
                                 "lambda 参数 '" + param->name + "' 重复声明");
         }
     }
+    // #1677：显式捕获执法帧入栈（体作用域深度=参数层压栈后的 scopes_ 尺寸·
+    //   参数层索引=本值-1。Explicit 层捕获列表=用户所写；非 Explicit 层仅占
+    //   位——isExplicit=false 时读位执法放行=隐式收集既有语义。与检查体末
+    //   exitLambdaFrame 配对·嵌套 lambda 逐层进出）
+    lambda_escape::enterLambdaFrame(
+        node->captureKind == LambdaCaptureKind::Explicit,
+        node->explicitCaptures, static_cast<int>(scopes_.size()));
     // 检查函数体（返回语句由 checkFunctionBody 校验；lambda 的返回类型
     // 在 visitReturnStmt 里按 currentReturnType_ 校验——lambda 未标注时
     // 先置空、由 return 语句动态放宽，见 visitReturnStmt 特判）
@@ -904,5 +920,6 @@ void SemanticAnalyzer::visitLambdaExpr(LambdaExpr* node) {
     lastType_ = "函数指针<" + (node->returnType.empty() ? "空类型" : node->returnType) +
                 ">(" + params + ")";
     lambda_escape::exitLambdaBody();  // 435：lambda 体上下文复位（与 enter 配对）
+    lambda_escape::exitLambdaFrame();  // #1677：显式捕获执法帧弹出（与帧入栈配对）
 }
 } // namespace cn_compiler

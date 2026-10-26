@@ -651,6 +651,16 @@ cn::Optional<std::string> IRGenerator::memberIndexObjElemType(IndexExpr* idx) co
         if (!ftype.empty()) {
             objType = types::isArray(ftype) ? types::arrayElemOf(ftype) : ftype;
         }
+    } else if (idx->object->getType() == NodeType::IndexExpr) {
+        // #1687/#1688（2026-10-26·嵌套下标 矩阵[i][j]）：对象=下标表达式——
+        //   类型经 exprSrcType 递归（其 IndexExpr 分支回落本函数=剥维链闭合：
+        //   矩阵[i] -> 整32[3]），本层再剥一维=整32。原缺此分支恒无值 -> 写侧
+        //   648 显形拒（样本1）/读侧步长 8 兜底野地址（错误码3·样本6/9）。
+        const cn::Optional<std::string> objT = exprSrcType(idx->object.get());
+        if (objT.has_value()) {
+            if (types::isArray(objT.value())) objType = types::arrayElemOf(objT.value());
+            else if (types::isPointer(objT.value())) objType = types::pointeeOf(objT.value());
+        }
     }
     if (objType.empty()) return std::nullopt;
     return objType;

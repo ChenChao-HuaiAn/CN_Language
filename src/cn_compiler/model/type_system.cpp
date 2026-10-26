@@ -784,24 +784,39 @@ std::string pointeeOf(const std::string& type) {
     return type;
 }
 
-// 提取数组元素类型（整32[10] -> 整32；非数组类型原样返回）
+// 提取数组元素类型：删掉第一个 '[...]' 维度段，保留其前的核心类型与其后的
+// 剩余维度后缀（#1676 多维修正）—— 整32[10] -> 整32、整32[2][3] -> 整32[3]。
+// 原实现 rfind('[') 剥最后一维，多维时 整32[2][3] 错返 整32[2]（与 arrayLenOf
+// 取第一维的口径错位成对）。维度长度为纯数字不含括号，故第一个 '[' 的配对
+// ']' 即其后第一个 ']'。非数组形态（无 '[' 或不以 ']' 结尾）原样返回；
+// 下标是否纯数字的数组认定归 isArray（本函数口径维持宽松，行为不变）。
 std::string arrayElemOf(const std::string& type) {
-    const std::size_t lb = type.rfind('[');
-    if (lb != std::string::npos && !type.empty() && type.back() == ']') {
-        return type.substr(0, lb);
+    const std::size_t lb = type.find('[');
+    if (lb == std::string::npos || type.back() != ']') {
+        return type;
     }
-    return type;
+    const std::size_t rb = type.find(']', lb + 1);
+    if (rb == std::string::npos) {
+        return type;
+    }
+    return type.substr(0, lb) + type.substr(rb + 1);
 }
 
-// 提取数组长度（整32[10] -> 10）；非数组类型/下标非纯数字/超 int 承载=无值
+// 提取数组长度：取第一个 '[...]' 维度段中的纯数字（#1676 多维修正）——
+//   整32[10] -> 10、整32[2][3] -> 2（第一维）。原实现 rfind 取最后一维，
+//   多维时 整32[2][3] 错返 3，与 arrayElemOf 剥第一维的口径错位成对。
+//   下标非纯数字/超 int 承载仍=无值（口径不变，不扩常量表达式求值）；
+//   多维时仅要求第一维为纯数字，类型整体须以 ']' 结尾。
 // 1360 结果化：原哨兵 -1 与合法长度值域重叠，改 cn::Optional——
 //   消费点 .has_value() 强制分流
 cn::Optional<int> arrayLenOf(const std::string& type) {
-    const std::size_t lb = type.rfind('[');
-    const std::size_t rb = type.rfind(']');
-    if (lb == std::string::npos || rb == std::string::npos ||
-        rb != type.size() - 1 || lb + 1 >= rb) {
-        return std::nullopt;  // 非数组形态
+    const std::size_t lb = type.find('[');
+    if (lb == std::string::npos) {
+        return std::nullopt;  // 非数组形态：无维度段
+    }
+    const std::size_t rb = type.find(']', lb + 1);
+    if (rb == std::string::npos || type.back() != ']' || lb + 1 >= rb) {
+        return std::nullopt;  // 非数组形态：无配对 ']' / 不以 ']' 结尾 / 空下标
     }
     const std::string len = type.substr(lb + 1, rb - lb - 1);
     if (len.empty() || len.find_first_not_of("0123456789") != std::string::npos) {
