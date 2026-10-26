@@ -209,6 +209,7 @@ add_library(cn_compiler_semantic STATIC
     src/cn_compiler/semantic/semantic_expr_access.cpp
     src/cn_compiler/semantic/semantic_definit.cpp
     src/cn_compiler/semantic/semantic_call.cpp
+    src/cn_compiler/semantic/semantic_call_remove.cpp
     src/cn_compiler/semantic/semantic_call_result_ctor.cpp
     src/cn_compiler/semantic/semantic_call_ctor.cpp
     src/cn_compiler/semantic/semantic_call_member.cpp
