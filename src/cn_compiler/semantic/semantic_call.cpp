@@ -810,16 +810,21 @@ bool SemanticAnalyzer::checkDirectCall(CallExpr* node, const std::string& callee
         // 第 4 层（crate 隔离）：限定调用按模块过滤（数学::双倍 只解析数学.cn 的）
         // 55-c 方案A：实参字面量标志供决议豁免（`读值(100)` 传 正32 形参保留）
         std::vector<bool> argLitFlags;
+        std::vector<const Expr*> argExprs;
         argLitFlags.reserve(node->arguments.size());
+        argExprs.reserve(node->arguments.size());
         for (const auto& a : node->arguments) {
             argLitFlags.push_back(isIntLiteralExpr(a.get()));
+            // 1263：字面量表达式随传（conversionLevel 值域判据——4000000000L
+            //   对整32 形参超域=该候选淘汰·治 total 相等误歧义）
+            argExprs.push_back(a.get());
         }
         // 1360 结果化批3B：决议失败/歧义（已报诊断）无值——value_or 显形空串
         //   回落保持「决议失败恢复兼容」原控制流（checkDirectCallFallback 空
         //   key 判据）。
         const cn::Optional<std::string> sigKeyOpt =
             resolveOverload(calleeName, argTypes, node->location,
-                            node->moduleFilter, argLitFlags);
+                            node->moduleFilter, argLitFlags, argExprs);
         const std::string sigKey = sigKeyOpt.value_or(std::string());
     if (checkDirectCallFallback(node, calleeName, sigKey)) return true;
         // plans/018 呈报二 A′（2026-09-07 用户裁决）：resolvedSignature = 注册键。

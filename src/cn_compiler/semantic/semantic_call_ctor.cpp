@@ -108,8 +108,10 @@ bool SemanticAnalyzer::checkCtorCall(CallExpr* node, const std::string& classNam
                 bool ok = true;
                 for (std::size_t i = 0; i < argTypes.size(); ++i) {
                     // 1360 结果化批3A：无值=不可转
+                    // 1263：字面量表达式随传（值域判据·与 resolveOverload 同面）
                     if (!conversionLevel(argTypes[i], mi.paramTypes[i],
-                                        isIntLiteralExpr(node->arguments[i].get())).has_value()) { ok = false; break; }
+                                        isIntLiteralExpr(node->arguments[i].get()),
+                                        node->arguments[i].get()).has_value()) { ok = false; break; }
                 }
                 if (!ok) continue;
                 ctor = &mi;
@@ -119,7 +121,8 @@ bool SemanticAnalyzer::checkCtorCall(CallExpr* node, const std::string& classNam
                     // 1360 结果化批3A：非精确（含不可转无值）→ exact=false（原 !=0 判定同义面）
                     const cn::Optional<int> lvCtor =
                         conversionLevel(argTypes[i], mi.paramTypes[i],
-                                        isIntLiteralExpr(node->arguments[i].get()));
+                                        isIntLiteralExpr(node->arguments[i].get()),
+                                        node->arguments[i].get());
                     if (!lvCtor.has_value() || lvCtor.value() != 0) { exact = false; break; }
                 }
                 if (exact) { ctorExact = &mi; break; }

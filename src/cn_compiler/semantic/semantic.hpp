@@ -579,7 +579,8 @@ private:
                                 const std::vector<std::string>& argTypes,
                                 const SourceLocation& loc,
                                 const std::string& moduleFilter = "",
-                                const std::vector<bool>& argIsLiteral = {});
+                                const std::vector<bool>& argIsLiteral = {},
+                                const std::vector<const Expr*>& argExprs = {});
     // 206-a（D1 行数整改）：resolveOverload 拆分的两个族方法（宿主纯重构零行为变更）。
     // A-5 前置扫描：当前模块是否定义过该函数名（crate 隔离纯名调用的遮蔽判定）。
     bool hasCurrentModuleDefinition(const std::string& name);
@@ -592,8 +593,11 @@ private:
     // 实参类型到参数类型的转换等级：0=精确 1=宽化 2=隐式转换
     //（非静态：需调用 canConvertType/isEnumType 等成员，Task 2.10）
     // 1360 结果化批3A：无值=不可转（原 -1 哨兵退役）
+    // 1263：literalExpr=字面量实参表达式（可空）——55-c 豁免加值域判据：字面量
+    //   数学值超目标域=不可行（nullopt·4000000000L 对整32 形参淘汰候选），
+    //   域内保留宽化级 1（读值(100) 传 正32 形参合法面不变）
     cn::Optional<int> conversionLevel(const std::string& argType, const std::string& paramType,
-                        bool argIsLiteral = false);
+                        bool argIsLiteral = false, const Expr* literalExpr = nullptr);
     // 判断类型字符串是否为函数指针类型（函数指针<返回>(参数,...)）
     static bool isFuncPtrType(const std::string& type);
     // 从函数指针类型字符串提取返回类型（空串表示非法输入）

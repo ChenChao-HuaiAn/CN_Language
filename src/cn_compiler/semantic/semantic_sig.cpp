@@ -158,7 +158,8 @@ cn::Optional<std::string> SemanticAnalyzer::funcFirstSigKey(const std::string& n
 // 1360 结果化批3A：无值=不可转换（原 -1 哨兵退役——与 0 级「精确」同值域面消除）
 cn::Optional<int> SemanticAnalyzer::conversionLevel(const std::string& argTypeRaw,
                                       const std::string& paramTypeRaw,
-                                      bool argIsLiteral) {
+                                      bool argIsLiteral,
+                                      const Expr* literalExpr) {
     // A-1（引用参数）：按值/按引用双方均剥 & 后比较——引用参数绑定左值实参，
     //   实参与参数的数据形状一致（都是被引用类型的值）；引用 vs 按值 的区分
     //   由签名 key（& 保留在 paramTypes）完成，决议只看形状
@@ -169,7 +170,20 @@ cn::Optional<int> SemanticAnalyzer::conversionLevel(const std::string& argTypeRa
         // 55-c 方案A（2026-09-10 用户裁决）：整数字面量实参豁免——源/目标均为
         //   整数族时按宽化级参与决议（字面量按目标类型解释，Rust 字面量推断
         //   惯例；`读值(100)` 传 正32 形参等形态保留）
+        // 1263：豁免加值域判据——字面量数学值超目标域=不可行（该候选淘汰），
+        //   治「4000000000L 对整32 形参仍给 1 级→与另一候选 total 相等→误歧义」；
+        //   literalExpr 空（旧调用面）保守维持豁免（域内视·与旧行为等价）。
+        //   值域判据域=目标位宽 ≥32（整32/正32/整64/正64/整128/正128）——窄族
+        //   （整8/整16/正8/正16）保持无判域豁免：字面量超窄域=回绕豁免立法面
+        //   （001 §3.7a·canConvertArgNarrow·843 正测锁「吃整8(200)」）。
         if (argIsLiteral && types::isInteger(arg) && types::isInteger(param)) {
+            // intRank 序（type_system.cpp）：整8/正8=1·整16/正16=2·整32/正32=3·
+            //   整64/正64=4·整128/正128=5——判据域=秩 ≥3（32 位及以上公共计算域）
+            const cn::Optional<int> paramRank = types::intRank(param);
+            if (literalExpr != nullptr && paramRank.has_value() &&
+                paramRank.value() >= 3 && !intLiteralFitsType(literalExpr, param)) {
+                return std::nullopt;
+            }
             return 1;
         }
         // 234（2026-10-06·91303）：类 → 基类链·仅引用形参的决议形状放行——
@@ -211,11 +225,15 @@ cn::Optional<std::string> SemanticAnalyzer::resolveOverload(const std::string& n
                                               const std::vector<std::string>& argTypes,
                                               const SourceLocation& loc,
                                               const std::string& moduleFilter,
-                                              const std::vector<bool>& argIsLiteral) {
+                                              const std::vector<bool>& argIsLiteral,
+                                              const std::vector<const Expr*>& argExprs) {
     std::string bestKey;
     int bestTotal = INT32_MAX;
     bool ambiguous = false;
     std::string ambiguousDetail;
+    // 1263：最优候选的逐参等级向量——total 相等时做逐参支配判定（C++ 语义），
+    //   不再「total 相等即歧义」；支配=新候选每位等级 ≤ 现最优（至少一位更优）
+    std::vector<int> bestLevels;
     // 206-a（2026-09-15 第两百零六轮，D1 行数整改）：三段提取——A-5 前置扫描迁
     //   hasCurrentModuleDefinition；主循环内 key 剥离+模块过滤迁 overloadEntryMatch
     //   （continue → return false 转换）；主函数保留状态变量+循环骨架+参数个数/
@@ -240,23 +258,50 @@ cn::Optional<std::string> SemanticAnalyzer::resolveOverload(const std::string& n
         // 逐参数转换等级（只检查实际提供的参数；缺省部分由默认值补全）
         int total = 0;
         bool ok = true;
+        std::vector<int> levels;
+        levels.reserve(static_cast<std::size_t>(given));
         for (int i = 0; i < given; ++i) {
             const bool lit = argIsLiteral.size() > static_cast<std::size_t>(i) &&
                              argIsLiteral[static_cast<std::size_t>(i)];
+            const Expr* litExpr =
+                argExprs.size() > static_cast<std::size_t>(i)
+                    ? argExprs[static_cast<std::size_t>(i)]
+                    : nullptr;
             // 1360 结果化批3A：无值=不可转（has_value 分流）
             const cn::Optional<int> level =
-                conversionLevel(argTypes[i], info.paramTypes[i], lit);
+                conversionLevel(argTypes[i], info.paramTypes[i], lit, litExpr);
             if (!level.has_value()) { ok = false; break; }
+            levels.push_back(level.value());
             total += level.value();
         }
         if (!ok) continue;
         if (bestKey.empty() || total < bestTotal) {
             bestKey = sigEntryKey;
             bestTotal = total;
+            bestLevels = levels;
             ambiguous = false;
         } else if (total == bestTotal && sigEntryKey != bestKey) {
-            ambiguous = true;  // 两个签名同样优
-            ambiguousDetail = sigEntryKey + " 与 " + bestKey;
+            // 1263：total 相等→逐参支配判定（C++ 语义）——支配=每位等级 ≤ 对方
+            //  且至少一位更优；新候选支配现最优=替换；互不支配（含全等级相同）=
+            //  真歧义（（0,2）vs（2,0）形态·C++ 同判）
+            bool newLe = levels.size() == bestLevels.size();
+            bool oldLe = newLe;
+            for (std::size_t i = 0; i < levels.size(); ++i) {
+                if (levels[i] > bestLevels[i]) { newLe = false; }
+                if (bestLevels[i] > levels[i]) { oldLe = false; }
+            }
+            // 1263 else 新规正向枚举：新候选支配=替换；支配不成立（互不支配
+            //  或 best 支配）两态均保持/置歧义——真歧义面记 detail
+            const bool newWins1263 = newLe && !oldLe;
+            if (newWins1263) {
+                bestKey = sigEntryKey;
+                bestLevels = levels;
+                ambiguous = false;
+            }
+            if (!newWins1263) {
+                ambiguous = true;  // best 支配=保持最优但同总分组有候选；互不支配/全等=真歧义
+                if (!oldLe) { ambiguousDetail = sigEntryKey + " 与 " + bestKey; }
+            }
         }
     }
     if (ambiguous && !bestKey.empty()) {
