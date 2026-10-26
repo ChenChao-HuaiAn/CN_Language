@@ -14,7 +14,8 @@ __main__ 副本）；行为级桩对照经猴补/还原主模块属性实现（�
 （660）｜ci_daemon.py 行数红线（660）｜日志 漏参族自由名锚+e2e 并行红路径冒烟（728t）｜
 对账周检段周期三态+段行为桩两态+挂载结构锁（973）｜runner↔服务端失败分类契约锁（975）｜
 linux 编译器缓存配置解析（auto/off/显式/非法值）+构建链行为级桩+执行机归因值/结构锁（1299）｜
-分片退化编排五态+中文分支 URL 编码（1369）。
+分片退化编排五态+中文分支 URL 编码（1369）｜物理内存真实探测平台分派+失败判红两态
+（#1608·废除 1528 的 4096 兜底）。
 """
 from __future__ import annotations
 
@@ -1530,6 +1531,89 @@ def _1385断言(主模块, 断言) -> None:
          ci_report.负载档() in ("低负载", "中负载", "高负载", "负载未知"))
 
 
+def _1608断言(主模块, 断言) -> None:
+    """#1608 物理内存真实探测：平台分派/探测失败显式（废除 1528 的 4096 兜底）+
+    消费点判红。真实探测正路+猴补失败路径两态（零真 e2e 零子进程）。"""
+    import io
+    import sys
+    import ci_m6
+    import ci_report
+    import ci_shard
+    源目录 = Path(__file__).resolve().parent
+    探测 = ci_report.物理内存MB()
+    断言("#1608 本机真实探测：win/linux 给正整数（未知平台=None 显式）",
+         (sys.platform.startswith(("win", "linux")) and isinstance(探测, int)
+          and 探测 > 0) or (not sys.platform.startswith(("win", "linux"))
+                            and 探测 is None))
+    断言("#1608 保险丝：探测失败/非法值=None（不回落 4096）",
+         ci_report.保内存保险丝MB(None) is None
+         and ci_report.保内存保险丝MB(0) is None
+         and ci_report.保内存保险丝MB(-1) is None)
+    断言("#1608 保险丝：真值=物理×0.8 且上限 4096（上限非失败默认值）",
+         ci_report.保内存保险丝MB(1000) == 800
+         and ci_report.保内存保险丝MB(31952) == ci_report.内存保险丝上限MB == 4096)
+    if not sys.platform.startswith("win"):
+        断言("#1608 反态：非 win 平台调 win 探测=None（不再模拟出 4096 假数字）",
+             ci_report._win物理内存MB() is None)
+    # 消费点失败注入：探测 None → e2e 步骤 rc=-1（聚合绿必红·且不启动 e2e）
+    原探测 = ci_report.物理内存MB
+
+    def 断言探测失败路径(计划, 期望M6红: bool) -> None:
+        步骤们 = {"构建": {"rc": 0}}
+
+        def 假步骤(*_a, **_k):
+            raise AssertionError("#1608 探测失败时不得启动 e2e 子进程")
+        ci_m6.e2e段(步骤们, 假步骤, Path("cn"), io.StringIO(), "a" * 40,
+                    "ci/预验-1608000001", 0, None, 计划, 是win=True, 平台="win-x64",
+                    日志目录=Path("."), e2e并行=4, e2e超时秒=60, runner标识="selftest",
+                    启动心跳=lambda *_a, **_k: None, e2e明细路径=Path("未用.json"))
+        断言("#1608 探测失败：e2e 步骤 rc=-1 且说明含「物理内存探测失败」",
+            步骤们.get("e2e", {}).get("rc") == -1
+            and "物理内存探测失败" in 步骤们["e2e"].get("说明", ""))
+        断言("#1608 探测失败：轮聚合必红（无假绿通道）",
+            not 主模块.聚合绿(步骤们))
+        if not 期望M6红:
+            断言("#1608 探测失败：M6 未触发轮不写 M6平台保障（零成本面不虚造）",
+                "M6平台保障" not in 步骤们)
+        else:
+            断言("#1608 探测失败：M6 必跑轮另记「物理内存探测失败」类别",
+                步骤们.get("M6平台保障", {}).get("rc") == -1
+                and 步骤们["M6平台保障"].get("类别") == "物理内存探测失败")
+
+    try:
+        ci_report.物理内存MB = lambda: None
+        断言探测失败路径({"处置": "未触发", "触发": False}, 期望M6红=False)
+        断言探测失败路径({"处置": "必跑", "触发": True, "平台可跑": True}, 期望M6红=True)
+        # 成功注入：真值→保险丝 4096·不写 e2e 红（分支不动作）
+        ci_report.物理内存MB = lambda: 31952
+        步骤们 = {"构建": {"rc": 0}}
+        保 = ci_m6.内存保险丝或判红(步骤们, io.StringIO())
+        断言("#1608 成功路径：保险丝=4096 且不写 e2e 步骤（无伪红）",
+            保 == 4096 and "e2e" not in 步骤们)
+    finally:
+        ci_report.物理内存MB = 原探测
+    # 结构锁：探测实现平台分派、无 4096 默认回落；消费点统一走保险丝判红
+    源探测 = (源目录 / "ci_report.py").read_text(encoding="utf-8")
+    断言("#1608 平台分派：win=GetPhysicallyInstalledSystemMemory / linux=sysconf·meminfo",
+         "GetPhysicallyInstalledSystemMemory" in 源探测
+         and "SC_PHYS_PAGES" in 源探测 and "/proc/meminfo" in 源探测)
+    断言("#1608 兜底废除：三个探测函数内无「return 4096」默认回落",
+         "return 4096" not in "".join(
+             inspect.getsource(函数) for 函数 in
+             (ci_report._win物理内存MB, ci_report._linux物理内存MB, ci_report.物理内存MB)))
+    源daemon = (源目录 / "ci_daemon.py").read_text(encoding="utf-8")
+    源m6 = (源目录 / "ci_m6.py").read_text(encoding="utf-8")
+    断言("#1608 消费点结构：ci_daemon 分片轮走 内存保险丝或判红·旧 min(4096…) 兜底已删",
+         "内存保险丝或判红" in 源daemon
+         and "min(4096, int(物理内存MB" not in 源daemon)
+    断言("#1608 消费点结构：ci_m6 有探测失败分支（e2e 不跑·M6 证据缺失）",
+         "if 保内存 is None:" in 源m6 and "M6 执行证据缺失" in 源m6)
+    源报活 = inspect.getsource(ci_shard.启动实例报活)
+    断言("#1608 实例报活携带物理内存探测结果（None=探测失败显式上报）",
+         '"物理内存MB": 物理内存MB' in 源报活
+         and "ci_report.物理内存MB()" in 源报活)
+
+
 def 自测(主模块) -> int:
     """--selftest 入口（断言集 523+637+657+660+728t+770+842+935+973+975+1297+1299+1369+1392+1401+1423+1424+1426+1428+1460+1463+1385）——CI 式：逐条打印，任一红退出 1。"""
     断言们: list[tuple[str, bool]] = []
@@ -1560,9 +1644,10 @@ def 自测(主模块) -> int:
     _1468断言(主模块, 断言)
     _1221断言(主模块, 断言)
     _1385断言(主模块, 断言)
+    _1608断言(主模块, 断言)
     _行数断言(断言)
     for 名, ok in 断言们:
         print("  [%s] %s" % ("OK" if ok else "×", 名))
     红 = sum(1 for _, ok in 断言们 if not ok)
-    print("== ci_daemon 自测（523+637+657+660+728t+770+842+935+973+975+1297+1299+1369+1392+1401+1423+1424+1426+1428+1460+1463+1468+1221）：%d 断言，%s ==" % (len(断言们), "全绿" if 红 == 0 else "红 %d" % 红))
+    print("== ci_daemon 自测（523+637+657+660+728t+770+842+935+973+975+1297+1299+1369+1392+1401+1423+1424+1426+1428+1460+1463+1468+1221+1608）：%d 断言，%s ==" % (len(断言们), "全绿" if 红 == 0 else "红 %d" % 红))
     return 0 if 红 == 0 else 1

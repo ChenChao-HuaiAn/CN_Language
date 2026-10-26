@@ -132,6 +132,22 @@ def 不可验处置(轮分支: str, m6计划: dict, 日志) -> bool:
     return True
 
 
+保内存失败说明 = ("物理内存探测失败——无法确定 --max-mem-mb 保险丝"
+                  "（win=GetPhysicallyInstalledSystemMemory / linux=sysconf·/proc/meminfo"
+                  " 均不可用；拒绝默认值继续·#1608）")
+
+
+def 内存保险丝或判红(步骤们: dict, 日志) -> int | None:
+    """#1608：物理内存→max-mem 保险丝；探测失败写 步骤们["e2e"] rc=-1（聚合绿
+    白名单键=本轮必红）并返回 None——调用点必须跳过 e2e（禁止默认值继续）。
+    主 e2e 段与分片轮共用（失败文案单点·不漂移）。"""
+    保内存 = ci_report.保内存保险丝MB(ci_report.物理内存MB())
+    if 保内存 is None:
+        步骤们["e2e"] = {"rc": -1, "说明": 保内存失败说明}
+        print("  [e2e·红] " + 保内存失败说明, file=日志, flush=True)
+    return 保内存
+
+
 def e2e段(步骤们: dict, 步骤, cn: Path, 日志, sha: str, 轮分支: str, 分片: int,
           分片召唤时刻, 计划: dict, *, 是win: bool, 平台: str, 日志目录: Path,
           e2e并行: int, e2e超时秒: int, runner标识: str, 启动心跳,
@@ -145,6 +161,8 @@ def e2e段(步骤们: dict, 步骤, cn: Path, 日志, sha: str, 轮分支: str, 
               develop/兜底同规——该轮不落 latest，下一轮写集仍含改动→原生平台重验）。
       计划缺失/形态坏 → 按不可判 fail-closed 处理（不静默当未触发）。
       未触发 → 不写 M6 步骤（零成本）。
+    #1608：物理内存探测失败（None）=e2e 不跑、e2e 步骤 rc=-1 显式红——不再按
+      1528 的「探测失败=4096 兜底」拿假数字继续（是win 仅决定命令形态，探测按实际平台）。
     分片：片 0 恒含 79_v2（#1420 重者留主）——主实例 e2e基 带 require，从片不带。
     """
     计划 = 计划 if isinstance(计划, dict) and 计划.get("处置") else \
@@ -181,7 +199,13 @@ def e2e段(步骤们: dict, 步骤, cn: Path, 日志, sha: str, 轮分支: str, 
                                    "说明": "平台不可验：" + m6_gate.摘要(计划) + "（fail-closed）"}
             print("  [M6·红] %s——fail-closed（预验轮不可原生平台不得给绿）"
                   % m6_gate.摘要(计划), file=日志, flush=True)
-    保内存 = min(4096, int(ci_report.物理内存MB(是win) * 0.8))
+    保内存 = 内存保险丝或判红(步骤们, 日志)
+    if 保内存 is None:
+        # #1608：探测失败=E2E 不跑·明确红因（禁默认值继续）；M6 必跑轮另记证据缺失。
+        if 须M6:
+            步骤们["M6平台保障"] = {"rc": -1, "类别": "物理内存探测失败",
+                                   "说明": "E2E 未跑——M6 执行证据缺失（#1608）"}
+        return
     e2e基 = ci_shard.e2e命令基(cn, 保内存, 平台, 是win, 须M6=须M6)
     # #1221 复审 P2：命中清单随环境进 run_e2e 审计记录（子进程继承；轮后恢复）
     原命中 = os.environ.get("CN_M6_HITS")

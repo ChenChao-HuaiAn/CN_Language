@@ -122,11 +122,6 @@ runner标识 = os.environ.get("CN_RUNNER_ID", socket.gethostname())   # 池内�
 放锁 = gate_lock.放锁
 
 
-def 物理内存MB() -> int:
-    """924/1369：max-mem 物理内存探测——实现外迁 ci_report（守 900 警戒线·薄壳保调用面）。"""
-    return ci_report.物理内存MB(是win)
-
-
 def 取远端SHA() -> str | None:
     """git ls-remote 只查 develop 头——零流量无副作用。"""
     输出 = 运行限时(["git", "ls-remote", 远端名, "refs/heads/" + 分支],
@@ -569,21 +564,24 @@ def 跑分片轮(sha: str, 轮分支: str, 片序: int = 0, 片数: int = 1) -> 
             if cn is None:
                 步骤们["e2e"] = {"rc": -1, "说明": "未找到 cn 产物"}
             elif 步骤们.get("构建", {}).get("rc") == 0:
-                保内存 = min(4096, int(物理内存MB() * 0.8))
-                片明细路径 = 日志目录 / ("e2e明细_片%d_%s.json" % (片序, sha[:10]))
-                try:
-                    片明细路径.unlink()
-                except OSError:
-                    pass
-                if 步骤("e2e并行", e2e命令基(cn, 保内存, 须M6=片序 == 0)
-                        + e2e明细参(片明细路径)
-                        + ["--shard", "%d/%d" % (片序, 片数), "--jobs", str(e2e并行)],
-                        e2e整轮超时秒):
-                    步骤们["e2e"] = {"rc": 0}
-                else:
-                    print("  [分片红] 片 %d/%d 失败用例——如实上报（902 红由主实例聚合定案）"
-                          % (片序, 片数), file=日志, flush=True)
-                    步骤们["e2e"] = {"rc": 步骤们["e2e并行"]["rc"]}
+                # #1608：物理内存探测失败=e2e 步骤 rc=-1（内存保险丝或判红 已写·
+                #   聚合绿白名单键=必红），不再按 1528 的 4096 兜底拿假数字跑。
+                保内存 = ci_m6.内存保险丝或判红(步骤们, 日志)
+                if 保内存 is not None:
+                    片明细路径 = 日志目录 / ("e2e明细_片%d_%s.json" % (片序, sha[:10]))
+                    try:
+                        片明细路径.unlink()
+                    except OSError:
+                        pass
+                    if 步骤("e2e并行", e2e命令基(cn, 保内存, 须M6=片序 == 0)
+                            + e2e明细参(片明细路径)
+                            + ["--shard", "%d/%d" % (片序, 片数), "--jobs", str(e2e并行)],
+                            e2e整轮超时秒):
+                        步骤们["e2e"] = {"rc": 0}
+                    else:
+                        print("  [分片红] 片 %d/%d 失败用例——如实上报（902 红由主实例聚合定案）"
+                              % (片序, 片数), file=日志, flush=True)
+                        步骤们["e2e"] = {"rc": 步骤们["e2e并行"]["rc"]}
     with 轮日志路径.open("r", encoding="utf-8", errors="replace") as f:
         尾部 = f.readlines()[-40:]
     return {"sha": sha, "分支": 轮分支, "平台": 平台, "步骤": 步骤们,

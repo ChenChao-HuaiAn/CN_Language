@@ -106,39 +106,84 @@ def 负载档() -> str:
     return "高负载"
 
 
-def 物理内存MB(是win: bool) -> int:
-    """max-mem 保险丝按物理内存适配用（924·1369 自 ci_daemon 外迁守 900 警戒线）——
-    posix 读 /proc/meminfo；win=GlobalMemoryStatusEx。探测失败=4096 兜底
-    （只影响重负载用例保险丝，非测量值）。
-    1528：win 分支同样受「探测失败=4096 兜底」契约辖——selftest 在 linux 上以
-    是win=True 走 win 语义命令构造（1221 断言），ctypes.windll 属性不存在=
-    探测失败的一种（AttributeError 原样外抛把整个 e2e段 炸红·linux 机器 L1/
-    批门禁必红阻断集成）。兜底后本函数在任意平台恒返正数。"""
-    if 是win:
-        try:
-            import ctypes
+# max-mem 保险丝上限（MB）：重负载用例峰值口径（917：v2p 全树编译峰值 227.8MB·
+#   4096=18 倍余量）。★这是**上限**，不是探测失败的默认值——探测失败一律显式
+#   None（#1608 废除 1528 的「探测失败=4096 兜底」）。
+内存保险丝上限MB = 4096
+# 物理内存探测合法上界（MB）=64 TiB——超出=探测值非法（None 显式）；同时让
+#   「合法值」判断成为双边界闭区间（AGENTS 单边开区间禁令·不写单边 >0）。
+物理内存上界MB = 64 * 1024 * 1024
 
-            class 内存状态(ctypes.Structure):
-                _fields_ = [("长度", ctypes.c_ulong), ("负载", ctypes.c_ulong),
-                            ("总物理", ctypes.c_ulonglong), ("可用物理", ctypes.c_ulonglong),
-                            ("总页文件", ctypes.c_ulonglong), ("可用页文件", ctypes.c_ulonglong),
-                            ("总虚拟", ctypes.c_ulonglong), ("可用虚拟", ctypes.c_ulonglong),
-                            ("可用扩展虚拟", ctypes.c_ulonglong)]
-            状态 = 内存状态(长度=ctypes.sizeof(内存状态))
-            if ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(状态)):
-                return int(状态.总物理 // (1024 * 1024))
-        except Exception:
-            pass   # 静默豁免运行时API: 平台探测不可用（linux 模拟 win 语义/无
-                   # kernel32）——docstring 契约「探测失败=4096 兜底」·只影响
-                   # 保险丝非测量值（1528）
-        return 4096
+
+def _合法内存MB(值) -> int | None:
+    """探测值合法性（闭区间 1..物理内存上界MB）——非整数/布尔/越界=None 显式。"""
+    if isinstance(值, bool) or not isinstance(值, int):
+        return None
+    return 值 if 1 <= 值 <= 物理内存上界MB else None
+
+
+def _win物理内存MB() -> int | None:
+    """win 物理内存真实探测（#1608）：kernel32.GetPhysicallyInstalledSystemMemory
+    （返回 KB；SMBIOS 数据异常时 API 自身可失败=文档约定）。API 失败/平台无
+    kernel32/异常=None 显式（不返回假数字）。"""
     try:
-        for 行 in open("/proc/meminfo"):
-            if 行.startswith("MemTotal:"):
-                return int(行.split()[1]) // 1024
-    except Exception:
+        import ctypes
+
+        内核 = ctypes.WinDLL("kernel32", use_last_error=True)
+        取内存 = 内核.GetPhysicallyInstalledSystemMemory
+        取内存.argtypes = [ctypes.POINTER(ctypes.c_ulonglong)]
+        取内存.restype = ctypes.c_int
+        千字节 = ctypes.c_ulonglong(0)
+        if not 取内存(ctypes.byref(千字节)):
+            return None
+    except (OSError, AttributeError, ValueError):
+        return None
+    return _合法内存MB(int(千字节.value // 1024))
+
+
+def _linux物理内存MB() -> int | None:
+    """linux 物理内存真实探测（#1608）：sysconf(_SC_PHYS_PAGES×_SC_PAGE_SIZE) 优先；
+    sysconf 不可用/值非法→/proc/meminfo MemTotal（两源均为真实探测面，非默认值）。
+    两源均失败=None 显式（不返回假数字）。"""
+    try:
+        页数 = os.sysconf("SC_PHYS_PAGES")
+        页大小 = os.sysconf("SC_PAGE_SIZE")
+        if 页数 not in (-1, 0) and 页大小 not in (-1, 0):
+            合法 = _合法内存MB((页数 * 页大小) // (1024 * 1024))
+            if 合法 is not None:
+                return 合法
+    except (AttributeError, OSError, ValueError):
         pass
-    return 4096
+    try:
+        with open("/proc/meminfo", encoding="utf-8") as 文件:
+            for 行 in 文件:
+                if 行.startswith("MemTotal:"):
+                    return _合法内存MB(int(行.split()[1]) // 1024)
+    except (OSError, ValueError, IndexError):
+        return None
+    return None
+
+
+def 物理内存MB() -> int | None:
+    """物理内存真实探测（924·1369 自 ci_daemon 外迁；#1608 平台分派重写）——
+    **按实际运行平台**分派：win=GetPhysicallyInstalledSystemMemory；
+    linux=sysconf 或 /proc/meminfo MemTotal。探测失败=None（显式·消费点必须
+    分流报错/实例面板显示「探测失败」），禁止任何默认数字继续编译/跑轮。"""
+    if sys.platform.startswith("win"):
+        return _win物理内存MB()
+    if sys.platform.startswith("linux"):
+        return _linux物理内存MB()
+    return None
+
+
+def 保内存保险丝MB(探测MB: int | None) -> int | None:
+    """max-mem 保险丝值（924 口径=物理内存×0.8·上限 内存保险丝上限MB）——
+    探测失败/非法值（None/越界）=None 显式：调用点必须跳过 e2e 并判红，禁止
+    回落到上限值继续（#1608）。"""
+    合法 = _合法内存MB(探测MB)
+    if 合法 is None:
+        return None
+    return min(内存保险丝上限MB, int(合法 * 0.8))
 
 
 def 上报(结果: dict) -> None:

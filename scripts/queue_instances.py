@@ -31,6 +31,9 @@ import time
 # 旧版 daemon（从未上报版本）空闲不报活：按最后活动时刻给 30 分钟宽限，超时=疑似离线。
 # 此前对其完全豁免导致关机实例永远显示「空闲」（用户 10-23 报深度机/单位机四台关机）。
 离线宽限秒 = 1800
+# #1608：物理内存合法上界（MB）=64 TiB（与 ci_report.物理内存上界MB 同口径——
+#   服务端独立进程不依赖 runner 模块，故本处显式复写；超界=坏载荷显式拒）。
+物理内存上界MB = 64 * 1024 * 1024
 
 
 def 建实例表(con) -> None:
@@ -47,6 +50,8 @@ def 建实例表(con) -> None:
         daemon指纹 TEXT,            -- ci_daemon.py 内容 sha256 前 10（进程启动版·版本稳定指标）
         物理机 TEXT,                -- #1426 物理机键（hostname·平台-架构·指纹6·NULL=旧 daemon）
         M6原生 INTEGER,             -- #1221：M6 原生可跑能力位（1=真机可跑·0=交叉模拟·NULL=旧 daemon）
+        物理内存MB INTEGER,         -- #1608 最近一次成功探测的物理内存（NULL=未知/探测失败·配合下列）
+        物理内存探测 TEXT,          -- #1608 '成功'/'失败'（NULL=旧 daemon 从未上报——不冒充探测结果）
         版本上报时刻 TEXT)           -- 最近一次带指纹上报时刻（NULL=旧版 daemon 未上报过）""")
     try:   # #1426 物理机指纹列：存量库 ALTER 补（列已在=重复列错吞掉·同 queue_service 先例）
         con.execute("ALTER TABLE 实例 ADD COLUMN 物理机 TEXT")
@@ -54,6 +59,14 @@ def 建实例表(con) -> None:
         pass
     try:   # #1221 M6 原生能力位列：存量库 ALTER 补（旧库升级不丢数据）
         con.execute("ALTER TABLE 实例 ADD COLUMN M6原生 INTEGER")
+    except sqlite3.OperationalError:
+        pass
+    try:   # #1608 物理内存MB 列：存量库 ALTER 补（旧 daemon 行保持 NULL=面板显示 —）
+        con.execute("ALTER TABLE 实例 ADD COLUMN 物理内存MB INTEGER")
+    except sqlite3.OperationalError:
+        pass
+    try:   # #1608 探测态列：逐列独立 ALTER（半升级库不会因前者已存在而漏加后列）
+        con.execute("ALTER TABLE 实例 ADD COLUMN 物理内存探测 TEXT")
     except sqlite3.OperationalError:
         pass
     con.execute("""CREATE TABLE IF NOT EXISTS 池设置(
@@ -174,7 +187,9 @@ def 实例报活(con, 时刻函数, 数据: dict) -> dict:
     可选（空串不覆盖已有值）。带任一指纹字段=刷 版本上报时刻（区分「旧版
     daemon 从未上报」与「上报过」——疑似离线判定只对后者生效）。
     #1460：响应携 刷新请求 广播戳（实例面板「更新实例」按钮的下发通道——
-    旧 daemon 忽略多余字段=向后兼容；每周期 60s 一次，一次广播即全员可见）。"""
+    旧 daemon 忽略多余字段=向后兼容；每周期 60s 一次，一次广播即全员可见）。
+    #1608：物理内存MB 键（正整数/null）——null=探测失败落「失败」并清旧值；
+    键缺失=旧 daemon 不覆盖（面板显示 —）；坏类型=显式拒（不静默转数字）。"""
     runner = str(数据.get("runner", ""))
     if not runner:
         return {"ok": False, "说明": "runner 标识缺失"}
@@ -186,21 +201,40 @@ def 实例报活(con, 时刻函数, 数据: dict) -> dict:
     原M6 = 数据.get("M6原生")
     M6原生 = (1 if 原M6 else 0) if isinstance(原M6, bool) else (
         原M6 if isinstance(原M6, int) and 原M6 in (0, 1) else None)
+    # #1608：物理内存探测结果——键存在=新版 daemon（None=探测失败·落「失败」并
+    #   清旧值，防面板继续显示上一次的数字）；键缺失=旧 daemon（不覆盖已有上报）。
+    if "物理内存MB" in 数据:
+        原内存 = 数据.get("物理内存MB")
+        if 原内存 is None:
+            物理内存MB, 内存探测 = None, "失败"
+        elif (isinstance(原内存, int) and not isinstance(原内存, bool)
+              and 1 <= 原内存 <= 物理内存上界MB):
+            物理内存MB, 内存探测 = 原内存, "成功"
+        else:
+            return {"ok": False,
+                    "说明": "物理内存MB 非法（须正整数或 null·#1608）：%r" % (原内存,)}
+    else:
+        物理内存MB, 内存探测 = None, None
     带指纹 = bool(树头 or 指纹)
     版时 = 时刻函数() if 带指纹 else None
     con.execute(
-        "INSERT INTO 实例(名称,平台,物理机,M6原生,注册时刻,最近活跃时戳,树头,daemon指纹,版本上报时刻) "
-        "VALUES(?,?,?,?,?,?,?,?,?) "
+        "INSERT INTO 实例(名称,平台,物理机,M6原生,物理内存MB,物理内存探测,注册时刻,"
+        "最近活跃时戳,树头,daemon指纹,版本上报时刻) VALUES(?,?,?,?,?,?,?,?,?,?,?) "
         "ON CONFLICT(名称) DO UPDATE SET "
         "最近活跃时戳=excluded.最近活跃时戳,"
         "平台=COALESCE(NULLIF(excluded.平台,''),实例.平台),"
         "物理机=COALESCE(NULLIF(excluded.物理机,''),实例.物理机),"
         "M6原生=COALESCE(excluded.M6原生,实例.M6原生),"
+        "物理内存探测=COALESCE(excluded.物理内存探测,实例.物理内存探测),"
+        # 探测结果非 NULL（成功/失败）才以本次为准：失败必须清旧值（不留假数字），
+        # 成功写新值；旧 daemon 缺键（NULL）=保持原值不覆盖。
+        "物理内存MB=CASE WHEN excluded.物理内存探测 IS NOT NULL "
+        "THEN excluded.物理内存MB ELSE 实例.物理内存MB END,"
         "树头=COALESCE(NULLIF(excluded.树头,''),实例.树头),"
         "daemon指纹=COALESCE(NULLIF(excluded.daemon指纹,''),实例.daemon指纹),"
         "版本上报时刻=COALESCE(excluded.版本上报时刻,实例.版本上报时刻)",
-        (runner, 平台 or None, 物理机 or None, M6原生, 时刻函数(), int(time.time()),
-         树头 or None, 指纹 or None, 版时))
+        (runner, 平台 or None, 物理机 or None, M6原生, 物理内存MB, 内存探测,
+         时刻函数(), int(time.time()), 树头 or None, 指纹 or None, 版时))
     return {"ok": True, "刷新请求": 取刷新请求(con)}
 
 
@@ -250,10 +284,12 @@ def 实例动态快照(con, 心跳超时秒值: int) -> list[dict]:
     从实例跑片期间显示「空闲」，看板看不出多实例并行）。分片行带 片序/片数/形态。
     最近完成 从 预验任务 派生（任务行=唯一权威·实例表不存任务）。
     排序：心跳超时→执行中→空闲→疑似离线（离线沉底·#1461 用户令·同级按名称稳定序）。
-    #1426：输出物理机键（限流分组观测面·旧 daemon 空串显示 —）。"""
+    #1426：输出物理机键（限流分组观测面·旧 daemon 空串显示 —）。
+    #1608：输出 物理内存MB/物理内存探测（'成功'带数值·'失败'=面板显示「探测失败」·
+    空串=旧 daemon 未上报显示 —）。"""
     现在 = int(time.time())
     行们 = con.execute("SELECT 名称,平台,物理机,注册时刻,最近活跃时戳,树头,daemon指纹,"
-                       "版本上报时刻,M6原生 FROM 实例").fetchall()
+                       "版本上报时刻,M6原生,物理内存MB,物理内存探测 FROM 实例").fetchall()
     当前 = {r[0]: r for r in con.execute(
         "SELECT 认领者,分支,sha,源分支,认领时刻,心跳时戳 FROM 预验任务 "
         "WHERE 状态='执行中' AND 认领者 IS NOT NULL").fetchall()}
@@ -265,7 +301,7 @@ def 实例动态快照(con, 心跳超时秒值: int) -> list[dict]:
         "SELECT 认领者,分支,sha,绿,更新时刻,max(序号) FROM 预验任务 "
         "WHERE 状态='完成' AND 认领者 IS NOT NULL GROUP BY 认领者").fetchall()}
     出 = []
-    for 名称, 平台, 物理机, 注册, 活跃, 树头, 指纹, 版时, M6原生 in 行们:
+    for 名称, 平台, 物理机, 注册, 活跃, 树头, 指纹, 版时, M6原生, 内存MB, 内存探测 in 行们:
         任务 = 当前.get(名称)
         片 = 当前片.get(名称)
         当前任务 = None
@@ -289,6 +325,8 @@ def 实例动态快照(con, 心跳超时秒值: int) -> list[dict]:
         出.append({"名称": 名称, "平台": 平台 or "", "物理机": 物理机 or "",
                    # #1221：M6 原生可跑能力位（None=旧版 daemon 未上报）
                    "M6原生": (None if M6原生 is None else bool(M6原生)),
+                   # #1608：物理内存探测态（''=旧 daemon 未上报·前端显示 —）
+                   "物理内存MB": 内存MB, "物理内存探测": 内存探测 or "",
                    "状态": 状态, "注册时刻": 注册, "最近活跃时戳": 活跃,
                    "树头": 树头 or "", "daemon指纹": 指纹 or "", "版本上报时刻": 版时,
                    "当前任务": 当前任务,

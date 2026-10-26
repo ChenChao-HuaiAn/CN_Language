@@ -54,7 +54,9 @@
 #                                 片=None+限流 说明（不领片·不阻塞主实例召唤）。主实例
 #                                 抢补（带 分支+片序）不受限=正确性补偿路径。旧 daemon
 #                                 不报物理机=按 runner 独立机器保守放行+显式告警。
-#   POST /api/instance_ping {runner,平台?,树头?,daemon指纹?}  1392：实例空闲报活+版本指纹
+#   POST /api/instance_ping {runner,平台?,树头?,daemon指纹?,物理内存MB?}  1392：实例空闲
+#                                 报活+版本指纹；#1608 物理内存MB=正整数/null（null=探测
+#                                 失败·实例面板显示「探测失败」；键缺失=旧 daemon 显示 —）
 #   POST /api/instance_refresh {}  #1460：实例面板「更新实例」——广播刷新戳（下随
 #                                  instance_ping 响应下发·空闲 daemon 对齐 develop 树头）
 #                                                 （daemon 空闲也每 60s 报·旧 daemon 不发=渐进
@@ -65,7 +67,8 @@
 #   POST /api/logout               注销当前会话+清 cookie
 #   GET  /api/me                   {已登录:bool}
 #   GET  /api/state「实例动态」=1392 实例页签数据源（逐实例 执行中/心跳超时/疑似离线/空闲
-#                                                 +当前任务+最近完成+版本·实现在 queue_instances）。
+#                                                 +当前任务+最近完成+版本+#1608 物理内存
+#                                                 〔成功数值/失败显式〕·实现在 queue_instances）。
 #       975（87 篇反思①·863 五连静默机械化）：结果含认领失败形状（步骤.同步.rc 非零
 #       =fetch 预验分支失败/轮内同步异常）→ 行级「连续同类失败计数」+达阈值（默认 3）
 #       journal 播报 `[975 预验失败告警]`；计数字段随 /api/state 预验任务行与

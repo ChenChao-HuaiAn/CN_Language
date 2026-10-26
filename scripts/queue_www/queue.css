@@ -162,14 +162,14 @@ main { max-width: 78rem; margin: 0 auto; padding: var(--space-5) var(--space-6) 
 .表头.数据行:hover { background: var(--color-bg-subtle); }
 .门禁行 { grid-template-columns: 7em 8.5em 6.5em 4.5em minmax(7em, 12em) minmax(8em, 1fr) auto; }
 .池行   { grid-template-columns: minmax(8em, 1.1fr) 7em 5.5em 6.5em 7em 6em 8.5em auto; }
-.实例行 { grid-template-columns: minmax(7em, auto) 7.5em 5.5em minmax(8em, 1.2fr) 4.5em 6.5em minmax(10em, 1fr) minmax(8em, 1fr); }
+.实例行 { grid-template-columns: minmax(7em, auto) 7.5em 6.5em 5.5em minmax(8em, 1.2fr) 4.5em 6.5em minmax(10em, 1fr) minmax(8em, 1fr); }
 .队列行 { grid-template-columns: minmax(8em, 1fr) 7em 8.5em 6em minmax(8em, 1.2fr); }
 .时间列 { color: var(--color-fg-subtle); font-size: .78rem; font-variant-numeric: tabular-nums; }
 /* 1392 实例页：daemon 指纹与众数派不一致=旧版嫌疑（红强调·title 全文） */
 .版本警 { color: var(--color-danger); font-weight: 600; }
 @media (max-width: 46rem) {
   .表槽 { overflow-x: auto; }
-  .门禁行, .池行, .实例行, .队列行 { min-width: 46rem; }
+  .门禁行, .池行, .实例行, .队列行 { min-width: 52rem; }
 }
 
 /* —— 分页控件 —— */

@@ -293,6 +293,21 @@ function 渲染实例统计条(们) {
             : "")));
 }
 
+/* #1608：物理内存列——探测成功=真实数值（GB/MB 自适应）；探测失败=显式文案
+   （不显示假数字）；旧 daemon 未上报=—（未知·不冒充）。 */
+function 物理内存列(r) {
+  if (r["物理内存探测"] === "失败") {
+    return `<span class="签 阶段红" title="物理内存探测失败（win=GetPhysicallyInstalledSystemMemory / linux=sysconf·/proc/meminfo 均不可用）——不显示假数字（#1608）">探测失败</span>`;
+  }
+  const mb = r["物理内存MB"];
+  if (r["物理内存探测"] === "成功" && typeof mb === "number"
+      && Number.isFinite(mb) && mb > 0) {
+    const 显示 = mb >= 1024 ? (mb / 1024).toFixed(1) + " GB" : mb + " MB";
+    return `<span class="mono" title="物理内存 ${转义(String(mb))} MB（#1608 真实探测）">${转义(显示)}</span>`;
+  }
+  return `<span class="淡" title="旧版 daemon 未上报物理内存">—</span>`;
+}
+
 function 渲染实例() {
   const 根 = $("实例区");
   const 们 = 快照["实例动态"] || [];
@@ -326,6 +341,7 @@ function 渲染实例() {
     <div class="数据行 实例行">
       <span class="mono" title="${转义(r["注册时刻"] ? "注册于 " + r["注册时刻"] : "")}">${转义(r["名称"])}</span>
       <span class="mono 淡">${转义(r["平台"] || "—")}</span>
+      <span>${物理内存列(r)}</span>
       <span>${实例状态签(r["状态"])}</span>
       <span class="mono">${当前}</span>
       <span class="mono">${已跑 === null ? "—" : 已跑 + " 分"}</span>
@@ -338,7 +354,7 @@ function 渲染实例() {
     </div>`;
   }).join("");
   根.innerHTML = `<div class="表槽">
-    <div class="数据行 表头 实例行"><span>实例</span><span>平台</span><span>状态</span>
+    <div class="数据行 表头 实例行"><span>实例</span><span>平台</span><span>内存</span><span>状态</span>
       <span>当前任务</span><span>已跑</span><span>最近报活</span><span>版本（树头·指纹）</span><span>最近完成</span></div>
     ${行}</div>`;
 }
