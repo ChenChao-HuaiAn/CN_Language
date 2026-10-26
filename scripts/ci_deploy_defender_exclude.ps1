@@ -42,8 +42,12 @@
 #>
 [CmdletBinding(SupportsShouldProcess = $true)]
 param(
-    [string]$仓库根 = (Split-Path -Parent $PSScriptRoot)
+    [string]$仓库根 = ""
 )
+
+# $PSScriptRoot 在参数默认值表达式求值期尚未填充（PowerShell 已知时序）——
+#   运行期兜底解析（随批修复 1633 实测 WhatIf 即触发·1633 收口后补）。
+if (-not $仓库根) { $仓库根 = Split-Path -Parent $PSScriptRoot }
 
 $ErrorActionPreference = "Stop"
 
