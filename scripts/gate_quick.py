@@ -168,6 +168,11 @@ if not 步("窥孔 sanitizer 锁自测",
           [sys.executable, "scripts/test_check_peephole_sanitizer.py"],
           超时秒=静态超时):
     raise SystemExit(1)
+# 1486（2026-10-26）：窥孔 sanitizer 挂载结构锁——防挂载本身再退化（云端清单
+#    两态真函数断言+gate_quick 挂载/rc2 降级/逃生门文本锚·零环境秒级）。
+if not 步("窥孔挂载结构锁", [sys.executable, "scripts/test_gate_peephole_hook.py"],
+          超时秒=静态超时):
+    raise SystemExit(1)
 # 1485（2026-10-24 审查返工）：看板只读 GET 全族鉴权自测挂 L1 静态段——零真实网络
 #    mock：正/反态令牌头、401/403 文案分流、写入口与 case_ledger 门禁不静默放行。
 #    1425 登录墙后 GET 亦须鉴权，本自测防「全族漏口」再退化（秒级）。
@@ -351,6 +356,46 @@ else:
             sys.executable, "scripts/test_host_program_cache.py",
             "--cn", str(单测.parent / ("cn.exe" if 是win else "cn"))],
              超时秒=_超时("CN_GATE_CACHE_TEST_TIMEOUT", 900)):
+        raise SystemExit(1)
+
+# ③.47 窥孔 sanitizer 完整锁（1486·2026-10-26·写集条件步）：ASan+UBSan 与
+#   _GLIBCXX_DEBUG 两口径真实编译运行 Peephole* 单测（WSL/Linux 实测 ~1 分钟）
+#   ——1217 只挂了判别力自测（假输出正反例·上方静态段），完整编译跑「登记
+#   不执行」（#1486 缺口：sanitizer 锁永不自动跑=形同虚设）。写集触窥孔实现
+#   （src/cn_compiler/codegen/peephole_slot*）/其单测/检查器自身 才跑（日常
+#   无关改动零税）；写集取不到=fail-safe 照跑（与官网示例验证同哲学）；云端
+#   linux 静态段恒跑兜底（ci_static_gates·非 win 平台）。rc 三分派：0=绿；
+#   1=红；2=环境缺失（无 WSL/编译器/gtest）=黄字显式降级不拦——环境缺失要
+#   显形不静默（#1462 TX_03 缺 gtest 假红的反向教训：缺失可降级但必须打印）。
+#   CN_GATE_PEEPHOLE_FORCE=1 逃生门强制跑（自测/运维·写集判定失效保险）。
+_触窥孔面 = (_写集 is None
+             or os.environ.get("CN_GATE_PEEPHOLE_FORCE") == "1"
+             or any(p.startswith(("src/cn_compiler/codegen/peephole",
+                                  "tests/unit/codegen/test_peephole",
+                                  "scripts/check_peephole_sanitizer"))
+                    for p in _写集))
+if not _触窥孔面:
+    print("[verify] 写集未触窥孔实现面——跳过窥孔 sanitizer 完整锁（云端恒跑兜底）",
+          flush=True)
+else:
+    if 是win:
+        _锚 = Path(仓库根).resolve()
+        _wsl根 = "/mnt/%s%s" % (_锚.anchor[0].lower(), _锚.as_posix()[2:])
+        _窥孔命令 = ["wsl.exe", "-e", "bash", "-lc",
+                     "cd %s && python3 scripts/check_peephole_sanitizer.py" % _wsl根]
+    else:
+        _窥孔命令 = [sys.executable, "scripts/check_peephole_sanitizer.py"]
+    print("[verify] 窥孔 sanitizer 完整锁（ASan+glibcxx-debug 两口径·~1 分钟）……",
+          flush=True)
+    _窥孔rc = 1
+    try:
+        _窥孔rc = subprocess.run(_窥孔命令, timeout=900).returncode
+    except subprocess.TimeoutExpired:
+        print("[窥孔 sanitizer] 超时 900s——红", flush=True)
+    if _窥孔rc == 2:
+        print("[窥孔 sanitizer][黄] 环境缺失（需 WSL/Linux+g+++gtest 源码）——"
+              "本机降级跳过（云端 linux 静态段恒跑兜底·缺失已显形非静默）", flush=True)
+    elif _窥孔rc != 0:
         raise SystemExit(1)
 
 if _写集 is None:

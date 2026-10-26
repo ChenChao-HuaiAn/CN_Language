@@ -9,8 +9,9 @@ from __future__ import annotations
 
 
 def 静态门禁清单(cn, 平台) -> tuple:
-    """③.5 静态门禁清单（#1221 复审 P2：自 静态门禁与e2e段 抽出·守 ≤100 行）。"""
-    return (("check_spec_coverage", []),   # 243：非 strict（TX_02「指针有效性」存量红=244 修·红不拦兜底轮）
+    """③.5 静态门禁清单（#1221 复审 P2：自 静态门禁与e2e段 抽出·守 ≤100 行）。
+    1486 起按平台条件追加：窥孔 sanitizer 锁仅非 win 平台（检查面仅 Linux/WSL）。"""
+    基础清单 = (("check_spec_coverage", []),   # 243：非 strict（TX_02「指针有效性」存量红=244 修·红不拦兜底轮）
                   # 1013（2026-10-17 用户裁决）：--strict 挂云端兜底轮——基线零（1013 归零）
                   # 即等价棘轮·只拦新增（新 E2E 用例须 doc_coverage 台账归类·豁免理由必填），
                   # 与 L1 gate_quick 静态段/win 全量 ci.ps1 同口径（防漂移·单一注册点=
@@ -57,4 +58,14 @@ def 静态门禁清单(cn, 平台) -> tuple:
                   ("check_knownlen_fastpath", ["--cn", str(cn)]),
                   ("check_matrix_coverage", []),
                   ("check_file_length", ["--freeze"]))
+    # 1486（2026-10-26）：窥孔 sanitizer 完整锁（ASan+UBSan 与 _GLIBCXX_DEBUG
+    #   两口径真实编译运行 Peephole* 单测·实测 ~1 分钟）挂云端恒跑——1217 只挂了
+    #   判别力自测（假输出正反例），完整编译跑「登记不执行」（#1486 缺口）。
+    #   云端全量=唯一恒覆盖面（本地 L1 仅写集触发·gate_quick 同款哲学）；
+    #   linux 侧 cmake 全量构建后 target/build/_deps/googletest-src 命中依赖
+    #   自检，环境缺失 rc=2=红（显形·#1462 缺 gtest 假红教训的显形方向）。
+    #   win 平台不挂：检查面仅 Linux/WSL（os.name 恒 rc=2=恒红无意义）。
+    if 平台 != "win-x64":
+        return 基础清单 + (("check_peephole_sanitizer", []),)
+    return 基础清单
 
