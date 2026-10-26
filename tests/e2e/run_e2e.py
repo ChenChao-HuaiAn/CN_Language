@@ -48,6 +48,13 @@ import e2e看门狗 as 看门狗
 #   见同目录 e2e负测锚.py（机制/作用面/自测全在该模块 docstring）。
 import e2e负测锚 as 负测锚
 
+# 任务1638（2026-10-26·回归修复版）：**共享构建产物**的分片作用域单点——
+#   v2p/v2pobj/rt .o/构建指纹/重建锁在分片运行落 target/audit2/s<i>of<n>/（各片
+#   各建各锁·同树零共享可写路径）；每用例目录（v2src/v2work/dualhost…）路径文本
+#   任何模式逐字不变（.expected 锚与程序自身输出的一部分——首版加键后缀致 952
+#   云端回归）。未分片保持 target/audit2 原布局。机制/通道/自检见 e2e产物路径.py。
+import e2e产物路径 as 产物路径
+
 # 强制stdout/stderr使用UTF-8输出（避免Windows管道/控制台代码页导致中文乱码）
 if hasattr(sys.stdout, "reconfigure"):
     # 935（2026-10-17 两夜实录 379/932）：stdout 改行缓冲——E2E 输出逐行落盘，僵死/
@@ -160,9 +167,21 @@ def 隔离键(名称: str) -> str:
     共享 dualhost24/v2src24/v2work24 产物路径的竞态（实测：深度机 linux-x64
     首跑 24_error_handling 跑出 24_preprocessor 输出「发布模式: 开启」；
     274-a 的 _v2 段保留只隔离了「主用例 vs _v2 变体」，同编号不同名不隔离）。
-    纯 ASCII 输出（中文名折叠为哈希，路径 ASCII 友好）。"""
+    纯 ASCII 输出（中文名折叠为哈希，路径 ASCII 友好）。
+    1638 回归不变量：本键**分片无关**（任何模式逐字不变）——键拼进 v2src<键>
+    目录名，而该路径是程序可见输出（[p6h] 已解析锚）与 .expected 的一部分。"""
     import hashlib
     return 名称.split("_")[0] + "_" + hashlib.md5(名称.encode("utf-8")).hexdigest()[:8]
+
+
+def 共享产物目录() -> pathlib.Path:
+    """共享构建产物根（1638）：target/audit2[ /s<片序>of<片数>]——唯一随片隔离的面。
+
+    v2p/v2pobj/rt .o/构建指纹/重建互斥锁落此根（分片时各片各建各锁）；每用例
+    目录（v2src/v2work/dualhost…）仍取 项目根/target/audit2（路径文本逐字不变）。
+    未分片保持原布局——check_knownlen_fastpath / bench_self_host /
+    check_source_coverage 的单点路径依赖不变。"""
+    return 产物路径.共享构建目录(项目根目录)
 
 def 拷贝用例树干净(源目录, 目标目录, ignore=None):
     """先清理再整树拷贝（629-a·006 供给扩容轮实测撞出的混合态缺陷）：
@@ -1084,6 +1103,24 @@ def 并行用例任务(项):
 
 def 执行单个用例(编译器路径: pathlib.Path, 用例目录: pathlib.Path,
                  输出目录: pathlib.Path, 详细: bool, 目标平台: str) -> tuple:
+    """用例执行入口（1638 互斥包装）：同一隔离键用例跨进程串行后走主体编排。
+
+    为什么要锁：重叠/重复分片（不同分片划法或重复启动）会两个进程同时处理同一
+    用例——拷贝用例树干净（rmtree+copytree）与产物读写交错即互踩；首版曾用
+    「隔离键加片后缀」隔离但改写了 v2src 路径文本（952 云端回归），故改用
+    「路径文本不变 + 同键互斥」。互斥只影响重复处理的并发度（重复跑同一用例本就
+    无吞吐意义），单实例路径零变化。"""
+    锁, 错误 = 取用例互斥(隔离键(用例目录.name))
+    if 锁 is None:
+        return "失败", 错误
+    try:
+        return _执行单个用例主体(编译器路径, 用例目录, 输出目录, 详细, 目标平台)
+    finally:
+        释放用例互斥(锁)
+
+
+def _执行单个用例主体(编译器路径: pathlib.Path, 用例目录: pathlib.Path,
+                 输出目录: pathlib.Path, 详细: bool, 目标平台: str) -> tuple:
     """
     执行单个E2E用例：编译->运行->比对输出
     返回 (状态, 说明)；状态取值: "通过" / "失败" / "未实现" / "跳过"
@@ -1795,13 +1832,71 @@ def 计算运行时构建指纹(cxx工具: str) -> str:
 #   降级并发直建——1046 复现即直建实录）。清护=陈锁接管先回收死锚后代（孤儿构建子进程
 #   仍在写 audit2 时被接管者整树回收——935 语义在本锁同样成立）。
 def v2p共享锁路径() -> pathlib.Path:
-    """共享产物（v2p/rt/交叉双工件）重建互斥锁目录（audit2 内=同树跨进程互斥）。"""
-    return 项目根目录 / "target" / "audit2" / "v2p_build.lock"
+    """共享产物（v2p/rt/交叉双工件）重建互斥锁目录（共享构建根内=同树跨进程互斥）。
+    1638：随共享构建根作用域——分片运行锁落 target/audit2/s<i>of<n>/（各片产物
+    各建各用，锁只保片内；同树两片互不阻塞也互不共享构建产物）。"""
+    return 共享产物目录() / "v2p_build.lock"
 
 
 def v2p锁等待上限秒() -> int:
     """锁等待上限：覆盖锁内一整个重建周期（构建超时×2）+收尾余量。"""
     return 构建超时秒数 * 2 + 300
+
+
+# ============ 同一用例的跨进程互斥（1638 回归修复·需求 2）============
+#   需求面：重叠/重复分片（不同划法/重复启动）会让两个进程同时处理**同一隔离键**
+#   的用例——v2src/v2work/dualhost 的「rmtree+copytree 与产物读写」交错即互踩。
+#   首版 #1638 用「隔离键追加分片后缀」隔离，改写 v2src<键> 路径文本 → 952 等
+#   打印源路径/锚定完整键的用例双编译对照必红（云端回归实录）。改法：键与目录
+#   路径文本逐字不变，同键用例周期全程持一把跨进程锁（另一进程等待后重跑该用例，
+#   结果等价、产物不交错）。
+#   锁落 target/audit2/locks/case_<键>.lock（非分片作用域面——同一用例不论哪片
+#   都是同一目录）；清护=假（不做孤儿进程树回收，只做归属/陈锁判定）。
+def 用例互斥锁路径(隔离键值: str) -> pathlib.Path:
+    """同一隔离键用例的跨进程互斥锁目录（键为 ASCII·文件名安全）。"""
+    return 项目根目录 / "target" / "audit2" / "locks" / ("case_%s.lock" % 隔离键值)
+
+
+def 用例锁等待上限秒() -> int:
+    """覆盖一整轮单用例编排（编译超时×2+收尾余量），与共享产物锁同口径。"""
+    return 构建超时秒数 * 2 + 300
+
+
+def 取用例互斥(隔离键值: str):
+    """取同一用例跨进程互斥；返回 (锁句柄, None) 或 (None, 错误描述)。
+
+    超时=诚实红由调用方判（不静默放行——放行即两个进程同写一个用例目录）；
+    陈锁（持锁进程已死）由 gate_lock 917 判据秒级接管，不永久堵死。
+    常规零等待路径吞掉 gate_lock 的「已获得」回显（每用例一次×千例=CI 日志噪音）；
+    一旦发生等待/陈锁接管/超时（耗时 ≥2s 或失败），缓冲原文原样回显（审计不丢）。"""
+    if str(项目根目录 / "scripts") not in sys.path:
+        sys.path.insert(0, str(项目根目录 / "scripts"))
+    import contextlib
+    import io
+    import time as _time
+    import gate_lock as _锁原语
+    回声 = io.StringIO()
+    起始 = _time.monotonic()
+    锁 = None
+    try:
+        with contextlib.redirect_stderr(回声):
+            锁 = _锁原语.获取(用例锁等待上限秒(), 形态="acquire", owner_pid=os.getpid(),
+                             锁=用例互斥锁路径(隔离键值), 清护=False)
+    finally:
+        if _time.monotonic() - 起始 >= 2.0:
+            sys.stderr.write(回声.getvalue())
+            sys.stderr.flush()
+    if 锁 is None:
+        return None, (f"用例互斥锁等待超时（{用例锁等待上限秒()}s·键={隔离键值}）——"
+                      "另一进程正在处理同一用例（重叠/重复分片·锁残留见 "
+                      f"{用例互斥锁路径(隔离键值)}/info.json）")
+    return 锁, None
+
+
+def 释放用例互斥(锁) -> None:
+    """释放用例互斥（静默收尾·释放失败按 gate_lock 内置告警显形，不阻断结果）。"""
+    import gate_lock as _锁原语
+    _锁原语.释放(锁, 静默=True)
 
 
 def 共享产物就绪(编号: str, 命中判据, 重建过程, 锁路径=None):
@@ -1843,7 +1938,10 @@ def 确保v2p与运行时就绪(编译器路径: pathlib.Path, 目标平台: str
     一个重建者，其余等待后复核命中（v2p/rt 两组各自独立持锁·互斥贯穿重建全程）。"""
     import shutil
     import os
-    审计目录 = 项目根目录 / "target" / "audit2"
+    # 1638：本函数只写**共享构建产物**（rt .o/v2p/v2pobj/指纹/交叉双工件）——
+    #   取共享构建根（分片时=target/audit2/s<i>of<n>/，各片各建各锁）；每用例目录
+    #   （v2src/v2work/dualhost…）不在此函数内，路径文本逐字不变。
+    审计目录 = 共享产物目录()
     审计目录.mkdir(parents=True, exist_ok=True)
 
     # 工具链探测（对齐宿主 cn_main.cpp：CN_AS/CN_CXX 环境变量优先，PATH，便携 gcc7 兜底）
@@ -2050,7 +2148,9 @@ def 确保v2p就绪win(编译器路径: pathlib.Path, 详细: bool, 编号: str 
     兜不住的并发形态（孤儿 worker/并行 run_e2e/缓存被外部失效窗口）由 共享产物就绪 的
     跨进程锁+双检兜底——锁内至多一个重建者，其余等待后复核命中。
     返回 (v2p, v2pobj, 运行时objs, ML64, LINK, LIB路径们)；失败返回 (None, 错误描述)。"""
-    审计目录 = 项目根目录 / "target" / "audit2"
+    # 1638：v2p/v2pobj 是**共享构建产物**——取共享构建根（分片时各片各建各锁）；
+    #   运行时 objs 由 CMake 构建在 target/win-x64（非本函数写面）。
+    审计目录 = 共享产物目录()
     审计目录.mkdir(parents=True, exist_ok=True)
     v2源码目录 = 项目根目录 / "CN语言编译器v2"
     v2p = 审计目录 / "v2p.exe"
@@ -2286,11 +2386,15 @@ def 执行v2闭环Linux(编译器路径: pathlib.Path, 目标平台: str, 详细
         v2asm路径.unlink()
     if 详细:
         print(f"    [{编号}-3] {v2p.name} {入口参数} {目标平台}")
+    # 1638（2026-10-26）：CN_V2_ASM_OUT 按用例唯一 asm 输出路径——v2p 固定写
+    #   cwd 相对 target/v2asm.s，同机 --jobs 并行多 v2p 实例互踩（16 并发复现：
+    #   A 用例产物被 B 覆盖·运行输出别用例值/段错误）。绝对路径随 v2work<键> 隔离。
+    v2p环境 = {"CN_V2_ASM_OUT": str(v2asm路径.resolve())}
     运行结果 = 运行命令([str(v2p), 入口参数, 目标平台,
                               *查找编译选项文件(用例目录)], 工作目录,
                             内存上限MB=内存上限MB默认,
                             超时秒数=编译超时秒数,
-                            阶段="编译")   # #1633：v2p 编译用例源码（第 3 步）
+                            阶段="编译", 环境变量=v2p环境)   # #1633：v2p 编译用例源码（第 3 步）
     if 运行结果.returncode != 0:
         return "失败", f"{编号}-3 v2p 运行失败(退出码{运行结果.returncode}): {(运行结果.stderr or '').strip()[:300]}"
     if not v2asm路径.exists():
@@ -3021,6 +3125,11 @@ def 分片守恒自检() -> int:
       普通片重叠）；普通片不含重型；
       片数≤组数时退回旧语义（片0=重型全集·普通片不附带）；组序=重者在前；
     ③片数=1 与无重型过滤集=旧取模语义。红 exit 1。"""
+    # 1638：共享构建产物作用域自检（零依赖·正反两态——分片目录隔离/非法标签显式拒/
+    #   未分片原布局不变）；红先于并集守恒报出（作用域是并行安全根基）。
+    if 产物路径.自检() != 0:
+        print(红色("selftest 失败：分片共享构建作用域自检未通过（见上方 ✗ 行）"))
+        return 1
     全集 = 收集用例(None)
     if not 全集:
         print(红色("selftest 失败：收集用例为空"))
@@ -3279,8 +3388,19 @@ def 主程序() -> int:
             return 2
         全量数 = len(用例目录们)
         用例目录们, 分片形态 = 分片选取(用例目录们, 片序, 片数)
+        # 1638：分片共享构建产物作用域——本进程+spawn worker 的 v2p/v2pobj/rt .o/
+        #   指纹/锁改落 target/audit2/s<片序>of<片数>/（各片各建各锁·同树零共享可写
+        #   路径）。每用例产物（v2src/v2work/dualhost…）路径文本逐字不变（.expected
+        #   锚与程序自身输出的一部分——首版加键后缀致 952 云端回归）。非法片参数
+        #   显式红（禁静默退回共享布局）。
+        try:
+            产物路径.启用作用域(片序, 片数)
+        except ValueError as 异常:
+            print(红色(f"错误: 分片产物作用域非法（{异常}）——中止（禁静默退回共享布局）"))
+            return 2
         print(青色(f"分片: shard {片序}/{片数}（{分片形态}·本片 {len(用例目录们)}/{全量数} 用例"
-                   f"·并集守恒由 --selftest 校验——批主汇总各片退出码判绿）"))
+                   f"·共享构建根 {共享产物目录()}·并集守恒由 --selftest 校验"
+                   f"——批主汇总各片退出码判绿）"))
 
     # —— 重负载用例（78_v2/79_v2）云端照跑·本地默认跳过（566·2026-10-13 用户裁决乙案；
     #      本段位于分片之后——重型判定只对本片·审查 P1-3）——
