@@ -728,7 +728,10 @@ def 池跑任务(任务: dict) -> None:
             #   #1401：分片度按池空闲实例/执行中预验任务数自适应（CN_SHARD_N 可固定）。
             分片n = 0
             if 任务分支.startswith("ci/预验-") and ci_shard.分片启用():
-                分片n = ci_shard.计算分片数(配置["池地址"], 配置["池令牌"])
+                #   #1634：arm64 轮（原生 arm64/xsim 实例作主实例）平台禁分片
+                #   ——runner 标识进判定（xsim 宿主 x64·平台段判不出）。
+                分片n = ci_shard.计算分片数(配置["池地址"], 配置["池令牌"],
+                                             runner=runner标识)
             召唤时刻 = time.time() if 分片n > 1 else None
             if 分片n > 1:
                 ci_shard.召唤从片(lambda o, d: 池调用(配置, o, d),

@@ -1127,6 +1127,38 @@ def _1401断言(断言) -> None:
             os.environ["CN_SHARD_N"] = 旧
 
 
+def _1634断言(断言) -> None:
+    """#1634 arm64 轮平台禁分片（plans/034 §5D·用户批准 2026-10-26）：2 核机
+    分片轮 818s vs 单实例 568s=负收益。判定纯函数四态 + 计算分片数压制路径
+    （禁用恒 1·显式 CN_SHARD_N≥2 亦被压制并告警；非 arm64 轮不触碰原路径）。"""
+    import os
+    import ci_shard
+
+    断言("1634 判定：原生 arm64 机（平台段）→禁分片",
+         ci_shard.arm64轮禁分片("linux-arm64", ""))
+    断言("1634 判定：xsim 交叉模拟实例（宿主 x64·runner 标识识别）→禁分片",
+         ci_shard.arm64轮禁分片("linux-x64", "home-xsim-2"))
+    断言("1634 判定：linux-x64 普通机→不禁用",
+         not ci_shard.arm64轮禁分片("linux-x64", "VM-0-12-ubuntu"))
+    断言("1634 判定：win 实例（1428 让位跑 linux 分片不受影响）→不禁用",
+         not ci_shard.arm64轮禁分片("win-x64", "CHENCHAO-PC-win1"))
+    断言("1634 判定：runner 标识空串+平台段非 arm64→不禁用",
+         not ci_shard.arm64轮禁分片("linux-x64", ""))
+    旧 = os.environ.get("CN_SHARD_N")
+    try:
+        os.environ["CN_SHARD_N"] = "8"
+        断言("1634 压制：xsim 主实例显式 CN_SHARD_N=8 亦恒 1（平台负收益优先）",
+             ci_shard.计算分片数("", runner="home-xsim-1") == 1)
+        os.environ.pop("CN_SHARD_N", None)
+        断言("1634 压制：xsim 主实例自适应路径同样恒 1（零网络·先于池状态短路）",
+             ci_shard.计算分片数("", runner="home-xsim-3") == 1)
+    finally:
+        if 旧 is None:
+            os.environ.pop("CN_SHARD_N", None)
+        else:
+            os.environ["CN_SHARD_N"] = 旧
+
+
 def _1392断言(断言) -> None:
     """1392 实例空闲报活：实例指纹纯函数（daemon指纹=ci_daemon.py 内容 sha256 前 10
     ——同内容同指纹·内容变即变=scp 直更同样可感知；树头非 git 目录=空串显式不猜，
@@ -1759,6 +1791,7 @@ def 自测(主模块) -> int:
     _1424断言(主模块, 断言)
     _1428断言(断言)
     _1426断言(主模块, 断言)
+    _1634断言(断言)
     _1460断言(断言)
     _1463断言(主模块, 断言)
     _1468断言(主模块, 断言)
