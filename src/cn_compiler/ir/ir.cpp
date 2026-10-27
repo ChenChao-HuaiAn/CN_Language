@@ -649,7 +649,16 @@ cn::Optional<std::string> IRGenerator::memberIndexObjElemType(IndexExpr* idx) co
         // 973（104）：同款统一查询（数组元素类型分支保留）
         const std::string ftype = structOrClassFieldType(innerType, inner->memberName).value_or("");
         if (!ftype.empty()) {
-            objType = types::isArray(ftype) ? types::arrayElemOf(ftype) : ftype;
+            // #1680 同族（读侧公共辅助面）：**指针字段**下标元素=pointeeOf（与
+            //   resolveIndexObjSrcType 标识符/成员两指针子分支同构·两级寻址——
+            //   字段值=指针，元素=所指类型）。原带星返回 → 本函数无 memberObjStructType
+            //   末尾剥星兜底的消费点（#1687 嵌套下标写 mapType(带星)=ptr·
+            //   &架.槽[0] 取址面）静默错型/648 误伤。// 与 resolveIndexObjSrcType
+            //   成员子分支重复·待归纳（剥层模式存量 8 处）
+            //   写法（else 新规·else 块内禁业务赋值）：pointeeOf 对非指针恒原样
+            //   =基值先赋（标量/合成体原样），数组分支覆盖剥一维——全区间显式无 else。
+            objType = types::pointeeOf(ftype);
+            if (types::isArray(ftype)) objType = types::arrayElemOf(ftype);
         }
     } else if (idx->object->getType() == NodeType::IndexExpr) {
         // #1687/#1688（2026-10-26·嵌套下标 矩阵[i][j]）：对象=下标表达式——

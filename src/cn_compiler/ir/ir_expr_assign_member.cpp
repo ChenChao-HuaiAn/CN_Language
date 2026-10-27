@@ -455,9 +455,6 @@ bool IRGenerator::memberStringFieldAssign(AssignmentExpr* node, MemberExpr* memb
             types::canonicalEquals(fieldFieldType, "字符串") ||
             (wrapPayloadOpt.has_value() &&
              types::canonical(wrapPayloadOpt.value()) == "字符串");
-        std::fprintf(stderr, "[PROBE]msfa ft=%s strLike=%d obj=%s\n",
-                     fieldFieldType.c_str(), (int)strLikeField,
-                     objSrcType.c_str());
         if (strLikeField) {
             // 顺序（自赋值安全）：值已由上方 genExpr 求值（勿二次求值——
             //   二次求值=多余分配泄漏，P6/P7 探针实证）；此处按来源分级

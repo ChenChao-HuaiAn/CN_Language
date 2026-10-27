@@ -836,8 +836,15 @@ cn::Optional<std::string> IRGenerator::resolveIndexObjSrcType(IndexExpr* idx) {
             if (innerDecl != nullptr) {
                 for (const auto& f : innerDecl->fields) {
                     if (f.name == inner->memberName) {
-                        objSrcType = types::isArray(f.type) ? types::arrayElemOf(f.type)
-                                                            : f.type;
+                        // #1680 同族（读侧）：**指针字段**下标元素成员（架.槽[i].有值
+                        //   / 架.槽[i].值）——字段值=指针，元素类型=pointeeOf（与本
+                        //   函数上方标识符指针子分支 822~828 同构·两级寻址）。原落
+                        //   f.type 带星 → findStruct("可选<整64>*") miss → 648 内部
+                        //   错误误伤合法程序（写侧 indexTargetElemSrcType 同病同轮
+                        //   根治·v2 同形态正确）。
+                        objSrcType = types::isArray(f.type)
+                                         ? types::arrayElemOf(f.type)
+                                         : types::pointeeOf(f.type);  // 非指针 pointeeOf 原样
                         break;
                     }
                 }
