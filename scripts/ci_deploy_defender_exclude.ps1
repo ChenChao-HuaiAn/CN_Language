@@ -1,35 +1,51 @@
 ﻿<#
 .SYNOPSIS
-    CI runner Windows Defender 排除部署脚本（三 win 实例部署面·只入库不自动执行）。
+    CI runner Windows Defender 排除部署脚本（win 池部署面·只入库不自动执行）。
 
 .DESCRIPTION
-    来源：plans/034-三平台验证轮耗时归因.md §5B-①（部署项）·任务 #1633。
-    用户已批准：2026-10-26（plans/034 §5B 三条建议中的部署脚本面——本脚本只入库，
-    由主会话在部署轮统一执行，本脚本自身不做任何静默系统配置变更）。
+    来源：plans/034-三平台验证轮耗时归因.md §5B-①（部署项）·任务 #1633；
+    #1718（2026-10-27 用户批准方案甲+乙）重构：枚举式排除改为「父目录一条 +
+    编译链进程排除 + 历史枚举项一键清理」——解决枚举式三缺口（新 worktree
+    首建不吃排除/删树后死路径残留/主树 target 不在 wt* 模式内漏排除）。
 
     背景：win 每个普通 e2e 用例固定开销中位 27.4s（linux 0.8s / arm64 0.7s），
-    归因指向「链接+运行+杀软/文件系统实时扫描」段。本脚本对下列对象加 Defender
-    排除，并用 Get-MpPreference 回读自验（每项显式报告 已生效/未生效，不静默）：
-      1. 目录排除：本仓库 target\（E2E 产物输出目录=run_e2e --target-dir 默认值；
-         target\audit2\v2work*/selfwork*/supply* 等 e2e 工作目录全在其子树内），
-         以及同父目录下各 CI worktree（wt*\target\，自动发现·逐项回显）；
-      2. 进程/路径排除：ml64.exe / link.exe（MSVC 汇编器/链接器）——优先经 vswhere
-         探测具体全路径加路径排除；探测失败时显式警告并退回按进程名排除（覆盖
-         任意 VS 版本安装路径·非静默，回读自验同样核对）。
+    归因指向「链接+运行+杀软/文件系统实时扫描」段（#1633 三段计时实测：开销在
+    cn.exe 编译链段，产物执行仅 0.05s）。本脚本对下列对象加 Defender 排除，
+    并用 Get-MpPreference 回读自验（每项显式报告 已生效/未生效，不静默）：
+
+      1. 目录排除（方案甲·#1718）：排除父目录一条（默认=C:\Users\ChenChao\Documents\CN，
+         即 $仓库根 的父目录）——覆盖主树 target、全部现有 worktree（wt*\target）、
+         以及将来任何新建 worktree（全在该目录下）；新树零动作、删树零残留。
+         依据：Defender 路径排除不支持通配符（官方规定），无法用 wt*\target 模式
+         一条覆盖，故按「父目录」粒度收敛。安全面=该开发目录实时扫描关闭（CI
+         开发机排除 workspace 的行业常规做法·用户 2026-10-27 批准）。
+
+      2. 进程排除（方案乙·#1718）：cl.exe / link.exe / ml64.exe / ninja.exe /
+         cmake.exe——与路径无关，任何目录下的构建 IO 均不扫（新树/旧树/任意位置
+         自动受益·零维护）；另保留 vswhere 探测到的 ml64/link 具体路径排除
+         （更精确，与进程排除叠加无害；探测失败显式警告非静默）。
+
+      3. 历史清理（#1718·迁移收尾）：默认把旧的「逐 worktree 枚举」排除项
+         （形如 <父目录>\wt*\...\target 与 <父目录>\CN_Language_C\target）
+         一键 Remove-MpPreference——只匹配本父目录下该形状，绝不触碰其他排除
+         （Program Files 工具路径/用户其他目录）；-KeepWorktreeEntries 可跳过。
 
     安全设计：
-      * 支持 -WhatIf 预演（只回显将执行的变更，不触碰系统配置）——首次部署先跑
-        .\ci_deploy_defender_exclude.ps1 -WhatIf 核对清单；
-      * 执行前完整回显将加的排除项清单；
+      * 支持 -WhatIf 预演（只回显将加/将删的变更，不触碰系统配置）；
+      * 执行前完整回显将加/将删清单；
       * 非管理员权限直接报错退出（Defender 排除须管理员）；
-      * 幂等：已存在的排除项跳过（回显「已存在·跳过」），不重复添加。
+      * 幂等：已存在的排除项跳过（回显「已存在·跳过」），不重复添加；
+      * 清理幂等：无匹配历史项时回显「无需清理」。
 
 .PARAMETER 仓库根
-    仓库根目录（默认=本脚本所在 scripts\ 的父目录）。worktree 部署时传该 worktree 根。
+    仓库根目录（默认=本脚本所在 scripts\ 的父目录）。其父目录即目录排除目标。
+
+.PARAMETER KeepWorktreeEntries
+    跳过历史逐 worktree 枚举项清理（默认执行清理·仅调试/回溯时用）。
 
 .EXAMPLE
     powershell -ExecutionPolicy Bypass -File scripts\ci_deploy_defender_exclude.ps1 -WhatIf
-    （预演：只回显将加的排除项，不改系统）
+    （预演：回显将加的父目录/进程排除与将清理的历史枚举项，不改系统）
 
 .EXAMPLE
     powershell -ExecutionPolicy Bypass -File scripts\ci_deploy_defender_exclude.ps1
@@ -39,10 +55,13 @@
     验收口径（plans/034 §6-2）：部署后用 #1633 三段计时观测面复测——
     python tests/e2e/run_e2e.py --filter <用例> --json <路径> 的「用例三段耗时」
     编译段中位对比部署前（27.4s 基线），收益机械可验。
+    变更史：1633 初版（逐 wt 枚举）→1671（$PSScriptRoot 时序修复）→1718（甲+乙
+    +清理·用户批准「父目录一条覆盖现在与未来所有树·清单长期只有几行」）。
 #>
 [CmdletBinding(SupportsShouldProcess = $true)]
 param(
-    [string]$仓库根 = ""
+    [string]$仓库根 = "",
+    [switch]$KeepWorktreeEntries
 )
 
 # $PSScriptRoot 在参数默认值表达式求值期尚未填充（PowerShell 已知时序）——
@@ -59,26 +78,33 @@ if (-not $主体.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator
     exit 1
 }
 
-Write-Host "=== Defender 排除部署（plans/034 §5B-①·#1633·用户已批准 2026-10-26）===" -ForegroundColor Cyan
+Write-Host "=== Defender 排除部署（#1633 + #1718 甲+乙·用户已批准 2026-10-27）===" -ForegroundColor Cyan
 Write-Host "仓库根: $仓库根"
 if ($WhatIfPreference) {
     Write-Host "[预演模式 -WhatIf] 只回显将执行的变更，不修改系统配置" -ForegroundColor Yellow
 }
 
-# ---- ① 目录排除：本仓库 target\ + 兄弟 CI worktree 的 target\（自动发现·逐项回显） ----
-$目录排除项 = @(Join-Path $仓库根 "target")
 $父目录 = Split-Path -Parent $仓库根
-$worktree们 = Get-ChildItem -Path $父目录 -Directory -Filter "wt*" -ErrorAction SilentlyContinue |
-    Where-Object { $_.FullName -ne $仓库根 }
-foreach ($wt in $worktree们) {
-    $wt目标 = Join-Path $wt.FullName "target"
-    if (Test-Path $wt目标) { $目录排除项 += $wt目标 }
-}
-if ($worktree们) {
-    Write-Host ("发现兄弟 CI worktree: " + ($worktree们.Name -join "、"))
+
+# ---- 历史枚举项判据（纯函数·可独立验证：#1718 清理只认本父目录形状·防误删） ----
+function 判断为历史枚举项 {
+    param([string]$条目, [string]$父)
+    if ([string]::IsNullOrWhiteSpace($条目) -or [string]::IsNullOrWhiteSpace($父)) { return $false }
+    $规范 = $条目.TrimEnd('\')
+    # 形状1：<父>\wt<any>...\target（旧脚本逐 worktree 枚举）
+    $前缀 = (Join-Path $父 "wt")
+    if ($规范.StartsWith($前缀, [StringComparison]::OrdinalIgnoreCase) -and
+        $规范.EndsWith("\target", [StringComparison]::OrdinalIgnoreCase)) { return $true }
+    # 形状2：<父>\CN_Language_C\target（主树 target 若曾被单独加入）
+    $主树 = (Join-Path $父 "CN_Language_C\target")
+    if ($规范.Equals($主树, [StringComparison]::OrdinalIgnoreCase)) { return $true }
+    return $false
 }
 
-# ---- ② ml64/link 路径探测（vswhere·与 run_e2e.py 找MSVC工具链 同源逻辑） ----
+# ---- 方案甲：目录排除 = 父目录一条（覆盖主树+全部现有/未来 worktree） ----
+$目录排除项 = @($父目录)
+
+# ---- 方案乙：ml64/link 路径探测（vswhere·与 run_e2e.py 找MSVC工具链 同源逻辑） ----
 $工具路径排除项 = @()
 $vswhere = Join-Path (${env:ProgramFiles(x86)}) "Microsoft Visual Studio\Installer\vswhere.exe"
 if (Test-Path $vswhere) {
@@ -98,20 +124,22 @@ if (Test-Path $vswhere) {
     }
 }
 if (-not $工具路径排除项) {
-    # 显式警告非静默：vswhere/目录探测未命中——退回按进程名排除（覆盖任意 VS 版本路径）
-    Write-Warning "vswhere 未探测到 ml64.exe/link.exe 具体路径——退回按进程名排除（ml64.exe/link.exe·覆盖任意安装路径）"
+    # 显式警告非静默：vswhere/目录探测未命中——进程名排除仍覆盖（任意 VS 版本路径）
+    Write-Warning "vswhere 未探测到 ml64.exe/link.exe 具体路径——仅按进程名排除（ml64.exe/link.exe·覆盖任意安装路径）"
 }
 
-# ---- 执行前完整回显将加的排除项 ----
+# ---- 方案乙：编译链进程排除（与路径无关·新树旧树自动覆盖） ----
+$进程排除项 = @("cl.exe", "link.exe", "ml64.exe", "ninja.exe", "cmake.exe")
+
+# ---- 执行前完整回显 ----
 Write-Host "`n将添加的排除项：" -ForegroundColor Cyan
-Write-Host "  目录排除（ExclusionPath）:"
+Write-Host "  目录排除（ExclusionPath·方案甲·父目录一条覆盖全部现有与未来树）:"
 $目录排除项 | ForEach-Object { Write-Host "    $_" }
+Write-Host "  进程排除（ExclusionProcess·方案乙·编译链·路径无关）:"
+Write-Host ("    " + ($进程排除项 -join " "))
 if ($工具路径排除项) {
-    Write-Host "  路径排除（ExclusionPath·工具链）:"
+    Write-Host "  路径排除（ExclusionPath·工具链具体路径·与进程排除叠加）:"
     $工具路径排除项 | ForEach-Object { Write-Host "    $_" }
-}
-else {
-    Write-Host "  进程排除（ExclusionProcess）: ml64.exe link.exe"
 }
 
 # ---- 幂等添加（读当前偏好，已存在=跳过并回显） ----
@@ -129,17 +157,39 @@ function 添加排除 {
         Write-Host "  [WhatIf 将添加] $种类 $值"
         return
     }
-    if ($种类 -eq "路径") { Add-MpPreference -ExclusionPath $值 }
-    else { Add-MpPreference -ExclusionProcess $值 }
+    if ($种类 -eq "路径") {
+        if ($PSCmdlet.ShouldProcess($值, "Add-MpPreference -ExclusionPath")) { Add-MpPreference -ExclusionPath $值 }
+    }
+    else {
+        if ($PSCmdlet.ShouldProcess($值, "Add-MpPreference -ExclusionProcess")) { Add-MpPreference -ExclusionProcess $值 }
+    }
     Write-Host "  [已添加] $种类 $值" -ForegroundColor Green
 }
 
 Write-Host "`n执行排除添加：" -ForegroundColor Cyan
 foreach ($目录 in $目录排除项) { 添加排除 -种类 "路径" -值 $目录 -已有 $已有路径 }
+foreach ($进程名 in $进程排除项) { 添加排除 -种类 "进程" -值 $进程名 -已有 $已有进程 }
 foreach ($工具 in $工具路径排除项) { 添加排除 -种类 "路径" -值 $工具 -已有 $已有路径 }
-if (-not $工具路径排除项) {
-    foreach ($进程名 in @("ml64.exe", "link.exe")) {
-        添加排除 -种类 "进程" -值 $进程名 -已有 $已有进程
+
+# ---- 历史枚举项清理（#1718 迁移收尾·只删本父目录 wt*\target 形状） ----
+Write-Host "`n历史逐 worktree 枚举项清理：" -ForegroundColor Cyan
+$待清理 = @($已有路径 | Where-Object { 判断为历史枚举项 -条目 $_ -父 $父目录 })
+if ($KeepWorktreeEntries) {
+    Write-Host "  [跳过] -KeepWorktreeEntries 已指定——保留现有 $($待清理.Count) 条枚举项"
+}
+elseif ($待清理.Count -eq 0) {
+    Write-Host "  [无需清理] 未发现历史枚举项"
+}
+else {
+    Write-Host "  将清理 $($待清理.Count) 条（只删本父目录 wt*\target 形状·父目录/工具路径/其他排除不触碰）："
+    foreach ($项 in $待清理) {
+        if ($WhatIfPreference) {
+            Write-Host "  [WhatIf 将删除] 路径 $项"
+        }
+        elseif ($PSCmdlet.ShouldProcess($项, "Remove-MpPreference -ExclusionPath")) {
+            Remove-MpPreference -ExclusionPath $项
+            Write-Host "  [已删除] 路径 $项" -ForegroundColor Green
+        }
     }
 }
 
@@ -153,20 +203,27 @@ foreach ($目录 in $目录排除项) {
     if ($回读路径 -contains $目录) { Write-Host "  [已生效] 目录 $目录" -ForegroundColor Green }
     else { Write-Host "  [未生效] 目录 $目录" -ForegroundColor Red; $未生效 += 1 }
 }
+foreach ($进程名 in $进程排除项) {
+    if ($回读进程 -contains $进程名) { Write-Host "  [已生效] 进程 $进程名" -ForegroundColor Green }
+    else { Write-Host "  [未生效] 进程 $进程名" -ForegroundColor Red; $未生效 += 1 }
+}
 foreach ($工具 in $工具路径排除项) {
     if ($回读路径 -contains $工具) { Write-Host "  [已生效] 工具路径 $工具" -ForegroundColor Green }
     else { Write-Host "  [未生效] 工具路径 $工具" -ForegroundColor Red; $未生效 += 1 }
 }
-if (-not $工具路径排除项) {
-    foreach ($进程名 in @("ml64.exe", "link.exe")) {
-        if ($回读进程 -contains $进程名) { Write-Host "  [已生效] 进程 $进程名" -ForegroundColor Green }
-        else { Write-Host "  [未生效] 进程 $进程名" -ForegroundColor Red; $未生效 += 1 }
-    }
+# 清理结果核对：历史枚举项应为 0（-KeepWorktreeEntries 或 WhatIf 时跳过该断言）
+$残留枚举 = @($回读路径 | Where-Object { 判断为历史枚举项 -条目 $_ -父 $父目录 })
+if (-not $KeepWorktreeEntries -and -not $WhatIfPreference) {
+    if ($残留枚举.Count -eq 0) { Write-Host "  [已生效] 历史枚举项已清零" -ForegroundColor Green }
+    else { Write-Host "  [未生效] 历史枚举项残留 $($残留枚举.Count) 条" -ForegroundColor Red; $未生效 += 1 }
+}
+elseif ($残留枚举.Count -gt 0) {
+    Write-Host "  [提示] 历史枚举项现存 $($残留枚举.Count) 条（本次未清理）" -ForegroundColor Yellow
 }
 
 Write-Host "`n当前全部排除概览："
-Write-Host ("  ExclusionPath  : " + ($回读路径 -join " | "))
-Write-Host ("  ExclusionProcess: " + ($回读进程 -join " | "))
+Write-Host ("  ExclusionPath($($回读路径.Count) 条)  : " + ($回读路径 -join " | "))
+Write-Host ("  ExclusionProcess($($回读进程.Count) 条): " + ($回读进程 -join " | "))
 
 if ($WhatIfPreference) {
     Write-Host "`n[预演结束] 未修改任何系统配置——去掉 -WhatIf 重跑即真实部署。" -ForegroundColor Yellow
