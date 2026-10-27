@@ -198,6 +198,23 @@ void IRGenerator::visitIdentifierExpr(IdentifierExpr* node) {
             const cn::Optional<std::string> sig =
                 semantic_->funcFirstSigKey(node->name);
             if (sig.has_value()) funcSym = sig.value();
+            // #1705②（内置查表 miss 显形·882 处置①）：签名键=纯名（无 '#'）
+            //   却带参数类型=内置函数（正常函数带参必有 '#' 签名键；纯名键合法
+            //   面=无参用户函数/外部 函数——paramTypes 空，不命中本判定）。内置
+            //   无中文链接符号（打印族=逐参复合发射·其余=__cn_ 运行时直调·
+            //   正常/错误/某些/转移/回绕=编译期展开），按普通名回落=链接期未
+            //   定义符号（?E68993E58DB0@@Y 实录）——报内部错误显形，禁止静默
+            //   降级；诊断后沿用原回落控制流（Error 诊断收口=编译失败不产码，
+            //   ir_call_args.cpp #648 报告式先例同口径）。
+            const cn::Optional<std::vector<std::string>> builtinProbe1705 =
+                semantic_->funcParamTypesOf(node->name);
+            if (builtinProbe1705.has_value() && !builtinProbe1705.value().empty() &&
+                funcSym.find('#') == std::string::npos) {
+                diagnostics_.report(
+                    DiagnosticLevel::Error, node->location,
+                    "内部错误: 内置函数 '" + node->name +
+                        "' 被按普通函数名取地址——内置无链接符号·静默降级已废除（#1705）");
+            }
         }
         lastExpr_ = emitResult(ir::Opcode::FuncAddr, {}, "ptr", funcSym, node->location);
         return;
