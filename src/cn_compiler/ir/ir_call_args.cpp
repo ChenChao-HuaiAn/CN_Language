@@ -101,6 +101,8 @@ ir::IRValue IRGenerator::genArgValueWithCleanup(Expr* arg,
     //   名串被毁→「未声明的类型」级联·965 第一版崩形同款·v2 树 IR diff 15 处
     //   新增 __cn_str_free 实录）。
     if (methodFace1479) {
+        std::fprintf(stderr, "[PROBE]methodFace ret=%s reg=%d\n", retCanon.c_str(),
+                     (int)(retCanon == "字符串" && ce->retOwnedString));
         if (semantic_->isClassType(retCanon)) {
             classFaceRegister1479(ce, v, retCanon);
         }
@@ -113,6 +115,7 @@ ir::IRValue IRGenerator::genArgValueWithCleanup(Expr* arg,
     //   借用（借用契约=调用期有效——临时生命周期至完整表达式尾，C++ 同规；
     //   被调方外存借用句柄=借用违约，非本释放面义务）。
     if (retCanon == "字符串") {
+        std::fprintf(stderr, "[PROBE]generic string reg\n");
         pendingArgCleanups_.emplace_back(v, retCanon, nullptr);
         return v;
     }
@@ -293,6 +296,10 @@ bool IRGenerator::argIsOwnedStringTemp(const Expr* arg) const {
     }
     if (arg->getType() != NodeType::CallExpr) return false;
     const CallExpr* ce = static_cast<const CallExpr*>(arg);
+    // #1696（2026-10-27）：retOwnedString=A2 拥有契约闸单点（语义层已含引用
+    //   返回/泛型实例排除·方法调用 MemberExpr 被调的 resolvedType 未写回时
+    //   原 fallback 只认标识符被调=漏判——打印(c.取出()) 类形态每处净泄 1）
+    if (ce->retOwnedString) return true;
     std::string retCanon = types::canonical(ce->resolvedType);
     if (retCanon.empty() && ce->callee != nullptr &&
         ce->callee->getType() == NodeType::IdentifierExpr) {

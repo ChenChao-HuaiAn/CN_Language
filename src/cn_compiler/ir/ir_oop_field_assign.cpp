@@ -219,6 +219,33 @@ bool IRGenerator::handleClassFieldAssign(IdentifierExpr* ident, Expr* value,
             return true;
         }
     }
+    // #1700 乙案+#1696 随批（2026-10-27）：类字段 ← 字符串源——归一化
+    //   （79-a 字段独立拥有：标识符=复制落堆/字面量=驻留/调用=按 A2 白名单
+    //   接管·normalizeStringValueSource 单点）+pre-free（普通字符串字段旧值
+    //   释放+清槽）/覆盖即忘（手动释放<T> 字段跳过——忘旧责任随声明归用户，
+    //   释放由 摘除(槽.值) 执行）。原落标量 StorePtr 直存=浅共享+调用方临时
+    //   结算悬垂（探针简乙 实锤：形参直赋后 .值 读空——memberStringFieldAssign
+    //   只覆盖结构体面·类路径（裸字段名）漏同款）。
+    if (!isCompoundAssignOp(op) && semantic_ != nullptr) {
+        const std::string fieldCanonS = types::canonical(fieldType);
+        const std::string payloadS =
+            types::manuallyDroppedPayloadOf(fieldCanonS).value_or(std::string());
+        const bool strLikeS = (fieldCanonS == "字符串") ||
+                              (types::canonical(payloadS) == "字符串");
+        if (strLikeS) {
+            ir::IRValue fieldAddrS = genInstanceFieldAddr(ident->name, loc);
+            ir::IRValue valS = genExpr(value);
+            ir::IRValue normalizedS =
+                normalizeStringValueSource(value, valS, loc);
+            if (payloadS.empty()) {
+                emitFieldStringFreeAt(fieldAddrS, loc);   // 旧值幂等释放+清槽
+            }
+            emit(ir::Opcode::StorePtr, {fieldAddrS, normalizedS},
+                 ir::IRValue(), "", "ptr", loc);
+            lastExpr_ = normalizedS;
+            return true;
+        }
+    }
     ir::IRValue val = genExpr(value);
     if (val.type != targetIrType && !targetIrType.empty()) {
         val = emitResult(ir::Opcode::Cast, {val}, targetIrType, "", loc);

@@ -1,0 +1,8 @@
+# E2E 1587（#1696 修复锁面·宿主+v2 双测）：类含双串字段+打印(方法返回串复制)
+#   ——实参位/打印位拥有串临时结算（宿主 genArgValueWithCleanup methodFace+
+#   argIsOwnedStringTemp retOwnedString 闸/v2 拥有串临时形态+644 MemberExpr 分支）
+#   ——修复前终态活动分配差=1，锁面=差值 0。
+退出码=0
+源文件=主.cn
+预期编译失败=否
+断言输出=是
