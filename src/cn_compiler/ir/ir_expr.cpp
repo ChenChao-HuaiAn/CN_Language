@@ -206,10 +206,15 @@ void IRGenerator::visitIdentifierExpr(IdentifierExpr* node) {
             //   定义符号（?E68993E58DB0@@Y 实录）——报内部错误显形，禁止静默
             //   降级；诊断后沿用原回落控制流（Error 诊断收口=编译失败不产码，
             //   ir_call_args.cpp #648 报告式先例同口径）。
+            //   排除 '$' 实例名（722 返工实录）：加一<整32> 等泛型实例在 IR 层
+            //   名=加一$整32——用户函数实例有链接符号、取地址合法；funcFirstSigKey
+            //   对实例名返纯名（无 '#'）+funcParamTypesOf 非空，两判据齐时与内置
+            //   同形——以 '$' 标记分流（内置名不含 '$'·词法层面互斥）。
             const cn::Optional<std::vector<std::string>> builtinProbe1705 =
                 semantic_->funcParamTypesOf(node->name);
             if (builtinProbe1705.has_value() && !builtinProbe1705.value().empty() &&
-                funcSym.find('#') == std::string::npos) {
+                funcSym.find('#') == std::string::npos &&
+                node->name.find('$') == std::string::npos) {
                 diagnostics_.report(
                     DiagnosticLevel::Error, node->location,
                     "内部错误: 内置函数 '" + node->name +
