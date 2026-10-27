@@ -13,6 +13,7 @@
 extern "C" void* cn_alloc_tracked_host(std::size_t size);
 
 #include <cstdarg>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -388,7 +389,7 @@ extern "C" long long __cn_str_to_int(const char* str, int* ok) {
 }
 
 // 字符串转浮点：strtod 整串解析
-// 参数 ok：成功标志输出（1=成功，0=非法输入/空串/范围错误）
+// 参数 ok：成功标志输出（1=成功，0=非法输入/空串/上溢超域）
 // 返回：解析的浮点值；失败返回 0.0
 extern "C" double __cn_str_to_double(const char* str, int* ok) {
     if (ok != nullptr) *ok = 0;
@@ -400,7 +401,11 @@ extern "C" double __cn_str_to_double(const char* str, int* ok) {
     const bool parsed = (end != str);
     // 跳过尾部空白后必须到串尾（整串合法数字）
     while (*end == ' ' || *end == '\t' || *end == '\r' || *end == '\n') ++end;
-    const bool valid = (errno == 0 && parsed && *end == '\0');
+    // ERANGE 两形态分流（1161·1427-D3）：上溢（±HUGE_VAL）=真超域失败；
+    //   subnormal 下溢（渐近值，如 1e-320）=域内合法成功——钳 0 即错值。
+    const bool overflow = (errno == ERANGE) &&
+                          (value == HUGE_VAL || value == -HUGE_VAL);
+    const bool valid = (!overflow && parsed && *end == '\0');
     if (valid && ok != nullptr) *ok = 1;
     return valid ? value : 0.0;
 }

@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <string>
 #include <unordered_set>
@@ -58,7 +59,10 @@ std::string Arm64CodeGenerator::uint64HexText(std::uint64_t value) {
 std::string Arm64CodeGenerator::floatBitsHex(const std::string& text, bool isDouble) {
     std::uint64_t bits = 0;
     try {
-        const double value = std::stod(text);
+        // strtod 而非 stod：stod 对 subnormal 下溢（1e-320，ERANGE）抛 out_of_range →
+        // 落 catch 钳 0 位模式错值；strtod 在 ERANGE 下仍返回 subnormal 渐近值（1427-D2a）。
+        // 上溢方向 ±HUGE_VAL 已由 1161 判域编译期拒，catch 仅为不可达防御。
+        const double value = std::strtod(text.c_str(), nullptr);
         if (isDouble) {
             std::memcpy(&bits, &value, sizeof(double));
         } else {
