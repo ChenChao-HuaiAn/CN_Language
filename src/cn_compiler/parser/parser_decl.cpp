@@ -323,7 +323,15 @@ std::unique_ptr<EnumDecl> Parser::parseEnumDecl() {
     decl->location = current().getLocation();
     advance();  // 消费"枚举"
     if (!check(TokenType::Identifier)) {
-        reportErrorHere("预期枚举名");
+        // 1738（001 §2.1a·271 甲案）：保留字作枚举名=编译错误——保留字占用
+        //   一切标识符位。原「预期枚举名」拒绝面正确但诊断失真（不点名保留字，
+        //   775 同族先例=双侧统一单条精确诊断）；v2 侧语法层同点同串诊断
+        //   （语法分析尾.cn 解析枚举声明），双侧文案逐字一致（零分叉）。
+        if (Token::isKeyword(currentType())) {
+            reportErrorHere("枚举名不可为保留字 '" + current().getValue() + "'");
+        } else {
+            reportErrorHere("预期枚举名");
+        }
         synchronize();
         return decl;
     }
