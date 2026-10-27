@@ -247,7 +247,14 @@ std::unique_ptr<InterfaceDecl> Parser::parseInterfaceDecl() {
     decl->location = current().getLocation();
     advance();  // 消费"接口"
     if (!check(TokenType::Identifier)) {
-        reportErrorHere("预期接口名");
+        // 1746（001 §2.1a·#1738 枚举名位同族扩面）：保留字作接口名=编译错误——
+        //   原「预期接口名」诊断失真；v2 侧同点同串（解析接口.cn·保留字名位
+        //   诊断1746），双侧文案逐字一致（零分叉）。
+        if (Token::isKeyword(currentType())) {
+            reportErrorHere("接口名不可为保留字 '" + current().getValue() + "'");
+        } else {
+            reportErrorHere("预期接口名");
+        }
         synchronize();
         return decl;
     }
@@ -332,7 +339,14 @@ std::unique_ptr<ClassDecl> Parser::parseClassDecl() {
     decl->location = current().getLocation();
     advance();  // 消费"类"
     if (!check(TokenType::Identifier)) {
-        reportErrorHere("预期类名");
+        // 1746（001 §2.1a·#1738 枚举名位同族扩面）：保留字作类名=编译错误——
+        //   原「预期类名」诊断失真；v2 侧同点同串（解析类.cn 解析类声明·
+        //   保留字名位诊断1746），双侧文案逐字一致（零分叉）。
+        if (Token::isKeyword(currentType())) {
+            reportErrorHere("类名不可为保留字 '" + current().getValue() + "'");
+        } else {
+            reportErrorHere("预期类名");
+        }
         synchronize();
         return decl;
     }

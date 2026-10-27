@@ -1757,6 +1757,7 @@
    "src/cn_compiler/parser/parser_decl.cpp::}else{│break",
    "src/cn_compiler/parser/parser_decl.cpp::}else{│break",
    "src/cn_compiler/parser/parser_decl.cpp::}else{│break",
+   "src/cn_compiler/parser/parser_decl.cpp::}else{│break",
    "src/cn_compiler/parser/parser_decl.cpp::}else{│field.type=parseTypeNameEx()",
    "src/cn_compiler/parser/parser_decl.cpp::}else{│func->returnType=parseTypeNameEx()",
    "src/cn_compiler/parser/parser_decl.cpp::}else{│init->fields.emplace_back(fieldName,parseExpr())",
