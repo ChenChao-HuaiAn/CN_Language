@@ -296,10 +296,6 @@ bool IRGenerator::argIsOwnedStringTemp(const Expr* arg) const {
     }
     if (arg->getType() != NodeType::CallExpr) return false;
     const CallExpr* ce = static_cast<const CallExpr*>(arg);
-    // #1696（2026-10-27）：retOwnedString=A2 拥有契约闸单点（语义层已含引用
-    //   返回/泛型实例排除·方法调用 MemberExpr 被调的 resolvedType 未写回时
-    //   原 fallback 只认标识符被调=漏判——打印(c.取出()) 类形态每处净泄 1）
-    if (ce->retOwnedString) return true;
     std::string retCanon = types::canonical(ce->resolvedType);
     if (retCanon.empty() && ce->callee != nullptr &&
         ce->callee->getType() == NodeType::IdentifierExpr) {
