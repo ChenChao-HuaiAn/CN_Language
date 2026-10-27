@@ -184,7 +184,7 @@ std::string X64CodeGenerator::setccMnemonic(ir::Opcode opcode) {
 
 namespace {
 // #1212 审查 P2：虚拟寄存器 ID 合法上限（双边界判据用；IR id 为 int 且远小于此）
-constexpr int kMaxVirtualRegId1212 = 1 << 24;
+constexpr int kMaxVirtualRegId = 1 << 24;
 }  // namespace
 
 // ==================== 操作数文本 ====================
@@ -547,7 +547,7 @@ void X64CodeGenerator::emitCopy(AsmWriter& writer, const ir::IRInstruction& inst
         //   禁单半捷径（原走通用单 64 位中转=高/低半丢失；IR 层虽不主动产生，
         //   优化链 SSA 使用点重写可注入，必须成对覆盖）。-1=非寄存器哨兵。
         if (!inst.operands[0].isConstant && inst.operands[0].id == -1 &&
-            inst.result.id >= 0 && inst.result.id <= kMaxVirtualRegId1212 &&
+            inst.result.id >= 0 && inst.result.id <= kMaxVirtualRegId &&
             !inst.operands[0].extra.empty()) {
             const std::string srcLo = "[rbp" + std::to_string(
                 varSlotOf(inst.operands[0].extra)) + "]";
@@ -560,7 +560,7 @@ void X64CodeGenerator::emitCopy(AsmWriter& writer, const ir::IRInstruction& inst
             return;
         }
         if (!inst.result.isConstant && inst.operands[0].id >= 0 &&
-            inst.operands[0].id <= kMaxVirtualRegId1212 &&
+            inst.operands[0].id <= kMaxVirtualRegId &&
             inst.result.id == -1 && !inst.result.extra.empty()) {
             const std::string dstLo = "[rbp" + std::to_string(
                 varSlotOf(inst.result.extra)) + "]";

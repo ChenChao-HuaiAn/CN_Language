@@ -217,7 +217,7 @@ void SemanticAnalyzer::checkSingleMethodBody(ClassInfo& info, ClassMemberInfo& m
         contextClassStack_.push_back(info.name);
         // 1472：方法体字段判定上下文（声明类）本位保存/恢复（嵌套安全）——
         //   设置点在下方字段作用域注入处（与注入同锚），此处先保存旧值。
-        const std::string savedFieldScope1472 = currentFieldScopeClass_;
+        const std::string savedFieldScopeClass = currentFieldScopeClass_;
         const bool savedConst = constMethodContext_;
         constMethodContext_ = mi.isConstMethod;
         // #282（2026-10-08）：静态标志随方法体进出——visitSelfExpr 据此拒绝
@@ -228,7 +228,7 @@ void SemanticAnalyzer::checkSingleMethodBody(ClassInfo& info, ClassMemberInfo& m
         const bool savedUnsafe = currentFnUnsafe_;
         currentFnUnsafe_ = mi.isUnsafe;
         // #1674 丙案：析构函数上下文（体内对资源字段手动 字符串释放 执法用）
-        const bool savedIsDestructor1674 = currentFnIsDestructor_;
+        const bool savedIsDestructor = currentFnIsDestructor_;
         currentFnIsDestructor_ = mi.isDestructor;
         // 480：方法体入口清空函数内静态局部名表（函数级表·跨方法互不污染）
         staticguard::noteFunctionEntry();
@@ -360,24 +360,24 @@ void SemanticAnalyzer::checkSingleMethodBody(ClassInfo& info, ClassMemberInfo& m
         //   classFieldOffsetFrom 最派生命中同锚）。泛型实例方法
         //   （mi.ownerClass=实例名）声明类即 info.name，零行为变化。
         {
-            std::string declClass1472 =
+            std::string declClass =
                 mi.ownerClass.empty() ? info.name : mi.ownerClass;
-            if (declClass1472 != info.name &&
-                !isDerivedFrom(info.name, declClass1472)) {
-                declClass1472 = info.name;  // 声明类不在本类继承链→按本类（防御）
+            if (declClass != info.name &&
+                !isDerivedFrom(info.name, declClass)) {
+                declClass = info.name;  // 声明类不在本类继承链→按本类（防御）
             }
             // 1472：字段判定上下文同步（isCurrentClassFieldName 094 豁免判据
             //   与注入同锚——按声明类链，非提升目标类）
-            currentFieldScopeClass_ = declClass1472;
-            for (const ClassInfo* ci1472 =
-                     findClass(declClass1472).value_or(nullptr);
-                 ci1472 != nullptr;
-                 ci1472 = ci1472->baseName.empty()
+            currentFieldScopeClass_ = declClass;
+            for (const ClassInfo* chainClass =
+                     findClass(declClass).value_or(nullptr);
+                 chainClass != nullptr;
+                 chainClass = chainClass->baseName.empty()
                               ? nullptr
-                              : findClass(ci1472->baseName).value_or(nullptr)) {
-                for (const auto& fname : ci1472->fieldOrder) {
-                    auto f = ci1472->fields.find(fname);
-                    if (f == ci1472->fields.end()) continue;
+                              : findClass(chainClass->baseName).value_or(nullptr)) {
+                for (const auto& fname : chainClass->fieldOrder) {
+                    auto f = chainClass->fields.find(fname);
+                    if (f == chainClass->fields.end()) continue;
                     std::string t;
                     if (lookupVar(fname, t)) continue;
                     declareVar(fname, f->second.type, member->location);
@@ -502,10 +502,10 @@ void SemanticAnalyzer::checkSingleMethodBody(ClassInfo& info, ClassMemberInfo& m
         currentFunctionName_ = savedFuncName;
         constMethodContext_ = savedConst;
         currentFnUnsafe_ = savedUnsafe;  // plans/019 阶段4
-        currentFnIsDestructor_ = savedIsDestructor1674;  // #1674 丙案
+        currentFnIsDestructor_ = savedIsDestructor;  // #1674 丙案
         genericTypeParams_ = savedTypeParams;
         currentMethodIsStatic_ = savedStatic;
-        currentFieldScopeClass_ = savedFieldScope1472;  // 1472：声明类上下文恢复
+        currentFieldScopeClass_ = savedFieldScopeClass;  // 1472：声明类上下文恢复
         contextClassStack_.pop_back();
 }
 

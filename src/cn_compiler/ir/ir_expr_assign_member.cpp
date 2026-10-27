@@ -448,17 +448,17 @@ bool IRGenerator::memberStringFieldAssign(AssignmentExpr* node, MemberExpr* memb
         //   接管——调用方拥有临时的结算面不知槽已接管，浅直存=临时 free 后槽
         //   悬垂·探针5 差值=1 实锤），但旧值释放跳过（覆盖即忘·ManuallyDrop
         //   ptr::write 语义·001 §5.6 ③——忘旧责任随声明归用户）。
-        const std::string fieldCanon1674 = types::canonical(fieldFieldType);
-        const cn::Optional<std::string> wrapPayload1674 =
-            types::manuallyDroppedPayloadOf(fieldCanon1674);
-        const bool strLikeField1674 =
+        const std::string fieldCanon = types::canonical(fieldFieldType);
+        const cn::Optional<std::string> wrapPayloadOpt =
+            types::manuallyDroppedPayloadOf(fieldCanon);
+        const bool strLikeField =
             types::canonicalEquals(fieldFieldType, "字符串") ||
-            (wrapPayload1674.has_value() &&
-             types::canonical(wrapPayload1674.value()) == "字符串");
+            (wrapPayloadOpt.has_value() &&
+             types::canonical(wrapPayloadOpt.value()) == "字符串");
         std::fprintf(stderr, "[PROBE]msfa ft=%s strLike=%d obj=%s\n",
-                     fieldFieldType.c_str(), (int)strLikeField1674,
+                     fieldFieldType.c_str(), (int)strLikeField,
                      objSrcType.c_str());
-        if (strLikeField1674) {
+        if (strLikeField) {
             // 顺序（自赋值安全）：值已由上方 genExpr 求值（勿二次求值——
             //   二次求值=多余分配泄漏，P6/P7 探针实证）；此处按来源分级
             //   归一化（复制落堆/接管/move），新值独立于旧值内存后才 drop 旧值
@@ -481,7 +481,7 @@ bool IRGenerator::memberStringFieldAssign(AssignmentExpr* node, MemberExpr* memb
                 ? semantic_->findStruct(types::canonical(objSrcType)).value_or(nullptr)
                 : nullptr;
             const bool unionTarget = objDeclU != nullptr && objDeclU->isUnion;
-            if (!unionTarget && !wrapPayload1674.has_value() &&
+            if (!unionTarget && !wrapPayloadOpt.has_value() &&
                 isOwnedFieldSlot(objUnique)) {
                 emitFieldStringFreeAt(addr, node->location);  // 旧值幂等释放+清槽
             }

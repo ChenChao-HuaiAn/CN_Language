@@ -11,7 +11,7 @@
 namespace cn_compiler {
 
 // #1212：调用参数个数合法上界（双边界判据用；实际 CN 参数个数远小于此）
-constexpr std::size_t kMaxCallArgs1212 = 1u << 20;
+constexpr std::size_t kMaxCallArgSlots = 1u << 20;
 
 // ==================== 类型转换（Cast，Task 2.3） ====================
 
@@ -83,7 +83,7 @@ void X64CodeGenerator::emitCall(AsmWriter& writer, const ir::IRInstruction& inst
         }
         // 写入栈参数（第5参数 [rsp+32]，第6 [rsp+40]...；隐藏返回指针占第1参数位）
         const std::size_t argOffset = hasBigRet ? 1 : 0;  // 参数寄存器位置后移
-        if (totalArgs >= 5 && totalArgs <= kMaxCallArgs1212) {
+        if (totalArgs >= 5 && totalArgs <= kMaxCallArgSlots) {
         for (std::size_t i = 4 - argOffset; i < argCount; ++i) {
             const std::string& op = operandText(inst.operands[argBase + i]);
             const std::string& argType = inst.operands[argBase + i].type;
@@ -146,14 +146,14 @@ void X64CodeGenerator::emitCall(AsmWriter& writer, const ir::IRInstruction& inst
                 writer.line("mov [rsp+" + std::to_string(32 + (i + argOffset - 4) * 8) + "], rax");
             }
         }
-        } else if (totalArgs >= kMaxCallArgs1212 + 1 &&
+        } else if (totalArgs >= kMaxCallArgSlots + 1 &&
                    totalArgs <= static_cast<std::size_t>(-1)) {
             // #1212 复审 P3：参数个数超上限=编译器内部缺陷显形（静默跳过
             //   栈参数写入会传垃圾实参）
             diagnostics_.report(Diagnostic::error(
                 inst.loc, "内部错误: 调用实参个数超过上限（" +
                               std::to_string(totalArgs) + " > " +
-                              std::to_string(kMaxCallArgs1212) + "）（#1212）"));
+                              std::to_string(kMaxCallArgSlots) + "）（#1212）"));
         }
     }
     // 前4参数寄存器（rcx/rdx/r8/r9 整型；xmm0-3 浮点，Task 2.3）。

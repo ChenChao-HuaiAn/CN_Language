@@ -31,7 +31,7 @@ namespace cn_compiler {
 
 // 1256：小函数分配门槛（实测护栏）——虚拟寄存器数 < 本值时，被调用者保存寄存器
 //   的序言/尾声 push/pop 开销 ≥ 槽访问收益（v2p 全树指令数 +1% → 持平）。
-constexpr int kRegAllocMinVregs1256 = 128;
+constexpr int kRegAllocMinVregs = 128;
 
 // D1 行数整改 119-a：按族拆出 linux_x64_codegen_emit.cpp（纯重构零行为变更，声明仍在对应 hpp）
 
@@ -295,7 +295,7 @@ int LinuxX64CodeGenerator::varSlotAreaSize() const {
 // 虚拟寄存器ID -> 寄存器分配结果（无值=未分配或未启用分配）
 cn::Optional<const regalloc::RegAssignment*> LinuxX64CodeGenerator::regAllocOf(int regId) const {
     // 1256：regId 合法域=[0, 虚拟寄存器ID上限]（闭集双边界；越界=无分配结果）
-    if (regId >= 0 && regId <= kMaxVirtualRegId1256) {
+    if (regId >= 0 && regId <= kMaxVirtualRegId) {
         auto it = regAllocMap_.find(regId);
         if (it != regAllocMap_.end()) return &it->second;
     }
@@ -408,7 +408,7 @@ cn::Optional<std::string> LinuxX64CodeGenerator::copyAllocatedTo(
     LinuxX64AsmWriter& writer, const ir::IRValue& operand,
     const std::string& reg) {
     const bool hasPhys = (!operand.isConstant && operand.id >= 0 &&
-                          operand.id <= kMaxVirtualRegId1256);
+                          operand.id <= kMaxVirtualRegId);
     const cn::Optional<std::string> phys =
         hasPhys ? physRegOf(operand) : std::nullopt;
     if (phys.has_value()) {
@@ -667,7 +667,7 @@ void LinuxX64CodeGenerator::prepareRegisterAllocation(const ir::IRFunction& func
     // 小函数门槛（1256 性能护栏）：虚拟寄存器极少时槽访问收益 < 被调用者保存
     //   寄存器的序言/尾声 push/pop 开销（实测 v2p 指令数回归的主因）。
     const bool tooSmall =
-        (regSlotCount_ >= 0 && regSlotCount_ < kRegAllocMinVregs1256);
+        (regSlotCount_ >= 0 && regSlotCount_ < kRegAllocMinVregs);
     const bool useRegAlloc = regAllocEnabled_ && !currentNeedHiddenRet_ && !tooSmall;
     if (useRegAlloc) {
         regalloc::LinearScanAllocator allocator(regalloc::TargetArch::LinuxX64);

@@ -18,7 +18,7 @@
 namespace cn_compiler {
 
 // #1212：虚调用参数位合法上界（双边界判据用；实际 CN 参数个数远小于此）
-constexpr int kMaxCallArgSlots1212 = 1 << 20;
+constexpr int kMaxCallArgSlots = 1 << 20;
 
 // ==================== 符号生成辅助（Task 3.1/3.2/3.9） ====================
 
@@ -240,7 +240,7 @@ void X64CodeGenerator::emitVirtualI128Arg(AsmWriter& writer, const ir::IRValue& 
             "内部错误: 虚调用 i128 实参无地址来源（id=-1 且非常量）"));
         return;
     }
-    if (regIdx >= 4 && regIdx <= kMaxCallArgSlots1212) {
+    if (regIdx >= 4 && regIdx <= kMaxCallArgSlots) {
         // 栈参数位：常量地址经 r10 中转（mov mem,mem 非法）；非常量已是 r10
         if (coff != 0) {
             writer.line("lea r10, " + addr);
@@ -366,7 +366,7 @@ void X64CodeGenerator::emitVirtualCall(AsmWriter& writer, const ir::IRInstructio
             //   路径同口径改用 xmm0 中转（xmm0 不在分配池，纯 scratch）。
             //   寄存器位保持 xmm{参数位}（#1212 实参可能已在 xmm，源无内存前缀）；
             //   栈传位 movq 内存目标须带 qword ptr（A2070·431 汇编失败实证）。
-            const bool stackFloat = (regIdx >= 4 && regIdx <= kMaxCallArgSlots1212);
+            const bool stackFloat = (regIdx >= 4 && regIdx <= kMaxCallArgSlots);
             const std::string stage = stackFloat ? "xmm0" : xmm;
             writer.line(load + " " + stage + ", " + floatSourceText(op, mp));
             writer.line((stackFloat ? "movq qword ptr " : "movq ") + paramSlot + ", " + stage);
@@ -381,7 +381,7 @@ void X64CodeGenerator::emitVirtualCall(AsmWriter& writer, const ir::IRInstructio
             //   实证：V11 浮点参（xmm0·不碰 rax）绿 vs 整数参（rdx）崩；0 参绿（无装载）。
             //   经 **r10d** 中转（volatile·不涉 rax）——寄存器位/栈位统一。
             writer.line("mov r10d, " + shrunkOperand("i32", op));
-            if (regIdx >= 4 && regIdx <= kMaxCallArgSlots1212) {
+            if (regIdx >= 4 && regIdx <= kMaxCallArgSlots) {
                 writer.line("movsxd r10, r10d");
                 writer.line("mov " + paramSlot + ", r10");
             } else {
@@ -398,7 +398,7 @@ void X64CodeGenerator::emitVirtualCall(AsmWriter& writer, const ir::IRInstructio
             //   = A2070）——未分配 vreg/变量源一律经 r10 中转；寄存器位保留
             //   直接 mov/lea（单条，产物不变）。
             const ir::IRValue& av = inst.operands[thisIdx + 1 + i];
-            const bool stackSlot = (regIdx >= 4 && regIdx <= kMaxCallArgSlots1212);
+            const bool stackSlot = (regIdx >= 4 && regIdx <= kMaxCallArgSlots);
             if (stackSlot) {
                 if (av.isConstant && argType == "ptr") {
                     writer.line("lea r10, " + op);

@@ -40,7 +40,7 @@ namespace cn_compiler {
 // 1256：虚拟寄存器 ID 合法上限（双边界判据用；IR 侧 id 为 int 且远小于此——
 //   越界 id 只可能来自损坏输入，视为无分配结果）。头文件归属（#1212 d）：
 //   instructions.cpp 的 i128 混合形态双边界判据与 codegen.cpp 消费点共用。
-constexpr int kMaxVirtualRegId1256 = 1 << 24;
+constexpr int kMaxVirtualRegId = 1 << 24;
 
 // 语义分析器前向声明（类布局/虚表槽位/静态字段查询，供 codegen OOP 展开）
 class ISemanticView;  // 语义只读视图（346 重构D·model 层接口·实现在 semantic.hpp）

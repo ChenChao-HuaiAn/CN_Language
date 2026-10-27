@@ -506,14 +506,14 @@ void IRGenerator::emitResultCtorReturnMoveForClass(
         (name == "正常" || name == "某些") &&
         node->arguments[0]->getType() == NodeType::IdentifierExpr &&
         semantic_ != nullptr && semantic_->isClassType(canonValueType)) {
-        const std::string srcName1611 = static_cast<const IdentifierExpr*>(
+        const std::string srcVarName = static_cast<const IdentifierExpr*>(
             node->arguments[0].get())->name;
-        const cn::Optional<std::string> slotOpt1611 = lookupVarName(srcName1611);
-        if (slotOpt1611.has_value() &&
+        const cn::Optional<std::string> srcSlotOpt = lookupVarName(srcVarName);
+        if (srcSlotOpt.has_value() &&
             std::find(ownedClassOrder_.begin(), ownedClassOrder_.end(),
-                      slotOpt1611.value()) != ownedClassOrder_.end()) {
+                      srcSlotOpt.value()) != ownedClassOrder_.end()) {
             emit(ir::Opcode::Store, {ir::IRValue::constant("0", "i64")},
-                 ir::IRValue(), slotOpt1611.value(), "ptr", node->location);
+                 ir::IRValue(), srcSlotOpt.value(), "ptr", node->location);
         }
     }
 }

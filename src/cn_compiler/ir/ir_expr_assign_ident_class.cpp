@@ -627,10 +627,10 @@ bool IRGenerator::handleClassMemberAssign(MemberExpr* target, Expr* valueExpr,
     //   （新值复制落堆/接管——调用方临时结算面不知槽已接管·浅直存=悬垂·
     //   探针简乙/乙 实锤 值丢），preFree 跳过（覆盖即忘·001 §5.6 ③——
     //   忘旧责任随声明归用户，释放由 摘除(槽.值) 执行）。载荷重绑 fieldType=
-    //   后续归一化/preFree 判据按载荷分派（isWrappedSlot1704=preFree 跳过哨兵）。
-    const bool isWrappedSlot1704 =
+    //   后续归一化/preFree 判据按载荷分派（isWrappedSlot=preFree 跳过哨兵）。
+    const bool isWrappedSlot =
         types::manuallyDroppedPayloadOf(types::canonical(fieldType)).has_value();
-    if (isWrappedSlot1704) {
+    if (isWrappedSlot) {
         fieldType = types::manuallyDroppedPayloadOf(
             types::canonical(fieldType)).value();
     }
@@ -642,7 +642,7 @@ bool IRGenerator::handleClassMemberAssign(MemberExpr* target, Expr* valueExpr,
         //   644-b 同规：拷贝构造 this 槽可能未初始化）。
         const bool identRecv =
             (target->object->getType() == NodeType::IdentifierExpr);
-        if (identRecv && !currentMethodIsCtor_ && !isWrappedSlot1704) {
+        if (identRecv && !currentMethodIsCtor_ && !isWrappedSlot) {
             emitFieldStringFreeAt(addr, loc);
         }
     }

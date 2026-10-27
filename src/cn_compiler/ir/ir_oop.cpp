@@ -198,7 +198,7 @@ void IRGenerator::emitClassMethod(const std::string& className, const ClassMembe
     //   父类方法在本类语境桥接再发射时，体内裸字段名仍按声明类链解析（C++ 名字
     //   隐藏），偏移经 classFieldOffsetFrom 按发射类布局累加（前缀兼容同值）。
     //   防御：ownerClass 不在本类继承链（异常形态）→ 回退发射类（原行为）。
-    const std::string savedDeclClass1472 = methodDeclClass_;
+    const std::string savedDeclClass = methodDeclClass_;
     methodDeclClass_ = mi.ownerClass;
     if (!methodDeclClass_.empty() && methodDeclClass_ != className &&
         semantic_ != nullptr && !semantic_->isDerivedFrom(className, methodDeclClass_)) {
@@ -383,7 +383,7 @@ void IRGenerator::emitClassMethod(const std::string& className, const ClassMembe
     currentClass_ = savedClass;
     currentMethodStatic_ = savedStatic;
     currentMethodConst_ = savedConst;
-    methodDeclClass_ = savedDeclClass1472;  // 1472：字段解析声明类恢复（嵌套安全）
+    methodDeclClass_ = savedDeclClass;  // 1472：字段解析声明类恢复（嵌套安全）
     genericTypeParams_ = savedTypeParams;  // 恢复泛型类型参数映射（emitClassMethod 开头设置）
     currentMethodIsCtor_ = savedIsCtor;    // 145-a：恢复构造体标志
     currentMethodIsCopyCtor_ = savedIsCopyCtor;  // 543：恢复拷贝构造标志

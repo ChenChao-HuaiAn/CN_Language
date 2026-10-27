@@ -188,7 +188,7 @@ bool IRGenerator::callReceiverExempt880(VarDecl* node, const DeclGenCtx& ctx) {
 
 // 1479：方法调用返回类型回退（接收对象剥星归一+方法表命中→返回类型 canonical；
 //   miss=空串——与 genTransferClassArgWithCleanup966 的 1501 判定段重复·待归纳）。
-std::string IRGenerator::methodReturnCanon1479(const CallExpr& ce) {
+std::string IRGenerator::methodReturnCanonOf(const CallExpr& ce) {
     if (ce.callee == nullptr || ce.callee->getType() != NodeType::MemberExpr ||
         semantic_ == nullptr) {
         return "";
@@ -211,7 +211,7 @@ std::string IRGenerator::methodReturnCanon1479(const CallExpr& ce) {
 }
 
 // 1479：调用返回类型 canon 单点解析（实参位 81-a/语句位 645 扩展共用）——
-//   resolvedType → 签名键/裸名两级回退 → 方法面回退（methodReturnCanon1479）；
+//   resolvedType → 签名键/裸名两级回退 → 方法面回退（methodReturnCanonOf）；
 //   miss=空串（648 miss 诊断归属保持在 genArgValueWithCleanup 调用方）。
 std::string IRGenerator::callReturnCanonOf(const CallExpr* ce) {
     // 静默豁免业务值: 对象类型未写回/非类=非方法面形态的否定回答（甄别器保守分流）
@@ -231,12 +231,12 @@ std::string IRGenerator::callReturnCanonOf(const CallExpr* ce) {
         }
         return "";
     }
-    return methodReturnCanon1479(*ce);
+    return methodReturnCanonOf(*ce);
 }
 
 // 1479：类临时整壳析构发射（判空+无析构类字段级联+DeleteObject·运行时调析构
 //   ——实参位 flush "966壳$"/"1479壳$" 与语句位共用单点·966 flush 序列提炼）。
-void IRGenerator::emitClassTempDelete1479(const ir::IRValue& v,
+void IRGenerator::emitClassTempDelete(const ir::IRValue& v,
                                           const std::string& clsT) {
     if (semantic_ != nullptr && semantic_->findClass(clsT).has_value() &&
         !classDestructorSymbolKey(clsT).has_value()) {
@@ -268,7 +268,7 @@ void IRGenerator::emitClassTempDelete1479(const ir::IRValue& v,
 //   · 保守 Conservative：AST 不可达（预收集表 miss/无体）·静态方法·方法表
 //     miss·非标识符 return（表达式/多路 return）·非用户类被调形态
 //     → 不登记（宁漏勿崩·880 同口径——漏放=继续现状泄漏面，误放=崩溃面）。
-IRGenerator::ClassReturnOwnership IRGenerator::classReturnOwnership1479(const CallExpr* ce) {
+IRGenerator::ClassReturnOwnership IRGenerator::classifyClassReturnOwnership(const CallExpr* ce) {
     if (ce == nullptr || ce->callee == nullptr || semantic_ == nullptr) {
         return ClassReturnOwnership::Conservative;
     }
@@ -306,13 +306,13 @@ IRGenerator::ClassReturnOwnership IRGenerator::classReturnOwnership1479(const Ca
         const std::size_t dlObj = objCanon.find('$');
         const std::string objHead =
             (dlObj == std::string::npos) ? objCanon : objCanon.substr(0, dlObj);
-        const bool objIsContainer1479 =
+        const bool objIsContainer =
             objHead == "向量" || objHead == "栈" || objHead == "链表" ||
             objHead == "队列" || objHead == "集合" || objHead == "映射";
         if (objCanon.empty() || !semantic_->isClassType(objCanon)) {
             return ClassReturnOwnership::Conservative;   // 对象类型未写回/非类
         }
-        if (objIsContainer1479) {
+        if (objIsContainer) {
             // 容器方法返回用户类元素=堆副本句柄（630·宿主 元素() = NewObject+
             //   拷贝构造 asm 权威·快照语义）→ 副本唯一新生产物=拥有。
             return ClassReturnOwnership::Owned;

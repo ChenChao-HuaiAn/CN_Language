@@ -73,12 +73,12 @@ ir::IRValue IRGenerator::genArgValueWithCleanup(Expr* arg,
     if (arg->getType() != NodeType::CallExpr) return v;
     // 结构体字面量实参走 materializeStructInitArg（已物化，无临时泄漏面）
     CallExpr* ce = static_cast<CallExpr*>(arg);
-    const bool methodFace1479 = ce->callee != nullptr &&
+    const bool isMethodFaceCall = ce->callee != nullptr &&
                                 ce->callee->getType() == NodeType::MemberExpr;
     // 1479 提炼：返回类型 canon 单点解析（resolvedType → 签名键/裸名两级 →
     //   方法面回退——原 IdentifierExpr 回退链内联段迁 callReturnCanonOf 共享）
     std::string retCanon = callReturnCanonOf(ce);
-    if (retCanon.empty() && !methodFace1479 && ce->callee != nullptr &&
+    if (retCanon.empty() && !isMethodFaceCall && ce->callee != nullptr &&
         ce->callee->getType() == NodeType::IdentifierExpr) {
         const std::string nm =
             static_cast<IdentifierExpr*>(ce->callee.get())->name;
@@ -100,11 +100,11 @@ ir::IRValue IRGenerator::genArgValueWithCleanup(Expr* arg,
     //   字段/驻留文本=借用串，按 644 无条件 __cn_str_free=释放借用串（v2p 类表
     //   名串被毁→「未声明的类型」级联·965 第一版崩形同款·v2 树 IR diff 15 处
     //   新增 __cn_str_free 实录）。
-    if (methodFace1479) {
+    if (isMethodFaceCall) {
         std::fprintf(stderr, "[PROBE]methodFace ret=%s reg=%d\n", retCanon.c_str(),
                      (int)(retCanon == "字符串" && ce->retOwnedString));
         if (semantic_->isClassType(retCanon)) {
-            classFaceRegister1479(ce, v, retCanon);
+            registerClassReturnArgTemp(ce, v, retCanon);
         }
         return v;
     }
@@ -121,7 +121,7 @@ ir::IRValue IRGenerator::genArgValueWithCleanup(Expr* arg,
     }
     // 1479（2026-10-24·965 前置机制）：实参位「调用返回类对象临时」拥有性甄别
     //   登记——965 四报实录：缺登记面 消费(仓1.造货架()) 每调用泄 1（声明位
-    //   880 判据净 0=分叉）。甄别谱系见 classReturnOwnership1479（ir_stmt_
+    //   880 判据净 0=分叉）。甄别谱系见 classifyClassReturnOwnership（ir_stmt_
     //   decl_raii.cpp）：拥有（返回局部/新建·构造·容器元素堆副本）=登记整壳
     //   释放（"1479壳$"→flush DeleteObject 级联）；借用（返回形参/全局·引用
     //   返回）与保守面（AST 不可达等）不登记——宁漏勿崩（880 同口径：误释
@@ -129,7 +129,7 @@ ir::IRValue IRGenerator::genArgValueWithCleanup(Expr* arg,
     //   字段面：Owned 整壳析构级联已覆盖字段串释放；借用形态若走 81-a 字段
     //   偏移释放=误释调用方对象字段（类句柄语义错位）。
     if (semantic_->isClassType(retCanon)) {
-        classFaceRegister1479(ce, v, retCanon);
+        registerClassReturnArgTemp(ce, v, retCanon);
         return v;
     }
     if (ownedStrFieldsOf(retCanon).empty()) return v;
@@ -139,18 +139,18 @@ ir::IRValue IRGenerator::genArgValueWithCleanup(Expr* arg,
 
 // 1479：类面甄别登记单点（IdentifierExpr 面与方法面共用——容器族排除+Owned
 //   甄别+"1479壳$" 登记；借用/保守面不登记=宁漏勿崩）。
-void IRGenerator::classFaceRegister1479(const CallExpr* ce, const ir::IRValue& v,
+void IRGenerator::registerClassReturnArgTemp(const CallExpr* ce, const ir::IRValue& v,
                                         const std::string& retCanon) {
     // 容器族返回临时=922 面（聚合返回 ABI 物化到调用方帧内栈槽·非堆句柄）
     //   ——DeleteObject 栈槽=段错误，排除在整壳释放谱系外（现状不登记）。
-    const std::size_t dl1479 = retCanon.find('$');
-    const std::string head1479 =
-        (dl1479 == std::string::npos) ? retCanon : retCanon.substr(0, dl1479);
-    const bool isContainerRet1479 =
-        head1479 == "向量" || head1479 == "栈" || head1479 == "链表" ||
-        head1479 == "队列" || head1479 == "集合" || head1479 == "映射";
-    if (isContainerRet1479) return;
-    if (classReturnOwnership1479(ce) != IRGenerator::ClassReturnOwnership::Owned) {
+    const std::size_t shellDollarPos = retCanon.find('$');
+    const std::string canonHead =
+        (shellDollarPos == std::string::npos) ? retCanon : retCanon.substr(0, shellDollarPos);
+    const bool isContainerReturn =
+        canonHead == "向量" || canonHead == "栈" || canonHead == "链表" ||
+        canonHead == "队列" || canonHead == "集合" || canonHead == "映射";
+    if (isContainerReturn) return;
+    if (classifyClassReturnOwnership(ce) != IRGenerator::ClassReturnOwnership::Owned) {
         return;
     }
     pendingArgCleanups_.emplace_back(v, "1479壳$" + retCanon, nullptr);
@@ -189,18 +189,18 @@ void IRGenerator::flushPendingArgCleanups(std::size_t base) {
         }
         // 966/1479：类临时整壳析构（"966壳$"=转移源壳·入容器位方法返回临时
         //   [1501]；"1479壳$"=实参位调用返回类临时·拥有性甄别通过者[1479·
-        //   965 根治]）——同款序列已提炼 emitClassTempDelete1479 单点（判空+
+        //   965 根治]）——同款序列已提炼 emitClassTempDelete 单点（判空+
         //   无析构类字段级联+DeleteObject·运行时调析构）。与 81-a 串字段聚合
         //   面（emitOwnedStrFieldFreesAt）分道：壳面=DeleteObject 级联·聚合
         //   面=字段偏移逐项。
         const bool shell966 = canon.rfind("966壳$", 0) == 0;
-        const bool shell1479 = canon.rfind("1479壳$", 0) == 0;
-        if (shell966 || shell1479) {
+        const bool isArgShellCanon = canon.rfind("1479壳$", 0) == 0;
+        if (shell966 || isArgShellCanon) {
             const std::size_t shellPrefixLen =
                 shell966 ? std::string("966壳$").size()
                          : std::string("1479壳$").size();
             const std::string srcT966 = canon.substr(shellPrefixLen);
-            emitClassTempDelete1479(std::get<0>(pendingArgCleanups_[i]), srcT966);
+            emitClassTempDelete(std::get<0>(pendingArgCleanups_[i]), srcT966);
             continue;
         }
         emitOwnedStrFieldFreesAt(std::get<0>(pendingArgCleanups_[i]), canon,
@@ -627,28 +627,28 @@ ir::IRValue IRGenerator::genTransferClassArgWithCleanup966(Expr* arg,
     //   写回）→81-a 面不登记=无重复。flush 侧 "966壳$" DeleteObject 级联
     //   （整壳含字段·比串字段逐项更彻底）。
     if (arg->getType() == NodeType::CallExpr && semantic_ != nullptr) {
-        CallExpr* ce1501 = static_cast<CallExpr*>(arg);
-        if (ce1501->callee->getType() == NodeType::MemberExpr &&
-            !isTransferCall(ce1501)) {
-            const MemberExpr* mem1501 =
-                static_cast<const MemberExpr*>(ce1501->callee.get());
-            if (mem1501->object->getType() == NodeType::IdentifierExpr) {
-                const std::string objT1501 = types::canonical(
+        CallExpr* argMethodCall = static_cast<CallExpr*>(arg);
+        if (argMethodCall->callee->getType() == NodeType::MemberExpr &&
+            !isTransferCall(argMethodCall)) {
+            const MemberExpr* calleeMember =
+                static_cast<const MemberExpr*>(argMethodCall->callee.get());
+            if (calleeMember->object->getType() == NodeType::IdentifierExpr) {
+                const std::string receiverType = types::canonical(
                     lookupSrcType(
-                        static_cast<const IdentifierExpr*>(mem1501->object.get())
+                        static_cast<const IdentifierExpr*>(calleeMember->object.get())
                             ->name)
                         .value_or(""));
-                const ClassInfo* ci1501 =
-                    semantic_->findClass(objT1501).value_or(nullptr);
-                if (ci1501 != nullptr) {
-                    auto mit1501 = ci1501->methods.find(mem1501->memberName);
-                    if (mit1501 != ci1501->methods.end() &&
+                const ClassInfo* receiverClass =
+                    semantic_->findClass(receiverType).value_or(nullptr);
+                if (receiverClass != nullptr) {
+                    auto methodIt = receiverClass->methods.find(calleeMember->memberName);
+                    if (methodIt != receiverClass->methods.end() &&
                         semantic_->isClassType(
-                            types::canonical(mit1501->second.type)) &&
-                        !mit1501->second.isRefReturn) {
+                            types::canonical(methodIt->second.type)) &&
+                        !methodIt->second.isRefReturn) {
                         const ir::IRValue v = genExprForOop(arg);
                         pendingArgCleanups_.emplace_back(
-                            v, "966壳$" + types::canonical(mit1501->second.type),
+                            v, "966壳$" + types::canonical(methodIt->second.type),
                             nullptr);
                         return v;
                     }

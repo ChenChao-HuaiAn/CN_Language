@@ -292,13 +292,13 @@ cn::Optional<std::string> SemanticAnalyzer::resolveOverload(const std::string& n
             }
             // 1263 else 新规正向枚举：新候选支配=替换；支配不成立（互不支配
             //  或 best 支配）两态均保持/置歧义——真歧义面记 detail
-            const bool newWins1263 = newLe && !oldLe;
-            if (newWins1263) {
+            const bool newCandidateWins = newLe && !oldLe;
+            if (newCandidateWins) {
                 bestKey = sigEntryKey;
                 bestLevels = levels;
                 ambiguous = false;
             }
-            if (!newWins1263) {
+            if (!newCandidateWins) {
                 ambiguous = true;  // best 支配=保持最优但同总分组有候选；互不支配/全等=真歧义
                 if (!oldLe) { ambiguousDetail = sigEntryKey + " 与 " + bestKey; }
             }

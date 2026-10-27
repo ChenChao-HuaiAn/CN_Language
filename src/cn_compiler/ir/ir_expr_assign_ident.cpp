@@ -555,18 +555,18 @@ bool IRGenerator::identifierStructWholeAssign(AssignmentExpr* node, IdentifierEx
     //   （局部槽零初始化/空安全——首赋无旧值可释）。
     if (node->value->getType() == NodeType::NullLiteral &&
         isResultOrOptionalText(targetSrcType)) {
-        ir::IRValue dstAddr1651;
+        ir::IRValue nullStoreDstAddr;
         if (isByRefCapture(ident->name)) {
-            dstAddr1651 = emitResult(ir::Opcode::Load,
+            nullStoreDstAddr = emitResult(ir::Opcode::Load,
                                      {ir::IRValue::var(unique, "ptr")}, "ptr",
                                      unique, node->location);
         } else if (!isByRefCapture(ident->name)) {
             // else 新规：显式枚举补集（引用捕获/普通槽两态穷举）
-            dstAddr1651 = emitResult(ir::Opcode::AddrOf,
+            nullStoreDstAddr = emitResult(ir::Opcode::AddrOf,
                                      {ir::IRValue::var(unique, "i64")}, "ptr",
                                      unique, node->location);
         }
-        emitSyntheticNullWrite(dstAddr1651, targetSrcType, node->location,
+        emitSyntheticNullWrite(nullStoreDstAddr, targetSrcType, node->location,
                                /*preFree=*/isOwnedFieldSlot(unique));
         lastExpr_ = value;
         return true;

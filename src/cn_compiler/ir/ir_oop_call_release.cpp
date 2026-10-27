@@ -97,10 +97,10 @@ void IRGenerator::genStringFrees() {
             //   收集判据与 registerOwnedArrayElems 同（两处并列·事不过三留标记）；
             //   释放面=emitStrArrayElemFreesFor 结果/可选分支。
             if (!ownedElem2) {
-                const std::string elemRaw1415 = types::arrayElemOf(st2);
+                const std::string elemCanon = types::arrayElemOf(st2);
                 // 1415（复审 P3）：结果/可选 文本判定单点（isResultOrOptionalText）
-                if (isResultOrOptionalText(elemRaw1415) &&
-                    !ownedStrFieldsOf(elemRaw1415).empty()) {
+                if (isResultOrOptionalText(elemCanon) &&
+                    !ownedStrFieldsOf(elemCanon).empty()) {
                     ownedElem2 = true;
                 }
             }
@@ -643,33 +643,33 @@ void IRGenerator::emitStrArrayElemFreesFor(const std::string& unique) {
     //   步进=typeSizeOf(合成体)（布局已降级注册，<=0 即内部缺陷早退=不产
     //   错误释放）。原缺=宿主残留 2/2（可选/结果两族）。
     {
-        const std::string elemRaw1415 = types::arrayElemOf(srcType);
+        const std::string elemCanon = types::arrayElemOf(srcType);
         // 1415（复审 P3）：结果/可选 文本判定单点（isResultOrOptionalText）
-        if (isResultOrOptionalText(elemRaw1415)) {
-            if (ownedStrFieldsOf(elemRaw1415).empty()) return;
-            const cn::Optional<int> lenOpt1415 = types::arrayLenOf(srcType);
-            if (!lenOpt1415.has_value() || lenOpt1415.value() <= 0) return;
-            const int len1415 = lenOpt1415.value();
+        if (isResultOrOptionalText(elemCanon)) {
+            if (ownedStrFieldsOf(elemCanon).empty()) return;
+            const cn::Optional<int> arrayLenOpt = types::arrayLenOf(srcType);
+            if (!arrayLenOpt.has_value() || arrayLenOpt.value() <= 0) return;
+            const int arrayLen = arrayLenOpt.value();
             // 1360 结果化：typeSizeOf 返回 Optional（miss=尺寸未知·诊断已报？
             //   合成体未降级等内部错误通道）——无值/0 一律早退（不产错误释放）。
-            const int stride1415 = semantic_->typeSizeOf(elemRaw1415).value_or(0);
-            if (stride1415 == 0) return;
-            const SourceLocation loc1415;
-            ir::IRValue base1415 = emitResult(
+            const int elemStride = semantic_->typeSizeOf(elemCanon).value_or(0);
+            if (elemStride == 0) return;
+            const SourceLocation releaseLoc;
+            ir::IRValue arrayBase = emitResult(
                 ir::Opcode::AddrOf, {ir::IRValue::var(unique, "ptr")}, "ptr",
-                unique, loc1415);
-            for (int i = 0; i < len1415; ++i) {
-                ir::IRValue addr1415 = base1415;
+                unique, releaseLoc);
+            for (int i = 0; i < arrayLen; ++i) {
+                ir::IRValue elemAddr = arrayBase;
                 if (i != 0) {
-                    ir::IRValue off1415 = emitResult(
+                    ir::IRValue elemOffset = emitResult(
                         ir::Opcode::ConstInt, {}, "i64",
-                        std::to_string(static_cast<long long>(i) * stride1415),
-                        loc1415);
-                    addr1415 = emitResult(ir::Opcode::Add,
-                                          {base1415, off1415}, "ptr", "",
-                                          loc1415);
+                        std::to_string(static_cast<long long>(i) * elemStride),
+                        releaseLoc);
+                    elemAddr = emitResult(ir::Opcode::Add,
+                                          {arrayBase, elemOffset}, "ptr", "",
+                                          releaseLoc);
                 }
-                emitOwnedStrFieldFreesAt(addr1415, elemRaw1415, loc1415);
+                emitOwnedStrFieldFreesAt(elemAddr, elemCanon, releaseLoc);
             }
             return;
         }

@@ -353,7 +353,7 @@ bool IRGenerator::tryGenStructPtrInit(VarDecl* node, ir::IRValue value,
         //   读 resolvedType 会被泛型/多实例检查覆盖（1478 实镜：组乙 正常(边界盒)
         //   残留 结果<边界盒,整32>）→ 构造器形态不传源类型（同型原路径）。
         std::string initSrcCanon;
-        bool ctorInit1589 = false;
+        bool isBuiltinCtorInit = false;
         if (node->initializer != nullptr &&
             node->initializer->getType() == NodeType::CallExpr) {
             const CallExpr* ice = static_cast<const CallExpr*>(node->initializer.get());
@@ -361,11 +361,11 @@ bool IRGenerator::tryGenStructPtrInit(VarDecl* node, ir::IRValue value,
                 ice->callee->getType() == NodeType::IdentifierExpr) {
                 const std::string& ctorName =
                     static_cast<const IdentifierExpr*>(ice->callee.get())->name;
-                ctorInit1589 = (ctorName == "正常" || ctorName == "错误" ||
+                isBuiltinCtorInit = (ctorName == "正常" || ctorName == "错误" ||
                                 ctorName == "某些");
             }
         }
-        if (node->initializer != nullptr && !ctorInit1589) {
+        if (node->initializer != nullptr && !isBuiltinCtorInit) {
             initSrcCanon =
                 types::canonical(exprSrcType(node->initializer.get()).value_or(""));
         }

@@ -457,10 +457,10 @@ void IRGenerator::registerOwnedArrayElems(const DeclGenCtx& ctx) {
     //   与上方 genStringFrees 收集面同判（两处并列·事不过三留标记）。
     //   原缺=宿主可选/结果数组元素串载荷全漏（1466 探针宿主残留 2/2）。
     if (semantic_ != nullptr && types::isArray(ctx.srcType) && !ctx.unique.empty()) {
-        const std::string elemRaw1415 = types::arrayElemOf(ctx.srcType);
+        const std::string elemCanon = types::arrayElemOf(ctx.srcType);
         // 1415（复审 P3）：结果/可选 文本判定单点（isResultOrOptionalText）
-        if (isResultOrOptionalText(elemRaw1415) &&
-            !ownedStrFieldsOf(elemRaw1415).empty()) {
+        if (isResultOrOptionalText(elemCanon) &&
+            !ownedStrFieldsOf(elemCanon).empty()) {
             ownedStrArrayOrder_.push_back(ctx.unique);
         }
     }
@@ -675,8 +675,8 @@ void IRGenerator::storeArrayInitElements(VarDecl* node, InitListExpr* initList,
                     emitZeroFillAt(addr, elemStride, node->location);
                     continue;
                 }
-                ir::IRValue synthSrc1415 = genExpr(initList->elements[i].get());
-                emit(ir::Opcode::CopyStruct, {addr, synthSrc1415},
+                ir::IRValue elemValue = genExpr(initList->elements[i].get());
+                emit(ir::Opcode::CopyStruct, {addr, elemValue},
                      ir::IRValue(), std::to_string(elemStride), "void",
                      node->location);
                 continue;

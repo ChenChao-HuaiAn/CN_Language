@@ -946,7 +946,7 @@ void LinuxX64CodeGenerator::emitCopy(LinuxX64AsmWriter& writer,
             //   （变量源/目标与成对分配的结果/源各自成对处理）
             if (!inst.operands[0].isConstant && inst.operands[0].id == -1 &&
                 inst.result.id >= 0 &&
-                inst.result.id <= kMaxVirtualRegId1256 &&
+                inst.result.id <= kMaxVirtualRegId &&
                 !inst.operands[0].extra.empty()) {
                 emitStackLoad(writer, varSlotOf(inst.operands[0].extra), "r10", "i64",
                               __LINE__);
@@ -957,7 +957,7 @@ void LinuxX64CodeGenerator::emitCopy(LinuxX64AsmWriter& writer,
                 return;
             }
             if (!inst.result.isConstant && inst.operands[0].id >= 0 &&
-                inst.operands[0].id <= kMaxVirtualRegId1256 &&
+                inst.operands[0].id <= kMaxVirtualRegId &&
                 inst.result.id == -1 && !inst.result.extra.empty()) {
                 loadI128Half(writer, inst.operands[0], false, "r10");
                 emitStackStore(writer, varSlotOf(inst.result.extra), "r10", "i64");
