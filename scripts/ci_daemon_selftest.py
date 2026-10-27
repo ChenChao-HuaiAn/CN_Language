@@ -1194,6 +1194,53 @@ def _1392断言(断言) -> None:
              指CRLF == 指LF and len(指CRLF) == 10)
 
 
+def _1706断言(主模块, 断言) -> None:
+    """#1706 daemon 自升级三态：①闭包指纹纯函数——稳定/内容变化/文件缺失
+    （RuntimeError 显式不静默）；②常驻闭包文件——动态枚举只含 scripts/ 下 .py
+    且覆盖 __main__ 自身；③结构锁——主循环空闲点 空闲维护 调用+rc=3 退出+
+    启动定格（守护拉起闭环）。"""
+    import ci_selfupdate
+    with tempfile.TemporaryDirectory() as 临时:
+        脚本 = Path(临时) / "scripts"
+        脚本.mkdir()
+        (脚本 / "a.py").write_text("x = 1\n", encoding="utf-8")
+        (脚本 / "b.py").write_text("y = 2\r\n", encoding="utf-8")
+        文件们 = [脚本 / "a.py", 脚本 / "b.py"]
+        基准 = ci_selfupdate.闭包指纹(文件们)
+        断言("#1706 指纹稳定：同文件集重复计算一致（CRLF 归一·#1418 同口径）",
+             基准 == ci_selfupdate.闭包指纹(文件们))
+        (脚本 / "a.py").write_text("x = 2\n", encoding="utf-8")
+        断言("#1706 指纹变化：闭包内文件内容被改（树头对齐拉下新代码）→ 指纹变",
+             基准 != ci_selfupdate.闭包指纹(文件们))
+        (脚本 / "a.py").unlink()
+        失败显式 = False
+        try:
+            ci_selfupdate.闭包指纹(文件们)
+        except RuntimeError:
+            失败显式 = True
+        断言("#1706 读失败显式：闭包文件缺失=RuntimeError（不静默当未变化·下轮重试）",
+             失败显式)
+    闭包 = ci_selfupdate.常驻闭包文件(主模块.仓库根)
+    断言("#1706 闭包枚举：非空且全部落在本仓库 scripts/ 下（.json 配置不入指纹面）",
+         len(闭包) > 0
+         and all(p.suffix == ".py"
+                 and p.parent == (主模块.仓库根 / "scripts").resolve() for p in 闭包))
+    断言("#1706 闭包自覆盖：__main__（ci_daemon.py 自身）在枚举集内",
+         any(p.name == "ci_daemon.py" for p in 闭包))
+    定格文件们, 定格指纹 = ci_selfupdate.定格闭包(主模块.仓库根)
+    断言("#1706 定格稳定：启动定格指纹与立即重算一致（树未动=不误杀）",
+         定格指纹 == ci_selfupdate.闭包指纹(定格文件们))
+    主源 = inspect.getsource(主模块.主)
+    断言("#1706 结构锁：主循环空闲点调 空闲维护（与 #1460 同块）+rc=3 退出"
+         "（放锁后待守护拉起）+启动 定格闭包 基准",
+         "ci_selfupdate.空闲维护" in 主源 and "return 3" in 主源
+         and "定格闭包" in 主源)
+    自升级行 = len((Path(__file__).resolve().parent / "ci_selfupdate.py")
+                  .read_text(encoding="utf-8").splitlines())
+    断言("#1706 行数红线：ci_selfupdate.py %d 行 < 1000（新模块防回涨）" % 自升级行,
+         自升级行 < 1000)
+
+
 def _1460断言(断言) -> None:
     """#1460 实例刷新（「更新实例」按钮）：需刷新判定两态 + 对齐树头真实 git 两态
     （成功=reset 到远端头并返回新 sha；失败=RuntimeError 显式，不静默吞）。
@@ -1814,7 +1861,7 @@ def _1667断言(主模块, 断言) -> None:
 
 
 def 自测(主模块) -> int:
-    """--selftest 入口（断言集 523+637+657+660+728t+770+842+935+973+975+1297+1299+1369+1392+1401+1423+1424+1426+1428+1460+1463+1385+1632）——CI 式：逐条打印，任一红退出 1。"""
+    """--selftest 入口（断言集 523+637+657+660+728t+770+842+935+973+975+1297+1299+1369+1392+1401+1423+1424+1426+1428+1460+1463+1385+1632+1706）——CI 式：逐条打印，任一红退出 1。"""
     断言们: list[tuple[str, bool]] = []
 
     def 断言(名: str, 条件: bool) -> None:
@@ -1848,9 +1895,10 @@ def 自测(主模块) -> int:
     _1608断言(主模块, 断言)
     _1665断言(主模块, 断言)
     _1667断言(主模块, 断言)
+    _1706断言(主模块, 断言)
     _行数断言(断言)
     for 名, ok in 断言们:
         print("  [%s] %s" % ("OK" if ok else "×", 名))
     红 = sum(1 for _, ok in 断言们 if not ok)
-    print("== ci_daemon 自测（523+637+657+660+728t+770+842+935+973+975+1297+1299+1369+1392+1401+1423+1424+1426+1428+1460+1463+1468+1221+1608）：%d 断言，%s ==" % (len(断言们), "全绿" if 红 == 0 else "红 %d" % 红))
+    print("== ci_daemon 自测（523+637+657+660+728t+770+842+935+973+975+1297+1299+1369+1392+1401+1423+1424+1426+1428+1460+1463+1468+1221+1608+1706）：%d 断言，%s ==" % (len(断言们), "全绿" if 红 == 0 else "红 %d" % 红))
     return 0 if 红 == 0 else 1
