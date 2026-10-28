@@ -908,6 +908,11 @@ def verify(cn_exe=None, 仅失败=False):
 
 
 # ---------------------------------------------------------------- 断链自检
+# 独立上传通道目录（不入 git·服务器克隆树无此目录）：其下页面由 upload_toutiao.sh
+# 上传保障，断链自检不判红——树内页面指向它的导航链接亦豁免（1753 返工实录）。
+外部通道目录 = ("toutiao/",)
+
+
 def check_links():
     生成目录 = {}
     for root, _, files in os.walk(SITE):
@@ -936,6 +941,8 @@ def check_links():
                 if target.endswith("/") and not t.endswith("index.html"):
                     t += "/index.html"
             if t not in 生成目录:
+                if t.startswith(外部通道目录):
+                    continue
                 坏.append("%s → %s（页面缺失）" % (页, href))
             elif frag and ('id="%s"' % frag) not in 生成目录[t]:
                 坏.append("%s → %s#%s（锚点缺失）" % (页, href, frag))
