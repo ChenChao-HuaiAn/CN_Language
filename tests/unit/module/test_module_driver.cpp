@@ -11,6 +11,7 @@
 #include <gtest/gtest.h>
 #include <cstdio>
 #include <cstdlib>
+#include <filesystem>
 #include <fstream>
 #include <string>
 #ifdef _WIN32
@@ -47,7 +48,14 @@ std::string tempDir() {
 
 // 在系统临时目录创建真实 .cn 文件（返回完整路径；失败返回空串）
 std::string writeTempFile(const std::string& name, const std::string& content) {
-    const std::string path = tempDir() + "/" + name;
+    // 1749（跨树互踩根治）：pid 子目录隔离——固定文件名（main_*/dep_* 入口约定）
+    //   不能改，改以进程子目录隔离（多 worktree 并行 gate_quick 不互删对方文件）
+    namespace fs = std::filesystem;
+    const fs::path sub = fs::path(tempDir()) /
+        ("cn_mod_driver_" + std::to_string(static_cast<long long>(::getpid())));
+    std::error_code ec;
+    fs::create_directories(sub, ec);
+    const std::string path = (sub / name).string();
     std::ofstream out(path, std::ios::binary);
     if (!out) return "";
     out << content;

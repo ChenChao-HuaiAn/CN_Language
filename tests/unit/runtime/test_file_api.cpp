@@ -10,6 +10,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <unistd.h>
 #include <cerrno>
 #include <filesystem>
 #include <string>
@@ -33,7 +34,10 @@ namespace {
 //   专属子目录，任何 cwd / 运行入口都不污染项目目录（跨平台 std::filesystem）
 std::string tempDir() {
     namespace fs = std::filesystem;
-    const fs::path dir = fs::temp_directory_path() / "cn_test_file_api";
+    // 1749（跨树互踩根治）：目录名缀进程 id——多 worktree 并行 gate_quick 时
+    //   各进程独立目录（原固定名两进程同目录互删对方用例文件）
+    const fs::path dir = fs::temp_directory_path() /
+        ("cn_test_file_api_" + std::to_string(static_cast<long long>(::getpid())));
     std::error_code ec;
     fs::create_directories(dir, ec);
     EXPECT_FALSE(ec) << "创建临时目录失败: " << ec.message();
@@ -239,7 +243,8 @@ TEST(FileApiTest, ChineseTempDirCleanup) {
 #ifdef _WIN32
     namespace fs = std::filesystem;
     const fs::path base = fs::temp_directory_path() /
-                          fs::u8path("中文临时目录_1215");
+        fs::u8path("中文临时目录_1215_" +
+                   std::to_string(static_cast<long long>(::getpid())));
     std::error_code ec;
     fs::create_directories(base, ec);
     ASSERT_FALSE(ec) << "创建中文临时目录失败: " << ec.message();

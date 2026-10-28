@@ -55,7 +55,9 @@ namespace {
 std::string tempInputPath() {
     static int counter = 0;
     namespace fs = std::filesystem;
-    const fs::path dir = fs::temp_directory_path() / "cn_test_input_api";
+    // 1749（跨树互踩根治）：目录名缀进程 id（同 file_api 口径）
+    const fs::path dir = fs::temp_directory_path() /
+        ("cn_test_input_api_" + std::to_string(static_cast<long long>(::getpid())));
     std::error_code ec;
     fs::create_directories(dir, ec);
     EXPECT_FALSE(ec) << "创建临时目录失败: " << ec.message();
