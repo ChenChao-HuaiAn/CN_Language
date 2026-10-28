@@ -66,16 +66,17 @@ std::string foldScalarIntInitText(const IntegerLiteral* lit, int sign,
         // 成功=十进制文本保真或进制 u64 域内累加——20 位十进制（超承载·
         //   原直发汇编层 A2084 裸错）在此编译期拒；域内照旧折叠放行
         if (fitsU64(decText)) {
-            // sign=±符号链翻转（链翻转产物闭集 {1,-1}·等值式判定）；负号
-            //   已在文本（折叠形态 raw）则剥、否则前置——互斥两态平行如果
-            //   显式枚举（else 新规·无兜底 else）。
+            // sign=±符号链翻转——折叠形态 raw 已带负号（1016 P1-B parser 保留
+            //   形态·decText 带 '-'）时先剥号并翻转符号，再按符号定前缀——与
+            //   同函数 128 槽 effSign 剥号翻转机制同构。审查 13f5751b1 P0 实锚：
+            //   首版「平行两 if」误把互斥两态改串行——erase 后第二条件恒真=
+            //   「翻转」退化「恒置负」（-(-5U) 标量槽输出 -5 静默错值）·已修。
+            if (decText[0] == '-') {
+                decText.erase(0, 1);
+                sign = -sign;
+            }
             if (sign == -1) {
-                if (decText[0] == '-') {
-                    decText.erase(0, 1);
-                }
-                if (decText[0] != '-') {
-                    decText.insert(0, 1, '-');
-                }
+                decText.insert(0, 1, '-');
             }
             return decText;
         }
