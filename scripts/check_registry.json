@@ -210,6 +210,14 @@
    "v5执行面": "L1 gate_quick 静态段（主门禁+--selftest 判别力自测）+ci.ps1 win 全量+云端 ci_daemon 静态门禁段"
   },
   {
+   "名称": "标识符命名门禁（1761）",
+   "脚本": "scripts/check_naming.py",
+   "组": "ci常规",
+   "检查网层": 9,
+   "说明": "1761 立（2026-10-28·1716 立法执行面：标识符禁嵌任务号/日期与一次性过程编号——名字须说「它是什么」而非「它出自哪」，任务号只进注释与提交信息）：src/**/*.cpp|*.hpp|*.h|*.cc、CN语言编译器v2/**/*.cn、scripts/**/*.py 三面+同扩展名文件名，剥除注释/字符串后按 token 扫连续 3~8 位数字段（中英文混合 token 整体判定）；豁免=位宽数字 128/256/512/1024、0 开头规范号、规范归档路径面（tests/e2e、tests/cnsmith_hits、tests/cnsmith_cases、plans、website、docs、归档、项目记忆、target）、协议注释「命名豁免<类别>: 原因」逐条（类别限 位宽语义/第三方错误码/用例编号/归档样例/规范编号·缺原因或类别非法不生效）；冻结基线 scripts/naming_freeze_baseline.json（键=相对路径|标识符·值=出现次数）只减不增：新键/计数增加=红·消失/下降=可收缩",
+   "v5执行面": "L1 gate_quick 静态段（1761 起·提交前硬拦+--selftest 判别力自测）"
+  },
+  {
    "名称": "部署清单一致性门禁（896）",
    "脚本": "scripts/check_deploy_manifest.py",
    "组": "ci常规",

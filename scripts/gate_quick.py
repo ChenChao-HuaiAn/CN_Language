@@ -131,8 +131,13 @@ print("== L1 快速门禁（920·提交前）==", flush=True)
 #    1640 增哨兵与侥幸模式门禁——1360 结果化终态配套（存量结果化完成后新代码写哨兵
 #    仍靠人眼）：负一哨兵/零重叠/目标尺寸拷贝（#1592 同族）/源型顶替四面机械识别；
 #    协议注释+miss_registry 登记条复用 882 通道·冻结基线只减不增·新增位置即红。
+#    1761 增标识符命名门禁——1716 立法（标识符禁嵌任务号/日期·名字说「它是什么」而非
+#    「它出自哪」）此前只落条文无机械执法（批1 之后合入提交仍新增带号名）：src/v2/scripts
+#    三面+文件名扫 token 内 3~8 位数字段（剥注释/字符串·位宽数字与 0 开头规范号豁免·
+#    协议注释逐条豁免），冻结基线只减不增·新增/计数增加即红。
 for 名 in ("check_ascii_idents", "check_keywords_sync", "check_registry_audit",
            "check_case_numbers", "check_registry_sanity", "check_miss_gate", "check_sentinel_gate",
+           "check_naming",
            "check_deploy_manifest",
            "check_syntax_semantic_sync", "check_verifier_selfcheck",
            "check_parallel_prefix", "check_program_cache_key_audit"):
@@ -159,6 +164,14 @@ except OSError:
 #   （与 1376/1220 自测同哲学）。
 if not 步("哨兵门禁自测",
           [sys.executable, "scripts/check_sentinel_gate.py", "--selftest"],
+          超时秒=静态超时):
+    raise SystemExit(1)
+# 1761（2026-10-28）：标识符命名门禁判别力自测挂 L1 静态段——1716 立法（禁嵌任务号/
+#   日期）的执法面，正反两态（合法名/豁免数字/剥除注释字符串=绿；带号名/文件名/计数
+#   增长=红）+ 协议注释逐条豁免（类别非法/缺原因不生效）+ 归档面跳过 + 基线冻结/收缩；
+#   纯临时样例树、零构建、秒级（与 882/1640 自测同哲学）。
+if not 步("命名门禁自测",
+          [sys.executable, "scripts/check_naming.py", "--selftest"],
           超时秒=静态超时):
     raise SystemExit(1)
 # 1376：程序缓存键审计门禁判别力自测（纯 fixture 副本·零构建·秒级）——正反两态
