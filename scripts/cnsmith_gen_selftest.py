@@ -283,9 +283,6 @@ def selftest(编译路径=None, 目标=None):
     return 1 if 失败 else 0
 
 
-def 族名覆盖锚们():
-    """族名全集（与 cnsmith_gen_families.族名们 同源——经 Gen.program_mixed
-    间接依赖，此处静态枚举防循环导入：十族名单漂移时覆盖断言失真即显形）。"""
-    return ("枚举数组", "重载后缀", "默认参数", "转义字符串",
-            "枚举默认初始化", "方法句柄链", "结构体拷贝",
-            "嵌套构造", "多维数组", "指针出参")
+
+if __name__ == "__main__":  # 唯一正式入口=python scripts/cnsmith_gen.py --selftest（延迟导入架构）——本文件直跑无操作，转发防误用假绿
+    raise SystemExit("请用 python scripts/cnsmith_gen.py --selftest 运行（本模块为拆出面·直跑无操作）")
