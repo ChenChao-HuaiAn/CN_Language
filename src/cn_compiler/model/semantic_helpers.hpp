@@ -178,6 +178,10 @@ inline std::string canonicalType(const std::string& type) {
     return buf;
 }
 
+// 1397（折叠常量拼接 NUL 分叉·零分叉）：折叠串源文本级 NUL 截断声明——
+//   实现驻 model/char_literal.cpp（与 decodeEscapes 转义序列表同文件互镜）。
+std::string foldStringSourceTruncNul(const std::string& quotedRaw);
+
 // 折叠二元常量：整数/浮点算术 + 字符串字面量拼接
 // 1360 结果化：原空串哨兵（除零/取余于浮点/非算术运算符/非数值非字符串/
 //   整数溢出/INT64_MIN÷-1 等 10 处失败面）改 cn::Optional 无值——合法输出
@@ -200,8 +204,15 @@ inline std::string canonicalType(const std::string& type) {
     long long a, b;
     if (!cnParseInt(l, a) || !cnParseInt(r, b)) {
         // 字符串字面量拼接（"a" + "b" -> "ab"）
+        // 1397：拼接前各侧按运行期 strcat 口径截断（首个 NUL）——原源文本级
+        //   直拼把左操作数 NUL 后内容带进折叠产物（"a "+"b" 折叠 "a b"
+        //   strlen=1）vs v2 词法解码截断后拼接（"ab" strlen=2）双侧分叉实锚；
+        //   修后折叠态=运行期 strlen 口径双侧统一（宿主运行期拼接同探针
+        //   "ab"=2·v2 折叠/运行期一致不回退）。
         if (!l.empty() && !r.empty() && l.front() == '"' && r.front() == '"') {
-            return l.substr(0, l.size() - 1) + r.substr(1);
+            const std::string lCut = foldStringSourceTruncNul(l);
+            const std::string rCut = foldStringSourceTruncNul(r);
+            return lCut.substr(0, lCut.size() - 1) + rCut.substr(1);
         }
         return std::nullopt;
     }

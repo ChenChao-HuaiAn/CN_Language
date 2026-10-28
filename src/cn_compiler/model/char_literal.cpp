@@ -133,4 +133,74 @@ std::string decodeEscapes(const std::string& body) {
     return out;
 }
 
+// 1397（折叠常量拼接 NUL 分叉·host/v2 零分叉）：折叠串源文本级 NUL 截断——
+//   输入=含引号源文本（折叠面值文本契约·宿主 globalConstValues_ 与 v2 折叠串
+//   初值938 同构），按 decodeEscapes 同构转义序列表扫描解码字节流，遇解码
+//   流首个 NUL 字节（\0 转义／\u{0} 码点／真实 0 字节）即截断：返回「首 NUL
+//   前内容」的**源文本前缀**（保持含引号源文本级表示——发射层 decodeString
+//   解码契约不变·无重编码无双解面），无 NUL=原样返回。
+//   语义=运行期 strcat 口径（字符串拼接在首个 NUL 截断·宿主运行期探针实锚
+//   "a\0"+"b"→"ab"）=v2 词法解码截断口径（解码字符串内容 10-23 已收口面·
+//   不回退）——折叠态与运行期 strlen 对齐（原宿主折叠源文本级直拼 "a\0b"
+//   strlen=1 vs v2 "ab" strlen=2 双侧分叉·修后双侧统一 "ab"）。
+//   转义序列识别与 decodeEscapes 逐字互镜（n/t/r/0/反斜杠/引号/u{...}/未知
+//   保留反斜杠·非法 \u{ 形态同解码器按 1 字节推进）；原始/多行前缀形态不经
+//   此面（调用点以首字符 '"' 分流·前缀形态首字符非引号维持现状）。
+std::string foldStringSourceTruncNul(const std::string& quotedRaw) {
+    // 引号对存在性守卫——非法长度 0/1 显式枚举（等值式闭集穷举·无单边开
+    //   区间词面；|| 短路序保证 size==0/1 时 front/back 不求值）。
+    //   非业务数值区间形态守卫：不满足=字面退回原样（无 NUL 可截·原样语义）。
+    if (quotedRaw.size() == 0 || quotedRaw.size() == 1 ||
+        quotedRaw.front() != '"' || quotedRaw.back() != '"') {
+        return quotedRaw;
+    }
+    const std::string body = quotedRaw.substr(1, quotedRaw.size() - 2);
+    const auto cutAt = [&body](std::size_t pos) {
+        return "\"" + body.substr(0, pos) + "\"";
+    };
+    std::size_t i = 0;
+    while (i < body.size()) {
+        const char c = body[i];
+        if (c != '\\') {
+            if (c == '\0') return cutAt(i);   // 真实 NUL 字节（非转义来源·同截断语义）
+            ++i;
+            continue;
+        }
+        // 末尾孤立反斜杠（decodeEscapes 同防御）：解码 1 字节 '\' 原样
+        if (i + 1 >= body.size()) { ++i; continue; }
+        const char n = body[i + 1];
+        if (n == 'n' || n == 't' || n == 'r' || n == '0' ||
+            n == '\\' || n == '"' || n == '\'') {
+            if (n == '0') return cutAt(i);   // \0 → 解码 NUL：截断于转义序列起点
+            i += 2;
+            continue;
+        }
+        if (n == 'u' && i + 2 < body.size() && body[i + 2] == '{') {
+            // \u{XXXX}：码点 0（\u{0}）解码 1 字节 NUL=截断点（appendUtf8(0) 同）
+            std::size_t j = i + 3;
+            bool okHex = j < body.size();
+            char32_t cp = 0;
+            while (j < body.size() && body[j] != '}') {
+                const char h = body[j];
+                // 十六进制位合法性显式枚举（else 新规：平行如果+终结判定·无兜底 else）
+                bool isHexDigit = false;
+                if (h >= '0' && h <= '9') { cp = cp * 16 + (h - '0'); isHexDigit = true; }
+                if (h >= 'a' && h <= 'f') { cp = cp * 16 + (h - 'a' + 10); isHexDigit = true; }
+                if (h >= 'A' && h <= 'F') { cp = cp * 16 + (h - 'A' + 10); isHexDigit = true; }
+                if (!isHexDigit) { okHex = false; break; }
+                ++j;
+            }
+            if (okHex && j < body.size()) {
+                if (cp == 0) return cutAt(i);
+                i = j + 1;   // 越过 '}'（与 decodeEscapes 循环推进同步）
+                continue;
+            }
+            ++i;   // 非法 \u{ 形态：按 1 字节推进（解码器保留 '\' 原样同构）
+            continue;
+        }
+        ++i;   // 未知转义：解码器保留 '\' 原样·下一字节按普通字节处理（同构）
+    }
+    return quotedRaw;
+}
+
 }  // namespace cn_compiler

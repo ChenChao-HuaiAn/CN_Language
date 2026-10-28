@@ -221,6 +221,7 @@ add_library(cn_compiler_semantic STATIC
     src/cn_compiler/semantic/semantic_decl_import.cpp
     src/cn_compiler/semantic/semantic_decl_abstract.cpp
     src/cn_compiler/semantic/class_resolver.cpp
+    src/cn_compiler/semantic/class_field_init_fold.cpp
     src/cn_compiler/semantic/class_resolver_base.cpp
     src/cn_compiler/semantic/class_resolver_access.cpp
     # 1499：并行 codegen 语义只读冻结（预热+封存+miss 显形；防 classCache 并发写）
