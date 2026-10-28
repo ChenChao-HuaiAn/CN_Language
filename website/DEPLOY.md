@@ -10,6 +10,7 @@
                     ┌─ /            → /var/www/cn-language（官网首页）
 www.cn-language.com ┼─ /docs/…      → 文档站（16 页）
                     ├─ /os/         → CN-OS 落地页
+                    ├─ /toutiao/    → 今日头条栏目（每日文章·独立上传通道，见下）
                     └─ /queue/      → 反代 127.0.0.1:8300（CI 队列/门禁面板）
 
 cn-os.com / www      → 同树；根路径重写为 /os/index.html（CN-OS 独立域名入口）
@@ -59,6 +60,27 @@ bash scripts/deploy_website.sh          # tar over ssh → TX_01:/var/www/cn-lan
 - 静态资源更新后 bump HTML 里的 `?v=N` 版本号（浏览器启发式缓存会吃无版本号更新）。
 - 备案号页脚：cn-language.com 域名的备案号以备案控制台查询为准，确认后替换
   全站 18 个 HTML 页脚的「京ICP备00000000号（备案办理中·占位）」。
+
+## 今日头条栏目（/toutiao/·2026-10-28 上线）
+
+每日任务「今日头条」产出的文章网页（草稿库 `cn-头条文章草稿/第*.html`，
+图片 base64 内嵌、约 96MB/233 篇）经 `website/tools/gen_toutiao.py` 转换后
+发布到 `/toutiao/`：文章开头「使用说明」蓝色框整块剔除，正文补返回链接与
+viewport；栏目列表页按日期分组、新文在前。
+
+**通道与两条发布通道解耦**：文章树不在 git 内（`.gitignore` 排除
+`website/toutiao/`），走独立上传——
+
+```bash
+bash scripts/upload_toutiao.sh [ssh别名]   # 生成 + tar over ssh 原子上传（默认 TX_01）
+python website/tools/gen_toutiao.py --src <草稿目录>   # 其他机器单独生成
+```
+
+两条发布通道均保留现网 toutiao/：自动通道 `website_auto_deploy.py` 发布()
+在切换前把现网 toutiao/ 搬进暂存目录；手动通道 `deploy_website.sh` 先挪到
+`/var/www/cn-language.toutiao_keep` 整树覆盖后放回。**改 auto_deploy 后须
+重新 `scp scripts/website_auto_deploy.py TX_01:/home/ubuntu/`**（服务器跑的
+是家副本，不随 git 更新）。
 
 ## 回滚
 

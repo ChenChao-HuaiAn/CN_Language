@@ -79,10 +79,16 @@ def 取仓库(分支: str) -> Path:
 
 
 def 发布(repo: Path):
-    """暂存整树 + 换名原子切换（失败回滚旧目录）——现网全程可读。"""
+    """暂存整树 + 换名原子切换（失败回滚旧目录）——现网全程可读。
+    toutiao/（今日头条栏目·gen_toutiao.py 产物经 upload_toutiao.sh 单独上传，
+    不在 git 树内）切换前从现网搬进暂存目录，防整树替换把它抹掉。"""
     跑(["sudo", "rm", "-rf", str(STAGING_DIR), str(OLD_DIR)])
     跑(["sudo", "mkdir", "-p", str(STAGING_DIR)])
     跑(["sudo", "cp", "-a", str(repo / "website") + "/.", str(STAGING_DIR) + "/"])
+    现网头条 = TARGET_DIR / "toutiao"
+    有头条 = 跑(["sudo", "test", "-d", str(现网头条)], 检查=False).returncode == 0
+    if 有头条:
+        跑(["sudo", "cp", "-a", str(现网头条), str(STAGING_DIR) + "/toutiao"])
     有现网 = 跑(["sudo", "test", "-e", str(TARGET_DIR)], 检查=False).returncode == 0
     if 有现网:
         跑(["sudo", "mv", str(TARGET_DIR), str(OLD_DIR)])

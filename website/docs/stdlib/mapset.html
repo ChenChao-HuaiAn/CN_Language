@@ -32,6 +32,7 @@
       <a href="../reference/">语言参考</a>
       <a href="../stdlib.html">标准库</a>
       <a href="../../os/">CN-OS</a>
+      <a href="../../toutiao/">今日头条</a>
       <a href="https://gitcode.com/ChenChao_GitCode/CN_Language" target="_blank" rel="noopener">源码 ↗</a>
       <button class="主题钮" data-主题钮 aria-label="切换主题">月</button>
     </nav>
@@ -3344,10 +3345,10 @@ ID2: 303
 <p>模块级泛型自由函数（映射/集合 的散列构件，也公开可用）。</p>
 <section class="函数条" id="查找键位置">
 <h3><code>查找键位置</code></h3>
-<p class="函数定义"><code>泛型 &lt;类型 K&gt; 函数 查找键位置(K* 键数组, 整64 长度, K 目标) -> 整64</code></p>
-<p>在键数组中线性查找（<code>==</code> 比较），返回下标或 -1。</p>
+<p class="函数定义"><code>泛型 &lt;类型 K&gt; 函数 查找键位置(K* 键数组, 整64 长度, K 目标) -> 可选&lt;整64&gt;</code></p>
+<p>在键数组中线性查找（<code>==</code> 比较），命中=某些(下标)，未命中=无（#1360 结果化，-1 哨兵废除）。</p>
 <table class="表 参数表"><thead><tr><th>参数</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>键数组</code></td><td><code>K*</code></td><td>数组首地址</td></tr><tr><td><code>长度</code></td><td><code>整64</code></td><td>元素个数</td></tr><tr><td><code>目标</code></td><td><code>K</code></td><td>要找的键</td></tr></tbody></table>
-<p><strong>返回</strong>　首个命中下标；未找到 -1。</p>
+<p><strong>返回</strong>　首个命中下标（某些）；未找到=无。</p>
 <div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">导入 映射集合::映射;
 导入 映射集合::集合;
 导入 映射集合::错误码;
@@ -3537,10 +3538,10 @@ ID2: 303
 </section>
 <section class="函数条" id="查找值位置">
 <h3><code>查找值位置</code></h3>
-<p class="函数定义"><code>泛型 &lt;类型 T&gt; 函数 查找值位置(T* 数据数组, 整64 长度, T 目标) -> 整64</code></p>
-<p>在数据数组中线性查找，返回下标或 -1（通用线性构件；集合 哈希化后内部不再使用）。</p>
+<p class="函数定义"><code>泛型 &lt;类型 T&gt; 函数 查找值位置(T* 数据数组, 整64 长度, T 目标) -> 可选&lt;整64&gt;</code></p>
+<p>在数据数组中线性查找，命中=某些(下标)，未命中=无（通用线性构件；集合 哈希化后内部不再使用）。</p>
 <table class="表 参数表"><thead><tr><th>参数</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>数据数组</code></td><td><code>T*</code></td><td>数组首地址</td></tr><tr><td><code>长度</code></td><td><code>整64</code></td><td>元素个数</td></tr><tr><td><code>目标</code></td><td><code>T</code></td><td>要找的值</td></tr></tbody></table>
-<p><strong>返回</strong>　首个命中下标；未找到 -1。</p>
+<p><strong>返回</strong>　首个命中下标（某些）；未找到=无。</p>
 <div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">导入 映射集合::映射;
 导入 映射集合::集合;
 导入 映射集合::错误码;
@@ -3907,6 +3908,7 @@ ID2: 303
         <ul>
           <li><a href="https://gitcode.com/ChenChao_GitCode/CN_Language" target="_blank" rel="noopener">源码仓库 ↗</a></li>
           <li><a href="../../os/">CN-OS 蓝图</a></li>
+          <li><a href="../../toutiao/">今日头条专栏</a></li>
           <li><a href="../cli.html">命令行参考</a></li>
         </ul>
       </div>
@@ -3921,7 +3923,7 @@ ID2: 303
     </div>
     <div class="页脚-底">
       <span>© 2026 CN 语言项目</span>
-      <span>文档基线：任务/1373 8b4c8e426·2026-10-23·示例经编译器实测</span>
+      <span>文档基线：develop 3aea6581c·2026-10-28·示例经编译器实测</span>
       <span>京ICP备00000000号（备案办理中·占位）</span>
     </div>
   </div>

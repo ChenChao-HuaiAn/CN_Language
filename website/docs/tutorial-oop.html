@@ -32,6 +32,7 @@
       <a href="reference/">语言参考</a>
       <a href="stdlib.html">标准库</a>
       <a href="../os/">CN-OS</a>
+      <a href="../toutiao/">今日头条</a>
       <a href="https://gitcode.com/ChenChao_GitCode/CN_Language" target="_blank" rel="noopener">源码 ↗</a>
       <button class="主题钮" data-主题钮 aria-label="切换主题">月</button>
     </nav>
@@ -92,6 +93,7 @@
 <p class="输出行">输出：无参容量: 0
 带参容量: 42</p>
 <ul><li>拷贝构造=<code>函数 类名(类名&amp; 其他)</code>——定义了它，容器元素、按值传参等拷贝场合都会深拷（标准库容器全部定义了拷贝构造）。</li><li>析构顺序与构造相反；成员对象、容器元素、字符串全部自动级联释放。</li><li>构造函数重载已支持：无参构造+带参构造可共存。</li></ul>
+<div class="批注 批注-赭"><span class="批注-题">析构体内的释放纪律</span>编译器级联自动释放的字符串/包装/类字段，析构体内手动 <code>字符串释放(字段)</code> = 编译期拒绝（级联将二次释放）。提前放手用 <code>摘除(槽)</code>：一步完成「释放旧值+清槽」，级联读到空槽自然跳过——手动与自动幂等组合，双释放机械杜绝。整块接管用 <code>手动释放&lt;T&gt;</code> 包装（对标 Rust ManuallyDrop）：级联跳过+赋值覆盖不释放旧值，释放责任随声明归用户。</div>
 <h2 id="继承">继承与多态：虚拟/重写/自身/父类</h2>
 <p>单继承 <code>类 子 : 父</code>；父类方法标 <code>虚拟</code>，子类 <code>重写</code>；<code>自身</code> 指本实例（this），<code>父类.方法()</code> 调父类实现。经父类引用/指针调用=动态分派。</p>
 <div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">类 形状 {
@@ -374,6 +376,7 @@
         <ul>
           <li><a href="https://gitcode.com/ChenChao_GitCode/CN_Language" target="_blank" rel="noopener">源码仓库 ↗</a></li>
           <li><a href="../os/">CN-OS 蓝图</a></li>
+          <li><a href="../toutiao/">今日头条专栏</a></li>
           <li><a href="cli.html">命令行参考</a></li>
         </ul>
       </div>
@@ -388,7 +391,7 @@
     </div>
     <div class="页脚-底">
       <span>© 2026 CN 语言项目</span>
-      <span>文档基线：任务/1373 8b4c8e426·2026-10-23·示例经编译器实测</span>
+      <span>文档基线：develop 3aea6581c·2026-10-28·示例经编译器实测</span>
       <span>京ICP备00000000号（备案办理中·占位）</span>
     </div>
   </div>

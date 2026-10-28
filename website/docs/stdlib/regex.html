@@ -32,6 +32,7 @@
       <a href="../reference/">语言参考</a>
       <a href="../stdlib.html">标准库</a>
       <a href="../../os/">CN-OS</a>
+      <a href="../../toutiao/">今日头条</a>
       <a href="https://gitcode.com/ChenChao_GitCode/CN_Language" target="_blank" rel="noopener">源码 ↗</a>
       <button class="主题钮" data-主题钮 aria-label="切换主题">月</button>
     </nav>
@@ -55,8 +56,10 @@
     打印(re.完全匹配("hoat"));       // 真（^ $ 锚定整串）
     打印(re.完全匹配("hot!"));       // 假
     正则引擎 查找 = 正则引擎("h[oai]+t");   // 无锚：可命中任意起点
-    整64 起点 = 查找.搜索("shot boy");
-    打印(起点);                      // 1
+    可选&lt;整64&gt; 起点 = 查找.搜索("shot boy");
+    如果 (起点.有值) {
+        打印(起点.值);              // 1
+    }
     返回 0;
 }</code></pre></div>
 <p class="输出行">输出：真
@@ -405,10 +408,10 @@
 </section>
 <section class="函数条" id="正则引擎-搜索">
 <h3><code>搜索</code></h3>
-<p class="函数定义"><code>函数 搜索(字符串 输入) -> 整64</code></p>
-<p>在文本中寻找首个匹配，返回匹配<strong>起点下标</strong>；无匹配 -1。模式以 <code>^</code> 开头时只尝试起点 0。</p>
+<p class="函数定义"><code>函数 搜索(字符串 输入) -> 可选&lt;整64&gt;</code></p>
+<p>在文本中寻找首个匹配，命中返回匹配<strong>起点下标</strong>（某些）；无匹配=无（#1360 结果化，-1 哨兵废除）。模式以 <code>^</code> 开头时只尝试起点 0。</p>
 <table class="表 参数表"><thead><tr><th>参数</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>输入</code></td><td><code>字符串</code></td><td>被搜索的文本</td></tr></tbody></table>
-<p><strong>返回</strong>　首个匹配起点；无匹配 -1。</p>
+<p><strong>返回</strong>　命中=某些(起点)；无匹配=无。</p>
 <div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">公开:
 
 类 正则引擎 {
@@ -1118,6 +1121,7 @@
         <ul>
           <li><a href="https://gitcode.com/ChenChao_GitCode/CN_Language" target="_blank" rel="noopener">源码仓库 ↗</a></li>
           <li><a href="../../os/">CN-OS 蓝图</a></li>
+          <li><a href="../../toutiao/">今日头条专栏</a></li>
           <li><a href="../cli.html">命令行参考</a></li>
         </ul>
       </div>
@@ -1132,7 +1136,7 @@
     </div>
     <div class="页脚-底">
       <span>© 2026 CN 语言项目</span>
-      <span>文档基线：任务/1373 8b4c8e426·2026-10-23·示例经编译器实测</span>
+      <span>文档基线：develop 3aea6581c·2026-10-28·示例经编译器实测</span>
       <span>京ICP备00000000号（备案办理中·占位）</span>
     </div>
   </div>

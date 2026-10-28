@@ -222,6 +222,7 @@ def 骨架(题名, 描述, 正文html, 目录项, 当前路径, 页脚导航, �
       <a href="%s">语言参考</a>
       <a href="%s">标准库</a>
       <a href="%s">CN-OS</a>
+      <a href="%s">今日头条</a>
       <a href="https://gitcode.com/ChenChao_GitCode/CN_Language" target="_blank" rel="noopener">源码 ↗</a>
       <button class="主题钮" data-主题钮 aria-label="切换主题">月</button>
     </nav>
@@ -260,6 +261,7 @@ def 骨架(题名, 描述, 正文html, 目录项, 当前路径, 页脚导航, �
         <ul>
           <li><a href="https://gitcode.com/ChenChao_GitCode/CN_Language" target="_blank" rel="noopener">源码仓库 ↗</a></li>
           <li><a href="%s">CN-OS 蓝图</a></li>
+          <li><a href="%s">今日头条专栏</a></li>
           <li><a href="%s">命令行参考</a></li>
         </ul>
       </div>
@@ -289,9 +291,11 @@ def 骨架(题名, 描述, 正文html, 目录项, 当前路径, 页脚导航, �
        LOGO_SVG,                       # 顶栏主 logo（内联·双主题 tokens 自适应）
        rel + "../", rel, a("getting-started.html"), a("reference/"),
        a("stdlib.html"), rel + "../os/" if rel else "../os/",
+       rel + "../toutiao/" if rel else "../toutiao/",
        "".join(侧栏), 正文html, nav, toc,
        rel + ".././" if rel else "./", a("getting-started.html"),
        a("reference/"), a("stdlib.html"), rel + "../os/" if rel else "../os/",
+       rel + "../toutiao/" if rel else "../toutiao/",
        a("cli.html"),
        文档基线(),
        rel, CSS_VER["hl"], rel, CSS_VER["js"])

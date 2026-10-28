@@ -77,3 +77,7 @@ scripts/case_ledger_cache.json
 website/assets/stats.json
 /日志.txt
 /笔记.txt
+
+# 今日头条栏目（gen_toutiao.py 生成产物·96MB 文章树走 upload_toutiao.sh 单独上传，
+# 不进 git——自动通道浅克隆树里没有它，发布脚本负责保留现网已传内容）
+website/toutiao/

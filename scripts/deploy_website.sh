@@ -22,9 +22,14 @@ if [ ! -f "$WEBSITE_DIR/index.html" ]; then
 fi
 
 echo "发布 $WEBSITE_DIR → $REMOTE:$REMOTE_DIR ..."
-# 远端建目录并清空旧内容，再整树解包（原子性靠最后 mv 更稳，静态站此处从简）
-ssh "$REMOTE" "sudo mkdir -p '$REMOTE_DIR' && sudo rm -rf '$REMOTE_DIR'/* "
-tar czf - -C "$WEBSITE_DIR" . | ssh "$REMOTE" "sudo tar xzf - -C '$REMOTE_DIR'"
+# toutiao/（今日头条栏目·不在 git 树内）先挪到旁位，整树覆盖后放回
+ssh "$REMOTE" "sudo mkdir -p '$REMOTE_DIR' \
+  && if [ -d '$REMOTE_DIR/toutiao' ]; then sudo rm -rf '$REMOTE_DIR.toutiao_keep' \
+     && sudo mv '$REMOTE_DIR/toutiao' '$REMOTE_DIR.toutiao_keep'; fi \
+  && sudo rm -rf '$REMOTE_DIR'/* "
+tar czf - -C "$WEBSITE_DIR" . | ssh "$REMOTE" "sudo tar xzf - -C '$REMOTE_DIR' \
+  && if [ -d '$REMOTE_DIR.toutiao_keep' ]; then sudo rm -rf '$REMOTE_DIR/toutiao' \
+     && sudo mv '$REMOTE_DIR.toutiao_keep' '$REMOTE_DIR/toutiao'; fi"
 echo "✓ 已发布。远端文件数: $(ssh "$REMOTE" "sudo find '$REMOTE_DIR' -type f | wc -l")"
 
 # 844：整树覆盖会连 stats.json 一起清掉——发布后同步统计器并立即再生
