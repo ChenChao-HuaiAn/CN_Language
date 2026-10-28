@@ -32,7 +32,13 @@ std::pair<std::string, std::string> X64CodeGenerator::splitI128(const ir::IRValu
         try {
             return {uint64HexText(static_cast<std::uint64_t>(std::stoull(extra))), "0"};
         } catch (...) {
-            return {extra, "0"};
+            // 常量文本由编译器自身 IR 生成，解析失败=内部不一致——报内部错误
+            //   显形（miss 不可静默），禁把坏文本原样带进汇编；0 仅为中止前路径
+            //   占位，driver 于 generateAssembly 后 hasErrors 硬拦产物
+            diagnostics_.report(Diagnostic::error(
+                SourceLocation(),
+                "内部错误: i128 常量半值文本解析失败 '" + extra + "'"));
+            return {uint64HexText(0), "0"};  // 中止前路径：Error 已报，产物将被硬拦
         }
     }
     // #1212 步骤 b：成对分配时高/低半为 GPR；否则原双槽
@@ -114,13 +120,20 @@ void X64CodeGenerator::emitInt128Binary(AsmWriter& writer, const ir::IRInstructi
 // ==================== 302-a（T39 根治）：i128 位运算 / 移位 ====================
 
 // 移位量常量文本解析（与 x64_instructions.cpp 的 shiftAmtOf 同款——文件级 static
-//   互不冲突：0x/0b/0o 前缀感知；异常兜底 0）。
-static int shiftAmtOf128(const std::string& text) {
+//   互不冲突：0x/0b/0o 前缀感知）；常量文本由编译器自身 IR 生成，解析失败=内部
+//   不一致——报内部错误显形（miss 不可静默），返回 0 仅为中止前路径占位
+//   （产物将被 driver 硬拦）
+static int shiftAmtOf128(Diagnostics& diagnostics, const std::string& text) {
     // i128 双槽常量 "LO:HI"（十六进制）——移位量取低 64 位（LO）
     const std::size_t colon = text.find(':');
     if (colon != std::string::npos) {
         try { return static_cast<int>(std::stoull(text.substr(0, colon), nullptr, 16)); }
-        catch (...) { return 0; }
+        catch (...) {
+            diagnostics.report(Diagnostic::error(
+                SourceLocation(),
+                "内部错误: i128 移位量常量文本解析失败 '" + text + "'"));
+            return 0;  // 中止前路径：Error 已报，产物将被硬拦
+        }
     }
     if (text.size() > 2 && text[0] == '0' &&
         (text[1] == 'x' || text[1] == 'X' || text[1] == 'b' || text[1] == 'B' ||
@@ -128,10 +141,20 @@ static int shiftAmtOf128(const std::string& text) {
         const int base = (text[1] == 'x' || text[1] == 'X') ? 16
                          : (text[1] == 'b' || text[1] == 'B') ? 2 : 8;
         try { return static_cast<int>(std::stoull(text.substr(2), nullptr, base)); }
-        catch (...) { return 0; }
+        catch (...) {
+            diagnostics.report(Diagnostic::error(
+                SourceLocation(),
+                "内部错误: i128 移位量常量文本解析失败 '" + text + "'"));
+            return 0;  // 中止前路径：Error 已报，产物将被硬拦
+        }
     }
     try { return static_cast<int>(std::stoll(text)); }
-    catch (...) { return 0; }
+    catch (...) {
+        diagnostics.report(Diagnostic::error(
+            SourceLocation(),
+            "内部错误: i128 移位量常量文本解析失败 '" + text + "'"));
+        return 0;  // 中止前路径：Error 已报，产物将被硬拦
+    }
 }
 
 // 内存/栈槽文本 → MASM 需显式 qword ptr（逻辑/位运算内存源宽度不可推断 A2070）
@@ -207,7 +230,7 @@ void X64CodeGenerator::emitInt128Shift(AsmWriter& writer, const ir::IRInstructio
         op1Lo = regSlot(inst.operands[0].id + 1);
     }
     if (inst.operands[1].isConstant) {
-        const int rawK = shiftAmtOf128(inst.operands[1].extra);
+        const int rawK = shiftAmtOf128(diagnostics_, inst.operands[1].extra);
         if (!currentFnUnsafe474_ && (rawK < 0 || rawK >= 128)) {
             // 任务 474：常量移位量超宽（常量传播面漏入）——反向结构错误码 8
             const std::string trap = "@ovf" + std::to_string(ptrCheckCounter_++);

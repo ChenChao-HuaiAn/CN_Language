@@ -38,7 +38,15 @@ void Arm64CodeGenerator::emitInt128Binary(Arm64AsmWriter& writer,
             } else {
                 if (!isHi) {
                     try { part = static_cast<std::uint64_t>(std::stoull(extra)); }
-                    catch (...) { part = 0; }
+                    catch (...) {
+                        // 常量文本由编译器自身 IR 生成，解析失败=内部不一致——
+                        //   报内部错误显形（miss 不可静默），禁静默回 0 生成错值
+                        //   汇编；0 仅为中止前路径占位，Error 已报后产物将被硬拦
+                        diagnostics_.report(Diagnostic::error(
+                            SourceLocation(),
+                            "内部错误: i128 常量半值文本解析失败 '" + extra + "'"));
+                        part = 0;  // 中止前路径：Error 已报，产物将被硬拦
+                    }
                 }
             }
             emitMovImm(writer, reg, part);
@@ -85,12 +93,19 @@ void Arm64CodeGenerator::emitInt128Binary(Arm64AsmWriter& writer,
 // AAPCS64：参数 x0/x1/x2 = a/b/out 地址；返回值无。
 // ==================== 302-a（T39 根治）：i128 位运算 / 移位 ====================
 
-// 移位量常量文本解析（同款：0x/0b/0o 前缀感知 + i128 双槽 "LO:HI" 取低半）
-static int shiftAmtOf128a(const std::string& text) {
+// 移位量常量文本解析（同款：0x/0b/0o 前缀感知 + i128 双槽 "LO:HI" 取低半）；
+//   常量文本由编译器自身 IR 生成，解析失败=内部不一致——报内部错误显形
+//   （miss 不可静默），返回 0 仅为中止前路径占位（产物将被 driver 硬拦）
+static int shiftAmtOf128a(Diagnostics& diagnostics, const std::string& text) {
     const std::size_t colon = text.find(':');
     if (colon != std::string::npos) {
         try { return static_cast<int>(std::stoull(text.substr(0, colon), nullptr, 16)); }
-        catch (...) { return 0; }
+        catch (...) {
+            diagnostics.report(Diagnostic::error(
+                SourceLocation(),
+                "内部错误: i128 移位量常量文本解析失败 '" + text + "'"));
+            return 0;  // 中止前路径：Error 已报，产物将被硬拦
+        }
     }
     if (text.size() > 2 && text[0] == '0' &&
         (text[1] == 'x' || text[1] == 'X' || text[1] == 'b' || text[1] == 'B' ||
@@ -98,10 +113,20 @@ static int shiftAmtOf128a(const std::string& text) {
         const int base = (text[1] == 'x' || text[1] == 'X') ? 16
                          : (text[1] == 'b' || text[1] == 'B') ? 2 : 8;
         try { return static_cast<int>(std::stoull(text.substr(2), nullptr, base)); }
-        catch (...) { return 0; }
+        catch (...) {
+            diagnostics.report(Diagnostic::error(
+                SourceLocation(),
+                "内部错误: i128 移位量常量文本解析失败 '" + text + "'"));
+            return 0;  // 中止前路径：Error 已报，产物将被硬拦
+        }
     }
     try { return static_cast<int>(std::stoll(text)); }
-    catch (...) { return 0; }
+    catch (...) {
+        diagnostics.report(Diagnostic::error(
+            SourceLocation(),
+            "内部错误: i128 移位量常量文本解析失败 '" + text + "'"));
+        return 0;  // 中止前路径：Error 已报，产物将被硬拦
+    }
 }
 
 // i128/u128 位运算（and/orr/eor）：双半独立（低64位与高64位各一条逻辑指令）。
@@ -121,7 +146,14 @@ void Arm64CodeGenerator::emitInt128Bitwise(Arm64AsmWriter& writer,
                             : std::stoull(extra.substr(0, colon), nullptr, 16);
             } else if (!isHi) {
                 try { part = static_cast<std::uint64_t>(std::stoull(extra)); }
-                catch (...) { part = 0; }
+                catch (...) {
+                    // 常量文本解析失败=内部不一致——报内部错误显形（miss 不可
+                    //   静默）；0 仅为中止前路径占位，产物将被 driver 硬拦
+                    diagnostics_.report(Diagnostic::error(
+                        SourceLocation(),
+                        "内部错误: i128 常量半值文本解析失败 '" + extra + "'"));
+                    part = 0;  // 中止前路径：Error 已报，产物将被硬拦
+                }
             }
             emitMovImm(writer, reg, part);
             return;
@@ -157,7 +189,7 @@ void Arm64CodeGenerator::emitInt128Shift(Arm64AsmWriter& writer,
     const int dstHiId = inst.result.id;
     const int dstLoId = inst.result.id + 1;
     if (inst.operands[1].isConstant) {
-        const int rawK = shiftAmtOf128a(inst.operands[1].extra);
+        const int rawK = shiftAmtOf128a(diagnostics_, inst.operands[1].extra);
         if (!currentFnUnsafe474_ && (rawK < 0 || rawK >= 128)) {
             // 任务 474：常量移位量超宽（常量传播面漏入）——反向结构错误码 8
             const std::string trap = "Lovf" + std::to_string(ptrCheckCounter_++);
@@ -339,7 +371,14 @@ void Arm64CodeGenerator::emitInt128MulDivMod(Arm64AsmWriter& writer,
                 hi = std::stoull(extra.substr(colon + 1), nullptr, 16);
             } else {
                 try { lo = static_cast<std::uint64_t>(std::stoull(extra)); }
-                catch (...) { lo = 0; }
+                catch (...) {
+                    // 常量文本解析失败=内部不一致——报内部错误显形（miss 不可
+                    //   静默）；0 仅为中止前路径占位，产物将被 driver 硬拦
+                    diagnostics_.report(Diagnostic::error(
+                        SourceLocation(),
+                        "内部错误: i128 常量文本解析失败 '" + extra + "'"));
+                    lo = 0;  // 中止前路径：Error 已报，产物将被硬拦
+                }
                 hi = 0;
             }
             emitMovImm(writer, "x10", lo);
@@ -397,7 +436,14 @@ void Arm64CodeGenerator::emitInt128Compare(Arm64AsmWriter& writer,
                 hi = std::stoull(extra.substr(colon + 1), nullptr, 16);
             } else {
                 try { lo = static_cast<std::uint64_t>(std::stoull(extra)); }
-                catch (...) { lo = 0; }
+                catch (...) {
+                    // 常量文本解析失败=内部不一致——报内部错误显形（miss 不可
+                    //   静默）；0 仅为中止前路径占位，产物将被 driver 硬拦
+                    diagnostics_.report(Diagnostic::error(
+                        SourceLocation(),
+                        "内部错误: i128 常量文本解析失败 '" + extra + "'"));
+                    lo = 0;  // 中止前路径：Error 已报，产物将被硬拦
+                }
                 hi = 0;
             }
             emitMovImm(writer, "x10", lo);

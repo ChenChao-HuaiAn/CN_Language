@@ -194,11 +194,18 @@ std::string regWithWidth(const std::string& reg64, int width) {
     const std::string_view regView(reg64);
     for (int i = 0; i < 16; ++i) {
         if (regView != kRegWidthNames[i][0]) continue;
-        if (width == 64) return std::string(kRegWidthNames[i][0]);
-        if (width == 32) return std::string(kRegWidthNames[i][1]);
-        if (width == 16) return std::string(kRegWidthNames[i][2]);
-        if (width == 8) return std::string(kRegWidthNames[i][3]);
-        return {};
+        // width 闭集={8,16,32,64}：调用点宽度全部来自寄存器表/宽度前缀表的同一
+        //   闭集（解析器只认这四档），域外不可达——穷举断言显形（miss 不可静默），
+        //   禁静默回空串继续改写
+        switch (width) {
+            case 64: return std::string(kRegWidthNames[i][0]);
+            case 32: return std::string(kRegWidthNames[i][1]);
+            case 16: return std::string(kRegWidthNames[i][2]);
+            case 8:  return std::string(kRegWidthNames[i][3]);
+            default:
+                assert(false && "regWithWidth: width 域外（须为 8/16/32/64）");
+                return {};  // 断言中止前占位（调用点闭集论证见上·运行期不可达）
+        }
     }
     return reg64;
 }
