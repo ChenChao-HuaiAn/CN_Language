@@ -61,6 +61,7 @@ import docs_data_adv       # noqa: E402
 import docs_data_ref1      # noqa: E402
 import docs_data_ref2      # noqa: E402
 import docs_data_ref3      # noqa: E402
+import docs_data_migrate   # noqa: E402  1432：破坏性变更与迁移指南页
 
 MODULES = (
     docs_data_core.PAGES
@@ -79,6 +80,7 @@ GEN_PAGES = (
     + docs_data_ref1.PAGES
     + docs_data_ref2.PAGES
     + docs_data_ref3.PAGES
+    + docs_data_migrate.PAGES
 )
 
 # 模块页顺序链（页脚导航 + 索引页排序）：内置 → 各模块 → CLI（站内已有页）
@@ -112,6 +114,7 @@ READ_CHAIN = [
     ("reference/modules.html", "模块系统"),
     ("stdlib.html", "标准库总览"),
     ("cli.html", "命令行参考"),
+    ("migration.html", "破坏性变更与迁移指南"),
 ]
 
 SIDE_GROUPS = [
@@ -131,7 +134,8 @@ SIDE_GROUPS = [
                  ("reference/modules.html", "模块系统")]),
     ("标准库", [("stdlib.html", "标准库总览")] + [
         ("stdlib/" + m["文件"], m["题名"]) for m in MODULES]),
-    ("资源", [("cli.html", "命令行参考")]),
+    ("资源", [("cli.html", "命令行参考"),
+              ("migration.html", "破坏性变更与迁移指南")]),
 ]
 
 

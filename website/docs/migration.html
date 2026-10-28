@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>破坏性变更与迁移指南 · CN 语言 · CN 语言</title>
+<meta name="description" content="结果化收割（哨兵 → 结果/可选）的变更公告、新旧写法对照表、机械替换禁区与迁移模板。">
+<script>
+  (function () {
+    try {
+      var t = localStorage.getItem("cn-theme");
+      if (t === "dark" || t === "light") document.documentElement.setAttribute("data-theme", t);
+    } catch (e) {}
+  })()
+</script>
+<link rel="icon" href="../assets/brand/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="../assets/brand/favicon-32.png" sizes="32x32" type="image/png">
+<link rel="icon" href="../assets/brand/favicon-16.png" sizes="16x16" type="image/png">
+<link rel="stylesheet" href="../assets/tokens.css?v=2">
+<link rel="stylesheet" href="../assets/site.css?v=6">
+</head>
+<body>
+
+<header class="顶栏">
+  <div class="容器 顶栏-内">
+    <a class="标识" href="../"><svg xmlns="http://www.w3.org/2000/svg" class="标识-图" viewBox="0 0 512 512" aria-hidden="true"><path d="M 232 158 H 148 Q 92 158 92 214 V 298 Q 92 354 148 354 H 232" fill="none" stroke="var(--color-fg, #221F18)" stroke-width="46"/><path d="M 292 354 V 158 L 420 354 V 158" fill="none" stroke="var(--color-fg, #221F18)" stroke-width="46" stroke-linejoin="bevel"/><g transform="translate(118.5 189.5) scale(0.26)"><rect x="48" y="48" width="416" height="416" rx="56" fill="var(--color-accent, #AD2F22)"/><rect x="156" y="180" width="200" height="152" fill="none" stroke="var(--color-accent-fg, #FCFAF6)" stroke-width="34"/><rect x="239" y="106" width="34" height="300" fill="var(--color-accent-fg, #FCFAF6)"/></g></svg>CN<span class="标识-点">·</span>语言</a>
+    <button class="导航-开关" data-导航钮 aria-expanded="false">菜单</button>
+    <nav class="导航" aria-label="站点导航">
+      <a href="../">首页</a>
+      <a href="" aria-current="page">文档</a>
+      <a href="getting-started.html">快速开始</a>
+      <a href="reference/">语言参考</a>
+      <a href="stdlib.html">标准库</a>
+      <a href="../os/">CN-OS</a>
+      <a href="../toutiao/">今日头条</a>
+      <a href="https://gitcode.com/ChenChao_GitCode/CN_Language" target="_blank" rel="noopener">源码 ↗</a>
+      <button class="主题钮" data-主题钮 aria-label="切换主题">月</button>
+    </nav>
+  </div>
+</header>
+
+<main class="容器">
+  <div class="文档骨架">
+    <aside class="侧栏" aria-label="文档导航"><div class="侧栏-组"><p class="侧栏-组题">入门</p><a href="index.html">文档总览</a><a href="getting-started.html">快速开始</a></div><div class="侧栏-组"><p class="侧栏-组题">教程</p><a href="tutorial-syntax.html">语法基础</a><a href="tutorial-oop.html">类与泛型</a><a href="tutorial-safety.html">安全与并发</a><a href="tutorial-advanced.html">进阶篇</a></div><div class="侧栏-组"><p class="侧栏-组题">语言参考</p><a href="reference/index.html">参考总览</a><a href="reference/lexical.html">词法结构</a><a href="reference/types.html">类型系统</a><a href="reference/control-flow.html">控制流</a><a href="reference/functions.html">函数</a><a href="reference/oop.html">类与对象</a><a href="reference/errors.html">错误处理</a><a href="reference/concurrency.html">并发</a><a href="reference/modules.html">模块系统</a></div><div class="侧栏-组"><p class="侧栏-组题">标准库</p><a href="stdlib.html">标准库总览</a><a href="stdlib/core.html">核心</a><a href="stdlib/container.html">容器</a><a href="stdlib/mapset.html">映射集合</a><a href="stdlib/string.html">字符串扩展</a><a href="stdlib/algorithm.html">算法</a><a href="stdlib/regex.html">正则</a><a href="stdlib/system.html">系统</a><a href="stdlib/io.html">IO</a><a href="stdlib/file.html">文件</a><a href="stdlib/time.html">时间</a><a href="stdlib/math.html">数学</a><a href="stdlib/random.html">随机数</a><a href="stdlib/thread.html">线程</a><a href="stdlib/builtin.html">内置函数</a></div><div class="侧栏-组"><p class="侧栏-组题">资源</p><a href="cli.html">命令行参考</a><a href="migration.html" aria-current="page">破坏性变更与迁移指南</a></div><div class="侧栏-组"><p class="侧栏-组题">资源</p><a href="https://gitcode.com/ChenChao_GitCode/CN_Language" target="_blank" rel="noopener">源码仓库 ↗</a></div></aside>
+    <article class="正文"><nav class="面包屑" aria-label="面包屑"><a href="./">文档</a> / 破坏性变更与迁移指南</nav>
+<h1>破坏性变更与迁移指南</h1>
+<p style="color: var(--color-fg-muted); font-size: var(--text-lg); line-height: 2;">结果化收割（哨兵 → 结果/可选）的变更公告、新旧写法对照表、机械替换禁区与迁移模板。</p>
+<h2 id="公告">破坏性变更公告</h2>
+<p>语言从「哨兵返回值」向「结果/可选类型」收割是<strong>破坏性变更</strong>：函数返回类型变了，依赖旧哨兵形态的代码必须同步修改——编译器会在改动处直接报错（类型不匹配/缺守卫检查），跟着诊断走即可完成迁移。</p>
+<div class="批注 批注-赭"><span class="批注-题">#1360 批6·2026-10 通告（签名的破坏性变更）</span>标准库查找族的返回类型从 <code>整64</code>（<strong>-1=未找到</strong>）改为 <code>可选&lt;整64&gt;</code>（<strong>无=未找到</strong>）。受影响 API：<code>算法::线性查找</code>（泛型）、<code>算法::二分查找整32</code>、<code>算法::二分查找整64</code>、<code>映射集合::查找键位置</code>（泛型）、<code>映射集合::查找值位置</code>（泛型）、正则引擎类方法 <code>搜索/匹配或/匹配序列/贪婪循环/匹配原子</code>。外部代码若依赖 <code>-1</code> 形态，按本页对照表迁移。</div>
+<p>为什么改：哨兵 <code>-1</code> 与合法下标值域重叠（下标 0 起但 -1 也是合法 <code>整64</code>）——漏判一次就是静默错值（把 -1 当下标用=越界或写坏相邻内存）。<code>可选&lt;整64&gt;</code> 从类型上分离「有值/无值」，<strong>不判 有值 直接取 值 = 编译期拒绝</strong>（见禁区一节的负例），漏检从「人工核验」升级为「类型强制」。</p>
+<h2 id="对照表">旧写法 → 新写法对照表</h2>
+<p>三类高频形态逐一对照。新写法遵守分支纪律：<strong>如果 + 否则 如果 显式枚举合法区间</strong>（有值 / 无值 两态各归其位），不用裸 否则 兜底。</p>
+<h3 id="形态一：循环内查找">形态一：循环内查找</h3>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">旧写法（-1 哨兵·已不可编译）</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">导入 算法::{线性查找};
+
+函数 主() -&gt; 整32 {
+    整64[5] 数据 = {10, 20, 30, 40, 50};
+    循环 (整64 i = 0; i &lt; 3; i++) {
+        整64 位 = 线性查找&lt;整64&gt;(数据, 5, 20 + i * 10);  // 旧：-1=未找到
+        如果 (位 != -1) {
+            打印("命中 ", 位);
+        }
+    }
+    返回 0;
+}</code></pre></div>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">新写法（可选 守卫分流）.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">导入 算法::{线性查找};
+
+函数 主() -&gt; 整32 {
+    整64[5] 数据 = {10, 20, 30, 40, 50};
+    循环 (整64 i = 0; i &lt; 3; i++) {
+        可选&lt;整64&gt; 回 = 线性查找&lt;整64&gt;(数据, 5, 20 + i * 10);
+        如果 (回.有值) {
+            打印("命中 ", 回.值);
+        } 否则 如果 (!回.有值) {
+            打印("未命中");
+        }
+    }
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：命中 1
+命中 2
+命中 3
+</p>
+<h3 id="形态二：嵌套调用（外层结果喂下层实参）">形态二：嵌套调用（外层结果喂下层实参）</h3>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">旧写法（-1 直接内传·-1 会被当下标/长度静默错算）</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">    整64 找30 = 线性查找&lt;整64&gt;(数据, 6, 30);
+    如果 (找30 != -1) {
+        整64 找20 = 二分查找整64(数据, 找30 + 1, 20);  // 未找到时 -1 内传
+        ...
+    }</code></pre></div>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">新写法（先判外层 再喂下层）.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">导入 算法::{线性查找, 二分查找整64};
+
+函数 主() -&gt; 整32 {
+    整64[6] 数据 = {10, 20, 30, 40, 50, 60};
+    可选&lt;整64&gt; 找30 = 线性查找&lt;整64&gt;(数据, 6, 30);
+    如果 (找30.有值) {
+        可选&lt;整64&gt; 找20 = 二分查找整64(数据, 找30.值 + 1, 20);
+        如果 (找20.有值) {
+            打印("双层命中 ", 找20.值);
+        } 否则 如果 (!找20.有值) {
+            打印("前段未命中");
+        }
+    } 否则 如果 (!找30.有值) {
+        打印("外层未命中");
+    }
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：双层命中 1
+</p>
+<h3 id="形态三：下标直用">形态三：下标直用</h3>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">旧写法（未找到时 -1 直作下标=越界）</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">    整64 位 = 线性查找&lt;整64&gt;(数据, 5, 30);
+    打印("值=", 数据[位]);   // 位=-1 时越界</code></pre></div>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">新写法（先判 有值 再取 值 作下标）.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">导入 算法::{线性查找};
+
+函数 主() -&gt; 整32 {
+    整64[5] 数据 = {10, 20, 30, 40, 50};
+    可选&lt;整64&gt; 回 = 线性查找&lt;整64&gt;(数据, 5, 30);
+    如果 (回.有值) {
+        打印("值=", 数据[回.值]);
+    } 否则 如果 (!回.有值) {
+        打印("未找到");
+    }
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：值=30
+</p>
+<table class="表"><thead><tr><th>旧形态</th><th>新形态</th><th>说明</th></tr></thead><tbody><tr><td><code>如果 (位 == -1) { … }</code></td><td><code>如果 (!回.有值) { … }</code></td><td>未找到分支（判别式取反）</td></tr><tr><td><code>如果 (位 != -1) { 用 位 }</code></td><td><code>如果 (回.有值) { 用 回.值 }</code></td><td>命中分支（守卫授予取值权）</td></tr><tr><td><code>数据[位]</code>（下标直用）</td><td>先判 <code>回.有值</code> 再 <code>数据[回.值]</code></td><td>不判有值取值=编译期拒绝，编译器逼你分流</td></tr><tr><td><code>整64 位 = 查找(...)</code></td><td><code>可选&lt;整64&gt; 回 = 查找(...)</code></td><td>变量类型同步改（旧形态=类型错误，编译期暴露）</td></tr></tbody></table>
+<h2 id="禁区">「机械替换丢语义」禁区（强制人工复核）</h2>
+<p>迁移的最大陷阱不是改不完，而是<strong>机械替换改错语义</strong>。</p>
+<div class="批注 批注-赭"><span class="批注-题">1427 号实证：批量机械替换把官网示例全部搞死</span>批量把「甲 == 乙」机械替换成「甲.值() == 乙.值()」——旧形态里「无值」参与 <code>==</code> 比较有确定语义（-1 哨兵=空串参与比较），替换后「无值」根本没有 <code>.值</code> 可取，官网示例全灭（x64 4 处·靠三后端扫描穷举兜住）。机械替换只保证词面对应，<strong>不保证语义等价</strong>。</div>
+<h3 id="语义等价人工复核——四个强制步骤">语义等价人工复核——四个强制步骤</h3>
+<ol><li><strong>逐处确认旧哨兵语义</strong>：<code>-1</code> 在此处=未找到？空串？无效索引？不同含义对应不同的新写法分流，不能一刀切。</li><li><strong>按语义选新形态</strong>：未找到→<code>!回.有值</code> 分支；命中→<code>回.有值</code> 分支取 <code>回.值</code>；比较语义→想清楚「无值时该比较的真值应该是什么」再落分支结构。</li><li><strong>编译器兜底</strong>：改漏/改错处会以「缺守卫检查」或「类型不匹配」编译错误暴露——<strong>禁止用类型断言/强转绕过诊断</strong>。</li><li><strong>三后端全量回归</strong>：win-x64 / linux-x86_64 / linux-arm64 全量+示例 verify 过，才算迁完。</li></ol>
+<h3 id="「全后端扫描穷举声明」模板（落提交信息）">「全后端扫描穷举声明」模板（落提交信息）</h3>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">声明模板</span><span class="码窗-徽">SHELL</span></p><pre><code>本次迁移已对以下范围完成扫描穷举：
+- 后端：win-x64 / linux-x86_64 / linux-arm64（三后端全量）
+- 范围：&lt;受影响目录/文件清单，如 website/tools/docs_data_*.py + tests/e2e&gt;
+- 形态：&lt;旧哨兵形态逐条列出，如 == -1 / != -1 / -1 直传下标·实参&gt;
+- 结论：命中 N 处，已迁移 N 处，残留 0 处
+扫描人/日期：&lt;填写&gt;　复核人/日期：&lt;填写&gt;</code></pre></div>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">禁区负例：不判 有值 直接取 值（编译期拒绝）.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">导入 算法::{线性查找};
+
+函数 主() -&gt; 整32 {
+    整64[5] 数据 = {10, 20, 30, 40, 50};
+    可选&lt;整64&gt; 回 = 线性查找&lt;整64&gt;(数据, 5, 30);
+    打印(回.值);           // ✗ 编译错误：不判 有值 取 值
+    返回 0;
+}</code></pre></div>
+<p>这条编译期强制正是迁移的护栏：机械替换漏掉的语义分流，编译器会逐处拦下——<strong>红就是漏改点清单</strong>，逐红按上面四步复核即可。</p>
+<h2 id="清单">受影响 API 与官网示例迁移清单</h2>
+<p>批6 变更的完整 API 面 + 官网数据同步状态（本页即清单的收口落点）。</p>
+<table class="表"><thead><tr><th>模块</th><th>函数</th><th>旧签名</th><th>新签名</th></tr></thead><tbody><tr><td>算法</td><td><code>线性查找</code>（泛型）</td><td><code>-&gt; 整64</code>（-1=未找到）</td><td><code>-&gt; 可选&lt;整64&gt;</code></td></tr><tr><td>算法</td><td><code>二分查找整32</code> / <code>二分查找整64</code></td><td><code>-&gt; 整64</code></td><td><code>-&gt; 可选&lt;整64&gt;</code></td></tr><tr><td>映射集合</td><td><code>查找键位置</code> / <code>查找值位置</code>（泛型）</td><td><code>-&gt; 整64</code></td><td><code>-&gt; 可选&lt;整64&gt;</code></td></tr><tr><td>正则引擎</td><td><code>搜索</code></td><td><code>-&gt; 整64</code></td><td><code>-&gt; 可选&lt;整64&gt;</code></td></tr><tr><td>正则引擎（内部）</td><td><code>匹配或</code> / <code>匹配序列</code> / <code>贪婪循环</code> / <code>匹配原子</code></td><td><code>-&gt; 整64</code></td><td><code>-&gt; 可选&lt;整64&gt;</code></td></tr></tbody></table>
+<div class="批注 批注-绿"><span class="批注-题">官网示例迁移状态（本仓库收口时点）</span>官网全部文档数据（<code>website/tools/docs_data_*.py</code>）扫描结论：<strong>查找族旧签名示例残留 0 处</strong>——批6 同步轮已随签名变更一并迁移（算法页/映射集合页/正则页示例全部新签名形态），本页示例为迁移后基线的实测锁面。验证命令：<code>python website/tools/gen_docs.py --verify</code>（全部内嵌示例编译+运行+输出比对）。注意：内建层 <code>字符串查找</code> 返回 -1 <strong>不属于本批范围</strong>（未收割 API·待后续批次按本页模板另行通告）。</div>
+<h2 id="模板">后续批次沿用此模板</h2>
+<p>结果化收割（#1360 终态立法）分批推进，每批的外部同步成本用同一模板摊销。</p>
+<ol><li><strong>公告</strong>：本页「公告」节追加该批受影响 API 清单（旧签名→新签名一行一个）；</li><li><strong>对照表</strong>：新形态若超出本页三类高频形态，按同格式补「形态 N」小节（旧写法 码览 展示 + 新写法实测码块）；</li><li><strong>禁区自查</strong>：按「机械替换丢语义」四步执行并留全后端扫描穷举声明；</li><li><strong>清单收口</strong>：官网数据扫描归零 + <code>gen_docs.py --verify</code> 全绿，迁移状态批注更新到批号。</li></ol>
+<p>已适用批次：批6（查找族·本页首批）。批2~5 及后续各批收割时<strong>直接沿用</strong>，不再另立迁移文档。</p><nav class="页脚导航"><a class="下一" href="cli.html"><span class="向">下一页 →</span><span class="题">命令行参考</span></a><a href="stdlib.html"><span class="向">← 上一页</span><span class="题">标准库总览</span></a></nav></article>
+    <aside class="目录" aria-label="本页目录">
+      <p class="目录-题">本页目录</p>
+<a href="#公告">破坏性变更公告</a><a href="#对照表">旧写法 → 新写法对照表</a><a href="#禁区">「机械替换丢语义」禁区（强制人工复核）</a><a href="#清单">受影响 API 与官网示例迁移清单</a><a href="#模板">后续批次沿用此模板</a>
+    </aside>
+  </div>
+</main>
+
+<footer class="页脚">
+  <div class="容器">
+    <div class="页脚-排">
+      <div>
+        <p class="页脚-标语">CN<span style="color: var(--color-accent);">·</span>语言</p>
+        <p class="页脚-述">全中文语法的系统级编程语言。以母语的直觉，驾驭机器的全部性能。</p>
+      </div>
+      <div>
+        <h4>语言</h4>
+        <ul>
+          <li><a href="./">官方文档</a></li>
+          <li><a href="getting-started.html">快速开始</a></li>
+          <li><a href="reference/">语言参考</a></li>
+          <li><a href="stdlib.html">标准库</a></li>
+        </ul>
+      </div>
+      <div>
+        <h4>项目</h4>
+        <ul>
+          <li><a href="https://gitcode.com/ChenChao_GitCode/CN_Language" target="_blank" rel="noopener">源码仓库 ↗</a></li>
+          <li><a href="../os/">CN-OS 蓝图</a></li>
+          <li><a href="../toutiao/">今日头条专栏</a></li>
+          <li><a href="cli.html">命令行参考</a></li>
+        </ul>
+      </div>
+      <div>
+        <h4>状态</h4>
+        <ul>
+          <li>自举固定点已达成</li>
+          <li>v2 自举重建进行中</li>
+          <li>license：见仓库</li>
+        </ul>
+      </div>
+    </div>
+    <div class="页脚-底">
+      <span>© 2026 CN 语言项目</span>
+      <span>文档基线：任务/1642 49f734d2d·2026-10-28·示例经编译器实测</span>
+      <span>京ICP备00000000号（备案办理中·占位）</span>
+    </div>
+  </div>
+</footer>
+
+<script src="../assets/cn-highlight.js?v=1"></script>
+<script src="../assets/site.js?v=2"></script>
+</body>
+</html>
