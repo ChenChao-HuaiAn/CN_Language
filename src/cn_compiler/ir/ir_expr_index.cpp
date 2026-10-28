@@ -466,6 +466,7 @@ void IRGenerator::visitIndexExpr(IndexExpr* node) {
     //   结构体元素返回地址（供按值传参），普通元素 LoadPtr 按元素类型
     std::string elemIrType = "i64";
     bool elemIsStruct = false;
+    bool elemIsArray = false;   // 1775：元素仍为数组=子数组左值（地址语义·见尾段）
     bool elemTyped648 = false;  // 648：任一形态命中元素类型推导置真
     // 244：调用返回的元素形态（与上方 stride 段同源——数组=元素宽度、字符串=
     //   i8 字节视图、指针=所指宽度；结构体元素地址语义与数组变量路径全同构；
@@ -497,9 +498,17 @@ void IRGenerator::visitIndexExpr(IndexExpr* node) {
             elemIrType = mapType(elemNest.value());
             elemTyped648 = true;
             const std::string elemCanonNest = types::canonical(elemNest.value());
-            if (semantic_ != nullptr &&
-                (semantic_->isStructType(elemCanonNest) ||
-                 semantic_->isClassType(elemCanonNest))) {
+            // #1775（2026-10-28·三维+数组运行期崩溃根治）：元素仍是数组=子数组
+            //   左值**地址语义**——#1688 数组名分支（:102）同族遗漏面。原缺此
+            //   判定落 LoadPtr 把中间维子数组按值读成标量，外层把标量值当地址
+            //   继续剥维=空指针/野地址（三维循环写=错误码 3、三维常量下标读=
+            //   段错误实录；#1687 只修了本族写侧步长，读写中间层元素形态同缺）。
+            //   types::isArray 为纯文本判定，不依赖 semantic_。
+            if (types::isArray(elemNest.value())) {
+                elemIsArray = true;
+            } else if (semantic_ != nullptr &&
+                       (semantic_->isStructType(elemCanonNest) ||
+                        semantic_->isClassType(elemCanonNest))) {
                 elemIsStruct = true;
             }
         }
@@ -620,8 +629,10 @@ void IRGenerator::visitIndexExpr(IndexExpr* node) {
     }
     ir::IRValue addr = emitResult(ir::Opcode::Add, {obj, scaled}, "ptr", "",
                                   node->location);
-    if (elemIsStruct) {
-        lastExpr_ = addr;  // 结构体元素：返回地址（按值传参/整体拷贝用）
+    if (elemIsStruct || elemIsArray) {
+        // 结构体/子数组元素：返回地址（结构体值语义=按值传参/整体拷贝用；
+        // 子数组左值语义=外层下标继续剥维寻址·#1775 与数组名分支 #1688 同口径）
+        lastExpr_ = addr;
         return;
     }
     lastExpr_ = emitResult(ir::Opcode::LoadPtr, {addr}, elemIrType, "", node->location);
