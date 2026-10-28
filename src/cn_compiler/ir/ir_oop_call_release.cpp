@@ -96,11 +96,14 @@ void IRGenerator::genStringFrees() {
             // 1415（#1415 P1-1·零分叉）：结果/可选 元素数组入函数尾兜底——
             //   收集判据与 registerOwnedArrayElems 同（两处并列·事不过三留标记）；
             //   释放面=emitStrArrayElemFreesFor 结果/可选分支。
+            //  #1459（2026-10-28·二维数组释放缺口）：判定落**基元素**——
+            //   二维「结果<字符串,整32>[3]」中间文本使 ownedStrFieldsOf
+            //   收集 miss（与登记面同根因·arrayBaseElemOf 剥全部维度）。
             if (!ownedElem2) {
-                const std::string elemCanon = types::arrayElemOf(st2);
+                const std::string baseElem = types::arrayBaseElemOf(st2);
                 // 1415（复审 P3）：结果/可选 文本判定单点（isResultOrOptionalText）
-                if (isResultOrOptionalText(elemCanon) &&
-                    !ownedStrFieldsOf(elemCanon).empty()) {
+                if (isResultOrOptionalText(baseElem) &&
+                    !ownedStrFieldsOf(baseElem).empty()) {
                     ownedElem2 = true;
                 }
             }
@@ -637,43 +640,51 @@ void IRGenerator::emitStrArrayElemFreesFor(const std::string& unique) {
         }
         return;
     }
-    // 1415（#1415 P1-1·零分叉）：结果/可选 元素数组——逐元素经
-    //   emitOwnedStrFieldFreesAt（元素地址 + 元素类型；tag 条件守卫内释放
-    //   串/结构体/类载荷·清槽幂等，与聚合局部字段释放同设施）。元素寻址
-    //   步进=typeSizeOf(合成体)（布局已降级注册，<=0 即内部缺陷早退=不产
-    //   错误释放）。原缺=宿主残留 2/2（可选/结果两族）。
-    {
-        const std::string elemCanon = types::arrayElemOf(srcType);
-        // 1415（复审 P3）：结果/可选 文本判定单点（isResultOrOptionalText）
-        if (isResultOrOptionalText(elemCanon)) {
-            if (ownedStrFieldsOf(elemCanon).empty()) return;
-            const cn::Optional<int> arrayLenOpt = types::arrayLenOf(srcType);
-            if (!arrayLenOpt.has_value() || arrayLenOpt.value() <= 0) return;
-            const int arrayLen = arrayLenOpt.value();
-            // 1360 结果化：typeSizeOf 返回 Optional（miss=尺寸未知·诊断已报？
-            //   合成体未降级等内部错误通道）——无值/0 一律早退（不产错误释放）。
-            const int elemStride = semantic_->typeSizeOf(elemCanon).value_or(0);
-            if (elemStride == 0) return;
-            const SourceLocation releaseLoc;
-            ir::IRValue arrayBase = emitResult(
-                ir::Opcode::AddrOf, {ir::IRValue::var(unique, "ptr")}, "ptr",
-                unique, releaseLoc);
-            for (int i = 0; i < arrayLen; ++i) {
-                ir::IRValue elemAddr = arrayBase;
-                if (i != 0) {
-                    ir::IRValue elemOffset = emitResult(
-                        ir::Opcode::ConstInt, {}, "i64",
-                        std::to_string(static_cast<long long>(i) * elemStride),
-                        releaseLoc);
-                    elemAddr = emitResult(ir::Opcode::Add,
-                                          {arrayBase, elemOffset}, "ptr", "",
-                                          releaseLoc);
+        // 1415（#1415 P1-1·零分叉）：结果/可选 元素数组——逐元素经
+        //   emitOwnedStrFieldFreesAt（元素地址 + 元素类型；tag 条件守卫内释放
+        //   串/结构体/类载荷·清槽幂等，与聚合局部字段释放同设施）。元素寻址
+        //   步进=typeSizeOf(合成体)（布局已降级注册，<=0 即内部缺陷早退=不产
+        //   错误释放）。原缺=宿主残留 2/2（可选/结果两族）。
+        //  #1459（2026-10-28·二维数组释放缺口根治）：判定与展开均落**基元素**——
+        //   二维 elemCanon=「结果<字符串,整32>[3]」（带维度尾缀）原使
+        //   ownedStrFieldsOf miss 直接返回=载荷漏释放；且展开长度原=第一维
+        //   ×外层步进=只覆盖每行首元素。修=arrayBaseElemOf 剥全部维度判资源、
+        //   arrayTotalElemCount 取各维乘积展开、步进=typeSizeOf(基元素)；
+        //   一维形态（总元素=长度、步进=合成体尺寸）与原行为逐字等价。
+        {
+            const std::string baseElem = types::arrayBaseElemOf(srcType);
+            // 1415（复审 P3）：结果/可选 文本判定单点（isResultOrOptionalText）
+            if (isResultOrOptionalText(baseElem)) {
+                if (ownedStrFieldsOf(baseElem).empty()) return;
+                // 1360 结果化：无值/<=0 一律早退（总元素数=各维乘积，
+                //   任一维求值失败=无值·不猜）
+                const cn::Optional<long long> totalOpt =
+                    types::arrayTotalElemCount(srcType);
+                if (!totalOpt.has_value() || totalOpt.value() <= 0) return;
+                const long long totalElems = totalOpt.value();
+                // 1360 结果化：typeSizeOf 返回 Optional（miss=尺寸未知·诊断已报？
+                //   合成体未降级等内部错误通道）——无值/0 一律早退（不产错误释放）。
+                const int elemStride = semantic_->typeSizeOf(baseElem).value_or(0);
+                if (elemStride == 0) return;
+                const SourceLocation releaseLoc;
+                ir::IRValue arrayBase = emitResult(
+                    ir::Opcode::AddrOf, {ir::IRValue::var(unique, "ptr")}, "ptr",
+                    unique, releaseLoc);
+                for (long long i = 0; i < totalElems; ++i) {
+                    ir::IRValue elemAddr = arrayBase;
+                    if (i != 0) {
+                        ir::IRValue elemOffset = emitResult(
+                            ir::Opcode::ConstInt, {}, "i64",
+                            std::to_string(i * elemStride), releaseLoc);
+                        elemAddr = emitResult(ir::Opcode::Add,
+                                              {arrayBase, elemOffset}, "ptr", "",
+                                              releaseLoc);
+                    }
+                    emitOwnedStrFieldFreesAt(elemAddr, baseElem, releaseLoc);
                 }
-                emitOwnedStrFieldFreesAt(elemAddr, elemCanon, releaseLoc);
+                return;
             }
-            return;
         }
-    }
     if (types::arrayElemOf(srcType) != "字符串") return;
     const cn::Optional<int> lenOpt = types::arrayLenOf(srcType);
     if (!lenOpt.has_value() || lenOpt.value() <= 0) return;

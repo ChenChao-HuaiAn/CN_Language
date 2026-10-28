@@ -183,6 +183,7 @@ add_library(cn_compiler_model STATIC
     src/cn_compiler/model/char_literal.cpp
     src/cn_compiler/model/ast_printer.cpp
     src/cn_compiler/model/type_system.cpp
+    src/cn_compiler/model/type_array.cpp       # 1459：数组基元素/总元素数工具（自 type_system 拆出·千行冻结线）
     src/cn_compiler/model/type_system_int_text.cpp
     src/cn_compiler/model/ast_serialize.cpp             # 1142：AST 二进制序列化（写侧）
     src/cn_compiler/model/ast_serialize_read.cpp        # 1142：AST 反序列化（表达式/语句族）

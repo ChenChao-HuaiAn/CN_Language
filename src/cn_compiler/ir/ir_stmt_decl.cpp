@@ -456,11 +456,16 @@ void IRGenerator::registerOwnedArrayElems(const DeclGenCtx& ctx) {
     //   判据=元素是结果/可选且拥有型字段非空（ownedStrFieldsOf·与释放面同源）；
     //   与上方 genStringFrees 收集面同判（两处并列·事不过三留标记）。
     //   原缺=宿主可选/结果数组元素串载荷全漏（1466 探针宿主残留 2/2）。
+    //  #1459（2026-10-28·二维数组释放缺口）：判定落在**基元素**——二维
+    //   `结果<字符串,整32>[2][3]` 的 arrayElemOf=「结果<字符串,整32>[3]」
+    //   （带维度尾缀）→ isResultOrOptionalText 前缀命中但 ownedStrFieldsOf
+    //   收集 miss → 二维漏登记（探针 p1459k 实测残留 2）。arrayBaseElemOf
+    //   剥全部维度后判定（一维等价零变化）。
     if (semantic_ != nullptr && types::isArray(ctx.srcType) && !ctx.unique.empty()) {
-        const std::string elemCanon = types::arrayElemOf(ctx.srcType);
-        // 1415（复审 P3）：结果/可选 文本判定单点（isResultOrOptionalText）
-        if (isResultOrOptionalText(elemCanon) &&
-            !ownedStrFieldsOf(elemCanon).empty()) {
+        const std::string baseElem = types::arrayBaseElemOf(
+            types::canonical(ctx.srcType));
+        if (isResultOrOptionalText(baseElem) &&
+            !ownedStrFieldsOf(baseElem).empty()) {
             ownedStrArrayOrder_.push_back(ctx.unique);
         }
     }

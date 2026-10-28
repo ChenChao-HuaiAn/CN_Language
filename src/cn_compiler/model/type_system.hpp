@@ -152,6 +152,18 @@ std::string arrayElemOf(const std::string& type);
 //   消费点 .has_value() 分流；isArray 内部同以 has_value() 判定
 cn::Optional<int> arrayLenOf(const std::string& type);
 
+// #1459：提取数组**基元素**类型——循环剥全部维度至非数组文本
+//   （整32[2][3] -> 整32、结果<字符串,整32>[2][3] -> 结果<字符串,整32>；
+//   一维与 arrayElemOf 等价）。释放/布局面的「元素是否携资源」「元素尺寸」
+//   判定须落在基元素上（带维度尾缀的中间文本使 isResultType 前缀判定
+//   携带 [N] 尾巴、载荷字段收集 miss）。剥层数上限 8（超深=形态异常，
+//   返回空串由消费方分流——不猜不静默）
+std::string arrayBaseElemOf(const std::string& type);
+
+// #1459：数组**总元素数**——各维度长度乘积（整32[2][3] -> 6；一维=长度
+//   自身）。任一维非纯数字/超承载=无值（消费方显式分流，miss 不静默）
+cn::Optional<long long> arrayTotalElemCount(const std::string& type);
+
 // 剥离尾部复合后缀（061-a 合成体消费面收口）：类型文本 = 核心 + 后缀，
 //   后缀 = 结尾连续的 *（指针）、&（引用）、[N]（N 为纯十进制数字）组合——
 //   如 结果<整32,整32>[2] -> {"结果<整32,整32>", "[2]"}、
