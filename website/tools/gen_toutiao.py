@@ -94,30 +94,51 @@ LOGO_SVG = ('<svg class="标识-图" viewBox="0 0 512 512" aria-hidden="true">'
             '</g></svg>')
 
 页样式 = """
-  .栏目-头 { max-width: 860px; margin: 0 auto; padding-block: var(--space-8) var(--space-5); }
-  .栏目-述 { color: var(--color-fg-muted); line-height: 1.9; margin-top: var(--space-4); max-width: 62ch; }
-  .栏目-体 { max-width: 860px; margin: 0 auto; padding-block-end: var(--space-9); }
+  .栏目-头 { max-width: 1080px; margin: 0 auto; padding-block: var(--space-7) var(--space-5); }
+  .栏目-述 { color: var(--color-fg-muted); line-height: 1.85; margin-top: var(--space-3); max-width: 62ch; }
+  .栏目-体 { max-width: 1080px; margin: 0 auto; padding-block-end: var(--space-9); }
+  /* 首页双栏：主栏=最新一天文章流；侧栏=归档/月浏览/教程入口。≤900px 折单栏 */
+  .首页-格 { display: grid; grid-template-columns: minmax(0, 1fr) 280px;
+             gap: var(--space-7); align-items: start; }
+  @media (max-width: 900px) { .首页-格 { grid-template-columns: 1fr; } }
   .面包屑-条 { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: baseline;
                margin: var(--space-5) 0 0; font-size: .92rem; color: var(--color-fg-muted); }
   .面包屑-条 a { color: var(--color-fg-muted); text-decoration: none; }
   .面包屑-条 a:hover { color: var(--color-accent, #AD2F22); }
-  .节题 { display: flex; align-items: baseline; gap: var(--space-3);
-          margin: var(--space-7) 0 var(--space-4); padding-block-end: var(--space-2);
+  .节题 { display: flex; align-items: baseline; gap: var(--space-3); flex-wrap: wrap;
+          margin: 0 0 var(--space-4); padding-block-end: var(--space-2);
           border-bottom: 1px solid var(--color-line, rgba(128,128,128,.25)); }
-  .节题-主 { font-size: 1.15rem; font-weight: 700; }
-  .节题-数 { font-size: .85rem; color: var(--color-fg-muted); }
-  .日组-列 { display: grid; gap: var(--space-3); }
-  .条 { display: flex; align-items: baseline; gap: var(--space-4);
-        padding: var(--space-4) var(--space-5);
+  .侧-节 { margin-block-start: var(--space-6); }
+  .节题-主 { font-size: 1.08rem; font-weight: 700; }
+  .节题-数 { font-size: .82rem; color: var(--color-fg-muted); }
+  .日组-列 { display: grid; gap: var(--space-2); }
+  /* 紧凑文章条目：篇号+标题一行，副题第二行小字 */
+  .条 { display: flex; flex-direction: column; gap: 3px; padding: 12px 18px;
         border: 1px solid var(--color-line, rgba(128,128,128,.2));
         border-radius: 10px; text-decoration: none; color: inherit;
         transition: border-color .15s, transform .15s; }
   .条:hover { border-color: var(--color-accent, #AD2F22); transform: translateX(2px); }
-  .条-号 { flex: none; font-size: .82rem; color: var(--color-fg-muted);
-           white-space: nowrap; font-variant-numeric: tabular-nums; }
-  .条-主 { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-  .条-题 { font-weight: 600; font-size: 1.02rem; }
-  .条-副 { font-size: .88rem; color: var(--color-fg-muted); line-height: 1.6; }
+  .条-题 { font-weight: 600; font-size: 1rem; line-height: 1.55; }
+  .条-号 { font-size: .8rem; color: var(--color-fg-muted); margin-right: 10px;
+           font-weight: 400; font-variant-numeric: tabular-nums; }
+  .条-副 { font-size: .86rem; color: var(--color-fg-muted); line-height: 1.6; }
+  /* 侧栏归档行与入口卡 */
+  .档组 { display: grid; gap: 6px; }
+  .档行 { display: flex; justify-content: space-between; align-items: baseline; gap: var(--space-3);
+          padding: 9px 14px; border: 1px solid var(--color-line, rgba(128,128,128,.2));
+          border-radius: 8px; text-decoration: none; color: inherit; font-size: .93rem;
+          transition: border-color .15s; }
+  .档行:hover { border-color: var(--color-accent, #AD2F22); }
+  .档行:hover .档行-日 { color: var(--color-accent, #AD2F22); }
+  .档行-日 { font-weight: 600; }
+  .档行-数 { font-size: .8rem; color: var(--color-fg-muted); white-space: nowrap;
+             font-variant-numeric: tabular-nums; }
+  .侧卡 { display: block; padding: 14px 16px; border: 1px solid var(--color-line, rgba(128,128,128,.2));
+          border-radius: 10px; text-decoration: none; color: inherit; transition: border-color .15s; }
+  .侧卡:hover { border-color: var(--color-accent, #AD2F22); }
+  .侧卡-题 { display: block; font-weight: 700; font-size: .98rem; }
+  .侧卡-述 { display: block; font-size: .84rem; color: var(--color-fg-muted);
+             margin-top: 5px; line-height: 1.65; }
   .格排 { display: grid; gap: var(--space-3);
           grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); }
   .格 { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-3);
@@ -135,7 +156,7 @@ LOGO_SVG = ('<svg class="标识-图" viewBox="0 0 512 512" aria-hidden="true">'
             border: 1px solid var(--color-line, rgba(128,128,128,.2)); border-radius: 8px; }
   .翻页 a:hover { color: var(--color-accent, #AD2F22); border-color: var(--color-accent, #AD2F22); }
   @media (max-width: 640px) {
-    .条 { flex-direction: column; gap: var(--space-1); padding: var(--space-3) var(--space-4); }
+    .条 { padding: 10px 14px; }
   }
 """
 
@@ -227,13 +248,10 @@ def 页骨架(题名, 描述, 主体html, 前缀="./"):
 
 
 def 条目html(篇, 文章前缀):
-    副题html = ('\n            <span class="条-副">%s</span>' % 篇["副题"]) if 篇["副题"] else ""
-    return ('        <a class="条" href="%s%s">\n'
-            '          <span class="条-号">第 %d 篇</span>\n'
-            '          <span class="条-主">\n'
-            '            <span class="条-题">%s</span>%s\n'
-            "          </span>\n"
-            "        </a>" % (文章前缀, 篇["源"].name, 篇["号"], 篇["题"], 副题html))
+    副题html = ('\n      <span class="条-副">%s</span>' % 篇["副题"]) if 篇["副题"] else ""
+    return ('      <a class="条" href="%s%s">\n'
+            '        <span class="条-题"><span class="条-号">第 %d 篇</span>%s</span>%s\n'
+            "      </a>" % (文章前缀, 篇["源"].name, 篇["号"], 篇["题"], 副题html))
 
 
 def 解析篇目(草稿: Path, 最小篇号: int):
@@ -314,56 +332,101 @@ def 条目组块(标题, 数注, 篇们, 文章前缀):
 
 
 def 首页(篇目) -> str:
+    """双栏布局：主栏=最新一天文章流（升序）；侧栏=往期归档（平铺各日直达）+
+    按月浏览入口+创刊教程入口卡。≤900px 折单栏（主栏在前）。"""
     分组 = 日期组(篇目)
     日期序 = sorted(分组.keys(), reverse=True)
     最新 = 日期序[0]
     y, m, d = 最新.split("-")
 
-    # 归档导航：年 → 月（含每月篇数）
+    # 侧栏：往期归档（不含最新日·新→旧直达各日）
+    档行们 = []
+    for 日期 in 日期序[1:]:
+        dy, dm, dd = 日期.split("-")
+        档行们.append('        <a class="档行" href="%s/">\n'
+                      '          <span class="档行-日">%d 月 %d 日</span>\n'
+                      '          <span class="档行-数">%d 篇</span>\n'
+                      "        </a>" % (日期.replace("-", "/"), int(dm), int(dd), len(分组[日期])))
+    # 侧栏：按月浏览（年/月页入口）
     月组 = {}
     for 日期, 篇们 in 分组.items():
         月组.setdefault(日期[:7], []).append(日期)
-    年块 = []
-    for 年 in sorted({k[:4] for k in 月组}, reverse=True):
-        格 = []
-        for 月 in sorted({k[5:7] for k in 月组 if k.startswith(年)}, reverse=True):
-            键 = "%s-%s" % (年, 月)
-            数 = sum(len(分组[d]) for d in 月组[键])
-            格.append('        <a class="格" href="%s/">\n'
-                      '          <span class="格-题">%d 年 %d 月</span>\n'
-                      '          <span class="格-数">%d 篇</span>\n'
-                      "        </a>" % (键.replace("-", "/"), int(年), int(月), 数))
-        年块.append('    <h2 class="节题"><span class="节题-主">%s 年</span></h2>\n'
-                    '    <div class="格排">\n%s\n    </div>' % (年, "\n".join(格)))
-
+    月行们 = []
+    for 年月 in sorted(月组, reverse=True):
+        数 = sum(len(分组[d]) for d in 月组[年月])
+        年, 月 = 年月.split("-")
+        月行们.append('        <a class="档行" href="%s/">\n'
+                      '          <span class="档行-日">%d 年 %d 月</span>\n'
+                      '          <span class="档行-数">%d 篇</span>\n'
+                      "        </a>" % (年月.replace("-", "/"), int(年), int(月), 数))
+    # 侧栏：创刊教程入口卡
     教程们 = sorted((p for p in 篇目 if p["教程"]), key=lambda p: p["号"])
-    教程节 = ""
+    教程卡 = ""
     if 教程们:
-        教程节 = "\n" + 条目组块("创刊教程", "第 00~%02d 篇 · 栏目开篇教程" % 教程们[-1]["号"],
-                                 教程们, "articles/")
+        教程卡 = ('      <div class="侧-节">\n'
+                  '        <a class="侧卡" href="tutorial/">\n'
+                  '          <span class="侧卡-题">创刊教程 · %d 篇</span>\n'
+                  '          <span class="侧卡-述">第 00~%02d 篇 · 栏目开篇：从序言、'
+                  "快速开始到标准库速览，零基础认识 CN 语言。</span>\n"
+                  "        </a>\n"
+                  "      </div>" % (len(教程们), 教程们[-1]["号"]))
 
-    总数 = len(篇目)
     主体 = """  <div class="栏目-头">
     <p class="眉题">开发实录 · 每日连载</p>
     <h1>今日头条</h1>
     <p class="栏目-述">CN 语言项目的每日开发实录：编译器演进、语言设计裁定、
     工程实践与历史教训——篇篇带真实源码与可复现实验，同一批文章在头条号
-    「CN-Language中文编程语言」同步发布。共 %(总)d 篇，按产出日期归档，点击日期浏览全天文章。</p>
+    「CN-Language中文编程语言」同步发布。共 %(总)d 篇，按产出日期归档。</p>
   </div>
   <div class="栏目-体">
+    <div class="首页-格">
+      <section>
 %(最新节)s
-%(年块)s
-%(教程节)s
-  </div>""" % {"总": 总数,
+      </section>
+      <aside>
+        <h2 class="节题"><span class="节题-主">往期归档</span></h2>
+        <div class="档组">
+%(档行)s
+        </div>
+        <div class="侧-节">
+          <h2 class="节题"><span class="节题-主">按月浏览</span></h2>
+          <div class="档组">
+%(月行)s
+          </div>
+        </div>
+%(教程卡)s
+      </aside>
+    </div>
+  </div>""" % {"总": len(篇目),
                "最新节": 条目组块("%d 年 %d 月 %d 日" % (int(y), int(m), int(d)),
                                   "最新 · %d 篇 · 篇号升序" % len(分组[最新]),
                                   分组[最新], "articles/"),
-               "年块": "\n".join(年块) if 年块 else "",
-               "教程节": 教程节}
+               "档行": "\n".join(档行们),
+               "月行": "\n".join(月行们),
+               "教程卡": 教程卡}
     return 页骨架("今日头条 · CN 语言",
                   "CN 语言项目每日开发实录专栏：编译器演进、语言设计、工程实践——"
                   "同批文章在头条号「CN-Language中文编程语言」同步发布。",
                   主体, 前缀="./")
+
+
+def 教程页(教程们) -> str:
+    """创刊教程独立页：与新闻流分离（首页仅侧栏入口卡指来）。"""
+    主体 = """  <div class="栏目-头">
+    <nav class="面包屑-条"><a href="../">今日头条</a> › <span>创刊教程</span></nav>
+    <h1>创刊教程</h1>
+    <p class="栏目-述">栏目开篇的第 00~%02d 篇：不依赖每日任务时段，从零认识
+    CN 语言——序言、快速开始、语法基础、类与泛型、安全与并发、进阶、语言参考与
+    标准库速览。全部示例经编译器实测。按篇号升序排列。</p>
+  </div>
+  <div class="栏目-体">
+    <div class="日组-列">
+%s
+    </div>
+  </div>""" % (教程们[-1]["号"], "\n".join(条目html(p, "../articles/") for p in 教程们))
+    return 页骨架("创刊教程 · 今日头条 · CN 语言",
+                  "今日头条栏目创刊教程：第 00~09 篇，零基础认识 CN 语言。",
+                  主体, 前缀="../")
 
 
 def 年页(年, 分组) -> str:
@@ -473,6 +536,11 @@ def 主() -> int:
     日期序 = sorted(分组.keys(), reverse=True)
 
     (输出 / "index.html").write_text(首页(篇目), encoding="utf-8")
+    教程们 = sorted((p for p in 篇目 if p["教程"]), key=lambda p: p["号"])
+    if 教程们:
+        教程目录 = 输出 / "tutorial"
+        教程目录.mkdir(parents=True, exist_ok=True)
+        (教程目录 / "index.html").write_text(教程页(教程们), encoding="utf-8")
     年们 = sorted({d[:4] for d in 日期序}, reverse=True)
     for 年 in 年们:
         年目录 = 输出 / 年
