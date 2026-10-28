@@ -141,6 +141,19 @@ void SemanticAnalyzer::checkAddressOfUnary(UnaryExpr* node,
                     //   保守整体置位（&签 出参惯用法·Rust &mut maybe-init 同款）
                     defInitMarkAssignTarget(node->operand.get());
                 }
+                // 1771：下标/成员链操作数同通道——&槽[0] 是 place 引用非值读
+                //   （001 §3.9「取地址=初始化通道，取地址后读取放行」），读判定
+                //   已由 inAddrOfCtx_ 守卫抑制（visitIndexExpr/visitMemberExpr）。
+                //   置位=基数整体（别名逃逸=被调方可经指针写任意元素——与数组名
+                //   实参指针退化同口径；"[]" 后缀走整体置位+循环填充外溢记录，
+                //   e2 填(&槽[0],…) 填充后读放行）。
+                if (node->operand->getType() == NodeType::IndexExpr ||
+                    node->operand->getType() == NodeType::MemberExpr) {
+                    std::string addrBaseName, addrBaseSuffix;
+                    if (defInitPlaceOf(node->operand.get(), addrBaseName, addrBaseSuffix)) {
+                        defInitMarkInitPlace(addrBaseName, "[]");
+                    }
+                }
             } else if (node->operand->getType() == NodeType::CallExpr) {
                 // P3-18 补完：&引用返回调用 = 取得被引用者的地址（须确认为引用返回）
                 if (lastExprIsRefReturn_) {

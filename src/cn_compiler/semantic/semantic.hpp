@@ -513,6 +513,7 @@ private:
                               std::vector<std::string>& out) const;    // 叶子 place 键枚举
     void defInitRegisterDecl(const std::string& name, const std::string& type); // 声明登记
     void defInitMarkInitPlace(const std::string& name, const std::string& suffix); // 写点置位
+    void defInitEraseBasePrefix(const std::string& prefix);            // 按基数前缀删未初始化键（写置位/循环外溢共用）
     void defInitCheckReadPlace(const std::string& name, const std::string& suffix,
                                const SourceLocation& loc); // 读判定
     void defInitDropScopeDepth(std::size_t depth);                     // 出块按层清理
@@ -779,6 +780,11 @@ private:
     // 010（2026-09-23·任务 plans/021 010）：局部值类型变量初始化状态表（def-init，
     //   Rust E0381 对标·零运行时成本）——place 规范键集合=「尚未初始化」面。键=
     std::unordered_set<std::string> uninitPlaces_;
+    // 1771：循环体内「[] 写」（非常量下标写=该基数整体置位·001 §3.9 诚实边界
+    //   「循环填充惯用法漏报方向放行」）发生记录（存基数前缀键）——循环体恢复
+    //   进入态后重应用（体内写过的基数外溢=填充被认可），并向外层循环冒泡
+    //   （嵌套循环=外层填充的一部分）。仅循环体检查期消费，函数边界自然清空。
+    std::vector<std::string> defInitLoopDynWrites_;
     // def-init 语境豁免标志：成员/下标表达式的对象侧（s.横 的 s）是地址基非
     //   整体值读（后续字段/元素读判定自行精确处理）。写目标语境复用既有的
     //   assignmentTargetDepth_（150-a）。

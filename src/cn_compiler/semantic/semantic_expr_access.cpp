@@ -414,8 +414,10 @@ void SemanticAnalyzer::visitMemberExpr(MemberExpr* node) {
         if (f.name == memberName) {
             lastType_ = canonicalType(
                 resolveGenericTypeName(f.type, node->location));
-            // 010（def-init）：结构体叶子字段读判定（写目标/链中间对象侧跳过）
-            if (assignmentTargetDepth_ == 0 && !inAddrBaseCtx_) {
+            // 010（def-init）：结构体叶子字段读判定（写目标/链中间对象侧跳过；
+            //   1771：取地址语境 &签.字段 同跳——place 引用非值读，置位通道在
+            //   checkAddressOfUnary 统一走）
+            if (assignmentTargetDepth_ == 0 && !inAddrBaseCtx_ && !inAddrOfCtx_) {
                 std::string diName, diSuffix;
                 if (defInitPlaceOf(node, diName, diSuffix)) {
                     defInitCheckReadPlace(diName, diSuffix, node->location);
@@ -514,8 +516,10 @@ void SemanticAnalyzer::visitIndexExpr(IndexExpr* node) {
         }
         lastType_ = types::arrayElemOf(objectType);
         // 010（def-init）：数组元素读判定（写目标 assignmentTargetDepth_>0 /
-        //   链中间对象侧 inAddrBaseCtx_ 跳过——外层节点精确判定）
-        if (assignmentTargetDepth_ == 0 && !inAddrBaseCtx_) {
+        //   链中间对象侧 inAddrBaseCtx_ 跳过——外层节点精确判定；1771：取地址
+        //   语境 &槽[0] 同跳——place 引用非值读（001 §3.9「取地址=初始化通道，
+        //   取地址后读取放行」），整体置位通道在 checkAddressOfUnary 统一走）
+        if (assignmentTargetDepth_ == 0 && !inAddrBaseCtx_ && !inAddrOfCtx_) {
             std::string diName, diSuffix;
             if (defInitPlaceOf(node, diName, diSuffix)) {
                 defInitCheckReadPlace(diName, diSuffix, node->location);

@@ -125,6 +125,13 @@ void SemanticAnalyzer::defInitRegisterDecl(const std::string& name, const std::s
     for (const auto& k : leaves) uninitPlaces_.insert(k);
 }
 
+void SemanticAnalyzer::defInitEraseBasePrefix(const std::string& prefix) {
+    for (auto it = uninitPlaces_.begin(); it != uninitPlaces_.end();) {
+        if (it->rfind(prefix, 0) == 0) it = uninitPlaces_.erase(it);
+        else ++it;
+    }
+}
+
 void SemanticAnalyzer::defInitMarkInitPlace(const std::string& name, const std::string& suffix) {
     const int depth = defInitLookupDepth(name).value_or(-1);  // 1360 结果化批3A：无值(未声明)→-1 显形回落，下方 <0 分流保持
     if (depth < 0) return;
@@ -132,11 +139,18 @@ void SemanticAnalyzer::defInitMarkInitPlace(const std::string& name, const std::
     // 非常量下标写（后缀含 "[]"）=该基数整体置位（循环填充惯用法放行）
     std::string prefix = base + suffix;
     const std::size_t dynIdx = suffix.find("[]");
-    if (dynIdx != std::string::npos) prefix = base + suffix.substr(0, dynIdx);
-    for (auto it = uninitPlaces_.begin(); it != uninitPlaces_.end();) {
-        if (it->rfind(prefix, 0) == 0) it = uninitPlaces_.erase(it);
-        else ++it;
+    if (dynIdx != std::string::npos) {
+        prefix = base + suffix.substr(0, dynIdx);
+        // 1771：循环体内 [] 写=循环填充惯用法（001 §3.9 诚实边界·漏报方向）——
+        //   记录基数前缀供循环体恢复后重应用（体内写过的基数外溢·嵌套循环冒泡）；
+        //   循环体外写点即时生效无恢复面，不记录（防跨语句残留累积）。
+        // 静默豁免业务值: 循环嵌套深度谓词（loopDepth_>0=在循环体内·门控记录面，
+        //   非查表 miss 无默认值通道；深度无自然上界=开区间本质）
+        if (loopDepth_ > 0) {
+            defInitLoopDynWrites_.push_back(prefix);
+        }
     }
+    defInitEraseBasePrefix(prefix);
 }
 
 void SemanticAnalyzer::defInitCheckReadPlace(const std::string& name, const std::string& suffix,
@@ -270,8 +284,34 @@ void SemanticAnalyzer::defInitCheckIf(IfStmt* node) {
 
 void SemanticAnalyzer::defInitCheckLoopBody(BlockStmt* body) {
     const std::unordered_set<std::string> base = uninitPlaces_;
+    // 1771：本层循环体的 [] 写记录与本层前的外层记录隔离（体内记录只归本层
+    //   消费+冒泡，外层挂起记录不受体内检查影响）
+    std::vector<std::string> savedDynWrites = std::move(defInitLoopDynWrites_);
+    defInitLoopDynWrites_.clear();
     checkBlock(body);
-    uninitPlaces_ = base;  // 体可能 0 次执行+回边保守——体内置位不外溢
+    // 体内「[] 写」基数前缀=本层填充面（常量下标/标量/字段写不记录——001 §3.9
+    //   「循环体内赋值不外溢」保守口径对它们维持）
+    std::vector<std::string> bodyDynWrites = std::move(defInitLoopDynWrites_);
+    // 体可能 0 次执行+回边保守——体内置位先回滚进入态
+    uninitPlaces_ = base;
+    // 1771：循环填充惯用法放行（001 §3.9 诚实边界·漏报方向）——体内 [] 写
+    //   过的基数重应用整体置位（循环执行即填充的惯用语义；循环 0 次的漏报=
+    //   设计接受的诚实边界）。v2 侧同面放行（零分叉）。
+    for (const auto& prefix : bodyDynWrites) {
+        defInitEraseBasePrefix(prefix);
+    }
+    // 冒泡口径（loopDepth_ 进入本函数前已含本层）：嵌套循环（>1）本层记录并入
+    //   挂起集冒泡——内层填充=外层填充的一部分，外层恢复时同样重应用；最外层
+    //   （==1）本层记录消费完即弃（恢复挂起集=循环外不记录守卫下恒空），不跨
+    //   语句残留。
+    // 静默豁免业务值: 循环嵌套深度谓词（loopDepth_>1=嵌套循环内·门控冒泡面，
+    //   非查表 miss 无默认值通道；深度无自然上界=开区间本质）
+    if (loopDepth_ > 1) {
+        for (const auto& prefix : bodyDynWrites) {
+            savedDynWrites.push_back(prefix);
+        }
+    }
+    defInitLoopDynWrites_ = std::move(savedDynWrites);
 }
 
 } // namespace cn_compiler
