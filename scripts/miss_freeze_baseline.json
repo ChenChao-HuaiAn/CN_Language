@@ -2887,7 +2887,13 @@
    "src/runtime/system_api.cpp::if(MultiByteToWideChar(CP_UTF8,0,name,-1,wideName.data(),nameLen)<=0){",
    "src/runtime/system_api.cpp::if(nameLen<=0)return2;",
    "src/runtime/system_api.cpp::if(valueLen<=0)return2;",
-   "src/runtime/time_api.cpp::if(ts<0)returnnullptr;"
+   "src/runtime/time_api.cpp::if(ts<0)returnnullptr;",
+   "CN语言编译器v2/语义/语义检查转换标量.cn::如果(c609.类型!=节点_调用||c609.子起点<=0){返回假;}",
+   "CN语言编译器v2/语义/语义检查转换标量.cn::如果(源类型ID824>0&&是泛型参数名(源类型ID824)){返回;}",
+   "CN语言编译器v2/语义/语义检查转换标量.cn::如果(源类型ID<=0){返回真;}",
+   "CN语言编译器v2/语义/语义检查转换标量.cn::如果(目标类型ID<=0){返回;}",
+   "CN语言编译器v2/语义/语义检查转换标量.cn::如果(目标类型ID<=0){返回真;}",
+   "CN语言编译器v2/语义/语义检查转换标量.cn::如果(负源740<=0){返回真;}"
   ],
   "红旗词面": [
    "CN语言编译器v2/IR/IR生成类型辅助.cn:://登记缺=保守回退原路径（诊断由下游发）",
@@ -3650,7 +3656,14 @@
    "src/runtime/system_api.cpp::if(index<0||index>=g_cached_argc||g_cached_argv==nullptr){│returnnullptr;",
    "src/runtime/time_api.cpp::if(localtime_r(&t,&local)==nullptr)returnnullptr;",
    "src/runtime/time_api.cpp::if(result==nullptr)returnnullptr;",
-   "src/runtime/time_api.cpp::if(ts<0)returnnullptr;"
+   "src/runtime/time_api.cpp::if(ts<0)returnnullptr;",
+   "CN语言编译器v2/语义/语义检查转换标量.cn::如果(!(源整数||源浮点)){返回假;}",
+   "CN语言编译器v2/语义/语义检查转换标量.cn::如果(!(目标整数||目标浮点||目标字符||目标布尔||目标字符串)){返回真;}",
+   "CN语言编译器v2/语义/语义检查转换标量.cn::如果(!字面量文本入域(常量数919,目标文本,常负919)){返回假;}",
+   "CN语言编译器v2/语义/语义检查转换标量.cn::如果(!承载内919){│返回真;",
+   "CN语言编译器v2/语义/语义检查转换标量.cn::如果(c609.子起点>=池.大小()){返回假;}",
+   "CN语言编译器v2/语义/语义检查转换标量.cn::如果(源末索引<0||源末索引>=整32(池.大小())){返回真;}",
+   "CN语言编译器v2/语义/语义检查转换标量.cn::如果(调用节点索引<0||调用节点索引>=整32(池.大小())){返回假;}"
   ]
  }
 }
