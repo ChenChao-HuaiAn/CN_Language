@@ -58,8 +58,9 @@ private:
                              const std::vector<ir::IRValue>& out,
                              const std::vector<ir::IRValue>& tail);
 
-    // 整型比较（按类型位宽解读为有符号）与浮点比较 -> 布尔结果
-    //   浮点比较按操作数类型域判定（f32 侧先按 float32 舍入——#1822）
+    // 整型比较（按类型位宽解读为有符号）与浮点比较 -> 布尔结果。
+    //   浮点比较按操作数类型域折叠（f32=float32 域/f64=double 域，
+    //   与运行期 ucomiss/ucomisd 同语义）
     static bool compareInt(ir::Opcode op, const std::string& a, const std::string& b,
                            const std::string& type, bool& result);
     static bool compareFloat(ir::Opcode op, const std::string& a, const std::string& b,

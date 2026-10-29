@@ -102,6 +102,20 @@ bool parseDouble(const std::string& text, double& out) {
     }
 }
 
+// 浮点常量文本 -> float32（经 double 正确舍入单次转换）。
+//   折叠链中间文本（%.9g）对 float32 往返无损：FLT_DECIMAL_DIG=9，文本量化
+//   相对偏差 < 5e-10，远小于 float32 半 ulp（相对 >= 2.9e-8），cast float
+//   舍回原位模式——f32 域折叠全程以本函数读回操作数，禁直接用 double 值运算。
+bool textToF32(const std::string& text, float& out) {
+    double d = 0.0;
+    // 静默豁免业务值: 文本不可解析=确权「不可折叠」返回 假，上层放弃折叠保留
+    //   运行期原指令求值（产物语义=未优化·无默认值无错值）——继承冻结基线同语义
+    //   旧锚 parseDouble 失败链放行面（1187 折叠放弃通道同构先例）
+    if (!parseDouble(text, d)) return false;
+    out = static_cast<float>(d);
+    return true;
+}
+
 // 有符号按位宽解读（-1 的 i8 位模式 0xFF -> -1）
 std::int64_t signExtend(std::uint64_t raw, int bits, const std::string& type) {
     const bool isUnsigned = (type.size() >= 2 && type[0] == 'u');
@@ -408,36 +422,37 @@ bool ConstFoldPass::foldFloatBinary(ir::Opcode op, const std::string& aText,
                                     const std::string& bText, const std::string& type,
                                     std::string& out) {
     if (!isFloatType(type)) return false;
-    double a = 0.0, b = 0.0;
-    if (!parseDouble(aText, a) || !parseDouble(bText, b)) return false;
-    // #1822 根治：f32 折叠必须在 float32 域求值——操作数先按 f32 舍入，
-    //   算术用 float 类型逐 op 舍入（IEEE binary32 语义）。原实现用 double
-    //   模拟 + %.9g 文本往返：常量文本 stod 得 double（0.1 ≠ 0.1f 的精确值），
-    //   中间产物 %.9g 文本化后 stod 读回再漂——误差复利把精确为 0.0f 的
-    //   0.1f+0.1f-0.2f 算成约 3e-9，O1+ 下 ==0.0f 折叠为假与运行期分叉
-    //   （cnsmith 双侧实录）。x64/arm64 上 C++ float 算术=SSE/NEON 逐 op
-    //   舍入，与运行期发射（addss 等）语义一致。
     if (type == "f32") {
-        const float fa = static_cast<float>(a);
-        const float fb = static_cast<float>(b);
-        float fr = 0.0f;
+        // 浮32 折叠全程 float32 域——与运行期 addss/subss/mulss/divss 同语义
+        //   （001：编译期常量折叠与三后端运行期发射同语义）。禁在 double 域
+        //   运算后截断：折叠链中间文本（%.9g）在 double 域二次运算时量化偏差
+        //   被减法放大——0.1f+0.1f-0.2f 曾折出 3e-9 假差（运行期 float32 域
+        //   位模式 0x3E4CCCCD-0x3E4CCCCD 精确=0），假差经 ×1e9 折成 3.0 整链
+        //   假值。float32 域运算后 %.9g 文本往返仍无损（见 textToF32）。
+        float a = 0.0f, b = 0.0f;
+        // 静默豁免业务值: 文本不可解析=确权「不可折叠」返回 假，上层放弃折叠保留
+        //   运行期原指令求值（无默认值无错值）——继承冻结基线同语义旧锚
+        //   parseDouble 失败链放行面（1187 折叠放弃通道同构先例）
+        if (!textToF32(aText, a) || !textToF32(bText, b)) return false;
+        float result = 0.0f;
         switch (op) {
-            case ir::Opcode::Add: fr = fa + fb; break;
-            case ir::Opcode::Sub: fr = fa - fb; break;
-            case ir::Opcode::Mul: fr = fa * fb; break;
+            case ir::Opcode::Add: result = a + b; break;
+            case ir::Opcode::Sub: result = a - b; break;
+            case ir::Opcode::Mul: result = a * b; break;
             case ir::Opcode::Div:
-                // 浮点除零不折叠（保留 IEEE 语义/运行期行为；判域按 f32 圆整后
-                //   的值——与运行期 divss 的除数零判定同域）
-                if (fb == 0.0f) return false;
-                fr = fa / fb;
+                // 浮点除零不折叠（保留 IEEE 语义/运行期行为）
+                if (b == 0.0f) return false;
+                result = a / b;
                 break;
             default:
                 return false;
         }
-        out = formatDouble(static_cast<double>(fr), type);
+        out = formatDouble(static_cast<double>(result), type);
         return true;
     }
-    // f64：double 域即语义域（文本 stod 就是 f64 语义值；%.17g 文本往返精确）
+    // 浮64：double 域运算（与运行期 addsd/subss 族同语义）
+    double a = 0.0, b = 0.0;
+    if (!parseDouble(aText, a) || !parseDouble(bText, b)) return false;
     double result = 0.0;
     switch (op) {
         case ir::Opcode::Add: result = a + b; break;
@@ -476,7 +491,13 @@ bool ConstFoldPass::foldCast(const std::string& fromType, const std::string& fro
     if (isIntType(fromType) && isFloatType(toType)) {
         std::int64_t value = 0;
         if (!parseInt64(fromText, value)) return false;
-        out = formatDouble(static_cast<double>(value), toType);
+        // 浮32 目标单次正确舍入（与运行期 cvtsi2ss 同语义）——禁经 double
+        //   中转双重舍入（int64 大值落在 double/float 舍入边界间时差 1 ulp）。
+        //   浮点目标闭集 {f32, f64}，三目显式枚举（else 降格纪律）
+        const double promoted = (toType == "f32")
+            ? static_cast<double>(static_cast<float>(value))
+            : static_cast<double>(value);
+        out = formatDouble(promoted, toType);
         isFloat = true;
         return true;
     }
@@ -490,6 +511,12 @@ bool ConstFoldPass::foldCast(const std::string& fromType, const std::string& fro
     if (isFloatType(fromType) && isIntType(toType)) {
         double d = 0.0;
         if (!parseDouble(fromText, d)) return false;
+        // 浮32 源先按 f32 精度截断再判界/截断（与下方 f32->f64 审查修复同构）
+        //   ——%.9g 折叠文本在 double 域直接判界时量化偏差可跨整数边界
+        //   （2^30f 的 %.9g 文本读回差 4，饱和/截断结果错位）
+        if (fromType == "f32") {
+            d = static_cast<double>(static_cast<float>(d));
+        }
         const int bits = intBitWidth(toType);
         if (d != d) {  // NaN → 0
             out = "0";
@@ -596,30 +623,32 @@ bool ConstFoldPass::compareInt(ir::Opcode op, const std::string& aText,
     return true;
 }
 
-// 浮点比较（#1822：新增 type 参数——f32 侧操作数先按 float32 舍入再判定）
+// 浮点比较（f32=float32 域读回/f64=double 域——与运行期 ucomiss/ucomisd 同语义）。
+//   禁一律 double 域比较：折叠链中间文本（%.9g）在 double 域比较时量化偏差
+//   可翻转相等判定（0.2f==0.2f 曾折出假「真」——两文本 double 域差 2e-11，
+//   float32 域同位模式必等）
 bool ConstFoldPass::compareFloat(ir::Opcode op, const std::string& aText,
                                  const std::string& bText, const std::string& type,
                                  bool& result) {
-    double a = 0.0, b = 0.0;
-    if (!parseDouble(aText, a) || !parseDouble(bText, b)) return false;
     if (type == "f32") {
-        // #1822 根治：f32 比较按 f32 域判定——%.9g 产物文本 stod 读回的 double
-        //   不等于原 f32 值（如折叠产物 0.200000003 ≠ 0.2f 精确值），直接
-        //   double 比较会把 IEEE 应相等的两值判不等（NaN 时 C++ 比较全假/
-        //   != 真=IEEE ordered，与运行期 setnp 组合语义一致）
-        const float fa = static_cast<float>(a);
-        const float fb = static_cast<float>(b);
+        float a = 0.0f, b = 0.0f;
+        // 静默豁免业务值: 文本不可解析=确权「不可折叠」返回 假，上层放弃折叠保留
+        //   运行期原指令求值（无默认值无错值）——继承冻结基线同语义旧锚
+        //   parseDouble 失败链放行面（1187 折叠放弃通道同构先例）
+        if (!textToF32(aText, a) || !textToF32(bText, b)) return false;
         switch (op) {
-            case ir::Opcode::Eq: result = (fa == fb); break;
-            case ir::Opcode::Ne: result = (fa != fb); break;
-            case ir::Opcode::Lt: result = (fa < fb); break;
-            case ir::Opcode::Le: result = (fa <= fb); break;
-            case ir::Opcode::Gt: result = (fa > fb); break;
-            case ir::Opcode::Ge: result = (fa >= fb); break;
+            case ir::Opcode::Eq: result = (a == b); break;
+            case ir::Opcode::Ne: result = (a != b); break;
+            case ir::Opcode::Lt: result = (a < b); break;
+            case ir::Opcode::Le: result = (a <= b); break;
+            case ir::Opcode::Gt: result = (a > b); break;
+            case ir::Opcode::Ge: result = (a >= b); break;
             default: return false;
         }
         return true;
     }
+    double a = 0.0, b = 0.0;
+    if (!parseDouble(aText, a) || !parseDouble(bText, b)) return false;
     switch (op) {
         case ir::Opcode::Eq: result = (a == b); break;
         case ir::Opcode::Ne: result = (a != b); break;
