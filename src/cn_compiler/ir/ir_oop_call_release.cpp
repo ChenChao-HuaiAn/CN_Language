@@ -576,7 +576,10 @@ void IRGenerator::emitStrArrayElemFreesFor(const std::string& unique) {
     //   （this=元素地址·内联体·析构释放内部数据指针；不 DeleteObject 不
     //   free 本体）。幂等：析构后元素首字段清零+二次调用安全（容器析构
     //   空数据指针跳过——p2d 泄漏面收口）。
-    const std::string elemCanon955 = types::canonical(types::arrayElemOf(srcType));
+    // 1768（1607 轮 #1459 同族·二维缺口根治）：类元素判定落**基元素**——二维
+    //   类[2][3] 的 arrayElemOf=「类[3]」（带维度尾缀）非类 → 原分支早退=元素
+    //   资源块出口全漏；基元素剥全部维度（一维等价零变化）。
+    const std::string elemCanon955 = types::arrayBaseElemOf(srcType);
     if (semantic_->isClassType(elemCanon955)) {
         const ClassInfo* eci955 = semantic_->findClass(elemCanon955).value_or(nullptr);
         if (eci955 == nullptr) return;
@@ -598,10 +601,14 @@ void IRGenerator::emitStrArrayElemFreesFor(const std::string& unique) {
                 dtor955->ownerClass.empty() ? elemCanon955 : dtor955->ownerClass;
             dtorSym955 = methodSymbolKey(owner955, dtor955->sigKey);
         }
-        // 1360 结果化：守卫面恒有值——无值/零长即早退（保持原 len<=0 口径）
-        const cn::Optional<int> len955Opt = types::arrayLenOf(srcType);
-        if (!len955Opt.has_value() || len955Opt.value() <= 0) return;
-        const int len955 = len955Opt.value();
+        // 1768：展开长度=数组总元素数（各维乘积·一维=原长度）、步进=基元素
+        //   尺寸（一维=原元素步进）——二维原用首层长度×外层步进=只释放每行
+        //   首元素（1415 修前同形缺陷）。
+        // 1360 结果化：无值/零长即早退（总元素数任一维求值失败=无值·不猜）
+        const cn::Optional<long long> totalElemsOpt =
+            types::arrayTotalElemCount(srcType);
+        if (!totalElemsOpt.has_value() || totalElemsOpt.value() <= 0) return;
+        const long long len955 = totalElemsOpt.value();
         int stride955 = semantic_->typeSizeOf(elemCanon955).value_or(8);
         if (stride955 <= 0) stride955 = 8;
         const SourceLocation loc955;
@@ -685,17 +692,20 @@ void IRGenerator::emitStrArrayElemFreesFor(const std::string& unique) {
                 return;
             }
         }
-    if (types::arrayElemOf(srcType) != "字符串") return;
-    const cn::Optional<int> lenOpt = types::arrayLenOf(srcType);
+    // 1768（1607 轮 #1459 同族·二维缺口根治）：字符串元素判定落**基元素**——
+    //   二维 字符串[2][3] 的 arrayElemOf=「字符串[3]」≠"字符串" 原早退=出口全漏；
+    //   展开长度=数组总元素数、步进=基元素尺寸（一维形态=原长度×原步进等价）。
+    if (types::arrayBaseElemOf(srcType) != "字符串") return;
+    const cn::Optional<long long> lenOpt = types::arrayTotalElemCount(srcType);
     if (!lenOpt.has_value() || lenOpt.value() <= 0) return;
-    const int len = lenOpt.value();
-    int elemStride = semantic_->typeSizeOf(types::arrayElemOf(srcType)).value_or(8);
+    const long long len = lenOpt.value();
+    int elemStride = semantic_->typeSizeOf("字符串").value_or(8);
     if (elemStride <= 0) elemStride = 8;
     const SourceLocation loc;
     ir::IRValue base = emitResult(ir::Opcode::AddrOf,
                                   {ir::IRValue::var(unique, "ptr")}, "ptr",
                                   unique, loc);
-    for (int i = 0; i < len; ++i) {
+    for (long long i = 0; i < len; ++i) {
         ir::IRValue addr = base;
         if (i > 0) {
             ir::IRValue off = emitResult(

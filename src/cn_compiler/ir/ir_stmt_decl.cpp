@@ -422,8 +422,11 @@ void IRGenerator::registerOwnedArrayElems(const DeclGenCtx& ctx) {
     //   列表分支（该分支以 return 结束）之前**（首版置于函数后段=带初始化列表的
     //   数组声明不可达、产物零 __cn_str_free，asm 实证）；块出口/跳出/函数尾
     //   逐元素 __cn_str_free（元素=字符串；宿主 79-a 靶子面「数组元素残留 2」收口）
+    // 1768（1607 轮 #1459 同族·二维缺口根治）：判定落**基元素**——二维
+    //   字符串[2][3] 的 arrayElemOf=「字符串[3]」≠"字符串" → 原不登记=元素
+    //   出口全漏（与释放面 emitStrArrayElemFreesFor 同源判据·一维等价）。
     if (semantic_ != nullptr && types::isArray(ctx.srcType) && !ctx.unique.empty() &&
-        types::arrayElemOf(types::canonical(ctx.srcType)) == "字符串") {
+        types::arrayBaseElemOf(types::canonical(ctx.srcType)) == "字符串") {
         ownedStrArrayOrder_.push_back(ctx.unique);
     }
     // 955（008 总攻·六位置余三）：**类容器元素数组**同名单登记——出口按元素
@@ -431,8 +434,9 @@ void IRGenerator::registerOwnedArrayElems(const DeclGenCtx& ctx) {
     //   不 DeleteObject——析构释放内部数据指针〕）。p2d 实证：赋值/方法调用
     //   健康但块收尾不回基线=元素内部资源泄漏（98-a 只覆盖字符串元素）。
     if (semantic_ != nullptr && types::isArray(ctx.srcType) && !ctx.unique.empty()) {
+        // 1768：类元素登记同落基元素（二维 类[2][3] 原「类[3]」非类 → 不登记）。
         const std::string elemCanon955 =
-            types::canonical(types::arrayElemOf(types::canonical(ctx.srcType)));
+            types::arrayBaseElemOf(types::canonical(ctx.srcType));
         if (semantic_->isClassType(elemCanon955)) {
             const ClassInfo* eci955 = semantic_->findClass(elemCanon955).value_or(nullptr);
             if (eci955 != nullptr) {
