@@ -715,12 +715,16 @@ def 读e2e明细(路径: Path):
 
 
 def e2e命令基(cn: Path, 保内存: int, 平台: str, 是win: bool,
-              须M6: bool = False) -> list:
+              须M6: bool = False, 跳重型: bool = False,
+              速停: bool = False) -> list:
     """1297 提取：e2e 命令公共段（主实例全量/分片与从实例片轮三处共用·纪律二）——
     --target/--cn/--max-mem/--heavy-ci/--full-reason 一致口径；--json/--shard/--jobs
     由调用方按形态追加。566 注释原文见 ci_daemon 静态门禁与e2e段（放行通道语义不变）。
     #1221：须M6=True 追加 --require-m6（写集命中 codegen/opt/ir 的轮——79_v2 未跑/
-    未通过=本轮红）；从片（片序≥1）不含 79_v2，调用方不传=「未选」不误红。"""
+    未通过=本轮红）；从片（片序≥1）不含 79_v2，调用方不传=「未选」不误红。
+    #1796：跳重型=True 追加 --skip-heavy（自举链写集未触发轮跳 78/79——调用方
+    须先经 e2e支持跳重型() 探测·旧版 run_e2e 不传=无害降级恒跑）。
+    #1797：速停=True 追加 --fail-fast（红轮早停·同经 e2e支持速停() 探测降级）。"""
     基 = ([] if 是win else ["nice", "-n", "10"]) + [
         sys.executable, "tests/e2e/run_e2e.py",
         "--target", 平台, "--cn", str(cn),
@@ -728,6 +732,10 @@ def e2e命令基(cn: Path, 保内存: int, 平台: str, 是win: bool,
         "--heavy-ci"]
     if 须M6:
         基.append("--require-m6")
+    if 跳重型:
+        基.append("--skip-heavy")
+    if 速停:
+        基.append("--fail-fast")
     return 基 + ["--full-reason", "ci_daemon 云端全量门禁（TX_02/池 runner）"]
 
 

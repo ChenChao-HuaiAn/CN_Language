@@ -53,6 +53,32 @@ def M6原生可跑(平台: str, 机架: str) -> bool:
     return m6_gate.平台可跑M6(平台, 交叉模拟态(平台, 机架))
 
 
+def e2e支持速停(源: str = None) -> bool:
+    """#1797：任务树 run_e2e.py 是否已带 --fail-fast（跨版本兼容窗口防护——daemon
+    侧新于工作树时向旧版传未知参数=argparse 假红）。探测失败/旧版=False→调用方
+    不传=无害降级跑全集（行为与既有轮完全一致）。源=可注入（selftest 零文件系统）。"""
+    return _run_e2e源码含参("--fail-fast", 源)
+
+
+def e2e支持跳重型(源: str = None) -> bool:
+    """#1796：任务树 run_e2e.py 是否已带 --skip-heavy（同上口径）。探测失败/
+    旧版=False→调用方不传=无害降级恒跑 78/79（现状行为）。"""
+    return _run_e2e源码含参("--skip-heavy", 源)
+
+
+def _run_e2e源码含参(参数文本: str, 源: str = None) -> bool:
+    """探测共用体（源码含参判定单点）：源注入/selftest 零文件系统；缺省读
+    任务树 tests/e2e/run_e2e.py（仓库根=本文件 scripts/ 父目录·ci_fallback 同款）。"""
+    if 源 is not None:
+        return 参数文本 in 源
+    树根 = Path(__file__).resolve().parent.parent
+    try:
+        return 参数文本 in (树根 / "tests" / "e2e" / "run_e2e.py").read_text(
+            encoding="utf-8", errors="replace")
+    except OSError:
+        return False
+
+
 def 轮写集(轮分支: str, sha: str, 仓库根: Path,
            远端: str = "origin", 基线查=None,
            运行=None) -> tuple[list[str] | None, str]:
@@ -114,9 +140,14 @@ def 轮计划(轮分支: str, sha: str, 平台: str, 是win: bool, 仓库根: Pa
     写集, 原因 = 轮写集(轮分支, sha, 仓库根, 远端, 基线查, 运行)
     if 写集 is None:
         计划 = m6_gate.判定未知写集(原因, 平台, 交叉)
+        # #1796：写集不可判=自举面 fail-safe 触发（照跑 78/79——多付优于漏验）
+        计划["自举链"] = {"触发": True, "命中": [],
+                        "说明": "自举链 fail-safe 触发（写集不可判：%s）" % 原因}
     else:
         计划 = m6_gate.判定轮(写集, 平台, 交叉)
         计划["写集原因"] = 原因
+        # #1796：同一写集顺带自举链判定（78/79 按需档·e2e段 消费）
+        计划["自举链"] = m6_gate.判定自举写集(写集)
     return 计划
 
 
@@ -167,6 +198,10 @@ def e2e段(步骤们: dict, 步骤, cn: Path, 日志, sha: str, 轮分支: str, 
     """
     计划 = 计划 if isinstance(计划, dict) and 计划.get("处置") else \
         m6_gate.判定未知写集("M6 计划缺失/形态坏", 平台, 交叉模拟态(平台, ""))
+    if not isinstance(计划.get("自举链"), dict) or "触发" not in 计划["自举链"]:
+        # #1796：自举判定缺失/形态坏=fail-safe 照跑（不静默当未触发）
+        计划["自举链"] = {"触发": True, "命中": [],
+                        "说明": "自举链 fail-safe 触发（判定缺失/形态坏）"}
     触发 = bool(计划.get("触发"))
     可跑 = bool(计划.get("平台可跑"))
     须M6 = 触发 and 可跑
@@ -206,7 +241,17 @@ def e2e段(步骤们: dict, 步骤, cn: Path, 日志, sha: str, 轮分支: str, 
             步骤们["M6平台保障"] = {"rc": -1, "类别": "物理内存探测失败",
                                    "说明": "E2E 未跑——M6 执行证据缺失（#1608）"}
         return
-    e2e基 = ci_shard.e2e命令基(cn, 保内存, 平台, 是win, 须M6=须M6)
+    # #1796/#1797：78/79 按需档与红轮早停——自举未触发且无须 M6 才跳重型
+    #   （M6 面 ⊂ 自举面·机械包含，互斥由 run_e2e 解析断言兜底）；两参均经源码
+    #   探测（e2e支持跳重型/速停）——旧版 run_e2e 不传=无害降级（恒跑/跑全集）。
+    自举触发 = bool(计划["自举链"]["触发"])
+    跳重型 = (not 须M6) and (not 自举触发) and e2e支持跳重型()
+    if 跳重型:
+        步骤们["自举链档"] = {"rc": 0, "说明": 计划["自举链"]["说明"]}
+        print("  [自举档] %s" % 计划["自举链"]["说明"], file=日志, flush=True)
+    速停 = e2e支持速停()
+    e2e基 = ci_shard.e2e命令基(cn, 保内存, 平台, 是win, 须M6=须M6,
+                              跳重型=跳重型, 速停=速停)
     # #1221 复审 P2：命中清单随环境进 run_e2e 审计记录（子进程继承；轮后恢复）
     原命中 = os.environ.get("CN_M6_HITS")
     if 须M6:

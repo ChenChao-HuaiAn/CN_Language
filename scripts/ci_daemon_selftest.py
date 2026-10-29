@@ -681,12 +681,16 @@ def _770断言(主模块, 断言) -> None:
     断言("770 文本锁：兜底入池零认领限制实参（服务端轮转唯一权威·1297 起=ci_fallback）",
          '"task_enqueue"' in 兜底源 and "认领限制" not in 兜底源
          and "M6必跑" in 兜底源)   # #1569：M6 必跑随入队上报（服务端限原生平台）
+    # #1795：派发决策块外迁 ci_fallback.develop头处理——锁点跟随（行为语义不变）
+    import ci_fallback as 兜底面
+    import inspect as 取源码
+    头源 = 取源码.getsource(兜底面.develop头处理)
     断言("770 修复锁：头已交池（sha in 已入池）分支在位且先于开跑——本机不重复直跑"
-         "（三平台同验实录 2026-10-14 深夜）",
-         "if sha in 已入池 or list(日志目录.glob" in 源
-         and 源.index("if sha in 已入池 or list") < 源.rindex("[开跑]"))
+         "（三平台同验实录 2026-10-14 深夜·#1795 外迁后锁 develop头处理）",
+         'if sha in 语境["已入池"] or list(语境["日志目录"].glob' in 头源
+         and 头源.index('if sha in 语境["已入池"] or list') < 头源.rindex("[开跑]"))
     断言("770 修复锁：入池失败降级显式化（[降级] 输出·门禁永不缺位）",
-         "[降级] 兜底入池失败" in 源)
+         "[降级] 兜底入池失败" in 头源)
 
 
 def _1297断言(断言) -> None:
@@ -1469,6 +1473,7 @@ def _1221断言(主模块, 断言) -> None:
              "M6平台保障" not in 跑一段(dict(豁免), None)[0])
         # #1221 P2：跨版本探测——旧版 run_e2e 无 --require-m6 时 fail-closed（不传参）
         import ci_shard as _cs
+        import ci_m6 as _cm
         _原探 = _cs.e2e支持m6
         _cs.e2e支持m6 = lambda 源=None: False
         try:
@@ -1481,6 +1486,42 @@ def _1221断言(主模块, 断言) -> None:
              and not any("--require-m6" in c for _, c in 命令版))
         断言("#1221 e2e支持m6 探测：源码含/不含两态",
              _cs.e2e支持m6("x --require-m6 y") and not _cs.e2e支持m6("x"))
+        # #1796/#1797：78/79 按需档与红轮早停——命令三参/降级/互斥/fail-safe/观测面
+        步免, 命免 = 跑一段(dict(豁免), None)
+        断言("#1796 自举档：纯文档写集→命令带 --skip-heavy 且写自举链档 rc=0",
+             any("--skip-heavy" in c for _, c in 命免)
+             and 步免.get("自举链档", {}).get("rc") == 0)
+        断言("#1797 速停：云端轮命令带 --fail-fast（探测本树 run_e2e 支持）",
+             any("--fail-fast" in c for _, c in 命免))
+        断言("#1796 互斥面：M6 必跑轮命令不带 --skip-heavy（require 优先·机械包含）",
+             not any("--skip-heavy" in c for _, c in 命令们))
+        计坏 = dict(豁免)
+        计坏.pop("自举链")
+        步坏, 命坏 = 跑一段(计坏, None)
+        断言("#1796 自举判定缺失→fail-safe 照跑（不带 --skip-heavy·无自举链档）",
+             not any("--skip-heavy" in c for _, c in 命坏)
+             and "自举链档" not in 步坏)
+        _原跳, _原速 = _cm.e2e支持跳重型, _cm.e2e支持速停
+        _cm.e2e支持跳重型 = lambda 源=None: False
+        _cm.e2e支持速停 = lambda 源=None: False
+        try:
+            步旧, 命旧 = 跑一段(dict(豁免), None)
+        finally:
+            _cm.e2e支持跳重型, _cm.e2e支持速停 = _原跳, _原速
+        断言("#1796/#1797 版本探测：旧版 run_e2e→不传 --skip-heavy/--fail-fast（无害降级恒跑）",
+             not any("--skip-heavy" in c for _, c in 命旧)
+             and not any("--fail-fast" in c for _, c in 命旧)
+             and "自举链档" not in 步旧)
+        断言("#1796/#1797 e2e支持速停/跳重型 探测：源码含/不含两态",
+             _cm.e2e支持速停("x --fail-fast y") and not _cm.e2e支持速停("x")
+             and _cm.e2e支持跳重型("x --skip-heavy y")
+             and not _cm.e2e支持跳重型("x"))
+        基参 = _cs.e2e命令基(Path("cn"), 4096, "win-x64", True, 须M6=True,
+                           跳重型=True, 速停=True)
+        断言("#1796/#1797 e2e命令基：三参齐发且位于 --full-reason 前",
+             "--require-m6" in 基参 and "--skip-heavy" in 基参
+             and "--fail-fast" in 基参
+             and 基参.index("--require-m6") < 基参.index("--full-reason"))
 
     # ⑦ 轮结果/直跑收口/预验分支 sha10（ci_round）
     断言("#1221 预验分支 sha10：M6 非幂等后缀兼容（P0-1）",
@@ -1851,13 +1892,67 @@ def _1667断言(主模块, 断言) -> None:
     断言("1667 结构：池认领走整任务认领判定 + 载荷携带能力位",
          "ci_shard.整任务认领判定(" in 源认领 and '"交叉模拟": 交叉模拟实例' in 源认领)
     源daemon = inspect.getsource(主模块)
-    断言("1667 结构：develop 降级直跑让路在位（交叉模拟不直跑全量）",
-         "ci_shard.整任务可认领(交叉模拟实例)" in 源daemon
-         and "不直跑 develop 全量" in 源daemon)
+    # #1795：让路面随派发块外迁——锁 ci_fallback.develop头处理（daemon 只留调用点）
+    import ci_fallback as 兜底面
+    让路块源 = inspect.getsource(兜底面.develop头处理)
+    断言("1667 结构：develop 降级直跑让路在位（交叉模拟不直跑全量·#1795 外迁后锁外迁块）",
+         "ci_shard.整任务可认领(语境[\"交叉模拟实例\"])" in 让路块源
+         and "不直跑 develop 全量" in 让路块源
+         and "develop头处理(sha, develop语境)" in 源daemon)
     # 拆分红线：ci_shard 曾 1026 行——#1665/#1667 识别面外迁 ci_xsim 后必须 <1000
     源目录 = Path(__file__).resolve().parent
     断言("1667 行数红线：ci_shard.py <1000（交叉模拟识别面外迁 ci_xsim 防回涨）",
          len((源目录 / "ci_shard.py").read_text(encoding="utf-8").splitlines()) < 1000)
+
+
+def _限频攒批判言(断言) -> None:
+    """#1795 门禁全量轮限频攒批：限频放行否 五态 + develop头处理 攒批路径桩直调。"""
+    import ci_fallback as _cf
+    with tempfile.TemporaryDirectory() as _t:
+        原目 = _cf._日志目录
+        _cf._日志目录 = Path(_t)
+        原间 = os.environ.get("CN_GATE_MIN_INTERVAL_SEC")
+        try:
+            断言("#1795 限频：状态缺失（无 latest/result）→保守放行",
+                 _cf.限频放行否(现在=2000000000.0)[0])
+            (_cf._日志目录 / "latest.json").write_text("{}", encoding="utf-8")
+            os.utime(_cf._日志目录 / "latest.json", (0, 0))   # 1970=陈旧
+            断言("#1795 限频：latest 陈旧（距今≫间隔）→放行",
+                 _cf.限频放行否(现在=2000000000.0)[0])
+            os.utime(_cf._日志目录 / "latest.json",
+                     (1999999000.0, 1999999000.0))            # 距今 1000s
+            放, 缘 = _cf.限频放行否(现在=2000000000.0)
+            断言("#1795 限频：距上次绿 1000s<7200s→攒批",
+                 not 放 and "攒批" in 缘)
+            os.environ["CN_GATE_MIN_INTERVAL_SEC"] = "600"
+            断言("#1795 限频：env 间隔 600s·距 1000s→放行（env 可调）",
+                 _cf.限频放行否(现在=2000000000.0)[0])
+            del os.environ["CN_GATE_MIN_INTERVAL_SEC"]
+            # develop头处理 攒批路径：窗口内不入池恒消费（True）·幂等档不误判
+            入池调用: list = []
+            原入池 = _cf.兜底入池
+            _cf.兜底入池 = lambda s: 入池调用.append(s) or True
+            try:
+                消费 = _cf.develop头处理("d" * 40, {
+                    "常驻": True, "已入池": set(), "日志目录": _cf._日志目录,
+                    "交叉模拟实例": False, "平台": "win-x64",
+                    "带门禁锁跑": lambda s: None, "仓库根": Path(".")})
+                断言("#1795 develop头处理：攒批窗口内不入池且恒消费",
+                     消费 is True and not 入池调用)
+            finally:
+                _cf.兜底入池 = 原入池
+            (_cf._日志目录 / "result_reddeadbeef.json").write_text(
+                '{"绿": false}', encoding="utf-8")
+            os.utime(_cf._日志目录 / "result_reddeadbeef.json",
+                     (1999999500.0, 1999999500.0))
+            放, 缘 = _cf.限频放行否(现在=2000000000.0)
+            断言("#1795 限频：最近轮红→确认轮不受限频（红例外）", 放 and "红" in 缘)
+        finally:
+            _cf._日志目录 = 原目
+            if 原间 is None:
+                os.environ.pop("CN_GATE_MIN_INTERVAL_SEC", None)
+            else:
+                os.environ["CN_GATE_MIN_INTERVAL_SEC"] = 原间
 
 
 def 自测(主模块) -> int:
@@ -1868,6 +1963,7 @@ def 自测(主模块) -> int:
         断言们.append((名, bool(条件)))
 
     _523_637断言(主模块, 断言)
+    _限频攒批判言(断言)
     _657断言(主模块, 断言)
     _660断言(主模块, 断言)
     _728t断言(主模块, 断言)

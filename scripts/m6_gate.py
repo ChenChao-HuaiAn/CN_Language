@@ -95,6 +95,47 @@ def 判定写集(文件们) -> dict:
     return {"触发": bool(命中们), "命中": 命中们, "说明": 说明}
 
 
+# 自举链写集触发面（#1796·2026-10-29 用户批 CI 提速方案3）：78_v2/79_v2 自举双用例
+#   是全量 e2e 最重的两面（79≈24 分钟+78≈10 分钟·占 e2e 总时长约八成），其验证对象
+#   是「编译器能编译编译器且产物自洽」——只随编译器链/运行时/stdlib/用例自身变化。
+#   触发面取 M6写集前缀的**超集**（宿主 src/cn_compiler 全部+v2 全部+stdlib+runtime
+#   +78/79 用例目录自身），M6 触发 ⇒ 自举触发为机械包含关系（--require-m6 与
+#   --skip-heavy 永不并发）。纯文档/官网/脚本/工具/普通用例改动豁免——漏验风险由
+#   每日 --force 全量兜底轮承担。
+自举写集前缀 = (
+    "src/cn_compiler/",
+    "CN语言编译器v2/",
+    "stdlib/",
+    "runtime/",
+    "tests/e2e/78_v2_自举链构建/",
+    "tests/e2e/79_v2_自举闭环/",
+)
+
+
+def 判定自举写集(文件们) -> dict:
+    """纯函数：改动文件清单 → 自举链（78/79）触发判定（#1796·同构 判定写集）。
+
+    返回 {"触发": bool, "命中": [路径...], "说明": str}。空清单/None=不触发（调用方
+    对「写集不可判」另行 fail-safe 触发——本函数不把空当未知）。"""
+    命中 = set()
+    for 原路径 in 文件们 or []:
+        路径 = _归一(原路径)
+        if not 路径:
+            continue
+        for 前缀 in 自举写集前缀:
+            if 路径 == 前缀.rstrip("/") or 路径.startswith(前缀):
+                命中.add(路径)
+                break
+    命中们 = sorted(命中)
+    if 命中们:
+        说明 = ("自举链写集命中 %d 文件（src/cn_compiler|CN语言编译器v2|stdlib|runtime"
+                "|78/79 用例）——78/79 照跑" % len(命中们))
+    else:
+        说明 = ("自举链写集未触发（写集不含编译器链/运行时/stdlib/78/79 用例）"
+                "——78/79 跳过（每日 --force 全量兜底·#1796）")
+    return {"触发": bool(命中们), "命中": 命中们, "说明": 说明}
+
+
 def 平台可跑M6(平台: str, 交叉模拟: bool = False) -> bool:
     """本平台能否**原生**跑 M6：win-x64/linux-x86_64 恒可；linux-arm64 仅真机可
     （交叉模拟=x86_64 宿主 qemu 跑 arm64 ELF，78/79 登记跳过=数小时性能深坑）。"""
@@ -280,6 +321,42 @@ def _自测() -> int:
          判定写集(["./src/cn_compiler/codegen/x64/a.cpp"])["触发"])
     断言("空写集=不触发（未知由调用方 fail-safe 另判）", not 判定写集([])["触发"])
     断言("None 写集=不触发不炸", not 判定写集(None)["触发"])
+
+    # ── 判定自举写集（#1796）：编译器链正例（含 M6 豁免的前端面）/纯外围反例 ──
+    自举正例 = [
+        "src/cn_compiler/lexer/lexer.cpp",         # M6 豁免但自举触发（前端面）
+        "src/cn_compiler/semantic/checker.cpp",
+        "src/cn_compiler/driver/main.cpp",
+        "CN语言编译器v2/主.cn",
+        "CN语言编译器v2/语义/语义.cn",
+        "runtime/运行时.c",
+        "tests/e2e/78_v2_自举链构建/主.cn",
+        "tests/e2e/79_v2_自举闭环/v2锚定链.txt",   # M6 反例但自举触发（用例自身面）
+    ]
+    for 路径 in 自举正例:
+        断 = 判定自举写集([路径])
+        断言("自举正例触发：%s" % 路径, 断["触发"] and 断["命中"] == [路径])
+    自举反例 = [
+        "docs/README.md",
+        "website/tools/docs_data.py",
+        "scripts/m6_gate.py",
+        "scripts/queue_service.py",
+        "tests/e2e/113_某用例/主.cn",
+        "tests/unit/某测试.cpp",
+        "tests/e2e/789_v2_相似前缀/主.cn",         # 前缀边界：78_v2_ ≠ 789_v2_
+        "tests/e2e/780_v2_另一前缀/主.cn",         # 前缀边界：79_v2_ ≠ 780_v2_
+        "plans/001.md",
+    ]
+    for 路径 in 自举反例:
+        断 = 判定自举写集([路径])
+        断言("自举反例豁免：%s" % 路径, not 断["触发"] and 断["命中"] == [])
+    # M6 面 ⊂ 自举面（--require-m6 与 --skip-heavy 永不并发的机械保证·#1796）
+    断言("包含关系：M6 触发 ⇒ 自举触发",
+         all(判定自举写集([p])["触发"] for p in 正例))
+    断言("自举空写集=不触发（未知由调用方 fail-safe 另判）",
+         not 判定自举写集([])["触发"] and not 判定自举写集(None)["触发"])
+    断言("自举路径归一：反斜杠写集命中",
+         判定自举写集(["src\\cn_compiler\\lexer\\a.cpp"])["触发"])
 
     # ── 平台能力 ──
     断言("win-x64 原生可跑", 平台可跑M6("win-x64"))

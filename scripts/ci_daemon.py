@@ -150,11 +150,11 @@ def 取远端SHA() -> str | None:
 ci_fallback.初始化(仓库根, 平台, 日志目录, 远端名)
 ci_report.初始化(仓库根, 平台, 日志目录, 远端名)
 上次已验SHA = ci_fallback.上次已验SHA
+develop头处理 = ci_fallback.develop头处理   # #1795：五路派发决策（含限频攒批·语境版）
 纯文档变更 = ci_fallback.纯文档变更
 兜底入池 = ci_fallback.兜底入池
 兜底过期 = ci_fallback.兜底过期
 过期跳过结果 = ci_fallback.过期跳过结果
-免跑留档 = ci_report.免跑留档
 落盘 = ci_report.落盘
 上报 = ci_report.上报
 上报执行中 = ci_report.上报执行中
@@ -808,6 +808,10 @@ def 主(常驻: bool, 强制: bool, 等锁: bool = False) -> int:
                                     交叉模拟=交叉模拟实例)
     锁 = (锁文件.open("a+"))
     已入池: set[str] = set()   # 770：本轮常驻期已入池的头（幂等防重——服务端幂等兜底·此处省每轮空 POST）
+    # #1795：develop 派发决策语境（deps 注入 ci_fallback·外迁块单一构造点）
+    develop语境 = {"已入池": 已入池, "日志目录": 日志目录,
+                  "交叉模拟实例": 交叉模拟实例, "平台": 平台,
+                  "带门禁锁跑": 带门禁锁跑, "仓库根": 仓库根}
     # 184 锁模型治本（1021 饿死实录）：锁从「进程生命周期级」改「轮次级」——常驻每轮
     #   跑完释放（LOCK_UN）、下轮重抢；ssh 点名 --wait-lock 的等待=至多**当前轮完成**
     #   （而非等常驻进程退出）即可插队。923 OOM 铁律不变：锁窗内同机只跑一个全量。
@@ -914,50 +918,10 @@ def 主(常驻: bool, 强制: bool, 等锁: bool = False) -> int:
             #    770 修复（2026-10-14 深夜三平台同验实录）：此前「已入池」只挡重复入池，
             #    下一轮头未变即漏 continue 直落本机直跑=全池每实例各烧一轮同头。
             #    本机直跑仅剩两条路：入池失败降级（池不可达=门禁永不缺位）与 --force 每日 cron。
-            基线 = 上次已验SHA()
-            if 基线 and 基线 != sha:
-                免, 缘由 = 纯文档变更(基线, sha)
-                if 免:
-                    免跑留档(sha, 缘由)
-                    if not 常驻:
-                        return 0
-                    放锁(锁)      # 184：轮间释放·点名可插队
-                    time.sleep(轮询间隔秒)
-                    重抢锁(锁)
-                    continue
-            if sha in 已入池 or list(日志目录.glob("result_%s_*.json" % sha[:10])):
-                # 头已交池负责（本进程入过）/本地已有该 sha 结论档（含红终态）——本机不跑，
-                # 等池派发或下一个头（新头≠sha 自然走出此分支）。
-                if not 常驻:
-                    return 0
-                放锁(锁)
-                time.sleep(轮询间隔秒)
-                重抢锁(锁)
-                continue
-            if 兜底入池(sha):
-                已入池.add(sha)   # 入池成功=池负责（服务端幂等·行已存在亦 ok）
-                if not 常驻:
-                    return 0
-                放锁(锁)
-                time.sleep(轮询间隔秒)
-                重抢锁(锁)
-                continue
-            if not ci_shard.整任务可认领(交叉模拟实例):
-                # #1667：交叉模拟实例不直跑全量 e2e（qemu i128 族错值假红无信息量）——
-                #   门禁由原生/真机实例承担；池不可达时该面等池恢复，不制造假红。
-                print("[整任务让路] 交叉模拟实例不直跑 develop 全量（#1667）——交由原生/真机实例",
-                      flush=True)
-            else:
-                print("[降级] 兜底入池失败——本机直跑（门禁永不缺位）：%s" % sha[:10], flush=True)
-                # ── 降级直跑落到下方开跑（develop 分支照发「执行中」上报=观察面可见） ──
-                print("[开跑] %s @ %s（分支=%s%s）" % (sha[:10],
-                      datetime.now().strftime("%H:%M:%S"), 分支,
-                      "·预验" if 分支 != "develop" else ""), flush=True)
-                # 190（1035 轮）：开跑即上报「执行中」（细节见 上报执行中 函数）
-                上报执行中(sha, 分支, 平台)
-                结果 = 带门禁锁跑(sha)
-                if 结果 is not None:     # None=291 让出（gate_lock 互忙）——不落盘·下轮再战
-                    ci_round.直跑收口(sha, 结果, 落盘, 仓库根=仓库根, 轮分支=分支)   # #1221 P1-10/P1-2：过期不落盘·预验轮照落红
+            # #1795：五路派发决策（免跑/限频攒批/幂等/入池/降级直跑）外迁
+            #   ci_fallback.develop头处理（限频攒批=方案2 内聚·恒返回 True）——
+            #   本处只执行统一轮间节奏（非常驻退出 / 放锁 sleep 重抢锁 continue）。
+            develop头处理(sha, develop语境)
         else:
             # ── CN_CI_BRANCH 点名预验 / --force 每日兜底（770：直跑仅剩的两条非轮转路径） ──
             print("[开跑] %s @ %s（分支=%s%s）" % (sha[:10],
