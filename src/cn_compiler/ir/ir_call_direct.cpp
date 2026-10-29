@@ -11,6 +11,7 @@
 //   消费点的单一归属文件）。
 #include <cstdint>
 #include <cstdio>
+#include <limits>
 #include <string>
 #include <utility>
 #include <vector>
@@ -442,6 +443,101 @@ bool i128ConstTextToDecimal(const std::string& text, std::string& out) {
     }
 }
 
+// 默认参数二元常量折叠（#1395）：算术五则·整=i64 域/浮=f64 域（落位由
+//   target 转换兜底）。除/模 0 与整型溢出=诊断显形补 0（不静默·001 常量
+//   除零编译期拦同源）；非算术运算符（比较/逻辑/位/移位）落 default 补 0
+//   （语义层已诊断面）。
+ir::IRValue foldDefaultBinary(Operator op, const ir::IRValue& lhs,
+                              const ir::IRValue& rhs, Diagnostics& diag,
+                              const SourceLocation& loc) {
+    const auto isArith = [](Operator o) {
+        return o == Operator::Add || o == Operator::Subtract ||
+               o == Operator::Multiply || o == Operator::Divide ||
+               o == Operator::Modulo;
+    };
+    if (!lhs.isConstant || !rhs.isConstant || !isArith(op)) {
+        return ir::IRValue::constant("0", "i64");
+    }
+    const bool anyFloat = isFloatFamilyIrType(lhs.type) ||
+                          isFloatFamilyIrType(rhs.type);
+    if (anyFloat) {
+        try {
+            const double a = std::stod(lhs.extra);
+            const double b = std::stod(rhs.extra);
+            // 常量除零先行诊断（001 常量除零编译期拦同源·不静默）
+            if (op == Operator::Divide && b == 0.0) {
+                diag.report(DiagnosticLevel::Error, loc,
+                            "默认参数常量算式除零（浮点 '0.0' 除数）——"
+                            "按目标类型补 0（#1395）");
+                return ir::IRValue::constant("0", "f64");
+            }
+            double v = 0;
+            // 算术五则显式枚举（else 新规：else 块禁业务赋值·五支全显式条件）
+            if (op == Operator::Add) v = a + b;
+            else if (op == Operator::Subtract) v = a - b;
+            else if (op == Operator::Multiply) v = a * b;
+            else if (op == Operator::Divide) v = a / b;
+            else if (op == Operator::Modulo) {
+                diag.report(DiagnosticLevel::Error, loc,
+                            "内部错误: 浮点默认参数算式取模（% 域=整型）——"
+                            "补 0（#1395）");
+                return ir::IRValue::constant("0", "f64");
+            }
+            char buf[40];
+            std::snprintf(buf, sizeof(buf), "%.17g", v);
+            return ir::IRValue::constant(buf, "f64");
+        } catch (...) {
+            diag.report(DiagnosticLevel::Error, loc,
+                        "内部错误: 默认参数浮点常量算式 '" + lhs.extra + "/" +
+                            rhs.extra + "' 解析失败——补 0（#1395）");
+            return ir::IRValue::constant("0", "f64");
+        }
+    }
+    try {
+        const long long a = std::stoll(lhs.extra);
+        const long long b = std::stoll(rhs.extra);
+        long long v = 0;
+        bool overflowed = false;
+        // 溢出前置判定（else 新规：else 块禁业务赋值·溢出判定全走条件赋值）
+        if (op == Operator::Add) {
+            overflowed = (b > 0 && a > std::numeric_limits<long long>::max() - b) ||
+                         (b < 0 && a < std::numeric_limits<long long>::min() - b);
+        } else if (op == Operator::Subtract) {
+            overflowed = (b < 0 && a > std::numeric_limits<long long>::max() + b) ||
+                         (b > 0 && a < std::numeric_limits<long long>::min() + b);
+        } else if (op == Operator::Multiply) {
+            overflowed = a != 0 && b != 0 &&
+                         (std::llabs(a) > std::numeric_limits<long long>::max() /
+                                              std::llabs(b));
+        }
+        if (op == Operator::Divide || op == Operator::Modulo) {
+            if (b == 0 || (a == std::numeric_limits<long long>::min() &&
+                           b == -1)) {
+                diag.report(DiagnosticLevel::Error, loc,
+                            "默认参数常量算式除零（或除法溢出）——"
+                            "按目标类型补 0（#1395）");
+                return ir::IRValue::constant("0", "i64");
+            }
+            v = (op == Operator::Divide) ? a / b : a % b;
+        } else if (!overflowed) {
+            if (op == Operator::Add) v = a + b;
+            else if (op == Operator::Subtract) v = a - b;
+            else if (op == Operator::Multiply) v = a * b;
+        }
+        if (overflowed) {
+            diag.report(DiagnosticLevel::Error, loc,
+                        "内部错误: 默认参数常量算式 '" + lhs.extra + " " +
+                            rhs.extra + "' 整型溢出（i64 折叠域）——"
+                            "补 0（#1395·128 域算式另案）");
+            return ir::IRValue::constant("0", "i64");
+        }
+        return ir::IRValue::constant(std::to_string(v), "i64");
+    } catch (...) {
+        // 128 域或超 i64 文本：本通道不折叠（保守补 0·诊断由既有超域面承担）
+        return ir::IRValue::constant("0", "i64");
+    }
+}
+
 }  // namespace
 
 ir::IRValue IRGenerator::evalDefaultExpr(Expr* expr,
@@ -553,10 +649,63 @@ ir::IRValue IRGenerator::evalDefaultExpr(Expr* expr,
             base = ir::IRValue::constant("0", "i64");
             break;
         }
-        default:
-            // 非字面量默认值（标识符/调用等）：语义层已报错，此处补 0
+        default: {
+            // 非字面量默认值：二元常量算式与全局常量标识符走编译期折叠（#1395·
+            //   001 默认参数条文无常量性限定·C++ 默认实参常量表达式同构；原实现
+            //   二元/标识符一律补 0=静默错值）；其余（调用/成员等）语义层已报错，
+            //   此处补 0（既有豁免面）。
+            if (expr->getType() == NodeType::BinaryExpr) {
+                BinaryExpr* bin = static_cast<BinaryExpr*>(expr);
+                const ir::IRValue lhs = evalDefaultExpr(bin->left.get(), "");
+                const ir::IRValue rhs = evalDefaultExpr(bin->right.get(), "");
+                base = foldDefaultBinary(bin->op, lhs, rhs, diagnostics_,
+                                         expr->location);
+                break;
+            }
+            if (expr->getType() == NodeType::IdentifierExpr) {
+                IdentifierExpr* id = static_cast<IdentifierExpr*>(expr);
+                // 顶层常量（1360 结果化：无值=非常量名 Optional 空）——值文本=
+                //   字面量 raw（整型归一/浮点直用）；命中失败=变量/未知名（语义
+                //   层已诊断面）补 0（既有豁免·不臆造）。
+                if (semantic_ != nullptr) {
+                    const cn::Optional<std::string> cv =
+                        semantic_->globalConstValue(id->name);
+                    if (cv.has_value()) {
+                        const std::string raw = cv.value();
+                        const bool looksFloat =
+                            raw.find('.') != std::string::npos ||
+                            raw.find('e') != std::string::npos ||
+                            raw.find('E') != std::string::npos;
+                        if (!looksFloat) {
+                            int st = 0;
+                            const std::string type =
+                                types::integerLiteralRuntimeType(raw, &st);
+                            const cn::Optional<std::string> dec =
+                                types::normalizeIntLiteralToDecimal(raw);
+                            if (st == 0 && dec.has_value()) {
+                                base = ir::IRValue::constant(
+                                    dec.value(), mapType(type));
+                                break;
+                            }
+                            // 超域常量：诊断显形（不静默补 0）
+                            diagnostics_.report(DiagnosticLevel::Error,
+                                expr->location,
+                                "默认参数引用的常量 '" + id->name + "' 值 '" +
+                                    raw + "' 超出整型承载域（#1395）");
+                            base = ir::IRValue::constant("0", "i64");
+                            break;
+                        }
+                        base = ir::IRValue::constant(
+                            types::stripLiteralSuffix(raw), "f64");
+                        break;
+                    }
+                }
+                base = ir::IRValue::constant("0", "i64");
+                break;
+            }
             base = ir::IRValue::constant("0", "i64");
             break;
+        }
     }
     if (zeroPlaceholder || target.empty() || target == base.type) return base;
     // 仅数值常量参与落位：字符串/自定义类型默认值非法（语义层已诊断），保持原值。
