@@ -10,13 +10,17 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include <unistd.h>
 #include <cerrno>
 #include <filesystem>
 #include <string>
 
 #ifdef _WIN32
 #include <windows.h>
+#include <process.h>  // _getpid
+#define TEST_GETPID() _getpid()
+#else
+#include <unistd.h>   // getpid（POSIX）
+#define TEST_GETPID() getpid()
 #endif
 
 // 安全的文件打开（MSVC /W4 /WX 下 fopen 触发 C4996 警告即错误）
@@ -37,7 +41,7 @@ std::string tempDir() {
     // 1749（跨树互踩根治）：目录名缀进程 id——多 worktree 并行 gate_quick 时
     //   各进程独立目录（原固定名两进程同目录互删对方用例文件）
     const fs::path dir = fs::temp_directory_path() /
-        ("cn_test_file_api_" + std::to_string(static_cast<long long>(::getpid())));
+        ("cn_test_file_api_" + std::to_string(static_cast<long long>(TEST_GETPID())));
     std::error_code ec;
     fs::create_directories(dir, ec);
     EXPECT_FALSE(ec) << "创建临时目录失败: " << ec.message();
@@ -244,7 +248,7 @@ TEST(FileApiTest, ChineseTempDirCleanup) {
     namespace fs = std::filesystem;
     const fs::path base = fs::temp_directory_path() /
         fs::u8path("中文临时目录_1215_" +
-                   std::to_string(static_cast<long long>(::getpid())));
+                   std::to_string(static_cast<long long>(TEST_GETPID())));
     std::error_code ec;
     fs::create_directories(base, ec);
     ASSERT_FALSE(ec) << "创建中文临时目录失败: " << ec.message();

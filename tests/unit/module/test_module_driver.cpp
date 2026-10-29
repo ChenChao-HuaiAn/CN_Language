@@ -17,9 +17,12 @@
 #ifdef _WIN32
 #include <direct.h>   // _mkdir / _rmdir（目录层级测试）
 #include <windows.h>  // MultiByteToWideChar（UTF-8 中文文件名写入）
+#include <process.h>  // _getpid
+#define TEST_GETPID() _getpid()
 #else
 #include <sys/stat.h> // mkdir
-#include <unistd.h>   // rmdir
+#include <unistd.h>   // rmdir / getpid（POSIX）
+#define TEST_GETPID() getpid()
 #endif
 #include <vector>
 
@@ -52,7 +55,7 @@ std::string writeTempFile(const std::string& name, const std::string& content) {
     //   不能改，改以进程子目录隔离（多 worktree 并行 gate_quick 不互删对方文件）
     namespace fs = std::filesystem;
     const fs::path sub = fs::path(tempDir()) /
-        ("cn_mod_driver_" + std::to_string(static_cast<long long>(::getpid())));
+        ("cn_mod_driver_" + std::to_string(static_cast<long long>(TEST_GETPID())));
     std::error_code ec;
     fs::create_directories(sub, ec);
     const std::string path = (sub / name).string();

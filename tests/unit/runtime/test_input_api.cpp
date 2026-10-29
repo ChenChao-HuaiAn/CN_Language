@@ -18,9 +18,12 @@
 #include <string>
 
 #ifdef _WIN32
-#include <io.h>  // _dup/_dup2/_fileno（stderr 重定向捕获）
+#include <io.h>      // _dup/_dup2/_fileno（stderr 重定向捕获）
+#include <process.h> // _getpid
+#define TEST_GETPID() _getpid()
 #else
-#include <unistd.h>  // dup/dup2/close/fileno（POSIX）
+#include <unistd.h>  // dup/dup2/close/fileno/getpid（POSIX）
+#define TEST_GETPID() getpid()
 #endif
 
 // 安全的文件打开/重定向（MSVC /W4 /WX 下 fopen/freopen 触发 C4996 警告即错误；
@@ -57,7 +60,7 @@ std::string tempInputPath() {
     namespace fs = std::filesystem;
     // 1749（跨树互踩根治）：目录名缀进程 id（同 file_api 口径）
     const fs::path dir = fs::temp_directory_path() /
-        ("cn_test_input_api_" + std::to_string(static_cast<long long>(::getpid())));
+        ("cn_test_input_api_" + std::to_string(static_cast<long long>(TEST_GETPID())));
     std::error_code ec;
     fs::create_directories(dir, ec);
     EXPECT_FALSE(ec) << "创建临时目录失败: " << ec.message();
