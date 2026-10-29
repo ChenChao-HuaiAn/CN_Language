@@ -555,7 +555,7 @@ TEST(ParserStage3Test, ModuleAccessLabelsV2) {
 TEST(ParserStage3Test, ClassMemberDefaultPrivate) {
     auto result = parseProgram(
         "类 账户 {\n"
-        "    字符串 用户名\n"                 // 无标签 -> 默认私有
+        "    字符串 用户名;\n"               // 无标签 -> 默认私有（1406 起须分号）
         "    函数 内部函数() -> 整32 { 返回 0; }\n"
         "公开:\n"
         "    函数 公开函数() -> 整32 { 返回 1; }\n"
