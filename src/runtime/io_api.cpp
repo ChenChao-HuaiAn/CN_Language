@@ -83,7 +83,7 @@ extern "C" const char* __cn_error_message(long long errorCode) {
 //   场景 exit 内部死锁挂住（cn_self 第二跳「错误码 4 后挂住」实测）。
 // #1443 诊断增强：CN_RUNTIME_BACKTRACE=1 时打印捕获的返回地址链（原始地址，
 //   配合产物 asm/映射文件人工定位——SymFromAddr 需 DbgHelp 依赖，零依赖实现）。
-extern "C" void __cn_runtime_error(long long errorCode) {
+extern "C" [[noreturn]] void __cn_runtime_error(long long errorCode) {
     std::printf("运行时错误(错误码%lld): %s\n", errorCode, __cn_error_message(errorCode));
 #ifdef _WIN32
     {

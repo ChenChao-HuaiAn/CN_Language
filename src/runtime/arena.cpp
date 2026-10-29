@@ -43,7 +43,14 @@ ArenaBlock* newArenaBlock(std::size_t need) {
     std::size_t cap = (need + kArenaHeaderPad + 7) & ~std::size_t(7);
     if (cap < kArenaBlockSize) cap = kArenaBlockSize;
     ArenaBlock* b = static_cast<ArenaBlock*>(std::malloc(cap));
-    if (b == nullptr) return nullptr;
+    if (b == nullptr) {
+        // #1012 批甲：分配失败 abort 显形（nullptr 哨兵退役·001 分配失败=终止）
+        std::fprintf(stderr,
+                     "[cnrt] 运行期内存分配失败·操作=竞技场新块 · 申请 %llu 字节——程序终止（001：分配失败=终止）\n",
+                     static_cast<unsigned long long>(cap));
+        std::fflush(stderr);
+        __cn_runtime_error(4);
+    }
     b->next = nullptr;
     b->used = kArenaHeaderPad;
     b->capacity = cap;
@@ -59,8 +66,7 @@ extern "C" void* __cn_arena_alloc(std::size_t size) {
     const std::size_t need = (size + 7) & ~std::size_t(7);  // 8 字节对齐
     if (g_arenaHead == nullptr ||
         g_arenaHead->capacity - g_arenaHead->used < need) {
-        ArenaBlock* b = newArenaBlock(need);
-        if (b == nullptr) return nullptr;
+        ArenaBlock* b = newArenaBlock(need);   // 分配失败=终止显形（#1012 批甲·不返回）
         b->next = g_arenaHead;
         g_arenaHead = b;
     }

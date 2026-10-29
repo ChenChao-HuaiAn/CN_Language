@@ -23,6 +23,18 @@ extern "C" void* cn_alloc_tracked_host(std::size_t size);
 
 // ==================== 字符串API（规格书10.1） ====================
 
+// OOM 终止出口（打印后终止·不返回）：#1012 批甲（2026-10-29 用户批）——
+//   分配失败 abort 显形·nullptr 哨兵退役（001：运行期内存分配失败=程序终止）。
+//   op=函数符号（受控字面量）、bytes=申请字节数。冷路径与热路径分离同
+//   cnStrbufOomAbort 惯例（#944 内联预算）。
+void cnStrOomAbort(const char* op, unsigned long long bytes) {
+    std::fprintf(stderr,
+                 "[cnrt] 运行期内存分配失败·操作=%s · 申请 %llu 字节——程序终止（001：分配失败=终止）\n",
+                 op, bytes);
+    std::fflush(stderr);
+    __cn_runtime_error(4);   // 错误码 4=内存分配失败（打印后终止·不返回）
+}
+
 // 字符串长度：返回 UTF-8 字节数（同 C strlen，规格书10.3 UTF-8编码）
 extern "C" long long __cn_str_len(const char* str) {
     if (str == nullptr) return 0;  // 空指针视为空串（防御）
@@ -43,7 +55,7 @@ extern "C" char* __cn_str_concat(const char* a, const char* b) {
     const std::size_t lenA = std::strlen(a);
     const std::size_t lenB = std::strlen(b);
     char* result = static_cast<char*>(cn_alloc_tracked(lenA + lenB + 1));
-    if (result == nullptr) return nullptr;  // 分配失败返回空指针
+    if (result == nullptr) { cnStrOomAbort("__cn_str_concat", static_cast<unsigned long long>(lenA + lenB + 1)); }  // #1012 批甲：分配失败终止显形（nullptr 哨兵退役）
     std::memcpy(result, a, lenA);
     std::memcpy(result + lenA, b, lenB + 1);
     return result;
@@ -54,7 +66,7 @@ extern "C" char* __cn_str_copy(const char* str) {
     if (str == nullptr) str = "";
     const std::size_t len = std::strlen(str);
     char* result = static_cast<char*>(cn_alloc_tracked(len + 1));
-    if (result == nullptr) return nullptr;
+    if (result == nullptr) { cnStrOomAbort("__cn_str_copy", static_cast<unsigned long long>(len + 1)); }  // #1012 批甲：分配失败终止显形（nullptr 哨兵退役）
     std::memcpy(result, str, len + 1);
     return result;
 }
@@ -113,14 +125,15 @@ extern "C" char* __cn_str_sub(const char* str, long long start, long long len) {
     const std::size_t total = std::strlen(str);
     if (static_cast<std::size_t>(start) >= total) {
         char* empty = static_cast<char*>(cn_alloc_tracked(1));
-        if (empty != nullptr) empty[0] = '\0';
+        if (empty == nullptr) { cnStrOomAbort("__cn_str_sub", 1); }  // #1012 批甲：分配失败终止显形
+        empty[0] = '\0';
         return empty;
     }
     const std::size_t avail = total - static_cast<std::size_t>(start);
     const std::size_t take = (static_cast<std::size_t>(len) < avail)
                                  ? static_cast<std::size_t>(len) : avail;
     char* result = static_cast<char*>(cn_alloc_tracked(take + 1));
-    if (result == nullptr) return nullptr;
+    if (result == nullptr) { cnStrOomAbort("__cn_str_sub", static_cast<unsigned long long>(take + 1)); }  // #1012 批甲：分配失败终止显形（nullptr 哨兵退役）
     std::memcpy(result, str + start, take);
     result[take] = '\0';
     return result;
@@ -144,7 +157,7 @@ extern "C" char* __cn_str_upper(const char* str) {
     if (str == nullptr) str = "";
     const std::size_t len = std::strlen(str);
     char* result = static_cast<char*>(cn_alloc_tracked(len + 1));
-    if (result == nullptr) return nullptr;
+    if (result == nullptr) { cnStrOomAbort("__cn_str_upper", static_cast<unsigned long long>(len + 1)); }  // #1012 批甲：分配失败终止显形（nullptr 哨兵退役）
     for (std::size_t i = 0; i < len; i++) {
         const unsigned char c = static_cast<unsigned char>(str[i]);
         result[i] = (c >= 'a' && c <= 'z') ? static_cast<char>(c - 'a' + 'A')
@@ -159,7 +172,7 @@ extern "C" char* __cn_str_lower(const char* str) {
     if (str == nullptr) str = "";
     const std::size_t len = std::strlen(str);
     char* result = static_cast<char*>(cn_alloc_tracked(len + 1));
-    if (result == nullptr) return nullptr;
+    if (result == nullptr) { cnStrOomAbort("__cn_str_lower", static_cast<unsigned long long>(len + 1)); }  // #1012 批甲：分配失败终止显形（nullptr 哨兵退役）
     for (std::size_t i = 0; i < len; i++) {
         const unsigned char c = static_cast<unsigned char>(str[i]);
         result[i] = (c >= 'A' && c <= 'Z') ? static_cast<char>(c - 'A' + 'a')
@@ -206,7 +219,7 @@ extern "C" char* __cn_str_trim(const char* str) {
                            *(end - 1) == '\n' || *(end - 1) == '\r')) end--;
     const std::size_t len = static_cast<std::size_t>(end - begin);
     char* result = static_cast<char*>(cn_alloc_tracked(len + 1));
-    if (result == nullptr) return nullptr;
+    if (result == nullptr) { cnStrOomAbort("__cn_str_trim", static_cast<unsigned long long>(len + 1)); }  // #1012 批甲：分配失败终止显形（nullptr 哨兵退役）
     std::memcpy(result, begin, len);
     result[len] = '\0';
     return result;
@@ -218,7 +231,7 @@ extern "C" char* __cn_str_reverse(const char* str) {
     if (str == nullptr) str = "";
     const std::size_t len = std::strlen(str);
     char* result = static_cast<char*>(cn_alloc_tracked(len + 1));
-    if (result == nullptr) return nullptr;
+    if (result == nullptr) { cnStrOomAbort("__cn_str_reverse", static_cast<unsigned long long>(len + 1)); }  // #1012 批甲：分配失败终止显形（nullptr 哨兵退役）
     std::size_t out = 0;
     std::size_t i = len;
     while (i > 0) {
@@ -247,7 +260,7 @@ extern "C" char* __cn_str_from_int(long long value) {
     std::snprintf(buffer, sizeof(buffer), "%lld", value);
     const std::size_t len = std::strlen(buffer);
     char* result = static_cast<char*>(cn_alloc_tracked(len + 1));
-    if (result == nullptr) return nullptr;
+    if (result == nullptr) { cnStrOomAbort("__cn_str_from_int", static_cast<unsigned long long>(len + 1)); }  // #1012 批甲：分配失败终止显形（nullptr 哨兵退役）
     std::memcpy(result, buffer, len + 1);
     return result;
 }
@@ -260,7 +273,7 @@ extern "C" char* __cn_str_from_uint(unsigned long long value) {
     std::snprintf(buffer, sizeof(buffer), "%llu", value);
     const std::size_t len = std::strlen(buffer);
     char* result = static_cast<char*>(cn_alloc_tracked_host(len + 1));
-    if (result == nullptr) return nullptr;
+    if (result == nullptr) { cnStrOomAbort("__cn_str_from_uint", static_cast<unsigned long long>(len + 1)); }  // #1012 批甲：分配失败终止显形（nullptr 哨兵退役）
     std::memcpy(result, buffer, len + 1);
     return result;
 }
@@ -271,7 +284,7 @@ extern "C" char* __cn_str_from_float(double value) {
     std::snprintf(buffer, sizeof(buffer), "%f", value);
     const std::size_t len = std::strlen(buffer);
     char* result = static_cast<char*>(cn_alloc_tracked(len + 1));
-    if (result == nullptr) return nullptr;
+    if (result == nullptr) { cnStrOomAbort("__cn_str_from_float", static_cast<unsigned long long>(len + 1)); }  // #1012 批甲：分配失败终止显形（nullptr 哨兵退役）
     std::memcpy(result, buffer, len + 1);
     return result;
 }
@@ -287,7 +300,7 @@ extern "C" char* __cn_str_from_float(double value) {
 extern "C" char* __cn_str_from_char(int value) {
     if (value < 0 || value <= 0xFF) {
         char* result = static_cast<char*>(cn_alloc_tracked(2));
-        if (result == nullptr) return nullptr;
+        if (result == nullptr) { cnStrOomAbort("__cn_str_from_char", static_cast<unsigned long long>(2)); }  // #1012 批甲：分配失败终止显形（nullptr 哨兵退役）
         result[0] = static_cast<char>(value & 0xFF);
         result[1] = '\0';
         return result;
@@ -311,7 +324,7 @@ extern "C" char* __cn_str_from_char(int value) {
         buf[len++] = static_cast<char>(0x80 | (cp & 0x3F));
     }
     char* result = static_cast<char*>(cn_alloc_tracked(len + 1));
-    if (result == nullptr) return nullptr;
+    if (result == nullptr) { cnStrOomAbort("__cn_str_from_char", static_cast<unsigned long long>(len + 1)); }  // #1012 批甲：分配失败终止显形（nullptr 哨兵退役）
     std::memcpy(result, buf, len);
     result[len] = '\0';
     return result;
@@ -322,7 +335,7 @@ extern "C" char* __cn_str_from_bool(int value) {
     const char* text = (value != 0) ? "\xE7\x9C\x9F" : "\xE5\x81\x87";  // "真"/"假"
     const std::size_t len = std::strlen(text);
     char* result = static_cast<char*>(cn_alloc_tracked_host(len + 1));
-    if (result == nullptr) return nullptr;
+    if (result == nullptr) { cnStrOomAbort("__cn_str_from_bool", static_cast<unsigned long long>(len + 1)); }  // #1012 批甲：分配失败终止显形（nullptr 哨兵退役）
     std::memcpy(result, text, len + 1);
     return result;
 }
@@ -342,13 +355,14 @@ extern "C" char* __cn_format(const char* fmt, ...) {
     const int len = std::vsnprintf(nullptr, 0, fmt, copy);
     va_end(copy);
     if (len < 0) {
+        // vsnprintf 负返回=编码错误（fmt 为编译器自身受控字面量·内部不一致不可达）
         va_end(args);
-        return nullptr;
+        __cn_runtime_error(6);   // 无效参数（打印后终止·不返回）
     }
     char* result = static_cast<char*>(cn_alloc_tracked_host(static_cast<std::size_t>(len) + 1));
     if (result == nullptr) {
         va_end(args);
-        return nullptr;
+        cnStrOomAbort("__cn_format", static_cast<unsigned long long>(len) + 1);  // #1012 批甲
     }
     std::vsnprintf(result, static_cast<std::size_t>(len) + 1, fmt, args);
     va_end(args);
@@ -641,10 +655,10 @@ char* cnStrbufRetireSlot(CnStrbufSlot* s) {
 
 } // namespace
 
-// 新建：分配缓冲（失败=返回 0 空句柄·原语义）+ 发放槽（锁内与填充原子化）
+// 新建：分配缓冲（失败=OOM 终止显形·#1012 批甲 nullptr 哨兵退役）+ 发放槽（锁内与填充原子化）
 extern "C" void* __cn_strbuf_new() {
     char* buf = static_cast<char*>(std::malloc(kStrbufInitCap));
-if (buf == nullptr) return nullptr;   // 静默豁免运行时API: malloc 失败=空句柄哨兵（既有契约·同 __cn_str_len 空指针面）
+    if (buf == nullptr) { cnStrbufOomAbort("strbuf_new 初始缓冲 %llu 字节", static_cast<unsigned long long>(kStrbufInitCap)); }  // 分配失败终止（同槽表 OOM 惯例）
     buf[0] = 0;
     CnStrbufTable& t = *g_strbufTablePtr;
     unsigned long long handle = 0;

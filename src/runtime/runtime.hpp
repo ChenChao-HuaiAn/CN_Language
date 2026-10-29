@@ -241,7 +241,7 @@ CNRT_EXPORT void __cn_print_bool(bool value);             // 打印布尔（不�
     // 阶段3（Task 3.5）：扩展 4=内存分配失败、5=文件打开失败、6=无效参数、
     //                   7=资源未初始化、8=溢出
     // 476：9=栈溢出（SIGSEGV/SEH 被动捕获后经 stdout 通道输出终止·见下）
-    CNRT_EXPORT void __cn_runtime_error(long long errorCode);
+    [[noreturn]] CNRT_EXPORT void __cn_runtime_error(long long errorCode);   // #1012：打印诊断后终止·不返回
     // 错误码 -> 错误消息文本（不终止进程；供测试与诊断直接验证消息表）
     // 未注册错误码返回 "未知运行时错误"
     CNRT_EXPORT const char* __cn_error_message(long long errorCode);

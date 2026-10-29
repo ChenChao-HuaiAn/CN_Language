@@ -17,6 +17,8 @@
 #include <cstdlib>
 #include <cstring>
 
+#include "runtime/runtime.hpp"  // __cn_runtime_error 声明（#1012 风格两制统一·win 桩先行使用故前置）
+
 #if defined(_WIN32)
 // ---- win 桩（波 3 预留·宁严勿松：调用即运行时错误(9)） ----
 extern "C" {
@@ -25,36 +27,36 @@ void* __cn_thread_new(void* (*entry)(void*), void* arg) {
     (void)entry;
     (void)arg;
     std::fprintf(stderr, "运行时错误(9): 线程层 win 实现随 027 波 3 提供（当前仅 linux-x64）\n");
-    std::exit(9);
+    __cn_runtime_error(9);   // #1012 风格两制统一：打印+终止走 __cn_runtime_error 单点
 }
 
 void* __cn_thread_join(void* handle) {
     (void)handle;
     std::fprintf(stderr, "运行时错误(9): 线程层 win 实现随 027 波 3 提供（当前仅 linux-x64）\n");
-    std::exit(9);
+    __cn_runtime_error(9);   // #1012 风格两制统一：打印+终止走 __cn_runtime_error 单点
 }
 
 void* __cn_mutex_new(void) {
     std::fprintf(stderr, "运行时错误(9): 线程层 win 实现随 027 波 3 提供（当前仅 linux-x64）\n");
-    std::exit(9);
+    __cn_runtime_error(9);   // #1012 风格两制统一：打印+终止走 __cn_runtime_error 单点
 }
 
 void __cn_mutex_lock(void* handle) {
     (void)handle;
     std::fprintf(stderr, "运行时错误(9): 线程层 win 实现随 027 波 3 提供（当前仅 linux-x64）\n");
-    std::exit(9);
+    __cn_runtime_error(9);   // #1012 风格两制统一：打印+终止走 __cn_runtime_error 单点
 }
 
 void __cn_mutex_unlock(void* handle) {
     (void)handle;
     std::fprintf(stderr, "运行时错误(9): 线程层 win 实现随 027 波 3 提供（当前仅 linux-x64）\n");
-    std::exit(9);
+    __cn_runtime_error(9);   // #1012 风格两制统一：打印+终止走 __cn_runtime_error 单点
 }
 
 void __cn_mutex_free(void* handle) {
     (void)handle;
     std::fprintf(stderr, "运行时错误(9): 线程层 win 实现随 027 波 3 提供（当前仅 linux-x64）\n");
-    std::exit(9);
+    __cn_runtime_error(9);   // #1012 风格两制统一：打印+终止走 __cn_runtime_error 单点
 }
 
 } // extern "C"
