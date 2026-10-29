@@ -108,7 +108,7 @@
     返回 整32(累);
 }</code></pre></div>
 <p class="输出行">输出：[p6h] 已解析: target/audit2/v2src228/主.cn</p>
-<ul><li><strong>两种「拷贝」要分清</strong>：传参/返回=句柄拷贝（写穿同一对象）；<code>b = a</code> 声明初始化=<strong>拷贝构造</strong>——类定义了拷贝构造（如标准库容器）按其语义深拷；没有则逐字段浅拷、对象独立。</li><li>要独立副本：定义拷贝构造 <code>函数 类名(类名&amp;)</code> 并用 <code>复制(对象)</code> 克隆（标准库容器全部定义了深拷构造）。</li><li>取地址 <code>&amp;a</code> 产<strong>对象地址</strong>（解包句柄），与 C++ <code>&amp;obj</code> 语义一致。</li></ul>
+<ul><li><strong>拿到对象的三种通道要分清</strong>：传参=句柄拷贝（写穿同一对象）；返回（<code>-&gt; 类</code>）=<strong>值副本</strong>（接收方独立拥有——来源为本体/句柄解引用深拷/转移三分·裁决 #1784 丁案）；<code>b = a</code> 声明初始化=<strong>拷贝构造</strong>——类定义了拷贝构造（如标准库容器）按其语义深拷；没有则逐字段浅拷、对象独立。</li><li>要独立副本：定义拷贝构造 <code>函数 类名(类名&amp;)</code> 并用 <code>复制(对象)</code> 克隆（标准库容器全部定义了深拷构造）。要<strong>共享同一对象</strong>（返回面）用借用返回 <code>-&gt; 类&amp;</code>（零拷贝·借用检查约束：生命周期覆盖使用期+可变借用独占）；多态一律经引用/指针（值形态禁切片·编译期拒绝）。</li><li>取地址 <code>&amp;a</code> 产<strong>对象地址</strong>（解包句柄），与 C++ <code>&amp;obj</code> 语义一致。</li></ul>
 <h2 id="成员">可见性、构造、析构、静态</h2>
 <ul><li><code>公开:</code>/<code>保护:</code>/<code>私有:</code> 标签分段；缺省=私有。<code>友元 函数名/类名</code> 可越权访问私有。</li><li>构造=与类同名（可重载）；<strong>类类型字段自动级联默认构造</strong>（用户构造未显式构造的字段同此）——构造/析构对称。</li><li>析构=<code>~类名</code>；作用域结束自动调用，先成员后自身、与构造反序。</li><li><code>静态</code> 字段/函数属于类（<code>类名.成员</code> 访问）；<code>常量 函数</code> 承诺不改状态。</li><li><code>虚拟 函数</code> 动态分派；<code>重写</code> 显式标注覆盖；<code>抽象</code> 纯虚（接口成员）。</li></ul>
 <div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">类 内层 {
@@ -246,7 +246,7 @@
     </div>
     <div class="页脚-底">
       <span>© 2026 CN 语言项目</span>
-      <span>文档基线：任务/1642 49f734d2d·2026-10-28·示例经编译器实测</span>
+      <span>文档基线：任务/1816 d7797d641·2026-10-29·示例经编译器实测</span>
       <span>京ICP备00000000号（备案办理中·占位）</span>
     </div>
   </div>

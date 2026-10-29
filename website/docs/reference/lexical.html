@@ -175,8 +175,8 @@ a\nb
 <p>每条语句必须以 <code>;</code> 结束（C/Rust 同款）；换行是纯空白，表达式内可自由续行。行尾漏分号=语法错误（诊断「语句缺少分号 ';'」），不存在自动分号插入——行首/行尾词法拼接类事故被结构性根除。</p>
 <ul><li><strong>空语句非法</strong>：裸 <code>;</code> 不合法（诊断「预期表达式」）——合法的空循环体写 <code>当(x) { }</code>（空块合法）。</li><li><strong>循环体强制块</strong>：<code>当(x);</code> 是语法错误（诊断「预期 '{'」）——当/循环/如果 的体一律 <code>{ }</code>，不做单语句体。</li><li><strong>单行多语句合法</strong>：<code>变量 a = 1; 变量 b = 2;</code> 由分号分隔，行内最后一条同样须 <code>;</code>；行内块 <code>{ x = 1; }</code> 内部语句同样强制分号。</li><li><strong><code>}</code> 自终结</strong>：块/如果/当/循环/选择体、函数体、结构体/类/接口/枚举体后<strong>不加</strong>分号（<code>}</code> 即边界）；模块级声明（导入/顶层常量/静态/全局变量）须分号。</li></ul>
 <div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">结构体 点 {
-    整32 x
-    整32 y
+    整32 x;
+    整32 y;
 }
 
 函数 主() -&gt; 整32 {
@@ -299,7 +299,7 @@ a\nb
     </div>
     <div class="页脚-底">
       <span>© 2026 CN 语言项目</span>
-      <span>文档基线：任务/1642 49f734d2d·2026-10-28·示例经编译器实测</span>
+      <span>文档基线：任务/1816 d7797d641·2026-10-29·示例经编译器实测</span>
       <span>京ICP备00000000号（备案办理中·占位）</span>
     </div>
   </div>
