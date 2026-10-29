@@ -1,6 +1,6 @@
 // 平台指令选择判定层·实现（358 一期·归域核对实录见 judgement.hpp 头注）
 // 每个判定分支的注释=抽取前的三方 if 链归域核对结论；改本文件前必读：
-//   任何归域变化都可能破坏「asm 逐字节对拍零变化」硬验收（scripts/parity_358.py）。
+//   任何归域变化都可能破坏「asm 逐字节对拍零变化」硬验收（scripts/parity_dual_compile.py）。
 #include "cn_compiler/codegen/judgement.hpp"
 
 namespace cn_compiler {

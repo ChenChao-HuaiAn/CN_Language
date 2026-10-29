@@ -63,9 +63,9 @@ sys.path.insert(0, str(脚本目录))
 # 注意：两模块模块级各自把 sys.stdout/stderr 重包为 utf-8 TextIOWrapper——必须保留被
 # 替换下来的包装器引用（_保链），否则其被子引用回收时 __del__ 会 close 底层 buffer，
 # 使后一个包装器写失败（ValueError: I/O operation on closed file·882 轮实证）。
-import check_miss_defaults as 核950          # noqa: E402
+import check_miss_defaults as 默认值扫描          # noqa: E402
 _保链 = [sys.stdout, sys.stderr]
-import check_return_paths as 核968           # noqa: E402
+import check_return_paths as 返回路径           # noqa: E402
 _保链 += [sys.stdout, sys.stderr]
 
 登记表文件 = 仓库根 / "scripts" / "miss_registry.json"
@@ -287,7 +287,7 @@ def 判else块源(块源: str):
         语句们 = [x for x in re.split(r"[;{}]", 归一) if x.strip()]
         if 语句们 and all((".value(" in x or ".value_or(" in x) for x in 语句们):
             return False, ""
-    语们 = 切语句(核968.词法(块源))
+    语们 = 切语句(返回路径.词法(块源))
     有报错 = False
     返回任意 = None
     for 语 in 语们:
@@ -540,13 +540,13 @@ def 扫文件(相对: str, 文本: str, v2: bool):
 
     性能（882）：不调 950 收函数头们（正则拼接占全库 8.5s）——不用候选的函数/返回
     类型归属字段；950 else-邻接窗口退化为 ±5 行（多收候选=更严·差异面并入基线）。"""
-    行们 = 核950.拆行(文本)
+    行们 = 默认值扫描.拆行(文本)
     面点 = {面: [] for 面 in 面名们}
-    候选, _弱 = 核950.扫形态(相对, 行们, [])
+    候选, _弱 = 默认值扫描.扫形态(相对, 行们, [])
     for c in 候选:
         面点["静默形态"].append({"面": "静默形态", "文件": 相对, "行": c["行"],
                               "锚": c["锚"]})
-    for h in 核950.扫留痕(相对, 行们):
+    for h in 默认值扫描.扫留痕(相对, 行们):
         if h["类"] == "驳回词":
             面点["红旗词面"].append({"面": "红旗词面", "文件": 相对, "行": h["行"],
                                  "锚": h["注释"], "词": h["词"]})
@@ -863,7 +863,7 @@ def 自测写表(表: Path, 条目们: list):
 def 自测跑(根: Path, 表: Path, 基: Path):
     """临时树门禁调用：返回 (rc, 判定果, 扫描果)。"""
     扫描果 = 全库扫描(根)
-    条目们, _态 = 核950.读登记表(表)
+    条目们, _态 = 默认值扫描.读登记表(表)
     果 = 判定(扫描果, 条目们, 读基线(基))
     return (1 if 果["红"] else 0), 果, 扫描果
 
@@ -946,7 +946,7 @@ def 自测场景结果化(断言, 保活):
     rc, 果, _s = 自测跑(根, 表, 基)
     断言(rc == 0, f"基线绿: 红={果['红']!r}")
     样例 = 根 / "src" / "结果化.cpp"
-    样例1360 = """std::optional<int> 取长(const std::string& s) {
+    样例文本 = """std::optional<int> 取长(const std::string& s) {
     if (s.empty()) return std::nullopt;
     return (int)s.size();
 }
@@ -961,10 +961,10 @@ std::string 兜(std::optional<int> o) {
     if (o.has_value()) { out = "y"; } else { out = std::to_string(o.value_or(0)); }
     return out;
 }"""
-    样例.write_text(样例1360, encoding="utf-8")
+    样例.write_text(样例文本, encoding="utf-8")
     rc, 果, _s = 自测跑(根, 表, 基)
     断言(rc == 0, f"1360 结果化消费点=豁免绿: 红={果['红']!r}")
-    样例.write_text(样例1360 + """int 查宽2(表& t, std::string k) {
+    样例.write_text(样例文本 + """int 查宽2(表& t, std::string k) {
     auto it = t.find(k);
     if (it == t.end()) return 0;
     return it->second;
@@ -1082,7 +1082,7 @@ def main() -> int:
 
     根 = Path(参数.root).resolve()
     if 参数.approval:
-        条目们, 表态 = 核950.读登记表(Path(参数.registry))
+        条目们, 表态 = 默认值扫描.读登记表(Path(参数.registry))
         if 表态 != "就绪":
             print(f"[红] 登记表状态异常：{表态}（{参数.registry}）")
             return 1
@@ -1094,7 +1094,7 @@ def main() -> int:
         print(f"[基线] 已重写 {Path(参数.baseline).name}："
               + " · ".join(f"{面} {统计[面]}" for 面 in 面名们))
         return 0
-    条目们, 表态 = 核950.读登记表(Path(参数.registry))
+    条目们, 表态 = 默认值扫描.读登记表(Path(参数.registry))
     if 表态 != "就绪":
         print(f"[门禁·红] 登记表状态异常：{表态}（{参数.registry}）")
         return 1

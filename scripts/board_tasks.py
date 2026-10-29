@@ -192,7 +192,7 @@ def 号占冲突们(con: sqlite3.Connection) -> list:
 # 史实常量（744 立法诱因·既成空挂不回收）：家机指定 728 占号段一次性跳过 665~727，
 # 729 为「728z→730」off-by-one 多跳（744 已修算法）——两段同为该事故既成洞。
 # 号列=TEXT（主键），集合一律字符串形态与 禁用号 同构·免类型双轨。
-既成洞_728占号段 = frozenset(str(n) for n in range(665, 730))
+占号段号集 = frozenset(str(n) for n in range(665, 730))
 
 
 def 空洞成因(起: int, 止: int) -> str:
@@ -200,7 +200,7 @@ def 空洞成因(起: int, 止: int) -> str:
     段号们 = {str(n) for n in range(起, 止 + 1)}
     if 段号们 <= 禁用号:
         return "永久禁用号"
-    if 段号们 <= 既成洞_728占号段:
+    if 段号们 <= 占号段号集:
         return "728占号段既成洞（744 立法诱因）"
     return "021时代散洞（迁移前既成）"
 

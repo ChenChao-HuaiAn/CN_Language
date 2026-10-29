@@ -5,13 +5,13 @@
 产物汇编必须逐字节一致（零分叉红线的机械化执行面）。
 
 用法（两步）:
-  改前基线:  python scripts/parity_358.py save target/parity_358/base.md5 \
+  改前基线:  python scripts/parity_dual_compile.py save target/parity_dual_compile/base.md5 \
                  --exe target/cn_base_358.exe
-  改后对拍:  python scripts/parity_358.py cmp  target/parity_358/base.md5 \
+  改后对拍:  python scripts/parity_dual_compile.py cmp  target/parity_dual_compile/base.md5 \
                  --base target/cn_base_358.exe --new target/cn.exe
 
 覆盖面: v2 全树全部 .cn（大程序最强覆盖）+ tests/e2e 全部 主.cn。
-注意: 产物只落 target/parity_358/（gitignore·不入库）; 与其它使用
+注意: 产物只落 target/parity_dual_compile/（gitignore·不入库）; 与其它使用
 target/v2asm.asm 的脚本互斥串行（教训 166 段·本脚本用独立目录无冲突，
 但仍勿并发双实例）。
 """
@@ -22,7 +22,7 @@ import sys
 import glob
 
 TARGETS = ['win-x64', 'linux-x86_64', 'linux-arm64']
-TMP = 'target/parity_358'
+TMP = 'target/parity_dual_compile'
 
 
 def md5(p):

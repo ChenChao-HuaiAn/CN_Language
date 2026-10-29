@@ -232,7 +232,7 @@ def 测_无令牌裸请求() -> None:
         签("branch_cleanup 无令牌裸请求", "Authorization" not in 假.头(), str(假.头()))
 
 
-def 测_401分流() -> None:
+def 测_未认证分流() -> None:
     print("[4] 401 鉴权失败与「服务不可达」文案分流")
     with 环境(模式="http错误"):
         数据, 错误, 鉴权失败, 连接失败 = task_board.服务调("/api/tasks")
@@ -322,7 +322,7 @@ class 假参数:
     """board_cli 写入口最小参数容器。"""
 
 
-def 测_403分流() -> None:
+def 测_无权限分流() -> None:
     print("[5] 403 同口径鉴权失败")
     with 环境(模式="http错误", 码=403):
         数据, 错误, 鉴权失败, 连接失败 = task_board.服务调("/api/tasks")
@@ -364,7 +364,7 @@ def 测_断网态() -> None:
            f"rc={返回}·{文本[-160:]}")
 
 
-def 测_case_ledger_401() -> None:
+def 测_用例台账未认证() -> None:
     print("[6] case_ledger/check_case_numbers 401/403 不静默放行")
     临时 = Path(tempfile.mkdtemp(prefix="case_ledger_auth_")) / "ledger.json"
     原缓存 = case_ledger.缓存
@@ -402,7 +402,7 @@ def 测_case_ledger_401() -> None:
         sys.argv = 原argv
 
 
-def 测_写入口401() -> None:
+def 测_写入口未认证() -> None:
     print("[7] board_cli 写入口 401 统一鉴权失败文案")
     场景们 = [
         ("交接", board_cli.cmd_交接, {"行": "x", "机器": ""}),
@@ -438,7 +438,7 @@ def 测_写入口401() -> None:
         board_cli.脚本目录 = 原目录
 
 
-def 测_全入口401矩阵() -> None:
+def 测_全入口未认证矩阵() -> None:
     print("[8] 全入口 401 矩阵（12 读入口逐个走真 401 路径）")
     临时 = Path(tempfile.mkdtemp(prefix="matrix_auth_"))
     原cov, 原ledger = check_spec_coverage.CACHE, case_ledger.缓存
@@ -1074,12 +1074,12 @@ def main() -> int:
     测_令牌头()
     测_GET带令牌()
     测_无令牌裸请求()
-    测_401分流()
-    测_403分流()
+    测_未认证分流()
+    测_无权限分流()
     测_断网态()
-    测_case_ledger_401()
-    测_写入口401()
-    测_全入口401矩阵()
+    测_用例台账未认证()
+    测_写入口未认证()
+    测_全入口未认证矩阵()
     测_case_activity分列()
     测_check硬红()
     测_py38兼容全扫描()

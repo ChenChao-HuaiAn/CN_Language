@@ -39,7 +39,7 @@ NL = "\n"
 
 # 折叠预演域（847）：镜像编译器常量折叠/溢出预演口径
 #   （semantic_expr_binary.cpp reportConstOverflow + model/semantic_helpers.hpp
-#   cnFoldConstIntExpr505——int64 承载闭包 + 结果类型域预演）
+#   cnFoldConstIntExpr——int64 承载闭包 + 结果类型域预演）
 INT32_MIN = -2147483648
 INT32_MAX = 2147483647
 INT64_MIN = -9223372036854775808
@@ -115,7 +115,7 @@ class Gen:
     def expr(self, depth, typ="整32"):
         """生成一个 typ 类型表达式；返回 (文本, 折叠值)。
 
-        折叠值=镜像编译器常量折叠器（cnFoldConstIntExpr505）的可折叠量：
+        折叠值=镜像编译器常量折叠器（cnFoldConstIntExpr）的可折叠量：
         int=常量闭包值（字面量/一元负/算术/除模/移位），None=不可折叠
         （变量/显式转换/位运算/比较/逻辑/三元——折叠器不进这些节点）。
         仅 + - * 节点消费之做溢出预演保护（_算术折叠）——847 契约：
@@ -147,7 +147,7 @@ class Gen:
                 return self._移位折叠(op, lt, lv, k)
             lt, _ = self.expr(depth - 1)
             rt, _ = self.expr(depth - 1)
-            # 位运算不进折叠闭包（cnFoldConstIntExpr505 default——不可折叠）
+            # 位运算不进折叠闭包（cnFoldConstIntExpr default——不可折叠）
             return "(%s %s %s)" % (lt, op, rt), None
         if kind == 2 and depth >= 2:
             # 除法/取模（除数恒非零保护：字面量 1..9）
@@ -302,7 +302,7 @@ class Gen:
     #   溢出」拒绝——常量链折叠超整32 域（((-379*-130)*411)*110、
     #   ((767<<17)*494) 等；001 §1.1a①/Rust debug 对齐硬错误）。840/167 只修了
     #   移位量域，未防折叠超域——契约仍破 2.5%。
-    #   修法：expr 递归携带折叠值（镜像 cnFoldConstIntExpr505 闭包——
+    #   修法：expr 递归携带折叠值（镜像 cnFoldConstIntExpr 闭包——
     #   字面量/一元负/算术/除模/移位可折叠，位/比较/逻辑/三元不可折叠），
     #   + - * 节点按编译器预演口径预检（reportConstOverflow：任一侧折叠值超
     #   整32 域→按整64 域预演，否则整32 域；结果超域=必被拒），超域节点主动

@@ -551,7 +551,7 @@ def 处理写(名: str, 数据: dict) -> dict:
             #   只领「不限」或白名单含本平台的任务；旧客户端不报=空串→只领不限任务（不会错跑限制任务）。
             #   1392：自报平台随 claim 写入持久实例表（领到/领空都注册——daemon 每 90s
             #   轮询领空也是「活着」的信号·实例页可见；平台空串不覆盖已有自报值）。
-            平台337 = str(数据.get("平台", ""))
+            平台名 = str(数据.get("平台", ""))
             # #1221 复审 P2-2：M6原生 校验/归一提至实例认领之前——坏载荷必须先拒，
             #   不得先落实例表（原顺序坏载荷返回 ok=False 但表已写 1，后续 COALESCE
             #   回查会把它当原生实例、领走 M6 任务）。
@@ -570,7 +570,7 @@ def 处理写(名: str, 数据: dict) -> dict:
             #   落表 + 三态判定（请求优先、缺位回查实例表）；未知=旧行为+显式告警。
             #   整任务认领面（预验整任务与 ci/兜底-* 轮同口径）由此机械拒绝交叉模拟。
             交叉位, 交叉错误 = queue_instances.整任务认领准备(
-                con, 时区时刻, runner, 数据, 平台337,
+                con, 时区时刻, runner, 数据, 平台名,
                 str(数据.get("物理机", "")), M6原生值)
             if 交叉错误:
                 return {"ok": False, "说明": 交叉错误}
@@ -586,22 +586,22 @@ def 处理写(名: str, 数据: dict) -> dict:
             # 770 跳平台兜底：轮转限制的兜底任务排队超阈值仍无人领（该平台全忙/离线饿死）→
             #   限制惰性放宽 NULL——任何平台空闲实例可领（用户裁决「该平台全忙由下一轮平台执行」
             #   的运行期兜底形态；入池时的即时放宽是快路径，此处是慢路径保险）。坏串行龄 None=不动。
-            for 分支770, 更新770 in con.execute(
+            for 兜底分支, 兜底更新时刻 in con.execute(
                     "SELECT 分支,更新时刻 FROM 预验任务 WHERE 状态='排队' AND 分支 LIKE 'ci/兜底-%' "
                     "AND 认领限制 IS NOT NULL AND 认领限制!='' AND COALESCE(M6必跑,0)=0").fetchall():
-                龄 = 行龄秒(更新770)
+                龄 = 行龄秒(兜底更新时刻)
                 if 龄 is not None and 龄 > 兜底跳平台阈值秒:
                     con.execute("UPDATE 预验任务 SET 认领限制=NULL,更新时刻=? WHERE 分支=?",
-                                (时区时刻(), 分支770))
+                                (时区时刻(), 兜底分支))
                     print("[兜底放宽] %s 排队超 %ds 无人领——限制放宽不限（770 跳平台兜底）"
-                          % (分支770, 兜底跳平台阈值秒), flush=True)
+                          % (兜底分支, 兜底跳平台阈值秒), flush=True)
             # 189/770 兜底池化：预验任务优先认领（集成吞吐保序）——池内同存 ci/预验-* 与
             #   ci/兜底-* 时先派预验（兜底=develop 已入库的稳态验证·晚跑无损）；无预验排队
             #   才派兜底。零 schema 变更=按分支前缀两级查询。337：两级查询同带认领限制过滤
             #   （兜底限制=770 服务端轮转平台·全忙/超阈值放宽 NULL）。
             #   #1667：交叉模拟实例的过滤由 queue_instances.整任务认领过滤 统一生成
             #   （预验整任务与兜底轮同口径；显式邀请=认领限制字面含 xsim 才放行）。
-            认领过滤337 = queue_instances.整任务认领过滤(交叉位)
+            认领过滤子句 = queue_instances.整任务认领过滤(交叉位)
             # #1221 复审 P1-4②：M6 必跑任务只派给「M6 原生可跑」实例（载荷已在上方
             #   校验/归一；载荷缺省=None→回查实例表已存能力位，仍无=未知放行）。
             if 可领M6 is None:
@@ -616,8 +616,8 @@ def 处理写(名: str, 数据: dict) -> dict:
             兜底饥饿行 = None
             for 行h in con.execute(
                     "SELECT 分支,sha,源分支,更新时刻 FROM 预验任务 WHERE 状态='排队' "
-                    "AND 分支 LIKE 'ci/兜底-%' " + 认领过滤337 + " ORDER BY 序号",
-                    (平台337,)).fetchall():
+                    "AND 分支 LIKE 'ci/兜底-%' " + 认领过滤子句 + " ORDER BY 序号",
+                    (平台名,)).fetchall():
                 龄h = 行龄秒(行h[3])
                 if 龄h is not None and 龄h > 兜底饥饿秒:
                     兜底饥饿行 = (行h[0], 行h[1], 行h[2])
@@ -645,12 +645,12 @@ def 处理写(名: str, 数据: dict) -> dict:
             #   integrate 轮询遇 已取消 也会主动请求复活。
             for _ in range(64):   # 防呆上限：极端全取消场景不空转
                 行 = con.execute("SELECT 分支,sha,源分支 FROM 预验任务 WHERE 状态='排队' AND 分支 LIKE 'ci/预验-%' "
-                                 + 认领过滤337 + 认领M6过滤 + " ORDER BY 序号 LIMIT 1",
-                                 (平台337, 可领M6)).fetchone()
+                                 + 认领过滤子句 + 认领M6过滤 + " ORDER BY 序号 LIMIT 1",
+                                 (平台名, 可领M6)).fetchone()
                 if 行 is None:
                     行 = con.execute("SELECT 分支,sha,源分支 FROM 预验任务 WHERE 状态='排队' "
-                                     + 认领过滤337 + 认领M6过滤 + " ORDER BY 序号 LIMIT 1",
-                                     (平台337, 可领M6)).fetchone()
+                                     + 认领过滤子句 + 认领M6过滤 + " ORDER BY 序号 LIMIT 1",
+                                     (平台名, 可领M6)).fetchone()
                 if 行 is None:
                     break
                 if 源分支已并入(行[2]) is True:
