@@ -462,6 +462,45 @@ void SemanticAnalyzer::registerFunction(FunctionDecl* node) {
 
 // ==================== 189-a 流水线族子方法（原 registerFunction 379~515 段） ====================
 
+// 默认值常量性判定（#1814 乙案·001 §5.3 默认参数条文 2026-10-29 裁决）：
+//   合法域=字面量（整/浮/串/布/字符）、一元负号（递归）、算术五则二元
+//   （递归左右）、顶层常量名（globalConstValue 命中）；其余（前形参/普通
+//   变量/调用/成员链/比较逻辑位运算等）=非常量 → 编译期拒（条文指路）。
+//   193 病根反面教材修正：evalDefaultExpr 曾注释声称「语义层已报错，此处
+//   补 0」——实际语义层零检查（引用前形参静默 0 错值直达运行期）·本判定
+//   即把该假检查变真检查（纪律五两态验收：负测 E2E 锁死）。
+static bool defaultExprIsConst(const Expr* expr, const SemanticAnalyzer* self) {
+    switch (expr->getType()) {
+        case NodeType::IntegerLiteral:
+        case NodeType::FloatLiteral:
+        case NodeType::StringLiteral:
+        case NodeType::BoolLiteral:
+        case NodeType::CharLiteral:
+            return true;
+        case NodeType::UnaryExpr: {
+            const auto* un = static_cast<const UnaryExpr*>(expr);
+            return un->op == Operator::Subtract &&
+                   defaultExprIsConst(un->operand.get(), self);
+        }
+        case NodeType::BinaryExpr: {
+            const auto* bin = static_cast<const BinaryExpr*>(expr);
+            const bool arith = bin->op == Operator::Add ||
+                               bin->op == Operator::Subtract ||
+                               bin->op == Operator::Multiply ||
+                               bin->op == Operator::Divide ||
+                               bin->op == Operator::Modulo;
+            return arith && defaultExprIsConst(bin->left.get(), self) &&
+                   defaultExprIsConst(bin->right.get(), self);
+        }
+        case NodeType::IdentifierExpr: {
+            const auto* id = static_cast<const IdentifierExpr*>(expr);
+            return self->globalConstValue(id->name).has_value();
+        }
+        default:
+            return false;
+    }
+}
+
 // 族①：默认参数规则检查（原 379~414 段）——从右向左连续声明 + 引用参数
 //   不能有默认值（引用须绑定调用方左值）。写入 info.defaultCount/hasDefault。
 void SemanticAnalyzer::checkDefaultParams(FunctionDecl* node, FunctionInfo& info) {
@@ -488,6 +527,16 @@ void SemanticAnalyzer::checkDefaultParams(FunctionDecl* node, FunctionInfo& info
                                 "引用参数不能有默认值（引用须绑定调用方左值）");
         }
         if ((*it)->hasDefault) {
+            // 常量性校验（#1814 乙案·001 §5.3 条文 2026-10-29 裁决）：默认值
+            //   须为编译期常量表达式（字面量/常量算式/顶层常量）；引用前形参、
+            //   变量、调用等运行期表达式编译期拒绝（诊断指路条文）。
+            if ((*it)->defaultExpr && !(*it)->funcPtr.isFunctionPtr() &&
+                !defaultExprIsConst((*it)->defaultExpr.get(), this)) {
+                diagnostics_.report(DiagnosticLevel::Error, (*it)->location,
+                                    "默认值须为编译期常量表达式（字面量/常量算式/"
+                                    "顶层常量）——引用前形参、变量或调用不支持"
+                                    "（001 §5.3 默认参数·裁决 #1814）");
+            }
             ++info.defaultCount;
             info.hasDefault.push_back(true);
             if (noDefaultSeen) {
