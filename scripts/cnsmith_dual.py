@@ -231,6 +231,19 @@ def 首行差异(甲文本, 乙文本, 类别="stdout"):
     return None
 
 
+def 警告面一致否(甲编译输出, 乙编译输出):
+    """1366②：编译期警告行集比对（else 立法警告发 stderr·执法面盲区）。
+
+    提取双侧编译输出中含「警告」的行（进度/缓存行不参与）·行集不同=不一致。
+    返回 (是否一致, 甲首警告, 乙首警告)。"""
+    甲警告 = [ln for ln in (甲编译输出 or "").splitlines() if "警告" in ln]
+    乙警告 = [ln for ln in (乙编译输出 or "").splitlines() if "警告" in ln]
+    if 甲警告 == 乙警告:
+        return True, "", ""
+    return False, (甲警告[0] if 甲警告 else "（无警告）"), \
+        (乙警告[0] if 乙警告 else "（无警告）")
+
+
 def 比对两侧(宿主明细, v2明细, 比stderr=False):
     """双侧均编译通过时的行为判定。返回 (判定, 详情, 首差异或 None, 原因)。"""
     if 宿主明细.get("rc") != v2明细.get("rc"):
@@ -533,6 +546,21 @@ def _双侧运行分支(ctx, 记录, 配置, 源文件们, 入口名, 宿主, �
                   "stderr行数": len((明细.get("stderr") or "").splitlines()),
                   "闭环状态": 状态, "说明": 截断(说明, 800)}
     if 明细:
+        # 1366②（警告面执法盲区·1022c 第4问）：编译期警告行比对（else 立法
+        #   警告发 stderr·宿主静默 v2 警告曾判「一致绿」）——提取双侧编译输出
+        #   警告行（含「警告」前缀）逐行比对；进度/缓存行不参与。
+        警告面一致, 甲首警告, 乙首警告 = 警告面一致否(
+            记录["宿主"].get("编译输出", ""), 记录["v2"].get("编译输出", ""))
+        if not 警告面一致:
+            首警告差 = {"行": 0, "类别": "警告面", "甲侧": "宿主", "乙侧": "v2",
+                    "甲": 甲首警告, "乙": 乙首警告}
+            记录.update(判定=判定_行为分叉,
+                        原因="编译警告面不一致（else 立法警告执法面·1366②）",
+                        详情="编译警告行集不同——首差=%r vs %r"
+                             % (甲首警告, 乙首警告),
+                        首差异=首警告差)
+            记录["建议立案"] = 建议立案标题(记录)
+            return 记录
         判定, 详情, 首, 原因 = 比对两侧(记录["宿主"], 记录["v2"], ctx["比stderr"])
         记录.update(判定=判定, 详情=详情, 首差异=首, 原因=原因)
         记录["建议立案"] = 建议立案标题(记录)
@@ -778,7 +806,10 @@ def main():
     ap.add_argument("--对拍内置", type=int, default=len(内置对拍样本))
     ap.add_argument("--对拍目录", default="")
     ap.add_argument("--对拍预算秒", type=int, default=1800)
-    ap.add_argument("--对拍比stderr", action="store_true")
+    ap.add_argument("--对拍比stderr", dest="对拍比stderr",
+                    action="store_true", default=True)
+    ap.add_argument("--对拍不比stderr", dest="对拍比stderr",
+                    action="store_false")
     # 缓存对拍轴（#1556·与 cnsmith_run 同构：默认开·纯文档轮可关）
     ap.add_argument("--缓存对拍", choices=("开", "关"), default="开")
     ap.add_argument("--缓存对拍样本", type=int, default=12)
