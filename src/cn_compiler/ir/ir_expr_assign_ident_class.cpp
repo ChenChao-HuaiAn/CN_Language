@@ -25,13 +25,24 @@ bool IRGenerator::identifierClassCopyAssign(AssignmentExpr* node, IdentifierExpr
     // 同一堆地址，RAII（函数返回 DeleteObject）对两个变量重复释放 -> 堆损坏。
     // 正确语义：新建独立堆对象 + 逐字节拷贝字段（C++ 拷贝语义，含虚表指针，
     //   同类虚表指针相同，覆盖后语义不变）。
-    if (semantic_ != nullptr &&
-        node->value->getType() == NodeType::IdentifierExpr) {
+    // 981（#1744 同根收口）：源=类值**内联数组元素**（下标形态）同走本深拷通道
+    //   ——原仅标识符源进本函数，`甲 = 组[0]` 落通用 Store 把元素本体地址当句柄
+    //   存进目标槽：变量与数组元素双主（双方析构同一堆=C0000374 堆损坏，探针 d
+    //   实录·改动前编译器同崩=存量缺陷）。源类型走 exprSrcType，byRef 源槽地址
+    //   走 genClassValueSlotAddress 物化单点。
+    const bool valueIsIdent =
+        node->value->getType() == NodeType::IdentifierExpr;
+    const bool valueIsIndex =
+        node->value->getType() == NodeType::IndexExpr;
+    if (semantic_ != nullptr && (valueIsIdent || valueIsIndex)) {
         // 1360 结果化：value_or("") 显形（miss=非类判定假·原语义）
         const std::string targetSrcType = lookupSrcType(ident->name).value_or("");
         const std::string canonTarget = types::canonical(targetSrcType);
-        const std::string valueSrcType = lookupSrcType(
-            static_cast<IdentifierExpr*>(node->value.get())->name).value_or("");
+        const std::string valueSrcType =
+            valueIsIdent
+                ? lookupSrcType(static_cast<IdentifierExpr*>(node->value.get())->name)
+                      .value_or("")
+                : exprSrcType(node->value.get()).value_or("");
         const std::string canonValue = types::canonical(valueSrcType);
         if (semantic_->isClassType(canonTarget) &&
             semantic_->isClassType(canonValue)) {
@@ -58,11 +69,19 @@ bool IRGenerator::identifierClassCopyAssign(AssignmentExpr* node, IdentifierExpr
                                                       ? canonTarget
                                                       : copyCtor->ownerClass;
                     const std::string valueName =
-                        static_cast<IdentifierExpr*>(node->value.get())->name;
+                        valueIsIdent
+                            ? static_cast<IdentifierExpr*>(node->value.get())->name
+                            : std::string();
                     // 1360 结果化：value_or("") 显形（miss=空槽名原语义）
                     const std::string srcUnique = lookupVarName(valueName).value_or("");
                     ir::IRValue srcAddr;
-                    if (isByRefCapture(valueName)) {
+                    if (valueIsIndex) {
+                        // 981（#1744 同根）：类值内联元素源——byRef 槽地址约定
+                        //   物化（单点助手见 ir_call_decls.hpp）。
+                        srcAddr = genClassValueSlotAddress(node->value.get(),
+                                                           canonTarget,
+                                                           node->location);
+                    } else if (isByRefCapture(valueName)) {
                         // 源为引用参数：槽内存被引用对象地址（Load 槽）
                         srcAddr = emitResult(
                             ir::Opcode::Load,

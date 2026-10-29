@@ -537,7 +537,24 @@ void IRGenerator::visitUnaryExpr(UnaryExpr* node) {
                 }
             } else if (node->operand->getType() == NodeType::IndexExpr) {
                 // &数组[i]：等价 数组[i] 的地址（lvalueAddress 计算基址+偏移）
-                lastExpr_ = lvalueAddress(node->operand.get());
+                // 981（#1744 主案·同根收口）：**倾向于类值内联元素**的引用实参
+                //   （wrapRefArgs 内部引用机制包装·refWrapAddr）——byRef 约定=
+                //   槽地址（体内一层 Load 得对象指针），直传元素地址使被调方
+                //   把元素首字段（数据指针）当对象（探针乙：引用形参读元素
+                //   大小()=垃圾值/错值）。物化单点助手统一；用户显式 &（非
+                //   refWrapAddr）维持元素本体地址语义不变。
+                const std::string elemRefT = types::canonical(
+                    exprSrcType(node->operand.get()).value_or(""));
+                const bool classElemRefBind =
+                    node->refWrapAddr && semantic_ != nullptr &&
+                    semantic_->isClassType(elemRefT);
+                if (classElemRefBind) {
+                    lastExpr_ = genClassValueSlotAddress(node->operand.get(),
+                                                         elemRefT, node->location);
+                }
+                if (!classElemRefBind) {
+                    lastExpr_ = lvalueAddress(node->operand.get());
+                }
             } else if (node->operand->getType() == NodeType::MemberExpr) {
                 // &p.x / &指针->x：字段地址（lvalueAddress 计算基址+偏移，Task 2.7）
                 lastExpr_ = lvalueAddress(node->operand.get());

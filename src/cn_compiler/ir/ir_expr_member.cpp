@@ -147,7 +147,19 @@ bool IRGenerator::emitStructWholeAssign(const ir::IRValue& dstAddr,
         //   地址**（聚合三元地址透传约定）→ 与成员/下标来源同构的源地址。
         //   原落「其他」→ srcAddr.id<0 返回 false → 调用方落标量 StorePtr
         //   8 字节静默损坏（P47 形六实证：成员位赋值后跨块读乱码）。
-        srcAddr = lvalueAddress(valueNode);
+        // 981（#1744 主案·同根收口）：**类目标 · 下标源**=数组缓冲内联结构体
+        //   元素（无句柄槽）——类通道（183-a 拷贝构造 / 728x 解句柄）把源当
+        //   「槽地址」解一层，直传元素地址即把元素首字段（数据指针）当对象
+        //   指针（探针甲：类字段←元素 10 跑 3 崩/错值 0）。物化单点助手统一。
+        const bool classElemSrc =
+            valueNode->getType() == NodeType::IndexExpr &&
+            semantic_->isClassType(dstElemCanon);
+        if (classElemSrc) {
+            srcAddr = genClassValueSlotAddress(valueNode, dstElemCanon, loc);
+        }
+        if (!classElemSrc) {
+            srcAddr = lvalueAddress(valueNode);
+        }
     } else if (valueNode->getType() == NodeType::CallExpr &&
                isCopyBuiltinCall(valueNode)) {
         // 234-a（A7 第二层根治·plans/020 第七十五节）：**复制调用**作整体赋值

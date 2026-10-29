@@ -54,6 +54,27 @@ ir::IRValue IRGenerator::materializeStructInitArg(StructInitExpr* init,
     return base;
 }
 
+// 981（#1744 主案）：类值消费位「槽地址」物化单点（声明见 ir_call_decls.hpp）。
+//   类值在槽中的表示=对象指针（句柄）；拷贝构造/引用形参 byRef ABI 约定=槽地址
+//   （体内一层 Load 得对象指针）。标识符/类字段=句柄槽 → lvalueAddress 直用；
+//   类值内联数组元素（数组缓冲直存结构体·无句柄槽）→ 临时槽存元素本体地址。
+//   直传元素地址的后果实测：体内把元素首字段（数据指针）当对象指针再解引用
+//   （+8 读到数据缓冲第 3 个整型当元素数量）→ 非确定性越界读崩（win 981
+//   十跑七崩 C0000005）；静默形态=错值（类字段位/引用实参位探针实录）。
+ir::IRValue IRGenerator::genClassValueSlotAddress(Expr* node,
+                                                 const std::string& canonType,
+                                                 const SourceLocation& loc) {
+    ir::IRValue place = lvalueAddress(node);
+    if (node == nullptr || node->getType() != NodeType::IndexExpr) return place;
+    const std::string hold = "__classhold" + std::to_string(varCounter_++);
+    emit(ir::Opcode::Alloca, {}, ir::IRValue::reg(regCounter_++, "ptr"), hold,
+         "ptr", loc);
+    registerVarSlots(hold, canonType);
+    emit(ir::Opcode::Store, {place}, ir::IRValue(), hold, "ptr", loc);
+    return emitResult(ir::Opcode::AddrOf, {ir::IRValue::var(hold, "i64")}, "ptr",
+                      hold, loc);
+}
+
 // 81-a：实参求值 + 「调用返回结构体临时」清理登记（泄漏面见 ir.hpp 声明注释）
 ir::IRValue IRGenerator::genArgValueWithCleanup(Expr* arg,
                                                 const SourceLocation& loc) {

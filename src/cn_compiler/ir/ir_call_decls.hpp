@@ -69,6 +69,15 @@
     // 结构体字面量实参物化（D3 根治共享助手）：Alloca 临时 + emitStructInitTo + 返回地址（按值结构体参数 ABI 传地址）——普通调用路径原实现，81-a 提取
     //   供方法调用路径复用（原方法调用路径无此物化 → 实参地址=空指针 → 段错误）。
     ir::IRValue materializeStructInitArg(StructInitExpr* init, const SourceLocation& loc);
+    // 981（#1744 主案）类值消费位「槽地址」物化单点：类值在槽中的表示=对象指针
+    //   （句柄），拷贝构造/引用形参的 byRef ABI 约定=「槽地址（体内一层 Load 得
+    //   对象指针）」。标识符/类字段（槽本身存句柄）→ lvalueAddress 即槽地址；
+    //   类值**内联数组元素**（数组缓冲直存结构体·无句柄槽）→ 物化 __classhold
+    //   临时槽（槽内=元素本体地址），返回槽地址——体内 Load 得元素地址=对象本体
+    //   （v2 ③ 容器分支 hold 槽同构）。消费点=复制() 类分支 / 类字段赋值 183-a /
+    //   引用实参包装（refWrapAddr·wrapRefArgs 内部引用机制）。
+    ir::IRValue genClassValueSlotAddress(Expr* node, const std::string& canonType,
+                                         const SourceLocation& loc);
     // 106（890 残余·泛型方法实参面）：实参位「无」→ 可选<T> 形参空可选装箱 （canConvertType 豁免放开的 IR 配套）——Alloca 临时 + 整槽零填充
     //   （flag=0/值=0=「无」语义）+ 传地址；形参=模板/合成名双形态可选， 其余实参/形参形态 no-op（四调用点共用：普通/静态/虚/直接方法）。
     void boxNullOptionalArgs(CallExpr* node, const std::vector<std::string>& paramTypes,

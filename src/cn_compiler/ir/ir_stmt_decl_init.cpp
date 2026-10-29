@@ -494,12 +494,25 @@ void IRGenerator::registerPendingBoxVar(VarDecl* node, const std::string& declCa
 bool IRGenerator::tryGenClassCopyInit(VarDecl* node, const ir::IRValue& value,
                                       const std::string& srcType,
                                       const std::string& unique) {
+    // 981（#1744 同根收口）：源=类值**内联数组元素**（下标形态）同走本深拷通道
+    //   ——原仅标识符源进本函数，下标源落通用 Store 把元素本体地址当句柄存进
+    //   变量槽：变量与数组元素双主（元素析构 + 变量析构同一堆 = C0000374 堆
+    //   损坏，探针 c1 五跑五崩·改动前编译器同崩=存量缺陷）。源类型走
+    //   exprSrcType（标识符源维持 lookupSrcType/静态回落链原路径零变更）。
+    const bool initIsIdent =
+        node->initializer->getType() == NodeType::IdentifierExpr;
+    const bool initIsIndex =
+        node->initializer->getType() == NodeType::IndexExpr;
     if (semantic_ != nullptr && value.type == "ptr" &&
-        node->initializer->getType() == NodeType::IdentifierExpr) {
+        (initIsIdent || initIsIndex)) {
         const std::string initName =
-            static_cast<IdentifierExpr*>(node->initializer.get())->name;
+            initIsIdent
+                ? static_cast<IdentifierExpr*>(node->initializer.get())->name
+                : std::string();
         // 1360 结果化：value_or("") 显形（miss=空→静态回落链·原语义）
-        std::string initSrcType = lookupSrcType(initName).value_or("");
+        std::string initSrcType =
+            initIsIdent ? lookupSrcType(initName).value_or("")
+                        : exprSrcType(node->initializer.get()).value_or("");
         // 宿主根治（2026-09-01）：源为顶层类静态（不在 varStack_，lookupSrcType
         //   无值）——类型取 globalStaticType；拷贝构造 byRef 传静态槽地址
         //   （&?gstatic_名，解引用即对象指针——指针槽模型与局部变量槽同构）。
@@ -539,7 +552,12 @@ bool IRGenerator::tryGenClassCopyInit(VarDecl* node, const ir::IRValue& value,
                     // 1360 结果化：value_or("") 显形（miss=空槽名原语义）
                     const std::string srcUnique = lookupVarName(initName).value_or("");
                     ir::IRValue srcAddr;
-                    if (initIsStatic) {
+                    if (initIsIndex) {
+                        // 981（#1744 同根）：类值内联元素源——byRef 槽地址约定
+                        //   物化（单点助手见 ir_call_decls.hpp）。
+                        srcAddr = genClassValueSlotAddress(node->initializer.get(),
+                                                           canonTgt, node->location);
+                    } else if (initIsStatic) {
                         // 源为顶层类静态：槽地址 = ?gstatic_名 符号地址
                         srcAddr = emitResult(
                             ir::Opcode::ConstString, {}, "ptr",

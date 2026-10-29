@@ -857,6 +857,13 @@ void IRGenerator::genCopyBuiltin(CallExpr* node, const SourceLocation& loc) {
             emit(ir::Opcode::Store, {ptr}, ir::IRValue(), hold, "ptr", loc);
             srcSlot = emitResult(ir::Opcode::AddrOf,
                                  {ir::IRValue::var(hold, "i64")}, "ptr", hold, loc);
+        } else if (arg->getType() == NodeType::IndexExpr) {
+            // 981 宿主侧 C0000005 根治（#1744 主案）：源=类值**内联数组元素**
+            //   （数组缓冲直存结构体——形态 复制(其他.数据[索引])）——直传元素
+            //   本体地址使拷贝构造体内把元素首字段（数据指针）当对象指针再解引用
+            //   （+8 位置读到数据缓冲第 3 个整型当元素数量），非确定性越界读崩
+            //   （win 981 十跑七崩 C0000005）。物化单点见 genClassValueSlotAddress。
+            srcSlot = genClassValueSlotAddress(arg, type, loc);
         } else {
             srcSlot = lvalueAddress(arg);
         }
