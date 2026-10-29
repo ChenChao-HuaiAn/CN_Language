@@ -59,10 +59,11 @@ private:
                              const std::vector<ir::IRValue>& tail);
 
     // 整型比较（按类型位宽解读为有符号）与浮点比较 -> 布尔结果
+    //   浮点比较按操作数类型域判定（f32 侧先按 float32 舍入——#1822）
     static bool compareInt(ir::Opcode op, const std::string& a, const std::string& b,
                            const std::string& type, bool& result);
     static bool compareFloat(ir::Opcode op, const std::string& a, const std::string& b,
-                             bool& result);
+                             const std::string& type, bool& result);
 
     // ---- 整型二元运算折叠（Add/Sub/Mul/Div/Mod/位运算/移位/比较） ----
     // a/b 为操作数文本，type 为操作数类型（IR类型 i8~u64），

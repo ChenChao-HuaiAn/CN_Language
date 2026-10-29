@@ -410,6 +410,34 @@ bool ConstFoldPass::foldFloatBinary(ir::Opcode op, const std::string& aText,
     if (!isFloatType(type)) return false;
     double a = 0.0, b = 0.0;
     if (!parseDouble(aText, a) || !parseDouble(bText, b)) return false;
+    // #1822 根治：f32 折叠必须在 float32 域求值——操作数先按 f32 舍入，
+    //   算术用 float 类型逐 op 舍入（IEEE binary32 语义）。原实现用 double
+    //   模拟 + %.9g 文本往返：常量文本 stod 得 double（0.1 ≠ 0.1f 的精确值），
+    //   中间产物 %.9g 文本化后 stod 读回再漂——误差复利把精确为 0.0f 的
+    //   0.1f+0.1f-0.2f 算成约 3e-9，O1+ 下 ==0.0f 折叠为假与运行期分叉
+    //   （cnsmith 双侧实录）。x64/arm64 上 C++ float 算术=SSE/NEON 逐 op
+    //   舍入，与运行期发射（addss 等）语义一致。
+    if (type == "f32") {
+        const float fa = static_cast<float>(a);
+        const float fb = static_cast<float>(b);
+        float fr = 0.0f;
+        switch (op) {
+            case ir::Opcode::Add: fr = fa + fb; break;
+            case ir::Opcode::Sub: fr = fa - fb; break;
+            case ir::Opcode::Mul: fr = fa * fb; break;
+            case ir::Opcode::Div:
+                // 浮点除零不折叠（保留 IEEE 语义/运行期行为；判域按 f32 圆整后
+                //   的值——与运行期 divss 的除数零判定同域）
+                if (fb == 0.0f) return false;
+                fr = fa / fb;
+                break;
+            default:
+                return false;
+        }
+        out = formatDouble(static_cast<double>(fr), type);
+        return true;
+    }
+    // f64：double 域即语义域（文本 stod 就是 f64 语义值；%.17g 文本往返精确）
     double result = 0.0;
     switch (op) {
         case ir::Opcode::Add: result = a + b; break;
@@ -568,11 +596,30 @@ bool ConstFoldPass::compareInt(ir::Opcode op, const std::string& aText,
     return true;
 }
 
-// 浮点比较
+// 浮点比较（#1822：新增 type 参数——f32 侧操作数先按 float32 舍入再判定）
 bool ConstFoldPass::compareFloat(ir::Opcode op, const std::string& aText,
-                                 const std::string& bText, bool& result) {
+                                 const std::string& bText, const std::string& type,
+                                 bool& result) {
     double a = 0.0, b = 0.0;
     if (!parseDouble(aText, a) || !parseDouble(bText, b)) return false;
+    if (type == "f32") {
+        // #1822 根治：f32 比较按 f32 域判定——%.9g 产物文本 stod 读回的 double
+        //   不等于原 f32 值（如折叠产物 0.200000003 ≠ 0.2f 精确值），直接
+        //   double 比较会把 IEEE 应相等的两值判不等（NaN 时 C++ 比较全假/
+        //   != 真=IEEE ordered，与运行期 setnp 组合语义一致）
+        const float fa = static_cast<float>(a);
+        const float fb = static_cast<float>(b);
+        switch (op) {
+            case ir::Opcode::Eq: result = (fa == fb); break;
+            case ir::Opcode::Ne: result = (fa != fb); break;
+            case ir::Opcode::Lt: result = (fa < fb); break;
+            case ir::Opcode::Le: result = (fa <= fb); break;
+            case ir::Opcode::Gt: result = (fa > fb); break;
+            case ir::Opcode::Ge: result = (fa >= fb); break;
+            default: return false;
+        }
+        return true;
+    }
     switch (op) {
         case ir::Opcode::Eq: result = (a == b); break;
         case ir::Opcode::Ne: result = (a != b); break;
@@ -644,7 +691,8 @@ bool ConstFoldPass::foldResolved(ir::IRInstruction& inst,
         case ir::Opcode::Ge: {
             bool result = false;
             const bool ok = isFloatType(opType)
-                                ? compareFloat(inst.opcode, out[0].extra, out[1].extra, result)
+                                ? compareFloat(inst.opcode, out[0].extra, out[1].extra,
+                                               opType, result)
                                 : compareInt(inst.opcode, out[0].extra, out[1].extra,
                                              opType, result);
             if (!ok) return false;
