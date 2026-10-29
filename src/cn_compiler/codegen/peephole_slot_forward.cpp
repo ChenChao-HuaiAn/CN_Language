@@ -176,6 +176,32 @@ void collectTrace(const std::vector<std::string_view>& lines, std::string_view a
                   std::vector<AccessRange>& ranges) {
     for (std::size_t li = 0; li < lines.size(); ++li) {
         const std::string_view ln = lines[li];
+        // 取帧槽地址行先行识别（AArch64 `add|sub xN, x29, #N` 不含槽锚·x86 lea
+        //   含锚走下方常规收集）：地址逃逸=该槽 16 字节聚合窗引用，必须计入，
+        //   否则该槽仅存的 store 被「单现死写」剃除（833 arm64 i128 错值实录）。
+        //   溢出/超限=该槽整槽不参与（与下方常规收集同款保守口径）。
+        if (rules.parseFrameAddress) {
+            std::string addrSlot;
+            if (rules.parseFrameAddress(ln, addrSlot)) {
+                SlotEntry& ea = table.at(table.findOrAdd(addrSlot));
+                // 溢出/超限=该槽整槽不参与本遍（保守保留原样·与下方常规收集同款）
+                if (ea.overflow || ea.count >= kMaxTrackedOcc) {
+                    ea.overflow = true;
+                }
+                if (!ea.overflow) {
+                    SlotOccurrence& occA = ea.occ[ea.count];
+                    occA.pos = static_cast<int>(li);
+                    occA.kind = OccKind::Unknown;
+                    occA.bytes = 16;
+                    ++ea.count;
+                    long long addrOff = 0;
+                    // 偏移解析失败=不入别名表（未知引用仍拦截该槽·保守口径同款）
+                    if (rules.parseSlotOffset(addrSlot, addrOff)) {
+                        ranges.push_back(AccessRange{addrOff, 16, ea.id});
+                    }
+                }
+            }
+        }
         if (ln.find(anchor) == std::string_view::npos) continue;
         SlotAccess storeAcc;
         SlotAccess loadAcc;

@@ -637,7 +637,8 @@ const SlotRules kGasIntelX64 = {"[rbp",
                                 x86FloatHighObserverGas,
                                 false,  // movss/movsd 寄存器形态不清高半（1351）
                                 parseX86SlotOffset,
-                                writesX86Reg};
+                                writesX86Reg,
+                                nullptr};  // lea 含槽锚·常规收集已覆盖（无需取址钩子）
 const SlotRules kMasmX64 = {"[rbp",
                             parseX86StoreLine,
                             parseMasmLoad,
@@ -648,7 +649,8 @@ const SlotRules kMasmX64 = {"[rbp",
                             x86FloatHighObserverMasm,
                             false,  // movss/movsd 寄存器形态不清高半（1351）
                             parseX86SlotOffset,
-                            writesX86Reg};
+                            writesX86Reg,
+                            nullptr};  // lea 含槽锚·常规收集已覆盖（无需取址钩子）
 
 } // namespace
 

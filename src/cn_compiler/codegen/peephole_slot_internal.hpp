@@ -64,6 +64,14 @@ struct SlotRules {
     // 该行是否写归一化寄存器的任一位宽形态（含 8/16 位部分写、隐式写）；
     //   与 classifyReg 不同：这里关心「值是否可能被改写」，部分写必须算写。
     bool (*writesReg)(std::string_view line, const std::string& reg64);
+    // 该行是否「取帧槽地址」且槽 token 不含 slotAnchor 锚：命中=对该槽 token
+    //   的一条 16 字节地址逃逸引用（聚合窗·语义同 x86 lea 含锚行的常规收集）。
+    //   动机（死写误剃实录）：AArch64 实参取址发射为 `add|sub xN, x29, #N`
+    //   （无 [x29 槽 token）——i128 双槽各仅一现 store 被判「单现死写」剃除，
+    //   打印/传参读到的全是栈垃圾（833 浮32转128截断 arm64 -O2 错值实录）；
+    //   x86 的 lea rdi,[rbp-N] 含锚天然进表无需本钩子（两方言束均置 nullptr
+    //   由 collectTrace 判空跳过）。识别失败=保守不识别（行不参与本遍判定）。
+    bool (*parseFrameAddress)(std::string_view line, std::string& slotToken);
 };
 
 // 去左侧空白（1248：手写扫描——寄存器/助记符分离前每行必经，避免

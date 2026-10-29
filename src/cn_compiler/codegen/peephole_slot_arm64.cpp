@@ -554,6 +554,51 @@ bool armFloatHighObserver(std::string_view line, const std::string& reg64) {
     return false;
 }
 
+// 取帧槽地址行识别（死写判定的地址逃逸面）：`add|sub xN, x29, #imm` 形态
+//   （emitStackAddr/实参取址发射——sub=负偏移 [x29,#-imm]、add=正偏移
+//   [x29,#imm]，槽 token 拼接与 stackMemText 发射形态逐字一致）。识别失败=
+//   保守返回假（该行不参与本遍·写存活不误剃）。imm 域=正整数（域外/形态
+//   不合=非本产物族取址行·原样保留）。
+bool parseArmFrameAddress(std::string_view line, std::string& slotToken) {
+    const std::string_view s = trimView(line);
+    const std::size_t sp = s.find_first_of(" \t");
+    if (sp == std::string_view::npos) return false;
+    const std::string_view mnem = s.substr(0, sp);
+    const bool isSub = mnem == "sub";
+    // 静默豁免业务值: 助记符枚举外=非取址行·识别器保守不参与（1157 先例）
+    if (!isSub && mnem != "add") return false;
+    // 操作数段：dest, x29, #imm（三段·base 固定 x29——sp 基址属间接寻址面）
+    std::string_view rest = lstrip(s.substr(sp + 1));
+    const std::size_t c1 = rest.find(',');
+    if (c1 == std::string_view::npos) return false;
+    const std::string_view dest = trimView(rest.substr(0, c1));
+    char form = 0;
+    int num = 0;
+    // 静默豁免业务值: 寄存器形态枚举外=非取址行·识别器保守不参与（1157 先例）
+    if (!parseArmRegToken(dest, form, num)) return false;  // 目标须为合法寄存器
+    rest = lstrip(rest.substr(c1 + 1));
+    const std::size_t c2 = rest.find(',');
+    if (c2 == std::string_view::npos) return false;
+    const std::string_view base = trimView(rest.substr(0, c2));
+    if (base != "x29") return false;
+    const std::string_view immTok = trimView(rest.substr(c2 + 1));
+    // 静默豁免业务值: 立即数形态枚举外=非取址行·识别器保守不参与（1157 先例）
+    if (immTok.empty() || immTok[0] != '#') return false;
+    const std::string_view digits = immTok.substr(1);
+    // 静默豁免业务值: 空立即数=形态枚举外·识别器保守不参与（1157 先例）
+    if (digits.empty()) return false;
+    long long imm = 0;
+    for (const char ch : digits) {
+        if (ch < '0' || ch > '9') return false;
+        imm = imm * 10 + (ch - '0');
+        // 静默豁免业务值: 量级域外=非本产物族帧槽偏移·识别器保守不参与（1157 先例）
+        if (!(imm >= 0 && imm <= 1000000000LL)) return false;
+    }
+    slotToken = isSub ? ("[x29,#-" + std::string(digits) + "]")
+                      : ("[x29,#" + std::string(digits) + "]");
+    return true;
+}
+
 // AArch64 方言规则束（1157 固定帧槽面；1279 补高位零证明；1351/1320 追加判据）
 const SlotRules kAArch64 = {"[x29",
                             parseArmStoreLine,
@@ -565,7 +610,8 @@ const SlotRules kAArch64 = {"[x29",
                             armFloatHighObserver,
                             true,  // 标量寄存器搬运（fmov）清零上位：D 全删回落即可
                             parseArmSlotOffset,
-                            writesArmReg};
+                            writesArmReg,
+                            parseArmFrameAddress};
 
 } // namespace
 
