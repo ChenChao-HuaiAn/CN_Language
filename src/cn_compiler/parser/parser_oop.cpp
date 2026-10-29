@@ -275,7 +275,14 @@ std::unique_ptr<InterfaceDecl> Parser::parseInterfaceDecl() {
         }
         consume(TokenType::Kw_Function, "'函数'");
         if (!check(TokenType::Identifier)) {
-            reportErrorHere("接口方法预期名称");
+            // 1750（001 §2.1a 名位保留字占用）：保留字作接口方法名=精确诊断
+            //   （点名保留字词；与 v2 解析接口.cn 同串「接口方法名不可为保留字
+            //   '<词>'」——双编译负测诊断锚）。
+            if (current().isKeyword()) {
+                reportErrorHere("接口方法名不可为保留字 '" + current().getValue() + "'");
+            } else {
+                reportErrorHere("接口方法预期名称");
+            }
             synchronize();
             break;
         }
@@ -468,7 +475,12 @@ bool Parser::parseFriendMember(ClassMember& out) {
                     consume(TokenType::RightParen, "')'");
                 }
             } else {
-                reportErrorHere("友元函数声明预期函数名");
+                // 1750：保留字作友元函数名=精确诊断（与 v2 解析类.cn 同串）
+                if (current().isKeyword()) {
+                    reportErrorHere("友元函数名不可为保留字 '" + current().getValue() + "'");
+                } else {
+                    reportErrorHere("友元函数声明预期函数名");
+                }
                 return false;
             }
         } else if (check(TokenType::Kw_Class)) {
@@ -575,7 +587,12 @@ bool Parser::parseFunctionMember(ClassMember& out) {
             //   语法层统一按 Method 记录，构造/析构判定由语义层比较 函数名 == 类名。
             out.kind = ClassMemberKind::Method;
         } else {
-            reportErrorHere("类成员预期函数名或运算符");
+            // 1750：保留字作类方法名=精确诊断（与 v2 解析类.cn 同串）
+            if (current().isKeyword()) {
+                reportErrorHere("类方法名不可为保留字 '" + current().getValue() + "'");
+            } else {
+                reportErrorHere("类成员预期函数名或运算符");
+            }
             return false;
         }
         // 参数列表：(参数1, 参数2, ...)

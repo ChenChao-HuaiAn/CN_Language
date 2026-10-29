@@ -683,7 +683,10 @@ bool Parser::peekLambdaCapture() const {
     while (true) {
         const TokenType t = peek(i).getType();
         if (t == TokenType::Amp) { i++; any = true; continue; }   // &x
-        if (t == TokenType::Identifier) { i++; any = true; }
+        // 1750（001 §2.1a）：保留字作捕获名——预判同收关键字记号，交解析层
+        //   给「捕获名不可为保留字」精确诊断（原判非标识符即非 lambda，落
+        //   「预期表达式，实际为 '['」失真文案）。
+        if (t == TokenType::Identifier || Token::isKeyword(t)) { i++; any = true; }
         else { return false; }                                     // 非捕获形态
         if (peek(i).getType() == TokenType::RightBracket) {
             // 显式捕获 [变量] 的 ']' 后既可以是 '('（参数表）也可以是 '{'（无参 lambda 体），
@@ -729,7 +732,14 @@ std::unique_ptr<Expr> Parser::parseLambdaExpr() {
                 lambda->explicitCaptures.push_back(current().getValue());
                 advance();
             } else {
-                reportErrorHere("lambda 捕获列表预期变量名");
+                // 1750（001 §2.1a 名位保留字占用）：保留字作捕获名=精确诊断
+                //   （点名保留字词；与 v2 解析表达式尾.cn 同串「捕获名不可为
+                //   保留字 '<词>'」——双编译负测诊断锚）。
+                if (current().isKeyword()) {
+                    reportErrorHere("捕获名不可为保留字 '" + current().getValue() + "'");
+                } else {
+                    reportErrorHere("lambda 捕获列表预期变量名");
+                }
                 break;
             }
             if (check(TokenType::Comma)) { advance(); continue; }
@@ -748,7 +758,14 @@ std::unique_ptr<Expr> Parser::parseLambdaExpr() {
                 lambda->explicitCaptures.push_back(current().getValue());
                 advance();
             } else {
-                reportErrorHere("lambda 捕获列表预期变量名");
+                // 1750（001 §2.1a 名位保留字占用）：保留字作捕获名=精确诊断
+                //   （点名保留字词；与 v2 解析表达式尾.cn 同串「捕获名不可为
+                //   保留字 '<词>'」——双编译负测诊断锚）。
+                if (current().isKeyword()) {
+                    reportErrorHere("捕获名不可为保留字 '" + current().getValue() + "'");
+                } else {
+                    reportErrorHere("lambda 捕获列表预期变量名");
+                }
                 break;
             }
             if (check(TokenType::Comma)) {
