@@ -91,7 +91,7 @@ void LinuxX64CodeGenerator::emitCall(LinuxX64AsmWriter& writer,
         if (colon != std::string::npos) {
             lo = std::stoull(ex.substr(0, colon), nullptr, 16);
             hi = std::stoull(ex.substr(colon + 1), nullptr, 16);
-        } else {
+        } else {  // 静默豁免业务值: i128 解析单点化（a727e097）回退守卫——parseInt128InitText 拒收形态回退既有 stoull 原路径（=单点化前原样行为·E2E 锁面钉死·异常零占位由验证器防线承担）
             // 1861（i128 常量文本解析族统一·与 ConstInt 面同款单点）：
             //   parseInt128InitText（十进制±/进制前缀/后缀自断）
             unsigned long long loP = 0, hiP = 0;

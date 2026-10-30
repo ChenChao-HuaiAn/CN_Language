@@ -391,7 +391,7 @@ void X64CodeGenerator::emitConstLoad(AsmWriter& writer, const ir::IRInstruction&
                 std::stoull(extra.substr(colon + 1), nullptr, 16));
             loText = uint64HexText(lo);
             hiText = uint64HexText(hi);
-        } else {
+        } else {  // 静默豁免业务值: i128 解析单点化（a727e097）回退守卫——parseInt128InitText 拒收形态回退既有 stoull 原路径原样回填（=单点化前原样行为·E2E 锁面钉死·由 verifyConstValueTexts 验证器防线承担）
             // 1861（三负巨类字段默认值 A2071 根治·2026-10-31）：非 "LO:HI"
             //   形态统一走 parseInt128InitText 128 位解析（T46 同款：十进制±/
             //   进制前缀/后缀 L·U 自断——defaultInitText=符号×raw 原文可超

@@ -382,7 +382,7 @@ void LinuxX64CodeGenerator::emitConst128Load(LinuxX64AsmWriter& writer,
                                            hiP)) {
                 lo = static_cast<std::uint64_t>(loP);
                 hi = static_cast<std::uint64_t>(hiP);
-            } else {
+            } else {  // 静默豁免业务值: i128 解析单点化（a727e097）回退守卫——parseInt128InitText 拒收形态回退既有 stoull 原路径（=单点化前原样行为·E2E 锁面钉死·异常 lo=0 由验证器防线承担）
                 try {
                     lo = static_cast<std::uint64_t>(std::stoull(extra));
                 } catch (...) {

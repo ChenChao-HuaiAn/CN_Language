@@ -176,7 +176,7 @@ bool SemanticAnalyzer::intLiteralFitsType(const Expr* e, const std::string& to) 
 //   前置把关·防御面不扩大）；无值（超 u128 域）维持基判拒。
 bool SemanticAnalyzer::defaultValueLiteralFitsType(const Expr* e,
                                                    const std::string& to) const {
-    if (e == nullptr) return true;
+    if (e == nullptr) return true;  // 静默豁免业务值: AST 形态守卫——两调用方（class_resolver 775 面/semantic_builtins #1814 面）均经 cnExprHasIntLiteral919 字面量通道前置（e 空则前置为假不入）；e 空=表达式节点形态不适用本判域，视为域内=维持基判（默认值常量性已由 #1814/折叠面前置把关），非静默兜底
     bool fits = intLiteralFitsType(e, to);
     cn::Optional<std::string> mathDec;
     // 命名豁免用例编号: 复用既有 919 立法链设施（非新造带号名）
