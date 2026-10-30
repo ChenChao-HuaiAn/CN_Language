@@ -77,12 +77,18 @@ bool SemanticAnalyzer::checkInterfaceMethodCall(CallExpr* node, MemberExpr* mem,
                         if (!refAlready &&
                             !canConvertWithLiteral(node->arguments[i].get(), argTypes[i], imit->second.paramTypes[i]) &&
                             !canConvertArgNarrow(node->arguments[i].get(), argTypes[i], imit->second.paramTypes[i])) {
-                            diagnostics_.report(
-                                DiagnosticLevel::Error, node->arguments[i]->location,
-                                "接口方法 '" + methodName + "' 第 " +
-                                    std::to_string(i + 1) + " 个实参无法将 '" +
-                                    argTypes[i] + "' 隐式转换为 '" +
-                                    imit->second.paramTypes[i] + "'");
+                            // 1819（1784 丁案实施④）：值形态类切片（派生类实参 →
+                            //   基类值形参）=专用切片诊断（869 面·赋值/返回/初始化
+                            //   同款）；切片判定真=已报，不再叠加通用诊断。
+                            if (!reportSliceReject(argTypes[i], imit->second.paramTypes[i],
+                                                   node->arguments[i]->location)) {
+                                diagnostics_.report(
+                                    DiagnosticLevel::Error, node->arguments[i]->location,
+                                    "接口方法 '" + methodName + "' 第 " +
+                                        std::to_string(i + 1) + " 个实参无法将 '" +
+                                        argTypes[i] + "' 隐式转换为 '" +
+                                        imit->second.paramTypes[i] + "'");
+                            }
                         }
                     }
                 }
@@ -282,8 +288,13 @@ bool SemanticAnalyzer::checkInstanceMethodCall(CallExpr* node, MemberExpr* mem,
                     if (!refAlready &&
                         !canConvertWithLiteral(node->arguments[i].get(), argTypes[i], method->paramTypes[i]) &&
                         !canConvertArgNarrow(node->arguments[i].get(), argTypes[i], method->paramTypes[i])) {
+                        // 1819（1784 丁案实施④）：值形态类切片=专用切片诊断
+                        //   （869 面·容器入元素/方法实参同款）；切片判定真=已报，
+                        //   不再叠加后续专用与通用诊断。
                         // 031：方法值↔fnptr 转换拒绝=专用文案（单点）
-                        if (!method_value_943::reportConvertReject(
+                        if (!reportSliceReject(argTypes[i], method->paramTypes[i],
+                                               node->arguments[i]->location) &&
+                            !method_value_943::reportConvertReject(
                                 diagnostics_, argTypes[i], method->paramTypes[i],
                                 node->arguments[i]->location,
                                 node->arguments[i].get())) {
@@ -373,7 +384,11 @@ bool SemanticAnalyzer::checkStaticMethodCall(CallExpr* node, const std::string& 
                                                method->paramTypes[i]) &&
                         !canConvertArgNarrow(node->arguments[i].get(), argTypes[i],
                                              method->paramTypes[i])) {
-                        if (!method_value_943::reportConvertReject(
+                        // 1819（1784 丁案实施④）：值形态类切片=专用切片诊断
+                        //   （869 面·静态方法实参同款）；切片判定真=已报。
+                        if (!reportSliceReject(argTypes[i], method->paramTypes[i],
+                                               node->arguments[i]->location) &&
+                            !method_value_943::reportConvertReject(
                                 diagnostics_, argTypes[i], method->paramTypes[i],
                                 node->arguments[i]->location,
                                 node->arguments[i].get())) {

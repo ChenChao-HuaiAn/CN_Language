@@ -152,11 +152,17 @@ bool SemanticAnalyzer::checkCtorCall(CallExpr* node, const std::string& classNam
                     for (std::size_t i = 0; i < argTypes.size(); ++i) {
                         if (!canConvertWithLiteral(node->arguments[i].get(), argTypes[i], ctor->paramTypes[i]) &&
                             !canConvertArgNarrow(node->arguments[i].get(), argTypes[i], ctor->paramTypes[i])) {
-                            diagnostics_.report(
-                                DiagnosticLevel::Error, node->arguments[i]->location,
-                                "构造函数 '" + className + "' 第 " + std::to_string(i + 1) +
-                                    " 个实参无法将 '" + argTypes[i] + "' 隐式转换为 '" +
-                                    ctor->paramTypes[i] + "'");
+                            // 1819（1784 丁案实施④）：值形态类切片（派生类实参 →
+                            //   基类值形参）=专用切片诊断（869 面·构造实参同款）；
+                            //   切片判定真=已报，不再叠加通用诊断。
+                            if (!reportSliceReject(argTypes[i], ctor->paramTypes[i],
+                                                   node->arguments[i]->location)) {
+                                diagnostics_.report(
+                                    DiagnosticLevel::Error, node->arguments[i]->location,
+                                    "构造函数 '" + className + "' 第 " + std::to_string(i + 1) +
+                                        " 个实参无法将 '" + argTypes[i] + "' 隐式转换为 '" +
+                                        ctor->paramTypes[i] + "'");
+                            }
                         }
                     }
                 }
@@ -206,13 +212,19 @@ bool SemanticAnalyzer::checkCtorCall(CallExpr* node, const std::string& classNam
                                                            argTypes[i], diag->paramTypes[i]) &&
                                     !canConvertArgNarrow(node->arguments[i].get(),
                                                            argTypes[i], diag->paramTypes[i])) {
-                                    diagnostics_.report(
-                                        DiagnosticLevel::Error,
-                                        node->arguments[i]->location,
-                                        "构造函数 '" + className + "' 第 " +
-                                            std::to_string(i + 1) + " 个实参无法将 '" +
-                                            argTypes[i] + "' 隐式转换为 '" +
-                                            diag->paramTypes[i] + "'");
+                                    // 1819（1784 丁案实施④）：值形态类切片=专用切片
+                                    //   诊断（869 面·构造诊断基准态同款）；切片判定
+                                    //   真=已报，不再叠加通用诊断。
+                                    if (!reportSliceReject(argTypes[i], diag->paramTypes[i],
+                                                           node->arguments[i]->location)) {
+                                        diagnostics_.report(
+                                            DiagnosticLevel::Error,
+                                            node->arguments[i]->location,
+                                            "构造函数 '" + className + "' 第 " +
+                                                std::to_string(i + 1) + " 个实参无法将 '" +
+                                                argTypes[i] + "' 隐式转换为 '" +
+                                                diag->paramTypes[i] + "'");
+                                    }
                                 }
                             }
                         }

@@ -337,6 +337,25 @@ cn::Optional<std::string> SemanticAnalyzer::resolveOverload(const std::string& n
                 }
             }
         }
+        // 1819（1784 丁案实施④·多态禁切片）：决议失败的类切片专用诊断——
+        //   值形态派生类实参 → 基类值形参（conversionLevel nullopt 的主因形态）
+        //   升级为「禁止类切片」专用文案（指路 T&/T*），替代通用「未找到匹配
+        //   的函数」。判定=reportSliceReject 单点（指针/引用形参=同地址合法面
+        //   前置排除·234 引用放行零误伤）；扫描锚=任一候选在该实参位构成切片
+        //   形态（机械可判定·继承链闭包 isDerivedFrom）。扫描真=已报专用诊断，
+        //   保持决议失败控制流（返回 nullopt）。
+        for (const FuncEntryView* view : bucket) {
+            const FunctionInfo& info = view->entry->second;
+            if (!overloadEntryMatch(*view, name, info, moduleFilter, currentHasName)) {
+                continue;
+            }
+            const std::size_t cap = std::min(argTypes.size(), info.paramTypes.size());
+            for (std::size_t ai = 0; ai < cap; ++ai) {
+                if (reportSliceReject(argTypes[ai], info.paramTypes[ai], loc)) {
+                    return std::nullopt;
+                }
+            }
+        }
         diagnostics_.report(DiagnosticLevel::Error, loc,
                             "未找到匹配的函数 '" + name + "'（参数个数或类型不匹配）");
         return std::nullopt;

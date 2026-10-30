@@ -557,10 +557,16 @@ bool SemanticAnalyzer::checkFuncPtrCall(CallExpr* node, const std::string& calle
             const std::string& paramType = paramTypes[i];
             if (!canConvertWithLiteral(node->arguments[i].get(), argType, paramType) &&
                 !canConvertArgNarrow(node->arguments[i].get(), argType, paramType)) {
-                diagnostics_.report(DiagnosticLevel::Error, node->arguments[i]->location,
-                                    "函数指针第 " + std::to_string(i + 1) +
-                                    " 个参数无法将 '" + argType + "' 隐式转换为 '" +
-                                    paramType + "'");
+                // 1819（1784 丁案实施④）：值形态类切片（派生类实参 → 基类值
+                //   形参）=专用切片诊断（869 面·函数指针实参同款）；切片判定
+                //   真=已报，不再叠加通用诊断。
+                if (!reportSliceReject(argType, paramType,
+                                       node->arguments[i]->location)) {
+                    diagnostics_.report(DiagnosticLevel::Error, node->arguments[i]->location,
+                                        "函数指针第 " + std::to_string(i + 1) +
+                                        " 个参数无法将 '" + argType + "' 隐式转换为 '" +
+                                        paramType + "'");
+                }
             }
         }
         lastType_ = retType;
