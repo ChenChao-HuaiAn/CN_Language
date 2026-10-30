@@ -188,11 +188,11 @@ private:
     //   豁免三分判据——true=接收槽豁免登记（形参/全局写穿别名·保守面）；
     //   false=登记回收（局部/新建转移·引用返回·复制/转移内置·构造·容器）。
     bool callReceiverExempt880(VarDecl* node, const DeclGenCtx& ctx);
-    // ⑦-b 880 判据源（1479 提炼·声明位与实参位共用）：被调体内「首个 return
-    //   表达式」来源三分——true=借用（形参/全局写穿别名·非标识符 return 保守
-    //   面）；false=拥有（局部/新建句柄转移）。
+    // ⑦-b 880 判据源（1479·共用）true=借用豁免/false=拥有登记；1818 追补
+    //   （丁案 R1）第三参=返回类型原文·类返回且首 return=标识符→恒拥有（详注 ir_stmt_decl_raii.cpp）。
     bool returnSourceBorrowed880(BlockStmt* body,
-                                 const std::vector<std::unique_ptr<ParamDecl>>& params) const;
+                                 const std::vector<std::unique_ptr<ParamDecl>>& params,
+                                 const std::string& returnType) const;
     // ⑦-c 1479（965 前置机制·实现迁 ir_stmt_decl_raii.cpp）：「调用返回类对象
     //   临时」实参位拥有性甄别——拥有=登记整壳释放；借用/保守=不登记
     //   （宁漏勿崩·误释借用句柄=删调用方对象）。

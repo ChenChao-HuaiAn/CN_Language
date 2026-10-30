@@ -64,10 +64,34 @@ Expr* findReturnExpr880raii(Stmt* s) {
 //   findReturnExpr880raii 见文件头匿名命名空间。
 // 返回 true=借用（形参/全局写穿别名·非标识符 return 保守面）→ 豁免登记；
 // 返回 false=拥有（局部/新建标识符=句柄转移）→ 登记/释放。
+// 1818 追补（2026-10-30·丁案 R1·001 §5.3 返回值语义 2026-10-29 裁决）：第三参=
+//   被调返回类型原文。类返回（非引用·类表命中）且**首个 return=标识符**时恒
+//   false=拥有——标识符=形参/全局（1817 返回位深拷门 ir_stmt.cpp 机械深拷副本）
+//   或局部（R1③ move 直传）：产物恒=接收方独立拥有。旧「形参/全局=写穿别名
+//   豁免」分判据（980）与返回位实现脱节：豁免→副本无人析构（Store 成死码被
+//   DCE=泄漏）+与 v2 1818 分叉（1089-D2a 实录：宿主 411332211442266 vs v2
+//   4115533222211442266）。翻转依据=001 §5.3 丁案条文「传参写穿、返回副本……
+//   正交并存」；980 旧豁免面仅余类表 miss（句柄直传别名）/引用返回（两消费点
+//   先行分流·880:131/1479:291）。
+//   1647 崩溃实录收窄（同日）：**非标识符 return（三元/字段链/解引用/下标/
+//   自身）维持保守豁免**——该谱系返回位深拷经用户拷构（byRef）装配，拷构体内
+//   类字段赋值=句柄写穿（持仓 拷构 `货 = 其他.货` 浅直存·成员赋值通道语义），
+//   产物字段与源共享；豁免（不析构）=共享无害，登记析构=双释放 free():invalid
+//   pointer（rc=-6 实录）。根治须「类字段成员赋值深拷语义」立法（001 条文）+
+//   宿主/v2 双侧同步，超本轮红治理授权——保守豁免维持 1833 基线（宁漏勿崩·
+//   980 口径），立法后随门判据一并翻转。
 bool IRGenerator::returnSourceBorrowed880(
-    BlockStmt* body, const std::vector<std::unique_ptr<ParamDecl>>& params) const {
+    BlockStmt* body, const std::vector<std::unique_ptr<ParamDecl>>& params,
+    const std::string& returnType) const {
+    Expr* rv = (body != nullptr) ? findReturnExpr880raii(body) : nullptr;
+    if (semantic_ != nullptr && !returnType.empty() &&
+        !types::isReference(returnType) &&
+        semantic_->isClassType(types::canonical(returnType)) &&
+        semantic_->findClass(types::canonical(returnType)).has_value() &&
+        rv != nullptr && rv->getType() == NodeType::IdentifierExpr) {
+        return false;   // 形参/全局=门深拷副本拥有；局部=move 拥有（丁案 R1）
+    }
     if (body == nullptr) return true;   // 函数体缺省=无 return 可查（缺省形态豁免登记·两调用点非空守卫）
-    Expr* rv = findReturnExpr880raii(body);
     if (rv != nullptr && rv->getType() == NodeType::IdentifierExpr) {
         const std::string rn = static_cast<IdentifierExpr*>(rv)->name;
         for (auto& p : params) {
@@ -130,7 +154,8 @@ bool IRGenerator::callReceiverExempt880(VarDecl* node, const DeclGenCtx& ctx) {
                 FunctionDecl* fn = it->second;
                 if (fn->returnType.find('&') == std::string::npos) {
                     callTransferInit = returnSourceBorrowed880(fn->body.get(),
-                                                             fn->params);
+                                                               fn->params,
+                                                               fn->returnType);
                 }
                 // 引用返回：调用点已走专用深拷路径物化副本→登记（不置位）。
             }
@@ -175,7 +200,7 @@ bool IRGenerator::callReceiverExempt880(VarDecl* node, const DeclGenCtx& ctx) {
                             }
                             if (mBody880 != nullptr) {
                                 callTransferInit = returnSourceBorrowed880(
-                                    mBody880, m->ast->params);
+                                    mBody880, m->ast->params, m->type);
                             }
                         }
                     }
@@ -291,7 +316,8 @@ IRGenerator::ClassReturnOwnership IRGenerator::classifyClassReturnOwnership(cons
         if (fn->returnType.find('&') != std::string::npos) {
             return ClassReturnOwnership::Borrowed;   // 引用返回=借用
         }
-        return returnSourceBorrowed880(fn->body.get(), fn->params)
+        return returnSourceBorrowed880(fn->body.get(), fn->params,
+                                       fn->returnType)
                    ? ClassReturnOwnership::Borrowed
                    : ClassReturnOwnership::Owned;
     }
@@ -335,7 +361,7 @@ IRGenerator::ClassReturnOwnership IRGenerator::classifyClassReturnOwnership(cons
         if (mBody == nullptr) {
             return ClassReturnOwnership::Conservative;   // AST 不可达
         }
-        return returnSourceBorrowed880(mBody, m->ast->params)
+        return returnSourceBorrowed880(mBody, m->ast->params, m->type)
                    ? ClassReturnOwnership::Borrowed
                    : ClassReturnOwnership::Owned;
     }

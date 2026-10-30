@@ -300,6 +300,12 @@ void IRGenerator::visitReturnStmt(ReturnStmt* node) {
         //   （漏解引=拷构源错位为形参槽地址·副本记录恒空·1513 ②③返回 0 实录）；
         //   本体地址形态（下标内联/解引用/三元/自身）地址即对象直存
         //   （判据=isBorrowedAggregateHandleSlot·本文件匿名命名空间）。
+        //   1818 追补（2026-10-30·1089-D2a 双侧分叉实录）：**空类（totalSize=0）
+        //   同进门**——原 `totalSize > 0` 条件把 0 字段类（如 1089 的 猫）排除
+        //   在深拷门外=句柄直传共享壳，与 v2 1818 侧「类返回位分派无尺寸门槛」
+        //   分叉（宿主 411332211442266 vs v2 4115533222211442266）；丁案 R1②
+        //   句柄源深拷无字段数例外，空类副本=NewObject(0)+拷构/零字段拷，
+        //   构造/析构次数面与 v2 逐字节一致（001 §5.3 R1② 唯一权威）。
         if (semantic_ != nullptr && function_ != nullptr && node->value != nullptr &&
             !function_->returnTypeSrc.empty() && !function_->structReturn &&
             !types::isReference(function_->returnTypeSrc) &&
@@ -309,7 +315,7 @@ void IRGenerator::visitReturnStmt(ReturnStmt* node) {
                 types::canonical(function_->returnTypeSrc);
             const ClassInfo* returnClassInfo =
                 semantic_->findClass(returnCanon).value_or(nullptr);
-            if (returnClassInfo != nullptr && returnClassInfo->totalSize > 0) {
+            if (returnClassInfo != nullptr) {
                 ir::IRValue returnCopyObj = emitResult(
                     ir::Opcode::NewObject,
                     {ir::IRValue::constant(returnCanon, "ptr")}, "ptr",
