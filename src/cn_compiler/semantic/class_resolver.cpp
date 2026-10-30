@@ -695,6 +695,30 @@ void SemanticAnalyzer::collectClassMembers(ClassDecl* node, ClassInfo& info) {
                             "' 默认值不支持：" + foldErr +
                             "——请在构造函数中赋值（显式赋值优先于默认值·"
                             "001 §5.6 用户裁决 2026-10-15 甲）");
+                } else if (
+                    // 命名豁免用例编号: 复用既有 919 立法链设施（非新造带号名）
+                    cnExprHasIntLiteral919(member->initializer.get()) &&
+                    !intLiteralFitsType(member->initializer.get(),
+                                        mi.type)) {
+                    // 1860（T36/#506甲·788⑤·535 立法链对齐·2026-10-30）：
+                    //   实例字段默认值直赋通道值域门槛——#1660 给本通道只立
+                    //   u64 承载域（foldClassInstanceInit/foldScalarIntInitText），
+                    //   窄整超域字面量（整32 = 3000000000）在承载域内折叠放行
+                    //   =构造序言 32 位截断静默错值（E2E 1613 正例锁面锁错
+                    //   行为·本轮翻转为负例）。判域与局部变量（T36）/顶层
+                    //   静态（semantic.cpp）/类静态字段（上方 640 面）同源
+                    //   单点 intLiteralFitsType——禁第二份判据。显式转换
+                    //   整32(值) 位模式语义既有立法不受影响（CastExpr 不入
+                    //   本通道起步面·构造函数赋值承载）；回绕语义走显式
+                    //   回绕函数（#474）。布尔/浮点字段不经本判域（谓词门槛）。
+                    diagnostics_.report(
+                        DiagnosticLevel::Error, member->location,
+                        "类 '" + node->name + "' 字段 '" + mi.name +
+                            "' 默认值超出 '" + mi.type +
+                            "' 值域——默认值直赋通道须为值域内字面量"
+                            "（T36/#506甲·788⑤）；如确需位模式截断请显式转换"
+                            "（如 " + mi.type + "(值)）；确需回绕语义请走显式"
+                            "回绕函数（回绕加/回绕减/回绕乘）");
                 }
             }
             if (info.fields.find(mi.name) != info.fields.end()) {

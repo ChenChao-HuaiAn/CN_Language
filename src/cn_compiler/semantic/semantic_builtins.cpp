@@ -536,6 +536,78 @@ void SemanticAnalyzer::checkDefaultParams(FunctionDecl* node, FunctionInfo& info
                                     "默认值须为编译期常量表达式（字面量/常量算式/"
                                     "顶层常量）——引用前形参、变量或调用不支持"
                                     "（001 §5.3 默认参数·裁决 #1814）");
+            } else if ((*it)->defaultExpr && !(*it)->funcPtr.isFunctionPtr()) {
+                // 1860（T36/#506甲·788⑤·535 立法链对齐·2026-10-30）：默认值
+                //   直赋通道值域门槛——常量性通过后补目标类型值域判（原缺口：
+                //   整32 y = 3000000000 常量性放行后静默 32 位截断回绕=违反
+                //   立法链·同字面量局部变量通道已拒=同库分裂）。三形态与
+                //   局部变量通道（semantic_decl T36 面）同判域单点：
+                //   ①字面量/一元负号/常量算式=cnExprHasIntLiteral919 谓词入
+                //     intLiteralFitsType（子树字面量域判+919 文本级求值·
+                //     3000000000+0 同拦）；②顶层常量名引用=919 谓词不扫
+                //     标识符，globalConstValue 值文本走同一 decTextFitsTypeDomain
+                //     域判（常量本身超目标域同拒）。显式转换 整32(值) 位模式
+                //     语义既有立法不受影响（CastExpr 不入默认值常量域·1814）；
+                //     回绕函数实参为运行期传参不走默认值通道（自然豁免）。
+                //     非整数目标（浮点/字符串/布尔参数）不经本判域。
+                const std::string paramType =
+                    types::canonical((*it)->typeName);
+                if (types::isInteger(paramType)) {
+                    const Expr* de = (*it)->defaultExpr.get();
+                    bool beyondDomain = false;
+                    // 命名豁免用例编号: 复用既有 919 立法链设施（非新造带号名）
+                    if (cnExprHasIntLiteral919(de)) {
+                        beyondDomain = !intLiteralFitsType(de, paramType);
+                        if (!beyondDomain) {
+                            // 1860 补口（承载内常量算式面）：intLiteralFitsType
+                            //   的 919 通道对 int64 承载内常量算式（3000000000+0）
+                            //   交既有链（局部变量通道由后续隐式转换检查接力拦
+                            //   ——表达式升型 整64→整32 窄化拒）；默认值通道无
+                            //   该接力链，此处补文本级求值域判单点
+                            //   （cnEvalConstIntExprText919 规范十进制文本 →
+                            //   decTextFitsTypeDomain 同一张域表）。域内算式
+                            //   （3+4）恒放行。
+                            cn::Optional<std::string> decText;
+                            // 命名豁免用例编号: 复用既有 919 立法链设施（非新造带号名）
+                            if (cnEvalConstIntExprText919(de, decText) &&
+                                decText.has_value()) {
+                                beyondDomain = !types::decTextFitsTypeDomain(
+                                    decText.value(), paramType);
+                            }
+                        }
+                    } else if (de->getType() == NodeType::IdentifierExpr) {
+                        const auto* id =
+                            static_cast<const IdentifierExpr*>(de);
+                        const cn::Optional<std::string> valText =
+                            globalConstValue(id->name);
+                        if (valText.has_value()) {
+                            // 值文本归一后判域（cnEvalConstExpr 对超 u64 的
+                            //   128 位常量原文保真=hex 文本·不归一直接文本
+                            //   判域会错值；u64 域内=十进制规范文本恒等）。
+                            //   归一无值=非整数常量文本（布尔 真/假、字符串）
+                            //   ——不扩大打击面，交既有链。
+                            const cn::Optional<std::string> decText =
+                                types::normalizeIntLiteralToDecimal(
+                                    valText.value());
+                            if (decText.has_value()) {
+                                beyondDomain =
+                                    !types::decTextFitsTypeDomain(
+                                        decText.value(), paramType);
+                            }
+                        }
+                    }
+                    if (beyondDomain) {
+                        diagnostics_.report(
+                            DiagnosticLevel::Error, (*it)->location,
+                            "函数 '" + node->name + "' 参数 '" + (*it)->name +
+                                "' 默认值超出 '" + paramType +
+                                "' 值域——默认值直赋通道须为值域内字面量"
+                                "（T36/#506甲·788⑤）；如确需位模式截断请显式"
+                                "转换（如 " + paramType +
+                                "(值)）；确需回绕语义请走显式回绕函数"
+                                "（回绕加/回绕减/回绕乘）");
+                    }
+                }
             }
             ++info.defaultCount;
             info.hasDefault.push_back(true);
