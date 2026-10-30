@@ -557,24 +557,15 @@ void SemanticAnalyzer::checkDefaultParams(FunctionDecl* node, FunctionInfo& info
                     bool beyondDomain = false;
                     // 命名豁免用例编号: 复用既有 919 立法链设施（非新造带号名）
                     if (cnExprHasIntLiteral919(de)) {
-                        beyondDomain = !intLiteralFitsType(de, paramType);
-                        if (!beyondDomain) {
-                            // 1860 补口（承载内常量算式面）：intLiteralFitsType
-                            //   的 919 通道对 int64 承载内常量算式（3000000000+0）
-                            //   交既有链（局部变量通道由后续隐式转换检查接力拦
-                            //   ——表达式升型 整64→整32 窄化拒）；默认值通道无
-                            //   该接力链，此处补文本级求值域判单点
-                            //   （cnEvalConstIntExprText919 规范十进制文本 →
-                            //   decTextFitsTypeDomain 同一张域表）。域内算式
-                            //   （3+4）恒放行。
-                            cn::Optional<std::string> decText;
-                            // 命名豁免用例编号: 复用既有 919 立法链设施（非新造带号名）
-                            if (cnEvalConstIntExprText919(de, decText) &&
-                                decText.has_value()) {
-                                beyondDomain = !types::decTextFitsTypeDomain(
-                                    decText.value(), paramType);
-                            }
-                        }
+                        // 1861（1400 误伤根治）：默认值通道判域收口单点
+                        //   defaultValueLiteralFitsType（1860 补口一并收编）——
+                        //   负号形态（-(-5U)/-0x8000000000000000 等）按 #1016
+                        //   数学负值判域放行（intLiteralFitsType 的 1016 P1-B
+                        //   恒拒面只服务通用通道·1404/1423/1415 不经默认值
+                        //   通道），承载内常量算式补口与 3000000000 族拒面
+                        //   同函数保留。
+                        beyondDomain =
+                            !defaultValueLiteralFitsType(de, paramType);
                     } else if (de->getType() == NodeType::IdentifierExpr) {
                         const auto* id =
                             static_cast<const IdentifierExpr*>(de);

@@ -698,8 +698,8 @@ void SemanticAnalyzer::collectClassMembers(ClassDecl* node, ClassInfo& info) {
                 } else if (
                     // 命名豁免用例编号: 复用既有 919 立法链设施（非新造带号名）
                     cnExprHasIntLiteral919(member->initializer.get()) &&
-                    !intLiteralFitsType(member->initializer.get(),
-                                        mi.type)) {
+                    !defaultValueLiteralFitsType(member->initializer.get(),
+                                                 mi.type)) {
                     // 1860（T36/#506甲·788⑤·535 立法链对齐·2026-10-30）：
                     //   实例字段默认值直赋通道值域门槛——#1660 给本通道只立
                     //   u64 承载域（foldClassInstanceInit/foldScalarIntInitText），

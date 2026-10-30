@@ -3,6 +3,7 @@
 //   隐藏返回指针、变参 AL 契约、间接调用判零）
 // 规范：英文API命名，中文仅注释；函数<=100行
 #include "cn_compiler/codegen/linux_x64/linux_x64_codegen.hpp"
+#include "cn_compiler/model/type_system.hpp"
 
 namespace cn_compiler {
 
@@ -83,7 +84,7 @@ void LinuxX64CodeGenerator::emitCall(LinuxX64AsmWriter& writer,
     }
     // ---- 栈参数（声明顺序排队；先写栈再用临时寄存器装寄存器参数） ----
     // i128 常量辅助：解析 "LO:HI" 十六进制 / 十进制，落 .data 全局常量池返回标签
-    auto i128ConstLabel = [this](const ir::IRValue& av) -> std::string {
+    auto i128ConstLabel = [this, &inst](const ir::IRValue& av) -> std::string {
         const std::string& ex = av.extra;
         const std::size_t colon = ex.find(':');
         std::uint64_t lo = 0, hi = 0;
@@ -91,7 +92,15 @@ void LinuxX64CodeGenerator::emitCall(LinuxX64AsmWriter& writer,
             lo = std::stoull(ex.substr(0, colon), nullptr, 16);
             hi = std::stoull(ex.substr(colon + 1), nullptr, 16);
         } else {
-            try { lo = static_cast<std::uint64_t>(std::stoull(ex)); } catch (...) {}
+            // 1861（i128 常量文本解析族统一·与 ConstInt 面同款单点）：
+            //   parseInt128InitText（十进制±/进制前缀/后缀自断）
+            unsigned long long loP = 0, hiP = 0;
+            if (types::parseInt128InitText(ex, inst.type == "i128", loP, hiP)) {
+                lo = static_cast<std::uint64_t>(loP);
+                hi = static_cast<std::uint64_t>(hiP);
+            } else {
+                try { lo = static_cast<std::uint64_t>(std::stoull(ex)); } catch (...) {}
+            }
         }
         return registerI128Constant(lo, hi);
     };

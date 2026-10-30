@@ -501,6 +501,12 @@ private:
     static bool isIntLiteralExpr(const Expr* e);
     // 319-a（T36·方案甲）：整数字面量值域检查（整16 甲=40000 截断根治·756 去 static 加 const 扩枚举值源/目标）
     bool intLiteralFitsType(const Expr* e, const std::string& to) const;
+    // 1861（1400 误伤根治·2026-10-31）：默认值直赋通道判域（类实例字段默认值
+    //   class_resolver 775 面 + 函数默认参数 semantic_builtins #1814 面两通道
+    //   消费）——负号形态按 #1016 数学负值判域（P1-B 通用拒面豁免），承载内
+    //   常量算式补文本级求值域判（1860 补口收编单点）。实现于
+    //   semantic_literal_domain.cpp（intLiteralFitsType 同族文件）。
+    bool defaultValueLiteralFitsType(const Expr* e, const std::string& to) const;
     // 790：裸全局（569）常量初始化器字面量判域（478 128 链+640 槽域·实体下沉 semantic_literal_domain.cpp）
     void checkGlobalVarInitLiteralDomain(const std::string& name, const SourceLocation& declLoc,
                                          const Expr* init, const std::string& slotType);

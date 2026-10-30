@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "cn_compiler/codegen/x64/x64_codegen.hpp"
+#include "cn_compiler/model/type_system.hpp"
 
 namespace cn_compiler {
 
@@ -96,11 +97,16 @@ void X64CodeGenerator::emitCall(AsmWriter& writer, const ir::IRInstruction& inst
                     const std::string& ex = av.extra;
                     const std::size_t colon = ex.find(':');
                     std::string loT, hiT;
+                    unsigned long long lo128 = 0, hi128 = 0;  // 1861 统一解析出参
                     if (colon != std::string::npos) {
                         loT = uint64HexText(static_cast<std::uint64_t>(
                             std::stoull(ex.substr(0, colon), nullptr, 16)));
                         hiT = uint64HexText(static_cast<std::uint64_t>(
                             std::stoull(ex.substr(colon + 1), nullptr, 16)));
+                    } else if (types::parseInt128InitText(
+                                   ex, argType == "i128", lo128, hi128)) {
+                        loT = uint64HexText(lo128);
+                        hiT = uint64HexText(hi128);
                     } else { loT = uint64HexText(static_cast<std::uint64_t>(std::stoull(ex))); hiT = "0"; }
                     const int coff = i128ConstOffsets[i];
                     writer.line("mov rax, " + loT);
@@ -177,11 +183,16 @@ void X64CodeGenerator::emitCall(AsmWriter& writer, const ir::IRInstruction& inst
                 const std::string& ex = av.extra;
                 const std::size_t colon = ex.find(':');
                 std::string loT, hiT;
+                unsigned long long lo128 = 0, hi128 = 0;  // 1861 统一解析出参
                 if (colon != std::string::npos) {
                     loT = uint64HexText(static_cast<std::uint64_t>(
                         std::stoull(ex.substr(0, colon), nullptr, 16)));
                     hiT = uint64HexText(static_cast<std::uint64_t>(
                         std::stoull(ex.substr(colon + 1), nullptr, 16)));
+                } else if (types::parseInt128InitText(ex, argType == "i128",
+                                                      lo128, hi128)) {
+                    loT = uint64HexText(lo128);
+                    hiT = uint64HexText(hi128);
                 } else { loT = uint64HexText(static_cast<std::uint64_t>(std::stoull(ex))); hiT = "0"; }
                 const int coff = i128ConstOffsets[i];
                 writer.line("mov rax, " + loT);

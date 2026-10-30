@@ -13,6 +13,7 @@
 #include <string>
 
 #include "cn_compiler/codegen/x64/x64_codegen.hpp"
+#include "cn_compiler/model/type_system.hpp"
 #include "cn_compiler/codegen/judgement.hpp"
 
 namespace cn_compiler {
@@ -391,13 +392,29 @@ void X64CodeGenerator::emitConstLoad(AsmWriter& writer, const ir::IRInstruction&
             loText = uint64HexText(lo);
             hiText = uint64HexText(hi);
         } else {
-            // 纯十进制小值（如 "100"）：低64位 = 值，高64位 = 0
-            try {
-                loText = uint64HexText(static_cast<std::uint64_t>(std::stoull(extra)));
-            } catch (...) {
-                loText = extra;
+            // 1861（三负巨类字段默认值 A2071 根治·2026-10-31）：非 "LO:HI"
+            //   形态统一走 parseInt128InitText 128 位解析（T46 同款：十进制±/
+            //   进制前缀/后缀 L·U 自断——defaultInitText=符号×raw 原文可超
+            //   64 位承载，stoull 异常原样回填汇编=ml64 A2071 裸错实录：
+            //   整128 三负巨=-(-(-2^127)) 类字段默认值 1861 判域放行后暴露，
+            //   缺陷面本身=既有（判域前同样炸）；小值负文本 "-5" stoull 回绕
+            //   +hi=0=位模式错值 18446744073709551611 同面根治）。解析失败
+            //   保持既有原样回填（verifyConstValueTexts 验证器防线承担）。
+            unsigned long long loP = 0;
+            unsigned long long hiP = 0;
+            if (types::parseInt128InitText(extra, inst.type == "i128", loP,
+                                           hiP)) {
+                loText = uint64HexText(loP);
+                hiText = uint64HexText(hiP);
+            } else {
+                try {
+                    loText = uint64HexText(
+                        static_cast<std::uint64_t>(std::stoull(extra)));
+                } catch (...) {
+                    loText = extra;
+                }
+                hiText = "0";
             }
-            hiText = "0";
         }
         // #1212 步骤 b：结果成对分配时直装双 GPR（原双槽映射不变）
         writer.line("mov rax, " + loText);

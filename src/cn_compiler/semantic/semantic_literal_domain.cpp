@@ -152,6 +152,50 @@ bool SemanticAnalyzer::intLiteralFitsType(const Expr* e, const std::string& to) 
     return types::decTextFitsTypeDomain(dec, domain);
 }
 
+// 1861（1400 误伤根治·2026-10-31）：默认值直赋通道判域单点——类实例字段
+//   默认值（class_resolver 775 面）与函数默认参数（semantic_builtins #1814
+//   面）两通道消费。三段结构（域表恒收口 types::decTextFitsTypeDomain 单点）：
+//   ① 基判=intLiteralFitsType 既有单点原样（非负号形态完全同链——3000000000
+//      族 T36 拒面不变）；
+//   ② 1861 改道口：基判拒 + 919 常量可折叠 → 数学值终审。1016 P1-B「负号+
+//      无符号后缀非零恒拒」服务通用面（1404 裸全局/1423 局部·赋值·传参/
+//      1415 类静态——1404/1423 通道不经本函数·拒面不动）；默认值两通道按
+//      #1016 立法「负号形态按数学负值判域、纯负号链放行」（1424 注释「类
+//      实例字段宿主放行现状保持」·1620 锁值 5/5/-5·1400 锁值 5）——1860 把
+//      intLiteralFitsType 套上本通道后 P1-B 拒面随入（不分通道不分目标域·
+//      也不数负号壳奇偶）=1400-D1 误伤实录（整128 双负U=-(-5U) 数学值+5
+//      域内被拒 rc=1）。cnEvalConstIntExprText919 数学值链对负号壳/后缀/
+//      进制全形态正确（UnaryExpr 递归 decTextNegate919 翻转+normalize 剥后缀
+//      带符号——-(-5U)→"5"/-0x8000000000000000→-2^63），终审=数学值 vs
+//      目标域（decTextFitsTypeDomain：无符号目标负值恒拒=001 §3.7a 不承载
+//      负值；枚举目标归并整32 与 intLiteralFitsType 756 面同口径）；
+//   ③ 1860 补口收编：基判放行的承载内常量算式（3000000000+0——intLiteral
+//      FitsType 919 通道交既有链放行·局部变量通道有隐式转换接力拦·默认值
+//      通道无接力链）补文本级求值域判；负号形态经②放行后同函数再判幂等。
+//   求值 false（非常量形态）维持基判结论（默认值常量性已由 #1814/折叠面
+//   前置把关·防御面不扩大）；无值（超 u128 域）维持基判拒。
+bool SemanticAnalyzer::defaultValueLiteralFitsType(const Expr* e,
+                                                   const std::string& to) const {
+    if (e == nullptr) return true;
+    bool fits = intLiteralFitsType(e, to);
+    cn::Optional<std::string> mathDec;
+    // 命名豁免用例编号: 复用既有 919 立法链设施（非新造带号名）
+    const bool evalOk = cnEvalConstIntExprText919(e, mathDec);
+    if (!fits) {
+        // 1861 改道口：负号形态（含 -(-5U) 嵌套负号壳/带 U·L·LL 后缀/hex）
+        //   按 #1016 数学负值立法终审——数学值域内放行、真超域仍拒
+        if (evalOk && mathDec.has_value()) {
+            const std::string domain =
+                isEnumType(to) ? std::string("整32") : to;
+            fits = types::decTextFitsTypeDomain(mathDec.value(), domain);
+        }
+    } else if (evalOk && mathDec.has_value()) {
+        // 1860 补口收编：承载内常量算式面（域内算式 3+4 恒放行）
+        fits = types::decTextFitsTypeDomain(mathDec.value(), to);
+    }
+    return fits;
+}
+
 // 1137（审查修复 P0-C/P1-1/P1-2）：选择情况标签条件域判 + 重复检测单点。
 //   键统一=归一十进制文本（整数标签 decValue；枚举成员/字符值 to_string）——
 //   跨形态同值即重复（`情况 红:` vs `情况 1:`、`情况 'A':` vs `情况 65:`·

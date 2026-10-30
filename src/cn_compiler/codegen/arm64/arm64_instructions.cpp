@@ -190,12 +190,23 @@ void Arm64CodeGenerator::emitConstLoad(Arm64AsmWriter& writer,
             lo = std::stoull(extra.substr(0, colon), nullptr, 16);
             hi = std::stoull(extra.substr(colon + 1), nullptr, 16);
         } else {
-            try {
-                lo = static_cast<std::uint64_t>(std::stoull(extra));
-            } catch (...) {
-                lo = 0;
+            // 1861（i128 常量文本解析族统一·与 win/linux ConstInt 面同款）：
+            //   parseInt128InitText 单点（十进制±/进制前缀/后缀自断）——
+            //   stoull 回绕/异常零占位错值面根治。
+            unsigned long long loP = 0;
+            unsigned long long hiP = 0;
+            if (types::parseInt128InitText(extra, inst.type == "i128", loP,
+                                           hiP)) {
+                lo = static_cast<std::uint64_t>(loP);
+                hi = static_cast<std::uint64_t>(hiP);
+            } else {
+                try {
+                    lo = static_cast<std::uint64_t>(std::stoull(extra));
+                } catch (...) {
+                    lo = 0;
+                }
+                hi = 0;
             }
-            hi = 0;
         }
         const int dstHiId = inst.result.id;
         const int dstLoId = inst.result.id + 1;

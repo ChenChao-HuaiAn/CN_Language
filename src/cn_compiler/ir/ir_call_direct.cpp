@@ -553,6 +553,32 @@ ir::IRValue IRGenerator::evalDefaultExpr(Expr* expr,
     switch (expr->getType()) {
         case NodeType::IntegerLiteral: {
             IntegerLiteral* lit = static_cast<IntegerLiteral*>(expr);
+            // 1861（1400 判域放行配套·值化面同口径·2026-10-31）：负号+无符号
+            //   后缀（parser 323 折叠 raw 带 '-'）——integerLiteralRuntimeType
+            //   对该形态定级无符号族后负值恒超界（st910=2 → 下方零占位错值
+            //   实录：-5U→0 / -(-5U)→0·1620 类字段同形态由 foldScalarIntInit
+            //   Text 剥号翻转机制正确）。默认值判域面 defaultValueLiteral
+            //   FitsType 已按 #1016 数学负值放行 → 值化面剥号按数学值定级
+            //   （normalizeIntLiteralToDecimal 剥后缀+带符号一源；数学值文本
+            //   重新定级有符号域）。无符号目标+数学负值判域面已拒不到此；
+            //   数学值仍超有符号域（判域面应拒形态）落既有超域零占位面；
+            //   负零（-0U）normalize 归一 "0" 同面放行。
+            if (!lit->raw.empty() && lit->raw[0] == '-' &&
+                types::unsignedSuffixedLiteralText(lit->raw)) {
+                const cn::Optional<std::string> negDec =
+                    types::normalizeIntLiteralToDecimal(lit->raw);
+                if (negDec.has_value()) {
+                    int stNeg = 0;
+                    const std::string typeNeg =
+                        types::integerLiteralRuntimeType(negDec.value(),
+                                                         &stNeg);
+                    if (stNeg == 0) {
+                        base = ir::IRValue::constant(negDec.value(),
+                                                     mapType(typeNeg));
+                        break;
+                    }
+                }
+            }
             // 910：全形态归一（原 std::to_string(lit->value) 对 hex 超承载
             //   文本=parser stoll 溢出回 0 的毒化值；to_string 亦丢 128 域）
             int st910 = 0;

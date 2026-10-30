@@ -3,6 +3,7 @@
 //   变参禁止伪装、间接调用判零）
 // 规范：英文API命名，中文仅注释；函数<=100行
 #include "cn_compiler/codegen/arm64/arm64_codegen.hpp"
+#include "cn_compiler/model/type_system.hpp"
 
 namespace cn_compiler {
 // ==================== 函数调用 ====================
@@ -82,7 +83,15 @@ void Arm64CodeGenerator::emitCall(Arm64AsmWriter& writer,
                     lo = std::stoull(ex.substr(0, colon), nullptr, 16);
                     hi = std::stoull(ex.substr(colon + 1), nullptr, 16);
                 } else {
-                    try { lo = static_cast<std::uint64_t>(std::stoull(ex)); } catch (...) {}
+                    // 1861（i128 常量文本解析族统一·parseInt128InitText 单点）
+                    unsigned long long loP = 0, hiP = 0;
+                    if (types::parseInt128InitText(ex, argType == "i128",
+                                                   loP, hiP)) {
+                        lo = static_cast<std::uint64_t>(loP);
+                        hi = static_cast<std::uint64_t>(hiP);
+                    } else {
+                        try { lo = static_cast<std::uint64_t>(std::stoull(ex)); } catch (...) {}
+                    }
                 }
                 // 常量：写临时区 [sp, #stackArgs*8+32]（返回缓冲区上方）
                 const int tmpOff = static_cast<int>(stackArgs * 8 + 32 + place.num * 16);
@@ -126,7 +135,15 @@ void Arm64CodeGenerator::emitCall(Arm64AsmWriter& writer,
                     lo = std::stoull(ex.substr(0, colon), nullptr, 16);
                     hi = std::stoull(ex.substr(colon + 1), nullptr, 16);
                 } else {
-                    try { lo = static_cast<std::uint64_t>(std::stoull(ex)); } catch (...) {}
+                    // 1861（i128 常量文本解析族统一·parseInt128InitText 单点）
+                    unsigned long long loP = 0, hiP = 0;
+                    if (types::parseInt128InitText(ex, argType == "i128",
+                                                   loP, hiP)) {
+                        lo = static_cast<std::uint64_t>(loP);
+                        hi = static_cast<std::uint64_t>(hiP);
+                    } else {
+                        try { lo = static_cast<std::uint64_t>(std::stoull(ex)); } catch (...) {}
+                    }
                 }
                 const int tmpOff = static_cast<int>(stackArgs * 8 + 32 + static_cast<int>(i) * 16);
                 emitMovImm(writer, "x10", lo);

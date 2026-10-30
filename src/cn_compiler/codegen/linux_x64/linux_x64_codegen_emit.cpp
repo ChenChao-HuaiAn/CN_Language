@@ -370,10 +370,24 @@ void LinuxX64CodeGenerator::emitConst128Load(LinuxX64AsmWriter& writer,
             lo = std::stoull(extra.substr(0, colon), nullptr, 16);
             hi = std::stoull(extra.substr(colon + 1), nullptr, 16);
         } else if (colon == std::string::npos) {
-            try {
-                lo = static_cast<std::uint64_t>(std::stoull(extra));
-            } catch (...) {
-                lo = 0;
+            // 1861（1400 判域放行配套·云端 linux 池直击）：非 "LO:HI" 形态
+            //   统一走 parseInt128InitText 128 位解析（T46 同款——defaultInit
+            //   Text=符号×raw 原文："5U" stoull 异常 lo=0+hi 恒 0=类字段
+            //   -(-5U) 错值 0；"-170141183460469231731687303715884105728"
+            //   同面零占位。与 win StorePtr i128 常量面 parseInt128InitText
+            //   单点对齐）。解析失败保持既有 lo=0（验证器防线承担）。
+            unsigned long long loP = 0;
+            unsigned long long hiP = 0;
+            if (types::parseInt128InitText(extra, inst.type == "i128", loP,
+                                           hiP)) {
+                lo = static_cast<std::uint64_t>(loP);
+                hi = static_cast<std::uint64_t>(hiP);
+            } else {
+                try {
+                    lo = static_cast<std::uint64_t>(std::stoull(extra));
+                } catch (...) {
+                    lo = 0;
+                }
             }
         }
         writer.line("mov r10, " + uint64HexText(lo));
