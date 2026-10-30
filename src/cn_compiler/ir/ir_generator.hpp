@@ -953,7 +953,7 @@ private:
     // #1588：emitResultCtorValue 拆族（原 130 行超红线）——结构体载荷同型守卫+CopyStruct / 标量按目标宽度 Cast+StorePtr / 类值深拷（异型结构体=内部错误·禁按位拷贝静默垃圾）。
     void emitResultCtorStructPayload(CallExpr* node, ir::IRValue valAddr, const std::string& valueType, ir::IRValue val);
     void emitResultCtorScalarPayload(ir::IRValue valAddr, const std::string& valueType, ir::IRValue val, const SourceLocation& loc);
-    bool emitResultCtorClassDeepCopy(CallExpr*, const std::string&, ir::IRValue, const std::string&, ir::IRValue&); void emitResultCtorReturnMoveForClass(CallExpr*, const std::string&, bool, const std::string&);  // 1611：类深拷探测+无拷贝构造类返回位装箱 move 转交
+    bool emitResultCtorClassDeepCopy(CallExpr*, const std::string&, ir::IRValue, const std::string&, ir::IRValue&); void emitResultCtorReturnMoveForClass(CallExpr*, const std::string&, bool, const std::string&); bool builtinCtorArgIsRvalueTemp(const CallExpr* ctor) const; bool boxInitMovesTempPayload(const Expr* init) const;  // 1611：类深拷探测+无拷贝构造类返回位装箱 move 转交；#1466：构造器首实参=无左值槽 rvalue 临时（调用产物·非引用返回）——装箱=句柄移交（盒唯一拥有者），不深拷/不二次求值；盒初值 正常/某些(临时)=同一移交面（盒亡析构判据补面·详注 ir_error_ctor.cpp）
     // 生成 实例字段地址：this 指针（Load 自身参数槽）+ FieldAddr(类字段偏移)
     ir::IRValue genInstanceFieldAddr(const std::string& fieldName, const SourceLocation& loc);
     // 生成 静态字段地址：ConstString 常量携带 ?static_类名_字段名 链接符号

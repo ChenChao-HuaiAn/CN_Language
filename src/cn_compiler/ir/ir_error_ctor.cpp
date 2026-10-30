@@ -432,6 +432,20 @@ bool IRGenerator::emitResultCtorClassDeepCopy(CallExpr* node, const std::string&
                                               const std::string& valueType,
                                               ir::IRValue& val) {
     const std::string& clsCanon = valueType;
+    // #1466 根治（宿主 C0000005·v2 正常·零分叉）：实参=无左值槽的 rvalue 临时
+    //   （构造调用 `货物("x")` 产物）——emitResultCtorValue 已用 genExpr 求值一次
+    //   （val=新堆对象句柄）。原实现此处再经 lvalueAddress 求值一次，双重缺陷：
+    //   ①二次 NewObject+构造调用=首个对象无人持有（每装箱净漏 1 壳+字段）；
+    //   ②lvalueAddress 对调用表达式的兜底分支是「按表达式值处理」=genExpr，产物
+    //   是**对象句柄**而非拷贝构造契约要的「存句柄的槽地址」——callee 内
+    //   [其他]=[句柄]=虚表指针，再按字段偏移解引用=野指针读 C0000005
+    //   （fault=串字节·p3/p4/p5b 实锚）。临时对象无源槽可共享、无出口析构面 =
+    //   C++ rvalue 临时 move / v2 107「T_对象 源=句柄直移交」同构：句柄原样
+    //   留盒（盒=唯一拥有者），不发拷贝构造、不登记 889 深拷面。
+    //   左值 place 实参（标识符/下标/成员/解引用/引用返回调用）维持既有深拷。
+    if (builtinCtorArgIsRvalueTemp(node)) {
+        return false;
+    }
     const ClassInfo* ci = semantic_->findClass(clsCanon).value_or(nullptr);
     bool hasDtor = false;
     if (ci != nullptr) {
@@ -484,6 +498,36 @@ bool IRGenerator::emitResultCtorClassDeepCopy(CallExpr* node, const std::string&
         pendingBoxCopies_.push_back({valAddr, clsCanon});
     }
     return true;
+}
+
+// #1466：内置构造器首个实参「无左值槽 rvalue 临时」判定——装箱所有权链单点。
+//   true=调用表达式的类对象产物（构造调用/方法返回的堆句柄）：无源槽可传拷贝
+//   构造、无出口析构面 → 句柄移交盒（move·盒唯一拥有者）。
+//   false=可寻址 place 形态（标识符/下标/成员/解引用/引用返回调用）或非调用
+//   实参——维持既有深拷/借用分流（引用返回调用=被引用对象的借用 place，
+//   lvalueAddress 取其地址语义正确，禁按临时接管）。
+//   纯谓词（真假语义判定·非失败通道·#1360 谓词免除结果化）。
+bool IRGenerator::builtinCtorArgIsRvalueTemp(const CallExpr* ctor) const {
+    return ctor != nullptr && !ctor->arguments.empty() &&
+           ctor->arguments[0]->getType() == NodeType::CallExpr &&
+           !static_cast<const CallExpr*>(ctor->arguments[0].get())
+                ->isRefReturnCall;
+}
+
+// #1466：盒初值「正常/某些(类构造临时)」判定——盒载荷=被移交的临时句柄
+//   （盒=唯一拥有者·emitResultCtorClassDeepCopy 句柄移交面）。
+//   只认 正常/某些（错误() 的载荷=E 且判别位为假，盒亡释放面不删）；非构造器
+//   初值恒 false（调用返回盒等形态维持既有声明位判据）。纯谓词（真假判定·
+//   非失败通道）。
+bool IRGenerator::boxInitMovesTempPayload(const Expr* init) const {
+    const bool isCall = init != nullptr && init->getType() == NodeType::CallExpr;
+    const auto* call = isCall ? static_cast<const CallExpr*>(init) : nullptr;
+    const bool isNormalOrSomeCtor =
+        call != nullptr && call->callee != nullptr &&
+        call->callee->getType() == NodeType::IdentifierExpr &&
+        (static_cast<const IdentifierExpr*>(call->callee.get())->name == "正常" ||
+         static_cast<const IdentifierExpr*>(call->callee.get())->name == "某些");
+    return isNormalOrSomeCtor && builtinCtorArgIsRvalueTemp(call);
 }
 
 

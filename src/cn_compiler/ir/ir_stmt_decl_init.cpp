@@ -454,7 +454,13 @@ void IRGenerator::registerPendingBoxVar(VarDecl* node, const std::string& declCa
                         if (mk.second.isDestructor) { pDtor280 = true; break; }
                     }
                 }
-                if (pDtor280 && semantic_->findCopyConstructor(payload280).has_value()) {
+                // #1466：初值=正常/某些(类构造临时)——装箱=句柄移交（盒=唯一
+                //   拥有者），盒亡析构判据不能只认拷贝构造深拷面：dtor-only 载荷
+                //   原不登记=每盒净漏 1（p6/p10 残留 5 实录）；place 实参无拷贝
+                //   构造=盒与源槽浅共享，维持原判据不释放（p13 双删录）。
+                if (pDtor280 &&
+                    (semantic_->findCopyConstructor(payload280).has_value() ||
+                     boxInitMovesTempPayload(node->initializer.get()))) {
                     const StructDecl* sd280 = semantic_->findStruct(declCanon).value_or(nullptr);
                     const int vo280 =
                         sd280 ? semantic_->fieldOffsetOf(sd280, "值").value_or(-1) : -1;
