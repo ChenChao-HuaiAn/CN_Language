@@ -257,6 +257,76 @@ void IRGenerator::visitReturnStmt(ReturnStmt* node) {
             endReturn(ownedRetAddr);
             return;
         }
+        // 1817（丁案 R1·001 §5.3 返回值语义 2026-10-29 裁决）：**类返回借用来源
+        //   → 返回位深拷副本**——类=句柄语义下，「返回 值/字段/静态/下标/形参」
+        //   直传来源本体句柄=接收方与来源共享同一堆壳（R1 禁止的隐式共享）：
+        //   任一侧字段写写穿对方、接收方 RAII 析构同一堆=double free（探针
+        //   r1817 形态①② 实录 rc=134；1331 接管族 rc=15 同根）。修=85-a 同款
+        //   借用来源判定（isBorrowedAggregateSource 现成：局部=拥有移出 false
+        //   零拷贝直通·形参/全局/字段/成员/下标/解引用/三元借用 true）→
+        //   NewObject+拷贝构造（byRef 槽地址）或无拷构 → NewObject+
+        //   emitOwnedFieldsCopy 字段级深拷 → rax=副本句柄（接收方独立拥有·
+        //   接收位 629 接管零甄别）。引用返回（-> T& 借用契约签名即 ABI）与
+        //   sret 面（85-a 结构体已副本）不进本门。
+        if (semantic_ != nullptr && function_ != nullptr && node->value != nullptr &&
+            !function_->returnTypeSrc.empty() && !function_->structReturn &&
+            !types::isReference(function_->returnTypeSrc) &&
+            semantic_->isClassType(types::canonical(function_->returnTypeSrc)) &&
+            isBorrowedAggregateSource(node->value.get())) {
+            const std::string returnCanonBorrow =
+                types::canonical(function_->returnTypeSrc);
+            const ClassInfo* returnClassInfo =
+                semantic_->findClass(returnCanonBorrow).value_or(nullptr);
+            if (returnClassInfo != nullptr && returnClassInfo->totalSize > 0) {
+                ir::IRValue returnCopyObj = emitResult(
+                    ir::Opcode::NewObject,
+                    {ir::IRValue::constant(returnCanonBorrow, "ptr")}, "ptr",
+                    returnCanonBorrow + "|" + std::to_string(returnClassInfo->totalSize),
+                    node->location);
+                const ClassMemberInfo* returnCopyCtor =
+                    semantic_->findCopyConstructor(returnCanonBorrow).value_or(nullptr);
+                ir::IRValue returnSrcAddr = lvalueAddress(node->value.get());
+                if (returnCopyCtor != nullptr) {
+                    // 拷贝构造 byRef：源槽地址（槽内=对象句柄，体内解引用得
+                    //   对象指针——「装着句柄的槽地址」约定）
+                    const std::string retCopySrcTmp =
+                        "__retcopysrc" + std::to_string(varCounter_++);
+                    emit(ir::Opcode::Alloca, {},
+                         ir::IRValue::reg(regCounter_++, "ptr"), retCopySrcTmp,
+                         "ptr", node->location);
+                    registerVarSlots(retCopySrcTmp, returnCanonBorrow);
+                    emit(ir::Opcode::Store, {returnSrcAddr}, ir::IRValue(),
+                         retCopySrcTmp, "ptr", node->location);
+                    ir::IRValue returnSrcSlot = emitResult(
+                        ir::Opcode::AddrOf, {ir::IRValue::var(retCopySrcTmp, "i64")},
+                        "ptr", retCopySrcTmp, node->location);
+                    emit(ir::Opcode::Call, {returnCopyObj, returnSrcSlot},
+                         ir::IRValue(),
+                         methodSymbolKey(returnCopyCtor->ownerClass.empty()
+                                             ? returnCanonBorrow
+                                             : returnCopyCtor->ownerClass,
+                                         returnCopyCtor->sigKey),
+                         "void", node->location);
+            }
+            if (returnCopyCtor == nullptr) {
+                // 无拷贝构造：字段级深拷（571 设施·源=对象指针）
+                ir::IRValue returnSrcPtr = emitResult(
+                    ir::Opcode::LoadPtr, {returnSrcAddr}, "ptr", "",
+                    node->location);
+                for (const ClassInfo* returnLvl = returnClassInfo; returnLvl != nullptr;
+                         returnLvl = returnLvl->baseName.empty()
+                                       ? nullptr
+                                       : semantic_->findClass(returnLvl->baseName)
+                                             .value_or(nullptr)) {
+                        emitOwnedFieldsCopy(returnCopyObj, returnSrcPtr,
+                                            returnCanonBorrow, returnLvl->name,
+                                            node->location);
+                    }
+                }
+                endReturn(returnCopyObj.toString());
+                return;
+            }
+        }
         // P3-18 补完（2026-08）：引用返回函数——返回值取"被引用左值的地址"
         //   （返回地址而非值快照）；引用返回调用链本身已是地址（ptr）直接复用。
         ir::IRValue value;
