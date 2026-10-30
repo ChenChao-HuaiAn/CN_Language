@@ -79,7 +79,9 @@ public:
 // 枚举成员：成员名 + 值（显式赋值或自动递增，Task 2.7）
 struct EnumMember {
     std::string name;      // 成员名
-    std::int64_t value;    // 成员值
+    // 成员值：解析期已求值（1862：自动递增成员=前一成员值+1·首成员 0；
+    //   显式值成员按其字面量）——默认初始化器封死栈垃圾进 AST 打印/缓存通道
+    std::int64_t value = 0;
     bool explicitValue = false;  // 是否为显式赋值
 };
 

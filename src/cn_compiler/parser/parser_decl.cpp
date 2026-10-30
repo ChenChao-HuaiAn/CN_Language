@@ -156,10 +156,11 @@ std::unique_ptr<StructDecl> Parser::parseStructDecl(bool isUnion) {
     decl->name = current().getValue();
     advance();
     consume(TokenType::LeftBrace, "'{'");
-    // 字段列表：类型 字段名（换行/分号分隔，直到 }
+    // 字段列表：类型 字段名; （分号强制终结·逗号=下一字段带全类型的显式分隔）
     while (!check(TokenType::RightBrace) && !check(TokenType::EndOfFile)) {
-        // 跳过字段分隔（换行已被lexer跳过；分号/逗号为显式分隔）
-        while (check(TokenType::Semicolon) || check(TokenType::Comma)) advance();
+        // 1866：分号已由字段尾强制消费（缺失=显式诊断不推进）；此处不再宽松
+        //   吃分号/逗号——原循环头宽松消费会把 `; ;` 空语句（plans/015 规则4
+        //   裸分号非法）静默吞掉；逗号消费移至字段尾（语义等价·单点收口）。
         if (check(TokenType::RightBrace)) break;
         // 1216：首字段前预分配（常见 2-6 字段；空结构体=零分配）
         if (decl->fields.capacity() == 0) decl->fields.reserve(4);
@@ -256,7 +257,22 @@ std::unique_ptr<StructDecl> Parser::parseStructDecl(bool isUnion) {
             }
         }
         decl->fields.push_back(std::move(field));
-        match(TokenType::Semicolon);  // 字段分隔（声明体成员分隔：可选，plans/015 语义区分）
+        // 1866（001 §969 显式诊断义务·#1406 类字段同族扩展）：字段「类型 名」
+        //   后强制分号终结（逗号=下一字段带全类型的显式分隔·保留原合法面）——
+        //   缺失即显式诊断。原 match 可选消费（plans/015 可选点）把
+        //   `点 内 点[3] 路;` 静默解析成两个字段=跨字段静默粘连（词法层换行
+        //   已丢·token 流与缺分号粘连不可区分，立法收紧为分号强制）。
+        //   诊断后不消费当前 Token（对齐 consumeSemicolon 不推进语义——下一
+        //   字段/'}' 由循环正常续解，一次编译报全量缺分号位置）。plans/001
+        //   §5.7 字段示例已随本条同步为分号形态（契约变更·见提交信息〔通告〕）。
+        if (check(TokenType::Comma)) {
+            advance();
+            continue;
+        }
+        if (!match(TokenType::Semicolon)) {
+            reportErrorHere(isUnion ? kUnionFieldSemicolonDiag
+                                    : kStructFieldSemicolonDiag);
+        }
     }
     consume(TokenType::RightBrace, "'}'");
     return decl;
@@ -265,6 +281,14 @@ std::unique_ptr<StructDecl> Parser::parseStructDecl(bool isUnion) {
 // 解析枚举声明：枚举 名 { 成员, 成员 = 值, ... }（Task 2.7）
 // 成员值：整数字面量（可为负数）/省略（自动递增，首个默认0）
 namespace {
+
+// 1862：枚举自动递增 +1 两补码回绕（与语义层 computeEnumValues 的 wrapAddOne
+//   同口径——MAX 之后 = MIN。跨层单向依赖禁 include semantic 头，解析层自持
+//   同式实现；两侧一致性由双编译对照用例族守护）。
+std::int64_t wrapAddOne(std::int64_t v) {
+    return static_cast<std::int64_t>(static_cast<std::uint64_t>(v) + 1ULL);
+}
+
 
 // 728u：枚举成员值文本 → 整64 承载值（两补码回绕口径，与 v2 侧
 //   数字文本转数值 + 位模式取负474 逐形态一致）。
@@ -339,6 +363,13 @@ std::unique_ptr<EnumDecl> Parser::parseEnumDecl() {
     advance();
     consume(TokenType::LeftBrace, "'{'");
     // 成员列表：成员 [= 值]（逗号分隔，可带尾逗号）
+    // 1862：解析期同步求值（对齐本文件 ast_stmt.hpp「值已求值」注释承诺）——
+    //   自动递增成员=前一成员值+1（首成员 0），显式值成员后接续从显式值+1
+    //   继续（枚举 语义即此·与语义层 computeEnumValues 同口径）。原缺陷：
+    //   自动递增成员从不填值=栈垃圾进 AST——CN_AST_CACHE_VERIFY=1 双编译
+    //   垃圾值不同恒红回退解析、cn ast 调试打印垃圾值（语义层重算枚举值
+    //   不读 member.value 故运行期无恙，AST 打印/缓存通道已坏）。
+    std::int64_t nextValue = 0;
     while (!check(TokenType::RightBrace) && !check(TokenType::EndOfFile)) {
         if (!check(TokenType::Identifier)) {
             reportErrorHere("枚举成员预期名称");
@@ -351,7 +382,10 @@ std::unique_ptr<EnumDecl> Parser::parseEnumDecl() {
         member.name = current().getValue();
         advance();
         // 显式赋值：= 整数字面量（支持负号）
-        if (match(TokenType::Equal)) {
+        // 1238 else 新规词面合规：显式值=独立 if 枚举；「非显式值」区间同样独立
+        //   if 枚举（1862 自动递增填值）——else 块内禁业务赋值。
+        const bool hasExplicitValue = match(TokenType::Equal);
+        if (hasExplicitValue) {
             member.explicitValue = true;
             if (currentType() == TokenType::IntegerLiteral) {
                 // 728u：改走 parseEnumMemberValue（两补码回绕——原 parseIntValue
@@ -370,6 +404,12 @@ std::unique_ptr<EnumDecl> Parser::parseEnumDecl() {
                 break;
             }
         }
+        if (!hasExplicitValue) {
+            // 1862：自动递增成员解析期填值（修栈垃圾根因·非默认值兜底——
+            //   与语义层重算结果恒一致的确定性求值）
+            member.value = nextValue;
+        }
+        nextValue = wrapAddOne(member.value);
         decl->members.push_back(std::move(member));
         // 逗号分隔（可带尾逗号）
         if (check(TokenType::Comma)) {

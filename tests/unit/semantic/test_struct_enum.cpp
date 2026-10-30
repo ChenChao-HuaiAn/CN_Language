@@ -233,7 +233,7 @@ TEST(StructSemanticTest, StructInitUnknownField) {
 TEST(StructSemanticTest, NestedStructInit) {
     SemanticResult r = analyzeSource(
         "结构体 点 { 整32 x; 整32 y; }\n"
-        "结构体 矩形 { 点 左上 点 右下; }\n"
+        "结构体 矩形 { 点 左上; 点 右下; }\n"
         "不安全 函数 主() -> 整32 {\n"
         "  矩形 r = 矩形{ 左上 = 点{ x = 1, y = 2 }, 右下 = 点{ x = 3, y = 4 } };\n"
         "  整32 a = r.左上.x;\n"

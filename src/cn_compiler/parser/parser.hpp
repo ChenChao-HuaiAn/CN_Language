@@ -36,6 +36,16 @@ inline constexpr const char* kStructMethodRejectDiag =
     "结构体不支持普通成员方法——结构体=纯数据聚合·需要行为请用 类"
     "（结构体仅可定义 运算符X 成员·暂未实现）";
 
+// 1866（001 §969 显式诊断义务·#1406 类字段同族扩展）：结构体/联合体字段
+//   声明分号强制诊断统一文案——字段「类型 名」后须 ';' 终结（缺失=显式
+//   诊断，杜绝跨字段静默粘连：`点 内 点[3] 路;` 修前被静默解析成两个字段）。
+//   与 v2 解析结构体声明 同点同串逐字一致（零分叉纪律）。联合体面独立文案
+//   （字段声明归属面精确指路·解析同点 isUnion 分派）。
+inline constexpr const char* kStructFieldSemicolonDiag =
+    "结构体字段声明缺少分号 ';'";
+inline constexpr const char* kUnionFieldSemicolonDiag =
+    "联合体字段声明缺少分号 ';'";
+
 // 判断Token是否为类型关键字（阶段一基本类型 + 阶段三 结果/可选 模板类型名）
 // 1216：定义内联于此，供六个解析 TU 共用（parser.cpp/parser_expr/
 //   parser_stmt/parser_decl/parser_oop/parser_type；原为 parser.cpp 导出

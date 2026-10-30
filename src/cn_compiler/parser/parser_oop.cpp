@@ -434,14 +434,18 @@ bool Parser::parseClassMember(ClassMember& out, AccessSpecifier access) {
         // 静默豁免上游已诊断: parseFieldMember 内各失败分支均已 reportErrorHere
         //   （类成员预期/字段预期名称等）——false 仅为控制流返回·非静默终态。
         if (!parseFieldMember(out)) return false;
-        // 1406（负向轨道 s261023010233 实录）：字段后缺分号直撞「函数」成员
-        //   标记——静默吞标记=字段/构造丢失错值（`整32 值`+`函数 盒(整32 n
-        //   = 2+3) { 值 = n; }` 缺分号后构造丢失·盒() 落默认构造·输出 0 应 5）。
-        //   字段声明与成员标记（函数）之间须分号分隔（plans/015「可选」合法面
-        //   =同语句多声明器与空语句·非跨成员粘滞）。v2 解析类.cn 同位同串。
-        if (check(TokenType::Kw_Function)) {
+        // 1406（负向轨道 s261023010233 实录）+ 1866 扩面：字段「类型 名」后
+        //   强制分号终结。原窄拦只覆盖字段直撞「函数」成员标记形态（静默吞
+        //   标记=字段/构造丢失错值）；字段后跟字段（换行分隔·词法层换行已丢
+        //   token 流不可区分缺分号粘连）静默放行=同族缺口，1866 起全强制
+        //   （001 §969 显式诊断义务·与结构体面 kStructFieldSemicolonDiag 同族）。
+        //   文案保持 1406 原文=E2E 1632 锚不破。诊断后不消费当前 Token——
+        //   返回 true 让外层成员循环正常续解（下一成员/'}'），一次编译报
+        //   全量缺分号位置（原 return false→synchronize 会吞下一成员=报错面
+        //   收窄，弃用）。逗号=下一字段带全类型的显式分隔（原合法面保持）。
+        if (match(TokenType::Comma)) return true;
+        if (!match(TokenType::Semicolon)) {
             reportErrorHere("类字段声明缺少分号 ';'");
-            return false;
         }
         return true;
     }

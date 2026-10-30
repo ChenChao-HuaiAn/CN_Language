@@ -111,11 +111,11 @@ TEST(ParserStage3Test, ClassAccessLabels) {
     auto result = parseProgram(
         "类 账户 {\n"
         "公开:\n"
-        "    字符串 用户名\n"
+        "    字符串 用户名;\n"
         "保护:\n"
-        "    整32 余额\n"
+        "    整32 余额;\n"
         "私有:\n"
-        "    整32 密码哈希\n"
+        "    整32 密码哈希;\n"
         "}");
     ASSERT_FALSE(result.diagnostics.hasErrors());
     ClassDecl* cls = firstClass(result.program.get());
@@ -386,7 +386,7 @@ TEST(ParserStage3Test, GenericInterfaceConstraint) {
         "泛型 <类型 T : 可绘制>\n"
         "类 形状集合 {\n"
         "公开:\n"
-        "    T 首个\n"
+        "    T 首个;\n"
         "}");
     ASSERT_FALSE(result.diagnostics.hasErrors());
     ASSERT_EQ(result.program->generics.size(), 1u);
