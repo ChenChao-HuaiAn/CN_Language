@@ -174,11 +174,11 @@ TEST(ParserStage3Test, VirtualOverrideAbstract) {
 
 // ==================== 4. 接口定义 ====================
 
-// 接口 可绘制 { 虚拟 函数 绘制() -> 空类型 }
+// 接口 可绘制 { 虚拟 函数 绘制() -> 空类型; }（1870 起签名分号强制）
 TEST(ParserStage3Test, InterfaceDecl) {
     auto result = parseProgram(
         "接口 可绘制 {\n"
-        "    虚拟 函数 绘制() -> 空类型\n"
+        "    虚拟 函数 绘制() -> 空类型;\n"
         "}");
     ASSERT_FALSE(result.diagnostics.hasErrors());
     ASSERT_EQ(result.program->interfaces.size(), 1u);
@@ -520,7 +520,7 @@ TEST(ParserStage3Test, ModuleDefaultPrivate) {
         "结构体 默认结构体 { 整32 x; }\n"
         "枚举 默认枚举 { A }\n"
         "类 默认类 { }\n"
-        "接口 默认接口 { 虚拟 函数 方法() -> 整32 }\n");
+        "接口 默认接口 { 虚拟 函数 方法() -> 整32; }\n");
     ASSERT_FALSE(result.diagnostics.hasErrors());
     ASSERT_EQ(result.program->declarations.size(), 1u);
     EXPECT_EQ(result.program->declarations[0]->access, AccessSpecifier::Private);

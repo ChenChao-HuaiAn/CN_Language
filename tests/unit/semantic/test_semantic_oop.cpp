@@ -191,7 +191,7 @@ TEST(SemanticOopTest, OverrideSignatureMismatch) {
 TEST(SemanticOopTest, InterfaceImplementation) {
     auto r = analyzeSource(R"CN(
 接口 可绘制 {
-    虚拟 函数 绘制() -> 空类型
+    虚拟 函数 绘制() -> 空类型;
 }
 类 圆形 : 可绘制 {
 公开:
@@ -212,8 +212,8 @@ TEST(SemanticOopTest, InterfaceImplementation) {
 TEST(SemanticOopTest, InterfaceMissingMethod) {
     auto r = analyzeSource(R"CN(
 接口 可绘制 {
-    虚拟 函数 绘制() -> 空类型
-    虚拟 函数 清除() -> 空类型
+    虚拟 函数 绘制() -> 空类型;
+    虚拟 函数 清除() -> 空类型;
 }
 类 圆形 : 可绘制 {
 公开:

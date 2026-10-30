@@ -208,7 +208,7 @@ TEST(AstPrinterNodes, RangeForStmt) {
 TEST(AstPrinterNodes, InterfaceDecl) {
     const std::string ast = printAst(R"SRC(
 接口 形状 {
-    虚拟 函数 面积() -> 整32
+    虚拟 函数 面积() -> 整32;
 }
 )SRC");
     EXPECT_TRUE(contains(ast, "接口声明 形状"));

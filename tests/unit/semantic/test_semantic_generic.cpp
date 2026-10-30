@@ -155,7 +155,7 @@ TEST(SemanticGenericTest, GenericFunctionDeclared) {
 TEST(SemanticGenericTest, GenericConstraintSatisfied) {
     auto r = analyzeSource(R"CN(
 接口 可命名 {
-    虚拟 函数 获取名字() -> 字符串
+    虚拟 函数 获取名字() -> 字符串;
 }
 类 人 : 可命名 {
 公开:
@@ -180,7 +180,7 @@ TEST(SemanticGenericTest, GenericConstraintSatisfied) {
 TEST(SemanticGenericTest, GenericConstraintViolated) {
     auto r = analyzeSource(R"CN(
 接口 可命名 {
-    虚拟 函数 获取名字() -> 字符串
+    虚拟 函数 获取名字() -> 字符串;
 }
 类 数字 {
 公开:

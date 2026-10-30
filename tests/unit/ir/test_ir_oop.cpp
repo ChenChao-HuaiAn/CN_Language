@@ -107,7 +107,7 @@ TEST(IrOopTest, ClassVirtualIrGenerate) {
 TEST(IrOopTest, InterfaceIrGenerate) {
     auto r = generateIr(R"CN(
 接口 可绘制 {
-    虚拟 函数 绘制() -> 空类型
+    虚拟 函数 绘制() -> 空类型;
 }
 类 圆形 : 可绘制 {
 公开:
@@ -178,7 +178,7 @@ TEST(IrOopTest, GenericIrGenerate) {
 TEST(IrOopTest, InterfaceDevirtSingleImpl) {
     auto r = generateIr(R"CN(
 接口 通讯 {
-    虚拟 函数 发(整32 数据) -> 整32
+    虚拟 函数 发(整32 数据) -> 整32;
 }
 类 串口 : 通讯 {
 公开:
@@ -212,7 +212,7 @@ TEST(IrOopTest, InterfaceDevirtSingleImpl) {
 TEST(IrOopTest, InterfaceDevirtMultiImplKeepsIndirect) {
     auto r = generateIr(R"CN(
 接口 通讯 {
-    虚拟 函数 发(整32 数据) -> 整32
+    虚拟 函数 发(整32 数据) -> 整32;
 }
 类 串口 : 通讯 {
 公开:

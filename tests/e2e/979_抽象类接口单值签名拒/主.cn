@@ -20,7 +20,7 @@
 }
 
 接口 可叫 {
-    函数 叫() -> 空类型
+    函数 叫() -> 空类型;
 }
 
 // 形态⑦：顶层静态单值（宿主 registerGlobalConstsAndStatics 746 挂点·

@@ -305,7 +305,17 @@ std::unique_ptr<InterfaceDecl> Parser::parseInterfaceDecl() {
         }
         // 接口方法无实现体（签名后直接下一个成员/右花括号）
         decl->members.push_back(std::make_unique<ClassMember>(std::move(member)));
-        match(TokenType::Semicolon);  // 接口方法签名后（声明体成员分隔：可选）
+        // 1870（1866 同族·001 §5.9.6 分号模型扩接口面）：方法签名后强制
+        //   分号终结。原「可选消费」静默放行缺分号形态——`虚拟 函数 画() ->
+        //   空类型` 直撞下一 `函数 无关()`（词法层换行已丢·token 流与缺分号
+        //   粘连不可区分）被粘连解析成两个方法=跨签名静默粘连事故链。
+        //   缺失即显式诊断（kInterfaceMethodSemicolonDiag·v2 解析接口.cn
+        //   同点同串）；诊断后不消费当前 Token——对齐 consumeSemicolon 不
+        //   推进语义与 1866 类字段纪律（循环头跳过分号/逗号续解下一成员，
+        //   一次编译报全量缺分号位置）。
+        if (!match(TokenType::Semicolon)) {
+            reportErrorHere(kInterfaceMethodSemicolonDiag);
+        }
     }
     consume(TokenType::RightBrace, "'}'");
     return decl;

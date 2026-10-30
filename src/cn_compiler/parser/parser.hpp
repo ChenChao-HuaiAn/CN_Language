@@ -46,6 +46,14 @@ inline constexpr const char* kStructFieldSemicolonDiag =
 inline constexpr const char* kUnionFieldSemicolonDiag =
     "联合体字段声明缺少分号 ';'";
 
+// 1870（1866 同族·001 §5.9.6 分号模型扩展到接口面）：接口方法签名分号
+//   强制诊断统一文案——签名「[虚拟|重写] 函数 名(...) -> 类型」后须 ';'
+//   终结（缺失=显式诊断，杜绝跨签名静默粘连：`虚拟 函数 画() -> 空类型`
+//   后直撞下一 `函数 无关()` 修前被静默解析成两个方法）。与 v2 解析接口.cn
+//   同点同串逐字一致（零分叉纪律）。
+inline constexpr const char* kInterfaceMethodSemicolonDiag =
+    "接口方法签名缺少分号 ';'";
+
 // 判断Token是否为类型关键字（阶段一基本类型 + 阶段三 结果/可选 模板类型名）
 // 1216：定义内联于此，供六个解析 TU 共用（parser.cpp/parser_expr/
 //   parser_stmt/parser_decl/parser_oop/parser_type；原为 parser.cpp 导出
