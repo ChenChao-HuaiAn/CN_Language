@@ -10,7 +10,6 @@
 //   boxNullOptionalArgs + normalizeMethodArgs（106 无→可选装箱/方法实参定标）。
 //   成员函数声明仍在 ir_generator.hpp（648 拆分=成员实现搬移·族内无文件级
 //   static/匿名命名空间依赖）。
-#include <cstdio>
 #include <string>
 #include <utility>
 #include <vector>
@@ -122,8 +121,6 @@ ir::IRValue IRGenerator::genArgValueWithCleanup(Expr* arg,
     //   名串被毁→「未声明的类型」级联·965 第一版崩形同款·v2 树 IR diff 15 处
     //   新增 __cn_str_free 实录）。
     if (isMethodFaceCall) {
-        std::fprintf(stderr, "[PROBE]methodFace ret=%s reg=%d\n", retCanon.c_str(),
-                     (int)(retCanon == "字符串" && ce->retOwnedString));
         if (semantic_->isClassType(retCanon)) {
             registerClassReturnArgTemp(ce, v, retCanon);
         }
@@ -136,7 +133,6 @@ ir::IRValue IRGenerator::genArgValueWithCleanup(Expr* arg,
     //   借用（借用契约=调用期有效——临时生命周期至完整表达式尾，C++ 同规；
     //   被调方外存借用句柄=借用违约，非本释放面义务）。
     if (retCanon == "字符串") {
-        std::fprintf(stderr, "[PROBE]generic string reg\n");
         pendingArgCleanups_.emplace_back(v, retCanon, nullptr);
         return v;
     }

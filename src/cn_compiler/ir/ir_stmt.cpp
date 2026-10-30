@@ -17,6 +17,32 @@
 
 namespace cn_compiler {
 
+namespace {
+
+// 1833（2026-10-30·1513 根治）：借用来源左值地址的**形态谱分流判据**（文件局部
+//   自由函数·唯一调用点=下方 1817 块）——1817 返回位深拷须把「源对象地址」装进
+//   byRef 槽（拷构被调方契约=Load 形参槽+LoadPtr 两跳得对象句柄），而
+//   lvalueAddress 对两类谱系语义不同：
+//   ①句柄槽形态（形参/全局/静态/裸字段〔633〕/成员字段链）→ 给「装着句柄的
+//   槽地址」，须 LoadPtr 解引一跳；②本体地址形态（下标内联元素〔981·数组缓冲
+//   直存结构体无句柄槽〕/解引用〔指针值即对象地址〕/三元透传〔86-a 汇合 Load
+//   出的即选中 place 值〕/自身〔this 值〕）→ 地址即对象，直存。
+//   1513 实录：形参面漏解引 → 拷构源错位为形参槽地址 → 副本记录字段恒空
+//   （实参位 副本.记录.大小()=0 应 1·和=4 应 6）。与 isBorrowedAggregateSource
+//   同谱系伴生判据。前置条件：e 非空——1817 块 if 链已显式判
+//   node->value != nullptr 后才进入（判据函数无静默 miss 面）。
+bool isBorrowedAggregateHandleSlot(const Expr* e) {
+    switch (e->getType()) {
+        case NodeType::IdentifierExpr:   // 形参/全局/静态/裸字段（633）——槽内=句柄
+        case NodeType::MemberExpr:       // 成员链字段槽——槽内=句柄
+            return true;
+        default:                         // 下标内联/解引用/三元/自身=本体地址
+            return false;
+    }
+}
+
+}  // namespace
+
 void IRGenerator::visitExprStmt(ExprStmt* node) {
     ir::IRValue discarded = genExpr(node->expr.get());
     // 645（2026-10-14·任务 645）：语句位拥有串临时物析构——表达式语句的求值
@@ -257,69 +283,80 @@ void IRGenerator::visitReturnStmt(ReturnStmt* node) {
             endReturn(ownedRetAddr);
             return;
         }
+
         // 1817（丁案 R1·001 §5.3 返回值语义 2026-10-29 裁决）：**类返回借用来源
         //   → 返回位深拷副本**——类=句柄语义下，「返回 值/字段/静态/下标/形参」
         //   直传来源本体句柄=接收方与来源共享同一堆壳（R1 禁止的隐式共享）：
         //   任一侧字段写写穿对方、接收方 RAII 析构同一堆=double free（探针
-        //   r1817 形态①② 实录 rc=134；1331 接管族 rc=15 同根）。修=85-a 同款
-        //   借用来源判定（isBorrowedAggregateSource 现成：局部=拥有移出 false
-        //   零拷贝直通·形参/全局/字段/成员/下标/解引用/三元借用 true）→
-        //   NewObject+拷贝构造（byRef 槽地址）或无拷构 → NewObject+
-        //   emitOwnedFieldsCopy 字段级深拷 → rax=副本句柄（接收方独立拥有·
-        //   接收位 629 接管零甄别）。引用返回（-> T& 借用契约签名即 ABI）与
-        //   sret 面（85-a 结构体已副本）不进本门。
+        //   r1817 形态①② 实录 rc=134）。修=85-a 同款借用来源判定
+        //   （isBorrowedAggregateSource 现成：局部=拥有移出 false 零拷贝直通·
+        //   形参/全局/字段/成员/下标/解引用/三元借用 true）→ NewObject+拷贝
+        //   构造（byRef 槽地址）或无拷构 → NewObject+emitOwnedFieldsCopy
+        //   字段级深拷 → rax=副本句柄（接收方独立拥有）。拥有局部=句柄直传
+        //   零拷贝（R1③ move 现行为保持）。引用返回与 sret 面（85-a 结构体
+        //   已副本）不进本门。
+        //   1833（2026-10-30·1513 根治）：源地址按形态谱分流——句柄槽形态
+        //   （形参/全局/静态/裸字段/成员字段）LoadPtr 解出句柄再装 byRef 槽
+        //   （漏解引=拷构源错位为形参槽地址·副本记录恒空·1513 ②③返回 0 实录）；
+        //   本体地址形态（下标内联/解引用/三元/自身）地址即对象直存
+        //   （判据=isBorrowedAggregateHandleSlot·本文件匿名命名空间）。
         if (semantic_ != nullptr && function_ != nullptr && node->value != nullptr &&
             !function_->returnTypeSrc.empty() && !function_->structReturn &&
             !types::isReference(function_->returnTypeSrc) &&
             semantic_->isClassType(types::canonical(function_->returnTypeSrc)) &&
             isBorrowedAggregateSource(node->value.get())) {
-            const std::string returnCanonBorrow =
+            const std::string returnCanon =
                 types::canonical(function_->returnTypeSrc);
             const ClassInfo* returnClassInfo =
-                semantic_->findClass(returnCanonBorrow).value_or(nullptr);
+                semantic_->findClass(returnCanon).value_or(nullptr);
             if (returnClassInfo != nullptr && returnClassInfo->totalSize > 0) {
                 ir::IRValue returnCopyObj = emitResult(
                     ir::Opcode::NewObject,
-                    {ir::IRValue::constant(returnCanonBorrow, "ptr")}, "ptr",
-                    returnCanonBorrow + "|" + std::to_string(returnClassInfo->totalSize),
+                    {ir::IRValue::constant(returnCanon, "ptr")}, "ptr",
+                    returnCanon + "|" + std::to_string(returnClassInfo->totalSize),
                     node->location);
                 const ClassMemberInfo* returnCopyCtor =
-                    semantic_->findCopyConstructor(returnCanonBorrow).value_or(nullptr);
+                    semantic_->findCopyConstructor(returnCanon).value_or(nullptr);
                 ir::IRValue returnSrcAddr = lvalueAddress(node->value.get());
+                // 源对象地址：句柄槽形态解引一跳，本体地址形态直存（1833）
+                ir::IRValue returnSrcObj =
+                    isBorrowedAggregateHandleSlot(node->value.get())
+                        ? emitResult(ir::Opcode::LoadPtr, {returnSrcAddr}, "ptr",
+                                     "", node->location)
+                        : returnSrcAddr;
                 if (returnCopyCtor != nullptr) {
                     // 拷贝构造 byRef：源槽地址（槽内=对象句柄，体内解引用得
                     //   对象指针——「装着句柄的槽地址」约定）
-                    const std::string retCopySrcTmp =
+                    const std::string returnSrcSlotName =
                         "__retcopysrc" + std::to_string(varCounter_++);
                     emit(ir::Opcode::Alloca, {},
-                         ir::IRValue::reg(regCounter_++, "ptr"), retCopySrcTmp,
+                         ir::IRValue::reg(regCounter_++, "ptr"), returnSrcSlotName,
                          "ptr", node->location);
-                    registerVarSlots(retCopySrcTmp, returnCanonBorrow);
-                    emit(ir::Opcode::Store, {returnSrcAddr}, ir::IRValue(),
-                         retCopySrcTmp, "ptr", node->location);
+                    registerVarSlots(returnSrcSlotName, returnCanon);
+                    emit(ir::Opcode::Store, {returnSrcObj}, ir::IRValue(),
+                         returnSrcSlotName, "ptr", node->location);
                     ir::IRValue returnSrcSlot = emitResult(
-                        ir::Opcode::AddrOf, {ir::IRValue::var(retCopySrcTmp, "i64")},
-                        "ptr", retCopySrcTmp, node->location);
+                        ir::Opcode::AddrOf,
+                        {ir::IRValue::var(returnSrcSlotName, "i64")}, "ptr",
+                        returnSrcSlotName, node->location);
                     emit(ir::Opcode::Call, {returnCopyObj, returnSrcSlot},
                          ir::IRValue(),
                          methodSymbolKey(returnCopyCtor->ownerClass.empty()
-                                             ? returnCanonBorrow
+                                             ? returnCanon
                                              : returnCopyCtor->ownerClass,
                                          returnCopyCtor->sigKey),
                          "void", node->location);
-            }
-            if (returnCopyCtor == nullptr) {
-                // 无拷贝构造：字段级深拷（571 设施·源=对象指针）
-                ir::IRValue returnSrcPtr = emitResult(
-                    ir::Opcode::LoadPtr, {returnSrcAddr}, "ptr", "",
-                    node->location);
-                for (const ClassInfo* returnLvl = returnClassInfo; returnLvl != nullptr;
-                         returnLvl = returnLvl->baseName.empty()
-                                       ? nullptr
-                                       : semantic_->findClass(returnLvl->baseName)
-                                             .value_or(nullptr)) {
-                        emitOwnedFieldsCopy(returnCopyObj, returnSrcPtr,
-                                            returnCanonBorrow, returnLvl->name,
+                }
+                // 无拷贝构造（显式枚举合法区间·else 新规）：字段级深拷
+                //   （571 设施·源=对象指针）
+                if (returnCopyCtor == nullptr) {
+                    for (const ClassInfo* lvl = returnClassInfo; lvl != nullptr;
+                         lvl = lvl->baseName.empty()
+                                   ? nullptr
+                                   : semantic_->findClass(lvl->baseName)
+                                         .value_or(nullptr)) {
+                        emitOwnedFieldsCopy(returnCopyObj, returnSrcObj,
+                                            returnCanon, lvl->name,
                                             node->location);
                     }
                 }
