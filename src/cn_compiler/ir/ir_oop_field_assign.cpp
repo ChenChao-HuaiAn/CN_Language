@@ -15,68 +15,71 @@ namespace cn_compiler {
 bool IRGenerator::handleClassFieldAssign(IdentifierExpr* ident, Expr* value,
                                          Operator op, const SourceLocation& loc) {
     // 静态字段直接赋值（静态方法/普通方法内均可，Task 3.9）
-    if (semantic_ != nullptr && !currentClass_.empty()) {
-        const ClassInfo* ci = semantic_->findClass(currentClass_).value_or(nullptr);
-        while (ci != nullptr) {
-            auto f = ci->fields.find(ident->name);
-            if (f != ci->fields.end() && f->second.isStatic) {
-                const std::string fieldType = f->second.type;
-                std::string targetIrType = mapType(fieldType);
-                if (targetIrType.empty()) {
-                    // 648（miss 不可静默·110 同族）：类字段类型未登记=内部缺陷显形；driver hasErrors 统一中止。
-                    diagnostics_.report(DiagnosticLevel::Error, loc,
-                        "内部错误: 类字段类型未登记 '" + ident->name + "' —— 静默 i64 兜底已废除（#648）");
-                    targetIrType = "i64";  // 648：保留原兜底（中止前路径）
-                }
-                // 861（644-b 静态段对称补完·顶层静态 87-a 同律）：**静态字符串
-                //   字段直赋归一化 + 旧值释放**——原静态段与 644-b 前的实例段
-                //   同病：genExpr 产物句柄 StorePtr 裸写。借用来源（局部/形参）
-                //   直存句柄 → 函数出口局部 RAII 释放后字段悬垂（探针 p9 实录：
-                //   「静态字段 = 局部串」函数返回后宿主读空、v2 正确）；重复
-                //   赋值不 free 旧值=旧串泄漏。静态槽长期存活恒拥有（无块出口
-                //   RAII）——赋值点=唯一 drop 时机（顶层静态 87-a 同律）。
-                //   顺序纪律=先归一化后 free 旧（自赋值 静态串=静态串 安全：
-                //   新值已独立于旧句柄）。复合赋值 += 经语义层
-                //   rewriteStringConcatCompoundAssign 重析为 BinaryExpr(Add) 落
-                //   本分支（normalize 对拼接产物=直存接管——732 同口径）；
-                //   非 += 的复合符对字符串已被语义层拒绝（不可拼接右值），
-                //   复合段字符串不可达——数值复合原路径保留不动。
-                if (types::canonicalEquals(fieldType, "字符串") &&
-                    !isCompoundAssignOp(op)) {
-                    ir::IRValue strVal = genExpr(value);
-                    strVal = normalizeStringValueSource(value, strVal, loc);
-                    ir::IRValue strAddr =
-                        genStaticFieldAddr(currentClass_, ident->name, loc);
-                    // 旧值释放（幂等·空安全）：.data 零初始化槽首赋=null 安全
-                    emitFieldStringFreeAt(strAddr, loc);
-                    emit(ir::Opcode::StorePtr, {strAddr, strVal}, ir::IRValue(), "",
-                         "ptr", loc);
-                    lastExpr_ = strVal;
-                    return true;
-                }
-                ir::IRValue val = genExpr(value);
-                if (val.type != targetIrType && !targetIrType.empty()) {
-                    val = emitResult(ir::Opcode::Cast, {val}, targetIrType, "", loc);
-                }
-                ir::IRValue addr = genStaticFieldAddr(currentClass_, ident->name, loc);
-                // 915-a（任务 084）：静态字段复合赋值先读旧值再算（原丢读取侧）
-                if (isCompoundAssignOp(op)) {
-                    ir::IRValue current = emitResult(ir::Opcode::LoadPtr, {addr},
-                                                     targetIrType, "", loc);
-                    ir::Opcode opcode;
-                    Operator baseOp = baseOpOfCompound(op);
-                    if (mapBinaryOp(baseOp, false, opcode)) {
-                        val = widenCompoundRhs(val, targetIrType, loc);  // 331-a T51
-                        val = emitResult(opcode, {current, val}, targetIrType, "",
-                                         loc);
-                    }
-                }
-                emit(ir::Opcode::StorePtr, {addr, val}, ir::IRValue(), "",
-                     targetIrType, loc);
-                lastExpr_ = val;
+    // #1445：起点=fieldScopeClass()（1472 名字隐藏同锚）+符号类名=声明类
+    //   （findStaticFieldAlongChain 归一）——写路径与读路径/限定名通道落同一
+    //   声明类槽（?static_声明类$字段），禁发射类并入槽（读写跨通道分裂·#1310）。
+    if (semantic_ != nullptr && !fieldScopeClass().empty()) {
+        std::string declClass;
+        const cn::Optional<const ClassMemberInfo*> fieldOpt =
+            findStaticFieldAlongChain(*semantic_, fieldScopeClass(), ident->name,
+                                      declClass);
+        if (fieldOpt.has_value()) {
+            const ClassMemberInfo* field = fieldOpt.value();
+            const std::string fieldType = field->type;
+            std::string targetIrType = mapType(fieldType);
+            if (targetIrType.empty()) {
+                // 648（miss 不可静默·110 同族）：类字段类型未登记=内部缺陷显形；driver hasErrors 统一中止。
+                diagnostics_.report(DiagnosticLevel::Error, loc,
+                    "内部错误: 类字段类型未登记 '" + ident->name + "' —— 静默 i64 兜底已废除（#648）");
+                targetIrType = "i64";  // 648：保留原兜底（中止前路径）
+            }
+            // 861（644-b 静态段对称补完·顶层静态 87-a 同律）：**静态字符串
+            //   字段直赋归一化 + 旧值释放**——原静态段与 644-b 前的实例段
+            //   同病：genExpr 产物句柄 StorePtr 裸写。借用来源（局部/形参）
+            //   直存句柄 → 函数出口局部 RAII 释放后字段悬垂（探针 p9 实录：
+            //   「静态字段 = 局部串」函数返回后宿主读空、v2 正确）；重复
+            //   赋值不 free 旧值=旧串泄漏。静态槽长期存活恒拥有（无块出口
+            //   RAII）——赋值点=唯一 drop 时机（顶层静态 87-a 同律）。
+            //   顺序纪律=先归一化后 free 旧（自赋值 静态串=静态串 安全：
+            //   新值已独立于旧句柄）。复合赋值 += 经语义层
+            //   rewriteStringConcatCompoundAssign 重析为 BinaryExpr(Add) 落
+            //   本分支（normalize 对拼接产物=直存接管——732 同口径）；
+            //   非 += 的复合符对字符串已被语义层拒绝（不可拼接右值），
+            //   复合段字符串不可达——数值复合原路径保留不动。
+            if (types::canonicalEquals(fieldType, "字符串") &&
+                !isCompoundAssignOp(op)) {
+                ir::IRValue strVal = genExpr(value);
+                strVal = normalizeStringValueSource(value, strVal, loc);
+                ir::IRValue strAddr =
+                    genStaticFieldAddr(declClass, ident->name, loc);
+                // 旧值释放（幂等·空安全）：.data 零初始化槽首赋=null 安全
+                emitFieldStringFreeAt(strAddr, loc);
+                emit(ir::Opcode::StorePtr, {strAddr, strVal}, ir::IRValue(), "",
+                     "ptr", loc);
+                lastExpr_ = strVal;
                 return true;
             }
-            ci = ci->baseName.empty() ? nullptr : semantic_->findClass(ci->baseName).value_or(nullptr);
+            ir::IRValue val = genExpr(value);
+            if (val.type != targetIrType && !targetIrType.empty()) {
+                val = emitResult(ir::Opcode::Cast, {val}, targetIrType, "", loc);
+            }
+            ir::IRValue addr = genStaticFieldAddr(declClass, ident->name, loc);
+            // 915-a（任务 084）：静态字段复合赋值先读旧值再算（原丢读取侧）
+            if (isCompoundAssignOp(op)) {
+                ir::IRValue current = emitResult(ir::Opcode::LoadPtr, {addr},
+                                                 targetIrType, "", loc);
+                ir::Opcode opcode;
+                Operator baseOp = baseOpOfCompound(op);
+                if (mapBinaryOp(baseOp, false, opcode)) {
+                    val = widenCompoundRhs(val, targetIrType, loc);  // 331-a T51
+                    val = emitResult(opcode, {current, val}, targetIrType, "",
+                                     loc);
+                }
+            }
+            emit(ir::Opcode::StorePtr, {addr, val}, ir::IRValue(), "",
+                 targetIrType, loc);
+            lastExpr_ = val;
+            return true;
         }
     }
     if (!isInstanceField(ident->name)) return false;
@@ -337,34 +340,35 @@ bool IRGenerator::handleClassFieldIncDec(IdentifierExpr* ident, Operator op,
                                          const SourceLocation& loc,
                                          bool postfix) {
     // 静态字段直接访问（静态方法/普通方法内均可，Task 3.9）
-    if (semantic_ != nullptr && !currentClass_.empty()) {
-        const ClassInfo* ci = semantic_->findClass(currentClass_).value_or(nullptr);
-        while (ci != nullptr) {
-            auto f = ci->fields.find(ident->name);
-            if (f != ci->fields.end() && f->second.isStatic) {
-                const std::string fieldType = f->second.type;
-                std::string targetIrType = mapType(fieldType);
-                if (targetIrType.empty()) {
-                    // 648（miss 不可静默·110 同族）：类字段类型未登记=内部缺陷显形；driver hasErrors 统一中止。
-                    diagnostics_.report(DiagnosticLevel::Error, loc,
-                        "内部错误: 类字段类型未登记 '" + ident->name + "' —— 静默 i64 兜底已废除（#648）");
-                    targetIrType = "i64";  // 648：保留原兜底（中止前路径）
-                }
-                ir::IRValue addr = genStaticFieldAddr(currentClass_, ident->name, loc);
-                ir::IRValue cur = emitResult(ir::Opcode::LoadPtr, {addr},
-                                             targetIrType, "", loc);
-                ir::IRValue delta = emitResult(ir::Opcode::ConstInt, {}, targetIrType,
-                                               "1", loc);
-                ir::IRValue result = emitResult(
-                    op == Operator::Increment ? ir::Opcode::Add : ir::Opcode::Sub,
-                    {cur, delta}, targetIrType, "", loc);
-                emit(ir::Opcode::StorePtr, {addr, result}, ir::IRValue(), "",
-                     targetIrType, loc);
-                // T24（297-a）：后缀 i++ 表达式值=自增前的旧值
-                lastExpr_ = postfix ? cur : result;
-                return true;
+    // #1445：起点=fieldScopeClass()（1472 名字隐藏同锚）+符号类名=声明类
+    //   （findStaticFieldAlongChain 归一）——读算写回三段同落声明类槽。
+    if (semantic_ != nullptr && !fieldScopeClass().empty()) {
+        std::string declClass;
+        const cn::Optional<const ClassMemberInfo*> fieldOpt =
+            findStaticFieldAlongChain(*semantic_, fieldScopeClass(), ident->name,
+                                      declClass);
+        if (fieldOpt.has_value()) {
+            const std::string fieldType = fieldOpt.value()->type;
+            std::string targetIrType = mapType(fieldType);
+            if (targetIrType.empty()) {
+                // 648（miss 不可静默·110 同族）：类字段类型未登记=内部缺陷显形；driver hasErrors 统一中止。
+                diagnostics_.report(DiagnosticLevel::Error, loc,
+                    "内部错误: 类字段类型未登记 '" + ident->name + "' —— 静默 i64 兜底已废除（#648）");
+                targetIrType = "i64";  // 648：保留原兜底（中止前路径）
             }
-            ci = ci->baseName.empty() ? nullptr : semantic_->findClass(ci->baseName).value_or(nullptr);
+            ir::IRValue addr = genStaticFieldAddr(declClass, ident->name, loc);
+            ir::IRValue cur = emitResult(ir::Opcode::LoadPtr, {addr},
+                                         targetIrType, "", loc);
+            ir::IRValue delta = emitResult(ir::Opcode::ConstInt, {}, targetIrType,
+                                           "1", loc);
+            ir::IRValue result = emitResult(
+                op == Operator::Increment ? ir::Opcode::Add : ir::Opcode::Sub,
+                {cur, delta}, targetIrType, "", loc);
+            emit(ir::Opcode::StorePtr, {addr, result}, ir::IRValue(), "",
+                 targetIrType, loc);
+            // T24（297-a）：后缀 i++ 表达式值=自增前的旧值
+            lastExpr_ = postfix ? cur : result;
+            return true;
         }
     }
     if (!isInstanceField(ident->name)) return false;

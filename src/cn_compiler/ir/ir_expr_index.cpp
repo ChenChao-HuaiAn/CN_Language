@@ -907,11 +907,13 @@ cn::Optional<long long> IRGenerator::knownStringObjectLen(Expr* object) {
             return cn::Optional<long long>();
         }
         // P0-1/P0-2（#1310 审查）：类字段（实例/静态/继承）与常量同名时读点是
-        //   **字段槽**——字段可被赋值/方法调用改写，且继承静态字段读路径存在
-        //   既有符号解析缺陷（读 ?static_子$名/写 ?static_基$名·另案根治）；
-        //   本任务对字段一律回落运行时 strlen（保留原 strlen 防线，不崩不错值）。
+        //   **字段槽**——字段可被赋值/方法调用改写（槽值非编译期可证常量），
+        //   对字段一律回落运行时 strlen（保留原 strlen 防线，不崩不错值）。
         //   classFieldType 沿基类链且 ClassInfo::fields 含继承并入（实例/静态
         //   统一覆盖，不使用 isInstanceField=静态字段判定面）。
+        //   2026-10-31 #1445 注：原「继承静态字段符号解析缺陷」已根治（全通道
+        //   声明类唯一槽）——本豁免维持的独立理由=字段槽可变（上方首句），
+        //   编译期长度快路径对字段槽恒不可证，与符号面无关。
         if (!currentClass_.empty() &&
             classFieldType(currentClass_, ident->name).has_value()) {
             return cn::Optional<long long>();

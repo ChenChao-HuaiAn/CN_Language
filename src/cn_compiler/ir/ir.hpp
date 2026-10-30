@@ -15,6 +15,7 @@
 
 #include "cn_compiler/ir/ir_opcode.hpp"
 #include "cn_compiler/common/diagnostics.hpp"
+#include "cn_compiler/common/optional_safe.hpp"
 #include "cn_compiler/common/source_location.hpp"
 #include "cn_compiler/model/ast.hpp"
 
@@ -24,6 +25,18 @@ struct ClassMemberInfo;   // 前向声明（阶段3：类方法信息，semantic
 struct ClassInfo;         // 前向声明（D1 拆分 456-a：findCtorMember 形参，semantic.hpp 定义）
 struct GenericFuncInstance;  // 前向声明（Task 6.1：泛型函数实例化记录，semantic.hpp 定义）
 struct DeclGenCtx;        // 前向声明（350 重构E2：genVarDecl 拆分段间状态包，ir_stmt_decl_ctx.hpp 定义）
+
+// 沿类继承链查静态字段条目（#1445 根治·定义见 ir_oop_field.cpp）：
+//   继承静态字段全通道（方法体内裸名读/写/自增减·类名限定读/写/取址）符号须落
+//   **声明类唯一槽**（?static_声明类$字段——C++ 静态成员一份存储；此前发射类/
+//   显式类名拼符号=独立并入槽，读写跨通道分裂·#1310 暴露）。
+//   ClassInfo::fields 为继承并入合并表——起点层第一表即含全部祖先条目（条目
+//   ownerClass=声明类）。命中=条目+outDeclClass=声明类（ownerClass 空=合成数据
+//   未填→回退命中层类名，class_resolver.cpp lookupClassMember 同口径）；
+//   无值=类未登记/非静态字段（含实例字段同名形态——调用方按既有路径分流）。
+[[nodiscard]] cn::Optional<const ClassMemberInfo*> findStaticFieldAlongChain(
+    const ISemanticView& semantic, const std::string& startClass,
+    const std::string& fieldName, std::string& outDeclClass);
 
 
 namespace ir {

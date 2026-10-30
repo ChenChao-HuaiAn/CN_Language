@@ -29,6 +29,30 @@ cn::Optional<std::string> IRGenerator::classFieldType(const std::string& classNa
     return std::nullopt;
 }
 
+// 沿类继承链查静态字段条目（#1445 根治·声明见 ir.hpp）：
+//   继承静态字段全通道符号须落声明类唯一槽。fields 为继承并入合并表——起点层
+//   第一表即含全部祖先条目（条目 ownerClass=声明类），故沿链循环主要服务起点层
+//   未登记（类 miss）与防御面；命中即按条目 ownerClass 归一声明类。
+cn::Optional<const ClassMemberInfo*> findStaticFieldAlongChain(
+    const ISemanticView& semantic, const std::string& startClass,
+    const std::string& fieldName, std::string& outDeclClass) {
+    if (startClass.empty()) return std::nullopt;
+    const ClassInfo* ci = semantic.findClass(types::canonical(startClass)).value_or(nullptr);
+    while (ci != nullptr) {
+        auto f = ci->fields.find(fieldName);
+        if (f != ci->fields.end() && f->second.isStatic) {
+            // 声明类归一：条目 ownerClass=声明类（collectClassMembers 注册面恒填；
+            //   并入=整条复制保留来源类）。空=合成数据未填→回退命中层类名
+            //   （class_resolver.cpp lookupClassMember 同口径）。
+            outDeclClass = f->second.ownerClass.empty() ? ci->name : f->second.ownerClass;
+            return cn::Optional<const ClassMemberInfo*>(&f->second);
+        }
+        ci = ci->baseName.empty() ? nullptr
+                                  : semantic.findClass(ci->baseName).value_or(nullptr);
+    }
+    return std::nullopt;
+}
+
 // 成员字段源码类型（结构体/类对象统一；宿主缺陷1'根治 2026-09-02）：
 //   下标 MemberExpr 分支原只查 StructDecl（类对象查不到 -> 步长兜底 8），
 //   致 拷贝构造 其他.数据[索引]（T*>8字节）读源错位（p9 实证重叠写入形态）。
@@ -343,23 +367,25 @@ bool IRGenerator::isInstanceField(const std::string& name) const {
 //   实例字段 -> this + FieldAddr(偏移) + LoadPtr（字段 IR 类型）
 bool IRGenerator::handleClassFieldRead(IdentifierExpr* node) {
     // 静态字段直接访问（静态方法/普通方法内均可，Task 3.9）：字段名在类字段表且 isStatic
-    if (semantic_ != nullptr && !currentClass_.empty()) {
-        const ClassInfo* ci = semantic_->findClass(currentClass_).value_or(nullptr);
-        while (ci != nullptr) {
-            auto f = ci->fields.find(node->name);
-            if (f != ci->fields.end() && f->second.isStatic) {
-                const std::string fieldType = f->second.type;
-                ir::IRValue addr = genStaticFieldAddr(currentClass_, node->name,
-                                                      node->location);
-                if (types::isArray(fieldType)) {
-                    lastExpr_ = addr;  // 数组字段退化：返回地址
-                    return true;
-                }
-                lastExpr_ = emitResult(ir::Opcode::LoadPtr, {addr},
-                                       mapType(fieldType), "", node->location);
+    // #1445：起点=fieldScopeClass()（1472 名字隐藏同锚——继承并入的基类方法在派生
+    //   类语境再发射时，体内裸静态名沿声明类链解析）；符号类名=声明类
+    //   （findStaticFieldAlongChain 归一）——禁发射类并入槽（读写跨通道分裂·#1310 暴露）。
+    if (semantic_ != nullptr && !fieldScopeClass().empty()) {
+        std::string declClass;
+        const cn::Optional<const ClassMemberInfo*> fieldOpt =
+            findStaticFieldAlongChain(*semantic_, fieldScopeClass(), node->name,
+                                      declClass);
+        if (fieldOpt.has_value()) {
+            const std::string fieldType = fieldOpt.value()->type;
+            ir::IRValue addr = genStaticFieldAddr(declClass, node->name,
+                                                  node->location);
+            if (types::isArray(fieldType)) {
+                lastExpr_ = addr;  // 数组字段退化：返回地址
                 return true;
             }
-            ci = ci->baseName.empty() ? nullptr : semantic_->findClass(ci->baseName).value_or(nullptr);
+            lastExpr_ = emitResult(ir::Opcode::LoadPtr, {addr},
+                                   mapType(fieldType), "", node->location);
+            return true;
         }
     }
     if (!isInstanceField(node->name)) return false;
@@ -437,13 +463,17 @@ bool IRGenerator::handleClassMemberExpr(MemberExpr* node) {
     }
 
     // ---- 静态字段：类名.字段（对象是类类型名，非变量） ----
+    // #1445：符号类名=声明类（findStaticFieldAlongChain 归一）——`派生名.基类静态
+    //   字段` 落声明类槽（禁显式类名并入槽·与类内裸名通道同口径）。
     if (!objName.empty() && semantic_->isClassType(objName)) {
-        // 1360 结果化：无值=非字段（静态方法等，交给调用钩子）——has_value 分流
-        const cn::Optional<std::string> fieldTypeOpt =
-            classFieldType(objName, node->memberName);
-        if (!fieldTypeOpt.has_value()) return false;
-        const std::string& fieldType = fieldTypeOpt.value();
-        ir::IRValue addr = genStaticFieldAddr(objName, node->memberName, node->location);
+        std::string declClass;
+        const cn::Optional<const ClassMemberInfo*> fieldOpt =
+            findStaticFieldAlongChain(*semantic_, objName, node->memberName,
+                                      declClass);
+        // 1360 结果化：无值=非静态字段（静态方法等，交给调用钩子）——has_value 分流
+        if (!fieldOpt.has_value()) return false;
+        const std::string& fieldType = fieldOpt.value()->type;
+        ir::IRValue addr = genStaticFieldAddr(declClass, node->memberName, node->location);
         if (types::isArray(fieldType)) {
             lastExpr_ = addr;  // 数组字段退化：返回地址
             return true;

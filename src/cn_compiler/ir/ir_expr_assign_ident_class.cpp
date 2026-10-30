@@ -420,19 +420,25 @@ bool IRGenerator::handleClassMemberLvalue(MemberExpr* node, ir::IRValue& outAddr
     const std::string canonObj = types::canonical(objSrcType);
 
     // 静态字段
+    // #1445：符号类名=声明类（findStaticFieldAlongChain 归一）——`派生名.基类
+    //   静态字段` 限定写/取址落声明类槽（禁显式类名并入槽·读路径同口径）。
     if (!objName.empty() && semantic_->isClassType(objName)) {
         // 1303 甄别（不可达断言·882 处置①）：字段存在性由语义层保证——成员
         //   访问检查（semantic_expr_access.cpp:244-248）对「类没有成员」报错
         //   中止，语义有错的程序不进 IR 阶段（driver.cpp:64）；到达即内部
         //   缺陷（查询面漂移），报内部错误显形；返回 false 维持原控制流。
         // 1360 结果化：无值=字段未登记（!has_value 即原空串判定）
-        if (!classFieldType(objName, node->memberName).has_value()) {
+        std::string declClass;
+        const cn::Optional<const ClassMemberInfo*> fieldOpt =
+            findStaticFieldAlongChain(*semantic_, objName, node->memberName,
+                                      declClass);
+        if (!fieldOpt.has_value()) {
             diagnostics_.report(DiagnosticLevel::Error, node->location,
                 "内部错误: 静态字段 '" + node->memberName + "' 未登记于类 '" +
                     objName + "'（#1303）");
             return false;
         }
-        outAddr = genStaticFieldAddr(objName, node->memberName, node->location);
+        outAddr = genStaticFieldAddr(declClass, node->memberName, node->location);
         return true;
     }
     // 实例字段

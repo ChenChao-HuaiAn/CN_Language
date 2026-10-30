@@ -73,6 +73,11 @@ void Arm64CodeGenerator::emitOopGlobals(Arm64AsmWriter& writer,
         for (const auto& fk : ci.fields) {
             const ClassMemberInfo& f = fk.second;
             if (!f.isStatic) continue;
+            // #1445：继承静态字段只在声明类发射一次槽——fields 为并入合并表，
+            //   派生层遍历会把祖先条目再发一遍（独立并入槽=读写分裂槽制造源·
+            //   全通道已归一声明类符号，死槽一并裁撤）。条目 ownerClass=声明类
+            //   （空=合成数据视本类自有）。
+            if (!f.ownerClass.empty() && f.ownerClass != ci.name) continue;
             const std::string sym = staticFieldSymbol(ci.name, f.name);
             if (emittedStatics_.count(sym) > 0) continue;
             emittedStatics_.insert(sym);
