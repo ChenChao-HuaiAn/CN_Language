@@ -154,7 +154,8 @@ void IRGenerator::registerClosureIfNeeded(VarDecl* node) {
                 //   结构体数据本身时，字段访问读到的是地址值字节=垃圾
                 //   （实测 值捕获p.x: 553448424 而非 1）。
                 if (semantic_ != nullptr &&
-                    semantic_->isStructType(types::canonical(capSrc))) {
+                    (semantic_->isStructType(types::canonical(capSrc)) ||
+                     types::isArray(capSrc))) {
                     // 940：值捕获结构体快照=定义处**深拷**（原裸 CopyStruct 位拷
                     //   仅首层字节——字符串字段句柄浅共享，源重赋值/块析构释放堆串
                     //   后同帧快径读悬垂（空串）；容器/类字段浅共享同病）。深拷=
@@ -162,6 +163,12 @@ void IRGenerator::registerClosureIfNeeded(VarDecl* node) {
                     //   落堆·容器/类字段 NewObject+拷贝构造·嵌套递归）——源保持
                     //   拥有、快照独立（001 §一D 无悬垂面）。纯 POD 结构体内部落
                     //   CopyStruct 位拷零开销不变。
+                    // 1408（形态①）：数组值捕获并入同分支（快径通道）——快照
+                    //   缓冲+整组 CopyStruct 位拷（typeSizeOf(数组)·元素全标量
+                    //   =完整快照），实参=缓冲地址（被调 structParamIndexes 位
+                    //   rep movsb 整组拷入参数槽）。原落「genExpr(变量)」分支=
+                    //   数组名退化元素指针值进 captureArgs（h1 探针实录）。
+                    //   元素含字符串/容器/类=句柄浅共享面另域（呈报挂账）。
                     const std::string capCanon = types::canonical(capSrc);
                     const std::string temp =
                         "__capstruct" + std::to_string(varCounter_++);
@@ -179,10 +186,33 @@ void IRGenerator::registerClosureIfNeeded(VarDecl* node) {
                     //   结果化：value_or("") 显形（语义层保证已登记·形态兜面）。
                     ir::IRValue srcAddr = genIdentifierLvalue(
                         std::make_unique<IdentifierExpr>(cap).get());
-                    emitStructCopyWithFields(dstAddr, srcAddr, capCanon,
-                                             node->location,
-                                             /*preFree=*/false,
-                                             /*deepCopy=*/true);
+                    // 数组/结构体双业务路独立 if 显式枚举（else 新规：业务
+                    //   双路分流禁落否则块）
+                    if (types::isArray(capSrc)) {
+                        // 数组=元素同构聚合（非字段结构）——整块位拷；宽度
+                        //   结果化分流（无值=编译器内部缺陷显形·同
+                        //   emitLambdaSnapshotStores 数组分支口径；业务路
+                        //   独立 if——显形后产物由 driver hasErrors 统一丢弃）
+                        const cn::Optional<int> bytesOpt =
+                            semantic_->typeSizeOf(capSrc);
+                        if (!bytesOpt.has_value()) {
+                            diagnostics_.report(
+                                DiagnosticLevel::Error, node->location,
+                                "内部错误: 捕获数组 '" + cap +
+                                    "' 大小查表 miss（#1408）");
+                        }
+                        if (bytesOpt.has_value()) {
+                            emit(ir::Opcode::CopyStruct, {dstAddr, srcAddr},
+                                 ir::IRValue(), std::to_string(bytesOpt.value()),
+                                 "void", node->location);
+                        }
+                    }
+                    if (!types::isArray(capSrc)) {
+                        emitStructCopyWithFields(dstAddr, srcAddr, capCanon,
+                                                 node->location,
+                                                 /*preFree=*/false,
+                                                 /*deepCopy=*/true);
+                    }
                     // 940：副本**不登记块出口释放**（安全优先裁决）——闭包值拷贝
                     //   传递（816 快径继承 closureInfo_）后可在快径中继续消费本
                     //   临时副本；块出口释放会令拷贝名跨块调用读已释放副本=
