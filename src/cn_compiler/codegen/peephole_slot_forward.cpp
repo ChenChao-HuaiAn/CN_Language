@@ -25,11 +25,16 @@
 //   e. 纯文本变换：不依赖后端状态；未命中返回 false 且文本逐字节不变。
 // 视图生命周期（1217）：lines/槽键全部指向 functionText 当次缓冲；渲染域结束
 //   （视图销毁）后才替换源存储，域尾 Debug 断言核对缓冲身份未提前改变。
+//   槽键所有权补充（#1874）：不是每个槽 token 都来自 functionText——取帧地址
+//   钩子拼出的 token 是解析现场构造的临时串，视图入表后随局部变量销毁即悬垂。
+//   故表对这类键自持有（findOrAddOwned·deque 稳定地址），不把「调用方保证键
+//   存活」的隐式契约留给未来的调用点。
 #include "cn_compiler/codegen/peephole_slot_internal.hpp"
 
 #include <algorithm>
 #include <cassert>
 #include <cstdint>
+#include <deque>
 #include <functional>
 #include <string>
 #include <string_view>
@@ -78,6 +83,10 @@ struct AccessRange {
 // 槽引用表：稳定条目数组（下标=稳定 id）+ 开放寻址索引（线性探测·装载因子
 //   1/2·string_view 键零拷贝）。条目数组只增不删——grow/扩容不影响既有 id，
 //   别名表可安全保存 id（1217 生命周期：id 与槽键视图只在本次调用域内使用）。
+//   键所有权契约：findOrAdd 的键视图必须覆盖表的使用期（现有调用点全部传
+//   functionText 缓冲内视图）；键文本来自临时局部串时一律走 findOrAddOwned，
+//   由表自持有——否则函数返回即 stack-use-after-return（#1874 实录：取帧地址
+//   钩子的 addrSlot 入表后悬垂，读取点 parseSlotOffset 撞 ASan）。
 class SlotTraceTable {
 public:
     // 查找或新建槽条目，返回稳定 id（>=0；调用方用 at(id) 取条目）
@@ -100,6 +109,15 @@ public:
         index_[idx].id = id;
         ++used_;
         return id;
+    }
+
+    // 同上，键文本移入表内自持有的池：存进条目/索引的视图指向池元素，
+    //   生命周期与表相同（消费点可放心在 collectTrace 返回之后读取）。
+    //   池用 deque 而非 vector：vector 扩容会移动元素（短串 SSO 缓冲随对象搬家），
+    //   已存的全部视图会集体悬垂；deque push_back 不使既有元素地址失效。
+    std::uint32_t findOrAddOwned(std::string token) {
+        ownedSlots_.push_back(std::move(token));
+        return findOrAdd(ownedSlots_.back());
     }
 
     SlotEntry& at(std::uint32_t id) { return entries_[id]; }
@@ -138,6 +156,7 @@ private:
     std::vector<IndexEntry> index_;   // 开放寻址索引
     std::size_t mask_ = 0;
     std::size_t used_ = 0;
+    std::deque<std::string> ownedSlots_;  // 自持有键文本（findOrAddOwned·地址稳定）
 };
 
 // 行内访问宽度（字节）：方言 store/load 解析优先；未识别形态按整宽/取址保守计。
@@ -181,9 +200,13 @@ void collectTrace(const std::vector<std::string_view>& lines, std::string_view a
         //   否则该槽仅存的 store 被「单现死写」剃除（833 arm64 i128 错值实录）。
         //   溢出/超限=该槽整槽不参与（与下方常规收集同款保守口径）。
         if (rules.parseFrameAddress) {
-            std::string addrSlot;
+            std::string addrSlot;  // 解析现场构造的临时 token（非 functionText 视图）
             if (rules.parseFrameAddress(ln, addrSlot)) {
-                SlotEntry& ea = table.at(table.findOrAdd(addrSlot));
+                // 键所有权交给表（#1874）：addrSlot 是本循环局部串，直接以视图入表
+                //   会在 collectTrace 返回后悬垂，后续 parseSlotOffset/身份比较读到
+                //   已销毁的 SSO 缓冲（GCC 15 ASan 默认 detect_stack_use_after_return
+                //   机械捕获）。findOrAddOwned 移入池后所有读取都指向稳定元素。
+                SlotEntry& ea = table.at(table.findOrAddOwned(std::move(addrSlot)));
                 // 溢出/超限=该槽整槽不参与本遍（保守保留原样·与下方常规收集同款）
                 if (ea.overflow || ea.count >= kMaxTrackedOcc) {
                     ea.overflow = true;
@@ -196,7 +219,7 @@ void collectTrace(const std::vector<std::string_view>& lines, std::string_view a
                     ++ea.count;
                     long long addrOff = 0;
                     // 偏移解析失败=不入别名表（未知引用仍拦截该槽·保守口径同款）
-                    if (rules.parseSlotOffset(addrSlot, addrOff)) {
+                    if (rules.parseSlotOffset(ea.slot, addrOff)) {
                         ranges.push_back(AccessRange{addrOff, 16, ea.id});
                     }
                 }
