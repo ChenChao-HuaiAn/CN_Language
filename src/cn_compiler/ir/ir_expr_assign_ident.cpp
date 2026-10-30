@@ -604,11 +604,21 @@ bool IRGenerator::identifierStructWholeAssign(AssignmentExpr* node, IdentifierEx
                                  "ptr", unique, node->location);
         }
         // 源地址：标识符 -> AddrOf；成员/下标 -> lvalueAddress；
-        // 链式赋值 -> 内层返回值（ptr 寄存器，源地址，内容与内层目标相同）；
-        // 结构体返回调用 -> 调用返回的结构体地址（ptr 寄存器）
+        //   解引用 -> 解引用产物（= 指针所指对象地址·#1720 地址语义单点，
+        //     免二次求值；源仍是借用 place，深拷照旧）；
+        //   链式赋值 -> 内层返回值（ptr 寄存器，源地址，内容与内层目标相同）；
+        //   结构体返回调用 -> 调用返回的结构体地址（ptr 寄存器）
         ir::IRValue srcAddr;
+        const bool srcIsDerefPlace =
+            node->value->getType() == NodeType::UnaryExpr &&
+            static_cast<UnaryExpr*>(node->value.get())->op == Operator::Deref;
         if (isChainedAssign || isStructReturnCall) {
             srcAddr = value;  // 内层 CopyStruct 返回/调用返回的结构体地址
+        } else if (srcIsDerefPlace) {
+            // #1720：`目标 = *p`（聚合整体赋值）——value 即所指对象地址
+            //   （visitUnaryExpr 解引用聚合分支产物），直接复用：lvalueAddress
+            //   会再求值一次操作数（*取指针() 等形态=双求值副作用）。
+            srcAddr = value;
         } else if (node->value->getType() == NodeType::IdentifierExpr) {
             // 1360 结果化：value_or("") 显形（未登记=空槽名原语义）
             const std::string srcUnique = lookupVarName(
@@ -736,6 +746,18 @@ cn::Optional<std::string> IRGenerator::assignValueSrcType(AssignmentExpr* node,
         valueSrcType = exprSrcType(node->value.get()).value_or("");
     } else if (node->value->getType() == NodeType::BinaryExpr ||
                node->value->getType() == NodeType::UnaryExpr) {
+        // #1720（2026-10-30·936 分支同族）：**解引用源** `目标 = *p`——源类型=
+        //   操作数指针剥一层星（pointerPointeeSrcType：与解引用发射同一推导
+        //   单点）。原缺此分支：valueSrcType 空 → 上层 targetAgg 守卫为假 → 落
+        //   通用标量 Store 只写所指首 8 字节（可选<整64> 目标判别位/载荷错位=
+        //   静默错值·本轮 p1 基线实录读回 0）。源地址仍按借用 place 深拷
+        //   （srcIsDerefPlace 分支·owned 字段独立副本）。
+        if (node->value->getType() == NodeType::UnaryExpr &&
+            static_cast<UnaryExpr*>(node->value.get())->op == Operator::Deref) {
+            const cn::Optional<std::string> derefSrc = pointerPointeeSrcType(
+                static_cast<UnaryExpr*>(node->value.get())->operand.get());
+            if (derefSrc.has_value()) valueSrcType = derefSrc.value();
+        }
         // 936 同族（运算符重载返回结构体·TernaryExpr 86-a 先例同构）：
         //   右值=二元/单目表达式——重载命中时语义层已把重载返回类型写回
         //   resolvedType（exprSrcType 读取，912 注释同源）；genExpr 经
@@ -744,11 +766,15 @@ cn::Optional<std::string> IRGenerator::assignValueSrcType(AssignmentExpr* node,
         //   exprSrcType 非结构体 → 上层 targetAgg 守卫 return false=行为不变。
         //   原缺此分支：valueSrcType 空 → 落标量 Store 只写 8 字节指针
         //   （p9 探针『差 = 甲 - 乙』读出指针低 32 位垃圾·非确定性实录）。
-        const std::string binRet = exprSrcType(node->value.get()).value_or("");
-        if (semantic_ != nullptr &&
-            semantic_->isStructType(types::canonical(binRet))) {
-            valueSrcType = binRet;
-            isStructReturnCall = true;  // 一次性返回物化壳语义（同调用返回）
+        //   解引用命中时 valueSrcType 已显式赋值（上方），重载面覆盖不适用
+        //   （*p 无运算符重载形态）。
+        if (valueSrcType.empty()) {
+            const std::string binRet = exprSrcType(node->value.get()).value_or("");
+            if (semantic_ != nullptr &&
+                semantic_->isStructType(types::canonical(binRet))) {
+                valueSrcType = binRet;
+                isStructReturnCall = true;  // 一次性返回物化壳语义（同调用返回）
+            }
         }
     }
     if (valueSrcType.empty()) return std::nullopt;

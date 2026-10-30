@@ -625,6 +625,36 @@ void IRGenerator::visitUnaryExpr(UnaryExpr* node) {
             const cn::Optional<std::string> pointeeSrcOpt =
                 pointerPointeeSrcType(node->operand.get());
             if (pointeeSrcOpt.has_value()) {
+                // #1720（2026-10-30）：**聚合所指（结构体/结果/可选/数组）解引用=
+                //   地址语义**（place 语义单点）——聚合表达式的 IR 产物恒为
+                //   「对象地址」（标识符聚合/成员链/下标/结构体字面量同款），
+                //   解引用亦不例外：*p 的产物=指针值本身（所指对象地址），
+                //   整块拷贝由消费者按**声明宽度**执行（声明初值 CopyStruct /
+                //   整体赋值 emitStructCopyWithFields / 传参 / 返回）。
+                //   原实现一律 IR_指针加载：只读所指前 8 字节当**值**，而聚合
+                //   消费者按「聚合=地址」把该 8 字节值当地址——结构体/合成体
+                //   `可选<整64> 读 = *借` 自野地址整块拷=稳定段错误（fault=1·
+                //   rep movsb 16 字节）；`读 = *借` 整变量赋值只写 8 字节=
+                //   静默错值（读回判别位非载荷）。病面与宽度无关：可选<整32>
+                //   （8B）/可选<整64>（16B）/可选<字符串>（宽）/结果<..>（16B）/
+                //   普通结构体（16B）实测同一根因（#1681 形态规避条立项转正）。
+                //   与 v2「生成左值地址」对解引用的处理同语义（解引用=操作数
+                //   指针值即地址）；v2 初值/赋值通道当前对该形态显形拒绝
+                //   （合成体源类型无法解析/结构体整体初始化暂不支持）=v2 缺口
+                //   另案，宿主侧以 plans/001 指针解引用语义为准。
+                const std::string pointeeCanon =
+                    types::canonical(pointeeSrcOpt.value());
+                if (semantic_ != nullptr &&
+                    (semantic_->isStructType(pointeeCanon) ||
+                     types::isArray(pointeeCanon))) {
+                    // 空指针检查（错误码3）保留：IR 无独立判空指令，FieldAddr
+                    //   （偏移 0=基址+0）即「判空后回同一地址」的既有原语——
+                    //   标量通道由 LoadPtr 插桩判空，聚合通道不得静默丢检查
+                    //   （原 `结构体 x = *空指针` 报错误码3，不得退化成段错误）。
+                    lastExpr_ = emitResult(ir::Opcode::FieldAddr, {operand}, "ptr",
+                                           "0", node->location);
+                    break;
+                }
                 elemType = mapType(pointeeSrcOpt.value());
             } else {
                 // 648（miss 不可静默·110 同族）：解引用目标所指元素类型未解析

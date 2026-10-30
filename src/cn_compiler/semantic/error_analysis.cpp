@@ -527,6 +527,18 @@ cn::Optional<std::string> SemanticAnalyzer::objectVarName(Expr* object) {
         if (!base.has_value()) return std::nullopt;
         return base.value() + "." + mem->memberName;
     }
+    // #1720（2026-10-30·守卫跟踪键缺口·接受面与 v2 对齐）：
+    //   **解引用接收者** `(*p).有值` / `(*p).值`——键=操作数自身的键（"p"），
+    //   与 `p.有值`（isDerefAccess 统一 . 同义）键**同源**：(*p).x ≡ p.x 是同一
+    //   place（001 指针解引用语义），检查状态理应互通。原无此分支 → 键不可跟踪
+    //   → markChecked 空转 + isChecked 恒假 → 真分支内合法读取被误拒（探针
+    //   t12 宿主红 / v2 绿实锤=接受面分叉）；未检查直接读仍拒绝（t11 双侧同拒），
+    //   跟踪键只扩不放行。操作数键不可跟踪（调用/复杂表达式）时无值——同上方
+    //   保守口径（宁多报不误放）。
+    if (object->getType() == NodeType::UnaryExpr &&
+        static_cast<UnaryExpr*>(object)->op == Operator::Deref) {
+        return objectVarName(static_cast<UnaryExpr*>(object)->operand.get());
+    }
     return std::nullopt;
 }
 

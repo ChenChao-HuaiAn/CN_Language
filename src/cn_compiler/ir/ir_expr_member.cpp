@@ -185,7 +185,26 @@ bool IRGenerator::emitStructWholeAssign(const ir::IRValue& dstAddr,
         //   类目标排除（重载类对象产物经 414/821 专门通道，不经本函数）。
         // 1360 结果化：value_or("") 显形（非重载普通算术=空串→isStructType 假
         //   →return false 原路径·原语义）
-        const std::string binRet = exprSrcType(valueNode).value_or("");
+        // #1720（2026-10-30·936 分支解引用面）：**解引用源** `目标 = *p`
+        //   （成员目标 `盒.载 = *借` / 数组元素目标 `组[0] = *借` 共用本函数）——
+        //   源类型=操作数指针剥一层星（pointerPointeeSrcType：与解引用发射/
+        //   标识符目标位 assignValueSrcType 同一推导单点）。原按
+        //   exprSrcType(resolvedType) 读 → 语义层对显式 * 不写回该值 → 空 →
+        //   isStructType 假 → return false → 调用方落标量 StorePtr 只写所指
+        //   首 8 字节（判别位 1+载荷错位=读回 0·本轮 p12/p13 探针实录）。
+        //   非解引用形态（运算符重载返回结构体）维持 resolvedType 口径不变。
+        std::string binRet;
+        const bool derefSrc =
+            valueNode->getType() == NodeType::UnaryExpr &&
+            static_cast<UnaryExpr*>(valueNode)->op == Operator::Deref;
+        if (derefSrc) {
+            binRet = pointerPointeeSrcType(
+                         static_cast<UnaryExpr*>(valueNode)->operand.get())
+                         .value_or("");
+        } else if (!derefSrc) {
+            // else 新规：显式枚举补集（解引用/其余单双目两态穷举）
+            binRet = exprSrcType(valueNode).value_or("");
+        }
         if (!semantic_->isStructType(types::canonical(binRet))) {
             return false;  // 非重载结构体产物——交回调用方原路径
         }

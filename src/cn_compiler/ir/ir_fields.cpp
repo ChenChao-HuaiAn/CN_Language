@@ -391,7 +391,21 @@ bool IRGenerator::genOwnedAggregateReturn(Expr* value, const SourceLocation& loc
     //   下标元素地址/解引用=指针值本身）。genExpr 对结构体 place 的读值语义不定
     //   （解引用形态实测降级为 LoadPtr 首字 = 把结构体首字段当地址，探针 P40④
     //   基线段错误 rc=139）；lvalueAddress 是左值地址单一事实源。
-    ir::IRValue src = lvalueAddress(value);
+    // #1720（2026-10-30）：**解引用源例外**走 genExpr——visitUnaryExpr 聚合
+    //   解引用分支产物=FieldAddr（偏移 0=判空后回所指对象地址），既保地址语义
+    //   又保留空指针检查（错误码3）；lvalueAddress(Deref) 直发操作数指针值
+    //   （无判空·`返回 *空指针` 含拥有串字段形态原为段错误而非错误码3）。
+    //   其余 place 形态维持 lvalueAddress（左值地址单一事实源不变）。
+    ir::IRValue src;
+    const bool derefSrc =
+        value->getType() == NodeType::UnaryExpr &&
+        static_cast<UnaryExpr*>(value)->op == Operator::Deref;
+    if (derefSrc) {
+        src = genExpr(value);
+    } else if (!derefSrc) {
+        // else 新规：显式枚举补集（解引用/其余 place 两态穷举）
+        src = lvalueAddress(value);
+    }
     emitStructCopyWithFields(ownBase, src, retCanon, loc, /*preFree=*/false,
                              /*deepCopy=*/true);
     srcAddr = ownBase.toString();
