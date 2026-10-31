@@ -90,14 +90,26 @@
                              const SourceLocation& loc);
     // 81-a：实参求值 + 「调用返回结构体临时」清理登记——返回类型含拥有型串字段的 调用返回实参（`表.追加(造盒子())`）：被调方返回移出（所有权移交调用方
     ir::IRValue genArgValueWithCleanup(Expr* arg, const SourceLocation& loc);
-    // 617（2026-10-14 伞批）：实参表达式是否为「拥有型字符串临时」——CallExpr 且决议返回类型=字符串（拥有契约：内置分配族/数字转换族/格式化/用户函数
-    //   返回堆串；字符* 借用视图与标识符/字面量形态不命中）；三元=任一分支命中 （662 递归·「潜在拥有」——运行时按选中分支条件释放结算）。打印族与内置
-    //   字符串消费族的实参临时结算共用判据（调用完成后调用方释放）。
+    // 617（2026-10-14 伞批）：实参表达式是否为「拥有型字符串临时」——CallExpr 且拥有契约（A2 retOwnedString 全调用路径含
+    //   方法调用 ∪ resolvedType ∪ 决议签名键/裸名=字符串：内置分配族/数字转换族/格式化/用户函数/方法 返回堆串；
+    //   字符* 借用视图与标识符/字面量形态不命中）；三元=任一分支命中 （662 递归·「潜在拥有」——运行时按选中分支条件释放结算）。打印族与内置
+    //   字符串消费族的实参临时结算共用判据（调用完成后调用方释放·#1572 判据按所有权归属而非调用形态）。
     bool argIsOwnedStringTemp(const Expr* arg) const;
     // A2 返回位拥有性三态（#1571 收口·#1238 禁静默默认）：字符串-返回函数体内
     //   「返回 <调用>」的结果——true=拥有（被调已落堆）/ false=借用句柄（须
     //   __cn_str_copy 落堆）/ 无值=非字符串结果（字符串返回位取到无值=内部错误）。
     cn::Optional<bool> stringCallReturnOwned(const CallExpr* ce) const;
+    // #1572：调用返回串「拥有性」判据（临时清理/链段结算单点·实现=ir_expr_concat.cpp）
+    //   自由函数/内置=返回类型判据 callReturnsStringType；方法调用=返回表达式形态判据
+    //   callReturnsOwnedStringTemp（借用视图返回不结算·859 实录口径·判据按所有权归属）
+    bool callReturnsStringType(const CallExpr* ce) const;
+    bool callReturnsOwnedStringTemp(const CallExpr* ce, int depth = 4) const;
+    bool stringReturnBodyOwned(const BlockStmt* body,
+                               const std::vector<std::string>& paramNames,
+                               int depth) const;
+    bool stringReturnFormOwned(const Expr* e, const BlockStmt* body,
+                               const std::vector<std::string>& paramNames,
+                               int depth) const;
     // 662（617 三元面补全）：拥有串临时释放发射（单一入口·递归）——非三元=判据 命中即无条件 __cn_str_free；三元=分支拥有性感知条件释放（嵌套三元逐层
     //   递归，条件寄存器查 ternaryCondRegs617_·miss 显形报诊断不静默·648 立法）。
     void emitOwnedTempReleaseRec617(const Expr* expr, const ir::IRValue& value,

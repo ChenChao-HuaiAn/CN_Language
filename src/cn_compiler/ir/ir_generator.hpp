@@ -108,8 +108,9 @@ public:
     //   链操作数「是字符串值」判定（isStringTypedExpr 保守超集：补调用返回串）
     bool chainStringOperand(Expr* node) const;
     //   调用返回类型「字符串」判定（645 口径：retOwnedString∪094 白名单∪查表）
-    bool chainCallReturnsString(CallExpr* node) const;
-    //   段「拥有临时」判定（617 口径：调用返回串/连接子链结果·追加后结算释放）
+    //   ——只回答「内容语义是否字符串」（融合/链段类型判定），不回答拥有性
+    bool chainCallReturnsString(const CallExpr* node) const;
+    //   段「拥有临时」判定（617 口径：调用返回拥有串/连接子链结果·追加后结算释放）
     bool chainSegOwnedTemp(Expr* segAst) const;
     //   段值 -> 字符串转换单点（ptr 直通 / 128 位取低 64 / 数值走共享转换器）
     ir::IRValue emitChainSegToStr(Expr* segAst, const ir::IRValue& segVal,

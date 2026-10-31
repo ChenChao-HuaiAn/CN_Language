@@ -345,10 +345,15 @@ void IRGenerator::calibrateCallArgsByParams(std::vector<ir::IRValue>& args,
 }
 
 // 617（2026-10-14 伞批）：实参表达式「拥有型字符串临时」判定——CallExpr 且
-//   决议返回类型=字符串（回退链 resolvedType → 决议签名键 → 裸名），或
-//   字符串拼接表达式（BinaryExpr +：语义层保证 字符串+字符串/数值 走拼接通道，
-//   结果=连接产物堆串；整数加法/指针算术由调用点 argVal.type=="ptr" 前置
-//   挡外）。字符*（驻留文本 等借用视图）与标识符/字面量形态不命中。
+//   返回串所有权归调用方（#1572 判据按**所有权归属**而非调用形态：自由函数/
+//   内置=返回类型判据 callReturnsStringType；方法调用=返回表达式形态判据
+//   callReturnsOwnedStringTemp，见 ir_expr_concat.cpp 判定谱系），或字符串拼接
+//   表达式（BinaryExpr +：语义层保证 字符串+字符串/数值 走拼接通道，结果=
+//   连接产物堆串；整数加法/指针算术由调用点 argVal.type=="ptr" 前置挡外）。
+//   字符*（驻留文本 等借用视图）与标识符/字面量形态不命中。
+//   为什么方法面不能用 retOwnedString：该契约位由语义层按返回类型写回，方法
+//   合法返回借用视图（字段/容器元素/局部借用句柄）时同样置位——按位释放=释放
+//   借用句柄（859 JSON 文本() 实录崩，故按返回形态再判）。
 //   644 rebase 交叉面（2026-10-15）：本判定与 genArgValueWithCleanup 的 644
 //   纯串登记分支共享命中域（用户函数返回串实参）——内置消费族通道（本判定
 //   唯一双挂点，打印族走 genExpr 不经 81-a）收集点须把 81-a 已登记项移交
@@ -369,6 +374,14 @@ bool IRGenerator::argIsOwnedStringTemp(const Expr* arg) const {
     }
     if (arg->getType() != NodeType::CallExpr) return false;
     const CallExpr* ce = static_cast<const CallExpr*>(arg);
+    // #1572：方法调用（被调=成员）=返回表达式形态判据（借用视图返回不结算）——
+    //   置于 A2 快照之前：方法合法返回借用视图（字段/容器元素/局部借用句柄）时
+    //   retOwnedString 同样置位（语义层按返回类型写回），按位释放=释放借用句柄
+    //   （859 JSON 文本() 实录崩），故方法面必须先按返回形态再判。
+    if (ce->callee != nullptr &&
+        ce->callee->getType() == NodeType::MemberExpr) {
+        return callReturnsOwnedStringTemp(ce);
+    }
     // 1578（#1578·2026-10-30 伞批·#1571 同族）：语义层 A2 快照直读——全调用
     //   路径（含函数指针/闭包变量调用）由语义层写回拥有契约，优先于下方名称
     //   查表（链段判定 chainCallReturnsString 同序同判·单点事实源）。
@@ -387,7 +400,8 @@ bool IRGenerator::argIsOwnedStringTemp(const Expr* arg) const {
             if (!rt.empty()) { retCanon = rt; break; }
         }
     }
-    return retCanon == "字符串";
+    // 自由函数/内置=返回类型判据（语义层 210 族已拒借用返回→类型即所有权）
+    return callReturnsStringType(ce);
 }
 
 // A2 返回位拥有性三态（#1571 收口·#1238/#1360 显式三态·禁静默默认）：
