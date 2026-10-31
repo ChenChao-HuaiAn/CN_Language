@@ -221,6 +221,10 @@ add_library(cn_compiler_semantic STATIC
     src/cn_compiler/semantic/semantic_decl_constprop.cpp
     src/cn_compiler/semantic/semantic_decl_import.cpp
     src/cn_compiler/semantic/semantic_decl_abstract.cpp
+    # 1769：声明初始化器检查族（数组多维嵌套递归·自 semantic_decl.cpp 拆分）
+    src/cn_compiler/semantic/semantic_decl_init.cpp
+    # 1769：借用/返回辅助族（自 semantic_decl.cpp 机械搬移·腾体量红线位）
+    src/cn_compiler/semantic/semantic_borrow_aux.cpp
     src/cn_compiler/semantic/class_resolver.cpp
     src/cn_compiler/semantic/class_field_init_fold.cpp
     src/cn_compiler/semantic/class_resolver_base.cpp
@@ -317,6 +321,8 @@ add_library(cn_compiler_ir STATIC
     src/cn_compiler/ir/ir_lambda.cpp
     src/cn_compiler/ir/ir_stmt.cpp
     src/cn_compiler/ir/ir_stmt_decl.cpp
+    # 1769：数组初始化列表写链（多维嵌套递归展开+缺格补默认态·自 ir_stmt_decl.cpp 族⑧拆分改造）
+    src/cn_compiler/ir/ir_decl_array.cpp
     src/cn_compiler/ir/ir_stmt_decl_init.cpp
     src/cn_compiler/ir/ir_stmt_decl_raii.cpp
     src/cn_compiler/ir/ir_decl.cpp

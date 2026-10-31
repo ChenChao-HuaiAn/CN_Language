@@ -102,7 +102,16 @@ public:
     // A2 拥有契约：返回类型 字符串=拥有——借用形态返回拒绝（泛型单态化体内豁免）。
     void checkReturnBorrowA2(ReturnStmt* node, const std::string& valueType);
     // 662：类对象返回拥有形态收集（借用/透传=不标记·保守）。
-    void checkReturnOwnedClass662(ReturnStmt* node);
+    void checkReturnOwnedClassCollect(ReturnStmt* node);   // 662：类对象返回拥有形态收集（号=立法任务·只留注释）
+    // #1769（2026-10-31 用户批甲案·多维嵌套初始化列表）：visitVarDecl 初始化器
+    //   检查族（数组初始化列表/非数组初始化列表/结构体初始化 三分支·实现=
+    //   semantic_decl_init.cpp）。多维递归裁定：维度匹配/拉平禁入/逐维超界拒/
+    //   缺格补默认态放行（IR 面补齐）。
+    void checkVarDeclInitList(VarDecl* node, const std::string& varType);
+    // #1769：数组初始化列表维度递归检查——arrayType=当前层**数组类型**
+    //   （整32[2][2] 或内层 整32[2]）；每维逐个裁定元素形态并递归下一维。
+    void checkArrayInitListDim(InitListExpr* list, const std::string& arrayType,
+                               const SourceLocation& loc);
     // 引用返回（T&）与指针返回（T*）的局部地址逃逸检查（悬垂拒绝）。
     void checkReturnAddressEscape(ReturnStmt* node);
     void visitBreakStmt(BreakStmt* node) override;
@@ -815,7 +824,7 @@ private:
     std::string lastType_;                         // 最近一次表达式推断的类型
     std::string currentReturnType_;                // 当前函数返回类型（空表示顶层）
     // 662：类对象返回拥有收集（checkFunctionBody 清/落 FunctionInfo 标记）。
-    bool curFnClassRetSeen662_ = false, curFnClassRetBorrow662_ = false;
+    bool curFnClassRetSeen_ = false, curFnClassRetBorrow_ = false;
     // 574-a（T99·211/231）：内置构造器目标类型上下文栈（声明/赋值位压入目标
     //   结果<T,E>/可选<T>，构造器推断优先取之——Rust Err(7): Result<String,i32>
     //   同款，缺失侧由目标补全）

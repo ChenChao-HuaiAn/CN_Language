@@ -194,6 +194,11 @@ void Parser::synchronize() {
 
 // 解析初始化列表（Task 2.4）：{ 表达式, 表达式, ... }
 // 用于数组声明初始化（整32[5] 数据 = { 1, 2, 3 }）
+// #1769（2026-10-31 用户批甲案·多维嵌套初始化列表立法面）：元素位遇 '{' =
+//   嵌套初始化列表（整32[2][2] 表 = { { 1, 2 }, { 3, 4 } }）——递归解析为子
+//   InitListExpr（嵌套深度语义=数组维度；维度不匹配/拉平/缺格补默认态由语义
+//   层递归裁定，解析层只管形态）。结构体字段位/赋值位等未立法消费面经既有
+//   visitInitListExpr 独立表达式诊断自然拦截。
 std::unique_ptr<Expr> Parser::parseInitList() {
     auto list = std::make_unique<InitListExpr>();
     list->location = current().getLocation();
@@ -201,7 +206,14 @@ std::unique_ptr<Expr> Parser::parseInitList() {
     while (!check(TokenType::RightBrace) && !check(TokenType::EndOfFile)) {
         // 1216：首元素前预分配（常见 1-8 元素；空列表 {} 不进循环=零分配）
         if (list->elements.capacity() == 0) list->elements.reserve(4);
-        list->elements.push_back(parseExpr());
+        // else 新规机械合规：二态互斥以双 if 显式枚举（else 块内禁业务代码）
+        const bool nestedInitList = check(TokenType::LeftBrace);
+        if (nestedInitList) {
+            list->elements.push_back(parseInitList());
+        }
+        if (!nestedInitList) {
+            list->elements.push_back(parseExpr());
+        }
         if (!match(TokenType::Comma)) break;
     }
     consume(TokenType::RightBrace, "'}'");

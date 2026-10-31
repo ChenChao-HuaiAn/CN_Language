@@ -755,7 +755,7 @@ void SemanticAnalyzer::visitReturnStmt(ReturnStmt* node) {
     checkReturnBorrowA2(node, valueType);
     // 662（方法链消费位）：类对象返回拥有形态收集（函数级标记·收尾落表——
     //   不报错不改语义，仅决定 IR 调用点是否对调用返回对象临时做析构）。
-    checkReturnOwnedClass662(node);
+    checkReturnOwnedClassCollect(node);
     if (currentReturnType_ == "空类型") {
         diagnostics_.report(DiagnosticLevel::Error, node->location,
                             "空类型函数不允许返回值");

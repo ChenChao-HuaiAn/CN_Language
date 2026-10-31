@@ -26,8 +26,29 @@ public:
         const std::vector<std::unique_ptr<Expr>>& args, const SourceLocation& loc);
     // P3/D4（2026-08）：接口间接调用 CFI 校验开关（--cfi 透传，默认关保性能）
     void setCfiEnabled(bool enabled) { cfiEnabled_ = enabled; }
+    // 750（复审4 P2-5）：循环累积提升全局关闭开关（--no-str-accum 透传·成员随用随置）
+    bool accumDisabled_ = false;
     // 750（复审4 P2-5）：循环累积提升全局关闭开关——driver 单点判定后经此下发（真关对照/排障）
     void setStrAccumDisabled(bool disabled) { accumDisabled_ = disabled; }
+    // 提升上下文栈（条目 StringAccumCtx·types 头外迁）；遍历降级循环不优化（v2 同口径）
+    std::vector<StringAccumCtx> strAccumCtxs_;
+    bool strAccumSuppress_ = false;
+    std::vector<std::string> stringAliasEscaped_;
+    bool funcHasLambda_ = false;
+    bool funcHasAlias_ = false;
+    // 循环控制流：中断/继续跳转目标栈（条目 LoopContext·865 外迁见 ir_generator_types.hpp）
+    std::vector<LoopContext> loopStack_;
+    // 选择控制流：中断跳出目标栈（条目 SwitchContext·865 外迁见 ir_generator_types.hpp）
+    //   ——72-a 收尾（2026-09-11）：选择体（情况/默认分支）不走 genBlock（语句 直接生成，无块作用域），分支内声明的资源按基线 drop-on-jump。
+    std::vector<SwitchContext> switchStack_;
+    // 中断绑定序（72-b：单调递增，genWhile/genFor/genSwitch 压栈时取号）
+    std::size_t breakScopeSeq_ = 0;
+    // i128 临时变量计数器（每个临时变量分配独立唯一名 __i128tN）
+    int i128TempCounter_ = 0;
+
+    // ---- 750 循环累积拼接提升族声明（#1769 拆分件·类内 .inc 包含·本头冻结线核算后）----
+#include "cn_compiler/ir/ir_string_accum_decl.inc"
+
 
     // ==================== AstVisitor 接口实现 ==================== 声明节点
     void visitProgram(Program* node) override;
@@ -213,12 +234,16 @@ private:
     // ⑦-g 1479：语句位「调用返回类对象临时」甄别释放（645 串面同族扩展）——
     //   true=已发射整壳析构（调用方终结）；false=非类/借用/保守面落原判定。
     bool emitExprStmtClassTemp(ExprStmt* node, const ir::IRValue& discarded);
-    bool genArrayInitListDecl(VarDecl* node, const DeclGenCtx& ctx);  // ⑧数组初始化列表
-    void storeArrayInitElements(VarDecl* node, InitListExpr* initList,
-                                const std::string& elemSrc, const std::string& elemIrType,
-                                std::int64_t elemStride, const std::string& unique);
-    void zeroFillArrayTail(VarDecl* node, InitListExpr* initList, const std::string& elemIrType,
-                           std::int64_t elemStride, int arrayLen, const std::string& unique);
+    bool genArrayInitListDecl(VarDecl* node, const DeclGenCtx& ctx);  // ⑧数组初始化列表（#1769 多维嵌套·定义=ir_decl_array.cpp）
+    void emitArrayInitElements(VarDecl* node, InitListExpr* list, const std::string& arrayType,
+                               const std::string& unique, std::int64_t baseOffset, const SourceLocation& loc);
+    void emitArrayTailDefaults(VarDecl* node, const std::string& elemType, std::int64_t startOffset,
+                               long long count, const std::string& unique, const SourceLocation& loc);
+    void emitArrayElementWrite(Expr* elem, const std::string& elemType, const std::string& elemIrType,
+                               std::int64_t elemStride, const ir::IRValue& addr, const SourceLocation& loc);
+    ir::IRValue emitArrayElemAddr(std::int64_t byteOffset, const std::string& varIrType,
+                                  const std::string& unique, const SourceLocation& loc);
+    std::int64_t arrayInitStrideOf(const std::string& elemType, const SourceLocation& loc);
     bool genStructInitListDecl(VarDecl* node, const DeclGenCtx& ctx);  // ⑨结构体初始化列表
     bool genExprInitializer(VarDecl* node, const DeclGenCtx& ctx);  // ⑩普通表达式初始值
     void registerClosureIfNeeded(VarDecl* node);  // ⑩子 Task 2.10/P3-23 闭包登记
@@ -569,38 +594,6 @@ private:
     //   ——调用方按 648 miss 纪律显形（ptrElemStride 内部报告内部错误）；语义层
     //   1040 判可面已先行收窄（isJudgedPtrDiffOperand1040），合法程序恒可解析。
     cn::Optional<std::string> ptrOperandSrcType(const Expr* e) const;
-    // ---- 750：循环累积拼接提升（判据/铁律/序列见 ir_string_accum.cpp 文件头·001 §10.3 构建器模型）----
-    //   三者成对：tryBegin（循环前 new+append 初值·成功才接管）/ emitStringAccumAssign
-    //   （循环体内累积赋值改写 append）/ finish（出口块 finish+free+回写）；识别失败=零发射原路径。
-    bool tryBeginStringAccum(const Stmt* body, const Expr* cond,
-                             const Stmt* init, const Expr* update,
-                             const SourceLocation& loc);
-    bool beginStringAccumScan(const Stmt* body, const Expr* cond,
-                              const Stmt* init, const Expr* update,
-                              const SourceLocation& loc);
-    bool emitStringAccumAssign(AssignmentExpr* node);
-    bool emitStringAccumAssignInner(AssignmentExpr* node);
-    void finishStringAccum(const SourceLocation& loc);
-    // 750 复审返工（P0-1/P0-2/P0-3）：函数级别名逃逸/lambda 预扫描——自由函数/类方法/泛型实例/lambda 体入口调用
-    void beginAccumScope(Stmt* body);
-    // 提升上下文栈（条目 StringAccumCtx·types 头外迁）；遍历降级循环不优化（v2 同口径）
-    std::vector<StringAccumCtx> strAccumCtxs_;
-    bool strAccumSuppress_ = false;
-    std::vector<std::string> stringAliasEscaped_;
-    bool funcHasLambda_ = false;
-    bool funcHasAlias_ = false;
-    // 750：全局关闭开关——driver 单点判定（CN_NO_STR_ACCUM=="1"）经 setStrAccumDisabled 下发；生产默认关闭
-    bool accumDisabled_ = false;
-    // 循环控制流：中断/继续跳转目标栈（条目 LoopContext·865 外迁见 ir_generator_types.hpp）
-    std::vector<LoopContext> loopStack_;
-    // 选择控制流：中断跳出目标栈（条目 SwitchContext·865 外迁见 ir_generator_types.hpp）
-    //   ——72-a 收尾（2026-09-11）：选择体（情况/默认分支）不走 genBlock（语句 直接生成，无块作用域），分支内声明的资源按基线 drop-on-jump。
-    std::vector<SwitchContext> switchStack_;
-    // 中断绑定序（72-b：单调递增，genWhile/genFor/genSwitch 压栈时取号）
-    std::size_t breakScopeSeq_ = 0;
-    // i128 临时变量计数器（每个临时变量分配独立唯一名 __i128tN）
-    int i128TempCounter_ = 0;
-
     // ---- 72-a（2026-09-11 第七十二轮）：块级作用域 RAII（对齐 v2 块出口析构）---- 宿主原为函数级（仅返回块注入释放）——循环体内声明的字符串/容器只有末次
     std::vector<std::size_t> scopeStringBase_;   // genBlock 进入时 拥有串名单 基线
     std::vector<std::size_t> scopeClassBase_;    // genBlock 进入时 类对象名单 基线

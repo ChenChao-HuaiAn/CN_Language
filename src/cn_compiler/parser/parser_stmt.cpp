@@ -97,18 +97,30 @@ std::unique_ptr<Stmt> Parser::parseStmt() {
         // #286（2026-10-08 甲案）：数组声明探测放宽——[ 到配对 ] 间为长度
         //   token 串（字面量/常量名/常量算术）即认定类型前缀声明；长度文本由
         //   parseTypeNameEx 收集（语义层编译期常量折叠）。
+        // #1769（2026-10-31 用户批甲案·多维面·1473 批文「254~276 联动」同轮
+        //   同口径）：数组后缀**连续段**判定——每段 [..] 配对后紧跟 '[' 继续
+        //   （点[2][2] 网 / 结果<..>[2][3] 集合）；原实现配对扫描止于第一个
+        //   ']'，第二维 '[' 非变量名 → 判据失败落表达式路径报「语句缺少分号」
+        //   （用户自定义类型×多维声明=1473 备注立案形态）。误判惯例同既有：
+        //   误判后语义层报「不是类型」（一维同款·非新增风险）。
         bool typeArrayVar = false;
         if (peek(1).getType() == TokenType::LeftBracket) {
-            std::size_t bi = 2;
-            int bracketDepth = 1;
-            while (bracketDepth > 0) {
-                const TokenType bt = peek(static_cast<int>(bi)).getType();
-                if (bt == TokenType::LeftBracket) { bracketDepth++; bi++; continue; }
-                if (bt == TokenType::RightBracket) { bracketDepth--; bi++; continue; }
-                if (bt == TokenType::EndOfFile) break;
-                bi++;
+            std::size_t bi = 1;
+            bool allClosed = true;
+            while (peek(static_cast<int>(bi)).getType() == TokenType::LeftBracket) {
+                std::size_t j = bi + 1;
+                int depth = 1;
+                while (depth > 0) {
+                    const TokenType bt = peek(static_cast<int>(j)).getType();
+                    if (bt == TokenType::LeftBracket) { depth++; }
+                    else if (bt == TokenType::RightBracket) { depth--; }
+                    else if (bt == TokenType::EndOfFile) { allClosed = false; break; }
+                    j++;
+                }
+                if (!allClosed || depth != 0) { allClosed = false; break; }
+                bi = j;  // 本段 ']' 后一位
             }
-            typeArrayVar = (bracketDepth == 0 &&
+            typeArrayVar = (allClosed && bi > 1 &&
                             peek(static_cast<int>(bi)).getType() == TokenType::Identifier);
         }
         // Task 3.8 泛型实例化变量声明：类型名<实参> 变量名（向量<整32> 整数列表）

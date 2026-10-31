@@ -377,48 +377,12 @@ void SemanticAnalyzer::visitVarDecl(VarDecl* node) {
             node->typeName = varType;
         }
     } else if (node->initializer != nullptr && !varType.empty()) {
-        // 数组初始化列表（Task 2.4）：整32[5] 数据 = { 1, 2, 3 }
-        if (node->initializer->getType() == NodeType::InitListExpr &&
-            types::isArray(varType)) {
-            InitListExpr* initList = static_cast<InitListExpr*>(node->initializer.get());
-            const std::string elemType = types::arrayElemOf(varType);
-            // 1360 结果化：isArray 守卫下恒有值（value_or 显形默认 0=不限）
-            const int arrayLen = types::arrayLenOf(varType).value_or(0);
-            // 每个元素须可隐式转换为数组元素类型（55-c 方案A：字面量元素豁免——
-            //   `正32[2] a = { 5, 6 }` 等形态保留）
-            for (auto& elem : initList->elements) {
-                // #1588：元素位目标=元素类型（构造器按目标载荷宽度发射）
-                ctorTargetStack_.push_back(elemType);
-                std::string elemInitType = checkExpr(elem.get());
-                ctorTargetStack_.pop_back();
-                // 869（234 立法执法面收口·v2 侧 869 同轮对齐）：值形态类切片
-                //   （派生类值 → 基类数组元素类型）=专用切片诊断；切片判定真=
-                //   已报，不再叠加「数组元素无法将」通用诊断。
-                if (!canConvertWithLiteral(elem.get(), elemInitType, elemType) &&
-                    !reportSliceReject(elemInitType, elemType, elem->location)) {
-                    diagnostics_.report(DiagnosticLevel::Error, elem->location,
-                                        "数组元素无法将 '" + elemInitType +
-                                        "' 隐式转换为 '" + elemType + "'");
-                }
-            }
-            // 初始化元素个数不得超过数组长度（部分初始化允许，剩余补零）
-            if (arrayLen > 0 && static_cast<int>(initList->elements.size()) > arrayLen) {
-                diagnostics_.report(DiagnosticLevel::Error, node->initializer->location,
-                                    "数组初始化元素个数 " +
-                                    std::to_string(initList->elements.size()) +
-                                    " 超过数组长度 " + std::to_string(arrayLen));
-            }
-        } else if (node->initializer->getType() == NodeType::InitListExpr &&
-                   !types::isArray(varType)) {
-            // 初始化列表用于非数组类型：报错
-            checkExpr(node->initializer.get());
-        } else if (node->initializer->getType() == NodeType::StructInitExpr) {
-            // 结构体/联合体初始化列表：类型须匹配（Task 2.7）
-            std::string initType = checkExpr(node->initializer.get());
-            if (varType != "未知" && !canConvertType(initType, varType)) {
-                diagnostics_.report(DiagnosticLevel::Error, node->initializer->location,
-                                    "无法将 '" + initType + "' 隐式转换为 '" + varType + "'");
-            }
+        // 初始化器形态分派（#1769 拆分自本函数·实现=semantic_decl_init.cpp）：
+        //   数组初始化列表（含 #1769 多维嵌套递归裁定）/非数组初始化列表/
+        //   结构体初始化 三分支；显式类型转换分支仍在本函数。
+        if (node->initializer->getType() == NodeType::InitListExpr ||
+            node->initializer->getType() == NodeType::StructInitExpr) {
+            checkVarDeclInitList(node, varType);
         } else {
             // 显式类型：检查初始值可隐式转换
             // 574-a：构造器目标上下文压栈（正常/错误/某些 推断优先取目标 T/E）
@@ -717,8 +681,8 @@ void SemanticAnalyzer::checkFunctionBody(FunctionDecl* node) {
     currentReturnType_ = info.returnType;
     // 662（方法链消费位）：类对象返回拥有形态收集重置 + 表条目清位重算
     //   （泛型实例化重走本函数=首遍标记清除防陈旧）
-    curFnClassRetSeen662_ = false;
-    curFnClassRetBorrow662_ = false;
+    curFnClassRetSeen_ = false;
+    curFnClassRetBorrow_ = false;
     it->second.returnsOwnedClass662 = false;
     // P3-18 补完（2026-08）：当前函数是否引用返回（visitReturnStmt 校验用）
     currentIsRefReturn_ = info.isRefReturn;
@@ -804,13 +768,13 @@ void SemanticAnalyzer::checkFunctionBody(FunctionDecl* node) {
     // 662（方法链消费位）：类对象返回拥有形态落表——全部返回语句均为拥有形态
     //   （本地移交/构造新建）时置位（键=函数链接键·重查防体内注册扩容迭代器
     //   失效；317-a 同款纪律）；借用/透传=保持 false（调用点不析构·既有边界）。
-    if (curFnClassRetSeen662_ && !curFnClassRetBorrow662_) {
+    if (curFnClassRetSeen_ && !curFnClassRetBorrow_) {
         auto it662 = functions_.find(
             functionLinkKey(node->moduleName, node->name, node->sigKey));
         if (it662 != functions_.end()) it662->second.returnsOwnedClass662 = true;
     }
-    curFnClassRetSeen662_ = false;
-    curFnClassRetBorrow662_ = false;
+    curFnClassRetSeen_ = false;
+    curFnClassRetBorrow_ = false;
     currentReturnType_.clear();
     currentIsRefReturn_ = false;
     currentFnUnsafe_ = false;  // plans/019 阶段4：函数级复位
@@ -837,114 +801,6 @@ void SemanticAnalyzer::visitFunctionDecl(FunctionDecl* node) {
 void SemanticAnalyzer::visitParamDecl(ParamDecl* node) {
     // 参数由 checkFunctionBody 统一入符号表，这里不做处理
     (void)node;
-}
-bool SemanticAnalyzer::refReturnLvalueBase(const Expr* e, std::string& baseName) {
-    if (e == nullptr) return false;
-    switch (e->getType()) {
-        case NodeType::IdentifierExpr:
-            baseName = static_cast<const IdentifierExpr*>(e)->name;
-            return true;
-        case NodeType::IndexExpr:
-            // 数组元素：递归解到数组/指针变量名
-            return refReturnLvalueBase(
-                static_cast<const IndexExpr*>(e)->object.get(), baseName);
-        case NodeType::MemberExpr: {
-            // 成员字段：解到对象名（对象生命周期决定字段引用是否悬垂）；
-            // v2.1：经指针访问（p.字段 ≡ (*p).字段，语义层 isDerefAccess 标记
-            //   ——返回检查前 checkExpr 已按对象类型置位）= 指针所指（*p 同类），
-            //   可作返回（指向堆/调用方存储）；值对象递归解到对象名。
-            const MemberExpr* m = static_cast<const MemberExpr*>(e);
-            if (m->isDerefAccess) return true;
-            return refReturnLvalueBase(m->object.get(), baseName);
-        }
-        case NodeType::UnaryExpr: {
-            // 解引用 *p：返回指针所指地址（可堆/全局/调用方存储）
-            const UnaryExpr* u = static_cast<const UnaryExpr*>(e);
-            return u->op == Operator::Deref;
-        }
-        case NodeType::CallExpr:
-            // 引用返回调用链（如 返回 传回(x)）：递归解到传回 的返回 lvalue/参数
-            // （此处无需解剖——调用方存储可作返回；展开可简化为放行）
-            return true;
-        default:
-            return false;
-    }
-}
-bool SemanticAnalyzer::isRefParamForCurrentFn(const std::string& name) const {
-    return currentRefParams_.count(name) > 0;
-}
-bool SemanticAnalyzer::isCurrentFnLocal(const std::string& name) const {
-    if (funcScopeStart_ < 0) return false;
-    int idx = 0;
-    for (auto it = scopes_.begin(); it != scopes_.end(); ++it, ++idx) {
-        if (it->find(name) != it->end()) return idx >= funcScopeStart_;
-    }
-    return false;  // 未在作用域找到：全局/静态/未知 → 放行（不拦）
-}
-bool SemanticAnalyzer::argIsBoundMethodValue(const Expr* e) {
-    // P3-23 补完（D2）：对象.实例方法 作值为"绑定 this 的闭包"（fnptr 无法携带
-    //   this）；用作裸 fnptr 实参属静默错行为，编译报错提示先赋给变量。
-    return e != nullptr && e->getType() == NodeType::MemberExpr &&
-           static_cast<const MemberExpr*>(e)->isMethodValue;
-}
-
-// 943（2026-10-17·用户质询收口）位置守卫与统一诊断文案已搬移——031（#1075）
-//   起实现归位 semantic_method_value_943.cpp（本文件触 1000 行硬线「先拆再加」），
-//   并在该文件扩充 argDepth（实参位开放）与 fnPtrConvertDiag（方法值→fnptr
-//   转换拒绝专用文案）。声明见 semantic_method_value_943.hpp。
-
-// 662（方法链消费位·2026-10-16）：类对象返回「拥有形态」收集——返回类型为类
-//   对象（非指针/引用）时判定返回值表达式形态（函数级两标记，收尾落
-//   FunctionInfo::returnsOwnedClass662）：
-//     拥有形态：本地标识符（返回局部=移交·IR 返回块移出豁免语义）/ 类构造调用
-//       （新建）/ 转移(...)（显式交接·成员源成员槽清零）——不置 borrow；
-//     借用形态（置 borrow=函数级不标记·保守放弃析构）：成员/下标/解引用借出、
-//       参数标识符、全局/静态标识符、其余调用（跨函数透传所有权不可静态判定）
-//       及三元等其余形态。
-//   零语义变更：仅收集标记不报错——借用返回行为=现状（调用方不析构·保持既有
-//   边界）；拥有返回在 IR 调用点补析构（方法接收链/字段链/语句位丢弃）。
-void SemanticAnalyzer::checkReturnOwnedClass662(ReturnStmt* node) {
-    if (node->value == nullptr) return;
-    if (!isClassType(types::canonical(currentReturnType_))) return;
-    if (!genericTypeParams_.empty()) return;   // 泛型单态化体内保守豁免（不标记）
-    curFnClassRetSeen662_ = true;
-    const NodeType kind = node->value->getType();
-    if (kind == NodeType::IndexExpr || kind == NodeType::MemberExpr) {
-        curFnClassRetBorrow662_ = true;
-        return;
-    }
-    if (kind == NodeType::UnaryExpr &&
-        static_cast<const UnaryExpr*>(node->value.get())->op == Operator::Deref) {
-        curFnClassRetBorrow662_ = true;
-        return;
-    }
-    if (kind == NodeType::IdentifierExpr) {
-        const std::string& rn =
-            static_cast<const IdentifierExpr*>(node->value.get())->name;
-        if (currentFnParamNames_.count(rn) > 0) {   // 参数=借用
-            curFnClassRetBorrow662_ = true;
-            return;
-        }
-        if (!isCurrentFnLocal(rn)) {   // 全局/静态/类字段（裸名不在局部作用域）=借用
-            curFnClassRetBorrow662_ = true;
-            return;
-        }
-        return;   // 本地标识符=移出（拥有）
-    }
-    if (kind == NodeType::CallExpr) {
-        const CallExpr* ce = static_cast<const CallExpr*>(node->value.get());
-        if (ce->callee != nullptr &&
-            ce->callee->getType() == NodeType::IdentifierExpr) {
-            const std::string calleeName =
-                static_cast<const IdentifierExpr*>(ce->callee.get())->name;
-            if (isClassType(calleeName)) return;   // 类构造调用=新建（拥有）
-        }
-        // 其余调用=透传（跨函数所有权不可静态判定·保守不标记）；转移(源) 已在
-        //   AST 改写为源标识符（走上方标识符分支），此处不再特判（双侧零分叉）。
-        curFnClassRetBorrow662_ = true;
-        return;
-    }
-    curFnClassRetBorrow662_ = true;   // 三元等其余形态保守不标记
 }
 
 } // namespace cn_compiler
