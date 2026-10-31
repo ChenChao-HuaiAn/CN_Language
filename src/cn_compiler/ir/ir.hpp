@@ -18,6 +18,7 @@
 #include "cn_compiler/common/optional_safe.hpp"
 #include "cn_compiler/common/source_location.hpp"
 #include "cn_compiler/model/ast.hpp"
+#include "cn_compiler/model/type_system.hpp"
 
 namespace cn_compiler {
 class ISemanticView;  // 语义只读视图（346 重构D·model 层接口·实现在 semantic.hpp）
@@ -211,6 +212,19 @@ inline int maxVirtualRegId(const IRFunction& function) {
         seeText(block->termReturnValue);
     }
     return maxId;
+}
+
+// 解引用/解引用写目标 的**所指源码类型** → 访存宽度 IR 类型覆盖（#1480·D30 同族）：
+//   字符 标量本身=4 字节 Unicode 标量值（plans/001 类型表），但 `字符*` 借用视图
+//   指向 UTF-8 **字节流**——视图解引用=单字节**有符号**读/写（plans/001「字符串[i]
+//   结果类型 整8（带符号字节值）」字节视图口径同源；D30 字符串下标「4 字节打包读
+//   （内容[0]='ax' 得 30817）」根治同族）。无覆盖（指其余类型）=无值——调用方按
+//   mapType(所指源码类型) 原样映射（整32*→i32 / 结构体→ptr 等）。
+//   消费点：ir_expr_unary.cpp 解引用读 elemType、ir_expr_assign.cpp 解引用写
+//   targetType（两处同一单点，防读写宽度漂移）。
+inline cn::Optional<std::string> pointeeIRTypeOverride(const std::string& pointeeSrc) {
+    if (types::canonical(pointeeSrc) == "字符") return std::string("i8");
+    return std::nullopt;
 }
 
 // IR模块：函数列表 + 字符串常量池

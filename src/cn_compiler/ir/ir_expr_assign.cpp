@@ -316,12 +316,22 @@ std::string IRGenerator::indexAssignElemType(AssignmentExpr* node) {
             // 648 归档：对象无值=内层形态上游已拒之恢复路径，交尾段 648 显形收口。
         }
     } else if (node->target->getType() == NodeType::UnaryExpr) {
+        // #1480：解引用写目标元素 IR 类型（与读侧 ir_expr_unary 解引用共用
+        //   ir::pointeeIRTypeOverride 单点）——所指=字符（字符* 借用视图）按
+        //   单字节有符号写；原 mapType("字符")="i32" = 4 字节过写相邻 3 字节
+        //   （D30 字符串下标 4 字节打包读根治同族·读写同轮对齐）。
+        const auto derefTargetIRType = [this](const std::string& pointeeSrc) {
+            const cn::Optional<std::string> pointeeOver =
+                ir::pointeeIRTypeOverride(pointeeSrc);
+            return pointeeOver.has_value() ? pointeeOver.value()
+                                           : mapType(pointeeSrc);
+        };
         UnaryExpr* un = static_cast<UnaryExpr*>(node->target.get());
         if (un->operand->getType() == NodeType::IdentifierExpr) {
             const std::string st = lookupSrcType(
                 static_cast<IdentifierExpr*>(un->operand.get())->name).value_or("");
             if (types::isPointer(st)) {
-                targetType = mapType(types::pointeeOf(st));
+                targetType = derefTargetIRType(types::pointeeOf(st));
                 elemResolved648 = true;
             }
         } else if (un->operand->getType() == NodeType::MemberExpr) {
@@ -332,7 +342,7 @@ std::string IRGenerator::indexAssignElemType(AssignmentExpr* node) {
             const std::string fieldType = memberFieldSrcType(
                 static_cast<MemberExpr*>(un->operand.get())).value_or("");
             if (types::isPointer(fieldType)) {
-                targetType = mapType(types::pointeeOf(fieldType));
+                targetType = derefTargetIRType(types::pointeeOf(fieldType));
                 elemResolved648 = true;
             }
         }

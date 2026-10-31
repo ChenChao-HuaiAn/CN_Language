@@ -655,7 +655,13 @@ void IRGenerator::visitUnaryExpr(UnaryExpr* node) {
                                            "0", node->location);
                     break;
                 }
-                elemType = mapType(pointeeSrcOpt.value());
+                // #1480：所指=字符（字符* 借用视图）→ 单字节有符号读（字节视图
+                //   口径单点在 ir::pointeeIRTypeOverride；原 mapType("字符")="i32"
+                //   =4 字节打包读，"hi" 读出 0x6968=U+6968·D30 同族）。
+                const cn::Optional<std::string> pointeeOver =
+                    ir::pointeeIRTypeOverride(pointeeSrcOpt.value());
+                elemType = pointeeOver.has_value() ? pointeeOver.value()
+                                                   : mapType(pointeeSrcOpt.value());
             } else {
                 // 648（miss 不可静默·110 同族）：解引用目标所指元素类型未解析
                 //   （复合指针表达式递归推导缺口·合法程序可走到）=编译器内部
