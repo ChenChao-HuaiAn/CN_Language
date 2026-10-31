@@ -254,25 +254,9 @@ std::vector<ir::IRValue> IRGenerator::buildCallArgsForMethod(
 // 966：非串容器的入容器位类面入口——只对 转移(类标识符源) 登记源壳释放
 //   （pendingArgCleanups "966壳$" 打标·flush 侧 662 同款整壳析构）；其余
 //   形态（临时/拷贝/非类）genExprForOop 原样零变化。
-void IRGenerator::widenI128Args(std::vector<ir::IRValue>& args,
-                                const std::vector<std::string>& paramTypes,
-                                const SourceLocation& loc) {
-    for (std::size_t ai = 0; ai < args.size() && ai < paramTypes.size(); ++ai) {
-        const std::string canon = types::canonical(paramTypes[ai]);
-        // 466（wt466·与 ir_call.cpp 实参循环同守卫）：**128 引用形参位不宽化**——
-        //   canonical 剥 '&' 后 整128& 误判按值 128：引用实参=wrapRefArgs 取好的
-        //   左值地址（ptr），Cast 成 i128 → emitCall i128 分支传「Cast 临时双槽
-        //   地址」→ 被调引用槽收临时槽地址，体内读写落临时槽（调用方变量不变）。
-        //   方法调用/函数指针/lambda 闭包三路共用本函数，此处一守卫全链收口。
-        const bool param128 = !types::isReference(paramTypes[ai]) &&
-                              (canon == "整128" || canon == "正128");
-        if (param128 && args[ai].type != "i128" && args[ai].type != "u128") {
-            const std::string kind = (canon == "正128") ? "u128" : "i128";
-            args[ai] = emitResult(ir::Opcode::Cast, {args[ai]}, kind, "",
-                                  loc);
-        }
-    }
-}
+// 331-a+#1888：方法/构造/接口/闭包/间接调用面实参 ABI 定标（i128 宽化+浮32
+//   提升）单一归属=calibrateCallArgsByParams·定义在 ir_call_args.cpp 实参族
+//   （先拆再加：本文件超 900 警戒线·#1888 新增浮32 面随迁；原 widenI128Args）。
 
 // ==================== 类方法调用/构造调用 ====================
 
@@ -502,9 +486,9 @@ void IRGenerator::emitCtorInvoke(CallExpr* node, const std::string& className,
         // 316-a（C23/T45 甲）：i128/u128 构造形参的窄整实参定标——与 ir_call
         //   直调路径同款（类构造字面实参 ABI 契约分叉 m45_03）。
         // 442（判据统一·421 审查 P2-2/P2-3）：内联副本归并 单一归属
-        //   widenI128Args——原副本三微差（无 466 引用形参守卫/排除浮点实参/
+        //   calibrateCallArgsByParams——原副本三微差（无 466 引用形参守卫/排除浮点实参/
         //   判据文本与直调路径分叉）随归并消除。
-        widenI128Args(userArgs, ctor->paramTypes, node->location);
+        calibrateCallArgsByParams(userArgs, ctor->paramTypes, node->location);
         for (auto& a : userArgs) args.push_back(a);
         // D23 根治（248-a）：构造缺省实参补全——构造调用经 handleClassCallExpr
         //   提前展开（visitCallExpr 通用补缺段不可达），此处按语义层选中的
@@ -788,7 +772,7 @@ void IRGenerator::emitDirectMethodCall(CallExpr* node, const ClassMemberInfo* m,
     std::vector<ir::IRValue> userArgs =
         buildCallArgsForMethod(node, canonObjForMethod, methodName);
     // 331-a（T53 根治）：i128/u128 形参的窄整实参（字面量等）统一宽化——与构造
-    //   路径同款（单一归属 widenI128Args）；原缺 → 按 i64 值直传 → 被调方按
+    //   路径同款（单一归属 calibrateCallArgsByParams）；原缺 → 按 i64 值直传 → 被调方按
     //   i128 指针解引用段错误（实弹 m53_01 容器 追加(100000000000)）。
     normalizeMethodArgs(node, m->paramTypes, userArgs);
     for (auto& a : userArgs) args.push_back(a);

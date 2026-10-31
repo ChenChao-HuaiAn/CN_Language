@@ -25,7 +25,7 @@ struct ClosureInfo {
     //   经 mapType 已塌缩 ptr，无法判别；同帧展开通道形态A预插需要源类型）
     std::string srcReturnType;
     // 337-a（T53 家系）：用户形参源码类型列表（不含捕获参数）——闭包调用展开
-    //   用户实参的 ABI 定标依据（widenI128Args 形参来源，见 lastLambdaParamTypes_）。
+    //   用户实参的 ABI 定标依据（calibrateCallArgsByParams 形参来源，见 lastLambdaParamTypes_）。
     std::vector<std::string> paramTypes;
     // 482（#482 多实例独立快照·蹦床共享静态槽后写覆盖根治）：载体快照槽——
     //   以「lambda 值载体变量」为粒度的独立快照存储（每捕获一项：槽唯一名+

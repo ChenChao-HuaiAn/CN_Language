@@ -37,7 +37,7 @@ bool IRGenerator::genClosureCallExpr(CallExpr* node, const std::string& calleeNa
     for (auto& arg : node->arguments) {
         userArgs.push_back(genExpr(arg.get()));
     }
-    widenI128Args(userArgs, closureIt->second.paramTypes, node->location);
+    calibrateCallArgsByParams(userArgs, closureIt->second.paramTypes, node->location);
     closureArgs.insert(closureArgs.end(), userArgs.begin(), userArgs.end());
     // 485（结构体/数组返回闭包·同帧展开通道形态A）：?lambdaN 已置
     //   structReturn（ir_lambda 合成函数同普通函数声明通道·被调方隐藏

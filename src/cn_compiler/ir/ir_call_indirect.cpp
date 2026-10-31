@@ -102,7 +102,7 @@ bool IRGenerator::emitFnPtrCall(CallExpr* node,
             types::funcPtrParamsOf(calleeFnPtrType);
         if (fnPtrParamsOpt.has_value() &&
             fnPtrParamsOpt.value().size() == args.size()) {
-            widenI128Args(args, fnPtrParamsOpt.value(), node->location);
+            calibrateCallArgsByParams(args, fnPtrParamsOpt.value(), node->location);
         }
         // 结构体/数组返回 fnptr：形态A同构（直接调用 087 同款）——retbuf 预插，
         //   operands=[fnptr, retbuf, 实参...]（operand[0]=call 目标·operand[1]=

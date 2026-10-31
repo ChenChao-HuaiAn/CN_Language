@@ -279,8 +279,21 @@ void IRGenerator::emitClassMethod(const std::string& className, const ClassMembe
                     !thisUniqueOpt.has_value()
                         ? ir::IRValue::reg(-1, "ptr")
                         : ir::IRValue::var(thisUniqueOpt.value(), "ptr"));
+                // #1888（基构造委托实参 ABI 定标）：用户实参按父构造形参表定标
+                //   （i128 宽化+浮32→浮64 提升）——原 genExpr 直压无定标：
+                //   派(1.5f) 列表浮32 位模式传浮64 基形参槽=0.000000 实锚
+                //   （与 v2 基构造委托挂点 #1888 双侧同修对称）。
+                std::vector<ir::IRValue> baseUserArgs;
+                baseUserArgs.reserve(member->ctorInitArgs.size());
                 for (auto& argExpr : member->ctorInitArgs) {
-                    ctorArgs.push_back(genExpr(argExpr.get()));
+                    baseUserArgs.push_back(genExpr(argExpr.get()));
+                }
+                if (parentCtor != nullptr) {
+                    calibrateCallArgsByParams(baseUserArgs, parentCtor->paramTypes,
+                                              member->body->location);
+                }
+                for (auto& a : baseUserArgs) {
+                    ctorArgs.push_back(a);
                 }
                 // D23（248-a）：初始化列表少参部分补父构造默认值（defaultExpr
                 //   常量求值；尾部连续默认——从第一个缺省位起逐位取）。

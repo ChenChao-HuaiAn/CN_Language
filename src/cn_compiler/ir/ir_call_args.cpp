@@ -284,8 +284,54 @@ void IRGenerator::boxNullOptionalArgs(CallExpr* node,
 void IRGenerator::normalizeMethodArgs(CallExpr* node,
                                       const std::vector<std::string>& paramTypes,
                                       std::vector<ir::IRValue>& userArgs) {
-    widenI128Args(userArgs, paramTypes, node->location);
+    calibrateCallArgsByParams(userArgs, paramTypes, node->location);
     boxNullOptionalArgs(node, paramTypes, userArgs);
+}
+
+// 331-a（C23/T45 甲·用户裁决）+#1888 扩面：方法/构造/接口/闭包/间接调用面
+//   实参 ABI 定标单一归属（原 widenI128Args 只做 i128 宽化——#1888 改名
+//   calibrateCallArgsByParams 说它是什么，与普通直调面 calibrateCallArgABI
+//   同判据族·定义自 ir_oop_call.cpp 迁入实参族文件=先拆再加纪律）：
+//   ①i128/u128 形参的窄整实参统一定标 128 位——字面量（物理 i64 寄存器
+//     形态）/表达式/折叠产物原样保留时 emitCall 走通用值传分支（mov rdx, [槽]
+//     低 64 位直传），被调方按 i128 指针 ABI 解引用 = 契约分叉（m45_01
+//     SIGSEGV / m45_02 静默错值 / m45_03 类构造字面实参·深度机 314-a 立案）。
+//     经宽化 Cast（源符号扩展/零扩展双半）定标后走 emitCall i128 分支。
+//   ②浮32 实参对 浮64 形参提升 Cast f64（#1888 根治）——方法三路径/构造/
+//     接口/lambda 闭包面原无浮点定标：浮32 实参（movss 4 字节装载）传浮64
+//     形参槽、被调方 movsd 全宽读位模式=垃圾≈0（四面探针实锚：袋(3.5f)/
+//     t.置(1.5f)/工具.三倍(2.0f)/偶(2.5f) 全归零·接口面错值 8.000002）。
+//     判据与 calibrateCallArgABI 92-a/442 面同族：canonicalEquals(形参,"浮64")
+//     && arg.type=="f32" → Cast f64；形参 浮32 原样单精度传递；引用位
+//     （wrapRefArgs 已取地址）不提升。fnptr 间接面实参已在 buildCallArgs
+//     定标（type 已 f64）——此处再入不命中=幂等无害。
+void IRGenerator::calibrateCallArgsByParams(std::vector<ir::IRValue>& args,
+                                            const std::vector<std::string>& paramTypes,
+                                            const SourceLocation& loc) {
+    for (std::size_t ai = 0; ai < args.size() && ai < paramTypes.size(); ++ai) {
+        const std::string canon = types::canonical(paramTypes[ai]);
+        // 466（wt466·与 ir_call.cpp 实参循环同守卫）：**128/浮点 引用形参位
+        //   不定标**——canonical 剥 '&' 后 整128& 误判按值 128：引用实参
+        //   =wrapRefArgs 取好的左值地址（ptr），Cast 成 i128 → emitCall i128
+        //   分支传「Cast 临时双槽地址」→ 被调引用槽收临时槽地址，体内读写落
+        //   临时槽（调用方变量不变）。浮64& 同理不提升（ptr 位直传）。
+        //   方法调用/函数指针/lambda 闭包三路共用本函数，此处一守卫全链收口。
+        const bool paramRef = types::isReference(paramTypes[ai]);
+        const bool param128 = !paramRef &&
+                              (canon == "整128" || canon == "正128");
+        if (param128 && args[ai].type != "i128" && args[ai].type != "u128") {
+            const std::string kind = (canon == "正128") ? "u128" : "i128";
+            args[ai] = emitResult(ir::Opcode::Cast, {args[ai]}, kind, "",
+                                  loc);
+            continue;
+        }
+        // #1888（浮32→浮64 形参宽化·92-a/442 普通直调面同判据族）
+        if (!paramRef && args[ai].type == "f32" &&
+            types::canonicalEquals(canon, "浮64")) {
+            args[ai] = emitResult(ir::Opcode::Cast, {args[ai]}, "f64", "",
+                                  loc);
+        }
+    }
 }
 
 // 617（2026-10-14 伞批）：实参表达式「拥有型字符串临时」判定——CallExpr 且

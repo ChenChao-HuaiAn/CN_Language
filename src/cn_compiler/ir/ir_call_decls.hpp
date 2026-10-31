@@ -113,6 +113,13 @@
     // 方法调用实参构建（含入容器位归一化；其余形态等价 buildCallArgsOop）
     std::vector<ir::IRValue> buildCallArgsForMethod(
         CallExpr* node, const std::string& canonObj, const std::string& methodName);
-    // i128/u128 形参的窄整实参统一宽化（331-a·T53 根治·单一归属）：字面量实参 在 IR 中为窄整（i64），方法/构造调用须按形参 128 位宽化 Cast——否则被调方
-    void widenI128Args(std::vector<ir::IRValue>& args, const std::vector<std::string>& paramTypes,
-                       const SourceLocation& loc);
+    // 方法/构造/接口/闭包/间接调用面实参 ABI 定标单一归属（331-a·T53 根治
+    //   + #1888 浮32 提升）：①i128/u128 形参的窄整实参统一宽化 Cast（字面量
+    //   实参在 IR 中为 i64，被调方按 128 位指针 ABI 解引用=SIGSEGV 面）；
+    //   ②浮32 实参对 浮64 形参提升 Cast f64（#1888：方法三路径/构造/接口/
+    //   lambda 闭包面原无此步=浮32 位模式按浮64 全宽读=0.000000 错值实锚，
+    //   普通直调面 calibrateCallArgABI 92-a 同判据族；引用位不提升——wrapRefArgs
+    //   已取地址。fnptr 间接面实参已在 buildCallArgs 定标，此处再入=幂等无害）。
+    void calibrateCallArgsByParams(std::vector<ir::IRValue>& args,
+                                   const std::vector<std::string>& paramTypes,
+                                   const SourceLocation& loc);

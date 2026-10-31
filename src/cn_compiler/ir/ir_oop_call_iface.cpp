@@ -48,11 +48,11 @@ bool IRGenerator::tryInterfaceMethodCall(CallExpr* node) {
                             //   按 i64 值直传，被调 prologue 按双槽地址 rep movsb
                             //   解引用 SIGSEGV（探针 552pe2：引用.取(窄32) rc=139）。
                             //   判据源=接口方法签名形参表（imit->second.paramTypes·
-                            //   与间接路径同源），定标本体=widenI128Args 单一归属
+                            //   与间接路径同源），定标本体=calibrateCallArgsByParams 单一归属
                             //   （与实例/静态/构造/虚调用四路径同款 331-a 家系）。
                             std::vector<ir::IRValue> userArgs =
                                 buildCallArgsOop(node->arguments, node->location);
-                            widenI128Args(userArgs, imit->second.paramTypes,
+                            calibrateCallArgsByParams(userArgs, imit->second.paramTypes,
                                           node->location);
                             std::vector<ir::IRValue> args;
                             args.push_back(objVal);  // this = 对象指针
@@ -83,11 +83,11 @@ bool IRGenerator::tryInterfaceMethodCall(CallExpr* node) {
                         }
                         // 552（接口方法 × 128 形参双侧同案·宿主侧）：间接分派路径
                         //   同补实参定标——判据源与直调分支同一（接口方法签名形参表
-                        //   imit->second.paramTypes），载体同一（widenI128Args）；
+                        //   imit->second.paramTypes），载体同一（calibrateCallArgsByParams）；
                         //   原缺 → 窄实参照崩（探针 552pe5：引用.取(窄32) rc=139）。
                         std::vector<ir::IRValue> userArgs =
                             buildCallArgsOop(node->arguments, node->location);
-                        widenI128Args(userArgs, imit->second.paramTypes,
+                        calibrateCallArgsByParams(userArgs, imit->second.paramTypes,
                                       node->location);
                         std::vector<ir::IRValue> args;
                         args.push_back(objVal);  // this = 对象指针

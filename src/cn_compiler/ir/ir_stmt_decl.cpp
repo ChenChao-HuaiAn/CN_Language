@@ -299,7 +299,7 @@ void IRGenerator::backfillCtorLiteralTypeName(VarDecl* node) {
 // 337-a（T53 家系）：函数指针变量的源码类型登记**完整规范串**
 //   （`函数指针<返回>(参数,...)`，与语义层同格式）——原登记字面量
 //   `函数指针`（丢形参列表）＝半截机制：间接调用点无法取得形参类型，
-//   i128 形参的窄整实参宽化（widenI128Args）无从判定 → 字面量实参按
+//   i128 形参的窄整实参宽化（calibrateCallArgsByParams）无从判定 → 字面量实参按
 //   i64 直传、被调方按 i128 指针 ABI 解引用 SIGSEGV（探针 p_fnptr）。
 //   mapType 对 `函数指针<` 前缀已归 ptr（ir.cpp 同款既有特判）＝零回归。
 void IRGenerator::resolveDeclTypesAndAlloc(VarDecl* node, DeclGenCtx& ctx) {
