@@ -509,6 +509,12 @@ void IRGenerator::visitLambdaExpr(LambdaExpr* node) {
     ir::IRFunction func;
     func.name = lambdaName;
     func.returnType = returnIrType;
+    // 1571：lambda 体返回位契约判定须要源码返回类型（A2 拥有契约/85-a 聚合
+    //   返回/933 引用返回深拷共用 function_->returnTypeSrc）。原实现只置 IR
+    //   类型 returnType，returnTypeSrc 恒空 → 体内「返回 字符串字面量」不落堆
+    //   （调用方 free 只读段指针=UB；v2 同形态已复制=分叉），本处补齐与普通
+    //   函数（ir_decl.cpp 同字段）同口径。未标注=空类型。
+    func.returnTypeSrc = node->returnType.empty() ? "空类型" : node->returnType;
     func.structReturn = structRetLambda;
     func.structReturnSize = structRetSize;
     // 捕获变量名（语义层已回填全部捕获）：匿名函数参数前置
@@ -607,12 +613,18 @@ void IRGenerator::visitLambdaExpr(LambdaExpr* node) {
     blockCounter_ = 0;
     ir::IRBlock* entry = newBlock("bb0");
     (void)entry;
+    // 1571：lambda 体捕获名帧入栈（返回位拥有契约判定——捕获快照返回须复制
+    //   落堆；见 ir_stmt.cpp visitReturnStmt A2 块）。体生成完毕即弹（嵌套
+    //   lambda 逐层进出·与 varStack_ 层同序压弹）。
+    lambdaCaptureFrames_.emplace_back(capturedNames.begin(),
+                                      capturedNames.end());
     if (node->body != nullptr) {
         // 750 复审返工：lambda 体函数级别名逃逸/lambda 预扫描（P0-1/P0-3）。
         //   三枚状态 save 在函数入口、restore 在函数尾（见入口注释）。
         beginAccumScope(node->body.get());
         genBlock(node->body.get());
     }
+    lambdaCaptureFrames_.pop_back();  // 1571：与上方便携入栈成对（体生成完毕）
     if (!function_->blocks.empty()) {
         ir::IRBlock* last = function_->blocks.back().get();
         if (!last->terminated) {

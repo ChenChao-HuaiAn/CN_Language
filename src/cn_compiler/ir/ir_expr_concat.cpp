@@ -224,6 +224,21 @@ bool IRGenerator::chainCallReturnsString(CallExpr* node) const {
     const std::string name =
         static_cast<IdentifierExpr*>(node->callee.get())->name;
     if (isOwnedStringBuiltin(name)) return true;  // 094 单点白名单
+    // 1578（#1578·2026-10-30 伞批·#1571 同族）：**闭包/functor 变量被调**——
+    //   被调名不是已知函数（下方 funcReturnTypeOf 两键均 miss），而是声明为
+    //   函数指针的变量（lambda 闭包变量/回调形参）时，原判据 miss=段拥有性
+    //   漏判：融合/保守路径都按借用段处理，返回串追加后不结算=每段净泄 1
+    //   （1517 形二值/形二引/形二写 活差 2 应为 1 实录·v2 同源）。判定=变量源
+    //   类型的函数指针返回段**精确**等于 "字符串"（拥有 A2 契约）；"字符串&"
+    //   （引用返回借用视图）与标量返回不命中——'&' 不剥，借用句柄不得 free。
+    const std::string calleeSrcType =
+        types::canonical(lookupSrcType(name).value_or(std::string()));
+    if (types::isFuncPtr(calleeSrcType)) {
+        const cn::Optional<std::string> fpRet =
+            types::funcPtrReturnTypeOf(calleeSrcType);
+        // 无值=非函数指针形态的合法否定（isFuncPtr 命中即必有返回段）
+        if (fpRet.has_value() && fpRet.value() == "字符串") return true;
+    }
     if (semantic_ != nullptr) {
         const std::string keys[2] = {node->resolvedSignature, name};
         for (const std::string& key : keys) {

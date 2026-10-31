@@ -405,17 +405,32 @@ void IRGenerator::visitReturnStmt(ReturnStmt* node) {
         //   帧），返回位=拥有契约 → 深拷落堆（Rust 借用来源返回须 clone 同款）。
         //   原直传借用句柄：被引用局部对象析构（free 字段串）后返回值悬垂
         //   （933 探针：返回读出空/比较恒假）。
+        // 1571（2026-10-30）：lambda 捕获快照返回拥有化——捕获槽=值捕获深拷
+        //   快照（940 固化 .data/参数槽·001 §790「快照为只读」），返回位=拥有
+        //   契约 → 必须复制落堆（与字面量同款：只读槽不能搬出所有权，否则调用
+        //   方 free 后快照悬垂/第二次调用读已释放堆=双拥有）。值捕获/引用捕获
+        //   同判（引用捕获槽存外层变量地址，返回的是外层变量的借用句柄，同属
+        //   「不是本帧可搬出的拥有局部」）；lambda 用户形参非捕获、不在本集。
+        //   判据来源=lambdaCaptureFrames_（visitLambdaExpr 压/弹），故本块须在
+        //   lambda 体内的返回位生效——returnTypeSrc 已由 visitLambdaExpr 登记。
         if (function_ != nullptr &&
             types::canonicalEquals(function_->returnTypeSrc, "字符串")) {
-            bool needOwnCopy933 =
+            bool needOwnCopy =
                 node->value->getType() == NodeType::StringLiteral;
-            if (!needOwnCopy933 &&
+            if (!needOwnCopy &&
                 node->value->getType() == NodeType::CallExpr) {
                 const CallExpr* rce =
                     static_cast<const CallExpr*>(node->value.get());
-                needOwnCopy933 = rce->isRefReturnCall;
+                needOwnCopy = rce->isRefReturnCall;
             }
-            if (needOwnCopy933) {
+            if (!needOwnCopy && !lambdaCaptureFrames_.empty() &&
+                node->value->getType() == NodeType::IdentifierExpr) {
+                const std::string& capRetName =
+                    static_cast<const IdentifierExpr*>(node->value.get())->name;
+                needOwnCopy =
+                    lambdaCaptureFrames_.back().count(capRetName) > 0;
+            }
+            if (needOwnCopy) {
                 value = emitResult(ir::Opcode::Call, {value}, "ptr",
                                    "__cn_str_copy", node->location);
             }

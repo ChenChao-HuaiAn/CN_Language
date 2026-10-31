@@ -455,6 +455,21 @@ void SemanticAnalyzer::checkReturnBorrowA2(ReturnStmt* node, const std::string& 
                 // 中，恰好落入此分支）——均借用
                 borrowRetA2 = true;
                 whyA2 = "'" + rn + "'（全局/静态/类字段=借用）";
+            } else if (!currentIsRefReturn_ &&
+                       isCurrentClassInstanceFieldName(rn)) {
+                // 1571（2026-10-30·用户 P1 立案）：**方法体裸字段名 = 成员借用**
+                //   ——方法体把实例字段并入函数作用域（语义检查类.cn 头注协议），
+                //   裸字段名被 isCurrentFnLocal 判成拥有局部而放行：返回的是
+                //   指向接收者字段堆串的借用句柄，调用方按拥有契约 free 后与
+                //   接收者析构双拥有（`打印(仓("甲").取())` 接收者临时析构→链
+                //   段读悬垂·修前宿主/v2 同源静默）。plans/001 §5.4 返回拥有
+                //   契约（A2）：「返回位借用形态（参数直传/成员/下标/解引用/
+                //   字符* 调用/全局静态）编译错误」——裸字段名即「成员」形态，
+                //   与 `返回 自身.名`（MemberExpr·上方分支已拒）同判，零分叉。
+                //   引用返回（字符串&）不触本分支：显式借用契约（001 R2·1032
+                //   别名写穿放行面），字段生命周期由接收者承担。
+                borrowRetA2 = true;
+                whyA2 = "'" + rn + "'（全局/静态/类字段=借用）";
             }
         }
         if (borrowRetA2) {
@@ -476,14 +491,10 @@ void SemanticAnalyzer::checkReturnAddressEscape(ReturnStmt* node) {
     //   与引用参数/全局豁免同族放行。遮蔽面：宿主语义层「局部遮蔽字段」在
     //   声明处已拒（重复声明变量 'X'·p2n2 探针实录）——本判定无合法遮蔽面
     //   （与 v2 遮蔽判据 是当前类实例字段名633 等效）。
+    // 1571：判据单点化——isCurrentClassInstanceFieldName（宿主 semantic_borrow_aux.cpp·
+    //   A2 返回位拥有拒绝共用同一谓词），本处只作引用返回豁免。
     auto isCurClassField633 = [&](const std::string& nm) -> bool {
-        if (nm.empty() || contextClassStack_.empty()) return false;
-        const ClassInfo* ci = findClass(contextClassStack_.back()).value_or(nullptr);
-        while (ci != nullptr) {
-            if (ci->fields.find(nm) != ci->fields.end()) return true;
-            ci = ci->baseName.empty() ? nullptr : findClass(ci->baseName).value_or(nullptr);
-        }
-        return false;
+        return isCurrentClassInstanceFieldName(nm);
     };
     // P3-18 补完（2026-08）：引用返回函数——返回值须为可绑定左值；禁止返回
     //   本函数局部变量（含按值参数）的地址（随栈帧消亡的悬垂引用）。

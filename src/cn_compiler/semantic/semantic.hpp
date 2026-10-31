@@ -567,6 +567,11 @@ private:
     bool isRefParamForCurrentFn(const std::string& name) const;
     // 名称是否绑定在当前函数局部作用域（scopes_ 索引 >= funcScopeStart_）
     bool isCurrentFnLocal(const std::string& name) const;
+    // 名称是否为当前类（含基类链）的实例字段（方法体「字段并入作用域」后与
+    //   局部不可区分——返回位借用判定须显式认回）。非方法体/无命中=false。
+    //   1571：A2 拥有契约（裸字段名返回=成员借用，拥有返回须拒绝）与 633
+    //   引用返回字段豁免（字段生命周期=宿主对象·可作引用返回）共用单一判据。
+    bool isCurrentClassInstanceFieldName(const std::string& name) const;
     // P3-23 补完（D2）：表达式是否为"实例方法作值"（对象.实例方法，绑定 this 闭包）
     static bool argIsBoundMethodValue(const Expr* e);
     // 函数体是否保证有返回（最后一条为返回语句或无限循环）

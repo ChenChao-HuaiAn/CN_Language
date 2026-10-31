@@ -54,6 +54,26 @@ bool SemanticAnalyzer::isCurrentFnLocal(const std::string& name) const {
     }
     return false;  // 未在作用域找到：全局/静态/未知 → 放行（不拦）
 }
+bool SemanticAnalyzer::isCurrentClassInstanceFieldName(
+    const std::string& name) const {
+    // 静默豁免业务值: 空名/非类上下文=判据的合法否定回答（顶层/自由函数无字段面）
+    if (name.empty() || contextClassStack_.empty()) return false;
+    // 1571（#633 同位判据单点化）：方法体把实例字段并入函数作用域（语义检查类
+    //   .cn 头注协议），字段名与局部变量在 scopes_ 中不可区分——返回位判定必须
+    //   显式认回「这是 this 的字段」，否则裸字段名被当成拥有局部：A2 拥有返回
+    //   （字符串）静默放行借用句柄（接收者临时析构后悬垂/双拥有），633 引用返回
+    //   则相反（字段生命周期=宿主对象，误拦）。基类链逐层查（遮蔽面：局部同名
+    //   遮蔽字段在声明处已拒「重复声明变量」）。
+    const ClassInfo* ci =
+        findClass(contextClassStack_.back()).value_or(nullptr);
+    while (ci != nullptr) {
+        // 静默豁免业务值: 谓词命中即真（字段存在性判定·非失败通道/非默认值续译）
+        if (ci->fields.find(name) != ci->fields.end()) return true;
+        ci = ci->baseName.empty() ? nullptr
+                                  : findClass(ci->baseName).value_or(nullptr);
+    }
+    return false;
+}
 bool SemanticAnalyzer::argIsBoundMethodValue(const Expr* e) {
     // P3-23 补完（D2）：对象.实例方法 作值为"绑定 this 的闭包"（fnptr 无法携带
     //   this）；用作裸 fnptr 实参属静默错行为，编译报错提示先赋给变量。

@@ -359,6 +359,10 @@ bool IRGenerator::argIsOwnedStringTemp(const Expr* arg) const {
     }
     if (arg->getType() != NodeType::CallExpr) return false;
     const CallExpr* ce = static_cast<const CallExpr*>(arg);
+    // 1578（#1578·2026-10-30 伞批·#1571 同族）：语义层 A2 快照直读——全调用
+    //   路径（含函数指针/闭包变量调用）由语义层写回拥有契约，优先于下方名称
+    //   查表（链段判定 chainCallReturnsString 同序同判·单点事实源）。
+    if (ce->retOwnedString) return true;
     std::string retCanon = types::canonical(ce->resolvedType);
     if (retCanon.empty() && ce->callee != nullptr &&
         ce->callee->getType() == NodeType::IdentifierExpr) {

@@ -326,6 +326,13 @@ bool SemanticAnalyzer::checkFuncPtrCall(CallExpr* node, const std::string& calle
             }
         }
         lastType_ = retType;
+        // 1578（#1578·2026-10-30 伞批·#1571 同族）：**函数指针/闭包变量调用**
+        //   的 A2 拥有契约写回——原实现只置 lastType_，不置 retOwnedString：
+        //   声明位 RAII 登记/赋值位释放/语句位弃串释放/链段结算全部按「非拥有」
+        //   处理=返回堆串无人接管，每个消费点净泄 1（1517 形二值/形二引/形二写
+        //   活差 2 应为 1 实录·v2 同源）。返回段**精确**等于 "字符串"=拥有
+        //   （A2 契约）；"字符串&"（引用返回借用视图）与标量返回不置位。
+        node->retOwnedString = (retType == "字符串");
         return true;
     }
     return false;

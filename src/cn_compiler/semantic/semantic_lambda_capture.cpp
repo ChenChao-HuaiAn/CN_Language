@@ -249,6 +249,12 @@ void SemanticAnalyzer::visitLambdaExpr(LambdaExpr* node) {
     // 先置空、由 return 语句动态放宽，见 visitReturnStmt 特判）
     const std::string savedReturn = currentReturnType_;
     currentReturnType_ = node->returnType.empty() ? "" : canonicalType(node->returnType);
+    // 1571：引用返回上下文同样按 lambda 自己的标注重置——原实现只换
+    //   currentReturnType_，currentIsRefReturn_ 从外层函数泄漏进 lambda 体
+    //   （外层 `-> 字符串&` 时体内 owned 返回的借用判定被整体跳过）。
+    const bool savedIsRefReturn = currentIsRefReturn_;
+    currentIsRefReturn_ = !node->returnType.empty() &&
+                          types::isReference(node->returnType);
     if (node->body != nullptr) {
         // 显式返回标注：按普通函数检查（返回类型一致性由 visitReturnStmt 保证）
         if (!node->returnType.empty()) {
@@ -278,6 +284,7 @@ void SemanticAnalyzer::visitLambdaExpr(LambdaExpr* node) {
         }
     }
     currentReturnType_ = savedReturn;
+    currentIsRefReturn_ = savedIsRefReturn;  // 1571：与上方设置成对恢复
     popScope();
     // lambda 类型描述符：函数指针<返回>(参数类型,...)
     std::string params;
