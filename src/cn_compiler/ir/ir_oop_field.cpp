@@ -100,6 +100,16 @@ void IRGenerator::injectFieldCascadeDestroy(const ClassMember* member) {
     for (auto it = ci->fieldOrder.rbegin(); it != ci->fieldOrder.rend(); ++it) {
         const auto f = ci->fields.find(*it);
         if (f == ci->fields.end() || f->second.isStatic) continue;
+        // #1885：**只清本类声明字段**（与构造侧 cascadeConstructFields 的
+        //   ownerClass 判据对称·与 v2 注入析构字段级联 同域——v2 遍历类体
+        //   节点区间天然不含继承并入字段）。f会并入全部祖先字段，原实现
+        //   逐级析构链（emitDeleteObject）下=子类析构先释放父类字符串/类字段，
+        //   父类析构体读到的字段已被置空（p24a 实测「~子类」先 free 名），
+        //   且父层析构再 free(0) 的幂等只是掩盖——父类析构语义被提前耗尽。
+        //   父类字段由父类自身析构（dtor 链逐级调用）负责，双侧同序。
+        const std::string fOwner = f->second.ownerClass.empty() ? currentClass_
+                                                                : f->second.ownerClass;
+        if (fOwner != currentClass_) continue;
         const std::string ftype = classFieldType(currentClass_, *it).value_or("");
         const std::string fcanon = types::canonical(ftype);
         // #1674 乙案：手动释放<T> 字段=用户接管释放权（ManuallyDrop 对应物）——

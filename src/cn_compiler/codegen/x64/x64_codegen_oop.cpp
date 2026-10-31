@@ -184,6 +184,14 @@ void X64CodeGenerator::emitDeleteObject(AsmWriter& writer, const ir::IRInstructi
                 }
             }
             if (levelDtor != nullptr) {
+                // #1885：**每级调用前重设 this**——call 破坏易失寄存器 rcx
+                //   （Win64 caller-saved·被调析构体内任意调用链都会改写），
+                //   原实现只在入口装载一次：二级链起第二级析构收到垃圾 this
+                //   → 空指针/野指针解引用（继承类普通局部实测「~子类 ~基类」
+                //   之后运行时错误码 3·p24a/p24c 实锚）。objOp 为槽装载文本
+                //   （[rbp-N]）或 callee-saved 临时寄存器（r12/r13/r14 由本
+                //   函数序言保存·call 后仍有效），逐级重设安全。
+                writer.line("mov rcx, " + objOp);
                 writer.line("sub rsp, 32");
                 writer.line("call " + classMethodSymbol(level, levelDtorKey, {}));
                 writer.line("add rsp, 32");

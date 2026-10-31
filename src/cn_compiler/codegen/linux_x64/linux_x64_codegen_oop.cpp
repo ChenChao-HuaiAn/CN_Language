@@ -196,6 +196,11 @@ void LinuxX64CodeGenerator::emitDeleteObject(LinuxX64AsmWriter& writer,
                 }
             }
             if (levelDtor != nullptr) {
+                // #1885：**每级调用前重设 this（rdi）**——call 破坏 rdi（SysV
+                //   caller-saved），原实现只在入口装载一次：二级链起第二级析构
+                //   收到垃圾 this（继承类普通局部实测空指针错误码 3；与 x64/
+                //   arm64 同缺陷同修·三后端对称）。
+                loadObjToRdi();
                 // 审查 P1-1：用户析构函数 call 统一浮点活跃值保护（每级一次）
                 const std::string dtorSym =
                     classMethodSymbol(level, levelDtorKey, {});

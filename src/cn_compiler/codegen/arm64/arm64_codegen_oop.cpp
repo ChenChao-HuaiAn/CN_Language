@@ -179,6 +179,13 @@ void Arm64CodeGenerator::emitDeleteObject(Arm64AsmWriter& writer,
                 }
             }
             if (levelDtor != nullptr) {
+                // #1885：**每级调用前重设 this（x0）**——bl 破坏 x0（AAPCS64
+                //   caller-saved），原实现只在入口装载一次：二级链起第二级析构
+                //   收到垃圾 this（继承类普通局部实测空指针错误码 3；与 x64/
+                //   linux_x64 同缺陷同修·三后端对称）。装载单点=loadOperandToX
+                //   （内部已按 常量/虚拟寄存器/变量槽 三形态分流，等价于下方
+                //   释放段的 id>=0 双分支，免重复分流）。
+                loadOperandToX(writer, inst.operands[0], "x0");
                 writer.line("bl " + classMethodSymbol(level, levelDtorKey, {}));
             }
             level = ci->baseName;
