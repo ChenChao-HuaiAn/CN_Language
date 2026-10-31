@@ -343,6 +343,11 @@ bool IRGenerator::tryGenStructPtrInit(VarDecl* node, ir::IRValue value,
                      {ir::IRValue::constant("0", "i64")}, ir::IRValue(),
                      slotName, "i64", node->location);
             }
+            // #1884（p18 宿主残留 1 根治）：零值盒同样登记盒亡面——原早退跳过
+            //   registerPendingBoxVar，「可选<货物> o = 无; o = 某些(...)」的
+            //   后续赋值接管载荷后无人释放（v2 946 面恒登记·零分叉）。零值槽
+            //   tag=0 → 释放面 __cn_box_class_delete 摘 0 → 空跳过，零副作用。
+            registerPendingBoxVar(node, declCanon, dstAddr, dstAddr, ctx.unique);
             lastExpr_ = dstAddr;
             return true;
         }
@@ -371,7 +376,9 @@ bool IRGenerator::tryGenStructPtrInit(VarDecl* node, ir::IRValue value,
         }
         emitStructCopyWithFields(dstAddr, value, declCanon, node->location,
                                  /*preFree=*/false, /*deepCopy=*/!srcIsCall,
-                                 initSrcCanon);
+                                 initSrcCanon,
+                                 /*boxClassPayload=*/isResultType(declCanon) ||
+                                                      isOptionalType(declCanon));
         // 182（1019·008 树）：结果/可选<析构类> 局部变量盒亡登记（变量级·
         //   v2 946 变量模型同构）——调用返回接收盒（装盒() 形态）889 表达式面
         //   不盖（pendingBoxCopies 仅 正常(类值) 字面量位·返回位豁免）=盒亡
@@ -422,67 +429,21 @@ void IRGenerator::registerPendingBoxVar(VarDecl* node, const std::string& declCa
         //   （表达式面 LoadPtr=0 幂等跳过）——布局归一后值槽 @8·273 v1 回归根因已消。
         if (declIsBox && node->initializer != nullptr) {
             if (ctorInitCovered) {
-                const StructDecl* sdZ = semantic_->findStruct(declCanon).value_or(nullptr);
-                const int voZ =
-                    sdZ ? semantic_->fieldOffsetOf(sdZ, "值").value_or(-1) : -1;
-                if (voZ >= 0) {
-                    ir::IRValue srcField280 = emitResult(
-                        ir::Opcode::FieldAddr, {value}, "ptr",
-                        std::to_string(voZ), node->location);
-                    ir::IRValue zero280 = emitResult(
-                        ir::Opcode::ConstInt, {}, "i64", "0", node->location);
-                    emit(ir::Opcode::StorePtr, {srcField280, zero280},
-                         ir::IRValue(), "", "i64", node->location);
-                }
+                // 280/1884：清源临时盒值字段（统一 zeroBoxPayloadField 单点）——
+                //   表达式面载点释放读 0 空跳过，防与盒亡面释放同一副本双删。
+                zeroBoxPayloadField(value, declCanon, node->location);
             }
-            {
-                std::string payload280;
-                if (isResultType(declCanon)) {
-                    const std::vector<std::string> rargs280 =
-                        resultTypeArgs(declCanon).value_or((std::vector<std::string>()));
-                    if (rargs280.size() == 2)
-                        payload280 = types::canonical(rargs280[0]);
-                } else {
-                    payload280 = types::canonical(
-                        optionalTypeArg(declCanon).value_or(std::string()));
-                }
-                const ClassInfo* pci280 = payload280.empty()
-                    ? nullptr : semantic_->findClass(payload280).value_or(nullptr);
-                bool pDtor280 = false;
-                if (pci280 != nullptr) {
-                    for (const auto& mk : pci280->methods) {
-                        if (mk.second.isDestructor) { pDtor280 = true; break; }
-                    }
-                }
-                // #1466：初值=正常/某些(类构造临时)——装箱=句柄移交（盒=唯一
-                //   拥有者），盒亡析构判据不能只认拷贝构造深拷面：dtor-only 载荷
-                //   原不登记=每盒净漏 1（p6/p10 残留 5 实录）；place 实参无拷贝
-                //   构造=盒与源槽浅共享，维持原判据不释放（p13 双删录）。
-                if (pDtor280 &&
-                    (semantic_->findCopyConstructor(payload280).has_value() ||
-                     boxInitMovesTempPayload(node->initializer.get()))) {
-                    const StructDecl* sd280 = semantic_->findStruct(declCanon).value_or(nullptr);
-                    const int vo280 =
-                        sd280 ? semantic_->fieldOffsetOf(sd280, "值").value_or(-1) : -1;
-                    const int co280 =
-                        sd280 ? semantic_->fieldOffsetOf(
-                                 sd280, isResultType(declCanon)
-                                 ? "正常" : "有值").value_or(-1) : -1;
-                    if (vo280 >= 0 && co280 >= 0) {
-                        ir::IRValue tagAddr280 =
-                            co280 == 0 ? dstAddr
-                                : emitResult(ir::Opcode::FieldAddr, {dstAddr},
-                                             "ptr", std::to_string(co280),
-                                             node->location);
-                        ir::IRValue fieldAddr280 =
-                            vo280 == 0 ? dstAddr
-                                : emitResult(ir::Opcode::FieldAddr, {dstAddr},
-                                             "ptr", std::to_string(vo280),
-                                             node->location);
-                        pendingBoxVars_.emplace_back(tagAddr280, fieldAddr280,
-                                                     payload280, unique, false);
-                    }
-                }
+            const cn::Optional<BoxClassPayload> pay = boxClassPayloadOf(declCanon);
+            // #1466：初值=正常/某些(类构造临时)——装箱=句柄移交（盒=唯一拥有者）
+            // #1884：初值=普通调用返回盒（非引用返回）——返回值所有权移交调用方
+            //   （#1784 R1/85-a），dtor-only 载荷盒亦拥有（p8/p12 宿主残留 1）；
+            //   有拷贝构造类=889 深拷面已产独立副本，原判据覆盖。
+            //   借用盒（place 实参无拷贝构造/引用返回）不登记——源槽拥有、盒不释放。
+            if (pay.has_value() &&
+                (!pay.value().copyCtorKey.empty() ||
+                 boxInitMovesTempPayload(node->initializer.get()) ||
+                 boxInitFromOwnedCall(node->initializer.get()))) {
+                emitBoxVarReleaseRegister(declCanon, dstAddr, unique, node->location);
             }
         }
     }

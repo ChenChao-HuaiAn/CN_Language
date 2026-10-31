@@ -112,6 +112,20 @@ struct OwnedStrField {
     bool viaUnion = false;
 };
 
+// #1884：结果/可选盒的**类载荷**布局与拷贝契约（盒=载荷唯一拥有者）。
+//   合成体 结果$T$E / 可选$T 的载荷 T 为用户类时，联合体槽内是对象句柄：
+//   释放/深拷必须拿 tag（正常/有值）守卫——错误态同槽是错误码整数/无值态是 0，
+//   无条件按句柄消费=free(错误码) 崩。布局偏移与类符号键在识别时一次算定，
+//   释放/深拷/登记三面共用（单点事实源）。
+struct BoxClassPayload {
+    int tagOffset = 0;        // 判别位偏移（结果=正常 / 可选=有值）
+    int valueOffset = 0;      // 载荷槽偏移（与错误载荷共用联合体）
+    std::string classCanon;   // 载荷类规范名（有析构——盒亡释放义务的前提）
+    // 拷贝构造符号键；空=类无拷贝构造——盒互拷无法深拷，只能位拷共享（诚实边界：
+    //   该形态不登记盒亡面，载荷所有权留在源槽）。
+    std::string copyCtorKey = std::string();
+};
+
 
 // 482（#482 多实例独立快照·载体快照槽族数据·自 ir_generator.hpp 外迁防超限）：
 //   LambdaCaptureMeta482 —— lambda 捕获元数据（lambdaName -> 捕获名/引用标记/

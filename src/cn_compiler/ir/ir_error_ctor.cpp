@@ -344,6 +344,15 @@ void IRGenerator::emitResultCtorValue(CallExpr* node, const std::string& name,
     }
     // 1611：无拷贝构造类返回位 move 转交（详注见函数体·子函数单点）
     emitResultCtorReturnMoveForClass(node, name, deepCopied100, canonValueType);
+    // #1884（#1466 遗留①甲案·跨函数甄别）：**被调方返回位登记载荷所有权主张**
+    //   ——调用方装盒时据此判定盒亡是否释放载荷（p8 装盒()/p12 装盒() 拥有、
+    //   p16 包形参(引用参数) 借用）。同一函数多返回语句：任一借用=整体借用
+    //   （保守不登记=只残留不双删）。
+    if (inReturnExpr_ && function_ != nullptr && !function_->name.empty() &&
+        (name == "正常" || name == "某些")) {
+        registerBoxReturnClaim(function_->name,
+                               resultCtorReturnPayloadOwned(node));
+    }
 }
 
 // #1588：结构体载荷写入——CopyStruct 内联拷贝（2026-08-25 根治：原 StorePtr 只存
@@ -560,6 +569,255 @@ void IRGenerator::emitResultCtorReturnMoveForClass(
                  ir::IRValue(), srcSlotOpt.value(), "ptr", node->location);
         }
     }
+}
+
+
+// ==================== #1884：结果/可选盒的类载荷所有权族 ====================
+// 背景（#1466 遗留①②③ 宿主侧三面，与 v2 946/1605 模型的零分叉对齐面）：
+//   · p8/p12：盒初值=调用返回（装盒()）且载荷 dtor-only——盒亡判据只认
+//     「有拷贝构造 ∨ 正常/某些(类构造临时)」，普通调用返回盒不登记 → 净漏 1。
+//     001 #1784 R1（返回值=值副本·所有权归调用方）与 85-a 聚合返回契约下，
+//     调用返回盒的载荷归接收盒所有——判据补「初值=非引用返回调用」。
+//   · p18：可选 无 初值盒（NullLiteral 零写早退）漏盒亡登记 → 后续赋值接管
+//     的载荷无人释放（残留 1）。零值盒同样登记（tag 假 → 释放空跳过）。
+//   · p19：赋值位 r = 正常(g) 的 889 表达式面（pendingBoxCopies_ 深拷副本）
+//     与盒亡面释放同一副本 → 双删 C0000374。修=目标盒接管后清源 rctor 值字段
+//     （与声明位 280 同模型·move 归一）。
+//   · p22：循环赋值覆盖旧载荷无人释放 → 中间载荷净漏；修=赋值位 preFree
+//     条件释放旧载荷（盒在册时——不在册=借用盒，旧载荷归源槽，禁删）。
+//   · p20：盒变量互拷 b = a 位拷共享类句柄 → 两盒亡面双删 C0000374；修=
+//     类载荷 tag 条件深拷（源值字段槽地址=拷贝构造「其他」契约·与 v2 1605
+//     类分支同构）。
+// 布局/符号键单点=boxClassPayloadOf；释放/深拷/登记三面共用，避免各自推导
+// 偏移与键（#1716 同语义单名）。
+
+// 识别结果/可选盒的类载荷（无值=非合成体/载荷非类/类无析构）。
+//   载荷名从**源形态文本**解（resultTypeArgs/optionalTypeArg 只认模板文本；
+//   $ 合成名边界=宁漏勿错——与 collectOwnedStrFields 571 同口径）。
+cn::Optional<BoxClassPayload> IRGenerator::boxClassPayloadOf(
+    const std::string& canonRaw) const {
+    if (semantic_ == nullptr) return std::nullopt;
+    const std::string canon = canonicalizeSyntheticArgText(canonRaw);
+    const bool isResult = canon.rfind("结果$", 0) == 0;
+    const bool isOptional = canon.rfind("可选$", 0) == 0;
+    if (!isResult && !isOptional) return std::nullopt;
+    std::string payloadCanon;
+    if (isResult) {
+        const std::vector<std::string> args =
+            resultTypeArgs(canonRaw).value_or((std::vector<std::string>()));
+        if (args.size() == 2) payloadCanon = types::canonical(args[0]);
+    } else {
+        payloadCanon = types::canonical(
+            optionalTypeArg(canonRaw).value_or(std::string()));
+    }
+    if (payloadCanon.empty() || !semantic_->isClassType(payloadCanon)) {
+        return std::nullopt;
+    }
+    // 有析构才存在盒亡释放义务（无析构类字段无资源语义，盒不承担删除）
+    const ClassInfo* ci = semantic_->findClass(payloadCanon).value_or(nullptr);
+    if (ci == nullptr) return std::nullopt;
+    bool hasDtor = false;
+    for (const auto& mk : ci->methods) {
+        if (mk.second.isDestructor) { hasDtor = true; break; }
+    }
+    if (!hasDtor) return std::nullopt;
+    const StructDecl* sd = semantic_->findStruct(canon).value_or(nullptr);
+    if (sd == nullptr) return std::nullopt;
+    const cn::Optional<int> tagOff =
+        semantic_->fieldOffsetOf(sd, isResult ? "正常" : "有值");
+    const cn::Optional<int> valOff = semantic_->fieldOffsetOf(sd, "值");
+    if (!tagOff.has_value() || !valOff.has_value()) return std::nullopt;
+    BoxClassPayload pay;
+    pay.tagOffset = tagOff.value();
+    pay.valueOffset = valOff.value();
+    pay.classCanon = payloadCanon;
+    pay.copyCtorKey = classCopyCtorSymbolKey(payloadCanon).value_or(std::string());
+    return pay;
+}
+
+// 盒旧载荷条件释放（preFree 面）：tag 假（错误态/无值态）免疫——值位是错误码
+//   整数/0，按句柄删即 UB。runtime 单调用 __cn_box_class_delete（946 单点·
+//   免块切割）摘句柄+清槽幂等；DeleteObject 空句柄空安全，重复经过=读 0 跳过。
+void IRGenerator::emitBoxClassPayloadPreFree(const ir::IRValue& dstBase,
+                                             const BoxClassPayload& pay,
+                                             const SourceLocation& loc) {
+    ir::IRValue tagAddr = pay.tagOffset == 0
+        ? dstBase
+        : emitResult(ir::Opcode::FieldAddr, {dstBase}, "ptr",
+                     std::to_string(pay.tagOffset), loc);
+    ir::IRValue fieldAddr = pay.valueOffset == 0
+        ? dstBase
+        : emitResult(ir::Opcode::FieldAddr, {dstBase}, "ptr",
+                     std::to_string(pay.valueOffset), loc);
+    ir::IRValue objPtr = emitResult(ir::Opcode::Call, {tagAddr, fieldAddr}, "ptr",
+                                    "__cn_box_class_delete", loc);
+    emitContainerElemFreeFor(pay.classCanon, objPtr, loc);
+    emit(ir::Opcode::DeleteObject, {objPtr}, ir::IRValue(), pay.classCanon,
+         "void", loc);
+}
+
+// 盒载荷条件深拷（postCopy 面）：位拷已把 src 的句柄搬进 dst —— tag 真时改写成
+//   独立副本（NewObject + 拷贝构造·实参=**源值字段槽地址**（存句柄的槽，copy
+//   契约「其他」两层 Load 的第一层）），tag 假保留位拷的错误码。
+//   无拷贝构造=共享边界：不发（源槽拥有，登记面不登记该盒）。
+//   分支块形态与 beginSelfAssignGuard 同款（Eq+Branch 已验证的块模型）。
+void IRGenerator::emitBoxClassPayloadPostCopy(const ir::IRValue& dstBase,
+                                              const ir::IRValue& srcBase,
+                                              const BoxClassPayload& pay,
+                                              const SourceLocation& loc) {
+    if (pay.copyCtorKey.empty()) return;
+    ir::IRValue tagAddr = pay.tagOffset == 0
+        ? srcBase
+        : emitResult(ir::Opcode::FieldAddr, {srcBase}, "ptr",
+                     std::to_string(pay.tagOffset), loc);
+    ir::IRValue tagVal = emitResult(ir::Opcode::LoadPtr, {tagAddr}, "i1", "", loc);
+    const std::string bodyLabel = "bb" + std::to_string(blockCounter_++);
+    const std::string mergeLabel = "bb" + std::to_string(blockCounter_++);
+    endBranch(tagVal.toString(), bodyLabel, mergeLabel);
+    setCurrentBlock(newBlock(bodyLabel));
+    const ClassInfo* ci = semantic_->findClass(pay.classCanon).value_or(nullptr);
+    const std::string extra =
+        pay.classCanon + "|" +
+        std::to_string(ci != nullptr ? ci->totalSize : 0);
+    ir::IRValue newObj = emitResult(
+        ir::Opcode::NewObject, {ir::IRValue::constant(pay.classCanon, "ptr")},
+        "ptr", extra, loc);
+    ir::IRValue srcFieldAddr = emitResult(
+        ir::Opcode::FieldAddr, {srcBase}, "ptr",
+        std::to_string(pay.valueOffset), loc);
+    emit(ir::Opcode::Call, {newObj, srcFieldAddr}, ir::IRValue(), pay.copyCtorKey,
+         "void", loc);
+    ir::IRValue dstFieldAddr = emitResult(
+        ir::Opcode::FieldAddr, {dstBase}, "ptr",
+        std::to_string(pay.valueOffset), loc);
+    emit(ir::Opcode::StorePtr, {dstFieldAddr, newObj}, ir::IRValue(), "", "ptr",
+         loc);
+    endJump(mergeLabel);
+    setCurrentBlock(newBlock(mergeLabel));
+}
+
+// #1884：盒初值=普通函数/方法调用（非引用返回）→ **查被调方返回位所有权主张
+//   表**（#1466 遗留①甲案·跨函数甄别）：被调方返回 正常/某些(...) 时按载荷
+//   来源登记（resultCtorReturnPayloadOwned），调用点命中「移交」才判盒拥有。
+//   · 内置构造器（正常/错误/某些）不查表：拥有关系取决于实参形态（临时移交=
+//     boxInitMovesTempPayload；place 无拷贝构造=借用共享·p13 双删录）。
+//   · 方法调用（callee=成员）面外=保守借用（跨类方法表判定另案；宁漏不双删）。
+//   · 表 miss（被调函数在调用点之后生成/跨翻译单元）=未知=保守借用。
+//   纯谓词（真假判定·#1360 谓词免除结果化）。
+bool IRGenerator::boxInitFromOwnedCall(const Expr* init) const {
+    // 单出口形态（#1360 谓词免结果化·非失败通道）：形态不适用=保持假，不是
+    //   「静默默认值继续编译」——全判定链显式枚举，无提前 return 短路。
+    bool owned = false;
+    if (init != nullptr && init->getType() == NodeType::CallExpr) {
+        const auto* call = static_cast<const CallExpr*>(init);
+        const bool calleeIsFreeFunction =
+            call->callee != nullptr && !call->isRefReturnCall &&
+            call->callee->getType() == NodeType::IdentifierExpr;
+        if (calleeIsFreeFunction) {
+            const std::string& name =
+                static_cast<const IdentifierExpr*>(call->callee.get())->name;
+            const bool isBuiltinCtor = name == "正常" || name == "错误" ||
+                                       name == "某些";
+            if (!isBuiltinCtor) {
+                const auto it = boxReturnOwnership_.find(name);
+                owned = it != boxReturnOwnership_.end() && it->second;
+            }
+        }
+    }
+    return owned;
+}
+
+// #1884：返回位「正常/某些(载荷)」载荷所有权判定——移交=真（调用方盒可拥有）：
+//   · 实参=调用（非引用返回）=无左值槽临时（本函数 NewObject 产物·C++ rvalue
+//     move 同构）；转移(...)=显式 move 交接；复制(...)=新副本——均拥有。
+//   · 实参=标识符且为**拥有局部**（ownedClassOrder_ 在册=有析构类局部·返回位
+//     emitResultCtorReturnMoveForClass 已清源槽）→ 拥有。
+//   · 形参/类字段裸名/全局静态（lookupVarName miss 或不在册）/成员/下标/
+//     解引用/三元/自身/字符串 → 借用（p16 引用参数实锚）。
+bool IRGenerator::resultCtorReturnPayloadOwned(const CallExpr* node) const {
+    // 单出口形态（#1360 谓词免结果化）：空实参/不可判形态=不拥有（假），
+    //   属形态判定出口而非「静默默认值」——全链显式枚举无提前 return。
+    bool owned = false;
+    if (node != nullptr && !node->arguments.empty()) {
+        const Expr* arg = node->arguments[0].get();
+        if (arg->getType() == NodeType::CallExpr) {
+            owned = !static_cast<const CallExpr*>(arg)->isRefReturnCall;
+        } else if (arg->getType() == NodeType::IdentifierExpr) {
+            const std::string& nm = static_cast<const IdentifierExpr*>(arg)->name;
+            const cn::Optional<std::string> slot = lookupVarName(nm);
+            if (slot.has_value()) {
+                owned = std::find(ownedClassOrder_.begin(), ownedClassOrder_.end(),
+                                  slot.value()) != ownedClassOrder_.end();
+            }
+        }
+    }
+    return owned;
+}
+
+// #1884：盒返回所有权主张登记（被调方返回位）——同函数多返回语句语义=任一
+//   借用则整体按借用（保守：调用方不登记释放=不漏删；漏放残留可观测不崩）。
+void IRGenerator::registerBoxReturnClaim(const std::string& fnName, bool owned) {
+    const auto it = boxReturnOwnership_.find(fnName);
+    if (it == boxReturnOwnership_.end()) {
+        boxReturnOwnership_.emplace(fnName, owned);
+        return;
+    }
+    if (!owned) it->second = false;
+}
+
+// 盒变量是否已在盒亡登记表（赋值位「旧载荷可释放 / 补登记」判据）。
+bool IRGenerator::boxVarInRegistry(const std::string& unique) const {
+    bool found = false;
+    for (const auto& ent : pendingBoxVars_) {
+        // 空名不匹配任何登记项（登记面 unique 恒非空）——形态判定非失败通道
+        if (unique == std::get<3>(ent)) {
+            found = true;
+            break;
+        }
+    }
+    return found;
+}
+
+// 盒亡释放登记发射（声明位/赋值位共用）：tag/值字段地址由盒子基址+布局算，
+//   条目格式与 emitPendingBoxVarsRelease 契约一致（tag 假免疫·摘句柄清槽幂等）。
+void IRGenerator::emitBoxVarReleaseRegister(const std::string& declCanon,
+                                            const ir::IRValue& dstAddr,
+                                            const std::string& unique,
+                                            const SourceLocation& loc) {
+    const cn::Optional<BoxClassPayload> pay = boxClassPayloadOf(declCanon);
+    if (!pay.has_value()) return;
+    ir::IRValue tagAddr = pay.value().tagOffset == 0
+        ? dstAddr
+        : emitResult(ir::Opcode::FieldAddr, {dstAddr}, "ptr",
+                     std::to_string(pay.value().tagOffset), loc);
+    ir::IRValue fieldAddr = pay.value().valueOffset == 0
+        ? dstAddr
+        : emitResult(ir::Opcode::FieldAddr, {dstAddr}, "ptr",
+                     std::to_string(pay.value().valueOffset), loc);
+    pendingBoxVars_.emplace_back(tagAddr, fieldAddr, pay.value().classCanon,
+                                 unique, false);
+}
+
+// 盒值字段清零（内置构造器临时盒的 move 归一·声明位 280 与赋值位共用）：
+//   目标盒 CopyStruct 接管句柄后清源临时盒值字段——889 表达式面
+//   （pendingBoxCopies_·valAddr=源值字段）释放面读 0 空跳过，防同一副本
+//   被表达式面与盒亡面双删（p19 C0000374 实锚）。
+void IRGenerator::zeroBoxPayloadField(const ir::IRValue& boxBase,
+                                      const std::string& boxCanon,
+                                      const SourceLocation& loc) {
+    if (semantic_ == nullptr) return;
+    const StructDecl* sd =
+        semantic_->findStruct(canonicalizeSyntheticArgText(boxCanon))
+            .value_or(nullptr);
+    if (sd == nullptr) return;
+    const cn::Optional<int> vo = semantic_->fieldOffsetOf(sd, "值");
+    if (!vo.has_value()) return;
+    ir::IRValue fieldAddr = vo.value() == 0
+        ? boxBase
+        : emitResult(ir::Opcode::FieldAddr, {boxBase}, "ptr",
+                     std::to_string(vo.value()), loc);
+    ir::IRValue zero = emitResult(ir::Opcode::ConstInt, {}, "i64", "0", loc);
+    emit(ir::Opcode::StorePtr, {fieldAddr, zero}, ir::IRValue(), "", "i64", loc);
 }
 
 
