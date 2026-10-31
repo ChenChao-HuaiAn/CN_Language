@@ -378,75 +378,10 @@ std::int64_t IRGenerator::ptrElemStride(const std::string& srcType) const {
     }
     return 8;  // 语义层缺位/未知类型防御
 }
-// 1360 结果化：B 族源码类型推导函数统一无值=无法推导（原空串哨兵退役）。
-cn::Optional<std::string> IRGenerator::pointerPointeeSrcType(Expr* node) const {
-    if (node == nullptr) return std::nullopt;
-    if (node->getType() == NodeType::MemberExpr) {
-        // 655 复核轮（648 余量④d 同族补全·成员链指针解引用）：*b.游标 的
-        //   操作数=成员链——原实现无 MemberExpr 分支恒无值，648 显形诊断
-        //   误伤合法程序（探针 v2_992a 实锤：*b.游标 被拒编译中止）。所指
-        //   元素类型=字段指针类型的 pointee，与 655 ④d 自增分支（visitUnary
-        //   Expr 内联 memberFieldSrcType）同口径；字段为数组形态时=数组元素
-        //   类型（425 数组名退化同源）。
-        const cn::Optional<std::string> fieldType = memberFieldSrcType(
-            static_cast<MemberExpr*>(node));
-        if (fieldType.has_value() && types::isPointer(fieldType.value())) {
-            return types::pointeeOf(fieldType.value());
-        }
-        if (fieldType.has_value() && types::isArray(fieldType.value())) {
-            return types::arrayElemOf(fieldType.value());
-        }
-        return std::nullopt;
-    }
-    if (node->getType() == NodeType::IdentifierExpr) {
-        const cn::Optional<std::string> srcType = lookupSrcType(
-            static_cast<IdentifierExpr*>(node)->name);
-        // 425 同轮补（09_integration 实录）：数组名标识符——所指元素类型=
-        //   数组元素类型（数组名退化语义·与 ptrElemStride 数组分支同源）。
-        //   原实现 isPointer(学生[5])=假 直返无值：`(名单 + 4).分数` 括号
-        //   直读成员对象源类型空 → 字段偏移错位读垃圾（探针 5/6 实录）。
-        if (srcType.has_value() && types::isArray(srcType.value())) {
-            return types::arrayElemOf(srcType.value());
-        }
-        if (srcType.has_value() && types::isPointer(srcType.value())) {
-            return types::pointeeOf(srcType.value());
-        }
-        return std::nullopt;
-    }
-    if (node->getType() == NodeType::BinaryExpr) {
-        BinaryExpr* bin = static_cast<BinaryExpr*>(node);
-        if (bin->op == Operator::Add || bin->op == Operator::Subtract) {
-            // 指针算术：指针可能在左或右（p+1 / 1+p 罕见但支持）
-            const cn::Optional<std::string> left = pointerPointeeSrcType(bin->left.get());
-            if (left.has_value()) return left;
-            const cn::Optional<std::string> right = pointerPointeeSrcType(bin->right.get());
-            if (right.has_value()) return right;
-        }
-        return std::nullopt;
-    }
-    if (node->getType() == NodeType::UnaryExpr) {
-        UnaryExpr* un = static_cast<UnaryExpr*>(node);
-        // &x / *x / 指针自增 p++：递归 operand 推导
-        if (un->op == Operator::AddressOf || un->op == Operator::Deref ||
-            un->op == Operator::Increment || un->op == Operator::Decrement) {
-            return pointerPointeeSrcType(un->operand.get());
-        }
-        return std::nullopt;
-    }
-    if (node->getType() == NodeType::CallExpr) {
-        // 813（144_v2 云端红归因·v2 对称面）：解引用调用返回指针
-        //   （*容器.元素(0)）——返回源码类型经 exprSrcType（其 CallExpr 分支
-        //   已支持 resolvedType/函数返回/方法返回三级），指针剥星=pointee。
-        //   修前无 CallExpr 分支恒无值 → 648 显形诊断误伤合法程序（v2 侧
-        //   修前兜底 T_整64 对 整64* 返回碰巧宽度正确·813 显形后双侧同修）。
-        const cn::Optional<std::string> retSrc = exprSrcType(node);
-        if (retSrc.has_value() && types::isPointer(retSrc.value())) {
-            return types::pointeeOf(retSrc.value());
-        }
-        return std::nullopt;
-    }
-    return std::nullopt;
-}
+// 1360 结果化：B 族源码类型推导族（pointerPointeeSrcType）——#1889 拆出
+//   ir_expr_type.cpp（ir.cpp 破 1000 文件红线·先拆再加纪律；纯机械搬移+
+//   本轮多级指针/取地址精确剥层修正，行为变更仅本轮语义修复面）。
+
 // 973（104 根治·读/写/下标消费点统一）：按宿主类型查字段类型——结构体表
 //   findStruct 命中走原路；miss（宿主为**类**）沿继承链查 ClassInfo::fields。
 //   原各消费点「findStruct+字段循环」对类宿主恒 miss（类不入结构体表）——
