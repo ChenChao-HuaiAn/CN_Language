@@ -308,6 +308,22 @@ function 物理内存列(r) {
   return `<span class="淡" title="旧版 daemon 未上报物理内存">—</span>`;
 }
 
+/* #1462：环境列——env 预检通过=绿签；缺失=红签列缺失项（title 全详情 JSON·
+   运维按缺什么修实例）；旧 daemon 未上报（null）=—（未知·不冒充）。 */
+function 环境列(r) {
+  const 检 = r["环境预检"];
+  if (检 === null || 检 === undefined) {
+    return `<span class="淡" title="旧版 daemon 未上报环境预检（#1462·runner 树同步后 60s 内出现）">—</span>`;
+  }
+  const 细节 = typeof 检 === "object" ? JSON.stringify(检) : String(检);
+  if (检 && 检["通过"]) {
+    return `<span class="签 完成" title="${转义(细节)}">✓ 环境</span>`;
+  }
+  const 缺 = (检 && Array.isArray(检["缺失"]) && 检["缺失"].length)
+    ? 检["缺失"].join("、") : "?";
+  return `<span class="签 阶段红" title="${转义(细节)}">缺 ${转义(缺)}</span>`;
+}
+
 function 渲染实例() {
   const 根 = $("实例区");
   const 们 = 快照["实例动态"] || [];
@@ -344,6 +360,7 @@ function 渲染实例() {
         ? ' <span class="签 队列中" title="#1665 交叉模拟实例（qemu 跑非宿主架构）——不领普通 e2e 分片">交叉模拟</span>'
         : ""}</span>
       <span>${物理内存列(r)}</span>
+      <span>${环境列(r)}</span>
       <span>${实例状态签(r["状态"])}</span>
       <span class="mono">${当前}</span>
       <span class="mono">${已跑 === null ? "—" : 已跑 + " 分"}</span>
@@ -356,7 +373,7 @@ function 渲染实例() {
     </div>`;
   }).join("");
   根.innerHTML = `<div class="表槽">
-    <div class="数据行 表头 实例行"><span>实例</span><span>平台</span><span>内存</span><span>状态</span>
+    <div class="数据行 表头 实例行"><span>实例</span><span>平台</span><span>内存</span><span>环境</span><span>状态</span>
       <span>当前任务</span><span>已跑</span><span>最近报活</span><span>版本（树头·指纹）</span><span>最近完成</span></div>
     ${行}</div>`;
 }

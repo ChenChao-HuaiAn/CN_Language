@@ -94,6 +94,7 @@ import ci_fallback      # 1297：develop 兜底面（189/660/770 外迁·薄壳�
 import ci_duration      # 1385：步骤口径元信息（脚本→daemon 回传·耗时基线分桶）
 import ci_report        # 1297：报告与留档面（落盘/上报/提交历史 外迁·薄壳见下）
 import ci_selfupdate    # #1706：daemon 自升级（闭包指纹+空闲点维护·变化即退出待守护拉起）
+import ci_env_probe     # #1462：环境预检（报活载荷+认领门数据源·探测单点）
 
 # ===== 可调常量（集中区·911 先例） =====
 轮询间隔秒 = 90            # git ls-remote 周期
@@ -343,13 +344,19 @@ def 带门禁锁跑(sha: str, 轮分支: str = "", 跑器=None, 分片轮: bool 
 
 def 步骤记录器(步骤们: dict, 日志):
     """1297 提取：步骤封装工厂（跑一轮 与 跑分片轮 共用·纪律二）——流式日志运行+
-    rc/秒记录+超时 rc=-99 诚实红（297/578/935 口径原样·逐行保持·1385 并入脚本口径元信息）。"""
+    rc/秒记录+超时 rc=-99 诚实红（297/578/935 口径原样·逐行保持·1385 并入脚本口径元信息）。
+    #1462②：配置步骤 rc!=0 时把轮日志尾部 CMake Error 段原文落 步骤["错误原文"]
+    （回传门禁详情·1212 实录归因零猜测；实现=ci_build.提取配置错误段 单点）。"""
     def 步骤(名: str, 命令: list[str], 超时秒: int):
         t0 = time.time()
         try:
             r = 运行(命令, 日志, 超时秒)
             步骤们[名] = {"rc": r.returncode, "秒": round(time.time() - t0),
                           **ci_duration.读步骤元信息(名, t0)}
+            if r.returncode != 0 and 名 == "配置":
+                原文 = ci_build.提取配置错误段(日志)
+                if 原文:
+                    步骤们[名]["错误原文"] = 原文
         except subprocess.TimeoutExpired:
             步骤们[名] = {"rc": -99, "秒": 超时秒, "超时": True}
         return 步骤们[名]["rc"] == 0
@@ -612,189 +619,20 @@ def 跑分片轮(sha: str, 轮分支: str, 片序: int = 0, 片数: int = 1) -> 
 #   拆分薄壳区·实现外迁 ci_report.py）
 
 
-# ═══════════════ 1021 预验执行器池（TX_01 认领池客户端·家机/TX_02 同构） ═══════════════
-# 池配置/池调用 → 1297 薄壳别名（见文件头部拆分薄壳区·实现归一 ci_shard.py 池协议单点）
+# ═══════════════ 1021 预验执行器池 → #1462 外迁 ci_pool（先拆再加·守 900 警戒线） ═══════════════
+# 池任务执行面（池认领任务/启动心跳/跑完对齐/池跑任务/池跑分片+新环境可领门）自本文件
+# 原样外迁 ci_pool.py（973 外迁 ci_build 同款）。动机=#1462 需在本文件加三挂点（环境
+# 认领门/CMake Error 回传/报活载荷）——961 行已超 900 警戒线，先拆再加。本区=初始化
+# 注入（ci_daemon 侧实现面 跑一轮/跑分片轮/带门禁锁跑+运行常量）+薄别名保调用面
+# （selftest 直调面/ci_m6.e2e段 心跳传参面零改——660 桩跑池 猴补对象同步改 ci_pool）。
+import ci_pool   # noqa: E402（须在 跑一轮/跑分片轮/带门禁锁跑 定义后初始化·同域置此）
 
-def 池认领任务() -> dict | None:
-    """向池认领一个预验任务（服务端写锁内原子+心跳超时回收）。无任务/池不可达/未配置 → None。
-    337：自报平台（win-x64/linux-x86_64/linux-arm64·294 三分运行时探测）——服务端按任务
-    认领限制过滤，只派给白名单含本平台的任务；缺省语义（不限任务）对旧/新 runner 完全一致。
-    #1667：交叉模拟实例默认不领整任务（预验整任务与 ci/兜底-* 轮都跑全量 e2e·qemu
-    i128 族错值假红；服务端能力位机械拒绝为权威，此处客户端先行让路省一次请求）；
-    CN_XSIM_ALLOW_TASK=1 显式放行。每 runner 一次显式日志（不静默空转）。"""
-    配置 = 池配置()
-    if not 配置["池地址"]:
-        return None
-    可领, 让路行 = ci_shard.整任务认领判定(交叉模拟实例, runner标识)
-    if 让路行:
-        print(让路行, flush=True)
-    if not 可领:
-        return None
-    回 = 池调用(配置, "task_claim", {"runner": runner标识, "平台": 平台,
-                                     "物理机": ci_shard.物理机标识(),
-                                     # #1221：M6 原生可跑能力位（实例表观测/派发数据源）
-                                     "M6原生": ci_m6.M6原生可跑(平台, 机架),
-                                     # #1665：交叉模拟能力位（服务端落表+认领拒绝数据源）
-                                     "交叉模拟": 交叉模拟实例})
-    if 回 and 回.get("ok"):
-        return 回.get("任务")
-    return None
-
-
-def 启动心跳(任务分支: str, 片序: int | None = None) -> threading.Event:
-    """跑轮期间每 心跳间隔秒 向池续约（返回 stop 事件·池不可达静默——服务端超时回收是
-    兜底而非灾难：complete 校验认领者，被重派后旧结果会被拒）。
-    1297：片序非 None=片心跳（task_shard_heartbeat·从实例片轮续约——片心跳断=片回
-    缺口可被主实例抢补；父任务心跳仍由主实例续约，两者互不相干）。"""
-    停 = threading.Event()
-
-    def 跑():
-        配置 = 池配置()
-        while not 停.wait(心跳间隔秒):
-            if 片序 is None:
-                池调用(配置, "task_heartbeat", {"runner": runner标识, "分支": 任务分支})
-            else:
-                池调用(配置, "task_shard_heartbeat",
-                       {"runner": runner标识, "分支": 任务分支, "片序": 片序})
-
-    threading.Thread(target=跑, daemon=True).start()
-    return 停
-
-
-def 跑完对齐(仓库根) -> None:
-    """#1463 任务收尾树头回 develop（池跑任务/池跑分片 finally 调用）：此前跑完树
-    停在任务分支头——空闲实例面板版本列恒显任务 sha =「版本不一致」误报（用户
-    10-23 实报 TX_03 红标·实际树已是 develop）。失败仅告警：任务结果已上报，
-    树头停留只影响面板参考值，不影响门禁正确性。"""
-    try:
-        ci_shard.对齐树头(仓库根, 远端名, "develop")
-    except RuntimeError as e:
-        print("[警告] 跑完对齐 develop 失败（树头停留任务分支）：%s" % e, flush=True)
-
-
-def 池跑任务(任务: dict) -> None:
-    """执行认领到的池任务（189 起两类）：预验任务 fetch 预验分支→跑一轮→落盘；
-    兜底任务（ci/兜底-*·非真分支）fetch develop→跑一轮(develop)→落盘（660：fetch 后
-    FETCH_HEAD≠任务 sha 即跑前过期跳过=零整轮算力·跑后复查保留为双保险）。
-    均以 complete 收尾（3 次重试）。落盘复用 落盘()（develop 兜底=latest+result+上报；
-    ci/预验- 绿写 latest+上报=develop 轮免重跑联动保留）。"""
-    任务分支, sha = 任务["分支"], 任务["sha"]
-    兜底 = 任务分支.startswith("ci/兜底-")
-    print("[池] 认领 %s（sha=%s·runner=%s·%s）" % (任务分支, sha[:10], runner标识,
-          "兜底" if 兜底 else "预验"), flush=True)
-    配置 = 池配置()
-    停 = 启动心跳(任务分支)
-    try:
-        取对象 = "develop" if 兜底 else 任务分支
-        取 = 运行限时(["git", "fetch", 远端名, 取对象], 300,
-                      capture_output=True, text=True, cwd=仓库根)
-        if 取.returncode != 0:
-            # fetch 失败=本轮失败（分支可能已被 integrate finally 删除=同 sha 重试竞态）——
-            # 报红让服务端回收重派；本地不落盘（非真实验证结果·防污染 result 档案）
-            print("[池] fetch 失败：%s" % (取.stderr or "").strip()[:200], flush=True)
-            结果 = {"sha": sha, "分支": 任务分支, "平台": 平台, "绿": False,
-                    "步骤": {"同步": {"rc": 取.returncode}}, "总秒": 0,
-                    "时刻": datetime.now().isoformat(timespec="seconds"),
-                    "日志": "", "日志尾部": (取.stderr or "").splitlines()[-5:]}
-        elif 兜底:
-            # 660（2026-10-14）跑前预检：陈轮（任务 sha 已被 develop 新头淘汰）在此直接
-            #   过期收场——旧序先跑整轮再判过期=陈轮烧整轮算力（池内陈轮反复认领空跑·
-            #   TX_02 OOM 实录）；fetch 已在上方完成，仅 rev-parse FETCH_HEAD 与任务 sha
-            #   比对（零构建·不动工作树·不 reset）。不等→过期跳过；相等→原整轮路径，
-            #   轮内 develop 再前进由下方跑后复查兜底（双保险保留）。
-            预检头 = 运行限时(["git", "rev-parse", "FETCH_HEAD"], 30,
-                             capture_output=True, text=True, cwd=仓库根).stdout.strip()
-            if 兜底过期(sha, 预检头):
-                结果 = 过期跳过结果(sha, 任务分支, 预检头)
-                print("[池] 兜底任务过期跳过（跑前预检·develop 已前进）：%s" % sha[:10], flush=True)
-            else:
-                结果 = 带门禁锁跑(sha, "develop")
-                if 结果 is None:      # 291 让出（gate_lock 互忙）——不 complete·心跳停由服务端回收重派
-                    print("[池] 本轮让出（gate_lock）——任务将被回收重派", flush=True)
-                    return
-                # 过期竞态语义化关闭（189·Rust 无数据竞争思路的服务端等价）：认领期间
-                #   develop 前进→reset 到的是新头≠任务 sha——该 sha 的树已由新头轮隐含覆盖
-                #   （git 树=快照·新头绿⇒含旧提交内容绿）。过期轮不落盘（防 latest 被非
-                #   任务 sha 污染）·complete 绿=True 闭环（服务端不重派·详情留审计）。
-                # #1468：构建后 E2E 前已早退（结果带 早退新头）=过期（此时 HEAD 仍=任务
-                #   sha，不能靠 rev-parse 判）——按过期语义闭环，不落盘。
-                if 结果.get("早退新头"):
-                    结果 = 过期跳过结果(sha, 任务分支, 结果["早退新头"])
-                    print("[池] 兜底任务过期跳过（构建后早退·develop 已前进）：%s" % sha[:10], flush=True)
-                else:
-                    头 = 运行限时(["git", "rev-parse", "HEAD"], 30,
-                                  capture_output=True, text=True, cwd=仓库根).stdout.strip()
-                    if 头 != sha:
-                        结果 = 过期跳过结果(sha, 任务分支, 头)
-                        print("[池] 兜底任务过期跳过（跑后复查·develop 已前进）：%s" % sha[:10], flush=True)
-                    else:
-                        落盘(结果)
-        else:
-            # 1297 分片召唤：预验任务且分片开启→构建前召唤从片（空闲实例并行构建跑片；
-            #   召唤失败=退化单实例全量·加速面不是正确性面）。CN_CI_BRANCH 点名降级
-            #   路径（ssh 直发）非 develop 主循环——此处只对池认领的 ci/预验-* 生效。
-            #   1369：召唤时刻锚定认领宽限窗（CN_SHARD_GRACE_SEC）——构建耗时已覆盖
-            #   大部分宽限，进 e2e 段时快照一次即可判「无认领→立即退化」。
-            #   #1401：分片度按池空闲实例/执行中预验任务数自适应（CN_SHARD_N 可固定）。
-            分片n = 0
-            if 任务分支.startswith("ci/预验-") and ci_shard.分片启用():
-                #   #1634：arm64 轮（原生 arm64/xsim 实例作主实例）平台禁分片
-                #   ——runner 标识进判定（xsim 宿主 x64·平台段判不出）。
-                分片n = ci_shard.计算分片数(配置["池地址"], 配置["池令牌"],
-                                             runner=runner标识)
-            召唤时刻 = time.time() if 分片n > 1 else None
-            if 分片n > 1:
-                ci_shard.召唤从片(lambda o, d: 池调用(配置, o, d),
-                                  任务分支, runner标识, 分片n)
-            结果 = 带门禁锁跑(
-                sha, 任务分支,
-                跑器=((lambda s, b: 跑一轮(s, b, 分片n, 召唤时刻))
-                     if 分片n > 1 else None))
-            if 结果 is None:      # 291 让出（gate_lock 互忙）——不 complete·心跳停由服务端回收重派
-                print("[池] 本轮让出（gate_lock）——任务将被回收重派", flush=True)
-                return
-            落盘(结果)
-        for 试 in range(3):     # complete 重试（TX_01 短暂抖动不触发回收重派的重复全量）
-            回 = 池调用(配置, "task_complete",
-                        {"runner": runner标识, "分支": 任务分支,
-                         "绿": bool(结果.get("绿")), "结果": 结果})
-            if 回 and 回.get("ok"):
-                break
-            print("[池警告] complete 第 %d 次失败：%s——10s 后重试" % (试 + 1, 回), flush=True)
-            time.sleep(10)
-        else:
-            print("[池警告] complete 三次失败——本地留档·任务将被服务端回收重派（浪费一次算力·正确性无损）",
-                  flush=True)
-        print("[池完成] %s 绿=%s 总秒=%s" % (任务分支, 结果.get("绿"), 结果.get("总秒")), flush=True)
-    finally:
-        停.set()
-        跑完对齐(仓库根)       # #1463：树头回 develop（面板版本列=真实树状态）
-
-
-def 池跑分片(片任务: dict) -> None:
-    """1297 从实例执行认领到的缺口片：跑分片轮（同步/清产物/构建/e2e 单片·win 套
-    机器锁）→交片（3 次重试）。片红=如实上报（整轮红由主实例聚合定案·902 不在从侧
-    重复触发）；交片全败=片行留执行中，片心跳断后服务端回收回缺口（可被主实例
-    抢补/他实例重领——正确性无损·浪费一次算力与 task_complete 同口径）。"""
-    分支s, sha = 片任务["分支"], 片任务["sha"]
-    片序, 片数 = 片任务["片序"], 片任务["片数"]
-    print("[分片] 认领 %s#%d/%d（runner=%s）" % (分支s, 片序, 片数, runner标识), flush=True)
-    配置 = 池配置()
-    停 = 启动心跳(分支s, 片序)
-    try:
-        结果 = 带门禁锁跑(sha, 分支s,
-                          跑器=lambda s, b: 跑分片轮(s, b, 片序, 片数),
-                          分片轮=True)   # #1424：分片轮走本实例树锁·同机可并行
-        if 结果 is None:
-            print("[分片] 本轮让出（gate_lock）——片心跳停由服务端回收回缺口", flush=True)
-            return
-        ci_shard.交片(lambda o, d: 池调用(配置, o, d), runner标识, 分支s, 片序,
-                      bool(结果.get("绿")), 结果, 结果.get("总秒"))
-        print("[分片完成] %s#%d/%d 绿=%s 总秒=%s"
-              % (分支s, 片序, 片数, 结果.get("绿"), 结果.get("总秒")), flush=True)
-    finally:
-        停.set()
-        跑完对齐(仓库根)       # #1463：树头回 develop（面板版本列=真实树状态）
+ci_pool.初始化(runner标识=runner标识, 平台=平台, 交叉模拟实例=交叉模拟实例,
+              是win=是win, 机架=机架, 仓库根=仓库根, 远端名=远端名,
+              心跳间隔秒=心跳间隔秒,
+              跑一轮=跑一轮, 跑分片轮=跑分片轮, 带门禁锁跑=带门禁锁跑)
+池跑任务 = ci_pool.池跑任务       # 薄别名（selftest 直调面·660 桩跑池）
+启动心跳 = ci_pool.启动心跳       # ci_m6.e2e段 心跳传参面（1297）
 
 
 def 主(常驻: bool, 强制: bool, 等锁: bool = False) -> int:
@@ -802,10 +640,13 @@ def 主(常驻: bool, 强制: bool, 等锁: bool = False) -> int:
     # #1706：启动时定格本进程加载的 scripts/ 闭包与聚合指纹（空闲点自升级检测基准）
     闭包文件们, 启动指纹 = ci_selfupdate.定格闭包(仓库根)
     # 1392：空闲报活+版本指纹（忙闲都发·池未配置=不启动）；#1460：返回刷新广播状态
+    # #1462：报活携「环境预检」详情（探测=ci_env_probe 单点·服务端实例表落库/
+    #   面板标注缺什么——认领门 与 报活 同源同详情）。
     刷新状态 = ci_shard.启动实例报活(runner标识, 平台, 仓库根,
                                     M6原生=ci_m6.M6原生可跑(平台, 机架),
                                     # #1665：交叉模拟能力位（实例页签标记+分片拒绝数据源）
-                                    交叉模拟=交叉模拟实例)
+                                    交叉模拟=交叉模拟实例,
+                                    环境预检=ci_env_probe.探测环境(仓库根, 是win))
     锁 = (锁文件.open("a+"))
     已入池: set[str] = set()   # 770：本轮常驻期已入池的头（幂等防重——服务端幂等兜底·此处省每轮空 POST）
     # #1795：develop 派发决策语境（deps 注入 ci_fallback·外迁块单一构造点）
@@ -843,12 +684,19 @@ def 主(常驻: bool, 强制: bool, 等锁: bool = False) -> int:
                     return 3   # 非 0 区分空闲轮（日志可辨）；守护不看码照常拉起
             except RuntimeError as e:
                 print("[维护] 空闲点维护失败（下轮重试）：%s" % e, flush=True)
+            # #1462：环境预检门（实现=ci_pool.环境可领）——一轮最小环境（编译器/
+            #   cmake/生成器/gtest/磁盘）不满足=本轮不领片/不领整任务（报活心跳保持·
+            #   详情随 instance_ping 上报面板标注缺什么；1212 实录：TX_03 缺 gtest
+            #   照领任务→cmake 配置假红烧整轮）。develop 派发面不受影响（下方
+            #   develop头处理 照常入池派发——跑的是别的实例）；ssh 点名/--force 显式
+            #   通道不拦（人工在场·红也是真红显形）。
+            可领任务 = ci_pool.环境可领()
             # #1428：win 让位——池内存在空闲 linux 实例时，win 本轮不领片也不领整任务。
             #   win 三实例与 WSL/xsim 同处一台物理机：win 参与分片=同机 CPU 饱和
             #   （1419 普通片 192 例 1893s/整轮 37 分钟 vs 1417 全轮 827s）。让位把算力
             #   留给非 win；无非 linux 空闲（或池不可达）时 win 照常补位，不浪费算力。
             # #1545：服务端轮转已把 develop/兜底头指派给 win-x64 时不让位（否则 win 档永不认领）。
-            if 是win:
+            if 可领任务 and 是win:
                 池c = 池配置()
                 池态 = ci_shard.池状态(池c["池地址"], 池c["池令牌"])
                 if (ci_shard.有非win空闲(池态)
@@ -865,14 +713,14 @@ def 主(常驻: bool, 强制: bool, 等锁: bool = False) -> int:
             #    召唤只登记不指派，谁空闲谁领；无缺口再领整任务=池忙时行为与现状一致）
             #    #1424：领片**不受本机锁忙影响**——分片轮走本实例树锁（#1424），同机
             #    三 win 可并行跑片（1423 的锁忙跳过只针对整任务/兜底轮的共享主树锁）。
-            if ci_shard.分片启用():
+            if 可领任务 and ci_shard.分片启用():
                 池c = 池配置()
                 片任务 = ci_shard.领片(lambda o, d: 池调用(池c, o, d), runner标识, 平台,
                                       M6原生=ci_m6.M6原生可跑(平台, 机架),
                                       # #1665：交叉模拟实例客户端让路（服务端机械拒绝兜底）
                                       交叉模拟=交叉模拟实例)
                 if 片任务:
-                    池跑分片(片任务)
+                    ci_pool.池跑分片(片任务)
                     if not 常驻:
                         return 0
                     放锁(锁)      # 184：轮间释放·点名可插队
@@ -881,7 +729,7 @@ def 主(常驻: bool, 强制: bool, 等锁: bool = False) -> int:
                     continue
             # #1423：整任务/兜底轮取共享主树锁——同机已有实例持锁时跳过（领了也排队
             #   15~30 分钟）。分片轮已由上面独立树锁分流，不受此限。
-            if ci_shard.本机门禁锁忙():
+            if 可领任务 and ci_shard.本机门禁锁忙():
                 print("[本机锁忙] 共享门禁锁被同机实例持有——本轮不领整任务（避免排队）",
                       flush=True)
                 if not 常驻:
@@ -890,7 +738,7 @@ def 主(常驻: bool, 强制: bool, 等锁: bool = False) -> int:
                 time.sleep(轮询间隔秒)
                 重抢锁(锁)
                 continue
-            任务 = 池认领任务()
+            任务 = ci_pool.池认领任务() if 可领任务 else None   # #1462：环境门不通过=不领
             if 任务:
                 池跑任务(任务)
                 if not 常驻:

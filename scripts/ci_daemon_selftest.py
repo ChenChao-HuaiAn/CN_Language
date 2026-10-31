@@ -30,15 +30,20 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import ci_round   # #1221 复审：轮结果/直跑收口外迁件（1299 归因锚在其内）
+import ci_pool    # #1462：池执行面外迁件（源码文本锁锚跟实现走·桩跑池猴补对象）
 
 
 def 桩跑池(主模块, 任务sha: str, 预检头: str, 跑后头: "str | None" = None) -> dict:
     """660 行为级两态桩：猴补 运行限时/带门禁锁跑/落盘/启动心跳/池配置/池调用 后直调
     池跑任务——零真 git 零真构建。预检头=rev-parse FETCH_HEAD 返回值（现 develop 头）；
     跑后头=跑后 rev-parse HEAD 返回值（缺省同预检头·模拟轮内未前进）。返回计数：整轮/
-    落盘/complete 载荷——「过期→整轮零调用」与「非过期→整轮一次」的机械对照事实源。"""
+    落盘/complete 载荷——「过期→整轮零调用」与「非过期→整轮一次」的机械对照事实源。
+    #1462：池执行面外迁 ci_pool（函数体在 ci_pool 命名空间）——猴补对象同步改
+    ci_pool 模块属性（主模块.池跑任务=ci_pool.池跑任务 同一函数对象·体内名字查
+    ci_pool 全局）；猴补恢复以 getattr 快照逐键还原。"""
+    import ci_pool   # #1462：外迁件（运行时 sys.path 已含 scripts/）
     跑后头 = 预检头 if 跑后头 is None else 跑后头
-    真件 = {名: getattr(主模块, 名) for 名 in
+    真件 = {名: getattr(ci_pool, 名) for 名 in
             ("运行限时", "带门禁锁跑", "落盘", "启动心跳", "池配置", "池调用")}
     记录 = {"整轮": 0, "落盘": 0, "完成": []}
 
@@ -63,16 +68,16 @@ def 桩跑池(主模块, 任务sha: str, 预检头: str, 跑后头: "str | None"
         return {"ok": True}
 
     try:
-        主模块.运行限时 = 桩运行
-        主模块.带门禁锁跑 = 桩整轮
-        主模块.落盘 = 桩落盘
-        主模块.启动心跳 = lambda 任务分支: threading.Event()
-        主模块.池配置 = lambda: {"池地址": "", "池令牌": ""}
-        主模块.池调用 = 桩池调用
-        主模块.池跑任务({"分支": "ci/兜底-" + 任务sha[:10], "sha": 任务sha})
+        ci_pool.运行限时 = 桩运行
+        ci_pool.带门禁锁跑 = 桩整轮
+        ci_pool.落盘 = 桩落盘
+        ci_pool.启动心跳 = lambda 任务分支: threading.Event()
+        ci_pool.池配置 = lambda: {"池地址": "", "池令牌": ""}
+        ci_pool.池调用 = 桩池调用
+        ci_pool.池跑任务({"分支": "ci/兜底-" + 任务sha[:10], "sha": 任务sha})
     finally:
         for 名, 件 in 真件.items():
-            setattr(主模块, 名, 件)
+            setattr(ci_pool, 名, 件)
     return 记录
 
 
@@ -1079,7 +1084,7 @@ def _分片物理机限并发断言(主模块, 断言) -> None:
     ci_shard.抢补片(桩池调用, "r1426", "ci/预验-x", 2)
     断言("#1426 主实例抢补请求也带指纹（片行审计·服务端不限流）",
          记录.get("物理机") == 机 and 记录.get("片序") == 2)
-    源daemon = _inspect.getsource(主模块.池认领任务)
+    源daemon = _inspect.getsource(ci_pool.池认领任务)
     断言("#1426 整任务认领携带物理机指纹（主实例片 0 计入同机限流）",
          '"物理机"' in 源daemon and "物理机标识" in 源daemon)
     源报活 = _inspect.getsource(ci_shard.启动实例报活)
@@ -1312,7 +1317,7 @@ def _面板版本列断言(主模块, 断言) -> None:
         断言("#1463 树头实时：二次取树头随 HEAD 变化（面板不再恒显启动快照）",
              头一 != 头二 and len(头一) == 10
              and 头二 == 跑("rev-parse", "HEAD").stdout.strip()[:10])
-    源码 = inspect.getsource(主模块.池跑任务) + inspect.getsource(主模块.池跑分片)
+    源码 = inspect.getsource(主模块.池跑任务) + inspect.getsource(ci_pool.池跑分片)
     断言("#1463 结构锁：池跑任务/池跑分片 收尾均 跑完对齐（树头回 develop·防恒红）",
          源码.count("跑完对齐(仓库根)") == 2)
 
@@ -1578,6 +1583,88 @@ def _自举触发器断言(主模块, 断言) -> None:
                                 "b" * 40, {"触发": True}, 平台="win-x64")
     断言("#1221 早退结果：M6 处置=过期早退+原因显式（新头轮承担）",
          m6早退["M6"].get("处置") == "过期早退" and "未执行 M6" in m6早退["M6"].get("说明", ""))
+
+
+def _环境门与错误原文断言(主模块, 断言) -> None:
+    """#1462（2026-10-31·预验假红根源治理）：
+    ①配置步骤失败=轮日志 CMake Error 段原文落 步骤["错误原文"]（行为三态：
+      1212 样例（CMake Error at CMakeLists.txt:113 未找到系统 Google Test）提取命中；
+      无 CMake Error 形态=不加键（vcvars 缺失等非 cmake 失败不硬凑）；rc=0 好样本
+      不落键——只在失败时提取）。
+    ②环境预检门挂载结构锁：主循环 可领任务 三挂载（让位/领片/锁忙）+认领三元+
+      报活载荷键+ci_pool.环境可领+ci_pool.初始化注入在位。
+    ③新模块行数红线（ci_pool/ci_env_probe·#1706 先例防回涨）。"""
+    import io
+    # ① 行为三态（假日志文件+猴补 运行·零真 cmake）
+    样例段 = ("$ cmake -S . -B target/build\n"
+            "CMake Error at CMakeLists.txt:113 (message):\n"
+            "  未找到系统 Google Test 且本地源码不可用\n"
+            "-- Configuring incomplete, errors occurred!\n")
+    with tempfile.TemporaryDirectory() as 临时:
+        日志路径 = Path(临时) / "run_test.log"
+        真运行 = 主模块.运行
+
+        def 假运行红(命令, 日志, 超时秒, **_kw):
+            print("[假运行] 配置命令输出（桩）", file=日志)
+            return SimpleNamespace(returncode=1)
+
+        def 假运行绿(命令, 日志, 超时秒, **_kw):
+            print("[假运行] 配置命令输出（桩）", file=日志)
+            return SimpleNamespace(returncode=0)
+        try:
+            日志路径.write_text(样例段 + "（后置步骤输出……）\n", encoding="utf-8")
+            with 日志路径.open("a", encoding="utf-8") as 日志:
+                主模块.运行 = 假运行红
+                步骤们 = {}
+                绿 = 主模块.步骤记录器(步骤们, 日志)("配置", ["cmake"], 10)
+                原文 = 步骤们["配置"].get("错误原文", "")
+                断言("#1462 错误原文：配置红=步骤红（提取挂载不吞 rc）", 绿 is False)
+                断言("#1462 错误原文：CMake Error 段随步骤回传（1212 样例锚）",
+                     "CMake Error at CMakeLists.txt:113" in 原文
+                     and "未找到系统 Google Test" in 原文)
+                # 反态：日志无 CMake Error（vcvars 缺失类输出）→ 不加键
+                日志.seek(0, 2)
+                日志.truncate(0)
+                print("未找到 vcvars64.bat（VS2022 安装不全）", file=日志)
+                步骤们2 = {}
+                主模块.步骤记录器(步骤们2, 日志)("配置", ["cmd"], 10)
+                断言("#1462 错误原文：非 cmake 形态=不加键（不硬凑）",
+                     步骤们2["配置"]["rc"] == 1
+                     and "错误原文" not in 步骤们2["配置"])
+                # 好样本对照：构建绿即使日志含 Error 字样也不落键（只在失败时提取）
+                日志.seek(0, 2)
+                日志.truncate(0)
+                print("CMake Error 历史字样（上一轮残留）", file=日志)
+                步骤们3 = {}
+                主模块.运行 = 假运行绿
+                绿3 = 主模块.步骤记录器(步骤们3, 日志)("配置", ["cmake"], 10)
+                断言("#1462 错误原文：好样本绿=不落键（只在失败时提取）",
+                     绿3 is True and "错误原文" not in 步骤们3["配置"])
+        finally:
+            主模块.运行 = 真运行
+    # ② 结构锁（源码文本·跨文件挂载面）
+    根 = Path(__file__).resolve().parent
+    源daemon = (根 / "ci_daemon.py").read_text(encoding="utf-8")
+    源池 = (根 / "ci_pool.py").read_text(encoding="utf-8")
+    源分片 = (根 / "ci_shard.py").read_text(encoding="utf-8")
+    断言("#1462 环境门：主循环判定挂载（可领任务=ci_pool.环境可领）",
+         "可领任务 = ci_pool.环境可领()" in 源daemon)
+    断言("#1462 环境门：让位/领片/锁忙三挂载条件前置（不满足不领·派发面不受影响）",
+         源daemon.count("可领任务 and ") >= 3
+         and "if 可领任务 else None" in 源daemon)
+    断言("#1462 报活载荷：环境预检 随 instance_ping 上报（探测=ci_env_probe 单点）",
+         "环境预检=ci_env_probe.探测环境(仓库根, 是win)" in 源daemon
+         and '固定["环境预检"] = 环境预检' in 源分片)
+    断言("#1462 认领门实现：ci_pool.环境可领 在位（探测+判定+缺失一行 消费）",
+         "def 环境可领(" in 源池
+         and "ci_env_probe.判定可领" in 源池
+         and "ci_env_probe.缺失一行" in 源池)
+    # ③ 新模块行数红线（#1706 先例·防回涨）
+    池行 = len((根 / "ci_pool.py").read_text(encoding="utf-8").splitlines())
+    断言("#1462 行数红线：ci_pool.py %d 行 < 1000（新模块防回涨）" % 池行, 池行 < 1000)
+    探行 = len((根 / "ci_env_probe.py").read_text(encoding="utf-8").splitlines())
+    断言("#1462 行数红线：ci_env_probe.py %d 行 < 1000（新模块防回涨）" % 探行,
+         探行 < 1000)
 
 
 def _步骤口径元信息断言(主模块, 断言) -> None:
@@ -1847,7 +1934,7 @@ def _交叉模拟分片断言(主模块, 断言) -> None:
     断言("1665 结构：daemon 平台推导/能力位单点调用 + 全局能力位在位",
          "ci_shard.启动平台信息(" in 源 and "平台, 交叉模拟实例, _平台日志们" in 源)
     断言("1665 结构：整任务认领载荷携带 交叉模拟 能力位",
-         '"交叉模拟": 交叉模拟实例' in inspect.getsource(主模块.池认领任务))
+         '"交叉模拟": 交叉模拟实例' in inspect.getsource(ci_pool.池认领任务))
     源报活 = inspect.getsource(ci_shard.启动实例报活)
     断言("1665 结构：实例报活载荷携带 交叉模拟 能力位（None=键缺失·旧 daemon 语义）",
          '固定["交叉模拟"]' in 源报活)
@@ -1888,7 +1975,7 @@ def _交叉模拟整任务断言(主模块, 断言) -> None:
     断言("1667 判定：普通实例=(True, 空日志)",
          可领丙 is True and 行丙 == "")
     # 结构锁：daemon 池认领走判定单点、载荷仍带能力位；develop 直跑让路在位
-    源认领 = inspect.getsource(主模块.池认领任务)
+    源认领 = inspect.getsource(ci_pool.池认领任务)
     断言("1667 结构：池认领走整任务认领判定 + 载荷携带能力位",
          "ci_shard.整任务认领判定(" in 源认领 and '"交叉模拟": 交叉模拟实例' in 源认领)
     源daemon = inspect.getsource(主模块)
@@ -1988,6 +2075,7 @@ def 自测(主模块) -> int:
     _兜底过期早退断言(主模块, 断言)
     _自举触发器断言(主模块, 断言)
     _步骤口径元信息断言(主模块, 断言)
+    _环境门与错误原文断言(主模块, 断言)
     _物理内存探测断言(主模块, 断言)
     _交叉模拟分片断言(主模块, 断言)
     _交叉模拟整任务断言(主模块, 断言)
@@ -1996,5 +2084,5 @@ def 自测(主模块) -> int:
     for 名, ok in 断言们:
         print("  [%s] %s" % ("OK" if ok else "×", 名))
     红 = sum(1 for _, ok in 断言们 if not ok)
-    print("== ci_daemon 自测（523+637+657+660+728t+770+842+935+973+975+1297+1299+1369+1392+1401+1423+1424+1426+1428+1460+1463+1468+1221+1608+1706）：%d 断言，%s ==" % (len(断言们), "全绿" if 红 == 0 else "红 %d" % 红))
+    print("== ci_daemon 自测（523+637+657+660+728t+770+842+935+973+975+1297+1299+1369+1392+1401+1423+1424+1426+1428+1460+1463+1468+1221+1608+1706+#1462）：%d 断言，%s ==" % (len(断言们), "全绿" if 红 == 0 else "红 %d" % 红))
     return 0 if 红 == 0 else 1

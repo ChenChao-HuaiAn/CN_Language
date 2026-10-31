@@ -21,6 +21,7 @@
 
 from __future__ import annotations   # P1-1：3.8 注解惰性化（list[...] 定义期不求值）
 
+import json
 import sqlite3
 import time
 
@@ -72,6 +73,10 @@ def 建实例表(con) -> None:
         pass
     try:   # #1608 探测态列：逐列独立 ALTER（半升级库不会因前者已存在而漏加后列）
         con.execute("ALTER TABLE 实例 ADD COLUMN 物理内存探测 TEXT")
+    except sqlite3.OperationalError:
+        pass
+    try:   # #1462 环境预检详情列（JSON 文本·NULL=旧 daemon 未上报——面板显示 —）
+        con.execute("ALTER TABLE 实例 ADD COLUMN 环境预检 TEXT")
     except sqlite3.OperationalError:
         pass
     con.execute("""CREATE TABLE IF NOT EXISTS 池设置(
@@ -329,11 +334,22 @@ def 实例报活(con, 时刻函数, 数据: dict) -> dict:
                     "说明": "物理内存MB 非法（须正整数或 null·#1608）：%r" % (原内存,)}
     else:
         物理内存MB, 内存探测 = None, None
+    # #1462：环境预检详情——键缺失=旧 daemon（None 不覆盖已存值·渐进部署）；
+    #   dict=json 文本落表（runner 侧 ci_env_probe 探测结果·面板标注缺什么）；
+    #   非 dict（含显式 null）=显式拒（事实声明不接受无意义形态·同 交叉模拟 口径）。
+    if "环境预检" in 数据:
+        原检 = 数据.get("环境预检")
+        if not isinstance(原检, dict):
+            return {"ok": False, "说明": "环境预检 非法（须对象·#1462）：%r" % (原检,)}
+        环境预检文本 = json.dumps(原检, ensure_ascii=False, sort_keys=True)
+    else:
+        环境预检文本 = None
     带指纹 = bool(树头 or 指纹)
     版时 = 时刻函数() if 带指纹 else None
     con.execute(
-        "INSERT INTO 实例(名称,平台,物理机,M6原生,交叉模拟,物理内存MB,物理内存探测,注册时刻,"
-        "最近活跃时戳,树头,daemon指纹,版本上报时刻) VALUES(?,?,?,?,?,?,?,?,?,?,?,?) "
+        "INSERT INTO 实例(名称,平台,物理机,M6原生,交叉模拟,物理内存MB,物理内存探测,"
+        "环境预检,注册时刻,"
+        "最近活跃时戳,树头,daemon指纹,版本上报时刻) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?) "
         "ON CONFLICT(名称) DO UPDATE SET "
         "最近活跃时戳=excluded.最近活跃时戳,"
         "平台=COALESCE(NULLIF(excluded.平台,''),实例.平台),"
@@ -345,11 +361,12 @@ def 实例报活(con, 时刻函数, 数据: dict) -> dict:
         # 成功写新值；旧 daemon 缺键（NULL）=保持原值不覆盖。
         "物理内存MB=CASE WHEN excluded.物理内存探测 IS NOT NULL "
         "THEN excluded.物理内存MB ELSE 实例.物理内存MB END,"
+        "环境预检=COALESCE(excluded.环境预检,实例.环境预检),"
         "树头=COALESCE(NULLIF(excluded.树头,''),实例.树头),"
         "daemon指纹=COALESCE(NULLIF(excluded.daemon指纹,''),实例.daemon指纹),"
         "版本上报时刻=COALESCE(excluded.版本上报时刻,实例.版本上报时刻)",
         (runner, 平台 or None, 物理机 or None, M6原生, 交叉模拟, 物理内存MB, 内存探测,
-         时刻函数(), int(time.time()), 树头 or None, 指纹 or None, 版时))
+         环境预检文本, 时刻函数(), int(time.time()), 树头 or None, 指纹 or None, 版时))
     return {"ok": True, "刷新请求": 取刷新请求(con)}
 
 
@@ -401,10 +418,13 @@ def 实例动态快照(con, 心跳超时秒值: int) -> list[dict]:
     排序：心跳超时→执行中→空闲→疑似离线（离线沉底·#1461 用户令·同级按名称稳定序）。
     #1426：输出物理机键（限流分组观测面·旧 daemon 空串显示 —）。
     #1608：输出 物理内存MB/物理内存探测（'成功'带数值·'失败'=面板显示「探测失败」·
-    空串=旧 daemon 未上报显示 —）。"""
+    空串=旧 daemon 未上报显示 —）。
+    #1462：输出 环境预检（实例表 JSON 文本→对象；NULL/解析失败=None=旧 daemon
+    未上报或行值损坏——面板显示 —，不冒充判定结果）。"""
     现在 = int(time.time())
     行们 = con.execute("SELECT 名称,平台,物理机,注册时刻,最近活跃时戳,树头,daemon指纹,"
-                       "版本上报时刻,M6原生,物理内存MB,物理内存探测,交叉模拟 FROM 实例").fetchall()
+                       "版本上报时刻,M6原生,物理内存MB,物理内存探测,交叉模拟,环境预检 "
+                       "FROM 实例").fetchall()
     当前 = {r[0]: r for r in con.execute(
         "SELECT 认领者,分支,sha,源分支,认领时刻,心跳时戳 FROM 预验任务 "
         "WHERE 状态='执行中' AND 认领者 IS NOT NULL").fetchall()}
@@ -416,7 +436,14 @@ def 实例动态快照(con, 心跳超时秒值: int) -> list[dict]:
         "SELECT 认领者,分支,sha,绿,更新时刻,max(序号) FROM 预验任务 "
         "WHERE 状态='完成' AND 认领者 IS NOT NULL GROUP BY 认领者").fetchall()}
     出 = []
-    for 名称, 平台, 物理机, 注册, 活跃, 树头, 指纹, 版时, M6原生, 内存MB, 内存探测, 交叉模拟 in 行们:
+    for (名称, 平台, 物理机, 注册, 活跃, 树头, 指纹, 版时, M6原生, 内存MB, 内存探测,
+         交叉模拟, 检文本) in 行们:
+        # #1462：环境预检 JSON 文本→对象（落表=本服务 dumps 的合法 JSON；解析失败
+        # =None 显式未知——面板显示 —，不炸 /api/state、不冒充结果）。
+        try:
+            环境预检 = json.loads(检文本) if 检文本 else None
+        except (TypeError, ValueError):
+            环境预检 = None
         任务 = 当前.get(名称)
         片 = 当前片.get(名称)
         当前任务 = None
@@ -444,6 +471,8 @@ def 实例动态快照(con, 心跳超时秒值: int) -> list[dict]:
                    "交叉模拟": (None if 交叉模拟 is None else bool(交叉模拟)),
                    # #1608：物理内存探测态（''=旧 daemon 未上报·前端显示 —）
                    "物理内存MB": 内存MB, "物理内存探测": 内存探测 or "",
+                   # #1462：环境预检详情（None=旧 daemon 未上报/行值损坏——前端显示 —）
+                   "环境预检": 环境预检,
                    "状态": 状态, "注册时刻": 注册, "最近活跃时戳": 活跃,
                    "树头": 树头 or "", "daemon指纹": 指纹 or "", "版本上报时刻": 版时,
                    "当前任务": 当前任务,

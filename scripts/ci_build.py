@@ -311,6 +311,41 @@ def 选编译器缓存(环境=None, 探测器=None) -> str | None:
     return 决策["launcher"]
 
 
+# ═══════════════ #1462 配置失败错误原文回传（门禁详情归因零猜测） ═══════════════
+# 1212 集成实录：配置步骤假红只有 rc 与后续「未找到 cn 产物」类笼统摘要——CMake
+# Error 原文（『未找到系统 Google Test』FATAL）只埋在轮日志文件里=归因困难。
+# ci_round_guard.运行 以 stderr=subprocess.STDOUT 合流写轮日志——提取轮日志尾部
+# 即得原文；步骤记录器 在「配置」步骤 rc!=0 时把本函数结果落 步骤["错误原文"]。
+配置错误尾窗字节 = 128 * 1024   # 尾窗（配置失败轮总秒 2~5·CMake Error 段贴近日志尾）
+配置错误段上限行 = 40           # 回传段上限（防多 Error 轮撑大 task_complete 载荷）
+
+
+def 提取配置错误段(日志) -> str:
+    """配置步骤失败时自轮日志提取 CMake Error 段原文——取尾窗内首个含「CMake Error」
+    的行至窗尾、截上限行数（一段输出可含多个 Error at·首 Error 起全量最省归因）。
+    无匹配=空串（否定回答·消费点非空才落键——vcvars 缺失等非 cmake 形态失败不硬凑）；
+    日志=None（自测桩调用面）或无 name 属性=空串。"""
+    if 日志 is None:
+        return ""
+    路径 = getattr(日志, "name", "")
+    if not 路径:
+        return ""
+    try:
+        日志.flush()     # 运行() 流式写文件对象——读盘前先落缓冲
+        with open(路径, "r", encoding="utf-8", errors="replace") as f:
+            f.seek(0, os.SEEK_END)
+            尺寸 = f.tell()
+            f.seek(max(0, 尺寸 - 配置错误尾窗字节))
+            尾窗 = f.read()
+    except OSError:
+        return ""
+    行们 = 尾窗.splitlines()
+    起 = next((i for i, 行 in enumerate(行们) if "CMake Error" in 行), None)
+    if 起 is None:
+        return ""
+    return "\n".join(行们[起:起 + 配置错误段上限行])
+
+
 def linux配置命令(launcher: str | None) -> list[str]:
     """linux cmake 配置命令（1299 抽出·正反两态自测锚）：make 增量口径不变，只额外
     显式传入 CMAKE_CXX_COMPILER_LAUNCHER——launcher=None 也传空值（覆盖 CMakeCache
