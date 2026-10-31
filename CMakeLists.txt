@@ -211,6 +211,8 @@ add_library(cn_compiler_semantic STATIC
     src/cn_compiler/semantic/semantic_expr_access.cpp
     src/cn_compiler/semantic/semantic_definit.cpp
     src/cn_compiler/semantic/semantic_call.cpp
+    # 1283：内建调用特判族（转移/复制/回绕·自 semantic_call.cpp 拆分·先拆再加）
+    src/cn_compiler/semantic/semantic_call_builtin.cpp
     src/cn_compiler/semantic/semantic_call_remove.cpp
     src/cn_compiler/semantic/semantic_call_result_ctor.cpp
     src/cn_compiler/semantic/semantic_call_ctor.cpp
