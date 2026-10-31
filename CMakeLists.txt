@@ -237,6 +237,7 @@ add_library(cn_compiler_semantic STATIC
     src/cn_compiler/semantic/semantic_borrowview.cpp
     src/cn_compiler/semantic/semantic_lue.cpp
     src/cn_compiler/semantic/semantic_lambda_escape.cpp
+    src/cn_compiler/semantic/semantic_lambda_capture.cpp  # 1178：lambda 捕获分析+[] 空捕获执法（自 semantic_expr.cpp 拆分）
     src/cn_compiler/semantic/semantic_method_value_943.cpp
     src/cn_compiler/semantic/semantic_staticguard.cpp
 )
@@ -319,6 +320,7 @@ add_library(cn_compiler_ir STATIC
     src/cn_compiler/ir/ir_call_indirect.cpp
     src/cn_compiler/ir/ir_method_value.cpp
     src/cn_compiler/ir/ir_lambda.cpp
+    src/cn_compiler/ir/ir_lambda_carrier.cpp  # 1178：482 载体快照槽族（自 ir_lambda.cpp 拆分·纯搬移）
     src/cn_compiler/ir/ir_stmt.cpp
     src/cn_compiler/ir/ir_stmt_decl.cpp
     # 1769：数组初始化列表写链（多维嵌套递归展开+缺格补默认态·自 ir_stmt_decl.cpp 族⑧拆分改造）
