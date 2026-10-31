@@ -323,7 +323,7 @@ x1
 }</code></pre></div>
 <p class="输出行">输出：5101542文本10</p>
 <h2 id="复合类型">复合类型细则</h2>
-<table class="表"><thead><tr><th>类型</th><th>语法</th><th>要点</th></tr></thead><tbody><tr><td>指针</td><td><code>类型*</code></td><td>不安全域解引用；<code>空类型*</code> 与任意指针互转</td></tr><tr><td>数组</td><td><code>类型[长度]</code></td><td>长度=编译期常量表达式（字面量/常量名/常量算术）；整体赋值=整块值拷贝（元素为字符串/类对象时句柄共享）</td></tr><tr><td>结构体</td><td><code>结构体 名 {...}</code></td><td>值聚合；指定初始化器穷举纪律</td></tr><tr><td>联合体</td><td><code>联合体 名 {...}</code></td><td>成员限可平凡复制类型（Rust union 成员须 Copy 同款）；拥有型成员编译硬错误，逃生舱=<code>手动释放</code> 标注+不安全域自行管理；字段访问=不安全操作</td></tr><tr><td>枚举</td><td><code>枚举 名 {...}</code></td><td>成员可显式赋值（含负数）；引用=<code>枚举名.成员</code></td></tr><tr><td>函数指针</td><td><code>返回(*名)(参数)</code></td><td>代码指针恒可搬运；见函数参考</td></tr><tr><td>结果/可选</td><td><code>结果&lt;T,E&gt;</code> / <code>可选&lt;T&gt;</code></td><td>错误处理类型，见错误处理参考</td></tr></tbody></table>
+<table class="表"><thead><tr><th>类型</th><th>语法</th><th>要点</th></tr></thead><tbody><tr><td>指针</td><td><code>类型*</code></td><td>不安全域解引用；<code>空类型*</code> 与任意指针互转</td></tr><tr><td>数组</td><td><code>类型[长度]</code></td><td>长度=编译期常量表达式（字面量/常量名/常量算术）；整体赋值=整块值拷贝（元素为字符串/类对象时句柄共享）；多维=数组的数组（行主序），初始化列表支持嵌套花括号逐维对应</td></tr><tr><td>结构体</td><td><code>结构体 名 {...}</code></td><td>值聚合；指定初始化器穷举纪律</td></tr><tr><td>联合体</td><td><code>联合体 名 {...}</code></td><td>成员限可平凡复制类型（Rust union 成员须 Copy 同款）；拥有型成员编译硬错误，逃生舱=<code>手动释放</code> 标注+不安全域自行管理；字段访问=不安全操作</td></tr><tr><td>枚举</td><td><code>枚举 名 {...}</code></td><td>成员可显式赋值（含负数）；引用=<code>枚举名.成员</code></td></tr><tr><td>函数指针</td><td><code>返回(*名)(参数)</code></td><td>代码指针恒可搬运；见函数参考</td></tr><tr><td>结果/可选</td><td><code>结果&lt;T,E&gt;</code> / <code>可选&lt;T&gt;</code></td><td>错误处理类型，见错误处理参考</td></tr></tbody></table>
 <div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">常量 尺寸 = 4;
 函数 主() -&gt; 整32 {
     整32[尺寸] arr;
@@ -382,7 +382,7 @@ m8=5</p><nav class="页脚导航"><a class="" href="../reference/lexical.html"><
     </div>
     <div class="页脚-底">
       <span>© 2026 CN 语言项目</span>
-      <span>文档基线：任务/1816 d7797d641·2026-10-29·示例经编译器实测</span>
+      <span>文档基线：任务/1883 62a42e28f·2026-11-01·示例经编译器实测</span>
       <span>京ICP备00000000号（备案办理中·占位）</span>
     </div>
   </div>
