@@ -759,6 +759,10 @@ void SemanticAnalyzer::visitReturnStmt(ReturnStmt* node) {
     if (currentReturnType_ == "空类型") {
         diagnostics_.report(DiagnosticLevel::Error, node->location,
                             "空类型函数不允许返回值");
+    } else if (!isTypeReferenceDeclared(currentReturnType_)) {
+        // 上游已诊断：返回类型未声明已在 registerFunction 收集趟报「未声明的
+        // 类型」（#1949 挂点③）——此处跳过返回转换检查防级联第二条件诊断
+        // （v2 同形态单诊断·p8 探针对齐；错误恢复路径非静默终态）。
     } else if (!canConvertWithLiteral(node->value.get(), valueType, currentReturnType_) ||
                // 756（2026-10-18 用户裁决·枚举值域门槛）：枚举返回槽 i32 域——
                //   返回值超域常量（枚举成员常量/字面量直存）编译期拒。

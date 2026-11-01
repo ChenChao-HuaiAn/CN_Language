@@ -415,6 +415,10 @@ void SemanticAnalyzer::registerFunction(FunctionDecl* node) {
     if (!node->returnType.empty()) {
         node->returnType = resolveTypeName(node->returnType, node->moduleName,
                                            node->location);
+        // #1949：类型引用存在性检查挂点③（对齐 v2 语义检查尾 返回类型挂点·
+        //   plans/018 类型分桶）——返回类型未声明编译期拒（此前静默放行，
+        //   体检查趟连带误报「无法将 '空类型*' 隐式转换」错因=v2 单诊断分叉）。
+        checkTypeReference(node->returnType, node->location);
     }
     info.returnType = node->returnType.empty() ? "空类型" : canonicalType(node->returnType);
     info.hasBody = (node->body != nullptr);
@@ -645,6 +649,15 @@ void SemanticAnalyzer::resolveParamTypes(FunctionDecl* node, FunctionInfo& info)
             diagnostics_, param->typeName, param->location);
         // plans/019 阶段3：常量 只读引用参数位登记（与 paramTypes 等长）
         info.constParams.push_back(param->isConstParam);
+        // #1949：参数类型引用存在性检查（对齐 v2 语义检查尾 参数挂点·
+        //   plans/018 类型分桶）——挂归一之前持源形态（模板实参递归覆盖）；
+        //   函数指针槽用规范化文本（递归返回/实参检查同 T69 分支）；
+        //   未声明此前静默放行（v2 同位拒绝·零分叉缺陷 p7 探针实锤）。
+        //   公共面单点（分支前）——else 块内禁业务语句（else 新规纪律）。
+        checkTypeReference(param->funcPtr.isFunctionPtr()
+                               ? param->funcPtr.toSymbolType()
+                               : param->typeName,
+                           param->location);
         // 函数指针参数：整32(*func)(整32, 整32) 类型存规范化字符串
         if (param->funcPtr.isFunctionPtr()) {
             info.paramTypes.push_back(param->funcPtr.toString());

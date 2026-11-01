@@ -329,8 +329,18 @@ void SemanticAnalyzer::lowerResultOptionalTypes(Program* node) {
         //   文本原样返回）；触发的泛型实例化与 visitVarDecl/instantiateGeneric
         //   同一函数同一序列，仅时点提前到入口（「一次性降级全部类型实例」）。
         //   模板 T 形态无泛型上下文原样保留（模板降级语义不变）。
+        // #1949：模板形态且含未声明类型→跳过实例化（诊断由第二趟挂点有行号
+        //   承载；此处无行号且跳过防布局查询在未登记名上级联内部错误——p13
+        //   实锤 盒子<幽灵> 在本趟实例化连带 #648/#1238 布局面内部错误先于
+        //   用户诊断。T 未绑定模板形态无尖括号不受影响=降级语义零变化）。
+        const std::string rawCanon = types::canonical(queue.back());
+        if (rawCanon.find('<') != std::string::npos &&
+            !isTypeReferenceDeclared(rawCanon)) {
+            queue.pop_back();
+            continue;
+        }
         const std::string type =
-            resolveGenericTypeName(types::canonical(queue.back()), SourceLocation());
+            resolveGenericTypeName(rawCanon, SourceLocation());
         queue.pop_back();
         if (processed.count(type)) continue;
         processed.insert(type);

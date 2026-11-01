@@ -58,6 +58,19 @@ void SemanticAnalyzer::visitVarDecl(VarDecl* node) {
     //   名<实参> -> 实例化类名（容器<整32> -> 容器$整32）。必须在初始值检查
     //   （checkExpr 触发实例化构造，返回 容器$整32）之前替换 varType，
     //   否则类型匹配（容器<整32> vs 容器$整32）失败。
+    // #1949：类型引用存在性检查挂点①（对齐 v2 检查声明类型节点→检查类型引用
+    //   plans/018 类型分桶）——挂 resolveGenericTypeName 之前持源形态（模板
+    //   实参/数组元素递归检查覆盖 向量<幽灵>/幽灵[3]）；函数内静态豁免
+    //   （v2 节点_静态声明语句趟提前返回不查·双侧只报 #324 单诊断同构 p4 探针）。
+    //   未声明此前静默放行产出错误程序（v2 同位拒绝·零分叉缺陷 n10 实锤）。
+    if (!varType.empty() && !node->isStatic) {
+        checkTypeReference(varType, node->location);
+        // 诊断后中止该声明（上游已诊断豁免）——防后续 resolveGenericTypeName
+        //   实例化/布局查询在未登记名上级联内部错误（p13 实锤：盒子<幽灵> 连带
+        //   #648/#1238 布局面两条内部错误）；变量不登记，后续引用报「未声明的
+        //   标识符」引导（v2 诊断后续航·单诊断口径=无引用形态双侧一致）。
+        if (!isTypeReferenceDeclared(varType)) return;
+    }
     varType = resolveGenericTypeName(varType, node->location);
     // A-2（crate 分桶）：变量类型按所属模块解析并改写（顶层声明用节点模块，
     //   局部变量用当前函数模块上下文；IR 层按改写后的类型查询语义表）

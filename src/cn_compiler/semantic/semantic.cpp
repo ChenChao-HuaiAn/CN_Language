@@ -702,6 +702,21 @@ void SemanticAnalyzer::registerGlobalConstsAndStatics(Program* node) {
         method_value_943::checkPlacement(
             diagnostics_, g->typeName,
             g->isStatic ? "静态变量" : "全局变量", g->location);
+        // #1949：顶层声明类型引用存在性检查挂点②（v2 语义检查尾 顶层趟
+        //   节点_变量声明/节点_静态声明 两分支同位补检查类型引用·双侧同修）——
+        //   此前顶层形态零检查（幽灵 gg;/静态 幽灵 sg; 双侧同静默=共同缺口）。
+        //   funcPtr 槽无 typeName·规范化文本承载（递归返回/实参检查同函数指针面）。
+        //   诊断后 continue 跳过该顶层登记（上游已诊断豁免·防 resolveGenericTypeName
+        //   实例化/布局查询在未登记名上级联内部错误；引用处按未声明处理同 569 先例）。
+        {
+            const std::string gDeclType = g->funcPtr.isFunctionPtr()
+                                              ? g->funcPtr.toSymbolType()
+                                              : g->typeName;
+            if (!gDeclType.empty()) {
+                checkTypeReference(gDeclType, g->location);
+                if (!isTypeReferenceDeclared(gDeclType)) continue;
+            }
+        }
         // 569 甲案（2026-10-14 用户裁决·001 §5.2a）：顶层裸全局变量声明通道
         //   （`整32 全局计数 = 5;`·§5.1 文法「全局变量声明」实体形态——此前
         //   落解析层拒/静态通道漏登记）。登记与顶层静态同表（globalStatics_/

@@ -179,6 +179,18 @@ private:
     //   （模块名::类型）；指针/数组/模板后缀递归处理。返回解析后的类型键。
     std::string resolveTypeName(const std::string& type, const std::string& module,
                                 const SourceLocation& loc);
+    // #1949：类型引用存在性检查（对齐 v2 语义分析中 检查类型引用·plans/018
+    //   类型分桶）——挂点=变量声明/函数参数/返回类型（v2 三挂点同构）。
+    //   未声明类型名此前宿主静默放行产出错误程序（v2 同位拒绝=零分叉缺陷）。
+    //   诊断落递归 miss 内层（v2 递归文案同构：幽灵[3] 报 幽灵）。
+    void checkTypeReference(const std::string& type, const SourceLocation& loc);
+    // #1949：类型引用存在性判定内核（checkTypeReference 与返回转换检查跳过
+    //   判定共用；diagnose=假纯判定·真=miss 内层报诊断）。depth=递归深度守卫。
+    bool checkTypeReferenceInner(const std::string& type, const SourceLocation& loc,
+                                 bool diagnose, int depth) const;
+    // #1949：类型引用存在性纯判定（返回转换检查跳过判定用——上游已诊断豁免
+    //   防级联第二诊断）。
+    bool isTypeReferenceDeclared(const std::string& type) const;
     // A-2：拆分限定类型键（甲::记录 -> ("甲","记录")；无 :: -> ("", 原名)）
     static void splitQualifiedType(const std::string& type, std::string& module,
                                    std::string& base);

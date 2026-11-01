@@ -201,6 +201,7 @@ add_library(cn_compiler_semantic STATIC
     src/cn_compiler/semantic/semantic_constlen.cpp
     src/cn_compiler/semantic/semantic_view_forwarders.cpp
     src/cn_compiler/semantic/semantic_types.cpp
+    src/cn_compiler/semantic/semantic_type_ref_check.cpp  # 1949：类型引用存在性检查族（自 semantic_types.cpp 拆分·先拆再加）
     src/cn_compiler/semantic/semantic_sig.cpp
     src/cn_compiler/semantic/semantic_builtins.cpp
     src/cn_compiler/semantic/semantic_expr.cpp
