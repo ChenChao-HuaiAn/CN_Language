@@ -27,6 +27,7 @@ bool SemanticAnalyzer::checkTransferCall(CallExpr* node) {
         if (arg->getType() == NodeType::MemberExpr) {
             MemberExpr* movedMemberSrc = static_cast<MemberExpr*>(arg);
             std::string mt = checkExpr(movedMemberSrc);
+            // 静默豁免上游已诊断: mt 推导 miss=显式「未知」上行（checkExpr 已诊断恢复面·消费点 转移诊断 分流）
             if (mt.empty() || mt == "未知") {
                 lastType_ = "未知";
                 return true;
@@ -40,6 +41,7 @@ bool SemanticAnalyzer::checkTransferCall(CallExpr* node) {
                                 "转移目标须为变量（标识符）或成员——下标/解引用形态"
                                 "的转移随后续轮支持");
             lastType_ = "未知";
+            // 静默豁免上游已诊断: 形态不符已报错·此为错误恢复面置未知
             return true;
         }
         IdentifierExpr* ident = static_cast<IdentifierExpr*>(arg);
@@ -91,6 +93,7 @@ bool SemanticAnalyzer::checkCopyBuiltinCall(CallExpr* node) {
         return false;
     if (static_cast<IdentifierExpr*>(node->callee.get())->name != "复制")
         return false;
+    // 静默豁免闭集穷举: 复制 内置 callee 恒为标识符（语法面保证·非本通道）
     if (node->arguments.size() != 1) {
         diagnostics_.report(DiagnosticLevel::Error, node->location,
                             "复制(表达式) 恰好接收 1 个实参");

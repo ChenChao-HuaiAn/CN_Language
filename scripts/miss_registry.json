@@ -7526,6 +7526,47 @@
    "类别": "业务值",
    "锚文本": "结果<整64, 整32> 键查482 = 调用决议查询(整64(右值位置482));",
    "静默风险": "低"
+  },
+  {
+   "函数": "checkDirectCall转移成员源",
+   "原因": "1283 拒面批：转移实参成员源类型推导 miss=显式「未知」哨兵上行（checkExpr 上游已诊断恢复面·消费点 显式转移诊断 分流）——上游已诊断类别",
+   "批准": "存量过渡",
+   "文件": "src/cn_compiler/semantic/semantic_call_builtin.cpp",
+   "来源": "1283",
+   "消费点": "转移 MemberExpr 源 mt 推导 miss 分流",
+   "锚文本": "if (mt.empty() || mt == \"未知\") {",
+   "静默风险": "低",
+   "类别": "上游已诊断"
+  },
+  {
+   "函数": "checkDirectCall转移成员源",
+   "原因": "1283 拒面批：转移实参成员源类型推导 miss=显式「未知」上行（checkExpr 上游已诊断恢复面·消费点 转移诊断 分流）",
+   "批准": "存量过渡",
+   "文件": "src/cn_compiler/semantic/semantic_call_builtin.cpp",
+   "来源": "1283",
+   "锚文本": "if (mt.empty() || mt == \"未知\") {",
+   "静默风险": "低",
+   "类别": "上游已诊断"
+  },
+  {
+   "函数": "checkDirectCall转移目标形态",
+   "原因": "1283 拒面批：转移目标形态不符已报错（上游诊断）·恢复面置未知返回",
+   "批准": "存量过渡",
+   "文件": "src/cn_compiler/semantic/semantic_call_builtin.cpp",
+   "来源": "1283",
+   "锚文本": "lastType_ = \"未知\";\n            return true;",
+   "静默风险": "低",
+   "类别": "上游已诊断"
+  },
+  {
+   "函数": "checkCopyBuiltinCall实参数",
+   "原因": "1283 批：复制 实参数不符已报错（上游诊断）·恢复面走拒绝返回——上游已诊断类别",
+   "批准": "存量过渡",
+   "文件": "src/cn_compiler/semantic/semantic_call_builtin.cpp",
+   "来源": "1283",
+   "锚文本": "if (node->arguments.size() != 1) {",
+   "静默风险": "低",
+   "类别": "上游已诊断"
   }
  ],
  "版本": 1,
