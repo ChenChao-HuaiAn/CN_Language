@@ -2,7 +2,7 @@
 // 职责（929 自 ir_stmt_decl.cpp 拆出·先拆再加：原文件 1017 行超 1000 硬红线，
 //   本函数族为 880/879 两轮新增的判据主体）：
 //   callReceiverExempt880 —— registerOopRaii 的「初值=用户函数/方法调用接收」
-//   返回来源三分判据（880 自由函数面 + 879 方法面扩展；声明见 ir_generator.hpp）。
+//   拥有性判据（880 自由函数面 + 879 方法面扩展；声明见 ir_generator.hpp）。
 // 搬移口径：原内联段逐字搬运零语义变更，唯一差异=入参 (node, ctx) 显式传递。
 #include <cstddef>
 #include <functional>
@@ -19,8 +19,8 @@ namespace cn_compiler {
 
 namespace {
 
-// 880/879 共用判据（1479 提炼为成员函数 returnSourceBorrowed880 后的扫描内核
-//   同源保留于此）：体内首个 return 表达式搜索（块/如果 基本形态递归）。
+// 880/879 共用扫描内核（1479 提炼）：体内首个 return 表达式搜索（块/如果
+//   基本形态递归）——1820 转移返回面甄别复用。
 Expr* findReturnExpr880raii(Stmt* s) {
     if (s == nullptr) return nullptr;   // 空节点=非该形态（递归出口）
     switch (s->getType()) {
@@ -58,7 +58,6 @@ Expr* findReturnExpr880raii(Stmt* s) {
 //   与自由函数同款三分——原判据只认 IdentifierExpr callee，方法调用回落
 //   「接收槽一律登记」：被调返回形参（写穿别名）时接收槽与实参槽双删
 //   C0000374。对象类型=语义层写回 semanticType（指针剥一层·v2.1 统一 . 模型）。
-//   返回 true=接收槽豁免登记（写穿别名/保守面）；false=登记回收（拥有/转移）。
 // 880 判据源成员函数（1479 提炼：原 callReceiverExempt880 内 lambda 显形为
 //   声明位/实参位共用单一判据源——语义逐字保留零变更）。扫描内核
 //   findReturnExpr880raii 见文件头匿名命名空间。
@@ -80,6 +79,16 @@ Expr* findReturnExpr880raii(Stmt* s) {
 //   pointer（rc=-6 实录）。根治须「类字段成员赋值深拷语义」立法（001 条文）+
 //   宿主/v2 双侧同步，超本轮红治理授权——保守豁免维持 1833 基线（宁漏勿崩·
 //   980 口径），立法后随门判据一并翻转。
+// 1820 追补（2026-10-30·丁案 R1③「转移源=所有权转移」）：「返回 转移(源)」
+//   显式转移作返回值=拥有（本轮补面）——转移展开=句柄直拷+源槽/成员槽清零
+//   （459-a/959），源 RAII 对清零槽空安全跳过 → 接收位=唯一持有者，须登记
+//   释放。1818 翻转条件=「首个 return=标识符」不触转移调用（CallExpr）→ 原
+//   保守豁免泄漏面仍在（E2E 1652② 锁面：返回 转移(局部) 每调用活动分配 +1·
+//   双侧同病实录）→ 非标识符保守面内**显式枚举转移调用形态**（判据见函数体
+//   1820 段）：转移源=局部标识符/成员 → 拥有；形参/全局/静态/其余 → 维持
+//   保守豁免。纯 AST 静态判定（扫描对象=被调函数体——禁用 lookupVarName：
+//   它查的是**当前生成函数**的变量表，跨函数扫描恒 miss=判据静默失效〔1820
+//   首轮实测实录·教训 #308〕）。
 bool IRGenerator::returnSourceBorrowed880(
     BlockStmt* body, const std::vector<std::unique_ptr<ParamDecl>>& params,
     const std::string& returnType) const {
@@ -106,7 +115,35 @@ bool IRGenerator::returnSourceBorrowed880(
         }
         return false;           // 局部/新建标识符=转移→登记
     }
-    return true;                // 非标识符 return：保守豁免
+    // 1820（丁案 R1③）：「返回 转移(源)」=所有权移交（拥有）——转移展开
+    //   =句柄直拷+源槽/成员槽清零，源 RAII 空安全跳过 → 接收位唯一持有者。
+    if (rv != nullptr && rv->getType() == NodeType::CallExpr) {
+        const CallExpr* transferRetCall = static_cast<const CallExpr*>(rv);
+        if (transferRetCall->callee != nullptr &&
+            transferRetCall->callee->getType() == NodeType::IdentifierExpr &&
+            static_cast<const IdentifierExpr*>(transferRetCall->callee.get())->name ==
+                "转移" &&
+            transferRetCall->arguments.size() == 1) {
+            const Expr* transferSrcExpr = transferRetCall->arguments[0].get();
+            if (transferSrcExpr->getType() == NodeType::IdentifierExpr) {
+                const std::string transferSrcName =
+                    static_cast<const IdentifierExpr*>(transferSrcExpr)->name;
+                for (auto& p : params) {
+                    if (p != nullptr && p->name == transferSrcName) return true;   // 形参=写穿借用
+                }
+                if (semantic_ != nullptr &&
+                    (semantic_->isGlobalStatic(transferSrcName) ||
+                     semantic_->globalStaticType(transferSrcName).has_value())) {
+                    return true;    // 全局/静态=借用
+                }
+                return false;       // 局部=拥有（移交·登记释放）
+            }
+            if (transferSrcExpr->getType() == NodeType::MemberExpr) {
+                return false;       // 成员=移交（959 交接设计·登记释放）
+            }
+        }
+    }
+    return true;                // 非标识符/非转移 return：保守豁免
 }
 
 bool IRGenerator::callReceiverExempt880(VarDecl* node, const DeclGenCtx& ctx) {
