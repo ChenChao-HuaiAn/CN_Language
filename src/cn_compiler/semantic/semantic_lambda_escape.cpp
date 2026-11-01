@@ -98,10 +98,12 @@ int g_lambdaDepth = 0;
 
 // #1677：lambda 帧栈（visitLambdaExpr 进出配对·嵌套逐层压/弹）：每层记录
 //   捕获方式、显式捕获列表（声明序——诊断文本确定性）与体作用域深度。
+//   byRef=引用捕获层（[&]·快照写执法据此放行写穿面）。
 //   noteFunctionEntry 全栈复位（与 g_lambdaVarSnapshots 同生命周期同复位点）。
 struct LambdaFrame {
     bool isExplicit;
-    std::vector<std::string> captures;  // 显式捕获列表（声明序）
+    bool byRef;                         // [&] 引用捕获层（写穿语义·快照只读豁免）
+    std::vector<std::string> captures;  // 捕获列表（声明序·隐式层=收集回填集）
     int bodyScopeDepth;                 // 进入体后 scopes_ 尺寸（参数层索引=本值-1）
 };
 std::vector<LambdaFrame> g_lambdaFrames;
@@ -194,9 +196,10 @@ void checkCallArgs(Diagnostics& diag, const CallExpr* node, const SourceLocation
 // ==================== #1677：lambda 显式捕获执法 ====================
 void enterLambdaFrame(bool isExplicitCapture,
                       const std::vector<std::string>& explicitCaptures,
-                      int bodyScopeDepth) {
+                      int bodyScopeDepth, bool byRefCapture) {
     LambdaFrame frame;
     frame.isExplicit = isExplicitCapture;
+    frame.byRef = byRefCapture;
     frame.captures = explicitCaptures;
     frame.bodyScopeDepth = bodyScopeDepth;
     g_lambdaFrames.push_back(std::move(frame));
@@ -239,6 +242,35 @@ bool checkExplicitCaptureRead(Diagnostics& diag, const std::string& name,
                     "'（显式捕获列表：" + capList + "）——显式捕获须逐一列出"
                     "（或改用 [=]/[&] 默认捕获）");
     return true;
+}
+
+// ==================== 值捕获快照只读执法（快照写=编译期拒） ====================
+bool checkValueCaptureWrite(Diagnostics& diag, const std::string& name,
+                            int hitScopeDepth, const SourceLocation& loc,
+                            bool fnUnsafe) {
+    if (fnUnsafe) return false;  // 不安全豁免（435 同款·责任上移）
+    // 静默豁免业务值: 谓词早退（#1360 谓词除外）——帧栈空=非 lambda 语境，false=执法不触发，纯真假判定非失败通道
+    if (g_lambdaFrames.empty()) return false;
+    const LambdaFrame& top = g_lambdaFrames.back();
+    if (top.byRef) return false;  // [&] 引用捕获=写穿原变量（合法·条文写穿语义明说）
+    if (hitScopeDepth >= top.bodyScopeDepth - 1) {
+        return false;  // 本层参数/体内声明遮蔽：写的是本层槽非捕获快照（合法）
+    }
+    // 静默豁免业务值: 单边守卫早退——hitScopeDepth<=0=全局作用域（全局变量无捕获语义·谓词早退），失败即显式返回
+    if (hitScopeDepth <= 0) {
+        return false;  // 全局作用域：不属捕获面
+    }
+    for (const auto& c : top.captures) {
+        if (c == name) {
+            diag.report(DiagnosticLevel::Error, loc,
+                        "lambda 体内修改值捕获的变量 '" + name +
+                            "'——值捕获（[=]/[变量]）为定义处快照副本（只读），"
+                            "修改不写回外部变量且不跨调用持久；"
+                            "如需写穿原变量请改用 [&] 引用捕获");
+            return true;
+        }
+    }
+    return false;  // 非捕获名（本层局部/参数写）：合法
 }
 
 } // namespace lambda_escape

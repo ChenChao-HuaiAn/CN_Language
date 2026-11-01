@@ -8,13 +8,6 @@
 //   会乱码——__cn_cache_argv 在 _WIN32 下改用 CRT 宽字符版 __wargv +
 //   WideCharToMultiByte(CP_UTF8) 转 UTF-8 缓存（CN 字符串按 UTF-8 处理）。
 //   转换后字符串为进程生命周期持有（进程退出由 CRT 清理，无需显式释放）。
-//   **非 tracked 分配**（std::malloc 直调·2026-11-01 零分叉纪律）：win 侧参数缓存
-//   不计入 活动分配数/总分配次数（linux 侧只借用 argv 指针=零分配）——
-//   ①活动分配数是 CN 程序泄漏检测基线，必须跨平台同值：win 侧若 tracked，每个程序
-//   在 main 入口即多出 1+argc 个活动分配（空参=2），用例写绝对计数就天然平台分叉
-//   （1668 实锚：linux=3/win=5·宿主与 v2 同值零分叉）；
-//   ②本缓存是进程级内部数据，从不释放也**不可**被 内存::释放全部() 回收——否则
-//   系统::参数 返回的视图立刻悬垂。故不进 tracked 注册表、不计数、不入直方图。
 // 单元测试可通过 __cn_set_argv_for_test 注入固定参数（防御 ABI 稳定，测试专用）。
 // MSVC /W4 /WX：_wgetenv/_wgetenv_s 等 CRT 传统函数视为 C4996（1272 环境变量原语）
 #define _CRT_SECURE_NO_WARNINGS
@@ -62,8 +55,6 @@ extern "C" void __cn_set_argv_for_test(int argc, char** argv) {
 //   从进程原始命令行（Unicode）解析，转 UTF-8 缓存（CN 字符串按 UTF-8 处理）。
 //   依赖 shell32.lib（CommandLineToArgvW），已在 linkExe 与 CMake 同步补充。
 // Linux：argv 已是 UTF-8（POSIX 命令行按字节传递），直接缓存指针。
-// 分配口径：两平台均**不计入** 活动分配数（linux=借用指针零分配·win=malloc 直调），
-//   见文件头「分配口径」注记（1668 跨平台分叉根治·#1884 修复轮）。
 extern "C" void __cn_cache_argv(int argc, char** argv) {
 #ifdef _WIN32
     (void)argc;  // 不用 entry 传入的 ANSI 参数（GBK 乱码 / WinMain 下不可靠）
@@ -76,7 +67,7 @@ extern "C" void __cn_cache_argv(int argc, char** argv) {
         return;
     }
     g_cached_argc = wargc;
-    g_cached_argv = static_cast<char**>(std::malloc(sizeof(char*) * static_cast<std::size_t>(wargc)));
+    g_cached_argv = static_cast<char**>(cn_alloc_tracked(sizeof(char*) * static_cast<std::size_t>(wargc)));
     if (g_cached_argv == nullptr) {
         g_cached_argc = 0;
         LocalFree(wargv);
@@ -85,7 +76,7 @@ extern "C" void __cn_cache_argv(int argc, char** argv) {
     for (int i = 0; i < wargc; ++i) {
         const int len = WideCharToMultiByte(CP_UTF8, 0, wargv[i], -1,
                                             nullptr, 0, nullptr, nullptr);
-        char* buf = static_cast<char*>(std::malloc(static_cast<std::size_t>(len)));
+        char* buf = static_cast<char*>(cn_alloc_tracked(static_cast<std::size_t>(len)));
         if (buf == nullptr) {
             g_cached_argv[i] = nullptr;
             continue;

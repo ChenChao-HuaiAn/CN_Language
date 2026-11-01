@@ -93,14 +93,9 @@ void IRGenerator::emitSharedToCarrier482(
                               ? slots.size() : metaIt->second.names.size();
     for (std::size_t ci = 0; ci < n; ++ci) {
         const std::string& cap = metaIt->second.names[ci];
-        // 1408：共享槽↔载体槽整拷宽度按「槽内实际内容」——[&] 引用捕获槽
-        //   存被捕获变量地址（8 字节·emitLambdaSnapshotStores 协议），按
-        //   captureBytes482(源型=聚合大小) 拷=越槽读（E2 实录：载体固化
-        //   CopyStruct 12B 从 8B 地址槽读邻槽垃圾）；值捕获聚合=整组字节。
-        const bool capByRef =
-            ci < metaIt->second.refs.size() && metaIt->second.refs[ci] != 0;
-        const int bytes =
-            capByRef ? 8 : captureBytes482(slots[ci].srcType).value_or(8);
+        // 1360 结果化：value_or(8) 显形——8=静态槽缺省宽（641-fix 口径·
+        //   查表 miss 与标量捕获同落 8，行为逐点不变）
+        const int bytes = captureBytes482(slots[ci].srcType).value_or(8);
         ir::IRValue srcAddr = emitResult(
             ir::Opcode::ConstString, {}, "ptr",
             "?gstatic_" + lambdaSlotKey(lambdaName, cap), loc);
@@ -122,12 +117,9 @@ void IRGenerator::emitCarrierToShared482(
                               ? slots.size() : metaIt->second.names.size();
     for (std::size_t ci = 0; ci < n; ++ci) {
         const std::string& cap = metaIt->second.names[ci];
-        // 1408：同 emitSharedToCarrier482——[&] 引用捕获槽=8 字节地址，
-        //   值捕获聚合=整组字节（双向对称·同规同宽）。
-        const bool capByRef =
-            ci < metaIt->second.refs.size() && metaIt->second.refs[ci] != 0;
-        const int bytes =
-            capByRef ? 8 : captureBytes482(slots[ci].srcType).value_or(8);
+        // 1360 结果化：value_or(8) 显形——8=静态槽缺省宽（641-fix 口径·
+        //   查表 miss 与标量捕获同落 8，行为逐点不变）
+        const int bytes = captureBytes482(slots[ci].srcType).value_or(8);
         ir::IRValue dstAddr = emitResult(
             ir::Opcode::ConstString, {}, "ptr",
             "?gstatic_" + lambdaSlotKey(lambdaName, cap), loc);

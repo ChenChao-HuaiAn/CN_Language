@@ -240,6 +240,16 @@ void SemanticAnalyzer::visitCallExpr(CallExpr* node) {
                                   staticguard::isStaticLocal(recvRoot))) {
             reportUnsafeBoundary(node->location, "静态变量写", "静态变量赋值");
         }
+        // 值捕获快照写执法（快照只读·001 §780/790）：写方法接收者根名 ∈ 当前
+        //   lambda 帧值捕获集 → 编译期拒（方法调用=写快照副本的调用形态通道·
+        //   写白名单与 916 同表复用；recvRoot 空=非写方法/非标识符根天然放行）。
+        //   v2 同构=检查合成体值捕写（语义检查lambda.cn·是容器写方法916 同表）。
+        if (!recvRoot.empty()) {
+            lambda_escape::checkValueCaptureWrite(
+                diagnostics_, recvRoot,
+                defInitLookupDepth(recvRoot).value_or(-1), node->location,
+                currentFnUnsafe_);
+        }
         if (checkInterfaceMethodCall(node, mem, objType, methodName)) return;  // 族C1：接口方法
         std::string clsName;
         const ClassMemberInfo* method = nullptr;
@@ -287,6 +297,113 @@ void SemanticAnalyzer::visitCallExpr(CallExpr* node) {
     lastType_ = "未知";
 }
 
+// 族1：显式转移 转移(变量)——表达式位特判（原 visitCallExpr 115~161 段）
+//   （声明初始化位由 visitVarDecl 先行拦截改写，不会到达此处）。表达式位仅放行
+//   指针/字符串（值交接无 RAII，ir_call 按 resolvedType 特判展开为实参值加载）；
+//   容器/类等拥有资源类型拒绝（防浅柄接管撞 RAII 双析构），随阶段3 放开。
+bool SemanticAnalyzer::checkTransferCall(CallExpr* node) {
+    if (isTransferCall(node)) {
+        Expr* arg = node->arguments[0].get();
+        // 959（008 总攻·转移位余二②）：**成员源放行**（乙 = 转移(h.桶)）——
+        //   旧名禁用按成员路径推导（成员被转移后再用 h.桶 于 IR 层清零后
+        //   读空句柄/空安全跳过；编译期拦截随 LUE 007 轮精确化）。
+        //   IR 层 ir_call 转移展开同步支持 MemberExpr 源（成员地址→句柄→
+        //   成员槽清零）。〔基准=019〕第二句：显式转移=成员所有权交接。
+        if (arg->getType() == NodeType::MemberExpr) {
+            MemberExpr* mem959 = static_cast<MemberExpr*>(arg);
+            std::string mt = checkExpr(mem959);
+            if (mt.empty() || mt == "未知") {
+                lastType_ = "未知";
+                return true;
+            }
+            node->resolvedType = mt;
+            lastType_ = mt;
+            return true;
+        }
+        if (arg->getType() != NodeType::IdentifierExpr) {
+            diagnostics_.report(DiagnosticLevel::Error, node->location,
+                                "转移目标须为变量（标识符）或成员——下标/解引用形态"
+                                "的转移随后续轮支持");
+            lastType_ = "未知";
+            return true;
+        }
+        IdentifierExpr* ident = static_cast<IdentifierExpr*>(arg);
+        std::string varType;
+        if (!lookupVar(ident->name, varType)) {
+            diagnostics_.report(DiagnosticLevel::Error, ident->location,
+                                "未声明的标识符 '" + ident->name + "'");
+            lastType_ = "未知";
+            return true;
+        }
+        const int kind = transferArgKind(varType);
+        if (kind == 1) {
+            diagnostics_.report(DiagnosticLevel::Error, node->location,
+                                "变量 '" + ident->name + "'（类型 '" + varType +
+                                    "'）具有复制语义，无需转移");
+            lastType_ = "未知";
+            return true;
+        }
+        // plans/022 波 4 首件（459-a·206-d）：拥有资源类型（容器/类/结构体/
+        //   结果/可选/数组）表达式位转移**放行**——IR 层展开=句柄直拷+源槽清零
+        //   （真槽位交接·与声明初始化位 ir_stmt_decl 浅交接分派同构）。原
+        //   「仅声明初始化位」拒绝解除：实参位/返回位等表达式位自此可显式移交
+        //   拥有型资源（Rust move 语义对照：所有权移交+源失效）。
+        if (reportMovedUse(ident->name, node->location)) {  // 再转移=使用已转移变量
+            lastType_ = "未知";
+            return true;
+        }
+        markMovedVar(ident->name, node->location.getLine());
+        // 102 甲案（2026-09-29 用户裁决·〔基准=019〕）：转移(字符串形参)＝消耗
+        //   （move 发射会清零形参槽＝清掉调用方缓冲区句柄——IR 层须先深拷）。
+        if (types::canonicalEquals(varType, "字符串")) {
+            markStringParamConsumed(ident->name);
+        }
+        node->resolvedType = varType;  // IR 层展开识别（ir_call 特判）
+        lastType_ = varType;
+        return true;
+    }
+    return false;
+}
+
+// 206-b（2026-09-15 波 4·plans/022 §四.5）：复制(表达式) 泛型克隆内置——
+//   与 转移(x) 构成显式「复制/移动」双内置（C++ copy/move 对照物）。返回类型=
+//   实参类型（泛型内置无法用固定签名注册 functions_ 表 → 调用处特判）；字符串
+//   实参置 retOwnedString（A2 拥有契约：克隆产物归调用方拥有，接收位不复制）。
+//   类实参要求类型定义拷贝构造（无则拒绝——复制 语义要求独立拥有，浅柄共享
+//   违背克隆契约）；IR 层 genCopyBuiltin 按类型分派发射（ir_fields.cpp）。
+bool SemanticAnalyzer::checkCopyBuiltinCall(CallExpr* node) {
+    if (node == nullptr || node->callee->getType() != NodeType::IdentifierExpr)
+        return false;
+    if (static_cast<IdentifierExpr*>(node->callee.get())->name != "复制")
+        return false;
+    if (node->arguments.size() != 1) {
+        diagnostics_.report(DiagnosticLevel::Error, node->location,
+                            "复制(表达式) 恰好接收 1 个实参");
+        lastType_ = "未知";
+        return true;
+    }
+    Expr* arg = node->arguments[0].get();
+    lastType_ = checkExpr(arg);
+    // 类实参：须有拷贝构造（克隆契约——无拷贝构造类型无法独立拥有副本）
+    if (!lastType_.empty() && !types::isArray(lastType_) &&
+        isClassType(types::canonical(lastType_)) &&
+        !findCopyConstructor(types::canonical(lastType_)).has_value()) {
+        diagnostics_.report(DiagnosticLevel::Error, node->location,
+                            "类型 '" + lastType_ + "' 未定义拷贝构造，无法 复制");
+        lastType_ = "未知";
+    }
+    node->resolvedType = lastType_;  // IR 层 genCopyBuiltin 分派依据
+    node->retOwnedString = (lastType_ == "字符串");  // A2：克隆产物归调用方拥有
+    // 874（任务 083·〔基准=019〕）：LUE 判定——字符串/容器面（与 v2 限面同构）；
+    //   078（934·008 总攻第二轮）：结构体面扩面（复槽分配+整块搬迁+源槽清零
+    //   在 IR 层 genCopyBuiltin 结构体 LUE 分支）；通过 → move 发射。
+    if (lastType_ == "字符串" || isClassType(types::canonical(lastType_)) ||
+        isStructType(types::canonical(lastType_))) {
+        node->lueMove = lueEligible(node, arg);
+    }
+    return true;
+}
+
 bool SemanticAnalyzer::checkFuncPtrCall(CallExpr* node, const std::string& calleeType) {
     if (isFuncPtrType(calleeType)) {
         // 1360 结果化：calleeType 已过 isFuncPtrType 前缀守卫·规范形态恒有值；
@@ -326,13 +443,6 @@ bool SemanticAnalyzer::checkFuncPtrCall(CallExpr* node, const std::string& calle
             }
         }
         lastType_ = retType;
-        // 1578（#1578·2026-10-30 伞批·#1571 同族）：**函数指针/闭包变量调用**
-        //   的 A2 拥有契约写回——原实现只置 lastType_，不置 retOwnedString：
-        //   声明位 RAII 登记/赋值位释放/语句位弃串释放/链段结算全部按「非拥有」
-        //   处理=返回堆串无人接管，每个消费点净泄 1（1517 形二值/形二引/形二写
-        //   活差 2 应为 1 实录·v2 同源）。返回段**精确**等于 "字符串"=拥有
-        //   （A2 契约）；"字符串&"（引用返回借用视图）与标量返回不置位。
-        node->retOwnedString = (retType == "字符串");
         return true;
     }
     return false;
@@ -675,13 +785,6 @@ bool SemanticAnalyzer::checkDirectCall(CallExpr* node, const std::string& callee
         //   55-c 方案A：字面量实参豁免与决议豁免（conversionLevel）同步——
         //   决议按宽化级放行的字面量形态此处不再误报
         for (std::size_t i = 0; i < node->arguments.size(); i++) {
-            // 1891（2026-11-01·1283 拒面转正配套）：整数转字符串/正数转字符串
-            //   整128/正128 实参已由 resolveOverload 入口精确路由至 128 位重载
-            //   签名（semantic_sig.cpp·semantic_builtins 注册）——1283 甲案编译期
-            //   拒面随重载落地撤销转正，本循环按选中签名形参逐位检查零特判。
-            //   整128 形参=精确匹配零转换；IR 层按 resolvedSignature 经
-            //   calibrateCallArgABI 定标双槽 ABI + __cn_str_from_i128/
-            //   __cn_str_from_u128 全宽转串（ir_call_direct 分派）。
             const std::string& paramType = info.paramTypes[i];
             if (!canConvertWithLiteral(node->arguments[i].get(), argTypes[i], paramType) &&
                 !canConvertArgNarrow(node->arguments[i].get(), argTypes[i], paramType)) {

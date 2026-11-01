@@ -162,6 +162,21 @@ void SemanticAnalyzer::visitAssignmentExpr(AssignmentExpr* node) {
         return;
     }
 
+    // 值捕获快照写执法（快照只读·001 §780/790）：赋值目标标识符/成员链/下标链
+    //   根名 ∈ 当前 lambda 帧值捕获集 → 编译期拒（写副本不写回=快照语义完整
+    //   性；[&] 写穿合法·帧内判定）。解引用/调用链根名空=安全区执法面不重复
+    //   拦。v2 同构=检查合成体值捕写（语义检查lambda.cn）。
+    {
+        std::string captureBase;
+        if (refReturnLvalueBase(node->target.get(), captureBase) &&
+            !captureBase.empty()) {
+            lambda_escape::checkValueCaptureWrite(
+                diagnostics_, captureBase,
+                defInitLookupDepth(captureBase).value_or(-1), node->location,
+                currentFnUnsafe_);
+        }
+    }
+
     // 检查右值
     // 574-a：构造器目标上下文压栈（r = 正常(...) 赋值位推断按目标 T/E）
     if (!targetType.empty() && targetType != "未知") {

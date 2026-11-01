@@ -52,20 +52,12 @@ cn::Optional<std::string> IRGenerator::lookupSrcType(const std::string& name) co
     //   本函数按「局部栈→全局静态」两段查询的合法路径）：
     //   下标读写/元素类型推导（indexTargetElemSrcType/genGenericIndexAddress
     //   步进）查局部源码类型无值后取静态数组类型 → 无此段则步进/元素判定
-    //   错位（探针 A3 实录）。**数组/指针形态返回**（整32[3] / 字符*）：
-    //   向量/映射等容器静态与标量/结构体静态不经过本段（容器静态下标=指针
-    //   语义走 ptrElem 通道·全局面行为零变化——v2p 全树编译回归实证缩窄必要性）。
-    //   #1889（2026-10-31）：静态段扩「指针形态」——静态指针变量的声明类型=
-    //   该槽真类型（与局部同口径），解引用所指（pointerPointeeSrcType 标识符
-    //   分支→pointeeOf）/成员访问/内置实参等消费点经本段推导。修前仅数组形态
-    //   返回：顶层静态 `字符* 静态视图 = "hi"` 解引用落 648「所指元素类型未
-    //   解析」内部错误（合法程序）；v2 侧 813 同拒（双侧缺口·零分叉）——
-    //   v2 解析变量所指类型 静态表回退分支同轮对称补齐。
+    //   错位（探针 A3 实录）。**仅数组形态返回**（整32[3]）：向量/映射等容器
+    //   静态与标量/结构体静态不经过本段（容器静态下标=指针语义走 ptrElem
+    //   通道·全局面行为零变化——v2p 全树编译回归实证缩窄必要性）。
     if (semantic_ != nullptr && semantic_->isGlobalStatic(name)) {
         const std::string stType = semantic_->globalStaticType(name).value_or("");
-        const std::string stCanon = types::canonical(stType);
-        if (!stType.empty() &&
-            (types::isArray(stCanon) || types::isPointer(stCanon))) {
+        if (!stType.empty() && types::isArray(types::canonical(stType))) {
             return stType;
         }
     }

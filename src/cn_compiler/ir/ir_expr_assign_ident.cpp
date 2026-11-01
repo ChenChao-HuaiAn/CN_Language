@@ -653,22 +653,7 @@ bool IRGenerator::identifierStructWholeAssign(AssignmentExpr* node, IdentifierEx
                 }
             }
         }
-        // #1884：赋值位盒面（目标=结果/可选盒变量）——让「盒拥有载荷」关系在
-        //   赋值位同样成立（声明位 280 同模型）：①在册盒的旧载荷覆盖前条件
-        //   释放（p22 循环赋值中间载荷净漏 2 根治）；②类载荷深拷/旧载荷释放
-        //   经 emitStructCopyWithFields 的 boxClassPayload 面（p19/p20）；③源=
-        //   内置构造器临时盒 → 目标接管句柄后清源值字段（move 归一·防 889
-        //   表达式面与盒亡面双删 p19 C0000374）；④首次获得拥有载荷 → 补盒亡
-        //   登记（初值为 无 且 dtor-only 等未登记形态）。
-        const bool tgtIsBoxVar =
-            (isResultType(targetCanon) || isOptionalType(targetCanon)) &&
-            !isByRefCapture(ident->name) && !unique.empty();
-        const bool boxInRegistry = tgtIsBoxVar && boxVarInRegistry(unique);
-        // 自赋值（甲 = 甲）=值语义 no-op：所有权不变——不得清源/补登记
-        const bool boxSelfAssign =
-            node->value->getType() == NodeType::IdentifierExpr &&
-            static_cast<IdentifierExpr*>(node->value.get())->name == ident->name;
-        // 8-a：结构体拷贝构造语义——目标类型有拷贝构造
+        // 2026-08-25 方案A：结构体拷贝构造语义——目标类型有拷贝构造
         //   （类名(类名& 其他)）时，按值拷贝改为调用拷贝构造（深拷贝），
         //   而非 CopyStruct 浅拷贝（含裸指针结构体浅拷贝析构双释放 0xC0000374）。
         //   无拷贝构造的纯值结构体保持 CopyStruct 浅拷贝（零开销）。
@@ -696,49 +681,10 @@ bool IRGenerator::identifierStructWholeAssign(AssignmentExpr* node, IdentifierEx
             //   （源=调用返回 retbuf）。无串字段类型走纯 memcpy（原路径）。
             emitStructCopyWithFields(dstAddr, srcAddr, assignCanonTop,
                                      node->location,
-                                     /*preFree=*/isOwnedFieldSlot(unique) ||
-                                         boxInRegistry,
+                                     /*preFree=*/isOwnedFieldSlot(unique),
                                      /*deepCopy=*/!isStructReturnCall &&
                                          !isChainedAssign,
-                                     convSrcCanon,
-                                     /*boxClassPayload=*/tgtIsBoxVar);
-        }
-        if (tgtIsBoxVar && !boxSelfAssign) {
-            // 源=内置构造器临时盒（正常/错误/某些）：目标盒已 CopyStruct 接管，
-            //   清源值字段使 889 表达式面（pendingBoxCopies_）读 0 空跳过。
-            bool srcIsBuiltinCtor = false;
-            if (node->value->getType() == NodeType::CallExpr) {
-                const CallExpr* srcCall =
-                    static_cast<const CallExpr*>(node->value.get());
-                if (srcCall->callee != nullptr &&
-                    srcCall->callee->getType() == NodeType::IdentifierExpr) {
-                    const std::string& srcCtorName =
-                        static_cast<const IdentifierExpr*>(srcCall->callee.get())
-                            ->name;
-                    srcIsBuiltinCtor = srcCtorName == "正常" ||
-                                       srcCtorName == "错误" ||
-                                       srcCtorName == "某些";
-                }
-            }
-            if (srcIsBuiltinCtor) {
-                zeroBoxPayloadField(value, targetCanon, node->location);
-            }
-            // 补盒亡登记：新值拥有 = 有拷贝构造（深拷副本）∨ 内置构造器移交
-            //   临时（正常/某些(类构造临时)）∨ 调用返回盒所有权（#1784 R1）。
-            //   内置构造器 place 实参无拷贝构造=借用共享（p13 双删面），不登记
-            //   ——故「移交给盒」只用 boxInitMovesTempPayload 判定，不敢按构造器
-            //   名一刀切。
-            if (!boxInRegistry) {
-                const cn::Optional<BoxClassPayload> pay =
-                    boxClassPayloadOf(targetCanon);
-                if (pay.has_value() &&
-                    (!pay.value().copyCtorKey.empty() ||
-                     boxInitMovesTempPayload(node->value.get()) ||
-                     boxInitFromOwnedCall(node->value.get()))) {
-                    emitBoxVarReleaseRegister(targetCanon, dstAddr, unique,
-                                              node->location);
-                }
-            }
+                                     convSrcCanon);
         }
         lastExpr_ = value;
         return true;

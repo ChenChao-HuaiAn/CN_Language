@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "cn_compiler/semantic/semantic.hpp"
+#include "cn_compiler/semantic/semantic_lambda_escape.hpp"
 #include "cn_compiler/model/semantic_helpers.hpp"
 #include "cn_compiler/model/type_system.hpp"
 #include "cn_compiler/semantic/semantic_staticguard.hpp"
@@ -79,10 +80,22 @@ void SemanticAnalyzer::visitUnaryExpr(UnaryExpr* node) {
             checkPropagateUnary(node, operandType);
             break;
         case Operator::Increment:
-        case Operator::Decrement:
+        case Operator::Decrement: {
+            // 值捕获快照写执法（快照只读·001 §780/790）：自增/自减=隐式赋值，
+            //   操作数根名 ∈ 当前 lambda 帧值捕获集 → 编译期拒（与赋值挂点同
+            //   判据·根名空=安全区执法面不重复拦）。v2 同构=检查合成体值捕写。
+            std::string incDecBase;
+            if (refReturnLvalueBase(node->operand.get(), incDecBase) &&
+                !incDecBase.empty()) {
+                lambda_escape::checkValueCaptureWrite(
+                    diagnostics_, incDecBase,
+                    defInitLookupDepth(incDecBase).value_or(-1), node->location,
+                    currentFnUnsafe_);
+            }
             // 缺陷②同族（2026-09-03）：自增/自减是隐式赋值——目标须为可写左值
             checkIncDecUnary(node, operandType);
             break;
+        }
         default:
             lastType_ = operandType;
             break;

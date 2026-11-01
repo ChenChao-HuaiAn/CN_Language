@@ -742,19 +742,12 @@ void IRGenerator::emitStructCopyWithFields(const ir::IRValue& dstAddr,
                                            const std::string& canon,
                                            const SourceLocation& loc,
                                            bool preFree, bool deepCopy,
-                                           const std::string& srcCanon,
-                                           bool boxClassPayload) {
+                                           const std::string& srcCanon) {
     if (semantic_ == nullptr) return;
     // 1589/1592：合成体异型隐式转换（同型/等价载荷=假 → 原路径；异型已接管）
     if (emitSyntheticConvCopyIfNeeded(dstAddr, srcAddr, canon, srcCanon, loc, deepCopy)) return;
     const std::vector<OwnedStrField> fields = ownedStrFieldsOf(canon);
-    // #1884：结果/可选盒的类载荷面（仅显式调用点开启）——载荷类不在
-    //   ownedStrFieldsOf 收集面（139-a 只收结构体字段的类对象·合成体载荷
-    //   ClassObj 有意不入，防与盒亡面双面释放），故此前整块位拷=两盒共享
-    //   同一句柄（p20 双删 C0000374）。此处按 tag 条件释放/深拷补齐盒值语义。
-    cn::Optional<BoxClassPayload> boxPay;
-    if (boxClassPayload) boxPay = boxClassPayloadOf(canon);
-    if (fields.empty() && !boxPay.has_value()) {
+    if (fields.empty()) {
         const int size = semantic_->typeSizeOf(types::canonical(canon)).value_or(8);
         emit(ir::Opcode::CopyStruct, {dstAddr, srcAddr}, ir::IRValue(),
              std::to_string(size), "void", loc);
@@ -765,24 +758,14 @@ void IRGenerator::emitStructCopyWithFields(const ir::IRValue& dstAddr,
     //   自赋值）实测复现（79-a 起含串字段成员位既有缺口，标识符位已有
     //   编译期 no-op）。纯值路径（上方 empty 分支）不包裹=零开销。
     const std::string skipLabel = beginSelfAssignGuard(dstAddr, srcAddr, loc);
-    if (preFree) {
-        emitOwnedStrFieldPreFree(dstAddr, canon, loc);
-        // #1884：盒旧载荷条件释放（tag 假=错误态/无值态免疫·p22 中间载荷不再漏）
-        if (boxPay.has_value()) emitBoxClassPayloadPreFree(dstAddr, boxPay.value(), loc);
-    }
+    if (preFree) emitOwnedStrFieldPreFree(dstAddr, canon, loc);
     const int size = semantic_->typeSizeOf(types::canonical(canon)).value_or(8);
     emit(ir::Opcode::CopyStruct, {dstAddr, srcAddr}, ir::IRValue(),
          std::to_string(size), "void", loc);
     // 深拷（源保持拥有）：标识符/成员来源——目标独立拥有副本；
     // 浅拷接管（调用返回）：源句柄唯一持有者转为目标（被调方返回移出已跳过释放），
     //   零拷贝——Rust move 语义在「值返回」路径上的等价物。
-    if (deepCopy) {
-        emitOwnedStrFieldPostCopy(dstAddr, srcAddr, canon, loc);
-        // #1884：盒载荷条件深拷（tag 真→独立副本·p20 两盒各拥有）
-        if (boxPay.has_value()) {
-            emitBoxClassPayloadPostCopy(dstAddr, srcAddr, boxPay.value(), loc);
-        }
-    }
+    if (deepCopy) emitOwnedStrFieldPostCopy(dstAddr, srcAddr, canon, loc);
     endSelfAssignGuard(skipLabel);
 }
 

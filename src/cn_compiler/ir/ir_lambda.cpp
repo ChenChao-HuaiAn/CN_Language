@@ -155,7 +155,7 @@ void IRGenerator::buildClosureParams943(
 //     __capstruct 临时同构——第 2 处重复留标记：固化逻辑与 ir_stmt_decl_init
 //     registerClosureIfNeeded 固化段互为镜像，数据流终点不同——captureArgs=局部
 //     值列表（同函数内联快径），本处=.data 静态槽（逃逸蹦床径），暂不机械合并）。
-//   数组值捕获：槽=整组快照（CopyStruct typeSizeOf(数组) 字节位拷·1408）。
+//   数组值捕获：槽存基址（数组名退化=元素指针·与 captureArgs 现状同语义）。
 void IRGenerator::emitLambdaSnapshotStores(
     const std::string& lambdaName,
     const std::vector<std::string>& capturedNames,
@@ -193,15 +193,6 @@ void IRGenerator::emitLambdaSnapshotStores(
         const bool isStructValCap =
             !byRef && semantic_ != nullptr &&
             semantic_->isStructType(types::canonical(capSrc));
-        // 1408（形态①）：数组值捕获=聚合值语义——槽=整组快照（原「槽存基址
-        //   （数组名退化=元素指针）」=槽 8 字节只存源数组首元素地址：浅共享
-        //   +蹦床还原指针值传多槽捕获参数（槽 1..N-1 未初始化）+体内下标读
-        //   参数槽本身=地址低 32 位当元素（h1 探针 1610174149 实录·#959 同族
-        //   比浅共享更深）。槽宽=globalStatics 注册数组文本（codegen 按类型
-        //   分派多 qword·259 静态数组同通道）；元素全标量=CopyStruct 位拷
-        //   完整快照；元素含字符串/容器/类=句柄浅共享面另域（呈报挂账）。
-        const bool isArrayValCap =
-            !byRef && semantic_ != nullptr && types::isArray(capSrc);
         // 槽注册：globalStatics 值=源类型文本（codegen 按类型分派槽宽：
         //   结构体按 typeSizeOf / i128 双槽 / 其余 8 字节——与顶层静态同通道）
         module_->globalStatics[lambdaSlotKey(lambdaName, cap)] = capSrc;
@@ -245,25 +236,6 @@ void IRGenerator::emitLambdaSnapshotStores(
                 std::make_unique<IdentifierExpr>(cap).get());
             emitStructCopyWithFields(slotAddr, srcAddr, canon, loc,
                                      /*preFree=*/false, /*deepCopy=*/true);
-        } else if (isArrayValCap) {
-            // 1408（形态①）：数组值捕获快照=定义处整组拷入槽——源地址同走
-            //   genIdentifierLvalue 单点（普通数组变量=AddrOf(槽0)=数组本体）；
-            //   宽度=typeSizeOf(数组) 结果化分流（无值=编译器内部缺陷显形——
-            //   数组已语义登记而大小查表 miss，禁静默取默认继续编译）。
-            ir::IRValue srcAddr = genIdentifierLvalue(
-                std::make_unique<IdentifierExpr>(cap).get());
-            const cn::Optional<int> bytesOpt = semantic_->typeSizeOf(capSrc);
-            if (!bytesOpt.has_value()) {
-                diagnostics_.report(DiagnosticLevel::Error, loc,
-                    "内部错误: 捕获数组 '" + cap + "' 大小查表 miss（#1408）");
-            }
-            // 业务路独立 if（else 新规：业务双路分流禁落否则块·显形后产物
-            //   由 driver hasErrors 统一丢弃）
-            if (bytesOpt.has_value()) {
-                emit(ir::Opcode::CopyStruct, {slotAddr, srcAddr},
-                     ir::IRValue(), std::to_string(bytesOpt.value()), "void",
-                     loc);
-            }
         } else {
             // 标量/字符串/容器/类值捕获：定义处快照——字符串与容器/类经
             //   evalValueCaptureCopy 深拷独立副本（940：原裸句柄浅共享，
@@ -367,12 +339,9 @@ void IRGenerator::buildClosureTrampoline943(
             callArgs.push_back(emitResult(ir::Opcode::LoadPtr, {slotAddr},
                                           "ptr", "", loc));
         } else if (!capSrc.empty() && semantic_ != nullptr &&
-                   (semantic_->isStructType(types::canonical(capSrc)) ||
-                    types::isArray(capSrc))) {
-            // 结构体/数组值捕获：实参=槽地址（被调聚合值捕获参数经
-            //   structParamIndexes 从指针 rep movsb——槽即固化缓冲；
-            //   1408：数组并入同通道，原 LoadPtr 还原 8 字节指针值传多槽
-            //   聚合参数=ABI 错位链根治）
+                   semantic_->isStructType(types::canonical(capSrc))) {
+            // 结构体值捕获：实参=槽地址（被调结构体值捕获参数经
+            //   structParamIndexes 从指针 rep movsb——槽即固化缓冲）
             callArgs.push_back(slotAddr);
         } else {
             // 标量值捕获：LoadPtr 还原快照值
@@ -577,22 +546,12 @@ void IRGenerator::visitLambdaExpr(LambdaExpr* node) {
         const bool isStructValCapture =
             !byRef && semantic_ != nullptr &&
             semantic_->isStructType(types::canonical(capSrc));
-        // 1408（形态①）：数组值捕获并入聚合值传参通道——参数按 ptr 型收
-        //   「快照槽地址」（structParamIndexes 位·prologue rep movsb 整组拷入
-        //   参数槽）。原数组参数 paramType=capType（mapType(数组)=元素 IR 型
-        //   如 i32）=1 槽收 8 字节指针值+槽 1..N-1 未初始化+体内下标读参数槽
-        //   本身=ABI 错位链（h1 探针实录）。结构体分支原判据不变。
-        const bool isArrayValCapture =
-            !byRef && semantic_ != nullptr && types::isArray(capSrc);
         std::string unique = cap + "$" + std::to_string(varCounter_++);
         const std::string paramType =
-            byRef ? "ptr"
-                  : (isStructValCapture || isArrayValCapture
-                         ? "ptr"
-                         : (capType.empty() ? "i64" : capType));
+            byRef ? "ptr" : (capType.empty() ? "i64" : capType);
         func.params.emplace_back(cap, paramType);
         func.paramUniques.push_back(unique);
-        if (isStructValCapture || isArrayValCapture) {
+        if (isStructValCapture) {
             func.structParamIndexes.insert(static_cast<int>(ci));
         }
         // [&] 引用捕获：参数槽 1 槽（8 字节指针）；[=] 值捕获：按原类型多槽（i128 双槽）

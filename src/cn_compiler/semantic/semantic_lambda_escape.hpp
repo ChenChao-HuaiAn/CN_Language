@@ -74,11 +74,25 @@ void checkCallArgs(Diagnostics& diag, const CallExpr* node, const SourceLocation
 //   帧栈生命周期与 g_lambdaVarSnapshots 同：noteFunctionEntry 全栈复位。
 void enterLambdaFrame(bool isExplicitCapture,
                       const std::vector<std::string>& explicitCaptures,
-                      int bodyScopeDepth);
+                      int bodyScopeDepth, bool byRefCapture);
 void exitLambdaFrame();
 // 读位执法：命中未捕获外层局部 → 报错并返回 true（调用方照常回类型=最小级联）。
 bool checkExplicitCaptureRead(Diagnostics& diag, const std::string& name,
                               int hitScopeDepth, const SourceLocation& loc);
+
+// ==================== 值捕获快照只读执法（快照写=编译期拒·001 §780/790） ====================
+// 值捕获（[=]/[变量]/[]）与引用捕获（[&]）分野：值捕获=定义处快照副本（只读·
+//   体内写=写副本不写回外部且不跨调用持久——快照语义完整性执法）；引用捕获=
+//   写穿原变量（合法·条文写穿语义明说）。写挂点全谱=赋值/复合赋值（标识符/
+//   成员链/下标链根名）/自增自减/容器写方法接收者（写方法白名单 916 同表）。
+//   口径与 checkExplicitCaptureRead 同序：帧栈空=非 lambda 语境直通；帧顶
+//   byRef=写穿合法放行；命中层 ≥ 体作用域深度-1=本层参数/体内声明遮蔽放行
+//   （写的是本层槽非捕获快照）；命中层 0=全局作用域放行；名∈捕获集=快照写
+//   → 编译错误（诊断指路改用 [&]）。不安全 函数 内定义豁免（435 同款·责任
+//   上移）。返回 true=已诊断（调用方照常走既有流程=最小级联）。
+bool checkValueCaptureWrite(Diagnostics& diag, const std::string& name,
+                            int hitScopeDepth, const SourceLocation& loc,
+                            bool fnUnsafe);
 
 } // namespace lambda_escape
 } // namespace cn_compiler

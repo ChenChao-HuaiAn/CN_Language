@@ -195,7 +195,8 @@ TEST(LambdaTest, ByRefWriteBack) {
     EXPECT_EQ(r.errorCount, 0);
 }
 
-// [=] 值捕获闭包内修改不影响外部（快照独立）
+// [=] 值捕获快照只读立法（#1881·001 §780/790）：体内写值捕获变量=编译期拒
+//   （原「快照独立写副本」放行面随立法反转退役——E2E 1670 dual 负测同锚）
 TEST(LambdaTest, ByValueWriteIsolated) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
@@ -205,8 +206,8 @@ TEST(LambdaTest, ByValueWriteIsolated) {
     返回 外部;
 }
 )CN");
-    EXPECT_TRUE(r.ok) << r.messages;
-    EXPECT_EQ(r.errorCount, 0);
+    EXPECT_FALSE(r.ok) << r.messages;
+    EXPECT_GE(r.errorCount, 1);
 }
 
 // 缺陷修复回归：嵌套 lambda——内层 lambda 引用的外层变量须合并到本层捕获集

@@ -39,26 +39,11 @@ void IRGenerator::visitIndexExpr(IndexExpr* node) {
                 // 1360 结果化：无值=非静态局部（has_value 分流）
                 const cn::Optional<const VarEntry*> veOptIdx852 =
                     findVarEntry(ident->name);
-                // 1408（形态②）：[&] 引用捕获数组参数——参数槽 1 槽存源
-                //   数组槽地址（[&] 快照协议·AddrOf(源槽) 固化），槽本身
-                //   非数组本体：AddrOf(参数槽)=把「存地址的槽」当数组读
-                //   （元素=槽内容·v3 探针垃圾值实录）。修=Load(参数槽)
-                //   还源数组基址（读穿源·引用语义——与数组引用形参的
-                //   指针通道同语义，彼处 srcType 含 & 走 genExpr(byRef)
-                //   =Load 同口径；数组引用变量（T[N]& 别名）同受益）。
-                //   独立查询（findVarEntry 幂等·与 852 静态判定分流互斥）。
-                const cn::Optional<const VarEntry*> veCapture =
-                    findVarEntry(ident->name);
                 if (veOptIdx852.has_value() && veOptIdx852.value()->isStaticLocal) {
                     const VarEntry* veIdx852 = veOptIdx852.value();
                     base = emitResult(ir::Opcode::ConstString, {}, "ptr",
                                       "?gstatic_" + veIdx852->uniqueName,
                                       node->location);
-                } else if (veCapture.has_value() && veCapture.value()->byRef) {
-                    base = emitResult(
-                        ir::Opcode::Load,
-                        {ir::IRValue::var(unique, "ptr")}, "ptr", unique,
-                        node->location);
                 } else {
                     base = emitResult(ir::Opcode::AddrOf,
                                       {ir::IRValue::var(unique, elemIrType)},

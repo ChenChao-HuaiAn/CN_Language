@@ -102,13 +102,10 @@ void IRGenerator::buildClosureCaptureArgs482(const ClosureInfo& info, CallExpr* 
                     {ir::IRValue::var(cc.unique, "ptr")}, "ptr",
                     cc.unique, node->location));
             } else if (semantic_ != nullptr && !capCore.empty() &&
-                       (semantic_->isStructType(
-                            types::canonical(capCore)) ||
-                        types::isArray(capCore))) {
-                // 结构体/数组值捕获：实参=载体槽地址（?lambdaN 按值形参
-                //   prologue 自该地址整块拷贝——与定义点固化同协议；
-                //   1408：数组并入同通道，原标量值装载 8 字节=多槽聚合
-                //   参数错位链根治）
+                       semantic_->isStructType(
+                           types::canonical(capCore))) {
+                // 结构体值捕获：实参=载体槽地址（?lambdaN 按值形参
+                //   prologue 自该地址整块拷贝——与定义点固化同协议）
                 closureArgs.push_back(emitResult(
                     ir::Opcode::AddrOf,
                     {ir::IRValue::var(cc.unique, "i64")}, "ptr",
