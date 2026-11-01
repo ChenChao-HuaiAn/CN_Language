@@ -345,7 +345,14 @@ void SemanticAnalyzer::checkIncDecUnary(UnaryExpr* node,
                 }
             }
             // 自增/自减：数值 或 指针（Task 2.4 指针 ++/-- 按元素大小步进）
-            if (!isNumeric(operandType) && !isPointerType(operandType)) {
+            // 1926（诊断级联层次对齐·双侧零分叉）：操作数类型「未知」=操作数
+            //   本身已在上游报错（未声明标识符等），此处不再叠「要求数值或指针」
+            //   级联——宿主既有口径「源类型未知：操作数错误已由 checkExpr 报告，
+            //   避免连锁误报」（semantic_expr.cpp visitCastExpr 段）同款；v2
+            //   语句位/表达式位恒单条（未声明诊断后提前返回·E2E 174/727 固化），
+            //   本处对齐后两侧条数一致。
+            if (operandType != "未知" &&
+                !isNumeric(operandType) && !isPointerType(operandType)) {
                 diagnostics_.report(DiagnosticLevel::Error, node->location,
                                     "自增/自减要求数值或指针操作数，实际为 '" +
                                     operandType + "'");
