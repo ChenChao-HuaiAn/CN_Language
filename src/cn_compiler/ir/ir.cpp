@@ -573,8 +573,19 @@ cn::Optional<std::string> IRGenerator::memberObjectSrcType(Expr* object) const {
 cn::Optional<std::string> IRGenerator::memberIndexObjElemType(IndexExpr* idx) const {
     std::string objType = "";
     if (idx->object->getType() == NodeType::IdentifierExpr) {
-        const std::string st = lookupSrcType(
-            static_cast<IdentifierExpr*>(idx->object.get())->name).value_or("");
+        const std::string objName =
+            static_cast<IdentifierExpr*>(idx->object.get())->name;
+        // #1699：A-1 引用参数——`向量<整32>[2]& 参` 的 参[0] 源码类型=元素类型
+        //   （剥 & 再判数组形态；genArrayVarElemAddress 早已 stripRef 取基址，
+        //   本类型推导原缺剥 & → 元素方法调用/借用来源深拷准入全 miss：探针
+        //   pR3 编译内部错误「成员 大小 所属结构体类型未解析」）。
+        std::string st = types::stripRef(lookupSrcType(objName).value_or(""));
+        // 87-a 同款静态回退：静态数组名不在 varStack_（lookupSrcType 无值）
+        if (st.empty() && semantic_ != nullptr &&
+            semantic_->isGlobalStatic(objName)) {
+            st = types::stripRef(
+                semantic_->globalStaticType(objName).value_or(""));
+        }
         if (types::isArray(st)) objType = types::arrayElemOf(st);
         else if (types::isPointer(st)) objType = types::pointeeOf(st);
     } else if (idx->object->getType() == NodeType::MemberExpr) {

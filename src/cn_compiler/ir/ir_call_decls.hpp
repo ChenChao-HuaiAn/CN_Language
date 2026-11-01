@@ -72,12 +72,34 @@
     // 981（#1744 主案）类值消费位「槽地址」物化单点：类值在槽中的表示=对象指针
     //   （句柄），拷贝构造/引用形参的 byRef ABI 约定=「槽地址（体内一层 Load 得
     //   对象指针）」。标识符/类字段（槽本身存句柄）→ lvalueAddress 即槽地址；
-    //   类值**内联数组元素**（数组缓冲直存结构体·无句柄槽）→ 物化 __classhold
-    //   临时槽（槽内=元素本体地址），返回槽地址——体内 Load 得元素地址=对象本体
+    //   类值**本体地址形态**（内联数组元素/解引用/三元透传/自身）→ 物化 __classhold
+    //   临时槽（槽内=对象指针），返回槽地址——体内 Load 得对象本体
     //   （v2 ③ 容器分支 hold 槽同构）。消费点=复制() 类分支 / 类字段赋值 183-a /
-    //   引用实参包装（refWrapAddr·wrapRefArgs 内部引用机制）。
+    //   引用实参包装（refWrapAddr·wrapRefArgs 内部引用机制）/ 类变量赋值 /
+    //   声明初始化。形态判据单点见 isBorrowedAggregateHandleSlot。
     ir::IRValue genClassValueSlotAddress(Expr* node, const std::string& canonType,
                                          const SourceLocation& loc);
+    // 类值结果 → byRef 槽地址（槽内=对象指针）：已求值结果物化单点——
+    //   消费位（声明初始化/赋值）已持有 genExpr 产出的对象指针，直接用该值建槽，
+    //   避免对源表达式二次求值（三元分支/下标自增等有副作用形态）。Alloca 临时槽
+    //   + Store + 返回槽地址；genClassValueSlotAddress 对本体地址形态内部走本函数。
+    ir::IRValue materializeClassValueSlot(const ir::IRValue& value,
+                                          const std::string& canonType,
+                                          const SourceLocation& loc);
+    // 类值消费位「须深拷副本」判据单点（声明初始化/赋值两通道共用）：
+    //   标识符（既有 719① 口径：变量赋值=独立副本）/下标（#1744）/借用来源族
+    //   （R1 谱系 isBorrowedAggregateSource——类字段/解引用/自身）/三元（#1699：
+    //   分支可能含拥有局部，运行时选中分支不可静态判定 move——直传句柄=目标与
+    //   分支变量双主析构 C0000374；安全优先取值副本语义）。
+    bool isClassValueCopySource(const Expr* node) const;
+    // 1833（1513 根治）借用来源左值地址的**形态谱分流判据**（#1699 提升为成员：
+    //   原 ir_stmt.cpp 文件局部自由函数——返回位 1817 块与 genClassValueSlotAddress
+    //   消费位共用同一事实源，两处曾各自判形态，扩展面易漂移）：
+    //   ①句柄槽形态（形参/全局/静态/裸字段 633/成员字段链）→ lvalueAddress 给
+    //   「装着句柄的槽地址」，byRef 消费方须 LoadPtr 解引一跳；
+    //   ②本体地址形态（下标内联元素 981/解引用/三元透传 86-a 汇合 Load 出的即
+    //   选中 place 值/自身 this 值）→ 地址即对象指针，直存。
+    bool isBorrowedAggregateHandleSlot(const Expr* node) const;
     // 106（890 残余·泛型方法实参面）：实参位「无」→ 可选<T> 形参空可选装箱 （canConvertType 豁免放开的 IR 配套）——Alloca 临时 + 整槽零填充
     //   （flag=0/值=0=「无」语义）+ 传地址；形参=模板/合成名双形态可选， 其余实参/形参形态 no-op（四调用点共用：普通/静态/虚/直接方法）。
     void boxNullOptionalArgs(CallExpr* node, const std::vector<std::string>& paramTypes,

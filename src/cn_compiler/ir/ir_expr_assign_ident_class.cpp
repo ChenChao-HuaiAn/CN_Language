@@ -28,13 +28,15 @@ bool IRGenerator::identifierClassCopyAssign(AssignmentExpr* node, IdentifierExpr
     // 981（#1744 同根收口）：源=类值**内联数组元素**（下标形态）同走本深拷通道
     //   ——原仅标识符源进本函数，`甲 = 组[0]` 落通用 Store 把元素本体地址当句柄
     //   存进目标槽：变量与数组元素双主（双方析构同一堆=C0000374 堆损坏，探针 d
-    //   实录·改动前编译器同崩=存量缺陷）。源类型走 exprSrcType，byRef 源槽地址
-    //   走 genClassValueSlotAddress 物化单点。
+    //   实录·改动前编译器同崩=存量缺陷）。
+    // #1699（同根族收口）：**借用来源族 + 三元**（判据单点 isClassValueCopySource）
+    //   原同样落通用 Store：`选 = 条件 ? 组[0] : 元` / `复 = 甲.内容` 把借来的
+    //   对象指针当拥有句柄覆盖进目标槽，目标与来源双主析构 C0000374（探针 pJ
+    //   改动前 10/10 崩）。非标识符源的 byRef 槽由已求值结果物化
+    //   （materializeClassValueSlot·免二次求值）。
     const bool valueIsIdent =
         node->value->getType() == NodeType::IdentifierExpr;
-    const bool valueIsIndex =
-        node->value->getType() == NodeType::IndexExpr;
-    if (semantic_ != nullptr && (valueIsIdent || valueIsIndex)) {
+    if (semantic_ != nullptr && isClassValueCopySource(node->value.get())) {
         // 1360 结果化：value_or("") 显形（miss=非类判定假·原语义）
         const std::string targetSrcType = lookupSrcType(ident->name).value_or("");
         const std::string canonTarget = types::canonical(targetSrcType);
@@ -75,12 +77,12 @@ bool IRGenerator::identifierClassCopyAssign(AssignmentExpr* node, IdentifierExpr
                     // 1360 结果化：value_or("") 显形（miss=空槽名原语义）
                     const std::string srcUnique = lookupVarName(valueName).value_or("");
                     ir::IRValue srcAddr;
-                    if (valueIsIndex) {
-                        // 981（#1744 同根）：类值内联元素源——byRef 槽地址约定
-                        //   物化（单点助手见 ir_call_decls.hpp）。
-                        srcAddr = genClassValueSlotAddress(node->value.get(),
-                                                           canonTarget,
-                                                           node->location);
+                    if (!valueIsIdent) {
+                        // 981（#1744 同根）+ #1699：非标识符类值源（内联元素/
+                        //   解引用/三元/自身/类字段）——byRef 槽地址约定：用已求值
+                        //   结果（对象指针）物化槽（单点助手·免二次求值）。
+                        srcAddr = materializeClassValueSlot(srcObj, canonTarget,
+                                                            node->location);
                     } else if (isByRefCapture(valueName)) {
                         // 源为引用参数：槽内存被引用对象地址（Load 槽）
                         srcAddr = emitResult(

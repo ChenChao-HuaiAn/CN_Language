@@ -17,32 +17,6 @@
 
 namespace cn_compiler {
 
-namespace {
-
-// 1833（2026-10-30·1513 根治）：借用来源左值地址的**形态谱分流判据**（文件局部
-//   自由函数·唯一调用点=下方 1817 块）——1817 返回位深拷须把「源对象地址」装进
-//   byRef 槽（拷构被调方契约=Load 形参槽+LoadPtr 两跳得对象句柄），而
-//   lvalueAddress 对两类谱系语义不同：
-//   ①句柄槽形态（形参/全局/静态/裸字段〔633〕/成员字段链）→ 给「装着句柄的
-//   槽地址」，须 LoadPtr 解引一跳；②本体地址形态（下标内联元素〔981·数组缓冲
-//   直存结构体无句柄槽〕/解引用〔指针值即对象地址〕/三元透传〔86-a 汇合 Load
-//   出的即选中 place 值〕/自身〔this 值〕）→ 地址即对象，直存。
-//   1513 实录：形参面漏解引 → 拷构源错位为形参槽地址 → 副本记录字段恒空
-//   （实参位 副本.记录.大小()=0 应 1·和=4 应 6）。与 isBorrowedAggregateSource
-//   同谱系伴生判据。前置条件：e 非空——1817 块 if 链已显式判
-//   node->value != nullptr 后才进入（判据函数无静默 miss 面）。
-bool isBorrowedAggregateHandleSlot(const Expr* e) {
-    switch (e->getType()) {
-        case NodeType::IdentifierExpr:   // 形参/全局/静态/裸字段（633）——槽内=句柄
-        case NodeType::MemberExpr:       // 成员链字段槽——槽内=句柄
-            return true;
-        default:                         // 下标内联/解引用/三元/自身=本体地址
-            return false;
-    }
-}
-
-}  // namespace
-
 void IRGenerator::visitExprStmt(ExprStmt* node) {
     ir::IRValue discarded = genExpr(node->expr.get());
     // 645（2026-10-14·任务 645）：语句位拥有串临时物析构——表达式语句的求值
@@ -306,13 +280,23 @@ void IRGenerator::visitReturnStmt(ReturnStmt* node) {
         //   分叉（宿主 411332211442266 vs v2 4115533222211442266）；丁案 R1②
         //   句柄源深拷无字段数例外，空类副本=NewObject(0)+拷构/零字段拷，
         //   构造/析构次数面与 v2 逐字节一致（001 §5.3 R1② 唯一权威）。
+        // #1699：返回类型文本**物化**后再 canonical——泛型类返回
+        //   （`-> 向量<整32>`·returnTypeSrc 为模板文本）原 canonical 得
+        //   「向量<整32>」非实例名「向量$整32」→ isClassType/findClass/
+        //   拷构键全 miss → 门空转，返回值=元素本体地址（栈）被接收方
+        //   当拥有句柄析构 → C0000374（探针 pR 10/10 崩）。与 exprSrcType
+        //   CallExpr 分支 845 同款物化单点（resolveGenericInstanceType 幂等）。
+        std::string returnTypeCanon;
+        if (semantic_ != nullptr && function_ != nullptr) {
+            returnTypeCanon = types::canonical(
+                resolveGenericInstanceType(function_->returnTypeSrc));
+        }
         if (semantic_ != nullptr && function_ != nullptr && node->value != nullptr &&
             !function_->returnTypeSrc.empty() && !function_->structReturn &&
             !types::isReference(function_->returnTypeSrc) &&
-            semantic_->isClassType(types::canonical(function_->returnTypeSrc)) &&
+            semantic_->isClassType(returnTypeCanon) &&
             isBorrowedAggregateSource(node->value.get())) {
-            const std::string returnCanon =
-                types::canonical(function_->returnTypeSrc);
+            const std::string returnCanon = returnTypeCanon;
             const ClassInfo* returnClassInfo =
                 semantic_->findClass(returnCanon).value_or(nullptr);
             if (returnClassInfo != nullptr) {

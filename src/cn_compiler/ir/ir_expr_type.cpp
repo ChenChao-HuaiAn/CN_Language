@@ -65,7 +65,18 @@ cn::Optional<std::string> IRGenerator::exprSrcType(Expr* node) const {
             //   原缺此分支 → 接收者=单目表达式形态（(-点(5)).x）类型推导无值 →
             //   handleClassMemberExpr 实例字段路径 isClassType 假 → return false →
             //   结构体路径 decl 空 → 字段读降级常量 0（静默错值）。
-            return optOfSrc(static_cast<UnaryExpr*>(node)->resolvedType);
+            // #1699：解引用读值（*指）源码类型=操作数指针所指类型——类值借用来源
+            //   深拷通道（声明初始化/赋值）按 exprSrcType 判类类型，缺此分支=
+            //   通道 miss→对象指针句柄直存双主（探针 pO 改动前 10/10 C0000374）。
+            //   剥星口径同 derefPointeeSrcType（. 左侧指针自动解引用一级）。
+            {
+                const UnaryExpr* ue = static_cast<const UnaryExpr*>(node);
+                if (!ue->resolvedType.empty()) return optOfSrc(ue->resolvedType);
+                if (ue->op == Operator::Deref) {
+                    return derefPointeeSrcType(ue->operand.get());
+                }
+                return std::nullopt;
+            }
         }
         case NodeType::SelfExpr:
             return optOfSrc(currentClass_);
@@ -154,45 +165,15 @@ cn::Optional<std::string> IRGenerator::exprSrcType(Expr* node) const {
             //   的接收者=IndexExpr 原缺分支 → objSrcType 空 → isClassType 假 →
             //   走通用间接调用路径被调=0 → call *r11 SIGSEGV（p2c 实锤·与转移
             //   无关的既有缺陷）。数组名 lookupSrcType → arrayElemOf 元素类型。
-            const IndexExpr* ie = static_cast<const IndexExpr*>(node);
-            if (ie->object->getType() == NodeType::IdentifierExpr) {
-                std::string arrSrc = lookupSrcType(
-                    static_cast<const IdentifierExpr*>(ie->object.get())->name).value_or("");
-                if (arrSrc.empty() && semantic_ != nullptr) {
-                    const std::string an =
-                        static_cast<const IdentifierExpr*>(ie->object.get())->name;
-                    if (semantic_->isGlobalStatic(an)) {
-                        arrSrc = semantic_->globalStaticType(an).value_or("");
-                    }
-                }
-                if (!arrSrc.empty() && types::isArray(arrSrc)) {
-                    return types::arrayElemOf(arrSrc);
-                }
-                // 728g·776 根治（通道对齐·机制级）：指针下标元素源码类型——
-                //   `学生* 名单; 名单[0].分数` 元素类型=指针所指类型。原缺此
-                //   分支 → exprSrcType 空 → handleClassMemberExpr 实例字段
-                //   路径 isClassType 假 → 类钩子 miss 落结构体通道，而类不入
-                //   结构体表（973 判例）→ findStruct 恒 null → #648 显形红
-                //   （「内部错误: 成员...未解析」）。与族③ resolveIndexObjSrcType
-                //   指针分支（同判据·排序(员工档案*) 实录）对齐：588-a 剥指针
-                //   同语义（v2.1 . 自动解引用一级）。
-                if (!arrSrc.empty() && types::isPointer(arrSrc)) {
-                    return types::pointeeOf(arrSrc);
-                }
-            }
-            // #1688（2026-10-26·多维下标读寻址链）：嵌套下标——本下标表达式
-            //   类型 = 对象剥一维（memberIndexObjElemType 单点·ir.cpp 448 提炼，
-            //   #1687 轮补 object=IndexExpr 递归分支=剥维链闭合）。原缺此分支
-            //   恒无值 → 尾段步长 8/i64 兜底（内层子数组被打包读成标量值、外层
-            //   把该值当地址=错误码 3·样本6/9 实锚）。
-            if (ie->object->getType() == NodeType::IndexExpr) {
-                // memberIndexObjElemType 形参为非 const IndexExpr*（448 既有
-                //   签名）——本函数 node 为非 const Expr*（MemberExpr 分支同款
-                //   下沉），去 const 修饰直调；成员函数本体 const 不受影响。
-                return memberIndexObjElemType(
-                    const_cast<IndexExpr*>(ie));
-            }
-            return std::nullopt;
+            // #1699：形态判据统一到 memberIndexObjElemType 单点（448 提炼）——
+            //   原本分支自持 Identifier/Index 两子分支，缺 Member 对象形态（类
+            //   字段数组元素 `甲.数据[0]`，探针 pS 声明初始化→通道 miss 双主
+            //   C0000374）且与单点漂移；统一后 Identifier（含 stripRef 引用数组
+            //   形参/静态回退）/Member/Index 三形态同源。
+            //   memberIndexObjElemType 形参非 const——与下方 Index 递归同款去
+            //   const 直调（成员函数本体 const 不受影响）。
+            return memberIndexObjElemType(const_cast<IndexExpr*>(
+                static_cast<const IndexExpr*>(node)));
         }
         case NodeType::MemberExpr: {
             MemberExpr* mem = static_cast<MemberExpr*>(node);

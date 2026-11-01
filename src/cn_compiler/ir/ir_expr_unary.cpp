@@ -644,8 +644,15 @@ void IRGenerator::visitUnaryExpr(UnaryExpr* node) {
                 //   另案，宿主侧以 plans/001 指针解引用语义为准。
                 const std::string pointeeCanon =
                     types::canonical(pointeeSrcOpt.value());
+                // #1699：**类**同属聚合所指——001 §3.2 取地址语义一致化
+                //   （&类变量 产对象地址，非句柄槽地址），故 类* 的 *p 读值
+                //   =所指对象本体地址（place 语义），原判据缺 isClassType →
+                //   LoadPtr 只读首字段（向量 首字段=数据指针）当值：消费位
+                //   （声明初始化 `向量<整32> 复 = *指`）物化槽装数据指针→
+                //   拷构解引用野地址段错误（探针 pO 修复轮 RC=139 实录）。
                 if (semantic_ != nullptr &&
                     (semantic_->isStructType(pointeeCanon) ||
+                     semantic_->isClassType(pointeeCanon) ||
                      types::isArray(pointeeCanon))) {
                     // 空指针检查（错误码3）保留：IR 无独立判空指令，FieldAddr
                     //   （偏移 0=基址+0）即「判空后回同一地址」的既有原语——

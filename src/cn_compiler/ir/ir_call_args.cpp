@@ -53,25 +53,70 @@ ir::IRValue IRGenerator::materializeStructInitArg(StructInitExpr* init,
     return base;
 }
 
-// 981（#1744 主案）：类值消费位「槽地址」物化单点（声明见 ir_call_decls.hpp）。
-//   类值在槽中的表示=对象指针（句柄）；拷贝构造/引用形参 byRef ABI 约定=槽地址
-//   （体内一层 Load 得对象指针）。标识符/类字段=句柄槽 → lvalueAddress 直用；
-//   类值内联数组元素（数组缓冲直存结构体·无句柄槽）→ 临时槽存元素本体地址。
-//   直传元素地址的后果实测：体内把元素首字段（数据指针）当对象指针再解引用
-//   （+8 读到数据缓冲第 3 个整型当元素数量）→ 非确定性越界读崩（win 981
-//   十跑七崩 C0000005）；静默形态=错值（类字段位/引用实参位探针实录）。
-ir::IRValue IRGenerator::genClassValueSlotAddress(Expr* node,
-                                                 const std::string& canonType,
-                                                 const SourceLocation& loc) {
-    ir::IRValue place = lvalueAddress(node);
-    if (node == nullptr || node->getType() != NodeType::IndexExpr) return place;
+// 1833（1513 根治·#1699 提升为成员）：借用来源左值地址的**形态谱分流判据**
+//   （声明与谱系说明见 ir_call_decls.hpp）。返回位 1817 块与
+//   genClassValueSlotAddress 共用——原为 ir_stmt.cpp 文件局部函数，第二消费面
+//   出现后提升为成员，防两处判据漂移（AGENTS 单点事实源）。
+//   前置条件：node 非空——调用点均已显式判（1817 门 node->value != nullptr /
+//   genClassValueSlotAddress 的消费位源表达式必非空），判据函数无空节点面。
+bool IRGenerator::isBorrowedAggregateHandleSlot(const Expr* node) const {
+    switch (node->getType()) {
+        case NodeType::IdentifierExpr:   // 形参/全局/静态/裸字段（633）——槽内=句柄
+        case NodeType::MemberExpr:       // 成员链字段槽——槽内=句柄
+            return true;
+        default:                         // 下标内联/解引用/三元/自身=本体地址
+            return false;
+    }
+}
+
+// 类值结果 → byRef 槽地址（槽内=对象指针）：已求值结果物化单点。
+//   消费位已持有 genExpr 产物（对象指针），直接建槽——避免对源表达式二次求值
+//   （三元分支/下标自增等有副作用形态，探针 pK 修正轮设计约束）。
+ir::IRValue IRGenerator::materializeClassValueSlot(const ir::IRValue& value,
+                                                   const std::string& canonType,
+                                                   const SourceLocation& loc) {
     const std::string hold = "__classhold" + std::to_string(varCounter_++);
     emit(ir::Opcode::Alloca, {}, ir::IRValue::reg(regCounter_++, "ptr"), hold,
          "ptr", loc);
     registerVarSlots(hold, canonType);
-    emit(ir::Opcode::Store, {place}, ir::IRValue(), hold, "ptr", loc);
+    emit(ir::Opcode::Store, {value}, ir::IRValue(), hold, "ptr", loc);
     return emitResult(ir::Opcode::AddrOf, {ir::IRValue::var(hold, "i64")}, "ptr",
                       hold, loc);
+}
+
+// 类值消费位「须深拷副本」判据单点（声明见 ir_call_decls.hpp）——声明初始化与
+//   赋值两通道共用，防两处判据漂移（#1699 六形态探针实锚）。
+//   前置条件：node 非空——调用点均已判（genExprInitializer 的
+//   initializer != nullptr 分支 / 赋值语句必有右值），判据函数无空节点面。
+bool IRGenerator::isClassValueCopySource(const Expr* node) const {
+    switch (node->getType()) {
+        case NodeType::IdentifierExpr:   // 719① 既有口径：变量赋值=独立副本
+        case NodeType::IndexExpr:        // #1744：内联数组元素（无句柄槽）
+        case NodeType::TernaryExpr:      // #1699：三元类值=值副本（分支 move 不可
+                                         //   静态判定，直传句柄=双主）
+            return true;
+        default:
+            // 借用来源族（类字段/解引用/自身）——R1 谱系判据单一事实源
+            return isBorrowedAggregateSource(node);
+    }
+}
+
+// 981（#1744 主案）：类值消费位「槽地址」物化单点（声明见 ir_call_decls.hpp）。
+//   类值在槽中的表示=对象指针（句柄）；拷贝构造/引用形参 byRef ABI 约定=槽地址
+//   （体内一层 Load 得对象指针）。标识符/类字段=句柄槽 → lvalueAddress 直用；
+//   类值本体地址形态（内联数组元素〔数组缓冲直存结构体·无句柄槽〕/解引用/
+//   三元透传/自身）→ 临时槽存对象指针。
+//   直传元素地址的后果实测：体内把元素首字段（数据指针）当对象指针再解引用
+//   （+8 读到数据缓冲第 3 个整型当元素数量）→ 非确定性越界读崩（win 981
+//   十跑七崩 C0000005）；静默形态=错值（类字段位/引用实参位探针实录）。
+//   #1699：判据由「仅下标」扩到形态谱单点——三元/解引用源进入声明初始化/
+//   赋值深拷通道时同样需要槽物化（探针 pF/pJ/pK/pO 改动前 10/10 C0000374）。
+ir::IRValue IRGenerator::genClassValueSlotAddress(Expr* node,
+                                                 const std::string& canonType,
+                                                 const SourceLocation& loc) {
+    ir::IRValue place = lvalueAddress(node);
+    if (node == nullptr || isBorrowedAggregateHandleSlot(node)) return place;
+    return materializeClassValueSlot(place, canonType, loc);
 }
 
 // 81-a：实参求值 + 「调用返回结构体临时」清理登记（泄漏面见 ir.hpp 声明注释）
