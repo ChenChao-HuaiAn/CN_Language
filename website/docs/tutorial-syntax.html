@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>教程·语法基础 · CN 语言 · CN 语言</title>
-<meta name="description" content="变量、类型、运算符、控制流、函数、数组、字符串、结构体、枚举——写过程式 CN 的全部基础。">
+<meta name="description" content="变量、类型、运算符、控制流、函数、lambda 闭包、数组、字符串、结构体、枚举——写过程式 CN 的全部基础。">
 <script>
   (function () {
     try {
@@ -44,7 +44,7 @@
     <aside class="侧栏" aria-label="文档导航"><div class="侧栏-组"><p class="侧栏-组题">入门</p><a href="index.html">文档总览</a><a href="getting-started.html">快速开始</a></div><div class="侧栏-组"><p class="侧栏-组题">教程</p><a href="tutorial-syntax.html" aria-current="page">语法基础</a><a href="tutorial-oop.html">类与泛型</a><a href="tutorial-safety.html">安全与并发</a><a href="tutorial-advanced.html">进阶篇</a></div><div class="侧栏-组"><p class="侧栏-组题">语言参考</p><a href="reference/index.html">参考总览</a><a href="reference/lexical.html">词法结构</a><a href="reference/types.html">类型系统</a><a href="reference/control-flow.html">控制流</a><a href="reference/functions.html">函数</a><a href="reference/oop.html">类与对象</a><a href="reference/errors.html">错误处理</a><a href="reference/concurrency.html">并发</a><a href="reference/modules.html">模块系统</a></div><div class="侧栏-组"><p class="侧栏-组题">标准库</p><a href="stdlib.html">标准库总览</a><a href="stdlib/core.html">核心</a><a href="stdlib/container.html">容器</a><a href="stdlib/mapset.html">映射集合</a><a href="stdlib/string.html">字符串扩展</a><a href="stdlib/algorithm.html">算法</a><a href="stdlib/regex.html">正则</a><a href="stdlib/system.html">系统</a><a href="stdlib/io.html">IO</a><a href="stdlib/file.html">文件</a><a href="stdlib/time.html">时间</a><a href="stdlib/math.html">数学</a><a href="stdlib/random.html">随机数</a><a href="stdlib/thread.html">线程</a><a href="stdlib/builtin.html">内置函数</a></div><div class="侧栏-组"><p class="侧栏-组题">资源</p><a href="cli.html">命令行参考</a><a href="migration.html">破坏性变更与迁移指南</a></div><div class="侧栏-组"><p class="侧栏-组题">资源</p><a href="https://gitcode.com/ChenChao_GitCode/CN_Language" target="_blank" rel="noopener">源码仓库 ↗</a></div></aside>
     <article class="正文"><nav class="面包屑" aria-label="面包屑"><a href="./">文档</a> / 教程·语法基础</nav>
 <h1>教程·语法基础</h1>
-<p style="color: var(--color-fg-muted); font-size: var(--text-lg); line-height: 2;">变量、类型、运算符、控制流、函数、数组、字符串、结构体、枚举——写过程式 CN 的全部基础。</p>
+<p style="color: var(--color-fg-muted); font-size: var(--text-lg); line-height: 2;">变量、类型、运算符、控制流、函数、lambda 闭包、数组、字符串、结构体、枚举——写过程式 CN 的全部基础。</p>
 <h2 id="程序骨架">程序骨架与语句</h2>
 <p>CN 源文件 UTF-8 编码、<code>.cn</code> 扩展名；顶层由函数/结构体/枚举/类/接口/导入/全局变量声明组成；入口=名为 <code>主</code> 的函数。</p>
 <div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">函数 主() -&gt; 整32 {
@@ -745,6 +745,73 @@ fall2</p>
     盒.放(53);
     返回 盒.取();
 }</code></pre></div>
+<h2 id="lambda闭包">lambda 与闭包：捕获的四形态</h2>
+<p>lambda=匿名函数——可存变量、作实参；体内引用外层变量时，<code>[捕获]</code> 决定「怎么拿」：<code>[]</code>/<code>[=]</code>/<code>[变量]</code> 拍<strong>快照</strong>（定义那一瞬间的副本），<code>[&amp;]</code> 记<strong>地址</strong>（读写穿原变量）。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">lambda起步.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">函数 主() -&gt; 整32 {
+    变量 加倍 = [](整32 x) -&gt; 整32 { 返回 x * 2; };
+    打印(加倍(21));                          // 42：存变量，像函数一样调用
+    变量 三倍 = [](整32 x) { 返回 x * 3; };   // 单一 返回 表达式→返回类型可省略
+    打印(三倍(5));                           // 15
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：42
+15
+</p>
+<table class="表"><thead><tr><th>形态</th><th>一句话</th><th>拿到的是</th><th>体内能写吗</th><th>能带出函数吗（逃逸）</th></tr></thead><tbody><tr><td><code>[]</code> 空捕获</td><td>显式承诺不依赖类环境</td><td>局部变量=隐式值快照；类字段=<strong>编译错</strong></td><td>不能（快照只读）</td><td>能（快照无悬垂）</td></tr><tr><td><code>[=]</code> 值捕获</td><td>拍快照带走</td><td>每个被引用外层变量的<strong>定义处副本</strong></td><td>不能（快照只读）</td><td>能（快照无悬垂）</td></tr><tr><td><code>[&amp;]</code> 引用捕获</td><td>记地址读穿原变量</td><td>原变量本体（读最新、写穿）</td><td>能（写穿原变量）</td><td><strong>不能</strong>（逃逸=编译错）</td></tr><tr><td><code>[变量]</code> 显式捕获</td><td>只带走点名的</td><td>点名变量的快照（值语义）</td><td>不能（快照只读）</td><td>能（快照无悬垂）</td></tr></tbody></table>
+<p><code>[=]</code> 值捕获：定义那一瞬间拍快照——之后修改外部变量，闭包读到的仍是旧值。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">函数 主() -&gt; 整32 {
+    变量 a = 3;
+    变量 b = 4;
+    变量 求和 = [=]() -&gt; 整32 { 返回 a + b; };
+    a = 30;
+    b = 40;
+    打印(求和());                     // 7（两变量均快照·非 70）
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：7</p>
+<p><code>[]</code> 空捕获：体内读局部变量按隐式值捕获（同样快照语义）——但它对类成员零容忍，见<a href="tutorial-oop.html#方法内lambda">类与泛型·方法内 lambda</a>。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">函数 主() -&gt; 整32 {
+    变量 m = 6;
+    变量 取m = []() -&gt; 整32 { 返回 m; };
+    m = 66;
+    打印(取m());                      // 6（隐式值捕获快照·非 66）
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：6</p>
+<p><code>[&amp;]</code> 引用捕获：体内赋值直接写穿原变量——体外再读是改后的新值。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">函数 主() -&gt; 整32 {
+    变量 y = 5;
+    变量 改y = [&amp;]() -&gt; 整32 {
+        y = y + 1;                    // 写穿外部
+        返回 y;
+    };
+    打印(改y());                      // 6（自增可见）
+    打印(y);                          // 6（外部被写穿·非 5）
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：6
+6</p>
+<p><code>[x, y]</code> 显式捕获：点名谁带走谁——体内引用了没点名的局部变量=编译错误（列表即承诺清单）。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">函数 主() -&gt; 整32 {
+    整32 x = 6;
+    整32 y = 7;
+    变量 乘x = [x, y](整32 v) -&gt; 整32 { 返回 x * v + y; };
+    打印(乘x(2));
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：19</p>
+<ul><li>全局变量/顶层常量<strong>不属捕获域</strong>——任何捕获形态下体内直读均合法（符号直读非环境捕获）。</li><li><code>[=]</code> 是「按需快照」：只快照体内<strong>实际引用</strong>的外层变量，没引用的不拷贝。</li><li>快照三形态（<code>[]</code>/<code>[=]</code>/<code>[变量]</code>）可安全带出定义处（存变量、作返回值皆可）；<code>[&amp;]</code> 的地址借条只在定义帧内有效——逃逸限制见下方批注。</li></ul>
+<div class="批注 批注-赭"><span class="批注-题">常见误用：以为 [] 和 [=] 一样</span>两处不一样。<strong>①类方法里</strong>：<code>[]</code> 读类字段=编译错误（<code>[]</code> 是「不依赖外部环境」的显式承诺，读字段=隐式 <code>自身</code> 依赖当场显形，见<a href="tutorial-oop.html#方法内lambda">方法内 lambda</a>）；<code>[=]</code> 才会快照字段。<strong>②快照是只读的</strong>：<code>[]</code>/<code>[=]</code>/<code>[变量]</code> 的快照只许读——体内对捕获变量赋值/自增/调容器的写方法=编译错误（写只能落到快照副本：不写回外部变量、也不跨调用持久，语言直接禁掉这个假动作）。要修改原变量，明明白白用 <code>[&amp;]</code>。</div>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">快照只读.cn（负例·编译拒绝）</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">函数 主() -&gt; 整32 {
+    变量 n = 1;
+    变量 加n = [=]() -&gt; 整32 {
+        n = n + 1;                  // ✗ 值捕获快照只读：写的是副本
+        返回 n;
+    };
+    打印(加n());
+    返回 0;
+}</code></pre></div>
+<div class="批注 批注-赭"><span class="批注-题">[&amp;] 的逃逸限制：地址借条不跨栈帧</span>引用捕获 lambda 持有定义帧局部变量的地址——赋给局部变量+同帧调用放行；作返回值（含经局部变量的传播链）、作实参传出、存进全局变量/对象字段/容器等长寿命载体=<strong>编译错误「逃逸当前栈帧」</strong>（悬垂零容忍；分析不确定也按逃逸拒绝，永不静默放行）。要带出去？改快照形态（<code>[=]</code>/<code>[变量]</code>）——快照无悬垂面。完整规则见<a href="reference/functions.html#函数指针与lambda">语言参考·函数指针与 lambda</a>。</div>
 <h2 id="数组">数组：定长、值语义、编译期长度</h2>
 <p>数组=<code>类型[长度]</code>，长度可为编译期常量表达式；整体赋值=整块值拷贝（两态独立）；越界=运行时错误（错误码 2）。</p>
 <div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">不安全 函数 主() -&gt; 整32 {
@@ -1136,7 +1203,7 @@ A\nB
 <ul><li><a href="tutorial-oop.html">教程·类与泛型</a>——类、构造析构、继承接口、泛型类、运算符重载。</li><li>语法细节疑虑随查：<a href="reference/index.html">语言参考九篇</a>。</li><li>想知道每个函数能干什么：<a href="stdlib.html">标准库</a>。</li></ul><nav class="页脚导航"><a class="" href="getting-started.html"><span class="向">← 上一页</span><span class="题">快速开始</span></a><a class="下一" href="tutorial-oop.html"><span class="向">下一页 →</span><span class="题">教程·类与泛型</span></a></nav></article>
     <aside class="目录" aria-label="本页目录">
       <p class="目录-题">本页目录</p>
-<a href="#程序骨架">程序骨架与语句</a><a href="#变量">变量与常量</a><a href="#基本类型">基本类型全景</a><a href="#类型转换">类型转换</a><a href="#运算符">运算符与优先级</a><a href="#控制流">控制流：如果/当/循环/选择/遍历</a><a href="#函数">函数：重载、默认参数、引用参数</a><a href="#数组">数组：定长、值语义、编译期长度</a><a href="#字符串">字符串：拥有型 UTF-8</a><a href="#结构体">结构体：值聚合与指定初始化器</a><a href="#枚举">枚举：命名常量族</a><a href="#下一步">下一步</a>
+<a href="#程序骨架">程序骨架与语句</a><a href="#变量">变量与常量</a><a href="#基本类型">基本类型全景</a><a href="#类型转换">类型转换</a><a href="#运算符">运算符与优先级</a><a href="#控制流">控制流：如果/当/循环/选择/遍历</a><a href="#函数">函数：重载、默认参数、引用参数</a><a href="#lambda闭包">lambda 与闭包：捕获的四形态</a><a href="#数组">数组：定长、值语义、编译期长度</a><a href="#字符串">字符串：拥有型 UTF-8</a><a href="#结构体">结构体：值聚合与指定初始化器</a><a href="#枚举">枚举：命名常量族</a><a href="#下一步">下一步</a>
     </aside>
   </div>
 </main>
@@ -1177,7 +1244,7 @@ A\nB
     </div>
     <div class="页脚-底">
       <span>© 2026 CN 语言项目</span>
-      <span>文档基线：任务/1883 62a42e28f·2026-11-01·示例经编译器实测</span>
+      <span>文档基线：任务/1890 2780ad348·2026-11-01·示例经编译器实测</span>
       <span>京ICP备00000000号（备案办理中·占位）</span>
     </div>
   </div>

@@ -1931,7 +1931,7 @@ k05邻位k04仍在
 <p>与 泛型映射 同款的编译器注入挂点与散列辅助（散列=FNV-1a 逐字节）。</p>
 </section>
 <h2 id="集合">集合&lt;T&gt;</h2>
-<p>值唯一的集合（对标 C++ <code>std::set</code>，<strong>哈希桶实现</strong>，平均 O(1) 添加/包含/删除）：判等与散列同源=**元素槽字节**，删除=链摘除 + 末元素交换。判等边界：整数/布尔=值；结构体=槽字节全等（<strong>含 padding</strong>——未初始化 padding 参与判等，同字段值未必相等）；<strong>集合&lt;字符&gt; 当前不支持</strong>；<strong>集合&lt;枚举&gt; v2 侧当前不支持</strong>（类型大小(枚举) 泛型实例内未知）；字符串=句柄身份——驻留字面量可按同一字面量查询/删除（<strong>宿主行为</strong>；v2 字面量副本化后查询/删除均不命中，见 #1328），堆串（<code>字符串复制</code>）入容器为拥有化副本、原句柄不可反查（内容键请用 <a href="#字符串映射">字符串映射&lt;布尔&gt;</a>）；浮点 ±0/NaN 按位模式（<strong>不等同于 ==</strong>：+0.0≠-0.0、仅<strong>同 bit</strong> NaN 相等；±0 同 Java Double.equals，NaN 比 Java 严格——Java 全部 NaN 相等）。构造零分配（首个元素添加时分配桶），深拷语义 + RAII。</p>
+<p>值唯一的集合（对标 C++ <code>std::set</code>，<strong>哈希桶实现</strong>，平均 O(1) 添加/包含/删除）：判等与散列同源=**元素槽字节**，删除=链摘除 + 末元素交换。判等边界：整数/布尔=值；结构体=槽字节全等（<strong>含 padding</strong>——未初始化 padding 参与判等，同字段值未必相等）；<strong>集合&lt;字符&gt; 当前不支持</strong>；<strong>集合&lt;枚举&gt; v2 侧当前不支持</strong>（类型大小(枚举) 泛型实例内未知）；字符串=句柄身份——驻留字面量可按同一字面量查询/删除（宿主与 v2 双侧一致：#1328 后 v2 字面量驻留直存·同文本同句柄），堆串（<code>字符串复制</code>）入容器为拥有化副本、原句柄不可反查（内容键请用 <a href="#字符串映射">字符串映射&lt;布尔&gt;</a>）；浮点 ±0/NaN 按位模式（<strong>不等同于 ==</strong>：+0.0≠-0.0、仅<strong>同 bit</strong> NaN 相等；±0 同 Java Double.equals，NaN 比 Java 严格——Java 全部 NaN 相等）。构造零分配（首个元素添加时分配桶），深拷语义 + RAII。</p>
 <div class="码窗"><p class="码窗-顶"><span class="码窗-名">集合.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">导入 映射集合::集合;
 
 函数 主() -&gt; 整32 {
@@ -3923,7 +3923,7 @@ ID2: 303
     </div>
     <div class="页脚-底">
       <span>© 2026 CN 语言项目</span>
-      <span>文档基线：任务/1883 62a42e28f·2026-11-01·示例经编译器实测</span>
+      <span>文档基线：任务/1890 2780ad348·2026-11-01·示例经编译器实测</span>
       <span>京ICP备00000000号（备案办理中·占位）</span>
     </div>
   </div>

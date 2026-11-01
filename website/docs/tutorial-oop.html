@@ -285,6 +285,56 @@
     返回 0;
 }</code></pre></div>
 <p class="输出行">输出：310</p>
+<h2 id="方法内lambda">方法内 lambda：捕获类字段</h2>
+<p>方法体内定义的 lambda 想用类字段？字段不会自动出现在闭包里——闭包体是<strong>独立函数帧</strong>，须显式捕获；<code>[]</code> 空捕获读/写字段=编译错误（「不依赖环境」的承诺违约当场显形）。</p>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">整32 全局计数 = 100;
+类 袋 {
+    整32 基 = 10;
+公开:
+    函数 值捕获读() -&gt; 整32 {
+        变量 f = [=]() -&gt; 整32 { 返回 基 + 1; };
+        返回 f();                       // 11（值快照 10+1）
+    }
+    函数 引用捕获写() -&gt; 整32 {
+        变量 g = [&amp;]() -&gt; 整32 { 基 = 基 + 5; 返回 基; };
+        返回 g();                       // 15（[&amp;] 写穿·基 变 15）
+    }
+    函数 显式捕获读() -&gt; 整32 {
+        变量 h = [基]() -&gt; 整32 { 返回 基 * 2; };
+        返回 h();                       // 30（定义处字段值快照=15·非 20）
+    }
+    函数 空体与全局() -&gt; 整32 {
+        变量 k = []() -&gt; 整32 { 返回 7; };          // [] 空体=零环境依赖合法
+        变量 m = []() -&gt; 整32 { 返回 全局计数; };   // [] 读全局=符号直读合法
+        返回 k() + m() - 7;             // 100
+    }
+}
+函数 主() -&gt; 整32 {
+    袋 b;
+    打印(b.值捕获读());
+    打印(b.引用捕获写());
+    打印(b.显式捕获读());
+    打印(b.空体与全局());
+    打印(全局计数);
+    返回 0;
+}</code></pre></div>
+<p class="输出行">输出：11
+15
+30
+100
+100</p>
+<ul><li>四形态合法面：<code>[=]</code> 值捕获字段=定义处字段值快照；<code>[&amp;]</code> 引用捕获=字段地址读写穿最新；<code>[字段名]</code> 显式捕获=该字段定义处快照；<code>[]</code> 只许零环境依赖（空体、只读全局/顶层常量）。</li><li><code>[]</code> 读/写类字段，或经 <code>自身</code> 的成员访问（<code>自身.字段</code> / <code>自身.方法()</code>）=隐式 this 依赖=<strong>编译错误「[] 空捕获 lambda 访问类成员」</strong>——闭包体无 <code>自身</code> 绑定，隐式依赖会读出垃圾值；按指路改 <code>[=]</code>/<code>[&amp;]</code>，或显式列出要捕获的字段名。</li><li><code>[自身]</code> 不是合法写法——<code>自身</code> 是保留字（任何标识符位不可用）；经 <code>自身</code> 的访问请用 <code>[=]</code>/<code>[&amp;]</code>。</li><li>四形态完整语义（快照只读/逃逸限制）见<a href="tutorial-syntax.html#lambda闭包">语法基础·lambda 与闭包</a>与<a href="reference/functions.html#函数指针与lambda">语言参考</a>。</li></ul>
+<div class="码窗"><p class="码窗-顶"><span class="码窗-名">空捕获读字段.cn（负例·编译拒绝）</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">类 计数器 {
+    整32 总数 = 0;
+公开:
+    函数 读总数() -&gt; 整32 {
+        变量 读 = []() -&gt; 整32 { 返回 总数; };   // ✗ [] 读类字段
+        返回 读();
+    }
+}
+函数 主() -&gt; 整32 {
+    返回 0;
+}</code></pre></div>
 <h2 id="运算符重载">运算符重载</h2>
 <p>成员函数 <code>函数 运算符X(参数)</code> 自定义运算符语义；仅限成员（左操作数必须本类实例）；双目单参数、单目无参数。</p>
 <div class="码窗"><p class="码窗-顶"><span class="码窗-名">主.cn</span><span class="码窗-徽">CN</span></p><pre><code class="language-cn">结构体 向量 { 整32 x; 整32 y; }
@@ -350,7 +400,7 @@
 <ul><li>可重载集合：<code>+ - * / % == != &lt; &gt; &lt;= &gt;= &amp;&amp; || ! &amp; | ^ ~ &lt;&lt; &gt;&gt;</code>——<code>[]</code>/<code>()</code> 解析层显式拒绝（改用 lambda 或函数指针）。</li><li>决议：先精确匹配内置运算符，无匹配才查左操作数类型的成员 <code>运算符X</code>。使用点参数个数校验：单目须 0 个右操作数、双目 1 个——不符报「重载期望 N 个右操作数」。</li><li>字符串 <code>+</code> 数值 拼接是语言内置（自动转字符串），无需重载。</li></ul><nav class="页脚导航"><a class="" href="tutorial-syntax.html"><span class="向">← 上一页</span><span class="题">教程·语法基础</span></a><a class="下一" href="tutorial-safety.html"><span class="向">下一页 →</span><span class="题">教程·安全与并发</span></a></nav></article>
     <aside class="目录" aria-label="本页目录">
       <p class="目录-题">本页目录</p>
-<a href="#第一个类">第一个类：字段、方法、可见性</a><a href="#构造析构">构造与析构：RAII 的根基</a><a href="#继承">继承与多态：虚拟/重写/自身/父类</a><a href="#接口">接口：行为契约</a><a href="#泛型类">泛型类：向量 的原理</a><a href="#静态成员">静态成员与常量成员函数</a><a href="#运算符重载">运算符重载</a>
+<a href="#第一个类">第一个类：字段、方法、可见性</a><a href="#构造析构">构造与析构：RAII 的根基</a><a href="#继承">继承与多态：虚拟/重写/自身/父类</a><a href="#接口">接口：行为契约</a><a href="#泛型类">泛型类：向量 的原理</a><a href="#静态成员">静态成员与常量成员函数</a><a href="#方法内lambda">方法内 lambda：捕获类字段</a><a href="#运算符重载">运算符重载</a>
     </aside>
   </div>
 </main>
@@ -391,7 +441,7 @@
     </div>
     <div class="页脚-底">
       <span>© 2026 CN 语言项目</span>
-      <span>文档基线：任务/1883 62a42e28f·2026-11-01·示例经编译器实测</span>
+      <span>文档基线：任务/1890 2780ad348·2026-11-01·示例经编译器实测</span>
       <span>京ICP备00000000号（备案办理中·占位）</span>
     </div>
   </div>
