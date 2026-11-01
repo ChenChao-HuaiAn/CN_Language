@@ -148,6 +148,17 @@ cn::Optional<int> SemanticAnalyzer::interfaceSlot(const std::string& ifaceName,
 cn::Optional<const ClassMemberInfo*> SemanticAnalyzer::lookupClassMember(
     const std::string& className, const std::string& memberName,
     std::string& ownerClass) const {
+    bool isMethod = false;
+    return lookupClassMemberEx(className, memberName, ownerClass, isMethod);
+}
+
+// #1920：查询带**命中表**输出（isMethodOut）——方法值类型推断须区分「方法
+//   引用」与「字段读」，零参方法不能靠参数表是否为空判别；本实现是
+//   lookupClassMember 的唯一实现体（逐层字段→方法同序），两个出口共用，
+//   禁第二个链遍历副本。字段/方法同名病态声明下字段优先的既有口径不变。
+cn::Optional<const ClassMemberInfo*> SemanticAnalyzer::lookupClassMemberEx(
+    const std::string& className, const std::string& memberName,
+    std::string& ownerClass, bool& isMethodOut) const {
     const ClassInfo* info = findClass(className).value_or(nullptr);
     while (info != nullptr) {
         auto f = info->fields.find(memberName);
@@ -156,12 +167,14 @@ cn::Optional<const ClassMemberInfo*> SemanticAnalyzer::lookupClassMember(
             //   保证访问控制按"声明类"检查：子类访问父类私有 -> 拒绝）
             ownerClass = f->second.ownerClass.empty() ? info->name
                                                       : f->second.ownerClass;
+            isMethodOut = false;
             return &f->second;
         }
         auto m = info->methods.find(memberName);
         if (m != info->methods.end()) {
             ownerClass = m->second.ownerClass.empty() ? info->name
                                                       : m->second.ownerClass;
+            isMethodOut = true;
             return &m->second;
         }
         // 沿继承链向上

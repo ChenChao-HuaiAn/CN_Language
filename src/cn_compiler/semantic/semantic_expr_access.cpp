@@ -247,7 +247,12 @@ void SemanticAnalyzer::visitMemberExpr(MemberExpr* node) {
     const ClassInfo* cls = findClass(structType).value_or(nullptr);
     if (cls != nullptr) {
         std::string ownerClass;
-        const ClassMemberInfo* member = lookupClassMember(structType, memberName, ownerClass).value_or(nullptr);
+        // #1920：命中表输出——方法引用（含**零参**方法）与字段读按表归属区分；
+        //   禁按参数表是否为空判别（零参实例方法=方法值，不是字段读）。
+        bool memberIsMethod = false;
+        const ClassMemberInfo* member =
+            lookupClassMemberEx(structType, memberName, ownerClass, memberIsMethod)
+                .value_or(nullptr);
         // 122（928·用户裁决乙）：限定构造访问统一拒绝——命中形态（无参构造
         //   signatureKey 空参=纯名·按名查找巧合命中）与构造意图 miss 形态
         //   （memberName==类名=带参构造键带 # 后缀 miss）统一引导初始化列表。
@@ -305,8 +310,9 @@ void SemanticAnalyzer::visitMemberExpr(MemberExpr* node) {
         }
         // 静态成员引用：直接给类型（供 IR 层取静态字段/静态方法地址）
         if (member->isStatic) {
-            // P3-23：静态方法作值（函数指针）——类型为方法签名
-            if (cls->methods.find(memberName) != cls->methods.end()) {
+            // P3-23：静态方法作值（函数指针）——类型为方法签名（方法表命中才
+            //   是方法；静态字段同名病态声明仍按字段读=memberIsMethod 同源判定）
+            if (memberIsMethod) {
                 std::string fp = "函数指针<" + member->type + ">(";
                 for (std::size_t i = 0; i < member->paramTypes.size(); ++i) {
                     if (i > 0) fp += ",";
@@ -329,9 +335,17 @@ void SemanticAnalyzer::visitMemberExpr(MemberExpr* node) {
             checkAccess(*ownerInfo, *member, contextClass, node->location,
                         member->isConstructor || member->isDestructor ? "方法" : "成员");
         }
-        // 方法引用：类型为 方法签名（供 对象.方法() 调用检查；此处给返回类型）
-        if (!member->paramTypes.empty() || member->isConstructor ||
-            member->isDestructor) {
+        // 方法引用：类型为 方法签名（供 对象.方法() 调用检查）
+        // #1920 根修：方法判定口径=**类方法表命中**（lookupClassMemberEx 命中表
+        //   输出——与上方静态方法分支同一判定源）。原启发式「参数表非空 ||
+        //   构造/析构」把零参实例方法漏判为字段读：`变量 绑定 = 乙.取名;` 类型
+        //   推成返回类型 '字符串'（应=方法值<乙类,函数指针<字符串>()>），随后
+        //   绑定() 走非函数类型通道被拒「无法调用非函数类型 '字符串'」。
+        //   零参≠字段——方法表命中即方法（v2 语义检查推导.cn 方法回退按 类方法
+        //   参数串 取签名，零参同样产方法值类型=双侧同口径；宿主单侧分叉根修）。
+        //   构造/析构保留显式判定（构造在上面已拒；析构按 sigKey 存储，名键
+        //   未必命中=保留原语义）。
+        if (memberIsMethod || member->isConstructor || member->isDestructor) {
             // 方法作值（签名串）
             std::string fp = "函数指针<" + member->type + ">(";
             for (std::size_t i = 0; i < member->paramTypes.size(); ++i) {

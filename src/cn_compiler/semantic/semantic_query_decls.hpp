@@ -122,6 +122,13 @@
     cn::Optional<const ClassMemberInfo*> lookupClassMember(const std::string& className,
                                              const std::string& memberName,
                                              std::string& ownerClass) const override ;
+    // #1920：同上 + 命中表输出（isMethodOut=真=命中类方法表，假=命中字段表）
+    //   ——方法值类型推断须区分「方法引用」与「字段读」（零参方法不得按参数表
+    //   是否为空判别）；字段/方法同名病态声明仍按字段优先（既有口径不变）。
+    //   唯一实现体=lookupClassMemberEx，lookupClassMember 委托之。
+    cn::Optional<const ClassMemberInfo*> lookupClassMemberEx(
+        const std::string& className, const std::string& memberName,
+        std::string& ownerClass, bool& isMethodOut) const;
     // 2026-08-25 方案A：查类的拷贝构造（单参同类型引用 类名(类名& 其他)）；
     //   有值=按值拷贝走深拷贝；1360 结果化批3A：无值=无拷贝构造
     cn::Optional<const ClassMemberInfo*> findCopyConstructor(const std::string& className) const override ;
