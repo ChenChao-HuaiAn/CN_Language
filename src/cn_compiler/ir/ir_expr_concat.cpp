@@ -19,10 +19,25 @@
 #include <vector>
 
 #include "cn_compiler/ir/ir.hpp"
+#include "cn_compiler/model/semantic_helpers.hpp"
 #include "cn_compiler/model/semantic_view.hpp"
 #include "cn_compiler/model/type_system.hpp"
 
 namespace cn_compiler {
+
+namespace {
+// 源码类型文本判定「字符串语义类型」——拼接/比较共用判据的单点入口：
+//   剥尾 '&'（引用返回后缀·右值读值后类型；与下方调用形态豁免同口径）后按
+//   model 层单一事实源 isStringSemanticType（字符串/字符*）判定；'*' 不剥
+//   （字符* 是字符串视图类型本体）。无值/空串=无法推导 → 假（保守不判字符串·
+//   禁默认猜型；漏判方向=退回整值比较/指针算术，由调用点各自的兜底纪律处理）。
+bool isStringSemanticSrcText(const cn::Optional<std::string>& srcType) {
+    if (!srcType.has_value() || srcType.value().empty()) return false;
+    std::string t = srcType.value();
+    if (t.back() == '&') t.pop_back();
+    return isStringSemanticType(types::canonical(t));
+}
+}  // namespace
 
 // 728o：连接链融合最小段数阈值。链长 2（`甲+乙`）时原路径「一次分配+两段
 //   拷贝」已是最优（融合反而多出缓冲分配与完成拷贝=负优化），故不融合；
@@ -548,8 +563,17 @@ bool IRGenerator::chainSegOwnedTemp(Expr* segAst) const {
 //   类型来源=exprSrcType 统一推导（985 面：自由函数 funcReturnTypeOf ∪ 方法
 //   调用 lookupClassMember），剥尾 '&'（引用返回后缀·右值读值后类型）后判定
 //   （'*' 不剥——`字符*` 是字符串视图类型本体）。
+//   1925（成员/解引用形态补齐·零分叉红线）：原判定只认 字面量/标识符/连接链/
+//   数组元素/调用 五形态——**成员访问（结构体字段/类字段/结果载荷）与解引用
+//   读值不在判据面** → 整值指针比较：`甲卡.内容 != "甲"`（字段存堆副本·
+//   与字面量异地址）恒判不等（001 §比较语义要求内容比较·探针 9001b/9002/9004/
+//   9006 实录），且 `字段 + 数值` 被误发射为指针算术（语义层已按拼接分派=
+//   双侧分叉）。现改为「已知形态显式判 + 其余统一回落 exprSrcType 单点推导」
+//   （成员访问→字段类型[含结构体/类/结果载荷/泛型物化]/三元/自身/单目重载
+//   结果全覆盖）；解引用读值（*p）单列——类型=操作数所指（pointerPointeeSrcType
+//   单点·指针/数组退化同口径）。
 //   诚实边界：exprSrcType 对「对象为表达式/链式」的方法调用与未知形态返回
-//   空串 → false（保守不判字符串·零行为变更；主形态=标识符对象/直接调用）。
+//   无值 → false（保守不判字符串；主形态=标识符对象/直接调用/字段访问）。
 bool IRGenerator::isStringTypedExpr(Expr* node) const {
     if (node == nullptr) return false;
     switch (node->getType()) {
@@ -566,7 +590,7 @@ bool IRGenerator::isStringTypedExpr(Expr* node) const {
                 // 连接/拼接结果：左字符串（含数值拼接）即结果字符串
                 return isStringTypedExpr(bin->left.get());
             }
-            return false;
+            break;  // 其余二元（运算符重载结果等）→ 统一回落 exprSrcType
         }
         case NodeType::IndexExpr: {
             // 数组元素：元素类型为字符串/字符（字符串[i] -> 字符 仍可参与拼接）
@@ -579,19 +603,23 @@ bool IRGenerator::isStringTypedExpr(Expr* node) const {
                     return (elem == "字符串" || elem == "字符");
                 }
             }
-            return false;
+            break;  // 指针下标/嵌套下标/容器元素等 → 统一回落 exprSrcType
         }
-        case NodeType::CallExpr: {
-            // 933：调用返回类型经 exprSrcType 推导（含引用返回），剥尾 '&' 判定
-            // 1360 结果化：value_or("") 显形（无法推导=非字符串判定假·原语义）
-            std::string ct = exprSrcType(node).value_or("");
-            if (!ct.empty() && ct.back() == '&') ct.pop_back();
-            const std::string ccanon = types::canonical(ct);
-            return (ccanon == "字符串" || ccanon == "字符*");
+        case NodeType::UnaryExpr: {
+            const UnaryExpr* un = static_cast<const UnaryExpr*>(node);
+            if (un->op == Operator::Deref) {
+                // 解引用读值（*p）：类型=操作数所指（指针剥星/数组退化单点）
+                return isStringSemanticSrcText(
+                    pointerPointeeSrcType(un->operand.get()));
+            }
+            break;  // 其余单目（运算符重载结果）→ 统一回落 exprSrcType
         }
         default:
-            return false;
+            break;  // 成员访问/三元/自身等 → 统一回落 exprSrcType
     }
+    // 统一回落：exprSrcType 单点推导（成员访问字段/结果载荷/三元/调用返回/
+    //   运算符重载结果等）；无法推导=无值 → false（保守不判字符串）。
+    return isStringSemanticSrcText(exprSrcType(node));
 }
 
 // 段值 -> 字符串值（融合段追加前转换单点入口）：
