@@ -691,3 +691,101 @@ TEST(SemanticOopTest, SuperMethodCall) {
     EXPECT_TRUE(r.ok) << r.messages;
     EXPECT_EQ(r.errorCount, 0);
 }
+
+// ==================== 级联释放警告（#1950·宿主 checkClassMethods 缺陷3 警告面锁） ====================
+
+// 触发形态：外层类无析构 + 字段类有析构 → 警告（不阻断编译）
+TEST(SemanticOopTest, CascadeDestroyWarningTriggered) {
+    auto r = analyzeSource(R"CN(
+类 内C {
+公开:
+    整32 v;
+    函数 内C() { v = 7; }
+    函数 ~内C() { }
+}
+类 外A {
+公开:
+    内C 里的;
+}
+函数 主() -> 整32 {
+    外A a;
+    返回 a.里的.v;
+}
+)CN");
+    EXPECT_TRUE(r.ok) << r.messages;
+    EXPECT_EQ(r.errorCount, 0);
+    EXPECT_GT(r.warningCount, 0);
+    EXPECT_NE(r.messages.find("类 '外A' 的字段 '里的' 为有析构类（内C），建议声明析构（函数 ~外A()）以级联释放字段资源，否则泄漏"), std::string::npos);
+}
+
+// 不触发形态族：外层有析构 / 字段类无析构 / 指针字段 / 手动释放<T> 字段 → 零警告
+TEST(SemanticOopTest, CascadeDestroyWarningNotTriggered) {
+    auto r = analyzeSource(R"CN(
+类 内C {
+公开:
+    整32 v;
+    函数 内C() { v = 7; }
+    函数 ~内C() { }
+}
+类 无D {
+公开:
+    整32 v;
+    函数 无D() { v = 1; }
+}
+类 外B {
+公开:
+    内C 里的;
+    函数 ~外B() { }
+}
+类 外C {
+公开:
+    无D 里的;
+}
+类 外D {
+公开:
+    内C* 里的;
+}
+类 外H {
+公开:
+    手动释放<内C> 里的;
+}
+函数 主() -> 整32 {
+    外B b;
+    外C c;
+    外D d;
+    外H h;
+    返回 b.里的.v + c.里的.v;
+}
+)CN");
+    EXPECT_TRUE(r.ok) << r.messages;
+    EXPECT_EQ(r.errorCount, 0);
+    EXPECT_EQ(r.warningCount, 0) << r.messages;
+}
+
+// 沿链形态：字段类自身无析构但基类有析构 → 触发（宿主 methods 表含 resolveClass
+//   父类成员并入）；外层自身无析构但基类有析构 → 早退不触发
+TEST(SemanticOopTest, CascadeDestroyWarningInheritanceChain) {
+    auto r = analyzeSource(R"CN(
+类 基X {
+公开:
+    函数 ~基X() { }
+}
+类 内C {
+公开:
+    整32 v;
+    函数 ~内C() { }
+}
+类 外Y : 基X {
+公开:
+    内C 里的;
+}
+函数 主() -> 整32 {
+    外Y g;
+    返回 g.里的.v;
+}
+)CN");
+    // 外层沿链有析构（基X）→ hasDtor 早退，字段不触发
+    EXPECT_TRUE(r.ok) << r.messages;
+    EXPECT_EQ(r.errorCount, 0);
+    EXPECT_EQ(r.warningCount, 0) << r.messages;
+}
