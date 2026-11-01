@@ -679,14 +679,29 @@ void IRGenerator::visitLambdaExpr(LambdaExpr* node) {
                                             ? param->funcPtr.toString()
                                             : param->typeName);
     }
+    // #1578：lambda 体**返回位串拥有性**（定义处按返回表达式形态判定存表）——
+    //   被调=闭包变量时链段结算/实参临时结算按本项分流。为什么必须在定义处
+    //   求值：lambda 体 AST 只在此处可达（合成函数是 IRFunction，无 AST 回溯
+    //   通道）；调用点只剩返回类型，而返回类型判据会把「返回 形参」（借用透传，
+    //   lambda 体 A2 尚未执法）误判为拥有 → 释放未被授予所有权的串。
+    //   捕获名传参=拥有（返回位已由 visitReturnStmt 复制落堆·1571 同点）。
+    {
+        std::vector<std::string> userParamNames;
+        for (const auto& param : node->params) {
+            if (param != nullptr) userParamNames.push_back(param->name);
+        }
+        lastLambdaReturnBodyOwned_ = stringReturnBodyOwned(
+            node->body.get(), userParamNames, 4, &capturedNames);
+    }
     // 482：静态调用元数据持久副本（接收点跨函数重建载体登记用——lastLambda*
     //   为一次性通道，随后被 genVarDecl 消费清空）。
     {
-        LambdaStaticInfo482 si482;
-        si482.returnIrType = returnIrType;
-        si482.srcReturnType = node->returnType;
-        si482.paramTypes = lastLambdaParamTypes_;
-        lambdaStaticInfo482_[lambdaName] = std::move(si482);
+        LambdaStaticInfo482 staticMeta;
+        staticMeta.returnIrType = returnIrType;
+        staticMeta.srcReturnType = node->returnType;
+        staticMeta.paramTypes = lastLambdaParamTypes_;
+        staticMeta.returnBodyOwned = lastLambdaReturnBodyOwned_;  // #1578 同源
+        lambdaStaticInfo482_[lambdaName] = std::move(staticMeta);
     }
     // 表达式结果 = 蹦床函数地址（432：原 ?lambdaN 裸地址——捕获实参无载体，
     //   经返回/实参逃逸后调用读到垃圾参数=悬垂面根治）。

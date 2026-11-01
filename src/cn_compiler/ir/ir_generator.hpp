@@ -214,8 +214,7 @@ private:
     bool returnSourceBorrowed880(BlockStmt* body,
                                  const std::vector<std::unique_ptr<ParamDecl>>& params,
                                  const std::string& returnType) const;
-    // ⑦-c 1479（965 前置机制·实现迁 ir_stmt_decl_raii.cpp）：「调用返回类对象
-    //   临时」实参位拥有性甄别——拥有=登记整壳释放；借用/保守=不登记
+    // ⑦-c 1479（965 前置机制·实现迁 ir_stmt_decl_raii.cpp）：「调用返回类对象临时」实参位拥有性甄别——拥有=登记整壳释放；借用/保守=不登记
     //   （宁漏勿崩·误释借用句柄=删调用方对象）。
     enum class ClassReturnOwnership { Owned, Borrowed, Conservative };
     ClassReturnOwnership classifyClassReturnOwnership(const CallExpr* ce);
@@ -364,8 +363,7 @@ private:
     void genWhile(WhileStmt* node);             // 当循环
     void genFor(ForStmt* node);                 // 循环（for风格/无限）
     void genSwitch(SwitchStmt* node);           // 选择语句（级联条件跳转）
-    // 1137（审查修复 P2·体量拆分）：情况字符串比较（__cn_str_eq 链·
-    //   genSwitch 内联段外迁）。
+    // 1137（审查修复 P2·体量拆分）：情况字符串比较（__cn_str_eq 链·genSwitch 内联段外迁）。
     ir::IRValue emitCaseStringCompare1137(const std::string& text,
                                           const ir::IRValue& sel,
                                           const SourceLocation& loc);
@@ -464,6 +462,8 @@ private:
     std::vector<std::string> lastLambdaParamTypes_;
     // 最近 lambda 各捕获是否引用捕获（缺陷修复：决定定义处捕获实参是 值快照（[=]/[变量]）还是变量地址指针（[&]），genVarDecl 登记闭包时使用）
     std::vector<char> lastLambdaCaptureRefs_;
+    // #1578：最近 lambda 体返回位串拥有性（定义处按返回形态判定·与 lastLambda* 同生命周期一次性通道）——genVarDecl 登记 ClosureInfo/载体静态元数据共用。
+    bool lastLambdaReturnBodyOwned_ = false;
     // 1571：lambda 体捕获名帧栈（返回位拥有契约：捕获槽=只读快照/外层地址，返回 字符串 须复制落堆）
     std::vector<std::unordered_set<std::string>> lambdaCaptureFrames_;
     // 查询变量是否为"引用捕获参数"（lambda 匿名函数内 [&] 捕获的参数槽存 被捕获变量地址，读取须解引用、赋值须经指针——规格书04-一D 引用语义）

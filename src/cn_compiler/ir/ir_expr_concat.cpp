@@ -396,9 +396,13 @@ void collectVarInitExprsOwned(const Stmt* s, const std::string& name,
 // 单个返回表达式形态 -> 拥有性（递归；判定谱系见上方族注释）。
 //   互斥穷举：case 全列合法拥有形态，default=未列形态（成员读/下标读/解引用/
 //   赋值/自增等）→ 借用视图。空表达式（语句 `返回;`）=借用面。
+//   #1578：captureNames=当前 lambda 捕获名集——捕获名在返回位已由 1571 自动
+//   复制成拥有副本（捕获槽=只读快照/外层变量地址，所有权不能搬出），故命中
+//   => 拥有；非 lambda 面（方法体）传空，捕获名天然不存在。
 bool IRGenerator::stringReturnFormOwned(const Expr* e, const BlockStmt* body,
                                        const std::vector<std::string>& paramNames,
-                                       int depth) const {
+                                       int depth,
+                                       const std::vector<std::string>* captureNames) const {
     const NodeType kind = (e != nullptr) ? e->getType() : NodeType::Program;
     switch (kind) {
         case NodeType::StringLiteral:
@@ -407,8 +411,10 @@ bool IRGenerator::stringReturnFormOwned(const Expr* e, const BlockStmt* body,
             return static_cast<const BinaryExpr*>(e)->op == Operator::Add;  // 连接产物
         case NodeType::TernaryExpr: {
             const auto* te = static_cast<const TernaryExpr*>(e);
-            return stringReturnFormOwned(te->trueValue.get(), body, paramNames, depth) &&
-                   stringReturnFormOwned(te->falseValue.get(), body, paramNames, depth);
+            return stringReturnFormOwned(te->trueValue.get(), body, paramNames, depth,
+                                         captureNames) &&
+                   stringReturnFormOwned(te->falseValue.get(), body, paramNames, depth,
+                                         captureNames);
         }
         case NodeType::CallExpr: {
             const auto* ce = static_cast<const CallExpr*>(e);
@@ -428,15 +434,24 @@ bool IRGenerator::stringReturnFormOwned(const Expr* e, const BlockStmt* body,
         }
         case NodeType::IdentifierExpr: {
             const std::string& n = static_cast<const IdentifierExpr*>(e)->name;
+            std::vector<const Expr*> inits;
+            if (body != nullptr) collectVarInitExprsOwned(body, n, inits);
+            // #1578：lambda 捕获名=返回位自动复制成拥有副本（1571 visitReturnStmt
+            //   同点·值捕获/引用捕获同判）——**无同名局部声明遮蔽**时方能作数
+            //   （体内重声明同名变量=返回的是该局部，按局部移出判据处置）。
+            if (inits.empty() && captureNames != nullptr) {
+                for (const auto& c : *captureNames) {
+                    if (c == n) return true;
+                }
+            }
             bool paramHit = false;
             for (const auto& p : paramNames) {
                 if (p == n) paramHit = true;   // 形参=写穿别名（210 已被语义拒·防御留）
             }
-            std::vector<const Expr*> inits;
-            if (body != nullptr) collectVarInitExprsOwned(body, n, inits);
             bool initsOwned = !inits.empty();   // 无同名声明=字段裸名/全局静态=借用
             for (const Expr* init : inits) {
-                if (!stringReturnFormOwned(init, body, paramNames, depth - 1)) {
+                if (!stringReturnFormOwned(init, body, paramNames, depth - 1,
+                                           captureNames)) {
                     initsOwned = false;   // 任一同名声明初值借用=局部可能持借用句柄
                 }
             }
@@ -447,58 +462,98 @@ bool IRGenerator::stringReturnFormOwned(const Expr* e, const BlockStmt* body,
     }
 }
 
-// 方法体返回位拥有性：全部 return 皆拥有形态才=拥有（无体/无 return=借用面）。
+// 方法体/lambda 体返回位拥有性：全部 return 皆拥有形态才=拥有（无体/无 return=借用面）。
 bool IRGenerator::stringReturnBodyOwned(const BlockStmt* body,
                                         const std::vector<std::string>& paramNames,
-                                        int depth) const {
+                                        int depth,
+                                        const std::vector<std::string>* captureNames) const {
     std::vector<const Expr*> rets;
     if (body != nullptr) collectReturnExprsOwned(body, rets);
     bool allOwned = !rets.empty();   // 无 返回 语句=非字符串返回形态（借用面）
     for (const Expr* rv : rets) {
-        if (!stringReturnFormOwned(rv, body, paramNames, depth)) allOwned = false;
+        if (!stringReturnFormOwned(rv, body, paramNames, depth, captureNames)) allOwned = false;
     }
     return allOwned;
 }
 
-// 方法调用返回串拥有性（判据单点·临时清理/链段结算共用）。
-//   前置：被调=成员形态 ∧ 非引用返回 ∧ 递归预算未耗尽（预算按 4,3,2,1,0 递减，
-//   0=停止）。接收者静态类型：自身=当前发射类、标识符=语义层写回类型；其余接收者
-//   （表达式/链式）=借用面（与 v2 解析标识符类型ID 同可判面·指针接收者不解星同收窄）。
-//   方法解析不可达（类表 miss/无体/非字符串返回）=借用面（宁漏勿崩·859 口径）。
+// 调用返回串拥有性（判据单点·临时清理/链段结算共用）。
+//   调用形态四路互斥穷举（#1572 方法面 + #1578 变量面）：
+//   ① 被调=成员（`对象.方法()`）：非引用返回 ∧ 递归预算未耗尽；接收者静态类型
+//      （自身=当前发射类、标识符=语义层写回类型）→ 方法 AST 返回形态判定；
+//      其余接收者（表达式/链式）/类表 miss/无体 = 借用面。
+//   ② 被调=闭包变量（lambda）：**定义处登记的体返回形态**（ClosureInfo::
+//      returnBodyOwned）。为什么不用返回类型：lambda 体可合法返回借用句柄
+//      （形参透传——lambda 体 A2 尚未执法；探针实测按类型释放后源串变为空串
+//      =#1696 同族误释面）；捕获名返回已由 1571 返回位复制成拥有副本（判拥有）。
+//   ③ 被调=lambda 留痕但闭包登记不可达（跨函数/来源重赋值）：借用面（宁漏勿崩）。
+//   ④ 被调=函数指针变量/自由函数/内置：返回类型判据（自由函数 A2 已拒借用
+//      返回→类型即所有权；函数指针变量=声明返回段精确"字符串"，'&' 不剥）。
 bool IRGenerator::callReturnsOwnedStringTemp(const CallExpr* ce, int depth) const {
-    const bool methodForm = ce != nullptr && semantic_ != nullptr &&
-                        ce->callee != nullptr &&
-                        ce->callee->getType() == NodeType::MemberExpr &&
-                        !ce->isRefReturnCall && depth != 0;
-    const MemberExpr* mem =
-        methodForm ? static_cast<const MemberExpr*>(ce->callee.get()) : nullptr;
-    const Expr* recv = (mem != nullptr) ? mem->object.get() : nullptr;
-    std::string objType;
-    if (recv != nullptr && recv->getType() == NodeType::SelfExpr) {
-        objType = types::canonical(currentClass_);
-    } else if (recv != nullptr && recv->getType() == NodeType::IdentifierExpr) {
-        objType = types::canonical(recv->semanticType);
-    }
-    const bool classForm = mem != nullptr && !objType.empty() &&
-                       objType.find('$') == std::string::npos &&
-                       semantic_->isClassType(objType);
-    std::string owner;
-    const ClassMemberInfo* m =
-        classForm ? semantic_->lookupClassMember(objType, mem->memberName, owner)
-                     .value_or(nullptr)
-               : nullptr;
-    const bool resolvable = m != nullptr && m->ast != nullptr &&
-                        m->ast->body != nullptr && !m->isRefReturn &&
-                        types::canonicalEquals(types::canonical(m->type), "字符串");
-    bool owned = false;
-    if (resolvable) {
-        std::vector<std::string> pn;
-        for (const auto& p : m->ast->params) {
-            if (p != nullptr) pn.push_back(p->name);
+    // 形态守卫（谓词否定回答面·非失败通道）：空节点/无被调者=非调用形态——此处
+    //   不设早退（静默形态禁令），以 callShape 合取把非调用形态交末尾统一 return。
+    const bool callShape = ce != nullptr && ce->callee != nullptr;
+    const NodeType calleeKind =
+        callShape ? ce->callee->getType() : NodeType::Program;
+    // ---- ②③④ 变量被调面（#1578）----
+    if (callShape && calleeKind == NodeType::IdentifierExpr) {
+        const std::string nm =
+            static_cast<const IdentifierExpr*>(ce->callee.get())->name;
+        const auto closureIt = closureInfo_.find(nm);
+        if (closureIt != closureInfo_.end()) {
+            // ②闭包变量：体返回形态（仅返回类型=字符串 时该项才有串临时面）
+            return closureIt->second.returnBodyOwned &&
+                   types::canonicalEquals(
+                       types::canonical(closureIt->second.srcReturnType), "字符串");
         }
-        owned = stringReturnBodyOwned(m->ast->body.get(), pn, depth);
+        // ③lambda 留痕但快径登记已亡（485 clear / 重赋值来源未知）——无体可判
+        //   =借用面；此处不得退到类型判据（借用返回按类型释放=误释崩面）
+        if (lambdaVarNames_.count(nm) != 0) return false;
+        // ④函数指针变量：声明返回段精确 "字符串"（引用返回 "字符串&" 不命中）
+        const std::string calleeSrcType =
+            types::canonical(lookupSrcType(nm).value_or(std::string()));
+        if (types::isFuncPtr(calleeSrcType)) {
+            const cn::Optional<std::string> fpRet =
+                types::funcPtrReturnTypeOf(calleeSrcType);
+            // 无值=非函数指针形态的合法否定（isFuncPtr 命中即必有返回段）
+            if (fpRet.has_value()) return fpRet.value() == "字符串";
+        }
     }
-    return owned;
+    // ①方法调用：返回表达式形态判定（借用视图返回不结算·859 实录口径）
+    if (callShape && calleeKind == NodeType::MemberExpr) {
+        const bool methodForm = semantic_ != nullptr && !ce->isRefReturnCall &&
+                                depth != 0;
+        const MemberExpr* mem =
+            methodForm ? static_cast<const MemberExpr*>(ce->callee.get()) : nullptr;
+        const Expr* recv = (mem != nullptr) ? mem->object.get() : nullptr;
+        std::string objType;
+        if (recv != nullptr && recv->getType() == NodeType::SelfExpr) {
+            objType = types::canonical(currentClass_);
+        } else if (recv != nullptr && recv->getType() == NodeType::IdentifierExpr) {
+            objType = types::canonical(recv->semanticType);
+        }
+        const bool classForm = mem != nullptr && !objType.empty() &&
+                           objType.find('$') == std::string::npos &&
+                           semantic_->isClassType(objType);
+        std::string owner;
+        const ClassMemberInfo* m =
+            classForm ? semantic_->lookupClassMember(objType, mem->memberName, owner)
+                         .value_or(nullptr)
+                   : nullptr;
+        const bool resolvable = m != nullptr && m->ast != nullptr &&
+                            m->ast->body != nullptr && !m->isRefReturn &&
+                            types::canonicalEquals(types::canonical(m->type), "字符串");
+        bool owned = false;
+        if (resolvable) {
+            std::vector<std::string> pn;
+            for (const auto& p : m->ast->params) {
+                if (p != nullptr) pn.push_back(p->name);
+            }
+            owned = stringReturnBodyOwned(m->ast->body.get(), pn, depth);
+        }
+        return owned;
+    }
+    // 自由函数/内置面：A2 契约位（语义层写回）∪ 返回类型判据；非调用形态=false
+    return callShape && (ce->retOwnedString || callReturnsStringType(ce));
 }
 
 // 调用返回类型「字符串」判定（类型判据单点：resolvedType → 094 白名单 →
@@ -529,20 +584,16 @@ bool IRGenerator::callReturnsStringType(const CallExpr* ce) const {
 }
 
 // 段「拥有临时」判定（617 口径·融合段追加完成后的结算依据）：
-//   调用返回拥有串（#1572 拥有性判据：自由函数/内置=类型判据，方法=返回形态判定）；
+//   调用返回拥有串（拥有性判据单点 callReturnsOwnedStringTemp：自由函数/内置=
+//   类型判据，方法=返回形态判定，lambda/functor 变量=闭包体返回形态/函数指针
+//   返回段——#1572/#1578）；
 //   连接子链结果（BinaryExpr Add 且左为字符串）-> 新拥有串（concat/融合完成产物）；
 //   其余（字面量=驻留借用、标识符=调用方变量 RAII 自负、下标/成员=视图）-> 非拥有。
 //   结算时机=追加完成后（append 已拷贝内容·与 617「concat 只读消费后结算」同点）。
 bool IRGenerator::chainSegOwnedTemp(Expr* segAst) const {
     if (segAst == nullptr) return false;
     if (segAst->getType() == NodeType::CallExpr) {
-        const CallExpr* ce = static_cast<const CallExpr*>(segAst);
-        // 方法调用面按返回表达式形态判拥有性（借用视图返回不得结算——859 实录）
-        if (ce->callee != nullptr &&
-            ce->callee->getType() == NodeType::MemberExpr) {
-            return callReturnsOwnedStringTemp(ce);
-        }
-        return chainCallReturnsString(ce);
+        return callReturnsOwnedStringTemp(static_cast<CallExpr*>(segAst));
     }
     if (segAst->getType() == NodeType::BinaryExpr) {
         BinaryExpr* bin = static_cast<BinaryExpr*>(segAst);

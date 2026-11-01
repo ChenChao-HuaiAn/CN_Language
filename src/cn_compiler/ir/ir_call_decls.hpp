@@ -121,17 +121,22 @@
     //   「返回 <调用>」的结果——true=拥有（被调已落堆）/ false=借用句柄（须
     //   __cn_str_copy 落堆）/ 无值=非字符串结果（字符串返回位取到无值=内部错误）。
     cn::Optional<bool> stringCallReturnOwned(const CallExpr* ce) const;
-    // #1572：调用返回串「拥有性」判据（临时清理/链段结算单点·实现=ir_expr_concat.cpp）
-    //   自由函数/内置=返回类型判据 callReturnsStringType；方法调用=返回表达式形态判据
-    //   callReturnsOwnedStringTemp（借用视图返回不结算·859 实录口径·判据按所有权归属）
+    // 调用返回串「拥有性」判据（临时清理/链段结算单点·实现=ir_expr_concat.cpp）
+    //   自由函数/内置=返回类型判据 callReturnsStringType；方法调用=返回表达式形态判据；
+    //   lambda/functor 变量被调=闭包登记表体返回形态（定义处求值）/函数指针返回段判据
+    //   （借用视图返回不结算·859 实录口径·判据按所有权归属）。
     bool callReturnsStringType(const CallExpr* ce) const;
     bool callReturnsOwnedStringTemp(const CallExpr* ce, int depth = 4) const;
+    // #1578：captureNames=当前 lambda 捕获名集（捕获名返回位已由 1571 自动复制成
+    //   拥有副本——visitReturnStmt 同点；方法面不传=空=捕获名按借用面处置）。
     bool stringReturnBodyOwned(const BlockStmt* body,
                                const std::vector<std::string>& paramNames,
-                               int depth) const;
+                               int depth,
+                               const std::vector<std::string>* captureNames = nullptr) const;
     bool stringReturnFormOwned(const Expr* e, const BlockStmt* body,
                                const std::vector<std::string>& paramNames,
-                               int depth) const;
+                               int depth,
+                               const std::vector<std::string>* captureNames = nullptr) const;
     // 662（617 三元面补全）：拥有串临时释放发射（单一入口·递归）——非三元=判据 命中即无条件 __cn_str_free；三元=分支拥有性感知条件释放（嵌套三元逐层
     //   递归，条件寄存器查 ternaryCondRegs617_·miss 显形报诊断不静默·648 立法）。
     void emitOwnedTempReleaseRec617(const Expr* expr, const ir::IRValue& value,

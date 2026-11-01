@@ -252,6 +252,9 @@ void IRGenerator::updateCarrierOnAssign482(const std::string& varName, Expr* rhs
             info.returnIrType = stIt->second.returnIrType;
             info.srcReturnType = stIt->second.srcReturnType;
             info.paramTypes = stIt->second.paramTypes;
+            // #1578：体返回位拥有性随来源定义点传递（否则赋值位重建登记后
+            //   调用按类型判据=借用返回误释面复发）
+            info.returnBodyOwned = stIt->second.returnBodyOwned;
         }
         info.carrierCaptures = makeCarrierSlots482(varName, origin, loc);
     }

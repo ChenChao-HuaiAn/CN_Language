@@ -419,34 +419,15 @@ bool IRGenerator::argIsOwnedStringTemp(const Expr* arg) const {
     }
     if (arg->getType() != NodeType::CallExpr) return false;
     const CallExpr* ce = static_cast<const CallExpr*>(arg);
-    // #1572：方法调用（被调=成员）=返回表达式形态判据（借用视图返回不结算）——
-    //   置于 A2 快照之前：方法合法返回借用视图（字段/容器元素/局部借用句柄）时
-    //   retOwnedString 同样置位（语义层按返回类型写回），按位释放=释放借用句柄
-    //   （859 JSON 文本() 实录崩），故方法面必须先按返回形态再判。
-    if (ce->callee != nullptr &&
-        ce->callee->getType() == NodeType::MemberExpr) {
-        return callReturnsOwnedStringTemp(ce);
-    }
-    // 1578（#1578·2026-10-30 伞批·#1571 同族）：语义层 A2 快照直读——全调用
-    //   路径（含函数指针/闭包变量调用）由语义层写回拥有契约，优先于下方名称
-    //   查表（链段判定 chainCallReturnsString 同序同判·单点事实源）。
-    if (ce->retOwnedString) return true;
-    std::string retCanon = types::canonical(ce->resolvedType);
-    if (retCanon.empty() && ce->callee != nullptr &&
-        ce->callee->getType() == NodeType::IdentifierExpr) {
-        const std::string nm =
-            static_cast<const IdentifierExpr*>(ce->callee.get())->name;
-        const std::string keys[2] = {ce->resolvedSignature, nm};
-        for (const std::string& key : keys) {
-            if (key.empty()) continue;
-            // 1360 结果化批3B：无值=查询 miss——value_or 显形空串回落
-            const std::string rt = types::canonical(
-                semantic_->funcReturnTypeOf(key).value_or(std::string()));
-            if (!rt.empty()) { retCanon = rt; break; }
-        }
-    }
-    // 自由函数/内置=返回类型判据（语义层 210 族已拒借用返回→类型即所有权）
-    return callReturnsStringType(ce);
+    // 拥有性判据单点（#1572 方法面 + #1578 变量面·临时清理/链段结算共用）：
+    //   ①方法调用=返回表达式形态判定——置于 A2 契约位之前：方法合法返回借用
+    //     视图（字段/容器元素/局部借用句柄）时 retOwnedString 同样置位（语义层
+    //     按返回类型写回），按位释放=释放借用句柄（859 JSON 文本() 实录崩）；
+    //   ②lambda/functor 变量=闭包体返回形态/函数指针返回段；③自由函数/内置=
+    //     返回类型判据（语义层 210 族已拒借用返回→类型即所有权）。为什么变量面
+    //     不能直读 A2 契约位：lambda 体可合法返回借用句柄（形参透传），按位
+    //     释放=释放借用串（#1696 同族）——形态/体判定优先，契约位只在自由函数面兜底。
+    return callReturnsOwnedStringTemp(ce);
 }
 
 // A2 返回位拥有性三态（#1571 收口·#1238/#1360 显式三态·禁静默默认）：

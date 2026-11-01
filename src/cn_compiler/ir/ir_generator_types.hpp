@@ -27,6 +27,13 @@ struct ClosureInfo {
     // 337-a（T53 家系）：用户形参源码类型列表（不含捕获参数）——闭包调用展开
     //   用户实参的 ABI 定标依据（calibrateCallArgsByParams 形参来源，见 lastLambdaParamTypes_）。
     std::vector<std::string> paramTypes;
+    // #1578：lambda 体**返回位串拥有性**（返回表达式形态判定·定义处求值存表）——
+    //   被调=闭包变量时链段结算/实参临时结算按本项分流。为什么不能只看返回类型：
+    //   lambda 体可返回借用句柄（形参透传/成员读/全局静态——lambda 体 A2 尚未
+    //   执法），按类型释放=释放借用串（#1696 同族崩面）；反之捕获名返回已由
+    //   返回位自动复制成拥有副本（1571），须释放。仅 srcReturnType=="字符串" 时
+    //   有意义（其余返回类型不参与串临时判定）。
+    bool returnBodyOwned = false;
     // 482（#482 多实例独立快照·蹦床共享静态槽后写覆盖根治）：载体快照槽——
     //   以「lambda 值载体变量」为粒度的独立快照存储（每捕获一项：槽唯一名+
     //   捕获源码类型）。非空=槽式登记：调用点从槽装载捕获实参（替代
@@ -142,6 +149,10 @@ struct LambdaStaticInfo482 {
     std::string returnIrType;
     std::string srcReturnType;
     std::vector<std::string> paramTypes;
+    // #1578：lambda 体返回位串拥有性（与 ClosureInfo::returnBodyOwned 同源）——
+    //   赋值位/接收点重建登记（updateCarrierOnAssign482）跨定义点存活，否则
+    //   `f = lambda` 后 f 的调用退回类型判据（借用返回误释面复发）。
+    bool returnBodyOwned = false;
 };
 
 // 750（循环累积拼接提升）：`s = s + x` 循环内唯一累积赋值 → 构建器提升上下文。

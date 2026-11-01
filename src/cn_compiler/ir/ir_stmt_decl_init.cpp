@@ -120,6 +120,9 @@ void IRGenerator::registerClosureIfNeeded(VarDecl* node) {
         info.returnIrType = lastLambdaReturnIrType_;
         info.srcReturnType = lastLambdaSrcReturnType_;  // 485：源返回类型（sret 判定）
         info.paramTypes = lastLambdaParamTypes_;  // 337-a：用户形参类型（ABI 定标）
+        // #1578：体返回位串拥有性（定义处求值的一次性通道·调用点拥有性判据
+        //   callReturnsOwnedStringTemp 消费；借用返回不得按类型释放）
+        info.returnBodyOwned = lastLambdaReturnBodyOwned_;
         {
         // 缺陷修复（[=] 快照 / [&] 引用，规格书04-一D）：
         //   捕获实参在"lambda 定义处"（即此处）求值并固化：
@@ -244,6 +247,7 @@ void IRGenerator::registerClosureIfNeeded(VarDecl* node) {
         lastLambdaReturnIrType_.clear();
         lastLambdaSrcReturnType_.clear();
         lastLambdaCaptureRefs_.clear();
+        lastLambdaReturnBodyOwned_ = false;   // #1578：一次性通道消费即清
     }
 }
 
