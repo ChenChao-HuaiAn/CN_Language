@@ -27,7 +27,9 @@ namespace ast_serial {
 //   （1 = 首版，任务 1142）
 //   （2 = #1554：CaseLabel 增写 decValue（1137 规范十进制文本）——布局变更，
 //     旧条目经版本不符自动失效回退，无迁移）
-constexpr std::uint32_t CACHE_FORMAT_VERSION = 2;
+//   （3 = #1571 收口：CallExpr 增写 retBorrowedString（A2 返回位三态互补位）——
+//     布局变更，旧条目经版本不符自动失效回退，无迁移）
+constexpr std::uint32_t CACHE_FORMAT_VERSION = 3;
 
 // 序列化 Program AST 为二进制缓冲（out 先清空；失败返回 false 并写 error）
 bool serializeProgram(const Program* program, std::vector<char>& out, std::string& error);

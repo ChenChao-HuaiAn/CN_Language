@@ -413,15 +413,27 @@ void IRGenerator::visitReturnStmt(ReturnStmt* node) {
         //   「不是本帧可搬出的拥有局部」）；lambda 用户形参非捕获、不在本集。
         //   判据来源=lambdaCaptureFrames_（visitLambdaExpr 压/弹），故本块须在
         //   lambda 体内的返回位生效——returnTypeSrc 已由 visitLambdaExpr 登记。
+        // #1571 收口（859 回归根治）：返回位=拥有契约 → 结果**借用句柄**须复制
+        //   落堆。调用返回的拥有性经 stringCallReturnOwned 三态判定（拥有/借用/
+        //   非字符串结果），借用=引用返回调用 ∪ 泛型实例成员返回串（声明 字符串
+        //   实为容器槽句柄·retBorrowedString）；三态无值=编译器内部不一致，显形
+        //   报错不静默（#1238 禁静默默认）。
         if (function_ != nullptr &&
             types::canonicalEquals(function_->returnTypeSrc, "字符串")) {
             bool needOwnCopy =
                 node->value->getType() == NodeType::StringLiteral;
             if (!needOwnCopy &&
                 node->value->getType() == NodeType::CallExpr) {
-                const CallExpr* rce =
-                    static_cast<const CallExpr*>(node->value.get());
-                needOwnCopy = rce->isRefReturnCall;
+                const cn::Optional<bool> callOwned = stringCallReturnOwned(
+                    static_cast<const CallExpr*>(node->value.get()));
+                if (!callOwned.has_value()) {
+                    diagnostics_.report(
+                        DiagnosticLevel::Error, node->location,
+                        "内部错误: 字符串返回位的调用结果拥有性无法判定（A2 三态"
+                        "判定缺失）");
+                } else {
+                    needOwnCopy = !callOwned.value();
+                }
             }
             if (!needOwnCopy && !lambdaCaptureFrames_.empty() &&
                 node->value->getType() == NodeType::IdentifierExpr) {

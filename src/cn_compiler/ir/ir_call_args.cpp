@@ -120,9 +120,19 @@ ir::IRValue IRGenerator::genArgValueWithCleanup(Expr* arg,
     //   字段/驻留文本=借用串，按 644 无条件 __cn_str_free=释放借用串（v2p 类表
     //   名串被毁→「未声明的类型」级联·965 第一版崩形同款·v2 树 IR diff 15 处
     //   新增 __cn_str_free 实录）。
+    // #1571 收口（859 回归根治·A2 复制侧配套）：方法面串临时——原口径是
+    //   「方法面回退无拥有契约面，一律不登记」（上方注释的借用误释防线）。语义层
+    //   现按被调决议写回 retOwnedString（签名即契约·被调方返回位已按 A2 落堆
+    //   副本），契约闸命中即真拥有：登记实参临时，调用发射后收下句柄释放（与
+    //   下方函数面对称·唯一释放点经 flushPendingArgCleanups）。契约闸不命中
+    //   （含泛型实例借出句柄 retBorrowedString / 非串返回）仍不登记——借用句柄
+    //   不得 free（原防线保留）。
     if (isMethodFaceCall) {
         if (semantic_->isClassType(retCanon)) {
             registerClassReturnArgTemp(ce, v, retCanon);
+        } else if (ce->retOwnedString && v.type == "ptr" &&
+                   types::canonicalEquals(retCanon, "字符串")) {
+            pendingArgCleanups_.emplace_back(v, std::string("字符串"), nullptr);
         }
         return v;
     }
@@ -378,6 +388,23 @@ bool IRGenerator::argIsOwnedStringTemp(const Expr* arg) const {
         }
     }
     return retCanon == "字符串";
+}
+
+// A2 返回位拥有性三态（#1571 收口·#1238/#1360 显式三态·禁静默默认）：
+//   `-> 字符串` 返回位=拥有契约（调用方登记 RAII free）——调用结果分三类：
+//     ① 拥有：被调方已按 A2 落堆独立副本（retOwnedString），返回位移交即成；
+//     ② 借用：结果是指向容器内部槽/被引用对象的句柄——泛型实例成员返回串
+//        （retBorrowedString·向量$字符串.元素 等）与引用返回调用
+//        （isRefReturnCall·`-> 字符串&`）——返回位须 __cn_str_copy 落堆，
+//        直传即把借用句柄交给按拥有结算的调用方（free 毁源·859 回归实录）；
+//     ③ 非字符串结果：无值（不在 A2 字符串契约面）。
+//   无值≠「按借用继续」也≠「按拥有继续」：字符串返回位取到无值=语义层与 IR
+//   层不一致（编译器缺陷），调用点报内部错误显形（见 visitReturnStmt）。
+cn::Optional<bool> IRGenerator::stringCallReturnOwned(const CallExpr* ce) const {
+    if (ce == nullptr) return std::nullopt;
+    if (ce->retOwnedString) return true;    // ① 拥有契约（被调已落堆）
+    if (ce->retBorrowedString || ce->isRefReturnCall) return false;  // ② 借用
+    return std::nullopt;                    // ③ 非字符串结果
 }
 
 // 662（617 三元面补全）：拥有串临时释放发射（单一入口·递归展开）——

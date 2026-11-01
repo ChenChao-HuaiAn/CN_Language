@@ -274,6 +274,7 @@ void writeExpr(Writer& w, const Expr* e) {
             w.str(n->resolvedSignature);
             w.boolean(n->isRefReturnCall);
             w.boolean(n->retOwnedString);
+            w.boolean(n->retBorrowedString);   // A2 三态互补位（#1571 收口）
             w.str(n->resolvedType);
             w.str(n->moduleFilter);
             w.boolean(n->lueMove);

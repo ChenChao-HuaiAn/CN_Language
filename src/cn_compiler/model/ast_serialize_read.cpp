@@ -178,6 +178,7 @@ std::unique_ptr<Expr> readExpr(Reader& r) {
             r.str(n->resolvedSignature);
             n->isRefReturnCall = r.boolean();
             n->retOwnedString = r.boolean();
+            n->retBorrowedString = r.boolean();   // A2 三态互补位（#1571 收口）
             r.str(n->resolvedType);
             r.str(n->moduleFilter);
             n->lueMove = r.boolean();

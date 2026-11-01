@@ -324,8 +324,18 @@ bool SemanticAnalyzer::checkInstanceMethodCall(CallExpr* node, MemberExpr* mem,
             //   ——T 来源返回=借用（容器元素访问），保守不登记
             // 933（任务 933·双侧零分叉）：引用返回方法（-> T&）不置位——误标
             //   拥有后果与接口面同（见上方同注）。
-            node->retOwnedString = (lastType_ == "字符串" && !method->isRefReturn &&
-                                    ownerClass.find('$') == std::string::npos);
+            // #1571 收口（A2 三态·#1238 禁静默默认）：泛型实例成员的字符串结果
+            //   =**借用句柄**（容器槽所有权归容器）→ 显式置 retBorrowedString，
+            //   与 retOwnedString 互补；返回位（A2 拥有契约）据该位 __cn_str_copy
+            //   落堆。原先「皆不置位」使消费点无法区分「借用句柄」与「非字符串
+            //   结果」，返回位复制侧整体缺失（859 回归：方法返回容器元素句柄被
+            //   调用方当拥有临时 free → 毁容器槽数据）。
+            const bool stringReturnContract =
+                (lastType_ == "字符串" && !method->isRefReturn);
+            const bool genericMemberClass =
+                ownerClass.find('$') != std::string::npos;
+            node->retOwnedString = stringReturnContract && !genericMemberClass;
+            node->retBorrowedString = stringReturnContract && genericMemberClass;
             // plans/019 阶段3 扩展（A21 借出视图生命周期，第七十七轮）：借出调用
             //   标记（字符串元素容器 元素/读取/栈顶/队首/头部元素/读取头部/
             //   读取尾部/获取=容器内句柄浅拷）与容器失效点登记（删除/设置/
@@ -416,8 +426,14 @@ bool SemanticAnalyzer::checkStaticMethodCall(CallExpr* node, const std::string& 
             lastType_ = method->type;
             // A2：泛型实例化类成员（ownerClass 含 $）不置位——同实例方法口径
             // 933：引用返回方法（-> T&）不置位（同实例方法注）。
-            node->retOwnedString = (lastType_ == "字符串" && !method->isRefReturn &&
-                                    ownerClass.find('$') == std::string::npos);
+            // #1571 收口：字符串结果借用位显式置 retBorrowedString（三态完整·
+            //   实例方法同款注释见族C1）。
+            const bool stringReturnContract =
+                (lastType_ == "字符串" && !method->isRefReturn);
+            const bool genericMemberClass =
+                ownerClass.find('$') != std::string::npos;
+            node->retOwnedString = stringReturnContract && !genericMemberClass;
+            node->retBorrowedString = stringReturnContract && genericMemberClass;
             // 118（929）：静态方法引用返回放行（与实例方法/接口同构）
             if (method->isRefReturn) {
                 node->isRefReturnCall = true;
