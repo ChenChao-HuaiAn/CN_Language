@@ -78,6 +78,14 @@ extern "C" {
     CNRT_EXPORT char* __cn_str_reverse(const char* str);             // 反转（UTF-8安全：按字符序列逆序，动态分配）
     CNRT_EXPORT char* __cn_str_from_int(long long value);            // 整数转字符串（%lld，动态分配）
     CNRT_EXPORT char* __cn_str_from_uint(unsigned long long value);  // 无符号整数转字符串（%llu，动态分配，缺陷修复）
+    // 1891：128 位转字符串（全精度十进制，动态分配）——整数转字符串 整128 重载/
+    //   正数转字符串 正128 重载运行时载体（001 §10.5；与 __cn_print_i128 同族：
+    //   128 位值按双槽指针传入，out[0]=低64位、out[1]=高64位）
+    CNRT_EXPORT char* __cn_str_from_i128(const std::uint64_t* v);    // 有符号128位转字符串（含负号，动态分配）
+    CNRT_EXPORT char* __cn_str_from_u128(const std::uint64_t* v);    // 无符号128位转字符串（动态分配）
+    // OOM 终止出口（#1012 批甲共享单点：定义在 string_api.cpp——分配失败
+    //   abort 显形·nullptr 哨兵退役；i128_api.cpp 128 位转串族同用）
+    void cnStrOomAbort(const char* op, unsigned long long bytes);
     CNRT_EXPORT char* __cn_str_from_float(double value);             // 浮点转字符串（%f 语义，动态分配）
     CNRT_EXPORT char* __cn_str_from_char(int value);                 // 字符转字符串（单字节ASCII，动态分配）
     CNRT_EXPORT char* __cn_str_from_bool(int value);                 // 布尔转字符串（"真"/"假"，Task 2.9）

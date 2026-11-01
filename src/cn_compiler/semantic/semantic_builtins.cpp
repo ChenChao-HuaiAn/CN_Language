@@ -138,6 +138,26 @@ void SemanticAnalyzer::registerBuiltins() {
     regStrFn("布尔转字符串", "字符串", {"布尔"});   // Task 2.9：布尔转"真"/"假"（拼接上下文）
     regStrFn("正数转字符串", "字符串", {"正64"});
     regStrFn("字符串释放", "空类型", {"字符串"});
+    // 1891：转字符串族 128 位重载签名注册（1283 拒面转正配套）——签名键直存
+    //   （functions_ 键=名#参数串·与用户函数重载同键公式）。消费面单点=
+    //   resolveOverload 入口转字符串族精确路由（semantic_sig.cpp）：实参类型
+    //   整128/正128 精确形态选中本签名（IR 层按 resolvedSignature 形参经
+    //   calibrateCallArgABI 定标双槽 ABI + 运行时符号 __cn_str_from_i128/
+    //   __cn_str_from_u128 全宽转串）；其余形态路由回裸名键（窄实参两候选同
+    //   符号向宽同等级=通用决议必误歧义，故通用决议永不枚举本签名——桶条目
+    //   仅供 hasFunctionName/名称索引/函数名作值面，funcFirstSigKey 最小键恒为
+    //   裸名键=语义不变）。分配契约与 64 位版同（cn_alloc_tracked+OOM 显形）。
+    const auto regStrFnOverload = [this](const std::string& sigKey,
+                                         const std::string& retType,
+                                         const std::vector<std::string>& paramTypes) {
+        FunctionInfo info;
+        info.returnType = retType;
+        info.paramTypes = paramTypes;
+        info.hasBody = true;
+        functions_[sigKey] = info;
+    };
+    regStrFnOverload(signatureKey("整数转字符串", {"整128"}), "字符串", {"整128"});
+    regStrFnOverload(signatureKey("正数转字符串", {"正128"}), "字符串", {"正128"});
 
     // ---- 数学库（Task 6.3，规格书10.5 数学库；对应运行时 math_api.cpp）----
     // 第 4 层（v2.0 决策6）：内置 key `::` 化——"数学." -> "数学::"（路径分隔

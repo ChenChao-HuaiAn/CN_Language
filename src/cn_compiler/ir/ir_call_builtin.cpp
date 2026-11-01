@@ -457,6 +457,7 @@ bool IRGenerator::resolveBuiltinCallResultType(const std::string& calleeName,
                calleeName == "__cn_str_reverse" || calleeName == "__cn_str_from_int" ||
                calleeName == "__cn_str_from_float" || calleeName == "__cn_str_from_char" ||
                calleeName == "__cn_str_from_bool" || calleeName == "__cn_str_from_uint" ||
+               calleeName == "__cn_str_from_i128" || calleeName == "__cn_str_from_u128" ||
                calleeName == "__cn_format") {
         resultType = "ptr";       // 连接/复制/子串/大写/小写/修剪/反转/数字/字符/布尔转换、格式化 -> 字符串（指针）
     } else if (calleeName == "__cn_sqrt" || calleeName == "__cn_pow" ||

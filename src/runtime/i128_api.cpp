@@ -691,3 +691,37 @@ extern "C" void printLineU128(const std::uint64_t* v) {
     buf[len] = '\0';
     std::printf("%s\n", buf);
 }
+
+// ==================== 128位转字符串（1891：整数转字符串 整128 重载运行时载体） ====================
+// 全精度十进制文本（不含截断）——复用上方 i128ToText/u128ToDecimal 打印物料
+// （单一事实源·与 __cn_print_i128 同族同文件）；分配契约与 __cn_str_from_int
+// 同款（cn_alloc_tracked + OOM 终止显形·#1012 批甲）。
+
+// 有符号128位转字符串（十进制，含负号；动态分配，调用方负责 字符串释放）
+extern "C" char* __cn_str_from_i128(const std::uint64_t* v) {
+    char buf[48];
+    i128ToText(v, buf);
+    const std::size_t len = std::strlen(buf);
+    char* result = static_cast<char*>(cn_alloc_tracked(len + 1));
+    if (result == nullptr) {
+        cnStrOomAbort("__cn_str_from_i128", static_cast<unsigned long long>(len + 1));
+    }
+    std::memcpy(result, buf, len + 1);
+    return result;
+}
+
+// 无符号128位转字符串（十进制；动态分配，调用方负责 字符串释放）
+extern "C" char* __cn_str_from_u128(const std::uint64_t* v) {
+    std::uint64_t hi = v[1];
+    std::uint64_t lo = v[0];
+    char buf[48];
+    const int len = u128ToDecimal(hi, lo, buf);
+    buf[len] = '\0';
+    const std::size_t ulen = static_cast<std::size_t>(len);
+    char* result = static_cast<char*>(cn_alloc_tracked(ulen + 1));
+    if (result == nullptr) {
+        cnStrOomAbort("__cn_str_from_u128", static_cast<unsigned long long>(ulen + 1));
+    }
+    std::memcpy(result, buf, ulen + 1);
+    return result;
+}

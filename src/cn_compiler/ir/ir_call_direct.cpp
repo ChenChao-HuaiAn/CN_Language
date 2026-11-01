@@ -134,18 +134,31 @@ void IRGenerator::emitDirectCall(CallExpr* node, const std::string& calleeName,
                                  const std::vector<ir::IRValue>& args,
                                  const std::vector<std::pair<const Expr*, ir::IRValue>>&
                                      consumedArgTemps617) {
-    std::string resultType = "i32";
-    if (!resolveBuiltinCallResultType(calleeName, resultType) &&
-        semantic_ != nullptr) {
-        resultType = resolveUserFuncCallResultType(node, calleeName);
+    // 1891（2026-11-01·1283 拒面转正配套）：转字符串族 128 位重载符号分派——
+    //   语义层 resolveOverload 入口精确路由选中 整数转字符串#整128 /
+    //   正数转字符串#正128 签名时，运行时符号换 128 位全宽版（const uint64_t*
+    //   双槽指针 ABI·与 __cn_print_i128 同契约；mapBuiltinCalleeNameApi 只按
+    //   中文名映射 64 位符号，此处按 resolvedSignature 签名键精确分派——签名
+    //   是语义决议的权威，不按 args 寄存器类型判（推导 miss 面不存在）。
+    //   实参侧 calibrateCallArgABI 已按形参 整128/正128 定标双槽零截断）。
+    std::string effectiveCallee = calleeName;
+    if (node->resolvedSignature == "整数转字符串#整128") {
+        effectiveCallee = "__cn_str_from_i128";
+    } else if (node->resolvedSignature == "正数转字符串#正128") {
+        effectiveCallee = "__cn_str_from_u128";
     }
-    if (emitAggStructReturnCall(node, calleeName, args, resultType)) return;
-    if (emitVoidBuiltinCall(node, calleeName, args)) return;
+    std::string resultType = "i32";
+    if (!resolveBuiltinCallResultType(effectiveCallee, resultType) &&
+        semantic_ != nullptr) {
+        resultType = resolveUserFuncCallResultType(node, effectiveCallee);
+    }
+    if (emitAggStructReturnCall(node, effectiveCallee, args, resultType)) return;
+    if (emitVoidBuiltinCall(node, effectiveCallee, args)) return;
     // 986：引用返回右值消费=纯谓词（Call 前判定·与原实现判定时机一致）
-    const bool refDeref986 = needsRefReturnDeref(calleeName, resultType);
+    const bool refDeref986 = needsRefReturnDeref(effectiveCallee, resultType);
     // 986：被调 Call 恒发射（对齐 v2「先发 IR_调用参数化再引用返回加载」）
     const ir::IRValue callRet986 =
-        emitResult(ir::Opcode::Call, args, resultType, calleeName,
+        emitResult(ir::Opcode::Call, args, resultType, effectiveCallee,
                    node->location);
     lastExpr_ = callRet986;
     // 617：消费族调用发射完成——内容已拷贝/只读消费毕，结算拥有串临时实参
@@ -156,7 +169,7 @@ void IRGenerator::emitDirectCall(CallExpr* node, const std::string& calleeName,
     }
     // 986：右值消费=对 Call 结果（=被引用左值地址）解引用读值
     if (refDeref986) {
-        emitRefReturnDeref(node, calleeName, callRet986);
+        emitRefReturnDeref(node, effectiveCallee, callRet986);
     }
 }
 

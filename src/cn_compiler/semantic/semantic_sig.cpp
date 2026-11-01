@@ -227,6 +227,34 @@ cn::Optional<std::string> SemanticAnalyzer::resolveOverload(const std::string& n
                                               const std::string& moduleFilter,
                                               const std::vector<bool>& argIsLiteral,
                                               const std::vector<const Expr*>& argExprs) {
+    // 1891（2026-11-01·1283 拒面转正配套）：转字符串族 128 位重载精确路由——
+    //   整数转字符串/正数转字符串 现有 双签名（#整64 裸名键 + #整128 签名键·
+    //   semantic_builtins 注册）。若放两候选进下方通用等级竞争：窄实参（整8/16/32）
+    //   对 整64/整128 形参同为「同符号向宽 1 级」（conversionLevel 不分 rank 距离）
+    //   → total 相等且互不支配=真歧义误红（既有 整数转字符串(计数器) 海量形态
+    //   回归）。故本族决议不入通用竞争，入口单点显式枚举路由：
+    //   ①实参（剥引用后）恰为 整128/正128=精确形态 → 128 位重载签名（IR 层按
+    //     resolvedSignature 形参 calibrateCallArgABI 定标双槽 + __cn_str_from_i128/
+    //     __cn_str_from_u128 全宽转串·1891 落地面）；
+    //   ②其余形态（整64/32/16/8 提升链·字面量·引用·泛型 T 等不可判定形态）→
+    //     既有裸名键（行为与 1283 之前完全一致——含 §3.7a-④ 128→64 同符号窄化
+    //     特例的既有立法面·本路由不改其语义）。
+    //   两分支合取=该族全形态闭集枚举（else 新规：无第三分支·终态显形）。
+    //   签名键经 signatureKey 公式生成（与注册侧同源·禁字面漂移）。
+    if (name == "整数转字符串" || name == "正数转字符串") {
+        const std::string argCanon = argTypes.size() == 1
+            ? types::stripRef(canonicalType(argTypes[0]))
+            : std::string();
+        const bool argIsI128 = argCanon == "整128";
+        const bool argIsU128 = argCanon == "正128";
+        if (name == "整数转字符串" && argIsI128) {
+            return signatureKey("整数转字符串", {"整128"});
+        }
+        if (name == "正数转字符串" && argIsU128) {
+            return signatureKey("正数转字符串", {"正128"});
+        }
+        return std::string(name);   // 既有单签名（裸名键）形态
+    }
     std::string bestKey;
     int bestTotal = INT32_MAX;
     bool ambiguous = false;

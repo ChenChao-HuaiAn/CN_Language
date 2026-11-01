@@ -668,31 +668,13 @@ bool SemanticAnalyzer::checkDirectCall(CallExpr* node, const std::string& callee
         //   55-c 方案A：字面量实参豁免与决议豁免（conversionLevel）同步——
         //   决议按宽化级放行的字面量形态此处不再误报
         for (std::size_t i = 0; i < node->arguments.size(); i++) {
-            // 1283（甲案·2026-11-01 用户批）：整数转字符串/正数转字符串
-            //   整128/正128 实参编译期拒——内建签名仅 整64/正64（regStrFn 注册），
-            //   整128→整64 同符号窄化特例（canConvert 128→64 方案C）令实参静默
-            //   过决议，IR __cn_str_from_int(long long)/__cn_str_from_uint
-            //   (unsigned long long) 高位截断=静默错值（12345678901234567890 →
-            //   -6101065172474983726 探针实锚）。超承载编译期拒止血先行：诊断
-            //   指路 #1891 整128 重载落地后撤销转正（禁越面注册重载）。
-            //   不误伤面：打印/打印行/格式化 走变参通道（checkVariadicBuiltinCall
-            //   先行·打印面整128 已正常）；显式 整64(x) 窄化=用户显式语义不变；
-            //   超 int64 域字面量已被字面量值域判据编译期拒（1263 面）；泛型 T
-            //   实参不可静态判定=放行（诚实边界·不在本检查判域）。
-            const bool overwideI128ToIntStr =
-                (calleeName == "整数转字符串" && argTypes[i] == "整128");
-            const bool overwideU128ToUintStr =
-                (calleeName == "正数转字符串" && argTypes[i] == "正128");
-            if (overwideI128ToIntStr || overwideU128ToUintStr) {
-                diagnostics_.report(DiagnosticLevel::Error,
-                                    node->arguments[i]->location,
-                                    "函数 '" + calleeName + "' 暂不支持 '" +
-                                        argTypes[i] + "' 实参——超 64 位域值会静默截断"
-                                        "（编译期拒止血）；待 " + argTypes[i] +
-                                        " 重载落地后撤销转正（#1891），可先显式 " +
-                                        (calleeName == "整数转字符串" ? "整64(值)" : "正64(值)") +
-                                        " 窄化");
-            }
+            // 1891（2026-11-01·1283 拒面转正配套）：整数转字符串/正数转字符串
+            //   整128/正128 实参已由 resolveOverload 入口精确路由至 128 位重载
+            //   签名（semantic_sig.cpp·semantic_builtins 注册）——1283 甲案编译期
+            //   拒面随重载落地撤销转正，本循环按选中签名形参逐位检查零特判。
+            //   整128 形参=精确匹配零转换；IR 层按 resolvedSignature 经
+            //   calibrateCallArgABI 定标双槽 ABI + __cn_str_from_i128/
+            //   __cn_str_from_u128 全宽转串（ir_call_direct 分派）。
             const std::string& paramType = info.paramTypes[i];
             if (!canConvertWithLiteral(node->arguments[i].get(), argTypes[i], paramType) &&
                 !canConvertArgNarrow(node->arguments[i].get(), argTypes[i], paramType)) {
