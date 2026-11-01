@@ -132,6 +132,14 @@
     // 2026-08-25 方案A：查类的拷贝构造（单参同类型引用 类名(类名& 其他)）；
     //   有值=按值拷贝走深拷贝；1360 结果化批3A：无值=无拷贝构造
     cn::Optional<const ClassMemberInfo*> findCopyConstructor(const std::string& className) const override ;
+    // 类字段级联闭合域判定（001 §3.9 结构体面）：有值=该类可被级联默认构造
+    //   （返回其严格无参构造）；前提=非抽象 ∧ 有析构（释放链）∧ 有拷贝构造
+    //   （拷贝链）∧ 有严格无参构造（构造链）——三链闭合活句柄无共享（ir_fields
+    //   资源字段收集域同判据）。无值=闭合域外（结构体槽内维持零初始化空句柄·
+    //   成员访问读位编译期拒绝）。单一事实源：IR genStructZeroInit 级联注入
+    //   与语义层域外访问拒绝共用本判定。
+    cn::Optional<const ClassMemberInfo*> findCascadeDefaultCtor(
+        const std::string& fieldCanon) const override ;
     // 2026-08-25 方案A 强制规则：有析构类按值拷贝（初始化/赋值）须有拷贝构造，
     //   否则编译报错（浅拷贝裸指针字段析构双释放 0xC0000374）。调用方仅在
     //   确认发生"类对象拷贝"时调用（无析构类保持浅拷贝，不触发）。

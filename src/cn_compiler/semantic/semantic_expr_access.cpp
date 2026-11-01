@@ -426,8 +426,25 @@ void SemanticAnalyzer::visitMemberExpr(MemberExpr* node) {
     //   成员"（与函数参数 resolveGenericTypeName 归一一致）。
     for (const auto& f : decl->fields) {
         if (f.name == memberName) {
-            lastType_ = canonicalType(
+            const std::string fieldCanon = canonicalType(
                 resolveGenericTypeName(f.type, node->location));
+            // 域外类字段访问编译期拒绝（001 §3.9 结构体面·禁运行期崩溃）：
+            //   结构体零初始化后闭合域外类字段=空句柄（级联活句柄+memcpy 浅拷
+            //   共享=双主·142-a 不越域），句柄访问原行为=「运行时错误(错误码3)」
+            //   空指针解引用——前置为编译期显式拒绝。读拒=禁崩溃；写活句柄同拒
+            //  （写了读不出+整体拷贝浅共享双主=UAF 口子·安全红线零容忍）。
+            //   闭合域内字段（有析构+拷贝构造+默认构造）不受影响（级联活句柄
+            //   既有语义）。v2 侧同构挂 检查成员访问表达式（零分叉）。
+            if (isClassType(fieldCanon) &&
+                !findCascadeDefaultCtor(fieldCanon).has_value()) {
+                diagnostics_.report(DiagnosticLevel::Error, node->location,
+                    "结构体 '" + decl->name + "' 的类字段 '" + memberName +
+                        "'（类 '" + fieldCanon + "'）未级联构造（级联闭合域=有析构+"
+                        "拷贝构造+默认构造）：字段类须补全三构造入闭合域，或改用类外层承载");
+                lastType_ = "未知";
+                return;
+            }
+            lastType_ = fieldCanon;
             // 010（def-init）：结构体叶子字段读判定（写目标/链中间对象侧跳过；
             //   1771：取地址语境 &签.字段 同跳——place 引用非值读，置位通道在
             //   checkAddressOfUnary 统一走）

@@ -208,6 +208,35 @@ cn::Optional<const ClassMemberInfo*> SemanticAnalyzer::findCopyConstructor(
     return std::nullopt;
 }
 
+// 类字段级联闭合域判定（001 §3.9 结构体面·#1943）：查该类可被级联默认构造
+//   的严格无参构造——有值=非抽象 ∧ 有析构（释放链 preFree+DeleteObject）∧
+//   有拷贝构造（拷贝链 postCopy 深拷）∧ 有严格无参构造（构造链），三链闭合
+//   活句柄无共享（=ir_fields 资源字段收集域同判据）。无值=闭合域外——结构体
+//   槽内维持零初始化空句柄（级联活句柄+memcpy 浅拷共享=双主·142-a 两次泛化
+//   回退教训不越域），成员访问读位由语义层编译期拒绝（禁运行期空指针崩溃）。
+//   单一事实源：IR genStructZeroInit 级联注入与语义层域外访问拒绝共用本判定。
+cn::Optional<const ClassMemberInfo*> SemanticAnalyzer::findCascadeDefaultCtor(
+    const std::string& fieldCanon) const {
+    const ClassInfo* fci = findClass(fieldCanon).value_or(nullptr);
+    if (fci == nullptr || fci->isAbstract) return std::nullopt;
+    bool hasDtor = false;
+    for (const auto& mk : fci->methods) {
+        if (mk.second.isDestructor) { hasDtor = true; break; }
+    }
+    if (!hasDtor) return std::nullopt;                       // 释放链闭合条件
+    if (!findCopyConstructor(fieldCanon).has_value()) {
+        return std::nullopt;                                 // 拷贝链闭合条件
+    }
+    for (const auto& mk : fci->methods) {
+        if (mk.second.isConstructor && mk.second.hasBody &&
+            mk.second.ownerClass == fieldCanon &&
+            mk.second.paramTypes.empty()) {
+            return &mk.second;                               // 构造链闭合
+        }
+    }
+    return std::nullopt;
+}
+
 // 2026-08-25 方案A 强制规则：有析构类按值拷贝（初始化/赋值）须有拷贝构造
 //   （函数 类名(类名& 其他) 深拷贝），否则编译报错——浅拷贝裸指针字段
 //   析构双释放 0xC0000374。无析构类保持浅拷贝（零开销），不触发。

@@ -76,6 +76,17 @@ public:
                                                      const std::string& memberName,
                                                      std::string& ownerClass) const = 0;
     virtual cn::Optional<const ClassMemberInfo*> findCopyConstructor(const std::string& className) const = 0;
+    // 类字段级联闭合域判定（001 §3.9 结构体面）：查该类可被级联默认构造的
+    //   严格无参构造——有值=非抽象 ∧ 有析构（释放链 preFree+DeleteObject）
+    //   ∧ 有拷贝构造（拷贝链 postCopy 深拷）∧ 有严格无参构造（构造链），三链
+    //   闭合活句柄无共享；无值=闭合域外（结构体槽内维持零初始化空句柄·读位
+    //   编译期拒绝）。单一事实源：IR 结构体级联注入与语义层域外访问拒绝共用。
+    //   非纯虚+默认无值=闭合域外（替身未覆盖类信息时保守跳过级联·零风险安全默认）。
+    virtual cn::Optional<const ClassMemberInfo*> findCascadeDefaultCtor(
+        const std::string& fieldCanon) const {
+        (void)fieldCanon;
+        return std::nullopt;
+    }
     virtual cn::Optional<int> classFieldOffset(const std::string& className, const std::string& fieldName) const = 0;
     // 1472 根治：带名字查找起点限定的类字段偏移——layoutClass=对象布局类
     //   （偏移沿其继承链布局累加），resolveFrom=字段名查找起点类（从它沿继承

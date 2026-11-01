@@ -603,7 +603,8 @@ bool IRGenerator::genStructInitListDecl(VarDecl* node, const DeclGenCtx& ctx) {
 // ---- 族⑪：H7 根治（2026-08-25 宿主缺陷）类类型栈变量无初始化器声明 ----
 //   （类名 变量）——原缺 NewObject+默认构造调用·变量槽存未初始化地址=空指针
 //   解引用（0xC0000409/运行时错误3）。泛型实例与非泛型类同面。语义同
-//   `类名 变量 = 类名()`：NewObject+本类无参构造调用（无构造=仅分配）·
+//   `类名 变量 = 类名()`：NewObject+本类无参构造调用；本类无用户构造=合成
+//   默认构造（类字段级联 cascadeConstructFields·001 §3.9 裸声明通道）·
 //   RAII 析构由 oopVarSrcTypes_ 登记+genClassDestructorCalls 统一收尾
 //  （与既有类变量一致）。
 void IRGenerator::genClassDefaultConstruct(VarDecl* node, const DeclGenCtx& ctx) {
@@ -638,6 +639,7 @@ void IRGenerator::genClassDefaultConstruct(VarDecl* node, const DeclGenCtx& ctx)
                 }
             }
             // 默认构造调用：本类自身声明的无参构造（有则调用，this = 对象指针）
+            bool calledUserCtor = false;
             for (const auto& mk : ci->methods) {
                 if (mk.second.isConstructor && mk.second.hasBody &&
                     mk.second.ownerClass == canonSrc &&
@@ -647,8 +649,18 @@ void IRGenerator::genClassDefaultConstruct(VarDecl* node, const DeclGenCtx& ctx)
                     emit(ir::Opcode::Call, args, ir::IRValue(),
                          methodSymbolKey(canonSrc, mk.second.sigKey), "void",
                          node->location);
+                    calledUserCtor = true;
                     break;
                 }
+            }
+            if (!calledUserCtor) {
+                // 001 §3.9 裸声明通道接入（合成默认构造面）：本类无用户无参
+                //   构造=合成默认构造——字段级联无构造序言可依托（序言注入
+                //   只存在于用户构造体内·860-a），此处显式级联本类声明类字段
+                //   （与 emitConstructorCall 无构造实例化点共用单点发射）。
+                //   原缺口=字段槽维持空句柄，访问即「运行时错误(错误码3)」
+                //  （p28/n01/n05/n07/n08 实证）。
+                cascadeConstructFields(canonSrc, obj, node->location);
             }
         }
     }
@@ -672,12 +684,15 @@ void IRGenerator::genStructZeroInit(VarDecl* node, const DeclGenCtx& ctx) {
                  {ir::IRValue::constant("0", "i64")}, ir::IRValue(),
                  slotName, "i64", node->location);
         }
-        // 860-a（058 挂账②·结构体面）：结构体类字段级联构造——只对「hasDtor ∧
-        //   有拷贝构造 ∧ 有默认构造」闭合域字段注入 NewObject+默认构造+StorePtr
-        //   （=ir_fields 资源字段收集域：拷贝=postCopy 指针槽深拷·释放=preFree+
-        //   DeleteObject·三链闭合活句柄无共享）。域外类字段维持零初始化空句柄
-        //   （拷贝=memcpy 共享空句柄无害·级联活句柄+浅拷共享=双主·142-a 两次泛化
-        //   回退教训——不越域）。构造字面量初始化（S{...}）不走本分支。
+        // 860-a（058 挂账②·结构体面）：结构体类字段级联构造——闭合域判定
+        //   收拢语义层单点 findCascadeDefaultCtor（非抽象 ∧ 有析构 ∧ 有拷贝
+        //   构造 ∧ 有默认构造·#1943 起与语义层域外访问拒绝共用单一事实源）：
+        //   域内字段注入 NewObject+默认构造+StorePtr（=ir_fields 资源字段收集
+        //   域：拷贝=postCopy 指针槽深拷·释放=preFree+DeleteObject·三链闭合
+        //   活句柄无共享）。域外类字段维持零初始化空句柄（拷贝=memcpy 共享空
+        //   句柄无害·级联活句柄+浅拷共享=双主·142-a 两次泛化回退教训——不越
+        //   域；访问读位由语义层编译期拒绝引导，禁运行期崩溃）。构造字面量
+        //   初始化（S{...}）不走本分支。
         const std::string structCanon = types::canonical(ctx.srcType);
         const StructDecl* sdecl = semantic_->findStruct(structCanon).value_or(nullptr);
         if (sdecl != nullptr && !ctx.unique.empty()) {
@@ -688,24 +703,24 @@ void IRGenerator::genStructZeroInit(VarDecl* node, const DeclGenCtx& ctx) {
             for (const auto& f : sdecl->fields) {
                 const std::string fcanon = types::canonical(f.type);
                 if (!semantic_->isClassType(fcanon)) continue;
-                const ClassInfo* fci = semantic_->findClass(fcanon).value_or(nullptr);
-                if (fci == nullptr || fci->isAbstract) continue;
-                bool hasDtor = false;
-                for (const auto& mk : fci->methods) {
-                    if (mk.second.isDestructor) { hasDtor = true; break; }
-                }
-                if (!hasDtor) continue;                       // 释放链闭合条件
-                if (!semantic_->findCopyConstructor(fcanon).has_value()) continue;
-                const ClassMemberInfo* defCtor = nullptr;     // 构造链闭合条件
-                for (const auto& mk : fci->methods) {
-                    if (mk.second.isConstructor && mk.second.hasBody &&
-                        mk.second.ownerClass == fcanon &&
-                        mk.second.paramTypes.empty()) {
-                        defCtor = &mk.second;
-                        break;
-                    }
-                }
+                // 闭合域单点判定（有值=域内·返回严格无参构造；无值=域外空句柄
+                //   ——访问读位语义层编译期拒绝显形，此处静默跳过=合法分流）
+                const ClassMemberInfo* defCtor =
+                    semantic_->findCascadeDefaultCtor(fcanon).value_or(nullptr);
                 if (defCtor == nullptr) continue;
+                const ClassInfo* fci =
+                    semantic_->findClass(fcanon).value_or(nullptr);
+                if (fci == nullptr) {
+                    // 648（miss 不可静默·#1943 本面）：闭合域判定已命中
+                    //  （findCascadeDefaultCtor 有值⟹其内部 findClass 恒命中）
+                    //   而此处类查询 miss=编译器内部不变量违例——报内部错误
+                    //   显形（driver hasErrors() 统一中止·产物不落地），禁静默
+                    //   跳过（漏发级联=字段空句柄错值面）。
+                    diagnostics_.report(DiagnosticLevel::Error, node->location,
+                        "内部错误: 结构体字段级联·闭合域已命中而类未登记 '" +
+                            fcanon + "'（#648）");
+                    continue;
+                }
                 ir::IRValue addr = emitResult(
                     ir::Opcode::FieldAddr, {base}, "ptr",
                     std::to_string(f.offset), node->location);

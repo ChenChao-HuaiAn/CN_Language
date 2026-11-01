@@ -653,10 +653,13 @@ void IRGenerator::injectFieldCascadeConstruct(const ClassMember* member) {
 }
 
 // #283 甲案（2026-10-08）：类类型字段默认构造级联——遍历本类声明字段
-//   （ownerClass 限定·静态跳过），有严格无参构造的类字段逐个：
-//   FieldAddr(obj,偏移) → NewObject → Call 字段默认构造(this=obj) → StorePtr 槽。
+//   （ownerClass 限定·静态跳过）逐个：
+//     FieldAddr(obj,偏移) → NewObject → [Call 字段默认构造(this=obj)] → StorePtr 槽。
+//   字段类有严格无参构造=Call 用户默认构造；无用户构造=合成默认构造（仅分配，
+//   NewObject 自身零初始化，无需 Call——001 §3.9 条文「仅分配」字面）。
 //   调用面=①构造函数序言（injectFieldCascadeConstruct·860-a 既有）
 //        ②无构造类实例化点（ir_oop_call handleClassCallExpr else 支·本批接入）
+//        ③类变量裸声明无构造通道（genClassDefaultConstruct·H7 族⑪接入）
 //   ——「仅分配」路径自此也级联（001 §3.9 类类型字段级联默认构造条文）。
 void IRGenerator::cascadeConstructFields(const std::string& className,
                                          const ir::IRValue& obj,
@@ -687,7 +690,6 @@ void IRGenerator::cascadeConstructFields(const std::string& className,
                 break;
             }
         }
-        if (defCtor == nullptr) continue;  // 无默认构造：字段=空句柄（现状语义）
         const int offset = semantic_->classFieldOffset(className, fname).value_or(-1);
         if (offset < 0) continue;
         ir::IRValue addr = emitResult(ir::Opcode::FieldAddr, {obj}, "ptr",
@@ -699,11 +701,18 @@ void IRGenerator::cascadeConstructFields(const std::string& className,
             ir::Opcode::NewObject,
             {ir::IRValue::constant(fcanon, "ptr")},
             "ptr", extra, loc);
-        // 字段默认构造调用（this=对象指针；ownerClass 限定同 ir_oop_call 路径）
-        std::vector<ir::IRValue> args;
-        args.push_back(newObj);
-        emit(ir::Opcode::Call, args, ir::IRValue(),
-             methodSymbolKey(fcanon, defCtor->sigKey), "void", loc);
+        // 001 §3.9 判据放宽（合成默认构造面）：字段类无用户无参构造=合成
+        //   默认构造——仅分配（NewObject 自身零初始化）+ StorePtr 写槽，无需
+        //   Call。原 defCtor==nullptr → continue=字段槽维持空句柄，访问即
+        //   「运行时错误(错误码3)」（p28/n04 实证·001 条文承诺字段类无用户
+        //   构造时同样级联合成默认构造）。
+        if (defCtor != nullptr) {
+            // 字段默认构造调用（this=对象指针；ownerClass 限定同 ir_oop_call 路径）
+            std::vector<ir::IRValue> args;
+            args.push_back(newObj);
+            emit(ir::Opcode::Call, args, ir::IRValue(),
+                 methodSymbolKey(fcanon, defCtor->sigKey), "void", loc);
+        }
         // 对象指针写入字段槽（StorePtr 操作数序={地址, 值}）
         emit(ir::Opcode::StorePtr, {addr, newObj}, ir::IRValue(), "", "ptr", loc);
     }
