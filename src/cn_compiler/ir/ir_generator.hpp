@@ -605,6 +605,8 @@ private:
     std::vector<std::size_t> scopeBoxCopiesBase_;
     bool inReturnExpr_ = false;   // 100（939）：返回表达式求值期（盒副本登记豁免）
     std::vector<std::pair<ir::IRValue, std::string>> pendingBoxCopies_;
+    // #1884：盒返回主张表（函数名 → 返回盒载荷是否移交）=被调方返回位登记·调用方盒初值查表（甲案跨函数甄别·miss=保守借用）。
+    std::unordered_map<std::string, bool> boxReturnOwnership_;
     // 182（1019·008）：结果/可选<析构类> 盒亡名单——{tagAddr, fieldAddr, clsCanon, 变量名(273 移交键), 移交标志(273 兜底跳过防双放)}。
     std::vector<std::tuple<ir::IRValue, ir::IRValue, std::string, std::string, bool>> pendingBoxVars_;
     std::vector<std::size_t> scopeBoxVarsBase_;
@@ -681,10 +683,13 @@ private:
     void emitOwnedStrFieldPostCopy(const ir::IRValue& dstBase, const ir::IRValue& srcBase,
                                    const std::string& canon,
                                    const SourceLocation& loc);
-    // 结构体整体拷贝单一事实源：含串字段=preFree + memcpy + 深拷（postCopy）， 否则纯 memcpy（零开销——无串字段类型原路径不变）；srcCanon=源聚合类型（1589/1592 异型合成体转换判据）。
+    // 结构体整体拷贝单一事实源：含串字段=preFree + memcpy + 深拷（postCopy）， 否则纯 memcpy（零开销——无串字段类型原路径不变）；srcCanon=源聚合类型（1589/1592 异型合成体转换判据）。#1884：boxClassPayload=结果/可选盒的类载荷面（默认关——其他聚合调用点零变化）；开时 preFree 条件释放旧载荷、deepCopy 条件深拷（tag 守卫·详 ir_error_ctor.cpp 盒载荷族）。
     void emitStructCopyWithFields(const ir::IRValue& dstAddr, const ir::IRValue& srcAddr,
                                   const std::string& canon, const SourceLocation& loc, bool preFree,
-                                  bool deepCopy = true, const std::string& srcCanon = std::string());
+                                  bool deepCopy = true, const std::string& srcCanon = std::string(),
+                                  bool boxClassPayload = false);
+    // #1884 盒载荷族声明（密集行·行数红线 1000·实现注详 ir_error_ctor.cpp）：识别（布局+载荷类+拷贝构造键）/旧载荷条件释放（tag 假免疫）/载荷条件深拷（tag 真→新对象+拷贝构造）/盒初值调用返回所有权（甲案跨函数甄别·miss=保守借用）/盒变量在册/盒亡登记发射/盒值字段清零（move 归一）。
+    cn::Optional<BoxClassPayload> boxClassPayloadOf(const std::string& canonRaw) const; void emitBoxClassPayloadPreFree(const ir::IRValue& dstBase, const BoxClassPayload& pay, const SourceLocation& loc); void emitBoxClassPayloadPostCopy(const ir::IRValue& dstBase, const ir::IRValue& srcBase, const BoxClassPayload& pay, const SourceLocation& loc); bool boxInitFromOwnedCall(const Expr* init) const; bool resultCtorReturnPayloadOwned(const CallExpr* node) const; void registerBoxReturnClaim(const std::string& fnName, bool owned); bool boxVarInRegistry(const std::string& unique) const; void emitBoxVarReleaseRegister(const std::string& declCanon, const ir::IRValue& dstAddr, const std::string& unique, const SourceLocation& loc); void zeroBoxPayloadField(const ir::IRValue& boxBase, const std::string& boxCanon, const SourceLocation& loc);
     // 1589/1592：结果/可选 异型隐式转换——同型/等价载荷假（原路径），异型逐字段值保真（读源码/Cast/写目标码）；非标量载荷显形。
     bool emitSyntheticConvCopyIfNeeded(const ir::IRValue& dstAddr, const ir::IRValue& srcAddr,
                                        const std::string& dstCanonRaw, const std::string& srcCanonRaw,

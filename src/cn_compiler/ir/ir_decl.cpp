@@ -69,7 +69,19 @@ void IRGenerator::visitProgram(Program* node) {
                     //   句柄，释放侧空安全）——两者零运行期开销，不注入。
                     continue;
                 }
-                if (!g->isStatic && !g->constInitText.empty()) {
+                // #1889：指针槽（裸全局 字符* 视图）的**字符串字面量**初值不可
+                //   走 constInitText 直存——语义层 cnEvalConstExpr 折叠出的是
+                //   字符**文本**（"hi"），而指针槽要的是字符串池**地址**（codegen
+                //   对非数值文本写 0 → 解引用地址 0=错误码 3 误报·宿主 p8 探针
+                //   实录）。此类初值改走下方 StringLiteral 分支的入口注入通道
+                //   （genExpr=ConstString 池地址 → StorePtr）；数值常量初值
+                //   （整32* p = 0 等文本可解析）保持直存零变更。
+                const bool ptrSlotStringInit =
+                    types::isPointer(canonStatic) &&
+                    g->initializer != nullptr &&
+                    g->initializer->getType() == NodeType::StringLiteral;
+                if (!g->isStatic && !g->constInitText.empty() &&
+                    !ptrSlotStringInit) {
                     // 569 d 款（001 §5.2a）：裸全局常量初始化器直存——语义层
                     //   cnEvalConstExpr 折叠文本（覆盖常量引用/常量算术等非字面量
                     //   节点形态·否则落下方「其他表达式」分支=运行期求值，违反
@@ -173,8 +185,24 @@ void IRGenerator::visitProgram(Program* node) {
                         module_->globalStaticInits[g->name] = charLiteralCodeText(
                             static_cast<CharLiteral*>(g->initializer.get())->raw);
                     } else if (it == NodeType::StringLiteral) {
-                        module_->globalStaticInits[g->name] =
-                            static_cast<StringLiteral*>(g->initializer.get())->raw;
+                        // #1889（2026-10-31）：**指针槽（字符* 借用视图）**的
+                        //   字符串字面量初值=字符串池**地址**（非文本值）——原无
+                        //   条件落 .data 直存通道把 "hi" 原文交给 8 字节指针槽
+                        //   （codegen 解析失败写 0）：`静态 字符* 静态视图="hi";
+                        //   字符 c = *静态视图;` 解引用地址 0 → 错误码 3 误报
+                        //   （宿主探针实录）。指针形态改走入口注入（genExpr
+                        //   (StringLiteral)=ConstString 池地址 → StorePtr 写槽）；
+                        //   非指针形态（字符数组等）保持直存原文通道零变更。
+                        //   else 新规（882·1587）：显式枚举互补区间，否则 块禁业务。
+                        const bool ptrSlotStringLit = types::isPointer(canonStatic);
+                        if (ptrSlotStringLit) {
+                            module_->staticCtorNames.push_back(g->name);
+                            staticCtorInit_[g->name] = g->initializer.get();
+                        }
+                        if (!ptrSlotStringLit) {
+                            module_->globalStaticInits[g->name] =
+                                static_cast<StringLiteral*>(g->initializer.get())->raw;
+                        }
                     } else if (it == NodeType::BoolLiteral) {
                         module_->globalStaticInits[g->name] =
                             static_cast<BoolLiteral*>(g->initializer.get())->value ? "1" : "0";
