@@ -243,7 +243,8 @@ void SemanticAnalyzer::visitLambdaExpr(LambdaExpr* node) {
     //   exitLambdaFrame 配对·嵌套 lambda 逐层进出）
     lambda_escape::enterLambdaFrame(
         node->captureKind == LambdaCaptureKind::Explicit,
-        node->explicitCaptures, static_cast<int>(scopes_.size()));
+        node->explicitCaptures, static_cast<int>(scopes_.size()),
+        node->captureKind == LambdaCaptureKind::ByRef);
     // 检查函数体（返回语句由 checkFunctionBody 校验；lambda 的返回类型
     // 在 visitReturnStmt 里按 currentReturnType_ 校验——lambda 未标注时
     // 先置空、由 return 语句动态放宽，见 visitReturnStmt 特判）
