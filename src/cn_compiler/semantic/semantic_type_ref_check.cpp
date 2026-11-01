@@ -61,6 +61,19 @@ bool SemanticAnalyzer::checkTypeReferenceInner(const std::string& type,
     for (const char* basic : kBasicTexts) {
         if (core == basic) return true;
     }
+    // 类型位关键字/内置词豁免（词法关键字与内置模板头有自己的语义处理通道·
+    //   只查登记表会把语言内置词误判未声明——预验 274/1586 打红实证）：
+    //   「自动」=162-a 已删关键字·类型推断哨兵词面（Kw_Auto 枚举已删但语义
+    //   通道保留·274 负测期望「隐式转换为 '自动'」既有诊断锚）；
+    //   「整数/小数」=Kw_Int/Kw_Double 默认类型别名（001 §3.1·canonical 归一
+    //   整32/浮64·isNumeric 兜底之外的字面别名形态显式豁免）；
+    //   「结果/可选」=Kw_Result/Kw_Optional 合成模板头裸名形态（实参形态由
+    //   模板分支递归）。
+    static const char* const kTypeKeywordTexts[] = {
+        "自动", "整数", "小数", "结果", "可选"};
+    for (const char* keyword : kTypeKeywordTexts) {
+        if (core == keyword) return true;
+    }
     if (types::isNumeric(core)) return true;   // 别名族（canonical 口径）兜底放行
     // 函数指针类型文本：返回/各实参递归检查（v2 T69 同构；形态本身合法放行）
     if (isFuncPtrType(core)) {
@@ -110,8 +123,14 @@ bool SemanticAnalyzer::checkTypeReferenceInner(const std::string& type,
         const std::string head = core.substr(0, lt);
         static const char* const kContainerHeads[] = {
             "向量", "映射", "集合", "链表", "栈", "队列", "互斥锁"};
+        // 内置合成模板头（非用户声明表登记·只查登记表会误判未声明——预验
+        //   1586 打红实证）：结果/可选（Kw_Result/Kw_Optional）/手动释放
+        //   （#1674 内置包装模板头·001 §5.6③·1586 零泄漏正例形态；实参位
+        //   完整形态判定=types::manuallyDroppedPayloadOf 手动释放$/<T> 双口径）
         bool headKnown = (head == "结果") || (head == "可选") ||
-                         isResultType(head) || isOptionalType(head);
+                         (head == "手动释放") ||
+                         isResultType(head) || isOptionalType(head) ||
+                         types::manuallyDroppedPayloadOf(core).has_value();
         for (const char* container : kContainerHeads) {
             if (head == container) headKnown = true;
         }
