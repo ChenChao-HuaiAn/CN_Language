@@ -226,6 +226,15 @@ if not 步("看板 GET 鉴权自测", [sys.executable, "scripts/test_board_auth_
 if not 步("check_doc_coverage", [sys.executable, "scripts/check_doc_coverage.py", "--strict"],
          超时秒=静态超时):
     raise SystemExit(1)
+# 1259 高冲突单点 JSON merge driver 判别力自测挂 L1 静态段——2026-10-30 实证（#1942）：
+#    doc_coverage 旧并集实现只并集「特性清单」、其余顶层键取 ours，rebase 方向
+#    ours=上游 develop → 任务分支在归类兜底桶追加的用例整段静默消失（退出码仍 0），
+#    L1 check_doc_coverage 随即报「未归类用例」→ integrate 两轮红 + 人工补行。本自测锁
+#    「结构级并集不丢行」+ fail-safe 四态（解析失败/结构类型冲突/删改冲突/冲突标记须
+#    退出非零且不改写 %A）+ 幂等不膨胀。纯临时目录、零构建、<1s。
+if not 步("merge driver 并集自测", [sys.executable, "scripts/test_merge_drivers.py"],
+         超时秒=静态超时):
+    raise SystemExit(1)
 # 930（2026-10-18）：E2E 用例 v2 覆盖通道守卫挂 L1——306 轮 662/1025「自述 dual
 #    实为探针（用例本体未配 双编译对照.txt）」验收缺口立法化：用例无 v2 通道
 #    （双编译对照.txt/v2闭环.txt/v2锚定链.txt）必须在脚本内嵌豁免清单登记
