@@ -59,16 +59,19 @@ void SemanticAnalyzer::visitVarDecl(VarDecl* node) {
     //   （checkExpr 触发实例化构造，返回 容器$整32）之前替换 varType，
     //   否则类型匹配（容器<整32> vs 容器$整32）失败。
     // #1949：类型引用存在性检查挂点①（对齐 v2 检查声明类型节点→检查类型引用
-    //   plans/018 类型分桶）——挂 resolveGenericTypeName 之前持源形态（模板
-    //   实参/数组元素递归检查覆盖 向量<幽灵>/幽灵[3]）；函数内静态豁免
-    //   （v2 节点_静态声明语句趟提前返回不查·双侧只报 #324 单诊断同构 p4 探针）。
-    //   未声明此前静默放行产出错误程序（v2 同位拒绝·零分叉缺陷 n10 实锤）。
-    if (!varType.empty() && !node->isStatic) {
+    //   plans/018 类型分桶）——检查点=裸声明分支（分派差异实证·返工轮 2 根治）：
+    //   旧宿主对未知类型名的分派=带初始化器形态走既有 canConvert 通道报
+    //   「无法将 X 隐式转换为 '目标'」（幽灵/虚拟/自动 未知目标一视同仁·
+    //   356 上下文词/274 自动 的既有锚通道），裸声明形态走「什么都不做」分支
+    //   静默放行（幽灵 g; n10 实锤）——新检查挂裸分支（幽灵走的那条）；
+    //   带值形态交既有通道零插队（356/274 锚不被抢·返工轮 1 白名单打地鼠
+    //   根治=检查点后移）。函数内静态豁免（v2 节点_静态声明语句趟提前返回
+    //   同构·双侧同报 #324 单诊断）。诊断后中止该声明（上游已诊断豁免——
+    //   防 resolveGenericTypeName 实例化/布局在未登记名上级联内部错误；
+    //   变量不登记，后续引用报「未声明的标识符」引导）。
+    if (!varType.empty() && !node->isStatic && node->initializer == nullptr &&
+        !node->funcPtr.isFunctionPtr()) {
         checkTypeReference(varType, node->location);
-        // 诊断后中止该声明（上游已诊断豁免）——防后续 resolveGenericTypeName
-        //   实例化/布局查询在未登记名上级联内部错误（p13 实锤：盒子<幽灵> 连带
-        //   #648/#1238 布局面两条内部错误）；变量不登记，后续引用报「未声明的
-        //   标识符」引导（v2 诊断后续航·单诊断口径=无引用形态双侧一致）。
         if (!isTypeReferenceDeclared(varType)) return;
     }
     varType = resolveGenericTypeName(varType, node->location);
