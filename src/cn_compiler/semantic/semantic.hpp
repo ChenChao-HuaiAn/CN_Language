@@ -543,6 +543,11 @@ private:
     void defInitEraseBasePrefix(const std::string& prefix);            // 按基数前缀删未初始化键（写置位/循环外溢共用）
     void defInitCheckReadPlace(const std::string& name, const std::string& suffix,
                                const SourceLocation& loc); // 读判定
+    std::string defInitSuffixCutAtUnion(const std::string& declType,
+                                        const std::string& suffix,
+                                        const std::string& varName) const; // 联合体键归并（写/读任一成员=联合体整体为初始化单位）
+    cn::Optional<std::string> defInitDeclTypeAtDepth(int depth,
+                                                     const std::string& name) const; // 命中层内取变量声明类型（归并解析的类型链源·1360 结果化）
     void defInitDropScopeDepth(std::size_t depth);                     // 出块按层清理
     void defInitCheckIf(IfStmt* node);                                 // 如果：两支 clone+交集归并
     void defInitCheckLoopBody(BlockStmt* body);                        // 循环体：不外溢传播

@@ -19,6 +19,7 @@ void SemanticAnalyzer::visitUnaryExpr(UnaryExpr* node) {
     // 010（def-init）：取地址语境——&x 的 x 是初始化通道（地址逃逸=可能被写，
     //   Rust &mut maybe-init 同款；v2 树 结构体出参 &签 铁证）——操作数求值前
     //   置标志，标识符读判定改为整体置位
+    const bool savedAddrOfCtx = inAddrOfCtx_;
     if (node->op == Operator::AddressOf) { inAddrOfCtx_ = true; }
     // 618（字符串下标只读·自增自减写语境）：登记本次自增/自减的**直接操作数**
     //   节点——visitIndexExpr 经身份比较（node==currentIncDecOperand_）识别
@@ -30,7 +31,7 @@ void SemanticAnalyzer::visitUnaryExpr(UnaryExpr* node) {
     if (incDec618) { currentIncDecOperand_ = node->operand.get(); }
     std::string operandType = checkExpr(node->operand.get());
     if (incDec618) { currentIncDecOperand_ = savedIncDecOperand618; }
-    inAddrOfCtx_ = false;
+    inAddrOfCtx_ = savedAddrOfCtx;  // 恢复外层语境（栈式·同 def-init 基对象侧抑制面）
     // P2-14：单目运算符重载（- ! ~）——类类型操作数先查 运算符X（0 参数）成员
     //   （重载决议：类重载优先；无重载则落入下方内置校验/报错）
     // 181-a：本函数 204 行按操作符 case 提取为 5 个族子方法（纯搬运零行为

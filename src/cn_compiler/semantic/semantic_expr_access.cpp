@@ -62,9 +62,13 @@ void SemanticAnalyzer::visitMemberExpr(MemberExpr* node) {
         lastType_ = "未知";
         return;
     }
+    const bool savedAddrBaseCtx = inAddrBaseCtx_;
     inAddrBaseCtx_ = true;  // 010（def-init）：对象侧=地址基，抑制整体值读判定
     std::string objectType = checkExpr(node->object.get());
-    inAddrBaseCtx_ = false;
+    // 恢复外层语境（栈式·嵌套链成员→下标中，内层节点不得冲掉外层设置的抑制——
+    //   原硬复 false 曾使「联合体.字段」的数组基对象自身读判定误开=联合体单键
+    //   登记面误报 E0381 根因之一）
+    inAddrBaseCtx_ = savedAddrBaseCtx;
     // v2.1（2026-09-03，用户裁决废除 ->）：成员访问统一 .——对象为指针时
     //   自动解引用一级（≡ (*对象).成员，Go 先例）。isDerefAccess 按对象类型
     //   写回（IR 层据此选基址：指针值 / 对象地址）；解析层恒 false。
@@ -469,9 +473,11 @@ void SemanticAnalyzer::visitIndexExpr(IndexExpr* node) {
         lastType_ = "未知";
         return;
     }
+    const bool savedAddrBaseCtx = inAddrBaseCtx_;
     inAddrBaseCtx_ = true;  // 010（def-init）：对象侧=地址基，抑制整体值读判定
     std::string objectType = checkExpr(node->object.get());
-    inAddrBaseCtx_ = false;
+    // 恢复外层语境（栈式·同 visitMemberExpr——内层复位曾冲掉外层抑制）
+    inAddrBaseCtx_ = savedAddrBaseCtx;
     std::string indexType = checkExpr(node->index.get());
     if (objectType == "未知") {
         lastType_ = "未知";

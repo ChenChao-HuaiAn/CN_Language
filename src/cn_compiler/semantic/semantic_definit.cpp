@@ -132,15 +132,162 @@ void SemanticAnalyzer::defInitEraseBasePrefix(const std::string& prefix) {
     }
 }
 
+// 联合体键归并：place 后缀沿声明类型链逐段解析（[N]"/"[]" 剥一维、".名" 查
+//   字段类型），遇联合体类型即把后缀截断到该联合体级——联合体一次一活跃成员
+//   （001），写/读任一成员均以联合体整体为初始化单位，与 defInitCollectLeaves
+//   的联合体单键登记同口径（否则写「组[0].l」标记键与登记键粒度错位，联合体
+//   数组元素字段写后读被误拒 E0381）。无联合体前缀=原样返回（结构体叶子键、
+//   标量键行为不变）。
+//   类型链与后缀不一致（前置字段存在性/数组下标检查已保证一致，不一致=编译器
+//   内部缺陷）→ 报内部错误诊断显形后返回原后缀（诊断已记 Error 编译必失败，
+//   控制流继续仅为级联诊断质量——#648 先例同款形态）。
+std::string SemanticAnalyzer::defInitSuffixCutAtUnion(const std::string& declType,
+                                                      const std::string& suffix,
+                                                      const std::string& varName) const {
+    std::string type = declType;
+    std::size_t pos = 0;
+    while (pos < suffix.size()) {
+        const char lead = suffix[pos];
+        if (lead == '[') {
+            // 下标段（"[N]"/"[]"）：数组剥一维（段闭合由 defInitPlaceOf 生成面保证）；
+            //   指针下标（p[0] 等价 *(p+0)·150-a 通道）剥一层所指。两者皆非=真不一致。
+            const std::size_t close = suffix.find(']', pos);
+            if (close == std::string::npos) {
+                diagnostics_.report(
+                    DiagnosticLevel::Error, SourceLocation(),
+                    "内部错误: def-init 后缀 '" + suffix + "' 段未闭合");
+                return suffix;
+            }
+            const bool isArraySeg = types::arrayLenOf(type).has_value();
+            const bool isPtrSeg = !isArraySeg && isPointerType(type);
+            if (!isArraySeg && !isPtrSeg) {
+                // 非数组/非指针根遇 "[]"：取地址整体置位哨兵（1771 checkAddressOfUnary
+                //   对 &槽[0]/&签.字段 硬编码后缀 "[]"=「置位到变量根」·无 place 链
+                //   语义）——整体置位面无须归并，原样返回保持既有键行为（真实下标
+                //   段的类型-后缀一致性由前置数组下标检查保证，联合体/结构体根不产
+                //   生下标段）
+                return suffix;
+            }
+            type = isArraySeg ? types::arrayElemOf(type) : types::pointeeOf(type);
+            pos = close + 1;
+            continue;
+        }
+        if (lead == '.') {
+            // 字段段 ".名"：名界=下一 '.'/'[' 或串尾（defInitPlaceOf 以 AST 成员名
+            //   拼接，成员名不含 '.'/'['）；指针对象自动解引用一级（v2.1 p.字段≡
+            //   (*p).字段·MemberExpr isDerefAccess 同口径），剥一层所指再查字段。
+            std::size_t next = pos + 1;
+            while (next < suffix.size() && suffix[next] != '.' && suffix[next] != '[') {
+                ++next;
+            }
+            const std::string fieldName = suffix.substr(pos + 1, next - pos - 1);
+            if (isPointerType(type)) {
+                type = types::pointeeOf(type);
+            }
+            // 结果/可选合成成员（Task 3.5 规则2/3 同口径）：.正常/.有值=布尔（叶）、
+            //   .值=载荷 T、.错误=错误载荷 E——拥有型豁免面自身无登记键，但链中
+            //   载荷可能嵌联合体/结构体（r.值.字段），类型链须能走通
+            if (isResultType(type)) {
+                const std::vector<std::string> args =
+                    resultTypeArgs(type).value_or(std::vector<std::string>());
+                if (fieldName == "正常") { type = "布尔"; pos = next; continue; }
+                if (fieldName == "值" && args.size() == 2) { type = args[0]; pos = next; continue; }
+                if (fieldName == "错误" && args.size() == 2) { type = args[1]; pos = next; continue; }
+            }
+            if (isOptionalType(type)) {
+                if (fieldName == "有值") { type = "布尔"; pos = next; continue; }
+                if (fieldName == "值") {
+                    type = optionalTypeArg(type).value_or(std::string());
+                    pos = next;
+                    continue;
+                }
+            }
+            const StructDecl* sd = findStruct(type).value_or(nullptr);
+            if (sd == nullptr) {
+                // 类实例字段（拥有型豁免面自身无登记键·链中字段可嵌结构体/联合体
+                //   ——b.值.字段 等形态类型链须能走通）
+                const ClassInfo* ci = findClass(type).value_or(nullptr);
+                if (ci == nullptr) {
+                    diagnostics_.report(
+                        DiagnosticLevel::Error, SourceLocation(),
+                        "内部错误: def-init 后缀 '" + suffix + "' 与声明类型 '" + declType +
+                        "'（变量 '" + varName + "'）不一致（'" + type +
+                        "' 非结构体/联合体/类却有字段段 '" + fieldName + "'）");
+                    return suffix;
+                }
+                const auto cit = ci->fields.find(fieldName);
+                if (cit == ci->fields.end()) {
+                    diagnostics_.report(
+                        DiagnosticLevel::Error, SourceLocation(),
+                        "内部错误: def-init 后缀 '" + suffix + "' 与声明类型 '" + declType +
+                        "'（变量 '" + varName + "'）不一致（类 '" + type + "' 无字段 '" +
+                        fieldName + "'）");
+                    return suffix;
+                }
+                type = cit->second.type;
+                pos = next;
+                continue;
+            }
+            if (sd->isUnion) {
+                return suffix.substr(0, pos);  // 联合体=单键：截到联合体级
+            }
+            bool fieldFound = false;
+            for (const auto& field : sd->fields) {
+                if (field.name == fieldName) {
+                    type = field.type;
+                    fieldFound = true;
+                    break;
+                }
+            }
+            if (!fieldFound) {
+                diagnostics_.report(
+                    DiagnosticLevel::Error, SourceLocation(),
+                    "内部错误: def-init 后缀 '" + suffix + "' 与声明类型 '" + declType +
+                    "'（变量 '" + varName + "'）不一致（'" + type + "' 无字段 '" + fieldName + "'）");
+                return suffix;
+            }
+            pos = next;
+            continue;
+        }
+        diagnostics_.report(
+            DiagnosticLevel::Error, SourceLocation(),
+            "内部错误: def-init 后缀 '" + suffix + "' 段非法（起始字符非 '['/'.'）");
+        return suffix;
+    }
+    return suffix;
+}
+
+// 声明类型获取：defInitLookupDepth 命中层内同名条目（同数据源同层，depth 命中
+//   后本查必命中）。1360 结果化：无值=作用域状态错位的内部缺陷（内部错误已报
+//   显形）——消费点 value_or 空串分流放弃本轮判定（诊断已记 Error 编译必失败，
+//   控制流继续仅为级联诊断质量）
+cn::Optional<std::string> SemanticAnalyzer::defInitDeclTypeAtDepth(
+        int depth, const std::string& name) const {
+    const auto& scopeMap = scopes_[static_cast<std::size_t>(depth)];
+    const auto it = scopeMap.find(name);
+    if (it == scopeMap.end()) {
+        diagnostics_.report(
+            DiagnosticLevel::Error, SourceLocation(),
+            "内部错误: def-init 取变量 '" + name + "' 声明类型落空（作用域状态错位）");
+        return std::nullopt;
+    }
+    return it->second;
+}
+
 void SemanticAnalyzer::defInitMarkInitPlace(const std::string& name, const std::string& suffix) {
     const int depth = defInitLookupDepth(name).value_or(-1);  // 1360 结果化批3A：无值(未声明)→-1 显形回落，下方 <0 分流保持
     if (depth < 0) return;
+    const std::string declType =
+        defInitDeclTypeAtDepth(depth, name).value_or(std::string());
+    if (declType.empty()) return;  // 无值=取型落空（内部错误已报显形·放弃本轮判定）
     const std::string base = std::to_string(depth) + ":" + name + "\x01";
+    // 联合体键归并：写任一成员=联合体整体置位（与登记单键同口径）
+    const std::string cut = defInitSuffixCutAtUnion(declType, suffix, name);
     // 非常量下标写（后缀含 "[]"）=该基数整体置位（循环填充惯用法放行）
-    std::string prefix = base + suffix;
-    const std::size_t dynIdx = suffix.find("[]");
+    std::string prefix = base + cut;
+    const std::size_t dynIdx = cut.find("[]");
     if (dynIdx != std::string::npos) {
-        prefix = base + suffix.substr(0, dynIdx);
+        prefix = base + cut.substr(0, dynIdx);
         // 1771：循环体内 [] 写=循环填充惯用法（001 §3.9 诚实边界·漏报方向）——
         //   记录基数前缀供循环体恢复后重应用（体内写过的基数外溢·嵌套循环冒泡）；
         //   循环体外写点即时生效无恢复面，不记录（防跨语句残留累积）。
@@ -157,12 +304,17 @@ void SemanticAnalyzer::defInitCheckReadPlace(const std::string& name, const std:
                                              const SourceLocation& loc) {
     const int depth = defInitLookupDepth(name).value_or(-1);  // 1360 结果化批3A：无值(未声明)→-1 显形回落，下方 <0 分流保持
     if (depth < 0) return;
+    const std::string declType =
+        defInitDeclTypeAtDepth(depth, name).value_or(std::string());
+    if (declType.empty()) return;  // 无值=取型落空（内部错误已报显形·放弃本轮判定）
     const std::string base = std::to_string(depth) + ":" + name + "\x01";
+    // 联合体键归并：读任一成员=查联合体整体键（诊断文案仍报用户书写的完整 place）
+    const std::string cut = defInitSuffixCutAtUnion(declType, suffix, name);
     std::string place = name + suffix;
-    const std::size_t dynIdx = suffix.find("[]");
+    const std::size_t dynIdx = cut.find("[]");
     if (dynIdx == std::string::npos) {
-        // 精确读：标量键 / 常量下标 / 字段链
-        if (uninitPlaces_.count(base + suffix) > 0) {
+        // 精确读：标量键 / 常量下标 / 字段链 / 联合体整体键
+        if (uninitPlaces_.count(base + cut)) {
             diagnostics_.report(DiagnosticLevel::Error, loc,
                                 "变量 '" + place +
                                 "' 未初始化，不能读取（声明后须先赋值——Rust E0381 对照编译期拒绝）");
@@ -170,11 +322,11 @@ void SemanticAnalyzer::defInitCheckReadPlace(const std::string& name, const std:
         return;
     }
     // 非常量下标读：该基数下任一未初始化键即报（保守拒绝）
-    const std::string prefix = base + suffix.substr(0, dynIdx) + "[";
+    const std::string prefix = base + cut.substr(0, dynIdx) + "[";
     for (const auto& k : uninitPlaces_) {
         if (k.rfind(prefix, 0) == 0) {
             diagnostics_.report(DiagnosticLevel::Error, loc,
-                                "变量 '" + name + suffix.substr(0, dynIdx) +
+                                "变量 '" + name + cut.substr(0, dynIdx) +
                                 "[…]' 可能未初始化，不能读取（非常量下标按保守判定——Rust E0381 对照）");
             return;
         }
