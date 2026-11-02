@@ -39,6 +39,12 @@ struct DeclGenCtx;        // 前向声明（350 重构E2：genVarDecl 拆分段�
     const ISemanticView& semantic, const std::string& startClass,
     const std::string& fieldName, std::string& outDeclClass);
 
+// #1882（#1445 第二形态）：成员节点=「类名.静态成员」形态的静态成员源码类型——对象为用户类名标识符
+//   （非变量）且沿基类链命中静态成员（声明类归一）；其余形态无值。双推导链对类名基座恒 miss 之补面
+//   （下标读 stride/元素形态、写地址、写宽度三消费点同源）。
+[[nodiscard]] cn::Optional<std::string> classStaticFieldTypeOfMember(const ISemanticView& semantic,
+                                                                     MemberExpr* node);
+
 
 namespace ir {
 

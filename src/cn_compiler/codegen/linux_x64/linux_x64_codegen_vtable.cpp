@@ -9,6 +9,8 @@
 // GAS 语法：.section .rodata（只读段）；.quad（8字节）；.long（4字节）
 //   符号前加 .globl 导出；中文字节经 nameMangle 编码（GAS 不接受原始中文符号名）
 // 规范：英文API命名，中文仅注释；函数<=100行
+#include <algorithm>
+#include <cstdint>
 #include <string>
 #include <unordered_set>
 
@@ -101,6 +103,29 @@ void LinuxX64CodeGenerator::emitOopGlobals(LinuxX64AsmWriter& writer,
                         f.staticInitText, types::isInt128Signed(f.type), lo, hi);
                 writer.raw("    .quad " + (ok ? uint64HexText(lo) : "0"));
                 writer.raw("    .quad " + (ok ? uint64HexText(hi) : "0"));
+            } else if (types::isArray(f.type)) {
+                // #1882（#1445 第二形态·槽布局面）：静态**数组**字段槽=元素×长度
+                //   **本体**（259 顶层静态数组「.data 槽=元素大小×长度」同款·
+                //   001 §静态成员×数组下标语义——下标读写=符号基址+元素偏移）。
+                //   原一律 .quad 0（8 字节指针槽）→ 下标写踩相邻静态槽/读越界。
+                //   宽度=typeSizeOf(数组类型)（元素×长度·含 961 布局宽口径）经
+                //   Optional 分流：无值=语义期已登记数组的内部缺陷显形（禁静默
+                //   8 字节兜底——#110 教训执法）；有值=按字节向上取整 quad 数
+                //   （零长数组=1 quad 占位·符号须有存储）。三后端同构。
+                const cn::Optional<int> arraySlotBytes = semantic_->typeSizeOf(f.type);
+                if (arraySlotBytes.has_value()) {
+                    const std::int64_t quads = std::max<std::int64_t>(
+                        1, (arraySlotBytes.value() + 7) / 8);
+                    for (std::int64_t q = 0; q < quads; ++q) {
+                        writer.raw("    .quad 0");
+                    }
+                } else {
+                    diagnostics_.report(DiagnosticLevel::Error,
+                        SourceLocation{},
+                        "内部错误: 静态数组字段 '" + ci.name + "." + f.name +
+                            "'（" + f.type + "）槽宽度未登记 ——静默 8 字节兜底"
+                            "已废除（#648/#1882）");
+                }
             } else if (f.type == "浮32") {
                 writer.raw("    .long 0");
             } else if (!f.staticInitText.empty()) {

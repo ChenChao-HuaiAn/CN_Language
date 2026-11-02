@@ -75,6 +75,27 @@ cn::Optional<std::string> IRGenerator::memberFieldSrcType(MemberExpr* node) cons
     return std::nullopt;
 }
 
+// #1882（#1445 第二形态）：成员节点=「类名.静态成员」形态的静态成员源码类型——
+//   对象为用户类名标识符（非变量·非实例）且沿基类链命中静态成员
+//   （findStaticFieldAlongChain·声明类归一·#1445 口径）时返回其源码类型；其余
+//   形态（实例变量基座/非类名/非静态）无值。双推导链（memberObjStructType/
+//   memberFieldSrcType）对类名基座恒 miss（类名既非 varStack 变量亦非全局静态）
+//   ——本函数为其补面。消费点：visitIndexExpr 读 stride 与元素形态、
+//   genGenericIndexAddress 写地址、indexAssignElemType 写宽度（三处同源·消重复）。
+cn::Optional<std::string> classStaticFieldTypeOfMember(const ISemanticView& semantic,
+                                                       MemberExpr* node) {
+    if (node == nullptr) return std::nullopt;
+    if (node->object->getType() != NodeType::IdentifierExpr) return std::nullopt;
+    const std::string& className =
+        static_cast<const IdentifierExpr*>(node->object.get())->name;
+    if (!semantic.isClassType(className)) return std::nullopt;
+    std::string declClass;
+    const cn::Optional<const ClassMemberInfo*> field =
+        findStaticFieldAlongChain(semantic, className, node->memberName, declClass);
+    if (!field.has_value()) return std::nullopt;
+    return field.value()->type;
+}
+
 // 缺陷3 根治（2026-09-02）：类字段级联析构注入（571 轮自 ir_oop.cpp 机械搬移——
 //   该文件 1036 行过 1000 冻结线·「先拆再加」纪律；搬移=纯机械零行为变更，
 //   571 盒载荷字段清理注入随体·字段族归属=本文件 classFieldType/handleClassField* 同域）——~类名() 体生成后、默认返回前，

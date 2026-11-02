@@ -314,6 +314,7 @@ add_library(cn_compiler_ir STATIC
     src/cn_compiler/ir/ir_expr_assign_ident_string.cpp
     src/cn_compiler/ir/ir_expr_assign_ident_class.cpp
     src/cn_compiler/ir/ir_expr_index.cpp
+    src/cn_compiler/ir/ir_expr_index_addr.cpp
     src/cn_compiler/ir/ir_expr_member.cpp
     src/cn_compiler/ir/ir_call.cpp
     src/cn_compiler/ir/ir_call_args.cpp

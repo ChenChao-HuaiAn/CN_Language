@@ -250,7 +250,7 @@ void IRGenerator::markIndexStringElemTainted(AssignmentExpr* node) {
 std::string IRGenerator::indexAssignElemType(AssignmentExpr* node) {
     // 目标类型：语义层已推导（整32 元素 / 解引用元素类型）
     std::string targetType = "i64";
-    bool elemResolved648 = false;  // 648：任一形态命中类型推导置真
+    bool elemResolved = false;  // 648：任一形态命中类型推导置真
     if (node->target->getType() == NodeType::IndexExpr) {
         IndexExpr* idx = static_cast<IndexExpr*>(node->target.get());
         if (idx->object->getType() == NodeType::IdentifierExpr) {
@@ -259,14 +259,14 @@ std::string IRGenerator::indexAssignElemType(AssignmentExpr* node) {
                 static_cast<IdentifierExpr*>(idx->object.get())->name).value_or("");
             if (types::isArray(st)) {
                 targetType = mapType(types::arrayElemOf(st));
-                elemResolved648 = true;
+                elemResolved = true;
             } else if (types::isPointer(st)) {
                 targetType = mapType(types::pointeeOf(st));
-                elemResolved648 = true;
+                elemResolved = true;
             }
             // 648 豁免：字符串变量下标写=内置字节视图面（写路径有 emitStrBoundsCheck 防线），非静默 miss。
             else if (types::canonicalEquals(st, "字符串")) {
-                elemResolved648 = true;
+                elemResolved = true;
             }
             // A-3（2026-08）：隐式类字段对象（向量 数据[位置] = 值）按字段所指元素类型推导
             else if (st.empty() &&
@@ -276,10 +276,10 @@ std::string IRGenerator::indexAssignElemType(AssignmentExpr* node) {
                     static_cast<IdentifierExpr*>(idx->object.get())->name).value_or("");
                 if (types::isArray(ft)) {
                     targetType = mapType(types::arrayElemOf(ft));
-                    elemResolved648 = true;
+                    elemResolved = true;
                 } else if (types::isPointer(ft)) {
                     targetType = mapType(types::pointeeOf(ft));
-                    elemResolved648 = true;
+                    elemResolved = true;
                 }
             }
         } else if (idx->object->getType() == NodeType::MemberExpr) {
@@ -297,10 +297,23 @@ std::string IRGenerator::indexAssignElemType(AssignmentExpr* node) {
                 semantic_->isClassType(canonOwner1059);
             if (types::isArray(ftype1059)) {
                 targetType = mapType(types::arrayElemOf(ftype1059));
-                elemResolved648 = true;
+                elemResolved = true;
             } else if (types::isPointer(ftype1059) && !ownerIsClass1059) {
                 targetType = mapType(types::pointeeOf(ftype1059));
-                elemResolved648 = true;
+                elemResolved = true;
+            }
+            // #1882（#1445 第二形态·写宽度面）：双推导链对类名基座 miss（成员
+            //   对象=用户类名·类静态成员形态）——classStaticFieldTypeOfMember 沿基类
+            //   链解析：数组 → 元素 IR 类型（写宽度与地址面步进同源）。原落尾段
+            //   648 显形拒=合法程序被误伤（v2 语义放行+本任务通道=对齐面）。
+            if (!elemResolved) {
+                const cn::Optional<std::string> staticFieldType =
+                    classStaticFieldTypeOfMember(*semantic_, inner);
+                if (staticFieldType.has_value() &&
+                    types::isArray(staticFieldType.value())) {
+                    targetType = mapType(types::arrayElemOf(staticFieldType.value()));
+                    elemResolved = true;
+                }
             }
             // 648 归档：字段名 miss=上游已报「没有成员」；命中但非数组/指针（标量下标）=语义层拒绝形态之恢复路径——i64 兜底仅为恢复路径（真拒绝面=上游诊断+尾段 648 显形双承担）。
         } else if (idx->object->getType() == NodeType::IndexExpr) {
@@ -311,7 +324,7 @@ std::string IRGenerator::indexAssignElemType(AssignmentExpr* node) {
                 memberIndexObjElemType(idx);
             if (elemNest.has_value()) {
                 targetType = mapType(elemNest.value());
-                elemResolved648 = true;
+                elemResolved = true;
             }
             // 648 归档：对象无值=内层形态上游已拒之恢复路径，交尾段 648 显形收口。
         }
@@ -332,7 +345,7 @@ std::string IRGenerator::indexAssignElemType(AssignmentExpr* node) {
                 static_cast<IdentifierExpr*>(un->operand.get())->name).value_or("");
             if (types::isPointer(st)) {
                 targetType = derefTargetIRType(types::pointeeOf(st));
-                elemResolved648 = true;
+                elemResolved = true;
             }
         } else if (un->operand->getType() == NodeType::MemberExpr) {
             // 813（2026-10-16·655 复核轮写面余量）：解引用写目标操作数=成员链
@@ -343,12 +356,12 @@ std::string IRGenerator::indexAssignElemType(AssignmentExpr* node) {
                 static_cast<MemberExpr*>(un->operand.get())).value_or("");
             if (types::isPointer(fieldType)) {
                 targetType = derefTargetIRType(types::pointeeOf(fieldType));
-                elemResolved648 = true;
+                elemResolved = true;
             }
         }
         // 648 归档：解引用操作数非指针/非标识符=上游已报错之恢复路径，i64 兜底仅为恢复路径。
     }
-    if (!elemResolved648) {
+    if (!elemResolved) {
         // 648（miss 不可静默·110 同族）：目标元素类型全 miss（对象形态未覆盖·
         //   复合指针表达式解引用等）=合法程序内部缺陷，显形于此；driver 在
         //   generate() 后 hasErrors() 统一中止，产物不落地。
