@@ -241,7 +241,14 @@ cn::Optional<std::string> SemanticAnalyzer::resolveOverload(const std::string& n
     //     特例的既有立法面·本路由不改其语义）。
     //   两分支合取=该族全形态闭集枚举（else 新规：无第三分支·终态显形）。
     //   签名键经 signatureKey 公式生成（与注册侧同源·禁字面漂移）。
-    if (name == "整数转字符串" || name == "正数转字符串") {
+    // #1911（2026-11-02）：个数前置守卫——本族路由只对**恰 1 个实参**形态生效；
+    //   个数≠1（零实参/多实参）落下方通用决议：桶遍历两候选 required=1 全部
+    //   continue → bestKey 空 → 「未找到匹配的函数 'X'（参数个数或类型不匹配）」
+    //   正确诊断（v2 语义检查内置个数.cn 同文案=零分叉）。修前缺陷：路由不看
+    //   个数恒返裸名键——多实参形态进入参数检查循环 info.paramTypes[i] 越界读
+    //   =段错误（rc=139·gdb 崩点 semantic_call.cpp:696→canConvertWithLiteral）；
+    //   零实参形态静默放行（rc=0 零诊断·整数转字符串() 检查通过）。
+    if ((name == "整数转字符串" || name == "正数转字符串") && argTypes.size() == 1) {
         const std::string argCanon = argTypes.size() == 1
             ? types::stripRef(canonicalType(argTypes[0]))
             : std::string();
