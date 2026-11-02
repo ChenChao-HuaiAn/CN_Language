@@ -669,7 +669,28 @@ bool IRGenerator::isStringTypedExpr(Expr* node) const {
         case NodeType::IdentifierExpr: {
             const std::string st = types::canonical(lookupSrcType(
                 static_cast<IdentifierExpr*>(node)->name).value_or(""));
-            return (st == "字符串" || st == "字符*");
+            if (st == "字符串" || st == "字符*") {
+                return true;
+            }
+            // 1960（云端预验第 4 轮·1357 误伤实证·2026-11-03）：顶层常量字符串
+            //   引用（`常量 S = "AB"; … S == "AB"`）——语义层 visitIdentifierExpr
+            //   按 checkConstIdentifier 折叠 lastType_=字符串（值文本内联发射·
+            //   584-a 第 4 层），但 IR 层 lookupSrcType 变量表与语义层常量折叠表
+            //   不同源（常量名 miss）→ 标识符分支假 → exprSrcType 同 miss →
+            //   1960 比较面显形拦死合法程序。补回退：常量值文本（globalConstValue
+            //   ·值文本形态=带引号字面量）引号形态→字符串语义（值文本以
+            //   ConstString 内联·与字面量同 IR 形态——比较分派面 __cn_str_eq
+            //   内容比较正确）；非常量/非引号形态=原 miss 不变（真未登记形态
+            //   维持显形·不放宽）。
+            if (semantic_ != nullptr) {
+                const std::string constText = semantic_->globalConstValue(
+                    static_cast<IdentifierExpr*>(node)->name).value_or(std::string());
+                if (constText.size() >= 2 &&
+                    (constText.front() == '"' || constText.front() == '\'')) {
+                    return true;
+                }
+            }
+            return false;
         }
         case NodeType::BinaryExpr: {
             BinaryExpr* bin = static_cast<BinaryExpr*>(node);
