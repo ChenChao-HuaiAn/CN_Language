@@ -53,7 +53,7 @@ void IRGenerator::visitExprStmt(ExprStmt* node) {
     //   不得 free·只读段崩；两分支皆借用=no-op）。嵌套三元递归展开。
     if (node->expr->getType() == NodeType::TernaryExpr) {
         if (discarded.type == "ptr" && argIsOwnedStringTemp(node->expr.get())) {
-            emitOwnedTempReleaseRec617(node->expr.get(), discarded,
+            emitOwnedTempReleaseRec(node->expr.get(), discarded,
                                        node->location);
         }
         return;

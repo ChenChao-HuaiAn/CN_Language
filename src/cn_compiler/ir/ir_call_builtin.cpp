@@ -528,4 +528,295 @@ bool IRGenerator::resolveBuiltinCallResultType(const std::string& calleeName,
     return hit;
 }
 
+// ==================== #1910（2026-11-02·001 §10.6 配对执法立法）====================
+// 格式化变参展开器：修前「名字透传 __cn_format+运行时 vsnprintf 消费」零编译期
+//   核验——整128 配 %d 被实参 ABI 定标截断低 32 位（静默错值）、配 %s 段错误、
+//   花括号形态实参静默丢弃（探针四形态全雷实录，见 tests/e2e/1701/1702）。
+//   立法后=编译期占位符扫描+逐位配对执法（个数相等+类型匹配·违例拒绝）+
+//   %d128/%u128 改写通道（→%s+整数转字符串 临时串·调用后随 617 结算释放）。
+//   已批条文只含 128 位占位符；整64/正64 专用占位符待立法——配 %d/%u 等为
+//   诚实拒绝（指路 整数转字符串+%s），非静默放行。
+namespace {
+
+// 占位符种类与实参 IR 类型的合法配对表（闭集穷举·001 §10.6）。
+//   %c 的 IR 分辨率极限：字符与 整32 同为 i32（IR 层无语义类型文本），
+//   宽配 i32=既有 C 变参习惯面；语义级甄别缺口已呈报立项。
+//   %s/%p 配 ptr 同为宽配（打印族 ptr→__cn_print_str 同款先例）。
+bool argMatchesPlaceholder(const std::string& kind, const std::string& t) {
+    if (kind == "d" || kind == "x" || kind == "X" || kind == "o") {
+        return t == "i8" || t == "i16" || t == "i32";
+    }
+    if (kind == "u") return t == "u8" || t == "u16" || t == "u32";
+    if (kind == "f") return t == "f32" || t == "f64";
+    if (kind == "s" || kind == "p") return t == "ptr";
+    if (kind == "c") return t == "i32";
+    if (kind == "d64") return t == "i64";
+    if (kind == "u64") return t == "u64";
+    if (kind == "d128") return t == "i128";
+    if (kind == "u128") return t == "u128";
+    return false;  // 未知种类=调用方已先拒（占位符表外扫描即报）
+}
+
+// IR 类型文本 -> 中文类型名（诊断文案用·与 001 类型名对齐）。
+std::string irTypeCnName(const std::string& t) {
+    if (t == "i8") return "整8";
+    if (t == "i16") return "整16";
+    if (t == "i32") return "整32";
+    if (t == "i64") return "整64";
+    if (t == "i128") return "整128";
+    if (t == "u8") return "正8";
+    if (t == "u16") return "正16";
+    if (t == "u32") return "正32";
+    if (t == "u64") return "正64";
+    if (t == "u128") return "正128";
+    if (t == "f32") return "浮32";
+    if (t == "f64") return "浮64";
+    if (t == "i1") return "布尔";
+    if (t == "ptr") return "指针";
+    return t;
+}
+
+// 占位符种类名（诊断文案用）。
+std::string placeholderText(const std::string& kind) {
+    return "%" + kind;
+}
+
+// 指路文案：128/64 位错配给出专用占位符；其余见 001 §10.6 占位符表。
+std::string pairingHint(const std::string& kind, const std::string& t) {
+    if (kind == "d" && t == "i128") return "（整128 请用 %d128）";
+    if (kind == "u" && t == "u128") return "（正128 请用 %u128）";
+    if (kind == "d" && t == "i64") return "（整64 请用 %d64）";
+    if (kind == "u" && t == "u64") return "（正64 请用 %u64）";
+    if (t == "i64" || t == "u64") {
+        return "（整64/正64 请用 %d64/%u64）";
+    }
+    return "";
+}
+
+// 占位符扫描（闭集穷举·001 §10.6）：逐字符扫 fmt，'%' 段解析为种类；
+//   "%%"=字面 %（无坑·原样保留）；%d128/%u128=128 位面、%d64/%u64=64 位面
+//   （均改写为 %s·最长匹配先于单符——"%d128" 恒解析为 d128，条文裁决语义，
+//   需字面 "%d128" 文本者写 "%%d128"）。返回 false=存在表外占位符
+//   （bad=占位符原文，如 "%q" 或悬空 "%"），调用方报「未知占位符」诊断。
+bool scanFormatPlaceholders(const std::string& fmt,
+                            std::vector<std::string>& kinds,
+                            std::string& rewritten,
+                            bool& needsRewrite,
+                            std::string& bad) {
+    rewritten.clear();
+    needsRewrite = false;
+    static const char* kWideFaces[] = {"d128", "u128", "d64", "u64"};
+    static const std::size_t kWideLens[] = {4, 4, 3, 3};
+    static const char kSingleFaces[] = {'d', 'u', 'f', 's', 'c', 'x', 'X', 'o', 'p'};
+    for (std::size_t i = 0; i < fmt.size();) {
+        if (fmt[i] != '%') {
+            rewritten.push_back(fmt[i]);
+            ++i;
+            continue;
+        }
+        bool matched = false;
+        for (std::size_t f = 0; f < 4; ++f) {  // 最长匹配：128/64 位面优先
+            const std::size_t len = kWideLens[f];
+            if (fmt.compare(i + 1, len, kWideFaces[f]) == 0) {
+                kinds.push_back(kWideFaces[f]);
+                rewritten += "%s";
+                needsRewrite = true;
+                i += 1 + len;
+                matched = true;
+                break;
+            }
+        }
+        if (matched) continue;
+        if (i + 1 < fmt.size() && fmt[i + 1] == '%') {  // 字面 %：无坑原样
+            rewritten += "%%";
+            i += 2;
+            continue;
+        }
+        // 单符面：支持 C 风格标志/宽度/精度前缀（%.2f、%5d、%-8s——存量
+        //   212 用例 %.2f 实证合法面·001 §10.6 条文同轮补列），配对按最终
+        //   转换符判定；前缀段在改写串中原样保留（vsnprintf 消费）。
+        const std::size_t segStart = i;
+        std::size_t j = i + 1;
+        // 标志位 [-+ #0]（条件并入循环头·else 只许拦截分支纪律）
+        while (j < fmt.size() &&
+               (fmt[j] == '-' || fmt[j] == '+' || fmt[j] == ' ' ||
+                fmt[j] == '#' || fmt[j] == '0')) {
+            ++j;
+        }
+        while (j < fmt.size() && fmt[j] >= '0' && fmt[j] <= '9') ++j;  // 宽度
+        if (j < fmt.size() && fmt[j] == '.') {  // 精度
+            ++j;
+            while (j < fmt.size() && fmt[j] >= '0' && fmt[j] <= '9') ++j;
+        }
+        if (j < fmt.size()) {
+            const char conv = fmt[j];
+            bool convKnown = false;
+            for (char face : kSingleFaces) {
+                if (conv == face) {
+                    convKnown = true;
+                    break;
+                }
+            }
+            if (convKnown) {
+                kinds.push_back(std::string(1, conv));
+                rewritten.append(fmt, segStart, j - segStart + 1);
+                i = j + 1;
+                matched = true;
+            }
+        }
+        if (matched) continue;
+        bad = fmt.substr(segStart, fmt.size() - segStart);
+        return false;
+    }
+    return true;
+}
+
+} // namespace
+
+// 格式化调用展开入口（调用点已判定 isDirect+格式化名·本函数零 miss 分流）：
+//   完全接管发射，实参只求值一次（禁双发）。
+bool IRGenerator::tryEmitFormatCall(CallExpr* node) {
+    if (node->arguments.size() == 0) {
+        diagnostics_.report(DiagnosticLevel::Error, node->location,
+                            "格式化须提供格式串实参");
+        return true;
+    }
+    // 格式串须为字面量：占位符配对核验是编译期静态行为，变量格式串无法核验
+    //   =诚实拒绝（非字面量形态无合法放行通道）。
+    if (node->arguments[0]->getType() != NodeType::StringLiteral) {
+        diagnostics_.report(DiagnosticLevel::Error, node->location,
+                            "格式化格式串须为字符串字面量（占位符须编译期配对核验）");
+        return true;
+    }
+    const std::string fmtValue = decodeString(
+        static_cast<StringLiteral*>(node->arguments[0].get())->raw);
+
+    // 占位符扫描（闭集）：未知形态即拒（vsnprintf 对未知转换行为随 C 库漂移，
+    //   禁静默透传）。specs kind 表与实参逐位配对；rewritten 仅含 128 改写面。
+    std::vector<std::string> specKinds;
+    std::string rewritten;
+    bool needsRewrite = false;
+    {
+        std::string bad;
+        if (!scanFormatPlaceholders(fmtValue, specKinds, rewritten,
+                                    needsRewrite, bad)) {
+            diagnostics_.report(DiagnosticLevel::Error, node->location,
+                "未知占位符 " + bad +
+                "（占位符表：%%/%d/%u/%f/%s/%c/%x/%X/%o/%p/%d64/%u64/%d128/%u128）");
+            return true;
+        }
+    }
+
+    // 实参求值（仅此一次）+ 617 拥有串临时登记（格式化在消费族名单）。
+    std::vector<ir::IRValue> rawArgs;
+    std::vector<std::pair<const Expr*, ir::IRValue>> ownedTemps;
+    for (std::size_t i = 1; i < node->arguments.size(); ++i) {
+        ir::IRValue argVal = genExpr(node->arguments[i].get());
+        if (argVal.type == "ptr" && argIsOwnedStringTemp(node->arguments[i].get())) {
+            ownedTemps.emplace_back(node->arguments[i].get(), argVal);
+        }
+        rawArgs.push_back(argVal);
+    }
+
+    // 个数执法（双向）：多余实参=静默丢参主诉形态；多余占位符=vsnprintf 读栈垃圾。
+    const std::size_t holeCount = specKinds.size();
+    const std::size_t argCount = rawArgs.size();
+    if (holeCount != argCount) {
+        if (argCount > holeCount) {
+            diagnostics_.report(DiagnosticLevel::Error, node->location,
+                "实参 " + std::to_string(holeCount + 1) + " 无占位符消费（占位符 " +
+                std::to_string(holeCount) + " 个·实参 " +
+                std::to_string(argCount) + " 个）");
+        } else {
+            diagnostics_.report(DiagnosticLevel::Error, node->location,
+                "占位符 " + std::to_string(argCount + 1) + " 无实参可供（占位符 " +
+                std::to_string(holeCount) + " 个·实参 " +
+                std::to_string(argCount) + " 个）");
+        }
+        return true;
+    }
+
+    // 逐位类型配对执法：任一位不配即拒（诊断含中文类型名+128 指路）。
+    for (std::size_t i = 0; i < argCount; ++i) {
+        const std::string& kind = specKinds[i];
+        const std::string& t = rawArgs[i].type;
+        if (argMatchesPlaceholder(kind, t)) continue;
+        diagnostics_.report(DiagnosticLevel::Error, node->location,
+            "占位符 " + placeholderText(kind) + " 与实参 " +
+            std::to_string(i + 1) + " 类型 " + irTypeCnName(t) +
+            " 不匹配" + pairingHint(kind, t));
+        return true;
+    }
+
+    // 发射：改写串（128→%s）或原串求值 + 实参转换 + __cn_format 调用。
+    ir::IRValue fmtArg =
+        needsRewrite
+            ? emitResult(ir::Opcode::ConstString, {}, "ptr",
+                         "@str" + std::to_string(internString(rewritten)),
+                         node->location)
+            : genExpr(node->arguments[0].get());  // 非改写面：原格式串字面量
+    std::vector<ir::IRValue> callArgs;
+    callArgs.push_back(fmtArg);
+    if (!emitFormatCallArgs(node, specKinds, rawArgs, callArgs, ownedTemps)) {
+        // 不可达防御面显形（个数执法先行保证 specKinds==rawArgs）：静默中止
+        //   已废除（882 三选一·报内部错误诊断）
+        diagnostics_.report(DiagnosticLevel::Error, node->location,
+                            "内部错误: 格式化实参转换面个数不齐 ——个数执法"
+                            "先行保证不可达");
+        return true;
+    }
+    lastExpr_ = emitResult(ir::Opcode::Call, callArgs, "ptr", "__cn_format",
+                           node->location);
+    // 617：__cn_format 只读消费毕（sprintf 拷贝语义），结算拥有串临时
+    //   （128 转换临时串=合成调用产物，同通道强制释放防逐调用净漏）。
+    for (const auto& ownedTempItem : ownedTemps) {
+        emitOwnedTempReleaseRec(ownedTempItem.first, ownedTempItem.second,
+                                   node->location);
+    }
+    return true;
+}
+
+// 实参转换发射：128 位实参转串（双槽 ABI 直传·codegen 按 i128 形态取址）、
+//   窄整/浮32 按变参 ABI 提升（%d 读 4 字节/浮读 double——calibrate 变参分支同构）。
+//   返回 false=实参位与占位符数不齐（调用方个数执法已保证，此为不可达面）。
+bool IRGenerator::emitFormatCallArgs(CallExpr* node,
+                                     const std::vector<std::string>& specKinds,
+                                     const std::vector<ir::IRValue>& rawArgs,
+                                     std::vector<ir::IRValue>& callArgs,
+                                     std::vector<std::pair<const Expr*, ir::IRValue>>&
+                                         ownedTemps) {
+    if (specKinds.size() != rawArgs.size()) return false;  // 不可达：个数执法先行
+    for (std::size_t i = 0; i < rawArgs.size(); ++i) {
+        ir::IRValue argVal = rawArgs[i];
+        const std::string& kind = specKinds[i];
+        if (kind == "d128" || kind == "u128") {
+            const char* sym =
+                (kind == "d128") ? "__cn_str_from_i128" : "__cn_str_from_u128";
+            ir::IRValue conv = emitResult(ir::Opcode::Call, {argVal}, "ptr",
+                                          sym, node->location);
+            ownedTemps.emplace_back(node->arguments[i + 1].get(), conv);
+            argVal = conv;
+        } else if (kind == "d64" || kind == "u64") {
+            // 64 位面（方案甲 2026-11-02）：转串走 64 位版 runtime 符号
+            //   （i64/u64 标量单槽直传·非 128 双槽 ABI）
+            const char* sym =
+                (kind == "d64") ? "__cn_str_from_int" : "__cn_str_from_uint";
+            ir::IRValue conv = emitResult(ir::Opcode::Call, {argVal}, "ptr",
+                                          sym, node->location);
+            ownedTemps.emplace_back(node->arguments[i + 1].get(), conv);
+            argVal = conv;
+        } else if (argVal.type == "i8" || argVal.type == "i16" ||
+                   argVal.type == "i32" || argVal.type == "u8" ||
+                   argVal.type == "u16" || argVal.type == "u32") {
+            argVal = emitResult(ir::Opcode::Cast, {argVal}, "i64", "",
+                                node->location);
+        } else if (argVal.type == "f32") {
+            argVal = emitResult(ir::Opcode::Cast, {argVal}, "f64", "",
+                                node->location);
+        }
+        callArgs.push_back(argVal);
+    }
+    return true;
+}
+
 } // namespace cn_compiler

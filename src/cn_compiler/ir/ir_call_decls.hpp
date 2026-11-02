@@ -26,6 +26,12 @@
     std::string removeSlotSrcType(Expr* arg);                        // 摘除实参槽类型推导（语义视图单点）
     bool tryEmitPrintLikeCall(CallExpr* node, bool isDirect,
                               const std::string& calleeName);        // 打印判定薄封装（builtin）
+    bool tryEmitFormatCall(CallExpr* node);                    // 格式化展开（001 §10.6 配对执法+%d64/%u64/%d128/%u128 改写·调用点判名）
+    bool emitFormatCallArgs(CallExpr* node,
+                            const std::vector<std::string>& specKinds,
+                            const std::vector<ir::IRValue>& rawArgs,
+                            std::vector<ir::IRValue>& callArgs,
+                            std::vector<std::pair<const Expr*, ir::IRValue>>& ownedTemps);  // 实参转换发射（128 转串+窄整提升）
     bool isBuiltinStrConsumer617(const std::string& calleeName,
                                  bool isDirect) const;               // 617 消费族判定（builtin）
     void mapBuiltinCalleeNameApi(std::string& calleeName);           // 内置名映射段一（builtin）
@@ -139,7 +145,7 @@
                                const std::vector<std::string>* captureNames = nullptr) const;
     // 662（617 三元面补全）：拥有串临时释放发射（单一入口·递归）——非三元=判据 命中即无条件 __cn_str_free；三元=分支拥有性感知条件释放（嵌套三元逐层
     //   递归，条件寄存器查 ternaryCondRegs617_·miss 显形报诊断不静默·648 立法）。
-    void emitOwnedTempReleaseRec617(const Expr* expr, const ir::IRValue& value,
+    void emitOwnedTempReleaseRec(const Expr* expr, const ir::IRValue& value,
                                     const SourceLocation& loc);
     // 调用发射后统一清理本次调用新增的实参临时（base=进入本次调用时的列表基准， 嵌套调用各自持基准——内层清理只覆盖内层新增项）
     void flushPendingArgCleanups(std::size_t base);

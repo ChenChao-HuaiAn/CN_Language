@@ -76,6 +76,11 @@ void IRGenerator::visitCallExpr(CallExpr* node) {
     // ---- 打印 / 打印行 展开（Task 2.5 + Task 2.9·954 族体见 tryEmitPrintLikeCall）----
     if (tryEmitPrintLikeCall(node, isDirect, calleeName)) return;
 
+    // ---- #1910 格式化展开（001 §10.6 配对执法+%d128/%u128 改写·族体见
+    //   tryEmitFormatCall·ir_call_builtin.cpp）：命中即完全接管发射
+    //   （实参单次求值·禁双发）——名字判定在调用点（函数体零 miss 分流）----
+    if (isDirect && calleeName == "格式化" && tryEmitFormatCall(node)) return;
+
     // ---- 字符串API名称映射（Task 2.5 + Task 2.8）：中文函数名 -> 运行时符号 ----
     // 617：内置字符串消费族判定（954 族体见 isBuiltinStrConsumer617）
     const bool isStrConsumer617 = isBuiltinStrConsumer617(calleeName, isDirect);

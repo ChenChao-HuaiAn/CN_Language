@@ -164,7 +164,7 @@ void IRGenerator::emitDirectCall(CallExpr* node, const std::string& calleeName,
     // 617：消费族调用发射完成——内容已拷贝/只读消费毕，结算拥有串临时实参
     //   （662：三元实参走分支拥有性感知条件释放·单一入口 Rec617）
     for (const auto& tmp617 : consumedArgTemps617) {
-        emitOwnedTempReleaseRec617(tmp617.first, tmp617.second,
+        emitOwnedTempReleaseRec(tmp617.first, tmp617.second,
                                    node->location);
     }
     // 986：右值消费=对 Call 结果（=被引用左值地址）解引用读值

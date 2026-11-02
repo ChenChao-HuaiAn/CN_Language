@@ -755,7 +755,7 @@ void IRGenerator::emitPrintLikeCall(CallExpr* node, bool isPrintNewline,
     //   （调用方变量自有 RAII）天然不命中——原实现 `打印("x=",
     //   整数转字符串(42))` 的临时串每语句净漏 1。
     //   662（617 三元面补全）：三元实参按「分支拥有性感知」条件释放（结算入口
-    //   emitOwnedTempReleaseRec617——选中字面量分支不得 free），收集项携带来源 AST。
+    //   emitOwnedTempReleaseRec——选中字面量分支不得 free），收集项携带来源 AST。
     std::vector<std::pair<const Expr*, ir::IRValue>> ownedStrTemps617;
     for (auto& arg : node->arguments) {
         ir::IRValue argVal = genExpr(arg.get());
@@ -821,7 +821,7 @@ void IRGenerator::emitPrintLikeCall(CallExpr* node, bool isPrintNewline,
     //   （寄存器句柄直传 free，无槽无清零义务；662 三元实参走分支拥有性感知
     //   条件释放，非三元走无条件释放原路——单一入口 Rec617）
     for (const auto& tmp617 : ownedStrTemps617) {
-        emitOwnedTempReleaseRec617(tmp617.first, tmp617.second, node->location);
+        emitOwnedTempReleaseRec(tmp617.first, tmp617.second, node->location);
     }
     lastExpr_ = ir::IRValue();  // 无返回值（空类型）
     (void)isPrintNoLine;   // 对称参数：换行分支仅消费 isPrintNewline（保留签名对称）

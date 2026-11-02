@@ -41,12 +41,21 @@ dict(
                 dict(id="格式化", 名="格式化",
                      签="函数 格式化(字符串 格式串, 参数...) -> 字符串",
                      述="sprintf 风格格式化，<strong>返回新字符串</strong>（拥有型）"
-                        "而不直接输出。占位符：<code>%d</code> 整、<code>%u</code> 无符号、"
-                        "<code>%f</code> 浮点、<code>%s</code> 字符串、<code>%c</code> 字符、"
-                        "<code>%x</code>/<code>%X</code> 十六进制、<code>%o</code> 八进制、"
-                        "<code>%p</code> 指针。",
-                     用例='语句位拥有串丢弃释放',
-                     一句话="sprintf 风格格式化为新字符串"),
+                        "而不直接输出。占位符：<code>%d</code> 整8/16/32、<code>%u</code> "
+                        "正8/16/32、<code>%f</code> 浮点、<code>%s</code> 字符串、"
+                        "<code>%c</code> 字符、<code>%x</code>/<code>%X</code> 十六进制、"
+                        "<code>%o</code> 八进制、<code>%p</code> 指针、"
+                        "<code>%d64</code>/<code>%u64</code> 64 位整数、"
+                        "<code>%d128</code>/<code>%u128</code> 128 位整数、"
+                        "<code>%%</code> 字面百分号。单符占位符可带 C 风格标志/宽度/"
+                        "精度前缀（如 <code>%.2f</code>）。"
+                        "<strong>编译期配对执法</strong>（2026-11-02 立法）：格式串须为"
+                        "字符串字面量；占位符个数须等于实参个数且逐位类型匹配——"
+                        "个数不等、类型不配、未知占位符一律<strong>编译期拒绝</strong>"
+                        "（禁静默丢参/截断/崩溃）；花括号 <code>{{}}</code> 不是占位符"
+                        "（普通文本原样输出）。",
+                     用例='格式化128占位符正例',
+                     一句话="sprintf 风格格式化为新字符串（宽位占位符+编译期配对执法）"),
                 dict(id="读取行内置", 名="IO::读取行",
                      签="内置 函数 IO::读取行() -> 字符串",
                      述="标准输入内置（stdlib IO 模块 读取行() 的底层）。"

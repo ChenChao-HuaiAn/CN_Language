@@ -252,7 +252,7 @@ void IRGenerator::flushPendingArgCleanups(std::size_t base) {
         if (canon == "字符串") {
             const Expr* src = std::get<2>(pendingArgCleanups_[i]);
             if (src != nullptr && src->getType() == NodeType::TernaryExpr) {
-                emitOwnedTempReleaseRec617(src, std::get<0>(pendingArgCleanups_[i]),
+                emitOwnedTempReleaseRec(src, std::get<0>(pendingArgCleanups_[i]),
                                            SourceLocation());
             } else {
                 emitStringFreeForValue(std::get<0>(pendingArgCleanups_[i]));
@@ -409,7 +409,7 @@ bool IRGenerator::argIsOwnedStringTemp(const Expr* arg) const {
         return static_cast<const BinaryExpr*>(arg)->op == Operator::Add;
     }
     // 662（617 三元面补全）：三元结果「潜在拥有」——任一分支命中即登记，
-    //   释放侧经 emitOwnedTempReleaseRec617 按选中分支条件释放（选中字面量/
+    //   释放侧经 emitOwnedTempReleaseRec 按选中分支条件释放（选中字面量/
     //   标识符借用分支无条件 free=只读段崩，故须分支拥有性感知）；两分支皆
     //   借用（字面量/标识符）不命中。嵌套三元由释放侧递归展开。
     if (arg->getType() == NodeType::TernaryExpr) {
@@ -456,7 +456,7 @@ cn::Optional<bool> IRGenerator::stringCallReturnOwned(const CallExpr* ce) const 
 //   free 即崩），由分支形态判定挡外；条件寄存器经 ternaryCondRegs617_
 //   （visitTernaryExpr 汇合登记）查询，miss=生成器内部缺陷报诊断显形
 //   （miss 不可静默·648 立法），不静默跳过。
-void IRGenerator::emitOwnedTempReleaseRec617(const Expr* expr,
+void IRGenerator::emitOwnedTempReleaseRec(const Expr* expr,
                                              const ir::IRValue& value,
                                              const SourceLocation& loc) {
     if (expr == nullptr || value.type != "ptr") return;
@@ -499,10 +499,10 @@ void IRGenerator::emitOwnedTempReleaseRec617(const Expr* expr,
     const std::string endLabel = "bb" + std::to_string(blockCounter_++);
     endBranch(it->second.toString(), trueLabel, falseLabel);
     setCurrentBlock(newBlock(trueLabel));
-    emitOwnedTempReleaseRec617(tExpr, value, loc);
+    emitOwnedTempReleaseRec(tExpr, value, loc);
     if (!currentBlock_->terminated) endJump(endLabel);
     setCurrentBlock(newBlock(falseLabel));
-    emitOwnedTempReleaseRec617(fExpr, value, loc);
+    emitOwnedTempReleaseRec(fExpr, value, loc);
     if (!currentBlock_->terminated) endJump(endLabel);
     setCurrentBlock(newBlock(endLabel));
 }

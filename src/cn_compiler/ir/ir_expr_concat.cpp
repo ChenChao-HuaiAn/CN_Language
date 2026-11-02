@@ -130,8 +130,8 @@ bool IRGenerator::genStringConcatBinary(BinaryExpr* node, const ir::IRValue& lef
         //   字面量/标识符形态由 argIsOwnedStringTemp 判据天然排除）
         //   662（617 三元面补全）：三元操作数走分支拥有性感知条件释放
         //   （单一入口 Rec617·选中字面量分支不得 free——无块计数上下文残余清）
-        emitOwnedTempReleaseRec617(node->left.get(), left, node->location);
-        emitOwnedTempReleaseRec617(node->right.get(), right, node->location);
+        emitOwnedTempReleaseRec(node->left.get(), left, node->location);
+        emitOwnedTempReleaseRec(node->right.get(), right, node->location);
         return true;
     }
     const bool leftIsString = isStringTypedExpr(node->left.get());
@@ -146,7 +146,7 @@ bool IRGenerator::genStringConcatBinary(BinaryExpr* node, const ir::IRValue& lef
         //   （如 整数转字符串(1) + 2 的左临时）同点结算（662 三元走条件释放）。
         emit(ir::Opcode::Call, {rightStr}, ir::IRValue(), "__cn_str_free",
              "void", node->location);
-        emitOwnedTempReleaseRec617(node->left.get(), left, node->location);
+        emitOwnedTempReleaseRec(node->left.get(), left, node->location);
         return true;
     }
     return false;
@@ -176,7 +176,7 @@ bool IRGenerator::genStringConcatI128(BinaryExpr* node, const ir::IRValue& left,
         //   左操作数拥有串临时同点结算，662 三元走条件释放）
         emit(ir::Opcode::Call, {rightStr}, ir::IRValue(), "__cn_str_free",
              "void", node->location);
-        emitOwnedTempReleaseRec617(node->left.get(), left, node->location);
+        emitOwnedTempReleaseRec(node->left.get(), left, node->location);
         return true;
     }
     return false;
@@ -700,7 +700,7 @@ void IRGenerator::emitChainSegAppend(const ir::IRValue& handle, Expr* segAst,
              "__cn_strbuf_append", "void", loc);
         if (segAst != nullptr &&
             segAst->getType() == NodeType::TernaryExpr) {
-            emitOwnedTempReleaseRec617(segAst, segVal, loc);
+            emitOwnedTempReleaseRec(segAst, segVal, loc);
         } else if (chainSegOwnedTemp(segAst)) {
             emit(ir::Opcode::Call, {segVal}, ir::IRValue(), "__cn_str_free",
                  "void", loc);
