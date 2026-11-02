@@ -149,6 +149,26 @@ bool IRGenerator::genStringConcatBinary(BinaryExpr* node, const ir::IRValue& lef
         emitOwnedTempReleaseRec(node->left.get(), left, node->location);
         return true;
     }
+    // 1960（执法一·2026-11-02）：左=ptr 但字符串形态两面都推不出且右侧非
+    //   指针算术形态（ptr/128 位段已分流）=语义层拼接放行而 IR 分派面形态
+    //   未登记——原静默 return false 落指针算术分支（撞 #648「指针步进源
+    //   类型未登记」错位文案·步进 8 错值）。判据=源码类型两面（exprSrcType
+    //   ∪ ptrOperandSrcType——后者防 (p+1)+1 指针算术链误伤·1064 同源）均
+    //   无值才显形：普通指针+整数=指针算术合法路径零变更（05_array_pointer
+    //   回归教训·真指针变量 lookupSrcType/± 链回溯恒可解析）。显形口径同
+    //   #648 ptrElemStride：报内部错误后占位发射（lastExpr_=布尔假·中止前
+    //   合法 IR 值），driver generate() 后 hasErrors() 中止·产物不落盘。
+    if (!leftIsString && left.type == "ptr" && node->op == Operator::Add &&
+        right.type != "ptr" && right.type != "i128" && right.type != "u128" &&
+        !exprSrcType(node->left.get()).has_value() &&
+        !ptrOperandSrcType(node->left.get()).has_value()) {
+        diagnostics_.report(
+            DiagnosticLevel::Error, node->location,
+            "内部错误: 字符串拼接形态未登记（分派面：拼接·缺形态：exprSrcType "
+            "左侧无值）");
+        lastExpr_ = ir::IRValue::constant("假", "i1");  // 占位（中止前布尔假）
+        return true;
+    }
     return false;
 }
 
@@ -177,6 +197,22 @@ bool IRGenerator::genStringConcatI128(BinaryExpr* node, const ir::IRValue& left,
         emit(ir::Opcode::Call, {rightStr}, ir::IRValue(), "__cn_str_free",
              "void", node->location);
         emitOwnedTempReleaseRec(node->left.get(), left, node->location);
+        return true;
+    }
+    // 1960（执法一·2026-11-02·族②显形同款扩段）：左=ptr 但字符串形态两面
+    //   都推不出且右侧=128 位段=拼接分派面形态未登记——原静默 return false
+    //   落指针算术分支（ptrElemStride 错位文案·步进错值）。两面判据与占位
+    //   口径同族②（exprSrcType ∪ ptrOperandSrcType 均无值——防 (p+1)+大数
+    //   指针算术链误伤·合法面零变更），报内部错误后 driver 收尾中止。
+    if (left.type == "ptr" && node->op == Operator::Add &&
+        (right.type == "i128" || right.type == "u128") &&
+        !exprSrcType(node->left.get()).has_value() &&
+        !ptrOperandSrcType(node->left.get()).has_value()) {
+        diagnostics_.report(
+            DiagnosticLevel::Error, node->location,
+            "内部错误: 字符串拼接形态未登记（分派面：拼接128·缺形态：exprSrcType "
+            "左侧无值）");
+        lastExpr_ = ir::IRValue::constant("假", "i1");  // 占位（中止前布尔假）
         return true;
     }
     return false;

@@ -373,6 +373,27 @@ bool IRGenerator::genStringCompareBinary(BinaryExpr* node, const ir::IRValue& le
     if (!isCmp) return false;
     if (left.type != "ptr" || right.type != "ptr") return false;
     if (!isStringTypedExpr(node->left.get()) || !isStringTypedExpr(node->right.get())) {
+        // 1960（执法一·十二条款①③落地·2026-11-02）：ptr×ptr 比较但字符串形态
+        //   两面都推不出=分派面形态未登记——语义层对字符串×字符串无条件放行
+        //   （semantic_expr_binary.cpp:529），IR 层是唯一防线；此处 return false
+        //   使上游发射 ptr×ptr 地址比较（IR 层字符串与指针同型·内容判等静默
+        //   恒假）。判据=源码类型两面（exprSrcType ∪ ptrOperandSrcType——后者
+        //   防 (p+1)==(q+1) 指针算术链误伤·1064 同源）双侧均无值才显形：
+        //   真指针比较/指针差/判空（读取行()==空指针）/可回溯 ± 链均两面有值
+        //   或单侧有值=合法路径原样放行（零行为变更）。显形口径同 #648
+        //   ptrElemStride（报内部错误后占位发射，driver generate() 后
+        //   hasErrors() 中止·产物不落盘）。
+        if (!exprSrcType(node->left.get()).has_value() &&
+            !exprSrcType(node->right.get()).has_value() &&
+            !ptrOperandSrcType(node->left.get()).has_value() &&
+            !ptrOperandSrcType(node->right.get()).has_value()) {
+            diagnostics_.report(
+                DiagnosticLevel::Error, node->location,
+                "内部错误: 字符串比较形态未登记（分派面：比较·缺形态：exprSrcType "
+                "双侧无值）");
+            lastExpr_ = ir::IRValue::constant("假", "i1");  // 占位（中止前布尔假）
+            return true;
+        }
         return false;
     }
     if (node->op == Operator::EqualEqual || node->op == Operator::BangEqual) {
