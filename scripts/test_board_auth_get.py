@@ -115,6 +115,9 @@ class 假服务:
 假 = 假服务()
 
 
+_块隔离停用 = False
+
+
 @contextlib.contextmanager
 def 环境(体: str = "{}", 模式: str = "ok", 有令牌: bool = True, 码: int = 401):
     """替换 urlopen + 令牌读取（确定性正反两态）；退出恢复。"""
@@ -122,6 +125,12 @@ def 环境(体: str = "{}", 模式: str = "ok", 有令牌: bool = True, 码: int
     urllib.request.urlopen = 假
     intent.读令牌 = (lambda: "selftest-token") if 有令牌 else (lambda: "")
     假.模式, 假.体, 假.记录, 假.码, 假.有令牌 = 模式, 体, [], 码, 有令牌
+    # 1960：环境块请求日志按块隔离（块内自含·跨块不漂移——宿主脚本后台心跳
+    #   线程与本测试竞争全局 urlopen 的残余面收窄到「块内插队」单点；跨块
+    #   记录泄漏曾致 头(-1) 取到别块/后台请求=间歇 FAIL。假.请求日志（跨块
+    #   累计审计）不动——两容器职责分离，[12] 请求级审计语义不变。）
+    if not _块隔离停用:
+        假.记录.clear()
     try:
         yield
     finally:
@@ -186,12 +195,14 @@ def 测_GET带令牌() -> None:
     with 环境(体='{"单元们": [], "豁免们": []}'):
         原cache = check_spec_coverage.CACHE
         check_spec_coverage.CACHE = str(Path(tempfile.mkdtemp(prefix="cov_auth_")) / "c.json")
-        try:
-            rows, exempt = check_spec_coverage.parse_map()
-        finally:
-            check_spec_coverage.CACHE = 原cache
+        记录基线 = len(假.记录)   # 1960：宿主脚本后台心跳线程与本测试竞争全局
+        try:                      # urlopen（根因见 main 隔离注）——断言取本块
+            rows, exempt = check_spec_coverage.parse_map()   # 自己的请求（基线
+        finally:                  # 后首条）而非 头(-1)「最后一条」（可能被后台
+            check_spec_coverage.CACHE = 原cache   # 线程请求覆盖）
+        本块头 = dict(假.记录[记录基线].header_items()) if len(假.记录) > 记录基线 else {}
         签("check_spec_coverage.parse_map",
-           假.头().get("Authorization") == "Bearer selftest-token"
+           本块头.get("Authorization") == "Bearer selftest-token"
            and rows == {} and exempt == {}, f"{rows}/{exempt}")
 
     with 环境(体="{}"):
@@ -1069,6 +1080,37 @@ def 测_请求审计() -> None:
 
 def main() -> int:
     print("== 看板只读 GET 令牌/401 分流自测（任务 1485）==")
+    # 1960（L1 环境态隔离·2026-11-03）：宿主脚本（gate_quick/task_board/wt/
+    #   board_cli）挂载的 intent.路过续约 是**后台 daemon 线程**——读本机意图行
+    #   （在做=当前任务号）后发**真实 urllib 请求**。本自测 mock 的正是进程级
+    #   全局 urllib.request.urlopen——后台线程与主线程竞争该全局名：mock 替换/
+    #   恢复的瞬间窗口，后台真网请求（真令牌·/api/task/<在做>）撞进 mock 记录
+    #   或与主测试请求交错（间歇 FAIL「parse_map 头非 selftest-token」·约 1/5
+    #   概率·竞态放大探针 300 次单进程实证：FAIL 时头=真令牌、最后请求=
+    #   api/task/1960）。隔离=测试期置 CN_BOARD_TOKEN 空——读令牌缓存键含环境
+    #   令牌（intent._令牌键），**不影响** mock（mock 直接 monkeypatch
+    #   intent.读令牌 不走缓存）；同时把可能在跑的后台线程请求与本测试错峰
+    #   （daemon 线程请求将拿到空令牌=裸请求·不携带真令牌·本测试断言的
+    #   「最后请求归属」确定性由下方 请求日志.clear()+每断言块尾部取头保证）。
+    原板令牌 = os.environ.get("CN_BOARD_TOKEN", "")
+    原队令牌 = os.environ.get("CN_QUEUE_TOKEN", "")
+    os.environ.pop("CN_BOARD_TOKEN", None)
+    os.environ.pop("CN_QUEUE_TOKEN", None)
+    try:
+        rc = _主体()
+    finally:
+        if 原板令牌:
+            os.environ["CN_BOARD_TOKEN"] = 原板令牌
+        else:
+            os.environ.pop("CN_BOARD_TOKEN", None)
+        if 原队令牌:
+            os.environ["CN_QUEUE_TOKEN"] = 原队令牌
+        else:
+            os.environ.pop("CN_QUEUE_TOKEN", None)
+    return rc
+
+
+def _主体() -> int:
     假.请求日志.clear()
     假.免鉴权URL.clear()
     测_令牌头()
