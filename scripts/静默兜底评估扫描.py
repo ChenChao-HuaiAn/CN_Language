@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+<<<<<<<< HEAD:scripts/静默兜底评估扫描.py
 """静默兜底评估扫描.py —— #1958 静默兜底评估轮扫描器（十二条款全量扫描·只评估不修码）。
+========
+"""scan_silent_fallback_eval.py —— #1958 静默兜底评估轮扫描器（十二条款全量扫描·只评估不修码）。
+>>>>>>>> df835992a (〔#1960〕命名门禁修复：任务号标识符表意化改名):scripts/scan_silent_fallback_eval.py
 
 任务 #1958（评估轮打标）：存量代码按「防静默错误零裁量十二条款」（看板 #1964）全量
 扫描 + 三型分型（违规/合法接力/豁免清单）支撑，产出机读 JSON 供评估文档
@@ -39,9 +43,15 @@ plans/1958 静默兜底评估轮.md 引用。**本工具只读不写（除 --out
     工具机械面，评估文档以案例+人工审计面覆盖（诚实声明）。
 
 用法：
+<<<<<<<< HEAD:scripts/静默兜底评估扫描.py
   python3 scripts/静默兜底评估扫描.py                    # 扫描·统计摘要到 stdout
   python3 scripts/静默兜底评估扫描.py --out 输出.json    # 机读全量输出（默认临时目录）
   python3 scripts/静默兜底评估扫描.py --selftest         # 自测（临时样例树正反两态）
+========
+  python3 scripts/scan_silent_fallback_eval.py                    # 扫描·统计摘要到 stdout
+  python3 scripts/scan_silent_fallback_eval.py --out 输出.json    # 机读全量输出（默认临时目录）
+  python3 scripts/scan_silent_fallback_eval.py --selftest         # 自测（临时样例树正反两态）
+>>>>>>>> df835992a (〔#1960〕命名门禁修复：任务号标识符表意化改名):scripts/scan_silent_fallback_eval.py
 
 退出码：0=扫描完成；2=用法/环境错误。
 """
@@ -534,7 +544,11 @@ def 建统计(命中: dict, 判据定义全: list, 统计: dict, 辅助计数: C
 
 
 def 打印摘要(摘: dict):
+<<<<<<<< HEAD:scripts/静默兜底评估扫描.py
     print("== #1958 静默兜底评估轮扫描（静默兜底评估扫描.py·只评估不修码）==")
+========
+    print("== #1958 静默兜底评估轮扫描（scan_silent_fallback_eval.py·只评估不修码）==")
+>>>>>>>> df835992a (〔#1960〕命名门禁修复：任务号标识符表意化改名):scripts/scan_silent_fallback_eval.py
     print(f"扫描文件 {摘['扫描文件']}（读取失败 {摘['读取失败']}）")
     for 面 in 面名们:
         u = 摘[面]
@@ -677,11 +691,19 @@ def main() -> int:
     except Exception:
         sha = ""
     摘 = 建统计(命中, 判据定义全, 统计, 辅助计数)
+<<<<<<<< HEAD:scripts/静默兜底评估扫描.py
     输出 = {"工具": "静默兜底评估扫描.py", "任务": "1958", "生成sha": sha,
           "说明": "十二条款评估轮扫描（原始命中·三型分型由评估文档人工判）",
           "统计": 摘, "命中": {面: 命中[面] for 面 in 面名们}}
     出路径 = Path(参数.out) if 参数.out else \
         Path(tempfile.gettempdir()) / "静默兜底评估扫描.json"
+========
+    输出 = {"工具": "scan_silent_fallback_eval.py", "任务": "1958", "生成sha": sha,
+          "说明": "十二条款评估轮扫描（原始命中·三型分型由评估文档人工判）",
+          "统计": 摘, "命中": {面: 命中[面] for 面 in 面名们}}
+    出路径 = Path(参数.out) if 参数.out else \
+        Path(tempfile.gettempdir()) / "scan_silent_fallback_eval.json"
+>>>>>>>> df835992a (〔#1960〕命名门禁修复：任务号标识符表意化改名):scripts/scan_silent_fallback_eval.py
     出路径.write_text(json.dumps(输出, ensure_ascii=False, indent=1),
                     encoding="utf-8")
     打印摘要(摘)
