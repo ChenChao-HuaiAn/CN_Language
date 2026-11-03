@@ -419,6 +419,8 @@ bool SemanticAnalyzer::stmtGuaranteesReturn(Stmt* stmt) const {
 void SemanticAnalyzer::visitProgram(Program* node) {
     pushScope();  // 全局作用域
     program_ = node;
+    // 接口注册完成标志复位（每模块一趟序——泛型实例化判据用·1975）
+    interfacesRegistered_ = false;
     // 第零趟：注册CN语言内置函数符号（打印行等，无需源码声明即可调用）
     //         阶段3：注册 正常/错误/某些 内置构造器（用户不可重定义）
     registerBuiltins();

@@ -411,6 +411,18 @@ void SemanticAnalyzer::registerClassAndInterfaces(Program* node) {
     for (auto& cls : node->classes) {
         resolveClass(cls.get());
     }
+    // 阶段B'：泛型实例接口关系补收尾——实例化（第一趟e 泛型注册）早于接口注册
+    //   （第一趟d·本函数——接口成员类型解析依赖泛型注册·架构次序不可前移），
+    //   模板实现的接口未注册的实例由 instantiateGeneric 入 pendingInstanceFinalize_
+    //   清单，此刻（接口注册后）逐一补收尾（finalizeInstanceInterfaceRelations·
+    //   class_vtable.cpp）后消费清空——每实例恰收尾一次，重复诊断零发生。
+    for (const auto& instName : pendingInstanceFinalize_) {
+        const auto it = classes_.find(instName);
+        if (it != classes_.end()) {
+            finalizeInstanceInterfaceRelations(it->second);
+        }
+    }
+    pendingInstanceFinalize_.clear();
 }
 
 // 解析单个类：成员收集 + 继承并入 + 虚表分配 + 接口实现验证 + 布局
@@ -424,8 +436,11 @@ void SemanticAnalyzer::resolveClass(ClassDecl* node) {
     //   是接口 -> 移入 interfaces（接口实现）；是类 -> 父类（单继承）。
     if (!node->baseName.empty()) {
         if (interfaces_.find(node->baseName) != interfaces_.end()) {
-            // 冒号后是接口名：作为接口实现
+            // 冒号后是接口名：作为接口实现（baseName 同步清空——接口非基类，
+            //   滞留名在沿链消费点 findClass 恒 miss·清空使「已收尾」判据唯一，
+            //   泛型实例补做遍历对非泛型已收尾类恒假跳过）
             info.interfaces.push_back(node->baseName);
+            info.baseName.clear();
         } else if (const ClassInfo* parent = resolveBaseClass(node).value_or(nullptr)) {
             // #1252（#1210 派生）：父类身份由 resolveBaseClass 唯一裁定（歧义/
             //   未声明已显式诊断，不再兜底）。baseName 记真实符号名（跨模块同名
@@ -561,9 +576,6 @@ void SemanticAnalyzer::resolveClass(ClassDecl* node) {
     }
 
     // P3-19：接口分派区（B1 全局槽位；跨继承链收集接口方法，强制虚表指针）
-    info.ifaceDisp.clear();
-    info.ifaceMaxSlot = -1;
-    info.ifaceRegionSize = 0;
     {
         std::vector<std::string> ifaceNames;
         std::unordered_set<std::string> seenIface;
@@ -585,29 +597,9 @@ void SemanticAnalyzer::resolveClass(ClassDecl* node) {
                               : nullptr);
         }
         // P3/D3A：登记本类实现的全部接口名（含继承链并入）——供 接口→实现类集合
-        //   统计（去虚拟化唯一实现判定 + CFI 目标表）
-        info.ifaceNames = ifaceNames;
-        if (!ifaceNames.empty()) {
-            info.hasVtable = true;  // 强制虚表指针：接口区统一置于对象首 8 字节后
-            int maxSlot = -1;
-            for (const auto& ifn : ifaceNames) {
-                const InterfaceInfo* iface = findInterface(ifn).value_or(nullptr);
-                if (iface == nullptr) continue;
-                for (const auto& mk : iface->methods) {
-                    const int slot = interfaceSlot(ifn, mk.first).value_or(-1);
-                    if (slot < 0) continue;
-                    bool dup = false;
-                    for (const auto& pr : info.ifaceDisp) {
-                        if (pr.first == slot) { dup = true; break; }
-                    }
-                    if (dup) continue;
-                    info.ifaceDisp.emplace_back(slot, mk.first);
-                    if (slot > maxSlot) maxSlot = slot;
-                }
-            }
-            info.ifaceMaxSlot = maxSlot;
-            if (maxSlot >= 0) info.ifaceRegionSize = (maxSlot + 1) * 8;
-        }
+        //   统计（去虚拟化唯一实现判定 + CFI 目标表）；槽合成单点
+        //   synthesizeInterfaceDispatch（class_vtable.cpp·泛型实例化共用）。
+        synthesizeInterfaceDispatch(info, ifaceNames);
     }
 
     // 计算类布局

@@ -655,6 +655,13 @@ private:
     void collectClassMembers(ClassDecl* node, ClassInfo& info);
     // 分配虚函数表槽位（父类槽位 + 重写覆盖 + 新虚函数追加）
     void assignVtable(ClassInfo& info);
+    // 接口分派区登记与槽合成（ifaceNames 登记 + ifaceDisp/区域大小·
+    //   resolveClass 与泛型实例化共用单点）
+    void synthesizeInterfaceDispatch(ClassInfo& info,
+                                     const std::vector<std::string>& ifaceNames);
+    // 泛型实例接口关系收尾单点（重分类+存在性+验证+分派区+布局·幂等；
+    //   instantiateGeneric 当场 + registerClassAndInterfaces 阶段B' 补做共用）
+    void finalizeInstanceInterfaceRelations(ClassInfo& info);
     // 验证接口实现（类须实现接口全部虚方法，签名匹配）
     void verifyInterfaceImpl(ClassInfo& info);
     // 计算类布局（虚表指针 + 父类成员 + 自身成员，C风格对齐）
@@ -938,6 +945,14 @@ private:
     // P3-19 数据字段（方法声明见 public 区）
     std::unordered_map<std::string, GenericInfo> generics_;    // 泛型声明表（Task 3.8）
     std::unordered_set<std::string> instantiatedGenerics_;     // 已实例化泛型类名集合（去重）
+    // 待接口收尾的泛型实例名（实例化早于接口注册时入列——接口注册后由
+    //   registerClassAndInterfaces 阶段B' 逐个 finalizeInstanceInterfaceRelations
+    //   补收尾并消费清空；接口已注册的实例当场收尾不入列）
+    std::vector<std::string> pendingInstanceFinalize_;
+    // 接口注册是否已完成（本模块 registerClassAndInterfaces 接口段置位·
+    //   visitProgram 每模块复位）——区分实例化时「注册期未到」（入清单补收尾）
+    //   与「接口真未声明」（当场收尾·存在性检查报错）
+    bool interfacesRegistered_ = false;
     // 泛型函数实例化记录（Task 6.1）：名$实参 -> 原泛型声明 + 实参列表
     //   （visitCallExpr 泛型函数调用时登记，供 IR 层生成函数体）
     std::vector<GenericFuncInstance> genericFuncInstances_;

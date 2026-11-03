@@ -595,34 +595,34 @@ cn::Optional<std::string> SemanticAnalyzer::instantiateGeneric(
                 }
             }
         }
-        // 继承并入（父类字段/方法；父类须已解析）
-        if (!info.baseName.empty()) {
-            const ClassInfo* parentPtr = findClass(info.baseName).value_or(nullptr);
-            if (parentPtr != nullptr) {
-                const ClassInfo& parent = *parentPtr;
-                for (const auto& fname : parent.fieldOrder) {
-                    auto f = parent.fields.find(fname);
-                    if (f == parent.fields.end()) continue;
-                    if (info.fields.find(fname) == info.fields.end()) {
-                        info.fields[fname] = f->second;
-                        info.fieldOrder.push_back(fname);
-                    }
-                }
-                for (const auto& mname : parent.methodOrder) {
-                    auto m = parent.methods.find(mname);
-                    if (m == parent.methods.end()) continue;
-                    if (info.methods.find(mname) == info.methods.end()) {
-                        info.methods[mname] = m->second;
-                        info.methodOrder.push_back(mname);
-                    }
-                }
-                info.hasVtable = parent.hasVtable;
+        // 虚表分配（虚槽与接口无关·先分配）
+        assignVtable(info);
+        // 接口关系收尾单点（finalizeInstanceInterfaceRelations·class_vtable.cpp）：
+        //   重分类 + 存在性检查 + 实现验证 + ifaceNames/分派区合成 + 布局。
+        //   实例化（第一趟e 泛型注册）早于接口注册（第一趟d——接口成员类型解析
+        //   依赖泛型注册·架构次序不可前移）：模板实现的接口有任一未注册时收尾
+        //   判据会误报「未声明」→ 入 pendingInstanceFinalize_ 清单，由
+        //   registerClassAndInterfaces 阶段B'（接口注册后）补收尾；接口全已注册
+        //   （第二趟及以后的新实例化·或引用他模块已注册接口）当场收尾。
+        {
+            bool ifacePending =
+                !info.baseName.empty() &&
+                interfaces_.find(info.baseName) == interfaces_.end();
+            for (auto it = info.interfaces.begin();
+                 !ifacePending && it != info.interfaces.end(); ++it) {
+                ifacePending = interfaces_.find(*it) == interfaces_.end();
+            }
+            // 注册期未到且接口未注册=待补收尾（入清单·第一趟d 后补做）；
+            //   注册已完成时任何未注册接口名=真未声明（当场收尾·存在性检查
+            //   报错）——两态互补显式枚举（else 业务禁令）
+            const bool needDefer = !interfacesRegistered_ && ifacePending;
+            if (needDefer) {
+                pendingInstanceFinalize_.push_back(instanceName);
+            }
+            if (!needDefer) {
+                finalizeInstanceInterfaceRelations(info);
             }
         }
-        // 虚表分配 + 接口验证 + 布局（复用 resolveClass 的辅助逻辑）
-        assignVtable(info);
-        verifyInterfaceImpl(info);
-        computeClassLayout(info);
         // Task 6.1（容器库 向量/链表 的 正常()/错误() 降级）：实例化类方法返回
         //   类型 结果<整32,整32> 在 lowerResultOptionalTypes（第一趟f）之后才出现，
         //   须按替换后的类型重新降级合成结构体（结果$整32$整32），否则

@@ -5,7 +5,10 @@
 //   3. verifyInterfaceImpl：接口实现验证（须实现全部接口方法·签名匹配·虚修饰）
 //   4. qualifiesForVirtualSlot：虚槽资格单点（1022·1020 采样轮 H1 抽象纯虚入槽）
 // 设计：英文API命名（GCC 7 不支持中文标识符），中文仅用于注释/字符串/输出
+#include <algorithm>
 #include <string>
+#include <unordered_set>
+#include <vector>
 
 #include "cn_compiler/semantic/semantic.hpp"
 
@@ -122,6 +125,114 @@ void SemanticAnalyzer::assignVtable(ClassInfo& info) {
         }
         info.hasVtable = true;
     }
+}
+
+// 接口分派区登记与槽合成（resolveClass 与泛型实例化共用单点·事不过三）：
+//   ifaceNames=该类实现的全部接口名（含继承链并入）→ 登记 ClassInfo.ifaceNames
+//   （接口→实现类集合统计·去虚拟化唯一实现判定 + CFI 目标表数据源），并按
+//   全局槽位合成 ifaceDisp（槽去重）/ifaceMaxSlot/ifaceRegionSize；接口名非空
+//   时强制 hasVtable（接口区统一置于对象首 8 字节虚表指针之后）。
+//   空集=清零（存量非接口类布局零变化）。
+void SemanticAnalyzer::synthesizeInterfaceDispatch(
+    ClassInfo& info, const std::vector<std::string>& ifaceNames) {
+    info.ifaceNames = ifaceNames;
+    info.ifaceDisp.clear();
+    info.ifaceMaxSlot = -1;
+    info.ifaceRegionSize = 0;
+    if (ifaceNames.empty()) return;
+    info.hasVtable = true;
+    int maxSlot = -1;
+    for (const auto& ifn : ifaceNames) {
+        const InterfaceInfo* iface = findInterface(ifn).value_or(nullptr);
+        if (iface == nullptr) continue;
+        for (const auto& mk : iface->methods) {
+            const int slot = interfaceSlot(ifn, mk.first).value_or(-1);
+            // 静默豁免闭集穷举: 槽表在接口注册期对本注册面全部接口方法建槽——槽必在，-1 哨兵=显式分流跳过（resolveClass 段提炼搬移·原位基线同锚豁免）
+            if (slot < 0) continue;
+            bool dup = false;
+            for (const auto& pr : info.ifaceDisp) {
+                if (pr.first == slot) { dup = true; break; }
+            }
+            if (dup) continue;
+            info.ifaceDisp.emplace_back(slot, mk.first);
+            if (slot > maxSlot) maxSlot = slot;
+        }
+    }
+    info.ifaceMaxSlot = maxSlot;
+    // 静默豁免业务值: 无槽（maxSlot=-1）时接口区大小保持 0=合法零值终态，非查询 miss 静默（resolveClass 段提炼搬移·原位基线同锚豁免）
+    if (maxSlot >= 0) info.ifaceRegionSize = (maxSlot + 1) * 8;
+}
+
+// 泛型实例接口关系收尾单点（resolveClass 阶段B 接口面在实例域的同构·幂等）：
+//   实例化（第一趟e 泛型注册）早于接口注册（第一趟d——接口成员类型解析依赖
+//   泛型注册·架构次序不可前移），故实例接口面分两处收尾：instantiateGeneric
+//   当场（第二趟及以后的新实例·接口已注册）+ registerClassAndInterfaces 阶段B'
+//   补做遍历（早于接口注册的存量实例·判据见该处）。步骤：
+//   ①重分类——冒号后首名 parser 统一记 baseName（parseClassDecl），resolveClass
+//     对非泛型类按「已注册接口 → 移入 interfaces」重分类；实例化原样照抄 AST
+//     缺同构步 → 实例 ClassInfo interfaces 空、接口名滞留 baseName：接口转换
+//     判定（canConvertType P3-19 classImplementsInterface 沿 baseName 查类表
+//     miss）、接口实现验证、接口分派区合成全部 miss——泛型实例 → 接口类型
+//     隐式转换（值/指针形态）误拒（1102 采样 pD1/pD1b 实锤·非泛型同形态绿）。
+//   ②存在性检查（对齐 resolveClass「未声明」文案；坏名报错后移出——自净防
+//     补做遍历重复报）。
+//   ③实现验证 ④ifaceNames 沿链收集+分派区合成 ⑤布局（读头区大小·须最后）。
+void SemanticAnalyzer::finalizeInstanceInterfaceRelations(ClassInfo& info) {
+    // ①重分类（查重插入·幂等：baseName 已清或已在列=跳过；顺序对齐 resolveClass
+    //   ——baseName 接口列于 interfaces 最前）
+    if (!info.baseName.empty() &&
+        interfaces_.find(info.baseName) != interfaces_.end() &&
+        std::find(info.interfaces.begin(), info.interfaces.end(),
+                  info.baseName) == info.interfaces.end()) {
+        info.interfaces.insert(info.interfaces.begin(), info.baseName);
+        info.baseName.clear();
+    }
+    // ①-b：baseName 滞留名非已注册接口、亦非已注册类=未声明（finalize 只在
+    //   接口注册完成后被调·此刻=真未声明——对齐 resolveBaseClass #1252 同文案；
+    //   findClass 命中=合法父类不惊动。①条件只认已注册接口·未声明名否则永滞
+    //   baseName 静默逃过②，pN1 负探针实锤）
+    if (!info.baseName.empty() &&
+        interfaces_.find(info.baseName) == interfaces_.end() &&
+        findClass(info.baseName).value_or(nullptr) == nullptr) {
+        diagnostics_.report(
+            DiagnosticLevel::Error,
+            (info.ast != nullptr) ? info.ast->location : SourceLocation{},
+            "类 '" + info.name + "' 的父类/接口 '" + info.baseName + "' 未声明");
+        info.baseName.clear();
+    }
+    // ②接口存在性检查+自净（resolveClass 对非泛型在 push 前挡坏名·此处对实例
+    //   拷贝面同文案把关）
+    for (auto it = info.interfaces.begin(); it != info.interfaces.end();) {
+        if (interfaces_.find(*it) != interfaces_.end()) { ++it; continue; }
+        diagnostics_.report(
+            DiagnosticLevel::Error,
+            (info.ast != nullptr) ? info.ast->location : SourceLocation{},
+            "类 '" + info.name + "' 实现的接口 '" + *it + "' 未声明");
+        it = info.interfaces.erase(it);
+    }
+    // ③接口实现验证（签名匹配/虚修饰——与 resolveClass 阶段B 同款把关）
+    verifyInterfaceImpl(info);
+    // ④ifaceNames：本实例 interfaces + 基类沿链 ifaceNames 并入（resolveClass
+    //   的 AST 沿链收集在 ClassInfo 域的同构——基类已解析·其 ifaceNames 已含
+    //   基类沿链全部接口）
+    std::vector<std::string> ifaceNames;
+    std::unordered_set<std::string> seenIface;
+    for (const auto& im : info.interfaces) {
+        if (seenIface.insert(im).second) ifaceNames.push_back(im);
+    }
+    std::string baseLink = info.baseName;
+    int guard = 0;
+    while (!baseLink.empty() && (guard++ < 64)) {
+        const ClassInfo* parent = findClass(baseLink).value_or(nullptr);
+        if (parent == nullptr) break;
+        for (const auto& im : parent->ifaceNames) {
+            if (seenIface.insert(im).second) ifaceNames.push_back(im);
+        }
+        baseLink = parent->baseName;
+    }
+    synthesizeInterfaceDispatch(info, ifaceNames);
+    // ⑤布局重算（头区=虚表指针+接口分派区·读 hasVtable/ifaceRegionSize）
+    computeClassLayout(info);
 }
 
 // 验证接口实现（类须实现接口全部虚方法，签名匹配）
