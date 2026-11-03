@@ -568,50 +568,16 @@ bool IRGenerator::handleClassMemberAssign(MemberExpr* target, Expr* valueExpr,
     //   照标量 StorePtr 单槽：结构体变量表达式=地址语义→把**源地址**当值存
     //   （956 m9 读回地址·m8 拷出解引用段错误）。复合赋值对聚合无意义保持原路。
     //   位置在 genExpr 前（避免源表达式双发副作用）；字段类型经 973 统一查询。
+    //   #1979：通道本体（含类静态数组字段整块拷新面）迁至 tryClassFieldWholeAssign
+    //   （ir_oop_field_assign.cpp·先拆再加——本文件 897 行贴 900 警戒线）。
     if (!isCompoundAssignOp(op)) {
         // 351 修复轮回退注记（2026-10-10）：本分支曾顺手加对象剥星（类指针.
         //   聚合字段=v 走 974 整体赋值）——云端预验实证经 v2p 传导改变容器
         //   实现行为（390/458 v2 面红·该面=聚合字段整体赋值路径切换·非本案
         //   指针字段写落位最小面）——按单一职责回退，聚合指针面归 #364 独立
         //   清偿轮（须带 v2p dual 全量验证）。
-        // 1360 结果化：value_or("") 显形（miss=非聚合判定假·原语义）
-        const std::string fieldType974 =
-            structOrClassFieldType(
-                memberObjectSrcType(target->object.get()).value_or(""),
-                target->memberName).value_or("");
-        const std::string canon974 = types::canonical(fieldType974);
-        if (!canon974.empty() &&
-            (semantic_->isStructType(canon974) ||
-             semantic_->isClassType(canon974))) {
-            if (structWholeAssignSrcFirst(target, valueExpr, canon974, loc)) {
-                return true;
-            }
-            // 915-b（任务 914 现象 B 根治）：类字段（句柄槽）← 标识符源 →
-            //   句柄语义深拷（新建壳+拷贝构造+旧壳释放+新句柄入槽）——原落
-            //   下方 emitStructWholeAssign 标识符分支把字段槽地址当 this 传
-            //   拷贝构造（内联元素语义残留·探针 甲.内=丙 fault=内容值实锤）。
-            //   判定/发射单点=emitClassFieldHandleCopy（成员族·两入口共用）。
-            if (canEmitClassFieldHandleCopy(canon974, valueExpr)) {
-                emitClassFieldHandleCopy(addr, canon974, valueExpr, loc);
-                lastExpr_ = addr;
-                return true;
-            }
-            if (emitStructWholeAssign(addr, valueExpr, canon974, loc,
-                                      /*preFree=*/true)) {
-                return true;
-            }
-            // 629（544 呈报·成员目标面）：类字段 ←「返回类对象的调用」产物
-            //   （盒.槽 = 仓.产() / 盒.槽 = 货架()）——原落下方标量 StorePtr
-            //   直存新句柄：字段旧对象（连同资源字段）无人释放=泄漏（探针矩阵
-            //   双侧实锤宿主残留 +2；与变量面 identifierClassCallProductAssign
-            //   同族同修）。字段=句柄槽（728x 语义）：旧句柄单发 DeleteObject
-            //   （095/821 同款·空句柄空安全——calloc 新对象字段零=构造体初赋值
-            //   天然空安全）+ 新句柄 StorePtr。排除：转移（转移展开=源槽清零在
-            //   ir_call·成员转移面维持原路径）/引用返回（借用产物不得释放）。
-            if (memberClassCallProductAssign(valueExpr, addr, canon974,
-                                             loc)) {
-                return true;
-            }
+        if (tryClassFieldWholeAssign(target, valueExpr, addr, loc)) {
+            return true;
         }
     }
     ir::IRValue val = genExpr(valueExpr);

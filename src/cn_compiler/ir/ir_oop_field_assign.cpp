@@ -394,4 +394,187 @@ bool IRGenerator::handleClassFieldIncDec(IdentifierExpr* ident, Operator op,
     return true;
 }
 
+// ==================== 族：类字段聚合整体赋值（974 提取 + #1979 新面） ====================
+
+// #1979：数组元素句柄型判定（元素级深拷触发面·闭集穷举递归）——字符串/容器/
+//   用户类/嵌套数组（递归到底）/含资源字段结构体；纯标量=位拷已正确零义务
+//   （闭集终点·显式枚举余项）。深度护栏 4 层（与 emitValueCaptureArrayDeepCopy
+//   同界——值语义结构体不可自包含，护栏=形态异常防线）。
+static bool arrayElemsOwnResource(const ISemanticView& semantic,
+                          const std::string& elemCanonRaw, int depth) {
+    // 深度护栏合法域=[0,4] 双边界闭区间（1880 v2 同款·单边禁令）——越界=调用
+    //   链形态异常，返假=按纯标量零义务处理（递归深度 5 层+数组=现实不可达）。
+    // 静默豁免闭集穷举: 深度护栏返假=按纯标量零义务（1880 emitValueCaptureArrayDeepCopy
+    //   基线位同形态·>5 维嵌套藏句柄=现实不可达·登记 miss_registry #1979）
+    if (depth > 4 || depth < 0) return false;
+    const std::string elemCanon = types::canonical(elemCanonRaw);
+    if (types::isArray(elemCanon)) {
+        return arrayElemsOwnResource(semantic, types::arrayElemOf(elemCanon), depth + 1);
+    }
+    if (types::canonicalEquals(elemCanon, "字符串")) return true;
+    if (semantic.isClassType(elemCanon)) return true;
+    if (semantic.isStructType(elemCanon)) {
+        // 1672 同甄别：isStructType 命中 ≡ findStruct 非空（机械等价·1672 批10
+        //   先例口径）——miss 不可达，不设冗余判空。
+        const StructDecl* decl = semantic.findStruct(elemCanon).value_or(nullptr);
+        for (const auto& f : decl->fields) {
+            if (arrayElemsOwnResource(semantic, f.type, depth + 1)) return true;
+        }
+        return false;
+    }
+    return false;
+}
+
+// #1979（#1882 探针派生）：**类静态数组字段整体赋值**——整块拷（元素×长度全部
+//   复制·259 顶层静态数组 assignToGlobalStatic 同款立法投影·001 §3.5 数组=值
+//   聚合赋值拷贝语义）。病根：974 查询链（structOrClassFieldType→
+//   memberObjectSrcType）对「类名.静态字段」基座恒 miss（类名非变量非全局
+//   静态），数组 canon 亦非 struct/class → 落 handleClassMemberAssign 尾段
+//   通用 StorePtr：targetIrType=mapType(数组)=剥一维元素类型，val=genExpr(数组
+//   名)=源栈基址 Cast——只写槽首 8 字节且写入值=栈地址（双侧实测
+//   [0]=140737417564416 垃圾值）。#1882 已修下标读写面+静态槽=元素×长度本体
+//   布局，本函数补整体赋值面（直接整块拷）。
+//   形态穷举（双侧零分叉·与 v2 070 波G 数组通道同域）：源=同型数组标识符
+//   →源 place 地址+整块拷+元素句柄型逐元素深拷替换（#1880
+//   emitValueCaptureArrayDeepCopy 设施·静态槽长期存活恒拥有——浅拷共享源
+//   局部句柄=源块退出 RAII 后目标悬垂，E2E 1743 实锤）。其余源形态（构造
+//   字面量/调用/成员链/一般算术）=648 显形中止（v2 同域同拒），禁落 8 字节
+//   静默错值写。
+//   true=已处理；false=非类静态数组字段形态（交调用方后续通道）。
+bool IRGenerator::emitStaticArrayFieldWholeCopy(MemberExpr* target,
+                                                Expr* valueExpr,
+                                                const ir::IRValue& addr,
+                                                const SourceLocation& loc) {
+    // 契约：semantic_ 非空由调用链保证（handleClassMemberAssign 532 行前置分流）。
+    const cn::Optional<std::string> staticFieldType =
+        classStaticFieldTypeOfMember(*semantic_, target);
+    if (!staticFieldType.has_value()) return false;
+    const std::string staticCanon = types::canonical(staticFieldType.value());
+    // 静默豁免业务值: 静态命中但非数组（标量/字符串/类静态字段）=既有通道接管
+    //   让位（struct/class 通道/通用 StorePtr·handleClassMemberAssign 后续段），
+    //   非兜底——登记 miss_registry（#1979）
+    if (!types::isArray(staticCanon)) return false;
+    // ---- 源 place 地址（穷举=数组标识符源·三形态同 emitStructWholeAssign 约定）----
+    ir::IRValue srcArr;
+    if (valueExpr->getType() == NodeType::IdentifierExpr) {
+        const std::string srcName =
+            static_cast<IdentifierExpr*>(valueExpr)->name;
+        const cn::Optional<const VarEntry*> veSrc = findVarEntry(srcName);
+        // 87-a：顶层静态源=?gstatic_名 符号地址（lvalueAddress 静态分支同口径）
+        // 1337：普通局部/参数遮蔽全局时名字直查截胡=错源——局部优先序同款守卫
+        if (semantic_->isGlobalStatic(srcName) && !veSrc.has_value()) {
+            srcArr = emitResult(ir::Opcode::ConstString, {}, "ptr",
+                                "?gstatic_" + srcName, loc);
+        } else if (veSrc.has_value() && veSrc.value()->isStaticLocal) {
+            // 852：函数内静态局部——?gstatic_唯一名 符号地址直引（320-a 同口径）
+            srcArr = emitResult(ir::Opcode::ConstString, {}, "ptr",
+                                "?gstatic_" + veSrc.value()->uniqueName, loc);
+        } else if (veSrc.has_value() && !veSrc.value()->isStaticLocal) {
+            // 局部/参数数组：槽本体地址=数组基址（AddrOf·94-a 基址槽模型）
+            const cn::Optional<std::string> srcUniq = lookupVarName(srcName);
+            if (!srcUniq.has_value()) {
+                // 648（miss 不可静默·110 同族）：数组源变量未登记=内部缺陷显形
+                diagnostics_.report(DiagnosticLevel::Error, loc,
+                    "内部错误: 类静态数组字段整体赋值源变量 '" + srcName +
+                        "' 槽未登记 ——静默按整64写兜底已废除（#648/#1979）");
+                return true;
+            }
+            srcArr = emitResult(ir::Opcode::AddrOf,
+                                {ir::IRValue::var(srcUniq.value(), "i64")},
+                                "ptr", srcUniq.value(), loc);
+        }
+        // 补集（变量表与静态表全 miss）=srcArr 保持无效哨兵 → 下方等值判定显形
+        //   （三态穷举终点·非 else 兜底）
+    } else {
+        // 648（miss 不可静默）：源形态未支持（构造字面量/调用/成员链/算术等
+        //   非穷举形态）——合法程序内部缺陷显形；禁落 8 字节静默错值写
+        //   （#1979 缺陷本体·v2 同域 IR层诊断+中止=双侧零分叉）。
+        diagnostics_.report(DiagnosticLevel::Error, loc,
+            "内部错误: 类静态数组字段整体赋值源形态未支持（类型 '" +
+                staticCanon + "'·穷举=同型数组标识符）——静默按整64写兜底已废除（#648/#1979）");
+        return true;
+    }
+    // 三态穷举补集收口（v2 887b != 0 等值哨兵同族形态）：三产物形态
+    //   （ConstString/AddrOf）恒发有效寄存器，-1=仅补集（未登记变量）可达。
+    // 静默豁免闭集穷举: 三态穷举补集收口（v2 887b != 0 等值哨兵同族）——三产物
+    //   恒发有效寄存器，-1=仅未登记变量补集可达·块内显形中止（非静默继续·登记 #1979）
+    if (srcArr.id == -1) {
+        diagnostics_.report(DiagnosticLevel::Error, loc,
+            "内部错误: 类静态数组字段整体赋值源地址未解析 ——静默按整64写兜底"
+            "已废除（#648/#1979）");
+        return true;
+    }
+    // 整块拷：元素×长度全部复制（emitStructCopyWithFields 单点——数组 canon
+    //   的 ownedStrFieldsOf 恒空=纯 CopyStruct typeSizeOf 字节·259 同形态）。
+    //   preFree=false（259 同款：静态槽重复覆盖不逐元素 drop 旧句柄——与顶层
+    //   静态数组通道同边界）。
+    emitStructCopyWithFields(addr, srcArr, staticCanon, loc,
+                             /*preFree=*/false, /*deepCopy=*/false);
+    // 元素句柄型 → 整块后逐元素深拷替换独立副本（#1880 设施同构）：字符串=
+    //   __cn_str_copy 落堆/容器类=拷贝构造内联壳/结构体=字段级递归/嵌套数组
+    //   递归到底；纯标量=位拷已正确零义务（emitValueCaptureArrayDeepCopy 内
+    //   闭集穷举终点）。
+    if (arrayElemsOwnResource(*semantic_, types::arrayElemOf(staticCanon), 0)) {
+        emitValueCaptureArrayDeepCopy(addr, srcArr, staticCanon, loc, 0);
+    }
+    lastExpr_ = addr;
+    return true;
+}
+
+// 974（104-001 根治）+ #1979：类字段聚合整体赋值单助手（自 handleClassMemberAssign
+//   提取——本文件 897 行贴 900 警戒线·先拆再加纪律；974 四通道逐字搬移零语义变化）。
+//   字段=结构体/类 → 整体赋值（emitStructWholeAssign 单一助手·Rust place 拷贝
+//   语义）；字段=类静态数组字段 → #1979 整块拷通道（emitStaticArrayFieldWholeCopy）。
+//   addr=handleClassMemberLvalue 已算好的目标地址（静态槽/实例字段偏移）。
+//   契约：semantic_ 非空且 op 非复合——调用点 handleClassMemberAssign
+//   （532 行 semantic_ 前置分流+本调用处于 !isCompoundAssignOp(op) 块内）保证。
+bool IRGenerator::tryClassFieldWholeAssign(MemberExpr* target, Expr* valueExpr,
+                                           const ir::IRValue& addr,
+                                           const SourceLocation& loc) {
+    // 1360 结果化：value_or("") 显形（miss=非聚合判定假·原语义）
+    const std::string fieldTypeAgg =
+        structOrClassFieldType(
+            memberObjectSrcType(target->object.get()).value_or(""),
+            target->memberName).value_or("");
+    const std::string canonAgg = types::canonical(fieldTypeAgg);
+    if (!canonAgg.empty() &&
+        (semantic_->isStructType(canonAgg) ||
+         semantic_->isClassType(canonAgg))) {
+        if (structWholeAssignSrcFirst(target, valueExpr, canonAgg, loc)) {
+            return true;
+        }
+        // 915-b（任务 914 现象 B 根治）：类字段（句柄槽）← 标识符源 →
+        //   句柄语义深拷（新建壳+拷贝构造+旧壳释放+新句柄入槽）——原落
+        //   下方 emitStructWholeAssign 标识符分支把字段槽地址当 this 传
+        //   拷贝构造（内联元素语义残留·探针 甲.内=丙 fault=内容值实锤）。
+        //   判定/发射单点=emitClassFieldHandleCopy（成员族·两入口共用）。
+        if (canEmitClassFieldHandleCopy(canonAgg, valueExpr)) {
+            emitClassFieldHandleCopy(addr, canonAgg, valueExpr, loc);
+            lastExpr_ = addr;
+            return true;
+        }
+        if (emitStructWholeAssign(addr, valueExpr, canonAgg, loc,
+                                  /*preFree=*/true)) {
+            return true;
+        }
+        // 629（544 呈报·成员目标面）：类字段 ←「返回类对象的调用」产物
+        //   （盒.槽 = 仓.产() / 盒.槽 = 货架()）——原落下方标量 StorePtr
+        //   直存新句柄：字段旧对象（连同资源字段）无人释放=泄漏（探针矩阵
+        //   双侧实锤宿主残留 +2；与变量面 identifierClassCallProductAssign
+        //   同族同修）。字段=句柄槽（728x 语义）：旧句柄单发 DeleteObject
+        //   （095/821 同款·空句柄空安全——calloc 新对象字段零=构造体初赋值
+        //   天然空安全）+ 新句柄 StorePtr。排除：转移（转移展开=源槽清零在
+        //   ir_call·成员转移面维持原路径）/引用返回（借用产物不得释放）。
+        if (memberClassCallProductAssign(valueExpr, addr, canonAgg,
+                                         loc)) {
+            return true;
+        }
+    }
+    // #1979：类静态数组字段整体赋值（整块拷·详见 emitStaticArrayFieldWholeCopy）
+    if (emitStaticArrayFieldWholeCopy(target, valueExpr, addr, loc)) {
+        return true;
+    }
+    return false;
+}
+
 } // namespace cn_compiler
