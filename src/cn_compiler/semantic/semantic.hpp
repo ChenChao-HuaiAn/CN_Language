@@ -400,6 +400,8 @@ private:
     // 族C4：静态方法调用（原 591~620 段）
     bool checkStaticMethodCall(CallExpr* node, const std::string& methodName,
                                const std::string& ownerClass, const ClassMemberInfo* method);
+    // #1855：306 字符打印改写段（实现=semantic_call_builtin.cpp）+成员方法调用分派段（916+值捕写+族C1~C4 接线·实现=semantic_call_member.cpp·真=已处理与原 return 终止等价）
+    void rewriteCharPrintArgs(CallExpr* node); bool dispatchMemberMethodCall(CallExpr* node);
     // 族D-1：变参内置函数 打印/打印行/格式化（原 632~648 段）
     bool checkVariadicBuiltinCall(CallExpr* node, const std::string& calleeName);
     // 族D-2：决议失败回退（原 670~686 段）

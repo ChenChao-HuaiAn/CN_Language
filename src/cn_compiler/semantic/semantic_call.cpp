@@ -140,40 +140,7 @@ void SemanticAnalyzer::visitCallExpr(CallExpr* node) {
     //   决议到返回 字符串 的被调者时置 true（IR 初始化位/赋值位消费——登记
     //   RAII 依据；驻留文本 已改 字符* 返回=自动不置位）
     node->retOwnedString = false;
-    // 306（字符形态打印·293 呈报#4 裁决·用户批「照办」）：打印/打印行 的字符
-    //   类型实参改写为 字符转字符串(实参)——字符按 UTF-8 编码输出字符形态
-    //   （'甲' → 甲；含 '\u{4E2D}' 转义与字符变量两形态）；码点数值形态改由
-    //   显式 整32(c) 表达（显式优于隐式）。改写后实参类型=字符串，IR 打印
-    //   展开按 ptr → __cn_print_str 分派（IR 零改动）。
-    if (node->callee->getType() == NodeType::IdentifierExpr) {
-        const std::string& calleeText =
-            static_cast<IdentifierExpr*>(node->callee.get())->name;
-        if (calleeText == "打印" || calleeText == "打印行") {
-            for (auto& a : node->arguments) {
-                // 字符形态判定（轻量·不 checkExpr——checkExpr 非幂等，打印实参
-                //   主流程还会整查一次，改写块二次求值对部分调用形态=编译错误
-                //   （打印(求和(x,y)) 实测））：①CharLiteral 直判；②标识符查
-                //   变量表==字符（字符变量）。表达式形态（返回字符的调用）保守
-                //   不改写——可显式 打印(字符转字符串(f()))。
-                bool isChar = false;
-                if (a->getType() == NodeType::CharLiteral) {
-                    isChar = true;
-                } else if (a->getType() == NodeType::IdentifierExpr) {
-                    std::string vt;
-                    if (lookupVar(static_cast<IdentifierExpr*>(a.get())->name, vt) &&
-                        vt == "字符") {
-                        isChar = true;
-                    }
-                }
-                if (!isChar) continue;
-                auto wrap = std::make_unique<CallExpr>("字符转字符串");
-                wrap->location = node->location;
-                wrap->arguments.push_back(std::move(a));
-                a = std::move(wrap);
-                checkExpr(a.get());   // 字符转字符串(字符) → 字符串（内层首次检查）
-            }
-        }
-    }
+    rewriteCharPrintArgs(node);   // 306：打印/打印行 字符实参改写（#1855 归位 semantic_call_builtin.cpp·段体逐字搬移）
     if (checkTransferCall(node)) return;   // 族1：显式转移表达式位特判
     if (checkCopyBuiltinCall(node)) return;  // 族1.5：复制 泛型克隆内置（206-a 波 4）
     if (checkWrapBuiltinCall(node)) return;  // 族1.6：回绕算术内置（任务 474·错误码 8 豁免面）
@@ -220,50 +187,7 @@ void SemanticAnalyzer::visitCallExpr(CallExpr* node) {
         resolveGenericCtorName(node, className);        // 族B1：泛型类构造单态化
         if (checkCtorCall(node, className)) return;      // 族B2：类构造调用检查
     }
-    // ---- 阶段3：成员方法调用 对象.方法(实参) / 类名.静态方法(实参)（Task 3.1/3.9）----
-    if (node->callee->getType() == NodeType::MemberExpr) {
-        MemberExpr* mem = static_cast<MemberExpr*>(node->callee.get());
-        const std::string objType = checkExpr(mem->object.get());
-        const std::string methodName = mem->memberName;
-        std::string ownerClass;
-        // 916（791 派生·P1 安全面·001 §747-8 通用全局写执法）：**方法调用形态**
-        //   的全局写——接收者根对象∈可变全局集合（顶层静态/裸全局/函数内
-        //   静态局部）且被调方法∈容器写方法白名单（追加/设置/清空/删除/插入/
-        //   弹出…·stdlib/容器.cn+映射集合.cn 逐一对表）→ 与 791 赋值链同规则
-        //   拦截（方法调用这一非赋值链写法原静默绕过）。判定收归 staticguard
-        //   模块（791 同模式）；读方法与局部链/形参链根名不命中天然放行，
-        //   不安全 函数内豁免（reportUnsafeBoundary 内建）。文案与 791 一致
-        //   （静态变量赋值·v2 检查调用表达式挂点同文案·零分叉）。
-        const std::string recvRoot = staticguard::containerWriteCallReceiverRoot(
-            mem->object.get(), methodName);
-        if (!recvRoot.empty() && (isGlobalStatic(recvRoot) ||
-                                  staticguard::isStaticLocal(recvRoot))) {
-            reportUnsafeBoundary(node->location, "静态变量写", "静态变量赋值");
-        }
-        // 值捕获快照写执法（快照只读·001 §780/790）：写方法接收者根名 ∈ 当前
-        //   lambda 帧值捕获集 → 编译期拒（方法调用=写快照副本的调用形态通道·
-        //   写白名单与 916 同表复用；recvRoot 空=非写方法/非标识符根天然放行）。
-        //   v2 同构=检查合成体值捕写（语义检查lambda.cn·是容器写方法916 同表）。
-        if (!recvRoot.empty()) {
-            lambda_escape::checkValueCaptureWrite(
-                diagnostics_, recvRoot,
-                defInitLookupDepth(recvRoot).value_or(-1), node->location,
-                currentFnUnsafe_);
-        }
-        if (checkInterfaceMethodCall(node, mem, objType, methodName)) return;  // 族C1：接口方法
-        std::string clsName;
-        const ClassMemberInfo* method = nullptr;
-        if (checkMemberCallCore(node, mem, methodName, objType, clsName, ownerClass,
-                                method)) return;          // 族C2：类解析+静态性检查
-        if (method != nullptr && !method->isStatic) {
-            if (checkInstanceMethodCall(node, mem, clsName, methodName, ownerClass,
-                                        method)) return;  // 族C3：实例方法调用
-        }
-        if (method != nullptr && method->isStatic) {
-            if (checkStaticMethodCall(node, methodName, ownerClass, method)) return;  // 族C4：静态方法
-        }
-        }
-        // 非类成员：继续走通用路径（结构体字段函数指针等）
+    if (dispatchMemberMethodCall(node)) return;   // 阶段3：成员方法调用分派（916+值捕写+族C1~C4·#1855 归位 semantic_call_member.cpp·真=已处理与原段内 return 终止等价）
 
     // ---- 直接函数名调用：函数名(实参) ----
     if (isDirect) {

@@ -1,6 +1,8 @@
 // 语义调用检查·族C（357 重构F2 自 semantic_call.cpp 纯机械搬移·函数体逐字保留）
 // 职责：成员方法调用 对象.方法(实参) / 类名.静态方法(实参)——接口/实例/静态三路
 #include "cn_compiler/semantic/semantic.hpp"
+#include "cn_compiler/semantic/semantic_lambda_escape.hpp"   // #1855：值捕获快照写执法（成员分派段）
+#include "cn_compiler/semantic/semantic_staticguard.hpp"   // #1855：916 方法调用位全局写执法（成员分派段）
 #include "cn_compiler/semantic/semantic_method_value_943.hpp"
 #include "cn_compiler/model/semantic_helpers.hpp"
 
@@ -444,4 +446,56 @@ bool SemanticAnalyzer::checkStaticMethodCall(CallExpr* node, const std::string& 
     return false;
 }
 
+
+// ===== 阶段3 成员方法调用分派段（#1855 自 semantic_call.cpp 机械搬移——
+//   916 全局写+值捕写执法+族C1~C4 四族接线；段体逐字保留零逻辑变化；
+//   返回 真=族C1~C4 已处理（原段内 return 终止 visitCallExpr·bool 化等价
+//   显式化），假=继续通用路径）=====
+bool SemanticAnalyzer::dispatchMemberMethodCall(CallExpr* node) {
+    // ---- 阶段3：成员方法调用 对象.方法(实参) / 类名.静态方法(实参)（Task 3.1/3.9）----
+    if (node->callee->getType() == NodeType::MemberExpr) {
+        MemberExpr* mem = static_cast<MemberExpr*>(node->callee.get());
+        const std::string objType = checkExpr(mem->object.get());
+        const std::string methodName = mem->memberName;
+        std::string ownerClass;
+        // 916（791 派生·P1 安全面·001 §747-8 通用全局写执法）：**方法调用形态**
+        //   的全局写——接收者根对象∈可变全局集合（顶层静态/裸全局/函数内
+        //   静态局部）且被调方法∈容器写方法白名单（追加/设置/清空/删除/插入/
+        //   弹出…·stdlib/容器.cn+映射集合.cn 逐一对表）→ 与 791 赋值链同规则
+        //   拦截（方法调用这一非赋值链写法原静默绕过）。判定收归 staticguard
+        //   模块（791 同模式）；读方法与局部链/形参链根名不命中天然放行，
+        //   不安全 函数内豁免（reportUnsafeBoundary 内建）。文案与 791 一致
+        //   （静态变量赋值·v2 检查调用表达式挂点同文案·零分叉）。
+        const std::string recvRoot = staticguard::containerWriteCallReceiverRoot(
+            mem->object.get(), methodName);
+        if (!recvRoot.empty() && (isGlobalStatic(recvRoot) ||
+                                  staticguard::isStaticLocal(recvRoot))) {
+            reportUnsafeBoundary(node->location, "静态变量写", "静态变量赋值");
+        }
+        // 值捕获快照写执法（快照只读·001 §780/790）：写方法接收者根名 ∈ 当前
+        //   lambda 帧值捕获集 → 编译期拒（方法调用=写快照副本的调用形态通道·
+        //   写白名单与 916 同表复用；recvRoot 空=非写方法/非标识符根天然放行）。
+        //   v2 同构=检查合成体值捕写（语义检查lambda.cn·是容器写方法916 同表）。
+        if (!recvRoot.empty()) {
+            lambda_escape::checkValueCaptureWrite(
+                diagnostics_, recvRoot,
+                defInitLookupDepth(recvRoot).value_or(-1), node->location,
+                currentFnUnsafe_);
+        }
+        if (checkInterfaceMethodCall(node, mem, objType, methodName)) return true;  // 族C1：接口方法
+        std::string clsName;
+        const ClassMemberInfo* method = nullptr;
+        if (checkMemberCallCore(node, mem, methodName, objType, clsName, ownerClass,
+                                method)) return true;          // 族C2：类解析+静态性检查
+        if (method != nullptr && !method->isStatic) {
+            if (checkInstanceMethodCall(node, mem, clsName, methodName, ownerClass,
+                                        method)) return true;  // 族C3：实例方法调用
+        }
+        if (method != nullptr && method->isStatic) {
+            if (checkStaticMethodCall(node, methodName, ownerClass, method)) return true;  // 族C4：静态方法
+        }
+        }
+        // 非类成员：继续走通用路径（结构体字段函数指针等）
+    return false;
+}
 }
