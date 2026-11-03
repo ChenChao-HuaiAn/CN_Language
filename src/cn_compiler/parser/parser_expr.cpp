@@ -686,7 +686,11 @@ bool Parser::peekLambdaCapture() const {
         // 1750（001 §2.1a）：保留字作捕获名——预判同收关键字记号，交解析层
         //   给「捕获名不可为保留字」精确诊断（原判非标识符即非 lambda，落
         //   「预期表达式，实际为 '['」失真文案）。
+        // 1976（双侧诊断伞批）：字面量作捕获项（[5]）——预判同收字面量记号，
+        //   交 parseLambdaExpr 给「lambda 捕获列表预期变量名」专项诊断（1750
+        //   同构；原落表达式通道报错位连环失真文案）。捕获项语义只允许变量名。
         if (t == TokenType::Identifier || Token::isKeyword(t)) { i++; any = true; }
+        else if (Token::isLiteral(t)) { i++; any = true; }
         else { return false; }                                     // 非捕获形态
         if (peek(i).getType() == TokenType::RightBracket) {
             // 显式捕获 [变量] 的 ']' 后既可以是 '('（参数表）也可以是 '{'（无参 lambda 体），
@@ -740,6 +744,12 @@ std::unique_ptr<Expr> Parser::parseLambdaExpr() {
                 } else {
                     reportErrorHere("lambda 捕获列表预期变量名");
                 }
+                // 1976：报错后同步到捕获列表收口 ']'（错误恢复同步点）——
+                //   防连环失真诊断（预期 ']' / 预期函数体 / 缺分号 级联）。
+                while (!check(TokenType::RightBracket) &&
+                       !check(TokenType::EndOfFile)) {
+                    advance();
+                }
                 break;
             }
             if (check(TokenType::Comma)) { advance(); continue; }
@@ -765,6 +775,12 @@ std::unique_ptr<Expr> Parser::parseLambdaExpr() {
                     reportErrorHere("捕获名不可为保留字 '" + current().getValue() + "'");
                 } else {
                     reportErrorHere("lambda 捕获列表预期变量名");
+                }
+                // 1976：报错后同步到捕获列表收口 ']'（错误恢复同步点）——
+                //   防连环失真诊断（预期 ']' / 预期函数体 / 缺分号 级联）。
+                while (!check(TokenType::RightBracket) &&
+                       !check(TokenType::EndOfFile)) {
+                    advance();
                 }
                 break;
             }

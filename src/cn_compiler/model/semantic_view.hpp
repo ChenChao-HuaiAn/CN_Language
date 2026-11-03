@@ -146,7 +146,8 @@ public:
     virtual std::string resolveGenericTypeName(const std::string& typeName,
                                                const SourceLocation& loc) = 0;
     virtual void ensureLoweredType(const std::string& type) = 0;
-    virtual void recheckGenericFuncBody(const GenericFuncInstance& gfi) = 0;
+    // 返回=重放保留面重报的错误数（0=干净）——IR 层据此跳过带错实例产码。
+    virtual int recheckGenericFuncBody(const GenericFuncInstance& gfi) = 0;
     virtual void recheckGenericMethodBody(const std::string& instanceName,
                                           const ClassMember* member) = 0;
 };

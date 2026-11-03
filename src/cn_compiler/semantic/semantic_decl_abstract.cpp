@@ -28,7 +28,10 @@ void SemanticAnalyzer::reportAbstractArrayValueDecl(const std::string& type,
         diagnostics_.report(DiagnosticLevel::Error, loc,
                             "不能实例化接口 '" + elem + "'（接口无实现体·数组 '" +
                                 type + "' 元素为值形态默认构造）"
-                                "——请以实现类实例初始化");
+                                // 1976（双侧诊断伞批）：尾缀补「接口变量」三字，
+                                //   与 v2 语义检查语句.cn 数组形态逐字一致
+                                //   （双侧拒因文案零分叉·含指路完整版）。
+                                "——请以实现类实例初始化接口变量");
         return;
     }
     const ClassInfo* ci = findClass(elem).value_or(nullptr);

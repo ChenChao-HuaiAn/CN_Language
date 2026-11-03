@@ -165,7 +165,8 @@
                                   const ClassMember* member)override ;
     // 317-a（T19/T20 波次4·D10 面汇合）：泛型函数实例体生成前的重放检查——
     //   原泛型函数体从未被语义检查（26_generics 遗留）：体内泛型类实例化触发
-    void recheckGenericFuncBody(const GenericFuncInstance& gfi)override ;
+    //   返回=重放保留面重报的错误数（0=干净·IR 层据此跳过带错实例产码）。
+    int recheckGenericFuncBody(const GenericFuncInstance& gfi)override ;
     // 317-a：泛型函数实例化记录登记（去重）——显式 <> 调用段与推断段共用
     void registerGenericFuncInstance(const std::string& instName,
                                      const GenericInfo* ginfo,

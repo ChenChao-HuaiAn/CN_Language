@@ -122,8 +122,18 @@ void IRGenerator::emitGenericFuncInstance(const GenericFuncInstance& gfi) {
     //     实例化触发/方法调用解析/嵌套泛型调用单态化在此补齐（写回注记
     //     刷新为本实例值；体内推断式泛型调用触发的新 GFI 由 ir_decl 的
     //     不动点实例循环续生成）。
+    //     1976：重放保留面报错>0=该实例类型误用已被语义拒绝——跳过体 IR
+    //     生成（错误恢复面：语义已拒的实例不产码，防用户错误落 IR 层
+    //     funcPtrTypeOfCallee miss 报「内部错误」内部错误通道）。编译本就
+    //     失败（诊断已在共享通道），零产物影响；不动点循环读 all.size()
+    //     续走，其余合法实例照常生成。
     if (semantic_ != nullptr) {
-        semantic_->recheckGenericFuncBody(gfi);
+        const int keptErrors = semantic_->recheckGenericFuncBody(gfi);
+        const bool instanceRejected = keptErrors > 0;
+        if (instanceRejected) {
+            genericTypeParams_ = savedParams;
+            return;
+        }
     }
 
     // 2. 构建 IRFunction（符号名 = 实例化名 名$实参）

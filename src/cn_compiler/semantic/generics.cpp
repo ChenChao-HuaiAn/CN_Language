@@ -723,9 +723,13 @@ static void collectVarDeclTypes(Stmt* stmt,
     }
 }
 
-void SemanticAnalyzer::recheckGenericFuncBody(const GenericFuncInstance& gfi) {
+// 返回值=重放保留面重报的错误数（0=体检查干净）——IR 层据此跳过带错实例的
+//   IR 生成（语义已拒的实例不产码：错误恢复面，防用户错误触发 IR 层内部
+//   错误通道——如字段当方法调落 funcPtrTypeOfCallee miss 报「内部错误」）。
+int SemanticAnalyzer::recheckGenericFuncBody(const GenericFuncInstance& gfi) {
+    int keptErrors = 0;
     FunctionDecl* node = const_cast<FunctionDecl*>(gfi.gen->innerFunc.get());
-    if (node == nullptr || node->body == nullptr) return;
+    if (node == nullptr || node->body == nullptr) return keptErrors;
     const GenericDecl* gen = gfi.gen;
 
     // 0.（317-a）体内局部声明 typeName 的 pristine 备份/恢复——重放检查的
@@ -810,13 +814,20 @@ void SemanticAnalyzer::recheckGenericFuncBody(const GenericFuncInstance& gfi) {
                  //   类型误用（T 绑定抽象类实参的 T[3]/T 形参/返回面）——
                  //   不入保留面=重放回滚吞诊断=窄放行漏拦。〔746 融合：与 738
                  //   「返回值被丢弃未检查」面双守卫并存·教训 #164〕
-                 msg.find("不能实例化") != std::string::npos);
+                 msg.find("不能实例化") != std::string::npos ||
+                 // 1976（双侧诊断伞批）：字段当方法调（r.正常()/o.有值()——
+                 //   成员是字段非函数）与主里同款用户诊断（semantic_call.cpp
+                 //   尾部文案），原被回滚吞没=泛型体内只剩「无法将'未知'」
+                 //   错位拒因+IR 层内部错误，双侧拒因分叉。
+                 msg.find("无法调用非函数类型") != std::string::npos);
             if (keep) undeclared.push_back(all[di]);
         }
         diagnostics_.restoreTo(snap);
         for (const auto& d : undeclared) {
             diagnostics_.report(d);
         }
+        // 保留面重报数先存——须走完下方共享 AST 恢复段再返回（残留绑定禁令）。
+        keptErrors = static_cast<int>(undeclared.size());
     }
 
     // 4. 恢复（共享 AST 不得跨实例残留绑定）
@@ -828,6 +839,7 @@ void SemanticAnalyzer::recheckGenericFuncBody(const GenericFuncInstance& gfi) {
         node->params[pi]->typeName = savedParamTypes[pi];
     }
     genericTypeParams_ = savedTypeParams;
+    return keptErrors;
 }
 
 } // namespace cn_compiler
