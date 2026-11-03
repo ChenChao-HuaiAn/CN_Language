@@ -538,8 +538,8 @@ private:
     std::vector<ClosureInfo::CarrierCapture> makeCarrierSlots482(const std::string& varName, const std::string& lambdaName, const SourceLocation& loc);
     void emitReturnOriginSnapshot482(Expr* rhs);
     void recordLambdaCaptureMeta482(const std::string& lambdaName, const std::vector<std::string>& capturedNames, const std::vector<char>& captureRefs, const std::vector<std::string>& srcTypes);
-    // ---- 940 快照值求值单一归属（字符串/容器/类=定义处深拷独立副本；标量/指针/数组直取·静态固化与同帧快径共用防漂移）----
-    ir::IRValue evalValueCaptureCopy(const std::string& capName, const std::string& capSrc, const SourceLocation& loc);
+    // ---- 940 快照值求值单一归属（字符串/容器/类=定义处深拷独立副本·静态固化与同帧快径共用）---- #1880 值捕获数组元素级递归深拷（v2 同构·940 先例数组版）+ 数组容器/类元素内联壳拷贝构造（1367·v2 同构）----
+    ir::IRValue evalValueCaptureCopy(const std::string& capName, const std::string& capSrc, const SourceLocation& loc); void emitValueCaptureArrayDeepCopy(const ir::IRValue&, const ir::IRValue&, const std::string&, const SourceLocation&, int); void emitValueCaptureElemClassCopy(const ir::IRValue&, const ir::IRValue&, const std::string&, const SourceLocation&);
     // 闭包关联：变量源码名 -> {匿名函数名, 捕获变量列表, 定义处捕获实参, 返回 IR 类型}（ClosureInfo 见 ir_generator_types.hpp）
     std::unordered_map<std::string, ClosureInfo> closureInfo_;
     std::unordered_map<std::string, LambdaCaptureMeta482> lambdaCaptureMeta482_;

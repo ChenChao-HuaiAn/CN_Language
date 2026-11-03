@@ -104,6 +104,135 @@ ir::IRValue IRGenerator::evalValueCaptureCopy(const std::string& capName,
     return val;
 }
 
+// 【#1880】数组容器/类元素=内联壳拷贝构造重置（1367 框架·v2 发射数组单元素深拷
+//   ③ 同构·零分叉）：无拷贝构造且有析构=拒绝（编译期诊断·产物由 driver 丢弃）/
+//   无拷贝构造且无析构=位拷回退（内联壳整块·与 C++ 隐式拷贝同）/有拷贝构造=调
+//   用——this=目标内联壳地址（本体），源=物化栈槽（[槽]=源元素壳地址·「发现二」
+//   698-a 契约「T& 所指 8 字节=壳指针」·1813 v2 物化槽同构）。类数组元素=内联体
+//   （typeSizeOf(类)=实宽·058-ⅡA 实宽口径）。
+void IRGenerator::emitValueCaptureElemClassCopy(const ir::IRValue& dstElem,
+                                                const ir::IRValue& srcElem,
+                                                const std::string& elemCanon,
+                                                const SourceLocation& loc) {
+    const cn::Optional<std::string> copyKeyOpt = classCopyCtorSymbolKey(elemCanon);
+    const ClassInfo* ci = semantic_->findClass(elemCanon).value_or(nullptr);
+    bool hasDtor = false;
+    if (ci != nullptr) {
+        for (const auto& mk : ci->methods) {
+            if (mk.second.isDestructor) { hasDtor = true; break; }
+        }
+    }
+    if (!copyKeyOpt.has_value()) {
+        if (hasDtor) {
+            // 1367：位拷贝快照在析构面双放行（源与快照各自析构共享资源=悬垂/
+            //   双放行）——拒绝（v2 固化链同判据同文案·零分叉）。
+            diagnostics_.report(
+                DiagnosticLevel::Error, loc,
+                "类 '" + elemCanon +
+                    "' 带析构且无拷贝构造，不能作值捕获快照（位拷贝=析构双放"
+                    "行悬垂）；为类补拷贝构造，或改用显式复制后捕获");
+            return;
+        }
+        // 位拷回退：内联壳整块位拷（无析构=无用户释放面·浅位拷语义同）
+        const int bytes = ci != nullptr ? ci->totalSize : 0;
+        if (bytes != 0) {
+            emit(ir::Opcode::CopyStruct, {dstElem, srcElem}, ir::IRValue(),
+                 std::to_string(bytes), "void", loc);
+        }
+        return;
+    }
+    // 物化栈槽：[槽]=源元素壳地址，T&=槽地址（拷贝构造体内一层 Load 得壳）
+    const std::string tmpSlot = "__capel" + std::to_string(varCounter_++);
+    emit(ir::Opcode::Alloca, {}, ir::IRValue::reg(regCounter_++, "ptr"),
+         tmpSlot, "ptr", loc);
+    registerVarSlots(tmpSlot, "整64");
+    ir::IRValue tmpAddr = emitResult(
+        ir::Opcode::AddrOf, {ir::IRValue::var(tmpSlot, "i64")}, "ptr", tmpSlot,
+        loc);
+    emit(ir::Opcode::Store, {srcElem}, ir::IRValue(), tmpSlot, "ptr", loc);
+    emit(ir::Opcode::Call, {dstElem, tmpAddr}, ir::IRValue(), copyKeyOpt.value(),
+         "void", loc);
+}
+
+// 【#1880】值捕获数组元素级递归深拷（v2 发射数组元素级深拷 同构·零分叉·940
+//   结构体字段深拷先例的数组版）：1408 数组值捕获=整组位拷——元素全标量=完整
+//   快照正确；元素为句柄型（字符串/容器/类）=只拷句柄/壳位=快照与源共享堆壳
+//   （浅共享：源重赋值/块析构释放后快照读悬垂·写穿共享缓冲）→ 违反 001 §一D
+//   「值捕获快照语义无悬垂面」。元素甄别显式枚举（禁静默默认·用户裁决）：
+//     ①嵌套数组 → 本函数递归（深度+1·递归到底）；
+//     ②字符串   → 元素槽=句柄槽：LoadPtr→__cn_str_copy→StorePtr
+//       （99-a emitStrArrayElemFreesAt 释放面对称模型）；
+//     ③容器/类  → 元素=内联壳：1367 框架（emitValueCaptureElemClassCopy）；
+//     ④结构体   → 字段级递归（emitStructCopyWithFields deepCopy=true·
+//       preFree=false——目标为新快照缓冲，浅句柄由深拷替换不释放）；
+//     ⑤纯标量   → 位拷已正确零义务（闭集终点）。
+//   寻址=基址+i×步进（99-a 同款·stride=typeSizeOf(元素) 单点——H4 教训）。
+void IRGenerator::emitValueCaptureArrayDeepCopy(const ir::IRValue& dstBase,
+                                                const ir::IRValue& srcBase,
+                                                const std::string& arrayCanon,
+                                                const SourceLocation& loc,
+                                                int depth) {
+    if (semantic_ == nullptr || depth > 4) return;
+    const std::string elemCanon = types::canonical(types::arrayElemOf(arrayCanon));
+    const cn::Optional<int> lenOpt = types::arrayLenOf(arrayCanon);
+    if (!lenOpt.has_value() || elemCanon.empty()) {
+        // isArray 守卫上游保证（闭集）——维度/元素解析失败=编译器内部缺陷显形
+        diagnostics_.report(DiagnosticLevel::Error, loc,
+            "内部错误: 数组深拷维度解析失败: '" + arrayCanon + "'（#1880）");
+        return;
+    }
+    const int len = lenOpt.value();
+    const int stride = semantic_->typeSizeOf(elemCanon).value_or(0);
+    const int arrayBytes =
+        semantic_->typeSizeOf(types::canonical(arrayCanon)).value_or(0);
+    // 【#1880】步进合法域双边界闭区间（单边禁令）：stride∈[1, 数组总字节]——
+    //   零/负=元素步进查表 miss（编译器内部缺陷显形·禁静默跳过=浅共享残留）；
+    //   上界=元素步进不得超数组整组字节（越界=布局不一致同显形）。
+    if (stride < 1 || stride > arrayBytes) {
+        diagnostics_.report(DiagnosticLevel::Error, loc,
+            "内部错误: 数组深拷元素步进查表 miss: '" + elemCanon + "'（#1880）");
+        return;
+    }
+    for (int i = 0; i < len; ++i) {
+        ir::IRValue dstElem = dstBase;
+        ir::IRValue srcElem = srcBase;
+        // 首元素零偏移寻址（双边界闭区间：合法域=[1, len)——i=0=基址本体）
+        if (i > 0 && i < len) {
+            ir::IRValue off = emitResult(
+                ir::Opcode::ConstInt, {}, "i64",
+                std::to_string(static_cast<long long>(i) * stride), loc);
+            dstElem = emitResult(ir::Opcode::Add, {dstBase, off}, "ptr", "", loc);
+            srcElem = emitResult(ir::Opcode::Add, {srcBase, off}, "ptr", "", loc);
+        }
+        if (types::isArray(elemCanon)) {
+            emitValueCaptureArrayDeepCopy(dstElem, srcElem, elemCanon, loc,
+                                          depth + 1);
+            continue;
+        }
+        if (elemCanon == "字符串") {
+            ir::IRValue handle =
+                emitResult(ir::Opcode::LoadPtr, {srcElem}, "ptr", "", loc);
+            ir::IRValue copy =
+                emitResult(ir::Opcode::Call, {handle}, "ptr", "__cn_str_copy", loc);
+            emit(ir::Opcode::StorePtr, {dstElem, copy}, ir::IRValue(), "", "ptr",
+                 loc);
+            continue;
+        }
+        if (semantic_->isClassType(elemCanon)) {
+            emitValueCaptureElemClassCopy(dstElem, srcElem, elemCanon, loc);
+            continue;
+        }
+        if (semantic_->isStructType(elemCanon)) {
+            // 结构体元素=内联体：字段级深拷（内部 CopyStruct 幂等位拷+拥有
+            //   字段句柄替换——新快照缓冲 preFree=false·940 同裁决）
+            emitStructCopyWithFields(dstElem, srcElem, elemCanon, loc,
+                                     /*preFree=*/false, /*deepCopy=*/true);
+            continue;
+        }
+        // 纯标量元素=位拷已正确零义务（闭集终点·显式枚举余项）
+    }
+}
+
 // lambda 用户参数段构建（?lambdaN 与蹦床 ?lambdaN$trap 共用——纪律二当场归纳；
 //   原为 visitLambdaExpr 内联段·432 提炼）。前置条件：function_ 已指向 func、
 //   varStack_ 已压入函数作用域。引用参数（T&）按 ptr 槽+byRef 形态（A-1 同款）。
@@ -207,6 +336,23 @@ void IRGenerator::emitLambdaSnapshotStores(
         module_->globalStatics[lambdaSlotKey(lambdaName, cap)] = capSrc;
         ir::IRValue slotAddr = emitResult(ir::Opcode::ConstString, {}, "ptr",
                                           slotSym, loc);
+        // 标量/字符串/容器/类值捕获形态判定（提出 if 链外——else 新规显式
+        //   枚举：业务进 否则如果·终局否则=仅报错）。
+        //   【#1880】终局显式化（用户裁决「不允许默认通道，查不到的必须
+        //   显式报错」·v2 生成声明/生成蹦床 终局否则同文案零分叉）：
+        //   ①标量类形态=基本类型/枚举/指针/函数指针（类型尺寸查表有值/
+        //   谓词命中）；②capSrc 空既有通道（见 legacyUntyped 豁免注释）；
+        //   ③域外类型=编译期诊断错误终止（原静默按标量 StorePtr 快照残缺）。
+        const std::string canonElse = types::canonical(capSrc);
+        const bool scalarLike =
+            canonElse == "字符串" || semantic_->isClassType(canonElse) ||
+            types::isPointer(canonElse) ||
+            semantic_->isEnumType(canonElse) ||
+            types::typeSize(canonElse).has_value() ||
+            types::isFuncPtr(canonElse);
+        // 静默豁免上游已诊断: capSrc 空=lookupSrcType+482 双 miss 既有形态（738/1671/698
+        //   实录）——解析权在 evalValueCaptureCopy 内部·capIrType 非空=648 显形已保证。
+        const bool legacyUntyped = canonElse.empty() && !capIrType.empty();
         if (byRef) {
             // 引用捕获：槽存被捕获变量地址（数组/结构体/标量统一地址形态，蹦床
             //   LoadPtr 还原=引用实参）。1321：固化地址取 genIdentifierLvalue
@@ -250,6 +396,10 @@ void IRGenerator::emitLambdaSnapshotStores(
             //   genIdentifierLvalue 单点（普通数组变量=AddrOf(槽0)=数组本体）；
             //   宽度=typeSizeOf(数组) 结果化分流（无值=编译器内部缺陷显形——
             //   数组已语义登记而大小查表 miss，禁静默取默认继续编译）。
+            //   【#1880】位拷后追加**元素级递归深拷**（emitValueCaptureArrayDeep
+            //   Copy·v2 发射数组元素级深拷 同构）：元素全标量=位拷已完整零追加；
+            //   元素为句柄型（字符串/容器/类）=浅共享面（源重赋值/块析构释放后
+            //   快照读悬垂·写穿共享缓冲）→ 元素级深拷独立副本根治。
             ir::IRValue srcAddr = genIdentifierLvalue(
                 std::make_unique<IdentifierExpr>(cap).get());
             const cn::Optional<int> bytesOpt = semantic_->typeSizeOf(capSrc);
@@ -263,14 +413,25 @@ void IRGenerator::emitLambdaSnapshotStores(
                 emit(ir::Opcode::CopyStruct, {slotAddr, srcAddr},
                      ir::IRValue(), std::to_string(bytesOpt.value()), "void",
                      loc);
+                emitValueCaptureArrayDeepCopy(slotAddr, srcAddr,
+                                              types::canonical(capSrc), loc, 0);
             }
-        } else {
+        } else if (scalarLike || legacyUntyped) {
             // 标量/字符串/容器/类值捕获：定义处快照——字符串与容器/类经
             //   evalValueCaptureCopy 深拷独立副本（940：原裸句柄浅共享，
             //   源重赋值/释放后悬垂）；标量直取（原路径零变化）。
             ir::IRValue val = evalValueCaptureCopy(cap, capSrc, loc);
             emit(ir::Opcode::StorePtr, {slotAddr, val}, ir::IRValue(), "",
                  capIrType.empty() ? "i64" : capIrType, loc);
+        } else {
+            // 【#1880】终局否则=编译期诊断错误（用户裁决「查不到的必须显式
+            //   报错」·v2 生成声明/生成蹦床 终局否则同文案零分叉）——域外
+            //   类型原静默按标量 StorePtr 快照残缺，显形中止（产物由 driver
+            //   hasErrors 统一丢弃）。
+            diagnostics_.report(
+                DiagnosticLevel::Error, loc,
+                "值捕获类型 '" + canonElse +
+                    "' 快照通道未实现——待后续任务添加确定道路（#1880）");
         }
     }
 }
