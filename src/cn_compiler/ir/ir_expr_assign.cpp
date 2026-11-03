@@ -285,20 +285,20 @@ std::string IRGenerator::indexAssignElemType(AssignmentExpr* node) {
         } else if (idx->object->getType() == NodeType::MemberExpr) {
             // 1059：类/结构体的字段数组（出.分数[1] = v）——元素类型=字段数组
             //   元素类型（memberFieldSrcType：findStruct+findClass 双路径·973 同源）。
-            //   类宿主仅**数组字段**放行——非数组（指针/标量）字段下标写=v2 语义层
-            //   现行拒绝面（97-a），维持 648 拒绝（指针字段下标写族另立案）。
+            // #1991：**类宿主指针字段**下标写（a.p[0] = v·a 类对象、p 指针字段）
+            //   与结构体宿主同路——元素类型=字段指针 pointee（真解析·不取默认值）。
+            //   1059/#1680 曾按「v2 语义层 97-a 拒绝类宿主指针字段」保留 ownerIsClass
+            //   排除；该前提已失效——v2 #1666 起语义层按「数组字段/指针字段」判可写
+            //   （无宿主类/结构体之分），v2 IR 推导下标元素类型亦仅对字段类型尾部
+            //   剥星（推导下标元素类型ID 指针剥层分支）。排除在=宿主单侧拒合法程序
+            //   （x_x5 实测：v2 编译过·宿主内部错误）。对齐后两类宿主动作逐点一致。
             MemberExpr* inner = static_cast<MemberExpr*>(idx->object.get());
             // 1360 结果化：value_or("") 显形（miss 落 648 显形·原语义）
             const std::string ftype1059 = memberFieldSrcType(inner).value_or("");
-            const std::string canonOwner1059 =
-                types::canonical(memberObjStructType(inner).value_or(""));
-            const bool ownerIsClass1059 =
-                semantic_ != nullptr && !canonOwner1059.empty() &&
-                semantic_->isClassType(canonOwner1059);
             if (types::isArray(ftype1059)) {
                 targetType = mapType(types::arrayElemOf(ftype1059));
                 elemResolved = true;
-            } else if (types::isPointer(ftype1059) && !ownerIsClass1059) {
+            } else if (types::isPointer(ftype1059)) {
                 targetType = mapType(types::pointeeOf(ftype1059));
                 elemResolved = true;
             }
@@ -395,25 +395,19 @@ cn::Optional<std::string> IRGenerator::indexTargetElemSrcType(AssignmentExpr* no
         // 1059：类/结构体对象的**数组字段**元素源码类型（c.组[0]/t.两行[0] 的
         //   整体赋值 CopyStruct 与类元素调用产物接管〔923 通道〕消费）——字段
         //   类型查询经 memberFieldSrcType（findStruct+findClass 双路径·973 同源）。
-        // #1680：结构体（非类宿主）**指针字段**下标写（架.针[i] = 聚合值）——
-        //   元素源码类型=字段指针 pointee，与 indexAssignElemType MemberExpr
-        //   指针分支（其 648 面已放行）同口径。本函数缺此分支 → 结构体整体
-        //   赋值通道（348-a 源优先序 / H8 CopyStruct）全弹 → 聚合右值（可选/
-        //   结果 变量·构造调用产物）落兜底 StorePtr 只写 8 字节临时对象地址
-        //   =目标元素不变（v2 #1666 同形态写正确=双侧分叉·p2/p3 探针 IR 铁证
-        //   指针存储 目标=临时槽地址）。类宿主指针字段维持 v2 97-a 现行拒绝
-        //   口径（ownerIsClass 同款排除·零分叉）。
+        // #1680：**指针字段**下标写（架.针[i] = 聚合值）——元素源码类型=字段
+        //   指针 pointee，与 indexAssignElemType MemberExpr 指针分支同口径。本
+        //   函数缺此分支 → 结构体整体赋值通道（348-a 源优先序 / H8 CopyStruct）
+        //   全弹 → 聚合右值（可选/结果 变量·构造调用产物）落兜底 StorePtr 只写
+        //   8 字节临时对象地址 =目标元素不变（v2 #1666 同形态写正确=双侧分叉·
+        //   p2/p3 探针 IR 铁证指针存储 目标=临时槽地址）。
+        // #1991：类宿主指针字段同一路（原 ownerIsClass 排除前提=v2 语义层拒绝，
+        //   该前提已随 v2 #1666 失效；v2 IR 侧推导亦无宿主类别之分）——类/结构体
+        //   宿主共用字段声明类型推导，不再以宿主类别分流（零分叉）。
         MemberExpr* inner1680 = static_cast<MemberExpr*>(tIdx->object.get());
         const std::string ftype1059 = memberFieldSrcType(inner1680).value_or("");
         if (types::isArray(ftype1059)) return types::arrayElemOf(ftype1059);
-        if (types::isPointer(ftype1059)) {
-            const std::string canonOwner1680 =
-                types::canonical(memberObjStructType(inner1680).value_or(""));
-            const bool ownerIsClass1680 =
-                semantic_ != nullptr && !canonOwner1680.empty() &&
-                semantic_->isClassType(canonOwner1680);
-            if (!ownerIsClass1680) return types::pointeeOf(ftype1059);
-        }
+        if (types::isPointer(ftype1059)) return types::pointeeOf(ftype1059);
         return std::nullopt;
     }
     if (tIdx->object->getType() == NodeType::IndexExpr) {
