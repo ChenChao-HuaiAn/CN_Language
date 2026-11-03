@@ -31,7 +31,7 @@
                             const std::vector<std::string>& specKinds,
                             const std::vector<ir::IRValue>& rawArgs,
                             std::vector<ir::IRValue>& callArgs,
-                            std::vector<std::pair<const Expr*, ir::IRValue>>& ownedTemps);  // 实参转换发射（128 转串+窄整提升）
+                            std::vector<ir::IRValue>& convStringTemps);  // 实参转换发射（宽位转串+窄整提升）
     bool isBuiltinStrConsumer617(const std::string& calleeName,
                                  bool isDirect) const;               // 617 消费族判定（builtin）
     void mapBuiltinCalleeNameApi(std::string& calleeName);           // 内置名映射段一（builtin）

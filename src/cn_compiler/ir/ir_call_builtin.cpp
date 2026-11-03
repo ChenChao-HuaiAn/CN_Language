@@ -710,6 +710,12 @@ bool IRGenerator::tryEmitFormatCall(CallExpr* node) {
     // 实参求值（仅此一次）+ 617 拥有串临时登记（格式化在消费族名单）。
     std::vector<ir::IRValue> rawArgs;
     std::vector<std::pair<const Expr*, ir::IRValue>> ownedTemps;
+    // 宽位转串临时独立通道（d64/u64/d128/u128 合成调用产物·与 v2 生成格式化
+    //   调用的转串临时们同构）：合成寄存器无「AST 拥有串形态」——617 结算按
+    //   argIsOwnedStringTemp 表达式形态判定，整型实参（变量/字段/字面量）必
+    //   不命中，混入 ownedTemps 即逐调用净漏；故单列，__cn_format 只读消费毕
+    //   无条件 __cn_str_free（合成调用产物必为堆串·释放权单点在此）。
+    std::vector<ir::IRValue> convStringTemps;
     for (std::size_t i = 1; i < node->arguments.size(); ++i) {
         ir::IRValue argVal = genExpr(node->arguments[i].get());
         if (argVal.type == "ptr" && argIsOwnedStringTemp(node->arguments[i].get())) {
@@ -757,7 +763,8 @@ bool IRGenerator::tryEmitFormatCall(CallExpr* node) {
             : genExpr(node->arguments[0].get());  // 非改写面：原格式串字面量
     std::vector<ir::IRValue> callArgs;
     callArgs.push_back(fmtArg);
-    if (!emitFormatCallArgs(node, specKinds, rawArgs, callArgs, ownedTemps)) {
+    if (!emitFormatCallArgs(node, specKinds, rawArgs, callArgs,
+                            convStringTemps)) {
         // 不可达防御面显形（个数执法先行保证 specKinds==rawArgs）：静默中止
         //   已废除（882 三选一·报内部错误诊断）
         diagnostics_.report(DiagnosticLevel::Error, node->location,
@@ -767,24 +774,30 @@ bool IRGenerator::tryEmitFormatCall(CallExpr* node) {
     }
     lastExpr_ = emitResult(ir::Opcode::Call, callArgs, "ptr", "__cn_format",
                            node->location);
-    // 617：__cn_format 只读消费毕（sprintf 拷贝语义），结算拥有串临时
-    //   （128 转换临时串=合成调用产物，同通道强制释放防逐调用净漏）。
+    // 617：__cn_format 只读消费毕（sprintf 拷贝语义），结算拥有串临时；
+    //   宽位转串临时走独立通道无条件释放（合成调用产物必为堆串·防逐调用净漏）。
     for (const auto& ownedTempItem : ownedTemps) {
         emitOwnedTempReleaseRec(ownedTempItem.first, ownedTempItem.second,
                                    node->location);
+    }
+    for (const ir::IRValue& convTemp : convStringTemps) {
+        emit(ir::Opcode::Call, {convTemp}, ir::IRValue(), "__cn_str_free",
+             "void", node->location);
     }
     return true;
 }
 
 // 实参转换发射：128 位实参转串（双槽 ABI 直传·codegen 按 i128 形态取址）、
-//   窄整/浮32 按变参 ABI 提升（%d 读 4 字节/浮读 double——calibrate 变参分支同构）。
+//   64 位实参转串（标量单槽直传）、窄整/浮32 按变参 ABI 提升（%d 读 4 字节/
+//   浮读 double——calibrate 变参分支同构）。宽位转串合成产物登记 convStringTemps
+//   （独立强制释放通道·禁入 ownedTemps——617 形态判据对整型实参必不命中=净漏；
+//   AST 形态拥有串临时登记在调用方求值段·本函数不触）。
 //   返回 false=实参位与占位符数不齐（调用方个数执法已保证，此为不可达面）。
 bool IRGenerator::emitFormatCallArgs(CallExpr* node,
                                      const std::vector<std::string>& specKinds,
                                      const std::vector<ir::IRValue>& rawArgs,
                                      std::vector<ir::IRValue>& callArgs,
-                                     std::vector<std::pair<const Expr*, ir::IRValue>>&
-                                         ownedTemps) {
+                                     std::vector<ir::IRValue>& convStringTemps) {
     if (specKinds.size() != rawArgs.size()) return false;  // 不可达：个数执法先行
     for (std::size_t i = 0; i < rawArgs.size(); ++i) {
         ir::IRValue argVal = rawArgs[i];
@@ -794,7 +807,7 @@ bool IRGenerator::emitFormatCallArgs(CallExpr* node,
                 (kind == "d128") ? "__cn_str_from_i128" : "__cn_str_from_u128";
             ir::IRValue conv = emitResult(ir::Opcode::Call, {argVal}, "ptr",
                                           sym, node->location);
-            ownedTemps.emplace_back(node->arguments[i + 1].get(), conv);
+            convStringTemps.push_back(conv);
             argVal = conv;
         } else if (kind == "d64" || kind == "u64") {
             // 64 位面（方案甲 2026-11-02）：转串走 64 位版 runtime 符号
@@ -803,7 +816,7 @@ bool IRGenerator::emitFormatCallArgs(CallExpr* node,
                 (kind == "d64") ? "__cn_str_from_int" : "__cn_str_from_uint";
             ir::IRValue conv = emitResult(ir::Opcode::Call, {argVal}, "ptr",
                                           sym, node->location);
-            ownedTemps.emplace_back(node->arguments[i + 1].get(), conv);
+            convStringTemps.push_back(conv);
             argVal = conv;
         } else if (argVal.type == "i8" || argVal.type == "i16" ||
                    argVal.type == "i32" || argVal.type == "u8" ||
