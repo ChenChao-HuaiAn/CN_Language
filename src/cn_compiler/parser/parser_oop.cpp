@@ -341,7 +341,7 @@ std::unique_ptr<ClassDecl> Parser::parseClassDecl() {
     if (!check(TokenType::Identifier)) {
         // 1746（001 §2.1a·#1738 枚举名位同族扩面）：保留字作类名=编译错误——
         //   原「预期类名」诊断失真；v2 侧同点同串（解析类.cn 解析类声明·
-        //   保留字名位诊断1746），双侧文案逐字一致（零分叉）。
+        //   拒名位保留字），双侧文案逐字一致（零分叉）。
         if (Token::isKeyword(currentType())) {
             reportErrorHere("类名不可为保留字 '" + current().getValue() + "'");
         } else {
@@ -757,7 +757,16 @@ bool Parser::parseFieldMember(ClassMember& out) {
             out.name = current().getValue();
             advance();
         } else {
-            reportErrorHere("类字段预期名称");
+            // 1746（001 §2.1a·保留字不可作任何标识符位·含类字段名位）：保留字
+            //   命中精确诊断——与 v2 解析类字段挂点（解析类.cn·拒名位保留字）
+            //   逐字同串；与 parseStructDecl 字段名位同族（parser_decl.cpp 同款
+            //   isKeyword 分流）。非保留字缺名仍报「类字段预期名称」不变
+            //   （1070 锚面不动）。
+            if (Token::isKeyword(currentType())) {
+                reportErrorHere("字段名不可为保留字 '" + current().getValue() + "'");
+            } else {
+                reportErrorHere("类字段预期名称");
+            }
             return false;
         }
         // 字段初始值（= 表达式）。775（762 呈报·2026-10-15 用户裁决甲）：实例字段

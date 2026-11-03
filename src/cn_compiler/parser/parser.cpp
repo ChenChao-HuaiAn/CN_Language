@@ -419,7 +419,7 @@ std::unique_ptr<Stmt> Parser::parseVarDeclAfterKeyword(bool isConst) {
         // 1746（001 §2.1a·#1738 枚举名位同族扩面）：保留字作变量/常量名=编译
         //   错误——原「预期变量名，实际为 'X'」拒绝面正确但诊断失真；v2 侧
         //   同点同串（解析语句中.cn 解析推断声明语句/解析语句.cn 解析常量语句·
-        //   保留字名位诊断1746），双侧文案逐字一致（零分叉）。
+        //   拒名位保留字），双侧文案逐字一致（零分叉）。
         if (Token::isKeyword(currentType())) {
             reportErrorHere("变量名不可为保留字 '" + current().getValue() + "'");
         } else {
@@ -454,7 +454,7 @@ std::unique_ptr<Stmt> Parser::parseStaticVarDecl() {
         advance();
     } else if (Token::isKeyword(currentType())) {
         // 1746（001 §2.1a·#1738 同族扩面）：保留字作静态变量名诊断精确化——
-        //   与 v2 解析静态声明（解析语句尾.cn·保留字名位诊断1746）逐字同串。
+        //   与 v2 解析静态声明（解析语句尾.cn·拒名位保留字）逐字同串。
         reportErrorHere("变量名不可为保留字 '" + current().getValue() + "'");
         synchronize();
         return decl;
@@ -490,7 +490,7 @@ std::unique_ptr<Stmt> Parser::parseTypePrefixVarDecl() {
     decl->typeName = parseTypeNameEx();
     if (!check(TokenType::Identifier)) {
         // 1746（001 §2.1a·#1738 同族扩面）：保留字作类型前置变量名诊断精确化——
-        //   与 v2 解析变量声明语句 818 点位（解析语句尾.cn·保留字名位诊断1746）
+        //   与 v2 解析变量声明语句 818 点位（解析语句尾.cn·拒名位保留字）
         //   逐字同串。
         if (Token::isKeyword(currentType())) {
             reportErrorHere("变量名不可为保留字 '" + current().getValue() + "'");

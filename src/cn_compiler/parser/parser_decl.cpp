@@ -49,7 +49,7 @@ std::unique_ptr<ParamDecl> Parser::parseParamDecl() {
             advance();
         } else if (Token::isKeyword(currentType())) {
             // 1746（001 §2.1a·#1738 同族扩面）：保留字作参数名诊断精确化——
-            //   与 v2 解析参数（解析表达式尾.cn·保留字名位诊断1746）逐字同串。
+            //   与 v2 解析参数（解析表达式尾.cn·拒名位保留字）逐字同串。
             reportErrorHere("参数名不可为保留字 '" + current().getValue() + "'");
         } else {
             reportErrorHere("预期参数名");
@@ -118,7 +118,7 @@ std::unique_ptr<FunctionDecl> Parser::parseFunctionDecl() {
         // 1746（001 §2.1a·271 甲案·#1738 枚举名位同族扩面）：保留字作函数名
         //   =编译错误——保留字占用一切标识符位。原「预期函数名」拒绝面正确但
         //   诊断失真（不点名保留字，775 先例）；v2 侧语法层同点同串诊断
-        //   （语法分析.cn 解析函数声明·保留字名位诊断1746），双侧文案逐字
+        //   （语法分析.cn 解析函数声明·拒名位保留字），双侧文案逐字
         //   一致（零分叉）。非关键字非标识符仍报「预期函数名」不变。
         if (Token::isKeyword(currentType())) {
             reportErrorHere("函数名不可为保留字 '" + current().getValue() + "'");
@@ -171,7 +171,7 @@ std::unique_ptr<StructDecl> Parser::parseStructDecl(bool isUnion) {
     if (!check(TokenType::Identifier)) {
         // 1746（001 §2.1a·#1738 枚举名位同族扩面）：保留字作结构体/联合体名
         //   =编译错误——原「预期结构体/联合体名」拒绝面正确但诊断失真；v2 侧
-        //   同点同串诊断（语法分析.cn 解析结构体声明·保留字名位诊断1746），
+        //   同点同串诊断（语法分析.cn 解析结构体声明·拒名位保留字），
         //   双侧文案逐字一致（零分叉）。
         if (Token::isKeyword(currentType())) {
             reportErrorHere(std::string(isUnion ? "联合体" : "结构体") +
@@ -266,7 +266,7 @@ std::unique_ptr<StructDecl> Parser::parseStructDecl(bool isUnion) {
             } else {
                 // 1746（001 §2.1a·保留字不可作任何标识符位·含字段名）：保留字
                 //   作字段名=编译错误——原「结构体字段预期名称」诊断失真；v2 侧
-                //   同点同串（语法分析中.cn 解析结构体字段·保留字名位诊断1746）。
+                //   同点同串（语法分析中.cn 解析结构体字段·拒名位保留字）。
                 if (Token::isKeyword(currentType())) {
                     reportErrorHere("字段名不可为保留字 '" + current().getValue() + "'");
                 } else {
