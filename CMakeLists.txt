@@ -448,6 +448,7 @@ add_library(cn_compiler_driver STATIC
     src/cn_compiler/driver/cargo_parser.cpp
     src/cn_compiler/driver/driver_ast_cache.cpp   # 1142：模块级 AST 预编译缓存
     src/cn_compiler/driver/driver_cache_util.cpp  # 1156：缓存公共原语（哈希/目录/原子写）
+    src/cn_compiler/driver/driver_path_util.cpp   # 路径工具族（主干/目录/探测/入口归一）
     src/cn_compiler/driver/driver_program_cache.cpp  # 1156：程序级产物缓存
 )
 target_include_directories(cn_compiler_driver PUBLIC ${CMAKE_SOURCE_DIR}/src)

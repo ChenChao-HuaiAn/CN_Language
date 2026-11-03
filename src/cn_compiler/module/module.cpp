@@ -212,6 +212,18 @@ bool dfsTopo(const std::unordered_map<std::string, std::unique_ptr<ModuleUnit>>&
             std::string dep = imp->importPath;
             const std::size_t sep = dep.find("::");
             if (sep != std::string::npos) dep = dep.substr(0, sep);
+            // 边名解析与模块名规则对齐（目录包成员互引真环漏报根治）：
+            //   成员文件内的同包成员短名导入（包环::环甲 内 导入 环乙）经依赖
+            //   候选链加载时命名=包根名::短名（loadModuleTree 包前缀覆盖规则）
+            //   ——裸短名在图中查不到，依赖边恒断 → 成员互引真环漏报（拓扑
+            //   排序无从见环）。短名查不到且本单元有包归属时按「自包根::短名」
+            //   补查——补查的是加载链确实加载过的真实依赖边（同名去重命中），
+            //   非猜测；查不到=依赖未加载（合并时忽略·既有语义）。
+            //   解析后回写 dep（依赖边生效名）——环路径诊断/豁免判定沿用同一名。
+            if (units.find(dep) == units.end() && !it->second->pkgRoot.empty()) {
+                const std::string full = it->second->pkgRoot + "::" + dep;
+                if (units.find(full) != units.end()) dep = full;
+            }
             // 自包导入边省略（挂账1 根治，2026-09-08；rustc crate 模型同构）：
             //   目录包成员 导入 自包名（IR布局 导入 IR）是包内符号引用（合并
             //   期全局池可见）而非跨包依赖——与包根聚合边（IR -> IR布局）不构

@@ -8357,6 +8357,42 @@
    "类别": "待裁决",
    "锚文本": "如果 (是数组类型文本(目标文本) && 实参文本尾星(源文本)) {",
    "静默风险": "无"
+  },
+  {
+   "函数": "currentWorkingDir",
+   "原因": "_getcwd 失败=环境损坏（cwd 不可得）——false 上抛 normalizeEntryPath→runModulePipeline 报错中止（处置①显式报错终态·非取默认值继续）",
+   "批准": "已批",
+   "文件": "src/cn_compiler/driver/driver_path_util.cpp",
+   "来源": "2015",
+   "登记人": "AI（2015 cwd 假环根治轮·路径归一工具新增）",
+   "登记日": "2026-11-04",
+   "类别": "运行时API",
+   "锚文本": "if (_getcwd(buf, sizeof(buf)) == nullptr) return false;",
+   "静默风险": "低"
+  },
+  {
+   "函数": "currentWorkingDir",
+   "原因": "getcwd 失败=环境损坏（cwd 不可得）——false 上抛 normalizeEntryPath→runModulePipeline 报错中止（处置①显式报错终态·非取默认值继续；win/POSIX 条件编译对称面）",
+   "批准": "已批",
+   "文件": "src/cn_compiler/driver/driver_path_util.cpp",
+   "来源": "2015",
+   "登记人": "AI（2015 cwd 假环根治轮·路径归一工具新增）",
+   "登记日": "2026-11-04",
+   "类别": "运行时API",
+   "锚文本": "if (getcwd(buf, sizeof(buf)) == nullptr) return false;",
+   "静默风险": "低"
+  },
+  {
+   "函数": "normalizeEntryPath",
+   "原因": "cwd 获取失败上抛——调用契约（false→runModulePipeline 报「无法获取当前工作目录」中止）·相对路径归一必经 cwd，失败即中止非默认值",
+   "批准": "已批",
+   "文件": "src/cn_compiler/driver/driver_path_util.cpp",
+   "来源": "2015",
+   "登记人": "AI（2015 cwd 假环根治轮·路径归一工具新增）",
+   "登记日": "2026-11-04",
+   "类别": "运行时API",
+   "锚文本": "if (!currentWorkingDir(cwd)) return false;",
+   "静默风险": "低"
   }
  ],
  "版本": 1,

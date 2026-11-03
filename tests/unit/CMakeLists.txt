@@ -66,6 +66,7 @@ add_executable(cn_unit_tests
     model/test_type_system_canonical.cpp
     driver/test_cargo_parser.cpp
     driver/test_cache_atomic.cpp  # 1213：缓存原子写并发压测（同进程多线程）
+    driver/test_path_util.cpp  # 路径工具族：入口归一形态+cwd 形态假环/真环集成（chdir）
     driver/test_program_cache_env.cpp  # 750 复审4 P2-5：CN_NO_STR_ACCUM 精确判定+程序缓存禁用
     ir/test_ir.cpp
     ir/test_ir_verify_errors.cpp

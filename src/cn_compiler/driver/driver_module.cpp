@@ -21,6 +21,7 @@
 #include "cn_compiler/driver/driver_ast_cache.hpp"  // 1142：模块级 AST 缓存
 #include "cn_compiler/driver/driver_cache_util.hpp" // 1156：缓存键原语（源摘要）
 #include "cn_compiler/driver/driver_program_cache.hpp"  // 1156：程序级产物缓存
+#include "cn_compiler/driver/driver_path_util.hpp"  // 路径工具族（pathStem/pathDir/tryReadSource/入口归一）
 #include "cn_compiler/ir/ir.hpp"
 #include "cn_compiler/module/module.hpp"
 #include "cn_compiler/opt/pass_manager.hpp"
@@ -31,26 +32,6 @@ namespace cn_compiler {
 namespace driver {
 
 namespace {
-
-// 提取文件主干名（去除目录与扩展名）：tests/主.cn -> 主
-std::string pathStem(const std::string& path) {
-    std::size_t slash = path.find_last_of("/\\");
-    std::string base = (slash == std::string::npos) ? path : path.substr(slash + 1);
-    std::size_t dot = base.find_last_of('.');
-    return (dot == std::string::npos) ? base : base.substr(0, dot);
-}
-
-// 提取文件所在目录（含末尾分隔符）；无目录返回空串
-std::string pathDir(const std::string& path) {
-    std::size_t slash = path.find_last_of("/\\");
-    return (slash == std::string::npos) ? "" : path.substr(0, slash + 1);
-}
-
-// 安静尝试读取文件（不写 error）：探测候选路径是否存在
-bool tryReadSource(const std::string& path, std::string& out) {
-    std::string err;
-    return module::readSourceFile(path, out, err);
-}
 
 // 递归加载模块及其依赖：已加载模块名去重（重复导入只加载一次）
 // 第 4 层（v2.0 决策6，P1-2）：目录层级——模块名 = 文件相对入口目录的路径：
@@ -305,19 +286,28 @@ bool loadModuleTree(const std::string& filePath, const std::string& dir,
         const std::size_t pkgSep = pkgName.find("::");
         if (pkgSep != std::string::npos) pkgName = pkgName.substr(0, pkgSep);
         // ---- 候选1：当前模块文件目录 + 依赖名.cn（普通依赖，主 导入 数学 -> 数学.cn）
+        // 包归属对称化（目录包成员互引真环漏报根治）：候选1 从当前单元所在目录
+        //   命中的依赖=与当前单元同目录形态（同包成员互引·v2 阶段目录包成员间
+        //   短名导入常态）——包归属（pkgPrefix）承袭当前单元 pkgRoot，使挂载链
+        //   与候选链对同一成员文件命名一致（包环::环乙 两链同键去重）+ pkgRoot
+        //   归属对称（原候选链恒空致成员归属丢失：自包豁免/环边解析失守）。当前
+        //   单元无归属（crate 根/外部模块）时传空=既有命名零变化。
         const std::string cand1 = depBase + relPath + ".cn";
         std::string srcBuf;
         if (tryReadSource(cand1, srcBuf)) {
-            if (!loadModuleTree(cand1, depBase, entryDir, graph, error, macros, options)) {
+            if (!loadModuleTree(cand1, depBase, entryDir, graph, error, macros, options,
+                                /*isRootCall=*/false, /*pkgPrefix=*/cur->pkgRoot)) {
                 return false;
             }
             continue;
         }
         // ---- 候选2：当前模块树目录（网络.cn 内 模块 传输控制 -> 网络/传输控制.cn）
+        //   同候选1：当前单元包目录树下的子模块文件承袭包归属。
         const std::string cand2 = depBase + lastSeg + "/" + relPath + ".cn";
         if (tryReadSource(cand2, srcBuf)) {
             if (!loadModuleTree(cand2, dir + cur->moduleDir + lastSeg + "/", entryDir,
-                                graph, error, macros, options)) {
+                                graph, error, macros, options,
+                                /*isRootCall=*/false, /*pkgPrefix=*/cur->pkgRoot)) {
                 return false;
             }
             continue;
@@ -523,14 +513,29 @@ int runModulePipeline(const std::string& entryFile, const DriverOptions& options
                       PipelineOutput& output) {
     Diagnostics diagnostics;
 
+    // 0. 入口路径归一（cwd 假环根治）：模块归属判定（相对入口目录剥离 / 外部
+    //    bare 判据 relPart==filePath）必须与命令行路径形态解耦——入口写成
+    //    「主.cn」（无目录前缀）时 pathDir 为空串，空串前缀匹配恒命中使
+    //    relPart==filePath 对带目录依赖文件恒真 → 外部模块 bare 命名
+    //    （pathStem 砍包目录前缀）→ 包成员 pkgRoot 失效 → 自包导入边漏豁免 →
+    //    拓扑排序假环（IR -> IR生成 -> IR；同一程序树根调用正常、子目录调用
+    //    报环实测）。归一后 dir/entryDir 恒为入口文件绝对目录，模块名恒定
+    //    =相对入口目录路径主干（树根调用形态金标准），候选探测全链同形态
+    //    → findByPath 路径去重稳定。
+    std::string entryAbs;
+    if (!normalizeEntryPath(entryFile, entryAbs)) {
+        std::cerr << "错误: 无法获取当前工作目录（入口路径归一失败·显式中止）\n";
+        return 1;
+    }
+
     // 1. 加载模块树：入口 + 依赖
     //    第 5 层：依赖查找按 options 中货舱.toml 配置 + stdlib 目录扩展
     //    （入口同目录优先；货舱 [依赖] 次之；stdlib 兜底）
     //    簇⑥ 根治：根调用 isRootCall=true 写入命令行入口的 isEntryUnit 标记
     module::ModuleGraph graph;
     std::string error;
-    const std::string dir = pathDir(entryFile);
-    if (!loadModuleTree(entryFile, dir, dir, graph, error, options.macros, options,
+    const std::string dir = pathDir(entryAbs);
+    if (!loadModuleTree(entryAbs, dir, dir, graph, error, options.macros, options,
                         /*isRootCall=*/true)) {
         if (!error.empty()) std::cerr << "错误: " << error << "\n";
         return 1;
@@ -538,7 +543,7 @@ int runModulePipeline(const std::string& entryFile, const DriverOptions& options
 
     // 1.5 包上下文恢复（挂账1 根治，2026-09-08）：入口是项目内目录包成员时
     //     聚合包根（兄弟成员补入依赖闭包；入口文件经路径去重不双载）
-    if (!restorePackageContext(entryFile, graph, error, options.macros, options)) {
+    if (!restorePackageContext(entryAbs, graph, error, options.macros, options)) {
         if (!error.empty()) std::cerr << "错误: " << error << "\n";
         return 1;
     }
@@ -580,13 +585,13 @@ int runModulePipeline(const std::string& entryFile, const DriverOptions& options
         programCacheOn = computeProgramCacheKey(units, options, cargoDepNames, programKey);
         if (programCacheOn) {
             programCacheDir = cacheLeafDir(options, "program", "CN_PROGRAM_CACHE_DIR");
-            programCacheHit = loadProgramCache(programCacheDir, entryFile, options,
+            programCacheHit = loadProgramCache(programCacheDir, entryAbs, options,
                                                programKey, cachedProgram);
         }
     }
     // 1213·P2-4：VERIFY 命中后要完整重编译；中途失败=命中产物不可信且无法比对，
     //   守卫析构时删除该条目（防下次未开 VERIFY 静默命中坏产物），成功路径 commit。
-    ProgramCacheBadEntryGuard badEntryGuard(programCacheDir, entryFile, options,
+    ProgramCacheBadEntryGuard badEntryGuard(programCacheDir, entryAbs, options,
                                             programCacheHit && programCacheVerifyEnabled());
     // 验证通道（CN_PROGRAM_CACHE_VERIFY=1）：命中后仍完整重编译，末尾逐字节比对
     if (programCacheHit && !programCacheVerifyEnabled()) {
@@ -860,11 +865,11 @@ int runModulePipeline(const std::string& entryFile, const DriverOptions& options
                 // 1213·P2-4：先删坏条目再写新产物——写入失败时也不留下「命中但
                 //   过期」的旧产物；删除失败无条件显形（重建写入若再失败则坏条目
                 //   残留，必须是可见告警而非 verbose 提示）。
-                if (!discardProgramCacheEntry(programCacheDir, entryFile, options)) {
+                if (!discardProgramCacheEntry(programCacheDir, entryAbs, options)) {
                     std::fprintf(stderr,
                                  "警告: [程序缓存验证] 坏条目删除失败"
                                  "（重建写入失败时可能残留不可信产物）: %s\n",
-                                 entryFile.c_str());
+                                 entryAbs.c_str());
                 }
             }
             if (matched) {
@@ -878,7 +883,7 @@ int runModulePipeline(const std::string& entryFile, const DriverOptions& options
             fresh.asmText = output.asmText;
             fresh.warningsHuman = warnHuman;
             fresh.warningsJson = warnJson;
-            storeProgramCache(programCacheDir, entryFile, options, programKey, fresh,
+            storeProgramCache(programCacheDir, entryAbs, options, programKey, fresh,
                               options.verbose);
         }
     }
