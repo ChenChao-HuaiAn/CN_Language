@@ -99,7 +99,7 @@ public:
                            std::unique_ptr<VarDecl> tempIterableDecl);
     void visitReturnStmt(ReturnStmt* node) override;
     // 217-a（D1 行数整改）：visitReturnStmt 拆分的两个族方法（宿主纯重构零行为变更）。
-    // A2 拥有契约：返回类型 字符串=拥有——借用形态返回拒绝（泛型单态化体内豁免）。
+    // A2 拥有契约：泛型类方法实例体（借出视图设计）豁免；泛型函数实例重放按实例化类型执法。
     void checkReturnBorrowA2(ReturnStmt* node, const std::string& valueType);
     // 662：类对象返回拥有形态收集（借用/透传=不标记·保守）。
     void checkReturnOwnedClassCollect(ReturnStmt* node);   // 662：类对象返回拥有形态收集（号=立法任务·只留注释）
@@ -858,6 +858,8 @@ private:
     std::unordered_map<std::string, std::string> ptrLocalPointees_;
     std::string lastType_;                         // 最近一次表达式推断的类型
     std::string currentReturnType_;                // 当前函数返回类型（空表示顶层）
+    // 泛型函数实例重放标志（recheckGenericFuncBody 置真/退出恢复）：返回位 A2 按实例化类型执法
+    bool genericFuncInstanceRecheck_ = false;
     // 662：类对象返回拥有收集（checkFunctionBody 清/落 FunctionInfo 标记）。
     bool curFnClassRetSeen_ = false, curFnClassRetBorrow_ = false;
     // 574-a（T99·211/231）：内置构造器目标类型上下文栈（声明/赋值位压入目标

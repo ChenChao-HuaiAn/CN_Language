@@ -409,14 +409,23 @@ void SemanticAnalyzer::clearBorrowViewState() {
 //   Rust fn f() -> String）；借用形态返回（下标/成员/解引用借出、字符* 表达式、
 //   参数/全局/静态/类字段标识符）拒绝——调用方 free 借用指针=悬垂/UAF。拥有化须显式：
 //   字符串复制(...)（落堆）或改返回类型 字符*（借用视图）。泛型单态化体内豁免（A2）：
-//   实例化类方法体的 T 来源字符串=借用语义（Rust Vec::get -> &T 同款）。
+//   仅泛型类方法实例体的 T 来源字符串=借出视图设计（Rust Vec::get -> &T 同款——
+//   容器 元素/读取 等返回容器内句柄，泛型体不可拥有化：字符串复制 对非字符串 T
+//   不成立）；泛型函数实例重放不受此豁免（#1996·1103 采样轮）：实例体返回类型/
+//   形参类型已按实参替换，`返回 v;`（v=字符串形参）=借用返回，须与普通函数同源
+//   拒绝——v2 泛型重放环境映射（477-a T→实参）后同判，双侧零分叉。泛型类方法
+//   实例重检不受影响（该面 v2 语义阶段仅按模板 T 检查一次·同步放行）。
 //   #1614（2026-10-26 用户批甲案）：标识符面补「函数内静态局部」分支——静态
 //   局部经 declareVar 入 scopes_，原 !isCurrentFnLocal 判定不可达=宿主放行
 //   （返回链搬空静态槽）vs v2 拒（865-a 解析期合成名落非局部）=双侧分叉；
 //   修后判据 staticguard::isStaticLocal、诊断名按 v2 合成名口径逐字一致。
 void SemanticAnalyzer::checkReturnBorrowA2(ReturnStmt* node, const std::string& valueType) {
+    // 泛型豁免面精确化（#1996）：类方法实例体保留豁免（借出视图设计），泛型
+    //   函数实例重放按实例化后的返回类型执行本检查（genericFuncInstanceRecheck_）。
+    const bool genericClassMethodExempt =
+        !genericTypeParams_.empty() && !genericFuncInstanceRecheck_;
     if (types::canonicalEquals(currentReturnType_, "字符串") &&
-        genericTypeParams_.empty()) {
+        !genericClassMethodExempt) {
         const NodeType retKindA2 = node->value->getType();
         bool borrowRetA2 = false;
         std::string whyA2;

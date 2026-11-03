@@ -751,6 +751,13 @@ int SemanticAnalyzer::recheckGenericFuncBody(const GenericFuncInstance& gfi) {
          i < gen->typeParams.size() && i < gfi.args.size(); ++i) {
         genericTypeParams_[gen->typeParams[i]] = gfi.args[i];
     }
+    // 1.5（#1996·1103 采样轮）：泛型函数实例重放标志——返回位 A2 拥有契约
+    //    检查须按实例化后的返回类型执行（`返回 v;` v=字符串形参=借用返回，
+    //    与普通函数同源拒绝）；v2 侧泛型重放环境映射（477-a T→实参）后同判。
+    //    泛型类方法实例体的 T 来源借出视图豁免不受影响（本标志仅函数实例
+    //    重放窗口置真，见 checkReturnBorrowA2 genericClassMethodExempt）。
+    const bool savedGenericFuncRecheck = genericFuncInstanceRecheck_;
+    genericFuncInstanceRecheck_ = true;
 
     // 2. 函数名与链接键临时绑定为实例形态——checkFunctionBody 按
     //    functionLinkKey(module, name, sigKey) 查 functions_，而 instantiateGeneric
@@ -839,6 +846,7 @@ int SemanticAnalyzer::recheckGenericFuncBody(const GenericFuncInstance& gfi) {
         node->params[pi]->typeName = savedParamTypes[pi];
     }
     genericTypeParams_ = savedTypeParams;
+    genericFuncInstanceRecheck_ = savedGenericFuncRecheck;
     return keptErrors;
 }
 
