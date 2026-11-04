@@ -344,6 +344,37 @@ std::string IRGenerator::callReturnCanonOf(const CallExpr* ce) {
     if (ce->callee->getType() == NodeType::IdentifierExpr) {
         const std::string nm =
             static_cast<IdentifierExpr*>(ce->callee.get())->name;
+        // #1922 件2（2026-11-04）：**绑定方法值变量调用（cb()）返回类型**=
+        //   变量方法值类型内嵌函数指针的返回段（语义层 checkMethodValueCall
+        //   lastType_=retType 同构）。原路径只查函数返回类型表（键=签名/裸名）
+        //   ——变量名恒 miss：实参位 81-a 在 genArgValueWithCleanup 触发
+        //   「内部错误: 调用实参返回类型未登记」（探针：字符串长度(cb("前"))
+        //   宿主直接拒编=合法程序被内部错误误伤），语句位 645 亦不结算。
+        //   判定=变量源类型前缀 `方法值<`（types::isMethodValueType）→ 内嵌
+        //   函数指针返回段 canonical；"字符串&"（引用返回借用视图）原样返回
+        //   （调用方按契约闸/尾 '&' 判定不登记，933 深拷通道另管）。
+        const std::string calleeVarType = types::canonical(
+            lookupSrcType(nm).value_or(std::string()));
+        if (types::isMethodValueType(calleeVarType)) {
+            const std::optional<std::string> fp =
+                types::methodValueFnPtrOf(calleeVarType);
+            if (!fp.has_value()) {
+                // 内部串残缺（makeMethodValueType 单点构造不成立）=编译器缺陷
+                //   显形（miss 不可静默·#1922 用户令），不默认放行。
+                diagnostics_.report(DiagnosticLevel::Error, ce->location,
+                                    "内部错误: 绑定方法值类型串残缺 '" +
+                                        calleeVarType + "'（#1922）");
+                return "";
+            }
+            const cn::Optional<std::string> rt = types::funcPtrReturnTypeOf(fp.value());
+            if (!rt.has_value()) {
+                diagnostics_.report(DiagnosticLevel::Error, ce->location,
+                                    "内部错误: 绑定方法值签名返回段残缺 '" +
+                                        calleeVarType + "'（#1922）");
+                return "";
+            }
+            return types::canonical(rt.value());
+        }
         const std::string keys[2] = {ce->resolvedSignature, nm};
         for (const std::string& key : keys) {
             if (key.empty()) continue;

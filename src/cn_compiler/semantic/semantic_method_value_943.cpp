@@ -153,6 +153,15 @@ bool SemanticAnalyzer::checkMethodValueCall(CallExpr* node,
     const std::string retType = funcPtrReturnOf(*fnPtr).value_or(std::string());
     const std::vector<std::string> paramTypes =
         funcPtrParamsOf(*fnPtr).value_or(std::vector<std::string>());
+    // #1922 件2：**A2 拥有契约写回**（与 1578 函数指针变量调用
+    //   checkFuncPtrCall 同点同律）——方法变量调用（cb()）的返回串产自被绑定
+    //   方法，方法返回位（A2 `-> 字符串` 拥有契约）已保证独立堆串；本字段原
+    //   零写回=声明位 RAII 登记/实参位临时清理/链段结算全按「借用」处理，
+    //   每个消费点净泄 1（alloc6/alloc8 探针：声明位/实参位百轮各泄 100，
+    //   宿主与 v2 同步）。返回段**精确**等于 "字符串"=拥有（A2 契约）；
+    //   "字符串&"（引用返回借用视图）与标量返回不置位（含尾 '&' 比较不等
+    //   天然排除）。
+    node->retOwnedString = (retType == "字符串");
     // 参数数量检查
     if (node->arguments.size() != paramTypes.size()) {
         diagnostics_.report(DiagnosticLevel::Error, node->location,
