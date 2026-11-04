@@ -137,7 +137,7 @@ print("== L1 快速门禁（920·提交前）==", flush=True)
 #    协议注释逐条豁免），冻结基线只减不增·新增/计数增加即红。
 for 名 in ("check_ascii_idents", "check_keywords_sync", "check_registry_audit",
            "check_case_numbers", "check_registry_sanity", "check_miss_gate", "check_sentinel_gate",
-           "check_naming",
+           "check_naming", "check_dispatch_gate", "check_banned_words_gate",
            "check_deploy_manifest",
            "check_syntax_semantic_sync", "check_verifier_selfcheck",
            "check_parallel_prefix", "check_program_cache_key_audit"):
@@ -172,6 +172,20 @@ if not 步("哨兵门禁自测",
 #   纯临时样例树、零构建、秒级（与 882/1640 自测同哲学）。
 if not 步("命名门禁自测",
           [sys.executable, "scripts/check_naming.py", "--selftest"],
+          超时秒=静态超时):
+    raise SystemExit(1)
+# 1959（2026-11-05）：防静默错误规范机械化门禁判别力自测挂 L1 静态段——#1964 十二
+#   条款执法面两件：①分派默认/value_or 全禁/哨兵还原三面门禁（评估轮 #1958 条款
+#   ①②⑥⑦正则面精化·三红与 882/1640 同构·冻结基线 dispatch_freeze_baseline.json）
+#   ②注释禁词门禁（条款⑪十一词·同行「命名豁免/登记条/静默豁免」引用放行·冻结基线
+#   banned_words_freeze_baseline.json）。纯临时样例树、零构建、秒级（与 882/1640/
+#   1761 自测同哲学）。
+if not 步("分派默认门禁自测",
+          [sys.executable, "scripts/check_dispatch_gate.py", "--selftest"],
+          超时秒=静态超时):
+    raise SystemExit(1)
+if not 步("禁词门禁自测",
+          [sys.executable, "scripts/check_banned_words_gate.py", "--selftest"],
           超时秒=静态超时):
     raise SystemExit(1)
 # 1376：程序缓存键审计门禁判别力自测（纯 fixture 副本·零构建·秒级）——正反两态
