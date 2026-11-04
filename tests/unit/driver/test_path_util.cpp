@@ -45,6 +45,10 @@ using cn_compiler::driver::runModulePipeline;
 namespace {
 
 // 当前工作目录（单测断言用；失败返回空串）
+// 分隔符统一正斜杠（win 平台必守）：normalizeEntryPath 把反斜杠折叠为项目
+//   内部单一口径（_getcwd 返回反斜杠形态），断言期望值必须同口径构造——
+//   否则 win 上 RelativeBecomesAbsolute 期望（裸 _getcwd 串）与实际输出
+//   （归一正斜杠）永不相等（云端预检片3 win-x64 单测红实录·POSIX 不可见）。
 std::string testCwd() {
     char buf[4096];
     if (TEST_CHDIR(".") != 0) return "";
@@ -53,7 +57,11 @@ std::string testCwd() {
 #else
     if (getcwd(buf, sizeof(buf)) == nullptr) return "";
 #endif
-    return buf;
+    std::string cwd = buf;
+    for (char& ch : cwd) {
+        if (ch == '\\') ch = '/';
+    }
+    return cwd;
 }
 
 // 本测试专用临时根目录（唯一名·多 worktree 并行 gate_quick 不互踩）
@@ -65,6 +73,9 @@ std::string makeTempRoot(const char* tag) {
     if (_dupenv_s(&buf, nullptr, "TEMP") == 0 && buf != nullptr) {
         dir = buf;
         free(buf);
+        for (char& ch : dir) {
+            if (ch == '\\') ch = '/';  // 与 testCwd 同口径（正斜杠单一形态）
+        }
     }
 #else
     dir = "/tmp";
@@ -74,6 +85,11 @@ std::string makeTempRoot(const char* tag) {
     TEST_MKDIR(dir.c_str());
     return dir;
 }
+
+// 删除普通文件（清理面）：std::remove 对文件有效；目录须走 TEST_RMDIR——
+//   旧版清理误用 _rmdir/rmdir 删文件（POSIX ENOTDIR/win 报错）恒失败，
+//   临时文件全量残留（/tmp 与 TEMP 垃圾累积）——本辅助修正分工。
+void removeFile(const std::string& path) { std::remove(path.c_str()); }
 
 // 写 UTF-8 内容文件（包.cn 中文文件名走 UTF-8 宽路径；ASCII 名走窄路径直写）
 bool writeUtf8File(const std::string& path, const std::string& content) {
@@ -180,11 +196,11 @@ TEST(PathUtilTest, CwdEntryPackageSelfImportNoFalseCycle) {
     const int rc = runModulePipeline("main.cn", options, output);
     EXPECT_EQ(rc, 0) << "目录包自导入在子目录 cwd 下应编译成功（假环已根治）";
 
-    TEST_RMDIR((pkgDir + "/包.cn").c_str());
-    TEST_RMDIR((pkgDir + "/membA.cn").c_str());
-    TEST_RMDIR((pkgDir + "/membB.cn").c_str());
+    removeFile(pkgDir + "/包.cn");
+    removeFile(pkgDir + "/membA.cn");
+    removeFile(pkgDir + "/membB.cn");
     TEST_RMDIR(pkgDir.c_str());
-    TEST_RMDIR((root + "/main.cn").c_str());
+    removeFile(root + "/main.cn");
     TEST_RMDIR(root.c_str());
 }
 
@@ -209,10 +225,10 @@ TEST(PathUtilTest, CwdEntryPackageMemberCycleRejected) {
     const int rc = runModulePipeline("main2.cn", options, output);
     EXPECT_NE(rc, 0) << "同包成员互引真环必须拒绝（环检测真环照拦）";
 
-    TEST_RMDIR((pkgDir + "/包.cn").c_str());
-    TEST_RMDIR((pkgDir + "/cycA.cn").c_str());
-    TEST_RMDIR((pkgDir + "/cycB.cn").c_str());
+    removeFile(pkgDir + "/包.cn");
+    removeFile(pkgDir + "/cycA.cn");
+    removeFile(pkgDir + "/cycB.cn");
     TEST_RMDIR(pkgDir.c_str());
-    TEST_RMDIR((root + "/main2.cn").c_str());
+    removeFile(root + "/main2.cn");
     TEST_RMDIR(root.c_str());
 }
