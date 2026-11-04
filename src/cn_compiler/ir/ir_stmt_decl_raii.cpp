@@ -19,22 +19,61 @@ namespace cn_compiler {
 
 namespace {
 
-// 880/879 共用扫描内核（1479 提炼）：体内首个 return 表达式搜索（块/如果
-//   基本形态递归）——1820 转移返回面甄别复用。
-Expr* findReturnExpr880raii(Stmt* s) {
+// 880/879 共用扫描内核（1479 提炼）：体内首个 return 表达式搜索——1820 转移
+//   返回面甄别复用。1963 执法四（零裁量条款七「查询/递归必须穷举复合语句
+//   形态」）：原实现只递归 块/如果 两形态——先序首个可达 return 藏于 循环/
+//   遍历/选择 体内时被跳过，判据落到白名单面更晚的 return 或搜不到
+//   （rv=nullptr 被当「真无 return」）→ returnSourceBorrowed880 落保守豁免
+//   → 接收槽豁免析构=每声明泄 1（探针六面实测：当/循环/遍历/选择 四面百轮
+//   泄 100）。修后穷举全部复合语句形态（当/循环/遍历/选择+选择各情况的
+//   语句体·遍历体+语义降级树双面）；遍历的降级树（desugared=IR 层实际执行
+//   形态·体=用户体重建）与用户体先序等价，先体后降级树防边缘重建丢 return。
+//   语义定性：函数体内任何可达 return 都是返回来源——循环/选择体内的 return
+//   与块尾 return 同权（先序首个=判据样本，1818「类返回+标识符恒拥有」的
+//   深拷门/move 直传保障对循环体内标识符 return 同样成立）。穷举后仍搜不到
+//   =真无 return（函数可无 return·合法形态·语义层责任面），与「搜得到但
+//   形态不在白名单」（判据保守面·见 returnSourceBorrowed880 尾段显形登记）
+//   区分处置。
+Expr* findFirstReturnExpr(Stmt* s) {
     if (s == nullptr) return nullptr;   // 空节点=非该形态（递归出口）
     switch (s->getType()) {
     case NodeType::ReturnStmt:
         return static_cast<ReturnStmt*>(s)->value.get();
     case NodeType::BlockStmt:
         for (auto& st : static_cast<BlockStmt*>(s)->statements) {
-            if (Expr* e = findReturnExpr880raii(st.get())) return e;
+            if (Expr* e = findFirstReturnExpr(st.get())) return e;
         }
         return nullptr;
     case NodeType::IfStmt: {
         auto* ifs = static_cast<IfStmt*>(s);
-        if (Expr* e = findReturnExpr880raii(ifs->thenBranch.get())) return e;
-        return findReturnExpr880raii(ifs->elseBranch.get());
+        if (Expr* e = findFirstReturnExpr(ifs->thenBranch.get())) return e;
+        return findFirstReturnExpr(ifs->elseBranch.get());
+    }
+    case NodeType::WhileStmt:
+        return findFirstReturnExpr(
+            static_cast<WhileStmt*>(s)->body.get());
+    case NodeType::ForStmt:
+        return findFirstReturnExpr(
+            static_cast<ForStmt*>(s)->body.get());
+    case NodeType::RangeForStmt: {
+        auto* rfs = static_cast<RangeForStmt*>(s);
+        if (Expr* e = findFirstReturnExpr(rfs->body.get())) return e;
+        return findFirstReturnExpr(rfs->desugared.get());
+    }
+    case NodeType::SwitchStmt: {
+        auto* sw = static_cast<SwitchStmt*>(s);
+        for (auto& c : sw->cases) {
+            if (c == nullptr) continue;
+            for (auto& st : c->statements) {
+                if (Expr* e = findFirstReturnExpr(st.get())) return e;
+            }
+        }
+        if (sw->defaultCase != nullptr) {
+            for (auto& st : sw->defaultCase->statements) {
+                if (Expr* e = findFirstReturnExpr(st.get())) return e;
+            }
+        }
+        return nullptr;
     }
     default:
         return nullptr;
@@ -60,7 +99,7 @@ Expr* findReturnExpr880raii(Stmt* s) {
 //   C0000374。对象类型=语义层写回 semanticType（指针剥一层·v2.1 统一 . 模型）。
 // 880 判据源成员函数（1479 提炼：原 callReceiverExempt880 内 lambda 显形为
 //   声明位/实参位共用单一判据源——语义逐字保留零变更）。扫描内核
-//   findReturnExpr880raii 见文件头匿名命名空间。
+//   findFirstReturnExpr 见文件头匿名命名空间。
 // 返回 true=借用（形参/全局写穿别名·非标识符 return 保守面）→ 豁免登记；
 // 返回 false=拥有（局部/新建标识符=句柄转移）→ 登记/释放。
 // 1818 追补（2026-10-30·丁案 R1·001 §5.3 返回值语义 2026-10-29 裁决）：第三参=
@@ -92,7 +131,7 @@ Expr* findReturnExpr880raii(Stmt* s) {
 bool IRGenerator::returnSourceBorrowed880(
     BlockStmt* body, const std::vector<std::unique_ptr<ParamDecl>>& params,
     const std::string& returnType) const {
-    Expr* rv = (body != nullptr) ? findReturnExpr880raii(body) : nullptr;
+    Expr* rv = (body != nullptr) ? findFirstReturnExpr(body) : nullptr;
     if (semantic_ != nullptr && !returnType.empty() &&
         !types::isReference(returnType) &&
         semantic_->isClassType(types::canonical(returnType)) &&
@@ -142,7 +181,29 @@ bool IRGenerator::returnSourceBorrowed880(
                 return false;       // 成员=移交（959 交接设计·登记释放）
             }
         }
+        // 1963 执法四（770 构造调用=登记 口径补面）：「返回 名(...);」构造
+        //   调用作 return（错误路径 返回 货架(); 高频形态）——产物=NewObject
+        //   新对象（IR 实证直传·无拷构装配/无别名共享），接收位=唯一持有者
+        //   → 拥有（登记释放）。判据=被调 callee 类名/泛型实例文本（剥
+        //   <…> 基名）类表命中——与 callReceiverExempt880 的「构造调用→登记
+        //   （770）」及 classifyClassReturnOwnership 的构造识别（880:344）同
+        //   源单口径。探针面6 实录：修前此形态落保守豁免=错误路径接收槽每
+        //   调用泄 1。
+        if (transferRetCall->callee->getType() == NodeType::IdentifierExpr &&
+            semantic_ != nullptr) {
+            const std::string ctorName =
+                static_cast<const IdentifierExpr*>(transferRetCall->callee.get())->name;
+            const std::size_t ltCtor = ctorName.find('<');
+            const std::string ctorBase =
+                (ltCtor == std::string::npos) ? ctorName : ctorName.substr(0, ltCtor);
+            if (semantic_->findClass(ctorBase).has_value()) {
+                return false;       // 构造调用产物=新对象（拥有·770）
+            }
+        }
     }
+    // 1647/1963 详注见上方 1647 段与穷举递归说明（非标识符谱系=拷构写穿
+    //   共享面·登记析构=双释放崩溃面；rv==nullptr=真无 return 合法形态）。
+    // 静默豁免待裁决: 非标识符 return 保守豁免（1647 立法挂起·1963 显形登记）
     return true;                // 非标识符/非转移 return：保守豁免
 }
 
