@@ -225,6 +225,9 @@ std::string archBucketDir(const std::string& target) {
 //   字符处理——GBK 双字节组首字节 ≥0x81，宁可多走中转路径不漏判）
 static bool isPureAsciiPath(const std::string& path) {
     for (const unsigned char ch : path) {
+        // 静默豁免闭集穷举: unsigned char 全域 [0x00,0xFF] 上界与类型域重合——
+        //   0x80 起为非 ASCII 字节域（多字节字符判定·字节分类非业务数值区间，
+        //   上界不可写否则 -Werror=type-limits 恒真红·2050 集成实录）
         if (ch >= 0x80) return false;
     }
     return true;
