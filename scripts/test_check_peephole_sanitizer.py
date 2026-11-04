@@ -10,13 +10,21 @@ gtest 输出，证明以下假绿形态必红（审查 P2-1/P2-2/P2-3「保留�
   ③ 死亡例从 --gtest_list_tests 清单消失（CN_PEEPHOLE_ASAN_DEATH 宏失效）；
   ④ 同数顶替：总数不变但两条死亡例被普通用例替换（源码差集为空，关键名缺失）；
   ⑤ _GLIBCXX_DEBUG 口径混入死亡例 / 缺少显式 SKIP 例 / 跳过数不符；
-  ⑥ gtest 1.8/1.9 的「test cases」旧称与含 '/' 的参数化跳过名。
+  ⑥ gtest 1.8/1.9 的「test cases」旧称与含 '/' 的参数化跳过名；
+  ⑦ 判别力样品屏障锚（#1858）：指针隐藏/内存屏障/源码序/防误删注释任一缺失
+     必红——防「看似死代码」被考古清理后样品变脆、-O1 再失明（三态篡改负例
+     验证锚检查自身判别力）。
 断言统一用显式 if not + SystemExit(1)（不用 assert）：python3 -O /
   PYTHONOPTIMIZE=1 下仍真实执行，不会出现「assert 被移除→假绿」。
 用法：python scripts/test_check_peephole_sanitizer.py   （rc=0=全绿）
+      加 --真编译：另行真编译跑主工具 asan自检（正例绿+负例 -O0/-O1 双档红，
+      需 g++/clang++；默认不开——L1 静态段零编译器秒级的既定设计，判别力
+      运行时锁面=主工具每次运行必跑 asan自检）
 """
 from __future__ import annotations
 
+import argparse
+import shutil
 import sys
 from pathlib import Path
 
@@ -164,18 +172,65 @@ def 负例_debug口径() -> None:
     断言(错 != [], "源码提取集合为空（正则/路径失效）：必红", 负例=True)
 
 
+def 正例_负例屏障锚() -> None:
+    """#1858 判别力样品「顽固性」锚齐全（指针隐藏/屏障/源码序/防误删注释）。"""
+    错 = 锁.负例屏障锚检查(锁.负例源码)
+    断言(错 == [], f"判别力样品屏障锚齐全（负例 free→use 机器序有双守卫固化）：{错}")
+
+
+def 负例_屏障被拆() -> None:
+    """锚检查自身判别力：三态篡改（删屏障/去 volatile/乱序）必红。"""
+    锚 = 'asm volatile("" : : : "memory");'
+    错 = 锁.负例屏障锚检查(锁.负例源码.replace(锚, ""))
+    断言(any("屏障" in 条 for 条 in 错),
+         "屏障行被删（考古清理「假死代码」形态）：必红", 负例=True)
+    篡改 = 锁.负例源码.replace("char* volatile 隐藏指针 = p;", "char* 隐藏指针 = p;")
+    错 = 锁.负例屏障锚检查(篡改)
+    断言(any("指针隐藏" in 条 for 条 in 错),
+         "指针隐藏被去 volatile（样品变脆形态）：必红", 负例=True)
+    行表 = 锁.负例源码.splitlines(keepends=True)
+    释放位 = next(i for i, 行 in enumerate(行表) if "delete[] 隐藏指针;" in 行)
+    使用位 = next(i for i, 行 in enumerate(行表) if "隐藏指针[0]" in 行)
+    行表[释放位], 行表[使用位] = 行表[使用位], 行表[释放位]
+    错 = 锁.负例屏障锚检查("".join(行表))
+    断言(any("顺序" in 条 for 条 in 错),
+         "释放与使用源码序颠倒（被顺手重排形态）：必红", 负例=True)
+
+
+def 正例_真编译判别力() -> None:
+    """--真编译 显式段：真编译跑主工具 asan自检（正例绿+负例 -O0/-O1 双档必红）。
+
+    默认不开（L1 静态段零编译器秒级的既定设计·1217 返工）；判别力运行时锁面
+    =主工具每次运行必跑 asan自检。本段供 #1011 证据轮/换环境收口显式验证。
+    """
+    cxx = shutil.which("g++") or shutil.which("clang++")
+    if cxx is None:
+        print("[跳过] 未找到 g++/clang++：真编译判别力段未执行"
+              "（静态锚断言已跑；主工具 asan自检 运行时硬依赖编译器）", flush=True)
+        return
+    断言(锁.asan自检(cxx) is True, "真编译判别力：正例绿+负例 -O0/-O1 双档必红")
+
+
 def main() -> int:
+    解析器 = argparse.ArgumentParser(description="窥孔机械锁判别力自测")
+    解析器.add_argument("--真编译", action="store_true",
+                       help="真编译跑主工具 asan自检（需 g++/clang++）")
+    参数 = 解析器.parse_args()
     正例_asansan()
     正例_debug()
     正例_格式兼容()
+    正例_负例屏障锚()
     负例_汇总不自洽()
     负例_asan跳过()
     负例_宏失效()
     负例_同数顶替()
     负例_debug口径()
+    负例_屏障被拆()
     断言(正例通过 > 0 and 负例通过 > 0, "正/负例计数器均被真实执行（非空转）")
+    if 参数.真编译:
+        正例_真编译判别力()
     print(f"自测全绿：正例 {正例通过} 项 + 负例 {负例通过} 项——"
-          "汇总自洽/源码差集/关键名/SKIP 口径任一被破坏，机械锁必红")
+          "汇总自洽/源码差集/关键名/SKIP 口径/判别力样品屏障锚任一被破坏，机械锁必红")
     return 0
 
 
