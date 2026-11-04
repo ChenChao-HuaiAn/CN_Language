@@ -51,7 +51,9 @@ private:
     Token readPrefixedString(const std::string& prefixText, const SourceLocation& loc); // 读取带前缀字符串
     std::string readStringBody(bool multiLine, bool raw); // 读取字符串体（返回含引号原文）
     Token readNumber();                      // 读取数字（十进制/十六进制/二进制/八进制/浮点）
-    void collectNumberSuffix(std::string& text); // 收集整数/浮点后缀 f/L/LL/U/UL/ULL
+    // 收集数字后缀（规格书4.3）：isFloat=浮点形态消费 f/F；整数形态遇 f/F
+    //   即词法报错（非后缀面·整数不能带浮点后缀）——L/LL/U/UL/ULL 两态通收
+    void collectNumberSuffix(std::string& text, bool isFloat);
     Token readChar();                        // 读取字符字面量（含转义与\u{}）
     bool validateUnicodeEscape(const std::string& hexBody, const SourceLocation& loc); // 278-a T5：\u{} 三态校验（空/超限/代理区+非法hex）
     Token readOperatorOrDelimiter();         // 读取运算符或分隔符（贪婪最长匹配）

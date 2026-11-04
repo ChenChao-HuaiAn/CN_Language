@@ -484,13 +484,23 @@ bool Lexer::prefixAbuseNextQuote() const {
 }
 
 
-// 收集整数/浮点后缀：f/L/LL/U/UL/ULL（规格书4.3节）
-// 注意：不在数字收集阶段处理a-f，避免与十六进制数字冲突
-void Lexer::collectNumberSuffix(std::string& text) {
+// 收集数字后缀（规格书4.3节）：L/LL/U/UL/ULL 整数后缀与 f/F 浮点后缀
+// 注意：不在数字收集阶段处理a-f，避免与十六进制数字冲突。
+// isFloat=浮点形态（小数/指数）才可消费 f/F；整数形态的 f/F 非后缀面
+//（001 §4.3·1871 立法「整数形态尾缀 f/F 非后缀面」）——当场词法报错。
+// 修前整数面 f/F 被静默收进 token（literalTypeOf 按浮32放行）与 v2 拒绝
+// 分叉（#1968 探针实锚：拾(123f) 宿主选浮32重载打印错值 0.0）。
+void Lexer::collectNumberSuffix(std::string& text, bool isFloat) {
     while (!isAtEnd()) {
         const char32_t c = peek();
-        if (c == U'f' || c == U'F' || c == U'l' || c == U'L' ||
-            c == U'u' || c == U'U') {
+        if (c == U'f' || c == U'F') {
+            if (!isFloat) {
+                reportError(currentLocation(),
+                            "整数字面量不能带浮点后缀（仅浮点形态可带 f/F 后缀，如 1.5f）");
+            }
+            text += currentUtf8();
+            advance();
+        } else if (c == U'l' || c == U'L' || c == U'u' || c == U'U') {
             text += currentUtf8();
             advance();
         } else {
@@ -520,7 +530,8 @@ Token Lexer::readNumber() {
                 break;
             }
         }
-        collectNumberSuffix(text);
+        // 十六进制面 f/F 是数字位（上方收集循环先行消费）——后缀收集处不可达
+        collectNumberSuffix(text, false);
         return Token(TokenType::IntegerLiteral, text, loc);
     }
     if (peek() == U'0' && (peekNext(1) == U'b' || peekNext(1) == U'B')) {
@@ -537,7 +548,7 @@ Token Lexer::readNumber() {
                 break;
             }
         }
-        collectNumberSuffix(text);
+        collectNumberSuffix(text, false);
         return Token(TokenType::IntegerLiteral, text, loc);
     }
     if (peek() == U'0' && (peekNext(1) == U'o' || peekNext(1) == U'O')) {
@@ -554,7 +565,7 @@ Token Lexer::readNumber() {
                 break;
             }
         }
-        collectNumberSuffix(text);
+        collectNumberSuffix(text, false);
         return Token(TokenType::IntegerLiteral, text, loc);
     }
 
@@ -595,7 +606,7 @@ Token Lexer::readNumber() {
             }
         }
     }
-    collectNumberSuffix(text);
+    collectNumberSuffix(text, isFloat);
     return Token(isFloat ? TokenType::FloatLiteral : TokenType::IntegerLiteral, text, loc);
 }
 

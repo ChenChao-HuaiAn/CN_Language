@@ -87,11 +87,13 @@ TEST(TypeSystemTest, FloatClassification) {
 
 // ==================== 字面量后缀解析（规格书4.3） ====================
 
-// 整数后缀：无后缀->整32、f->浮32、L->整64、LL->整128、U->正32、UL->正64、ULL->正128
+// 整数后缀：无后缀->整32、L->整64、LL->整128、U->正32、UL->正64、ULL->正128
 TEST(TypeSystemTest, LiteralSuffixInteger) {
     // 1360 结果化：value_or 显形断言（无值=非法后缀面）
     EXPECT_EQ(literalTypeOf("42", false).value_or(""), "整32");
-    EXPECT_EQ(literalTypeOf("42f", false).value_or(""), "浮32");
+    // 整数形态尾缀 f/F 非后缀面（001 §4.3·1871 立法·#1968 分叉治理）——
+    //   修前此断言锁「42f->浮32」即分叉病根；修后词法层已拒、语义面=无值
+    EXPECT_EQ(literalTypeOf("42f", false).value_or(""), "");
     EXPECT_EQ(literalTypeOf("42L", false).value_or(""), "整64");
     EXPECT_EQ(literalTypeOf("42LL", false).value_or(""), "整128");
     EXPECT_EQ(literalTypeOf("42U", false).value_or(""), "正32");

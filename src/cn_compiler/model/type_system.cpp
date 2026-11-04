@@ -754,7 +754,8 @@ cn::Optional<std::string> literalTypeOf(const std::string& raw, bool isFloat) {
         if (!raw.empty() && (raw.back() == 'f' || raw.back() == 'F')) return std::string("浮32");
         return std::string("浮64");
     }
-    // 整数字面量后缀（规格书4.3）：f/L/LL/U/UL/ULL
+    // 整数字面量后缀（规格书4.3）：L/LL/U/UL/ULL（f/F 仅浮点形态后缀·整数面
+    //   残余 f/F 由循环剥出后落无值通道）
     // 注意：后缀大小写不敏感（l/lL/uL 等），统一转大写匹配
     // 910：十六进制面 F 是数字不是后缀——`0xFFFFFFFFFFFFFFFF` 末尾 F 串被原
     //   实现当后缀收集致返回空串/错级（759 探针实锚）；剥前先按进制守卫
@@ -772,7 +773,10 @@ cn::Optional<std::string> literalTypeOf(const std::string& raw, bool isFloat) {
         suffix = static_cast<char>(std::toupper(static_cast<unsigned char>(c))) + suffix;
     }
     if (suffix.empty()) return std::string("整32");       // 无后缀 -> 整32（规格书默认·合法契约态）
-    if (suffix == "F") return std::string("浮32");        // 123f -> 浮32
+    // 整数面 F 不再定级浮32（001 §4.3·1871 立法「整数形态尾缀 f/F 非后缀面」
+    //   ——修前此分支即 #1968 分叉病根：123f 静默按浮32放行与 v2 拒绝分叉）；
+    //   词法层（collectNumberSuffix 整数面）已当场拒绝，本面=词法漏拒时的
+    //   错误恢复通道：suffix=="F" 落下方既有非法后缀=无值。
     if (suffix == "L") return std::string("整64");
     if (suffix == "LL") return std::string("整128");
     if (suffix == "U") return std::string("正32");
