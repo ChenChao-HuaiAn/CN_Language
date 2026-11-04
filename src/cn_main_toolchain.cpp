@@ -23,6 +23,7 @@
 
 #ifdef _WIN32
 #include <windows.h>
+#include <process.h>  // _getpid（2054 进程独占临时汇编目录后缀）
 #else
 #include <sys/wait.h>  // WIFEXITED/WEXITSTATUS（system 返回值解包，249-a）
 #include <unistd.h>  // readlink（stdlib 目录探测）
@@ -203,21 +204,126 @@ std::string archBucketDir(const std::string& target) {
     return target;
 }
 
+// 2054（1104 对拍轮实锤·宿主侧修复）：ml64 报错行「非 ASCII 源路径截断」缺陷规避。
+//   现象（字节级复现）：汇编源路径含非 ASCII 字节（GBK 中文）时，ml64 报错行
+//   「<路径>(行号): error A2042…」在第一个多字节字符处整段截断且丢失行尾换行——
+//   纯 ASCII 路径完整输出 Assembling+A2042+A2006 三行，中文路径只剩两条截断前缀
+//   粘连（多条路径前缀相连，观感=「产物路径循环拼接」·1104dual 报告
+//   dir_000_028_i3 宿主编译输出实证），行号与错误码信息全丢=诊断面失明。
+//   此为 ml64 自身输出缺陷——CN 宿主代码全部错误路径组装点逐一排查无循环拼接
+//   逻辑（主会话初判「错误路径组合循环拼接」经排查证伪，实情以此为准）。
+//   修复：源路径纯 ASCII 直接汇编（常规路径零开销）；含非 ASCII 字节时把 asm
+//   复制进进程独占的纯 ASCII 临时目录汇编（报错行完整回显），成功后把 obj 搬回
+//   原产物位置——产物落盘位置与内容零变更。obj /Fo 路径与 link 报错行实测不截断
+//   （1104dual LNK4232 行中文路径完整），不动。
+
+// 路径是否纯 ASCII（ml64 截断缺陷的适用性判定：任一字节 ≥0x80 即按含多字节
+//   字符处理——GBK 双字节组首字节 ≥0x81，宁可多走中转路径不漏判）
+static bool isPureAsciiPath(const std::string& path) {
+    for (const unsigned char ch : path) {
+        if (ch >= 0x80 && ch <= 0xFF) return false;
+    }
+    return true;
+}
+
+// 进程独占的临时汇编目录：%TEMP% 下 cn_ml64_<pid>_<tick>（每进程唯一·并行
+//   build 各用各目录互不踩踏）。TEMP 自身含非 ASCII（中文用户名等）时先转
+//   8.3 短名；短名不可得或仍含非 ASCII 返回 nullopt（调用方维持直接汇编，
+//   见 assembleAsmWin 注释）。
+static std::optional<std::string> makeTempAsmDir() {
+    char tempRoot[MAX_PATH] = {0};
+    const UINT len = GetTempPathA(MAX_PATH, tempRoot);
+    if (len == 0 || len >= MAX_PATH) return std::nullopt;
+    std::string base(tempRoot, len);
+    if (!isPureAsciiPath(base)) {
+        char shortBuf[MAX_PATH] = {0};
+        const DWORD n = GetShortPathNameA(base.c_str(), shortBuf, MAX_PATH);
+        if (n == 0 || n >= MAX_PATH) return std::nullopt;
+        base.assign(shortBuf, n);
+        if (!isPureAsciiPath(base)) return std::nullopt;
+    }
+    while (!base.empty() && (base.back() == '\\' || base.back() == '/')) base.pop_back();
+    const std::string dir = base + "\\cn_ml64_" + std::to_string(_getpid())
+                            + "_" + std::to_string(GetTickCount());
+    if (!ensureDirExists(dir)) return std::nullopt;
+    return dir;
+}
+
+// 清理临时汇编目录（文件删除失败仅残留待系统清理 TEMP，不影响编译结果语义）
+static void removeTempAsmDir(const std::string& dir) {
+    DeleteFileA((dir + "\\src.asm").c_str());
+    DeleteFileA((dir + "\\out.obj").c_str());
+    RemoveDirectoryA(dir.c_str());
+}
+
+// win-x64 汇编（2054 修复主逻辑）：源路径纯 ASCII 直接汇编；含非 ASCII 时经
+//   临时目录中转，obj 成功后搬回原位置；中转链准备环节（临时目录/复制）不可用
+//   时维持直接汇编——修复手段缺席=行为与修复前一致（成功构建不受影响，失败时
+//   ml64 报错行截断为原缺陷面，不因本修复扩大）。中转汇编成功而搬回失败=环境
+//   错误（obj 保留于临时目录，报错文本给出两侧路径供人工取回）。单出口返回。
+static bool assembleAsmWin(const std::string& vcvarsBat, const std::string& asmPath,
+                           const std::string& objPath, bool verbose, std::string& error) {
+    const auto runMl64 = [&vcvarsBat, verbose](const std::string& asmP,
+                                               const std::string& objP) {
+        return runToolchainCommand(vcvarsBat, "ml64 /nologo /c /Fo\"" + objP
+                                       + "\" \"" + asmP + "\"", verbose);
+    };
+    const auto fail = [&error](const std::string& msg, const int rc) {
+        error = msg + "（ml64 退出码 " + std::to_string(rc) + "）";
+    };
+    // 快路径：纯 ASCII 源路径直接汇编（绝大多数场景零开销）
+    if (isPureAsciiPath(asmPath)) {
+        const int rc = runMl64(asmPath, objPath);
+        bool ok = (rc == 0);
+        if (!ok) fail("汇编失败", rc);
+        return ok;
+    }
+    // 非 ASCII 源路径：临时目录中转；准备环节不可用=直接汇编（基线行为）
+    const std::optional<std::string> tmpDir = makeTempAsmDir();
+    bool relayReady = tmpDir.has_value();
+    std::string tmpAsm;
+    if (relayReady) {
+        tmpAsm = *tmpDir + "\\src.asm";
+        std::ifstream in(asmPath, std::ios::binary);
+        std::ofstream out(tmpAsm, std::ios::binary);
+        const bool copyOk = (in.is_open() && out.is_open());
+        if (copyOk) {
+            out << in.rdbuf();
+        }
+        relayReady = copyOk;
+    }
+    if (relayReady) {
+        // 中转汇编：临时路径纯 ASCII → 报错行完整回显（行号+错误码·修复目的）
+        const std::string tmpObj = *tmpDir + "\\out.obj";
+        const int rc = runMl64(tmpAsm, tmpObj);
+        bool ok = (rc == 0);
+        if (!ok) fail("汇编失败（产物 " + objPath + "）", rc);
+        if (ok) {
+            ok = (MoveFileExA(tmpObj.c_str(), objPath.c_str(),
+                              MOVEFILE_REPLACE_EXISTING | MOVEFILE_COPY_ALLOWED) != 0);
+            if (!ok) error = "汇编产物搬回失败（" + tmpObj + " -> " + objPath + "）";
+        }
+        removeTempAsmDir(*tmpDir);
+        return ok;
+    }
+    const int rc = runMl64(asmPath, objPath);
+    bool ok = (rc == 0);
+    if (!ok) fail("汇编失败", rc);
+    return ok;
+}
+
 // 汇编：win-x64 -> ml64 /c /Fo<obj> <asm>；linux-arm64 -> as -o <obj> <asm>
 static bool assembleAsm(const std::string& target, const std::string& vcvarsBat,
                         const std::string& asmPath, const std::string& objPath,
                         bool verbose, std::string& error) {
-    std::string cmdLine;
     if (isWinX64(target)) {
-        cmdLine = "ml64 /nologo /c /Fo\"" + objPath + "\" \"" + asmPath + "\"";
-    } else {
-        // GAS（GNU as）：直接汇编 .s -> .o（本机 ARM64 用系统 as / 便携工具链）
-        cmdLine = linuxAsTool() + " -o \"" + objPath + "\" \"" + asmPath + "\"";
+        return assembleAsmWin(vcvarsBat, asmPath, objPath, verbose, error);
     }
-    int rc = runToolchainCommand(vcvarsBat, cmdLine, verbose);
+    // GAS（GNU as）：直接汇编 .s -> .o（本机 ARM64 用系统 as / 便携工具链）
+    const int rc = runToolchainCommand(vcvarsBat,
+        linuxAsTool() + " -o \"" + objPath + "\" \"" + asmPath + "\"", verbose);
     if (rc != 0) {
-        error = "汇编失败（" + std::string(isWinX64(target) ? "ml64" : "as")
-                + " 退出码 " + std::to_string(rc) + "）";
+        error = "汇编失败（as 退出码 " + std::to_string(rc) + "）";
         return false;
     }
     return true;

@@ -208,9 +208,23 @@ void X64CodeGenerator::emitDataSection(AsmWriter& writer, const ir::IRModule& mo
                        (!initText.empty() ? floatBitsHex(initText, true) : "0"));
         } else if (qwords > 1) {
             // 结构体对象：按类型大小分配多 qword（零初始化；初值由入口注入逐字段写）
-            std::string line = sym + " dq 0";
-            for (int qi = 1; qi < qwords; ++qi) line += ", 0";
-            writer.raw(line);
+            // 2050（CN-Smith 采样实锤）：单行 dq 0 长链（顶层 整32[100] 即 50 个 0）
+            //   触发 ml64 A2042 statement too complex / A2039 line too long，
+            //   且定义语句解析失败连带该符号全部引用报 A2006 undefined symbol。
+            //   改按行分批发射（同文件字符串常量池 db 分批先例：首行带标签、
+            //   续行不带标签续接同一符号分配），语义零变更——总分配字节数与
+            //   内容（全零）不变。
+            // 每行 ≤ 32 个值：32×3 字符（", 0"）≈ 96 字符 + 符号名，
+            //   远低于 ml64 行长限制；行数=⌈qwords/32⌉，万级元素也仅数百行。
+            constexpr int kMaxZerosPerLine = 32;
+            int emitted = 0;
+            while (emitted < qwords) {
+                const int chunk = std::min(kMaxZerosPerLine, qwords - emitted);
+                std::string line = emitted == 0 ? (sym + " dq 0") : "      dq 0";
+                for (int qi = 1; qi < chunk; ++qi) line += ", 0";
+                writer.raw(line);
+                emitted += chunk;
+            }
         } else {
             // 331-a（T50 根治·三后端单一归属）：整数/布尔/字符初值直存判定改
             //   types::isStaticScalarInitType（原「非浮点文本」宽松判定与
