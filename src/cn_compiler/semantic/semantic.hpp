@@ -381,34 +381,9 @@ private:
     void rewriteUseImportAlias(CallExpr* node, std::string& calleeName);
     // 子族B：泛型函数调用单态化（原 312~383 段）
     void rewriteGenericFuncCall(CallExpr* node, std::string& calleeName);
-    // ---- visitCallExpr 族子方法（169-a 逐族提取第四波）----
-    // 族B1：泛型类构造单态化（原 semantic_call.cpp 298~341 段）
-    void resolveGenericCtorName(CallExpr* node, std::string& className);
-    // 族B2：类构造调用检查（原 342~404 段）
-    bool checkCtorCall(CallExpr* node, const std::string& className);
-    // 族C1：接口对象方法调用（原 413~475 段）
-    bool checkInterfaceMethodCall(CallExpr* node, MemberExpr* mem, const std::string& objType,
-                                  const std::string& methodName);
-    // 族C2：类解析 + 静态性纪律检查（原 476~528 段；clsName/ownerClass/method 为输出参数）
-    bool checkMemberCallCore(CallExpr* node, MemberExpr* mem, const std::string& methodName,
-                             const std::string& objType, std::string& clsName,
-                             std::string& ownerClass, const ClassMemberInfo*& method);
-    // 族C3：实例方法调用（原 529~590 段）
-    bool checkInstanceMethodCall(CallExpr* node, MemberExpr* mem, const std::string& clsName,
-                                 const std::string& methodName, const std::string& ownerClass,
-                                 const ClassMemberInfo* method);
-    // 族C4：静态方法调用（原 591~620 段）
-    bool checkStaticMethodCall(CallExpr* node, const std::string& methodName,
-                               const std::string& ownerClass, const ClassMemberInfo* method);
-    // #1855：306 字符打印改写段（实现=semantic_call_builtin.cpp）+成员方法调用分派段（916+值捕写+族C1~C4 接线·实现=semantic_call_member.cpp·真=已处理与原 return 终止等价）
-    void rewriteCharPrintArgs(CallExpr* node); bool dispatchMemberMethodCall(CallExpr* node);
-    // 族D-1：变参内置函数 打印/打印行/格式化（原 632~648 段）
-    bool checkVariadicBuiltinCall(CallExpr* node, const std::string& calleeName);
-    // 族D-2：决议失败回退（原 670~686 段）
-    bool checkDirectCallFallback(CallExpr* node, const std::string& calleeName,
-                                 const std::string& sigKey);
-    // 族D 主体：非变参直接调用（原 626~631 + 649~667 + 687~744 段）
-    bool checkDirectCall(CallExpr* node, const std::string& calleeName);
+    // ---- visitCallExpr 族声明段（行数门禁拆分·逐字搬移零语义·承载明细见 semantic_call_decls.hpp 文件头）----
+    //   （类体片段头——仅可由本文件在 SemanticAnalyzer 类体内 #include 原位展开·保持 private 区语义）
+#include "cn_compiler/semantic/semantic_call_decls.hpp"
 
     // ---- visitCallExpr 族A（170-a struct 化提取·收尾该函数 ≤100 行）----
     // 模块限定调用上下文（169-a 判定「12 个跨段共享局部变量需变量重组」——
