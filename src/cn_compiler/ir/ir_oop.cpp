@@ -199,6 +199,17 @@ void IRGenerator::emitClassMethod(const std::string& className, const ClassMembe
     //   隐藏），偏移经 classFieldOffsetFrom 按发射类布局累加（前缀兼容同值）。
     //   防御：ownerClass 不在本类继承链（异常形态）→ 回退发射类（原行为）。
     const std::string savedDeclClass = methodDeclClass_;
+    // 1472 根治（#1472 采样 H07）：当前方法**声明**所属类（mi.ownerClass，
+    //   emitClassMethod 设置；空=非方法体/回退 currentClass_）。继承并入的
+    //   父类方法在派生类语境发射（桥接再发射架构）时，体内裸字段名仍须按
+    //   声明类沿继承链向上解析（C++ 名字隐藏：基类方法体内的 v 永远是
+    //   基::v，与调用对象静态类型无关）——禁解析到派生类遮蔽字段（错槽/
+    //   错类型）。偏移按发射类布局（classFieldOffsetFrom 布局类=currentClass_
+    //   +起点=fieldScopeClass()，布局前缀兼容同值）。泛型实例方法
+    //   （mi.ownerClass=实例名，generics.cpp 重写）=发射类，零行为变化。
+    //   消费面=字段直访族（isInstanceField/handleClassFieldRead/Assign/
+    //   IncDec/genInstanceFieldAddr）与下标·类型推导的 isInstanceField 配对
+    //   查询（ir_expr_index/ir_expr_type/ir.cpp/ir_expr_assign）。
     methodDeclClass_ = mi.ownerClass;
     if (!methodDeclClass_.empty() && methodDeclClass_ != className &&
         semantic_ != nullptr && !semantic_->isDerivedFrom(className, methodDeclClass_)) {
