@@ -73,11 +73,11 @@ void Arm64CodeGenerator::emitDataSection(Arm64AsmWriter& writer,
         // 259（2026-10-07·#259 静态数组）：数组按元素大小×长度分配值本体
         std::size_t bytes = 8;
         if (semantic_ != nullptr && types::isArray(canonStatic)) {
-            const int sz = semantic_->typeSizeOf(stType).value_or(8);
+            const int sz = semantic_->typeSizeOf(stType).value_or(8);  // 静默豁免闭集穷举: typeSizeOf 查表 miss 不可达（stType 已过语义检查·静态发射类型闭集）8=标量槽对齐基线（2051·#1959 登记面）
             if (sz > 8) bytes = static_cast<std::size_t>((sz + 7) / 8) * 8;  // 静默豁免业务值: 搬移既有面（锚随代码搬移·原文件基线放行·2051 拆分连带）
         } else if (semantic_ != nullptr && !types::isPointer(canonStatic) &&
             semantic_->isStructType(canonStatic)) {
-            const int sz = semantic_->typeSizeOf(stType).value_or(8);
+            const int sz = semantic_->typeSizeOf(stType).value_or(8);  // 静默豁免闭集穷举: typeSizeOf 查表 miss 不可达（stType 已过语义检查·静态发射类型闭集）8=标量槽对齐基线（2051·#1959 登记面）
             if (sz > 8) bytes = static_cast<std::size_t>((sz + 7) / 8) * 8;  // 静默豁免业务值: 搬移既有面（锚随代码搬移·原文件基线放行·2051 拆分连带）
         }
         writer.raw(".align 3");
@@ -105,11 +105,11 @@ void Arm64CodeGenerator::emitDataSection(Arm64AsmWriter& writer,
             //   quad 发射每行 ≤32 值折行（#2050 数据段长链分批同口径）。IR
             //   层直存面已收口整数文本，打包无值=内部缺陷显形（禁静默零填充）。
             const auto& arrInit = module.globalStaticArrayInits.at(name);
-            const int slotSz = semantic_->typeSizeOf(stType).value_or(8);
+            const int slotSz = semantic_->typeSizeOf(stType).value_or(8);  // 静默豁免闭集穷举: typeSizeOf 查表 miss 不可达（stType 已过语义检查·静态发射类型闭集）8=标量槽对齐基线（2051·#1959 登记面）
             const cn::Optional<int> elemSz = semantic_->typeSizeOf(
                 types::arrayElemOf(canonStatic));
             const auto quads = codegen::packStaticArrayInitQuads(
-                arrInit, static_cast<std::size_t>(elemSz.value_or(8)),
+                arrInit, static_cast<std::size_t>(elemSz.value_or(8)),  // 静默豁免闭集穷举: 元素宽 typeSizeOf miss 不可达（同上闭集·2051 数组分支）
                 static_cast<std::size_t>(((slotSz + 7) / 8) * 8));
             const bool packedOk = quads.has_value();
             if (!packedOk) {

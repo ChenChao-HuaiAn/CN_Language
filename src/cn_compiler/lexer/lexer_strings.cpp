@@ -161,7 +161,7 @@ bool Lexer::validateUnicodeEscape(const std::string& hexBody, const SourceLocati
         else if (h >= 'A' && h <= 'F') cp += h - 'A' + 10;
         else {
             reportError(loc, "无效的Unicode转义：非十六进制字符");
-            return false;
+            return false;  // 静默豁免上游已诊断: reportError 已报「非十六进制字符」false=词法错误通道非静默默认（2051 rebase registry 并集随迁）
         }
     }
     if (cp > 0x10FFFF) {  // 静默豁免闭集穷举: U+10FFFF=Unicode 规范上界常量判定·非业务区间单边比较（lexer.cpp 拆分迁入）

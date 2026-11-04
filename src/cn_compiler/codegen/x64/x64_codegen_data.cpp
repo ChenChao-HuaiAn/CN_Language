@@ -177,11 +177,11 @@ void X64CodeGenerator::emitDataSection(AsmWriter& writer, const ir::IRModule& mo
         //   （原恒 1 quad 装 12B 数组=写越界邻槽·与读侧基址语义配套）
         int qwords = 1;
         if (semantic_ != nullptr && types::isArray(canonStatic)) {
-            const int sz = semantic_->typeSizeOf(stType).value_or(8);
+            const int sz = semantic_->typeSizeOf(stType).value_or(8);  // 静默豁免闭集穷举: typeSizeOf 查表 miss 不可达（stType 已过语义检查·静态发射类型闭集）8=标量槽对齐基线（2051·#1959 登记面）
             if (sz > 8) qwords = (sz + 7) / 8;
         } else if (semantic_ != nullptr &&
             semantic_->isStructType(canonStatic) && !types::isPointer(canonStatic)) {
-            const int sz = semantic_->typeSizeOf(stType).value_or(8);
+            const int sz = semantic_->typeSizeOf(stType).value_or(8);  // 静默豁免闭集穷举: typeSizeOf 查表 miss 不可达（stType 已过语义检查·静态发射类型闭集）8=标量槽对齐基线（2051·#1959 登记面）
             if (sz > 8) qwords = (sz + 7) / 8;
         }
         writer.raw("ALIGN 8");
@@ -207,11 +207,11 @@ void X64CodeGenerator::emitDataSection(AsmWriter& writer, const ir::IRModule& mo
             //   A2042 单行过长防线）。IR 层直存面已收口整数文本（cnParseInt
             //   判定），打包无值=内部缺陷显形（禁静默零填充）。
             const auto& arrInit = module.globalStaticArrayInits.at(name);
-            const int slotSz = semantic_->typeSizeOf(stType).value_or(8);
+            const int slotSz = semantic_->typeSizeOf(stType).value_or(8);  // 静默豁免闭集穷举: typeSizeOf 查表 miss 不可达（stType 已过语义检查·静态发射类型闭集）8=标量槽对齐基线（2051·#1959 登记面）
             const cn::Optional<int> elemSz = semantic_->typeSizeOf(
                 types::arrayElemOf(canonStatic));
             const auto quads = codegen::packStaticArrayInitQuads(
-                arrInit, static_cast<std::size_t>(elemSz.value_or(8)),
+                arrInit, static_cast<std::size_t>(elemSz.value_or(8)),  // 静默豁免闭集穷举: 元素宽 typeSizeOf miss 不可达（同上闭集·2051 数组分支）
                 static_cast<std::size_t>(((slotSz + 7) / 8) * 8));
             const bool packedOk = quads.has_value();
             if (!packedOk) {

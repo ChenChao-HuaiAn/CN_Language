@@ -416,7 +416,7 @@ static bool arrayElemsOwnResource(const ISemanticView& semantic,
     if (semantic.isStructType(elemCanon)) {
         // 1672 同甄别：isStructType 命中 ≡ findStruct 非空（机械等价·1672 批10
         //   先例口径）——miss 不可达，不设冗余判空。
-        const StructDecl* decl = semantic.findStruct(elemCanon).value_or(nullptr);
+        const StructDecl* decl = semantic.findStruct(elemCanon).value_or(nullptr);  // 静默豁免闭集穷举: isStructType 命中≡findStruct 非空（1672 机械等价）miss 不可达
         for (const auto& f : decl->fields) {
             if (arrayElemsOwnResource(semantic, f.type, depth + 1)) return true;
         }
@@ -534,8 +534,8 @@ bool IRGenerator::tryClassFieldWholeAssign(MemberExpr* target, Expr* valueExpr,
     // 1360 结果化：value_or("") 显形（miss=非聚合判定假·原语义）
     const std::string fieldTypeAgg =
         structOrClassFieldType(
-            memberObjectSrcType(target->object.get()).value_or(""),
-            target->memberName).value_or("");
+            memberObjectSrcType(target->object.get()).value_or(""),  // 静默豁免闭集穷举: 1360 结果化显形（miss=非聚合判定假·原语义保持）
+            target->memberName).value_or("");  // 静默豁免闭集穷举: 1360 结果化显形（miss=非聚合判定假·原语义保持）
     const std::string canonAgg = types::canonical(fieldTypeAgg);
     if (!canonAgg.empty() &&
         (semantic_->isStructType(canonAgg) ||
