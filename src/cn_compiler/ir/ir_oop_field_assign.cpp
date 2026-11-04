@@ -541,7 +541,7 @@ bool IRGenerator::emitGlobalStaticArrayDeepCopy(const std::string& targetName,
                                                 const std::string& arrayCanon,
                                                 const SourceLocation& loc) {
     // 静默豁免业务值: 非标识符源=让位调用方既有通道（字面量/调用返回/成员·下标
-    //   均有既有合法路径·252 守卫同域分派契约——非兜底，登记 miss_registry #2065）
+    //   均有既有合法路径·252 守卫同域分派契约——否定回答分派契约（miss_registry #2065 登记条）
     if (semantic_ == nullptr ||
         valueExpr->getType() != NodeType::IdentifierExpr) {
         return false;
@@ -557,10 +557,11 @@ bool IRGenerator::emitGlobalStaticArrayDeepCopy(const std::string& targetName,
     } else if (semantic_->isGlobalStatic(srcName)) {
         // 1360 结果化：无值=未登记（同型守卫假→让位·显形回落链在调用方）
         srcCanon = types::canonical(
+            // 静默豁免业务值: globalStaticType 无值=登记滞后形态→srcCanon 空→同型守卫假→return false 让位既有赋值通道（分派契约否定回答·#2065 登记条）
             semantic_->globalStaticType(srcName).value_or(std::string()));
     }
     // 静默豁免业务值: 同型 miss=让位既有通道（异型赋值语义层诊断面·分派契约
-    //   ——非兜底，登记 miss_registry #2065）
+    //   ——否定回答分派契约（miss_registry #2065 登记条）
     if (srcCanon != types::canonical(arrayCanon)) {
         return false;
     }
