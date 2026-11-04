@@ -98,7 +98,7 @@ std::string foldStringSourceTruncNul(const std::string& quotedRaw);
         //   直拼把左操作数 NUL 后内容带进折叠产物（"a\x00"+"b" 折叠 "a\x00b"
         //   strlen=1）vs v2 词法解码截断后拼接（"ab" strlen=2）双侧分叉实锚；
         //   修后折叠态=运行期 strlen 口径双侧统一（宿主运行期拼接同探针
-        //   "ab"=2·v2 折叠/运行期一致不回退）。
+        //   "ab"=2·v2 折叠/运行期两侧结果一致）。
         if (!l.empty() && !r.empty() && l.front() == '"' && r.front() == '"') {
             const std::string lCut = foldStringSourceTruncNul(l);
             const std::string rCut = foldStringSourceTruncNul(r);

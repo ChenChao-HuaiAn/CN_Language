@@ -441,7 +441,7 @@ void IRGenerator::emitStaticInitsAtEntry() {
                     sname, 0, loc, symAddr);
             } else if (!emitStructWholeAssign(symAddr, initExpr, canonStatic,
                                               loc, /*preFree=*/false)) {
-                // 源形态未识别（语义层已诊断）：保持 .data 零（诚实边界·852 同款）
+                // 源形态未识别（语义层已诊断）：保持 .data 零（852 同款显式分支）
             }
             continue;
         }
