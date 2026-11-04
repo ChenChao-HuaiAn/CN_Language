@@ -70,9 +70,11 @@ public:
     // 类型节点
     void visitType(Type* node) override;
 
-private:
-    // 运算符 -> 中文符号文本（调试输出）
+    // 运算符 -> 中文符号文本（纯映射工具·1963 执法四件3 升 public：ir 分派
+    //   面内部错误文案引用「缺运算符：X」·单点归属本类不重复归纳）
     static const char* operatorText(Operator op);
+
+private:
     // 打印带缩进与位置的节点头：缩进 + 类型名 + 位置 + 附加信息
     void printHeader(const std::string& typeName, const SourceLocation& loc,
                      const std::string& detail = "");

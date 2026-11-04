@@ -17,6 +17,7 @@
 
 #include "cn_compiler/ir/ir.hpp"
 #include "cn_compiler/ir/ir_string_temp_util.hpp"
+#include "cn_compiler/model/ast_printer.hpp"
 #include "cn_compiler/model/semantic_view.hpp"
 #include "cn_compiler/model/type_system.hpp"
 
@@ -408,10 +409,10 @@ bool IRGenerator::genStringCompareBinary(BinaryExpr* node, const ir::IRValue& le
         //   寄存器（变量 load/转换临时/字面量天然排除防误伤）。
         //   freeIfConcatTemp 展开形态（758 附属：成员壳随 hpp 腾行降级删除
         //   ——守卫=ptr 寄存器+isConcatResultInst 定义点溯源·两调用点同构）。
-        if (left.type == "ptr" && isConcatResultInst(currentBlock_, left.id)) {
+        if (left.type == "ptr" && isConcatResultTraced(left.id)) {
             emit(ir::Opcode::Call, {left}, ir::IRValue(), "__cn_str_free", "void", node->location);
         }
-        if (right.type == "ptr" && isConcatResultInst(currentBlock_, right.id)) {
+        if (right.type == "ptr" && isConcatResultTraced(right.id)) {
             emit(ir::Opcode::Call, {right}, ir::IRValue(), "__cn_str_free", "void", node->location);
         }
         if (node->op == Operator::EqualEqual) {
@@ -425,10 +426,10 @@ bool IRGenerator::genStringCompareBinary(BinaryExpr* node, const ir::IRValue& le
     ir::IRValue ord = emitResult(ir::Opcode::Call, {left, right}, "i64",
                                  "__cn_str_cmp", node->location);
     // 758：四序比较符（</<=/>/>=）同面收口（__cn_str_cmp 消费·同 eq 注释）
-    if (left.type == "ptr" && isConcatResultInst(currentBlock_, left.id)) {
+    if (left.type == "ptr" && isConcatResultTraced(left.id)) {
         emit(ir::Opcode::Call, {left}, ir::IRValue(), "__cn_str_free", "void", node->location);
     }
-    if (right.type == "ptr" && isConcatResultInst(currentBlock_, right.id)) {
+    if (right.type == "ptr" && isConcatResultTraced(right.id)) {
         emit(ir::Opcode::Call, {right}, ir::IRValue(), "__cn_str_free", "void", node->location);
     }
     ir::IRValue zero = ir::IRValue::constant("0", "i64");
@@ -692,8 +693,19 @@ void IRGenerator::genCommonTypeArithmetic(BinaryExpr* node, ir::IRValue& left,
                                    "", node->location);
         }
     } else {
-        // 不支持的操作：回退左操作数
-        lastExpr_ = left;
+        // 1963 执法四（件3·零裁量条款二「分支体禁字面量回退」·#648
+        //   ptrElemStride/#1960 拼接分派 同款显形口径）：mapBinaryOp miss=
+        //   二元运算未登记（分派面：通用算术）——mapBinaryOp 覆盖全可到达
+        //   运算符（算术/比较/逻辑/位运算全列·ir_decl_extra.cpp 102-129），
+        //   赋值/一元/成员等形态在 visitBinaryExpr 上游已分流=理论不可达；
+        //   但新运算符漏登记即静默回退左操作数=静默错值（110/861-a 同一
+        //   教训形态·兜底禁令 #1238）。报内部错误后占位发射（控制流零变更
+        //   ·driver generate() 后 hasErrors() 中止·产物不落盘）。
+        diagnostics_.report(
+            DiagnosticLevel::Error, node->location,
+            "内部错误: 二元运算未登记（分派面：通用算术·缺运算符：" +
+                std::string(AstPrinter::operatorText(node->op)) + "）");
+        lastExpr_ = left;  // 占位（中止前合法 IR 值·控制流零变更）
     }
 }
 void IRGenerator::visitNullLiteral(NullLiteral* node) {
