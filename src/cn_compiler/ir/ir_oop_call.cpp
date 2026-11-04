@@ -119,6 +119,18 @@ ir::IRValue IRGenerator::normalizeStringValueSource(Expr* arg,
     const NodeType kind = arg->getType();
     // ① 字面量：驻留借用（进程生命周期，释放对其空安全）
     if (kind == NodeType::StringLiteral) return value;
+    // #2025（混合来源三元收口）：三元结果按拥有标志归一化——恒拥有（两分支
+    //   递归皆独立堆串）直取句柄（move·零拷贝）；否则复制落堆（借用分支安全：
+    //   目标槽/变量按拥有结算）后按选中分支条件释放原值（拥有分支回收·借用
+    //   分支零释放，emitOwnedTempReleaseRec 消费 ternaryCondRegs617_ 条件寄存器）。
+    //   原三元落 ⑤ 无条件复制=拥有分支产物孤儿（赋值位 50 轮净泄 26 实录）。
+    if (kind == NodeType::TernaryExpr) {
+        if (ternaryAllBranchesOwned(arg)) return value;
+        ir::IRValue copy = emitResult(ir::Opcode::Call, {value}, "ptr",
+                                      "__cn_str_copy", loc);
+        emitOwnedTempReleaseRec(arg, value, loc);
+        return copy;
+    }
     // ②/③/④ 调用形态：转移 特判 + 拥有契约
     if (kind == NodeType::CallExpr) {
         CallExpr* ce = static_cast<CallExpr*>(arg);

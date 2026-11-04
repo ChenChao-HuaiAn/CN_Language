@@ -856,7 +856,16 @@ void IRGenerator::ownStringInitValue(VarDecl* node, const std::string& srcType,
     if (srcType == "字符串" && value.type == "ptr" &&
         node->initializer != nullptr) {
         const NodeType ownIt = node->initializer->getType();
-        if (ownIt == NodeType::StringLiteral ||
+        if (ownIt == NodeType::TernaryExpr) {
+            // #2025（混合来源三元收口）：声明位三元归一化——恒拥有直取句柄
+            //   （两分支皆独立堆串·RAII 拥有）；否则复制落堆（借用分支安全）+
+            //   按拥有标志条件释放原值（拥有分支回收·借用分支零释放）。
+            //   原三元不匹配任何分支=不复制不污染：借用分支被块出口 RAII 释放
+            //   （源字段被清空）；v2 侧则污染退出漏拥有分支。本分支收口为
+            //   变量恒拥有堆串，RAII 名单照常。
+            value = normalizeStringValueSource(node->initializer.get(), value,
+                                               node->location);
+        } else if (ownIt == NodeType::StringLiteral ||
             ownIt == NodeType::IdentifierExpr) {
             value = emitResult(ir::Opcode::Call, {value}, "ptr",
                                "__cn_str_copy", node->location);

@@ -426,9 +426,26 @@ void IRGenerator::visitReturnStmt(ReturnStmt* node) {
                 needOwnCopy =
                     lambdaCaptureFrames_.back().count(capRetName) > 0;
             }
+            // #2025（混合来源三元收口）：返回位三元——恒拥有（两分支递归皆
+            //   独立堆串）直传所有权移交调用方（零拷贝）；否则复制落堆（借用
+            //   分支返回安全：调用方按 A2 拥有契约 free）+ 按拥有标志条件释放
+            //   原值（拥有分支回收·借用分支零释放）。修前三元不在 A2 拥有化
+            //   面：借用分支句柄直传=调用方 free 借用句柄（源字段被清空/双放）。
+            bool releaseOriginalAfterCopy = false;
+            if (!needOwnCopy &&
+                node->value->getType() == NodeType::TernaryExpr &&
+                !ternaryAllBranchesOwned(node->value.get())) {
+                needOwnCopy = true;
+                releaseOriginalAfterCopy = true;
+            }
             if (needOwnCopy) {
+                const ir::IRValue originalValue = value;
                 value = emitResult(ir::Opcode::Call, {value}, "ptr",
                                    "__cn_str_copy", node->location);
+                if (releaseOriginalAfterCopy) {
+                    emitOwnedTempReleaseRec(node->value.get(), originalValue,
+                                            node->location);
+                }
             }
         }
         // 273（021 任务 273·#211 宿主镜像面）：返回位 结果/可选<析构类> 局部盒

@@ -248,6 +248,33 @@ bool IRGenerator::identifierStringOwnAssign(AssignmentExpr* node, IdentifierExpr
         !isCompoundAssignOp(node->op) &&
         stringTainted_.count(ident->name) == 0) {
         const NodeType ownAt = node->value->getType();
+        // #2025（混合来源三元收口·用户 2026-11-04 硬规则）：三元右值——恒拥有
+        //   （两分支递归皆独立堆串）free 旧 + 产物直存接管（move 语义）；否则
+        //   复制落堆（借用分支安全）+ 按拥有标志条件释放原值（拥有分支回收·
+        //   借用分支零释放），变量保持拥有链（不污染）。原判定只认
+        //   isConcatResultTraced（纯拼接槽才登记）：混合槽 miss → 污染退出 +
+        //   产物直存不管旧值/临时 → 拼接分支每赋值净泄 1（50 轮 +25 实录）。
+        if (ownAt == NodeType::TernaryExpr) {
+            ir::IRValue oldPtrTernary = emitResult(
+                ir::Opcode::Load, {ir::IRValue::var(unique, "ptr")}, "ptr",
+                unique, node->location);
+            const bool ternaryConstOwned =
+                ternaryAllBranchesOwned(node->value.get());
+            if (ternaryConstOwned) {
+                emit(ir::Opcode::Call, {oldPtrTernary}, ir::IRValue(), "__cn_str_free",
+                     "void", node->location);
+            }
+            if (!ternaryConstOwned) {
+                const ir::IRValue originalTernary = value;
+                value = emitResult(ir::Opcode::Call, {value}, "ptr",
+                                   "__cn_str_copy", node->location);
+                emit(ir::Opcode::Call, {oldPtrTernary}, ir::IRValue(), "__cn_str_free",
+                     "void", node->location);
+                emitOwnedTempReleaseRec(node->value.get(), originalTernary,
+                                        node->location);
+            }
+            return false;   // 拥有链维护完成——调用方继续通用 Store
+        }
         // 调用返回=白名单 ∪ 返回类型契约（A2 2026-09-11 方案甲）——被调者返回
         //   字符串 即拥有（语义层 retOwnedString 写回，全调用路径统一）；
         //   其余非白名单调用污染退出 RAII（借用安全方向）
@@ -297,19 +324,6 @@ bool IRGenerator::identifierStringOwnAssign(AssignmentExpr* node, IdentifierExpr
                         (isStringTypedExpr(node->value.get()) ||
                          (value.type == "ptr" &&
                           isConcatResultTraced(value.id)));
-        }
-        // 1963 执法四（件2）：三元右值形态补面——右值=三元时 732/861 原判定
-        //   面（CallExpr/BinaryExpr 两形态）盲判 false→copy 落堆→三元临时槽
-        //   （__ternary$N·Store/Load 中转）内的拼接产物=孤儿=每赋值净泄 1
-        //   （探针 G 面 50 轮泄 51 实录）。补面判定=溯源表命中
-        //   （isConcatResultTraced）——命中=纯拼接槽（emit 侧 Store 源统计：
-        //   两分支 Store 源**皆**为连接产物才登记，任一分支借用/字面量混合
-        //   即不登记）→任一路径产物=新堆串唯一拥有者→直存接管安全；混合槽
-        //   miss=copy 落堆（借用句柄复制安全·宁漏勿崩）+显形登记
-        //   （miss_registry.json 1963 条）。
-        else if (ownAt == NodeType::TernaryExpr) {
-            ownAssign = value.type == "ptr" &&
-                        isConcatResultTraced(value.id);
         }
         if (ownAssign || refReturnCopy933) {
             if (refReturnCopy933 ||

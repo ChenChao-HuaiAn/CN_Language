@@ -430,6 +430,23 @@ bool IRGenerator::argIsOwnedStringTemp(const Expr* arg) const {
     return callReturnsOwnedStringTemp(ce);
 }
 
+// #2025（用户 2026-11-04 硬规则·混合来源三元收口）：三元「恒拥有」静态判定
+//   ——无论选中哪一分支结果都必然是独立堆串（拥有、可移交）。
+//   恒拥有=两分支递归恒拥有；任一侧借用视图（字面量/标识符/字段/下标/解引用/
+//   引用返回/字符*）即不恒拥有 → 消费位走「复制 + 拥有标志条件释放」归一化。
+//   与 v2 三元恒拥有 同判据（双侧零分叉）。
+bool IRGenerator::ternaryAllBranchesOwned(const Expr* e) const {
+    // 静默豁免业务值: 空指针/非三元=「非恒拥有」谓词否定回答（判据输出布尔·
+    //   非失败通道·调用方按假走复制+条件释放归一化）
+    if (e == nullptr) return false;
+    if (e->getType() != NodeType::TernaryExpr) {
+        return argIsOwnedStringTemp(e);
+    }
+    const auto* te = static_cast<const TernaryExpr*>(e);
+    return ternaryAllBranchesOwned(te->trueValue.get()) &&
+           ternaryAllBranchesOwned(te->falseValue.get());
+}
+
 // A2 返回位拥有性三态（#1571 收口·#1238/#1360 显式三态·禁静默默认）：
 //   `-> 字符串` 返回位=拥有契约（调用方登记 RAII free）——调用结果分三类：
 //     ① 拥有：被调方已按 A2 落堆独立副本（retOwnedString），返回位移交即成；
