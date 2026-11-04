@@ -14,6 +14,7 @@
 #include "cn_compiler/ir/ir.hpp"
 #include "cn_compiler/model/semantic_view.hpp"
 #include "cn_compiler/model/semantic_helpers.hpp"
+#include "cn_compiler/model/semantic_const_eval.hpp"
 #include "cn_compiler/model/type_system.hpp"
 
 namespace cn_compiler {
@@ -92,7 +93,43 @@ void IRGenerator::visitProgram(Program* node) {
                     module_->globalStaticInits[g->name] = g->constInitText;
                 } else if (g->initializer != nullptr) {
                     const NodeType it = g->initializer->getType();
-                    if (it == NodeType::IntegerLiteral) {
+                    // 2051：顶层数组初始化列表——常量整数列表 .data 直发（
+                    //   行主序扁平文本·发射端按元素宽度打包·C static 数组同款
+                    //   零运行期开销）；含非常量/浮点/字符串元素：静态=入口
+                    //   注入逐元素写（§675 非常量初值通道·emitStaticInitsAtEntry
+                    //   数组分支），裸全局=语义层 d 款已拒·到达=内部缺陷显形。
+                    if (it == NodeType::InitListExpr &&
+                        types::isArray(canonStatic)) {
+                        std::vector<std::string> texts;
+                        bool constIntList = cnFoldArrayInitListTexts(
+                            semantic_->globalConstValuesTable(), g->moduleName,
+                            g->initializer.get(), texts);
+                        if (constIntList) {
+                            // 发射端 .data 打包支持面=整数族文本（浮点/字符串/
+                            //   128 位文本不直存 → 静态走入口注入通道）
+                            for (const std::string& t : texts) {
+                                long long v = 0;
+                                if (!cnParseInt(t, v)) {
+                                    constIntList = false;
+                                    break;
+                                }
+                            }
+                        }
+                        // 三态互斥显式枚举（else 新规精神）
+                        if (constIntList) {
+                            module_->globalStaticArrayInits[g->name] = texts;
+                        }
+                        if (!constIntList && g->isStatic) {
+                            module_->staticCtorNames.push_back(g->name);
+                            staticCtorInit_[g->name] = g->initializer.get();
+                        }
+                        if (!constIntList && !g->isStatic) {
+                            diagnostics_.report(
+                                DiagnosticLevel::Error, g->location,
+                                "内部错误: 顶层全局数组初始化列表含非常量元素"
+                                "未被语义层拦截");
+                        }
+                    } else if (it == NodeType::IntegerLiteral) {
                         // 478（473 采样轮）：顶层静态字面量补 128 位域检查——
                         //   原直存通道绕过 visitIntegerLiteral 域检查，无后缀
                         //   u128::MAX 赋 正128 漏网放行（483 实锚），与 540
@@ -383,6 +420,28 @@ void IRGenerator::emitStaticInitsAtEntry() {
             } else if (!emitStructWholeAssign(symAddr, initExpr, canonStatic, loc,
                                               /*preFree=*/false)) {
                 // 源形态未识别（语义层已诊断）：保持 .data 零（宁漏勿错）
+            }
+            continue;
+        }
+        // ②' 数组静态（2051）：常量整数列表已 .data 直发（globalStaticArrayInits）
+        //   不达此处；非常量/浮点/字符串元素列表=逐元素守卫写主槽（
+        //   emitArrayInitElements 基址=静态槽符号地址·多维递归+缺格补默认态
+        //   ·001 §675 非常量初值首调快照语义）；变量源=整块拷（852 顶层同款
+        //   emitStructWholeAssign）；其余形态=语义层已诊断保持 .data 零。
+        //   emitArrayInitElements 首参 node 未被其函数体消费（含缺格递归），
+        //   注入通道无 VarDecl 上下文传 nullptr。
+        if (types::isArray(canonStatic)) {
+            if (initExpr == nullptr) continue;  // .data 零（无初值数组·零值语义）
+            const SourceLocation loc = initExpr->location;
+            ir::IRValue symAddr = emitResult(ir::Opcode::ConstString, {}, "ptr",
+                                             "?gstatic_" + sname, loc);
+            if (initExpr->getType() == NodeType::InitListExpr) {
+                emitArrayInitElements(
+                    nullptr, static_cast<InitListExpr*>(initExpr), canonStatic,
+                    sname, 0, loc, symAddr);
+            } else if (!emitStructWholeAssign(symAddr, initExpr, canonStatic,
+                                              loc, /*preFree=*/false)) {
+                // 源形态未识别（语义层已诊断）：保持 .data 零（诚实边界·852 同款）
             }
             continue;
         }

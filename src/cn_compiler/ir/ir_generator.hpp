@@ -195,6 +195,9 @@ private:
     bool genStaticLocalScalarDirect(VarDecl* node, const std::string& key,
                                     const std::string& srcTypeRaw,
                                     const std::string& stType, bool scalarInt);
+    // 2051：静态数组常量整数列表 .data 直存（false=含非常量元素落守卫通道）
+    bool genStaticLocalArrayInitList(VarDecl* node, const std::string& key,
+                                     const std::string& srcTypeRaw);
     void genStaticLocalGuardInit(VarDecl* node, const std::string& key,
                                  const std::string& srcTypeRaw, const std::string& stType,
                                  const std::string& canonCore, bool guardStruct,
@@ -234,14 +237,17 @@ private:
     //   true=已发射整壳析构（调用方终结）；false=非类/借用/保守面落原判定。
     bool emitExprStmtClassTemp(ExprStmt* node, const ir::IRValue& discarded);
     bool genArrayInitListDecl(VarDecl* node, const DeclGenCtx& ctx);  // ⑧数组初始化列表（#1769 多维嵌套·定义=ir_decl_array.cpp）
+    // 2051：baseAddr 有值=显式基址（静态槽符号地址）；空值=按 unique AddrOf（局部栈槽）
     void emitArrayInitElements(VarDecl* node, InitListExpr* list, const std::string& arrayType,
-                               const std::string& unique, std::int64_t baseOffset, const SourceLocation& loc);
+                               const std::string& unique, std::int64_t baseOffset, const SourceLocation& loc,
+                               const ir::IRValue& baseAddr = ir::IRValue());
     void emitArrayTailDefaults(VarDecl* node, const std::string& elemType, std::int64_t startOffset,
-                               long long count, const std::string& unique, const SourceLocation& loc);
+                               long long count, const std::string& unique, const SourceLocation& loc,
+                               const ir::IRValue& baseAddr = ir::IRValue());
     void emitArrayElementWrite(Expr* elem, const std::string& elemType, const std::string& elemIrType,
                                std::int64_t elemStride, const ir::IRValue& addr, const SourceLocation& loc);
-    ir::IRValue emitArrayElemAddr(std::int64_t byteOffset, const std::string& varIrType,
-                                  const std::string& unique, const SourceLocation& loc);
+    ir::IRValue emitArrayElemAddr(std::int64_t byteOffset, const std::string& varIrType, const std::string& unique,
+                                  const SourceLocation& loc, const ir::IRValue& baseAddr = ir::IRValue());
     std::int64_t arrayInitStrideOf(const std::string& elemType, const SourceLocation& loc);
     bool genStructInitListDecl(VarDecl* node, const DeclGenCtx& ctx);  // ⑨结构体初始化列表
     bool genExprInitializer(VarDecl* node, const DeclGenCtx& ctx);  // ⑩普通表达式初始值

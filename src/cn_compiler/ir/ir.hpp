@@ -251,6 +251,10 @@ struct IRModule {
     std::unordered_map<std::string, std::string> globalStatics;
     // 静态变量初始值（初始化为字面量时求值存入；无初始值 -> 零初始化）
     std::unordered_map<std::string, std::string> globalStaticInits;
+    // 2051：静态/顶层数组常量初始化列表元素文本（十进制规范值·行主序扁平序，
+    //   缺格补零由发射端按槽尺寸对齐）。有值=codegen .data 按元素宽度打包直发
+    //   （C static 数组同款零运行期开销）；无值=零初始化/运行期注入通道。
+    std::unordered_map<std::string, std::vector<std::string>> globalStaticArrayInits;
 
     // MSVC兼容：与 IRFunction 相同原因，显式移动语义
     IRModule() = default;

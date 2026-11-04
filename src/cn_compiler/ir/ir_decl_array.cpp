@@ -61,13 +61,24 @@ std::int64_t IRGenerator::arrayInitStrideOf(const std::string& elemType,
 
 // 元素地址发射：数组基址 + 绝对字节偏移（与原实现同构——每元素独立
 //   AddrOf+ConstInt+Add，一维发射序列逐指令一致）。
+//   2051：baseAddr 有值=显式基址直用（静态槽 ConstString 符号地址·不再
+//   AddrOf）；空值（默认）=按 unique 变量名 AddrOf（局部栈槽既有通道）。
 ir::IRValue IRGenerator::emitArrayElemAddr(std::int64_t byteOffset,
                                            const std::string& varIrType,
                                            const std::string& unique,
-                                           const SourceLocation& loc) {
-    ir::IRValue base = emitResult(ir::Opcode::AddrOf,
-                                  {ir::IRValue::var(unique, varIrType)},
-                                  "ptr", unique, loc);
+                                           const SourceLocation& loc,
+                                           const ir::IRValue& baseAddr) {
+    const bool hasExplicitBase =
+        !(baseAddr.id < 0 && !baseAddr.isConstant && baseAddr.extra.empty());
+    ir::IRValue base;
+    if (hasExplicitBase) {
+        base = baseAddr;
+    }
+    if (!hasExplicitBase) {
+        base = emitResult(ir::Opcode::AddrOf,
+                          {ir::IRValue::var(unique, varIrType)},
+                          "ptr", unique, loc);
+    }
     ir::IRValue offset = emitResult(ir::Opcode::ConstInt, {}, "i64",
                                     std::to_string(byteOffset), loc);
     return emitResult(ir::Opcode::Add, {base, offset}, "ptr", "", loc);
@@ -148,7 +159,8 @@ void IRGenerator::emitArrayTailDefaults(VarDecl* node,
                                         std::int64_t startOffset,
                                         long long count,
                                         const std::string& unique,
-                                        const SourceLocation& loc) {
+                                        const SourceLocation& loc,
+                                        const ir::IRValue& baseAddr) {
     if (count == 0) return;  // 无缺格（数量域=层长-已写>=0 恒非负）
     const std::string canon =
         semantic_ != nullptr ? types::canonical(elemType) : elemType;
@@ -168,7 +180,7 @@ void IRGenerator::emitArrayTailDefaults(VarDecl* node,
         }
         for (long long k = 0; k < count; ++k) {
             ir::IRValue addr = emitArrayElemAddr(
-                startOffset + k * stride, elemIrType, unique, loc);
+                startOffset + k * stride, elemIrType, unique, loc, baseAddr);
             emitClassFieldDefaults(canon, canon, addr, loc);
             bool invoked = false;
             for (const auto& mk : ci->methods) {
@@ -205,7 +217,7 @@ void IRGenerator::emitArrayTailDefaults(VarDecl* node,
         }
         for (long long k = 0; k < count; ++k) {
             emitArrayTailDefaults(node, inner, startOffset + k * stride,
-                                  innerLen.value(), unique, loc);
+                                  innerLen.value(), unique, loc, baseAddr);
         }
         return;
     }
@@ -214,7 +226,7 @@ void IRGenerator::emitArrayTailDefaults(VarDecl* node,
     ir::IRValue zero = emitResult(ir::Opcode::ConstInt, {}, "i64", "0", loc);
     for (long long k = 0; k < count; ++k) {
         ir::IRValue addr = emitArrayElemAddr(startOffset + k * stride,
-                                             elemIrType, unique, loc);
+                                             elemIrType, unique, loc, baseAddr);
         std::int64_t off = 0;
         while (off < stride) {
             const std::int64_t remain = stride - off;
@@ -243,7 +255,8 @@ void IRGenerator::emitArrayInitElements(VarDecl* node, InitListExpr* list,
                                         const std::string& arrayType,
                                         const std::string& unique,
                                         std::int64_t baseOffset,
-                                        const SourceLocation& loc) {
+                                        const SourceLocation& loc,
+                                        const ir::IRValue& baseAddr) {
     const std::string elemType = types::arrayElemOf(arrayType);
     const cn::Optional<int> lenOpt = types::arrayLenOf(arrayType);
     if (!lenOpt.has_value()) {
@@ -281,18 +294,18 @@ void IRGenerator::emitArrayInitElements(VarDecl* node, InitListExpr* list,
         if (elemIsArray && elemIsList) {
             // 嵌套合法：递归下一维（行基址偏移=elemOffset）
             emitArrayInitElements(node, static_cast<InitListExpr*>(elem),
-                                  elemType, unique, elemOffset, loc);
+                                  elemType, unique, elemOffset, loc, baseAddr);
             continue;
         }
         ir::IRValue addr =
-            emitArrayElemAddr(elemOffset, elemIrType, unique, loc);
+            emitArrayElemAddr(elemOffset, elemIrType, unique, loc, baseAddr);
         emitArrayElementWrite(elem, elemType, elemIrType, stride, addr, loc);
     }
     // 层尾缺格补默认态（部分初始化·1473 甲案）
     const long long written = static_cast<long long>(list->elements.size());
     if (written < len) {
         emitArrayTailDefaults(node, elemType, baseOffset + written * stride,
-                              len - written, unique, loc);
+                              len - written, unique, loc, baseAddr);
     }
 }
 

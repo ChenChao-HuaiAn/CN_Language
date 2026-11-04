@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cstdio>
 #include <cstdlib>
+#include <functional>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -733,15 +734,12 @@ void SemanticAnalyzer::registerGlobalConstsAndStatics(Program* node) {
             if (g->initializer != nullptr) {
                 Expr* ggInit = g->initializer.get();
                 std::string constText;
-                bool constOk;
-                if (ggInit->getType() == NodeType::CharLiteral) {
-                    constText = std::to_string(
-                        charLiteralCodePoint(static_cast<CharLiteral*>(ggInit)->raw));
-                    constOk = true;
-                } else {
-                    constOk = cnEvalConstExpr(globalConstValues_, g->moduleName,
-                                              ggInit, constText);
-                }
+                // d 款统一入口（2051 收口）：数组列表=逐元素常量校验（列表
+                //   形态不回填标量文本——IR 层直存同判据链零分叉）；字符/
+                //   标量=既有通道（charLiteralCodePoint/cnEvalConstExpr 同源）
+                bool constOk = cnEvalGlobalVarConstInit(
+                    ggInit, g->typeName, globalConstValues_, g->moduleName,
+                    constText);
                 if (!constOk) {
                     diagnostics_.report(
                         DiagnosticLevel::Error, ggInit->location,
@@ -773,6 +771,7 @@ void SemanticAnalyzer::registerGlobalConstsAndStatics(Program* node) {
             //   分离分叉：宿主放行 vs v2 535 全拒·见函数头注释）
             checkGlobalVarInitLiteralDomain(g->name, g->location,
                                             g->initializer.get(), ggType);
+            checkTopArrayInitList(g.get(), ggType);  // 2051：顶层列表个数/维度校验
             // 061-c 同款：结果/可选 裸全局的合成结构体注册（同静态缺口预防）
             {
                 std::string ggCore, ggSuffix;
@@ -882,6 +881,7 @@ void SemanticAnalyzer::registerGlobalConstsAndStatics(Program* node) {
             //   无初始化器=零初始化值形态实例化；带初始化器=赋值面（初值构造
             //   调用 933 checkCtorCall 已拦抽象/接口构造·不重复）；funcPtr 槽
             //   typeName 空/归一后缀文本查表自然 miss=193 口径。
+            checkTopArrayInitList(g.get(), stType);  // 2051：顶层列表个数/维度校验
             reportAbstractArrayValueDecl(g->typeName, g->location);
             reportAbstractValueDecl(g->typeName, g->location, "按值静态存储", true);
             // 933（008 收官总攻·静态初值构造解析根治）：顶层静态初值为类构造

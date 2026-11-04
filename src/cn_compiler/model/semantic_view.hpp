@@ -139,6 +139,15 @@ public:
     virtual cn::Optional<std::string> globalStaticType(const std::string& name) const = 0;
     // 1360 结果化批3B：无值=非常量名（原空串哨兵退役）
     virtual cn::Optional<std::string> globalConstValue(const std::string& name) const = 0;
+    // 顶层常量值文本全表只读视图（2051）：数组常量初始化列表 IR 层逐元素折叠
+    //   消费——cnEvalConstExpr 的 vals 参数需整表查名（递归折叠形态·单名接口
+    //   globalConstValue 不满足）。默认空表=未覆写实现时折叠退化为纯字面量
+    //   元素：常量名/常量算术元素折叠失败 → 调用方分流运行期注入通道（语义
+    //   正确零损失·语义层 d 款常量性校验恒先行）。
+    virtual const std::unordered_map<std::string, std::string>& globalConstValuesTable() const {
+        static const std::unordered_map<std::string, std::string> kEmptyTable;
+        return kEmptyTable;
+    }
     virtual bool isTransferDecl(const void* varDeclNode, std::string& outSrcName) const = 0;
     virtual const std::vector<GenericFuncInstance>& genericFuncInstances() const = 0;
 

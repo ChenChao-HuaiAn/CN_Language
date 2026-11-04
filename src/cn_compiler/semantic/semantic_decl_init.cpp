@@ -127,4 +127,20 @@ void SemanticAnalyzer::checkArrayInitListDim(InitListExpr* list,
     }
 }
 
+
+// 2051：顶层声明（裸全局/静态）数组初始化列表=个数/维度校验——与局部声明
+//   同函数 checkArrayInitListDim 零分叉（visitVarDecl 不覆盖顶层声明面，
+//   个数超长/维度不齐此前漏检）。真=已校验或非列表形态；调用方零分派。
+bool SemanticAnalyzer::checkTopArrayInitList(
+    const VarDecl* g, const std::string& typeText) {
+    if (g->initializer == nullptr ||
+        g->initializer->getType() != NodeType::InitListExpr ||
+        !types::isArray(types::canonical(typeText))) {
+        return false;
+    }
+    checkArrayInitListDim(
+        static_cast<InitListExpr*>(g->initializer.get()), typeText,
+        g->location);
+    return true;
+}
 } // namespace cn_compiler

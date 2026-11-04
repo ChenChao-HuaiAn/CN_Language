@@ -281,6 +281,9 @@ private:
     std::unique_ptr<Stmt> parseVarDeclAfterKeyword(bool isConst); // 已消费 变量/常量 关键字后的声明体
     std::unique_ptr<Stmt> parseStaticVarDecl();         // 静态 [变量] 类型 名称 [= 初始值]
     std::unique_ptr<Stmt> parseTypePrefixVarDecl();     // 类型 名称 [= 初始值]（类型前置）
+    // 变量声明初始化器分派（`=` 已消费后）：数组类型 × '{' → 初始化列表；
+    //   其余 → 表达式。局部/静态局部/顶层静态/顶层全局 四声明通道单点归纳。
+    void parseVarDeclInitializer(VarDecl* decl);
 
     // ==================== 语句解析 ====================
 

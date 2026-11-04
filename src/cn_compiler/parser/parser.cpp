@@ -438,6 +438,21 @@ std::unique_ptr<Stmt> Parser::parseVarDeclAfterKeyword(bool isConst) {
     return decl;
 }
 
+// 变量声明初始化器分派（`=` 已消费后调用）：
+//   数组类型 × '{' → 初始化列表 { 1, 2, 3 }（Task 2.4·多维嵌套递归解析）。
+//   其余 → parseExpr（结构体初始化 类型名{ 字段 = 值 } 由 parsePrimary 识别）。
+// 四声明通道（局部/静态局部/顶层静态/顶层全局）共用单点——数组 '{' 列表
+//   形态原先仅局部 parseTypePrefixVarDecl 接受，静态局部/顶层两通道走
+//   parseExpr 报「预期表达式，实际为 '{'」（实为缺口非拒绝面·常量列表比
+//   001 §668 变量源整块拷贝初值更弱，同语义放行）。
+void Parser::parseVarDeclInitializer(VarDecl* decl) {
+    if (check(TokenType::LeftBrace) && types::isArray(decl->typeName)) {
+        decl->initializer = parseInitList();
+        return;
+    }
+    decl->initializer = parseExpr();
+}
+
 // 解析静态变量声明：静态 [变量] 类型 名称 [= 初始值]
 std::unique_ptr<Stmt> Parser::parseStaticVarDecl() {
     auto decl = std::make_unique<VarDecl>();
@@ -465,7 +480,9 @@ std::unique_ptr<Stmt> Parser::parseStaticVarDecl() {
     }
     if (check(TokenType::Equal)) {
         advance();
-        decl->initializer = parseExpr();
+        // 数组列表放行（2051）：静态局部与局部同语义（001 §668 变量源已绿
+        //   1006 守卫快照——常量列表为其更弱形态同放）
+        parseVarDeclInitializer(decl.get());
     }
     return decl;
 }
@@ -504,13 +521,8 @@ std::unique_ptr<Stmt> Parser::parseTypePrefixVarDecl() {
     advance();
     if (check(TokenType::Equal)) {
         advance();
-        // 数组初始化列表：{ 1, 2, 3 }（Task 2.4）——仅当类型为数组类型
-        if (check(TokenType::LeftBrace) && types::isArray(decl->typeName)) {
-            decl->initializer = parseInitList();
-        } else {
-            // 结构体初始化（类型名{ 字段 = 值 }）走 parseExpr（parsePrimary 识别）
-            decl->initializer = parseExpr();
-        }
+        // 数组初始化列表分派单点（局部通道·原 Task 2.4 分支归纳至此）
+        parseVarDeclInitializer(decl.get());
     }
     return decl;
 }
@@ -758,7 +770,8 @@ std::unique_ptr<Program> Parser::parse(const std::vector<Token>& tokens) {
                 advance();
                 if (check(TokenType::Equal)) {
                     advance();
-                    decl->initializer = parseExpr();
+                    // 顶层静态数组列表放行（2051·分派单点）
+                    parseVarDeclInitializer(decl.get());
                 }
                 decl->access = moduleAccess;  // 记录模块级可见性（Task 3.6）
                 program->globals.push_back(std::move(decl));
@@ -816,7 +829,8 @@ std::unique_ptr<Program> Parser::parse(const std::vector<Token>& tokens) {
                 advance();
                 if (check(TokenType::Equal)) {
                     advance();
-                    decl->initializer = parseExpr();
+                    // 顶层全局数组列表放行（2051·分派单点）
+                    parseVarDeclInitializer(decl.get());
                 }
                 decl->access = moduleAccess;  // 记录模块级可见性（Task 3.6）
                 program->globals.push_back(std::move(decl));

@@ -180,6 +180,8 @@
     //   值为字面量 raw 文本）
     //   （548 行数门禁腾挪：原类内 inline 体机械迁移 semantic.cpp·零语义变化）
     cn::Optional<std::string> globalConstValue(const std::string& name) const override;
+    // 顶层常量值文本全表只读视图（2051·数组常量初始化列表 IR 折叠消费）
+    const std::unordered_map<std::string, std::string>& globalConstValuesTable() const override;
     // 是否顶层静态变量名（IR 层生成全局存储）；查询顶层静态变量源码类型
     //   （1360 结果化批3B：无值=未登记——原空串哨兵退役·IR 层映射全局存储类型）
     //   ——同上腾挪 semantic.cpp

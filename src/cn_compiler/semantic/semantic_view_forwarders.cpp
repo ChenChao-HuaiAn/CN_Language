@@ -27,6 +27,11 @@ cn::Optional<std::string> SemanticAnalyzer::globalConstValue(const std::string& 
     if (it == globalConstValues_.end()) return std::nullopt;
     return it->second;
 }
+// 2051：顶层常量值文本全表只读视图（数组常量初始化列表 IR 层折叠消费）
+const std::unordered_map<std::string, std::string>&
+SemanticAnalyzer::globalConstValuesTable() const {
+    return globalConstValues_;
+}
 bool SemanticAnalyzer::isGlobalStatic(const std::string& name) const {
     return globalStatics_.count(name) > 0;
 }

@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "cn_compiler/codegen/x64/x64_codegen.hpp"
+#include "cn_compiler/codegen/data_seg_init.hpp"
 #include "cn_compiler/model/semantic_view.hpp"
 #include "cn_compiler/model/type_system.hpp"
 
@@ -198,6 +199,46 @@ void X64CodeGenerator::emitDataSection(AsmWriter& writer, const ir::IRModule& mo
                     initText, types::isInt128Signed(canonStatic), lo, hi);
             writer.raw(sym + " dq " + (ok ? uint64HexText(lo) : "0") + ", " +
                        (ok ? uint64HexText(hi) : "0"));
+        } else if (semantic_ != nullptr && types::isArray(canonStatic) &&
+                   module.globalStaticArrayInits.count(name) > 0) {
+            // 2051：静态/顶层数组常量初始化列表 .data 直发——共享打包
+            //   （codegen/data_seg_init.hpp·元素按宽度小端+缺格补零），逐
+            //   quad 发射每行 ≤32 值折行（#2050 数据段长链分批同口径·ml64
+            //   A2042 单行过长防线）。IR 层直存面已收口整数文本（cnParseInt
+            //   判定），打包无值=内部缺陷显形（禁静默零填充）。
+            const auto& arrInit = module.globalStaticArrayInits.at(name);
+            const int slotSz = semantic_->typeSizeOf(stType).value_or(8);
+            const cn::Optional<int> elemSz = semantic_->typeSizeOf(
+                types::arrayElemOf(canonStatic));
+            const auto quads = codegen::packStaticArrayInitQuads(
+                arrInit, static_cast<std::size_t>(elemSz.value_or(8)),
+                static_cast<std::size_t>(((slotSz + 7) / 8) * 8));
+            const bool packedOk = quads.has_value();
+            if (!packedOk) {
+                diagnostics_.report(Diagnostic::error(
+                    SourceLocation(),
+                    "内部错误: 数组初始化列表 .data 打包失败（" + name +
+                        "）——IR 直存面应为整数族文本"));
+            }
+            if (packedOk) {
+                const auto& qv = quads.value();
+                constexpr std::size_t kQuadPerLine = 32;  // 行宽口径（2050 同款）
+                std::size_t idx = 0;
+                bool first = true;
+                while (idx < qv.size()) {
+                    const std::size_t end =
+                        std::min(idx + kQuadPerLine, qv.size());
+                    std::string line =
+                        first ? (sym + " dq ") : "      dq ";
+                    for (std::size_t q = idx; q < end; ++q) {
+                        if (q != idx) line += ", ";
+                        line += uint64HexText(qv[q]);
+                    }
+                    writer.raw(line);
+                    idx = end;
+                    first = false;
+                }
+            }
         } else if (canonStatic == "浮32") {
             // f32 初始值：dd floatBitsHex；无初始值零初始化
             writer.raw(sym + " dd " +

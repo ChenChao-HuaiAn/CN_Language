@@ -15,6 +15,7 @@
 #include "cn_compiler/ir/ir.hpp"
 #include "cn_compiler/ir/ir_stmt_decl_ctx.hpp"
 #include "cn_compiler/model/semantic_view.hpp"
+#include "cn_compiler/model/semantic_const_eval.hpp"
 #include "cn_compiler/model/type_system.hpp"
 
 namespace cn_compiler {
@@ -70,11 +71,28 @@ bool IRGenerator::genStaticLocalDecl(VarDecl* node) {
         const bool guardString = (canonSrc == "字符串");
         const bool guardStruct = stSuffix.empty() && semantic_ != nullptr &&
                                  semantic_->isStructType(canonCore);
-        if (!scalarInt && !guardScalar && !guardString && !guardStruct) {
+        // 2051：数组声明（stSuffix 非空）中浮点/字符串元素=guard 快照通道
+        //   放行（列表逐元素写主槽·001 §675 首调快照同语义）；整数/布尔/
+        //   字符元素数组已由 scalarInt 覆盖（mapType 数组→元素 IR 型）；
+        //   类/容器元素数组仍 87-a 拒（元素构造链静态槽形态待后续·立账面）
+        const bool isArrayDecl = !stSuffix.empty();
+        const bool arrayElemGuard = isArrayDecl && semantic_ != nullptr &&
+            (canonCore == "浮32" || canonCore == "浮64" ||
+             canonCore == "字符串");
+        if (!scalarInt && !guardScalar && !arrayElemGuard && !guardString &&
+            !guardStruct) {
             diagnostics_.report(
                 DiagnosticLevel::Error, node->location,
                 "静态局部变量暂不支持类/容器/数组类型（'" + node->name + "'：" +
                     node->typeName + "）——指针槽/聚合形态待后续支持");
+            return true;
+        }
+        // 2051：函数内静态数组初始化列表——常量整数列表 .data 直发（C static
+        //   同款零运行期开销·无 guard）；含非常量/浮点/字符串元素=返回 false
+        //   落守卫快照通道（001 §675 首调快照·852 变量源同哲学）
+        if (isArrayDecl && node->initializer != nullptr &&
+            node->initializer->getType() == NodeType::InitListExpr &&
+            genStaticLocalArrayInitList(node, key, srcTypeRaw)) {
             return true;
         }
         if (genStaticLocalScalarDirect(node, key, srcTypeRaw, stType,
@@ -138,6 +156,42 @@ bool IRGenerator::genStaticLocalScalarDirect(VarDecl* node,
     return false;
 }
 
+// 2051：函数内静态数组**常量整数**初始化列表 .data 直存通道：
+//   逐元素折叠（cnFoldArrayInitListTexts·与语义层 d 款同判据链）→ 全文本
+//   可解析整数（整数族元素·cnParseInt 域内）→ globalStaticArrayInits 直发
+//   （无 guard·C static int a[3]={1,2,3} 同款零运行期开销）。含非常量/
+//   浮点/字符串元素=false=落守卫快照通道（§675 首调快照·852 同哲学）。
+//   true=已处理（genStaticLocalDecl 直接返回）。
+bool IRGenerator::genStaticLocalArrayInitList(VarDecl* node,
+                                              const std::string& key,
+                                              const std::string& srcTypeRaw) {
+    if (semantic_ == nullptr) return false;  // 静默豁免业务值: 否定回答=不可折叠/未登记业务结果（调用方分流注入/守卫通道·非静默默认值继续）
+    const auto* list =
+        static_cast<const InitListExpr*>(node->initializer.get());
+    std::vector<std::string> texts;
+    if (!cnFoldArrayInitListTexts(semantic_->globalConstValuesTable(),
+                                  node->moduleName, list, texts)) {
+        return false;  // 含非常量元素 → 守卫快照通道
+    }
+    // 发射端 .data 打包支持面=整数族文本（浮点/字符串/128 位文本 cnParseInt
+    // 失败=不直存 → 运行期守卫写·语义正确零损失）
+    for (const std::string& t : texts) {
+        long long v = 0;
+        if (!cnParseInt(t, v)) return false;  // 静默豁免业务值: 否定回答=不可折叠/未登记业务结果（调用方分流注入/守卫通道·非静默默认值继续）
+    }
+    module_->globalStatics[key] = srcTypeRaw;
+    module_->globalStaticArrayInits[key] = texts;
+    if (!varStack_.empty()) {
+        VarEntry e;
+        e.uniqueName = key;
+        e.type = mapType(srcTypeRaw);
+        e.srcType = srcTypeRaw;
+        e.isStaticLocal = true;
+        varStack_.back()[node->name] = e;
+    }
+    return true;
+}
+
 // 061-b guard 首次执行初始化通道（原 genVarDecl 同名节）：
 // .data：主槽=语义文本（codegen 按类型宽发射·87-a ①）+ guard 布尔槽
 //（零占位=未初始化；globalStaticInits 不登记=运行期初始化）。
@@ -178,9 +232,17 @@ void IRGenerator::genStaticLocalGuardInit(VarDecl* node, const std::string& key,
         //   组赋值位同款 emitStructWholeAssign（源地址两态取址+typeSizeOf 精确
         //   整块拷）·guard 一次性语义不变；返回 false 的形态（诚实边界）落既
         //   有分派不变。
+        // 2051：数组初始化列表形态=守卫快照逐元素写主槽（多维递归+缺格补
+        //   默认态·emitArrayInitElements 基址=静态槽符号地址·与局部栈槽通道
+        //   同构零分叉）；先于变量源整块拷判定（列表非变量源形态）。
         if (types::isArray(types::canonical(srcTypeRaw)) &&
-            emitStructWholeAssign(slotAddr, initExpr, srcTypeRaw, sloc,
-                                  /*preFree=*/false)) {
+            initExpr->getType() == NodeType::InitListExpr) {
+            emitArrayInitElements(
+                node, static_cast<InitListExpr*>(initExpr), srcTypeRaw, key, 0,
+                sloc, slotAddr);
+        } else if (types::isArray(types::canonical(srcTypeRaw)) &&
+                   emitStructWholeAssign(slotAddr, initExpr, srcTypeRaw, sloc,
+                                         /*preFree=*/false)) {
             // 整块拷已完成——guard 置位走下方公共尾
         } else if (guardStruct) {
             // 结构体/合成体：与顶层静态 87-a ①② 同款三分派

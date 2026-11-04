@@ -14,21 +14,14 @@
 #include <vector>
 
 #include "cn_compiler/model/ast.hpp"
+
+// ===== P3-22 常量求值助手族 → 拆分至 semantic_const_eval.hpp（2051·>900 先拆再加）=====
+#include "cn_compiler/model/semantic_const_eval.hpp"
 #include "cn_compiler/model/type_system.hpp"
 
 namespace cn_compiler {
 
-// ===== P3-22 常量求值助手（#286 起 semantic_constlen.cpp 共用·自 semantic.cpp
-//   匿名 ns 提升 inline——多 TU 安全 ODR 齐一，D1 收敛头同纪律）=====
-// 剥离数值字面量后缀（U/LL 等）
-[[maybe_unused]] inline std::string cnStripLiteralSuffix(const std::string& s) {
-    std::string r = s;
-    while (!r.empty() && (r.back() == 'U' || r.back() == 'u' ||
-                          r.back() == 'L' || r.back() == 'l')) r.pop_back();
-    return r;
-}
-
-[[maybe_unused]] inline bool cnParseInt(const std::string& t, long long& v) {
+inline bool cnParseInt(const std::string& t, long long& v) {
     const std::string s = cnStripLiteralSuffix(t);
     if (s.empty()) return false;
     try {
@@ -40,11 +33,6 @@ namespace cn_compiler {
     } catch (...) { return false; }
 }
 
-[[maybe_unused]] inline bool cnIsFloatText(const std::string& t) {
-    const std::string s = cnStripLiteralSuffix(t);
-    return s.find('.') != std::string::npos || s.find('e') != std::string::npos ||
-           s.find('E') != std::string::npos;
-}
 
 
 // 比较运算符（== != < > <= >=）
@@ -169,174 +157,6 @@ inline std::string canonicalType(const std::string& type) {
     return types::funcPtrParamsOf(type);
 }
 
-// ===== P3-22 常量求值助手族（#286 起 semantic_constlen.cpp 共用·自 semantic.cpp
-//   匿名 ns 整段提升 inline——多 TU 安全 ODR 齐一，D1 收敛头同纪律）=====
-// 剥离数值字面量后缀（U/LL 等）
-[[maybe_unused]] inline std::string cnFormatDouble(double d) {
-    char buf[64];
-    std::snprintf(buf, sizeof buf, "%g", d);
-    return buf;
-}
-
-// 1397（折叠常量拼接 NUL 分叉·零分叉）：折叠串源文本级 NUL 截断声明——
-//   实现驻 model/char_literal.cpp（与 decodeEscapes 转义序列表同文件互镜）。
-std::string foldStringSourceTruncNul(const std::string& quotedRaw);
-
-// 折叠二元常量：整数/浮点算术 + 字符串字面量拼接
-// 1360 结果化：原空串哨兵（除零/取余于浮点/非算术运算符/非数值非字符串/
-//   整数溢出/INT64_MIN÷-1 等 10 处失败面）改 cn::Optional 无值——合法输出
-//   恒非空（数值文本/拼接结果），失败与合法值域不再共用通道
-[[maybe_unused]] inline cn::Optional<std::string> cnFoldConstBinary(Operator op, const std::string& l, const std::string& r) {
-    if (cnIsFloatText(l) || cnIsFloatText(r)) {
-        const double a = std::atof(cnStripLiteralSuffix(l).c_str());
-        const double b = std::atof(cnStripLiteralSuffix(r).c_str());
-        double c = 0;
-        switch (op) {
-            case Operator::Add: c = a + b; break;
-            case Operator::Subtract: c = a - b; break;
-            case Operator::Multiply: c = a * b; break;
-            case Operator::Divide: if (b == 0) return std::nullopt; c = a / b; break;
-            case Operator::Modulo: return std::nullopt;
-            default: return std::nullopt;
-        }
-        return cnFormatDouble(c);
-    }
-    long long a, b;
-    if (!cnParseInt(l, a) || !cnParseInt(r, b)) {
-        // 字符串字面量拼接（"a" + "b" -> "ab"）
-        // 1397：拼接前各侧按运行期 strcat 口径截断（首个 NUL）——原源文本级
-        //   直拼把左操作数 NUL 后内容带进折叠产物（"a "+"b" 折叠 "a b"
-        //   strlen=1）vs v2 词法解码截断后拼接（"ab" strlen=2）双侧分叉实锚；
-        //   修后折叠态=运行期 strlen 口径双侧统一（宿主运行期拼接同探针
-        //   "ab"=2·v2 折叠/运行期一致不回退）。
-        if (!l.empty() && !r.empty() && l.front() == '"' && r.front() == '"') {
-            const std::string lCut = foldStringSourceTruncNul(l);
-            const std::string rCut = foldStringSourceTruncNul(r);
-            return lCut.substr(0, lCut.size() - 1) + rCut.substr(1);
-        }
-        return std::nullopt;
-    }
-    long long c = 0;
-    switch (op) {
-        // 1016（审查 P2-A·存量 UB）：加/减/乘有符号溢出在 C++ 是 UB（实测
-        //   INT64_MIN-1 / INT64_MAX+1 / INT64_MIN*-1 静默回绕错值）——按
-        //   cnFoldConstIntExpr505 同判据溢出预检，失败=空串哨兵交诊断通道。
-        case Operator::Add:
-            if ((b > 0 && a > INT64_MAX - b) || (b < 0 && a < INT64_MIN - b)) return std::nullopt;
-            c = a + b;
-            break;
-        case Operator::Subtract:
-            if ((b < 0 && a > INT64_MAX + b) || (b > 0 && a < INT64_MIN + b)) return std::nullopt;
-            c = a - b;
-            break;
-        case Operator::Multiply: {
-            const std::uint64_t magL =
-                (a < 0) ? static_cast<std::uint64_t>(~static_cast<std::uint64_t>(a)) + 1
-                        : static_cast<std::uint64_t>(a);
-            const std::uint64_t magR =
-                (b < 0) ? static_cast<std::uint64_t>(~static_cast<std::uint64_t>(b)) + 1
-                        : static_cast<std::uint64_t>(b);
-            const bool negResult = (a < 0) != (b < 0);
-            // 乘积域界：正结果=INT64_MAX；负结果=|INT64_MIN|=2^63
-            const std::uint64_t magHi =
-                negResult ? static_cast<std::uint64_t>(INT64_MAX) + 1
-                          : static_cast<std::uint64_t>(INT64_MAX);
-            if (magL != 0 && magR != 0 &&
-                (magL > magHi / magR || magL * magR > magHi)) return std::nullopt;
-            c = negResult
-                    ? static_cast<std::int64_t>(
-                          ~static_cast<std::uint64_t>(magL * magR) + 1)
-                    : static_cast<std::int64_t>(magL * magR);
-            break;
-        }
-        case Operator::Divide:
-            if (b == 0) return std::nullopt;
-            // 1016（审查 P1-2·存量崩溃）：INT64_MIN / -1 在 x86 idiv 溢出
-            //   （0xC0000409 无诊断脏崩）——折叠层按不可折叠失败返回，交调用方
-            //   诊断通道（与 cnFoldConstIntExpr505 同口径）。
-            if (a == INT64_MIN && b == -1) return std::nullopt;
-            c = a / b;
-            break;
-        case Operator::Modulo:
-            if (b == 0) return std::nullopt;
-            // 1016：INT64_MIN % -1 同族（数学值 0，但 idiv 指令先溢出）
-            if (a == INT64_MIN && b == -1) return std::nullopt;
-            c = a % b;
-            break;
-        default: return std::nullopt;
-    }
-    return std::to_string(c);
-}
-
-// 递归求值顶层常量表达式；成功返回 true 并输出值文本（供引用处重写）
-[[maybe_unused]] inline bool cnEvalConstExpr(const std::unordered_map<std::string, std::string>& vals,
-                     const std::string& curMod, Expr* e, std::string& out) {
-    if (e == nullptr) return false;
-    switch (e->getType()) {
-        case NodeType::IntegerLiteral: {
-            // 790（569 采样轮 H1）：整数字面量数值化——原 raw 原文透传经 569
-            //   constInitText 直存 .data，0x/0b/0o/L 后缀形态触发汇编器拒绝
-            //   （win MASM A2206/A2048·linux GAS .quad ...L 同病）。数值化=
-            //   十进制规范文本（与常量算术折叠 cnFoldConstBinary 输出同形态·
-            //   三后端通存）；超 u64 域文本（128 位字面量）原文保真——128 位
-            //   直存通道 parseInt128InitText 原生支持四形态解析。
-            const std::string raw = static_cast<IntegerLiteral*>(e)->raw;
-            if (!types::foldIntLiteralText(raw, out)) out = raw;
-            return true;
-        }
-        case NodeType::FloatLiteral: out = static_cast<FloatLiteral*>(e)->raw; return true;
-        case NodeType::StringLiteral: out = static_cast<StringLiteral*>(e)->raw; return true;
-        case NodeType::BoolLiteral:
-            // 241-a（D14 根治）：布尔字面量常量表达式——值文本与 IR 布尔常量同口径（真/假）
-            out = static_cast<BoolLiteral*>(e)->raw;
-            return true;
-        case NodeType::IdentifierExpr: {
-            const std::string n = static_cast<IdentifierExpr*>(e)->name;
-            auto it = vals.find(n);
-            if (it != vals.end()) { out = it->second; return true; }
-            if (!curMod.empty()) {
-                auto itq = vals.find(curMod + "$" + n);
-                if (itq != vals.end()) { out = itq->second; return true; }
-            }
-            return false;
-        }
-        case NodeType::UnaryExpr: {
-            UnaryExpr* u = static_cast<UnaryExpr*>(e);
-            if (u->postfix) return false;
-            if (u->op == Operator::Subtract) {
-                std::string v;
-                if (!cnEvalConstExpr(vals, curMod, u->operand.get(), v)) return false;
-                if (cnIsFloatText(v)) {
-                    out = cnFormatDouble(-std::atof(cnStripLiteralSuffix(v).c_str()));
-                } else {
-                    long long iv;
-                    if (!cnParseInt(v, iv)) return false;
-                    // 1016（审查 P1-2 同族）：-INT64_MIN 超出 int64 域（C++
-                    //   有符号溢出 UB）——按不可折叠失败返回交诊断通道。
-                    if (iv == INT64_MIN) return false;
-                    out = std::to_string(-iv);
-                }
-                return true;
-            }
-            if (u->op == Operator::Add)
-                return cnEvalConstExpr(vals, curMod, u->operand.get(), out);
-            return false;
-        }
-        case NodeType::BinaryExpr: {
-            BinaryExpr* b = static_cast<BinaryExpr*>(e);
-            std::string l, r;
-            if (!cnEvalConstExpr(vals, curMod, b->left.get(), l)) return false;
-            if (!cnEvalConstExpr(vals, curMod, b->right.get(), r)) return false;
-            // 1360 结果化：折叠失败（无值）=不可折叠（非常量闭包），交调用方
-            const auto folded = cnFoldConstBinary(b->op, l, r);
-            if (!folded.has_value()) return false;
-            out = folded.value();
-            return true;
-        }
-        default:
-            return false;
-    }
-}
 
 
 // ===== 静态类型判据/工具族（346 重构D 自 SemanticAnalyzer 静态方法转自由函数——ir/codegen/semantic 三方共用·原 78+ 处 SemanticAnalyzer:: 前缀调用点全树去前缀）=====
@@ -535,7 +355,6 @@ std::string foldStringSourceTruncNul(const std::string& quotedRaw);
     return funcPtrAwareSrcType(param.funcPtr, param.typeName);
 }
 std::string methodSymbolKey(const std::string& className, const std::string& sigKey);
-int charLiteralCodePoint(const std::string& raw);
 // 1137（P0-2 下沉配套）：转义序列/unicode 花括号转义解码（charLiteralCodePoint
 //   与字符串解码共用·实现驻 model/char_literal.cpp）
 std::string decodeEscapes(const std::string& body);

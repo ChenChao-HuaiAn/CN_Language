@@ -110,6 +110,8 @@ public:
     void checkVarDeclInitList(VarDecl* node, const std::string& varType);
     // #1769：数组初始化列表维度递归检查——arrayType=当前层**数组类型**
     //   （整32[2][2] 或内层 整32[2]）；每维逐个裁定元素形态并递归下一维。
+    // 2051：顶层声明（裸全局/静态）数组列表个数/维度校验（语义_decl_init.cpp）
+    bool checkTopArrayInitList(const VarDecl* g, const std::string& typeText);
     void checkArrayInitListDim(InitListExpr* list, const std::string& arrayType,
                                const SourceLocation& loc);
     // 引用返回（T&）与指针返回（T*）的局部地址逃逸检查（悬垂拒绝）。
