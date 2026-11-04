@@ -158,6 +158,7 @@ find_package(Threads REQUIRED)
 add_library(cn_compiler_lexer STATIC
     src/cn_compiler/lexer/token.cpp
     src/cn_compiler/lexer/lexer.cpp
+    src/cn_compiler/lexer/lexer_strings.cpp
     src/cn_compiler/lexer/preprocessor.cpp
 )
 target_link_libraries(cn_compiler_lexer PUBLIC cn_compiler_common)
