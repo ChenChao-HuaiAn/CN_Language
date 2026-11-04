@@ -45,6 +45,16 @@ bool IRGenerator::assignToIdentifierTarget(AssignmentExpr* node, IdentifierExpr*
         if (!isCompoundAssignOp(node->op) && semantic_ != nullptr &&
             !ve->srcType.empty()) {
             const std::string canonAgg = types::canonical(ve->srcType);
+            // #2065：静态局部数组整体赋值=深拷（静态槽长期存活恒拥有·顶层同款
+            //   立法投影——原缺数组分支落 8 字节 StorePtr 垃圾写=259 同病残余面；
+            //   v2 生成数组整体赋值 目标槽 0 静态分支同域覆盖，本件双侧对齐根治。
+            //   false=非标识符源让位既有路径·双侧对称）
+            if (types::isArray(canonAgg) &&
+                emitGlobalStaticArrayDeepCopy(ident->name, node->value.get(),
+                                              dstAddr, canonAgg,
+                                              node->location)) {
+                return true;
+            }
             if (semantic_->isStructType(canonAgg)) {
                 if (node->value->getType() == NodeType::StructInitExpr) {
                     emitOwnedStrFieldPreFree(dstAddr, canonAgg, node->location);
@@ -189,6 +199,17 @@ bool IRGenerator::assignToGlobalStatic(AssignmentExpr* node, IdentifierExpr* ide
                 emitStructCopyWithFields(dstAddr, src, canonStatic, node->location,
                                          /*preFree=*/false, /*deepCopy=*/false);
                 lastExpr_ = dstAddr;
+                return true;
+            }
+            // #2065（2026-11-05 用户批准立法）：顶层静态数组整体赋值=深拷——
+            //   顶层跟进 #1979 类静态槽深拷（emitGlobalStaticArrayDeepCopy 单点
+            //   同构发射），消除「同一整体赋值语法顶层浅拷/类字段深拷」不一致；
+            //   修前纯 CopyStruct 位拷=句柄型元素共享本体（探针分配账目增量=0
+            //   实证）。源域=同型数组标识符（v2 生成数组整体赋值 252 守卫同域）；
+            //   false=让位下方 emitStructWholeAssign 既有通道（行为不变）。
+            if (emitGlobalStaticArrayDeepCopy(ident->name, node->value.get(),
+                                              dstAddr, canonStatic,
+                                              node->location)) {
                 return true;
             }
             if (emitStructWholeAssign(dstAddr, node->value.get(), canonStatic,

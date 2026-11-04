@@ -521,6 +521,108 @@ bool IRGenerator::emitStaticArrayFieldWholeCopy(MemberExpr* target,
     return true;
 }
 
+// #2065（2026-11-05 用户批准立法）：**静态数组整体赋值=深拷**（顶层/静态局部
+//   目标共用单点）——顶层跟进 #1979 类静态槽深拷（emitStaticArrayFieldWholeCopy
+//   同构），消除「同一整体赋值语法写在顶层是浅拷、写在类字段是深拷」语义不一致
+//   （浅拷两侧共享句柄本体=一侧释放另一侧悬垂=安全隐患面；探针分配账目实证
+//   修前整块位拷增量=0）。发射=源 place 地址三形态穷举（87-a gstatic 符号/
+//   852 静态局部符号/局部 AddrOf）+整块 CopyStruct（typeSizeOf 精确字节·252
+//   同口径）+元素句柄型逐元素深拷替换（arrayElemsOwnResource 闭集穷举+#1880
+//   emitValueCaptureArrayDeepCopy 设施：字符串=__cn_str_copy 落堆/容器类=拷贝
+//   构造内联壳/结构体=字段级递归/嵌套数组递归到底；纯标量=位拷已正确零义务）。
+//   自赋值（甲 = 甲）=值语义 no-op（79-a 同判据）。源域=同型数组标识符（与
+//   v2 生成数组整体赋值 252 守卫同域·零分叉）；其余源形态=让位调用方既有通道
+//   （字面量=原地构造/调用返回=一次性槽接管/成员·下标=emitStructWholeAssign
+//   维持——均为既有合法路径非缺口）。
+//   true=已处理（深拷发射或自赋值 no-op）；false=非接管形态（分派让位契约）。
+bool IRGenerator::emitGlobalStaticArrayDeepCopy(const std::string& targetName,
+                                                Expr* valueExpr,
+                                                const ir::IRValue& dstAddr,
+                                                const std::string& arrayCanon,
+                                                const SourceLocation& loc) {
+    // 静默豁免业务值: 非标识符源=让位调用方既有通道（字面量/调用返回/成员·下标
+    //   均有既有合法路径·252 守卫同域分派契约——非兜底，登记 miss_registry #2065）
+    if (semantic_ == nullptr ||
+        valueExpr->getType() != NodeType::IdentifierExpr) {
+        return false;
+    }
+    const std::string srcName =
+        static_cast<IdentifierExpr*>(valueExpr)->name;
+    // 同型守卫（252/v2 右类型ID==左类型ID 同款）：源类型规范名与目标数组相等
+    //   才接管；异型=语义层漏网形态让位既有路径（行为与修前一致）。
+    std::string srcCanon;
+    if (const cn::Optional<const VarEntry*> veType = findVarEntry(srcName);
+        veType.has_value()) {
+        srcCanon = types::canonical(veType.value()->srcType);
+    } else if (semantic_->isGlobalStatic(srcName)) {
+        // 1360 结果化：无值=未登记（同型守卫假→让位·显形回落链在调用方）
+        srcCanon = types::canonical(
+            semantic_->globalStaticType(srcName).value_or(std::string()));
+    }
+    // 静默豁免业务值: 同型 miss=让位既有通道（异型赋值语义层诊断面·分派契约
+    //   ——非兜底，登记 miss_registry #2065）
+    if (srcCanon != types::canonical(arrayCanon)) {
+        return false;
+    }
+    // 自赋值（甲 = 甲）no-op：所有权不变（79-a——位拷自赋值恒无副作用·深拷
+    //   自赋值=复制自身句柄再覆盖自身浪费且判读混乱，直接跳过）
+    if (srcName == targetName) {
+        lastExpr_ = dstAddr;
+        return true;
+    }
+    // ---- 源 place 地址（三形态·与 emitStaticArrayFieldWholeCopy 同口径）----
+    ir::IRValue srcArr;
+    const cn::Optional<const VarEntry*> veSrc = findVarEntry(srcName);
+    // 87-a：顶层静态源=?gstatic_名 符号地址（lvalueAddress 静态分支同口径）
+    // 1337：普通局部/参数遮蔽全局时名字直查截胡=错源——局部优先序同款守卫
+    if (semantic_->isGlobalStatic(srcName) && !veSrc.has_value()) {
+        srcArr = emitResult(ir::Opcode::ConstString, {}, "ptr",
+                            "?gstatic_" + srcName, loc);
+    } else if (veSrc.has_value() && veSrc.value()->isStaticLocal) {
+        // 852：函数内静态局部——?gstatic_唯一名 符号地址直引（320-a 同口径）
+        srcArr = emitResult(ir::Opcode::ConstString, {}, "ptr",
+                            "?gstatic_" + veSrc.value()->uniqueName, loc);
+    } else if (veSrc.has_value() && !veSrc.value()->isStaticLocal) {
+        // 局部/参数数组：槽本体地址=数组基址（AddrOf·94-a 基址槽模型）
+        const cn::Optional<std::string> srcUniq = lookupVarName(srcName);
+        if (!srcUniq.has_value()) {
+            // 648（miss 不可静默·110 同族）：数组源变量未登记=内部缺陷显形
+            diagnostics_.report(DiagnosticLevel::Error, loc,
+                "内部错误: 静态数组整体赋值源变量 '" + srcName +
+                    "' 槽未登记 ——静默按整64写兜底已废除（#648）");
+            return true;
+        }
+        srcArr = emitResult(ir::Opcode::AddrOf,
+                            {ir::IRValue::var(srcUniq.value(), "i64")},
+                            "ptr", srcUniq.value(), loc);
+    }
+    // 三态穷举补集收口（#1979 emitStaticArrayFieldWholeCopy 同族形态）：
+    //   三产物形态（ConstString/AddrOf）恒发有效寄存器，-1=仅补集（未登记
+    //   变量）可达。
+    // 静默豁免闭集穷举: 三态穷举补集收口——三产物恒发有效寄存器，-1=仅未登记
+    //   变量补集可达·块内显形中止（非静默继续·登记 miss_registry #2065）
+    if (srcArr.id == -1) {
+        diagnostics_.report(DiagnosticLevel::Error, loc,
+            "内部错误: 静态数组整体赋值源地址未解析 ——静默按整64写兜底"
+            "已废除（#648）");
+        return true;
+    }
+    // 整块拷：元素×长度全部复制（emitStructCopyWithFields 单点——数组 canon
+    //   的 ownedStrFieldsOf 恒空=纯 CopyStruct typeSizeOf 字节·259 同形态）。
+    //   preFree=false（259 同款：静态槽重复覆盖不逐元素 drop 旧句柄——与
+    //   #1979 类静态槽通道同边界）。
+    emitStructCopyWithFields(dstAddr, srcArr, arrayCanon, loc,
+                             /*preFree=*/false, /*deepCopy=*/false);
+    // 元素句柄型 → 整块后逐元素深拷替换独立副本（#1880 设施·#1979 同构）：
+    //   字符串=__cn_str_copy 落堆/容器类=拷贝构造内联壳/结构体=字段级递归/
+    //   嵌套数组递归到底；纯标量=位拷已正确零义务（闭集穷举终点）。
+    if (arrayElemsOwnResource(*semantic_, types::arrayElemOf(arrayCanon), 0)) {
+        emitValueCaptureArrayDeepCopy(dstAddr, srcArr, arrayCanon, loc, 0);
+    }
+    lastExpr_ = dstAddr;
+    return true;
+}
+
 // 974（104-001 根治）+ #1979：类字段聚合整体赋值单助手（自 handleClassMemberAssign
 //   提取——本文件 897 行贴 900 警戒线·先拆再加纪律；974 四通道逐字搬移零语义变化）。
 //   字段=结构体/类 → 整体赋值（emitStructWholeAssign 单一助手·Rust place 拷贝

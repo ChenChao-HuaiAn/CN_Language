@@ -758,6 +758,7 @@ private:
     // 类字段赋值（visitAssignmentExpr 钩子）：对象.字段 = v / 类名.静态字段 = v
     bool handleClassMemberAssign(MemberExpr* target, Expr* valueExpr,
                                  Operator op, const SourceLocation& loc); bool tryClassFieldWholeAssign(MemberExpr*, Expr*, const ir::IRValue&, const SourceLocation&); bool emitStaticArrayFieldWholeCopy(MemberExpr*, Expr*, const ir::IRValue&, const SourceLocation&); // 974 聚合+1979 静态数组 整体赋值助手（自 handleClassMemberAssign 提取·ir_oop_field_assign.cpp·1000 冻结线声明并 1 行=1880 先例）
+    bool emitGlobalStaticArrayDeepCopy(const std::string&, Expr*, const ir::IRValue&, const std::string&, const SourceLocation&); // 2065 静态数组整体赋值深拷单点（顶层/静态局部目标共用·ir_oop_field_assign.cpp·994 贴线声明并 1 行=1880 先例）
     // 方法体内直接字段读取（visitIdentifierExpr 钩子）：字段名 无 自身. 前缀
     bool handleClassFieldRead(IdentifierExpr* node);
     // 方法体内直接字段赋值（visitAssignmentExpr 钩子）：字段名 = v
