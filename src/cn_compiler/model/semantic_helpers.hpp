@@ -21,17 +21,6 @@
 
 namespace cn_compiler {
 
-inline bool cnParseInt(const std::string& t, long long& v) {
-    const std::string s = cnStripLiteralSuffix(t);
-    if (s.empty()) return false;
-    try {
-        if (s.size() > 2 && s[0] == '0' && (s[1] == 'x' || s[1] == 'X'))
-            v = std::stoll(s.substr(2), nullptr, 16);
-        else
-            v = std::stoll(s, nullptr, 10);
-        return true;
-    } catch (...) { return false; }
-}
 
 
 
