@@ -162,7 +162,7 @@ ir::IRValue IRGenerator::normalizeStringValueSource(Expr* arg,
     //   赋值百轮泄 100 实录）。**不用 AST 类型判据**：方法内裸字段名不入
     //   变量类型表（isStringTypedExpr 对 `字段 + 串` 左操作数盲判 false——
     //   732 判据在本面不复核），IR 溯源对字段/变量/成员各形态统一命中。
-    if (value.type == "ptr" && isConcatResultInst(currentBlock_, value.id)) {
+    if (value.type == "ptr" && isConcatResultTraced(value.id)) {
         return value;
     }
     // ⑤ 标识符（拥有局部/形参/静态）与借出视图（成员/下标/解引用）——一律复制：

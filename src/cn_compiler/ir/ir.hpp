@@ -82,6 +82,11 @@ struct IRValue {
         return v;
     }
 
+    // 形态判定单点：寄存器产物（id 哨兵契约=-1 表示变量/常量形态·上方 id 注）
+    //   ——1963 执法四归纳：原各消费点散写 id >= 0 / id < 0 词面，哨兵语义
+    //   单点归本方法（ir.hpp=id 哨兵契约唯一权威）。
+    bool isReg() const { return id >= 0; }
+
     // 渲染为字符串（%v0 / 常量文本 / 变量名）
     std::string toString() const {
         if (isConstant) return extra;

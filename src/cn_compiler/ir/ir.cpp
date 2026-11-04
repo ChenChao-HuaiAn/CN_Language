@@ -12,6 +12,7 @@
 #include <utility>
 
 #include "cn_compiler/ir/ir.hpp"
+#include "cn_compiler/ir/ir_string_temp_util.hpp"
 #include "cn_compiler/model/semantic_view.hpp"
 #include "cn_compiler/model/type_system.hpp"
 
@@ -95,6 +96,64 @@ void IRGenerator::emit(ir::Opcode opcode,
     inst.type = type;
     inst.loc = loc;
     currentBlock_->instructions.push_back(std::move(inst));
+    // 1963 执法四（件2）：拼接产物定义点登记（发射单点=全发射路径覆盖——
+    //   全库指令只经本函数落块·无直插点）。登记内容=寄存器 id → 定义符号，
+    //   查询面=isConcatResultTraced（溯源表优先·跨块可查=修复拼接产物跨块
+    //   流出泄漏面）。
+    if (opcode == ir::Opcode::Call && result.isReg() &&
+        (extra == "__cn_str_concat" || extra == "__cn_strbuf_finish")) {
+        concatTempDefs_[result.id] = extra;
+    }
+    // 1963 执法四（件2）：三元临时槽（__ternary$N·662 面 Store/Load 中转）
+    //   Store 源统计——真/假分支各自 Store 一次；源=连接产物寄存器（①登记
+    //   命中）计 concat 数。**纯拼接判定**（两分支 Store 源皆连接产物）在
+    //   Load 侧核对（③）：任一分支为借用句柄/字面量（Store 源非连接产物）
+    //   即混合槽→不登记→消费面保守 copy（借用句柄复制安全·分支敏感误放
+    //   零暴露）。
+    if (opcode == ir::Opcode::Store && !extra.empty() &&
+        extra.rfind("__ternary$", 0) == 0 && !operands.empty()) {
+        ++ternarySlotStoreTotal_[extra];
+        const ir::IRValue& src = operands[0];
+        if (src.isReg() && concatTempDefs_.count(src.id) != 0) {
+            ++ternarySlotStoreConcat_[extra];
+        }
+    }
+    // ③ 纯拼接三元槽 Load 产物登记——两分支 Store 源皆连接产物=任一路径
+    //   产物=新堆串唯一拥有者→Load 产物可安全按拼接产物收口（free/直存/
+    //   容器持有·与 758/663/861 对 concat 产物同契约）。混合槽/用户变量槽
+    //   不登记（变量槽内容另有拥有者链=禁双收口）。
+    if (opcode == ir::Opcode::Load && result.isReg() && !operands.empty() &&
+        !operands[0].isReg() && !operands[0].extra.empty() &&
+        operands[0].extra.rfind("__ternary$", 0) == 0) {
+        const auto stIt = ternarySlotStoreTotal_.find(operands[0].extra);
+        const auto ccIt = ternarySlotStoreConcat_.find(operands[0].extra);
+        if (stIt != ternarySlotStoreTotal_.end() &&
+            ccIt != ternarySlotStoreConcat_.end() &&
+            ccIt->second == stIt->second) {
+            concatTempDefs_[result.id] = "__cn_str_concat";
+        }
+    }
+}
+
+// 1963 执法四（件2）：拼接产物查询单点实现——见 ir_generator.hpp 声明注。
+//   原判据（ir_string_temp_util.hpp 自由函数 isConcatResultInst·块内倒序
+//   扫描）降级为兜底内核保留（防御发射路径漏登记·原块内行为逐字不变）。
+bool IRGenerator::isConcatResultTraced(int regId) {
+    // 静默豁免业务值: id 哨兵形态守卫（-1=变量/常量形态·ir.hpp 契约）=非寄存器形态的合法否定回答（原判据 ir_string_temp_util.hpp:17 存量同款搬移·非查表默认值）
+    if (regId < 0) return false;
+    const auto it = concatTempDefs_.find(regId);
+    if (it != concatTempDefs_.end()) {
+        return it->second == "__cn_str_concat" ||
+               it->second == "__cn_strbuf_finish";
+    }
+    // 表查无→块内倒序扫描兜底（原判据内核·理论不可达=防御面：emit 单点
+    //   登记覆盖全部发射路径，块内定义必已登记）。
+    if (isConcatResultInst(currentBlock_, regId)) return true;
+    // 1963 显形登记（miss_registry.json 1963 条·待裁决）：表查无+当前块查无
+    //   （跨块非拼接定义/混合来源三元槽/未登记形态）=不可证拼接产物=保守
+    //   不 free——变量 load/普通调用返回等跨块 ptr 形态的否定回答（释放归
+    //   变量生命周期/调用面管理·漏放不误放·宁漏勿崩）。
+    return false;   // 静默豁免待裁决: 真未登记形态=不可证拼接产物=保守不 free（漏放不误放·宁漏勿崩·详注上方）
 }
 ir::IRValue IRGenerator::emitResult(ir::Opcode opcode,
                                     const std::vector<ir::IRValue>& operands,

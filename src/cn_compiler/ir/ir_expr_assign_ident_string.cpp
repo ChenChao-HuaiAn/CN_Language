@@ -296,11 +296,25 @@ bool IRGenerator::identifierStringOwnAssign(AssignmentExpr* node, IdentifierExpr
             ownAssign = abe->op == Operator::Add &&
                         (isStringTypedExpr(node->value.get()) ||
                          (value.type == "ptr" &&
-                          isConcatResultInst(currentBlock_, value.id)));
+                          isConcatResultTraced(value.id)));
+        }
+        // 1963 执法四（件2）：三元右值形态补面——右值=三元时 732/861 原判定
+        //   面（CallExpr/BinaryExpr 两形态）盲判 false→copy 落堆→三元临时槽
+        //   （__ternary$N·Store/Load 中转）内的拼接产物=孤儿=每赋值净泄 1
+        //   （探针 G 面 50 轮泄 51 实录）。补面判定=溯源表命中
+        //   （isConcatResultTraced）——命中=纯拼接槽（emit 侧 Store 源统计：
+        //   两分支 Store 源**皆**为连接产物才登记，任一分支借用/字面量混合
+        //   即不登记）→任一路径产物=新堆串唯一拥有者→直存接管安全；混合槽
+        //   miss=copy 落堆（借用句柄复制安全·宁漏勿崩）+显形登记
+        //   （miss_registry.json 1963 条）。
+        else if (ownAt == NodeType::TernaryExpr) {
+            ownAssign = value.type == "ptr" &&
+                        isConcatResultTraced(value.id);
         }
         if (ownAssign || refReturnCopy933) {
             if (refReturnCopy933 ||
-                (ownAt != NodeType::CallExpr && ownAt != NodeType::BinaryExpr)) {
+                (ownAt != NodeType::CallExpr && ownAt != NodeType::BinaryExpr &&
+                 ownAt != NodeType::TernaryExpr)) {
                 // 字面量/标识符/引用返回调用形态：先 free 旧（drop 旧再 move
                 //   新——Rust/C++ 赋值语义），源为借用/只读段（或引用返回的
                 //   借用视图·933）须 __cn_str_copy 落堆（自赋值 s = s 安全——

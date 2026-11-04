@@ -42,7 +42,7 @@ void IRGenerator::visitExprStmt(ExprStmt* node) {
     if (node->expr->getType() == NodeType::BinaryExpr) {
         const BinaryExpr* bin = static_cast<const BinaryExpr*>(node->expr.get());
         if (bin->op == Operator::Add && discarded.type == "ptr" &&
-            isConcatResultInst(currentBlock_, discarded.id)) {
+            isConcatResultTraced(discarded.id)) {
             // 663：拥有串释放公共发射点直写（emitRegStringFree 成员壳随 hpp 腾行降级·全链同款直写）
             emit(ir::Opcode::Call, {discarded}, ir::IRValue(), "__cn_str_free", "void", node->location);
         }

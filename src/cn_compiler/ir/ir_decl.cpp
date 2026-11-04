@@ -541,6 +541,12 @@ void IRGenerator::visitFunctionDecl(FunctionDecl* node) {
     //   成对弹出；本行防「识别成功后生成中途中止（诊断收尾）」跨函数残留误改
     //   写同名赋值（驻留名跨函数同 ID）。
     strAccumCtxs_.clear();
+    // 1963 执法四（件2）：拼接产物定义点溯源表按函数清空——键=寄存器 id
+    //   （regCounter_ 全局递增）跨函数不冲突，清空防表无界增长（lambda 体由
+    //   visitLambdaExpr 入口同款清空）。
+    concatTempDefs_.clear();
+    ternarySlotStoreTotal_.clear();
+    ternarySlotStoreConcat_.clear();
     // 482：返回来源跟踪按函数复位（上一函数残留零泄漏；lambda 体由
     //   visitLambdaExpr save/restore 另行隔离）。
     currentReturnOrigin482_.clear();

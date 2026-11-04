@@ -445,6 +445,26 @@ private:
     // 980 红治理 v2（880）：自由函数名 → 声明 AST 预收集——registerOopRaii 返回来源三分判据
     //   （形参/全局=写穿别名豁免登记；局部/新建=句柄转移正常登记）。治 980/836/878；重载同名取后声明。
     std::unordered_map<std::string, FunctionDecl*> freeFuncDecls880_;
+    // 1963 执法四（件2）：拼接产物定义点函数级溯源表——寄存器 id → 定义符号
+    //   （__cn_str_concat/__cn_strbuf_finish）。登记点=emit 发射单点（全库指令
+    //   只经 emit 落块·无直插点=全发射路径覆盖）。原判据 ir_string_temp_util.hpp
+    //   isConcatResultInst 只扫当前块倒序定义——拼接产物跨块流出（三元分支块
+    //   定义/汇合块收口、循环体流出等）查无=保守不 free/copy=每轮净泄 1（探针
+    //   实录：三元赋值面百轮泄 51·三元入容器面泄 152）。函数级生命周期：键=
+    //   regCounter_（全局递增）全局唯一不跨函数误命中，入口清空防表无界增长
+    //   （visitFunctionDecl/visitLambdaExpr）。
+    std::unordered_map<int, std::string> concatTempDefs_;
+    // 1963 执法四（件2）：三元临时槽 Store 源统计（纯拼接判定数据）——槽名
+    //   →Store 总数 / →源为连接产物的 Store 数。两数相等=纯拼接槽（全分支
+    //   Store 源皆连接产物）→Load 产物按拼接产物收口；混合槽不登记（分支
+    //   敏感借用句柄=copy 保守面）。生命周期同 concatTempDefs_（函数级清空）。
+    std::unordered_map<std::string, int> ternarySlotStoreTotal_;
+    std::unordered_map<std::string, int> ternarySlotStoreConcat_;
+    // 1963 执法四（件2）：拼接产物查询单点——溯源表优先（跨块可查=修复面）→
+    //   块内倒序扫描兜底（原判据内核·防御面）→ 表查无+块内查无=真未登记形态
+    //   保守不 free（漏放不误放·显形登记见 miss_registry.json）。声明位/赋值
+    //   位/入容器位/比较位/语句位全消费面同源（6 调用点统一改本方法）。
+    bool isConcatResultTraced(int regId);
     // D23（248-a）：visitProgram 预收集全部类的构造默认值（类方法提升晚于 主函数生成——生成期收集会晚于调用点查表）；emitClassMethod 内同款 收集保留（幂等跳过）作兜底。
     void collectCtorDefaults(const std::string& className, const ClassMemberInfo& mi);
     // 762：visitProgram 预收集自由函数尾部默认参数值（调用点先于定义查表 miss→静默不补实录治； 原收集点保留幂等兜底·D23 构造预收集同款）。
