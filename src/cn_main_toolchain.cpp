@@ -217,11 +217,15 @@ std::string archBucketDir(const std::string& target) {
 //   原产物位置——产物落盘位置与内容零变更。obj /Fo 路径与 link 报错行实测不截断
 //   （1104dual LNK4232 行中文路径完整），不动。
 
+// 2054 族全部为 win-x64 专面（ml64/GTEMP/8.3 短名皆是 win API）——linux 构建下
+//   整段条件编译剔除（assembleAsm 的 isWinX64 分支同规；GAS 分支零涉及）。
+#ifdef _WIN32
+
 // 路径是否纯 ASCII（ml64 截断缺陷的适用性判定：任一字节 ≥0x80 即按含多字节
 //   字符处理——GBK 双字节组首字节 ≥0x81，宁可多走中转路径不漏判）
 static bool isPureAsciiPath(const std::string& path) {
     for (const unsigned char ch : path) {
-        if (ch >= 0x80 && ch <= 0xFF) return false;
+        if (ch >= 0x80) return false;
     }
     return true;
 }
@@ -312,12 +316,24 @@ static bool assembleAsmWin(const std::string& vcvarsBat, const std::string& asmP
     return ok;
 }
 
+#endif  // _WIN32（2054 族 win 专面条件编译闭合）
+
 // 汇编：win-x64 -> ml64 /c /Fo<obj> <asm>；linux-arm64 -> as -o <obj> <asm>
 static bool assembleAsm(const std::string& target, const std::string& vcvarsBat,
                         const std::string& asmPath, const std::string& objPath,
                         bool verbose, std::string& error) {
     if (isWinX64(target)) {
+#ifdef _WIN32
         return assembleAsmWin(vcvarsBat, asmPath, objPath, verbose, error);
+#else
+        // 非 win 构建无 ml64 工具链（windows.h 族条件编译剔除）——显式报错不静默
+        (void)vcvarsBat;
+        (void)asmPath;
+        (void)objPath;
+        (void)verbose;
+        error = "win-x64 汇编需 win 构建（ml64 工具链不可用）";
+        return false;
+#endif
     }
     // GAS（GNU as）：直接汇编 .s -> .o（本机 ARM64 用系统 as / 便携工具链）
     const int rc = runToolchainCommand(vcvarsBat,
