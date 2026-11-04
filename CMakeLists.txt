@@ -220,6 +220,8 @@ add_library(cn_compiler_semantic STATIC
     src/cn_compiler/semantic/semantic_call_ctor.cpp
     src/cn_compiler/semantic/semantic_call_member.cpp
     src/cn_compiler/semantic/semantic_call_qualified.cpp
+    # 1855 拆分轮追加：调用点实参包装与调用名改写族（自 semantic_call.cpp 拆分·纯搬移）
+    src/cn_compiler/semantic/semantic_call_rewrite.cpp
     src/cn_compiler/semantic/semantic_stmt.cpp
     src/cn_compiler/semantic/semantic_decl.cpp
     src/cn_compiler/semantic/semantic_decl_constprop.cpp

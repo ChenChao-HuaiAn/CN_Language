@@ -11,6 +11,7 @@
 #include <memory>
 
 #include "cn_compiler/semantic/semantic.hpp"
+#include "cn_compiler/semantic/semantic_method_value_943.hpp"  // 1855 拆分轮：checkStaticMethodCall 段迁入（943 一等公民转换拒收文案）
 
 namespace cn_compiler {
 
@@ -182,4 +183,96 @@ void SemanticAnalyzer::rewriteQualifiedCall(CallExpr* node,
     }
 }
 
+
+// ---- 族C4：静态方法调用 类名.静态方法(实参)（1855 拆分轮追加·自 semantic_call_member.cpp
+//   纯机械搬移·段体逐字保留——静态方法=类名限定调用形态，与本文件模块限定调用族同归）----
+// 族C4：静态方法调用 类名.静态方法(实参)（原 591~620 段）。true = 已处理。
+bool SemanticAnalyzer::checkStaticMethodCall(CallExpr* node, const std::string& methodName,
+                                            const std::string& ownerClass,
+                                            const ClassMemberInfo* method) {
+        if (method != nullptr && method->isStatic) {
+            // 静态方法调用（类名.静态方法(...)）
+            // #1588：实参位求值遮蔽外层目标 + 形参类型已知后回填构造器目标
+            //   （本路径缺实参类型检查=独立缺陷，已另行立项；构造器目标校准
+            //   不依赖该检查——按形参类型权威回填）。
+            ctorTargetStack_.push_back(std::string());
+            std::vector<std::string> argTypes =
+                collectCallArgTypes(node->arguments, node->location);
+            // 并集解冲突（1593 静态实参类型检查 × 1588 构造器目标回填）：
+            //   #1588 的 ctorTargetStack_ 出栈复原 + #1593 的字面量实参类型调整
+            //   互不依赖，同点共存。
+            ctorTargetStack_.pop_back();
+            adjustLiteralArgTypes(argTypes, node->arguments);
+            if (argTypes.size() != method->paramTypes.size()) {
+                diagnostics_.report(DiagnosticLevel::Error, node->location,
+                                    "静态方法 '" + methodName + "' 期望 " +
+                                        std::to_string(method->paramTypes.size()) +
+                                        " 个实参，实际提供 " +
+                                        std::to_string(argTypes.size()) + " 个");
+            } else {
+                // #1593（#1588 审计相邻面）：静态方法实参类型检查——原仅校验个数，
+                //   类型不匹配静默放行（与实例方法/普通调用检查面分叉）。本段镜像
+                //   实例方法同源判定（canConvertWithLiteral/canConvertArgNarrow/
+                //   method_value_943 专用文案），不放宽不收紧。
+                for (std::size_t i = 0; i < argTypes.size(); ++i) {
+                    // 同实例方法：引用形参且实参已是 &x（二次检查已 wrap）→ 跳过
+                    bool refAlready =
+                        types::isReference(method->paramTypes[i]) &&
+                        node->arguments[i]->getType() == NodeType::UnaryExpr &&
+                        static_cast<UnaryExpr*>(node->arguments[i].get())->op ==
+                            Operator::AddressOf;
+                    if (!refAlready &&
+                        !canConvertWithLiteral(node->arguments[i].get(), argTypes[i],
+                                               method->paramTypes[i]) &&
+                        !canConvertArgNarrow(node->arguments[i].get(), argTypes[i],
+                                             method->paramTypes[i])) {
+                        // 1819（1784 丁案实施④）：值形态类切片=专用切片诊断
+                        //   （869 面·静态方法实参同款）；切片判定真=已报。
+                        if (!reportSliceReject(argTypes[i], method->paramTypes[i],
+                                               node->arguments[i]->location) &&
+                            !method_value_943::reportConvertReject(
+                                diagnostics_, argTypes[i], method->paramTypes[i],
+                                node->arguments[i]->location,
+                                node->arguments[i].get())) {
+                            diagnostics_.report(
+                                DiagnosticLevel::Error, node->arguments[i]->location,
+                                "静态方法 '" + methodName + "' 第 " + std::to_string(i + 1) +
+                                    " 个实参无法将 '" + argTypes[i] + "' 隐式转换为 '" +
+                                    method->paramTypes[i] + "'");
+                        }
+                    }
+                }
+            }
+            // A-1（引用参数）：静态方法引用形参的实参自动取地址
+            for (std::size_t i = 0;
+                 i < node->arguments.size() && i < method->paramTypes.size(); ++i) {
+                auto* argCall = dynamic_cast<CallExpr*>(node->arguments[i].get());
+                if (argCall == nullptr) continue;
+                if (calibrateCtorTargetType(argCall, method->paramTypes[i])) {
+                    argTypes[i] = argCall->resolvedType;
+                }
+            }
+            checkConstRefBorrowDiscipline(node, method->paramTypes,
+                                              method->constParams);  // plans/019 阶段3b
+                wrapRefArgs(node, method->paramTypes);
+            lastType_ = method->type;
+            // A2：泛型实例化类成员（ownerClass 含 $）不置位——同实例方法口径
+            // 933：引用返回方法（-> T&）不置位（同实例方法注）。
+            // #1571 收口：字符串结果借用位显式置 retBorrowedString（三态完整·
+            //   实例方法同款注释见族C1）。
+            const bool stringReturnContract =
+                (lastType_ == "字符串" && !method->isRefReturn);
+            const bool genericMemberClass =
+                ownerClass.find('$') != std::string::npos;
+            node->retOwnedString = stringReturnContract && !genericMemberClass;
+            node->retBorrowedString = stringReturnContract && genericMemberClass;
+            // 118（929）：静态方法引用返回放行（与实例方法/接口同构）
+            if (method->isRefReturn) {
+                node->isRefReturnCall = true;
+                lastExprIsRefReturn_ = true;
+            }
+            return true;
+        }
+    return false;
+}
 }  // namespace cn_compiler
