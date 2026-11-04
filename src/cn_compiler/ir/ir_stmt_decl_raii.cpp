@@ -353,27 +353,34 @@ std::string IRGenerator::callReturnCanonOf(const CallExpr* ce) {
         //   判定=变量源类型前缀 `方法值<`（types::isMethodValueType）→ 内嵌
         //   函数指针返回段 canonical；"字符串&"（引用返回借用视图）原样返回
         //   （调用方按契约闸/尾 '&' 判定不登记，933 深拷通道另管）。
-        const std::string calleeVarType = types::canonical(
-            lookupSrcType(nm).value_or(std::string()));
-        if (types::isMethodValueType(calleeVarType)) {
-            const std::optional<std::string> fp =
-                types::methodValueFnPtrOf(calleeVarType);
-            if (!fp.has_value()) {
-                // 内部串残缺（makeMethodValueType 单点构造不成立）=编译器缺陷
-                //   显形（miss 不可静默·#1922 用户令），不默认放行。
-                diagnostics_.report(DiagnosticLevel::Error, ce->location,
-                                    "内部错误: 绑定方法值类型串残缺 '" +
-                                        calleeVarType + "'（#1922）");
-                return "";
+        //   显式分流（#1922 用户令禁静默默认值）：lookupSrcType 无值=被调名
+        //   非变量（自由函数/内置/方法名）——否定回答续走下方函数返回类型表链，
+        //   有值才做方法值形态判定（不收 value_or 空串默认）。
+        const cn::Optional<std::string> calleeVarTypeOpt = lookupSrcType(nm);
+        if (calleeVarTypeOpt.has_value()) {
+            const std::string calleeVarType =
+                types::canonical(calleeVarTypeOpt.value());
+            if (types::isMethodValueType(calleeVarType)) {
+                const std::optional<std::string> fp =
+                    types::methodValueFnPtrOf(calleeVarType);
+                if (!fp.has_value()) {
+                    // 内部串残缺（makeMethodValueType 单点构造不成立）=编译器缺陷
+                    //   显形（miss 不可静默·#1922 用户令），不默认放行。
+                    diagnostics_.report(DiagnosticLevel::Error, ce->location,
+                                        "内部错误: 绑定方法值类型串残缺 '" +
+                                            calleeVarType + "'（#1922）");
+                    return "";
+                }
+                const cn::Optional<std::string> rt =
+                    types::funcPtrReturnTypeOf(fp.value());
+                if (!rt.has_value()) {
+                    diagnostics_.report(DiagnosticLevel::Error, ce->location,
+                                        "内部错误: 绑定方法值签名返回段残缺 '" +
+                                            calleeVarType + "'（#1922）");
+                    return "";
+                }
+                return types::canonical(rt.value());
             }
-            const cn::Optional<std::string> rt = types::funcPtrReturnTypeOf(fp.value());
-            if (!rt.has_value()) {
-                diagnostics_.report(DiagnosticLevel::Error, ce->location,
-                                    "内部错误: 绑定方法值签名返回段残缺 '" +
-                                        calleeVarType + "'（#1922）");
-                return "";
-            }
-            return types::canonical(rt.value());
         }
         const std::string keys[2] = {ce->resolvedSignature, nm};
         for (const std::string& key : keys) {

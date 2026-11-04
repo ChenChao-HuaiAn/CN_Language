@@ -148,11 +148,21 @@ bool SemanticAnalyzer::checkMethodValueCall(CallExpr* node,
         lastType_ = "未知";
         return true;
     }
-    // 1360 结果化：内嵌函数指针串由 makeMethodValueType 单点构造·规范形态
-    //   恒有值；显形默认（空返回/零参）=内部缺陷显形后的保守继续面
-    const std::string retType = funcPtrReturnOf(*fnPtr).value_or(std::string());
-    const std::vector<std::string> paramTypes =
-        funcPtrParamsOf(*fnPtr).value_or(std::vector<std::string>());
+    // #1922 件2（用户令禁静默默认值）：内嵌签名段解析 miss=makeMethodValueType
+    //   单点构造不成立（编译器内部缺陷）——显式报内部错误当场中止，不取
+    //   空返回/零参默认继续（空返回段会把 retOwnedString 静默判假→漏释放）。
+    const cn::Optional<std::string> retOpt = funcPtrReturnOf(*fnPtr);
+    const cn::Optional<std::vector<std::string>> paramsOpt =
+        funcPtrParamsOf(*fnPtr);
+    if (!retOpt.has_value() || !paramsOpt.has_value()) {
+        diagnostics_.report(
+            DiagnosticLevel::Error, node->location,
+            "内部错误: 绑定方法值签名段残缺 '" + calleeType + "'（#1922）");
+        lastType_ = "未知";
+        return true;
+    }
+    const std::string retType = retOpt.value();
+    const std::vector<std::string> paramTypes = paramsOpt.value();
     // #1922 件2：**A2 拥有契约写回**（与 1578 函数指针变量调用
     //   checkFuncPtrCall 同点同律）——方法变量调用（cb()）的返回串产自被绑定
     //   方法，方法返回位（A2 `-> 字符串` 拥有契约）已保证独立堆串；本字段原
