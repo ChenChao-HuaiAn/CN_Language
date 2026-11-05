@@ -84,6 +84,14 @@
         const SourceLocation& loc);
     // lambda 快照静态槽键（?gstatic_ 前缀外的注册键；lambdaName 唯一保证不撞）
     std::string lambdaSlotKey(const std::string& lambdaName, const std::string& cap) const;
+    // lambda 合成函数出口 RAII 释放（漏挂根修·与 finishFunctionEmit/emitClassMethod
+    //   同构挂点——实现与详注见 ir_oop_call_release.cpp）：体内「返回」终止块路径
+    //   块出口析构被 genBlock 已终止分支跳过，容器/类对象/拥有串/字符串元素数组/
+    //   含串字段聚合全靠本函数级收尾释放；字段/形参副本两函数级名单按进入基线
+    //   裁剪外层遗留条目后收尾（genStringFrees 字段段/616 段按名单直发不查 Alloca
+    //   归属）。
+    void emitLambdaExitRaii(std::size_t outerFieldBase,
+                            std::size_t outerParamCopyBase);
     // ---- 482 载体快照槽族私辅（实现/数据/语义见 ir_lambda.cpp 与 ir_generator_types.hpp）----
     // 1360 结果化：无值=捕获源类型查表 miss（原哨兵 8 与合法槽宽 8 重叠·退役；
     //   消费点 value_or(8) 显形默认——8=缺省槽宽，语义在调用点写出）

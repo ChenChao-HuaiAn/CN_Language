@@ -784,6 +784,16 @@ void IRGenerator::visitLambdaExpr(LambdaExpr* node) {
     //   lambda 逐层进出·与 varStack_ 层同序压弹）。
     lambdaCaptureFrames_.emplace_back(capturedNames.begin(),
                                       capturedNames.end());
+    // lambda 体=独立函数上下文（815 closureInfo_ save/restore 同款模型）——
+    //   ①串污染集 save+清空：体内 赋值位 污染登记落在空集（genStringFrees 串收集
+    //   按污染集跳过借用视图；不隔离则外层已污染名会误豁免体内同名槽、体内残留
+    //   污染会误豁免外层同名槽=两侧释放面互串），出口 restore；
+    //   ②字段/形参副本两函数级名单基线：genStringFrees 按名单直发不查 Alloca
+    //   归属，出口收尾前须裁剪外层遗留条目（见 emitLambdaExitRaii）。
+    std::unordered_set<std::string> outerTainted = std::move(stringTainted_);
+    stringTainted_.clear();  // move 后显式清空：不依赖移动后源的未规定状态
+    const std::size_t lambdaFieldBase = ownedFieldOrder_.size();
+    const std::size_t lambdaParamCopyBase = ownedParamCopySlots_.size();
     if (node->body != nullptr) {
         // 750 复审返工：lambda 体函数级别名逃逸/lambda 预扫描（P0-1/P0-3）。
         //   三枚状态 save 在函数入口、restore 在函数尾（见入口注释）。
@@ -801,6 +811,11 @@ void IRGenerator::visitLambdaExpr(LambdaExpr* node) {
         setCurrentBlock(entry);
         endReturn("");
     }
+    // lambda 合成函数出口 RAII 释放（漏挂根修·与 finishFunctionEmit 同构挂点——
+    //   须在末块终止补齐后、function_ 仍指向本 lambda 时调用；详注见函数实现头）
+    emitLambdaExitRaii(lambdaFieldBase, lambdaParamCopyBase);
+    // 串污染集 restore（收尾已消费体内污染集·外层污染面回归——与入口 save 成对）
+    stringTainted_ = std::move(outerTainted);
     varStack_.pop_back();
     module_->functions.push_back(std::move(func));
     // 恢复外层生成状态（主函数继续）

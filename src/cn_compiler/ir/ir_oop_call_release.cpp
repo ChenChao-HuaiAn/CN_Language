@@ -811,4 +811,38 @@ void IRGenerator::emitOwnedRecvTempDestruct662(Expr* recvObj,
     emit(ir::Opcode::DeleteObject, {thisArg}, ir::IRValue(), rt662, "void", loc);
 }
 
+// lambda 合成函数出口 RAII 释放（漏挂根修·与 finishFunctionEmit / 类方法收尾
+//   完全同构，机制零新造——lambda 是第四类函数级生成单元，此前漏挂函数级收尾
+//   genClassDestructorCalls/genStringFrees：体内「返回」终止块路径块出口析构被
+//   genBlock 已终止分支跳过（ir_stmt.cpp 出口守卫：终止块释放依赖函数级收尾），
+//   容器/类对象/拥有串/字符串元素数组/含串字段聚合全部无人释放=每次调用泄漏
+//   （探针实锤：向量<整32> 局部+追加 每调漏 1 数据缓冲·拥有串字面量每调漏 1
+//   堆串·宿主修前差=3）。v2 无此病（零分叉判据）：v2 lambda 合成函数与普通函数
+//   走同一 生成函数 管线（出口释放自动生效·净差 0）。修后宿主与 v2 同为出口
+//   释放=分叉收敛。声明在 ir_generator_lambda_decl.inc（lambda 族声明片段），
+//   实现落本文件=出口释放族（调用点=ir_lambda.cpp visitLambdaExpr）。
+//   名单面特殊处理：ownedFieldOrder_/ownedParamCopySlots_ 为函数级名单且
+//   genStringFrees 字段段/616 段按名单直发（不查 Alloca 归属本函数）——lambda
+//   嵌在外层函数生成中途，两名单含外层遗留条目：收尾前裁剪到进入基线（外层
+//   条目归外层 finishFunctionEmit 收尾管），收尾后恢复外层条目、本 lambda 新增
+//   条目弹掉不恢复（已由本收尾释放+清槽幂等；若残留回外层名单，外层收尾会在
+//   外层函数里对 lambda 函数的槽误发释放=坏 IR）。其余收集面（字符串/类/数组/
+//   聚合零初始化）扫本函数 Alloca 天然按函数隔离，零处理。
+void IRGenerator::emitLambdaExitRaii(std::size_t outerFieldBase,
+                                     std::size_t outerParamCopyBase) {
+    std::vector<std::string> outerFields(
+        ownedFieldOrder_.begin(), ownedFieldOrder_.begin() + outerFieldBase);
+    std::vector<std::string> outerParamCopies(
+        ownedParamCopySlots_.begin(),
+        ownedParamCopySlots_.begin() + outerParamCopyBase);
+    ownedFieldOrder_.erase(ownedFieldOrder_.begin(),
+                           ownedFieldOrder_.begin() + outerFieldBase);
+    ownedParamCopySlots_.erase(ownedParamCopySlots_.begin(),
+                               ownedParamCopySlots_.begin() + outerParamCopyBase);
+    genClassDestructorCalls();
+    genStringFrees();
+    ownedFieldOrder_ = std::move(outerFields);
+    ownedParamCopySlots_ = std::move(outerParamCopies);
+}
+
 } // namespace cn_compiler
