@@ -538,6 +538,10 @@ def 自测() -> int:
 
 
 def main() -> int:
+    try:
+        sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    except AttributeError:
+        pass
     解析 = argparse.ArgumentParser(description="程序级缓存键输入面机械对账门禁（1376）")
     解析.add_argument("--selftest", action="store_true", help="正反两态自测（fixture 副本）")
     解析.add_argument("--根", default=str(仓库根), help="审计根目录（默认仓库根）")
