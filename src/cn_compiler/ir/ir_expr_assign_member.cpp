@@ -14,6 +14,7 @@
 #include <cstdlib>
 
 #include "cn_compiler/ir/ir.hpp"
+#include "cn_compiler/model/semantic_helpers.hpp"
 #include "cn_compiler/model/semantic_view.hpp"
 #include "cn_compiler/model/type_system.hpp"
 
@@ -251,6 +252,32 @@ bool IRGenerator::emitClassFieldHandleCopy(const ir::IRValue& fieldAddr,
         srcRef = emitResult(ir::Opcode::AddrOf,
                             {ir::IRValue::var(srcUnique, "i64")}, "ptr",
                             srcUnique, loc);
+    }
+    // #1970 内联头（用户 2026-11-04 批准）：容器实例字段=头内联域——
+    //   旧值释放=Call ~容器（this=内联头地址·析构体判空释放数组·幂等），
+    //   禁 LoadPtr 把头首字段当对象指针 DeleteObject（1601 同型错）；
+    //   深拷=Call 容器拷贝构造（this=内联头地址·src=源句柄槽地址——容器&
+    //   形参 ABI 约定=指向句柄槽的指针·被调先解一层，局部容器源=句柄槽
+    //   直传不变）；不再 NewObject/StorePtr（头不落堆）。闭集穷举：六容器
+    //   恒有析构/拷贝构造（miss 显形中止）。
+    if (isContainerInstanceClass(canon)) {
+        const cn::Optional<std::string> dtorK =
+            classDestructorSymbolKey(canon);
+        if (!dtorK.has_value()) {
+            diagnostics_.report(DiagnosticLevel::Error, loc,
+                "内部错误: 容器实例 '" + canon +
+                    "' 未登记析构器（#1970 闭集穷举 miss）");
+            return false;
+        }
+        const std::string skipLabel = beginSelfAssignGuard(fieldAddr, srcRef, loc);
+        emit(ir::Opcode::Call, {fieldAddr}, ir::IRValue(),
+             dtorK.value(), "void", loc);
+        emit(ir::Opcode::Call, {fieldAddr, srcRef}, ir::IRValue(),
+             methodSymbolKey(copyCtor->ownerClass.empty() ? canon : copyCtor->ownerClass,
+                             copyCtor->sigKey),
+             "void", loc);
+        endSelfAssignGuard(skipLabel);
+        return true;
     }
     const std::string skipLabel = beginSelfAssignGuard(fieldAddr, srcRef, loc);
     // 1360 结果化：无值=无析构（has_value 分流）
@@ -522,6 +549,43 @@ bool IRGenerator::memberClassCallProductAssign(Expr* valueExpr,
                                                const std::string& fieldCanon,
                                                const SourceLocation& loc) {
     if (!canMemberClassCallProductAssign(valueExpr, fieldCanon)) return false;
+    // #1970 内联头分支：容器实例字段=头内联域——「返回容器的调用」产物=临时
+    //   堆壳：壳内容拷进内联位（Call 拷贝构造 src=壳指针套临时槽·维持容器&
+    //   ABI 约定）+ 旧值释放（Call ~容器 this=内联头地址·判空幂等）+ 壳本体
+    //   释放；不再 LoadPtr/DeleteObject 头首字段（1601 同型错）与 StorePtr
+    //   直存壳指针（头首字段污染）。普通类字段维持原句柄语义（下方）。
+    if (isContainerInstanceClass(fieldCanon)) {
+        const cn::Optional<std::string> dtorKeyP =
+            classDestructorSymbolKey(fieldCanon);
+        const cn::Optional<std::string> copyKeyP =
+            classCopyCtorSymbolKey(fieldCanon);
+        if (!dtorKeyP.has_value() || !copyKeyP.has_value()) {
+            diagnostics_.report(DiagnosticLevel::Error, loc,
+                "内部错误: 容器实例 '" + fieldCanon +
+                    "' 未登记析构/拷贝构造（#1970 闭集穷举 miss）");
+            lastExpr_ = fieldAddr;
+            return true;
+        }
+        ir::IRValue newObj = genExpr(valueExpr);
+        emit(ir::Opcode::Call, {fieldAddr}, ir::IRValue(),
+             dtorKeyP.value(), "void", loc);
+        const std::string tmpSlotP =
+            "__ctmp" + std::to_string(varCounter_++);
+        emit(ir::Opcode::Alloca, std::vector<ir::IRValue>{},
+             ir::IRValue::reg(regCounter_++, "ptr"), tmpSlotP, "ptr", loc);
+        registerVarSlots(tmpSlotP, fieldCanon);
+        emit(ir::Opcode::Store, std::vector<ir::IRValue>{newObj},
+             ir::IRValue(), tmpSlotP, "ptr", loc);
+        ir::IRValue tmpAddrP = emitResult(
+            ir::Opcode::AddrOf, {ir::IRValue::var(tmpSlotP, "i64")}, "ptr",
+            tmpSlotP, loc);
+        emit(ir::Opcode::Call, {fieldAddr, tmpAddrP}, ir::IRValue(),
+             copyKeyP.value(), "void", loc);
+        emit(ir::Opcode::DeleteObject, {newObj}, ir::IRValue(), fieldCanon,
+             "void", loc);
+        lastExpr_ = fieldAddr;
+        return true;
+    }
     // 源求值（产物=新堆对象句柄——所有权随返回值移交调用方）
     ir::IRValue newObj = genExpr(valueExpr);
     // 旧字段对象释放（空句柄空安全）+ 新句柄入槽

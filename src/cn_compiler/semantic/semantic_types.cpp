@@ -516,6 +516,39 @@ bool SemanticAnalyzer::enumValueOf(const std::string& enumName, const std::strin
     }
     return false;
 }
+// #2021：泛型原文形态（含 '<'）是否为「上游已诊断拒绝实例」。判定闭集：
+//   ①'<' 前段是已注册泛型类名（generics_ 命中——未注册泛型名的 miss 另有
+//    「未声明」诊断链·不属本豁免）；②按实例化同名规则（类名$实参1$实参2·
+//    实参 canonical+顶层逗号切分 findTopLevelComma）重算实例名；
+//   ③rejectedInstantiations_ 命中=instantiateGeneric 报错拒绝路径已登记
+//    （诊断已在拒绝点报·用户错误）。三条件缺一即非豁免（未知类型 miss 面不变）。
+bool SemanticAnalyzer::isRejectedGenericInstance(const std::string& type) const {
+    const std::size_t lt = type.find('<');
+    if (lt == std::string::npos) return false;
+    const std::size_t gt = type.rfind('>');
+    if (gt == std::string::npos || gt < lt) return false;
+    const std::string head = type.substr(0, lt);
+    // 静默豁免闭集穷举: 谓词判定（#1360 谓词除外条款·登记表 1970 条）
+    if (generics_.find(head) == generics_.end()) return false;
+    const std::string inner = type.substr(lt + 1, gt - lt - 1);
+    std::string instName = head;
+    std::size_t pos = 0;
+    for (;;) {
+        const std::size_t comma = findTopLevelComma(inner, pos);
+        const std::string part = (comma == std::string::npos)
+                                     ? inner.substr(pos)
+                                     : inner.substr(pos, comma - pos);
+        const std::size_t b = part.find_first_not_of(" \t");
+        const std::size_t e = part.find_last_not_of(" \t");
+        const std::string trimmed =
+            (b != std::string::npos && e != std::string::npos)
+                ? part.substr(b, e - b + 1) : part;
+        instName += "$" + types::canonical(trimmed);
+        if (comma == std::string::npos) break;
+        pos = comma + 1;
+    }
+    return rejectedInstantiations_.count(instName) > 0;
+}
 // 1360 结果化批3B：无值=尺寸未登记 miss（原终态 return 8 哨兵退役）。
 //   miss 语义裁决（#648 先例对齐）：函数内保留报内部错误诊断（显形面不丢）+
 //   返回无值——消费点 value_or(8) 显形回落保持「错误已报编译必失败不产物，
@@ -610,6 +643,11 @@ cn::Optional<int> SemanticAnalyzer::typeSizeOf(const std::string& typeRaw) const
             if (p == type) return 8;
         }
     }
+    // #2021 上游已诊断豁免（先于终态显形）：泛型原文形态+实例化已被拒绝登记
+    //   = 用户错误恢复查询（拒绝诊断已在 instantiateGeneric 报）——不再以
+    //   「编译器内部错误」误指缺陷；静默豁免<上游已诊断>: 主诊断已报编译必失败
+    //   不产物，句柄 8 只压布局期级联噪音（与成功实例字段的句柄口径一致）。
+    if (isRejectedGenericInstance(type)) return 8;
     // 1360 结果化批3B（#648 终态显形收口）：到达此终态=归一/降级遗漏（编译器
     //   内部缺陷）或上游已报错的恢复查询——报内部错误后返回无值（消费点
     //   value_or(8) 显形回落，原「报错后按 8 继续」语义保持）。
@@ -670,6 +708,9 @@ cn::Optional<int> SemanticAnalyzer::typeAlignOf(const std::string& typeRaw) cons
             if (p == type) return 1;
         }
     }
+    // #2021 上游已诊断豁免（同 typeSizeOf 终态前分支·对齐/尺寸双面同豁免）：
+    //   静默豁免<上游已诊断>: 拒绝诊断已报编译必失败，对齐 8 只压级联噪音。
+    if (isRejectedGenericInstance(type)) return 8;
     // 1360 结果化批3B：未知类型终态——报内部错误后无值（消费点 value_or(1)
     //   显形回落保持原控制流；禁静默按 1 继续）
     diagnostics_.report(
@@ -895,7 +936,13 @@ void SemanticAnalyzer::computeLayout(StructDecl* decl) {
         //   与 793「映射字段偏移双表二义」域耦合·91/94 两例回归）；793 随 798/
         //   799 销项后，本轮推广为全部结构体/联合体的类字段统一句柄口径
         //   （布局与运行时内容一致——合成体行为不变，是其超集）。
-        const bool synthHandleField = isClassType(canonicalType(field.type));
+        // #1970 内联头（用户 2026-11-04 批准·与 computeClassLayout 同构）：容器
+        //   实例字段脱离句柄口径——头内联结构体/联合体布局域（闭集查表
+        //   containerInstanceHeaderSize·未知容器名无值=不内联维持句柄）；普通
+        //   类字段维持句柄 8/8（058-ⅡA 全局口径不变）。
+        const std::string fieldCanonContainer = canonicalType(field.type);
+        const bool synthHandleField = isClassType(fieldCanonContainer) &&
+            !containerInstanceHeaderSize(fieldCanonContainer).has_value();
         const int handleAlign = synthHandleField ? 8 : fieldAlign;
         const int handleSize = synthHandleField ? 8 : fieldSize;
         if (handleAlign > maxAlign) maxAlign = handleAlign;

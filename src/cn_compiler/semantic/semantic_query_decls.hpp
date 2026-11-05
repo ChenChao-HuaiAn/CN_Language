@@ -39,6 +39,10 @@
     // 计算类型对齐（字节）（1360 结果化批3B：无值=对齐未登记 miss——原终态
     //   return 1 哨兵退役·#1238 布局兜底显形）
     cn::Optional<int> typeAlignOf(const std::string& type) const;
+    // #2021：泛型原文形态（含 '<'）是否为「上游已诊断拒绝实例」——实例化链
+    //   报错拒绝路径登记 rejectedInstantiations_，布局查询终态据此豁免（不误报
+    //   「编译器内部错误」·错误恢复回落句柄 8）
+    bool isRejectedGenericInstance(const std::string& type) const;
     // 查找结构体字段偏移（-1表示无此字段）
     cn::Optional<int> fieldOffsetOf(const StructDecl* decl, const std::string& fieldName) const override ;
     // 查找枚举成员值（未找到返回false）

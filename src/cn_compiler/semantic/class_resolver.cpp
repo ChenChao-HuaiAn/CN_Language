@@ -337,7 +337,14 @@ cn::Optional<int> SemanticAnalyzer::classFieldOffsetFrom(
         for (const auto& fname : ci->fieldOrder) {
             auto f = ci->fields.find(fname);
             if (f == ci->fields.end() || f->second.isStatic) continue;  // 静态不入实例
-            const bool handleField = isClassType(types::canonical(f->second.type));
+            // #1970 内联头（与 computeClassLayout 同批同构·双表归一纪律）：
+            //   容器实例字段脱离句柄 8/8——按头实宽累加（闭集查表·未知容器名
+            //   无值=维持句柄），普通类字段句柄 8/8 不变。
+            const std::string fieldCanonContainer = types::canonical(f->second.type);
+            const bool isContainerField = isClassType(fieldCanonContainer) &&
+                containerInstanceHeaderSize(fieldCanonContainer).has_value();
+            const bool handleField =
+                isClassType(fieldCanonContainer) && !isContainerField;
             // 1360 结果化批3B：miss value_or 显形回落（8/8=原终态语义）
             const int fieldAlign = handleField ? 8 : typeAlignOf(f->second.type).value_or(8);
             const int fieldSize = handleField ? 8 : typeSizeOf(f->second.type).value_or(8);
@@ -880,9 +887,17 @@ void SemanticAnalyzer::computeClassLayout(ClassInfo& info) {
             //   8/8——字段槽运行时装 NewObject 堆对象指针（k 探针 IR 实锤类字段
             //   访问=指针加载）。实宽布局下窄于 8B 的类字段（如 4B 盒子）被相邻
             //   字段覆写句柄高 4 字节（探针 外层{内层 内;整32 y}：y@4 覆写 内@0
-            //   高半——IR/asm 双实锤 rc=139）；宽于 8B 的容器字段=16B 空洞浪费。
-            //   布局与运行时内容一致（058 挂账①全局口径·类布局侧）。
-            const bool handleField = isClassType(types::canonical(f->second.type));
+            //   高半——IR/asm 双实锤 rc=139）。
+            //   #1970 内联头（用户 2026-11-04 批准）：容器实例字段脱离句柄口径
+            //   ——头（向量/栈 24B·映射/字符串映射 56B·集合 48B·链表/队列 64B）
+            //   直接嵌对象内联位（Rust Vec<T>/C++ vector 成员形态），对齐 8
+            //   （头成员恒 8B 槽）；普通类字段维持句柄 8/8。闭集查表
+            //   containerInstanceHeaderSize 未知容器名=无值显形（禁默认值）。
+            const std::string fieldCanonContainer = types::canonical(f->second.type);
+            const bool isContainerField = isClassType(fieldCanonContainer) &&
+                containerInstanceHeaderSize(fieldCanonContainer).has_value();
+            const bool handleField =
+                isClassType(fieldCanonContainer) && !isContainerField;
             // 1360 结果化批3B：miss value_or 显形回落（8/8=原终态语义）
             const int fieldAlign = handleField ? 8 : typeAlignOf(f->second.type).value_or(8);
             const int fieldSize = handleField ? 8 : typeSizeOf(f->second.type).value_or(8);

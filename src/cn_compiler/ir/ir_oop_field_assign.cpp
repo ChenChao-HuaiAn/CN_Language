@@ -4,6 +4,7 @@
 #include <string>
 
 #include "cn_compiler/ir/ir.hpp"
+#include "cn_compiler/model/semantic_helpers.hpp"
 #include "cn_compiler/model/semantic_view.hpp"
 #include "cn_compiler/model/type_system.hpp"
 
@@ -100,15 +101,98 @@ bool IRGenerator::handleClassFieldAssign(IdentifierExpr* ident, Expr* value,
     //   四族收窄（142-a 教训：用户类泛化未明交互，不扩）+ 构造内初始化豁免。
     if (semantic_ != nullptr) {
         const std::string fieldCanon = types::canonical(fieldType);
-        const std::size_t dl = fieldCanon.find('$');
-        const std::string head =
-            dl == std::string::npos ? fieldCanon : fieldCanon.substr(0, dl);
+        // #1970 内联头（用户 2026-11-04 批准·原手写四前缀闭集统一中立层判定）：
+        //   stdlib 六容器（向量/栈/映射/字符串映射/集合/链表/队列）闭集穷举。
         const bool isOwnedContainer =
-            (head == "向量" || head == "栈" || head == "链表" || head == "队列") &&
+            isContainerInstanceClass(fieldCanon) &&
             semantic_->isClassType(fieldCanon) &&
             classDestructorSymbolKey(fieldCanon).has_value();
         if (isOwnedContainer) {
             ir::IRValue fieldAddr = genInstanceFieldAddr(ident->name, loc);
+            // #1970 内联头分支：字段=头内联域——
+            //   · preFree（构造外）：Call ~容器 this=内联头地址（判空释放数组
+            //     幂等），禁 LoadPtr 把头首字段当对象指针 DeleteObject（1601
+            //     同型错·拷贝构造体内跳过=145-a 垃圾句柄防护不变）；
+            //   · 深拷（形态 b 值来源）：Call 容器拷贝构造 this=内联头地址，
+            //     srcRef=源左值地址（内联头地址/局部句柄槽地址）套临时槽维持
+            //     「容器&=指向句柄槽的指针·被调先解一层」ABI 约定；不再
+            //     NewObject/StorePtr。闭集穷举：六容器恒有拷贝构造（miss 显形）。
+            if (isContainerInstanceClass(fieldCanon)) {
+                const cn::Optional<std::string> copyKeyC =
+                    classCopyCtorSymbolKey(fieldCanon);
+                if (!copyKeyC.has_value()) {
+                    diagnostics_.report(DiagnosticLevel::Error, loc,
+                        "内部错误: 容器实例 '" + fieldCanon +
+                            "' 未登记拷贝构造（#1970 闭集穷举 miss）");
+                    lastExpr_ = fieldAddr;
+                    return true;
+                }
+                if (!currentMethodIsCtor_ || !currentMethodIsCopyCtor_) {
+                    const cn::Optional<std::string> dtorKeyC =
+                        classDestructorSymbolKey(fieldCanon);
+                    if (!dtorKeyC.has_value()) {
+                        diagnostics_.report(DiagnosticLevel::Error, loc,
+                            "内部错误: 容器实例 '" + fieldCanon +
+                                "' 未登记析构器（#1970 闭集穷举 miss）");
+                        lastExpr_ = fieldAddr;
+                        return true;
+                    }
+                    emit(ir::Opcode::Call, {fieldAddr}, ir::IRValue(),
+                         dtorKeyC.value(), "void", loc);
+                }
+                const bool srcIsCtorC = value->getType() == NodeType::CallExpr;
+                if (srcIsCtorC) {
+                    // 构造调用产物=临时堆壳（NewObject）——内联头语义=壳内容
+                    //   拷进内联位（Call 拷贝构造 src=壳指针套临时槽）+ 壳本体
+                    //   释放（原 StorePtr 直存壳指针=头首字段污染·壳泄漏）。
+                    ir::IRValue srcPtr = genExpr(value);
+                    const std::string tmpSlotD =
+                        "__ctmp" + std::to_string(varCounter_++);
+                    emit(ir::Opcode::Alloca, std::vector<ir::IRValue>{},
+                         ir::IRValue::reg(regCounter_++, "ptr"), tmpSlotD,
+                         "ptr", loc);
+                    registerVarSlots(tmpSlotD, fieldCanon);
+                    emit(ir::Opcode::Store, std::vector<ir::IRValue>{srcPtr},
+                         ir::IRValue(), tmpSlotD, "ptr", loc);
+                    ir::IRValue tmpAddrD = emitResult(
+                        ir::Opcode::AddrOf,
+                        {ir::IRValue::var(tmpSlotD, "i64")}, "ptr", tmpSlotD,
+                        loc);
+                    emit(ir::Opcode::Call, {fieldAddr, tmpAddrD},
+                         ir::IRValue(), copyKeyC.value(), "void", loc);
+                    emit(ir::Opcode::DeleteObject, {srcPtr}, ir::IRValue(),
+                         fieldCanon, "void", loc);
+                    lastExpr_ = fieldAddr;
+                    return true;
+                }
+                // 非调用形态（构造产物分支已上方分流早退）——左值源深拷正常路径
+                // 静默豁免上游已诊断: 源左值地址套临时槽维持容器& ABI 约定（登记表 1970 条）
+                const ir::IRValue srcRefC = lvalueAddress(value);
+                // 静默豁免上游已诊断: 地址无效=非左值来源借用接管直存·有效=临时槽深拷（登记表 1970 条）
+                if (srcRefC.id < 0) {
+                    ir::IRValue srcPtr = genExpr(value);
+                    emit(ir::Opcode::StorePtr, {fieldAddr, srcPtr},
+                         ir::IRValue(), "", "ptr", loc);
+                    lastExpr_ = fieldAddr;
+                    return true;
+                }
+                const std::string tmpSlotC =
+                    "__ctmp" + std::to_string(varCounter_++);
+                emit(ir::Opcode::Alloca, std::vector<ir::IRValue>{},
+                     ir::IRValue::reg(regCounter_++, "ptr"), tmpSlotC,
+                     "ptr", loc);
+                registerVarSlots(tmpSlotC, fieldCanon);
+                emit(ir::Opcode::Store, std::vector<ir::IRValue>{srcRefC},
+                     ir::IRValue(), tmpSlotC, "ptr", loc);
+                ir::IRValue tmpAddrC = emitResult(
+                    ir::Opcode::AddrOf,
+                    {ir::IRValue::var(tmpSlotC, "i64")}, "ptr",
+                    tmpSlotC, loc);
+                emit(ir::Opcode::Call, {fieldAddr, tmpAddrC},
+                     ir::IRValue(), copyKeyC.value(), "void", loc);
+                lastExpr_ = fieldAddr;
+                return true;
+            }
             // 543 预释放判据（2026-10-14·459 批甲临时合流计数实证；初版撤尽
             //   145-a 跳过致 1035 容器追加崩 0xC0000374·本处精确化）：
             //   preFree ⇔ 非构造体内 || 非拷贝构造体内——

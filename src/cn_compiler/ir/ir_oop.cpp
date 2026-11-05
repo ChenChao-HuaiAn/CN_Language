@@ -20,6 +20,7 @@
 #include <vector>
 
 #include "cn_compiler/ir/ir.hpp"
+#include "cn_compiler/model/semantic_helpers.hpp"
 #include "cn_compiler/model/semantic_view.hpp"
 #include "cn_compiler/model/type_system.hpp"
 
@@ -616,6 +617,40 @@ void IRGenerator::emitOwnedFieldsCopy(const ir::IRValue& thisPtr,
             emit(ir::Opcode::StorePtr, {dstF, copy}, ir::IRValue(), "", "ptr",
                  loc);
         } else if (semantic_->isClassType(canon)) {
+            // #1970 内联头：容器实例字段=头内联域——Call 容器拷贝构造
+            //   （this=目标内联头地址·引用实参=源内联头地址）就地深拷，
+            //   不再 NewObject/StorePtr（现行容器拷贝本体逻辑复用）。
+            if (isContainerInstanceClass(canon)) {
+                // 闭集穷举：六容器全数自带拷贝构造——无值=内部缺陷显形中止
+                //  （禁退浅拷 LoadPtr/StorePtr：内联头首字段被当指针=1601 同型错）
+                const cn::Optional<std::string> ckeyC =
+                    classCopyCtorSymbolKey(canon);
+                if (!ckeyC.has_value()) {
+                    diagnostics_.report(DiagnosticLevel::Error, loc,
+                                        "内部错误: 容器实例 '" + canon +
+                                            "' 未登记拷贝构造（#1970 闭集穷举 miss）");
+                    continue;  // else 新规: miss 显形中止·下方=命中正常发射区间
+                }
+                // 源侧 ABI 转接（容器& 形参约定=「指向句柄槽的指针·被调先解
+                //   一层」）：srcF=源内联头地址=**容器本体地址**（非槽语义）——
+                //   直传被调多解一层（把头首字段 数据指针当容器对象→拷贝构造
+                //   读垃圾/越界崩；E2E 1647 素货·素形参源 C0000005 实锚）→
+                //   套临时槽（槽内=头地址·传槽地址）恢复 ABI 约定。与
+                //   emitStructWholeAssign / handleClassFieldAssign 同批同构。
+                const std::string tmpSlotC =
+                    "__ctmp" + std::to_string(varCounter_++);
+                emit(ir::Opcode::Alloca, std::vector<ir::IRValue>{},
+                     ir::IRValue::reg(regCounter_++, "ptr"), tmpSlotC, "ptr", loc);
+                registerVarSlots(tmpSlotC, canon);
+                emit(ir::Opcode::Store, std::vector<ir::IRValue>{srcF},
+                     ir::IRValue(), tmpSlotC, "ptr", loc);
+                ir::IRValue tmpAddrC = emitResult(
+                    ir::Opcode::AddrOf,
+                    {ir::IRValue::var(tmpSlotC, "i64")}, "ptr", tmpSlotC, loc);
+                emit(ir::Opcode::Call, {dstF, tmpAddrC}, ir::IRValue(),
+                     ckeyC.value(), "void", loc);
+                continue;
+            }
             // 1360 结果化：无值=无拷贝构造（has_value 分流）
             const cn::Optional<std::string> copyKeyOpt = classCopyCtorSymbolKey(canon);
             if (copyKeyOpt.has_value()) {
@@ -721,6 +756,21 @@ void IRGenerator::cascadeConstructFields(const std::string& className,
         if (offset < 0) continue;
         ir::IRValue addr = emitResult(ir::Opcode::FieldAddr, {obj}, "ptr",
                                       std::to_string(offset), loc);
+        // #1970 内联头（用户 2026-11-04 批准）：容器实例字段=头内联域——
+        //   this=内联头地址（FieldAddr），Call 容器无参构造就地初始化
+        //   （现行容器本体分配逻辑复用·向量() 零堆分配头零初始化；映射()
+        //   8 桶起步=容器既有语义）；不再 NewObject/StorePtr（头不落堆）。
+        //   NewObject 对象本体已零清 → 构造前头=全零（ptr=null）合法空态，
+        //   析构级联对零头空安全（~向量 数据==无 跳过·1601 翻车位防线）。
+        if (isContainerInstanceClass(fcanon)) {
+            if (defCtor != nullptr) {
+                std::vector<ir::IRValue> args;
+                args.push_back(addr);  // this=内联头地址
+                emit(ir::Opcode::Call, args, ir::IRValue(),
+                     methodSymbolKey(fcanon, defCtor->sigKey), "void", loc);
+            }
+            continue;
+        }
         // NewObject：extra = "类名|大小字节"（与 genVarDecl H7 链一致）
         const std::string extra =
             fcanon + "|" + std::to_string(fci->totalSize);

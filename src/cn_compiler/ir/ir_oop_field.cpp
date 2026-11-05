@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "cn_compiler/ir/ir.hpp"
+#include "cn_compiler/model/semantic_helpers.hpp"
 #include "cn_compiler/model/semantic_view.hpp"
 #include "cn_compiler/model/type_system.hpp"
 
@@ -185,6 +186,46 @@ void IRGenerator::injectFieldCascadeDestroy(const ClassMember* member) {
                 continue;
             }
         }
+        // #1970 内联头析构级联（用户 2026-11-04 批准·**1601 历史翻车位**）：
+        //   容器实例字段=头内联域——释放链统一**取内联头地址作 this**
+        //   （FieldAddr 结果直发·禁 LoadPtr 把头首字段 data 当头指针——d60344a75
+        //   WIP 翻车根因即此处误读，671 段错误实证）；先 Call ~容器（析构体
+        //   内 len/cap 判空释放数组缓冲区），头随对象本体释放（不再
+        //   DeleteObject——free 内联地址=堆损坏）。零头空安全：构造前
+        //   NewObject 零清+~向量 数据==无 跳过（同 ~映射 四数组判空）。
+        if (!ftype.empty() && semantic_->isClassType(fcanon) &&
+            isContainerInstanceClass(fcanon)) {
+            // 闭集穷举：容器实例必带 stdlib 析构器（~向量/~映射 六类全数）——
+            //   无值=内部缺陷显形中止（禁空符号 Call 静默发射）
+            const cn::Optional<std::string> dtorKey =
+                classDestructorSymbolKey(fcanon);
+            if (!dtorKey.has_value()) {
+                diagnostics_.report(DiagnosticLevel::Error,
+                                    member->body->location,
+                                    "内部错误: 容器实例 '" + fcanon +
+                                        "' 未登记析构器（#1970 闭集穷举 miss）");
+                continue;
+            }
+            // 静默豁免业务值: 偏移哨兵 -1+下方 miss 显形中止（882 处置②显式哨兵+消费点强制检查·#1970 布局表·哨兵显形）
+            const int offC = semantic_->classFieldOffset(currentClass_, *it).value_or(-1);
+            // 静默豁免闭集穷举: 偏移 miss 显形中止·有值=正常发射区间（else 新规早退形态·登记表 1970 条）
+            if (offC < 0) {
+                diagnostics_.report(DiagnosticLevel::Error,
+                                    member->body->location,
+                                    "内部错误: 容器字段 '" + *it +
+                                        "' 偏移未登记（#1970 布局表 miss）");
+                continue;  // else 新规: miss 显形中止·下方=有值正常发射区间
+            }
+            ir::IRValue thisC = emitResult(
+                ir::Opcode::Load, {ir::IRValue::var(thisUnique, "ptr")},
+                "ptr", thisUnique, member->body->location);
+            ir::IRValue addrC = emitResult(
+                ir::Opcode::FieldAddr, {thisC}, "ptr",
+                std::to_string(offC), member->body->location);
+            emit(ir::Opcode::Call, {addrC}, ir::IRValue(),
+                 dtorKey.value(), "void", member->body->location);
+            continue;
+        }
         if (ftype.empty() || !semantic_->isClassType(fcanon)) continue;
         const ClassInfo* fci = semantic_->findClass(fcanon).value_or(nullptr);
         bool hasDtor = false;
@@ -265,6 +306,24 @@ void IRGenerator::emitNoDtorFieldCascade(const ir::IRValue& objPtr,
         // 字符串字段：free+清槽（幂等——块出口/函数级兜底多路径共享槽）
         if (fcanon == "字符串") {
             emitFieldStringFreeAt(addr, loc);
+            continue;
+        }
+        // #1970 内联头（1601 翻车位同防线）：无析构类中的容器字段=头内联域——
+        //   Call ~容器 this=内联头地址（数组缓冲区释放·原「容器字段不注入」
+        //   泄漏面随内联收口：头不再随 free 释放（缓冲区漏=真泄漏显形面）；禁 LoadPtr
+        //   把头首字段当头指针。容器闭集恒有析构器（miss 显形同主级联）。
+        if (!ftype.empty() && semantic_->isClassType(fcanon) &&
+            isContainerInstanceClass(fcanon)) {
+            const cn::Optional<std::string> dtorKeyC =
+                classDestructorSymbolKey(fcanon);
+            if (!dtorKeyC.has_value()) {
+                diagnostics_.report(DiagnosticLevel::Error, loc,
+                                    "内部错误: 容器实例 '" + fcanon +
+                                        "' 未登记析构器（#1970 闭集穷举 miss）");
+                continue;
+            }
+            emit(ir::Opcode::Call, {addr}, ir::IRValue(),
+                 dtorKeyC.value(), "void", loc);
             continue;
         }
         // 盒载荷字段（可选/结果·T=字符串）：收集器驱动条件释放（571 单点）
@@ -434,8 +493,16 @@ bool IRGenerator::handleClassFieldRead(IdentifierExpr* node) {
     //   字段存对象指针，方法调用（字段.方法()）与值读取（类变量赋值）需要指针
     //   本身；此前返回字段地址导致 向量 类字段的 追加/元素 以字段地址为 this，
     //   实例字段读偏移全部错位（追加 分配失败/元素 读垃圾，52_library 边界复现）
+    //   ※该 A-4 判例对「堆头槽」形态成立；#1970 内联头（用户 2026-11-04 批准）
+    //   后容器实例字段=头内联域——**返回内联头地址**（方法 this=头地址·1601
+    //   修向「对齐 975 字段访问形态」宿主侧统一挂点），堆头句柄模型不复存在。
     if (semantic_ != nullptr &&
         semantic_->isClassType(types::canonical(fieldType))) {
+        const std::string fcanonR = types::canonical(fieldType);
+        if (isContainerInstanceClass(fcanonR)) {
+            lastExpr_ = addr;  // 内联头地址（this/拷贝源同址）
+            return true;
+        }
         lastExpr_ = emitResult(ir::Opcode::LoadPtr, {addr}, "ptr", "",
                                node->location);
         return true;
@@ -573,7 +640,13 @@ bool IRGenerator::handleClassMemberExpr(MemberExpr* node) {
     //   原返回字段地址致 this=槽地址（p2 空指针崩溃、p6 其他.表.大小() 静默 0
     //   -> 深拷贝失效）。下标访问（其他.数据[索引]）走 lvalueAddress/visitIndexExpr
     //   的成员路径，不受影响。
+    //   #1970 内联头例外（同 handleClassFieldRead）：容器实例字段=头内联域——
+    //   返回内联头地址（链式 字段.方法() this=头地址·与堆头指针模型语义等位）。
     if (semantic_->isClassType(types::canonical(fieldType))) {
+        if (isContainerInstanceClass(types::canonical(fieldType))) {
+            lastExpr_ = addr;  // 内联头地址
+            return true;
+        }
         lastExpr_ = emitResult(ir::Opcode::LoadPtr, {addr}, "ptr", "",
                                node->location);
         return true;

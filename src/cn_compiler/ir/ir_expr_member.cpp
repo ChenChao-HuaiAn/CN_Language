@@ -9,6 +9,7 @@
 #include <cstdlib>
 
 #include "cn_compiler/ir/ir.hpp"
+#include "cn_compiler/model/semantic_helpers.hpp"
 #include "cn_compiler/model/semantic_view.hpp"
 #include "cn_compiler/model/type_system.hpp"
 
@@ -264,6 +265,46 @@ bool IRGenerator::emitStructWholeAssign(const ir::IRValue& dstAddr,
                (valueNode->getType() == NodeType::MemberExpr ||
                 valueNode->getType() == NodeType::IndexExpr ||
                 valueNode->getType() == NodeType::TernaryExpr)) {
+        // #1970 内联头（用户 2026-11-04 批准）：容器实例目标=头内联域——
+        //   旧值释放=Call ~容器（this=内联头地址·判空释放数组·幂等），禁
+        //   LoadPtr 把头首字段当对象指针 DeleteObject（1601 同型错）；深拷=
+        //   Call 容器拷贝构造（this=内联头地址）。srcAddr=源内联头地址（读侧
+        //   #1970 统一返回内联头地址）——容器& 形参 ABI 约定=「指向句柄槽的
+        //   指针·被调先解一层」，头地址直传会被解一层读错位：套临时槽
+        //   （StorePtr tmp=头地址→src=tmp）维持 ABI 约定（局部容器句柄槽源
+        //   走上方 branch1 直传槽地址·不受影响）。闭集穷举：六容器恒有析构/
+        //   拷贝构造（miss 显形中止）。
+        if (isContainerInstanceClass(dstElemCanon)) {
+            const cn::Optional<std::string> dtorKeyC =
+                classDestructorSymbolKey(dstElemCanon);
+            if (!dtorKeyC.has_value()) {
+                diagnostics_.report(DiagnosticLevel::Error, loc,
+                    "内部错误: 容器实例 '" + dstElemCanon +
+                        "' 未登记析构器（#1970 闭集穷举 miss）");
+                return true;
+            }
+            const std::string skipLabelC =
+                beginSelfAssignGuard(dstAddr, srcAddr, loc);
+            emit(ir::Opcode::Call, {dstAddr}, ir::IRValue(),
+                 dtorKeyC.value(), "void", loc);
+            const std::string tmpSlot =
+                "__ctmp" + std::to_string(varCounter_++);
+            emit(ir::Opcode::Alloca, std::vector<ir::IRValue>{},
+                 ir::IRValue::reg(regCounter_++, "ptr"), tmpSlot, "ptr", loc);
+            // 槽登记（genCopyBuiltin LUE 分支同款——未登记槽=codegen 栈槽错位）
+            registerVarSlots(tmpSlot, dstElemCanon);
+            emit(ir::Opcode::Store, std::vector<ir::IRValue>{srcAddr},
+                 ir::IRValue(), tmpSlot, "ptr", loc);
+            ir::IRValue tmpAddr = emitResult(
+                ir::Opcode::AddrOf,
+                {ir::IRValue::var(tmpSlot, "i64")}, "ptr", tmpSlot, loc);
+            const std::string copyOwnerC =
+                copyCtor->ownerClass.empty() ? dstElemCanon : copyCtor->ownerClass;
+            emit(ir::Opcode::Call, {dstAddr, tmpAddr}, ir::IRValue(),
+                 methodSymbolKey(copyOwnerC, copyCtor->sigKey), "void", loc);
+            endSelfAssignGuard(skipLabelC);
+            return true;
+        }
         // 183-a（2026-09-15）：**类目标 · 源=成员/下标/三元 深拷通道**（uE 根治
         //   ·180-a 甲通道同款源分级）——原路径落 emitStructCopyWithFields，而
         //   收集器对类类型顶层不展开（类内部字段归 ~类 级联）→ 纯 CopyStruct

@@ -30,6 +30,7 @@ void IRGenerator::genVarDecl(VarDecl* node) {
     resolveDeclTypesAndAlloc(node, ctx);            // 源码类型/IR类型推断+槽分配
     registerOwnedArrayElems(ctx);                   // 98-a/955 数组元素 RAII 名单
     if (tryGenReferenceBinding(node, ctx)) return;  // P3-18 引用变量绑定
+    if (genContainerPtrFieldAddrDecl(node, ctx)) return;  // #1970 两态归一：容器指针声明初值解包
     registerOopRaii(node, ctx);                     // OOP/串/字段 RAII 名单登记
     if (genArrayInitListDecl(node, ctx)) return;    // 数组初始化列表 { 1, 2, 3 }
     if (genStructInitListDecl(node, ctx)) return;   // 结构体初始化 类型名{...}
@@ -588,6 +589,44 @@ bool IRGenerator::tryGenReferenceBinding(VarDecl* node, const DeclGenCtx& ctx) {
             } else {
                 // 下标/解引用/成员：取左值地址
                 targetAddr = lvalueAddress(node->initializer.get());
+                // #1970 两态归一（2058 修复轮·32a204eff 生成声明中「物化槽仅
+                //   类字段」宿主同构）：绑定源=类内联域容器字段——lvalueAddress
+                //   =头地址（本体语义）；引用槽 byRef 契约=「装着容器本体的槽
+                //   的地址」（体内一层 LoadPtr 得本体·A-1）——头地址直存=本体
+                //   地址被当槽地址再解引用=[头地址]=数据指针当本体（错位）。
+                //   物化槽恢复契约：槽内=头地址·引用槽=物化槽地址（629 __ctmp
+                //   同款）。结构体字段=句柄槽直存（槽地址=「装着句柄的槽」地址
+                //   ·契约原态成立·v2 侧 32a204eff 同口径）不动。
+                if (it == NodeType::MemberExpr && semantic_ != nullptr) {
+                    MemberExpr* memB =
+                        static_cast<MemberExpr*>(node->initializer.get());
+                    const std::string baseTypeB =
+                        // 静默豁免业务值: 接收者结构类型查不到=非类字段初始化形态→空守卫让位（否定回答分派契约·#2058 第8面）
+                        memberObjStructType(memB).value_or("");
+                    const std::string fieldTypeB =
+                        structOrClassFieldType(baseTypeB,
+                    // 静默豁免业务值: 成员字段类型查表 miss=非聚合对象→空守卫让位（否定回答分派契约·#2058 第8面）
+                                               memB->memberName).value_or("");
+                    const std::string fieldCanonB = types::canonical(fieldTypeB);
+                    if (!baseTypeB.empty() && !fieldCanonB.empty() &&
+                        semantic_->isClassType(fieldCanonB) &&
+                        isContainerInstanceClass(fieldCanonB) &&
+                        semantic_->isClassType(types::canonical(baseTypeB))) {
+                        const std::string matSlotB =
+                            "__refmat" + std::to_string(varCounter_++);
+                        emit(ir::Opcode::Alloca, std::vector<ir::IRValue>{},
+                             ir::IRValue::reg(regCounter_++, "ptr"), matSlotB,
+                             "ptr", node->location);
+                        registerVarSlots(matSlotB, fieldCanonB);
+                        // 槽写=IR_存储（值,槽名·629 __ctmp 同款形态）
+                        emit(ir::Opcode::Store, {targetAddr}, ir::IRValue(),
+                             matSlotB, "ptr", node->location);
+                        targetAddr = emitResult(
+                            ir::Opcode::AddrOf,
+                            {ir::IRValue::var(matSlotB, "i64")}, "ptr",
+                            matSlotB, node->location);
+                    }
+                }
             }
             emit(ir::Opcode::Store, {targetAddr}, ir::IRValue(),
                  ctx.unique, "ptr", node->location);
@@ -596,6 +635,54 @@ bool IRGenerator::tryGenReferenceBinding(VarDecl* node, const DeclGenCtx& ctx) {
         }
     }
     return false;
+}
+
+// ---- #1970 两态归一（2058 修复轮）：容器指针声明初值=&结构体容器字段 ----
+//   形态窄判据（四条件全中才接管·零全树效应——通用取地址分支的宽判据曾在
+//   v2 全树编译引发 2112 函数发射漂移+v2p 运行崩·2058 轮实证，故本面收敛到
+//   声明位窄形态）：变量类型=容器实例指针 ∧ 初值=&成员 ∧ 基对象=结构体 ∧
+//   字段=容器实例。两态语义：结构体容器字段=句柄槽——「字段地址=对象地址」
+//   （001 取地址一致化条文）=LoadPtr 解包句柄（壳句柄=堆壳对象地址）；指针
+//   值=本体地址后，指针成员调用 this=Load 指针槽=本体·句柄形态自洽（1777
+//   锁面 e2 形态：槽地址直发=「AddrOf(槽) 二级错位」复发=段错误实证）。
+//   类字段（内联域）与普通字段不接管=落原通道（头地址直发/槽地址原语义）。
+// true = 已处理（genVarDecl 直接返回）。
+bool IRGenerator::genContainerPtrFieldAddrDecl(VarDecl* node, const DeclGenCtx& ctx) {
+    // 静默豁免业务值: 形态预判契约——语义层未挂/无初始化器=非本通道形态，返假交回既有分派链（miss_registry 2058 条）
+    if (semantic_ == nullptr || node->initializer == nullptr) return false;
+    const std::string declCanon = types::canonical(node->typeName);
+    // 静默豁免业务值: 形态预判契约——声明类型非指针=非容器指针声明形态，返假交回既有分派链（miss_registry 2058 条）
+    if (!types::isPointer(declCanon)) return false;
+    const std::string pointee = types::canonical(types::pointeeOf(declCanon));
+    // 静默豁免业务值: 形态预判契约——指针目标非容器实例类=非两态面，返假交回原通道（miss_registry 2058 条）
+    if (!semantic_->isClassType(pointee) || !isContainerInstanceClass(pointee)) {
+        return false;
+    }
+    if (node->initializer->getType() != NodeType::UnaryExpr) return false;
+    const UnaryExpr* un = static_cast<const UnaryExpr*>(node->initializer.get());
+    if (un->op != Operator::AddressOf ||
+        un->operand->getType() != NodeType::MemberExpr) {
+        return false;
+    }
+    MemberExpr* mem = static_cast<MemberExpr*>(un->operand.get());
+    // 静默豁免业务值: 取址接收者结构类型查不到=非结构体成员形态→空守卫拒（否定回答分派契约·#2058 第7面）
+    const std::string baseType = memberObjStructType(mem).value_or("");
+    const std::string fieldType =
+    // 静默豁免业务值: 字段类型查表 miss=非容器字段→空守卫拒（否定回答分派契约·#2058 第7面窄通道判据）
+        structOrClassFieldType(baseType, mem->memberName).value_or("");
+    const std::string fieldCanon = types::canonical(fieldType);
+    if (baseType.empty() ||
+        !semantic_->isStructType(types::canonical(baseType)) ||
+        fieldCanon.empty() || !semantic_->isClassType(fieldCanon) ||
+        !isContainerInstanceClass(fieldCanon)) {
+        return false;
+    }
+    ir::IRValue fieldAddr = lvalueAddress(node->initializer.get());
+    ir::IRValue objPtr = emitResult(ir::Opcode::LoadPtr, {fieldAddr}, "ptr",
+                                    "", node->location);
+    emit(ir::Opcode::Store, {objPtr}, ir::IRValue(), ctx.unique, "ptr",
+         node->location);
+    return true;
 }
 
 // ---- 族⑦：变量源码类型登记（OOP 析构扫描用）+ 块级 RAII 名单 ----

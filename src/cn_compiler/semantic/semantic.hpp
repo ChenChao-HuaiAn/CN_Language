@@ -402,6 +402,10 @@ private:
     // P3-19 数据字段（方法声明见 public 区）
     std::unordered_map<std::string, GenericInfo> generics_;    // 泛型声明表（Task 3.8）
     std::unordered_set<std::string> instantiatedGenerics_;     // 已实例化泛型类名集合（去重）
+    // #2021：上游已诊断拒绝实例名集合（$ 形态·instantiateGeneric 报错拒绝路径
+    //   登记：实参个数错/映射字符串键早拒）——布局期 typeSizeOf/typeAlignOf
+    //   终态据此把错误恢复查询与「编译器内部缺陷」区分（豁免回落·不误报内部错误）
+    std::unordered_set<std::string> rejectedInstantiations_;
     // 待接口收尾的泛型实例名（实例化早于接口注册时入列——接口注册后由
     //   registerClassAndInterfaces 阶段B' 逐个 finalizeInstanceInterfaceRelations
     //   补收尾并消费清空；接口已注册的实例当场收尾不入列）

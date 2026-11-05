@@ -206,7 +206,10 @@ private:
     void backfillCtorLiteralTypeName(VarDecl* node);     // ③构造字面量类型回填
     void resolveDeclTypesAndAlloc(VarDecl* node, DeclGenCtx& ctx);  // ④类型推断+槽分配
     void registerOwnedArrayElems(const DeclGenCtx& ctx);  // ⑤98-a/955 数组元素 RAII 名单
-    bool tryGenReferenceBinding(VarDecl* node, const DeclGenCtx& ctx);  // ⑥P3-18 引用绑定
+    bool tryGenReferenceBinding(VarDecl* node, const DeclGenCtx& ctx);
+    // #1970 两态归一：容器指针声明初值=&结构体容器字段——LoadPtr 解包句柄
+    //   （本体地址入指针槽·形态窄判据四条件）；非本形态=false 落原通道。
+    bool genContainerPtrFieldAddrDecl(VarDecl* node, const DeclGenCtx& ctx);  // ⑥P3-18 引用绑定
     void registerOopRaii(VarDecl* node, const DeclGenCtx& ctx);  // ⑦OOP/串/字段 RAII 登记
     // ⑦-a 980/879（929 拆分·实现迁 ir_stmt_decl_raii.cpp）：调用接收 RAII
     //   豁免三分判据——true=接收槽豁免登记（形参/全局写穿别名·保守面）；

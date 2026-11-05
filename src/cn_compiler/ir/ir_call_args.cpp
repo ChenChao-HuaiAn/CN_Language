@@ -17,6 +17,7 @@
 #include "cn_compiler/ir/ir.hpp"
 #include "cn_compiler/ir/ir_generator.hpp"
 #include "cn_compiler/model/ast_expr.hpp"
+#include "cn_compiler/model/semantic_helpers.hpp"
 #include "cn_compiler/model/semantic_view.hpp"
 #include "cn_compiler/model/type_system.hpp"
 
@@ -62,8 +63,28 @@ ir::IRValue IRGenerator::materializeStructInitArg(StructInitExpr* init,
 bool IRGenerator::isBorrowedAggregateHandleSlot(const Expr* node) const {
     switch (node->getType()) {
         case NodeType::IdentifierExpr:   // 形参/全局/静态/裸字段（633）——槽内=句柄
-        case NodeType::MemberExpr:       // 成员链字段槽——槽内=句柄
             return true;
+        case NodeType::MemberExpr: {
+            // #1970 内联头两态（单一判据源）：**类对象**的容器实例字段=头内联域
+            //   ——成员读位返回头地址=容器本体地址（handleClassFieldRead/
+            //   handleClassMemberExpr 同批），**非**句柄槽 → 拷贝构造/引用形参
+            //   消费位须按「本体地址」物化（槽内=头地址）；**结构体**对象的容器
+            //   字段=句柄槽（槽内=堆对象指针）维持槽语义。原无条件按句柄槽=
+            //   类容器字段源直传头地址被被调多解一层（数据指针当容器对象→
+            //   越界读崩：复制(盒.槽) 宿主 C0000005 探针实锚）。
+            const auto* me = static_cast<const MemberExpr*>(node);
+            if (semantic_ != nullptr && me->object != nullptr) {
+                const std::string baseCanon =
+                    types::canonical(me->object->semanticType);
+                const std::string fieldCanon =
+                    types::canonical(node->semanticType);
+                if (semantic_->isClassType(baseCanon) &&
+                    isContainerInstanceClass(fieldCanon)) {
+                    return false;   // 类容器字段=内联头=本体地址
+                }
+            }
+            return true;            // 成员链字段槽——槽内=句柄
+        }
         default:                         // 下标内联/解引用/三元/自身=本体地址
             return false;
     }

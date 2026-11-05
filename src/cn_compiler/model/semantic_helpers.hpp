@@ -173,6 +173,31 @@ inline std::string canonicalType(const std::string& type) {
     return false;
 }
 
+// ===== #1970 容器实例内联头布局（闭集穷举·中立层三方共用） =====
+// 容器实例判定：stdlib 六容器泛型实例名（$ 形态）闭集前缀穷举——
+//   向量/栈=24B 头（ptr+cap+len）·映射=56B（4 指针+3 计数）·集合=48B·
+//   链表/队列=64B（与堆头形态同规格·#1970 只改头位置不改规格）。
+//   字符串映射$V=映射字符串键特化（1612）：须先剥对齐模板名——归一形
+//   映射$字符串$V？非——特化类独立名（字符串映射$V），头布局与 映射 同
+//   （键数组槽=字符串句柄 8B）→ 计入 映射 桶（56B）。
+[[maybe_unused]] inline bool isContainerInstanceClass(const std::string& canon) {
+    return canon.rfind("向量$", 0) == 0 || canon.rfind("栈$", 0) == 0 ||
+           canon.rfind("映射$", 0) == 0 || canon.rfind("字符串映射$", 0) == 0 ||
+           canon.rfind("集合$", 0) == 0 || canon.rfind("链表$", 0) == 0 ||
+           canon.rfind("队列$", 0) == 0;
+}
+
+// 容器实例头尺寸（字节）：按容器种类闭集查表——三禁红线：未知容器名
+//   显形中止（返回无值·消费点禁默认值·24B 头尺寸登记在案）。普通类（含嵌套实例名
+//   中的容器段·如 向量$映射$K$V 外层是向量命中 24）按首段前缀分派。
+[[maybe_unused]] inline cn::Optional<int> containerInstanceHeaderSize(const std::string& canon) {
+    if (canon.rfind("向量$", 0) == 0 || canon.rfind("栈$", 0) == 0) return 24;
+    if (canon.rfind("映射$", 0) == 0 || canon.rfind("字符串映射$", 0) == 0) return 56;
+    if (canon.rfind("集合$", 0) == 0) return 48;
+    if (canon.rfind("链表$", 0) == 0 || canon.rfind("队列$", 0) == 0) return 64;
+    return std::nullopt;  // 非容器/未知容器名=无值（消费点显形分流）
+}
+
 // 1360 结果化：无值=非结果类型/残缺形态；有值=恒两参 [T, E]
 //   （原空 vector 纯失败哨兵与合法输出通道分离——Optional 显形）
 [[maybe_unused]] inline cn::Optional<std::vector<std::string>> resultTypeArgs(const std::string& type) {

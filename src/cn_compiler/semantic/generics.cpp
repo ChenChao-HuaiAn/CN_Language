@@ -416,8 +416,18 @@ cn::Optional<std::string> SemanticAnalyzer::instantiateGeneric(
         a = canonicalizeSyntheticArgText(a);
     }
 
+    // 生成实例化类符号名（mangling 编码扩展：类名$实参1$实参2）——上移至校验前：
+    //   #2021 报错拒绝路径（实参个数错/字符串键早拒）须把实例名登记进
+    //   rejectedInstantiations_（上游已诊断豁免表），布局期 typeSizeOf/typeAlignOf
+    //   终态据此识别错误恢复查询、不再误报「编译器内部错误」。
+    std::string instanceName = className;
+    for (const auto& a : args) {
+        instanceName += "$" + types::canonical(a);
+    }
+
     // 参数个数校验
     if (gen->typeParams.size() != args.size()) {
+        rejectedInstantiations_.insert(instanceName);  // #2021 上游已诊断登记
         diagnostics_.report(DiagnosticLevel::Error, loc,
                             "泛型 '" + className + "' 期望 " +
                                 std::to_string(gen->typeParams.size()) + " 个类型实参，实际提供 " +
@@ -425,17 +435,12 @@ cn::Optional<std::string> SemanticAnalyzer::instantiateGeneric(
         return std::nullopt;
     }
 
-    // 接口约束校验
+    // 接口约束校验（违例只报诊断不停实例化——诊断已报编译必失败·实例注册照常
+    //   布局正常，不入拒绝表）
     for (std::size_t i = 0; i < gen->typeParams.size(); ++i) {
         if (!gen->constraints[i].empty()) {
             checkGenericConstraint(args[i], gen->constraints[i], loc);
         }
-    }
-
-    // 生成实例化类符号名（mangling 编码扩展：类名$实参1$实参2）
-    std::string instanceName = className;
-    for (const auto& a : args) {
-        instanceName += "$" + types::canonical(a);
     }
 
     // 1612（1025 采样轮·双侧病根治）：泛型 映射<K,V> 的键消费链（== 相等 +
@@ -448,6 +453,7 @@ cn::Optional<std::string> SemanticAnalyzer::instantiateGeneric(
     //   拒绝名入 instantiatedGenerics_ 去重（首报一次——068 预扫描路径无用户
     //   位置先报「未知位置」，后续真实位置位静默不重复刷屏）。
     if (className == "映射" && types::canonical(args[0]) == "字符串") {
+        rejectedInstantiations_.insert(instanceName);  // #2021 上游已诊断登记
         if (instantiatedGenerics_.insert(instanceName).second) {
             diagnostics_.report(
                 DiagnosticLevel::Error, loc,

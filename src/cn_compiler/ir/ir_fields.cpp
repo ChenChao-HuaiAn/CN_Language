@@ -895,6 +895,14 @@ void IRGenerator::genCopyBuiltin(CallExpr* node, const SourceLocation& loc) {
             //   （+8 位置读到数据缓冲第 3 个整型当元素数量），非确定性越界读崩
             //   （win 981 十跑七崩 C0000005）。物化单点见 genClassValueSlotAddress。
             srcSlot = genClassValueSlotAddress(arg, type, loc);
+        } else if (arg->getType() == NodeType::MemberExpr) {
+            // #1970 内联头：源=**类对象的容器实例字段**（复制(盒.槽)）——成员读位
+            //   返回内联头地址=容器本体地址（非句柄槽）→ 同一 981 物化单点
+            //   （槽内=头地址·被调先解一层得本体）；结构体容器字段/类对象字段
+            //   =句柄槽 → genClassValueSlotAddress 内在 isBorrowedAggregateHandleSlot
+            //   判为槽形态直传，零变化。原直传头地址=被调多解一层
+            //   （数据指针当容器对象→越界读崩·宿主 C0000005 探针实锚）。
+            srcSlot = genClassValueSlotAddress(arg, type, loc);
         } else {
             srcSlot = lvalueAddress(arg);
         }
