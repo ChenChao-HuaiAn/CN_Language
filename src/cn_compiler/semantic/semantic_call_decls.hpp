@@ -56,7 +56,7 @@
     // #1588：构造器结果类型推导（目标校准优先；无目标=实参类型+缺失侧补全）
     void deriveCtorResultType(CallExpr* node, const std::string& builtinName,
                               const std::string& argType);
-    // #1588：当前权威构造器目标类型（栈顶优先——空串元素=显式遮蔽；栈空回退
+    // #1588：当前权威构造器目标类型（栈顶优先——空串元素=显式遮蔽；栈空则落到次级目标
     //   当前函数返回类型；结果已归一尖括号形态，空串=无目标）
     std::string currentCtorTargetType() const;
     // #1588：按目标类型校准构造器 resolvedType（实参位：形参类型在重载决议后

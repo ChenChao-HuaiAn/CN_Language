@@ -107,7 +107,7 @@ void SemanticAnalyzer::rewriteUseImportAlias(CallExpr* node, std::string& callee
                     //   来源模块查 itemAliasModules_：按**原绑定名**查（别名 与
                     //   原符号名 不同名时，重写后查原符号名会命中同名的其他绑定
                     //   条目——91_别名跨模块同名 实测 Y双倍 误取 双倍 的来源模块），
-                    //   未命中再回退重写后的符号名（自映射绑定 条目以符号名为键）。
+                    //   未命中再落到重写后的符号名（自映射绑定 条目以符号名为键）。
                     const std::string bindingName = calleeName;
                     calleeName = aliasIt->second;  // 绑定名 -> 原符号名
                     static_cast<IdentifierExpr*>(node->callee.get())->name = calleeName;
@@ -153,6 +153,7 @@ void SemanticAnalyzer::rewriteGenericFuncCall(CallExpr* node, std::string& calle
         //   推导·固定类型位可转换即可·函数指针位不参与；全部类型参数被约束且
         //   一致才单态化，否则放弃——显式 <> 仍可用）。
         if (calleeName.find('<') == std::string::npos && !node->arguments.empty()) {
+            // 静默豁免业务值: findGeneric miss=nullptr 哨兵+下一行显式判空分流（882 处置②·未命中即让位既有调用路径）
             const GenericInfo* gi = findGeneric(calleeName).value_or(nullptr);
             if (gi != nullptr && gi->ast->innerFunc != nullptr) {
                 const FunctionDecl* src = gi->ast->innerFunc.get();
@@ -224,6 +225,7 @@ void SemanticAnalyzer::rewriteGenericFuncCall(CallExpr* node, std::string& calle
                     calleeName = instName.value();
                     // 登记泛型函数实例化记录（供 IR 层生成函数体）：
                     //   记录 实例化名 + 原泛型声明 + 类型实参（替换类型参数用）
+                    // 静默豁免业务值: 同款 nullptr 哨兵+判空分流（miss=泛型声明已消失的滞后形态·守卫假即跳过登记）
                     const GenericInfo* ginfo = findGeneric(head).value_or(nullptr);
                     if (ginfo != nullptr && ginfo->ast->innerFunc != nullptr) {
                         registerGenericFuncInstance(instName.value(), ginfo, args);
