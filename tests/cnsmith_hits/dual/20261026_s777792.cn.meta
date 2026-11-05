@@ -1,0 +1,7 @@
+基线: cf86099fb
+轮: 20261026-230914-s1026-新seed（轨道入口·双侧对拍）
+宿主: rc=0 输出2行；v2: 失败
+判定: 拒绝不一致
+说明: 宿主通过而 v2 编译拒绝：rand-3 v2p 运行失败(退出码1): [p6h] 已解析: C:/Users/ChenChao/Documents/CN/CN_Language_C/target/audit2/v2srcrand_3c136a90/主.cn 节点=53
+[ir2] 函数重载决议歧义: 选（2 个宽匹配候选）
+[ir2] IR 层错误 1 个，中止代码生成（退出码 1）

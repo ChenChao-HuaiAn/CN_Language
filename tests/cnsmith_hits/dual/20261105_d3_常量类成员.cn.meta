@@ -1,0 +1,8 @@
+基线: fd2204c2c
+轮: 20261105-233403-1105手动对拍（轨道入口·双侧对拍）
+宿主: rc=0 输出1行；v2: 失败
+判定: 拒绝不一致
+说明: 宿主通过而 v2 编译拒绝：dir-3 v2p 运行失败(退出码1): [parse] v2 第一版不支持该类成员修饰（类 配置，位置=5）
+[parse] v2 第一版不支持该类成员修饰（类 配置，位置=11）
+[p6h] 已解析: C:/Users/ChenChao/Documents/CN/CN_Language_C/target/audit2/v2srcdir_4cfca26b/主.cn 节点=22
+[parse] 语法错误 2 个，中止编译（不产 IR/asm）

@@ -1,0 +1,7 @@
+基线: 49f734d2d
+轮: 20261028-230505-s1028-新seed（轨道入口·双侧对拍）
+宿主: rc=0 输出1行；v2: 失败
+判定: 拒绝不一致
+说明: 宿主通过而 v2 编译拒绝：inner-3 v2p 运行失败(退出码1): [p6h] 已解析: C:/Users/ChenChao/Documents/CN/CN_Language_C/target/audit2/v2srcinner_d27adb19/主.cn 节点=16
+[sem5] 正确诊断: [错误] 变量 's' 未初始化，不能读取（声明后须先赋值——Rust E0381 对照编译期拒绝）（行=4）
+[sem5] 语义错误 1 个，中止 IR 生成与代码生成（退出码 1）
