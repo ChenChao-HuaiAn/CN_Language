@@ -275,7 +275,13 @@ rem its clients do NOT re-check SCCACHE_DIR of a live server - so a leftover
 rem server from another tree would keep writing/reading that tree's partition.
 rem Stopping here makes the first compile request restart the server with
 rem THIS tree's SCCACHE_DIR (client env), giving real partition isolation.
-if not "{sccache}"=="" "{sccache}" --stop-server >nul 2>&1
+rem #2117: stop-server here kills the server other concurrently-building trees
+rem are mid-request with (sccache 10054 cascade, shard#3 21s red, 2026-11-06) -
+rem machine routinely runs multi-tree parallel builds, stop-in-template unsafe.
+rem Partition isolation deferred until a machine-level build lock wraps the
+rem stop/start window; obj content stays correct (preprocessor-hash keyed) and
+rem check_ninja_deps_tree flags stale cross-tree include paths instead.
+rem if not "{sccache}"=="" "{sccache}" --stop-server >nul 2>&1
 rem 088 root-fix: drop stale .ninja_deps so every build re-scans all headers.
 rem MSVC+Ninja records header deps from /showIncludes stdout; a launcher
 rem wrapper (sccache) or version drift can stale them -> missed rebuilds ->
