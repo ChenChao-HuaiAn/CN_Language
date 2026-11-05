@@ -321,6 +321,13 @@ bool IRGenerator::emitConstructorCall(CallExpr* node) {
         //   （C++ 隐式默认构造语义；B1 形态：子类不写构造时基类构造原被整跳）。
         //   有自有构造的类走 emitClassMethod 序言注入，不经此分支。
         emitBaseCtorChain(className, obj, node->location);
+        // 2097（1105 探针 d7/d3 实锚·miss 不可静默）：无构造实例化点本类层
+        //   字段默认值注入——775 甲案发射网漏本支（genClassDefaultConstruct
+        //   裸声明/emitCtorInvoke 有构造/emitBaseCtorChain 基类层三支已挂，
+        //   本支静默丢注入 → 实例字段初始化器折叠成功却输出 0）。语义=基类
+        //   构造后、类字段级联前写本类层默认值（与 emitCtorInvoke 先注入后
+        //   调构造同序；本类无构造体=无显式覆盖面）。
+        emitClassFieldDefaults(className, className, obj, node->location);
         // #283 甲案（2026-10-08）：无构造类实例化点字段级联——「仅分配」路径
         //   自此对类类型字段级联默认构造（001 §3.9 条文·p1007_02 容器字段
         //   悬空空指针根治；与 860-a 用户构造序言共用单字段发射）
