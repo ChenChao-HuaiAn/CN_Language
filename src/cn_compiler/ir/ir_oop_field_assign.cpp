@@ -740,6 +740,59 @@ bool IRGenerator::tryClassFieldWholeAssign(MemberExpr* target, Expr* valueExpr,
             lastExpr_ = addr;
             return true;
         }
+        // #1970 1634 预验从片4 实锚（双重物化根治）：容器实例字段（类对象=
+        //   内联头域）← 成员/下标/三元 源。emitStructWholeAssign 的内联头
+        //   分支判据（isContainerInstanceClass(dstElemCanon)）缺**父对象维度**
+        //   ——「结构体对象的容器字段」=句柄槽（v2 生成语句赋值中 同款两态
+        //   归一判据 容器字段是类内联域(父对象类型ID) 含父维度）误入该分支
+        //   时：错位双物化读栈垃圾 / 直传写穿句柄槽（v2p 编译 v2 全树含此
+        //   形态·两版双态实证）。此处按父对象维度先行分流：父=类实例→
+        //   内联头发射（preFree ~容器 this=字段地址 + genClassValueSlotAddress
+        //   物化槽直传〔槽内=本体地址·被调一层 Load 得本体〕+ 拷贝构造）；
+        //   父=结构体→落 emitStructWholeAssign 原路径（句柄槽通道·行为同
+        //   a33284fb1 基线零变更）。拷贝构造体内 自身 字段豁免 preFree
+        //   （145-a+543 判据·memberClassFieldAssign 同款）。闭集穷举：容器
+        //   恒有析构/拷贝构造（miss 显形）。
+        if (isContainerInstanceClass(canonAgg) &&
+            (valueExpr->getType() == NodeType::MemberExpr ||
+             valueExpr->getType() == NodeType::IndexExpr ||
+             valueExpr->getType() == NodeType::TernaryExpr)) {
+            std::string objCanonW = types::canonical(
+                memberObjectSrcType(target->object.get()).value_or(""));  // 静默豁免闭集穷举: 1360 结果化显形（miss=非类判定假·落原路原语义）
+            if (!semantic_->isClassType(objCanonW) && types::isPointer(objCanonW)) {
+                objCanonW = types::canonical(types::pointeeOf(objCanonW));
+            }
+            if (semantic_->isClassType(objCanonW)) {
+                const cn::Optional<std::string> dtorKeyW =
+                    classDestructorSymbolKey(canonAgg);
+                const cn::Optional<std::string> copyKeyW =
+                    classCopyCtorSymbolKey(canonAgg);
+                if (!dtorKeyW.has_value() || !copyKeyW.has_value()) {
+                    diagnostics_.report(DiagnosticLevel::Error, loc,
+                        "内部错误: 容器实例 '" + canonAgg +
+                            "' 未登记析构/拷贝构造（#1970 闭集穷举 miss）");
+                    lastExpr_ = addr;
+                    return true;
+                }
+                bool isCtorThisFieldW = false;
+                if (currentMethodIsCtor_ &&
+                    target->object->getType() == NodeType::IdentifierExpr) {
+                    const auto* objIdW =
+                        static_cast<const IdentifierExpr*>(target->object.get());
+                    if (objIdW->name == "自身") isCtorThisFieldW = true;
+                }
+                if (!isCtorThisFieldW || !currentMethodIsCopyCtor_) {
+                    emit(ir::Opcode::Call, {addr}, ir::IRValue(),
+                         dtorKeyW.value(), "void", loc);
+                }
+                const ir::IRValue srcSlotW =
+                    genClassValueSlotAddress(valueExpr, canonAgg, loc);
+                emit(ir::Opcode::Call, {addr, srcSlotW}, ir::IRValue(),
+                     copyKeyW.value(), "void", loc);
+                lastExpr_ = addr;
+                return true;
+            }
+        }
         if (emitStructWholeAssign(addr, valueExpr, canonAgg, loc,
                                   /*preFree=*/true)) {
             return true;
