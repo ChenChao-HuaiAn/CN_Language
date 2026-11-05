@@ -283,9 +283,10 @@ if 是win:
                   flush=True)
             raise SystemExit(1)
         (仓库根 / "target").mkdir(exist_ok=True)
+        # 缓存目录按树路径哈希分化（与 wt.py 同源函数）——跨树缓存隔离，
+        #   杜绝异树缓存重放把异树 include 路径写进本树 .ninja_deps
         公共 = dict(树=str(仓库根),
-                    缓存目录=os.environ.get(
-                        "SCCACHE_DIR", str(Path.home() / "Documents" / "sccache-cache")),
+                    缓存目录=_wt.树缓存目录(仓库根),
                     缓存上限=os.environ.get("SCCACHE_CACHE_SIZE", "5G"))
         if sccache is not None:
             配置脚本 = _wt.设置脚本模板.format(
@@ -303,7 +304,8 @@ if 是win:
                 "echo [OK] ninja tree configured\n")
         (仓库根 / "target" / "ninja_setup.cmd").write_text(配置脚本, encoding="ascii")
         (仓库根 / "target" / "ninja_build.cmd").write_text(
-            _wt.构建脚本模板.format(vcvars=vcvars, **公共), encoding="ascii")
+            _wt.构建脚本模板.format(vcvars=vcvars, sccache=sccache or "", **公共),
+            encoding="ascii")
         if not 步("首次配置", ["cmd", "/c", "target\\ninja_setup.cmd"], 超时秒=构建超时):
             raise SystemExit(1)
     if not 步("增量构建", ["cmd", "/c", "target\\ninja_build.cmd"], 超时秒=构建超时):

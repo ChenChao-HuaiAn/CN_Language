@@ -165,38 +165,39 @@ ir::IRValue IRGenerator::widenCompoundRhs(const ir::IRValue& rhs,
     return emitResult(ir::Opcode::Cast, {rhs}, targetType, "", loc);
 }
 std::string IRGenerator::decodeString(const std::string& raw) {
-    // 识别前缀（组合前缀 原始多行 / 多行原始 优先）。
+    // 识别前缀（组合前缀 原始多行；001 §2.1a 仅立法正序·「多行原始」反序
+    //   已随零分叉对齐收紧——v2 词法视反序为普通标识符）。
     // 注意：中文前缀为 UTF-8 多字节，偏移必须用字节数（substr 按字节切割）：
     //       "原始"=6字节、"多行"=6字节、"原始多行"=12字节
     bool rawMode = false;
-    bool multiLine = false;
     std::size_t start = 0;
-    if (raw.rfind("原始多行", 0) == 0 || raw.rfind("多行原始", 0) == 0) {
+    if (raw.rfind("原始多行", 0) == 0) {
         rawMode = true;
-        multiLine = true;
         start = 12;
     } else if (raw.rfind("原始", 0) == 0) {
         rawMode = true;
         start = 6;
     } else if (raw.rfind("多行", 0) == 0) {
-        multiLine = true;
         start = 6;
     }
-    // 剥离引号：多行用三引号 """..."""；普通/原始用单引号 "..."（可带前缀）
+    // 剥离引号：剥壳方式由**源码引号形态**决定（001 §2.1a 四形态·lexer 按
+    //   同一判据扫描——「多行」前缀不强制三引号，「原始多行"C\nD"」单引号
+    //   组合形态=规范合法形态（2026-09-14 关键字审计裁决原文即此形态）·
+    //   v2 分词 417 同款；原实现按 multiLine 强制假设三引号，单引号组合
+    //   形态落入「保留原文」分支把首尾引号吞进内容（宿主 6 字节 vs v2 4
+    //   字节分叉实录）。
+    const bool tripleForm = (raw.size() >= start + 6 &&
+                             raw.compare(start, 3, "\"\"\"") == 0 &&
+                             raw.compare(raw.size() - 3, 3, "\"\"\"") == 0);
     std::string body;
-    if (multiLine) {
-        if (raw.size() >= start + 6 && raw.compare(start, 3, "\"\"\"") == 0 &&
-            raw.compare(raw.size() - 3, 3, "\"\"\"") == 0) {
-            body = raw.substr(start + 3, raw.size() - start - 6);
-        } else {
-            body = raw.substr(start);  // 防御：非法形态保留原文
-        }
+    if (tripleForm) {
+        body = raw.substr(start + 3, raw.size() - start - 6);
+    } else if (raw.size() >= start + 2 && raw[start] == '"' && raw.back() == '"') {
+        body = raw.substr(start + 1, raw.size() - start - 2);
     } else {
-        if (raw.size() >= start + 2 && raw[start] == '"' && raw.back() == '"') {
-            body = raw.substr(start + 1, raw.size() - start - 2);
-        } else {
-            body = raw.substr(start);
-        }
+        // 静默豁免上游已诊断: 词法未闭合错误路径残缺形态（lexer 已 reportError
+        // 编译终止）·保留原文为恢复面非静默默认值
+        body = raw.substr(start);
     }
     // 原始形态：不处理转义（所见即所得）
     if (rawMode) return body;

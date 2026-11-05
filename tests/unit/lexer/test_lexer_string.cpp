@@ -116,11 +116,14 @@ TEST(LexerStringTest, RawMultiLineString) {
     EXPECT_EQ(tokens[0].getValue(), "原始多行\"\"\"A\\nB\nC\"\"\"");
 }
 
-// 多行原始组合（顺序可交换）
+// 多行原始反序非前缀面（001 §2.1a 仅立法正序组合·零分叉对齐收紧——
+//   v2 词法同面：反序=普通标识符+独立字符串字面量，非字符串前缀）
 TEST(LexerStringTest, MultiLineRawString) {
     auto tokens = analyze("多行原始\"\"\"X\\tY\"\"\"");
-    ASSERT_EQ(tokens[0].getType(), TokenType::StringLiteral);
-    EXPECT_EQ(tokens[0].getValue(), "多行原始\"\"\"X\\tY\"\"\"");
+    ASSERT_EQ(tokens[0].getType(), TokenType::Identifier);
+    EXPECT_EQ(tokens[0].getValue(), "多行原始");
+    ASSERT_EQ(tokens[1].getType(), TokenType::StringLiteral);
+    EXPECT_EQ(tokens[1].getValue(), "\"\"");
 }
 
 // ==================== 5. 错误处理 ====================

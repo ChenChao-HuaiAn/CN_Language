@@ -465,8 +465,11 @@ Token Lexer::readIdentifierOrKeyword() {
     if (lookupKeyword(text, type)) {
         return Token(type, text, loc);
     }
-    // 组合前缀：原始多行 / 多行原始（连续无空白）后紧跟引号 → 字符串字面量
-    if (peek() == U'"' && (text == "原始多行" || text == "多行原始")) {
+    // 组合前缀：原始多行（连续无空白）后紧跟引号 → 字符串字面量
+    //   （001 §2.1a 仅立法正序「原始多行」·v2 词法同面——原「多行原始」反序
+    //   放行=宿主单侧超规范扩面·v2 视作普通标识符，一侧放行一侧拒绝=零分叉
+    //   纪律红线，收紧到规范面）
+    if (peek() == U'"' && text == "原始多行") {
         return readPrefixedString(text, loc);
     }
     return Token(TokenType::Identifier, text, loc);

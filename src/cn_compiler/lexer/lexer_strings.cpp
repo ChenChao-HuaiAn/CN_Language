@@ -9,7 +9,8 @@
 
 namespace cn_compiler {
 
-// 读取带前缀的字符串字面量：支持 原始 / 多行 / 原始多行 / 多行原始 组合
+// 读取带前缀的字符串字面量：支持 原始 / 多行 / 原始多行 组合（001 §2.1a
+//   仅立法正序组合——「多行原始」反序已随零分叉对齐收紧，v2 词法同面）
 // 字符串Token的value保留完整原始文本（含前缀与引号），供语法分析器统一解码
 // prefixText 已由调用方收集完整前缀（含组合前缀，如"原始多行"），find 判断即可
 Token Lexer::readPrefixedString(const std::string& prefixText, const SourceLocation& loc) {

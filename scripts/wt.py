@@ -32,6 +32,7 @@ checkout 带走未提交内容 / E2E 中途 expected 消失 / cn.exe 占用 LNK1
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import platform
@@ -215,6 +216,24 @@ def 找sccache() -> Path | None:
     return None
 
 
+def 树缓存目录(树路径: Path) -> str:
+    """sccache 缓存目录按树路径哈希分化（跨树缓存隔离·根修）。
+
+    分化前全机共享同一 SCCACHE_DIR：异树编译的 obj 进共享缓存后，本树
+    增量构建按（预处理输出+参数哈希）命中重放，把异树 include 路径写进
+    本树 .ninja_deps → ninja 看异树路径 mtime 判新鲜 → 跳过重编 → 旧代码
+    混编（LNK2019 假分叉/语义假象实录：主树构建日志头文件路径全为异树
+    worktree 路径而 build.ninja 源目录=本树）。按树分化后缓存键空间物理
+    隔离，跨树重放不可能；同一棵树恒定同一分区，树内增量命中不受影响。
+    SCCACHE_DIR 环境变量仍被尊重（作为分化的基础路径，CI/测试可整体重
+    向）；代价=两树交替构建时 sccache server 按目录重启（仅失内存统计，
+    磁盘缓存不受影响）。
+    """
+    基础 = os.environ.get("SCCACHE_DIR", str(Path.home() / "Documents" / "sccache-cache"))
+    指纹 = hashlib.sha256(str(树路径.resolve()).encode("utf-8")).hexdigest()[:8]
+    return str(Path(基础) / ("tree-" + 指纹))
+
+
 def 找vcvars() -> Path | None:
     for 版本 in ("Community", "Professional", "Enterprise", "BuildTools"):
         候选 = Path(f"C:/Program Files/Microsoft Visual Studio/2022/{版本}/VC/Auxiliary/Build/vcvars64.bat")
@@ -251,6 +270,12 @@ where cl >nul 2>&1 || (echo [FAIL] cl not found after vcvars & exit /b 1)
 cd /d {树}
 set SCCACHE_DIR={缓存目录}
 set SCCACHE_CACHE_SIZE={缓存上限}
+rem per-tree cache partition: sccache server is a user-global singleton and
+rem its clients do NOT re-check SCCACHE_DIR of a live server - so a leftover
+rem server from another tree would keep writing/reading that tree's partition.
+rem Stopping here makes the first compile request restart the server with
+rem THIS tree's SCCACHE_DIR (client env), giving real partition isolation.
+if not "{sccache}"=="" "{sccache}" --stop-server >nul 2>&1
 rem 088 root-fix: drop stale .ninja_deps so every build re-scans all headers.
 rem MSVC+Ninja records header deps from /showIncludes stdout; a launcher
 rem wrapper (sccache) or version drift can stale them -> missed rebuilds ->
@@ -266,6 +291,13 @@ if exist target\\build-ninja\\.ninja_deps del /q target\\build-ninja\\.ninja_dep
 cmake --build target\\build-ninja --parallel
 if errorlevel 1 (echo [FAIL] build & exit /b 1)
 echo [OK] ninja build done
+rem post-build guard: cross-tree deps check (python optional - skip silently
+rem when absent; detected pollution exits non-zero and fails the build)
+set CN_HAS_PY=0
+where python >nul 2>&1 && set CN_HAS_PY=1
+if "%CN_HAS_PY%"=="1" python "{树}\\scripts\\check_ninja_deps_tree.py" --build-dir "{树}\\target\\build-ninja" --tree "{树}"
+if errorlevel 1 (echo [FAIL] cross-tree deps in .ninja_deps - clean objs and rebuild & exit /b 1)
+echo [OK] ninja deps tree check passed
 """
 
 
@@ -431,14 +463,13 @@ def 建树(任务号: str = "", 无ninja: bool = False, 立行: str | None = Non
         if vcvars is None or ninja is None:
             print("[3] 跳过：未找到 vcvars64.bat 或 ninja.exe（VS2022 安装不完整）")
         else:
-            缓存目录 = os.environ.get("SCCACHE_DIR", str(Path.home() / "Documents/sccache-cache"))
             缓存上限 = os.environ.get("SCCACHE_CACHE_SIZE", "5G")
-            公共 = dict(树=str(树路径), 缓存目录=缓存目录, 缓存上限=缓存上限)
+            公共 = dict(树=str(树路径), 缓存目录=树缓存目录(树路径), 缓存上限=缓存上限)
             (树路径 / "target").mkdir(exist_ok=True)
             (树路径 / "target/ninja_setup.cmd").write_text(
                 设置脚本模板.format(vcvars=vcvars, ninja=ninja, sccache=sccache, **公共), encoding="ascii")
             (树路径 / "target/ninja_build.cmd").write_text(
-                构建脚本模板.format(vcvars=vcvars, **公共), encoding="ascii")
+                构建脚本模板.format(vcvars=vcvars, sccache=sccache, **公共), encoding="ascii")
             配置 = subprocess.run(["cmd", "/c", "target\\ninja_setup.cmd"], cwd=树路径,
                                   capture_output=True, text=True)
             状态 = "完成（build: cmd /c target\\ninja_build.cmd）" if 配置.returncode == 0 \
@@ -545,6 +576,9 @@ def 缓存(动作: str) -> int:
     if sccache is None:
         print("[失败] sccache 未安装（winget install Mozilla.sccache）")
         return 1
+    # 操作基础目录（各树构建分区 = 基础目录下 tree-<指纹> 子目录，见
+    #   树缓存目录）——clear 连带 rmtree 全部分区=全机缓存清空语义不变；
+    #   stats 观察的是基础目录 server，非各树分区统计（观察面局限·非正确性面）
     环境 = dict(os.environ, SCCACHE_DIR=os.environ.get("SCCACHE_DIR", str(Path.home() / "Documents/sccache-cache")))
     子命令 = {"stats": ["--show-stats"], "start": ["--start-server"], "stop": ["--stop-server"],
               "clear": ["--stop-server"]}[动作]
@@ -552,7 +586,7 @@ def 缓存(动作: str) -> int:
     if 动作 == "clear" and 结果.returncode == 0:
         目录 = Path(环境["SCCACHE_DIR"])
         shutil.rmtree(目录, ignore_errors=True)
-        print(f"[完成] 缓存目录已清（{目录}）")
+        print(f"[完成] 缓存目录已清（{目录}·含各树分区）")
     return 结果.returncode
 
 
