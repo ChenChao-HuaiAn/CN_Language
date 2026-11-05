@@ -65,6 +65,10 @@ from cnsmith_matrix_families import (  # noqa: E402,F401  （re-export 保接口
 import cnsmith_matrix_probe_families  # noqa: F401,E402  （1869 八族翻译骨架·import 即注册进 消费点轴；本 import 即加载链唯一挂点——消费方全走本文件子进程）
 import cnsmith_matrix_classfield_families  # noqa: F401,E402  （类字段级联构造骨架·#1943 域扩面·import 即注册进 消费点轴；挂点口径同上）
 import cnsmith_matrix_union_generic_families  # noqa: F401,E402  （联合体与泛型实例骨架·#1977 扩域拆出面·import 即注册进 消费点轴；挂点口径同上——类型轴契约不适用说明见该模块头）
+# 负测骨架（#2055 新面·#2052/#2053 立法面骨架域）：与 消费点轴 对偶的 负测点轴
+#   ——判据=「编译应拒+诊断含锚」（正测=编译应绿+输出==期望）；import 即注册，
+#   挂点口径同上。骨架清单与域边界实证见该模块头。
+from cnsmith_matrix_negtest_families import 负测点轴  # noqa: E402,F401
 
 def selftest():
     """矩阵生成器自校验（1306·#1011 静态正反自测·零编译依赖）。
@@ -330,6 +334,34 @@ def selftest():
     签("比对判据判别力（精确匹配·格式偏差须判红）",
        实际绿 == 实际绿 and 实际假 != 实际绿)
 
+    # 负测骨架面断言（#2055·#2052/#2053 立法面骨架域）：六骨架在表+源码形态锚
+    #   （不安全块/混合捕获引先形态字面）+锚们结构合法（非空字符串元组）——
+    #   删骨架=负测面重新致盲（#2052/#2053 裁决翻正后无收口提示面）。
+    负测形态域 = ["不安全块语句_函数内写", "不安全块语句_块内声明",
+                  "不安全块语句_顶层裸块", "混合捕获_引先单捕获",
+                  "混合捕获_双引捕获", "混合捕获_引先值后混排"]
+    缺负测 = [名 for 名 in 负测形态域 if 名 not in 负测点轴]
+    签("负测骨架六件在表（%d/6）" % (6 - len(缺负测)), not 缺负测,
+       "缺 %s" % 缺负测)
+    负测坏锚 = []
+    for 名 in 负测形态域:
+        if 名 not in 负测点轴:
+            continue
+        源码, 锚们 = 负测点轴[名][0]("整32", 0, 0, "加", 0)
+        if not isinstance(锚们, tuple) or not 锚们 or \
+                not all(isinstance(x, str) and x for x in 锚们):
+            负测坏锚.append("%s(锚们结构非法)" % 名)
+            continue
+        if "函数 主()" not in 源码:
+            负测坏锚.append("%s(源码缺主函数)" % 名)
+        if 名.startswith("不安全块语句") and "不安全 {" not in 源码:
+            负测坏锚.append("%s(缺不安全块形态)" % 名)
+        if 名.startswith("混合捕获") and (
+                "变量 取 = [&" not in 源码 or "() -> 整32 {" not in 源码):
+            负测坏锚.append("%s(缺引先捕获形态)" % 名)
+    签("负测骨架形态锚命中（不安全块字面/引先捕获字面/锚们非空）",
+       not 负测坏锚, str(负测坏锚))
+
     for 名 in 通过:
         print("  [通过] %s" % 名)
     for 名, 详情 in 失败:
@@ -435,7 +467,35 @@ def main():
                 红 += 1
                 红例.append((名, 类别, 信息, 期望序列))
 
-    print(f"构件组合矩阵：绿 {绿} / 红 {红}（骨架 {len(消费点轴)} × 类型 {len(类型轴)}）")
+    # 负测骨架（#2055·#2052/#2053 立法面骨架域）：与正测对偶——判据=
+    #   「编译应拒+诊断含锚们之一」。三类偏差各自显形红（模块头机制段）：
+    #   应拒放行（编译 rc=0）/诊断锚错位（拒但锚不命中）/拒路崩溃。
+    for 骨架名, (骨架,) in 负测点轴.items():
+        源码, 锚们 = 骨架("整32", 0, 0, "加", 0)
+        名 = f"m_{骨架名}_负测"
+        源码路径 = os.path.join(out, 名 + ".cn")
+        with open(源码路径, "w", encoding="utf-8") as f:
+            f.write(f"// cnsmith_matrix 负测生成（骨架={骨架名}·seed={args.seed}·"
+                    f"应拒·锚={'/'.join(锚们)}）\n" + 源码)
+        类别, 信息, rc = 跑一例(cn, 源码路径, os.path.join(out, 名 + ".bin"), 仓库根)
+        if 类别 == "build_err":
+            诊断 = 信息 if isinstance(信息, str) else ""
+            if any(锚 in 诊断 for 锚 in 锚们):
+                绿 += 1
+            else:
+                红 += 1
+                红例.append((名, "诊断锚错位", 诊断[:160], 锚们))
+        elif 类别 == "ok":
+            红 += 1
+            红例.append((名, "应拒放行",
+                         "#2052/#2053 裁决翻正？→ 骨架收口（翻正测或删除+登记）",
+                         ["编译 rc=0 放行应拒形态"]))
+        else:
+            红 += 1
+            红例.append((名, 类别, 信息, 锚们))
+
+    print(f"构件组合矩阵：绿 {绿} / 红 {红}（正测骨架 {len(消费点轴)} × 类型 "
+          f"{len(类型轴)} + 负测骨架 {len(负测点轴)}）")
     for 名, 类别, 信息, 期望 in 红例:
         print(f"  [红] {名} [{类别}] 实际={信息} 期望={期望}")
     return 1 if 红 else 0
