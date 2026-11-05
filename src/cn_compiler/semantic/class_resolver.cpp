@@ -518,8 +518,14 @@ void SemanticAnalyzer::resolveClass(ClassDecl* node) {
                 info.methods[mname] = m->second;
                 info.methodOrder.push_back(mname);
             }
-            info.friendFuncs = parent.friendFuncs;
-            info.friendClasses = parent.friendClasses;
+            // 2098 根修：删除父类友元表复制（原 info.friendFuncs/friendClasses
+            //   = parent.*）。001 §1289-1303 最小授权：友元授予外部函数或类
+            //   访问「本类」私有/保护成员的权限——父类友元授权面=父类成员，
+            //   复制到子类 info 后 checkAccess 以静态查找类友元表判豁免，父类
+            //   友元被提升为子类友元可访问子类自有私有成员=越权（p4 探针实锤：
+            //   基类友元类读子类自有私有字段修前放行 22·v2 沿链定位定义类正确
+            //   拒绝=分叉）。继承字段的友元访问豁免由 checkAccess 以成员定义
+            //   类友元表判定（见 class_resolver_access.cpp），不依赖本表复制。
         }
     }
 

@@ -518,7 +518,12 @@ bool Parser::parseFriendMember(ClassMember& out) {
                 out.name = current().getValue();
                 advance();
             } else {
-                reportErrorHere("友元类声明预期类名");
+                // 2098 同 1750：保留字作友元类名=精确诊断（与 v2 解析类.cn 同串）
+                if (current().isKeyword()) {
+                    reportErrorHere("友元类名不可为保留字 '" + current().getValue() + "'");
+                } else {
+                    reportErrorHere("友元类声明预期类名");
+                }
                 return false;
             }
         } else {

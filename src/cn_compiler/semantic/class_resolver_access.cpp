@@ -49,21 +49,42 @@ bool SemanticAnalyzer::checkAccess(const ClassInfo& owner, const ClassMemberInfo
             if (member.access == AccessSpecifier::Protected) return true;
         }
     }
-    // 友元检查（友元类：contextClass 在 owner.friendClasses）
-    for (const auto& fc : owner.friendClasses) {
+    // 2098 根修：友元豁免判定权威=成员定义类的友元表（001 §1289-1303 最小
+    //   授权——友元授予外部函数或类访问「本类」私有/保护成员的权限；owner
+    //   （静态查找类）的 fields/methods 含继承并入，其友元表不得放大判定非
+    //   本类成员——父类友元类/函数访问子类自有私有成员=越权）。沿 owner 基
+    //   类链定位 member.name 定义类；链上未命中=维持 owner（成员存在性上游
+    //   已决议，不静默改道）。继承字段的友元访问（父类友元访问经子类对象）
+    //   定义类=父类仍放行=合法授权面不变。
+    const ClassInfo* defClass = &owner;
+    for (const ClassInfo* c = &owner; c != nullptr;) {
+        if (c->fields.find(member.name) != c->fields.end() ||
+            c->methods.find(member.name) != c->methods.end()) {
+            defClass = c;
+            break;
+        }
+        if (c->baseName.empty()) { c = nullptr; break; }
+        // 2098：Optional 显式分流（无值=基类名未注册·链到此为止=合法缺失
+        //   终态·非静默缺省——上溯不到定义类维持 owner 判定与报错）
+        cn::Optional<const ClassInfo*> baseLookup = findClass(c->baseName);
+        c = baseLookup.has_value() ? baseLookup.value() : nullptr;
+    }
+    // 友元检查（友元类：contextClass 在定义类 friendClasses）
+    for (const auto& fc : defClass->friendClasses) {
         if (fc == contextClass) return true;
     }
-    // 友元函数（当前上下文函数名在 owner.friendFuncs）
+    // 友元函数（当前上下文函数名在定义类 friendFuncs）
     if (!currentFunctionName_.empty()) {
-        for (const auto& ff : owner.friendFuncs) {
+        for (const auto& ff : defClass->friendFuncs) {
             if (ff == currentFunctionName_) return true;
         }
     }
-    // 访问受限：报告错误
+    // 访问受限：报告错误（2098：类名=定义类口径，与 v2 语义检查访问控制.cn
+    //   「驻留文本(归属类)」逐字同构）
     const std::string accessName =
         (member.access == AccessSpecifier::Protected) ? "保护" : "私有";
     diagnostics_.report(DiagnosticLevel::Error, loc,
-                        "无法访问 " + what + " '" + member.name + "'（" + owner.name +
+                        "无法访问 " + what + " '" + member.name + "'（" + defClass->name +
                             " 的" + accessName + "成员）");
     return false;
 }
