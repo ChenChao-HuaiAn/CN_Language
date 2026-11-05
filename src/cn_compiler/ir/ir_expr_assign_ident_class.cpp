@@ -634,11 +634,15 @@ bool IRGenerator::handleClassMemberAssign(MemberExpr* target, Expr* valueExpr,
     if (fieldType == "字符串" && !isCompoundAssignOp(op)) {
         val = normalizeStringValueSource(valueExpr, val, loc);
         // 旧值释放（与 v2 发射成员串字段写入 861 判据对齐）：①接收者=标识符
-        //   对象（变量对象槽恒拥有——字段独立拥有立法；成员链/下标 place 对象
+        //   对象（变量对象槽恒拥有——字段独立拥有立法；下标 place 对象
         //   双侧保守不释放=宁漏勿错，登记面）/②构造内=初始化语义豁免（145-a/
         //   644-b 同规：拷贝构造 this 槽可能未初始化）。
+        //   #1933：②'接收者=成员链 → 链宿主拥有判定（memberStringRecvPlaceOwned
+        //   单点·盒面以盒亡登记为条件借用盒保守假防双删；下标/解引用仍保守假）
+        //   ——修前成员链接收者恒不释放=「甲.子.名 = 串」类字段链每轮漏 1。
         const bool identRecv =
-            (target->object->getType() == NodeType::IdentifierExpr);
+            (target->object->getType() == NodeType::IdentifierExpr) ||
+            memberStringRecvPlaceOwned(target->object.get());
         if (identRecv && !currentMethodIsCtor_ && !isWrappedSlot) {
             emitFieldStringFreeAt(addr, loc);
         }

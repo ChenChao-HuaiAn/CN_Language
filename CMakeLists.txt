@@ -310,6 +310,10 @@ add_library(cn_compiler_ir STATIC
     #   （lookupVarName/lookupVarType/lookupVar/findVarEntry/lookupSrcType）
     #   自 ir.cpp 逐字搬移零语义变化；声明仍在 ir_generator.hpp
     src/cn_compiler/ir/ir_vartable.cpp
+    # 1933 拆分（ir_fields.cpp 1052 行超千行冻结线先拆再加）：成员串字段赋值
+    #   「接收者 place 拥有」谓词族（memberStringRecvPlaceOwned/Depth）——
+    #   声明仍在 ir_generator.hpp，逐字迁出零语义变化
+    src/cn_compiler/ir/ir_recv_place_owned.cpp
     src/cn_compiler/ir/ir_decl_extra.cpp
     src/cn_compiler/ir/ir_expr.cpp
     src/cn_compiler/ir/ir_expr_concat.cpp

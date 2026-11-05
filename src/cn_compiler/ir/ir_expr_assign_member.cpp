@@ -505,8 +505,12 @@ bool IRGenerator::memberStringFieldAssign(AssignmentExpr* node, MemberExpr* memb
                 ? semantic_->findStruct(types::canonical(objSrcType)).value_or(nullptr)
                 : nullptr;
             const bool unionTarget = objDeclU != nullptr && objDeclU->isUnion;
+            // #1933：旧值释放判据扩「成员链接收者」——链宿主拥有（memberStringRecvPlaceOwned
+            //   单点：盒面以盒亡登记为条件·借用盒保守假防双删）。现行标识符面
+            //   isOwnedFieldSlot(objUnique) 保持不动（objUnique 仅标识符对象有值）。
             if (!unionTarget && !wrapPayloadOpt.has_value() &&
-                isOwnedFieldSlot(objUnique)) {
+                (isOwnedFieldSlot(objUnique) ||
+                 memberStringRecvPlaceOwned(member->object.get()))) {
                 emitFieldStringFreeAt(addr, node->location);  // 旧值幂等释放+清槽
             }
             emit(ir::Opcode::StorePtr, {addr, normalized}, ir::IRValue(), "",

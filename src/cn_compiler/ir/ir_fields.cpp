@@ -26,6 +26,7 @@
 #include <cstdio>
 #include "cn_compiler/common/switch_enum_gate.hpp"
 #include "cn_compiler/ir/ir.hpp"
+#include "cn_compiler/model/semantic_helpers.hpp"
 #include "cn_compiler/model/semantic_view.hpp"
 #include "cn_compiler/model/type_system.hpp"
 
@@ -415,8 +416,6 @@ bool IRGenerator::genOwnedAggregateReturn(Expr* value, const SourceLocation& loc
     srcAddr = ownBase.toString();
     return true;
 }
-
-// ==================== ② 释放发射（单点事实源） ====================
 
 // 单字段释放 + 清槽（无条件；句柄 0/驻留常量经 __cn_str_free 空安全跳过）
 void IRGenerator::emitFieldStringFreeAt(const ir::IRValue& fieldAddr,
