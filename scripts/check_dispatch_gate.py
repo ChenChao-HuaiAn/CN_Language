@@ -7,7 +7,7 @@
 scripts/静默兜底评估扫描.py（#1958 评估轮·十面扫描已入库）条款①②⑥⑦正则面
 **精化**（收窄交付·误报纪律：宁窄勿滥·门禁 credibility 优先）。
 
-三面（#1959 看板备注件1+件2）：
+四面（#1959 看板备注件1+件2 + #2074 执法面收口）：
   面①「分派默认」（条款①②）：
     (a) 宿主 switch default 段内「顶层语句」return 字面量默认值
         （false/0/nullptr/""/''/假/空指针——true 非默认值不入表；-1 归 1640 哨兵面）；
@@ -24,6 +24,31 @@ scripts/静默兜底评估扫描.py（#1958 评估轮·十面扫描已入库）�
     `return/返回 0 - 1;` 还原写法返回——1640 负一哨兵面只抓 return -1 字面量·
     0-1 还原写法=其盲区补；判据面 ==/!= 0-1 **不入**本面（消费守卫·评估轮分型
     合法接力族·防误报）。
+  面④「枚举默认」（#2074·2026-11-05 用户令「default 退役+全 case 显式+旗标
+    强制」执法面收口·001 §十四）：对**枚举分派 switch**（文本特征=条件含
+    getType()·本库 AST 节点类型分派惯用形态），default 段唯一合法形态=报内部
+    错误并中止编译（001 §十四条文）——default 段顶层 return 且整段无报错调用
+    词面（report/abort/assert/throw/terminate/exit）=生产返回值/默认值，红。
+    与面①分工：面①抓 default 返**字面量默认值**；面④抓 default 返**任何值**
+    （变量/调用结果/表达式·如 `default: return 兜底值;`）且段内无报错显形——
+    同位置可两面同红·基线各自管。
+    诚实边界：①文本级不可识 switch 条件的静态类型——枚举识别=getType() 词面
+    特征（样板件形态），其余枚举分派（如 switch(op) 裸枚举变量）的「漏 case」
+    归编译旗标 -Werror=switch-enum（宿主 CMakeLists 挂载）/MSVC /we4061 全量
+    机械执法，本面不假装全覆盖；②诊断消息字符串被掩码抹除——报错型判定靠
+    **代码调用词面**（report( 等），消息内容不参与判定；③return 与报错调用
+    分处 if/else 两支的形态（报错支+合法支混合）按「段内有报错词=放行」宽判
+    ——漏放面由旗标+审计承担。
+  面⑤「旗标豁免」（#2074）：构建旗标（-Werror=switch-enum + MSVC /we4061/
+    /we4062）的存量清偿豁免对账——每个 CN_SWITCH_ENUM_EXEMPT_BEGIN 包裹宏
+    （common/switch_enum_gate.hpp·双编译器形态）必须在
+    scripts/switch_enum_baseline.json 在册（键=「文件::归一 switch 行锚」）：
+    代码有包裹而基线无=红「新增旗标豁免」（禁裸堆 pragma）；基线有而代码无=
+    消减棘轮提示（逐处显式补 case 清偿后删包裹·--update-baseline 收账）；
+    BEGIN 后窗口内无 switch=形态异常红。与面④分工：面④管「default 生产值」
+    （语义形态），面⑤管「包裹↔基线一一对应」（账实一致）——旗标红点可以既
+    有包裹（漏 case 靠 default 挡）又落面④基线（default 还生产值）·两账各自
+    管理。
 
 豁免通道（复用 882 登记制·同 1640 先例）：协议注释「// 静默豁免<类别>: 原因」
   （命中行同行或上一行·锚相容）+ miss_registry.json 登记条（批准=已批/存量过渡）。
@@ -82,17 +107,32 @@ import check_miss_gate as 静默门禁              # noqa: E402
 
 登记表文件 = 仓库根 / "scripts" / "miss_registry.json"
 基线文件 = 仓库根 / "scripts" / "dispatch_freeze_baseline.json"
+旗标基线文件 = 仓库根 / "scripts" / "switch_enum_baseline.json"
 
 扫描后缀 = {".cpp", ".hpp", ".cn"}
 扫描前缀 = ("src/", "CN语言编译器v2/")
-面名们 = ("分派默认", "value_or缺省", "哨兵还原")
+面名们 = ("分派默认", "value_or缺省", "哨兵还原", "枚举默认", "旗标豁免")
 
-规则版本 = "1959-v1"
+规则版本 = "1959-v2"
 
-# ============ 判据常量（条款①②⑥⑦正则面精化） ============
+# ============ 判据常量（条款①②⑥⑦正则面精化 + #2074 面④） ============
 
 # 条款①：switch 头（宿主）
 switch头模式 = re.compile(r"\bswitch\s*\(")
+
+# 面④（#2074）：枚举分派特征（条件文本含 getType() 调用=本库 AST 节点类型
+#   分派惯用形态·其余枚举形态归编译旗标 -Werror=switch-enum 执法·见文档头）
+枚举分派特征 = re.compile(r"getType\s*\(\s*\)")
+# 面④：报错型 default 调用词面（字符串被掩码·只能认代码调用形态——诊断
+#   report/断言 assert/终止 abort·terminate·exit/异常 throw）。default 段内
+#   任一命中=default 报内部错误中止形态（001 §十四唯一合法形态·放行）。
+default报错形态 = re.compile(
+    r"\breport\s*\(|\babort\s*\(|\bassert\s*\(|\bthrow\b|"
+    r"\bterminate\s*\(|\bexit\s*\(")
+# 面④：default 段顶层 return（任意值·与面①字面量表正交——面④抓「任何值」）
+return任意宿主 = re.compile(r"(?<![A-Za-z0-9_])return\b")
+# 面⑤：旗标豁免包裹宏词面（common/switch_enum_gate.hpp 定义·BEGIN/END 成对）
+包裹词 = re.compile(r"\bCN_SWITCH_ENUM_EXEMPT_BEGIN\b")
 
 # 条款②：分支体禁字面量回退——default 段/裸 else 块「顶层语句」（宿主·掩码上扫）。
 # 字面量表=默认兜底值语义（false/0/nullptr/空串/假/空指针）：true 非默认值不入表；
@@ -125,6 +165,8 @@ _指纹件 = [
     switch头模式.pattern, return字面量宿主.pattern, else词宿主.pattern,
     否则词v2.pattern, 返回字面量v2.pattern, value_or模式.pattern,
     还原赋值模式.pattern, 还原返回模式.pattern, str(条件跨行上限),
+    枚举分派特征.pattern, default报错形态.pattern, return任意宿主.pattern,
+    包裹词.pattern,
 ]
 规则指纹 = hashlib.sha256(
     "|".join(str(x) for x in _指纹件).encode("utf-8")).hexdigest()[:16]
@@ -240,6 +282,69 @@ def 扫分派默认(相对: str, 掩: str, 行首表: list, 原文: str, 命中:
              "否则块承载返回字面量/默认类型兜底（条款②⑤）")
 
 
+def 扫枚举默认(相对: str, 掩: str, 行首表: list, 原文: str, 命中: list):
+    """面④（#2074）：枚举分派 switch（条件含 getType()）的 default 段——
+    顶层 return 且整段无报错调用词面=生产返回值/默认值（001 §十四唯一合法
+    形态=报内部错误中止编译）。段定位复用 找嵌套switch区间/段顶位（与面①(a)
+    同构·跳嵌套 switch 标签）。"""
+    行们 = 原文.split("\n")
+    for m in switch头模式.finditer(掩):
+        开 = m.end() - 1
+        条件闭 = 静默门禁.配对括号(掩, 开)
+        if 条件闭 is None or 条件闭 - 开 > 条件跨行上限:
+            continue
+        if not 枚举分派特征.search(掩[开 + 1:条件闭]):
+            continue                       # 非识别枚举分派面（诚实边界①）
+        j = 跳空白(掩, 条件闭 + 1)
+        if j >= len(掩) or 掩[j] != "{":
+            continue
+        块闭 = 静默门禁.配对括号(掩, j)
+        if 块闭 is None:
+            continue
+        块体 = 掩[j + 1:块闭]
+        嵌套 = 找嵌套switch区间(块体)
+
+        def 在嵌套(pos):
+            return any(a <= pos <= b for a, b in 嵌套)
+
+        标签 = [(mt.start(), mt.group(1)) for mt in
+              re.finditer(r"\b(case|default)\b", 块体) if not 在嵌套(mt.start())]
+        for idx, (p, t) in enumerate(标签):
+            if t != "default":
+                continue
+            段终 = 标签[idx + 1][0] if idx + 1 < len(标签) else len(块体)
+            段 = 块体[p:段终]
+            if default报错形态.search(段):
+                continue                   # 报错型 default=001 §十四合法形态
+            收命中(命中, "枚举默认", 相对, 段, j + 1 + p,
+                 return任意宿主, 行首表, 行们,
+                 "枚举分派 default 段生产返回值且无报错显形（#2074·001 §十四）")
+
+
+def 扫旗标豁免(相对: str, 掩: str, 行首表: list, 原文: str, 命中: list):
+    """面⑤（#2074）：旗标豁免包裹对账——每个 CN_SWITCH_ENUM_EXEMPT_BEGIN
+    位置入候选（基线在册=放行·无=红「新增旗标豁免」）。锚=BEGIN 后最近
+    switch 头行文本（包裹形态约定 BEGIN/注释/switch 相邻·窗口 5 行外无
+    switch=形态异常·锚记异常文本）。"""
+    行们 = 原文.split("\n")
+    掩行们 = 掩.split("\n")
+    for m in 包裹词.finditer(掩):
+        行 = 静默门禁.取行号(行首表, m.start())
+        if 行们[行 - 1].lstrip().startswith("#define"):
+            continue     # 宏定义原语行（switch_enum_gate.hpp 双平台 #define）
+        锚 = ""
+        for k in range(行 - 1, min(行 + 4, len(掩行们))):
+            if switch头模式.search(掩行们[k]):
+                锚 = 行们[k].strip()
+                break
+        因 = "旗标豁免包裹（漏 case 存量清偿位）"
+        if not 锚:
+            锚 = "CN_SWITCH_ENUM_EXEMPT_BEGIN 后无 switch（形态异常）"
+            因 = "包裹形态异常：BEGIN 窗口内无 switch 头行"
+        命中.append({"面": "旗标豁免", "文件": 相对, "行": 行,
+                   "锚": 锚, "因": 因})
+
+
 def 扫value_or(相对: str, 掩: str, 行首表: list, 原文: str, 命中: list):
     """面②：宿主 .value_or( / .value_or{ 全量（条款⑥全禁·不分缺省值型）。"""
     行们 = 原文.split("\n")
@@ -274,8 +379,10 @@ def 扫文件(相对: str, 文本: str):
     协议点们 = 静默门禁.扫协议注释(相对, 行们)
     命中 = []
     扫分派默认(相对, 掩, 行首表, 文本, 命中)
+    扫枚举默认(相对, 掩, 行首表, 文本, 命中)
     扫value_or(相对, 掩, 行首表, 文本, 命中)
     扫哨兵还原(相对, 掩, 行首表, 文本, 命中)
+    扫旗标豁免(相对, 掩, 行首表, 文本, 命中)
     for 面 in 面名们:                       # 同位置同锚重复=去重（计数由键承载）
         去重 = {}
         for 点 in 命中:
@@ -337,7 +444,8 @@ def 读基线(路径: Path):
 
 
 def 写基线(路径: Path, 扫描果: dict) -> dict:
-    面 = {名: sorted(点键(p) for p in 扫描果["候选"][名]) for 名 in 面名们}
+    面 = {名: sorted(点键(p) for p in 扫描果["候选"][名])
+         for 名 in 面名们 if 名 != "旗标豁免"}   # 旗标豁免独立基线（写旗标基线）
     try:
         sha = subprocess.run(["git", "rev-parse", "HEAD"], cwd=路径.parent.parent,
                              capture_output=True, text=True, timeout=10).stdout.strip()
@@ -359,7 +467,42 @@ def 写基线(路径: Path, 扫描果: dict) -> dict:
     }
     路径.write_text(json.dumps(数据, ensure_ascii=False, indent=1),
                     encoding="utf-8")
-    return {名: len(面[名]) for 名 in 面名们}
+    return {名: len(面[名]) for 名 in 面}
+
+
+def 读旗标基线(路径: Path):
+    """读旗标豁免基线（面⑤·#2074）；缺失=异常（防绕过·同 dispatch 基线口径）；
+    损坏=异常。返回 Counter（键=文件::归一锚）。"""
+    if not 路径.exists():
+        raise SystemExit(f"[门禁] 旗标基线缺失：{路径.name}——包裹与基线须同轮"
+                         f"落库（#2074 首挂轮先例）或 --update-baseline 生成")
+    try:
+        数据 = json.loads(路径.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError, UnicodeDecodeError) as e:
+        raise SystemExit(f"[门禁] 旗标基线损坏（{e.__class__.__name__}）："
+                         f"{路径.name}")
+    return Counter(条["文件"] + "::" + 归一(条.get("锚", ""))
+                   for 条 in 数据.get("条目", []))
+
+
+def 写旗标基线(路径: Path, 扫描果: dict) -> int:
+    """以现测重写旗标豁免基线（--update-baseline 双写之一）。"""
+    条目 = sorted(扫描果["候选"]["旗标豁免"],
+                  key=lambda x: (x["文件"], x["行"]))
+    数据 = {
+        "版本": 1,
+        "工具": "scripts/check_dispatch_gate.py（面⑤对账）",
+        "任务": "2074",
+        "说明": ("#2074 枚举 switch 穷举旗标豁免基线（只减不增）："
+                 "键=「文件::归一锚文本」。每个 CN_SWITCH_ENUM_EXEMPT_BEGIN "
+                 "包裹必须在册；清偿（显式补 case 删包裹）后键消失=消减，"
+                 "--update-baseline 收账。新增包裹禁裸堆（未登记=红）。"),
+        "条目": [{"文件": p["文件"], "行": p["行"], "锚": p["锚"],
+                 "因由": p["因"]} for p in 条目],
+    }
+    路径.write_text(json.dumps(数据, ensure_ascii=False, indent=1),
+                    encoding="utf-8")
+    return len(条目)
 
 
 # ============ 四、判定引擎（三红·同 1640 口径） ============
@@ -496,7 +639,7 @@ def 打印报告(扫描果: dict, 判定果: dict, 指纹: str, 详列: bool):
         print(f"\n[门禁·红] {len(判定果['红'])} 条——L1 硬拦；唯一合法通道="
               f"协议注释+miss_registry.json 登记条（批准=已批/存量过渡），或原地清偿。")
     else:
-        print("\n[门禁·绿] 三面零红（存量冻结只减不增·新增面严）")
+        print("\n[门禁·绿] 四面零红（存量冻结只减不增·新增面严）")
 
 
 def 转json(判定果: dict, 扫描果: dict) -> str:
@@ -568,6 +711,41 @@ int 链样(int x) {
 }
 """
 
+# 面④样例（#2074）：枚举分派 default 段三分形态（生产值/报错型/非识别面）
+样例枚举默认 = """// 面④样例
+int 分派样(int k) {
+    switch (取节点(k).getType()) {
+    case 1: return 1;
+    default:
+        return 兜底值(k);      // 生产值·无报错调用=面④命中
+    }
+}
+int 报错样(int k) {
+    switch (取节点(k).getType()) {
+    case 1: return 1;
+    default:
+        diag.report(Error, 位置, "新枚举值未穷举");
+        return 0;              // 段内 report( 词面=报错型合法·面④不命中
+    }
+}
+int 裸枚举样(int op) {
+    switch (op) {
+    case 1: return 1;
+    default:
+        return 兜底值(op);     // 无 getType() 特征=不识别·面④不命中（诚实边界）
+    }
+}
+int 赋值样(int k) {
+    switch (取节点(k).getType()) {
+    case 1: break;
+    default:
+        k = 2;                 // 赋值非 return=不入面④（只判 return 形态）
+        break;
+    }
+    return k;
+}
+"""
+
 
 def 自测写表(路径: Path, 条目们: list):
     路径.write_text(json.dumps({"版本": 1, "条目": 条目们}, ensure_ascii=False),
@@ -575,7 +753,8 @@ def 自测写表(路径: Path, 条目们: list):
 
 
 def 自测建场景(保活: list, 文件们: dict):
-    """独立临时树 + 以当前实测生成基线。返回 (根, 表, 基)。"""
+    """独立临时树 + 以当前实测生成基线（dispatch 面+旗标豁免面双基线）。
+    返回 (根, 表, 基, 旗基)。"""
     td = tempfile.TemporaryDirectory(prefix="cdg1959_")
     保活.append(td)
     根 = Path(td.name)
@@ -586,15 +765,19 @@ def 自测建场景(保活: list, 文件们: dict):
     表 = 根 / "registry.json"
     自测写表(表, [])
     基 = 根 / "baseline.json"
-    写基线(基, 全库扫描(根))
-    return 根, 表, 基
+    旗基 = 根 / "flag_baseline.json"
+    扫描果 = 全库扫描(根)
+    写基线(基, 扫描果)
+    写旗标基线(旗基, 扫描果)
+    return 根, 表, 基, 旗基
 
 
-def 自测跑(根: Path, 表: Path, 基: Path):
+def 自测跑(根: Path, 表: Path, 基: Path, 旗基: Path):
     """临时树门禁调用：返回 (rc, 判定果, 扫描果)。"""
     扫描果 = 全库扫描(根)
     条目们, _态 = 默认值扫描.读登记表(表)
     基线, _指纹 = 读基线(基)
+    基线["旗标豁免"] = 读旗标基线(旗基)
     果 = 判定(扫描果, 条目们, 基线)
     return (1 if 果["红"] else 0), 果, 扫描果
 
@@ -605,7 +788,7 @@ def 红种们(果) -> set:
 
 def 自测场景一(断言, 保活):
     """场景一：三面命中形态+精化证伪+基线演化（同一棵树顺序演化）。"""
-    根, 表, 基 = 自测建场景(保活, {
+    根, 表, 基, 旗基 = 自测建场景(保活, {
         "src/样例.cpp": 样例宿主 + 样例嵌套,
         "CN语言编译器v2/源.cn": 样例v2})
     # 基线生成前直接看扫描面形态（候选计数断言）
@@ -620,7 +803,7 @@ def 自测场景一(断言, 保活):
     断言(not any("嵌套" in p["锚"] and "0 - 1" in p["锚"]
                for p in 扫描果["候选"]["哨兵还原"]), "判据 == 0-1 不入还原面")
     # 基线生成→存量放行=绿
-    rc, 果, _s = 自测跑(根, 表, 基)
+    rc, 果, _s = 自测跑(根, 表, 基, 旗基)
     断言(rc == 0, f"基线生成后存量放行=绿: 红={果['红']!r}")
     断言(果["面统"]["分派默认"]["现测"] == 4, "分派默认现测=4")
     # 反态①：新增 default 返字面量位置=红
@@ -628,7 +811,7 @@ def 自测场景一(断言, 保活):
     样.write_text(样例宿主 + 样例嵌套 +
                 "int 新样(int k) {\n    switch (取种类(k)) {\n"
                 "    default:\n        return 0;\n    }\n}\n", encoding="utf-8")
-    rc, 果, _s = 自测跑(根, 表, 基)
+    rc, 果, _s = 自测跑(根, 表, 基, 旗基)
     断言(rc == 1 and "新增分派默认" in 红种们(果), f"反态①新增 default 返 0 真拦: {红种们(果)}")
     # 正态①：同行协议注释+登记条（存量过渡）=放行
     自测写表(表, [{"文件": "src/样例.cpp", "函数": "新样",
@@ -639,19 +822,19 @@ def 自测场景一(断言, 保活):
                 "int 新样(int k) {\n    switch (取种类(k)) {\n"
                 "    default:\n        return 0;  // 静默豁免分派默认: 自测\n    }\n}\n",
                 encoding="utf-8")
-    rc, 果, _s = 自测跑(根, 表, 基)
+    rc, 果, _s = 自测跑(根, 表, 基, 旗基)
     断言(rc == 0, f"正态①协议注释(分派默认类)+登记条=放行: 红={果['红']!r}")
     断言(any(h["面"] == "分派默认" for h in 果["豁免"]), "豁免放行列表含分派默认")
     # 反态②：协议注释而登记表无条=漏登记
     自测写表(表, [])
-    rc, 果, _s = 自测跑(根, 表, 基)
+    rc, 果, _s = 自测跑(根, 表, 基, 旗基)
     断言(rc == 1 and "漏登记" in 红种们(果), f"反态②漏登记（注释无条）: {红种们(果)}")
     # 反态③：登记条批准缺失=登记无批准（1238）
     自测写表(表, [{"文件": "src/样例.cpp", "函数": "新样",
                 "锚文本": "return 0;", "来源": "1959selftest",
                 "类别": "分派默认", "静默风险": "低", "原因": "自测登记",
                 "登记人": "selftest"}])
-    rc, 果, _s = 自测跑(根, 表, 基)
+    rc, 果, _s = 自测跑(根, 表, 基, 旗基)
     断言("登记无批准" in 红种们(果), f"反态③登记无批准（1238）: {红种们(果)}")
     # 反态④：协议注释类别不在枚举=红（枚举格式强制）
     自测写表(表, [{"文件": "src/样例.cpp", "函数": "新样",
@@ -662,35 +845,35 @@ def 自测场景一(断言, 保活):
                 "int 新样(int k) {\n    switch (取种类(k)) {\n"
                 "    default:\n        return 0;  // 静默豁免随便写: 类别非法\n    }\n}\n",
                 encoding="utf-8")
-    rc, 果, _s = 自测跑(根, 表, 基)
+    rc, 果, _s = 自测跑(根, 表, 基, 旗基)
     断言("协议注释类别非法" in 红种们(果), f"反态④协议注释类别非法=红: {红种们(果)}")
     # 正态②：位置消失=自动消减不红
     自测写表(表, [])
     样.write_text(样例嵌套, encoding="utf-8")
-    rc, 果, _s = 自测跑(根, 表, 基)
+    rc, 果, _s = 自测跑(根, 表, 基, 旗基)
     断言(rc == 0 and 果["消减"]["分派默认"], f"正态②基线位置消失=自动消减: {果['消减']}")
 
 
 def 自测场景二(断言, 保活):
     """场景二：value_or 与哨兵还原演化+幂等。"""
-    根, 表, 基 = 自测建场景(保活, {
+    根, 表, 基, 旗基 = 自测建场景(保活, {
         "src/干净.cpp": "int 求和(int a, int b) {\n    return a + b;\n}\n",
         "CN语言编译器v2/干净.cn": "函数 求和(整32 甲, 整32 乙) -> 整32 {\n    返回 甲 + 乙;\n}\n"})
-    rc, 果, _s = 自测跑(根, 表, 基)
+    rc, 果, _s = 自测跑(根, 表, 基, 旗基)
     断言(rc == 0 and all(果["面统"][面]["现测"] == 0 for 面 in 面名们),
         f"干净样例三面零命中: {果['面统']!r}")
     v2 = 根 / "CN语言编译器v2" / "干净.cn"
     v2.write_text("函数 求和(整32 甲, 整32 乙) -> 整32 {\n    返回 甲 + 乙;\n}\n"
                 "函数 取槽(整64 甲) -> 整64 {\n    整64 槽 = 0 - 1;\n    返回 槽;\n}\n",
                 encoding="utf-8")
-    rc, 果, _s = 自测跑(根, 表, 基)
+    rc, 果, _s = 自测跑(根, 表, 基, 旗基)
     断言(rc == 1 and "新增哨兵还原" in 红种们(果), f"反态⑤新增还原赋值真拦: {红种们(果)}")
     v2.write_text("函数 求和(整32 甲, 整32 乙) -> 整32 {\n    返回 甲 + 乙;\n}\n",
                 encoding="utf-8")
-    rc, 果, _s = 自测跑(根, 表, 基)
+    rc, 果, _s = 自测跑(根, 表, 基, 旗基)
     断言(rc == 0, f"正态③新增位置删除后回绿: 红={果['红']!r}")
     # 幂等：同一棵树重扫全等
-    根2, 表2, 基2 = 自测建场景(保活, {
+    根2, 表2, 基2, _旗基2 = 自测建场景(保活, {
         "src/样例.cpp": 样例宿主, "CN语言编译器v2/源.cn": 样例v2})
     扫1 = 全库扫描(根2)
     扫2 = 全库扫描(根2)
@@ -700,7 +883,7 @@ def 自测场景二(断言, 保活):
 
 def 自测场景三(断言, 保活):
     """场景三：基线缺失拒跑（防绕过）+ 字符串内形态不判。"""
-    根3, 表3, _基3 = 自测建场景(保活, {
+    根3, 表3, _基3, _旗基3 = 自测建场景(保活, {
         "src/字符串样.cpp":
         'int 例() {\n    const char* s = "return false;  .value_or(0)";\n'
         "    if (s == nullptr) return 1;\n    return 0;\n}\n"})
@@ -714,6 +897,61 @@ def 自测场景三(断言, 保活):
         断言(True, "基线缺失=拒跑（防绕过）")
 
 
+def 自测场景四(断言, 保活):
+    """场景四：面④「枚举默认」三态（#2074·001 §十四 default 唯一合法形态=
+    报内部错误中止）——生产值红/报错型放行/非识别面与赋值形态不误报。"""
+    根, 表, 基, 旗基 = 自测建场景(保活, {"src/枚举样.cpp": 样例枚举默认})
+    # 基线生成前：面④命中=1（分派样生产值）；报错样/裸枚举样/赋值样不命中
+    扫描果 = 全库扫描(根)
+    枚四 = 扫描果["候选"]["枚举默认"]
+    断言(len(枚四) == 1 and "兜底值(k)" in 枚四[0]["锚"],
+        f"面④命中=1（仅分派样生产值）: {[p['锚'] for p in 枚四]}")
+    断言(any(p["锚"].startswith("return 0") for p in 扫描果["候选"]["分派默认"]),
+        "报错样的 return 0 仍归面①（字面量面无报错豁免·基线各自管）")
+    # 基线生成→存量放行=绿
+    rc, 果, _s = 自测跑(根, 表, 基, 旗基)
+    断言(rc == 0, f"面④基线生成后存量放行=绿: 红={果['红']!r}")
+    # 反态①：新增「default 生产值且无报错」位置=红（锁面三态·态2）
+    样 = 根 / "src" / "枚举样.cpp"
+    样.write_text(样例枚举默认 +
+                "int 新增样(int k) {\n    switch (取节点(k).getType()) {\n"
+                "    case 1: return 1;\n    default:\n"
+                "        return 备用表[k];\n    }\n}\n", encoding="utf-8")
+    rc, 果, _s = 自测跑(根, 表, 基, 旗基)
+    断言(rc == 1 and "新增枚举默认" in 红种们(果),
+        f"面④反态①新增 default 生产值真拦: {红种们(果)}")
+    # 正态①：协议注释（复用「分派默认」类别）+登记条=放行
+    自测写表(表, [{"文件": "src/枚举样.cpp", "函数": "新增样",
+                "锚文本": "return 备用表[k];", "来源": "2074selftest",
+                "类别": "分派默认", "静默风险": "低", "原因": "自测登记",
+                "登记人": "selftest", "批准": "存量过渡"}])
+    样.write_text(样例枚举默认 +
+                "int 新增样(int k) {\n    switch (取节点(k).getType()) {\n"
+                "    case 1: return 1;\n    default:\n"
+                "        return 备用表[k];  // 静默豁免分派默认: 自测\n    }\n}\n",
+                encoding="utf-8")
+    rc, 果, _s = 自测跑(根, 表, 基, 旗基)
+    断言(rc == 0, f"面④正态①协议注释+登记条=放行: 红={果['红']!r}")
+    # 正态②：收账（--update-baseline 等效·放行位置正式入基线）后位置消失=
+    # 自动消减不红（棘轮）
+    写基线(基, 全库扫描(根))
+    自测写表(表, [])
+    样.write_text(样例枚举默认, encoding="utf-8")
+    rc, 果, _s = 自测跑(根, 表, 基, 旗基)
+    断言(rc == 0 and 果["消减"]["枚举默认"],
+        f"面④正态②基线位置消失=自动消减: {果['消减']}")
+    # 锁面三态·态3（正例全绿）：全 case + default 报错形态零命中
+    样.write_text(
+        "int 全case报错样(int k) {\n    switch (取节点(k).getType()) {\n"
+        "    case 1: return 1;\n    case 2: return 2;\n    default:\n"
+        "        diag.report(Error, 位置, \"缺口\");\n        return 0;\n"
+        "    }\n}\n", encoding="utf-8")
+    扫描果 = 全库扫描(根)
+    断言(len(扫描果["候选"]["枚举默认"]) == 0,
+        f"态3 全 case+default 报错=面④零命中: "
+        f"{[p['锚'] for p in 扫描果['候选']['枚举默认']]}")
+
+
 def 自测() -> int:
     通过 = [0]
     失败 = []
@@ -725,7 +963,7 @@ def 自测() -> int:
             失败.append(说明)
 
     保活 = []                            # TemporaryDirectory 保活（防提前清理）
-    for 场景 in (自测场景一, 自测场景二, 自测场景三):
+    for 场景 in (自测场景一, 自测场景二, 自测场景三, 自测场景四):
         try:
             场景(断言, 保活)
         except Exception as e:           # 场景异常=自测失败（显形不静默）
@@ -736,7 +974,7 @@ def 自测() -> int:
             print("  ✘ " + 项)
         print(f"[自测] {len(失败)} 项失败（通过 {通过[0]}）")
         return 1
-    print(f"== 门禁自测全过（{通过[0]} 项断言·三面正反两态/精化证伪/三红各一例/幂等）==")
+    print(f"== 门禁自测全过（{通过[0]} 项断言·四面正反两态/精化证伪/三红各一例/幂等）==")
     return 0
 
 
@@ -744,10 +982,13 @@ def 自测() -> int:
 
 def main() -> int:
     解析器 = argparse.ArgumentParser(
-        description="分派默认/可选缺省/哨兵还原机械门禁（#1959·三面+冻结基线）")
+        description="分派默认/可选缺省/哨兵还原/枚举默认/旗标豁免机械门禁"
+                    "（#1959·#2074·五面+冻结基线）")
     解析器.add_argument("--root", default=str(仓库根), help="仓库根目录")
     解析器.add_argument("--registry", default=str(登记表文件), help="登记表路径")
     解析器.add_argument("--baseline", default=str(基线文件), help="冻结基线路径")
+    解析器.add_argument("--flag-baseline", default=str(旗标基线文件),
+                      help="旗标豁免基线路径（面⑤·#2074 独立基线）")
     解析器.add_argument("--report", action="store_true", help="报告模式（全列·rc=0 不拦）")
     解析器.add_argument("--json", action="store_true", help="机读输出（stdout）")
     解析器.add_argument("--update-baseline", action="store_true",
@@ -762,14 +1003,17 @@ def main() -> int:
     扫描果 = 全库扫描(根)
     if 参数.update_baseline:
         统计 = 写基线(Path(参数.baseline), 扫描果)
+        旗数 = 写旗标基线(Path(参数.flag_baseline), 扫描果)
         print(f"[基线] 已重写 {Path(参数.baseline).name}："
-              + " · ".join(f"{面} {统计[面]}" for 面 in 面名们))
+              + " · ".join(f"{面} {统计[面]}" for 面 in 面名们 if 面 in 统计)
+              + f" · 旗标豁免 {旗数}（独立基线 {Path(参数.flag_baseline).name}·#2074）")
         return 0
     条目们, 表态 = 默认值扫描.读登记表(Path(参数.registry))
     if 表态 != "就绪":
         print(f"[门禁·红] 登记表状态异常：{表态}（{参数.registry}）")
         return 1
     基线, 指纹 = 读基线(Path(参数.baseline))
+    基线["旗标豁免"] = 读旗标基线(Path(参数.flag_baseline))   # 面⑤并入判定（#2074）
     判定果 = 判定(扫描果, 条目们, 基线)
 
     if 参数.json:

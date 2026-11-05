@@ -9,6 +9,7 @@
 #include <string>
 #include <vector>
 
+#include "cn_compiler/common/switch_enum_gate.hpp"
 #include "cn_compiler/ir/ir.hpp"
 #include "cn_compiler/model/semantic_view.hpp"
 #include "cn_compiler/model/type_system.hpp"
@@ -19,6 +20,8 @@ namespace cn_compiler {
 
 // 运算符 -> 方法符号（运算符X，与语义层 resolveOperatorOverload 的 opSym 一致）
 static std::string operatorSymText(Operator op) {
+    CN_SWITCH_ENUM_EXEMPT_BEGIN
+    // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
     switch (op) {
         case Operator::Add: return "+";
         case Operator::Subtract: return "-";
@@ -36,6 +39,7 @@ static std::string operatorSymText(Operator op) {
         case Operator::Tilde: return "~";
         default: return "";
     }
+    CN_SWITCH_ENUM_EXEMPT_END
 }
 
 // 运算符重载降级：左操作数为类实例且类有 运算符X 成员 ->

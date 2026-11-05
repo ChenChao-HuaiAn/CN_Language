@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "cn_compiler/codegen/linux_x64/linux_x64_codegen.hpp"
+#include "cn_compiler/common/switch_enum_gate.hpp"
 #include "cn_compiler/model/semantic_view.hpp"
 #include "cn_compiler/model/type_system.hpp"
 
@@ -129,6 +130,8 @@ void LinuxX64CodeGenerator::collectI128Consts(const ir::IRModule& module) {
     for (auto& function : module.functions) {
         for (auto& block : function.blocks) {
             for (auto& inst : block->instructions) {
+                CN_SWITCH_ENUM_EXEMPT_BEGIN
+                // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
                 switch (inst.opcode) {
                     case ir::Opcode::Call:
                     case ir::Opcode::CallIndirect:
@@ -162,6 +165,7 @@ void LinuxX64CodeGenerator::collectI128Consts(const ir::IRModule& module) {
                     default:
                         break;
                 }
+                CN_SWITCH_ENUM_EXEMPT_END
             }
         }
     }

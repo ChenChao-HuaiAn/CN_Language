@@ -8,6 +8,7 @@
 //   5. 入口判定：ModuleUnit::isEntryUnit（命令行显式入口标记，簇⑥ 根治 2026-09-05）；
 //      isEntryModule（模块名 == 主）为文件名约定查询保留，非入口语义依据
 // 单文件 <=1000 行、单函数 <=100 行约束。
+#include "cn_compiler/common/switch_enum_gate.hpp"
 #include "cn_compiler/module/module.hpp"
 
 #include <algorithm>
@@ -273,6 +274,8 @@ void collectLambdaBodyRefs(BlockStmt* body, std::unordered_set<std::string>& out
 // 供 mergeModuleDecls 做闭包合并（把被公开函数引用的私有函数一并带入）。
 void collectExprFuncRefs(Expr* e, std::unordered_set<std::string>& out) {
     if (e == nullptr) return;
+    CN_SWITCH_ENUM_EXEMPT_BEGIN
+    // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
     switch (e->getType()) {
         case NodeType::CallExpr: {
             CallExpr* call = static_cast<CallExpr*>(e);
@@ -335,6 +338,7 @@ void collectExprFuncRefs(Expr* e, std::unordered_set<std::string>& out) {
         default:
             return;  // 字面量/标识符/自身/父类 等无嵌套
     }
+    CN_SWITCH_ENUM_EXEMPT_END
 }
 
 // 收集一条语句中的函数引用
@@ -347,6 +351,8 @@ void collectLambdaBodyRefs(BlockStmt* body, std::unordered_set<std::string>& out
 
 void collectStmtFuncRefs(Stmt* s, std::unordered_set<std::string>& out) {
     if (s == nullptr) return;
+    CN_SWITCH_ENUM_EXEMPT_BEGIN
+    // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
     switch (s->getType()) {
         case NodeType::ExprStmt:
             collectExprFuncRefs(static_cast<ExprStmt*>(s)->expr.get(), out);
@@ -417,6 +423,7 @@ void collectStmtFuncRefs(Stmt* s, std::unordered_set<std::string>& out) {
         default:
             return;  // 中断/继续/情况/默认 无嵌套表达式
     }
+    CN_SWITCH_ENUM_EXEMPT_END
 }
 
 // 按模块（crate）分桶的类型去重表：模块名 -> 已合并类型名集合。

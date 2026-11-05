@@ -1,6 +1,7 @@
 // 435：lambda 引用捕获逃逸检查实现（设计契约见 semantic_lambda_escape.hpp）。
 // 保守方向=永不静默放行：逃逸形态检出即编译错误并指路改写；不确定载体
 // （解引用写等寿命不可证面）按逃逸拒绝（001 条文③·裁决第 4 条）。
+#include "cn_compiler/common/switch_enum_gate.hpp"
 #include "cn_compiler/semantic/semantic_lambda_escape.hpp"
 
 #include <unordered_set>
@@ -32,6 +33,8 @@ bool isRefLambda(const Expr* e) {
 // 同一套检查覆盖）；CallExpr 跳过被调子树（同帧调用合法面·706/707 权料）。
 bool treeContainsRefLambda(const Expr* e) {
     if (e == nullptr) return false;
+    CN_SWITCH_ENUM_EXEMPT_BEGIN
+    // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
     switch (e->getType()) {
         case NodeType::LambdaExpr:
             return isRefLambda(e);
@@ -80,6 +83,7 @@ bool treeContainsRefLambda(const Expr* e) {
         default:
             return false;
     }
+    CN_SWITCH_ENUM_EXEMPT_END
 }
 
 // 逃逸诊断统一文案（指路改写=裁决第 2 条）

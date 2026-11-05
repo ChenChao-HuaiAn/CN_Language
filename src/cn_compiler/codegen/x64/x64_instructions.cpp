@@ -13,6 +13,7 @@
 #include <string>
 
 #include "cn_compiler/codegen/x64/x64_codegen.hpp"
+#include "cn_compiler/common/switch_enum_gate.hpp"
 #include "cn_compiler/model/type_system.hpp"
 #include "cn_compiler/codegen/judgement.hpp"
 
@@ -159,6 +160,8 @@ std::string X64CodeGenerator::shrunkOperand(const std::string& type, const std::
 
 // 比较操作码 -> 条件跳转助记符
 std::string X64CodeGenerator::condJumpMnemonic(ir::Opcode opcode) {
+    CN_SWITCH_ENUM_EXEMPT_BEGIN
+    // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
     switch (opcode) {
         case ir::Opcode::Eq: return "je";
         case ir::Opcode::Ne: return "jne";
@@ -168,10 +171,13 @@ std::string X64CodeGenerator::condJumpMnemonic(ir::Opcode opcode) {
         case ir::Opcode::Ge: return "jge";
         default: return "jne";  // 防御性：非比较操作码按不等于处理
     }
+    CN_SWITCH_ENUM_EXEMPT_END
 }
 
 // 比较操作码 -> setcc助记符
 std::string X64CodeGenerator::setccMnemonic(ir::Opcode opcode) {
+    CN_SWITCH_ENUM_EXEMPT_BEGIN
+    // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
     switch (opcode) {
         case ir::Opcode::Eq: return "sete";
         case ir::Opcode::Ne: return "setne";
@@ -181,6 +187,7 @@ std::string X64CodeGenerator::setccMnemonic(ir::Opcode opcode) {
         case ir::Opcode::Ge: return "setge";
         default: return "setne";
     }
+    CN_SWITCH_ENUM_EXEMPT_END
 }
 
 namespace {

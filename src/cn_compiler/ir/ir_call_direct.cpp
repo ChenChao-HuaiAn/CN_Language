@@ -16,6 +16,7 @@
 #include <utility>
 #include <vector>
 
+#include "cn_compiler/common/switch_enum_gate.hpp"
 #include "cn_compiler/ir/ir.hpp"
 #include "cn_compiler/ir/ir_generator.hpp"
 #include "cn_compiler/model/ast_expr.hpp"
@@ -563,6 +564,8 @@ ir::IRValue IRGenerator::evalDefaultExpr(Expr* expr,
     }
     ir::IRValue base;
     bool zeroPlaceholder = false;  // 超域/非法常量：语义层已诊断，按目标类型补 0
+    CN_SWITCH_ENUM_EXEMPT_BEGIN
+    // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
     switch (expr->getType()) {
         case NodeType::IntegerLiteral: {
             IntegerLiteral* lit = static_cast<IntegerLiteral*>(expr);
@@ -746,6 +749,7 @@ ir::IRValue IRGenerator::evalDefaultExpr(Expr* expr,
             break;
         }
     }
+    CN_SWITCH_ENUM_EXEMPT_END
     if (zeroPlaceholder || target.empty() || target == base.type) return base;
     // 仅数值常量参与落位：字符串/自定义类型默认值非法（语义层已诊断），保持原值。
     const bool baseInt = isIntFamilyIrType(base.type);

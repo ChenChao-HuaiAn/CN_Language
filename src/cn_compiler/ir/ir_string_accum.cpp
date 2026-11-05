@@ -41,6 +41,7 @@
 #include <string>
 #include <vector>
 
+#include "cn_compiler/common/switch_enum_gate.hpp"
 #include "cn_compiler/ir/ir.hpp"
 #include "cn_compiler/model/semantic_view.hpp"
 #include "cn_compiler/model/type_system.hpp"
@@ -70,6 +71,8 @@ void scanStmtForName(const Stmt* s, StrAccumScan& st);
 // 表达式扫描：覆盖全部 Expr 形态——未知形态保守拒绝（新增节点默认不优化）。
 void scanExprForName(const Expr* e, StrAccumScan& st) {
     if (e == nullptr || st.rejected) return;
+    CN_SWITCH_ENUM_EXEMPT_BEGIN
+    // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
     switch (e->getType()) {
         case NodeType::IntegerLiteral:
         case NodeType::FloatLiteral:
@@ -161,11 +164,14 @@ void scanExprForName(const Expr* e, StrAccumScan& st) {
             st.rejected = true;
             return;
     }
+    CN_SWITCH_ENUM_EXEMPT_END
 }
 
 // 语句扫描：覆盖全部 Stmt 形态——未知形态保守拒绝。
 void scanStmtForName(const Stmt* s, StrAccumScan& st) {
     if (s == nullptr || st.rejected) return;
+    CN_SWITCH_ENUM_EXEMPT_BEGIN
+    // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
     switch (s->getType()) {
         case NodeType::BlockStmt:
             for (const auto& sub :
@@ -239,11 +245,14 @@ void scanStmtForName(const Stmt* s, StrAccumScan& st) {
             st.rejected = true;
             return;
     }
+    CN_SWITCH_ENUM_EXEMPT_END
 }
 
 // 语句位赋值收集（候选面·浅遍历语句树；不进入嵌套循环——外层已被判据⑤拒绝）。
 void collectStmtAssigns(const Stmt* s, std::vector<const AssignmentExpr*>& out) {
     if (s == nullptr) return;
+    CN_SWITCH_ENUM_EXEMPT_BEGIN
+    // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
     switch (s->getType()) {
         case NodeType::BlockStmt:
             for (const auto& sub :
@@ -285,6 +294,7 @@ void collectStmtAssigns(const Stmt* s, std::vector<const AssignmentExpr*>& out) 
         default:
             return;
     }
+    CN_SWITCH_ENUM_EXEMPT_END
 }
 
 // ---- 函数级逃逸扫描（P0-1/P0-2/P0-3·750 复审返工）----
@@ -310,6 +320,8 @@ void scanFuncAliasStmt(const Stmt* s, FuncAliasScan& st);
 
 void scanFuncAliasExpr(const Expr* e, FuncAliasScan& st) {
     if (e == nullptr || st.hasLambda) return;
+    CN_SWITCH_ENUM_EXEMPT_BEGIN
+    // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
     switch (e->getType()) {
         case NodeType::IntegerLiteral:
         case NodeType::FloatLiteral:
@@ -401,10 +413,13 @@ void scanFuncAliasExpr(const Expr* e, FuncAliasScan& st) {
             st.hasAlias = true;
             return;
     }
+    CN_SWITCH_ENUM_EXEMPT_END
 }
 
 void scanFuncAliasStmt(const Stmt* s, FuncAliasScan& st) {
     if (s == nullptr || st.hasLambda) return;
+    CN_SWITCH_ENUM_EXEMPT_BEGIN
+    // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
     switch (s->getType()) {
         case NodeType::BlockStmt:
             for (const auto& sub :
@@ -499,6 +514,7 @@ void scanFuncAliasStmt(const Stmt* s, FuncAliasScan& st) {
             st.hasAlias = true;
             return;
     }
+    CN_SWITCH_ENUM_EXEMPT_END
 }
 
 }  // namespace

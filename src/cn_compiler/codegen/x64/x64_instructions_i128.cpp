@@ -4,6 +4,7 @@
 #include <string>
 
 #include "cn_compiler/codegen/x64/x64_codegen.hpp"
+#include "cn_compiler/common/switch_enum_gate.hpp"
 
 namespace cn_compiler {
 
@@ -352,6 +353,8 @@ void X64CodeGenerator::emitInt128Shift(AsmWriter& writer, const ir::IRInstructio
 void X64CodeGenerator::emitInt128MulDivMod(AsmWriter& writer, const ir::IRInstruction& inst) {
     const bool isUnsigned = (inst.type == "u128");
     std::string helper;
+    CN_SWITCH_ENUM_EXEMPT_BEGIN
+    // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
     switch (inst.opcode) {
         case ir::Opcode::Mul:
         case ir::Opcode::WrapMul:  // 任务 474：回绕乘=i128 运行时辅助本征回绕
@@ -360,6 +363,7 @@ void X64CodeGenerator::emitInt128MulDivMod(AsmWriter& writer, const ir::IRInstru
         case ir::Opcode::Mod: helper = isUnsigned ? "__cn_mod_u128" : "__cn_mod_i128"; break;
         default: helper = "__cn_mul_i128"; break;
     }
+    CN_SWITCH_ENUM_EXEMPT_END
     // 操作数 a/b 地址：i128 寄存器双槽 lea 低64位槽（%vN+1）；
     // i128 常量需先落双槽临时区再取地址（不能 lea 立即数）。
     // 常量临时区：a 用 [rsp+32]/[rsp+40]、b 用 [rsp+48]/[rsp+56]。
@@ -472,6 +476,8 @@ void X64CodeGenerator::emitInt128Compare(AsmWriter& writer, const ir::IRInstruct
     // 按比较操作码选择条件：Eq -> cmp==0；Ne -> cmp!=0；
     //   Lt -> cmp<0；Le -> cmp<=0；Gt -> cmp>0；Ge -> cmp>=0
     std::string cc;
+    CN_SWITCH_ENUM_EXEMPT_BEGIN
+    // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
     switch (inst.opcode) {
         case ir::Opcode::Eq: cc = "sete"; break;
         case ir::Opcode::Ne: cc = "setne"; break;
@@ -481,6 +487,7 @@ void X64CodeGenerator::emitInt128Compare(AsmWriter& writer, const ir::IRInstruct
         case ir::Opcode::Ge: cc = "setge"; break;
         default: cc = "sete"; break;
     }
+    CN_SWITCH_ENUM_EXEMPT_END
     writer.line(cc + " al");
     writer.line("movzx eax, al");
     writer.line("mov " + shrunkOperand("i32", dst) + ", eax");

@@ -10,6 +10,7 @@
 #include <unordered_set>
 #include <utility>
 
+#include "cn_compiler/common/switch_enum_gate.hpp"
 #include "cn_compiler/semantic/semantic.hpp"
 #include "cn_compiler/model/type_system.hpp"
 #include "cn_compiler/model/semantic_helpers.hpp"
@@ -494,6 +495,8 @@ void SemanticAnalyzer::registerFunction(FunctionDecl* node) {
 //   补 0」——实际语义层零检查（引用前形参静默 0 错值直达运行期）·本判定
 //   即把该假检查变真检查（纪律五两态验收：负测 E2E 锁死）。
 static bool defaultExprIsConst(const Expr* expr, const SemanticAnalyzer* self) {
+    CN_SWITCH_ENUM_EXEMPT_BEGIN
+    // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
     switch (expr->getType()) {
         case NodeType::IntegerLiteral:
         case NodeType::FloatLiteral:
@@ -523,6 +526,7 @@ static bool defaultExprIsConst(const Expr* expr, const SemanticAnalyzer* self) {
         default:
             return false;
     }
+    CN_SWITCH_ENUM_EXEMPT_END
 }
 
 // 族①：默认参数规则检查（原 379~414 段）——从右向左连续声明 + 引用参数

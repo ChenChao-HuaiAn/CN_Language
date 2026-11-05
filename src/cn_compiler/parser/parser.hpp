@@ -14,6 +14,7 @@
 
 #include "cn_compiler/common/diagnostics.hpp"
 #include "cn_compiler/common/optional_safe.hpp"
+#include "cn_compiler/common/switch_enum_gate.hpp"
 #include "cn_compiler/lexer/token.hpp"
 #include "cn_compiler/model/ast.hpp"
 
@@ -60,6 +61,8 @@ inline constexpr const char* kInterfaceMethodSemicolonDiag =
 //   符号——跨 TU 高频调用：parseStmt/parsePrimary/parseTypeName 等每个 token
 //   多次判定）——语义逐字不变。
 inline bool isTypeKeyword(TokenType type) {
+    CN_SWITCH_ENUM_EXEMPT_BEGIN
+    // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
     switch (type) {
         case TokenType::Kw_Int: case TokenType::Kw_Double:
         case TokenType::Kw_Int8: case TokenType::Kw_Int16: case TokenType::Kw_Int32:
@@ -74,11 +77,14 @@ inline bool isTypeKeyword(TokenType type) {
         default:
             return false;
     }
+    CN_SWITCH_ENUM_EXEMPT_END
 }
 
 // 判断Token是否为赋值运算符（= += -= *= /= %= 等11个，parser_expr.cpp 使用）
 // 1216：内联进头（同上·Pratt 每个表达式起点一次判定）
 inline bool isAssignOp(TokenType type) {
+    CN_SWITCH_ENUM_EXEMPT_BEGIN
+    // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
     switch (type) {
         case TokenType::Equal: case TokenType::PlusEqual: case TokenType::MinusEqual:
         case TokenType::StarEqual: case TokenType::SlashEqual: case TokenType::PercentEqual:
@@ -88,9 +94,12 @@ inline bool isAssignOp(TokenType type) {
         default:
             return false;
     }
+    CN_SWITCH_ENUM_EXEMPT_END
 }
 // TokenType -> 赋值运算符映射（parser_expr.cpp 使用；1216 内联）
 inline Operator toAssignOp(TokenType type) {
+    CN_SWITCH_ENUM_EXEMPT_BEGIN
+    // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
     switch (type) {
         case TokenType::Equal: return Operator::Assign;
         case TokenType::PlusEqual: return Operator::PlusAssign;
@@ -104,6 +113,7 @@ inline Operator toAssignOp(TokenType type) {
         case TokenType::LessLessEqual: return Operator::LessLessAssign;
         default: return Operator::GreaterGreaterAssign;
     }
+    CN_SWITCH_ENUM_EXEMPT_END
 }
 // 解析整数字面量文本为数值（支持 10/16/2/8 进制、整数后缀；parser_expr.cpp/parser_stmt.cpp 使用）
 std::int64_t parseIntValue(const std::string& text);

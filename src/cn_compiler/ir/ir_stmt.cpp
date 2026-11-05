@@ -10,6 +10,7 @@
 #include <string>
 #include <utility>
 
+#include "cn_compiler/common/switch_enum_gate.hpp"
 #include "cn_compiler/ir/ir.hpp"
 #include "cn_compiler/model/semantic_view.hpp"
 #include "cn_compiler/model/type_system.hpp"
@@ -853,6 +854,8 @@ void IRGenerator::visitBlockStmt(BlockStmt* node) {
 }
 void IRGenerator::genStmt(Stmt* node) {
     if (node == nullptr) return;
+    CN_SWITCH_ENUM_EXEMPT_BEGIN
+    // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
     switch (node->getType()) {
         case NodeType::VarDecl:
             genVarDecl(static_cast<VarDecl*>(node));
@@ -902,6 +905,7 @@ void IRGenerator::genStmt(Stmt* node) {
         default:
             break;
     }
+    CN_SWITCH_ENUM_EXEMPT_END
 }
 void IRGenerator::genBlock(BlockStmt* node) {
     varStack_.emplace_back();  // 进入子作用域

@@ -6,6 +6,7 @@
 #include <memory>
 #include <string>
 
+#include "cn_compiler/common/switch_enum_gate.hpp"
 #include "cn_compiler/parser/parser.hpp"
 #include "cn_compiler/model/type_system.hpp"
 #include "cn_compiler/model/semantic_helpers.hpp"
@@ -14,6 +15,8 @@ namespace cn_compiler {
 
 // 解析语句：按当前Token分发到具体语句解析函数
 std::unique_ptr<Stmt> Parser::parseStmt() {
+    CN_SWITCH_ENUM_EXEMPT_BEGIN
+    // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
     switch (currentType()) {
         case TokenType::Kw_If: return parseIfStmt();
         case TokenType::Kw_While: return parseWhileStmt();
@@ -32,6 +35,7 @@ std::unique_ptr<Stmt> Parser::parseStmt() {
         default:
             break;
     }
+    CN_SWITCH_ENUM_EXEMPT_END
     if (checkText("常量")) {  // 162-a 上下文化：常量 声明前缀位按文本判定
         auto stmt = parseVarDeclAfterKeyword(true);
         consumeSemicolon();

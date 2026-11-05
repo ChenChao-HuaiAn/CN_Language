@@ -131,9 +131,18 @@ endforeach()
 if(MSVC)
     # /wd4068：禁用"未知的杂注"警告——源码含 #pragma GCC（GCC/Clang 专用，
     #   MSVC 下无害忽略），避免 /WX 拦截导致全量重编失败
-    add_compile_options(/W4 /WX /utf-8 /wd4068)
+    # /we4061 /we4062（#2074·001 §十四「枚举 switch 全 case 显式」构建期机械
+    #   强制）：4061=有 default 时枚举值缺显式 case、4062=无 default 时缺 case
+    #   ——每新增枚举值，所有 switch(enum) 漏显式 case 处构建即红（存量清偿位
+    #   置走 common/switch_enum_gate.hpp 包裹+基线，见该头说明）
+    add_compile_options(/W4 /WX /utf-8 /wd4068 /we4061 /we4062)
 else()
-    add_compile_options(-Wall -Wextra -Werror -finput-charset=UTF-8)
+    # -Werror=switch-enum（#2074·001 §十四「枚举 switch 全 case 显式」构建期
+    #   机械强制）：枚举 switch 缺任一枚举值的显式 case 即编译失败——即使有
+    #   default 也不豁免（default 代答=新枚举值无声漏网·376 篇审计一教训）。
+    #   存量清偿位置走 common/switch_enum_gate.hpp 包裹+基线（只减不增）。
+    add_compile_options(-Wall -Wextra -Werror -Werror=switch-enum
+                        -finput-charset=UTF-8)
     # -Wno-dangling-reference（GCC≥13 新警告·版本化禁用）：启发式误判「临时实参+返回引用」
     #   ——tests/unit/opt/test_strength_reduce.cpp runPass 返回 static IRModule 成员引用实锤误报
     #   （920 轮 g++15 云 CI 首构建暴露；LLVM 等项目同款禁用；真悬垂由 -Wdangling-pointer 覆盖）

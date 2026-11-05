@@ -13,6 +13,7 @@
 //
 // 扫描=先序递归（源码顺序）+ 保守 default：未知节点类型视为危险（拒消除）
 //   ——漏类型=少优化，不会误消除。
+#include "cn_compiler/common/switch_enum_gate.hpp"
 #include "cn_compiler/semantic/semantic.hpp"
 
 #include "cn_compiler/model/ast.hpp"
@@ -56,6 +57,8 @@ void lueWalkExprs(const std::vector<std::unique_ptr<Expr>>& list, LueScanState& 
 void lueWalkExpr(Expr* e, LueScanState& st) {
     if (e == nullptr) return;
     ++st.seq;
+    CN_SWITCH_ENUM_EXEMPT_BEGIN
+    // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
     switch (e->getType()) {
         case NodeType::IdentifierExpr: {
             if (static_cast<IdentifierExpr*>(e)->name == st.name) {
@@ -158,12 +161,15 @@ void lueWalkExpr(Expr* e, LueScanState& st) {
             st.sawUnknown = true;  // 保守：未覆盖类型 → 拒消除
             break;
     }
+    CN_SWITCH_ENUM_EXEMPT_END
 }
 
 // 语句先序遍历（源码顺序·循环栈维护）
 void lueWalkStmt(Stmt* s, LueScanState& st) {
     if (s == nullptr) return;
     ++st.seq;
+    CN_SWITCH_ENUM_EXEMPT_BEGIN
+    // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
     switch (s->getType()) {
         case NodeType::BlockStmt:
             lueWalkStmts(static_cast<BlockStmt*>(s)->statements, st);
@@ -237,6 +243,7 @@ void lueWalkStmt(Stmt* s, LueScanState& st) {
             st.sawUnknown = true;  // 保守：未覆盖类型 → 拒消除
             break;
     }
+    CN_SWITCH_ENUM_EXEMPT_END
 }
 
 }  // namespace

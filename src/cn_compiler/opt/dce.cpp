@@ -10,6 +10,7 @@
 #include <string>
 #include <vector>
 
+#include "cn_compiler/common/switch_enum_gate.hpp"
 #include "cn_compiler/opt/dce.hpp"
 #include "cn_compiler/opt/opt_common.hpp"
 
@@ -25,6 +26,8 @@ namespace opt {
 //   消失 → Add 被删 → 整16 32767++ 不再报错误码 8，779 云预验实录）。
 //   Wrap* 显式回绕语义无检查；位运算/比较/逻辑/转换/常量无检查——保持可删。
 bool DCEPass::isPure(ir::Opcode op, bool safeFunction) {
+    CN_SWITCH_ENUM_EXEMPT_BEGIN
+    // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
     switch (op) {
         // ---- 检查家族（任务 474·语义可观察）----
         case ir::Opcode::Add: case ir::Opcode::Sub:
@@ -72,6 +75,7 @@ bool DCEPass::isPure(ir::Opcode op, bool safeFunction) {
         default:
             return false;
     }
+    CN_SWITCH_ENUM_EXEMPT_END
 }
 
 // 单轮块内 DCE（返回是否删除）

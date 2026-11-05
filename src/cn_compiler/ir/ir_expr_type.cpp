@@ -6,6 +6,7 @@
 //   统一表达式源码类型推导入口）。
 #include <string>
 
+#include "cn_compiler/common/switch_enum_gate.hpp"
 #include "cn_compiler/ir/ir.hpp"
 #include "cn_compiler/model/semantic_view.hpp"
 #include "cn_compiler/model/type_system.hpp"
@@ -29,6 +30,8 @@ cn::Optional<std::string> optOfSrc(std::string s) {
 //   各 return 出口经 optOfSrc 单点转换）。
 cn::Optional<std::string> IRGenerator::exprSrcType(Expr* node) const {
     if (node == nullptr) return std::nullopt;
+    CN_SWITCH_ENUM_EXEMPT_BEGIN
+    // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
     switch (node->getType()) {
         case NodeType::IdentifierExpr: {
             const std::string name = static_cast<IdentifierExpr*>(node)->name;
@@ -244,6 +247,7 @@ cn::Optional<std::string> IRGenerator::exprSrcType(Expr* node) const {
         default:
             return std::nullopt;
     }
+    CN_SWITCH_ENUM_EXEMPT_END
 }
 
 

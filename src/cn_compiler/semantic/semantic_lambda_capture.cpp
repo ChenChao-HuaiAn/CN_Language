@@ -8,6 +8,7 @@
 #include <unordered_set>
 #include <vector>
 
+#include "cn_compiler/common/switch_enum_gate.hpp"
 #include "cn_compiler/semantic/semantic.hpp"
 #include "cn_compiler/semantic/semantic_lambda_escape.hpp"
 #include "cn_compiler/model/type_system.hpp"
@@ -24,6 +25,8 @@ void SemanticAnalyzer::collectLambdaCaptures(
     while (!stmts.empty()) {
         Stmt* s = stmts.back();
         stmts.pop_back();
+        CN_SWITCH_ENUM_EXEMPT_BEGIN
+        // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
         switch (s->getType()) {
             case NodeType::ExprStmt:
                 exprs.push_back(static_cast<ExprStmt*>(s)->expr.get());
@@ -64,12 +67,15 @@ void SemanticAnalyzer::collectLambdaCaptures(
             default:
                 break;
         }
+        CN_SWITCH_ENUM_EXEMPT_END
     }
     // 递归展开表达式树，收集 IdentifierExpr
     while (!exprs.empty()) {
         Expr* e = exprs.back();
         exprs.pop_back();
         if (e == nullptr) continue;
+        CN_SWITCH_ENUM_EXEMPT_BEGIN
+        // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
         switch (e->getType()) {
             case NodeType::IdentifierExpr: {
                 const std::string& name = static_cast<IdentifierExpr*>(e)->name;
@@ -189,6 +195,7 @@ void SemanticAnalyzer::collectLambdaCaptures(
             default:
                 break;
         }
+        CN_SWITCH_ENUM_EXEMPT_END
     }
 }
 

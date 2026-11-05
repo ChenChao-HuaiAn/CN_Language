@@ -14,6 +14,7 @@
 #include <vector>
 
 #include "cn_compiler/codegen/linux_x64/linux_x64_codegen.hpp"
+#include "cn_compiler/common/switch_enum_gate.hpp"
 #include "cn_compiler/model/semantic_view.hpp"
 
 namespace cn_compiler {
@@ -395,6 +396,8 @@ void LinuxX64CodeGenerator::emitVirtualCall(LinuxX64AsmWriter& writer,
 //   extra = 类名（加载类虚表地址时）；结果 = 虚表指针
 void LinuxX64CodeGenerator::emitOopInstruction(LinuxX64AsmWriter& writer,
                                                const ir::IRInstruction& inst) {
+    CN_SWITCH_ENUM_EXEMPT_BEGIN
+    // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
     switch (inst.opcode) {
         case ir::Opcode::NewObject:
             emitNewObject(writer, inst);
@@ -445,6 +448,7 @@ void LinuxX64CodeGenerator::emitOopInstruction(LinuxX64AsmWriter& writer,
                     targetPlatform() + " 后端 OOP 发射层实现"));
             break;
     }
+    CN_SWITCH_ENUM_EXEMPT_END
 }
 
 } // namespace cn_compiler

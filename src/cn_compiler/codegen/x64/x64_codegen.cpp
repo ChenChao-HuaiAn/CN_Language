@@ -19,6 +19,7 @@
 #include "cn_compiler/codegen/x64/x64_codegen.hpp"
 #include "cn_compiler/codegen/judgement.hpp"
 #include "cn_compiler/codegen/peephole_slot.hpp"
+#include "cn_compiler/common/switch_enum_gate.hpp"
 #include "cn_compiler/model/semantic_view.hpp"
 #include "cn_compiler/model/type_system.hpp"
 
@@ -198,6 +199,8 @@ std::string X64CodeGenerator::parameterRegister(int index) const {
 // 操作码 + 结果类型 -> 指令助记符（用于分派；多数指令在 emitInstruction 直接处理）
 std::string X64CodeGenerator::selectInstruction(ir::Opcode opcode, const std::string& type) const {
     (void)type;
+    CN_SWITCH_ENUM_EXEMPT_BEGIN
+    // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
     switch (opcode) {
         case ir::Opcode::Add: return "add";
         case ir::Opcode::Sub: return "sub";
@@ -216,6 +219,7 @@ std::string X64CodeGenerator::selectInstruction(ir::Opcode opcode, const std::st
         default:
             return "";  // 未映射（常量/调用/跳转等在别处处理）
     }
+    CN_SWITCH_ENUM_EXEMPT_END
 }
 
 // ==================== 栈槽分配 ====================

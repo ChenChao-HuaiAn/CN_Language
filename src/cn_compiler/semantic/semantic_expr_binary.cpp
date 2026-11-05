@@ -14,6 +14,7 @@
 #include <unordered_set>
 #include <utility>
 
+#include "cn_compiler/common/switch_enum_gate.hpp"
 #include "cn_compiler/semantic/semantic.hpp"
 #include "cn_compiler/model/type_system.hpp"
 #include "cn_compiler/model/semantic_helpers.hpp"
@@ -367,6 +368,8 @@ void SemanticAnalyzer::reportConstOverflow(BinaryExpr* node, std::int64_t vL,
             } else if (hasRange && node->op != Operator::Divide &&
                        node->op != Operator::Modulo) {
                 bool overflow = false;
+                CN_SWITCH_ENUM_EXEMPT_BEGIN
+                // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
                 switch (node->op) {
                     case Operator::Add:
                         overflow = (vR > 0 && vL > hi - vR) ||
@@ -398,6 +401,7 @@ void SemanticAnalyzer::reportConstOverflow(BinaryExpr* node, std::int64_t vL,
                     default:
                         break;
                 }
+                CN_SWITCH_ENUM_EXEMPT_END
                 if (overflow) {
                     diagnostics_.report(DiagnosticLevel::Error, node->location,
                                         "编译期整数溢出：常量表达式结果超出类型 '" +
@@ -502,6 +506,8 @@ bool SemanticAnalyzer::checkComparisonBinary(BinaryExpr* node, const std::string
         //   无重载的类比较维持族⑤原语义（指针/同类放行面不变）。
         if (isClassType(canonicalType(leftType))) {
             const std::string opSym = [node]() -> std::string {
+                CN_SWITCH_ENUM_EXEMPT_BEGIN
+                // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
                 switch (node->op) {
                     case Operator::EqualEqual: return "==";
                     case Operator::BangEqual: return "!=";
@@ -511,6 +517,7 @@ bool SemanticAnalyzer::checkComparisonBinary(BinaryExpr* node, const std::string
                     case Operator::GreaterEqual: return ">=";
                     default: return "";
                 }
+                CN_SWITCH_ENUM_EXEMPT_END
             }();
             if (!opSym.empty() && findClassOperator(opSym, leftType).has_value()) {
                 return false;
@@ -639,6 +646,8 @@ bool SemanticAnalyzer::checkArithmeticBinary(BinaryExpr* node, std::string& left
         // 内置算术分支先执行到此（非数值类类型）；命中重载则返回，否则报错。
         if ((!isNumeric(leftType) || !isNumeric(rightType)) && isClassType(canonicalType(leftType))) {
             const std::string opSym = [node]() -> std::string {
+                CN_SWITCH_ENUM_EXEMPT_BEGIN
+                // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
                 switch (node->op) {
                     case Operator::Add: return "+";
                     case Operator::Subtract: return "-";
@@ -647,6 +656,7 @@ bool SemanticAnalyzer::checkArithmeticBinary(BinaryExpr* node, std::string& left
                     case Operator::Modulo: return "%";
                     default: return "";
                 }
+                CN_SWITCH_ENUM_EXEMPT_END
             }();
             if (!opSym.empty()) {
                 const ClassMemberInfo* mi = resolveOperatorOverload(
@@ -816,6 +826,8 @@ bool SemanticAnalyzer::checkClassOperatorOverload(BinaryExpr* node, const std::s
                                                   const std::string& rightType) {
     if (isClassType(canonicalType(leftType))) {
         const std::string opSym = [node]() -> std::string {
+            CN_SWITCH_ENUM_EXEMPT_BEGIN
+            // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
             switch (node->op) {
                 case Operator::Add: return "+";
                 case Operator::Subtract: return "-";
@@ -830,6 +842,7 @@ bool SemanticAnalyzer::checkClassOperatorOverload(BinaryExpr* node, const std::s
                 case Operator::GreaterEqual: return ">=";
                 default: return "";
             }
+            CN_SWITCH_ENUM_EXEMPT_END
         }();
         if (!opSym.empty()) {
             const ClassMemberInfo* mi = resolveOperatorOverload(
@@ -857,6 +870,29 @@ bool SemanticAnalyzer::checkClassOperatorOverload(BinaryExpr* node, const std::s
         }
     }
     return false;
+}
+
+
+// #2074 拆分：isCompoundAssign 自 semantic.cpp 整体搬入（纯机械搬移·零语义变化；
+//   声明仍在 semantic.hpp·本文件原含包裹所需 include）——复合赋值运算符判定，
+//   枚举 switch 穷举旗标（-Werror=switch-enum·/we4061）存量清偿豁免包裹位：
+//   Operator 枚举数十值中仅 10 个复合赋值成员显式 case（肯定回答），其余为
+//   否定回答（return false）存量未逐名显式——清偿（逐名显式 case）后删包裹。
+bool SemanticAnalyzer::isCompoundAssign(Operator op) {
+    CN_SWITCH_ENUM_EXEMPT_BEGIN
+    // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
+    switch (op) {
+        case Operator::PlusAssign: case Operator::MinusAssign:
+        case Operator::StarAssign: case Operator::SlashAssign:
+        case Operator::PercentAssign:
+        case Operator::AmpAssign: case Operator::PipeAssign:
+        case Operator::CaretAssign: case Operator::LessLessAssign:
+        case Operator::GreaterGreaterAssign:
+            return true;
+        default:
+            return false;
+    }
+    CN_SWITCH_ENUM_EXEMPT_END
 }
 
 } // namespace cn_compiler

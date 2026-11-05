@@ -15,6 +15,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "cn_compiler/common/switch_enum_gate.hpp"
 #include "cn_compiler/opt/algebraic_simplify.hpp"
 #include "cn_compiler/opt/opt_common.hpp"
 
@@ -37,6 +38,8 @@ bool parseIntText(const std::string& text, std::int64_t& out) {
 //   主循环据此跳过其余指令（Load/Store/Call/Phi...），避免每条指令都做
 //   类型字符串比较与分派。
 bool isSimplifiableOpcode(ir::Opcode op) {
+    CN_SWITCH_ENUM_EXEMPT_BEGIN
+    // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
     switch (op) {
         case ir::Opcode::Add: case ir::Opcode::Sub: case ir::Opcode::Mul:
         case ir::Opcode::Div: case ir::Opcode::Shl: case ir::Opcode::Shr:
@@ -46,6 +49,7 @@ bool isSimplifiableOpcode(ir::Opcode op) {
         default:
             return false;
     }
+    CN_SWITCH_ENUM_EXEMPT_END
 }
 
 } // namespace
@@ -166,6 +170,8 @@ int AlgebraicSimplifyPass::simplifyInstruction(ir::IRInstruction& inst,
     const bool isLogic = (inst.opcode == ir::Opcode::And || inst.opcode == ir::Opcode::Or);
     if (!isLogic && !isIntType(type)) return 0;
 
+    CN_SWITCH_ENUM_EXEMPT_BEGIN
+    // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
     switch (inst.opcode) {
         // ---- 加法：x+0 / 0+x -> x ----
         case ir::Opcode::Add: {
@@ -315,6 +321,7 @@ int AlgebraicSimplifyPass::simplifyInstruction(ir::IRInstruction& inst,
         default:
             return 0;
     }
+    CN_SWITCH_ENUM_EXEMPT_END
 }
 
 // 遍历模块全部函数的全部基本块，对纯整型运算做恒等简化

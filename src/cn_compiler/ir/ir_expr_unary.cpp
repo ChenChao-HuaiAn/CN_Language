@@ -7,6 +7,7 @@
 #include <cstdio>
 #include <cstdlib>
 
+#include "cn_compiler/common/switch_enum_gate.hpp"
 #include "cn_compiler/ir/ir.hpp"
 #include "cn_compiler/model/semantic_view.hpp"
 #include "cn_compiler/model/type_system.hpp"
@@ -20,6 +21,8 @@ void IRGenerator::visitUnaryExpr(UnaryExpr* node) {
     if (handleUnaryOperatorOverload(node, operand)) {
         return;
     }
+    CN_SWITCH_ENUM_EXEMPT_BEGIN
+    // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
     switch (node->op) {
         case Operator::Bang:
             lastExpr_ = emitResult(ir::Opcode::Not, {operand}, "i1", "", node->location);
@@ -687,6 +690,7 @@ void IRGenerator::visitUnaryExpr(UnaryExpr* node) {
             lastExpr_ = operand;
             break;
     }
+    CN_SWITCH_ENUM_EXEMPT_END
 }
 void IRGenerator::visitTernaryExpr(TernaryExpr* node) {
     ir::IRValue cond = genExpr(node->condition.get());

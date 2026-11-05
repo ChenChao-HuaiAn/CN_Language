@@ -18,6 +18,7 @@
 #include <system_error>
 #include <utility>
 
+#include "cn_compiler/common/switch_enum_gate.hpp"
 #include "cn_compiler/parser/parser.hpp"
 #include "cn_compiler/model/type_system.hpp"
 
@@ -158,6 +159,8 @@ void Parser::consumeSemicolon() {
 
 // 是否处于语句边界（} ; EOF 或新语句起始关键字）
 bool Parser::atStatementBoundary() const {
+    CN_SWITCH_ENUM_EXEMPT_BEGIN
+    // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
     switch (currentType()) {
         case TokenType::EndOfFile:
         case TokenType::RightBrace:
@@ -166,6 +169,9 @@ bool Parser::atStatementBoundary() const {
         default:
             break;
     }
+    CN_SWITCH_ENUM_EXEMPT_END
+    CN_SWITCH_ENUM_EXEMPT_BEGIN
+    // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
     switch (currentType()) {
         case TokenType::Kw_Return: case TokenType::Kw_If: case TokenType::Kw_While:
         case TokenType::Kw_For: case TokenType::Kw_Break: case TokenType::Kw_Continue:
@@ -176,6 +182,7 @@ bool Parser::atStatementBoundary() const {
         default:
             break;
     }
+    CN_SWITCH_ENUM_EXEMPT_END
     // 常量/静态 已上下文化（162-a）：语句起始位按文本判定
     if (checkText("常量") || checkText("静态")) return true;
     return isTypeKeyword(currentType());

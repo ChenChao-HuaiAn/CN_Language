@@ -12,6 +12,7 @@
 #include <string>
 
 #include "cn_compiler/codegen/arm64/arm64_codegen.hpp"
+#include "cn_compiler/common/switch_enum_gate.hpp"
 
 namespace cn_compiler {
 
@@ -343,6 +344,8 @@ void Arm64CodeGenerator::emitInt128MulDivMod(Arm64AsmWriter& writer,
                                              const ir::IRInstruction& inst) {
     const bool isUnsigned = (inst.type == "u128");
     std::string helper;
+    CN_SWITCH_ENUM_EXEMPT_BEGIN
+    // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
     switch (inst.opcode) {
         case ir::Opcode::Mul:
         case ir::Opcode::WrapMul:  // 任务 474：回绕乘=i128 运行时辅助本征回绕
@@ -351,6 +354,7 @@ void Arm64CodeGenerator::emitInt128MulDivMod(Arm64AsmWriter& writer,
         case ir::Opcode::Mod: helper = isUnsigned ? "__cn_mod_u128" : "__cn_mod_i128"; break;
         default: helper = "__cn_mul_i128"; break;
     }
+    CN_SWITCH_ENUM_EXEMPT_END
     // 操作数 a/b 地址：i128 寄存器双槽 lea 低64位槽（%vN+1）；
     // i128 常量先落临时区再取地址——1137（第三轮审查 P0-1）：临时区原写
     // [sp,#0]/[sp,#8]、[sp,#16]/[sp,#24]（帧底变量槽区）会覆盖局部变量
@@ -476,6 +480,8 @@ void Arm64CodeGenerator::emitInt128Compare(Arm64AsmWriter& writer,
     // Eq -> cmp==0；Ne -> cmp!=0；Lt -> cmp<0；Le -> cmp<=0；Gt -> cmp>0；Ge -> cmp>=0
     // 注意：返回值为 int（-1/0/1），与 0 比较用有符号条件（lt/le/gt/ge）
     std::string cc;
+    CN_SWITCH_ENUM_EXEMPT_BEGIN
+    // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
     switch (inst.opcode) {
         case ir::Opcode::Eq: cc = "eq"; break;
         case ir::Opcode::Ne: cc = "ne"; break;
@@ -485,6 +491,7 @@ void Arm64CodeGenerator::emitInt128Compare(Arm64AsmWriter& writer,
         case ir::Opcode::Ge: cc = "ge"; break;
         default: cc = "eq"; break;
     }
+    CN_SWITCH_ENUM_EXEMPT_END
     (void)isUnsignedCmp;  // 返回值 int 一律有符号比较
     writer.line("cset x9, " + cc);
     storeVirtualResult(writer, inst.result.id, "x9", "i1");

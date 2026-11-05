@@ -8,6 +8,7 @@
 #include <string>
 #include <utility>
 
+#include "cn_compiler/common/switch_enum_gate.hpp"
 #include "cn_compiler/ir/ir.hpp"
 #include "cn_compiler/model/semantic_view.hpp"
 #include "cn_compiler/model/type_system.hpp"
@@ -101,6 +102,8 @@ std::string IRGenerator::mapType(const std::string& type) {
 }
 bool IRGenerator::mapBinaryOp(Operator op, bool isFloat, ir::Opcode& out) {
     (void)isFloat;  // 浮点/整型共用Opcode，由 codegen 按类型分派（Task 2.3）
+    CN_SWITCH_ENUM_EXEMPT_BEGIN
+    // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
     switch (op) {
         // ---- 算术（整型与浮点共用Opcode，codegen按类型分派SSE/整型指令） ----
         case Operator::Add: out = ir::Opcode::Add; return true;
@@ -126,8 +129,11 @@ bool IRGenerator::mapBinaryOp(Operator op, bool isFloat, ir::Opcode& out) {
         case Operator::GreaterGreater: out = ir::Opcode::Shr; return true;
         default: return false;
     }
+    CN_SWITCH_ENUM_EXEMPT_END
 }
 bool IRGenerator::isCompoundAssignOp(Operator op) {
+    CN_SWITCH_ENUM_EXEMPT_BEGIN
+    // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
     switch (op) {
         case Operator::PlusAssign: case Operator::MinusAssign:
         case Operator::StarAssign: case Operator::SlashAssign:
@@ -139,8 +145,11 @@ bool IRGenerator::isCompoundAssignOp(Operator op) {
         default:
             return false;
     }
+    CN_SWITCH_ENUM_EXEMPT_END
 }
 Operator IRGenerator::baseOpOfCompound(Operator op) {
+    CN_SWITCH_ENUM_EXEMPT_BEGIN
+    // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
     switch (op) {
         case Operator::PlusAssign: return Operator::Add;
         case Operator::MinusAssign: return Operator::Subtract;
@@ -154,6 +163,7 @@ Operator IRGenerator::baseOpOfCompound(Operator op) {
         case Operator::GreaterGreaterAssign: return Operator::GreaterGreater;
         default: return Operator::Assign;
     }
+    CN_SWITCH_ENUM_EXEMPT_END
 }
 
 // 复合赋值右值宽化（331-a·T51 单一归属）——见 ir.hpp 声明注释。

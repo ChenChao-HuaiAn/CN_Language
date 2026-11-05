@@ -3,6 +3,7 @@
 // CACHE_FORMAT_VERSION（见 ast_serialize.hpp 版本纪律）。
 // 失败处置协议见 ast_serialize_impl.hpp 文件头（ok_ 哨兵标志 +
 //   节点函数尾部单点判定，失败整体丢弃由上层回退重编译）。
+#include "cn_compiler/common/switch_enum_gate.hpp"
 #include "cn_compiler/model/ast_serialize_impl.hpp"
 
 namespace cn_compiler {
@@ -82,6 +83,8 @@ std::unique_ptr<Expr> readExpr(Reader& r) {
     r.str(semanticType);
 
     std::unique_ptr<Expr> node;
+    CN_SWITCH_ENUM_EXEMPT_BEGIN
+    // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
     switch (type) {
         case NodeType::IntegerLiteral: {
             const std::int64_t value = r.i64();
@@ -270,6 +273,7 @@ std::unique_ptr<Expr> readExpr(Reader& r) {
             r.fail();  // 未知/非表达式节点类型=损坏或版本不符（显式失败）
             return nullptr;
     }
+    CN_SWITCH_ENUM_EXEMPT_END
     if (node != nullptr && r.ok()) {
         node->location = loc;
         node->semanticType = std::move(semanticType);
@@ -306,6 +310,8 @@ std::unique_ptr<Stmt> readStmt(Reader& r) {
     readLocation(r, loc);
 
     std::unique_ptr<Stmt> node;
+    CN_SWITCH_ENUM_EXEMPT_BEGIN
+    // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
     switch (type) {
         case NodeType::VarDecl: {  // 局部变量声明（字段体与 globals 通道共用）
             auto n = std::make_unique<VarDecl>();
@@ -432,6 +438,7 @@ std::unique_ptr<Stmt> readStmt(Reader& r) {
             r.fail();  // 未知/非语句节点类型=损坏或版本不符（显式失败）
             return nullptr;
     }
+    CN_SWITCH_ENUM_EXEMPT_END
     if (node != nullptr && r.ok()) {
         node->location = loc;
         return node;

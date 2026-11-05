@@ -6,6 +6,7 @@
 #include <string>
 #include <utility>
 
+#include "cn_compiler/common/switch_enum_gate.hpp"
 #include "cn_compiler/model/type_system.hpp"
 #include "cn_compiler/parser/parser.hpp"
 
@@ -93,6 +94,8 @@ bool Parser::ternaryColonAhead() const {
     int depth = 0;  // 嵌套深度：( [ { '?' 各增一，配对闭符/配对 ':' 减一
     for (int i = 1; peek(i).getType() != TokenType::EndOfFile; ++i) {
         const TokenType t = peek(i).getType();
+        CN_SWITCH_ENUM_EXEMPT_BEGIN
+        // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
         switch (t) {
             case TokenType::Question:
             case TokenType::LeftParen:
@@ -116,6 +119,7 @@ bool Parser::ternaryColonAhead() const {
             default:
                 break;
         }
+        CN_SWITCH_ENUM_EXEMPT_END
     }
     return false;
 }
@@ -552,6 +556,8 @@ std::unique_ptr<Expr> Parser::parsePrimary() {
         cast->location = loc;
         return cast;
     }
+    CN_SWITCH_ENUM_EXEMPT_BEGIN
+    // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
     switch (currentType()) {
         case TokenType::IntegerLiteral: {
             std::string raw = current().getValue();
@@ -652,6 +658,7 @@ std::unique_ptr<Expr> Parser::parsePrimary() {
         default:
             break;
     }
+    CN_SWITCH_ENUM_EXEMPT_END
     // 无法解析的表达式：报告错误并返回占位（错误恢复）
     reportErrorHere("预期表达式，实际为 '" + current().getValue() + "'");
     advance();

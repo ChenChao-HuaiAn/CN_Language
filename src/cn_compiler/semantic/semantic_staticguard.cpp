@@ -1,4 +1,5 @@
 // 480：函数内静态局部变量写安全区判定实现（设计契约见 semantic_staticguard.hpp）。
+#include "cn_compiler/common/switch_enum_gate.hpp"
 #include "cn_compiler/semantic/semantic_staticguard.hpp"
 
 #include <unordered_set>
@@ -42,6 +43,8 @@ std::string writeTargetRootName(const Expr* target) {
     //   集合」（集合键=标识符名）——空串=明确否定结论，写责任留既有条款
     //   （解引用写/引用返回调用左值族），非静默默认。
     for (int depth = 0; cur != nullptr && depth < 256; ++depth) {
+        CN_SWITCH_ENUM_EXEMPT_BEGIN
+        // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
         switch (cur->getType()) {
             case NodeType::IndexExpr:
                 cur = static_cast<const IndexExpr*>(cur)->object.get();
@@ -54,6 +57,7 @@ std::string writeTargetRootName(const Expr* target) {
             default:
                 return "";
         }
+        CN_SWITCH_ENUM_EXEMPT_END
     }
     return "";
 }

@@ -17,6 +17,7 @@
 
 #include "cn_compiler/codegen/linux_x64/linux_x64_codegen.hpp"
 #include "cn_compiler/codegen/judgement.hpp"
+#include "cn_compiler/common/switch_enum_gate.hpp"
 #include "cn_compiler/model/type_system.hpp"
 
 namespace cn_compiler {
@@ -37,6 +38,8 @@ bool LinuxX64CodeGenerator::isFloatType(const std::string& type) {
 std::string LinuxX64CodeGenerator::setccFor(ir::Opcode opcode, bool isUnsigned,
                                             bool isFloat) {
     if (isFloat) {
+        CN_SWITCH_ENUM_EXEMPT_BEGIN
+        // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
         switch (opcode) {
             case ir::Opcode::Eq: return "sete";
             case ir::Opcode::Ne: return "setne";
@@ -46,8 +49,11 @@ std::string LinuxX64CodeGenerator::setccFor(ir::Opcode opcode, bool isUnsigned,
             case ir::Opcode::Ge: return "setae";
             default: return "setne";
         }
+        CN_SWITCH_ENUM_EXEMPT_END
     }
     if (isUnsigned) {
+        CN_SWITCH_ENUM_EXEMPT_BEGIN
+        // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
         switch (opcode) {
             case ir::Opcode::Eq: return "sete";
             case ir::Opcode::Ne: return "setne";
@@ -57,7 +63,10 @@ std::string LinuxX64CodeGenerator::setccFor(ir::Opcode opcode, bool isUnsigned,
             case ir::Opcode::Ge: return "setae";
             default: return "setne";
         }
+        CN_SWITCH_ENUM_EXEMPT_END
     }
+    CN_SWITCH_ENUM_EXEMPT_BEGIN
+    // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
     switch (opcode) {
         case ir::Opcode::Eq: return "sete";
         case ir::Opcode::Ne: return "setne";
@@ -67,6 +76,7 @@ std::string LinuxX64CodeGenerator::setccFor(ir::Opcode opcode, bool isUnsigned,
         case ir::Opcode::Ge: return "setge";
         default: return "setne";
     }
+    CN_SWITCH_ENUM_EXEMPT_END
 }
 
 // ==================== 操作数文本 ====================

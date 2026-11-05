@@ -4,6 +4,7 @@
 // 编码：小端固定宽度；字符串/容器 = u32 长度前缀；可空 unique_ptr = u8 标志。
 // 字段纪律：逐节点写入**全部**类字段（含语义层回填字段——缓存条目产生于解析后，
 //   回填字段为默认值，照存照还原，防未来消费面漂移）。
+#include "cn_compiler/common/switch_enum_gate.hpp"
 #include "cn_compiler/model/ast_serialize.hpp"
 
 #include <cstring>
@@ -203,6 +204,8 @@ namespace {
 
 void writeExpr(Writer& w, const Expr* e) {
     writeExprHead(w, e);
+    CN_SWITCH_ENUM_EXEMPT_BEGIN
+    // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
     switch (e->getType()) {
         case NodeType::IntegerLiteral: {
             const auto* n = static_cast<const IntegerLiteral*>(e);
@@ -347,6 +350,7 @@ void writeExpr(Writer& w, const Expr* e) {
             w.fail("序列化器未覆盖的表达式节点类型");
             break;
     }
+    CN_SWITCH_ENUM_EXEMPT_END
 }
 
 // ==================== 语句族写入 ====================
@@ -363,6 +367,8 @@ void writeBlockStmt(Writer& w, const BlockStmt* b) {
 
 void writeStmt(Writer& w, const Stmt* s) {
     writeNodeHead(w, s);
+    CN_SWITCH_ENUM_EXEMPT_BEGIN
+    // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
     switch (s->getType()) {
         case NodeType::VarDecl:  // 局部变量声明（VarDecl 是 Stmt 派生；顶层见 globals）
             writeVarDeclFields(w, static_cast<const VarDecl*>(s));
@@ -440,6 +446,7 @@ void writeStmt(Writer& w, const Stmt* s) {
             w.fail("序列化器未覆盖的语句节点类型");
             break;
     }
+    CN_SWITCH_ENUM_EXEMPT_END
 }
 
 // ==================== 声明族写入 ====================

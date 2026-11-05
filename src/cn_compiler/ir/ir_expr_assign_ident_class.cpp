@@ -10,6 +10,7 @@
 #include <string>
 #include <utility>
 
+#include "cn_compiler/common/switch_enum_gate.hpp"
 #include "cn_compiler/ir/ir.hpp"
 #include "cn_compiler/model/semantic_view.hpp"
 #include "cn_compiler/model/type_system.hpp"
@@ -204,6 +205,8 @@ bool IRGenerator::identifierRefReturnClassCopyAssign(
 //   只映射类运算符重载集合，覆盖 001 §4.6 全部双目+单目符号）。未映射（空串）
 //   =调用方回退通用路径（零行为变更）。
 static std::string classAssignOperatorSymText(Operator op) {
+    CN_SWITCH_ENUM_EXEMPT_BEGIN
+    // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
     switch (op) {
         case Operator::Add: return "+";
         case Operator::Subtract: return "-";
@@ -220,6 +223,7 @@ static std::string classAssignOperatorSymText(Operator op) {
         case Operator::Tilde: return "~";
         default: return "";
     }
+    CN_SWITCH_ENUM_EXEMPT_END
 }
 
 // 821（#444）：重载产物右值形态判定（局部/静态两面共用·单一事实源）——

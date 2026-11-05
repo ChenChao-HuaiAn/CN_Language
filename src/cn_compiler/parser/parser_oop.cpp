@@ -12,6 +12,7 @@
 #include <string>
 #include <utility>
 
+#include "cn_compiler/common/switch_enum_gate.hpp"
 #include "cn_compiler/parser/parser.hpp"
 
 namespace cn_compiler {
@@ -28,6 +29,8 @@ namespace {
 //   两者实现从未可用（类体内 运算符[]/运算符() 解析崩溃=类体中断实测），
 //   functor 生态位由 lambda+函数指针覆盖；001 §4.6 条文同步收窄。
 bool isOverloadableOperator(TokenType t) {
+    CN_SWITCH_ENUM_EXEMPT_BEGIN
+    // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
     switch (t) {
         case TokenType::Plus: case TokenType::Minus: case TokenType::Star:
         case TokenType::Slash: case TokenType::Percent:
@@ -43,10 +46,13 @@ bool isOverloadableOperator(TokenType t) {
         default:
             return false;
     }
+    CN_SWITCH_ENUM_EXEMPT_END
 }
 
 // TokenType -> 运算符符号文本（用于 operatorSym 存储，如 "+" / "==" / "[]"）
 const char* operatorSymbolText(TokenType t) {
+    CN_SWITCH_ENUM_EXEMPT_BEGIN
+    // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
     switch (t) {
         case TokenType::Plus: return "+";
         case TokenType::Minus: return "-";
@@ -72,6 +78,7 @@ const char* operatorSymbolText(TokenType t) {
         case TokenType::LeftParen: return "()";
         default: return "";  // v2.1：-> 已从可重载集合移除
     }
+    CN_SWITCH_ENUM_EXEMPT_END
 }
 
 } // namespace

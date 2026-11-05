@@ -1,0 +1,746 @@
+{
+ "版本": 1,
+ "工具": "scripts/check_dispatch_gate.py（面⑤对账）",
+ "任务": "2074",
+ "说明": "#2074 枚举 switch 穷举旗标豁免基线（只减不增）：键=「文件::归一锚文本」。每个 CN_SWITCH_ENUM_EXEMPT_BEGIN 包裹必须在册；清偿（显式补 case 删包裹）后键消失=消减，--update-baseline 收账。新增包裹禁裸堆（未登记=红）。",
+ "条目": [
+  {
+   "文件": "src/cn_compiler/codegen/arm64/arm64_codegen.cpp",
+   "行": 176,
+   "锚": "switch (opcode) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/codegen/arm64/arm64_codegen_i128.cpp",
+   "行": 347,
+   "锚": "switch (inst.opcode) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/codegen/arm64/arm64_codegen_i128.cpp",
+   "行": 483,
+   "锚": "switch (inst.opcode) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/codegen/arm64/arm64_codegen_oop.cpp",
+   "行": 389,
+   "锚": "switch (inst.opcode) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/codegen/arm64/arm64_instructions.cpp",
+   "行": 74,
+   "锚": "switch (opcode) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/codegen/arm64/arm64_instructions.cpp",
+   "行": 88,
+   "锚": "switch (opcode) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/codegen/arm64/arm64_instructions.cpp",
+   "行": 101,
+   "锚": "switch (opcode) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/codegen/linux_x64/linux_x64_codegen.cpp",
+   "行": 176,
+   "锚": "switch (opcode) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/codegen/linux_x64/linux_x64_codegen_emit.cpp",
+   "行": 133,
+   "锚": "switch (inst.opcode) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/codegen/linux_x64/linux_x64_codegen_i128.cpp",
+   "行": 351,
+   "锚": "switch (inst.opcode) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/codegen/linux_x64/linux_x64_codegen_i128.cpp",
+   "行": 466,
+   "锚": "switch (inst.opcode) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/codegen/linux_x64/linux_x64_codegen_oop.cpp",
+   "行": 399,
+   "锚": "switch (inst.opcode) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/codegen/linux_x64/linux_x64_instructions.cpp",
+   "行": 41,
+   "锚": "switch (opcode) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/codegen/linux_x64/linux_x64_instructions.cpp",
+   "行": 55,
+   "锚": "switch (opcode) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/codegen/linux_x64/linux_x64_instructions.cpp",
+   "行": 68,
+   "锚": "switch (opcode) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/codegen/linux_x64/linux_x64_instructions_cast.cpp",
+   "行": 330,
+   "锚": "switch (inst.opcode) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/codegen/x64/x64_codegen.cpp",
+   "行": 202,
+   "锚": "switch (opcode) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/codegen/x64/x64_codegen_oop.cpp",
+   "行": 465,
+   "锚": "switch (inst.opcode) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/codegen/x64/x64_instructions.cpp",
+   "行": 163,
+   "锚": "switch (opcode) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/codegen/x64/x64_instructions.cpp",
+   "行": 179,
+   "锚": "switch (opcode) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/codegen/x64/x64_instructions_cast.cpp",
+   "行": 35,
+   "锚": "switch (judgement::classifyCast(from, to)) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/codegen/x64/x64_instructions_cast.cpp",
+   "行": 132,
+   "锚": "switch (inst.opcode) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/codegen/x64/x64_instructions_cast.cpp",
+   "行": 283,
+   "锚": "switch (inst.opcode) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/codegen/x64/x64_instructions_i128.cpp",
+   "行": 356,
+   "锚": "switch (inst.opcode) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/codegen/x64/x64_instructions_i128.cpp",
+   "行": 479,
+   "锚": "switch (inst.opcode) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/ir/ir_call_args.cpp",
+   "行": 64,
+   "锚": "switch (node->getType()) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/ir/ir_call_args.cpp",
+   "行": 96,
+   "锚": "switch (node->getType()) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/ir/ir_call_direct.cpp",
+   "行": 567,
+   "锚": "switch (expr->getType()) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/ir/ir_decl_extra.cpp",
+   "行": 105,
+   "锚": "switch (op) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/ir/ir_decl_extra.cpp",
+   "行": 135,
+   "锚": "switch (op) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/ir/ir_decl_extra.cpp",
+   "行": 151,
+   "锚": "switch (op) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/ir/ir_expr.cpp",
+   "行": 668,
+   "锚": "switch (node->op) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/ir/ir_expr_assign_ident_class.cpp",
+   "行": 208,
+   "锚": "switch (op) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/ir/ir_expr_concat.cpp",
+   "行": 335,
+   "锚": "switch (s->getType()) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/ir/ir_expr_concat.cpp",
+   "行": 385,
+   "锚": "switch (s->getType()) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/ir/ir_expr_concat.cpp",
+   "行": 450,
+   "锚": "switch (kind) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/ir/ir_expr_concat.cpp",
+   "行": 676,
+   "锚": "switch (node->getType()) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/ir/ir_expr_type.cpp",
+   "行": 33,
+   "锚": "switch (node->getType()) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/ir/ir_expr_unary.cpp",
+   "行": 24,
+   "锚": "switch (node->op) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/ir/ir_fields.cpp",
+   "行": 327,
+   "锚": "switch (e->getType()) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/ir/ir_lambda_carrier.cpp",
+   "行": 167,
+   "锚": "switch (rhs->getType()) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/ir/ir_oop_op_overload.cpp",
+   "行": 23,
+   "锚": "switch (op) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/ir/ir_stmt.cpp",
+   "行": 858,
+   "锚": "switch (node->getType()) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/ir/ir_string_accum.cpp",
+   "行": 74,
+   "锚": "switch (e->getType()) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/ir/ir_string_accum.cpp",
+   "行": 173,
+   "锚": "switch (s->getType()) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/ir/ir_string_accum.cpp",
+   "行": 254,
+   "锚": "switch (s->getType()) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/ir/ir_string_accum.cpp",
+   "行": 323,
+   "锚": "switch (e->getType()) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/ir/ir_string_accum.cpp",
+   "行": 421,
+   "锚": "switch (s->getType()) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/model/ast_serialize.cpp",
+   "行": 207,
+   "锚": "switch (e->getType()) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/model/ast_serialize.cpp",
+   "行": 370,
+   "锚": "switch (s->getType()) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/model/ast_serialize_read.cpp",
+   "行": 86,
+   "锚": "switch (type) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/model/ast_serialize_read.cpp",
+   "行": 313,
+   "锚": "switch (type) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/model/semantic_const_eval.hpp",
+   "行": 85,
+   "锚": "switch (op) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/model/semantic_const_eval.hpp",
+   "行": 114,
+   "锚": "switch (op) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/model/semantic_const_eval.hpp",
+   "行": 173,
+   "锚": "switch (e->getType()) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/model/semantic_helpers.hpp",
+   "行": 30,
+   "锚": "switch (op) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/model/semantic_helpers.hpp",
+   "行": 45,
+   "锚": "switch (op) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/model/semantic_helpers.hpp",
+   "行": 58,
+   "锚": "switch (op) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/model/semantic_helpers.hpp",
+   "行": 427,
+   "锚": "switch (b->op) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/model/semantic_helpers.hpp",
+   "行": 534,
+   "锚": "switch (b->op) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/model/semantic_helpers.hpp",
+   "行": 572,
+   "锚": "switch (e->getType()) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/model/semantic_helpers.hpp",
+   "行": 664,
+   "锚": "switch (b->op) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/module/module.cpp",
+   "行": 277,
+   "锚": "switch (e->getType()) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/module/module.cpp",
+   "行": 354,
+   "锚": "switch (s->getType()) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/opt/algebraic_simplify.cpp",
+   "行": 41,
+   "锚": "switch (op) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/opt/algebraic_simplify.cpp",
+   "行": 173,
+   "锚": "switch (inst.opcode) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/opt/const_fold.cpp",
+   "行": 146,
+   "锚": "switch (op) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/opt/const_fold.cpp",
+   "行": 172,
+   "锚": "switch (op) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/opt/const_fold.cpp",
+   "行": 209,
+   "锚": "switch (op) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/opt/const_fold.cpp",
+   "行": 226,
+   "锚": "switch (inst.opcode) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/opt/const_fold.cpp",
+   "行": 314,
+   "锚": "switch (op) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/opt/const_fold.cpp",
+   "行": 427,
+   "锚": "switch (op) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/opt/const_fold.cpp",
+   "行": 457,
+   "锚": "switch (op) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/opt/const_fold.cpp",
+   "行": 479,
+   "锚": "switch (op) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/opt/const_fold.cpp",
+   "行": 626,
+   "锚": "switch (op) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/opt/const_fold.cpp",
+   "行": 641,
+   "锚": "switch (op) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/opt/const_fold.cpp",
+   "行": 670,
+   "锚": "switch (op) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/opt/const_fold.cpp",
+   "行": 686,
+   "锚": "switch (op) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/opt/const_fold.cpp",
+   "行": 712,
+   "锚": "switch (inst.opcode) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/opt/copy_propagation.cpp",
+   "行": 34,
+   "锚": "switch (op) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/opt/copy_propagation.cpp",
+   "行": 77,
+   "锚": "switch (inst.opcode) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/opt/cse.cpp",
+   "行": 149,
+   "锚": "switch (op) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/opt/dce.cpp",
+   "行": 29,
+   "锚": "switch (op) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/opt/global_value.cpp",
+   "行": 23,
+   "锚": "switch (op) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/opt/global_value.cpp",
+   "行": 88,
+   "锚": "switch (inst.opcode) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/opt/opt_common.hpp",
+   "行": 25,
+   "锚": "switch (op) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/parser/parser.cpp",
+   "行": 162,
+   "锚": "switch (currentType()) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/parser/parser.cpp",
+   "行": 173,
+   "锚": "switch (currentType()) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/parser/parser.hpp",
+   "行": 64,
+   "锚": "switch (type) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/parser/parser.hpp",
+   "行": 86,
+   "锚": "switch (type) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/parser/parser.hpp",
+   "行": 101,
+   "锚": "switch (type) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/parser/parser_expr.cpp",
+   "行": 97,
+   "锚": "switch (t) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/parser/parser_expr.cpp",
+   "行": 559,
+   "锚": "switch (currentType()) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/parser/parser_oop.cpp",
+   "行": 32,
+   "锚": "switch (t) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/parser/parser_oop.cpp",
+   "行": 54,
+   "锚": "switch (t) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/parser/parser_stmt.cpp",
+   "行": 18,
+   "锚": "switch (currentType()) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/semantic/error_analysis.cpp",
+   "行": 160,
+   "锚": "switch (st->getType()) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/semantic/error_analysis.cpp",
+   "行": 852,
+   "锚": "switch (cond->getType()) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/semantic/generics.cpp",
+   "行": 696,
+   "锚": "switch (stmt->getType()) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/semantic/semantic_borrow_aux.cpp",
+   "行": 16,
+   "锚": "switch (e->getType()) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/semantic/semantic_borrowview.cpp",
+   "行": 78,
+   "锚": "switch (e->getType()) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/semantic/semantic_builtins.cpp",
+   "行": 498,
+   "锚": "switch (expr->getType()) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/semantic/semantic_call_rewrite.cpp",
+   "行": 44,
+   "锚": "switch (raw->getType()) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/semantic/semantic_definit.cpp",
+   "行": 347,
+   "锚": "switch (e->getType()) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/semantic/semantic_expr_binary.cpp",
+   "行": 371,
+   "锚": "switch (node->op) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/semantic/semantic_expr_binary.cpp",
+   "行": 509,
+   "锚": "switch (node->op) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/semantic/semantic_expr_binary.cpp",
+   "行": 649,
+   "锚": "switch (node->op) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/semantic/semantic_expr_binary.cpp",
+   "行": 829,
+   "锚": "switch (node->op) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/semantic/semantic_expr_binary.cpp",
+   "行": 882,
+   "锚": "switch (op) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/semantic/semantic_expr_op.cpp",
+   "行": 122,
+   "锚": "switch (node->target->getType()) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/semantic/semantic_expr_op.cpp",
+   "行": 405,
+   "锚": "switch (node->target->getType()) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/semantic/semantic_expr_op.cpp",
+   "行": 838,
+   "锚": "switch (node->target->getType()) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/semantic/semantic_expr_unary.cpp",
+   "行": 43,
+   "锚": "switch (node->op) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/semantic/semantic_lambda_capture.cpp",
+   "行": 28,
+   "锚": "switch (s->getType()) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/semantic/semantic_lambda_capture.cpp",
+   "行": 77,
+   "锚": "switch (e->getType()) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/semantic/semantic_lambda_escape.cpp",
+   "行": 36,
+   "锚": "switch (e->getType()) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/semantic/semantic_lue.cpp",
+   "行": 60,
+   "锚": "switch (e->getType()) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/semantic/semantic_lue.cpp",
+   "行": 171,
+   "锚": "switch (s->getType()) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/semantic/semantic_staticguard.cpp",
+   "行": 46,
+   "锚": "switch (cur->getType()) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/semantic/semantic_stmt.cpp",
+   "行": 33,
+   "锚": "switch (node->getType()) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/semantic/semantic_stmt.cpp",
+   "行": 116,
+   "锚": "switch (node->getType()) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/semantic/semantic_stmt.cpp",
+   "行": 152,
+   "锚": "switch (node->getType()) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  },
+  {
+   "文件": "src/cn_compiler/semantic/semantic_stmt.cpp",
+   "行": 305,
+   "锚": "switch (node->getType()) {",
+   "因由": "旗标豁免包裹（漏 case 存量清偿位）"
+  }
+ ]
+}

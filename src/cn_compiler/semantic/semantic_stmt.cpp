@@ -10,6 +10,7 @@
 #include <unordered_set>
 #include <utility>
 
+#include "cn_compiler/common/switch_enum_gate.hpp"
 #include "cn_compiler/semantic/semantic.hpp"
 #include "cn_compiler/semantic/semantic_case_label.hpp"
 #include "cn_compiler/model/type_system.hpp"
@@ -29,6 +30,8 @@ namespace {
 // 不支持（返回 nullptr）：函数调用/三元/强制转换/lambda 等临时值表达式。
 std::unique_ptr<Expr> cloneNameExpr(Expr* node) {
     if (node == nullptr) return nullptr;
+    CN_SWITCH_ENUM_EXEMPT_BEGIN
+    // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
     switch (node->getType()) {
         case NodeType::IdentifierExpr: {
             auto* id = static_cast<IdentifierExpr*>(node);
@@ -73,6 +76,7 @@ std::unique_ptr<Expr> cloneNameExpr(Expr* node) {
         default:
             return nullptr;  // 非名称式：调用方报错
     }
+    CN_SWITCH_ENUM_EXEMPT_END
 }
 
 // C-4（2026-08）：情况 字符串字面量解码（与 IR decodeEscapes 同语义，
@@ -109,6 +113,8 @@ std::string decodeCaseString(const std::string& raw) {
 // C-2：迭代对象是否名称式（标识符/自身/父类/成员/下标/字面量）
 bool isNameLikeExpr(Expr* node) {
     if (node == nullptr) return false;
+    CN_SWITCH_ENUM_EXEMPT_BEGIN
+    // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
     switch (node->getType()) {
         case NodeType::IdentifierExpr:
         case NodeType::SelfExpr:
@@ -125,6 +131,7 @@ bool isNameLikeExpr(Expr* node) {
         default:
             return false;
     }
+    CN_SWITCH_ENUM_EXEMPT_END
 }
 
 // ==================== 表达式/语句深度克隆（C-2，2026-08） ====================
@@ -142,6 +149,8 @@ std::unique_ptr<Stmt> cloneStmtImpl(Stmt* node);
 std::unique_ptr<Expr> cloneExprImpl(Expr* node) {
     if (node == nullptr) return nullptr;
     std::unique_ptr<Expr> out;
+    CN_SWITCH_ENUM_EXEMPT_BEGIN
+    // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
     switch (node->getType()) {
         case NodeType::IntegerLiteral: {
             auto* n = static_cast<IntegerLiteral*>(node);
@@ -285,6 +294,7 @@ std::unique_ptr<Expr> cloneExprImpl(Expr* node) {
             // 未知表达式节点：克隆为 空指针 并依赖调用方防御（不应发生）
             return nullptr;
     }
+    CN_SWITCH_ENUM_EXEMPT_END
     out->location = node->location;
     return out;
 }
@@ -292,6 +302,8 @@ std::unique_ptr<Expr> cloneExprImpl(Expr* node) {
 std::unique_ptr<Stmt> cloneStmtImpl(Stmt* node) {
     if (node == nullptr) return nullptr;
     std::unique_ptr<Stmt> out;
+    CN_SWITCH_ENUM_EXEMPT_BEGIN
+    // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
     switch (node->getType()) {
         case NodeType::VarDecl: {
             auto* n = static_cast<VarDecl*>(node);
@@ -403,6 +415,7 @@ std::unique_ptr<Stmt> cloneStmtImpl(Stmt* node) {
         default:
             return nullptr;  // 声明节点不应出现在循环体内
     }
+    CN_SWITCH_ENUM_EXEMPT_END
     out->location = node->location;
     return out;
 }

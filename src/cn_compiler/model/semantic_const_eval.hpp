@@ -9,6 +9,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "cn_compiler/common/switch_enum_gate.hpp"
 #include "cn_compiler/model/ast.hpp"
 #include "cn_compiler/model/type_system.hpp"
 
@@ -81,6 +82,8 @@ std::string foldStringSourceTruncNul(const std::string& quotedRaw);
         const double a = std::atof(cnStripLiteralSuffix(l).c_str());
         const double b = std::atof(cnStripLiteralSuffix(r).c_str());
         double c = 0;
+        CN_SWITCH_ENUM_EXEMPT_BEGIN
+        // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
         switch (op) {
             case Operator::Add: c = a + b; break;
             case Operator::Subtract: c = a - b; break;
@@ -89,6 +92,7 @@ std::string foldStringSourceTruncNul(const std::string& quotedRaw);
             case Operator::Modulo: return std::nullopt;
             default: return std::nullopt;
         }
+        CN_SWITCH_ENUM_EXEMPT_END
         return cnFormatDouble(c);
     }
     long long a, b;
@@ -107,6 +111,8 @@ std::string foldStringSourceTruncNul(const std::string& quotedRaw);
         return std::nullopt;
     }
     long long c = 0;
+    CN_SWITCH_ENUM_EXEMPT_BEGIN
+    // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
     switch (op) {
         // 1016（审查 P2-A·存量 UB）：加/减/乘有符号溢出在 C++ 是 UB（实测
         //   INT64_MIN-1 / INT64_MAX+1 / INT64_MIN*-1 静默回绕错值）——按
@@ -155,6 +161,7 @@ std::string foldStringSourceTruncNul(const std::string& quotedRaw);
             break;
         default: return std::nullopt;
     }
+    CN_SWITCH_ENUM_EXEMPT_END
     return std::to_string(c);
 }
 
@@ -163,6 +170,8 @@ std::string foldStringSourceTruncNul(const std::string& quotedRaw);
 [[maybe_unused]] inline bool cnEvalConstExpr(const std::unordered_map<std::string, std::string>& vals,
                      const std::string& curMod, Expr* e, std::string& out) {
     if (e == nullptr) return false;  // 静默豁免业务值: 否定回答=不可折叠/未登记业务结果（调用方分流注入/守卫通道·非静默默认值继续）
+    CN_SWITCH_ENUM_EXEMPT_BEGIN
+    // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
     switch (e->getType()) {
         case NodeType::IntegerLiteral: {
             // 790（569 采样轮 H1）：整数字面量数值化——原 raw 原文透传经 569
@@ -227,6 +236,7 @@ std::string foldStringSourceTruncNul(const std::string& quotedRaw);
         default:
             return false;  // 静默豁免业务值: 未知节点形态=不可折叠分类信号（调用方分流·2051 搬移随迁）
     }
+    CN_SWITCH_ENUM_EXEMPT_END
 }
 
 // 数组初始化列表常量文本折叠（2051）：递归扁平化（多维行主序）逐元素

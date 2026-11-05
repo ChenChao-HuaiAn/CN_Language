@@ -34,48 +34,94 @@ namespace {
 //   =真无 return（函数可无 return·合法形态·语义层责任面），与「搜得到但
 //   形态不在白名单」（判据保守面·见 returnSourceBorrowed880 尾段显形登记）
 //   区分处置。
-Expr* findFirstReturnExpr(Stmt* s) {
+// #2074 内部错误显形出口（376 篇审计一坑位样板件·2026-11-05 用户令「default
+//   退役+全 case 显式+旗标强制」）：原实现 `default: return nullptr` 代答——
+//   新语句类型（DoStmt 类）无声漏网潜伏百轮实录。现按「每一枚举值以其名字
+//   显式书写 case」执法：否定回答（不含 return 的语句/非语句形态）逐枚举名
+//   显式 return nullptr，禁 default 代答；default 唯一合法形态=报编译器缺陷
+//   诊断中止编译（NodeType 新增值漏同步本 switch=当场显形·诊断 Error 后
+//   hasErrors 拦产物·ir_call_args 内部错误通道同款），不生产任何返回值；
+//   显形后返回 nullptr 仅为控制流闭合——错误已入诊断流，产物必然不出。
+//   签名增诊断通道参（自由函数无 diagnostics_ 成员·调用点传入）。
+Expr* findFirstReturnExpr(Stmt* s, Diagnostics& diag) {
     if (s == nullptr) return nullptr;   // 空节点=非该形态（递归出口）
     switch (s->getType()) {
+    // ---- 复合语句形态：递归体内搜索（先序首个可达 return）----
     case NodeType::ReturnStmt:
         return static_cast<ReturnStmt*>(s)->value.get();
     case NodeType::BlockStmt:
         for (auto& st : static_cast<BlockStmt*>(s)->statements) {
-            if (Expr* e = findFirstReturnExpr(st.get())) return e;
+            if (Expr* e = findFirstReturnExpr(st.get(), diag)) return e;
         }
         return nullptr;
     case NodeType::IfStmt: {
         auto* ifs = static_cast<IfStmt*>(s);
-        if (Expr* e = findFirstReturnExpr(ifs->thenBranch.get())) return e;
-        return findFirstReturnExpr(ifs->elseBranch.get());
+        if (Expr* e = findFirstReturnExpr(ifs->thenBranch.get(), diag)) return e;
+        return findFirstReturnExpr(ifs->elseBranch.get(), diag);
     }
     case NodeType::WhileStmt:
         return findFirstReturnExpr(
-            static_cast<WhileStmt*>(s)->body.get());
+            static_cast<WhileStmt*>(s)->body.get(), diag);
     case NodeType::ForStmt:
         return findFirstReturnExpr(
-            static_cast<ForStmt*>(s)->body.get());
+            static_cast<ForStmt*>(s)->body.get(), diag);
     case NodeType::RangeForStmt: {
         auto* rfs = static_cast<RangeForStmt*>(s);
-        if (Expr* e = findFirstReturnExpr(rfs->body.get())) return e;
-        return findFirstReturnExpr(rfs->desugared.get());
+        if (Expr* e = findFirstReturnExpr(rfs->body.get(), diag)) return e;
+        return findFirstReturnExpr(rfs->desugared.get(), diag);
     }
     case NodeType::SwitchStmt: {
         auto* sw = static_cast<SwitchStmt*>(s);
         for (auto& c : sw->cases) {
             if (c == nullptr) continue;
             for (auto& st : c->statements) {
-                if (Expr* e = findFirstReturnExpr(st.get())) return e;
+                if (Expr* e = findFirstReturnExpr(st.get(), diag)) return e;
             }
         }
         if (sw->defaultCase != nullptr) {
             for (auto& st : sw->defaultCase->statements) {
-                if (Expr* e = findFirstReturnExpr(st.get())) return e;
+                if (Expr* e = findFirstReturnExpr(st.get(), diag)) return e;
             }
         }
         return nullptr;
     }
+    // ---- 否定回答（语句形态·不含可搜 return·逐类型显式名字禁 default 代答）----
+    case NodeType::ExprStmt:        // 表达式语句：体内 lambda=独立函数体（其
+                                    //   return 不属外层函数可达返回面）
+    case NodeType::BreakStmt:
+    case NodeType::ContinueStmt:
+    case NodeType::CaseLabel:
+    case NodeType::DefaultLabel:
+        return nullptr;
+    // ---- 否定回答（非语句形态·「不含此物」逐枚举名显式书写）----
+    case NodeType::Program: case NodeType::FunctionDecl:
+    case NodeType::ParamDecl: case NodeType::VarDecl:
+    case NodeType::StructDecl: case NodeType::EnumDecl:
+    case NodeType::ClassDecl: case NodeType::ClassMember:
+    case NodeType::InterfaceDecl: case NodeType::ImportDecl:
+    case NodeType::GenericDecl:
+    case NodeType::IntegerLiteral: case NodeType::FloatLiteral:
+    case NodeType::StringLiteral: case NodeType::CharLiteral:
+    case NodeType::BoolLiteral: case NodeType::NullLiteral:
+    case NodeType::IdentifierExpr: case NodeType::SelfExpr:
+    case NodeType::SuperExpr: case NodeType::BinaryExpr:
+    case NodeType::UnaryExpr: case NodeType::AssignmentExpr:
+    case NodeType::CallExpr: case NodeType::MemberExpr:
+    case NodeType::IndexExpr: case NodeType::InitListExpr:
+    case NodeType::StructInitExpr: case NodeType::TernaryExpr:
+    case NodeType::CastExpr: case NodeType::LambdaExpr:
+    case NodeType::SizeofExpr:
+    case NodeType::TypeNode:
+        return nullptr;
+    // ---- default=编译器缺陷显形（#2074·376 篇审计一坑位收口）：本函数只被
+    //   语句位调用且上方已穷举全部枚举值，落 default=NodeType 新增值未同步
+    //   本 switch（历史教训：default 代答致新语句类型无声漏网百轮）→ 内部
+    //   错误入诊断流中止编译，禁生产返回值代答。----
     default:
+        diag.report(DiagnosticLevel::Error, s->location,
+                    "内部错误: 返回来源搜索收到未穷举的节点类型编号 " +
+                        std::to_string(static_cast<int>(s->getType())) +
+                        "（节点类型枚举新增值未同步穷举 switch·#2074）");
         return nullptr;
     }
 }
@@ -131,7 +177,8 @@ Expr* findFirstReturnExpr(Stmt* s) {
 bool IRGenerator::returnSourceBorrowed880(
     BlockStmt* body, const std::vector<std::unique_ptr<ParamDecl>>& params,
     const std::string& returnType) const {
-    Expr* rv = (body != nullptr) ? findFirstReturnExpr(body) : nullptr;
+    Expr* rv = (body != nullptr)
+                   ? findFirstReturnExpr(body, diagnostics_) : nullptr;
     if (semantic_ != nullptr && !returnType.empty() &&
         !types::isReference(returnType) &&
         semantic_->isClassType(types::canonical(returnType)) &&

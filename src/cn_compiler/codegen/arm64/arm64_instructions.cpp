@@ -13,6 +13,7 @@
 
 #include "cn_compiler/codegen/arm64/arm64_codegen.hpp"
 #include "cn_compiler/codegen/judgement.hpp"
+#include "cn_compiler/common/switch_enum_gate.hpp"
 #include "cn_compiler/model/type_system.hpp"
 
 namespace cn_compiler {
@@ -70,6 +71,8 @@ std::string Arm64CodeGenerator::csetCondition(ir::Opcode opcode, bool isUnsigned
         // 浮点比较（fcmp 设置 NZCV，NaN 时 V=1 C=1）：
         //   Eq -> eq；Ne -> ne；Lt -> mi（N=1）；Le -> ls（C=0 或 Z=1）
         //   Gt -> gt（Z=0 且 N=V）；Ge -> ge（N=V）
+        CN_SWITCH_ENUM_EXEMPT_BEGIN
+        // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
         switch (opcode) {
             case ir::Opcode::Eq: return "eq";
             case ir::Opcode::Ne: return "ne";
@@ -79,8 +82,11 @@ std::string Arm64CodeGenerator::csetCondition(ir::Opcode opcode, bool isUnsigned
             case ir::Opcode::Ge: return "ge";
             default: return "ne";
         }
+        CN_SWITCH_ENUM_EXEMPT_END
     }
     if (isUnsigned) {
+        CN_SWITCH_ENUM_EXEMPT_BEGIN
+        // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
         switch (opcode) {
             case ir::Opcode::Eq: return "eq";
             case ir::Opcode::Ne: return "ne";
@@ -90,7 +96,10 @@ std::string Arm64CodeGenerator::csetCondition(ir::Opcode opcode, bool isUnsigned
             case ir::Opcode::Ge: return "hs";
             default: return "ne";
         }
+        CN_SWITCH_ENUM_EXEMPT_END
     }
+    CN_SWITCH_ENUM_EXEMPT_BEGIN
+    // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
     switch (opcode) {
         case ir::Opcode::Eq: return "eq";
         case ir::Opcode::Ne: return "ne";
@@ -100,6 +109,7 @@ std::string Arm64CodeGenerator::csetCondition(ir::Opcode opcode, bool isUnsigned
         case ir::Opcode::Ge: return "ge";
         default: return "ne";
     }
+    CN_SWITCH_ENUM_EXEMPT_END
 }
 
 // 比较操作码 -> b.cond 条件码（与 csetCondition 一致）

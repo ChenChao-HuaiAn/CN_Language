@@ -11,6 +11,7 @@
 #include <unordered_set>
 #include <utility>
 
+#include "cn_compiler/common/switch_enum_gate.hpp"
 #include "cn_compiler/semantic/semantic.hpp"
 #include "cn_compiler/semantic/semantic_method_value_943.hpp"
 #include "cn_compiler/model/type_system.hpp"
@@ -118,6 +119,8 @@ void SemanticAnalyzer::visitTernaryExpr(TernaryExpr* node) {
 //   按 rustc「you might have meant to write a semicolon here」同款附提示。
 void SemanticAnalyzer::reportNonLvalueTarget(AssignmentExpr* node) {
     std::string kindName = "该表达式";
+    CN_SWITCH_ENUM_EXEMPT_BEGIN
+    // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
     switch (node->target->getType()) {
         case NodeType::BinaryExpr: kindName = "运算结果表达式"; break;
         case NodeType::IntegerLiteral:
@@ -134,6 +137,7 @@ void SemanticAnalyzer::reportNonLvalueTarget(AssignmentExpr* node) {
         case NodeType::UnaryExpr: kindName = "一元运算结果"; break;
         default: break;
     }
+    CN_SWITCH_ENUM_EXEMPT_END
     std::string msg =
         "赋值目标必须是可赋值的左值（变量/成员/下标/解引用/引用返回调用），不能给" +
         kindName + "赋值";
@@ -398,6 +402,8 @@ std::string SemanticAnalyzer::checkAssignLvalueTarget(AssignmentExpr* node,
                                                       bool& lvalueOk) {
     std::string targetType = "未知";
     lvalueOk = false;
+    CN_SWITCH_ENUM_EXEMPT_BEGIN
+    // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
     switch (node->target->getType()) {
         case NodeType::IdentifierExpr:
             checkIdentifierAssignTarget(node, targetType, lvalueOk);
@@ -419,6 +425,7 @@ std::string SemanticAnalyzer::checkAssignLvalueTarget(AssignmentExpr* node,
             reportNonLvalueTarget(node);
             break;
     }
+    CN_SWITCH_ENUM_EXEMPT_END
     return targetType;
 }
 
@@ -828,6 +835,8 @@ void SemanticAnalyzer::checkLocalAddressEscapeAssign(AssignmentExpr* node) {
         if (isLocalAddressValue(node->value.get(), escBase)) {
             bool escapes = false;
             std::string dstDesc;
+            CN_SWITCH_ENUM_EXEMPT_BEGIN
+            // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
             switch (node->target->getType()) {
                 case NodeType::IdentifierExpr: {
                     const std::string& name =
@@ -871,6 +880,7 @@ void SemanticAnalyzer::checkLocalAddressEscapeAssign(AssignmentExpr* node) {
                 default:
                     break;
             }
+            CN_SWITCH_ENUM_EXEMPT_END
             if (escapes) {
                 diagnostics_.report(
                     DiagnosticLevel::Error, node->location,

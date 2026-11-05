@@ -5,6 +5,7 @@
 
 #include "cn_compiler/codegen/x64/x64_codegen.hpp"
 #include "cn_compiler/codegen/judgement.hpp"
+#include "cn_compiler/common/switch_enum_gate.hpp"
 
 namespace cn_compiler {
 
@@ -31,6 +32,8 @@ void X64CodeGenerator::emitCast(AsmWriter& writer, const ir::IRInstruction& inst
     // D1 126-a：按族拆出三个子方法（纯重构零行为变更；各段原顺序、原条件保持不变）
     // 358：主分派判定改调 judgement::classifyCast（三后端唯一份·矩阵）——桶域=各子函数
     //   原判定域，桶内保留原 if（域内必命中·防御式兜底）；857 铁律已固化进归域。
+    CN_SWITCH_ENUM_EXEMPT_BEGIN
+    // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
     switch (judgement::classifyCast(from, to)) {
     case judgement::CastKind::FloatToI128Helper:
     case judgement::CastKind::FloatToInt:
@@ -48,6 +51,7 @@ void X64CodeGenerator::emitCast(AsmWriter& writer, const ir::IRInstruction& inst
     default:
         break;
     }
+    CN_SWITCH_ENUM_EXEMPT_END
     // 桶3（IntWidth 域+default）：i128 同类/宽化、窄源扩展、截断、i1/i32/u32/u64 逐向域
     if (emitCastIntWidth(writer, inst, dst, src, from, to)) return;
     // 32 <-> 64（同宽度：mov 传递即可，值语义一致）
@@ -125,6 +129,8 @@ bool X64CodeGenerator::emitCompareFloat(AsmWriter& writer, const ir::IRInstructi
         writer.line(load + " xmm0, " + floatSourceText(leftText, mp));
         writer.line(load + " xmm1, " + floatSourceText(rightText, mp));
         writer.line(cmp + " xmm0, xmm1");
+        CN_SWITCH_ENUM_EXEMPT_BEGIN
+        // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
         switch (inst.opcode) {
             case ir::Opcode::Eq:
                 writer.line("sete al");
@@ -148,6 +154,7 @@ bool X64CodeGenerator::emitCompareFloat(AsmWriter& writer, const ir::IRInstructi
                 writer.line("setne al");
                 break;
         }
+        CN_SWITCH_ENUM_EXEMPT_END
         writer.line("movzx eax, al");
         // D8（369 波1·比较族直写）：结果已分配物理寄存器 -> movzx 直写分配寄存器
         //   32 位名（免 movzx eax + mov dst, eax 中转——setcc+movzx 语义不变）；
@@ -273,6 +280,8 @@ void X64CodeGenerator::emitCompareInt(AsmWriter& writer, const ir::IRInstruction
     if (isUnsigned) {
         // 无符号 setcc：Eq/Ne 相同，序比较用 a/b 系列
         std::string cc;
+        CN_SWITCH_ENUM_EXEMPT_BEGIN
+        // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
         switch (inst.opcode) {
             case ir::Opcode::Eq: cc = "sete"; break;
             case ir::Opcode::Ne: cc = "setne"; break;
@@ -282,6 +291,7 @@ void X64CodeGenerator::emitCompareInt(AsmWriter& writer, const ir::IRInstruction
             case ir::Opcode::Ge: cc = "setae"; break;
             default: cc = "setne"; break;
         }
+        CN_SWITCH_ENUM_EXEMPT_END
         writer.line(cc + " al");
     } else {
         writer.line(setccMnemonic(inst.opcode) + " al");

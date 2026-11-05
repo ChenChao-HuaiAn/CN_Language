@@ -349,19 +349,8 @@ bool SemanticAnalyzer::isConstVarName(const std::string& name) const {
 }
 // 1360 拆分：函数指针类型族（isFuncPtrType/funcPtrReturnOf/funcPtrParamsOf/
 //   funcPtrCompatible）已整体搬至 semantic_funcptr.cpp（纯机械搬移·零语义变化）
-bool SemanticAnalyzer::isCompoundAssign(Operator op) {
-    switch (op) {
-        case Operator::PlusAssign: case Operator::MinusAssign:
-        case Operator::StarAssign: case Operator::SlashAssign:
-        case Operator::PercentAssign:
-        case Operator::AmpAssign: case Operator::PipeAssign:
-        case Operator::CaretAssign: case Operator::LessLessAssign:
-        case Operator::GreaterGreaterAssign:
-            return true;
-        default:
-            return false;
-    }
-}
+// #2074 拆分：isCompoundAssign（复合赋值运算符判定·枚举 switch 穷举豁免包裹位）
+//   已整体搬至 semantic_expr_binary.cpp（纯机械搬移·零语义变化·本文件回 1000 行内）
 void SemanticAnalyzer::checkCondition(const std::string& type, const SourceLocation& loc,
                                       const std::string& ctx) {
     if (type != "布尔") {

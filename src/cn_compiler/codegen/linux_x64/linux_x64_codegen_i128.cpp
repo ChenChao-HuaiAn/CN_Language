@@ -16,6 +16,7 @@
 #include <string>
 
 #include "cn_compiler/codegen/linux_x64/linux_x64_codegen.hpp"
+#include "cn_compiler/common/switch_enum_gate.hpp"
 
 namespace cn_compiler {
 
@@ -347,6 +348,8 @@ void LinuxX64CodeGenerator::emitInt128MulDivMod(LinuxX64AsmWriter& writer,
                                                 const ir::IRInstruction& inst) {
     const bool isUnsigned = (inst.type == "u128");
     std::string helper;
+    CN_SWITCH_ENUM_EXEMPT_BEGIN
+    // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
     switch (inst.opcode) {
         case ir::Opcode::Mul:
         case ir::Opcode::WrapMul:  // 任务 474：回绕乘=i128 运行时辅助本征回绕
@@ -355,6 +358,7 @@ void LinuxX64CodeGenerator::emitInt128MulDivMod(LinuxX64AsmWriter& writer,
         case ir::Opcode::Mod: helper = isUnsigned ? "__cn_mod_u128" : "__cn_mod_i128"; break;
         default: helper = "__cn_mul_i128"; break;
     }
+    CN_SWITCH_ENUM_EXEMPT_END
     // 操作数 a/b 地址：寄存器 -> lea 低64位槽（%vN+1）；常量 -> .data 全局常量池标签。
     //   a/b 用不同寄存器（r9/r10），随后移入 rdi/rsi（先算地址再移参，避免覆盖）
     auto addrOfI128 = [this, &writer](const ir::IRValue& v,
@@ -459,6 +463,8 @@ void LinuxX64CodeGenerator::emitInt128Compare(LinuxX64AsmWriter& writer,
     // Eq -> ==0；Ne -> !=0；Lt -> <0；Le -> <=0；Gt -> >0；Ge -> >=0
     // 返回值 int（-1/0/1），与 0 比较一律有符号条件
     std::string cc;
+    CN_SWITCH_ENUM_EXEMPT_BEGIN
+    // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
     switch (inst.opcode) {
         case ir::Opcode::Eq: cc = "sete"; break;
         case ir::Opcode::Ne: cc = "setne"; break;
@@ -468,6 +474,7 @@ void LinuxX64CodeGenerator::emitInt128Compare(LinuxX64AsmWriter& writer,
         case ir::Opcode::Ge: cc = "setge"; break;
         default: cc = "sete"; break;
     }
+    CN_SWITCH_ENUM_EXEMPT_END
     writer.line(cc + " r9b");
     writer.line("movzx r10, r9b");
     // 1267 续：i1 结果已分配 -> 32 位规范化直写物理寄存器

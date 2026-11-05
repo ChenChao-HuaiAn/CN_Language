@@ -7,6 +7,7 @@
 #include <utility>
 #include <vector>
 
+#include "cn_compiler/common/switch_enum_gate.hpp"
 #include "cn_compiler/semantic/semantic.hpp"
 #include "cn_compiler/semantic/semantic_lambda_escape.hpp"
 #include "cn_compiler/model/semantic_helpers.hpp"
@@ -39,6 +40,8 @@ void SemanticAnalyzer::visitUnaryExpr(UnaryExpr* node) {
     if (checkUnaryOperatorOverload(node, operandType)) {
         return;
     }
+    CN_SWITCH_ENUM_EXEMPT_BEGIN
+    // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
     switch (node->op) {
         case Operator::Bang:
             // 逻辑非：要求布尔
@@ -101,6 +104,7 @@ void SemanticAnalyzer::visitUnaryExpr(UnaryExpr* node) {
             lastType_ = operandType;
             break;
     }
+    CN_SWITCH_ENUM_EXEMPT_END
 }
 
 // ==================== 181-a 族子方法（原 visitUnaryExpr 277~473 段） ====================

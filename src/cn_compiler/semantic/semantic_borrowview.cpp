@@ -24,6 +24,7 @@
 #include <string>
 #include <vector>
 
+#include "cn_compiler/common/switch_enum_gate.hpp"
 #include "cn_compiler/semantic/semantic.hpp"
 #include "cn_compiler/semantic/semantic_staticguard.hpp"
 #include "cn_compiler/model/type_system.hpp"
@@ -74,6 +75,8 @@ void SemanticAnalyzer::buildPathText(const Expr* e, std::string& out) {
         out += "?";
         return;
     }
+    CN_SWITCH_ENUM_EXEMPT_BEGIN
+    // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
     switch (e->getType()) {
         case NodeType::IdentifierExpr:
             out += static_cast<const IdentifierExpr*>(e)->name;
@@ -99,6 +102,7 @@ void SemanticAnalyzer::buildPathText(const Expr* e, std::string& out) {
             out += "?";
             break;
     }
+    CN_SWITCH_ENUM_EXEMPT_END
 }
 
 // 表达式 → 容器引用键（77-a 扩展②：成员链接收者支持）。

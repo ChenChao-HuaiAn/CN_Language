@@ -11,6 +11,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "cn_compiler/common/switch_enum_gate.hpp"
 #include "cn_compiler/opt/global_value.hpp"
 #include "cn_compiler/opt/opt_common.hpp"
 
@@ -19,6 +20,8 @@ namespace opt {
 
 // 是否可能写入任意内存的指令（清空常量表）
 bool GlobalValuePass::mayAliasWrite(ir::Opcode op) {
+    CN_SWITCH_ENUM_EXEMPT_BEGIN
+    // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
     switch (op) {
         case ir::Opcode::StorePtr:
         case ir::Opcode::LoadPtr:
@@ -30,6 +33,7 @@ bool GlobalValuePass::mayAliasWrite(ir::Opcode op) {
         default:
             return false;
     }
+    CN_SWITCH_ENUM_EXEMPT_END
 }
 
 // 是否多槽变量（结构体/数组，保守跳过）
@@ -81,6 +85,8 @@ bool GlobalValuePass::run(ir::IRModule& module) {
                 // 第一步：应用已收集的替换
                 if (replaceUses(inst, RegRewriteMap(), constRewrite)) changed = true;
                 // 第二步：维护常量表/登记新替换
+                CN_SWITCH_ENUM_EXEMPT_BEGIN
+                // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
                 switch (inst.opcode) {
                     case ir::Opcode::Store: {
                         if (inst.extra.empty() || inst.operands.empty()) break;
@@ -123,6 +129,7 @@ bool GlobalValuePass::run(ir::IRModule& module) {
                         }
                         break;
                 }
+                CN_SWITCH_ENUM_EXEMPT_END
             }
             // 块终止返回字段同步替换（1254）：常量表命中只登记 constRewrite，
             //   返回寄存器不寄生于指令操作数——漏替时返回仍从槽读取已知常量。

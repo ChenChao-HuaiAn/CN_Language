@@ -15,6 +15,7 @@
 
 #include <cstdio>
 
+#include "cn_compiler/common/switch_enum_gate.hpp"
 #include "cn_compiler/ir/ir.hpp"
 #include "cn_compiler/model/ast_printer.hpp"
 #include "cn_compiler/model/semantic_view.hpp"
@@ -663,6 +664,8 @@ void IRGenerator::genCommonTypeArithmetic(BinaryExpr* node, ir::IRValue& left,
         //   比较/逻辑 -> i1
         //   位运算/移位 -> 整型（取左操作数类型，与语义 commonNumericType 一致）
         //   算术 -> 浮点取公共类型（92-a：f32/f64 精确，原恒 f64）/整型取左操作数类型
+        CN_SWITCH_ENUM_EXEMPT_BEGIN
+        // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
         switch (node->op) {
             case Operator::EqualEqual: case Operator::BangEqual:
             case Operator::Less: case Operator::LessEqual:
@@ -678,6 +681,7 @@ void IRGenerator::genCommonTypeArithmetic(BinaryExpr* node, ir::IRValue& left,
                 resultType = isFloat ? floatCommon : left.type;
                 break;
         }
+        CN_SWITCH_ENUM_EXEMPT_END
         lastExpr_ = emitResult(opcode, {left, right}, resultType, "", node->location);
         // 377 乙案尾部：窄算术（+ - * / %）结果 Cast 回窄——链式中间值每步
         //   回绕（(x*2)/2 的 400 截断为 144 再除=72·立法口径）；单步赋值锚

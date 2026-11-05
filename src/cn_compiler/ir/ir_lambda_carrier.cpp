@@ -7,6 +7,7 @@
 #include <string>
 #include <vector>
 
+#include "cn_compiler/common/switch_enum_gate.hpp"
 #include "cn_compiler/ir/ir_generator.hpp"
 #include "cn_compiler/model/semantic_view.hpp"
 #include "cn_compiler/model/type_system.hpp"
@@ -163,6 +164,8 @@ void IRGenerator::emitCarrierToCarrier482(
 cn::Optional<std::string> IRGenerator::resolveLambdaOrigin482(Expr* rhs,
                                                 const std::string& literalName) {
     if (rhs == nullptr) return std::nullopt;
+    CN_SWITCH_ENUM_EXEMPT_BEGIN
+    // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
     switch (rhs->getType()) {
         case NodeType::LambdaExpr:
             // 调用者须在 genExpr(rhs) 之后立即调用（lastLambdaName_ 尚未被
@@ -197,6 +200,7 @@ cn::Optional<std::string> IRGenerator::resolveLambdaOrigin482(Expr* rhs,
         default:
             return std::nullopt;
     }
+    CN_SWITCH_ENUM_EXEMPT_END
 }
 
 void IRGenerator::updateCarrierOnAssign482(const std::string& varName, Expr* rhs,

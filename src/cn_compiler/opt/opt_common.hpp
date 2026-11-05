@@ -13,6 +13,7 @@
 #include <string>
 #include <unordered_map>
 
+#include "cn_compiler/common/switch_enum_gate.hpp"
 #include "cn_compiler/ir/ir.hpp"
 
 namespace cn_compiler {
@@ -21,6 +22,8 @@ namespace opt {
 // 是否纯运算指令（无副作用，结果可安全替换/删除）：
 //   代数简化/CSE/复写传播仅对这类指令建立"模式/替换"关系
 inline bool isPureArith(ir::Opcode op) {
+    CN_SWITCH_ENUM_EXEMPT_BEGIN
+    // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
     switch (op) {
         case ir::Opcode::Add: case ir::Opcode::Sub:
         case ir::Opcode::Mul: case ir::Opcode::Div: case ir::Opcode::Mod:
@@ -34,6 +37,7 @@ inline bool isPureArith(ir::Opcode op) {
         default:
             return false;
     }
+    CN_SWITCH_ENUM_EXEMPT_END
 }
 
 // 常量传播白名单：排除浮点（MASM 无浮点立即数）与 i128（双槽，无单一立即数），

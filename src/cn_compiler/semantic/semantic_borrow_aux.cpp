@@ -5,6 +5,7 @@
 //   当前函数局部判定/绑定方法值实参判定/类对象返回拥有形态收集（662）。
 #include <string>
 
+#include "cn_compiler/common/switch_enum_gate.hpp"
 #include "cn_compiler/semantic/semantic.hpp"
 #include "cn_compiler/model/type_system.hpp"
 
@@ -12,6 +13,8 @@ namespace cn_compiler {
 
 bool SemanticAnalyzer::refReturnLvalueBase(const Expr* e, std::string& baseName) {
     if (e == nullptr) return false;  // 静默豁免业务值: 空表达式=lvalue 解剖的合法否定回答（否定≠错误·调用方分流）
+    CN_SWITCH_ENUM_EXEMPT_BEGIN
+    // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
     switch (e->getType()) {
         case NodeType::IdentifierExpr:
             baseName = static_cast<const IdentifierExpr*>(e)->name;
@@ -41,6 +44,7 @@ bool SemanticAnalyzer::refReturnLvalueBase(const Expr* e, std::string& baseName)
         default:
             return false;
     }
+    CN_SWITCH_ENUM_EXEMPT_END
 }
 bool SemanticAnalyzer::isRefParamForCurrentFn(const std::string& name) const {
     return currentRefParams_.count(name) > 0;

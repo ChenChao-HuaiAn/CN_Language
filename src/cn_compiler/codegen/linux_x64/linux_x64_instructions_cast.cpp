@@ -8,6 +8,7 @@
 
 #include "cn_compiler/codegen/linux_x64/linux_x64_codegen.hpp"
 #include "cn_compiler/codegen/judgement.hpp"
+#include "cn_compiler/common/switch_enum_gate.hpp"
 
 namespace cn_compiler {
 // ==================== 类型转换（Cast，Task 2.3） ====================
@@ -326,6 +327,8 @@ void LinuxX64CodeGenerator::emitCompare(LinuxX64AsmWriter& writer,
             loadOperandToV(writer, inst.operands[1], "xmm1");
         }
         writer.line(cmp + " xmm0, xmm1");
+        CN_SWITCH_ENUM_EXEMPT_BEGIN
+        // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
         switch (inst.opcode) {
             case ir::Opcode::Eq:
                 writer.line("sete r9b");
@@ -349,6 +352,7 @@ void LinuxX64CodeGenerator::emitCompare(LinuxX64AsmWriter& writer,
                 writer.line("setne r9b");
                 break;
         }
+        CN_SWITCH_ENUM_EXEMPT_END
         writer.line("movzx r10, r9b");
         // 1267 续：i1 结果已分配 -> 32 位规范化直写物理寄存器（r10 已经
         //   movzx 清零高 32 位；未分配原槽不变）

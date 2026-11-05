@@ -23,6 +23,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "cn_compiler/common/switch_enum_gate.hpp"
 #include "cn_compiler/opt/cse.hpp"
 #include "cn_compiler/opt/opt_common.hpp"
 
@@ -145,6 +146,8 @@ bool isPatternCandidate(const ir::IRInstruction& inst, bool allowFloat) {
 
 // 是否可能修改任意内存的指令（清空 Load 表）
 bool CSEPass::mayWriteMemory(ir::Opcode op) {
+    CN_SWITCH_ENUM_EXEMPT_BEGIN
+    // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
     switch (op) {
         case ir::Opcode::Store:
         case ir::Opcode::StorePtr:
@@ -157,6 +160,7 @@ bool CSEPass::mayWriteMemory(ir::Opcode op) {
         default:
             return false;
     }
+    CN_SWITCH_ENUM_EXEMPT_END
 }
 
 // 遍历模块全部函数的全部基本块，消除块内公共子表达式

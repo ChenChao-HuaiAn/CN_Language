@@ -11,6 +11,7 @@
 #include <utility>
 #include <vector>
 
+#include "cn_compiler/common/switch_enum_gate.hpp"
 #include "cn_compiler/semantic/semantic.hpp"
 #include "cn_compiler/model/type_system.hpp"
 
@@ -40,6 +41,8 @@ void SemanticAnalyzer::wrapRefArg(std::unique_ptr<Expr>& arg,
         return;
     }
     bool isLvalue = false;
+    CN_SWITCH_ENUM_EXEMPT_BEGIN
+    // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
     switch (raw->getType()) {
         case NodeType::IdentifierExpr: {
             std::string vt;
@@ -68,6 +71,7 @@ void SemanticAnalyzer::wrapRefArg(std::unique_ptr<Expr>& arg,
             isLvalue = false;
             break;
     }
+    CN_SWITCH_ENUM_EXEMPT_END
     if (!isLvalue) {
         diagnostics_.report(DiagnosticLevel::Error, raw->location,
                             "引用参数要求左值实参（不能对常量/字面量/临时值取地址）");

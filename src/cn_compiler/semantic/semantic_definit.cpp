@@ -26,6 +26,7 @@
 #include <unordered_set>
 #include <vector>
 
+#include "cn_compiler/common/switch_enum_gate.hpp"
 #include "cn_compiler/semantic/semantic.hpp"
 
 namespace cn_compiler {
@@ -343,6 +344,8 @@ void SemanticAnalyzer::defInitDropScopeDepth(std::size_t depth) {
 
 bool SemanticAnalyzer::defInitPlaceOf(const Expr* e, std::string& name,
                                       std::string& suffix) const {
+    CN_SWITCH_ENUM_EXEMPT_BEGIN
+    // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
     switch (e->getType()) {
         case NodeType::IdentifierExpr:
             name = static_cast<const IdentifierExpr*>(e)->name;
@@ -369,6 +372,7 @@ bool SemanticAnalyzer::defInitPlaceOf(const Expr* e, std::string& name,
         default:
             return false;  // 调用返回/解引用等临时值基=无未初始化概念
     }
+    CN_SWITCH_ENUM_EXEMPT_END
 }
 
 void SemanticAnalyzer::defInitMarkAssignTarget(Expr* target) {

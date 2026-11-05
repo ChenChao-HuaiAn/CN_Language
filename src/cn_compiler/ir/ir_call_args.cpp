@@ -14,6 +14,7 @@
 #include <utility>
 #include <vector>
 
+#include "cn_compiler/common/switch_enum_gate.hpp"
 #include "cn_compiler/ir/ir.hpp"
 #include "cn_compiler/ir/ir_generator.hpp"
 #include "cn_compiler/model/ast_expr.hpp"
@@ -61,6 +62,8 @@ ir::IRValue IRGenerator::materializeStructInitArg(StructInitExpr* init,
 //   前置条件：node 非空——调用点均已显式判（1817 门 node->value != nullptr /
 //   genClassValueSlotAddress 的消费位源表达式必非空），判据函数无空节点面。
 bool IRGenerator::isBorrowedAggregateHandleSlot(const Expr* node) const {
+    CN_SWITCH_ENUM_EXEMPT_BEGIN
+    // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
     switch (node->getType()) {
         case NodeType::IdentifierExpr:   // 形参/全局/静态/裸字段（633）——槽内=句柄
             return true;
@@ -88,6 +91,7 @@ bool IRGenerator::isBorrowedAggregateHandleSlot(const Expr* node) const {
         default:                         // 下标内联/解引用/三元/自身=本体地址
             return false;
     }
+    CN_SWITCH_ENUM_EXEMPT_END
 }
 
 // 类值结果 → byRef 槽地址（槽内=对象指针）：已求值结果物化单点。
@@ -110,6 +114,8 @@ ir::IRValue IRGenerator::materializeClassValueSlot(const ir::IRValue& value,
 //   前置条件：node 非空——调用点均已判（genExprInitializer 的
 //   initializer != nullptr 分支 / 赋值语句必有右值），判据函数无空节点面。
 bool IRGenerator::isClassValueCopySource(const Expr* node) const {
+    CN_SWITCH_ENUM_EXEMPT_BEGIN
+    // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
     switch (node->getType()) {
         case NodeType::IdentifierExpr:   // 719① 既有口径：变量赋值=独立副本
         case NodeType::IndexExpr:        // #1744：内联数组元素（无句柄槽）
@@ -120,6 +126,7 @@ bool IRGenerator::isClassValueCopySource(const Expr* node) const {
             // 借用来源族（类字段/解引用/自身）——R1 谱系判据单一事实源
             return isBorrowedAggregateSource(node);
     }
+    CN_SWITCH_ENUM_EXEMPT_END
 }
 
 // 981（#1744 主案）：类值消费位「槽地址」物化单点（声明见 ir_call_decls.hpp）。

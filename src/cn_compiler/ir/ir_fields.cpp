@@ -24,6 +24,7 @@
 #include <vector>
 
 #include <cstdio>
+#include "cn_compiler/common/switch_enum_gate.hpp"
 #include "cn_compiler/ir/ir.hpp"
 #include "cn_compiler/model/semantic_view.hpp"
 #include "cn_compiler/model/type_system.hpp"
@@ -323,6 +324,8 @@ bool IRGenerator::isBorrowedAggregateSource(const Expr* e) const {
             }
         }
     }
+    CN_SWITCH_ENUM_EXEMPT_BEGIN
+    // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
     switch (e->getType()) {
         case NodeType::IdentifierExpr: {
             const std::string& nm = static_cast<const IdentifierExpr*>(e)->name;
@@ -364,6 +367,7 @@ bool IRGenerator::isBorrowedAggregateSource(const Expr* e) const {
             // 调用返回（拥有契约）/ 结构体字面量 / 转移(...) / 转换结果
             return false;
     }
+    CN_SWITCH_ENUM_EXEMPT_END
 }
 
 // 85-a：聚合返回位所有权保证（返回类型含拥有型串字段 + 借用来源 → 物化独立副本）。

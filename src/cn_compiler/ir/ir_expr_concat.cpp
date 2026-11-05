@@ -18,6 +18,7 @@
 #include <string>
 #include <vector>
 
+#include "cn_compiler/common/switch_enum_gate.hpp"
 #include "cn_compiler/ir/ir.hpp"
 #include "cn_compiler/model/semantic_helpers.hpp"
 #include "cn_compiler/model/semantic_view.hpp"
@@ -331,6 +332,8 @@ namespace {
 //   嵌套 lambda 体是表达式非语句，不下钻（其 return 属另一函数）。
 void collectReturnExprsOwned(const Stmt* s, std::vector<const Expr*>& out) {
     if (s == nullptr) return;   // 空语句=该形态无体（递归出口）
+    CN_SWITCH_ENUM_EXEMPT_BEGIN
+    // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
     switch (s->getType()) {
         case NodeType::ReturnStmt:
             out.push_back(static_cast<const ReturnStmt*>(s)->value.get());
@@ -371,6 +374,7 @@ void collectReturnExprsOwned(const Stmt* s, std::vector<const Expr*>& out) {
         default:
             return;
     }
+    CN_SWITCH_ENUM_EXEMPT_END
 }
 
 // 体内同名变量声明初值收集（任意嵌套深度）：命中数=声明个数（形参/字段/全局
@@ -378,6 +382,8 @@ void collectReturnExprsOwned(const Stmt* s, std::vector<const Expr*>& out) {
 void collectVarInitExprsOwned(const Stmt* s, const std::string& name,
                               std::vector<const Expr*>& out) {
     if (s == nullptr) return;
+    CN_SWITCH_ENUM_EXEMPT_BEGIN
+    // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
     switch (s->getType()) {
         case NodeType::VarDecl: {
             const auto* vd = static_cast<const VarDecl*>(s);
@@ -425,6 +431,7 @@ void collectVarInitExprsOwned(const Stmt* s, const std::string& name,
         default:
             return;
     }
+    CN_SWITCH_ENUM_EXEMPT_END
 }
 
 }  // namespace
@@ -440,6 +447,8 @@ bool IRGenerator::stringReturnFormOwned(const Expr* e, const BlockStmt* body,
                                        int depth,
                                        const std::vector<std::string>* captureNames) const {
     const NodeType kind = (e != nullptr) ? e->getType() : NodeType::Program;
+    CN_SWITCH_ENUM_EXEMPT_BEGIN
+    // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
     switch (kind) {
         case NodeType::StringLiteral:
             return true;   // 驻留串（非 tracked·释放空安全无副作用）
@@ -496,6 +505,7 @@ bool IRGenerator::stringReturnFormOwned(const Expr* e, const BlockStmt* body,
         default:
             return false;   // 成员读/下标读/解引用/自增等=借用视图
     }
+    CN_SWITCH_ENUM_EXEMPT_END
 }
 
 // 方法体/lambda 体返回位拥有性：全部 return 皆拥有形态才=拥有（无体/无 return=借用面）。
@@ -663,6 +673,8 @@ bool IRGenerator::chainSegOwnedTemp(Expr* segAst) const {
 //   无值 → false（保守不判字符串；主形态=标识符对象/直接调用/字段访问）。
 bool IRGenerator::isStringTypedExpr(Expr* node) const {
     if (node == nullptr) return false;
+    CN_SWITCH_ENUM_EXEMPT_BEGIN
+    // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
     switch (node->getType()) {
         case NodeType::StringLiteral:
             return true;
@@ -692,6 +704,7 @@ bool IRGenerator::isStringTypedExpr(Expr* node) const {
             }
             return false;
         }
+    CN_SWITCH_ENUM_EXEMPT_END
         case NodeType::BinaryExpr: {
             BinaryExpr* bin = static_cast<BinaryExpr*>(node);
             if (bin->op == Operator::Add) {

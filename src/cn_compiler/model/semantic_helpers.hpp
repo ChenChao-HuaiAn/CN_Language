@@ -13,6 +13,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "cn_compiler/common/switch_enum_gate.hpp"
 #include "cn_compiler/model/ast.hpp"
 
 // ===== P3-22 常量求值助手族 → 拆分至 semantic_const_eval.hpp（2051·>900 先拆再加）=====
@@ -26,6 +27,8 @@ namespace cn_compiler {
 
 // 比较运算符（== != < > <= >=）
 [[maybe_unused]] inline bool isComparisonOp(Operator op) {
+    CN_SWITCH_ENUM_EXEMPT_BEGIN
+    // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
     switch (op) {
         case Operator::EqualEqual: case Operator::BangEqual:
         case Operator::Less: case Operator::Greater:
@@ -34,20 +37,26 @@ namespace cn_compiler {
         default:
             return false;
     }
+    CN_SWITCH_ENUM_EXEMPT_END
 }
 
 // 逻辑运算符（&& || !）
 [[maybe_unused]] inline bool isLogicalOp(Operator op) {
+    CN_SWITCH_ENUM_EXEMPT_BEGIN
+    // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
     switch (op) {
         case Operator::AndAnd: case Operator::OrOr: case Operator::Bang:
             return true;
         default:
             return false;
     }
+    CN_SWITCH_ENUM_EXEMPT_END
 }
 
 // 位运算符（& | ^ ~ << >>）
 [[maybe_unused]] inline bool isBitwiseOp(Operator op) {
+    CN_SWITCH_ENUM_EXEMPT_BEGIN
+    // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
     switch (op) {
         case Operator::Amp: case Operator::Pipe: case Operator::Caret:
         case Operator::Tilde: case Operator::LessLess: case Operator::GreaterGreater:
@@ -55,6 +64,7 @@ namespace cn_compiler {
         default:
             return false;
     }
+    CN_SWITCH_ENUM_EXEMPT_END
 }
 
 // 算术运算符（+ - * / %）
@@ -439,6 +449,8 @@ std::unique_ptr<Stmt> cloneStmt(Stmt* node);
     std::int64_t l = 0, r = 0;
     if (!cnFoldConstIntExpr505(b->left.get(), l, depth + 1, resolveConstName)) return false;
     if (!cnFoldConstIntExpr505(b->right.get(), r, depth + 1, resolveConstName)) return false;
+    CN_SWITCH_ENUM_EXEMPT_BEGIN
+    // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
     switch (b->op) {
         case Operator::Add:
             // 溢出安全加：INT64_MAX-r（r>0）/INT64_MIN-r（r<0）恒良定义
@@ -486,6 +498,7 @@ std::unique_ptr<Stmt> cloneStmt(Stmt* node);
         default:
             return false;  // 比较/位运算/逻辑等不进折叠闭包（预演面只管算术+移位）
     }
+    CN_SWITCH_ENUM_EXEMPT_END
 }
 
 // ===== 919：常量整数表达式文本级求值（超承载字面量求值单点·大数安全） =====
@@ -543,6 +556,8 @@ std::unique_ptr<Stmt> cloneStmt(Stmt* node);
         out = std::nullopt;
         return true;
     }
+    CN_SWITCH_ENUM_EXEMPT_BEGIN
+    // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
     switch (b->op) {
         case Operator::Add: out = types::decTextAdd919(l.value(), r.value()); return true;
         case Operator::Subtract: out = types::decTextSub919(l.value(), r.value()); return true;
@@ -560,6 +575,7 @@ std::unique_ptr<Stmt> cloneStmt(Stmt* node);
             // 移位/位运算/比较/逻辑不进本族（547 巨移位量/474 位宽域各现有通道）
             return false;
     }
+    CN_SWITCH_ENUM_EXEMPT_END
 }
 
 // 919-final（2026-10-18 用户裁决「字面量单点判域·Rust 口径」）：表达式子树
@@ -578,6 +594,8 @@ std::unique_ptr<Stmt> cloneStmt(Stmt* node);
     if (e == nullptr || depth > 64) {
         return false;
     }
+    CN_SWITCH_ENUM_EXEMPT_BEGIN
+    // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
     switch (e->getType()) {
         case NodeType::IntegerLiteral:
             return true;
@@ -605,6 +623,7 @@ std::unique_ptr<Stmt> cloneStmt(Stmt* node);
             // 下标/成员=非本扫描面（各自通道独立判域）
             return false;
     }
+    CN_SWITCH_ENUM_EXEMPT_END
 }
 
 // 1073：128 域常量折叠放行——919 文本级大数求值 + 顶层常量引用（对偶
@@ -667,6 +686,8 @@ std::unique_ptr<Stmt> cloneStmt(Stmt* node);
         out = std::nullopt;
         return true;
     }
+    CN_SWITCH_ENUM_EXEMPT_BEGIN
+    // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
     switch (b->op) {
         case Operator::Add: out = types::decTextAdd919(l.value(), r.value()); return true;
         case Operator::Subtract: out = types::decTextSub919(l.value(), r.value()); return true;
@@ -684,6 +705,7 @@ std::unique_ptr<Stmt> cloneStmt(Stmt* node);
             // 移位/位运算/比较/逻辑不进本族（547 巨移位量/474 位宽域各现有通道）
             return false;
     }
+    CN_SWITCH_ENUM_EXEMPT_END
 }
 
 } // namespace cn_compiler

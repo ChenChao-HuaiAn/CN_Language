@@ -24,6 +24,7 @@
 #include "cn_compiler/codegen/linux_x64/linux_x64_codegen.hpp"
 #include "cn_compiler/codegen/parallel_codegen.hpp"
 #include "cn_compiler/codegen/peephole_slot.hpp"
+#include "cn_compiler/common/switch_enum_gate.hpp"
 #include "cn_compiler/model/semantic_view.hpp"
 #include "cn_compiler/model/type_system.hpp"
 
@@ -172,6 +173,8 @@ std::string LinuxX64CodeGenerator::intParameterRegister(int index) const {
 std::string LinuxX64CodeGenerator::selectInstruction(ir::Opcode opcode,
                                                      const std::string& type) const {
     (void)type;
+    CN_SWITCH_ENUM_EXEMPT_BEGIN
+    // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
     switch (opcode) {
         case ir::Opcode::Add: return "add";
         case ir::Opcode::Sub: return "sub";
@@ -191,6 +194,7 @@ std::string LinuxX64CodeGenerator::selectInstruction(ir::Opcode opcode,
         default:
             return "";
     }
+    CN_SWITCH_ENUM_EXEMPT_END
 }
 
 // ==================== 栈槽分配 ====================

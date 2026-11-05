@@ -20,6 +20,7 @@
 #include <utility>
 #include <vector>
 
+#include "cn_compiler/common/switch_enum_gate.hpp"
 #include "cn_compiler/semantic/semantic.hpp"
 #include "cn_compiler/model/type_system.hpp"
 
@@ -698,6 +699,8 @@ cn::Optional<std::string> SemanticAnalyzer::instantiateGeneric(
 static void collectVarDeclTypes(Stmt* stmt,
                                 std::vector<std::pair<VarDecl*, std::string>>& out) {
     if (stmt == nullptr) return;
+    CN_SWITCH_ENUM_EXEMPT_BEGIN
+    // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
     switch (stmt->getType()) {
         case NodeType::BlockStmt: {
             for (auto& s : static_cast<BlockStmt*>(stmt)->statements) {
@@ -727,6 +730,7 @@ static void collectVarDeclTypes(Stmt* stmt,
         default:
             break;
     }
+    CN_SWITCH_ENUM_EXEMPT_END
 }
 
 // 返回值=重放保留面重报的错误数（0=体检查干净）——IR 层据此跳过带错实例的

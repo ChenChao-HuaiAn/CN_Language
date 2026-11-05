@@ -16,6 +16,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "cn_compiler/common/switch_enum_gate.hpp"
 #include "cn_compiler/opt/copy_propagation.hpp"
 #include "cn_compiler/opt/opt_common.hpp"
 
@@ -30,6 +31,8 @@ int CopyPropagationPass::resolveReg(int id, const RegRewriteMap& regRewrite) {
 
 // 是否可能写入任意内存的指令（清空槽值表）
 bool CopyPropagationPass::mayAliasWrite(ir::Opcode op) {
+    CN_SWITCH_ENUM_EXEMPT_BEGIN
+    // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
     switch (op) {
         case ir::Opcode::StorePtr:
         case ir::Opcode::LoadPtr:      // 指针加载可能触发空指针检查（副作用）
@@ -41,6 +44,7 @@ bool CopyPropagationPass::mayAliasWrite(ir::Opcode op) {
         default:
             return false;
     }
+    CN_SWITCH_ENUM_EXEMPT_END
 }
 
 // 是否结构体/数组多槽变量（按 varSlots 判断；保守跳过）
@@ -70,6 +74,8 @@ bool CopyPropagationPass::run(ir::IRModule& module) {
                 //    后续 Load 前的任何引用）都须同步替换）
                 if (replaceUses(inst, regRewrite, constRewrite)) changed = true;
                 // 第二步：按指令类别更新槽值表/登记新替换
+                CN_SWITCH_ENUM_EXEMPT_BEGIN
+                // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
                 switch (inst.opcode) {
                     case ir::Opcode::Store: {
                         // Store：operand[0]=值寄存器/常量, extra=变量名（唯一内部名）
@@ -116,6 +122,7 @@ bool CopyPropagationPass::run(ir::IRModule& module) {
                         }
                         break;
                 }
+                CN_SWITCH_ENUM_EXEMPT_END
             }
             // 块内最后一条指令后的替换：块终止字段（283-a 字段化）不寄生于
             //   指令操作数，replaceUses 覆盖不到；循环结束后 regRewrite/

@@ -20,6 +20,7 @@
 #include <string>
 #include <vector>
 
+#include "cn_compiler/common/switch_enum_gate.hpp"
 #include "cn_compiler/opt/const_fold.hpp"
 #include "cn_compiler/opt/opt_common.hpp"
 
@@ -142,6 +143,8 @@ std::string formatDouble(double value, const std::string& type) {
 // 常量传播目标指令（与旧 27 项 || 长链等价；switch 分派开销更低）。
 //   注意：Store 不在列（codegen 依赖操作数为寄存器/槽，见 run 内注意5）。
 bool isConstPropagateTarget(ir::Opcode op) {
+    CN_SWITCH_ENUM_EXEMPT_BEGIN
+    // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
     switch (op) {
         case ir::Opcode::Add: case ir::Opcode::Sub: case ir::Opcode::Mul:
         case ir::Opcode::Div: case ir::Opcode::Mod:
@@ -160,11 +163,14 @@ bool isConstPropagateTarget(ir::Opcode op) {
         default:
             return false;
     }
+    CN_SWITCH_ENUM_EXEMPT_END
 }
 
 // 是否可折叠操作码（foldResolved 的 case 列表；其余指令调用必然返回 false，
 //   run 主循环据此跳过 resolveOperands 的向量/IRValue 拷贝）。
 bool isFoldableOpcode(ir::Opcode op) {
+    CN_SWITCH_ENUM_EXEMPT_BEGIN
+    // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
     switch (op) {
         case ir::Opcode::Add: case ir::Opcode::Sub: case ir::Opcode::Mul:
         case ir::Opcode::Div: case ir::Opcode::Mod:
@@ -179,6 +185,7 @@ bool isFoldableOpcode(ir::Opcode op) {
         default:
             return false;
     }
+    CN_SWITCH_ENUM_EXEMPT_END
 }
 
 // 将折叠结果写回指令（opcode/extra/type/operands），保留尾部操作数
@@ -199,6 +206,8 @@ void replaceWithConstant(ir::IRInstruction& inst, const std::string& value,
 
 // 指令的实际操作数数量（按 opcode 固定；Branch 条件寄存器追加在尾部，不计入）
 std::size_t ConstFoldPass::operandCount(ir::Opcode op) {
+    CN_SWITCH_ENUM_EXEMPT_BEGIN
+    // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
     switch (op) {
         case ir::Opcode::Store: return 1;          // operand[0]=值
         case ir::Opcode::StorePtr: return 2;       // operand[0]=目标地址, operand[1]=值
@@ -208,11 +217,14 @@ std::size_t ConstFoldPass::operandCount(ir::Opcode op) {
         case ir::Opcode::Phi: return 0;
         default: return 2;                         // 二元运算/比较/逻辑/移位
     }
+    CN_SWITCH_ENUM_EXEMPT_END
 }
 
 // 更新常量表：常量指令记录映射；有副作用/结果非确定的指令清除映射
 void ConstFoldPass::updateConstTable(const ir::IRInstruction& inst, ConstTable& consts) {
     if (inst.result.id < 0) return;
+    CN_SWITCH_ENUM_EXEMPT_BEGIN
+    // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
     switch (inst.opcode) {
         case ir::Opcode::ConstInt:
         case ir::Opcode::ConstFloat:
@@ -238,6 +250,7 @@ void ConstFoldPass::updateConstTable(const ir::IRInstruction& inst, ConstTable& 
             consts.erase(inst.result.id);
             break;
     }
+    CN_SWITCH_ENUM_EXEMPT_END
 }
 
 // 解析操作数：常量直用；寄存器命中常量表 -> 视为常量；否则失败
@@ -298,6 +311,8 @@ bool ConstFoldPass::foldIntBinary(ir::Opcode op, const std::string& aText,
     const std::uint64_t mask = (bits >= 64) ? ~0ULL : ((1ULL << bits) - 1);
     const bool isUnsignedT = (type.size() >= 2 && type[0] == 'u');
 
+    CN_SWITCH_ENUM_EXEMPT_BEGIN
+    // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
     switch (op) {
         case ir::Opcode::Add:
         case ir::Opcode::Sub: {
@@ -399,6 +414,7 @@ bool ConstFoldPass::foldIntBinary(ir::Opcode op, const std::string& aText,
         default:
             return false;
     }
+    CN_SWITCH_ENUM_EXEMPT_END
 }
 
 // ==================== 逻辑运算折叠 ====================
@@ -408,12 +424,15 @@ bool ConstFoldPass::foldLogic(ir::Opcode op, const std::string& aText,
     bool a = false, b = false;
     if (!parseBool(aText, a)) return false;
     if (op != ir::Opcode::Not && !parseBool(bText, b)) return false;
+    CN_SWITCH_ENUM_EXEMPT_BEGIN
+    // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
     switch (op) {
         case ir::Opcode::And: out = (a && b) ? "真" : "假"; return true;
         case ir::Opcode::Or: out = (a || b) ? "真" : "假"; return true;
         case ir::Opcode::Not: out = (!a) ? "真" : "假"; return true;
         default: return false;
     }
+    CN_SWITCH_ENUM_EXEMPT_END
 }
 
 // ==================== 浮点二元运算折叠 ====================
@@ -435,6 +454,8 @@ bool ConstFoldPass::foldFloatBinary(ir::Opcode op, const std::string& aText,
         //   parseDouble 失败链放行面（1187 折叠放弃通道同构先例）
         if (!textToF32(aText, a) || !textToF32(bText, b)) return false;
         float result = 0.0f;
+        CN_SWITCH_ENUM_EXEMPT_BEGIN
+        // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
         switch (op) {
             case ir::Opcode::Add: result = a + b; break;
             case ir::Opcode::Sub: result = a - b; break;
@@ -447,6 +468,7 @@ bool ConstFoldPass::foldFloatBinary(ir::Opcode op, const std::string& aText,
             default:
                 return false;
         }
+        CN_SWITCH_ENUM_EXEMPT_END
         out = formatDouble(static_cast<double>(result), type);
         return true;
     }
@@ -454,6 +476,8 @@ bool ConstFoldPass::foldFloatBinary(ir::Opcode op, const std::string& aText,
     double a = 0.0, b = 0.0;
     if (!parseDouble(aText, a) || !parseDouble(bText, b)) return false;
     double result = 0.0;
+    CN_SWITCH_ENUM_EXEMPT_BEGIN
+    // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
     switch (op) {
         case ir::Opcode::Add: result = a + b; break;
         case ir::Opcode::Sub: result = a - b; break;
@@ -466,6 +490,7 @@ bool ConstFoldPass::foldFloatBinary(ir::Opcode op, const std::string& aText,
         default:
             return false;
     }
+    CN_SWITCH_ENUM_EXEMPT_END
     out = formatDouble(result, type);
     return true;
 }
@@ -598,6 +623,8 @@ bool ConstFoldPass::compareInt(ir::Opcode op, const std::string& aText,
     const bool isUnsigned = (type.size() >= 2 && type[0] == 'u');
     if (isUnsigned) {
         // 无符号：直接按位模式比较（Eq/Ne 同值，序比较无符号）
+        CN_SWITCH_ENUM_EXEMPT_BEGIN
+        // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
         switch (op) {
             case ir::Opcode::Eq: result = (a == b); break;
             case ir::Opcode::Ne: result = (a != b); break;
@@ -607,9 +634,12 @@ bool ConstFoldPass::compareInt(ir::Opcode op, const std::string& aText,
             case ir::Opcode::Ge: result = (a >= b); break;
             default: return false;
         }
+        CN_SWITCH_ENUM_EXEMPT_END
     } else {
         const std::int64_t sa = signExtend(a, bits, type);
         const std::int64_t sb = signExtend(b, bits, type);
+        CN_SWITCH_ENUM_EXEMPT_BEGIN
+        // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
         switch (op) {
             case ir::Opcode::Eq: result = (sa == sb); break;
             case ir::Opcode::Ne: result = (sa != sb); break;
@@ -619,6 +649,7 @@ bool ConstFoldPass::compareInt(ir::Opcode op, const std::string& aText,
             case ir::Opcode::Ge: result = (sa >= sb); break;
             default: return false;
         }
+        CN_SWITCH_ENUM_EXEMPT_END
     }
     return true;
 }
@@ -636,6 +667,8 @@ bool ConstFoldPass::compareFloat(ir::Opcode op, const std::string& aText,
         //   运行期原指令求值（无默认值无错值）——继承冻结基线同语义旧锚
         //   parseDouble 失败链放行面（1187 折叠放弃通道同构先例）
         if (!textToF32(aText, a) || !textToF32(bText, b)) return false;
+        CN_SWITCH_ENUM_EXEMPT_BEGIN
+        // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
         switch (op) {
             case ir::Opcode::Eq: result = (a == b); break;
             case ir::Opcode::Ne: result = (a != b); break;
@@ -645,10 +678,13 @@ bool ConstFoldPass::compareFloat(ir::Opcode op, const std::string& aText,
             case ir::Opcode::Ge: result = (a >= b); break;
             default: return false;
         }
+        CN_SWITCH_ENUM_EXEMPT_END
         return true;
     }
     double a = 0.0, b = 0.0;
     if (!parseDouble(aText, a) || !parseDouble(bText, b)) return false;
+    CN_SWITCH_ENUM_EXEMPT_BEGIN
+    // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
     switch (op) {
         case ir::Opcode::Eq: result = (a == b); break;
         case ir::Opcode::Ne: result = (a != b); break;
@@ -658,6 +694,7 @@ bool ConstFoldPass::compareFloat(ir::Opcode op, const std::string& aText,
         case ir::Opcode::Ge: result = (a >= b); break;
         default: return false;
     }
+    CN_SWITCH_ENUM_EXEMPT_END
     return true;
 }
 
@@ -672,6 +709,8 @@ bool ConstFoldPass::foldResolved(ir::IRInstruction& inst,
     const std::string& opType = out.empty() ? kEmptyType : out[0].type;
     const std::string& resultType = inst.type;
 
+    CN_SWITCH_ENUM_EXEMPT_BEGIN
+    // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
     switch (inst.opcode) {
         // ---- 算术（整型/浮点；Wrap* 回绕折叠同面·任务 474）----
         case ir::Opcode::Add:
@@ -767,6 +806,7 @@ bool ConstFoldPass::foldResolved(ir::IRInstruction& inst,
         default:
             return false;
     }
+    CN_SWITCH_ENUM_EXEMPT_END
 }
 
 // ==================== 单条指令折叠 ====================

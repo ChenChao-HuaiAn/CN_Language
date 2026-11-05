@@ -19,6 +19,7 @@
 #include <utility>
 #include <vector>
 
+#include "cn_compiler/common/switch_enum_gate.hpp"
 #include "cn_compiler/semantic/semantic.hpp"
 #include "cn_compiler/model/type_system.hpp"
 
@@ -156,6 +157,8 @@ namespace {
 //   推断型（`变量 x = 某些(5)`）不在扫描面（见函数头注释）。
 void collectLocalVarTypeTexts(const Stmt* st, std::vector<std::string>& out) {
     if (st == nullptr) return;
+    CN_SWITCH_ENUM_EXEMPT_BEGIN
+    // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
     switch (st->getType()) {
     case NodeType::VarDecl: {
         const auto* v = static_cast<const VarDecl*>(st);
@@ -230,6 +233,7 @@ void collectLocalVarTypeTexts(const Stmt* st, std::vector<std::string>& out) {
     default:
         break;
     }
+    CN_SWITCH_ENUM_EXEMPT_END
 }
 }  // namespace
 
@@ -845,6 +849,8 @@ bool SemanticAnalyzer::conditionContainsGuard(Expr* cond) {
     // 空表达式=无守卫（条件树递归边界值），非查表 miss
     bool hasGuard = false;
     if (cond != nullptr) {
+        CN_SWITCH_ENUM_EXEMPT_BEGIN
+        // 存量清偿挂#2074：漏 case 靠 default 挡存量（枚举穷举基线·逐处显式补 case 后删包裹）
         switch (cond->getType()) {
             case NodeType::MemberExpr: {
                 auto* m = static_cast<MemberExpr*>(cond);
@@ -870,6 +876,7 @@ bool SemanticAnalyzer::conditionContainsGuard(Expr* cond) {
             default:
                 break;
         }
+        CN_SWITCH_ENUM_EXEMPT_END
     }
     return hasGuard;
 }
