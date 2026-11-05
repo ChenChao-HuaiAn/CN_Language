@@ -57,14 +57,21 @@ inline std::vector<Arm64ArgPlacement> arm64AssignParamPlacements(
     int fpCursor = 0;
     int stackCursor = 0;
     for (const std::string& type : types) {
+        // 改写范式样张（001 §14.7 要点②·#2089 样板件）：A 式守卫收束（循环体
+        //   continue 早跳变体）——对称三分派改显式枚举+末段线性·else 退役
         const bool isFloat = judgement::isFloatType(type);
         if (isFloat && fpCursor < 8) {
             places.push_back({1, fpCursor++});
-        } else if (!isFloat && intCursor < 8) {
-            places.push_back({0, intCursor++});
-        } else {
-            places.push_back({2, stackCursor++});
+            continue;
         }
+        // 改写行随 §14.7 单边开区间禁令写双边界（游标定义域非负·调用方三处均传
+        //   0/1/2 起偏移——下界恒真为域声明·上界 8=GP 池容量·行为零变化）
+        if (!isFloat && intCursor >= 0 && intCursor < 8) {
+            places.push_back({0, intCursor++});
+            continue;
+        }
+        // 寄存器池溢出：栈槽（类 2·槽序独立计数）
+        places.push_back({2, stackCursor++});
     }
     return places;
 }
@@ -211,6 +218,13 @@ private:
 
     // 生成单条IR指令对应的汇编（按指令类别分派到各专用方法）
     void emitInstruction(Arm64AsmWriter& writer, const ir::IRInstruction& inst);
+
+    // 生成算术二元运算分派（Add/Sub 共用·001 §14.7 要点② C 式抽函数样张
+    //   #2089）：i128 走双半专用发射；浮点走浮点助记符；整型走整型助记符——
+    //   分支链抽函数+每支早返回（守卫式）·else 退役
+    void emitArithmeticBinary(Arm64AsmWriter& writer, const ir::IRInstruction& inst,
+                              const std::string& floatMnemonic,
+                              const std::string& intMnemonic);
 
     // 生成常量加载（ConstInt/ConstFloat/ConstString/ConstBool）
     void emitConstLoad(Arm64AsmWriter& writer, const ir::IRInstruction& inst);

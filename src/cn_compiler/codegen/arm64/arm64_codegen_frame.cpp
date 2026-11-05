@@ -19,21 +19,21 @@ namespace cn_compiler {
 //     与 parameterRegister 一致）
 // 栈调整辅助：|amount| <= 4095 用单条 sub/add；否则先 mov 到 x13 再 sub/add
 // AArch64 立即数栈调整最大 4095（12 位），大栈帧（如 4224 字节）需分段
+// 改写范式样张（001 §14.7 要点②·#2089 样板件）：A 式守卫收束——else-if 链改
+//   守卫早返回·else 退役；末段 else 双分支用谓词选择表达式消灭（行为零变化）
 void Arm64CodeGenerator::emitStackAdjust(Arm64AsmWriter& writer, int amount) {
     if (amount == 0) return;
     if (amount > 0 && amount <= 4095) {
         writer.line("add sp, sp, #" + std::to_string(amount));
-    } else if (amount < 0 && amount >= -4095) {
-        writer.line("sub sp, sp, #" + std::to_string(-amount));
-    } else {
-        // 大偏移：movz/movk 装载到 x13 再 sub/add（x13 为地址计算临时寄存器）
-        emitMovImm(writer, "x13", static_cast<std::uint64_t>(amount < 0 ? -amount : amount));
-        if (amount < 0) {
-            writer.line("sub sp, sp, x13");
-        } else {
-            writer.line("add sp, sp, x13");
-        }
+        return;
     }
+    if (amount < 0 && amount >= -4095) {
+        writer.line("sub sp, sp, #" + std::to_string(-amount));
+        return;
+    }
+    // 大偏移：movz/movk 装载到 x13 再 sub/add（x13 为地址计算临时寄存器）
+    emitMovImm(writer, "x13", static_cast<std::uint64_t>(amount < 0 ? -amount : amount));
+    writer.line(amount < 0 ? "sub sp, sp, x13" : "add sp, sp, x13");
 }
 
 void Arm64CodeGenerator::emitPrologue(Arm64AsmWriter& writer,
@@ -217,13 +217,17 @@ if (currentStructReturn_ && !returnReg.empty()) {
         // 源地址：returnReg 为栈槽（[x29,#-N]）时，槽内存的是结构体地址（指针），
         //   须 ldr 装载指针值（不能用 add 取槽地址——那会从槽地址处读错数据），
         //   与 X64 的 "mov rsi, returnReg"（装载值）语义一致
+        // 改写范式样张（001 §14.7 要点②·#2089 样板件）：B 式取反前置——非栈槽
+        //   特例先行（谓词无副作用·compare 两调用互斥等价）·else 退役（行为零变化）
+        if (returnReg.compare(0, 6, "[x29,#") != 0) {
+            // 非栈槽（物理寄存器/立即数文本）：直接 mov 装载
+            writer.line("mov x11, " + returnReg);
+        }
         if (returnReg.compare(0, 6, "[x29,#") == 0) {
             const int off = parseStackOffset(returnReg);
             // 装载槽值（结构体地址指针）：大偏移（|off|>255）经 stackMemText
             //   生成 x13 间接寻址，避免 ldr [x29,#-N] 负偏移非法
             emitStackLoad(writer, off, "x11", "ptr");
-        } else {
-            writer.line("mov x11, " + returnReg);
         }
         for (int w = 0; w < words; ++w) {
             writer.line("ldr x10, [x11, #" + std::to_string(w * 8) + "]");

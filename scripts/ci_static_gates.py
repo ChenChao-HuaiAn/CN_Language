@@ -37,6 +37,12 @@ def 静态门禁清单(cn, 平台) -> tuple:
                   #   秒级纯本地，与 L1 gate_quick 静态段/win 全量 ci.ps1 同口径。
                   ("check_dispatch_gate", []),
                   ("check_banned_words_gate", []),
+                  # 2089（2026-11-05·001 §14.7 要点③）：分支嵌套深度≤3 门禁——
+                  #   if/else-if/for/while/switch/选择 计层·纯块不计·lambda 重置·
+                  #   守卫式早返回鼓励；存量冻结基线只减不增（nesting_freeze_
+                  #   baseline.json·新增/计数增加=红·协议注释+登记条豁免）。
+                  #   秒级纯本地，与 L1 gate_quick 静态段同口径。
+                  ("check_nesting", []),
                   # 896（2026-10-17）：部署清单一致性——deploy_*.sh 拷贝清单 ⊇ 服务运行
                   # 依赖闭包+静态资源覆盖（406/824 漏部署类防复发）；纯本地文件秒级，
                   # 与 L1 gate_quick 静态段/win 全量 ci.ps1 同口径。

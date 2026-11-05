@@ -58,6 +58,25 @@ void Arm64CodeGenerator::emitTerminator(Arm64AsmWriter& writer,
 
 // ==================== 指令分派 ====================
 
+// 算术二元运算分派（Add/Sub 共用·001 §14.7 要点② C 式抽函数样张 #2089）：
+//   i128 双半专用发射；浮点 floatMnemonic（fadd/fsub）；整型 intMnemonic。
+//   与原 case 内 if/else-if/else 三分派逐支等价（同判据同调用序·行为零变化）。
+//   Mul 的 i128 支走 MulDivMod 与本函数不同·不并入（单一职责）
+void Arm64CodeGenerator::emitArithmeticBinary(Arm64AsmWriter& writer,
+                                              const ir::IRInstruction& inst,
+                                              const std::string& floatMnemonic,
+                                              const std::string& intMnemonic) {
+    if (inst.type == "i128" || inst.type == "u128") {
+        emitInt128Binary(writer, inst);
+        return;
+    }
+    if (isFloatType(inst.type)) {
+        emitFloatBinary(writer, inst, floatMnemonic);
+        return;
+    }
+    emitIntBinary(writer, inst, intMnemonic);
+}
+
 // 单条IR指令 -> 汇编（按操作码分派到专用方法）
 void Arm64CodeGenerator::emitInstruction(Arm64AsmWriter& writer,
                                          const ir::IRInstruction& inst) {
@@ -73,14 +92,10 @@ void Arm64CodeGenerator::emitInstruction(Arm64AsmWriter& writer,
             emitCopy(writer, inst);
             return;
         case ir::Opcode::Add:
-            if (inst.type == "i128" || inst.type == "u128") emitInt128Binary(writer, inst);
-            else if (isFloatType(inst.type)) emitFloatBinary(writer, inst, "fadd");
-            else emitIntBinary(writer, inst, "add");
+            emitArithmeticBinary(writer, inst, "fadd", "add");
             return;
         case ir::Opcode::Sub:
-            if (inst.type == "i128" || inst.type == "u128") emitInt128Binary(writer, inst);
-            else if (isFloatType(inst.type)) emitFloatBinary(writer, inst, "fsub");
-            else emitIntBinary(writer, inst, "sub");
+            emitArithmeticBinary(writer, inst, "fsub", "sub");
             return;
         case ir::Opcode::Mul:
             if (inst.type == "i128" || inst.type == "u128") emitInt128MulDivMod(writer, inst);

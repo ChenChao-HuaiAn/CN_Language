@@ -138,7 +138,7 @@ print("== L1 快速门禁（920·提交前）==", flush=True)
 for 名 in ("check_ascii_idents", "check_keywords_sync", "check_registry_audit",
            "check_case_numbers", "check_registry_sanity", "check_miss_gate", "check_sentinel_gate",
            "check_naming", "check_dispatch_gate", "check_banned_words_gate",
-           "check_deploy_manifest",
+           "check_deploy_manifest", "check_nesting",
            "check_syntax_semantic_sync", "check_verifier_selfcheck",
            "check_parallel_prefix", "check_program_cache_key_audit"):
     if not 步(名, [sys.executable, f"scripts/{名}.py"], 超时秒=静态超时):
@@ -186,6 +186,16 @@ if not 步("分派默认门禁自测",
     raise SystemExit(1)
 if not 步("禁词门禁自测",
           [sys.executable, "scripts/check_banned_words_gate.py", "--selftest"],
+          超时秒=静态超时):
+    raise SystemExit(1)
+# 2089（2026-11-05）：分支嵌套深度≤3 门禁判别力自测挂 L1 静态段——001 §14.7 要点③
+#   执法面（嵌套上限 3 层·else-if 链同层不叠·纯块不计·lambda 重置·守卫式早返回
+#   鼓励），正反两态（四层嵌套真拦/守卫链·链式枚举·lambda 限内不误报）+三红各一例
+#   （漏登记/登记无批准/协议注释放行）+基线冻结/消减棘轮；冻结基线
+#   nesting_freeze_baseline.json（挂载轮基线随头生成 569 处冻结）。纯临时样例树、
+#   零构建、秒级（与 882/1640/1959 自测同哲学）。
+if not 步("嵌套深度门禁自测",
+          [sys.executable, "scripts/check_nesting.py", "--selftest"],
           超时秒=静态超时):
     raise SystemExit(1)
 # 1376：程序缓存键审计门禁判别力自测（纯 fixture 副本·零构建·秒级）——正反两态

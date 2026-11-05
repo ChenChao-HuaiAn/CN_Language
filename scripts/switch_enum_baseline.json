@@ -156,13 +156,13 @@
   },
   {
    "文件": "src/cn_compiler/ir/ir_call_args.cpp",
-   "行": 64,
+   "行": 65,
    "锚": "switch (node->getType()) {",
    "因由": "旗标豁免包裹（漏 case 存量清偿位）"
   },
   {
    "文件": "src/cn_compiler/ir/ir_call_args.cpp",
-   "行": 96,
+   "行": 117,
    "锚": "switch (node->getType()) {",
    "因由": "旗标豁免包裹（漏 case 存量清偿位）"
   },
@@ -192,7 +192,7 @@
   },
   {
    "文件": "src/cn_compiler/ir/ir_expr.cpp",
-   "行": 668,
+   "行": 667,
    "锚": "switch (node->op) {",
    "因由": "旗标豁免包裹（漏 case 存量清偿位）"
   },
@@ -258,7 +258,7 @@
   },
   {
    "文件": "src/cn_compiler/ir/ir_stmt.cpp",
-   "行": 858,
+   "行": 857,
    "锚": "switch (node->getType()) {",
    "因由": "旗标豁免包裹（漏 case 存量清偿位）"
   },
@@ -354,25 +354,25 @@
   },
   {
    "文件": "src/cn_compiler/model/semantic_helpers.hpp",
-   "行": 427,
+   "行": 452,
    "锚": "switch (b->op) {",
    "因由": "旗标豁免包裹（漏 case 存量清偿位）"
   },
   {
    "文件": "src/cn_compiler/model/semantic_helpers.hpp",
-   "行": 534,
+   "行": 559,
    "锚": "switch (b->op) {",
    "因由": "旗标豁免包裹（漏 case 存量清偿位）"
   },
   {
    "文件": "src/cn_compiler/model/semantic_helpers.hpp",
-   "行": 572,
+   "行": 597,
    "锚": "switch (e->getType()) {",
    "因由": "旗标豁免包裹（漏 case 存量清偿位）"
   },
   {
    "文件": "src/cn_compiler/model/semantic_helpers.hpp",
-   "行": 664,
+   "行": 689,
    "锚": "switch (b->op) {",
    "因由": "旗标豁免包裹（漏 case 存量清偿位）"
   },
@@ -594,7 +594,7 @@
   },
   {
    "文件": "src/cn_compiler/semantic/generics.cpp",
-   "行": 696,
+   "行": 702,
    "锚": "switch (stmt->getType()) {",
    "因由": "旗标豁免包裹（漏 case 存量清偿位）"
   },
