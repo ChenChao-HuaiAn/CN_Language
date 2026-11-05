@@ -7,7 +7,6 @@
 #include <utility>
 
 #include "cn_compiler/ir/ir.hpp"
-#include "cn_compiler/ir/ir_string_temp_util.hpp"
 #include "cn_compiler/model/semantic_view.hpp"
 #include "cn_compiler/model/type_system.hpp"
 
@@ -314,7 +313,7 @@ bool IRGenerator::identifierStringOwnAssign(AssignmentExpr* node, IdentifierExpr
         //   对左操作数=调用返回串/findType 加宽后仍漏的形态盲判（默认分支 false）：
         //   `槽 = 字符串复制("丙") + "丁"`（左操作数=调用）与 `槽 = 裸字段 + 串`
         //   （字段名不入变量类型表）双双漏判 → copy 孤儿（探针 d2/d3 位实测
-        //   百轮泄 100）。溯源判据=isConcatResultInst（__cn_str_concat/
+        //   百轮泄 100）。溯源判据=isConcatResultTraced（emit 全定义登记·2075 单一事实源·__cn_str_concat/
         //   __cn_strbuf_finish——645/663/732/758 链单一事实源·normalizeStringValueSource
         //   ⑥ 同源）对字段/调用/混合形态统一命中；op==Add 守卫在前防误吞。
         if (ownAt == NodeType::BinaryExpr) {
@@ -323,7 +322,7 @@ bool IRGenerator::identifierStringOwnAssign(AssignmentExpr* node, IdentifierExpr
             ownAssign = abe->op == Operator::Add &&
                         (isStringTypedExpr(node->value.get()) ||
                          (value.type == "ptr" &&
-                          isConcatResultTraced(value.id)));
+                          isConcatResultTraced(value.id, node->location)));
         }
         if (ownAssign || refReturnCopy933) {
             if (refReturnCopy933 ||

@@ -392,3 +392,70 @@ TEST(IRStringTest, StringLenBuiltinStillCallsRuntime) {
     ASSERT_FALSE(r.diagnostics.hasErrors());
     EXPECT_EQ(countCallsTo(r.module, 0, "__cn_str_len"), 1);
 }
+
+// ==================== 2075：拼接产物溯源查询单点回归锁 ====================
+// 2075（用户 2026-11-05 裁决「查询不可判定=显式报错中止」）改造后行为锁：
+//   查询=regDefSymbols_ 全定义登记表单一事实源（emit 唯一落块点机械完备），
+//   查无=内部错误中止（编译器内部不一致通道——合法程序源码不可达，无法从
+//   CN 语料构造负样本·锁面=本组好样本行为零变更断言：任一收口位误伤或
+//   诊断误报即红）。
+// 比较位收口（758）：两侧操作数=连接产物寄存器 -> __cn_str_free 各注入一次
+//   （free 总数 4 = 比较位拼接产物收口 2 + 局部变量 a/c 出口 RAII 2——基线实录）
+TEST(IRStringTest, ConcatTraceCompareFreeInjection) {
+    auto r = buildIRSemantic(R"CN(
+函数 主() -> 整32 {
+    字符串 a = "甲";
+    字符串 c = "丙";
+    布尔 same = ("前" + a) == ("后" + c);
+    返回 0;
+}
+)CN");
+    ASSERT_FALSE(r.diagnostics.hasErrors());
+    // 两个连接产物在 __cn_str_eq 消费后即收口（比较位两侧各一次）
+    EXPECT_EQ(countCallsTo(r.module, 0, "__cn_str_concat"), 2);
+    EXPECT_EQ(countCallsTo(r.module, 0, "__cn_str_free"), 4);
+}
+
+// 字面量比较（负 id 常量形态·闭集否定路径）——零误伤：只读段不 free·零内部错误
+TEST(IRStringTest, ConcatTraceLiteralCompareNoErr) {
+    auto r = buildIRSemantic(R"CN(
+函数 主() -> 整32 {
+    布尔 b = "甲" == "乙";
+    返回 0;
+}
+)CN");
+    ASSERT_FALSE(r.diagnostics.hasErrors());
+    EXPECT_EQ(countCallsTo(r.module, 0, "__cn_str_free"), 0);
+}
+
+// 变量 load 比较位（登记表否定回答路径·跨 emit 形态）——不误收口借用句柄
+//   （free 总数 2 = 纯局部变量出口 RAII·比较位零收口——基线实录）
+TEST(IRStringTest, ConcatTraceVarLoadCompareNoFree) {
+    auto r = buildIRSemantic(R"CN(
+函数 主() -> 整32 {
+    字符串 a = "甲";
+    字符串 b = "乙";
+    布尔 same = a == b;
+    返回 0;
+}
+)CN");
+    ASSERT_FALSE(r.diagnostics.hasErrors());
+    EXPECT_EQ(countCallsTo(r.module, 0, "__cn_str_free"), 2);
+}
+
+// 三元纯拼接槽（两分支 Store 源皆连接产物）——Load 产物按拼接语义登记：
+//   赋值位直存接管（三元面零 copy）·溯源表跨三元槽面行为不变。
+//   （copy 总数 1 = 声明位字面量 "零" 借用来源落堆·933 既有语义·与三元面无关）
+TEST(IRStringTest, ConcatTraceTernaryPureSlotDirectStore) {
+    auto r = buildIRSemantic(R"CN(
+函数 主() -> 整32 {
+    字符串 s = "零";
+    整32 w = 1;
+    s = w > 0 ? ("一" + s) : ("二" + s);
+    返回 0;
+}
+)CN");
+    ASSERT_FALSE(r.diagnostics.hasErrors());
+    EXPECT_EQ(countCallsTo(r.module, 0, "__cn_str_concat"), 2);
+    EXPECT_EQ(countCallsTo(r.module, 0, "__cn_str_copy"), 1);
+}

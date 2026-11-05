@@ -228,20 +228,20 @@ void IRGenerator::emitClassMethod(const std::string& className, const ClassMembe
     //   visitFunctionDecl 同点同构（详见 ir_decl.cpp 注记）
     regCounter_ = 0;
     blockCounter_ = 0;
-    // 1963 从片定界修复（云端 1104 二轮片1 实录）：拼接产物溯源表随 regCounter_
-    //   复位**同步清空**——三表（concatTempDefs_/ternarySlotStoreTotal_/
-    //   ternarySlotStoreConcat_）生命周期=单函数（键=regCounter_ 编号），visit
-    //   FunctionDecl（ir_decl.cpp）与 lambda 体（ir_lambda.cpp）入口已同款清空，
-    //   emitClassMethod 漏清=件2 立案时只覆盖两通道。漏清×regCounter_ 每方法
-    //   复位=跨方法同号残留误命中：前方法 __cn_str_concat 产物号 K 残留表内，
-    //   后方法（libstdc++ 容器序·追加静态 先于 装甲 实录）同号 Load（局部标识
-    //   符 genExpr 产物）查表命中 → normalizeStringValueSource ⑥ 拼接接管免
-    //   copy → 借用来源句柄直存 → 出口 RAII 释放后静态槽悬垂（E2E 1081 ①a
-    //   「类静态字段 = 局部串」读空·云端 linux-x64 片1 稳定复现；win/MSVC 容
-    //   器序装甲 先编译=表无残留故绿——平台分叉非 IR 判据差异）。清空后表生
-    //   命周期三通道一致，查表 miss → 兜底块内扫描 → 保守 copy（原 5d0e94bac
-    //   行为·1081 恒绿）。
-    concatTempDefs_.clear();
+    // 1963 从片定界修复（云端 1104 二轮片1 实录）：寄存器定义点符号表随
+    //   regCounter_ 复位**同步清空**——三表（regDefSymbols_/
+    //   ternarySlotStoreTotal_/ternarySlotStoreConcat_）生命周期=单函数（键=
+    //   regCounter_ 编号），visit FunctionDecl（ir_decl.cpp）与 lambda 体
+    //   （ir_lambda.cpp）入口已同款清空，emitClassMethod 漏清=件2 立案时只覆盖
+    //   两通道。漏清×regCounter_ 每方法复位=跨方法同号残留误命中：前方法
+    //   __cn_str_concat 产物号 K 残留表内，后方法（libstdc++ 容器序·追加静态
+    //   先于 装甲 实录）同号 Load（局部标识符 genExpr 产物）查表命中 →
+    //   normalizeStringValueSource ⑥ 拼接接管免 copy → 借用来源句柄直存 →
+    //   出口 RAII 释放后静态槽悬垂（E2E 1081 ①a「类静态字段 = 局部串」读空·
+    //   云端 linux-x64 片1 稳定复现；win/MSVC 容器序装甲 先编译=表无残留故绿
+    //   ——平台分叉非 IR 判据差异）。清空后表生命周期三通道一致（2075 起：
+    //   表=全定义登记单一事实源·查询查无即内部错误显形）。
+    regDefSymbols_.clear();
     ternarySlotStoreTotal_.clear();
     ternarySlotStoreConcat_.clear();
     newBlock("bb0");  // 入口基本块

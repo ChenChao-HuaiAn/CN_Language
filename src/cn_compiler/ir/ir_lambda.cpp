@@ -637,9 +637,9 @@ void IRGenerator::visitLambdaExpr(LambdaExpr* node) {
     std::unordered_map<std::string, ClosureInfo> outerClosures =
         std::move(closureInfo_);
     closureInfo_.clear();  // move 后显式清空：不依赖移动后源的未规定状态
-    // 1963 执法四（件2）：lambda 体=独立函数上下文——拼接产物溯源表同款
+    // 1963 执法四（件2）：lambda 体=独立函数上下文——寄存器定义点符号表同款
     //   清空（与 visitFunctionDecl 入口同规·出口 restore 不需要：键全局唯一）。
-    concatTempDefs_.clear();
+    regDefSymbols_.clear();
     ternarySlotStoreTotal_.clear();
     ternarySlotStoreConcat_.clear();
     // 482：本函数返回来源跟踪同上下文隔离（lambda 体内的「返回」不污染外层
