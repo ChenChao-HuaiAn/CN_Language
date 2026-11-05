@@ -4,7 +4,7 @@
 **词法 → 语法 → 语义 → IR → 优化 → 代码生成**，三后端：**Win x64（MASM）/ Linux x86_64（SysV GAS）/ Linux ARM64（GAS）**。
 
 项目正在 **v2 自举重建**阶段：宿主编译器（`src/cn_compiler`）负责编译「用 CN 语言写成的编译器 v2 源码树」
-（`CN语言编译器v2/`），v2 已达**自编译固定点**（自己编译自己，两代产物逐字节一致，见 `79_v2_自举闭环` E2E）。
+（`CN语言编译器v2/`），v2 已达**自编译固定点**（自己编译自己，两代产物逐字节一致，见 `70_v2_自举闭环` E2E）。
 v2 的两条最高准绳（2026-09-01 用户令）：① **性能超过 C++ 编译器**；② **安全接近 Rust 语言**
 （悬垂指针 / 越界访问 / 泄漏零容忍）。
 
@@ -51,7 +51,7 @@ cmake --build target/build --config Debug
 
 ```powershell
 # 编译并运行 Hello World
-target\Debug\cn.exe build tests\e2e\01_hello\hello.cn --output target\hello.exe
+target\Debug\cn.exe build tests\e2e\1_hello\hello.cn --output target\hello.exe
 target\hello.exe
 
 # 只做语法/语义检查（不生成代码）
@@ -70,7 +70,7 @@ Linux（x86_64 / ARM64）：
 cmake -S . -B target/build && cmake --build target/build -j"$(nproc)"
 
 # 编译并运行 Hello World（Linux 上 build 必须显式指定 --target；缺省目标为 win-x64）
-./target/cn build tests/e2e/01_hello/hello.cn --target linux-x86_64 --output target/hello
+./target/cn build tests/e2e/1_hello/hello.cn --target linux-x86_64 --output target/hello
 ./target/hello
 
 # 只做语法/语义检查（不生成代码；无需 --target）
@@ -141,7 +141,7 @@ tools/              辅助脚本（文件切分等）
 ## 测试基线（2026-10-04，第 1019 轮 · 深度机 linux-x86_64 实测 + 云端最新终验）
 
 - 单元测试：**1414/1414**（L1 快速门禁全量单测·1014~1016 轮实测；本轮门禁复跑为准）
-- E2E：**590 个用例**（最大编号 589；双编译对照口径）。云端 linux 全量最新终验（1013 批八·c4c28311 轮）**红=0 全绿**；win-x64 剩 `24_条件编译`/`524_条件编译双编译` 两例在案（win-only 独立域·021 #176 P1 立案攻治中）；linux 两平台另有各 2 跳＝`62_ffi`〔Windows API〕/`69_memory_management`〔计数平台差异〕，非缺陷
+- E2E：**590 个用例**（最大编号 589；双编译对照口径）。云端 linux 全量最新终验（1013 批八·c4c28311 轮）**红=0 全绿**；win-x64 剩 `24_条件编译`/`460_条件编译双编译` 两例在案（win-only 独立域·021 #176 P1 立案攻治中）；linux 两平台另有各 2 跳＝`61_ffi`〔Windows API〕/`68_memory_management`〔计数平台差异〕，非缺陷
 - 构建警告：0（GCC `-Wall -Wextra -Werror`；MSVC `/W4 /WX`）
 - CLI 契约矩阵：50/50（2026-10-04 linux-x86_64 实测；win-x64 上次全量实测同分）
 - 自举锚定链：v2 自编译固定点 `fix_p ≡ fix_s` 逐字节一致（E2E `78_v2`/`79_v2` 三平台承载；1013 批八后维持）
@@ -157,4 +157,4 @@ tools/              辅助脚本（文件切分等）
 - 结果/可选 的部分复杂形态（嵌套成员链检查、赋值位构造器）当前采取保守拒绝；v2 侧联合体对结果/可选成员保守拒绝
 - 映射集合为 O(n) 线性表（字符串键待 P1，键比较要求 `==`）；正则/随机数为子集实现（见各模块头注的诚实边界）
 - 无 网络 / 迭代器抽象 / 完整模式匹配（长线清单 plans/007 F 组，v2 时代待重评）；线程/互斥锁已于 996 轮落地（见特性一览标准库）；
-  FFI 最小级「外部 函数」与模式匹配第一版已落地（e2e 62_ffi / 63_pattern_match）
+  FFI 最小级「外部 函数」与模式匹配第一版已落地（e2e 61_ffi / 62_pattern_match）

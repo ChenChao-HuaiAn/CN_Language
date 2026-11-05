@@ -45,7 +45,7 @@
   python3 scripts/cnsmith_run.py                          # 默认四轨道·小规模
   python3 scripts/cnsmith_run.py --轨道 矩阵 --样本 100    # 单轨道
   python3 scripts/cnsmith_run.py --track 对拍              # 英文别名同义（1130）
-  python3 scripts/cnsmith_run.py --轨道 对拍 --对拍目录 tests/e2e/01_hello
+  python3 scripts/cnsmith_run.py --轨道 对拍 --对拍目录 tests/e2e/1_hello
   python3 scripts/cnsmith_run.py --轨道 全部 --入日志      # 摘要行追加命中库日志（入库面）
   python3 scripts/cnsmith_run.py --轮 3 --间隔 600         # 按轮常驻（每轮独立归档）
   python3 scripts/cnsmith_run.py --selftest                # 对拍轨道自校验（1130）

@@ -32,6 +32,10 @@
 #   POST /api/claim_number    308j 发号/核对（382 后仅视野记账价值·任务表已为唯一权威）
 #   POST /api/case_pair       {号,用例名}  811：已发放存量号补配用例名（只对未配名号·
 #                              已配名 409 拒改·台账无此号 404 拒——配名不得变相指定新号）
+#   POST /api/case_renumber   {映射们:[{旧号,新号}…]}  2091：用例号全量重排（2026-11-05
+#                              用户令「编号必须连续·服务器也同步」）——映射须以实时台账
+#                              全量生成·行数一一对应校验；事务原子改台账主键（两段式防
+#                              交换冲突）+覆盖矩阵名单/豁免行全名引用；任一校验失败回滚
 # 384 文档资源（交接/教训/规范覆盖·文档上服务器二期·board_docs.py 模块）：
 #   POST /api/handoff_add     {机器,条目,来源?}              交接追加（两行制）
 #   GET  /api/handoff         ?machine=X&limit=N             交接查询（倒序·machine 空=三机混流）
@@ -607,6 +611,10 @@ class 处理器(BaseHTTPRequestHandler):
         if 路径 == "/api/case_pair":                   # 811：已发放存量号补配用例名
             with 写锁:
                 码, 响应 = 台账.补配用例名(连接, 体)
+                return self._回JSON(码, 响应)
+        if 路径 == "/api/case_renumber":               # 2091：用例号全量重排（连续化）
+            with 写锁:
+                码, 响应 = 台账.重排用例号(连接, 体)
                 return self._回JSON(码, 响应)
         # —— 384 文档资源（交接/教训/规范覆盖·POST 须令牌）——
         if 路径 == "/api/handoff_add":

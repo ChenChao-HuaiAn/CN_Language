@@ -419,6 +419,85 @@ def 补配用例名(con: sqlite3.Connection, 体: dict):
     return 200, {"好": True, "号": 号, "用例名": 用例名}
 
 
+def 重排用例号(con: sqlite3.Connection, 体: dict):
+    """E2E 用例号全量重排（2091·2026-11-05 用户令「编号必须连续·服务器也同步」）。
+    develop 树内号压缩为 1..N 连续、树外在飞行重编殿后——映射由客户端按服务端
+    实时台账全量生成（映射们 行数=台账行数·一一对应），服务端持写锁事务原子执行：
+      ① 用例号台账 号 主键两段式重写（前缀化避开交换映射撞主键）；
+      ② 覆盖单元三列名单与覆盖豁免行的「旧号_名」全名引用同步（名空行跳过）；
+    行数/号集/纯数字号三重校验任一失败即回滚。返回 (HTTP码, 响应)。"""
+    映射们 = 体.get("映射们")
+    if not isinstance(映射们, list) or not 映射们:
+        return 400, {"错误": "映射们 必填（全量 [{旧号新号}·行数=台账行数·一一对应）"}
+    行们 = con.execute("SELECT 号, 用例名 FROM 用例号台账").fetchall()
+    台账号集 = {str(r[0]) for r in 行们}
+    对: dict = {}
+    清名们: set = set()
+    for x in 映射们:
+        if not isinstance(x, dict):
+            return 400, {"错误": "映射们 条目须为 {旧号, 新号} 对象"}
+        旧, 新 = str(x.get("旧号", "")).strip(), str(x.get("新号", "")).strip()
+        if not 旧.isdigit() or not 新.isdigit():
+            return 400, {"错误": f"映射号须纯数字（收到 旧={旧!r} 新={新!r}）"}
+        对[旧] = 新
+        if x.get("清名"):
+            清名们.add(旧)   # 2091：挪段尾+清名（残留名让位·配对走 811 补配重建）
+    if set(对) != 台账号集:
+        差 = sorted(台账号集.symmetric_difference(对))
+        return 400, {"错误": f"映射与台账不对齐（映射 {len(对)}·台账 {len(台账号集)}·"
+                           f"差集样例 {差[:5]}）——映射须以服务端实时台账全量生成"}
+    新号集 = set(对.values())
+    if len(新号集) != len(对):
+        return 400, {"错误": "新号有重复——重排映射必须一一对应"}
+    名图 = {str(r[0]): (r[1] or "").strip() for r in 行们}
+    全名对 = {f"{旧号}_{名}": f"{对[旧号]}_{名}"
+              for 旧号, 名 in 名图.items() if 名}
+    try:
+        con.execute("UPDATE 用例号台账 SET 号='重排'||号")
+        for 旧, 新 in 对.items():
+            con.execute("UPDATE 用例号台账 SET 号=? WHERE 号=?", (新, "重排" + 旧))
+        for 旧 in 清名们:
+            con.execute("UPDATE 用例号台账 SET 用例名='' WHERE 号=?", (对[旧],))
+        单元们 = con.execute(
+            "SELECT 单元ID, 正例, 边界例, 负例 FROM 覆盖单元").fetchall()
+        单元改数 = 0
+        for 单元, 正例, 边界例, 负例 in 单元们:
+            新列们, 改过 = [], False
+            for 列 in (正例, 边界例, 负例):
+                条目们 = [t for t in (列 or "").split(",") if t.strip()]
+                新条目们 = [全名对.get(t.strip(), t) for t in 条目们]
+                if 新条目们 != 条目们:
+                    改过 = True
+                新列们.append(",".join(新条目们))
+            if 改过:
+                con.execute(
+                    "UPDATE 覆盖单元 SET 正例=?, 边界例=?, 负例=? WHERE 单元ID=?",
+                    (新列们[0], 新列们[1], 新列们[2], 单元))
+                单元改数 += 1
+        豁免改数 = 0
+        for 用例, 理由 in con.execute("SELECT 用例, 理由 FROM 覆盖豁免").fetchall():
+            新名 = 全名对.get(用例)
+            if 新名 and 新名 != 用例:
+                con.execute("DELETE FROM 覆盖豁免 WHERE 用例=?", (用例,))
+                con.execute("INSERT INTO 覆盖豁免(用例, 理由) VALUES(?,?)", (新名, 理由))
+                豁免改数 += 1
+        新号们 = [str(r[0]) for r in
+                  con.execute("SELECT 号 FROM 用例号台账").fetchall()]
+        if len(新号们) != len(行们) or set(新号们) != 新号集 or any(
+                not x.isdigit() for x in 新号们):
+            con.rollback()
+            return 500, {"错误": "重排后校验失败（行数/号集/纯数字号不符）——已回滚"}
+        con.commit()
+    except sqlite3.IntegrityError as e:
+        con.rollback()
+        return 500, {"错误": f"重排事务失败（唯一性冲突）：{e}——已回滚"}
+    print(f"[board] 用例号全量重排：台账 {len(行们)} 行·覆盖单元改 {单元改数} 行·"
+          f"豁免改 {豁免改数} 行（2091 连续化·映射一一对应校验过）", flush=True)
+    下一号 = max((int(x) for x in 新号们), default=0) + 1
+    return 200, {"好": True, "台账行数": len(行们), "覆盖单元改": 单元改数,
+                 "豁免改": 豁免改数, "下一号": str(下一号)}
+
+
 def 查用例号(con: sqlite3.Connection, 用例名: str) -> list:
     """577：台账按用例名查询（含未配名号位·建目录前自检面）——用例名子串匹配，
     v2专用: 前缀名亦按裸主题命中（如 266_不安全边界 命中「v2专用:不安全边界」）；

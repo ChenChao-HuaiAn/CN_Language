@@ -46,7 +46,7 @@ stdout + 退出码（stderr 按需），差异即「分叉候选」——建议�
 
 常态化入口（CN-Smith 轨道入口，遵循既有 CLI 风格；--轨道/--track 同义）：
   python scripts/cnsmith_run.py --轨道 对拍                       # 默认采样面
-  python scripts/cnsmith_run.py --track 对拍 --对拍目录 tests/e2e/144_v2_泛型星号实参
+  python scripts/cnsmith_run.py --track 对拍 --对拍目录 tests/e2e/134_v2_泛型星号实参
   python scripts/cnsmith_run.py --轨道 对拍 --对拍样本 24 --对拍矩阵 16 \
       --对拍内置 5 --对拍预算秒 1800                              # 周采样推荐参数
 

@@ -268,7 +268,7 @@ def 枚举文档引用():
 
 def 用例入口文件(目录):
     """入口真值源=双编译对照.txt「源文件=」键（1295 与 gen_docs.用例入口 同规：
-    多文件用例入口不叫 主.cn——01_hello/15_expressiveness 等；多值「主.cn,容器.cn」
+    多文件用例入口不叫 主.cn——1_hello/15_expressiveness 等；多值「主.cn,容器.cn」
     取首个），expected=<入口基名>.expected。缺对照/缺键回退 主.cn。"""
     名 = "主.cn"
     对照 = os.path.join(目录, "双编译对照.txt")

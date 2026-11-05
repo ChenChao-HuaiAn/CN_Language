@@ -350,11 +350,11 @@ def _明细链路断言(主模块, 断言) -> None:
     详情数据源）+ 取提交历史形态（develop 红灯归因数据源·缺数据=空列表降级）。"""
     with tempfile.TemporaryDirectory() as 临时:
         好 = Path(临时) / "好.json"
-        好.write_text('{"失败用例": [{"名称": "01_hello", "原因": "输出不一致"}]}',
+        好.write_text('{"失败用例": [{"名称": "1_hello", "原因": "输出不一致"}]}',
                       encoding="utf-8")
         明细 = 主模块.读e2e明细(好)
         断言("842 读e2e明细：正例结构直达（失败用例随结果 JSON 上 8300）",
-             isinstance(明细, dict) and 明细["失败用例"][0]["名称"] == "01_hello")
+             isinstance(明细, dict) and 明细["失败用例"][0]["名称"] == "1_hello")
         坏 = Path(临时) / "坏.json"
         坏.write_text("{坏 JSON", encoding="utf-8")
         断言("842 读e2e明细：坏 JSON=None（页面降级提示·不炸轮）",

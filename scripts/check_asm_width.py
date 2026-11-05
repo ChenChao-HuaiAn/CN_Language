@@ -52,8 +52,8 @@ import ci_duration   # 1385：扫描口径回传（耗时基线按 全扫/目录
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
 sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
 
-# 与 runner 平台跳过口径一致（62_ffi 依赖 Windows API；69 运行时计数平台差异）
-SKIP_DIRS = {"62_ffi", "69_memory_management"}
+# 与 runner 平台跳过口径一致（61_ffi 依赖 Windows API；69 运行时计数平台差异）
+SKIP_DIRS = {"61_ffi", "68_memory_management"}
 
 # arm64 非法编码：movz/movk + wN + lsl #32/#48（w 寄存器只允许 lsl #0/#16）
 ARM64_BAD_ENC = re.compile(r"\bmov[kz]\s+w\d+\s*,\s*#\d+\s*,\s*lsl\s*#(?:32|48)\b")
@@ -155,8 +155,8 @@ def self_check() -> None:
     模式, 们 = 写集扫描面(["src/cn_main.cpp"])
     if 模式 != "全":
         raise SystemExit("自检失败：编译器面变更应全扫")
-    模式, 们 = 写集扫描面(["tests/e2e/01_hello/主.cn", "tests/e2e/02_x/y.cn"])
-    if 模式 != "目录" or 们 != ["01_hello", "02_x"]:
+    模式, 们 = 写集扫描面(["tests/e2e/1_hello/主.cn", "tests/e2e/02_x/y.cn"])
+    if 模式 != "目录" or 们 != ["1_hello", "02_x"]:
         raise SystemExit(f"自检失败：用例目录变更应目录扫，得 {模式} {们}")
     模式, 们 = 写集扫描面(["README.md", "website/x.py", "plans/001.md"])
     if 模式 != "跳过":
@@ -164,13 +164,13 @@ def self_check() -> None:
     模式, 们 = 写集扫描面(["新顶层/未知.cn"])
     if 模式 != "全":
         raise SystemExit(f"自检失败：未知路径应保守全扫，得 {模式}")
-    模式, 们 = 写集扫描面(["tests/e2e/01_hello/主.cn", "scripts/x.py"])
-    if 模式 != "目录" or 们 != ["01_hello"]:
+    模式, 们 = 写集扫描面(["tests/e2e/1_hello/主.cn", "scripts/x.py"])
+    if 模式 != "目录" or 们 != ["1_hello"]:
         raise SystemExit(f"自检失败：用例+scripts 混合应目录扫，得 {模式} {们}")
     # 1385：耗时基线口径串正反态（P1-2：用例数+目录摘要入键）
     if 扫描口径("全", [], 300, 0, 900) != "全扫·用例300·冷缓存":
         raise SystemExit("自检失败：全扫冷缓存口径错")
-    甲 = 扫描口径("目录", ["01_hello"], 5, 0, 15)
+    甲 = 扫描口径("目录", ["1_hello"], 5, 0, 15)
     乙 = 扫描口径("目录", ["39_chkstk"], 5, 0, 15)
     if not (甲.startswith("目录扫1·用例5·摘要") and 甲.endswith("·冷缓存")):
         raise SystemExit("自检失败：目录扫部分命中口径错: " + 甲)
@@ -219,7 +219,7 @@ def 目录摘要(目录们: list) -> str:
 def 扫描口径(模式: str, 目录们: list, 用例数: int, 命中: int, 任务数: int) -> str:
     """1385：耗时基线口径串（daemon 经 CN_STEP_META_DIR 回读）——
     扫描面（全扫/目录扫N·用例M·目录摘要H/跳过）× 缓存状态（冷/部分/全命中/零任务）。
-    P1-2：目录数相同但目录/用例数不同=成本不同（39_chkstk vs 01_hello 15s↔1.5s），
+    P1-2：目录数相同但目录/用例数不同=成本不同（39_chkstk vs 1_hello 15s↔1.5s），
     用例数+目录摘要入键；645s 全扫冷缓存 vs 秒级跳过/全命中不混算基线。"""
     if 模式 == "跳过":
         return "跳过"
