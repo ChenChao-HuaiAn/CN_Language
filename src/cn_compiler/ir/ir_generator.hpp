@@ -586,6 +586,9 @@ private:
     //   字符串字段槽归本函数，写入位 drop 旧值安全。纯谓词（真假判定）。
     bool memberStringRecvPlaceOwned(const Expr* obj) const;
     bool memberStringRecvPlaceOwnedDepth(const Expr* obj, int depth) const;
+    // 2089 嵌套≤3 拆分件：Depth 主函数只做护栏+形态分派，标识符根与成员链两分支各抽子函数（各内嵌套≤3）
+    bool memberStringRecvOwnedIdentRoot(const Expr* obj) const;
+    bool memberStringRecvOwnedMemberChain(const Expr* obj, int depth) const;
     // 聚合基址上的全部字段释放（字段地址 = 基址 + 偏移；条件字段经条件分支）；98-a（C9）局部槽版本=emitStrArrayElemFreesFor（字符串元素数组逐元素释放·编译期展开 N 次）
     void emitOwnedStrFieldFreesAt(const ir::IRValue& base, const std::string& canon,
                                   const SourceLocation& loc);

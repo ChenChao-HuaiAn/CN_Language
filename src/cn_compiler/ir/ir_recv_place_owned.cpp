@@ -39,73 +39,81 @@ bool IRGenerator::memberStringRecvPlaceOwnedDepth(const Expr* obj, int depth) co
     // 静默豁免闭集穷举: 双边界护栏返假=形态异常按保守假（1979/1880 同界同形态）
     if (obj == nullptr || depth < 0 || depth > 4) return false;
     if (obj->getType() == NodeType::IdentifierExpr) {
-        const std::string& name =
-            static_cast<const IdentifierExpr*>(obj)->name;
-        const cn::Optional<std::string> slot = lookupVarName(name);
-        if (!slot.has_value()) return false;  // 静态/未登记=保守假（87-a 静态面走顶层通道不在本面）
-        const std::string& unique = slot.value();
-        if (isOwnedFieldSlot(unique)) {
-            // 结果/可选盒须盒拥有载荷（借用盒宁漏勿错——#1884 甲案判据复用）；
-            // 类型查询 miss=非盒（保守分支不触）·1360 显形分流非缺省
-            const cn::Optional<std::string> srcOpt = lookupSrcType(name);
-            if (srcOpt.has_value()) {
-                const std::string canon = types::canonical(srcOpt.value());
-                if ((isResultType(canon) || isOptionalType(canon)) &&
-                    !boxVarInRegistry(unique)) {
-                    return false;
-                }
-            }
-            return true;
-        }
-        // #1933 补：结果/可选盒变量=盒亡登记在册（boxVarInRegistry·#1884 单点）
-        //   =盒拥有载荷——类载荷盒（载荷=类·串在堆对象内·析构级联 free）不入
-        //   ownedFieldOrder_（collectOwnedStrFields 对类载荷不展开·138 行面外），
-        //   盒亡登记单点即其拥有权威；借用盒不在册=假（宁漏勿错防双删）。
-        if (boxVarInRegistry(unique)) {
-            const cn::Optional<std::string> srcBoxOpt = lookupSrcType(name);
-            if (srcBoxOpt.has_value()) {
-                const std::string canonBox = types::canonical(srcBoxOpt.value());
-                if (isResultType(canonBox) || isOptionalType(canonBox)) {
-                    return true;
-                }
-            }
-        }
-        // 有析构类局部（类字段串归堆对象·堆对象归本函数·析构级联 free 该槽）
-        return std::find(ownedClassOrder_.begin(), ownedClassOrder_.end(),
-                         unique) != ownedClassOrder_.end();
+        return memberStringRecvOwnedIdentRoot(obj);
     }
     if (obj->getType() == NodeType::MemberExpr) {
-        const MemberExpr* m = static_cast<const MemberExpr*>(obj);
-        if (m->isDerefAccess) return false;  // 指针成员（所指无拥有语义）保守假
-        // 中段宿主类型联合体拒（164-a）：链穿联合体字段=活跃成员身份不可判
-        const Expr* host = m->object.get();
-        std::string hostCanon;
-        cn::Optional<std::string> hostOpt;
-        if (host->getType() == NodeType::IdentifierExpr) {
-            hostOpt = lookupSrcType(
-                static_cast<const IdentifierExpr*>(host)->name);
-        } else if (host->getType() == NodeType::MemberExpr) {
-            // memberObjStructType 为 const 只读查询（const 方法）——入参签名
-            //   非 const 为历史形态，此处 const_cast 纯查询零改写安全。
-            hostOpt = memberObjStructType(const_cast<MemberExpr*>(
-                static_cast<const MemberExpr*>(host)));
-        }
-        // 推导 miss=链宿主类型不可解（非联合体拒面·递归根判定继续）——
-        //   显形分流非缺省（1360 结果化口径）
-        if (hostOpt.has_value()) {
-            hostCanon = types::canonical(hostOpt.value());
-        }
-        if (!hostCanon.empty() && semantic_ != nullptr) {
-            const cn::Optional<const StructDecl*> hostDeclOpt =
-                semantic_->findStruct(hostCanon);
-            // 布局 miss=宿主非结构体（类/合成体·非联合体拒面）——显形分流
-            if (hostDeclOpt.has_value() && hostDeclOpt.value()->isUnion) {
-                return false;
+        return memberStringRecvOwnedMemberChain(obj, depth);
+    }
+    // 下标/解引用/调用/三元=右值或借出 place（保守不释放）
+    return false;
+}
+
+// 根=标识符分支（2089 嵌套≤3 拆分件·原 Depth 内嵌 4 层抽此）——判据逐字保留：
+bool IRGenerator::memberStringRecvOwnedIdentRoot(const Expr* obj) const {
+    const std::string& name =
+        static_cast<const IdentifierExpr*>(obj)->name;
+    const cn::Optional<std::string> slot = lookupVarName(name);
+    if (!slot.has_value()) return false;  // 静态/未登记=保守假（87-a 静态面走顶层通道不在本面）
+    const std::string& unique = slot.value();
+    if (isOwnedFieldSlot(unique)) {
+        // 结果/可选盒须盒拥有载荷（借用盒宁漏勿错——#1884 甲案判据复用）；
+        // 类型查询 miss=非盒（保守分支不触）·1360 显形分流非缺省
+        const cn::Optional<std::string> srcOpt = lookupSrcType(name);
+        const bool borrowBox = srcOpt.has_value() &&
+            (isResultType(types::canonical(srcOpt.value())) ||
+             isOptionalType(types::canonical(srcOpt.value()))) &&
+            !boxVarInRegistry(unique);
+        return !borrowBox;
+    }
+    // #1933 补：结果/可选盒变量=盒亡登记在册（boxVarInRegistry·#1884 单点）
+    //   =盒拥有载荷——类载荷盒（载荷=类·串在堆对象内·析构级联 free）不入
+    //   ownedFieldOrder_（collectOwnedStrFields 对类载荷不展开·138 行面外），
+    //   盒亡登记单点即其拥有权威；借用盒不在册=假（宁漏勿错防双删）。
+    if (boxVarInRegistry(unique)) {
+        const cn::Optional<std::string> srcBoxOpt = lookupSrcType(name);
+        if (srcBoxOpt.has_value()) {
+            const std::string canonBox = types::canonical(srcBoxOpt.value());
+            if (isResultType(canonBox) || isOptionalType(canonBox)) {
+                return true;
             }
         }
-        return memberStringRecvPlaceOwnedDepth(host, depth + 1);
     }
-    return false;  // 下标/解引用/调用/三元=右值或借出 place（保守不释放）
+    // 有析构类局部（类字段串归堆对象·堆对象归本函数·析构级联 free 该槽）
+    return std::find(ownedClassOrder_.begin(), ownedClassOrder_.end(),
+                     unique) != ownedClassOrder_.end();
+}
+
+// 链上中段=MemberExpr 分支（2089 拆分件）——联合体拒/指针成员跳/递归根：
+bool IRGenerator::memberStringRecvOwnedMemberChain(const Expr* obj, int depth) const {
+    const MemberExpr* m = static_cast<const MemberExpr*>(obj);
+    if (m->isDerefAccess) return false;  // 指针成员（所指无拥有语义）保守假
+    // 中段宿主类型联合体拒（164-a）：链穿联合体字段=活跃成员身份不可判
+    const Expr* host = m->object.get();
+    std::string hostCanon;
+    cn::Optional<std::string> hostOpt;
+    if (host->getType() == NodeType::IdentifierExpr) {
+        hostOpt = lookupSrcType(
+            static_cast<const IdentifierExpr*>(host)->name);
+    } else if (host->getType() == NodeType::MemberExpr) {
+        // memberObjStructType 为 const 只读查询（const 方法）——入参签名
+        //   非 const 为历史形态，此处 const_cast 纯查询零改写安全。
+        hostOpt = memberObjStructType(const_cast<MemberExpr*>(
+            static_cast<const MemberExpr*>(host)));
+    }
+    // 推导 miss=链宿主类型不可解（非联合体拒面·递归根判定继续）——
+    //   显形分流非缺省（1360 结果化口径）
+    if (hostOpt.has_value()) {
+        hostCanon = types::canonical(hostOpt.value());
+    }
+    if (!hostCanon.empty() && semantic_ != nullptr) {
+        const cn::Optional<const StructDecl*> hostDeclOpt =
+            semantic_->findStruct(hostCanon);
+        // 布局 miss=宿主非结构体（类/合成体·非联合体拒面）——显形分流
+        if (hostDeclOpt.has_value() && hostDeclOpt.value()->isUnion) {
+            return false;
+        }
+    }
+    return memberStringRecvPlaceOwnedDepth(host, depth + 1);
 }
 
 
