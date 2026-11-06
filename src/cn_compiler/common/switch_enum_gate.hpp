@@ -31,3 +31,7 @@
 #endif
 
 #endif  // CN_COMPILER_COMMON_SWITCH_ENUM_GATE_HPP
+
+// 基线对账说明（2074 集成轮补注）：包裹位与 scripts/switch_enum_baseline.json
+// 一一对应（键=文件::归一锚），门禁面⑤逐点核销；清偿一处即删一对（宏包裹+基线
+// 键同轮收账·基线只减不增），新增包裹无基线键=门禁红。
