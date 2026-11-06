@@ -2,6 +2,8 @@
 //   #1933 行数整改：承载文件 1052 行超 1000 冻结线先拆再加——谓词块整体迁出
 //   逐字零语义变化；声明仍在 ir_generator.hpp·消费点=ir_expr_assign_member.cpp
 //   memberStringFieldAssign / ir_expr_assign_ident_class.cpp handleClassMemberAssign）
+//   结构=Depth 主函数（护栏+形态分派）+标识符根判定+成员链递归三函数；递归
+//   深度经 depth 参数逐层 +1 传播·护栏 [0,4] 双边界在主函数单点。
 #include <algorithm>
 #include <string>
 
