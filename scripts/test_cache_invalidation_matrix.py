@@ -598,6 +598,7 @@ def 场景5_改编译器身份(编译器, 工作目录, 缓存根):
 
     副本 = 工作目录 / "s5" / ("cn_identity_copy" + (".exe" if sys.platform.startswith("win") else ""))
     shutil.copyfile(编译器, 副本)
+    shutil.copymode(编译器, 副本)  # copyfile 只拷内容不拷权限位——linux 副本无执行位致场景②-5 必炸（2074 集成轮首次在 linux 触发·win 无权限位概念恒绿故此前未显形）
     with open(副本, "ab") as 文件:
         文件.write(b"CN1213-IDENTITY-PROBE")
 
